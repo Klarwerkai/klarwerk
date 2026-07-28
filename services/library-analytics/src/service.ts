@@ -37,6 +37,12 @@ import {
 // Query darf nicht den nahezu gesamten Legacy-Bestand voll laden — höchstens so viele Legacy-KOs
 // werden je Suche geladen/gescannt/backgefüllt; der Rest folgt in späteren Suchen (konvergiert,
 // weil jedes backgefüllte KO danach dauerhaft sein Feld trägt).
+// AUFTRAG-mega29 C3 (bens M28-3): der eine Satz, den jede MENSCHLICHE Ausgabe dieses Moduls trägt.
+// Er behauptet nichts über den Umfang der Prüfung — er nimmt nur die Zusicherung zurück, die ein
+// Leser einer gepflegten Ausgabe sonst selbst ergänzt.
+export const EXPORT_NO_CHECK_NOTE =
+  "Hinweis: Diese Ausgabe trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
+
 export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
 
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
@@ -1128,6 +1134,22 @@ export class LibraryService {
     return out;
   }
 
+  // ================================================================================================
+  // AUFTRAG-mega29 C3 (bens M28-3) — WAS DIESE AUSGABE NICHT BEHAUPTET.
+  // ================================================================================================
+  //
+  // Markdown, MediaWiki und HTML sind die Ausgaben, die ein MENSCH mitnimmt und weitergibt. Sie
+  // tragen Reife, Trust und Status — aber keinerlei Aussage darüber, ob das enthaltene Wissen gegen
+  // Widersprüche und Duplikate geprüft wurde. Seit dem Kandidaten-Deckel ist Schweigen an dieser
+  // Stelle irreführend: wer eine gepflegte Ausgabe in der Hand hält, schließt daraus leicht, sie sei
+  // in sich stimmig.
+  //
+  // BEWUSST NUR EIN SATZ und NICHT die volle Abdeckung: eine Ausgabe bündelt VIELE Objekte mit je
+  // eigenem Lauf; eine belastbare Gesamtabdeckung wäre eine eigene Rechnung mit eigener Testfläche.
+  // Der Satz behauptet deshalb gar nichts über den Umfang — er nimmt nur die Behauptung zurück, die
+  // der Leser sonst selbst ergänzt. Der JSON-Export trägt das Feld ohnehin am Objekt.
+  // Strukturgleich zu OUTPUT_NO_CHECK_NOTE in services/output (Modulgrenze: jede Ausgabe-Fläche
+  // besitzt ihren eigenen Text, es gibt keinen geteilten Textbestand zwischen den Modulen).
   // FR-LIB-02: Export als JSON / MediaWiki.
   // SCRUM-506 (ben-Review): der Export ist ein Egress-Kanal und durchsetzt dieselben Grenzen wie
   // die Output Factory (services/output): NUR validierte KOs (nicht-validierte nie im regulären
@@ -1148,7 +1170,15 @@ export class LibraryService {
     includeConfidential?: boolean;
   }): Promise<string> {
     const items = await this.exportJson(opts);
-    return items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n");
+    // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz steht VOR dem ersten Inhalt. Er stand in
+    // allen vier Ausgabewegen hinter dem gesamten Dokument — bei einem langen Export liest ihn
+    // dort niemand, und die Vorgabe „wo ein Leser ihn sieht" war damit nicht erfüllt. Die
+    // Wiederholung am Ende bleibt (sie kostet nichts und trifft den, der von hinten liest).
+    return [
+      `''${EXPORT_NO_CHECK_NOTE}''`,
+      items.map((ko) => `== ${ko.title} ==\n${ko.statement}`).join("\n\n"),
+      `''${EXPORT_NO_CHECK_NOTE}''`,
+    ].join("\n\n");
   }
 
   // FR-LIB-02: echtes Text-Markdown (Überschrift, Listen, Herkunfts-Fußzeile).
@@ -1157,7 +1187,8 @@ export class LibraryService {
     includeConfidential?: boolean;
   }): Promise<string> {
     const items = await this.exportJson(opts);
-    return items
+    // mega31 B: Exportkopf mit dem Warnsatz, VOR dem ersten Wissensobjekt (s. exportMediaWiki).
+    const body = items
       .map((ko) => {
         const lines: string[] = [`# ${ko.title}`, "", ko.statement];
         if (ko.conditions.length > 0) {
@@ -1177,6 +1208,7 @@ export class LibraryService {
         return lines.join("\n");
       })
       .join("\n\n---\n\n");
+    return `_${EXPORT_NO_CHECK_NOTE}_\n\n---\n\n${body}\n\n---\n\n_${EXPORT_NO_CHECK_NOTE}_`;
   }
 
   // FR-LIB-02: druckfertiges HTML — der Browser erzeugt daraus per „Als PDF sichern" das PDF.
@@ -1208,7 +1240,10 @@ export class LibraryService {
       "h2{margin-bottom:.2rem}.meta{color:#666;font-size:.85rem;margin-top:0}" +
       "article{break-inside:avoid;border-bottom:1px solid #eee;padding:1rem 0}" +
       ".src{color:#888;font-size:.8rem}@media print{body{margin:0}}";
-    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>KLARWERK Export</title><style>${style}</style></head><body><h1>KLARWERK — Wissensexport</h1>${articles}</body></html>`;
+    // mega31 B: Titel → Warnsatz → Inhalt. HTML ist der einzige Bibliotheks-Export mit echtem
+    // Kopf; der Satz sitzt direkt darunter, nicht mehr nur hinter dem letzten Artikel.
+    const note = `<p class="src">${esc(EXPORT_NO_CHECK_NOTE)}</p>`;
+    return `<!doctype html><html lang="de"><head><meta charset="utf-8"><title>KLARWERK Export</title><style>${style}</style></head><body><h1>KLARWERK — Wissensexport</h1>${note}${articles}${note}</body></html>`;
   }
 
   // FR-LIB-02: Import per JSON ohne Duplikate.

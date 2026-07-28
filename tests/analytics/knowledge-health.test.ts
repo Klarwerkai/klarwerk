@@ -45,7 +45,29 @@ describe("SCRUM-141: Knowledge Health", () => {
     expect(bandForScore(20)).toBe("kritisch");
   });
 
-  it("gesunder Bestand → hoher Score, Band gut", () => {
+  it("gesunder Bestand + BELEGTE Erkennung → hoher Score, Band gut", () => {
+    const kos = [
+      ko({ id: "K1", status: "validiert", trust: 80 }),
+      ko({ id: "K2", status: "validiert", trust: 60 }),
+    ];
+    // AUFTRAG-mega33 B: die volle Punktzahl gibt es nur mit BELEGTER Konflikterkennung. Ohne
+    // Beleg gilt der schlechteste Fall — deshalb steht die Voraussetzung hier ausdrücklich da.
+    const h = knowledgeHealth({
+      kos,
+      gaps: [],
+      conflicts: [],
+      pendingRevalidation: [],
+      busFactor: [bus("Anlage 1", false, 3)],
+      detectionCoverage: { total: 2, incomplete: 0, unchecked: 0, noCoverage: 0 },
+    });
+    expect(h.validatedRatio).toBe(100);
+    expect(h.score).toBe(100);
+    expect(h.scoreOptimistic).toBe(100);
+    expect(h.band).toBe("gut");
+    expect(h.avgTrust).toBe(70);
+  });
+
+  it("derselbe gesunde Bestand OHNE Beleg: die sichtbare Zahl sinkt, das Band entfällt", () => {
     const kos = [
       ko({ id: "K1", status: "validiert", trust: 80 }),
       ko({ id: "K2", status: "validiert", trust: 60 }),
@@ -57,10 +79,9 @@ describe("SCRUM-141: Knowledge Health", () => {
       pendingRevalidation: [],
       busFactor: [bus("Anlage 1", false, 3)],
     });
-    expect(h.validatedRatio).toBe(100);
-    expect(h.score).toBe(100);
-    expect(h.band).toBe("gut");
-    expect(h.avgTrust).toBe(70);
+    expect(h.score).toBe(80); // 100 − voller Konfliktabzug
+    expect(h.scoreOptimistic).toBe(100);
+    expect(h.band).toBeNull();
   });
 
   it("belastende Signale senken den Score und sind als Faktoren erklärbar", () => {

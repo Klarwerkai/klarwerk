@@ -1,0 +1,317 @@
+/* ================================================================================================
+   AUFTRAG-mega40 BLÖCKE C–G — DAS MODERN-THEMA („Werkbank"), reine Präsentationsebene.
+   ================================================================================================
+
+   JEDE Regel dieser Datei hängt unter [data-theme="modern"] (Pin + Sammler:
+   tests/app/mega40-theme-invarianz.test.ts). Ohne das Attribut ist diese Datei wirkungslos —
+   der Standard bleibt pixelgleich. Kein Selektor ändert DOM, Texte, Testids oder Verhalten;
+   Anker sind bestehende Utility-Klassen, Testids und vier neue reine Marker-Klassen
+   (kw-topbar, kw-sidebar, kw-start-purpose, kw-cta-primary, kw-confidence).
+
+   Farben ausschließlich über Token (rgb(var(--kw-…))) oder Weiß-Transparenzen — keine Hex-Werte
+   (Sammler: tests/app/mega40-token-disziplin.test.ts).
+
+   Spezifität statt Reihenfolge: [data-theme] + Klassen schlägt jede einzelne Utility-Klasse,
+   egal wo Tailwind seine Schicht einfügt. */
+
+/* ------------------------------------------------------------------------------------------------
+   SAMMLER 1 (BLOCK C): Kicker/Etiketten verlieren die Mono-Versalien-Anmutung.
+   Die Bauform ist im Bestand einheitlich `font-mono` + `uppercase` (PageHeader/SectionLabel und
+   alle Inline-Kicker/Pills) — ein Sammler über die KOMBINATION, nicht über heutige Fundstellen.
+   Mono OHNE uppercase ist echte Daten-Schrift (Hashes, Version, Zahlen, Zeiten) und bleibt Mono.
+   Textinhalte bleiben wörtlich unverändert; nur die Anmutung wechselt (Token aus themes.css). */
+[data-theme="modern"] .font-mono.uppercase {
+  font-family: var(--kw-kicker-font);
+  font-weight: var(--kw-kicker-weight);
+  letter-spacing: var(--kw-kicker-tracking);
+  text-transform: var(--kw-kicker-transform);
+}
+
+/* ------------------------------------------------------------------------------------------------
+   SAMMLER 2: Karten bekommen weiche Elevation statt harten Rahmen (Linie + Licht).
+   Trifft jede Karte der Bauform `rounded-card … border-hairline` — auch künftige. Gestrichelte
+   Karten (Leerzustände, Ladeblock) bleiben bewusst flach: eine Verheißung ist keine Fläche. */
+[data-theme="modern"] .rounded-card.border-hairline:not(.border-dashed) {
+  box-shadow: var(--kw-shadow-tile);
+}
+
+/* SAMMLER 3: Übergänge im Werkbank-Takt (150–200 ms), wo der Bestand bereits Übergänge hat. */
+[data-theme="modern"] .transition,
+[data-theme="modern"] .transition-colors,
+[data-theme="modern"] .transition-opacity {
+  transition-duration: var(--kw-motion-duration);
+  transition-timing-function: var(--kw-motion-ease);
+}
+
+/* ------------------------------------------------------------------------------------------------
+   BLOCK C — Shell: Topbar und Seitenleiste als Nachtblau-Fläche, Papier-Inhalt, Funke als
+   EIN Akzent (aktiver Nav-Eintrag / Zähler-Badge — beide tragen bereits bg-brand = Funke). */
+
+/* AUFTRAG-mega41 BLOCK A (bens sammel39-Blocker) — TEXTTRAGENDER FUNKE LIEGT AUF AA.
+   Der reine Funke #E8630A trägt Weiß nur mit 3,38:1. Als GRAFIK (Balkenfüllung) ist das in Ordnung,
+   als TEXTFLÄCHE nicht — und im Produkt ist genau das der Fall: aktiver Nav-Eintrag, aktiver
+   Rollenname, Benachrichtigungszahl, aktiver Palette-Treffer, Facetten-Zähler, Filter-Knopf.
+
+   Eine BAUFORM-Regel, keine Liste der heutigen Fälle: „Markenfläche UND heller Text am selben
+   Element" ist die Bauform (Sammler: tests/app/mega40-kontrast-modern.test.ts). Sie liegt im
+   modern-Thema auf --kw-funke-deep (#C2500A, Weiß darauf 4,72:1) — demselben Token, auf dem
+   kw-cta-primary bereits steht; kein zweites Aktions-Token, keine zweite Wahrheit.
+   Rein grafische bg-brand-Flächen ohne Text (Balken) bleiben auf dem hellen Funke. */
+[data-theme="modern"] .bg-brand.text-white {
+  background-color: rgb(var(--kw-funke-deep));
+}
+/* Abschwächungen (`text-white/70`, `opacity-90`) machen aus 4,72:1 wieder 2–4:1. Auf einer
+   texttragenden Funke-Fläche gibt es deshalb keine halben Weißtöne: Rangfolge über Schriftgewicht
+   und Größe, nicht über Deckkraft. Kein Textinhalt, kein Element, kein Verhalten ändert sich.
+
+   FARBE (breit): der volle Weißton gilt für die Fläche und jeden Nachfahren. Er überschreibt KEINEN
+   Zustand — die Fläche und ihre Kinder tragen im Bestand keine `hover:text-…`-Utility, und eine
+   Farbzusicherung nimmt niemandem eine Rückmeldung. */
+[data-theme="modern"] .bg-brand.text-white,
+[data-theme="modern"] .bg-brand.text-white * {
+  color: rgb(255 255 255);
+}
+/* DECKKRAFT (gezielt): AUFTRAG-mega42 BLOCK A, bens sammel40-Befund. Bis mega41 stand `opacity: 1`
+   auf dem Flächenelement selbst UND auf `*`. Das war zu grob: mit Attribut plus zwei Klassen (0,3,0)
+   schlug es Tailwinds `hover:opacity-95` (0,2,0) am Filter-Aktionsknopf (FacetFilter) — der
+   Hover-Hinweis war im modern-Thema wirkungslos, entgegen dem Satz „kein Verhalten ändert sich".
+   Künftige semantische Kinder, Disabled-/Hover-Zustände und fremde Komponenten mit eigener Opazität
+   hätte dieselbe Regel ebenso stillgelegt.
+
+   Die Regel trifft deshalb nur noch die ABSCHWÄCHUNGS-BAUFORMEN als Kinder einer texttragenden
+   Markenfläche — nicht die Fläche, nicht jeden Nachfahren (Bauform-Sammler:
+   tests/app/mega40-kontrast-modern.test.ts, Teil 3). Beide Bauformen sind hier benannt, ihre
+   Mechanik ist aber verschieden und das soll man lesen können:
+     · `.text-white/70` — die Schwäche steckt in der FARBE (Alpha im `color`). Sie ist bereits von
+       der Farb-Zusicherung oben erledigt; hier steht sie mit, damit die Regel die Bauform
+       vollständig benennt und nicht nur ihre halbe Hälfte.
+     · `.opacity-90` — die Schwäche steckt in der DECKKRAFT. Nur dafür ist diese Regel nötig.
+   Wer eine dritte Abschwächungsform einführt, wird nicht hier rot, sondern in der MESSUNG des
+   Sammlers (Text unter 4,5:1) — die Wahrheit bleibt die gemessene Zahl, nicht diese Liste. */
+[data-theme="modern"] .bg-brand.text-white .text-white\/70,
+[data-theme="modern"] .bg-brand.text-white .opacity-90 {
+  opacity: 1;
+}
+
+/* AUFTRAG-mega41 BLOCK A, Erweiterung (Kopf-Entscheidung 28.07.) — DIE AKTIVE NAV-BADGE.
+   Sie ist formal KEINE Markenfläche (`bg-white/20 text-white`), trägt aber eine Zahl und lag mit
+   3,42:1 in derselben Klasse wie bens Fundstellen: heller Text auf halbtransparent-hellem Grund.
+   Und die Regel darüber macht es schlimmer, nicht besser — sie zwingt den Text auf volle Deckkraft,
+   die FLÄCHE bleibt aber ein Weiß-Schleier über dem Funke.
+
+   Bauform, nicht Fundstelle: „halbtransparente weiße Fläche UND weißer Text am selben Element".
+   Aufgelöst wird sie durch volle Deckkraft — aber INVERTIERT: Papierfläche, Funke-dunkel-Text
+   (4,72:1). Weiß auf Funke dunkel wäre der andere AA-Weg, würde die Badge aber unsichtbar machen,
+   weil die aktive Nav-Zeile selbst schon Funke dunkel ist — die Zahl verlöre ihre Pille. Die
+   Umkehrung hält die Badge als eigenes Objekt UND benutzt dasselbe Token-Paar wie kw-cta-primary;
+   kein neues Aktions-Token, keine zweite Wahrheit. Steht NACH der Regel oben: gleiche Spezifität,
+   spätere Regel gewinnt — sonst würde `… .text-white *` den Text wieder auf Weiß ziehen.
+   Kein Textinhalt, kein Element, kein Verhalten ändert sich; classic bleibt unberührt. */
+[data-theme="modern"] .bg-white\/20.text-white {
+  background-color: rgb(var(--kw-surface));
+  color: rgb(var(--kw-funke-deep));
+}
+
+/* Topbar */
+[data-theme="modern"] .kw-topbar {
+  background-color: rgb(var(--kw-night));
+  border-color: rgb(var(--kw-night-2));
+}
+[data-theme="modern"] .kw-topbar .text-text {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-topbar .text-muted {
+  color: rgb(var(--kw-shell-muted));
+}
+[data-theme="modern"] .kw-topbar .text-muted-2 {
+  color: rgb(var(--kw-shell-muted-2));
+}
+[data-theme="modern"] .kw-topbar .border-hairline {
+  border-color: rgb(255 255 255 / 0.14);
+}
+[data-theme="modern"] .kw-topbar .bg-page {
+  background-color: rgb(var(--kw-night-2));
+}
+[data-theme="modern"] .kw-topbar .bg-ink {
+  background-color: rgb(255 255 255 / 0.16);
+}
+[data-theme="modern"] .kw-topbar .hover\:bg-hairline-soft:hover {
+  background-color: rgb(255 255 255 / 0.1);
+}
+[data-theme="modern"] .kw-topbar .hover\:text-text:hover {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-topbar .placeholder\:text-muted-2::placeholder {
+  color: rgb(var(--kw-shell-muted-2));
+}
+[data-theme="modern"] .kw-topbar .focus-within\:border-ink\/30:focus-within {
+  border-color: rgb(255 255 255 / 0.35);
+}
+
+/* Karten IN der Topbar (Benachrichtigungs-Popover) bleiben Karten: weißer Grund, Tinte darauf.
+   Drei Klassen schlagen die Zwei-Klassen-Überschreibungen oben — bewusst über Spezifität. */
+[data-theme="modern"] .kw-topbar .rounded-card.bg-surface {
+  border-color: rgb(var(--kw-hairline));
+  box-shadow: var(--kw-shadow-popover);
+}
+[data-theme="modern"] .kw-topbar .rounded-card .text-text {
+  color: rgb(var(--kw-text));
+}
+[data-theme="modern"] .kw-topbar .rounded-card .text-muted {
+  color: rgb(var(--kw-muted));
+}
+[data-theme="modern"] .kw-topbar .rounded-card .text-muted-2 {
+  color: rgb(var(--kw-muted-2));
+}
+[data-theme="modern"] .kw-topbar .rounded-card .bg-hairline {
+  background-color: rgb(var(--kw-hairline));
+}
+[data-theme="modern"] .kw-topbar .rounded-card .hover\:text-text:hover {
+  color: rgb(var(--kw-text));
+}
+[data-theme="modern"] .kw-topbar .rounded-card .hover\:bg-hairline-soft:hover {
+  background-color: rgb(var(--kw-hairline-soft));
+}
+
+/* Seitenleiste (trägt im schmalen Modus auch den Drawer — dieselbe Fläche, derselbe Anker) */
+[data-theme="modern"] .kw-sidebar {
+  background-color: rgb(var(--kw-night));
+  border-color: rgb(var(--kw-night-2));
+}
+[data-theme="modern"] .kw-sidebar .text-text {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-sidebar .text-ink {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-sidebar .text-muted {
+  color: rgb(var(--kw-shell-muted));
+}
+[data-theme="modern"] .kw-sidebar .text-muted-2 {
+  color: rgb(var(--kw-shell-muted-2));
+}
+[data-theme="modern"] .kw-sidebar .border-hairline {
+  border-color: rgb(255 255 255 / 0.12);
+}
+[data-theme="modern"] .kw-sidebar .bg-hairline {
+  background-color: rgb(255 255 255 / 0.14);
+}
+[data-theme="modern"] .kw-sidebar .bg-hairline-soft {
+  background-color: rgb(255 255 255 / 0.1);
+}
+[data-theme="modern"] .kw-sidebar .hover\:bg-hairline-soft:hover {
+  background-color: rgb(255 255 255 / 0.1);
+}
+[data-theme="modern"] .kw-sidebar .hover\:text-text:hover {
+  color: rgb(var(--kw-shell-fg));
+}
+/* Avatar-Kreis (bg-ink) hebt sich von der Nacht-Fläche ab */
+[data-theme="modern"] .kw-sidebar .bg-ink {
+  background-color: rgb(var(--kw-night-2));
+}
+/* Icon-Kacheln der Nav-Zeilen (heller Hauch statt dunklem Hauch auf Nacht) */
+[data-theme="modern"] .kw-sidebar a .grid.shrink-0 {
+  background-color: rgb(255 255 255 / 0.1);
+}
+/* Weiße Pillen/Kacheln in der Leiste (Logo-Kachel, „Zurück zu Admin") behalten Tinte auf Weiß.
+   Steht NACH den .text-*-Überschreibungen: gleiche Spezifität, spätere Regel gewinnt. */
+[data-theme="modern"] .kw-sidebar .bg-surface {
+  color: rgb(var(--kw-text));
+}
+
+/* ------------------------------------------------------------------------------------------------
+   BLOCK D — Startseite: der Zwecksatz bekommt Bühne; EIN Funke-Knopf führt. */
+[data-theme="modern"] .kw-start-purpose {
+  max-width: 40rem;
+  font-size: 21px;
+  font-weight: 550;
+  line-height: 1.45;
+  letter-spacing: -0.01em;
+  color: rgb(var(--kw-text));
+  margin-bottom: 1.75rem;
+}
+[data-theme="modern"] .kw-cta-primary {
+  background-color: rgb(var(--kw-funke-deep));
+  box-shadow: 0 2px 10px -2px rgb(var(--kw-brand) / 0.45);
+  transition: transform var(--kw-motion-duration) var(--kw-motion-ease), box-shadow
+    var(--kw-motion-duration) var(--kw-motion-ease);
+}
+[data-theme="modern"] .kw-cta-primary:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px -2px rgb(var(--kw-brand) / 0.55);
+}
+
+/* ------------------------------------------------------------------------------------------------
+   BLOCK E — Fragen: die Antwort wird die Beleg-Karte. Verhalten (Scroll/Fokus/Leeren aus
+   mega38/39) bleibt unberührt — hier gibt es nur Licht, Ruhe und ein Siegel. */
+
+/* Antwortkarte: weiches Licht (der Karten-Sammler greift; hier zusätzlich ruhigere Quellenliste) */
+[data-theme="modern"] .print-area {
+  box-shadow: var(--kw-shadow-tile);
+}
+
+/* Das Siegel: die Einstufungs-Pille (erste Pille der Kopfzeile, positiv eingestuft) trägt ein
+   Kreis-Häkchen-Zeichen aus reinem CSS (currentColor — Token-treu, kein Bild, kein Text).
+   Das WORT bleibt; Farbe + Wort + Zeichen, nie Farbe allein. */
+[data-theme="modern"] .print-area .flex-wrap > .rounded-pill.bg-trust-pos-bg:first-child {
+  position: relative;
+  border-radius: 999px;
+  padding-left: 26px;
+  letter-spacing: 0.02em;
+  font-weight: 700;
+}
+[data-theme="modern"] .print-area .flex-wrap > .rounded-pill.bg-trust-pos-bg:first-child::before {
+  content: "";
+  position: absolute;
+  left: 8px;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  transform: translateY(-50%);
+  border: 1.4px solid currentColor;
+  border-radius: 999px;
+}
+[data-theme="modern"] .print-area .flex-wrap > .rounded-pill.bg-trust-pos-bg:first-child::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: 50%;
+  width: 6px;
+  height: 3.5px;
+  transform: translateY(-70%) rotate(-45deg);
+  border-left: 1.6px solid currentColor;
+  border-bottom: 1.6px solid currentColor;
+}
+
+/* Trust-Werte gedämpft: die Vertrauens-Anzeige tritt optisch zurück (KEINE Umbenennung, kein
+   neuer Text, kein Ring — die Vertrauenswert-Scheibe bleibt ausdrücklich draußen). */
+[data-theme="modern"] .kw-confidence {
+  opacity: 0.78;
+}
+
+/* Ladeblock und Ergebnisfläche (mega38 A): Antwort blendet weich ein — nur, wenn der Mensch
+   Bewegung nicht reduziert hat. Die Animation hängt an den KINDERN des immer gemounteten Ankers
+   (Warten, Fehler, Vertrag, Antwort, Lücke) — Scroll/Fokus-Verhalten bleibt unangetastet. */
+@media (prefers-reduced-motion: no-preference) {
+  [data-theme="modern"] [data-testid="ask-result-anchor"] > * {
+    animation: kw-rise var(--kw-motion-duration) var(--kw-motion-ease) both;
+  }
+}
+
+/* ------------------------------------------------------------------------------------------------
+   BLÖCKE F/G — Bibliothek und Validierung erhalten hier KEINE eigenen Regeln: sie erben die
+   Token (Papier/Karte/Linie/Trust-Töne) und die Sammler 1–3 (Kicker/Pills, Karten-Elevation,
+   Bewegungstakt). Der unbeschriftete Trust-Balken und die Trefferzeilen-Breite sind bekannte
+   offene Posten ANDERER Scheiben; die FacetFilter-Angleichung (SCRUM-425) ist Schnitt 1. */
+
+@keyframes kw-rise {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}

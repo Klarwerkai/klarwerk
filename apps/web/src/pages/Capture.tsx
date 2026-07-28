@@ -75,6 +75,9 @@ import {
   aiCheckCardDoneKey,
   aiCheckCardRunningKey,
   aiCheckCardState,
+  aiCheckCoverageNote,
+  aiCheckCoverageNoteKeys,
+  aiCheckCoverageVars,
   aiCheckPollAgain,
 } from "../lib/aiCheckStatusCard";
 // AUFTRAG-mega19 Block B: `commitDocumentAppend`/`newAppendOperationId` sind hier nicht mehr nötig.
@@ -3217,7 +3220,7 @@ export function Capture(): JSX.Element {
             className="text-sm font-semibold text-muted hover:text-ink"
             to={CAPTURE_FRONT_DOOR_ROUTE}
           >
-            Dokument-Canvas
+            Dokument-Editor
           </GuardedLink>
         }
       />
@@ -3231,7 +3234,7 @@ export function Capture(): JSX.Element {
             <div className="text-[12px] font-semibold uppercase text-ai">Standardweg</div>
             <h2 className="mt-1 text-lg font-semibold text-ink">Neues Wissensobjekt erfassen</h2>
             <p className="mt-1 text-sm leading-relaxed text-muted">
-              Dokument-Canvas für Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
+              Dokument-Editor für Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
             </p>
           </div>
           {/* AUFTRAG-mega12 Block A (bens Fundstelle 2): UMGESTELLT. Der prominenteste Ausgang der
@@ -3240,7 +3243,7 @@ export function Capture(): JSX.Element {
             to={CAPTURE_FRONT_DOOR_ROUTE}
             className="inline-flex items-center justify-center rounded-btn bg-ink px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
           >
-            Dokument-Canvas öffnen <span aria-hidden="true">→</span>
+            Dokument-Editor öffnen <span aria-hidden="true">→</span>
           </GuardedLink>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-[12.5px] text-muted">
@@ -3281,7 +3284,7 @@ export function Capture(): JSX.Element {
           </div>
           <p className="mt-1 text-[12.5px] leading-relaxed text-trust-pos-text/90">
             <strong>{frontDoorDraftSaved.title}</strong> ist unter Entwürfe fortsetzen sichtbar. Der
-            gespeicherte Entwurf ist in der Liste hervorgehoben; der Dokument-Canvas startet beim
+            gespeicherte Entwurf ist in der Liste hervorgehoben; der Dokument-Editor startet beim
             nächsten Öffnen wieder leer.
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -3427,18 +3430,40 @@ export function Capture(): JSX.Element {
                 </p>
               );
             }
+            // AUFTRAG-mega28 A2 (Pedi 26.07.): Seit dem Deckel darf „geprüft" nicht mehr für sich
+            // allein stehen. Wurde gegen 20 von 12.479 möglichen Nachbarn geprüft, steht das
+            // DIREKT unter dem Satz, den es einschränkt — sonst liest der Einreicher ein leeres
+            // Ergebnis als „konfliktfrei". Ein wirklich vollständiger Lauf sagt weiterhin nichts.
+            // AUFTRAG-mega29 B4: JEDE vorliegende Einschränkung bekommt ihren eigenen Satz —
+            // Abbruch und ausgelassene Vergleiche stehen nebeneinander statt einander zu verdrängen.
+            const coverage = aiCheckCoverageNote(savedAiCheck?.coverage);
+            const coverageLine = coverage ? (
+              <>
+                {aiCheckCoverageNoteKeys(coverage).map((key) => (
+                  <p key={key} className="mt-1 text-[12px] text-trust-pos-text/80">
+                    {t(key, aiCheckCoverageVars(coverage))}
+                  </p>
+                ))}
+              </>
+            ) : null;
             if (check.kind === "done") {
               return (
-                <p className="mt-1 text-[12px] text-trust-pos-text/80">
-                  {t(aiCheckCardDoneKey(aiModelActive))}
-                </p>
+                <>
+                  <p className="mt-1 text-[12px] text-trust-pos-text/80">
+                    {t(aiCheckCardDoneKey(aiModelActive))}
+                  </p>
+                  {coverageLine}
+                </>
               );
             }
             if (check.kind === "failed") {
               return (
-                <p className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[12px] text-trust-warn-text">
-                  {t(AI_CHECK_CARD_TEXT.failed, { reason: t(check.reasonKey) })}
-                </p>
+                <>
+                  <p className="mt-1 rounded-btn bg-trust-warn-bg px-2 py-1 text-[12px] text-trust-warn-text">
+                    {t(AI_CHECK_CARD_TEXT.failed, { reason: t(check.reasonKey) })}
+                  </p>
+                  {coverageLine}
+                </>
               );
             }
             return null;

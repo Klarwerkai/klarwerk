@@ -25,6 +25,42 @@ export type AskExampleChip = AskChipFromKo | AskChipFromExample;
 
 export const ASK_CHIP_MAX_KOS = 3;
 
+// ================================================================================================
+// AUFTRAG-mega38 BLOCK J3 (Pedi 27.07.) — DER ERSTE VORSCHLAG, DEN SIE SIEHT.
+// ================================================================================================
+// Live stand als ERSTE Beispielfrage auf /fragen:
+//   „Was gilt zu: 2 General requirements Based on HD Handbuch Vers Q1-2025 (partly)?"
+// Ein roher Importtitel, englisch, mit Gliederungsziffer und einem „(partly)" am Ende. Geprüft
+// wurde bis mega37 nur `title.trim().length > 0` — jede Zeichenkette wurde zur Frage.
+//
+// Die Regeln unten sind bewusst STRENG und bewusst DUMM: sie beurteilen keine Qualität, sie
+// erkennen nur, ob ein Titel wie ein Satz AUSSIEHT. Ein zu Unrecht aussortierter guter Titel
+// kostet hier nichts — es gibt immer noch andere, und ganz ohne Treffer greifen die festen
+// Beispiele. Ein zu Unrecht DURCHGELASSENER Titel kostet dagegen den ersten Eindruck.
+const MIN_LAENGE = 10;
+const MAX_LAENGE = 70;
+const MIN_WOERTER = 2;
+const MAX_WOERTER = 8;
+
+export function looksLikeSentenceTitle(title: string): boolean {
+  const t = title.trim();
+  if (t.length < MIN_LAENGE || t.length > MAX_LAENGE) {
+    return false;
+  }
+  // Klammern in einem importierten Titel sind fast immer eine Herkunfts-Anmerkung des Quellsystems
+  // („(partly)", „(Rev. 3)"). In eine Frage eingesetzt lesen sie sich gebrochen.
+  if (t.includes("(") || t.includes(")")) {
+    return false;
+  }
+  // Ein Satz beginnt mit einem Buchstaben — nicht mit einer Gliederungsziffer („2 General …"),
+  // nicht mit einem Aufzählungszeichen, nicht mit einer Dokumentnummer.
+  if (!/^\p{L}/u.test(t)) {
+    return false;
+  }
+  const woerter = t.split(/\s+/).filter((w) => w.length > 0);
+  return woerter.length >= MIN_WOERTER && woerter.length <= MAX_WOERTER;
+}
+
 export function buildAskExampleChips(
   kos: readonly KnowledgeObject[],
   pick: () => number = Math.random,
@@ -37,7 +73,9 @@ export function buildAskExampleChips(
   const validated = kos.filter(
     (k) =>
       k.status === "validiert" &&
-      k.title.trim().length > 0 &&
+      // AUFTRAG-mega38 BLOCK J3: hier stand `k.title.trim().length > 0` — jede Zeichenkette
+      // wurde zur Beispielfrage, auch ein roher Importtitel.
+      looksLikeSentenceTitle(k.title) &&
       isKnownNonConfidential(k.confidentiality),
   );
   const pool = [...validated];

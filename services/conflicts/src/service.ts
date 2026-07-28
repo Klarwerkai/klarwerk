@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import { type DetectionCoverage, isValidVerdict } from "./coverage";
 import {
   type ConflictVerdict,
   type DetectSubject,
@@ -86,6 +87,10 @@ export class ConflictService {
       decidedBy: null,
       decision: null,
       origin: "manual",
+      // mega26 Block B: der Behauptende steht jetzt AM DATENSATZ, nicht nur im Audit. Es ist
+      // exakt derselbe `actor`, den die Zeile darunter protokolliert — keine zweite Quelle,
+      // keine abweichende Ableitung.
+      createdBy: actor,
       createdAt: new Date(this.now()).toISOString(),
     };
     await this.repo.insert(conflict);
@@ -238,18 +243,37 @@ export class ConflictService {
     // Reasoner nimmt bei `true` die Cloud aus der Kette (kein Egress vertraulichen Textes).
     judge: (coreA: string, coreB: string, confidential: boolean) => Promise<ConflictVerdict | null>,
     // D-AISTATE PAKET 4 (bens V5): `isCurrent` prüft vor dem Persistieren, ob beide gebundenen KO-
-    // Versionen noch aktuell sind (Stale-Schreibschutz gegen den revise-Race). `cap` bleibt für den
-    // Hintergrund-Scan; der Live-aiCheck-Pfad hebt ihn bewusst auf (bens V2 — kein stiller Cap 8).
+    // Versionen noch aktuell sind (Stale-Schreibschutz gegen den revise-Race).
+    //
+    // AUFTRAG-mega28 A1/A4 (Pedi 26.07.): `cap` ist im LIVE-Pfad wieder scharf. Bis mega27 stand
+    // dort ausdrücklich Number.POSITIVE_INFINITY („bens V2: KEIN stiller Cap 8 im Live-Pfad") —
+    // diese Festlegung ist zurückgenommen. Grund: bei 12.480 Objekten kostete EIN Submit bis zu
+    // 12.479 Konflikt-Urteile, und nichts brach das ab. Der Aufrufer setzt den Wert (App-Root,
+    // EIN Wert für Konflikt- UND Duplikatweg); die Vorauswahl selbst (selectCandidates) ist
+    // deterministisch (Score, refId als Stichentscheid) und begründet (fachliche Nachbarschaft +
+    // Textnähe — dasselbe Maß, das der Weg ohnehin berechnet).
+    // `coverage` (A2/A3) ist das vom Aufrufer gestellte, hier FORTGESCHRIEBENE Protokoll: wie viele
+    // Kandidaten standen zur Wahl, wie viele wurden vorgelegt, wurde gedeckelt, wurde übersprungen.
     options: {
       cap?: number;
       minConfidence?: number;
       actor?: string;
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
+      coverage?: DetectionCoverage;
     } = {},
   ): Promise<Conflict[]> {
-    const candidates = selectCandidates(subject, pool, options.cap ?? 8);
-    if (candidates.length === 0) {
+    // AUFTRAG-mega29 B2 (bens M28-2): der Deckel begrenzt, was GEPRÜFT wird — nicht, was
+    // übersprungen wird. Deshalb wird hier die VOLLE (fachlich vorgefilterte, deterministisch
+    // sortierte) Liste geholt und der Deckel erst in der Schleife über die tatsächlichen Vergleiche
+    // gezogen. Ein Paar mit bereits offenem Befund kostet damit nur seinen Rang, keinen Prüfplatz.
+    const cap = options.cap ?? 8;
+    const ranked = selectCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const coverage = options.coverage;
+    if (coverage) {
+      coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
+    }
+    if (ranked.length === 0) {
       return [];
     }
     const open = (await this.repo.all()).filter((c) => c.status !== "geloest");
@@ -274,10 +298,40 @@ export class ConflictService {
       });
     const subjectCore = coreText(subject);
     const created: Conflict[] = [];
-    for (const cand of candidates) {
+    // AUFTRAG-mega29 B1: getrennte Begriffe (s. coverage.ts). `attempted` ist die einzige Zahl, die
+    // der Deckel trifft; `selected` sagt, wie viele Ränge der Lauf überhaupt angesehen hat.
+    let selected = 0;
+    let alreadyOpen = 0;
+    let attempted = 0;
+    let completed = 0;
+    let skipped = 0;
+    const writeCoverage = (): void => {
+      if (!coverage) {
+        return;
+      }
+      coverage.selected = selected;
+      coverage.alreadyOpen = alreadyOpen;
+      coverage.attempted = attempted;
+      coverage.completed = completed;
+      coverage.skipped = skipped;
+      // AUFTRAG-mega28 A2: „gedeckelt" meint hier ehrlich JEDE Verengung gegenüber dem Bestand —
+      // der Deckel UND die fachliche Vorauswahl (Nachbarschaft/Textnähe), die es hier immer schon
+      // gab und die nie jemand ausgewiesen hat. Der Leser fragt „wurde alles angesehen?".
+      coverage.capped = selected < coverage.available;
+    };
+    writeCoverage();
+    for (const cand of ranked) {
+      if (attempted >= cap) {
+        break; // Deckel erreicht — alles ab hier blieb ungeprüft und wird auch nicht behauptet.
+      }
+      selected += 1;
       if (hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)) {
+        alreadyOpen += 1;
+        writeCoverage();
         continue;
       }
+      attempted += 1;
+      writeCoverage();
       let verdict: ConflictVerdict | null;
       try {
         verdict = await judge(
@@ -286,11 +340,24 @@ export class ConflictService {
           Boolean(subject.confidential) || Boolean(cand.confidential),
         );
       } catch {
-        continue; // ein Modellfehler darf die Erkennung (und das Einreichen) nie kippen
-      }
-      if (!verdict) {
+        // Ein Modellfehler darf die Erkennung (und das Einreichen) nie kippen — aber er darf seit
+        // AUFTRAG-mega28 A3 auch nicht mehr unsichtbar bleiben: bens JR-2 fand genau hier den
+        // Teilausfall, der wie ein sauberer Lauf aussah. Der übersprungene Kandidat wird gezählt.
+        skipped += 1;
+        writeCoverage();
         continue;
       }
+      // AUFTRAG-mega31 A1 (bens ROT-1): NICHT „normal zurückgekehrt" zählt, sondern „hat geurteilt".
+      // Ein 429/no-model/confidential/Parsefehler kommt aus dem Reasoner als `null` zurück, nicht als
+      // Wurf — der stand hier bisher als fehlerfrei abgeschlossener Vergleich. Die Regel wohnt in
+      // coverage.ts, damit beide Wege sie nicht getrennt auslegen.
+      if (!isValidVerdict(verdict)) {
+        skipped += 1;
+        writeCoverage();
+        continue;
+      }
+      completed += 1;
+      writeCoverage();
       const decision = decideFromVerdict(
         verdict,
         subjectCore,

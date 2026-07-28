@@ -12,3 +12,5 @@ export {
   type GenerateOutputInput,
   type OutputErrorCode,
 } from "./src/types";
+// AUFTRAG-mega29 C3: der Ehrlichkeits-Satz des Herkunftsblocks (+ der Renderer, der ihn trägt).
+export { OUTPUT_NO_CHECK_NOTE, renderProvenance } from "./src/render";

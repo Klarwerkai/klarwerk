@@ -5,6 +5,11 @@ import { BrowserRouter } from "react-router-dom";
 import App from "./App";
 import "./i18n";
 import "./index.css";
+import { initDesignTheme } from "./lib/designTheme";
+
+// AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
+// falschen Themes; gilt auch für Routen ohne Topbar wie /mobile). Standard bleibt Klassisch.
+initDesignTheme();
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },

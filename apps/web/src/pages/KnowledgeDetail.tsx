@@ -28,6 +28,7 @@ import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
+import { AiCheckCoverageNotes } from "../components/AiCheckCoverageHint";
 // SCRUM-405: „Aus Dokument ergänzen" — extract-Punkte an den Artikel anhängen (nichts ersetzen).
 import { BodyExtractPanel } from "../components/BodyExtractPanel";
 import { BodyTemplateChooser } from "../components/BodyTemplateChooser";
@@ -758,8 +759,10 @@ export function KnowledgeDetail(): JSX.Element {
                   </span>
                   <span className="font-mono text-[12px] text-muted-2">v{ov.version}</span>
                   <span className="font-mono text-[11.5px] text-muted-2">
-                    {t("ko.ovSources", { n: ov.sourceCount })} ·{" "}
-                    {t("ko.ovAttachments", { n: ov.attachmentCount })}
+                    {/* AUFTRAG-mega34 F: `count` statt `n` — nur darüber pluralisiert i18next.
+                        Vorher stand hier bei jedem KO mit genau einer Quelle „1 Quellen · 1 Anhänge". */}
+                    {t("ko.ovSources", { count: ov.sourceCount })} ·{" "}
+                    {t("ko.ovAttachments", { count: ov.attachmentCount })}
                   </span>
                 </div>
                 {/* SCRUM-293: konsistenter, ehrlicher Readiness-Hinweis (gleiche Sprache wie Library). */}
@@ -803,6 +806,17 @@ export function KnowledgeDetail(): JSX.Element {
                     </Link>
                   </div>
                 ) : null}
+                {/* ============================================================================
+                    AUFTRAG-mega29 C1 (bens M28-3) — DIE ANSICHT, IN DER JEMAND EIN EINZELNES
+                    OBJEKT BEURTEILT, SAH DIE EINSCHRÄNKUNG NICHT.
+                    ============================================================================
+                    Das geladene Objekt trägt `aiCheck.coverage` seit mega28 — diese Seite hat es
+                    nie benutzt. Sie zeigte Reife, Trust und OFFENE konkrete Konflikte; ein leeres
+                    Konfliktfeld las sich damit als „geprüft und unauffällig", obwohl der Lauf
+                    dahinter nur gegen eine gedeckelte Kandidatenmenge geprüft hat. Der Hinweis
+                    steht bewusst DIREKT unter dem Konflikt-Banner, den er einschränkt. Ein
+                    wirklich vollständiger Lauf (und ein Objekt ohne Protokoll) schweigt. */}
+                <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
                 {/* SCRUM-259: nächste Handlung als ehrliche CTA auf vorhandene Routen/Bereiche. */}
                 <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
                   <p className="text-[12.5px] text-muted">

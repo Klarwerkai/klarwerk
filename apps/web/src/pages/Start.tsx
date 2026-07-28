@@ -3,7 +3,6 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import {
-  useAnalytics,
   useConflicts,
   useGapsSummary,
   useKos,
@@ -21,13 +20,14 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../components/FunkeCards";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
+// AUFTRAG-mega34 F: die vorhandene, übersetzte Status-Plakette — statt des rohen DB-Werts.
+import { StatusPill } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
 import { knowledgeCapital } from "../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
-import { missionsForRole } from "../lib/missions";
 import { PROOF_CHAIN } from "../lib/proofChain";
 import { type StartHelpId, startHelp } from "../lib/startHelp";
 import {
@@ -59,12 +59,26 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
-// Garantierter Fallback (unbekannte Rolle → Viewer-Einstieg) — hält den Index-Zugriff unten
-// auch unter noUncheckedIndexedAccess ehrlich definiert.
-const CTA_VIEWER = { to: "/fragen", key: "start.ctaAsk" };
-const CTA: Record<string, { to: string; key: string }> = {
-  viewer: CTA_VIEWER,
+// ================================================================================================
+// AUFTRAG-mega38 BLOCK G3 (Pedi 27.07.) — DER ERSTE WEG FÜHRT ZUR EIGENEN ARBEIT.
+// ================================================================================================
+// Der größte, dunkelste Knopf oben rechts hiess für Controller UND Admins „Validierung öffnen" und
+// schickte damit jede Erstnutzerin als ALLERERSTES in fremde Prüfarbeit — in eine Warteschlange
+// mit dem Wissen anderer Leute, zu der sie noch gar keine Meinung haben kann.
+//
+// Der lauteste Weg führt jetzt dorthin, wo sie selbst etwas beitragen kann: fragen oder erfassen.
+// Die Warteschlange ist NICHT verschwunden — sie steht als ruhiger Zweitweg daneben, in der
+// Navigation und in „Nächste Handlungen" darunter mit ihrer echten Zahl. Weggenommen wurde ihr
+// nicht der Zugang, sondern die Lautstärke.
+const CTA_ASK = { to: "/fragen", key: "start.ctaAsk" };
+const CTA_PRIMARY: Record<string, { to: string; key: string }> = {
+  viewer: CTA_ASK,
   experte: { to: "/erfassen", key: "start.ctaCapture" },
+  controller: CTA_ASK,
+  admin: CTA_ASK,
+};
+// Der Zweitweg existiert nur für die Rollen, die ihn überhaupt bedienen dürfen.
+const CTA_QUEUE: Record<string, { to: string; key: string }> = {
   controller: { to: "/validierung", key: "start.ctaValidate" },
   admin: { to: "/validierung", key: "start.ctaValidate" },
 };
@@ -117,14 +131,14 @@ function LiveWallCard(): JSX.Element | null {
                   >
                     {s.title}
                   </Link>
-                  <span
-                    className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${
-                      s.status === "validiert"
-                        ? "bg-trust-pos-bg text-trust-pos-text"
-                        : "bg-page text-muted"
-                    }`}
-                  >
-                    {s.status}
+                  {/* AUFTRAG-mega34 F: hier stand der rohe Enum-Wert — „VALIDIERT" / „OFFEN"
+                      direkt aus der Datenbank, in Großbuchstaben, und bei englischer oder
+                      niederländischer Oberfläche trotzdem auf Deutsch. Es ist die erste Karte,
+                      die die Testerin nach der Anmeldung sieht. Überall sonst im Produkt macht
+                      das die bestehende StatusPill über `t("status.<wert>")`; diese eine Stelle
+                      hat sie umgangen. Kein neues Bauteil, nur das vorhandene benutzt. */}
+                  <span className="shrink-0">
+                    <StatusPill status={s.status} />
                   </span>
                   <span className="shrink-0 font-mono text-[10.5px] text-muted-2">{fmt(s.at)}</span>
                 </li>
@@ -159,14 +173,8 @@ function LiveWallCard(): JSX.Element | null {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string | number }): JSX.Element {
-  return (
-    <div className="rounded-card bg-page p-4">
-      <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{label}</div>
-      <div className="mt-1 text-2xl font-semibold text-ink">{value}</div>
-    </div>
-  );
-}
+// AUFTRAG-mega38 BLOCK G2: die Kachel-Komponente `Kpi` ist mit dem doppelten Kennzahlen-Block
+// entfallen — sie hatte hier keinen zweiten Verwender.
 
 export function Start(): JSX.Element {
   const { t } = useTranslation();
@@ -177,7 +185,6 @@ export function Start(): JSX.Element {
   };
   const { role, stufe2 } = useRole();
   const { user } = useSession();
-  const analytics = useAnalytics();
   const board = useValidationBoard();
   // FUNKE-FIX2 P0 (bens Erforderlich 1): die Startseite lädt KEINE Gap-Volltexte mehr — nur die
   // aggregierten Zähler (offene gesamt + je Priorität). Kein Fragetext gelangt in den Browser.
@@ -191,9 +198,8 @@ export function Start(): JSX.Element {
   const pending = useLifecyclePending();
   const learningPath = useLearningPath(role);
   const learningProgress = useLearningProgress(learningPath.data?.id);
-  const cta = CTA[role] ?? CTA_VIEWER;
-  // FE-FND-09: rollenbewusste Missionen — Deep-Links in echte Flows (keine neuen Seiten).
-  const missions = missionsForRole(role, stufe2);
+  const cta = CTA_PRIMARY[role] ?? CTA_ASK;
+  const queueCta = CTA_QUEUE[role] ?? null;
   // SCRUM-235: ehrlicher Stufe-2-Auffindbarkeits-Hinweis — nur für Admins mit ausgeschaltetem Schalter.
   const showStufe2Hint = stufe2HintKind(role, stufe2) === "enable";
   const stufe2Features = stufe2FeatureLabelKeys()
@@ -231,7 +237,9 @@ export function Start(): JSX.Element {
     void gapsSummary.refetch();
   };
   // SCRUM-271: bester nächster Einstieg aus der vorhandenen Übersicht (null bei Leerzustand).
-  const focus = primaryWorkItem(overview);
+  // AUFTRAG-mega38 BLOCK G3: rollenbewusst — kein Hinweis auf Arbeit, die diese Rolle auf der
+  // Zielseite gar nicht ausführen darf.
+  const focus = primaryWorkItem(overview, role);
   const guide = knowledgeGuidance("start");
   // Aufräum-Pass 02.07.: Erklär-Blöcke nur beim Erstbesuch offen — danach ruhige Startseite.
   const [showOrientation, setShowOrientation] = useState(() =>
@@ -247,15 +255,39 @@ export function Start(): JSX.Element {
         kicker={t("start.kicker")}
         title={t("start.greeting", { name: user?.name ?? "" })}
         actions={
-          <Link
-            to={cta.to}
-            className="inline-flex items-center gap-2 rounded-btn bg-ink px-4 py-2.5 text-[13px] font-semibold text-white hover:opacity-90"
-          >
-            {t(cta.key)}
-            <ArrowRight size={16} />
-          </Link>
+          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <Link
+              to={cta.to}
+              // mega40 D: `kw-cta-primary` ist ein reiner Stil-Anker — im modern-Thema wird DIESER
+              // eine Knopf der Funke der Seite (styles/modern.css); klassisch ändert sich nichts.
+              className="kw-cta-primary inline-flex items-center gap-2 rounded-btn bg-ink px-4 py-2.5 text-[13px] font-semibold text-white hover:opacity-90"
+            >
+              {t(cta.key)}
+              <ArrowRight size={16} />
+            </Link>
+            {/* BLOCK G3: die Prüf-Warteschlange bleibt einen Klick entfernt — nur nicht mehr als
+                das Lauteste auf der Seite. */}
+            {queueCta ? (
+              <Link to={queueCta.to} className="text-[12.5px] font-semibold text-brand-text">
+                {t(queueCta.key)}
+              </Link>
+            ) : null}
+          </span>
         }
       />
+      {/* ==========================================================================================
+          AUFTRAG-mega38 BLOCK G1 (Pedi 27.07.) — DER EINE SATZ, GANZ OBEN, OHNE EIN FACHWORT.
+          ==========================================================================================
+          Aufgabe 1 der Testerin lautet wörtlich: „Notiere in einem Satz: Wofür, glaubst du, ist
+          dieses System da?" Bis mega37 stand ganz oben „Control Room" und „Guten Tag, <Name>." —
+          und die erste Erklärung überhaupt kam an dritter Stelle und definierte über eine
+          Verneinung („Kein Chatbot"). Hier steht jetzt vor allem anderen ein bejahender Satz in
+          ihrer Sprache. */}
+      {/* mega40 D: `kw-start-purpose` — Stil-Anker; das modern-Thema gibt dem Satz Bühne
+          (große ruhige Typo, Luft), der Text selbst bleibt wörtlich derselbe. */}
+      <p className="kw-start-purpose -mt-2 mb-5 max-w-2xl text-[14px] leading-relaxed text-text">
+        {t("start.purpose")}
+      </p>
       {/* SCRUM-429: ruhige Erststart-Führung nur für den neuen Admin (erster Besuch, ausblendbar). */}
       {role === "admin" ? <AdminFirstRunCard /> : null}
       {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}
@@ -417,30 +449,23 @@ export function Start(): JSX.Element {
           <OpenGapsSummary total={openGapsTotal} />
         </Card>
       ) : null}
-      {missions.length > 0 ? (
-        <div className="mb-5">
-          <h2 className="text-[15px] font-semibold text-ink">{t("missions.title")}</h2>
-          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("missions.subtitle")}</p>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            {missions.map((m) => (
-              <Link
-                key={m.id}
-                to={m.path}
-                className="group rounded-card border border-hairline bg-surface p-4 transition hover:border-ink/30"
-              >
-                <div className="flex items-center justify-between">
-                  <span className="text-[14px] font-semibold text-ink">{t(m.labelKey)}</span>
-                  <ArrowRight
-                    size={16}
-                    className="text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
-                  />
-                </div>
-                <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(m.descKey)}</p>
-              </Link>
-            ))}
-          </div>
-        </div>
-      ) : null}
+      {/* ==========================================================================================
+          AUFTRAG-mega38 BLOCK G2 — „Nächste Schritte" (vier Kacheln) IST HIER ENTFERNT.
+          ==========================================================================================
+          Die Startseite trug vier konkurrierende Antworten auf dieselbe Frage „Was jetzt?":
+          die Erststart-Karte (Admin, Erstbesuch), diese vier Kacheln, „Nächste Handlungen"
+          (jetzt/heute/später) und „Bester nächster Einstieg" darin. Vier Empfehlungen sind keine
+          Empfehlung.
+          Dieser Block war der leerste davon: seine Ziele (/erfassen, /validierung, /risiko,
+          /fragen, /bibliothek — damals aus lib/missions.ts, in mega39 BLOCK F samt Test gelöscht,
+          weil seit diesem Schnitt niemand mehr davon liest) stehen bereits in der Navigation UND als
+          Wissenskreis-Kacheln darüber, und im Gegensatz zu „Nächste Handlungen" trug er keine
+          einzige echte Zahl. Er war eine zweite Navigation in Kachelform.
+          Was BLEIBT, ist „Nächste Handlungen" mit „Bester nächster Einstieg" darin — der EINE
+          Block, der aus echten Signalen entsteht.
+          WAS OFFEN BLEIBT, benannt statt verschwiegen: die Erststart-Karte oben steht weiterhin
+          daneben. Sie erscheint nur für Admins beim ERSTEN Besuch und ist eine Einrichtungs-
+          Checkliste (Verwaltung öffnen), keine Wissensarbeit — s. Bericht mega38, Block G2. */}
       {showStufe2Hint ? (
         <Card className="mb-5 border-dashed">
           <h2 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h2>
@@ -449,7 +474,12 @@ export function Start(): JSX.Element {
           </p>
         </Card>
       ) : null}
-      <div className="grid gap-5 lg:grid-cols-[1.6fr_1fr]">
+      {/* AUFTRAG-mega38 BLOCK G2: hier stand rechts daneben ein zweiter Zahlenblock „Kennzahlen"
+          (Wissensobjekte · Offen · Validiert · Wissenslücken). Drei seiner vier Zahlen sind
+          dieselben Größen wie im Wissenskapital oben — die Wissenslücken standen sogar mit
+          IDENTISCHEM Wert dreimal auf einer Seite. Der Block ist weg; seine einzige eigene Zahl
+          („Offen") ist ins Wissenskapital gewandert, wo sie neben „davon validiert" gehört. */}
+      <div className="grid gap-5">
         <Card>
           <div className="mb-2 flex items-center justify-between">
             <div className="flex items-center gap-1.5">
@@ -539,22 +569,6 @@ export function Start(): JSX.Element {
             )}
           </div>
         </Card>
-        <div>
-          {/* SCRUM-488: Klartext-Überschrift + Hilfe, damit die vier Zahlen ohne Vorwissen lesbar sind. */}
-          <div className="mb-2 flex items-center gap-1.5">
-            <h2 className="text-[13px] font-semibold text-ink">{t("start.kpiSectionTitle")}</h2>
-            {shelp("kpis")}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Kpi label={t("start.kpiTotal")} value={analytics.data?.total ?? "—"} />
-            <Kpi label={t("start.kpiOpen")} value={analytics.data?.byStatus?.offen ?? "—"} />
-            <Kpi
-              label={t("start.kpiValidated")}
-              value={analytics.data?.byStatus?.validiert ?? "—"}
-            />
-            <Kpi label={t("start.kpiGaps")} value={gapsSummary.data ? openGapsTotal : "—"} />
-          </div>
-        </div>
       </div>
     </div>
   );

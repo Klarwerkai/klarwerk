@@ -93,8 +93,9 @@ describe("WP-UX-WOW-1 U6: Konflikte-Leerzustand erklärt", () => {
 describe("WP-UX-WOW-1 U7: echte Umlaute in Nutzertexten", () => {
   it("keine ASCII-Umlaut-Formen mehr in den betroffenen Anzeige-Strings", () => {
     const capture = read("apps/web/src/pages/Capture.tsx");
-    expect(capture).toContain("Dokument-Canvas für Titel");
-    expect(capture).toContain("Dokument-Canvas öffnen");
+    // AUFTRAG-mega38 BLOCK I: „Canvas" ist uebersetzt — die Umlaut-Zusage gilt unveraendert.
+    expect(capture).toContain("Dokument-Editor für Titel");
+    expect(capture).toContain("Dokument-Editor öffnen");
     expect(capture).not.toContain("Entwuerfe");
     expect(capture).not.toContain("naechsten Oeffnen");
     const editor = read("apps/web/src/components/RichTextEditor.tsx");

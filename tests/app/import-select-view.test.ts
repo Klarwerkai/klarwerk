@@ -3,10 +3,15 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { ImportPreviewEntry, ImportSelectCriteria } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
-import { summarizeSelectCriteria } from "../../apps/web/src/lib/importExplore";
 // WP-SHIP9-S2 Paket 2 (D2–D7): reines Auswahl-/Filter-/Gruppen-View-Modell der Trefferliste.
+import { combinableFacetCounts } from "../../apps/web/src/lib/facets";
+import { summarizeSelectCriteria } from "../../apps/web/src/lib/importExplore";
 import {
   COLLAPSE_GROUPS_THRESHOLD,
+  DEFAULT_PREVIEW_VIEW,
+  type PreviewChip,
+  type PreviewGroupMode,
+  type PreviewViewState,
   bulkSelectableRows,
   chipMatches,
   clearAllSelected,
@@ -16,11 +21,11 @@ import {
   groupRows,
   groupsCollapsedByDefault,
   isBulkSelectable,
+  previewFacetValues,
   previewLanguage,
   rowsAllChecked,
   selectionSummary,
   setRowsSelected,
-  statusChipCounts,
   visibleRows,
 } from "../../apps/web/src/lib/importSelectView";
 
@@ -111,10 +116,12 @@ describe("IC-3: Verdrahtung im Import-Cockpit", () => {
     ];
     for (const key of keys) {
       for (const lng of ["de", "en", "nl"]) {
-        expect(
-          String(i18n.getResource(lng, "translation", key) ?? "").length,
-          `${lng}:${key}`,
-        ).toBeGreaterThan(0);
+        // AUFTRAG-mega34 F: pluralisierte Schlüssel liegen als `_one`/`_other` vor — der Wächter
+        // akzeptiert die Basis ODER die Formen, damit er die Copy weiter wirklich prüft.
+        const vorhanden = [key, `${key}_one`, `${key}_other`].some(
+          (k) => String(i18n.getResource(lng, "translation", k) ?? "").length > 0,
+        );
+        expect(vorhanden, `${lng}:${key}`).toBe(true);
       }
     }
     expect(String(i18n.getResource("en", "translation", "imp.select.matched"))).toContain(
@@ -148,6 +155,28 @@ describe("IC-3: Verdrahtung im Import-Cockpit", () => {
 // WP-SHIP9-S2 Paket 2 (D2–D7): Auswahllogik der Trefferliste als PURE Logik-Tests.
 function entry(over: Partial<ImportPreviewEntry> & { title: string }): ImportPreviewEntry {
   return { hasImage: false, themes: [], ...over };
+}
+
+// AUFTRAG-mega27 Block B: der frühere Status-CHIP und der frühere „Bekanntes ausblenden"-Schalter
+// sind seit mega27 EINE Dimension — die Status-FACETTE (dieselbe Prüfung, s. chipMatches). Dieser
+// Helfer übersetzt die bestehenden Fälle 1:1 darauf: gleiche Treffermenge, aber über die geteilte
+// Facetten-Technik statt über einen Eigenbau. Er belegt damit zugleich die Äquivalenz.
+function view(
+  over: {
+    query?: string;
+    chip?: PreviewChip;
+    hideImported?: boolean;
+    groupMode?: PreviewGroupMode;
+  } = {},
+): PreviewViewState {
+  const status =
+    over.hideImported === true ? "new" : over.chip && over.chip !== "all" ? over.chip : null;
+  return {
+    ...DEFAULT_PREVIEW_VIEW,
+    query: over.query ?? "",
+    groupMode: over.groupMode ?? "none",
+    selection: status ? { status: [status] } : {},
+  };
 }
 
 const ROWS: ImportPreviewEntry[] = [
@@ -187,67 +216,55 @@ describe("Paket 2 · chipMatches (D7)", () => {
 
 describe("Paket 2 · visibleRows (D4/D7)", () => {
   it("Suche trifft Titel und Autor (case-insensitiv), Originalindex bleibt", () => {
-    const found = visibleRows(ROWS, {
-      query: "anna",
-      chip: "all",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const found = visibleRows(
+      ROWS,
+      view({ query: "anna", chip: "all", hideImported: false, groupMode: "none" }),
+    );
     expect(found.map((r) => r.index)).toEqual([0]);
   });
 
   it("hideImported blendet importierte UND vorgemerkte aus (D4)", () => {
-    const found = visibleRows(ROWS, {
-      query: "",
-      chip: "all",
-      hideImported: true,
-      groupMode: "none",
-    });
+    const found = visibleRows(
+      ROWS,
+      view({ query: "", chip: "all", hideImported: true, groupMode: "none" }),
+    );
     expect(found.map((r) => r.entry.title)).toEqual(["DE: Wartungsplan", "[EN] Safety guide"]);
   });
 
   it("Chip + Suche kombinieren", () => {
-    const found = visibleRows(ROWS, {
-      query: "guide",
-      chip: "new",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const found = visibleRows(
+      ROWS,
+      view({ query: "guide", chip: "new", hideImported: false, groupMode: "none" }),
+    );
     expect(found.map((r) => r.entry.title)).toEqual(["[EN] Safety guide"]);
   });
 });
 
 describe("Paket 2 · groupRows (D3/D5)", () => {
   it("Sprache: feste Ordnung DE/EN/NL/other, nur vorhandene Gruppen", () => {
-    const rows = visibleRows(ROWS, {
-      query: "",
-      chip: "all",
-      hideImported: false,
-      groupMode: "language",
-    });
+    const rows = visibleRows(
+      ROWS,
+      view({ query: "", chip: "all", hideImported: false, groupMode: "language" }),
+    );
     const groups = groupRows(rows, "language");
     expect(groups.map((g) => g.value)).toEqual(["de", "en", "nl", "other"]);
     expect(groups[3]?.rows.map((r) => r.entry.title)).toEqual(["Fehlercodes Übersicht"]);
   });
 
   it("Thema: alphabetisch, ohne-Thema zuletzt", () => {
-    const rows = visibleRows(ROWS, {
-      query: "",
-      chip: "all",
-      hideImported: false,
-      groupMode: "theme",
-    });
+    const rows = visibleRows(
+      ROWS,
+      view({ query: "", chip: "all", hideImported: false, groupMode: "theme" }),
+    );
     const groups = groupRows(rows, "theme");
     expect(groups.map((g) => g.value)).toEqual(["safety", "wartung", ""]);
   });
 
   it("none → keine Gruppen", () => {
-    const rows = visibleRows(ROWS, {
-      query: "",
-      chip: "all",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const rows = visibleRows(
+      ROWS,
+      view({ query: "", chip: "all", hideImported: false, groupMode: "none" }),
+    );
     expect(groupRows(rows, "none")).toEqual([]);
   });
 });
@@ -255,22 +272,18 @@ describe("Paket 2 · groupRows (D3/D5)", () => {
 describe("Paket 2 · Auswahl (D2/D3)", () => {
   it("setRowsSelected setzt genau die übergebenen Originalindizes", () => {
     const checked = [false, false, false, false];
-    const rows = visibleRows(ROWS, {
-      query: "",
-      chip: "new",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const rows = visibleRows(
+      ROWS,
+      view({ query: "", chip: "new", hideImported: false, groupMode: "none" }),
+    );
     const next = setRowsSelected(checked, rows, true);
     expect(next).toEqual([true, true, false, false]);
     expect(rowsAllChecked(next, rows)).toBe(true);
     // Die importierte Zeile (Index 2) blieb abgewählt → Gruppe „importiert" ist NICHT voll gewählt.
-    const importedRows = visibleRows(ROWS, {
-      query: "",
-      chip: "imported",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const importedRows = visibleRows(
+      ROWS,
+      view({ query: "", chip: "imported", hideImported: false, groupMode: "none" }),
+    );
     expect(rowsAllChecked(next, importedRows)).toBe(false);
   });
 
@@ -288,12 +301,10 @@ describe("Paket 2 · F1: Bulk-Auswahl lässt bekannte Einträge aus", () => {
   });
 
   it("gemischte Gruppe: Bulk-Anwahl fasst NUR die neuen Einträge an, bekannte bleiben abgewählt", () => {
-    const rows = visibleRows(ROWS, {
-      query: "",
-      chip: "all",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const rows = visibleRows(
+      ROWS,
+      view({ query: "", chip: "all", hideImported: false, groupMode: "none" }),
+    );
     const bulk = bulkSelectableRows(rows);
     expect(bulk.map((r) => r.entry.title)).toEqual(["DE: Wartungsplan", "[EN] Safety guide"]);
     // Bulk-Setzen über die bulk-wählbare Teilmenge: der importierte (Index 2) und der vorgemerkte
@@ -309,12 +320,10 @@ describe("Paket 2 · F1: Bulk-Auswahl lässt bekannte Einträge aus", () => {
 
   it("Gruppe mit nur bekannten Einträgen: keine bulk-wählbare Zeile → Bulk fasst nichts an", () => {
     const knownOnly = [ROWS[2] as ImportPreviewEntry, ROWS[3] as ImportPreviewEntry];
-    const rows = visibleRows(knownOnly, {
-      query: "",
-      chip: "all",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const rows = visibleRows(
+      knownOnly,
+      view({ query: "", chip: "all", hideImported: false, groupMode: "none" }),
+    );
     const bulk = bulkSelectableRows(rows);
     expect(bulk).toHaveLength(0);
     const next = setRowsSelected([false, false], bulk, true);
@@ -329,12 +338,10 @@ describe("Paket 2 · F2: Alle abwählen leert die gesamte Auswahl", () => {
   it("ein gewählter, dann weggefilterter Treffer wird durch clearAllSelected trotzdem abgewählt", () => {
     // Index 0 ist gewählt; durch Suche „safety" ist er unsichtbar (nur Index 1 sichtbar).
     const checked = [true, false, false, false];
-    const visible = visibleRows(ROWS, {
-      query: "safety",
-      chip: "all",
-      hideImported: false,
-      groupMode: "none",
-    });
+    const visible = visibleRows(
+      ROWS,
+      view({ query: "safety", chip: "all", hideImported: false, groupMode: "none" }),
+    );
     expect(visible.map((r) => r.index)).toEqual([1]);
     // „Alle wählen" über die sichtbare Reichweite ließe Index 0 unberührt (weiterhin gewählt) …
     const onlyVisible = setRowsSelected(checked, bulkSelectableRows(visible), false);
@@ -395,8 +402,14 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
     expect(src).toContain('t("imp.select.searchPlaceholder")');
     expect(src).toContain('t("imp.select.selectAll")');
     expect(src).toContain('t("imp.select.summary"');
-    // WP-BILD-1f RT5a–c: dynamische Chips/Modi, Tri-State-Haken und Auf/Zu-Ordner sind verdrahtet.
-    expect(src).toContain("statusChipCounts(");
+    // WP-BILD-1f RT5a–c: dynamische Modi, Tri-State-Haken und Auf/Zu-Ordner sind verdrahtet.
+    // AUFTRAG-mega27 Block B: die Status-Chips sind eine FACETTE geworden — die Filterzeile ist
+    // kein Eigenbau mehr, sondern die Bibliotheks-Technik (Schiene + aktive Leiste).
+    expect(src).not.toContain("statusChipCounts(");
+    expect(src).toContain("<FacetFilter");
+    expect(src).toContain("<FacetActiveBar");
+    expect(src).toContain("facetRailGroups(");
+    expect(src).toContain("previewFacetValues(");
     expect(src).toContain("groupModeOptions(");
     expect(src).toContain("groupCheckboxState(");
     expect(src).toContain("groupsCollapsedByDefault(");
@@ -410,18 +423,24 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
     const keys = [
       "imp.select.searchPlaceholder",
       "imp.select.selectAll",
-      "imp.select.hideImported",
       "imp.select.groupLanguage",
+      "imp.select.groupFolder",
+      "imp.select.facet.folder",
+      "imp.select.facetCount",
+      "imp.select.folderFallbackNoPath",
+      "imp.select.bulkLabel",
       "imp.select.chipNew",
       "imp.select.summary",
       "imp.select.emptyFiltered",
     ];
     for (const key of keys) {
       for (const lng of ["de", "en", "nl"]) {
-        expect(
-          String(i18n.getResource(lng, "translation", key) ?? "").length,
-          `${lng}:${key}`,
-        ).toBeGreaterThan(0);
+        // AUFTRAG-mega34 F: pluralisierte Schlüssel liegen als `_one`/`_other` vor — der Wächter
+        // akzeptiert die Basis ODER die Formen, damit er die Copy weiter wirklich prüft.
+        const vorhanden = [key, `${key}_one`, `${key}_other`].some(
+          (k) => String(i18n.getResource(lng, "translation", k) ?? "").length > 0,
+        );
+        expect(vorhanden, `${lng}:${key}`).toBe(true);
       }
     }
     expect(String(i18n.getResource("en", "translation", "imp.select.summary"))).toContain(
@@ -430,27 +449,39 @@ describe("Paket 2 · Verdrahtung ImportSelect", () => {
   });
 });
 
-// WP-BILD-1f RT5c: dynamische Filter-Chips (Status) — nur vorkommende Werte, jeweils mit Zähler.
-describe("RT5c · statusChipCounts", () => {
-  it("leitet Chips + Zähler aus den tatsächlichen Treffern ab (all immer, sonst nur vorkommend)", () => {
-    // ROWS: 2 neu, 1 importiert, 1 vorgemerkt → alle vier Chips mit korrekten Zählern.
-    expect(statusChipCounts(ROWS)).toEqual([
-      { chip: "all", count: 4 },
-      { chip: "new", count: 2 },
-      { chip: "imported", count: 1 },
-      { chip: "queued", count: 1 },
+// AUFTRAG-mega27 B2: aus den früheren Status-Chips (Eigenbau) ist eine FACETTE geworden — dieselben
+// Werte, dieselben Zähler, aber über combinableFacetCounts (lib/facets). Nur vorkommende Werte
+// erscheinen; „alle" ist kein Wert mehr, sondern die OFFENE Facette.
+describe("mega27 B2 · Status als Facette (statt eigener Chip-Reihe)", () => {
+  it("leitet Werte + Zähler aus den tatsächlichen Treffern ab — nur vorkommende", () => {
+    // ROWS: 2 neu, 1 importiert, 1 vorgemerkt.
+    const counts = combinableFacetCounts(ROWS.map(previewFacetValues), ["status"], {});
+    expect(counts.status).toEqual([
+      { value: "new", count: 2 },
+      { value: "imported", count: 1 },
+      { value: "queued", count: 1 },
     ]);
   });
 
-  it("verschwindet ein Wert aus dem Bestand, verschwindet sein Chip", () => {
+  it("verschwindet ein Wert aus dem Bestand, verschwindet er aus der Facette", () => {
     const onlyNew = [entry({ title: "A" }), entry({ title: "B" })];
-    expect(statusChipCounts(onlyNew)).toEqual([
-      { chip: "all", count: 2 },
-      { chip: "new", count: 2 },
-    ]);
-    // Kein imported/queued-Chip, solange kein solcher Treffer existiert.
-    expect(statusChipCounts(onlyNew).some((c) => c.chip === "imported")).toBe(false);
-    expect(statusChipCounts(onlyNew).some((c) => c.chip === "queued")).toBe(false);
+    const counts = combinableFacetCounts(onlyNew.map(previewFacetValues), ["status"], {});
+    expect(counts.status).toEqual([{ value: "new", count: 2 }]);
+  });
+
+  it("die Facetten-Auswahl trifft dieselbe Menge wie der frühere Chip (Äquivalenz)", () => {
+    for (const chip of ["new", "imported", "queued"] as const) {
+      expect(visibleRows(ROWS, view({ chip })).map((r) => r.entry.title)).toEqual(
+        ROWS.filter((e) => chipMatches(e, chip)).map((e) => e.title),
+      );
+    }
+    // Offene Facette = „alle" (kein Filter).
+    expect(visibleRows(ROWS, view()).map((r) => r.index)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("ein Eintrag, der importiert UND vorgemerkt ist, führt EHRLICH beide Werte", () => {
+    const both = entry({ title: "X", alreadyImported: true, alreadyQueued: true });
+    expect(previewFacetValues(both).status).toEqual(["imported", "queued"]);
   });
 });
 

@@ -6,6 +6,7 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useDuplicates, useKos } from "../api/hooks";
 import type { KnowledgeObject, OverlapEntry } from "../api/types";
+import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { FindingCard, FindingGroupHeader } from "../components/FindingCard";
 import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
@@ -156,7 +157,13 @@ export function Duplicates(): JSX.Element {
           {err}
         </div>
       ) : null}
-      <QueryState query={query} emptyText={t("dup.empty")}>
+      <QueryState
+        query={query}
+        emptyText={t("dup.empty")}
+        /* AUFTRAG-mega29 C2: dieselbe Lücke wie beim Konflikt-Board — ein leeres Ergebnis nach
+             einem gedeckelten Lauf heißt nicht „frei von Überschneidungen". */
+        emptyExtra={<AiCheckBoardCaveat />}
+      >
         {(items) => (
           <div className="space-y-6">
             {/* SCRUM-486 (nacht24 Paket 3): gruppiert je Beitrag, neueste zuerst — die Kern-

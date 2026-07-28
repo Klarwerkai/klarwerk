@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { KnowledgeClass, KnowledgeObject } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
 import { answerReviewGuard, answerStatus, sourceRefs } from "../../apps/web/src/lib/askView";
 import { koOverview } from "../../apps/web/src/lib/koOverview";
 
@@ -8,16 +9,32 @@ const ko = (id: string, title: string, status: KnowledgeObject["status"]): Knowl
   ({ id, title, status }) as unknown as KnowledgeObject;
 
 describe("SCRUM-250: askView", () => {
-  it("answerStatus: nur 'gesichert' → verified/pos, alles andere → unverified/warn", () => {
-    expect(answerStatus("gesichert")).toEqual({ key: "verified", tone: "pos" });
+  // AUFTRAG-mega33 A2: answerStatus liest die EFFEKTIVE Einstufung, nicht mehr die rohe Klasse.
+  it("answerStatus: nur die belegte Einstufung → verified/pos, alles andere → unverified/warn", () => {
+    expect(answerStatus("verified")).toEqual({ key: "verified", tone: "pos" });
+    expect(answerStatus("unverified")).toEqual({ key: "unverified", tone: "warn" });
+    expect(answerStatus("gap")).toEqual({ key: "unverified", tone: "warn" });
+    // Und die rohe Klasse allein trägt kein „verified" mehr: ohne belegten Lauf wird aus
+    // „gesichert" eine unverified-Einstufung — genau bens ROT 3.
     for (const c of [
+      "gesichert",
       "ungeprueft",
       "meinung",
       "extern",
       "annahme",
       "unbekannt",
     ] as KnowledgeClass[]) {
-      expect(answerStatus(c)).toEqual({ key: "unverified", tone: "warn" });
+      expect(
+        answerStatus(
+          answerGrade({
+            answered: true,
+            knowledgeClass: c,
+            sourcesConflicted: false,
+            sourcesCheckUnproven: true,
+            conflictsUnproven: false,
+          }),
+        ),
+      ).toEqual({ key: "unverified", tone: "warn" });
     }
   });
 
@@ -83,9 +100,9 @@ describe("SCRUM-250: askView", () => {
     expect(sourceRefs([], [ko("a", "A", "validiert")])).toEqual([]);
   });
 
-  it("answerReviewGuard: gesicherte Antworten brauchen keinen Review-Hinweis", () => {
+  it("answerReviewGuard: eine belegt gesicherte Einstufung braucht keinen Review-Hinweis", () => {
     expect(
-      answerReviewGuard("gesichert", [
+      answerReviewGuard("verified", [
         { id: "a", label: "A", known: true, validated: true, usability: "ready", demo: false },
       ]),
     ).toBeNull();
@@ -93,7 +110,7 @@ describe("SCRUM-250: askView", () => {
 
   it("answerReviewGuard: ungeprüfte Antwort aus offener Quelle führt zur Validierung", () => {
     expect(
-      answerReviewGuard("ungeprueft", [
+      answerReviewGuard("unverified", [
         {
           id: "a",
           label: "A",
@@ -113,7 +130,7 @@ describe("SCRUM-250: askView", () => {
 
   it("answerReviewGuard: unbekannte ungeprüfte Quelle bleibt als ungeprüft markiert", () => {
     expect(
-      answerReviewGuard("unbekannt", [
+      answerReviewGuard("unverified", [
         {
           id: "ghost",
           label: "ghost",

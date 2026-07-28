@@ -12,39 +12,56 @@
 // WP-IC-PAKET-1 (Teil 1): Altbestand-Anzeige dekodiert HTML-Entities (nur Text-Rendering, nie HTML).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Images, Loader2, Sparkles } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import type { ImportSelectCriteria, ImportSelectResponse } from "../api/types";
+import type { ImportPreviewEntry, ImportSelectCriteria, ImportSelectResponse } from "../api/types";
+import { clearFacetSelection } from "../lib/facetFilter";
+// AUFTRAG-mega27 Block B: DIESELBE Filter-Technik wie die Bibliothek — Schiene, aktive Leiste,
+// Bereichsfilter. Kein zweiter Nachbau neben einer ausgereiften, getesteten Technik.
+import {
+  EMPTY_FACET_RANGE,
+  EMPTY_RAIL_UI,
+  type FacetRailUiState,
+  type FacetRange,
+  facetRailGroups,
+} from "../lib/facetRail";
+import { type FacetValues, toggleFacetValue } from "../lib/facets";
 import { displayImportText } from "../lib/htmlEntities";
 import { summarizeSelectCriteria } from "../lib/importExplore";
 // WP-SHIP9-S2 Paket 2 (D2–D7): reines View-Modell für Suche/Filter/Alle/Gruppen der Trefferliste.
 import {
   DEFAULT_PREVIEW_VIEW,
+  IMPORT_SELECT_FACET_CONFIGS,
+  IMPORT_SELECT_RANGE_AFTER_KEY,
+  IMPORT_SELECT_SECONDARY_FACET_KEYS,
   type PreviewChip,
   type PreviewGroupMode,
   type PreviewLanguage,
   type PreviewRow,
   bulkSelectableRows,
   clearAllSelected,
+  defaultGroupMode,
   deselectLanguage,
   effectiveGroupMode,
+  folderModeUnavailableReason,
   groupCheckboxState,
   groupModeOptions,
   groupRowsTree,
   groupsCollapsedByDefault,
   languageCounts,
+  previewFacetValues,
   rowsAllChecked,
   selectionSummary,
   setRowsSelected,
-  statusChipCounts,
   visibleRows,
 } from "../lib/importSelectView";
 // WP-IC-PAKET-1b (bens ROT-3): latest-wins — Antworten aelterer Requests werden verworfen.
 import { createLatestWins } from "../lib/latestWins";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { FacetFilter } from "./FacetFilter";
 // WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
 import { ImportGroups } from "./ImportGroups";
 // RT5a-c (nacht24): Subfolder-Baum + Sprach-Massenaktion (Darstellung; Logik in importSelectView).
@@ -55,6 +72,7 @@ import {
   useReportImportGeneration,
   useReportImportStage,
 } from "./ImportStepper";
+import { FacetActiveBar } from "./facets/FacetActiveBar";
 import { Button, TextInput } from "./ui";
 
 // Klick-Filter der Erkundungs-Landkarte (Roh-Werte, wie der Server sie kennt — dekodiert wird nur die
@@ -69,6 +87,14 @@ function parsedPositiveInt(raw: string): number | undefined {
   const n = Number.parseInt(raw, 10);
   return Number.isInteger(n) && n > 0 ? n : undefined;
 }
+
+// AUFTRAG-mega27 Block B: Speicherschlüssel des eingeklappten „Weitere Filter" — je Browser
+// gemerkt, wie in der Bibliothek (Vorbild Library.tsx).
+const IMPORT_MORE_FILTERS_STORAGE_KEY = "klarwerk.import.select.filters.moreOpen";
+
+// Stabile leere Liste — sonst bekäme die memoisierte Facetten-Ableitung bei jedem Render eine neue
+// Referenz und liefe umsonst.
+const NO_ENTRIES: readonly ImportPreviewEntry[] = [];
 
 export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Element {
   const { t, i18n } = useTranslation();
@@ -98,9 +124,16 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // WP-SHIP9-S2 Paket 2 (D3–D7): Ansichts-Zustand der Trefferliste (Suche/Filter-Chip/Ausblenden/
   // Gruppierung). Rein für die DARSTELLUNG — die Auswahl selbst bleibt in checkedRows (Originalindex).
   const [view, setView] = useState(DEFAULT_PREVIEW_VIEW);
+  // AUFTRAG-mega27 Block B: Anzeige-Zustand der Filterschiene (Suchtext/„alle zeigen" je Dimension) —
+  // derselbe Zustandstyp wie in der Bibliothek.
+  const [railUi, setRailUi] = useState<FacetRailUiState>(EMPTY_RAIL_UI);
+  // AUFTRAG-mega27 A4: hat der Nutzer den Gruppier-Modus SELBST gewählt? Solange nicht, gilt die
+  // VORGABE aus dem Bestand (Ordner, sobald es eine echte Struktur gibt) — und eine Live-
+  // Aktualisierung der Vorschau darf eine bewusste Wahl nicht überschreiben.
+  const [groupModeTouched, setGroupModeTouched] = useState(false);
   // WP-BILD-1f RT5a: expliziter Auf-/Zu-Zustand je Gruppe (Baugruppen-Ordner). Nur EXPLIZITE
   // Nutzer-Klicks landen hier; ohne Eintrag gilt der Standard (offen, bzw. eingeklappt bei vielen
-  // Gruppen). Der Key ist group.key (stabil über Sprach-/Themen-Wert).
+  // Geschwistern auf derselben Ebene). Der Key ist der volle Pfad-Schlüssel des Knotens.
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
 
   // WP-COCKPIT-LINIE: Vorschau da → Meilenstein "previewed" an die Schritt-Leiste; beim ERSTEN
@@ -224,21 +257,66 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     setCheckedRows((prev) => prev.map((on, i) => (i === index ? !on : on)));
   };
 
-  // WP-SHIP9-S2 Paket 2: abgeleitete Ansicht — gefilterte/durchsuchte Zeilen (D4/D7), optional
-  // gruppiert (D3/D5). Die AUSWAHL bleibt in checkedRows (Originalindex); dies steuert nur, was
-  // sichtbar ist und welche Zeilen „Alle wählen"/Gruppen-Checkbox erfassen.
-  // WP-BILD-1f RT5c: der aktive Filter-Chip gilt nur, solange sein Wert im Bestand vorkommt — sonst
-  // ehrlicher Rückfall auf „Alle" (ein verschwundener Chip darf die Liste nicht leer filtern).
-  const activeChip: PreviewChip =
-    preview && statusChipCounts(preview.preview).some((c) => c.chip === view.chip)
-      ? view.chip
-      : "all";
-  // WP-BILD-1f RT5c: der angeforderte Gruppier-Modus gilt nur, wenn er im aktuellen Bestand überhaupt
-  // angeboten wird (≥2 Gruppen) — sonst ehrlicher Rückfall auf die flache Liste (kein toter Modus).
+  const languageLabel = (lang: PreviewLanguage | undefined): string =>
+    lang === "de"
+      ? t("imp.select.langDe")
+      : lang === "en"
+        ? t("imp.select.langEn")
+        : lang === "nl"
+          ? t("imp.select.langNl")
+          : t("imp.select.langOther");
+  // Die drei Status-Werte der Facette — dieselben Begriffe wie bisher an den Chips.
+  const statusLabel = (chip: PreviewChip): string =>
+    chip === "imported"
+      ? t("imp.select.chipImported")
+      : chip === "queued"
+        ? t("imp.select.chipQueued")
+        : t("imp.select.chipNew");
+  // AUFTRAG-mega27 Block B: Anzeige-Label eines Facetten-Werts. Ordner/Thema/Autor tragen bereits
+  // den kanonischen Text (previewFacetValues dekodiert an EINER Stelle) — hier wird NICHT erneut
+  // dekodiert; Status und Sprache bekommen ihre lokalisierten Begriffe.
+  const facetValueLabel = (key: string, value: string): string => {
+    if (key === "status") {
+      return statusLabel(value as PreviewChip);
+    }
+    if (key === "language") {
+      return languageLabel(value as PreviewLanguage);
+    }
+    return value;
+  };
+
+  // WP-SHIP9-S2 Paket 2: abgeleitete Ansicht — gefilterte/durchsuchte Zeilen (D7 + Block-B-Facetten),
+  // optional gruppiert (D3/D5/A4). Die AUSWAHL bleibt in checkedRows (Originalindex); dies steuert
+  // nur, was sichtbar ist und welche Zeilen „Alle wählen"/Ordner-Checkbox erfassen.
+  const entries: readonly ImportPreviewEntry[] = preview?.preview ?? NO_ENTRIES;
+  // Effizienz-Vertrag von lib/facets: die (teure) WERT-Ableitung je Eintrag läuft genau EINMAL je
+  // Datenlauf — je Render bleiben nur Lookups und Integer-Zähler.
+  const facetBase = useMemo(() => entries.map((entry) => previewFacetValues(entry)), [entries]);
+  const valuesOf = (_entry: ImportPreviewEntry, index: number): FacetValues =>
+    facetBase[index] ?? {};
+  // AUFTRAG-mega27 A4: der Gruppier-Modus. Ohne eigene Wahl gilt die VORGABE aus dem Bestand
+  // (Ordner, sobald wenigstens ein Eintrag einen Pfad trägt und daraus ≥2 Ordner entstehen).
+  // WP-BILD-1f RT5c: der angeforderte Modus gilt nur, wenn er im Bestand überhaupt angeboten wird —
+  // sonst ehrlicher Rückfall auf die flache Liste (kein toter Modus).
+  const requestedGroupMode: PreviewGroupMode = groupModeTouched
+    ? view.groupMode
+    : defaultGroupMode(entries);
   const groupMode = preview
-    ? effectiveGroupMode(preview.preview, view.groupMode)
+    ? effectiveGroupMode(entries, requestedGroupMode)
     : ("none" as PreviewGroupMode);
-  const rows = preview ? visibleRows(preview.preview, { ...view, chip: activeChip }) : [];
+  // A4: warum die Ordneransicht gerade NICHT gilt — eine Zeile, ehrlich benannt (dieselbe
+  // Ehrlichkeitsregel wie effectiveGroupMode).
+  const folderFallback = preview ? folderModeUnavailableReason(entries) : null;
+  const rows = preview ? visibleRows(entries, view, valuesOf) : [];
+  // Block B: die Schienen-Sicht (Kontext-Zähler, Ausgrauen, Suche je Dimension, aufmachbarer
+  // Deckel) — dieselbe Technik und dieselben Bausteine wie in der Bibliothek.
+  const facetGroups = facetRailGroups(
+    facetBase,
+    IMPORT_SELECT_FACET_CONFIGS,
+    view.selection,
+    railUi,
+    (key, value) => facetValueLabel(key, value),
+  );
   // RT5a (nacht24): ECHTER Subfolder-Baum — im Sprach-Modus bekommen Sprach-Ordner Themen-
   // Unterordner (auf-/zuklappbar), sobald die Sprache ≥2 Themen hergibt; sonst wie bisher.
   const groups = groupRowsTree(rows, groupMode);
@@ -273,9 +351,11 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
     const canSelect = bulkSelectableRows(groupRowsArg).length > 0;
     setGroupSelected(groupRowsArg, state !== "on" && canSelect);
   };
-  // RT5a: eingeklappt-Standard bei vielen Gruppen; explizite Klicks (openGroups) haben Vorrang.
-  const groupsDefaultOpen = !groupsCollapsedByDefault(groups.length);
-  const isGroupOpen = (key: string): boolean => openGroups[key] ?? groupsDefaultOpen;
+  // RT5a: eingeklappt-Standard bei vielen Ordnern; explizite Klicks (openGroups) haben Vorrang.
+  // AUFTRAG-mega27 A5: die Schwelle gilt JE EBENE (Zahl der Geschwister) — Begründung an
+  // groupsCollapsedByDefault. Der Schlüssel ist der volle Pfad-Schlüssel des Knotens.
+  const isGroupOpen = (key: string, siblingCount: number): boolean =>
+    openGroups[key] ?? !groupsCollapsedByDefault(siblingCount);
   const setGroupOpen = (key: string, value: boolean): void => {
     setOpenGroups((prev) => (prev[key] === value ? prev : { ...prev, [key]: value }));
   };
@@ -292,37 +372,19 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // dort weiterhin „Weiter: Gruppieren & Übernehmen", als der Nutzer nach dem Gruppieren einen
   // Kandidaten abwählte. Dieses Wissen lebt hier, oberhalb des Keys, und überlebt den Remount.
   const [lastGroupedKey, setLastGroupedKey] = useState<string | null>(null);
-  const languageLabel = (lang: PreviewLanguage | undefined): string =>
-    lang === "de"
-      ? t("imp.select.langDe")
-      : lang === "en"
-        ? t("imp.select.langEn")
-        : lang === "nl"
-          ? t("imp.select.langNl")
-          : t("imp.select.langOther");
-  // WP-BILD-1f RT5c: Filter-Chips DYNAMISCH aus den tatsächlichen Treffern — nur vorkommende Werte,
-  // jeweils mit Zähler (verschwindet ein Wert aus dem Bestand, verschwindet der Chip). Der aktive Chip
-  // wechselt nur die Sicht, nie die Auswahl.
-  const chipLabel = (chip: PreviewChip): string =>
-    chip === "new"
-      ? t("imp.select.chipNew")
-      : chip === "imported"
-        ? t("imp.select.chipImported")
-        : chip === "queued"
-          ? t("imp.select.chipQueued")
-          : t("imp.select.chipAll");
-  const chips = preview ? statusChipCounts(preview.preview) : [];
   // RT5b (nacht24): Sprach-Zähler über den GESAMTEN gefundenen Bestand — Basis der Massenaktion.
-  const langCounts = preview ? languageCounts(preview.preview) : [];
-  // WP-BILD-1f RT5c: Gruppier-Modi ebenfalls dynamisch — „nach Sprache"/„nach Thema" nur, wenn der
-  // Bestand dafür ≥2 Gruppen hergibt. „none" (flache Liste) ist immer dabei.
+  const langCounts = preview ? languageCounts(entries) : [];
+  // WP-BILD-1f RT5c: Gruppier-Modi dynamisch — ein Modus erscheint nur, wenn der Bestand dafür ≥2
+  // Gruppen hergibt. „none" (flache Liste) ist immer dabei; „nach Ordner" (mega27 A4) steht vorn.
   const groupModeName = (mode: PreviewGroupMode): string =>
-    mode === "theme"
-      ? t("imp.select.groupTheme")
-      : mode === "language"
-        ? t("imp.select.groupLanguage")
-        : t("imp.select.groupNone");
-  const groupModes = preview ? groupModeOptions(preview.preview) : [];
+    mode === "folder"
+      ? t("imp.select.groupFolder")
+      : mode === "theme"
+        ? t("imp.select.groupTheme")
+        : mode === "language"
+          ? t("imp.select.groupLanguage")
+          : t("imp.select.groupNone");
+  const groupModes = preview ? groupModeOptions(entries) : [];
 
   // Eine Vorschau-Zeile (Checkbox + Titel + Kennzeichen) — geteilt zwischen flacher und Gruppen-Ansicht.
   const renderRow = ({ entry, index }: PreviewRow): JSX.Element => (
@@ -516,77 +578,117 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
           )}
 
           {/* Vorschau-Liste mit Auswahl (Teil 4): bereits Importiertes markiert + standardmäßig abgewählt.
-              WP-SHIP9-S2 Paket 2: darüber die Trefferlisten-Steuerung — Suche (D7), Filter-Chips (D7),
-              „Alle wählen/abwählen" (D2), „Bereits Bekanntes ausblenden" (D4), Gruppierung (D3/D5) und
-              die dauerhaft sichtbare Auswahl-Zusammenfassung (D7). */}
-          {preview.preview.length > 0 ? (
-            <div className="mt-2 border-t border-hairline pt-2">
-              {/* D7: Suchfeld über der Trefferliste. */}
-              <TextInput
-                value={view.query}
-                onChange={(e) => setView((v) => ({ ...v, query: e.target.value }))}
-                placeholder={t("imp.select.searchPlaceholder")}
-                aria-label={t("imp.select.searchPlaceholder")}
-              />
-
-              {/* WP-BILD-1f RT5c: dynamische Filter-Chips (nur vorkommende Werte, mit Zähler). */}
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                {chips.map((c) => (
-                  <button
-                    key={c.chip}
-                    type="button"
-                    aria-pressed={activeChip === c.chip}
-                    onClick={() => setView((v) => ({ ...v, chip: c.chip }))}
-                    className={`rounded-pill border px-2.5 py-1 text-[11.5px] font-semibold ${
-                      activeChip === c.chip
-                        ? "border-ai/50 bg-ai-surface-1 text-ai"
-                        : "border-hairline bg-surface text-muted hover:text-text"
-                    }`}
-                  >
-                    {chipLabel(c.chip)} · {c.count}
-                  </button>
-                ))}
-              </div>
-
-              {/* RT5b (nacht24): „alle <Sprache> abwählen" — EIN Klick je vorkommender Sprache,
-                  wirkt auf den GESAMTEN Bestand (unabhängig von Suche/Filter; nur Abwahl). */}
-              <LanguageDeselectChips
-                counts={langCounts}
-                label={languageLabel}
-                buttonText={(lang, n) => t("imp.select.deselectLang", { lang, n })}
-                onDeselect={(lang) => {
-                  if (preview) {
-                    setCheckedRows((prev) => deselectLanguage(prev, preview.preview, lang));
-                  }
-                }}
-              />
-
-              {/* D2 Alle wählen/abwählen · D4 Ausblenden-Schalter · D5/D3 Gruppierung. */}
-              <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px] text-muted">
-                <button
-                  type="button"
-                  onClick={toggleAll}
-                  className="rounded-btn border border-hairline bg-surface px-2.5 py-1 font-semibold text-text hover:bg-hairline-soft"
-                >
-                  {allVisibleChecked ? t("imp.select.deselectAll") : t("imp.select.selectAll")}
-                </button>
-                <label className="inline-flex items-center gap-1.5">
-                  <input
-                    type="checkbox"
-                    checked={view.hideImported}
-                    onChange={(e) => setView((v) => ({ ...v, hideImported: e.target.checked }))}
-                    className="h-4 w-4"
+              AUFTRAG-mega27 Block B: darüber KEINE eigene Filterzeile mehr, sondern DIESELBE
+              Filterschiene wie die Bibliothek (Facetten mit kombinierbaren Zählern, „Weitere Filter"
+              eingeklappt, Bereichsfilter) links und über der Liste die aktive-Filter-Leiste.
+              Massenaktionen („Alle wählen/abwählen", „alle <Sprache> abwählen") stehen bewusst
+              NICHT in der Schiene — sie ändern die AUSWAHL, Filter ändern nur die SICHT (B4). */}
+          {entries.length > 0 ? (
+            <div className="mt-2 grid gap-3 border-t border-hairline pt-2 lg:grid-cols-[236px_minmax(0,1fr)]">
+              <FacetFilter
+                configs={IMPORT_SELECT_FACET_CONFIGS}
+                groups={facetGroups}
+                selection={view.selection}
+                total={entries.length}
+                shown={rows.length}
+                onToggle={(key, value) =>
+                  setView((v) => ({ ...v, selection: toggleFacetValue(v.selection, key, value) }))
+                }
+                onReset={() =>
+                  setView((v) => ({
+                    ...v,
+                    selection: clearFacetSelection(),
+                    range: EMPTY_FACET_RANGE,
+                  }))
+                }
+                labelForValue={facetValueLabel}
+                onQueryChange={(key, query) =>
+                  setRailUi((ui) => ({ ...ui, query: { ...ui.query, [key]: query } }))
+                }
+                onShowAllToggle={(key) =>
+                  setRailUi((ui) => ({
+                    ...ui,
+                    showAll: { ...ui.showAll, [key]: ui.showAll[key] !== true },
+                  }))
+                }
+                secondaryKeys={IMPORT_SELECT_SECONDARY_FACET_KEYS}
+                moreStorageKey={IMPORT_MORE_FILTERS_STORAGE_KEY}
+                range={view.range}
+                onRangeChange={(range: FacetRange) => setView((v) => ({ ...v, range }))}
+                rangeLabelKey="imp.select.rangeLabel"
+                rangeAfterKey={IMPORT_SELECT_RANGE_AFTER_KEY}
+                countLabelKey="imp.select.facetCount"
+                searchSlot={
+                  /* D7: Suchfeld ganz oben in der Schiene — der Träger besitzt die Query. */
+                  <TextInput
+                    value={view.query}
+                    onChange={(e) => setView((v) => ({ ...v, query: e.target.value }))}
+                    placeholder={t("imp.select.searchPlaceholder")}
+                    aria-label={t("imp.select.searchPlaceholder")}
                   />
-                  {t("imp.select.hideImported")}
-                </label>
-                <span className="inline-flex items-center gap-1.5">
+                }
+              />
+
+              <div className="min-w-0">
+                {/* B3: die aktive-Filter-Leiste über der TREFFERLISTE — jede aktive Wahl als
+                    entfernbare Pille, mit demselben Zurücksetzen wie in der Bibliothek. */}
+                <FacetActiveBar
+                  configs={IMPORT_SELECT_FACET_CONFIGS}
+                  selection={view.selection}
+                  onToggle={(key, value) =>
+                    setView((v) => ({ ...v, selection: toggleFacetValue(v.selection, key, value) }))
+                  }
+                  onReset={() =>
+                    setView((v) => ({
+                      ...v,
+                      selection: clearFacetSelection(),
+                      range: EMPTY_FACET_RANGE,
+                    }))
+                  }
+                  onClearGroup={(key) =>
+                    setView((v) => ({ ...v, selection: { ...v.selection, [key]: undefined } }))
+                  }
+                  labelForValue={facetValueLabel}
+                  range={view.range}
+                  onRangeChange={(range: FacetRange) => setView((v) => ({ ...v, range }))}
+                  rangeLabelKey="imp.select.rangeLabel"
+                />
+
+                {/* B4: MASSENAKTIONEN — sie ändern die Auswahl, nicht die Sicht, und haben deshalb
+                    ihre eigene Zeile. D2 „Alle wählen/abwählen" · RT5b „alle <Sprache> abwählen". */}
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 text-[11.5px] text-muted">
+                  <span className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2">
+                    {t("imp.select.bulkLabel")}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={toggleAll}
+                    className="rounded-btn border border-hairline bg-surface px-2.5 py-1 font-semibold text-text hover:bg-hairline-soft"
+                  >
+                    {allVisibleChecked ? t("imp.select.deselectAll") : t("imp.select.selectAll")}
+                  </button>
+                  <LanguageDeselectChips
+                    counts={langCounts}
+                    label={languageLabel}
+                    buttonText={(lang, n) => t("imp.select.deselectLang", { lang, n })}
+                    onDeselect={(lang) =>
+                      setCheckedRows((prev) => deselectLanguage(prev, entries, lang))
+                    }
+                  />
+                </div>
+
+                {/* D5/D3/A4: Gruppierung — reine Sicht-Umschaltung, keine Auswahl-Änderung. */}
+                <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[11.5px] text-muted">
                   <span>{t("imp.select.groupBy")}</span>
                   {groupModes.map((m) => (
                     <button
                       key={m.mode}
                       type="button"
                       aria-pressed={groupMode === m.mode}
-                      onClick={() => setView((v) => ({ ...v, groupMode: m.mode }))}
+                      onClick={() => {
+                        setGroupModeTouched(true);
+                        setView((v) => ({ ...v, groupMode: m.mode }));
+                      }}
                       className={`rounded-btn border px-2 py-0.5 font-semibold ${
                         groupMode === m.mode
                           ? "border-ai/50 bg-ai-surface-1 text-ai"
@@ -597,44 +699,60 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                       {m.mode === "none" ? "" : ` · ${m.count}`}
                     </button>
                   ))}
-                </span>
+                </div>
+
+                {/* A4: EHRLICHE EINE ZEILE, warum es keine Ordneransicht gibt — dieselbe Regel wie
+                    beim Rückfall von effectiveGroupMode. Nur zeigen, solange der Nutzer nicht
+                    bewusst eine andere Gruppierung gewählt hat. */}
+                {folderFallback !== null && !groupModeTouched ? (
+                  <p className="mt-1.5 text-[11.5px] text-muted-2">
+                    {folderFallback === "no-path"
+                      ? t("imp.select.folderFallbackNoPath")
+                      : t("imp.select.folderFallbackSingle")}
+                  </p>
+                ) : null}
+
+                {/* D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt". */}
+                <p className="mt-2 text-[11.5px] text-muted-2">
+                  {t("imp.select.summary", { selected: summary.selected, total: summary.total })}
+                  {alreadyImportedCount > 0 ? ` — ${t("imp.select.importedDeselected")}` : ""}
+                  {alreadyQueuedCount > 0 ? ` — ${t("imp.select.queuedDeselected")}` : ""}
+                </p>
+
+                {rows.length === 0 ? (
+                  // D7/B2: nach Suche/Facetten/Bereich keine Zeile mehr sichtbar — ehrlich benannt.
+                  <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.emptyFiltered")}</p>
+                ) : groupMode === "none" ? (
+                  <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
+                    {rows.map(renderRow)}
+                  </ul>
+                ) : (
+                  // A5: auf-/zuklappbare Ordner mit Tri-State-Haken — im Ordner-Modus der ECHTE
+                  // Quell-Baum in beliebiger Tiefe, im Sprach-Modus wie bisher zweistufig.
+                  // Darstellung geteilt in ImportPreviewTree; Logik pure in importSelectView.
+                  <ImportPreviewTree
+                    groups={groups}
+                    isOpen={isGroupOpen}
+                    setOpen={setGroupOpen}
+                    checkStateOf={(groupRowsArg) => groupCheckboxState(checkedRows, groupRowsArg)}
+                    onToggleGroup={toggleGroup}
+                    labelOf={(group) =>
+                      group.kind === "language"
+                        ? languageLabel(group.language)
+                        : group.value === ""
+                          ? // Ein leerer Wert heißt: die Quelle nennt hier nichts. Ehrlich benannt,
+                            // nicht als erfundener Ordner „Sonstiges".
+                            group.kind === "folder"
+                            ? t("imp.select.noFolder")
+                            : t("imp.select.noTheme")
+                          : // A2/A4: kanonische Werte werden NICHT erneut dekodiert (textCodec).
+                            displayImportText(group.value, group.textCodec)
+                    }
+                    countLabel={(n) => t("imp.select.groupCount", { n })}
+                    renderRow={renderRow}
+                  />
+                )}
               </div>
-
-              {/* D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt". */}
-              <p className="mt-2 text-[11.5px] text-muted-2">
-                {t("imp.select.summary", { selected: summary.selected, total: summary.total })}
-                {alreadyImportedCount > 0 ? ` — ${t("imp.select.importedDeselected")}` : ""}
-                {alreadyQueuedCount > 0 ? ` — ${t("imp.select.queuedDeselected")}` : ""}
-              </p>
-
-              {rows.length === 0 ? (
-                // D4/D7: nach Ausblenden/Suche/Filter keine Zeile mehr sichtbar — ehrlich benannt.
-                <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.emptyFiltered")}</p>
-              ) : groupMode === "none" ? (
-                <ul className="mt-1.5 space-y-1 border-t border-hairline pt-2">
-                  {rows.map(renderRow)}
-                </ul>
-              ) : (
-                // WP-BILD-1f RT5a/RT5b + nacht24: auf-/zuklappbare Ordner mit Tri-State-Haken —
-                // im Sprach-Modus als ECHTER Subfolder-Baum (Themen-Unterordner je Sprache).
-                // Darstellung geteilt in ImportPreviewTree; Logik pure in importSelectView.
-                <ImportPreviewTree
-                  groups={groups}
-                  isOpen={isGroupOpen}
-                  setOpen={setGroupOpen}
-                  checkStateOf={(groupRowsArg) => groupCheckboxState(checkedRows, groupRowsArg)}
-                  onToggleGroup={toggleGroup}
-                  labelOf={(group) =>
-                    group.kind === "language"
-                      ? languageLabel(group.language)
-                      : group.value === ""
-                        ? t("imp.select.noTheme")
-                        : displayImportText(group.value)
-                  }
-                  countLabel={(n) => t("imp.select.groupCount", { n })}
-                  renderRow={renderRow}
-                />
-              )}
             </div>
           ) : (
             <p className="mt-2 text-[12px] text-muted-2">{t("imp.select.empty")}</p>

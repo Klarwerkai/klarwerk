@@ -1,6 +1,6 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, HelpCircle, Menu, Search, Smartphone } from "lucide-react";
-import { type FormEvent, type Ref, useState } from "react";
+import { type FormEvent, type Ref, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -13,12 +13,25 @@ import {
 // AUFTRAG-mega11 Block B-2 (bens SB-2): die Topbar hatte DREI ungeschützte Ausgänge
 // (Benachrichtigungsziel, Suche, Hilfe) neben einem geschützten (Mobil-Umschalter). Alle vier laufen
 // jetzt über dasselbe `useGuardedNavigate` — der Unterschied ist damit nicht mehr merkbar.
-import { useGuardedNavigate } from "../app/NavGuardContext";
+// AUFTRAG-mega39 BLOCK B (ben, sammel37-mega38): mega38 BLOCK H hat drei NEUE Ausgänge aufgemacht —
+// die Betriebs-Chips wurden von stummen `div`s zu rohen `Link`s nach `/admin`. Ein roher `Link` ruft
+// `guard()` nicht; ein Admin, der gerade erfasst, war mit einem Klick ohne Speichern-Frage in der
+// Verwaltung. Sie gehen jetzt über `GuardedLink` — dieselbe Grenze wie Logo, Sidebar und Palette.
+// Dass diese Leiste KEINEN rohen `Link`/`NavLink` mehr enthalten darf, hält der Sammler in
+// tests/app/shell-links-guarded.test.ts fest (nicht mehr nur das Logo, wie bis mega38).
+import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+import {
+  DESIGN_THEMES,
+  DESIGN_THEME_STORAGE_KEY,
+  type DesignTheme,
+  applyDesignTheme,
+} from "../lib/designTheme";
 import { externalStagePill } from "../lib/externalStagePill";
 import { kiHeaderStatus, kiHeaderStatusFromPublic } from "../lib/kiHeaderStatus";
 import { notificationTarget } from "../lib/notificationTarget";
 import { reasonerReachabilityBadge } from "../lib/reasonerReachability";
+import { usePersistentEnum } from "../lib/usePersistentValue";
 import { APP_VERSION } from "../version";
 import { readIslandMarker } from "./islandMarker";
 
@@ -40,6 +53,38 @@ function LangPill(): JSX.Element {
         </button>
       ))}
     </div>
+  );
+}
+
+// AUFTRAG-mega40 BLOCK B (Pedi 28.07.): der Design-Umschalter — ein ECHTER Button (kein Link,
+// keine Navigation), sichtbar für ALLE Rollen. Er schaltet ausschließlich die Präsentationsebene
+// (data-theme="modern" an <html>, s. lib/designTheme.ts) und merkt sich die Wahl je Browser über
+// die bestehende fehlertolerante Speicher-Grenze (usePersistentEnum → safeLocalStorage: kaputter/
+// verweigerter Speicher = Wahl lebt nur diese Sitzung, nie ein Absturz). Er läuft bewusst NICHT
+// durch den NavGuard und setzt keinen Dirty-Zustand — er berührt keinen laufenden Entwurf.
+// Standard bleibt Klassisch: ohne Klick trägt <html> KEIN Attribut, kein berechneter Wert ändert
+// sich (tests/app/mega40-design-umschalter-mounted.test.tsx, mega40-theme-invarianz.test.ts).
+function DesignTogglePill(): JSX.Element {
+  const { t } = useTranslation();
+  const [theme, setTheme] = usePersistentEnum<DesignTheme>(
+    DESIGN_THEME_STORAGE_KEY,
+    DESIGN_THEMES,
+    "classic",
+  );
+  useEffect(() => {
+    applyDesignTheme(theme);
+  }, [theme]);
+  const modern = theme === "modern";
+  return (
+    <button
+      type="button"
+      aria-pressed={modern}
+      onClick={() => setTheme(modern ? "classic" : "modern")}
+      title={t("topbar.design.hint")}
+      className="shrink-0 rounded-btn border border-hairline px-2.5 py-1.5 text-[12px] font-medium text-muted hover:text-text"
+    >
+      {t(modern ? "topbar.design.modern" : "topbar.design.classic")}
+    </button>
   );
 }
 
@@ -219,14 +264,19 @@ function ReasonerStatusPill(): JSX.Element {
   const { data } = useReasonerStatus();
   const badge = reasonerReachabilityBadge(data);
   const tone = REACHABILITY_TONE[badge.tone];
+  // AUFTRAG-mega38 BLOCK H: aus dem `div` ist ein Link geworden — anklickbar UND mit der Tastatur
+  // erreichbar. Vorher war es eine reine Hover-Anzeige: wer nicht mit der Maus darauf zeigte
+  // (oder gar keine Maus benutzt), bekam die Erklaerung nie zu sehen. Und der Klartextsatz steht
+  // jetzt VOR dem Fachtext, nicht dahinter.
   return (
-    <div
+    <GuardedLink
+      to="/admin"
       className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${tone.box}`}
-      title={t(badge.hintKey)}
+      title={`${t("topbar.plain.reasoner")} — ${t(badge.hintKey)}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {t(badge.labelKey)}
-    </div>
+    </GuardedLink>
   );
 }
 
@@ -241,14 +291,16 @@ function ExternalStagePill(): JSX.Element | null {
   }
   const pill = externalStagePill(data.stage);
   const tone = REACHABILITY_TONE[pill.tone];
+  // AUFTRAG-mega38 BLOCK H — s. ReasonerStatusPill.
   return (
-    <div
+    <GuardedLink
+      to="/admin"
       className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${tone.box}`}
-      title={t(pill.hintKey)}
+      title={`${t("topbar.plain.external")} — ${t(pill.hintKey)}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${tone.dot}`} />
       {t(pill.labelKey)}
-    </div>
+    </GuardedLink>
   );
 }
 
@@ -275,9 +327,14 @@ function KiModePill(): JSX.Element {
   // vollständig (der Hinweistext nennt DSGVO ohnehin klar; hier zusätzlich als crisp Detail-Zeile).
   const detailLine =
     status.countryKey && status.dsgvoKey ? `${t(status.countryKey)} · ${t(status.dsgvoKey)}` : null;
-  const tooltip = [t(status.hintKey), status.detail, detailLine].filter(Boolean).join(" — ");
+  // AUFTRAG-mega38 BLOCK H: der Klartextsatz steht VORNE — „DSGVO-Bestaetigung daher: nein" ist
+  // eine wahre, aber voraussetzungsreiche Auskunft; sie kommt jetzt nach dem einfachen Satz.
+  const tooltip = [t("topbar.plain.ki"), t(status.hintKey), status.detail, detailLine]
+    .filter(Boolean)
+    .join(" — ");
   return (
-    <div
+    <GuardedLink
+      to="/admin"
       className={`flex items-center gap-1.5 rounded-pill px-2.5 py-1 text-[11px] font-semibold ${
         neutral
           ? "bg-page text-muted"
@@ -297,7 +354,7 @@ function KiModePill(): JSX.Element {
       {status.subtitleKey ? (
         <span className="font-normal opacity-80">· {t(status.subtitleKey)}</span>
       ) : null}
-    </div>
+    </GuardedLink>
   );
 }
 
@@ -331,6 +388,8 @@ export function Topbar({
   // AUFTRAG-mega11 Block B-2: das gilt jetzt für JEDE Navigation dieser Leiste, nicht nur für diese.
   const navigate = useGuardedNavigate();
   const location = useLocation();
+  // AUFTRAG-mega38 BLOCK H: die drei Betriebs-Chips sind Admin-Auskunft (s. unten).
+  const { role } = useRole();
   const [q, setQ] = useState("");
   const [islandMarker] = useState(() => readIslandMarker());
 
@@ -341,7 +400,7 @@ export function Topbar({
   };
 
   return (
-    <header className="flex h-[60px] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-5">
+    <header className="kw-topbar flex h-[60px] shrink-0 items-center gap-3 border-b border-hairline bg-surface px-5">
       {/* E2E-017: schmaler Header bekommt einen Hamburger, der die Sidebar als Drawer öffnet. */}
       {narrow ? (
         <button
@@ -423,11 +482,29 @@ export function Topbar({
             <HelpCircle size={18} />
           </button>
         ) : null}
+        {/* mega40 B: Design-Umschalter — für alle Rollen, auch im schmalen Modus (er ist klein,
+            und die Wahl soll nicht vom Fensterformat abhängen). */}
+        <DesignTogglePill />
         <LangPill />
         <NotificationBell />
-        <KiModePill />
-        <ReasonerStatusPill />
-        <ExternalStagePill />
+        {/* ==================================================================================
+            AUFTRAG-mega38 BLOCK H (Pedi 27.07.) — DIE DREI CHIPS SIND ADMIN-AUSKUNFT.
+            ==================================================================================
+            „KI-Modus: Cloud" · „Reasoner ungeprueft" · „Extern: Blockiert" standen auf JEDER
+            Seite, fuer JEDE Rolle. Fuer eine Nutzerin ohne Adminrolle sind sie drei Dinge auf
+            einmal: unverstaendlich (Fachtext bis hin zu „DSGVO-Bestaetigung daher: nein"),
+            beunruhigend (in ihren ersten Minuten steht dort „Reasoner UNGEPRUEFT", weil die
+            Erreichbarkeitspruefung erst nach einer Weile durchlaeuft) — und folgenlos, weil sie
+            an keiner der Einstellungen etwas aendern darf.
+            Sie sind jetzt Admins vorbehalten. Und dort, wo sie bleiben, sind sie anklickbar,
+            mit der Tastatur erreichbar und beginnen mit einem Klartextsatz. */}
+        {role === "admin" ? (
+          <>
+            <KiModePill />
+            <ReasonerStatusPill />
+            <ExternalStagePill />
+          </>
+        ) : null}
         {!narrow && islandMarker ? <IslandMarkerPill marker={islandMarker} /> : null}
         {/* Beta-Phase: sichtbare Versionsnummer oben rechts (Pedi, 02.07.2026) — nur im breiten Modus. */}
         {!narrow ? (

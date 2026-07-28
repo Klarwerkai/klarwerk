@@ -9,8 +9,13 @@ import type {
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
-import { detectConflictsForKo } from "../conflict-detection";
-import { type SemanticPrefilter, detectDuplicatesForKo } from "../duplicate-detection";
+import {
+  AI_CHECK_JOB_TIMEOUT_MS,
+  type AiCheckRunOutcome,
+  createAiCheckRunner,
+  runWithTimeout,
+} from "../ai-check-worker";
+import type { SemanticPrefilter } from "../duplicate-detection";
 import { type Guards, sendError } from "../http";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
@@ -71,6 +76,49 @@ function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
 // (Fastify läuft ohne eigenen Logger) — analog defaultLog des dup-prefilters. Bewusst kein Werfen.
 function importDetectionLog(msg: string, err: unknown): void {
   console.warn(`[import-accept-detection] ${msg}`, err);
+}
+
+// ================================================================================================
+// AUFTRAG-mega29 BLOCK A (bens M28-1) — DER `done`-STATUS, DER VOLLSTÄNDIGKEIT BEHAUPTETE.
+// ================================================================================================
+//
+// mega28 gab dieser Kante einen Status — und baute dabei genau die Zusicherung ein, gegen die er
+// schützen sollte. Die Kante rief die BESTANDSFASSADE `judgeConflict`/`judgeDuplicate` auf, die aus
+// dem strukturierten Ausgang nur `.verdict` weiterreicht: kein verfügbares Modell, ein vertraulich
+// gesperrtes Paar und ein normaler Provider-/Parsefehler verdichten sich dort alle zu `null`, der
+// Grund fällt weg. Danach galt nur `aborted`/`skipped` als unvollständig — ein `null` ist keins von
+// beidem, also wurde `done` geschrieben. Cloud-only ohne Schlüssel, Reasoner offline, vertrauliches
+// Paar ohne zulässiges lokales Modell: in all diesen Fällen behauptete der Accept einen
+// abgeschlossenen, vollständigen Lauf, in dem kein einziges inhaltliches Urteil fiel.
+//
+// GEWÄHLTER WEG (A1): NICHT den Outcome-Vertrag hier ein zweites Mal auslegen, sondern den RUNNER
+// selbst wiederverwenden — `createAiCheckRunner` aus dem ai-check-worker. Er ist bereits die eine
+// Stelle, die `no-model`, `confidential`, die feine Providerfehler-Klasse (RT-001), geworfene
+// Fehler, `skipped` und `aborted` zu genau EINEM ehrlichen Ausgang zusammenführt; seine Deps sind
+// strukturgleich mit ImportDetectionDeps. Damit gibt es für dieselbe Regel wieder EINE Umsetzung
+// statt zweier, die auseinanderlaufen können — und der von ben als Rest-Inkonsistenz benannte
+// Unterschied „Accept meldet capacity, Worker meldet model-error" verschwindet mit.
+//
+// A2 folgt daraus unmittelbar: `done` entsteht nur, wenn ALLE erforderlichen Ebenen ohne no-model,
+// confidential, Providerfehler, skipped und aborted durchgelaufen sind. Jeder andere Ausgang ist
+// nicht `done`.
+//
+// Strikt best-effort wie die Erkennung selbst: der Accept darf daran NIE scheitern (das KO ist zu
+// diesem Zeitpunkt längst gespeichert).
+async function recordImportAcceptAiCheck(
+  ko: KoService,
+  koId: string,
+  outcome: AiCheckRunOutcome,
+): Promise<void> {
+  try {
+    await ko.recordAiCheckOutcome(koId, {
+      ok: outcome.ok,
+      ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+      ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
+    });
+  } catch (err) {
+    importDetectionLog(`aiCheck-Vermerk für KO ${koId} fehlgeschlagen`, err);
+  }
 }
 
 // SCRUM-470 (S6): Deps für die Erkennung nach einem akzeptierten Import-Kandidaten. Dieselben Bausteine,
@@ -251,24 +299,28 @@ export function libraryRoutes(
           // detect*ForKo sind selbst fehlertolerant (schlucken Fehler intern) → der Accept kann daran
           // nie scheitern. VOR send(), damit das Ergebnis deterministisch sichtbar ist (analog Promote).
           if (detection && confluenceImportEnabled() && result.koId) {
-            // ben-Review #6: Erkennungsfehler bleiben best-effort (kippen den Accept nie), werden aber
-            // sichtbar geloggt (statt still geschluckt) — dieselbe Log-Linie wie beim dup-prefilter.
-            await detectConflictsForKo(
-              result.koId,
-              { ko: detection.ko, conflicts: detection.conflicts, reasoner: detection.reasoner },
-              importDetectionLog,
-            );
-            await detectDuplicatesForKo(
-              result.koId,
-              {
+            // AUFTRAG-mega29 A1: DERSELBE Lauf wie im Hintergrund-Worker — kein zweiter Aufbau der
+            // Erkennungskette und keine zweite Auslegung, wann ein Lauf „vollständig" war. Der
+            // Runner ist selbst best-effort (die detect*-Kerne schlucken ihre Fehler und melden sie
+            // über den Ausgang), der Accept kann daran also weiterhin nie scheitern.
+            // AUFTRAG-mega31 BLOCK D (bens GELB-1): DIESELBE Frist wie im Hintergrund-Worker
+            // (runWithTimeout/AI_CHECK_JOB_TIMEOUT_MS), nicht eine zweite. Vorher wartete die Route
+            // unbegrenzt synchron auf den Runner: ein Provider, der nie antwortet, blockierte sie
+            // ohne Statusabschluss. Nach Fristablauf gewinnt `failed/timeout`; ein spät doch noch
+            // eintreffender Ausgang wird verworfen (runWithTimeout settlet genau EINMAL), sodass
+            // der Statusschreib unten eindeutig und einmalig bleibt.
+            const outcome = await runWithTimeout(
+              createAiCheckRunner({
                 ko: detection.ko,
+                conflicts: detection.conflicts,
                 overlaps: detection.overlaps,
+                overlapSettings: detection.overlapSettings,
                 reasoner: detection.reasoner,
-                settings: detection.overlapSettings,
                 semanticPrefilter: detection.semanticPrefilter,
-              },
-              importDetectionLog,
+              })(result.koId),
+              AI_CHECK_JOB_TIMEOUT_MS,
             );
+            await recordImportAcceptAiCheck(detection.ko, result.koId, outcome);
           }
           // WP-SHIP8-CLOSE-8 (bens GELB-2): dieselbe DTO-Grenze wie am Queue-Load — die Antwort
           // der Review-Aktion trägt keine Claim-/Beleg-Interna (auditPending nur als Boolean).

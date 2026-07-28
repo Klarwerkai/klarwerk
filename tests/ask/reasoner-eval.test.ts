@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { Conflict, KnowledgeClass, KnowledgeObject } from "../../apps/web/src/api/types";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
 import { answerContract } from "../../apps/web/src/lib/askAnswerContract";
 import { conflictAwareSourceRefs } from "../../apps/web/src/lib/askView";
 import { InMemoryGapRepo } from "../../services/ask/src/repo";
@@ -192,8 +193,15 @@ describe("SCRUM-368: Contract-Ehrlichkeit (Quellen/Konflikt/Trust)", () => {
     const refs = conflictAwareSourceRefs(["a"], [ko("a", "Ventil", "validiert")], []);
     expect(refs[0]?.usability).toBe("ready");
     expect(
-      answerContract({ answered: true, knowledgeClass: "gesichert", sourcesConflicted: false })
-        .kind,
+      answerContract(
+        answerGrade({
+          answered: true,
+          knowledgeClass: "gesichert",
+          sourcesConflicted: false,
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).kind,
     ).toBe("verified");
   });
 
@@ -202,7 +210,15 @@ describe("SCRUM-368: Contract-Ehrlichkeit (Quellen/Konflikt/Trust)", () => {
     expect(refs[0]?.usability).toBe("needs-work");
     const cls: KnowledgeClass = "ungeprueft";
     expect(
-      answerContract({ answered: true, knowledgeClass: cls, sourcesConflicted: false }).kind,
+      answerContract(
+        answerGrade({
+          answered: true,
+          knowledgeClass: cls,
+          sourcesConflicted: false,
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).kind,
     ).toBe("unverified");
   });
 
@@ -217,7 +233,15 @@ describe("SCRUM-368: Contract-Ehrlichkeit (Quellen/Konflikt/Trust)", () => {
     expect(refs[0]?.conflictLimited).toBe(true);
     const sourcesConflicted = refs.some((r) => r.conflictLimited);
     expect(
-      answerContract({ answered: true, knowledgeClass: "gesichert", sourcesConflicted }).kind,
+      answerContract(
+        answerGrade({
+          answered: true,
+          knowledgeClass: "gesichert",
+          sourcesConflicted,
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).kind,
     ).toBe("unverified");
   });
 });

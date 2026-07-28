@@ -8,6 +8,7 @@ import { useConflicts, useKos } from "../api/hooks";
 import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
 // WP-UX-WOW-1 U6: der Leerzustand erklärt Konflikte; Admins sehen den Beispielpaket-Einstieg.
 import { useRole } from "../app/RoleContext";
+import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { FindingCard, FindingGroupHeader } from "../components/FindingCard";
 import { HelpTip } from "../components/HelpTip";
 import { KoView } from "../components/KoView";
@@ -22,7 +23,12 @@ import {
   hasStreitpunkt,
   resolveCollision,
 } from "../lib/conflictCollision";
-import { conflictKoPair, conflictNextStep, resolutionEffect } from "../lib/conflictView";
+import {
+  conflictEvidenceBalance,
+  conflictKoPair,
+  conflictNextStep,
+  resolutionEffect,
+} from "../lib/conflictView";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
 import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
 
@@ -255,6 +261,9 @@ export function Conflicts(): JSX.Element {
           // WP-UX-WOW-1 U6: hilfreicher Leerzustand — was ein Konflikt ist, wie er entsteht,
           // und für Admins der direkte Weg zum Beispielpaket „Widersprüchliche Aussagen".
           <div className="mx-auto mt-2 max-w-md text-left">
+            {/* AUFTRAG-mega29 C2: „Keine offenen Konflikte" ist wörtlich richtig — und liest sich
+                ohne diesen Satz als „der Bestand ist geprüft und frei". */}
+            <AiCheckBoardCaveat />
             <p className="text-[12.5px] leading-relaxed text-muted">{t("con.emptyWhat")}</p>
             <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t("con.emptyHow")}</p>
             {role === "admin" ? (
@@ -315,12 +324,32 @@ export function Conflicts(): JSX.Element {
                         {(() => {
                           const pair = conflictKoPair(c, kos.data ?? []);
                           const origin = conflictOriginInfo(c);
+                          // AUFTRAG-mega32 BLOCK K: die Beweislage der beiden Seiten, rein aus den
+                          // bereits geladenen Objekten. Schweigt, sobald beide belegt sind.
+                          const evidence = conflictEvidenceBalance(pair);
                           const detected = new Date(c.createdAt);
                           const detectedText = Number.isNaN(detected.getTime())
                             ? null
                             : detected.toLocaleDateString(i18n.language);
                           return (
                             <div className="mt-3">
+                              {/* AUFTRAG-mega32 BLOCK K — EIN ruhiger Satz ÜBER den Karten. Er
+                                  benennt die BEWEISLAGE, nicht den Gewinner: eine belegte Aussage
+                                  kann falsch sein, sie ist nur belegt. */}
+                              {evidence ? (
+                                <p
+                                  data-testid="conflict-evidence-balance"
+                                  className="mb-2 rounded-card bg-page px-3 py-2 text-[12.5px] leading-relaxed text-muted"
+                                >
+                                  {evidence.kind === "neither"
+                                    ? t("con.evidenceBalance.neither")
+                                    : t("con.evidenceBalance.oneSided", {
+                                        title:
+                                          (evidence.side === "a" ? pair.a?.title : pair.b?.title) ??
+                                          "",
+                                      })}
+                                </p>
+                              ) : null}
                               <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-2">
                                 <ConflictKoSide ko={pair.a} fallbackId={c.koA} />
                                 <ConflictKoSide ko={pair.b} fallbackId={c.koB} />

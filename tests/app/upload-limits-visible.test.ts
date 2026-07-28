@@ -34,7 +34,10 @@ describe("SCRUM-421: die Upload-Grenzen sind an jeder Auswahlstelle sichtbar", (
     const kandidaten = [
       ...AUSWAHLSTELLEN,
       // Bekannt und bewusst NICHT dabei: der JSON-Konfigurationsimport ist kein Anhang-Weg.
-      "pages/Stufe2.tsx",
+      // AUFTRAG-mega32 H2: er ist aus pages/Stufe2.tsx in ein eigenes Bauteil gezogen, damit die
+      // gewählte Quelle ihn überhaupt erreichen kann. Die Gegenprobe zeigt weiterhin auf das
+      // Dateifeld — nur an seinem neuen Ort.
+      "components/ImportJsonUpload.tsx",
     ];
     for (const datei of kandidaten) {
       expect(read(datei), `${datei} hat kein Dateifeld mehr`).toContain('type="file"');

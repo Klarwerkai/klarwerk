@@ -12,6 +12,12 @@ import { useTranslation } from "react-i18next";
 import { FILE_SOURCES, SYSTEM_SOURCES } from "../lib/importSourceGallery";
 import { FileTypePicker, systemIcon } from "./FileTypePicker";
 
+// AUFTRAG-mega32 BLOCK G: der Auf-/Zu-Zustand wird JE BROWSER gemerkt, wie bei „Weitere Filter" in
+// der Bibliothek. Zwei Schlüssel — Systeme und Dateien sind zwei getrennte Gruppen, und wer die eine
+// aufklappt, hat damit über die andere nichts gesagt.
+const GALLERY_SYSTEMS_PLANNED_STORAGE_KEY = "klarwerk.import.gallery.systems.plannedOpen";
+const GALLERY_FILES_PLANNED_STORAGE_KEY = "klarwerk.import.gallery.files.plannedOpen";
+
 export function ImportSourceGallery({
   onActivate,
 }: {
@@ -27,11 +33,15 @@ export function ImportSourceGallery({
         sources={SYSTEM_SOURCES}
         onActivate={onActivate}
         iconFor={systemIcon}
+        collapsePlanned
+        plannedStorageKey={GALLERY_SYSTEMS_PLANNED_STORAGE_KEY}
       />
       <FileTypePicker
         title={t("imp.gallery.filesTitle")}
         sources={FILE_SOURCES}
         onActivate={onActivate}
+        collapsePlanned
+        plannedStorageKey={GALLERY_FILES_PLANNED_STORAGE_KEY}
       />
     </div>
   );

@@ -54,14 +54,21 @@ async function setup() {
   const services = buildServices();
   // Festes „widerspruch"-Urteil: zitat_a aus A (Subjekt = akzeptiertes KO, „30 Tage"), zitat_b aus B
   // (Bestand, „28 Tage"). Beide sind wörtliche Teilstücke → das G-2-Gate lässt den Konflikt zu.
-  services.reasoner.judgeConflict = async () => ({
+  //
+  // AUFTRAG-mega29 A1: die Accept-Kante läuft seitdem über DENSELBEN Runner wie der Hintergrund-
+  // Worker — und der befragt den strukturierten Ergebnis-Vertrag (judgeConflictOutcome), nicht die
+  // Bestandsfassade. Der Fake bildet deshalb BEIDE Flächen ab, exakt wie der echte Reasoner
+  // (die Fassade reicht nur `.verdict` weiter). Genau dieser Unterschied war bens M28-1.
+  const verdict = {
     relation: "widerspruch" as const,
     older: null,
     confidence: 0.95,
     begruendung: "Test: 30 Tage widersprechen 28 Tage.",
     zitat_a: "30 Tage",
     zitat_b: "28 Tage",
-  });
+  };
+  services.reasoner.judgeConflictOutcome = async () => ({ verdict });
+  services.reasoner.judgeConflict = async () => verdict;
 
   const app = buildApp(services);
   await app.inject({

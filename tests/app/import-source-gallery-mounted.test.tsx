@@ -26,6 +26,21 @@ function mount(): void {
   act(() => {
     root.render(createElement(ImportSourceGallery, { onActivate }));
   });
+  // AUFTRAG-mega32 BLOCK G: die geplanten Kacheln liegen jetzt hinter EINER Zeile je Gruppe,
+  // standardmäßig zugeklappt. Diese Datei prüft ihren INHALT und ihr Verhalten — dafür werden sie
+  // hier aufgeklappt. Dass sie standardmäßig zu sind (und dass „nicht konfiguriert" NICHT mit
+  // eingeklappt wird), belegt import-gallery-planned-collapse-mounted.test.tsx.
+  expandPlanned();
+}
+
+function expandPlanned(): void {
+  for (const row of [...container.querySelectorAll('[data-testid="planned-disclosure"]')]) {
+    if (row.getAttribute("aria-expanded") === "false") {
+      act(() => {
+        row.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      });
+    }
+  }
 }
 
 function tiles(): HTMLButtonElement[] {

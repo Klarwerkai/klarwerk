@@ -134,7 +134,11 @@ export function SourceEvidence({
         <span className={`text-[12px] ${dateText ? "text-muted" : "text-muted-2"}`}>
           {dateLabel}
         </span>
-        {confidence !== undefined ? <ConfidenceBar value={confidence} percentPhrase /> : null}
+        {/* AUFTRAG-mega34 C1: die Zahl bleibt, das zweitdeutige Wort geht — wie in der
+            Kopfzeile darüber und wie in allen anderen Balken des Produkts. */}
+        {confidence !== undefined ? (
+          <ConfidenceBar value={confidence} showLabel={false} percentPhrase />
+        ) : null}
       </div>
     </div>
   );

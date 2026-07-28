@@ -61,8 +61,35 @@ export function verifyChain(entries: readonly AuditEntry[]): boolean {
 //     dass die Werte historisch unverändert sind — die Kette hat keinen extern verankerten Kopf.
 // ---------------------------------------------------------------------------------------------------
 
-// Obergrenze der Umordnungssuche JE EINTRAG. Der Live-Bestand braucht höchstens 4.320 Umordnungen
-// (6 Schlüssel, ein verschachteltes 3-Schlüssel-Objekt: 6! * 3! = 4.320).
+// Obergrenze der Umordnungssuche JE EINTRAG.
+//
+// AUFTRAG-mega35 D1 — KORRIGIERTE ZAHLEN. Hier stand bis mega34 eine Obergrenze von 4.320
+// Varianten, begründet mit einem sechsschlüssligen Eintrag samt verschachteltem 3-Schlüssel-Objekt.
+// Das war falsch: ein Eintrag dieser Form kommt im untersuchten Bestand gar nicht vor. Nachgezählt über
+// alle 871 Zeilen des Exports (25.07.2026 16:29) mit derselben Zählweise wie `countOrderings`:
+//   Maximum 720 — seq 757, `import.cleanup`, SECHS FLACHE Schlüssel (6! = 720).
+//   Der verschachtelte Fall (`examples.load`, u. a. seq 714) hat 4 Schlüssel mit einem
+//   3-Schlüssel-Unterobjekt: 4! * 3! = 144; davon gibt es 5 Einträge.
+//   Verteilung Variantenzahl → Einträge: 1→682, 2→110, 6→36, 120→37, 144→5, 720→1.
+//   KEIN Eintrag des Bestandes reißt den Deckel; die Reserve ist also rund das Siebzigfache.
+//
+// Ebenfalls korrigiert: die Aussage, JEDER Eintrag mit mehr als einem Payload-Schlüssel erzeuge
+// eine Abweichung, ist zu absolut. 189 Einträge haben mehr als einen Schlüssel auf oberster Ebene,
+// 182 davon weichen ab — SIEBEN nicht. Eine Abweichung entsteht nur, wenn JS-Einfügereihenfolge
+// und die kanonische jsonb-Reihenfolge auseinanderfallen; stimmen sie zufällig überein, bleibt der
+// Hash gültig.
+//
+// AUFTRAG-mega35 D2 — DIE KANTE DES DECKELS IST EIN MÖGLICHER FALSCHER ROTER ALARM.
+// Ab NEUN flachen Schlüsseln übersteigt die Permutationszahl den Deckel: 8! = 40.320 liegt noch
+// darunter und wird untersucht, 9! = 362.880 nicht mehr. Verschachtelte Objekte erreichen dieselbe
+// Grenze schon mit weniger Schlüsseln auf oberster Ebene. Ein solcher Eintrag wird als `unchecked`
+// gemeldet — und `auditVerifyState` färbt die Fläche daraufhin ROT, OBWOHL KEINE WERTÄNDERUNG
+// VORLIEGEN MUSS: es kann sich um genau denselben harmlosen Reihenfolge-Effekt handeln, nur eben
+// ungeprüft. Das ist bewusst fail-safe (lieber ein unbestätigter roter Zustand als eine unbelegte
+// Entwarnung), aber es ist ein möglicher FEHLALARM und keine Manipulationsaussage. Die Anzeige sagt
+// dazu korrekt „nicht geprüft" und nicht „Manipulation" — das bleibt so.
+// Der Deckelwert selbst wird hier NICHT bewegt; Kanonisierung, Versionierung und ein extern
+// verankerter Kettenkopf sind ein eigener Schnitt.
 export const MAX_PAYLOAD_ORDERINGS = 50_000;
 
 export type ChainDeviationKind =

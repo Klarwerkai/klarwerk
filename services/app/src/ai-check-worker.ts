@@ -29,7 +29,8 @@ import type { ConflictService } from "../../conflicts";
 //  - RETRY-DECKEL: max MAX_AI_CHECK_AUTO_RETRIES automatische Re-Enqueues je KO-Version (Schutz
 //    gegen revise-Loops); danach hilft nur der manuelle Retry-Knopf (bzw. der Lazy-Re-Enqueue
 //    nach der Stale-Frist, der einen FRISCHEN Vermerk mit neuer Version setzt).
-import type { AiCheck, KoService } from "../../knowledge-object";
+import { mergeCoverage } from "../../conflicts";
+import type { AiCheck, AiCheckCoverage, KoService } from "../../knowledge-object";
 import type { ModelFailureInfo, Reasoner } from "../../reasoner";
 import type { ConflictJudgeOutcome, DuplicateJudgeOutcome } from "../../reasoner";
 import { detectConflictsForKo } from "./conflict-detection";
@@ -70,6 +71,10 @@ export type AiCheckFailureReason =
 
 export interface AiCheckRunOutcome {
   ok: boolean;
+  // AUFTRAG-mega28 A2/A3: wie weit der Lauf TATSÄCHLICH reichte (geprüft/verfügbar, gedeckelt,
+  // übersprungen, abgebrochen). Ohne diese Zahlen wäre „done" nach dem Deckel eine Lüge: ein leeres
+  // Ergebnis hieße „gegen 20 von 12.479 nichts gefunden" und läse sich als „konfliktfrei".
+  coverage?: AiCheckCoverage;
   // WP-SHIP8-CLOSE (bens F1): "model-timeout" ist eine eigene, ehrliche Ursache (Zeitlimit eines
   // Modellaufrufs — unterschieden vom Job-"timeout", der harten Frist des GANZEN Prüf-Laufs).
   // D-AISTATE PAKET 1 (bens V1): "confidential" = die KI-Ebene war für ein vertrauliches Paar blockiert
@@ -230,7 +235,11 @@ export function shouldReEnqueueAiCheck(aiCheck: AiCheck | undefined, nowMs: numb
 // WP-SHIP8-FINAL: Lauf mit harter Frist. Der Erkennungs-Lauf selbst ist nicht abbrechbar — bei
 // Frist-Ablauf gewinnt das timeout-Ergebnis; der späte echte Ausgang wird verworfen (sein
 // resolve wäre ohnehin ein No-op, weil der Status dann nicht mehr pending ist).
-function runWithTimeout(
+// AUFTRAG-mega31 BLOCK D (bens GELB-1): exportiert, damit die IMPORT-ACCEPT-KANTE DIESELBE Frist
+// benutzt statt einer zweiten. Sie rief den Runner bisher synchron und ungekapselt auf — ein
+// Provider, der nie antwortet, hielt die Route fest, ohne dass je ein Abschlussstatus entstand.
+// Das ist kein zweiter Regelausleger, sondern derselbe Rahmen an einer zweiten Kante.
+export function runWithTimeout(
   run: Promise<AiCheckRunOutcome>,
   timeoutMs: number,
 ): Promise<AiCheckRunOutcome> {
@@ -374,6 +383,9 @@ export function createAiCheckWorker(deps: AiCheckWorkerDeps): AiCheckWorker {
         {
           ok: outcome.ok,
           ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+          // AUFTRAG-mega28 A2: die Abdeckung reist mit dem Abschluss ans KO — DORT liest sie die
+          // Oberfläche (Badge/Bestätigungs-Karte), nicht nur ein internes Feld.
+          ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
         },
         expectedVersion,
       );
@@ -553,12 +565,14 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
         }
       },
     } as unknown as Reasoner;
-    await detectConflictsForKo(
+    // AUFTRAG-mega28 A2/A3: beide Läufe melden ihre Abdeckung; die ZUSAMMENFASSUNG nimmt die
+    // schwächere (mergeCoverage) — sie darf nie mehr behaupten, als der schlechtere Lauf trägt.
+    const conflictCoverage = await detectConflictsForKo(
       koId,
       { ko: deps.ko, conflicts: deps.conflicts, reasoner: observedReasoner },
       captureFailure,
     );
-    await detectDuplicatesForKo(
+    const duplicateCoverage = await detectDuplicatesForKo(
       koId,
       {
         ko: deps.ko,
@@ -569,27 +583,28 @@ export function createAiCheckRunner(deps: AiCheckRunnerDeps): AiCheckRunner {
       },
       captureFailure,
     );
+    const coverage: AiCheckCoverage = mergeCoverage(conflictCoverage, duplicateCoverage);
     // RT-001: die feinere strukturierte Klasse gewinnt vor der groben Judge-Ursache; die grobe greift
     // nur, wenn nichts Feineres vorliegt. So bleibt der normale Providerpfad (401/429/5xx/Parse) ehrlich
     // fein statt pauschal „model-error".
     const judgeReason = structuredReason ?? coarseJudge;
     if (judgeReason !== null) {
-      return { ok: false, fallbackReason: judgeReason };
+      return { ok: false, fallbackReason: judgeReason, coverage };
     }
     if (failure !== null) {
       // RT-001: ENG BEGRENZTER Regex-Fallback NUR für geworfene, uneingeordnete Fehler (z. B.
       // ModelCapacityError → model-error; Detection-/Backpressurefehler über den Log-Haken). Der
       // strukturierte Weg oben hat hier bereits Vorrang gehabt.
-      return { ok: false, fallbackReason: classifyAiCheckFailure(failure) };
+      return { ok: false, fallbackReason: classifyAiCheckFailure(failure), coverage };
     }
     // bens V1: eine vertraulichkeitsbedingte KI-Blockade ist ehrlich "confidential" (Cloud-only), NICHT
     // "done" — geprüft wurde nur die (lokale) deterministische Ebene, nicht per zulässigem Modell.
     if (confidentialBlocked) {
-      return { ok: false, fallbackReason: "confidential" };
+      return { ok: false, fallbackReason: "confidential", coverage };
     }
     if (!deps.reasoner.status().active) {
-      return { ok: false, fallbackReason: "no-model" };
+      return { ok: false, fallbackReason: "no-model", coverage };
     }
-    return { ok: true };
+    return { ok: true, coverage };
   };
 }

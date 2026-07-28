@@ -32,11 +32,15 @@ import {
   shouldAutoAskFromSearch,
 } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
-import { answerReviewGuard, answerStatus, conflictAwareSourceRefs } from "../lib/askView";
+// AUFTRAG-mega39 BLOCK D2: die zweite Liste erscheint nur noch, wenn sie etwas Eigenes trägt.
+import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
+import { answerReviewGuard } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
+// AUFTRAG-mega33 A: die EINE effektive Antwort-Einstufung — Quelle jeder Einstufungs-Anzeige.
+import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
-import { type EvidenceTone, knowledgeClassMeta } from "../lib/knowledgeClass";
+import type { EvidenceTone } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
@@ -76,6 +80,10 @@ export function Ask(): JSX.Element {
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
   const [params] = useSearchParams();
   const [q, setQ] = useState(() => readAskQuestion(params) ?? "");
+  // AUFTRAG-mega38 BLOCK J2: „Bitte gib zuerst eine Frage ein." stand auf `/fragen`, BEVOR die
+  // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
+  // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
+  const [emptyAttempted, setEmptyAttempted] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(null);
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
@@ -109,23 +117,26 @@ export function Ask(): JSX.Element {
   // SCRUM-357 / AG-14: konfliktbewusste Quellen — ein konfliktbetroffenes Quell-KO erscheint NICHT
   // als uneingeschränkt nutzbar/gesichert (effektive, konfliktbegrenzte Nutzbarkeit + Konflikt-Chip).
   const conflicts = useConflicts();
-  const answerSources = result?.answered
-    ? conflictAwareSourceRefs(result.sources, kos.data ?? [], conflicts.data ?? [])
-    : [];
-  const reviewGuard = result?.answered
-    ? answerReviewGuard(result.knowledgeClass, answerSources)
-    : null;
-  // Mindestens eine Antwortquelle hat einen offenen Konflikt → ehrlicher Antwort-Hinweis.
-  const sourcesConflicted = answerSources.some((s) => s.conflictLimited);
+  // ==============================================================================================
+  // AUFTRAG-mega33 BLOCK A (Pedi 27.07.) — HIER ENTSTEHT DIE EINSTUFUNG. GENAU EINMAL.
+  // ==============================================================================================
+  // Vorher bildeten sechs Stellen auf dieser Seite ihr eigenes Urteil aus der rohen Klasse; mega32
+  // senkte nur den Vertragskasten ab, und darunter stand weiter „Gesichert" (bens ROT 3). Ab hier
+  // gibt es EIN Ergebnis, und jede Anzeige, jeder Wächter und jeder Ausgabeweg liest ausschließlich
+  // daraus — auch die mobile Seite, über dieselbe Funktion.
+  // AUFTRAG-mega34 BLOCK A1 (bens schwerster Befund) — `conflicts.data ?? []` ist weg.
+  // Der Vorgabewert las „noch nicht geladen" und „Abruf fehlgeschlagen" als „keine Konflikte" und
+  // konnte eine Antwort dadurch fail-open als gesichert ausgeben. Jetzt reist der Konfliktstand mit
+  // seiner Herkunft; unbelegt ⇒ nie „verified", dafür ein benannter Hinweis.
+  const conflictKnown = conflictKnowledge(conflicts);
+  const effective = result ? effectiveAnswer(result, kos.data ?? [], conflictKnown) : null;
+  const answerSources = effective?.sources ?? [];
+  const checkCaveat = effective?.caveat ?? null;
+  const conflictCaveat = effective?.conflictCaveat ?? null;
+  const reviewGuard = effective ? answerReviewGuard(effective.grade, answerSources) : null;
   // SCRUM-366 / FR-ASK-02 / PI-K2: Antwortvertrag — quellengebunden, ehrlich (gesichert vs. ungeprüft
-  // vs. Wissenslücke), kein generischer Chatbot. Aus vorhandenen Signalen abgeleitet (kein Backend).
-  const contract = result
-    ? answerContract({
-        answered: result.answered,
-        knowledgeClass: result.knowledgeClass,
-        sourcesConflicted,
-      })
-    : null;
+  // vs. Wissenslücke), kein generischer Chatbot. Nur noch die Beschriftung der Einstufung.
+  const contract = effective ? answerContract(effective.grade) : null;
   const sourceSummary = result?.answered ? answerSourceSummary(answerSources) : null;
 
   // WP-UX-WOW-1 U3/U5: die Frage reist als Mutations-PARAMETER — Chips/Direkt-Sender rufen
@@ -133,6 +144,25 @@ export function Ask(): JSX.Element {
   // (der alte q-Closure hätte sonst die VORHERIGE Eingabe gesendet).
   const ask = useMutation({
     mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
+    // ============================================================================================
+    // AUFTRAG-mega39 BLOCK C (ben, sammel37-mega38) — DAS ERGEBNIS GEHÖRT ZU GENAU EINER FRAGE.
+    // ============================================================================================
+    // Bis mega38 ersetzte nur `onSuccess` den Zustand. Während des Ladens war die alte Antwort
+    // korrekt ausgeblendet (`!ask.isPending && result`) — nach einem FEHLER aber nicht: `result`
+    // trug noch die vorige Antwort, `asked` schon die neue Frage, und beides stand mit dem
+    // Fehlerkasten gleichzeitig auf dem Bildschirm. Der Export hätte dieselbe Verwechslung
+    // mitgenommen. Für Vertrauen ist das schlimmer als eine reine Fehlermeldung.
+    //
+    // Die Bindung entsteht hier, beim START: eine neue Frage räumt alles ab, was zur VORIGEN
+    // gehört — Antwort, Answer-Receipt und die Lücken-Id. Damit gibt es keinen Zustand mehr, in
+    // dem ein Ergebnis zu einer anderen Frage gerendert oder exportiert werden könnte; ein
+    // fehlgeschlagener Ask endet zwangsläufig bei „kein Ergebnis + Meldung".
+    onMutate: () => {
+      setResult(null);
+      setReceipt("");
+      setGapId(null);
+      setThankedSources(new Set());
+    },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r) => {
       setResult(selectAnswer(r));
@@ -157,6 +187,57 @@ export function Ask(): JSX.Element {
     mutationFn: (koId: string) => endpoints.ask.helpful(koId, receipt),
     onSuccess: (_data, koId) => setThankedSources((prev) => new Set(prev).add(koId)),
   });
+
+  // ==============================================================================================
+  // AUFTRAG-mega38 BLOCK A (Pedi 27.07.) — DIE ANTWORT MUSS ANKOMMEN.
+  // ==============================================================================================
+  // Live gemessen: der Antwortblock beginnt bei 674 px in einem 678 px hohen Sichtbereich. Bis
+  // mega37 setzte `onSuccess` nur Zustand — kein Ref, kein `scrollIntoView`, kein Fokuswechsel —
+  // und am künftigen Ergebnisort stand nichts, solange `ask.isPending` galt. Auf dem Bildschirm
+  // passierte nach dem Klick also NICHTS ausser einem grau werdenden Knopf; Pedi hat selbst zweimal
+  // geklickt. Ein Fehlerfall war überhaupt nicht dargestellt.
+  //
+  // Der Anker ist BEWUSST immer im DOM (auch vor der ersten Frage): sonst wäre `resultRef.current`
+  // in genau dem Moment leer, in dem der Ladezustand beginnt — und dann käme der Leser erst beim
+  // Ergebnis mit, nicht schon beim Warten.
+  const resultRef = useRef<HTMLDivElement | null>(null);
+  const revealResult = useCallback((withFocus: boolean): void => {
+    const el = resultRef.current;
+    if (!el) {
+      return;
+    }
+    // `block: "start"` — kein Sprung mitten in den Text; der Kopf der Ergebnisfläche steht oben.
+    // Die Existenzprüfung ist kein Test-Zugeständnis: `scrollIntoView` fehlt in jsdom UND in
+    // eingeschränkten Einbettungen. Fehlt es, bleibt wenigstens der Fokuswechsel — die Antwort
+    // darf nicht daran scheitern, dass die Seite nicht scrollen kann.
+    if (typeof el.scrollIntoView === "function") {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+    if (withFocus) {
+      // `preventScroll`, damit der Fokus die eben gesetzte Position nicht zweitens verschiebt.
+      el.focus({ preventScroll: true });
+    }
+  }, []);
+  // A1: der Ladezustand rückt selbst ins Bild — sonst wartet der Leser vor einer Stelle, die er
+  // gar nicht sieht. Ohne Fokuswechsel: hier ist noch nichts zu lesen.
+  useEffect(() => {
+    if (ask.isPending) {
+      revealResult(false);
+    }
+  }, [ask.isPending, revealResult]);
+  // A2: Antwort UND Wissenslücke — beide setzen `result`, beide sind ein Ergebnis. Der Fokus geht
+  // mit, damit Tastatur und Screenreader an derselben Stelle weiterlesen wie das Auge.
+  useEffect(() => {
+    if (result) {
+      revealResult(true);
+    }
+  }, [result, revealResult]);
+  // A3: der Fehlerfall ist derselbe Mangel — eine Meldung unterhalb des Randes ist keine Meldung.
+  useEffect(() => {
+    if (ask.isError) {
+      revealResult(true);
+    }
+  }, [ask.isError, revealResult]);
 
   // D-AISTATE PAKET 3 (bens V4, aistate-fix3): der EINE zentrale Submit für Formular, Chips UND
   // Auto-Ask — mit Availability- UND Pending-Guard. Ohne nutzbares Modell löst KEIN Weg (auch kein
@@ -207,7 +288,7 @@ export function Ask(): JSX.Element {
   const { push } = useToast();
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
   const buildExport = (): { markdown: string; filename: string } | null => {
-    if (!result?.answered) {
+    if (!result?.answered || !effective) {
       return null;
     }
     const generatedAt = new Date().toISOString();
@@ -222,8 +303,11 @@ export function Ask(): JSX.Element {
     const markdown = buildAnswerMarkdown({
       question: asked || q,
       answer: result.answer ?? "",
-      statusLabel: t(`ask.status.${answerStatus(result.knowledgeClass).key}`),
-      evidenceLabel: t(knowledgeClassMeta(result.knowledgeClass).labelKey),
+      // AUFTRAG-mega33 A2: Kopieren und Markdown-Download exportieren die EFFEKTIVE Einstufung.
+      // Vorher stand im Export weiter „Gesichert", während die Seite bereits einen Prüfvorbehalt
+      // zeigte — der Export ist die Form, die das Haus verlässt und am längsten überlebt.
+      statusLabel: t(`ask.status.${effective.status.key}`),
+      evidenceLabel: t(effective.evidence.labelKey),
       trust: result.trust,
       steps: result.steps.map((s) => ({ description: s.description, snippet: s.snippet })),
       sources,
@@ -342,6 +426,9 @@ export function Ask(): JSX.Element {
           // PAKET 3.1 (D-AISTATE, bens V4): Enter/Formular läuft über DENSELBEN zentralen Submit wie
           // Chips und Auto-Ask — die harte KI-Sperre (Availability + Pending) sitzt in submitAsk;
           // kein Weg umgeht die ausgegraute Schaltfläche (bens Bypass-Befund 6.2).
+          // AUFTRAG-mega38 BLOCK J2: der Fehlversuch wird HIER vermerkt — der Knopf ist bei leerer
+          // Frage gesperrt, per Eingabetaste kommt man aber sehr wohl bis hierher.
+          setEmptyAttempted(q.trim().length === 0);
           submitAsk(q);
         }}
       >
@@ -350,7 +437,13 @@ export function Ask(): JSX.Element {
           onChange={(e) => setQ(e.target.value)}
           placeholder={t("ask.placeholder")}
           // E2E-018: leere/Whitespace-Frage ist ungültig — für Screenreader auszeichnen.
-          aria-invalid={q.trim().length === 0}
+          // AUFTRAG-mega39 BLOCK G: erst NACH dem Fehlversuch. mega38 J2 hat den sichtbaren Tadel
+          // zeitlich richtiggestellt (die Meldung erscheint erst, wenn jemand tatsächlich abzuschicken
+          // versucht hat) — das Signal daneben stand weiter ab dem ersten Bildaufbau auf „ungültig".
+          // Für eine Screenreader-Nutzerin hiess das: das leere Feld, das sie gerade erst gefunden
+          // hat, meldet sich als fehlerhaft, bevor sie etwas getan hat. Dieselbe Zurechtweisung wie
+          // J2, nur für jemanden, der den Bildschirm nicht sieht. Jetzt laufen beide im Takt.
+          aria-invalid={emptyAttempted && q.trim().length === 0}
           aria-describedby="ask-empty-hint"
           className="h-11 flex-1 rounded-input border border-hairline bg-surface px-3.5 text-sm outline-none focus:border-ink/30"
         />
@@ -373,7 +466,7 @@ export function Ask(): JSX.Element {
         aria-live="polite"
         className="mt-1.5 block text-[12px] text-muted"
       >
-        {answerAi.available && q.trim().length === 0 ? t("ask.emptyHint") : ""}
+        {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
       </output>
       <AiUnavailableHint show={!answerAi.available} />
 
@@ -419,318 +512,451 @@ export function Ask(): JSX.Element {
         })}
       </div>
 
-      {result && contract ? (
-        <>
-          {/* SCRUM-366 / AG-P2-2 / AG-P2-3 / PI-K2: Antwortvertrag — ruhige Karte, die vor dem Lesen
-              klar macht: Worauf basiert die Antwort? Gesichert, ungeprüft oder Wissenslücke? Quellen-
-              bilanz + ehrliche Trust-Notiz (kein Wahrheitsversprechen) + sicherer nächster Schritt. */}
-          <Card
-            className={`mt-5 ${
-              contract.tone === "pos"
-                ? "border-trust-pos-fill bg-trust-pos-bg"
-                : "border-trust-warn-fill bg-trust-warn-bg"
-            }`}
+      {/* AUFTRAG-mega38 BLOCK A: DIE Ergebnisfläche. Sie ist immer im DOM (s. revealResult) und
+          trägt alles, was auf eine Frage folgen kann — Warten, Fehler, Antwort, Wissenslücke.
+          `scroll-mt-*` hält beim Anspringen etwas Luft über dem Kopf. */}
+      <div
+        ref={resultRef}
+        tabIndex={-1}
+        data-testid="ask-result-anchor"
+        className="scroll-mt-6 outline-none"
+      >
+        {/* A1: der Ladezustand steht DORT, wo die Antwort erscheinen wird — nicht am Knopf. Die
+            Mindesthöhe ist der Punkt: die Seite muss sich sichtbar verändern, sonst klickt der
+            Leser ein zweites Mal, weil er den ersten Klick für verloren hält. */}
+        {ask.isPending ? (
+          <div
+            data-testid="ask-pending"
+            aria-busy="true"
+            aria-live="polite"
+            className="mt-5 min-h-[13rem] rounded-card border border-dashed border-hairline bg-surface p-5"
           >
             <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
               {t("ask.contract.label")}
             </span>
-            <p
-              className={`mt-0.5 text-[13px] font-semibold ${
-                contract.tone === "pos" ? "text-trust-pos-text" : "text-trust-warn-text"
+            <p className="mt-0.5 text-[13px] font-semibold text-text">{t("ask.pending.title")}</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+              {t("ask.pending.body")}
+            </p>
+            {/* Ruhige Platzhalterzeilen: sie zeigen die FORM der kommenden Antwort, ohne etwas
+                über ihren Inhalt zu behaupten. */}
+            <div aria-hidden="true" className="mt-4 space-y-2">
+              <div className="h-3 w-11/12 animate-pulse rounded-pill bg-page" />
+              <div className="h-3 w-9/12 animate-pulse rounded-pill bg-page" />
+              <div className="h-3 w-10/12 animate-pulse rounded-pill bg-page" />
+              <div className="h-3 w-6/12 animate-pulse rounded-pill bg-page" />
+            </div>
+          </div>
+        ) : null}
+        {/* A3: bis mega37 hinterließ eine abgewiesene Anfrage eine völlig unveränderte Seite —
+            kein Toast, keine Meldung, nichts. Jetzt steht sie an derselben Stelle wie die Antwort. */}
+        {ask.isError ? (
+          <div
+            data-testid="ask-error"
+            role="alert"
+            className="mt-5 rounded-card border border-trust-crit-fill bg-trust-crit-bg p-5"
+          >
+            <p className="text-[13px] font-semibold text-trust-crit-text">{t("ask.error.title")}</p>
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-trust-crit-text">
+              {t("ask.error.body")}
+            </p>
+            <Button className="mt-3" variant="ghost" onClick={() => submitAsk(asked || q)}>
+              {t("ask.error.retry")}
+              <ArrowRight size={14} />
+            </Button>
+          </div>
+        ) : null}
+        {/* Solange eine neue Frage läuft, bleibt die ALTE Antwort nicht stehen: sie gehört zu einer
+            anderen Frage, und stehenzubleiben hieße, sie als Antwort auf die neue auszugeben. */}
+        {!ask.isPending && result && contract ? (
+          <>
+            {/* SCRUM-366 / AG-P2-2 / AG-P2-3 / PI-K2: Antwortvertrag — ruhige Karte, die vor dem Lesen
+              klar macht: Worauf basiert die Antwort? Gesichert, ungeprüft oder Wissenslücke? Quellen-
+              bilanz + ehrliche Trust-Notiz (kein Wahrheitsversprechen) + sicherer nächster Schritt. */}
+            <Card
+              className={`mt-5 ${
+                contract.tone === "pos"
+                  ? "border-trust-pos-fill bg-trust-pos-bg"
+                  : "border-trust-warn-fill bg-trust-warn-bg"
               }`}
             >
-              {t(contract.titleKey)}
-            </p>
-            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(contract.bodyKey)}</p>
-            {sourceSummary && sourceSummary.total > 0 ? (
-              <div className="mt-2 flex flex-wrap gap-1.5">
-                <span className="rounded-pill bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
-                  {t("ask.contract.sumTotal", { count: sourceSummary.total })}
-                </span>
-                {sourceSummary.validated > 0 ? (
-                  <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
-                    {t("ask.contract.sumValidated", { count: sourceSummary.validated })}
-                  </span>
-                ) : null}
-                {sourceSummary.open > 0 ? (
-                  <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
-                    {t("ask.contract.sumOpen", { count: sourceSummary.open })}
-                  </span>
-                ) : null}
-                {sourceSummary.conflictLimited > 0 ? (
-                  <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
-                    {t("ask.contract.sumConflict", { count: sourceSummary.conflictLimited })}
-                  </span>
-                ) : null}
-              </div>
-            ) : null}
-            {contract.sourceBound ? (
-              <p className="mt-2 text-[11.5px] leading-relaxed text-muted-2">
-                {t(ANSWER_CONTRACT_TRUST_NOTE_KEY)}
+              <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                {t("ask.contract.label")}
+              </span>
+              <p
+                className={`mt-0.5 text-[13px] font-semibold ${
+                  contract.tone === "pos" ? "text-trust-pos-text" : "text-trust-warn-text"
+                }`}
+              >
+                {t(contract.titleKey)}
               </p>
-            ) : null}
-            <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
-          </Card>
-          {result.answered ? (
-            <Card className="print-area mt-3">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <div className="flex flex-wrap items-center gap-1.5">
-                  {/* SCRUM-250: ehrlicher Antwort-Status aus der Knowledge-Class (gesichert vs ungeprüft). */}
-                  <span
-                    className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[answerStatus(result.knowledgeClass).tone]}`}
-                  >
-                    {t(`ask.status.${answerStatus(result.knowledgeClass).key}`)}
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                {t(contract.bodyKey)}
+              </p>
+              {sourceSummary && sourceSummary.total > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1.5">
+                  <span className="rounded-pill bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
+                    {t("ask.contract.sumTotal", { count: sourceSummary.total })}
                   </span>
-                  <span
-                    className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[knowledgeClassMeta(result.knowledgeClass).tone]}`}
-                  >
-                    {t("ask.evidence")}: {t(knowledgeClassMeta(result.knowledgeClass).labelKey)}
-                  </span>
+                  {sourceSummary.validated > 0 ? (
+                    <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
+                      {t("ask.contract.sumValidated", { count: sourceSummary.validated })}
+                    </span>
+                  ) : null}
+                  {sourceSummary.open > 0 ? (
+                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
+                      {t("ask.contract.sumOpen", { count: sourceSummary.open })}
+                    </span>
+                  ) : null}
+                  {sourceSummary.conflictLimited > 0 ? (
+                    <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
+                      {t("ask.contract.sumConflict", { count: sourceSummary.conflictLimited })}
+                    </span>
+                  ) : null}
                 </div>
-                <ConfidenceBar value={result.trust} />
-              </div>
-              {/* SCRUM-430 (VIP): Antwort inkl. Quellen exportieren/teilen — Kopieren, Markdown-Download,
+              ) : null}
+              {contract.sourceBound ? (
+                <p className="mt-2 text-[11.5px] leading-relaxed text-muted-2">
+                  {t(ANSWER_CONTRACT_TRUST_NOTE_KEY)}
+                </p>
+              ) : null}
+              <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
+            </Card>
+            {result.answered ? (
+              <Card className="print-area mt-3">
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {/* SCRUM-250 / AUFTRAG-mega33 A2: Status und Evidenz kommen aus der EINEN
+                      effektiven Einstufung — nicht mehr je einzeln aus der rohen Knowledge-Class.
+                      Deshalb kann hier kein „Gesichert" mehr stehen, während oben ein
+                      Prüfvorbehalt sitzt (bens ROT 3). */}
+                    <span
+                      className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.status.tone ?? "warn"]}`}
+                    >
+                      {t(`ask.status.${effective?.status.key ?? "unverified"}`)}
+                    </span>
+                    <span
+                      className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.evidence.tone ?? "neutral"]}`}
+                    >
+                      {t("ask.evidence")}:{" "}
+                      {t(effective?.evidence.labelKey ?? "ask.knowledgeClass.unbekannt")}
+                    </span>
+                  </div>
+                  {/* AUFTRAG-mega33 A4 (beim Bauen des Wortnachweises gefunden): der Trust-Balken
+                    beschriftet seinen Wert ab 85 mit dem Qualitätswort „Gesichert" — eine SIEBTE
+                    Stelle, die neben derselben Antwort Sicherheit behauptet, nur auf einer anderen
+                    Achse. Die ZAHL bleibt in jedem Fall stehen (sie ist eine Messung); das
+                    URTEILSWORT steht nur, wenn die Einstufung es trägt. Ob das Wort auch in
+                    KO-Detail/Bibliothek/Validierung anders lauten soll, ist eine Produkt-
+                    entscheidung und hier bewusst NICHT getroffen — s. Bericht. */}
+                  <ConfidenceBar value={result.trust} showLabel={effective?.grade === "verified"} />
+                </div>
+                {/* SCRUM-430 (VIP): Antwort inkl. Quellen exportieren/teilen — Kopieren, Markdown-Download,
                   Druck/PDF. Beim Drucken über die Body-Klasse isoliert (nur diese Karte). */}
-              <div className="print-hide mb-3 flex flex-wrap items-center gap-1.5">
-                <Button variant="ghost" onClick={copyAnswer}>
-                  <Copy size={14} />
-                  {t("ask.export.copy")}
-                </Button>
-                <Button variant="ghost" onClick={downloadAnswer}>
-                  <FileDown size={14} />
-                  {t("ask.export.download")}
-                </Button>
-                <Button variant="ghost" onClick={printAnswer}>
-                  <Printer size={14} />
-                  {t("ask.export.print")}
-                </Button>
-              </div>
-              {/* WP-UX-WOW-1 U1: Markdown der Antwort SICHER gerendert (Subset via React-Elemente);
+                <div className="print-hide mb-3 flex flex-wrap items-center gap-1.5">
+                  <Button variant="ghost" onClick={copyAnswer}>
+                    <Copy size={14} />
+                    {t("ask.export.copy")}
+                  </Button>
+                  <Button variant="ghost" onClick={downloadAnswer}>
+                    <FileDown size={14} />
+                    {t("ask.export.download")}
+                  </Button>
+                  <Button variant="ghost" onClick={printAnswer}>
+                    <Printer size={14} />
+                    {t("ask.export.print")}
+                  </Button>
+                </div>
+                {/* WP-UX-WOW-1 U1: Markdown der Antwort SICHER gerendert (Subset via React-Elemente);
                   Kopieren/Download/Druck nutzen weiter den ROHEN Text (buildExport unverändert). */}
-              <AnswerMarkdown
-                text={result.answer ?? ""}
-                className="text-[15px] leading-relaxed text-text"
-              />
-              {reviewGuard ? (
-                <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                  <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
-                  <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
-                  <Link
-                    to={demoHref(reviewGuard.ctaTo, params)}
-                    className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:opacity-90"
-                  >
-                    {t(reviewGuard.ctaKey)}
-                    <ArrowRight size={13} />
-                  </Link>
-                </div>
-              ) : null}
-              {result.steps.length > 0 ? (
-                <div className="mt-4">
-                  <SectionLabel>{t("ask.steps")}</SectionLabel>
-                  <ul className="space-y-2">
-                    {result.steps.map((s) => (
-                      <li
-                        key={s.description}
-                        className="rounded-btn bg-page p-2.5 text-[13px] text-text"
-                      >
-                        {/* Pedi 05.07.: Die Quellen-Headline verlinkt direkt auf das Wissensobjekt in
+                <AnswerMarkdown
+                  text={result.answer ?? ""}
+                  className="text-[15px] leading-relaxed text-text"
+                />
+                {reviewGuard ? (
+                  <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                    <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
+                    <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
+                    <Link
+                      to={demoHref(reviewGuard.ctaTo, params)}
+                      className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:opacity-90"
+                    >
+                      {t(reviewGuard.ctaKey)}
+                      <ArrowRight size={13} />
+                    </Link>
+                  </div>
+                ) : null}
+                {/* AUFTRAG-mega39 BLOCK D2: die Liste erschien bis mega38 IMMER — und wiederholte
+                  dabei Eintrag für Eintrag die Quellenliste darunter, unter einem Namen
+                  („Argumentationsschritte"), den es nicht gibt: es existiert keine protokollierte
+                  Herleitung. Sie erscheint jetzt nur noch, wenn sie eine Fundstelle trägt, die in
+                  der Quellenliste NICHT steht (lib/askSteps.ts). */}
+                {stepsWorthShowing(result.steps, answerSources) ? (
+                  <div className="mt-4">
+                    <SectionLabel>{t("ask.steps")}</SectionLabel>
+                    <ul className="space-y-2">
+                      {stepsBeyondSources(result.steps, answerSources).map((s) => (
+                        <li
+                          key={s.description}
+                          className="rounded-btn bg-page p-2.5 text-[13px] text-text"
+                        >
+                          {/* Pedi 05.07.: Die Quellen-Headline verlinkt direkt auf das Wissensobjekt in
                             der Bibliothek — so kommt man aus der Antwort schnell zum Artikel. */}
-                        {s.sourceId ? (
-                          <Link
-                            to={demoHref(`/wissen/${s.sourceId}`, params)}
-                            className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
-                          >
-                            <span className="text-text">{s.description}</span>
-                            <ArrowRight size={12} className="shrink-0 text-muted-2" />
-                          </Link>
-                        ) : (
-                          s.description
-                        )}
-                        {s.snippet ? (
-                          <span className="mt-1 block font-mono text-[11px] text-muted-2">
-                            “{s.snippet}”
-                          </span>
-                        ) : null}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              {/* SCRUM-357 / AG-14 / VC-P1-1: mind. eine Antwortquelle hat einen offenen Konflikt →
+                          {s.sourceId ? (
+                            <Link
+                              to={demoHref(`/wissen/${s.sourceId}`, params)}
+                              className="inline-flex items-center gap-1 font-medium text-brand-text hover:underline"
+                            >
+                              <span className="text-text">{s.description}</span>
+                              <ArrowRight size={12} className="shrink-0 text-muted-2" />
+                            </Link>
+                          ) : (
+                            s.description
+                          )}
+                          {s.snippet ? (
+                            <span className="mt-1 block font-mono text-[11px] text-muted-2">
+                              “{s.snippet}”
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
+                {/* SCRUM-357 / AG-14 / VC-P1-1: mind. eine Antwortquelle hat einen offenen Konflikt →
                 ehrlicher Hinweis, dass die Antwort trotz Status nicht uneingeschränkt gesichert ist. */}
-              {sourcesConflicted ? (
-                <div className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
-                  <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                    {t("conflict.impact.title")}
-                  </p>
-                  <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                    {t("conflict.impact.hint")}
-                  </p>
-                  <Link
-                    to="/konflikte"
-                    className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
+                {effective?.sourcesConflicted ? (
+                  <div className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
+                    <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                      {t("conflict.impact.title")}
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                      {t("conflict.impact.hint")}
+                    </p>
+                    <Link
+                      to="/konflikte"
+                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
+                    >
+                      {t("conflict.impact.cta")}
+                    </Link>
+                  </div>
+                ) : null}
+                {/* ==========================================================================
+                  AUFTRAG-mega32 BLOCK E (Pedi 27.07.) — DER PRÜFVORBEHALT.
+                  ==========================================================================
+                  Der Hinweis oben spricht über GEFUNDENE Konflikte. Dieser hier spricht über
+                  das, was gar nicht erst vollständig gesucht wurde — und er benennt, worauf er
+                  sich bezieht: wie viele der herangezogenen Quellen betroffen sind, von wie
+                  vielen, und mit welcher Ursache. Ohne ihn läse sich eine Antwort als gesichert,
+                  obwohl unbekannte Konflikte nicht ausgeschlossen sind. */}
+                {/* ==========================================================================
+                  AUFTRAG-mega34 BLOCK A2 — DER HINWEIS AUF DEN UNBEKANNTEN KONFLIKTSTAND.
+                  ==========================================================================
+                  Der Vorbehalt darunter spricht über Prüf-Läufe, die es nicht vollständig gab.
+                  Dieser hier spricht über die Konfliktliste, die diese Seite gerade GAR NICHT
+                  kennt — weil sie noch lädt oder weil ihr Abruf abgerissen ist. Ohne ihn läse
+                  sich ein Netzfehler als „keine Konflikte" und damit als Sicherheit. */}
+                {conflictCaveat ? (
+                  <div
+                    data-testid="ask-conflict-caveat"
+                    className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
                   >
-                    {t("conflict.impact.cta")}
-                  </Link>
-                </div>
-              ) : null}
-              {result.sources.length > 0 ? (
-                <div className="mt-4">
-                  <SectionLabel>{t("ask.sources")}</SectionLabel>
-                  {/* SCRUM-300: ehrliche Kernaussage — die Antwort ist quellengebunden und nur so
+                    <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                      {t("ask.conflictCaveat.title")}
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                      {t(`ask.conflictCaveat.${conflictCaveat.reason}`)}
+                    </p>
+                  </div>
+                ) : null}
+                {checkCaveat ? (
+                  <div
+                    data-testid="ask-check-caveat"
+                    className="mt-3 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
+                  >
+                    <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                      {t("ask.checkCaveat.title")}
+                    </p>
+                    <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                      {t(`ask.checkCaveat.${checkCaveat.reason}`, {
+                        unproven: checkCaveat.unproven,
+                        total: checkCaveat.total,
+                      })}
+                    </p>
+                  </div>
+                ) : null}
+                {result.sources.length > 0 ? (
+                  <div className="mt-4">
+                    <SectionLabel>{t("ask.sources")}</SectionLabel>
+                    {/* SCRUM-300: ehrliche Kernaussage — die Antwort ist quellengebunden und nur so
                     belastbar wie die genutzte Quelle (Status/Trust/Nutzbarkeit). */}
-                  <p className="mt-0.5 text-[12px] text-muted-2">{t("ask.sourcesHint")}</p>
-                  {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail.
+                    <p className="mt-0.5 text-[12px] text-muted-2">{t("ask.sourcesHint")}</p>
+                    {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail.
                     SCRUM-300: je Quelle die kanonische Nutzbarkeit (gleiche Sprache wie KO-Detail/
                     Library) + Demo-Kontext am Link weitertragen (kein Auto-Use). */}
-                  <ul className="mt-1.5 space-y-1.5">
-                    {answerSources.map((s) => (
-                      <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                        <Link
-                          to={demoHref(`/wissen/${s.id}`, params)}
-                          className="inline-flex items-center gap-1.5 text-[13px] text-brand-text hover:underline"
-                        >
-                          <ArrowRight size={12} className="shrink-0 text-muted-2" />
-                          <span className="text-text">{s.label}</span>
-                        </Link>
-                        {s.usability ? (
-                          <span
-                            title={t(useReadiness(s.usability).hintKey)}
-                            className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
+                    <ul className="mt-1.5 space-y-1.5">
+                      {answerSources.map((s) => (
+                        <li key={s.id} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                          <Link
+                            to={demoHref(`/wissen/${s.id}`, params)}
+                            className="inline-flex items-center gap-1.5 text-[13px] text-brand-text hover:underline"
                           >
-                            {t(useReadiness(s.usability).labelKey)}
-                          </span>
-                        ) : null}
-                        {/* SCRUM-357 / AG-14: konfliktbetroffene Quelle ehrlich kennzeichnen. */}
-                        {s.conflictLimited ? (
-                          <span
-                            title={t("conflict.impact.hint")}
-                            className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
-                          >
-                            {t("conflict.impact.badge")}
-                          </span>
-                        ) : null}
-                        {/* WP-RETEST7 R5: Treffer kam über die Bild-Fußnote — gleiche Fundstellen-
+                            <ArrowRight size={12} className="shrink-0 text-muted-2" />
+                            <span className="text-text">{s.label}</span>
+                          </Link>
+                          {s.usability ? (
+                            <span
+                              title={t(useReadiness(s.usability).hintKey)}
+                              className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${EVIDENCE_TONE[useReadiness(s.usability).tone]}`}
+                            >
+                              {t(useReadiness(s.usability).labelKey)}
+                            </span>
+                          ) : null}
+                          {/* AUFTRAG-mega32 E: die Quelle, deren Prüf-Lauf die Vollständigkeit nicht
+                            belegt. Der Vorbehalt oben nennt die Zahl — hier steht, WELCHE es sind. */}
+                          {s.checkState !== "proven" ? (
+                            <span
+                              data-testid="ask-source-unproven"
+                              title={t(`ask.checkCaveat.${s.checkState}`, {
+                                unproven: 1,
+                                total: 1,
+                              })}
+                              className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                            >
+                              {t("ask.checkCaveat.badge")}
+                            </span>
+                          ) : null}
+                          {/* SCRUM-357 / AG-14: konfliktbetroffene Quelle ehrlich kennzeichnen. */}
+                          {s.conflictLimited ? (
+                            <span
+                              title={t("conflict.impact.hint")}
+                              className="shrink-0 rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text"
+                            >
+                              {t("conflict.impact.badge")}
+                            </span>
+                          ) : null}
+                          {/* WP-RETEST7 R5: Treffer kam über die Bild-Fußnote — gleiche Fundstellen-
                             Kennzeichnung wie in der Bibliothek. */}
-                        {result.captionSources?.includes(s.id) ? (
-                          <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
-                            {t("lib.match.caption")}
-                          </span>
-                        ) : null}
-                        {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
-                        {s.demo ? (
-                          <span
-                            title={t("demo.badge.hint")}
-                            className="shrink-0 rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2"
-                          >
-                            {t("demo.badge.label")}
-                          </span>
-                        ) : null}
-                        {/* FUNKE F2 (nacht24): Danke je Quelle — Ein-Klick, idempotent je
+                          {result.captionSources?.includes(s.id) ? (
+                            <span className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2">
+                              {t("lib.match.caption")}
+                            </span>
+                          ) : null}
+                          {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
+                          {s.demo ? (
+                            <span
+                              title={t("demo.badge.hint")}
+                              className="shrink-0 rounded-pill bg-hairline-soft px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted-2"
+                            >
+                              {t("demo.badge.label")}
+                            </span>
+                          ) : null}
+                          {/* FUNKE F2 (nacht24): Danke je Quelle — Ein-Klick, idempotent je
                             Nutzer+Ziel; fließt in die Wirkung des Autors + dezente Glocke. */}
-                        <button
-                          type="button"
-                          disabled={thankedSources.has(s.id) || thankSource.isPending}
-                          onClick={() => thankSource.mutate(s.id)}
-                          className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
-                        >
-                          <ThumbsUp size={11} />
-                          {thankedSources.has(s.id) ? t("ask.thanked") : t("ask.helpful")}
-                        </button>
-                        {/* Paket 4 (nacht24, C1/C2/E1): je Quelle Status/Trust-Badge, Pulldown-
+                          <button
+                            type="button"
+                            disabled={thankedSources.has(s.id) || thankSource.isPending}
+                            onClick={() => thankSource.mutate(s.id)}
+                            className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
+                          >
+                            <ThumbsUp size={11} />
+                            {thankedSources.has(s.id) ? t("ask.thanked") : t("ask.helpful")}
+                          </button>
+                          {/* Paket 4 (nacht24, C1/C2/E1): je Quelle Status/Trust-Badge, Pulldown-
                             Summary (E2-Baustein) und Auszug im DOKUMENT-Format (SanitizedHtml-
                             Kette) — nur aus bereits geladenen, berechtigten KO-Daten. */}
-                        {(() => {
-                          const sourceKo = (kos.data ?? []).find((k) => k.id === s.id);
-                          return sourceKo ? (
-                            <AnswerSourceDetails
-                              ko={sourceKo}
-                              authorName={authorNameOf(sourceKo.author)}
-                            />
-                          ) : null;
-                        })()}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              ) : null}
-              <Button
-                className="print-hide mt-4"
-                disabled={helpfulDisabled(
-                  { pending: helpful.isPending, success: helpful.isSuccess },
-                  result.sources.length === 0,
-                )}
-                onClick={() => result.sources[0] && helpful.mutate(result.sources[0])}
-              >
-                <ThumbsUp size={15} />
-                {helpfulLabel({ success: helpful.isSuccess }, t("ask.helpful"), t("ask.thanked"))}
-              </Button>
-            </Card>
-          ) : (
-            <Card className="mt-3 border-dashed">
-              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
-                {t("ask.gapBadge")}
-              </span>
-              <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
-              <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
-              {/* SCRUM-369 / AG-12/13/P2-4: die Lücke als geführter „Wissenslücke retten"-Einstieg —
-                  Story + Beitragswert + ehrlich „keine Antwort erfunden" + geführte Schrittfolge. */}
-              <div className="mt-3 rounded-card border border-ai/30 bg-ai/5 px-3 py-2.5">
-                <div className="text-[13px] font-semibold text-ai">
-                  {t(GAP_RESCUE_TEXT.storyTitle)}
-                </div>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-                  {t(GAP_RESCUE_TEXT.impact)}
-                </p>
-                <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
-                  {t(GAP_RESCUE_TEXT.noInvent)}
-                </p>
-                <div className="mt-2 border-t border-hairline pt-2">
-                  <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                    {t(GAP_RESCUE_TEXT.stepsTitle)}
+                          {(() => {
+                            const sourceKo = (kos.data ?? []).find((k) => k.id === s.id);
+                            return sourceKo ? (
+                              <AnswerSourceDetails
+                                ko={sourceKo}
+                                authorName={authorNameOf(sourceKo.author)}
+                              />
+                            ) : null;
+                          })()}
+                        </li>
+                      ))}
+                    </ul>
                   </div>
-                  <ol className="space-y-1">
-                    {GAP_RESCUE_STEPS.map((step, i) => (
-                      <li key={step.id} className="text-[11.5px] leading-relaxed text-muted">
-                        <span className="font-semibold text-text">
-                          {i + 1}. {t(step.labelKey)}
-                        </span>{" "}
-                        {t(step.hintKey)}
-                      </li>
-                    ))}
-                  </ol>
+                ) : null}
+                <Button
+                  className="print-hide mt-4"
+                  disabled={helpfulDisabled(
+                    { pending: helpful.isPending, success: helpful.isSuccess },
+                    result.sources.length === 0,
+                  )}
+                  onClick={() => result.sources[0] && helpful.mutate(result.sources[0])}
+                >
+                  <ThumbsUp size={15} />
+                  {helpfulLabel({ success: helpful.isSuccess }, t("ask.helpful"), t("ask.thanked"))}
+                </Button>
+              </Card>
+            ) : (
+              <Card className="mt-3 border-dashed">
+                <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                  {t("ask.gapBadge")}
+                </span>
+                <p className="mt-2 text-[15px] font-semibold text-text">{t("ask.noBasisTitle")}</p>
+                <p className="mt-1 text-sm text-muted">{t("ask.noBasisBody")}</p>
+                {/* SCRUM-369 / AG-12/13/P2-4: die Lücke als geführter „Wissenslücke retten"-Einstieg —
+                  Story + Beitragswert + ehrlich „keine Antwort erfunden" + geführte Schrittfolge. */}
+                <div className="mt-3 rounded-card border border-ai/30 bg-ai/5 px-3 py-2.5">
+                  <div className="text-[13px] font-semibold text-ai">
+                    {t(GAP_RESCUE_TEXT.storyTitle)}
+                  </div>
+                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                    {t(GAP_RESCUE_TEXT.impact)}
+                  </p>
+                  <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+                    {t(GAP_RESCUE_TEXT.noInvent)}
+                  </p>
+                  <div className="mt-2 border-t border-hairline pt-2">
+                    <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                      {t(GAP_RESCUE_TEXT.stepsTitle)}
+                    </div>
+                    <ol className="space-y-1">
+                      {GAP_RESCUE_STEPS.map((step, i) => (
+                        <li key={step.id} className="text-[11.5px] leading-relaxed text-muted">
+                          <span className="font-semibold text-text">
+                            {i + 1}. {t(step.labelKey)}
+                          </span>{" "}
+                          {t(step.hintKey)}
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
                 </div>
-              </div>
-              {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
-              <p className="mt-2 text-[13px] text-muted">{t("ask.gapNext")}</p>
-              {/* SCRUM-283: ehrlich + datensparsam — Frage wird als Lücke gespeichert, keine Antwort,
+                {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
+                <p className="mt-2 text-[13px] text-muted">{t("ask.gapNext")}</p>
+                {/* SCRUM-283: ehrlich + datensparsam — Frage wird als Lücke gespeichert, keine Antwort,
                 keine sensiblen Details; geprüfte Erfahrung später ergänzen. */}
-              <p className="mt-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
-                {t(gapPrivacyNoticeKey())}
-              </p>
-              <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
-                {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
-                {gapId ? (
+                <p className="mt-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
+                  {t(gapPrivacyNoticeKey())}
+                </p>
+                <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
+                  {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
+                  {gapId ? (
+                    <Link
+                      to={captureGapHref(gapId)}
+                      className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:opacity-90"
+                    >
+                      {t(GAP_RESCUE_TEXT.cta)}
+                      <ArrowRight size={15} />
+                    </Link>
+                  ) : null}
                   <Link
-                    to={captureGapHref(gapId)}
-                    className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:opacity-90"
+                    to="/risiko"
+                    className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-text"
                   >
-                    {t(GAP_RESCUE_TEXT.cta)}
+                    {t("ask.toGaps")}
                     <ArrowRight size={15} />
                   </Link>
-                ) : null}
-                <Link
-                  to="/risiko"
-                  className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-text"
-                >
-                  {t("ask.toGaps")}
-                  <ArrowRight size={15} />
-                </Link>
-              </div>
-            </Card>
-          )}
-        </>
-      ) : null}
+                </div>
+              </Card>
+            )}
+          </>
+        ) : null}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
-import type { ModelRunRepo, ModelRunStatus, ModelRunTask } from "../../model-runs";
+import {
+  type ModelRunContext,
+  type ModelRunRepo,
+  type ModelRunStatus,
+  type ModelRunTask,
+  sanitizeModelRunContext,
+} from "../../model-runs";
 import { ModelCapacityError } from "./model-concurrency";
 // WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
 // ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
@@ -592,6 +598,10 @@ export class Reasoner {
     run: (provider: ReasonerProvider) => Promise<T>,
     // SCRUM-502 Schicht 2: vertraulicher Eingabetext → Cloud aus der Kette (siehe providerChain).
     confidential = false,
+    // mega26 Block A: LAUFKONTEXT des Aufrufers (wer/woran). Als LETZTER Parameter, damit alle
+    // bestehenden (positionalen) Aufrufe unverändert bleiben. Ohne Kontext bleibt der Datensatz
+    // exakt wie bisher — ein ungebundener Aufrufer schreibt keine leeren Felder.
+    context?: ModelRunContext,
   ): Promise<T> {
     const startedAt = new Date().toISOString();
     const chain = this.providerChain(task, confidential);
@@ -604,12 +614,19 @@ export class Reasoner {
       try {
         const result = await run(provider);
         const fromModel = provider !== this.fallback;
-        await this.recordRun(task, locale, startedAt, "success", {
-          fallback: i > 0,
-          demo: result.demo,
-          provider: provider.name,
-          ...(fromModel ? { model: provider.name } : {}),
-        });
+        await this.recordRun(
+          task,
+          locale,
+          startedAt,
+          "success",
+          {
+            fallback: i > 0,
+            demo: result.demo,
+            provider: provider.name,
+            ...(fromModel ? { model: provider.name } : {}),
+          },
+          context,
+        );
         return result;
       } catch (err) {
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
@@ -620,12 +637,21 @@ export class Reasoner {
         lastError = err;
       }
     }
-    await this.recordRun(task, locale, startedAt, "error", {
-      fallback: chain.length > 1,
-      demo: true,
-      provider: this.fallback.name,
-      error: lastError instanceof Error ? lastError.message : "unknown",
-    });
+    // mega26 Block A: der FEHLGESCHLAGENE Lauf trägt denselben Kontext wie der erfolgreiche —
+    // gerade der Fehlerfall ist der, den ein Prüfer später zuordnen können muss.
+    await this.recordRun(
+      task,
+      locale,
+      startedAt,
+      "error",
+      {
+        fallback: chain.length > 1,
+        demo: true,
+        provider: this.fallback.name,
+        error: lastError instanceof Error ? lastError.message : "unknown",
+      },
+      context,
+    );
     throw lastError ?? new Error("Kein Provider verfügbar.");
   }
 
@@ -635,10 +661,15 @@ export class Reasoner {
     startedAt: string,
     status: ModelRunStatus,
     extra: { fallback: boolean; demo: boolean; provider: string; model?: string; error?: string },
+    // mega26 Block A: der Laufkontext des Aufrufers. Wird hier — und NUR hier — in den Datensatz
+    // geschrieben. `sanitizeModelRunContext` ist die Struktursperre gegen Inhalt: was keine Kennung
+    // ist, erreicht das Protokoll nicht. Ohne Kontext bleibt der Datensatz feldgleich zu bisher.
+    context?: ModelRunContext,
   ): Promise<void> {
     if (!this.modelRuns) {
       return;
     }
+    const runContext = sanitizeModelRunContext(context);
     await this.modelRuns.append({
       id: randomUUID(),
       task,
@@ -651,6 +682,8 @@ export class Reasoner {
       status,
       ...(extra.error ? { error: extra.error } : {}),
       ...(extra.model ? { model: extra.model } : {}),
+      ...(runContext.actor ? { actor: runContext.actor } : {}),
+      ...(runContext.subject ? { subject: runContext.subject } : {}),
     });
   }
 
@@ -1015,6 +1048,10 @@ export class Reasoner {
     keepSourceLanguage = false,
     // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
     confidential = false,
+    // mega26 Block A: der GEBUNDENE Aufrufer reicht hier seinen Laufkontext durch (wer/woran).
+    // Als letzter Parameter — bestehende positionale Aufrufe bleiben unverändert und schreiben
+    // wie bisher einen kontextlosen Datensatz.
+    context?: ModelRunContext,
   ): Promise<ExtractResult> {
     // SCRUM-411 (Pedi-Test 03.07.): Scheitert der Modell-Aufruf, obwohl ein Modell gewollt
     // UND konfiguriert ist, bekommt der Nutzer den ECHTEN Grund — nicht die falsche
@@ -1052,6 +1089,7 @@ export class Reasoner {
         }
       },
       confidential,
+      context,
     );
   }
 

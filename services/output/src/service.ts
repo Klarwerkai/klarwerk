@@ -1,7 +1,14 @@
 // FR-EXT-03 / SCRUM-117: Output-Service. Stateless — keine Persistenz, keine KO-Mutation.
 // Quelle sind ausschließlich validierte KnowledgeObjects; nicht-validierte werden abgelehnt.
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
-import { KIND_TITLE, renderBody, renderProvenance, toProvenance, toSource } from "./render";
+import {
+  KIND_TITLE,
+  OUTPUT_NO_CHECK_NOTE,
+  renderBody,
+  renderProvenance,
+  toProvenance,
+  toSource,
+} from "./render";
 import {
   type GenerateOutputInput,
   OUTPUT_KINDS,
@@ -72,8 +79,14 @@ export class OutputService {
       `_Adressat: ${audienceRole ?? "—"} · erzeugt am ${generatedAt} · ${selected.length} validierte Quelle(n)_`,
     ].join("\n");
 
+    // AUFTRAG-mega31 BLOCK B (bens ROT-3): der Warnsatz stand ausschließlich am Ende des
+    // Herkunftsblocks — also hinter dem gesamten Dokument. Wer eine fertige Arbeitsanweisung
+    // durchliest, kommt dort nie an. Er sitzt jetzt direkt unter dem Exportkopf, VOR dem Rumpf;
+    // renderProvenance wiederholt ihn am Ende (das bleibt bewusst so).
     const markdown = [
       header,
+      "",
+      OUTPUT_NO_CHECK_NOTE,
       "",
       renderBody(input.kind, selected),
       "",

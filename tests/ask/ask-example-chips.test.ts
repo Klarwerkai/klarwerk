@@ -72,14 +72,22 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
     // Der Server materialisiert vertrauliche Stufen IMMER und „intern“ bewusst nie — fehlend ist
     // damit KEINE unklare Stufe, sondern der dokumentierte intern-Fall (s. confidentialityOf).
     const chips = buildAskExampleChips(
-      [ko("Ohne Feld", "validiert"), ko("Explizit intern", "validiert", "intern")],
+      [ko("Ventil ohne Feld", "validiert"), ko("Pumpe explizit intern", "validiert", "intern")],
       () => 0,
     );
     expect(chips.filter((chip) => chip.kind === "ko").length).toBe(2);
   });
 
   it("wählt höchstens ASK_CHIP_MAX_KOS validierte KOs (ohne Duplikate)", () => {
-    const many = ["A", "B", "C", "D", "E"].map((t) => ko(t, "validiert"));
+    // AUFTRAG-mega38 BLOCK J3: die Titel muessen jetzt wie ein Satz aussehen — ein einzelner
+    // Buchstabe wird nie mehr zur Beispielfrage. Gegenstand DIESES Falls bleibt die Hoechstzahl.
+    const many = [
+      "Ventil A entlasten",
+      "Pumpe B pruefen",
+      "Filter C wechseln",
+      "Motor D warten",
+      "Leitung E spuelen",
+    ].map((t) => ko(t, "validiert"));
     const chips = buildAskExampleChips(many, () => 0);
     const koChips = chips.filter((c) => c.kind === "ko");
     expect(koChips.length).toBe(ASK_CHIP_MAX_KOS);
@@ -94,7 +102,7 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
   });
 
   it("ohne validierten Bestand: statische Beispiele NEUTRAL (keine Ergebnis-Behauptung)", () => {
-    const chips = buildAskExampleChips([ko("Nur offen", "offen")], () => 0);
+    const chips = buildAskExampleChips([ko("Nur ein offener Beitrag", "offen")], () => 0);
     expect(chips.length).toBe(ASK_EXAMPLES.length);
     for (const chip of chips) {
       expect(chip.kind).toBe("example");
@@ -104,8 +112,23 @@ describe("WP-UX-WOW-1 U2: buildAskExampleChips", () => {
     }
   });
 
+  // AUFTRAG-mega38 BLOCK J3: der rohe Importtitel darf nie mehr der erste Vorschlag sein.
+  it("ein roher Importtitel wird NIE zur Beispielfrage — auch nicht als einziger validierter", () => {
+    const chips = buildAskExampleChips(
+      [ko("2 General requirements Based on HD Handbuch Vers Q1-2025 (partly)", "validiert")],
+      () => 0,
+    );
+    // Kein satzfoermiger Titel uebrig → die festen, neutralen Beispiele.
+    expect(chips.every((chip) => chip.kind === "example")).toBe(true);
+  });
+
   it("die Zufallsquelle steuert die Auswahl (verschiedene Picks → verschiedene Titel)", () => {
-    const many = ["A", "B", "C", "D"].map((t) => ko(t, "validiert"));
+    const many = [
+      "Ventil A entlasten",
+      "Pumpe B pruefen",
+      "Filter C wechseln",
+      "Motor D warten",
+    ].map((t) => ko(t, "validiert"));
     const low = buildAskExampleChips(many, () => 0);
     const high = buildAskExampleChips(many, () => 0.99);
     expect(low[0]).not.toEqual(high[0]);

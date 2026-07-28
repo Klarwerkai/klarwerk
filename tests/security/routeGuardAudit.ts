@@ -241,6 +241,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/external/policy": { protection: "ko.read" },
   "PUT /api/external/policy": { protection: "users.manage" },
 
+  // --- AI-Check-Abdeckung (ai-check-coverage-routes.ts) ---
+  // AUFTRAG-mega29 C2: schmale Bestands-Zusammenfassung (drei Zähler, keine Objektdaten) für die
+  // LEEREN Konflikt-/Duplikat-Boards — dieselbe Lesegrenze wie die beiden Boards selbst.
+  "GET /api/ai-check/coverage-summary": { protection: "ko.read" },
+
   // --- Conflicts (conflicts-routes.ts) ---
   "GET /api/conflicts": { protection: "ko.read" },
   "GET /api/conflicts/:id": { protection: "ko.read" },

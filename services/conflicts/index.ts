@@ -66,3 +66,16 @@ export type {
 // SCRUM-491: lexikalischer Deckungs-Score — für den gedeckelten lexikalischen Fallback der Pool-Auswahl
 // im App-Orchestrator (kein neues Gehirn: derselbe Score, den die Erkennung selbst nutzt).
 export { lexicalOverlapScore } from "./src/duplicate-detect";
+// AUFTRAG-mega28 A2/A3 (Pedi 26.07.): der Ergebnis-Vertrag der Deckelung — wie viele Kandidaten
+// standen zur Wahl, wie viele wurden geprüft, wurde gedeckelt/übersprungen/abgebrochen. Der App-Root
+// stellt das Protokoll, die Läufe schreiben es fort, die Oberfläche liest es.
+// AUFTRAG-mega32 A1/B: `isCompleteRun` ist die KANONISCHE positive Vollständigkeits-Invariante (die
+// beiden Spiegel diesseits der Modulgrenzen leiten nichts eigenständig ab); `singleRunBalances`
+// prüft die Buchhaltungs-Gleichung eines EINZELLAUFS, die bis mega31 nur ein Kommentar behauptete.
+export {
+  type DetectionCoverage,
+  emptyCoverage,
+  mergeCoverage,
+  isCompleteRun,
+  singleRunBalances,
+} from "./src/coverage";

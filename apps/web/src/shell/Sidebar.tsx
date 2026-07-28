@@ -271,7 +271,8 @@ export function Sidebar(): JSX.Element {
   const initials = (user?.name ?? "?").slice(0, 2).toUpperCase();
 
   return (
-    <aside className="flex h-full w-[252px] shrink-0 flex-col border-r border-hairline bg-surface">
+    // mega40 C: `kw-sidebar` ist ein reiner Stil-Anker für das modern-Thema (styles/modern.css).
+    <aside className="kw-sidebar flex h-full w-[252px] shrink-0 flex-col border-r border-hairline bg-surface">
       <div className="px-4 py-4">
         <Logo />
       </div>

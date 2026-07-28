@@ -2,6 +2,7 @@
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
 import { api } from "./client";
 import type {
+  AiCheckCoverageSummary,
   Analytics,
   AnswerResult,
   AskResponse,
@@ -317,6 +318,11 @@ export const endpoints = {
     settings: () => api.get<ValidationSettings>("/validation/settings"),
     saveSettings: (defaultNeededValidations: number) =>
       api.put<ValidationSettings>("/validation/settings", { defaultNeededValidations }),
+  },
+  // AUFTRAG-mega29 C2: schmale Abdeckungs-Zusammenfassung des Bestands (drei Zähler, read-only) —
+  // die Finding-Endpunkte liefern nur OFFENE Befunde und wissen nichts über die Laufabdeckung.
+  aiCheck: {
+    coverageSummary: () => api.get<AiCheckCoverageSummary>("/ai-check/coverage-summary"),
   },
   conflicts: {
     list: () => api.get<Conflict[]>("/conflicts"),

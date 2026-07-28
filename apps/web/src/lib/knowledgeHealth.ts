@@ -1,7 +1,13 @@
 // Reine, DOM-freie Ableitung für Knowledge Health (SCRUM-141) & Risiko-Cockpit (SCRUM-133).
 // Ein Modul für beide — keine doppelte Logik. Alle Werte aus echten Bestandsdaten,
 // keine Mock-/Demo-Zahlen. Kein Trend über Zeit (historische Snapshots fehlen).
-import type { BusFactorEntry, Conflict, Gap, KnowledgeObject } from "../api/types";
+import type {
+  AiCheckCoverageSummary,
+  BusFactorEntry,
+  Conflict,
+  Gap,
+  KnowledgeObject,
+} from "../api/types";
 
 export type HealthBand = "gut" | "mittel" | "kritisch";
 export type FactorDirection = "positive" | "negative";
@@ -13,9 +19,58 @@ export interface HealthFactor {
   direction: FactorDirection; // wirkt der Faktor förderlich oder belastend?
 }
 
+// ================================================================================================
+// AUFTRAG-mega33 BLOCK B (Pedis Entscheidung 27.07., nach bens ROT 1) — DER SCORE ZEIGT DEN
+// SCHLECHTESTEN FALL.
+// ================================================================================================
+//
+// DIE VORGABE AUS mega32 WAR FALSCH, und sie stammte nicht aus dem Code: „Konfliktfaktor bei
+// unbelegter Erkennung nicht einrechnen" hieß in Zahlen — belegte Erkennung mit drei gefundenen
+// Konflikten ergab 65, lückenhafte ohne gefundene ergab 80. Ein Abzug von NULL ist eben KEIN
+// neutraler Umgang mit Unwissen, sondern eine Annahme über einen unbekannten negativen Faktor:
+// dieselbe Annahme, die seit mega31 überall sonst abgeschafft ist.
+//
+// PEDIS ENTSCHEIDUNG 27.07. Bei unbelegter Erkennung rechnet die sichtbare Punktzahl mit dem
+// VOLLEN Konfliktabzug — als wären alle unbekannten Konflikte vorhanden. Der optimistische Wert
+// aus den bereits gefundenen Konflikten steht daneben, benannt als das, was er ist.
+//
+//   Spanne:  Basis − maximaler Konfliktabzug   …   Basis − Abzug der bekannten Konflikte
+//            └── das ist `score`, die große Zahl        └── das ist `scoreOptimistic`
+//
+// Bereits gefundene Konflikte bleiben in JEDEM Fall als sicherer Mindestabzug erhalten — ein
+// Konflikt, den wir kennen, verschwindet nicht dadurch, dass wir andere nicht kennen. Und weil
+// `bekannt ≤ maximal` gilt, kann eine lückenhafte Lage nie besser dastehen als dieselbe Lage mit
+// belegter Erkennung. Das ist die Zusicherung, die den ganzen Block trägt.
+export type ConflictFactorExclusion =
+  // Die Abdeckungs-Zusammenfassung weist unvollständige oder gar nicht belegte Läufe aus.
+  | "detection-incomplete"
+  // Über die Abdeckung liegt gar keine Aussage vor (Zusammenfassung nicht geladen/nicht verfügbar).
+  // Nach der Beweislast-Umkehr aus mega31 A ist „unbekannt" genau so wenig ein Beleg wie „lückenhaft".
+  | "detection-unknown";
+
+export interface ConflictFactorState {
+  // Ist die Konflikterkennung BELEGT vollständig gelaufen?
+  proven: boolean;
+  // Warum nicht — null, solange sie belegt ist.
+  reason: ConflictFactorExclusion | null;
+  // Der sichere Mindestabzug aus den BEREITS GEFUNDENEN Konflikten. Er gilt immer.
+  knownPenalty: number;
+  // Der maximal mögliche Konfliktabzug (der Deckel).
+  maxPenalty: number;
+  // Was tatsächlich in `score` steckt: unbelegt ⇒ maxPenalty, belegt ⇒ knownPenalty.
+  appliedPenalty: number;
+}
+
 export interface KnowledgeHealth {
-  score: number; // 0–100
-  band: HealthBand;
+  // Die sichtbare Zahl: der SCHLECHTESTE Fall (0–100).
+  score: number;
+  // Der optimistische Rand: Basis − Abzug der bekannten Konflikte. Bei belegter Erkennung ist er
+  // identisch mit `score` — dann gibt es keine Spanne, weil nichts offen ist.
+  scoreOptimistic: number;
+  // AUFTRAG-mega33 B3: null, solange der Konfliktanteil unbelegt ist. Ein Band ist eine Aussage
+  // über die Gesamtlage; sie mit „unvollständig" zu beschriften und trotzdem „gut" hinzuschreiben,
+  // wäre wieder eine Behauptung mit Fußnote. Also entfällt sie, bis sie belegt ist.
+  band: HealthBand | null;
   validatedRatio: number; // %
   staleRatio: number; // %
   singleSourceShare: number; // %
@@ -24,7 +79,13 @@ export interface KnowledgeHealth {
   openConflicts: number;
   avgTrust: number;
   factors: HealthFactor[];
+  // AUFTRAG-mega33 B: der Zustand des Konfliktfaktors, immer gesetzt — er trägt die Spanne.
+  conflictFactor: ConflictFactorState;
 }
+
+// Der Deckel des Konfliktabzugs. Er ist zugleich der Abzug, mit dem bei unbelegter Erkennung
+// gerechnet wird: das ist der schlechteste Fall, den dieser Faktor überhaupt annehmen kann.
+export const MAX_CONFLICT_PENALTY = 20;
 
 export interface HealthInput {
   kos: readonly KnowledgeObject[];
@@ -32,6 +93,20 @@ export interface HealthInput {
   conflicts: readonly Conflict[];
   pendingRevalidation: readonly string[];
   busFactor: readonly BusFactorEntry[];
+  // AUFTRAG-mega33 B: die serverseitige Abdeckungs-Zusammenfassung (mega29 C2). Fehlt sie, ist die
+  // Erkennung UNBELEGT — und dann gilt der schlechteste Fall, genau wie bei nachweislich
+  // lückenhafter Erkennung. Beweispflicht statt Plausibilität, dieselbe Regel wie überall sonst.
+  detectionCoverage?: AiCheckCoverageSummary | null | undefined;
+}
+
+// AUFTRAG-mega32 F: Die Erkennung ist genau dann BELEGT vollständig, wenn die Zusammenfassung
+// vorliegt UND keiner ihrer drei Lücken-Zähler etwas ausweist. Ein leerer Bestand (total 0) zählt
+// als belegt — es gibt nichts, worüber ein Lauf schweigen könnte.
+export function detectionProven(summary: AiCheckCoverageSummary | null | undefined): boolean {
+  if (!summary) {
+    return false;
+  }
+  return summary.incomplete === 0 && summary.unchecked === 0 && summary.noCoverage === 0;
 }
 
 function pct(part: number, total: number): number {
@@ -63,25 +138,44 @@ export function knowledgeHealth(input: HealthInput): KnowledgeHealth {
   const singleSourceCats = input.busFactor.filter((b) => b.singleSource).length;
   const singleSourceShare = pct(singleSourceCats, input.busFactor.length);
 
-  // Basis = Validierungsquote; Abzüge für belastende Signale, geklemmt auf 0–100.
-  const penalty =
+  // AUFTRAG-mega33 B: der Konfliktabzug hat ab jetzt ZWEI Ränder. Der bekannte Abzug ist der
+  // sichere Mindestwert — er gilt immer, auch bei lückenhafter Erkennung. Der maximale Abzug ist
+  // der schlechteste Fall, und mit ihm rechnet die sichtbare Zahl, solange nicht belegt ist, dass
+  // vollständig gesucht wurde.
+  const knownPenalty = Math.min(MAX_CONFLICT_PENALTY, openConflicts * 5);
+  const proven = detectionProven(input.detectionCoverage);
+  const conflictFactor: ConflictFactorState = {
+    proven,
+    reason: proven ? null : input.detectionCoverage ? "detection-incomplete" : "detection-unknown",
+    knownPenalty,
+    maxPenalty: MAX_CONFLICT_PENALTY,
+    appliedPenalty: proven ? knownPenalty : MAX_CONFLICT_PENALTY,
+  };
+
+  // Basis = Validierungsquote; Abzüge für belastende Signale, geklemmt auf 0–100. Die übrigen
+  // Abzüge stehen in BEIDEN Rändern — die Spanne entsteht ausschließlich aus dem Konfliktanteil.
+  const basePenalty =
     staleRatio * 0.4 + // veraltetes/zu revalidierendes Wissen
     singleSourceShare * 0.3 + // Klumpenrisiko Single-Source
-    Math.min(20, openGaps * 4) + // offene Wissenslücken
-    Math.min(20, openConflicts * 5); // offene Konflikte
-  const score = Math.max(0, Math.min(100, Math.round(validatedRatio - penalty)));
+    Math.min(20, openGaps * 4); // offene Wissenslücken
+  const clamp = (raw: number): number => Math.max(0, Math.min(100, Math.round(raw)));
+  const score = clamp(validatedRatio - basePenalty - conflictFactor.appliedPenalty);
+  const scoreOptimistic = clamp(validatedRatio - basePenalty - knownPenalty);
 
   const factors: HealthFactor[] = [
     { key: "validatedRatio", value: validatedRatio, unit: "percent", direction: "positive" },
     { key: "staleRatio", value: staleRatio, unit: "percent", direction: "negative" },
     { key: "singleSourceShare", value: singleSourceShare, unit: "percent", direction: "negative" },
     { key: "openGaps", value: openGaps, unit: "count", direction: "negative" },
+    // Die Zahl ist und bleibt die der GEFUNDENEN Konflikte. Wie viel davon in der Punktzahl steckt,
+    // steht in `conflictFactor` — nicht hier, damit die Liste keine zweite Rechnung aufmacht.
     { key: "openConflicts", value: openConflicts, unit: "count", direction: "negative" },
   ];
 
   return {
     score,
-    band: bandForScore(score),
+    scoreOptimistic,
+    band: proven ? bandForScore(score) : null,
     validatedRatio,
     staleRatio,
     singleSourceShare,
@@ -90,6 +184,7 @@ export function knowledgeHealth(input: HealthInput): KnowledgeHealth {
     openConflicts,
     avgTrust,
     factors,
+    conflictFactor,
   };
 }
 

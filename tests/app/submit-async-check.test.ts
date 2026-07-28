@@ -202,7 +202,8 @@ describe("WP-SUBMIT-ASYNC (c+d): der failed-Pfad ist ehrlich und traegt die Ursa
         judgeDuplicate: async () => null,
       } as unknown as Reasoner,
     });
-    expect(await runner("ko-1")).toEqual({ ok: false, fallbackReason: "no-model" });
+    // mega28 A2: der Ausgang trägt zusätzlich die Abdeckung — die Ursache bleibt exakt gepinnt.
+    expect(await runner("ko-1")).toMatchObject({ ok: false, fallbackReason: "no-model" });
     expect(detectionsTouched).toBe(2); // Konflikt- UND Duplikat-Erkennung liefen
   });
 

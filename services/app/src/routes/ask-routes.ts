@@ -1,5 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
-import { type AskService, isGapPriority, redactGapForViewer } from "../../../ask";
+import { type AskService, answerEvidence, isGapPriority, redactGapForViewer } from "../../../ask";
+import type { ConflictService } from "../../../conflicts";
+import type { KnowledgeObject, KoService } from "../../../knowledge-object";
 import { can } from "../../../rbac";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
@@ -42,8 +44,63 @@ declare module "fastify" {
   }
 }
 
+// ================================================================================================
+// AUFTRAG-mega34 BLOCK B1 — DER EVIDENZZUSTAND WIRD HIER ZUSAMMENGESETZT.
+// ================================================================================================
+//
+// Die REGEL steht in services/ask/src/answer-evidence.ts. Diese Route beschafft nur ihre Eingaben:
+// die Antwort (hat sie schon), die Quell-KOs und die offenen Konflikte. Beide Dienste liegen an der
+// Kompositionswurzel ohnehin vor — das ist das Hausmuster (s. livewallRoutes, impactRoutes).
+//
+// FAIL-SAFE, ausdrücklich: reißt der Konfliktabruf ab, wird `null` weitergereicht — „unbekannt",
+// nicht „keine". Ein Fehler im Konfliktdienst darf eine Antwort nicht zu stark aussehen lassen; er
+// darf die Antwort aber auch nicht verhindern, denn die Antwort selbst ist bereits fertig.
+//
+// KEIN NEUER EGRESS: `ko.get` und `conflicts.unresolved()` sind bestehende, interne Lesewege,
+// dieselben, die `GET /api/kos/:id` und `GET /api/conflicts` seit jeher benutzen.
+export interface AskRouteDeps {
+  ask: AskService;
+  ko: KoService;
+  conflicts: ConflictService;
+}
+
+async function evidenceFor(
+  deps: AskRouteDeps,
+  result: { answered: boolean; knowledgeClass: string; sources: string[] },
+  log: { warn: (obj: unknown, msg: string) => void },
+): Promise<ReturnType<typeof answerEvidence>> {
+  const sourceKos = new Map<string, KnowledgeObject>();
+  // Höchstens DEFAULT_TOP_K Quellen (8) — dieselbe N+1-Runde, die das Add-in heute schon für
+  // Titel und Datum fährt, nur einmal statt clientseitig.
+  await Promise.all(
+    result.sources.map(async (id) => {
+      try {
+        const ko = await deps.ko.get(id);
+        if (ko) {
+          sourceKos.set(id, ko);
+        }
+      } catch (err) {
+        // Nicht auflösbar ⇒ die Regel führt sie als `unknown`. Genau das ist gewollt.
+        log.warn({ err, koId: id }, "ask.evidence: Quell-KO nicht auflösbar");
+      }
+    }),
+  );
+  let openConflicts: Awaited<ReturnType<ConflictService["unresolved"]>> | null = null;
+  try {
+    openConflicts = await deps.conflicts.unresolved();
+  } catch (err) {
+    log.warn({ err }, "ask.evidence: Konfliktabruf gescheitert — Einstufung bleibt unbelegt");
+  }
+  return answerEvidence({
+    answer: result as Parameters<typeof answerEvidence>[0]["answer"],
+    sourceKos,
+    openConflicts,
+  });
+}
+
 // Fragen & Wissenslücken (§2.4 / FR-ASK).
-export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
+export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsync {
+  const ask = deps.ask;
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
     app.post<{ Body: { question?: string; locale?: string; mode?: string } }>(
@@ -87,18 +144,27 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
         // (kein neuer 500). FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
         const question = request.body.question ?? "";
         const locale: "de" | "en" = request.body.locale === "en" ? "en" : "de";
+        // AUFTRAG-mega34 B1: EIN Ausgang für alle drei Zweige — der Evidenzzustand hängt additiv am
+        // bestehenden Antwortkörper. Wer ihn nicht liest, sieht die Antwort wie bisher; wer ihn
+        // liest (Word/Klara), bekommt dieselbe Einstufung wie Desktop und Mobil.
+        const answer = async (
+          actorId: string,
+          opts?: Parameters<AskService["ask"]>[3],
+        ): Promise<void> => {
+          const out = await ask.ask(question, actorId, locale, opts);
+          const evidence = await evidenceFor(deps, out.result, request.log);
+          reply.code(200).send({ ...out, result: { ...out.result, evidence } });
+        };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
           // retrievalOnly → der vertrauliche Dokumenttext wird NIE ans Modell/den Embedder gegeben; die
           // Antwort ist rein Retrieval gegen validierte, nicht-vertrauliche KOs (kein Egress).
-          reply.code(200).send(
-            await ask.ask(question, auth.principal.id, locale, {
-              validatedOnly: true,
-              gapPolicy: "count_only",
-              retrievalOnly: true,
-            }),
-          );
+          await answer(auth.principal.id, {
+            validatedOnly: true,
+            gapPolicy: "count_only",
+            retrievalOnly: true,
+          });
           return;
         }
         // Session: in preValidation autorisiert, User request-lokal getragen.
@@ -119,15 +185,10 @@ export function askRoutes(ask: AskService, guards: Guards): FastifyPluginAsync {
         // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
         // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
         if (request.body.mode === "retrieval-only") {
-          reply.code(200).send(
-            await ask.ask(question, user.id, locale, {
-              validatedOnly: true,
-              retrievalOnly: true,
-            }),
-          );
+          await answer(user.id, { validatedOnly: true, retrievalOnly: true });
           return;
         }
-        reply.code(200).send(await ask.ask(question, user.id, locale));
+        await answer(user.id);
       },
     );
 

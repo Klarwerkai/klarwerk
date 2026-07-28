@@ -57,8 +57,17 @@ export const useValidationBoard = (f?: KoFilter) =>
   useQuery({ queryKey: ["validation", "board", f], queryFn: () => endpoints.validation.board(f) });
 export const useValidationOverview = () =>
   useQuery({ queryKey: ["validation", "overview"], queryFn: endpoints.validation.overview });
+// AUFTRAG-mega29 C2: die Abdeckungs-Zusammenfassung für die LEEREN Konflikt-/Duplikat-Boards.
+export const useAiCheckCoverageSummary = () =>
+  useQuery({
+    queryKey: ["ai-check", "coverage-summary"],
+    queryFn: endpoints.aiCheck.coverageSummary,
+  });
 export const useConflicts = () =>
-  useQuery({ queryKey: ["conflicts"], queryFn: endpoints.conflicts.list });
+  // Der Aufruf bleibt LAZY (wie useKos): die Endpunkt-Funktion wird erst im queryFn ausgelesen,
+  // nicht schon beim Rendern des Hooks. Sonst reißt jede Oberfläche, die diesen Hook mitzieht,
+  // an einem teilweise gesetzten `endpoints`-Objekt ab, bevor react-query überhaupt lädt.
+  useQuery({ queryKey: ["conflicts"], queryFn: () => endpoints.conflicts.list() });
 // Berater-Konzept Duplikate 04.07. (Stufe D4): offene Überschneidungen fürs Duplikate-Board.
 export const useDuplicates = () =>
   useQuery({ queryKey: ["duplicates"], queryFn: endpoints.duplicates.list });

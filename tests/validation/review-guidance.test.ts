@@ -53,9 +53,14 @@ describe("SCRUM-365: reviewGuidance — Was prüfe ich?", () => {
     expect(DECISION_TRUST_NOTE_KEY).toBe("val.guide.trustNote");
     expect(present(DECISION_TRUST_NOTE_KEY)).toBe(true);
     expect(text("de", DECISION_TRUST_NOTE_KEY)).toContain("keine wahrheitsgarantie");
-    expect(text("de", DECISION_TRUST_NOTE_KEY)).toContain("quorum");
+    // AUFTRAG-mega38 BLOCK I: das Fachwort „Quorum" steht nicht mehr im Nutzertext — die SACHE
+    // schon, und genau die wird hier gepinnt: dass erst genug Freigaben Wissen sichern.
+    expect(text("de", DECISION_TRUST_NOTE_KEY)).not.toContain("quorum");
+    expect(text("de", DECISION_TRUST_NOTE_KEY)).toContain("erst genug freigaben");
+    expect(text("de", DECISION_TRUST_NOTE_KEY)).toContain("mindestzahl von prüfern");
     expect(text("en", DECISION_TRUST_NOTE_KEY)).toContain("not a guarantee of truth");
-    expect(text("en", DECISION_TRUST_NOTE_KEY)).toContain("quorum");
+    expect(text("en", DECISION_TRUST_NOTE_KEY)).not.toContain("quorum");
+    expect(text("en", DECISION_TRUST_NOTE_KEY)).toContain("only enough approvals");
   });
 });
 

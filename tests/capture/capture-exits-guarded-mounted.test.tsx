@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 // AUFTRAG-mega12 Block A (bens SB-2, Fundstellen Capture.tsx :2608 / :2629 / :2678-2689): die Links
 // ZWISCHEN Erfassen und Vordertür waren rohe <Link> — der Wächter greift aber nur, wenn die
-// Navigationsquelle ihn ruft. Ein Klick auf „Dokument-Canvas" verlor damit die laufende Eingabe still.
+// Navigationsquelle ihn ruft. Ein Klick auf „Dokument-Editor" verlor damit die laufende Eingabe still.
 //
 // Dieser Test treibt die ECHTEN Links der ECHTEN Capture-Seite über reale Klicks und beweist je Ausgang:
 //   (a) bei ungespeicherter Eingabe erscheint der Wächter-Dialog UND die Route bleibt stehen,
@@ -207,13 +207,13 @@ afterEach(() => {
 
 describe("Block A: die Ausgänge von /erfassen zur Vordertür laufen durch den Wächter", () => {
   // bens Fundstelle 1 (:2608) — der Kopfzeilen-Link.
-  it("Kopfzeilen-Link Dokument-Canvas blockiert; Hier-bleiben haelt Route UND Inhalt", async () => {
+  it("Kopfzeilen-Link Dokument-Editor blockiert; Hier-bleiben haelt Route UND Inhalt", async () => {
     await mount();
     await openWorkspace();
     await typeFreitext("Der Dosierwert ist nach dem Schichtwechsel zu prüfen.");
     expect(path()).toBe("/erfassen");
 
-    await click(linkByText("Dokument-Canvas"));
+    await click(linkByText("Dokument-Editor"));
     // Der Wächter fragt — und die Route hat sich NICHT bewegt.
     expect(guardDialogOpen()).toBe(true);
     expect(path()).toBe("/erfassen");
@@ -230,12 +230,12 @@ describe("Block A: die Ausgänge von /erfassen zur Vordertür laufen durch den W
   });
 
   // bens Fundstelle 2 (:2629) — der prominente „Standardweg"-Knopf.
-  it("Standardweg-Knopf Dokument-Canvas oeffnen: nur bewusstes Verwerfen wechselt wirklich", async () => {
+  it("Standardweg-Knopf Dokument-Editor oeffnen: nur bewusstes Verwerfen wechselt wirklich", async () => {
     await mount();
     await openWorkspace();
     await typeFreitext("Ungespeicherte Zeile.");
 
-    await click(linkByText("Dokument-Canvas öffnen"));
+    await click(linkByText("Dokument-Editor öffnen"));
     expect(guardDialogOpen()).toBe(true);
     expect(path()).toBe("/erfassen");
 
@@ -247,7 +247,7 @@ describe("Block A: die Ausgänge von /erfassen zur Vordertür laufen durch den W
   // Die Gegenprobe: keine Warnung ohne Verlust.
   it("ohne ungespeicherte Eingabe wechselt derselbe Link OHNE Dialog", async () => {
     await mount();
-    await click(linkByText("Dokument-Canvas öffnen"));
+    await click(linkByText("Dokument-Editor öffnen"));
     expect(guardDialogOpen()).toBe(false);
     expect(path()).toBe(CAPTURE_FRONT_DOOR_ROUTE);
     expect(pageText()).toContain("VORDERTUER");
@@ -259,7 +259,7 @@ describe("Block A: die Ausgänge von /erfassen zur Vordertür laufen durch den W
     await openWorkspace();
     await typeFreitext("Ungespeicherte Zeile.");
 
-    const a = linkByText("Dokument-Canvas öffnen");
+    const a = linkByText("Dokument-Editor öffnen");
     await act(async () => {
       a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, metaKey: true }));
       await flush();

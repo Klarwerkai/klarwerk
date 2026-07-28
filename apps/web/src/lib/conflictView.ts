@@ -17,6 +17,50 @@ export function conflictKoPair(
   return { a: byId(conflict.koA), b: byId(conflict.koB) };
 }
 
+// ================================================================================================
+// AUFTRAG-mega32 BLOCK K (aus dem zurückgezogenen mega30, unverändert) — DIE BEWEISLAGE STEHT DA,
+// BEVOR JEMAND ÜBER DEN WORTLAUT STREITET.
+// ================================================================================================
+//
+// DER ANLASSFALL. „Alle Firmenwagen müssen blau sein" gegen „Firmenwagen ausschließlich in Rot
+// bestellen". Unter BEIDEN Karten steht bereits „keine Quelle hinterlegt · kein Quelldatum". Das ist
+// die Antwort auf die Frage, welche Seite stimmt — keine von beiden ist belegt — aber die Seite sagt
+// es nicht, und der nächste Schritt, der daraus folgt, steht nirgends.
+//
+// DIE GRENZE, DIE DIESER SATZ NICHT ÜBERSCHREITET. Er ist eine Aussage über die BEWEISLAGE, NIE ein
+// Urteil darüber, wer recht hat. Eine belegte Aussage kann falsch sein; sie ist nur belegt. Deshalb
+// heißt „genau eine Seite trägt eine Quelle" ausdrücklich nicht „diese Seite gewinnt".
+//
+// KEIN MODELLAUFRUF, KEIN EGRESS, KEINE NEUE ROUTE, KEIN NEUES FELD. Ausschließlich aus `ko.sources`
+// der beiden bereits geladenen Objekte — die Konfliktseite hat sie über ConflictKoSide schon in der
+// Hand.
+export type ConflictEvidenceBalance =
+  // Keine der beiden Seiten trägt eine Quelle.
+  | { kind: "neither" }
+  // Genau eine Seite trägt eine Quelle — `side` benennt WELCHE, damit der Text nicht raten muss.
+  | { kind: "oneSided"; side: "a" | "b" };
+
+function hasSource(ko: KnowledgeObject | null): boolean | null {
+  // Das Objekt ist nicht geladen: über seine Belege lässt sich nichts sagen. NICHT „keine Quelle" —
+  // das wäre eine Behauptung über Daten, die wir nicht haben.
+  return ko === null ? null : (ko.sources?.length ?? 0) > 0;
+}
+
+export function conflictEvidenceBalance(pair: ConflictKoPair): ConflictEvidenceBalance | null {
+  const a = hasSource(pair.a);
+  const b = hasSource(pair.b);
+  if (a === null || b === null) {
+    return null; // eine Seite unbekannt ⇒ die Zeile schweigt.
+  }
+  if (!a && !b) {
+    return { kind: "neither" };
+  }
+  if (a !== b) {
+    return { kind: "oneSided", side: a ? "a" : "b" };
+  }
+  return null; // beide belegt ⇒ die Zeile schweigt. Kein Dauerhinweis (Regel wie bei mega28).
+}
+
 // SCRUM-128: Fachliche Definition der Auflösungswirkung.
 // Eine Freitext-Entscheidung bestimmt keinen maschinell eindeutigen Gewinner →
 // daher KEINE automatische KO-Status-/Trust-Mutation (kein stilles Überschreiben).

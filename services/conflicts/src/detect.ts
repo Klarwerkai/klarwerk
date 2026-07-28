@@ -104,6 +104,12 @@ interface CandidateScore {
 
 // Stufe 1 (4.1): Kandidaten-Vorauswahl — fachliche Nachbarschaft (Kategorie/Tags/Anlage) ODER
 // Textnähe; nach Score sortiert, hart auf `cap` gedeckelt (Aufwand O(N·k) statt O(N²)).
+//
+// AUFTRAG-mega28 A1 (Pedi 26.07.): Der Deckel ist im Live-Weg wieder scharf (bis mega27 stand dort
+// Number.POSITIVE_INFINITY). Damit wird die BESTIMMTHEIT dieser Sortierung erstmals wirksam — und
+// sie war es nicht: bei gleichem Score entschied die Reihenfolge, in der die Datenquelle die Zeilen
+// lieferte (sort ist stabil, also blieb Pool-Ordnung stehen). Der refId-Stichentscheid macht die
+// Ordnung TOTAL — zwei Läufe über denselben Bestand legen dieselbe Menge vor.
 export function selectCandidates(
   subject: DetectSubject,
   pool: readonly DetectSubject[],
@@ -128,8 +134,10 @@ export function selectCandidates(
       textSim + (sameCategory ? 0.2 : 0) + (sameAsset ? 0.2 : 0) + (tagOverlap ? 0.2 : 0);
     scored.push({ subject: c, score });
   }
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, cap).map((x) => x.subject);
+  scored.sort((a, b) =>
+    b.score === a.score ? a.subject.refId.localeCompare(b.subject.refId) : b.score - a.score,
+  );
+  return (Number.isFinite(cap) ? scored.slice(0, Math.max(0, cap)) : scored).map((x) => x.subject);
 }
 
 // G-2 (3.4 Schritt 4): Beide Belegzitate müssen WÖRTLICH in den jeweiligen Kerntexten vorkommen —

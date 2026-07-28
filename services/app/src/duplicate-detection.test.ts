@@ -247,7 +247,11 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
       settings: { get: async () => null },
     } as unknown as DuplicateDetectionDeps;
     const logs: string[] = [];
-    await expect(detectDuplicatesForKo("s", deps, (m) => logs.push(m))).resolves.toBeUndefined();
+    // AUFTRAG-mega28 A3: der Lauf wirft weiterhin nicht — aber er ist seitdem nicht mehr STUMM.
+    // Statt `undefined` liefert er sein Abdeckungs-Protokoll, und ein hier gelandeter Fehler
+    // bedeutet: dieser Lauf ist NICHT vollständig gelaufen.
+    const coverage = await detectDuplicatesForKo("s", deps, (m) => logs.push(m));
+    expect(coverage.aborted).toBe(true);
     expect(logs).toHaveLength(1);
   });
 
@@ -262,7 +266,9 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
       reasoner: { judgeDuplicate: async () => null },
       settings: { get: async () => null },
     } as unknown as DuplicateDetectionDeps;
-    await expect(detectDuplicatesForKo("s", deps)).resolves.toBeUndefined();
+    // Ohne Log-Haken bleibt der Fehler still — im PROTOKOLL steht er trotzdem (mega28 A3).
+    const coverage = await detectDuplicatesForKo("s", deps);
+    expect(coverage.aborted).toBe(true);
   });
 
   it("detectConflictsForKo: Fehler in detectForSubject → Log gefeuert, kein Throw", async () => {
@@ -276,7 +282,8 @@ describe("detect*ForKo — Fehler-Logging (ben #6)", () => {
       reasoner: { judgeConflict: async () => null },
     } as unknown as Parameters<typeof detectConflictsForKo>[1];
     const logs: string[] = [];
-    await expect(detectConflictsForKo("s", deps, (m) => logs.push(m))).resolves.toBeUndefined();
+    const coverage = await detectConflictsForKo("s", deps, (m) => logs.push(m));
+    expect(coverage.aborted).toBe(true); // mega28 A3: geschluckt heißt nicht unsichtbar
     expect(logs).toHaveLength(1);
   });
 });

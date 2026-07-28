@@ -19,16 +19,21 @@ import {
   WORD_ADDIN_ASK_MAX_CHARS,
   WORD_ADDIN_ASK_TIMEOUT_MS,
   WORD_ADDIN_TITLE_MAX,
+  answerInsertEvidenceNote,
+  answerSelectionIsWhole,
+  askGradeOf,
   askLocale,
   buildAnswerInsertText,
   buildAskSourceLine,
   canInsertAnswer,
+  composeAnswerOutput,
   formatAskDateLabel,
   newestSourceDateLabel,
   openQuestionDraftTitle,
   performAsk,
   prepareAskQuestion,
   stripAskAnswerMarkdown,
+  stripComposedMetaLines,
 } from "../../apps/web/src/lib/wordAddin";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
@@ -118,11 +123,16 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
       async () => fakeRes(200, ANSWERED_BODY),
       WORD_ADDIN_ASK_TIMEOUT_MS,
     );
+    // AUFTRAG-mega34 B: die serverseitige Einstufung reist jetzt mit. Dieser Fixture-Body traegt
+    // KEIN `evidence` — der Grad ist deshalb fail-safe „unverified" (ein Server ohne Feld gilt
+    // nicht als belegt). Genau diese Vorsicht pinnt tests/app/mega34-word-einstufung.test.ts.
     expect(outcome).toEqual({
       kind: "answered",
       answer: "Ventil vor der Wartung entlasten und den Druck pruefen.",
       sources: ["ko-1", "ko-2"],
       trust: 62,
+      grade: "unverified",
+      evidence: undefined,
     });
   });
 
@@ -300,7 +310,7 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, stripAskAnswerMarkdown: stripAskAnswerMarkdown, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
+      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, askGradeOf: askGradeOf, answerInsertEvidenceNote: answerInsertEvidenceNote, composeAnswerOutput: composeAnswerOutput, stripComposedMetaLines: stripComposedMetaLines, answerSelectionIsWhole: answerSelectionIsWhole, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, stripAskAnswerMarkdown: stripAskAnswerMarkdown, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
     );
     const inline = factory() as {
       prepareAskQuestion: typeof prepareAskQuestion;
@@ -309,6 +319,11 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       canInsertAnswer: typeof canInsertAnswer;
       buildAskSourceLine: typeof buildAskSourceLine;
       buildAnswerInsertText: typeof buildAnswerInsertText;
+      askGradeOf: typeof askGradeOf;
+      answerInsertEvidenceNote: typeof answerInsertEvidenceNote;
+      composeAnswerOutput: typeof composeAnswerOutput;
+      stripComposedMetaLines: typeof stripComposedMetaLines;
+      answerSelectionIsWhole: typeof answerSelectionIsWhole;
       formatAskDateLabel: typeof formatAskDateLabel;
       newestSourceDateLabel: typeof newestSourceDateLabel;
       openQuestionDraftTitle: typeof openQuestionDraftTitle;
@@ -393,6 +408,163 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     expect(inline.buildAnswerInsertText("Antwort", "Zeile", "Hinweis")).toBe(
       buildAnswerInsertText("Antwort", "Zeile", "Hinweis"),
     );
+
+    // ------------------------------------------------------------------------------------------
+    // AUFTRAG-mega35 BLOCK C — DER WAECHTER RUFT AUF, WAS ER BEWACHT.
+    //
+    // Bis hierher standen die Einstufungshelfer und der vierte Builder-Parameter NEBEN diesem
+    // Vergleich, statt in ihm: `askGradeOf` und `answerInsertEvidenceNote` waren gar nicht aus dem
+    // Inline-Block exportiert, `buildAnswerInsertText` wurde nur mit zwei und drei Argumenten
+    // verglichen. Die Behauptung, der Aequivalenzwaechter pruefe die Einstufungsauswahl, war damit
+    // unbelegt (bens GELB-Befund 3). Ab hier wird sie ausgefuehrt.
+    // ------------------------------------------------------------------------------------------
+
+    // askGradeOf — fail-safe Ausgang inklusive: fehlendes Feld, falscher Typ, null, Grossschreibung.
+    const evidenceFixtures: unknown[] = [
+      { grade: "verified" },
+      { grade: "unverified" },
+      { grade: "Verified" },
+      { grade: true },
+      { grade: null },
+      {},
+      null,
+      undefined,
+      "verified",
+      42,
+    ];
+    for (const evidence of evidenceFixtures) {
+      expect(inline.askGradeOf(evidence), `askGradeOf:${JSON.stringify(evidence)}`).toBe(
+        askGradeOf(evidence),
+      );
+    }
+
+    // answerInsertEvidenceNote — beide Grade, inkl. leerer Texte.
+    const noteTexts = { verified: "Einstufung: gesichert.", unverified: "Einstufung: ungeprüft." };
+    for (const grade of ["verified", "unverified"] as const) {
+      expect(inline.answerInsertEvidenceNote(grade, noteTexts)).toBe(
+        answerInsertEvidenceNote(grade, noteTexts),
+      );
+      expect(inline.answerInsertEvidenceNote(grade, { verified: "", unverified: "" })).toBe(
+        answerInsertEvidenceNote(grade, { verified: "", unverified: "" }),
+      );
+    }
+
+    // buildAnswerInsertText MIT dem vierten (Einstufungs-)Parameter — alle vier Kombinationen aus
+    // Kappungs-Hinweis vorhanden/leer und Einstufung vorhanden/leer.
+    for (const truncatedNote of ["Hinweis: gekappt auf 2000.", "", "   "]) {
+      for (const evidenceNote of ["Einstufung: ungeprüft — vor Verwendung prüfen.", "", "  "]) {
+        expect(
+          inline.buildAnswerInsertText("Antwort \n", "Quelle: X", truncatedNote, evidenceNote),
+          `builder4:${JSON.stringify([truncatedNote, evidenceNote])}`,
+        ).toBe(buildAnswerInsertText("Antwort \n", "Quelle: X", truncatedNote, evidenceNote));
+      }
+    }
+
+    // composeAnswerOutput — der Bauer, den Kopieren UND Einfuegen benutzen (AUFTRAG-mega35 A1).
+    // Belegtes Quell-Datum vs. „abgerufen am", beide Grade, gekappt/ungekappt, Titel leer/gesetzt.
+    const outputTexts = {
+      verified: "Einstufung: gesichert — Quellen belegt.",
+      unverified: "Einstufung: ungeprüft — nicht als konfliktfrei belegt.",
+      sourceLine: "Quelle: {titles} (KLARWERK-Wissen, Stand {date})",
+      sourceLineRetrieved: "Quelle: {titles} (KLARWERK-Wissen, abgerufen am {date})",
+      truncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf 2000 Zeichen gekappt.",
+    };
+    const NOW = new Date(2026, 6, 27);
+    for (const grade of ["verified", "unverified"] as const) {
+      for (const truncated of [true, false]) {
+        for (const dates of [
+          ["2026-07-01T00:00:00.000Z", "2026-07-20T10:00:00.000Z"],
+          ["kaputt", undefined],
+          [],
+        ] as (string | undefined)[][]) {
+          for (const sourceTitles of [["Wartungsplan V4"], [], ["  ", "Regel 7"]]) {
+            const input = {
+              body: "Ventil V4 wird jährlich geprüft. \n",
+              sourceTitles,
+              sourceDates: dates,
+              truncated,
+              grade,
+              now: NOW,
+              texts: outputTexts,
+            };
+            expect(
+              inline.composeAnswerOutput(input),
+              `compose:${grade}/${truncated}/${dates.length}/${sourceTitles.length}`,
+            ).toBe(composeAnswerOutput(input));
+          }
+        }
+      }
+    }
+
+    // Kalibrierung: ohne den vierten Parameter waere der obige Builder-Vergleich blind. Der
+    // Einstufungstext MUSS im Ergebnis stehen — sonst prueft die Schleife nur Gleichheit von zwei
+    // gleich kaputten Fassungen.
+    expect(
+      inline.buildAnswerInsertText("A", "Q", "", "Einstufung: ungeprüft — vor Verwendung prüfen."),
+    ).toContain("Einstufung: ungeprüft");
+    expect(
+      inline.composeAnswerOutput({
+        body: "A",
+        sourceTitles: ["T"],
+        sourceDates: [],
+        truncated: false,
+        grade: "unverified",
+        now: NOW,
+        texts: outputTexts,
+      }),
+    ).toContain("Einstufung: ungeprüft");
+    // AUFTRAG-mega36 D: stripComposedMetaLines — beide Quellen-Vorlagen, beide Einstufungen, der
+    // Kappungshinweis, der bloss ERWAEHNENDE Koerper (darf nicht beschnitten werden), Metazeilen
+    // MITTEN im Text (bleiben stehen), CRLF und der Nur-Metablock-Fall.
+    for (const body of [
+      "Ventil V4 wird jährlich geprüft.",
+      "Ventil V4.\n\nQuelle: Wartungsplan V4 (KLARWERK-Wissen, Stand 20.07.2026)",
+      "Ventil V4.\n\nQuelle: Wartungsplan V4 (KLARWERK-Wissen, abgerufen am 27.07.2026)\nEinstufung: ungeprüft — nicht als konfliktfrei belegt.",
+      "Ventil V4.\r\n\r\nQuelle: X (KLARWERK-Wissen, Stand 01.01.2026)\r\nEinstufung: gesichert — Quellen belegt.\r\nHinweis: Die zugrunde liegende Frage wurde auf 2000 Zeichen gekappt.",
+      "Die Quelle des Drucks ist V4.\nQuelle: unbekannte Anlage",
+      "Quelle: X (KLARWERK-Wissen, Stand 01.01.2026)\nnoch Text danach",
+      "Quelle: X (KLARWERK-Wissen, Stand 01.01.2026)",
+      "   \n  \n",
+      "",
+    ]) {
+      expect(inline.stripComposedMetaLines(body, outputTexts), `strip:${body.slice(0, 24)}`).toBe(
+        stripComposedMetaLines(body, outputTexts),
+      );
+    }
+    // Kalibrierung: der Abzug GREIFT (sonst verglichen beide Seiten nur die Identitaet) — und er
+    // beschneidet NICHT, was bloss aehnlich aussieht.
+    expect(
+      inline.stripComposedMetaLines(
+        "A\n\nQuelle: T (KLARWERK-Wissen, Stand 01.01.2026)\nEinstufung: gesichert — Quellen belegt.",
+        outputTexts,
+      ),
+    ).toBe("A");
+    expect(inline.stripComposedMetaLines("Die Quelle: unklar", outputTexts)).toBe(
+      "Die Quelle: unklar",
+    );
+
+    // AUFTRAG-mega36 B2: answerSelectionIsWhole — ganz, Teilauswahl, Leerraum-Rand, umgedreht,
+    // leer, ausserhalb der Grenzen.
+    for (const [value, start, end] of [
+      ["Antwort", 0, 7],
+      ["Antwort", 0, 3],
+      ["\n Antwort \n\n", 2, 9],
+      ["\n Antwort \n\n", 0, 12],
+      ["Antwort", 7, 0],
+      ["Antwort", 3, 3],
+      ["   ", 0, 3],
+      ["", 0, 0],
+      ["Antwort", -5, 99],
+    ] as [string, number, number][]) {
+      expect(
+        inline.answerSelectionIsWhole(value, start, end),
+        `sel:${JSON.stringify([value, start, end])}`,
+      ).toBe(answerSelectionIsWhole(value, start, end));
+    }
+    // Kalibrierung: die Unterscheidung ist echt, nicht konstant.
+    expect(inline.answerSelectionIsWhole("Antwort", 0, 7)).toBe(true);
+    expect(inline.answerSelectionIsWhole("Antwort", 0, 3)).toBe(false);
+
     expect(inline.formatAskDateLabel(new Date(2026, 6, 22))).toBe(
       formatAskDateLabel(new Date(2026, 6, 22)),
     );
@@ -447,7 +619,9 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     // klara1b Teil A: robustes Einfuegen ueber performInsert — MODERNER Word.run-Weg (getSelection().
     // insertText) zuerst, setSelectedDataAsync als Fallback; der BEARBEITETE Feldinhalt wird eingefuegt.
     expect(html).toContain("performInsert(text, buildInsertAttempts())");
-    expect(html).toContain("var text = getEditedAnswerText();");
+    // AUFTRAG-mega35 A1: der Koerper kommt aus dem Feld, der AUSGEGEBENE Text entsteht erst hier.
+    expect(html).toContain("var body = getEditedAnswerText();");
+    expect(html).toContain("var text = composeOutputText(body);");
     // Word.run-Versuch vor dem setSelectedDataAsync-Fallback.
     const wordRun = html.indexOf("range.insertText(text, Word.InsertLocation.replace)");
     const write = html.indexOf("Office.context.document.setSelectedDataAsync(");
@@ -458,9 +632,14 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     // Office aktiv; insertAnswer greift ohne bereites Office nie in die Word-API (ehrlicher Hinweis).
     expect(html).toContain("insertBtn.disabled = !(insertable && officeUsable())");
     expect(html).toContain('if (!officeUsable()) {\n        showAskStatus("warn", t("noOffice"));');
-    // Quellen-Zeile aus aufgeloesten Titeln + Stand-Datum; die Vorbefuellung beginnt mit dem Wissen.
+    // Quellen-Zeile aus aufgeloesten Titeln + Stand-Datum.
     expect(html).toContain("buildAskSourceLine(");
-    expect(html).toContain("buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote)");
+    // AUFTRAG-mega34 B2 / mega35 A1: der ausgegebene Text traegt die Einstufung — und er entsteht
+    // im Moment der Ausgabe aus dem BEARBEITETEN Koerper, nicht aus `currentAskOutcome.answer`.
+    expect(html).toContain("return composeAnswerOutput({");
+    expect(html).toContain("body: body,");
+    expect(html).toContain("grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),");
+    expect(html).not.toContain("buildAnswerInsertText(currentAskOutcome.answer");
     // Wissensluecke: BESTEHENDER Draft-Weg (origin frontdoor) + lokalisierte Titel-Konvention +
     // Deep-Link. WP-KLARA-ASK-FIX (bens Fix 4): gap-only-Gate, Knopf-Sperre, 403 als fehlendes
     // Recht, voller Fragetext im Draft-Body (kein Verlust durch die 500-Zeichen-Statement-Kappung).
@@ -544,11 +723,17 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
   });
 
   // klara1b Teil B (Pedis Wunsch 24.07.): editierbare, kompaktere Antwort VOR dem Eintragen.
-  it("Teil B: editierbares Feld (vorbefuellt), Einfuegen nutzt den bearbeiteten Text, Kopieren-Ausweg, kompakt", () => {
-    // Editierbares Textfeld statt statischem Absatz; vorbefuellt mit der Antwort, dann Quellen-Zeile.
+  it("Teil B: editierbares Feld (nur Antwortkoerper), Ausgabe entsteht beim Ausgeben, Kopieren-Ausweg, kompakt", () => {
+    // Editierbares Textfeld statt statischem Absatz; es traegt NUR den Antwortkoerper.
     expect(html).toContain('<textarea id="ask-answer-edit"');
     expect(html).toContain('document.getElementById("ask-answer-edit").value = outcome.answer;');
-    expect(html).toContain("var full = buildDefaultInsertText();");
+    // AUFTRAG-mega35 A1/A2: es wird NICHTS mehr nachtraeglich in das Feld geschrieben, und der
+    // Torwaechter `edit.value === askAnswerPrefill` existiert nicht mehr. Beides waren die Teile,
+    // die eine Bearbeitung waehrend der Quellenaufloesung um Einstufung und Quelle gebracht haben.
+    expect(html).not.toContain("buildDefaultInsertText");
+    expect(html).not.toContain("var askAnswerPrefill");
+    expect(html).not.toContain("edit.value === askAnswerPrefill");
+    expect(html).toContain("function composeOutputText(body)");
     // Einfuegen UND Kopieren nutzen den AKTUELLEN (ggf. bearbeiteten) Feldinhalt — nie die Originalantwort.
     expect(html).toContain("function getEditedAnswerText()");
     expect(html).toContain('return document.getElementById("ask-answer-edit").value;');

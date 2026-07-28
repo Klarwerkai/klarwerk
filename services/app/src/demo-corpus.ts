@@ -35,6 +35,13 @@ export interface CorpusPageSpec {
   pageId: string;
   // Kategorie/Tags bleiben sprach-neutral (strukturell, keine „Aussage") — wie im Seed (SCRUM-487).
   category: string;
+  // AUFTRAG-mega27 A6: die ECHTE, MEHRSTUFIGE Elternkette der Seite im Demo-Space (Wurzel zuerst,
+  // OHNE die Seite selbst) — wie sie eine Confluence-Instanz über `ancestors` liefern würde. Sie ist
+  // wie Kategorie/Tags sprach-neutral (Struktur, keine Aussage). Der Demo-Space hat damit eine
+  // Ordnerstruktur bis Tiefe 3 unter der Wurzel; EINE Seite trägt bewusst KEINEN Pfad — sie ist im
+  // Demo-Space eine Wurzelseite und hängt in der Ordneransicht sichtbar direkt unter dem Container
+  // (kein erfundener Ordner „Sonstiges"). Alles Demodaten.
+  sourcePath?: string[];
   type: KnowledgeType;
   tags: string[];
   effect: CorpusEffect;
@@ -62,6 +69,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-warnfarbe-blau",
     category: "Arbeitssicherheit",
+    sourcePath: ["Betrieb", "Arbeitssicherheit", "Halle 7"],
     type: "best_practice",
     tags: ["arbeitssicherheit", "kennzeichnung"],
     effect: "conflict",
@@ -90,6 +98,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-warnfarbe-rot",
     category: "Arbeitssicherheit",
+    sourcePath: ["Betrieb", "Arbeitssicherheit", "Halle 7"],
     type: "best_practice",
     tags: ["arbeitssicherheit", "kennzeichnung"],
     effect: "conflict",
@@ -119,6 +128,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-backup-taeglich",
     category: "IT-Betrieb",
+    sourcePath: ["Betrieb", "IT-Betrieb", "Datensicherung"],
     type: "technik",
     tags: ["it-betrieb", "backup"],
     effect: "conflict",
@@ -147,6 +157,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-backup-woechentlich",
     category: "IT-Betrieb",
+    sourcePath: ["Betrieb", "IT-Betrieb", "Datensicherung"],
     type: "technik",
     tags: ["it-betrieb", "backup"],
     effect: "conflict",
@@ -176,6 +187,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-vpn-2019",
     category: "IT-Betrieb",
+    sourcePath: ["Betrieb", "IT-Betrieb", "Netzzugang"],
     type: "technik",
     tags: ["it-betrieb", "vpn"],
     effect: "stale",
@@ -204,6 +216,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-reisekosten-2020",
     category: "Verwaltung",
+    sourcePath: ["Verwaltung", "Reisekosten"],
     type: "technik",
     tags: ["verwaltung", "reisekosten"],
     effect: "stale",
@@ -232,6 +245,7 @@ export const DEMO_CORPUS: CorpusPageSpec[] = [
   {
     pageId: "kwdemo-claim-rueckruf",
     category: "Vertrieb",
+    sourcePath: ["Vertrieb"],
     type: "bauchgefuehl",
     tags: ["vertrieb", "unbelegt"],
     effect: "unbacked",
@@ -304,6 +318,11 @@ export function corpusImportItems(locale: DemoLocale): ImportItem[] {
       provider: "Confluence",
       bodyHtml: `<p>${t.body}</p>`,
     };
+    // AUFTRAG-mega27 A6: die Elternkette reist als quellneutrales sourcePath mit — aber NUR, wenn
+    // die Seite eine hat (exactOptionalProperties; kein leeres Array für die Wurzelseite).
+    if (page.sourcePath && page.sourcePath.length > 0) {
+      item.sourcePath = [...page.sourcePath];
+    }
     // Belegte Seiten tragen eine Quell-`url`; unbelegte Claims bewusst NICHT (exactOptionalProps).
     if (page.backed) {
       item.url = `${DEMO_SPACE_URL}/${page.pageId}`;

@@ -75,9 +75,19 @@ function flatten(suites: readonly ListedSuite[]): Fall[] {
   return out;
 }
 
-/** Die Aufrufzeile des Tors zerlegen: führende ENV-Zuweisungen, dann `playwright test <args…>`. */
+/**
+ * Die Aufrufzeile des Tors zerlegen: führende ENV-Zuweisungen, dann `playwright test <args…>`.
+ *
+ * AUFTRAG-mega38 BLOCK C: seit dem Frische-Wächter besteht `smoke:ui:gate` aus einer &&-Kette
+ * (`npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate … playwright test …`). Dieser Pin
+ * zählt die Playwright-Fälle des Tors — für ihn ist NUR das letzte Kettenglied die Aufrufzeile.
+ * Die vorgeschalteten Glieder sind Vorbedingungen, keine Testauswahl; sie können den Fall-Satz
+ * nicht verändern. Bewusst das LETZTE Glied und nicht „irgendeines, das playwright enthält":
+ * so bleibt der Fehler laut, wenn jemand den Playwright-Aufruf hinter etwas anderes hängt.
+ */
 function parseGateScript(script: string): { env: Record<string, string>; args: string[] } {
-  const tokens = script.trim().split(/\s+/);
+  const glieder = script.split("&&");
+  const tokens = (glieder[glieder.length - 1] ?? "").trim().split(/\s+/);
   const env: Record<string, string> = {};
   let i = 0;
   for (; i < tokens.length; i++) {

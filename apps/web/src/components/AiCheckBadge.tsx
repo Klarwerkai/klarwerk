@@ -7,6 +7,9 @@ import { Clock } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import type { Confidentiality, KnowledgeObject } from "../api/types";
 import {
+  aiCheckCoverageNote,
+  aiCheckCoverageNoteKeys,
+  aiCheckCoverageVars,
   aiCheckFailureReasonKey,
   aiCheckPendingHintKey,
   aiCheckPendingLabelKey,
@@ -41,8 +44,33 @@ export function AiCheckBadge({
   subjectConfidentiality,
 }: AiCheckBadgeProps): JSX.Element | null {
   const { t } = useTranslation();
-  if (!aiCheck || aiCheck.status === "done") {
+  if (!aiCheck) {
     return null;
+  }
+  // AUFTRAG-mega28 A2 (Pedi 26.07.): Seit dem Deckel ist „done ⇒ nichts anzeigen" FALSCH geworden.
+  // Ein abgeschlossener Lauf, der gegen 20 von 12.479 möglichen Nachbarn geprüft hat, sähe sonst
+  // exakt aus wie ein vollständiger — und sein leeres Ergebnis läse sich als „konfliktfrei". Die
+  // Einschränkung steht deshalb AUCH im Erfolgsfall an der Karte; nur ein wirklich vollständiger
+  // Lauf schweigt weiterhin (aiCheckCoverageNote liefert dann null — kein Badge-Rauschen).
+  //
+  // AUFTRAG-mega29 B4: die Notiz trägt eine LISTE von Einschränkungen (Abbruch UND Übersprünge
+  // können zugleich vorliegen). Der Tooltip führt sie zu EINEM Text zusammen — bis mega28 gewann
+  // der Abbruchtext, und die bereits ausgelassenen Vergleiche verschwanden für den Leser.
+  const coverage = aiCheckCoverageNote(aiCheck.coverage);
+  const coverageTip = coverage
+    ? aiCheckCoverageNoteKeys(coverage)
+        .map((key) => t(key, aiCheckCoverageVars(coverage)))
+        .join(" ")
+    : "";
+  if (aiCheck.status === "done") {
+    return coverage ? (
+      <span
+        title={coverageTip}
+        className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+      >
+        {t("val.aiCheck.coverage.partial")}
+      </span>
+    ) : null;
   }
   if (aiCheck.status === "pending") {
     return (
@@ -63,6 +91,16 @@ export function AiCheckBadge({
       >
         {t("val.aiCheck.failed")}
       </span>
+      {/* mega28 A2: auch der gescheiterte Lauf sagt, wie weit er kam — die Ursache allein
+          beantwortet nicht, wie viel überhaupt angesehen wurde. */}
+      {coverage ? (
+        <span
+          title={coverageTip}
+          className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted"
+        >
+          {t("val.aiCheck.coverage.partial")}
+        </span>
+      ) : null}
       <button
         type="button"
         onClick={onRetry}

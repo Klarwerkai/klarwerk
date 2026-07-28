@@ -73,7 +73,10 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
       "utf8",
     );
     expect(listSource).toContain("capture.resumeExpand");
-    expect(listSource).toContain("capture.resumeCollapsedHint");
+    // AUFTRAG-mega38 BLOCK J4: `capture.resumeCollapsedHint` ist ersatzlos weg. Die Zahl der
+    // eingeklappten Entwürfe steht weiterhin am Aufklapp-Knopf („Entwürfe anzeigen ({{count}})") —
+    // DAS ist die Auskunft, die sie braucht; die Begründung unseres Layouts war es nicht.
+    expect(listSource).toContain("capture.resumeCollapse");
     expect(captureSource).toContain("openFileImport");
     expect(captureSource).toContain('switchMode("datei")');
     expect(captureSource).toContain("capture.fileImportJump");
@@ -83,11 +86,15 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
     for (const key of [
       "capture.resumeExpand",
       "capture.resumeCollapse",
-      "capture.resumeCollapsedHint",
       "capture.fileImportJump",
     ]) {
       for (const lng of ["de", "en"]) {
-        expect(String(i18n.getResource(lng, "translation", key) ?? "").length).toBeGreaterThan(0);
+        // AUFTRAG-mega34 F: `capture.resumeCollapsedHint` ist jetzt pluralisiert („1 Entwurf" vs.
+        // „3 Entwürfe") und liegt als `_one`/`_other` vor.
+        const vorhanden = [key, `${key}_one`, `${key}_other`].some(
+          (k) => String(i18n.getResource(lng, "translation", k) ?? "").length > 0,
+        );
+        expect(vorhanden, `${lng}:${key}`).toBe(true);
       }
     }
   });

@@ -71,12 +71,14 @@ describe("FUNKE (Mounted)", () => {
     expect(container.textContent).toBe("");
   });
 
-  it("KnowledgeCapitalNumbers: fünf Bestandszahlen + ehrlicher Hinweis (keine Schätzungen)", () => {
+  // AUFTRAG-mega38 BLOCK G2: sechs — „davon offen" kam aus dem gestrichenen Kennzahlen-Block.
+  it("KnowledgeCapitalNumbers: sechs Bestandszahlen + ehrlicher Hinweis (keine Schätzungen)", () => {
     mount(
       createElement(KnowledgeCapitalNumbers, {
         capital: {
           secured: 120,
           validated: 80,
+          open: 40,
           answerableCategories: 9,
           activeAuthors: 14,
           openGaps: 6,
@@ -85,7 +87,8 @@ describe("FUNKE (Mounted)", () => {
     );
     expect(container.textContent).toContain("Wissenskapital");
     expect(container.textContent).toContain("120");
-    expect(container.textContent).toContain("gesicherte Wissensobjekte");
+    // AUFTRAG-mega38 BLOCK E: „gesicherte" ist hier weg — die Zahl ist der Gesamtbestand.
+    expect(container.textContent).toContain("erfasste Wissensobjekte");
     expect(container.textContent).toContain("beantwortbare Themenfelder");
     expect(container.textContent).toContain("aktive Wissensträger");
     expect(container.textContent).toContain("keine Schätzungen");

@@ -61,7 +61,18 @@ describe("W4 · Mobile-Quellen zeigen KO-Titel statt UUID", () => {
 
   it("Mobile.tsx rendert den aufgelösten Titel (line-clamp + Tooltip), nicht die rohe ID", () => {
     const src = read("apps/web/src/pages/Mobile.tsx");
-    expect(src).toContain("sourceRefs(s.sources, kos.data ?? [])");
+    // AUFTRAG-mega33 A2: die Auflösung passiert nicht mehr in der Seite, sondern EINMAL in der
+    // gemeinsamen Ableitung (summarizeAnswer → effectiveAnswer → conflictAwareSourceRefs). Die
+    // Seite bekommt die fertigen Referenzen — dieselben, die der Desktop verwendet.
+    // AUFTRAG-mega34 A1: `conflicts.data ?? []` ist weg — der Konfliktstand reist mit seiner
+    // Herkunft durch `conflictKnowledge()`, damit ein hängender oder abgerissener Abruf hier nicht
+    // als „keine Konflikte" ankommt.
+    // Umbruchunempfindlich gepinnt: der Formatter bricht diesen Aufruf über vier Zeilen.
+    expect(src.replace(/\s+/g, " ")).toContain(
+      "summarizeAnswer( answer, kos.data ?? [], conflictKnowledge(conflicts), )",
+    );
+    expect(src).not.toContain("conflicts.data ?? []");
+    expect(src).toContain("{s.sources.map((ref) => (");
     expect(src).toContain("{ref.label}");
     expect(src).toContain("title={ref.label}");
     expect(src).toContain("line-clamp-1");

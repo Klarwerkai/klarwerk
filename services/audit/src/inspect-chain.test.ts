@@ -258,7 +258,13 @@ describe("inspectChain — unchecked: die Schranke ist ehrlich", () => {
     expect(report.unresolvedDeviations).toBe(1);
   });
 
-  it("der real vorkommende Höchstfall (6 Schlüssel + verschachteltes 3er-Objekt = 4.320) wird geprüft", () => {
+  // AUFTRAG-mega35 D1: Dieser Fall hieß hier „der real vorkommende Höchstfall … = 4.320". Beides
+  // war falsch — ein 6-Schlüssel-Objekt MIT verschachteltem 3er-Objekt kommt im Bestand nicht vor.
+  // Der reale Höchstfall sind SECHS FLACHE Schlüssel (seq 757, `import.cleanup`, 6! = 720); er
+  // steht als eigener Fall darunter. Diese Konstruktion hier bleibt trotzdem stehen: sie ist mit
+  // 4.320 Varianten die STRENGERE Probe unterhalb des Deckels und deckt beide Bauformen (flache
+  // Ebene UND Verschachtelung) in einem Eintrag ab.
+  it("konstruierter Fall unter dem Deckel (6 Schlüssel + verschachteltes 3er-Objekt = 4.320) wird geprüft", () => {
     const written = {
       k1: 1,
       k2: 2,
@@ -274,6 +280,33 @@ describe("inspectChain — unchecked: die Schranke ist ehrlich", () => {
       k3: 3,
       k2: 2,
       k1: 1,
+    };
+    const e1 = jsonbReadBack(base(1, GENESIS), written, readBack);
+    const report = inspectChain([e1]);
+    expect(report.uncheckedDeviations).toBe(0);
+    expect(report.serialisationDeviations).toBe(1);
+  });
+
+  // AUFTRAG-mega35 D1: DER TATSÄCHLICHE Höchstfall des Bestandes — seq 757, `import.cleanup`,
+  // SECHS FLACHE Schlüssel (6! = 720 Varianten). Die Schlüssel und ihre Werte stehen hier in der
+  // jsonb-Rückleseform aus dem Export, wie bei seq 24 und seq 714 weiter oben.
+  it("der tatsächliche Höchstfall des Bestandes (6 flache Schlüssel = 720, seq 757) wird geprüft", () => {
+    const written = {
+      removedCandidates: 93,
+      newCandidates: 0,
+      claimedKos: 0,
+      trashedKos: 0,
+      auditPendingCandidates: 0,
+      skipped: 0,
+    };
+    // Kanonische jsonb-Reihenfolge: erst Schlüssellänge, dann bytweise.
+    const readBack = {
+      skipped: 0,
+      claimedKos: 0,
+      trashedKos: 0,
+      newCandidates: 0,
+      removedCandidates: 93,
+      auditPendingCandidates: 0,
     };
     const e1 = jsonbReadBack(base(1, GENESIS), written, readBack);
     const report = inspectChain([e1]);

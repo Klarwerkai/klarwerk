@@ -164,8 +164,8 @@ describe("V2 (Pedi D-V2=a): beide Schichten je Kandidat — Merge-Vertrag über 
     });
     const out = await run(second.id);
 
-    // Ehrlicher Ausgang: kein Modell — NICHT done.
-    expect(out).toEqual({ ok: false, fallbackReason: "no-model" });
+    // Ehrlicher Ausgang: kein Modell — NICHT done. (mega28 A2: plus die Abdeckung des Laufs.)
+    expect(out).toMatchObject({ ok: false, fallbackReason: "no-model" });
     // Provider-/complete-Aufrufe EXAKT 0: kein einziger Netz-/Modellaufruf.
     expect(fetchSpy).not.toHaveBeenCalled();
     // Die deterministische Ebene hat ihren Treffer trotzdem erzeugt (Kernfunktion).

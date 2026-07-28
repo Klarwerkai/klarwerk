@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnswerResult, KnowledgeObject } from "../../apps/web/src/api/types";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
 import { answerStatus, sourceRefs } from "../../apps/web/src/lib/askView";
 import { applyBodyAssistSection } from "../../apps/web/src/lib/bodyAiAssist";
 import { bodyReadMode } from "../../apps/web/src/lib/bodyReadMode";
@@ -118,7 +119,20 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
     expect(beforeResult.answered).toBe(true);
     expect(beforeResult.sources).toContain(koId);
     expect(beforeResult.knowledgeClass).not.toBe("gesichert"); // offen → ungeprueft
-    expect(answerStatus(beforeResult.knowledgeClass).key).toBe("unverified");
+    expect(
+      answerStatus(
+        answerGrade({
+          answered: true,
+          knowledgeClass: beforeResult.knowledgeClass,
+          sourcesConflicted: false,
+          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
+          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
+          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).key,
+    ).toBe("unverified");
     const refBefore = sourceRefs(beforeResult.sources, [ko])[0];
     expect(refBefore?.validated).toBe(false);
     expect(refBefore?.usability).not.toBe("ready");
@@ -149,7 +163,20 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
     expect(afterResult.answered).toBe(true);
     expect(afterResult.knowledgeClass).toBe("gesichert");
     expect(afterResult.sources).toEqual([koId]); // quellengebunden auf genau dieses KO
-    expect(answerStatus(afterResult.knowledgeClass).key).toBe("verified");
+    expect(
+      answerStatus(
+        answerGrade({
+          answered: true,
+          knowledgeClass: afterResult.knowledgeClass,
+          sourcesConflicted: false,
+          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
+          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
+          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).key,
+    ).toBe("verified");
     expect(afterBody.gap).toBeNull();
     const refAfter = sourceRefs(afterResult.sources, [validated])[0];
     expect(refAfter?.validated).toBe(true);

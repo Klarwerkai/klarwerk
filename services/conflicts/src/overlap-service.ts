@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import { type ComparisonOutcome, type DetectionCoverage, comparisonOutcome } from "./coverage";
 import { coreText } from "./detect";
 import {
   type DetectSubject,
@@ -12,6 +13,7 @@ import {
   exhaustiveOverlapCandidacy,
   lexicalOverlapScore,
   overlapPairKey,
+  selectOverlapCandidates,
 } from "./duplicate-detect";
 import type { OverlapRepo } from "./overlap-repo";
 import {
@@ -156,13 +158,46 @@ export class OverlapService {
       actor?: string;
       modelLabel?: string;
       isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
+      // AUFTRAG-mega28 A2/A3: vom Aufrufer gestelltes Protokoll der Abdeckung (s. coverage.ts).
+      // Wird FORTGESCHRIEBEN — auch ein geworfener Kapazitätsfehler lässt es ausgelesen zurück.
+      coverage?: DetectionCoverage;
     } = {},
   ): Promise<OverlapEntry[]> {
-    // „Jeder gegen jeden" (Pedi 04.07.): der Beitrag wird gegen den GESAMTEN vorhandenen Bestand
-    // geprüft, nicht nur gegen eine textnahe Vorauswahl. Sehr hohe Textdeckung → deterministischer
-    // Eintrag ohne Modell; alles andere geht IMMER an die inhaltliche KI-Prüfung (die Wahrscheinlichkeit
-    // entscheidet). Eine optionale Obergrenze (cap) bleibt für den späteren Hintergrund-Scan; live ist
-    // sie standardmäßig offen. Idempotent gegen bereits offene Einträge desselben Paars.
+    // ==========================================================================================
+    // AUFTRAG-mega28 A1/A4 (Pedi 26.07.) — DER DECKEL KOMMT; „jeder gegen jeden" (Pedi 04.07.)
+    // IST DAMIT AUSDRÜCKLICH ZURÜCKGENOMMEN.
+    // ==========================================================================================
+    // Vorher stand hier: der Beitrag wird gegen den GESAMTEN Bestand geprüft, der cap sei nur für
+    // einen späteren Hintergrund-Scan gedacht und live „standardmäßig offen". Diese Aussage traf
+    // bis mega27 zu und war nur deshalb tragbar, weil der Bestand 39 Objekte hatte. bens Zählung
+    // (mega27) hat sie eingeholt: bei 12.480 Objekten kostet EIN Submit 12.479 Duplikat-Urteile,
+    // und nichts bricht das ab (der Queue-Deckel verwirft ganze Jobs, nicht Aufrufe eines
+    // laufenden Jobs; der Job-Timeout beendet den inneren Lauf ausdrücklich nicht).
+    //
+    // Jetzt gilt: der Aufrufer deckelt (App-Root, EIN Wert für beide Erkennungswege), die
+    // Kandidatenwahl ist deterministisch und begründet (selectOverlapCandidates: sortiert nach
+    // demselben lexicalOverlapScore, den der Lauf ohnehin je Kandidat berechnet; refId als
+    // Stichentscheid) — und der Lauf PROTOKOLLIERT, wie weit er gekommen ist (options.coverage),
+    // damit ein gedeckelter Lauf nie als vollständiger gelesen wird.
+    //
+    // Sehr hohe Textdeckung → deterministischer Eintrag ohne Modell; alles andere geht an die
+    // inhaltliche KI-Prüfung. Idempotent gegen bereits offene Einträge desselben Paars.
+    //
+    // AUFTRAG-mega29 B2 (bens M28-2, der schwerere Teil): der Deckel begrenzt, was GEPRÜFT wird —
+    // nicht, was übersprungen wird. Bis mega28 wurde die Kandidatenliste VORAB auf `cap` gekürzt und
+    // erst DANN gegen bereits offene Paare geprüft: ein alter, längst bekannter Befund verbrauchte
+    // damit einen der zwanzig Plätze, und weggeschnitten wurde ausgerechnet der noch ungeprüfte
+    // Rang 21. Jetzt läuft der Deckel über die VOLLE deterministisch sortierte Liste und zählt nur
+    // die tatsächlichen Vergleiche mit; ein offenes Paar kostet nur seinen Rang, keinen Prüfplatz.
+    const cap = options.cap ?? Number.POSITIVE_INFINITY;
+    const ranked = selectOverlapCandidates(subject, pool, Number.POSITIVE_INFINITY);
+    const coverage = options.coverage;
+    if (coverage) {
+      coverage.available = pool.filter((c) => c.refId !== subject.refId).length;
+    }
+    if (ranked.length === 0) {
+      return [];
+    }
     const open = (await this.repo.all()).filter((e) => e.status !== "geschlossen");
     // D-AISTATE PAKET 4 (bens V5): versionsbewusste Paar-Dedupe (stale-Befund blockt den neuen Lauf nicht).
     const hasOpenPair = (aId: string, bId: string, aVer?: number, bVer?: number): boolean =>
@@ -183,84 +218,163 @@ export class OverlapService {
       });
     const subjectCore = coreText(subject);
     const created: OverlapEntry[] = [];
-    let compared = 0;
-    for (const cand of pool) {
-      if (
-        cand.refId === subject.refId ||
-        hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)
-      ) {
-        continue;
+    // AUFTRAG-mega29 B1: DREI getrennte Zahlen statt einer. `selected` = angesehene Ränge,
+    // `alreadyOpen` = davon wegen vorhandenem Befund übersprungen, `attempted` = tatsächliche
+    // Vergleiche (nur SIE trifft der Deckel), `completed` = davon fehlerfrei zu Ende gelaufen.
+    let selected = 0;
+    let alreadyOpen = 0;
+    let attempted = 0;
+    let completed = 0;
+    // AUFTRAG-mega31 A1: der Duplikatweg führte GAR KEINEN Übersprung-Zähler — er kannte nur
+    // „abgeschlossen" und den geworfenen Abbruch. Ein Urteilsausfall ohne Wurf hatte damit keinen
+    // Ort, an dem er hätte sichtbar werden können.
+    let skipped = 0;
+    const writeCoverage = (): void => {
+      if (!coverage) {
+        return;
       }
-      if (options.cap !== undefined && compared >= options.cap) {
-        break;
+      coverage.selected = selected;
+      coverage.alreadyOpen = alreadyOpen;
+      coverage.attempted = attempted;
+      coverage.completed = completed;
+      coverage.skipped = skipped;
+      coverage.capped = selected < coverage.available;
+    };
+    writeCoverage();
+    try {
+      for (const cand of ranked) {
+        if (attempted >= cap) {
+          break; // Deckel erreicht — alles ab hier blieb ungeprüft und wird auch nicht behauptet.
+        }
+        selected += 1;
+        // Ein Paar mit bereits OFFENEM Eintrag braucht keinen neuen Vergleich (der Befund steht ja
+        // schon) — es zählt als angesehen, aber NICHT als geprüft und kostet keinen Deckelplatz.
+        if (hasOpenPair(subject.refId, cand.refId, subject.version, cand.version)) {
+          alreadyOpen += 1;
+          writeCoverage();
+          continue;
+        }
+        attempted += 1;
+        writeCoverage();
+        // AUFTRAG-mega31 A1 (bens ROT-1): der Vergleich MELDET jetzt seinen Ausgang, statt ihn zu
+        // verschlucken. `modelVerdict` macht aus einem 429/no-model/confidential/Parsefehler ein
+        // `null` (nur ModelCapacityError fliegt weiter) — das kam hier als normaler Rücksprung an
+        // und zählte als abgeschlossen. Die deterministische Ebene kann daneben weiterhin einen
+        // Eintrag anlegen; das ändert nichts daran, dass der KI-Vergleich nicht stattgefunden hat.
+        const outcome = await this.compareCandidate(
+          subject,
+          cand,
+          subjectCore,
+          judge,
+          options,
+          open,
+          created,
+        );
+        if (outcome === "skipped") {
+          skipped += 1;
+        } else {
+          completed += 1;
+        }
+        writeCoverage();
       }
-      compared += 1;
-      const lexicalScore = lexicalOverlapScore(subject, cand);
-      const candidacy = exhaustiveOverlapCandidacy(lexicalScore);
-      const pairConfidential = Boolean(subject.confidential) || Boolean(cand.confidential);
-      const candCore = coreText(cand);
-      // D-AISTATE PAKET 2 (bens V2, Pedi D-V2=a, aistate-fix3): deterministisch und Modell sind KEINE
-      // Alternativen mehr — die KI beurteilt JEDEN hervorgeholten Kandidaten zusätzlich, sobald ein
-      // für das Paar ZULÄSSIGES Modell da ist (V1-Regel: vertraulich ⇒ nur lokal; der judge-Callback
-      // läuft durch genau dieses Reasoner-Routing). ZUSAMMENFÜHRUNGSVERTRAG:
-      //  - Deckung ≥ Schwelle (deterministischer Treffer): der Eintrag entsteht IMMER — er geht NIE
-      //    still verloren. Das KI-Urteil präzisiert/ergänzt ihn:
-      //     * KI bestätigt eine anlegende Beziehung → das präzisere Modell-Profil trägt den Eintrag
-      //       (method "model"; die deterministische Evidenz bleibt als detector.lexicalScore erhalten).
-      //     * KI ordnet anders ein (z. B. „ähnlich, kein Duplikat") oder liefert kein Urteil → der
-      //       deterministische Eintrag bleibt UNVERÄNDERT bestehen; eine vorhandene KI-Einordnung wird
-      //       additiv am detector notiert (confidence/rationale), method bleibt "deterministic".
-      //  - Deckung < Schwelle: wie bisher entscheidet allein das Modell-Urteil über die Anlage.
-      //  - Kein zulässiges Modell (vertraulich+cloud-only bzw. gar keins): die deterministische Ebene
-      //    trägt allein; der Aufrufer (aiCheck-Runner) schließt den Lauf ehrlich confidential/no-model
-      //    ab, NICHT done (der judge-Callback meldet den Ausgang über den Outcome-Vertrag).
-      const verdict = await this.modelVerdict(subjectCore, candCore, judge, pairConfidential);
-      const modelBuilt = verdict
-        ? OverlapService.buildFromVerdict(verdict, subjectCore, candCore, options.minConfidence)
-        : null;
-      const built =
-        candidacy === "deterministic"
-          ? (modelBuilt ?? this.deterministicBuild(verdict))
-          : modelBuilt;
-      if (!built) {
-        continue;
+    } catch (err) {
+      // SCRUM-498 B2: der Kapazitätsfehler wird bewusst DURCHGEREICHT (503 + Retry-After statt
+      // stillem Falsch-Negativ). AUFTRAG-mega28 A3: er darf dabei aber nicht wie ein sauberer Lauf
+      // aussehen — das Protokoll trägt den ehrlichen Abbruch-Stand, BEVOR der Fehler weiterfliegt.
+      // mega29 B1: der abbrechende Kandidat bleibt als `attempted` stehen und fehlt bei `completed`.
+      // Das ist die Wahrheit und braucht keine Korrekturrechnung mehr.
+      if (coverage) {
+        coverage.aborted = true;
       }
-      const detector: OverlapDetector = {
-        trigger: "validation",
-        method: built.method,
-        lexicalScore,
-        ...(built.method === "model" ? { promptVersion: "dup-v1" } : {}),
-        ...(built.confidence !== undefined ? { confidence: built.confidence } : {}),
-        ...(built.rationale ? { rationale: built.rationale } : {}),
-        ...(options.modelLabel && built.method === "model"
-          ? { modelLabel: options.modelLabel }
-          : {}),
-      };
-      // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
-      // ehrliche Grenze der Absicherung s. createAutoVersionBound.
-      const entry = await this.createAutoVersionBound(
-        {
-          koA: subject.refId,
-          koB: cand.refId,
-          relation: built.relation,
-          aspects: built.aspects,
-          eigenanteilA: built.eigenanteilA,
-          eigenanteilB: built.eigenanteilB,
-          recommendation: built.recommendation,
-          ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
-          ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
-        },
-        detector,
-        options.actor ?? "system",
-        options.isCurrent,
-      );
-      if (!entry) {
-        continue; // stale — Befund zur alten Fassung wurde nicht aktiviert (bzw. sofort geschlossen)
-      }
-      created.push(entry);
-      open.push(entry);
+      throw err;
     }
+    writeCoverage();
     return created;
+  }
+
+  // AUFTRAG-mega28 A1: EIN Kandidat des Laufs (aus detectForSubject herausgezogen, damit der
+  // Abdeckungs-Rahmen um die Schleife lesbar bleibt — inhaltlich unverändert).
+  private async compareCandidate(
+    subject: DetectSubject,
+    cand: DetectSubject,
+    subjectCore: string,
+    judge: (coreA: string, coreB: string, confidential: boolean) => Promise<OverlapVerdict | null>,
+    options: {
+      minConfidence?: number;
+      actor?: string;
+      modelLabel?: string;
+      isCurrent?: (koId: string, version: number) => boolean | Promise<boolean>;
+    },
+    open: OverlapEntry[],
+    created: OverlapEntry[],
+    // AUFTRAG-mega31 A1: der Rückgabewert ist der AUSGANG des Vergleichs (hat das Modell geurteilt?),
+    // nicht „ist ein Eintrag entstanden?". Ein gültiges „verschieden" ist ein Urteil und damit
+    // abgeschlossen, obwohl nichts angelegt wird; ein `null` aus einem Providerfehler ist es nicht.
+  ): Promise<ComparisonOutcome> {
+    const lexicalScore = lexicalOverlapScore(subject, cand);
+    const candidacy = exhaustiveOverlapCandidacy(lexicalScore);
+    const pairConfidential = Boolean(subject.confidential) || Boolean(cand.confidential);
+    const candCore = coreText(cand);
+    // D-AISTATE PAKET 2 (bens V2, Pedi D-V2=a, aistate-fix3): deterministisch und Modell sind KEINE
+    // Alternativen mehr — die KI beurteilt JEDEN hervorgeholten Kandidaten zusätzlich, sobald ein
+    // für das Paar ZULÄSSIGES Modell da ist (V1-Regel: vertraulich ⇒ nur lokal; der judge-Callback
+    // läuft durch genau dieses Reasoner-Routing). ZUSAMMENFÜHRUNGSVERTRAG:
+    //  - Deckung ≥ Schwelle (deterministischer Treffer): der Eintrag entsteht IMMER — er geht NIE
+    //    still verloren. Das KI-Urteil präzisiert/ergänzt ihn:
+    //     * KI bestätigt eine anlegende Beziehung → das präzisere Modell-Profil trägt den Eintrag
+    //       (method "model"; die deterministische Evidenz bleibt als detector.lexicalScore erhalten).
+    //     * KI ordnet anders ein (z. B. „ähnlich, kein Duplikat") oder liefert kein Urteil → der
+    //       deterministische Eintrag bleibt UNVERÄNDERT bestehen; eine vorhandene KI-Einordnung wird
+    //       additiv am detector notiert (confidence/rationale), method bleibt "deterministic".
+    //  - Deckung < Schwelle: wie bisher entscheidet allein das Modell-Urteil über die Anlage.
+    //  - Kein zulässiges Modell (vertraulich+cloud-only bzw. gar keins): die deterministische Ebene
+    //    trägt allein; der Aufrufer (aiCheck-Runner) schließt den Lauf ehrlich confidential/no-model
+    //    ab, NICHT done (der judge-Callback meldet den Ausgang über den Outcome-Vertrag).
+    const verdict = await this.modelVerdict(subjectCore, candCore, judge, pairConfidential);
+    // AUFTRAG-mega31 A1: der Ausgang steht HIER fest und hängt allein am Urteil — jeder weitere
+    // Ausstieg unten (kein anlegbares Profil, stale) ist ein Ergebnis des Urteils, kein Ausfall.
+    const outcome = comparisonOutcome(verdict);
+    const modelBuilt = verdict
+      ? OverlapService.buildFromVerdict(verdict, subjectCore, candCore, options.minConfidence)
+      : null;
+    const built =
+      candidacy === "deterministic" ? (modelBuilt ?? this.deterministicBuild(verdict)) : modelBuilt;
+    if (!built) {
+      return outcome;
+    }
+    const detector: OverlapDetector = {
+      trigger: "validation",
+      method: built.method,
+      lexicalScore,
+      ...(built.method === "model" ? { promptVersion: "dup-v1" } : {}),
+      ...(built.confidence !== undefined ? { confidence: built.confidence } : {}),
+      ...(built.rationale ? { rationale: built.rationale } : {}),
+      ...(options.modelLabel && built.method === "model" ? { modelLabel: options.modelLabel } : {}),
+    };
+    // D-AISTATE PAKET 4 (bens V5, aistate-fix5): versions-konditionale Aktivierung — Umfang und
+    // ehrliche Grenze der Absicherung s. createAutoVersionBound.
+    const entry = await this.createAutoVersionBound(
+      {
+        koA: subject.refId,
+        koB: cand.refId,
+        relation: built.relation,
+        aspects: built.aspects,
+        eigenanteilA: built.eigenanteilA,
+        eigenanteilB: built.eigenanteilB,
+        recommendation: built.recommendation,
+        ...(subject.version !== undefined ? { koAVersion: subject.version } : {}),
+        ...(cand.version !== undefined ? { koBVersion: cand.version } : {}),
+      },
+      detector,
+      options.actor ?? "system",
+      options.isCurrent,
+    );
+    if (!entry) {
+      return outcome; // stale — Befund zur alten Fassung wurde nicht aktiviert (bzw. sofort geschlossen)
+    }
+    created.push(entry);
+    open.push(entry);
+    return outcome;
   }
 
   // D-AISTATE PAKET 4 (bens V5, aistate-fix5): VERSIONS-KONDITIONALE Aktivierung — dasselbe

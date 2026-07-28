@@ -69,7 +69,7 @@ async function trailToFrontDoor(page: Page): Promise<void> {
     .click();
   await expect(page).toHaveURL(/\/erfassen$/);
   await page
-    .getByRole("link", { name: /Dokument-Canvas öffnen/ })
+    .getByRole("link", { name: /Dokument-Editor öffnen/ })
     .first()
     .click();
   await expect(page).toHaveURL(/\/capture\/frontdoor$/);

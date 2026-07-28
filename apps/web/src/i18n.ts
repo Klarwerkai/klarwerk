@@ -50,7 +50,8 @@ const de = {
   "nav.lifecycle": "Lebenszyklus",
   "nav.analytics": "Analytics & Audit",
   "nav.admin": "Admin",
-  "nav.output": "Output Factory",
+  // AUFTRAG-mega38 BLOCK I: „Output Factory" stand in der Navigation — auf JEDEM Bildschirm.
+  "nav.output": "Auswertungen",
   "nav.import": "Import & Quellen",
   "nav.graph": "Wissensgraph",
   "nav.capital": "Kapital-Sichten",
@@ -71,6 +72,10 @@ const de = {
   "action.logout": "Abmelden",
   "topbar.search": "Wissen, Funktionen oder Anlagen suchen…",
   "topbar.mobile": "Mobil",
+  // mega40 B: Design-Umschalter (zweites, rein optisches Design „Werkbank/Modern").
+  "topbar.design.classic": "Design: Klassisch",
+  "topbar.design.modern": "Design: Modern",
+  "topbar.design.hint": "Design umschalten — ändert nur das Aussehen, keine Inhalte oder Eingaben.",
   "topbar.openMenu": "Menü öffnen",
   "topbar.closeMenu": "Menü schließen",
   "topbar.menuLabel": "Navigationsmenü",
@@ -98,6 +103,13 @@ const de = {
     "Externe Wissensabfrage (Web-Suche) — eine EIGENE Achse, nicht das KI-Modell. Steuert nur die Web-Suche/öffentliche Anreicherung, nicht den Reasoner.",
   // Pedi 05.07.: Header-Pille „In welcher KI bin ich?" + Herkunftsland + DSGVO-Bestätigung.
   // DSGVO: ja gibt es NUR bei interner KI aus Europa — alles andere ehrlich „nein".
+  // AUFTRAG-mega38 BLOCK H: EIN Satz Klartext, der VOR dem Fachtext steht.
+  "topbar.plain.ki":
+    "Zeigt, wo die KI rechnet, die Klarwerk benutzt — im eigenen Haus oder bei einem Anbieter im Netz.",
+  "topbar.plain.reasoner":
+    "Zeigt, ob die KI gerade antwortet. „Ungeprüft“ heißt nur: seit dem Start ist noch keine Antwort zurückgekommen — es ist kein Fehler.",
+  "topbar.plain.external":
+    "Zeigt, ob Klarwerk beim Antworten auch im offenen Internet nachsehen darf. „Blockiert“ heißt: nein, es bleibt bei eurem eigenen Wissen.",
   "topbar.kiExternal": "KI-Modus: Cloud",
   "topbar.kiInternal": "KI-Modus: Lokal",
   "topbar.kiMixed": "KI-Modus: Cloud + Lokal",
@@ -226,7 +238,10 @@ const de = {
   "ktype.lernkurve": "Lernkurve",
   "ktype.technik": "Technik",
   "ktype.negativwissen": "Negativwissen",
-  "reasoner.draftLabel": "Reasoner-Entwurf · nicht validiert",
+  // AUFTRAG-mega38 BLOCK I: „Reasoner" ist der Hausname der KI-Maschine — auf den Flaechen,
+  // die die Testerin sieht, heisst er schlicht KI. (Die Admin-Flaechen behalten ihn: dort ist
+  // er ein Bezeichner mit Wiedererkennungswert. S. Bericht mega38, Block I.)
+  "reasoner.draftLabel": "KI-Entwurf · nicht validiert",
   "reasoner.taskInfo.title": "Welche KI arbeitet hier?",
   "reasoner.taskInfo.cloud": "Cloud-KI",
   "reasoner.taskInfo.local": "Lokales Modell",
@@ -320,7 +335,9 @@ const de = {
   "auth.ssoBusy": "Anmeldung wird abgeschlossen …",
   "auth.ssoIncomplete": "Unvollständige SSO-Antwort. Bitte erneut anmelden.",
   "cycle.title": "Der Klarwerk-Wissenskreis",
-  "cycle.subtitle": "Kein Chatbot: Wissen wird erfasst, validiert, genutzt und aktuell gehalten.",
+  // AUFTRAG-mega38 BLOCK G1: „Kein Chatbot: …" definierte ueber eine Verneinung — der Satz
+  // sagte zuerst, was Klarwerk NICHT ist. Jetzt sagt er, was es tut.
+  "cycle.subtitle": "Wissen wird erfasst, validiert, genutzt und aktuell gehalten.",
   // SCRUM-290: kompakter Stage-1 Demo-/Pilotpfad (Start → Ask → Library/KO-Detail → Validation).
   "demo.title": "Demo-/Pilotpfad in 3 Schritten",
   "demo.subtitle":
@@ -369,7 +386,8 @@ const de = {
   "demo.banner.validation.body":
     "Hier wird offenes/ungeprüftes Wissen bewertet. Ziel: aus Review-Arbeit gesichertes, nutzbares Wissen machen.",
   "cycle.capture.label": "Erfassen",
-  "cycle.capture.desc": "Erfahrungswissen als Knowledge Object sichern.",
+  // AUFTRAG-mega38 BLOCK I: „Knowledge Object" — das Produkt sagt ueberall sonst „Wissensobjekt".
+  "cycle.capture.desc": "Erfahrungswissen als Wissensobjekt sichern.",
   "cycle.validate.label": "Validieren",
   "cycle.validate.desc": "Im Team prüfen, bis Trust und Status belastbar sind.",
   "cycle.use.label": "Nutzen",
@@ -393,23 +411,19 @@ const de = {
     "Offenes oder in Prüfung befindliches Wissen gehört in die Validierung, nicht in die Nutzung.",
   "kg.sourceBound.label": "Quellengebunden",
   "kg.sourceBound.body":
-    "Antworten entstehen aus Knowledge Objects — ohne Grundlage wird eine Lücke angelegt.",
-  "missions.title": "Nächste Schritte",
-  "missions.subtitle":
-    "Für deine Rolle empfohlene nächste Schritte — direkt in echte Abläufe, keine Demo.",
-  "missions.erfassen.desc": "Erfahrungswissen erfassen, bevor es verloren geht.",
-  "missions.fragen.desc": "Eine Frage stellen und belegte Antworten erhalten.",
-  "missions.validierung.desc": "Offene Wissensobjekte prüfen und freigeben.",
-  "missions.risiko.desc": "Wissenslücken und Risiken im Blick behalten.",
-  "missions.bibliothek.desc": "Im gesicherten Wissensbestand suchen und stöbern.",
-  "start.kicker": "Control Room",
+    "Antworten entstehen aus Wissensobjekten — ohne Grundlage wird eine Lücke angelegt.",
+  // AUFTRAG-mega38 BLOCK I: „Control Room" war ein englischer Fachbegriff als allererstes
+  // Wort der Anwendung, auf einer deutschen Oberflaeche.
+  "start.kicker": "Übersicht",
   "start.greeting": "Guten Tag, {{name}}.",
+  // AUFTRAG-mega38 BLOCK G1: der eine Satz — ohne ein einziges Fachwort, bejahend.
+  "start.purpose":
+    "Klarwerk sammelt, was deine Kolleginnen und Kollegen im Betrieb gelernt haben, damit du danach fragen kannst und siehst, woher jede Antwort stammt.",
   "start.ctaAsk": "Frage stellen",
   "start.ctaCapture": "Wissen erfassen",
   "start.ctaValidate": "Validierung öffnen",
   "start.todo": "Heute zu tun",
   "start.workTitle": "Nächste Handlungen",
-  "start.kpiSectionTitle": "Kennzahlen",
   "start.severity.critical": "jetzt",
   "start.severity.today": "heute",
   "start.severity.later": "später",
@@ -422,10 +436,11 @@ const de = {
   "shelp.severity.title": "Die farbigen Punkte",
   "shelp.severity.body":
     "Der Punkt links zeigt die Dringlichkeit: Rot = jetzt dran (blockiert oder kritisch), Gelb = heute sinnvoll, Grau = kann warten. Das ist nur eine Orientierung, kein Zwang — du entscheidest die Reihenfolge, und es wird nichts automatisch abgearbeitet.",
-  "shelp.kpis.title": "Die vier Kennzahlen",
-  "shelp.kpis.body":
-    "Vier Zahlen zum Gesamtbild: Gesamt = alle Wissensobjekte, Offen = noch nicht geprüft, Validiert = bestätigt und nutzbar, Lücken = gestellte Fragen ohne Antwort im Bestand. Sie zeigen den Stand des Wissens — sie lösen selbst nichts aus und sind kein Ranking.",
-  "start.focusLabel": "Bester nächster Einstieg",
+  // AUFTRAG-mega38 BLOCK G3: „Bester nächster Einstieg" behauptete eine auf DIESE Person
+  // zugeschnittene Empfehlung. `primaryWorkItem` waehlt aber schlicht den dringendsten Posten
+  // aus globalen Bestandszahlen (lib/workCenter.ts:61-93) — dieselbe Klasse von zu weitem
+  // Satz wie in Block D. Die Beschriftung sagt jetzt genau das, was die Auswahl tut.
+  "start.focusLabel": "Dringendste offene Arbeit",
   "work.conflicts": "Konflikte lösen",
   "work.criticalGaps": "Kritische Wissenslücken",
   "work.revalidation": "Revalidierungen fällig",
@@ -437,10 +452,6 @@ const de = {
   "start.stufe2.title": "Erweiterte Funktionen (Stufe 2)",
   "start.stufe2.body":
     "Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}' unten in der Seitenleiste ein.",
-  "start.kpiTotal": "Wissensobjekte",
-  "start.kpiOpen": "Offen",
-  "start.kpiValidated": "Validiert",
-  "start.kpiGaps": "Wissenslücken",
   "task.kicker": "Aufgaben",
   "task.critical": "Kritisch",
   "task.today": "Heute",
@@ -479,7 +490,8 @@ const de = {
   "task.explain.open": "Öffne diese Aufgabe, um den nächsten Schritt zu sehen.",
   // SCRUM-297: Knowledge-OS-Phase je Arbeit (nutzt die Kreis-Labels cycle.*.label).
   "task.phaseLabel": "Phase:",
-  "capture.kicker": "Expert Studio · Erfassen",
+  // AUFTRAG-mega38 BLOCK I: „Expert Studio" uebersetzt.
+  "capture.kicker": "Wissen erfassen",
   "capture.title": "Erfahrungswissen festhalten",
   "capture.rescue.kicker": "Wissen retten",
   "capture.rescue.title": "Sichere Erfahrungswissen, bevor es verloren geht.",
@@ -1108,6 +1120,9 @@ const de = {
   "capture.file.replace": "Anderes Dokument wählen",
   "capture.file.remove": "Dokument entfernen",
   "capture.file.dropHint": "Datei hierher ziehen und ablegen — oder unten auswählen.",
+  // AUFTRAG-mega34 D1: der Knopf sagt, was er tut. Kein „Upload", kein „Import" — er öffnet die
+  // Dateiauswahl des Rechners, mehr nicht.
+  "capture.file.pick": "Datei auswählen",
   "capture.file.dropActive": "Datei hier ablegen …",
   "capture.file.dropReject":
     "„{{name}}“ wird hier noch nicht unterstützt — bitte eine Text-, Word-, PDF-, PPTX- oder Bilddatei ablegen.",
@@ -1344,8 +1359,10 @@ const de = {
   "capture.resumeTitle": "Entwürfe fortsetzen",
   "capture.resumeExpand": "Entwürfe anzeigen ({{count}})",
   "capture.resumeCollapse": "Entwürfe einklappen",
-  "capture.resumeCollapsedHint":
-    "{{count}} Entwürfe sind eingeklappt, damit die Erfassungswege darunter erreichbar bleiben.",
+  // AUFTRAG-mega38 BLOCK J4: `capture.resumeCollapsedHint` ist ERSATZLOS weg — der Satz erklärte
+  // der Leserin unsere Layoutentscheidung („… damit die Erfassungswege darunter erreichbar
+  // bleiben"). mega34 F hatte an ihm nur die Einzahlform repariert; die Form war richtig, der Satz
+  // gehörte trotzdem nicht auf ihren Bildschirm. Auch in EN und NL entfernt.
   "capture.resume": "Fortsetzen",
   "capture.discardDraft": "Verwerfen",
   // AUFTRAG-sortfilter · Punkt 2: Filter + Sortierung der Entwurfsliste.
@@ -1644,7 +1661,7 @@ const de = {
   "capture.ivReadAloud": "Vorlesen",
   "capture.ivReadStop": "Stopp",
   "capture.ivDictNa": "Diktat ist in diesem Browser nicht verfügbar — bitte tippen.",
-  "capture.ivModel": "Reasoner-Modell",
+  "capture.ivModel": "KI-Modell",
   "capture.ivFallback": "Deterministischer Fallback",
   "capture.ivQ.title": "Worum geht es? Formuliere eine kurze Kernaussage.",
   "capture.ivQ.statement": "Beschreibe die Erfahrung/Aussage genauer.",
@@ -1656,13 +1673,22 @@ const de = {
   "capture.ivQHint.conditions": "Eine Bedingung pro Zeile",
   "capture.ivQHint.measures": "Eine Maßnahme pro Zeile",
   "capture.ivQHint.tags": "Frost, Pumpe, Winter",
-  "ask.kicker": "Query Console",
+  // AUFTRAG-mega38 BLOCK I: „Query Console" — englischer Fachbegriff auf deutscher Oberflaeche.
+  "ask.kicker": "Fragen und Antworten",
   "ask.title": "Frag das Werkswissen",
   "ask.intro":
     "Antworten kommen ausschließlich aus validiertem Wissen — mit Quellen und Vertrauen. Gibt es keine Grundlage, wird die Lücke offen benannt.",
   "ask.placeholder": "z. B. Wann muss Ventil X bei Überdruck geschlossen werden?",
   "ask.emptyHint": "Bitte gib zuerst eine Frage ein.",
   "ask.submit": "Fragen",
+  // AUFTRAG-mega38 BLOCK A: Warten und Fehlschlag stehen DORT, wo die Antwort erscheint.
+  "ask.pending.title": "Die Frage läuft gegen das Werkswissen.",
+  "ask.pending.body":
+    "Es wird nach passenden Quellen gesucht. Gibt es keine belastbare Grundlage, sagt Klarwerk das offen — es wird nichts erfunden.",
+  "ask.error.title": "Die Frage konnte nicht beantwortet werden.",
+  "ask.error.body":
+    "Die Anfrage ist unterwegs steckengeblieben. Das ist KEINE Aussage über das Wissen — es bedeutet nicht, dass es keine Antwort gibt. Bitte erneut versuchen.",
+  "ask.error.retry": "Erneut versuchen",
   // SCRUM-295: Hinweis bei vorbefüllter Startfrage (aus KO-Detail „Wissen nutzen") im Demo-Kontext.
   "ask.demoPrefillHint":
     "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Trust entscheiden, nichts wird automatisch gesichert.",
@@ -1686,8 +1712,20 @@ const de = {
   "ask.knowledgeClass.extern": "Externe Quelle",
   "ask.knowledgeClass.annahme": "Annahme",
   "ask.knowledgeClass.unbekannt": "Unbekannt",
-  "ask.steps": "Argumentationsschritte",
-  "ask.sources": "Quellen",
+  "ask.steps": "Herangezogene Kontextquellen",
+  // ============================================================================================
+  // AUFTRAG-mega38 BLOCK F — DIE EHRLICHERE BESCHRIFTUNG DER SUMME (Pedis benannter Rückfall).
+  // ============================================================================================
+  // Getrennt werden konnte die Liste NICHT: `result.sources` und `result.steps` sind im
+  // Modell-Weg dieselbe Menge — der komplette Top-K-Treffersatz
+  // (services/reasoner/src/provider-model.ts:1016-1021, DEFAULT_TOP_K = 8 in
+  // services/reasoner/src/provider.ts:451). Die `[n]`-Ziffern im Antworttext werden nirgends
+  // zurückgelesen, und der Systemprompt ERLAUBT das Zitieren nur, er verlangt es nicht
+  // (provider-model.ts:79-83). Es gibt heute also keine Information „verwendet vs. nur
+  // durchsucht"; s. Bericht mega38, Block F.
+  // Was der Code deckt, ist genau dies: das sind die Quellen, die HERANGEZOGEN wurden. Dass jede
+  // davon zur Antwort beigetragen hat, deckt er nicht — deshalb steht es hier auch nicht mehr.
+  "ask.sources": "Herangezogene Quellen",
   "ask.export.copy": "Kopieren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Drucken / PDF",
@@ -1696,7 +1734,7 @@ const de = {
   "ask.export.footer":
     "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Trust). Kein Wahrheitsversprechen.",
   "ask.sourcesHint":
-    "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Trust, Nutzbarkeit). Zum Wissensobjekt für Details.",
+    "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Trust, Nutzbarkeit). Aufgeführt sind alle Quellen, die für die Frage herangezogen wurden; ob jede einzelne zur Antwort beigetragen hat, sagt die Liste nicht — und der Antworttext muss es nicht kenntlich machen. Zum Wissensobjekt für Details.",
   // Paket 4 (nacht24): Quellen wie im Dokument — Status/Trust je Quelle + Auszug im Original-Format.
   "answerSource.trust": "Trust {{n}}",
   "answerSource.excerptShow": "Auszug im Dokument-Format anzeigen",
@@ -1752,11 +1790,37 @@ const de = {
     "Nächster Schritt: Wissen erfassen oder die Lücke im Risiko-Board priorisieren.",
   "ask.contract.trustNote":
     "Trust und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
-  "ask.contract.sumTotal_one": "{{count}} Quelle",
-  "ask.contract.sumTotal_other": "{{count}} Quellen",
+  // AUFTRAG-mega38 BLOCK F: „8 Quellen" las sich als „acht Quellen tragen diese Antwort".
+  // Gedeckt ist nur „acht wurden herangezogen" — s. den Kommentar bei `ask.sources`.
+  "ask.contract.sumTotal_one": "{{count}} Quelle herangezogen",
+  "ask.contract.sumTotal_other": "{{count}} Quellen herangezogen",
   "ask.contract.sumValidated": "{{count}} validiert",
   "ask.contract.sumOpen": "{{count}} offen/ungeprüft",
   "ask.contract.sumConflict": "{{count}} mit Konflikt",
+  // ==============================================================================================
+  // AUFTRAG-mega32 BLOCK E (Pedi 27.07.) — DER PRÜFVORBEHALT DER ANTWORT.
+  // ==============================================================================================
+  // Er behauptet NICHT, dass ein Konflikt vorliegt — er sagt, dass die Suche danach nicht
+  // vollständig belegt ist. Der Unterschied ist der ganze Punkt: eine Antwort darf Sicherheit nur
+  // behaupten, wenn jede herangezogene Quelle einen vollständig belegten Lauf hat.
+  "ask.checkCaveat.title": "Diese Antwort ist nicht als konfliktfrei belegt.",
+  "ask.checkCaveat.badge": "Prüfung unbelegt",
+  "ask.checkCaveat.incomplete":
+    "Bei {{unproven}} von {{total}} herangezogenen Quellen ist die Konflikt- und Duplikatprüfung nicht vollständig gelaufen. Es wurde also nicht überall gesucht — unbekannte Widersprüche sind damit nicht ausgeschlossen.",
+  "ask.checkCaveat.noCoverage":
+    "Bei {{unproven}} von {{total}} herangezogenen Quellen ist zwar ein Prüf-Lauf vermerkt, aber seine Reichweite ist nicht belegt. Wie weit gesucht wurde, ist damit unbekannt.",
+  "ask.checkCaveat.unchecked":
+    "Bei {{unproven}} von {{total}} herangezogenen Quellen ist gar kein Prüf-Lauf vermerkt. Nach Widersprüchen wurde dort nie gesucht.",
+  "ask.checkCaveat.unknown":
+    "{{unproven}} von {{total}} herangezogenen Quellen sind im Bestand nicht auffindbar. Über ihre Prüfung lässt sich nichts sagen.",
+  // AUFTRAG-mega34 A2: der Hinweis auf den UNBEKANNTEN Konfliktstand. Er spricht nicht über
+  // gefundene Konflikte und nicht über lückenhafte Prüf-Läufe, sondern darüber, dass diese Seite
+  // die Konfliktliste gerade gar nicht kennt. Bewusst ohne Schuldzuweisung und ohne Technik-Jargon.
+  "ask.conflictCaveat.title": "Der Konfliktstand ist gerade nicht abrufbar.",
+  "ask.conflictCaveat.pending":
+    "Die bekannten Widersprüche werden noch geladen. Bis sie da sind, gilt diese Antwort als ungeprüft — nicht, weil etwas gefunden wurde, sondern weil noch nicht nachgesehen werden konnte.",
+  "ask.conflictCaveat.failed":
+    "Die bekannten Widersprüche konnten nicht abgerufen werden. Ob eine der Quellen in einem offenen Konflikt steht, ist damit unbekannt; diese Antwort gilt deshalb als ungeprüft.",
   // SCRUM-283: datensparsamer, ehrlicher Hinweis zur gespeicherten Wissenslücke (Ask + Risk).
   "gap.privacyNotice":
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
@@ -1775,8 +1839,12 @@ const de = {
   "use.open.label": "Zu prüfen",
   "use.open.hint": "Offen/ungeprüft — erst prüfen/bewerten lassen.",
   "ko.ovTrust": "Trust",
-  "ko.ovSources": "{{n}} Quellen",
-  "ko.ovAttachments": "{{n}} Anhänge",
+  // AUFTRAG-mega34 F: „1 Quellen · 1 Anhänge" stand in der Übersichtszeile jedes KO mit genau
+  // einer Quelle — also im Regelfall. Variable von {{n}} auf {{count}}, sonst pluralisiert nichts.
+  "ko.ovSources_one": "{{count}} Quelle",
+  "ko.ovSources_other": "{{count}} Quellen",
+  "ko.ovAttachments_one": "{{count}} Anhang",
+  "ko.ovAttachments_other": "{{count}} Anhänge",
   "trust.explain.title": "Was bedeutet Trust?",
   "trust.explain.meta":
     "Trust ist ein Review-/Evidenzsignal aus Peer-Bewertungen (0–99) — kein Versprechen, dass die Aussage wahr ist.",
@@ -2059,6 +2127,35 @@ const de = {
   // hat nichts beanstandet. Der Text sagt genau das und tarnt sich nicht als Modellfehler.
   "val.aiCheck.reason.submit-followup-failed":
     "Die Prüfung konnte beim Einreichen technisch nicht eingereiht werden — das KI-Modell wurde dabei nicht gefragt und hat nichts beanstandet. Erneut prüfen reiht sie neu ein.",
+  // AUFTRAG-mega28 A2/A3 (Pedi 26.07.): Seit dem Kandidaten-Deckel darf ein Lauf nicht mehr
+  // behaupten, er habe den ganzen Bestand gesehen. Diese Texte nennen die ZAHLEN und sagen
+  // ausdrücklich, was ein leeres Ergebnis dann heißt — und was es NICHT heißt.
+  "val.aiCheck.reason.capacity":
+    "Die Prüfung wurde wegen Auslastung des KI-Modells abgebrochen — sie ist nicht zu Ende gelaufen. Erneut prüfen startet einen neuen Lauf.",
+  // AUFTRAG-mega29 B3: die Zahl kommt aus der ZUSAMMENFASSUNG beider Prüfwege und ist dort das
+  // Minimum (mergeCoverage) — also eine konservative MINDESTabdeckung, nicht die tatsächliche Zahl
+  // geprüfter Paare. Der Text sagt das jetzt selbst, statt eine Untergrenze als Istwert auszugeben.
+  // AUFTRAG-mega29 C2 (bens M28-3): „Keine offenen Konflikte" ist wörtlich richtig und lädt trotzdem
+  // zu dem Schluss ein, der Bestand sei geprüft und frei. Dieser Satz nimmt genau diese Ergänzung
+  // zurück — mit den drei Zahlen der serverseitigen Zusammenfassung, ohne ein einziges Objekt zu nennen.
+  "val.aiCheck.boardCaveat":
+    "Das heißt nicht „geprüft und frei“: von {{total}} Wissensobjekten tragen {{incomplete}} einen unvollständigen Prüf-Lauf und {{unchecked}} gar keinen. Die Erkennung vergleicht jeden Beitrag nur gegen eine begrenzte Kandidatenmenge.",
+  // AUFTRAG-mega31 A4: „gar kein Lauf“ und „keine Abdeckung nachgewiesen“ sind ZWEI Aussagen. Für
+  // Altbestand von vor mega28 ist ein Lauf vermerkt — nur seine Reichweite ist nirgends belegt. Ihn
+  // als „gar keinen Lauf“ zu bezeichnen wäre die falsche von beiden Ungenauigkeiten.
+  "val.aiCheck.boardCaveat.noCoverage":
+    "Bei {{noCoverage}} weiteren ist ein Prüf-Lauf vermerkt, aber keine Abdeckung nachgewiesen — über ihre Reichweite ist nichts belegt.",
+  "val.aiCheck.coverage.partial": "TEILGEPRÜFT",
+  "val.aiCheck.coverage.capped":
+    "Geprüft gegen mindestens {{completed}} von {{available}} möglichen Nachbarn — kein vollständiger Abgleich. Die Zahl ist die konservative Mindestabdeckung beider Prüfwege (Widerspruch und Duplikat); der schwächere von beiden bestimmt sie. Ohne Fund heißt das: in dieser Menge nichts gefunden, nicht „frei von Konflikten und Duplikaten“.",
+  "val.aiCheck.coverage.skipped":
+    "Geprüft gegen mindestens {{completed}} von {{available}} möglichen Nachbarn; {{skipped}} Vergleiche wurden wegen Fehlern ausgelassen — der Lauf ist unvollständig. Ohne Fund heißt das nicht „frei von Konflikten und Duplikaten“.",
+  "val.aiCheck.coverage.aborted":
+    "Abgebrochen nach mindestens {{completed}} von {{available}} möglichen Nachbarn — der Rest wurde nicht geprüft. Ohne Fund heißt das nicht „frei von Konflikten und Duplikaten“.",
+  // AUFTRAG-mega32 A1: die Merker melden keine Einschränkung, die Zahlen tragen die Aussage aber
+  // nicht. Der Text behauptet KEINE Ursache — er sagt nur, dass die Vollständigkeit unbelegt ist.
+  "val.aiCheck.coverage.unproven":
+    "Dieser Lauf ist nicht als vollständig belegt: das Protokoll weist {{completed}} abgeschlossene Vergleiche bei {{available}} möglichen Nachbarn aus. Ohne Fund heißt das nicht „frei von Konflikten und Duplikaten“.",
   "val.feedback.condTitle": "Bedingt – Begründung für den Autor (Pflicht)",
   "val.feedback.rejTitle": "Ablehnung – Begründung für den Autor (Pflicht)",
   "val.feedback.placeholder": "Was muss überarbeitet werden? …",
@@ -2146,12 +2243,12 @@ const de = {
     "Autor wurde übertragen — schau besonders genau auf Aussage und Belege.",
   // SCRUM-365 / PI-K2 / AG-P2-3: Trust ist ein Signal, keine Wahrheit — erst das Quorum sichert.
   "val.guide.trustNote":
-    "Trust ist ein Review-Signal, keine Wahrheitsgarantie. Erst genug Freigaben (Quorum) machen Wissen gesichert.",
+    "Trust ist ein Review-Signal, keine Wahrheitsgarantie. Erst genug Freigaben — die vereinbarte Mindestzahl von Prüfern — machen Wissen gesichert.",
   // SCRUM-365: Entscheidungswirkung VOR dem Klick — ehrlich, keine Auto-Freigabe.
   "val.guide.impactTitle": "Was bewirkt die Entscheidung?",
   "val.impact.up.title": "Freigeben",
   "val.impact.up.body":
-    "Zählt als eine Freigabe-Stimme. Wissen wird nur nutzbar, wenn Status, Quorum und Trust es tragen — nichts wird automatisch freigegeben.",
+    "Zählt als eine Freigabe-Stimme. Wissen wird nur nutzbar, wenn Status, die Zahl der Freigaben und Trust es tragen — nichts wird automatisch freigegeben.",
   "val.impact.warn.title": "Rückfrage",
   "val.impact.warn.body":
     "Braucht eine kurze Begründung. Bleibt Review-Arbeit und hilft dem Autor, gezielt nachzuarbeiten.",
@@ -2170,13 +2267,18 @@ const de = {
   "val.nextRework": "Im Objekt nacharbeiten",
   "val.assign": "Zuweisen …",
   "val.openDetails": "Details ansehen — bearbeiten & löschen im Objekt",
-  "start.livewall.title": "Live-Wall",
-  "start.livewall.subtitle":
-    "Was gerade passiert: frisch gesichertes Wissen und Wissen, das geholfen hat.",
-  "start.livewall.saved": "Frisch gesichert",
+  // AUFTRAG-mega38 BLOCK E: die Wand hiess „Frisch gesichert" und zeigte darunter dieselben
+  // Einträge, die ihre eigene StatusPill als „Offen" ausweist. Sie sortiert nach `createdAt` und
+  // filtert NICHT nach Status (services/app/src/livewall.ts:39-48) — sie zeigt also zuletzt
+  // ERFASSTES Wissen, nicht gesichertes. „Gesichert" ist in diesem Produkt das Qualitätswort;
+  // es hier für „neu angelegt" zu benutzen, ist dieselbe Wortkollision, die mega33 auf der
+  // Antwortkarte geschlossen hat. Ein Wort, eine Bedeutung.
+  "start.livewall.title": "Was gerade passiert",
+  "start.livewall.subtitle": "Zuletzt erfasstes Wissen und Wissen, das anderen geholfen hat.",
+  "start.livewall.saved": "Zuletzt erfasst",
   "start.livewall.helped": "Hat geholfen",
   "start.livewall.helpedToday": "heute geholfen: {{n}}",
-  "start.livewall.savedEmpty": "Noch nichts gesichert — der erste Beitrag erscheint hier.",
+  "start.livewall.savedEmpty": "Noch nichts erfasst — der erste Beitrag erscheint hier.",
   "start.livewall.helpedEmpty": "Noch keine „hat geholfen“-Rückmeldung.",
   "con.kicker": "Conflict Board",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",
@@ -2227,6 +2329,15 @@ const de = {
   "con.readonlyCompare": "Read-only-Vergleich",
   "con.detectedOn": "Erkannt am {{date}}",
   "con.evidenceSideLabel": "Beleg dieser Seite",
+  // ==============================================================================================
+  // AUFTRAG-mega32 BLOCK K — DIE BEWEISLAGE, NICHT DAS URTEIL.
+  // ==============================================================================================
+  // Der Satz sagt, worauf sich die Entscheidung stützen kann. Er sagt NICHT, wer recht hat: eine
+  // belegte Aussage kann falsch sein, sie ist nur belegt.
+  "con.evidenceBalance.neither":
+    "Keine der beiden Aussagen ist mit einer Quelle belegt. Dieser Widerspruch lässt sich deshalb nicht am Wortlaut entscheiden, sondern nur an Belegen — der nächste Schritt ist, für mindestens eine Seite eine Quelle nachzutragen.",
+  "con.evidenceBalance.oneSided":
+    "Nur eine der beiden Aussagen ist mit einer Quelle belegt: „{{title}}“. Das ist ein Unterschied in der Beweislage, kein Urteil darüber, welche Aussage stimmt — eine belegte Aussage kann falsch sein. Der nächste Schritt ist, die andere Seite zu belegen oder zurückzuziehen.",
   "con.compareTitle": "Gegenüberstellung",
   "con.koMissing": "Beitrag wurde entfernt.",
   "con.resolveEffect":
@@ -2338,7 +2449,10 @@ const de = {
   "facet.showAll": "Alle {{n}} zeigen",
   "facet.showLess": "Weniger zeigen",
   "facet.restricted": "nur Werte aus der gewählten Kategorie",
-  "facet.showResults": "{{n}} Treffer anzeigen",
+  // AUFTRAG-mega34 F: derselbe Knopf, derselbe Aufruf — die Variable wechselt für ALLE drei
+  // Schlüssel auf `count`, sonst bliebe hier ein rohes {{n}} im Text stehen.
+  "facet.showResults_one": "{{count}} Treffer anzeigen",
+  "facet.showResults_other": "{{count}} Treffer anzeigen",
   "facet.countFiltered": "von {{total}} gefiltert",
   "facet.countAll": "gesamter Bestand",
   "facet.openFilters": "Filter",
@@ -2352,7 +2466,9 @@ const de = {
   "facet.rangeContradictory":
     "Das Anfangsdatum liegt nach dem Enddatum — diese Kombination trifft nichts.",
   "lib.facet.confidentiality": "Vertraulichkeit",
-  "lib.facet.showResults": "{{n}} Beiträge anzeigen",
+  // AUFTRAG-mega34 F: beim Filtern landet man staendig bei 1 — „1 Beiträge anzeigen".
+  "lib.facet.showResults_one": "{{count}} Beitrag anzeigen",
+  "lib.facet.showResults_other": "{{count}} Beiträge anzeigen",
   "lib.facet.rangeLabel": "Zuletzt geändert",
   "lib.loadMore": "Weitere {{n}} laden",
   "lib.views.remember": "Diese Suche merken",
@@ -2397,8 +2513,14 @@ const de = {
   "funke.gaps.answerCta": "In 2 Minuten beantworten",
   "funke.gaps.more": "+{{n}} weitere offene Lücken — vollständige Liste unter Risiko & Lücken.",
   "funke.capital.title": "Wissenskapital",
-  "funke.capital.secured": "gesicherte Wissensobjekte",
+  // AUFTRAG-mega38 BLOCK E: die Zahl ist `kos.length` — der GESAMTBESTAND, jeder Status
+  // (apps/web/src/lib/funke.ts:78). „39 gesicherte Wissensobjekte", von denen 30 offen sind, ist
+  // deshalb keine Untertreibung, sondern eine falsche Aussage. EN und NL sagten mit „captured" /
+  // „vastgelegde" schon das Richtige; nur DE benutzte das Qualitätswort für den Bestand.
+  "funke.capital.secured": "erfasste Wissensobjekte",
   "funke.capital.validated": "davon validiert",
+  // AUFTRAG-mega38 BLOCK G2: aus dem gestrichenen doppelten Kennzahlen-Block uebernommen.
+  "funke.capital.open": "davon offen",
   "funke.capital.categories": "beantwortbare Themenfelder",
   "funke.capital.authors": "aktive Wissensträger",
   "funke.capital.gaps": "offene Wissenslücken",
@@ -2475,6 +2597,9 @@ const de = {
   "imp.explore.alreadyQueued": "Davon bereits zur Prüfung vorgemerkt: {{n}}",
   // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht".
   "imp.gallery.planned": "geplant",
+  // AUFTRAG-mega32 BLOCK G: EINE aufklappbare Zeile mit ANZAHL. Standard zugeklappt; aufgeklappt
+  // verhalten sich die Kacheln genau wie heute (kein Import, nur der ehrliche Hinweis).
+  "imp.gallery.plannedGroup": "In Planung ({{count}})",
   "imp.gallery.systemsTitle": "Systeme",
   "imp.gallery.filesTitle": "Dateien",
   "imp.gallery.hintSoon": "In Arbeit — diese Quelle kommt bald.",
@@ -2542,18 +2667,33 @@ const de = {
   "imp.select.searchPlaceholder": "In den Treffern suchen (Titel, Autor) …",
   "imp.select.selectAll": "Alle wählen",
   "imp.select.deselectAll": "Alle abwählen",
-  "imp.select.hideImported": "Bereits importierte/vorgemerkte ausblenden",
   "imp.select.groupBy": "Gruppieren:",
   "imp.select.groupNone": "keine",
   "imp.select.groupTheme": "nach Thema",
   "imp.select.groupLanguage": "nach Sprache",
+  // AUFTRAG-mega27 A4: die ECHTE Quell-Ordnerstruktur (Elternkette) statt einer Ableitung.
+  "imp.select.groupFolder": "nach Ordner",
+  "imp.select.noFolder": "Ohne Quell-Container",
+  "imp.select.folderFallbackNoPath":
+    "Diese Quelle liefert keine Ordnerstruktur (keine Elternkette) — gezeigt wird die bisherige Ansicht.",
+  "imp.select.folderFallbackSingle":
+    "Die Quell-Struktur ergibt hier nur einen einzigen Ordner — gezeigt wird die bisherige Ansicht.",
+  // AUFTRAG-mega27 Block B: die Trefferliste filtert mit derselben Facetten-Technik wie die Bibliothek.
+  "imp.select.facet.folder": "Ordner",
+  "imp.select.facet.status": "Status",
+  "imp.select.facet.theme": "Thema",
+  "imp.select.facet.author": "Autor",
+  "imp.select.facet.language": "Sprache",
+  "imp.select.facetCount_one": "{{count}} Treffer anzeigen",
+  "imp.select.facetCount_other": "{{count}} Treffer anzeigen",
+  "imp.select.rangeLabel": "Quell-Datum",
+  "imp.select.bulkLabel": "Auswahl",
   "imp.select.groupCount": "{{n}} Treffer",
   "imp.select.langDe": "Deutsch",
   "imp.select.langEn": "Englisch",
   "imp.select.langNl": "Niederländisch",
   "imp.select.langOther": "Ohne Sprachkennzeichen",
   "imp.select.noTheme": "Ohne Thema",
-  "imp.select.chipAll": "Alle",
   "imp.select.chipNew": "Neu",
   "imp.select.chipImported": "Bereits importiert",
   "imp.select.chipQueued": "Vorgemerkt",
@@ -2810,6 +2950,20 @@ const de = {
   "health.factor.singleSourceShare": "Single-Source-Anteil",
   "health.factor.openGaps": "Offene Wissenslücken",
   "health.factor.openConflicts": "Offene Konflikte",
+  // AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare Zahl mit
+  // dem VOLLEN Konfliktabzug. Die große Zahl ist die schlechtere; der optimistische Rand steht
+  // daneben und sagt, was er ist.
+  "health.band.unproven": "Einstufung unbelegt",
+  "health.range.explain":
+    "{{worst}} von 100 im schlechtesten Fall, {{best}} im besten. Solange nicht belegt ist, dass vollständig nach Konflikten gesucht wurde, gilt der schlechtere Wert — deshalb steht hier kein Band.",
+  "health.conflictUnproven.title":
+    "Die Punktzahl rechnet mit dem vollen Konfliktabzug: {{worst}} statt {{best}} von 100.",
+  "health.conflictUnproven.detection-incomplete":
+    "Die Konflikt- und Duplikaterkennung ist im Bestand nicht durchgängig vollständig gelaufen. Es ist deshalb nicht ausgeschlossen, dass es mehr Konflikte gibt als gefunden wurden — und ein Abzug von null wäre eine Annahme über etwas Unbekanntes.",
+  "health.conflictUnproven.detection-unknown":
+    "Über die Reichweite der Konflikt- und Duplikaterkennung liegt keine Aussage vor. Solange nicht belegt ist, dass vollständig geprüft wurde, sagt die Zahl der gefundenen Konflikte nichts über den Bestand.",
+  "health.conflictUnproven.known":
+    "Bekannt sind {{count}} offene Konflikte ({{penalty}} von höchstens {{max}} Punkten Abzug). Dieser Abzug ist sicher; der Rest bis zum Höchstwert ist die Unsicherheit.",
   "risk.busfactor": "Bus-Faktor (Einzelquellen-Risiko)",
   "risk.busEmpty": "Keine Risikodaten.",
   "risk.experts": "Experten",
@@ -3043,7 +3197,7 @@ const de = {
   "shelp.ana.weekly":
     "Diese Übersicht zählt, wie viele Wissensobjekte in jeder Woche die Prüfung bestanden haben. Sie zeigt den Takt, in dem gesichertes Wissen entsteht — nicht, wie fleißig einzelne Personen waren. Wird die Kurve flach, bleiben meist Prüfungen liegen; ein Blick in den Prüfbereich zeigt dann, wo es hakt.",
   "shelp.ask.steps":
-    "Hier siehst du Schritt für Schritt, wie die Antwort zustande kam: welche Frage verstanden wurde, welches gesicherte Wissen herangezogen wurde und wie daraus die Antwort entstand. So kannst du jede Aussage nachvollziehen, statt ihr blind zu vertrauen. Wenn dir ein Schritt seltsam vorkommt, öffne die genannte Quelle und prüfe selbst.",
+    "Hier stehen die Wissensobjekte, die für deine Frage aus dem Bestand herangezogen wurden — mit einem Auszug aus dem Fundstück. Es ist KEINE Herleitung: KLARWERK protokolliert nicht, welcher Satz der Antwort aus welcher Quelle stammt. Die Liste sagt dir, worauf gesucht wurde; nachprüfen kannst du, indem du die genannte Quelle öffnest.",
   "shelp.ask.sources":
     "Jede Antwort in KLARWERK stützt sich ausschließlich auf geprüfte Wissensobjekte — und genau die stehen hier. Tippe eine Quelle an, um das vollständige Objekt mit Belegen und Prüfstand zu öffnen. Steht hier nichts, gibt es zu deiner Frage kein gesichertes Wissen, und KLARWERK sagt das ehrlich, statt etwas zu erfinden.",
   "shelp.capture.resumeTitle":
@@ -3214,7 +3368,7 @@ const de = {
   "mob.title": "Schnell festhalten",
   "mob.sub": "An der Anlage. In unter zwei Minuten.",
   "mob.dictate": "Diktat aufnehmen",
-  "mob.dictateSub": "Sprechen — Reasoner strukturiert",
+  "mob.dictateSub": "Sprechen — die KI strukturiert",
   "mob.note": "Notiz",
   "mob.photo": "Foto",
   "mob.interview": "Interview",
@@ -3400,6 +3554,12 @@ const de = {
   "kos.hint.provenance-lineage.detail": "KOs mit Autorentransfer oder mehreren Versionen.",
   "kos.hint.evidence-empty.title": "Keine Evidence-Records",
   "kos.hint.evidence-empty.detail": "Bisher wurden keine Quellen/Anhänge als Evidence erfasst.",
+  // AUFTRAG-mega34 G: der Zustand, in dem sich gar kein Grad ableiten lässt — die
+  // Konflikterkennung ist nicht vollständig belegt. Das ist keine schlechte Note, sondern
+  // eine fehlende: der angezeigte Wert ist der schlechtestmögliche, nicht der gemessene.
+  "kos.hint.health-detection-unproven.title": "Knowledge-Health nicht belegt ({{n}})",
+  "kos.hint.health-detection-unproven.detail":
+    "Die Konflikterkennung ist nicht vollständig belegt. Der angezeigte Wert ist deshalb der ungünstigste mögliche, kein gemessener Grad — solange das so ist, lässt sich weder Entwarnung noch Alarm ehrlich geben.",
   "kos.hint.health-critical.title": "Knowledge-Health kritisch ({{n}})",
   "kos.hint.health-critical.detail": "Gesamt-Score im kritischen Bereich.",
   "kos.hint.health-mittel.title": "Knowledge-Health mittel ({{n}})",
@@ -3605,7 +3765,7 @@ const de = {
     "Dein Wissen ist als Objekt angelegt und wartet auf die Peer-Prüfung — es ist SICHTBAR, aber ehrlich als offen markiert, nicht als gesichert. Du musst nichts weiter tun: Prüfer finden es auf dem Validierungs-Board. Willst du es ansehen oder ergänzen, führt der Link direkt hin.",
   "chelp.advancedDetails.title": "Erweiterte Details",
   "chelp.advancedDetails.body":
-    "Alles hier ist OPTIONAL — dein Wissen wird auch ohne eingereicht. Es lohnt sich trotzdem: Kategorie und Schlagwörter machen es auffindbar, die Anlage koppelt es an Maschinen/Objekte, die Prüf-Anzahl steuert das Validierungs-Quorum, Dokumente und Bilder liefern Beweismaterial. Das Badge zeigt, wie viel schon ausgefüllt ist.",
+    "Alles hier ist OPTIONAL — dein Wissen wird auch ohne eingereicht. Es lohnt sich trotzdem: Kategorie und Schlagwörter machen es auffindbar, die Anlage koppelt es an Maschinen/Objekte, die Prüf-Anzahl steuert, wie viele Freigaben nötig sind, Dokumente und Bilder liefern Beweismaterial. Das Badge zeigt, wie viel schon ausgefüllt ist.",
   "chelp.knowledgeType.title": "Wissensart",
   "chelp.knowledgeType.body":
     "Ordnet dein Wissen ein: Erfahrungswissen, Prozesswissen, Faktenwissen — und besonders wertvoll: NEGATIVWISSEN („das haben wir probiert, es funktioniert NICHT, weil …“). Die Wissensart hilft Prüfern und Suchenden, dein Wissen richtig einzuordnen; sie ändert nichts am Prüfweg.",
@@ -3669,7 +3829,8 @@ const de = {
   "xtr.help.body":
     "Die KI liest ein von dir hochgeladenes Dokument und schlägt Wissenspunkte vor — jeder Punkt trägt seine Belegstelle aus dem Dokument (ohne Beleg keine Übernahme). Du wählst per Häkchen aus; Ausgewähltes wird als Abschnitt an deinen Artikel ANGEHÄNGT, nichts wird ersetzt oder überschrieben. Die Herkunft (Dateiname + Belegstelle) wird als Stufe-2-Quelle am Wissensobjekt vermerkt — sie gilt nicht als peer-validiert und ersetzt keine Prüfung.",
   "fd.kicker": "Erfassen",
-  "fd.title": "Dokument-Canvas",
+  // AUFTRAG-mega38 BLOCK I: „Canvas" uebersetzt.
+  "fd.title": "Dokument-Editor",
   "fd.backToCapture": "Zurück zu Wissen erfassen",
   "fd.allModes": "Alle Erfassungs-Modi",
   "fd.submitted": "Zur Prüfung eingereicht:",
@@ -3884,7 +4045,7 @@ const en: typeof de = {
   "nav.lifecycle": "Lifecycle",
   "nav.analytics": "Analytics & Audit",
   "nav.admin": "Admin",
-  "nav.output": "Output Factory",
+  "nav.output": "Reports",
   "nav.import": "Import & Sources",
   "nav.graph": "Knowledge Graph",
   "nav.capital": "Capital Views",
@@ -3905,6 +4066,9 @@ const en: typeof de = {
   "action.logout": "Sign out",
   "topbar.search": "Search knowledge, features or assets…",
   "topbar.mobile": "Mobile",
+  "topbar.design.classic": "Design: Classic",
+  "topbar.design.modern": "Design: Modern",
+  "topbar.design.hint": "Switch the design — changes only the look, not content or input.",
   "topbar.openMenu": "Open menu",
   "topbar.closeMenu": "Close menu",
   "topbar.menuLabel": "Navigation menu",
@@ -3928,6 +4092,12 @@ const en: typeof de = {
     "External knowledge lookup (web search) — a SEPARATE axis, not the AI model. It only controls web search / public enrichment, not the reasoner.",
   // Pedi 05.07.: header pill "Which AI am I in?" + country of origin + GDPR confirmation.
   // GDPR: yes ONLY for an internal AI from Europe — everything else is honestly "no".
+  "topbar.plain.ki":
+    "Shows where the AI that Klarwerk uses does its computing — in-house or at a provider on the internet.",
+  "topbar.plain.reasoner":
+    "Shows whether the AI is currently answering. “Unverified” only means no answer has come back since startup — it is not an error.",
+  "topbar.plain.external":
+    "Shows whether Klarwerk may also look things up on the open internet when answering. “Blocked” means: no, it stays with your own knowledge.",
   "topbar.kiExternal": "AI mode: Cloud",
   "topbar.kiInternal": "AI mode: Local",
   "topbar.kiMixed": "AI mode: Cloud + Local",
@@ -4056,7 +4226,7 @@ const en: typeof de = {
   "ktype.lernkurve": "Learning curve",
   "ktype.technik": "Technical",
   "ktype.negativwissen": "Negative knowledge",
-  "reasoner.draftLabel": "Reasoner draft · not validated",
+  "reasoner.draftLabel": "AI draft · not validated",
   "reasoner.taskInfo.title": "Which AI runs here?",
   "reasoner.taskInfo.cloud": "Cloud AI",
   "reasoner.taskInfo.local": "Local model",
@@ -4146,7 +4316,7 @@ const en: typeof de = {
   "auth.ssoBusy": "Completing sign-in …",
   "auth.ssoIncomplete": "Incomplete SSO response. Please sign in again.",
   "cycle.title": "The Klarwerk knowledge cycle",
-  "cycle.subtitle": "Not a chatbot: knowledge is captured, validated, used and kept current.",
+  "cycle.subtitle": "Knowledge is captured, validated, used and kept current.",
   // SCRUM-290: compact Stage-1 demo/pilot path (Start → Ask → Library/KO detail → Validation).
   "demo.title": "Demo/pilot path in 3 steps",
   "demo.subtitle":
@@ -4218,22 +4388,16 @@ const en: typeof de = {
   "kg.review.body": "Open or in-review knowledge belongs in validation, not direct use.",
   "kg.sourceBound.label": "Source-bound",
   "kg.sourceBound.body": "Answers come from knowledge objects — without a basis, a gap is created.",
-  "missions.title": "Next steps",
-  "missions.subtitle":
-    "Next steps recommended for your role — straight into real flows, not a demo.",
-  "missions.erfassen.desc": "Capture experience knowledge before it is lost.",
-  "missions.fragen.desc": "Ask a question and get evidence-backed answers.",
-  "missions.validierung.desc": "Review and approve open knowledge objects.",
-  "missions.risiko.desc": "Keep knowledge gaps and risks in view.",
-  "missions.bibliothek.desc": "Search and browse the validated knowledge base.",
-  "start.kicker": "Control room",
+  "start.kicker": "Overview",
   "start.greeting": "Hello, {{name}}.",
+  // AUFTRAG-mega38 BLOCK G1 — see the DE block.
+  "start.purpose":
+    "Klarwerk collects what your colleagues have learned on the job, so that you can ask about it and see where every answer comes from.",
   "start.ctaAsk": "Ask a question",
   "start.ctaCapture": "Capture knowledge",
   "start.ctaValidate": "Open validation",
   "start.todo": "To do today",
   "start.workTitle": "Next actions",
-  "start.kpiSectionTitle": "Key figures",
   "start.severity.critical": "now",
   "start.severity.today": "today",
   "start.severity.later": "later",
@@ -4246,10 +4410,7 @@ const en: typeof de = {
   "shelp.severity.title": "The coloured dots",
   "shelp.severity.body":
     "The dot on the left shows urgency: Red = do now (blocking or critical), Yellow = worth doing today, Grey = can wait. It is guidance only, not a rule — you decide the order, and nothing is processed automatically.",
-  "shelp.kpis.title": "The four key figures",
-  "shelp.kpis.body":
-    "Four numbers for the big picture: Total = all knowledge objects, Open = not yet reviewed, Validated = confirmed and usable, Gaps = questions asked with no answer in the base. They show the state of the knowledge — they trigger nothing themselves and are not a ranking.",
-  "start.focusLabel": "Start here",
+  "start.focusLabel": "Most urgent open work",
   "work.conflicts": "Resolve conflicts",
   "work.criticalGaps": "Critical knowledge gaps",
   "work.revalidation": "Revalidations due",
@@ -4261,10 +4422,6 @@ const en: typeof de = {
   "start.stufe2.title": "Advanced features (Stage 2)",
   "start.stufe2.body":
     "As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' in the sidebar to show them.",
-  "start.kpiTotal": "Knowledge objects",
-  "start.kpiOpen": "Open",
-  "start.kpiValidated": "Validated",
-  "start.kpiGaps": "Knowledge gaps",
   "task.kicker": "Tasks",
   "task.critical": "Critical",
   "task.today": "Today",
@@ -4302,7 +4459,7 @@ const en: typeof de = {
   "task.explain.open": "Open this task to see the next step.",
   // SCRUM-297: Knowledge-OS phase per work item (reuses cycle.*.label).
   "task.phaseLabel": "Phase:",
-  "capture.kicker": "Expert studio · Capture",
+  "capture.kicker": "Capture knowledge",
   "capture.title": "Capture experience knowledge",
   "capture.rescue.kicker": "Rescue knowledge",
   "capture.rescue.title": "Secure experience knowledge before it's lost.",
@@ -4873,6 +5030,8 @@ const en: typeof de = {
   "capture.file.replace": "Choose another document",
   "capture.file.remove": "Remove document",
   "capture.file.dropHint": "Drag and drop a file here — or choose one below.",
+  // AUFTRAG-mega34 D1: the button says what it does.
+  "capture.file.pick": "Choose file",
   "capture.file.dropActive": "Drop the file here …",
   "capture.file.dropReject":
     "“{{name}}” is not supported here yet — please drop a text, Word, PDF, PPTX or image file.",
@@ -5097,8 +5256,7 @@ const en: typeof de = {
   "capture.resumeTitle": "Resume drafts",
   "capture.resumeExpand": "Show drafts ({{count}})",
   "capture.resumeCollapse": "Collapse drafts",
-  "capture.resumeCollapsedHint":
-    "{{count}} drafts are collapsed so the capture paths below stay reachable.",
+  // AUFTRAG-mega38 BLOCK J4: `capture.resumeCollapsedHint` removed — see the DE block.
   "capture.resume": "Resume",
   "capture.discardDraft": "Discard",
   // AUFTRAG-sortfilter · Punkt 2: draft list filter + sort.
@@ -5385,7 +5543,7 @@ const en: typeof de = {
   "capture.ivReadAloud": "Read aloud",
   "capture.ivReadStop": "Stop",
   "capture.ivDictNa": "Dictation is not available in this browser — please type.",
-  "capture.ivModel": "Reasoner model",
+  "capture.ivModel": "AI model",
   "capture.ivFallback": "Deterministic fallback",
   "capture.ivQ.title": "What is it about? Write a short core statement.",
   "capture.ivQ.statement": "Describe the experience/statement in more detail.",
@@ -5397,12 +5555,20 @@ const en: typeof de = {
   "capture.ivQHint.conditions": "One condition per line",
   "capture.ivQHint.measures": "One measure per line",
   "capture.ivQHint.tags": "frost, pump, winter",
-  "ask.kicker": "Query console",
+  "ask.kicker": "Questions and answers",
   "ask.title": "Ask the plant's knowledge",
   "ask.intro":
     "Answers come only from validated knowledge — with sources and trust. If there is no basis, the gap is named openly.",
   "ask.placeholder": "e.g. When must valve X be closed on overpressure?",
   "ask.emptyHint": "Please enter a question first.",
+  // AUFTRAG-mega38 BLOCK A: waiting and failure appear WHERE the answer will appear.
+  "ask.pending.title": "The question is running against the plant knowledge.",
+  "ask.pending.body":
+    "Matching sources are being looked up. If there is no solid basis, Klarwerk says so openly — nothing is invented.",
+  "ask.error.title": "The question could not be answered.",
+  "ask.error.body":
+    "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
+  "ask.error.retry": "Try again",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
     "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
@@ -5428,8 +5594,10 @@ const en: typeof de = {
   "ask.knowledgeClass.extern": "External source",
   "ask.knowledgeClass.annahme": "Assumption",
   "ask.knowledgeClass.unbekannt": "Unknown",
-  "ask.steps": "Reasoning steps",
-  "ask.sources": "Sources",
+  "ask.steps": "Context sources consulted",
+  // AUFTRAG-mega38 BLOCK F — see the DE block: the list is the full top-K retrieval set, not the
+  // set of sources the answer actually used.
+  "ask.sources": "Sources consulted",
   "ask.export.copy": "Copy",
   "ask.export.download": "As Markdown",
   "ask.export.print": "Print / PDF",
@@ -5438,7 +5606,7 @@ const en: typeof de = {
   "ask.export.footer":
     "Source-bound answer from KLARWERK · generated on {{date}}. Only as reliable as the sources used (status/trust). No promise of truth.",
   "ask.sourcesHint":
-    "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Open the knowledge object for details.",
+    "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Listed are all sources consulted for the question; whether every one of them contributed to the answer is not something this list states — and the answer text is not required to mark it. Open the knowledge object for details.",
   // Packet 4 (nacht24): sources like the document — status/trust per source + original-format excerpt.
   "answerSource.trust": "Trust {{n}}",
   "answerSource.excerptShow": "Show excerpt in document format",
@@ -5492,11 +5660,27 @@ const en: typeof de = {
   "ask.contract.gap.next": "Next step: capture knowledge or prioritise the gap in the risk board.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
-  "ask.contract.sumTotal_one": "{{count}} source",
-  "ask.contract.sumTotal_other": "{{count}} sources",
+  "ask.contract.sumTotal_one": "{{count}} source consulted",
+  "ask.contract.sumTotal_other": "{{count}} sources consulted",
   "ask.contract.sumValidated": "{{count}} validated",
   "ask.contract.sumOpen": "{{count}} open/unverified",
   "ask.contract.sumConflict": "{{count}} with conflict",
+  "ask.checkCaveat.title": "This answer is not evidenced as free of conflicts.",
+  "ask.checkCaveat.badge": "check unproven",
+  "ask.checkCaveat.incomplete":
+    "For {{unproven}} of {{total}} sources used, conflict and duplicate checking did not run to completion. Not everything was searched — unknown contradictions are therefore not ruled out.",
+  "ask.checkCaveat.noCoverage":
+    "For {{unproven}} of {{total}} sources used, a check run is recorded but its reach is not evidenced. How far the search went is therefore unknown.",
+  "ask.checkCaveat.unchecked":
+    "For {{unproven}} of {{total}} sources used, no check run is recorded at all. Contradictions were never searched for there.",
+  "ask.checkCaveat.unknown":
+    "{{unproven}} of {{total}} sources used cannot be found in the corpus. Nothing can be said about their checking.",
+  // AUFTRAG-mega34 A2: the unknown conflict state.
+  "ask.conflictCaveat.title": "The conflict state cannot be retrieved right now.",
+  "ask.conflictCaveat.pending":
+    "Known contradictions are still loading. Until they arrive, this answer counts as unverified — not because something was found, but because nothing could be looked up yet.",
+  "ask.conflictCaveat.failed":
+    "Known contradictions could not be retrieved. Whether any source is in an open conflict is therefore unknown; this answer counts as unverified.",
   // SCRUM-283: data-minimising, honest notice about the stored knowledge gap (Ask + Risk).
   "gap.privacyNotice":
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
@@ -5515,8 +5699,10 @@ const en: typeof de = {
   "use.open.label": "To review",
   "use.open.hint": "Open/unverified — get it reviewed first.",
   "ko.ovTrust": "Trust",
-  "ko.ovSources": "{{n}} sources",
-  "ko.ovAttachments": "{{n}} attachments",
+  "ko.ovSources_one": "{{count}} source",
+  "ko.ovSources_other": "{{count}} sources",
+  "ko.ovAttachments_one": "{{count}} attachment",
+  "ko.ovAttachments_other": "{{count}} attachments",
   "trust.explain.title": "What does Trust mean?",
   "trust.explain.meta":
     "Trust is a review/evidence signal from peer ratings (0–99) — not a promise that the statement is true.",
@@ -5781,6 +5967,24 @@ const en: typeof de = {
   // nothing. The text says exactly that and does not disguise itself as a model error.
   "val.aiCheck.reason.submit-followup-failed":
     "The check could not be queued for technical reasons while submitting — the AI model was not asked and raised nothing. Retrying queues it again.",
+  // AUFTRAG-mega28 A2/A3: with the candidate cap in place, a run must never look like it saw the
+  // whole library. These texts name the numbers and spell out what an empty result does NOT mean.
+  "val.aiCheck.reason.capacity":
+    "The check was aborted because the AI model was saturated — it did not run to completion. Retrying starts a fresh run.",
+  "val.aiCheck.boardCaveat":
+    "This does not mean “checked and clear”: of {{total}} knowledge objects, {{incomplete}} carry an incomplete check run and {{unchecked}} none at all. Detection compares each contribution against a limited set of candidates only.",
+  // AUFTRAG-mega31 A4: “no run at all” and “no coverage evidenced” are TWO statements.
+  "val.aiCheck.boardCaveat.noCoverage":
+    "For {{noCoverage}} more, a check run is recorded but no coverage is evidenced — nothing is established about their reach.",
+  "val.aiCheck.coverage.partial": "PARTIAL",
+  "val.aiCheck.coverage.capped":
+    "Checked against at least {{completed}} of {{available}} possible neighbours — not a complete comparison. The figure is the conservative minimum coverage of both checks (conflict and duplicate); the weaker of the two determines it. No finding means: nothing found within that set, not “free of conflicts and duplicates”.",
+  "val.aiCheck.coverage.skipped":
+    "Checked against at least {{completed}} of {{available}} possible neighbours; {{skipped}} comparisons were skipped due to errors — the run is incomplete. No finding does not mean “free of conflicts and duplicates”.",
+  "val.aiCheck.coverage.aborted":
+    "Aborted after at least {{completed}} of {{available}} possible neighbours — the rest was not checked. No finding does not mean “free of conflicts and duplicates”.",
+  "val.aiCheck.coverage.unproven":
+    "This run is not evidenced as complete: the record shows {{completed}} finished comparisons against {{available}} possible neighbours. No finding does not mean “free of conflicts and duplicates”.",
   "val.feedback.condTitle": "Conditional – reason for the author (required)",
   "val.feedback.rejTitle": "Rejection – reason for the author (required)",
   "val.feedback.placeholder": "What needs to be revised? …",
@@ -5866,12 +6070,12 @@ const en: typeof de = {
     "Authorship was transferred — look extra closely at the statement and evidence.",
   // SCRUM-365 / PI-K2 / AG-P2-3: Trust is a signal, not truth — only the quorum makes it reliable.
   "val.guide.trustNote":
-    "Trust is a review signal, not a guarantee of truth. Only enough approvals (quorum) make knowledge reliable.",
+    "Trust is a review signal, not a guarantee of truth. Only enough approvals — the agreed minimum number of reviewers — make knowledge reliable.",
   // SCRUM-365: decision impact BEFORE the click — honest, no automatic release.
   "val.guide.impactTitle": "What does the decision do?",
   "val.impact.up.title": "Approve",
   "val.impact.up.body":
-    "Counts as one approval vote. Knowledge becomes usable only when status, quorum and trust support it — nothing is released automatically.",
+    "Counts as one approval vote. Knowledge becomes usable only when status, the number of approvals and trust support it — nothing is released automatically.",
   "val.impact.warn.title": "Query",
   "val.impact.warn.body":
     "Needs a short reason. Stays review work and helps the author revise specifically.",
@@ -5889,13 +6093,14 @@ const en: typeof de = {
   "val.nextRework": "Rework in the object",
   "val.assign": "Assign …",
   "val.openDetails": "View details — edit & delete in the object",
-  "start.livewall.title": "Live wall",
-  "start.livewall.subtitle":
-    "What is happening right now: freshly saved knowledge and knowledge that helped.",
-  "start.livewall.saved": "Freshly saved",
+  // AUFTRAG-mega38 BLOCK E — s. den DE-Block: die Wand zeigt zuletzt ERFASSTES Wissen, kein
+  // gesichertes; sie filtert nicht nach Status.
+  "start.livewall.title": "What is happening right now",
+  "start.livewall.subtitle": "Recently captured knowledge and knowledge that helped others.",
+  "start.livewall.saved": "Recently captured",
   "start.livewall.helped": "Helped",
   "start.livewall.helpedToday": "helped today: {{n}}",
-  "start.livewall.savedEmpty": "Nothing saved yet — the first contribution will appear here.",
+  "start.livewall.savedEmpty": "Nothing captured yet — the first contribution will appear here.",
   "start.livewall.helpedEmpty": "No “helped” feedback yet.",
   "con.kicker": "Conflict board",
   "con.title": "Resolve conflicts — without losing knowledge",
@@ -5946,6 +6151,10 @@ const en: typeof de = {
   "con.readonlyCompare": "Read-only comparison",
   "con.detectedOn": "Detected on {{date}}",
   "con.evidenceSideLabel": "Evidence for this side",
+  "con.evidenceBalance.neither":
+    "Neither statement is backed by a source. This contradiction therefore cannot be settled on wording, only on evidence — the next step is to add a source for at least one side.",
+  "con.evidenceBalance.oneSided":
+    "Only one of the two statements is backed by a source: “{{title}}”. That is a difference in evidence, not a verdict on which statement is correct — a sourced statement can still be wrong. The next step is to back the other side or withdraw it.",
   "con.compareTitle": "Side-by-side comparison",
   "con.koMissing": "Contribution was removed.",
   "con.resolveEffect":
@@ -6057,7 +6266,8 @@ const en: typeof de = {
   "facet.showAll": "Show all {{n}}",
   "facet.showLess": "Show fewer",
   "facet.restricted": "only values from the selected category",
-  "facet.showResults": "Show {{n}} results",
+  "facet.showResults_one": "Show {{count}} result",
+  "facet.showResults_other": "Show {{count}} results",
   "facet.countFiltered": "filtered from {{total}}",
   "facet.countAll": "entire stock",
   "facet.openFilters": "Filters",
@@ -6071,7 +6281,8 @@ const en: typeof de = {
   "facet.rangeContradictory":
     "The start date is after the end date — this combination matches nothing.",
   "lib.facet.confidentiality": "Confidentiality",
-  "lib.facet.showResults": "Show {{n}} entries",
+  "lib.facet.showResults_one": "Show {{count}} entry",
+  "lib.facet.showResults_other": "Show {{count}} entries",
   "lib.facet.rangeLabel": "Last changed",
   "lib.loadMore": "Load {{n}} more",
   "lib.views.remember": "Remember this search",
@@ -6118,6 +6329,7 @@ const en: typeof de = {
   "funke.capital.title": "Knowledge capital",
   "funke.capital.secured": "captured knowledge objects",
   "funke.capital.validated": "of which validated",
+  "funke.capital.open": "of which open",
   "funke.capital.categories": "answerable topic areas",
   "funke.capital.authors": "active knowledge holders",
   "funke.capital.gaps": "open knowledge gaps",
@@ -6192,6 +6404,7 @@ const en: typeof de = {
   "imp.explore.alreadyQueued": "Of these already queued for review: {{n}}",
   // AUFTRAG-ic7-import-vision: honest source gallery „where the journey is heading".
   "imp.gallery.planned": "planned",
+  "imp.gallery.plannedGroup": "Planned ({{count}})",
   "imp.gallery.systemsTitle": "Systems",
   "imp.gallery.filesTitle": "Files",
   "imp.gallery.hintSoon": "In progress — this source is coming soon.",
@@ -6254,18 +6467,31 @@ const en: typeof de = {
   "imp.select.searchPlaceholder": "Search matches (title, author) …",
   "imp.select.selectAll": "Select all",
   "imp.select.deselectAll": "Deselect all",
-  "imp.select.hideImported": "Hide already imported/queued",
   "imp.select.groupBy": "Group by:",
   "imp.select.groupNone": "none",
   "imp.select.groupTheme": "by theme",
   "imp.select.groupLanguage": "by language",
+  "imp.select.groupFolder": "by folder",
+  "imp.select.noFolder": "No source container",
+  "imp.select.folderFallbackNoPath":
+    "This source provides no folder structure (no parent chain) — showing the previous view.",
+  "imp.select.folderFallbackSingle":
+    "The source structure yields only a single folder here — showing the previous view.",
+  "imp.select.facet.folder": "Folder",
+  "imp.select.facet.status": "Status",
+  "imp.select.facet.theme": "Theme",
+  "imp.select.facet.author": "Author",
+  "imp.select.facet.language": "Language",
+  "imp.select.facetCount_one": "Show {{count}} match",
+  "imp.select.facetCount_other": "Show {{count}} matches",
+  "imp.select.rangeLabel": "Source date",
+  "imp.select.bulkLabel": "Selection",
   "imp.select.groupCount": "{{n}} matches",
   "imp.select.langDe": "German",
   "imp.select.langEn": "English",
   "imp.select.langNl": "Dutch",
   "imp.select.langOther": "No language tag",
   "imp.select.noTheme": "No theme",
-  "imp.select.chipAll": "All",
   "imp.select.chipNew": "New",
   "imp.select.chipImported": "Already imported",
   "imp.select.chipQueued": "Queued",
@@ -6512,6 +6738,17 @@ const en: typeof de = {
   "health.factor.singleSourceShare": "Single-source share",
   "health.factor.openGaps": "Open knowledge gaps",
   "health.factor.openConflicts": "Open conflicts",
+  "health.band.unproven": "rating not evidenced",
+  "health.range.explain":
+    "{{worst}} out of 100 in the worst case, {{best}} in the best. As long as it is not evidenced that conflicts were searched for completely, the worse value applies — which is why no band is shown here.",
+  "health.conflictUnproven.title":
+    "The score applies the full conflict penalty: {{worst}} instead of {{best}} out of 100.",
+  "health.conflictUnproven.detection-incomplete":
+    "Conflict and duplicate detection has not run to completion across the corpus. It is therefore not ruled out that more conflicts exist than were found — and a penalty of zero would be an assumption about something unknown.",
+  "health.conflictUnproven.detection-unknown":
+    "Nothing is established about the reach of conflict and duplicate detection. As long as complete checking is not evidenced, the number of conflicts found says nothing about the corpus.",
+  "health.conflictUnproven.known":
+    "{{count}} open conflicts are known ({{penalty}} of at most {{max}} penalty points). That penalty is certain; the remainder up to the maximum is the uncertainty.",
   "risk.busfactor": "Bus factor (single-source risk)",
   "risk.busEmpty": "No risk data.",
   "risk.experts": "experts",
@@ -6744,7 +6981,7 @@ const en: typeof de = {
   "shelp.ana.weekly":
     "This overview counts how many knowledge objects passed review in each week. It shows the pace at which secured knowledge is created — not how hard individuals worked. If the curve flattens, reviews are usually piling up; a look at the review board shows where it sticks.",
   "shelp.ask.steps":
-    "Here you see step by step how the answer came about: which question was understood, which secured knowledge was used, and how the answer was formed from it. So you can retrace every statement instead of trusting it blindly. If a step looks odd, open the named source and check yourself.",
+    "Listed here are the knowledge objects that were consulted from the corpus for your question — with an excerpt from the passage found. It is NOT a derivation: KLARWERK does not record which sentence of the answer came from which source. The list tells you what was searched; to verify, open the named source.",
   "shelp.ask.sources":
     "Every answer in KLARWERK relies exclusively on reviewed knowledge objects — and exactly those are listed here. Tap a source to open the full object with evidence and review status. If nothing is listed, there is no secured knowledge for your question, and KLARWERK says so honestly instead of inventing something.",
   "shelp.capture.resumeTitle":
@@ -6913,7 +7150,7 @@ const en: typeof de = {
   "mob.title": "Capture quickly",
   "mob.sub": "At the asset. In under two minutes.",
   "mob.dictate": "Record dictation",
-  "mob.dictateSub": "Speak — reasoner structures it",
+  "mob.dictateSub": "Speak — the AI structures it",
   "mob.note": "Note",
   "mob.photo": "Photo",
   "mob.interview": "Interview",
@@ -7094,6 +7331,10 @@ const en: typeof de = {
   "kos.hint.provenance-lineage.detail": "KOs with author transfer or multiple versions.",
   "kos.hint.evidence-empty.title": "No evidence records",
   "kos.hint.evidence-empty.detail": "No sources/attachments captured as evidence yet.",
+  // AUFTRAG-mega34 G.
+  "kos.hint.health-detection-unproven.title": "Knowledge health not evidenced ({{n}})",
+  "kos.hint.health-detection-unproven.detail":
+    "Conflict detection is not fully evidenced. The value shown is therefore the worst possible one, not a measured grade — while that holds, neither an all-clear nor an alarm can be given honestly.",
   "kos.hint.health-critical.title": "Knowledge health critical ({{n}})",
   "kos.hint.health-critical.detail": "Overall score in the critical band.",
   "kos.hint.health-mittel.title": "Knowledge health medium ({{n}})",
@@ -7299,7 +7540,7 @@ const en: typeof de = {
     "Your knowledge now exists as an object and awaits peer review — it is VISIBLE, but honestly marked as open, not as validated. Nothing more to do: reviewers will find it on the validation board. If you want to view or extend it, the link takes you straight there.",
   "chelp.advancedDetails.title": "Advanced details",
   "chelp.advancedDetails.body":
-    "Everything here is OPTIONAL — your knowledge gets submitted without it too. It is still worth it: category and tags make it findable, the asset couples it to machines/objects, the reviewer count steers the validation quorum, documents and images provide evidence. The badge shows how much is already filled in.",
+    "Everything here is OPTIONAL — your knowledge gets submitted without it too. It is still worth it: category and tags make it findable, the asset couples it to machines/objects, the reviewer count steers how many approvals are needed, documents and images provide evidence. The badge shows how much is already filled in.",
   "chelp.knowledgeType.title": "Knowledge type",
   "chelp.knowledgeType.body":
     "Classifies your knowledge: experience, process, factual — and especially valuable: NEGATIVE knowledge („we tried this, it does NOT work, because …“). The type helps reviewers and searchers put your knowledge in context; it changes nothing about the review path.",
@@ -7351,7 +7592,7 @@ const en: typeof de = {
   "xtr.help.body":
     "The AI reads a document you upload and suggests knowledge points — each point carries its supporting excerpt from the document (no excerpt, no adoption). You choose via checkboxes; the selection is APPENDED to your article as sections, nothing is replaced or overwritten. The origin (file name + excerpt) is noted on the knowledge object as a level-2 source — it does not count as peer-validated and does not replace review.",
   "fd.kicker": "Capture",
-  "fd.title": "Document canvas",
+  "fd.title": "Document editor",
   "fd.backToCapture": "Back to capture knowledge",
   "fd.allModes": "All capture modes",
   "fd.submitted": "Submitted for review:",
@@ -7552,7 +7793,7 @@ const nl: typeof de = {
   "nav.lifecycle": "Levenscyclus",
   "nav.analytics": "Analytics & audit",
   "nav.admin": "Admin",
-  "nav.output": "Output Factory",
+  "nav.output": "Rapportages",
   "nav.import": "Import & bronnen",
   "nav.graph": "Kennisgraaf",
   "nav.capital": "Kapitaalweergaven",
@@ -7573,6 +7814,9 @@ const nl: typeof de = {
   "action.logout": "Afmelden",
   "topbar.search": "Zoek naar kennis, functies of bijlagen…",
   "topbar.mobile": "Mobiel",
+  "topbar.design.classic": "Ontwerp: Klassiek",
+  "topbar.design.modern": "Ontwerp: Modern",
+  "topbar.design.hint": "Ontwerp wisselen — verandert alleen het uiterlijk, geen inhoud of invoer.",
   "topbar.openMenu": "Menu openen",
   "topbar.closeMenu": "Menu sluiten",
   "topbar.menuLabel": "Navigatiemenu",
@@ -7595,6 +7839,12 @@ const nl: typeof de = {
   "topbar.external.open": "Extern: Open",
   "topbar.external.hint":
     "Externe kennisopvraging (webzoekopdracht) — een APARTE as, niet het AI-model. Regelt alleen webzoeken/openbare verrijking, niet de reasoner.",
+  "topbar.plain.ki":
+    "Laat zien waar de AI die Klarwerk gebruikt rekent — in eigen huis of bij een aanbieder op internet.",
+  "topbar.plain.reasoner":
+    "Laat zien of de AI op dit moment antwoordt. „Ongeverifieerd“ betekent alleen: sinds de start is er nog geen antwoord teruggekomen — het is geen fout.",
+  "topbar.plain.external":
+    "Laat zien of Klarwerk bij het antwoorden ook op het open internet mag kijken. „Geblokkeerd“ betekent: nee, het blijft bij jullie eigen kennis.",
   "topbar.kiExternal": "AI-modus: Cloud",
   "topbar.kiInternal": "AI-modus: Lokaal",
   "topbar.kiMixed": "AI-modus: Cloud + Lokaal",
@@ -7723,7 +7973,7 @@ const nl: typeof de = {
   "ktype.lernkurve": "Leercurve",
   "ktype.technik": "Techniek",
   "ktype.negativwissen": "Negatieve kennis",
-  "reasoner.draftLabel": "Reasoner-concept · niet gevalideerd",
+  "reasoner.draftLabel": "AI-concept · niet gevalideerd",
   "reasoner.taskInfo.title": "Welke AI werkt hier?",
   "reasoner.taskInfo.cloud": "Cloud-AI",
   "reasoner.taskInfo.local": "Lokaal model",
@@ -7814,8 +8064,7 @@ const nl: typeof de = {
   "auth.ssoBusy": "Aanmelding wordt afgerond …",
   "auth.ssoIncomplete": "Onvolledig SSO-antwoord. Meld je opnieuw aan.",
   "cycle.title": "De Klarwerk-kenniscyclus",
-  "cycle.subtitle":
-    "Geen chatbot: kennis wordt vastgelegd, gevalideerd, gebruikt en actueel gehouden.",
+  "cycle.subtitle": "Kennis wordt vastgelegd, gevalideerd, gebruikt en actueel gehouden.",
   "demo.title": "Demo-/pilotpad in 3 stappen",
   "demo.subtitle":
     "Een klein echt proces: bronvast vragen, bron/trust/status/versie bekijken, ongecontroleerde kennis ter validatie aanbieden.",
@@ -7859,7 +8108,7 @@ const nl: typeof de = {
   "demo.banner.validation.body":
     "Hier wordt open/ongecontroleerde kennis beoordeeld. Doel: van beoordelingswerk geborgde, bruikbare kennis maken.",
   "cycle.capture.label": "Vastleggen",
-  "cycle.capture.desc": "Ervaringskennis borgen als Knowledge Object.",
+  "cycle.capture.desc": "Ervaringskennis borgen als kennisobject.",
   "cycle.validate.label": "Valideren",
   "cycle.validate.desc": "In het team beoordelen tot trust en status betrouwbaar zijn.",
   "cycle.use.label": "Gebruiken",
@@ -7883,23 +8132,17 @@ const nl: typeof de = {
     "Open of in beoordeling zijnde kennis hoort in de validatie, niet in het gebruik.",
   "kg.sourceBound.label": "Bronvast",
   "kg.sourceBound.body":
-    "Antwoorden ontstaan uit Knowledge Objects — zonder grondslag wordt er een hiaat aangemaakt.",
-  "missions.title": "Volgende stappen",
-  "missions.subtitle":
-    "Voor jouw rol aanbevolen volgende stappen — direct in echte processen, geen demo.",
-  "missions.erfassen.desc": "Ervaringskennis vastleggen voordat die verloren gaat.",
-  "missions.fragen.desc": "Een vraag stellen en onderbouwde antwoorden krijgen.",
-  "missions.validierung.desc": "Open kennisobjecten controleren en goedkeuren.",
-  "missions.risiko.desc": "Kennishiaten en risico's in het oog houden.",
-  "missions.bibliothek.desc": "In de geborgde kennisvoorraad zoeken en snuffelen.",
-  "start.kicker": "Control Room",
+    "Antwoorden ontstaan uit kennisobjecten — zonder grondslag wordt er een hiaat aangemaakt.",
+  "start.kicker": "Overzicht",
   "start.greeting": "Goedendag, {{name}}.",
+  // AUFTRAG-mega38 BLOCK G1 — zie het DE-blok.
+  "start.purpose":
+    "Klarwerk verzamelt wat je collega's in het bedrijf hebben geleerd, zodat je ernaar kunt vragen en ziet waar elk antwoord vandaan komt.",
   "start.ctaAsk": "Vraag stellen",
   "start.ctaCapture": "Kennis vastleggen",
   "start.ctaValidate": "Validatie openen",
   "start.todo": "Vandaag te doen",
   "start.workTitle": "Volgende acties",
-  "start.kpiSectionTitle": "Kengetallen",
   "start.severity.critical": "nu",
   "start.severity.today": "vandaag",
   "start.severity.later": "later",
@@ -7912,10 +8155,7 @@ const nl: typeof de = {
   "shelp.severity.title": "De gekleurde stippen",
   "shelp.severity.body":
     "De stip links geeft de urgentie aan: Rood = nu aan de beurt (geblokkeerd of kritiek), Geel = vandaag zinvol, Grijs = kan wachten. Dat is alleen een houvast, geen dwang — jij bepaalt de volgorde, en er wordt niets automatisch afgehandeld.",
-  "shelp.kpis.title": "De vier kengetallen",
-  "shelp.kpis.body":
-    "Vier getallen voor het totaalbeeld: Totaal = alle kennisobjecten, Open = nog niet gecontroleerd, Gevalideerd = bevestigd en bruikbaar, Hiaten = gestelde vragen zonder antwoord in de voorraad. Ze tonen de stand van de kennis — ze zetten zelf niets in gang en zijn geen ranglijst.",
-  "start.focusLabel": "Beste volgende instap",
+  "start.focusLabel": "Meest urgente openstaande werk",
   "work.conflicts": "Conflicten oplossen",
   "work.criticalGaps": "Kritieke kennishiaten",
   "work.revalidation": "Hervalidaties verschuldigd",
@@ -7927,10 +8167,6 @@ const nl: typeof de = {
   "start.stufe2.title": "Uitgebreide functies (Fase 2)",
   "start.stufe2.body":
     "Als admin heb je uitgebreide functies tot je beschikking: {{features}}. Zet daarvoor „{{toggle}}' onderaan in de zijbalk aan.",
-  "start.kpiTotal": "Kennisobjecten",
-  "start.kpiOpen": "Open",
-  "start.kpiValidated": "Gevalideerd",
-  "start.kpiGaps": "Kennishiaten",
   "task.kicker": "Taken",
   "task.critical": "Kritiek",
   "task.today": "Vandaag",
@@ -7967,7 +8203,7 @@ const nl: typeof de = {
     "Voor deze vraag ontbreekt geborgde kennis. Prioriteer het hiaat of leg er zelf een bijdrage voor vast.",
   "task.explain.open": "Open deze taak om de volgende stap te zien.",
   "task.phaseLabel": "Fase:",
-  "capture.kicker": "Expert Studio · Vastleggen",
+  "capture.kicker": "Kennis vastleggen",
   "capture.title": "Ervaringskennis vastleggen",
   "capture.rescue.kicker": "Kennis redden",
   "capture.rescue.title": "Borg ervaringskennis voordat die verloren gaat.",
@@ -8538,6 +8774,8 @@ const nl: typeof de = {
   "capture.file.replace": "Ander document kiezen",
   "capture.file.remove": "Document verwijderen",
   "capture.file.dropHint": "Sleep een bestand hierheen — of kies er hieronder een.",
+  // AUFTRAG-mega34 D1: de knop zegt wat hij doet.
+  "capture.file.pick": "Bestand kiezen",
   "capture.file.dropActive": "Laat het bestand hier los …",
   "capture.file.dropReject":
     "„{{name}}“ wordt hier nog niet ondersteund — sleep een tekst-, Word-, PDF-, PPTX- of afbeeldingsbestand.",
@@ -8762,8 +9000,7 @@ const nl: typeof de = {
   "capture.resumeTitle": "Concepten hervatten",
   "capture.resumeExpand": "Concepten tonen ({{count}})",
   "capture.resumeCollapse": "Concepten inklappen",
-  "capture.resumeCollapsedHint":
-    "{{count}} concepten zijn ingeklapt, zodat de vastlegwegen daaronder bereikbaar blijven.",
+  // AUFTRAG-mega38 BLOCK J4: `capture.resumeCollapsedHint` verwijderd — zie het DE-blok.
   "capture.resume": "Hervatten",
   "capture.discardDraft": "Verwerpen",
   // AUFTRAG-sortfilter · Punt 2: filter + sortering van de conceptenlijst.
@@ -9052,7 +9289,7 @@ const nl: typeof de = {
   "capture.ivReadAloud": "Voorlezen",
   "capture.ivReadStop": "Stop",
   "capture.ivDictNa": "Dicteren is in deze browser niet beschikbaar — typ het alsjeblieft.",
-  "capture.ivModel": "Reasoner-model",
+  "capture.ivModel": "AI-model",
   "capture.ivFallback": "Deterministische fallback",
   "capture.ivQ.title": "Waar gaat het over? Formuleer een korte kernuitspraak.",
   "capture.ivQ.statement": "Beschrijf de ervaring/uitspraak nauwkeuriger.",
@@ -9064,13 +9301,21 @@ const nl: typeof de = {
   "capture.ivQHint.conditions": "Eén voorwaarde per regel",
   "capture.ivQHint.measures": "Eén maatregel per regel",
   "capture.ivQHint.tags": "Vorst, pomp, winter",
-  "ask.kicker": "Query Console",
+  "ask.kicker": "Vragen en antwoorden",
   "ask.title": "Vraag het fabriekskennis",
   "ask.intro":
     "Antwoorden komen uitsluitend uit gevalideerde kennis — met bronnen en vertrouwen. Is er geen basis, dan wordt het hiaat open benoemd.",
   "ask.placeholder": "bijv. Wanneer moet klep X bij overdruk gesloten worden?",
   "ask.emptyHint": "Voer eerst een vraag in.",
   "ask.submit": "Vragen",
+  // AUFTRAG-mega38 BLOCK A: wachten en mislukken staan DAAR waar het antwoord verschijnt.
+  "ask.pending.title": "De vraag loopt tegen de fabriekskennis.",
+  "ask.pending.body":
+    "Er wordt naar passende bronnen gezocht. Is er geen draagkrachtige basis, dan zegt Klarwerk dat open — er wordt niets verzonnen.",
+  "ask.error.title": "De vraag kon niet worden beantwoord.",
+  "ask.error.body":
+    "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
+  "ask.error.retry": "Opnieuw proberen",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en trust beslissen, er wordt niets automatisch opgeslagen.",
   "ask.examplesLabel": "Voorbeelden:",
@@ -9093,8 +9338,10 @@ const nl: typeof de = {
   "ask.knowledgeClass.extern": "Externe bron",
   "ask.knowledgeClass.annahme": "Aanname",
   "ask.knowledgeClass.unbekannt": "Onbekend",
-  "ask.steps": "Argumentatiestappen",
-  "ask.sources": "Bronnen",
+  "ask.steps": "Geraadpleegde contextbronnen",
+  // AUFTRAG-mega38 BLOCK F — zie het DE-blok: de lijst is de volledige top-K-set, niet de set
+  // bronnen die het antwoord daadwerkelijk heeft gebruikt.
+  "ask.sources": "Geraadpleegde bronnen",
   "ask.export.copy": "Kopiëren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Afdrukken / PDF",
@@ -9103,7 +9350,7 @@ const nl: typeof de = {
   "ask.export.footer":
     "Brongebonden antwoord uit KLARWERK · gemaakt op {{date}}. Alleen zo betrouwbaar als de gebruikte bronnen (status/trust). Geen belofte van waarheid.",
   "ask.sourcesHint":
-    "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, trust, bruikbaarheid). Naar het kennisobject voor details.",
+    "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, trust, bruikbaarheid). Vermeld zijn alle bronnen die voor de vraag zijn geraadpleegd; of elk daarvan aan het antwoord heeft bijgedragen, zegt deze lijst niet — en de antwoordtekst hoeft dat niet aan te geven. Naar het kennisobject voor details.",
   // Pakket 4 (nacht24): bronnen zoals in het document — status/trust per bron + fragment in origineel formaat.
   "answerSource.trust": "Trust {{n}}",
   "answerSource.excerptShow": "Fragment in documentformaat tonen",
@@ -9156,11 +9403,27 @@ const nl: typeof de = {
     "Volgende stap: kennis vastleggen of het hiaat prioriteren op het risicobord.",
   "ask.contract.trustNote":
     "Trust en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
-  "ask.contract.sumTotal_one": "{{count}} bron",
-  "ask.contract.sumTotal_other": "{{count}} bronnen",
+  "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",
+  "ask.contract.sumTotal_other": "{{count}} bronnen geraadpleegd",
   "ask.contract.sumValidated": "{{count}} gevalideerd",
   "ask.contract.sumOpen": "{{count}} open/ongecontroleerd",
   "ask.contract.sumConflict": "{{count}} met conflict",
+  "ask.checkCaveat.title": "Voor dit antwoord is niet aangetoond dat het conflictvrij is.",
+  "ask.checkCaveat.badge": "controle onbewezen",
+  "ask.checkCaveat.incomplete":
+    "Bij {{unproven}} van {{total}} gebruikte bronnen is de conflict- en duplicaatcontrole niet volledig gelopen. Er is dus niet overal gezocht — onbekende tegenstrijdigheden zijn daarmee niet uitgesloten.",
+  "ask.checkCaveat.noCoverage":
+    "Bij {{unproven}} van {{total}} gebruikte bronnen is wel een controle vastgelegd, maar het bereik ervan is niet aangetoond. Hoe ver er is gezocht, is dus onbekend.",
+  "ask.checkCaveat.unchecked":
+    "Bij {{unproven}} van {{total}} gebruikte bronnen is helemaal geen controle vastgelegd. Daar is nooit naar tegenstrijdigheden gezocht.",
+  "ask.checkCaveat.unknown":
+    "{{unproven}} van {{total}} gebruikte bronnen zijn niet in de collectie te vinden. Over hun controle valt niets te zeggen.",
+  // AUFTRAG-mega34 A2: de onbekende conflictstand.
+  "ask.conflictCaveat.title": "De conflictstand is op dit moment niet op te halen.",
+  "ask.conflictCaveat.pending":
+    "De bekende tegenstrijdigheden worden nog geladen. Tot ze er zijn geldt dit antwoord als ongecontroleerd — niet omdat er iets is gevonden, maar omdat er nog niet gekeken kon worden.",
+  "ask.conflictCaveat.failed":
+    "De bekende tegenstrijdigheden konden niet worden opgehaald. Of een van de bronnen in een open conflict staat, is daarmee onbekend; dit antwoord geldt daarom als ongecontroleerd.",
   "gap.privacyNotice":
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
   "ask.toGaps": "Naar de kennishiaten",
@@ -9176,8 +9439,10 @@ const nl: typeof de = {
   "use.open.label": "Te controleren",
   "use.open.hint": "Open/ongecontroleerd — eerst laten controleren/beoordelen.",
   "ko.ovTrust": "Trust",
-  "ko.ovSources": "{{n}} bronnen",
-  "ko.ovAttachments": "{{n}} bijlagen",
+  "ko.ovSources_one": "{{count}} bron",
+  "ko.ovSources_other": "{{count}} bronnen",
+  "ko.ovAttachments_one": "{{count}} bijlage",
+  "ko.ovAttachments_other": "{{count}} bijlagen",
   "trust.explain.title": "Wat betekent Trust?",
   "trust.explain.meta":
     "Trust is een review-/bewijssignaal uit peerbeoordelingen (0–99) — geen belofte dat de uitspraak waar is.",
@@ -9442,6 +9707,24 @@ const nl: typeof de = {
   // niets aangemerkt. De tekst zegt precies dat en doet zich niet voor als een modelfout.
   "val.aiCheck.reason.submit-followup-failed":
     "De controle kon bij het indienen om technische redenen niet worden ingepland — het AI-model is daarbij niet geraadpleegd en heeft niets aangemerkt. Opnieuw controleren plant hem opnieuw in.",
+  // AUFTRAG-mega28 A2/A3: met de kandidaat-limiet mag een run niet meer suggereren dat hij de hele
+  // bibliotheek heeft gezien. Deze teksten noemen de aantallen en zeggen wat een leeg resultaat NIET betekent.
+  "val.aiCheck.reason.capacity":
+    "De controle is afgebroken omdat het AI-model overbelast was — hij is niet tot het einde gelopen. Opnieuw controleren start een nieuwe run.",
+  "val.aiCheck.boardCaveat":
+    "Dat betekent niet “gecontroleerd en vrij”: van {{total}} kennisobjecten hebben er {{incomplete}} een onvolledige controle en {{unchecked}} helemaal geen. De detectie vergelijkt elke bijdrage alleen met een beperkte groep kandidaten.",
+  // AUFTRAG-mega31 A4: “helemaal geen run” en “geen dekking aangetoond” zijn TWEE uitspraken.
+  "val.aiCheck.boardCaveat.noCoverage":
+    "Bij {{noCoverage}} andere is een controle vastgelegd, maar geen dekking aangetoond — over hun bereik is niets vastgesteld.",
+  "val.aiCheck.coverage.partial": "DEELS GECONTROLEERD",
+  "val.aiCheck.coverage.capped":
+    "Vergeleken met ten minste {{completed}} van {{available}} mogelijke buren — geen volledige vergelijking. Het getal is de conservatieve minimumdekking van beide controles (conflict en duplicaat); de zwakste van de twee bepaalt het. Geen bevinding betekent: niets gevonden binnen die groep, niet “vrij van conflicten en duplicaten”.",
+  "val.aiCheck.coverage.skipped":
+    "Vergeleken met ten minste {{completed}} van {{available}} mogelijke buren; {{skipped}} vergelijkingen zijn door fouten overgeslagen — de run is onvolledig. Geen bevinding betekent niet “vrij van conflicten en duplicaten”.",
+  "val.aiCheck.coverage.aborted":
+    "Afgebroken na ten minste {{completed}} van {{available}} mogelijke buren — de rest is niet gecontroleerd. Geen bevinding betekent niet “vrij van conflicten en duplicaten”.",
+  "val.aiCheck.coverage.unproven":
+    "Deze run is niet als volledig aangetoond: het protocol vermeldt {{completed}} afgeronde vergelijkingen bij {{available}} mogelijke buren. Geen bevinding betekent niet “vrij van conflicten en duplicaten”.",
   "val.feedback.condTitle": "Voorwaardelijk – onderbouwing voor de auteur (verplicht)",
   "val.feedback.rejTitle": "Afwijzing – onderbouwing voor de auteur (verplicht)",
   "val.feedback.placeholder": "Wat moet er worden herzien? …",
@@ -9523,11 +9806,11 @@ const nl: typeof de = {
     "Herzien — controleer gericht wat er sinds de vorige versie is veranderd.",
   "val.guide.focus.transfer": "Auteur is overgedragen — kijk extra goed naar uitspraak en bewijs.",
   "val.guide.trustNote":
-    "Trust is een review-signaal, geen waarheidsgarantie. Pas voldoende goedkeuringen (quorum) maken kennis geborgd.",
+    "Trust is een review-signaal, geen waarheidsgarantie. Pas voldoende goedkeuringen — het afgesproken minimum aantal controleurs — maken kennis geborgd.",
   "val.guide.impactTitle": "Wat bewerkstelligt de beslissing?",
   "val.impact.up.title": "Goedkeuren",
   "val.impact.up.body":
-    "Telt als één goedkeuringsstem. Kennis wordt pas bruikbaar als status, quorum en trust het dragen — er wordt niets automatisch goedgekeurd.",
+    "Telt als één goedkeuringsstem. Kennis wordt pas bruikbaar als status, het aantal goedkeuringen en trust het dragen — er wordt niets automatisch goedgekeurd.",
   "val.impact.warn.title": "Terugvraag",
   "val.impact.warn.body":
     "Vereist een korte onderbouwing. Blijft review-werk en helpt de auteur om gericht bij te werken.",
@@ -9545,13 +9828,14 @@ const nl: typeof de = {
   "val.nextRework": "In het object bijwerken",
   "val.assign": "Toewijzen …",
   "val.openDetails": "Details bekijken — bewerken & verwijderen in het object",
-  "start.livewall.title": "Live-Wall",
-  "start.livewall.subtitle":
-    "Wat er nu gebeurt: vers geborgde kennis en kennis die heeft geholpen.",
-  "start.livewall.saved": "Vers geborgd",
+  // AUFTRAG-mega38 BLOCK E — zie het DE-blok: de wand toont recent VASTGELEGDE kennis, geen
+  // geborgde; ze filtert niet op status.
+  "start.livewall.title": "Wat er nu gebeurt",
+  "start.livewall.subtitle": "Recent vastgelegde kennis en kennis die anderen heeft geholpen.",
+  "start.livewall.saved": "Recent vastgelegd",
   "start.livewall.helped": "Heeft geholpen",
   "start.livewall.helpedToday": "vandaag geholpen: {{n}}",
-  "start.livewall.savedEmpty": "Nog niets geborgd — de eerste bijdrage verschijnt hier.",
+  "start.livewall.savedEmpty": "Nog niets vastgelegd — de eerste bijdrage verschijnt hier.",
   "start.livewall.helpedEmpty": "Nog geen „heeft geholpen”-terugkoppeling.",
   "con.kicker": "Conflict Board",
   "con.title": "Conflicten oplossen — zonder kennis te verliezen",
@@ -9601,6 +9885,10 @@ const nl: typeof de = {
   "con.readonlyCompare": "Alleen-lezen vergelijking",
   "con.detectedOn": "Herkend op {{date}}",
   "con.evidenceSideLabel": "Bewijs van deze kant",
+  "con.evidenceBalance.neither":
+    "Geen van beide uitspraken is met een bron onderbouwd. Deze tegenstrijdigheid is daarom niet op de formulering te beslissen, alleen op bewijs — de volgende stap is voor ten minste één kant een bron toe te voegen.",
+  "con.evidenceBalance.oneSided":
+    "Slechts één van beide uitspraken is met een bron onderbouwd: “{{title}}”. Dat is een verschil in bewijslast, geen oordeel over welke uitspraak klopt — een onderbouwde uitspraak kan onjuist zijn. De volgende stap is de andere kant te onderbouwen of in te trekken.",
   "con.compareTitle": "Vergelijking",
   "con.koMissing": "Bijdrage is verwijderd.",
   "con.resolveEffect":
@@ -9708,7 +9996,8 @@ const nl: typeof de = {
   "facet.showAll": "Alle {{n}} tonen",
   "facet.showLess": "Minder tonen",
   "facet.restricted": "alleen waarden uit de gekozen categorie",
-  "facet.showResults": "{{n}} treffers tonen",
+  "facet.showResults_one": "{{count}} treffer tonen",
+  "facet.showResults_other": "{{count}} treffers tonen",
   "facet.countFiltered": "van {{total}} gefilterd",
   "facet.countAll": "volledige voorraad",
   "facet.openFilters": "Filters",
@@ -9722,7 +10011,8 @@ const nl: typeof de = {
   "facet.rangeContradictory":
     "De begindatum ligt na de einddatum — deze combinatie levert niets op.",
   "lib.facet.confidentiality": "Vertrouwelijkheid",
-  "lib.facet.showResults": "{{n}} bijdragen tonen",
+  "lib.facet.showResults_one": "{{count}} bijdrage tonen",
+  "lib.facet.showResults_other": "{{count}} bijdragen tonen",
   "lib.facet.rangeLabel": "Laatst gewijzigd",
   "lib.loadMore": "Nog {{n}} laden",
   "lib.views.remember": "Deze zoekopdracht onthouden",
@@ -9769,6 +10059,7 @@ const nl: typeof de = {
   "funke.capital.title": "Kenniskapitaal",
   "funke.capital.secured": "vastgelegde kennisobjecten",
   "funke.capital.validated": "waarvan gevalideerd",
+  "funke.capital.open": "waarvan open",
   "funke.capital.categories": "beantwoordbare themavelden",
   "funke.capital.authors": "actieve kennisdragers",
   "funke.capital.gaps": "open kennislacunes",
@@ -9842,6 +10133,7 @@ const nl: typeof de = {
   "imp.explore.alreadyQueued": "Waarvan al in de wachtrij voor beoordeling: {{n}}",
   // AUFTRAG-ic7-import-vision: eerlijke bronnengalerij „waar de reis heen gaat".
   "imp.gallery.planned": "gepland",
+  "imp.gallery.plannedGroup": "Gepland ({{count}})",
   "imp.gallery.systemsTitle": "Systemen",
   "imp.gallery.filesTitle": "Bestanden",
   "imp.gallery.hintSoon": "In ontwikkeling — deze bron komt binnenkort.",
@@ -9904,18 +10196,31 @@ const nl: typeof de = {
   "imp.select.searchPlaceholder": "Zoek in treffers (titel, auteur) …",
   "imp.select.selectAll": "Alles selecteren",
   "imp.select.deselectAll": "Alles deselecteren",
-  "imp.select.hideImported": "Al geïmporteerde/voorgemerkte verbergen",
   "imp.select.groupBy": "Groeperen:",
   "imp.select.groupNone": "geen",
   "imp.select.groupTheme": "op thema",
   "imp.select.groupLanguage": "op taal",
+  "imp.select.groupFolder": "op map",
+  "imp.select.noFolder": "Zonder broncontainer",
+  "imp.select.folderFallbackNoPath":
+    "Deze bron levert geen mapstructuur (geen bovenliggende keten) — de vorige weergave wordt getoond.",
+  "imp.select.folderFallbackSingle":
+    "De bronstructuur levert hier maar één enkele map op — de vorige weergave wordt getoond.",
+  "imp.select.facet.folder": "Map",
+  "imp.select.facet.status": "Status",
+  "imp.select.facet.theme": "Thema",
+  "imp.select.facet.author": "Auteur",
+  "imp.select.facet.language": "Taal",
+  "imp.select.facetCount_one": "{{count}} treffer tonen",
+  "imp.select.facetCount_other": "{{count}} treffers tonen",
+  "imp.select.rangeLabel": "Brondatum",
+  "imp.select.bulkLabel": "Selectie",
   "imp.select.groupCount": "{{n}} treffers",
   "imp.select.langDe": "Duits",
   "imp.select.langEn": "Engels",
   "imp.select.langNl": "Nederlands",
   "imp.select.langOther": "Zonder taalkenmerk",
   "imp.select.noTheme": "Zonder thema",
-  "imp.select.chipAll": "Alle",
   "imp.select.chipNew": "Nieuw",
   "imp.select.chipImported": "Al geïmporteerd",
   "imp.select.chipQueued": "Voorgemerkt",
@@ -10163,6 +10468,17 @@ const nl: typeof de = {
   "health.factor.singleSourceShare": "Single-source-aandeel",
   "health.factor.openGaps": "Open kennishiaten",
   "health.factor.openConflicts": "Open conflicten",
+  "health.band.unproven": "indeling niet aangetoond",
+  "health.range.explain":
+    "{{worst}} van 100 in het slechtste geval, {{best}} in het beste. Zolang niet is aangetoond dat er volledig naar conflicten is gezocht, geldt de slechtere waarde — daarom staat hier geen band.",
+  "health.conflictUnproven.title":
+    "De score rekent met de volledige conflictaftrek: {{worst}} in plaats van {{best}} van 100.",
+  "health.conflictUnproven.detection-incomplete":
+    "De conflict- en duplicaatdetectie is niet overal volledig gelopen. Het is daarom niet uitgesloten dat er meer conflicten zijn dan gevonden — en een aftrek van nul zou een aanname over iets onbekends zijn.",
+  "health.conflictUnproven.detection-unknown":
+    "Over het bereik van de conflict- en duplicaatdetectie is niets vastgesteld. Zolang volledige controle niet is aangetoond, zegt het aantal gevonden conflicten niets over de collectie.",
+  "health.conflictUnproven.known":
+    "Bekend zijn {{count}} open conflicten ({{penalty}} van maximaal {{max}} punten aftrek). Die aftrek staat vast; de rest tot het maximum is de onzekerheid.",
   "risk.busfactor": "Busfactor (enkele-bron-risico)",
   "risk.busEmpty": "Geen risicogegevens.",
   "risk.experts": "Experts",
@@ -10395,7 +10711,7 @@ const nl: typeof de = {
   "shelp.ana.weekly":
     "Dit overzicht telt hoeveel kennisobjecten in elke week de beoordeling hebben doorstaan. Het toont het tempo waarin geborgde kennis ontstaat — niet hoe ijverig afzonderlijke personen waren. Wordt de curve vlak, dan blijven meestal beoordelingen liggen; een blik in het beoordelingsgedeelte laat dan zien waar het hapert.",
   "shelp.ask.steps":
-    "Hier zie je stap voor stap hoe het antwoord tot stand kwam: welke vraag begrepen werd, welke geborgde kennis erbij gehaald werd en hoe daaruit het antwoord ontstond. Zo kun je elke uitspraak nagaan in plaats van er blind op te vertrouwen. Komt een stap je vreemd voor, open dan de genoemde bron en controleer zelf.",
+    "Hier staan de kennisobjecten die voor jouw vraag uit de voorraad zijn geraadpleegd — met een fragment uit de vindplaats. Het is GEEN afleiding: KLARWERK legt niet vast welke zin van het antwoord uit welke bron komt. De lijst zegt waarop is gezocht; nagaan doe je door de genoemde bron te openen.",
   "shelp.ask.sources":
     "Elk antwoord in KLARWERK steunt uitsluitend op gecontroleerde kennisobjecten — en precies die staan hier. Tik op een bron om het volledige object met bewijs en beoordelingsstatus te openen. Staat hier niets, dan bestaat er over jouw vraag geen geborgde kennis, en KLARWERK zegt dat eerlijk in plaats van iets te verzinnen.",
   "shelp.capture.resumeTitle":
@@ -10562,7 +10878,7 @@ const nl: typeof de = {
   "mob.title": "Snel vastleggen",
   "mob.sub": "Bij de installatie. In minder dan twee minuten.",
   "mob.dictate": "Dictaat opnemen",
-  "mob.dictateSub": "Spreken — Reasoner structureert",
+  "mob.dictateSub": "Spreken — de AI structureert",
   "mob.note": "Notitie",
   "mob.photo": "Foto",
   "mob.interview": "Interview",
@@ -10749,6 +11065,10 @@ const nl: typeof de = {
   "kos.hint.evidence-empty.title": "Geen bewijs-records",
   "kos.hint.evidence-empty.detail":
     "Tot nu toe zijn er geen bronnen/bijlagen als bewijs vastgelegd.",
+  // AUFTRAG-mega34 G.
+  "kos.hint.health-detection-unproven.title": "Knowledge-Health niet aangetoond ({{n}})",
+  "kos.hint.health-detection-unproven.detail":
+    "De conflictdetectie is niet volledig aangetoond. De getoonde waarde is daarom de ongunstigst mogelijke, geen gemeten graad — zolang dat zo is, valt noch een sein-veilig noch een alarm eerlijk te geven.",
   "kos.hint.health-critical.title": "Knowledge-Health kritiek ({{n}})",
   "kos.hint.health-critical.detail": "Totaalscore in het kritieke bereik.",
   "kos.hint.health-mittel.title": "Knowledge-Health gemiddeld ({{n}})",
@@ -10951,7 +11271,7 @@ const nl: typeof de = {
     "Je kennis is als object aangelegd en wacht op de peer-beoordeling — het is ZICHTBAAR, maar eerlijk als open gemarkeerd, niet als zeker. Je hoeft verder niets te doen: beoordelaars vinden het op het validatie-board. Wil je het bekijken of aanvullen, dan leidt de link er direct heen.",
   "chelp.advancedDetails.title": "Uitgebreide details",
   "chelp.advancedDetails.body":
-    "Alles hier is OPTIONEEL — je kennis wordt ook zonder ingediend. Toch loont het: categorie en trefwoorden maken het vindbaar, de installatie koppelt het aan machines/objecten, het controle-aantal stuurt het validatie-quorum, documenten en afbeeldingen leveren bewijsmateriaal. De badge toont hoeveel er al is ingevuld.",
+    "Alles hier is OPTIONEEL — je kennis wordt ook zonder ingediend. Toch loont het: categorie en trefwoorden maken het vindbaar, de installatie koppelt het aan machines/objecten, het controle-aantal stuurt hoeveel goedkeuringen nodig zijn, documenten en afbeeldingen leveren bewijsmateriaal. De badge toont hoeveel er al is ingevuld.",
   "chelp.knowledgeType.title": "Kennissoort",
   "chelp.knowledgeType.body":
     'Deelt je kennis in: ervaringskennis, proceskennis, feitenkennis — en bijzonder waardevol: NEGATIEVE KENNIS („dat hebben we geprobeerd, het werkt NIET, omdat …"). De kennissoort helpt beoordelaars en zoekers je kennis juist in te delen; ze verandert niets aan de controleweg.',
@@ -11003,7 +11323,7 @@ const nl: typeof de = {
   "xtr.help.body":
     "De KI leest een door jou geüpload document en stelt kennispunten voor — elk punt draagt zijn bewijsplaats uit het document (zonder bewijs geen overname). Je kiest met vinkjes; het geselecteerde wordt als sectie aan je artikel TOEGEVOEGD, niets wordt vervangen of overschreven. De herkomst (bestandsnaam + bewijsplaats) wordt als niveau-2-bron bij het kennisobject vermeld — het geldt niet als peer-gevalideerd en vervangt geen controle.",
   "fd.kicker": "Vastleggen",
-  "fd.title": "Document-canvas",
+  "fd.title": "Documenteditor",
   "fd.backToCapture": "Terug naar kennis vastleggen",
   "fd.allModes": "Alle vastleg-modi",
   "fd.submitted": "Ter beoordeling ingediend:",

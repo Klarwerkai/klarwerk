@@ -8,6 +8,8 @@ export {
   // WP-SHIP8-CLOSE-3 (bens ROT-1): Lease-Vertrag der Review-Claims (Recovery-Frist + Prüfung).
   REVIEW_CLAIM_LEASE_MS,
   reviewClaimLeaseExpired,
+  // AUFTRAG-mega29 C3: der Ehrlichkeits-Satz der menschlichen Ausgaben (Markdown/MediaWiki/HTML).
+  EXPORT_NO_CHECK_NOTE,
 } from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Schlüsselteil aller Import-Schlüssel.

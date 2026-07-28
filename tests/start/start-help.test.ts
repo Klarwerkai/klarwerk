@@ -36,8 +36,10 @@ describe("SCRUM-488: ?-Hilfen auf dem Start-Screen", () => {
     }
   });
 
-  it("deckt die genannten Kern-Elemente ab (Kreis, Arbeitsübersicht, Punkte, Kennzahlen)", () => {
-    for (const id of ["cycle", "work", "severity", "kpis"] as const) {
+  // AUFTRAG-mega38 BLOCK G2: „kpis" ist raus — der Kennzahlen-Block, den diese Hilfe erklärte, ist
+  // ersatzlos entfallen (seine Zahlen standen schon im Wissenskapital darüber).
+  it("deckt die genannten Kern-Elemente ab (Kreis, Arbeitsübersicht, Punkte)", () => {
+    for (const id of ["cycle", "work", "severity"] as const) {
       expect(START_HELP_IDS).toContain(id);
     }
   });

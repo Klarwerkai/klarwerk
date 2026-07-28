@@ -35,6 +35,12 @@ export interface ConfluencePage {
   version?: { number?: number; by?: ConfluenceUser; when?: string };
   _links?: { webui?: string };
   metadata?: { labels?: { results?: { name?: string }[] } };
+  // AUFTRAG-mega27 A1: die ELTERNKETTE der Seite. Confluence liefert sie im `ancestors`-Expand
+  // bereits in Quell-Reihenfolge (Wurzel zuerst, direkter Elternteil zuletzt) und OHNE die Seite
+  // selbst. BEWUSST OHNE Unter-Expand (kein `ancestors.body`, kein `ancestors.version`): jeder
+  // Ahne trägt dann nur seine Basisfelder — für Titel und Ordnung ist genau das nötig, mehr wäre
+  // Antwortgröße ohne Gegenwert. Wir lesen davon nur id + title.
+  ancestors?: { id?: string; title?: string }[];
   restrictions?: {
     read?: {
       restrictions?: {
@@ -45,8 +51,12 @@ export interface ConfluencePage {
   };
 }
 
+// AUFTRAG-mega27 A1: `ancestors` kommt MINIMAL dazu — ohne jeden Unter-Expand. Die Elternkette ist
+// die einzige Quelle einer echten Ordnerstruktur; sie verließ Confluence bisher nie, deshalb konnte
+// die Auswahl nur abgeleitete Merkmale (Sprache/Thema) bündeln. Paginierung und der Abbruch mit
+// `truncated` (listAllPages) bleiben davon unberührt — der Expand ändert nur den Inhalt je Seite.
 const EXPAND =
-  "body.storage,version,metadata.labels,restrictions.read.restrictions.user,restrictions.read.restrictions.group";
+  "body.storage,version,metadata.labels,ancestors,restrictions.read.restrictions.user,restrictions.read.restrictions.group";
 
 // R2a: erlaubt genau dann, wenn die URL https ist UND ihre Origin exakt der gepinnten Confluence-Origin
 // entspricht. Sonst Abbruch (kein Request). Rein & testbar.

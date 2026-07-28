@@ -13,6 +13,7 @@ import {
 } from "../api/hooks";
 import type { GapPriority } from "../api/types";
 import { useRole } from "../app/RoleContext";
+import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
@@ -123,6 +124,18 @@ export function Risk(): JSX.Element {
             </Card>
           ))}
         </div>
+        {/*
+          AUFTRAG-mega31 BLOCK C1 (bens GELB-2, achte Fläche): Die Kachel „offene Konflikte" zeigt
+          auch eine echte Null — ohne jede Einschränkung. Das ist dieselbe falsche Entwarnung wie auf
+          den leeren Boards, nur an einer Stelle, an die niemand gedacht hat: die wörtliche Zahl ist
+          korrekt, die Management-Inferenz „kein Risiko" ist es nicht.
+
+          BEWUSST OHNE Bedingung auf den Wert: der Vorbehalt gilt der HERKUNFT der Zahl, nicht ihrer
+          Höhe. Auch „5 offene Konflikte" ist ein Mindestwert aus gedeckelten und teils gescheiterten
+          Läufen, kein Gesamtstand. Die Komponente schweigt von selbst, sobald der Bestand belegt
+          vollständig geprüft ist — der Hinweis wird also nie zu Dauerrauschen.
+        */}
+        <AiCheckBoardCaveat className="mt-2 max-w-2xl text-[12.5px] leading-relaxed text-trust-warn-text" />
       </div>
 
       {/* SCRUM-133: Risiko-Cockpit nach Domäne/Kategorie */}

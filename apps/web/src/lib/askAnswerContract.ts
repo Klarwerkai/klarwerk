@@ -5,10 +5,12 @@
 //
 // KEINE neue Antwort-/Trust-/Statuslogik, KEIN Scoring, KEIN Backend, KEIN RAG. Reine Funktionen →
 // testbar ohne DOM. Trust/Nutzbarkeit bleiben ein Belastbarkeits-Signal, KEIN Wahrheitsversprechen.
-import type { KnowledgeClass } from "../api/types";
-import type { ConflictAwareSourceRef } from "./askView";
+import type { AnswerGrade } from "./answerGrade";
+import type { AnswerCheckState, ConflictAwareSourceRef } from "./askView";
 
-export type AnswerContractKind = "verified" | "unverified" | "gap";
+// AUFTRAG-mega33 A: die Vertragsart IST die effektive Einstufung — kein zweiter Begriff, der neben
+// ihr herlaufen und irgendwann von ihr abweichen könnte.
+export type AnswerContractKind = AnswerGrade;
 
 export interface AnswerContract {
   kind: AnswerContractKind;
@@ -46,22 +48,66 @@ const CONTRACTS: Record<AnswerContractKind, AnswerContract> = {
   },
 };
 
-// „gesichert" zählt nur dann als verified, wenn KEINE Antwortquelle konfliktbegrenzt ist — ein offener
-// (Wahrheits-)Konflikt darf eine Antwort nicht als uneingeschränkt gesichert erscheinen lassen (AG-14).
-// Alles andere Beantwortete ist ehrlich „ungeprüft" (markiert, keine Chatbot-Vermutung). Keine Antwort
-// → Wissenslücke (kein Fehler).
-export function answerContract(input: {
-  answered: boolean;
-  knowledgeClass: KnowledgeClass;
-  sourcesConflicted: boolean;
-}): AnswerContract {
-  if (!input.answered) {
-    return CONTRACTS.gap;
+// ================================================================================================
+// AUFTRAG-mega33 BLOCK A3 (nach bens ROT 3) — DER VERTRAG ENTSCHEIDET NICHTS MEHR SELBST.
+// ================================================================================================
+//
+// Bis mega32 nahm diese Funktion Einzelsignale entgegen, darunter ein OPTIONALES
+// `sourcesCheckUnproven`. Ein anderer Aufrufer konnte die Bedingung damit weglassen und für eine
+// gesicherte Klasse weiterhin `verified` bekommen — ein Typvertrag, der eine Umgehung erlaubt, wird
+// irgendwann umgangen. Und solange jede Anzeige ihre eigenen Signale zusammensetzte, konnten sie
+// auseinanderlaufen; genau das war bens Befund.
+//
+// Jetzt bekommt der Vertrag die BEREITS ABGELEITETE Einstufung (answerGrade.ts, zusammengesetzt in
+// effectiveAnswer.ts). Er ist damit nur noch die Beschriftung einer Entscheidung, die genau einmal
+// und an genau einer Stelle gefallen ist. Weglassen kann sie niemand mehr — es gibt nichts mehr
+// wegzulassen.
+export function answerContract(grade: AnswerGrade): AnswerContract {
+  return CONTRACTS[grade];
+}
+
+// ================================================================================================
+// AUFTRAG-mega32 BLOCK E — DER PRÜFVORBEHALT BENENNT, WORAUF ER SICH BEZIEHT.
+// ================================================================================================
+//
+// Eine Stufe herunterzustufen genügt nicht: „ungeprüft" allein sagt dem Leser nicht, DASS und WARUM
+// die Konflikterkennung hinter seiner Antwort lückenhaft ist. Diese Ableitung liefert die Bezugnahme
+// — wie viele der herangezogenen Quellen betroffen sind, von wie vielen insgesamt, und mit welcher
+// Ursache (der SCHWERSTE Zustand regiert den Text; die Zählung bleibt vollständig).
+//
+// Sie schweigt, wenn alle Quellen belegt sind. Kein Dauerhinweis — dieselbe Regel wie bei der
+// Abdeckungskennzeichnung aus mega28 und dem Konfliktsatz aus BLOCK K.
+export interface AnswerCheckCaveat {
+  // Der schwerste vorliegende Zustand — er bestimmt den Text.
+  reason: Exclude<AnswerCheckState, "proven">;
+  // Wie viele Quellen tragen KEINEN belegten Lauf?
+  unproven: number;
+  // Von wie vielen herangezogenen Quellen insgesamt?
+  total: number;
+}
+
+// Rangfolge von schwer nach leicht: „gar kein Lauf" wiegt schwerer als „Lauf ohne Protokoll", und
+// beides schwerer als „Lauf mit Lücke". Eine unauflösbare Quelle steht ganz oben — über sie ist
+// überhaupt nichts belegt.
+const CHECK_SEVERITY: Exclude<AnswerCheckState, "proven">[] = [
+  "unknown",
+  "unchecked",
+  "noCoverage",
+  "incomplete",
+];
+
+export function answerCheckCaveat(
+  sources: readonly ConflictAwareSourceRef[],
+): AnswerCheckCaveat | null {
+  const unprovenStates = sources
+    .map((s) => s.checkState)
+    .filter((s): s is Exclude<AnswerCheckState, "proven"> => s !== "proven");
+  if (unprovenStates.length === 0) {
+    return null; // jede Quelle belegt — hier ist Schweigen die Wahrheit.
   }
-  if (input.knowledgeClass === "gesichert" && !input.sourcesConflicted) {
-    return CONTRACTS.verified;
-  }
-  return CONTRACTS.unverified;
+  const reason =
+    CHECK_SEVERITY.find((candidate) => unprovenStates.includes(candidate)) ?? "incomplete";
+  return { reason, unproven: unprovenStates.length, total: sources.length };
 }
 
 // Kompakte, ehrliche Quellen-Bilanz für die Antwortvertrag-Karte. Reine Zählung über die bereits

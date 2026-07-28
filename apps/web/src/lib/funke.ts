@@ -51,6 +51,9 @@ export function openGapsView(gaps: readonly Gap[], limit = 6): OpenGapsView {
 export interface KnowledgeCapital {
   secured: number;
   validated: number;
+  // AUFTRAG-mega38 BLOCK G2: „Offen" war die EINZIGE Zahl, die der gestrichene Kennzahlen-Block
+  // exklusiv trug. Sie gehört neben „davon validiert" — dort erklärt sie sich selbst.
+  open: number;
   answerableCategories: number;
   activeAuthors: number;
   openGaps: number;
@@ -63,9 +66,13 @@ export function knowledgeCapital(
   const validatedCategories = new Set<string>();
   const authors = new Set<string>();
   let validated = 0;
+  let open = 0;
   for (const ko of kos) {
     if (ko.author) {
       authors.add(ko.author);
+    }
+    if (ko.status === "offen") {
+      open += 1;
     }
     if (ko.status === "validiert") {
       validated += 1;
@@ -77,6 +84,7 @@ export function knowledgeCapital(
   return {
     secured: kos.length,
     validated,
+    open,
     answerableCategories: validatedCategories.size,
     activeAuthors: authors.size,
     openGaps: gaps.filter((gap) => gap.status === "offen").length,

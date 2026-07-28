@@ -117,6 +117,39 @@ export function exhaustiveOverlapCandidacy(
     : "model";
 }
 
+// ================================================================================================
+// AUFTRAG-mega28 A1 (Pedi 26.07.) — DER DECKEL, DEN DER TROCKENLAUF LÄNGST HAT.
+// ================================================================================================
+// Die Kandidatenwahl des DUPLIKATWEGS. Bisher gab es sie nicht: der Live-Weg legte den gesamten
+// Bestand in der Reihenfolge vor, in der die Datenquelle ihn lieferte. Bei 12.480 Objekten kostete
+// EIN Submit 12.479 Modell-Urteile — der Trockenlauf (checkText) deckelt an derselben Stelle seit
+// jeher hart auf 20.
+//
+// Die Auswahl ist DETERMINISTISCH und BEGRÜNDET:
+//  - begründet: sortiert nach lexicalOverlapScore — GENAU dem Deckungsmaß, das der Lauf für jeden
+//    Kandidaten ohnehin berechnet (kein zweites Gehirn, kein neuer Schwellenwert). Die textnächsten
+//    Kandidaten sind die, bei denen ein Duplikat am wahrscheinlichsten ist.
+//  - deterministisch: bei GLEICHEM Score entscheidet die refId aufsteigend. Damit ist die Ordnung
+//    total (refIds sind eindeutig) und hängt NICHT mehr an der Zeilenreihenfolge der Datenbank —
+//    zwei Läufe über denselben Bestand legen dieselbe Menge vor.
+//
+// Bewusst OHNE fachlichen Vorfilter (anders als selectCandidates im Konfliktweg): die Deckungsprüfung
+// soll niemanden aus fachlicher Nachbarschaft ausschließen, sie soll nur ihre Menge begrenzen.
+export function selectOverlapCandidates(
+  subject: DetectSubject,
+  pool: readonly DetectSubject[],
+  cap: number,
+): DetectSubject[] {
+  const scored = pool
+    .filter((c) => c.refId !== subject.refId)
+    .map((c) => ({ subject: c, score: lexicalOverlapScore(subject, c) }));
+  scored.sort((a, b) =>
+    b.score === a.score ? a.subject.refId.localeCompare(b.subject.refId) : b.score - a.score,
+  );
+  const limited = Number.isFinite(cap) ? scored.slice(0, Math.max(0, cap)) : scored;
+  return limited.map((x) => x.subject);
+}
+
 // G-2: nur Aspekte mit WÖRTLICH belegten Zitaten in beiden Kerntexten zählen (sonst gestrichen).
 export function verifiedAspects(
   verdict: OverlapVerdict,

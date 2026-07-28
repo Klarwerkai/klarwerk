@@ -69,6 +69,21 @@ export interface Conflict {
   // (Befund zu einer inzwischen revidierten Fassung) und lässt den neuen Lauf frisch prüfen.
   koAVersion?: number;
   koBVersion?: number;
+  // AUFTRAG-mega26 Block B: WER DEN KONFLIKT BEHAUPTET HAT (additiv, optional).
+  //
+  // Der automatisch erkannte Zweig ist vollständig auskunftsfähig: `origin:"auto"` plus `detector`
+  // mit Begründung, wörtlichen Belegzitaten, Sicherheit und promptVersion. Der MANUELLE Zweig war
+  // es nicht — dort trug den Actor ausschliesslich das Audit, und `detector` bleibt systematisch
+  // leer. Wer den Konflikt später las, sah eine Behauptung ohne Urheber; die Zuordnung war nur
+  // über eine zweite, getrennt berechtigte Quelle (/api/audit) möglich.
+  //
+  // Der Erzeuger KENNT den Actor zum Schreibzeitpunkt: die Anlage-Route reicht den
+  // authentifizierten `user.id` bereits als Parameter an `create` durch — er landete bisher nur
+  // nicht am Datensatz. Genau derselbe Wert, der ins Audit geht, steht jetzt auch hier.
+  //
+  // Der auto-Zweig setzt das Feld BEWUSST nicht: dort ist der Erzeuger die Erkennung selbst, und
+  // sie weist sich über `origin`/`detector` aus. Altbestand ohne das Feld bleibt gültig.
+  createdBy?: string;
   createdAt: string;
 }
 

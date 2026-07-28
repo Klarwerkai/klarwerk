@@ -304,7 +304,9 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: "/fragen",
     question: "Wie stelle ich eine Frage, und woher kommt die Antwort?",
     answer:
-      "Tippe deine Frage im Fragen-Bereich ein, so wie du sie einem Kollegen stellen würdest. KLARWERK sucht dann ausschließlich im validierten Wissen eurer Organisation und baut daraus die Antwort — mit den Argumentationsschritten zum Nachvollziehen und den Quellen zum Anklicken. Was nicht aus geprüftem Wissen belegbar ist, kommt nicht in die Antwort.",
+      // AUFTRAG-mega39 BLOCK D: „mit den Argumentationsschritten zum Nachvollziehen" stand hier bis
+      // mega38 — es gibt aber keine protokollierte Herleitung, nur die herangezogenen Quellen.
+      "Tippe deine Frage im Fragen-Bereich ein, so wie du sie einem Kollegen stellen würdest. KLARWERK sucht dann ausschließlich im validierten Wissen eurer Organisation und baut daraus die Antwort — mit den herangezogenen Quellen zum Anklicken. Was nicht aus geprüftem Wissen belegbar ist, kommt nicht in die Antwort.",
   },
   {
     id: "faq.fragen.2",

@@ -17,7 +17,7 @@ import { useTranslation } from "react-i18next";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useDrafts, useKos, useLibrarySearch } from "../api/hooks";
+import { useConflicts, useDrafts, useKos, useLibrarySearch } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
@@ -27,8 +27,6 @@ import { type SyncResult, useOfflineQueue } from "../app/useOfflineQueue";
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
 import { ConfidenceBar, KnowledgeTypeTag, StatusPill } from "../components/trust";
 import { selectAnswer } from "../lib/askResponse";
-// WP-SHIP9-S2 Paket 4 (W4): Quellen-IDs zu KO-Titeln auflösen (gleiche Ableitung wie die Konsole).
-import { sourceRefs } from "../lib/askView";
 import { deriveStatus } from "../lib/displayStatus";
 import {
   type DraftFormState,
@@ -38,6 +36,7 @@ import {
   formToPayload,
   isDraftFormFillable,
 } from "../lib/draftForm";
+import { conflictKnowledge } from "../lib/effectiveAnswer";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 import { summarizeAnswer } from "../lib/mobileAsk";
 import {
@@ -211,6 +210,12 @@ export function Mobile(): JSX.Element {
   // WP-SHIP9-S2 Paket 4 (W4): geteilter KO-Bestand (react-query, i. d. R. bereits geladen/gecacht) für
   // die Titel-Auflösung der Quellen — KEIN neuer Ask-Roundtrip, die Ask-Antwort liefert nur IDs.
   const kos = useKos();
+  // AUFTRAG-mega33 BLOCK A2 (bens ROT 4): die mobile Antwort leitete ihre Evidenz noch einmal
+  // eigenständig aus `answer.knowledgeClass` ab und zeigte deshalb „Gesichert", wo der Desktop
+  // längst einen Prüfvorbehalt trug. Sie speist sich jetzt aus derselben einen Einstufung — dafür
+  // braucht sie neben dem Bestand auch die bekannten Konflikte. Bestehende Route, bestehender
+  // Hook, geteilter react-query-Cache: KEIN neuer Egress.
+  const conflicts = useConflicts();
   const ask = useMutation({
     mutationFn: (question: string) => endpoints.ask.ask(question, toReasonerLocale(i18n.language)),
     onSuccess: (res) => setAnswer(selectAnswer(res)),
@@ -471,10 +476,21 @@ export function Mobile(): JSX.Element {
 
                 {answer
                   ? (() => {
-                      const s = summarizeAnswer(answer);
+                      // AUFTRAG-mega34 A1: der leere Vorgabewert ist weg — der Konfliktstand reist
+                      // mit seiner Herkunft, damit ein hängender oder abgerissener Abruf hier
+                      // nicht als „keine Konflikte" ankommt (bens schwerster Befund). Der Wächter
+                      // in tests/app/paket4-w3-w4.test.ts prüft das Verbot wörtlich am Quelltext;
+                      // deshalb darf der alte Ausdruck auch als Zitat nicht mehr hier stehen.
+                      const s = summarizeAnswer(
+                        answer,
+                        kos.data ?? [],
+                        conflictKnowledge(conflicts),
+                      );
                       return s.answered ? (
                         <div className="mt-3 rounded-card border border-hairline p-3">
                           <div className="mb-2 flex items-center justify-between gap-2">
+                            {/* AUFTRAG-mega33 A2: die EFFEKTIVE Evidenz — dieselbe Einstufung wie
+                                auf dem Desktop, nicht mehr die rohe Klasse. */}
                             <span
                               className={`rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${EVIDENCE_TONE[s.evidence.tone]}`}
                             >
@@ -484,6 +500,40 @@ export function Mobile(): JSX.Element {
                               <ConfidenceBar value={s.trust} showLabel={false} />
                             </span>
                           </div>
+                          {/* AUFTRAG-mega34 A3: derselbe Hinweis auf den unbekannten Konfliktstand
+                              wie auf dem Desktop — aus derselben Ableitung, Wort für Wort. */}
+                          {s.conflictCaveat ? (
+                            <div
+                              data-testid="mob-conflict-caveat"
+                              className="mb-2 rounded-btn bg-trust-warn-bg px-2.5 py-2"
+                            >
+                              <p className="text-[12px] font-semibold text-trust-warn-text">
+                                {t("ask.conflictCaveat.title")}
+                              </p>
+                              <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text">
+                                {t(`ask.conflictCaveat.${s.conflictCaveat.reason}`)}
+                              </p>
+                            </div>
+                          ) : null}
+                          {/* AUFTRAG-mega33 A2: derselbe benannte Prüfvorbehalt wie auf dem Desktop
+                              — er sagt, worauf er sich bezieht, und schweigt, sobald jede
+                              herangezogene Quelle einen belegten Lauf hat. */}
+                          {s.caveat ? (
+                            <div
+                              data-testid="mob-check-caveat"
+                              className="mb-2 rounded-btn bg-trust-warn-bg px-2.5 py-2"
+                            >
+                              <p className="text-[12px] font-semibold text-trust-warn-text">
+                                {t("ask.checkCaveat.title")}
+                              </p>
+                              <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text">
+                                {t(`ask.checkCaveat.${s.caveat.reason}`, {
+                                  unproven: s.caveat.unproven,
+                                  total: s.caveat.total,
+                                })}
+                              </p>
+                            </div>
+                          ) : null}
                           {/* WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset). */}
                           <AnswerMarkdown
                             text={s.text ?? ""}
@@ -497,7 +547,7 @@ export function Mobile(): JSX.Element {
                               {/* WP-SHIP9-S2 Paket 4 (W4): KO-Titel statt roher UUID (Titel aus dem
                                   vorhandenen Bestand — nie eine ID zeigen, wenn ein KO bekannt ist);
                                   line-clamp gegen Überlauf, Volltitel im Tooltip. */}
-                              {sourceRefs(s.sources, kos.data ?? []).map((ref) => (
+                              {s.sources.map((ref) => (
                                 // AUFTRAG-mega12 Block C (echter Treffer, gefunden beim Bauen der
                                 // Architekturprüfung): Mobile MELDET einen Wächter an
                                 // (isDraftFormFillable), hatte hier aber rohe <Link>. Die Erfassungs-

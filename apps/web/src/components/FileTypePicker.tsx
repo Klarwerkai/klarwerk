@@ -9,6 +9,7 @@
 // Farbe); jede Kachel ist ein <button> (tastaturfokussierbar). Kein neuer Egress/Upload-Pfad.
 import {
   Boxes,
+  ChevronDown,
   File,
   FileAudio,
   FileJson,
@@ -26,6 +27,7 @@ import {
   type SourceState,
   hintKeyFor,
 } from "../lib/importSourceGallery";
+import { usePersistentDisclosure } from "../lib/usePersistentDisclosure";
 
 // Kachel-Optik je Zustand. WICHTIG: nie „bg-ink" (ohne aria-pressed) — der geführte Fluss zählt
 // solche Buttons als seinen EINEN Primär-CTA. Die Kacheln sind informativ/aktivierend, nicht der CTA.
@@ -106,6 +108,13 @@ export interface FileTypePickerProps {
   iconFor?: (source: GallerySource) => ReactNode;
   // Optionale Gruppen-Überschrift (i18n-Text).
   title?: string;
+  // AUFTRAG-mega32 BLOCK G: Klappt „geplant" hinter EINE Zeile? AUSDRÜCKLICH opt-in, weil dieses
+  // Bauteil ZWEI Oberflächen trägt: die Import-Galerie UND den Dateityp-Picker im Erfassen. Der
+  // Block gilt nur der Import-Seite; das Erfassen bleibt unverändert. Ein stillschweigend geteiltes
+  // Verhalten wäre genau die Art Nebenwirkung, die hier niemand bestellt hat.
+  collapsePlanned?: boolean;
+  // Speicherschlüssel des Aufklappers. Fehlt er, bleibt der Zustand rein flüchtig.
+  plannedStorageKey?: string;
 }
 
 export function FileTypePicker({
@@ -113,11 +122,30 @@ export function FileTypePicker({
   onActivate,
   iconFor = defaultIconFor,
   title,
+  collapsePlanned = false,
+  plannedStorageKey,
 }: FileTypePickerProps): JSX.Element {
   const { t } = useTranslation();
   // Ehrlicher Klick-Zustand: die zuletzt angeklickte NICHT-aktive Kachel (rein informativ). Erneuter
   // Klick auf dieselbe Kachel schließt den Hinweis wieder.
   const [hint, setHint] = useState<GallerySource | null>(null);
+  // ============================================================================================
+  // AUFTRAG-mega32 BLOCK G — „IN PLANUNG" EINKLAPPEN.
+  // ============================================================================================
+  // Gezählt: die System-Galerie zeigt zwei aktive, drei „bald" und ZEHN geplante Kacheln, die
+  // Datei-Galerie dieselbe Staffelung. Zwei Drittel der Fläche tun nichts, und genau das macht die
+  // Seite unübersichtlich.
+  //
+  // Einklappen ist KEINE Unehrlichkeit — Verschweigen wäre eine. Die geplanten Kacheln bleiben
+  // vollständig erreichbar, ihre ANZAHL steht in der Zeile, und aufgeklappt verhalten sie sich
+  // GENAU wie heute (kein Import, kein Formular, nur der ehrliche Hinweis).
+  //
+  // „Nicht konfiguriert" bleibt AUSSERHALB des Aufklappers sichtbar: gebaut und nur ohne
+  // hinterlegten Dienst ist etwas anderes als geplant — diese Unterscheidung wurde ausdrücklich
+  // einmal erkämpft (mega15 Block D / SCRUM-382) und darf hier nicht wieder verschwimmen.
+  const [plannedOpen, togglePlanned] = usePersistentDisclosure(plannedStorageKey, {
+    defaultOpen: false,
+  });
 
   const clickTile = (source: GallerySource): void => {
     if (source.state === "active") {
@@ -129,6 +157,19 @@ export function FileTypePicker({
   };
 
   const hintKey = hint ? hintKeyFor(hint.state) : null;
+  // Die Reihenfolge innerhalb beider Mengen bleibt die von orderByState — hier wird nur GETRENNT,
+  // nicht neu sortiert.
+  const visible = collapsePlanned ? sources.filter((s) => s.state !== "planned") : sources;
+  const planned = collapsePlanned ? sources.filter((s) => s.state === "planned") : [];
+  const grid = "grid grid-cols-2 gap-2 sm:grid-cols-3";
+  const renderTile = (source: GallerySource): JSX.Element => (
+    <Tile
+      key={source.id}
+      source={source}
+      icon={iconFor(source)}
+      onClick={() => clickTile(source)}
+    />
+  );
 
   return (
     <div>
@@ -137,16 +178,26 @@ export function FileTypePicker({
           {title}
         </span>
       ) : null}
-      <div className={`grid grid-cols-2 gap-2 sm:grid-cols-3 ${title ? "mt-1.5" : ""}`}>
-        {sources.map((source) => (
-          <Tile
-            key={source.id}
-            source={source}
-            icon={iconFor(source)}
-            onClick={() => clickTile(source)}
-          />
-        ))}
-      </div>
+      <div className={`${grid} ${title ? "mt-1.5" : ""}`}>{visible.map(renderTile)}</div>
+      {planned.length > 0 ? (
+        <div className="mt-2">
+          <button
+            type="button"
+            data-testid="planned-disclosure"
+            aria-expanded={plannedOpen}
+            onClick={togglePlanned}
+            className="flex w-full items-center gap-1.5 rounded-btn px-1 py-1 text-left text-[12px] font-semibold text-muted-2 transition-colors hover:text-muted focus:outline-none focus-visible:text-text"
+          >
+            <ChevronDown
+              size={14}
+              aria-hidden
+              className={`transition-transform ${plannedOpen ? "rotate-180" : ""}`}
+            />
+            <span>{t("imp.gallery.plannedGroup", { count: planned.length })}</span>
+          </button>
+          {plannedOpen ? <div className={`${grid} mt-1.5`}>{planned.map(renderTile)}</div> : null}
+        </div>
+      ) : null}
       {/* Ehrlicher, nicht-modaler Hinweis — nur für bald/geplant, nie ein Import. <output> trägt
           implizit role="status" (aria-live ergänzt es explizit), also kein blockierender Dialog. */}
       {hintKey ? (

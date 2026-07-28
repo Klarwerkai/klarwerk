@@ -143,6 +143,17 @@ export function renderBody(kind: OutputKind, kos: readonly KnowledgeObject[]): s
   return RENDERERS[kind](kos);
 }
 
+// AUFTRAG-mega29 C3 (bens M28-3): der Herkunftsblock nennt Status, Trust und Version — und schwieg
+// bisher darüber, ob das enthaltene Wissen gegen Widersprüche und Duplikate geprüft wurde. Seit dem
+// Kandidaten-Deckel ist dieses Schweigen irreführend: wer eine fertige Arbeitsanweisung in der Hand
+// hält, schließt daraus leicht auf innere Stimmigkeit. BEWUSST nur EIN Satz und NICHT die volle
+// Abdeckung: ein Dokument bündelt viele Objekte mit je eigenem Lauf; eine belastbare Gesamtzahl
+// wäre eine eigene Rechnung. Der Satz behauptet deshalb nichts über den Umfang — er nimmt nur die
+// Zusicherung zurück, die der Leser sonst selbst ergänzt. (Strukturgleich zu EXPORT_NO_CHECK_NOTE
+// in services/library-analytics; die Modulgrenze verbietet einen geteilten Textbestand.)
+export const OUTPUT_NO_CHECK_NOTE =
+  "Hinweis: Dieses Dokument trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
+
 // Herkunftsblock (FE-OUT-03): je Quelle KO-ID, Status, Trust, Version, Autor, Gültigkeit.
 export function renderProvenance(provs: readonly OutputProvenance[]): string {
   const lines = ["## Herkunft & Nachweis", ""];
@@ -153,5 +164,6 @@ export function renderProvenance(provs: readonly OutputProvenance[]): string {
         `Trust ${p.trust} · ${p.validity} · Autor: ${p.author === p.originalAuthor ? p.author : `${p.author} (urspr. ${p.originalAuthor})`}${flag}`,
     );
   }
+  lines.push("", OUTPUT_NO_CHECK_NOTE);
   return lines.join("\n");
 }

@@ -20,12 +20,12 @@ import {
   NO_THEME_LABEL,
   toExploreView,
 } from "../lib/importExplore";
-import { JSON_SOURCE_IDS, JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
+import { JSON_SOURCE_IDS } from "../lib/importSourceGallery";
 import { ImportSelect } from "./ImportSelect";
 // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie (Systeme + Dateien) mit Zustandsbadges.
 import { ImportSourceGallery } from "./ImportSourceGallery";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (1 Quelle · 2 Erkunden) + Meilenstein-Meldung an die Leiste.
-import { ImportStepHeading, useReportImportStage } from "./ImportStepper";
+import { ImportStepHeading, useImportSource, useReportImportStage } from "./ImportStepper";
 import { Button, Card } from "./ui";
 
 // Die Kern-Platzhalter kommen sprach-neutral aus IC-1 („(ohne Autor)"/„(ohne Label)"); hier auf die
@@ -287,6 +287,8 @@ export function ImportExplore(): JSX.Element {
   // Ansicht zum neuen Schritt scrollen (Muster aus R7 — der Schrittwechsel darf nicht vom
   // Scroll-Zufall abhängen).
   const reach = useReportImportStage();
+  // AUFTRAG-mega32 H1: die gewählte Quelle steuert, was von diesem Kasten überhaupt gezeigt wird.
+  const { source, chooseSource } = useImportSource();
   const mapRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (explore.data) {
@@ -299,16 +301,21 @@ export function ImportExplore(): JSX.Element {
   // existierenden Fluss aus — Confluence die READ-ONLY Erkundung, JSON den bestehenden Datei-Dialog
   // (derselbe versteckte Upload; kein neuer Egress-Pfad). „bald"/„geplant" rufen dies GAR NICHT auf
   // (das entscheidet die Galerie selbst).
+  //
+  // AUFTRAG-mega32 BLOCK H — DIE KACHEL WÄHLT JETZT, STATT NUR AUSZULÖSEN.
+  //
+  // H3: Hier stand der DOM-Durchgriff — `document.getElementById(JSON_UPLOAD_INPUT_ID).click()`.
+  // Der Eingang liegt im JSON-Kasten, den H2 ausblendet; bedingt gerendert hätte der Griff ins
+  // Leere gegriffen, GERÄUSCHLOS. Jetzt meldet die Kachel nur ihre WAHL an das Cockpit; der Kasten
+  // öffnet seinen eigenen Eingang über eine Referenz, sobald die Anforderung steigt.
   const handleActivate = (id: string): void => {
     if (id === "confluence") {
+      chooseSource("confluence");
       explore.mutate();
       return;
     }
     if ((JSON_SOURCE_IDS as readonly string[]).includes(id)) {
-      const input = document.getElementById(JSON_UPLOAD_INPUT_ID);
-      if (input instanceof HTMLInputElement) {
-        input.click();
-      }
+      chooseSource("json");
     }
   };
 
@@ -327,48 +334,55 @@ export function ImportExplore(): JSX.Element {
         <ImportSourceGallery onActivate={handleActivate} />
       </div>
 
-      {/* WP-COCKPIT-LINIE Schritt 2: Erkunden. Der Knopf ist der EINE Primär-CTA des Einstiegs
+      {/* AUFTRAG-mega32 H2: Was nicht zur gewählten Quelle gehört, verschwindet. Bei JSON tun die
+          Confluence-Schritte Erkunden und Eingrenzen nicht mehr so, als gehörten sie zum Weg.
+          Solange NICHTS gewählt ist (`source === null`), bleibt alles stehen wie bisher. */}
+      {source === "json" ? null : (
+        <>
+          {/* WP-COCKPIT-LINIE Schritt 2: Erkunden. Der Knopf ist der EINE Primär-CTA des Einstiegs
           („Weiter: …"-Muster); sobald die Landkarte da ist, tritt er zurück (outline, „Neu
           erkunden") — der nächste Primär-Knopf gehört dann Schritt 3. */}
-      <div className="mt-4">
-        <ImportStepHeading step="explore" />
-      </div>
-      <div className="mt-2 pl-8">
-        <Button
-          variant={view ? "outline" : "primary"}
-          disabled={explore.isPending}
-          onClick={() => explore.mutate()}
-        >
-          {explore.isPending ? (
-            <Loader2 size={15} className="animate-spin" />
-          ) : (
-            <Search size={15} />
-          )}
-          {explore.isPending
-            ? t("imp.explore.exploring")
-            : view
-              ? t("imp.explore.ctaAgain")
-              : t("imp.explore.cta")}
-        </Button>
-      </div>
+          <div className="mt-4">
+            <ImportStepHeading step="explore" />
+          </div>
+          <div className="mt-2 pl-8">
+            <Button
+              variant={view ? "outline" : "primary"}
+              disabled={explore.isPending}
+              onClick={() => explore.mutate()}
+            >
+              {explore.isPending ? (
+                <Loader2 size={15} className="animate-spin" />
+              ) : (
+                <Search size={15} />
+              )}
+              {explore.isPending
+                ? t("imp.explore.exploring")
+                : view
+                  ? t("imp.explore.ctaAgain")
+                  : t("imp.explore.cta")}
+            </Button>
+          </div>
 
-      {explore.isError ? (
-        <p className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-          {errorMessage}
-        </p>
-      ) : null}
+          {explore.isError ? (
+            <p className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+              {errorMessage}
+            </p>
+          ) : null}
 
-      {view ? (
-        <div ref={mapRef} className="scroll-mt-4">
-          <ExploreMap
-            view={view}
-            truncated={explore.data?.truncated ?? false}
-            alreadyImported={explore.data?.alreadyImported ?? 0}
-            alreadyQueued={explore.data?.alreadyQueued ?? 0}
-            failedPages={explore.data?.failedPages ?? 0}
-          />
-        </div>
-      ) : null}
+          {view ? (
+            <div ref={mapRef} className="scroll-mt-4">
+              <ExploreMap
+                view={view}
+                truncated={explore.data?.truncated ?? false}
+                alreadyImported={explore.data?.alreadyImported ?? 0}
+                alreadyQueued={explore.data?.alreadyQueued ?? 0}
+                failedPages={explore.data?.failedPages ?? 0}
+              />
+            </div>
+          ) : null}
+        </>
+      )}
     </Card>
   );
 }

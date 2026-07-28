@@ -97,9 +97,16 @@ export function CaptureDraftList({
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap items-center gap-2">
           <SectionLabel>{t("capture.resumeTitle")}</SectionLabel>
-          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
-            {scopeLabel}
-          </span>
+          {/* AUFTRAG-mega38 BLOCK J4: die Reichweiten-Plakette ist eine ADMIN-Auskunft. Für alle
+              anderen stand dort „Meine Entwürfe" neben einer Überschrift, die schon „Entwürfe
+              fortsetzen" heisst — doppelt gesagt und im Admin-Fall („ADMIN-ANSICHT: ALLE
+              ENTWÜRFE") schlicht nicht ihre Angelegenheit. Sie erscheint nur noch, wo sie etwas
+              unterscheidet. */}
+          {isAdmin ? (
+            <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+              {scopeLabel}
+            </span>
+          ) : null}
           <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
             {totalCount}
           </span>
@@ -242,11 +249,12 @@ export function CaptureDraftList({
             </ul>
           )}
         </>
-      ) : (
-        <p className="rounded-btn bg-page px-3 py-2 text-[12px] leading-relaxed text-muted">
-          {t("capture.resumeCollapsedHint", { count: totalCount })}
-        </p>
-      )}
+      ) : null}
+      {/* AUFTRAG-mega38 BLOCK J4: hier stand im eingeklappten Zustand „{{count}} Entwürfe sind
+          eingeklappt, damit die Erfassungswege darunter erreichbar bleiben." Das erklärt der
+          Leserin UNSERE Layoutentscheidung — eine Auskunft über uns, nicht über ihre Arbeit. Die
+          Zahl steht ohnehin in der Plakette daneben und im Aufklapp-Knopf („Entwürfe anzeigen
+          (13)"); der Satz trug nichts hinzu ausser Rechtfertigung. */}
     </Card>
   );
 }

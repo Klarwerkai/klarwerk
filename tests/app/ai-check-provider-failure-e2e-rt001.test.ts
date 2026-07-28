@@ -9,7 +9,10 @@
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { aiCheckFailureReasonKey } from "../../apps/web/src/lib/aiCheckStatusCard";
-import { createAiCheckRunner } from "../../services/app/src/ai-check-worker";
+import {
+  type AiCheckRunOutcome,
+  createAiCheckRunner,
+} from "../../services/app/src/ai-check-worker";
 import { type AppServices, buildServices } from "../../services/app/src/build-app";
 import { type ModelClient, ModelHttpError, ModelProvider, Reasoner } from "../../services/reasoner";
 
@@ -52,9 +55,7 @@ function runnerFor(services: AppServices) {
 
 // Ein Bestands-KO + ein zweites, INHALTLICH VERSCHIEDENES KO derselben Kategorie erzwingen ein
 // Judge-Paar; der zweite Lauf befragt den (werfenden) Judge → die Ursache landet im Outcome.
-async function runAgainstJudge(
-  services: AppServices,
-): Promise<{ ok: boolean; fallbackReason?: string }> {
+async function runAgainstJudge(services: AppServices): Promise<AiCheckRunOutcome> {
   const a = await makeKo(services, "Bestand", "Eine erste voellig eigene Aussage ueber Pumpe P2.");
   await runnerFor(services)(a.id); // Pool leer: kein Judge
   const b = await makeKo(services, "Subjekt", "Eine zweite ganz andere Aussage ueber Ventil V9.");
@@ -120,7 +121,9 @@ describe("RT-001 e2e: echter Providerpfad Providerfehler → judge*Outcome → R
       const services = buildServices();
       services.reasoner = new Reasoner(new ModelProvider(client));
       const out = await runAgainstJudge(services);
-      expect(out).toEqual({ ok: false, fallbackReason: reason });
+      // AUFTRAG-mega28 A2: der Ausgang traegt zusaetzlich die Abdeckung des Laufs. Geprueft wird
+      // hier weiterhin GENAU die Ursache — deshalb toMatchObject statt eines Form-Vergleichs.
+      expect(out).toMatchObject({ ok: false, fallbackReason: reason });
     });
   }
 
@@ -134,8 +137,14 @@ describe("RT-001 e2e: echter Providerpfad Providerfehler → judge*Outcome → R
     const services = buildServices();
     services.reasoner = new Reasoner(new ModelProvider(leakyClient));
     const out = await runAgainstJudge(services);
-    // Der Ausgang trägt AUSSCHLIESSLICH die neutrale Klasse.
-    expect(out).toEqual({ ok: false, fallbackReason: "auth" });
+    // Der Ausgang trägt AUSSCHLIESSLICH die neutrale Klasse (mega28 A2: plus die reinen
+    // Abdeckungs-ZAHLEN, die keinen Anbietertext tragen können — die Leck-Probe unten prüft das).
+    expect(out).toMatchObject({ ok: false, fallbackReason: "auth" });
+    // Die Abdeckung besteht AUSSCHLIESSLICH aus Zahlen/Booleans — sie kann konstruktionsbedingt
+    // keinen Anbietertext transportieren (die Leck-Probe unten prüft die Anzeige zusätzlich).
+    for (const value of Object.values(out.coverage ?? {})) {
+      expect(["number", "boolean"]).toContain(typeof value);
+    }
 
     const secrets = [
       "OpenAI",

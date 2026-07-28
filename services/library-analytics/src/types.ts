@@ -16,6 +16,16 @@ export interface ImportItem {
   // (Jira) füllt dieselben Felder ohne Confluence-Symbole.
   externalId?: string;
   sourceScope?: string;
+  // AUFTRAG-mega27 A2: QUELLNEUTRALE HIERARCHIE INNERHALB des Containers — die Elterntitel in
+  // Quell-Reihenfolge, WURZEL ZUERST, OHNE das Objekt selbst (Confluence: die `ancestors`-Kette;
+  // ein Jira-Adapter füllt dasselbe Feld später mit Epic/Projekt). Der Import-Kern kennt weiterhin
+  // keine quell-spezifischen Begriffe (SCRUM-510 R2b).
+  //
+  // KEIN FELD OHNE ERZEUGER: liefert die Quelle keine Elternkette, FEHLT das Feld — kein leeres
+  // Array, kein Platzhalter-Ordner, kein aus dem Titel geratener Pfad. Rein additiv; kein
+  // Import-Pfad hängt davon ab. Der Dekodier-Marker `textCodec` gilt für diese Werte wie für
+  // Titel/Autor: sie sind an der Quelle EINMAL kanonisch dekodiert.
+  sourcePath?: string[];
   sourceVersion?: number;
   url?: string;
   provider?: string;

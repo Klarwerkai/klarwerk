@@ -11,8 +11,10 @@ export const START_HELP_IDS = [
   "work",
   // Die farbigen Dringlichkeits-Punkte (rot/gelb/grau).
   "severity",
-  // Die vier Kennzahlen (Gesamt/Offen/Validiert/Lücken).
-  "kpis",
+  // AUFTRAG-mega38 BLOCK G2: „kpis" stand hier für den Kennzahlen-Block, dessen Zahlen dieselben
+  // waren wie im Wissenskapital darüber. Der Block ist weg, also auch seine Hilfe — eine Hilfe zu
+  // einer Fläche, die es nicht mehr gibt, ist tote Hilfe. Was die verbliebenen Zahlen bedeuten,
+  // sagt die Wissenskapital-Karte selbst (`funke.capital.hint`).
 ] as const;
 
 export type StartHelpId = (typeof START_HELP_IDS)[number];

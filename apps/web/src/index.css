@@ -7,6 +7,12 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "@fontsource/ibm-plex-mono/600.css";
 
+/* AUFTRAG-mega40: die EINE Token-Datei (klassisch = :root, modern = [data-theme="modern"]) und die
+   modern-Regeln. Reihenfolge ist unkritisch: alle modern-Regeln gewinnen über das Wurzel-Attribut
+   an Spezifität, nie über Ladereihenfolge. */
+@import "./styles/themes.css";
+@import "./styles/modern.css";
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -175,7 +181,8 @@ body.klara-inspect * {
   cursor: help !important;
 }
 .klara-inspect-target {
-  outline: 2px solid #5b50c4;
+  /* KI-Kennfarbe aus der Token-Datei (mega40 H2: keine Hex-Werte außerhalb von themes.css). */
+  outline: 2px solid rgb(var(--kw-ai));
   outline-offset: 2px;
   border-radius: 4px;
 }

@@ -164,13 +164,16 @@ function visibleTitles(): string[] {
 // Der klebende Trefferzähler, als Zahl aus seinem TEXT gelesen.
 function stickyCount(): number {
   const text = container.textContent ?? "";
-  const label = String(i18n.getResource("de", "translation", "lib.facet.showResults"));
-  const pattern = new RegExp(label.replace("{{n}}", "(\\d+)"));
-  const hit = pattern.exec(text);
-  if (!hit?.[1]) {
-    throw new Error(`Klebender Zähler nicht gefunden; DOM: ${text}`);
+  // AUFTRAG-mega34 F: der Schlüssel hat jetzt Einzahl- und Mehrzahl-Form („1 Beitrag anzeigen" vs.
+  // „3 Beiträge anzeigen"). Der Zähler kann beide treffen, also passt der Wächter auf beide.
+  for (const form of ["lib.facet.showResults_one", "lib.facet.showResults_other"]) {
+    const label = String(i18n.getResource("de", "translation", form));
+    const hit = new RegExp(label.replace("{{count}}", "(\\d+)")).exec(text);
+    if (hit?.[1]) {
+      return Number(hit[1]);
+    }
   }
-  return Number(hit[1]);
+  throw new Error(`Klebender Zähler nicht gefunden; DOM: ${text}`);
 }
 
 beforeEach(async () => {

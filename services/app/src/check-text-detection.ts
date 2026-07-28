@@ -16,6 +16,7 @@ import {
 } from "../../conflicts";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import { queryTokens } from "../../reasoner";
+import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
 import type { SemanticPrefilter } from "./duplicate-detection";
 
 // Transienter Gegenstand: der eingegebene Text, ohne gespeichertes KO. refId ist ein fester Marker,
@@ -35,7 +36,12 @@ const TRANSIENT_ID = "transient";
 //    gilt der quell-seitige Bound also NICHT.
 //  - Geplante weitere Adapter (pgvector, sqlite-vec/Insel) sind NOCH NICHT implementiert und müssen
 //    den Top-K-Quell-Vertrag selbst erfüllen, wenn gebaut.
-const RETRIEVAL_TOP_K = 20;
+//
+// AUFTRAG-mega28 A1 (Pedi 26.07.): Dieser Deckel war der ERPROBTE Ausgangspunkt für den Live-Weg —
+// und damit ist es derselbe Deckel. Er wohnt jetzt EINMAL in detection-cap.ts (Wert unverändert 20);
+// der Name bleibt hier stehen, weil er an dieser Stelle die Retrieval-Grenze benennt. Trocken- und
+// Live-Lauf können so nicht mehr auseinanderdriften.
+const RETRIEVAL_TOP_K = DETECTION_CANDIDATE_CAP;
 
 export interface CheckTextInput {
   text: string;

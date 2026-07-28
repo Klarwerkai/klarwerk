@@ -161,6 +161,7 @@ import { makeAssignmentNotifier } from "./notify";
 import type { ObjectReferenceSources } from "./object-references";
 import { addinStaticRoutes } from "./routes/addin-static-routes";
 import { adminRoutes } from "./routes/admin-routes";
+import { aiCheckCoverageRoutes } from "./routes/ai-check-coverage-routes";
 import { askRoutes } from "./routes/ask-routes";
 import { auditRoutes } from "./routes/audit-routes";
 import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
@@ -918,6 +919,9 @@ export function buildApp(
     validationRoutes(services.validation, guards, { ko: services.ko, worker: aiCheckWorker }),
   );
   app.register(conflictRoutes(services.conflicts, guards));
+  // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
+  // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
+  app.register(aiCheckCoverageRoutes(services.ko, guards));
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates) +
   // (Pedi 04.07.) einstellbare Anzeige-Schwelle.
   app.register(
@@ -931,7 +935,12 @@ export function buildApp(
   );
   // WP-D11: PPTX-Folien-Konvertierung (eigene Route mit großem bodyLimit + Auth vor dem Parse).
   app.register(slidesRoutes(services.slideConverter, guards));
-  app.register(askRoutes(services.ask, guards));
+  // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht
+  // dafür Bestand und Konflikte. Beide liegen hier ohnehin — dasselbe Muster wie livewallRoutes und
+  // impactRoutes darunter.
+  app.register(
+    askRoutes({ ask: services.ask, ko: services.ko, conflicts: services.conflicts }, guards),
+  );
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   app.register(
     knowledgeCheckRoutes({

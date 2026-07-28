@@ -2,7 +2,13 @@
 // Zweck: genau die Fehlerklasse fangen, die Logik-Tests nicht sehen (weiße Seite, kaputtes
 // Bundle, tote Kernflüsse). Bewusst klein: 1 Browser (Chromium), 1 Spec, ~1 Minute.
 // NICHT Teil von tools/check (kein Browser-Zwang für jeden Lauf) — Aufruf: npm run smoke:ui
-// (erwartet gebautes apps/web/dist; Erstlauf einmalig: npx playwright install chromium firefox webkit).
+// (Erstlauf einmalig: npx playwright install chromium firefox webkit).
+//
+// AUFTRAG-mega38 BLOCK C: hier stand bis mega37 „erwartet gebautes apps/web/dist" — eine ERWARTUNG,
+// die niemand durchsetzte. Der Smoke serviert dieses Verzeichnis, gebaut hat aber nur `tools/check`;
+// ein direkter `npm run smoke:ui` konnte deshalb ein Bündel von vorgestern grün melden und über den
+// heutigen Quellstand nichts aussagen. Beiden Smoke-Befehlen ist jetzt `smoke:ui:frisch`
+// vorgeschaltet (`package.json`, `scripts/dist-frische.ts`); es bricht LAUT ab statt zu warnen.
 //
 // AUFTRAG-mega14 Block C (bens SB-3): NICHT MEHR CHROMIUM-ONLY. Die vereinbarte Kante 11 verlangte
 // Chrome/Chromium, Firefox und Safari/WebKit — `history.go(delta)`, schnelle aufeinanderfolgende

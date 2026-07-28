@@ -121,4 +121,8 @@ export type {
   // WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Prüfung (Job-Vermerk am KO).
   AiCheck,
   AiCheckStatus,
+  // AUFTRAG-mega28 A2: Abdeckung des Prüf-Laufs (gedeckelt/übersprungen/abgebrochen).
+  AiCheckCoverage,
+  // AUFTRAG-mega29 C2: schmale Bestands-Zusammenfassung für die LEEREN Konflikt-/Duplikat-Boards.
+  AiCheckCoverageSummary,
 } from "./src/types";

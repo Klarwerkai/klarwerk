@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnswerResult, Conflict, KnowledgeObject } from "../../apps/web/src/api/types";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
 import { answerStatus, conflictAwareSourceRefs } from "../../apps/web/src/lib/askView";
 import {
   conflictImpact,
@@ -156,7 +157,20 @@ describe("SCRUM-357: Conflict → Trust/Usability/Review-Integrität (HTTP + FE-
       expect(r.usability).not.toBe("ready");
     }
     // Server-Status der Antwort bleibt unverändert (kein Eingriff in die Antwortlogik) …
-    expect(answerStatus(result.knowledgeClass)).toBeDefined();
+    expect(
+      answerStatus(
+        answerGrade({
+          answered: true,
+          knowledgeClass: result.knowledgeClass,
+          sourcesConflicted: false,
+          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
+          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
+          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ),
+    ).toBeDefined();
 
     // 6) Konflikt lösen → fällt aus der unresolved-Liste → der Konflikt-Impact ist weg. SCRUM-358:
     //    das KO bleibt bewusst review-pflichtig (offen) und wird über die normale Bewertung wieder

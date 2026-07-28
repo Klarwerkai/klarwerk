@@ -72,15 +72,18 @@ export function OpenGapsSummary({ total }: { total: number }): JSX.Element | nul
   );
 }
 
-// F5: Wissenskapital-Kachel — fünf ehrliche Bestandszahlen für Begutachter, keine Fantasie-Metriken.
+// F5: Wissenskapital-Kachel — ehrliche Bestandszahlen für Begutachter, keine Fantasie-Metriken.
+// AUFTRAG-mega38 BLOCK G2: seit dem Wegfall des doppelten Kennzahlen-Blocks sind es sechs.
 export function KnowledgeCapitalNumbers({ capital }: { capital: KnowledgeCapital }): JSX.Element {
   const { t } = useTranslation();
   return (
     <div data-testid="knowledge-capital">
       <h2 className="mb-1.5 text-[14px] font-semibold text-ink">{t("funke.capital.title")}</h2>
-      <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
         <NumberTile value={capital.secured} label={t("funke.capital.secured")} />
         <NumberTile value={capital.validated} label={t("funke.capital.validated")} />
+        {/* AUFTRAG-mega38 BLOCK G2: aus dem gestrichenen Kennzahlen-Block übernommen. */}
+        <NumberTile value={capital.open} label={t("funke.capital.open")} />
         <NumberTile value={capital.answerableCategories} label={t("funke.capital.categories")} />
         <NumberTile value={capital.activeAuthors} label={t("funke.capital.authors")} />
         <NumberTile value={capital.openGaps} label={t("funke.capital.gaps")} />

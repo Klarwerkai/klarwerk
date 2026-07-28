@@ -7,13 +7,16 @@
 import {
   DEFAULT_OVERLAP_SETTINGS,
   type DetectSubject,
+  type DetectionCoverage,
   type OverlapService,
   type OverlapSettingsRepo,
   coreText,
+  emptyCoverage,
 } from "../../conflicts";
 import type { EmbeddingProvider, EmbeddingStore } from "../../embedding";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
+import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
 // D-AISTATE PAKET 1 (bens V1): Vertraulichkeits-MARKE (Boolean) + Inhaltsversion (PAKET 4/V5) reisen mit.
@@ -58,19 +61,23 @@ export interface DuplicateDetectionDeps {
 // Textdeckung → deterministischer Eintrag OHNE Modell (auch ohne KI erkennbar); mittlere Deckung →
 // Modell-Profil (ohne Modell stiller No-op — keine Fake-Duplikate, K0-3: Demo-Beiträge bleiben
 // außen vor). Wirft nie — Fehler bleiben ohne Wirkung auf das Einreichen.
+// AUFTRAG-mega28 A2/A3: gibt die ABDECKUNG des Laufs zurück (s. detectConflictsForKo). Wichtig
+// gerade hier: der Duplikatweg reicht einen ModelCapacityError bewusst DURCH die Erkennung — das
+// Protokoll wird deshalb vom Lauf fortgeschrieben und nicht erst am Ende gebaut.
 export async function detectDuplicatesForKo(
   koId: string,
   deps: DuplicateDetectionDeps,
   // ben-Review #6: optionaler Log-Haken (best-effort bleibt) — analog detectConflictsForKo.
   log?: (msg: string, err: unknown) => void,
-): Promise<void> {
+): Promise<DetectionCoverage> {
+  const coverage = emptyCoverage();
   try {
     const subject = await deps.ko.get(koId);
     // Demo-Beiträge bleiben außen vor (K0-3). Ein VERTRAULICHES Subjekt überspringt die Erkennung
     // NICHT mehr (bens V1): die (lokale, egress-freie) deterministische Deckungsprüfung läuft IMMER,
     // auch für vertrauliche Subjekte und gemischte Paare.
     if (!subject || subject.demoSeed) {
-      return;
+      return coverage; // gar kein Lauf — ehrlich „nichts stand zur Wahl", nicht „gedeckelt"
     }
     const subjectSubject = toDetectSubject(subject);
     // D-AISTATE PAKET 1+2 (bens V1/V2.2): der VOLLE Bestand ist der Pool — vertrauliche Kandidaten
@@ -83,7 +90,7 @@ export async function detectDuplicatesForKo(
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
     if (pool.length === 0) {
-      return;
+      return coverage;
     }
     const minConfidence =
       (await deps.settings.get())?.minConfidence ?? DEFAULT_OVERLAP_SETTINGS.minConfidence;
@@ -93,14 +100,25 @@ export async function detectDuplicatesForKo(
       (a, b, confidential) => deps.reasoner.judgeDuplicate(a, b, "de", confidential),
       {
         minConfidence,
+        // AUFTRAG-mega28 A1 (Pedi 26.07.): Hier stand bis mega27 GAR KEIN cap — der Weg legte den
+        // vollen Bestand vor. Jetzt gilt derselbe Deckel wie im Konfliktweg (EIN Wert, s.
+        // detection-cap.ts), und die Kandidatenwahl davor ist deterministisch nach dem lexikalischen
+        // Deckungsmaß sortiert (selectOverlapCandidates), nicht nach Datenbank-Zeilenreihenfolge.
+        cap: DETECTION_CANDIDATE_CAP,
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
         isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
+        coverage,
       },
     );
   } catch (err) {
     // Erkennung ist best-effort — Fehler werden bewusst geschluckt, das Einreichen bleibt erfolgreich.
+    // AUFTRAG-mega28 A3: der Kapazitätsabbruch (ModelCapacityError) landet GENAU HIER und sah bisher
+    // aus wie ein sauberer Lauf. detectForSubject hat das Protokoll vor dem Werfen fortgeschrieben
+    // (aborted + Stand); der Sicherheitsnetz-Setzer deckt jeden anderen Weg hierher ab.
+    coverage.aborted = true;
     log?.(`Duplikaterkennung für KO ${koId} fehlgeschlagen`, err);
   }
+  return coverage;
 }
 
 // Repo-Idiom (seed.ts): schmaler, immer sichtbarer Log für best-effort-Betrieb (Fastify läuft ohne

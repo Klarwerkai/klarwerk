@@ -120,6 +120,10 @@ describe("IC-3: toPreviewEntry", () => {
       updatedAt: "2026-01-01",
       hasImage: true,
       themes: ["x"],
+      // AUFTRAG-mega27 A3: der Quell-Container reist mit (Wurzel des Ordnerbaums). Die Ableitung
+      // ist dieselbe wie beim Space-Filter: sourceScope, sonst category — hier fehlt sourceScope,
+      // also gilt die category des Test-Items ("K").
+      sourceScope: "K",
     });
   });
 
@@ -128,7 +132,22 @@ describe("IC-3: toPreviewEntry", () => {
       title: "T",
       hasImage: false,
       themes: [],
+      sourceScope: "K",
     });
+  });
+
+  // AUFTRAG-mega27 A2/A3: die Elternkette wird DURCHGEREICHT, nie erzeugt. Kein Feld ohne Erzeuger.
+  it("reicht sourcePath durch (Wurzel zuerst) — fehlt die Elternkette, fehlt das Feld", () => {
+    const withPath = toPreviewEntry(
+      item({ title: "T", sourceScope: "KWDEMO", sourcePath: ["Betrieb", "IT", "Backup"] }),
+    );
+    expect(withPath.sourceScope).toBe("KWDEMO");
+    expect(withPath.sourcePath).toEqual(["Betrieb", "IT", "Backup"]);
+    // Leere/whitespace-Segmente fallen weg; bleibt nichts übrig, fehlt das Feld (kein leeres Array).
+    expect(toPreviewEntry(item({ title: "T", sourcePath: ["  ", ""] }))).not.toHaveProperty(
+      "sourcePath",
+    );
+    expect(toPreviewEntry(item({ title: "T" }))).not.toHaveProperty("sourcePath");
   });
 });
 

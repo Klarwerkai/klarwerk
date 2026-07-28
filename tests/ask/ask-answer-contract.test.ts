@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { KnowledgeClass } from "../../apps/web/src/api/types";
 import i18n from "../../apps/web/src/i18n";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
 import {
   ANSWER_CONTRACT_TRUST_NOTE_KEY,
   answerContract,
@@ -22,6 +23,9 @@ function ref(p: Partial<ConflictAwareSourceRef>): ConflictAwareSourceRef {
     demo: false,
     conflictLimited: false,
     conflictTruth: false,
+    // AUFTRAG-mega32 E: der Standard dieser Fixtures ist ein BELEGT vollstaendiger Lauf — nur so
+    // messen die Faelle hier weiterhin genau das, was sie messen wollen (Konflikt vs. Klasse).
+    checkState: "proven",
     ...p,
   };
 }
@@ -30,33 +34,45 @@ function ref(p: Partial<ConflictAwareSourceRef>): ConflictAwareSourceRef {
 // Signalen. Quellengebunden, gesichert ≠ Wahrheit, Gap = Wissenslücke statt Chatbot-Fehler.
 describe("SCRUM-366: answerContract", () => {
   it("keine Antwort → Wissenslücke (kein Fehler)", () => {
-    const c = answerContract({
-      answered: false,
-      knowledgeClass: "unbekannt",
-      sourcesConflicted: false,
-    });
+    const c = answerContract(
+      answerGrade({
+        answered: false,
+        knowledgeClass: "unbekannt",
+        sourcesConflicted: false,
+        sourcesCheckUnproven: false,
+        conflictsUnproven: false,
+      }),
+    );
     expect(c.kind).toBe("gap");
     expect(c.sourceBound).toBe(false);
     expect(c.tone).toBe("warn");
   });
 
   it("gesichert + kein Konflikt → verified (pos, quellengebunden)", () => {
-    const c = answerContract({
-      answered: true,
-      knowledgeClass: "gesichert",
-      sourcesConflicted: false,
-    });
+    const c = answerContract(
+      answerGrade({
+        answered: true,
+        knowledgeClass: "gesichert",
+        sourcesConflicted: false,
+        sourcesCheckUnproven: false,
+        conflictsUnproven: false,
+      }),
+    );
     expect(c.kind).toBe("verified");
     expect(c.tone).toBe("pos");
     expect(c.sourceBound).toBe(true);
   });
 
   it("gesichert ABER konfliktbetroffen → ehrlich auf ungeprüft herabgestuft (AG-14)", () => {
-    const c = answerContract({
-      answered: true,
-      knowledgeClass: "gesichert",
-      sourcesConflicted: true,
-    });
+    const c = answerContract(
+      answerGrade({
+        answered: true,
+        knowledgeClass: "gesichert",
+        sourcesConflicted: true,
+        sourcesCheckUnproven: false,
+        conflictsUnproven: false,
+      }),
+    );
     expect(c.kind).toBe("unverified");
     expect(c.tone).toBe("warn");
   });
@@ -70,18 +86,30 @@ describe("SCRUM-366: answerContract", () => {
       "unbekannt",
     ] as KnowledgeClass[]) {
       expect(
-        answerContract({ answered: true, knowledgeClass: k, sourcesConflicted: false }).kind,
+        answerContract(
+          answerGrade({
+            answered: true,
+            knowledgeClass: k,
+            sourcesConflicted: false,
+            sourcesCheckUnproven: false,
+            conflictsUnproven: false,
+          }),
+        ).kind,
       ).toBe("unverified");
     }
   });
 
   it("Titel/Body/Next-Step jeder Vertragsart sind DE/EN vorhanden", () => {
     for (const k of ["verified", "unverified", "gap"] as const) {
-      const c = answerContract({
-        answered: k !== "gap",
-        knowledgeClass: k === "verified" ? "gesichert" : "ungeprueft",
-        sourcesConflicted: false,
-      });
+      const c = answerContract(
+        answerGrade({
+          answered: k !== "gap",
+          knowledgeClass: k === "verified" ? "gesichert" : "ungeprueft",
+          sourcesConflicted: false,
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      );
       expect(present(c.titleKey)).toBe(true);
       expect(present(c.bodyKey)).toBe(true);
       expect(present(c.nextStepKey)).toBe(true);

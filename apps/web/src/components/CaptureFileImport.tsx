@@ -38,7 +38,8 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
 
   // Block A: eine per Drop abgelegte Datei durch DENSELBEN onExtractFile-Seam speisen — kein zweiter
   // Pfad. Nicht unterstützte Typen (detectFileKind === "unsupported") werden ehrlich abgelehnt.
-  const handleDrop = (e: DragEvent<HTMLDivElement>): void => {
+  // AUFTRAG-mega34 D2: die Ablagefläche ist jetzt ein echter <button> statt eines <div>.
+  const handleDrop = (e: DragEvent<HTMLButtonElement>): void => {
     e.preventDefault();
     setDragOver(false);
     const file = e.dataTransfer?.files?.[0];
@@ -57,6 +58,14 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
     } as unknown as ChangeEvent<HTMLInputElement>);
   };
 
+  // AUFTRAG-mega34 BLOCK D1: der EINE Weg, den vorhandenen versteckten Eingang zu öffnen. Knopf und
+  // Ablagefläche rufen dieselbe Zeile — kein neuer Importweg, kein neuer Egress, keine neue
+  // Fähigkeit. Der Eingang trägt bereits sein volles `accept` (FILE_IMPORT_ACCEPT); der Knopf
+  // verspricht damit nichts, was der Dialog nicht anbietet.
+  const openFileDialog = (): void => {
+    fileImportInputRef.current?.click();
+  };
+
   return (
     <>
       <input
@@ -69,21 +78,46 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
       {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen AN der Auswahlstelle,
           aus derselben Quelle, die der Server erzwingt. */}
       <UploadLimitsHint className="mb-2 text-[11px] text-muted-2" />
-      {/* Sichtbare Drop-Zone — ZUSÄTZLICH zum Dialog/Picker, nicht als Ersatz. Der Tastatur-/A11y-Weg
-          bleibt der Picker unten. */}
-      <div
+      {/* ==========================================================================================
+          AUFTRAG-mega34 BLOCK D (Aufgabe 5 der Testerin) — DIE DATEIAUSWAHL BEKOMMT IHREN KNOPF.
+          ==========================================================================================
+          Bis hierher gab es drei Wege in den Dateidialog — den versteckten Eingang (unsichtbar),
+          die Ablagefläche (nur Maus, nur Drag&Drop) und die Dateityp-Kacheln (die niemand als
+          Dialog-Öffner liest). Wer nicht darauf kam, dass eine KACHEL den Systemdialog öffnet, fand
+          den Weg nicht — zwei Bildschirmfotos der externen Auswertung zeigen genau diesen Moment.
+          Das ist der einzige Punkt, an dem ihr Test scheitern kann, ohne dass etwas kaputt ist.
+
+          Der Knopf ist die ehrlichste denkbare Ergänzung: er klickt den bestehenden Eingang. */}
+      {/* D2: ein ECHTER <button>, kein anklickbares <div>. Damit ist die Ablagefläche von sich aus
+          fokussierbar und reagiert auf Enter und Leertaste — ohne eigene Tastatur-Nachbildung, die
+          in einem Browser doppelt auslösen würde (keydown-Handler PLUS natives click). Die
+          Drag&Drop-Handler bleiben unverändert daran hängen. */}
+      <button
+        type="button"
         data-testid="capture-dropzone"
+        onClick={openFileDialog}
         onDragOver={(e) => {
           e.preventDefault();
           setDragOver(true);
         }}
         onDragLeave={() => setDragOver(false)}
         onDrop={handleDrop}
-        className={`mb-3 rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors ${
+        className={`mb-2 w-full cursor-pointer rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors focus:border-brand focus:outline-none focus:ring-2 focus:ring-brand/40 ${
           dragOver ? "border-brand bg-brand/5 text-text" : "border-hairline text-muted"
         }`}
       >
         {dragOver ? t(CAPTURE_FILE_TEXT.dropActive) : t(CAPTURE_FILE_TEXT.dropHint)}
+      </button>
+      {/* D1: sichtbar, benannt, ein echtes <button> — Tastatur und Screenreader inklusive. */}
+      <div className="mb-3 flex justify-center">
+        <button
+          type="button"
+          data-testid="capture-file-pick"
+          onClick={openFileDialog}
+          className="rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-ink transition-colors hover:border-brand hover:text-brand focus:outline-none focus:ring-2 focus:ring-brand/40"
+        >
+          {t(CAPTURE_FILE_TEXT.pick)}
+        </button>
       </div>
       <p className="sr-only" aria-live="polite">
         {dropReject ?? ""}

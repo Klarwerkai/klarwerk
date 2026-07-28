@@ -3,32 +3,48 @@
 // gesamte Auswahl-, Filter-, Such- und Gruppierungs-Logik lebt hier und ist als pure Logik getestet.
 // Der Auswahl-Zustand bleibt `checkedRows: boolean[]`, indexiert nach dem ORIGINAL-Index in
 // `preview[]` (Bindeglied, das durch Filtern/Gruppieren stabil bleibt).
+//
+// AUFTRAG-mega27 Block A: die Trefferliste kann jetzt die ECHTE QUELL-HIERARCHIE zeigen. Bis mega26
+// konnte sie nur nach ABGELEITETEN Merkmalen (Sprache/Thema) bündeln — es gab schlicht keine
+// Struktur im Datensatz. Mit `sourceScope` (Quell-Container = Wurzel) und `sourcePath` (Elternkette
+// darin) entsteht ein Ordnerbaum BELIEBIGER TIEFE.
+//
+// AUFTRAG-mega27 Block B: die Filter der Trefferliste sind kein Eigenbau mehr. Sie laufen über
+// DIESELBE Facetten-Technik wie die Bibliothek (lib/facets: kombinierbare Zähler, Mengensemantik,
+// struktureller No-Match) plus den additiven Bereichsfilter aus lib/facetRail. Massenaktionen
+// („alle abwählen", „alle <Sprache> abwählen") bleiben in der Funktion, sind aber KEINE Filter —
+// sie ändern die Auswahl, Filter ändern nur die Sicht.
 import type { ImportPreviewEntry } from "../api/types";
-import { languageFromTitle } from "./facets";
+import type { FacetGroupConfig } from "./facetFilter";
+import { EMPTY_FACET_RANGE, type FacetRange, matchesFacetRange } from "./facetRail";
+import { type FacetSelection, type FacetValues, languageFromTitle, matchesFacets } from "./facets";
 import { displayImportText } from "./htmlEntities";
 
-// D7: Filter-Chips über der Trefferliste. "all" = keine Einschränkung.
+// D7: Status-Werte der Trefferliste. Bis mega26 waren das eigene Filter-Chips; seit Block B sind es
+// die Werte der Facette „Status" (dieselbe Bedeutung, dieselbe Prüfung — s. chipMatches).
 export type PreviewChip = "all" | "new" | "imported" | "queued";
-// D3/D5: Ordner-/Gruppen-Ansicht. "none" = flache Liste (Standard).
-export type PreviewGroupMode = "none" | "theme" | "language";
+// D3/D5 + mega27 A4: Ordner-/Gruppen-Ansicht. "none" = flache Liste; "folder" = der ECHTE
+// Quell-Ordnerbaum (beliebige Tiefe); "theme"/"language" sind die abgeleiteten Sortierhilfen.
+export type PreviewGroupMode = "none" | "theme" | "language" | "folder";
 export type PreviewLanguage = "de" | "en" | "nl" | "other";
 
 export interface PreviewViewState {
   // D7: Freitext-Suche über der Trefferliste (Titel + Autor, dekodiert).
   query: string;
-  // D7: aktiver Filter-Chip.
-  chip: PreviewChip;
-  // D4: „Bereits importierte/vorgemerkte ausblenden".
-  hideImported: boolean;
-  // D3/D5: Gruppierung.
+  // D3/D5/A4: Gruppierung.
   groupMode: PreviewGroupMode;
+  // Block B: die Facetten-Auswahl (Ordner/Sprache/Thema/Autor/Status) — Mengensemantik aus
+  // lib/facets, kein zweiter Nachbau.
+  selection: FacetSelection;
+  // Block B: der additive Bereichsfilter (Zeitraum) — bewusst NEBEN der Wertemenge, s. facetRail.
+  range: FacetRange;
 }
 
 export const DEFAULT_PREVIEW_VIEW: PreviewViewState = {
   query: "",
-  chip: "all",
-  hideImported: false,
   groupMode: "none",
+  selection: {},
+  range: EMPTY_FACET_RANGE,
 };
 
 export interface PreviewRow {
@@ -39,10 +55,17 @@ export interface PreviewRow {
 
 export interface PreviewGroup {
   key: string;
-  kind: "theme" | "language";
+  kind: "theme" | "language" | "folder";
   // Rohwert der Gruppe (Theme-Text bzw. Sprach-Schlüssel) — die Anzeige dekodiert der Aufrufer.
+  // AUFTRAG-mega27 A4: Ordner-Knoten tragen ihren Wert bereits KANONISCH (s. textCodec unten).
   value: string;
   language?: PreviewLanguage;
+  // AUFTRAG-mega27 A2/A4: Dekodier-Marker der Gruppen-Beschriftung. "decoded" = der Wert ist bereits
+  // kanonisch — die Anzeige darf ihn NICHT erneut dekodieren (sonst würde ein echtes Literal
+  // „&uuml;" fälschlich zu „ü"). Dieselbe Regel wie am Item (textCodec).
+  textCodec?: "decoded";
+  // ALLE Zeilen dieses Knotens INKLUSIVE seiner Unterordner. Dreizustand und Zähler hängen daran —
+  // ein Ordner-Haken erfasst also immer den GESAMTEN Teilbaum, nicht nur die direkten Kinder.
   rows: PreviewRow[];
 }
 
@@ -53,7 +76,8 @@ export function previewLanguage(entry: ImportPreviewEntry): PreviewLanguage {
   return languageFromTitle(displayImportText(entry.title, entry.textCodec));
 }
 
-// D7: welchem Filter-Chip genügt ein Eintrag?
+// D7: welchem Status-Wert genügt ein Eintrag? (Bis mega26 der Filter-Chip; seit Block B die EINE
+// Quelle der Status-Facette — kein zweites Regelwerk daneben.)
 export function chipMatches(entry: ImportPreviewEntry, chip: PreviewChip): boolean {
   switch (chip) {
     case "new":
@@ -78,13 +102,13 @@ export function searchMatches(entry: ImportPreviewEntry, query: string): boolean
   return hay.includes(q);
 }
 
-// D4: „bereits importiert" ODER „bereits vorgemerkt" = ausblendbarer Bestand.
+// D4: „bereits importiert" ODER „bereits vorgemerkt" = bekannter Bestand.
 function isKnown(entry: ImportPreviewEntry): boolean {
   return entry.alreadyImported === true || entry.alreadyQueued === true;
 }
 
-// F1 (bens ROT): ZENTRALE Regel, welche Zeilen eine BULK-Aktion (Alle wählen, Themen-/Sprach-
-// Gruppen-Checkbox) überhaupt anfassen darf — bereits importierte oder vorgemerkte Einträge NIE.
+// F1 (bens ROT): ZENTRALE Regel, welche Zeilen eine BULK-Aktion (Alle wählen, Ordner-/Gruppen-
+// Checkbox) überhaupt anfassen darf — bereits importierte oder vorgemerkte Einträge NIE.
 // (Ein einzelnes bewusstes Wieder-Anwählen bleibt über die Zeilen-Checkbox möglich; nur Bulk darf
 // es nicht auslösen.) Dieselbe Regel steuert auch den Gruppen-/Alle-Haken (rowsAllChecked).
 export function isBulkSelectable(entry: ImportPreviewEntry): boolean {
@@ -97,20 +121,96 @@ export function bulkSelectableRows(rows: readonly PreviewRow[]): PreviewRow[] {
   return rows.filter((row) => isBulkSelectable(row.entry));
 }
 
-// Sichtbare Zeilen nach Filter-Chip (D7) + Suche (D7) + Ausblenden-Schalter (D4). Reihenfolge = Original.
+// ---- Block B: die Facetten der Auswahl (dieselbe Technik wie die Bibliothek) -------------------
+
+// AUFTRAG-mega27 B2: die Dimensionen der Trefferliste. Reihenfolge = Anzeigereihenfolge der
+// Schiene, Führung von grob nach fein und von STRUKTUR nach ABLEITUNG:
+//   Ordner (echte Quell-Struktur) · Status (was ist überhaupt noch zu tun) · Thema (Quell-Labels)
+//   · Autor · Sprache (abgeleitet).
+// AUFTRAG-mega28 BLOCK C (Pedi 26.07.): Diese Reihenfolge bleibt, aber „Sprache" ist NICHT mehr
+// hinter „Weitere Filter" versteckt (s. IMPORT_SELECT_SECONDARY_FACET_KEYS) — sichtbar sind damit
+// Ordner · Status · Thema · Sprache, hinter der Klappe steht allein „Autor".
+export const IMPORT_SELECT_FACET_CONFIGS: readonly FacetGroupConfig[] = [
+  { key: "folder", labelKey: "imp.select.facet.folder" },
+  { key: "status", labelKey: "imp.select.facet.status" },
+  { key: "theme", labelKey: "imp.select.facet.theme" },
+  { key: "author", labelKey: "imp.select.facet.author" },
+  { key: "language", labelKey: "imp.select.facet.language" },
+];
+
+// uxpol5 Punkt 2 (Vorbild Library.tsx): die selteneren Dimensionen hinter „Weitere Filter".
+//
+// AUFTRAG-mega28 BLOCK C (Pedi 26.07.): „Sprache" ist wieder in der SICHTBAREN Reihe. Die mega27-
+// Begründung stimmt grundsätzlich — die Sprache ist ein aus dem Titel GERATENES Merkmal und steht
+// ungern vor einem echten. Sie trifft nur nicht auf diesen Bestand zu: er ist dreisprachig gedoppelt,
+// und die Sprache ist der Filter, den Pedi tatsächlich benutzt. Ein Filter, den der Nutzer täglich
+// braucht, gehört nicht hinter eine Klappe, auch wenn seine Herkunft schwächer ist.
+// Die übrige Reihenfolge (IMPORT_SELECT_FACET_CONFIGS) und die Massenaktion bleiben unverändert;
+// „Autor" bleibt als seltenere Dimension hinter „Weitere Filter".
+export const IMPORT_SELECT_SECONDARY_FACET_KEYS = ["author"] as const;
+
+// Der Bereichsfilter wird hinter dieser Dimension einsortiert (Führung grob → fein).
+export const IMPORT_SELECT_RANGE_AFTER_KEY = "theme";
+
+// B2 „Ordner (oberste Pfadebene)": das erste Segment der Elternkette. Ein Eintrag OHNE Elternkette
+// steht direkt im Quell-Container und hat damit ehrlich KEINEN Ordner — leere Liste (er fällt bei
+// einer aktiven Ordner-Wahl heraus, s. FacetValues-Vertrag). Kein erfundener Sammel-Ordner.
+export function previewTopFolder(entry: ImportPreviewEntry): string[] {
+  const first = entry.sourcePath?.[0];
+  const value = first ? displayImportText(first, entry.textCodec).trim() : "";
+  return value.length > 0 ? [value] : [];
+}
+
+// B2: die Werte eines Vorschau-Eintrags je Facette. Kombinierbare Zähler und Auswahl laufen danach
+// vollständig über lib/facets (combinableFacetCounts/matchesFacets) — hier steht NUR die Ableitung.
+// Effizienz-Vertrag von lib/facets: der Aufrufer memoisiert diese Ableitung je Datenlauf.
+export function previewFacetValues(entry: ImportPreviewEntry): FacetValues {
+  return {
+    folder: previewTopFolder(entry),
+    // Genau die drei Zustände der bisherigen Status-Chips — über chipMatches, damit Chip-Semantik
+    // und Facette nie auseinanderlaufen können. Mehrfachzugehörigkeit bleibt möglich (ein Eintrag
+    // kann importiert UND vorgemerkt sein) und wird ehrlich als zwei Werte geführt.
+    status: (["new", "imported", "queued"] as const).filter((chip) => chipMatches(entry, chip)),
+    theme: entry.themes
+      .map((theme) => displayImportText(theme, entry.textCodec).trim())
+      .filter((theme) => theme.length > 0),
+    author: entry.author
+      ? [displayImportText(entry.author, entry.textCodec).trim()].filter((a) => a.length > 0)
+      : [],
+    language: [previewLanguage(entry)],
+  };
+}
+
+// B2 „Jahr als Bereich": der Zeitpunkt, auf den der additive Bereichsfilter wirkt. Kein zweites
+// Datums-Werk — matchesFacetRange (lib/facetRail) entscheidet, exakt wie in der Bibliothek. Ein
+// Eintrag ohne (lesbares) Quell-Datum fällt bei AKTIVEM Bereich ehrlich heraus (er lässt sich
+// nicht einordnen) und ist ohne Bereich unbeeinflusst.
+export function previewChangedMs(entry: ImportPreviewEntry): number {
+  const raw = entry.updatedAt?.trim();
+  if (!raw) {
+    return Number.NaN;
+  }
+  const ms = Date.parse(raw);
+  return Number.isFinite(ms) ? ms : Number.NaN;
+}
+
+// Sichtbare Zeilen nach Suche (D7) + Facetten-Auswahl (B2) + Bereichsfilter (B2). Reihenfolge =
+// Original. `valuesOf` ist injizierbar, damit der Aufrufer die memoisierte Ableitung durchreichen
+// kann (Effizienz-Vertrag) — ohne Angabe wird sie hier berechnet.
 export function visibleRows(
   entries: readonly ImportPreviewEntry[],
   state: PreviewViewState,
+  valuesOf: (entry: ImportPreviewEntry, index: number) => FacetValues = previewFacetValues,
 ): PreviewRow[] {
   const rows: PreviewRow[] = [];
   entries.forEach((entry, index) => {
-    if (state.hideImported && isKnown(entry)) {
-      return;
-    }
-    if (!chipMatches(entry, state.chip)) {
-      return;
-    }
     if (!searchMatches(entry, state.query)) {
+      return;
+    }
+    if (!matchesFacets(valuesOf(entry, index), state.selection)) {
+      return;
+    }
+    if (!matchesFacetRange(previewChangedMs(entry), state.range)) {
       return;
     }
     rows.push({ entry, index });
@@ -122,10 +222,14 @@ const LANGUAGE_ORDER: PreviewLanguage[] = ["de", "en", "nl", "other"];
 
 // D3/D5: sichtbare Zeilen in auf-/zuklappbare Gruppen bündeln. Reihenfolge innerhalb einer Gruppe
 // bleibt die Original-Reihenfolge; Sprachen in fester Ordnung (DE/EN/NL/übrige), Themen alphabetisch
-// mit „ohne Thema" ganz am Ende.
+// mit „ohne Thema" ganz am Ende. Im Ordner-Modus liefert diese Funktion die OBERSTE Ebene des
+// Baums (die Quell-Container); den vollen Baum baut groupRowsTree.
 export function groupRows(rows: readonly PreviewRow[], mode: PreviewGroupMode): PreviewGroup[] {
   if (mode === "none") {
     return [];
+  }
+  if (mode === "folder") {
+    return folderTree(rows);
   }
   if (mode === "language") {
     const buckets = new Map<PreviewLanguage, PreviewRow[]>();
@@ -188,8 +292,8 @@ export function setRowsSelected(
   return next;
 }
 
-// F2 (bens ROT): „Alle abwählen" leert die GESAMTE Auswahl — unabhängig von Suche, Chip-Filter und
-// Ausblenden-Schalter (der Text verspricht ALLE, also gilt ALLE). Auch weggefilterte, aber gewählte
+// F2 (bens ROT): „Alle abwählen" leert die GESAMTE Auswahl — unabhängig von Suche, Facetten-Filter
+// und Bereich (der Text verspricht ALLE, also gilt ALLE). Auch weggefilterte, aber gewählte
 // Treffer werden dadurch abgewählt.
 export function clearAllSelected(checked: readonly boolean[]): boolean[] {
   return checked.map(() => false);
@@ -210,6 +314,8 @@ export function rowsAnyChecked(checked: readonly boolean[], rows: readonly Previ
 // "mixed" (teilgewählt → indeterminierter Haken). Bekannte (importierte/vorgemerkte) Zeilen zählen für
 // "any/off" mit, aber ein Bulk-ANWÄHLEN erfasst sie nie (F1) — deshalb entscheidet für "on" die
 // bulk-wählbare Teilmenge.
+// AUFTRAG-mega27 A5: Aufrufer übergeben für einen Ordner IMMER `group.rows` — und das ist der
+// GESAMTE Teilbaum (s. PreviewGroup.rows). Der Dreizustand aggregiert damit über alle Ebenen.
 export type GroupCheckState = "on" | "off" | "mixed";
 export function groupCheckboxState(
   checked: readonly boolean[],
@@ -228,32 +334,21 @@ export function groupCheckboxState(
 // WP-BILD-1f RT5a: eingeklappt-Standard, sobald „viele" Gruppen entstehen. Schwelle: MEHR als
 // COLLAPSE_GROUPS_THRESHOLD (=4) Gruppen → Ordner starten zugeklappt (der Nutzer klappt gezielt auf).
 // Bis einschließlich 4 Gruppen bleiben sie offen (schneller Überblick ohne Klick).
+//
+// AUFTRAG-mega27 A5 (begründete Entscheidung für den TIEFEN Baum): die Schwelle gilt JE EBENE, also
+// auf der Zahl der GESCHWISTER eines Knotens — nicht auf der Gesamtzahl aller Ordner im Baum. Der
+// Einklapp-Standard schützt vor einer WAND auf einen Blick, und eine Wand ist, was NEBENEINANDER
+// steht, nicht was darunter liegt. Über den ganzen Baum gerechnet wäre schon eine flache Wurzel mit
+// fünf Unterordnern „viel", und der Nutzer bekäme die Struktur zugeklappt, die er gerade sehen soll.
 export const COLLAPSE_GROUPS_THRESHOLD = 4;
-export function groupsCollapsedByDefault(groupCount: number): boolean {
-  return groupCount > COLLAPSE_GROUPS_THRESHOLD;
+export function groupsCollapsedByDefault(siblingCount: number): boolean {
+  return siblingCount > COLLAPSE_GROUPS_THRESHOLD;
 }
 
-// WP-BILD-1f RT5c: Status-Filter-Chips DYNAMISCH aus den tatsächlichen Treffern — nur vorkommende
-// Werte, jeweils mit Zähler. "all" ist immer dabei (Gesamtzahl); "new"/"imported"/"queued" nur, wenn
-// wenigstens ein Treffer sie erfüllt. Verschwindet ein Wert aus dem Bestand, verschwindet sein Chip.
-export interface StatusChipCount {
-  chip: PreviewChip;
-  count: number;
-}
-export function statusChipCounts(entries: readonly ImportPreviewEntry[]): StatusChipCount[] {
-  const out: StatusChipCount[] = [{ chip: "all", count: entries.length }];
-  for (const chip of ["new", "imported", "queued"] as const) {
-    const count = entries.reduce((n, entry) => (chipMatches(entry, chip) ? n + 1 : n), 0);
-    if (count > 0) {
-      out.push({ chip, count });
-    }
-  }
-  return out;
-}
-
-// WP-BILD-1f RT5c: Gruppier-Modi DYNAMISCH — „nach Sprache"/„nach Thema" werden nur angeboten, wenn
-// sie im Bestand mindestens ZWEI Gruppen ergäben (sonst ist die Gruppierung sinnlos). "none" (flache
-// Liste) ist immer dabei. count = Anzahl Gruppen, die der Modus erzeugt (bei "none": Trefferzahl).
+// WP-BILD-1f RT5c: Gruppier-Modi DYNAMISCH — ein Modus wird nur angeboten, wenn er im Bestand
+// mindestens ZWEI Gruppen ergäbe (sonst ist die Gruppierung sinnlos). "none" (flache Liste) ist
+// immer dabei. count = Anzahl Gruppen, die der Modus erzeugt (bei "none": Trefferzahl; bei
+// "folder": die Zahl ALLER Ordner im Baum, über alle Ebenen).
 export interface GroupModeOption {
   mode: PreviewGroupMode;
   count: number;
@@ -261,6 +356,12 @@ export interface GroupModeOption {
 export function groupModeOptions(entries: readonly ImportPreviewEntry[]): GroupModeOption[] {
   const rows: PreviewRow[] = entries.map((entry, index) => ({ entry, index }));
   const out: GroupModeOption[] = [{ mode: "none", count: entries.length }];
+  // A4: der Ordner-Modus steht vorn — er ist die einzige Gruppierung, die eine ECHTE Quell-Struktur
+  // zeigt statt einer Ableitung.
+  const folderCount = countFolderNodes(folderTree(rows));
+  if (hasAnySourcePath(entries) && folderCount >= 2) {
+    out.push({ mode: "folder", count: folderCount });
+  }
   const languageCount = groupRows(rows, "language").length;
   if (languageCount >= 2) {
     out.push({ mode: "language", count: languageCount });
@@ -281,7 +382,177 @@ export function effectiveGroupMode(
   return groupModeOptions(entries).some((option) => option.mode === requested) ? requested : "none";
 }
 
-// ---- RT5a-c (nacht24 Paket 5): Sprach-Massenaktion + echter Subfolder-Baum ----
+// ---- AUFTRAG-mega27 A4: der ECHTE Quell-Ordnerbaum ---------------------------------------------
+
+// Trägt WENIGSTENS EIN Eintrag eine Elternkette? Ohne das gibt es keine Struktur zu zeigen — und
+// dann darf der Ordner-Modus auch nicht die Vorgabe sein (er wäre ein einziger flacher Ordner).
+export function hasAnySourcePath(entries: readonly ImportPreviewEntry[]): boolean {
+  return entries.some((entry) => (entry.sourcePath?.length ?? 0) > 0);
+}
+
+// Der Quell-Container eines Eintrags (die WURZEL seines Ordnerbaums), bereits kanonisch.
+function previewScope(entry: ImportPreviewEntry): string {
+  return entry.sourceScope ? displayImportText(entry.sourceScope, entry.textCodec).trim() : "";
+}
+
+// Die Elternkette eines Eintrags, kanonisch und ohne leere Segmente (Wurzel zuerst).
+function previewPath(entry: ImportPreviewEntry): string[] {
+  return (entry.sourcePath ?? [])
+    .map((segment) => displayImportText(segment, entry.textCodec).trim())
+    .filter((segment) => segment.length > 0);
+}
+
+// AUFTRAG-mega27 A4/A5: ein Knoten des Ordnerbaums. `rows` = der GESAMTE Teilbaum (Dreizustand +
+// Zähler); `ownRows` = die Zeilen, die DIREKT an diesem Knoten hängen. Ein Eintrag ohne Elternkette
+// landet in den ownRows der Wurzel — sichtbar dort, wo er in der Quelle steht, NICHT in einem
+// erfundenen Ordner „Sonstiges".
+export interface PreviewTreeGroup extends PreviewGroup {
+  children?: PreviewTreeGroup[];
+  ownRows?: PreviewRow[];
+}
+
+interface FolderBuild {
+  segment: string;
+  own: PreviewRow[];
+  all: PreviewRow[];
+  children: Map<string, FolderBuild>;
+}
+
+function newFolder(segment: string): FolderBuild {
+  return { segment, own: [], all: [], children: new Map() };
+}
+
+// Baut den Ordnerbaum BELIEBIGER TIEFE aus sourceScope (Wurzel) + sourcePath (Elternkette).
+// Reihenfolge: Geschwister alphabetisch (eine Ordnerliste liest man alphabetisch), Zeilen innerhalb
+// eines Knotens in ORIGINAL-Reihenfolge (wie in allen anderen Modi).
+export function folderTree(rows: readonly PreviewRow[]): PreviewTreeGroup[] {
+  const roots = new Map<string, FolderBuild>();
+  const childOf = (parent: FolderBuild, segment: string): FolderBuild => {
+    const existing = parent.children.get(segment);
+    if (existing) {
+      return existing;
+    }
+    const created = newFolder(segment);
+    parent.children.set(segment, created);
+    return created;
+  };
+  for (const row of rows) {
+    const scope = previewScope(row.entry);
+    const existingRoot = roots.get(scope);
+    let node: FolderBuild;
+    if (existingRoot) {
+      node = existingRoot;
+    } else {
+      node = newFolder(scope);
+      roots.set(scope, node);
+    }
+    node.all.push(row);
+    for (const segment of previewPath(row.entry)) {
+      node = childOf(node, segment);
+      node.all.push(row);
+    }
+    node.own.push(row);
+  }
+  return folderTreeRoots(roots);
+}
+
+// ================================================================================================
+// AUFTRAG-mega28 BLOCK B (bens M27-1) — DER ORDNER-SCHLÜSSEL KOLLIDIERT.
+// ================================================================================================
+//
+// Der Baum übernahm jeden Pfad-Abschnitt UNVERÄNDERT als group.key; die Anzeige (ImportPreviewTree)
+// verkettet Eltern- und Kind-Schlüssel mit einem Schrägstrich. Damit erhielten ein EINZELNER Ordner
+// namens „A/B" und die echte Verschachtelung „A" → „B" denselben Auf-/Zu-Schlüssel: kommen beide im
+// selben Import vor, teilen sie ihren Zustand, und das Aufklappen des einen schaltet das andere um.
+// Bei Confluence-Titeln mit Schrägstrich ist das ein völlig legaler Fall.
+//
+// Die Kodierung macht die Abbildung Segment → Schlüssel INJEKTIV: encodeURIComponent maskiert „/"
+// als %2F und (wichtig für die Umkehrbarkeit des Arguments) „%" selbst als %25. Ein kodiertes
+// Segment kann danach keinen Schrägstrich mehr enthalten — die Verkettung in der Anzeige ist damit
+// eindeutig zerlegbar und kollisionsfrei. Der Schlüssel ist reine Anzeige-Identität (Auf/Zu); er
+// wird nie angezeigt, nie gespeichert und nie zurückgelesen.
+function encodeTreeSegment(segment: string): string {
+  return encodeURIComponent(segment);
+}
+
+export function folderTreeSegmentKey(segment: string): string {
+  return encodeTreeSegment(segment);
+}
+
+function folderTreeRoots(roots: Map<string, FolderBuild>): PreviewTreeGroup[] {
+  return [...roots.values()]
+    .sort((a, b) => a.segment.localeCompare(b.segment))
+    .map((root) => toTreeGroup(root, `folder:${encodeTreeSegment(root.segment)}`));
+}
+
+function toTreeGroup(node: FolderBuild, key: string): PreviewTreeGroup {
+  const children = [...node.children.values()]
+    .sort((a, b) => a.segment.localeCompare(b.segment))
+    // Der Schlüssel eines Unterordners ist NUR sein (kodiertes) Segment; die Anzeige setzt den
+    // vollen Pfad-Schlüssel aus Eltern- und Kind-Schlüssel zusammen (dieselbe Regel wie im
+    // Sprach-/Themen-Baum). mega28 B: kodiert, damit „A/B" und „A"→„B" auseinanderfallen.
+    .map((child) => toTreeGroup(child, encodeTreeSegment(child.segment)));
+  return {
+    key,
+    kind: "folder",
+    value: node.segment,
+    // A2/A4: der Wert ist bereits kanonisch (displayImportText lief bei der Ableitung) — die
+    // Anzeige dekodiert NICHT erneut.
+    textCodec: "decoded",
+    rows: node.all,
+    ownRows: node.own,
+    ...(children.length > 0 ? { children } : {}),
+  };
+}
+
+// Zahl ALLER Ordner-Knoten im Baum (über alle Ebenen) — die ehrliche Antwort auf „wie viele Ordner".
+export function countFolderNodes(groups: readonly PreviewTreeGroup[]): number {
+  return groups.reduce((n, group) => n + 1 + countFolderNodes(group.children ?? []), 0);
+}
+
+// A4: WARUM der Ordner-Modus gerade nicht die Vorgabe ist — genau eine Zeile, ehrlich benannt.
+// null = er ist verfügbar.
+export type FolderModeUnavailableReason = "no-path" | "single-folder";
+export function folderModeUnavailableReason(
+  entries: readonly ImportPreviewEntry[],
+): FolderModeUnavailableReason | null {
+  if (!hasAnySourcePath(entries)) {
+    return "no-path";
+  }
+  const rows: PreviewRow[] = entries.map((entry, index) => ({ entry, index }));
+  return countFolderNodes(folderTree(rows)) >= 2 ? null : "single-folder";
+}
+
+// A4: der VORGABE-Modus eines frischen Bestands. Ordner, sobald wenigstens ein Eintrag einen Pfad
+// trägt UND daraus mindestens zwei Ordner entstehen; sonst ehrlich das heutige Verhalten (flache
+// Liste) — die Oberfläche nennt dann in einer Zeile den Grund (folderModeUnavailableReason).
+export function defaultGroupMode(entries: readonly ImportPreviewEntry[]): PreviewGroupMode {
+  return folderModeUnavailableReason(entries) === null ? "folder" : "none";
+}
+
+// RT5a (nacht24): ECHTER Subfolder-Baum. Im Sprach-Modus bekommt jeder Sprach-Ordner
+// Themen-UNTERORDNER (auf-/zuklappbar), sobald in der Sprache mindestens ZWEI Themen-Gruppen
+// entstehen (sonst bleibt der Ordner ehrlich flach — ein einzelner Unterordner wäre nur Klickweg).
+// Der Themen-Modus bleibt bewusst einstufig (Themen sind im Bestand nicht hierarchisch).
+// AUFTRAG-mega27 A4: der Ordner-Modus liefert den vollen Quell-Baum in BELIEBIGER Tiefe.
+export function groupRowsTree(
+  rows: readonly PreviewRow[],
+  mode: PreviewGroupMode,
+): PreviewTreeGroup[] {
+  if (mode === "folder") {
+    return folderTree(rows);
+  }
+  const top = groupRows(rows, mode);
+  if (mode !== "language") {
+    return top;
+  }
+  return top.map((group) => {
+    const children = groupRows(group.rows, "theme");
+    return children.length >= 2 ? { ...group, children } : group;
+  });
+}
+
+// ---- Massenaktionen (Block B4: KEINE Filter — sie ändern die Auswahl, nicht die Sicht) ---------
 
 // Sprach-Zähler über den GESAMTEN gefundenen Bestand (nicht nur die sichtbaren Zeilen) — Basis der
 // „alle <Sprache> abwählen"-Massenaktion. Nur vorkommende Sprachen, feste Ordnung DE/EN/NL/übrige.
@@ -316,28 +587,6 @@ export function deselectLanguage(
     }
   });
   return next;
-}
-
-// RT5a (nacht24): ECHTER Subfolder-Baum — im Sprach-Modus bekommt jeder Sprach-Ordner
-// Themen-UNTERORDNER (auf-/zuklappbar), sobald in der Sprache mindestens ZWEI Themen-Gruppen
-// entstehen (sonst bleibt der Ordner ehrlich flach — ein einzelner Unterordner wäre nur Klickweg).
-// Der Themen-Modus bleibt bewusst einstufig (Themen sind im Bestand nicht hierarchisch).
-export interface PreviewTreeGroup extends PreviewGroup {
-  children?: PreviewGroup[];
-}
-
-export function groupRowsTree(
-  rows: readonly PreviewRow[],
-  mode: PreviewGroupMode,
-): PreviewTreeGroup[] {
-  const top = groupRows(rows, mode);
-  if (mode !== "language") {
-    return top;
-  }
-  return top.map((group) => {
-    const children = groupRows(group.rows, "theme");
-    return children.length >= 2 ? { ...group, children } : group;
-  });
 }
 
 // D7: dauerhaft sichtbare Auswahl-Zusammenfassung „X von Y gewählt".

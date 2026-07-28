@@ -34,11 +34,15 @@ export function UiKit(): JSX.Element {
         </div>
       </Section>
 
+      {/* AUFTRAG-mega35 E: dieselbe Fassung wie auf allen normalen Leseflächen — Balken und Zahl,
+          KEIN prozentbasiertes Qualitätswort. Bis hierher hing diese Seite am alten Vorgabewert und
+          zeigte bei 91 weiterhin „Gesichert", obwohl das Wort überall sonst entfernt ist; /ui-kit
+          ist ohne Nav erreichbar und damit sichtbar. */}
       <Section title="Konfidenz / Reifegrad">
         <div className="space-y-3">
-          <ConfidenceBar value={42} />
-          <ConfidenceBar value={73} />
-          <ConfidenceBar value={91} />
+          <ConfidenceBar value={42} showLabel={false} />
+          <ConfidenceBar value={73} showLabel={false} />
+          <ConfidenceBar value={91} showLabel={false} />
         </div>
       </Section>
 

@@ -10,6 +10,8 @@ import {
   isValidConfidentiality,
   normalizeConfidentiality,
 } from "./confidentiality";
+// AUFTRAG-mega32 A1: die EINE Auslegung von „vollständig geprüft" auf dieser Modulseite.
+import { isCompleteAiCheckCoverage } from "./coverage-complete";
 // AUFTRAG-mega18 Block A: die reine interne Belegpflicht + das Vorgangsgedächtnis der
 // Verbund-Operation. Die Trennung „externe Stufenregel vs. interne Belegpflicht" ist dort
 // ausgeschrieben — sie ist der eigentliche Befund dieses Auftrags.
@@ -26,6 +28,8 @@ import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } 
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
+  type AiCheckCoverage,
+  type AiCheckCoverageSummary,
   type Confidentiality,
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
@@ -917,6 +921,9 @@ export class KoService {
           ...(attachmentId ? { attachmentId } : {}),
           label: source.label,
           ...(source.url ? { url: source.url } : {}),
+          // mega26 Block B: der Grund der Verknüpfung — die Belegstelle, die diese Quelle trägt.
+          // `source.excerpt` ist hier bereits getrimmt/normalisiert (s. o.).
+          ...(source.excerpt ? { excerpt: source.excerpt } : {}),
           createdBy: input.author,
           createdAt: at,
         });
@@ -1185,16 +1192,39 @@ export class KoService {
    * Wiederholmechanismus ohnehin kennt und bedient. Kein zweiter Mechanismus, kein neuer Endpunkt.
    */
   async markAiCheckFailed(id: string, fallbackReason: string): Promise<boolean> {
+    return this.recordAiCheckOutcome(id, { ok: false, fallbackReason });
+  }
+
+  /**
+   * AUFTRAG-mega28 A3 — DER LAUF, DER NIE EINEN STATUS BEKAM.
+   *
+   * bens JR-2 (von Pedi geschärft): der normale AI-Worker meldet `ok:false` und bleibt
+   * retry-fähig — das ist in Ordnung. Die IMPORT-ACCEPT-KANTE ist es nicht: dort läuft die
+   * Erkennung SYNCHRON in der Route, ohne Prüf-Job, ohne pending-Vermerk. Ein Kapazitätsabbruch
+   * erzeugte dort nur eine Log-Warnung, der Accept galt als gelungen, und es entstand GAR KEIN
+   * sichtbarer aiCheck-Status. Beim Konfliktlauf, der jeden Kandidatenfehler einzeln schluckt und
+   * weiterläuft, war es noch weniger sichtbar.
+   *
+   * Diese Fläche schreibt den Ausgang eines Laufs UNBEDINGT (kein pending-Vorzustand nötig) —
+   * inklusive der Abdeckung (A2). `markAiCheckFailed` ist seitdem ihr Sonderfall; das Verhalten
+   * dort ist unverändert (failed + Ursache, Version gebunden, damit der bestehende Wiederhol-Weg
+   * greift).
+   */
+  async recordAiCheckOutcome(
+    id: string,
+    outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
+  ): Promise<boolean> {
     const ko = await this.repo.findById(id);
     if (!ko || ko.deletedAt) {
       return false;
     }
     const at = new Date(this.now()).toISOString();
     return this.repo.setAiCheck(id, {
-      status: "failed",
+      status: outcome.ok ? "done" : "failed",
       requestedAt: at,
       finishedAt: at,
-      fallbackReason,
+      ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+      ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
       koVersion: ko.version,
     });
   }
@@ -1405,6 +1435,8 @@ export class KoService {
       label: source.label,
       url: source.url,
       provider: source.provider ?? null,
+      // mega26 Block B: der Grund der Verknüpfung, wörtlich aus der eben gebauten Quelle.
+      ...(source.excerpt ? { excerpt: source.excerpt } : {}),
       createdBy: author,
       createdAt: source.at,
     });
@@ -1434,6 +1466,62 @@ export class KoService {
   // Endlöschung ist jetzt eine EXPLIZITE Operation (runTrashSweep), die reine Leseoperationen nie auslöst.
   async list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
     return (await this.repo.list(filter)).filter((k) => !k.deletedAt);
+  }
+
+  /**
+   * AUFTRAG-mega29 C2 (bens M28-3) — DIE ZAHLEN, DIE EIN LEERES BOARD BRAUCHT.
+   *
+   * „Keine offenen Konflikte" und „Keine offenen Überschneidungen" sind wörtlich richtig und laden
+   * trotzdem zu genau dem Schluss ein, gegen den der Deckel-Ehrlichkeitsvertrag gebaut wurde: dass
+   * der Bestand geprüft und frei sei. Die Finding-Endpunkte liefern keine Laufabdeckung — ein
+   * einzelnes KO trägt sie, das BOARD sieht sie nie. Diese Zusammenfassung schließt die Lücke.
+   *
+   * BEWUSST SO SCHMAL WIE MÖGLICH (Pedis Reißleine Z galt genau dieser Stelle): drei Zähler, keine
+   * Objektdaten, keine Titel, keine IDs, keine Rechteabstufung nötig. Sie tragen die EINE Aussage,
+   * die das leere Board braucht — dass hinter dem Bestand unvollständige Läufe stehen und in
+   * welchem Umfang. Alles Weitergehende (welche Objekte, welcher Weg, Wiederaufnahme) ist Post-VIP.
+   *
+   * `unchecked` zählt Objekte GANZ OHNE Protokoll: über sie sagt kein Lauf etwas — das ist eine
+   * andere Aussage als „unvollständig geprüft" und darf nicht mit ihr verschmelzen.
+   */
+  async aiCheckCoverageSummary(): Promise<AiCheckCoverageSummary> {
+    const all = (await this.list({})).filter((ko) => !ko.demoSeed);
+    let incomplete = 0;
+    let unchecked = 0;
+    let noCoverage = 0;
+    for (const ko of all) {
+      const aiCheck = ko.aiCheck;
+      // 1. Gar kein Vermerk — über dieses Objekt sagt kein Lauf etwas. Die EINZIGE Lage, in der
+      //    „gar kein Lauf" wörtlich stimmt (A4).
+      if (!aiCheck) {
+        unchecked += 1;
+        continue;
+      }
+      // 2. AUFTRAG-mega31 A2: der LAUFSTATUS wird ausgewertet — er wurde bisher gar nicht gelesen.
+      //    `failed` ist immer unvollständig, ohne Ausnahme und unabhängig davon, welche Merker die
+      //    Abdeckung trägt (bens ROT-2: ein gescheiterter Lauf mit makellosem Protokoll galt als
+      //    vollständig). `pending` ist nicht abgeschlossen und damit erst recht nicht vollständig.
+      if (aiCheck.status !== "done") {
+        incomplete += 1;
+        continue;
+      }
+      // 3. A4: abgeschlossen gemeldet, aber ohne Abdeckungsprotokoll (Altbestand von vor mega28).
+      //    Ein Lauf ist nachweisbar, seine Reichweite nicht — eigener Zähler, eigener Satz.
+      if (!aiCheck.coverage) {
+        noCoverage += 1;
+        continue;
+      }
+      // 4. AUFTRAG-mega32 A1 (bens GELB-1): ein Protokoll, das die Vollständigkeit nicht POSITIV
+      //    belegt. Hier stand bis mega31 eine dritte, eigene Auslegung von „vollständig" — drei
+      //    Merker, ausgeschrieben mitten in dieser Schleife. Ein Datensatz mit
+      //    `completed < attempted` bei sauberen Merkern lief damit als vollständig durch. Diese
+      //    Zusammenfassung entscheidet die Frage jetzt NICHT mehr selbst, sondern fragt die eine
+      //    benannte Invariante (coverage-complete.ts, Spiegel von conflicts/src/coverage.ts).
+      if (!isCompleteAiCheckCoverage(aiCheck.coverage)) {
+        incomplete += 1;
+      }
+    }
+    return { total: all.length, incomplete, unchecked, noCoverage };
   }
 
   // WP-SHIP8-CLOSE-4 (bens ROT-1A/1C): Anker-Suche des Import-Accepts — BEWUSST INKLUSIVE
@@ -1508,9 +1596,11 @@ export class KoService {
     });
   }
 
+  // AUFTRAG-mega28 A2: die Abdeckung des Laufs (gedeckelt/übersprungen/abgebrochen) reist mit dem
+  // Abschluss mit — additiv, der bedingte Feld-Patch bleibt unverändert schmal.
   async resolveAiCheck(
     id: string,
-    outcome: { ok: boolean; fallbackReason?: string },
+    outcome: { ok: boolean; fallbackReason?: string; coverage?: AiCheckCoverage },
     expectedKoVersion?: number,
   ): Promise<boolean> {
     return this.repo.resolveAiCheck(
@@ -1519,6 +1609,7 @@ export class KoService {
         status: outcome.ok ? "done" : "failed",
         finishedAt: new Date(this.now()).toISOString(),
         ...(outcome.fallbackReason ? { fallbackReason: outcome.fallbackReason } : {}),
+        ...(outcome.coverage ? { coverage: outcome.coverage } : {}),
       },
       expectedKoVersion,
     );
@@ -1998,6 +2089,10 @@ export class KoService {
             label: source.label,
             url: safeSourceUrl(source.url),
             provider: source.provider ?? null,
+            // mega26 Block B: der Grund der Verknüpfung — die Belegstelle der übernommenen
+            // Dokumentstelle. Genau sie macht später nachvollziehbar, WARUM dieser Anhang
+            // diese Aussage stützt.
+            ...(source.excerpt ? { excerpt: source.excerpt } : {}),
             createdBy: author,
             createdAt: at,
           });

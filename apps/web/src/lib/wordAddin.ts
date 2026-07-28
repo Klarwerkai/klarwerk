@@ -168,12 +168,55 @@ export function askLocale(lang: string): "de" | "en" {
 
 export type AskOutcomeKind = "answered" | "gap" | "auth" | "error" | "timeout";
 
+// ================================================================================================
+// AUFTRAG-mega34 BLOCK B (bens zweiter ROT-Befund) — WORD BEKOMMT DIE EINSTUFUNG.
+// ================================================================================================
+//
+// Bis mega33 kannte diese Flaeche nur zwei Zustaende: `answered` oder `gap`. Weder Wissensklasse
+// noch Pruefabdeckung noch Konfliktstand kamen darin vor — und der Nutzer KOPIERTE das Ergebnis in
+// ein echtes Dokument. Von allen Leseflaechen ist das die folgenreichste, weil das Ergebnis das
+// Haus verlaesst.
+//
+// Sie legt jetzt NICHTS mehr selbst aus: der Server liefert den kanonischen, quellengebundenen
+// Evidenzzustand an `/api/ask` mit (services/ask/src/answer-evidence.ts). Hier wird er nur gelesen.
+export type AskGrade = "verified" | "unverified";
+
+export interface AskEvidence {
+  grade: AskGrade;
+  // Der benannte Pruefvorbehalt, falls vorhanden — worauf er sich bezieht.
+  checkCaveat?: { reason: string; unproven: number; total: number } | null;
+  // Die Konfliktlage selbst ist unbekannt (serverseitiger Abruf gescheitert).
+  conflictsUnproven?: boolean;
+}
+
 export interface AskOutcome {
   kind: AskOutcomeKind;
   answer?: string;
   sources?: string[]; // KO-Ids aus AnswerResult.sources — Titel/Trust laedt das Panel je KO nach
   trust?: number;
   detail?: string;
+  // AUFTRAG-mega34 B: die EINE Einstufung, vom Server. Bei `answered` immer gesetzt.
+  grade?: AskGrade;
+  evidence?: AskEvidence | undefined;
+}
+
+// AUFTRAG-mega34 B: der Grad aus dem Server-Feld — FAIL-SAFE. Fehlt das Feld (alter Server,
+// abgeschnittener Body, unerwartetes Format), gilt die Antwort als NICHT belegt. Dieselbe
+// Beweislast-Umkehr wie in Block A: „nichts da" ist nicht „nichts vorhanden", und die einzige
+// harte Zusage lautet, dass der Leser nie eine zu starke Aussage sieht.
+export function askGradeOf(evidence: unknown): AskGrade {
+  const grade = (evidence as { grade?: unknown } | null | undefined)?.grade;
+  return grade === "verified" ? "verified" : "unverified";
+}
+
+// AUFTRAG-mega34 B2: DERSELBE Hinweis fuer Anzeige, Kopieren und Einfuegen. Die Texte kommen von
+// aussen (i18n der jeweiligen Laufzeit), die AUSWAHL trifft diese eine Funktion — damit die drei
+// Wege nicht auseinanderlaufen koennen.
+export function answerInsertEvidenceNote(
+  grade: AskGrade,
+  texts: { verified: string; unverified: string },
+): string {
+  return grade === "verified" ? texts.verified : texts.unverified;
 }
 
 // Der eine Ask-Lauf gegen POST /api/ask (Fetch injizierbar → testbar mit Fake-fetch, DOM-frei).
@@ -275,6 +318,10 @@ export function performAsk(
             answer: stripAskAnswerMarkdown(answer),
             sources,
             trust: typeof result.trust === "number" ? result.trust : 0,
+            // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der Grad
+            // fail-safe „unverified" — Word behauptet nie Sicherheit, die es nicht belegt bekam.
+            grade: askGradeOf(result.evidence),
+            evidence: (result.evidence ?? undefined) as AskEvidence | undefined,
           };
         }
         return { kind: "gap" };
@@ -325,13 +372,25 @@ export function buildAskSourceLine(
 // KI-Etikett — es IST das geprüfte Wissen, die Quellenangabe traegt die Herkunft).
 // WP-KLARA-ASK-FIX (bens Fix 3): wurde die Frage gekappt (2000-Zeichen-Deckel), traegt der
 // eingefuegte Text einen EHRLICHEN Kappungs-Hinweis mit (die Antwort galt der gekappten Frage).
+// AUFTRAG-mega34 B2: der EINGEFUEGTE Text traegt die Einstufung mit. Das ist der Punkt, an dem das
+// Ergebnis das Haus verlaesst — ein Hinweis, der nur im Panel steht, reist nicht mit ins Dokument.
+// Der Zusatz ist optional, damit alle bestehenden Aufrufe unveraendert bleiben.
+// AUFTRAG-mega36 D: bleibt nach dem Abzug bereits vorhandener Metazeilen KEIN Koerper uebrig
+// (die Nutzerin hat NUR den Metablock im Feld stehen), entsteht die Quellen-Zeile ohne die beiden
+// fuehrenden Leerzeilen — ein Text, der mit "\n\nQuelle: ..." beginnt, ist kein Ergebnis.
 export function buildAnswerInsertText(
   answer: string,
   sourceLine: string,
   truncatedNote?: string,
+  evidenceNote?: string,
 ): string {
-  const base = `${answer.replace(/\s+$/g, "")}\n\n${sourceLine}`;
-  return truncatedNote && truncatedNote.trim().length > 0 ? `${base}\n${truncatedNote}` : base;
+  const head = answer.replace(/\s+$/g, "");
+  const base = head.length > 0 ? `${head}\n\n${sourceLine}` : sourceLine;
+  const withEvidence =
+    evidenceNote && evidenceNote.trim().length > 0 ? `${base}\n${evidenceNote}` : base;
+  return truncatedNote && truncatedNote.trim().length > 0
+    ? `${withEvidence}\n${truncatedNote}`
+    : withEvidence;
 }
 
 // Stand-Datum der Quellen-Zeile (dd.mm.yyyy — Dokument-Artefakt, bewusst EIN Format).
@@ -355,6 +414,122 @@ export function newestSourceDateLabel(dates: readonly (string | undefined)[]): s
     }
   }
   return best === null ? null : formatAskDateLabel(new Date(best));
+}
+
+// AUFTRAG-mega35 A1 — DIE EINE STELLE, AN DER DER AUSZUGEBENDE TEXT ENTSTEHT.
+//
+// Vorher wurde der vollstaendige Text VORBEFUELLT und spaeter nachgetragen; wer waehrenddessen
+// editierte, verlor Einstufung und Quellen-Zeile, ohne dass die Ausgabewege das bemerkt haetten.
+// Die Bauweise ist jetzt umgedreht: der Nutzerin gehoert NUR der Antwortkoerper; Einstufung und
+// Quellen-Zeile werden im AUGENBLICK des Kopierens/Einfuegens angesetzt und koennen deshalb nicht
+// fehlen. Rein und DOM-frei — die Laufzeit reicht Zustand und uebersetzte Texte herein.
+export interface AnswerOutputInput {
+  // Der BEARBEITETE Antwortkoerper aus dem Feld (nicht die Originalantwort).
+  body: string;
+  sourceTitles: readonly string[];
+  sourceDates: readonly (string | undefined)[];
+  truncated: boolean;
+  grade: AskGrade;
+  // "Heute" fuer den Fall ohne belegtes Quell-Datum — hereingereicht statt hier gelesen (testbar).
+  now: Date;
+  texts: {
+    verified: string;
+    unverified: string;
+    // Templates mit {titles}/{date}.
+    sourceLine: string;
+    sourceLineRetrieved: string;
+    // Bereits aufgeloester Kappungs-Hinweis (der {max}-Platzhalter ist beim Aufrufer gefuellt).
+    truncatedNote: string;
+  };
+}
+
+// AUFTRAG-mega36 D (bens GELB-2) — DIE ZUSAMMENSETZUNG IST IDEMPOTENT.
+//
+// Bis mega35 hing `composeAnswerOutput` Quellen-Zeile und Einstufung IMMER an. Kopiert die Nutzerin
+// die volle Ausgabe einmal heraus und wieder in das Feld hinein (der realistische Weg: kopieren,
+// woanders lesen, zurueckfuegen), entstand jede Zeile doppelt.
+//
+// Erkannt wird der ANGEHAENGTE Metablock — also die Zeilen am ENDE des Koerpers, die genau die
+// Formen tragen, die diese Funktion selbst erzeugt: eine der beiden Quellen-Zeilen-Vorlagen
+// (Platzhalter {titles}/{date} als Platzhalter, der Rest zeichengleich), einer der beiden
+// Einstufungstexte oder der Kappungshinweis. Alles andere bleibt unangetastet — eine Zeile, die das
+// Wort „Quelle" nur ERWAEHNT, ist keine Metazeile.
+//
+// AUSDRUECKLICHE GRENZE: nur der TRAILING-Block wird erkannt. Eine Metazeile MITTEN im Koerper
+// bleibt stehen (sie ist dort nicht das Ergebnis dieser Funktion, sondern Text der Nutzerin) und
+// eine Metazeile in einer ANDEREN Sprache als der gerade eingestellten wird nicht erkannt.
+function composedMetaLinePattern(template: string): RegExp {
+  const escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`^${escaped.replace(/\\\{titles\\\}/g, ".*").replace(/\\\{date\\\}/g, ".*")}$`);
+}
+
+export function stripComposedMetaLines(body: string, texts: AnswerOutputInput["texts"]): string {
+  const patterns = [
+    composedMetaLinePattern(texts.sourceLine),
+    composedMetaLinePattern(texts.sourceLineRetrieved),
+  ];
+  const exact = [texts.verified, texts.unverified, texts.truncatedNote]
+    .map((value) => (value || "").trim())
+    .filter((value) => value.length > 0);
+  const lines = body.replace(/\r\n?/g, "\n").split("\n");
+  while (lines.length > 0) {
+    const last = (lines[lines.length - 1] ?? "").trim();
+    if (last.length === 0) {
+      lines.pop();
+      continue;
+    }
+    if (exact.includes(last) || patterns.some((pattern) => pattern.test(last))) {
+      lines.pop();
+      continue;
+    }
+    break;
+  }
+  return lines.join("\n").replace(/\s+$/g, "");
+}
+
+export function composeAnswerOutput(input: AnswerOutputInput): string {
+  const standLabel = newestSourceDateLabel(input.sourceDates);
+  const sourceLine = standLabel
+    ? buildAskSourceLine(input.sourceTitles, standLabel, input.texts.sourceLine)
+    : buildAskSourceLine(
+        input.sourceTitles,
+        formatAskDateLabel(input.now),
+        input.texts.sourceLineRetrieved,
+      );
+  const evidenceNote = answerInsertEvidenceNote(input.grade, {
+    verified: input.texts.verified,
+    unverified: input.texts.unverified,
+  });
+  const truncatedNote = input.truncated ? input.texts.truncatedNote : "";
+  // AUFTRAG-mega36 D: erst den bereits vorhandenen Metablock abziehen, dann genau einmal ansetzen.
+  return buildAnswerInsertText(
+    stripComposedMetaLines(input.body, input.texts),
+    sourceLine,
+    truncatedNote,
+    evidenceNote,
+  );
+}
+
+// AUFTRAG-mega36 B2 — GANZE AUSWAHL ODER BRUCHSTUECK.
+//
+// Der abgefangene native Kopiervorgang (Cmd+C, Kontextmenue, Ausschneiden, Ziehen) gibt den
+// ABGELEITETEN Text nur dann aus, wenn die Auswahl den GANZEN Antwortkoerper umfasst. Eine
+// Teilauswahl — drei Woerter, ein Satz — bleibt roh: ein Bruchstueck ist keine Antwort und traegt
+// deshalb auch keine Einstufung; eine Einstufungszeile an drei Woerter zu haengen waere Laerm und
+// wuerde die Zeile entwerten.
+//
+// „Ganz" wird umgebende-Leerraum-tolerant gemessen: wer die Textzeile markiert, aber die leere
+// Zeile davor/danach ausspart, hat den ganzen Koerper markiert. Umgekehrt kann eine echte
+// Teilauswahl NIE zeichengleich zum getrimmten Koerper werden — ausgelassen werden darf nur
+// Leerraum. Leerer Koerper oder leere Auswahl → false (es gibt nichts abzuleiten).
+export function answerSelectionIsWhole(value: string, start: number, end: number): boolean {
+  const body = (value || "").trim();
+  if (body.length === 0) {
+    return false;
+  }
+  const from = Math.max(0, Math.min(start, end));
+  const to = Math.min((value || "").length, Math.max(start, end));
+  return (value || "").slice(from, to).trim() === body;
 }
 
 // Wissensluecken-Weg (Teil 2): die offene Frage reist als Front-Door-ENTWURF (bestehender

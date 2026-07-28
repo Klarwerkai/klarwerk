@@ -75,6 +75,30 @@ export function buildKnowledgeOsHints(input: KnowledgeOsHintsInput): KnowledgeOs
       source: "modelRuns",
     });
   }
+  // ==============================================================================================
+  // AUFTRAG-mega34 BLOCK G (bens GELB 4) — DER ZUSTAND OHNE BAND HAT JETZT SEINEN EIGENEN HINWEIS.
+  // ==============================================================================================
+  //
+  // Seit mega33 ist `band` bei unbelegter Konflikterkennung `null`, weil sich aus einer Spanne
+  // kein ehrlicher Gesundheitsgrad ableiten lässt. Die Abfragen darunter prüfen aber auf
+  // `kritisch` bzw. `mittel` — beide sind dann falsch, und zwar in die entwarnende Richtung: der
+  // sichtbare Worst-Case-Score konnte kritisch sein, ohne dass ein einziger Hinweis entstand, und
+  // die Zusammenfassung leitete daraus sogar „alles in Ordnung" ab.
+  //
+  // Der Hinweis kommt deshalb aus der Beweislage selbst (`conflictFactor.proven === false`) und
+  // nicht aus einem Band, das es in diesem Zustand gar nicht geben kann. Er steht VOR den
+  // bandbasierten Abfragen, weil er die schwerere Aussage ist: er sagt nicht „der Wert ist
+  // schlecht", sondern „der Wert ist nicht belegt".
+  if (input.knowledgeHealth && input.knowledgeHealth.conflictFactor.proven === false) {
+    hints.push({
+      id: "health-detection-unproven",
+      severity: "critical",
+      titleKey: "kos.hint.health-detection-unproven.title",
+      detailKey: "kos.hint.health-detection-unproven.detail",
+      count: input.knowledgeHealth.score,
+      source: "health",
+    });
+  }
   // 2) KnowledgeHealth kritisch (optional).
   if (input.knowledgeHealth && input.knowledgeHealth.band === "kritisch") {
     hints.push({

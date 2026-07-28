@@ -23,11 +23,61 @@ export type KoStatus = "offen" | "validiert";
 // Erkennung lief (Ergebnis-Signale liegen in conflicts/overlaps); failed = EHRLICH gescheitert
 // (fallbackReason: no-model/model-error) — nie stiller Verlust, nie erfundenes Ergebnis.
 export type AiCheckStatus = "pending" | "done" | "failed";
+
+// AUFTRAG-mega28 A2 (Pedi 26.07.) — WIE WEIT DER PRÜF-LAUF TATSÄCHLICH REICHTE.
+// Seit mega28 deckeln beide Erkennungswege ihre Kandidatenmenge (App-Root: DETECTION_CANDIDATE_CAP).
+// Ein gedeckelter Lauf darf nicht aussehen wie ein vollständiger: „done" heißt sonst still „gegen 20
+// von 12.479 geprüft" und ein leeres Ergebnis läse sich als „konfliktfrei". Diese Zahlen reisen
+// deshalb MIT dem Job-Status bis in die Anzeige.
+// STRUKTURGLEICH zu conflicts/src/coverage.ts DetectionCoverage — bewusst EIGENSTÄNDIG deklariert:
+// knowledge-object kennt conflicts nicht (Modulgrenze). Der App-Root bildet ab.
+// AUFTRAG-mega29 B1: aus EINER Zahl (`examined`) sind sieben getrennte Begriffe geworden — eine
+// Zahl, die vier Fragen zugleich beantworten musste, log bei jeder (bens M28-2). Bedeutung je Feld
+// s. conflicts/src/coverage.ts; diese Deklaration bleibt bewusst eigenständig (Modulgrenze).
+export interface AiCheckCoverage {
+  available: number;
+  selected: number;
+  alreadyOpen: number;
+  attempted: number;
+  completed: number;
+  skipped: number;
+  capped: boolean;
+  aborted: boolean;
+}
+
+// AUFTRAG-mega29 C2 (bens M28-3): die schmalste Aussage, die ein LEERES Konflikt-/Duplikat-Board
+// braucht, um nicht als „geprüft und frei" gelesen zu werden. Drei Zähler über den Bestand — keine
+// Objektdaten, keine IDs. `unchecked` (gar kein Protokoll) ist bewusst von `incomplete` getrennt:
+// „über dieses Objekt sagt kein Lauf etwas" ist eine andere Aussage als „der Lauf war unvollständig".
+//
+// AUFTRAG-mega31 BLOCK A (bens ROT-2, Pedis Umkehr vom 26.07.) — DIE BEWEISLAST WECHSELT DIE SEITE.
+// Bis mega29 galt ein Objekt als vollständig geprüft, SOLANGE KEIN MERKER DAS GEGENTEIL SAGTE. Ein
+// fehlender Merker erzeugte damit eine Entwarnung — und genau ein fehlender Merker war ROT-1. Jetzt
+// gilt: vollständig ist nur, was BELEGT vollständig ist. Jeder unbelegte Zustand ist unvollständig.
+//
+// VIER SICH AUSSCHLIESSENDE ZÄHLER, in dieser Rangfolge ausgewertet (s. aiCheckCoverageSummary):
+//   unchecked   — gar kein Vermerk: über dieses Objekt sagt kein Lauf etwas.
+//   incomplete  — ein Lauf, der nicht als vollständig belegt ist (failed/pending ODER ein
+//                 Protokoll mit capped/aborted/skipped).
+//   noCoverage  — ein abgeschlossen gemeldeter Lauf OHNE Abdeckungsprotokoll (Altbestand von vor
+//                 mega28). A4: das ist NICHT „gar kein Lauf" — ein Lauf ist nachweisbar, nur seine
+//                 REICHWEITE nicht. Die beiden Aussagen dürfen nicht in einen Zähler fallen.
+// Was in keinen der drei fällt, ist belegt vollständig — und nur DAS darf schweigen.
+export interface AiCheckCoverageSummary {
+  total: number;
+  incomplete: number;
+  unchecked: number;
+  noCoverage: number;
+}
+
 export interface AiCheck {
   status: AiCheckStatus;
   requestedAt: string;
   finishedAt?: string;
   fallbackReason?: string;
+  // mega28 A2/A3: additiv — Altbestand ohne Feld sagt schlicht nichts über die Abdeckung (und die
+  // Anzeige behauptet dann auch nichts).
+  coverage?: AiCheckCoverage;
   // WP-SHIP8-FINAL (bens Bedingung 2): der Prüf-Job ist an die INHALTSVERSION gebunden — der
   // pending-Vermerk trägt die KO-Version zum Einreih-Zeitpunkt; der Abschluss schreibt nur, wenn
   // sie noch stimmt (bedingter Write). Additiv: Altbestand ohne Feld = versionsungebundener Job.
@@ -255,6 +305,22 @@ export interface EvidenceRecord {
   mime?: string;
   url?: string | null;
   provider?: string | null;
+  // AUFTRAG-mega26 Block B: DER GRUND DER VERKNÜPFUNG (additiv, optional).
+  //
+  // Bis mega25 sagte ein EvidenceRecord, DASS eine Quelle an einem KO hängt, aber nicht, WARUM.
+  // Der Grund stand ausschliesslich mittelbar im `excerpt` der zugehörigen `KoSource` — also in
+  // einem Datensatz, den die Evidence nicht kopiert und der beim Rollback einer Version verschwindet,
+  // während die append-only Evidence bleibt (s. `evidence-without-source` weiter unten). Genau dann
+  // war der Beleg vorhanden und seine Begründung weg.
+  //
+  // Der Erzeuger KENNT den Grund zum Schreibzeitpunkt: an allen drei quellenschreibenden Stellen
+  // liegt die fertige `KoSource` samt getrimmtem `excerpt` im selben Scope. Er wird deshalb
+  // mitgeschrieben — wörtlich, nicht umformuliert.
+  //
+  // NUR bei `kind:"source"`. Ein Anhang (`kind:"attachment"`) hat keinen solchen Grund: dort gibt
+  // es zum Schreibzeitpunkt keinen Text ausser dem Dateinamen (der bereits in `label` steht).
+  // Leerer/fehlender excerpt → Feld weggelassen, nie ein leeres Feld.
+  excerpt?: string;
   createdBy: string;
   createdAt: string;
 }

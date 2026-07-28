@@ -3,9 +3,15 @@
 // und conflicts (Anlegen). So bleiben die Modulgrenzen sauber: conflicts kennt weder KO noch Reasoner,
 // es bekommt modul-reine Kerntext-Subjekte + einen judge-Callback. Best-effort: ein Fehler in der
 // Erkennung darf das Einreichen NIE kippen — das KO ist zu diesem Zeitpunkt bereits gespeichert.
-import type { ConflictService, DetectSubject } from "../../conflicts";
+import {
+  type ConflictService,
+  type DetectSubject,
+  type DetectionCoverage,
+  emptyCoverage,
+} from "../../conflicts";
 import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
 import type { Reasoner } from "../../reasoner";
+import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
 // D-AISTATE PAKET 1 (bens V1): die Vertraulichkeits-MARKE (Boolean, kein Text) + die Inhaltsversion
@@ -37,19 +43,25 @@ export interface ConflictDetectionDeps {
 // Widersprüche automatisch als Konflikte an. Läuft in v1 synchron im Einreiche-Pfad; ohne
 // verbundenes KI-Modell ist es ein stiller No-op (judge liefert null — keine Fake-Konflikte,
 // K0-3: Demo-Beiträge bleiben außen vor). Wirft nie — Fehler bleiben ohne Wirkung auf das Einreichen.
+// AUFTRAG-mega28 A2/A3: der Lauf gibt seine ABDECKUNG zurück (statt void) — geprüfte Menge,
+// verfügbare Menge, gedeckelt/übersprungen/abgebrochen. Der Aufrufer (aiCheck-Runner bzw. der
+// Import-Accept-Pfad) trägt sie bis dorthin, wo ein Mensch das Urteil liest. Auch der Fehlerpfad
+// liefert ein ehrliches Protokoll: es wird VOR dem Lauf angelegt und vom Lauf fortgeschrieben,
+// ein geworfener Kapazitätsfehler kann es also nicht mehr verschlucken.
 export async function detectConflictsForKo(
   koId: string,
   deps: ConflictDetectionDeps,
   // ben-Review #6: optionaler Log-Haken. Der Fehler bleibt geschluckt (best-effort), wird aber sichtbar,
   // wenn ein Aufrufer (z. B. der Import-Accept-Pfad) einen Logger reicht. Ohne → altes stilles Verhalten.
   log?: (msg: string, err: unknown) => void,
-): Promise<void> {
+): Promise<DetectionCoverage> {
+  const coverage = emptyCoverage();
   try {
     const subject = await deps.ko.get(koId);
     // Demo-Beiträge bleiben außen vor (K0-3). Ein VERTRAULICHES Subjekt überspringt die Erkennung
     // NICHT mehr (bens V1): die deterministische Ebene läuft, die Cloud bleibt gate-geschützt draußen.
     if (!subject || subject.demoSeed) {
-      return;
+      return coverage; // gar kein Lauf — ehrlich „nichts stand zur Wahl", nicht „gedeckelt"
     }
     // D-AISTATE PAKET 1 (bens V1): vertrauliche Kandidaten bleiben im Pool (gemischte Paare werden
     // verglichen) — die Vertraulichkeits-MARKE (toDetectSubject) sorgt dafür, dass die Cloud sie nie
@@ -59,21 +71,30 @@ export async function detectConflictsForKo(
       .filter((k) => k.id !== koId && !k.demoSeed)
       .map(toDetectSubject);
     if (pool.length === 0) {
-      return;
+      return coverage;
     }
     await deps.conflicts.detectForSubject(
       toDetectSubject(subject),
       pool,
       (a, b, confidential) => deps.reasoner.judgeConflict(a, b, "de", confidential),
       {
-        // bens V2: KEIN stiller Cap 8 im Live-Pfad — jeder Kandidat wird dem Judge vorgelegt.
-        cap: Number.POSITIVE_INFINITY,
+        // AUFTRAG-mega28 A1 (Pedi 26.07.): Hier stand bis mega27 `Number.POSITIVE_INFINITY` mit dem
+        // Kommentar „bens V2: KEIN stiller Cap 8 im Live-Pfad — jeder Kandidat wird dem Judge
+        // vorgelegt". Diese Entscheidung ist ZURÜCKGENOMMEN. Der Deckel ist derselbe wie im
+        // Duplikatweg (EIN Wert, s. detection-cap.ts) — und er ist NICHT still: coverage trägt
+        // geprüfte/verfügbare Menge bis in die Anzeige.
+        cap: DETECTION_CANDIDATE_CAP,
         // bens V5: Stale-Schreibschutz — vor dem Persistieren beide gebundenen Versionen prüfen.
         isCurrent: async (id, version) => (await deps.ko.get(id))?.version === version,
+        coverage,
       },
     );
   } catch (err) {
     // Erkennung ist best-effort — Fehler werden bewusst geschluckt, das Einreichen bleibt erfolgreich.
+    // AUFTRAG-mega28 A3: geschluckt heißt NICHT unsichtbar — ein Lauf, der hier landet, ist nie
+    // vollständig gelaufen. Das Protokoll sagt das ehrlich, auch wenn der Fehler nicht weiterfliegt.
+    coverage.aborted = true;
     log?.(`Konflikterkennung für KO ${koId} fehlgeschlagen`, err);
   }
+  return coverage;
 }

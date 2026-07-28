@@ -89,6 +89,16 @@ function health(band: HealthBand): KnowledgeHealth {
   return {
     score,
     band,
+    // AUFTRAG-mega33 B: diese Hinweis-Fixtures setzen eine BELEGTE Erkennung voraus — dann
+    // fallen beide Raender der Spanne zusammen und es gibt keinen Konflikt-Vorbehalt.
+    scoreOptimistic: score,
+    conflictFactor: {
+      proven: true,
+      reason: null,
+      knownPenalty: 0,
+      maxPenalty: 20,
+      appliedPenalty: 0,
+    },
     validatedRatio: 80,
     staleRatio: 0,
     singleSourceShare: 0,

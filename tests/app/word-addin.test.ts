@@ -560,7 +560,11 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     // zu „NUR validiertes Wissen, kein Chatbot, nichts erfunden" (DE-Texte, Hilfe + Gap-Karte).
     expect(html).toContain("kein Chatbot");
     expect(html).toContain("Statt einer erfundenen Antwort");
-    expect(html).toContain("AUSSCHLIESSLICH aus geprueftem KLARWERK-Wissen");
+    // AUFTRAG-mega35 B1: die Quellenbindung bleibt die Zusage — aber ohne das Wort „geprueft".
+    // Es meinte den validierten Bestand, stand aber neben der Einstufung „ungeprueft"; eine
+    // Testerin ohne Vorwissen kann diese zwei Ebenen nicht auseinanderhalten.
+    expect(html).toContain("AUSSCHLIESSLICH aus KLARWERK-Wissen");
+    expect(html).not.toContain("aus geprueftem KLARWERK-Wissen");
     // DE/EN/NL-Umschalter mit vollständigen Wörterbüchern.
     for (const lng of ["de:", "en:", "nl:"]) {
       expect(html).toContain(lng);

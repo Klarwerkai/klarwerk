@@ -18,12 +18,20 @@ import { SectionLabel } from "../ui";
 
 // Zone-1-Kern: Titel + Konfidenz. SCRUM-513 (WP3): die Konfidenz zeigt lesbare %-Sprache („84 % sicher"),
 // nie nur die Rohzahl (G-2/A-4).
+//
+// AUFTRAG-mega34 BLOCK C1 — HIER STAND DAS ZWEITDEUTIGE WORT.
+// „Gesichert" war zugleich der oberste Schritt der Konfidenz-Skala (ab 85 %) UND, seit mega33, die
+// belegte Antwort-Einstufung. Die Testerin klickt von einer Antwort direkt in die Quelle und las
+// hier ein rein prozentbasiertes „Gesichert" — dieselbe Vokabel, andere Aussage. Der Balken zeigt
+// jetzt die ZAHL, nicht das Wort; die Prozent-Sprache trägt die Aussage vollständig.
+// `showLabel={false}` ist dabei kein Sonderweg: Bibliothek, Validierung, Mobil und die kompakte
+// Konfliktseite machen es seit Langem genauso. Die Skala selbst bleibt unverändert im Code (C2).
 export function KoReadHeader({ ko }: { ko: KnowledgeObject }): JSX.Element {
   return (
     <>
       <h2 className="mt-3 text-xl font-semibold text-ink">{ko.title}</h2>
       <div className="mt-2">
-        <ConfidenceBar value={ko.confidence} percentPhrase />
+        <ConfidenceBar value={ko.confidence} showLabel={false} percentPhrase />
       </div>
     </>
   );

@@ -82,7 +82,8 @@ describe("D-AISTATE V1: Vertraulichkeit — Cloud-Egress 0, deterministische Ebe
     const open = await services.overlaps.unresolved();
     expect(open.some((e) => e.detector?.method === "deterministic")).toBe(true);
     // Das verschieden-Paar schließt EHRLICH als confidential ab — NICHT als schlichtes done.
-    expect(cOut).toEqual({ ok: false, fallbackReason: "confidential" });
+    // mega28 A2: der Ausgang trägt zusätzlich die Abdeckung — die Ursache bleibt exakt gepinnt.
+    expect(cOut).toMatchObject({ ok: false, fallbackReason: "confidential" });
   });
 
   it("vertraulich + lokales Modell: Cloud 0, der lokale Judge läuft (kein confidential-Block)", async () => {

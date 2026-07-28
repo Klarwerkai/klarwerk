@@ -8,6 +8,7 @@ import {
 import { type Confidentiality, type KoService, isConfidential } from "../../../knowledge-object";
 import {
   MAX_DESCRIBE_IMAGE_DATAURL_CHARS,
+  type ModelRunSubject,
   type Reasoner,
   type ReasonerLocale,
   ReasonerPolicyLockedError,
@@ -79,12 +80,22 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   // SCRUM-502 Round 4: die Stufe kommt aus der AKTUELLEN Text-Deklaration (draft/transient-document).
   // Eine koId wird — falls mitgeliefert — NUR als hebender Backstop geladen (Downgrade-Schutz), nie
   // als Freigabe-Anker. Die reine Regel entscheidet fail-safe.
-  const resolveConfidential = async (
+  //
+  // mega26 Block A: DERSELBE eine Load beantwortet jetzt zwei Fragen — die Vertraulichkeit
+  // (unverändert, `classifyProvenanceConfidential` bleibt die reine, getestete Regel) UND den
+  // Subjektbezug des Modelllaufs. Kein zweiter Datenbankzugriff, keine geänderte Ladebedingung.
+  //
+  // WICHTIG für die Ehrlichkeit des Subjekts: `subject.id` ist die Kennung des GEFUNDENEN KOs aus
+  // dem Bestand (`stored.id`), NIE die vom Client gelieferte Zeichenkette. Eine unbekannte oder
+  // frei erfundene koId erzeugt damit KEINEN Subjektbezug — sie kann weder einen falschen Bezug
+  // vortäuschen noch beliebigen Text ins Protokoll tragen.
+  const resolveProvenance = async (
     source: unknown,
     koId: unknown,
     declared: unknown,
-  ): Promise<boolean> => {
+  ): Promise<{ confidential: boolean; subject?: ModelRunSubject }> => {
     let backstop: StoredLookup = { found: false };
+    let subject: ModelRunSubject | undefined;
     if (
       typeof source === "string" &&
       CLIENT_TEXT_SOURCES.has(source) &&
@@ -93,9 +104,22 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
     ) {
       const stored = await ko.get(koId);
       backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
+      if (stored !== undefined) {
+        subject = { kind: "ko", id: stored.id };
+      }
     }
-    return classifyProvenanceConfidential(source, declared, backstop);
+    return {
+      confidential: classifyProvenanceConfidential(source, declared, backstop),
+      ...(subject ? { subject } : {}),
+    };
   };
+
+  // Bestandsfassade für alle NICHT gebundenen Zweige — Verhalten unverändert.
+  const resolveConfidential = async (
+    source: unknown,
+    koId: unknown,
+    declared: unknown,
+  ): Promise<boolean> => (await resolveProvenance(source, koId, declared)).confidential;
 
   return async (app) => {
     // WP-BILD-1f (bens P2): der Text-Dispatcher behält die KLEINE Parsergrenze (globaler
@@ -190,22 +214,36 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         // PMO-FEA-0006: Wissenspunkte aus Dokumenttext (optional mit Suchauftrag). Ohne
         // Modell antwortet der Reasoner ehrlich mit leerer Liste + note (keine Fake-Punkte).
         // SCRUM-502 Schicht 2: vertraulicher Dokumenttext/KO → Cloud aus der Kette.
-        const confidential = await resolveConfidential(
+        //
+        // mega26 Block A — DIES IST DER GEBUNDENE AUFRUFER. Warum gerade extract: von allen Wegen,
+        // die über `runTask` einen ModelRunRecord erzeugen, ist er der einzige, dessen Modell-
+        // ERGEBNIS unmittelbar zu bleibendem Wissen wird — die extrahierten Punkte werden als
+        // KoSource mit Belegzitat an ein KO geschrieben (`from-document` / `append-document`) und
+        // tragen von dort an eine Beweiskette. Und er ist der Weg, auf dem der Aufrufer den
+        // Subjektbezug WIRKLICH kennt: das BodyExtractPanel schickt die koId des Ziel-Objekts mit
+        // (`apps/web/src/components/BodyExtractPanel.tsx:125-131`). Bei `structure` (neuer Entwurf)
+        // gibt es typischerweise noch gar kein KO, bei `ask` ist das Subjekt eine Trefferliste
+        // statt eines Objekts. Die übrigen Zweige bleiben BEWUSST kontextlos — sie schreiben
+        // weiterhin einen Datensatz ohne actor/subject, statt einen zu erfinden.
+        const provenance = await resolveProvenance(
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
         );
-        reply
-          .code(200)
-          .send(
-            await reasoner.extract(
-              text ?? "",
-              locale,
-              request.body.query,
-              outputLanguage === "source",
-              confidential,
-            ),
-          );
+        reply.code(200).send(
+          await reasoner.extract(
+            text ?? "",
+            locale,
+            request.body.query,
+            outputLanguage === "source",
+            provenance.confidential,
+            // Der Actor ist der AUTHENTIFIZIERTE Nutzer der Session (`ko.read`-Guard oben) —
+            // kein Header, kein Body-Feld, nichts Geratenes. Der Subjektbezug kommt nur zustande,
+            // wenn die koId ein KO im Bestand traf. Weder hier noch tiefer reist Prompt-,
+            // Dokument- oder Antworttext mit: der Kontext trägt ausschliesslich Kennungen.
+            { actor: user.id, ...(provenance.subject ? { subject: provenance.subject } : {}) },
+          ),
+        );
         return;
       }
       reply.code(400).send({

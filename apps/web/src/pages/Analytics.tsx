@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import {
+  useAiCheckCoverageSummary,
   useAnalytics,
   useAudit,
   useBusFactor,
@@ -74,6 +75,8 @@ export function Analytics(): JSX.Element {
   const conflicts = useConflicts();
   const pending = useLifecyclePending();
   const busFactor = useBusFactor();
+  // AUFTRAG-mega32 F: dieselbe Zusammenfassung, die schon die leeren Boards ehrlich hält (mega29 C2).
+  const coverageSummary = useAiCheckCoverageSummary();
 
   // SCRUM-139: datenbasierte Trust-/Arbeitslast-Kennzahlen aus realem Bestand.
   const trust = averageTrust(kos.data ?? []);
@@ -100,12 +103,15 @@ export function Analytics(): JSX.Element {
   };
 
   // SCRUM-141: erklärbarer Knowledge-Health-Score aus echten Signalen.
+  // AUFTRAG-mega32 F: die Abdeckungs-Zusammenfassung entscheidet, ob der Konfliktfaktor überhaupt
+  // in die Punktzahl darf. Ohne sie ist die Erkennung unbelegt — und unbelegt zählt nicht.
   const health = knowledgeHealth({
     kos: kos.data ?? [],
     gaps: gaps.data ?? [],
     conflicts: conflicts.data ?? [],
     pendingRevalidation: pending.data ?? [],
     busFactor: busFactor.data ?? [],
+    detectionCoverage: coverageSummary.data ?? null,
   });
 
   // SCRUM-143: Audit-Filter über echte Daten (clientseitig, ohne Chain-Umbau).
@@ -202,16 +208,64 @@ export function Analytics(): JSX.Element {
               <span className="font-mono text-[9px] uppercase text-muted-2">/100</span>
             </div>
             <div className="min-w-0 flex-1">
-              <span
-                className={`inline-block rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${BAND_TONE[health.band]}`}
-              >
-                {t(`health.band.${health.band}`)}
-              </span>
-              <p className="mt-1.5 text-[12.5px] text-muted">
-                {t(`health.explain.${health.band}`)}
-              </p>
+              {/* AUFTRAG-mega33 B3: solange der Konfliktanteil unbelegt ist, gibt es KEIN Band.
+                  Ein „gut" mit Fußnote wäre wieder eine Behauptung, die sich selbst widerspricht —
+                  hier steht stattdessen, dass die Einstufung nicht belegt ist. */}
+              {health.band ? (
+                <>
+                  <span
+                    className={`inline-block rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${BAND_TONE[health.band]}`}
+                  >
+                    {t(`health.band.${health.band}`)}
+                  </span>
+                  <p className="mt-1.5 text-[12.5px] text-muted">
+                    {t(`health.explain.${health.band}`)}
+                  </p>
+                </>
+              ) : (
+                <>
+                  <span
+                    data-testid="health-band-unproven"
+                    className="inline-block rounded-pill bg-page px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase text-muted-2"
+                  >
+                    {t("health.band.unproven")}
+                  </span>
+                  <p className="mt-1.5 text-[12.5px] text-muted">
+                    {t("health.range.explain", {
+                      worst: health.score,
+                      best: health.scoreOptimistic,
+                    })}
+                  </p>
+                </>
+              )}
             </div>
           </div>
+          {/* AUFTRAG-mega33 BLOCK B (Pedi 27.07.): bei unbelegter Erkennung rechnet die sichtbare
+              Zahl mit dem VOLLEN Konfliktabzug — der schlechteste Fall steht groß da. Der
+              optimistische Rand steht daneben, benannt als das, was er ist. */}
+          {health.conflictFactor.proven ? null : (
+            <div
+              data-testid="health-conflict-unproven"
+              className="rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2"
+            >
+              <p className="text-[12.5px] font-semibold leading-snug text-trust-warn-text">
+                {t("health.conflictUnproven.title", {
+                  worst: health.score,
+                  best: health.scoreOptimistic,
+                })}
+              </p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                {t(`health.conflictUnproven.${health.conflictFactor.reason}`)}
+              </p>
+              <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                {t("health.conflictUnproven.known", {
+                  count: health.openConflicts,
+                  penalty: health.conflictFactor.knownPenalty,
+                  max: health.conflictFactor.maxPenalty,
+                })}
+              </p>
+            </div>
+          )}
           <div className="space-y-1.5">
             {health.factors.map((f) => (
               <div key={f.key} className="flex items-center gap-2 text-[12.5px]">

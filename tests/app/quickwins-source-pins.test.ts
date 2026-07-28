@@ -64,8 +64,11 @@ describe("Block D9: Kennzahlen-Ladezustand (unbekannt ≠ 0)", () => {
 });
 
 describe("Block D10: Import-Grund erklären (nur JSON)", () => {
-  it("Stufe2 rendert den ehrlichen Import-Grund-Hinweis", () => {
-    const src = web("pages/Stufe2.tsx");
+  // AUFTRAG-mega32 H2: der JSON-Kasten ist aus pages/Stufe2.tsx in ein eigenes Bauteil im Cockpit
+  // gezogen (er stand vorher AUSSERHALB des Providers und wurde deshalb immer gerendert). Der Satz
+  // ist unverändert — nur seine Datei ist es nicht.
+  it("der JSON-Kasten rendert den ehrlichen Import-Grund-Hinweis", () => {
+    const src = web("components/ImportJsonUpload.tsx");
     expect(src).toContain('t("imp.jsonOnlyReason")');
     inAllLangs("imp.jsonOnlyReason");
   });

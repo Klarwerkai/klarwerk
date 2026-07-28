@@ -101,12 +101,18 @@ afterEach(() => {
 });
 
 describe("Block D3: leere Frage blockiert Absenden", () => {
-  it("leer → Knopf deaktiviert + Inline-Meldung; Text → bedienbar", async () => {
+  it("leer → Knopf deaktiviert + Inline-Meldung NACH dem Fehlversuch; Text → bedienbar", async () => {
     await mount();
-    // Leer: Knopf deaktiviert, zugängliche Meldung sichtbar, aria-invalid am Feld.
+    // Leer: Knopf deaktiviert.
     expect(submitButton().disabled).toBe(true);
-    expect(container.textContent).toContain(i18n.t("ask.emptyHint"));
-    expect(queryInput().getAttribute("aria-invalid")).toBe("true");
+    // AUFTRAG-mega38 BLOCK J2: die Meldung steht NOCH NICHT da. Sie stand bis mega37 vom ersten
+    // Bildaufbau an — eine Zurechtweisung, bevor die Leserin irgendetwas getan hatte.
+    expect(container.textContent).not.toContain(i18n.t("ask.emptyHint"));
+    // AUFTRAG-mega39 BLOCK G: und dasselbe gilt für das SIGNAL daneben. Dieser Pin verlangte bis
+    // mega38 „true" ab dem ersten Bildaufbau — er hat den Befund damit festgehalten statt behoben:
+    // eine Screenreader-Nutzerin bekam das eben erst gefundene, leere Feld als „ungültig" gemeldet,
+    // bevor sie irgendetwas getan hatte. Jetzt läuft es im Takt mit dem sichtbaren Tadel.
+    expect(queryInput().getAttribute("aria-invalid")).toBe("false");
 
     // Submit trotz Leere löst KEINEN Request aus.
     await act(async () => {
@@ -116,6 +122,10 @@ describe("Block D3: leere Frage blockiert Absenden", () => {
       await flush();
     });
     expect(askMock).not.toHaveBeenCalled();
+    // ERST JETZT — nach dem echten Fehlversuch — erklärt die Seite, was fehlt.
+    expect(container.textContent).toContain(i18n.t("ask.emptyHint"));
+    // BLOCK G: und erst jetzt meldet das Feld sich auch für Screenreader als ungültig.
+    expect(queryInput().getAttribute("aria-invalid")).toBe("true");
 
     // Echter Text → Knopf bedienbar, Meldung weg.
     const input = queryInput();

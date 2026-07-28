@@ -34,6 +34,25 @@ export function confluenceGovernanceConfidentiality(
   return isPageRestricted(page) ? "vertraulich" : undefined;
 }
 
+// AUFTRAG-mega27 A2: Elternkette → QUELLNEUTRALER Pfad. Die Elterntitel in Quell-Reihenfolge
+// (Wurzel zuerst), OHNE die Seite selbst. Confluence liefert `ancestors` bereits so sortiert.
+// Dekodierung wie bei Titel/Autor/Labels (WP-IC-PAKET-1b ROT-1): EINMAL hier an der Quelle — der
+// Marker textCodec="decoded" am Item gilt für diese Werte mit, die Anzeige dekodiert NICHT erneut.
+//
+// KEIN FELD OHNE ERZEUGER, KEINE ERFUNDENE WURZEL: fehlt der Expand, ist die Seite selbst eine
+// Wurzelseite oder tragen alle Ahnen leere Titel, liefert diese Funktion `undefined` — der Mapper
+// lässt das Feld dann WEG. Kein leeres Array, kein Platzhalter-Ordner, kein aus dem Titel geratener
+// Pfad. Eine Seite ohne Elternkette hängt später sichtbar direkt unter dem Quell-Container.
+export function confluenceSourcePath(page: ConfluencePage): string[] | undefined {
+  if (!Array.isArray(page.ancestors)) {
+    return undefined;
+  }
+  const path = page.ancestors
+    .map((ancestor) => (ancestor?.title ? decodeHtmlEntities(ancestor.title).trim() : ""))
+    .filter((title) => title.length > 0);
+  return path.length > 0 ? path : undefined;
+}
+
 export function mapConfluencePageToImportItem(
   page: ConfluencePage,
   opts: ConfluenceMapOptions,
@@ -54,6 +73,8 @@ export function mapConfluencePageToImportItem(
   // IC-1: Provenienz-Datum der letzten Version (Confluence version.when, ISO) → nur wenn vorhanden.
   const updatedAt = page.version?.when?.trim();
   const governance = confluenceGovernanceConfidentiality(page);
+  // AUFTRAG-mega27 A2: die Elternkette (Wurzel zuerst, ohne die Seite selbst) — oder gar nichts.
+  const sourcePath = confluenceSourcePath(page);
 
   return {
     title,
@@ -71,6 +92,9 @@ export function mapConfluencePageToImportItem(
     // sourceScope = Confluence-Space. Der Import-Kern kennt nur diese neutralen Begriffe.
     externalId: page.id,
     sourceScope: opts.spaceKey,
+    // AUFTRAG-mega27 A2: quellneutrale HIERARCHIE innerhalb des Containers. Ein Jira-Adapter füllt
+    // dasselbe Feld später mit Epic/Projekt — der Import-Kern kennt weiterhin kein Confluence-Symbol.
+    ...(sourcePath ? { sourcePath } : {}),
     ...(typeof page.version?.number === "number" ? { sourceVersion: page.version.number } : {}),
     ...(url ? { url } : {}),
     provider: "Confluence",

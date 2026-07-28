@@ -224,6 +224,12 @@ export interface ImportPreviewEntry {
   updatedAt?: string;
   hasImage: boolean;
   themes: string[];
+  // AUFTRAG-mega27 A3: die QUELL-STRUKTUR bis in die Vorschau. sourceScope = Quell-Container
+  // (die Wurzel des Ordnerbaums), sourcePath = Elternkette INNERHALB des Containers (Wurzel
+  // zuerst, ohne den Eintrag selbst). Beide additiv und optional — fehlt die Elternkette in der
+  // Quelle, fehlt das Feld hier ebenso (kein leeres Array, kein erfundener Ordner).
+  sourceScope?: string;
+  sourcePath?: string[];
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status — additiv, vom Aufrufer (Route) über den
   // Quell-Referenz-Abgleich gesetzt. WP-SHIP9-S1b (bens GELB): ZWEI getrennte Kennzeichen —
   // alreadyImported NUR aus einem lebenden KO-Herkunftsanker; alreadyQueued = offener Kandidat
@@ -255,11 +261,28 @@ export function toPreviewEntry(
   const author = item.author?.trim();
   const updatedAt = item.updatedAt?.trim();
   const themes = (item.tags ?? []).map((tag) => tag.trim()).filter((tag) => tag.length > 0);
+  // AUFTRAG-mega27 A3: Quell-Container = die WURZEL des Ordnerbaums. Welches Feld ihn trägt, ist
+  // dieselbe Regel wie beim Space-FILTER (matchesSpaces: sourceScope, sonst category) — keine
+  // zweite Wahrheit über die Herkunft.
+  //
+  // ABER: dies ist eine PROJEKTION, kein Vergleich. Wie title/author/themes reist der Wert ROH mit
+  // und wird von `textCodec` begleitet; die ANZEIGE kanonisiert (displayImportText). Die
+  // Kanonisierung VOR dem Trimmen (WP-IC-PAKET-1f P2, DRIFT-PIN in import-entity-e2e) gilt für den
+  // Vergleichspfad — der bleibt unverändert bei canonicalImportText und wird hier nicht berührt.
+  const scopeSource = item.sourceScope ?? item.category;
+  const sourceScope = scopeSource ? scopeSource.trim() : "";
+  // Die Elternkette wird nur DURCHGEREICHT, nie erzeugt: leere Segmente fallen weg, bleibt nichts
+  // übrig, fehlt das Feld (kein leeres Array — der Eintrag hängt dann direkt unter der Wurzel).
+  const sourcePath = (item.sourcePath ?? [])
+    .map((segment) => segment.trim())
+    .filter((segment) => segment.length > 0);
   return {
     ...(id ? { id } : {}),
     title: item.title,
     ...(author ? { author } : {}),
     ...(updatedAt ? { updatedAt } : {}),
+    ...(sourceScope ? { sourceScope } : {}),
+    ...(sourcePath.length > 0 ? { sourcePath } : {}),
     hasImage: typeof item.bodyHtml === "string" && /<img\b/i.test(item.bodyHtml),
     themes,
     ...(status?.alreadyImported ? { alreadyImported: true } : {}),

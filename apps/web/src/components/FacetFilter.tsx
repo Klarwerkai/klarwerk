@@ -371,14 +371,14 @@ function RailBody({
             onClick={onApply}
             className="w-full rounded-btn bg-brand px-3 py-3 text-center text-[14px] font-bold text-white shadow-tile hover:opacity-95"
           >
-            {t(countLabelKey, { n: shown })}
+            {t(countLabelKey, { count: shown })}
             <span className="mt-0.5 block text-[11px] font-medium opacity-90">
               {filtered ? t("facet.countFiltered", { total }) : t("facet.countAll")}
             </span>
           </button>
         ) : (
           <output className="block text-[14px] font-bold leading-tight text-ink">
-            {t(countLabelKey, { n: shown })}
+            {t(countLabelKey, { count: shown })}
             <span className="mt-0.5 block text-[11px] font-medium text-muted-2">
               {filtered ? t("facet.countFiltered", { total }) : t("facet.countAll")}
             </span>

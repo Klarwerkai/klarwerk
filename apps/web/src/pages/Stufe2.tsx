@@ -1,20 +1,11 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-  ArrowDown,
-  ArrowUp,
-  Building2,
-  Copy,
-  Download,
-  FileText,
-  Printer,
-  Upload,
-  X,
-} from "lucide-react";
+import { ArrowDown, ArrowUp, Building2, Copy, Download, FileText, Printer, X } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import {
+  useAiCheckCoverageSummary,
   useBusFactor,
   useConflicts,
   useEvidenceIndex,
@@ -44,6 +35,8 @@ import { ImportExplore } from "../components/ImportExplore";
 // WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
 // Verlauf (Pedis Stör-Befund zur Queue unter dem Cockpit).
 import { ImportHistorySection } from "../components/ImportHistory";
+// AUFTRAG-mega32 H2: der JSON-Kasten lebt jetzt im Cockpit, nicht mehr daneben.
+import { ImportJsonUpload } from "../components/ImportJsonUpload";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
@@ -67,7 +60,6 @@ import {
 } from "../lib/importCandidateStatus";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 // AUFTRAG-ic7-import-vision: geteilte ID des JSON-Dialogs (aktive JSON-Kachel der Quellen-Galerie).
-import { JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
 import { buildKnowledgeOsReadiness } from "../lib/knowledgeOsReadiness";
@@ -413,49 +405,20 @@ export function ImportReview(): JSX.Element {
       {/* WP-COCKPIT-LINIE: der geführte Fünf-Schritte-Fluss — Leiste oben zeigt, wo man steht;
           die bestehenden Bausteine (Kacheln, Landkarte, Eingrenzen, Gruppen, Bilanz) melden ihre
           Meilensteine an den Provider. IC-2: die Erkundung selbst bleibt READ-ONLY. */}
+      {/* AUFTRAG-mega32 BLOCK H2: Der JSON-Kasten stand bis mega31 als eigenes Card AUSSERHALB des
+          Providers und wurde deshalb IMMER gerendert — ihn bedingte schlicht nichts. Er zieht
+          jetzt in den Provider, damit die gewählte Quelle ihn überhaupt erreichen kann. */}
       <ImportCockpitProvider>
         <ImportStepperBar />
         <ImportExplore />
-      </ImportCockpitProvider>
-
-      <Card className="mb-5">
-        <SectionLabel>{t("imp.uploadTitle")}</SectionLabel>
-        <p className="mb-3 text-[13px] text-muted">{t("imp.uploadHint")}</p>
-        {/* E2E-010 (KEIN Bug — nur UI): ehrlich WARUM hier nur JSON geht, mit Verweis auf den Weg für
-            Office-Dateien. Kein Capability-Umbau. */}
-        <p className="mb-3 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted">
-          {t("imp.jsonOnlyReason")}
-        </p>
-        {/* Block A: Drop-Zone ZUSÄTZLICH zum Dialog. Der Knopf bleibt (Tastatur-/A11y-Weg). */}
-        <div
-          data-testid="import-dropzone"
-          onDragOver={(e) => {
-            e.preventDefault();
-            setImportDragOver(true);
-          }}
-          onDragLeave={() => setImportDragOver(false)}
+        <ImportJsonUpload
+          dragOver={importDragOver}
+          setDragOver={setImportDragOver}
           onDrop={onImportDrop}
-          className={`mb-3 rounded-card border border-dashed p-4 text-center text-[12.5px] transition-colors ${
-            importDragOver ? "border-brand bg-brand/5 text-text" : "border-hairline text-muted"
-          }`}
-        >
-          {importDragOver ? t("imp.dropActive") : t("imp.dropHint")}
-        </div>
-        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft">
-          <Upload size={15} />
-          {t("imp.upload")}
-          <input
-            // AUFTRAG-ic7-import-vision: stabile ID, damit die AKTIVE JSON-Kachel der Quellen-
-            // Galerie genau diesen bestehenden Dialog oeffnet (kein neuer Import-Pfad).
-            id={JSON_UPLOAD_INPUT_ID}
-            type="file"
-            accept=".json,application/json"
-            className="hidden"
-            disabled={createCandidates.isPending}
-            onChange={(e) => void onFile(e)}
-          />
-        </label>
-      </Card>
+          onFile={onFile}
+          disabled={createCandidates.isPending}
+        />
+      </ImportCockpitProvider>
 
       {/* WP-COCKPIT-LINIE (Punkt 4): Pipeline-Übersicht + Prüfliste sind Verlauf/Altlast — klar
           abgegrenzt in einer standardmäßig EINGEKLAPPTEN Sektion mit Zähler, damit der geführte
@@ -1223,13 +1186,17 @@ function KnowledgeOsHintsCard(): JSX.Element {
   const conflicts = useConflicts();
   const pending = useLifecyclePending();
   const busFactor = useBusFactor();
+  // AUFTRAG-mega32 F: die Abdeckungs-Zusammenfassung gehört zu den benötigten Signalen — ohne sie
+  // ist die Erkennung unbelegt, und der Konfliktfaktor fiele aus der Rechnung.
+  const coverageSummary = useAiCheckCoverageSummary();
   // KnowledgeHealth nur als „bekannt" werten, wenn ALLE benötigten Signale geladen sind.
   const healthKnown =
     kos.isSuccess &&
     gaps.isSuccess &&
     conflicts.isSuccess &&
     pending.isSuccess &&
-    busFactor.isSuccess;
+    busFactor.isSuccess &&
+    coverageSummary.isSuccess;
   const result = buildKnowledgeOsHints({
     ...(kos.isSuccess
       ? {
@@ -1259,6 +1226,7 @@ function KnowledgeOsHintsCard(): JSX.Element {
             conflicts: conflicts.data ?? [],
             pendingRevalidation: pending.data ?? [],
             busFactor: busFactor.data ?? [],
+            detectionCoverage: coverageSummary.data ?? null,
           }),
         }
       : {}),

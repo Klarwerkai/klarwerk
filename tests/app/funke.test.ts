@@ -84,6 +84,8 @@ describe("FUNKE F5: knowledgeCapital (nur echte Bestandszahlen)", () => {
     expect(capital).toEqual({
       secured: 3,
       validated: 2,
+      // AUFTRAG-mega38 BLOCK G2: „davon offen" kam aus dem gestrichenen Kennzahlen-Block hierher.
+      open: 1,
       answerableCategories: 1, // nur Pumpen hat validiertes Wissen — Ventile ist (noch) nicht beantwortbar
       activeAuthors: 2,
       openGaps: 1,
@@ -91,6 +93,7 @@ describe("FUNKE F5: knowledgeCapital (nur echte Bestandszahlen)", () => {
     expect(knowledgeCapital([], [])).toEqual({
       secured: 0,
       validated: 0,
+      open: 0,
       answerableCategories: 0,
       activeAuthors: 0,
       openGaps: 0,

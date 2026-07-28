@@ -424,6 +424,9 @@ export const CAPTURE_FILE_TEXT = {
   dropHint: "capture.file.dropHint",
   dropActive: "capture.file.dropActive",
   dropReject: "capture.file.dropReject",
+  // AUFTRAG-mega34 D1: der sichtbare, benannte Knopf, der den BESTEHENDEN versteckten Eingang
+  // öffnet. Kein neuer Importweg — nur der fehlende Wegweiser dorthin.
+  pick: "capture.file.pick",
   extracting: "capture.file.extracting",
   loaded: "capture.file.loaded",
   empty: "capture.file.empty",

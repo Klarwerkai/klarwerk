@@ -4,7 +4,7 @@
 // TATSÄCHLICHEN Server-Zustand auf den Karten-Text ab: „läuft" NUR solange kein Ergebnis vorliegt,
 // der Wechsel kommt ausschließlich vom echten Ergebnis, ein Fehlschlag heißt ehrlich fehlgeschlagen
 // mit Ursache (F1-Vertrag — dieselben Ursachen-Keys wie das AiCheckBadge der Validierung).
-import type { Confidentiality, KnowledgeObject } from "../api/types";
+import type { AiCheckCoverage, Confidentiality, KnowledgeObject } from "../api/types";
 // AUFTRAG-mega9 Block E-3 (KW-E2E-007): dieselbe Stufen-Prüfung, die auch Chip und Egress benutzen —
 // keine zweite Auslegung von „vertraulich".
 import { isConfidential } from "./confidentiality";
@@ -108,7 +108,143 @@ export function aiCheckFailureReasonKey(
   if (fallbackReason === "submit-followup-failed") {
     return "val.aiCheck.reason.submit-followup-failed";
   }
+  // AUFTRAG-mega28 A3: „capacity" = der Lauf wurde wegen Modell-Rückstaus ABGEBROCHEN. Das ist kein
+  // Modellfehler (nichts war am Inhalt oder am Zugang auffällig) und auch kein Zeitlimit — es wurde
+  // schlicht nicht zu Ende geprüft. Ohne eigenen Schlüssel wäre es unter „model-error" gefallen und
+  // hätte den Leser zur falschen Handlung geschickt.
+  if (fallbackReason === "capacity") {
+    return "val.aiCheck.reason.capacity";
+  }
   return "val.aiCheck.reason.model-error";
+}
+
+// ================================================================================================
+// AUFTRAG-mega28 A2 (Pedi 26.07.) — DER DECKEL MUSS SICH ZEIGEN, SONST IST ER EINE LÜGE.
+// ================================================================================================
+//
+// Seit mega28 prüft die Erkennung nicht mehr „jeder gegen jeden", sondern gegen eine gedeckelte,
+// deterministisch gewählte Kandidatenmenge. Damit gilt: ein gedeckelter Lauf darf NICHT aussehen
+// wie ein vollständiger. Ein leeres Ergebnis nach einem gedeckelten Lauf heißt „in den nächsten 20
+// nichts gefunden" — NIEMALS „konfliktfrei".
+//
+// WARUM GENAU HIER: Diese Datei ist die EINE Quelle des Textes, den ein Mensch über das Urteil des
+// Prüf-Laufs liest — sie trägt Validierungs-Badge (Liste) UND Bestätigungs-Karte (/erfassen).
+// Der Zusatz sitzt damit unmittelbar neben dem Satz, den er einschränkt, und nicht in einem
+// internen Feld, das niemand aufschlägt. Beide Oberflächen zeigen ihn AUCH im Erfolgsfall („done") —
+// gerade dort wäre das Schweigen die Lüge.
+//
+// Die Zahlen kommen roh vom Server (aiCheck.coverage): geprüfte Menge, verfügbare Menge. Ohne Feld
+// (Altbestand, Lauf vor mega28) wird NICHTS behauptet — weder vollständig noch gedeckelt.
+// ------------------------------------------------------------------------------------------------
+// AUFTRAG-mega29 B4 (bens M28-2) — ZWEI EINSCHRÄNKUNGEN, ZWEI SÄTZE.
+// ------------------------------------------------------------------------------------------------
+// Bis mega28 lieferte diese Ableitung GENAU EINE Art, und bei `aborted` gewann der Abbruchtext:
+// bereits aufgetretene Übersprünge verschwanden damit für den Leser vollständig. Ein Lauf, der drei
+// Vergleiche wegen Modellfehlern ausließ UND danach abbrach, las sich wie einer, der nur abbrach.
+// Jetzt trägt die Notiz eine LISTE — jede vorliegende Einschränkung bekommt ihren eigenen Satz.
+// ------------------------------------------------------------------------------------------------
+// AUFTRAG-mega32 BLOCK A1 (bens GELB-1) — „UNBELEGT" IST DIE VIERTE EINSCHRÄNKUNG.
+// ------------------------------------------------------------------------------------------------
+// `unproven` heißt: die Merker sind sauber, aber die ZAHLEN tragen die Aussage „vollständig geprüft"
+// nicht (`selected < available` oder `completed < attempted`). Bis mega31 schwieg die Oberfläche in
+// genau diesem Fall — sie fragte nur die drei Merker ab. Dass die heutigen Erzeuger die Merker
+// richtig setzen, ist kein Vertrag, sondern ein Zufall, auf den wir uns zweimal verlassen haben.
+export type AiCheckCoverageLimit = "aborted" | "skipped" | "capped" | "unproven";
+
+export interface AiCheckCoverageNote {
+  // Alle vorliegenden Einschränkungen, in Lese-Reihenfolge. Nie leer (sonst ist die Notiz null).
+  limits: AiCheckCoverageLimit[];
+  // AUFTRAG-mega29 B1/B3: die sichtbare Zahl ist `completed` — fehlerfrei zu Ende verglichene Paare.
+  // Aus der ZUSAMMENFASSUNG beider Wege ist sie das Minimum, also eine konservative MINDESTabdeckung;
+  // genau so benennen die Texte sie auch.
+  completed: number;
+  available: number;
+  skipped: number;
+}
+
+// AUFTRAG-mega32 BLOCK A1 — DIE POSITIVE INVARIANTE, AUF DIESER SEITE DER LEITUNG.
+//
+// KANONISCH IST services/conflicts/src/coverage.ts, isCompleteRun(). Diese Funktion leitet NICHTS
+// eigenständig ab; sie spiegelt dieselbe Regel, weil apps/web keine Services importieren darf (der
+// Docker-webbuild-Stage kopiert nur apps/web — s. Commit 1881211, dort wurde genau dieser Import
+// einmal zum gescheiterten Deploy). Die Parität hält ein WIRKSAMER Wächter
+// (tests/conflicts/coverage-invariant-parity.test.ts): 32 aus der Bedingungsliste ERZEUGTE Fälle
+// plus ein Gitter aus 1296 Datensätzen gegen eine unabhängige Referenz. AUFTRAG-mega33 C: fällt an
+// einem der drei Orte eine Bedingung weg oder kommt eine hinzu, wird er rot — nachgewiesen durch
+// je einen Mutationslauf pro Bedingung.
+//
+// Begründung je Bedingung s. conflicts/src/coverage.ts. Kurz: Vollständigkeit wird BEWIESEN
+// (selected === available, attempted === completed), nicht daraus geschlossen, dass kein Merker
+// widerspricht.
+export function aiCheckCoverageComplete(coverage: AiCheckCoverage): boolean {
+  return (
+    coverage.selected === coverage.available &&
+    coverage.attempted === coverage.completed &&
+    coverage.skipped === 0 &&
+    !coverage.capped &&
+    !coverage.aborted
+  );
+}
+
+export function aiCheckCoverageNote(
+  coverage: AiCheckCoverage | null | undefined,
+): AiCheckCoverageNote | null {
+  if (!coverage) {
+    return null; // kein Protokoll → keine Behauptung, in keine Richtung.
+  }
+  // AUFTRAG-mega32 A1: das Schweigen hängt AUSSCHLIESSLICH an der positiven Invariante. Vorher
+  // entschied die (leere) Liste unten darüber — und die kannte nur Merker. Diese Reihenfolge ist der
+  // ganze Block: erst der Beweis, dann seine Benennung.
+  if (aiCheckCoverageComplete(coverage)) {
+    return null; // BELEGT vollständig geprüft — hier ist Schweigen die Wahrheit.
+  }
+  const limits: AiCheckCoverageLimit[] = [];
+  if (coverage.aborted) {
+    limits.push("aborted");
+  }
+  if (coverage.skipped > 0) {
+    limits.push("skipped");
+  }
+  // „gedeckelt" tritt nur ALLEIN auf: Abbruch und Übersprung benennen die Unvollständigkeit bereits
+  // schärfer und sagen dieselbe Folgerung („ohne Fund heißt das nicht konfliktfrei") schon aus.
+  if (!coverage.aborted && coverage.skipped === 0 && coverage.capped) {
+    limits.push("capped");
+  }
+  // Unvollständig, aber kein Merker benennt es: die Zahlen widersprechen sich. Ein eigener Satz —
+  // ihn weglassen hieße, die Notiz ohne Grund zu zeigen; ihn unter „gedeckelt" zu buchen hieße,
+  // eine Ursache zu behaupten, die das Protokoll nicht ausweist.
+  if (limits.length === 0) {
+    limits.push("unproven");
+  }
+  return {
+    limits,
+    completed: coverage.completed,
+    available: coverage.available,
+    skipped: coverage.skipped,
+  };
+}
+
+// Der i18n-Schlüssel je Einschränkung. Flach gehalten (Muster AI_CHECK_CARD_TEXT), damit Test und
+// Komponente dieselbe Quelle lesen.
+export const AI_CHECK_COVERAGE_TEXT = {
+  aborted: "val.aiCheck.coverage.aborted",
+  skipped: "val.aiCheck.coverage.skipped",
+  capped: "val.aiCheck.coverage.capped",
+  unproven: "val.aiCheck.coverage.unproven",
+} as const;
+
+export function aiCheckCoverageNoteKeys(note: Pick<AiCheckCoverageNote, "limits">): string[] {
+  return note.limits.map((limit) => AI_CHECK_COVERAGE_TEXT[limit]);
+}
+
+// Die Platzhalter-Werte, die ALLE Coverage-Texte teilen — EINE Quelle für Badge, Karte, KO-Detail
+// und Test, damit keine Fläche eine eigene Zuordnung erfindet.
+export function aiCheckCoverageVars(note: AiCheckCoverageNote): {
+  completed: number;
+  available: number;
+  skipped: number;
+} {
+  return { completed: note.completed, available: note.available, skipped: note.skipped };
 }
 
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (Muster CAPTURE_FILE_TEXT).

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AnswerResult, KnowledgeObject } from "../../apps/web/src/api/types";
+import { answerGrade } from "../../apps/web/src/lib/answerGrade";
 import { answerStatus, sourceRefs } from "../../apps/web/src/lib/askView";
 import { applyBodyAssistSection } from "../../apps/web/src/lib/bodyAiAssist";
 import { applyBodyTemplate } from "../../apps/web/src/lib/bodyTemplates";
@@ -162,7 +163,20 @@ describe("SCRUM-349: Review → Rework → Revalidation → Use E2E (HTTP + Sani
     expect(beforeResult.answered).toBe(true);
     expect(beforeResult.sources).toContain(id);
     expect(beforeResult.knowledgeClass).not.toBe("gesichert");
-    expect(answerStatus(beforeResult.knowledgeClass).key).toBe("unverified");
+    expect(
+      answerStatus(
+        answerGrade({
+          answered: true,
+          knowledgeClass: beforeResult.knowledgeClass,
+          sourcesConflicted: false,
+          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
+          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
+          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).key,
+    ).toBe("unverified");
     expect(koOverview(revisedKo).usability).not.toBe("ready");
 
     // 10) Erneute Validierung (needed=1 → ein Up genügt) → validiert/Trust 100.
@@ -186,7 +200,20 @@ describe("SCRUM-349: Review → Rework → Revalidation → Use E2E (HTTP + Sani
     expect(afterResult.answered).toBe(true);
     expect(afterResult.knowledgeClass).toBe("gesichert");
     expect(afterResult.sources).toEqual([id]);
-    expect(answerStatus(afterResult.knowledgeClass).key).toBe("verified");
+    expect(
+      answerStatus(
+        answerGrade({
+          answered: true,
+          knowledgeClass: afterResult.knowledgeClass,
+          sourcesConflicted: false,
+          // AUFTRAG-mega33 A3: die Abdeckungsbedingung ist Pflicht. Dieser Lauf prueft den
+          // Validierungs-Lebenszyklus, nicht die Erkennungsabdeckung — deshalb steht die
+          // Annahme hier AUSDRUECKLICH da, statt stillschweigend wegzufallen.
+          sourcesCheckUnproven: false,
+          conflictsUnproven: false,
+        }),
+      ).key,
+    ).toBe("verified");
     expect(afterBody.gap).toBeNull();
     const refAfter = sourceRefs(afterResult.sources, [revalidated])[0];
     expect(refAfter?.validated).toBe(true);

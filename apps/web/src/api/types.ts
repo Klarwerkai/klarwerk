@@ -139,8 +139,46 @@ export interface EvidenceRecord {
   mime?: string;
   url?: string | null;
   provider?: string | null;
+  // mega26 Block B: der Grund der Verknüpfung (Belegstelle). Nur bei kind:"source" und nur,
+  // wenn die Quelle eine Belegstelle trug — sonst weggelassen.
+  excerpt?: string;
   createdBy: string;
   createdAt: string;
+}
+
+// AUFTRAG-mega28 A2 (Pedi 26.07.): Abdeckung EINES Prüf-Laufs — Spiegel von
+// services/knowledge-object AiCheckCoverage (die Oberfläche importiert keine Services).
+// AUFTRAG-mega29 B1 (bens M28-2): getrennte Begriffe statt EINER Zahl, die vier Fragen zugleich
+// beantworten musste. Nicht alle erscheinen in der Oberfläche — aber ohne sie kann kein Text der
+// Wahrheit entsprechen.
+export interface AiCheckCoverage {
+  // Wie viele Kandidaten standen im Bestand zur Wahl?
+  available: number;
+  // Wie viele Ränge hat der Lauf angesehen (Vorauswahl + Deckel)?
+  selected: number;
+  // Davon übersprungen, weil zu dem Paar bereits ein offener Befund steht.
+  alreadyOpen: number;
+  // Davon dem Vergleich tatsächlich vorgelegt (nur DIESE Zahl deckelt der Betriebswert).
+  attempted: number;
+  // Davon fehlerfrei zu Ende verglichen — die Zahl, die ein Mensch als „geprüft" lesen darf.
+  completed: number;
+  // Versuchte Vergleiche, die wegen eines Urteilsfehlers ausgelassen wurden.
+  skipped: number;
+  // selected < available ⇒ KEIN vollständiger Abgleich.
+  capped: boolean;
+  // Der Lauf brach vorzeitig ab (Modell-Rückstau).
+  aborted: boolean;
+}
+
+// AUFTRAG-mega29 C2 (bens M28-3): die Zahlen, die ein LEERES Konflikt-/Duplikat-Board braucht,
+// um nicht als „geprüft und frei" gelesen zu werden. Spiegel von services/knowledge-object.
+// AUFTRAG-mega31 A4: `noCoverage` ist von `unchecked` getrennt — ein Objekt mit Laufstatus, aber
+// ohne Abdeckungsprotokoll, ist NICHT „gar kein Lauf". Bedeutung/Rangfolge s. knowledge-object.
+export interface AiCheckCoverageSummary {
+  total: number;
+  incomplete: number;
+  unchecked: number;
+  noCoverage: number;
 }
 
 export interface KnowledgeObject {
@@ -188,6 +226,11 @@ export interface KnowledgeObject {
     requestedAt: string;
     finishedAt?: string;
     fallbackReason?: string;
+    // AUFTRAG-mega28 A2 (Pedi 26.07.): wie weit der Prüf-Lauf REICHTE. Seit mega28 deckeln beide
+    // Erkennungswege ihre Kandidatenmenge — ohne diese Zahlen wäre „geprüft" eine Behauptung, die
+    // der Lauf nicht deckt, und ein leeres Ergebnis läse sich als „konfliktfrei". Additiv:
+    // Altbestand ohne Feld sagt nichts über die Abdeckung, und die Anzeige behauptet dann nichts.
+    coverage?: AiCheckCoverage;
   };
 }
 
@@ -289,6 +332,9 @@ export interface Conflict {
   decision: string | null;
   origin?: ConflictOrigin;
   detector?: ConflictDetector;
+  // mega26 Block B: wer den Konflikt behauptet hat. Nur im manuellen Zweig gesetzt — der
+  // automatische weist sich über origin/detector aus. Altbestand ohne das Feld bleibt gültig.
+  createdBy?: string;
   createdAt: string;
 }
 
@@ -649,6 +695,12 @@ export interface ImportPreviewEntry {
   updatedAt?: string;
   hasImage: boolean;
   themes: string[];
+  // AUFTRAG-mega27 A3: die QUELL-STRUKTUR. sourceScope = Quell-Container (Wurzel des Ordnerbaums),
+  // sourcePath = Elternkette darin (Wurzel zuerst, ohne den Eintrag selbst). Fehlt die Elternkette
+  // in der Quelle, fehlt das Feld — kein leeres Array, kein erfundener Ordner. Beide Werte sind
+  // wie Titel/Autor an der Quelle kanonisch dekodiert (textCodec gilt mit).
+  sourceScope?: string;
+  sourcePath?: string[];
   // WP-IC-PAKET-1 (Teil 4, IC-6a): Import-Status aus dem Quell-Referenz-Abgleich (reine Anzeige).
   // WP-SHIP9-S1b: alreadyImported = lebender KO-Anker; alreadyQueued = offener Kandidat
   // („bereits zur Prüfung vorgemerkt") — zwei getrennte, ehrliche Kennzeichen.

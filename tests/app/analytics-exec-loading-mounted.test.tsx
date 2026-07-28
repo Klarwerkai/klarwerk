@@ -61,6 +61,10 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       gaps: { list: d.gaps.fn },
       conflicts: { list: ok([]) },
       lifecycle: { pending: ok([]) },
+      // AUFTRAG-mega32 F: der Health-Score fragt die Abdeckungs-Zusammenfassung, um zu entscheiden,
+      // ob der Konfliktfaktor überhaupt in die Punktzahl darf. Diese Datei prüft die EXEC-Kacheln
+      // (eine andere Gruppe) — die Zusammenfassung ist hier nur Kulisse und meldet „belegt".
+      aiCheck: { coverageSummary: ok({ total: 0, incomplete: 0, unchecked: 0, noCoverage: 0 }) },
     },
   };
 });

@@ -174,9 +174,17 @@
       <div id="ask-status" class="status hidden"></div>
       <div id="ask-answer-block" class="hidden">
         <h2 data-t="askAnswerTitle" style="margin-top: 12px;"></h2>
-        <!-- klara1b Teil B: editierbares, kompaktes Feld VOR dem Eintragen. Der Anwender kann die
-             Antwort kuerzen/anpassen; nur DIESER Feldinhalt wird eingefuegt/kopiert (nicht die
-             Quellen-UI). Ist die Antwort lang, klappt „mehr anzeigen" das Feld auf. -->
+        <!-- AUFTRAG-mega34 B2: die Einstufung, sichtbar VOR dem Antworttext. Bis mega33 stand hier
+             nur eine unbedingte Zusage („geprueftes Wissen"), die auch bei gedeckelter Abdeckung
+             galt. Der Text kommt aus derselben Auswahl wie der ausgegebene Hinweis.
+             AUFTRAG-mega35 B: die Ueberschrift ist neutral („Quellengebundene Antwort") — die
+             Worte „gesichert"/„geprueft" stehen NUR noch in dieser Einstufungszeile. -->
+        <p id="ask-evidence-note" class="status hidden" style="margin: 0 0 8px;"></p>
+        <!-- klara1b Teil B: editierbares, kompaktes Feld VOR dem Eintragen. AUFTRAG-mega35 A1: das
+             Feld traegt NUR den Antwortkoerper — Einstufung und Quellen-Zeile gehoeren nicht dazu
+             und werden erst im Moment des Kopierens/Einfuegens angesetzt (composeOutputText); sie
+             koennen also weder gekuerzt noch verloren werden. Ist die Antwort lang, klappt
+             „mehr anzeigen" das Feld auf. -->
         <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint" style="margin-bottom: 4px;"></p>
         <textarea id="ask-answer-edit" class="answer-text" rows="4"></textarea>
         <button type="button" class="ghost hidden" id="ask-answer-toggle" style="margin: 0 0 8px;"></button>
@@ -185,6 +193,15 @@
           <button type="button" class="primary" id="ask-insert-btn" data-t="askInsertCta"></button>
           <!-- klara1b Teil B: Ausweg „Kopieren" — braucht kein Office, greift auch bei Rechte-Fehler. -->
           <button type="button" class="ghost" id="ask-copy-btn" data-t="askCopyCta"></button>
+        </div>
+        <!-- AUFTRAG-mega36 B3: der Fehler-Rueckfall der Zwischenablage. Bis mega35 forderte er die
+             Nutzerin auf, „den Text im Feld zu markieren und manuell zu kopieren" — also genau den
+             ROHEN Antwortkoerper ohne Einstufung und Quellen-Zeile. Stattdessen steht hier der
+             VOLLSTAENDIGE abgeleitete Text als nur lesbares Feld bereit (vorausgewaehlt); nur der
+             wird zum Kopieren angeboten. -->
+        <div id="ask-copy-fallback" class="hidden" style="margin-top: 8px;">
+          <p class="muted" id="ask-copy-fallback-hint" data-t="askCopyFallbackHint" style="margin-bottom: 4px;"></p>
+          <textarea id="ask-copy-fallback-text" class="answer-text" rows="8" readonly></textarea>
         </div>
         <!-- klara1b Teil B: die Quellenliste bleibt (Titel-Link, Status/Trust-Badge) — aber
              GETRENNT vom einzufuegenden Antworttext (nur Anzeige, wandert nie ins Dokument). -->
@@ -445,6 +462,10 @@
                 answer: stripAskAnswerMarkdown(answer),
                 sources: sources,
                 trust: typeof result.trust === "number" ? result.trust : 0,
+                // AUFTRAG-mega34 B: die serverseitige Einstufung reist mit. Fehlt sie, ist der
+                // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
+                grade: askGradeOf(result.evidence),
+                evidence: result.evidence || undefined,
               };
             }
             return { kind: "gap" };
@@ -487,9 +508,27 @@
       return template.replace("{titles}", joined).replace("{date}", dateLabel);
     }
 
-    function buildAnswerInsertText(answer, sourceLine, truncatedNote) {
-      var base = answer.replace(/\s+$/g, "") + "\n\n" + sourceLine;
-      return truncatedNote && truncatedNote.trim().length > 0 ? base + "\n" + truncatedNote : base;
+    // AUFTRAG-mega34 B: der Grad aus dem Server-Feld — FAIL-SAFE. Fehlt das Feld (alter Server,
+    // abgeschnittener Body), gilt die Antwort als NICHT belegt.
+    function askGradeOf(evidence) {
+      return evidence && evidence.grade === "verified" ? "verified" : "unverified";
+    }
+
+    // AUFTRAG-mega34 B2: DERSELBE Hinweis fuer Anzeige, Kopieren und Einfuegen — eine Auswahl,
+    // drei Wege, keine Abweichung.
+    function answerInsertEvidenceNote(grade, texts) {
+      return grade === "verified" ? texts.verified : texts.unverified;
+    }
+
+    // AUFTRAG-mega34 B2: der EINGEFUEGTE Text traegt die Einstufung mit. Das ist der Punkt, an dem
+    // das Ergebnis das Haus verlaesst — ein Hinweis nur im Panel reist nicht mit ins Dokument.
+    // AUFTRAG-mega36 D: ohne Koerper (nach Abzug eines bereits vorhandenen Metablocks) beginnt der
+    // Text NICHT mit zwei Leerzeilen — die Quellen-Zeile steht dann allein.
+    function buildAnswerInsertText(answer, sourceLine, truncatedNote, evidenceNote) {
+      var head = answer.replace(/\s+$/g, "");
+      var base = head.length > 0 ? head + "\n\n" + sourceLine : sourceLine;
+      var withEvidence = evidenceNote && evidenceNote.trim().length > 0 ? base + "\n" + evidenceNote : base;
+      return truncatedNote && truncatedNote.trim().length > 0 ? withEvidence + "\n" + truncatedNote : withEvidence;
     }
 
     function newestSourceDateLabel(dates) {
@@ -504,6 +543,69 @@
     function formatAskDateLabel(date) {
       function pad(n) { return n < 10 ? "0" + n : String(n); }
       return pad(date.getDate()) + "." + pad(date.getMonth() + 1) + "." + date.getFullYear();
+    }
+
+    // AUFTRAG-mega35 A1 — DIE EINE STELLE, AN DER DER AUSZUGEBENDE TEXT ENTSTEHT (Spiegel von
+    // composeAnswerOutput in wordAddin.ts). Der Nutzerin gehoert NUR der Antwortkoerper; Einstufung
+    // und Quellen-Zeile setzt diese Funktion im AUGENBLICK des Kopierens/Einfuegens an — sie koennen
+    // deshalb nicht fehlen, egal wann und wie lange bearbeitet wurde.
+    // AUFTRAG-mega36 D (bens GELB-2): die Zusammensetzung ist IDEMPOTENT. Erkannt wird der am ENDE
+    // angehaengte Metablock — Zeilen in genau den Formen, die diese Funktion selbst erzeugt (beide
+    // Quellen-Zeilen-Vorlagen mit {titles}/{date} als Platzhalter, die beiden Einstufungstexte, der
+    // Kappungshinweis). GRENZE: nur der Trailing-Block; eine Metazeile MITTEN im Koerper und eine
+    // Metazeile in einer ANDEREN Sprache bleiben stehen.
+    function composedMetaLinePattern(template) {
+      var escaped = template.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp("^" + escaped.replace(/\\\{titles\\\}/g, ".*").replace(/\\\{date\\\}/g, ".*") + "$");
+    }
+
+    function stripComposedMetaLines(body, texts) {
+      var patterns = [
+        composedMetaLinePattern(texts.sourceLine),
+        composedMetaLinePattern(texts.sourceLineRetrieved),
+      ];
+      var exact = [texts.verified, texts.unverified, texts.truncatedNote]
+        .map(function (value) { return (value || "").replace(/^\s+|\s+$/g, ""); })
+        .filter(function (value) { return value.length > 0; });
+      var lines = body.replace(/\r\n?/g, "\n").split("\n");
+      while (lines.length > 0) {
+        var last = (lines[lines.length - 1] || "").replace(/^\s+|\s+$/g, "");
+        if (last.length === 0) { lines.pop(); continue; }
+        var istMeta = exact.indexOf(last) !== -1 || patterns.some(function (p) { return p.test(last); });
+        if (istMeta) { lines.pop(); continue; }
+        break;
+      }
+      return lines.join("\n").replace(/\s+$/g, "");
+    }
+
+    function composeAnswerOutput(input) {
+      var standLabel = newestSourceDateLabel(input.sourceDates);
+      var sourceLine = standLabel
+        ? buildAskSourceLine(input.sourceTitles, standLabel, input.texts.sourceLine)
+        : buildAskSourceLine(input.sourceTitles, formatAskDateLabel(input.now), input.texts.sourceLineRetrieved);
+      var evidenceNote = answerInsertEvidenceNote(input.grade, {
+        verified: input.texts.verified,
+        unverified: input.texts.unverified,
+      });
+      var truncatedNote = input.truncated ? input.texts.truncatedNote : "";
+      return buildAnswerInsertText(
+        stripComposedMetaLines(input.body, input.texts),
+        sourceLine,
+        truncatedNote,
+        evidenceNote
+      );
+    }
+
+    // AUFTRAG-mega36 B2: GANZE Auswahl oder Bruchstueck. Der abgefangene native Kopiervorgang gibt
+    // den abgeleiteten Text NUR bei ganzem Antwortkoerper aus; eine Teilauswahl bleibt roh (ein
+    // Bruchstueck ist keine Antwort und traegt deshalb auch keine Einstufung). Umgebender Leerraum
+    // darf ausgelassen werden — mehr nicht.
+    function answerSelectionIsWhole(value, start, end) {
+      var body = (value || "").replace(/^\s+|\s+$/g, "");
+      if (body.length === 0) { return false; }
+      var from = Math.max(0, Math.min(start, end));
+      var to = Math.min((value || "").length, Math.max(start, end));
+      return (value || "").slice(from, to).replace(/^\s+|\s+$/g, "") === body;
     }
 
     // WP-KLARA-ASK-FIX (bens Fix 4): Praefix/Fallback kommen LOKALISIERT vom Aufrufer.
@@ -625,16 +727,21 @@
         tabAsk: "Fragen",
         tabCapture: "Wissen erfassen",
         askTitle: "Klara fragen",
-        askHint: "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus geprueftem KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
+        askHint: "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
         askInputPlaceholder: "Frage eingeben, wenn nichts markiert ist ...",
         askCta: "Klara fragen",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
-        askBusy: "Klara sucht im geprueften Werkswissen ...",
+        askBusy: "Klara sucht im KLARWERK-Wissen ...",
         askTruncated: "Die Markierung war laenger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
         askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         askTimeout: "Keine Antwort vom Server (Zeitueberschreitung). Bitte erneut versuchen.",
         askError: "Fragen fehlgeschlagen ({detail}).",
-        askAnswerTitle: "Antwort aus geprueftem Wissen",
+        askAnswerTitle: "Quellengebundene Antwort",
+        // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
+        // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
+        // oder unbekanntem Konfliktstand. Jetzt sagt sie, was belegt ist und was nicht.
+        askEvidenceVerified: "Einstufung: gesichert — Quellen belegt, keine offenen Widersprueche bekannt.",
+        askEvidenceUnverified: "Einstufung: ungeprueft — nicht als konfliktfrei belegt. Vor Verwendung pruefen.",
         askSourcesTitle: "Quellen",
         askTrust: "Trust {n}",
         askGapTitle: "Keine belastbare Grundlage.",
@@ -647,18 +754,28 @@
         askInsertFail: "Einfuegen fehlgeschlagen ({detail}). Du kannst den Text ueber „Kopieren\" uebernehmen.",
         askInsertNoPermission: "Einfuegen nicht moeglich: Das Add-in hat keine Schreibberechtigung fuer dieses Dokument. Das Klara-Manifest muss neu geladen werden (Sideload) — mit der Berechtigung ReadWriteDocument UND einer hoeheren Versionsnummer (Office merkt sich das alte Manifest sonst im Cache). Bitte an die KLARWERK-Administration wenden. Solange kannst du den Text ueber „Kopieren\" uebernehmen.",
         askInsertEmpty: "Das Antwortfeld ist leer — bitte Text eingeben oder die Frage erneut stellen.",
-        askAnswerEditHint: "Du kannst die Antwort vor dem Einfuegen kuerzen oder anpassen. Nur der Feldinhalt wird eingefuegt — die Quellen unten bleiben getrennt.",
+        askAnswerEditHint: "Du kannst die Antwort vor dem Einfuegen kuerzen oder anpassen. Einstufung und Quellen-Zeile kommen automatisch dazu — beim Einfuegen, beim Kopieren und auch bei Strg+C bzw. Cmd+C. Nur eine Teilauswahl bleibt roh: ein Bruchstueck ist keine Antwort.",
         askCopyCta: "Kopieren",
         askCopyOk: "In die Zwischenablage kopiert.",
-        askCopyFail: "Kopieren nicht moeglich — bitte den Text im Feld markieren und manuell kopieren.",
+        askCopyFail: "Die Zwischenablage des Browsers ist nicht verfuegbar. Der vollstaendige Text steht unten bereit und ist bereits markiert — bitte von dort kopieren.",
+        askCopyFallbackHint: "Vollstaendiger Text mit Einstufung und Quellen-Zeile — dieser Text ist zum Kopieren gedacht:",
+        askCopyNativeOk: "Kopiert. Einstufung und Quellen-Zeile wurden automatisch angehaengt.",
+        // AUFTRAG-mega38 BLOCK B3 (bens GELB): der Text erscheint an ALLEN drei nativen Wegen —
+        // auch beim blockierten ZIEHEN, wo nichts kopiert werden sollte. „NOCH NICHT kopiert"
+        // war dort schlicht falsch. Jetzt ist der GANZE Text ausgangsneutral, nicht nur sein
+        // Schlusssatz. (`askCopyNativeOk` bleibt unveraendert: es erscheint nur nach Kopieren und
+        // Ausschneiden, und dort ist „Kopiert" richtig.)
+        askCopyNativePending: "NOCH NICHT ausgegeben: die Quellentitel werden gerade geladen. Ohne sie truege die Quellen-Zeile nur den Systemnamen statt der Belege. Bitte einen Moment warten und es erneut versuchen.",
+        askDragFail: "NICHT ausgegeben: dieser Ziehvorgang kann keine Daten aufnehmen. Damit nichts ohne Einstufung und Quellen-Zeile hinausgeht, wurde er abgebrochen. Der vollstaendige Text steht unten bereit und ist bereits markiert.",
+        askCopyPartial: "Teilauswahl — ohne Einstufung und ohne Quellen-Zeile. Ein Bruchstueck ist keine Antwort; fuer den vollstaendigen Text bitte alles markieren oder „Kopieren\" nutzen.",
         askShowMore: "Mehr anzeigen",
         askShowLess: "Weniger anzeigen",
         askStatusValidiert: "Validiert",
         askStatusPruefung: "In Prüfung",
         askStatusOffen: "Offen",
         askStatusUnknown: "Status unbekannt",
-        askSourceLine: "Quelle: {titles} (KLARWERK, geprueftes Wissen, Stand {date})",
-        askSourceLineRetrieved: "Quelle: {titles} (KLARWERK, geprueftes Wissen, abgerufen am {date})",
+        askSourceLine: "Quelle: {titles} (KLARWERK-Wissen, Stand {date})",
+        askSourceLineRetrieved: "Quelle: {titles} (KLARWERK-Wissen, abgerufen am {date})",
         askInsertTruncatedNote: "Hinweis: Die zugrunde liegende Frage wurde auf {max} Zeichen gekappt.",
         askForbidden: "Fehlendes Recht: Dein Konto darf keine offenen Fragen als Entwurf senden.",
         askOpenQuestionPrefix: "Offene Frage: ",
@@ -706,16 +823,19 @@
         tabAsk: "Ask",
         tabCapture: "Capture knowledge",
         askTitle: "Ask Klara",
-        askHint: "Select a statement in the document and ask Klara. The answer comes EXCLUSIVELY from verified KLARWERK knowledge — with sources. Without a selection you can ask freely below.",
+        askHint: "Select a statement in the document and ask Klara. The answer comes EXCLUSIVELY from KLARWERK knowledge — with sources. Without a selection you can ask freely below.",
         askInputPlaceholder: "Type a question if nothing is selected ...",
         askCta: "Ask Klara",
         askEmpty: "Please select a statement in the document first or type a question below.",
-        askBusy: "Klara is searching the verified knowledge ...",
+        askBusy: "Klara is searching KLARWERK knowledge ...",
         askTruncated: "The selection was longer than {max} characters — the question was honestly truncated.",
         askAuth: "Not signed in — please sign in to KLARWERK first.",
         askTimeout: "No answer from the server (timeout). Please try again.",
         askError: "Asking failed ({detail}).",
-        askAnswerTitle: "Answer from verified knowledge",
+        askAnswerTitle: "Source-bound answer",
+        // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
+        askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
+        askEvidenceUnverified: "Classification: unverified — not evidenced as free of conflicts. Check before use.",
         askSourcesTitle: "Sources",
         askTrust: "Trust {n}",
         askGapTitle: "No reliable basis.",
@@ -728,18 +848,23 @@
         askInsertFail: "Inserting failed ({detail}). You can use \"Copy\" to take the text.",
         askInsertNoPermission: "Cannot insert: the add-in has no write permission for this document. The Klara manifest must be reloaded (sideload) with the ReadWriteDocument permission AND a higher version number (otherwise Office keeps the old manifest cached) — please contact your KLARWERK administrator. In the meantime you can use \"Copy\" to take the text.",
         askInsertEmpty: "The answer field is empty — please enter text or ask again.",
-        askAnswerEditHint: "You can shorten or adjust the answer before inserting. Only the field content is inserted — the sources below stay separate.",
+        askAnswerEditHint: "You can shorten or adjust the answer before inserting. Classification and source line are added automatically — on insert, on copy, and on Ctrl+C or Cmd+C as well. Only a partial selection stays raw: a fragment is not an answer.",
         askCopyCta: "Copy",
         askCopyOk: "Copied to the clipboard.",
-        askCopyFail: "Copy not possible — please select the text in the field and copy it manually.",
+        askCopyFail: "The browser clipboard is not available. The full text is ready below and already selected — please copy it from there.",
+        askCopyFallbackHint: "Full text with classification and source line — this is the text meant for copying:",
+        askCopyNativeOk: "Copied. Classification and source line were added automatically.",
+        askCopyNativePending: "NOT handed over yet: the source titles are still loading. Without them the source line would carry only the system name instead of the actual evidence. Please wait a moment and try again.",
+        askDragFail: "NOT handed over: this drag operation cannot carry any data. It was cancelled so that nothing leaves without classification and source line. The full text is ready below and already selected.",
+        askCopyPartial: "Partial selection — without classification and without source line. A fragment is not an answer; for the full text please select everything or use \"Copy\".",
         askShowMore: "Show more",
         askShowLess: "Show less",
         askStatusValidiert: "Validated",
         askStatusPruefung: "In review",
         askStatusOffen: "Open",
         askStatusUnknown: "Status unknown",
-        askSourceLine: "Source: {titles} (KLARWERK, verified knowledge, as of {date})",
-        askSourceLineRetrieved: "Source: {titles} (KLARWERK, verified knowledge, retrieved on {date})",
+        askSourceLine: "Source: {titles} (KLARWERK knowledge, as of {date})",
+        askSourceLineRetrieved: "Source: {titles} (KLARWERK knowledge, retrieved on {date})",
         askInsertTruncatedNote: "Note: the underlying question was truncated to {max} characters.",
         askForbidden: "Missing permission: your account may not send open questions as drafts.",
         askOpenQuestionPrefix: "Open question: ",
@@ -787,16 +912,19 @@
         tabAsk: "Vragen",
         tabCapture: "Kennis vastleggen",
         askTitle: "Klara vragen",
-        askHint: "Selecteer een uitspraak in het document en vraag Klara. Het antwoord komt UITSLUITEND uit gecontroleerde KLARWERK-kennis — met bronnen. Zonder selectie kun je hieronder vrij vragen.",
+        askHint: "Selecteer een uitspraak in het document en vraag Klara. Het antwoord komt UITSLUITEND uit KLARWERK-kennis — met bronnen. Zonder selectie kun je hieronder vrij vragen.",
         askInputPlaceholder: "Typ een vraag als er niets is geselecteerd ...",
         askCta: "Klara vragen",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
-        askBusy: "Klara zoekt in de gecontroleerde kennis ...",
+        askBusy: "Klara zoekt in KLARWERK-kennis ...",
         askTruncated: "De selectie was langer dan {max} tekens — de vraag is eerlijk ingekort.",
         askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
         askError: "Vragen mislukt ({detail}).",
-        askAnswerTitle: "Antwoord uit gecontroleerde kennis",
+        askAnswerTitle: "Bronvast antwoord",
+        // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
+        askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
+        askEvidenceUnverified: "Classificatie: ongecontroleerd — niet aangetoond als conflictvrij. Controleer voor gebruik.",
         askSourcesTitle: "Bronnen",
         askTrust: "Trust {n}",
         askGapTitle: "Geen betrouwbare basis.",
@@ -809,18 +937,23 @@
         askInsertFail: "Invoegen mislukt ({detail}). Je kunt de tekst via „Kopiëren\" overnemen.",
         askInsertNoPermission: "Invoegen niet mogelijk: de add-in heeft geen schrijfrechten voor dit document. Het Klara-manifest moet opnieuw worden geladen (sideload) met de machtiging ReadWriteDocument ÉN een hoger versienummer (anders houdt Office het oude manifest in de cache) — neem contact op met de KLARWERK-beheerder. Ondertussen kun je de tekst via „Kopiëren\" overnemen.",
         askInsertEmpty: "Het antwoordveld is leeg — voer tekst in of stel de vraag opnieuw.",
-        askAnswerEditHint: "Je kunt het antwoord vóór het invoegen inkorten of aanpassen. Alleen de veldinhoud wordt ingevoegd — de bronnen hieronder blijven gescheiden.",
+        askAnswerEditHint: "Je kunt het antwoord vóór het invoegen inkorten of aanpassen. Classificatie en bronregel worden automatisch toegevoegd — bij invoegen, bij kopiëren en ook bij Ctrl+C of Cmd+C. Alleen een deelselectie blijft onbewerkt: een fragment is geen antwoord.",
         askCopyCta: "Kopiëren",
         askCopyOk: "Naar het klembord gekopieerd.",
-        askCopyFail: "Kopiëren niet mogelijk — selecteer de tekst in het veld en kopieer deze handmatig.",
+        askCopyFail: "Het klembord van de browser is niet beschikbaar. De volledige tekst staat hieronder klaar en is al geselecteerd — kopieer deze daarvandaan.",
+        askCopyFallbackHint: "Volledige tekst met classificatie en bronregel — deze tekst is bedoeld om te kopiëren:",
+        askCopyNativeOk: "Gekopieerd. Classificatie en bronregel zijn automatisch toegevoegd.",
+        askCopyNativePending: "NOG NIET afgegeven: de brontitels worden nog geladen. Zonder deze zou de bronregel alleen de systeemnaam dragen in plaats van de bewijzen. Wacht even en probeer het opnieuw.",
+        askDragFail: "NIET afgegeven: deze sleepactie kan geen gegevens opnemen. Ze is afgebroken zodat er niets zonder classificatie en bronregel naar buiten gaat. De volledige tekst staat hieronder klaar en is al geselecteerd.",
+        askCopyPartial: "Deelselectie — zonder classificatie en zonder bronregel. Een fragment is geen antwoord; selecteer alles of gebruik „Kopiëren\" voor de volledige tekst.",
         askShowMore: "Meer tonen",
         askShowLess: "Minder tonen",
         askStatusValidiert: "Gevalideerd",
         askStatusPruefung: "In beoordeling",
         askStatusOffen: "Open",
         askStatusUnknown: "Status onbekend",
-        askSourceLine: "Bron: {titles} (KLARWERK, gecontroleerde kennis, per {date})",
-        askSourceLineRetrieved: "Bron: {titles} (KLARWERK, gecontroleerde kennis, opgehaald op {date})",
+        askSourceLine: "Bron: {titles} (KLARWERK-kennis, per {date})",
+        askSourceLineRetrieved: "Bron: {titles} (KLARWERK-kennis, opgehaald op {date})",
         askInsertTruncatedNote: "Let op: de onderliggende vraag is ingekort tot {max} tekens.",
         askForbidden: "Ontbrekend recht: je account mag geen open vragen als concept versturen.",
         askOpenQuestionPrefix: "Open vraag: ",
@@ -1216,9 +1349,11 @@
     var currentAskSourcesResolved = false;
     var currentAskTruncated = false;
     var currentAskQuestion = "";
-    // klara1b Teil B: Vorbefuellung des editierbaren Felds (zum Erkennen, ob der Nutzer schon
-    // editiert hat, bevor die Quellen-Zeile nachtraegt) und Auf-/Zuklapp-Zustand von „mehr anzeigen".
-    var askAnswerPrefill = "";
+    // AUFTRAG-mega35 A2: die Vorbefuellungs-Merkvariable ist ersatzlos entfallen. Sie war der
+    // Torwaechter, der Feldinhalt gegen Vorbefuellung verglich — und genau der schlug fehl, sobald
+    // waehrend der Quellenaufloesung editiert wurde: dann wurde nichts nachgetragen, die
+    // Ausgabewege gingen aber trotzdem auf. Es wird nichts mehr nachgetragen, also gibt es nichts
+    // mehr zu vergleichen. Geblieben ist der Auf-/Zuklapp-Zustand von „mehr anzeigen".
     var askAnswerExpanded = false;
 
     function showAskStatus(kind, text) {
@@ -1238,7 +1373,6 @@
       currentAskSourceTitles = [];
       currentAskSourceDates = [];
       currentAskSourcesResolved = false;
-      askAnswerPrefill = "";
       askAnswerExpanded = false;
       document.getElementById("ask-answer-block").className = "hidden";
       document.getElementById("ask-gap-block").className = "hidden";
@@ -1250,6 +1384,8 @@
       edit.value = "";
       edit.rows = 4;
       document.getElementById("ask-answer-toggle").className = "ghost hidden";
+      // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
+      hideCopyFallback();
     }
 
     // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
@@ -1385,10 +1521,21 @@
       if (outcome.kind === "answered") {
         currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
-        // klara1b Teil B: das editierbare Feld VORBEFUELLEN — zuerst mit der reinen Antwort; sobald
-        // die Quellen aufgeloest sind, traegt die Vorbefuellung die Quellen-Zeile nach (nur solange
-        // der Nutzer noch nicht selbst editiert hat). Kompakt-Darstellung + „mehr anzeigen".
-        askAnswerPrefill = outcome.answer;
+        // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
+        // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
+        // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
+        var askGrade = askGradeOf(outcome.evidence);
+        var evidenceEl = document.getElementById("ask-evidence-note");
+        evidenceEl.textContent = answerInsertEvidenceNote(askGrade, {
+          verified: t("askEvidenceVerified"),
+          unverified: t("askEvidenceUnverified"),
+        });
+        evidenceEl.className = askGrade === "verified" ? "status" : "status warn";
+        // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
+        // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
+        // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
+        // (composeOutputText). Damit gibt es keinen Zustand mehr, in dem der Feldinhalt die
+        // Einstufung verloren hat, die Ausgabewege aber schon offen sind.
         document.getElementById("ask-answer-edit").value = outcome.answer;
         applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
@@ -1398,14 +1545,8 @@
           currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
           renderAskSources(resolved);
-          // Vorbefuellung um die Quellen-Zeile ergaenzen — NUR wenn der Nutzer noch nicht editiert hat.
-          var edit = document.getElementById("ask-answer-edit");
-          if (edit.value === askAnswerPrefill) {
-            var full = buildDefaultInsertText();
-            edit.value = full;
-            askAnswerPrefill = full;
-            applyAnswerCompaction(full);
-          }
+          // Das Feld wird hier NICHT mehr angefasst — eine laufende Bearbeitung kann nichts kaputt
+          // machen und nichts verlieren.
           updateInsertState();
         });
         return;
@@ -1462,18 +1603,70 @@
       });
     }
 
-    // klara1b Teil B: die STANDARD-Vorbefuellung des editierbaren Felds — validiertes Wissen +
-    // Quellen-Zeile. WP-KLARA-ASK-FIX (bens Fix 3): "Stand <Datum>" NUR mit belegtem KO-Datum
-    // (Validierung/Aenderung); ohne Beleg ehrlich "abgerufen am <heute>".
-    function buildDefaultInsertText() {
-      var standLabel = newestSourceDateLabel(currentAskSourceDates);
-      var line = standLabel
-        ? buildAskSourceLine(currentAskSourceTitles, standLabel, t("askSourceLine"))
-        : buildAskSourceLine(currentAskSourceTitles, formatAskDateLabel(new Date()), t("askSourceLineRetrieved"));
-      var truncatedNote = currentAskTruncated
-        ? t("askInsertTruncatedNote", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
-        : "";
-      return buildAnswerInsertText(currentAskOutcome.answer, line, truncatedNote);
+    // AUFTRAG-mega35 A1 / mega36 B+C: der auszugebende Text — GEBILDET IM MOMENT DER AUSGABE, aus
+    // dem bearbeiteten Antwortkoerper plus Einstufung plus Quellen-Zeile.
+    //
+    // KORRIGIERTE ZUSAGE (bens ROT-1 zu mega35, mega36 Block C): der frueher hier stehende Satz
+    // „einziger Weg, auf dem Text das Panel verlaesst" war FALSCH — er kannte nur die beiden
+    // Schaltflaechen und uebersah den nativen Kopierweg des Antwortfelds.
+    //
+    // AUFTRAG-mega37 BLOCK D — WAS DIESE LISTE IST UND WAS SIE NICHT IST (bens GELB-2). Sie zaehlt
+    // die GEFUNDENEN produktdefinierten Ausgaenge auf. Der Negativ-Durchgang (kein Netz-, Datei-,
+    // Druck-, Teilen-, Download- oder Zweitfenster-Ziel fuer den Antworttext) ist von ben fuer
+    // diesen Quelltext nachgeprueft und bestaetigt — aber eine ABZAEHLUNG ist kein Beweis der
+    // Vollstaendigkeit, und die Zahl mischt Zaehlebenen (Word.run und setSelectedDataAsync sind
+    // zwei Wege EINER Schaltflaeche; Tastatur und Kontextmenue sind EIN `copy`-Ereignis). Die Zahl
+    // taugt deshalb NICHT als Architekturbeweis. Tragfaehig ist dieser Satz:
+    //   Jede gefundene VOLLSTAENDIGE Antwortausgabe laeuft entweder durch composeOutputText oder
+    //   stammt aus einem bereits dadurch erzeugten, nur lesbaren Volltext.
+    // Die gefundenen Wege:
+    //   - „In Word einfuegen"        → composeOutputText  (insertAnswer)
+    //   - „Kopieren"                 → composeOutputText  (copyAnswer)
+    //   - Cmd+C / Strg+C             → composeOutputText  (handleAnswerClipboard, `copy`)
+    //   - Kontextmenue „Kopieren"    → composeOutputText  (dasselbe `copy`-Ereignis)
+    //   - Ausschneiden               → composeOutputText  (handleAnswerClipboard, `cut`)
+    //   - Ziehen einer Auswahl       → composeOutputText  (handleAnswerDragStart)
+    //   - Zwischenablage-Rueckfall   → composeOutputText  (showCopyFallback, nur lesbares Feld)
+    // ZWEI AUSNAHMEN, benannt statt verschwiegen — im Kern dieselbe: ein Bruchstueck ist keine
+    // Antwort und traegt deshalb keine Einstufung.
+    //   1. Eine TEILAUSWAHL des Antwortfelds bleibt roh (Block B2). Die Oberflaeche sagt das in dem
+    //      Moment ausdruecklich (askCopyPartial) — seit mega37 B an ALLEN drei nativen Wegen
+    //      gleich, also auch beim Ziehen, wo sie bis mega36 kommentarlos schwieg.
+    //   2. Eine TEILAUSWAHL im Rueckfallfeld (`#ask-copy-fallback-text`, bens GELB-2). Sein Wert
+    //      ist bereits abgeleitet und vollstaendig vorgewaehlt, eine Vollauswahl dort also sicher;
+    //      wer von Hand ein Stueck markiert oder zieht, bekommt dasselbe rohe Bruchstueck. Das
+    //      Feld hat KEINE eigenen Rueckrufe — hier steht es, statt unerwaehnt zu bleiben.
+    //
+    // AUFTRAG-mega37 BLOCK A / AUFTRAG-mega38 BLOCK D: alle nativen Wege stehen zusaetzlich hinter
+    // dem QUELLEN-TOR (s. handleAnswerClipboard). Hier stand bis mega37 „solange
+    // `currentAskSourcesResolved === false` ist, geht ueberhaupt nichts hinaus" — und das war
+    // wieder ein Satz, der mehr behauptet, als der Code deckt. Zwei Dinge gehen sehr wohl:
+    //   - Eine bewusste TEILAUSWAHL wird VOR dem Tor abgefangen (askCopyPartial) und darf roh
+    //     hinaus — das ist die entschiedene Ausnahme 1 von oben, nicht ein Loch im Tor.
+    //   - Der Zweig ohne brauchbaren Datenbehaelter (mega38 B) ist eine ZWEITE Grenze hinter dem
+    //     Tor; er bricht ab und bietet den abgeleiteten Volltext im Rueckfallfeld an.
+    // BELEGT ist deshalb genau dieser Satz und kein groesserer:
+    //   Solange `currentAskSourcesResolved === false` ist, passiert KEINE VOLLSTAENDIGE
+    //   ANTWORTAUSGABE das Tor — auf keinem der oben aufgezaehlten Wege.
+    //
+    // „Stand <Datum>" NUR mit belegtem KO-Datum (WP-KLARA-ASK-FIX, bens Fix 3), ohne Beleg ehrlich
+    // "abgerufen am <heute>".
+    function composeOutputText(body) {
+      return composeAnswerOutput({
+        body: body,
+        sourceTitles: currentAskSourceTitles,
+        sourceDates: currentAskSourceDates,
+        truncated: currentAskTruncated,
+        grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),
+        now: new Date(),
+        texts: {
+          verified: t("askEvidenceVerified"),
+          unverified: t("askEvidenceUnverified"),
+          sourceLine: t("askSourceLine"),
+          sourceLineRetrieved: t("askSourceLineRetrieved"),
+          truncatedNote: t("askInsertTruncatedNote", { max: String(WORD_ADDIN_ASK_MAX_CHARS) }),
+        },
+      });
     }
 
     // Teil A (klara1b): die konkreten Office-Einfuege-Versuche — MODERNER Word.run-Weg zuerst
@@ -1521,9 +1714,11 @@
     // Teil 2 + klara1b Teil B: den BEARBEITETEN Feldinhalt an der Cursorposition einfuegen (nicht die
     // Originalantwort). Gating bleibt: nur bei bereitem Office. Ohne Office ehrlicher Hinweis +
     // Ausweg „Kopieren". Fehler ehrlich (Berechtigung → Re-Sideload/Kopieren) statt rohem Office-Text.
+    // AUFTRAG-mega35 A1: geprueft wird der KOERPER (nur er kann leer sein), eingefuegt wird der
+    // HIER gebildete Text — Einstufung und Quellen-Zeile koennen nicht fehlen.
     function insertAnswer() {
-      var text = getEditedAnswerText();
-      if (text.replace(/^\s+|\s+$/g, "").length === 0) {
+      var body = getEditedAnswerText();
+      if (body.replace(/^\s+|\s+$/g, "").length === 0) {
         showAskStatus("warn", t("askInsertEmpty"));
         return;
       }
@@ -1531,6 +1726,7 @@
         showAskStatus("warn", t("noOffice"));
         return;
       }
+      var text = composeOutputText(body);
       performInsert(text, buildInsertAttempts()).then(function (outcome) {
         if (outcome.ok) {
           showAskStatus("ok", t("askInsertOk"));
@@ -1546,19 +1742,149 @@
     // klara1b Teil B (Ausweg): den bearbeiteten Feldinhalt in die Zwischenablage — greift auch, wenn
     // der Office-Insert an Rechten scheitert (Cache/Manifest). Braucht kein Office.
     function copyAnswer() {
-      var text = getEditedAnswerText();
-      if (text.replace(/^\s+|\s+$/g, "").length === 0) {
+      var body = getEditedAnswerText();
+      if (body.replace(/^\s+|\s+$/g, "").length === 0) {
         showAskStatus("warn", t("askInsertEmpty"));
         return;
       }
+      // AUFTRAG-mega35 A1: derselbe Bildungsweg wie beim Einfuegen — kein zweiter Textbauer.
+      var text = composeOutputText(body);
       var clipboard = window.navigator && window.navigator.clipboard ? window.navigator.clipboard : null;
       performCopy(text, clipboard).then(function (outcome) {
         if (outcome.ok) {
+          hideCopyFallback();
           showAskStatus("ok", t("askCopyOk"));
         } else {
+          // AUFTRAG-mega36 B3: NICHT mehr „markiere den Text im Feld" — das waere der rohe Koerper.
+          showCopyFallback(text);
           showAskStatus("warn", t("askCopyFail"));
         }
       });
+    }
+
+    // AUFTRAG-mega36 B3: der Rueckfall zeigt den ABGELEITETEN Volltext als nur lesbares Feld und
+    // waehlt ihn vor — kopiert wird von HIER, nicht aus dem Antwortfeld.
+    function showCopyFallback(text) {
+      var feld = document.getElementById("ask-copy-fallback-text");
+      feld.value = text;
+      document.getElementById("ask-copy-fallback").className = "";
+      try {
+        feld.focus();
+        feld.setSelectionRange(0, text.length);
+      } catch (err) {
+        // Fokus/Auswahl sind Komfort, kein Vertrag — der Text steht auch ohne sie bereit.
+      }
+    }
+
+    function hideCopyFallback() {
+      document.getElementById("ask-copy-fallback").className = "hidden";
+      document.getElementById("ask-copy-fallback-text").value = "";
+    }
+
+    // ============================================================================================
+    // AUFTRAG-mega36 BLOCK B1/B2 — DER NATIVE AUSGANG.
+    // ============================================================================================
+    //
+    // Das Antwortfeld traegt NUR den Antwortkoerper (mega35 A1). Ohne dieses Abfangen nimmt ein
+    // natives Cmd+C/Strg+C, ein Kontextmenue-Kopieren oder ein Ausschneiden genau diesen Koerper —
+    // ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis. Tastatur und Kontextmenue loesen
+    // DASSELBE `copy`-Ereignis aus; beide sind damit hier erledigt.
+    //
+    // Der Text entsteht auch hier ueber composeOutputText — ein Bauer, alle Wege.
+    function handleAnswerClipboard(ev, schneiden) {
+      // Nur bei einer echten, belegten Antwort greift die Ableitung; sonst ist das Feld ein Feld.
+      if (!currentAskOutcome || currentAskOutcome.kind !== "answered") { return; }
+      var feld = document.getElementById("ask-answer-edit");
+      var wert = feld.value;
+      if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
+      if (!answerSelectionIsWhole(wert, feld.selectionStart, feld.selectionEnd)) {
+        // Block B2: Bruchstueck bleibt roh — aber die Oberflaeche sagt es, statt zu schweigen.
+        showAskStatus("warn", t("askCopyPartial"));
+        return;
+      }
+      // AUFTRAG-mega37 BLOCK A — DAS QUELLEN-TOR, UND ES GILT HIER GENAUSO WIE AN DEN SCHALTFLAECHEN.
+      //
+      // bens ROT-Befund zu mega36: sobald `/api/ask` geantwortet hat, steht der Antwortkoerper im
+      // Feld — die Quellentitel werden DANACH asynchron geladen. Die beiden Schaltflaechen bleiben
+      // in diesem Fenster gesperrt (`updateInsertState`, Fix 2); die nativen Wege pruefen den
+      // Zustand bis mega36 NICHT. Ein Cmd+C in genau diesem Moment baute die Quellen-Zeile mit dem
+      // generischen Namen `KLARWERK` (buildAskSourceLine) — eine Angabe, die aussieht wie ein Beleg
+      // und keiner ist. Das ist nicht dieselbe Klasse wie eine FEHLENDE Einstufung, es ist die
+      // schlechtere. Deshalb FAIL-CLOSED, und zwar VOR jeder Textbildung und vor der Pruefung der
+      // Zwischenablage-Schnittstelle (A6: auch der Rueckfall darf hier keinen Volltext anbieten):
+      //   A1 nichts wird geschrieben · A2 Ausschneiden schneidet nicht · A3 der Standard-Export des
+      //   Browsers wird verhindert · A4 die Oberflaeche sagt es · A5 erst nach der Aufloesung gibt
+      //   composeOutputText aus.
+      // Die TEILAUSWAHL steht bewusst DAVOR: ein Bruchstueck traegt ohnehin keine Quellen-Zeile,
+      // fuer sie ist der Zustand der Aufloesung gleichgueltig.
+      if (!currentAskSourcesResolved) {
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showAskStatus("warn", t("askCopyNativePending"));
+        return;
+      }
+      var daten = ev.clipboardData || window.clipboardData || null;
+      if (!daten || typeof daten.setData !== "function") {
+        // Kein Zugriff auf die Ereignis-Zwischenablage: dann geht hier NICHTS roh hinaus — der
+        // Vorgang wird abgebrochen und der abgeleitete Volltext im Rueckfallfeld angeboten.
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showCopyFallback(composeOutputText(wert));
+        showAskStatus("warn", t("askCopyFail"));
+        return;
+      }
+      var text = composeOutputText(wert);
+      ev.preventDefault();
+      daten.setData("text/plain", text);
+      if (schneiden) {
+        // Ausschneiden schneidet: der markierte Bereich verschwindet wie beim nativen Vorgang.
+        var von = Math.max(0, Math.min(feld.selectionStart, feld.selectionEnd));
+        var bis = Math.min(wert.length, Math.max(feld.selectionStart, feld.selectionEnd));
+        feld.value = wert.slice(0, von) + wert.slice(bis);
+      }
+      // Hier ist die Aufloesung nachweislich durch (das Tor oben ist die einzige Vorbedingung) —
+      // die Quellen-Zeile traegt die echten KO-Titel. Der frueher hier stehende Zweig „kopiert,
+      // aber die Titel fehlten noch" ist mit mega37 A ersatzlos weg: er beschrieb einen Zustand,
+      // den es nicht mehr gibt.
+      showAskStatus("ok", t("askCopyNativeOk"));
+    }
+
+    // Ziehen und Ablegen einer Auswahl aus dem Antwortfeld — derselbe Vertrag, anderer Behaelter.
+    function handleAnswerDragStart(ev) {
+      if (!currentAskOutcome || currentAskOutcome.kind !== "answered") { return; }
+      var feld = document.getElementById("ask-answer-edit");
+      var wert = feld.value;
+      if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
+      if (!answerSelectionIsWhole(wert, feld.selectionStart, feld.selectionEnd)) {
+        // AUFTRAG-mega37 BLOCK B: die Ausnahme SELBST bleibt — ein Satzfragment braucht keinen
+        // Metablock, das ist entschieden, und der Ziehvorgang laeuft deshalb normal weiter. Falsch
+        // war nur, dass das Panel hier KOMMENTARLOS zurueckkehrte, waehrend der Kommentar
+        // versprach, die Ausnahme werde an jedem Ausgang benannt. Jetzt sagt sie ueberall dasselbe.
+        showAskStatus("warn", t("askCopyPartial"));
+        return;
+      }
+      // AUFTRAG-mega37 BLOCK A: dasselbe Tor wie beim Kopieren/Ausschneiden — und hier wog der
+      // Mangel am schwersten, weil beim Ziehen bisher nicht einmal ein Hinweis erschien. Der
+      // Ziehvorgang wird abgebrochen (A3), es wird nichts angelegt (A1), die Oberflaeche sagt es (A4).
+      if (!currentAskSourcesResolved) {
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showAskStatus("warn", t("askCopyNativePending"));
+        return;
+      }
+      // AUFTRAG-mega38 BLOCK B: hier stand bis mega37 ein blankes `return` — ohne preventDefault,
+      // ohne Hinweis. Das ist der schlechteste aller Ausgaenge: der Host darf seinen EIGENEN
+      // Standard-Ziehvorgang danach fortsetzen, und der traegt fuer eine Textauswahl den rohen
+      // Antwortkoerper hinaus — ohne Einstufung, ohne Quellen-Zeile, ohne Kappungshinweis.
+      // Jetzt gilt derselbe Vertrag wie am Kopier-/Ausschneideweg (s. handleAnswerClipboard):
+      // abbrechen, nichts roh hinauslassen, den ABGELEITETEN Volltext im Rueckfallfeld anbieten
+      // und es sagen. Ob ein echter Word-/WKWebView-Host diesen Zweig je erreicht, ist UNBELEGT —
+      // gepinnt ist das Verhalten, nicht eine Behauptung ueber den Host.
+      var daten = ev.dataTransfer || null;
+      if (!daten || typeof daten.setData !== "function") {
+        if (ev.preventDefault) { ev.preventDefault(); }
+        showCopyFallback(composeOutputText(wert));
+        showAskStatus("warn", t("askDragFail"));
+        return;
+      }
+      daten.setData("text/plain", composeOutputText(wert));
     }
 
     // Teil 2 (Wissensluecke): die offene Frage als Front-Door-ENTWURF nach KLARWERK (bestehender
@@ -1635,6 +1961,15 @@
     document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
     document.getElementById("ask-copy-btn").addEventListener("click", copyAnswer);
     document.getElementById("ask-answer-toggle").addEventListener("click", toggleAnswerExpanded);
+    // AUFTRAG-mega36 B1: Tastatur UND Kontextmenue loesen dasselbe `copy`-Ereignis aus — ein
+    // Rueckruf deckt beide. `cut` gehoert dazu, `dragstart` schliesst den Zieh-Ausgang.
+    document.getElementById("ask-answer-edit").addEventListener("copy", function (ev) {
+      handleAnswerClipboard(ev, false);
+    });
+    document.getElementById("ask-answer-edit").addEventListener("cut", function (ev) {
+      handleAnswerClipboard(ev, true);
+    });
+    document.getElementById("ask-answer-edit").addEventListener("dragstart", handleAnswerDragStart);
     document.getElementById("ask-gap-send-btn").addEventListener("click", sendOpenQuestion);
 
     document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });
