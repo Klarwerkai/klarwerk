@@ -10,10 +10,53 @@ import type {
   GroupCandidateInput,
   GroupCandidatesResult,
   InterviewResult,
+  KnowledgeClass,
   KnowledgeRef,
   ReasonerLocale,
   StructureResult,
 } from "./types";
+
+// ================================================================================================
+// AUFTRAG-mega53 BLOCK B1 — WISSENSKLASSE UND VERTRAUENSWERT STEHEN AUF DEN TRAGENDEN QUELLEN.
+// ================================================================================================
+//
+// DER BEFUND (ben, sammel50 ROT-2). mega52 hat die Fußnotenmarken des Modells zurückgelesen und
+// `citedSources` eingeführt — Kennzeichnung, Antwort-Beleg und „Danke" folgen ihr seither korrekt.
+// Klasse und Vertrauenswert aber kamen weiterhin PAUSCHAL vom ersten konsultierten Kandidaten
+// (`best`), gleichgültig, ob er zitiert wurde. Zitiert das Modell nur Quelle 2, bestimmte trotzdem
+// Quelle 1 die sichtbare Sicherheit der Antwort. Das ist genau die Zahl, auf die sich das ganze
+// Produkt beruft.
+//
+// DIESE FUNKTION IST DIE EINE ABLEITUNG. Beide Wege benutzen sie — der deterministische Rückfall
+// (dort ist die tragende Quelle seit jeher `best`, die Antwort IST ihre Aussage) und der
+// Modellmodus (dort ist sie die zurückgelesene Markenmenge). Damit steht die Regel EINMAL, statt
+// zweimal auseinanderlaufen zu können.
+//
+// DIE DREI ENTSCHEIDUNGEN, alle fail-closed:
+//
+//  1 KLASSE = „gesichert" NUR, wenn JEDE tragende Quelle validiert ist. Eine einzige ungeprüfte
+//    Quelle in der Herleitung macht die Aussage ungeprüft; „mindestens eine ist validiert" wäre
+//    dieselbe fail-open-Logik, die dieser Auftrag an zwei Stellen beseitigt.
+//  2 VERTRAUENSWERT = das MINIMUM über die tragenden Quellen. Eine Antwort ist nicht belastbarer
+//    als ihre schwächste Stütze. Ein Mittelwert würde eine schwache Quelle hinter einer starken
+//    verstecken, das Maximum täte es offen.
+//  3 OHNE TRAGENDE QUELLE WIRD NICHTS BEHAUPTET (B2). Es wird KEINE Quelle geraten: die Klasse
+//    fällt auf „ungeprueft" und der Vertrauenswert auf 0 — nicht, weil die Quellen schlecht wären,
+//    sondern weil kein quellenbezogener Wert zu rechtfertigen ist. Die Evidenzregel
+//    (services/ask/src/answer-evidence.ts) trägt denselben Fall als benannten Vorbehalt, und die
+//    Oberfläche zeigt neben „Zuordnung unbekannt" gar keine Zahl mehr.
+export function answerStanding(carrying: readonly Pick<KnowledgeRef, "status" | "trust">[]): {
+  knowledgeClass: KnowledgeClass;
+  trust: number;
+} {
+  if (carrying.length === 0) {
+    return { knowledgeClass: "ungeprueft", trust: 0 };
+  }
+  return {
+    knowledgeClass: carrying.every((r) => r.status === "validiert") ? "gesichert" : "ungeprueft",
+    trust: Math.min(...carrying.map((r) => r.trust)),
+  };
+}
 
 // WP-IC-4: EHRLICHE deterministische Gruppierung nach den IC-1-Themen — der Fallback ohne
 // funktionierendes Modell (und die Basis der „Ohne KI gruppiert"-Kennzeichnung). Kandidaten ohne
@@ -42,7 +85,8 @@ export function deterministicCandidateGroups(
     .sort((a, b) => b.ids.length - a.ids.length || (a.title < b.title ? -1 : 1));
   if (noTheme.length > 0) {
     groups.push({
-      title: locale === "en" ? "Without topic" : "Ohne Thema",
+      title:
+        locale === "en" ? "Without topic" : locale === "nl" ? "Zonder onderwerp" : "Ohne Thema",
       ids: noTheme,
       kind: "no-theme",
     });
@@ -213,11 +257,22 @@ export const INTERVIEW_QUESTIONS: Record<ReasonerLocale, readonly string[]> = {
     "What action or consequence follows from it?",
     "Which keywords/tags help to find it again? (comma-separated)",
   ],
+  // mega52 D1: eigener Zweig statt stillem Rückfall auf Deutsch.
+  nl: [
+    "Waar gaat het over? Formuleer de kernboodschap in één zin.",
+    "Onder welke voorwaarden of vanaf wanneer geldt dat?",
+    "Welke maatregel of consequentie volgt daaruit?",
+    "Welke trefwoorden/tags helpen bij het terugvinden? (komma-gescheiden)",
+  ],
 };
 
 // FR-I18N-01: sprachbewusstes Label für eine Beleg-/Quellenangabe (kein Quelleninhalt).
 export function sourceLabel(title: string, locale: ReasonerLocale = "de"): string {
-  return locale === "en" ? `Source: ${title}` : `Quelle: ${title}`;
+  // mega52 D1: dreisprachig — das Quellen-Label erscheint in den Argumentationsschritten.
+  if (locale === "en") {
+    return `Source: ${title}`;
+  }
+  return locale === "nl" ? `Bron: ${title}` : `Quelle: ${title}`;
 }
 
 // Verdichtet die bisherigen Antworten nachvollziehbar zu einem KO-Entwurf.
@@ -430,18 +485,86 @@ export function refMatchText(ref: KnowledgeRef): string {
   return `${ref.title} ${ref.statement}${captions}`;
 }
 
+// AUFTRAG-mega52 B1 — DAS RELEVANZMASS.
+//
+// DER BEFUND (Pedi, Word-Handlauf 28.07.): die Antwort zog fachfremde Quellen heran. Die Ursache
+// war kein Ranking-Fehler, sondern ein fehlendes MASS: das Gate hieß `keywordScore > 0`. EIN
+// einziges gemeinsames Inhaltstoken genügte. Teilt eine Vereinsfest-Notiz mit der Frage nach dem
+// Filter das Wort „vorher", steht sie als gleichwertige Antwortquelle in der Liste.
+//
+// DIE SCHWELLE, die diesen Auftrag ersetzt hat: `keywordScore * 2 > bestScore` — ein Kandidat muss
+// MEHR ALS DIE HÄLFTE der Inhaltstoken-Überschneidung des besten Treffers erreichen.
+//
+// WARUM DIESE UND KEINE DECKUNGSANTEIL-SCHWELLE (gemessen, nicht behauptet — s. Bericht mega52 B3):
+//  · Sie KANN NIE LEEREN. Der beste Treffer erfüllt sie per Konstruktion immer (2·best > best für
+//    best > 0). Jede Schwelle über dem Deckungsanteil (Treffer-Token / Fragetoken) läuft dagegen
+//    genau in Pedis eigene P0-Frage: „Der Filter F3 … wie oft muss er geprüft werden?" hat 8
+//    Inhaltstoken, das RICHTIGE Wissensobjekt deckt davon genau eines (11 %) — „F3" fällt als
+//    Zweizeichen-Token aus der Tokenisierung, „geprüft" trifft „prüfen" literal nicht. Sowohl
+//    ≥1/3 als auch ≥1/2 löschten dort ALLES, auch die richtige Antwort. Das ist die Falle, vor der
+//    der Auftrag ausdrücklich warnt: lieber die Schwelle verwerfen als sie passend biegen.
+//  · Sie ist LÄNGENUNABHÄNGIG. Beim literalen Token-Schnitt ist die Fragelänge kein Maß für
+//    Spezifität — ein Wortschwall verschiebt jeden Deckungsanteil, aber nicht die Rangfolge.
+//  · Sie folgt AUS DEM VORHANDENEN `overlap`/`rankCandidates` (nur `keywordScore`), ohne neue
+//    Bibliothek, ohne Embeddings, ohne DB-Umbau.
+//
+// BENANNTE GRENZE von mega52 (sie war echt) — und AUFTRAG-mega53 BLOCK A, DIE ABSOLUTE
+// MINDESTSUBSTANZ, die sie schließt:
+//
+// DER BEFUND (ben, sammel50 ROT-1). Die relative Schwelle allein ist FAIL-OPEN. Sie misst jeden
+// Kandidaten am besten Treffer — sagt aber nichts darüber, ob der BESTE Treffer selbst etwas taugt.
+// Bei `bestScore = 1` gilt für jeden Ein-Wort-Treffer `1 * 2 > 1`, also passieren ALLE gleich
+// schwachen Treffer. Genau die Vereinsfest-Lage aus Pedis Word-Handlauf kehrt damit zurück, sobald
+// keine starke Quelle im Pool ist — und mega52 hat das an Filter F3 und Kaltstart selbst gemessen,
+// ohne es zu schließen. mega52 verließ sich darauf, dass Block A hinterher SAGT, welche Quelle
+// getragen hat. Das ist Transparenz über ein schlechtes Ergebnis, keine Abwehr davor.
+//
+// DIE SCHWELLE: erreicht der beste Treffer nicht MINDESTENS ZWEI gemeinsame Inhaltstoken, gibt es
+// KEINE Kandidaten — die Antwort ist eine ehrliche Wissenslücke. Das ist bens kleinster ehrlicher
+// Schnitt, und er ist hier übernommen, aus drei Gründen:
+//
+//  · ZWEI IST DIE KLEINSTE ZAHL, DIE EINEN ZUSAMMENHANG BEHAUPTET. Ein einzelnes gemeinsames Wort
+//    ist bei einer literalen Tokenisierung ein Zufall („vorher", „oft", „anlegen", „sofort" — die
+//    vier realen Störer aus der mega52-Messung hingen an genau so einem Wort). Zwei gemeinsame
+//    Inhaltstoken sind das erste Maß, das nicht mehr durch ein Allerweltswort entsteht.
+//  · FAIL-CLOSED, nicht fail-open. Im Zweifel keine Antwort statt einer fachfremden. Eine
+//    Wissenslücke ist im Vertrauensvertrag dieses Produkts ein gültiges, benanntes Ergebnis; eine
+//    Antwort aus einer Vereinsfest-Notiz ist es nicht.
+//  · KEIN HÖHERER SCHNITT. Drei gemeinsame Token verlangte bereits von den kurzen Realfragen der
+//    Messung mehr, als der richtige Treffer liefert (die meisten haben nur 2–4 Inhaltstoken
+//    insgesamt) — das löschte richtige Antworten mit. Zwei ist die Grenze, an der die gemessenen
+//    Störer fallen und die gemessenen Treffer stehen bleiben (s. Bericht mega53 A5).
+//
+// DER PREIS IST ECHT UND BENANNT: das ist eine bewusste Absenkung des Recalls. Fragen, deren
+// richtige Quelle nur über ein Wort literal trifft — Pedis eigenes „Der Filter F3 …", weil „F3" als
+// Zweizeichen-Token herausfällt und „geprüft" das Wort „prüfen" nicht literal trifft — enden jetzt
+// in der Wissenslücke. Der Recall kommt über eine spätere Token-Scheibe zurück (Kennungen,
+// Flexionen), nicht über ein aufgeweichtes Maß.
+export const MIN_ANSWER_SUBSTANCE = 2;
+
+export function meetsRelevanceThreshold(keywordScore: number, bestScore: number): boolean {
+  // Zuerst absolut: trägt der beste Treffer die Antwort überhaupt? Wenn nein, trägt sie niemand.
+  if (bestScore < MIN_ANSWER_SUBSTANCE) {
+    return false;
+  }
+  // Dann relativ: wer weniger als die Hälfte des besten Treffers erreicht, ist ein Mitläufer.
+  return keywordScore > 0 && keywordScore * 2 > bestScore;
+}
+
 // Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
 // Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
+// mega52 B1: EINE Schwelle für beide Auswahlwege — `keywordSelect` misst wie `rankCandidates`.
 export function keywordSelect(
   question: string,
   candidates: readonly KnowledgeRef[],
 ): KnowledgeRef[] {
   const words = tokenize(question);
-  return candidates
+  const scored = candidates
     .map((c) => ({ c, score: overlap(words, tokenize(refMatchText(c))) }))
     .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score)
-    .map((x) => x.c);
+    .sort((a, b) => b.score - a.score);
+  const best = scored.reduce((max, x) => Math.max(max, x.score), 0);
+  return scored.filter((x) => meetsRelevanceThreshold(x.score, best)).map((x) => x.c);
 }
 
 // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: begrenzte, status-/trust-bewusste Top-K-Kandidaten-
@@ -469,9 +592,18 @@ export interface RankedCandidate {
   rankScore: number; // keywordScore + gedeckelter Status-/Trust-Bonus (< 1).
 }
 
-// Nachvollziehbares, DOM-freies Ranking: (1) Relevanz-Gate (Keyword-Überschneidung > 0), (2) stabile
-// Sortierung nach rankScore (Relevanz dominiert, Status/Trust als Tiebreak), (3) harte Begrenzung auf
-// topK Kandidaten. Bei Gleichstand bleibt die Eingabereihenfolge erhalten (stabil).
+// Nachvollziehbares, DOM-freies Ranking: (1) Relevanz-Gate (mega52 B1: das MASS `meetsRelevance-
+// Threshold`, nicht mehr „Überschneidung > 0"), (2) stabile Sortierung nach rankScore (Relevanz
+// dominiert, Status/Trust als Tiebreak), (3) harte Begrenzung auf topK Kandidaten. Bei Gleichstand
+// bleibt die Eingabereihenfolge erhalten (stabil).
+//
+// AUFTRAG-mega52 B2 — ACHT IST EIN DECKEL, KEIN SOLLWERT. Die Schwelle wirkt VOR dem `slice`: wer
+// sie nicht erreicht, kommt gar nicht erst in die Liste, auch wenn dadurch nur zwei Quellen übrig
+// bleiben. Vorher war DEFAULT_TOP_K faktisch ein Sollwert — Status und Trust wirken nur als
+// Tiebreaker < 1 und konnten einen schwachen Störer nie aussortieren, nur nach hinten schieben;
+// solange weniger als acht starke Treffer da waren, rutschte jeder Ein-Token-Treffer sicher mit
+// in die Antwortquellen. Zwei belegte Quellen sind mehr wert als acht, von denen sechs nicht
+// dazugehören.
 export function rankCandidates(
   question: string,
   candidates: readonly KnowledgeRef[],
@@ -479,13 +611,18 @@ export function rankCandidates(
 ): RankedCandidate[] {
   const words = tokenize(question);
   const limit = Math.max(1, Math.floor(topK));
-  return candidates
+  const scored = candidates
     .map((ref) => {
       // WP-RETEST7 R5: gleiche Match-Basis wie keywordSelect — inkl. Bild-Fußnoten (captionTexts).
       const keywordScore = overlap(words, tokenize(refMatchText(ref)));
       return { ref, keywordScore, rankScore: keywordScore + statusTrustBoost(ref) };
     })
-    .filter((x) => x.keywordScore > 0)
+    .filter((x) => x.keywordScore > 0);
+  // Der Bezugspunkt ist die REINE Relevanz des besten Treffers, nicht sein rankScore — der Status-/
+  // Trust-Bonus (< 1) darf die Schwelle nicht anheben, sonst entschiede Trust doch über Relevanz.
+  const best = scored.reduce((max, x) => Math.max(max, x.keywordScore), 0);
+  return scored
+    .filter((x) => meetsRelevanceThreshold(x.keywordScore, best))
     .sort((a, b) => b.rankScore - a.rankScore)
     .slice(0, limit);
 }
@@ -641,6 +778,8 @@ export class DeterministicProvider implements ReasonerProvider {
         knowledgeClass: "unbekannt",
         trust: 0,
         sources: [],
+        // mega52 A3: keine Antwort → nichts hat sie getragen. Leer ist hier die Wahrheit.
+        citedSources: [],
         steps: [],
         demo: true,
       };
@@ -653,6 +792,8 @@ export class DeterministicProvider implements ReasonerProvider {
         knowledgeClass: "unbekannt",
         trust: 0,
         sources: [],
+        // mega52 A3: keine Antwort → nichts hat sie getragen. Leer ist hier die Wahrheit.
+        citedSources: [],
         steps: [],
         demo: true,
       };
@@ -660,13 +801,19 @@ export class DeterministicProvider implements ReasonerProvider {
     return {
       answered: true,
       answer: best.statement,
-      knowledgeClass: best.status === "validiert" ? "gesichert" : "ungeprueft",
-      trust: best.trust,
+      // mega53 B1: dieselbe eine Ableitung wie im Modellmodus. Hier ist die tragende Quelle genau
+      // `best` — die Antwort IST ihre Aussage —, das Ergebnis bleibt also unverändert. Neu ist,
+      // dass es aus der GEMEINSAMEN Regel kommt und nicht aus einer zweiten, gleichlautenden Zeile.
+      ...answerStanding([best]),
       // SCRUM-256: Die deterministische Antwort (answer/trust/knowledgeClass/steps) wird
       // AUSSCHLIESSLICH aus `best` abgeleitet. Daher nur die tatsächlich genutzte Quelle melden —
       // lose gematchte Kandidaten erscheinen nicht als gleichwertige Antwortquellen (Quellen-
       // ehrlichkeit, Abgrenzung gegen Chatbot-Wahrnehmung). Kein Ranking-/Retrieval-Umbau.
       sources: [best.id],
+      // mega52 A3: DIESER Weg wusste immer schon, worauf er steht — die Antwort IST `best.statement`.
+      // Die tragende Quelle ist damit genau `best`, ohne jedes Zurücklesen. Das ist die vorhandene
+      // Wahrheit, an der sich der Modellmodus jetzt ausrichtet, nicht umgekehrt.
+      citedSources: [best.id],
       steps: [
         {
           description: sourceLabel(best.title, locale),

@@ -7,7 +7,7 @@ import { InMemoryGapRepo } from "../../services/ask/src/repo";
 import { AskService } from "../../services/ask/src/service";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
-import { ModelProvider, Reasoner } from "../../services/reasoner";
+import { type ModelClient, ModelProvider, Reasoner } from "../../services/reasoner";
 import {
   EVAL_KOS,
   HALLUCINATION_MARKERS,
@@ -27,7 +27,12 @@ const titleById = (id: string) => EVAL_KOS.find((k) => k.id === id)?.title ?? id
 describe("SCRUM-368: Reasoner-Eval-Set (Modellmodus, Fake-Client)", () => {
   for (const scenario of MODEL_EVAL_SCENARIOS) {
     it(`Szenario: ${scenario.name}`, async () => {
-      const model = capturingModel("Antwort auf Basis der Quellen.");
+      // AUFTRAG-mega53 B1: ein Modell, das sich an den System-Prompt hält, MARKIERT seine Quelle
+      // (mega52 A1 hat aus der Erlaubnis eine Pflicht gemacht). Das Fake-Modell tat das nie —
+      // damit maß dieses Eval-Set die Klasse eines Modells, das gegen den Vertrag verstößt, und
+      // bekam sie trotzdem aus dem bestgerankten Kandidaten geliefert. Der vertragsWIDRIGE Fall
+      // steht jetzt als eigener Fall darunter, statt hier stillschweigend der Normalfall zu sein.
+      const model = capturingModel("Antwort auf Basis der Quellen [1].");
       const res = await new ModelProvider(model.client).answer(scenario.question, EVAL_KOS);
 
       if (scenario.expectedClass === "gap") {
@@ -57,8 +62,28 @@ describe("SCRUM-368: Reasoner-Eval-Set (Modellmodus, Fake-Client)", () => {
       for (const id of scenario.mustCite) {
         expect(user).toContain(titleById(id));
       }
+      // mega53 B1: die markierte Quelle ist auch die, die die Antwort trägt.
+      for (const id of scenario.mustCite) {
+        expect(res.citedSources).toContain(id);
+      }
     });
   }
+
+  // AUFTRAG-mega53 B2 — DER VERTRAGSWIDRIGE FALL, ausdrücklich und einzeln.
+  it("ein Modell OHNE Fußnotenmarke bekommt keine Einstufung geschenkt", async () => {
+    const model = capturingModel("Antwort ganz ohne Quellenverweis.");
+    const res = await new ModelProvider(model.client).answer(
+      "Was tun bei Überdruck am Ventil?",
+      EVAL_KOS,
+    );
+    expect(res.answered).toBe(true);
+    // Die validierte Quelle mit Vertrauenswert 92 wurde herangezogen …
+    expect(res.sources).toContain(KO.ventil);
+    // … aber sie trägt die Antwort nicht nachweislich, also behauptet die Antwort auch nichts.
+    expect(res.citedSources).toEqual([]);
+    expect(res.knowledgeClass).toBe("ungeprueft");
+    expect(res.trust).toBe(0);
+  });
 });
 
 describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Quellen/Trust", () => {
@@ -75,7 +100,33 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
     // Kein Step verweist auf eine erfundene Quelle — jede sourceId ist ein echtes Eval-KO.
     const realIds = new Set(EVAL_KOS.map((k) => k.id));
     expect(res.steps.every((s) => s.sourceId !== null && realIds.has(s.sourceId))).toBe(true);
-    // knowledgeClass/trust stammen aus dem Datenbestand (validiertes KO), nicht aus dem Modelltext.
+    // AUFTRAG-mega53 B1/B2 — HIER STAND `knowledgeClass = "gesichert"` UND `trust = 92`, UND DAS
+    // WAR DIE SCHWÄCHERE ZUSICHERUNG.
+    //
+    // Der Gedanke war richtig: die Werte dürfen nicht aus dem Modelltext stammen. Der Test hat aber
+    // gepinnt, dass sie stattdessen aus dem bestgerankten Kandidaten kommen — auch dann, wenn das
+    // Modell ihn gar nicht benutzt hat. Genau daraus konnte ein halluzinierender Freitext eine
+    // Antwort mit Vertrauenswert 92 und dem Grad „gesichert" tragen. Das Fake-Modell hier zitiert
+    // nichts; die ehrliche Antwort ist deshalb, dass keine Einstufung behauptet wird.
+    expect(res.citedSources).toEqual([]);
+    expect(res.knowledgeClass).toBe("ungeprueft");
+    expect(res.trust).toBe(0);
+  });
+
+  it("… und selbst MIT Marke kommen Klasse/Trust aus den Daten, nie aus dem Modelltext", async () => {
+    // Die eigentliche Anti-Halluzinations-Zusicherung, jetzt am schärferen Fall: das Modell
+    // markiert brav [1] und erfindet trotzdem Norm, Zahl und Zitat. Die Prosa geht durch, die
+    // EINSTUFUNG kommt aus dem Datensatz der markierten Quelle.
+    const marking: ModelClient = {
+      name: "eval-hallucinate-cited",
+      complete: async () => `${await hallucinatingModel().complete("", "", false)} [1]`,
+    };
+    const res = await new ModelProvider(marking).answer(
+      "Was tun bei Überdruck am Ventil?",
+      EVAL_KOS,
+    );
+    expect(res.answer).toContain(HALLUCINATION_MARKERS.fakeNorm);
+    expect(res.citedSources).toEqual([KO.ventil]);
     expect(res.knowledgeClass).toBe("gesichert");
     expect(res.trust).toBe(92);
   });
@@ -97,7 +148,8 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
     expect(sysDe).toContain("nummerierten Quellen");
     expect(sysDe).toContain("Ursachen oder Maßnahmen");
     expect(sysDe).toContain("kein allgemeines Weltwissen");
-    expect(sysDe).toContain("erfinde keine Zitate");
+    // mega52 A1: aus der Erlaubnis zu verweisen ist die PFLICHT zur Fußnotenmarke geworden.
+    expect(sysDe).toContain("Erfinde keine Zitate");
 
     const en = capturingModel();
     // locale steuert nur die Prompt-Sprache; die Frage muss thematisch matchen, damit das Modell
@@ -106,7 +158,8 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
     const sysEn = en.calls[0]?.system ?? "";
     expect(sysEn).toContain("numbered sources");
     expect(sysEn).toContain("causes or measures");
-    expect(sysEn).toContain("never fabricate quotes");
+    // mega52 A1: s. DE.
+    expect(sysEn).toContain("Never fabricate quotes");
   });
 });
 
@@ -151,7 +204,10 @@ describe("SCRUM-368: Ask-Vollkette (deterministischer Reasoner, echte Services)"
 
   it("offenes KO → ehrlich ungeprüfte Antwort (nicht als gesichert verkauft)", async () => {
     const { ask, filter } = await seeded();
-    const { result } = await ask.ask("Wie wechsle ich den verstopften Filter?");
+    // mega53 A1: „Wie wechsle ich den verstopften Filter?" teilte mit dem KO nur „Filter" —
+    // „wechsle"/„wechseln" und „verstopften"/„Verstopfung" trennt die literale Tokenisierung. Seit
+    // der Mindestsubstanz ist das eine Wissenslücke; s. Bericht mega53 A5.
+    const { result } = await ask.ask("Was tun mit dem Filter F3 bei Verstopfung?");
     expect(result.answered).toBe(true);
     expect(result.knowledgeClass).toBe("ungeprueft");
     expect(result.sources).toContain(filter.id);

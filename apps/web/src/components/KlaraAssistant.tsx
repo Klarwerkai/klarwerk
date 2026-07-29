@@ -20,6 +20,7 @@ import {
   resolveKlaraEntries,
   searchKlara,
 } from "../lib/klaraRegistry";
+import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { AiModelInfo } from "./AiModelInfo";
 import { AiUnavailableHint } from "./AiUnavailableHint";
@@ -98,7 +99,7 @@ export function KlaraAssistant(): JSX.Element {
     mutationFn: (body: {
       question: string;
       snippets: { id: string; title: string; body: string }[];
-      locale?: "de" | "en";
+      locale?: ReasonerLocale;
     }) => endpoints.help.explain(body),
   });
 

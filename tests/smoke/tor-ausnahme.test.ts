@@ -32,11 +32,37 @@ import { execFileSync } from "node:child_process";
 import { readFileSync } from "node:fs";
 import { beforeAll, describe, expect, it } from "vitest";
 
-/** Die EINE zugelassene Ausnahme — Datei und vollständiger Titel, exakt wie das Tor sie meldet. */
-const ERLAUBTE_AUSNAHME = {
-  file: "ui-smoke.spec.ts",
-  title: "Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
-} as const;
+/**
+ * Die zugelassenen Ausnahmen — Datei und vollständiger Titel, exakt wie das Tor sie meldet.
+ *
+ * AUFTRAG-mega52 — DIE ZWEITE AUSNAHME, UND WARUM SIE KEINE AUFWEICHUNG IST.
+ *
+ * Bis mega51 stand hier genau ein Eintrag, und die Zusicherung unten lautete „GENAU EINEN". Dieser
+ * Wächter hat in mega52 exakt das getan, wofür mega25 ihn gebaut hat: er ist rot geworden, als ein
+ * zweiter Fall die Marke bekam, statt ihn still mitauszuschließen. Die Erweiterung ist deshalb eine
+ * SICHTBARE Entscheidung, keine Umgehung — und sie steht hier mit ihrem Grund.
+ *
+ * DER GRUND. Der Fragen-Fall belegte bis mega52 nichts: in der Playwright-Spur des Tor-Laufs gibt es
+ * keinen einzigen `/api/ask`-Aufruf. Er war grün, weil `getByText("Aus validiertem Wissen")` per
+ * Vorgabe teilzeichenketten- und schreibweisen-unabhängig matcht und sich damit im STATISCHEN
+ * Einleitungstext der Seite selbst traf. Einlösen konnte er sein Versprechen im Tor auch im Prinzip
+ * nicht: ohne Modell ist der Fragen-Knopf HART gesperrt (D-AISTATE PAKET 1) — dieselbe Lage, die den
+ * Erfassungs-Kernfluss schon seit mega25 zu einem @modell-Fall macht. Es ist also nicht eine zweite
+ * Ausnahme HINZUGEKOMMEN; es war immer schon dieselbe Lage, nur unbemerkt.
+ *
+ * Was im Tor nachweisbar ist, prüft der Fall „Fragen ohne Modell: der Weg ist gesperrt und sagt
+ * warum" — er läuft im Tor mit und ist keine Ausnahme.
+ */
+const ERLAUBTE_AUSNAHMEN = [
+  {
+    file: "ui-smoke.spec.ts",
+    title: "Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+  },
+  {
+    file: "ui-smoke.spec.ts",
+    title: "Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
+  },
+] as const;
 
 /** Das npm-Skript, dessen Aufrufzeile das Tor in `tools/check` fährt. */
 const GATE_SCRIPT = "smoke:ui:gate";
@@ -116,7 +142,7 @@ function list(args: readonly string[], env: Record<string, string>): Fall[] {
 
 /** Ein Fall ist durch Datei + Titel eindeutig; das Projekt (die Engine) ist hier nicht die Frage. */
 const schluessel = (f: Fall) => `${f.file} › ${f.title}`;
-const ERWARTET = `${ERLAUBTE_AUSNAHME.file} › ${ERLAUBTE_AUSNAHME.title}`;
+const ERWARTET = ERLAUBTE_AUSNAHMEN.map((a) => `${a.file} › ${a.title}`).sort();
 
 describe("Tor-Ausnahme (AUFTRAG-mega25 Block B)", () => {
   let alle: Fall[] = [];
@@ -164,25 +190,34 @@ describe("Tor-Ausnahme (AUFTRAG-mega25 Block B)", () => {
       .filter((f) => !imTor.has(schluessel(f)));
   });
 
-  it('nimmt GENAU EINEN Test aus — nicht „alle mit dieser Marke"', () => {
-    // DIE Bedingung dieser Runde: ein zweiter @modell-Test macht das Tor ROT, statt still
-    // mitausgeschlossen zu werden. Diese Zusicherung ist die Stelle, an der er rot wird.
+  it('nimmt GENAU die benannten Tests aus — nicht „alle mit dieser Marke"', () => {
+    // DIE Bedingung: ein WEITERER @modell-Test macht das Tor ROT, statt still mitausgeschlossen zu
+    // werden. Diese Zusicherung ist die Stelle, an der er rot wird — in mega52 ist genau das
+    // passiert, und die Liste oben ist daraufhin BEGRÜNDET gewachsen, nicht stillschweigend.
     expect(
       ausgenommen.map(schluessel).sort(),
-      "Das Tor darf GENAU EINEN Test auslassen. Weicht diese Liste ab, lügt die Meldung in tools/check.",
-    ).toEqual([ERWARTET]);
+      "Das Tor darf NUR die oben benannten Tests auslassen. Weicht diese Liste ab, lügt die " +
+        "Meldung in tools/check über den Umfang des Laufs.",
+    ).toEqual(ERWARTET);
   });
 
-  it("nimmt genau den benannten Kernfluss aus, mit vollständigem Titel", () => {
-    expect(ausgenommen[0]?.file).toBe(ERLAUBTE_AUSNAHME.file);
-    expect(ausgenommen[0]?.title).toBe(ERLAUBTE_AUSNAHME.title);
+  it("nimmt genau die benannten Fälle aus, mit vollständigem Titel", () => {
+    for (const erlaubt of ERLAUBTE_AUSNAHMEN) {
+      expect(
+        ausgenommen.some((f) => f.file === erlaubt.file && f.title === erlaubt.title),
+        `Ausnahme nicht gefunden: ${erlaubt.file} › ${erlaubt.title}`,
+      ).toBe(true);
+    }
+    expect(ausgenommen).toHaveLength(ERLAUBTE_AUSNAHMEN.length);
   });
 
-  it("kennt suiteweit nur diesen einen @modell-Fall", () => {
+  it("kennt suiteweit nur die benannten @modell-Faelle", () => {
     // Zweite, unabhängige Achse: nicht „was der Filter auslässt", sondern „was die Marke trägt". Ein
     // @modell-Test, den der Filter aus Versehen NICHT ausschlösse, fiele oben durch; einer, der die
     // Marke trägt und irgendwo neu auftaucht, fällt hier durch.
-    const markiert = [...new Set(alle.filter((f) => f.tags.includes("modell")).map(schluessel))];
-    expect(markiert).toEqual([ERWARTET]);
+    const markiert = [
+      ...new Set(alle.filter((f) => f.tags.includes("modell")).map(schluessel)),
+    ].sort();
+    expect(markiert).toEqual(ERWARTET);
   });
 });

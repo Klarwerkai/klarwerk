@@ -66,7 +66,13 @@ export const MODEL_EVAL_SCENARIOS: readonly EvalScenario[] = [
   },
   {
     name: "ungeprüfte Antwort aus offenem KO",
-    question: "Wie gehe ich mit einem verstopften Filter F3 um?",
+    // mega53 A1: die Frage lautete „Wie gehe ich mit einem verstopften Filter F3 um?" und teilte
+    // mit dem KO nur das Wort „Filter" — „verstopften" trifft „Verstopfung" literal nicht, „F3"
+    // fällt als Zweizeichen-Token aus der Tokenisierung. Seit der absoluten Mindestsubstanz ist das
+    // eine Wissenslücke. Die Frage bekommt hier die Substanz, die der Fall braucht, den sie MISST
+    // (Klasse aus einem offenen KO) — der Recall-Verlust selbst ist im Bericht A5 geführt, nicht
+    // hier weggeschrieben.
+    question: "Wann wird der Filter F3 bei Verstopfung gewechselt?",
     expectedClass: "ungeprueft",
     mustCite: [KO.filter],
     mustNotCite: [KO.kantine, KO.ventil],

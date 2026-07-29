@@ -163,9 +163,11 @@ export class AskService {
       : await this.reasoner.answer(question, candidates, locale);
     // SCRUM-490 R2 (A2): Quellenpflicht — ein „Treffer" ohne echte Quelle ist KEIN belegter Treffer.
     // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
+    // mega52 A3: wird der Treffer hier zur ehrlichen Leer-Antwort herabgestuft, fällt auch die
+    // Zuordnung weg — eine tragende Quelle ohne Antwort gibt es nicht.
     const resultCore =
       rawResult.answered && rawResult.sources.length === 0
-        ? { ...rawResult, answered: false, answer: null }
+        ? { ...rawResult, answered: false, answer: null, citedSources: [] }
         : rawResult;
     // WP-RETEST7 R5: Fundstellen-Kennzeichnung — eine Quelle, deren Frage-Treffer AUSSCHLIESSLICH
     // aus den Bild-Fußnoten stammt (kein Term in Titel/Aussage), wird als Caption-Fund markiert;
@@ -181,9 +183,21 @@ export class AskService {
     });
     const result = { ...resultCore, captionSources };
     // FUNKE-FIX P0 (bens ROT-1): opaker Answer-Receipt über (Nutzer + ausgelieferte Quell-KOs) —
-    // die serverseitige Grundlage für ein NICHT fälschbares „Danke". Bindet exakt result.sources,
-    // die dieser actor in diesem Vorgang bekam (leer, wenn keine Quelle → späteres „Danke" scheitert).
-    const receipt = signAnswerReceipt(this.receiptSecret, actor, result.sources, this.now());
+    // die serverseitige Grundlage für ein NICHT fälschbares „Danke".
+    //
+    // AUFTRAG-mega52 A4 — DER BELEG BINDET NUR NOCH DIE TRAGENDEN QUELLEN.
+    //
+    // Vorher band er `result.sources`, also ALLE bis zu acht herangezogenen Kandidaten. Folge, die
+    // bis mega52 niemand benannt hatte: drückt jemand „Hat geholfen", bekommt JEDES bloß angesehene
+    // Objekt ein Vertrauensplus (+2, HELPFUL_TRUST_STEP). Das ist eine stille Verfälschung genau
+    // der Zahl, auf die sich das ganze Produkt beruft — Trust wächst dann durch Nachbarschaft im
+    // Ranking statt durch Bewährung.
+    //
+    // Ist `citedSources` leer (A5: das Modell lieferte keine oder unbrauchbare Marken), ist der
+    // Beleg leer und ein „Danke" scheitert ehrlich mit 403. Das ist gewollt: wer nicht weiß, welche
+    // Quelle getragen hat, darf keiner ein Vertrauensplus zuschreiben. Die Oberfläche bietet den
+    // Knopf dann gar nicht erst an (Ask.tsx) — der 403 ist die serverseitige Rückfallebene.
+    const receipt = signAnswerReceipt(this.receiptSecret, actor, result.citedSources, this.now());
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({

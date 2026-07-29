@@ -22,7 +22,14 @@ describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
       author: "anna",
       bodyHtml: FIGURE("Verschraubung der Grundplatte quartalsweise nachziehen"),
     });
-    const { result } = await services.ask.ask("Wie oft die Verschraubung nachziehen?", "pedi");
+    // mega53 A1: die Frage lautete „Wie oft die Verschraubung nachziehen?". Im UNMARKIERT-Fall
+    // unten teilt sie mit dem KO nur „Verschraubung" — „nachziehen" trifft „nachgezogen" literal
+    // nicht. Seit der absoluten Mindestsubstanz wäre das eine Wissenslücke, und dieser Test misst
+    // die Fundstellen-Kennzeichnung, nicht das Relevanzmaß.
+    const { result } = await services.ask.ask(
+      "Wie oft wird die Verschraubung der Grundplatte nachgezogen?",
+      "pedi",
+    );
     expect(result.answered).toBe(true);
     expect(result.sources).toEqual([ko.id]);
     // Fundstellen-Kennzeichnung: der Treffer kam AUSSCHLIESSLICH über die Bild-Fußnote.
@@ -40,7 +47,14 @@ describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
       author: "anna",
       bodyHtml: FIGURE("Verschraubung im Detail"),
     });
-    const { result } = await services.ask.ask("Wie oft die Verschraubung nachziehen?", "pedi");
+    // mega53 A1: die Frage lautete „Wie oft die Verschraubung nachziehen?". Im UNMARKIERT-Fall
+    // unten teilt sie mit dem KO nur „Verschraubung" — „nachziehen" trifft „nachgezogen" literal
+    // nicht. Seit der absoluten Mindestsubstanz wäre das eine Wissenslücke, und dieser Test misst
+    // die Fundstellen-Kennzeichnung, nicht das Relevanzmaß.
+    const { result } = await services.ask.ask(
+      "Wie oft wird die Verschraubung der Grundplatte nachgezogen?",
+      "pedi",
+    );
     expect(result.sources).toEqual([ko.id]);
     expect(result.captionSources).toEqual([]);
   });

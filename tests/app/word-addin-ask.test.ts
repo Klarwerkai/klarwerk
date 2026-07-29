@@ -87,10 +87,15 @@ describe("WP-KLARA-ASK Teil 1: Frage-Vorbereitung (Auswahl vor Eingabefeld, ehrl
     expect(atLimit.truncated).toBe(false);
   });
 
-  it("askLocale: Server kennt de/en — NL-Oberflaeche fragt auf Deutsch", () => {
+  // AUFTRAG-mega52 D1: DIESER FALL HIELT PEDIS BEFUND FEST, ohne ihn als solchen zu benennen.
+  // Der Server-Vertrag kannte de/en, und die niederlaendische Word-Oberflaeche fragte deshalb auf
+  // Deutsch nach — genau das meldete der Handlauf vom 28.07. als P0. Der Vertrag ist jetzt
+  // dreisprachig; unbekannte Kennungen fallen weiterhin auf den sicheren Default.
+  it("askLocale: der Server kennt de/en/nl — die NL-Oberflaeche fragt auf Niederlaendisch", () => {
     expect(askLocale("de")).toBe("de");
     expect(askLocale("en")).toBe("en");
-    expect(askLocale("nl")).toBe("de");
+    expect(askLocale("nl")).toBe("nl");
+    expect(askLocale("fr")).toBe("de");
   });
 });
 

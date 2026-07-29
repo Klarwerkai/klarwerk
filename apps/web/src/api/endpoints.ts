@@ -1,3 +1,4 @@
+import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
 import { api } from "./client";
@@ -397,7 +398,7 @@ export const endpoints = {
   },
   ask: {
     // FR-I18N-01: aktuelle UI-Sprache mitsenden (Default serverseitig "de").
-    ask: (question: string, locale?: "de" | "en") =>
+    ask: (question: string, locale?: ReasonerLocale) =>
       api.post<AskResponse>("/ask", { question, ...(locale ? { locale } : {}) }),
     // FUNKE-FIX P0 (bens ROT-1): „Danke" trägt den Answer-Receipt aus dem echten Antwortvorgang
     // zurück — ohne gültigen, dieses KO belegenden Receipt antwortet der Server 403.
@@ -416,11 +417,11 @@ export const endpoints = {
     explain: (body: {
       question: string;
       snippets: { id: string; title: string; body: string }[];
-      locale?: "de" | "en";
+      locale?: ReasonerLocale;
     }) => api.post<AnswerResult>("/help/explain", body),
   },
   reasoner: {
-    structure: (text: string, locale: "de" | "en" | undefined, provenance: ReasonerProvenance) =>
+    structure: (text: string, locale: ReasonerLocale | undefined, provenance: ReasonerProvenance) =>
       api.post<StructureResult>("/reasoner", {
         task: "structure",
         text,
@@ -431,7 +432,7 @@ export const endpoints = {
     // oder frei) — der deterministische Fallback ignoriert sie, das Modell berücksichtigt sie.
     assist: (
       text: string,
-      locale: "de" | "en" | undefined,
+      locale: ReasonerLocale | undefined,
       instruction: string | undefined,
       provenance: ReasonerProvenance,
     ) =>
@@ -445,7 +446,7 @@ export const endpoints = {
     // SCRUM-132: reasoner-getriebenes Interview, stateless.
     interview: (
       answers: string[],
-      locale: "de" | "en" | undefined,
+      locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
     ) =>
       api.post<InterviewResult>("/reasoner", {
@@ -459,7 +460,7 @@ export const endpoints = {
     // bei den Text-Tasks mit — vertrauliche Entwürfe erreichen die Cloud nie.
     describeImage: (
       dataUrl: string,
-      locale: "de" | "en" | undefined,
+      locale: ReasonerLocale | undefined,
       provenance: ReasonerProvenance,
       // WP-BILD-1f: optionaler umgebender Dokument-Kontext (Klartext, bereits budgetgekürzt). Reist im
       // selben describe-Request wie das Bild und damit über DIESELBE Vertraulichkeits-/Egress-Stelle.
@@ -475,7 +476,7 @@ export const endpoints = {
     // SCRUM-451: outputLanguage "source" = Ergebnis bleibt in der Sprache des Dokuments.
     extract: (
       text: string,
-      locale: "de" | "en" | undefined,
+      locale: ReasonerLocale | undefined,
       query: string | undefined,
       outputLanguage: "system" | "source" | undefined,
       provenance: ReasonerProvenance,
@@ -490,7 +491,7 @@ export const endpoints = {
       }),
     // SCRUM-426: Public-KI-Anreicherung (Modellwissen) — extern/ungeprüft; nur wenn der
     // Admin-Regler (SCRUM-414) auf „offen" steht (Server prüft, sonst 403).
-    enrich: (query: string, locale?: "de" | "en") =>
+    enrich: (query: string, locale?: ReasonerLocale) =>
       api.post<EnrichResult>("/reasoner/enrich", { query, ...(locale ? { locale } : {}) }),
     status: () => api.get<ReasonerStatus>("/reasoner/status"),
     // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten).
@@ -557,7 +558,7 @@ export const endpoints = {
     status: () => api.get<{ active: boolean; engine: string | null }>("/media/status"),
     // SCRUM-502 R7: die Vertraulichkeit des Mediums mitsenden (Upload = transient-document).
     // Fehlt/ungültig → serverseitig fail-safe vertraulich → kein externer Transkriptions-Egress.
-    analyze: (objectId: string, locale: "de" | "en", confidentiality?: Confidentiality) =>
+    analyze: (objectId: string, locale: ReasonerLocale, confidentiality?: Confidentiality) =>
       api.post<MediaAnalysis>("/media/analyze", {
         objectId,
         locale,
@@ -661,7 +662,7 @@ export const endpoints = {
       select: (body: {
         prompt?: string;
         criteria?: ImportSelectCriteria;
-        locale?: "de" | "en";
+        locale?: ReasonerLocale;
         promptConfidential?: boolean;
       }) => api.post<ImportSelectResponse>("/admin/import/confluence/select", body),
       // WP-IC-4 (Schritt 4): KI-Gruppierung (read-only; ehrlicher deterministischer Fallback).
@@ -669,7 +670,7 @@ export const endpoints = {
       // der Server gruppiert NUR sie (serverseitig gegen den aktuellen Snapshot validiert).
       group: (body: {
         criteria?: ImportSelectCriteria;
-        locale?: "de" | "en";
+        locale?: ReasonerLocale;
         selectedCandidateIds?: string[];
       }) => api.post<ImportGroupResponse>("/admin/import/confluence/group", body),
       // WP-IC-4 (Schritt 5): Übernahme in die BESTEHENDE Review-Queue (Batch, ehrliche Teil-Bilanz).

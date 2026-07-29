@@ -21,6 +21,8 @@ import {
   answerContract,
   answerSourceSummary,
 } from "../lib/askAnswerContract";
+// AUFTRAG-mega39 BLOCK D2: die zweite Liste erscheint nur noch, wenn sie etwas Eigenes trägt.
+import { attributeSources, canThank, citationState } from "../lib/askCitedSources";
 // WP-UX-WOW-1 U2/U3: ehrliche Beispiel-Chips aus dem ECHTEN validierten Bestand (+ Lücken-Frage).
 import { buildAskExampleChips } from "../lib/askExampleChips";
 import { type AskExpectationTone, askExpectation } from "../lib/askExamples";
@@ -32,7 +34,6 @@ import {
   shouldAutoAskFromSearch,
 } from "../lib/askQuestion";
 import { selectAnswer } from "../lib/askResponse";
-// AUFTRAG-mega39 BLOCK D2: die zweite Liste erscheint nur noch, wenn sie etwas Eigenes trägt.
 import { stepsBeyondSources, stepsWorthShowing } from "../lib/askSteps";
 import { answerReviewGuard } from "../lib/askView";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
@@ -135,10 +136,23 @@ export function Ask(): JSX.Element {
   // seiner Herkunft; unbelegt ⇒ nie „verified", dafür ein benannter Hinweis.
   const conflictKnown = conflictKnowledge(conflicts);
   const effective = result ? effectiveAnswer(result, kos.data ?? [], conflictKnown) : null;
-  const answerSources = effective?.sources ?? [];
+  // AUFTRAG-mega52 A3: die Quellenliste bekommt eine Ordnung und ein Kennzeichen — tragende zuerst,
+  // die übrigen als das, was sie sind. Ist die Zuordnung unbekannt (A5), bleibt alles in Ranking-
+  // Reihenfolge und ohne Kennzeichen; der Hinweis darüber sagt dann warum. Eine Quelle, eine Regel
+  // (lib/askCitedSources.ts) — Desktop, Mobil und Export lesen dieselbe.
+  const answerSources = attributeSources(effective?.sources ?? [], result?.citedSources);
+  const attribution = citationState(result?.citedSources);
   const checkCaveat = effective?.caveat ?? null;
   const conflictCaveat = effective?.conflictCaveat ?? null;
-  const reviewGuard = effective ? answerReviewGuard(effective.grade, answerSources) : null;
+  // AUFTRAG-mega53 B6 (beim Bauen des Sammlers gefunden, über ben's vier Stellen hinaus): der
+  // Wächter beschriftete sich aus ALLEN herangezogenen Quellen — `sources.some(validated === false)`.
+  // Eine bloß angesehene offene Quelle ließ ihn damit „stützt sich auf offene Quellen" sagen,
+  // obwohl die TRAGENDE Quelle validiert war. Auch das ist eine Aussage über die Antwort und
+  // gehört deshalb auf die tragende Teilmenge. Bei unbekannter Zuordnung ist sie leer — dann sagt
+  // er die allgemeine, nicht die quellenbezogene Fassung.
+  const reviewGuard = effective
+    ? answerReviewGuard(effective.grade, effective.carryingSources)
+    : null;
   // SCRUM-366 / FR-ASK-02 / PI-K2: Antwortvertrag — quellengebunden, ehrlich (gesichert vs. ungeprüft
   // vs. Wissenslücke), kein generischer Chatbot. Nur noch die Beschriftung der Einstufung.
   const contract = effective ? answerContract(effective.grade) : null;
@@ -639,7 +653,8 @@ export function Ask(): JSX.Element {
               <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
             </Card>
             {result.answered ? (
-              <Card className="print-area mt-3">
+              // AUFTRAG-mega52: stabiler Anker des ERGEBNISBEREICHS fuer die Browser-Sonde.
+              <Card className="print-area mt-3" data-testid="ask-answer">
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {/* SCRUM-250 / AUFTRAG-mega33 A2: Status und Evidenz kommen aus der EINEN
@@ -665,7 +680,27 @@ export function Ask(): JSX.Element {
                     URTEILSWORT steht nur, wenn die Einstufung es trägt. Ob das Wort auch in
                     KO-Detail/Bibliothek/Validierung anders lauten soll, ist eine Produkt-
                     entscheidung und hier bewusst NICHT getroffen — s. Bericht. */}
-                  <ConfidenceBar value={result.trust} showLabel={effective?.grade === "verified"} />
+                  {/* AUFTRAG-mega53 B2 — DIE ZAHL MUSS ZUR ZUORDNUNG PASSEN.
+                    Bis mega53 stand hier IMMER ein Vertrauenswert, gebildet aus dem bestgerankten
+                    Kandidaten. Lieferte das Modell keine Marke, sagte die Quellenliste darunter
+                    korrekt „Zuordnung unbekannt" — und daneben stand trotzdem eine hohe Zahl aus
+                    einer bloß angesehenen Quelle. Der Vertrauenswert ist ein QUELLENBEZOGENER
+                    Wert; ohne bekannte tragende Quelle gibt es ihn nicht. Es steht hier bewusst
+                    auch keine 0: 0 wäre die Behauptung „nichts wert", und behauptet wird gerade
+                    nichts. Der Balken kommt zurück, sobald eine Marke da ist. */}
+                  {attribution === "unattributed" ? (
+                    <span
+                      data-testid="ask-trust-unattributed"
+                      className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted-2"
+                    >
+                      {t("ask.trust.unattributed")}
+                    </span>
+                  ) : (
+                    <ConfidenceBar
+                      value={result.trust}
+                      showLabel={effective?.grade === "verified"}
+                    />
+                  )}
                 </div>
                 {/* SCRUM-430 (VIP): Antwort inkl. Quellen exportieren/teilen — Kopieren, Markdown-Download,
                   Druck/PDF. Beim Drucken über die Body-Klasse isoliert (nur diese Karte). */}
@@ -807,6 +842,23 @@ export function Ask(): JSX.Element {
                     {/* SCRUM-300: ehrliche Kernaussage — die Antwort ist quellengebunden und nur so
                     belastbar wie die genutzte Quelle (Status/Trust/Nutzbarkeit). */}
                     <p className="mt-0.5 text-[12px] text-muted-2">{t("ask.sourcesHint")}</p>
+                    {/* AUFTRAG-mega52 A5 — DIE REISSLEINE, SICHTBAR.
+                      Liefert das Modell keine oder unbrauchbare Fußnotenmarken, wird NICHT geraten
+                      und NICHT stillschweigend auf alle Quellen zurückgefallen. Stattdessen steht
+                      hier, dass die Zuordnung nicht möglich war — und keine Zeile unten trägt ein
+                      Kennzeichen. „Unbekannt" ist eine andere Aussage als „keine". */}
+                    {attribution === "unattributed" ? (
+                      <p
+                        data-testid="ask-attribution-unknown"
+                        className="mt-1.5 rounded-card border border-hairline bg-page px-2.5 py-1.5 text-[12px] leading-relaxed text-muted"
+                      >
+                        {t("ask.attribution.unknown")}
+                      </p>
+                    ) : (
+                      <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                        {t("ask.attribution.known")}
+                      </p>
+                    )}
                     {/* SCRUM-250: Quellen handlungsnah — KO-Titel statt roher ID, Link zum Detail.
                     SCRUM-300: je Quelle die kanonische Nutzbarkeit (gleiche Sprache wie KO-Detail/
                     Library) + Demo-Kontext am Link weitertragen (kein Auto-Use). */}
@@ -820,6 +872,33 @@ export function Ask(): JSX.Element {
                             <ArrowRight size={12} className="shrink-0 text-muted-2" />
                             <span className="text-text">{s.label}</span>
                           </Link>
+                          {/* AUFTRAG-mega52 A3: das Kennzeichen, das die Liste erst zu einer Aussage
+                            macht. Tragende Quellen stehen oben und heißen so; die übrigen heißen,
+                            was sie sind — angesehen, nicht verwendet. Bei unbekannter Zuordnung
+                            trägt KEINE Zeile ein Kennzeichen (der Hinweis oben sagt warum). */}
+                          {attribution === "attributed" ? (
+                            <span
+                              data-testid={
+                                s.carrying ? "ask-source-carrying" : "ask-source-consulted"
+                              }
+                              title={t(
+                                s.carrying
+                                  ? "ask.attribution.carrying.hint"
+                                  : "ask.attribution.consulted.hint",
+                              )}
+                              className={`shrink-0 rounded-pill px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase ${
+                                s.carrying
+                                  ? "bg-trust-pos-bg text-trust-pos-text"
+                                  : "bg-hairline-soft text-muted-2"
+                              }`}
+                            >
+                              {t(
+                                s.carrying
+                                  ? "ask.attribution.carrying.badge"
+                                  : "ask.attribution.consulted.badge",
+                              )}
+                            </span>
+                          ) : null}
                           {s.usability ? (
                             <span
                               title={t(useReadiness(s.usability).hintKey)}
@@ -869,15 +948,22 @@ export function Ask(): JSX.Element {
                           ) : null}
                           {/* FUNKE F2 (nacht24): Danke je Quelle — Ein-Klick, idempotent je
                             Nutzer+Ziel; fließt in die Wirkung des Autors + dezente Glocke. */}
-                          <button
-                            type="button"
-                            disabled={thankedSources.has(s.id) || thankSource.isPending}
-                            onClick={() => thankSource.mutate(s.id)}
-                            className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
-                          >
-                            <ThumbsUp size={11} />
-                            {thankedSources.has(s.id) ? t("ask.thanked") : t("ask.helpful")}
-                          </button>
+                          {/* AUFTRAG-mega52 A4: gedankt wird nur, was die Antwort GETRAGEN hat.
+                            Der Answer-Receipt bindet serverseitig genau diese Quellen — ein Danke
+                            auf eine bloß angesehene Quelle endete dort mit 403. Statt den Nutzer
+                            hineinlaufen zu lassen, gibt es den Knopf hier gar nicht. Das ist keine
+                            Kosmetik: bis mega52 bekam JEDES angesehene Objekt ein Vertrauensplus. */}
+                          {canThank(s) ? (
+                            <button
+                              type="button"
+                              disabled={thankedSources.has(s.id) || thankSource.isPending}
+                              onClick={() => thankSource.mutate(s.id)}
+                              className="inline-flex shrink-0 items-center gap-1 rounded-pill border border-hairline px-2 py-0.5 text-[10.5px] font-semibold text-muted hover:text-text disabled:opacity-60"
+                            >
+                              <ThumbsUp size={11} />
+                              {thankedSources.has(s.id) ? t("ask.thanked") : t("ask.helpful")}
+                            </button>
+                          ) : null}
                           {/* Paket 4 (nacht24, C1/C2/E1): je Quelle Status/Trust-Badge, Pulldown-
                             Summary (E2-Baustein) und Auszug im DOKUMENT-Format (SanitizedHtml-
                             Kette) — nur aus bereits geladenen, berechtigten KO-Daten. */}
@@ -895,20 +981,28 @@ export function Ask(): JSX.Element {
                     </ul>
                   </div>
                 ) : null}
+                {/* AUFTRAG-mega52 A4: auch der große Knopf zielt jetzt auf die TRAGENDE Quelle,
+                  nicht mehr blind auf `result.sources[0]` — bei unbekannter Zuordnung gibt es keine,
+                  und er bleibt gesperrt, statt in den serverseitigen 403 zu laufen. */}
                 <Button
                   className="print-hide mt-4"
                   disabled={helpfulDisabled(
                     { pending: helpful.isPending, success: helpful.isSuccess },
-                    result.sources.length === 0,
+                    (result.citedSources ?? []).length === 0,
                   )}
-                  onClick={() => result.sources[0] && helpful.mutate(result.sources[0])}
+                  onClick={() => {
+                    const carrying = (result.citedSources ?? [])[0];
+                    if (carrying) {
+                      helpful.mutate(carrying);
+                    }
+                  }}
                 >
                   <ThumbsUp size={15} />
                   {helpfulLabel({ success: helpful.isSuccess }, t("ask.helpful"), t("ask.thanked"))}
                 </Button>
               </Card>
             ) : (
-              <Card className="mt-3 border-dashed">
+              <Card className="mt-3 border-dashed" data-testid="ask-gap">
                 <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
                   {t("ask.gapBadge")}
                 </span>

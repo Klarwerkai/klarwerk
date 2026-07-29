@@ -2,9 +2,15 @@
 // (nur Klasse + optionaler HTTP-Status — nie Rohmeldung/Secret/Provider-Detail) reist bis zum Runner.
 import type { ModelFailureInfo } from "./model-errors";
 
-// SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Nur DE/EN; Default "de".
-// Steuert Prompting, Interview-Fragen und Step-Labels — NICHT den Quelleninhalt.
-export type ReasonerLocale = "de" | "en";
+// SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Steuert Prompting, Interview-Fragen
+// und Step-Labels — NICHT den Quelleninhalt.
+//
+// AUFTRAG-mega52 D1: „nl" ist jetzt eine EIGENE Reasoner-Sprache. Vorher endete Niederländisch am
+// Rand der Anwendung: `toReasonerLocale` bildete alles Nicht-Englische auf "de" ab, obwohl NL eine
+// vollwertige Oberflächensprache ist. Folge (Pedis P0 vom 28.07.): Englisch UND Niederländisch
+// übersetzten nur die Metadaten, nie den Antwortkörper — das Modell hat die gewählte Sprache
+// schlicht nie erfahren. Default bleibt "de".
+export type ReasonerLocale = "de" | "en" | "nl";
 
 // Minimaler Wissens-Bezug (entkoppelt: reasoner kennt knowledge-object nicht direkt).
 export interface KnowledgeRef {
@@ -39,7 +45,23 @@ export interface AnswerResult {
   answer: string | null;
   knowledgeClass: KnowledgeClass;
   trust: number;
+  // Die HERANGEZOGENEN Quellen — alles, was das Ranking dem Antwortweg vorgelegt hat. Unverändert
+  // in Bedeutung und Befüllung; `ask.sourcesHint` beschreibt genau das seit jeher ehrlich.
   sources: string[];
+  // AUFTRAG-mega52 A2/A3 — DIE TRAGENDEN QUELLEN.
+  //
+  // DER BEFUND: die Antwort wusste nicht, worauf sie steht. Der Modellmodus füllte `sources`
+  // pauschal aus ALLEN bis zu acht Kandidaten; der Prompt nummerierte die Quellen und erlaubte
+  // Verweise, aber die Marken wurden nie zurückgelesen. Der deterministische Rückfall machte es
+  // längst richtig (`sources: [best.id]`, s. provider.ts) — im Modellmodus fehlte diese Ehrlichkeit.
+  //
+  // `citedSources` ist ADDITIV: `sources` bleibt, was es ist. Enthalten sind ausschließlich die
+  // Quellen, deren Fußnotenmarke `[n]` im gelieferten Antworttext WIRKLICH vorkommt.
+  //
+  // A5 — DIE REISSLEINE: liefert das Modell keine oder unbrauchbare Marken, ist die Liste LEER.
+  // Nie geraten, nie stillschweigend auf alle zurückgefallen; die Oberfläche sagt dann, dass die
+  // Zuordnung nicht möglich war. Leer heißt „unbekannt", nicht „keine".
+  citedSources: string[];
   steps: AnswerStep[];
   demo: boolean; // FR-RSN-04: ohne Modell als Demo erkennbar.
 }

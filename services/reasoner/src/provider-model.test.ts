@@ -44,17 +44,36 @@ describe("ModelProvider", () => {
     expect(res.demo).toBe(false);
   });
 
-  it("answer bleibt in den Quellen verankert; Trust/Quellen aus den Daten", async () => {
+  // AUFTRAG-mega53 B1: Klasse und Vertrauenswert stammen aus den Daten der TRAGENDEN Quelle — also
+  // der, die das Modell wirklich markiert hat. Vorher genügte irgendein Modelltext, und die Werte
+  // kamen vom bestgerankten Kandidaten; dieser Test hat damit unbemerkt den Fall gepinnt, in dem
+  // eine unzitierte Quelle die Sicherheit der Antwort bestimmt.
+  it("answer bleibt in den Quellen verankert; Trust/Klasse aus der ZITIERTEN Quelle", async () => {
+    const res = await new ModelProvider(fakeClient("Antwort des Modells [1].")).answer(
+      "Überdruck Ventil",
+      KOS,
+    );
+    expect(res.answered).toBe(true);
+    expect(res.answer).toBe("Antwort des Modells [1].");
+    expect(res.citedSources).toEqual(["ko1"]);
+    expect(res.knowledgeClass).toBe("gesichert");
+    expect(res.trust).toBe(90);
+    expect(res.sources).toContain("ko1");
+    expect(res.demo).toBe(false);
+  });
+
+  // Die Gegenprobe zum selben Vertrag: ohne Marke wird kein quellenbezogener Wert behauptet.
+  it("mega53 B2: ohne Fußnotenmarke keine Klasse „gesichert“ und kein Vertrauenswert", async () => {
     const res = await new ModelProvider(fakeClient("Antwort des Modells.")).answer(
       "Überdruck Ventil",
       KOS,
     );
     expect(res.answered).toBe(true);
-    expect(res.answer).toBe("Antwort des Modells.");
-    expect(res.knowledgeClass).toBe("gesichert");
-    expect(res.trust).toBe(90);
+    expect(res.citedSources).toEqual([]);
+    expect(res.knowledgeClass).toBe("ungeprueft");
+    expect(res.trust).toBe(0);
+    // B3: die herangezogene Quelle bleibt sichtbar — verschwiegen wird nichts.
     expect(res.sources).toContain("ko1");
-    expect(res.demo).toBe(false);
   });
 
   it("FR-RSN-03: ohne passende Quelle keine Modellanfrage, keine Rateantwort", async () => {
@@ -109,7 +128,11 @@ describe("ModelProvider locale-aware prompts", () => {
     expect(system).toContain("kein allgemeines Weltwissen");
     expect(system).toContain("Dehne keine Quelle");
     expect(system).toContain("Wissensbasis das nicht abdeckt");
-    expect(system).toContain("erfinde keine Zitate");
+    // mega52 A1: der Satz „Du darfst auf die genutzten Quellen verweisen, aber erfinde keine
+    // Zitate." ist zu „Erfinde keine Zitate." geworden — das Verweisen ist keine Erlaubnis mehr,
+    // sondern PFLICHT (Fußnotenmarken). Die Leitplanke selbst ist unverändert scharf.
+    expect(system).toContain("Erfinde keine Zitate");
+    expect(system).toContain("Fußnotenmarke in eckigen Klammern");
   });
 
   it("answer: System-Prompt trägt die Anti-Halluzinations-Leitplanken (EN)", async () => {
@@ -120,7 +143,9 @@ describe("ModelProvider locale-aware prompts", () => {
     expect(system).toContain("general world knowledge");
     expect(system).toContain("stretch a source");
     expect(system).toContain("knowledge base does not cover this");
-    expect(system).toContain("never fabricate quotes");
+    // mega52 A1: s. DE — aus dem Nebensatz ist ein eigener Satz geworden, die Marke ist Pflicht.
+    expect(system).toContain("Never fabricate quotes");
+    expect(system).toContain("footnote marker in square brackets");
   });
 
   // SCRUM-366: nur die begrenzten Quellen landen im User-Prompt (kein Fremdwissen durchgereicht);

@@ -746,11 +746,18 @@ export interface AnswerResult {
   answer: string | null;
   knowledgeClass: KnowledgeClass;
   trust: number;
+  // Die HERANGEZOGENEN Quellen — was das Ranking dem Antwortweg vorgelegt hat.
   sources: string[];
   steps: AnswerStep[];
   demo: boolean;
   // WP-RETEST7 R5: Quellen, deren Treffer NUR über die Bild-Fußnoten kam (Badge „Bildbeschreibung").
   captionSources?: string[];
+  // AUFTRAG-mega52 A3: die Quellen, die die Antwort WIRKLICH getragen haben (Fußnotenmarken des
+  // Modells, zurückgelesen und geprüft). Optional wie `captionSources` — ein älterer Server, der
+  // das Feld nicht sendet, lässt die Oberfläche in denselben ehrlichen Zustand fallen wie eine
+  // Antwort ohne verwertbare Marken (A5): „Zuordnung nicht möglich", nie ein stiller Rückfall auf
+  // alle. `undefined` und `[]` bedeuten hier dasselbe — UNBEKANNT, nicht „keine".
+  citedSources?: string[];
 }
 
 // Realer Backend-Shape von POST /api/ask: Antwort + ggf. erzeugte Wissenslücke + Answer-Receipt.
@@ -1003,7 +1010,8 @@ export interface ReasonerConfigStatus {
   configured: boolean;
   mode: ReasonerConfigMode;
   fallbackAvailable: boolean;
-  supportsLocales: ("de" | "en")[];
+  // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache.
+  supportsLocales: ("de" | "en" | "nl")[];
   tasks: ReasonerTask[];
   // KI-Verwaltung v1 (02.07.2026): Zuordnung + effektiver Modus je Aufgabe.
   taskConfig: { global: string; perTask: Record<string, string> };

@@ -22,6 +22,9 @@
 import type { AnswerResult, Conflict, KnowledgeClass, KnowledgeObject } from "../api/types";
 import { type AnswerGrade, answerGrade, effectiveKnowledgeClass } from "./answerGrade";
 import { type AnswerCheckCaveat, answerCheckCaveat } from "./askAnswerContract";
+// AUFTRAG-mega53 B1: dieselbe eine Auslegung von „unbekannte Zuordnung" wie in der Quellenliste
+// (mega52 A3) — `undefined` (alter Server) und `[]` (Modell ohne Marken) sind DERSELBE Zustand.
+import { citationState } from "./askCitedSources";
 import {
   type AnswerStatus,
   type ConflictAwareSourceRef,
@@ -95,9 +98,14 @@ export interface EffectiveAnswer {
   // AUFTRAG-mega34 A2: der benannte Hinweis auf den unbelegten Konfliktstand — null, sobald der
   // Abruf erfolgreich durch ist.
   conflictCaveat: ConflictCaveat | null;
-  // Die konfliktbewusst aufgelösten Quellen, in Reihenfolge.
+  // Die konfliktbewusst aufgelösten Quellen, in Reihenfolge — VOLLSTÄNDIG, also alle
+  // herangezogenen. Das ist die Transparenzliste (mega53 B3), nicht die Grundlage des Urteils.
   sources: ConflictAwareSourceRef[];
-  // Mindestens eine Quelle ist konfliktbegrenzt.
+  // AUFTRAG-mega53 B1 — DIE TRAGENDE TEILMENGE. Genau die Quellen, deren Marke im Antworttext
+  // stand. Jede Aussage ÜBER DIE ANTWORT oben in diesem Objekt ist aus IHNEN abgeleitet. Leer,
+  // wenn die Zuordnung unbekannt ist; dann wird nichts behauptet, statt zu raten.
+  carryingSources: ConflictAwareSourceRef[];
+  // Mindestens eine TRAGENDE Quelle ist konfliktbegrenzt.
   sourcesConflicted: boolean;
 }
 
@@ -129,8 +137,29 @@ export function effectiveAnswer(
   const sources = answer.answered
     ? conflictAwareSourceRefs(answer.sources, kos, conflicts.items)
     : [];
-  const caveat = answer.answered ? answerCheckCaveat(sources) : null;
-  const sourcesConflicted = sources.some((s) => s.conflictLimited);
+  // ==============================================================================================
+  // AUFTRAG-mega53 BLOCK B1/B2 (Spiegel von services/ask/src/answer-evidence.ts) — DAS URTEIL
+  // RECHNET AUF DEN TRAGENDEN QUELLEN.
+  // ==============================================================================================
+  //
+  // Bis mega53 gingen `caveat`, `sourcesConflicted` und damit `grade` und die angezeigte Klasse aus
+  // `sources` hervor — aus ALLEN herangezogenen. Eine Quelle, die die Antwort nie getragen hat,
+  // konnte die Einstufung damit heben oder senken. Der Server hat denselben Fehler an derselben
+  // Stelle gemacht; der Paritätswächter (tests/app/mega34-word-einstufung.test.ts) hält beide
+  // Kodierungen weiterhin über die volle Wahrheitstafel aneinander.
+  const cited = new Set(answer.citedSources ?? []);
+  const carryingSources =
+    citationState(answer.citedSources) === "attributed"
+      ? sources.filter((s) => cited.has(s.id))
+      : [];
+  // B2: ohne Zuordnung wird KEINE Quelle geraten. Der Vorbehalt schweigt dann NICHT (das wäre
+  // fail-open — „alle Quellen belegt"), sondern benennt genau diesen Zustand.
+  const caveat: AnswerCheckCaveat | null = !answer.answered
+    ? null
+    : carryingSources.length === 0
+      ? { reason: "unattributed", unproven: sources.length, total: sources.length }
+      : answerCheckCaveat(carryingSources);
+  const sourcesConflicted = carryingSources.some((s) => s.conflictLimited);
   const grade = answerGrade({
     answered: answer.answered,
     knowledgeClass: answer.knowledgeClass,
@@ -149,6 +178,7 @@ export function effectiveAnswer(
     // Eine Wissenslücke bekommt gar keine Antwortkarte — dort wäre der Hinweis Lärm.
     conflictCaveat: answer.answered ? conflictCaveat : null,
     sources,
+    carryingSources,
     sourcesConflicted,
   };
 }

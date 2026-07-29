@@ -6,7 +6,7 @@ const de = {
   // SCRUM-488: erste Tranche kontextueller Hilfetexte (Muster-Beweis, quer über die Bereiche).
   "ask.help.sources.title": "Warum nur belegte Antworten?",
   "ask.help.sources.body":
-    "Klarwerk antwortet ausschließlich aus euren freigegebenen Wissensobjekten — nie aus allgemeinem Modellwissen. Fehlt die Grundlage, sagt es das ehrlich, statt zu raten. Prüfe die genannten Quellen, bevor du dich darauf verlässt.",
+    "Klarwerk antwortet ausschließlich aus euren eigenen Wissensobjekten — nie aus allgemeinem Modellwissen. Zu jeder Antwort siehst du, welche Quellen sie getragen haben und in welchem Zustand sie sind. Fehlt die Grundlage, sagt es das ehrlich, statt zu raten. Prüfe die genannten Quellen, bevor du dich darauf verlässt.",
   "lib.help.filters.title": "Filter ändern nur die Sicht",
   "lib.help.filters.body":
     "Reifegrad, Status und Domäne blenden Objekte nur ein oder aus — am Wissen selbst ändern sie nichts. „Validiert“ ist von Kolleg:innen bestätigt, „offen“ noch in Prüfung.",
@@ -221,7 +221,7 @@ const de = {
   "intake.submit": "Wissen ablegen",
   "dcmp.noValue": "Kein Wert vorhanden",
   "dcmp.none": "keine",
-  "dcmp.trustStatus": "Trust {{trust}}; Status {{status}}; benötigte Prüfungen {{needed}}",
+  "dcmp.trustStatus": "Vertrauen {{trust}}; Status {{status}}; benötigte Prüfungen {{needed}}",
   "dcmp.tagsCategory": "Kategorie {{category}}; Wissensart {{type}}; Tags {{tags}}",
   "dcmp.note.koMissing": "Score nicht vorhanden: mindestens ein Wissensobjekt fehlt.",
   "audit.action.ko_created": "Angelegt",
@@ -350,25 +350,25 @@ const de = {
   // SCRUM-290: kompakter Stage-1 Demo-/Pilotpfad (Start → Ask → Library/KO-Detail → Validation).
   "demo.title": "Demo-/Pilotpfad in 3 Schritten",
   "demo.subtitle":
-    "Ein kleiner realer Ablauf: quellengebunden fragen, Quelle/Trust/Status/Version ansehen, ungeprüftes Wissen zur Validierung geben.",
+    "Ein kleiner realer Ablauf: quellengebunden fragen, Quelle/Vertrauen/Status/Version ansehen, ungeprüftes Wissen zur Validierung geben.",
   // SCRUM-301: sichtbare Pilot-Beweiskette (Start verspricht, Library/KO-Detail lösen ein).
   "demo.proof.label": "Beweiskette",
   "demo.proof.find": "Wissen finden",
   "demo.proof.usability": "Nutzbarkeit erkennen",
-  "demo.proof.verify": "Quelle/Trust/Version prüfen",
+  "demo.proof.verify": "Quelle/Vertrauen/Version prüfen",
   // SCRUM-308: Herkunfts-Kennzeichnung für Demo-/Seed-Wissen (nur Kontext, kein Qualitätssignal).
   "demo.badge.label": "Demo-Beispiel",
   "demo.badge.hint":
-    "Beispiel-/Pilotwissen aus dem Demo-Seed. Nur Herkunft — ersetzt nicht Status, Trust, Quelle oder Validierung. Validiert bleibt validiert, offen bleibt offen.",
+    "Beispiel-/Pilotwissen aus dem Demo-Seed. Nur Herkunft — ersetzt nicht Status, Vertrauen, Quelle oder Validierung. Validiert bleibt validiert, offen bleibt offen.",
   "ko.externalUnchecked.label": "Enthält externes, ungeprüftes Wissen",
   "ko.externalUnchecked.hint":
-    "In diesen Artikel wurde Wissen aus einer öffentlichen KI oder Websuche übernommen. Es ist extern und ungeprüft — bitte fachlich prüfen; Status/Trust/Validierung ersetzt es nicht.",
+    "In diesen Artikel wurde Wissen aus einer öffentlichen KI oder Websuche übernommen. Es ist extern und ungeprüft — bitte fachlich prüfen; Status/Vertrauen/Validierung ersetzt es nicht.",
   "demo.ask.label": "1 · Fragen",
   "demo.ask.desc":
-    "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Trust und Status, nicht frei erfunden.",
+    "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Vertrauen und Status, nicht frei erfunden.",
   "demo.library.label": "2 · Wissen ansehen",
   "demo.library.desc":
-    "Im Wissensbestand Quelle, Trust, Status und Reife sehen — ein Objekt öffnen zeigt Belege und Version.",
+    "Im Wissensbestand Quelle, Vertrauen, Status und Reife sehen — ein Objekt öffnen zeigt Belege und Version.",
   "demo.validation.label": "3 · Validieren",
   "demo.validation.desc":
     "Offenes/ungeprüftes Wissen gehört in die Validierung — bewerten, bis es gesichert und nutzbar ist.",
@@ -382,15 +382,15 @@ const de = {
   "demo.banner.tag": "Demo-Pfad",
   "demo.banner.ask.title": "Schritt 1: Quellengebunden fragen",
   "demo.banner.ask.body":
-    "Die Antwort kommt mit Trust und Quelle — nicht frei erfunden. Achte auf Status/Trust und sieh dann die Quelle/das Objekt an.",
+    "Die Antwort kommt mit Vertrauen und Quelle — nicht frei erfunden. Achte auf Status/Vertrauen und sieh dann die Quelle/das Objekt an.",
   "demo.banner.ask.next": "Weiter: Wissen ansehen",
-  "demo.banner.library.title": "Schritt 2: Quelle, Trust, Status, Reife ansehen",
+  "demo.banner.library.title": "Schritt 2: Quelle, Vertrauen, Status, Reife ansehen",
   "demo.banner.library.body":
-    "Hier siehst du je Objekt Quelle, Trust, Status und Reife/Version. Bei offener/ungeprüfter Quelle geht es weiter zur Validierung.",
+    "Hier siehst du je Objekt Quelle, Vertrauen, Status und Reife/Version. Bei offener/ungeprüfter Quelle geht es weiter zur Validierung.",
   "demo.banner.library.next": "Weiter: Validieren",
-  "demo.banner.detail.title": "Wissensobjekt: Status, Trust, Version, Quellen prüfen",
+  "demo.banner.detail.title": "Wissensobjekt: Status, Vertrauen, Version, Quellen prüfen",
   "demo.banner.detail.body":
-    "Hier siehst du, worauf Nutzbarkeit beruht: Status, Trust, Version und Belege. Wenn es nutzbar ist, unten „Wissen nutzen“ — die Frage bleibt quellengebunden, nichts wird automatisch gesichert.",
+    "Hier siehst du, worauf Nutzbarkeit beruht: Status, Vertrauen, Version und Belege. Wenn es nutzbar ist, unten „Wissen nutzen“ — die Frage bleibt quellengebunden, nichts wird automatisch gesichert.",
   "demo.banner.validation.title": "Schritt 3: Offenes Wissen bewerten",
   "demo.banner.validation.body":
     "Hier wird offenes/ungeprüftes Wissen bewertet. Ziel: aus Review-Arbeit gesichertes, nutzbares Wissen machen.",
@@ -398,7 +398,7 @@ const de = {
   // AUFTRAG-mega38 BLOCK I: „Knowledge Object" — das Produkt sagt ueberall sonst „Wissensobjekt".
   "cycle.capture.desc": "Erfahrungswissen als Wissensobjekt sichern.",
   "cycle.validate.label": "Validieren",
-  "cycle.validate.desc": "Im Team prüfen, bis Trust und Status belastbar sind.",
+  "cycle.validate.desc": "Im Team prüfen, bis Vertrauen und Status belastbar sind.",
   "cycle.use.label": "Nutzen",
   "cycle.use.desc": "Quellengebunden in Antworten und Output verwenden.",
   "cycle.maintain.label": "Aktuell halten",
@@ -414,7 +414,7 @@ const de = {
     "Die Fragen-Seite nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
   "kg.secured.label": "Gesichert",
   "kg.secured.body":
-    "Validiertes Wissen ist nutzbar und bleibt über Quellen, Trust und Version nachvollziehbar.",
+    "Validiertes Wissen ist nutzbar und bleibt über Quellen, Vertrauen und Version nachvollziehbar.",
   "kg.review.label": "Zu prüfen",
   "kg.review.body":
     "Offenes oder in Prüfung befindliches Wissen gehört in die Validierung, nicht in die Nutzung.",
@@ -1692,7 +1692,7 @@ const de = {
   "ask.kicker": "Fragen und Antworten",
   "ask.title": "Frag das Werkswissen",
   "ask.intro":
-    "Antworten kommen ausschließlich aus validiertem Wissen — mit Quellen und Vertrauen. Gibt es keine Grundlage, wird die Lücke offen benannt.",
+    "Die Antwort ist quellengebunden: Du siehst, worauf sie steht — und in welchem Zustand jede dieser Quellen ist. Gibt es keine Grundlage, wird die Lücke offen benannt.",
   "ask.placeholder": "z. B. Wann muss Ventil X bei Überdruck geschlossen werden?",
   "ask.emptyHint": "Bitte gib zuerst eine Frage ein.",
   "ask.submit": "Fragen",
@@ -1706,14 +1706,14 @@ const de = {
   "ask.error.retry": "Erneut versuchen",
   // SCRUM-295: Hinweis bei vorbefüllter Startfrage (aus KO-Detail „Wissen nutzen") im Demo-Kontext.
   "ask.demoPrefillHint":
-    "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Trust entscheiden, nichts wird automatisch gesichert.",
+    "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Vertrauen entscheiden, nichts wird automatisch gesichert.",
   "ask.examplesLabel": "Beispiele:",
   // AUFTRAG-mega51 BLOCK H: der Klick startet sofort eine echte Anfrage — das steht vorher da.
   "ask.examplesSendHint": "Ein Klick fragt sofort — das ist eine echte Anfrage an die KI.",
   "ask.example.valve": "Was tun, wenn Ventil X bei Überdruck schließen muss?",
   "ask.example.filter": "Wie oft muss Filter F3 geprüft werden?",
   "ask.example.dosing": "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
-  "ask.expect.answer": "findet validiertes Wissen",
+  "ask.expect.answer": "findet passendes Wissen",
   "ask.expect.gap": "zeigt Wissenslücke",
   "ask.reasoner.model": "Modellmodus",
   "ask.reasoner.deterministic": "Deterministischer Modus",
@@ -1721,7 +1721,7 @@ const de = {
   "ask.reasoner.unknown": "Modus unbekannt",
   "ask.reasoner.hint":
     "Zeigt, ob Antworten über ein konfiguriertes Modell oder den regelbasierten Fallback laufen. Quellen und Validierung bleiben gleich.",
-  "ask.fromValidated": "Aus validiertem Wissen",
+  "ask.fromValidated": "Aus quellengebundenem Wissen",
   "ask.evidence": "Evidenz",
   "ask.knowledgeClass.gesichert": "Gesichert",
   "ask.knowledgeClass.ungeprueft": "Ungeprüft",
@@ -1749,11 +1749,23 @@ const de = {
   "ask.export.copied": "Antwort inkl. Quellen kopiert.",
   "ask.export.answer": "Antwort",
   "ask.export.footer":
-    "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Trust). Kein Wahrheitsversprechen.",
+    "Quellengebundene Antwort aus KLARWERK · erstellt am {{date}}. Nur so belastbar wie die genutzten Quellen (Status/Vertrauen). Kein Wahrheitsversprechen.",
   "ask.sourcesHint":
-    "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Trust, Nutzbarkeit). Aufgeführt sind alle Quellen, die für die Frage herangezogen wurden; ob jede einzelne zur Antwort beigetragen hat, sagt die Liste nicht — und der Antworttext muss es nicht kenntlich machen. Zum Wissensobjekt für Details.",
+    "Diese Antwort ist quellengebunden — sie ist nur so belastbar wie die genutzte Quelle (Status, Vertrauen, Nutzbarkeit). Aufgeführt sind alle Quellen, die für die Frage herangezogen wurden; welche davon die Antwort getragen haben, ist gekennzeichnet. Zum Wissensobjekt für Details.",
+  // AUFTRAG-mega52 A3/A5 — die Antwort sagt, worauf sie steht. Die Marken des Modells werden
+  // zurückgelesen; ohne verwertbare Marke wird NICHT geraten, sondern gesagt, dass es unbekannt ist.
+  "ask.attribution.known":
+    "Die zuerst genannten Quellen haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet.",
+  "ask.attribution.unknown":
+    "Welche dieser Quellen die Antwort getragen hat, ließ sich nicht zuordnen — die KI hat keine verwertbaren Quellenverweise geliefert. Die Liste zeigt deshalb alle herangezogenen Quellen ohne Kennzeichen, und ein „Hat geholfen“ ist hier nicht möglich.",
+  "ask.attribution.carrying.badge": "trägt",
+  "ask.attribution.carrying.hint":
+    "Diese Quelle trägt die Antwort: Die KI hat sich im Antworttext ausdrücklich auf sie berufen.",
+  "ask.attribution.consulted.badge": "angesehen",
+  "ask.attribution.consulted.hint":
+    "Herangezogen, aber nicht verwendet: Diese Quelle stand der KI zur Verfügung, kommt im Antworttext aber nicht vor.",
   // Paket 4 (nacht24): Quellen wie im Dokument — Status/Trust je Quelle + Auszug im Original-Format.
-  "answerSource.trust": "Trust {{n}}",
+  "answerSource.trust": "Vertrauen {{n}}",
   "answerSource.excerptShow": "Auszug im Dokument-Format anzeigen",
   "answerSource.excerptHide": "Auszug ausblenden",
   "ask.helpful": "Hat geholfen",
@@ -1771,12 +1783,15 @@ const de = {
   "ask.gapNext":
     "Nächster Schritt: Lücke im Risiko-Board priorisieren oder einem Experten zuweisen.",
   "ask.noBasisTitle": "Keine belastbare Grundlage.",
+  // mega53 C1: der Satz behauptete „Es gibt kein validiertes Wissen zu dieser Frage" — bei den
+  // neuen Lücken aus Block A ist das falsch, das Wissen liegt oft daneben. Er sagt jetzt, was
+  // wirklich gilt, und nennt beide möglichen Ursachen.
   "ask.noBasisBody":
-    "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt.",
+    "Keine Quelle passt sicher genug zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke angelegt. Möglich ist beides: Das Wissen fehlt noch — oder es steht unter anderen Begriffen in der Basis.",
   // SCRUM-369 / AG-12/13/P2-4: Ask-Lücke als geführter „Wissenslücke retten"-Einstieg (kein Chatbot-Ende).
   "ask.gap.rescueTitle": "Wissenslücke retten",
   "ask.gap.rescueImpact":
-    "Dieses Erfahrungswissen fehlt noch. Du kannst helfen, es zu sichern — für alle, die die Frage künftig stellen.",
+    "Vielleicht fehlt dieses Erfahrungswissen noch, vielleicht ist es nur nicht auffindbar. Du kannst helfen, es zu sichern — für alle, die die Frage künftig stellen.",
   "ask.gap.noInvent":
     "Es wurde keine Antwort erfunden: Ohne belastbare Quelle bleibt die Frage ehrlich offen.",
   "ask.gap.rescueCta": "Wissen erfassen & retten",
@@ -1800,13 +1815,28 @@ const de = {
     "Die Antwort stützt sich auf vorhandenes, aber noch nicht gesichertes Wissen. Sie ist als ungeprüft gekennzeichnet, keine Chatbot-Vermutung.",
   "ask.contract.unverified.next":
     "Sicherer nächster Schritt: zur Prüfung geben bzw. in der Validierung prüfen lassen.",
+  // ==============================================================================================
+  // AUFTRAG-mega53 BLOCK C1 — DIE LÜCKE WIRD HÄUFIGER, ALSO MUSS SIE STIMMEN.
+  // ==============================================================================================
+  //
+  // Block A lässt mehr Fragen ehrlich mit einer Lücke enden (gemessen: 3 von 10 der mega52-Fragen).
+  // Damit trägt der bisherige Text nicht mehr: er sagte „Es gibt noch keine belastbare Grundlage in
+  // der Wissensbasis" — und genau das ist bei den NEUEN Lücken nachweislich falsch. Bei „Wie oft
+  // muss der Filter F3 geprüft werden?" LIEGT das richtige, validierte Wissensobjekt im Bestand;
+  // die Frage trifft es nur literal nicht stark genug („geprüft" ≠ „prüfen", „F3" fällt als
+  // Zweizeichen-Token aus der Tokenisierung).
+  //
+  // Einer Testerin zu sagen, ihr Wissen fehle, obwohl es danebenliegt, ist dieselbe Art von
+  // Unehrlichkeit, die diese Runde an zwei anderen Stellen beseitigt. Der Text nennt deshalb jetzt
+  // BEIDE Ursachen und den einen nächsten Schritt, der nichts kostet: die Frage mit den Wörtern
+  // stellen, die im Wissen selbst stehen. Kein neuer Weg, keine neue Route — nur ehrlichere Sätze.
   "ask.contract.gap.title": "Wissenslücke, keine Chatbot-Antwort",
   "ask.contract.gap.body":
-    "Es gibt noch keine belastbare Grundlage in der Wissensbasis. Das ist eine Lücke, die ihr schließen könnt — kein Fehler.",
+    "Keine Quelle passt sicher genug zu dieser Frage, um eine Antwort zu tragen. Das heißt nicht zwingend, dass das Wissen fehlt — vielleicht steht es nur unter anderen Wörtern in der Basis. Beides ist eine Lücke, die ihr schließen könnt, kein Fehler.",
   "ask.contract.gap.next":
-    "Nächster Schritt: Wissen erfassen oder die Lücke im Risiko-Board priorisieren.",
+    "Nächster Schritt: die Frage noch einmal mit den Fachwörtern aus eurem Betrieb stellen — sonst Wissen erfassen oder die Lücke im Risiko-Board priorisieren.",
   "ask.contract.trustNote":
-    "Trust und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
+    "Vertrauen und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
   // AUFTRAG-mega38 BLOCK F: „8 Quellen" las sich als „acht Quellen tragen diese Antwort".
   // Gedeckt ist nur „acht wurden herangezogen" — s. den Kommentar bei `ask.sources`.
   "ask.contract.sumTotal_one": "{{count}} Quelle herangezogen",
@@ -1830,6 +1860,13 @@ const de = {
     "Bei {{unproven}} von {{total}} herangezogenen Quellen ist gar kein Prüf-Lauf vermerkt. Nach Widersprüchen wurde dort nie gesucht.",
   "ask.checkCaveat.unknown":
     "{{unproven}} von {{total}} herangezogenen Quellen sind im Bestand nicht auffindbar. Über ihre Prüfung lässt sich nichts sagen.",
+  // AUFTRAG-mega53 B2: der fünfte Grund. Er spricht nicht über einen lückenhaften Prüf-Lauf,
+  // sondern darüber, dass gar nicht bekannt ist, WELCHE Quelle diese Antwort trägt. Bewusst ohne
+  // Schuldzuweisung an das Modell und ohne Technik-Jargon — und ohne die Antwort zu entwerten:
+  // sie ist quellengebunden, nur die Zuordnung fehlt.
+  "ask.checkCaveat.unattributed":
+    "Diese Antwort nennt keine ihrer {{total}} herangezogenen Quellen als Beleg. Welche davon sie wirklich trägt, ist damit unbekannt — Prüfstand und Vertrauenswert lassen sich keiner Quelle zuordnen.",
+  "ask.trust.unattributed": "Vertrauenswert nicht zuordenbar",
   // AUFTRAG-mega34 A2: der Hinweis auf den UNBEKANNTEN Konfliktstand. Er spricht nicht über
   // gefundene Konflikte und nicht über lückenhafte Prüf-Läufe, sondern darüber, dass diese Seite
   // die Konfliktliste gerade gar nicht kennt. Bewusst ohne Schuldzuweisung und ohne Technik-Jargon.
@@ -1850,27 +1887,27 @@ const de = {
   // SCRUM-293: GETEILTE Use-Readiness-Sprache (KO-Detail + Library identisch) — ehrlich, ohne
   // Fake-Freigabe: „nutzbar" nur, WEIL validiert (Status/Trust tragen).
   "use.ready.label": "Nutzbar",
-  "use.ready.hint": "Validiert — quellengebunden nutzbar (Status/Trust tragen).",
+  "use.ready.hint": "Validiert — quellengebunden nutzbar (Status/Vertrauen tragen).",
   "use.review.label": "In Prüfung",
   "use.review.hint": "Bewertung läuft — noch nicht als gesichert nutzen.",
   "use.open.label": "Zu prüfen",
   "use.open.hint": "Offen/ungeprüft — erst prüfen/bewerten lassen.",
-  "ko.ovTrust": "Trust",
+  "ko.ovTrust": "Vertrauen",
   // AUFTRAG-mega34 F: „1 Quellen · 1 Anhänge" stand in der Übersichtszeile jedes KO mit genau
   // einer Quelle — also im Regelfall. Variable von {{n}} auf {{count}}, sonst pluralisiert nichts.
   "ko.ovSources_one": "{{count}} Quelle",
   "ko.ovSources_other": "{{count}} Quellen",
   "ko.ovAttachments_one": "{{count}} Anhang",
   "ko.ovAttachments_other": "{{count}} Anhänge",
-  "trust.explain.title": "Was bedeutet Trust?",
+  "trust.explain.title": "Was bedeutet Vertrauen?",
   "trust.explain.meta":
-    "Trust ist ein Review-/Evidenzsignal aus Peer-Bewertungen (0–99) — kein Versprechen, dass die Aussage wahr ist.",
+    "Vertrauen ist ein Review-/Evidenzsignal aus Peer-Bewertungen (0–99) — kein Versprechen, dass die Aussage wahr ist.",
   "trust.explain.band.high":
-    "Hoher Trust: mehrfach positiv geprüft. Trotzdem mit eigenem Urteil nutzen.",
+    "Hohes Vertrauen: mehrfach positiv geprüft. Trotzdem mit eigenem Urteil nutzen.",
   "trust.explain.band.mid":
-    "Mittlerer Trust: erst teils geprüft oder mit Vorbehalten (Gelb). Vor kritischer Nutzung gegenprüfen.",
+    "Mittleres Vertrauen: erst teils geprüft oder mit Vorbehalten (Gelb). Vor kritischer Nutzung gegenprüfen.",
   "trust.explain.band.low":
-    "Niedriger Trust: kaum geprüft oder rote Bewertung/Konflikt. Erst prüfen oder nacharbeiten.",
+    "Niedriges Vertrauen: kaum geprüft oder rote Bewertung/Konflikt. Erst prüfen oder nacharbeiten.",
   "trust.explain.review":
     "Gelb, Rot oder ein offener Konflikt heißt: prüfen oder nacharbeiten, bevor du dich darauf verlässt.",
   "ko.nextLabel": "Nächste Handlung:",
@@ -2187,7 +2224,7 @@ const de = {
     "Dein Feedback hilft dem Autor, die nächste Version gezielt nachzuarbeiten.",
   "val.empty": "Keine offenen Objekte.",
   "val.target": "Ziel: {{n}}× grün",
-  "val.trust": "Trust",
+  "val.trust": "Vertrauen",
   "val.votes": "{{have}} von {{need}} grün",
   "val.votesTitle": "Validierungs-Fortschritt",
   "val.votesHint":
@@ -2263,12 +2300,12 @@ const de = {
     "Autor wurde übertragen — schau besonders genau auf Aussage und Belege.",
   // SCRUM-365 / PI-K2 / AG-P2-3: Trust ist ein Signal, keine Wahrheit — erst das Quorum sichert.
   "val.guide.trustNote":
-    "Trust ist ein Review-Signal, keine Wahrheitsgarantie. Erst genug Freigaben — die vereinbarte Mindestzahl von Prüfern — machen Wissen gesichert.",
+    "Vertrauen ist ein Review-Signal, keine Wahrheitsgarantie. Erst genug Freigaben — die vereinbarte Mindestzahl von Prüfern — machen Wissen gesichert.",
   // SCRUM-365: Entscheidungswirkung VOR dem Klick — ehrlich, keine Auto-Freigabe.
   "val.guide.impactTitle": "Was bewirkt die Entscheidung?",
   "val.impact.up.title": "Freigeben",
   "val.impact.up.body":
-    "Zählt als eine Freigabe-Stimme. Wissen wird nur nutzbar, wenn Status, die Zahl der Freigaben und Trust es tragen — nichts wird automatisch freigegeben.",
+    "Zählt als eine Freigabe-Stimme. Wissen wird nur nutzbar, wenn Status, die Zahl der Freigaben und Vertrauen es tragen — nichts wird automatisch freigegeben.",
   "val.impact.warn.title": "Rückfrage",
   "val.impact.warn.body":
     "Braucht eine kurze Begründung. Bleibt Review-Arbeit und hilft dem Autor, gezielt nachzuarbeiten.",
@@ -2278,7 +2315,7 @@ const de = {
   "val.decisionSaved": "Bewertung erfasst.",
   // SCRUM-292: ehrliche Folge-Aussage je Verdict — keine automatische/Fake-Validierung.
   "val.outcome.up":
-    "Positiv bewertet. Wenn Status und Trust es tragen, kann es als nächster Schritt quellengebunden genutzt oder geprüft werden — automatisch validiert wird dadurch nichts.",
+    "Positiv bewertet. Wenn Status und Vertrauen es tragen, kann es als nächster Schritt quellengebunden genutzt oder geprüft werden — automatisch validiert wird dadurch nichts.",
   "val.outcome.warn":
     "Rückfrage dokumentiert. Bleibt Review-Arbeit, bis die offenen Punkte geklärt sind.",
   "val.outcome.down": "Ablehnung dokumentiert. Bleibt Review-/Feedback-Arbeit.",
@@ -2362,7 +2399,7 @@ const de = {
   "con.compareTitle": "Gegenüberstellung",
   "con.koMissing": "Beitrag wurde entfernt.",
   "con.resolveEffect":
-    "Die Entscheidung wird dokumentiert und protokolliert. Trust/Status der Objekte werden NICHT automatisch geändert (kein stilles Überschreiben).",
+    "Die Entscheidung wird dokumentiert und protokolliert. Vertrauen/Status der Objekte werden NICHT automatisch geändert (kein stilles Überschreiben).",
   "con.resolveRevalidate": "Betroffene Objekte ggf. manuell re-validieren.",
   "con.secondOpinion": "Zweitmeinung",
   "con.secondOpinionAdd": "Zweitmeinung",
@@ -2434,7 +2471,7 @@ const de = {
   "lib.facet.status": "Status",
   "lib.facet.author": "Autor",
   "lib.facet.age": "Alter",
-  "lib.facet.trust": "Trust",
+  "lib.facet.trust": "Vertrauen",
   "lib.facet.maturity": "Reife",
   // AUFTRAG-mega45 Block H (SCRUM-425): Facetten-Schiene der Validierung.
   "val.facet.pruefstand": "Prüfstand",
@@ -2458,10 +2495,10 @@ const de = {
   "lib.facet.ageBucket.y1": "≤ 1 Jahr",
   "lib.facet.ageBucket.older": "älter als 1 Jahr",
   "lib.facet.ageBucket.unknown": "Alter unbekannt",
-  "lib.facet.trustBucket.t0": "Trust 0",
-  "lib.facet.trustBucket.t1": "Trust 1–39",
-  "lib.facet.trustBucket.t40": "Trust 40–69",
-  "lib.facet.trustBucket.t70": "Trust 70+",
+  "lib.facet.trustBucket.t0": "Vertrauen 0",
+  "lib.facet.trustBucket.t1": "Vertrauen 1–39",
+  "lib.facet.trustBucket.t40": "Vertrauen 40–69",
+  "lib.facet.trustBucket.t70": "Vertrauen 70+",
   "lib.facet.more": "+{{n}} weitere",
   "lib.facet.none": "ohne Wert",
   // AUFTRAG-mega10 Block B: aus der Pillenwand wird eine Suchmaske (Schiene, Suche je
@@ -2500,7 +2537,7 @@ const de = {
   "lib.sort.label": "Sortieren",
   "lib.sort.relevance": "Relevanz",
   "lib.sort.title": "Titel A→Z",
-  "lib.sort.trust": "Trust (hoch→niedrig)",
+  "lib.sort.trust": "Vertrauen (hoch→niedrig)",
   "lib.sort.recent": "Zuletzt geändert (neu→alt)",
   "lib.groupBy.label": "Untergruppen",
   "lib.groupBy.none": "keine",
@@ -2797,9 +2834,6 @@ const de = {
   "ask.confidentialPrefillHint":
     "Vertraulicher Inhalt — prüfe die Frage vor dem Senden. Sie wurde nur vorbefüllt und nicht automatisch gesendet.",
   "ask.expect.neutral": "Beispiel ausprobieren",
-  "lib.trustNone": "Noch keine Nutzungs-Bewertungen",
-  "lib.trustNoneHint":
-    "Trust wächst durch Nutzung und Bewertungen. 0 heißt nur: noch keine Rückmeldungen — nicht, dass der Inhalt schlecht ist.",
   // AUFTRAG-mega51 BLOCK D2: der Sonderfall der Trefferzeile liest jetzt denselben Wert, den er
   // anzeigt (confidence) — deshalb spricht sein Text von der Sicherheit, nicht von Trust.
   "lib.confidenceNone": "Sicherheit noch nicht bewertet",
@@ -3194,7 +3228,7 @@ const de = {
   "klara.page.capture":
     "Hier sicherst du Erfahrungswissen: erzählen, diktieren, im Interview oder aus einer Datei. Die KI strukturiert nur — du prüfst und reichst ein.",
   "klara.page.ask":
-    "Stell eine Frage. Die Antwort kommt ausschließlich aus validiertem Wissen mit Quellen — gibt es keins, entsteht eine ehrliche Wissenslücke.",
+    "Stell eine Frage. Die Antwort ist quellengebunden und zeigt dir, worauf sie steht und in welchem Zustand diese Quellen sind — gibt es keine Grundlage, entsteht eine ehrliche Wissenslücke.",
   "klara.page.library":
     "Alle Wissensobjekte mit Status, Vertrauen und Filtern. Von hier geht es in jedes Detail.",
   "klara.page.external":
@@ -3232,7 +3266,7 @@ const de = {
   "shelp.ask.steps":
     "Hier stehen die Wissensobjekte, die für deine Frage aus dem Bestand herangezogen wurden — mit einem Auszug aus dem Fundstück. Es ist KEINE Herleitung: KLARWERK protokolliert nicht, welcher Satz der Antwort aus welcher Quelle stammt. Die Liste sagt dir, worauf gesucht wurde; nachprüfen kannst du, indem du die genannte Quelle öffnest.",
   "shelp.ask.sources":
-    "Jede Antwort in KLARWERK stützt sich ausschließlich auf geprüfte Wissensobjekte — und genau die stehen hier. Tippe eine Quelle an, um das vollständige Objekt mit Belegen und Prüfstand zu öffnen. Steht hier nichts, gibt es zu deiner Frage kein gesichertes Wissen, und KLARWERK sagt das ehrlich, statt etwas zu erfinden.",
+    "Jede Antwort in KLARWERK stützt sich ausschließlich auf eure eigenen Wissensobjekte — und genau die stehen hier. Die zuerst genannten haben die Antwort getragen; die übrigen wurden herangezogen, aber nicht verwendet. Tippe eine Quelle an, um das vollständige Objekt mit Belegen und Prüfstand zu öffnen. Steht hier nichts, gibt es zu deiner Frage kein passendes Wissen, und KLARWERK sagt das ehrlich, statt etwas zu erfinden.",
   "shelp.capture.resumeTitle":
     "Hier liegen deine gespeicherten Entwürfe — alles, was du angefangen, aber noch nicht eingereicht hast. Nichts davon ist verloren, und nichts davon sehen die Prüfer, solange du es nicht einreichst. Tippe einen Entwurf an, um weiterzuarbeiten, oder verwirf ihn, wenn er sich erledigt hat.",
   "shelp.ext.title":
@@ -3350,8 +3384,8 @@ const de = {
   "pilot.obs.unverified.map": "Validierung — bewerten, bis es gesichert ist.",
   "pilot.obs.outdated.label": "Wissen wirkt veraltet oder nicht mehr gültig.",
   "pilot.obs.outdated.map": "Lebenszyklus — Revalidierung, „Aktuell halten“.",
-  "pilot.obs.source.label": "Quelle, Trust oder Nutzbarkeit ist unklar.",
-  "pilot.obs.source.map": "Bibliothek/KO-Detail — Status, Trust, Version, Quelle prüfen.",
+  "pilot.obs.source.label": "Quelle, Vertrauen oder Nutzbarkeit ist unklar.",
+  "pilot.obs.source.map": "Bibliothek/KO-Detail — Status, Vertrauen, Version, Quelle prüfen.",
   "pilot.obs.uxnote.label": "Reine UX-/Pilotnotiz (Bedienung, Wording, Ablauf).",
   "pilot.obs.uxnote.map":
     "Organisatorisch notieren — wird nicht im Produkt gespeichert, kein Workflow.",
@@ -3388,7 +3422,7 @@ const de = {
     "Bewerte Objekte grün/gelb/rot. Ab der Schwelle gilt ein Objekt als validiert; rote Bewertungen gehen zurück an den Autor.",
   "help.ask.title": "Fragen stellen",
   "help.ask.body":
-    "Antworten stammen nur aus validiertem Wissen, mit Quellen und Vertrauen. Ohne Grundlage entsteht eine Wissenslücke.",
+    "Antworten sind quellengebunden und zeigen, welche Quellen sie getragen haben und in welchem Zustand diese sind. Ohne Grundlage entsteht eine Wissenslücke.",
   "help.conflict.title": "Konflikte",
   "help.conflict.body":
     "Widersprüche werden sichtbar gemacht und geführt aufgelöst. Nur Wahrheitskonflikte eskalieren an einen Menschen.",
@@ -3459,7 +3493,7 @@ const de = {
   "out.previewSummary": "{{kind}} aus {{n}} validierten Bausteinen in dieser Reihenfolge.",
   "out.previewProvenance": "Volle Herkunft je Baustein wird im erzeugten Dokument ausgewiesen.",
   "out.previewUncertain":
-    "{{n}} Baustein(e) mit niedrigem Trust — im Dokument als unsicher markiert.",
+    "{{n}} Baustein(e) mit niedrigem Vertrauen — im Dokument als unsicher markiert.",
   "out.previewDisclaimer":
     "Vorschau der Komposition, nicht das fertige Dokument. Erzeugung erfolgt beim Generieren.",
   "out.previewTitle": "Vorschau (Markdown)",
@@ -3467,7 +3501,7 @@ const de = {
   "out.copied": "Markdown kopiert.",
   "out.download": "Download .md",
   "out.provenanceTitle": "Herkunft & Nachweis",
-  "out.uncertain": "niedriger Trust",
+  "out.uncertain": "niedriges Vertrauen",
   "out.genError": "Output konnte nicht erzeugt werden.",
   "out.kind.instruction": "Arbeitsanweisung",
   "out.kind.checklist": "Checkliste",
@@ -3478,7 +3512,7 @@ const de = {
   "out.kindDesc.checklist": "Abhakbare Punkte für die Praxis.",
   "out.kindDesc.troubleshooting": "Symptom → Ursache → Maßnahme.",
   "out.kindDesc.training": "Lerneinheiten mit Kernaussagen.",
-  "out.kindDesc.management_summary": "Verdichteter Überblick mit Trust.",
+  "out.kindDesc.management_summary": "Verdichteter Überblick mit Vertrauen.",
   "s2.import":
     "Dokumente importieren und prüfen — aktiv, sobald die Import-/Source-Review-API steht.",
   "s2.capital":
@@ -3490,13 +3524,13 @@ const de = {
   "mgmt.kpiOpen": "Offen",
   "mgmt.kpiGaps": "Lücken",
   "mgmt.kpiConflicts": "Konflikte",
-  "mgmt.kpiTrust": "Ø Trust",
+  "mgmt.kpiTrust": "Ø Vertrauen",
   "mgmt.capital": "Knowledge Capital Score",
   "mgmt.band.gut": "gut",
   "mgmt.band.mittel": "mittel",
   "mgmt.band.kritisch": "kritisch",
   "mgmt.part.validatedRatio": "Validierungsquote",
-  "mgmt.part.avgTrust": "Ø Trust",
+  "mgmt.part.avgTrust": "Ø Vertrauen",
   "mgmt.part.coverage": "Abdeckung Domänen",
   "mgmt.part.singleSourceInv": "Quellen-Streuung",
   "mgmt.part.freshnessInv": "Aktualität",
@@ -3506,7 +3540,7 @@ const de = {
   "mgmt.assumeRate": "€ pro Stunde",
   "mgmt.assumeHours": "Std./Objekt gespart",
   "mgmt.assumeReuse": "Wiederverwendung",
-  "mgmt.basis": "Basis: {{n}} validierte Objekte · Ø Trust {{trust}}",
+  "mgmt.basis": "Basis: {{n}} validierte Objekte · Ø Vertrauen {{trust}}",
   "mgmt.statement": "Knowledge Statement",
   "mgmt.assets": "Aktiva",
   "mgmt.risks": "Risiken",
@@ -3682,7 +3716,7 @@ const de = {
     "Zeigt deine persönliche Review-Liste: Objekte, die dir jemand bewusst zugewiesen hat. Nutze sie, um zuerst die Arbeit zu erledigen, auf die Kollegen warten. Die Zuweisung ist eine Bitte, keine Pflichtprüfung — entschieden wird erst, wenn du selbst bewertest.",
   "vhelp.signals.title": "Review-Signale lesen",
   "vhelp.signals.body":
-    "Die Zeile zeigt, wie belastbar das Objekt JETZT ist: Vertrauensbalken und Trust-Wert (aus Prüfstimmen und Bewährung), Version, „Ziel n“ (so viele Freigaben braucht es bis VALIDIERT), dazu Marker wie ÜBERTRAGEN (Autor gewechselt — extra Blick) oder ZUGEWIESEN. Nichts davon ist eine Bewertung durch dich — es ist die ehrliche Ausgangslage für deine Entscheidung.",
+    "Die Zeile zeigt, wie belastbar das Objekt JETZT ist: Vertrauensbalken und Vertrauenswert (aus Prüfstimmen und Bewährung), Version, „Ziel n“ (so viele Freigaben braucht es bis VALIDIERT), dazu Marker wie ÜBERTRAGEN (Autor gewechselt — extra Blick) oder ZUGEWIESEN. Nichts davon ist eine Bewertung durch dich — es ist die ehrliche Ausgangslage für deine Entscheidung.",
   "vhelp.approve.title": "Freigeben",
   "vhelp.approve.body":
     "Du bestätigst nach eigener Prüfung: Diese Aussage ist fachlich richtig und so anwendbar. Nutze das erst, wenn du Kernaussage, Bedingungen und Maßnahmen wirklich beurteilt hast — deine Freigabe zählt als eine von mehreren nötigen Prüfstimmen. Danach steigt das Vertrauen des Objekts; VALIDIERT wird es erst, wenn genug Prüfer freigegeben haben. Nichts wird automatisch veröffentlicht oder verändert — deine Stimme wird gezählt, mehr nicht.",
@@ -3712,7 +3746,7 @@ const de = {
     "Drei Angaben machen die Meldung auflösbar: das GEGEN-Objekt (womit widerspricht sich dieses Wissen?), die KONFLIKTART (z. B. Widerspruch in der Sache oder in der Zuständigkeit) und eine kurze BESCHREIBUNG des Widerspruchs mit deinem Kontext. Nach dem Absenden entsteht ein offener Konfliktfall — beide Objekte bleiben nutzbar markiert, bis der Konflikt bewusst aufgelöst ist.",
   "vhelp.sourcesLevel2.title": "Externe Quellen (Stufe 2)",
   "vhelp.sourcesLevel2.body":
-    "Hier hängen externe Belege am Wissensobjekt: Normen, Handbücher, Artikel, interne Dokumente. Das Badge „Stufe 2“ bedeutet ehrlich: Diese Quelle wurde NICHT von Kollegen peer-geprüft — sie stützt das Wissen, ersetzt aber keine einzige Prüfstimme. Antworten der Fragen-Seite bauen auf validiertem Wissen auf, nicht auf Stufe-2-Quellen allein. Das X entfernt nur die Verknüpfung — Wissen, Status und Vertrauen bleiben unverändert.",
+    "Hier hängen externe Belege am Wissensobjekt: Normen, Handbücher, Artikel, interne Dokumente. Das Badge „Stufe 2“ bedeutet ehrlich: Diese Quelle wurde NICHT von Kollegen peer-geprüft — sie stützt das Wissen, ersetzt aber keine einzige Prüfstimme. Auf der Fragen-Seite zählt eine Stufe-2-Quelle deshalb nicht als Prüfstimme; sie kann eine Antwort stützen, aber nicht absichern. Das X entfernt nur die Verknüpfung — Wissen, Status und Vertrauen bleiben unverändert.",
   "vhelp.sourceFields.title": "Quelle beschreiben",
   "vhelp.sourceFields.body":
     "Drei Angaben machen eine Quelle brauchbar: Die BEZEICHNUNG sagt, was es ist („DIN EN 1090, Abschnitt 7“), die URL führt hin (leer lassen bei Papier- oder internen Quellen), der AUSZUG zitiert die eine entscheidende Stelle wörtlich — so muss niemand das ganze Dokument lesen, um die Aussage zu prüfen. Je konkreter der Auszug, desto mehr hilft die Quelle den Prüfern.",
@@ -3789,7 +3823,7 @@ const de = {
     "Verwirft den aktuellen Entwurf endgültig — Text, Struktur und Anhänge dieser Erfassung. Es betrifft NUR deinen Entwurf: Bereits eingereichte oder gespeicherte Wissensobjekte bleiben unberührt. Vorher fragt die App bewusst nach; wer nur einen Schritt zurück will, nutzt die Schritt-Leiste statt Verwerfen.",
   "chelp.submitReview.title": "Prüfen & einreichen",
   "chelp.submitReview.body":
-    "Macht aus deinem Entwurf ein Wissensobjekt und gibt es in die Peer-Prüfung: Kollegen prüfen, stellen Rückfragen oder geben frei. Ab jetzt ist es für andere sichtbar — aber ehrlich als „in Prüfung“ markiert, NICHT als gesichert. Validiert wird es erst durch genug Freigaben; für Antworten zählt es erst danach.",
+    "Macht aus deinem Entwurf ein Wissensobjekt und gibt es in die Peer-Prüfung: Kollegen prüfen, stellen Rückfragen oder geben frei. Ab jetzt ist es für andere sichtbar — aber ehrlich als „in Prüfung“ markiert, NICHT als gesichert. Validiert wird es durch genug Freigaben. Für Antworten nutzbar ist es schon vorher — dann aber sichtbar als ungeprüft gekennzeichnet.",
   "chelp.readiness.title": "Speicher-Check",
   "chelp.readiness.body":
     "Zeigt ehrlich, was zum Einreichen noch fehlt: Pflichtfelder (ohne sie bleibt der Knopf aus) und Optionales, das dein Wissen stärkt (z. B. Kategorie oder Anhänge). Grün heißt bereit — nicht perfekt: Verbessern kannst du auch nach dem Einreichen noch, dann als neue Version.",
@@ -4007,7 +4041,7 @@ const de = {
   "dcmp.section.hints": "Hinweise",
   "dcmp.section.sources": "Quellen / Evidence",
   "dcmp.section.tags": "Tags / Kategorie",
-  "dcmp.section.trust": "Trust / Validierungsstatus",
+  "dcmp.section.trust": "Vertrauen / Validierungsstatus",
   // SCRUM-487 (i18n): reason/note-Heuristiktexte als Keys aus der Lib (duplicateCompare.ts).
   "dcmp.note.bothEmpty":
     "Vorläufige Feldheuristik; keine echten Detector-Scores für diesen Abschnitt.",
@@ -4036,7 +4070,7 @@ const en: typeof de = {
   // SCRUM-488: first tranche of contextual help texts (mirror of the DE keys).
   "ask.help.sources.title": "Why only sourced answers?",
   "ask.help.sources.body":
-    "Klarwerk answers only from your released knowledge objects — never from general model knowledge. If the basis is missing, it says so honestly instead of guessing. Check the cited sources before relying on them.",
+    "Klarwerk answers only from your own knowledge objects — never from general model knowledge. For every answer you see which sources carried it and what state they are in. If the basis is missing, it says so honestly instead of guessing. Check the cited sources before relying on them.",
   "lib.help.filters.title": "Filters only change the view",
   "lib.help.filters.body":
     "Maturity, status and domain merely show or hide objects — they change nothing about the knowledge itself. “Validated” is confirmed by colleagues, “open” is still under review.",
@@ -5598,7 +5632,7 @@ const en: typeof de = {
   "ask.kicker": "Questions and answers",
   "ask.title": "Ask the plant's knowledge",
   "ask.intro":
-    "Answers come only from validated knowledge — with sources and trust. If there is no basis, the gap is named openly.",
+    "The answer is source-bound: you see what it rests on — and what state each of those sources is in. If there is no basis, the gap is named openly.",
   "ask.placeholder": "e.g. When must valve X be closed on overpressure?",
   "ask.emptyHint": "Please enter a question first.",
   // AUFTRAG-mega38 BLOCK A: waiting and failure appear WHERE the answer will appear.
@@ -5618,7 +5652,7 @@ const en: typeof de = {
   "ask.example.filter": "How often must Filter F3 be checked?",
   "ask.example.dosing":
     "Why does the Dosierwert on Linie L4 fluctuate after each Schichtwechsel (shift change)?",
-  "ask.expect.answer": "finds validated knowledge",
+  "ask.expect.answer": "finds matching knowledge",
   "ask.expect.gap": "shows a knowledge gap",
   "ask.submit": "Ask",
   "ask.reasoner.model": "Model mode",
@@ -5627,7 +5661,7 @@ const en: typeof de = {
   "ask.reasoner.unknown": "Mode unknown",
   "ask.reasoner.hint":
     "Shows whether answers run via a configured model or the rule-based fallback. Sources and validation stay the same.",
-  "ask.fromValidated": "From validated knowledge",
+  "ask.fromValidated": "From source-bound knowledge",
   "ask.evidence": "Evidence",
   "ask.knowledgeClass.gesichert": "Verified",
   "ask.knowledgeClass.ungeprueft": "Unchecked",
@@ -5647,7 +5681,18 @@ const en: typeof de = {
   "ask.export.footer":
     "Source-bound answer from KLARWERK · generated on {{date}}. Only as reliable as the sources used (status/trust). No promise of truth.",
   "ask.sourcesHint":
-    "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Listed are all sources consulted for the question; whether every one of them contributed to the answer is not something this list states — and the answer text is not required to mark it. Open the knowledge object for details.",
+    "This answer is source-bound — it is only as reliable as the source it uses (status, trust, usability). Listed are all sources consulted for the question; which of them carried the answer is marked. Open the knowledge object for details.",
+  // AUFTRAG-mega52 A3/A5 — the answer says what it rests on. Unusable markers mean "unknown", never a guess.
+  "ask.attribution.known":
+    "The sources listed first carried the answer; the rest were consulted but not used.",
+  "ask.attribution.unknown":
+    "Which of these sources carried the answer could not be determined — the AI returned no usable source references. The list therefore shows all consulted sources without a marker, and “This helped” is not available here.",
+  "ask.attribution.carrying.badge": "carried",
+  "ask.attribution.carrying.hint":
+    "This source carried the answer: the AI referred to it explicitly in the answer text.",
+  "ask.attribution.consulted.badge": "consulted",
+  "ask.attribution.consulted.hint":
+    "Consulted but not used: this source was available to the AI but does not appear in the answer text.",
   // Packet 4 (nacht24): sources like the document — status/trust per source + original-format excerpt.
   "answerSource.trust": "Trust {{n}}",
   "answerSource.excerptShow": "Show excerpt in document format",
@@ -5667,11 +5712,11 @@ const en: typeof de = {
   "ask.gapNext": "Next step: prioritise the gap in the risk board or assign it to an expert.",
   "ask.noBasisTitle": "No reliable basis.",
   "ask.noBasisBody":
-    "There is no validated knowledge for this question. Instead of a made-up answer, a knowledge gap was created.",
+    "No source matches this question closely enough. Instead of a made-up answer, a knowledge gap was created. Both are possible: the knowledge is still missing — or it is recorded under different terms.",
   // SCRUM-369 / AG-12/13/P2-4: the Ask gap as a guided "rescue this knowledge gap" entry (not a chatbot end).
   "ask.gap.rescueTitle": "Rescue this knowledge gap",
   "ask.gap.rescueImpact":
-    "This experience knowledge is still missing. You can help secure it — for everyone who asks this later.",
+    "Perhaps this experience knowledge is still missing, perhaps it just cannot be found. You can help secure it — for everyone who asks this later.",
   "ask.gap.noInvent":
     "No answer was made up: without a reliable source the question honestly stays open.",
   "ask.gap.rescueCta": "Capture & rescue knowledge",
@@ -5697,8 +5742,9 @@ const en: typeof de = {
     "Safe next step: send it for review or have it checked in validation.",
   "ask.contract.gap.title": "Knowledge gap, not a chatbot answer",
   "ask.contract.gap.body":
-    "There is no reliable basis in the knowledge base yet. That's a gap you can close — not an error.",
-  "ask.contract.gap.next": "Next step: capture knowledge or prioritise the gap in the risk board.",
+    "No source matches this question closely enough to carry an answer. That does not necessarily mean the knowledge is missing — it may simply be recorded under different words. Either way it's a gap you can close, not an error.",
+  "ask.contract.gap.next":
+    "Next step: ask again using the terms your team actually uses — otherwise capture the knowledge or prioritise the gap in the risk board.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
   "ask.contract.sumTotal_one": "{{count}} source consulted",
@@ -5716,6 +5762,10 @@ const en: typeof de = {
     "For {{unproven}} of {{total}} sources used, no check run is recorded at all. Contradictions were never searched for there.",
   "ask.checkCaveat.unknown":
     "{{unproven}} of {{total}} sources used cannot be found in the corpus. Nothing can be said about their checking.",
+  // AUFTRAG-mega53 B2: the fifth reason — no source could be attributed to this answer at all.
+  "ask.checkCaveat.unattributed":
+    "This answer cites none of the {{total}} sources it drew on. Which of them actually supports it is therefore unknown — neither the checking state nor a trust value can be attributed to any source.",
+  "ask.trust.unattributed": "trust value not attributable",
   // AUFTRAG-mega34 A2: the unknown conflict state.
   "ask.conflictCaveat.title": "The conflict state cannot be retrieved right now.",
   "ask.conflictCaveat.pending":
@@ -6612,9 +6662,6 @@ const en: typeof de = {
   "ask.confidentialPrefillHint":
     "Confidential content — review the question before sending. It was only prefilled, not sent automatically.",
   "ask.expect.neutral": "Try an example",
-  "lib.trustNone": "No usage ratings yet",
-  "lib.trustNoneHint":
-    "Trust grows through usage and ratings. 0 only means: no feedback yet — not that the content is bad.",
   "lib.confidenceNone": "Confidence not rated yet",
   "lib.confidenceNoneHint":
     "Confidence says how well-founded a piece of content is rated (0 to 100). 0 means: not rated yet — not that the content is wrong.",
@@ -6994,7 +7041,7 @@ const en: typeof de = {
   "klara.page.capture":
     "Here you secure experience knowledge: tell it, dictate it, in an interview or from a file. The AI only structures — you review and submit.",
   "klara.page.ask":
-    "Ask a question. The answer comes exclusively from validated knowledge with sources — if there is none, an honest knowledge gap is created.",
+    "Ask a question. The answer is source-bound and shows you what it rests on and what state those sources are in — if there is no basis, an honest knowledge gap is created.",
   "klara.page.library":
     "All knowledge objects with status, trust and filters. Every detail is one click away.",
   "klara.page.external":
@@ -7031,7 +7078,7 @@ const en: typeof de = {
   "shelp.ask.steps":
     "Listed here are the knowledge objects that were consulted from the corpus for your question — with an excerpt from the passage found. It is NOT a derivation: KLARWERK does not record which sentence of the answer came from which source. The list tells you what was searched; to verify, open the named source.",
   "shelp.ask.sources":
-    "Every answer in KLARWERK relies exclusively on reviewed knowledge objects — and exactly those are listed here. Tap a source to open the full object with evidence and review status. If nothing is listed, there is no secured knowledge for your question, and KLARWERK says so honestly instead of inventing something.",
+    "Every answer in KLARWERK relies exclusively on your own knowledge objects — and exactly those are listed here. The ones listed first carried the answer; the rest were consulted but not used. Tap a source to open the full object with evidence and review status. If nothing is listed, there is no matching knowledge for your question, and KLARWERK says so honestly instead of inventing something.",
   "shelp.capture.resumeTitle":
     "Your saved drafts live here — everything you started but have not submitted yet. Nothing is lost, and reviewers see none of it until you submit. Tap a draft to continue, or discard it when it is no longer needed.",
   "shelp.ext.title":
@@ -7185,7 +7232,7 @@ const en: typeof de = {
     "Rate objects green/amber/red. At the threshold an object is validated; red ratings go back to the author.",
   "help.ask.title": "Ask questions",
   "help.ask.body":
-    "Answers come only from validated knowledge, with sources and trust. Without a basis, a knowledge gap is created.",
+    "Answers are source-bound and show which sources carried them and what state those are in. Without a basis, a knowledge gap is created.",
   "help.conflict.title": "Conflicts",
   "help.conflict.body":
     "Contradictions are surfaced and resolved in a guided way. Only truth conflicts escalate to a human.",
@@ -7502,7 +7549,7 @@ const en: typeof de = {
     "Three details make the report resolvable: the COUNTERPART object (what does this knowledge contradict?), the CONFLICT TYPE (e.g. contradiction in substance or in responsibility) and a short DESCRIPTION of the contradiction with your context. After submitting, an open conflict case exists — both objects stay marked as usable until the conflict is deliberately resolved.",
   "vhelp.sourcesLevel2.title": "External sources (level 2)",
   "vhelp.sourcesLevel2.body":
-    "External evidence attached to the knowledge object: standards, manuals, articles, internal documents. The „level 2“ badge is honest: this source was NOT peer-reviewed by colleagues — it supports the knowledge but replaces not a single review vote. Answers on the Ask page build on validated knowledge, never on level-2 sources alone. The X only removes the link — knowledge, status and trust remain unchanged.",
+    "External evidence attached to the knowledge object: standards, manuals, articles, internal documents. The „level 2“ badge is honest: this source was NOT peer-reviewed by colleagues — it supports the knowledge but replaces not a single review vote. On the Ask page a level-2 source therefore does not count as a review vote; it can support an answer, but not secure it. The X only removes the link — knowledge, status and trust remain unchanged.",
   "vhelp.sourceFields.title": "Describe the source",
   "vhelp.sourceFields.body":
     "Three details make a source useful: the LABEL says what it is („DIN EN 1090, section 7“), the URL leads to it (leave empty for paper or internal sources), the EXCERPT quotes the one decisive passage verbatim — so nobody has to read the whole document to check the statement. The more concrete the excerpt, the more the source helps reviewers.",
@@ -7579,7 +7626,7 @@ const en: typeof de = {
     "Discards the current draft for good — text, structure and attachments of this capture. It affects ONLY your draft: already submitted or saved knowledge objects stay untouched. The app deliberately asks first; if you only want one step back, use the step bar instead of discarding.",
   "chelp.submitReview.title": "Review & submit",
   "chelp.submitReview.body":
-    "Turns your draft into a knowledge object and hands it to peer review: colleagues check it, raise queries or approve. From now on it is visible to others — but honestly marked as „in review“, NOT as validated. It only becomes validated through enough approvals; answers count on it only after that.",
+    "Turns your draft into a knowledge object and hands it to peer review: colleagues check it, raise queries or approve. From now on it is visible to others — but honestly marked as „in review“, NOT as validated. It becomes validated through enough approvals. It can carry answers before that too — but is then visibly marked as unverified.",
   "chelp.readiness.title": "Readiness check",
   "chelp.readiness.body":
     "Shows honestly what is still missing before submitting: mandatory fields (without them the button stays off) and optional ones that strengthen your knowledge (category or attachments, say). Green means ready — not perfect: you can still improve after submitting, then as a new version.",
@@ -7800,7 +7847,7 @@ const nl: typeof de = {
   // SCRUM-488: eerste tranche contextuele hulpteksten (spiegel van de DE-sleutels).
   "ask.help.sources.title": "Waarom alleen onderbouwde antwoorden?",
   "ask.help.sources.body":
-    "Klarwerk antwoordt uitsluitend uit jullie vrijgegeven kennisobjecten — nooit uit algemene modelkennis. Ontbreekt de basis, dan zegt het dat eerlijk in plaats van te gokken. Controleer de genoemde bronnen voordat je erop vertrouwt.",
+    "Klarwerk antwoordt uitsluitend uit jullie eigen kennisobjecten — nooit uit algemene modelkennis. Bij elk antwoord zie je welke bronnen het gedragen hebben en in welke staat ze zijn. Ontbreekt de basis, dan zegt het dat eerlijk in plaats van te gokken. Controleer de genoemde bronnen voordat je erop vertrouwt.",
   "lib.help.filters.title": "Filters wijzigen alleen de weergave",
   "lib.help.filters.body":
     "Rijpheid, status en domein tonen of verbergen objecten alleen — aan de kennis zelf veranderen ze niets. „Gevalideerd“ is bevestigd door collega’s, „open“ nog in beoordeling.",
@@ -7998,7 +8045,7 @@ const nl: typeof de = {
   "intake.submit": "Kennis opslaan",
   "dcmp.noValue": "Geen waarde",
   "dcmp.none": "geen",
-  "dcmp.trustStatus": "Trust {{trust}}; status {{status}}; vereiste controles {{needed}}",
+  "dcmp.trustStatus": "Vertrouwen {{trust}}; status {{status}}; vereiste controles {{needed}}",
   "dcmp.tagsCategory": "Categorie {{category}}; kennistype {{type}}; tags {{tags}}",
   "dcmp.note.koMissing": "Geen score: minstens één kennisobject ontbreekt.",
   "audit.action.ko_created": "Aangemaakt",
@@ -8118,23 +8165,23 @@ const nl: typeof de = {
   "cycle.subtitle": "Kennis wordt vastgelegd, gevalideerd, gebruikt en actueel gehouden.",
   "demo.title": "Demo-/pilotpad in 3 stappen",
   "demo.subtitle":
-    "Een klein echt proces: bronvast vragen, bron/trust/status/versie bekijken, ongecontroleerde kennis ter validatie aanbieden.",
+    "Een klein echt proces: bronvast vragen, bron/vertrouwen/status/versie bekijken, ongecontroleerde kennis ter validatie aanbieden.",
   "demo.proof.label": "Bewijsketen",
   "demo.proof.find": "Kennis vinden",
   "demo.proof.usability": "Bruikbaarheid herkennen",
-  "demo.proof.verify": "Bron/trust/versie controleren",
+  "demo.proof.verify": "Bron/vertrouwen/versie controleren",
   "demo.badge.label": "Demovoorbeeld",
   "demo.badge.hint":
-    "Voorbeeld-/pilotkennis uit de demo-seed. Alleen herkomst — vervangt geen status, trust, bron of validatie. Gevalideerd blijft gevalideerd, open blijft open.",
+    "Voorbeeld-/pilotkennis uit de demo-seed. Alleen herkomst — vervangt geen status, vertrouwen, bron of validatie. Gevalideerd blijft gevalideerd, open blijft open.",
   "ko.externalUnchecked.label": "Bevat externe, ongecontroleerde kennis",
   "ko.externalUnchecked.hint":
-    "In dit artikel is kennis overgenomen uit een publieke AI of websearch. Die is extern en ongecontroleerd — controleer het inhoudelijk; het vervangt status/trust/validatie niet.",
+    "In dit artikel is kennis overgenomen uit een publieke AI of websearch. Die is extern en ongecontroleerd — controleer het inhoudelijk; het vervangt status/vertrouwen/validatie niet.",
   "demo.ask.label": "1 · Vragen",
   "demo.ask.desc":
-    "Stel een onderbouwde vraag (ventiel X / overdruk) — het antwoord komt bronvast met trust en status, niet uit de lucht gegrepen.",
+    "Stel een onderbouwde vraag (ventiel X / overdruk) — het antwoord komt bronvast met vertrouwen en status, niet uit de lucht gegrepen.",
   "demo.library.label": "2 · Kennis bekijken",
   "demo.library.desc":
-    "Zie in de kennisvoorraad bron, trust, status en rijpheid — een object openen toont onderbouwing en versie.",
+    "Zie in de kennisvoorraad bron, vertrouwen, status en rijpheid — een object openen toont onderbouwing en versie.",
   "demo.validation.label": "3 · Valideren",
   "demo.validation.desc":
     "Open/ongecontroleerde kennis hoort in de validatie — beoordeel het tot het geborgd en bruikbaar is.",
@@ -8146,22 +8193,22 @@ const nl: typeof de = {
   "demo.banner.tag": "Demopad",
   "demo.banner.ask.title": "Stap 1: Bronvast vragen",
   "demo.banner.ask.body":
-    "Het antwoord komt met trust en bron — niet uit de lucht gegrepen. Let op status/trust en bekijk daarna de bron/het object.",
+    "Het antwoord komt met vertrouwen en bron — niet uit de lucht gegrepen. Let op status/vertrouwen en bekijk daarna de bron/het object.",
   "demo.banner.ask.next": "Verder: kennis bekijken",
-  "demo.banner.library.title": "Stap 2: Bron, trust, status, rijpheid bekijken",
+  "demo.banner.library.title": "Stap 2: Bron, vertrouwen, status, rijpheid bekijken",
   "demo.banner.library.body":
-    "Hier zie je per object bron, trust, status en rijpheid/versie. Bij een open/ongecontroleerde bron gaat het verder naar de validatie.",
+    "Hier zie je per object bron, vertrouwen, status en rijpheid/versie. Bij een open/ongecontroleerde bron gaat het verder naar de validatie.",
   "demo.banner.library.next": "Verder: valideren",
-  "demo.banner.detail.title": "Kennisobject: status, trust, versie, bronnen controleren",
+  "demo.banner.detail.title": "Kennisobject: status, vertrouwen, versie, bronnen controleren",
   "demo.banner.detail.body":
-    "Hier zie je waarop de bruikbaarheid berust: status, trust, versie en onderbouwing. Als het bruikbaar is, staat onderaan „Kennis gebruiken” — de vraag blijft bronvast, niets wordt automatisch geborgd.",
+    "Hier zie je waarop de bruikbaarheid berust: status, vertrouwen, versie en onderbouwing. Als het bruikbaar is, staat onderaan „Kennis gebruiken” — de vraag blijft bronvast, niets wordt automatisch geborgd.",
   "demo.banner.validation.title": "Stap 3: Open kennis beoordelen",
   "demo.banner.validation.body":
     "Hier wordt open/ongecontroleerde kennis beoordeeld. Doel: van beoordelingswerk geborgde, bruikbare kennis maken.",
   "cycle.capture.label": "Vastleggen",
   "cycle.capture.desc": "Ervaringskennis borgen als kennisobject.",
   "cycle.validate.label": "Valideren",
-  "cycle.validate.desc": "In het team beoordelen tot trust en status betrouwbaar zijn.",
+  "cycle.validate.desc": "In het team beoordelen tot vertrouwen en status betrouwbaar zijn.",
   "cycle.use.label": "Gebruiken",
   "cycle.use.desc": "Bronvast inzetten in antwoorden en output.",
   "cycle.maintain.label": "Actueel houden",
@@ -8177,7 +8224,7 @@ const nl: typeof de = {
     "De vragenpagina gebruikt de kennisvoorraad; open of ongecontroleerde bronnen worden gemarkeerd en naar de validatie geleid.",
   "kg.secured.label": "Geborgd",
   "kg.secured.body":
-    "Gevalideerde kennis is bruikbaar en blijft via bronnen, trust en versie navolgbaar.",
+    "Gevalideerde kennis is bruikbaar en blijft via bronnen, vertrouwen en versie navolgbaar.",
   "kg.review.label": "Te controleren",
   "kg.review.body":
     "Open of in beoordeling zijnde kennis hoort in de validatie, niet in het gebruik.",
@@ -9359,7 +9406,7 @@ const nl: typeof de = {
   "ask.kicker": "Vragen en antwoorden",
   "ask.title": "Vraag het fabriekskennis",
   "ask.intro":
-    "Antwoorden komen uitsluitend uit gevalideerde kennis — met bronnen en vertrouwen. Is er geen basis, dan wordt het hiaat open benoemd.",
+    "Het antwoord is brongebonden: je ziet waarop het steunt — en in welke staat elk van die bronnen is. Is er geen basis, dan wordt het hiaat open benoemd.",
   "ask.placeholder": "bijv. Wanneer moet klep X bij overdruk gesloten worden?",
   "ask.emptyHint": "Voer eerst een vraag in.",
   "ask.submit": "Vragen",
@@ -9372,13 +9419,13 @@ const nl: typeof de = {
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
   "ask.demoPrefillHint":
-    "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en trust beslissen, er wordt niets automatisch opgeslagen.",
+    "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
   "ask.examplesLabel": "Voorbeelden:",
   "ask.examplesSendHint": "Eén klik vraagt meteen — dit is een echte aanvraag aan de AI.",
   "ask.example.valve": "Wat te doen als klep X bij overdruk moet sluiten?",
   "ask.example.filter": "Hoe vaak moet filter F3 gecontroleerd worden?",
   "ask.example.dosing": "Waarom schommelt de doseerwaarde bij lijn L4 na elke ploegwissel?",
-  "ask.expect.answer": "vindt gevalideerde kennis",
+  "ask.expect.answer": "vindt passende kennis",
   "ask.expect.gap": "toont kennishiaat",
   "ask.reasoner.model": "Modelmodus",
   "ask.reasoner.deterministic": "Deterministische modus",
@@ -9386,7 +9433,7 @@ const nl: typeof de = {
   "ask.reasoner.unknown": "Modus onbekend",
   "ask.reasoner.hint":
     "Toont of antwoorden via een geconfigureerd model of de op regels gebaseerde fallback lopen. Bronnen en validatie blijven gelijk.",
-  "ask.fromValidated": "Uit gevalideerde kennis",
+  "ask.fromValidated": "Uit brongebonden kennis",
   "ask.evidence": "Bewijs",
   "ask.knowledgeClass.gesichert": "Geborgd",
   "ask.knowledgeClass.ungeprueft": "Ongecontroleerd",
@@ -9404,11 +9451,22 @@ const nl: typeof de = {
   "ask.export.copied": "Antwoord incl. bronnen gekopieerd.",
   "ask.export.answer": "Antwoord",
   "ask.export.footer":
-    "Brongebonden antwoord uit KLARWERK · gemaakt op {{date}}. Alleen zo betrouwbaar als de gebruikte bronnen (status/trust). Geen belofte van waarheid.",
+    "Brongebonden antwoord uit KLARWERK · gemaakt op {{date}}. Alleen zo betrouwbaar als de gebruikte bronnen (status/vertrouwen). Geen belofte van waarheid.",
   "ask.sourcesHint":
-    "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, trust, bruikbaarheid). Vermeld zijn alle bronnen die voor de vraag zijn geraadpleegd; of elk daarvan aan het antwoord heeft bijgedragen, zegt deze lijst niet — en de antwoordtekst hoeft dat niet aan te geven. Naar het kennisobject voor details.",
+    "Dit antwoord is brongebonden — het is alleen zo betrouwbaar als de gebruikte bron (status, vertrouwen, bruikbaarheid). Vermeld zijn alle bronnen die voor de vraag zijn geraadpleegd; welke daarvan het antwoord gedragen hebben, is gemarkeerd. Naar het kennisobject voor details.",
+  // AUFTRAG-mega52 A3/A5 — het antwoord zegt waarop het steunt. Onbruikbare markeringen betekenen "onbekend".
+  "ask.attribution.known":
+    "De eerstgenoemde bronnen hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt.",
+  "ask.attribution.unknown":
+    "Welke van deze bronnen het antwoord gedragen heeft, was niet toe te wijzen — de AI leverde geen bruikbare bronverwijzingen. De lijst toont daarom alle geraadpleegde bronnen zonder markering, en „Heeft geholpen” is hier niet mogelijk.",
+  "ask.attribution.carrying.badge": "draagt",
+  "ask.attribution.carrying.hint":
+    "Deze bron draagt het antwoord: de AI heeft er zich in de antwoordtekst uitdrukkelijk op beroepen.",
+  "ask.attribution.consulted.badge": "geraadpleegd",
+  "ask.attribution.consulted.hint":
+    "Geraadpleegd maar niet gebruikt: deze bron was beschikbaar voor de AI maar komt niet voor in de antwoordtekst.",
   // Pakket 4 (nacht24): bronnen zoals in het document — status/trust per bron + fragment in origineel formaat.
-  "answerSource.trust": "Trust {{n}}",
+  "answerSource.trust": "Vertrouwen {{n}}",
   "answerSource.excerptShow": "Fragment in documentformaat tonen",
   "answerSource.excerptHide": "Fragment verbergen",
   "ask.helpful": "Heeft geholpen",
@@ -9426,10 +9484,10 @@ const nl: typeof de = {
   "ask.gapNext": "Volgende stap: hiaat prioriteren op het risicobord of aan een expert toewijzen.",
   "ask.noBasisTitle": "Geen betrouwbare basis.",
   "ask.noBasisBody":
-    "Er is geen gevalideerde kennis over deze vraag. In plaats van een verzonnen antwoord is er een kennishiaat aangemaakt.",
+    "Geen enkele bron past nauw genoeg bij deze vraag. In plaats van een verzonnen antwoord is er een kennishiaat aangemaakt. Beide zijn mogelijk: de kennis ontbreekt nog — of ze staat onder andere begrippen in de basis.",
   "ask.gap.rescueTitle": "Kennishiaat redden",
   "ask.gap.rescueImpact":
-    "Deze ervaringskennis ontbreekt nog. Je kunt helpen om die te borgen — voor iedereen die de vraag in de toekomst stelt.",
+    "Misschien ontbreekt deze ervaringskennis nog, misschien is ze alleen niet vindbaar. Je kunt helpen om die te borgen — voor iedereen die de vraag in de toekomst stelt.",
   "ask.gap.noInvent":
     "Er is geen antwoord verzonnen: zonder betrouwbare bron blijft de vraag eerlijk open.",
   "ask.gap.rescueCta": "Kennis vastleggen & redden",
@@ -9454,11 +9512,11 @@ const nl: typeof de = {
     "Veiligere volgende stap: ter controle geven of in de validatie laten controleren.",
   "ask.contract.gap.title": "Kennishiaat, geen chatbot-antwoord",
   "ask.contract.gap.body":
-    "Er is nog geen betrouwbare basis in de kennisbasis. Dit is een hiaat dat jullie kunnen dichten — geen fout.",
+    "Geen enkele bron past nauw genoeg bij deze vraag om een antwoord te dragen. Dat betekent niet per se dat de kennis ontbreekt — misschien staat ze alleen onder andere woorden in de basis. Hoe dan ook is het een hiaat dat jullie kunnen dichten, geen fout.",
   "ask.contract.gap.next":
-    "Volgende stap: kennis vastleggen of het hiaat prioriteren op het risicobord.",
+    "Volgende stap: stel de vraag opnieuw met de vakwoorden uit jullie eigen bedrijf — of leg de kennis vast of prioriteer het hiaat op het risicobord.",
   "ask.contract.trustNote":
-    "Trust en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
+    "Vertrouwen en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
   "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",
   "ask.contract.sumTotal_other": "{{count}} bronnen geraadpleegd",
   "ask.contract.sumValidated": "{{count}} gevalideerd",
@@ -9474,6 +9532,11 @@ const nl: typeof de = {
     "Bij {{unproven}} van {{total}} gebruikte bronnen is helemaal geen controle vastgelegd. Daar is nooit naar tegenstrijdigheden gezocht.",
   "ask.checkCaveat.unknown":
     "{{unproven}} van {{total}} gebruikte bronnen zijn niet in de collectie te vinden. Over hun controle valt niets te zeggen.",
+  // AUFTRAG-mega53 B2: de vijfde reden — er kon helemaal geen bron aan dit antwoord worden
+  // toegewezen.
+  "ask.checkCaveat.unattributed":
+    "Dit antwoord noemt geen van de {{total}} gebruikte bronnen als bewijs. Welke bron het werkelijk draagt, is daarmee onbekend — controlestand en vertrouwenswaarde zijn aan geen enkele bron toe te wijzen.",
+  "ask.trust.unattributed": "vertrouwenswaarde niet toewijsbaar",
   // AUFTRAG-mega34 A2: de onbekende conflictstand.
   "ask.conflictCaveat.title": "De conflictstand is op dit moment niet op te halen.",
   "ask.conflictCaveat.pending":
@@ -9489,25 +9552,25 @@ const nl: typeof de = {
   "ko.use.in-review": "In beoordeling",
   "ko.use.needs-work": "Nog in bewerking",
   "use.ready.label": "Bruikbaar",
-  "use.ready.hint": "Gevalideerd — brongebonden bruikbaar (status/trust dragen).",
+  "use.ready.hint": "Gevalideerd — brongebonden bruikbaar (status/vertrouwen dragen).",
   "use.review.label": "In beoordeling",
   "use.review.hint": "Beoordeling loopt — nog niet als geborgd gebruiken.",
   "use.open.label": "Te controleren",
   "use.open.hint": "Open/ongecontroleerd — eerst laten controleren/beoordelen.",
-  "ko.ovTrust": "Trust",
+  "ko.ovTrust": "Vertrouwen",
   "ko.ovSources_one": "{{count}} bron",
   "ko.ovSources_other": "{{count}} bronnen",
   "ko.ovAttachments_one": "{{count}} bijlage",
   "ko.ovAttachments_other": "{{count}} bijlagen",
-  "trust.explain.title": "Wat betekent Trust?",
+  "trust.explain.title": "Wat betekent vertrouwen?",
   "trust.explain.meta":
-    "Trust is een review-/bewijssignaal uit peerbeoordelingen (0–99) — geen belofte dat de uitspraak waar is.",
+    "Vertrouwen is een review-/bewijssignaal uit peerbeoordelingen (0–99) — geen belofte dat de uitspraak waar is.",
   "trust.explain.band.high":
-    "Hoge trust: meermaals positief gecontroleerd. Gebruik het toch met je eigen oordeel.",
+    "Hoog vertrouwen: meermaals positief gecontroleerd. Gebruik het toch met je eigen oordeel.",
   "trust.explain.band.mid":
-    "Middelmatige trust: pas deels gecontroleerd of met voorbehoud (geel). Controleer voor kritisch gebruik nog eens tegen.",
+    "Middelmatig vertrouwen: pas deels gecontroleerd of met voorbehoud (geel). Controleer voor kritisch gebruik nog eens tegen.",
   "trust.explain.band.low":
-    "Lage trust: nauwelijks gecontroleerd of rode beoordeling/conflict. Eerst controleren of naschaven.",
+    "Laag vertrouwen: nauwelijks gecontroleerd of rode beoordeling/conflict. Eerst controleren of naschaven.",
   "trust.explain.review":
     "Geel, rood of een open conflict betekent: controleren of naschaven voordat je erop vertrouwt.",
   "ko.nextLabel": "Volgende actie:",
@@ -9792,7 +9855,7 @@ const nl: typeof de = {
     "Jouw feedback helpt de auteur om de volgende versie gericht bij te werken.",
   "val.empty": "Geen openstaande objecten.",
   "val.target": "Doel: {{n}}× groen",
-  "val.trust": "Trust",
+  "val.trust": "Vertrouwen",
   "val.votes": "{{have}} van {{need}} groen",
   "val.votesTitle": "Validatie-voortgang",
   "val.votesHint":
@@ -9863,11 +9926,11 @@ const nl: typeof de = {
     "Herzien — controleer gericht wat er sinds de vorige versie is veranderd.",
   "val.guide.focus.transfer": "Auteur is overgedragen — kijk extra goed naar uitspraak en bewijs.",
   "val.guide.trustNote":
-    "Trust is een review-signaal, geen waarheidsgarantie. Pas voldoende goedkeuringen — het afgesproken minimum aantal controleurs — maken kennis geborgd.",
+    "Vertrouwen is een review-signaal, geen waarheidsgarantie. Pas voldoende goedkeuringen — het afgesproken minimum aantal controleurs — maken kennis geborgd.",
   "val.guide.impactTitle": "Wat bewerkstelligt de beslissing?",
   "val.impact.up.title": "Goedkeuren",
   "val.impact.up.body":
-    "Telt als één goedkeuringsstem. Kennis wordt pas bruikbaar als status, het aantal goedkeuringen en trust het dragen — er wordt niets automatisch goedgekeurd.",
+    "Telt als één goedkeuringsstem. Kennis wordt pas bruikbaar als status, het aantal goedkeuringen en vertrouwen het dragen — er wordt niets automatisch goedgekeurd.",
   "val.impact.warn.title": "Terugvraag",
   "val.impact.warn.body":
     "Vereist een korte onderbouwing. Blijft review-werk en helpt de auteur om gericht bij te werken.",
@@ -9876,7 +9939,7 @@ const nl: typeof de = {
     "Vereist een korte onderbouwing. Leidt tot herwerking — er wordt niets automatisch afgesloten.",
   "val.decisionSaved": "Beoordeling vastgelegd.",
   "val.outcome.up":
-    "Positief beoordeeld. Als status en trust het dragen, kan het als volgende stap brongebonden worden gebruikt of gecontroleerd — automatisch gevalideerd wordt er daardoor niets.",
+    "Positief beoordeeld. Als status en vertrouwen het dragen, kan het als volgende stap brongebonden worden gebruikt of gecontroleerd — automatisch gevalideerd wordt er daardoor niets.",
   "val.outcome.warn":
     "Terugvraag gedocumenteerd. Blijft review-werk totdat de openstaande punten zijn opgehelderd.",
   "val.outcome.down": "Afwijzing gedocumenteerd. Blijft review-/feedback-werk.",
@@ -9949,7 +10012,7 @@ const nl: typeof de = {
   "con.compareTitle": "Vergelijking",
   "con.koMissing": "Bijdrage is verwijderd.",
   "con.resolveEffect":
-    "De beslissing wordt gedocumenteerd en geregistreerd. Trust/status van de objecten worden NIET automatisch gewijzigd (geen stil overschrijven).",
+    "De beslissing wordt gedocumenteerd en geregistreerd. Vertrouwen/status van de objecten worden NIET automatisch gewijzigd (geen stil overschrijven).",
   "con.resolveRevalidate": "Betrokken objecten zo nodig handmatig hervalideren.",
   "con.secondOpinion": "Tweede mening",
   "con.secondOpinionAdd": "Tweede mening",
@@ -10017,7 +10080,7 @@ const nl: typeof de = {
   "lib.facet.status": "Status",
   "lib.facet.author": "Auteur",
   "lib.facet.age": "Leeftijd",
-  "lib.facet.trust": "Trust",
+  "lib.facet.trust": "Vertrouwen",
   "lib.facet.maturity": "Rijpheid",
   "val.facet.pruefstand": "Toetsingsfase",
   "lib.facet.origin": "Herkomst",
@@ -10040,10 +10103,10 @@ const nl: typeof de = {
   "lib.facet.ageBucket.y1": "≤ 1 jaar",
   "lib.facet.ageBucket.older": "ouder dan 1 jaar",
   "lib.facet.ageBucket.unknown": "leeftijd onbekend",
-  "lib.facet.trustBucket.t0": "Trust 0",
-  "lib.facet.trustBucket.t1": "Trust 1–39",
-  "lib.facet.trustBucket.t40": "Trust 40–69",
-  "lib.facet.trustBucket.t70": "Trust 70+",
+  "lib.facet.trustBucket.t0": "Vertrouwen 0",
+  "lib.facet.trustBucket.t1": "Vertrouwen 1–39",
+  "lib.facet.trustBucket.t40": "Vertrouwen 40–69",
+  "lib.facet.trustBucket.t70": "Vertrouwen 70+",
   "lib.facet.more": "+{{n}} meer",
   "lib.facet.none": "zonder waarde",
   // AUFTRAG-mega10 blok B: de chipmuur wordt een zoekmasker (rail, zoeken per dimensie,
@@ -10079,7 +10142,7 @@ const nl: typeof de = {
   "lib.sort.label": "Sorteren",
   "lib.sort.relevance": "Relevantie",
   "lib.sort.title": "Titel A→Z",
-  "lib.sort.trust": "Trust (hoog→laag)",
+  "lib.sort.trust": "Vertrouwen (hoog→laag)",
   "lib.sort.recent": "Laatst gewijzigd (nieuw→oud)",
   "lib.groupBy.label": "Subgroepen",
   "lib.groupBy.none": "geen",
@@ -10356,9 +10419,6 @@ const nl: typeof de = {
   "ask.confidentialPrefillHint":
     "Vertrouwelijke inhoud — controleer de vraag voor het verzenden. Ze is alleen vooraf ingevuld, niet automatisch verzonden.",
   "ask.expect.neutral": "Voorbeeld proberen",
-  "lib.trustNone": "Nog geen gebruiksbeoordelingen",
-  "lib.trustNoneHint":
-    "Trust groeit door gebruik en beoordelingen. 0 betekent alleen: nog geen terugkoppeling — niet dat de inhoud slecht is.",
   "lib.confidenceNone": "Zekerheid nog niet beoordeeld",
   "lib.confidenceNoneHint":
     "De zekerheid zegt hoe draagkrachtig een inhoud is ingeschat (0 tot 100). 0 betekent: nog niet beoordeeld — niet dat de inhoud fout is.",
@@ -10739,7 +10799,7 @@ const nl: typeof de = {
   "klara.page.capture":
     "Hier borg je ervaringskennis: vertellen, dicteren, in een interview of uit een bestand. De AI structureert alleen — jij controleert en dient in.",
   "klara.page.ask":
-    "Stel een vraag. Het antwoord komt uitsluitend uit gevalideerde kennis met bronnen — is die er niet, dan ontstaat een eerlijk kennishiaat.",
+    "Stel een vraag. Het antwoord is brongebonden en laat zien waarop het steunt en in welke staat die bronnen zijn — is er geen basis, dan ontstaat een eerlijk kennishiaat.",
   "klara.page.library":
     "Alle kennisobjecten met status, vertrouwen en filters. Vanaf hier ga je naar elk detail.",
   "klara.page.external":
@@ -10776,7 +10836,7 @@ const nl: typeof de = {
   "shelp.ask.steps":
     "Hier staan de kennisobjecten die voor jouw vraag uit de voorraad zijn geraadpleegd — met een fragment uit de vindplaats. Het is GEEN afleiding: KLARWERK legt niet vast welke zin van het antwoord uit welke bron komt. De lijst zegt waarop is gezocht; nagaan doe je door de genoemde bron te openen.",
   "shelp.ask.sources":
-    "Elk antwoord in KLARWERK steunt uitsluitend op gecontroleerde kennisobjecten — en precies die staan hier. Tik op een bron om het volledige object met bewijs en beoordelingsstatus te openen. Staat hier niets, dan bestaat er over jouw vraag geen geborgde kennis, en KLARWERK zegt dat eerlijk in plaats van iets te verzinnen.",
+    "Elk antwoord in KLARWERK steunt uitsluitend op jullie eigen kennisobjecten — en precies die staan hier. De eerstgenoemde hebben het antwoord gedragen; de overige zijn geraadpleegd maar niet gebruikt. Tik op een bron om het volledige object met bewijs en beoordelingsstatus te openen. Staat hier niets, dan is er over jouw vraag geen passende kennis, en KLARWERK zegt dat eerlijk in plaats van iets te verzinnen.",
   "shelp.capture.resumeTitle":
     "Hier liggen je opgeslagen concepten — alles wat je begonnen bent, maar nog niet ingediend hebt. Niets daarvan is verloren, en niets daarvan zien de beoordelaars zolang je het niet indient. Tik op een concept om verder te werken, of verwerp het als het niet meer nodig is.",
   "shelp.ext.title":
@@ -10890,8 +10950,8 @@ const nl: typeof de = {
   "pilot.obs.unverified.map": "Validatie — beoordelen tot het geborgd is.",
   "pilot.obs.outdated.label": "Kennis lijkt verouderd of niet meer geldig.",
   "pilot.obs.outdated.map": "Levenscyclus — hervalidatie, „actueel houden“.",
-  "pilot.obs.source.label": "Bron, trust of bruikbaarheid is onduidelijk.",
-  "pilot.obs.source.map": "Bibliotheek/KO-detail — status, trust, versie, bron controleren.",
+  "pilot.obs.source.label": "Bron, vertrouwen of bruikbaarheid is onduidelijk.",
+  "pilot.obs.source.map": "Bibliotheek/KO-detail — status, vertrouwen, versie, bron controleren.",
   "pilot.obs.uxnote.label": "Pure UX-/pilotnotitie (bediening, wording, verloop).",
   "pilot.obs.uxnote.map":
     "Organisatorisch noteren — wordt niet in het product opgeslagen, geen workflow.",
@@ -10928,7 +10988,7 @@ const nl: typeof de = {
     "Beoordeel objecten groen/geel/rood. Vanaf de drempel geldt een object als gevalideerd; rode beoordelingen gaan terug naar de auteur.",
   "help.ask.title": "Vragen stellen",
   "help.ask.body":
-    "Antwoorden komen alleen uit gevalideerde kennis, met bronnen en vertrouwen. Zonder basis ontstaat een kennishiaat.",
+    "Antwoorden zijn brongebonden en tonen welke bronnen ze gedragen hebben en in welke staat die zijn. Zonder basis ontstaat een kennishiaat.",
   "help.conflict.title": "Conflicten",
   "help.conflict.body":
     "Tegenstrijdigheden worden zichtbaar gemaakt en begeleid opgelost. Alleen waarheidsconflicten escaleren naar een mens.",
@@ -11000,7 +11060,7 @@ const nl: typeof de = {
   "out.previewProvenance":
     "De volledige herkomst per bouwsteen wordt in het gegenereerde document vermeld.",
   "out.previewUncertain":
-    "{{n}} bouwsteen/-stenen met lage trust — in het document als onzeker gemarkeerd.",
+    "{{n}} bouwsteen/-stenen met laag vertrouwen — in het document als onzeker gemarkeerd.",
   "out.previewDisclaimer":
     "Voorbeeld van de compositie, niet het voltooide document. Generatie gebeurt bij het genereren.",
   "out.previewTitle": "Voorbeeld (Markdown)",
@@ -11008,7 +11068,7 @@ const nl: typeof de = {
   "out.copied": "Markdown gekopieerd.",
   "out.download": "Download .md",
   "out.provenanceTitle": "Herkomst & bewijs",
-  "out.uncertain": "lage trust",
+  "out.uncertain": "laag vertrouwen",
   "out.genError": "Output kon niet worden gegenereerd.",
   "out.kind.instruction": "Werkinstructie",
   "out.kind.checklist": "Checklist",
@@ -11019,7 +11079,7 @@ const nl: typeof de = {
   "out.kindDesc.checklist": "Afvinkbare punten voor de praktijk.",
   "out.kindDesc.troubleshooting": "Symptoom → oorzaak → maatregel.",
   "out.kindDesc.training": "Leereenheden met kernuitspraken.",
-  "out.kindDesc.management_summary": "Verdicht overzicht met trust.",
+  "out.kindDesc.management_summary": "Verdicht overzicht met vertrouwen.",
   "s2.import":
     "Documenten importeren en controleren — actief zodra de import-/source-review-API staat.",
   "s2.capital":
@@ -11031,13 +11091,13 @@ const nl: typeof de = {
   "mgmt.kpiOpen": "Open",
   "mgmt.kpiGaps": "Hiaten",
   "mgmt.kpiConflicts": "Conflicten",
-  "mgmt.kpiTrust": "Ø trust",
+  "mgmt.kpiTrust": "Ø vertrouwen",
   "mgmt.capital": "Knowledge Capital Score",
   "mgmt.band.gut": "goed",
   "mgmt.band.mittel": "gemiddeld",
   "mgmt.band.kritisch": "kritiek",
   "mgmt.part.validatedRatio": "Validatiegraad",
-  "mgmt.part.avgTrust": "Ø trust",
+  "mgmt.part.avgTrust": "Ø vertrouwen",
   "mgmt.part.coverage": "Dekking domeinen",
   "mgmt.part.singleSourceInv": "Bronspreiding",
   "mgmt.part.freshnessInv": "Actualiteit",
@@ -11047,7 +11107,7 @@ const nl: typeof de = {
   "mgmt.assumeRate": "€ per uur",
   "mgmt.assumeHours": "uur/object bespaard",
   "mgmt.assumeReuse": "Hergebruik",
-  "mgmt.basis": "Basis: {{n}} gevalideerde objecten · Ø trust {{trust}}",
+  "mgmt.basis": "Basis: {{n}} gevalideerde objecten · Ø vertrouwen {{trust}}",
   "mgmt.statement": "Knowledge Statement",
   "mgmt.assets": "Activa",
   "mgmt.risks": "Risico's",
@@ -11250,7 +11310,7 @@ const nl: typeof de = {
     "Drie gegevens maken de melding oplosbaar: het TEGEN-object (waarmee spreekt deze kennis zichzelf tegen?), het CONFLICTTYPE (bijv. tegenspraak in de inhoud of in de bevoegdheid) en een korte BESCHRIJVING van de tegenspraak met jouw context. Na het versturen ontstaat een open conflictzaak — beide objecten blijven als bruikbaar gemarkeerd tot het conflict bewust is opgelost.",
   "vhelp.sourcesLevel2.title": "Externe bronnen (niveau 2)",
   "vhelp.sourcesLevel2.body":
-    "Hier hangen externe bewijzen aan het kennisobject: normen, handboeken, artikelen, interne documenten. De badge „Niveau 2\" betekent eerlijk: deze bron is NIET door collega's peer-gecontroleerd — hij ondersteunt de kennis, maar vervangt geen enkele controlestem. Antwoorden op de vragenpagina bouwen voort op gevalideerde kennis, niet op niveau-2-bronnen alleen. Het kruisje verwijdert alleen de koppeling — kennis, status en vertrouwen blijven ongewijzigd.",
+    "Hier hangen externe bewijzen aan het kennisobject: normen, handboeken, artikelen, interne documenten. De badge „Niveau 2\" betekent eerlijk: deze bron is NIET door collega's peer-gecontroleerd — hij ondersteunt de kennis, maar vervangt geen enkele controlestem. Op de vragenpagina telt een niveau-2-bron daarom niet als controlestem; hij kan een antwoord ondersteunen, maar niet borgen. Het kruisje verwijdert alleen de koppeling — kennis, status en vertrouwen blijven ongewijzigd.",
   "vhelp.sourceFields.title": "Bron beschrijven",
   "vhelp.sourceFields.body":
     'Drie gegevens maken een bron bruikbaar: de BENAMING zegt wat het is („DIN EN 1090, hoofdstuk 7"), de URL leidt ernaartoe (leeg laten bij papieren of interne bronnen), het CITAAT haalt de ene doorslaggevende passage woordelijk aan — zo hoeft niemand het hele document te lezen om de uitspraak te controleren. Hoe concreter het citaat, hoe meer de bron de beoordelaars helpt.',
@@ -11325,7 +11385,7 @@ const nl: typeof de = {
     "Verwerpt het huidige concept definitief — tekst, structuur en bijlagen van deze vastlegging. Het betreft ALLEEN je concept: reeds ingediende of opgeslagen kennisobjecten blijven onaangetast. Vooraf vraagt de app bewust na; wie maar één stap terug wil, gebruikt de stappenbalk in plaats van verwerpen.",
   "chelp.submitReview.title": "Controleren & indienen",
   "chelp.submitReview.body":
-    "Maakt van je concept een kennisobject en geeft het in de peer-beoordeling: collega's controleren, stellen vragen of keuren goed. Vanaf nu is het voor anderen zichtbaar — maar eerlijk als „in beoordeling\" gemarkeerd, NIET als zeker. Gevalideerd wordt het pas door genoeg goedkeuringen; voor antwoorden telt het pas daarna.",
+    "Maakt van je concept een kennisobject en geeft het in de peer-beoordeling: collega's controleren, stellen vragen of keuren goed. Vanaf nu is het voor anderen zichtbaar — maar eerlijk als „in beoordeling\" gemarkeerd, NIET als zeker. Gevalideerd wordt het door genoeg goedkeuringen. Voor antwoorden bruikbaar is het al eerder — maar dan zichtbaar als ongecontroleerd gemarkeerd.",
   "chelp.readiness.title": "Opslag-check",
   "chelp.readiness.body":
     "Toont eerlijk wat er voor het indienen nog ontbreekt: verplichte velden (zonder die blijft de knop uit) en optionele zaken die je kennis versterken (bijv. categorie of bijlagen). Groen betekent gereed — niet perfect: verbeteren kun je ook na het indienen nog, dan als nieuwe versie.",
@@ -11523,7 +11583,7 @@ const nl: typeof de = {
   "dcmp.section.hints": "Aanwijzingen",
   "dcmp.section.sources": "Bronnen / bewijs",
   "dcmp.section.tags": "Tags / categorie",
-  "dcmp.section.trust": "Trust / validatiestatus",
+  "dcmp.section.trust": "Vertrouwen / validatiestatus",
   "dcmp.note.bothEmpty":
     "Voorlopige veldheuristiek; geen echte detector-scores voor dit onderdeel.",
   "dcmp.note.exactMatch": "Voorlopige veldheuristiek; exacte veldovereenkomst.",

@@ -118,8 +118,6 @@ describe("WP-UX-WOW-1: neue Texte in DE/EN/NL vollständig", () => {
     const keys = [
       "ask.koQuestion",
       "ask.expect.neutral",
-      "lib.trustNone",
-      "lib.trustNoneHint",
       "con.emptyWhat",
       "con.emptyHow",
       "con.emptyExamplesHint",

@@ -19,14 +19,14 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: H,
     question: "Ist KLARWERK ein Chatbot wie ChatGPT? Was ist der Unterschied?",
     answer:
-      "Nein. Ein Chatbot beantwortet alles — auch dann, wenn er die Antwort in Wirklichkeit nicht weiß. KLARWERK ist ein Wissenssystem: Es antwortet nur aus dem geprüften Wissen eurer eigenen Organisation und nennt zu jeder Antwort die Quelle. Gibt es kein gesichertes Wissen zu deiner Frage, sagt KLARWERK das ehrlich, statt etwas zu erfinden.",
+      "Nein. Ein Chatbot beantwortet alles — auch dann, wenn er die Antwort in Wirklichkeit nicht weiß. KLARWERK ist ein Wissenssystem: Es antwortet nur aus dem Wissen eurer eigenen Organisation, nennt zu jeder Antwort die Quellen und kennzeichnet, welche davon die Antwort getragen haben und in welchem Zustand sie sind. Gibt es dazu kein passendes Wissen, sagt KLARWERK das ehrlich, statt etwas zu erfinden.",
   },
   {
     id: "faq.grund.2",
     route: H,
     question: "Warum antwortet die KI nicht einfach auf alles?",
     answer:
-      "Weil eine falsche Antwort im Arbeitsalltag teurer ist als gar keine. In eurer Organisation hängen an Antworten echte Entscheidungen — an einer Maschine, am Pflegebett, in einer Akte. Darum darf die KI in KLARWERK nur aussprechen, was Kolleginnen und Kollegen vorher geprüft haben. Alles andere wird als Wissenslücke gezeigt, und eine Lücke kann man füllen — eine unbemerkte Falschantwort nicht.",
+      "Weil eine falsche Antwort im Arbeitsalltag teurer ist als gar keine. In eurer Organisation hängen an Antworten echte Entscheidungen — an einer Maschine, am Pflegebett, in einer Akte. Darum sagt KLARWERK zu jeder Antwort, worauf sie steht und in welchem Zustand diese Quellen sind. Alles andere wird als Wissenslücke gezeigt, und eine Lücke kann man füllen — eine unbemerkte Falschantwort nicht.",
   },
   {
     id: "faq.grund.3",
@@ -225,7 +225,7 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     route: "/bibliothek",
     question: "Was ist der Unterschied zwischen „offen“ und „validiert“?",
     answer:
-      "Offen heißt: erfasst, sichtbar, aber noch nicht ausreichend geprüft — daraus beantwortet KLARWERK keine Fragen. Validiert heißt: von genug Prüfern freigegeben, ohne offene rote Bewertung — erst dieses Wissen trägt Antworten. Mehr Status gibt es bewusst nicht; alles Weitere sagen dir Vertrauenswert, Beleglage und Hinweise am Objekt.",
+      "Offen heißt: erfasst, sichtbar, aber noch nicht ausreichend geprüft — eine Antwort darauf wird sichtbar als ungeprüft gekennzeichnet. Validiert heißt: von genug Prüfern freigegeben, ohne offene rote Bewertung — darauf gestützte Antworten gelten als gesichert. Mehr Status gibt es bewusst nicht; alles Weitere sagen dir Vertrauenswert, Beleglage und Hinweise am Objekt.",
   },
   {
     id: "faq.vertrauen.4",
@@ -306,7 +306,7 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     answer:
       // AUFTRAG-mega39 BLOCK D: „mit den Argumentationsschritten zum Nachvollziehen" stand hier bis
       // mega38 — es gibt aber keine protokollierte Herleitung, nur die herangezogenen Quellen.
-      "Tippe deine Frage im Fragen-Bereich ein, so wie du sie einem Kollegen stellen würdest. KLARWERK sucht dann ausschließlich im validierten Wissen eurer Organisation und baut daraus die Antwort — mit den herangezogenen Quellen zum Anklicken. Was nicht aus geprüftem Wissen belegbar ist, kommt nicht in die Antwort.",
+      "Tippe deine Frage im Fragen-Bereich ein, so wie du sie einem Kollegen stellen würdest. KLARWERK sucht dann ausschließlich im Wissen eurer eigenen Organisation und baut daraus die Antwort — mit den herangezogenen Quellen zum Anklicken. Gekennzeichnet ist dabei, welche Quellen die Antwort wirklich getragen haben und in welchem Zustand sie sind; allgemeines Modellwissen kommt nicht in die Antwort.",
   },
   {
     id: "faq.fragen.2",
@@ -314,7 +314,7 @@ export const FAQ_CONTENT: readonly FaqItem[] = [
     question:
       "Warum sagt KLARWERK „dazu liegt kein gesichertes Wissen vor“, obwohl ich weiß, dass es das gibt?",
     answer:
-      "Meist aus einem von drei Gründen. Erstens: Das Wissen ist erfasst, aber noch nicht validiert — es zählt für Antworten erst nach der Prüfung; schau am Objekt nach dem Status. Zweitens: Es ist noch gar nicht erfasst, sondern steckt nur in Köpfen oder Ordnern — dann ist die Lücke ehrlich. Drittens: Die Frage und das Wissen benutzen sehr unterschiedliche Worte — formuliere um oder ergänze das Objekt um gängige Begriffe. In allen drei Fällen zeigt dir die entstandene Wissenslücke den kürzesten Weg zur Lösung.",
+      "Meist aus einem von drei Gründen. Erstens: Das Wissen ist erfasst, aber noch nicht validiert — eine Antwort daraus wird als ungeprüft gekennzeichnet; schau am Objekt nach dem Status. Zweitens: Es ist noch gar nicht erfasst, sondern steckt nur in Köpfen oder Ordnern — dann ist die Lücke ehrlich. Drittens: Die Frage und das Wissen benutzen sehr unterschiedliche Worte — formuliere um oder ergänze das Objekt um gängige Begriffe. In allen drei Fällen zeigt dir die entstandene Wissenslücke den kürzesten Weg zur Lösung.",
   },
   {
     id: "faq.fragen.3",

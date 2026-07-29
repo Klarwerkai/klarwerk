@@ -79,18 +79,66 @@ test("Kernfluss: Erzählen → Wissensseite → Einreichen @modell", async ({ pa
   });
 });
 
-test("Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden)", async ({ page }) => {
+// ================================================================================================
+// AUFTRAG-mega52 — DIESE SONDE WAR GRÜN, OHNE JE EINE ANTWORT GESEHEN ZU HABEN.
+// ================================================================================================
+//
+// DER BEFUND, in mega52 an der Playwright-Spur erhoben (kein einziger `/api/ask`-Aufruf im ganzen
+// Lauf). Der Fall behauptete in seinem eigenen Kommentar: „beide Marker existieren NUR im
+// Ergebnisbereich (nicht im statischen Seitentext)." Das stimmte nicht, gleich zweifach:
+//
+//   1. `getByText("Aus validiertem Wissen")` matcht bei Playwright per Vorgabe TEILZEICHENKETTEN
+//      und OHNE Beachtung der Groß-/Kleinschreibung. Der statische Einleitungstext der Seite
+//      (`ask.intro`) lautete bis mega52: „Antworten kommen ausschließlich AUS VALIDIERTEM WISSEN
+//      — mit Quellen und Vertrauen." Die Zusicherung traf sich selbst. Der Fall war grün, sobald
+//      die Seite überhaupt lud.
+//   2. Im hermetischen Tor (`smoke:ui:gate`, kein Modell) ist der Fragen-Knopf HART gesperrt
+//      (`Ask.tsx` → `disabled={… || !answerAi.available …}`, D-AISTATE PAKET 1) — dasselbe gewollte
+//      Produktverhalten wie bei „Mit KI strukturieren". `Enter` sendet dort also nichts, und es
+//      KANN im Tor weder Antwort noch Wissenslücke geben. Der Fall konnte sein Versprechen dort
+//      nie einlösen, auch nicht im Prinzip.
+//
+// Aufgefallen ist es erst, als mega52 Block C `ask.intro` auf die Wahrheit zog („ausschließlich
+// validiert" stand da, obwohl der Session-Weg nicht validiert-exklusiv filtert). Damit fiel das
+// falsche Grün weg — nicht das Produkt.
+//
+// DIE KORREKTUR ist eine Teilung entlang dem, was jeder Lauf WIRKLICH belegen kann:
+//   · Im Tor wird geprüft, was im Tor gilt: ohne Modell ist der Weg gesperrt UND der Grund steht
+//     sichtbar da. Das ist eine echte Aussage über das Produkt, kein Ersatzgrün.
+//   · Der Antwortweg selbst braucht ein Modell und trägt deshalb `@modell` — exakt die Bauform,
+//     die `playwright.smoke.config.ts` für den Erfassungs-Kernfluss schon begründet hat.
+// Beide hängen jetzt an `data-testid`-Ankern des Ergebnisbereichs statt an Anzeigetext, der sich
+// mit jeder Copy-Runde verschiebt.
+test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page }) => {
   await ensureLoggedIn(page);
   await page.goto("/fragen");
-  // Das Frage-Feld ist über seinen Beispiel-Platzhalter eindeutig; Enter sendet das Formular.
+  const input = page.getByPlaceholder(/Ventil X/);
+  await expect(input).toBeVisible({ timeout: 15_000 });
+  await input.fill("Wie stelle ich den Dosierwert an Linie L4 nach Schichtwechsel ein?");
+
+  // Kein stiller deterministischer Fallback, der „KI läuft" vortäuscht: der Knopf ist deaktiviert …
+  await expect(page.getByRole("button", { name: /^Fragen$/ })).toBeDisabled();
+  // … und der Grund steht als Satz daneben (AiUnavailableHint, `ai.unavailable.hint`).
+  await expect(page.getByText(/kein Modell aktiv/i).first()).toBeVisible();
+  // … und es entsteht folgerichtig KEIN Ergebnisbereich (weder Antwort noch Lücke).
+  await input.press("Enter");
+  await expect(page.getByTestId("ask-answer")).toHaveCount(0);
+  await expect(page.getByTestId("ask-gap")).toHaveCount(0);
+});
+
+test("Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell", async ({
+  page,
+}) => {
+  await ensureLoggedIn(page);
+  await page.goto("/fragen");
   const input = page.getByPlaceholder(/Ventil X/);
   await input.fill("Wie stelle ich den Dosierwert an Linie L4 nach Schichtwechsel ein?");
   await input.press("Enter");
-  // Ehrliches Ergebnis: entweder Antwort aus validiertem Wissen ODER Wissenslücken-Rettung —
-  // beide Marker existieren NUR im Ergebnisbereich (nicht im statischen Seitentext).
-  await expect(
-    page.getByText("Aus validiertem Wissen").or(page.getByText("Wissenslücke retten")).first(),
-  ).toBeVisible({ timeout: 20_000 });
+  // Ehrliches Ergebnis: entweder eine quellengebundene Antwort ODER die Wissenslücke. Die Anker
+  // sind Testids des Ergebnisbereichs — sie können nicht mehr im statischen Seitentext mitmatchen.
+  await expect(page.getByTestId("ask-answer").or(page.getByTestId("ask-gap")).first()).toBeVisible({
+    timeout: 20_000,
+  });
 });
 
 // AUFTRAG-mega47 Block C1 — DER BEWEIS IM ECHTEN BROWSER.

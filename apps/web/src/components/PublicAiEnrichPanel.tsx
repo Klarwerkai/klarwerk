@@ -5,6 +5,7 @@ import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { EnrichResult, ExternalKnowledgeStage, ExternalResult } from "../api/types";
+import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { safeHttpUrl } from "../lib/safeUrl";
 import { ExternalUrlText } from "./ExternalUrlText";
 import { HelpTip } from "./HelpTip";
@@ -32,7 +33,7 @@ export function PublicAiEnrichPanel({
   onAppendHtml,
 }: {
   stage: ExternalKnowledgeStage;
-  locale: "de" | "en";
+  locale: ReasonerLocale;
   onAppendHtml: (html: string) => void;
 }): JSX.Element | null {
   const { t } = useTranslation();

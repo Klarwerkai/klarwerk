@@ -58,7 +58,9 @@ describe("Paket 4: AnswerSourceDetails (Mounted)", () => {
   it("Status-Badge (Validierungs-Sprache) + Trust sichtbar; Summary-Disclosure toggelt", () => {
     mount(makeKo(), "Anna Autor");
     expect(container.textContent).toContain("Validiert"); // StatusPill via deriveStatus
-    expect(container.textContent).toContain("Trust 80");
+    // mega52 E2: der deutsche Anzeigewert heißt „Vertrauen" — „Trust" war Fachjargon, den die
+    // Zielgruppe überliest. Der Schlüssel (`answerSource.trust`) ist unverändert (E3).
+    expect(container.textContent).toContain("Vertrauen 80");
     // FUNKE F1 (nacht24): der Wissensträger wird sichtbar gewürdigt.
     expect(container.textContent).toContain("aus dem Wissen von Anna Autor");
     // Pulldown-Summary: zu → auf → Vorschautext (Kernaussage) sichtbar → wieder zu.

@@ -24,12 +24,20 @@ echo "▶ test";         ./tools/test "$@"
 # schon in einer Engine auf. Der vollständige Drei-Engine-Lauf bleibt `npm run smoke:ui` und ist
 # weiterhin Ship-Vorbedingung.
 #
-# WARUM EIN TEST FEHLT (`--grep-invert @modell`): „Kernfluss" klickt „Mit KI strukturieren". Seit
+# WARUM ZWEI TESTS FEHLEN (`--grep-invert @modell`): „Kernfluss" klickt „Mit KI strukturieren". Seit
 # „KI-Ehrlichkeit" (AI-STATE V1-V5) ist dieser Knopf hart ausgegraut, solange kein echtes Modell
 # aktiv ist (`apps/web/src/lib/aiAvailability.ts:29-49`) — richtiges Produktverhalten. Dieses Tor ist
 # aber HERMETISCH: kein Schlüsselbund, kein Modell, kein Netz. Der Test kann hier also gar nicht grün
 # werden, und ihn mitzunehmen hiesse, das Tor an ein Cloud-Geheimnis UND an echten Egress zu binden.
 # Er bleibt dem vollen `npm run smoke:ui` vorbehalten.
+#
+# AUFTRAG-mega52 — DER ZWEITE FALL WAR IMMER SCHON DERSELBE FALL, nur unbemerkt. „Fragen antwortet
+# ehrlich" hing an EXAKT derselben Sperre (der Fragen-Knopf ist ohne Modell hart ausgegraut) und
+# konnte im Tor deshalb nie eine Antwort sehen — die Playwright-Spur des Tor-Laufs enthielt keinen
+# einzigen `/api/ask`-Aufruf. Grün war er, weil `getByText` teilzeichenketten- und schreibweisen-
+# unabhängig matcht und sich im STATISCHEN Einleitungstext der Seite selbst traf. Aufgefallen ist
+# das erst, als mega52 diesen Text auf die Wahrheit zog. Was im Tor NACHWEISBAR ist, prüft jetzt
+# „Fragen ohne Modell: der Weg ist gesperrt und sagt warum" — der läuft hier mit.
 #
 # AUFTRAG-mega25 — DIE ZWEI ZUSAGEN DIESES ABSCHNITTS SIND JETZT GEDECKT. Bis mega24 STANDEN sie
 # hier nur, und beide waren ungedeckt (ben, sammel24):
@@ -57,9 +65,10 @@ npm run --silent smoke:ui:gate || {
   echo "  Alle drei Engines lokal: npm run smoke:ui (braucht KLARWERK_SHIP_SMOKE_API_KEY)"
   exit 1
 }
-echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" — braucht ein aktives"
+echo "  ⓘ NICHT im Tor gelaufen: ui-smoke.spec.ts „Kernfluss … @modell\" und „Fragen antwortet"
+echo "    ehrlich … @modell\" — beide brauchen ein aktives"
 echo "    Modell (Zugangsdatum + Egress), das dieses hermetische Tor bewusst nicht hat."
-echo "    Dass es bei GENAU DIESEM EINEN bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
+echo "    Dass es bei GENAU DIESEN ZWEI bleibt, hält tests/smoke/tor-ausnahme.test.ts fest;"
 echo "    dass der Tor-Lauf wirklich ohne Modell lief, hält tests-smoke/smoke-umgebung.spec.ts fest."
 echo "    Abgedeckt durch die Ship-Vorbedingung: npm run smoke:ui (drei Engines, mit Modell)."
 echo "✓ check grün"

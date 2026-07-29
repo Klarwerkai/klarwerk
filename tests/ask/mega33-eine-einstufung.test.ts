@@ -64,6 +64,9 @@ function answer(over: Partial<AnswerResult> = {}): AnswerResult {
     knowledgeClass: "gesichert",
     trust: 90,
     sources: ["k1"],
+    // mega53 B1: die Antwort steht auf dieser Quelle. Ohne Zuordnung waere sie seit
+    // mega53 nie mehr "gesichert" — dieser Fall liegt in mega53-zwei-faelle.test.ts.
+    citedSources: ["k1"],
     steps: [],
     demo: false,
     ...over,

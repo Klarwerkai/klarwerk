@@ -109,11 +109,13 @@ describe("DeterministicProvider", () => {
         trust: 20,
       },
     ];
-    // Beide KOs matchen (Token „ventil"); ko-strong hat die höhere Überschneidung → best.
-    expect(p.select("Überdruck Ventil schließen", kos).map((k) => k.id)).toEqual([
-      "ko-strong",
-      "ko-weak",
-    ]);
+    // AUFTRAG-mega52 B1: ko-weak teilt „nur das schwache Token ventil" — genau so stand es hier
+    // schon als Kommentar, und genau das ist die Klasse, die Pedis P0 ausgelöst hat. Seit dem
+    // Relevanzmaß (`keywordScore * 2 > bestScore`) kommt ein Kandidat mit der halben Überschneidung
+    // des besten Treffers gar nicht mehr in die Liste — vorher stand er als gleichwertige
+    // Antwortquelle daneben. Die Aussage des Falls (nur ko-strong trägt die Antwort) wird dadurch
+    // schärfer, nicht schwächer.
+    expect(p.select("Überdruck Ventil schließen", kos).map((k) => k.id)).toEqual(["ko-strong"]);
 
     const res = await p.answer("Überdruck Ventil schließen", kos);
     expect(res.answered).toBe(true);
@@ -157,6 +159,7 @@ describe("Reasoner", () => {
         knowledgeClass: "gesichert",
         trust: 100,
         sources: [],
+        citedSources: [],
         steps: [],
         demo: false,
       }),
@@ -204,6 +207,7 @@ describe("Reasoner", () => {
         knowledgeClass: "unbekannt",
         trust: 0,
         sources: [],
+        citedSources: [],
         steps: [],
         demo: false,
       }),
@@ -419,6 +423,7 @@ function okModel(): ReasonerProvider {
       knowledgeClass: "unbekannt",
       trust: 0,
       sources: [],
+      citedSources: [],
       steps: [],
       demo: false,
     }),
@@ -804,7 +809,9 @@ describe("SCRUM-166: Reasoner configStatus", () => {
     expect(cfg.fallbackAvailable).toBe(true);
     expect(cfg.provider).toBe("deterministic");
     expect(cfg.model).toBeUndefined();
-    expect(cfg.supportsLocales).toEqual(["de", "en"]);
+    // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — `toReasonerLocale` wirft es
+    // nicht mehr auf Deutsch, und der Status meldet das ehrlich.
+    expect(cfg.supportsLocales).toEqual(["de", "en", "nl"]);
     expect(cfg.tasks).toContain("structure");
     expect(cfg.tasks).toContain("answer");
   });
@@ -880,7 +887,11 @@ describe("SCRUM-167: ModelRun-Protokoll für answer/select", () => {
 
   it("select bleibt funktionsfähig ohne ModelRun-Repo (No-op)", () => {
     const reasoner = new Reasoner(new DeterministicProvider());
-    const hits = reasoner.select("Ventil", KOS);
+    // mega53 A1: die Frage lautete „Ventil" — ein einziges Inhaltstoken. Seit der absoluten
+    // Mindestsubstanz trägt ein Ein-Wort-Treffer keine Antwort mehr, und die Auswahl wäre hier
+    // korrekt leer. Dieser Test misst das ModelRun-No-op, nicht das Relevanzmaß; die Frage bekommt
+    // deshalb die Substanz, die eine echte Frage ohnehin hat.
+    const hits = reasoner.select("Ventil bei Überdruck", KOS);
     expect(hits[0]?.id).toBe("ko1");
   });
 });
@@ -915,6 +926,7 @@ describe("SCRUM-502 Schicht 2: Vertraulichkeit routet an der Cloud vorbei", () =
           knowledgeClass: "unbekannt",
           trust: 0,
           sources: [],
+          citedSources: [],
           steps: [],
           demo: false,
         };

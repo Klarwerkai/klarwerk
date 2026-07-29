@@ -61,6 +61,10 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
           knowledgeClass: "gesichert",
           trust: 90,
           sources: ["k1"],
+          // mega53 B1: die Antwort steht auf dieser Quelle — ohne Zuordnung koennte sie
+          // seit mega53 gar nicht mehr "gesichert" heissen (das ist der Fall in
+          // tests/ask/mega53-zwei-faelle.test.ts).
+          citedSources: ["k1"],
           steps: [],
           demo: false,
           captionSources: [],
@@ -247,6 +251,8 @@ describe("mega34 A1 · der Erfolg des Konfliktabrufs ist Pflichteingabe der Eins
     knowledgeClass: "gesichert",
     trust: 90,
     sources: ["k1"],
+    // mega53 B1: die Antwort steht auf dieser Quelle.
+    citedSources: ["k1"],
     steps: [],
     demo: false,
   } as never;

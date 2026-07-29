@@ -1,6 +1,6 @@
 # OFFEN — das Gedächtnis des Projekts
 
-**Stand: 29.07.2026 · Basis `3805c49` (Ship 4, 11:13) · gepflegt vom Kopf bei jeder Zustandsänderung**
+**Stand: 29.07.2026 · Basis `84060d2` (Ship 5, 13:06) · gepflegt vom Kopf bei jeder Zustandsänderung**
 
 Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in einem Ordner, den sich jemand ausgedacht hat. Sie wandert mit jedem Klon mit, jeder neue Kopf sieht sie, und sie überlebt jeden Fensterwechsel.
 
@@ -84,16 +84,20 @@ Fester Termin: **Freitag 14:00**, Natascha, sieben Aufgaben, kein Vorwissen.
 | D3a | OFFEN | MIT-DESIGN | Design v2: E1 Werkbank-Richtung ja · E2 Klara-Prototyp ja · E3 Reihenfolge D1→D2→D3→D4 ja |
 | F27 | OFFEN | MIT-DESIGN | Markentext einen Tick dunkler (4,497:1 → AA), damit `--kw-funke-soft` nutzbar wird; Klara in Word muss dem gewählten Thema folgen |
 | F16 | OFFEN | MIT-DESIGN | Beispielklick auf `/fragen` vorher als echten, kostenpflichtigen Aufruf kenntlich machen |
-| F21 | OFFEN | NACH-SHIP3 | Zitierte gegen herangezogene Quellen — inhaltlich wichtigster offener Posten des Produkts |
-| W1 | OFFEN | NACH-SHIP3 | **Antwort zieht fachfremde offene Quellen heran**, obwohl ausschließlich validiertes Wissen zugesichert ist (P0, Handlauf 2) |
-| W2 | OFFEN | NACH-SHIP3 | EN/NL übersetzen nur die Metadaten, nicht den Antwortkörper; „klep X" findet „Ventil X" nicht (P0, Handlauf 2) |
+| F21 | BEAUFTRAGT | — | Zitierte gegen herangezogene Quellen — inhaltlich wichtigster offener Posten des Produkts |
+| W1 | BEAUFTRAGT | — | **Antwort zieht fachfremde offene Quellen heran**, obwohl ausschließlich validiertes Wissen zugesichert ist (P0, Handlauf 2) |
+| W2 | BEAUFTRAGT | — | EN/NL übersetzen nur die Metadaten, nicht den Antwortkörper; „klep X" findet „Ventil X" nicht (P0, Handlauf 2) |
 | W3 | OFFEN | NACH-SHIP3 | Word übergibt Bilder nicht — der Verlust wird ehrlich gemeldet, die Bilder fehlen trotzdem |
 | E10 | OFFEN | NACH-SHIP3 | **Entschieden: Umgebungsvariablen in Coolify.** Kein Feld der Oberfläche nimmt je ein Geheimnis entgegen; der Admin-Bereich zeigt nur Zustand — hinterlegt ja/nein, Import ein/aus, wann zuletzt verbunden — und nennt den Variablennamen. Damit ist Block C des Import-Auftrags vollständig |
+| S3 | ENTSCHEIDUNG | VOR-VORTEST | **Der Recall-Preis: drei von zehn Fragen enden jetzt in einer Wissenslücke**, darunter Pedis eigene P0-Frage „Wie oft muss der Filter F3 geprüft werden?". Das richtige validierte Objekt LIEGT im Bestand — „geprüft" trifft „prüfen" literal nicht, und „F3" fällt unter die Zweizeichen-Grenze. Entweder so ausliefern oder die Token-Scheibe vorziehen |
+| S1 | OFFEN | NACH-SHIP6 | **Neuer Fund aus mega52, und der wiegt schwer:** der Rauchproben-Fall „Fragen antwortet ehrlich" hat nie einen `/api/ask`-Aufruf ausgelöst — grün allein durch einen statischen Einleitungstext, an der Playwright-Spur belegt. Zu prüfen, ob weitere Fälle der Rauchprobe genauso hohl sind |
+| S2 | OFFEN | NACH-SHIP6 | „klep" findet „Ventil" nicht: literaler Token-Schnitt und `ILIKE` in der Datenbank, keine Synonyme, keine Übersetzung, keine Embeddings. Eigene Scheibe |
+| A20 | BEAUFTRAGT | — | **Neu, in mega52 mitgenommen:** der Antwort-Beleg bindet heute ALLE herangezogenen Quellen — ein „Hat geholfen" gibt damit jedem bloß angesehenen Objekt ein Vertrauensplus und verfälscht genau die Zahl, auf die sich das Produkt beruft (`ask/src/service.ts:186`) |
 | C1 | OFFEN | NACH-SHIP3 | Import-Seite: „In Planung" einklappen · Quellenwahl wählt wirklich · Freigaben ehrlich · Konfliktsatz · Deckelkommentar. Auftrag liegt fertig, Block C wartet auf E10 |
 | C3 | OFFEN | NACH-SHIP3 | Vier Befunde aus Pedis Live-Durchlauf (Stufe-2-Schalter vergisst sich · „OHNE KI GRUPPIERT" trotz aktivem Reasoner · Such-Leerzustand · rohe Kennung statt Titel) — jeder einzeln am heutigen Code nachsehen |
-| F-Erstnutzer | ERLEDIGT | — | **mega51** — ben sammel49 **GRÜN**, Inhalts-SHA `6c80f5d1…68f1` vom Kopf nachgerechnet. Keiner der sieben Pins geschwächt. Wartet auf Handlauf 1 und Ship 5 — die ersten zehn Minuten einer Fremden. Acht Befunde des Erstnutzerlaufs sind am Code als geschlossen belegt (F1, F5, F7, F8, F12, F13, F14 und die Chips als Admin-Auskunft). Beauftragt sind die Reste: Arbeitsliste führt Experte ins Leere · eine primäre Handlung beim Erfassen · Suche vor Import/Export · Balken beschriftet und gleicher Wert in Bedingung und Anzeige · Trefferzeile bekommt Platz · „1 Experten" und Autoren-UUID · letzte Fachwörter ohne Trust · Beispielklick sagt vorher, dass er kostet |
-| F28 | OFFEN | NACH-SHIP3 | `lib.trustNone` und `lib.trustNoneHint` sind produktseitig verwaist, werden aber von der alten Schlüsselliste in `ux-wow-polish.test.ts` weiter gepinnt (ben sammel49, Anmerkung — färbt nicht). Reist mit F22 mit |
-| F22 | OFFEN | NACH-SHIP3 | Trust → Vertrauenswert: rund 30 Schlüssel DE plus 30 NL plus ein Dutzend Fließtexte. Eigene Scheibe mit Fundstellenliste und Sammler — halb übersetzt ist schlechter als gar nicht |
+| F-Erstnutzer | ERLEDIGT | — | **mega51 ausgeliefert — Ship 5 am 29.07., 13:06, Commit `84060d2`.** Handlauf 1 grün (49/0), ben sammel49 GRÜN, Integrationstests 44 — die ersten zehn Minuten einer Fremden. Acht Befunde des Erstnutzerlaufs sind am Code als geschlossen belegt (F1, F5, F7, F8, F12, F13, F14 und die Chips als Admin-Auskunft). Beauftragt sind die Reste: Arbeitsliste führt Experte ins Leere · eine primäre Handlung beim Erfassen · Suche vor Import/Export · Balken beschriftet und gleicher Wert in Bedingung und Anzeige · Trefferzeile bekommt Platz · „1 Experten" und Autoren-UUID · letzte Fachwörter ohne Trust · Beispielklick sagt vorher, dass er kostet |
+| F28 | BEAUFTRAGT | — | `lib.trustNone` und `lib.trustNoneHint` sind produktseitig verwaist, werden aber von der alten Schlüsselliste in `ux-wow-polish.test.ts` weiter gepinnt (ben sammel49, Anmerkung — färbt nicht). Reist mit F22 mit |
+| F22 | BEAUFTRAGT | — | Trust → Vertrauenswert: rund 30 Schlüssel DE plus 30 NL plus ein Dutzend Fließtexte. Eigene Scheibe mit Fundstellenliste und Sammler — halb übersetzt ist schlechter als gar nicht |
 | F23, F25, F26 | OFFEN | NACH-SHIP3 | Prüfwerkzeug-Reste: bejahender Startsatz, Kopfzeilen-Chips, deutsche Wörter, eine Handlung je Fläche, Zahlen mit Bezug, Rohwerte, „gesichert"-Kollision, „1 Beiträge", Re-Import zu prominent, unbeschrifteter Balken, Trefferzeile, Tadel vor der ersten Handlung, alle acht Quellen, Hauptknopf, Audit-Kette, Vertraulichkeits-Facette, Anlagenkopplung, sechs Routen ohne Live-Beleg, Arbeitszahlen ins Leere, Trust→Vertrauenswert, `apps/web`-tsc ins Tor, Validierungs-Interaktionstest, Computed-Style-Pin |
 | E2g | OFFEN | MIT-GROSSKUNDE | 12.08. **bestätigt** — elf Vorgänge leben wieder: Cloud-Instanz, Confluence in Scheibchen, Microsoft-365-Anmeldung, Spracheingabe, Demo-Drehbuch, Nullschulungs-Test |
 

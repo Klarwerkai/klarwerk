@@ -223,6 +223,7 @@ describe("AskService", () => {
           knowledgeClass: "gesichert",
           trust: 50,
           sources: ["x"],
+          citedSources: ["x"],
           steps: [],
           demo: false,
         };
@@ -316,6 +317,7 @@ describe("SCRUM-490 R2: Add-on Retrieval-only + Quellenpflicht", () => {
     knowledgeClass: "gesichert",
     trust: 80,
     sources: ["KO-1"],
+    citedSources: ["KO-1"],
     steps: [{ description: "Q", sourceId: "KO-1", snippet: "s" }],
     demo: true,
     ...over,

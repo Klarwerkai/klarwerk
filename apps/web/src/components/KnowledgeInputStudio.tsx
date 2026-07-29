@@ -28,6 +28,7 @@ import {
   studioEditorViewLabelKey,
   studioPreviewState,
 } from "../lib/knowledgeStudioPreview";
+import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { AiAssistBox } from "./AiAssistBox";
 import { BodyTemplateChooser } from "./BodyTemplateChooser";
 import { EditorAttachmentContext } from "./EditorAttachmentContext";
@@ -67,7 +68,7 @@ export function KnowledgeInputStudio({
   attachments?: readonly AttachmentLike[];
   // SCRUM-426: Public-KI-Anreicherung auch im Studio (nur bei Admin-Freigabe „offen").
   externalStage?: ExternalKnowledgeStage;
-  enrichLocale?: "de" | "en";
+  enrichLocale?: ReasonerLocale;
   // Pedi 06.07.: Datei/Bild vom Rechner direkt im Studio als Anhang hinzufügen (Bild → Bildanhang,
   // sonst Dokumentanhang). Wird vom Eltern-Capture bereitgestellt; fehlt der Callback, bleibt der Knopf aus.
   onAttachFiles?: (files: File[]) => void | Promise<void>;

@@ -12,7 +12,7 @@ import { type Guards, type SessionUser, sendError } from "../http";
 //   - Body MUSS ein JSON-Objekt sein.
 //   - question: optional; wenn vorhanden string, ≤ 8.000 Codepoints (ajv zählt Codepoints). Fehlt/leer/
 //     null → Handler normalisiert auf "" → 200 (wie Parent e6abb25).
-//   - locale: optional; string oder skalar-coercierbar; der Handler normalisiert auf de/en.
+//   - locale: optional; string oder skalar-coercierbar; der Handler normalisiert auf de/en/nl.
 //   - additionalProperties erlaubt.
 //   - Gesamt-Body ≤ 128 KiB (sonst 413).
 // Alles AUSSERHALB dieser Hülle → kontrolliertes 400 (413 bei Größe), nie 500. Gegenüber dem Parent
@@ -64,9 +64,24 @@ export interface AskRouteDeps {
   conflicts: ConflictService;
 }
 
+// AUFTRAG-mega53 B4 — DIE ZWEITE DER VIER STELLEN.
+//
+// Diese Route beschafft nur die Eingaben; entschieden wird in `answerEvidence`. Neu ist, dass sie
+// `citedSources` MITREICHT. Ohne dieses Feld rechnete die Regel serverseitig weiter auf allen
+// herangezogenen Quellen — die Signatur macht das Weglassen jetzt unmöglich (Pflichtfeld).
+//
+// Aufgelöst werden weiterhin ALLE herangezogenen Quellen, nicht nur die tragenden: die Karte ist
+// ein Nachschlagewerk, und die Regel greift daraus die tragende Teilmenge. So bleibt der
+// Auflösungs-Warnpfad für jede ausgelieferte Quelle erhalten, ohne dass eine bloß angesehene
+// Quelle die Einstufung berührt.
 async function evidenceFor(
   deps: AskRouteDeps,
-  result: { answered: boolean; knowledgeClass: string; sources: string[] },
+  result: {
+    answered: boolean;
+    knowledgeClass: string;
+    sources: string[];
+    citedSources: string[];
+  },
   log: { warn: (obj: unknown, msg: string) => void },
 ): Promise<ReturnType<typeof answerEvidence>> {
   const sourceKos = new Map<string, KnowledgeObject>();
@@ -143,7 +158,10 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // request.body ein Objekt. question kann fehlen/leer sein → wie im Parent auf "" normalisieren
         // (kein neuer 500). FR-I18N-01: UI-Sprache an den Reasoner; ungültig → "de".
         const question = request.body.question ?? "";
-        const locale: "de" | "en" = request.body.locale === "en" ? "en" : "de";
+        // mega52 D1: die Route reicht Niederländisch durch, statt es auf Deutsch zu werfen.
+        // Unbekannte Werte fallen weiterhin auf den sicheren Default "de".
+        const locale: "de" | "en" | "nl" =
+          request.body.locale === "en" ? "en" : request.body.locale === "nl" ? "nl" : "de";
         // AUFTRAG-mega34 B1: EIN Ausgang für alle drei Zweige — der Evidenzzustand hängt additiv am
         // bestehenden Antwortkörper. Wer ihn nicht liest, sieht die Antwort wie bisher; wer ihn
         // liest (Word/Klara), bekommt dieselbe Einstufung wie Desktop und Mobil.

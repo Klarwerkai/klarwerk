@@ -24,7 +24,7 @@ import {
   deterministicCandidateGroups,
   honestExtractModelFailed,
 } from "./provider";
-import { ModelProvider } from "./provider-model";
+import { ModelProvider, outputLanguageRule } from "./provider-model";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
 
 import type {
@@ -128,9 +128,14 @@ function importSelectSystem(locale: ReasonerLocale): string {
   const contract =
     '{"themes": string[], "keywords": string[], "authors": string[], ' +
     '"yearFrom": number|null, "yearTo": number|null}';
-  return locale === "en"
-    ? `You turn a user's free-text import request into selection filters. Respond ONLY with JSON: ${contract}. themes = topic labels, keywords = words to match in title/text, authors = person names, yearFrom/yearTo = time range. Use only what the text clearly states; leave a field empty if unsure. Invent nothing.`
-    : `Du wandelst einen Freitext-Importwunsch in Auswahl-Filter um. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. themes = Themen-Labels, keywords = Wörter für Titel/Text-Treffer, authors = Personennamen, yearFrom/yearTo = Zeitraum. Nutze nur, was der Text klar hergibt; lass ein Feld leer, wenn unsicher. Erfinde nichts.`;
+  // mega52 D3: die abgeleiteten Themen-Labels erscheinen dem Nutzer in der Import-Auswahl — auch
+  // dieser Task legt seine Ausgabesprache ausdrücklich fest, statt sie dem Prompt-Zwilling zu
+  // überlassen. Die `keywords` sind Suchbegriffe aus dem Nutzertext und bleiben davon unberührt.
+  const base =
+    locale === "de"
+      ? `Du wandelst einen Freitext-Importwunsch in Auswahl-Filter um. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. themes = Themen-Labels, keywords = Wörter für Titel/Text-Treffer, authors = Personennamen, yearFrom/yearTo = Zeitraum. Nutze nur, was der Text klar hergibt; lass ein Feld leer, wenn unsicher. Erfinde nichts.`
+      : `You turn a user's free-text import request into selection filters. Respond ONLY with JSON: ${contract}. themes = topic labels, keywords = words to match in title/text, authors = person names, yearFrom/yearTo = time range. Use only what the text clearly states; leave a field empty if unsure. Invent nothing.`;
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // IC-3: erstes JSON-Objekt aus einer Modell-Antwort robust herausschneiden (geschwätzige Prosa/Code-
@@ -785,7 +790,8 @@ export class Reasoner {
       configured,
       mode: configured ? "model" : "demo",
       fallbackAvailable: true,
-      supportsLocales: ["de", "en"],
+      // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache und wird hier ehrlich gemeldet.
+      supportsLocales: ["de", "en", "nl"],
       tasks: [...REASONER_TASKS],
       taskConfig: this.getTaskConfig(),
       effective: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.effectiveFor(task)])),

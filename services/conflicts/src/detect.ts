@@ -211,7 +211,17 @@ export function decideFromVerdict(
 
 // Ehrliche, als solche markierte Beschreibung eines automatisch erkannten Konflikts (aus
 // Begründung + beiden Zitaten). Die Anzeige kennzeichnet die Herkunft „automatisch erkannt".
-export function autoDescription(verdict: ConflictVerdict, locale: "de" | "en" = "de"): string {
-  const lead = locale === "en" ? "Automatically detected" : "Automatisch erkannt";
+// mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — die Signatur zieht mit, statt
+// den nl-Fall am Typ abprallen zu lassen.
+export function autoDescription(
+  verdict: ConflictVerdict,
+  locale: "de" | "en" | "nl" = "de",
+): string {
+  const lead =
+    locale === "en"
+      ? "Automatically detected"
+      : locale === "nl"
+        ? "Automatisch herkend"
+        : "Automatisch erkannt";
   return `${lead}: ${verdict.begruendung.trim()}`;
 }

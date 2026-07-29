@@ -35,7 +35,7 @@ export function estimateValuation(
   return {
     estimateEur,
     perKoEur: Math.round(perKoEur),
-    formula: "validierte Objekte × €/Std × Std/Objekt × Wiederverwendung × (Ø-Trust/100)",
+    formula: "validierte Objekte × €/Std × Std/Objekt × Wiederverwendung × (Ø-Vertrauen/100)",
   };
 }
 

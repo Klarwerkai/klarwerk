@@ -1,5 +1,6 @@
 import {
   type ReasonerProvider,
+  answerStanding,
   deterministicInterview,
   selectCandidates,
   sourceLabel,
@@ -61,42 +62,140 @@ export interface ModelClient {
   ): Promise<string>;
 }
 
+// ================================================================================================
+// AUFTRAG-mega52 BLOCK D — DIE AUSGABESPRACHE IST EINE ENTSCHEIDUNG, KEIN NEBENEFFEKT.
+// ================================================================================================
+//
+// DER BEFUND (Pedi, 28.07.): Englisch und Niederländisch übersetzten nur die Metadaten, nicht den
+// Antwortkörper. Zwei Ursachen, beide hier:
+//   1. `answerSystem` enthielt KEINERLEI Anweisung zur Ausgabesprache. Die Sprache ergab sich
+//      zufällig daraus, in welcher Sprache der Prompt zufällig formuliert war — bei gemischten
+//      Quellen also gar nicht.
+//   2. `toReasonerLocale` warf Niederländisch auf Deutsch (mega52 D1, jetzt behoben).
+//
+// `interviewSystem` macht es seit SCRUM-410 vorbildlich richtig („Antworte ausschließlich auf
+// Deutsch." / „Answer in English only.") — genau diese Bauform gilt ab jetzt für JEDEN Modell-Task,
+// dessen Ergebnis einem Menschen als Fließtext gezeigt wird. Der Sammler
+// `tests/reasoner/mega52-ausgabesprache-sammler.test.ts` erhebt das über die Bauform.
+//
+// ZWEI REGELN, ZWEI HELFER:
+//  · `outputLanguageRule` — die Ausgabesprache ist die GEWÄHLTE Sprache. Für Aufgaben, die neuen
+//    Text für Menschen erzeugen (Antwort, Hilfe, Interview, Bildbeschreibung, Anreicherung,
+//    Strukturierung, Gruppierung, Urteilsbegründungen).
+//  · `keepInputLanguageRule` — die Ausgabesprache ist die des EINGABETEXTES. Für Aufgaben, die
+//    vorhandenen Text glätten oder aus einem Dokument zitieren (assist, extract mit
+//    keepSourceLanguage). Dort wäre die UI-Sprache aufzuzwingen schlicht falsch: sie würde den
+//    Text des Experten übersetzen, statt ihn zu präzisieren. Auch das ist eine ausdrückliche
+//    Festlegung der Ausgabesprache — nur eben eine andere.
+const OUTPUT_LANGUAGE_RULE: Record<ReasonerLocale, string> = {
+  de: "Formuliere alle für Menschen bestimmten Texte ausschließlich auf Deutsch.",
+  en: "Write all human-readable text in English only.",
+  nl: "Schrijf alle voor mensen bestemde tekst uitsluitend in het Nederlands.",
+};
+
+export function outputLanguageRule(locale: ReasonerLocale): string {
+  return OUTPUT_LANGUAGE_RULE[locale];
+}
+
+const KEEP_INPUT_LANGUAGE_RULE: Record<ReasonerLocale, string> = {
+  de: "Behalte die Sprache des Eingabetextes bei — übersetze nichts.",
+  en: "Keep the language of the input text — do not translate anything.",
+  nl: "Behoud de taal van de invoertekst — vertaal niets.",
+};
+
+export function keepInputLanguageRule(locale: ReasonerLocale): string {
+  return KEEP_INPUT_LANGUAGE_RULE[locale];
+}
+
+// Der ANWEISUNGSKÖRPER bleibt zweisprachig (DE/EN) — er richtet sich an das Modell, nicht an den
+// Nutzer, und ein dritter, gepflegter Prompt-Zwilling wäre eine dritte Wahrheit ohne Gewinn.
+// Niederländisch bekommt bewusst den englischen Körper (die neutrale Prompt-Sprache) UND die
+// ausdrückliche niederländische Ausgaberegel — die Sprache der Anweisung bestimmt die Ausgabe
+// gerade NICHT mehr, genau darum ging es in diesem Block.
+function taskInstruction(locale: ReasonerLocale, de: string, en: string): string {
+  return locale === "de" ? de : en;
+}
+
 // FR-I18N-01: Systemprompts sprachbewusst. JSON-Contract der structure-Aufgabe bleibt
 // in beiden Sprachen identisch — nur die Anweisung ist lokalisiert.
 function structureSystem(locale: ReasonerLocale): string {
   const contract =
     '{"title": string, "statement": string, "conditions": string[], "measures": string[], ' +
     '"tags": string[], "confidence": number (0..1)}';
-  return locale === "en"
-    ? `You structure industrial experiential knowledge. Respond ONLY with JSON: ${contract}. Do not invent anything.`
-    : `Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Erfinde nichts dazu.`;
+  const base = taskInstruction(
+    locale,
+    `Du strukturierst industrielles Erfahrungswissen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Erfinde nichts dazu.`,
+    `You structure industrial experiential knowledge. Respond ONLY with JSON: ${contract}. Do not invent anything.`,
+  );
+  // Die JSON-SCHLÜSSEL bleiben unangetastet; die Regel gilt den Werten, die der Nutzer liest.
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // SCRUM-366 / AG-04 / FR-RSN-03: quellengebundene, anti-halluzinatorische Leitplanken für den
 // Modellmodus. Bleibt anbieteragnostisch (kein RAG, kein neues Framework) — schärft NUR den
 // System-Prompt: nur aus den nummerierten Quellen antworten, nichts erfinden/überdehnen, bei
 // unzureichender Basis ehrlich auf die fehlende Wissensbasis verweisen, keine Fake-Zitate.
+// AUFTRAG-mega52 A1: die Fußnotenmarke ist jetzt VERBINDLICH, nicht mehr erlaubt. Vorher hieß es
+// „Du darfst auf die genutzten Quellen verweisen" — ein Angebot, das kein Modell einlösen musste
+// und dessen Ergebnis ohnehin niemand zurücklas. Ohne Pflichtmarke gibt es keine Zuordnung, und
+// ohne Zuordnung landet jedes bloß angesehene Objekt als gleichwertige Antwortquelle in der Liste.
+// mega52 D2: die Ausgabesprache steht jetzt ausdrücklich im Prompt (Vorbild interviewSystem).
 function answerSystem(locale: ReasonerLocale): string {
-  return locale === "en"
-    ? "Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, say honestly that the knowledge base does not cover this — do not guess. You may refer to the sources you used, but never fabricate quotes."
-    : "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, sage ehrlich, dass die Wissensbasis das nicht abdeckt — rate nicht. Du darfst auf die genutzten Quellen verweisen, aber erfinde keine Zitate.";
+  const base = taskInstruction(
+    locale,
+    "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, sage ehrlich, dass die Wissensbasis das nicht abdeckt — rate nicht. Erfinde keine Zitate. PFLICHT: Setze hinter JEDE Aussage, die auf eine Quelle zurückgeht, deren Nummer als Fußnotenmarke in eckigen Klammern, z. B. [1] oder [2][3]. Verwende AUSSCHLIESSLICH die vorgegebenen Quellennummern und markiere nur Quellen, die du wirklich benutzt hast.",
+    "Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, say honestly that the knowledge base does not cover this — do not guess. Never fabricate quotes. MANDATORY: after EVERY statement that comes from a source, put that source's number as a footnote marker in square brackets, e.g. [1] or [2][3]. Use ONLY the given source numbers and mark only sources you actually used.",
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
+}
+
+// AUFTRAG-mega52 A2 — DIE MARKEN ZURÜCKLESEN.
+//
+// Der Prompt nummerierte die Quellen seit SCRUM-366; gelesen hat sie nie jemand. Hier passiert
+// genau das und nichts darüber hinaus: aus dem gelieferten Antworttext werden die Marken `[n]`
+// gezogen und über den 1-basierten Index auf die Kandidatenliste abgebildet.
+//
+// STRENG, nicht großzügig — geraten wird nichts:
+//  · Nur Ziffern in eckigen Klammern zählen; `[1]`, `[2][3]` und `[1, 2]` werden erfasst.
+//  · Eine Nummer außerhalb der Kandidatenliste (0, 99, „[12]" bei 8 Quellen) wird VERWORFEN, nicht
+//    auf den nächsten gültigen Wert gebogen.
+//  · Die Reihenfolge folgt der Kandidatenliste (Rangfolge), nicht dem Zufall des Fließtexts;
+//    Doppelnennungen fallen weg.
+// Bleibt nichts übrig, ist das Ergebnis LEER — die Reißleine A5 liegt beim Aufrufer, nicht hier.
+export function citedSourceIds(answerText: string, candidates: readonly KnowledgeRef[]): string[] {
+  const marked = new Set<number>();
+  for (const match of answerText.matchAll(/\[([0-9\s,]+)\]/g)) {
+    for (const part of (match[1] ?? "").split(",")) {
+      const n = Number.parseInt(part.trim(), 10);
+      if (Number.isInteger(n) && n >= 1 && n <= candidates.length) {
+        marked.add(n);
+      }
+    }
+  }
+  return candidates.filter((_, i) => marked.has(i + 1)).map((c) => c.id);
 }
 
 // Klara Stufe 2: generierende Hilfe-Antwort — Wissensdatenbank vorrangig, Folgern erlaubt,
 // aber nie Funktionen erfinden; erkennbare Luecken ehrlich benennen (Kennzeichnung macht das FE).
 function helpAnswerSystem(locale: ReasonerLocale): string {
-  return locale === "en"
-    ? "You are Klara, the help assistant of the KLARWERK application. Answer the user question about using and understanding the application. Rely primarily on the numbered help entries, which are your knowledge base; you may reason, combine and infer from them. If the knowledge base clearly does not cover the question, say honestly that you are not sure — never invent features the application does not have. Keep it short and plain, no bullet lists."
-    : "Du bist Klara, die Hilfe-Assistentin der Anwendung KLARWERK. Beantworte die Frage zur Bedienung und zu den Konzepten der Anwendung. Stütze dich vorrangig auf die nummerierten Hilfe-Einträge — deine Wissensdatenbank; du darfst daraus folgern und kombinieren. Deckt die Wissensdatenbank die Frage erkennbar nicht, sage ehrlich, dass du es nicht sicher weißt — erfinde niemals Funktionen, die es nicht gibt. Antworte kurz, in Du-Anrede, ohne Aufzählungslisten.";
+  const base = taskInstruction(
+    locale,
+    "Du bist Klara, die Hilfe-Assistentin der Anwendung KLARWERK. Beantworte die Frage zur Bedienung und zu den Konzepten der Anwendung. Stütze dich vorrangig auf die nummerierten Hilfe-Einträge — deine Wissensdatenbank; du darfst daraus folgern und kombinieren. Deckt die Wissensdatenbank die Frage erkennbar nicht, sage ehrlich, dass du es nicht sicher weißt — erfinde niemals Funktionen, die es nicht gibt. Antworte kurz, in Du-Anrede, ohne Aufzählungslisten.",
+    "You are Klara, the help assistant of the KLARWERK application. Answer the user question about using and understanding the application. Rely primarily on the numbered help entries, which are your knowledge base; you may reason, combine and infer from them. If the knowledge base clearly does not cover the question, say honestly that you are not sure — never invent features the application does not have. Keep it short and plain, no bullet lists.",
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // WP-BILD-1c: nüchterne, ehrliche Bildbeschreibung als VORSCHLAG für die Fußnote. Kurz (~200
 // Zeichen), nur was sichtbar ist, keine Erfindungen/Interpretationen, keine Floskeln — der Text
 // wird dem Nutzer als editierbarer Vorschlag angezeigt und nie automatisch gespeichert.
 function describeImageSystem(locale: ReasonerLocale): string {
-  return locale === "en"
-    ? "You write a short, factual image description for a knowledge-base figure caption. Describe ONLY what is visibly in the image, in at most 200 characters, one or two plain sentences. Do not invent context, names, numbers or purposes that are not visible. No preamble, no quotation marks — return ONLY the description."
-    : "Du schreibst eine kurze, nüchterne Bildbeschreibung für die Fußnote einer Wissensseite. Beschreibe NUR, was sichtbar im Bild ist, in höchstens 200 Zeichen, ein bis zwei schlichte Sätze. Erfinde keinen Kontext, keine Namen, Zahlen oder Zwecke, die nicht sichtbar sind. Keine Vorbemerkung, keine Anführungszeichen — gib AUSSCHLIESSLICH die Beschreibung zurück.";
+  const base = taskInstruction(
+    locale,
+    "Du schreibst eine kurze, nüchterne Bildbeschreibung für die Fußnote einer Wissensseite. Beschreibe NUR, was sichtbar im Bild ist, in höchstens 200 Zeichen, ein bis zwei schlichte Sätze. Erfinde keinen Kontext, keine Namen, Zahlen oder Zwecke, die nicht sichtbar sind. Keine Vorbemerkung, keine Anführungszeichen — gib AUSSCHLIESSLICH die Beschreibung zurück.",
+    "You write a short, factual image description for a knowledge-base figure caption. Describe ONLY what is visibly in the image, in at most 200 characters, one or two plain sentences. Do not invent context, names, numbers or purposes that are not visible. No preamble, no quotation marks — return ONLY the description.",
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // Harte Server-Obergrenze der Vorschlagslänge (der Prompt bittet um ~200 Zeichen; das Modell kann
@@ -130,9 +229,15 @@ function describeImageUserPrompt(locale: ReasonerLocale, context: string): strin
 // entscheidet nichts (jede Id genau einmal, Unbekanntes fliegt, Fehlendes in die Auffanggruppe).
 function groupSystem(locale: ReasonerLocale): string {
   const contract = '{"groups":[{"title": string, "ids": [string]}]}';
-  return locale === "en"
-    ? `You group knowledge-import candidates into 3-8 thematic groups. Respond ONLY with JSON: ${contract}. Every candidate id MUST appear in exactly ONE group; never invent ids. Group titles: short, factual, in English. Do not invent content.`
-    : `Du gruppierst Import-Kandidaten für eine Wissensdatenbank in 3–8 thematische Gruppen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Jede Kandidaten-Id MUSS in genau EINER Gruppe vorkommen; erfinde keine Ids. Gruppentitel: kurz, sachlich, auf Deutsch. Erfinde keine Inhalte.`;
+  // Die Sprachfestlegung stand hier bisher IM Anweisungstext („in English"/„auf Deutsch") — damit
+  // war sie an den Prompt-Zwilling geknüpft und für Niederländisch unerreichbar. Jetzt liefert sie
+  // dieselbe eine Quelle wie überall (mega52 D2/D3).
+  const base = taskInstruction(
+    locale,
+    `Du gruppierst Import-Kandidaten für eine Wissensdatenbank in 3–8 thematische Gruppen. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Jede Kandidaten-Id MUSS in genau EINER Gruppe vorkommen; erfinde keine Ids. Gruppentitel: kurz und sachlich. Erfinde keine Inhalte.`,
+    `You group knowledge-import candidates into 3-8 thematic groups. Respond ONLY with JSON: ${contract}. Every candidate id MUST appear in exactly ONE group; never invent ids. Group titles: short and factual. Do not invent content.`,
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // Deckel je Gruppentitel — überlange Modell-Titel werden deterministisch gekappt.
@@ -140,7 +245,10 @@ export const MAX_GROUP_TITLE_LENGTH = 80;
 
 // Beschriftung der Auffanggruppe (DE/EN vom Server; NL lokalisiert die UI über kind:"catchall").
 export function catchAllGroupTitle(locale: ReasonerLocale): string {
-  return locale === "en" ? "More posts" : "Weitere Beiträge";
+  if (locale === "en") {
+    return "More posts";
+  }
+  return locale === "nl" ? "Overige bijdragen" : "Weitere Beiträge";
 }
 
 // STRIKTE Validierung der Modell-Antwort (bens Auflagen): jede bekannte Id GENAU einmal (erste
@@ -224,10 +332,17 @@ export function normalizeCandidateGroups(
   return groups;
 }
 
+// mega52 D3: assist GLÄTTET vorhandenen Text — hier wäre die UI-Sprache aufzuzwingen falsch (das
+// würde den Text des Experten übersetzen statt präzisieren). Die Ausgabesprache ist deshalb
+// ausdrücklich die des Eingabetextes. Festgelegt ist sie damit trotzdem, und genau das verlangt der
+// Sammler: keine Aufgabe darf die Frage offenlassen.
 function assistSystem(locale: ReasonerLocale): string {
-  return locale === "en"
-    ? "Improve wording without changing content. Do NOT alter or invent any content, numbers or facts. Return ONLY the revised text, without preamble or quotation marks."
-    : "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text zurück, ohne Vorbemerkung oder Anführungszeichen.";
+  const base = taskInstruction(
+    locale,
+    "Du präzisierst und glättest industrielles Erfahrungswissen sprachlich. Verändere oder erfinde KEINE Inhalte, Zahlen oder Fakten. Gib AUSSCHLIESSLICH den überarbeiteten Text zurück, ohne Vorbemerkung oder Anführungszeichen.",
+    "Improve wording without changing content. Do NOT alter or invent any content, numbers or facts. Return ONLY the revised text, without preamble or quotation marks.",
+  );
+  return `${base} ${keepInputLanguageRule(locale)}`;
 }
 
 // SCRUM-312: leitet die optionale Nutzer-/Aktionsanweisung an das Modell weiter — als
@@ -238,9 +353,12 @@ function assistSystem(locale: ReasonerLocale): string {
 // Ergebnis wird in der UI IMMER als „extern · ungeprüft" gekennzeichnet und nie automatisch
 // validiert — die Verantwortung für die Übernahme bleibt beim Menschen.
 function enrichPublicSystem(locale: ReasonerLocale): string {
-  return locale === "en"
-    ? "You add helpful external background knowledge to an expert's draft. Be concise (3–6 sentences or short bullet points), factual and general. Do NOT invent specific numbers, thresholds, dates, names or quotes — if you are unsure, say so plainly. Make clear this is general external knowledge to be verified, not the company's own validated knowledge. Answer in English."
-    : "Du ergänzt den Entwurf eines Experten um hilfreiches externes Hintergrundwissen. Fasse dich kurz (3–6 Sätze oder knappe Stichpunkte), sachlich und allgemein. Erfinde KEINE konkreten Zahlen, Grenzwerte, Daten, Namen oder Zitate — bist du unsicher, sage es offen. Mache klar, dass dies allgemeines externes Wissen zum Prüfen ist, nicht das validierte Wissen des Unternehmens. Antworte auf Deutsch.";
+  const base = taskInstruction(
+    locale,
+    "Du ergänzt den Entwurf eines Experten um hilfreiches externes Hintergrundwissen. Fasse dich kurz (3–6 Sätze oder knappe Stichpunkte), sachlich und allgemein. Erfinde KEINE konkreten Zahlen, Grenzwerte, Daten, Namen oder Zitate — bist du unsicher, sage es offen. Mache klar, dass dies allgemeines externes Wissen zum Prüfen ist, nicht das validierte Wissen des Unternehmens.",
+    "You add helpful external background knowledge to an expert's draft. Be concise (3–6 sentences or short bullet points), factual and general. Do NOT invent specific numbers, thresholds, dates, names or quotes — if you are unsure, say so plainly. Make clear this is general external knowledge to be verified, not the company's own validated knowledge.",
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // Berater-Konzept 04.07. (Stufe 2, kon-v1): System-Prompt der „Konfliktprüfung". Rein inhaltlich
@@ -252,9 +370,20 @@ function conflictSystem(locale: ReasonerLocale): string {
   // wörtlich aus dem jeweiligen Zitat stammen, wo möglich (belegter Fall).
   const contract =
     '{"relation":"widerspruch|doppelung|ueberholt|kein_konflikt|unsicher","older":"a|b|null","confidence":0.0-1.0,"begruendung":"...","zitat_a":"...","zitat_b":"...","kollision":{"streitpunkt":"...","seite_a":{"kernaussage":"...","streitwert":"..."},"seite_b":{"kernaussage":"...","streitwert":"..."}}}';
-  return locale === "en"
-    ? `You compare two knowledge statements A and B and decide their relation. Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state — add no world knowledge. A different scope stated in the text (other asset/condition) is NOT a contradiction → "kein_konflikt". When in doubt: "unsicher". "zitat_a"/"zitat_b" MUST be verbatim quotes copied from A resp. B. "older" only for "ueberholt", otherwise null. Only for "widerspruch"/"ueberholt" add "kollision": "streitpunkt" = what the collision is about (e.g. "mandatory colour"); per side a short "kernaussage" (one sentence) and the "streitwert" = the concretely colliding element (e.g. "blue" vs "red"). Copy the "streitwert" VERBATIM from the respective quote (zitat_a resp. zitat_b) where possible; only summarise briefly if no single word fits. For "kein_konflikt"/"unsicher"/"doppelung" omit "kollision".`
-    : `Du vergleichst zwei Wissens-Aussagen A und B und bestimmst ihre Beziehung. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht — ergänze kein Weltwissen. Ein im Text genannter abweichender Geltungsbereich (andere Anlage/Bedingung) ist KEIN Widerspruch → "kein_konflikt". Im Zweifel: "unsicher". "zitat_a"/"zitat_b" MÜSSEN wörtliche Zitate aus A bzw. B sein (exakt kopieren). "older" nur bei "ueberholt", sonst null. Nur bei "widerspruch"/"ueberholt" zusätzlich "kollision": "streitpunkt" = worum die Kollision geht (z. B. "Pflichtfarbe"); je Seite eine knappe "kernaussage" (ein Satz) und der "streitwert" = das konkret kollidierende Element (z. B. "blau" vs. "rot"). Den "streitwert" WÖRTLICH aus dem jeweiligen Zitat (zitat_a bzw. zitat_b) übernehmen, wo möglich; nur wenn kein einzelnes Wort passt, knapp zusammenfassen. Bei "kein_konflikt"/"unsicher"/"doppelung" "kollision" weglassen.`;
+  // Die WÖRTLICHEN Zitate (zitat_a/zitat_b/streitwert) sind Kopien aus den Quelltexten und bleiben
+  // in deren Sprache — sie werden nachgelagert wörtlich geprüft (G-2). Die Ausgaberegel gilt der
+  // `begruendung` und den Kernaussagen, die der Nutzer im Konfliktboard liest.
+  const base = taskInstruction(
+    locale,
+    `Du vergleichst zwei Wissens-Aussagen A und B und bestimmst ihre Beziehung. Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht — ergänze kein Weltwissen. Ein im Text genannter abweichender Geltungsbereich (andere Anlage/Bedingung) ist KEIN Widerspruch → "kein_konflikt". Im Zweifel: "unsicher". "zitat_a"/"zitat_b" MÜSSEN wörtliche Zitate aus A bzw. B sein (exakt kopieren). "older" nur bei "ueberholt", sonst null. Nur bei "widerspruch"/"ueberholt" zusätzlich "kollision": "streitpunkt" = worum die Kollision geht (z. B. "Pflichtfarbe"); je Seite eine knappe "kernaussage" (ein Satz) und der "streitwert" = das konkret kollidierende Element (z. B. "blau" vs. "rot"). Den "streitwert" WÖRTLICH aus dem jeweiligen Zitat (zitat_a bzw. zitat_b) übernehmen, wo möglich; nur wenn kein einzelnes Wort passt, knapp zusammenfassen. Bei "kein_konflikt"/"unsicher"/"doppelung" "kollision" weglassen.`,
+    `You compare two knowledge statements A and B and decide their relation. Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state — add no world knowledge. A different scope stated in the text (other asset/condition) is NOT a contradiction → "kein_konflikt". When in doubt: "unsicher". "zitat_a"/"zitat_b" MUST be verbatim quotes copied from A resp. B. "older" only for "ueberholt", otherwise null. Only for "widerspruch"/"ueberholt" add "kollision": "streitpunkt" = what the collision is about (e.g. "mandatory colour"); per side a short "kernaussage" (one sentence) and the "streitwert" = the concretely colliding element (e.g. "blue" vs "red"). Copy the "streitwert" VERBATIM from the respective quote (zitat_a resp. zitat_b) where possible; only summarise briefly if no single word fits. For "kein_konflikt"/"unsicher"/"doppelung" omit "kollision".`,
+  );
+  const quoteRule = taskInstruction(
+    locale,
+    "Die wörtlichen Zitate bleiben unverändert in ihrer Originalsprache.",
+    "The verbatim quotes stay unchanged in their original language.",
+  );
+  return `${base} ${quoteRule} ${outputLanguageRule(locale)}`;
 }
 
 const CONFLICT_RELATIONS: readonly string[] = [
@@ -356,9 +485,17 @@ export function parseConflictResponse(raw: string): ConflictJudgeResult | null {
 function duplicateSystem(locale: ReasonerLocale): string {
   const contract =
     '{"beziehung":"identisch|a_enthaelt_b|b_enthaelt_a|teilweise|verwandt|verschieden|unsicher","gemeinsame_aussagen":[{"beschreibung":"...","zitat_a":"...","zitat_b":"..."}],"nur_in_a":"...","nur_in_b":"...","empfehlung":"zusammenfuehren|zusammenfuehren_pruefen|getrennt_lassen|verwandt_verlinken","confidence":0.0-1.0,"begruendung":"..."}';
-  return locale === "en"
-    ? `You compare two knowledge statements A and B and describe their OVERLAP (relation + degree + shared statements). Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state. Explicitly different scope in the text (other asset/condition) → recommend "getrennt_lassen" even at high textual overlap. Same content in two languages → "identisch" but recommend "getrennt_lassen"/"verwandt_verlinken" (never merge across languages). When in doubt: "unsicher". Every "zitat_a"/"zitat_b" MUST be a verbatim quote from A resp. B. At most 5 shared statements.`
-    : `Du vergleichst zwei Wissens-Aussagen A und B und beschreibst ihre ÜBERSCHNEIDUNG (Beziehung + Grad + gemeinsame Aussagen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht. Ein im Text ausdrücklich abweichender Geltungsbereich (andere Anlage/Bedingung) → Empfehlung "getrennt_lassen", auch bei hoher Textdeckung. Gleicher Inhalt in zwei Sprachen → "identisch", aber Empfehlung "getrennt_lassen"/"verwandt_verlinken" (nie über Sprachgrenzen zusammenführen). Im Zweifel: "unsicher". Jedes "zitat_a"/"zitat_b" MUSS ein wörtliches Zitat aus A bzw. B sein. Höchstens 5 gemeinsame Aussagen.`;
+  const base = taskInstruction(
+    locale,
+    `Du vergleichst zwei Wissens-Aussagen A und B und beschreibst ihre ÜBERSCHNEIDUNG (Beziehung + Grad + gemeinsame Aussagen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Urteile NUR über das, was in den Texten steht. Ein im Text ausdrücklich abweichender Geltungsbereich (andere Anlage/Bedingung) → Empfehlung "getrennt_lassen", auch bei hoher Textdeckung. Gleicher Inhalt in zwei Sprachen → "identisch", aber Empfehlung "getrennt_lassen"/"verwandt_verlinken" (nie über Sprachgrenzen zusammenführen). Im Zweifel: "unsicher". Jedes "zitat_a"/"zitat_b" MUSS ein wörtliches Zitat aus A bzw. B sein. Höchstens 5 gemeinsame Aussagen.`,
+    `You compare two knowledge statements A and B and describe their OVERLAP (relation + degree + shared statements). Respond ONLY with JSON: ${contract}. Judge ONLY what the texts state. Explicitly different scope in the text (other asset/condition) → recommend "getrennt_lassen" even at high textual overlap. Same content in two languages → "identisch" but recommend "getrennt_lassen"/"verwandt_verlinken" (never merge across languages). When in doubt: "unsicher". Every "zitat_a"/"zitat_b" MUST be a verbatim quote from A resp. B. At most 5 shared statements.`,
+  );
+  const quoteRule = taskInstruction(
+    locale,
+    "Die wörtlichen Zitate bleiben unverändert in ihrer Originalsprache.",
+    "The verbatim quotes stay unchanged in their original language.",
+  );
+  return `${base} ${quoteRule} ${outputLanguageRule(locale)}`;
 }
 
 const DUP_RELATIONS: readonly string[] = [
@@ -444,17 +581,20 @@ function extractSystem(locale: ReasonerLocale, keepSourceLanguage = false): stri
     '"sourceExcerpt": string (wörtliches Zitat aus dem Dokument)}]}';
   // SCRUM-451 (Pedi 05.07.): auf Wunsch bleibt das Ergebnis in der Sprache des Dokuments —
   // ohne diesen Zusatz übersetzt das Modell Titel/Zusammenfassungen faktisch in die UI-Sprache.
+  // mega52 D3: die Festlegung gilt jetzt in BEIDEN Richtungen ausdrücklich. Vorher stand hier nur
+  // der Sonderfall „Dokumentsprache behalten"; ohne ihn blieb die Ausgabesprache ungesagt und das
+  // Modell übersetzte faktisch in die Sprache des Prompt-Zwillings — für Niederländisch also nie
+  // ins Niederländische. Die sourceExcerpt-Zitate bleiben in JEDEM Fall wörtlich (G-2).
   const langRule = keepSourceLanguage
-    ? locale === "en"
-      ? " IMPORTANT: Write title and summary in the LANGUAGE OF THE DOCUMENT — do not translate anything."
-      : " WICHTIG: Schreibe title und summary in der SPRACHE DES DOKUMENTS — übersetze nichts."
-    : "";
+    ? ` ${taskInstruction(locale, "WICHTIG: Schreibe title und summary in der SPRACHE DES DOKUMENTS — übersetze nichts.", "IMPORTANT: Write title and summary in the LANGUAGE OF THE DOCUMENT — do not translate anything.")}`
+    : ` ${outputLanguageRule(locale)} ${taskInstruction(locale, "Die sourceExcerpt-Zitate bleiben davon unberührt wörtlich in der Sprache des Dokuments.", "The sourceExcerpt quotes stay verbatim in the document's language regardless.")}`;
   // SCRUM-418: Ausgabe begrenzen (≤12 Punkte, Auszug ≤300 Zeichen) — vollständige, kurze
   // Punkte statt einer langen Antwort, die am Token-Limit abreißt.
-  const base =
-    locale === "en"
-      ? `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Return at most ${EXTRACT_PROMPT_MAX_POINTS} points — pick the most important ones. Keep each sourceExcerpt under 300 characters. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`
-      : `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Gib höchstens ${EXTRACT_PROMPT_MAX_POINTS} Punkte zurück — wähle die wichtigsten. Halte jede sourceExcerpt unter 300 Zeichen. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`;
+  const base = taskInstruction(
+    locale,
+    `Du identifizierst einzelne Wissenspunkte in einem Dokument (Erfahrungsregeln, Grenzwerte, Vorgehensweisen, Ursachen, Bedingungen). Antworte AUSSCHLIESSLICH mit JSON: ${contract}. Gib höchstens ${EXTRACT_PROMPT_MAX_POINTS} Punkte zurück — wähle die wichtigsten. Halte jede sourceExcerpt unter 300 Zeichen. Jeder Punkt MUSS eine wörtliche Belegstelle aus dem Dokument als sourceExcerpt zitieren (exakt kopieren, nicht paraphrasieren). Extrahiere NUR, was im Dokument tatsächlich steht — erfinde nichts, schlussfolgere nicht über den Text hinaus, ergänze kein Weltwissen. Enthält das Dokument kein verwertbares Wissen, gib {"points": []} zurück.`,
+    `You identify distinct pieces of knowledge in a document (rules of experience, thresholds, procedures, causes, conditions). Respond ONLY with JSON: ${contract}. Return at most ${EXTRACT_PROMPT_MAX_POINTS} points — pick the most important ones. Keep each sourceExcerpt under 300 characters. Every point MUST quote a verbatim excerpt from the document as sourceExcerpt (copy it exactly, do not paraphrase it). Extract ONLY what the document actually states — do not invent, infer beyond the text, or add world knowledge. If the document contains no usable knowledge, return {"points": []}.`,
+  );
   return base + langRule;
 }
 
@@ -470,10 +610,16 @@ function extractGuidance(locale: ReasonerLocale, query: string): string {
 // CI-Sprachregeln (Brand Book: nüchtern, kompetent, aktiv, ohne Hype) — natürliche Du-Anrede,
 // kurz, konkret am Erzählten, kein Übersetzungsdeutsch, keine Floskeln. Antwortsprache
 // STRIKT = UI-Sprache. Inhaltlich unverändert streng: nichts erfinden, nur EINE Frage.
+// mega52 D2/D3: DAS VORBILD dieses Blocks. Die Ausgabesprache stand hier seit SCRUM-410 als eigener
+// Satz im Prompt — sie war nur an den Prompt-Zwilling geknüpft und damit für Niederländisch
+// unerreichbar. Jetzt kommt sie aus derselben einen Quelle wie überall; der Rest bleibt wörtlich.
 function interviewSystem(locale: ReasonerLocale): string {
-  return locale === "en"
-    ? "You are an experienced colleague conducting a short interview to capture experiential knowledge. Rephrase the guiding question into exactly ONE natural next question. Rules: plain, natural English; at most 20 words; pick up concrete terms from the previous answers instead of asking generically; aim at what makes knowledge experiential (thresholds, exceptions, why, how-do-you-notice-it). No filler phrases, no politeness formulas, no quotation marks, no numbering, no leading label. Do NOT invent any technical content or facts. Answer in English only. Return ONLY the question."
-    : "Du bist ein erfahrener Kollege und führst ein kurzes Interview, um Erfahrungswissen zu sichern. Formuliere aus der Leitfrage genau EINE natürliche nächste Frage. Regeln: klares, natürliches Deutsch in Du-Anrede; höchstens 20 Wörter; greife konkrete Begriffe aus den bisherigen Antworten auf, statt generisch zu fragen; ziele auf das, was Erfahrungswissen ausmacht (Grenzwerte, Ausnahmen, Warum, Woran-erkennst-du-es). Keine Floskeln oder Höflichkeitsformeln, keine Anführungszeichen, keine Nummerierung, kein vorangestelltes Label. Erfinde KEINE fachlichen Inhalte oder Fakten. Antworte ausschließlich auf Deutsch. Gib AUSSCHLIESSLICH die Frage zurück.";
+  const base = taskInstruction(
+    locale,
+    "Du bist ein erfahrener Kollege und führst ein kurzes Interview, um Erfahrungswissen zu sichern. Formuliere aus der Leitfrage genau EINE natürliche nächste Frage. Regeln: klare, natürliche Sprache in Du-Anrede; höchstens 20 Wörter; greife konkrete Begriffe aus den bisherigen Antworten auf, statt generisch zu fragen; ziele auf das, was Erfahrungswissen ausmacht (Grenzwerte, Ausnahmen, Warum, Woran-erkennst-du-es). Keine Floskeln oder Höflichkeitsformeln, keine Anführungszeichen, keine Nummerierung, kein vorangestelltes Label. Erfinde KEINE fachlichen Inhalte oder Fakten. Gib AUSSCHLIESSLICH die Frage zurück.",
+    "You are an experienced colleague conducting a short interview to capture experiential knowledge. Rephrase the guiding question into exactly ONE natural next question. Rules: plain, natural wording; at most 20 words; pick up concrete terms from the previous answers instead of asking generically; aim at what makes knowledge experiential (thresholds, exceptions, why, how-do-you-notice-it). No filler phrases, no politeness formulas, no quotation marks, no numbering, no leading label. Do NOT invent any technical content or facts. Return ONLY the question.",
+  );
+  return `${base} ${outputLanguageRule(locale)}`;
 }
 
 // Sprachbewusste User-Prompt-Labels (kein Quelleninhalt wird übersetzt).
@@ -491,6 +637,15 @@ const LABELS: Record<ReasonerLocale, Record<string, string>> = {
     priorAnswers: "Previous answers",
     guiding: "Guiding question",
     none: "(none yet)",
+  },
+  // mega52 D1: Niederländisch ist eine eigene Reasoner-Sprache — der Compiler verlangt diesen
+  // Zweig jetzt, statt ihn stillschweigend auf Deutsch fallen zu lassen.
+  nl: {
+    question: "Vraag",
+    sources: "Bronnen",
+    priorAnswers: "Eerdere antwoorden",
+    guiding: "Leidende vraag",
+    none: "(nog geen)",
   },
 };
 
@@ -761,6 +916,7 @@ export class ModelProvider implements ReasonerProvider {
         knowledgeClass: "unbekannt",
         trust: 0,
         sources: [],
+        citedSources: [],
         steps: [],
         demo: false,
       };
@@ -782,6 +938,10 @@ export class ModelProvider implements ReasonerProvider {
       knowledgeClass: "ungeprueft",
       trust: 0,
       sources: context.map((r) => r.id),
+      // mega52 A3: Klara-Hilfe ist bewusst GENERIEREND (folgern/kombinieren erlaubt) und verlangt
+      // deshalb keine Fußnotenmarken. Ohne Marken gibt es keine Zuordnung — und ohne Zuordnung
+      // bleibt die Liste leer, statt eine Herkunft zu behaupten, die niemand geprüft hat (A5).
+      citedSources: [],
       steps: [],
       demo: false,
     };
@@ -993,6 +1153,7 @@ export class ModelProvider implements ReasonerProvider {
         knowledgeClass: "unbekannt",
         trust: 0,
         sources: [],
+        citedSources: [],
         steps: [],
         demo: false,
       };
@@ -1008,12 +1169,24 @@ export class ModelProvider implements ReasonerProvider {
         false,
       )
     ).trim();
+    // mega52 A2/A3: die Marken werden jetzt WIRKLICH zurückgelesen. Leer, wenn das Modell keine
+    // oder nur unbrauchbare Marken lieferte (A5) — die Oberfläche sagt das dann, statt zu raten.
+    const cited = citedSourceIds(answerText, relevant);
+    // AUFTRAG-mega53 B1: die TRAGENDE Teilmenge — genau die Kandidaten, deren Marke im Antworttext
+    // stand. Bis mega53 kamen Klasse und Vertrauenswert von `best`, also vom BESTGERANKTEN
+    // Kandidaten, unabhängig davon, ob das Modell ihn überhaupt benutzt hat. `best` entscheidet ab
+    // hier nur noch, OB gefragt wird (ohne Kandidaten kein Modellaufruf), nicht mehr, WIE sicher
+    // die Antwort ist.
+    const carrying = relevant.filter((r) => cited.includes(r.id));
     return {
       answered: true,
       answer: answerText,
-      knowledgeClass: best.status === "validiert" ? "gesichert" : "ungeprueft",
-      trust: best.trust,
+      ...answerStanding(carrying),
+      // Unverändert: alle HERANGEZOGENEN Kandidaten. Was `sources` bedeutet, ändert dieser Auftrag
+      // nicht (B3) — sie bleiben die vollständige Transparenzliste, aber sie sind nicht mehr die
+      // Grundlage einer Aussage über die Antwort.
       sources: relevant.map((r) => r.id),
+      citedSources: cited,
       steps: relevant.map((r) => ({
         description: sourceLabel(r.title, locale),
         sourceId: r.id,

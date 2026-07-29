@@ -472,7 +472,12 @@
       return { question: raw, from: from, truncated: false };
     }
 
-    function askLocale(langCode) { return langCode === "en" ? "en" : "de"; }
+    // AUFTRAG-mega52 D1: der Server-Vertrag kennt jetzt drei Sprachen — die niederlaendische
+    // Oberflaeche fragt nicht mehr auf Deutsch nach (Pedis Word-Handlauf 28.07.).
+    function askLocale(langCode) {
+      if (langCode === "en") { return "en"; }
+      return langCode === "nl" ? "nl" : "de";
+    }
 
     // WP-UX-WOW-1 U1 (Word): Klartext statt Markdown — dieselbe Subset-Logik wie die Konsole,
     // aber als STRIP (Ueberschriften-/Fett-/Kursiv-Marker raus, Listenpunkte als "- "-Zeilen).
@@ -816,7 +821,7 @@
         askEvidenceVerified: "Einstufung: gesichert — Quellen belegt, keine offenen Widersprueche bekannt.",
         askEvidenceUnverified: "Einstufung: ungeprueft — nicht als konfliktfrei belegt. Vor Verwendung pruefen.",
         askSourcesTitle: "Quellen",
-        askTrust: "Trust {n}",
+        askTrust: "Vertrauen {n}",
         askGapTitle: "Keine belastbare Grundlage.",
         askGapBody: "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissensluecke vermerkt — du kannst sie zusaetzlich als offene Frage nach KLARWERK geben.",
         askGapSendCta: "Als offene Frage an KLARWERK senden",
@@ -1001,7 +1006,7 @@
         askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
         askEvidenceUnverified: "Classificatie: ongecontroleerd — niet aangetoond als conflictvrij. Controleer voor gebruik.",
         askSourcesTitle: "Bronnen",
-        askTrust: "Trust {n}",
+        askTrust: "Vertrouwen {n}",
         askGapTitle: "Geen betrouwbare basis.",
         askGapBody: "Er is geen gevalideerde kennis over deze vraag. In plaats van een verzonnen antwoord is er een kennishiaat vastgelegd — je kunt de vraag ook als open vraag naar KLARWERK sturen.",
         askGapSendCta: "Als open vraag naar KLARWERK sturen",

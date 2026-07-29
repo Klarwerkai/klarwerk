@@ -176,9 +176,13 @@ describe("SCRUM-498 B2: Reasoner reicht ModelCapacityError durch (kein Fallback/
 
   it("answer → ModelCapacityError (nicht deterministischer Fallback)", async () => {
     const reasoner = new Reasoner(new ModelProvider(throwing));
-    await expect(reasoner.answer("Wie entlüfte ich die Pumpe?", KNOWLEDGE)).rejects.toBeInstanceOf(
-      ModelCapacityError,
-    );
+    // mega53 A1: „Wie entlüfte ich die Pumpe?" teilte mit dem KO nur das Wort „Pumpe" —
+    // „entlüfte" trifft „entlüften" literal nicht. Seit der absoluten Mindestsubstanz wäre das
+    // eine Wissenslücke und das Modell würde gar nicht erst gefragt; dieser Test misst aber die
+    // Fehlerdurchreichung. Die Frage bekommt deshalb echte Überschneidung.
+    await expect(
+      reasoner.answer("Pumpe nach dem Anfahren entlüften?", KNOWLEDGE),
+    ).rejects.toBeInstanceOf(ModelCapacityError);
   });
 
   it("beide Pfade (answer + judgeDuplicate) laufen durch client.complete (denselben Cap)", async () => {
@@ -192,7 +196,7 @@ describe("SCRUM-498 B2: Reasoner reicht ModelCapacityError durch (kein Fallback/
     };
     const reasoner = new Reasoner(new ModelProvider(client));
     await reasoner.judgeDuplicate("a", "b").catch(() => undefined);
-    await reasoner.answer("Wie entlüfte ich die Pumpe?", KNOWLEDGE).catch(() => undefined);
+    await reasoner.answer("Pumpe nach dem Anfahren entlüften?", KNOWLEDGE).catch(() => undefined);
     expect(seen.length).toBeGreaterThanOrEqual(2);
   });
 });

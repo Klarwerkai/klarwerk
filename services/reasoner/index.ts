@@ -30,6 +30,10 @@ export {
   rankCandidates,
   statusTrustBoost,
   type RankedCandidate,
+  // AUFTRAG-mega52 B1: das Relevanzmaß selbst — eine Schwelle für beide Auswahlwege, testbar.
+  meetsRelevanceThreshold,
+  // AUFTRAG-mega53 A1: die absolute Mindestsubstanz — darunter trägt auch der beste Treffer nichts.
+  MIN_ANSWER_SUBSTANCE,
   // SCRUM-361 / AG-03: Tokenisierung der Frage für den Repo-Prefilter (konsistent zum Ranking).
   queryTokens,
   // PMO-FEA-0006: ehrlicher Extract-Fallback (keine Fake-Punkte ohne Modell).

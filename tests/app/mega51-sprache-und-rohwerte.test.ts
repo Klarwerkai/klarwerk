@@ -118,8 +118,24 @@ describe("mega51 F · keine Rohwerte mehr in der Oberfläche", () => {
   });
 });
 
-describe("mega51 G2 · Trust bleibt unberührt — es ist eine eigene Scheibe", () => {
-  it("die Zahl der Trust-Vorkommen im ANZEIGETEXT je Sprachblock ist unverändert", () => {
+// AUFTRAG-mega52 BLOCK E — DIE SCHEIBE IST GESCHNITTEN.
+//
+// mega51 hat „Trust" bewusst liegen gelassen und diesen Zähler als Beleg dafür gesetzt, dass die
+// Runde die Scheibe NICHT angefasst hat. mega52 Block E hat sie geschnitten: der deutsche und der
+// niederländische ANZEIGEWERT heißen jetzt „Vertrauen"/„vertrouwen"; Englisch bleibt ausdrücklich
+// unberührt (E2 — dort ist „trust" ein normales Wort).
+//
+// WAS HIER NOCH ZÄHLT, ist genau das, was NICHT umbenannt werden durfte (E3): die SCHLÜSSELNAMEN
+// (`lib.facet.trustBucket.t70`, `answerSource.trust`, …) und der i18next-Platzhalter `{{trust}}`.
+// Beides sind Bezeichner, keine Anzeigetexte — sie umzubenennen bräche jeden Aufrufer, ohne dass
+// ein Nutzer je etwas anderes sähe. Dass sie stehen geblieben sind, ist der Beleg, dass die
+// Umbenennung wirklich nur den Wert getroffen hat.
+//
+// Der maßgebliche Wächter ist ab mega52 nicht mehr diese Zahl, sondern
+// `tests/app/mega52-vertrauenswert-sammler.test.ts` — er misst je Sprachblock über die WERTE,
+// nicht über einen Gesamtzähler, und sagt bei einem Rückfall, welcher Schlüssel es war.
+describe("mega51 G2 · Trust — die Scheibe ist in mega52 geschnitten", () => {
+  it("die Zahl der Trust-Vorkommen je Sprachblock ist bewusst gesenkt (nur noch Bezeichner)", () => {
     // Kommentarzeilen zählen NICHT mit: gemessen wird, was Natascha liest, nicht was wir uns
     // im Wörterbuch dazu notieren. (Genau daran wäre diese Messung sonst schon gescheitert —
     // der mega51-Kommentar an `lib.confidenceNone` erwähnt „Trust", ohne es anzuzeigen.)
@@ -127,10 +143,21 @@ describe("mega51 G2 · Trust bleibt unberührt — es ist eine eigene Scheibe", 
       const nurText = b.text.replace(/^\s*\/\/.*$/gm, "");
       return `${b.name}: ${(nurText.match(/Trust|trust/g) ?? []).length}`;
     });
-    // Diese Zahlen sind am Stand VOR mega51 (Commit 3805c49) GEMESSEN und sind der Beleg dafür,
-    // dass diese Runde die Trust-Scheibe nicht angefasst hat. Sie zu ändern ist erlaubt — aber
-    // nur bewusst, mit Begründung, und nicht nebenbei.
-    expect(zaehlung).toEqual(["de: 77", "en: 93", "nl: 77"]);
+    // VORHER (Stand mega51, Commit 3805c49): de 77 · en 93 · nl 77.
+    // NACH mega52 Block E: de 26 · en 88 · nl 27.
+    // Deutsch und Niederländisch fallen stark, weil dort jeder ANZEIGEWERT übersetzt wurde; was
+    // bleibt, sind Schlüsselnamen und `{{trust}}`. Englisch sinkt nur leicht — dort fielen allein
+    // die beiden in mega51 verwaisten Schlüssel `lib.trustNone`/`lib.trustNoneHint` weg (E4).
+    //
+    // NACH mega53 B2: de 27 · en 91 · nl 28. Der Anstieg ist AUSSCHLIESSLICH der neue Schlüssel
+    // `ask.trust.unattributed` — in DE und NL genau einmal als BEZEICHNER, sein Anzeigewert heißt
+    // „Vertrauenswert nicht zuordenbar" bzw. „vertrouwenswaarde niet toewijsbaar". Im englischen
+    // Block sind es drei, weil „trust" dort ein normales Wort und bewusst nicht übersetzt ist
+    // (E2): einmal der Schlüssel, einmal sein Wert, einmal im Text von
+    // `ask.checkCaveat.unattributed`. Die Scheibe bleibt damit geschnitten — kein deutscher oder
+    // niederländischer Anzeigewert ist zurückgekommen. Den Beweis dafür führt weiterhin
+    // `tests/app/mega52-vertrauenswert-sammler.test.ts` über die WERTE.
+    expect(zaehlung).toEqual(["de: 27", "en: 91", "nl: 28"]);
   });
 });
 

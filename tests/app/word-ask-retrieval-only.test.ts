@@ -51,6 +51,7 @@ async function retrievalApp() {
       knowledgeClass: "gesichert",
       trust: 50,
       sources: context.map((c) => c.id),
+      citedSources: context.map((c) => c.id),
       steps: [],
       demo: false,
     };

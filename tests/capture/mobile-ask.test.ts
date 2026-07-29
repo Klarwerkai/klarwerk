@@ -10,6 +10,8 @@ const answer = (p: Partial<AnswerResult>): AnswerResult =>
     knowledgeClass: "gesichert",
     trust: 80,
     sources: ["ko1", "ko2"],
+    // mega53 B1: beide Quellen tragen die Antwort.
+    citedSources: ["ko1", "ko2"],
     steps: [{ description: "Quelle: K1", sourceId: "ko1", snippet: "…" }],
     demo: false,
     ...p,

@@ -77,12 +77,18 @@ export function answerContract(grade: AnswerGrade): AnswerContract {
 //
 // Sie schweigt, wenn alle Quellen belegt sind. Kein Dauerhinweis — dieselbe Regel wie bei der
 // Abdeckungskennzeichnung aus mega28 und dem Konfliktsatz aus BLOCK K.
+// AUFTRAG-mega53 B2 (Spiegel von services/ask/src/answer-evidence.ts): der fünfte Grund. Er ist
+// keine Aussage über EINE Quelle — er sagt, dass die Antwort gar keine zuordenbare tragende Quelle
+// hat, weil das Modell keine oder nur unbrauchbare Marken lieferte. Deshalb steht er am Vorbehalt
+// und nicht in `AnswerCheckState`, das je Quelle gilt.
+export type AnswerCheckCaveatReason = Exclude<AnswerCheckState, "proven"> | "unattributed";
+
 export interface AnswerCheckCaveat {
   // Der schwerste vorliegende Zustand — er bestimmt den Text.
-  reason: Exclude<AnswerCheckState, "proven">;
+  reason: AnswerCheckCaveatReason;
   // Wie viele Quellen tragen KEINEN belegten Lauf?
   unproven: number;
-  // Von wie vielen herangezogenen Quellen insgesamt?
+  // Von wie vielen TRAGENDEN Quellen insgesamt? (mega53 B1: nicht mehr von allen herangezogenen.)
   total: number;
 }
 

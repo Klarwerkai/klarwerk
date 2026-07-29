@@ -64,10 +64,14 @@ function ko(id: string, coverage: unknown): KnowledgeObject {
   } as unknown as KnowledgeObject;
 }
 
+// AUFTRAG-mega53 B4: `citedSources` ist Pflichteingabe der Regel geworden. Hier trägt die eine
+// Quelle die Antwort auch wirklich — die vier Fälle unten prüfen die Prüf-/Konfliktlage, nicht die
+// Zuordnung. Der Zuordnungs-Fall selbst liegt in tests/ask/mega53-tragende-grundlage-sammler.ts.
 const ANSWER = {
   answered: true as const,
   knowledgeClass: "gesichert" as const,
   sources: ["k1"],
+  citedSources: ["k1"],
 };
 
 // ================================================================================================
@@ -149,7 +153,14 @@ describe("mega34 B1 · Server-Regel und Oberflächen-Spiegel sagen dasselbe", ()
               // Dieselben Bedingungen serverseitig herstellen: eine Quelle, deren Abdeckung den
               // Prüfstand setzt, plus ein Konflikt auf ihr, plus der Abrufzustand.
               const server = answerEvidence({
-                answer: { answered, knowledgeClass, sources: answered ? ["k1"] : [] },
+                answer: {
+                  answered,
+                  knowledgeClass,
+                  sources: answered ? ["k1"] : [],
+                  // mega53 B4: dieselbe eine Quelle trägt die Antwort — so misst die Tafel
+                  // weiterhin genau die Prüf-/Konfliktlage und nicht zusätzlich die Zuordnung.
+                  citedSources: answered ? ["k1"] : [],
+                },
                 sourceKos: new Map([["k1", ko("k1", checkUnproven ? CAPPED : PROVEN)]]),
                 openConflicts: conflictsUnproven
                   ? null

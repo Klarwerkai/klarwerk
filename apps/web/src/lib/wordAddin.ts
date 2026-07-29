@@ -161,9 +161,17 @@ export function prepareAskQuestion(selectionText: string, manualText: string): P
   return { question: raw, from, truncated: false };
 }
 
-// Server-Vertrag kennt de/en (FR-I18N-01); die NL-Oberflaeche fragt auf Deutsch nach.
-export function askLocale(lang: string): "de" | "en" {
-  return lang === "en" ? "en" : "de";
+// AUFTRAG-mega52 D1 — HIER STAND PEDIS BEFUND IM KLARTEXT.
+//
+// Der Kommentar lautete: „Server-Vertrag kennt de/en (FR-I18N-01); die NL-Oberflaeche fragt auf
+// Deutsch nach." Das war bewusst so gebaut und genau der Grund, warum im Word-Handlauf vom 28.07.
+// die niederlaendische Oberflaeche deutsche Antwortkoerper zurueckbekam. Der Server-Vertrag kennt
+// seit mega52 drei Sprachen — die Oberflaeche muss nicht mehr luegen.
+export function askLocale(lang: string): "de" | "en" | "nl" {
+  if (lang === "en") {
+    return "en";
+  }
+  return lang === "nl" ? "nl" : "de";
 }
 
 export type AskOutcomeKind = "answered" | "gap" | "auth" | "error" | "timeout";
@@ -263,7 +271,7 @@ export function stripAskAnswerMarkdown(answer: string): string {
 
 export function performAsk(
   question: string,
-  locale: "de" | "en",
+  locale: "de" | "en" | "nl",
   fetchFn: AskFetchFn,
   timeoutMs: number,
 ): Promise<AskOutcome> {
