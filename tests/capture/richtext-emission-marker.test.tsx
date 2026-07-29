@@ -13,6 +13,7 @@ import { act, createElement, useState } from "../../apps/web/node_modules/react"
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import "../../apps/web/src/i18n";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
+import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -23,13 +24,15 @@ let setHostValue: ((html: string) => void) | null = null;
 function Host({ onChange }: { onChange: (html: string) => void }): JSX.Element {
   const [value, setValue] = useState("<p>A</p>");
   setHostValue = setValue;
-  return createElement(RichTextEditor, {
-    value,
-    onChange: (html: string) => {
-      onChange(html);
-      setValue(html); // kontrollierter Normalfall: die Emission kommt als value zurück
-    },
-  });
+  return mitBildbeschreibung(
+    createElement(RichTextEditor, {
+      value,
+      onChange: (html: string) => {
+        onChange(html);
+        setValue(html); // kontrollierter Normalfall: die Emission kommt als value zurück
+      },
+    }),
+  );
 }
 
 function mount(onChange: (html: string) => void): void {

@@ -360,14 +360,26 @@ test("Alle Kernrouten rendern (keine weiße Seite)", async ({ page }) => {
 // Ausgangspunkt dieses Auftrags gewesen.
 //
 // Deshalb misst dieser Fall, was der Lauf zu sein behauptet, und zwar an DER Seite, um die es geht:
-//   · ohne `KLARWERK_SMOKE_SEED` MUSS das Prüf-Board leer sein („Keine offenen Objekte.")
-//   · mit `KLARWERK_SMOKE_SEED=1` MUSS es Einträge tragen (der Leer-Text ist dann weg)
+//   · mit `KLARWERK_SMOKE_SEED=1` MUSS das Prüf-Board Einträge tragen (der Leer-Text ist dann weg)
+//   · ohne Seed UND in einem hermetischen Lauf MUSS es leer sein („Keine offenen Objekte.")
 // Hörte der Demo-Bestand eines Tages auf, das Prüf-Board zu füllen, wäre `smoke:ui:gate:daten`
 // keine zweite Datenlage mehr, sondern eine Wiederholung der ersten — und genau dann wird dieser
 // Fall rot, statt dass der mega47-Fall still wieder datenabhängig würde.
 //
-// KEIN ZWEIG IM PRÜFLING: die Verzweigung sitzt hier, in der Kalibrierung. Der mega47-Fall selbst
-// kennt die Datenlage nicht und fragt sie nicht ab — er muss sie schlicht überleben.
+// AUFTRAG-mega50 BLOCK C — DIE AUFLAGE AUS SHIP 3 (SCRUM-557). Die Kalibrierung war bis hierher
+// falsch: sie erwartete den Leerzustand IMMER, wenn kein Seed gesetzt war. Das gilt aber nur in den
+// hermetischen Skripten. Im vollen Lauf (`npm run smoke:ui`) läuft der Fall „Kernfluss … @modell"
+// als ERSTER und legt selbst ein Objekt aufs Prüf-Board — die Kalibrierung meldete dann in allen
+// drei Engines rot, obwohl nichts kaputt war. Kein Seed heißt eben nicht „leer": es heißt nur
+// „nicht geseedet".
+//
+// Der Lauf muss also SAGEN können, dass der @modell-Fall nicht dabei war. Das tut
+// `KLARWERK_SMOKE_OHNE_MODELL`, gesetzt in genau den beiden hermetischen Skripten, die den
+// Leerzustand überhaupt erwarten dürfen (`smoke:ui:gate`, `smoke:ui:gate:drei` — beide fahren mit
+// `--grep-invert @modell`). `smoke:ui:gate:daten` braucht es nicht: dort entscheidet der Seed.
+//
+// KEIN ZWEIG IM PRÜFLING: die Verzweigung sitzt weiterhin hier, in der Kalibrierung. Der
+// mega47-Fall selbst kennt die Datenlage nicht und fragt sie nicht ab — er muss sie überleben.
 test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) => {
   await ensureLoggedIn(page);
   await page.goto("/validierung");
@@ -377,9 +389,24 @@ test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) =>
   });
 
   const leerText = page.getByText("Keine offenen Objekte.");
-  if (process.env.KLARWERK_SMOKE_SEED === "1") {
+  const geseedet = process.env.KLARWERK_SMOKE_SEED === "1";
+  const ohneModell = process.env.KLARWERK_SMOKE_OHNE_MODELL === "1";
+
+  if (geseedet) {
     await expect(leerText).toHaveCount(0);
-  } else {
+  } else if (ohneModell) {
     await expect(leerText.first()).toBeVisible({ timeout: 10_000 });
+  } else {
+    // Der volle Lauf: weder Seed noch Hermetik. Der @modell-Fall lief und hat das Board gefüllt.
+    // Hier eine Aussage über den Leerzustand zu treffen wäre keine Kalibrierung, sondern eine Wette
+    // auf die Reihenfolge der Fälle — und genau so eine Wette war der Fehlalarm aus Ship 3. Sie
+    // wird deshalb NICHT behauptet, und das steht laut im Bericht des Laufs statt still grün zu
+    // sein.
+    test.info().annotations.push({
+      type: "Datenlage",
+      description:
+        "voller Lauf (kein Seed, kein KLARWERK_SMOKE_OHNE_MODELL): der Leerzustand des " +
+        "Prüf-Boards wird bewusst NICHT geprüft — der @modell-Fall füllt es selbst.",
+    });
   }
 });

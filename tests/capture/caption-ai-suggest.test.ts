@@ -100,9 +100,14 @@ describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
       "utf8",
     );
     // Der Knopf ist an die pure Sichtbarkeitsregel gebunden (kein eigener Zweitpfad im JSX) …
-    expect(editorSrc).toContain(
-      "captionSuggestVisible(mode, selectedCaption !== null, onDescribeImage !== undefined)",
-    );
+    // AUFTRAG-mega50 Block A: die Regel selbst ist unverändert; ihr dritter Parameter („ist ein
+    // describe-Weg verdrahtet?") ist baulich immer wahr geworden, seit der Weg aus der App kommt
+    // statt aus dem Prop `onDescribeImage`. Genau dieser Parameter war es, der Vorschlagsleiste und
+    // Formular auf zwei der vier Flächen still verschwinden ließ.
+    expect(editorSrc).toContain("captionSuggestVisible(mode, selectedCaption !== null, true)");
+    // Dass der alte, vergessliche Vertrag wirklich weg ist (und nicht nur ungenutzt herumsteht),
+    // hält `tests/app/mega50-bildbeschreibung-sammler.test.ts` — dort wird der Quelltext ohne
+    // Kommentare gelesen, sonst schlüge die Erklärung des Umbaus als Fundstelle durch.
     // … die Übernahme nutzt die normale Editier-Mechanik (textContent + emit, kein innerHTML).
     expect(editorSrc).toContain("applyCaptionSuggestion(selectedCaption, captionAi.text)");
     expect(editorSrc).toContain("checkCaptionImageDataUrl(dataUrl)");

@@ -67,6 +67,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
@@ -106,17 +107,24 @@ async function mount(url: string): Promise<void> {
               MemoryRouter,
               { initialEntries: [url] },
               createElement(
-                NavGuardProvider,
+                ImageDescribeProvider,
                 null,
                 createElement(
-                  Routes,
+                  NavGuardProvider,
                   null,
-                  createElement(Route, {
-                    path: "/capture/frontdoor",
-                    element: createElement(CaptureFrontDoor),
-                  }),
-                  // Ziel des Speichern-Erfolgs — ohne diese Route liefe die Navigation ins Leere.
-                  createElement(Route, { path: "/erfassen", element: createElement("div", null) }),
+                  createElement(
+                    Routes,
+                    null,
+                    createElement(Route, {
+                      path: "/capture/frontdoor",
+                      element: createElement(CaptureFrontDoor),
+                    }),
+                    // Ziel des Speichern-Erfolgs — ohne diese Route liefe die Navigation ins Leere.
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement("div", null),
+                    }),
+                  ),
                 ),
               ),
             ),

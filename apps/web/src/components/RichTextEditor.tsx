@@ -9,7 +9,7 @@ import type {
 } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import type { DescribeImageResult } from "../api/types";
+import { useImageDescribe } from "../app/ImageDescribeContext";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
@@ -105,9 +105,7 @@ export function RichTextEditor({
   aiPanel,
   onAttachFiles,
   placeholder,
-  onDescribeImage,
   documentTitle,
-  describeAvailable = true,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -122,23 +120,17 @@ export function RichTextEditor({
   // Anders als „Bild" wird NICHT in den Body eingefügt. Fehlt der Callback, bleibt der Knopf aus.
   // `| undefined` explizit: erlaubt das Durchreichen eines optionalen Callbacks (exactOptionalPropertyTypes).
   onAttachFiles?: ((files: File[]) => void | Promise<void>) | undefined;
-  // WP-BILD-1c: KI-Bildbeschreibungs-Vorschlag für die fokussierte Bild-Fußnote. Der Eltern-Kontext
-  // verdrahtet den describe-Aufruf (inkl. Provenienz/Vertraulichkeit); ohne Callback bleibt der
-  // Knopf aus (kein toter Klick). Erscheint NIE in der Vorschau/Leseansicht.
-  // WP-BILD-1f (Pedi 22.07.): der Editor reicht als zweites Argument den umgebenden Klartext-Kontext
-  // (Titel + Überschrift + Absätze) mit — er reist im selben describe-Request und damit über
-  // DIESELBE Vertraulichkeits-/Egress-Stelle wie das Bild.
-  onDescribeImage?:
-    | ((dataUrl: string, context?: string) => Promise<DescribeImageResult>)
-    | undefined;
   // WP-BILD-1f: Dokument-Titel für den Kontext (Formularfeld, kein HTML). Optional.
   documentTitle?: string | undefined;
-  // PAKET 1 (D-AISTATE, Pedi 23.07.): ist der KI-Bildbeschreibungs-Vorschlag (Task „describe") nutzbar?
-  // Als PROP (nicht Hook), damit der Editor ohne QueryClient-Provider isoliert testbar bleibt; das
-  // Eltern-Capture reicht die echte Verfügbarkeit ein. Default true = bedienbar (kein Test-Bruch).
-  describeAvailable?: boolean;
 }): JSX.Element {
   const { t } = useTranslation();
+  // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung (WP-BILD-1c/1f, mega9 Block F) wird HIER
+  // GEHOLT statt von jedem Aufrufer hereingereicht. Vorher waren das zwei optionale Props
+  // (`onDescribeImage`, `describeAvailable`), die zwei der vier Flächen weggelassen haben — auf
+  // ihnen verschwanden Formular und Vorschlag geräuschlos (Pedis Befund vom 29.07.). Der Aufruf
+  // dahinter ist derselbe geblieben; nur seine Herkunft ist jetzt eine, die man nicht vergessen
+  // kann (`app/ImageDescribeContext.tsx`).
+  const imageDescribe = useImageDescribe();
   const ref = useRef<HTMLDivElement>(null);
   // SCRUM-456 (Pedi/VIP 06.07.): verstecktes Datei-Feld, damit der „Bild"-Knopf auch ein NEUES
   // Bild vom Rechner einfügen kann (nicht nur vorhandene Anhänge).
@@ -391,9 +383,6 @@ export function RichTextEditor({
     stillCurrent: () => boolean,
     report: (state: CaptionAiState) => void,
   ): Promise<void> => {
-    if (!onDescribeImage) {
-      return;
-    }
     const src = caption.parentElement?.querySelector("img")?.getAttribute("src") ?? "";
     if (!src) {
       report({ status: "fallback", messageKey: CAPTION_AI_TEXT.imageUnreadable });
@@ -423,7 +412,7 @@ export function RichTextEditor({
     const context =
       editorRoot && figure ? collectImageContext(editorRoot, figure, documentTitle) : "";
     try {
-      const result = await onDescribeImage(checked.dataUrl, context || undefined);
+      const result = await imageDescribe.describe(checked.dataUrl, context || undefined);
       if (!stillCurrent()) {
         return; // Ziel gewechselt → Antwort still verwerfen (kein Panel, keine Inhalts-Änderung).
       }
@@ -1126,17 +1115,18 @@ export function RichTextEditor({
           {/* AUFTRAG-mega9 Block F (Pedi): die SICHTBARE Aktion am Bild, die das echte
               Eingabeformular öffnet. Bisher war die Bildbeschreibung nur erreichbar, indem man in
               die Fußnote hineinklickte — eine Aktion, die man kennen musste. */}
-          {onDescribeImage ? (
-            <button
-              type="button"
-              data-testid="caption-form-open"
-              onClick={openCaptionForm}
-              className="ml-2 inline-flex h-7 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2 text-[11.5px] font-semibold text-ai hover:bg-hairline-soft"
-            >
-              <ImageIcon size={13} aria-hidden="true" />
-              {t(CAPTION_AI_TEXT.formOpen)}
-            </button>
-          ) : null}
+          {/* AUFTRAG-mega50 Block A: ohne Bedingung. Der Weg zur Bildbeschreibung kommt aus der
+              App (ImageDescribeContext) und ist damit auf JEDER Fläche da, auf der ein Bild
+              stehen kann — nicht mehr nur dort, wo ein Aufrufer daran gedacht hat. */}
+          <button
+            type="button"
+            data-testid="caption-form-open"
+            onClick={openCaptionForm}
+            className="ml-2 inline-flex h-7 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2 text-[11.5px] font-semibold text-ai hover:bg-hairline-soft"
+          >
+            <ImageIcon size={13} aria-hidden="true" />
+            {t(CAPTION_AI_TEXT.formOpen)}
+          </button>
         </div>
       ) : null}
 
@@ -1205,8 +1195,8 @@ export function RichTextEditor({
               <button
                 type="button"
                 data-testid="caption-form-suggest"
-                disabled={captionFormAi?.status === "loading" || !describeAvailable}
-                title={!describeAvailable ? t("ai.unavailable.hint") : undefined}
+                disabled={captionFormAi?.status === "loading" || !imageDescribe.available}
+                title={!imageDescribe.available ? t("ai.unavailable.hint") : undefined}
                 onClick={() => void requestCaptionFormSuggestion()}
                 className="inline-flex h-8 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2.5 text-[12px] font-semibold text-ai hover:bg-hairline-soft disabled:opacity-60"
               >
@@ -1215,7 +1205,7 @@ export function RichTextEditor({
                   ? t(CAPTION_AI_TEXT.loading)
                   : t(CAPTION_AI_TEXT.suggest)}
               </button>
-              {!describeAvailable ? <AiUnavailableHint show={true} /> : null}
+              {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
                   gekennzeichnet und NICHT mit der Nutzereingabe vermischt. */}
@@ -1321,14 +1311,18 @@ export function RichTextEditor({
       </Modal>
 
       {/* WP-BILD-1c: KI-Beschreibung als VORSCHLAG an der fokussierten Fußnote — nur im
-          Editier-Modus, nur mit verdrahtetem describe-Aufruf. Kein Auto-Übernehmen. */}
-      {captionSuggestVisible(mode, selectedCaption !== null, onDescribeImage !== undefined) ? (
+          Editier-Modus. Kein Auto-Übernehmen.
+          AUFTRAG-mega50 Block A: die Sichtbarkeitsregel selbst (captionAiSuggest.ts) ist
+          unverändert; ihr dritter Parameter „ist ein describe-Weg verdrahtet?" ist jetzt baulich
+          immer wahr, weil der Weg aus der App kommt und nicht aus einem Prop. Genau dieser
+          Parameter war es, der die Leiste auf der Vordertür still verschwinden ließ. */}
+      {captionSuggestVisible(mode, selectedCaption !== null, true) ? (
         <div className="border-b border-hairline bg-ai-surface-1 px-2 py-1.5">
           <button
             type="button"
             // PAKET 1 (D-AISTATE): hart ausgrauen, wenn kein Modell für „describe" nutzbar ist.
-            disabled={captionAi?.status === "loading" || !describeAvailable}
-            title={!describeAvailable ? t("ai.unavailable.hint") : undefined}
+            disabled={captionAi?.status === "loading" || !imageDescribe.available}
+            title={!imageDescribe.available ? t("ai.unavailable.hint") : undefined}
             onClick={() => void requestCaptionSuggestion()}
             className="inline-flex h-7 items-center gap-1 rounded-btn border border-ai/40 bg-surface px-2 text-[11.5px] font-semibold text-ai hover:bg-hairline-soft disabled:opacity-60"
           >
@@ -1337,7 +1331,7 @@ export function RichTextEditor({
               ? t(CAPTION_AI_TEXT.loading)
               : t(CAPTION_AI_TEXT.suggest)}
           </button>
-          {!describeAvailable ? <AiUnavailableHint show={true} /> : null}
+          {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
           {captionAi?.status === "suggestion" ? (
             <div className="mt-1.5 rounded-btn border border-ai/30 bg-surface p-2">
               <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">

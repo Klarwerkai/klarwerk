@@ -23,3 +23,8 @@ playwright-report/
 .fuse_hidden*
 
 _relay/
+
+# AUFTRAG-mega50 D2: der Jahresring-Testbestand (LOT-Pakete, Begleittabellen, Übersichten) — 343 MB
+# binäre .zip/.xlsx aus Testläufen, kein Quellstand. Er lag untracked und in KEINER Ignore-Zeile;
+# ein einziges `git add -A` hätte ihn vollständig ins Repository gezogen.
+LOT/

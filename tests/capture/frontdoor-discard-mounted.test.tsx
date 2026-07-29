@@ -43,6 +43,7 @@ import "../../apps/web/src/i18n";
 import { endpoints } from "../../apps/web/src/api/endpoints";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 // AUFTRAG-mega9 Block B: die Vordertür ist jetzt Anmelder am Navigations-Wächter (KW-E2E-002).
+import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
@@ -75,17 +76,21 @@ function mount(): void {
               MemoryRouter,
               { initialEntries: ["/capture/frontdoor"] },
               createElement(
-                NavGuardProvider,
+                ImageDescribeProvider,
                 null,
                 createElement(
-                  Profiler,
-                  {
-                    id: "frontdoor",
-                    onRender: () => {
-                      renders += 1;
+                  NavGuardProvider,
+                  null,
+                  createElement(
+                    Profiler,
+                    {
+                      id: "frontdoor",
+                      onRender: () => {
+                        renders += 1;
+                      },
                     },
-                  },
-                  createElement(CaptureFrontDoor),
+                    createElement(CaptureFrontDoor),
+                  ),
                 ),
               ),
             ),

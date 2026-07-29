@@ -12,6 +12,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import "../../apps/web/src/i18n";
 import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
+import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -38,11 +39,10 @@ function deferred(): Deferred {
 
 function Host({ onDescribe }: { onDescribe: () => Promise<DescribeImageResult> }) {
   const [value, setValue] = useState(TWO_FIGURES);
-  return createElement(RichTextEditor, {
-    value,
-    onChange: setValue,
-    onDescribeImage: onDescribe,
-  });
+  return mitBildbeschreibung(
+    createElement(RichTextEditor, { value, onChange: setValue }),
+    onDescribe,
+  );
 }
 
 function mount(onDescribe: () => Promise<DescribeImageResult>): void {

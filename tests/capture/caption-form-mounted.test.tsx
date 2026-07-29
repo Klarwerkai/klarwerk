@@ -18,6 +18,7 @@ import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTION_AI_TEXT, MAX_CAPTION_TEXT_CHARS } from "../../apps/web/src/lib/captionAiSuggest";
+import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -31,14 +32,16 @@ let lastHtml = "";
 function Host({ onDescribe }: { onDescribe: () => Promise<DescribeImageResult> }) {
   const [value, setValue] = useState(FIGURE);
   lastHtml = value;
-  return createElement(RichTextEditor, {
-    value,
-    onChange: (html: string) => {
-      lastHtml = html;
-      setValue(html);
-    },
-    onDescribeImage: onDescribe,
-  });
+  return mitBildbeschreibung(
+    createElement(RichTextEditor, {
+      value,
+      onChange: (html: string) => {
+        lastHtml = html;
+        setValue(html);
+      },
+    }),
+    onDescribe,
+  );
 }
 
 function mount(onDescribe: () => Promise<DescribeImageResult>): void {

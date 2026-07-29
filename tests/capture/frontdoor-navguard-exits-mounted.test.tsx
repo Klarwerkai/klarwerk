@@ -94,6 +94,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
@@ -149,14 +150,18 @@ async function mount(url: string): Promise<void> {
                 MemoryRouter,
                 { initialEntries: [url] },
                 createElement(
-                  NavGuardProvider,
+                  ImageDescribeProvider,
                   null,
-                  // Die ECHTE Shell um die ECHTE Seite — genau die Kombination, in der die
-                  // Lücken bestanden.
-                  createElement(Sidebar),
-                  createElement(Topbar),
-                  createElement(CaptureFrontDoor),
-                  createElement(LocationProbe),
+                  createElement(
+                    NavGuardProvider,
+                    null,
+                    // Die ECHTE Shell um die ECHTE Seite — genau die Kombination, in der die
+                    // Lücken bestanden.
+                    createElement(Sidebar),
+                    createElement(Topbar),
+                    createElement(CaptureFrontDoor),
+                    createElement(LocationProbe),
+                  ),
                 ),
               ),
             ),

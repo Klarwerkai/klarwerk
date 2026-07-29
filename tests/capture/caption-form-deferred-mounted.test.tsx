@@ -25,6 +25,7 @@ import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTION_AI_TEXT } from "../../apps/web/src/lib/captionAiSuggest";
+import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -57,11 +58,10 @@ let setValueFromOutside: ((html: string) => void) | null = null;
 function Host(): JSX.Element {
   const [value, setValue] = useState(DOC);
   setValueFromOutside = setValue;
-  return createElement(RichTextEditor, {
-    value,
-    onChange: setValue,
-    onDescribeImage: deferredDescribe,
-  });
+  return mitBildbeschreibung(
+    createElement(RichTextEditor, { value, onChange: setValue }),
+    deferredDescribe,
+  );
 }
 
 function mount(): void {

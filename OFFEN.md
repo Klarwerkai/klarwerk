@@ -1,6 +1,6 @@
 # OFFEN — das Gedächtnis des Projekts
 
-**Stand: 29.07.2026 · Basis `93c6bd9` · gepflegt vom Kopf bei jeder Zustandsänderung**
+**Stand: 29.07.2026 · Basis `4cdde0e` (Ship 3, 09:43) · gepflegt vom Kopf bei jeder Zustandsänderung**
 
 Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in einem Ordner, den sich jemand ausgedacht hat. Sie wandert mit jedem Klon mit, jeder neue Kopf sieht sie, und sie überlebt jeden Fensterwechsel.
 
@@ -25,12 +25,8 @@ Sortiert nach Alter. **Die oberste ist die älteste und wird bei jedem Kassenstu
 | Kennung | gefragt seit | Sache | blockiert |
 |---|---|---|---|
 | E10 | 27.07. | Wo landen Zugangsdaten: Umgebungsvariable · Schlüsselbund · verschlüsselte Ablage | Block C des Import-Auftrags; bis dahin nimmt kein Feld ein Geheimnis entgegen |
-| E3 | 26.07. | Swap auf beiden Maschinen einrichten — kostet nichts, ist nicht gemacht | nichts, aber ein Speicherausschlag killt sonst den größten Prozess auf der Produktion |
-| E5 | 26.07. | Rolle `klarwerk` und Schema in der Jahresring-Datenbank | der ganze Jahresring |
-| E9 | 26.07. | Papierkorb vor dem Vortest leeren (72 % des Bestands) | erledigt sich mit dem Bestandsreset, wenn der den Papierkorb einschließt |
-| L1 | 26.07. | 120 undokumentierte Anhänge (ATT-000061–000180) — Begleittabellen nachfordern | Jahresring-Import |
 | E12 | 28.07. | Die vier Schnitte sind durch, 86 von 99 Vorgängen stehen in keinem — neu schneiden | die Auftragsplanung nach Ship 3 |
-| J1–J6 | 28.07. | Dateileichen endgültig löschen: 3 × `_to_delete` (31 Einträge), ~40 Dubletten, 5 Board-Sicherungen, 6 tote Artefakte | nichts, aber sie kosten Aufmerksamkeit |
+| J | 28.07. | **Teilweise erledigt.** Weg: `_relay/_to_delete` samt Schlüssel-Leck. Noch da: `kopf/_to_delete` (4), `board/_to_delete` (20), `_trash` (2), 5 Board-Sicherungen, 16 Dubletten plus 73 Patch-Dubletten, 6 tote Artefakte | nichts, aber sie kosten Aufmerksamkeit |
 
 ---
 
@@ -38,7 +34,11 @@ Sortiert nach Alter. **Die oberste ist die älteste und wird bei jedem Kassenstu
 
 | Kennung | Zustand | Sache |
 |---|---|---|
-| B3 | OFFEN | MIT-SHIP4 | **SCRUM-557** — Smoke-Kalibrierung erwartet den Leerzustand auch dort, wo der `@modell`-Fall das Board füllt. Auflage zum bedingten GO von Ship 3; reist in der nächsten Scheibe mit. Bis dahin meldet `npm run smoke:ui` diesen einen Fall bauartbedingt rot |
+| B0 | ERLEDIGT | — | **Ship 3 am 29.07., 09:43 — Commit `4cdde0e`**, mega45 bis mega49, 43 Dateien. Bedingtes GO nach S4, Auflage SCRUM-557, verankert in SCRUM-469 und SCRUM-530 |
+| B4 | ERLEDIGT | — | Versionsnummer auf `1.0.0-beta.1.27` gezogen (mega50 D1). Vorher stand sie auf `1.0.0-beta.1.26` — mega45 bis mega49 haben sie nicht nachgezogen. Die Nummer identifiziert den ausgelieferten Stand nicht mehr |
+| B5 | ERLEDIGT | — | `LOT/` steht in `.gitignore` (mega50 D2, 343 MB). Vorher untracked und **nicht** ignoriert — ein `git add -A` würde den ganzen Jahresring-Testbestand ins Repository ziehen. Eintrag in `.gitignore` nachholen |
+| B6 | ERLEDIGT | — | **mega50** — ben sammel48 **GRÜN**, Inhalts-SHA `bed60d2a…6bb4` vom Kopf nachgerechnet, Auslieferung freigegeben. Wartet auf Handlauf 1 und Ship 4 — die Bildbeschreibung erreicht alle vier Flächen (A15), Sammler über die optionalen Verträge (A16), die Auflage SCRUM-557 und zwei Einzeiler (Versionsnummer, `LOT/` in `.gitignore`) |
+| B3 | ERLEDIGT | — | **SCRUM-557** in mega50 Block C geschlossen — — Smoke-Kalibrierung erwartet den Leerzustand auch dort, wo der `@modell`-Fall das Board füllt. Auflage zum bedingten GO von Ship 3; reist in der nächsten Scheibe mit. Bis dahin meldet `npm run smoke:ui` diesen einen Fall bauartbedingt rot |
 | B2 | ERLEDIGT | mega49 — der Browser-Beleg hing an einer Datenlage (Leerzustands-Knopf aus `emptyStateActions.ts`). Nur Prüfwerkzeug, Produktcode nachgerechnet unberührt. ben sammel47: **GRÜN**, Inhalts-SHA `7df464af…6081` vom Kopf nachgerechnet. Wartet auf Handlauf 1 und Ship 3 |
 | B1 | ERLEDIGT | mega48 — Modalgrenze für die ganze App. ben sammel46: **GRÜN ohne Einschränkung**, Inhalts-SHA `e6901c4a…9d77` vom Kopf nachgerechnet. Wartet auf Handlauf 1 und Ship 3 |
 
@@ -56,14 +56,15 @@ Fester Termin: **Freitag 14:00**, Natascha, sieben Aufgaben, kein Vorwissen.
 | A14 | ERLEDIGT | — | Lars-Paket gegenstandslos |
 | A1 | OFFEN | VOR-VORTEST | Interviewleitfaden gegenlesen — existiert seit 23.07. vollständig, nicht neu schreiben |
 | A2 | OFFEN | VOR-VORTEST | „Lieferanten" muss im neuen Testbestand vorkommen, sonst scheitert Aufgabe 4 an einer unlösbaren Aufgabe |
-| A3 | OFFEN | VOR-VORTEST | Sichtbarer Knopf „Datei auswählen" — **Kopf prüft am Code, ob mega38–47 es geschlossen haben** |
-| A4 | OFFEN | VOR-VORTEST | Zur Antwort scrollen + Ladezustand — **Kopf prüft am Code** |
-| A5 | OFFEN | VOR-VORTEST | Ein Urteil je Antwort statt zwei widersprechenden — **Kopf prüft am Code** |
+| A3 | ERLEDIGT | — | Sichtbarer Knopf „Datei auswählen" — **am Code belegt geschlossen**: mega34 Block D, `capture-file-pick` plus Ablagefläche als echter `<button>` |
+| A4 | ERLEDIGT | — | Zur Antwort scrollen und Ladezustand — **am Code belegt geschlossen**: mega38 Block A, `scrollIntoView` und Ladezustand am Ergebnisort |
+| A5 | ERLEDIGT | — | Ein Urteil je Antwort — **am Code belegt geschlossen**: drei benannte Zustände, `trustNote` („kein Wahrheitsversprechen"), „N Quellen **herangezogen**" |
 | A6 | OFFEN | VOR-VORTEST | Aufgabenkarte abgleichen — nennt noch „Anfang August" (VIP-2, abgesagt) |
 | A8 | OFFEN | VOR-VORTEST | Klara-Manifest sideloaden |
 | A9 | OFFEN | VOR-VORTEST | Testordner mit `Arbeitsanweisung Hallenkran.docx` auf ihrem Schreibtisch |
 | A10 | OFFEN | VOR-VORTEST | Erstnutzerlauf auf ihrem Konto wiederholen — der bisherige lief als Admin |
 | A12 | OFFEN | VOR-VORTEST | Zugangsdaten an Natascha |
+| E9 | OFFEN | VOR-VORTEST | **Entschieden: der Bestandsreset schließt den Papierkorb ein — aber die registrierten Nutzer bleiben bestehen.** Gelöscht werden Wissensobjekte und Papierkorb, nicht die Konten |
 | G3b | OFFEN | VOR-VORTEST | Beispieldaten nachrüsten: **verschiedene Vertraulichkeitsstufen und Anhänge**, sonst lässt sich der Zugriffsschutz nicht vorführen |
 | E6 | OFFEN | VOR-VORTEST | Confluence-Testseiten anlegen — verschachtelt, in Untergruppen; der heutige Aufbau reicht zum Testen nicht |
 | D4 | OFFEN | SOFORT | Artefakt-Prompt neu formulieren (die letzte Fassung war zu schwach) — heute Abend |
@@ -71,8 +72,8 @@ Fester Termin: **Freitag 14:00**, Natascha, sieben Aufgaben, kein Vorwissen.
 | A17 | OFFEN | NACH-SHIP3 | Der Modal-Sammler ist ein statischer Musterwächter, kein AST-Wächter: Alias-Nutzung, `createElement`, Spread-gesetztes `aria-modal` und Modalität ohne die Zeichenfolge gehen vorbei (ben sammel46, Anmerkung 1/2 — färbt nicht). Gehört mit A16 zusammen |
 | A18 | OFFEN | NACH-SHIP3 | Die Browsermessungen prüfen Bedienbarkeit, Fokus und `inert`, nicht die Sprachausgabe. Ein manueller VoiceOver-/NVDA-Kurzlauf würde den Wächter verbessern (ben sammel46, Anmerkung 4 — keine Ship-Auflage) |
 | A19 | OFFEN | NACH-SHIP3 | Firefox und WebKit liefen einmalig grün, im Tor läuft nur Chromium — keine dauerhafte Drei-Engine-Garantie (ben sammel46, Anmerkung 3) |
-| A15 | OFFEN | VOR-VORTEST | **Bildbeschreibung: Formular und KI-Vorschlag fehlen auf der Vordertür.** `onDescribeImage` ist ein OPTIONALER Prop des Editors; `CaptureFrontDoor.tsx` und `KnowledgeInputStudio.tsx` übergeben ihn nicht. Ohne ihn rendert weder der Knopf „Bildbeschreibung bearbeiten" (`RichTextEditor.tsx:1129`) noch die Vorschlagsleiste (`captionSuggestVisible`, dritter Parameter). Von Pedi mehrfach angefordert |
-| A16 | OFFEN | VOR-VORTEST | Sammler über optionale Verträge: **derselbe Fehler wie `FacetFilter` ohne `backgroundRef`** — ein Aufrufer lässt einen optionalen Prop weg, nichts wird rot. Zwei Fälle in zwei Tagen |
+| A15 | ERLEDIGT | — | **Bildbeschreibung: Formular und KI-Vorschlag fehlen auf der Vordertür.** `onDescribeImage` ist ein OPTIONALER Prop des Editors; `CaptureFrontDoor.tsx` und `KnowledgeInputStudio.tsx` übergeben ihn nicht. Ohne ihn rendert weder der Knopf „Bildbeschreibung bearbeiten" (`RichTextEditor.tsx:1129`) noch die Vorschlagsleiste (`captionSuggestVisible`, dritter Parameter). Von Pedi mehrfach angefordert |
+| A16 | ERLEDIGT | — | Sammler über optionale Verträge: **derselbe Fehler wie `FacetFilter` ohne `backgroundRef`** — ein Aufrufer lässt einen optionalen Prop weg, nichts wird rot. Zwei Fälle in zwei Tagen |
 | E4d | OFFEN | VOR-VORTEST | D2 Klara-Refresh vor Freitag schneiden |
 
 ---
@@ -129,12 +130,15 @@ Pedis Anordnung: „nach Freitag, aber nicht vergessen."
 
 | Kennung | Zustand | Anker | Sache |
 |---|---|---|---|
+| L1 | OFFEN | MIT-JAHRESRING | **Entschieden: entfällt als Nachforderung — wir fangen von vorne an.** Die 120 undokumentierten Anhänge werden nicht nachdokumentiert, sondern neu erzeugt. **Auflage für den Erzeugungsprompt (D4): je Los eine Begleittabelle, kein Los ohne sie** |
 | L2 | OFFEN | MIT-JAHRESRING | **Entschieden: neu gestalten, in geringerer Anzahl.** Die 24.000 Kennungen gegen 12.480 Objekte waren ein Fehler; Mehrfachverwendung kommt zurück |
 | L3 | OFFEN | MIT-JAHRESRING | **Entschieden: weniger, dafür realistischer.** Keine Vektorzeichnungen als „Fotos", keine eingebrannte Kennung im Bild — **muss ausdrücklich im Erzeugungsprompt stehen** |
 | L4 | OFFEN | MIT-JAHRESRING | Aufgabe A nie geliefert: Anhangsgerüst neu herleiten, Datenbankgröße neu rechnen, Losgröße begründen |
 | L5 | OFFEN | MIT-JAHRESRING | Löschanteil aus dem Firmenalltag herleiten — die 72 % Papierkorb sind Entwicklungsschutt, kein Vorbild |
 | L6 | OFFEN | MIT-JAHRESRING | Vier Datenbankbefunde: kein Fremdschlüssel auf der Objekttabelle, Lücken ohne Objektbezug, kein Waisen-Sweep, Prüfspur auf gelöschte Objekte |
 | L7 | ERLEDIGT | — | Ladeweg entschieden: Bulk-Import ohne Modellaufruf, Erzeugung in Losen mit Halt |
+| E3 | OFFEN | SOFORT | **Entschieden: Swap wird eingerichtet**, auf beiden Maschinen |
+| E5 | OFFEN | MIT-JAHRESRING | **Entschieden: entfällt — wir starten neu.** Rolle und Schema entstehen mit dem neuen Aufsetzen, nicht als Nachrüstung |
 | E4s | OFFEN | MIT-JAHRESRING | Zweiter Server aufsetzen (entschieden: eigene Maschine) — nach Freitag |
 | E7 | OFFEN | SOFORT | Produktionsdatenbank umbenennen — Pedi gibt frei, Kopf führt aus |
 | E8 | OFFEN | MIT-JAHRESRING | RESERVE und leeren Jahresring-Container löschen, erst nach dem Nachweis |
@@ -159,7 +163,7 @@ Pedis Anordnung: „nach Freitag, aber nicht vergessen."
 | I10 | OFFEN | SOFORT | Keine interaktiven Datenbank-Transaktionen mehr |
 | I11 | OFFEN | NACH-SHIP3 | Coolify-Eigenheiten selbst nachprüfen oder als unbelegt kennzeichnen |
 | I13 | OFFEN | NACH-SHIP3 | Ship-Tor braucht ein Cloud-Geheimnis (SCRUM-552) — die Frist „bis nach VIP-2" ist verfallen |
-| K2 | OFFEN | SOFORT | `_relay/kopf/wartet/` auflösen, Inhalt nach `_relay/hand/queue/` |
+| K2 | ERLEDIGT | — | `_relay/kopf/wartet/` aufgelöst: der Import-Auftrag liegt als Entwurf in `_relay/hand/queue/`, die drei verbrauchten Fassungen in `_to_delete` |
 | E1v | ERLEDIGT | — | VIP-2 entfällt endgültig; der Vermerk „nach VIP-2" wird überall durch einen Ereignis-Anker ersetzt |
 
 ---

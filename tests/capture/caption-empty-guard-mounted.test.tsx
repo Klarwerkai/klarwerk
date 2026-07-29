@@ -8,6 +8,7 @@ import { act, createElement, useState } from "../../apps/web/node_modules/react"
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import "../../apps/web/src/i18n";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
+import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -20,13 +21,15 @@ let root: ReturnType<typeof createRoot>;
 
 function Host({ initial }: { initial: string }) {
   const [value, setValue] = useState(initial);
-  return createElement(RichTextEditor, {
-    value,
-    onChange: (html: string) => {
-      emitted.push(html);
-      setValue(html);
-    },
-  });
+  return mitBildbeschreibung(
+    createElement(RichTextEditor, {
+      value,
+      onChange: (html: string) => {
+        emitted.push(html);
+        setValue(html);
+      },
+    }),
+  );
 }
 
 function mount(initial: string): void {

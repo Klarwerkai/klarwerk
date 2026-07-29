@@ -17,8 +17,11 @@
     "outDir": "dist"
   },
   "include": ["services", "tests"],
-  // WP-D8b: gemountete React-Tests (.test.tsx, jsdom) brauchen jsx+DOM-lib — die hat NUR der App-Build
+  // WP-D8b: gemountete React-Tests (.tsx, jsdom) brauchen jsx+DOM-lib — die hat NUR der App-Build
   // (apps/web/tsconfig). Der Root-Check bleibt Node-rein. Teil C3: die .tsx-Tests laufen jetzt durch
   // ihren EIGENEN Typecheck (tsconfig.tests-tsx.json, im tools/build-Gate) — keine Gate-Schuld mehr.
-  "exclude": ["node_modules", "dist", "tests/**/*.test.tsx", "tests/types"]
+  // AUFTRAG-mega50: die Grenze verläuft an `.tsx`, nicht mehr an `.test.tsx`. Auch ein HELFER dieser
+  // Tests braucht jsx (er montiert React-Bauteile) — vorher fiel er in den Node-reinen Check und war
+  // dort nicht typisierbar.
+  "exclude": ["node_modules", "dist", "tests/**/*.tsx", "tests/types"]
 }

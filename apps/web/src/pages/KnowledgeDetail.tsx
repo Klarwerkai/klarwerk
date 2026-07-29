@@ -25,6 +25,7 @@ import type {
   KnowledgeType,
 } from "../api/types";
 import { useSession } from "../app/AuthContext";
+import { ImageDescribeProvider } from "../app/ImageDescribeContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
@@ -123,7 +124,6 @@ import {
   isSourceContributionValid,
 } from "../lib/sourceContribution";
 import { trustExplainer } from "../lib/trustExplainer";
-import { useAiAvailable } from "../lib/useAiAvailable";
 import { useReadiness } from "../lib/useReadiness";
 import {
   type FeedbackVerdict,
@@ -178,7 +178,6 @@ const USABILITY_TONE: Record<KoUsability, string> = {
 export function KnowledgeDetail(): JSX.Element {
   const { t, i18n } = useTranslation();
   // PAKET 1 (D-AISTATE, Pedi 23.07.): KI-Bildbeschreibung (Task „describe") ohne Modell hart ausgrauen.
-  const describeAi = useAiAvailable("describe");
   const { id = "" } = useParams();
   // SCRUM-294: Demo-Kontext der Zielseite (über Library erreicht) — nur Anzeige/Link-Kontext.
   const [params] = useSearchParams();
@@ -700,113 +699,118 @@ export function KnowledgeDetail(): JSX.Element {
   }, [query.data, params, canEdit]);
 
   return (
-    // Pedi/VIP 06.07.: mehr Breite für die Detailseite — lange Wissenseinträge quetschten sich vorher
-    // in eine schmale Spalte (endloses dünnes Band), während rechts Platz leer blieb. max-w-6xl gibt
-    // dem Inhalt (breite 1.7fr-Spalte) spürbar mehr Lesebreite; die Quellen-/Bewährungsspalte bleibt daneben.
-    <div className="mx-auto max-w-6xl">
-      <PageHeader kicker={t("ko.kicker")} title={t("ko.title")} />
-      {/* SCRUM-294: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
-      {isDemoContext(params) ? <DemoBanner surface="detail" /> : null}
-      <QueryState query={query}>
-        {(ko) => {
-          // SCRUM-251: kompakte Handlungs-/Statusübersicht aus bereits geladenen Feldern.
-          const ov = koOverview(ko);
-          // SCRUM-357 / AG-14: Konflikt-Wirkung — ein offener (v. a. Truth-)Konflikt begrenzt die
-          // Nutzbarkeit ehrlich (ready → in-review). Gelöste Konflikte wirken nicht mehr.
-          const impact = conflictImpact(ko.id, conflicts.data ?? []);
-          const usability = conflictLimitedUsability(ov.usability, impact);
-          const notice = conflictNotice(impact);
-          return (
-            <>
-              <Card className="mb-5">
-                <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
-                  <span
-                    className={`rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${USABILITY_TONE[usability]}`}
-                  >
-                    {t(useReadiness(usability).labelKey)}
-                  </span>
-                  {/* SCRUM-357: sichtbares Konflikt-Signal direkt an der Nutzbarkeit. */}
-                  {notice ? (
+    // AUFTRAG-mega50 Block A: die Herkunft des Inhalts dieser Fläche — das Einzige, was sie zur
+    // Bildbeschreibung noch beitragen muss. Die koId ist wie bisher NUR hebender Backstop
+    // (Downgrade-Schutz), nie Freigabe-Anker; die Stufe bleibt fail-safe „vertraulich".
+    <ImageDescribeProvider provenance={draftProvenance(undefined, id)}>
+      {/* Pedi/VIP 06.07.: mehr Breite für die Detailseite — lange Wissenseinträge quetschten sich
+          vorher in eine schmale Spalte (endloses dünnes Band), während rechts Platz leer blieb.
+          max-w-6xl gibt dem Inhalt (breite 1.7fr-Spalte) spürbar mehr Lesebreite; die
+          Quellen-/Bewährungsspalte bleibt daneben. */}
+      <div className="mx-auto max-w-6xl">
+        <PageHeader kicker={t("ko.kicker")} title={t("ko.title")} />
+        {/* SCRUM-294: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
+        {isDemoContext(params) ? <DemoBanner surface="detail" /> : null}
+        <QueryState query={query}>
+          {(ko) => {
+            // SCRUM-251: kompakte Handlungs-/Statusübersicht aus bereits geladenen Feldern.
+            const ov = koOverview(ko);
+            // SCRUM-357 / AG-14: Konflikt-Wirkung — ein offener (v. a. Truth-)Konflikt begrenzt die
+            // Nutzbarkeit ehrlich (ready → in-review). Gelöste Konflikte wirken nicht mehr.
+            const impact = conflictImpact(ko.id, conflicts.data ?? []);
+            const usability = conflictLimitedUsability(ov.usability, impact);
+            const notice = conflictNotice(impact);
+            return (
+              <>
+                <Card className="mb-5">
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                     <span
-                      title={t(notice.hintKey)}
-                      className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
+                      className={`rounded-pill px-2.5 py-0.5 font-mono text-[11px] font-semibold uppercase ${USABILITY_TONE[usability]}`}
                     >
-                      {t("conflict.impact.badge")}
+                      {t(useReadiness(usability).labelKey)}
                     </span>
-                  ) : null}
-                  <StatusPill status={ov.status} />
-                  {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
-                  {isDemoKnowledge(ko) ? (
-                    <span
-                      title={t("demo.badge.hint")}
-                      className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
-                    >
-                      {t("demo.badge.label")}
-                    </span>
-                  ) : null}
-                  {/* SCRUM-438: sichtbarer Vertrauensnachweis — der Artikel enthält übernommenes
+                    {/* SCRUM-357: sichtbares Konflikt-Signal direkt an der Nutzbarkeit. */}
+                    {notice ? (
+                      <span
+                        title={t(notice.hintKey)}
+                        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
+                      >
+                        {t("conflict.impact.badge")}
+                      </span>
+                    ) : null}
+                    <StatusPill status={ov.status} />
+                    {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
+                    {isDemoKnowledge(ko) ? (
+                      <span
+                        title={t("demo.badge.hint")}
+                        className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+                      >
+                        {t("demo.badge.label")}
+                      </span>
+                    ) : null}
+                    {/* SCRUM-438: sichtbarer Vertrauensnachweis — der Artikel enthält übernommenes
                       externes, ungeprüftes Wissen (Public-KI/Web). Ehrliches Herkunfts-Chip. */}
-                  {containsExternalUnchecked(ko.bodyHtml) ? (
-                    <span
-                      title={t("ko.externalUnchecked.hint")}
-                      className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
-                    >
-                      {t("ko.externalUnchecked.label")}
+                    {containsExternalUnchecked(ko.bodyHtml) ? (
+                      <span
+                        title={t("ko.externalUnchecked.hint")}
+                        className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+                      >
+                        {t("ko.externalUnchecked.label")}
+                      </span>
+                    ) : null}
+                    <span className="font-mono text-[12px] text-muted">
+                      {t("ko.ovTrust")} <span className="font-semibold text-ink">{ov.trust}</span>
                     </span>
-                  ) : null}
-                  <span className="font-mono text-[12px] text-muted">
-                    {t("ko.ovTrust")} <span className="font-semibold text-ink">{ov.trust}</span>
-                  </span>
-                  <span className="font-mono text-[12px] text-muted-2">v{ov.version}</span>
-                  <span className="font-mono text-[11.5px] text-muted-2">
-                    {/* AUFTRAG-mega34 F: `count` statt `n` — nur darüber pluralisiert i18next.
+                    <span className="font-mono text-[12px] text-muted-2">v{ov.version}</span>
+                    <span className="font-mono text-[11.5px] text-muted-2">
+                      {/* AUFTRAG-mega34 F: `count` statt `n` — nur darüber pluralisiert i18next.
                         Vorher stand hier bei jedem KO mit genau einer Quelle „1 Quellen · 1 Anhänge". */}
-                    {t("ko.ovSources", { count: ov.sourceCount })} ·{" "}
-                    {t("ko.ovAttachments", { count: ov.attachmentCount })}
-                  </span>
-                </div>
-                {/* SCRUM-293: konsistenter, ehrlicher Readiness-Hinweis (gleiche Sprache wie Library). */}
-                <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
-                  {t(useReadiness(usability).hintKey)}
-                </p>
-                {/* SCRUM-359 / AG-05 / PI-K2: ruhige Trust-Transparenz (progressive disclosure).
-                    Erklärt, dass Trust ein Review-/Evidenzsignal ist — keine Wahrheitsgarantie. */}
-                {(() => {
-                  const ex = trustExplainer({ trustBand: ov.trustBand, usability });
-                  return (
-                    <details className="mt-1.5 text-[12px] text-muted">
-                      <summary className="cursor-pointer select-none font-medium text-muted-2 hover:text-text">
-                        {t(ex.titleKey)}
-                      </summary>
-                      <p className="mt-1 leading-relaxed">{t(ex.metaKey)}</p>
-                      <p className="mt-1 leading-relaxed">{t(ex.bandKey)}</p>
-                      {ex.reviewHintKey ? (
-                        <p className="mt-1 leading-relaxed text-trust-warn-text">
-                          {t(ex.reviewHintKey)}
-                        </p>
-                      ) : null}
-                    </details>
-                  );
-                })()}
-                {/* SCRUM-357 / AG-14 / VC-P1-1: ehrlicher Konflikt-Banner — offener (Truth-)Konflikt
-                    schränkt Nutzbarkeit/Trust ein, ohne das KO als falsch zu behaupten. */}
-                {notice ? (
-                  <div className="mt-2 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
-                    <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                      {t(notice.titleKey)}
-                    </p>
-                    <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
-                      {t(notice.hintKey)}
-                    </p>
-                    <Link
-                      to={notice.to}
-                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
-                    >
-                      {t("conflict.impact.cta")}
-                    </Link>
+                      {t("ko.ovSources", { count: ov.sourceCount })} ·{" "}
+                      {t("ko.ovAttachments", { count: ov.attachmentCount })}
+                    </span>
                   </div>
-                ) : null}
-                {/* ============================================================================
+                  {/* SCRUM-293: konsistenter, ehrlicher Readiness-Hinweis (gleiche Sprache wie Library). */}
+                  <p className="mt-1.5 text-[12px] leading-relaxed text-muted">
+                    {t(useReadiness(usability).hintKey)}
+                  </p>
+                  {/* SCRUM-359 / AG-05 / PI-K2: ruhige Trust-Transparenz (progressive disclosure).
+                    Erklärt, dass Trust ein Review-/Evidenzsignal ist — keine Wahrheitsgarantie. */}
+                  {(() => {
+                    const ex = trustExplainer({ trustBand: ov.trustBand, usability });
+                    return (
+                      <details className="mt-1.5 text-[12px] text-muted">
+                        <summary className="cursor-pointer select-none font-medium text-muted-2 hover:text-text">
+                          {t(ex.titleKey)}
+                        </summary>
+                        <p className="mt-1 leading-relaxed">{t(ex.metaKey)}</p>
+                        <p className="mt-1 leading-relaxed">{t(ex.bandKey)}</p>
+                        {ex.reviewHintKey ? (
+                          <p className="mt-1 leading-relaxed text-trust-warn-text">
+                            {t(ex.reviewHintKey)}
+                          </p>
+                        ) : null}
+                      </details>
+                    );
+                  })()}
+                  {/* SCRUM-357 / AG-14 / VC-P1-1: ehrlicher Konflikt-Banner — offener (Truth-)Konflikt
+                    schränkt Nutzbarkeit/Trust ein, ohne das KO als falsch zu behaupten. */}
+                  {notice ? (
+                    <div className="mt-2 rounded-card border border-trust-warn-fill bg-trust-warn-bg px-3 py-2">
+                      <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                        {t(notice.titleKey)}
+                      </p>
+                      <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
+                        {t(notice.hintKey)}
+                      </p>
+                      <Link
+                        to={notice.to}
+                        className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
+                      >
+                        {t("conflict.impact.cta")}
+                      </Link>
+                    </div>
+                  ) : null}
+                  {/* ============================================================================
                     AUFTRAG-mega29 C1 (bens M28-3) — DIE ANSICHT, IN DER JEMAND EIN EINZELNES
                     OBJEKT BEURTEILT, SAH DIE EINSCHRÄNKUNG NICHT.
                     ============================================================================
@@ -816,1556 +820,1568 @@ export function KnowledgeDetail(): JSX.Element {
                     dahinter nur gegen eine gedeckelte Kandidatenmenge geprüft hat. Der Hinweis
                     steht bewusst DIREKT unter dem Konflikt-Banner, den er einschränkt. Ein
                     wirklich vollständiger Lauf (und ein Objekt ohne Protokoll) schweigt. */}
-                <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
-                {/* SCRUM-259: nächste Handlung als ehrliche CTA auf vorhandene Routen/Bereiche. */}
-                <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                  <p className="text-[12.5px] text-muted">
-                    <span className="font-semibold text-text">{t("ko.nextLabel")} </span>
-                    {t(`ko.next.${ov.nextAction}`)}
-                  </p>
-                  {(() => {
-                    const cta = koCta(ov.nextAction, ko);
-                    const cls = `inline-flex items-center gap-1 rounded-btn px-2.5 py-1 text-[12px] font-semibold ${
-                      cta.tone === "primary"
-                        ? "bg-ink text-white hover:opacity-90"
-                        : "border border-hairline text-text hover:bg-hairline-soft"
-                    }`;
-                    return cta.kind === "route" ? (
-                      // SCRUM-294: im Demo-Kontext den Use-Fluss (→ Ask) quellengebunden weiterführen.
-                      <Link to={demoHref(cta.href, params)} className={cls}>
-                        {t(cta.labelKey)} <span aria-hidden="true">→</span>
-                      </Link>
-                    ) : (
-                      <a href={cta.href} className={cls}>
-                        {t(cta.labelKey)} <span aria-hidden="true">↓</span>
-                      </a>
-                    );
-                  })()}
-                </div>
-              </Card>
-              {/* Pedi/VIP 06.07.: robustes 2/3-zu-1/3-Layout. Vorher `1.7fr_1fr` (Arbitrary-Value mit
+                  <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />
+                  {/* SCRUM-259: nächste Handlung als ehrliche CTA auf vorhandene Routen/Bereiche. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                    <p className="text-[12.5px] text-muted">
+                      <span className="font-semibold text-text">{t("ko.nextLabel")} </span>
+                      {t(`ko.next.${ov.nextAction}`)}
+                    </p>
+                    {(() => {
+                      const cta = koCta(ov.nextAction, ko);
+                      const cls = `inline-flex items-center gap-1 rounded-btn px-2.5 py-1 text-[12px] font-semibold ${
+                        cta.tone === "primary"
+                          ? "bg-ink text-white hover:opacity-90"
+                          : "border border-hairline text-text hover:bg-hairline-soft"
+                      }`;
+                      return cta.kind === "route" ? (
+                        // SCRUM-294: im Demo-Kontext den Use-Fluss (→ Ask) quellengebunden weiterführen.
+                        <Link to={demoHref(cta.href, params)} className={cls}>
+                          {t(cta.labelKey)} <span aria-hidden="true">→</span>
+                        </Link>
+                      ) : (
+                        <a href={cta.href} className={cls}>
+                          {t(cta.labelKey)} <span aria-hidden="true">↓</span>
+                        </a>
+                      );
+                    })()}
+                  </div>
+                </Card>
+                {/* Pedi/VIP 06.07.: robustes 2/3-zu-1/3-Layout. Vorher `1.7fr_1fr` (Arbitrary-Value mit
                   Dezimalpunkt) + fehlendes min-w-0 → Grid-Blowout: die Quellen-/Bewährungsspalte drückte
                   die Inhaltsspalte schmal. Jetzt grid-cols-3 + col-span-2 für den Inhalt und min-w-0
                   gegen Blowout — der Inhalt bekommt zuverlässig 2/3 der Breite. */}
-              <div className="grid gap-5 lg:grid-cols-3">
-                <Card className="min-w-0 lg:col-span-2">
-                  {/* SCRUM-124: sichtbarer Rückgabe-/Nacharbeit-Hinweis aus Validierungsfeedback */}
-                  {isReturnedForRework(audit.data ?? [], ko.id) ? (
-                    <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text">
-                      {t("ko.returnedBanner")}
-                    </div>
-                  ) : null}
-                  {/* SCRUM-331: nach einer Revision aus dem Nacharbeitskontext → Rückweg zur Validierung
+                <div className="grid gap-5 lg:grid-cols-3">
+                  <Card className="min-w-0 lg:col-span-2">
+                    {/* SCRUM-124: sichtbarer Rückgabe-/Nacharbeit-Hinweis aus Validierungsfeedback */}
+                    {isReturnedForRework(audit.data ?? [], ko.id) ? (
+                      <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text">
+                        {t("ko.returnedBanner")}
+                      </div>
+                    ) : null}
+                    {/* SCRUM-331: nach einer Revision aus dem Nacharbeitskontext → Rückweg zur Validierung
                       der überarbeiteten KOs. Ehrlich: neue Version + erneute Review, keine Auto-Freigabe. */}
-                  {reworkSaved ? (
-                    <div className="mb-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3">
-                      <div className="text-[12.5px] font-semibold text-trust-pos-text">
-                        {t("ko.rework.savedTitle")}
-                      </div>
-                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-pos-text/90">
-                        {t("ko.rework.savedHint")}
-                      </p>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Link
-                          to={reworkValidationHref()}
-                          className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
-                        >
-                          {t("ko.rework.toValidation")} <span aria-hidden="true">→</span>
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => setReworkSavedFor(null)}
-                          className="text-[11.5px] font-semibold text-muted hover:text-text"
-                        >
-                          {t("val.feedback.cancel")}
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-                  {/* SCRUM-330: Review-Nacharbeitskontext (?rework=review) — nur Anzeige; Bearbeiten erzeugt
-                      neue Version/Review, keine automatische Freigabe/Rückgabe. */}
-                  {reviewReworkContext && !reworkSaved ? (
-                    <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
-                      <div className="text-[12.5px] font-semibold text-trust-warn-text">
-                        {t("ko.rework.title")}
-                      </div>
-                      <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
-                        {t("ko.rework.hint")}
-                      </p>
-                      {/* SCRUM-332: das konkrete jüngste Validierungsfeedback fokussiert zeigen (aus den
-                          KO-Kommentaren am stabilen Präfix erkannt); allgemeine Kommentarliste unberührt. */}
-                      {(() => {
-                        const fb = latestValidationFeedback(ko.comments);
-                        if (!fb) {
-                          return null;
-                        }
-                        return (
-                          <div className="mt-2 rounded-btn border border-trust-warn-fill/30 bg-surface p-2.5">
-                            <div className="flex flex-wrap items-center gap-1.5">
-                              <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                                {t("ko.rework.feedbackTitle")}
-                              </span>
-                              <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                                {t(`ko.rework.feedback.${fb.verdict}`)}
-                              </span>
-                            </div>
-                            <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
-                              {fb.body}
-                            </p>
-                            {fb.author ? (
-                              <p className="mt-1 text-[10.5px] text-muted-2">
-                                {nameOf(fb.author)}
-                                {fb.at
-                                  ? ` · ${new Date(fb.at).toLocaleDateString(i18n.language)}`
-                                  : ""}
-                              </p>
-                            ) : null}
-                          </div>
-                        );
-                      })()}
-                      {/* SCRUM-336: ehrliche „Was als Nächstes?"-Schrittfolge — macht die Nacharbeit als
-                          zusammenhängenden Ablauf sichtbar (Feedback → Revision → zurück in den Fokus).
-                          Kein Assignee-Modell, keine Auto-Freigabe; reine Orientierung. */}
-                      <div className="mt-2">
-                        <div className="text-[10px] font-semibold uppercase tracking-wider text-trust-warn-text/80">
-                          {t("ko.rework.stepsTitle")}
+                    {reworkSaved ? (
+                      <div className="mb-3 rounded-card border border-trust-pos-fill/40 bg-trust-pos-bg p-3">
+                        <div className="text-[12.5px] font-semibold text-trust-pos-text">
+                          {t("ko.rework.savedTitle")}
                         </div>
-                        <ol className="mt-1 space-y-0.5">
-                          {reworkNextSteps().map((step, idx) => (
-                            <li
-                              key={step.key}
-                              className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-trust-warn-text/90"
-                            >
-                              <span className="font-mono text-[10px] font-semibold text-trust-warn-text/70">
-                                {idx + 1}.
-                              </span>
-                              <span>{t(step.labelKey)}</span>
-                            </li>
-                          ))}
-                        </ol>
-                      </div>
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {canEdit && !edit ? (
-                          <button
-                            type="button"
-                            onClick={() => startEdit(ko)}
+                        <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-pos-text/90">
+                          {t("ko.rework.savedHint")}
+                        </p>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          <Link
+                            to={reworkValidationHref()}
                             className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
                           >
-                            <Pencil size={13} />
-                            {t("ko.rework.edit")}
-                          </button>
-                        ) : null}
-                        <Link
-                          to="/validierung"
-                          className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-text"
-                        >
-                          {t("ko.rework.back")} <span aria-hidden="true">→</span>
-                        </Link>
-                      </div>
-                    </div>
-                  ) : null}
-                  <div className="flex flex-wrap items-center gap-2">
-                    <StatusPill status={deriveStatus(ko)} />
-                    <KnowledgeTypeTag type={ko.type} />
-                    {/* SCRUM-415: Vertraulichkeits-Chip (nur wenn vertraulich). Vertrauliche KOs
-                        gehen nie in externe Kontexte (Output/Export). */}
-                    {(() => {
-                      const c = confidentialityChip(ko.confidentiality);
-                      return c.showChip ? (
-                        <span
-                          className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${CONF_TONE[c.tone]}`}
-                        >
-                          {t(c.labelKey)}
-                        </span>
-                      ) : null;
-                    })()}
-                    <span className="font-mono text-[11px] text-muted-2">
-                      v{ko.version}
-                      {ko.asset ? ` · ${ko.asset}` : ""}
-                    </span>
-                    {/* WP-D10 (Fix 4): Erstellungsdatum auch im Detail (vorhandenes Feld, lokalisiert);
-                        fehlt es bei Altdaten → ehrlich nichts (kein Platzhalter-Datum). */}
-                    {(() => {
-                      const created = formatKoTimestamp(ko.createdAt, i18n.language);
-                      return created ? (
-                        <span
-                          title={t("ko.createdAt")}
-                          className="font-mono text-[11px] text-muted-2"
-                        >
-                          {t("ko.createdAt")} {created}
-                        </span>
-                      ) : null;
-                    })()}
-                    {/* SCRUM-415: Vertraulichkeit ändern (Rechte wie Bearbeiten); Änderung landet im Audit. */}
-                    {canEdit ? (
-                      <label className="inline-flex items-center gap-1 text-[11px] text-muted-2">
-                        <span className="sr-only">{t("conf.field")}</span>
-                        <select
-                          value={confidentialityOf(ko.confidentiality)}
-                          disabled={act.isPending}
-                          onChange={(e) =>
-                            act.mutate({
-                              action: "confidentiality",
-                              level: e.target.value as Confidentiality,
-                            })
-                          }
-                          aria-label={t("conf.field")}
-                          className="rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[11px] text-muted"
-                        >
-                          {CONFIDENTIALITY_LEVELS.map((lvl) => (
-                            <option key={lvl} value={lvl}>
-                              {t(`conf.level.${lvl}`)}
-                            </option>
-                          ))}
-                        </select>
-                      </label>
-                    ) : null}
-                    {canEdit && !edit ? (
-                      <button
-                        type="button"
-                        onClick={() => startEdit(ko)}
-                        className="ml-auto inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                      >
-                        <Pencil size={13} />
-                        {t("ko.edit")}
-                      </button>
-                    ) : null}
-                  </div>
-
-                  {edit ? (
-                    <div className="mt-4 space-y-3">
-                      {/* SCRUM-333: im Rework-Edit-Modus das konkrete Review-Feedback als Arbeitshilfe
-                          sichtbar halten (gleiche Erkennung wie SCRUM-332). Ehrlich: Speichern erzeugt
-                          neue Version + erneute Review, keine Auto-Freigabe. Kein Auto-Prefill/-Abhaken. */}
-                      {reviewReworkContext
-                        ? (() => {
-                            const fb = latestValidationFeedback(ko.comments);
-                            if (!fb) {
-                              return null;
-                            }
-                            return (
-                              <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
-                                <div className="text-[12.5px] font-semibold text-trust-warn-text">
-                                  {t("ko.rework.editTitle")}
-                                </div>
-                                <div className="mt-1.5 rounded-btn border border-trust-warn-fill/30 bg-surface p-2.5">
-                                  <div className="flex flex-wrap items-center gap-1.5">
-                                    <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                                      {t("ko.rework.feedbackTitle")}
-                                    </span>
-                                    <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                                      {t(`ko.rework.feedback.${fb.verdict}`)}
-                                    </span>
-                                  </div>
-                                  <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
-                                    {fb.body}
-                                  </p>
-                                  {fb.author ? (
-                                    <p className="mt-1 text-[10.5px] text-muted-2">
-                                      {nameOf(fb.author)}
-                                      {fb.at
-                                        ? ` · ${new Date(fb.at).toLocaleDateString(i18n.language)}`
-                                        : ""}
-                                    </p>
-                                  ) : null}
-                                </div>
-                                <p className="mt-1.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
-                                  {t("ko.rework.editHint")}
-                                </p>
-                              </div>
-                            );
-                          })()
-                        : null}
-                      <Field label={t("capture.fTitle")}>
-                        <TextInput
-                          value={edit.title}
-                          onChange={(e) => setEdit({ ...edit, title: e.target.value })}
-                        />
-                      </Field>
-                      <Field label={t("capture.fStatement")}>
-                        <textarea
-                          value={edit.statement}
-                          onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
-                          rows={3}
-                          className={textareaCls}
-                        />
-                        {/* SCRUM-313: KI-Nachbearbeitung der Aussage — Vorschau + bewusste Übernahme.
-                            KI hilft nur beim Formulieren; nach dem Speichern startet die Prüfung neu
-                            (ko.editNote), keine Auto-Validierung. */}
-                        <AiAssistBox
-                          text={edit.statement}
-                          runAssist={runAssist}
-                          onApply={(next) => setEdit({ ...edit, statement: next })}
-                        />
-                      </Field>
-                      {/* KW-STR / FR-STR-02/03/05: WYSIWYG-Body verlustfrei, Bildpalette aus Anhängen */}
-                      <Field label={t("capture.fBody")}>
-                        {/* SCRUM-337: primärer Einstieg in den großen Knowledge-Studio-Arbeitsraum. Das
-                            Inline-Feld bleibt erhalten; das Studio arbeitet auf demselben edit.bodyHtml. */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setStudioApplied(false);
-                            setStudioOpen(true);
-                          }}
-                          className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-                        >
-                          <Sparkles size={14} /> {t("studio.open")}
-                        </button>
-                        <KnowledgeInputStudio
-                          open={studioOpen}
-                          onClose={() => setStudioOpen(false)}
-                          bodyHtml={edit.bodyHtml}
-                          onApply={(bodyHtml) => {
-                            setEdit({ ...edit, bodyHtml });
-                            setStudioApplied(true);
-                          }}
-                          runAssist={runAssist}
-                          images={(ko.attachments ?? [])
-                            .filter((a) => a.objectId && a.mime.startsWith("image/"))
-                            .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
-                          files={editorFilesFromAttachments(ko.attachments ?? [])}
-                          attachments={ko.attachments ?? []}
-                        />
-                        {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
-                        {studioApplied ? (
-                          <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
-                            {t("studio.applied")}
-                          </p>
-                        ) : null}
-                        {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
-                        <EditorGuidance />
-                        {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
-                        <EditorAttachmentContext attachments={ko.attachments ?? []} />
-                        {/* SCRUM-324: kompakte Struktur-/Nachvollziehbarkeits-Signale (keine Validierung). */}
-                        <EditorContentQuality
-                          bodyHtml={edit.bodyHtml}
-                          attachments={ko.attachments ?? []}
-                        />
-                        {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
-                        <BodyTemplateChooser
-                          bodyHtml={edit.bodyHtml}
-                          onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
-                        />
-                        <RichTextEditor
-                          value={edit.bodyHtml}
-                          onChange={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
-                          images={(ko.attachments ?? [])
-                            .filter((a) => a.objectId && a.mime.startsWith("image/"))
-                            .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
-                          files={editorFilesFromAttachments(ko.attachments ?? [])}
-                          documentTitle={edit.title}
-                          describeAvailable={describeAi.available}
-                          onDescribeImage={(dataUrl, context) =>
-                            endpoints.reasoner.describeImage(
-                              dataUrl,
-                              toReasonerLocale(i18n.language),
-                              draftProvenance(undefined, id),
-                              context,
-                            )
-                          }
-                        />
-                        {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
-                            Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote
-                            und die Statement-KI bleiben unverändert; keine Auto-Validierung. */}
-                        <AiAssistBox
-                          text={bodyTextForAssist(edit.bodyHtml)}
-                          runAssist={runAssist}
-                          applyFn={(mode, _original, suggestion) =>
-                            applyBodyAssist(mode, edit.bodyHtml, suggestion)
-                          }
-                          onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
-                          hintKey="capture.ai.bodyHint"
-                          extraApplyActions={EDITOR_BLOCKS.map((block) => ({
-                            labelKey: `capture.ai.applyAs.${block}`,
-                            apply: (_original, suggestion) =>
-                              applyBodyAssistBlock(edit.bodyHtml, suggestion, block),
-                          }))}
-                        />
-                        {/* SCRUM-405: Fakten aus weiteren Dokumenten per KI ergänzen — ausgewählte
-                            Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
-                            die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
-                        {/* AUFTRAG-mega18 Block A-3: EIN Weg, EIN Commit. Das Panel hängt nichts
-                            mehr selbst an und der lokale Body zieht erst NACH dem Commit nach —
-                            es gibt keinen übernommenen, unbelegten, speicherbaren Zwischenstand
-                            mehr (Begründung bei `runDocumentAppend`). */}
-                        <BodyExtractPanel koId={id} onAppend={runDocumentAppend} />
-                      </Field>
-                      <ListEditor
-                        label={t("capture.fConditions")}
-                        items={edit.conditions}
-                        onChange={(conditions) => setEdit({ ...edit, conditions })}
-                      />
-                      <ListEditor
-                        label={t("capture.fMeasures")}
-                        items={edit.measures}
-                        onChange={(measures) => setEdit({ ...edit, measures })}
-                      />
-                      <TagEditor tags={edit.tags} onChange={(tags) => setEdit({ ...edit, tags })} />
-                      <div className="grid grid-cols-2 gap-3">
-                        <Field label={t("capture.fType")}>
-                          <select
-                            value={edit.type}
-                            onChange={(e) =>
-                              setEdit({ ...edit, type: e.target.value as KnowledgeType })
-                            }
-                            className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                            {t("ko.rework.toValidation")} <span aria-hidden="true">→</span>
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setReworkSavedFor(null)}
+                            className="text-[11.5px] font-semibold text-muted hover:text-text"
                           >
-                            {KNOWLEDGE_TYPES.map((k) => (
-                              <option key={k} value={k}>
-                                {t(`ktype.${k}`)}
+                            {t("val.feedback.cancel")}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {/* SCRUM-330: Review-Nacharbeitskontext (?rework=review) — nur Anzeige; Bearbeiten erzeugt
+                      neue Version/Review, keine automatische Freigabe/Rückgabe. */}
+                    {reviewReworkContext && !reworkSaved ? (
+                      <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
+                        <div className="text-[12.5px] font-semibold text-trust-warn-text">
+                          {t("ko.rework.title")}
+                        </div>
+                        <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                          {t("ko.rework.hint")}
+                        </p>
+                        {/* SCRUM-332: das konkrete jüngste Validierungsfeedback fokussiert zeigen (aus den
+                          KO-Kommentaren am stabilen Präfix erkannt); allgemeine Kommentarliste unberührt. */}
+                        {(() => {
+                          const fb = latestValidationFeedback(ko.comments);
+                          if (!fb) {
+                            return null;
+                          }
+                          return (
+                            <div className="mt-2 rounded-btn border border-trust-warn-fill/30 bg-surface p-2.5">
+                              <div className="flex flex-wrap items-center gap-1.5">
+                                <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                  {t("ko.rework.feedbackTitle")}
+                                </span>
+                                <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                                  {t(`ko.rework.feedback.${fb.verdict}`)}
+                                </span>
+                              </div>
+                              <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
+                                {fb.body}
+                              </p>
+                              {fb.author ? (
+                                <p className="mt-1 text-[10.5px] text-muted-2">
+                                  {nameOf(fb.author)}
+                                  {fb.at
+                                    ? ` · ${new Date(fb.at).toLocaleDateString(i18n.language)}`
+                                    : ""}
+                                </p>
+                              ) : null}
+                            </div>
+                          );
+                        })()}
+                        {/* SCRUM-336: ehrliche „Was als Nächstes?"-Schrittfolge — macht die Nacharbeit als
+                          zusammenhängenden Ablauf sichtbar (Feedback → Revision → zurück in den Fokus).
+                          Kein Assignee-Modell, keine Auto-Freigabe; reine Orientierung. */}
+                        <div className="mt-2">
+                          <div className="text-[10px] font-semibold uppercase tracking-wider text-trust-warn-text/80">
+                            {t("ko.rework.stepsTitle")}
+                          </div>
+                          <ol className="mt-1 space-y-0.5">
+                            {reworkNextSteps().map((step, idx) => (
+                              <li
+                                key={step.key}
+                                className="flex items-start gap-1.5 text-[11.5px] leading-relaxed text-trust-warn-text/90"
+                              >
+                                <span className="font-mono text-[10px] font-semibold text-trust-warn-text/70">
+                                  {idx + 1}.
+                                </span>
+                                <span>{t(step.labelKey)}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {canEdit && !edit ? (
+                            <button
+                              type="button"
+                              onClick={() => startEdit(ko)}
+                              className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                            >
+                              <Pencil size={13} />
+                              {t("ko.rework.edit")}
+                            </button>
+                          ) : null}
+                          <Link
+                            to="/validierung"
+                            className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-text"
+                          >
+                            {t("ko.rework.back")} <span aria-hidden="true">→</span>
+                          </Link>
+                        </div>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap items-center gap-2">
+                      <StatusPill status={deriveStatus(ko)} />
+                      <KnowledgeTypeTag type={ko.type} />
+                      {/* SCRUM-415: Vertraulichkeits-Chip (nur wenn vertraulich). Vertrauliche KOs
+                        gehen nie in externe Kontexte (Output/Export). */}
+                      {(() => {
+                        const c = confidentialityChip(ko.confidentiality);
+                        return c.showChip ? (
+                          <span
+                            className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${CONF_TONE[c.tone]}`}
+                          >
+                            {t(c.labelKey)}
+                          </span>
+                        ) : null;
+                      })()}
+                      <span className="font-mono text-[11px] text-muted-2">
+                        v{ko.version}
+                        {ko.asset ? ` · ${ko.asset}` : ""}
+                      </span>
+                      {/* WP-D10 (Fix 4): Erstellungsdatum auch im Detail (vorhandenes Feld, lokalisiert);
+                        fehlt es bei Altdaten → ehrlich nichts (kein Platzhalter-Datum). */}
+                      {(() => {
+                        const created = formatKoTimestamp(ko.createdAt, i18n.language);
+                        return created ? (
+                          <span
+                            title={t("ko.createdAt")}
+                            className="font-mono text-[11px] text-muted-2"
+                          >
+                            {t("ko.createdAt")} {created}
+                          </span>
+                        ) : null;
+                      })()}
+                      {/* SCRUM-415: Vertraulichkeit ändern (Rechte wie Bearbeiten); Änderung landet im Audit. */}
+                      {canEdit ? (
+                        <label className="inline-flex items-center gap-1 text-[11px] text-muted-2">
+                          <span className="sr-only">{t("conf.field")}</span>
+                          <select
+                            value={confidentialityOf(ko.confidentiality)}
+                            disabled={act.isPending}
+                            onChange={(e) =>
+                              act.mutate({
+                                action: "confidentiality",
+                                level: e.target.value as Confidentiality,
+                              })
+                            }
+                            aria-label={t("conf.field")}
+                            className="rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[11px] text-muted"
+                          >
+                            {CONFIDENTIALITY_LEVELS.map((lvl) => (
+                              <option key={lvl} value={lvl}>
+                                {t(`conf.level.${lvl}`)}
                               </option>
                             ))}
                           </select>
-                        </Field>
-                        <Field label={t("capture.fCategory")}>
+                        </label>
+                      ) : null}
+                      {canEdit && !edit ? (
+                        <button
+                          type="button"
+                          onClick={() => startEdit(ko)}
+                          className="ml-auto inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                        >
+                          <Pencil size={13} />
+                          {t("ko.edit")}
+                        </button>
+                      ) : null}
+                    </div>
+
+                    {edit ? (
+                      <div className="mt-4 space-y-3">
+                        {/* SCRUM-333: im Rework-Edit-Modus das konkrete Review-Feedback als Arbeitshilfe
+                          sichtbar halten (gleiche Erkennung wie SCRUM-332). Ehrlich: Speichern erzeugt
+                          neue Version + erneute Review, keine Auto-Freigabe. Kein Auto-Prefill/-Abhaken. */}
+                        {reviewReworkContext
+                          ? (() => {
+                              const fb = latestValidationFeedback(ko.comments);
+                              if (!fb) {
+                                return null;
+                              }
+                              return (
+                                <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3">
+                                  <div className="text-[12.5px] font-semibold text-trust-warn-text">
+                                    {t("ko.rework.editTitle")}
+                                  </div>
+                                  <div className="mt-1.5 rounded-btn border border-trust-warn-fill/30 bg-surface p-2.5">
+                                    <div className="flex flex-wrap items-center gap-1.5">
+                                      <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                        {t("ko.rework.feedbackTitle")}
+                                      </span>
+                                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                                        {t(`ko.rework.feedback.${fb.verdict}`)}
+                                      </span>
+                                    </div>
+                                    <p className="mt-1 whitespace-pre-wrap text-[12.5px] leading-relaxed text-text">
+                                      {fb.body}
+                                    </p>
+                                    {fb.author ? (
+                                      <p className="mt-1 text-[10.5px] text-muted-2">
+                                        {nameOf(fb.author)}
+                                        {fb.at
+                                          ? ` · ${new Date(fb.at).toLocaleDateString(i18n.language)}`
+                                          : ""}
+                                      </p>
+                                    ) : null}
+                                  </div>
+                                  <p className="mt-1.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                                    {t("ko.rework.editHint")}
+                                  </p>
+                                </div>
+                              );
+                            })()
+                          : null}
+                        <Field label={t("capture.fTitle")}>
                           <TextInput
-                            value={edit.category}
-                            onChange={(e) => setEdit({ ...edit, category: e.target.value })}
+                            value={edit.title}
+                            onChange={(e) => setEdit({ ...edit, title: e.target.value })}
                           />
                         </Field>
-                      </div>
-                      {/* SCRUM-325: kompakter Änderungsüberblick vor dem Revidieren (kein Blocking). */}
-                      <KoRevisionSummary original={ko} edit={edit} />
-                      <p className="text-[12px] text-muted">{t("ko.editNote")}</p>
-                      {/* SCRUM-344: Save-Confidence — nach Studio-Apply ehrlich klarmachen, dass der Inhalt
-                          im Revisionsentwurf liegt; Speichern erzeugt neue Version + erneute Prüfung. */}
-                      {studioApplied
-                        ? (() => {
-                            const conf = studioSaveConfidence("revision");
-                            return (
-                              <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5">
-                                <p className="text-[12.5px] font-semibold text-trust-warn-text">
-                                  {t(conf.titleKey)}
-                                </p>
-                                <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
-                                  {t(conf.hintKey)}
-                                </p>
-                                <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
-                                  {t(conf.nextStepKey)}
-                                </p>
-                              </div>
-                            );
-                          })()
-                        : null}
-                      {err ? (
-                        <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                          {err}
+                        <Field label={t("capture.fStatement")}>
+                          <textarea
+                            value={edit.statement}
+                            onChange={(e) => setEdit({ ...edit, statement: e.target.value })}
+                            rows={3}
+                            className={textareaCls}
+                          />
+                          {/* SCRUM-313: KI-Nachbearbeitung der Aussage — Vorschau + bewusste Übernahme.
+                            KI hilft nur beim Formulieren; nach dem Speichern startet die Prüfung neu
+                            (ko.editNote), keine Auto-Validierung. */}
+                          <AiAssistBox
+                            text={edit.statement}
+                            runAssist={runAssist}
+                            onApply={(next) => setEdit({ ...edit, statement: next })}
+                          />
+                        </Field>
+                        {/* KW-STR / FR-STR-02/03/05: WYSIWYG-Body verlustfrei, Bildpalette aus Anhängen */}
+                        <Field label={t("capture.fBody")}>
+                          {/* SCRUM-337: primärer Einstieg in den großen Knowledge-Studio-Arbeitsraum. Das
+                            Inline-Feld bleibt erhalten; das Studio arbeitet auf demselben edit.bodyHtml. */}
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setStudioApplied(false);
+                              setStudioOpen(true);
+                            }}
+                            className="mb-2 inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                          >
+                            <Sparkles size={14} /> {t("studio.open")}
+                          </button>
+                          <KnowledgeInputStudio
+                            open={studioOpen}
+                            onClose={() => setStudioOpen(false)}
+                            bodyHtml={edit.bodyHtml}
+                            onApply={(bodyHtml) => {
+                              setEdit({ ...edit, bodyHtml });
+                              setStudioApplied(true);
+                            }}
+                            runAssist={runAssist}
+                            images={(ko.attachments ?? [])
+                              .filter((a) => a.objectId && a.mime.startsWith("image/"))
+                              .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                            files={editorFilesFromAttachments(ko.attachments ?? [])}
+                            attachments={ko.attachments ?? []}
+                          />
+                          {/* SCRUM-339: ehrliches Feedback — übernommen in den Entwurf, kein Auto-Save. */}
+                          {studioApplied ? (
+                            <p className="mb-2 rounded-btn bg-trust-pos-bg px-2.5 py-1.5 text-[11.5px] text-trust-pos-text">
+                              {t("studio.applied")}
+                            </p>
+                          ) : null}
+                          {/* SCRUM-317: kompakte Orientierung am Body-Feld (Struktur/Handlung/Blöcke/KI). */}
+                          <EditorGuidance />
+                          {/* SCRUM-323: Anhänge-Kontext — Bilder (einfügbar) vs. Dateien (Anhang/Evidence). */}
+                          <EditorAttachmentContext attachments={ko.attachments ?? []} />
+                          {/* SCRUM-324: kompakte Struktur-/Nachvollziehbarkeits-Signale (keine Validierung). */}
+                          <EditorContentQuality
+                            bodyHtml={edit.bodyHtml}
+                            attachments={ko.attachments ?? []}
+                          />
+                          {/* SCRUM-319: bewusst wählbare Body-Strukturvorlagen (leer = setzen, sonst anhängen). */}
+                          <BodyTemplateChooser
+                            bodyHtml={edit.bodyHtml}
+                            onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                          />
+                          <RichTextEditor
+                            value={edit.bodyHtml}
+                            onChange={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                            images={(ko.attachments ?? [])
+                              .filter((a) => a.objectId && a.mime.startsWith("image/"))
+                              .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
+                            files={editorFilesFromAttachments(ko.attachments ?? [])}
+                            documentTitle={edit.title}
+                          />
+                          {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
+                            Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote
+                            und die Statement-KI bleiben unverändert; keine Auto-Validierung. */}
+                          <AiAssistBox
+                            text={bodyTextForAssist(edit.bodyHtml)}
+                            runAssist={runAssist}
+                            applyFn={(mode, _original, suggestion) =>
+                              applyBodyAssist(mode, edit.bodyHtml, suggestion)
+                            }
+                            onApply={(bodyHtml) => setEdit({ ...edit, bodyHtml })}
+                            hintKey="capture.ai.bodyHint"
+                            extraApplyActions={EDITOR_BLOCKS.map((block) => ({
+                              labelKey: `capture.ai.applyAs.${block}`,
+                              apply: (_original, suggestion) =>
+                                applyBodyAssistBlock(edit.bodyHtml, suggestion, block),
+                            }))}
+                          />
+                          {/* SCRUM-405: Fakten aus weiteren Dokumenten per KI ergänzen — ausgewählte
+                            Punkte (G-2: nur mit Belegstelle) werden ANGEHÄNGT, nichts ersetzt;
+                            die Quelle je Punkt wird sofort am KO vermerkt (add-source, Stufe 2). */}
+                          {/* AUFTRAG-mega18 Block A-3: EIN Weg, EIN Commit. Das Panel hängt nichts
+                            mehr selbst an und der lokale Body zieht erst NACH dem Commit nach —
+                            es gibt keinen übernommenen, unbelegten, speicherbaren Zwischenstand
+                            mehr (Begründung bei `runDocumentAppend`). */}
+                          <BodyExtractPanel koId={id} onAppend={runDocumentAppend} />
+                        </Field>
+                        <ListEditor
+                          label={t("capture.fConditions")}
+                          items={edit.conditions}
+                          onChange={(conditions) => setEdit({ ...edit, conditions })}
+                        />
+                        <ListEditor
+                          label={t("capture.fMeasures")}
+                          items={edit.measures}
+                          onChange={(measures) => setEdit({ ...edit, measures })}
+                        />
+                        <TagEditor
+                          tags={edit.tags}
+                          onChange={(tags) => setEdit({ ...edit, tags })}
+                        />
+                        <div className="grid grid-cols-2 gap-3">
+                          <Field label={t("capture.fType")}>
+                            <select
+                              value={edit.type}
+                              onChange={(e) =>
+                                setEdit({ ...edit, type: e.target.value as KnowledgeType })
+                              }
+                              className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                            >
+                              {KNOWLEDGE_TYPES.map((k) => (
+                                <option key={k} value={k}>
+                                  {t(`ktype.${k}`)}
+                                </option>
+                              ))}
+                            </select>
+                          </Field>
+                          <Field label={t("capture.fCategory")}>
+                            <TextInput
+                              value={edit.category}
+                              onChange={(e) => setEdit({ ...edit, category: e.target.value })}
+                            />
+                          </Field>
                         </div>
-                      ) : null}
-                      {/* AUFTRAG-mega18 Block A-3: der Speichern-Knopf KENNT die Übernahme. Bis
+                        {/* SCRUM-325: kompakter Änderungsüberblick vor dem Revidieren (kein Blocking). */}
+                        <KoRevisionSummary original={ko} edit={edit} />
+                        <p className="text-[12px] text-muted">{t("ko.editNote")}</p>
+                        {/* SCRUM-344: Save-Confidence — nach Studio-Apply ehrlich klarmachen, dass der Inhalt
+                          im Revisionsentwurf liegt; Speichern erzeugt neue Version + erneute Prüfung. */}
+                        {studioApplied
+                          ? (() => {
+                              const conf = studioSaveConfidence("revision");
+                              return (
+                                <div className="rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-2.5">
+                                  <p className="text-[12.5px] font-semibold text-trust-warn-text">
+                                    {t(conf.titleKey)}
+                                  </p>
+                                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-trust-warn-text/90">
+                                    {t(conf.hintKey)}
+                                  </p>
+                                  <p className="mt-1 text-[11.5px] font-medium leading-relaxed text-trust-warn-text">
+                                    {t(conf.nextStepKey)}
+                                  </p>
+                                </div>
+                              );
+                            })()
+                          : null}
+                        {err ? (
+                          <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                            {err}
+                          </div>
+                        ) : null}
+                        {/* AUFTRAG-mega18 Block A-3: der Speichern-Knopf KENNT die Übernahme. Bis
                           mega17 hing er allein an `save.isPending` — ein Quellenfehler setzte nur
                           einen Toast, und der Dokumenttext war trotzdem speicherbar. Jetzt sperrt
                           ihn zusätzlich (a) eine LAUFENDE Übernahme (sonst revidierte ein Speichern
                           gegen eine Grundlage, die die Operation gerade verändert) und (b) ein
                           UNKLARER Ausgang (dann ist unbekannt, welche Version im Bestand steht —
                           blind darüber zu schreiben ist genau der Fehler, den mega18 abschafft). */}
-                      {appendUnclear ? (
-                        <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
-                          {t("xtr.append.unclear")}
-                        </div>
-                      ) : null}
-                      <div className="flex gap-2">
-                        <Button
-                          variant="primary"
-                          disabled={
-                            save.isPending ||
-                            appendDocument.isPending ||
-                            appendUnclear ||
-                            edit.title.trim().length === 0
-                          }
-                          onClick={() => save.mutate()}
-                        >
-                          {t("ko.saveEdit")}
-                        </Button>
-                        <Button variant="ghost" onClick={() => setEdit(null)}>
-                          {t("ko.cancelEdit")}
-                        </Button>
-                      </div>
-                    </div>
-                  ) : (
-                    <>
-                      {/* SCRUM-513 (WP3): Zonen-Leseansicht (Hero · sichtbarer Beleg · Sekundär · eingeklappt).
-                          Die bestehenden Aktionen/Feedback folgen unverändert direkt darunter (nachgeordnet). */}
-                      <KoReadView ko={ko} responsibleName={nameOf(ko.author)} />
-
-                      <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-4">
-                        {role === "controller" || role === "admin" ? (
-                          <>
-                            <span className="inline-flex items-center gap-0.5">
-                              <Button
-                                variant="primary"
-                                disabled={act.isPending || detailReview.isPending}
-                                onClick={() => act.mutate({ action: "rate", verdict: "up" })}
-                              >
-                                {t("ko.validate")}
-                              </Button>
-                              {vhelp("approve")}
-                            </span>
-                            <span className="inline-flex items-center gap-0.5">
-                              <Button
-                                disabled={act.isPending || detailReview.isPending}
-                                onClick={() => {
-                                  setErr(null);
-                                  setDetailFeedbackText("");
-                                  setDetailFeedback(detailFeedback === "warn" ? null : "warn");
-                                }}
-                              >
-                                {t("ko.conditional")}
-                                <sup className="-mr-0.5">*</sup>
-                              </Button>
-                              {vhelp("query")}
-                            </span>
-                            <span className="inline-flex items-center gap-0.5">
-                              <Button
-                                disabled={act.isPending || detailReview.isPending}
-                                onClick={() => {
-                                  setErr(null);
-                                  setDetailFeedbackText("");
-                                  setDetailFeedback(detailFeedback === "down" ? null : "down");
-                                }}
-                              >
-                                {t("ko.reject")}
-                                <sup className="-mr-0.5">*</sup>
-                              </Button>
-                              {vhelp("reject")}
-                            </span>
-                          </>
+                        {appendUnclear ? (
+                          <div className="rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
+                            {t("xtr.append.unclear")}
+                          </div>
                         ) : null}
-                        <span className="inline-flex items-center gap-0.5">
-                          <Button
-                            disabled={act.isPending}
-                            onClick={() => act.mutate({ action: "revalidate" })}
-                          >
-                            {t("ko.stillValid")}
-                          </Button>
-                          {vhelp("stillValid")}
-                        </span>
-                        {canReview ? (
-                          <span className="inline-flex items-center gap-0.5">
-                            <Button
-                              variant="ghost"
-                              onClick={() =>
-                                setConflict(
-                                  conflict ? null : { koB: "", type: "truth", description: "" },
-                                )
-                              }
-                            >
-                              {t("ko.reportConflict")}
-                            </Button>
-                            {vhelp("reportConflict")}
-                          </span>
-                        ) : null}
-                      </div>
-
-                      {/* SCRUM-406 (B1-Angleich): Pflicht-Feedback im Detail — gleiches Muster
-                          und gleiche Texte wie auf dem Board (val.feedback.*). */}
-                      {detailFeedback ? (
-                        <div className="mt-4 space-y-2 rounded-card border border-hairline bg-page p-4">
-                          <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
-                            {detailFeedback === "warn"
-                              ? t("val.feedback.condTitle")
-                              : t("val.feedback.rejTitle")}
-                            {vhelp("feedbackForm")}
-                          </div>
-                          <p className="text-[11.5px] leading-relaxed text-muted">
-                            {t("val.feedback.helpHint")}
-                          </p>
-                          <textarea
-                            value={detailFeedbackText}
-                            onChange={(e) => setDetailFeedbackText(e.target.value)}
-                            placeholder={t("val.feedback.placeholder")}
-                            rows={3}
-                            className={textareaCls}
-                          />
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              disabled={detailReview.isPending}
-                              onClick={() => {
-                                setDetailFeedback(null);
-                                setDetailFeedbackText("");
-                              }}
-                            >
-                              {t("val.feedback.cancel")}
-                            </Button>
-                            <Button
-                              variant="primary"
-                              disabled={
-                                detailReview.isPending || !isFeedbackSubmittable(detailFeedbackText)
-                              }
-                              onClick={() =>
-                                detailReview.mutate({
-                                  verdict: detailFeedback,
-                                  text: detailFeedbackText,
-                                })
-                              }
-                            >
-                              {t("val.feedback.submit")}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : null}
-
-                      {conflict ? (
-                        <div className="mt-4 space-y-3 rounded-card border border-trust-crit-fill/30 bg-trust-crit-bg/40 p-4">
-                          <div className="flex items-center gap-1.5">
-                            <SectionLabel>{t("ko.conflictTitle")}</SectionLabel>
-                            {vhelp("conflictForm")}
-                          </div>
-                          {/* Pedi 04.07.: Dropdown → durchsuchbares Pop-up (skaliert, mit Vorschau). */}
-                          <div className="block space-y-1.5">
-                            <span className="block text-[12.5px] font-medium text-muted">
-                              {t("ko.conflictTarget")}
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => setPickOpen(true)}
-                              className="flex h-10 w-full items-center justify-between gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-sm hover:border-ink/30"
-                            >
-                              <span className={conflict.koB ? "truncate text-text" : "text-muted"}>
-                                {selectedConflictKoTitle || t("ko.conflictTargetPlaceholder")}
-                              </span>
-                              <span className="shrink-0 font-mono text-[11px] text-muted-2">
-                                {t("ko.conflictTargetChoose")}
-                              </span>
-                            </button>
-                          </div>
-                          <Field label={t("ko.conflictType")}>
-                            <select
-                              value={conflict.type}
-                              onChange={(e) =>
-                                setConflict({ ...conflict, type: e.target.value as ConflictType })
-                              }
-                              className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-                            >
-                              {CONFLICT_TYPES.map((ct) => (
-                                <option key={ct} value={ct}>
-                                  {t(`con.type.${ct}`)}
-                                </option>
-                              ))}
-                            </select>
-                          </Field>
-                          <Field label={t("ko.conflictDesc")}>
-                            <textarea
-                              value={conflict.description}
-                              onChange={(e) =>
-                                setConflict({ ...conflict, description: e.target.value })
-                              }
-                              rows={2}
-                              className={textareaCls}
-                            />
-                          </Field>
+                        <div className="flex gap-2">
                           <Button
                             variant="primary"
-                            disabled={report.isPending || !conflict.koB}
-                            onClick={() => report.mutate()}
+                            disabled={
+                              save.isPending ||
+                              appendDocument.isPending ||
+                              appendUnclear ||
+                              edit.title.trim().length === 0
+                            }
+                            onClick={() => save.mutate()}
                           >
-                            {t("ko.conflictSubmit")}
+                            {t("ko.saveEdit")}
                           </Button>
-
-                          <ConflictTargetPicker
-                            open={pickOpen}
-                            onClose={() => setPickOpen(false)}
-                            candidates={(koList.data ?? []).filter((k) => k.id !== id)}
-                            onSelect={(koId) => {
-                              setConflict({ ...conflict, koB: koId });
-                              setPickOpen(false);
-                            }}
-                          />
+                          <Button variant="ghost" onClick={() => setEdit(null)}>
+                            {t("ko.cancelEdit")}
+                          </Button>
                         </div>
-                      ) : null}
+                      </div>
+                    ) : (
+                      <>
+                        {/* SCRUM-513 (WP3): Zonen-Leseansicht (Hero · sichtbarer Beleg · Sekundär · eingeklappt).
+                          Die bestehenden Aktionen/Feedback folgen unverändert direkt darunter (nachgeordnet). */}
+                        <KoReadView ko={ko} responsibleName={nameOf(ko.author)} />
 
-                      {err ? (
-                        <div className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                          {err}
+                        <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-4">
+                          {role === "controller" || role === "admin" ? (
+                            <>
+                              <span className="inline-flex items-center gap-0.5">
+                                <Button
+                                  variant="primary"
+                                  disabled={act.isPending || detailReview.isPending}
+                                  onClick={() => act.mutate({ action: "rate", verdict: "up" })}
+                                >
+                                  {t("ko.validate")}
+                                </Button>
+                                {vhelp("approve")}
+                              </span>
+                              <span className="inline-flex items-center gap-0.5">
+                                <Button
+                                  disabled={act.isPending || detailReview.isPending}
+                                  onClick={() => {
+                                    setErr(null);
+                                    setDetailFeedbackText("");
+                                    setDetailFeedback(detailFeedback === "warn" ? null : "warn");
+                                  }}
+                                >
+                                  {t("ko.conditional")}
+                                  <sup className="-mr-0.5">*</sup>
+                                </Button>
+                                {vhelp("query")}
+                              </span>
+                              <span className="inline-flex items-center gap-0.5">
+                                <Button
+                                  disabled={act.isPending || detailReview.isPending}
+                                  onClick={() => {
+                                    setErr(null);
+                                    setDetailFeedbackText("");
+                                    setDetailFeedback(detailFeedback === "down" ? null : "down");
+                                  }}
+                                >
+                                  {t("ko.reject")}
+                                  <sup className="-mr-0.5">*</sup>
+                                </Button>
+                                {vhelp("reject")}
+                              </span>
+                            </>
+                          ) : null}
+                          <span className="inline-flex items-center gap-0.5">
+                            <Button
+                              disabled={act.isPending}
+                              onClick={() => act.mutate({ action: "revalidate" })}
+                            >
+                              {t("ko.stillValid")}
+                            </Button>
+                            {vhelp("stillValid")}
+                          </span>
+                          {canReview ? (
+                            <span className="inline-flex items-center gap-0.5">
+                              <Button
+                                variant="ghost"
+                                onClick={() =>
+                                  setConflict(
+                                    conflict ? null : { koB: "", type: "truth", description: "" },
+                                  )
+                                }
+                              >
+                                {t("ko.reportConflict")}
+                              </Button>
+                              {vhelp("reportConflict")}
+                            </span>
+                          ) : null}
                         </div>
-                      ) : null}
-                    </>
-                  )}
-                </Card>
 
-                <div className="min-w-0 space-y-5">
-                  {/* FUNKE-FIX P0 (bens ROT-1): das „Hat geholfen"-Signal ist bewusst NICHT mehr am
+                        {/* SCRUM-406 (B1-Angleich): Pflicht-Feedback im Detail — gleiches Muster
+                          und gleiche Texte wie auf dem Board (val.feedback.*). */}
+                        {detailFeedback ? (
+                          <div className="mt-4 space-y-2 rounded-card border border-hairline bg-page p-4">
+                            <div className="flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
+                              {detailFeedback === "warn"
+                                ? t("val.feedback.condTitle")
+                                : t("val.feedback.rejTitle")}
+                              {vhelp("feedbackForm")}
+                            </div>
+                            <p className="text-[11.5px] leading-relaxed text-muted">
+                              {t("val.feedback.helpHint")}
+                            </p>
+                            <textarea
+                              value={detailFeedbackText}
+                              onChange={(e) => setDetailFeedbackText(e.target.value)}
+                              placeholder={t("val.feedback.placeholder")}
+                              rows={3}
+                              className={textareaCls}
+                            />
+                            <div className="flex items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                disabled={detailReview.isPending}
+                                onClick={() => {
+                                  setDetailFeedback(null);
+                                  setDetailFeedbackText("");
+                                }}
+                              >
+                                {t("val.feedback.cancel")}
+                              </Button>
+                              <Button
+                                variant="primary"
+                                disabled={
+                                  detailReview.isPending ||
+                                  !isFeedbackSubmittable(detailFeedbackText)
+                                }
+                                onClick={() =>
+                                  detailReview.mutate({
+                                    verdict: detailFeedback,
+                                    text: detailFeedbackText,
+                                  })
+                                }
+                              >
+                                {t("val.feedback.submit")}
+                              </Button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {conflict ? (
+                          <div className="mt-4 space-y-3 rounded-card border border-trust-crit-fill/30 bg-trust-crit-bg/40 p-4">
+                            <div className="flex items-center gap-1.5">
+                              <SectionLabel>{t("ko.conflictTitle")}</SectionLabel>
+                              {vhelp("conflictForm")}
+                            </div>
+                            {/* Pedi 04.07.: Dropdown → durchsuchbares Pop-up (skaliert, mit Vorschau). */}
+                            <div className="block space-y-1.5">
+                              <span className="block text-[12.5px] font-medium text-muted">
+                                {t("ko.conflictTarget")}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setPickOpen(true)}
+                                className="flex h-10 w-full items-center justify-between gap-2 rounded-input border border-hairline bg-surface px-3 text-left text-sm hover:border-ink/30"
+                              >
+                                <span
+                                  className={conflict.koB ? "truncate text-text" : "text-muted"}
+                                >
+                                  {selectedConflictKoTitle || t("ko.conflictTargetPlaceholder")}
+                                </span>
+                                <span className="shrink-0 font-mono text-[11px] text-muted-2">
+                                  {t("ko.conflictTargetChoose")}
+                                </span>
+                              </button>
+                            </div>
+                            <Field label={t("ko.conflictType")}>
+                              <select
+                                value={conflict.type}
+                                onChange={(e) =>
+                                  setConflict({ ...conflict, type: e.target.value as ConflictType })
+                                }
+                                className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                              >
+                                {CONFLICT_TYPES.map((ct) => (
+                                  <option key={ct} value={ct}>
+                                    {t(`con.type.${ct}`)}
+                                  </option>
+                                ))}
+                              </select>
+                            </Field>
+                            <Field label={t("ko.conflictDesc")}>
+                              <textarea
+                                value={conflict.description}
+                                onChange={(e) =>
+                                  setConflict({ ...conflict, description: e.target.value })
+                                }
+                                rows={2}
+                                className={textareaCls}
+                              />
+                            </Field>
+                            <Button
+                              variant="primary"
+                              disabled={report.isPending || !conflict.koB}
+                              onClick={() => report.mutate()}
+                            >
+                              {t("ko.conflictSubmit")}
+                            </Button>
+
+                            <ConflictTargetPicker
+                              open={pickOpen}
+                              onClose={() => setPickOpen(false)}
+                              candidates={(koList.data ?? []).filter((k) => k.id !== id)}
+                              onSelect={(koId) => {
+                                setConflict({ ...conflict, koB: koId });
+                                setPickOpen(false);
+                              }}
+                            />
+                          </div>
+                        ) : null}
+
+                        {err ? (
+                          <div className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                            {err}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </Card>
+
+                  <div className="min-w-0 space-y-5">
+                    {/* FUNKE-FIX P0 (bens ROT-1): das „Hat geholfen"-Signal ist bewusst NICHT mehr am
                       KO-Detail — es verlangt einen serverseitig belegten Antwortvorgang (Answer-
                       Receipt). Das ehrliche „Danke" liegt im Antwort-Erlebnis (Seite „Fragen"). */}
-                  {/* SCRUM-129 / FE-KO-01+07: echte externe Quellen (nie peer-validiert) */}
-                  {/* SCRUM-259: Anker-Ziel für die „Quelle ergänzen"-CTA (lokale Orientierung). */}
-                  <Card id="ko-sources" className="scroll-mt-20 space-y-3">
-                    <div className="flex items-center gap-1.5">
-                      <SectionLabel>{t("ko.sourcesTitle")}</SectionLabel>
-                      {vhelp("sourcesLevel2")}
-                    </div>
-                    {(ko.sources ?? []).length === 0 ? (
-                      <p className="text-[13px] text-muted">{t("ko.sourcesEmpty")}</p>
-                    ) : (
-                      <ul className="space-y-2">
-                        {(ko.sources ?? []).map((s) => (
-                          <li key={s.id} className="rounded-input bg-page p-2.5">
-                            <div className="flex items-start gap-2">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  <span className="text-[13.5px] font-medium text-text">
-                                    {s.label}
-                                  </span>
-                                  <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
-                                    {t(sourceBadgeKey(s))}
-                                  </span>
-                                  {s.provider ? (
-                                    <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
-                                      {s.provider}
+                    {/* SCRUM-129 / FE-KO-01+07: echte externe Quellen (nie peer-validiert) */}
+                    {/* SCRUM-259: Anker-Ziel für die „Quelle ergänzen"-CTA (lokale Orientierung). */}
+                    <Card id="ko-sources" className="scroll-mt-20 space-y-3">
+                      <div className="flex items-center gap-1.5">
+                        <SectionLabel>{t("ko.sourcesTitle")}</SectionLabel>
+                        {vhelp("sourcesLevel2")}
+                      </div>
+                      {(ko.sources ?? []).length === 0 ? (
+                        <p className="text-[13px] text-muted">{t("ko.sourcesEmpty")}</p>
+                      ) : (
+                        <ul className="space-y-2">
+                          {(ko.sources ?? []).map((s) => (
+                            <li key={s.id} className="rounded-input bg-page p-2.5">
+                              <div className="flex items-start gap-2">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex flex-wrap items-center gap-1.5">
+                                    <span className="text-[13.5px] font-medium text-text">
+                                      {s.label}
                                     </span>
+                                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
+                                      {t(sourceBadgeKey(s))}
+                                    </span>
+                                    {s.provider ? (
+                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                                        {s.provider}
+                                      </span>
+                                    ) : null}
+                                  </div>
+                                  <ExternalUrlText
+                                    url={s.url}
+                                    className="block truncate font-mono text-[11px] text-ai hover:underline"
+                                  />
+                                  {s.excerpt ? (
+                                    <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
                                   ) : null}
                                 </div>
-                                <ExternalUrlText
-                                  url={s.url}
-                                  className="block truncate font-mono text-[11px] text-ai hover:underline"
-                                />
-                                {s.excerpt ? (
-                                  <p className="mt-1 text-[12px] text-muted">{s.excerpt}</p>
+                                {canEdit ? (
+                                  <button
+                                    type="button"
+                                    title={t("ko.sourceRemove")}
+                                    disabled={removeSource.isPending}
+                                    onClick={() => removeSource.mutate(s.id)}
+                                    className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                                  >
+                                    <X size={14} />
+                                  </button>
                                 ) : null}
                               </div>
-                              {canEdit ? (
-                                <button
-                                  type="button"
-                                  title={t("ko.sourceRemove")}
-                                  disabled={removeSource.isPending}
-                                  onClick={() => removeSource.mutate(s.id)}
-                                  className="grid h-7 w-7 shrink-0 place-items-center rounded-btn text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                                >
-                                  <X size={14} />
-                                </button>
-                              ) : null}
-                            </div>
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                    {canEdit ? (
-                      <div className="space-y-2 border-t border-hairline pt-3">
-                        <TextInput
-                          value={sourceForm.label}
-                          onChange={(e) => setSourceForm((s) => ({ ...s, label: e.target.value }))}
-                          placeholder={t("ko.sourceLabel")}
-                        />
-                        <TextInput
-                          value={sourceForm.url}
-                          onChange={(e) => setSourceForm((s) => ({ ...s, url: e.target.value }))}
-                          placeholder={t("ko.sourceUrl")}
-                        />
-                        <TextInput
-                          value={sourceForm.excerpt}
-                          onChange={(e) =>
-                            setSourceForm((s) => ({ ...s, excerpt: e.target.value }))
-                          }
-                          placeholder={t("ko.sourceExcerpt")}
-                        />
-                        <div className="flex items-center gap-1 text-[11.5px] text-muted-2">
-                          <span>{t("ko.sourcesHint")}</span>
-                          {vhelp("sourceFields")}
-                        </div>
-                        {/* AUFTRAG-mega16 Block A (bens SB-4): die Stufe ist eine echte Grenze —
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {canEdit ? (
+                        <div className="space-y-2 border-t border-hairline pt-3">
+                          <TextInput
+                            value={sourceForm.label}
+                            onChange={(e) =>
+                              setSourceForm((s) => ({ ...s, label: e.target.value }))
+                            }
+                            placeholder={t("ko.sourceLabel")}
+                          />
+                          <TextInput
+                            value={sourceForm.url}
+                            onChange={(e) => setSourceForm((s) => ({ ...s, url: e.target.value }))}
+                            placeholder={t("ko.sourceUrl")}
+                          />
+                          <TextInput
+                            value={sourceForm.excerpt}
+                            onChange={(e) =>
+                              setSourceForm((s) => ({ ...s, excerpt: e.target.value }))
+                            }
+                            placeholder={t("ko.sourceExcerpt")}
+                          />
+                          <div className="flex items-center gap-1 text-[11.5px] text-muted-2">
+                            <span>{t("ko.sourcesHint")}</span>
+                            {vhelp("sourceFields")}
+                          </div>
+                          {/* AUFTRAG-mega16 Block A (bens SB-4): die Stufe ist eine echte Grenze —
                             sie greift jetzt bei JEDER öffentlichen Web-Adresse und bei jeder
                             Quelle ohne Adresse, die an kein hinterlegtes Dokument gebunden ist.
                             Der Nutzer erfährt das VOR dem Absenden, mit Grund und mit dem Weg zur
                             Änderung — nicht erst als 403 nach dem Klick.
                             <output> trägt implizit role="status" (biome useSemanticElements) —
                             derselbe Griff wie in LoadState.tsx:33 und FileTypePicker.tsx:151. */}
-                        {sourceGateHint ? (
-                          <output className="block rounded-btn border border-hairline bg-surface-2 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
-                            {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].body)}{" "}
-                            {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].how)}
-                          </output>
-                        ) : null}
-                        <span className="inline-flex items-center gap-0.5">
-                          <Button
-                            variant="primary"
-                            disabled={addSource.isPending || !isSourceFormValid(sourceForm)}
-                            onClick={() => addSource.mutate()}
-                          >
-                            {t("ko.sourceAdd")}
-                          </Button>
-                          {vhelp("sourceAdd")}
-                        </span>
-                      </div>
-                    ) : null}
+                          {sourceGateHint ? (
+                            <output className="block rounded-btn border border-hairline bg-surface-2 px-2.5 py-2 text-[11.5px] leading-relaxed text-muted">
+                              {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].body)}{" "}
+                              {t(SOURCE_ATTACH_HINT_KEYS[sourceGateHint].how)}
+                            </output>
+                          ) : null}
+                          <span className="inline-flex items-center gap-0.5">
+                            <Button
+                              variant="primary"
+                              disabled={addSource.isPending || !isSourceFormValid(sourceForm)}
+                              onClick={() => addSource.mutate()}
+                            >
+                              {t("ko.sourceAdd")}
+                            </Button>
+                            {vhelp("sourceAdd")}
+                          </span>
+                        </div>
+                      ) : null}
 
-                    {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy)
+                      {/* SCRUM-118 / FR-EXT-02: externe Quellensuche (Server-Proxy)
                         AUFTRAG-mega14 Block D (SCRUM-414): bei „blocked" ist auch das SUCHEN
                         gesperrt — der Server antwortet dort mit 403; ein Suchfeld, das nur
                         Fehlermeldungen erzeugt, wäre unehrlich. */}
-                    {canEdit && canSearchExternal(extStage) ? (
-                      <div className="space-y-2 border-t border-hairline pt-3">
-                        <div className="flex items-center gap-1.5">
-                          <SectionLabel>{t("ext.title")}</SectionLabel>
-                          {vhelp("sourceSearch")}
-                        </div>
-                        <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
-                        {/* Der Grund steht sichtbar da, nicht nur im Titel-Attribut. */}
-                        {extAttachAllowed ? null : (
-                          <p
-                            data-testid="ext-attach-blocked"
-                            className="rounded-input bg-trust-warn-bg px-2.5 py-1.5 text-[11.5px] text-trust-warn-text"
+                      {canEdit && canSearchExternal(extStage) ? (
+                        <div className="space-y-2 border-t border-hairline pt-3">
+                          <div className="flex items-center gap-1.5">
+                            <SectionLabel>{t("ext.title")}</SectionLabel>
+                            {vhelp("sourceSearch")}
+                          </div>
+                          <p className="text-[11.5px] text-muted-2">{t("ext.hint")}</p>
+                          {/* Der Grund steht sichtbar da, nicht nur im Titel-Attribut. */}
+                          {extAttachAllowed ? null : (
+                            <p
+                              data-testid="ext-attach-blocked"
+                              className="rounded-input bg-trust-warn-bg px-2.5 py-1.5 text-[11.5px] text-trust-warn-text"
+                            >
+                              {t("ext.attachBlocked")}
+                            </p>
+                          )}
+                          <form
+                            className="flex gap-2"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              if (extQuery.trim()) {
+                                extSearch.mutate(extQuery.trim());
+                              }
+                            }}
                           >
-                            {t("ext.attachBlocked")}
-                          </p>
-                        )}
-                        <form
-                          className="flex gap-2"
-                          onSubmit={(e) => {
-                            e.preventDefault();
-                            if (extQuery.trim()) {
-                              extSearch.mutate(extQuery.trim());
-                            }
-                          }}
-                        >
-                          <TextInput
-                            value={extQuery}
-                            onChange={(e) => setExtQuery(e.target.value)}
-                            placeholder={t("ext.placeholder")}
-                          />
-                          <Button
-                            type="submit"
-                            variant="ghost"
-                            disabled={extSearch.isPending || extQuery.trim().length === 0}
-                          >
-                            {t("ext.search")}
-                          </Button>
-                        </form>
-                        {extResults.length > 0 ? (
-                          <ul className="space-y-1.5">
-                            {extResults.map((r) => (
-                              <li
-                                key={r.url}
-                                className="rounded-input border border-hairline p-2.5"
-                              >
-                                <div className="flex items-start gap-2">
-                                  <div className="min-w-0 flex-1">
-                                    <div className="flex flex-wrap items-center gap-1.5">
-                                      <span className="text-[13px] font-medium text-text">
-                                        {r.title}
-                                      </span>
-                                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
-                                        {r.provider}
-                                      </span>
+                            <TextInput
+                              value={extQuery}
+                              onChange={(e) => setExtQuery(e.target.value)}
+                              placeholder={t("ext.placeholder")}
+                            />
+                            <Button
+                              type="submit"
+                              variant="ghost"
+                              disabled={extSearch.isPending || extQuery.trim().length === 0}
+                            >
+                              {t("ext.search")}
+                            </Button>
+                          </form>
+                          {extResults.length > 0 ? (
+                            <ul className="space-y-1.5">
+                              {extResults.map((r) => (
+                                <li
+                                  key={r.url}
+                                  className="rounded-input border border-hairline p-2.5"
+                                >
+                                  <div className="flex items-start gap-2">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex flex-wrap items-center gap-1.5">
+                                        <span className="text-[13px] font-medium text-text">
+                                          {r.title}
+                                        </span>
+                                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
+                                          {r.provider}
+                                        </span>
+                                      </div>
+                                      {r.snippet ? (
+                                        <p className="mt-0.5 text-[11.5px] text-muted">
+                                          {r.snippet}
+                                        </p>
+                                      ) : null}
+                                      <ExternalUrlText
+                                        url={r.url}
+                                        className="block truncate font-mono text-[10.5px] text-ai hover:underline"
+                                      />
                                     </div>
-                                    {r.snippet ? (
-                                      <p className="mt-0.5 text-[11.5px] text-muted">{r.snippet}</p>
-                                    ) : null}
-                                    <ExternalUrlText
-                                      url={r.url}
-                                      className="block truncate font-mono text-[10.5px] text-ai hover:underline"
-                                    />
-                                  </div>
-                                  {/* AUFTRAG-mega14 Block D (SCRUM-414): der Prüfbereich kannte die
+                                    {/* AUFTRAG-mega14 Block D (SCRUM-414): der Prüfbereich kannte die
                                       Admin-Stufe bisher überhaupt nicht und hängte auf JEDER Stufe
                                       an. Jetzt dieselbe Regel wie im Erfassen und wie der Server
                                       (lib/externalAttachGate.ts) — mit sichtbarem Grund. */}
-                                  <div className="flex flex-col items-end gap-1">
-                                    <Button
-                                      variant="ghost"
-                                      disabled={attachExternal.isPending || !extAttachAllowed}
-                                      title={extAttachAllowed ? undefined : t("ext.attachBlocked")}
-                                      onClick={() => attachExternal.mutate(r)}
-                                    >
-                                      {t("ext.attach")}
-                                    </Button>
-                                  </div>
-                                </div>
-                              </li>
-                            ))}
-                          </ul>
-                        ) : null}
-                      </div>
-                    ) : null}
-                  </Card>
-
-                  {/* SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (Review-Kommentar) */}
-                  <Card className="space-y-2">
-                    <div className="flex items-center gap-1.5">
-                      <SectionLabel>{t("ko.sourceTitle")}</SectionLabel>
-                      {vhelp("contribution")}
-                    </div>
-                    <textarea
-                      value={source.contribution}
-                      onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
-                      placeholder={t("ko.sourceContribution")}
-                      rows={3}
-                      className={textareaCls}
-                    />
-                    <TextInput
-                      value={source.source ?? ""}
-                      onChange={(e) => setSource((s) => ({ ...s, source: e.target.value }))}
-                      placeholder={t("ko.sourceRef")}
-                    />
-                    <p className="text-[11.5px] text-muted-2">{t("ko.sourceHint")}</p>
-                    <Button
-                      variant="primary"
-                      disabled={sourceContribution.isPending || !isSourceContributionValid(source)}
-                      onClick={() => sourceContribution.mutate()}
-                    >
-                      {t("ko.sourceSubmit")}
-                    </Button>
-                  </Card>
-
-                  <Card>
-                    <SectionLabel>{t("ko.provenance")}</SectionLabel>
-                    <ProvenanceLine
-                      author={nameOf(ko.author)}
-                      originalAuthor={nameOf(ko.originalAuthor)}
-                      domain={ko.category}
-                      version={ko.version}
-                    />
-                    {canTransfer ? (
-                      <div className="mt-3 border-t border-hairline pt-3">
-                        <div className="mb-1.5 flex items-center gap-1.5">
-                          <span className="font-mono text-micro uppercase tracking-wider text-muted-2">
-                            {t("ko.transferTitle")}
-                          </span>
-                          {vhelp("transfer")}
-                        </div>
-                        <div className="mb-2 text-[12px] text-muted">
-                          {t("ko.transferOriginal")}: {nameOf(ko.originalAuthor)}
-                        </div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <select
-                            aria-label={t("ko.transferTitle")}
-                            value={newAuthor}
-                            onChange={(e) => setNewAuthor(e.target.value)}
-                            className="h-9 flex-1 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
-                          >
-                            <option value="">{t("ko.transferPick")}</option>
-                            {(dir.data ?? [])
-                              .filter((d) => d.id !== ko.author)
-                              .map((d) => (
-                                <option key={d.id} value={d.id}>
-                                  {d.name}
-                                </option>
-                              ))}
-                          </select>
-                          <Button
-                            variant="primary"
-                            disabled={transfer.isPending || !newAuthor}
-                            onClick={() => transfer.mutate(newAuthor)}
-                          >
-                            {t("ko.transfer")}
-                          </Button>
-                        </div>
-                      </div>
-                    ) : null}
-                  </Card>
-
-                  {/* Pedi 02.07.: Löschen (Autor oder Controller/Admin) — bewusst unauffällig,
-                      mit Inline-Bestätigung; Route erzwingt dieselbe Regel serverseitig. */}
-                  {(role === "admin" || role === "controller" || ko.author === user?.id) && (
-                    <Card>
-                      {/* SCRUM-412/419 (CI + Layout): Frage in Textfarbe, gestapelt auf schmalen
-                          Breiten — Text läuft nicht mehr in die Knöpfe. */}
-                      {confirmDelete ? (
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <span className="text-[12.5px] font-semibold leading-relaxed text-text sm:flex-1">
-                            {t("ko.deleteQ")}
-                          </span>
-                          <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
-                            {t("ko.deleteKeep")}
-                          </Button>
-                          {/* AUFTRAG-mega14 Block F (SCRUM-412): im echten Browser gemessen — dieser
-                              Knopf trug rgb(27,30,33), die neutrale Textfarbe. Jetzt Warnfarbe. */}
-                          <Button
-                            variant="danger"
-                            disabled={removeKo.isPending}
-                            onClick={() => removeKo.mutate()}
-                          >
-                            {t("ko.deleteYes")}
-                          </Button>
-                        </div>
-                      ) : (
-                        <span className="inline-flex items-center gap-0.5">
-                          <button
-                            type="button"
-                            onClick={() => setConfirmDelete(true)}
-                            className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                          >
-                            <Trash2 size={14} />
-                            {t("ko.deleteButton")}
-                          </button>
-                          {vhelp("deleteKo")}
-                        </span>
-                      )}
-                    </Card>
-                  )}
-
-                  {/* Audit B1 (Pedi 02.07.): Anlagen-Kopplung — ruhige Karte, ?-Hilfe statt Textwand. */}
-                  <Card>
-                    <div className="flex items-center gap-1.5">
-                      <SectionLabel>{t("ko.couple.title")}</SectionLabel>
-                      <HelpTip title={t("ko.couple.title")} body={t("ko.couple.help")} />
-                    </div>
-                    {couplings.data && couplings.data.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-1.5">
-                        {couplings.data.map((a) => (
-                          <span
-                            key={a}
-                            className="inline-flex items-center gap-1 rounded-pill bg-page px-2.5 py-1 text-[12px] font-medium text-text"
-                          >
-                            <Link2 size={12} className="text-muted-2" />
-                            {a}
-                          </span>
-                        ))}
-                      </div>
-                    ) : (
-                      <p className="mt-1.5 text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
-                    )}
-                    {role !== "viewer" ? (
-                      <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">
-                        <TextInput
-                          value={coupleAsset}
-                          onChange={(e) => setCoupleAsset(e.target.value)}
-                          placeholder={ko.asset ? ko.asset : t("ko.couple.placeholder")}
-                          className="h-9 min-w-[10rem] flex-1"
-                        />
-                        <Button
-                          variant="ghost"
-                          disabled={couple.isPending || !(coupleAsset.trim() || ko.asset?.trim())}
-                          onClick={() =>
-                            couple.mutate((coupleAsset.trim() || ko.asset || "").trim())
-                          }
-                        >
-                          <Link2 size={14} />
-                          {t("ko.couple.cta")}
-                        </Button>
-                      </div>
-                    ) : null}
-                  </Card>
-
-                  {/* SCRUM-95/96: Gültigkeit & Schutz — ehrlich abgeleitete Sicht, keine Persistenz. */}
-                  {(() => {
-                    const v = validityProtectionView(ko, pending.data ?? [], conflicts.data ?? []);
-                    return (
-                      <Card className="space-y-2">
-                        <div className="flex items-center gap-1.5">
-                          <SectionLabel>{t("ext.validity.title")}</SectionLabel>
-                          {vhelp("validity")}
-                        </div>
-                        <dl className="space-y-1.5 text-[12.5px]">
-                          <div className="flex items-center justify-between gap-2">
-                            <dt className="text-muted">{t("ext.validity.freshness")}</dt>
-                            <dd className="font-mono text-text">
-                              {t(`ext.freshness.${v.freshnessStatus}`)}
-                            </dd>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <dt className="text-muted">{t("ext.protection.ip")}</dt>
-                            <dd className="font-mono text-muted-2">
-                              {t("ext.protection.notRated")}
-                            </dd>
-                          </div>
-                          <div className="flex items-center justify-between gap-2">
-                            <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
-                            <dd
-                              className={`font-mono ${v.outputEligible ? "text-trust-pos-text" : "text-muted-2"}`}
-                            >
-                              {t(
-                                v.outputEligible
-                                  ? "ext.outputEligible.yes"
-                                  : "ext.outputEligible.no",
-                              )}
-                            </dd>
-                          </div>
-                        </dl>
-                        <p className="border-t border-hairline pt-2 text-[12.5px] text-text">
-                          {t("ext.validity.recommendation")}:{" "}
-                          {t(`ext.recommendation.${v.recommendation}`)}
-                        </p>
-                      </Card>
-                    );
-                  })()}
-
-                  {/* SCRUM-142: Herkunft & Verlauf (Lineage) — datenbasiert */}
-                  {(() => {
-                    const related = relatedKos(ko, koList.data ?? []);
-                    const summary = lineageSummary(ko, related.length);
-                    const events = koAuditEvents(audit.data ?? [], ko.id)
-                      .slice(-6)
-                      .reverse();
-                    return (
-                      <>
-                        <Card className="space-y-3">
-                          <SectionLabel>{t("ko.lineageTitle")}</SectionLabel>
-                          <div className="grid grid-cols-2 gap-2 text-[12.5px]">
-                            <div className="rounded-input bg-page p-2">
-                              <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-                                {t("ko.lineageOrigin")}
-                              </div>
-                              <div className="text-text">{nameOf(ko.originalAuthor)}</div>
-                              {summary.authorTransferred ? (
-                                <div className="text-[11px] text-muted">
-                                  → {nameOf(ko.author)} {t("ko.lineageTransferred")}
-                                </div>
-                              ) : null}
-                            </div>
-                            <div className="rounded-input bg-page p-2">
-                              <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-                                {t("ko.lineageVersions")}
-                              </div>
-                              <div className="text-text">
-                                v{summary.versions} · {summary.historyCount}{" "}
-                                {t("ko.lineageChanges")}
-                              </div>
-                            </div>
-                            <div className="rounded-input bg-page p-2">
-                              <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-                                {t("ko.sourcesTitle")}
-                              </div>
-                              <div className="text-text">{summary.sourceCount}</div>
-                            </div>
-                            <div className="rounded-input bg-page p-2">
-                              <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
-                                {t("ko.lineageRelated")}
-                              </div>
-                              <div className="text-text">{summary.relatedCount}</div>
-                            </div>
-                          </div>
-                          {events.length > 0 ? (
-                            <div>
-                              <div className="mb-1.5 font-mono text-micro uppercase tracking-wider text-muted-2">
-                                {t("ko.lineageAudit")}
-                              </div>
-                              <ul className="space-y-1">
-                                {events.map((e) => (
-                                  <li
-                                    key={e.seq}
-                                    className="flex items-center gap-2 text-[11.5px] text-muted"
-                                  >
-                                    <span className="font-mono text-muted-2">
-                                      {new Date(e.at).toLocaleDateString()}
-                                    </span>
-                                    {/* SCRUM-513/487 (WP5): Audit-Aktion lokalisiert statt roher Code. */}
-                                    <span className="font-semibold text-text">
-                                      {auditActionLabel(e.action, t)}
-                                    </span>
-                                    <span className="ml-auto font-mono text-muted-2">
-                                      {nameOf(e.actor)}
-                                    </span>
-                                  </li>
-                                ))}
-                              </ul>
-                            </div>
-                          ) : null}
-                          <Link
-                            to="/graph"
-                            className="inline-block text-[12px] font-semibold text-ai hover:underline"
-                          >
-                            {t("ko.lineageGraphLink")} →
-                          </Link>
-                        </Card>
-
-                        {/* SCRUM-130: verlinkbares Wissensnetz — verwandte Wissensobjekte */}
-                        <Card className="space-y-2">
-                          <SectionLabel>{t("ko.relatedTitle")}</SectionLabel>
-                          {related.length === 0 ? (
-                            <p className="text-[13px] text-muted">{t("ko.relatedEmpty")}</p>
-                          ) : (
-                            <ul className="space-y-2">
-                              {related.map((r) => (
-                                <li key={r.id}>
-                                  <Link
-                                    to={`/wissen/${r.id}`}
-                                    className="block rounded-input bg-page p-2 hover:bg-hairline-soft"
-                                  >
-                                    <div className="truncate text-[13px] text-text">{r.title}</div>
-                                    <div className="mt-1 flex flex-wrap gap-1">
-                                      {r.reasons.map((reason) => (
-                                        <span
-                                          key={reason}
-                                          className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
-                                        >
-                                          {t(`ko.relatedReason.${reason}`)}
-                                        </span>
-                                      ))}
-                                      {r.via.length > 0 ? (
-                                        <span className="font-mono text-[10.5px] text-muted-2">
-                                          {r.via.slice(0, 3).join(" · ")}
-                                        </span>
-                                      ) : null}
+                                    <div className="flex flex-col items-end gap-1">
+                                      <Button
+                                        variant="ghost"
+                                        disabled={attachExternal.isPending || !extAttachAllowed}
+                                        title={
+                                          extAttachAllowed ? undefined : t("ext.attachBlocked")
+                                        }
+                                        onClick={() => attachExternal.mutate(r)}
+                                      >
+                                        {t("ext.attach")}
+                                      </Button>
                                     </div>
-                                  </Link>
+                                  </div>
                                 </li>
                               ))}
                             </ul>
-                          )}
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </Card>
+
+                    {/* SCRUM-131 / FE-KO-06: Quelle/Beitrag melden (Review-Kommentar) */}
+                    <Card className="space-y-2">
+                      <div className="flex items-center gap-1.5">
+                        <SectionLabel>{t("ko.sourceTitle")}</SectionLabel>
+                        {vhelp("contribution")}
+                      </div>
+                      <textarea
+                        value={source.contribution}
+                        onChange={(e) => setSource((s) => ({ ...s, contribution: e.target.value }))}
+                        placeholder={t("ko.sourceContribution")}
+                        rows={3}
+                        className={textareaCls}
+                      />
+                      <TextInput
+                        value={source.source ?? ""}
+                        onChange={(e) => setSource((s) => ({ ...s, source: e.target.value }))}
+                        placeholder={t("ko.sourceRef")}
+                      />
+                      <p className="text-[11.5px] text-muted-2">{t("ko.sourceHint")}</p>
+                      <Button
+                        variant="primary"
+                        disabled={
+                          sourceContribution.isPending || !isSourceContributionValid(source)
+                        }
+                        onClick={() => sourceContribution.mutate()}
+                      >
+                        {t("ko.sourceSubmit")}
+                      </Button>
+                    </Card>
+
+                    <Card>
+                      <SectionLabel>{t("ko.provenance")}</SectionLabel>
+                      <ProvenanceLine
+                        author={nameOf(ko.author)}
+                        originalAuthor={nameOf(ko.originalAuthor)}
+                        domain={ko.category}
+                        version={ko.version}
+                      />
+                      {canTransfer ? (
+                        <div className="mt-3 border-t border-hairline pt-3">
+                          <div className="mb-1.5 flex items-center gap-1.5">
+                            <span className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                              {t("ko.transferTitle")}
+                            </span>
+                            {vhelp("transfer")}
+                          </div>
+                          <div className="mb-2 text-[12px] text-muted">
+                            {t("ko.transferOriginal")}: {nameOf(ko.originalAuthor)}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2">
+                            <select
+                              aria-label={t("ko.transferTitle")}
+                              value={newAuthor}
+                              onChange={(e) => setNewAuthor(e.target.value)}
+                              className="h-9 flex-1 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
+                            >
+                              <option value="">{t("ko.transferPick")}</option>
+                              {(dir.data ?? [])
+                                .filter((d) => d.id !== ko.author)
+                                .map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.name}
+                                  </option>
+                                ))}
+                            </select>
+                            <Button
+                              variant="primary"
+                              disabled={transfer.isPending || !newAuthor}
+                              onClick={() => transfer.mutate(newAuthor)}
+                            >
+                              {t("ko.transfer")}
+                            </Button>
+                          </div>
+                        </div>
+                      ) : null}
+                    </Card>
+
+                    {/* Pedi 02.07.: Löschen (Autor oder Controller/Admin) — bewusst unauffällig,
+                      mit Inline-Bestätigung; Route erzwingt dieselbe Regel serverseitig. */}
+                    {(role === "admin" || role === "controller" || ko.author === user?.id) && (
+                      <Card>
+                        {/* SCRUM-412/419 (CI + Layout): Frage in Textfarbe, gestapelt auf schmalen
+                          Breiten — Text läuft nicht mehr in die Knöpfe. */}
+                        {confirmDelete ? (
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                            <span className="text-[12.5px] font-semibold leading-relaxed text-text sm:flex-1">
+                              {t("ko.deleteQ")}
+                            </span>
+                            <Button variant="ghost" onClick={() => setConfirmDelete(false)}>
+                              {t("ko.deleteKeep")}
+                            </Button>
+                            {/* AUFTRAG-mega14 Block F (SCRUM-412): im echten Browser gemessen — dieser
+                              Knopf trug rgb(27,30,33), die neutrale Textfarbe. Jetzt Warnfarbe. */}
+                            <Button
+                              variant="danger"
+                              disabled={removeKo.isPending}
+                              onClick={() => removeKo.mutate()}
+                            >
+                              {t("ko.deleteYes")}
+                            </Button>
+                          </div>
+                        ) : (
+                          <span className="inline-flex items-center gap-0.5">
+                            <button
+                              type="button"
+                              onClick={() => setConfirmDelete(true)}
+                              className="inline-flex items-center gap-1.5 rounded-btn px-2 py-1 text-[12.5px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                            >
+                              <Trash2 size={14} />
+                              {t("ko.deleteButton")}
+                            </button>
+                            {vhelp("deleteKo")}
+                          </span>
+                        )}
+                      </Card>
+                    )}
+
+                    {/* Audit B1 (Pedi 02.07.): Anlagen-Kopplung — ruhige Karte, ?-Hilfe statt Textwand. */}
+                    <Card>
+                      <div className="flex items-center gap-1.5">
+                        <SectionLabel>{t("ko.couple.title")}</SectionLabel>
+                        <HelpTip title={t("ko.couple.title")} body={t("ko.couple.help")} />
+                      </div>
+                      {couplings.data && couplings.data.length > 0 ? (
+                        <div className="mt-2 flex flex-wrap gap-1.5">
+                          {couplings.data.map((a) => (
+                            <span
+                              key={a}
+                              className="inline-flex items-center gap-1 rounded-pill bg-page px-2.5 py-1 text-[12px] font-medium text-text"
+                            >
+                              <Link2 size={12} className="text-muted-2" />
+                              {a}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-1.5 text-[12px] text-muted-2">{t("ko.couple.empty")}</p>
+                      )}
+                      {role !== "viewer" ? (
+                        <div className="mt-2.5 flex flex-wrap items-center gap-2 border-t border-hairline pt-2.5">
+                          <TextInput
+                            value={coupleAsset}
+                            onChange={(e) => setCoupleAsset(e.target.value)}
+                            placeholder={ko.asset ? ko.asset : t("ko.couple.placeholder")}
+                            className="h-9 min-w-[10rem] flex-1"
+                          />
+                          <Button
+                            variant="ghost"
+                            disabled={couple.isPending || !(coupleAsset.trim() || ko.asset?.trim())}
+                            onClick={() =>
+                              couple.mutate((coupleAsset.trim() || ko.asset || "").trim())
+                            }
+                          >
+                            <Link2 size={14} />
+                            {t("ko.couple.cta")}
+                          </Button>
+                        </div>
+                      ) : null}
+                    </Card>
+
+                    {/* SCRUM-95/96: Gültigkeit & Schutz — ehrlich abgeleitete Sicht, keine Persistenz. */}
+                    {(() => {
+                      const v = validityProtectionView(
+                        ko,
+                        pending.data ?? [],
+                        conflicts.data ?? [],
+                      );
+                      return (
+                        <Card className="space-y-2">
+                          <div className="flex items-center gap-1.5">
+                            <SectionLabel>{t("ext.validity.title")}</SectionLabel>
+                            {vhelp("validity")}
+                          </div>
+                          <dl className="space-y-1.5 text-[12.5px]">
+                            <div className="flex items-center justify-between gap-2">
+                              <dt className="text-muted">{t("ext.validity.freshness")}</dt>
+                              <dd className="font-mono text-text">
+                                {t(`ext.freshness.${v.freshnessStatus}`)}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <dt className="text-muted">{t("ext.protection.ip")}</dt>
+                              <dd className="font-mono text-muted-2">
+                                {t("ext.protection.notRated")}
+                              </dd>
+                            </div>
+                            <div className="flex items-center justify-between gap-2">
+                              <dt className="text-muted">{t("ext.validity.outputEligible")}</dt>
+                              <dd
+                                className={`font-mono ${v.outputEligible ? "text-trust-pos-text" : "text-muted-2"}`}
+                              >
+                                {t(
+                                  v.outputEligible
+                                    ? "ext.outputEligible.yes"
+                                    : "ext.outputEligible.no",
+                                )}
+                              </dd>
+                            </div>
+                          </dl>
+                          <p className="border-t border-hairline pt-2 text-[12.5px] text-text">
+                            {t("ext.validity.recommendation")}:{" "}
+                            {t(`ext.recommendation.${v.recommendation}`)}
+                          </p>
                         </Card>
-                      </>
-                    );
-                  })()}
+                      );
+                    })()}
 
-                  <Card>
-                    <SectionLabel>{t("ko.history")}</SectionLabel>
-                    <ol className="space-y-3">
-                      {ko.history.map((h) => (
-                        <li key={h.version} className="border-l-2 border-hairline pl-3">
-                          <div className="font-mono text-[11px] text-muted-2">
-                            v{h.version} · {new Date(h.at).toLocaleDateString()}
-                          </div>
-                          <div className="text-[12.5px] text-text">
-                            {h.note || nameOf(h.author)}
-                          </div>
-                        </li>
-                      ))}
-                    </ol>
-                  </Card>
-
-                  <Card>
-                    <SectionLabel>{t("ko.evidenceTitle")}</SectionLabel>
-                    {/* SCRUM-168: read-only Evidence-/Source-Konsistenzstatus (keine Datenänderung). */}
-                    {!evidence.isLoading && !evidence.isError
-                      ? (() => {
-                          const consistency = analyzeEvidenceConsistency(ko, evidence.data ?? []);
-                          return (
-                            <div className="mb-3 rounded-card border border-hairline bg-surface p-3">
-                              <div className="flex items-center justify-between gap-3">
-                                <span className="text-[12px] font-semibold text-text">
-                                  {t("ko.evCons.title")}
-                                </span>
-                                <span
-                                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
-                                    consistency.status === "ok"
-                                      ? "bg-trust-pos-bg text-trust-pos-text"
-                                      : "bg-trust-warn-bg text-trust-warn-text"
-                                  }`}
-                                >
-                                  {t(`ko.evCons.status.${consistency.status}`)}
-                                </span>
+                    {/* SCRUM-142: Herkunft & Verlauf (Lineage) — datenbasiert */}
+                    {(() => {
+                      const related = relatedKos(ko, koList.data ?? []);
+                      const summary = lineageSummary(ko, related.length);
+                      const events = koAuditEvents(audit.data ?? [], ko.id)
+                        .slice(-6)
+                        .reverse();
+                      return (
+                        <>
+                          <Card className="space-y-3">
+                            <SectionLabel>{t("ko.lineageTitle")}</SectionLabel>
+                            <div className="grid grid-cols-2 gap-2 text-[12.5px]">
+                              <div className="rounded-input bg-page p-2">
+                                <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                                  {t("ko.lineageOrigin")}
+                                </div>
+                                <div className="text-text">{nameOf(ko.originalAuthor)}</div>
+                                {summary.authorTransferred ? (
+                                  <div className="text-[11px] text-muted">
+                                    → {nameOf(ko.author)} {t("ko.lineageTransferred")}
+                                  </div>
+                                ) : null}
                               </div>
-                              <div className="mt-1 font-mono text-[10.5px] text-muted-2">
-                                {t("ko.evCons.counts", {
-                                  sources: String(consistency.sourceCount),
-                                  attachments: String(consistency.attachmentCount),
-                                  evidence: String(consistency.evidenceCount),
-                                })}
+                              <div className="rounded-input bg-page p-2">
+                                <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                                  {t("ko.lineageVersions")}
+                                </div>
+                                <div className="text-text">
+                                  v{summary.versions} · {summary.historyCount}{" "}
+                                  {t("ko.lineageChanges")}
+                                </div>
                               </div>
-                              {consistency.findings.length > 0 ? (
-                                <ul className="mt-2 space-y-1">
-                                  {consistency.findings.map((f) => (
+                              <div className="rounded-input bg-page p-2">
+                                <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                                  {t("ko.sourcesTitle")}
+                                </div>
+                                <div className="text-text">{summary.sourceCount}</div>
+                              </div>
+                              <div className="rounded-input bg-page p-2">
+                                <div className="font-mono text-micro uppercase tracking-wider text-muted-2">
+                                  {t("ko.lineageRelated")}
+                                </div>
+                                <div className="text-text">{summary.relatedCount}</div>
+                              </div>
+                            </div>
+                            {events.length > 0 ? (
+                              <div>
+                                <div className="mb-1.5 font-mono text-micro uppercase tracking-wider text-muted-2">
+                                  {t("ko.lineageAudit")}
+                                </div>
+                                <ul className="space-y-1">
+                                  {events.map((e) => (
                                     <li
-                                      key={`${f.kind}:${f.ref}`}
-                                      className="flex items-start gap-2 text-[11.5px] text-muted"
+                                      key={e.seq}
+                                      className="flex items-center gap-2 text-[11.5px] text-muted"
                                     >
-                                      <span
-                                        className={`mt-0.5 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] uppercase ${
-                                          f.severity === "warning"
-                                            ? "bg-trust-warn-bg text-trust-warn-text"
-                                            : "bg-hairline-soft text-muted-2"
-                                        }`}
-                                      >
-                                        {t(`ko.evCons.finding.${f.kind}`)}
+                                      <span className="font-mono text-muted-2">
+                                        {new Date(e.at).toLocaleDateString()}
                                       </span>
-                                      <span className="break-words">{f.label}</span>
+                                      {/* SCRUM-513/487 (WP5): Audit-Aktion lokalisiert statt roher Code. */}
+                                      <span className="font-semibold text-text">
+                                        {auditActionLabel(e.action, t)}
+                                      </span>
+                                      <span className="ml-auto font-mono text-muted-2">
+                                        {nameOf(e.actor)}
+                                      </span>
                                     </li>
                                   ))}
                                 </ul>
-                              ) : (
-                                <p className="mt-2 text-[11.5px] text-muted">
-                                  {t("ko.evCons.allOk")}
-                                </p>
-                              )}
-                            </div>
-                          );
-                        })()
-                      : null}
-                    {/* SCRUM-175: kompakter versionierter Evidence-Freshness-Status für dieses KO. */}
-                    {!evidence.isLoading && !evidence.isError
-                      ? (() => {
-                          const row = analyzeEvidenceFreshness({
-                            kos: [ko],
-                            evidence: evidence.data ?? [],
-                          }).rows[0];
-                          if (!row) {
-                            return null;
-                          }
-                          const tone = evidenceFreshnessTone(row.status);
-                          const toneClass =
-                            tone === "pos"
-                              ? "bg-trust-pos-bg text-trust-pos-text"
-                              : tone === "warn"
-                                ? "bg-trust-warn-bg text-trust-warn-text"
-                                : "bg-hairline-soft text-muted-2";
-                          return (
-                            <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface p-3">
-                              <span className="text-[12px] font-semibold text-text">
-                                {t("ko.evFresh.title")}
-                              </span>
-                              <span
-                                className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${toneClass}`}
-                              >
-                                {t(evidenceFreshnessLabelKey(row.status))}
-                              </span>
-                              <span className="font-mono text-[10.5px] text-muted-2">
-                                {t("ko.evFresh.counts", {
-                                  version: String(row.version),
-                                  current: String(row.currentCount),
-                                  older: String(row.olderCount),
-                                })}
-                              </span>
-                            </div>
-                          );
-                        })()
-                      : null}
-                    {/* SCRUM-170: read-only Gruppierung der Evidence nach KO-Version (via koVersion). */}
-                    {!evidence.isLoading && !evidence.isError
-                      ? (() => {
-                          const byVersion = groupEvidenceByVersion(
-                            evidence.data ?? [],
-                            versions.data ?? [],
-                          );
-                          if (byVersion.groups.length === 0) {
-                            return null;
-                          }
-                          return (
-                            <div className="mb-3 rounded-card border border-hairline bg-surface p-3">
-                              <span className="text-[12px] font-semibold text-text">
-                                {t("ko.evVer.title")}
-                              </span>
-                              <ul className="mt-2 space-y-1.5">
-                                {byVersion.groups.map((g) => (
-                                  <li
-                                    key={g.version}
-                                    className="flex flex-wrap items-center gap-2 text-[11.5px] text-muted"
-                                  >
-                                    <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
-                                      {t("ko.evVer.version", { n: String(g.version) })}
-                                    </span>
-                                    <span className="font-mono text-[10.5px] text-muted-2">
-                                      {t("ko.evVer.counts", {
-                                        sources: String(g.sourceCount),
-                                        attachments: String(g.attachmentCount),
-                                      })}
-                                    </span>
-                                    {g.latestAt ? (
-                                      <span className="font-mono text-[10px] text-muted-2">
-                                        {t("ko.evVer.latest", {
-                                          at: new Date(g.latestAt).toLocaleDateString(),
-                                        })}
-                                      </span>
-                                    ) : null}
+                              </div>
+                            ) : null}
+                            <Link
+                              to="/graph"
+                              className="inline-block text-[12px] font-semibold text-ai hover:underline"
+                            >
+                              {t("ko.lineageGraphLink")} →
+                            </Link>
+                          </Card>
+
+                          {/* SCRUM-130: verlinkbares Wissensnetz — verwandte Wissensobjekte */}
+                          <Card className="space-y-2">
+                            <SectionLabel>{t("ko.relatedTitle")}</SectionLabel>
+                            {related.length === 0 ? (
+                              <p className="text-[13px] text-muted">{t("ko.relatedEmpty")}</p>
+                            ) : (
+                              <ul className="space-y-2">
+                                {related.map((r) => (
+                                  <li key={r.id}>
+                                    <Link
+                                      to={`/wissen/${r.id}`}
+                                      className="block rounded-input bg-page p-2 hover:bg-hairline-soft"
+                                    >
+                                      <div className="truncate text-[13px] text-text">
+                                        {r.title}
+                                      </div>
+                                      <div className="mt-1 flex flex-wrap gap-1">
+                                        {r.reasons.map((reason) => (
+                                          <span
+                                            key={reason}
+                                            className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
+                                          >
+                                            {t(`ko.relatedReason.${reason}`)}
+                                          </span>
+                                        ))}
+                                        {r.via.length > 0 ? (
+                                          <span className="font-mono text-[10.5px] text-muted-2">
+                                            {r.via.slice(0, 3).join(" · ")}
+                                          </span>
+                                        ) : null}
+                                      </div>
+                                    </Link>
                                   </li>
                                 ))}
                               </ul>
-                              {byVersion.versionsWithoutEvidence.length > 0 ? (
-                                <p className="mt-2 text-[11px] text-muted-2">
-                                  {t("ko.evVer.without", {
-                                    versions: byVersion.versionsWithoutEvidence
-                                      .map((v) => `v${v}`)
-                                      .join(", "),
-                                  })}
-                                </p>
-                              ) : null}
-                            </div>
-                          );
-                        })()
-                      : null}
-                    {evidence.isLoading ? (
-                      <p className="text-[13px] text-muted">{t("state.loading")}</p>
-                    ) : evidence.isError ? (
-                      <p className="text-[13px] text-danger">{t("state.error")}</p>
-                    ) : evidenceRows(evidence.data ?? []).length === 0 ? (
-                      <p className="text-[13px] text-muted">{t("ko.evidenceEmpty")}</p>
-                    ) : (
-                      <ul className="space-y-2.5">
-                        {evidenceRows(evidence.data ?? []).map((ev) => (
-                          <li
-                            key={ev.key}
-                            className="rounded-card border border-hairline bg-surface p-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="text-[13px] font-semibold text-text">
-                                  {ev.title}
-                                </div>
-                                <div className="mt-1 font-mono text-[10.5px] text-muted-2">
-                                  {nameOf(ev.createdBy)} ·{" "}
-                                  {new Date(ev.createdAt).toLocaleDateString()}
-                                </div>
-                              </div>
-                              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
-                                {t(`ko.evidenceKind.${ev.kind}`)}
-                              </span>
-                            </div>
-                            {ev.meta.length > 0 ? (
-                              <div className="mt-2 flex flex-wrap gap-1.5">
-                                {ev.meta.map((m) => (
-                                  <span
-                                    key={m}
-                                    className="rounded-pill bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-2"
-                                  >
-                                    {m}
-                                  </span>
-                                ))}
-                              </div>
-                            ) : null}
-                          </li>
-                        ))}
-                      </ul>
-                    )}
-                  </Card>
+                            )}
+                          </Card>
+                        </>
+                      );
+                    })()}
 
-                  <Card>
-                    <SectionLabel>{t("ko.snapshotsTitle")}</SectionLabel>
-                    {versions.isLoading ? (
-                      <p className="text-[13px] text-muted">{t("state.loading")}</p>
-                    ) : versions.isError ? (
-                      <p className="text-[13px] text-danger">{t("state.error")}</p>
-                    ) : koVersionRows(versions.data ?? []).length === 0 ? (
-                      <p className="text-[13px] text-muted">{t("ko.snapshotsEmpty")}</p>
-                    ) : (
+                    <Card>
+                      <SectionLabel>{t("ko.history")}</SectionLabel>
                       <ol className="space-y-3">
-                        {koVersionRows(versions.data ?? []).map((v) => (
-                          <li
-                            key={v.key}
-                            className="rounded-card border border-hairline bg-surface p-3"
-                          >
-                            <div className="flex items-start justify-between gap-3">
-                              <div>
-                                <div className="font-mono text-[11px] text-muted-2">
-                                  v{v.version} · {new Date(v.at).toLocaleDateString()} ·{" "}
-                                  {nameOf(v.author)}
-                                </div>
-                                <div className="mt-1 text-[13px] font-semibold text-text">
-                                  {v.title}
-                                </div>
-                              </div>
-                              <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
-                                {/* SCRUM-513/487 (WP5): Snapshot-Status lokalisiert statt roher API-Wert. */}
-                                {t(`status.${v.status}`)}
-                              </span>
+                        {ko.history.map((h) => (
+                          <li key={h.version} className="border-l-2 border-hairline pl-3">
+                            <div className="font-mono text-[11px] text-muted-2">
+                              v{h.version} · {new Date(h.at).toLocaleDateString()}
                             </div>
-                            <p className="mt-2 text-[12.5px] text-muted">{v.excerpt}</p>
-                            {(() => {
-                              const diff = diffForVersion(versions.data ?? [], v.version);
-                              if (!diff || diff.fromVersion === null) {
-                                return (
-                                  <p className="mt-2 font-mono text-[10.5px] text-muted-2">
-                                    {t("ko.snapshotInitial")}
-                                  </p>
-                                );
-                              }
-                              return diff.changed.length === 0 ? (
-                                <p className="mt-2 font-mono text-[10.5px] text-muted-2">
-                                  {t("ko.snapshotNoChanges")}
-                                </p>
-                              ) : (
-                                <div className="mt-2 flex flex-wrap gap-1.5">
-                                  {diff.changed.map((field) => (
-                                    <span
-                                      key={field}
-                                      className="rounded-pill bg-warn-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-warn"
-                                    >
-                                      {t(`ko.snapshotField.${field}`)}
-                                    </span>
-                                  ))}
-                                </div>
-                              );
-                            })()}
-                            <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
+                            <div className="text-[12.5px] text-text">
+                              {h.note || nameOf(h.author)}
+                            </div>
                           </li>
                         ))}
                       </ol>
-                    )}
-                  </Card>
+                    </Card>
 
-                  <Card>
-                    <SectionLabel>{t("ko.comments")}</SectionLabel>
-                    <div className="space-y-3">
-                      {(ko.comments ?? []).length === 0 ? (
-                        <p className="text-[13px] text-muted">{t("ko.commentsEmpty")}</p>
+                    <Card>
+                      <SectionLabel>{t("ko.evidenceTitle")}</SectionLabel>
+                      {/* SCRUM-168: read-only Evidence-/Source-Konsistenzstatus (keine Datenänderung). */}
+                      {!evidence.isLoading && !evidence.isError
+                        ? (() => {
+                            const consistency = analyzeEvidenceConsistency(ko, evidence.data ?? []);
+                            return (
+                              <div className="mb-3 rounded-card border border-hairline bg-surface p-3">
+                                <div className="flex items-center justify-between gap-3">
+                                  <span className="text-[12px] font-semibold text-text">
+                                    {t("ko.evCons.title")}
+                                  </span>
+                                  <span
+                                    className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                                      consistency.status === "ok"
+                                        ? "bg-trust-pos-bg text-trust-pos-text"
+                                        : "bg-trust-warn-bg text-trust-warn-text"
+                                    }`}
+                                  >
+                                    {t(`ko.evCons.status.${consistency.status}`)}
+                                  </span>
+                                </div>
+                                <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                                  {t("ko.evCons.counts", {
+                                    sources: String(consistency.sourceCount),
+                                    attachments: String(consistency.attachmentCount),
+                                    evidence: String(consistency.evidenceCount),
+                                  })}
+                                </div>
+                                {consistency.findings.length > 0 ? (
+                                  <ul className="mt-2 space-y-1">
+                                    {consistency.findings.map((f) => (
+                                      <li
+                                        key={`${f.kind}:${f.ref}`}
+                                        className="flex items-start gap-2 text-[11.5px] text-muted"
+                                      >
+                                        <span
+                                          className={`mt-0.5 rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] uppercase ${
+                                            f.severity === "warning"
+                                              ? "bg-trust-warn-bg text-trust-warn-text"
+                                              : "bg-hairline-soft text-muted-2"
+                                          }`}
+                                        >
+                                          {t(`ko.evCons.finding.${f.kind}`)}
+                                        </span>
+                                        <span className="break-words">{f.label}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+                                ) : (
+                                  <p className="mt-2 text-[11.5px] text-muted">
+                                    {t("ko.evCons.allOk")}
+                                  </p>
+                                )}
+                              </div>
+                            );
+                          })()
+                        : null}
+                      {/* SCRUM-175: kompakter versionierter Evidence-Freshness-Status für dieses KO. */}
+                      {!evidence.isLoading && !evidence.isError
+                        ? (() => {
+                            const row = analyzeEvidenceFreshness({
+                              kos: [ko],
+                              evidence: evidence.data ?? [],
+                            }).rows[0];
+                            if (!row) {
+                              return null;
+                            }
+                            const tone = evidenceFreshnessTone(row.status);
+                            const toneClass =
+                              tone === "pos"
+                                ? "bg-trust-pos-bg text-trust-pos-text"
+                                : tone === "warn"
+                                  ? "bg-trust-warn-bg text-trust-warn-text"
+                                  : "bg-hairline-soft text-muted-2";
+                            return (
+                              <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface p-3">
+                                <span className="text-[12px] font-semibold text-text">
+                                  {t("ko.evFresh.title")}
+                                </span>
+                                <span
+                                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${toneClass}`}
+                                >
+                                  {t(evidenceFreshnessLabelKey(row.status))}
+                                </span>
+                                <span className="font-mono text-[10.5px] text-muted-2">
+                                  {t("ko.evFresh.counts", {
+                                    version: String(row.version),
+                                    current: String(row.currentCount),
+                                    older: String(row.olderCount),
+                                  })}
+                                </span>
+                              </div>
+                            );
+                          })()
+                        : null}
+                      {/* SCRUM-170: read-only Gruppierung der Evidence nach KO-Version (via koVersion). */}
+                      {!evidence.isLoading && !evidence.isError
+                        ? (() => {
+                            const byVersion = groupEvidenceByVersion(
+                              evidence.data ?? [],
+                              versions.data ?? [],
+                            );
+                            if (byVersion.groups.length === 0) {
+                              return null;
+                            }
+                            return (
+                              <div className="mb-3 rounded-card border border-hairline bg-surface p-3">
+                                <span className="text-[12px] font-semibold text-text">
+                                  {t("ko.evVer.title")}
+                                </span>
+                                <ul className="mt-2 space-y-1.5">
+                                  {byVersion.groups.map((g) => (
+                                    <li
+                                      key={g.version}
+                                      className="flex flex-wrap items-center gap-2 text-[11.5px] text-muted"
+                                    >
+                                      <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                                        {t("ko.evVer.version", { n: String(g.version) })}
+                                      </span>
+                                      <span className="font-mono text-[10.5px] text-muted-2">
+                                        {t("ko.evVer.counts", {
+                                          sources: String(g.sourceCount),
+                                          attachments: String(g.attachmentCount),
+                                        })}
+                                      </span>
+                                      {g.latestAt ? (
+                                        <span className="font-mono text-[10px] text-muted-2">
+                                          {t("ko.evVer.latest", {
+                                            at: new Date(g.latestAt).toLocaleDateString(),
+                                          })}
+                                        </span>
+                                      ) : null}
+                                    </li>
+                                  ))}
+                                </ul>
+                                {byVersion.versionsWithoutEvidence.length > 0 ? (
+                                  <p className="mt-2 text-[11px] text-muted-2">
+                                    {t("ko.evVer.without", {
+                                      versions: byVersion.versionsWithoutEvidence
+                                        .map((v) => `v${v}`)
+                                        .join(", "),
+                                    })}
+                                  </p>
+                                ) : null}
+                              </div>
+                            );
+                          })()
+                        : null}
+                      {evidence.isLoading ? (
+                        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+                      ) : evidence.isError ? (
+                        <p className="text-[13px] text-danger">{t("state.error")}</p>
+                      ) : evidenceRows(evidence.data ?? []).length === 0 ? (
+                        <p className="text-[13px] text-muted">{t("ko.evidenceEmpty")}</p>
                       ) : (
                         <ul className="space-y-2.5">
-                          {(ko.comments ?? []).map((cm) => (
-                            <li key={cm.id} className="border-l-2 border-hairline pl-3">
-                              <div className="font-mono text-[11px] text-muted-2">
-                                {nameOf(cm.author)} · {new Date(cm.at).toLocaleDateString()}
+                          {evidenceRows(evidence.data ?? []).map((ev) => (
+                            <li
+                              key={ev.key}
+                              className="rounded-card border border-hairline bg-surface p-3"
+                            >
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="text-[13px] font-semibold text-text">
+                                    {ev.title}
+                                  </div>
+                                  <div className="mt-1 font-mono text-[10.5px] text-muted-2">
+                                    {nameOf(ev.createdBy)} ·{" "}
+                                    {new Date(ev.createdAt).toLocaleDateString()}
+                                  </div>
+                                </div>
+                                <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                                  {t(`ko.evidenceKind.${ev.kind}`)}
+                                </span>
                               </div>
-                              <div className="text-[13px] text-text">{cm.text}</div>
+                              {ev.meta.length > 0 ? (
+                                <div className="mt-2 flex flex-wrap gap-1.5">
+                                  {ev.meta.map((m) => (
+                                    <span
+                                      key={m}
+                                      className="rounded-pill bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] text-muted-2"
+                                    >
+                                      {m}
+                                    </span>
+                                  ))}
+                                </div>
+                              ) : null}
                             </li>
                           ))}
                         </ul>
                       )}
-                      <div className="space-y-2 border-t border-hairline pt-3">
-                        <textarea
-                          value={commentText}
-                          onChange={(e) => setCommentText(e.target.value)}
-                          rows={2}
-                          placeholder={t("ko.commentPlaceholder")}
-                          className={textareaCls}
-                        />
-                        <Button
-                          variant="primary"
-                          disabled={comment.isPending || commentText.trim().length === 0}
-                          onClick={() => comment.mutate()}
-                        >
-                          {t("ko.commentAdd")}
-                        </Button>
-                      </div>
-                    </div>
-                  </Card>
+                    </Card>
 
-                  <Card>
-                    <SectionLabel>{t("ko.attachments")}</SectionLabel>
-                    {(ko.attachments ?? []).length === 0 ? (
-                      <p className="text-[13px] text-muted">{t("ko.attachmentsEmpty")}</p>
-                    ) : (
-                      <div className="grid grid-cols-3 gap-2">
-                        {(ko.attachments ?? []).map((a) => (
-                          <div key={a.id} className="group relative">
-                            {/* SCRUM-121: Vorschau aus thumbnail (neu) oder dataUrl (alt); Original via Objekt-Ref */}
-                            <button
-                              type="button"
-                              className="block w-full"
-                              onClick={() => void openAttachment(a)}
-                              title={a.name}
+                    <Card>
+                      <SectionLabel>{t("ko.snapshotsTitle")}</SectionLabel>
+                      {versions.isLoading ? (
+                        <p className="text-[13px] text-muted">{t("state.loading")}</p>
+                      ) : versions.isError ? (
+                        <p className="text-[13px] text-danger">{t("state.error")}</p>
+                      ) : koVersionRows(versions.data ?? []).length === 0 ? (
+                        <p className="text-[13px] text-muted">{t("ko.snapshotsEmpty")}</p>
+                      ) : (
+                        <ol className="space-y-3">
+                          {koVersionRows(versions.data ?? []).map((v) => (
+                            <li
+                              key={v.key}
+                              className="rounded-card border border-hairline bg-surface p-3"
                             >
-                              <img
-                                src={a.thumbnail ?? a.dataUrl ?? ""}
-                                alt={a.name}
-                                className="h-20 w-full rounded-card border border-hairline object-cover"
-                              />
-                            </button>
-                            {canEdit ? (
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <div className="font-mono text-[11px] text-muted-2">
+                                    v{v.version} · {new Date(v.at).toLocaleDateString()} ·{" "}
+                                    {nameOf(v.author)}
+                                  </div>
+                                  <div className="mt-1 text-[13px] font-semibold text-text">
+                                    {v.title}
+                                  </div>
+                                </div>
+                                <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
+                                  {/* SCRUM-513/487 (WP5): Snapshot-Status lokalisiert statt roher API-Wert. */}
+                                  {t(`status.${v.status}`)}
+                                </span>
+                              </div>
+                              <p className="mt-2 text-[12.5px] text-muted">{v.excerpt}</p>
+                              {(() => {
+                                const diff = diffForVersion(versions.data ?? [], v.version);
+                                if (!diff || diff.fromVersion === null) {
+                                  return (
+                                    <p className="mt-2 font-mono text-[10.5px] text-muted-2">
+                                      {t("ko.snapshotInitial")}
+                                    </p>
+                                  );
+                                }
+                                return diff.changed.length === 0 ? (
+                                  <p className="mt-2 font-mono text-[10.5px] text-muted-2">
+                                    {t("ko.snapshotNoChanges")}
+                                  </p>
+                                ) : (
+                                  <div className="mt-2 flex flex-wrap gap-1.5">
+                                    {diff.changed.map((field) => (
+                                      <span
+                                        key={field}
+                                        className="rounded-pill bg-warn-surface px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-warn"
+                                      >
+                                        {t(`ko.snapshotField.${field}`)}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              })()}
+                              <p className="mt-1 font-mono text-[10.5px] text-muted-2">{v.note}</p>
+                            </li>
+                          ))}
+                        </ol>
+                      )}
+                    </Card>
+
+                    <Card>
+                      <SectionLabel>{t("ko.comments")}</SectionLabel>
+                      <div className="space-y-3">
+                        {(ko.comments ?? []).length === 0 ? (
+                          <p className="text-[13px] text-muted">{t("ko.commentsEmpty")}</p>
+                        ) : (
+                          <ul className="space-y-2.5">
+                            {(ko.comments ?? []).map((cm) => (
+                              <li key={cm.id} className="border-l-2 border-hairline pl-3">
+                                <div className="font-mono text-[11px] text-muted-2">
+                                  {nameOf(cm.author)} · {new Date(cm.at).toLocaleDateString()}
+                                </div>
+                                <div className="text-[13px] text-text">{cm.text}</div>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                        <div className="space-y-2 border-t border-hairline pt-3">
+                          <textarea
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            rows={2}
+                            placeholder={t("ko.commentPlaceholder")}
+                            className={textareaCls}
+                          />
+                          <Button
+                            variant="primary"
+                            disabled={comment.isPending || commentText.trim().length === 0}
+                            onClick={() => comment.mutate()}
+                          >
+                            {t("ko.commentAdd")}
+                          </Button>
+                        </div>
+                      </div>
+                    </Card>
+
+                    <Card>
+                      <SectionLabel>{t("ko.attachments")}</SectionLabel>
+                      {(ko.attachments ?? []).length === 0 ? (
+                        <p className="text-[13px] text-muted">{t("ko.attachmentsEmpty")}</p>
+                      ) : (
+                        <div className="grid grid-cols-3 gap-2">
+                          {(ko.attachments ?? []).map((a) => (
+                            <div key={a.id} className="group relative">
+                              {/* SCRUM-121: Vorschau aus thumbnail (neu) oder dataUrl (alt); Original via Objekt-Ref */}
                               <button
                                 type="button"
-                                aria-label={t("ko.attachmentRemove")}
-                                onClick={() => detach.mutate(a.id)}
-                                className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                className="block w-full"
+                                onClick={() => void openAttachment(a)}
+                                title={a.name}
                               >
-                                <X size={12} />
+                                <img
+                                  src={a.thumbnail ?? a.dataUrl ?? ""}
+                                  alt={a.name}
+                                  className="h-20 w-full rounded-card border border-hairline object-cover"
+                                />
                               </button>
-                            ) : null}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {canEdit ? (
-                      <label className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-                        <Paperclip size={14} />
-                        {attach.isPending ? t("ko.attachmentUploading") : t("ko.attachmentAdd")}
-                        <input
-                          type="file"
-                          accept="image/*"
-                          className="hidden"
-                          disabled={attach.isPending}
-                          onChange={(e) => void onPickFile(e)}
-                        />
-                      </label>
-                    ) : null}
-                    {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle. */}
-                    {canEdit ? <UploadLimitsHint /> : null}
-                  </Card>
+                              {canEdit ? (
+                                <button
+                                  type="button"
+                                  aria-label={t("ko.attachmentRemove")}
+                                  onClick={() => detach.mutate(a.id)}
+                                  className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-ink/70 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                                >
+                                  <X size={12} />
+                                </button>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {canEdit ? (
+                        <label className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
+                          <Paperclip size={14} />
+                          {attach.isPending ? t("ko.attachmentUploading") : t("ko.attachmentAdd")}
+                          <input
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            disabled={attach.isPending}
+                            onChange={(e) => void onPickFile(e)}
+                          />
+                        </label>
+                      ) : null}
+                      {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle. */}
+                      {canEdit ? <UploadLimitsHint /> : null}
+                    </Card>
+                  </div>
                 </div>
-              </div>
-            </>
-          );
-        }}
-      </QueryState>
-    </div>
+              </>
+            );
+          }}
+        </QueryState>
+      </div>
+    </ImageDescribeProvider>
   );
 }

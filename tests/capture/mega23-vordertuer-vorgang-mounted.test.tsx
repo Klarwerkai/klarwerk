@@ -74,6 +74,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
@@ -202,22 +203,26 @@ async function mount(url: string): Promise<void> {
               ToastProvider,
               null,
               createElement(
-                NavGuardProvider,
+                ImageDescribeProvider,
                 null,
                 createElement(
-                  MemoryRouter,
-                  { initialEntries: [url] },
+                  NavGuardProvider,
+                  null,
                   createElement(
-                    Routes,
-                    null,
-                    createElement(Route, {
-                      path: "/capture/frontdoor",
-                      element: createElement(CaptureFrontDoor),
-                    }),
-                    createElement(Route, {
-                      path: "/erfassen",
-                      element: createElement("div", null),
-                    }),
+                    MemoryRouter,
+                    { initialEntries: [url] },
+                    createElement(
+                      Routes,
+                      null,
+                      createElement(Route, {
+                        path: "/capture/frontdoor",
+                        element: createElement(CaptureFrontDoor),
+                      }),
+                      createElement(Route, {
+                        path: "/erfassen",
+                        element: createElement("div", null),
+                      }),
+                    ),
                   ),
                 ),
               ),

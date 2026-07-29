@@ -19,6 +19,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 // i18n VOR dem Editor importieren: initialisiert react-i18next global (useTranslation ohne Provider).
 import "../../apps/web/src/i18n";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
+import { mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 // React 18: act außerhalb eines Test-Renderers verlangt dieses Flag.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -36,13 +37,15 @@ let emitted: string[] = [];
 function Host({ initial }: { initial: string }) {
   const [value, setValue] = useState(initial);
   hostSetValue = setValue;
-  return createElement(RichTextEditor, {
-    value,
-    onChange: (html: string) => {
-      emitted.push(html);
-      setValue(html);
-    },
-  });
+  return mitBildbeschreibung(
+    createElement(RichTextEditor, {
+      value,
+      onChange: (html: string) => {
+        emitted.push(html);
+        setValue(html);
+      },
+    }),
+  );
 }
 
 let container: HTMLDivElement;
