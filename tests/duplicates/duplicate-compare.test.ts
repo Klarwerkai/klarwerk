@@ -152,10 +152,16 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
   });
 
   it("verdrahtet eine Deep-Link-Route und keine mutierenden Duplicate-Endpunkte in der Vergleichsseite", () => {
+    // AUFTRAG-mega51 BLOCK A: die beiden bewachten Vergleichs-Routen standen als eigene Tabelle IN
+    // routes.tsx — unsichtbar für jeden, der „darf diese Rolle dorthin?" an der Navigationsquelle
+    // fragt. Sie stehen jetzt neben ALL_ITEMS (`GUARDED_ITEMS`, app/navigation.ts); routes.tsx
+    // routet nur noch darüber. Die ZUSAGE ist unverändert — nur ihre Quelle ist die richtige.
+    const navigation = readFileSync("apps/web/src/app/navigation.ts", "utf8");
     const routes = readFileSync("apps/web/src/routes.tsx", "utf8");
     const page = readFileSync("apps/web/src/pages/DuplicateCompare.tsx", "utf8");
-    expect(routes).toContain("/duplikate/:id/vergleich");
-    expect(routes).toContain("/konflikte/:id/vergleich");
+    expect(navigation).toContain("/duplikate/:id/vergleich");
+    expect(navigation).toContain("/konflikte/:id/vergleich");
+    expect(routes).toContain("GUARDED_ITEMS");
     expect(page).not.toContain("endpoints.duplicates.dismiss");
     expect(page).not.toContain("endpoints.duplicates.keepSeparate");
     expect(page).not.toContain("endpoints.duplicates.linkRelated");

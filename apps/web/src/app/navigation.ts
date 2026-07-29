@@ -23,6 +23,9 @@ import {
   User,
   Users,
 } from "lucide-react";
+// AUFTRAG-mega51 BLOCK A: die bewachten Deep-Link-Routen ziehen ihren Pfad aus derselben
+// Konstante wie der Router — keine abgeschriebene Zeichenfolge.
+import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
 
 // Rollenmodell (BRIEF §9). Jede höhere Rolle schließt die niedrigeren ein.
 export type Role = "viewer" | "experte" | "controller" | "admin";
@@ -302,6 +305,74 @@ export function canSee(item: NavItem, role: Role, stufe2: boolean): boolean {
     return false;
   }
   return roleAllows(item, role);
+}
+
+// ================================================================================================
+// AUFTRAG-mega51 BLOCK A — DIE FRAGE „KOMMT DIESE ROLLE DA ÜBERHAUPT HIN?"
+// ================================================================================================
+// mega39 hat die EMPFEHLUNG an diese Quelle gebunden. Die Frage stellt sich aber an jedem Ziel,
+// das eine Seite als Weg anbietet — und der Router beantwortet sie nicht nur aus `ALL_ITEMS`:
+// er bewacht drei weitere Deep-Link-Routen, die keinen Navigationseintrag haben. Die standen
+// bisher als eigene Konstanten IN routes.tsx. Genau die Bauform, die mega39 abgeschafft hat
+// (eine zweite Tabelle, die auseinanderlaufen kann) — deshalb stehen sie jetzt hier, an der
+// Quelle, und routes.tsx liest sie von hier.
+export const EXTRA_GUARDED_ITEMS: NavItem[] = [
+  {
+    id: "captureFrontDoor",
+    path: CAPTURE_FRONT_DOOR_ROUTE,
+    labelKey: "nav.capture",
+    icon: Plus,
+    minRole: "experte",
+    section: "7.3",
+    shot: "03",
+  },
+  {
+    id: "duplicateCompare",
+    path: "/duplikate/:id/vergleich",
+    labelKey: "nav.duplicates",
+    icon: Plus,
+    minRole: "controller",
+    section: "7.7",
+    shot: "11",
+  },
+  {
+    id: "conflictCompare",
+    path: "/konflikte/:id/vergleich",
+    labelKey: "nav.conflicts",
+    icon: Plus,
+    minRole: "controller",
+    section: "7.7",
+    shot: "11",
+  },
+];
+
+// ALLE Routen mit Rollen-Gate — genau die Menge, über die `Guarded` in routes.tsx entscheidet.
+export const GUARDED_ITEMS: NavItem[] = [...ALL_ITEMS, ...EXTRA_GUARDED_ITEMS];
+
+// Ein Klickziel ist ein href, keine Route: es trägt Query (`?demo=stage1`, `?q=…`) und Anker.
+// Für die Rollenfrage zählt nur der Pfad.
+function routePathOf(to: string): string {
+  const ohneAnker = to.split("#")[0] ?? "";
+  const pfad = ohneAnker.split("?")[0] ?? "";
+  return pfad.length > 1 && pfad.endsWith("/") ? pfad.slice(0, -1) : pfad;
+}
+
+// Routenmuster gegen konkreten Pfad — `:id` steht für genau ein Segment (wie im Router).
+function pathMatches(muster: string, pfad: string): boolean {
+  const m = muster.split("/");
+  const p = pfad.split("/");
+  return m.length === p.length && m.every((seg, i) => seg.startsWith(":") || seg === p[i]);
+}
+
+// DIE Antwort des Routers, nicht eine zweite Meinung darüber: gibt es für den Pfad ein Gate,
+// entscheidet dessen `minRole`; gibt es keins (z. B. `/wissen/:id`, `/hilfe`), lässt der Router
+// jede Rolle durch — dann ist „erreichbar" die WAHRE Auskunft und nicht ein vorsichtiges Nein.
+// (Bewusst anders als `canActOn` in lib/workCenter.ts: dort geht es um eine EMPFEHLUNG, und die
+// bleibt fail-closed — ein unbelegtes Ziel wird nicht empfohlen. Beide lesen dieselbe Registry.)
+export function routePathAllows(to: string, role: Role): boolean {
+  const pfad = routePathOf(to);
+  const gate = GUARDED_ITEMS.find((i) => pathMatches(i.path, pfad));
+  return gate ? roleAllows(gate, role) : true;
 }
 
 // Topbar-Icons hier mit re-exportieren, damit die Shell eine Quelle hat.

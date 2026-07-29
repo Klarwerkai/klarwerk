@@ -1,6 +1,6 @@
 # OFFEN — das Gedächtnis des Projekts
 
-**Stand: 29.07.2026 · Basis `4cdde0e` (Ship 3, 09:43) · gepflegt vom Kopf bei jeder Zustandsänderung**
+**Stand: 29.07.2026 · Basis `3805c49` (Ship 4, 11:13) · gepflegt vom Kopf bei jeder Zustandsänderung**
 
 Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in einem Ordner, den sich jemand ausgedacht hat. Sie wandert mit jedem Klon mit, jeder neue Kopf sieht sie, und sie überlebt jeden Fensterwechsel.
 
@@ -24,9 +24,6 @@ Sortiert nach Alter. **Die oberste ist die älteste und wird bei jedem Kassenstu
 
 | Kennung | gefragt seit | Sache | blockiert |
 |---|---|---|---|
-| E10 | 27.07. | Wo landen Zugangsdaten: Umgebungsvariable · Schlüsselbund · verschlüsselte Ablage | Block C des Import-Auftrags; bis dahin nimmt kein Feld ein Geheimnis entgegen |
-| E12 | 28.07. | Die vier Schnitte sind durch, 86 von 99 Vorgängen stehen in keinem — neu schneiden | die Auftragsplanung nach Ship 3 |
-| J | 28.07. | **Teilweise erledigt.** Weg: `_relay/_to_delete` samt Schlüssel-Leck. Noch da: `kopf/_to_delete` (4), `board/_to_delete` (20), `_trash` (2), 5 Board-Sicherungen, 16 Dubletten plus 73 Patch-Dubletten, 6 tote Artefakte | nichts, aber sie kosten Aufmerksamkeit |
 
 ---
 
@@ -91,9 +88,13 @@ Fester Termin: **Freitag 14:00**, Natascha, sieben Aufgaben, kein Vorwissen.
 | W1 | OFFEN | NACH-SHIP3 | **Antwort zieht fachfremde offene Quellen heran**, obwohl ausschließlich validiertes Wissen zugesichert ist (P0, Handlauf 2) |
 | W2 | OFFEN | NACH-SHIP3 | EN/NL übersetzen nur die Metadaten, nicht den Antwortkörper; „klep X" findet „Ventil X" nicht (P0, Handlauf 2) |
 | W3 | OFFEN | NACH-SHIP3 | Word übergibt Bilder nicht — der Verlust wird ehrlich gemeldet, die Bilder fehlen trotzdem |
+| E10 | OFFEN | NACH-SHIP3 | **Entschieden: Umgebungsvariablen in Coolify.** Kein Feld der Oberfläche nimmt je ein Geheimnis entgegen; der Admin-Bereich zeigt nur Zustand — hinterlegt ja/nein, Import ein/aus, wann zuletzt verbunden — und nennt den Variablennamen. Damit ist Block C des Import-Auftrags vollständig |
 | C1 | OFFEN | NACH-SHIP3 | Import-Seite: „In Planung" einklappen · Quellenwahl wählt wirklich · Freigaben ehrlich · Konfliktsatz · Deckelkommentar. Auftrag liegt fertig, Block C wartet auf E10 |
 | C3 | OFFEN | NACH-SHIP3 | Vier Befunde aus Pedis Live-Durchlauf (Stufe-2-Schalter vergisst sich · „OHNE KI GRUPPIERT" trotz aktivem Reasoner · Such-Leerzustand · rohe Kennung statt Titel) — jeder einzeln am heutigen Code nachsehen |
-| F1–F20, F22–F26 | OFFEN | NACH-SHIP3 | Erstnutzer- und Weboberflächenbefunde: bejahender Startsatz, Kopfzeilen-Chips, deutsche Wörter, eine Handlung je Fläche, Zahlen mit Bezug, Rohwerte, „gesichert"-Kollision, „1 Beiträge", Re-Import zu prominent, unbeschrifteter Balken, Trefferzeile, Tadel vor der ersten Handlung, alle acht Quellen, Hauptknopf, Audit-Kette, Vertraulichkeits-Facette, Anlagenkopplung, sechs Routen ohne Live-Beleg, Arbeitszahlen ins Leere, Trust→Vertrauenswert, `apps/web`-tsc ins Tor, Validierungs-Interaktionstest, Computed-Style-Pin |
+| F-Erstnutzer | ERLEDIGT | — | **mega51** — ben sammel49 **GRÜN**, Inhalts-SHA `6c80f5d1…68f1` vom Kopf nachgerechnet. Keiner der sieben Pins geschwächt. Wartet auf Handlauf 1 und Ship 5 — die ersten zehn Minuten einer Fremden. Acht Befunde des Erstnutzerlaufs sind am Code als geschlossen belegt (F1, F5, F7, F8, F12, F13, F14 und die Chips als Admin-Auskunft). Beauftragt sind die Reste: Arbeitsliste führt Experte ins Leere · eine primäre Handlung beim Erfassen · Suche vor Import/Export · Balken beschriftet und gleicher Wert in Bedingung und Anzeige · Trefferzeile bekommt Platz · „1 Experten" und Autoren-UUID · letzte Fachwörter ohne Trust · Beispielklick sagt vorher, dass er kostet |
+| F28 | OFFEN | NACH-SHIP3 | `lib.trustNone` und `lib.trustNoneHint` sind produktseitig verwaist, werden aber von der alten Schlüsselliste in `ux-wow-polish.test.ts` weiter gepinnt (ben sammel49, Anmerkung — färbt nicht). Reist mit F22 mit |
+| F22 | OFFEN | NACH-SHIP3 | Trust → Vertrauenswert: rund 30 Schlüssel DE plus 30 NL plus ein Dutzend Fließtexte. Eigene Scheibe mit Fundstellenliste und Sammler — halb übersetzt ist schlechter als gar nicht |
+| F23, F25, F26 | OFFEN | NACH-SHIP3 | Prüfwerkzeug-Reste: bejahender Startsatz, Kopfzeilen-Chips, deutsche Wörter, eine Handlung je Fläche, Zahlen mit Bezug, Rohwerte, „gesichert"-Kollision, „1 Beiträge", Re-Import zu prominent, unbeschrifteter Balken, Trefferzeile, Tadel vor der ersten Handlung, alle acht Quellen, Hauptknopf, Audit-Kette, Vertraulichkeits-Facette, Anlagenkopplung, sechs Routen ohne Live-Beleg, Arbeitszahlen ins Leere, Trust→Vertrauenswert, `apps/web`-tsc ins Tor, Validierungs-Interaktionstest, Computed-Style-Pin |
 | E2g | OFFEN | MIT-GROSSKUNDE | 12.08. **bestätigt** — elf Vorgänge leben wieder: Cloud-Instanz, Confluence in Scheibchen, Microsoft-365-Anmeldung, Spracheingabe, Demo-Drehbuch, Nullschulungs-Test |
 
 ---
@@ -163,10 +164,21 @@ Pedis Anordnung: „nach Freitag, aber nicht vergessen."
 | I10 | OFFEN | SOFORT | Keine interaktiven Datenbank-Transaktionen mehr |
 | I11 | OFFEN | NACH-SHIP3 | Coolify-Eigenheiten selbst nachprüfen oder als unbelegt kennzeichnen |
 | I13 | OFFEN | NACH-SHIP3 | Ship-Tor braucht ein Cloud-Geheimnis (SCRUM-552) — die Frist „bis nach VIP-2" ist verfallen |
+| J | ERLEDIGT | — | **Dateileichen weg**, am 29.07. nachgeprüft: alle vier `_to_delete`- und `_trash`-Ordner gelöscht, null Dubletten, null Board-Sicherungen. Rest: der leere Ordner `_relay/kopf/wartet` (ein `rmdir` bei Gelegenheit) und sechs tote Artefakte in der Seitenleiste, die nur Pedi dort entfernen kann |
 | K2 | ERLEDIGT | — | `_relay/kopf/wartet/` aufgelöst: der Import-Auftrag liegt als Entwurf in `_relay/hand/queue/`, die drei verbrauchten Fassungen in `_to_delete` |
 | E1v | ERLEDIGT | — | VIP-2 entfällt endgültig; der Vermerk „nach VIP-2" wird überall durch einen Ereignis-Anker ersetzt |
 
 ---
+
+## Der Bauplan (SCRUM-558, Verfahren in SCRUM-530 §9)
+
+Sieben Themen für den offenen Bestand: **S1** wie Wissen hineinkommt · **S2** was herauskommt und ob man ihm trauen kann · **S3** wer was sehen darf · **S4** Klara und die Nähe zum Dokument · **S5** der Großkunde am 12.08. · **S6** das Wissensnetz · **S7** das Fundament aus Tor, Härtung, Betrieb und Sprache.
+
+**Er gruppiert, er terminiert nicht.** Ein Thema sagt, was zusammengehört — nicht, wann es drankommt. Die Reihenfolge entscheidet Pedi bei jedem Auftrag neu.
+
+**Zwei Bahnen.** Die Schnellbahn nimmt, was einen Ship oder Termin blockiert: eng, sofort, ohne Umplanung. Die Themenbahn alles Übrige. Einen dritten Weg gibt es nicht, damit nichts „irgendwo" landet.
+
+**Neu geschnitten wird auf drei Auslöser, nicht nach Kalender:** ein Thema ist fertig · drei Vorgänge in Folge passen in kein Thema · ein Termin fällt weg oder kommt hinzu.
 
 ## Der Prozess-Wächter (P1)
 

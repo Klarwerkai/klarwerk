@@ -27,6 +27,7 @@ import {
   sortGapsByPriority,
 } from "../lib/gapPriority";
 import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
+import { AUTHOR_UNKNOWN_KEY, authorDisplayName } from "../lib/koAuthor";
 import { buildRiskCockpit } from "../lib/riskCockpit";
 import { phaseLabelKey } from "../lib/taskAction";
 
@@ -75,7 +76,12 @@ export function Risk(): JSX.Element {
   });
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
-  const nameOf = (uid: string): string => users.data?.find((u) => u.id === uid)?.name || uid;
+  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
+  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
+  const nameOf = (uid: string): string =>
+    authorDisplayName(uid, users.data?.find((u) => u.id === uid)?.name, (ref) =>
+      t(AUTHOR_UNKNOWN_KEY, { ref }),
+    );
 
   // SCRUM-230: kompakter Cockpit-Einstieg aus echten Gap-/Conflict-Daten (kein Score, keine Engine).
   const cockpit = buildRiskCockpit(gaps.data ?? [], conflicts.data ?? []);
@@ -283,8 +289,13 @@ export function Risk(): JSX.Element {
                       }}
                     />
                   </div>
+                  {/* AUFTRAG-mega51 BLOCK F1: hier stand `{b.authorCount} {t("risk.experts")}` —
+                      zusammengesetzt, und damit „1 Experten". Pluralisierung läuft jetzt über
+                      `count`, wie es mega34 für `lib.facet.showResults` schon richtig macht. Die
+                      Beschriftungsform „Experten: 3" weiter oben (:189) bleibt unberührt — sie ist
+                      ein Etikett, keine Aufzählung, und hat das Problem nie gehabt. */}
                   <span className="font-mono text-[11px] text-muted-2">
-                    {b.authorCount} {t("risk.experts")}
+                    {t("risk.expertsCount", { count: b.authorCount })}
                   </span>
                 </div>
               ))}

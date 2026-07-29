@@ -14,7 +14,12 @@ import { useSession } from "../app/AuthContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
-import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
+import {
+  AUTHOR_UNKNOWN_KEY,
+  type KoAuthorParts,
+  authorDisplayName,
+  koAuthorParts,
+} from "../lib/koAuthor";
 import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkTone, type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { type TaskTone, knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
@@ -70,7 +75,12 @@ export function MyTasks(): JSX.Element {
   const dir = useDirectory();
   const { user } = useSession();
 
-  const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
+  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
+  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
+  const nameOf = (uid: string): string =>
+    authorDisplayName(uid, dir.data?.find((d) => d.id === uid)?.name, (ref) =>
+      t(AUTHOR_UNKNOWN_KEY, { ref }),
+    );
   // SCRUM-124: KOs, die mir (als Autor) nach Gelb/Rot zur Nacharbeit zurückgegeben wurden.
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
   const authorOf = (koId: string): KoAuthorParts | undefined => {

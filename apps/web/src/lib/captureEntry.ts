@@ -15,6 +15,30 @@ export const EXPERT_MODE: CaptureMode = "formular";
 // Erzähl-Modi in fester Reihenfolge (Standardweg zuerst). Bewusst OHNE das Formular.
 export const NARRATE_MODES: readonly CaptureMode[] = ["freitext", "diktat", "interview", "datei"];
 
+// ================================================================================================
+// AUFTRAG-mega51 BLOCK B — EINE PRIMÄRE HANDLUNG BEIM ERFASSEN.
+// ================================================================================================
+// Die Modus-Leiste zeigte vier Erzählwege plus den Expertenmodus als GLEICHFÖRMIGE Knopfreihe,
+// unterschieden nur durch Aktiv-Zustand und einen gestrichelten Rand. Fünf gleichrangige Angebote
+// sind kein Angebot — eine Erstnutzerin muss raten, wo sie anfängt.
+//
+// WELCHER IST DER EMPFOHLENE (B1): `freitext`. Das ist keine neue Entscheidung, sondern die, die
+// der Bestand an drei Stellen schon getroffen hat und die hier nur noch sichtbar wird:
+//   · Es ist der Anfangszustand der Seite (`useState<Mode>("freitext")`, Capture.tsx).
+//   · Es ist der Rückweg: wer den Expertenmodus verlässt, landet auf `freitext` — die Ruhelage.
+//   · Es steht in dieser Liste an erster Stelle, und der Kommentar darüber nennt sie „Standardweg
+//     zuerst".
+// Deshalb wird die Empfehlung ABGELEITET und nicht als zweites Literal danebengeschrieben: eine
+// Umsortierung der Liste zieht sie ohne Nacharbeit mit.
+//
+// KEINE FÄHIGKEIT VERSCHWINDET (B2): Diktat, Interview und Datei bleiben genau da, wo sie waren,
+// mit demselben `switchMode`-Aufruf. Sie werden nur ruhiger gezeichnet.
+export const RECOMMENDED_NARRATE_MODE: CaptureMode = NARRATE_MODES[0] as CaptureMode;
+
+export function isRecommendedMode(mode: CaptureMode): boolean {
+  return mode === RECOMMENDED_NARRATE_MODE;
+}
+
 export function isExpertMode(mode: CaptureMode): boolean {
   return mode === EXPERT_MODE;
 }
@@ -38,7 +62,9 @@ export function initialCaptureWorkspaceOpen(context: {
 // - expertHint: ehrliche Einordnung des Expertenpfads (gleiche Felder, kein Extra-Feature).
 // - expertActive: Hinweis IM Expertenmodus + Rückweg auf den geführten Standardweg.
 // - backToGuided: Rückweg-Button zurück zum Erzähl-Einstieg.
+// - recommendedBadge: die sichtbare Kennzeichnung des empfohlenen Erzählwegs (mega51 B1).
 export const CAPTURE_ENTRY_TEXT = {
+  recommendedBadge: "capture.entry.recommendedBadge",
   narrateKicker: "capture.entry.narrateKicker",
   expertToggle: "capture.entry.expertToggle",
   expertHint: "capture.entry.expertHint",

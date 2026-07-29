@@ -56,18 +56,21 @@ describe("B2: KI-Badge zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
     expect(src).toContain("status.countryKey && status.dsgvoKey");
   });
 
-  it("die sichtbaren Kurz-Labels sind sachliche Moduswahl (Cloud/Lokal), DE/EN/NL", () => {
+  it("die sichtbaren Kurz-Labels sagen sachlich, WO die KI rechnet, DE/EN/NL", () => {
+    // AUFTRAG-mega51 BLOCK G1: die sichtbaren Kurz-Labels nannten einen MODUS („KI-Modus:
+    // Cloud"); gemeint ist der ORT, an dem gerechnet wird. Für Natascha sagt „Modus" nichts.
+    // Die Zusage dieses Pins ist unverändert — sachlich, ohne grelles „Externe KI/DSGVO".
     expect(String(i18n.getResource("de", "translation", "topbar.kiExternal"))).toBe(
-      "KI-Modus: Cloud",
+      "KI rechnet in der Cloud",
     );
     expect(String(i18n.getResource("de", "translation", "topbar.kiInternal"))).toBe(
-      "KI-Modus: Lokal",
+      "KI rechnet im eigenen Haus",
     );
     expect(String(i18n.getResource("en", "translation", "topbar.kiExternal"))).toBe(
-      "AI mode: Cloud",
+      "AI runs in the cloud",
     );
     expect(String(i18n.getResource("nl", "translation", "topbar.kiInternal"))).toBe(
-      "AI-modus: Lokaal",
+      "AI rekent in eigen huis",
     );
     // Kein grelles „Externe KI"/„DSGVO: nein" mehr im sichtbaren Label.
     expect(String(i18n.getResource("de", "translation", "topbar.kiExternal"))).not.toContain(

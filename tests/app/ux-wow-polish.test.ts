@@ -66,11 +66,18 @@ describe("WP-UX-WOW-1 U4: Bibliothek-Karten lesbar", () => {
     expect(author).toContain("<div title={text}");
   });
 
-  it("validiert + Trust 0 → nüchterner Hinweis statt leerer Leiste (Leiste erst ab Trust > 0)", () => {
+  // AUFTRAG-mega51 BLOCK D2 — HARNESS-KORREKTUR, KEINE ANPASSUNG AN NEUEN CODE.
+  // Dieser Pin hat den Fehler MITGEHALTEN: er verlangte wörtlich `k.trust === 0`, während die
+  // Leiste daneben `k.confidence` anzeigt. Bei `trust > 0` und `confidence = 0` blieb die
+  // unerklärte Null damit stehen — und der grüne Test behauptete das Gegenteil. Die Zusage lautet
+  // ab jetzt nicht mehr „liest trust", sondern „liest DENSELBEN Wert, den sie anzeigt".
+  it("validiert + Sicherheit 0 → nüchterner Hinweis statt leerer Leiste (Bedingung liest den angezeigten Wert)", () => {
     const lib = read("apps/web/src/pages/Library.tsx");
-    expect(lib).toContain('deriveStatus(k) === "validiert" && k.trust === 0');
-    expect(lib).toContain('t("lib.trustNone")');
-    expect(lib).toContain('title={t("lib.trustNoneHint")}');
+    expect(lib).toContain('deriveStatus(k) === "validiert" && k.confidence === 0');
+    expect(lib).toContain('t("lib.confidenceNone")');
+    expect(lib).toContain('title={t("lib.confidenceNoneHint")}');
+    // Der angezeigte Wert der Leiste ist derselbe, den die Bedingung prüft.
+    expect(lib).toContain("<ConfidenceBar value={k.confidence}");
   });
 });
 

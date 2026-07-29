@@ -1,7 +1,6 @@
 import { ArrowRight, ChevronDown } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import {
   useConflicts,
   useGapsSummary,
@@ -20,6 +19,9 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../components/FunkeCards";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
+// AUFTRAG-mega51 BLOCK A: das EINE Tor für jeden Weg dieser Seite — was die Rolle nicht erreicht,
+// wird als Lage gezeigt, nicht als Link. Deshalb steht hier kein `Link` aus react-router-dom mehr.
+import { RoleLink } from "../components/RoleLink";
 // AUFTRAG-mega34 F: die vorhandene, übersetzte Status-Plakette — statt des rohen DB-Werts.
 import { StatusPill } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
@@ -29,6 +31,7 @@ import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 import { PROOF_CHAIN } from "../lib/proofChain";
+import { startCta, startQueueCta } from "../lib/startCtas";
 import { type StartHelpId, startHelp } from "../lib/startHelp";
 import {
   START_ORIENTATION_TEXT,
@@ -59,29 +62,8 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
-// ================================================================================================
-// AUFTRAG-mega38 BLOCK G3 (Pedi 27.07.) — DER ERSTE WEG FÜHRT ZUR EIGENEN ARBEIT.
-// ================================================================================================
-// Der größte, dunkelste Knopf oben rechts hiess für Controller UND Admins „Validierung öffnen" und
-// schickte damit jede Erstnutzerin als ALLERERSTES in fremde Prüfarbeit — in eine Warteschlange
-// mit dem Wissen anderer Leute, zu der sie noch gar keine Meinung haben kann.
-//
-// Der lauteste Weg führt jetzt dorthin, wo sie selbst etwas beitragen kann: fragen oder erfassen.
-// Die Warteschlange ist NICHT verschwunden — sie steht als ruhiger Zweitweg daneben, in der
-// Navigation und in „Nächste Handlungen" darunter mit ihrer echten Zahl. Weggenommen wurde ihr
-// nicht der Zugang, sondern die Lautstärke.
-const CTA_ASK = { to: "/fragen", key: "start.ctaAsk" };
-const CTA_PRIMARY: Record<string, { to: string; key: string }> = {
-  viewer: CTA_ASK,
-  experte: { to: "/erfassen", key: "start.ctaCapture" },
-  controller: CTA_ASK,
-  admin: CTA_ASK,
-};
-// Der Zweitweg existiert nur für die Rollen, die ihn überhaupt bedienen dürfen.
-const CTA_QUEUE: Record<string, { to: string; key: string }> = {
-  controller: { to: "/validierung", key: "start.ctaValidate" },
-  admin: { to: "/validierung", key: "start.ctaValidate" },
-};
+// AUFTRAG-mega38 BLOCK G3 / AUFTRAG-mega51 BLOCK A: die beiden CTA-Tabellen stehen jetzt DOM-frei
+// in lib/startCtas.ts (Begründung dort) — diese Seite rendert sie nur noch.
 
 // Audit-P4 (SCRUM-398): Live-Wall als ruhige Start-Karte — „frisch gesichert" und
 // „hat geholfen" aus echten Ereignissen (KO-Bestand + Wirkungs-Audit). Keine Scores,
@@ -125,12 +107,13 @@ function LiveWallCard(): JSX.Element | null {
             <ul className="space-y-1">
               {data.saved.map((s) => (
                 <li key={s.koId} className="flex items-baseline gap-2">
-                  <Link
+                  <RoleLink
                     to={`/wissen/${s.koId}`}
-                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-text hover:text-ink"
+                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-text"
+                    hoverClassName="hover:text-ink"
                   >
-                    {s.title}
-                  </Link>
+                    {() => s.title}
+                  </RoleLink>
                   {/* AUFTRAG-mega34 F: hier stand der rohe Enum-Wert — „VALIDIERT" / „OFFEN"
                       direkt aus der Datenbank, in Großbuchstaben, und bei englischer oder
                       niederländischer Oberfläche trotzdem auf Deutsch. Es ist die erste Karte,
@@ -156,12 +139,13 @@ function LiveWallCard(): JSX.Element | null {
             <ul className="space-y-1">
               {data.helped.map((h) => (
                 <li key={`${h.koId}-${h.at}`} className="flex items-baseline gap-2">
-                  <Link
+                  <RoleLink
                     to={`/wissen/${h.koId}`}
-                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-text hover:text-ink"
+                    className="min-w-0 flex-1 truncate text-[13px] font-medium text-text"
+                    hoverClassName="hover:text-ink"
                   >
-                    {h.title}
-                  </Link>
+                    {() => h.title}
+                  </RoleLink>
                   <span className="shrink-0 font-mono text-[10.5px] text-muted-2">{fmt(h.at)}</span>
                 </li>
               ))}
@@ -198,8 +182,8 @@ export function Start(): JSX.Element {
   const pending = useLifecyclePending();
   const learningPath = useLearningPath(role);
   const learningProgress = useLearningProgress(learningPath.data?.id);
-  const cta = CTA_PRIMARY[role] ?? CTA_ASK;
-  const queueCta = CTA_QUEUE[role] ?? null;
+  const cta = startCta(role);
+  const queueCta = startQueueCta(role);
   // SCRUM-235: ehrlicher Stufe-2-Auffindbarkeits-Hinweis — nur für Admins mit ausgeschaltetem Schalter.
   const showStufe2Hint = stufe2HintKind(role, stufe2) === "enable";
   const stufe2Features = stufe2FeatureLabelKeys()
@@ -256,21 +240,29 @@ export function Start(): JSX.Element {
         title={t("start.greeting", { name: user?.name ?? "" })}
         actions={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <Link
+            <RoleLink
               to={cta.to}
               // mega40 D: `kw-cta-primary` ist ein reiner Stil-Anker — im modern-Thema wird DIESER
               // eine Knopf der Funke der Seite (styles/modern.css); klassisch ändert sich nichts.
-              className="kw-cta-primary inline-flex items-center gap-2 rounded-btn bg-ink px-4 py-2.5 text-[13px] font-semibold text-white hover:opacity-90"
+              className="kw-cta-primary inline-flex items-center gap-2 rounded-btn bg-ink px-4 py-2.5 text-[13px] font-semibold text-white"
+              hoverClassName="hover:opacity-90"
             >
-              {t(cta.key)}
-              <ArrowRight size={16} />
-            </Link>
+              {(erreichbar) => (
+                <>
+                  {t(cta.key)}
+                  {erreichbar ? <ArrowRight size={16} /> : null}
+                </>
+              )}
+            </RoleLink>
             {/* BLOCK G3: die Prüf-Warteschlange bleibt einen Klick entfernt — nur nicht mehr als
                 das Lauteste auf der Seite. */}
             {queueCta ? (
-              <Link to={queueCta.to} className="text-[12.5px] font-semibold text-brand-text">
-                {t(queueCta.key)}
-              </Link>
+              <RoleLink
+                to={queueCta.to}
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-text"
+              >
+                {() => t(queueCta.key)}
+              </RoleLink>
             ) : null}
           </span>
         }
@@ -299,25 +291,34 @@ export function Start(): JSX.Element {
         <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("cycle.subtitle")}</p>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {KNOWLEDGE_CYCLE.map((step, i) => (
-            <Link
+            <RoleLink
               key={step.id}
               to={step.to}
-              className="group rounded-card border border-hairline bg-surface p-4 transition hover:border-ink/30"
+              className="group rounded-card border border-hairline bg-surface p-4 transition"
+              hoverClassName="hover:border-ink/30"
             >
-              <div className="flex items-center gap-2">
-                <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-semibold text-white">
-                  {i + 1}
-                </span>
-                <span className="text-[14px] font-semibold text-ink">{t(step.labelKey)}</span>
-                {i < KNOWLEDGE_CYCLE.length - 1 ? (
-                  <ArrowRight
-                    size={15}
-                    className="ml-auto text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
-                  />
-                ) : null}
-              </div>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{t(step.descKey)}</p>
-            </Link>
+              {/* Der Kreis behält alle vier Schritte — auch den, den diese Rolle nicht selbst
+                  ausführt. Wegzulassen wäre nicht ehrlicher, sondern nur unvollständig. */}
+              {(erreichbar) => (
+                <>
+                  <div className="flex items-center gap-2">
+                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-semibold text-white">
+                      {i + 1}
+                    </span>
+                    <span className="text-[14px] font-semibold text-ink">{t(step.labelKey)}</span>
+                    {erreichbar && i < KNOWLEDGE_CYCLE.length - 1 ? (
+                      <ArrowRight
+                        size={15}
+                        className="ml-auto text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
+                      />
+                    ) : null}
+                  </div>
+                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                    {t(step.descKey)}
+                  </p>
+                </>
+              )}
+            </RoleLink>
           ))}
         </div>
       </div>
@@ -356,20 +357,25 @@ export function Start(): JSX.Element {
               </div>
               <div className="grid gap-2 sm:grid-cols-3">
                 {guide.items.map((item) => (
-                  <Link
+                  <RoleLink
                     key={item.id}
                     to={item.to}
-                    className="rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
+                    className="rounded-card border border-hairline bg-surface p-3 transition"
+                    hoverClassName="hover:border-ink/30"
                   >
-                    <span
-                      className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-                    >
-                      {t(item.labelKey)}
-                    </span>
-                    <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-                      {t(item.bodyKey)}
-                    </p>
-                  </Link>
+                    {() => (
+                      <>
+                        <span
+                          className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                        >
+                          {t(item.labelKey)}
+                        </span>
+                        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+                          {t(item.bodyKey)}
+                        </p>
+                      </>
+                    )}
+                  </RoleLink>
                 ))}
               </div>
             </div>
@@ -401,32 +407,42 @@ export function Start(): JSX.Element {
               <ol className="grid gap-2 sm:grid-cols-3">
                 {DEMO_PILOT_PATH.map((step) => (
                   <li key={step.id}>
-                    <Link
+                    <RoleLink
                       to={step.to}
-                      className="group block h-full rounded-card border border-hairline bg-surface p-3 transition hover:border-ink/30"
+                      className="group block h-full rounded-card border border-hairline bg-surface p-3 transition"
+                      hoverClassName="hover:border-ink/30"
                     >
-                      <div className="flex items-center gap-2">
-                        <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
-                          {step.n}
-                        </span>
-                        <span className="text-[13.5px] font-semibold text-ink">
-                          {t(step.labelKey)}
-                        </span>
-                      </div>
-                      <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-                        {t(step.descKey)}
-                      </p>
-                    </Link>
+                      {() => (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+                              {step.n}
+                            </span>
+                            <span className="text-[13.5px] font-semibold text-ink">
+                              {t(step.labelKey)}
+                            </span>
+                          </div>
+                          <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                            {t(step.descKey)}
+                          </p>
+                        </>
+                      )}
+                    </RoleLink>
                   </li>
                 ))}
               </ol>
               {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
-              <Link
+              <RoleLink
                 to={captureDemoHref()}
-                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text hover:underline"
+                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text"
+                hoverClassName="hover:underline"
               >
-                {t("demo.captureEntry")} <ArrowRight size={13} />
-              </Link>
+                {(erreichbar) => (
+                  <>
+                    {t("demo.captureEntry")} {erreichbar ? <ArrowRight size={13} /> : null}
+                  </>
+                )}
+              </RoleLink>
             </div>
           </div>
         ) : null}
@@ -486,9 +502,12 @@ export function Start(): JSX.Element {
               <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
               {shelp("work")}
             </div>
-            <Link to="/aufgaben" className="text-[12.5px] font-semibold text-brand-text">
-              {t("start.allTasks")}
-            </Link>
+            <RoleLink
+              to="/aufgaben"
+              className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-text"
+            >
+              {() => t("start.allTasks")}
+            </RoleLink>
           </div>
           {/* SCRUM-488: Klartext-Legende für die Dringlichkeits-Punkte (rot=jetzt · gelb=heute · grau=später). */}
           <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-2">
@@ -503,28 +522,33 @@ export function Start(): JSX.Element {
           {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung).
               Block C: im Ladezustand NICHT anzeigen (kein erfundener „bester nächster Schritt"). */}
           {!workLoading && !workError && focus ? (
-            <Link
+            <RoleLink
               to={focus.to}
-              className="mb-3 flex items-center gap-3 rounded-card bg-page p-3 hover:opacity-90"
+              className="mb-3 flex items-center gap-3 rounded-card bg-page p-3"
+              hoverClassName="hover:opacity-90"
             >
-              <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[focus.severity]}`} />
-              <span className="min-w-0 flex-1">
-                <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                  {t("start.focusLabel")}
-                </span>
-                <span className="block truncate text-[13.5px] font-semibold text-ink">
-                  {t(`work.${focus.key}`)}
-                </span>
-                {/* SCRUM-297: Knowledge-OS-Phase der nächsten Arbeit (Erfassen/Validieren/Aktuell halten). */}
-                <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                  {t("task.phaseLabel")} {t(phaseLabelKey(knowledgeOsPhase(focus.key)))}
-                </span>
-              </span>
-              <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
-                {focus.count}
-              </span>
-              <ArrowRight size={15} className="shrink-0 text-muted-2" />
-            </Link>
+              {(erreichbar) => (
+                <>
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[focus.severity]}`} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                      {t("start.focusLabel")}
+                    </span>
+                    <span className="block truncate text-[13.5px] font-semibold text-ink">
+                      {t(`work.${focus.key}`)}
+                    </span>
+                    {/* SCRUM-297: Knowledge-OS-Phase der nächsten Arbeit (Erfassen/Validieren/Aktuell halten). */}
+                    <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                      {t("task.phaseLabel")} {t(phaseLabelKey(knowledgeOsPhase(focus.key)))}
+                    </span>
+                  </span>
+                  <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
+                    {focus.count}
+                  </span>
+                  {erreichbar ? <ArrowRight size={15} className="shrink-0 text-muted-2" /> : null}
+                </>
+              )}
+            </RoleLink>
           ) : null}
           {/* Block B: Stale-Fall — Daten sind da, ein Refetch scheiterte → sichtbar veraltet markiert. */}
           {workStale ? (
@@ -551,20 +575,30 @@ export function Start(): JSX.Element {
               </div>
             ) : (
               overview.map((it) => (
-                <Link
+                // AUFTRAG-mega51 BLOCK A: DIE Fundstelle des Erstnutzerlaufs. Diese Zeilen waren
+                // uneingeschränkte Links auf vier Controller-Seiten; eine Expertin landete beim
+                // Klick wieder auf /start. Die Zahl bleibt — sie ist wahr —, der Weg entfällt.
+                <RoleLink
                   key={it.key}
                   to={it.to}
-                  className="flex items-center gap-3 py-2.5 hover:opacity-80"
+                  className="flex items-center gap-3 py-2.5"
+                  hoverClassName="hover:opacity-80"
                 >
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[it.severity]}`} />
-                  <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
-                    {t(`work.${it.key}`)}
-                  </span>
-                  <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
-                    {it.count}
-                  </span>
-                  <ArrowRight size={15} className="shrink-0 text-muted-2" />
-                </Link>
+                  {(erreichbar) => (
+                    <>
+                      <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[it.severity]}`} />
+                      <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                        {t(`work.${it.key}`)}
+                      </span>
+                      <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
+                        {it.count}
+                      </span>
+                      {erreichbar ? (
+                        <ArrowRight size={15} className="shrink-0 text-muted-2" />
+                      ) : null}
+                    </>
+                  )}
+                </RoleLink>
               ))
             )}
           </div>

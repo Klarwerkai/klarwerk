@@ -24,8 +24,17 @@ import {
 describe("KW-PROD-02: CaptureFrontDoor", () => {
   it("stellt den neuen Einstieg als stabile Deep-Link-Route bereit", () => {
     expect(CAPTURE_FRONT_DOOR_ROUTE).toBe("/capture/frontdoor");
+    // AUFTRAG-mega51 BLOCK A: der bewachte Eintrag dieser Route stand als eigene Tabelle IN
+    // routes.tsx und war damit für die Rollenquelle unsichtbar. Er steht jetzt neben ALL_ITEMS
+    // (`EXTRA_GUARDED_ITEMS`, app/navigation.ts); routes.tsx routet über `GUARDED_ITEMS`.
+    const navigationSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/app/navigation.ts"),
+      "utf8",
+    );
     const routesSource = readFileSync(resolve(process.cwd(), "apps/web/src/routes.tsx"), "utf8");
-    expect(routesSource).toContain("CAPTURE_FRONT_DOOR_ITEM");
+    expect(navigationSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
+    expect(navigationSource).toContain("captureFrontDoor");
+    expect(routesSource).toContain("GUARDED_ITEMS");
     expect(routesSource).toContain("CaptureFrontDoor");
   });
 

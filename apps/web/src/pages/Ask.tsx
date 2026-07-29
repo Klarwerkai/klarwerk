@@ -42,6 +42,7 @@ import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
+import { AUTHOR_UNKNOWN_KEY, authorDisplayName } from "../lib/koAuthor";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
@@ -112,8 +113,12 @@ export function Ask(): JSX.Element {
   // FUNKE F1 (nacht24): Wissensträger-Namen für die Quellen-Würdigung (Directory EINMAL je Seite;
   // Fallback bleibt ehrlich die Autor-Id).
   const directory = useDirectory();
+  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
+  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
   const authorNameOf = (uid: string): string =>
-    directory.data?.find((d) => d.id === uid)?.name || uid;
+    authorDisplayName(uid, directory.data?.find((d) => d.id === uid)?.name, (ref) =>
+      t(AUTHOR_UNKNOWN_KEY, { ref }),
+    );
   // SCRUM-357 / AG-14: konfliktbewusste Quellen — ein konfliktbetroffenes Quell-KO erscheint NICHT
   // als uneingeschränkt nutzbar/gesichert (effektive, konfliktbegrenzte Nutzbarkeit + Konflikt-Chip).
   const conflicts = useConflicts();
@@ -478,6 +483,12 @@ export function Ask(): JSX.Element {
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
           {t("ask.examplesLabel")}
         </span>
+        {/* AUFTRAG-mega51 BLOCK H: ein Klick auf ein Beispiel löst SOFORT eine echte, kostenpflichtige
+            Modellanfrage aus (`askExample` → `submitAsk`). Das soll so sein — ein Beispiel, das nur
+            das Feld füllt, wäre kein Beispiel. Aber es muss VORHER erkennbar sein. Kein
+            Bestätigungsdialog: ein Halbsatz an der Beschriftung und derselbe Hinweis als `title` an
+            jedem Chip. */}
+        <span className="text-[10.5px] text-muted-2">{t("ask.examplesSendHint")}</span>
         {exampleChips.map((chip) => {
           const question =
             chip.kind === "ko" ? t("ask.koQuestion", { title: chip.title }) : t(chip.questionKey);
@@ -493,8 +504,13 @@ export function Ask(): JSX.Element {
               type="button"
               disabled={ask.isPending || !answerAi.available}
               onClick={() => askExample(question)}
+              title={t("ask.examplesSendHint")}
               className="inline-flex min-w-0 items-center gap-1.5 rounded-pill border border-hairline px-2.5 py-1 text-[12px] text-muted hover:border-ink/30 hover:text-text disabled:opacity-50"
             >
+              {/* Das Zeichen sagt vor dem Klick: hier geht etwas raus. */}
+              <span aria-hidden="true" className="shrink-0 text-muted-2">
+                ↵
+              </span>
               <span className="min-w-0 max-w-[16rem] truncate">{question}</span>
               {expect ? (
                 <span

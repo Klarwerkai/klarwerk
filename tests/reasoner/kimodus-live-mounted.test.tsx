@@ -229,7 +229,7 @@ describe("Modus-Wechsel deterministisch → Modell spiegelt sich LIVE (ohne Remo
     expect(endpoints.reasoner.updateConfig).toHaveBeenCalledTimes(1);
     expect(configMock).toHaveBeenCalledTimes(2);
     // Live, ohne Reload: Badge zeigt jetzt den WAHREN Modus, Modus-Zeile „Modell".
-    expect(badge(container)).toBe("KI-Modus: Cloud");
+    expect(badge(container)).toBe("KI rechnet in der Cloud");
     expect(mode(container)).toBe("Modell");
     unmount();
   });
@@ -239,7 +239,7 @@ describe("Modus-Wechsel deterministisch → Modell spiegelt sich LIVE (ohne Remo
     configMock.mockResolvedValue(makeConfig("deterministic"));
 
     const { container, unmount } = await mount();
-    expect(badge(container)).toBe("KI-Modus: Cloud");
+    expect(badge(container)).toBe("KI rechnet in der Cloud");
     expect(mode(container)).toBe("Modell");
 
     await act(async () => {
@@ -266,7 +266,8 @@ describe("ben-Auflage B.1: status-Query refetcht live nach invalidateAiState (oh
 
     const { container, unmount } = await mountStatus();
     // Vorher: ein einziger initialer status-Fetch, Badge „Reasoner offline".
-    expect(reach(container)).toBe("Reasoner offline");
+    // AUFTRAG-mega51 BLOCK G1: „Reasoner" ist ein Fachwort — in der Oberfläche steht „KI-Modell".
+    expect(reach(container)).toBe("Kein KI-Modell");
     expect(statusMock).toHaveBeenCalledTimes(1);
 
     // Übernehmen → updateConfig + invalidateAiState → Refetch der status-Query.
@@ -278,7 +279,7 @@ describe("ben-Auflage B.1: status-Query refetcht live nach invalidateAiState (oh
     // Der zweite status-Aufruf (Refetch) ist der geforderte Beleg; die Pille kippt live.
     expect(endpoints.reasoner.updateConfig).toHaveBeenCalledTimes(1);
     expect(statusMock).toHaveBeenCalledTimes(2);
-    expect(reach(container)).toBe("Reasoner aktiv");
+    expect(reach(container)).toBe("KI-Modell antwortet");
     unmount();
   });
 });

@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ChevronDown, Download, RotateCw, Sparkles, Trash2 } from "lucide-react";
+import { ChevronDown, Download, RotateCw, Search, Sparkles, Trash2 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -47,7 +47,7 @@ import {
   toggleFacetValue,
 } from "../lib/facets";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
-import { koAuthorParts } from "../lib/koAuthor";
+import { AUTHOR_UNKNOWN_KEY, authorDisplayName, koAuthorParts } from "../lib/koAuthor";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import {
@@ -316,7 +316,12 @@ export function Library(): JSX.Element {
   }, [urlSeed, all.data]);
   // FR-LIF-04: Autor in jeder KO-Zeile sichtbar (Namen via Directory, Fallback ID).
   const dir = useDirectory();
-  const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
+  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
+  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
+  const nameOf = (uid: string): string =>
+    authorDisplayName(uid, dir.data?.find((d) => d.id === uid)?.name, (ref) =>
+      t(AUTHOR_UNKNOWN_KEY, { ref }),
+    );
   // SCRUM-357 / AG-14: Konfliktliste für die ehrliche „conflict-limited“-Reife je Treffer.
   const conflicts = useConflicts();
 
@@ -514,37 +519,77 @@ export function Library(): JSX.Element {
   };
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeader
-        kicker={t("lib.kicker")}
-        title={t("nav.library")}
-        actions={
-          <div className="flex items-center gap-2">
-            <HelpTip title={t("lib.help.filters.title")} body={t("lib.help.filters.body")} />
-            <Link to="/import">
-              <Button variant="ghost">{t("lib.reimport")}</Button>
-            </Link>
-            <select
-              aria-label={t("lib.exportFormat")}
-              value={exportFormat}
-              onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
-              className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
-            >
-              {EXPORT_FORMATS.map((fmt) => (
-                <option key={fmt} value={fmt}>
-                  {t(`lib.format.${fmt}`)}
-                </option>
-              ))}
-            </select>
-            <a href={exportUrl(exportFormat)} download={exportFilename(exportFormat)}>
-              <Button>
-                <Download size={15} />
-                {t("lib.export")}
-              </Button>
-            </a>
+    // AUFTRAG-mega51 BLOCK E: die Ergebnisspalte bekommt Platz. Der Rahmen wächst von `max-w-6xl`
+    // auf `max-w-7xl`, die Filterschiene schrumpft von 300px auf 248px (s. unten) — zusammen rund
+    // 200px mehr für den Titel, der im Erstnutzerlauf auf vier Zeilen umbrach.
+    <div className="mx-auto max-w-7xl">
+      <PageHeader kicker={t("lib.kicker")} title={t("nav.library")} />
+      {/* ==========================================================================================
+          AUFTRAG-mega51 BLOCK C — DIE BIBLIOTHEK IST ZUM SUCHEN DA, NICHT ZUM EXPORTIEREN.
+          ==========================================================================================
+          Im Seitenkopf standen „Re-Import (JSON)", eine Formatauswahl und ein dunkler „Export"-
+          Knopf; das Suchfeld steckte klein in der linken Filterschiene. Für eine Erstnutzerin war
+          die Bibliothek damit ein Datenwerkzeug.
+
+          DIE ENTSCHEIDUNG (C1): die Suche wird das Hauptbedienelement — ein breites Feld ganz oben,
+          über der Trefferliste, auf jeder Bildschirmbreite die erste Fläche nach der Überschrift.
+          Re-Import und Export stehen daneben als ruhiger Nebenweg: gleiche Route, gleiches
+          Verhalten, gleiche Beschriftung, nur nicht mehr der lauteste Knopf der Seite (C2).
+
+          WARUM UMZIEHEN STATT VERDOPPELN: ein zweites Suchfeld in der Schiene wäre ein zweiter Ort
+          für dieselbe Sache — zwei Felder, die dieselbe Zustandsvariable schreiben, und eine
+          doppelte Feld-Id im DOM. Die Schiene filtert, die Kopfzeile sucht. Das mobile Filterblatt
+          (mega47/48) ist unberührt: es zeigt weiter alle Filter, und das Suchfeld steht darüber auf
+          der Seite selbst — erreichbar, ohne das Blatt zu öffnen. */}
+      <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="min-w-[15rem] flex-1">
+          <label htmlFor="library-search" className="sr-only">
+            {t("lib.search")}
+          </label>
+          <div className="relative">
+            <Search
+              size={17}
+              aria-hidden="true"
+              className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-2"
+            />
+            <input
+              id="library-search"
+              type="search"
+              value={q}
+              onChange={(e) => {
+                resetWindow();
+                setQ(e.target.value);
+              }}
+              placeholder={t("lib.search")}
+              className="h-11 w-full rounded-input border border-hairline bg-surface pl-10 pr-3 text-[14px] outline-none placeholder:text-muted-2 focus:border-ink/30"
+            />
           </div>
-        }
-      />
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
+          <HelpTip title={t("lib.help.filters.title")} body={t("lib.help.filters.body")} />
+          <Link to="/import">
+            <Button variant="ghost">{t("lib.reimport")}</Button>
+          </Link>
+          <select
+            aria-label={t("lib.exportFormat")}
+            value={exportFormat}
+            onChange={(e) => setExportFormat(e.target.value as ExportFormat)}
+            className="h-9 rounded-input border border-hairline bg-surface px-2 text-[13px] text-text outline-none focus:border-ink/30"
+          >
+            {EXPORT_FORMATS.map((fmt) => (
+              <option key={fmt} value={fmt}>
+                {t(`lib.format.${fmt}`)}
+              </option>
+            ))}
+          </select>
+          <a href={exportUrl(exportFormat)} download={exportFilename(exportFormat)}>
+            <Button variant="ghost">
+              <Download size={15} />
+              {t("lib.export")}
+            </Button>
+          </a>
+        </div>
+      </div>
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
       {/* SCRUM-460 (VIP): Suche liefert nicht nur „dumme“ Treffer — bei aktiver Suche eine echte,
@@ -617,7 +662,7 @@ export function Library(): JSX.Element {
 
       {/* AUFTRAG-mega10 Block C: Schiene links, Ergebnis rechts. Auf schmalen Geräten fällt die
           Spalte weg — FacetFilter zeigt dort den Knopf „Filter (N)“ und ein Vollbild-Filterblatt. */}
-      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
+      <div className="grid items-start gap-4 lg:grid-cols-[248px_minmax(0,1fr)]">
         <FacetFilter
           configs={LIBRARY_FILTER_CONFIGS}
           groups={groups}
@@ -650,24 +695,6 @@ export function Library(): JSX.Element {
           }}
           rangeLabelKey="lib.facet.rangeLabel"
           rangeAfterKey="tag"
-          searchSlot={
-            <>
-              <label htmlFor="library-search" className="sr-only">
-                {t("lib.search")}
-              </label>
-              <input
-                id="library-search"
-                type="search"
-                value={q}
-                onChange={(e) => {
-                  resetWindow();
-                  setQ(e.target.value);
-                }}
-                placeholder={t("lib.search")}
-                className="h-9 w-full rounded-input border border-hairline bg-surface px-2.5 text-[13px] outline-none placeholder:text-muted-2 focus:border-ink/30"
-              />
-            </>
-          }
         />
         <div className="min-w-0">
           {/* Block B Punkt 5: gespeicherte Sichten NACH OBEN — anklickbar über der Trefferliste,
@@ -942,12 +969,19 @@ export function Library(): JSX.Element {
                             {/* WP-UX-WOW-1 U4: „Validiert“ neben einer 0-Leiste verwirrt Laien —
                               validiert + Trust 0 bekommt statt der leeren Leiste den nüchternen
                               Hinweis (Tooltip erklärt Trust); die Leiste erst ab Trust > 0. */}
-                            {deriveStatus(k) === "validiert" && k.trust === 0 ? (
+                            {/* AUFTRAG-mega51 BLOCK D2: die Bedingung las `k.trust`, angezeigt wird
+                              aber `k.confidence` (die Leiste rechts). Bei `trust > 0` und
+                              `confidence = 0` blieb die unerklärte Null deshalb stehen — genau der
+                              Fall, den WP-UX-WOW-1 U4 verhindern wollte. Bedingung und Anzeige
+                              lesen jetzt DENSELBEN Wert, und der Erklärtext spricht folgerichtig
+                              von der Sicherheit statt von Trust (die Trust-Texte bleiben unberührt
+                              — sie gehören zur eigenen Scheibe). */}
+                            {deriveStatus(k) === "validiert" && k.confidence === 0 ? (
                               <span
-                                title={t("lib.trustNoneHint")}
+                                title={t("lib.confidenceNoneHint")}
                                 className="hidden text-[11px] text-muted-2 sm:block"
                               >
-                                {t("lib.trustNone")}
+                                {t("lib.confidenceNone")}
                               </span>
                             ) : (
                               <div className="hidden sm:block">

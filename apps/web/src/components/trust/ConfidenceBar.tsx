@@ -34,11 +34,27 @@ export function ConfidenceBar({
   const { t } = useTranslation();
   const v = Math.max(0, Math.min(100, Math.round(value)));
   const q = quality(v);
+  // AUFTRAG-mega51 BLOCK D1: der Balken und die nackte Zahl standen an jeder Trefferzeile OHNE
+  // jede Beschriftung — kein `title`, kein `aria-label`, keine Rolle. Wer die Bibliothek zum
+  // ersten Mal sieht, liest eine Zahl zwischen 0 und 100 und weiß nicht, wovon sie handelt; eine
+  // Vorlesehilfe las gar nichts. Beides sagt jetzt, was der Wert IST.
+  const beschriftung = t("evidence.confidenceLabel", { pct: v });
   return (
     // mega40 E: `kw-confidence` — Stil-Anker; das modern-Thema dämpft die Anzeige rein optisch
     // (keine Umbenennung, kein neuer Text, kein Ring — die Vertrauenswert-Scheibe bleibt draußen).
-    <div className="kw-confidence flex items-center gap-2">
-      <div className="h-1.5 w-28 overflow-hidden rounded-full bg-hairline">
+    <div className="kw-confidence flex items-center gap-2" title={beschriftung}>
+      {/* `tabIndex={-1}`: die Rolle „progressbar" gilt der Vorlesehilfe, nicht der Tastatur — der
+          Balken ist nichts zum Bedienen. -1 macht ihn programmatisch ansprechbar, ohne die
+          Trefferliste mit hundert zusätzlichen Tab-Stopps zu belegen. */}
+      <div
+        role="progressbar"
+        tabIndex={-1}
+        aria-label={beschriftung}
+        aria-valuenow={v}
+        aria-valuemin={0}
+        aria-valuemax={100}
+        className="h-1.5 w-28 overflow-hidden rounded-full bg-hairline"
+      >
         <div className="h-full rounded-full" style={{ width: `${v}%`, background: q.color }} />
       </div>
       {percentPhrase ? (

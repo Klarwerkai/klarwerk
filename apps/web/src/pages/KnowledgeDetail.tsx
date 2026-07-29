@@ -94,6 +94,7 @@ import {
 import { containsExternalUnchecked } from "../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
+import { AUTHOR_UNKNOWN_KEY, authorDisplayName } from "../lib/koAuthor";
 import { koCta } from "../lib/koCta";
 // WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
 import { formatKoTimestamp } from "../lib/koDates";
@@ -203,7 +204,12 @@ export function KnowledgeDetail(): JSX.Element {
   const pending = useLifecyclePending();
   const conflicts = useConflicts();
   const dir = useDirectory();
-  const nameOf = (uid: string): string => dir.data?.find((d) => d.id === uid)?.name || uid;
+  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
+  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
+  const nameOf = (uid: string): string =>
+    authorDisplayName(uid, dir.data?.find((d) => d.id === uid)?.name, (ref) =>
+      t(AUTHOR_UNKNOWN_KEY, { ref }),
+    );
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
   // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) für den ausführlichen Inhalt im Edit.

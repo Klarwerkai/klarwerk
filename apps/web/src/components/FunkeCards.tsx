@@ -12,9 +12,9 @@
 // org-weit sichtbar gemacht (und in Browser-Historie/URL getragen). Die Startseite zeigt jetzt NUR
 // die anonyme offene Zahl; Freitext erst NACH bewusst berechtigtem Einstieg (Risiko & Lücken).
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import type { MyImpact } from "../api/types";
 import type { KnowledgeCapital } from "../lib/funke";
+import { RoleLink } from "./RoleLink";
 
 function NumberTile({ value, label }: { value: number; label: string }): JSX.Element {
   return (
@@ -53,22 +53,32 @@ export function OpenGapsSummary({ total }: { total: number }): JSX.Element | nul
     return null;
   }
   return (
-    <Link
+    // AUFTRAG-mega51 BLOCK A: `/risiko` trägt `minRole: "controller"` — diese Kachel bot es bis
+    // hierher JEDER Rolle als Weg an und warf eine Expertin beim Klick auf /start zurück. Die Zahl
+    // bleibt (sie ist wahr), der Weg entfällt für die Rollen, die dort nichts ausrichten können.
+    <RoleLink
       to="/risiko"
-      data-testid="open-gaps-summary"
-      className="flex items-center justify-between gap-3 rounded-card border border-hairline bg-surface px-3 py-2.5 hover:border-ink/30"
+      testId="open-gaps-summary"
+      className="flex items-center justify-between gap-3 rounded-card border border-hairline bg-surface px-3 py-2.5"
+      hoverClassName="hover:border-ink/30"
     >
-      <div className="min-w-0">
-        <h2 className="text-[14px] font-semibold text-ink">{t("funke.gaps.title")}</h2>
-        {/* Nur die anonyme Bestandssumme — nie eine gespeicherte Gap-Frage. */}
-        <p className="mt-0.5 font-mono text-[12px] text-muted">
-          {t("funke.gaps.count", { n: total })}
-        </p>
-      </div>
-      <span className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-ink px-2.5 py-1 text-[11.5px] font-semibold text-ink">
-        {t("ask.toGaps")} <span aria-hidden="true">→</span>
-      </span>
-    </Link>
+      {(erreichbar) => (
+        <>
+          <div className="min-w-0">
+            <h2 className="text-[14px] font-semibold text-ink">{t("funke.gaps.title")}</h2>
+            {/* Nur die anonyme Bestandssumme — nie eine gespeicherte Gap-Frage. */}
+            <p className="mt-0.5 font-mono text-[12px] text-muted">
+              {t("funke.gaps.count", { n: total })}
+            </p>
+          </div>
+          {erreichbar ? (
+            <span className="inline-flex shrink-0 items-center gap-1 rounded-btn border border-ink px-2.5 py-1 text-[11.5px] font-semibold text-ink">
+              {t("ask.toGaps")} <span aria-hidden="true">→</span>
+            </span>
+          ) : null}
+        </>
+      )}
+    </RoleLink>
   );
 }
 

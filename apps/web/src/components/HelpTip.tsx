@@ -1,7 +1,7 @@
 import { HelpCircle } from "lucide-react";
 import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { RoleLink } from "./RoleLink";
 
 // Inline-Hilfe (FE-FND-05): „?"-Icon öffnet ein Popover mit Erklärung und Link
 // ins Hilfe-Center. Wiederverwendbar an Formularfeldern.
@@ -61,13 +61,16 @@ export function HelpTip({ title, body }: { title: string; body: string }): JSX.E
           >
             <div className="text-[13px] font-semibold text-ink">{title}</div>
             <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">{body}</p>
-            <Link
+            {/* AUFTRAG-mega51 BLOCK A: `/hilfe` trägt `minRole: "viewer"` — RoleLink sperrt hier
+                also nie. Dasselbe Tor wie alle übrigen Wege, damit die Regel ausnahmefrei bleibt. */}
+            <RoleLink
               to="/hilfe"
               onClick={() => setOpen(false)}
-              className="mt-2 inline-block text-[12.5px] font-semibold text-brand-text hover:opacity-80"
+              className="mt-2 inline-block text-[12.5px] font-semibold text-brand-text"
+              hoverClassName="hover:opacity-80"
             >
-              {t("help.openCenter")} ›
-            </Link>
+              {() => `${t("help.openCenter")} ›`}
+            </RoleLink>
           </div>
         </>
       ) : null}

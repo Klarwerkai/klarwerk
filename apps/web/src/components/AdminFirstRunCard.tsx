@@ -1,7 +1,6 @@
 import { ArrowRight, Check, CheckSquare, Plus, ShieldCheck, Sparkles } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { useAnalytics, useReasonerConfig } from "../api/hooks";
 import {
   type FirstRunProgress,
@@ -13,6 +12,7 @@ import {
   kiStateTone,
   markAdminFirstRunSeen,
 } from "../lib/adminFirstRun";
+import { RoleLink } from "./RoleLink";
 import { Button, Card } from "./ui";
 
 // SCRUM-429 (Pedi 03.07., VIP): ruhige Erststart-Führung für den neuen Admin. Nur beim ersten
@@ -119,34 +119,43 @@ export function AdminFirstRunCard(): JSX.Element | null {
         {STEPS.map((step) => {
           const done = firstRunStepDone(step.id, progress);
           return (
-            <Link
+            // AUFTRAG-mega51 BLOCK A: diese Karte erscheint nur für Admins, RoleLink sperrt hier
+            // also nie. Dasselbe Tor wie alle übrigen Wege der Startseite — ohne Ausnahme.
+            <RoleLink
               key={step.to}
               to={step.to}
-              className={`group rounded-card border p-3 hover:border-ink/25 ${
+              className={`group rounded-card border p-3 ${
                 done ? "border-trust-pos-fill/40 bg-trust-pos-bg/40" : "border-hairline bg-surface"
               }`}
+              hoverClassName="hover:border-ink/25"
             >
-              <span className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
-                {done ? (
-                  <Check size={14} className="text-trust-pos-text" />
-                ) : (
-                  <step.icon size={14} className="text-muted-2" />
-                )}
-                {t(step.titleKey)}
-                {done ? (
-                  <span className="rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-pos-text">
-                    {t("adm.firstrun.doneBadge")}
+              {(erreichbar) => (
+                <>
+                  <span className="flex items-center gap-1.5 text-[13px] font-semibold text-text">
+                    {done ? (
+                      <Check size={14} className="text-trust-pos-text" />
+                    ) : (
+                      <step.icon size={14} className="text-muted-2" />
+                    )}
+                    {t(step.titleKey)}
+                    {done ? (
+                      <span className="rounded-pill bg-trust-pos-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-pos-text">
+                        {t("adm.firstrun.doneBadge")}
+                      </span>
+                    ) : null}
+                    {erreichbar ? (
+                      <ArrowRight
+                        size={13}
+                        className="ml-auto text-muted-2 transition-transform group-hover:translate-x-0.5"
+                      />
+                    ) : null}
                   </span>
-                ) : null}
-                <ArrowRight
-                  size={13}
-                  className="ml-auto text-muted-2 transition-transform group-hover:translate-x-0.5"
-                />
-              </span>
-              <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
-                {t(step.bodyKey)}
-              </span>
-            </Link>
+                  <span className="mt-1 block text-[11.5px] leading-relaxed text-muted">
+                    {t(step.bodyKey)}
+                  </span>
+                </>
+              )}
+            </RoleLink>
           );
         })}
       </div>

@@ -182,8 +182,9 @@ describe("Pedi 05.07.: kiHeaderStatus — DSGVO immer „nein“, außer interne
   // Land + DSGVO wandern in den Tooltip (Ehrlichkeit bleibt: der Hinweistext nennt DSGVO klar).
   it("Pedi-Copy: KI-Modus-Labels (Cloud/Cloud+Lokal) + sichtbarer deterministischer Ersatzmodus", async () => {
     await i18n.changeLanguage("de");
-    expect(i18n.t(KI_HEADER_TEXT.external)).toBe("KI-Modus: Cloud");
-    expect(i18n.t(KI_HEADER_TEXT.mixed)).toBe("KI-Modus: Cloud + Lokal");
+    // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
+    expect(i18n.t(KI_HEADER_TEXT.external)).toBe("KI rechnet in der Cloud");
+    expect(i18n.t(KI_HEADER_TEXT.mixed)).toBe("KI rechnet in der Cloud und im eigenen Haus");
     expect(i18n.t(KI_HEADER_TEXT.none)).toBe("Keine KI");
     expect(i18n.t(KI_HEADER_TEXT.noneSubtitle)).toBe("deterministischer Ersatzmodus");
     // Der DSGVO-Status bleibt als Detail (Tooltip/Hinweis) klar erhalten.

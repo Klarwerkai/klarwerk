@@ -1,8 +1,8 @@
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { useRole } from "../app/RoleContext";
 import { type EmptyStateContext, emptyStateActions } from "../lib/emptyStateActions";
 import { knowledgeStory } from "../lib/knowledgeStory";
+import { RoleLink } from "./RoleLink";
 
 // SCRUM-181: kompakte „nächste Schritte"-Links für leere Übersichten. Rein additiv, rollen-/
 // Stufe-2-gefiltert über emptyStateActions. KO-interne Navigation, keine Fremd-URLs.
@@ -30,13 +30,17 @@ export function EmptyStateCtas({ context }: { context: EmptyStateContext }): JSX
       <p className="mt-1 text-center text-[12px] leading-relaxed text-muted">{t(story.leadKey)}</p>
       <div className="mt-2 flex flex-wrap justify-center gap-2">
         {actions.map((a) => (
-          <Link
+          // AUFTRAG-mega51 BLOCK A: die Kandidaten sind über `emptyStateActions` bereits rollen-
+          // gefiltert — RoleLink sperrt hier also nie. Der Weg läuft trotzdem durch dasselbe Tor,
+          // damit die Regel „kein roher Link auf der Startseite" ohne Ausnahme prüfbar bleibt.
+          <RoleLink
             key={a.to}
             to={a.to}
-            className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-text hover:border-ink/30 hover:text-ai"
+            className="rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-text"
+            hoverClassName="hover:border-ink/30 hover:text-ai"
           >
-            {t(a.labelKey)}
-          </Link>
+            {() => t(a.labelKey)}
+          </RoleLink>
         ))}
       </div>
       {/* Ehrlicher Dauerhinweis: Wissen ist erst nach der Prüfung gesichert. */}

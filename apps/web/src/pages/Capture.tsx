@@ -114,6 +114,7 @@ import {
   initialCaptureWorkspaceOpen,
   isCaptureFirstRun,
   isExpertMode,
+  isRecommendedMode,
   markCaptureIntroSeen,
 } from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
@@ -3783,6 +3784,9 @@ export function Capture(): JSX.Element {
               Umschalter — keine zweite Aufklapp-Ebene mehr. Reine Sichtbarkeit — switchMode/Funktionen
               sind unverändert. */}
             <div className="flex flex-wrap items-center gap-1.5">
+              {/* AUFTRAG-mega51 BLOCK B: EIN Weg ist der empfohlene und sieht auch so aus; die
+                  übrigen bleiben vollständig erreichbar, nur ruhiger. Welcher es ist, entscheidet
+                  lib/captureEntry.ts aus dem Bestand (Begründung dort) — nicht diese Ansicht. */}
               {NARRATE_MODES.map((m) => (
                 <button
                   key={m}
@@ -3791,13 +3795,20 @@ export function Capture(): JSX.Element {
                   title={
                     m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined
                   }
-                  className={`rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
+                  className={`inline-flex items-center gap-1.5 rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
                     mode === m
                       ? "bg-ink text-white"
-                      : "border border-hairline text-muted hover:text-text"
+                      : isRecommendedMode(m)
+                        ? "border border-ink text-ink hover:bg-page"
+                        : "border border-hairline text-muted-2 hover:text-text"
                   }`}
                 >
                   {t(`capture.mode.${m}`)}
+                  {isRecommendedMode(m) && mode !== m ? (
+                    <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted">
+                      {t(CAPTURE_ENTRY_TEXT.recommendedBadge)}
+                    </span>
+                  ) : null}
                   {m === "diktat" && !speechSupported ? (
                     <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
                   ) : null}

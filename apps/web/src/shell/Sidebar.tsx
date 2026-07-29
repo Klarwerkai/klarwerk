@@ -247,7 +247,12 @@ function RoleSwitcher(): JSX.Element | null {
         </>
       ) : null}
       {showStufe2 ? (
-        <label className="mt-2 flex cursor-pointer items-center gap-2 px-1 py-1 text-[11px] text-muted">
+        // AUFTRAG-mega51 BLOCK G1: „Stufe 2" ist ein Hausbegriff — für eine Erstnutzerin sagt die
+        // Zahl nichts. Der Schalter bleibt, wie er ist, trägt aber jetzt den erklärenden Halbsatz.
+        <label
+          title={t("role.stage2Hint")}
+          className="mt-2 flex cursor-pointer items-center gap-2 px-1 py-1 text-[11px] text-muted"
+        >
           <input
             type="checkbox"
             checked={stufe2}

@@ -1,12 +1,10 @@
-import { Plus } from "lucide-react";
 import type { ComponentType } from "react";
 import { Navigate, Route, Routes } from "react-router-dom";
 import { useRole } from "./app/RoleContext";
-import { ALL_ITEMS, HOME_ROUTE, type NavItem, roleAllows } from "./app/navigation";
+import { GUARDED_ITEMS, HOME_ROUTE, type NavItem, roleAllows } from "./app/navigation";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 // WP-UX-WOW-1 U9: erklärende Karte statt stiller Stufe-2-Umleitung.
 import { Stage2Notice } from "./components/Stage2Notice";
-import { CAPTURE_FRONT_DOOR_ROUTE } from "./lib/captureFrontDoor";
 import { Admin } from "./pages/Admin";
 import { Analytics } from "./pages/Analytics";
 import { Ask } from "./pages/Ask";
@@ -64,35 +62,9 @@ const PAGES: Record<string, ComponentType> = {
   profil: Profile,
 };
 
-const CAPTURE_FRONT_DOOR_ITEM: NavItem = {
-  id: "captureFrontDoor",
-  path: CAPTURE_FRONT_DOOR_ROUTE,
-  labelKey: "nav.capture",
-  icon: Plus,
-  minRole: "experte",
-  section: "7.3",
-  shot: "03",
-};
-
-const DUPLICATE_COMPARE_ITEM: NavItem = {
-  id: "duplicateCompare",
-  path: "/duplikate/:id/vergleich",
-  labelKey: "nav.duplicates",
-  icon: Plus,
-  minRole: "controller",
-  section: "7.7",
-  shot: "11",
-};
-
-const CONFLICT_COMPARE_ITEM: NavItem = {
-  id: "conflictCompare",
-  path: "/konflikte/:id/vergleich",
-  labelKey: "nav.conflicts",
-  icon: Plus,
-  minRole: "controller",
-  section: "7.7",
-  shot: "11",
-};
+// AUFTRAG-mega51 BLOCK A: die drei bewachten Deep-Link-Routen standen hier als eigene Tabelle —
+// unsichtbar für jeden, der „darf diese Rolle dorthin?" an der Navigationsquelle fragt. Sie stehen
+// jetzt in app/navigation.ts neben ALL_ITEMS (`GUARDED_ITEMS`); hier wird nur noch darüber geroutet.
 
 // Rollen-Gate (RB-2): Deep-Link auf Unerlaubtes → zurück auf Start.
 function Guarded({ item }: { item: NavItem }): JSX.Element {
@@ -117,18 +89,9 @@ export function AppRoutes(): JSX.Element {
   return (
     <Routes>
       <Route path="/" element={<Navigate to={HOME_ROUTE} replace />} />
-      {ALL_ITEMS.map((item) => (
+      {GUARDED_ITEMS.map((item) => (
         <Route key={item.id} path={item.path} element={<Guarded item={item} />} />
       ))}
-      <Route
-        path={CAPTURE_FRONT_DOOR_ITEM.path}
-        element={<Guarded item={CAPTURE_FRONT_DOOR_ITEM} />}
-      />
-      <Route
-        path={DUPLICATE_COMPARE_ITEM.path}
-        element={<Guarded item={DUPLICATE_COMPARE_ITEM} />}
-      />
-      <Route path={CONFLICT_COMPARE_ITEM.path} element={<Guarded item={CONFLICT_COMPARE_ITEM} />} />
       <Route path="/wissen/:id" element={<KnowledgeDetail />} />
       {/* SCRUM-527 (Design-Batch B): zuhörende „Wissen erfassen"-Erstversion — Deep-Link zum Browser-
           Check durch Pedi (noch nicht in der Navigation, um die bestehende Erfassung nicht zu berühren). */}

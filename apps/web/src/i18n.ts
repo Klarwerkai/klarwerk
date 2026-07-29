@@ -61,6 +61,9 @@ const de = {
   "role.previewNote": "Vorschau als {{role}} — du bleibst Admin.",
   "role.backToAdmin": "Zur Admin-Ansicht",
   "role.stage2": "Erweiterte Module · Stufe 2",
+  // AUFTRAG-mega51 BLOCK G1: „Stufe 2" ist ein Hausbegriff — hier steht, was er bedeutet.
+  "role.stage2Hint":
+    "Stufe 2 sind zusätzliche Module über den Kernablauf hinaus — Qualitätssicherung, Wissenskapital und Ausgabe-Formate. Eine Admin-Person schaltet sie frei.",
   "role.short.viewer": "Viewer",
   "role.short.experte": "Experte",
   "role.short.controller": "Contr.",
@@ -83,22 +86,25 @@ const de = {
   "topbar.toDesktop": "Zur Vollversion",
   "topbar.notifications": "Benachrichtigungen",
   "topbar.notificationsPlaceholder": "Noch keine Benachrichtigungen. Echte Quelle folgt (#63).",
-  "topbar.reasonerActive": "Reasoner aktiv",
-  "topbar.reasonerOffline": "Reasoner offline",
+  // AUFTRAG-mega51 BLOCK G1: „Reasoner" ist ein Fachwort — in der Oberfläche steht das, was
+  // gemeint ist. Die SCHLÜSSEL und der Bezeichner im Code bleiben unverändert.
+  "topbar.reasonerActive": "KI-Modell antwortet",
+  "topbar.reasonerOffline": "Kein KI-Modell",
   // PAKET 2 (D-AISTATE, Pedi 23.07.): ehrliche Erreichbarkeit statt bloßer Konfiguration.
   "topbar.reasonerActiveHint": "Ein KI-Modell hat zuletzt erreichbar geantwortet.",
-  "topbar.reasonerUnverified": "Reasoner ungeprüft",
+  "topbar.reasonerUnverified": "KI-Modell ungeprüft",
   "topbar.reasonerUnverifiedHint":
     "Ein KI-Modell ist konfiguriert, aber die Erreichbarkeit ist noch nicht geprüft.",
-  "topbar.reasonerUnreachable": "Reasoner nicht erreichbar",
+  "topbar.reasonerUnreachable": "KI-Modell nicht erreichbar",
   "topbar.reasonerUnreachableHint":
     "Ein KI-Modell ist konfiguriert, war zuletzt aber nicht erreichbar (z. B. Schlüssel abgelaufen, Dienst aus). Aufrufe laufen deterministisch.",
   "topbar.reasonerOfflineHint":
     "Kein KI-Modell verfügbar — es läuft der deterministische Ersatzmodus.",
   // PAKET 2: Achse 1 — externe Wissensabfrage (Web-Suche), getrennt vom KI-Modell.
-  "topbar.external.blocked": "Extern: Blockiert",
-  "topbar.external.search": "Extern: Suche",
-  "topbar.external.open": "Extern: Offen",
+  // AUFTRAG-mega51 BLOCK G1: „Extern" allein sagt nicht, was extern ist.
+  "topbar.external.blocked": "Web-Suche: gesperrt",
+  "topbar.external.search": "Web-Suche: erlaubt",
+  "topbar.external.open": "Web-Suche: offen",
   "topbar.external.hint":
     "Externe Wissensabfrage (Web-Suche) — eine EIGENE Achse, nicht das KI-Modell. Steuert nur die Web-Suche/öffentliche Anreicherung, nicht den Reasoner.",
   // Pedi 05.07.: Header-Pille „In welcher KI bin ich?" + Herkunftsland + DSGVO-Bestätigung.
@@ -110,9 +116,10 @@ const de = {
     "Zeigt, ob die KI gerade antwortet. „Ungeprüft“ heißt nur: seit dem Start ist noch keine Antwort zurückgekommen — es ist kein Fehler.",
   "topbar.plain.external":
     "Zeigt, ob Klarwerk beim Antworten auch im offenen Internet nachsehen darf. „Blockiert“ heißt: nein, es bleibt bei eurem eigenen Wissen.",
-  "topbar.kiExternal": "KI-Modus: Cloud",
-  "topbar.kiInternal": "KI-Modus: Lokal",
-  "topbar.kiMixed": "KI-Modus: Cloud + Lokal",
+  // AUFTRAG-mega51 BLOCK G1: „KI-Modus" ist eine Einstellung; gemeint ist der ORT.
+  "topbar.kiExternal": "KI rechnet in der Cloud",
+  "topbar.kiInternal": "KI rechnet im eigenen Haus",
+  "topbar.kiMixed": "KI rechnet in der Cloud und im eigenen Haus",
   "topbar.kiNone": "Keine KI",
   "topbar.kiNoneSubtitle": "deterministischer Ersatzmodus",
   "topbar.kiDsgvoYes": "DSGVO: ja",
@@ -159,6 +166,8 @@ const de = {
   "quality.reliable": "Belastbar",
   "quality.assured": "Gesichert",
   "evidence.percentSure": "{{pct}} % sicher",
+  // AUFTRAG-mega51 BLOCK D1: der Balken sagt jetzt, WAS er zeigt (title + aria-label).
+  "evidence.confidenceLabel": "Sicherheit: {{pct}} von 100",
   "evidence.sourceDate": "Quelle vom {{date}}",
   "evidence.noDate": "kein Quelldatum",
   "evidence.noSource": "keine Quelle hinterlegt",
@@ -402,7 +411,7 @@ const de = {
     "Die Reife-Plakette zeigt, ob ein Treffer direkt nutzbar ist oder in die Prüfung gehört.",
   "kg.ask.title": "Antworten sind quellengebunden",
   "kg.ask.body":
-    "Ask nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
+    "Die Fragen-Seite nutzt den Wissensbestand; offene oder ungeprüfte Quellen werden markiert und zur Validierung geführt.",
   "kg.secured.label": "Gesichert",
   "kg.secured.body":
     "Validiertes Wissen ist nutzbar und bleibt über Quellen, Trust und Version nachvollziehbar.",
@@ -447,11 +456,15 @@ const de = {
   "work.validation": "Offene Validierungen",
   "work.learning": "Offene Lernpfad-Schritte",
   "start.allTasks": "Alle Aufgaben →",
+  // AUFTRAG-mega51 BLOCK A: was die Rolle nicht öffnen kann, wird als Lage gezeigt — nicht als Weg.
+  "roleLink.noReach": "Kein Zugriff",
+  "roleLink.noReachHint":
+    "Diese Fläche ist für deine Rolle nicht freigegeben. Die Angabe bleibt stehen, weil sie stimmt — nur der Weg dorthin ist für dich zu.",
   "start.todoEmpty": "Nichts offen. Gut gemacht.",
   "start.todoLoading": "Arbeitsübersicht wird geladen …",
   "start.stufe2.title": "Erweiterte Funktionen (Stufe 2)",
   "start.stufe2.body":
-    "Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}' unten in der Seitenleiste ein.",
+    "Stufe 2 sind zusätzliche Module über den Kernablauf hinaus. Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}' unten in der Seitenleiste ein.",
   "task.kicker": "Aufgaben",
   "task.critical": "Kritisch",
   "task.today": "Heute",
@@ -1270,6 +1283,8 @@ const de = {
   "capture.file.purgeUnselectedKeep": "Behalten",
   // SCRUM-384 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg, Formular als Expertenpfad.
   "capture.entry.narrateKicker": "Erzähl dein Wissen — die KI strukturiert, du prüfst",
+  // AUFTRAG-mega51 BLOCK B: der empfohlene Erzählweg ist sichtbar einer — die übrigen bleiben.
+  "capture.entry.recommendedBadge": "Empfohlen",
   "capture.entry.expertToggle": "Expertenmodus: Formular direkt ausfüllen",
   "capture.entry.expertHint":
     "Für Routinierte: alle Felder direkt ausfüllen — gleiche Felder, gleicher Prüfweg. Der geführte Erzähl-Einstieg bleibt jederzeit erreichbar.",
@@ -1693,6 +1708,8 @@ const de = {
   "ask.demoPrefillHint":
     "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Trust entscheiden, nichts wird automatisch gesichert.",
   "ask.examplesLabel": "Beispiele:",
+  // AUFTRAG-mega51 BLOCK H: der Klick startet sofort eine echte Anfrage — das steht vorher da.
+  "ask.examplesSendHint": "Ein Klick fragt sofort — das ist eine echte Anfrage an die KI.",
   "ask.example.valve": "Was tun, wenn Ventil X bei Überdruck schließen muss?",
   "ask.example.filter": "Wie oft muss Filter F3 geprüft werden?",
   "ask.example.dosing": "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
@@ -2012,6 +2029,9 @@ const de = {
   "ko.transferTitle": "Autor übergeben",
   "ko.transferOriginal": "Originalautor",
   "ko.author": "Autor",
+  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag steht eine ehrliche Auskunft statt der
+  // rohen Kennung — mit kurzem Merkmal, damit zwei Unbekannte nicht wie eine Person aussehen.
+  "ko.authorUnknown": "Unbekannte Person ({{ref}})",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",
@@ -2280,7 +2300,8 @@ const de = {
   "start.livewall.helpedToday": "heute geholfen: {{n}}",
   "start.livewall.savedEmpty": "Noch nichts erfasst — der erste Beitrag erscheint hier.",
   "start.livewall.helpedEmpty": "Noch keine „hat geholfen“-Rückmeldung.",
-  "con.kicker": "Conflict Board",
+  // AUFTRAG-mega51 BLOCK G1: DE und NL trugen hier die englische Bezeichnung.
+  "con.kicker": "Konflikt-Übersicht",
   "con.title": "Konflikte klären — ohne Wissen zu verlieren",
   "con.intro":
     "Widersprüche werden gegenübergestellt und klassifiziert. Nur Wahrheitskonflikte lösen den menschlichen Eskalationspfad aus.",
@@ -2779,6 +2800,11 @@ const de = {
   "lib.trustNone": "Noch keine Nutzungs-Bewertungen",
   "lib.trustNoneHint":
     "Trust wächst durch Nutzung und Bewertungen. 0 heißt nur: noch keine Rückmeldungen — nicht, dass der Inhalt schlecht ist.",
+  // AUFTRAG-mega51 BLOCK D2: der Sonderfall der Trefferzeile liest jetzt denselben Wert, den er
+  // anzeigt (confidence) — deshalb spricht sein Text von der Sicherheit, nicht von Trust.
+  "lib.confidenceNone": "Sicherheit noch nicht bewertet",
+  "lib.confidenceNoneHint":
+    "Die Sicherheit sagt, wie belastbar ein Inhalt eingestuft ist (0 bis 100). 0 heißt: noch nicht bewertet — nicht, dass der Inhalt falsch ist.",
   "con.emptyWhat":
     "Ein Konflikt entsteht, wenn zwei Beiträge sich fachlich widersprechen — zum Beispiel zwei verschiedene Grenzwerte für dieselbe Anlage.",
   "con.emptyHow":
@@ -2788,7 +2814,7 @@ const de = {
   "con.emptyExamplesCta": "Beispielpakete öffnen",
   "stage2.gate.title": "Erweiterte Funktionen (Stufe 2)",
   "stage2.gate.body":
-    "Dieses Modul gehört zu den Erweiterten Funktionen (Stufe 2). Sie sind gerade ausgeschaltet — deshalb ist dieser Bereich noch nicht sichtbar.",
+    "Dieses Modul gehört zu den Erweiterten Funktionen — im Haus „Stufe 2“ genannt: zusätzliche Module über den Kernablauf hinaus. Sie sind gerade ausgeschaltet, deshalb ist dieser Bereich noch nicht sichtbar.",
   "stage2.gate.enable": "Stufe 2 jetzt einschalten",
   "stage2.gate.adminOnly":
     "Stufe 2 kann eine Admin-Person über den Schalter in der Seitenleiste einschalten.",
@@ -2966,9 +2992,14 @@ const de = {
     "Über die Reichweite der Konflikt- und Duplikaterkennung liegt keine Aussage vor. Solange nicht belegt ist, dass vollständig geprüft wurde, sagt die Zahl der gefundenen Konflikte nichts über den Bestand.",
   "health.conflictUnproven.known":
     "Bekannt sind {{count}} offene Konflikte ({{penalty}} von höchstens {{max}} Punkten Abzug). Dieser Abzug ist sicher; der Rest bis zum Höchstwert ist die Unsicherheit.",
-  "risk.busfactor": "Bus-Faktor (Einzelquellen-Risiko)",
+  // AUFTRAG-mega51 BLOCK G1: die verständliche Bezeichnung führt, der Hausbegriff folgt.
+  "risk.busfactor": "Einzelquellen-Risiko (Bus-Faktor)",
   "risk.busEmpty": "Keine Risikodaten.",
   "risk.experts": "Experten",
+  // AUFTRAG-mega51 BLOCK F1: gezählte Form — „1 Experte" statt „1 Experten" (Bauform wie
+  // lib.facet.showResults aus mega34).
+  "risk.expertsCount_one": "{{count}} Experte",
+  "risk.expertsCount_other": "{{count}} Experten",
   // Consultant-System (Experten-Matching): entkitschter Ton, kein Hero-Wording, keine Zahlen/Rangfolge.
   "expertise.title": "Wen einbeziehen",
   "expertise.intro":
@@ -3027,7 +3058,7 @@ const de = {
   "ana.exec.validatedHint": "geprüfte, gesicherte Objekte",
   "ana.exec.openReviews": "Offene Prüfungen",
   "ana.exec.openReviewsHint": "warten auf Validierung",
-  "ana.exec.busFactor": "Bus-Faktor-Risiko",
+  "ana.exec.busFactor": "Einzelquellen-Risiko",
   "ana.exec.busFactorHint": "Kategorien mit nur einer Quelle",
   "ana.exec.rescued": "Gerettete Lücken",
   "ana.exec.rescuedHint": "geschlossene Wissenslücken",
@@ -3915,7 +3946,7 @@ const de = {
     "Wird als Entwurf gesichert — jederzeit fortsetzbar. Zur Prüfung geht er erst, wenn du „Prüfen / Einreichen“ wählst; nichts wird automatisch validiert.",
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
-    "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — dieser Canvas ist der schnelle Einstieg.",
+    "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
   "fd.toastSaved": "Entwurf gespeichert.",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
@@ -4057,6 +4088,8 @@ const en: typeof de = {
   "role.previewNote": "Preview as {{role}} — you stay Admin.",
   "role.backToAdmin": "Back to admin view",
   "role.stage2": "Advanced modules · Stage 2",
+  "role.stage2Hint":
+    "Stage 2 are additional modules beyond the core flow — quality assurance, knowledge capital and output formats. An admin enables them.",
   "role.short.viewer": "Viewer",
   "role.short.experte": "Expert",
   "role.short.controller": "Contr.",
@@ -4077,19 +4110,19 @@ const en: typeof de = {
   "topbar.toDesktop": "To full version",
   "topbar.notifications": "Notifications",
   "topbar.notificationsPlaceholder": "No notifications yet. Real source coming (#63).",
-  "topbar.reasonerActive": "Reasoner active",
-  "topbar.reasonerOffline": "Reasoner offline",
+  "topbar.reasonerActive": "AI model responding",
+  "topbar.reasonerOffline": "No AI model",
   "topbar.reasonerActiveHint": "An AI model responded and was reachable most recently.",
-  "topbar.reasonerUnverified": "Reasoner unverified",
+  "topbar.reasonerUnverified": "AI model unverified",
   "topbar.reasonerUnverifiedHint":
     "An AI model is configured, but reachability has not been verified yet.",
-  "topbar.reasonerUnreachable": "Reasoner unreachable",
+  "topbar.reasonerUnreachable": "AI model unreachable",
   "topbar.reasonerUnreachableHint":
     "An AI model is configured but was not reachable recently (e.g. key expired, service down). Calls run deterministically.",
   "topbar.reasonerOfflineHint": "No AI model available — the deterministic fallback is running.",
-  "topbar.external.blocked": "External: Blocked",
-  "topbar.external.search": "External: Search",
-  "topbar.external.open": "External: Open",
+  "topbar.external.blocked": "Web search: blocked",
+  "topbar.external.search": "Web search: allowed",
+  "topbar.external.open": "Web search: open",
   "topbar.external.hint":
     "External knowledge lookup (web search) — a SEPARATE axis, not the AI model. It only controls web search / public enrichment, not the reasoner.",
   // Pedi 05.07.: header pill "Which AI am I in?" + country of origin + GDPR confirmation.
@@ -4100,9 +4133,9 @@ const en: typeof de = {
     "Shows whether the AI is currently answering. “Unverified” only means no answer has come back since startup — it is not an error.",
   "topbar.plain.external":
     "Shows whether Klarwerk may also look things up on the open internet when answering. “Blocked” means: no, it stays with your own knowledge.",
-  "topbar.kiExternal": "AI mode: Cloud",
-  "topbar.kiInternal": "AI mode: Local",
-  "topbar.kiMixed": "AI mode: Cloud + Local",
+  "topbar.kiExternal": "AI runs in the cloud",
+  "topbar.kiInternal": "AI runs on your own systems",
+  "topbar.kiMixed": "AI runs in the cloud and on your own systems",
   "topbar.kiNone": "No AI",
   "topbar.kiNoneSubtitle": "deterministic fallback mode",
   "topbar.kiDsgvoYes": "GDPR: yes",
@@ -4149,6 +4182,7 @@ const en: typeof de = {
   "quality.reliable": "Reliable",
   "quality.assured": "Assured",
   "evidence.percentSure": "{{pct}} % confident",
+  "evidence.confidenceLabel": "Confidence: {{pct}} of 100",
   "evidence.sourceDate": "Source dated {{date}}",
   "evidence.noDate": "no source date",
   "evidence.noSource": "no source on file",
@@ -4419,11 +4453,14 @@ const en: typeof de = {
   "work.validation": "Open validations",
   "work.learning": "Open learning-path steps",
   "start.allTasks": "All tasks →",
+  "roleLink.noReach": "No access",
+  "roleLink.noReachHint":
+    "This area is not enabled for your role. The figure stays because it is true — only the way there is closed to you.",
   "start.todoEmpty": "Nothing open. Well done.",
   "start.todoLoading": "Loading work overview …",
   "start.stufe2.title": "Advanced features (Stage 2)",
   "start.stufe2.body":
-    "As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' in the sidebar to show them.",
+    "Stage 2 are additional modules beyond the core flow. As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' in the sidebar to show them.",
   "task.kicker": "Tasks",
   "task.critical": "Critical",
   "task.today": "Today",
@@ -5172,6 +5209,7 @@ const en: typeof de = {
   "capture.file.purgeUnselectedKeep": "Keep",
   // SCRUM-384 / KG-UX-001/002/003/010: narrate-first entry as default, form as expert path.
   "capture.entry.narrateKicker": "Tell your knowledge — the AI structures it, you review",
+  "capture.entry.recommendedBadge": "Recommended",
   "capture.entry.expertToggle": "Expert mode: fill the form directly",
   "capture.entry.expertHint":
     "For experienced users: fill in all fields directly — same fields, same review path. The guided narrate-first entry stays available at any time.",
@@ -5575,6 +5613,7 @@ const en: typeof de = {
   "ask.demoPrefillHint":
     "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
   "ask.examplesLabel": "Examples:",
+  "ask.examplesSendHint": "One click asks right away — this is a real request to the AI.",
   "ask.example.valve": "What to do when Ventil X must close on Überdruck (overpressure)?",
   "ask.example.filter": "How often must Filter F3 be checked?",
   "ask.example.dosing":
@@ -5867,6 +5906,7 @@ const en: typeof de = {
   "ko.transferTitle": "Transfer author",
   "ko.transferOriginal": "Original author",
   "ko.author": "Author",
+  "ko.authorUnknown": "Unknown person ({{ref}})",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Choose new author …",
   "ko.transfer": "Transfer",
@@ -6575,6 +6615,9 @@ const en: typeof de = {
   "lib.trustNone": "No usage ratings yet",
   "lib.trustNoneHint":
     "Trust grows through usage and ratings. 0 only means: no feedback yet — not that the content is bad.",
+  "lib.confidenceNone": "Confidence not rated yet",
+  "lib.confidenceNoneHint":
+    "Confidence says how well-founded a piece of content is rated (0 to 100). 0 means: not rated yet — not that the content is wrong.",
   "con.emptyWhat":
     "A conflict arises when two contributions contradict each other — for example two different limit values for the same equipment.",
   "con.emptyHow":
@@ -6584,7 +6627,7 @@ const en: typeof de = {
   "con.emptyExamplesCta": "Open example packages",
   "stage2.gate.title": "Advanced features (stage 2)",
   "stage2.gate.body":
-    "This module belongs to the advanced features (stage 2). They are currently switched off — that is why this area is not visible yet.",
+    "This module belongs to the advanced features — called 'stage 2' in house: additional modules beyond the core flow. They are currently switched off, that is why this area is not visible yet.",
   "stage2.gate.enable": "Turn on stage 2 now",
   "stage2.gate.adminOnly": "An admin can turn on stage 2 via the switch in the sidebar.",
   "stage2.gate.back": "Back to start",
@@ -6752,9 +6795,11 @@ const en: typeof de = {
     "Nothing is established about the reach of conflict and duplicate detection. As long as complete checking is not evidenced, the number of conflicts found says nothing about the corpus.",
   "health.conflictUnproven.known":
     "{{count}} open conflicts are known ({{penalty}} of at most {{max}} penalty points). That penalty is certain; the remainder up to the maximum is the uncertainty.",
-  "risk.busfactor": "Bus factor (single-source risk)",
+  "risk.busfactor": "Single-source risk (bus factor)",
   "risk.busEmpty": "No risk data.",
   "risk.experts": "experts",
+  "risk.expertsCount_one": "{{count}} expert",
+  "risk.expertsCount_other": "{{count}} experts",
   // Consultant-System (expert matching): understated tone, no hero wording, no numbers/ranking.
   "expertise.title": "Who to involve",
   "expertise.intro":
@@ -6813,7 +6858,7 @@ const en: typeof de = {
   "ana.exec.validatedHint": "reviewed, confirmed objects",
   "ana.exec.openReviews": "Open reviews",
   "ana.exec.openReviewsHint": "awaiting validation",
-  "ana.exec.busFactor": "Bus-factor risk",
+  "ana.exec.busFactor": "Single-source risk",
   "ana.exec.busFactorHint": "categories with a single source",
   "ana.exec.rescued": "Rescued gaps",
   "ana.exec.rescuedHint": "closed knowledge gaps",
@@ -7670,7 +7715,7 @@ const en: typeof de = {
     "It is saved as a draft — resumable at any time. It only goes to review when you choose “Review / submit”; nothing is validated automatically.",
   "fd.moreWays": "More capture paths",
   "fd.moreWaysBody":
-    "Need the classic form, dictation or the guided interview? The full capture area has every path — this canvas is the fast entry point.",
+    "Need the classic form, dictation or the guided interview? The full capture area has every path — this surface here is the fast entry point.",
   "fd.toastSaved": "Draft saved.",
   "fd.toastSubmitted": "Submitted for review.",
   "fd.confirmDiscard": "Discard input? Unsaved content will be lost.",
@@ -7806,6 +7851,8 @@ const nl: typeof de = {
   "role.previewNote": "Voorbeeld als {{role}} — je blijft admin.",
   "role.backToAdmin": "Naar adminweergave",
   "role.stage2": "Uitgebreide modules · Fase 2",
+  "role.stage2Hint":
+    "Fase 2 zijn extra modules naast de kernstroom — kwaliteitsborging, kenniskapitaal en uitvoerformaten. Een beheerder schakelt ze vrij.",
   "role.short.viewer": "Viewer",
   "role.short.experte": "Expert",
   "role.short.controller": "Contr.",
@@ -7826,20 +7873,20 @@ const nl: typeof de = {
   "topbar.toDesktop": "Naar volledige versie",
   "topbar.notifications": "Meldingen",
   "topbar.notificationsPlaceholder": "Nog geen meldingen. Echte bron volgt (#63).",
-  "topbar.reasonerActive": "Reasoner actief",
-  "topbar.reasonerOffline": "Reasoner offline",
+  "topbar.reasonerActive": "AI-model antwoordt",
+  "topbar.reasonerOffline": "Geen AI-model",
   "topbar.reasonerActiveHint": "Een AI-model heeft onlangs bereikbaar geantwoord.",
-  "topbar.reasonerUnverified": "Reasoner ongeverifieerd",
+  "topbar.reasonerUnverified": "AI-model ongeverifieerd",
   "topbar.reasonerUnverifiedHint":
     "Een AI-model is geconfigureerd, maar de bereikbaarheid is nog niet gecontroleerd.",
-  "topbar.reasonerUnreachable": "Reasoner onbereikbaar",
+  "topbar.reasonerUnreachable": "AI-model onbereikbaar",
   "topbar.reasonerUnreachableHint":
     "Een AI-model is geconfigureerd maar was onlangs niet bereikbaar (bijv. sleutel verlopen, dienst uit). Aanroepen draaien deterministisch.",
   "topbar.reasonerOfflineHint":
     "Geen AI-model beschikbaar — de deterministische reservemodus draait.",
-  "topbar.external.blocked": "Extern: Geblokkeerd",
-  "topbar.external.search": "Extern: Zoeken",
-  "topbar.external.open": "Extern: Open",
+  "topbar.external.blocked": "Webzoeken: geblokkeerd",
+  "topbar.external.search": "Webzoeken: toegestaan",
+  "topbar.external.open": "Webzoeken: open",
   "topbar.external.hint":
     "Externe kennisopvraging (webzoekopdracht) — een APARTE as, niet het AI-model. Regelt alleen webzoeken/openbare verrijking, niet de reasoner.",
   "topbar.plain.ki":
@@ -7848,9 +7895,9 @@ const nl: typeof de = {
     "Laat zien of de AI op dit moment antwoordt. „Ongeverifieerd“ betekent alleen: sinds de start is er nog geen antwoord teruggekomen — het is geen fout.",
   "topbar.plain.external":
     "Laat zien of Klarwerk bij het antwoorden ook op het open internet mag kijken. „Geblokkeerd“ betekent: nee, het blijft bij jullie eigen kennis.",
-  "topbar.kiExternal": "AI-modus: Cloud",
-  "topbar.kiInternal": "AI-modus: Lokaal",
-  "topbar.kiMixed": "AI-modus: Cloud + Lokaal",
+  "topbar.kiExternal": "AI rekent in de cloud",
+  "topbar.kiInternal": "AI rekent in eigen huis",
+  "topbar.kiMixed": "AI rekent in de cloud en in eigen huis",
   "topbar.kiNone": "Geen AI",
   "topbar.kiNoneSubtitle": "deterministische fallbackmodus",
   "topbar.kiDsgvoYes": "AVG: ja",
@@ -7896,6 +7943,7 @@ const nl: typeof de = {
   "quality.reliable": "Betrouwbaar",
   "quality.assured": "Geborgd",
   "evidence.percentSure": "{{pct}} % zeker",
+  "evidence.confidenceLabel": "Zekerheid: {{pct}} van 100",
   "evidence.sourceDate": "Bron van {{date}}",
   "evidence.noDate": "geen brondatum",
   "evidence.noSource": "geen bron vastgelegd",
@@ -8126,7 +8174,7 @@ const nl: typeof de = {
     "De rijpheidsbadge laat zien of een treffer direct bruikbaar is of in de beoordeling thuishoort.",
   "kg.ask.title": "Antwoorden zijn bronvast",
   "kg.ask.body":
-    "Ask gebruikt de kennisvoorraad; open of ongecontroleerde bronnen worden gemarkeerd en naar de validatie geleid.",
+    "De vragenpagina gebruikt de kennisvoorraad; open of ongecontroleerde bronnen worden gemarkeerd en naar de validatie geleid.",
   "kg.secured.label": "Geborgd",
   "kg.secured.body":
     "Gevalideerde kennis is bruikbaar en blijft via bronnen, trust en versie navolgbaar.",
@@ -8165,11 +8213,14 @@ const nl: typeof de = {
   "work.validation": "Open validaties",
   "work.learning": "Open leerpad-stappen",
   "start.allTasks": "Alle taken →",
+  "roleLink.noReach": "Geen toegang",
+  "roleLink.noReachHint":
+    "Dit gebied is niet vrijgegeven voor jouw rol. Het gegeven blijft staan omdat het klopt — alleen de weg ernaartoe is voor jou dicht.",
   "start.todoEmpty": "Niets open. Goed gedaan.",
   "start.todoLoading": "Werkoverzicht wordt geladen …",
   "start.stufe2.title": "Uitgebreide functies (Fase 2)",
   "start.stufe2.body":
-    "Als admin heb je uitgebreide functies tot je beschikking: {{features}}. Zet daarvoor „{{toggle}}' onderaan in de zijbalk aan.",
+    "Fase 2 zijn extra modules naast de kernstroom. Als admin heb je uitgebreide functies tot je beschikking: {{features}}. Zet daarvoor „{{toggle}}' onderaan in de zijbalk aan.",
   "task.kicker": "Taken",
   "task.critical": "Kritiek",
   "task.today": "Vandaag",
@@ -8918,6 +8969,7 @@ const nl: typeof de = {
   "capture.file.purgeUnselectedYes": "Niet-geselecteerde verwijderen",
   "capture.file.purgeUnselectedKeep": "Behouden",
   "capture.entry.narrateKicker": "Vertel je kennis — de AI structureert, jij controleert",
+  "capture.entry.recommendedBadge": "Aanbevolen",
   "capture.entry.expertToggle": "Expertmodus: formulier direct invullen",
   "capture.entry.expertHint":
     "Voor routiniers: alle velden direct invullen — dezelfde velden, dezelfde beoordelingsweg. De begeleide verteleinstap blijft altijd bereikbaar.",
@@ -9322,6 +9374,7 @@ const nl: typeof de = {
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en trust beslissen, er wordt niets automatisch opgeslagen.",
   "ask.examplesLabel": "Voorbeelden:",
+  "ask.examplesSendHint": "Eén klik vraagt meteen — dit is een echte aanvraag aan de AI.",
   "ask.example.valve": "Wat te doen als klep X bij overdruk moet sluiten?",
   "ask.example.filter": "Hoe vaak moet filter F3 gecontroleerd worden?",
   "ask.example.dosing": "Waarom schommelt de doseerwaarde bij lijn L4 na elke ploegwissel?",
@@ -9608,6 +9661,7 @@ const nl: typeof de = {
   "ko.transferTitle": "Auteur overdragen",
   "ko.transferOriginal": "Oorspronkelijke auteur",
   "ko.author": "Auteur",
+  "ko.authorUnknown": "Onbekende persoon ({{ref}})",
   "ko.originalAuthor": "Origineel",
   "ko.transferPick": "Nieuwe auteur kiezen …",
   "ko.transfer": "Overdragen",
@@ -9840,7 +9894,7 @@ const nl: typeof de = {
   "start.livewall.helpedToday": "vandaag geholpen: {{n}}",
   "start.livewall.savedEmpty": "Nog niets vastgelegd — de eerste bijdrage verschijnt hier.",
   "start.livewall.helpedEmpty": "Nog geen „heeft geholpen”-terugkoppeling.",
-  "con.kicker": "Conflict Board",
+  "con.kicker": "Conflictoverzicht",
   "con.title": "Conflicten oplossen — zonder kennis te verliezen",
   "con.intro":
     "Tegenstrijdigheden worden naast elkaar gezet en geclassificeerd. Alleen waarheidsconflicten activeren het menselijke escalatiepad.",
@@ -10305,6 +10359,9 @@ const nl: typeof de = {
   "lib.trustNone": "Nog geen gebruiksbeoordelingen",
   "lib.trustNoneHint":
     "Trust groeit door gebruik en beoordelingen. 0 betekent alleen: nog geen terugkoppeling — niet dat de inhoud slecht is.",
+  "lib.confidenceNone": "Zekerheid nog niet beoordeeld",
+  "lib.confidenceNoneHint":
+    "De zekerheid zegt hoe draagkrachtig een inhoud is ingeschat (0 tot 100). 0 betekent: nog niet beoordeeld — niet dat de inhoud fout is.",
   "con.emptyWhat":
     "Een conflict ontstaat wanneer twee bijdragen elkaar inhoudelijk tegenspreken — bijvoorbeeld twee verschillende grenswaarden voor dezelfde installatie.",
   "con.emptyHow":
@@ -10314,7 +10371,7 @@ const nl: typeof de = {
   "con.emptyExamplesCta": "Voorbeeldpakketten openen",
   "stage2.gate.title": "Uitgebreide functies (fase 2)",
   "stage2.gate.body":
-    "Deze module hoort bij de uitgebreide functies (fase 2). Die staan nu uit — daarom is dit gedeelte nog niet zichtbaar.",
+    "Deze module hoort bij de uitgebreide functies — intern „fase 2“ genoemd: extra modules naast de kernstroom. Die staan nu uit, daarom is dit gedeelte nog niet zichtbaar.",
   "stage2.gate.enable": "Fase 2 nu inschakelen",
   "stage2.gate.adminOnly": "Een admin kan fase 2 inschakelen via de schakelaar in de zijbalk.",
   "stage2.gate.back": "Terug naar start",
@@ -10483,9 +10540,11 @@ const nl: typeof de = {
     "Over het bereik van de conflict- en duplicaatdetectie is niets vastgesteld. Zolang volledige controle niet is aangetoond, zegt het aantal gevonden conflicten niets over de collectie.",
   "health.conflictUnproven.known":
     "Bekend zijn {{count}} open conflicten ({{penalty}} van maximaal {{max}} punten aftrek). Die aftrek staat vast; de rest tot het maximum is de onzekerheid.",
-  "risk.busfactor": "Busfactor (enkele-bron-risico)",
+  "risk.busfactor": "Enkele-bron-risico (busfactor)",
   "risk.busEmpty": "Geen risicogegevens.",
   "risk.experts": "Experts",
+  "risk.expertsCount_one": "{{count}} expert",
+  "risk.expertsCount_other": "{{count}} experts",
   "expertise.title": "Wie erbij betrekken",
   "expertise.intro":
     "Deze mensen hebben al aan een onderwerp bijgedragen. Je kunt ze om een korte inschatting vragen — geen rangorde, alleen wie zou kunnen helpen.",
@@ -10545,7 +10604,7 @@ const nl: typeof de = {
   "ana.exec.validatedHint": "gecontroleerde, geborgde objecten",
   "ana.exec.openReviews": "Open beoordelingen",
   "ana.exec.openReviewsHint": "wachten op validatie",
-  "ana.exec.busFactor": "Busfactor-risico",
+  "ana.exec.busFactor": "Enkele-bron-risico",
   "ana.exec.busFactorHint": "categorieën met slechts één bron",
   "ana.exec.rescued": "Geredde hiaten",
   "ana.exec.rescuedHint": "gesloten kennishiaten",
@@ -11403,7 +11462,7 @@ const nl: typeof de = {
     'Wordt als concept bewaard — altijd voort te zetten. Ter beoordeling gaat het pas als je „Controleren / indienen" kiest; er wordt niets automatisch gevalideerd.',
   "fd.moreWays": "Meer vastleg-wegen",
   "fd.moreWaysBody":
-    "Heb je het klassieke formulier, dictaat of het begeleide interview nodig? Het volledige vastleg-gebied heeft alle wegen — dit canvas is de snelle instap.",
+    "Heb je het klassieke formulier, dictaat of het begeleide interview nodig? Het volledige vastleg-gebied heeft alle wegen — dit vlak hier is de snelle instap.",
   "fd.toastSaved": "Concept opgeslagen.",
   "fd.toastSubmitted": "Ter beoordeling ingediend.",
   "fd.confirmDiscard": "Invoer verwerpen? Niet-opgeslagen inhoud gaat verloren.",

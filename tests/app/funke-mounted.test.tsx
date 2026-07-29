@@ -1,7 +1,16 @@
 // @vitest-environment jsdom
 // FUNKE (nacht24 Paket 6, Mounted): „Meine Wirkung"-Zahlen, offene Wissenslücken mit
 // „In 2 Minuten beantworten"-Direkteinstieg (?gap=-Einstieg) und die Wissenskapital-Kachel.
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+// AUFTRAG-mega51 BLOCK A: die Kachel führt nach `/risiko` (`minRole: "controller"`) und stellt die
+// Rollenfrage jetzt über `RoleLink`. Diese Datei mountet das Bauteil einzeln, ohne App-Rahmen —
+// also liefert der gemockte RoleContext die Rolle, wie es die Hausform tut (vgl. tests/library/).
+const rolle = vi.hoisted(() => ({ current: "controller" as string }));
+vi.mock("../../apps/web/src/app/RoleContext", () => ({
+  useRole: () => ({ role: rolle.current, stufe2: false }),
+}));
+
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
@@ -55,6 +64,7 @@ describe("FUNKE (Mounted)", () => {
   it("OpenGapsSummary: nur aggregierte Zahl + Link /risiko; kein Fragen-Freitext, keine Frage-URL; ohne offene Gaps nichts", () => {
     // FUNKE-FIX2 P0 (bens Erforderlich 1): die Kachel bekommt NUR die aggregierte Zahl (aus dem
     // Summary-Endpunkt) — strukturell kein Fragetext mehr, die Startseite lädt keine Gap-Volltexte.
+    rolle.current = "controller";
     mount(createElement(OpenGapsSummary, { total: 2 }));
     expect(container.textContent).toContain("Offene Wissenslücken");
     // Die anonyme Zahl der OFFENEN Lücken (2).
@@ -69,6 +79,19 @@ describe("FUNKE (Mounted)", () => {
     container.remove();
     mount(createElement(OpenGapsSummary, { total: 0 }));
     expect(container.textContent).toBe("");
+  });
+
+  // AUFTRAG-mega51 BLOCK A: `/risiko` trägt `minRole: "controller"`. Für eine Expertin war diese
+  // Kachel bis mega51 ein Link, der sie beim Klick auf /start zurückwarf. Die ZAHL bleibt — sie ist
+  // wahr —, der Weg entfällt.
+  it("OpenGapsSummary: für eine Rolle ohne Zugang bleibt die Zahl, aber es entsteht kein Link", () => {
+    rolle.current = "experte";
+    mount(createElement(OpenGapsSummary, { total: 2 }));
+    expect(container.textContent).toContain("Offene Wissenslücken");
+    expect(container.textContent).toContain("2");
+    expect(container.querySelector("a")).toBeNull();
+    expect(container.querySelector("[data-role-no-reach]")).not.toBeNull();
+    rolle.current = "controller";
   });
 
   // AUFTRAG-mega38 BLOCK G2: sechs — „davon offen" kam aus dem gestrichenen Kennzahlen-Block.
