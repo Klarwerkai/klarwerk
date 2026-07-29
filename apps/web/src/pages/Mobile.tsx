@@ -573,6 +573,15 @@ export function Mobile(): JSX.Element {
                             {t("ask.noBasisTitle")}
                           </p>
                           <p className="mt-1 text-[12.5px] text-muted">{t("ask.noBasisBody")}</p>
+                          {/* AUFTRAG-mega54 BLOCK E4: Mobile trägt DENSELBEN ersten Schritt. Bis
+                              hierher kannte diese Fläche den kostenlosen Schritt gar nicht — sie
+                              zeigte Titel, Text und direkt den Weg ins Risiko-Board, also genau den
+                              teuersten zuerst. Der Vertragskasten, der ihn auf dem Desktop nennt,
+                              existiert hier nicht; deshalb steht er hier ausgeschrieben. Kein neuer
+                              Weg, keine neue Route, keine neue Ansicht — derselbe eine Schlüssel. */}
+                          <p className="mt-2 text-[12.5px] font-medium text-text">
+                            {t("ask.gapNext")}
+                          </p>
                           {/* AUFTRAG-mega12 Block C: derselbe Befund, zweiter Ausgang. */}
                           <GuardedLink
                             to="/risiko"

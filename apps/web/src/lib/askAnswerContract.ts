@@ -42,7 +42,13 @@ const CONTRACTS: Record<AnswerContractKind, AnswerContract> = {
     kind: "gap",
     titleKey: "ask.contract.gap.title",
     bodyKey: "ask.contract.gap.body",
-    nextStepKey: "ask.contract.gap.next",
+    // AUFTRAG-mega54 BLOCK E1: DER EINE NÄCHSTE SCHRITT ZUR LÜCKE. Bis mega53 hatte der Vertrag
+    // einen eigenen Satz (`ask.contract.gap.next`) und die Lückenkarte einen zweiten, anderen
+    // (`ask.gapNext`) — beide gleichzeitig auf einem Bildschirm, mit verschiedenen Antworten. Es
+    // gibt jetzt nur noch EINEN Schlüssel, den sich Vertragskasten und Mobile teilen. Zwei Flächen
+    // dürfen ihn wiederholen; widersprechen können sie sich nicht mehr, weil es nichts mehr gibt,
+    // dem man widersprechen könnte.
+    nextStepKey: "ask.gapNext",
     tone: "warn",
     sourceBound: false,
   },

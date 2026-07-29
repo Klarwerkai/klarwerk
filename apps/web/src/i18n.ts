@@ -1780,8 +1780,14 @@ const de = {
     "Diese Antwort ist nicht als gesichert eingestuft. Prüfe Quellen und Bewertung, bevor du sie weiterverwendest.",
   "ask.reviewGuard.cta": "Zur Validierung",
   "ask.gapBadge": "Wissenslücke",
+  // AUFTRAG-mega54 BLOCK E: DER EINE NÄCHSTE SCHRITT ZUR LÜCKE. Bis hierher standen auf demselben
+  // Bildschirm ZWEI „Nächster Schritt:"-Sätze mit verschiedenen Antworten — dieser hier schickte
+  // zum Risiko-Board, der aus dem Vertragskasten zum kostenlosen Umformulieren. Jetzt gibt es nur
+  // noch diesen Schlüssel; der Vertragskasten (askAnswerContract.ts) zeigt auf ihn, die Lückenkarte
+  // wiederholt ihn nicht, und Mobile trägt ihn ebenfalls. REIHENFOLGE IST INHALT (E2): zuerst der
+  // kostenlose Schritt, dann Wissen erfassen, zuletzt das Risiko-Board — der teuerste nicht vorn.
   "ask.gapNext":
-    "Nächster Schritt: Lücke im Risiko-Board priorisieren oder einem Experten zuweisen.",
+    "Nächster Schritt: die Frage noch einmal mit den Fachwörtern aus eurem Betrieb stellen — sonst Wissen erfassen oder die Lücke im Risiko-Board priorisieren.",
   "ask.noBasisTitle": "Keine belastbare Grundlage.",
   // mega53 C1: der Satz behauptete „Es gibt kein validiertes Wissen zu dieser Frage" — bei den
   // neuen Lücken aus Block A ist das falsch, das Wissen liegt oft daneben. Er sagt jetzt, was
@@ -1795,7 +1801,12 @@ const de = {
   "ask.gap.noInvent":
     "Es wurde keine Antwort erfunden: Ohne belastbare Quelle bleibt die Frage ehrlich offen.",
   "ask.gap.rescueCta": "Wissen erfassen & retten",
-  "ask.gap.stepsTitle": "So schließt du die Lücke:",
+  // AUFTRAG-mega54 BLOCK E3: die Rettungs-Schrittfolge selbst wird NICHT angefasst — sie beginnt
+  // richtig mit „Frage beantworten", weil sie den Weg für jemanden beschreibt, der das Wissen HAT
+  // und es beisteuern will. Genau das ging aus „So schließt du die Lücke:" nicht hervor: neben dem
+  // einen nächsten Schritt gelesen, klang sie wie eine zweite Antwort auf „was mache ich jetzt mit
+  // meiner unbeantworteten Frage". Geschärft wurde deshalb die Überschrift, mehr nicht.
+  "ask.gap.stepsTitle": "Du kennst die Antwort? So trägst du sie bei:",
   "ask.gap.step.answer.label": "Frage beantworten",
   "ask.gap.step.answer.hint": "Formuliere, was du aus Erfahrung dazu weißt.",
   "ask.gap.step.experience.label": "Eigene Erfahrung ergänzen",
@@ -1828,13 +1839,18 @@ const de = {
   //
   // Einer Testerin zu sagen, ihr Wissen fehle, obwohl es danebenliegt, ist dieselbe Art von
   // Unehrlichkeit, die diese Runde an zwei anderen Stellen beseitigt. Der Text nennt deshalb jetzt
-  // BEIDE Ursachen und den einen nächsten Schritt, der nichts kostet: die Frage mit den Wörtern
-  // stellen, die im Wissen selbst stehen. Kein neuer Weg, keine neue Route — nur ehrlichere Sätze.
+  // BEIDE Ursachen. Kein neuer Weg, keine neue Route — nur ehrlichere Sätze.
+  //
+  // AUFTRAG-mega54 BLOCK E: der nächste Schritt steht NICHT mehr hier. Er hat genau einen Schlüssel
+  // (`ask.gapNext`), auf den `answerContract("gap").nextStepKey` zeigt — ein früherer zweiter Satz
+  // an dieser Stelle war der Widerspruch, den mega54 beseitigt hat.
+  //
+  // Die beiden Ursachen aus mega53 sind mit mega54 übrigens BEHOBEN (Kennungen + Grundform): „F3"
+  // überlebt die Zerlegung, „geprüft" trifft „prüfen". Der Text bleibt trotzdem richtig — eine
+  // Lücke kann weiterhin daher rühren, dass das Wissen unter anderen Wörtern in der Basis steht.
   "ask.contract.gap.title": "Wissenslücke, keine Chatbot-Antwort",
   "ask.contract.gap.body":
     "Keine Quelle passt sicher genug zu dieser Frage, um eine Antwort zu tragen. Das heißt nicht zwingend, dass das Wissen fehlt — vielleicht steht es nur unter anderen Wörtern in der Basis. Beides ist eine Lücke, die ihr schließen könnt, kein Fehler.",
-  "ask.contract.gap.next":
-    "Nächster Schritt: die Frage noch einmal mit den Fachwörtern aus eurem Betrieb stellen — sonst Wissen erfassen oder die Lücke im Risiko-Board priorisieren.",
   "ask.contract.trustNote":
     "Vertrauen und Nutzbarkeit zeigen, wie belastbar eine Quelle ist — kein Wahrheitsversprechen.",
   // AUFTRAG-mega38 BLOCK F: „8 Quellen" las sich als „acht Quellen tragen diese Antwort".
@@ -5709,7 +5725,10 @@ const en: typeof de = {
     "This answer is not classified as verified. Check sources and review status before reusing it.",
   "ask.reviewGuard.cta": "Go to validation",
   "ask.gapBadge": "Knowledge gap",
-  "ask.gapNext": "Next step: prioritise the gap in the risk board or assign it to an expert.",
+  // AUFTRAG-mega54 BLOCK E — the one next step for a gap (see the German entry). Order is
+  // content: the free step first, capture second, the risk board last.
+  "ask.gapNext":
+    "Next step: ask the question again using the terms your team actually uses — otherwise capture the knowledge or prioritise the gap in the risk board.",
   "ask.noBasisTitle": "No reliable basis.",
   "ask.noBasisBody":
     "No source matches this question closely enough. Instead of a made-up answer, a knowledge gap was created. Both are possible: the knowledge is still missing — or it is recorded under different terms.",
@@ -5720,7 +5739,9 @@ const en: typeof de = {
   "ask.gap.noInvent":
     "No answer was made up: without a reliable source the question honestly stays open.",
   "ask.gap.rescueCta": "Capture & rescue knowledge",
-  "ask.gap.stepsTitle": "How to close the gap:",
+  // AUFTRAG-mega54 BLOCK E3: heading sharpened so the steps read as the path for someone who
+  // already knows the answer — the step order itself is untouched.
+  "ask.gap.stepsTitle": "Do you know the answer? Here is how to contribute it:",
   "ask.gap.step.answer.label": "Answer the question",
   "ask.gap.step.answer.hint": "Put down what you know from experience.",
   "ask.gap.step.experience.label": "Add your own experience",
@@ -5743,8 +5764,6 @@ const en: typeof de = {
   "ask.contract.gap.title": "Knowledge gap, not a chatbot answer",
   "ask.contract.gap.body":
     "No source matches this question closely enough to carry an answer. That does not necessarily mean the knowledge is missing — it may simply be recorded under different words. Either way it's a gap you can close, not an error.",
-  "ask.contract.gap.next":
-    "Next step: ask again using the terms your team actually uses — otherwise capture the knowledge or prioritise the gap in the risk board.",
   "ask.contract.trustNote":
     "Trust and usability show how reliable a source is — not a guarantee of truth.",
   "ask.contract.sumTotal_one": "{{count}} source consulted",
@@ -9481,7 +9500,10 @@ const nl: typeof de = {
     "Dit antwoord is niet als geborgd ingeschaald. Controleer bronnen en beoordeling voordat je het verder gebruikt.",
   "ask.reviewGuard.cta": "Naar de validatie",
   "ask.gapBadge": "Kennishiaat",
-  "ask.gapNext": "Volgende stap: hiaat prioriteren op het risicobord of aan een expert toewijzen.",
+  // AUFTRAG-mega54 BLOK E — de ene volgende stap bij een hiaat (zie de Duitse tekst). De
+  // volgorde is inhoud: eerst de gratis stap, dan kennis vastleggen, pas daarna het risicobord.
+  "ask.gapNext":
+    "Volgende stap: stel de vraag opnieuw met de vakwoorden uit jullie eigen bedrijf — leg anders de kennis vast of prioriteer het hiaat op het risicobord.",
   "ask.noBasisTitle": "Geen betrouwbare basis.",
   "ask.noBasisBody":
     "Geen enkele bron past nauw genoeg bij deze vraag. In plaats van een verzonnen antwoord is er een kennishiaat aangemaakt. Beide zijn mogelijk: de kennis ontbreekt nog — of ze staat onder andere begrippen in de basis.",
@@ -9491,7 +9513,9 @@ const nl: typeof de = {
   "ask.gap.noInvent":
     "Er is geen antwoord verzonnen: zonder betrouwbare bron blijft de vraag eerlijk open.",
   "ask.gap.rescueCta": "Kennis vastleggen & redden",
-  "ask.gap.stepsTitle": "Zo dicht je het hiaat:",
+  // AUFTRAG-mega54 BLOK E3: kop aangescherpt — de stappen zijn de route voor wie het antwoord al
+  // kent. De volgorde van de stappen blijft ongewijzigd.
+  "ask.gap.stepsTitle": "Ken jij het antwoord? Zo draag je het bij:",
   "ask.gap.step.answer.label": "Vraag beantwoorden",
   "ask.gap.step.answer.hint": "Formuleer wat je hier uit ervaring over weet.",
   "ask.gap.step.experience.label": "Eigen ervaring aanvullen",
@@ -9513,8 +9537,6 @@ const nl: typeof de = {
   "ask.contract.gap.title": "Kennishiaat, geen chatbot-antwoord",
   "ask.contract.gap.body":
     "Geen enkele bron past nauw genoeg bij deze vraag om een antwoord te dragen. Dat betekent niet per se dat de kennis ontbreekt — misschien staat ze alleen onder andere woorden in de basis. Hoe dan ook is het een hiaat dat jullie kunnen dichten, geen fout.",
-  "ask.contract.gap.next":
-    "Volgende stap: stel de vraag opnieuw met de vakwoorden uit jullie eigen bedrijf — of leg de kennis vast of prioriteer het hiaat op het risicobord.",
   "ask.contract.trustNote":
     "Vertrouwen en bruikbaarheid tonen hoe betrouwbaar een bron is — geen belofte van waarheid.",
   "ask.contract.sumTotal_one": "{{count}} bron geraadpleegd",

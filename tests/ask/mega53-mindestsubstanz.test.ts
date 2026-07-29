@@ -41,9 +41,20 @@ function ueberschneidung(frage: string, r: KnowledgeRef): number {
 // ------------------------------------------------------------------------------------------------
 // A4 — DER WÖRTLICH VERLANGTE REGRESSIONSFALL: mehrere Kandidaten, ALLE mit Wert 1.
 // ------------------------------------------------------------------------------------------------
+// AUFTRAG-mega57 B1 — DIESE FIXTURE WURDE NACHGESCHÄRFT, DIE REGEL NICHT ANGEFASST. „sommerfest"
+// hing bis mega56 am Wort „oft"; mit dem Häufigkeitsadverb in `STOPWORDS` teilte die Notiz gar
+// nichts mehr mit der Frage, und die zwei Fixture-Zusicherungen darunter („jeder Kandidat hat GENAU
+// EINE Überschneidung", „das alte Maß hätte alle drei durchgelassen") wurden falsch — der Fall
+// hätte sich stillschweigend in einen anderen verwandelt. Die Notiz hängt jetzt an „Filter", also
+// an einem echten Inhaltswort: derselbe Fall, nur ehrlicher gebaut. Die geprüfte Regel (drei
+// Kandidaten mit Wert eins ⇒ leere Menge) ist unverändert.
 const SCHWACHE_FRAGE = "Wie oft muss der Filter eigentlich gewartet werden?";
 const NUR_EINWORT: KnowledgeRef[] = [
-  ref("sommerfest", "Sommerfest", "Beim Sommerfest wird der Grill oft zu spät angezündet"),
+  ref(
+    "sommerfest",
+    "Sommerfest",
+    "Beim Sommerfest wird der Filter der Zapfanlage zu spät gereinigt",
+  ),
   ref("kaffee", "Kaffeeküche", "Der Filter der Kaffeemaschine liegt in der oberen Schublade"),
   ref("waesche", "Wäscherei", "Die Wäsche wird gewartet, sobald der Korb voll ist"),
 ];

@@ -34,6 +34,9 @@ export {
   meetsRelevanceThreshold,
   // AUFTRAG-mega53 A1: die absolute Mindestsubstanz — darunter trägt auch der beste Treffer nichts.
   MIN_ANSWER_SUBSTANCE,
+  // AUFTRAG-mega57 A2: das absolute Tor auf dem SUBSTANZWERT — mehrdeutige Funktionsformen bleiben
+  // suchbar, zahlen aber nicht mehr auf die Mindestsubstanz ein.
+  meetsAnswerSubstance,
   // SCRUM-361 / AG-03: Tokenisierung der Frage für den Repo-Prefilter (konsistent zum Ranking).
   queryTokens,
   // PMO-FEA-0006: ehrlicher Extract-Fallback (keine Fake-Punkte ohne Modell).

@@ -322,8 +322,37 @@ export function deterministicInterview(
 // als belegte Antwort. Nur Inhaltstoken zählen → ehrliche Wissenslücke statt Scheinquelle.
 // Bewusst nur generische Funktionswörter (keine Fach-/Domänenbegriffe), damit seed-sichere
 // Treffer (Ventil/Überdruck, Filter F3 …) unverändert bleiben.
+//
+// ================================================================================================
+// AUFTRAG-mega56 BLOCK A — DIE GRENZE VERLÄUFT AN DER WORTKLASSE.
+// ================================================================================================
+//
+// DER BEFUND (ben, sammel53): mega55 schloss die Possessivpronomen, aber nicht die Fehlerklasse.
+// Dieselbe Grundform führt auch Modalformen neu zusammen — „könnte"/„könnten" treffen sich auf
+// „könn", „dürfte"/„dürften" auf „dürf", und keine dieser Formen stand in der Liste. Zwei solche
+// rein grammatischen Stämme erfüllen `MIN_ANSWER_SUBSTANCE` genauso wie zwei Fachwörter.
+//
+// DER DENKFEHLER, den diese Runde korrigiert: „alle Funktionswörter" ist KEINE Liste ohne Ende.
+// Inhaltswörter — Substantive, Verben, Adjektive — sind die offene Klasse. Funktionswörter bilden
+// GESCHLOSSENE Klassen und sind damit abzählbar. Deshalb wird hier nicht der dritte Einzelfall
+// repariert, sondern die Klasse geschlossen. Die Grenze ist die Wortklasse, nicht die Wortlänge
+// (die Regel „unter fünf Zeichen" griff bei den sechsstelligen Modalformen ins Leere) und nicht
+// die Liste der zuletzt gemessenen Fälle.
+//
+// WIE DIE FORMEN GEFUNDEN WURDEN (A2): nicht geraten, sondern abgeleitet. Zu jedem Eintrag wurden
+// die gebräuchlichen Beugungen erzeugt, durch DIESE Zerlegung geschickt, und aufgenommen wurde,
+// was als Inhaltstoken überlebte. Deshalb steht hier von jedem Paradigma nur, was die Normalform
+// NICHT ohnehin einfängt: „meinem"/„meinen" laufen auf das gelistete „mein" und fehlen hier —
+// „meiner" läuft wegen `MIN_GRUNDFORM_LAENGE` auf nichts und steht deshalb da. Wer ergänzt,
+// ergänzt in der Klasse, zu der die Form gehört, und prüft sie mit derselben Ableitung.
+//
+// WAS HIER NICHT MEHR STEHEN MUSS (mega57 A1): die mehrdeutigen Formen, deren Aufnahme ein echtes
+// Wort gekostet hätte — „wart"/„Wartung", „falls"/„Fall", „waren"/„Ware", „würde"/„Würde" und die
+// übrigen. Sie waren bis mega56 eine benannte, offene Lücke, weil diese Liste nur EINE Antwort
+// kennt (ganz weg oder ganz da). Sie sind jetzt in `MEHRDEUTIGE_FUNKTIONSFORMEN` verzeichnet und
+// haben dort ihre eigene, schwächere Antwort. Hier gehört nur her, was KEIN echtes Wort trifft.
 const STOPWORDS = new Set<string>([
-  // Deutsch — Artikel, Pronomen, Präpositionen, Konjunktionen, Hilfs-/Frageworte
+  // --- KLASSE Grundbestand Deutsch (SCRUM-282) ---
   "aber",
   "alle",
   "allem",
@@ -417,7 +446,340 @@ const STOPWORDS = new Set<string>([
   "zum",
   "zur",
   "zwischen",
-  // Englisch — häufige Funktionswörter (locale kann en sein)
+  // --- KLASSE Personal- und Reflexivpronomen (mega56 A1) ---
+  "mich",
+  "dich",
+  "euch",
+  "ihn",
+  "ihnen",
+  "mir",
+  "wir",
+  "einander",
+  // --- KLASSE Possessivpronomen (mega56 A1) ---
+  "meiner",
+  "deiner",
+  "seiner",
+  "ihrem",
+  "ihrer",
+  "unser",
+  "unserer",
+  "eure",
+  "eurem",
+  "eurer",
+  // --- KLASSE Demonstrativ- und Relativpronomen (mega56 A1) ---
+  "dies",
+  "dieser",
+  "jene",
+  "jenem",
+  "jener",
+  "solch",
+  "solcher",
+  "dessen",
+  "deren",
+  "denen",
+  "derer",
+  "selbst",
+  "selber",
+  "derselbe",
+  "dieselbe",
+  "dasselbe",
+  "demselben",
+  "denselben",
+  "desselben",
+  // --- KLASSE Indefinitpronomen (mega56 A1) ---
+  "jede",
+  "jedem",
+  "jeder",
+  "manche",
+  "mancher",
+  "einige",
+  "einiger",
+  "mehrere",
+  "mehrerer",
+  "wenige",
+  "weniger",
+  "beide",
+  "beider",
+  "andere",
+  "anderer",
+  "sämtliche",
+  "sämtlicher",
+  "kein",
+  "keiner",
+  "jemand",
+  "niemand",
+  "irgend",
+  "irgendein",
+  "irgendeiner",
+  "jeweils",
+  "all",
+  // --- KLASSE Präpositionen und Verschmelzungen (mega56 A1) ---
+  "hinter",
+  "neben",
+  "während",
+  "außer",
+  "entlang",
+  "gegenüber",
+  "innerhalb",
+  "außerhalb",
+  "statt",
+  "anstatt",
+  "trotz",
+  "gemäß",
+  "binnen",
+  "bezüglich",
+  "beim",
+  "ans",
+  "aufs",
+  "ins",
+  "fürs",
+  "unterm",
+  "hinterm",
+  // mega57 B1 — DIE KLASSE ZU ENDE GESCHRIEBEN. mega56 hat „geschlossene Klasse" behauptet und die
+  // Klasse dann nur so weit gefüllt, wie die zuletzt gemessenen Fälle reichten. Der Sammler dieser
+  // Runde führt das volle deutsche Inventar; was er hier fand und KEIN echtes Wort trifft, steht
+  // jetzt da. Was ein echtes Wort trifft („kraft" → „Kraft"), steht in MEHRDEUTIGE_FUNKTIONSFORMEN.
+  "nebst",
+  "wider",
+  "halber",
+  "per",
+  "pro",
+  "via",
+  "zufolge",
+  "angesichts",
+  "hinsichtlich",
+  "aufgrund",
+  "infolge",
+  "anhand",
+  "mithilfe",
+  "zugunsten",
+  "entgegen",
+  "unweit",
+  "oberhalb",
+  "unterhalb",
+  "diesseits",
+  "jenseits",
+  "betreffs",
+  "ungeachtet",
+  "zuzüglich",
+  "abzüglich",
+  "einschließlich",
+  "ausschließlich",
+  // --- KLASSE Konjunktionen und Subjunktionen (mega56 A1) ---
+  "denn",
+  "sondern",
+  "sowie",
+  "sowohl",
+  "weder",
+  "damit",
+  "obwohl",
+  "bevor",
+  "nachdem",
+  "seitdem",
+  "sobald",
+  "solange",
+  "indem",
+  "sofern",
+  "zumal",
+  "jedoch",
+  "wobei",
+  "außerdem",
+  "zudem",
+  "beziehungsweise",
+  // mega57 B1 — der Rest der Klasse (s. o.).
+  "obgleich",
+  "wenngleich",
+  "soweit",
+  "soviel",
+  "insofern",
+  "insoweit",
+  "desto",
+  "umso",
+  "allein",
+  "respektive",
+  // --- KLASSE Hilfs- und Modalverben, finite Formen (mega56 A1) ---
+  "sei",
+  "seid",
+  "seien",
+  "wäre",
+  "warst",
+  "wärst",
+  // mega57 B1: vom Sammler gefunden, kein echtes Wort dahinter („Wärter" fällt auf „wärter") —
+  // deshalb hier und nicht bei den mehrdeutigen Formen. Das Gegenstück „wart" trifft „Wartung".
+  "wärt",
+  "habe",
+  "habt",
+  "hast",
+  "hätte",
+  "wirst",
+  "wurde",
+  "können",
+  "konnte",
+  "müssen",
+  "dürfen",
+  "darf",
+  "durfte",
+  "mögen",
+  "mag",
+  "magst",
+  "mögt",
+  "mochte",
+  "möchte",
+  // --- KLASSE Unregelmäßige Hilfs-/Modalpartizipien (mega56 A3) ---
+  // Ausdrücklich gelistet, weil KEINE Endungs- oder Vorsilbenregel sie herleitet.
+  "gewesen",
+  "geworden",
+  "worden",
+  "gehabt",
+  "gekonnt",
+  "gemusst",
+  "gesollt",
+  "gedurft",
+  "gemocht",
+  // mega57 C3 — DIE ATTRIBUTIVE „-er"-FORM MUSS EINZELN DASTEHEN. mega56 hat sie ausgelassen und
+  // die Auslassung als „strukturell" bezeichnet; sie ist es nicht. „-er" fehlt zwar absichtlich in
+  // `GRUNDFORM_ENDUNGEN` (es kostete „Filter" → „Filt"), aber genau deshalb fällt „gewordener"
+  // eben NICHT auf „geworden" zurück, sondern läuft über den „ge"-Abtrag auf das Inhaltstoken
+  // „wordener". Erreichbar war die Form also sehr wohl — nur ungeprüft. Die übrigen attributiven
+  // Endungen („-e/-em/-en/-es") sind über den Endungsabtrag gedeckt und stehen deshalb nicht hier.
+  "gewesener",
+  "gewordener",
+  "gehabter",
+  "gekonnter",
+  "gemusster",
+  "gesollter",
+  "gedurfter",
+  "gemochter",
+  // --- KLASSE Pronominaladverbien (mega56 A1) ---
+  "dabei",
+  "dadurch",
+  "dafür",
+  "dagegen",
+  "daher",
+  "danach",
+  "daneben",
+  "daran",
+  "darauf",
+  "daraus",
+  "darin",
+  "darum",
+  "darunter",
+  "darüber",
+  "davon",
+  "davor",
+  "dazu",
+  "dennoch",
+  "deshalb",
+  "deswegen",
+  "trotzdem",
+  "hierbei",
+  "hierdurch",
+  "hierfür",
+  "hierin",
+  "hiermit",
+  "hiernach",
+  "hierauf",
+  "hieraus",
+  "hierzu",
+  "hieran",
+  "hierum",
+  "hierüber",
+  "wodurch",
+  "wofür",
+  "woher",
+  "wohin",
+  "womit",
+  "wonach",
+  "woran",
+  "worauf",
+  "woraus",
+  "worin",
+  "worum",
+  "worunter",
+  "worüber",
+  "wovon",
+  "wovor",
+  "wozu",
+  // mega57 B1 — die Klasse ist GENERATIV ({da|dar|hier|wo|wor} + Präpositionsstamm, „dar"/„wor" vor
+  // Vokal). mega56 hat die Erzeugung nicht zu Ende geführt; das hier fehlte.
+  "dahin",
+  "hierher",
+  "hierhin",
+  "hiervon",
+  "hiervor",
+  "hierunter",
+  "hiergegen",
+  "hierneben",
+  "wogegen",
+  "woneben",
+  // --- KLASSE Partikeln und Frageadverbien (mega56 A1) ---
+  "schon",
+  "mal",
+  "nein",
+  "etwa",
+  "ganz",
+  "gar",
+  "zwar",
+  "eigentlich",
+  "überhaupt",
+  "allerdings",
+  "immer",
+  "wieder",
+  "dann",
+  "sonst",
+  "bereits",
+  "jetzt",
+  "oben",
+  "unten",
+  "nie",
+  "niemals",
+  "sogar",
+  "durchaus",
+  "vielleicht",
+  "womöglich",
+  "insbesondere",
+  "ebenfalls",
+  "ebenso",
+  "hingegen",
+  "wen",
+  "wem",
+  "wessen",
+  "weshalb",
+  "wieso",
+  "wieviel",
+  "weswegen",
+  // mega57 B1 — der Rest der Partikelklasse (s. o.). Die Häufigkeitsadverbien stehen hier und nicht
+  // bei den mehrdeutigen Formen, weil ihre Normalform KEIN echtes Wort trifft („selt" ≠ „Seltenheit"
+  // → „seltenhei", „stet" ≠ „stetig", „häufig" ≠ „Häufigkeit" → „häufigkei"). Gemessen wurde auch
+  // der Preis: keine der zehn Abnahmefragen trägt über eines dieser Wörter — „Wie oft wird der
+  // Drehmomentschlüssel kalibriert?" trägt über „drehmomentschlüssel"/„kalibrier". „oft" war
+  // umgekehrt der EINZIGE Anker, über den die fachfremde Nachtschicht-Notiz in drei der zehn Fragen
+  // überhaupt punktete. „immer", „nie" und „niemals" stehen seit mega56 in derselben Klasse.
+  "oft",
+  "häufig",
+  "selten",
+  "stets",
+  "freilich",
+  "sicherlich",
+  "selbstverständlich",
+  "keineswegs",
+  "keinesfalls",
+  "jedenfalls",
+  "allenfalls",
+  "mindestens",
+  "zumindest",
+  "lediglich",
+  "bloß",
+  "beinahe",
+  "kaum",
+  "allzu",
+  "ziemlich",
+  "meist",
+  "meistens",
+  "nochmals",
+  "abermals",
+  "erneut",
+  // --- KLASSE Funktionswörter Englisch (locale kann en sein) ---
   "the",
   "and",
   "for",
@@ -451,22 +813,314 @@ const STOPWORDS = new Set<string>([
   "context",
 ]);
 
+// ================================================================================================
+// AUFTRAG-mega54 BLOCK A — KENNUNGEN ÜBERLEBEN DIE ZERLEGUNG.
+// ================================================================================================
+//
+// DER BEFUND, den mega53 selbst gemessen und als Preis benannt hat (s. MIN_ANSWER_SUBSTANCE): die
+// Längengrenze „länger als zwei Zeichen" hält Funktionswörter wie „an", „im", „so" draußen — und
+// wirft dabei „F3" mit weg. Damit verliert Pedis eigene P0-Frage („Der Filter F3 … wie oft muss er
+// geprüft werden?") genau das Wort, das sie von jeder anderen Frage unterscheidet.
+//
+// DIE REGEL IST ENG GEFASST: Buchstabe UND Ziffer, beides mindestens einmal. Keine Ausnahmeliste,
+// kein „kurz und selten". Reine Wörter behalten die Längengrenze, wo sie hingehört; reine Ziffern-
+// folgen sind keine Kennungen. „f3", „m12", „dn50", „q1" kommen durch — „an", „im", „so" nicht.
+function istKennung(token: string): boolean {
+  return /[0-9]/.test(token) && /[a-zäöüß]/.test(token);
+}
+
+// ================================================================================================
+// AUFTRAG-mega54 BLOCK B — „GEPRÜFT" UND „PRÜFEN" SIND DASSELBE WORT.
+// ================================================================================================
+//
+// DER BEFUND: `overlap` vergleicht ganze Token. „geprüft" aus der Frage traf „prüfen" im richtigen,
+// validierten Wissensobjekt nicht — die Antwort lag im Bestand und wurde nicht gefunden.
+//
+// DER WEG (B2), innerhalb der gesetzten Grenzen — KEINE neue Bibliothek, KEINE Synonymliste (die
+// wäre eine zweite Wahrheit und ein Pflegefall), deterministisch und rein wie die Zerlegung selbst:
+// ein regelbasierter Endungs-Abtrag mit Fixpunkt, danach EINMAL die Partizip-Vorsilbe „ge".
+//
+// WARUM ENDUNGEN ZUERST UND DIE VORSILBE ZULETZT: die Vorsilbe darf nicht davon abhängen, WIE das
+// Wort endet. „gemeldeten" und „gemeldetem" müssen dieselbe Grundform ergeben; prüfte man die
+// Vorsilbe an der Endung („ge…t" / „ge…en"), fiele sie beim einen und beim anderen nicht. Nach dem
+// Endungs-Abtrag stehen beide auf „gemeld" — und die Vorsilbe fällt für beide oder für keinen.
+//
+// WARUM DIE GRUNDFORM IMMER EIN ZUSAMMENHÄNGENDER TEILSTRING BLEIBT (das ist B4, die Zusage an den
+// Repo-Prefilter): abgetragen wird ausschließlich am Ende und einmal am Anfang. „prüf" steckt
+// wörtlich in „geprüft" — der Prefilter (`%term%` ILIKE) findet damit weiterhin JEDES Wort, aus dem
+// der Term entstanden ist, und dazu die gebeugten Geschwister. Vorauswahl und Ranking bleiben auf
+// EXAKT denselben Termen, wie es der Kommentar an `queryTokens` zusagt.
+//
+// AUSDRÜCKLICH NICHT ABGEDECKT (im Bericht mega54 B2 benannt): trennbare/untrennbare Vorsilben
+// („vorgewärmt" ≠ „vorwärmen"), Umlautwechsel im Stamm („trägt" ≠ „tragen"), starke Verben
+// („gefunden" ≠ „finden"), die Ableitungsendungen -er/-lich/-heit/-keit/-isch/-bar, und jede Form
+// von Synonymie oder Übersetzung. Was hier nicht steht, wird nicht behauptet.
+
+// AUFTRAG-mega54 B3 — DIE MINDESTLÄNGE DER GRUNDFORM.
+//
+// Unterhalb von vier Zeichen zieht ein Stamm fremde Wörter zusammen: aus „Gerät" würde „rä", und
+// jedes Wort mit diesen zwei Buchstaben wäre plötzlich ein Treffer. Vier ist zugleich die kleinste
+// Zahl, die den tragenden Fall dieses Auftrags noch liefert — „prüf" hat genau vier Zeichen. Jede
+// Kürzung, die darunter führen würde, unterbleibt; das Wort bleibt dann ungekürzt stehen.
+const MIN_GRUNDFORM_LAENGE = 4;
+
+// Häufige deutsche Endungen, LÄNGSTE ZUERST (die Reihenfolge ist die Regel: der längste passende
+// Abtrag gewinnt). Bewusst schmal gehalten — Flexion und die Nominalisierung auf -ung, mehr nicht.
+// „-er" fehlt absichtlich: es trägt Komparative und Nomen („Filter" → „Filt") und kostet mehr
+// Trennschärfe, als es an Treffern bringt.
+const GRUNDFORM_ENDUNGEN = ["ung", "en", "em", "es", "e", "n", "s", "t"] as const;
+
+// Der Endungs-Abtrag bis zum Fixpunkt — die erste Hälfte der Grundform, ohne jede Stoppwortkenntnis.
+// Getrennt ausgewiesen, weil BLOCK A der Vorsilbe eine andere Antwort gibt als der Endung (s. u.).
+function abtragEndungen(token: string): string {
+  let wort = token;
+  let gekuerzt = true;
+  while (gekuerzt) {
+    gekuerzt = false;
+    for (const endung of GRUNDFORM_ENDUNGEN) {
+      if (wort.endsWith(endung) && wort.length - endung.length >= MIN_GRUNDFORM_LAENGE) {
+        wort = wort.slice(0, wort.length - endung.length);
+        gekuerzt = true;
+        break;
+      }
+    }
+  }
+  return wort;
+}
+
+// Die Partizip-Vorsilbe, einmal, nach den Endungen (Begründung s. BLOCK B oben).
+function abtragGe(wort: string): string {
+  return wort.startsWith("ge") && wort.length - 2 >= MIN_GRUNDFORM_LAENGE ? wort.slice(2) : wort;
+}
+
+// ================================================================================================
+// AUFTRAG-mega55 BLOCK A — EIN STOPPWORT BLEIBT EIN STOPPWORT, AUCH ALS GRUNDFORM.
+// ================================================================================================
+//
+// DER BEFUND (ben, sammel52 ROT-1): der Stoppwortfilter lief NUR auf der Oberflächenform, die
+// Grundform lief DANACH — und bildete Stoppwörter neu, die niemand mehr wegfiltert. „meinem" und
+// „meinen" wurden zu „mein", „deinem" und „deinen" zu „dein"; beide stehen in der Liste. Damit
+// erfüllten ZWEI REIN GRAMMATISCHE WÖRTER die Mindestsubstanz aus mega53: Frage „Was ist mit meinem
+// Vorgang und deinem Termin?" gegen die fachfremde Quelle „Hinweis zu meinen Akten und deinen
+// Unterlagen." ergab `overlap = 2`. Die Mengenbildung aus mega54 half nicht — sie verhindert nur,
+// dass DERSELBE Stamm zweimal zählt; zwei VERSCHIEDENE wieder eingeführte Stoppwortstämme blieben
+// zwei Punkte. Dieselbe Tür, die mega53 verschlossen hat, mit einem neuen Schlüssel.
+//
+// DIE REGEL (A1): ein Token, dessen NORMALISIERTE Form ein Stoppwort ist, ist kein Inhaltstoken und
+// erreicht `overlap` nicht. Fail-closed wie die Mindestsubstanz selbst. Es bleibt bei EINER
+// Zerlegung — Vorauswahl und Ranking sehen weiterhin exakt dieselben Terme (s. `queryTokens`).
+//
+// DIE MENGE (A2): verglichen wird gegen die Stoppwortliste UND deren eigene Grundformen, EINMAL
+// beim Laden gebildet. Sonst hinge die Deckung daran, ob ein Listeneintrag zufällig schon seine
+// eigene Grundform ist: „ihren" läuft über den „n"-Abtrag auf „ihre" (gelistet, gedeckt), „werden"
+// aber auf „werd" (nicht gelistet) — ohne die Grundformen der Liste bliebe „werd" ein Inhaltstoken.
+//
+// AUFTRAG-mega56 A3 — DIE ZWISCHENSTUFE VOR DEM „ge"-ABTRAG GEHÖRT MIT IN DIE MENGE.
+//
+// Ohne sie öffnet die A3-Rücknahme (s. `grundform`) die Tür, die sie schließen soll, für genau die
+// unregelmäßigen Partizipien wieder: „geworden" läuft über „geword" auf „word". Die Rücknahme
+// greift, sobald ERST der „ge"-Abtrag eine Stoppform erzeugt — sie gäbe „geword" zurück, und
+// „geword" wäre ein Inhaltstoken. Steht die Zwischenstufe selbst in der Menge, ist die Bedingung
+// „der Zwischenstand ist noch keine Stoppform" falsch, die Rücknahme unterbleibt, und „word" fällt.
+// Für jeden Eintrag, der nicht mit „ge" beginnt, ist dieser dritte Zweig identisch mit dem zweiten
+// und fügt nichts hinzu — er wirkt genau dort, wo A3 wirkt.
+const STOPPWORT_NORMALFORMEN: ReadonlySet<string> = new Set<string>([
+  ...STOPWORDS,
+  ...[...STOPWORDS].map((w) => abtragEndungen(w)),
+  ...[...STOPWORDS].map((w) => abtragGe(abtragEndungen(w))),
+]);
+
+// ================================================================================================
+// AUFTRAG-mega56 BLOCK D — WAS DIESE LISTE NICHT KANN.
+// ================================================================================================
+//
+// Eine Wortliste ist eine NÄHERUNG, kein Beweis. Gedeckt ist: die aufgezählten geschlossenen
+// Klassen in ihren abgeleiteten Formen (A2), ihre unregelmäßigen Partizipien (A3), und alles, was
+// über den Endungs-/Vorsilbenabtrag auf einen dieser Einträge fällt. NICHT gedeckt und hier
+// ausdrücklich NICHT behauptet:
+//
+//   1. Unregelmäßige Formen, die niemand gelistet hat. Es gibt keine Regel, die sie herleitet —
+//      genau deshalb steht die A3-Gruppe da. Was dort fehlt, fehlt still.
+//   2. Die bewusst zurückgehaltenen Einträge (s. BLOCK A oben). Ihre Formen bleiben Inhaltstoken;
+//      zwei von ihnen erfüllen weiterhin die Mindestsubstanz. Das ist eine offene, benannte Lücke.
+//   3. Fremdsprachige Funktionswörter jenseits der kurzen englischen Liste — kein Französisch,
+//      kein Türkisch, kein Niederländisch, obwohl die App eine NL-Oberfläche hat.
+//   4. Dialekt, Umgangssprache und Kurzformen („ham", „nix", „ne", „dat").
+//   5. Die Zusammenfälle aus der ÜBERSTEMMUNG — zwei verschiedene Begriffe auf demselben Stamm
+//      („Geschichte"/„Schichten" → „schich"). Das ist eine eigene Scheibe und nicht Gegenstand
+//      dieser Liste; sie kostet Trennschärfe, nicht Ehrlichkeit.
+//   6. Der gemessene Preis in die andere Richtung: „Nacht" verliert seinen Token an die Präposition
+//      „nach", „Seide" an „seid", „bereit" an „bereits". Gemessen, nicht geschätzt (Bericht B2).
+//
+// Die Zusicherung reicht deshalb genau so weit: zwei Wörter aus den HIER DEKLARIERTEN Klassen
+// allein erreichen `MIN_ANSWER_SUBSTANCE` nicht. Nicht: „zwei grammatische Wörter überhaupt".
+function istStoppform(token: string): boolean {
+  return STOPPWORT_NORMALFORMEN.has(token);
+}
+
+// ================================================================================================
+// AUFTRAG-mega57 BLOCK A — SUCHBAR IST NICHT DASSELBE WIE TRAGEND.
+// ================================================================================================
+//
+// DER BEFUND (ben, sammel54 ROT): „wollte"/„wollten" fallen auf „woll", „würde"/„würden" auf
+// „würd". Beide Formen stehen bewusst NICHT in `STOPWORDS`, also entfernt sie auch das zweite Sieb
+// nicht. Damit trägt die Frage „Was wollte man und was würde gelten?" gegen die fachfremde Quelle
+// „Sie wollten etwas, und dadurch würden Folgen entstehen." mit `overlap = 2` die Mindestsubstanz.
+// Dieselbe Fehlerklasse wie mega53 und mega55, mit dem dritten Schlüssel.
+//
+// DER DENKFEHLER, den diese Runde korrigiert, liegt nicht in der Liste, sondern im WERKZEUG: bis
+// hierher beantwortet EINE Menge ZWEI verschiedene Fragen. „Steht das Wort drin?" entscheidet
+// zugleich, ob ein Token ÜBERHAUPT EXISTIERT (Vorauswahl, Ranking) und ob es SUBSTANZ TRÄGT
+// (Mindestsubstanz). Deshalb war die Aufnahme von „wart" ein Verlust — sie hätte „Wartung" aus
+// jeder Suche geworfen — und die Auslassung ein Loch. Zwei Fragen brauchen zwei Mengen.
+//
+// DIE TRENNUNG (A1):
+//   · `STOPWORDS` bleibt, was sie ist: Formen, die EINDEUTIG grammatisch sind und kein echtes Wort
+//     treffen („mein", „dies", „jen", „wärt"). Sie verschwinden vollständig aus dem Strom.
+//   · `MEHRDEUTIGE_FUNKTIONSFORMEN` ist neu und für die MEHRDEUTIGEN. Ihre Token bleiben im Strom:
+//     der Repo-Prefilter findet sie weiter, das Ranking sieht sie weiter, „Wartung" und „Ware"
+//     verlieren ihren Term nicht. Sie zahlen nur nicht mehr auf `MIN_ANSWER_SUBSTANCE` ein.
+//
+// DIE ZUORDNUNGSREGEL (B1) IST EINE EINZIGE, und sie steht neben jedem Eintrag: trifft die
+// Normalform der Funktionsform ein ECHTES Wort, gehört sie hierher; trifft sie keines, gehört sie
+// in `STOPWORDS`. Das zweite Feld jedes Paares IST dieser Beleg — es nennt das Wort, das ein
+// Stoppworteintrag gekostet hätte, und der Sammler rechnet nach, dass beide wirklich auf dieselbe
+// Normalform fallen (mega57 B2). Eine behauptete Kollision, die keine ist, wird dort rot.
+//
+// WAS DAS NICHT ÄNDERT (A3): es bleibt bei EINER Zerlegung. `queryTokens` liefert unverändert
+// dieselben Terme wie das Ranking, die B4-Zusage aus mega54 an den Prefilter gilt weiter. Diese
+// Menge entfernt NICHTS aus dem Strom — sie ändert nur, was ZÄHLT, nicht was EXISTIERT.
+const MEHRDEUTIGE_FUNKTIONSFORMEN: ReadonlyArray<readonly [string, string]> = [
+  // [Funktionsform, das echte Wort, das ein Stoppworteintrag gekostet hätte]
+  // --- MEHRDEUTIG Modalverb wollen ---
+  ["wollen", "Wolle"],
+  ["will", "Wille"],
+  // --- MEHRDEUTIG Konjunktiv von werden ---
+  ["würde", "Würde"],
+  // --- MEHRDEUTIG Präteritum von sein ---
+  ["waren", "Ware"],
+  ["wart", "Wartung"],
+  // --- MEHRDEUTIG Konjunktionen und Subjunktionen ---
+  ["falls", "Fall"],
+  ["ehe", "Ehe"],
+  // --- MEHRDEUTIG Präpositionen ---
+  ["seit", "Seite"],
+  ["seitens", "Seite"],
+  ["wegen", "Wege"],
+  ["laut", "lautet"],
+  ["mittels", "Mittel"],
+  ["zwecks", "Zweck"],
+  ["samt", "Samt"],
+  ["kraft", "Kraft"],
+  ["dank", "danken"],
+  ["mangels", "Mangel"],
+  ["namens", "Name"],
+  ["längs", "Länge"],
+  ["entsprechend", "entsprechende"],
+  // --- MEHRDEUTIG Partikeln ---
+  ["halt", "Haltung"],
+  ["eben", "Ebene"],
+  ["wohl", "Wohl"],
+  ["erst", "erste"],
+  ["fast", "fasten"],
+  ["recht", "Rechte"],
+  ["gewiss", "Gewissen"],
+  ["natürlich", "natürliche"],
+  ["höchstens", "höchste"],
+];
+
+// Dieselbe Hüllenbildung wie bei `STOPPWORT_NORMALFORMEN` und aus demselben Grund (mega55 A2): ein
+// Token wird auf seiner NORMALFORM geprüft, also muss die Normalform jedes Eintrags mit in die
+// Menge — „wollen" deckt so auch „wollte", „wolltet" und „gewollt", die alle auf „woll" fallen.
+const NICHT_SUBSTANZTRAGEND: ReadonlySet<string> = new Set<string>(
+  MEHRDEUTIGE_FUNKTIONSFORMEN.flatMap(([form]) => {
+    const klein = form.toLowerCase();
+    const nachEndung = abtragEndungen(klein);
+    return [klein, nachEndung, abtragGe(nachEndung)];
+  }),
+);
+
+// Ein Token trägt Substanz, solange es keine mehrdeutige Funktionsform ist. Bewusst als POSITIVE
+// Frage formuliert: gezählt wird, was trägt — nicht, was fehlt.
+function istSubstanztragend(token: string): boolean {
+  return !NICHT_SUBSTANZTRAGEND.has(token);
+}
+
+// Deterministisch und ohne Seiteneffekt: gleiche Eingabe → gleiche Ausgabe, kein Zustand, kein Netz.
+function grundform(token: string): string {
+  // Eine Kennung ist kein Wort — an ihr gibt es nichts zu beugen (BLOCK A bliebe sonst wirkungslos,
+  // sobald eine Kennung auf „e", „n", „s" oder „t" endet).
+  if (istKennung(token)) {
+    return token;
+  }
+  const nachEndung = abtragEndungen(token);
+  const ohneGe = abtragGe(nachEndung);
+  // AUFTRAG-mega55 A3 — DIE VORSILBE IST EIN ANDERER FALL ALS DIE ENDUNG.
+  //
+  // Entsteht das Stoppwort durch den ENDUNGS-Abtrag, war das Wort die gebeugte Form eines
+  // Stoppworts („meinem" → „mein") — es fällt in `tokenize` weg, und das ist richtig so.
+  //
+  // Entsteht es erst durch den „ge"-Abtrag, ist der bessere Schluss ein anderer: dann war das „ge"
+  // vermutlich gar keine Partizip-Vorsilbe, sondern Teil des Wortes. „Gesicht" läuft über „gesich"
+  // auf „sich". Hier das Wort wegzuwerfen kostet einen echten Begriff; den Abtrag zu UNTERLASSEN
+  // kostet nichts — „gesich" ist ein zulässiger Stamm, bleibt ein zusammenhängender Teilstring
+  // (B4-Zusage an den Prefilter) und ist auf beiden Seiten dieselbe Rechnung (Symmetrie).
+  // Bedingung ist ausdrücklich, dass erst die Vorsilbe das Stoppwort erzeugt: war die Form schon
+  // vorher eine Stoppform, hilft kein Zurücknehmen, und sie fällt wie jede andere.
+  if (ohneGe !== nachEndung && istStoppform(ohneGe) && !istStoppform(nachEndung)) {
+    return nachEndung;
+  }
+  return ohneGe;
+}
+
+// Die EINE Zerlegung des Antwortwegs. Die Reihenfolge trägt zwei Siebe, nicht eines: Stoppwörter
+// und die Längengrenze wirken auf der OBERFLÄCHENFORM (die Stoppwortliste führt Oberflächenformen:
+// „werden", „wie"), danach läuft jedes verbleibende Token auf seine Grundform — und wird ERNEUT
+// gegen die Stoppwortmenge gehalten (mega55 A1). Ohne das zweite Sieb führt die Grundform genau die
+// Wörter wieder ein, die das erste entfernt hat.
 function tokenize(text: string): string[] {
   return text
     .toLowerCase()
     .split(/[^a-zäöüß0-9]+/)
-    .filter((w) => w.length > 2 && !STOPWORDS.has(w));
+    .filter((w) => (w.length > 2 || istKennung(w)) && !STOPWORDS.has(w))
+    .map(grundform)
+    .filter((w) => !istStoppform(w));
 }
 
-function overlap(a: readonly string[], b: readonly string[]): number {
-  const set = new Set(b);
-  let count = 0;
+// AUFTRAG-mega54 C3 — DIE GRUNDFORM HEBELT DIE MINDESTSUBSTANZ NICHT AUS.
+//
+// Gezählt werden VERSCHIEDENE gemeinsame Inhaltstoken, nicht Vorkommen. Sonst entstünde genau die
+// Umgehung, vor der Block C warnt: eine Frage, die denselben Begriff zweimal gebeugt nennt
+// („wurde das geprüft … wie oft muss man prüfen"), fiele nach der Grundform auf zweimal dasselbe
+// Wort zusammen und erfüllte MIN_ANSWER_SUBSTANCE aus EINEM einzigen geteilten Begriff. Ein Wort
+// bleibt ein Wort — auch in zwei Beugungen.
+//
+// AUFTRAG-mega57 A2 — ZWEI ZAHLEN STATT EINER, AUS EINER EINZIGEN ÜBERSCHNEIDUNG.
+//
+// `wert` ist der bisherige Überschneidungswert und bleibt, was er war: er trägt das Ranking und die
+// relative Regel. `substanz` ist derselbe Schnitt ohne die mehrdeutigen Funktionsformen — und NUR
+// er wird gegen `MIN_ANSWER_SUBSTANCE` gehalten. Beide entstehen aus DERSELBEN Tokenmenge; es gibt
+// weiterhin genau eine Zerlegung und genau einen Schnitt.
+interface Ueberschneidung {
+  readonly wert: number; // alle gemeinsamen Inhaltstoken — Rangfolge und relative Schwelle.
+  readonly substanz: number; // davon die substanztragenden — die absolute Mindestsubstanz.
+}
+
+function ueberschneidung(a: readonly string[], b: readonly string[]): Ueberschneidung {
+  const ziel = new Set(b);
+  const gemeinsam = new Set<string>();
   for (const word of a) {
-    if (set.has(word)) {
-      count += 1;
+    if (ziel.has(word)) {
+      gemeinsam.add(word);
     }
   }
-  return count;
+  let substanz = 0;
+  for (const word of gemeinsam) {
+    if (istSubstanztragend(word)) {
+      substanz += 1;
+    }
+  }
+  return { wert: gemeinsam.size, substanz };
 }
 
 // SCRUM-361 / AG-03: öffentliche, stabile Tokenisierung der Frage in Inhaltstoken (Stoppwörter und
@@ -551,6 +1205,39 @@ export function meetsRelevanceThreshold(keywordScore: number, bestScore: number)
   return keywordScore > 0 && keywordScore * 2 > bestScore;
 }
 
+// AUFTRAG-mega57 A2 — DAS ABSOLUTE TOR STEHT AB HIER AUF DEM SUBSTANZWERT.
+//
+// Die Schwelle selbst bleibt bei ZWEI und wird nicht angefasst; nur die Zahl, die gegen sie
+// gehalten wird, ist jetzt die richtige. `meetsRelevanceThreshold` behält seinen Wortlaut — die
+// relative Regel und die Rangfolge messen weiter am Überschneidungswert (A2) — und dieses Tor
+// steht davor. Weil `substanz <= wert` immer gilt, ist es die STRENGERE der beiden Prüfungen:
+// ein Kandidat, der hier fällt, wäre auch vorher nie stärker gewesen.
+//
+// AUFTRAG-mega58 A — DAS TOR GILT JE KANDIDAT, NICHT NUR FÜR DEN BESTEN.
+//
+// HIER STAND BIS mega57 EINE ZUSAGE, DIE NICHT GALT: „ein Kandidat ohne eigene Substanz kann nur
+// als Mitläufer eines substanzstarken Treffers erscheinen — nie allein." Sie fiel, und zwar im
+// Normalfall, nicht am Rand (ben, sammel55, ROT-Blocker). Beide Auswahlwege prüften das Tor auf dem
+// `Math.max` über die Substanzwerte ALLER Kandidaten; danach entschied die relative Regel allein auf
+// dem Überschneidungswert. Eine Quelle mit `substanz = 0` und hohem Überschneidungswert kam damit
+// mit, sobald irgendeine andere Quelle das Tor öffnete — und verdrängte den tragenden Treffer sogar,
+// denn bei Wert 5 gegen Wert 2 gilt `2 · 2 > 5` nicht. Dann stand die substanzlose Quelle ALLEIN in
+// der Antwort. Genau der Fall, den die alte Zusage ausgeschlossen hatte.
+//
+// DIE NEUE WAHRHEIT, in beiden Wegen gleich: jeder Kandidat unter `MIN_ANSWER_SUBSTANCE` fällt
+// ZUERST heraus. Bestwert, relative Regel, Ranking und topK rechnen erst auf der verbleibenden
+// Menge. Bleibt nichts übrig, ist die Menge leer wie bisher — eine ehrliche Wissenslücke.
+//
+// WAS DAS NICHT ÄNDERT: die Rangfolge der tragenden Kandidaten. Das Tor entfernt nur Kandidaten
+// unter der Schwelle; wer sie erreicht, wird danach exakt wie vorher gewichtet und sortiert. Der
+// Bestwert kann durch den Wegfall nur SINKEN, also lässt die relative Regel auf der verbleibenden
+// Menge höchstens mehr tragende Kandidaten durch, nie weniger.
+//
+// Die Funktion prüft deshalb EINEN Substanzwert — den des Kandidaten, der gerade zur Debatte steht.
+export function meetsAnswerSubstance(substanz: number): boolean {
+  return substanz >= MIN_ANSWER_SUBSTANCE;
+}
+
 // Semantische Vorauswahl über Keyword-Überschneidung — synchron, modellunabhängig.
 // Von beiden Providern genutzt, damit Antworten immer in echten KOs verankert bleiben.
 // mega52 B1: EINE Schwelle für beide Auswahlwege — `keywordSelect` misst wie `rankCandidates`.
@@ -559,12 +1246,15 @@ export function keywordSelect(
   candidates: readonly KnowledgeRef[],
 ): KnowledgeRef[] {
   const words = tokenize(question);
+  // mega57 A2: das absolute Tor auf dem Substanzwert, die relative Regel auf dem Überschneidungswert.
+  // mega58 A: und das Tor JE KANDIDAT, vor der relativen Regel — sonst kommt eine substanzlose
+  // Quelle über ihren hohen Überschneidungswert mit und verdrängt den tragenden Treffer.
   const scored = candidates
-    .map((c) => ({ c, score: overlap(words, tokenize(refMatchText(c))) }))
-    .filter((x) => x.score > 0)
-    .sort((a, b) => b.score - a.score);
-  const best = scored.reduce((max, x) => Math.max(max, x.score), 0);
-  return scored.filter((x) => meetsRelevanceThreshold(x.score, best)).map((x) => x.c);
+    .map((c) => ({ c, ...ueberschneidung(words, tokenize(refMatchText(c))) }))
+    .filter((x) => x.wert > 0 && meetsAnswerSubstance(x.substanz))
+    .sort((a, b) => b.wert - a.wert);
+  const best = scored.reduce((max, x) => Math.max(max, x.wert), 0);
+  return scored.filter((x) => meetsRelevanceThreshold(x.wert, best)).map((x) => x.c);
 }
 
 // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: begrenzte, status-/trust-bewusste Top-K-Kandidaten-
@@ -614,14 +1304,18 @@ export function rankCandidates(
   const scored = candidates
     .map((ref) => {
       // WP-RETEST7 R5: gleiche Match-Basis wie keywordSelect — inkl. Bild-Fußnoten (captionTexts).
-      const keywordScore = overlap(words, tokenize(refMatchText(ref)));
-      return { ref, keywordScore, rankScore: keywordScore + statusTrustBoost(ref) };
+      const { wert, substanz } = ueberschneidung(words, tokenize(refMatchText(ref)));
+      return { ref, keywordScore: wert, substanz, rankScore: wert + statusTrustBoost(ref) };
     })
-    .filter((x) => x.keywordScore > 0);
+    // mega57 A2: dasselbe absolute Tor wie in `keywordSelect`, auf demselben Substanzwert — eine
+    // Regel für beide Auswahlwege (mega52 B1), nur jetzt mit der richtigen Zahl davor.
+    // mega58 A: und je Kandidat statt auf dem besten, vor der relativen Regel und vor dem Bestwert.
+    .filter((x) => x.keywordScore > 0 && meetsAnswerSubstance(x.substanz));
   // Der Bezugspunkt ist die REINE Relevanz des besten Treffers, nicht sein rankScore — der Status-/
   // Trust-Bonus (< 1) darf die Schwelle nicht anheben, sonst entschiede Trust doch über Relevanz.
   const best = scored.reduce((max, x) => Math.max(max, x.keywordScore), 0);
   return scored
+    .map(({ ref, keywordScore, rankScore }) => ({ ref, keywordScore, rankScore }))
     .filter((x) => meetsRelevanceThreshold(x.keywordScore, best))
     .sort((a, b) => b.rankScore - a.rankScore)
     .slice(0, limit);

@@ -1,6 +1,10 @@
 # OFFEN — das Gedächtnis des Projekts
 
-**Stand: 29.07.2026 · Basis `84060d2` (Ship 5, 13:06) · gepflegt vom Kopf bei jeder Zustandsänderung**
+**Stand: 29.07.2026, 21:30 · Basis `1fc55aa` (Ship 6, 15:32) · gepflegt vom Kopf bei jeder Zustandsänderung**
+
+**Im Arbeitsbaum, unkommittiert: mega54, mega55, mega56, mega57.** ben sammel55 hat mega57 **ROT** gegeben, **Ship 7 ist nicht gelaufen** — der Live-Stand bleibt `1fc55aa`. Die vier Scheiben bleiben unkommittiert liegen und **nicht zurücksetzen**; sie tragen die geschlossenen Recall-Lücken und den ganzen Fortschritt dieser Runde. Die zwei Blocker davor, S6 und S7, sind seit 29.07. abends als **mega58** beauftragt (B13).
+
+**Ship-Kette:** `93c6bd9` → `4cdde0e` (Ship 3, 09:43, mega45–49) → `3805c49` (Ship 4, 11:13, mega50) → `84060d2` (Ship 5, 13:06, mega51) → `1fc55aa` (Ship 6, 15:32, mega52+53).
 
 Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in einem Ordner, den sich jemand ausgedacht hat. Sie wandert mit jedem Klon mit, jeder neue Kopf sieht sie, und sie überlebt jeden Fensterwechsel.
 
@@ -12,9 +16,11 @@ Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in ei
 
 **Zustand** — `ENTSCHEIDUNG` liegt bei Pedi und blockiert etwas · `OFFEN` ist entschieden und wartet auf einen Auftrag · `BEAUFTRAGT` läuft gerade · `ERLEDIGT` · `VERWORFEN` mit Begründung.
 
-**Anker** — wann es drankommt. **Niemals ein Datum.** Datums-Anker sind der Grund, warum fünf Vorgänge und zwei Konzepte auf „nach VIP-2" warten, seit es VIP-2 nicht mehr gibt. Erlaubt sind Ereignisse, die wir selbst herbeiführen: `SOFORT`, `VOR-VORTEST`, `MIT-SHIP3`, `NACH-SHIP3`, `MIT-SHIP4`, `MIT-ZUGRIFFSSCHUTZ`, `MIT-DESIGN`, `MIT-JAHRESRING`, `MIT-GROSSKUNDE`, `MIT-ADOPTION`.
+**Anker** — wann es drankommt. **Niemals ein Datum.** Datums-Anker sind der Grund, warum fünf Vorgänge und zwei Konzepte auf „nach VIP-2" warten, seit es VIP-2 nicht mehr gibt. Erlaubt sind Ereignisse, die wir selbst herbeiführen: `SOFORT`, `VOR-VORTEST`, `NACH-VORTEST`, `MIT-SHIP3`, `NACH-SHIP3`, `MIT-SHIP4`, `MIT-SHIP6`, `MIT-SHIP7`, `MIT-ZUGRIFFSSCHUTZ`, `MIT-DESIGN`, `MIT-JAHRESRING`, `MIT-GROSSKUNDE`, `MIT-ADOPTION`.
 
-**Kennung** — bleibt stabil, auch über Aufträge und Ship-Runden hinweg. Die ausführliche Begründung zu jeder Kennung steht in der Entscheidungsgrundlage vom 28.07. (Artefakt `klarwerk-entscheidungsgrundlage`).
+**Warum** — die fünfte Spalte. Sie beantwortet „was passiert, wenn wir es nicht tun". Die Leseseite macht daraus das Aufklappen unter jedem Punkt. Steht sie leer, gibt es kein Aufklappen, und die Seite nennt am Fuß die Kennungen, denen sie noch fehlt — eine Lücke wird gezeigt, nicht versteckt.
+
+**Kennung** — bleibt stabil, auch über Aufträge und Ship-Runden hinweg.
 
 ---
 
@@ -22,24 +28,28 @@ Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in ei
 
 Sortiert nach Alter. **Die oberste ist die älteste und wird bei jedem Kassensturz genannt, bis sie beantwortet ist.**
 
-| Kennung | gefragt seit | Sache | blockiert |
-|---|---|---|---|
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
 
 ---
 
 ## 2 — Beauftragt, läuft gerade
 
-| Kennung | Zustand | Sache |
-|---|---|---|
-| B0 | ERLEDIGT | — | **Ship 3 am 29.07., 09:43 — Commit `4cdde0e`**, mega45 bis mega49, 43 Dateien. Bedingtes GO nach S4, Auflage SCRUM-557, verankert in SCRUM-469 und SCRUM-530 |
-| B4 | ERLEDIGT | — | Versionsnummer auf `1.0.0-beta.1.27` gezogen (mega50 D1). Vorher stand sie auf `1.0.0-beta.1.26` — mega45 bis mega49 haben sie nicht nachgezogen. Die Nummer identifiziert den ausgelieferten Stand nicht mehr |
-| B5 | ERLEDIGT | — | `LOT/` steht in `.gitignore` (mega50 D2, 343 MB). Vorher untracked und **nicht** ignoriert — ein `git add -A` würde den ganzen Jahresring-Testbestand ins Repository ziehen. Eintrag in `.gitignore` nachholen |
-| B6 | ERLEDIGT | — | **mega50** — ben sammel48 **GRÜN**, Inhalts-SHA `bed60d2a…6bb4` vom Kopf nachgerechnet, Auslieferung freigegeben. Wartet auf Handlauf 1 und Ship 4 — die Bildbeschreibung erreicht alle vier Flächen (A15), Sammler über die optionalen Verträge (A16), die Auflage SCRUM-557 und zwei Einzeiler (Versionsnummer, `LOT/` in `.gitignore`) |
-| B3 | ERLEDIGT | — | **SCRUM-557** in mega50 Block C geschlossen — — Smoke-Kalibrierung erwartet den Leerzustand auch dort, wo der `@modell`-Fall das Board füllt. Auflage zum bedingten GO von Ship 3; reist in der nächsten Scheibe mit. Bis dahin meldet `npm run smoke:ui` diesen einen Fall bauartbedingt rot |
-| B2 | ERLEDIGT | mega49 — der Browser-Beleg hing an einer Datenlage (Leerzustands-Knopf aus `emptyStateActions.ts`). Nur Prüfwerkzeug, Produktcode nachgerechnet unberührt. ben sammel47: **GRÜN**, Inhalts-SHA `7df464af…6081` vom Kopf nachgerechnet. Wartet auf Handlauf 1 und Ship 3 |
-| B1 | ERLEDIGT | mega48 — Modalgrenze für die ganze App. ben sammel46: **GRÜN ohne Einschränkung**, Inhalts-SHA `e6901c4a…9d77` vom Kopf nachgerechnet. Wartet auf Handlauf 1 und Ship 3 |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| B13 | BEAUFTRAGT | SOFORT | **mega58 gebaut, `tools/check` grün, jetzt bei ben (sammel56).** Block A schließt S6 in beiden Auswahlwegen, Block B klärt S7. Diff `_relay/patches169/mega58.diff`, 3.834 Zeilen, 221.028 Bytes, SHA `19606884…d5aab`; Bericht 299 Zeilen, Inhalts-SHA `f9515a87…10e47`. **Vom Kopf vollständig nachgerechnet:** beide SHAs auf zwei Wegen, NUL kalibriert, verbotene Pfade 0/0, `_relay/` nur als Fließtext, Gegenprobe `comm` gegen mega57 ohne Verlust, angefasst allein `provider.ts`, Egress-Treffer sämtlich `fileURLToPath` | Ohne S6 kann eine substanzlose Quelle allein in der Antwort stehen — genau der Vertrag, den Ship 6 dem Nutzer gegeben hat, wäre verletzt. Ohne geklärtes S7 gibt es kein ehrliches Ship-GO, und ohne Ship 7 fehlen am Freitag die geschlossenen Recall-Lücken aus mega54–57. |
+| B12 | ERLEDIGT | — | **ben sammel55 zu mega57: ROT**, 258 Zeilen, 11.937 Bytes, Inhalts-SHA `c09e10fc…8710`, vom Kopf nachgerechnet, NUL-frei kalibriert. Zwei Blocker: S6 und S7. **Ship 7 wurde nicht gefahren** | Die Zielidee von mega57 nennt ben ausdrücklich richtig, und sechzehn von neunundzwanzig mehrdeutigen Einträgen hat er stichprobenweise geprüft und die Klassifikation grün gegeben. Der Vertrag ist trotzdem verletzt — nicht in der Idee, sondern in ihrer Verdrahtung. |
+| B11 | BEAUFTRAGT | SOFORT | **mega57 — suchbar und tragend werden getrennt.** Mehrdeutige Formen (`woll`, `würd`, `wart`, `fall`) bleiben im Tokenstrom, zahlen aber nicht auf die Mindestsubstanz ein. Dazu drei Sammler-Härtungen aus ben sammel54. **Danach wird gestoppt.** | Vier Runden lang hat eine Liste zwei Fragen beantworten sollen: *ist ein Wort suchbar* und *trägt ein Wort eine Antwort*. Deshalb war jede Aufnahme ein Verlust und jede Auslassung ein Loch. Ab der Trennung ist jede Ergänzung kostenlos — das ist der Grund, warum die Kette hier endet und nicht bei mega58. |
+| B10 | BEAUFTRAGT | SOFORT | **mega56 — die geschlossenen Wortklassen.** 218 neue Einträge in zehn benannten Klassen, Formen abgeleitet statt geraten, Sammler über 52.414 Paare rot-zuerst. ben sammel54: **ROT**, `0a1e2a65…faf4` — `woll` und `würd` blieben erreichbar | Der Kopf hatte die Grenze zweimal falsch gezogen: erst auf Pronomen, dann mit einer Längenregel, die `könnte` nicht fängt. Inhaltswörter sind die offene Klasse, Funktionswörter sind geschlossen und damit abzählbar. |
+| B9 | BEAUFTRAGT | SOFORT | **mega55 — Stoppwörter überleben die Grundform nicht.** Zweites Sieb nach der Normalisierung, `Gesicht` bleibt über die `ge`-Rücknahme erhalten. ben sammel53: **ROT**, `14e1c93d…fe53` — Modalformen außerhalb der Liste | mega54 hatte die Tür aus mega53 unabsichtlich wieder geöffnet: `meinem` und `deinen` passierten den Filter und wurden danach zu `mein` und `dein`. Zwei Fürwörter erfüllten die Mindestsubstanz. |
+| B7 | BEAUFTRAGT | SOFORT | **mega54 — die Token-Scheibe.** Kennungen wie „F3" überleben die Zerlegung, „geprüft" trifft „prüfen", eine Zerlegung statt zwei, plus Block E. ben sammel52: **ROT** wegen der Stoppwort-Rückkehr, aber Kennungsregel, Prefilter-Zusage, Mengenbildung, Embedding-Abgrenzung und Block E ausdrücklich abgenommen | Ohne diese Scheibe endet am Freitag jede dritte Frage in einer Wissenslücke, obwohl die richtige Antwort im Bestand liegt. Die drei Lücken sind seither zu und bleiben es in allen Folgerunden. |
+| B8 | ERLEDIGT | — | **Ship 6 am 29.07., 15:32 — Commit `1fc55aa`**, mega52 + mega53. Integrationstests 44 grün, Coolify Success. ben sammel51 GELB: beide ROT-Blocker geschlossen, GELB nur wegen des Recall-Preises | Vorher konnte eine Antwort auf einem einzigen gemeinsamen Wort stehen und trotzdem einen hohen Vertrauenswert zeigen. Das war die eine Eigenschaft, an der das Produkt am Freitag scheitern konnte. |
+| B6 | ERLEDIGT | — | **mega45–mega51** in Ship 3 bis Ship 5 ausgeliefert, ben sammel45–49 je GRÜN, Inhalts-SHAs vom Kopf nachgerechnet | |
+| B5 | ERLEDIGT | — | `LOT/` steht in `.gitignore` (mega50 D2, 343 MB) | Ein einziges `git add -A` hätte den ganzen Jahresring-Testbestand ins Repository gezogen und es dauerhaft unbrauchbar gemacht. |
+| B4 | ERLEDIGT | — | Versionsnummer auf `1.0.0-beta.1.27` gezogen (mega50 D1) | Eine Versionsnummer, die fünf Auslieferungen hinterherhinkt, identifiziert den laufenden Stand nicht mehr — bei einem Fehlerbericht weiß niemand, was der Kunde wirklich hat. |
+| B3 | ERLEDIGT | — | **SCRUM-557** in mega50 Block C geschlossen — Auflage zum bedingten GO von Ship 3, vollständig eingelöst | |
 
-Danach: Kopf-Gegenproben → ben sammel46 → **Ship 3**.
+**Hier wurde gestoppt.** bens Reihenfolge für den Wiedereinstieg, seine und nicht meine: erstens S6 schließen, zweitens S7 auflösen und das volle Drei-Engine-Tor grün belegen, drittens die Mehrdeutigkeiten kontextsensitiv machen — zuerst `Wartung`/`wart`, danach `nahe`, viertens den Testhelfer `meetsAnswerSubstance` wieder intern machen und absolute gegen relative Regel im Code sauber trennen, fünftens die Sammler-Paradigmen aus einem unabhängigen Vertrag ableiten und einen Mehrkandidaten-Sammler ergänzen, sechstens die Recall-Schulden: Komposita und `koCarBlau` (S5), Überstemmung, und die in mega56 vollständig entfernten Häufigkeitsadverbien.
 
 ---
 
@@ -47,59 +57,66 @@ Danach: Kopf-Gegenproben → ben sammel46 → **Ship 3**.
 
 Fester Termin: **Freitag 14:00**, Natascha, sieben Aufgaben, kein Vorwissen.
 
-| Kennung | Zustand | Anker | Sache |
-|---|---|---|---|
-| A7 | ERLEDIGT | — | Rolle `Experte` — von Pedi entschieden |
-| A14 | ERLEDIGT | — | Lars-Paket gegenstandslos |
-| A1 | OFFEN | VOR-VORTEST | Interviewleitfaden gegenlesen — existiert seit 23.07. vollständig, nicht neu schreiben |
-| A2 | OFFEN | VOR-VORTEST | „Lieferanten" muss im neuen Testbestand vorkommen, sonst scheitert Aufgabe 4 an einer unlösbaren Aufgabe |
-| A3 | ERLEDIGT | — | Sichtbarer Knopf „Datei auswählen" — **am Code belegt geschlossen**: mega34 Block D, `capture-file-pick` plus Ablagefläche als echter `<button>` |
-| A4 | ERLEDIGT | — | Zur Antwort scrollen und Ladezustand — **am Code belegt geschlossen**: mega38 Block A, `scrollIntoView` und Ladezustand am Ergebnisort |
-| A5 | ERLEDIGT | — | Ein Urteil je Antwort — **am Code belegt geschlossen**: drei benannte Zustände, `trustNote` („kein Wahrheitsversprechen"), „N Quellen **herangezogen**" |
-| A6 | OFFEN | VOR-VORTEST | Aufgabenkarte abgleichen — nennt noch „Anfang August" (VIP-2, abgesagt) |
-| A8 | OFFEN | VOR-VORTEST | Klara-Manifest sideloaden |
-| A9 | OFFEN | VOR-VORTEST | Testordner mit `Arbeitsanweisung Hallenkran.docx` auf ihrem Schreibtisch |
-| A10 | OFFEN | VOR-VORTEST | Erstnutzerlauf auf ihrem Konto wiederholen — der bisherige lief als Admin |
-| A12 | OFFEN | VOR-VORTEST | Zugangsdaten an Natascha |
-| E9 | OFFEN | VOR-VORTEST | **Entschieden: der Bestandsreset schließt den Papierkorb ein — aber die registrierten Nutzer bleiben bestehen.** Gelöscht werden Wissensobjekte und Papierkorb, nicht die Konten |
-| G3b | OFFEN | VOR-VORTEST | Beispieldaten nachrüsten: **verschiedene Vertraulichkeitsstufen und Anhänge**, sonst lässt sich der Zugriffsschutz nicht vorführen |
-| E6 | OFFEN | VOR-VORTEST | Confluence-Testseiten anlegen — verschachtelt, in Untergruppen; der heutige Aufbau reicht zum Testen nicht |
-| D4 | OFFEN | SOFORT | Artefakt-Prompt neu formulieren (die letzte Fassung war zu schwach) — heute Abend |
-| D5 | OFFEN | SOFORT | Klara-Zweitmeinung einholen — Prompt liegt fertig |
-| A17 | OFFEN | NACH-SHIP3 | Der Modal-Sammler ist ein statischer Musterwächter, kein AST-Wächter: Alias-Nutzung, `createElement`, Spread-gesetztes `aria-modal` und Modalität ohne die Zeichenfolge gehen vorbei (ben sammel46, Anmerkung 1/2 — färbt nicht). Gehört mit A16 zusammen |
-| A18 | OFFEN | NACH-SHIP3 | Die Browsermessungen prüfen Bedienbarkeit, Fokus und `inert`, nicht die Sprachausgabe. Ein manueller VoiceOver-/NVDA-Kurzlauf würde den Wächter verbessern (ben sammel46, Anmerkung 4 — keine Ship-Auflage) |
-| A19 | OFFEN | NACH-SHIP3 | Firefox und WebKit liefen einmalig grün, im Tor läuft nur Chromium — keine dauerhafte Drei-Engine-Garantie (ben sammel46, Anmerkung 3) |
-| A15 | ERLEDIGT | — | **Bildbeschreibung: Formular und KI-Vorschlag fehlen auf der Vordertür.** `onDescribeImage` ist ein OPTIONALER Prop des Editors; `CaptureFrontDoor.tsx` und `KnowledgeInputStudio.tsx` übergeben ihn nicht. Ohne ihn rendert weder der Knopf „Bildbeschreibung bearbeiten" (`RichTextEditor.tsx:1129`) noch die Vorschlagsleiste (`captionSuggestVisible`, dritter Parameter). Von Pedi mehrfach angefordert |
-| A16 | ERLEDIGT | — | Sammler über optionale Verträge: **derselbe Fehler wie `FacetFilter` ohne `backgroundRef`** — ein Aufrufer lässt einen optionalen Prop weg, nichts wird rot. Zwei Fälle in zwei Tagen |
-| E4d | OFFEN | VOR-VORTEST | D2 Klara-Refresh vor Freitag schneiden |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| A1 | ERLEDIGT | — | Interviewleitfaden gegengelesen und erweitert: die Lehrlings-Frage aus K5 steht als **Schlussfrage**, mit zwei Sperren davor — sie darf erst fallen, wenn Nataschas eigener Satz aus Thema 1 gesagt ist, und das Wort fällt vorher an keiner Stelle. Im Protokoll stehen beide getrennt | So sehen wir, ob das Bild ihre Sicht **getroffen** oder **ersetzt** hat. Ein klares Nein ist im Prompt ausdrücklich als das wertvollste Ergebnis markiert. |
+| A2 | OFFEN | VOR-VORTEST | „Lieferanten" muss im neuen Testbestand vorkommen | Aufgabe 4 des Vortests sucht danach. Fehlt der Begriff im Bestand, scheitert die Testerin an einer unlösbaren Aufgabe und wir messen unsere Datenlücke statt ihrer Bedienbarkeit. |
+| A6 | ERLEDIGT | — | Aufgabenkarte neu gebaut: `_relay/generalprobe/KLARWERK-Generalprobe-Natascha-v2.pdf`, drei Seiten, toter Termin raus, Einstieg **wortgleich neutral**. Quelle ab jetzt `_relay/generalprobe/quelle/generalprobe-natascha.html`. **Pedi vergleicht und ersetzt das Original selbst** | Es gab keine Quelldatei — für einen falschen Satz musste die Karte neu entstehen. Jetzt kostet die nächste Änderung zwei Minuten. Der Einstieg blieb neutral, weil Aufgabe 1 misst, ob sich das Produkt selbst erklärt; ein Rahmen davor würde nur noch die Karte messen. |
+| A8 | OFFEN | VOR-VORTEST | Klara-Manifest sideloaden | Ohne Sideload gibt es Klara in Word auf ihrem Rechner nicht, und die Aufgaben rund um die Nähe zum Dokument fallen ersatzlos aus. |
+| A9 | OFFEN | VOR-VORTEST | Testordner mit `Arbeitsanweisung Hallenkran.docx` auf ihrem Schreibtisch | Die Import-Aufgabe braucht eine Datei, die sie selbst findet. Sucht sie erst im Dateisystem, messen wir den Finder statt Klarwerk. |
+| A10 | OFFEN | VOR-VORTEST | Erstnutzerlauf auf ihrem Konto wiederholen — der bisherige lief als Admin | Als Admin sieht man Flächen, Knöpfe und Zahlen, die einem Experten fehlen. Alles, was wir bisher über die ersten zehn Minuten wissen, kann für ihre Rolle falsch sein. |
+| A12 | OFFEN | VOR-VORTEST | Zugangsdaten an Natascha | Kommt sie am Freitag um 14:00 nicht herein, ist der Termin vorbei, bevor er beginnt. |
+| E9 | OFFEN | VOR-VORTEST | **Entschieden: der Bestandsreset schließt den Papierkorb ein — aber die registrierten Nutzer bleiben bestehen.** Gelöscht werden Wissensobjekte und Papierkorb, nicht die Konten | Der heutige Bestand ist Entwicklungsschutt: halbe Objekte, Testtitel, 72 Prozent Papierkorb. Den sieht die Testerin sonst als „euer Wissen". Die Konten müssen bleiben, sonst ist auch ihr Zugang weg. |
+| G3b | OFFEN | VOR-VORTEST | Beispieldaten nachrüsten: **verschiedene Vertraulichkeitsstufen und Anhänge** | Ohne Objekte mit Stufen und Anhängen lässt sich weder der Zugriffsschutz noch die Anlagenkopplung vorführen — zwei der Dinge, die Klarwerk von einem Notiz-Werkzeug unterscheiden. |
+| E6 | OFFEN | VOR-VORTEST | Confluence-Testseiten anlegen — verschachtelt, in Untergruppen | Der heutige flache Aufbau testet den Import nicht. Verschachtelung ist genau der Fall, an dem Importe in der Praxis scheitern. |
+| D4 | OFFEN | SOFORT | Artefakt-Prompt neu formulieren (die letzte Fassung war zu schwach) — heute Abend. **Auflage aus L1: je Los eine Begleittabelle** | Aus diesem Prompt entsteht der komplette neue Testbestand. Ist er schwach, erzeugen wir 12.000 Objekte, die wir danach wieder wegwerfen — der Fehler, der uns den heutigen Bestand eingebracht hat. |
+| D5 | OFFEN | SOFORT | Klara-Zweitmeinung einholen — Prompt liegt fertig | Eine zweite, unabhängige Sicht auf den Erzeugungsprompt kostet fast nichts und fängt genau die Denkfehler, die ein einzelner Kopf nicht sieht. |
+| E4d | OFFEN | VOR-VORTEST | D2 Klara-Refresh vor Freitag schneiden | Klara ist die Fläche, die dem Kunden am schnellsten den Unterschied zeigt. Wenn sie am Freitag alt aussieht, trägt der Rest die Vorführung allein. |
+| A17 | OFFEN | NACH-VORTEST | Der Modal-Sammler ist ein statischer Musterwächter, kein AST-Wächter: Alias-Nutzung, `createElement`, Spread-gesetztes `aria-modal` und Modalität ohne die Zeichenfolge gehen vorbei (ben sammel46) | Der Wächter hält, was heute im Code steht, aber nicht jede Bauform von morgen. Er verspricht mehr Deckung, als er hat — und genau solche Zusagen fallen uns später als „war doch grün" auf die Füße. |
+| A18 | OFFEN | NACH-VORTEST | Die Browsermessungen prüfen Bedienbarkeit, Fokus und `inert`, nicht die Sprachausgabe (ben sammel46) | Barrierefreiheit ist bei Industriekunden eine Vergabefrage. Wir behaupten sie heute weiter, als wir sie gemessen haben. |
+| A19 | OFFEN | NACH-VORTEST | Firefox und WebKit liefen einmalig grün, im Tor läuft nur Chromium (ben sammel46) | Ein einmaliger grüner Lauf ist keine Garantie. Bricht Safari beim Kunden, erfahren wir es vom Kunden. |
+| A21 | ERLEDIGT | — | **KI-Modus geprüft, 29.07. 15:5x:** `/api/ai-status` meldet `active: true`, `mode: cloud`, `reachable: active`, alle acht Aufgaben am Modell. Der Cloud-Schlüssel in Coolify ist gesetzt **und erreichbar** | Ohne diesen Nachweis wäre jeder Live-Beleg vor Freitag wertlos gewesen: bei fehlendem Schlüssel läuft alles still im deterministischen Ersatzmodus weiter, und wir hätten geprüft, was die Testerin gar nicht sieht. |
+| A7 | ERLEDIGT | — | Rolle `Experte` — von Pedi entschieden | |
+| A14 | ERLEDIGT | — | Lars-Paket gegenstandslos | |
+| A3 | ERLEDIGT | — | Sichtbarer Knopf „Datei auswählen" — mega34 Block D, `capture-file-pick` plus Ablagefläche als echter `<button>` | |
+| A4 | ERLEDIGT | — | Zur Antwort scrollen und Ladezustand — mega38 Block A, `scrollIntoView` und Ladezustand am Ergebnisort | |
+| A5 | ERLEDIGT | — | Ein Urteil je Antwort — drei benannte Zustände, `trustNote` („kein Wahrheitsversprechen"), „N Quellen **herangezogen**" | |
+| A15 | ERLEDIGT | — | **Bildbeschreibung: Formular und KI-Vorschlag fehlten auf der Vordertür.** Geschlossen in mega50 — `ImageDescribeContext` als eine Quelle, in `App.tsx` montiert | |
+| A16 | ERLEDIGT | — | Sammler über optionale Verträge: derselbe Fehler wie `FacetFilter` ohne `backgroundRef` — ein Aufrufer lässt einen optionalen Prop weg, nichts wird rot | Zwei Fälle in zwei Tagen aus derselben Ursache. Ohne den Sammler wäre der dritte nur eine Frage der Zeit gewesen. |
 
 ---
 
-## 4 — Nach Ship 3, vor dem Großkunden
+## 4 — Nach Ship 6, vor dem Großkunden
 
-| Kennung | Zustand | Anker | Sache |
-|---|---|---|---|
-| K4 | OFFEN | MIT-ADOPTION | **Adoption: wie bringen wir Anwender dazu, das System zu benutzen.** Die KO-Frage. Sieben Konzeptvorgänge SCRUM-475–481. Läuft parallel als Kopf-Arbeit, kostet keinen Code-Takt |
-| D1 | OFFEN | MIT-DESIGN | Bibliotheksfilter nach mobile.de-Vorbild — von Pedi als wesentliche Verbesserung angenommen |
-| D3a | OFFEN | MIT-DESIGN | Design v2: E1 Werkbank-Richtung ja · E2 Klara-Prototyp ja · E3 Reihenfolge D1→D2→D3→D4 ja |
-| F27 | OFFEN | MIT-DESIGN | Markentext einen Tick dunkler (4,497:1 → AA), damit `--kw-funke-soft` nutzbar wird; Klara in Word muss dem gewählten Thema folgen |
-| F16 | OFFEN | MIT-DESIGN | Beispielklick auf `/fragen` vorher als echten, kostenpflichtigen Aufruf kenntlich machen |
-| F21 | BEAUFTRAGT | — | Zitierte gegen herangezogene Quellen — inhaltlich wichtigster offener Posten des Produkts |
-| W1 | BEAUFTRAGT | — | **Antwort zieht fachfremde offene Quellen heran**, obwohl ausschließlich validiertes Wissen zugesichert ist (P0, Handlauf 2) |
-| W2 | BEAUFTRAGT | — | EN/NL übersetzen nur die Metadaten, nicht den Antwortkörper; „klep X" findet „Ventil X" nicht (P0, Handlauf 2) |
-| W3 | OFFEN | NACH-SHIP3 | Word übergibt Bilder nicht — der Verlust wird ehrlich gemeldet, die Bilder fehlen trotzdem |
-| E10 | OFFEN | NACH-SHIP3 | **Entschieden: Umgebungsvariablen in Coolify.** Kein Feld der Oberfläche nimmt je ein Geheimnis entgegen; der Admin-Bereich zeigt nur Zustand — hinterlegt ja/nein, Import ein/aus, wann zuletzt verbunden — und nennt den Variablennamen. Damit ist Block C des Import-Auftrags vollständig |
-| S3 | ENTSCHEIDUNG | VOR-VORTEST | **Der Recall-Preis: drei von zehn Fragen enden jetzt in einer Wissenslücke**, darunter Pedis eigene P0-Frage „Wie oft muss der Filter F3 geprüft werden?". Das richtige validierte Objekt LIEGT im Bestand — „geprüft" trifft „prüfen" literal nicht, und „F3" fällt unter die Zweizeichen-Grenze. Entweder so ausliefern oder die Token-Scheibe vorziehen |
-| S1 | OFFEN | NACH-SHIP6 | **Neuer Fund aus mega52, und der wiegt schwer:** der Rauchproben-Fall „Fragen antwortet ehrlich" hat nie einen `/api/ask`-Aufruf ausgelöst — grün allein durch einen statischen Einleitungstext, an der Playwright-Spur belegt. Zu prüfen, ob weitere Fälle der Rauchprobe genauso hohl sind |
-| S2 | OFFEN | NACH-SHIP6 | „klep" findet „Ventil" nicht: literaler Token-Schnitt und `ILIKE` in der Datenbank, keine Synonyme, keine Übersetzung, keine Embeddings. Eigene Scheibe |
-| A20 | BEAUFTRAGT | — | **Neu, in mega52 mitgenommen:** der Antwort-Beleg bindet heute ALLE herangezogenen Quellen — ein „Hat geholfen" gibt damit jedem bloß angesehenen Objekt ein Vertrauensplus und verfälscht genau die Zahl, auf die sich das Produkt beruft (`ask/src/service.ts:186`) |
-| C1 | OFFEN | NACH-SHIP3 | Import-Seite: „In Planung" einklappen · Quellenwahl wählt wirklich · Freigaben ehrlich · Konfliktsatz · Deckelkommentar. Auftrag liegt fertig, Block C wartet auf E10 |
-| C3 | OFFEN | NACH-SHIP3 | Vier Befunde aus Pedis Live-Durchlauf (Stufe-2-Schalter vergisst sich · „OHNE KI GRUPPIERT" trotz aktivem Reasoner · Such-Leerzustand · rohe Kennung statt Titel) — jeder einzeln am heutigen Code nachsehen |
-| F-Erstnutzer | ERLEDIGT | — | **mega51 ausgeliefert — Ship 5 am 29.07., 13:06, Commit `84060d2`.** Handlauf 1 grün (49/0), ben sammel49 GRÜN, Integrationstests 44 — die ersten zehn Minuten einer Fremden. Acht Befunde des Erstnutzerlaufs sind am Code als geschlossen belegt (F1, F5, F7, F8, F12, F13, F14 und die Chips als Admin-Auskunft). Beauftragt sind die Reste: Arbeitsliste führt Experte ins Leere · eine primäre Handlung beim Erfassen · Suche vor Import/Export · Balken beschriftet und gleicher Wert in Bedingung und Anzeige · Trefferzeile bekommt Platz · „1 Experten" und Autoren-UUID · letzte Fachwörter ohne Trust · Beispielklick sagt vorher, dass er kostet |
-| F28 | BEAUFTRAGT | — | `lib.trustNone` und `lib.trustNoneHint` sind produktseitig verwaist, werden aber von der alten Schlüsselliste in `ux-wow-polish.test.ts` weiter gepinnt (ben sammel49, Anmerkung — färbt nicht). Reist mit F22 mit |
-| F22 | BEAUFTRAGT | — | Trust → Vertrauenswert: rund 30 Schlüssel DE plus 30 NL plus ein Dutzend Fließtexte. Eigene Scheibe mit Fundstellenliste und Sammler — halb übersetzt ist schlechter als gar nicht |
-| F23, F25, F26 | OFFEN | NACH-SHIP3 | Prüfwerkzeug-Reste: bejahender Startsatz, Kopfzeilen-Chips, deutsche Wörter, eine Handlung je Fläche, Zahlen mit Bezug, Rohwerte, „gesichert"-Kollision, „1 Beiträge", Re-Import zu prominent, unbeschrifteter Balken, Trefferzeile, Tadel vor der ersten Handlung, alle acht Quellen, Hauptknopf, Audit-Kette, Vertraulichkeits-Facette, Anlagenkopplung, sechs Routen ohne Live-Beleg, Arbeitszahlen ins Leere, Trust→Vertrauenswert, `apps/web`-tsc ins Tor, Validierungs-Interaktionstest, Computed-Style-Pin |
-| E2g | OFFEN | MIT-GROSSKUNDE | 12.08. **bestätigt** — elf Vorgänge leben wieder: Cloud-Instanz, Confluence in Scheibchen, Microsoft-365-Anmeldung, Spracheingabe, Demo-Drehbuch, Nullschulungs-Test |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| K4 | OFFEN | MIT-ADOPTION | **Adoption: wie bringen wir Anwender dazu, das System zu benutzen.** Sieben Konzeptvorgänge SCRUM-475–481. Läuft parallel als Kopf-Arbeit, kostet keinen Code-Takt | Die KO-Frage des ganzen Produkts. Ein Wissenssystem, das niemand füttert, ist leer — und ein leeres Wissenssystem beantwortet keine Frage, egal wie gut das Retrieval ist. |
+| K5 | OFFEN | MIT-ADOPTION | **Das Lehrlings-Bild — Pedis Fund vom 29.07.** Nicht „dokumentiere dein Wissen", sondern „bilde einen Lehrling aus, dann bleibt das Wissen im Haus". Dieselbe Handlung, umgekehrtes Vorzeichen. Der Interviewweg im Produkt IST bereits der fragende Lehrling — heute eine Funktion, noch kein Rahmen. Gehört als Antwort zu K4 | Dokumentieren ist unbezahlte Verwaltung und riecht danach, sich selbst überflüssig zu machen. Einen Lehrling anlernen ist das, was ein Meister tut: es hebt den Rang, statt ihn zu senken, und der Betrieb hat einen Namen und eine Kultur dafür. Das Bild beantwortet zum ersten Mal ehrlich die Frage „was habe ich davon". **Vorsicht:** wer „Lehrling" sagt, verspricht ein System, das aus Korrekturen besser wird — das können wir heute nicht belegen. Ohne Deckung wird aus dem Bild eine Falschzusage (I12). |
+| S3 | BEAUFTRAGT | SOFORT | **Der Recall-Preis, entschieden und beauftragt.** Drei von zehn Fragen endeten in einer Wissenslücke, darunter Pedis P0-Frage „Wie oft muss der Filter F3 geprüft werden?". Pedi: „token jetzt". ben widerruft in sammel51 seine eigene Reihenfolge. Läuft als mega54 | Eine ehrliche Lücke ist ein Ergebnis. Eine Lücke, hinter der das richtige validierte Objekt nachweislich im Bestand liegt, ist ein Fehler — und sie trifft ausgerechnet die Frage, die wir selbst als Prüffrage gewählt haben. |
+| S6 | BEAUFTRAGT | SOFORT | **Gebaut in mega58 Block A, bei ben in Prüfung.** Das Tor steht jetzt in `keywordSelect` und `rankCandidates` im Kandidatenfilter, vor Bestwert und relativer Regel; die `Math.max`-Vorabprüfung ist in beiden entfallen, `meetsAnswerSubstance` prüft einen einzelnen Wert. Vom Kopf am Endzustand auf der Maschine nachgelesen. Der ursprüngliche Befund: das Substanztor galt für den ganzen Kandidatenpool statt je Kandidat. `keywordSelect` (`provider.ts:1236-1240`) und `rankCandidates` (`:1295-1300`) prüfen `Math.max` über **alle** Substanzwerte; danach entscheidet die relative Regel auf dem Überschneidungswert. Eine Quelle mit `substanz = 0`, aber hohem Wert kommt dadurch mit — und kann den tragenden Treffer sogar **verdrängen**: bei Wert 5 gegen Wert 2 gilt `2·2 > 5` nicht. Vom Kopf am Code nachgeprüft. bens kleinster ehrlicher Fix: erst jeden Kandidaten unter der Mindestsubstanz entfernen, **dann** Bestwert, relative Regel, Ranking und topK | Der Kommentar der Hand nennt die Absicht ausdrücklich: ein Kandidat ohne eigene Substanz solle „nur als Mitläufer eines substanzstarken Treffers erscheinen — nie allein". Genau diese Annahme fällt, sobald der substanzstarke Treffer an der relativen Regel scheitert. Dann steht der Mitläufer allein in der Antwort. |
+| S7 | BEAUFTRAGT | SOFORT | **Läuft als mega58 Block B.** Das volle UI-Smoke-Tor ist rot: `npm run smoke:ui` unmittelbar vor der Gegenprüfung 34 bestanden, 3 rot, 6 übersprungen, 15 nicht ausgeführt; alle drei Engines fallen an `tests-smoke/ui-smoke.spec.ts:112` — der Knopf „Fragen" wurde ohne Modell als deaktiviert erwartet und war aktiviert. **Geklärt in mega58 Block B, bei ben in Prüfung.** Der Befund ist schärfer als die Hypothese und vom Kopf am Quelltext bestätigt: `playwright.smoke.config.ts` bricht außerhalb des hermetischen Tors **hart ab**, wenn der Ship-Schlüssel fehlt — jeder `smoke:ui`, der bis zu den Tests kommt, trägt zwangsläufig ein Modell, der Fall war dort **strukturell unerfüllbar**, nicht wackelig. Gehärtet allein im Testfall: sichtbares Überspringen an `ANTHROPIC_API_KEY`, ausdrücklich nicht am Ship-Schlüssel; in `smoke:ui:gate:drei` läuft er in allen drei Engines voll. **Offene Frage an ben: ehrliche Bauform oder Ersatzgrün** — ein vorher rotes Tor wird grün, ohne dass sich das Produkt geändert hat | Ein rotes Tor ist kein Ship-GO, unabhängig davon, wer recht hat. Und es ist dieselbe Datei, in der schon der hohle Rauchproben-Fall (S1) saß — die Fläche ist in Bewegung. |
+| S5 | OFFEN | NACH-VORTEST | **Komposita werden nicht zerlegt — und das kostet eine validierte Quelle.** Bei „Welche Farbe müssen Firmenwagen haben?" trägt nur noch die **offene** Quelle `koCarRot` („in der Farbe Rot"), während die validierte `koCarBlau` („Firmenwagen: Pflichtfarbe Blau") wegfällt: „Farbe" steckt dort nur im Kompositum. Das Modalverb „müssen" hatte die Lücke bisher zufällig zugedeckt. Vom Kopf am Bestand nachgesehen | Nicht repariert, und zwar bewusst: ein Test darf nicht dadurch grün werden, dass man die Prüfdaten passend schreibt, und jede Messung dieser Woche wäre danach nicht mehr vergleichbar. Auf der Aufgabenkarte steht die Wagenfarbe nicht unter den Beispielfragen. |
+| S4 | BEAUFTRAGT | SOFORT | **Zwei widersprüchliche „Nächster Schritt" auf einem Bildschirm.** `ask.contract.gap.next` (`i18n.ts:1836`) nennt das kostenlose Umformulieren, `ask.gapNext` (`:1783`) das Risiko-Board — beide in DE/EN/NL. Mobile kennt den kostenlosen Schritt gar nicht. Läuft als mega54 Block E | Genau in dem Moment, in dem die Testerin nicht weiterkommt, bekommt sie zwei verschiedene Anweisungen. Der teure Weg steht dabei prominenter als der kostenlose. |
+| S1 | OFFEN | NACH-VORTEST | **Der Rauchproben-Fall „Fragen antwortet ehrlich" hat nie einen `/api/ask`-Aufruf ausgelöst** — grün allein durch einen statischen Einleitungstext, an der Playwright-Spur belegt | Ein grüner Test, der nichts prüft, ist schlimmer als kein Test: er verhindert, dass jemand hinsieht. Solange ungeklärt ist, ob weitere Fälle so gebaut sind, wissen wir nicht, was unser Tor wirklich deckt. |
+| S2 | OFFEN | NACH-VORTEST | „klep" findet „Ventil" nicht: literaler Token-Schnitt und `ILIKE`, keine Synonyme, keine Übersetzung, keine Embeddings. mega54 deckt das ausdrücklich **nicht** ab | Für einen deutschen Betrieb ist das heute egal. Für den Großkunden mit niederländischen Standorten ist es der Unterschied zwischen „funktioniert" und „funktioniert bei uns nicht". |
+| F21 | ERLEDIGT | — | **Zitierte gegen herangezogene Quellen** — geschlossen in mega52/53, ausgeliefert in Ship 6. ben sammel51: ROT-2 geschlossen | Vorher stammten Klasse und Vertrauenswert von der ersten angesehenen Quelle, auch wenn die Antwort eine ganz andere zitierte. Die Zahl, auf die sich das Produkt beruft, war damit falsch. |
+| W1 | ERLEDIGT | — | **Antwort zog fachfremde offene Quellen heran** (P0, Handlauf 2) — geschlossen in mega52 und mega53. ben sammel51: ROT-1 geschlossen | Ein einziges gemeinsames Wort genügte, damit eine fachfremde Quelle eine Antwort trug — bei zugesichertem „nur validiertes Wissen". |
+| W2 | ERLEDIGT | — | Ausgabesprache: der Antwort-Prompt schwieg dazu, alles Nicht-Englische wurde auf Deutsch abgebildet — geschlossen in mega52. **Der zweite Teil bleibt offen und heißt S2** | |
+| A20 | ERLEDIGT | — | Der Antwort-Beleg band ALLE herangezogenen Quellen — ein „Hat geholfen" gab jedem bloß angesehenen Objekt ein Vertrauensplus. Geschlossen in mega52 A4 | Jede Daumen-hoch-Rückmeldung hat den Vertrauenswert unbeteiligter Objekte gehoben. Über Wochen hätte das die Rangfolge des ganzen Bestandes verzerrt. |
+| F22 | ERLEDIGT | — | Trust → Vertrauenswert: 48 Schlüssel DE, 18 EN, 17 NL. Von ben in sammel50 gegengerechnet. Englisch bleibt unangetastet, „Trust" ist dort ein normales Wort | Halb übersetzt ist schlechter als gar nicht: der Nutzer hält zwei Wörter für zwei verschiedene Dinge. |
+| F28 | ERLEDIGT | — | `lib.trustNone`/`lib.trustNoneHint` verwaist und von der alten Schlüsselliste gepinnt — mit F22 erledigt | |
+| D1 | OFFEN | MIT-DESIGN | Bibliotheksfilter nach mobile.de-Vorbild — von Pedi als wesentliche Verbesserung angenommen | Die Bibliothek ist die Fläche, auf der sich entscheidet, ob jemand seinen Bestand als beherrschbar erlebt. Heute ist sie eine Liste, kein Werkzeug. |
+| D3a | OFFEN | MIT-DESIGN | Design v2: E1 Werkbank-Richtung ja · E2 Klara-Prototyp ja · E3 Reihenfolge D1→D2→D3→D4 ja | Der heutige Eindruck ist generisch. Beim Großkunden entscheidet der erste Blick mit darüber, ob man uns für ein Industriewerkzeug oder eine Notiz-App hält. |
+| F27 | OFFEN | MIT-DESIGN | Markentext einen Tick dunkler (4,497:1 → AA), damit `--kw-funke-soft` nutzbar wird; Klara in Word muss dem gewählten Thema folgen | Knapp unter AA ist keine Geschmacksfrage, sondern in Ausschreibungen ein Ausschlusskriterium. |
+| F16 | OFFEN | MIT-DESIGN | Beispielklick auf `/fragen` vorher als echten, kostenpflichtigen Aufruf kenntlich machen | Ein Klick, der Geld kostet, ohne es vorher zu sagen, ist genau die Sorte Unehrlichkeit, gegen die das ganze Produkt argumentiert. |
+| W3 | OFFEN | NACH-VORTEST | Word übergibt Bilder nicht — der Verlust wird ehrlich gemeldet, die Bilder fehlen trotzdem | In Arbeitsanweisungen steckt das Wesentliche oft im Bild. Ehrlich zu melden, dass es fehlt, ist besser als zu schweigen, aber es ersetzt das Bild nicht. |
+| E10 | OFFEN | NACH-VORTEST | **Entschieden: Umgebungsvariablen in Coolify.** Kein Feld der Oberfläche nimmt je ein Geheimnis entgegen; der Admin-Bereich zeigt nur Zustand und nennt den Variablennamen | Ein Eingabefeld für Schlüssel in der Oberfläche wäre eine dauerhafte Angriffsfläche und ein Prüfbefund bei jedem Sicherheits-Audit. |
+| C1 | OFFEN | NACH-VORTEST | Import-Seite: „In Planung" einklappen · Quellenwahl wählt wirklich · Freigaben ehrlich · Konfliktsatz · Deckelkommentar. Auftrag liegt fertig, Block C ist seit E10 vollständig | Der Import ist der Weg, auf dem Wissen überhaupt hereinkommt. Eine Seite, die Geplantes wie Vorhandenes aussehen lässt, verspricht dem Kunden Funktionen, die es nicht gibt. |
+| C3 | OFFEN | NACH-VORTEST | Vier Befunde aus Pedis Live-Durchlauf (Stufe-2-Schalter vergisst sich · „OHNE KI GRUPPIERT" trotz aktivem Reasoner · Such-Leerzustand · rohe Kennung statt Titel) — jeder einzeln am heutigen Code nachsehen | Alle vier sind vom Chef selbst im Betrieb gesehen worden. „OHNE KI GRUPPIERT" bei laufender KI ist dabei kein Schönheitsfehler, sondern eine falsche Zustandsaussage. |
+| F-Erstnutzer | ERLEDIGT | — | **mega51 ausgeliefert — Ship 5, Commit `84060d2`.** Handlauf 1 grün (49/0), ben sammel49 GRÜN — die ersten zehn Minuten einer Fremden, acht Befunde am Code als geschlossen belegt | |
+| F23, F25, F26 | OFFEN | NACH-VORTEST | Prüfwerkzeug-Reste: `apps/web`-tsc ins Tor · Validierungs-Interaktionstest · Computed-Style-Pin · Kopfzeilen-Chips, eine Handlung je Fläche, Zahlen mit Bezug, Rohwerte, „gesichert"-Kollision, Re-Import zu prominent, Audit-Kette, Vertraulichkeits-Facette, Anlagenkopplung, sechs Routen ohne Live-Beleg | Der eigene `tsc` von `apps/web` läuft heute nicht im Tor — Typfehler in der Weboberfläche können also durchrutschen, während wir „komplett grün" melden. |
+| F29 | OFFEN | NACH-VORTEST | Mobile und Markdown-Export markieren die Quellenliste nicht so deutlich in „tragend" gegen „nur konsultiert" wie der Desktop (ben sammel51, färbt nicht) | Wer die Antwort exportiert und weitergibt, verliert genau die Unterscheidung, die mega52 und mega53 hergestellt haben. |
+| E2g | OFFEN | MIT-GROSSKUNDE | 12.08. **bestätigt** — elf Vorgänge leben wieder: Cloud-Instanz, Confluence in Scheibchen, Microsoft-365-Anmeldung, Spracheingabe, Demo-Drehbuch, Nullschulungs-Test | Zwei Wochen nach dem Vortest, und mehrere dieser Punkte brauchen Vorlauf beim Kunden — Anmeldung und Cloud-Instanz lassen sich nicht am Vortag erledigen. |
 
 ---
 
@@ -107,70 +124,76 @@ Fester Termin: **Freitag 14:00**, Natascha, sieben Aufgaben, kein Vorwissen.
 
 Pedis Anordnung: „nach Freitag, aber nicht vergessen."
 
-| Kennung | Zustand | Anker | Sache |
-|---|---|---|---|
-| G1 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Freigabestufe je Nutzer; heute sieht jeder angemeldete Nutzer jedes Objekt, auch „streng vertraulich" |
-| G2 | OFFEN | MIT-ZUGRIFFSSCHUTZ | **Entschieden: Rückkante.** Der Anhang trägt die Kennung seines Wissensobjekts und wird behandelt wie es — keine Stufen-Propagation, kein Kompromiss |
-| G3 | OFFEN | MIT-ZUGRIFFSSCHUTZ | **Entschieden: fail-closed.** Es gibt keinen Altbestand, wir arbeiten nur mit Beispieldaten. Der Bestandsfall entfällt |
-| G4 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Anhang bleibt ein Jahr im Browser gültig — Loch, sobald gesperrt wird |
-| G5 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Drei Nebenwege: Benachrichtigungen, Duplikat-Eigenanteile, Konfliktzitate |
-| G6–G8 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Export umgeht Vertraulichkeit (SCRUM-506) · systemisch auf allen Lesewegen (508) · Medien-Egress vertraut dem Browser (521) |
-| G9 | OFFEN | MIT-ZUGRIFFSSCHUTZ | SCRUM-533, 449, 508 und 556 zu **einem** Vorgang zusammenführen — vier Tickets für eine Sache |
-| B6 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Der Platzhalter in `provenance-routes.ts` darf nicht scharf gehen, bevor G1 steht |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| G1 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Freigabestufe je Nutzer; heute sieht jeder angemeldete Nutzer jedes Objekt, auch „streng vertraulich" | Das ist der schwerste offene Punkt des Produkts. Ein Werkzeug, das Vertraulichkeitsstufen anzeigt, sie aber nicht durchsetzt, verspricht Sicherheit und liefert Beschriftung. |
+| G2 | OFFEN | MIT-ZUGRIFFSSCHUTZ | **Entschieden: Rückkante.** Der Anhang trägt die Kennung seines Wissensobjekts und wird behandelt wie es — keine Stufen-Propagation, kein Kompromiss | Anhang und Objekt sind Geschwister. Jede andere Regel führt dazu, dass die Zeichnung frei liegt, während der Text gesperrt ist. |
+| G3 | OFFEN | MIT-ZUGRIFFSSCHUTZ | **Entschieden: fail-closed.** Es gibt keinen Altbestand, wir arbeiten nur mit Beispieldaten. Der Bestandsfall entfällt | Ohne Altbestand können wir die strenge Regel sofort scharf stellen, statt eine Übergangsregel zu bauen, die dann bleibt. |
+| G4 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Anhang bleibt ein Jahr im Browser gültig — Loch, sobald gesperrt wird | Wer einmal Zugriff hatte, behält ihn faktisch ein Jahr. Bei einem ausgeschiedenen Mitarbeiter ist das genau der Fall, den der Zugriffsschutz verhindern soll. |
+| G5 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Drei Nebenwege: Benachrichtigungen, Duplikat-Eigenanteile, Konfliktzitate | Ein Zugriffsschutz, der nur den Hauptweg deckt, ist keiner. Diese drei geben Inhalt preis, ohne dass jemand das Objekt öffnet. |
+| G6–G8 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Export umgeht Vertraulichkeit (SCRUM-506) · systemisch auf allen Lesewegen (508) · Medien-Egress vertraut dem Browser (521) | |
+| G9 | OFFEN | MIT-ZUGRIFFSSCHUTZ | SCRUM-533, 449, 508 und 556 zu **einem** Vorgang zusammenführen | Vier Tickets für eine Sache heißt, dass vier Leute drei Viertel davon für erledigt halten. |
+| G10 | OFFEN | MIT-ZUGRIFFSSCHUTZ | Der Platzhalter in `provenance-routes.ts` darf nicht scharf gehen, bevor G1 steht | |
 
 ---
 
 ## 6 — Wissensnetz
 
-| Kennung | Zustand | Anker | Sache |
-|---|---|---|---|
-| H1 | OFFEN | NACH-SHIP3 | **Die Anwendersicht.** Pedis Anweisung: nicht im Admin verstecken. Serverseite steht (mega45), die Sicht fehlt ganz |
-| H3 | OFFEN | NACH-SHIP3 | SCRUM-545–551: Beziehungen erheben · Lücken schließen · Graph-Lesemodell · kuratierte Sicht „So arbeitet Klarwerk" · Adminseite · Qualitätsblick |
-| H4 | OFFEN | MIT-JAHRESRING | Modellläufe werden nicht protokolliert (SCRUM-554) — vor dem ersten großen Lauf zu klären |
-| H2 | VERWORFEN | — | Das „Zeitprojekt"-Verfahren mit fallenlassbarem Block Z. Es hat siebzehn Aufträge lang genau das bewirkt, was es verhindern sollte |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| H1 | OFFEN | NACH-VORTEST | **Die Anwendersicht des Wissensnetzes.** Pedis Anweisung: nicht im Admin verstecken. Serverseite steht seit mega45, die Sicht fehlt ganz. **Das ist die „LLM-Wiki-Grafik", die Pedi am 29.07. genannt hat** — Q3 damit beantwortet. Seine zwei Wörter dazu: *Grafik* und *Wiki*. Beim Schnitt zu klären, ob damit ein gezeichnetes Netz aus Knoten und Kanten gemeint ist oder eine durchblätterbare Wissenssicht — nicht raten, ihn fragen | Das Wissensnetz ist gebaut und für den Anwender unsichtbar. Wir haben die teure Hälfte fertig und die billige nicht. Genau deshalb ist es der beste erste Punkt nach dem Stopp: viel Wirkung, wenig Bau. |
+| H3 | OFFEN | NACH-VORTEST | SCRUM-545–551: Beziehungen erheben · Lücken schließen · Graph-Lesemodell · kuratierte Sicht „So arbeitet Klarwerk" · Adminseite · Qualitätsblick | |
+| H4 | OFFEN | MIT-JAHRESRING | Modellläufe werden nicht protokolliert (SCRUM-554) | Vor dem ersten großen Erzeugungslauf zu klären, sonst laufen zwölftausend Modellaufrufe ohne jede Spur, was sie gekostet und was sie erzeugt haben. |
+| H2 | VERWORFEN | — | Das „Zeitprojekt"-Verfahren mit fallenlassbarem Block Z | Es hat siebzehn Aufträge lang genau das bewirkt, was es verhindern sollte: der fallenlassbare Block wurde immer fallengelassen. |
 
 ---
 
 ## 7 — Jahresring und Testbestand
 
-| Kennung | Zustand | Anker | Sache |
-|---|---|---|---|
-| L1 | OFFEN | MIT-JAHRESRING | **Entschieden: entfällt als Nachforderung — wir fangen von vorne an.** Die 120 undokumentierten Anhänge werden nicht nachdokumentiert, sondern neu erzeugt. **Auflage für den Erzeugungsprompt (D4): je Los eine Begleittabelle, kein Los ohne sie** |
-| L2 | OFFEN | MIT-JAHRESRING | **Entschieden: neu gestalten, in geringerer Anzahl.** Die 24.000 Kennungen gegen 12.480 Objekte waren ein Fehler; Mehrfachverwendung kommt zurück |
-| L3 | OFFEN | MIT-JAHRESRING | **Entschieden: weniger, dafür realistischer.** Keine Vektorzeichnungen als „Fotos", keine eingebrannte Kennung im Bild — **muss ausdrücklich im Erzeugungsprompt stehen** |
-| L4 | OFFEN | MIT-JAHRESRING | Aufgabe A nie geliefert: Anhangsgerüst neu herleiten, Datenbankgröße neu rechnen, Losgröße begründen |
-| L5 | OFFEN | MIT-JAHRESRING | Löschanteil aus dem Firmenalltag herleiten — die 72 % Papierkorb sind Entwicklungsschutt, kein Vorbild |
-| L6 | OFFEN | MIT-JAHRESRING | Vier Datenbankbefunde: kein Fremdschlüssel auf der Objekttabelle, Lücken ohne Objektbezug, kein Waisen-Sweep, Prüfspur auf gelöschte Objekte |
-| L7 | ERLEDIGT | — | Ladeweg entschieden: Bulk-Import ohne Modellaufruf, Erzeugung in Losen mit Halt |
-| E3 | OFFEN | SOFORT | **Entschieden: Swap wird eingerichtet**, auf beiden Maschinen |
-| E5 | OFFEN | MIT-JAHRESRING | **Entschieden: entfällt — wir starten neu.** Rolle und Schema entstehen mit dem neuen Aufsetzen, nicht als Nachrüstung |
-| E4s | OFFEN | MIT-JAHRESRING | Zweiter Server aufsetzen (entschieden: eigene Maschine) — nach Freitag |
-| E7 | OFFEN | SOFORT | Produktionsdatenbank umbenennen — Pedi gibt frei, Kopf führt aus |
-| E8 | OFFEN | MIT-JAHRESRING | RESERVE und leeren Jahresring-Container löschen, erst nach dem Nachweis |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| L1 | OFFEN | MIT-JAHRESRING | **Entschieden: entfällt als Nachforderung — wir fangen von vorne an.** Die 120 undokumentierten Anhänge werden neu erzeugt. **Auflage für den Erzeugungsprompt (D4): je Los eine Begleittabelle, kein Los ohne sie** | Ohne Begleittabelle wissen wir bei jedem Los wieder nicht, was drin ist — genau der Zustand, der zur Nachforderung geführt hat. |
+| L2 | OFFEN | MIT-JAHRESRING | **Entschieden: neu gestalten, in geringerer Anzahl.** Die 24.000 Kennungen gegen 12.480 Objekte waren ein Fehler; Mehrfachverwendung kommt zurück | Doppelt so viele Kennungen wie Objekte bildet keinen Betrieb ab. In der Wirklichkeit taucht dieselbe Anlage in vielen Dokumenten auf — das ist der ganze Sinn eines Wissensnetzes. |
+| L3 | OFFEN | MIT-JAHRESRING | **Entschieden: weniger, dafür realistischer.** Keine Vektorzeichnungen als „Fotos", keine eingebrannte Kennung im Bild — **muss ausdrücklich im Erzeugungsprompt stehen** | Steht es nicht im Prompt, kommt es wieder so heraus. Der letzte Lauf ist genau daran gescheitert. |
+| L4 | OFFEN | MIT-JAHRESRING | Aufgabe A nie geliefert: Anhangsgerüst neu herleiten, Datenbankgröße neu rechnen, Losgröße begründen | Ohne diese Rechnung erzeugen wir wieder auf gut Glück und merken die Größe erst, wenn die Platte voll ist. |
+| L5 | OFFEN | MIT-JAHRESRING | Löschanteil aus dem Firmenalltag herleiten — die 72 % Papierkorb sind Entwicklungsschutt | Ein Testbestand, dessen Löschanteil aus unseren eigenen Fehlversuchen stammt, misst uns, nicht den Kunden. |
+| L6 | OFFEN | MIT-JAHRESRING | Vier Datenbankbefunde: kein Fremdschlüssel auf der Objekttabelle, Lücken ohne Objektbezug, kein Waisen-Sweep, Prüfspur auf gelöschte Objekte | Fehlende Fremdschlüssel heißt, dass die Datenbank Widersprüche zulässt, die niemand bemerkt, bis eine Auswertung falsch rechnet. |
+| L7 | ERLEDIGT | — | Ladeweg entschieden: Bulk-Import ohne Modellaufruf, Erzeugung in Losen mit Halt | |
+| E3 | OFFEN | SOFORT | **Entschieden: Swap wird eingerichtet**, auf beiden Maschinen | Ohne Swap bricht der große Erzeugungslauf mitten drin ab, und wir wissen hinterher nicht, welche Lose vollständig sind. |
+| E5 | OFFEN | MIT-JAHRESRING | **Entschieden: entfällt — wir starten neu.** Rolle und Schema entstehen mit dem neuen Aufsetzen | |
+| E4s | OFFEN | MIT-JAHRESRING | Zweiter Server aufsetzen (entschieden: eigene Maschine) — nach Freitag | Der Erzeugungslauf und der laufende Betrieb dürfen sich nicht dieselbe Maschine teilen, sonst legt ein Lauf die Vorführung lahm. |
+| E7 | OFFEN | SOFORT | Produktionsdatenbank umbenennen — Pedi gibt frei, Kopf führt aus | Der heutige Name lädt dazu ein, die Produktionsdatenbank für eine Testdatenbank zu halten. Das geht genau einmal schief. |
+| E8 | OFFEN | MIT-JAHRESRING | RESERVE und leeren Jahresring-Container löschen, erst nach dem Nachweis | |
 
 ---
 
 ## 8 — Prozess: was das Vergessen verursacht hat
 
-| Kennung | Zustand | Anker | Sache |
-|---|---|---|---|
-| I1 | OFFEN | SOFORT | **Diese Datei.** Ersetzt die unerfüllbare Gedächtnis-Regel aus SCRUM-532 (Gedächtnis ist für das Konto abgeschaltet) |
-| P1 | OFFEN | SOFORT | **Der Prozess-Wächter im Prüftor** — siehe unten. Ohne ihn ist diese Datei nur ein weiteres Dokument |
-| I2 | OFFEN | NACH-SHIP3 | KOMMUNIKATIONSWEGE und SCRUM-530 zu **einem** Dokument zusammenführen, Widerspruch beim Startbefehl auflösen |
-| I8 | OFFEN | SOFORT | Scheiben-Zusatz an ben-Auftragsnamen wieder anhängen **und in der Regel verankern** |
-| I6 | OFFEN | SOFORT | Täglicher Kassensturz — ab jetzt gefahren, nicht mehr nur beschrieben |
-| I12 | OFFEN | NACH-SHIP3 | Inventur aller Verhaltensbehauptungen; sechste Regel für SCRUM-553: jede Behauptung braucht eine Deckung |
-| I3 | OFFEN | NACH-SHIP3 | SCRUM-531 nachziehen — steht vier Ships hinterher |
-| I4 | OFFEN | NACH-SHIP3 | SCRUM-530: Code-Freeze und VIP-2 als KO streichen, Prozess-Freeze streichen |
-| I5 | OFFEN | NACH-SHIP3 | sammel26–45 in SCRUM-469 verankern — neunzehn Verdikte stehen nur in `_relay/` |
-| I7 | OFFEN | SOFORT | Projekt-Instruktionen laden nicht; Selbstprüfung zu Sitzungsbeginn wird Pflicht |
-| I9 | OFFEN | SOFORT | Stichprobengröße nennen, wenn über eine Menge geurteilt wird |
-| I10 | OFFEN | SOFORT | Keine interaktiven Datenbank-Transaktionen mehr |
-| I11 | OFFEN | NACH-SHIP3 | Coolify-Eigenheiten selbst nachprüfen oder als unbelegt kennzeichnen |
-| I13 | OFFEN | NACH-SHIP3 | Ship-Tor braucht ein Cloud-Geheimnis (SCRUM-552) — die Frist „bis nach VIP-2" ist verfallen |
-| J | ERLEDIGT | — | **Dateileichen weg**, am 29.07. nachgeprüft: alle vier `_to_delete`- und `_trash`-Ordner gelöscht, null Dubletten, null Board-Sicherungen. Rest: der leere Ordner `_relay/kopf/wartet` (ein `rmdir` bei Gelegenheit) und sechs tote Artefakte in der Seitenleiste, die nur Pedi dort entfernen kann |
-| K2 | ERLEDIGT | — | `_relay/kopf/wartet/` aufgelöst: der Import-Auftrag liegt als Entwurf in `_relay/hand/queue/`, die drei verbrauchten Fassungen in `_to_delete` |
-| E1v | ERLEDIGT | — | VIP-2 entfällt endgültig; der Vermerk „nach VIP-2" wird überall durch einen Ereignis-Anker ersetzt |
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| I1 | OFFEN | SOFORT | **Diese Datei.** Ersetzt die unerfüllbare Gedächtnis-Regel aus SCRUM-532 (Gedächtnis ist für das Konto abgeschaltet) | Die alte Regel verlangte ein Gedächtnis, das es technisch nicht gibt. Eine Regel, die niemand erfüllen kann, wird nicht befolgt, sondern ignoriert — und mit ihr alles andere. |
+| P1 | OFFEN | SOFORT | **Der Prozess-Wächter im Prüftor** — siehe unten | Ohne ihn hängt dieser ganze Abschnitt an Disziplin, und Disziplin überlebt keinen Kopfwechsel. Genau daran ist es schon einmal gescheitert. |
+| I8 | OFFEN | SOFORT | Scheiben-Zusatz an ben-Auftragsnamen wieder anhängen **und in der Regel verankern** | Ohne den Zusatz weiß niemand mehr, welche Prüfung zu welcher Scheibe gehörte — bei fünfundzwanzig Verdikten ist das der Unterschied zwischen Archiv und Haufen. |
+| I6 | OFFEN | SOFORT | Täglicher Kassensturz — ab jetzt gefahren, nicht mehr nur beschrieben | Er hätte die vier unbeantworteten Vorschläge am zweiten Tag sichtbar gemacht statt am neunten. |
+| I2 | OFFEN | NACH-VORTEST | KOMMUNIKATIONSWEGE und SCRUM-530 zu **einem** Dokument zusammenführen, Widerspruch beim Startbefehl auflösen | Zwei Übergabedokumente heißt: ein neuer Kopf liest das falsche. |
+| I12 | OFFEN | NACH-VORTEST | Inventur aller Verhaltensbehauptungen; sechste Regel für SCRUM-553: jede Behauptung braucht eine Deckung | Der hohle Rauchproben-Fall war kein Ausrutscher, sondern die Bauart. Ungedeckte Zusagen sind teurer als fehlende. |
+| I3 | ERLEDIGT | — | SCRUM-531 ist kein Statusbericht mehr, sondern ein Wegweiser auf `OFFEN.md` und `KOMMUNIKATIONSWEGE.md` | Es war als lebende Übergabe-Wahrheit gedacht und genau daran gescheitert: es hing fünf Ships hinterher, weil niemand es nachzog. Ein Zeiger veraltet nicht. |
+| I15 | ERLEDIGT | — | `_relay/kopf/KOMMUNIKATIONSWEGE.md` §2 trägt seit 29.07. abends `1fc55aa` samt Ship-Kette und dem Satz „wer die Basis ändert, ändert diese Zeile" — vom Kopf am 29.07. in der Datei nachgelesen | Das Dokument, das die Quelle der Wahrheit sein soll, war ausgerechnet an der Stelle veraltet, an der es vor veralteten Aufträgen warnt. |
+| I17 | OFFEN | SOFORT | **Die Dateiübertragung liefert Altfassungen — jede gestagte Datei gegen die gemeldete Bytezahl prüfen.** Am 29.07. beim Nachrechnen von mega58 real passiert: der Endzustand von `provider.ts` kam mit 64.256 Bytes und altem Code herüber, während die Maschine 65.655 Bytes und den neuen trug. Der Selbsttest kostet nichts: die Übertragung meldet die Bytezahl des Geräts mit, ein Vergleich mit der angekommenen Datei entlarvt den Fall sofort. Sicherer Weg für Zustandsfragen: direkt auf der Maschine lesen | Es ist dieselbe Ursache, die schon vier falsche „erledigt" erzeugt hat — diesmal hätte sie beinahe einen korrekt gebauten Fix als nicht gebaut gemeldet. Ein Kopf, der eine Altfassung liest, widerspricht der Hand zu Unrecht und kostet eine ganze Runde. |
+| I16 | OFFEN | SOFORT | `_relay/kopf/_to_delete/` löschen — fünf Wegwerf-Kopien der Leseseite und drei `.DS_Store`. Dazu der leere Ordner `_relay/kopf/wartet/`. **Kann nur Pedi**, der Kopf darf auf seiner Maschine nichts löschen | Die Kopien entstanden, weil die Dateiübertragung zwischengespeicherte Fassungen auslieferte und nur eindeutige Namen das umgingen. Sie sind Werkzeugschutt, kein Inhalt. |
+| I4 | OFFEN | NACH-VORTEST | SCRUM-530: Code-Freeze und VIP-2 als KO streichen, Prozess-Freeze streichen | Regeln, die sich auf einen abgesagten Termin beziehen, blockieren Arbeit ohne Nutzen. |
+| I5 | ERLEDIGT | — | Die Verdikte sammel45–54 und die Ship-Kette dieses Tages sind in SCRUM-469 verankert, mit Inhalts-SHA je Runde und der Fehlerklasse, die sich durch fünf Runden zieht | `_relay/` steht in `.gitignore` und reist mit keinem Klon mit — genau der Mechanismus, der schon einmal das ganze Projektgedächtnis gekostet hat. Die älteren Runden sammel26–44 stehen weiterhin aus. |
+| I7 | OFFEN | SOFORT | Projekt-Instruktionen laden nicht; Selbstprüfung zu Sitzungsbeginn wird Pflicht | Ein Kopf, der ohne seine Instruktionen startet und es nicht merkt, arbeitet stundenlang nach Regeln, die er sich selbst ausdenkt. |
+| I9 | OFFEN | SOFORT | Stichprobengröße nennen, wenn über eine Menge geurteilt wird | „Ich habe die Tests geprüft" bei drei von vierzig ist eine Falschaussage, auch wenn sie nicht so gemeint war. |
+| I10 | OFFEN | SOFORT | Keine interaktiven Datenbank-Transaktionen mehr | Eine offene Transaktion blockiert die Datenbank für alle anderen, bis jemand sie bemerkt. |
+| I11 | OFFEN | NACH-VORTEST | Coolify-Eigenheiten selbst nachprüfen oder als unbelegt kennzeichnen | |
+| I13 | OFFEN | NACH-VORTEST | Ship-Tor braucht ein Cloud-Geheimnis (SCRUM-552) — die Frist „bis nach VIP-2" ist verfallen | |
+| I14 | OFFEN | SOFORT | **Kein Kopf-Befehl ohne `cd`.** Am 29.07. lief eine Ship-Sequenz im Home-Verzeichnis ins Leere, weil der Kopf das Arbeitsverzeichnis nicht mitgegeben hat | Es ist glimpflich ausgegangen, weil `git` sich verweigert hat. Bei einem Befehl, der auch außerhalb des Repos etwas tut, wäre es das nicht. |
+| K3 | ERLEDIGT | — | **Das Artefakt „Klarwerk Board" ist außer Dienst**, von Pedi am 29.07. freigegeben. Es gibt genau eine Lesefläche: „Was offen ist", erzeugt aus dieser Datei. Die Aufklapp-Erklärung je Punkt ist als fünfte Spalte „Warum" nachgerüstet | Zwei Leseflächen heißt zwei Wahrheiten, und die zweite veraltet immer. Genau daran sind die dreimal wiederholten „das ist doch erledigt"-Rückfragen entstanden. |
+| J | ERLEDIGT | — | **Dateileichen weg**, am 29.07. nachgeprüft: alle vier `_to_delete`- und `_trash`-Ordner gelöscht, null Dubletten, null Board-Sicherungen. Der neue Rest steht als I16 | |
+| K6 | ERLEDIGT | — | **`_relay/kopf/INDEX.md`** sagt je Datei, ob sie gilt oder überholt ist und wodurch sie ersetzt wurde. Sechs konkurrierende Übergabe- und Statusdokumente sind damit eingeordnet, keines gelöscht | Genau dagegen ist die fünfte Regel des Prozess-Wächters geschrieben. Am 28.07. lagen sechs sorgfältig geschriebene Dokumente nebeneinander, keines vollständig aktuell — ein neuer Kopf las das falsche. |
+| K2 | ERLEDIGT | — | `_relay/kopf/wartet/` aufgelöst: der Import-Auftrag liegt als Entwurf in `_relay/hand/queue/` | |
+| E1v | ERLEDIGT | — | VIP-2 entfällt endgültig; der Vermerk „nach VIP-2" wird überall durch einen Ereignis-Anker ersetzt | |
 
 ---
 
@@ -198,9 +221,11 @@ Alles in diesem Projekt, was halten soll, hängt an einem Sammler im Prüftor. D
 
 **Fünftens: eine Übergabe, nicht drei.** Mehr als ein Übergabedokument ohne Überholt-Vermerk macht das Tor rot.
 
+**Sechstens: keine Erklärungslücke bei den ältesten Punkten.** Ein offener Punkt ohne fünfte Spalte, der älter ist als zwei Ship-Runden, macht das Tor gelb.
+
 ## Der Kassensturz
 
-Einmal je Arbeitstag, ungefragt, drei Zeilen: was sich bewegt hat · was auf Pedi wartet, **mit der ältesten zuerst** · was am längsten liegt. Das ist der Mechanismus, der die vier unbeantworteten Vorschläge am zweiten Tag sichtbar gemacht hätte statt am neunten.
+Einmal je Arbeitstag, ungefragt, drei Zeilen: was sich bewegt hat · was auf Pedi wartet, **mit der ältesten zuerst** · was am längsten liegt.
 
 ## Der Anlauf beim Kopfwechsel
 

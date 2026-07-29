@@ -109,7 +109,45 @@ test("Kernfluss: Erzählen → Wissensseite → Einreichen @modell", async ({ pa
 //     die `playwright.smoke.config.ts` für den Erfassungs-Kernfluss schon begründet hat.
 // Beide hängen jetzt an `data-testid`-Ankern des Ergebnisbereichs statt an Anzeigetext, der sich
 // mit jeder Copy-Runde verschiebt.
+//
+// ================================================================================================
+// AUFTRAG-mega58 BLOCK B — WARUM EIN LAUF MIT MODELLSCHLÜSSEL DIESEN FALL NICHT BELEGEN KANN.
+// ================================================================================================
+//
+// DER BEFUND (Ship 6): `npm run smoke:ui` war in allen drei Engines an genau dieser Zeile rot. Das
+// Produkt war dabei die ganze Zeit richtig — die VORBEDINGUNG des Falls war es nicht.
+//
+// Der Fall behauptet in seinem Titel „ohne Modell". Ist im Lauf ein Modell aktiv, ist der Fragen-
+// Knopf ZU RECHT bedienbar (`Ask.tsx` → `disabled={… || !answerAi.available …}`), und die Erwartung
+// `toBeDisabled()` fällt. Der Fall prüft dann nicht mehr das Produkt, sondern nur noch, ob der Lauf
+// zufällig modellfrei war.
+//
+// UND GENAU DAS IST IM VOLLEN SMOKE NIE DER FALL, nicht bloß manchmal: `playwright.smoke.config.ts`
+// bricht einen Nicht-Tor-Lauf OHNE Zugangsdatum absichtlich hart ab („LAUTER ABBRUCH statt stillem
+// Rückfall"). Ein `smoke:ui`, das überhaupt bis zu den Tests kommt, trägt also IMMER einen
+// Modellschlüssel. Der Fall war dort nicht wackelig, sondern strukturell unerfüllbar.
+//
+// DIE HÄRTUNG, und sie ist bewusst ein SICHTBARES Überspringen und kein Aufweichen der Erwartung:
+//   · Trägt der Lauf einen Modellschlüssel, steigt der Fall mit benanntem Grund aus. Playwright
+//     meldet ihn als „skipped" samt Begründung — nie stumm grün.
+//   · In den hermetischen Torläufen (`smoke:ui:gate`, `:gate:daten`, `:gate:drei`) erzwingt
+//     `package.json` einen LEEREN Schlüssel. Dort läuft der Fall vollständig, und die Sperre wird
+//     mit voller Strenge geprüft. Das Tor verliert durch diese Härtung keine einzige Zusicherung.
+//
+// Die Abfrage steht auf DERSELBEN Variablen, die auch der Smoke-Server liest — nicht auf
+// `KLARWERK_SHIP_SMOKE_API_KEY`. Das ist der Unterschied, an dem die Härtung hängt: die Ship-
+// Variable bleibt in der Shell auch während eines Torlaufs gesetzt, weitergereicht wird sie dort
+// aber nicht. Läge die Abfrage auf ihr, überspränge sich der Fall ausgerechnet im Tor selbst weg.
+const MODELLSCHLUESSEL_IM_LAUF = (process.env.ANTHROPIC_API_KEY ?? "").trim().length > 0;
+
 test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page }) => {
+  test.skip(
+    MODELLSCHLUESSEL_IM_LAUF,
+    "Dieser Lauf traegt einen Modellschluessel: das Modell ist aktiv, der Fragen-Knopf ist zu " +
+      "Recht bedienbar, und die Vorbedingung eines modellfreien Laufs ist damit nicht " +
+      "herstellbar. Die Sperre wird im hermetischen Tor geprueft: npm run smoke:ui:gate bzw. " +
+      "smoke:ui:gate:drei.",
+  );
   await ensureLoggedIn(page);
   await page.goto("/fragen");
   const input = page.getByPlaceholder(/Ventil X/);

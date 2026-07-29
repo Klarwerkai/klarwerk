@@ -1036,8 +1036,12 @@ export function Ask(): JSX.Element {
                     </ol>
                   </div>
                 </div>
-                {/* SCRUM-250: klarer nächster Schritt — die Lücke ist erfasst und im Risiko-Board handelbar. */}
-                <p className="mt-2 text-[13px] text-muted">{t("ask.gapNext")}</p>
+                {/* AUFTRAG-mega54 BLOCK E1: hier stand ein ZWEITER „Nächster Schritt:" — er schickte
+                    zum Risiko-Board, während der Vertragskasten weiter oben auf demselben Bildschirm
+                    zum kostenlosen Umformulieren riet. Zwei widersprüchliche nächste Schritte sind
+                    schlechter als einer. Der eine Schritt steht jetzt ausschließlich im
+                    Vertragskasten (`answerContract("gap").nextStepKey`, gerendert weiter oben) —
+                    diese Karte wiederholt ihn nicht. */}
                 {/* SCRUM-283: ehrlich + datensparsam — Frage wird als Lücke gespeichert, keine Antwort,
                 keine sensiblen Details; geprüfte Erfahrung später ergänzen. */}
                 <p className="mt-2 rounded-btn bg-page px-2.5 py-2 text-[12px] text-muted-2">
