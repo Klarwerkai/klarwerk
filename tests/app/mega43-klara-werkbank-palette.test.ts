@@ -52,6 +52,40 @@
 //     nicht als Farbe — dafür steht der Wortwächter unten: ein unbekanntes Wort in einer
 //     farbtragenden Eigenschaft ist rot statt still.
 //
+// AUFTRAG-mega45 BLOCK G — VIER ÜBERBEHAUPTUNGEN, RICHTIGGESTELLT (bens sammel43).
+//
+// Die Kommentare dieser Datei sprachen an mehreren Stellen von „Kaskade = Quellreihenfolge" und
+// davon, welche Farbregel „gewinnt". Das las sich, als löse der Sammler die CSS-Kaskade auf. TUT
+// ER NICHT. Was er tatsächlich tut und wo er endet:
+//
+//   G-1 · KEINE VOLLSTÄNDIGE KASKADE, sondern REINE QUELLREIHENFOLGE. Der Sammler nimmt unter
+//         allen passenden Regeln die LETZTE im Stilblock. Er berechnet KEINE Spezifität: eine
+//         spezifischere Regel weiter oben (`#id .klasse`) verliert hier gegen eine unspezifischere
+//         weiter unten (`button`) — im Browser wäre es umgekehrt. Er löst auch Shorthand gegen
+//         Longhand NICHT in Deklarationsreihenfolge auf. Der Gewinner stimmt deshalb NUR für die
+//         heutigen, durchweg einfachen und gleichartig geordneten Selektoren in Klaras Stilblock.
+//         Wächst dort eine Regel mit abweichender Spezifität nach, kann der Sammler das falsche
+//         Paar messen — still, denn er merkt es nicht.
+//   G-2 · ALPHA WIRD AUF VIER NACHKOMMASTELLEN GERUNDET (`alphaText`). Zwei Alphawerte, die sich
+//         erst jenseits der vierten Stelle unterscheiden (`0.45` vs. `0.450001`), sind für ihn
+//         derselbe Wert; eine Drift in diesem Bereich ist unsichtbar.
+//   G-3 · DER INLINE-PARSER LIEST NUR DOPPELT ZITIERTE ATTRIBUTE (`attribut`). Ein
+//         `style='color: #123456'` (einfache Anführungszeichen) oder ein unzitiertes `id=x` wird
+//         als Element erkannt, sein Attribut aber als leer gelesen — das Farbliteral entkommt
+//         still. Dasselbe gilt für `class` und `id`.
+//   G-4 · DIE VIOLETT-FREIGABE PRÜFT NUR DIREKTE FARBLITERALE, selektorgebunden. Erreicht eine
+//         Regel das Violett MITTELBAR — `color: var(--ai)`, wo `:root` `--ai: #5b50c4` setzt —,
+//         entsteht an diesem Selektor gar kein Farbfund, und C1 kann dort nichts beanstanden.
+//         Geprüft wird die `:root`-Deklaration dann nur noch über die `← --kw-…`-Bindung (Pass 2),
+//         nicht über die Violett-Regel. Die Kalibriersonden unten benutzen bewusst direkte
+//         Literale; der Umweg über die Variable ist NICHT abgedeckt.
+//
+// ALLE VIER PUNKTE sind Grenzen des QUELLTEXT-Lesens und werden vom vorgemerkten Playwright-
+// Computed-Style-Pin (nach Freitag) STRUKTURELL erledigt: dort steht der berechnete Stil des
+// echten Browsers, der Spezifität, Shorthand-Auflösung, Alpha und jede Attribut-Schreibweise
+// bereits aufgelöst hat und Variablen dereferenziert. Bis dahin gilt das oben Gesagte wörtlich —
+// dieser Sammler ist ein Drift-Wächter über die Bauform, kein CSS-Motor.
+//
 // WARUM DIE KONTRAST-FUNKTION EXTRAHIERT UND NICHT IMPORTIERT WIRD (benannte Grenze):
 // `contrast` ist in mega40-kontrast-modern.test.ts nicht exportiert, und ein `import` aus einer
 // TESTdatei hätte in Vitest eine echte Nebenwirkung: die describe/it-Blöcke der importierten Datei
@@ -341,7 +375,10 @@ function teilAusSelektor(roh: string): Teil | null {
   };
 }
 
-/** Klaras <style>-Block als Regelliste (Quellreihenfolge = Kaskade). Keine at-Regeln erwartet. */
+/**
+ * Klaras <style>-Block als Regelliste, in QUELLREIHENFOLGE. Das ist NICHT die CSS-Kaskade:
+ * Spezifität wird nirgends berechnet (s. Grenze G-1 im Dateikopf). Keine at-Regeln erwartet.
+ */
 function stilRegeln(stil: string): Regel[] {
   const css = ohneKommentare(stil);
   const regeln: Regel[] = [];
@@ -802,7 +839,8 @@ const MODELL = baue();
 // texttragendes Paar. Die Fläche kommt in dieser Reihenfolge:
 //   (a) die eigene deckende `background`-Deklaration derselben Regel,
 //   (b) sonst die des nächsten deckenden Vorfahren, ermittelt über die Regel-Struktur, angewandt
-//       auf Klaras Markup (Kaskade = Quellreihenfolge, letzte passende Regel gewinnt),
+//       auf Klaras Markup (REINE Quellreihenfolge: die letzte passende Regel zählt — ohne
+//       Spezifitätsrechnung, s. Grenze G-1 im Dateikopf),
 //   (c) ist die Fläche so nicht eindeutig bestimmbar, gilt die KONSERVATIVE ANNAHME: gemessen wird
 //       gegen JEDE deckende Fläche, die der Stilblock überhaupt kennt, und die Annahme steht im
 //       Meldungstext. Nie stilles Überspringen.
@@ -891,7 +929,12 @@ function alleFlaechen(m: Modell): Angabe[] {
   return [...karte.values()];
 }
 
-/** Welche Regel gewinnt an diesem Pfad die Textfarbe? (Kaskade = Quellreihenfolge; Inline schlägt alles.) */
+/**
+ * Welche Regel setzt an diesem Pfad die Textfarbe? Bestimmt über REINE Quellreihenfolge (die
+ * letzte passende Regel), nicht über die CSS-Kaskade — Spezifität bleibt unberechnet (Grenze G-1
+ * im Dateikopf). Für Klaras heutige, gleichartig geordnete Selektoren trifft das zu; Inline
+ * schlägt hier wie im Browser alles.
+ */
 function farbregelFuer(pfad: Teil[], m: Modell): string | null {
   const eigen = pfad[pfad.length - 1] as Teil;
   for (const d of eigen.stil.split(";")) {
@@ -1026,8 +1069,11 @@ function kontrastPaare(m: Modell): Kontrast {
       }
       continue;
     }
-    // Nur dort, wo diese Regel die Textfarbe auch GEWINNT — sonst misst der Sammler eine Farbe
-    // gegen eine Fläche, auf der sie gar nicht steht (z. B. `.lang button` am aktiven Knopf).
+    // Nur dort, wo diese Regel die Textfarbe nach QUELLREIHENFOLGE auch tatsächlich setzt — sonst
+    // misst der Sammler eine Farbe gegen eine Fläche, auf der sie gar nicht steht (z. B.
+    // `.lang button` am aktiven Knopf). „Setzt" heißt hier: letzte passende Regel, ohne
+    // Spezifitätsrechnung (Grenze G-1 im Dateikopf) — für Klaras heutige Selektoren deckungsgleich
+    // mit dem, was der Browser wählt, im Allgemeinen nicht.
     const gewinner = quelle.selektor.includes("[style]")
       ? treffer
       : treffer.filter((e) => farbregelFuer(e.pfad, m) === quelle.selektor);

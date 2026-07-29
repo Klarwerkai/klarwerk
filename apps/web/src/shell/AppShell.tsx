@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
+// AUFTRAG-mega48 Block A: die Modalgrenze der ganzen App. Sie entsteht hier, weil hier der
+// Hintergrund entsteht — modale Flächen HOLEN sie sich (useModalBoundary), sie bekommen sie nicht
+// mehr als Prop gereicht.
+import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
 // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
 import { KlaraAssistant } from "../components/KlaraAssistant";
 import { CommandPalette } from "./CommandPalette";
@@ -18,10 +22,13 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   const location = useLocation();
   const narrow = useMediaQuery(NARROW_QUERY);
   const [drawerOpen, setDrawerOpen] = useState(false);
-  // E2E-017 (Block F): Auslöser (Hamburger) für die Fokus-Rückgabe und Hintergrund (Topbar+Inhalt)
-  // für die Inert-Schaltung, während der Drawer offen ist.
+  // E2E-017 (Block F): Auslöser (Hamburger) für die Fokus-Rückgabe, während der Drawer offen ist.
   const hamburgerRef = useRef<HTMLButtonElement | null>(null);
-  const narrowBackgroundRef = useRef<HTMLDivElement | null>(null);
+  // AUFTRAG-mega48 Block A: der Portal-Anker der Modalgrenze ist `<main>` selbst. Die gesperrten
+  // Bereiche liegen DARIN (der Seiteninhalt) und DANEBEN (Topbar, Command Palette, Toasts, Klara);
+  // eine modale Fläche hängt sich als Geschwister des Seiteninhalts ein und liegt damit außerhalb
+  // jeder Sperre — und trotzdem innerhalb der Shell, nicht am `<body>`.
+  const mainRef = useRef<HTMLElement | null>(null);
 
   // Bei jedem Routenwechsel (Nav-Klick) schließt der Drawer — kein hängendes Overlay.
   // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur auf Pfadwechsel schließen.
@@ -42,40 +49,61 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
   if (narrow) {
     return (
       <div className="flex h-full flex-col">
-        {/* AUFTRAG-mega3 Block C (bens Sammel-Review 3, Auflage F): der Hintergrund umfasst jetzt
-            AUSNAHMSLOS ALLE Nicht-Drawer-Shellflächen — Topbar, Inhalt UND die zuvor daneben liegenden
-            Geschwister Command Palette, Toasts und Klara. Bei offenem Drawer wird dieser eine Container
-            inert geschaltet; damit ist KEINE Fläche außer dem Drawer mehr per Tastatur, Zeiger oder
-            programmatisch/assistiv erreichbar. Das ist ECHTE Modalität — sie deckt das `aria-modal="true"`
-            des Drawers, statt es nur zu behaupten. (Weg 1 aus bens Auflage; kein showModal/Portal nötig,
-            weil keine Shellfläche mehr außerhalb des inerten Bereichs liegt.) */}
-        <div ref={narrowBackgroundRef} className="flex min-h-0 flex-1 flex-col">
-          <Topbar narrow onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={hamburgerRef} />
-          <main className="flex-1 overflow-y-auto px-4 py-5">{children}</main>
-          <CommandPalette />
-          <ToastViewport />
-          <KlaraAssistant />
-        </div>
-        <MobileNavDrawer
-          open={drawerOpen}
-          onClose={() => setDrawerOpen(false)}
-          triggerRef={hamburgerRef}
-          backgroundRef={narrowBackgroundRef}
-        />
+        {/* AUFTRAG-mega3 Block C (bens Sammel-Review 3, Auflage F) → AUFTRAG-mega48 Block A: die
+            Grenze umfasst weiterhin AUSNAHMSLOS ALLE Nicht-Modalflächen — Topbar, Inhalt UND die
+            Geschwister Command Palette, Toasts und Klara. Neu ist zweierlei: sie gilt für JEDE
+            modale Fläche (Drawer UND Filterblatt, über den Kontext statt über einen Prop), und sie
+            besteht aus mehreren angemeldeten BEREICHEN statt aus einem Container. Das ist nötig,
+            weil `<main>` selbst der Portal-Anker ist: läge der Seiteninhalt nicht in einem eigenen
+            Bereich, müsste man `<main>` sperren — und das Filterblatt läge wieder im gesperrten
+            Teilbaum (genau bens sammel44-Blocker). */}
+        <ModalBoundaryProvider hostRef={mainRef}>
+          <div className="flex min-h-0 flex-1 flex-col">
+            <ModalRegion>
+              <Topbar narrow onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={hamburgerRef} />
+            </ModalRegion>
+            <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
+              <ModalRegion>{children}</ModalRegion>
+            </main>
+            <ModalRegion>
+              <CommandPalette />
+              <ToastViewport />
+              <KlaraAssistant />
+            </ModalRegion>
+          </div>
+          <MobileNavDrawer
+            open={drawerOpen}
+            onClose={() => setDrawerOpen(false)}
+            triggerRef={hamburgerRef}
+          />
+        </ModalBoundaryProvider>
       </div>
     );
   }
 
   return (
     <div className="flex h-full">
-      <Sidebar />
-      <div className="flex min-w-0 flex-1 flex-col">
-        <Topbar />
-        <main className="flex-1 overflow-y-auto px-9 py-7">{children}</main>
-      </div>
-      <CommandPalette />
-      <ToastViewport />
-      <KlaraAssistant />
+      {/* Dieselbe Grenze auf breiten Geräten: hier gibt es heute keine modale Fläche (kein Drawer,
+          und die Facetten stehen als Spalte statt als Blatt), aber die Bauform ist EINE — sonst
+          entstünde beim nächsten Overlay wieder ein zweiter, halber Weg. */}
+      <ModalBoundaryProvider hostRef={mainRef}>
+        <ModalRegion>
+          <Sidebar />
+        </ModalRegion>
+        <div className="flex min-w-0 flex-1 flex-col">
+          <ModalRegion>
+            <Topbar />
+          </ModalRegion>
+          <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
+            <ModalRegion>{children}</ModalRegion>
+          </main>
+        </div>
+        <ModalRegion>
+          <CommandPalette />
+          <ToastViewport />
+          <KlaraAssistant />
+        </ModalRegion>
+      </ModalBoundaryProvider>
     </div>
   );
 }

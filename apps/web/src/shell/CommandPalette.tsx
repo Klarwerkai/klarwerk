@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { useModalLocked } from "../app/ModalBoundaryContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { ALL_ITEMS, canSee } from "../app/navigation";
@@ -12,6 +13,11 @@ export function CommandPalette(): JSX.Element | null {
   // AUFTRAG-mega11 Block B-2: dieselbe geschützte Grenze wie Sidebar/Topbar/Logo.
   const navigate = useGuardedNavigate();
   const { role, stufe2 } = useRole();
+  // AUFTRAG-mega48 Block A (bens Ship-Blocker 1): die Palette liegt im gesperrten Bereich, ihr
+  // Tastenkürzel aber hängt am FENSTER — `inert` hält Zeiger und Fokus auf, nicht einen globalen
+  // Listener. Ohne diese Abfrage wäre die Palette bei offenem Filterblatt oder Drawer die eine
+  // Fläche, die die Modalgrenze durchbricht (per Cmd/Ctrl+K, also genau der Weg, den ben benennt).
+  const modalOffen = useModalLocked();
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [active, setActive] = useState(0);
@@ -39,20 +45,30 @@ export function CommandPalette(): JSX.Element | null {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
+        // Solange eine modale Fläche offen ist, öffnet das Kürzel nichts — sonst erschiene über
+        // dem Dialog eine zweite Bedienfläche, die er laut `aria-modal` gar nicht zulässt.
+        if (modalOffen) {
+          return;
+        }
         e.preventDefault();
         setOpen((v) => !v);
       } else if (e.key === "Escape") {
         setOpen(false);
       }
     };
-    const onCustom = (): void => setOpen(true);
+    const onCustom = (): void => {
+      if (modalOffen) {
+        return;
+      }
+      setOpen(true);
+    };
     window.addEventListener("keydown", onKey);
     window.addEventListener("open-command-palette", onCustom);
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("open-command-palette", onCustom);
     };
-  }, []);
+  }, [modalOffen]);
 
   useEffect(() => {
     if (open) {

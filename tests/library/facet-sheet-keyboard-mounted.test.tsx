@@ -75,9 +75,10 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import { act, createElement } from "../../apps/web/node_modules/react";
+import { act, createElement, useRef } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { ModalBoundaryProvider, ModalRegion } from "../../apps/web/src/app/ModalBoundaryContext";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
 
@@ -101,6 +102,26 @@ function stubNarrow(matches: boolean): void {
   });
 }
 
+// AUFTRAG-mega48 Block A: das Filterblatt HOLT sich die Modalgrenze aus der Shell, statt einen
+// Hintergrund als Prop zu bekommen — ohne Grenze entsteht es gar nicht mehr (fail-closed). Diese
+// Datei prüft die Tastatur-Erreichbarkeit IM Blatt und braucht dafür die kleinste Hülle, die die
+// Form der Shell hat: Portal-Anker `<main>`, Seiteninhalt in einem gesperrten Bereich daneben.
+//
+// EHRLICHE EINORDNUNG: das ist hier bewusst eine Hülle und nicht die echte AppShell — die volle
+// Verdrahtung samt Topbar, Klara, Toasts und Command Palette belegt der Sammler
+// `tests/app/mega47-modale-flaechen-sammler.test.tsx` für JEDE Fläche an der echten Shell.
+function Huelle({ children }: { children: unknown }): JSX.Element {
+  const mainRef = useRef<HTMLElement | null>(null);
+  return createElement(ModalBoundaryProvider, {
+    hostRef: mainRef,
+    children: createElement(
+      "main",
+      { ref: mainRef },
+      createElement(ModalRegion, { children: children as never }),
+    ),
+  });
+}
+
 function mount(): void {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -111,7 +132,11 @@ function mount(): void {
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(MemoryRouter, { initialEntries: ["/bibliothek"] }, createElement(Library)),
+        createElement(
+          MemoryRouter,
+          { initialEntries: ["/bibliothek"] },
+          createElement(Huelle, null, createElement(Library)),
+        ),
       ),
     );
   });

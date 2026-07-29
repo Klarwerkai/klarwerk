@@ -58,4 +58,33 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
   // die Verwaltung rendert nur für Admins (erstes Konto = Admin, service.ts:120-125).
   await page.goto("/admin");
   await expect(page.locator("h1, h2").first()).toBeVisible({ timeout: 10_000 });
+
+  // ──────────────────────────────────────────────────────────────────────────────────────────────
+  // AUFTRAG-mega49 BLOCK A2 — DIE ZWEITE DATENLAGE, ÜBER DEN PRODUKTWEG.
+  //
+  // Der Anlass: der mega47-Fall hing an einem Bedienelement, das es nur im LEERZUSTAND gibt (siehe
+  // `ui-smoke.spec.ts` und den Sammler `tests/smoke/mega49-leerzustands-anker-sammler.test.ts`).
+  // Er war deshalb im Tor grün und im vollen Lauf rot — nicht wegen der Engine, sondern wegen der
+  // Datenlage. Ein Fall, dessen Grün von der Datenlage abhängt, ist kein Beleg; also muss die
+  // Suite gegen BEIDE Lagen fahrbar sein.
+  //
+  // OHNE diese Variable ändert sich NICHTS: der Server bleibt jungfräulich, das Prüf-Board leer,
+  // und `smoke:ui:gate` fährt exakt wie bisher. MIT `KLARWERK_SMOKE_SEED=1` (npm-Skript
+  // `smoke:ui:gate:daten`) wird hier — einmal, an derselben Einmal-Stelle wie die Ersteinrichtung —
+  // der Demo-Bestand geladen.
+  //
+  // WARUM ÜBER DIE OBERFLÄCHE UND NICHT ÜBER EINEN TESTHAKEN: „Demodaten laden" ist der VORHANDENE
+  // Produktweg (`Admin.tsx` → POST /api/admin/demo-seed → `services/app/src/seed-demo.ts`). Er
+  // braucht kein Modell — die Duplikat-/Konfliktbefunde des Seeds laufen ohne aktiven Reasoner
+  // schlicht deterministisch bzw. leer aus (`seed-demo.ts:638-649`), die Wissensobjekte entstehen
+  // in jedem Fall. Damit bleibt dieser Weg auch im hermetischen Tor gangbar, ohne Egress und ohne
+  // Zugangsdatum. Ein zweiter, testeigener Seed-Weg wäre eine zweite Wahrheit über „Demodaten" und
+  // ist genau deshalb nicht gebaut.
+  if (process.env.KLARWERK_SMOKE_SEED === "1") {
+    await page.getByRole("button", { name: "Daten", exact: true }).click();
+    await page.getByRole("button", { name: "Demodaten laden" }).click();
+    // HARTE Zusicherung, kein „falls es klappt": der Server ist frisch, also MUSS geladen werden.
+    // Käme „Übersprungen", wäre die Datenlage eine andere als angenommen — und das soll krachen.
+    await expect(page.getByText(/Demodaten geladen:/)).toBeVisible({ timeout: 30_000 });
+  }
 });

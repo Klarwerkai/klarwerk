@@ -92,6 +92,17 @@ export const useExpertise = (enabled: boolean) =>
     enabled,
     retry: false,
   });
+// AUFTRAG-mega46 Block F: die Betriebsschalter dieser Instanz. Sie ändern sich im laufenden Betrieb
+// nicht (ein Schalter wird beim Serverstart gesetzt), deshalb ausdrücklich KEIN Nachladen und kein
+// Ablauf — einmal je Sitzung genügt. Kein Retry: Antwortet der Server nicht, gilt „unbekannt", und
+// „unbekannt" heißt fail-closed „aus" (siehe FeatureGate).
+export const useFeatures = () =>
+  useQuery({
+    queryKey: ["features"],
+    queryFn: endpoints.features.get,
+    staleTime: Number.POSITIVE_INFINITY,
+    retry: false,
+  });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });

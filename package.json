@@ -20,7 +20,9 @@
     "smoke:browser:setup": "playwright install chromium",
     "smoke:ui:frisch": "tsx scripts/smoke-dist-frisch.ts",
     "smoke:ui": "npm run --silent smoke:ui:frisch && ANTHROPIC_API_KEY=\"${KLARWERK_SHIP_SMOKE_API_KEY:-}\" playwright test --config playwright.smoke.config.ts",
-    "smoke:ui:gate": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate ANTHROPIC_API_KEY= playwright test --config playwright.smoke.config.ts --project=chromium --grep-invert @modell"
+    "smoke:ui:gate": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate ANTHROPIC_API_KEY= playwright test --config playwright.smoke.config.ts --project=chromium --grep-invert @modell",
+    "smoke:ui:gate:daten": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate KLARWERK_SMOKE_SEED=1 ANTHROPIC_API_KEY= playwright test --config playwright.smoke.config.ts --project=chromium --grep-invert @modell",
+    "smoke:ui:gate:drei": "npm run --silent smoke:ui:frisch && KLARWERK_SMOKE_MODE=gate ANTHROPIC_API_KEY= playwright test --config playwright.smoke.config.ts --grep-invert @modell"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.4",

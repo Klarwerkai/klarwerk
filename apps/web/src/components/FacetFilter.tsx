@@ -27,7 +27,9 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
+import { useModalBoundary } from "../app/ModalBoundaryContext";
 import { type FacetGroupConfig, isAnyFacetActive } from "../lib/facetFilter";
 import {
   EMPTY_FACET_RANGE,
@@ -36,6 +38,7 @@ import {
   isFacetRangeActive,
 } from "../lib/facetRail";
 import { type FacetSelection, isFacetGroupActive } from "../lib/facets";
+import { focusFirstIn, focusablesIn } from "../lib/focusables";
 import { usePersistentDisclosure } from "../lib/usePersistentDisclosure";
 import { NARROW_QUERY, useMediaQuery } from "../shell/useMediaQuery";
 import { FacetGroupField } from "./facets/FacetGroupField";
@@ -75,22 +78,9 @@ export interface FacetFilterProps {
   // i18n-Schlüssel des klebenden Zählers; der Träger benennt das Ding, das gezählt wird
   // („N Beiträge anzeigen“ / „N Kandidaten“ / „N Aufgaben“).
   countLabelKey?: string;
-  // Hintergrund, der beim geöffneten Filterblatt inert geschaltet wird (Fokus bleibt im Blatt).
-  backgroundRef?: RefObject<HTMLElement | null>;
-}
-
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function focusablesIn(panel: HTMLElement | null): HTMLElement[] {
-  if (!panel) {
-    return [];
-  }
-  // Kein offsetParent-Filter: jsdom rechnet kein Layout. `hidden`/`aria-hidden` fliegen raus; im
-  // echten Browser sichert zusätzlich die Inert-Schaltung des Hintergrunds die Abgrenzung.
-  return [...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter(
-    (el) => !el.hasAttribute("hidden") && el.closest("[hidden],[aria-hidden='true']") === null,
-  );
+  // AUFTRAG-mega48 Block A: KEIN `backgroundRef` mehr. Die Modalgrenze ist nicht mehr etwas, das ein
+  // Aufrufer freiwillig hereinreicht (und wie `ImportSelect` still vergisst) — das Filterblatt holt
+  // sie sich aus der Shell.
 }
 
 // Eine Gruppe filtert nur, wenn sie genug Optionen hat ODER bereits eine Wahl trägt (dann sichtbar
@@ -115,27 +105,6 @@ export function FacetFilter(props: FacetFilterProps): JSX.Element {
   const narrow = useMediaQuery(NARROW_QUERY);
   const [sheetOpen, setSheetOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const panelRef = useRef<HTMLDialogElement | null>(null);
-  const { backgroundRef } = props;
-
-  // Öffnen: Hintergrund inert, Fokus ins Blatt. Schließen (Cleanup): erst Hintergrund wieder aktiv,
-  // DANN Fokus zurück auf den Auslöser — die Reihenfolge ist wichtig, sonst liefe der Restore ins
-  // inerte Element. Gleiches Muster wie MobileNavDrawer (dort abgenommen).
-  useEffect(() => {
-    if (!sheetOpen) {
-      return;
-    }
-    const trigger = triggerRef.current;
-    const background = backgroundRef?.current ?? null;
-    background?.setAttribute("inert", "");
-    const panel = panelRef.current;
-    const first = focusablesIn(panel)[0];
-    (first ?? panel)?.focus();
-    return () => {
-      background?.removeAttribute("inert");
-      trigger?.focus();
-    };
-  }, [sheetOpen, backgroundRef]);
 
   // Auf breiten Geräten kann kein Blatt offen bleiben (sonst hinge ein unsichtbarer Dialog).
   useEffect(() => {
@@ -153,10 +122,75 @@ export function FacetFilter(props: FacetFilterProps): JSX.Element {
   }
 
   const activeCount = countActiveFilters(props);
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        aria-expanded={sheetOpen}
+        onClick={() => setSheetOpen(true)}
+        className="mb-2.5 inline-flex items-center gap-2 rounded-btn border border-hairline bg-surface px-3 py-2 text-[13px] font-semibold text-text hover:border-ink/30"
+      >
+        <SlidersHorizontal size={15} aria-hidden />
+        {t("facet.openFilters")}
+        {activeCount > 0 ? (
+          <span className="rounded-pill bg-brand px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-white">
+            {activeCount}
+          </span>
+        ) : null}
+      </button>
+      {/* AUFTRAG-mega48 Block A: das Blatt ist ein EIGENES Bauteil, und es wird nur dann überhaupt
+          gerendert, wenn es offen ist. Das ist keine Kosmetik: die Modalgrenze wird DARIN geholt,
+          und weil sie ohne Provider wirft, kann ein Dialog mit `aria-modal` gar nicht mehr
+          entstehen, ohne dass eine echte Grenze dahintersteht. */}
+      {sheetOpen ? (
+        <FacetSheet {...props} triggerRef={triggerRef} onClose={() => setSheetOpen(false)} />
+      ) : null}
+    </>
+  );
+}
+
+// Das Vollbild-Filterblatt auf schmalen Geräten — die einzige App-modale Fläche dieses Bauteils.
+function FacetSheet({
+  triggerRef,
+  onClose,
+  ...props
+}: FacetFilterProps & {
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  onClose: () => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  const { host, enter } = useModalBoundary();
+  const panelRef = useRef<HTMLDialogElement | null>(null);
+  // AUFTRAG-mega47 Block A, unverändert in der Wirkung: Aufhängepunkt ist der Portal-Anker der
+  // Shell (`<main>`) — außerhalb aller gesperrten Bereiche und trotzdem innerhalb der Shell. Er
+  // wird EINMAL beim Öffnen gelesen; zu diesem Zeitpunkt hängt die Shell längst im DOM.
+  const [ziel] = useState<HTMLElement | null>(() => host());
+
+  // Öffnen: Hintergrund gesperrt, Fokus ins Blatt. Schließen (Cleanup): die Abmeldung gibt den
+  // Hintergrund frei und den Fokus zurück — in dieser Reihenfolge, sonst liefe der Restore ins
+  // inerte Element. Gleiches Muster wie MobileNavDrawer (dort abgenommen).
+  useEffect(() => {
+    const release = enter({
+      panel: () => panelRef.current,
+      trigger: () => triggerRef.current,
+    });
+    focusFirstIn(panelRef.current);
+    return release;
+  }, [enter, triggerRef]);
+
+  if (!ziel) {
+    // Fail-closed: kein Anker heißt keine Grenze. Ein Blatt, das hier trotzdem entsteht, behauptete
+    // Modalität, die es nicht hat — genau der Fehler, den mega48 schließt.
+    throw new Error(
+      "FacetSheet: die Modalgrenze liefert keinen Portal-Anker — ohne ihn gibt es kein Filterblatt.",
+    );
+  }
+
   const onKeyDown = (e: KeyboardEvent<HTMLDialogElement>): void => {
     if (e.key === "Escape") {
       e.stopPropagation();
-      setSheetOpen(false);
+      onClose();
       return;
     }
     if (e.key !== "Tab") {
@@ -180,63 +214,36 @@ export function FacetFilter(props: FacetFilterProps): JSX.Element {
     }
   };
 
-  return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        aria-expanded={sheetOpen}
-        onClick={() => setSheetOpen(true)}
-        className="mb-2.5 inline-flex items-center gap-2 rounded-btn border border-hairline bg-surface px-3 py-2 text-[13px] font-semibold text-text hover:border-ink/30"
+  return createPortal(
+    <div className="fixed inset-0 z-40">
+      {/* Nicht fokussierbare, rein präsentierende Fläche — die zugängliche Schließen-Aktion
+          sind der X-Knopf und Escape (gleiche Regel wie beim Navigations-Drawer). */}
+      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Tastatur-Schließen läuft über Escape/X im Dialog. */}
+      <div aria-hidden="true" onClick={onClose} className="absolute inset-0 bg-ink/40" />
+      <dialog
+        ref={panelRef}
+        open
+        aria-modal="true"
+        aria-label={t("facet.sheetTitle")}
+        tabIndex={-1}
+        onKeyDown={onKeyDown}
+        className="absolute inset-0 m-0 flex h-full max-h-none w-full max-w-none flex-col bg-surface p-0 text-text outline-none"
       >
-        <SlidersHorizontal size={15} aria-hidden />
-        {t("facet.openFilters")}
-        {activeCount > 0 ? (
-          <span className="rounded-pill bg-brand px-1.5 py-0.5 font-mono text-[10.5px] font-bold text-white">
-            {activeCount}
-          </span>
-        ) : null}
-      </button>
-      {sheetOpen ? (
-        <div className="fixed inset-0 z-40">
-          {/* Nicht fokussierbare, rein präsentierende Fläche — die zugängliche Schließen-Aktion
-              sind der X-Knopf und Escape (gleiche Regel wie beim Navigations-Drawer). */}
-          {/* biome-ignore lint/a11y/useKeyWithClickEvents: Tastatur-Schließen läuft über Escape/X im Dialog. */}
-          <div
-            aria-hidden="true"
-            onClick={() => setSheetOpen(false)}
-            className="absolute inset-0 bg-ink/40"
-          />
-          <dialog
-            ref={panelRef}
-            open
-            aria-modal="true"
-            aria-label={t("facet.sheetTitle")}
-            tabIndex={-1}
-            onKeyDown={onKeyDown}
-            className="absolute inset-0 m-0 flex h-full max-h-none w-full max-w-none flex-col bg-surface p-0 text-text outline-none"
+        <div className="flex items-center gap-2 border-b border-hairline px-4 py-3">
+          <h2 className="flex-1 text-[15px] font-semibold text-ink">{t("facet.sheetTitle")}</h2>
+          <button
+            type="button"
+            aria-label={t("facet.closeFilters")}
+            onClick={onClose}
+            className="grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
           >
-            <div className="flex items-center gap-2 border-b border-hairline px-4 py-3">
-              <h2 className="flex-1 text-[15px] font-semibold text-ink">{t("facet.sheetTitle")}</h2>
-              <button
-                type="button"
-                aria-label={t("facet.closeFilters")}
-                onClick={() => setSheetOpen(false)}
-                className="grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
-              >
-                <X size={18} />
-              </button>
-            </div>
-            <RailBody
-              {...props}
-              idPrefix="facet-sheet"
-              onApply={() => setSheetOpen(false)}
-              className="min-h-0 flex-1"
-            />
-          </dialog>
+            <X size={18} />
+          </button>
         </div>
-      ) : null}
-    </>
+        <RailBody {...props} idPrefix="facet-sheet" onApply={onClose} className="min-h-0 flex-1" />
+      </dialog>
+    </div>,
+    ziel,
   );
 }
 

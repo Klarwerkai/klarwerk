@@ -16,21 +16,25 @@ import {
   runWithTimeout,
 } from "../ai-check-worker";
 import type { SemanticPrefilter } from "../duplicate-detection";
+import { schalterAn } from "../feature-flags";
 import { type Guards, sendError } from "../http";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
 // KLARWERK_EXPERT_MATCHING=1|true schaltet sie frei.
-function expertMatchingEnabled(): boolean {
-  const flag = process.env.KLARWERK_EXPERT_MATCHING;
-  return flag === "1" || flag === "true";
-}
-
+//
 // SCRUM-470 (Confluence-Import): Feature-Flag, Default AUS. Nur wenn aktiv, läuft nach einem
 // akzeptierten Import-Kandidaten die Widerspruchs-/Duplikat-Erkennung (S6). Aus = heutiges Verhalten.
+//
+// AUFTRAG-mega46 Block F: Beide Prüfungen standen hier als eigene Kopie derselben Regel. Sie kommen
+// jetzt aus dem EINEN Schalter-Registry (services/app/src/feature-flags.ts) — sonst könnte die neue
+// Auskunft an die Oberfläche etwas anderes sagen als das, was diese Datei tut.
+function expertMatchingEnabled(): boolean {
+  return schalterAn("expertMatching");
+}
+
 function confluenceImportEnabled(): boolean {
-  const flag = process.env.KLARWERK_CONFLUENCE_IMPORT;
-  return flag === "1" || flag === "true";
+  return schalterAn("confluenceImport");
 }
 
 // SCRUM-470 (ben-Review #2): erlaubte Review-Aktionen — Single Source of Truth für die Route-Validierung.

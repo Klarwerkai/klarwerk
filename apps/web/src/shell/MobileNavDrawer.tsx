@@ -1,6 +1,8 @@
 import { X } from "lucide-react";
 import { type KeyboardEvent, type RefObject, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { useModalBoundary } from "../app/ModalBoundaryContext";
+import { focusFirstIn, focusablesIn } from "../lib/focusables";
 import { Sidebar } from "./Sidebar";
 
 // E2E-017 (bens Sammel-Review 2, Block F): der Off-Canvas-Navigations-Drawer ist ein ECHTES modales
@@ -8,55 +10,39 @@ import { Sidebar } from "./Sidebar";
 // hält Tab im Panel, der Hintergrund ist währenddessen nicht fokussierbar (inert), und beim Schließen
 // kehrt der Fokus auf den auslösenden Hamburger zurück. Das bisherige Maus-Verhalten (Hamburger,
 // Backdrop-Klick, X) bleibt unverändert. Das Desktop-Layout (>899px) rendert diesen Drawer nie.
-const FOCUSABLE_SELECTOR =
-  'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-function focusablesIn(panel: HTMLElement | null): HTMLElement[] {
-  if (!panel) {
-    return [];
-  }
-  // Kein offsetParent-Sichtbarkeitsfilter: jsdom rechnet kein Layout (offsetParent ist dort immer
-  // null). `hidden`/`aria-hidden` werden ausgeschlossen; im echten Browser sichert zusätzlich die
-  // Inert-Schaltung des Hintergrunds, dass nur Panel-Elemente erreichbar sind.
-  return [...panel.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR)].filter(
-    (el) => !el.hasAttribute("hidden") && el.closest("[hidden],[aria-hidden='true']") === null,
-  );
-}
-
+//
+// AUFTRAG-mega48 Block A: den Hintergrund bekommt der Drawer NICHT mehr als Prop gereicht — er holt
+// sich die Modalgrenze der Shell (`useModalBoundary`), dieselbe, an der auch das Filterblatt hängt.
+// Damit können sich die beiden ihr `inert` nicht mehr gegenseitig wegnehmen.
 export function MobileNavDrawer({
   open,
   onClose,
   triggerRef,
-  backgroundRef,
 }: {
   open: boolean;
   onClose: () => void;
   // Auslöser (Hamburger) — Fokus kehrt beim Schließen genau hierher zurück.
   triggerRef: RefObject<HTMLButtonElement | null>;
-  // Hintergrund (Topbar + Inhalt) — wird geöffnet inert gesetzt (nicht fokussierbar).
-  backgroundRef: RefObject<HTMLElement | null>;
 }): JSX.Element | null {
   const { t } = useTranslation();
+  const { enter } = useModalBoundary();
   const panelRef = useRef<HTMLDialogElement | null>(null);
 
-  // Öffnen: Hintergrund inert, Fokus ins Panel. Schließen (Cleanup): erst Hintergrund wieder aktiv,
-  // DANN Fokus zurück auf den Hamburger — die Reihenfolge ist wichtig, sonst liefe der Restore ins
-  // inerte (nicht fokussierbare) Element.
+  // Öffnen: Hintergrund gesperrt, Fokus ins Panel. Schließen (Cleanup): die Abmeldung gibt den
+  // Hintergrund frei und den Fokus zurück — erst das eine, dann das andere, sonst liefe der Restore
+  // ins inerte (nicht fokussierbare) Element. Ist noch eine Fläche offen, bleibt die Sperre stehen
+  // und der Fokus kehrt dorthin zurück statt auf den Hamburger; das entscheidet die Grenze.
   useEffect(() => {
     if (!open) {
       return;
     }
-    const trigger = triggerRef.current;
-    const background = backgroundRef.current;
-    background?.setAttribute("inert", "");
-    const panel = panelRef.current;
-    const first = focusablesIn(panel)[0];
-    (first ?? panel)?.focus();
-    return () => {
-      background?.removeAttribute("inert");
-      trigger?.focus();
-    };
-  }, [open, triggerRef, backgroundRef]);
+    const release = enter({
+      panel: () => panelRef.current,
+      trigger: () => triggerRef.current,
+    });
+    focusFirstIn(panelRef.current);
+    return release;
+  }, [open, triggerRef, enter]);
 
   if (!open) {
     return null;

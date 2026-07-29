@@ -211,6 +211,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/kos/:id": { protection: "ko.read" },
   "GET /api/kos/:id/versions": { protection: "ko.read" },
   "GET /api/kos/:id/evidence": { protection: "ko.read" },
+  // AUFTRAG-mega45 Block A/D: die Herkunftskette eines Objekts. Nur bei gesetztem
+  // KLARWERK_PROVENANCE_ENABLED überhaupt registriert; das Recht ist dasselbe wie am Objekt selbst.
+  "GET /api/kos/:id/provenance": { protection: "ko.read" },
   "GET /api/evidence": { protection: "ko.read" },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
@@ -375,6 +378,13 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     protection: "public",
     reason: "UI-Sprachstrings sind öffentlich lesbar.",
   },
+
+  // --- Betriebsschalter (features-routes.ts) ---
+  // AUFTRAG-mega46 Block F: Ja/Nein je Schalter, sonst nichts. BEWUSST nur „auth" und nicht
+  // öffentlich (welche Flächen ein Betrieb freigeschaltet hat, geht niemanden vor der Anmeldung an)
+  // und BEWUSST kein weitergehendes Recht (auch eine Betrachterin muss wissen, welche Flächen es
+  // gibt, sonst rendert die Oberfläche für sie tote Knöpfe).
+  "GET /api/features": { protection: "auth" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.

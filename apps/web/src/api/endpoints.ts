@@ -28,6 +28,7 @@ import type {
   ExternalKnowledgeStage,
   ExternalResult,
   ExtractResult,
+  FeatureFlags,
   Gap,
   GapPriority,
   GapSummary,
@@ -690,6 +691,12 @@ export const endpoints = {
       loadExamples: (pkg: string) =>
         api.post<ExampleLoadResponse>("/admin/examples/load", { package: pkg }),
     },
+  },
+  // AUFTRAG-mega46 Block F: „welche Schalter stehen" — die EINE Auskunft, Ja/Nein je Schalter.
+  // Sie ersetzt das Raten am 404 (siehe analytics.expertise): Eine Fläche, die gar nicht gerendert
+  // werden soll, kann man nicht an einem Fehlversuch erkennen — man muss vorher fragen dürfen.
+  features: {
+    get: () => api.get<{ features: FeatureFlags }>("/features"),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

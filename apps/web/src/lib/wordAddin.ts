@@ -711,6 +711,20 @@ export interface WordDraftRequest {
   usedHtml: boolean; // false = Klartext-Fallback (kein/leeres HTML oder Budget überschritten)
   overBudget: boolean; // true = FINALER Payload lag über dem Budget → Klartext-Fallback, ehrlich gemeldet
   undeliveredImages: number; // Bilder, die Word nicht als übernehmbare Daten geliefert hat
+  // AUFTRAG-mega45 Block F: WORD HAT GAR KEIN VERWERTBARES HTML GELIEFERT.
+  //
+  // Der Zweig `inner.length === 0` meldete bis mega44 `undeliveredImages: 0` UND `overBudget:
+  // false` — also genau die beiden Werte, an denen die Oberfläche ihre Warnung festmacht, beide
+  // auf „alles gut". Das ist DIE STILLE NULL: die Null ist nicht falsch (in einem leeren HTML
+  // sind wirklich null Bilder zählbar), sie wird nur als Entwarnung gelesen, obwohl gar nichts
+  // geprüft werden KONNTE. Formatierung und Bilder verschwanden, der Nutzer sah ein grünes
+  // „Entwurf angelegt".
+  //
+  // Dieses Feld trennt „gezählt und nichts gefunden" von „konnte nicht zählen". Es ist bewusst
+  // KEINE Zahl: wo kein HTML ankam, ist jede Bildzahl geraten, und eine geratene Zahl wäre
+  // schlimmer als keine. Die Oberfläche meldet deshalb ohne Anzahl, dass Formatierung und
+  // etwaige Bilder nicht übernommen wurden.
+  plainTextFallback: boolean;
 }
 
 // EINE Entscheidungsstelle für den Draft-Request: Word-HTML wenn vorhanden UND der finale
@@ -730,6 +744,7 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
       usedHtml: false,
       overBudget: false,
       undeliveredImages: 0,
+      plainTextFallback: true,
     };
   }
   const htmlPayload = draftPostPayload(title, statement, inner);
@@ -740,7 +755,17 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
       usedHtml: false,
       overBudget: true,
       undeliveredImages,
+      // Hier ist der Verlust bereits durch `overBudget` benannt UND die Bildzahl ist echt gezählt
+      // (es lag ja HTML vor) — kein zweites, gleichlautendes Signal.
+      plainTextFallback: false,
     };
   }
-  return { payload: htmlPayload, title, usedHtml: true, overBudget: false, undeliveredImages };
+  return {
+    payload: htmlPayload,
+    title,
+    usedHtml: true,
+    overBudget: false,
+    undeliveredImages,
+    plainTextFallback: false,
+  };
 }

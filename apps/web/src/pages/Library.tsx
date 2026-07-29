@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { ChevronDown, Download, RotateCw, Sparkles, Trash2 } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
@@ -220,8 +220,6 @@ export function Library(): JSX.Element {
   // Block A: das Fenster der Trefferliste ist AUFZIEHBAR („Weitere N laden“) — vorher war bei 200
   // Schluss, ohne jeden Weg weiter. Jede Filter-/Suchänderung setzt es zurück.
   const [windowLimit, setWindowLimit] = useState(LIBRARY_RESULT_LIMIT);
-  // Der Seiteninhalt wird inert geschaltet, solange das Filterblatt (schmale Geräte) offen ist.
-  const pageRef = useRef<HTMLDivElement | null>(null);
   // AUFTRAG-mega9 Block E-2 (KW-E2E-006): jede Auswahländerung schreibt die URL fort — damit ist der
   // Filter teilbar und ein Reload stellt ihn unverändert wieder her (das war der Befund).
   //
@@ -516,7 +514,7 @@ export function Library(): JSX.Element {
   };
 
   return (
-    <div ref={pageRef} className="mx-auto max-w-6xl">
+    <div className="mx-auto max-w-6xl">
       <PageHeader
         kicker={t("lib.kicker")}
         title={t("nav.library")}
@@ -652,7 +650,6 @@ export function Library(): JSX.Element {
           }}
           rangeLabelKey="lib.facet.rangeLabel"
           rangeAfterKey="tag"
-          backgroundRef={pageRef}
           searchSlot={
             <>
               <label htmlFor="library-search" className="sr-only">
@@ -990,7 +987,11 @@ export function Library(): JSX.Element {
                               // SCRUM-412/419 (CI + Layout): Bestätigung auf EIGENER voller Zeile,
                               // rechtsbündig — quetscht sich nicht mehr neben Pills und Knöpfe.
                               <span className="flex w-full basis-full flex-wrap items-center justify-end gap-1.5 border-t border-hairline pt-2">
-                                <span className="text-[12px] font-semibold text-text">
+                                {/* AUFTRAG-mega45 Block E: der Fragetext darf schrumpfen (min-w-0)
+                                    und fuellt den Rest (flex-1) — die eine Zutat, die aus der
+                                    Validierungs-Fassung erhalten bleibt. Ohne sie sprengt der
+                                    lange Text die Zeile (Pedis Layout-Bruch vom 04.07.). */}
+                                <span className="min-w-0 flex-1 text-[12px] font-semibold text-text">
                                   {t("ko.deleteQ")}
                                 </span>
                                 <Button variant="ghost" onClick={() => setConfirmDeleteId(null)}>

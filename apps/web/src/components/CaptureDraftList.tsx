@@ -216,8 +216,12 @@ export function CaptureDraftList({
                       <Button variant="ghost" onClick={() => onConfirmDiscard(null)}>
                         {t("capture.discardDraftKeep")}
                       </Button>
+                      {/* AUFTRAG-mega45 Block E: dritte Fundstelle desselben Drifts — der
+                          zerstörende Knopf trug die neutrale Vorgabe „outline". Warnfarbe wie
+                          überall sonst; gehalten vom Sammler in
+                          tests/app/mega45-loeschbestaetigung-sammler.test.ts. */}
                       <Button
-                        variant="outline"
+                        variant="danger"
                         disabled={discardPending}
                         onClick={() => onDiscard(d.id)}
                       >

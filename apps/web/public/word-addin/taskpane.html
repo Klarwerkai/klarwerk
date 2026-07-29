@@ -440,14 +440,18 @@
       var statement = text.trim().slice(0, 500);
       var inner = extractWordBodyHtml(html || "");
       var undeliveredImages = countUndeliveredWordImages(inner);
+      // AUFTRAG-mega45 Block F: plainTextFallback = Word lieferte gar kein verwertbares HTML.
+      // Ohne dieses Feld standen `undeliveredImages: 0` und `overBudget: false` gemeinsam auf
+      // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
+      // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
       if (inner.length === 0) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0 };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true };
       }
       var htmlPayload = draftPostPayload(title, statement, inner);
       if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false };
       }
-      return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages };
+      return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false };
     }
 
     // WP-KLARA-ASK: Klara fragen — Frage-Vorbereitung (Auswahl vor Eingabefeld, Deckel 2000),
@@ -785,6 +789,7 @@
         scopePagesOff: "Word gibt Seiten hier nicht her — das Taskpane-API kennt keine verlaesslichen Seitengrenzen.",
         scopePagesHint: "Seitenweise geht hier nicht — markiere stattdessen den gewuenschten Bereich im Dokument.",
         sendOverBudget: "Die Formatierung war zu gross fuer die Uebertragung — der Entwurf enthaelt den reinen Text (nichts ging still verloren).",
+        sendPlainFallback: "Word hat kein uebernehmbares HTML geliefert — Formatierung und etwaige Bilder fehlen im Entwurf.",
         sendImagesMissing: "{n} Bilder konnte Word nicht uebergeben — sie fehlen im Entwurf.",
         sendBusy: "Sende Auswahl ...",
         sendOk: "Entwurf angelegt: {title}",
@@ -881,6 +886,7 @@
         scopePagesOff: "Word does not expose pages here — the taskpane API has no reliable page boundaries.",
         scopePagesHint: "Page-based sending is not possible here — select the desired range in the document instead.",
         sendOverBudget: "The formatting was too large to transfer — the draft contains the plain text (nothing was lost silently).",
+        sendPlainFallback: "Word did not provide any usable HTML — formatting and any images are missing from the draft.",
         sendImagesMissing: "{n} images could not be provided by Word — they are missing from the draft.",
         sendBusy: "Sending selection ...",
         sendOk: "Draft created: {title}",
@@ -970,6 +976,7 @@
         scopePagesOff: "Word geeft hier geen pagina's vrij — de taskpane-API kent geen betrouwbare paginagrenzen.",
         scopePagesHint: "Per pagina versturen kan hier niet — selecteer in plaats daarvan het gewenste bereik in het document.",
         sendOverBudget: "De opmaak was te groot voor de overdracht — het concept bevat de platte tekst (er is niets stilletjes verloren gegaan).",
+        sendPlainFallback: "Word heeft geen bruikbare HTML geleverd — opmaak en eventuele afbeeldingen ontbreken in het concept.",
         sendImagesMissing: "{n} afbeeldingen kon Word niet leveren — ze ontbreken in het concept.",
         sendBusy: "Selectie versturen ...",
         sendOk: "Concept aangemaakt: {title}",
@@ -1340,6 +1347,10 @@
             // EHRLICHE Bilanz: Budget-Fallback und nicht uebergebene Bilder werden gemeldet.
             var notes = [];
             if (prepared.overBudget) { notes.push(t("sendOverBudget")); }
+            // AUFTRAG-mega45 Block F: der stille Rueckfall wird laut. Ohne verwertbares HTML gibt
+            // es keine zaehlbare Bildmenge — gemeldet wird deshalb OHNE Anzahl, dass Formatierung
+            // und etwaige Bilder nicht uebernommen wurden.
+            if (prepared.plainTextFallback) { notes.push(t("sendPlainFallback")); }
             if (prepared.usedHtml && prepared.undeliveredImages > 0) {
               notes.push(t("sendImagesMissing", { n: String(prepared.undeliveredImages) }));
             }

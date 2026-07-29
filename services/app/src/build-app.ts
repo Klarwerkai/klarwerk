@@ -154,6 +154,7 @@ import { type AiCheckWorker, createAiCheckRunner, createAiCheckWorker } from "./
 import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplicate-detection";
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
+import { schalterAn } from "./feature-flags";
 import { type SessionUser, makeGuards, tokenFromRequest } from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
@@ -169,6 +170,7 @@ import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
 import { externalRoutes } from "./routes/external-routes";
+import { featuresRoutes } from "./routes/features-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
@@ -184,6 +186,7 @@ import { notificationsRoutes } from "./routes/notifications-routes";
 import { objectRoutes } from "./routes/object-routes";
 import { outputRoutes } from "./routes/output-routes";
 import { overlapRoutes } from "./routes/overlap-routes";
+import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes";
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { validationRoutes } from "./routes/validation-routes";
@@ -359,10 +362,8 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
   // sobald IRGENDEINE Quelle aktiv ist; der Confluence-Flag KLARWERK_CONFLUENCE_IMPORT schaltet nur die
   // EINE Quelle Confluence. Ein Adapter #2 (Jira-TEST) OR-t später sein eigenes Flag ein — ohne dass der
   // Import-Kern Confluence-Begriffe kennt. Aus (Default) = heutiges Bestandsverhalten.
-  const confluenceEnabled =
-    process.env.KLARWERK_CONFLUENCE_IMPORT === "1" ||
-    process.env.KLARWERK_CONFLUENCE_IMPORT === "true";
-  const externalImportEnabled = confluenceEnabled; // künftig: || jiraEnabled || …
+  // AUFTRAG-mega46 Block F: Prüfung aus dem EINEN Schalter-Registry, nicht mehr abgeschrieben.
+  const externalImportEnabled = schalterAn("confluenceImport"); // künftig: || jiraEnabled || …
   const library = new LibraryService({
     koService: ko,
     audit,
@@ -1019,13 +1020,16 @@ export function buildApp(
   app.register(objectRoutes(services.objects, guards));
   app.register(mediaRoutes(services.media, guards));
   app.register(i18nRoutes(services.i18n));
+  // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
+  // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
+  // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
+  app.register(featuresRoutes(guards));
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
-  const confluenceImportEnabled =
-    process.env.KLARWERK_CONFLUENCE_IMPORT === "1" ||
-    process.env.KLARWERK_CONFLUENCE_IMPORT === "true";
-  if (confluenceImportEnabled) {
+  // AUFTRAG-mega46 Block F: Die Prüfung stand hier als dritte Kopie derselben Regel und kommt jetzt
+  // aus dem Schalter-Registry — dieselbe Quelle, aus der GET /api/features antwortet.
+  if (schalterAn("confluenceImport")) {
     app.register(
       confluenceImportRoutes({
         library: services.library,
@@ -1034,6 +1038,20 @@ export function buildApp(
         // IC-3: Reasoner für die optionale Prompt→Kriterien-Ableitung der Auswahl-Vorschau.
         reasoner: services.reasoner,
       }),
+    );
+  }
+
+  // AUFTRAG-mega45 Block D (Epic SCRUM-545, Stufe 1): „Warum weiss Klarwerk das?" — die
+  // Herkunftskette EINES Objekts, rein lesend. VORGABE AUS: ohne KLARWERK_PROVENANCE_ENABLED wird
+  // die Route gar nicht erst registriert (dasselbe Muster wie der Confluence-Import darüber), und
+  // die Oberfläche rendert den Knopf ebenfalls nicht. „Wieder verstecken" ist damit ein Schalter,
+  // kein Rückbau.
+  if (provenanceEnabled()) {
+    app.register(
+      provenanceRoutes(
+        { ko: services.ko, conflicts: services.conflicts, modelRuns: services.modelRuns },
+        guards,
+      ),
     );
   }
 

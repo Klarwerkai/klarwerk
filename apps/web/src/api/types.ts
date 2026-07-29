@@ -1135,3 +1135,11 @@ export interface Notification {
   // zeigt dann NUR die neutrale Bezeichnung (topbar.notifGapRedacted), nie den Fragetext.
   redacted?: boolean;
 }
+
+// AUFTRAG-mega46 Block F: die Betriebsschalter, die die Oberfläche erfahren darf — AUSSCHLIESSLICH
+// Ja/Nein. Die Namen sind Fachnamen, keine Umgebungsvariablen (der Server übersetzt; siehe
+// services/app/src/feature-flags.ts). BEWUSST hier eigenständig getippt und nicht aus services
+// importiert: apps/web darf die Modulgrenze nach services nicht überschreiten.
+export type FeatureName = "herkunft" | "confluenceImport" | "expertMatching";
+
+export type FeatureFlags = Record<FeatureName, boolean>;
