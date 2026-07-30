@@ -88,19 +88,27 @@ describe("Teil B: Galerie im Entwurf (DraftBodyGallery, gemountet)", () => {
   it("PIN: beide Entwurfs-Ansichten rendern die Galerie unter dem Editor (kein Duplikat)", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
-    for (const file of [
-      "apps/web/src/pages/Capture.tsx",
-      "apps/web/src/pages/CaptureFrontDoor.tsx",
-    ]) {
-      const src = readFileSync(resolve(process.cwd(), file), "utf8");
-      expect(src).toContain("<DraftBodyGallery bodyHtml={bodyHtml} />");
-    }
+    // AUFTRAG-mega69 Block A: die Vordertür (Ankunftsort der Klara-Entwürfe) übergibt zusätzlich
+    // den Weg zur Bildbeschreibung (onEditCaption) — der Pin prüft je Datei die gerenderte Galerie
+    // und an der Vordertür die neue Verdrahtung. Capture.tsx behält die reine Galerie (der
+    // Klara-Weg landet dort nie; Word-Entwürfe werden zur Vordertür umgeleitet).
+    const capture = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
+    expect(capture).toContain("<DraftBodyGallery bodyHtml={bodyHtml} />");
+    const frontDoor = readFileSync(
+      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      "utf8",
+    );
+    expect(frontDoor).toContain("<DraftBodyGallery");
+    expect(frontDoor).toContain("bodyHtml={bodyHtml}");
+    expect(frontDoor).toContain("onEditCaption=");
     // Die Entwurfs-Galerie ist NUR ein debounzter Wrapper um die abgenommene BodyImageGallery.
     const wrapper = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/DraftBodyGallery.tsx"),
       "utf8",
     );
     expect(wrapper).toContain("useDebouncedValue(bodyHtml, LIBRARY_SEARCH_DEBOUNCE_MS)");
-    expect(wrapper).toContain("<BodyImageGallery bodyHtml={debounced} />");
+    expect(wrapper).toContain(
+      "<BodyImageGallery bodyHtml={debounced} onEditCaption={onEditCaption} />",
+    );
   });
 });

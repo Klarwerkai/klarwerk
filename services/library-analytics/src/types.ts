@@ -1,4 +1,4 @@
-import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
+import type { Confidentiality, KnowledgeType, KoStatus } from "../../knowledge-object";
 
 export interface ImportItem {
   title: string;
@@ -175,6 +175,31 @@ export interface GraphEdge {
 export interface Graph {
   nodes: GraphNode[];
   edges: GraphEdge[];
+}
+
+// AUFTRAG-mega68: die Nachbarschaft EINES Wissensobjekts — die Anwendersicht des Wissensnetzes.
+// BEWUSST ein eigener Vertrag neben `Graph` (FR-LIB-04): der globale Graph rechnet über den ganzen
+// Bestand (O(n²)) und bleibt unangetastet (Register H5); die Nachbarschaft hängt an EINEM Objekt,
+// ist gedeckelt und nennt an jeder Kante das WARUM (die geteilten Schlagwörter).
+export interface NeighborKo {
+  id: string;
+  title: string;
+  status: KoStatus;
+  // Die geteilten, NICHT-ubiquitären Schlagwörter — das sichtbare „warum" der Kante, sortiert.
+  via: string[];
+}
+
+export interface Neighborhood {
+  center: { id: string; title: string; status: KoStatus };
+  // Gedeckelt (NEIGHBOR_LIMIT) und deterministisch sortiert: meiste geteilte Schlagwörter zuerst.
+  neighbors: NeighborKo[];
+  // Nachbarn NACH dem Vertraulichkeits-Filter, VOR dem Deckel — der Zähler verrät nie ein
+  // Objekt, das der Aufrufer nicht sehen darf.
+  total: number;
+  truncated: boolean;
+  // Schlagwörter des Zentrums, die wegen Ubiquität KEINE Kante erzeugen (z. B. `pilot-demo`) —
+  // ehrlich ausgewiesen, damit die Fläche den Filter sichtbar begründen kann.
+  excludedTags: string[];
 }
 
 // FR-ANA-01: Kennzahlen.

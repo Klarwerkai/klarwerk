@@ -1,81 +1,12 @@
-// Reine, DOM-freie Ableitung von Wissensnetz & Herkunft (SCRUM-130 / SCRUM-142).
-// Nutzt ausschließlich vorhandene echte Signale: Tags, Kategorie, Quellen, Version,
-// History, Autor/Originalautor und Audit-Ereignisse. KEINE erfundene Hierarchie,
-// KEINE gerichteten Herkunftskanten, kein Backend-Modell.
-import type { AuditEntry, KnowledgeObject, KoSource } from "../api/types";
-
-export type RelationReason = "tag" | "category" | "source";
-
-export interface RelatedKo {
-  id: string;
-  title: string;
-  reasons: RelationReason[];
-  via: string[]; // konkrete geteilte Werte (Tags, Kategorie, Quellen-Label)
-}
-
-function sourceKeys(sources: readonly KoSource[] | undefined): Map<string, string> {
-  // key = url|label (lowercase) → Anzeige-Label
-  const map = new Map<string, string>();
-  for (const s of sources ?? []) {
-    const key = (s.url ?? s.label).trim().toLowerCase();
-    if (key) {
-      map.set(key, s.label);
-    }
-  }
-  return map;
-}
-
-// SCRUM-130: verwandte KOs über geteilte Tags / gleiche Kategorie / geteilte Quelle.
-export function relatedKos(
-  current: KnowledgeObject,
-  all: readonly KnowledgeObject[],
-  limit = 8,
-): RelatedKo[] {
-  const currentTags = new Set(current.tags);
-  const currentSources = sourceKeys(current.sources);
-
-  const related: RelatedKo[] = [];
-  for (const ko of all) {
-    if (ko.id === current.id) {
-      continue;
-    }
-    const reasons: RelationReason[] = [];
-    const via: string[] = [];
-
-    const sharedTags = ko.tags.filter((tag) => currentTags.has(tag));
-    if (sharedTags.length > 0) {
-      reasons.push("tag");
-      via.push(...sharedTags);
-    }
-    if (current.category && ko.category === current.category) {
-      reasons.push("category");
-      via.push(ko.category);
-    }
-    const otherSources = sourceKeys(ko.sources);
-    const sharedSources: string[] = [];
-    for (const [key, label] of otherSources) {
-      if (currentSources.has(key)) {
-        sharedSources.push(label);
-      }
-    }
-    if (sharedSources.length > 0) {
-      reasons.push("source");
-      via.push(...sharedSources);
-    }
-
-    if (reasons.length > 0) {
-      related.push({ id: ko.id, title: ko.title, reasons, via: [...new Set(via)] });
-    }
-  }
-
-  related.sort(
-    (a, b) =>
-      b.reasons.length - a.reasons.length ||
-      b.via.length - a.via.length ||
-      a.title.localeCompare(b.title),
-  );
-  return related.slice(0, limit);
-}
+// Reine, DOM-freie Ableitung der Herkunft (SCRUM-142). Nutzt ausschließlich vorhandene echte
+// Signale: Version, History, Autor/Originalautor, Quellen und Audit-Ereignisse.
+//
+// AUFTRAG-mega68: `relatedKos` (SCRUM-130) ist hier BEWUSST entfernt. Die Heuristik rechnete im
+// Browser über die VOLLE KO-Liste (skalierte mit dem Bestand, nicht mit dem Objekt) und zählte
+// ubiquitäre Schlagwörter wie `pilot-demo` als Verwandtschaft — im Demobestand war damit jedes
+// Objekt mit jedem verwandt. Die Detailseite bezieht die Nachbarschaft jetzt aus der begrenzten,
+// serverseitig rechte-gefilterten Auskunft GET /api/kos/:id/neighbors (KnowledgeNeighborhood).
+import type { AuditEntry, KnowledgeObject } from "../api/types";
 
 // SCRUM-142: Audit-Ereignisse dieses KO (target === ko.id), chronologisch.
 export function koAuditEvents(entries: readonly AuditEntry[], koId: string): AuditEntry[] {

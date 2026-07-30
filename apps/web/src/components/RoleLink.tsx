@@ -1,6 +1,10 @@
 import type { ReactNode } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
+// AUFTRAG-mega70 BLOCK B: für Flächen mit ungespeicherten Eingaben (Capture-Erfolgskarte) muss
+// die BEGEHBARE Fassung weiter über den vorhandenen Eingabe-Wächter laufen — beide Tore bleiben
+// erhalten, RoleLink stellt die Rollenfrage, GuardedLink die Dirty-Frage.
+import { GuardedLink } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { routePathAllows } from "../app/navigation";
 
@@ -40,6 +44,12 @@ export interface RoleLinkProps {
   testId?: string;
   /** Nur für die begehbare Fassung — eine Lage hat nichts zu schließen oder zu öffnen. */
   onClick?: () => void;
+  /**
+   * AUFTRAG-mega70 BLOCK B: die begehbare Fassung läuft über den Dirty-Wächter (GuardedLink),
+   * damit ungespeicherte Eingaben der Seite nicht still verloren gehen. Die Rollenfrage stellt
+   * weiterhin dieses Tor; die Lage-Fassung hat keinen Klick und braucht keinen Wächter.
+   */
+  guarded?: boolean;
   children: (erreichbar: boolean) => ReactNode;
 }
 
@@ -49,11 +59,24 @@ export function RoleLink({
   hoverClassName,
   testId,
   onClick,
+  guarded,
   children,
 }: RoleLinkProps): JSX.Element {
   const { t } = useTranslation();
   const { role } = useRole();
   if (routePathAllows(to, role)) {
+    if (guarded) {
+      return (
+        <GuardedLink
+          to={to}
+          data-testid={testId}
+          onClick={onClick}
+          className={`${className} ${hoverClassName ?? ""}`.trim()}
+        >
+          {children(true)}
+        </GuardedLink>
+      );
+    }
     return (
       <Link
         to={to}

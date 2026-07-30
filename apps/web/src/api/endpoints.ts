@@ -35,6 +35,7 @@ import type {
   GapSummary,
   Graph,
   ImpactReport,
+  ImportAccessStatus,
   ImportApplyResponse,
   ImportCandidate,
   ImportCleanupPreview,
@@ -54,6 +55,7 @@ import type {
   MediaAnalysis,
   ModelRunRecord,
   MyImpact,
+  Neighborhood,
   Notification,
   ObjectContent,
   ObjectRef,
@@ -294,6 +296,8 @@ export const endpoints = {
     get: (id: string) => api.get<KnowledgeObject>(`/kos/${id}`),
     versions: (id: string) => api.get<KoVersionSnapshot[]>(`/kos/${id}/versions`),
     evidence: (id: string) => api.get<EvidenceRecord[]>(`/kos/${id}/evidence`),
+    // AUFTRAG-mega68: begrenzte Nachbarschaft eines Objekts (Anwendersicht des Wissensnetzes).
+    neighbors: (id: string) => api.get<Neighborhood>(`/kos/${id}/neighbors`),
     // SCRUM-395: optionaler Prüfer-Vorschlag direkt beim Einreichen (reviewerIds).
     create: (body: DraftPayload & { reviewerIds?: string[] }) =>
       api.post<KnowledgeObject>("/kos", body),
@@ -698,6 +702,13 @@ export const endpoints = {
   // werden soll, kann man nicht an einem Fehlversuch erkennen — man muss vorher fragen dürfen.
   features: {
     get: () => api.get<{ features: FeatureFlags }>("/features"),
+  },
+  // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports — rein lesend, ohne jeden
+  // Aufruf an Confluence. Bewusst NICHT im features-Vertrag (der ist auf „Booleans, keine
+  // Variablennamen" festgelegt) und bewusst nicht hinter dem Import-Schalter, weil er den Zustand
+  // „ausgeschaltet" melden können muss. Begründung ausführlich in import-access-routes.ts.
+  importAccess: {
+    confluence: () => api.get<ImportAccessStatus>("/import/confluence/zugang"),
   },
   users: {
     list: () => api.get<PublicUser[]>("/users"),

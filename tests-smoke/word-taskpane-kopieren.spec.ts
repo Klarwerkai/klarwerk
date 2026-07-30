@@ -107,7 +107,8 @@ test("mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeil
 
   const eingefuegt = await page.inputValue("#ask-input");
   expect(eingefuegt).toContain(ANTWORT);
-  expect(eingefuegt).toContain("Einstufung: ungeprueft");
+  // mega69 Block C: die sichtbaren deutschen Texte tragen echte Umlaute.
+  expect(eingefuegt).toContain("Einstufung: ungeprüft");
   expect(eingefuegt).toContain("Wartungsplan Ventil V4");
   expect(eingefuegt).toContain("KLARWERK-Wissen");
   // Genau EINMAL — der native Weg baut denselben Text wie die Schaltflaeche, nicht mehr.

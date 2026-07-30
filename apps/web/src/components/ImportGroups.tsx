@@ -192,6 +192,7 @@ export function ImportGroups({
   criteria,
   selectedCandidateIds,
   aiAvailable = true,
+  aiBillable,
   stackConfidential = false,
   groupingStale = false,
   onGrouped,
@@ -208,6 +209,10 @@ export function ImportGroups({
   // Themen-Gruppierung bleibt ein voller, nutzbarer Kernablauf (Ergebnis ehrlich „Ohne KI gruppiert").
   // Ohne Modell kündigt nur ein Vor-Hinweis an, dass ohne KI gruppiert wird. Default true (kein Test-Bruch).
   aiAvailable?: boolean;
+  // AUFTRAG-mega67 Block G: kostet der Gruppierungsklick wirklich etwas? Kommt von oben herein
+  // (ImportSelect, useAiBillable("group")) — nicht dasselbe wie `aiAvailable`, das auch ein
+  // kostenloses lokales Modell erfuellt. Ohne Auskunft schweigt der Hinweis.
+  aiBillable?: boolean;
   // AUFTRAG-mega59 BLOCK F2: trägt der GEWÄHLTE Stapel vertrauliche oder nicht freigegebene
   // Einträge? Dann nimmt der Batch-Vertrag die Cloud-KI heraus, ganz unabhängig davon, ob ein Modell
   // aktiv ist — und die Vorwarnung muss das sagen, statt bei aktivem Reasoner zu schweigen und
@@ -455,7 +460,7 @@ export function ImportGroups({
             {/* AUFTRAG-mega62 Block F: der Gruppierungslauf geht über den ganzen gewählten Stapel
                 und ist damit der teuerste Klick dieser Fläche — der Halbsatz gehört an den Knopf,
                 nicht hinter das Ergebnis. */}
-            <AiCostHint />
+            <AiCostHint billable={aiBillable} />
           </p>
           {/* ================================================================================
               AUFTRAG-mega59 BLOCK F2 — DIE VORWARNUNG HAT VORHER GELOGEN.

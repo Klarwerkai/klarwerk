@@ -89,7 +89,9 @@ describe("SCRUM-348: Fresh Capture → Studio → Review → Use E2E (HTTP + San
     // 5) Capture-Success-Übergänge sind ehrlich und führen zum echten nächsten Schritt.
     const saved = captureSavedStatus();
     expect(saved.badgeKey).toBe("capture.savedStatusBadge");
-    const steps = captureNextSteps(koId);
+    // AUFTRAG-mega70 BLOCK C: rollenbewusst — dieser E2E-Lauf arbeitet als Admin, für den die
+    // Validierung die betonte Handlung bleibt.
+    const steps = captureNextSteps(koId, "admin");
     expect(steps.find((s) => s.to === `/wissen/${koId}`)).toBeDefined(); // KO ansehen
     const validateStep = steps.find((s) => s.primary);
     expect(validateStep?.to).toContain("/validierung"); // primär: zur Validierung

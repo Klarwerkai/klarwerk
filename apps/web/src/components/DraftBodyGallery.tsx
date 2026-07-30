@@ -5,7 +5,15 @@
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 import { BodyImageGallery } from "./BodyImageGallery";
 
-export function DraftBodyGallery({ bodyHtml }: { bodyHtml: string }): JSX.Element | null {
+// AUFTRAG-mega69 Block A: `onEditCaption` reicht den Weg zum Bildbeschreibungs-Formular durch —
+// im Entwurf ist der Editor immer da, die Galerie darunter bekommt damit denselben Einstieg.
+export function DraftBodyGallery({
+  bodyHtml,
+  onEditCaption,
+}: {
+  bodyHtml: string;
+  onEditCaption?: ((imageId: string) => void) | undefined;
+}): JSX.Element | null {
   const debounced = useDebouncedValue(bodyHtml, LIBRARY_SEARCH_DEBOUNCE_MS);
-  return <BodyImageGallery bodyHtml={debounced} />;
+  return <BodyImageGallery bodyHtml={debounced} onEditCaption={onEditCaption} />;
 }

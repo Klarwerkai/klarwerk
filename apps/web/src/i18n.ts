@@ -925,8 +925,11 @@ const de = {
   "capture.savedTitle": "Wissensobjekt gespeichert.",
   // SCRUM-286: ehrlich — gespeichert, aber noch offen/nicht validiert; erst nach Bewertung nutzbar.
   "capture.savedStatusBadge": "Status: offen — noch nicht validiert",
+  // AUFTRAG-mega70 BLOCK C: der zweite Satz forderte „bitte zur Prüfung geben" — eine Handlung,
+  // die eine Expertin nicht tun kann (/validierung verlangt controller). Er erklärt jetzt den
+  // Prozess, ohne zur Handlung aufzufordern; der wahre erste Teil bleibt.
   "capture.savedBody":
-    "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Erst nach ausreichender Bewertung wird es nutzbares Wissen — bitte zur Prüfung geben. Automatisch validiert wird nichts.",
+    "Gespeichert als dein eigenes Wissen (kein Demo-Beispiel), aber noch nicht validiert. Nutzbares Wissen wird es erst, wenn es in der Validierung ausreichend bewertet wurde. Automatisch validiert wird nichts.",
   "capture.savedFromDraft":
     "Dein fortgesetzter Entwurf wurde als offenes Wissen eingereicht und aus deinen Entwürfen entfernt.",
   // WP-SHIP9-S1 (Pedis B3): der ECHTE Prüf-Status auf der Bestätigungs-Karte — „läuft" nur bis zum
@@ -1721,8 +1724,11 @@ const de = {
   // Codekommentar (pages/Ask.tsx), also genau dort, wo der Nutzer es nie liest. Ein Kommentar im
   // Code ist keine Aussage an den Nutzer — und ein Produkt, das mit Ehrlichkeit argumentiert, darf
   // an der Stelle nicht schweigen, an der ein Klick Geld kostet.
-  "ask.examplesSendHint":
-    "Ein Klick fragt sofort — das ist eine echte, kostenpflichtige Anfrage an die KI.",
+  // AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): dieser Satz trägt NUR noch die Sofort-Zusage
+  // (mega51 Block H: ein Beispiel sendet direkt, das muss VORHER erkennbar sein). Die Kosten-Hälfte
+  // steht jetzt BEDINGT daneben — als zentraler `AiCostHint`, nur wenn `billable` es deckt. Der
+  // frühere unbedingte Kostenwortlaut hier war genau die Umgehung der Bedingung.
+  "ask.examplesSendHint": "Ein Klick fragt sofort — die Frage wird direkt gesendet.",
   "ask.example.valve": "Was tun, wenn Ventil X bei Überdruck schließen muss?",
   "ask.example.filter": "Wie oft muss Filter F3 geprüft werden?",
   "ask.example.dosing": "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
@@ -1964,6 +1970,8 @@ const de = {
   "ko.galleryOpen": "Bild {{n}} vergrößern",
   "ko.galleryPrev": "Vorheriges Bild",
   "ko.galleryNext": "Nächstes Bild",
+  // AUFTRAG-mega69 Block A: der Weg vom betrachteten Bild zum Bildbeschreibungs-Formular.
+  "ko.galleryEditCaption": "Bildbeschreibung bearbeiten",
   "ko.body.readTitle": "Ausführlicher Inhalt aus dem Knowledge-Editor",
   "ko.body.readNote":
     "Blöcke und KI-Vorschläge sind redaktionelle Struktur. Maßgeblich bleiben Status, Vertrauen und Quellen dieses Wissensobjekts.",
@@ -2087,11 +2095,22 @@ const de = {
   "ko.lineageRelated": "Verwandt",
   "ko.lineageAudit": "Letzte Ereignisse",
   "ko.lineageGraphLink": "Im Wissensgraph ansehen",
-  "ko.relatedTitle": "Verwandte Wissensobjekte",
-  "ko.relatedEmpty": "Keine verwandten Objekte gefunden.",
-  "ko.relatedReason.tag": "Tag",
-  "ko.relatedReason.category": "Kategorie",
-  "ko.relatedReason.source": "Quelle",
+  // AUFTRAG-mega68: die Nachbarschafts-Sicht ersetzt die SCRUM-130-Liste („Verwandte
+  // Wissensobjekte") — gleiche Frage, jetzt aus der begrenzten Server-Auskunft mit sichtbarem
+  // Kanten-Warum statt aus der Client-Heuristik über den ganzen Bestand.
+  "nb.title": "Wissensnetz — Nachbarschaft",
+  "nb.hint":
+    "In der Mitte der Beitrag, den du liest; darum herum, was über gemeinsame Schlagwörter dazugehört. Ein Klick macht den Nachbarn zur neuen Mitte.",
+  "nb.empty": "Keine Nachbarn über aussagekräftige Schlagwörter.",
+  "nb.back": "Zurück zu „{{title}}“",
+  "nb.open": "Beitrag öffnen",
+  "nb.makeCenter": "„{{title}}“ zur neuen Mitte machen",
+  "nb.svgLabel": "Nachbarschaft von „{{title}}“",
+  "nb.countAll_one": "{{count}} Nachbar im Netz",
+  "nb.countAll_other": "{{count}} Nachbarn im Netz",
+  "nb.countTruncated": "Die {{shown}} stärksten von {{total}} Nachbarn",
+  "nb.excluded":
+    "Ohne Kanten über Allerwelts-Schlagwörter: {{tags}} — mehr als die Hälfte des Bestands trägt sie, die Verbindung sagt nichts.",
   "ko.transferTitle": "Autor übergeben",
   "ko.transferOriginal": "Originalautor",
   "ko.author": "Autor",
@@ -2699,6 +2718,36 @@ const de = {
   "imp.explore.spaces": "Bereiche (Spaces)",
   "imp.explore.alreadyImported": "Davon bereits importiert: {{n}}",
   "imp.explore.alreadyQueued": "Davon bereits zur Prüfung vorgemerkt: {{n}}",
+  // ================================================================================================
+  // AUFTRAG-mega67 BLOCK C+D — DER ZUGANGS-ZUSTAND. VIER ZUSTÄNDE, VIER EIGENE TEXTE.
+  // ================================================================================================
+  // Kein Text behauptet mehr, als ohne einen Aufruf an Confluence ablesbar ist. Insbesondere sagt
+  // „ready" NICHT „verbunden" (das wüsste nur ein echter Aufruf) und „disabled" NICHT
+  // „vorübergehend nicht verfügbar" (ausgeschaltet heißt hier: die Route existiert nicht).
+  "imp.access.title": "Zugang",
+  "imp.access.ready.title": "Eingeschaltet, Zugangsdaten hinterlegt",
+  "imp.access.ready.body":
+    "Der Import ist für diese Installation eingeschaltet, und alle nötigen Zugangsdaten stehen auf dem Server. Ob sie auch gültig sind, zeigt sich beim ersten Import — das lässt sich von hier aus nicht prüfen, ohne Confluence anzurufen.",
+  "imp.access.noCredentials.title": "Eingeschaltet, aber ohne Zugangsdaten",
+  "imp.access.noCredentials.body":
+    "Der Import ist eingeschaltet, aber es fehlt noch etwas. Solange das so ist, kann kein Import starten.",
+  "imp.access.disabled.title": "In dieser Installation nicht eingeschaltet",
+  "imp.access.disabled.body":
+    "Der Confluence-Import ist hier nicht eingeschaltet. Er wird auf dem Server freigeschaltet; von der Oberfläche aus lässt er sich nicht umlegen.",
+  // mega69 B3: „notBuilt" ist mit dem unerreichbaren vierten Zustand entfernt (bens Auflage 3).
+  "imp.access.blocker.missing": "Es fehlt mindestens eine der nötigen Angaben.",
+  "imp.access.blocker.insecureBaseUrl":
+    "Alle Angaben stehen, aber die Adresse ist keine https-Adresse. Zugangsdaten werden nur über verschlüsselte Verbindungen gesendet — deshalb kommt kein Zugang zustande.",
+  // Block C: die Variablen BENANNT, mit Ja/Nein — nie ein Wert und nie eine Maske mit Länge (eine
+  // Maske verriete die Länge). Es gibt hier bewusst KEIN Eingabefeld.
+  "imp.access.varsTitle": "Was dieses System braucht",
+  "imp.access.varPresent": "hinterlegt",
+  "imp.access.varMissing": "nicht hinterlegt",
+  "imp.access.whereSet":
+    "Diese Werte werden als Umgebungsvariablen auf dem Server gesetzt — nicht hier. Klarwerk zeigt nur, ob sie stehen, nie ihren Inhalt.",
+  "imp.access.whoMay": "Ändern kann das, wer Zugang zum Server dieser Installation hat.",
+  "imp.access.lastConnectedUnknown":
+    "Wann zuletzt erfolgreich verbunden wurde, wird nicht festgehalten — das wäre hier nur zu erraten.",
   // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht".
   "imp.gallery.planned": "geplant",
   // AUFTRAG-mega32 BLOCK G: EINE aufklappbare Zeile mit ANZAHL. Standard zugeklappt; aufgeklappt
@@ -2906,6 +2955,12 @@ const de = {
   "stage2.gate.adminOnly":
     "Stufe 2 kann eine Admin-Person über den Schalter in der Seitenleiste einschalten.",
   "stage2.gate.back": "Zurück zum Start",
+  // AUFTRAG-mega70 BLOCK A: der Rollenfall bekommt dieselbe Behandlung wie der Stufe-2-Fall —
+  // eine Erklärung statt der stillen Umleitung. Kein Einschalt-Knopf: eine Rolle vergibt der
+  // Administrator, nicht die Nutzerin.
+  "role.gate.title": "Dieser Bereich gehört einer anderen Rolle",
+  "role.gate.body":
+    "Dieser Bereich braucht die Rolle {{owner}}. Deine aktuelle Rolle ist {{own}} — darum ist der Weg hierhin für dich zu. Eine Rolle vergibt die Administration; es gibt hier deshalb nichts einzuschalten.",
   "imp.cleanup.title": "Testdaten aufräumen",
   "imp.cleanup.desc":
     "Entfernt alle Einträge aus der Import-Warteschlange und legt alle aus Confluence oder Jira importierten Beiträge in den Papierkorb. Selbst erstellte Beiträge, Nutzer und Einstellungen bleiben unberührt.",
@@ -3336,8 +3391,8 @@ const de = {
     "Hier steht, woher dieses Wissen stammt: wer es erfasst hat, wann es entstanden ist und ob es einmal übertragen wurde. Herkunft ist in KLARWERK keine Nebensache — nachvollziehbare Herkunft ist ein Teil des Vertrauens. Bei Rückfragen weißt du hier, an wen du dich wenden kannst.",
   "shelp.ko.lineageTitle":
     "Dieser Abschnitt zeigt die Verwandtschaft dieses Wissens: woraus es hervorgegangen ist und mit welchen anderen Objekten es zusammenhängt. So erkennst du, ob es Teil eines größeren Themas ist. Nutze die Verknüpfungen, um dich weiterzuhangeln, statt isolierte Einzelstücke zu lesen.",
-  "shelp.ko.relatedTitle":
-    "Hier schlägt KLARWERK Wissensobjekte vor, die inhaltlich in der Nähe liegen — etwa eine ergänzende Regel oder eine Ausnahme zum selben Thema. Die Vorschläge sind Hinweise, keine Wertung. Öffne, was dich interessiert, und du siehst das Umfeld des Themas.",
+  "shelp.nb.title":
+    "Das Wissensnetz zeigt die Nachbarschaft des Beitrags, den du gerade liest: in der Mitte der Beitrag, darum herum, was über gemeinsame Schlagwörter dazugehört — und an jeder Verbindung steht, warum. Ein Klick auf einen Nachbarn macht ihn zur neuen Mitte; „Beitrag öffnen“ führt zum Artikel. Schlagwörter, die fast alle Beiträge tragen, zählen dabei nicht als Verwandtschaft — das steht dann ehrlich dabei.",
   "shelp.ko.history":
     "Jede inhaltliche Änderung erzeugt eine neue Version, und hier siehst du den Verlauf: wer wann was geändert hat und mit welcher Notiz. Ältere Stände bleiben erhalten, nichts wird still überschrieben. So kannst du nachvollziehen, wie sich das Wissen entwickelt hat.",
   "shelp.ko.evidenceTitle":
@@ -4379,7 +4434,14 @@ const de = {
   // aber allgemein gehalten, weil er auch an Knöpfen steht, die nicht „fragen“.
   //
   // EIN HALBSATZ, KEINE BELEHRUNG: Er sagt, was der Klick auslöst, nicht was man tun soll.
-  "ai.costHint": "Ein Klick startet sofort eine echte, kostenpflichtige KI-Anfrage.",
+  //
+  // AUFTRAG-mega69 B2 (bens sammel65-Auflage 2): „kann … auslösen", nicht „startet". `billable`
+  // sagt „die Cloud KANN für diese Aufgabe kostenpflichtig genutzt werden" — nicht „dieser Klick
+  // kostet sicher Geld": `unverified` gilt vorsorglich als erreichbar, die Vertraulichkeit der
+  // konkreten Eingabe nimmt die Cloud ggf. aus der Kette, und ein Laufzeitfehler mit lokalem
+  // Rückfall kostet ebenfalls nichts. Der alte Wortlaut „startet … eine echte, kostenpflichtige"
+  // war dafür zu absolut — eine Tatsachenbehauptung ohne Deckung.
+  "ai.costHint": "Ein Klick kann eine echte, kostenpflichtige Cloud-KI-Anfrage auslösen.",
 
   // ==============================================================================================
   // AUFTRAG-mega62 BLOCK E — DIE KENNZEICHNUNG, DIE MIT DER DATEI DAS HAUS VERLÄSST.
@@ -5251,8 +5313,10 @@ const en: typeof de = {
   "capture.savedTitle": "Knowledge object saved.",
   // SCRUM-286: honest — saved but still open/not validated; usable only after review.
   "capture.savedStatusBadge": "Status: open — not yet validated",
+  // AUFTRAG-mega70 BLOCK C: explains the process instead of asking for an action the role may
+  // not be able to take (/validierung requires controller).
   "capture.savedBody":
-    "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only after sufficient review — please send it for review. Nothing is validated automatically.",
+    "Saved as your own knowledge (not a demo example), but not yet validated. It becomes usable knowledge only once it has been sufficiently rated in validation. Nothing is validated automatically.",
   "capture.savedFromDraft":
     "Your continued draft was submitted as open knowledge and removed from your drafts.",
   // WP-SHIP9-S1 (Pedis B3): the REAL check status on the confirmation card.
@@ -5981,8 +6045,7 @@ const en: typeof de = {
   "ask.demoPrefillHint":
     "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
   "ask.examplesLabel": "Examples:",
-  "ask.examplesSendHint":
-    "One click asks right away — this is a real, chargeable request to the AI.",
+  "ask.examplesSendHint": "One click asks right away — the question is sent immediately.",
   "ask.example.valve": "What to do when Ventil X must close on Überdruck (overpressure)?",
   "ask.example.filter": "How often must Filter F3 be checked?",
   "ask.example.dosing":
@@ -6166,6 +6229,7 @@ const en: typeof de = {
   "ko.galleryOpen": "Enlarge image {{n}}",
   "ko.galleryPrev": "Previous image",
   "ko.galleryNext": "Next image",
+  "ko.galleryEditCaption": "Edit image description",
   "ko.body.readTitle": "Detailed content from the knowledge editor",
   "ko.body.readNote":
     "Blocks and AI suggestions are editorial structure. The status, trust and sources of this knowledge object remain authoritative.",
@@ -6286,11 +6350,19 @@ const en: typeof de = {
   "ko.lineageRelated": "Related",
   "ko.lineageAudit": "Recent events",
   "ko.lineageGraphLink": "View in knowledge graph",
-  "ko.relatedTitle": "Related knowledge objects",
-  "ko.relatedEmpty": "No related objects found.",
-  "ko.relatedReason.tag": "Tag",
-  "ko.relatedReason.category": "Category",
-  "ko.relatedReason.source": "Source",
+  "nb.title": "Knowledge network — neighbourhood",
+  "nb.hint":
+    "The article you are reading sits in the middle; around it, what belongs to it via shared tags. Click a neighbour to make it the new centre.",
+  "nb.empty": "No neighbours via meaningful tags.",
+  "nb.back": "Back to “{{title}}”",
+  "nb.open": "Open article",
+  "nb.makeCenter": "Make “{{title}}” the new centre",
+  "nb.svgLabel": "Neighbourhood of “{{title}}”",
+  "nb.countAll_one": "{{count}} neighbour in the network",
+  "nb.countAll_other": "{{count}} neighbours in the network",
+  "nb.countTruncated": "The {{shown}} strongest of {{total}} neighbours",
+  "nb.excluded":
+    "No edges via ubiquitous tags: {{tags}} — more than half of all objects carry them, so the connection says nothing.",
   "ko.transferTitle": "Transfer author",
   "ko.transferOriginal": "Original author",
   "ko.author": "Author",
@@ -6841,6 +6913,28 @@ const en: typeof de = {
   "imp.explore.alreadyImported": "Of these already imported: {{n}}",
   "imp.explore.alreadyQueued": "Of these already queued for review: {{n}}",
   // AUFTRAG-ic7-import-vision: honest source gallery „where the journey is heading".
+  // AUFTRAG-mega67 BLOCK C+D — der Zugangs-Zustand (s. den deutschen Block für die Begründung).
+  "imp.access.title": "Access",
+  "imp.access.ready.title": "Enabled, credentials in place",
+  "imp.access.ready.body":
+    "The import is enabled for this installation, and all required credentials are set on the server. Whether they are also valid will show on the first import — it cannot be checked from here without calling Confluence.",
+  "imp.access.noCredentials.title": "Enabled, but without credentials",
+  "imp.access.noCredentials.body":
+    "The import is enabled, but something is still missing. Until that is fixed, no import can start.",
+  "imp.access.disabled.title": "Not enabled in this installation",
+  "imp.access.disabled.body":
+    "The Confluence import is not enabled here. It is switched on at the server; it cannot be toggled from the interface.",
+  "imp.access.blocker.missing": "At least one of the required entries is missing.",
+  "imp.access.blocker.insecureBaseUrl":
+    "All entries are set, but the address is not an https address. Credentials are only sent over encrypted connections — so no access is established.",
+  "imp.access.varsTitle": "What this system needs",
+  "imp.access.varPresent": "set",
+  "imp.access.varMissing": "not set",
+  "imp.access.whereSet":
+    "These values are set as environment variables on the server — not here. Klarwerk only shows whether they are set, never their content.",
+  "imp.access.whoMay": "This can be changed by whoever has access to this installation's server.",
+  "imp.access.lastConnectedUnknown":
+    "When the last successful connection happened is not recorded — it could only be guessed here.",
   "imp.gallery.planned": "planned",
   "imp.gallery.plannedGroup": "Planned ({{count}})",
   "imp.gallery.systemsTitle": "Systems",
@@ -7023,6 +7117,9 @@ const en: typeof de = {
   "con.emptyExamplesHint":
     "To try it out, load the example package “Contradicting statements” in the import area.",
   "con.emptyExamplesCta": "Open example packages",
+  "role.gate.title": "This area belongs to a different role",
+  "role.gate.body":
+    "This area requires the {{owner}} role. Your current role is {{own}} — that is why this path is closed for you. Roles are assigned by the administration; there is nothing to switch on here.",
   "stage2.gate.title": "Advanced features (stage 2)",
   "stage2.gate.body":
     "This module belongs to the advanced features — called 'stage 2' in house: additional modules beyond the core flow. They are currently switched off, that is why this area is not visible yet.",
@@ -7446,8 +7543,8 @@ const en: typeof de = {
     "Here you see where this knowledge comes from: who captured it, when it was created and whether it was ever transferred. Provenance is no side issue in KLARWERK — traceable origin is part of trust. If you have questions, this tells you whom to ask.",
   "shelp.ko.lineageTitle":
     "This section shows the kinship of this knowledge: what it emerged from and which other objects it is connected to. That way you can tell whether it is part of a larger topic. Use the links to move onward instead of reading isolated pieces.",
-  "shelp.ko.relatedTitle":
-    "Here KLARWERK suggests knowledge objects that are close in content — such as a complementary rule or an exception on the same topic. The suggestions are hints, not a rating. Open what interests you and you will see the topic's surroundings.",
+  "shelp.nb.title":
+    "The knowledge network shows the neighbourhood of the article you are reading: the article sits in the middle, around it what belongs to it via shared tags — and every connection states why. Clicking a neighbour makes it the new centre; “Open article” takes you to it. Tags that almost every article carries do not count as kinship — when that happens, it is stated honestly.",
   "shelp.ko.history":
     "Every content change creates a new version, and here you see the trail: who changed what, when, and with which note. Older states are kept; nothing is silently overwritten. That way you can retrace how the knowledge evolved.",
   "shelp.ko.evidenceTitle":
@@ -8351,7 +8448,7 @@ const en: typeof de = {
     "This attempt did not get through either. Please check your network connection.",
 
   "ai.generatedNotice": "Generated by artificial intelligence — please review professionally.",
-  "ai.costHint": "One click immediately starts a real, chargeable AI request.",
+  "ai.costHint": "One click may trigger a real, chargeable cloud AI request.",
   "ai.exportNotice":
     "Generated by artificial intelligence (KLARWERK, {{task}}, {{date}}). To be reviewed for content.",
   "ai.task.answer": "question answered",
@@ -9204,8 +9301,10 @@ const nl: typeof de = {
     "Na de validatie kan de kennisbasis deze vraag voortaan beter beantwoorden. Het kennishiaat wordt niet automatisch gesloten — de beoordeling beslist.",
   "capture.savedTitle": "Kennisobject opgeslagen.",
   "capture.savedStatusBadge": "Status: open — nog niet gevalideerd",
+  // AUFTRAG-mega70 BLOCK C: beschrijft het proces in plaats van een handeling te vragen die de
+  // rol niet kan uitvoeren (/validierung vereist controller).
   "capture.savedBody":
-    "Opgeslagen als je eigen kennis (geen demovoorbeeld), maar nog niet gevalideerd. Pas na voldoende beoordeling wordt het bruikbare kennis — geef het ter beoordeling. Er wordt niets automatisch gevalideerd.",
+    "Opgeslagen als je eigen kennis (geen demovoorbeeld), maar nog niet gevalideerd. Bruikbare kennis wordt het pas wanneer het in de validatie voldoende beoordeeld is. Er wordt niets automatisch gevalideerd.",
   "capture.savedFromDraft":
     "Je voortgezette concept is als openstaande kennis ingediend en uit je concepten verwijderd.",
   // WP-SHIP9-S1 (Pedis B3): de ECHTE controlestatus op de bevestigingskaart.
@@ -9939,7 +10038,7 @@ const nl: typeof de = {
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
   "ask.examplesLabel": "Voorbeelden:",
-  "ask.examplesSendHint": "Eén klik vraagt meteen — dit is een echte, betaalde aanvraag aan de AI.",
+  "ask.examplesSendHint": "Eén klik vraagt meteen — de vraag wordt direct verstuurd.",
   "ask.example.valve": "Wat te doen als klep X bij overdruk moet sluiten?",
   "ask.example.filter": "Hoe vaak moet filter F3 gecontroleerd worden?",
   "ask.example.dosing": "Waarom schommelt de doseerwaarde bij lijn L4 na elke ploegwissel?",
@@ -10117,6 +10216,7 @@ const nl: typeof de = {
   "ko.galleryOpen": "Afbeelding {{n}} vergroten",
   "ko.galleryPrev": "Vorige afbeelding",
   "ko.galleryNext": "Volgende afbeelding",
+  "ko.galleryEditCaption": "Afbeeldingsbeschrijving bewerken",
   "ko.body.readTitle": "Uitgebreide inhoud uit de Knowledge-Editor",
   "ko.body.readNote":
     "Blokken en AI-voorstellen zijn redactionele structuur. Bepalend blijven status, vertrouwen en bronnen van dit kennisobject.",
@@ -10237,11 +10337,19 @@ const nl: typeof de = {
   "ko.lineageRelated": "Verwant",
   "ko.lineageAudit": "Laatste gebeurtenissen",
   "ko.lineageGraphLink": "Bekijken in de kennisgraaf",
-  "ko.relatedTitle": "Verwante kennisobjecten",
-  "ko.relatedEmpty": "Geen verwante objecten gevonden.",
-  "ko.relatedReason.tag": "Tag",
-  "ko.relatedReason.category": "Categorie",
-  "ko.relatedReason.source": "Bron",
+  "nb.title": "Kennisnetwerk — buurt",
+  "nb.hint":
+    "In het midden het artikel dat je leest; eromheen wat er via gedeelde tags bij hoort. Eén klik maakt de buur het nieuwe midden.",
+  "nb.empty": "Geen buren via betekenisvolle tags.",
+  "nb.back": "Terug naar „{{title}}”",
+  "nb.open": "Artikel openen",
+  "nb.makeCenter": "„{{title}}” het nieuwe midden maken",
+  "nb.svgLabel": "Buurt van „{{title}}”",
+  "nb.countAll_one": "{{count}} buur in het netwerk",
+  "nb.countAll_other": "{{count}} buren in het netwerk",
+  "nb.countTruncated": "De {{shown}} sterkste van {{total}} buren",
+  "nb.excluded":
+    "Geen verbindingen via alledaagse tags: {{tags}} — meer dan de helft van alle objecten draagt ze, dus de verbinding zegt niets.",
   "ko.transferTitle": "Auteur overdragen",
   "ko.transferOriginal": "Oorspronkelijke auteur",
   "ko.author": "Auteur",
@@ -10781,6 +10889,29 @@ const nl: typeof de = {
   "imp.explore.alreadyImported": "Waarvan al geïmporteerd: {{n}}",
   "imp.explore.alreadyQueued": "Waarvan al in de wachtrij voor beoordeling: {{n}}",
   // AUFTRAG-ic7-import-vision: eerlijke bronnengalerij „waar de reis heen gaat".
+  // AUFTRAG-mega67 BLOCK C+D — de toegangstoestand (zie het Duitse blok voor de onderbouwing).
+  "imp.access.title": "Toegang",
+  "imp.access.ready.title": "Ingeschakeld, toegangsgegevens aanwezig",
+  "imp.access.ready.body":
+    "De import is voor deze installatie ingeschakeld en alle benodigde toegangsgegevens staan op de server. Of ze ook geldig zijn, blijkt bij de eerste import — dat is van hieruit niet te controleren zonder Confluence aan te roepen.",
+  "imp.access.noCredentials.title": "Ingeschakeld, maar zonder toegangsgegevens",
+  "imp.access.noCredentials.body":
+    "De import is ingeschakeld, maar er ontbreekt nog iets. Zolang dat zo is, kan er geen import starten.",
+  "imp.access.disabled.title": "In deze installatie niet ingeschakeld",
+  "imp.access.disabled.body":
+    "De Confluence-import is hier niet ingeschakeld. Dat gebeurt op de server; vanuit de interface is het niet om te zetten.",
+  "imp.access.blocker.missing": "Ten minste één van de benodigde gegevens ontbreekt.",
+  "imp.access.blocker.insecureBaseUrl":
+    "Alle gegevens staan er, maar het adres is geen https-adres. Toegangsgegevens worden alleen over versleutelde verbindingen verstuurd — daarom komt er geen toegang tot stand.",
+  "imp.access.varsTitle": "Wat dit systeem nodig heeft",
+  "imp.access.varPresent": "aanwezig",
+  "imp.access.varMissing": "niet aanwezig",
+  "imp.access.whereSet":
+    "Deze waarden worden als omgevingsvariabelen op de server gezet — niet hier. Klarwerk laat alleen zien of ze er staan, nooit hun inhoud.",
+  "imp.access.whoMay":
+    "Dit kan worden gewijzigd door wie toegang heeft tot de server van deze installatie.",
+  "imp.access.lastConnectedUnknown":
+    "Wanneer voor het laatst succesvol verbinding is gemaakt, wordt niet vastgelegd — dat zou hier alleen te raden zijn.",
   "imp.gallery.planned": "gepland",
   "imp.gallery.plannedGroup": "Gepland ({{count}})",
   "imp.gallery.systemsTitle": "Systemen",
@@ -10963,6 +11094,9 @@ const nl: typeof de = {
   "con.emptyExamplesHint":
     "Om het uit te proberen is er het voorbeeldpakket „Tegenstrijdige uitspraken“ in het importgedeelte.",
   "con.emptyExamplesCta": "Voorbeeldpakketten openen",
+  "role.gate.title": "Dit gedeelte hoort bij een andere rol",
+  "role.gate.body":
+    "Dit gedeelte vereist de rol {{owner}}. Jouw huidige rol is {{own}} — daarom is deze weg voor jou gesloten. Rollen worden door de beheerder toegewezen; er valt hier dus niets in te schakelen.",
   "stage2.gate.title": "Uitgebreide functies (fase 2)",
   "stage2.gate.body":
     "Deze module hoort bij de uitgebreide functies — intern „fase 2“ genoemd: extra modules naast de kernstroom. Die staan nu uit, daarom is dit gedeelte nog niet zichtbaar.",
@@ -11387,8 +11521,8 @@ const nl: typeof de = {
     "Hier staat waar deze kennis vandaan komt: wie die heeft vastgelegd, wanneer die is ontstaan en of die ooit is overgedragen. Herkomst is in KLARWERK geen bijzaak — een navolgbare herkomst is een deel van het vertrouwen. Bij vragen weet je hier bij wie je terechtkunt.",
   "shelp.ko.lineageTitle":
     "Dit gedeelte toont de verwantschap van deze kennis: waaruit die is voortgekomen en met welke andere objecten die samenhangt. Zo herken je of het deel is van een groter thema. Gebruik de koppelingen om je verder te hangelen in plaats van geïsoleerde losse stukken te lezen.",
-  "shelp.ko.relatedTitle":
-    "Hier stelt KLARWERK kennisobjecten voor die inhoudelijk in de buurt liggen — bijvoorbeeld een aanvullende regel of een uitzondering op hetzelfde thema. De voorstellen zijn aanwijzingen, geen oordeel. Open wat je interesseert, en je ziet de omgeving van het thema.",
+  "shelp.nb.title":
+    "Het kennisnetwerk toont de buurt van het artikel dat je leest: in het midden het artikel, eromheen wat er via gedeelde tags bij hoort — en bij elke verbinding staat waarom. Eén klik op een buur maakt die het nieuwe midden; „Artikel openen” brengt je ernaartoe. Tags die bijna elk artikel draagt, tellen niet als verwantschap — dat staat er dan eerlijk bij.",
   "shelp.ko.history":
     "Elke inhoudelijke wijziging maakt een nieuwe versie aan, en hier zie je het verloop: wie wanneer wat heeft gewijzigd en met welke notitie. Oudere versies blijven bewaard, niets wordt stilletjes overschreven. Zo kun je nagaan hoe de kennis zich heeft ontwikkeld.",
   "shelp.ko.evidenceTitle":
@@ -12298,7 +12432,7 @@ const nl: typeof de = {
 
   "ai.generatedNotice":
     "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
-  "ai.costHint": "Eén klik start meteen een echte, betaalde AI-aanvraag.",
+  "ai.costHint": "Eén klik kan een echte, betaalde cloud-AI-aanvraag veroorzaken.",
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",
   "ai.task.answer": "vraag beantwoord",

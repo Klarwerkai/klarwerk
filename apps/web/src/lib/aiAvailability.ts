@@ -48,6 +48,33 @@ export function deriveAiAvailable(
   return status.active === true && status.mode !== "deterministic";
 }
 
+// ================================================================================================
+// AUFTRAG-mega67 BLOCK G (Pedi 30.07.) — KOSTET DIESER KLICK WIRKLICH ETWAS?
+// ================================================================================================
+//
+// Die PURE Ableitung hinter dem Kostenhinweis. Sie ist bewusst STRENG: sie sagt nur dann „ja", wenn
+// der Server für GENAU DIESE Aufgabe ausdrücklich `billable: true` meldet.
+//
+// WARUM KEIN RÜCKFALL AUF `mode === "cloud"`, wenn die Karte fehlt: `mode` ist die HAUSWEITE Stufe
+// und sagt nichts über die Kette DIESER Aufgabe (eine cloud-verdrahtete Installation kann
+// `structure` lokal stellen). Ein Rückfall darauf wäre wieder eine Behauptung ohne Deckung —
+// genau die, die dieser Block beseitigt. Fehlt die Auskunft, SCHWEIGT der Satz. Schweigen ist
+// keine falsche Aussage; „kostenpflichtig" wäre eine.
+//
+// MEHRERE AUFGABEN: manche Flächen tragen EINEN Hinweis für zwei Auslöser in derselben Umrandung
+// (CaptureFrontDoor: „Vorschlag strukturieren" + „KI-Hilfe anwenden"). Kostet EINER von beiden,
+// muss der Satz stehen — sonst klickt jemand den teuren, ohne gewarnt zu sein.
+export function deriveAiBillable(
+  status: Pick<ReasonerStatus, "billable"> | undefined,
+  task: string | readonly string[],
+): boolean {
+  if (!status?.billable) {
+    return false;
+  }
+  const tasks = typeof task === "string" ? [task] : task;
+  return tasks.some((t) => status.billable?.[t] === true);
+}
+
 // PAKET 3.4 (D-AISTATE, bens V4): ist ECHT ein Modell nutzbar (aktiv UND nicht zuletzt unerreichbar)?
 // Basis für den „(mit KI)"-Namen — NICHT bloß „konfiguriert" (active). `unverified` zählt als nutzbar
 // (kein Fake-Grau beim Start). Ohne Status: nein.

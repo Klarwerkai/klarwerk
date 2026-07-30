@@ -9,3 +9,11 @@ export {
   type CollectResult,
   createConfluenceAdapterFromEnv,
 } from "./src/adapter";
+// AUFTRAG-mega67 BLOCK C: der ZUSTAND der Zugangsdaten — je Variable benannt und ja/nein, NIE ein
+// Wert und nie eine Maske mit Länge. Diese Auskunft darf nach außen, weil sie strukturell kein
+// Geheimnis tragen kann (s. credential-state.ts); der Token-tragende Resolver bleibt modul-intern.
+export {
+  CONFLUENCE_CREDENTIAL_VARS,
+  type ConfluenceCredentialState,
+  confluenceCredentialState,
+} from "./src/credential-state";

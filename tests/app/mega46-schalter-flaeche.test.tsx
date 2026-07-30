@@ -106,7 +106,7 @@ describe("mega46 F2 · die Fläche hinter einem Betriebsschalter", () => {
   });
 
   it("SCHALTER AUS: die Fläche wird GAR NICHT gerendert", async () => {
-    d.antwortet({ features: { herkunft: false, confluenceImport: false, expertMatching: false } });
+    d.antwortet({ features: { herkunft: false, expertMatching: false, demodaten: false } });
     await durchatmen();
     // Nicht „ausgegraut", nicht „versteckt" — gar nicht im Dokument.
     expect(container.querySelector("button")).toBeNull();
@@ -115,7 +115,7 @@ describe("mega46 F2 · die Fläche hinter einem Betriebsschalter", () => {
   });
 
   it("SCHALTER AN: die Fläche ist da und bedienbar", async () => {
-    d.antwortet({ features: { herkunft: true, confluenceImport: false, expertMatching: false } });
+    d.antwortet({ features: { herkunft: true, expertMatching: false, demodaten: false } });
     await durchatmen();
     const knopf = container.querySelector("button");
     expect(knopf).not.toBeNull();
@@ -124,7 +124,7 @@ describe("mega46 F2 · die Fläche hinter einem Betriebsschalter", () => {
   });
 
   it("EIN ANDERER SCHALTER schaltet diese Fläche NICHT frei", async () => {
-    d.antwortet({ features: { herkunft: false, confluenceImport: true, expertMatching: true } });
+    d.antwortet({ features: { herkunft: false, expertMatching: true, demodaten: true } });
     await durchatmen();
     expect(container.querySelector("button")).toBeNull();
   });

@@ -5,6 +5,7 @@ import type { DescribeImageResult } from "../api/types";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { draftProvenance } from "../lib/reasonerProvenance";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { useAiBillable } from "../lib/useAiBillable";
 
 // AUFTRAG-mega50 Block A — DER WEG ZUR BILDBESCHREIBUNG, EINMAL.
 //
@@ -51,6 +52,13 @@ export interface ImageDescribeValue {
   // Ist für die Aufgabe „describe" überhaupt ein Modell nutzbar? Steuert das harte Ausgrauen
   // (D-AISTATE Paket 1) — bisher der Prop `describeAvailable`, jetzt aus DERSELBEN Quelle für alle.
   available: boolean;
+  // AUFTRAG-mega67 Block G: kostet ein Bildbeschreibungs-Klick wirklich etwas (läuft „describe"
+  // über ein erreichbares Cloud-Modell)? Steuert AUSSCHLIESSLICH den Kostenhinweis — nie das
+  // Ausgrauen, das bleibt an `available`. OPTIONAL, weil der Editor auch über die Test-Naht
+  // (tests/capture/bildbeschreibung-naht.tsx) versorgt wird: fehlt die Auskunft, wird nichts
+  // behauptet und der Hinweis schweigt. Der Kostenhinweis kann ihn sich nicht selbst holen — er
+  // sitzt als Blatt in Bäumen ohne React-Query-Client (s. components/AiCostHint.tsx).
+  billable?: boolean;
   // Der EINE describe-Aufruf. Zweites Argument ist der umgebende Klartext-Kontext (WP-BILD-1f), der
   // im selben Request und damit über dieselbe Vertraulichkeits-/Egress-Stelle reist wie das Bild.
   describe: (dataUrl: string, context?: string) => Promise<DescribeImageResult>;
@@ -91,6 +99,8 @@ export function ImageDescribeProvider({
 }): JSX.Element {
   const { i18n } = useTranslation();
   const describeAi = useAiAvailable("describe");
+  // AUFTRAG-mega67 Block G: dieselbe Quelle, andere Frage — nutzbar ist nicht dasselbe wie teuer.
+  const describeBillable = useAiBillable("describe");
   const locale = toReasonerLocale(i18n.language);
   const { source, confidentiality, koId } = provenance ?? VORGABE_PROVENIENZ;
 
@@ -99,6 +109,7 @@ export function ImageDescribeProvider({
   const value = useMemo<ImageDescribeValue>(
     () => ({
       available: describeAi.available,
+      billable: describeBillable,
       describe: (dataUrl, context) =>
         endpoints.reasoner.describeImage(
           dataUrl,
@@ -107,7 +118,7 @@ export function ImageDescribeProvider({
           context,
         ),
     }),
-    [describeAi.available, locale, source, confidentiality, koId],
+    [describeAi.available, describeBillable, locale, source, confidentiality, koId],
   );
 
   return <ImageDescribeCtx.Provider value={value}>{children}</ImageDescribeCtx.Provider>;

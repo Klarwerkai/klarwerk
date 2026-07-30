@@ -9,6 +9,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useReasonerConfig, useReasonerStatus } from "../api/hooks";
 import { useRole } from "../app/RoleContext";
+import { deriveAiBillable } from "../lib/aiAvailability";
 import { AI_TASK_INFO_TEXT, aiTaskInfo, aiTaskInfoPublic } from "../lib/reasonerTaskInfo";
 // AUFTRAG-mega62 Block F: der Kostenhinweis. Er steht hier aus demselben Grund wie der KI-Satz —
 // diese Fläche sitzt IMMER an einem Auslöser (sie nennt die Aufgabe, die der Klick daneben startet),
@@ -32,7 +33,10 @@ export function AiModelInfo({ task }: { task: string }): JSX.Element {
     // etwas arbeitet (immer da). Die Modellangabe selbst ist unverändert.
     <span className="inline-flex flex-wrap items-center gap-1.5">
       <AiGeneratedNotice />
-      <AiCostHint />
+      {/* AUFTRAG-mega67 Block G: diese Fläche KENNT ihre Aufgabe bereits (sie nennt sie ja) und
+          hält den öffentlichen Status ohnehin schon — sie leitet den Kostenhinweis daraus ab und
+          schweigt, wenn dieser Klick nichts kostet. */}
+      <AiCostHint billable={deriveAiBillable(publicStatus.data, task)} />
       <span className="relative inline-flex">
         <button
           type="button"

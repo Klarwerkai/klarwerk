@@ -30,6 +30,7 @@ import type {
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { ExamplePackages } from "../components/ExamplePackages";
+import { ImportAccessPanel } from "../components/ImportAccessPanel";
 import { ImportCleanup } from "../components/ImportCleanup";
 import { ImportExplore } from "../components/ImportExplore";
 // WP-COCKPIT-LINIE: geführte Schritt-Leiste über dem Cockpit + klar abgegrenzter, eingeklappter
@@ -416,6 +417,12 @@ export function ImportReview(): JSX.Element {
       {/* AUFTRAG-mega32 BLOCK H2: Der JSON-Kasten stand bis mega31 als eigenes Card AUSSERHALB des
           Providers und wurde deshalb IMMER gerendert — ihn bedingte schlicht nichts. Er zieht
           jetzt in den Provider, damit die gewählte Quelle ihn überhaupt erreichen kann. */}
+      {/* AUFTRAG-mega67 BLOCK C/D: der ZUGANGS-ZUSTAND steht VOR dem Fluss — er beantwortet die
+          Frage „warum geht das nicht?", und die stellt sich, BEVOR man eine Kachel klickt. Er hängt
+          bewusst an keiner gewählten Quelle (er ist keine Stufe des Flusses) und rendert für alle,
+          die das Recht nicht tragen, gar nichts. */}
+      <ImportAccessPanel />
+
       <ImportCockpitProvider>
         <ImportStepperBar />
         <ImportExplore />

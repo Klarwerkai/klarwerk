@@ -54,14 +54,13 @@ const AUSNAHMEN: Record<string, string> = {
   // wäre eine Ausnahme ohne Fall, und der Fall unten („wird noch gebraucht") würde ihn rot melden.
   // Dass der Träger selbst KEINEN Kostenhinweis enthält, ist trotzdem Absicht: er steht auch an
   // ERGEBNISSEN (der fertigen Antwort), und dort wäre eine Kostenwarnung eine nach dem Schuss.
-  [join(WEB, "pages", "Ask.tsx")]:
-    "ERGEBNISFLÄCHE: Der Träger der KI-Kennzeichnung steht hier an der fertigen ANTWORT, nicht am " +
-    "Auslöser. Ihren eigenen Kostenhinweis trägt die Fragenfläche seit mega51 am Auslöser selbst " +
-    "(`ask.examplesSendHint`, an den Beispiel-Chips) — geprüft im Fall unten, damit diese Ausnahme " +
-    "nicht zur Lücke wird.",
+  // KEINE Ausnahme mehr für pages/Ask.tsx: seit AUFTRAG-mega69 B1 (bens sammel65-Auflage 1) trägt
+  // die Fragenfläche den ZENTRALEN, bedingten <AiCostHint> am Auslöser selbst — sie erfüllt die
+  // Regel direkt, statt über einen eigenen, unbedingten Wortlaut davon ausgenommen zu sein.
 };
 
-/** Der eigene, ältere Kostenhinweis der Fragenfläche — die Bindung der Ask-Ausnahme. */
+/** Der Sofort-Hinweis der Fragenfläche (seit mega69 B1 OHNE Kostenbehauptung — die trägt der
+ * zentrale, bedingte AiCostHint daneben). */
 const ASK_SCHLUESSEL = "ask.examplesSendHint";
 
 function quelldateien(verzeichnis: string): string[] {
@@ -144,10 +143,11 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
     }
   });
 
-  it("die Ask-Ausnahme ist GEBUNDEN: die Fragenfläche trägt ihren eigenen Hinweis am Auslöser", () => {
-    // Ohne diese Bindung wäre die Ausnahme eine Lücke mit Begründung. Der ältere Hinweis steht an
-    // den Beispiel-Chips — geprüft wird, dass er dort noch steht, nicht dass er einmal dastand.
+  it("die Fragenfläche trägt den ZENTRALEN Hinweis am Auslöser — und den Sofort-Satz dazu", () => {
+    // mega69 B1: keine Ausnahme mehr — Ask rendert <AiCostHint> (bedingt, zentrale Ableitung) und
+    // behält den kostenfreien Sofort-Hinweis an Beschriftung und Chip-`title`.
     const ask = readFileSync(join(WURZEL, WEB, "pages", "Ask.tsx"), "utf8");
+    expect(ask).toContain("<AiCostHint");
     expect(ask).toContain(`t("${ASK_SCHLUESSEL}")`);
     expect(ask).toContain(`title={t("${ASK_SCHLUESSEL}")}`);
   });

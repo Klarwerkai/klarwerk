@@ -734,11 +734,14 @@ export class Reasoner {
     };
   }
 
-  // WP-VIP2-GATE (bens P1): ABSTRAHIERTE, oeffentliche Status-Sicht — NUR {active, mode}.
-  // Der Provider-/Modellname (status().provider, z. B. der konkrete Anthropic-Modellstring) ist
-  // Infrastruktur-Detail und gehoert ausschliesslich in die ECHTE Admin-Sicht (/api/reasoner/
-  // config, users.manage — WP-VIP2-GATE-2 Fix 3/4). mode nennt die STUFE (cloud/local/deterministic),
-  // nie das Produkt.
+  // WP-VIP2-GATE (bens P1): ABSTRAHIERTE, oeffentliche Status-Sicht. Der Provider-/Modellname
+  // (status().provider, z. B. der konkrete Anthropic-Modellstring) ist Infrastruktur-Detail und
+  // gehoert ausschliesslich in die ECHTE Admin-Sicht (/api/reasoner/config, users.manage —
+  // WP-VIP2-GATE-2 Fix 3/4). mode nennt die STUFE (cloud/local/deterministic), nie das Produkt.
+  // AUFTRAG-mega69 B2 (bens sammel65, Punkt 4): „NUR {active, mode}" stimmt seit D-AISTATE/mega67
+  // nicht mehr — publicStatus() traegt BEWUSST zusaetzlich `reachable`, `tasks` und `billable`
+  // (abstrakte Booleans je Aufgabe, nie ein Name). Das ist eine gewollte Vertragserweiterung fuer
+  // ehrliches Ausgrauen und den bedingten Kostenhinweis, dokumentiert statt still.
   // PAKET 2 (D-AISTATE, Pedi 23.07.): zusätzlich der ehrliche ERREICHBARKEITS-Zustand (reachable) —
   // „active" nur, wenn ein Modell zuletzt WIRKLICH geantwortet hat. `active`/`mode` bleiben die
   // Konfigurations-Wahrheit (rückwärtskompatibel); die Badges nutzen `reachable` für die Farbe.
@@ -759,6 +762,51 @@ export class Reasoner {
     );
   }
 
+  // ==============================================================================================
+  // AUFTRAG-mega67 BLOCK G (Pedi 30.07.) — KOSTET EIN KLICK AUF DIESE AUFGABE WIRKLICH GELD?
+  // ==============================================================================================
+  //
+  // DER BEFUND. Die Oberfläche trug den Satz „Ein Klick startet sofort eine echte, kostenpflichtige
+  // KI-Anfrage" UNBEDINGT. Für die Bedingung gab es hier keine Auskunft, und die beiden Felder, die
+  // danach aussehen, tragen sie NICHT:
+  //  - `tasks[task]` ist NUTZBARKEIT, nicht Preis: true auch dann, wenn die Aufgabe über das
+  //    LOKALE Modell läuft — das kostet nichts.
+  //  - `mode` ist die HAUSWEITE Stufe (usingPrimary() ? cloud : …) und sagt nichts über die Kette
+  //    DIESER Aufgabe. Eine Installation kann Cloud verdrahtet haben und `structure` trotzdem
+  //    ausdrücklich lokal stellen.
+  // Die per-Aufgabe-Auflösung `effectiveProvider` gibt es nur in configStatus() — und die ist
+  // admin-only (users.manage, WP-VIP2-GATE). Für den Kostenhinweis, den JEDE Rolle sieht, war sie
+  // also keine Quelle.
+  //
+  // WARUM EIN BOOLEAN UND KEIN PROVIDERNAME: derselbe Sicherheitsvertrag wie bei `tasks` (vip2-gate)
+  // — die öffentliche Sicht nennt die STUFE nie namentlich. „Kostet / kostet nicht" ist genau die
+  // Auskunft, die der Satz braucht, und keine darüber hinaus.
+  //
+  // ERREICHBARKEIT ZÄHLT MIT, aus demselben Grund wie bei taskModelUsable: ist die Cloud-Kante
+  // zuletzt unerreichbar gewesen, fällt der Lauf auf lokal/deterministisch durch — dann kostet der
+  // Klick nichts, und der Satz wäre wieder eine falsche Tatsachenaussage.
+  //
+  // NICHT-VERTRAULICHE KETTE, bewusst: `providerChain(task)` ohne `confidential`. Vertraulicher Text
+  // nimmt die Cloud aus der Kette (SCRUM-502) — der Klick wäre dann kostenlos. Die Aussage „kann
+  // kosten" gilt also für den ALLGEMEINEN Fall am Knopf; sie behauptet nie zu wenig.
+  //
+  // AUFTRAG-mega69 B2 (bens sammel65-Auflage 2) — WAS DIESES FELD IST UND WAS NICHT: `billable`
+  // sagt „die Cloud KANN für diese Aufgabe kostenpflichtig verwendet werden" — eine MÖGLICHKEIT,
+  // keine Abrechnungstatsache über den konkreten Klick. Drei benannte Gründe, warum ein Klick trotz
+  // `true` nichts kosten kann: (1) `unverified` zählt vorsorglich als erreichbar, (2) die
+  // Vertraulichkeit der konkreten Eingabe nimmt die Cloud zur Laufzeit aus der Kette, (3) ein
+  // Laufzeitfehler mit lokalem/deterministischem Rückfall erzeugt keine abrechenbare Antwort.
+  // Der Oberflächen-Wortlaut sagt deshalb „kann … auslösen" (i18n `ai.costHint`), nie „startet".
+  private taskBillable(task: ModelRunTask): boolean {
+    if (!this.usingPrimary()) {
+      return false; // keine Cloud verdrahtet → nichts an dieser Installation kostet etwas
+    }
+    if (!this.providerChain(task).includes(this.primary)) {
+      return false; // diese Aufgabe ist lokal oder deterministisch gestellt
+    }
+    return this.providerReachability("cloud") !== "unreachable";
+  }
+
   // D-AISTATE PAKET 3 (bens V4, 23.07.): zusätzlich eine ABSTRAKTE per-Task-Nutzbarkeitskarte
   // `tasks: { [task]: boolean }` — NUR true/false je Aufgabe, KEIN Provider-/Modellname (die bleiben
   // der Admin-Sicht vorbehalten, vip2-gate). true = für die Aufgabe ist ein echtes Modell (cloud|local)
@@ -771,6 +819,7 @@ export class Reasoner {
     mode: "cloud" | "local" | "deterministic";
     reachable: ReasonerReachability;
     tasks: Record<string, boolean>;
+    billable: Record<string, boolean>;
   } {
     const active = this.usingAnyModel();
     return {
@@ -778,6 +827,8 @@ export class Reasoner {
       mode: this.usingPrimary() ? "cloud" : this.usingSecondary() ? "local" : "deterministic",
       reachable: this.reachabilityState(),
       tasks: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.taskModelUsable(task)])),
+      // AUFTRAG-mega67 BLOCK G: kostet ein Klick auf DIESE Aufgabe wirklich Geld? (s. taskBillable)
+      billable: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.taskBillable(task)])),
     };
   }
 

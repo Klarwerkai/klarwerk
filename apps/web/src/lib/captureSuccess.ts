@@ -9,25 +9,35 @@
 // keine Engine, keine automatische Validierung/Nutzung — nur klare Orientierung im Kreis
 // Capture → Validate → Use.
 
+import { type Role, routePathAllows } from "../app/navigation";
 import { libraryOriginHref, validationOriginHref } from "./demoKnowledge";
 
 export interface CaptureNextStep {
   labelKey: string;
   to: string; // vorhandene Route
-  primary?: boolean; // betonte nächste Handlung (Review/Validierung)
+  primary?: boolean; // betonte nächste Handlung
 }
 
-export function captureNextSteps(koId: string): CaptureNextStep[] {
+// AUFTRAG-mega70 BLOCK C (bens Befund): `/validierung` war für JEDE Rolle fest als `primary`
+// markiert — für eine Expertin der dunkel hervorgehobene Hauptknopf direkt nach ihrem ersten
+// Erfolg, und der Router weist sie dort zurück. Die betonte Handlung richtet sich jetzt nach dem,
+// was die Rolle darf; die Frage beantwortet `routePathAllows` — dieselbe Registry, aus der der
+// Router sein Gate zieht. Kann die Rolle nicht validieren, wird das Objekt-Ansehen betont; der
+// Validierungs-Schritt BLEIBT in der Liste (Block B rendert ihn über RoleLink als sichtbare,
+// nicht begehbare Lage), damit der Prozess verständlich bleibt.
+export function captureNextSteps(koId: string, role: Role): CaptureNextStep[] {
+  const validateTo = validationOriginHref("non-demo");
+  const darfValidieren = routePathAllows(validateTo, role);
   return [
-    { labelKey: "capture.savedViewKo", to: `/wissen/${koId}` },
+    { labelKey: "capture.savedViewKo", to: `/wissen/${koId}`, primary: !darfValidieren },
     // SCRUM-310: frisch erfasstes Wissen in der Bibliothek wiederfinden — gefiltert auf
     // eigenes/nicht-Demo-Wissen (ohne Demo-Tag). Nur Auffinden/Übersicht, KEINE Validierung,
-    // keine Autor-/User-Zuordnung. Nicht betont (Review bleibt primär).
+    // keine Autor-/User-Zuordnung. Nie betont.
     { labelKey: "capture.savedViewLibrary", to: libraryOriginHref("non-demo") },
-    // SCRUM-286: Validierung/Prüfung ist die betonte nächste Handlung.
+    // SCRUM-286: Validierung/Prüfung ist die betonte nächste Handlung — wenn die Rolle sie tun kann.
     // SCRUM-311: direkt ins Board, vorgefiltert auf eigenes/nicht-Demo-Wissen — keine Vermischung
-    // mit Demo-Beispielen. Bleibt die primäre Handlung; Filter ist nur Ansicht, keine Auto-Validierung.
-    { labelKey: "capture.savedValidate", to: validationOriginHref("non-demo"), primary: true },
+    // mit Demo-Beispielen. Filter ist nur Ansicht, keine Auto-Validierung.
+    { labelKey: "capture.savedValidate", to: validateTo, primary: darfValidieren },
   ];
 }
 
@@ -37,7 +47,9 @@ export function captureNextSteps(koId: string): CaptureNextStep[] {
 // Capture ist ein neues KO per Definition offen (status: "offen").
 export interface CaptureSavedStatus {
   badgeKey: string; // kurzer Statuschip: „offen — noch nicht validiert"
-  hintKey: string; // erklärt: erst nach Bewertung nutzbar → zur Prüfung geben
+  // AUFTRAG-mega70 BLOCK C: erklärt den Prozess (erst nach Bewertung in der Validierung nutzbar),
+  // ohne zu einer Handlung aufzufordern, die die Rolle womöglich nicht tun kann.
+  hintKey: string;
 }
 
 export function captureSavedStatus(): CaptureSavedStatus {

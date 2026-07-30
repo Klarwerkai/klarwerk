@@ -26,6 +26,19 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     library: { importCandidates: { list: vi.fn(async () => []) } },
     admin: { import: {} },
+    // AUFTRAG-mega67 Block C/D: die Import-Seite fragt jetzt (als Admin) den Zugangs-Zustand ab.
+    // Dieser Test prüft das Stufe-2-Tor, nicht den Zugang — er antwortet deshalb ehrlich mit
+    // „nicht eingeschaltet, nichts hinterlegt", statt den Aufruf ins Leere laufen zu lassen.
+    importAccess: {
+      confluence: vi.fn(async () => ({
+        system: "confluence",
+        enabled: false,
+        credentials: [],
+        credentialsUsable: false,
+        blocker: "missing",
+        lastConnectedAt: null,
+      })),
+    },
   },
 }));
 
@@ -46,7 +59,7 @@ import { AuthProvider, useSession } from "../../apps/web/src/app/AuthContext";
 import { RoleProvider, useRole } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { ALL_ITEMS, roleAllows } from "../../apps/web/src/app/navigation";
-import { Stage2Notice } from "../../apps/web/src/components/Stage2Notice";
+import { RoleNotice, Stage2Notice } from "../../apps/web/src/components/Stage2Notice";
 import { ImportReview } from "../../apps/web/src/pages/Stufe2";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -57,10 +70,15 @@ if (!IMPORT_ITEM) {
 }
 
 // Spiegel der drei Guard-Zeilen aus routes.tsx (per Quelltext-Pin unten ans Original gebunden).
+// AUFTRAG-mega70 BLOCK A: der Rollenfall ist im Original keine stille Umleitung mehr, sondern
+// RoleNotice — der Spiegel zieht mit (dieser Test fährt als Admin, der Zweig greift hier nie).
 function GuardedImport(): JSX.Element {
   const { role, stufe2 } = useRole();
-  if (!IMPORT_ITEM || !roleAllows(IMPORT_ITEM, role)) {
+  if (!IMPORT_ITEM) {
     return createElement(Navigate, { to: "/start", replace: true });
+  }
+  if (!roleAllows(IMPORT_ITEM, role)) {
+    return createElement(RoleNotice, { item: IMPORT_ITEM });
   }
   if (IMPORT_ITEM.stufe2 && !stufe2) {
     return createElement(Stage2Notice);
@@ -169,9 +187,10 @@ describe("WP-UX-WOW-1 U9: Stufe-2-Karte statt stiller Umleitung", () => {
     expect(container.textContent).toContain("Quelle");
   });
 
-  it("routes.tsx trägt exakt diese Gate-Logik (Rollen-Gate hart, Stufe-2 → Karte)", () => {
+  it("routes.tsx trägt exakt diese Gate-Logik (Rollen-Gate → RoleNotice, Stufe-2 → Karte)", () => {
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/routes.tsx"), "utf8");
     expect(src).toContain("if (!roleAllows(item, role)) {");
+    expect(src).toContain("return <RoleNotice item={item} />;");
     expect(src).toContain("if (item.stufe2 && !stufe2) {");
     expect(src).toContain("return <Stage2Notice />;");
     // Die alte stille Kombi-Umleitung (canSee) ist aus dem Guard verschwunden.

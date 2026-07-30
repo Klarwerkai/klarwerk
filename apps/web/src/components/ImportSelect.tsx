@@ -61,6 +61,7 @@ import {
 import { createLatestWins } from "../lib/latestWins";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { useAiBillable } from "../lib/useAiBillable";
 import { FacetFilter } from "./FacetFilter";
 // WP-IC-4: Schritt 4+5 (Gruppen-Freigabe + Übernahme mit Bilanz).
 import { ImportGroups } from "./ImportGroups";
@@ -105,6 +106,9 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ist die KI-Gruppierung (Task „group") nutzbar? An ImportGroups
   // durchgereicht — der deterministische Gruppierungs-Ablauf bleibt nutzbar, nur der Vor-Hinweis ehrlich.
   const groupAi = useAiAvailable("group");
+  // AUFTRAG-mega67 Block G: dieselbe Fläche, andere Frage — nutzbar ist nicht dasselbe wie teuer.
+  // ImportGroups sitzt ohne eigenen Zugang zum Status; der Boolean kommt deshalb von hier.
+  const groupBillable = useAiBillable("group");
   const [prompt, setPrompt] = useState("");
   // WP-VIP2-GATE-2 (bens Fix 1): PFLICHT-Eigeneinstufung des Auswahl-Satzes — VORGABE ist
   // fail-safe „Ja/unsicher" (vertraulich); nur die bewusste Wahl „Nein, unbedenklich" erlaubt
@@ -789,6 +793,7 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     criteria={preview.criteria}
                     selectedCandidateIds={selectedCandidateIds}
                     aiAvailable={groupAi.available}
+                    aiBillable={groupBillable}
                     // AUFTRAG-mega59 BLOCK F2: die Vertraulichkeit des gewählten Stapels — ohne sie
                     // schwieg die Vorwarnung bei aktivem Reasoner und log damit über das, was danach
                     // als „Ohne KI gruppiert" erschien.

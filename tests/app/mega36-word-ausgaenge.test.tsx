@@ -209,7 +209,7 @@ describe("mega36 B1/B2 · der native Ausgang geht durch dieselbe Ableitung", () 
     expect(ev.defaultPrevented).toBe(true);
     const text = daten.getData("text/plain");
     expect(text).toContain(GEKUERZT);
-    expect(text).toContain("Einstufung: ungeprueft");
+    expect(text).toContain("Einstufung: ungeprüft");
     expect(text).toContain("Wartungsplan Ventil V4");
     expect(text).toContain("KLARWERK-Wissen");
     // Genau EINMAL — der abgefangene Weg baut denselben Text wie die Schaltflaeche, nicht mehr.
@@ -258,7 +258,7 @@ describe("mega36 B1/B2 · der native Ausgang geht durch dieselbe Ableitung", () 
     const ev = ereignisFeuern(feld, "copy", daten);
 
     expect(ev.defaultPrevented).toBe(true);
-    expect(daten.getData("text/plain")).toContain("Einstufung: ungeprueft");
+    expect(daten.getData("text/plain")).toContain("Einstufung: ungeprüft");
   });
 
   it("AUSSCHNEIDEN geht denselben Weg — und entfernt den Koerper wie ein natives Ausschneiden", async () => {
@@ -271,7 +271,7 @@ describe("mega36 B1/B2 · der native Ausgang geht durch dieselbe Ableitung", () 
     const ev = ereignisFeuern(feld, "cut", daten);
 
     expect(ev.defaultPrevented).toBe(true);
-    expect(daten.getData("text/plain")).toContain("Einstufung: ungeprueft");
+    expect(daten.getData("text/plain")).toContain("Einstufung: ungeprüft");
     expect(daten.getData("text/plain")).toContain("Wartungsplan Ventil V4");
     // Ausschneiden schneidet: der markierte Bereich ist danach weg (kein Kopieren mit Nebenwirkung).
     expect(feld.value).toBe("");
@@ -285,7 +285,7 @@ describe("mega36 B1/B2 · der native Ausgang geht durch dieselbe Ableitung", () 
 
     const daten = behaelter(GEKUERZT);
     ereignisFeuern(feld, "dragstart", daten);
-    expect(daten.getData("text/plain")).toContain("Einstufung: ungeprueft");
+    expect(daten.getData("text/plain")).toContain("Einstufung: ungeprüft");
     expect(daten.getData("text/plain")).toContain("Wartungsplan Ventil V4");
   });
 
@@ -317,7 +317,7 @@ describe("mega36 B3 · der Fehler-Rueckfall bietet den ABGELEITETEN Text an", ()
     expect(rueckfall.readOnly).toBe(true);
     expect(el("ask-copy-fallback").className).not.toContain("hidden");
     expect(rueckfall.value).toContain(GEKUERZT);
-    expect(rueckfall.value).toContain("Einstufung: ungeprueft");
+    expect(rueckfall.value).toContain("Einstufung: ungeprüft");
     expect(rueckfall.value).toContain("Wartungsplan Ventil V4");
     // Der Rueckfalltext schickt die Nutzerin NICHT mehr auf das Antwortfeld.
     const status = el("ask-status").textContent || "";

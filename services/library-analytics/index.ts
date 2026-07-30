@@ -10,6 +10,10 @@ export {
   reviewClaimLeaseExpired,
   // AUFTRAG-mega29 C3: der Ehrlichkeits-Satz der menschlichen Ausgaben (Markdown/MediaWiki/HTML).
   EXPORT_NO_CHECK_NOTE,
+  // AUFTRAG-mega68: Verträge der Nachbarschafts-Auskunft (Deckel + Ubiquitäts-Schwelle).
+  NEIGHBOR_LIMIT,
+  UBIQUITY_MAX_SHARE,
+  UBIQUITY_MIN_COUNT,
 } from "./src/service";
 export type { LibraryServiceDeps } from "./src/service";
 // WP-SHIP8-FIX (bens F3): kanonischer Provider-Schlüsselteil aller Import-Schlüssel.
@@ -43,6 +47,8 @@ export type {
   GraphNode,
   GraphEdge,
   Analytics,
+  Neighborhood,
+  NeighborKo,
 } from "./src/types";
 export { LibraryError } from "./src/types";
 // IC-1 (Import-Cockpit): READ-ONLY Erkundungs-Aggregat (pure, deterministisch).

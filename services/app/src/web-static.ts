@@ -22,12 +22,39 @@ export async function registerWebStatic(app: FastifyInstance, dist: string): Pro
     root: dist,
     setHeaders: (res, filePath) => {
       // Gehashte Assets sind unveränderlich; index.html nie cachen.
+      // BEFUND AUFTRAG-mega69 Block D (am Draht gemessen, tests/app/mega69-klara-auslieferung):
+      // dieser Callback wird von @fastify/static ANSCHLIESSEND überschrieben — auf dem Draht stand
+      // für ALLE Pfade `public, max-age=0` (Plugin-Default cacheControl/maxAge), nie das hier
+      // Gesetzte. Für die Frische ist max-age=0 zufällig gutartig (sofort stale → Revalidierung),
+      // aber `immutable` für Assets war eine tote Absicht. Der onSend-Hook unten setzt die Zusage
+      // für die EINE Fläche durch, an der sie vertraglich gebraucht wird (Klara-Manifest zeigt auf
+      // /word-addin/taskpane.html); die App-weite Regel bleibt bewusst unangetastet — sie zu
+      // „reparieren" wäre eine Verhaltensänderung der ganzen Auslieferung und gehört als eigene
+      // Entscheidung vor den Kopf (Registerpunkt im mega69-Bericht).
       if (filePath.includes("/assets/")) {
         res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
       } else {
         res.setHeader("Cache-Control", "no-cache");
       }
     },
+  });
+
+  // AUFTRAG-mega69 Block D: die Auslieferungszusage für Klaras eine Datei — DURCHGESETZT, nicht nur
+  // beabsichtigt. onSend läuft nach dem Static-Plugin und gewinnt damit gegen dessen Default.
+  // NUR /word-addin/* (die Fläche, die ein installiertes Add-in per stabiler URL abruft): der
+  // Webview darf die Antwort nicht einfrieren und muss je Abruf revalidieren (ETag bleibt).
+  // AUFTRAG-mega71 Block A (bens Ship-Blocker): SYNCHRON im 4-Parameter-Callback-Stil, wie die
+  // drei anderen app-globalen onSend-Hooks (noindex-hook.ts, security-headers.ts,
+  // addin-static-routes.ts) — die WP-E-Regel. Die mega69-Fassung stand hier als `async` und war
+  // damit einen einzigen Edit (ein await hier ODER irgendein zweiter async-Hook) vom
+  // wrap-thenable-Doppel-Send-Fenster entfernt (ERR_HTTP_HEADERS_SENT → Prozess-Crash; Mechanik
+  // in routes/addin-static-routes.ts:130 ff., am Draht gepinnt in tests/app/mega71-onsend-synchron).
+  app.addHook("onSend", (request, reply, payload, done) => {
+    const path = request.url.split(/[?#]/, 1)[0] ?? request.url;
+    if (path.startsWith("/word-addin/")) {
+      reply.header("Cache-Control", "no-cache");
+    }
+    done(null, payload);
   });
 
   // SPA-Fallback: unbekannte Navigationspfade → index.html (Client-Routing). Aber:

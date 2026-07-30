@@ -97,7 +97,9 @@ const KLARA_SECTIONS: readonly { key: string; route: string }[] = [
   { key: "ko.measures", route: "/bibliothek" },
   { key: "ko.provenance", route: "/bibliothek" },
   { key: "ko.lineageTitle", route: "/bibliothek" },
-  { key: "ko.relatedTitle", route: "/bibliothek" },
+  // AUFTRAG-mega68: die Nachbarschafts-Fläche ersetzt die SCRUM-130-Liste — der Hilfe-Eintrag
+  // wandert mit (Titel = neue Abschnitts-Überschrift, Text erklärt das Netz statt der Liste).
+  { key: "nb.title", route: "/bibliothek" },
   { key: "ko.history", route: "/bibliothek" },
   { key: "ko.evidenceTitle", route: "/bibliothek" },
   { key: "ko.snapshotsTitle", route: "/bibliothek" },

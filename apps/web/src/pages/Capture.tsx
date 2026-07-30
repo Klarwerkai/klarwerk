@@ -38,6 +38,7 @@ import {
   useNavGuard,
   useUnloadGuard,
 } from "../app/NavGuardContext";
+import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
 import { AiAssistBox } from "../components/AiAssistBox";
 import { AiModelInfo } from "../components/AiModelInfo";
@@ -65,6 +66,7 @@ import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { Modal } from "../components/Modal";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
@@ -351,6 +353,9 @@ function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState 
 export function Capture(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
+  // AUFTRAG-mega70 BLOCK C: die betonte nächste Handlung nach dem Speichern richtet sich nach der
+  // effektiven Rolle (RoleContext — auch die Admin-Ansicht-als zählt, nicht nur die Session).
+  const { role } = useRole();
   const { push } = useToast();
   const authorName = user?.name ?? user?.email ?? "—";
   const draftScopeLabel =
@@ -3636,23 +3641,31 @@ export function Capture(): JSX.Element {
               </details>
             ) : null}
             <div className="mt-2 flex flex-wrap items-center gap-2">
-              {captureNextSteps(savedKoId).map((s) => (
-                // AUFTRAG-mega12 Block A (über bens drei Fundstellen hinaus): UMGESTELLT. Auf den ersten
-                // Blick harmlos — die Karte erscheint NACH erfolgreichem Einreichen, das Formular ist
-                // geräumt. Läuft aber eine DATEI-WARTESCHLANGE, lädt derselbe onSuccess-Zweig sofort den
-                // nächsten Punkt nach (`advanceFileQueue` + `loadQueuePoint`): dann ist die Seite wieder
-                // schmutzig, während diese „nächster Schritt"-Links sichtbar sind. Ohne Wächter verliert
-                // ein Klick hier den nachgeladenen Punkt und die restliche Warteschlange.
-                <GuardedLink
+              {captureNextSteps(savedKoId, role).map((s) => (
+                // AUFTRAG-mega12 Block A (über bens drei Fundstellen hinaus): läuft eine DATEI-
+                // WARTESCHLANGE, lädt derselbe onSuccess-Zweig sofort den nächsten Punkt nach —
+                // dann ist die Seite wieder schmutzig, während diese Links sichtbar sind. Deshalb
+                // trägt die begehbare Fassung weiter den Dirty-Wächter (`guarded` → GuardedLink).
+                // AUFTRAG-mega70 BLOCK B (bens schwerste Stelle): ein Ziel, das die Rolle nicht
+                // erreicht (z. B. /validierung für experte), ist ab jetzt eine sichtbare Lage,
+                // kein Weg — RoleLink fragt dieselbe Registry wie der Router. Der Pfeil gehört
+                // zum Versprechen „hier geht es weiter" und fehlt an der gesperrten Fassung.
+                <RoleLink
                   key={s.to}
                   // SCRUM-296: im Demo-Kontext den Capture→Validation→Use-Fluss weitertragen.
                   to={demoHref(s.to, params)}
-                  className={`inline-flex items-center gap-1 rounded-btn px-3 py-1.5 text-[12.5px] font-semibold hover:opacity-90 ${
+                  guarded
+                  className={`inline-flex items-center gap-1 rounded-btn px-3 py-1.5 text-[12.5px] font-semibold ${
                     s.primary ? "bg-ink text-white" : "border border-hairline bg-page text-text"
                   }`}
+                  hoverClassName="hover:opacity-90"
                 >
-                  {t(s.labelKey)} <span aria-hidden="true">→</span>
-                </GuardedLink>
+                  {(erreichbar) => (
+                    <>
+                      {t(s.labelKey)} {erreichbar ? <span aria-hidden="true">→</span> : null}
+                    </>
+                  )}
+                </RoleLink>
               ))}
               <Button
                 variant="ghost"

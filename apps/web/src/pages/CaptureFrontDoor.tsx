@@ -53,6 +53,7 @@ import {
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { draftProvenance } from "../lib/reasonerProvenance";
 import { isEmptyHtml } from "../lib/richText";
+import { useAiBillable } from "../lib/useAiBillable";
 
 function errorMessage(err: unknown, fallback: string): string {
   if (err instanceof ApiError) {
@@ -64,6 +65,10 @@ function errorMessage(err: unknown, fallback: string): string {
 export function CaptureFrontDoor(): JSX.Element {
   const { i18n, t } = useTranslation();
   const { user } = useSession();
+  // AUFTRAG-mega67 Block G: der EINE Kostenhinweis dieses Kastens deckt BEIDE Auslöser darin
+  // („Vorschlag strukturieren" und „KI-Hilfe anwenden"). Kostet einer von beiden, muss er stehen —
+  // nur „structure" zu fragen ließe einen teuren Assist-Klick unangekündigt.
+  const strukturKostet = useAiBillable(["structure", "assist"]);
   const { push } = useToast();
   const qc = useQueryClient();
   const navigate = useNavigate();
@@ -75,6 +80,12 @@ export function CaptureFrontDoor(): JSX.Element {
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // AUFTRAG-mega69 Block A: Bitte der Galerie, das Bildbeschreibungs-Formular des Editors für ein
+  // bestimmtes Bild zu öffnen (Pedis Weg: importiertes Bild → Großansicht → Beschreibung). Der
+  // nonce macht jede Bitte zu einem neuen Ereignis — dasselbe Bild kann erneut geöffnet werden.
+  const [captionRequest, setCaptionRequest] = useState<{ imageId: string; nonce: number } | null>(
+    null,
+  );
   // SCRUM-502 Schicht 2 (Round 3): Vertraulichkeit auch im Front-Door erfassen — steuert den
   // Reasoner-Egress (source:"draft") UND fließt in den Entwurf/das spätere KO. Standard „intern".
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
@@ -813,9 +824,17 @@ export function CaptureFrontDoor(): JSX.Element {
                 value={bodyHtml}
                 onChange={changeBodyHtml}
                 placeholder={t("fd.editorPlaceholder")}
+                captionFormRequest={captionRequest ?? undefined}
               />
-              {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
-              <DraftBodyGallery bodyHtml={bodyHtml} />
+              {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
+                  AUFTRAG-mega69 Block A: aus der Großansicht führt „Bildbeschreibung bearbeiten"
+                  in das EINE Formular des Editors (kein zweites Formular, kein zweiter Egress). */}
+              <DraftBodyGallery
+                bodyHtml={bodyHtml}
+                onEditCaption={(imageId) =>
+                  setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }))
+                }
+              />
               {/* AUFTRAG-mega9 Block A (KW-E2E-001): die sichtbare Feldvalidierung AM Inhaltsfeld.
                   Der Prüfer hat den wunden Punkt benannt: „eine etwaige Einreichsperre braucht eine
                   sichtbare Feldvalidierung statt still deaktivierter Aktionen." Gleiches Listen-Muster
@@ -862,7 +881,11 @@ export function CaptureFrontDoor(): JSX.Element {
                     beide Auslöser dieses Kastens — „Vorschlag strukturieren" hier oben und
                     „KI-Hilfe anwenden" darunter; sie liegen in derselben umrandeten Fläche. */}
                 <AiGeneratedNotice />
-                <AiCostHint />
+                {/* AUFTRAG-mega67 Block G: dieser eine Hinweis deckt BEIDE Auslöser des Kastens
+                    (s. oben) — deshalb beide Aufgaben. Kostet einer von beiden, muss er stehen;
+                    nur „structure" zu nennen würde einen teuren „KI-Hilfe anwenden"-Klick
+                    unangekündigt lassen. */}
+                <AiCostHint billable={strukturKostet} />
                 {!hasStructureInput ? (
                   <span className="text-[12.5px] text-muted">{t("fd.needContentFirst")}</span>
                 ) : (

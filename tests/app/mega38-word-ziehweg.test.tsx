@@ -190,7 +190,7 @@ describe("mega38 B1/B2 · der Ziehweg ohne DataTransfer laesst nichts roh hinaus
     // Genau der Vertrag des Kopierwegs: es geht nichts roh hinaus, aber der Mensch bekommt den
     // vollstaendigen ABGELEITETEN Text angeboten — mit Einstufung und echten Quellentiteln.
     const rueckfall = el<HTMLTextAreaElement>("ask-copy-fallback-text");
-    expect(rueckfall.value).toContain("Einstufung: ungeprueft");
+    expect(rueckfall.value).toContain("Einstufung: ungeprüft");
     expect(rueckfall.value).toContain("Wartungsplan Ventil V4");
     expect(el("ask-status").textContent || "").not.toBe("");
   });
@@ -211,7 +211,7 @@ describe("mega38 B1/B2 · der Ziehweg ohne DataTransfer laesst nichts roh hinaus
     // Ohne diese Gegenprobe waeren die beiden Zusagen oben auch von einem Handler erfuellt, der
     // JEDEN Ziehvorgang abbricht — die Pruefung muss in beide Richtungen kalibriert sein.
     expect(ev.defaultPrevented).toBe(false);
-    expect(store["text/plain"]).toContain("Einstufung: ungeprueft");
+    expect(store["text/plain"]).toContain("Einstufung: ungeprüft");
     expect(store["text/plain"]).toContain("Wartungsplan Ventil V4");
   });
 });

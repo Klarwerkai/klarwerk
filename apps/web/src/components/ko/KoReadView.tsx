@@ -24,6 +24,7 @@ export function KoReadView({
   ko,
   responsibleName,
   actions,
+  onEditCaption,
 }: {
   ko: KnowledgeObject;
   // Aufgelöster Anzeigename des Verantwortlichen (die Seite reicht nameOf(ko.author) durch); ohne den
@@ -31,6 +32,9 @@ export function KoReadView({
   responsibleName?: string;
   // Bestehende Aktions-/Edit-Einstiege der Seite — visuell nachgeordnet, Verhalten unverändert.
   actions?: ReactNode;
+  // AUFTRAG-mega69 Block A: Weg von der Bildergalerie zum Bildbeschreibungs-Formular (nur wenn die
+  // Seite Editieren erlaubt — sonst bleibt die Galerie reine Leseansicht).
+  onEditCaption?: ((imageId: string) => void) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   // G-2-EHRLICHKEIT (SCRUM-527): das Quelldatum der Belegzeile ist NUR das Datum einer ECHTEN Quelle.
@@ -51,7 +55,7 @@ export function KoReadView({
         </div>
         <KoReadHeader ko={ko} />
         <div className="mt-4">
-          <KoReadStatement ko={ko} />
+          <KoReadStatement ko={ko} onEditCaption={onEditCaption} />
         </div>
       </div>
 

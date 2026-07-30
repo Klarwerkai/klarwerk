@@ -193,7 +193,7 @@ describe("mega35 A · Kuerzen waehrend der Quellenaufloesung", () => {
       expect(ausgabe).toContain(GEKUERZT);
       expect(ausgabe).not.toContain("vor der Wartung entlastet");
       // Und die beiden Dinge, die ihr NIE gehoert haben, sind da.
-      expect(ausgabe).toContain("Einstufung: ungeprueft");
+      expect(ausgabe).toContain("Einstufung: ungeprüft");
       expect(ausgabe).toContain("Wartungsplan Ventil V4");
       expect(ausgabe).toContain("KLARWERK-Wissen");
     }
@@ -214,7 +214,7 @@ describe("mega35 A · Kuerzen waehrend der Quellenaufloesung", () => {
     await ruhe();
 
     expect(lauf.kopiert[0]).toContain("Einstufung: gesichert");
-    expect(lauf.kopiert[0]).not.toContain("ungeprueft");
+    expect(lauf.kopiert[0]).not.toContain("ungeprüft");
   });
 
   it("Kalibrierung: ohne die Kuerzung sieht die Ausgabe genauso aus — der Test misst nicht bloss den Normalfall", async () => {
@@ -229,7 +229,7 @@ describe("mega35 A · Kuerzen waehrend der Quellenaufloesung", () => {
     await ruhe();
 
     expect(lauf.kopiert[0]).toContain(ANTWORT);
-    expect(lauf.kopiert[0]).toContain("Einstufung: ungeprueft");
+    expect(lauf.kopiert[0]).toContain("Einstufung: ungeprüft");
     expect(lauf.kopiert[0]).toContain("Wartungsplan Ventil V4");
   });
 
@@ -248,7 +248,7 @@ describe("mega35 A · Kuerzen waehrend der Quellenaufloesung", () => {
     await ruhe();
 
     expect(lauf.kopiert[0]).toContain(GEKUERZT);
-    expect(lauf.kopiert[0]).toContain("Einstufung: ungeprueft");
+    expect(lauf.kopiert[0]).toContain("Einstufung: ungeprüft");
     expect(lauf.kopiert[0]).toContain("Wartungsplan Ventil V4");
     // Genau EINE Einstufungszeile — nichts doppelt sich durch die Bildung beim Ausgeben.
     expect(lauf.kopiert[0]?.split("Einstufung:").length).toBe(2);

@@ -1,5 +1,8 @@
 import type { Confidentiality, DraftPayload, StructureResult } from "../api/types";
 // AUFTRAG-mega7 Block A: gemeinsame Leerwert-Semantik für den Body (dieselbe wie im Erfassen-Weg).
+// AUFTRAG-mega69 Block A: der EINE vorhandene Bild-Anker (DOCX-Vertrag) — beim Entwurf-Laden auch
+// für Klara-Bilder, die der Draft-Weg unverankert liefert.
+import { wrapImagesInFigures } from "./docx";
 import { draftBodyPatch } from "./draftBody";
 import { htmlToPlainText, normalizePastedHtml } from "./richText";
 
@@ -87,7 +90,14 @@ export function frontDoorStatement(bodyHtml: string, title: string): string {
 // einen zweiten Weg zurück, genau der Effekt, den mega7 für das Studio beseitigt hat.
 export function frontDoorBodyFromDraft(payload: DraftPayload): string {
   if (payload.bodyHtml !== undefined) {
-    return payload.bodyHtml?.trim() ? payload.bodyHtml : "";
+    // AUFTRAG-mega69 Block A (gemessen, _relay/messung/mega69-klara-bildanker-probe.ts): der
+    // Klara-Draft-Weg liefert eingebettete Bilder als NACKTE <img data:image…> — der Server-
+    // Sanitizer erhält sie, erzeugt aber KEINEN figure/figcaption-Anker (den baut nur der
+    // DOCX-/PPTX-Import clientseitig, lib/docx.ts). Ohne Anker: kein Galerie-Eintrag, keine
+    // Fußnote, totes Bildbeschreibungs-Formular. Deshalb wird beim LADEN eines Entwurfs mit
+    // DERSELBEN vorhandenen Funktion verankert (bereits verankerte figures bleiben unberührt).
+    // Persistiert wird der Anker über den normalen Speicher-/Submit-Weg (Sanitizer erlaubt ihn).
+    return payload.bodyHtml?.trim() ? wrapImagesInFigures(payload.bodyHtml, "") : "";
   }
   const statement = payload.statement?.trim();
   return statement ? `<p>${escapeHtml(statement)}</p>` : "";

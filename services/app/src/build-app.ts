@@ -174,6 +174,7 @@ import { featuresRoutes } from "./routes/features-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
+import { importAccessRoutes } from "./routes/import-access-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -746,11 +747,17 @@ export function buildApp(
   }
 
   app.get("/health", async () => ({ status: "ok" }));
-  // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Flags sind ABSTRAHIERT —
-  // nur {active, mode: cloud|local|deterministic}, KEIN Provider-/Modellname mehr (der stand hier
-  // anonym lesbar). Provider-Details liefert ausschliesslich die ECHTE Admin-Sicht
-  // GET /api/reasoner/config (users.manage — WP-VIP2-GATE-2 Fix 3/4; vorher galt dort nur
-  // Authentifizierung, die Formulierung Admin-Sicht war zu frueh). Die KI-Pille braucht nur active/mode.
+  // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Routen sind ABSTRAHIERT —
+  // KEIN Provider-/Modellname (der stand hier frueher anonym lesbar). Provider-Details liefert
+  // ausschliesslich die ECHTE Admin-Sicht GET /api/reasoner/config (users.manage — WP-VIP2-GATE-2
+  // Fix 3/4).
+  // AUFTRAG-mega69 B2 (bens sammel65, Punkt 4 — der Vertrag ehrlich benannt): der oeffentliche
+  // Status ist seit D-AISTATE/mega67 BEWUSST breiter als {active, mode}: er traegt zusaetzlich
+  // `reachable` sowie die abstrakten per-Aufgabe-Karten `tasks` (nutzbar?) und `billable`
+  // (Cloud KANN fuer diese Aufgabe kostenpflichtig genutzt werden — eine Moeglichkeit, keine
+  // Abrechnungstatsache). Damit ist je Aufgabe ableitbar, ob die Kette Cloud oder Nicht-Cloud
+  // enthaelt — weniger als Anbieter-/Modelloffenlegung, aber mehr als frueher; das ist eine
+  // BEWUSSTE Vertragsentscheidung (Kostenhinweis fuer alle Rollen), keine stille Erweiterung.
   // PAKET 2 (D-AISTATE, Pedi 23.07.): der Status-Abruf stößt — HÖCHSTENS einmal je Cache-Frist (60 s)
   // und feuern-und-vergessen — einen echten Erreichbarkeits-Probe an; die Antwort trägt sofort den
   // aktuellen Cache-Zustand (kein Ping pro Request, Kosten/Rate geschont).
@@ -1029,6 +1036,11 @@ export function buildApp(
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte
   // die Oberfläche nie fragen. Angemeldete Nutzung genügt (Begründung in features-routes.ts).
   app.register(featuresRoutes(guards));
+  // AUFTRAG-mega67 Block C/D: der ZUGANGS-ZUSTAND des Confluence-Imports, rein lesend. BEWUSST
+  // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
+  // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
+  // melden — und genau der ist einer der vier Zustaende aus Block D.
+  app.register(importAccessRoutes(guards));
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.

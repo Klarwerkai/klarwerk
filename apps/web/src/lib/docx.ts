@@ -131,6 +131,11 @@ const IMG_WRAP_RE = /<img\b[^>]*\bsrc="data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*"
 // `captionPlaceholder` bleibt als Enable-Signal/API-Stabilität erhalten, sein Text landet nicht im Body.
 // Läuft auf der ROH-mammoth-Ausgabe (noch keine <figure>) VOR dem Byte-Budget, damit das Budget die
 // zusätzlichen Tags mitzählt und bei Notbremse das GANZE figure-Element (Bild + Fußnote) droppt.
+// AUFTRAG-mega69 Block A: bereits VERANKERTE Bilder (data-image-id) werden übersprungen. Auf dem
+// DOCX-Weg (rohe mammoth-Ausgabe) gibt es sie nie — aber die Funktion läuft jetzt zusätzlich beim
+// LADEN eines Vordertür-Entwurfs (frontDoorBodyFromDraft): dort können DOCX-/PPTX-verankerte
+// figures neben unverankerten Klara-Bildern stehen, und ein zweiter Anker um einen ersten wäre
+// eine geschachtelte figure mit doppelter Kennung.
 export function wrapImagesInFigures(
   html: string,
   _captionPlaceholder: string,
@@ -138,6 +143,9 @@ export function wrapImagesInFigures(
 ): string {
   let n = 0;
   return html.replace(IMG_WRAP_RE, (imgTag) => {
+    if (/\bdata-image-id\s*=/i.test(imgTag)) {
+      return imgTag;
+    }
     n += 1;
     const id = `${IMAGE_ID_PREFIX}${runToken}-${n}`;
     // Dieselbe ID zusätzlich am <img> verankern (beidseitig auffindbar).

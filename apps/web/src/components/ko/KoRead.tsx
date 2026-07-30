@@ -38,7 +38,15 @@ export function KoReadHeader({ ko }: { ko: KnowledgeObject }): JSX.Element {
 }
 
 // Die Hauptaussage: sanitisiertes Body-HTML (Fallback auf statement). Das „WAS gilt" der Zone 1.
-export function KoReadStatement({ ko }: { ko: KnowledgeObject }): JSX.Element {
+// AUFTRAG-mega69 Block A: `onEditCaption` reicht der Galerie den Weg zum Bildbeschreibungs-
+// Formular durch (die Seite entscheidet, ob es ihn gibt — Editierrecht) — die Ansicht bleibt pur.
+export function KoReadStatement({
+  ko,
+  onEditCaption,
+}: {
+  ko: KnowledgeObject;
+  onEditCaption?: ((imageId: string) => void) | undefined;
+}): JSX.Element {
   const { t } = useTranslation();
   return (
     <div>
@@ -61,7 +69,7 @@ export function KoReadStatement({ ko }: { ko: KnowledgeObject }): JSX.Element {
           />
           {/* WP-BILD-1d: Galerie der Beitrags-Bilder (aus den figures des Bodys abgeleitet; erscheint
               nur, wenn mindestens ein verankertes Bild existiert). */}
-          <BodyImageGallery bodyHtml={ko.bodyHtml} />
+          <BodyImageGallery bodyHtml={ko.bodyHtml} onEditCaption={onEditCaption} />
           <p className="mt-2 border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted">
             {t(BODY_READ_NOTE_KEY)}
           </p>

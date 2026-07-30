@@ -4,6 +4,12 @@
 // Ask-Seite.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+// AUFTRAG-mega71 Block E: Ask stellt die Rollenfrage jetzt am RoleLink-Tor (useRole). Diese Datei
+// prüft NICHT die Rollen-Lage (das tun der mega70/71-Rohlink-Sammler und mega51-mounted am Tor
+// selbst) — sie mountet die Fläche wie mega69-ask-kostenhinweis mit fester Expertinnen-Rolle.
+vi.mock("../../apps/web/src/app/RoleContext", () => ({
+  useRole: () => ({ role: "experte" }),
+}));
 vi.mock("../../apps/web/src/api/endpoints", () => {
   const arrFn = () => vi.fn(async () => []);
   const base: Record<string, unknown> = {

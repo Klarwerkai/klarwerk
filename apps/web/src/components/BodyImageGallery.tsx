@@ -11,7 +11,19 @@ import { SectionLabel } from "./ui";
 // Body mindestens ein verankertes Bild (data-image-id) enthält.
 // Barrierefreiheit: echte <button>s, alt-Text aus der Caption, Escape schließt die Großansicht, der Fokus
 // kehrt zum auslösenden Thumbnail zurück.
-export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Element | null {
+// AUFTRAG-mega69 Block A: `onEditCaption` — der Weg vom betrachteten Bild zur Bildbeschreibung.
+// Pedis Befund: das Formular (mega9 Block F) existierte, war aber nur über einen Klick auf das Bild
+// IM FLIESSTEXT erreichbar; die Galerie, die das Bild samt (leerer) Fußnote prominent zeigt, bot
+// keinen Weg dorthin. Die Galerie bleibt Leseansicht — der Callback führt zum EINEN bestehenden
+// Formular des Editors (kein zweites Formular, kein zweiter describe-Aufruf). Fehlt er (reine
+// Leseansicht ohne Editierrecht), erscheint kein Knopf.
+export function BodyImageGallery({
+  bodyHtml,
+  onEditCaption,
+}: {
+  bodyHtml: string;
+  onEditCaption?: ((imageId: string) => void) | undefined;
+}): JSX.Element | null {
   const { t } = useTranslation();
   const images: BodyImage[] = extractBodyImages(bodyHtml);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
@@ -202,6 +214,25 @@ export function BodyImageGallery({ bodyHtml }: { bodyHtml: string }): JSX.Elemen
                 {open.caption ? (
                   <p className="mt-2 text-center text-[12.5px] italic leading-relaxed text-white">
                     {open.caption}
+                  </p>
+                ) : null}
+                {/* AUFTRAG-mega69 Block A: die sichtbare Aktion AM BILD, die zum bestehenden
+                    Bildbeschreibungs-Formular führt. Schließt die Großansicht (der Fokus kehrt
+                    über onDialogClose zurück) und meldet die Bild-Kennung an den Aufrufer. */}
+                {onEditCaption ? (
+                  <p className="mt-2 text-center">
+                    <button
+                      type="button"
+                      data-testid="gallery-caption-edit"
+                      onClick={() => {
+                        const imageId = open.id;
+                        requestClose();
+                        onEditCaption(imageId);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-btn border border-white/40 px-2 py-1 text-[12px] font-semibold text-white hover:bg-white/10"
+                    >
+                      {t("ko.galleryEditCaption")}
+                    </button>
                   </p>
                 ) : null}
               </div>

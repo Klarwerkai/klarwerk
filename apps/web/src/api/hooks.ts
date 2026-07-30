@@ -112,6 +112,17 @@ export const useFeatures = () =>
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
+// AUFTRAG-mega67 Block C/D: der Zugangs-Zustand des Confluence-Imports. `enabled` wird von der
+// Fläche auf „Rolle trägt users.manage" gesetzt — die Route verlangt es, und ein Aufruf ohne das
+// Recht wäre nur 403-Rauschen (dieselbe Regel wie bei useReasonerConfig). `retry: false`, weil ein
+// 403/404 hier eine Antwort ist und keine Störung, die sich durch Wiederholen bessert.
+export const useImportAccessConfluence = (enabled = true) =>
+  useQuery({
+    queryKey: ["import-access", "confluence"],
+    queryFn: endpoints.importAccess.confluence,
+    enabled,
+    retry: false,
+  });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
@@ -131,6 +142,14 @@ export const useUsers = () => useQuery({ queryKey: ["users"], queryFn: endpoints
 export const useDirectory = () =>
   useQuery({ queryKey: ["directory"], queryFn: endpoints.directory.list });
 export const useGraph = () => useQuery({ queryKey: ["graph"], queryFn: endpoints.library.graph });
+// AUFTRAG-mega68: Nachbarschaft eines Objekts — je Mitte ein eigener Cache-Eintrag (die Fläche
+// wandert per Klick durch das Netz, der Rückweg trifft dann den warmen Cache).
+export const useKoNeighbors = (id: string) =>
+  useQuery({
+    queryKey: ["ko-neighbors", id],
+    queryFn: () => endpoints.ko.neighbors(id),
+    enabled: id !== "",
+  });
 export const useNotifications = () =>
   useQuery({ queryKey: ["notifications"], queryFn: endpoints.notifications.list });
 // Audit-P4 (SCRUM-398): Live-Wall („frisch gesichert / hat heute geholfen").

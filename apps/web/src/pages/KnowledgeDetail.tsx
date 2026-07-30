@@ -12,6 +12,7 @@ import {
   useExternalPolicy,
   useKo,
   useKoEvidence,
+  useKoNeighbors,
   useKoVersions,
   useKos,
   useLifecyclePending,
@@ -41,6 +42,8 @@ import { EditorGuidance } from "../components/EditorGuidance";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 import { HelpTip } from "../components/HelpTip";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
+// AUFTRAG-mega68: die Anwendersicht des Wissensnetzes — Nachbarschaft des gelesenen Beitrags.
+import { KnowledgeNeighborhood } from "../components/KnowledgeNeighborhood";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
@@ -98,7 +101,7 @@ import { koCta } from "../lib/koCta";
 // WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
 import { formatKoTimestamp } from "../lib/koDates";
 import { evidenceRows } from "../lib/koEvidence";
-import { koAuditEvents, lineageSummary, relatedKos } from "../lib/koLineage";
+import { koAuditEvents, lineageSummary } from "../lib/koLineage";
 import { type KoUsability, koOverview } from "../lib/koOverview";
 import {
   EMPTY_SOURCE_FORM,
@@ -199,6 +202,10 @@ export function KnowledgeDetail(): JSX.Element {
   const evidence = useKoEvidence(id);
   const versions = useKoVersions(id);
   const koList = useKos();
+  // AUFTRAG-mega68: die BEGRENZTE Server-Nachbarschaft ersetzt die SCRUM-130-Client-Heuristik
+  // (relatedKos über die volle Liste — sie zählte auch pilot-demo und skalierte mit dem Bestand).
+  // Gleicher Query-Key wie in der Karte selbst → ein Aufruf, geteilter Cache.
+  const neighborhood = useKoNeighbors(id);
   const audit = useAudit();
   // SCRUM-95/96: Signale für die abgeleitete Gültigkeit-/Schutz-Sicht.
   const pending = useLifecyclePending();
@@ -679,8 +686,24 @@ export function KnowledgeDetail(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // AUFTRAG-mega69 Block A: Bitte der Bildergalerie, das Bildbeschreibungs-Formular des Editors für
+  // ein bestimmtes Bild zu öffnen. In der Leseansicht heißt das: Edit-Modus starten UND die Bitte
+  // stellen — der Editor löst sie nach dem Mount ein (RichTextEditor, captionFormRequest).
+  const [captionRequest, setCaptionRequest] = useState<{ imageId: string; nonce: number } | null>(
+    null,
+  );
+  const editCaptionFromGallery = (ko: KnowledgeObject, imageId: string): void => {
+    if (!edit) {
+      startEdit(ko);
+    }
+    setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }));
+  };
+
   const startEdit = (ko: KnowledgeObject): void => {
     setErr(null);
+    // mega69 Block A: ein NORMALER Edit-Einstieg trägt keine offene Galerie-Bitte — sonst öffnete
+    // sich das Formular der letzten Bitte beim nächsten „Bearbeiten" unaufgefordert wieder.
+    setCaptionRequest(null);
     setEdit({
       title: ko.title,
       statement: ko.statement,
@@ -1166,6 +1189,7 @@ export function KnowledgeDetail(): JSX.Element {
                               .map((a) => ({ objectId: a.objectId as string, name: a.name }))}
                             files={editorFilesFromAttachments(ko.attachments ?? [])}
                             documentTitle={edit.title}
+                            captionFormRequest={captionRequest ?? undefined}
                           />
                           {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
                             Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote
@@ -1292,7 +1316,17 @@ export function KnowledgeDetail(): JSX.Element {
                       <>
                         {/* SCRUM-513 (WP3): Zonen-Leseansicht (Hero · sichtbarer Beleg · Sekundär · eingeklappt).
                           Die bestehenden Aktionen/Feedback folgen unverändert direkt darunter (nachgeordnet). */}
-                        <KoReadView ko={ko} responsibleName={nameOf(ko.author)} />
+                        {/* AUFTRAG-mega69 Block A: aus der Galerie der Leseansicht direkt zur
+                            Bildbeschreibung — startet den Edit-Modus und öffnet DAS Formular des
+                            Editors für genau dieses Bild. Nur mit Editierrecht; Speichern bleibt
+                            die normale Revision (neue Version, erneute Prüfung). */}
+                        <KoReadView
+                          ko={ko}
+                          responsibleName={nameOf(ko.author)}
+                          onEditCaption={
+                            canEdit ? (imageId) => editCaptionFromGallery(ko, imageId) : undefined
+                          }
+                        />
 
                         <div className="mt-5 flex flex-wrap gap-2 border-t border-hairline pt-4">
                           {role === "controller" || role === "admin" ? (
@@ -1901,10 +1935,12 @@ export function KnowledgeDetail(): JSX.Element {
                       );
                     })()}
 
-                    {/* SCRUM-142: Herkunft & Verlauf (Lineage) — datenbasiert */}
+                    {/* SCRUM-142: Herkunft & Verlauf (Lineage) — datenbasiert.
+                        AUFTRAG-mega68: der Verwandt-Zähler kommt jetzt aus der begrenzten,
+                        rechte-gefilterten Server-Nachbarschaft (statt relatedKos über die
+                        volle Liste) — dieselbe Zahl, die die Netz-Karte unten zeigt. */}
                     {(() => {
-                      const related = relatedKos(ko, koList.data ?? []);
-                      const summary = lineageSummary(ko, related.length);
+                      const summary = lineageSummary(ko, neighborhood.data?.total ?? 0);
                       const events = koAuditEvents(audit.data ?? [], ko.id)
                         .slice(-6)
                         .reverse();
@@ -1978,44 +2014,6 @@ export function KnowledgeDetail(): JSX.Element {
                             >
                               {t("ko.lineageGraphLink")} →
                             </Link>
-                          </Card>
-
-                          {/* SCRUM-130: verlinkbares Wissensnetz — verwandte Wissensobjekte */}
-                          <Card className="space-y-2">
-                            <SectionLabel>{t("ko.relatedTitle")}</SectionLabel>
-                            {related.length === 0 ? (
-                              <p className="text-[13px] text-muted">{t("ko.relatedEmpty")}</p>
-                            ) : (
-                              <ul className="space-y-2">
-                                {related.map((r) => (
-                                  <li key={r.id}>
-                                    <Link
-                                      to={`/wissen/${r.id}`}
-                                      className="block rounded-input bg-page p-2 hover:bg-hairline-soft"
-                                    >
-                                      <div className="truncate text-[13px] text-text">
-                                        {r.title}
-                                      </div>
-                                      <div className="mt-1 flex flex-wrap gap-1">
-                                        {r.reasons.map((reason) => (
-                                          <span
-                                            key={reason}
-                                            className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai"
-                                          >
-                                            {t(`ko.relatedReason.${reason}`)}
-                                          </span>
-                                        ))}
-                                        {r.via.length > 0 ? (
-                                          <span className="font-mono text-[10.5px] text-muted-2">
-                                            {r.via.slice(0, 3).join(" · ")}
-                                          </span>
-                                        ) : null}
-                                      </div>
-                                    </Link>
-                                  </li>
-                                ))}
-                              </ul>
-                            )}
                           </Card>
                         </>
                       );
@@ -2384,6 +2382,21 @@ export function KnowledgeDetail(): JSX.Element {
                     </Card>
                   </div>
                 </div>
+
+                {/* ==========================================================================
+                    AUFTRAG-mega68 — DAS WISSENSNETZ, WO GELESEN WIRD (Entwurf Variante A).
+                    ==========================================================================
+                    Volle Breite UNTER dem Beitrag (wie die Fußzeile eines Wiki-Artikels), nicht
+                    in der schmalen Seitenspalte: die Zeichnung braucht Fläche für lesbare
+                    Kantenbeschriftungen. Für JEDEN Leser sichtbar — bewusst NICHT hinter
+                    Stufe 2 (Pedis Auflage). Datenquelle ist die begrenzte, serverseitig
+                    rechte-gefilterte Nachbarschaft, nie der globale Graph. */}
+                <Card className="mt-5">
+                  <SectionLabel>{t("nb.title")}</SectionLabel>
+                  <p className="mb-3 mt-1 text-[12px] leading-relaxed text-muted">{t("nb.hint")}</p>
+                  {/* key: ein anderer Beitrag setzt die Erkundungs-Spur zurück (Remount). */}
+                  <KnowledgeNeighborhood key={ko.id} koId={ko.id} koTitle={ko.title} />
+                </Card>
               </>
             );
           }}

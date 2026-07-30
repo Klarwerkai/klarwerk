@@ -114,6 +114,56 @@ function degrees(graph: Graph): Map<string, number> {
   return deg;
 }
 
+// AUFTRAG-mega68: Stern-Layout der NACHBARSCHAFT eines Objekts — die Mitte sitzt im Zentrum, die
+// Nachbarn auf dem Ring. layoutGraph (oben) legt bewusst ALLE Knoten auf den Kreis und kennt keine
+// Mitte; statt es mit Sonderfällen zu verbiegen, bekommt die Nachbarschaft ihr eigenes, gleich
+// gebautes Layout: DOM-frei, deterministisch, gleiche Eingabe → gleiche Koordinaten. Die
+// REIHENFOLGE der ids wird bewusst NICHT umsortiert (anders als sortedNodes oben): der Server
+// liefert sie nach Beziehungsstärke, und die Zeichnung soll dieselbe Rangfolge erzählen wie die
+// Liste darunter — Platz 1 beginnt oben, dann im Uhrzeigersinn.
+export interface NeighborSpot {
+  id: string;
+  x: number;
+  y: number;
+  // Anker der Kantenbeschriftung (Mittelpunkt der Kante, leicht über der Linie).
+  labelX: number;
+  labelY: number;
+}
+
+export interface NeighborhoodLayout {
+  width: number;
+  height: number;
+  cx: number;
+  cy: number;
+  spots: NeighborSpot[];
+}
+
+export function layoutNeighborhood(
+  ids: readonly string[],
+  opts: LayoutOptions = {},
+): NeighborhoodLayout {
+  const width = opts.width ?? DEFAULTS.width;
+  const height = opts.height ?? DEFAULTS.height;
+  const padding = opts.padding ?? DEFAULTS.padding;
+  const cx = width / 2;
+  const cy = height / 2;
+  const radius = Math.max(0, Math.min(width, height) / 2 - padding);
+  const n = ids.length;
+  const spots: NeighborSpot[] = ids.map((id, i) => {
+    const angle = -Math.PI / 2 + (i / Math.max(n, 1)) * 2 * Math.PI;
+    const x = Math.round((cx + radius * Math.cos(angle)) * 100) / 100;
+    const y = Math.round((cy + radius * Math.sin(angle)) * 100) / 100;
+    return {
+      id,
+      x,
+      y,
+      labelX: Math.round(((cx + x) / 2) * 100) / 100,
+      labelY: Math.round(((cy + y) / 2 - 4) * 100) / 100,
+    };
+  });
+  return { width, height, cx, cy, spots };
+}
+
 // Ehrliche Begrenzung: bei zu vielen Knoten nur die am stärksten verbundenen zeigen
 // (keine Fake-Daten — nur Anzeige-Ausschnitt). Kanten zwischen behaltenen Knoten bleiben.
 export function limitGraph(graph: Graph, max: number): { graph: Graph; truncated: boolean } {

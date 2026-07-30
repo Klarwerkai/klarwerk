@@ -43,7 +43,8 @@ describe("KW-PROD-27: Capture Submit Flow", () => {
       "utf8",
     );
 
-    expect(captureSource).toContain("captureNextSteps(savedKoId)");
+    // AUFTRAG-mega70 BLOCK C: die Seite reicht die echte Rolle herein (betonte Handlung je Rolle).
+    expect(captureSource).toContain("captureNextSteps(savedKoId, role)");
     expect(successSource).toContain("capture.savedValidate");
     expect(successSource).toContain("validationOriginHref");
     expect(successSource).toContain("`/wissen/${koId}`");

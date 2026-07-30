@@ -7,6 +7,10 @@ import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+// AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Kostenhinweis der Beispiel-Chips läuft über
+// DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
+// `billable` der Aufgabe „answer", nicht mehr als unbedingter eigener Wortlaut.
+import { AiCostHint } from "../components/AiCostHint";
 import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
 import { AiUnavailableHint } from "../components/AiUnavailableHint";
 // WP-UX-WOW-1 U1: sichere Markdown-Darstellung der Antwort (React-Elemente, kein HTML-Sink).
@@ -14,6 +18,14 @@ import { AnswerMarkdown } from "../components/AnswerMarkdown";
 import { AnswerSourceDetails } from "../components/AnswerSourceDetails";
 import { DemoBanner } from "../components/DemoBanner";
 import { HelpTip } from "../components/HelpTip";
+// AUFTRAG-mega71 BLOCK E (Befund aus mega70 Block E, jetzt frei): diese Fläche trug dieselbe
+// Sackgassen-Fehlerklasse FÜNFFACH — zweimal /validierung (Führungskarte + Prüfvorbehalt-CTA),
+// dazu /konflikte, /risiko und /erfassen?gap=… — und kannte keine einzige Rollenabfrage.
+// /fragen ist ab viewer sichtbar; /validierung, /konflikte, /risiko verlangen controller,
+// /erfassen experte. Ein Ziel, das die Rolle nicht erreicht, wird als Lage gezeigt, nicht als
+// Weg — dasselbe EINE Tor wie auf Start/Library/Capture (mega51/mega70), keine zweite
+// Rollenlogik; erhoben wird das vom mega70-Rohlink-Sammler, der seit mega71 auch hier hinsieht.
+import { RoleLink } from "../components/RoleLink";
 import { ConfidenceBar } from "../components/trust";
 import { Button, Card, PageHeader, SectionLabel } from "../components/ui";
 import { answerExportFilename, buildAnswerMarkdown } from "../lib/answerExport";
@@ -47,6 +59,7 @@ import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeG
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
 
@@ -104,6 +117,10 @@ export function Ask(): JSX.Element {
   // PAKET 1 (D-AISTATE, Pedi 23.07.): die KI-Antwort (Reasoner-Task „answer") ohne nutzbares Modell
   // HART ausgrauen — kein stiller deterministischer Fallback, der „KI antwortet" vortäuscht.
   const answerAi = useAiAvailable("answer");
+  // AUFTRAG-mega69 B1: kann ein Klick auf DIESE Aufgabe („answer") wirklich etwas kosten? Dieselbe
+  // zentrale Ableitung (deriveAiBillable) wie an allen anderen Auslösestellen; ohne Auskunft
+  // schweigt der Hinweis (AiCostHint rendert nur bei `true`).
+  const answerBillable = useAiBillable("answer");
   const badge = reasonerBadge({
     status: reasonerStatus.data,
     isLoading: reasonerStatus.isLoading,
@@ -422,21 +439,29 @@ export function Ask(): JSX.Element {
         <h2 className="text-[14px] font-semibold text-ink">{t(guide.titleKey)}</h2>
         <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
         <div className="mt-3 flex flex-wrap gap-2">
+          {/* AUFTRAG-mega71 BLOCK E (Stelle 1): der Eintrag „prüfen lassen" führt auf /validierung
+              (controller) — für Betrachter und Experten jetzt eine Lage, keine stille Sackgasse.
+              Die Erklärung selbst bleibt für alle stehen (dieselbe Entscheidung wie Library). */}
           {guide.items.map((item) => (
-            <Link
+            <RoleLink
               key={item.id}
               to={item.to}
-              className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2 hover:border-ink/30"
+              className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2"
+              hoverClassName="hover:border-ink/30"
             >
-              <span
-                className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-              >
-                {t(item.labelKey)}
-              </span>
-              <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
-                {t(item.bodyKey)}
-              </span>
-            </Link>
+              {() => (
+                <>
+                  <span
+                    className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                  >
+                    {t(item.labelKey)}
+                  </span>
+                  <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
+                    {t(item.bodyKey)}
+                  </span>
+                </>
+              )}
+            </RoleLink>
           ))}
         </div>
       </Card>
@@ -523,12 +548,16 @@ export function Ask(): JSX.Element {
         <span className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
           {t("ask.examplesLabel")}
         </span>
-        {/* AUFTRAG-mega51 BLOCK H: ein Klick auf ein Beispiel löst SOFORT eine echte, kostenpflichtige
-            Modellanfrage aus (`askExample` → `submitAsk`). Das soll so sein — ein Beispiel, das nur
-            das Feld füllt, wäre kein Beispiel. Aber es muss VORHER erkennbar sein. Kein
-            Bestätigungsdialog: ein Halbsatz an der Beschriftung und derselbe Hinweis als `title` an
-            jedem Chip. */}
+        {/* AUFTRAG-mega51 BLOCK H: ein Klick auf ein Beispiel löst SOFORT eine Modellanfrage aus
+            (`askExample` → `submitAsk`). Das soll so sein — ein Beispiel, das nur das Feld füllt,
+            wäre kein Beispiel. Aber es muss VORHER erkennbar sein. Kein Bestätigungsdialog: ein
+            Halbsatz an der Beschriftung und derselbe Hinweis als `title` an jedem Chip.
+            AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Halbsatz trägt nur noch die
+            SOFORT-Zusage; die KOSTEN-Hälfte steht daneben als zentraler, BEDINGTER AiCostHint —
+            derselbe Schlüssel, dieselbe Ableitung (billable je Aufgabe) wie überall sonst. Läuft
+            „answer" lokal/deterministisch oder fehlt die Auskunft noch, schweigt der Kostensatz. */}
         <span className="text-[10.5px] text-muted-2">{t("ask.examplesSendHint")}</span>
+        <AiCostHint billable={answerBillable} className="text-[10.5px]" />
         {exampleChips.map((chip) => {
           const question =
             chip.kind === "ko" ? t("ask.koQuestion", { title: chip.title }) : t(chip.questionKey);
@@ -762,13 +791,22 @@ export function Ask(): JSX.Element {
                   <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
                     <div className="font-semibold">{t(reviewGuard.labelKey)}</div>
                     <p className="mt-0.5">{t(reviewGuard.hintKey)}</p>
-                    <Link
+                    {/* AUFTRAG-mega71 BLOCK E (Stelle 2): der Prüfvorbehalt-CTA zeigt auf
+                        /validierung (controller). Der Hinweis „gehört in Review" bleibt für alle
+                        wahr — nur der WEG dorthin gehört den Rollen, die ihn gehen dürfen; der
+                        Pfeil (das Versprechen „hier geht es weiter") fehlt an der Lage. */}
+                    <RoleLink
                       to={demoHref(reviewGuard.ctaTo, params)}
-                      className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text hover:opacity-90"
+                      className="mt-2 inline-flex items-center gap-1 rounded-btn bg-surface px-2.5 py-1 text-[12px] font-semibold text-text"
+                      hoverClassName="hover:opacity-90"
                     >
-                      {t(reviewGuard.ctaKey)}
-                      <ArrowRight size={13} />
-                    </Link>
+                      {(erreichbar) => (
+                        <>
+                          {t(reviewGuard.ctaKey)}
+                          {erreichbar ? <ArrowRight size={13} /> : null}
+                        </>
+                      )}
+                    </RoleLink>
                   </div>
                 ) : null}
                 {/* AUFTRAG-mega39 BLOCK D2: die Liste erschien bis mega38 IMMER — und wiederholte
@@ -818,12 +856,15 @@ export function Ask(): JSX.Element {
                     <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
                       {t("conflict.impact.hint")}
                     </p>
-                    <Link
+                    {/* AUFTRAG-mega71 BLOCK E (Stelle 3): /konflikte verlangt controller. Der
+                        Unterstrich (Link-Versprechen) gehört nur zur begehbaren Fassung. */}
+                    <RoleLink
                       to="/konflikte"
-                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
+                      className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text"
+                      hoverClassName="underline"
                     >
-                      {t("conflict.impact.cta")}
-                    </Link>
+                      {() => <>{t("conflict.impact.cta")}</>}
+                    </RoleLink>
                   </div>
                 ) : null}
                 {/* ==========================================================================
@@ -1083,22 +1124,34 @@ export function Ask(): JSX.Element {
                 </p>
                 <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2">
                   {/* SCRUM-264: direkt Wissen erfassen — die gestellte Frage als Capture-Kontext (kein Auto-KO). */}
+                  {/* AUFTRAG-mega71 BLOCK E (Stelle 4): /erfassen verlangt experte — die Expertin
+                      der Vortest-Aufgabe geht hier durch, die Betrachterin sieht die Lage. */}
                   {gapId ? (
-                    <Link
+                    <RoleLink
                       to={captureGapHref(gapId)}
-                      className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white hover:opacity-90"
+                      className="inline-flex items-center gap-1.5 rounded-btn bg-ink px-3 py-1.5 text-[13px] font-semibold text-white"
+                      hoverClassName="hover:opacity-90"
                     >
-                      {t(GAP_RESCUE_TEXT.cta)}
-                      <ArrowRight size={15} />
-                    </Link>
+                      {(erreichbar) => (
+                        <>
+                          {t(GAP_RESCUE_TEXT.cta)}
+                          {erreichbar ? <ArrowRight size={15} /> : null}
+                        </>
+                      )}
+                    </RoleLink>
                   ) : null}
-                  <Link
+                  {/* AUFTRAG-mega71 BLOCK E (Stelle 5): /risiko verlangt controller. */}
+                  <RoleLink
                     to="/risiko"
                     className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-brand-text"
                   >
-                    {t("ask.toGaps")}
-                    <ArrowRight size={15} />
-                  </Link>
+                    {(erreichbar) => (
+                      <>
+                        {t("ask.toGaps")}
+                        {erreichbar ? <ArrowRight size={15} /> : null}
+                      </>
+                    )}
+                  </RoleLink>
                 </div>
               </Card>
             )}

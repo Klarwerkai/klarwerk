@@ -116,7 +116,11 @@ describe("WP-BILD-1d: Verdrahtung + i18n", () => {
       resolve(process.cwd(), "apps/web/src/components/ko/KoRead.tsx"),
       "utf8",
     );
-    expect(src).toContain("<BodyImageGallery bodyHtml={ko.bodyHtml} />");
+    // AUFTRAG-mega69 Block A: die Leseansicht reicht zusätzlich den (seitengesteuerten) Weg zur
+    // Bildbeschreibung durch — ohne Editierrecht bleibt er undefined und die Galerie reine Anzeige.
+    expect(src).toContain(
+      "<BodyImageGallery bodyHtml={ko.bodyHtml} onEditCaption={onEditCaption} />",
+    );
   });
 
   it("Galerie-Texte existieren DE/EN/NL (Galerie, Bild n von m, Schließen, Blättern)", () => {

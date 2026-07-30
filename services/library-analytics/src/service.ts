@@ -30,6 +30,7 @@ import {
   type ImportItem,
   type ImportResult,
   LibraryError,
+  type Neighborhood,
   type ReviewAction,
 } from "./types";
 
@@ -44,6 +45,18 @@ export const EXPORT_NO_CHECK_NOTE =
   "Hinweis: Diese Ausgabe trifft keine Aussage darüber, ob das enthaltene Wissen auf Konflikte oder Duplikate geprüft wurde.";
 
 export const SEARCH_BACKFILL_LIMIT_PER_QUERY = 20;
+
+// AUFTRAG-mega68: Deckel der Nachbarschafts-Auskunft. 12 Nachbarn füllen die Detailseiten-Fläche,
+// ohne sie zu überladen (der Entwurf zeichnet ~10); alles darüber weist `truncated`/`total`
+// ehrlich aus. Kein Client-Parameter — der Deckel ist Server-Vertrag, nicht Verhandlungsmasse.
+export const NEIGHBOR_LIMIT = 12;
+
+// AUFTRAG-mega68 (Schlagwortregel, Begründung am neighbors()-Kopf): ein Schlagwort ist ubiquitär,
+// wenn MEHR ALS DIE HÄLFTE des Bestands es trägt — ab der Mehrheitsgrenze verbindet es mehr Paare,
+// als es trennt, und die Kante sagt nichts mehr. Der absolute Boden verhindert, dass die
+// Anteilsstatistik in Kleinstbeständen feuert (2 von 2 Objekten teilen IMMER 100 %).
+export const UBIQUITY_MAX_SHARE = 0.5;
+export const UBIQUITY_MIN_COUNT = 5;
 
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
 // gehört (kleingeschrieben verglichen — Adapter schreiben "Confluence"/"Jira").
@@ -1324,6 +1337,106 @@ export class LibraryService {
         .map(([authorId, koCount]) => ({ authorId, koCount }))
         .sort((a, b) => (a.authorId < b.authorId ? -1 : a.authorId > b.authorId ? 1 : 0)),
     }));
+  }
+
+  // ==============================================================================================
+  // AUFTRAG-mega68 — DIE NACHBARSCHAFT EINES OBJEKTS (Anwendersicht des Wissensnetzes).
+  // ==============================================================================================
+  //
+  // WARUM NICHT graph(): der globale Graph lädt den ganzen Bestand und vergleicht jedes Paar —
+  // O(n²) Vergleiche, bei 12.000 Objekten ~72 Mio. in EINER Antwort, begrenzt erst im Browser.
+  // Diese Auskunft geht stattdessen von EINEM Objekt aus: EIN linearer Pass über die
+  // Such-Projektion (listForSearch, ohne bodyHtml), je Objekt ein Set-Lookup gegen die
+  // Zentrums-Schlagwörter — O(n·t) Zeit mit t = Schlagwörter je Objekt (klein), Antwortgröße
+  // O(NEIGHBOR_LIMIT). Der Bestand wird gelesen, aber nie paarweise verrechnet und nie
+  // vollständig übertragen. (Ein persistenter Tag-Index wäre der nächste Schritt, wenn der eine
+  // lineare Pass je Anfrage messbar drückt — heute wäre er neue Infrastruktur ohne Not.)
+  //
+  // DIE SCHLAGWORTREGEL (Ubiquität): ein Schlagwort, das MEHR ALS DIE HÄLFTE des Bestands trägt,
+  // erzeugt keine Kante. Begründung der Schwelle: eine Kante soll behaupten „diese zwei teilen
+  // etwas, das die meisten anderen NICHT teilen" — ab der Mehrheitsgrenze ist das Gegenteil wahr,
+  // und die erwartete Nachbarschaft über dieses eine Schlagwort umfasst über die Hälfte des
+  // Bestands (genau der Demobestands-Befund: `pilot-demo` auf allen Objekten macht den Graphen
+  // vollständig). Gegen die Alternativen entschieden: eine DEKLARIERTE Liste kennte nur die
+  // Täter von gestern (der nächste Import-Marker liefe wieder durch); ein ABSOLUTER Zähldeckel
+  // skaliert nicht über Bestandsgrößen; eine IDF-GEWICHTUNG würde nur die Reihenfolge ändern,
+  // die bedeutungslose Kante aber existieren lassen. Der absolute Boden (UBIQUITY_MIN_COUNT)
+  // verhindert, dass die Anteilsstatistik in Kleinstbeständen auf Rauschen feuert: unter 5
+  // Trägern ist „100 % Anteil" keine Aussage über Ubiquität, sondern über die Bestandsgröße.
+  //
+  // VERTRAULICHKEIT: `includeConfidential` kommt als DATUM aus der Kompositionswurzel (Route:
+  // SCRUM-506-Regel, `ko.validate` sieht Vertrauliches) — dieselbe Bauart wie provenance-routes.
+  // Ein herausgefilterter Nachbar existiert für den Aufrufer NICHT: er fehlt in `neighbors`,
+  // in `total` und in `truncated` (alles wird NACH dem Filter gezählt).
+  async neighbors(
+    koId: string,
+    opts: { includeConfidential: boolean; limit?: number },
+  ): Promise<Neighborhood> {
+    const center = await this.koService.get(koId);
+    if (!center) {
+      throw new LibraryError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    }
+    const limit = opts.limit ?? NEIGHBOR_LIMIT;
+    const centerTags = new Set(center.tags);
+    // EIN linearer Pass über die Such-Projektion (ohne bodyHtml): Kandidaten sammeln und dabei
+    // zählen, wie viele Objekte jedes ZENTRUMS-Schlagwort tragen (inklusive des Zentrums selbst —
+    // der Anteil misst den Bestand, nicht die Nachbarn).
+    // AUFTRAG-mega71 Block C (bens gelber Punkt 2): für Rollen ohne erweiterte Sichtbarkeit wird
+    // bereits die GRUNDMENGE auf sichtbare Objekte gefiltert — VOR carriers, vor der
+    // Ubiquitätsrechnung, vor der Kandidatenbildung; eine Stelle, nicht zwei. Bis mega71 zählte
+    // die Statistik verborgene Objekte mit: ein vertraulicher Träger konnte ein Zentrums-
+    // Schlagwort über die Schwelle heben, damit einen SICHTBAREN Nachbarn entfernen und so
+    // unsichtbaren Bestand im Verhalten erkennbar machen. Jetzt rechnet die Antwort der
+    // eingeschränkten Rolle, als gäbe es nur den sichtbaren Bestand (auch `total` im
+    // Anteilsnenner misst ihn) — der Filter in `visible` unten ist dadurch mit abgedeckt.
+    const all = (await this.koService.listForSearch()).filter(
+      (ko) => opts.includeConfidential || !isConfidential(ko.confidentiality),
+    );
+    const carriers = new Map<string, number>();
+    const candidates: { ko: KnowledgeObject; shared: string[] }[] = [];
+    for (const ko of all) {
+      const shared = ko.tags.filter((tag) => centerTags.has(tag));
+      for (const tag of shared) {
+        carriers.set(tag, (carriers.get(tag) ?? 0) + 1);
+      }
+      if (ko.id !== center.id && shared.length > 0) {
+        candidates.push({ ko, shared });
+      }
+    }
+    const total = all.length;
+    const excludedTags = [...centerTags]
+      .filter((tag) => {
+        const count = carriers.get(tag) ?? 0;
+        return count >= UBIQUITY_MIN_COUNT && count / Math.max(total, 1) > UBIQUITY_MAX_SHARE;
+      })
+      .sort((a, b) => a.localeCompare(b));
+    const excluded = new Set(excludedTags);
+    // Der Vertraulichkeitsfilter liegt seit mega71 an der Grundmenge oben (EINE Stelle) —
+    // Kandidaten stammen bereits ausschließlich aus dem sichtbaren Bestand.
+    const visible = candidates
+      .map((c) => ({ ko: c.ko, via: c.shared.filter((tag) => !excluded.has(tag)).sort() }))
+      .filter((c) => c.via.length > 0)
+      // Deterministisch: stärkste Verwandtschaft (meiste geteilte Schlagwörter) zuerst, dann
+      // Titel, dann Id — gleicher Bestand ⇒ gleiche Auswahl und Reihenfolge.
+      .sort(
+        (a, b) =>
+          b.via.length - a.via.length ||
+          a.ko.title.localeCompare(b.ko.title) ||
+          a.ko.id.localeCompare(b.ko.id),
+      );
+    const kept = visible.slice(0, limit);
+    return {
+      center: { id: center.id, title: center.title, status: center.status },
+      neighbors: kept.map((c) => ({
+        id: c.ko.id,
+        title: c.ko.title,
+        status: c.ko.status,
+        via: c.via,
+      })),
+      total: visible.length,
+      truncated: visible.length > kept.length,
+      excludedTags,
+    };
   }
 
   // FR-LIB-04: Graph aus gemeinsamen Tags.

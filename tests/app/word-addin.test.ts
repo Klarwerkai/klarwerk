@@ -590,7 +590,7 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(html).toContain("markOfficeChecked(false)");
     // Ehrlicher Hinweis in allen drei Sprachen (eigener noOffice-Text je Woerterbuch).
     expect((html.match(/noOffice: "/g) ?? []).length).toBe(3);
-    expect(html).toContain("Diese Seite laeuft als Klara-Panel in Microsoft Word.");
+    expect(html).toContain("Diese Seite läuft als Klara-Panel in Microsoft Word.");
     expect(html).toContain("This page runs as the Klara panel inside Microsoft Word.");
     expect(html).toContain("Deze pagina draait als Klara-paneel in Microsoft Word.");
     // Der Senden-Knopf haengt an Anmeldung UND Office-Bereitschaft; deaktiviert traegt er den Grund.

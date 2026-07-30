@@ -536,6 +536,25 @@ export interface Graph {
   edges: GraphEdge[];
 }
 
+// AUFTRAG-mega68: Nachbarschaft EINES Wissensobjekts (GET /api/kos/:id/neighbors) — begrenzt,
+// mit dem WARUM je Kante (`via` = geteilte, nicht-ubiquitäre Schlagwörter). `total`/`truncated`
+// zählen serverseitig NACH dem Vertraulichkeits-Filter; `excludedTags` weist ehrlich aus, welche
+// Schlagwörter des Zentrums wegen Ubiquität (z. B. pilot-demo) keine Kante erzeugen.
+export interface NeighborKo {
+  id: string;
+  title: string;
+  status: KoStatus;
+  via: string[];
+}
+
+export interface Neighborhood {
+  center: { id: string; title: string; status: KoStatus };
+  neighbors: NeighborKo[];
+  total: number;
+  truncated: boolean;
+  excludedTags: string[];
+}
+
 export interface Analytics {
   total: number;
   byStatus: Record<string, number>;
@@ -996,6 +1015,15 @@ export interface ReasonerStatus {
   // PAKET 3 (D-AISTATE, bens V4): abstrakte per-Task-Nutzbarkeit (nur true/false je Aufgabe, KEIN
   // Provider-/Modellname). Fehlt sie (alte Antwort), fällt der Hook auf den globalen Status zurück.
   tasks?: Record<string, boolean>;
+  // AUFTRAG-mega67 BLOCK G (Pedi 30.07.), Wortlaut geschärft in mega71 Block D (bens B2-Ehrlichkeit):
+  // die Cloud KANN für DIESE Aufgabe kostenpflichtig verwendet werden — ein Cloud-Modell liegt in
+  // ihrer Kette. Eine MÖGLICHKEIT, keine Abrechnungstatsache: bei `reachable: "unverified"`, für
+  // vertrauliche Eingaben (Egress-Wächter) und bei Laufzeit-Rückfällen entstehen trotz true ggf.
+  // keine Kosten (Serverseite: build-app.ts an den Status-Routen). Bewusst getrennt von `tasks`:
+  // das ist NUTZBARKEIT und wird auch vom kostenlosen lokalen Modell erfüllt. Weiterhin nur ein
+  // Boolean, kein Provider-/Modellname (vip2-gate). Fehlt es (alte Antwort), behauptet die
+  // Oberfläche nichts.
+  billable?: Record<string, boolean>;
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
@@ -1160,9 +1188,16 @@ export interface Notification {
 // Ja/Nein. Die Namen sind Fachnamen, keine Umgebungsvariablen (der Server übersetzt; siehe
 // services/app/src/feature-flags.ts). BEWUSST hier eigenständig getippt und nicht aus services
 // importiert: apps/web darf die Modulgrenze nach services nicht überschreiten.
+// AUFTRAG-mega69 Block H: `confluenceImport` steht hier NICHT mehr. Erhoben (mega69, kalibriert an
+// den echten Lesern `FeatureGate feature="demodaten"` und `useFeatures().data?.features?.…`): kein
+// einziger Frontend-Leser — die Zugangs-Fläche (ImportAccessPanel) liest den aussagekräftigeren
+// `enabled` der Zugangsroute, der auch bei NICHT registrierten Import-Routen antwortet. Ein
+// typisierter Schlüssel ohne Leser ist eine Vertragsbehauptung ohne Fläche. Serverseitig bleibt der
+// Schalter die notwendige Wahrheit (feature-flags.ts, Routen-Registrierung) und wird in
+// /api/features weiter gemeldet — ein zusätzlicher, hier untypisierter Payload-Schlüssel ist im
+// Partial-Vertrag zulässig und wird von niemandem gelesen.
 export type FeatureName =
   | "herkunft"
-  | "confluenceImport"
   | "expertMatching"
   // AUFTRAG-mega61: die zwei Notausschalter. Ihre Vorgabe ist AN (Server: feature-flags.ts) — sie
   // sperren nichts, sie erlauben nur das Abschalten einer Pflichtfläche, wenn sie im Betrieb stört.
@@ -1181,3 +1216,22 @@ export type FeatureName =
 // wird vom einzigen Leser (`FeatureGate`) wie „aus“ gewertet — dieselbe fail-closed Regel wie
 // „noch nicht geladen“ und „Server hat nicht geantwortet“.
 export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
+
+// ================================================================================================
+// AUFTRAG-mega67 BLOCK C/D — der Zugangs-Zustand EINES Import-Systems.
+// ================================================================================================
+// Was hier NICHT steht, ist der eigentliche Punkt: kein Wert, kein Maskenfeld, keine Länge. Der Typ
+// trägt gar keinen Platz, in den ein Geheimnis passen würde (s. services/confluence/src/
+// credential-state.ts). Und `lastConnectedAt` ist heute IMMER null — es gibt im Bestand keinen Ort,
+// der einen erfolgreichen Kontakt festhält, und eine erfundene Zahl wäre schlimmer als keine.
+export interface ImportAccessStatus {
+  system: string;
+  /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */
+  enabled: boolean;
+  /** Je Variable: benannt, und ob sie steht. Niemals ihr Wert. */
+  credentials: { name: string; present: boolean }[];
+  /** Kämen damit Zugangsdaten zustande? (Nicht: sind sie gültig — das wüsste nur ein Aufruf.) */
+  credentialsUsable: boolean;
+  blocker: "missing" | "insecure-base-url" | null;
+  lastConnectedAt: string | null;
+}

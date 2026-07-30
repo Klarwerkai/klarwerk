@@ -332,6 +332,12 @@
     </ul>
   </div>
 
+  <!-- AUFTRAG-mega69 Block E: der sichtbare Auslieferungsstand. Der Wert entsteht beim Bauen
+       (apps/web/vite.config.ts, Plugin klara-stand ersetzt __KLARA_STAND__ in dist/) — er aendert
+       sich also bei jeder Auslieferung VON SELBST und wird nirgends von Hand gepflegt. Unersetzt
+       (Quelle/Dev) steht hier ehrlich "dev". Sprachneutral (Datum + Kuerzel), bewusst unauffaellig. -->
+  <p class="muted" id="kw-stand" style="margin-top: 10px; margin-bottom: 0; font-size: 10px; text-align: right;"></p>
+
   <script>
     "use strict";
 
@@ -777,82 +783,82 @@
       de: {
         greetTitle: "Hallo, ich bin Klara.",
         greetBody: "Ich verbinde dieses Word-Dokument mit KLARWERK. In diesem ersten Schritt kann ich deine Textauswahl als Entwurf nach KLARWERK bringen — ehrlich, ohne Zauber.",
-        sessionChecking: "Pruefe Anmeldung bei KLARWERK ...",
+        sessionChecking: "Prüfe Anmeldung bei KLARWERK ...",
         sessionOk: "Angemeldet als {name}.",
         sessionOff: "Du bist in diesem Fenster nicht bei KLARWERK angemeldet.",
-        sessionError: "KLARWERK ist gerade nicht erreichbar. Bitte Verbindung pruefen und erneut versuchen.",
+        sessionError: "KLARWERK ist gerade nicht erreichbar. Bitte Verbindung prüfen und erneut versuchen.",
         loginHint: "Zum Senden brauchst du eine aktive KLARWERK-Anmeldung in diesem Fenster.",
         loginCta: "Bei KLARWERK anmelden",
-        loginReturn: "Die Anmeldung oeffnet sich in einem eigenen Fenster. Dieses Panel erkennt sie automatisch — nichts schliessen, nichts neu oeffnen.",
+        loginReturn: "Die Anmeldung öffnet sich in einem eigenen Fenster. Dieses Panel erkennt sie automatisch — nichts schließen, nichts neu öffnen.",
         loginWaiting: "Warte auf die Anmeldung im Anmelde-Fenster ...",
         loginCancel: "Warten abbrechen",
         loginTimeout: "Keine Anmeldung erkannt. Bitte erneut versuchen.",
-        loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups fuer diese Seite erlauben und erneut versuchen.",
+        loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups für diese Seite erlauben und erneut versuchen.",
         loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
         sendTitle: "An KLARWERK senden",
-        sendHint: "Sende den gewaehlten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Ueberschriften, Listen, Tabellen, Bilder soweit Word sie hergibt). Nichts wird automatisch veroeffentlicht — du pruefst alles in KLARWERK.",
+        sendHint: "Sende den gewählten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Überschriften, Listen, Tabellen, Bilder soweit Word sie hergibt). Nichts wird automatisch veröffentlicht — du prüfst alles in KLARWERK.",
         sendCta: "Als Entwurf senden",
         sendEmpty: "Bitte erst Text im Dokument markieren.",
-        sendEmptyDoc: "Das Dokument enthaelt keinen Text.",
+        sendEmptyDoc: "Das Dokument enthält keinen Text.",
         scopeSelection: "Markierter Text",
         scopeDocument: "Ganzes Dokument",
         scopePages: "Aktuelle Seite / Seiten von-bis",
-        scopePagesOff: "Word gibt Seiten hier nicht her — das Taskpane-API kennt keine verlaesslichen Seitengrenzen.",
-        scopePagesHint: "Seitenweise geht hier nicht — markiere stattdessen den gewuenschten Bereich im Dokument.",
-        sendOverBudget: "Die Formatierung war zu gross fuer die Uebertragung — der Entwurf enthaelt den reinen Text (nichts ging still verloren).",
-        sendPlainFallback: "Word hat kein uebernehmbares HTML geliefert — Formatierung und etwaige Bilder fehlen im Entwurf.",
-        sendImagesMissing: "{n} Bilder konnte Word nicht uebergeben — sie fehlen im Entwurf.",
+        scopePagesOff: "Word gibt Seiten hier nicht her — das Taskpane-API kennt keine verlässlichen Seitengrenzen.",
+        scopePagesHint: "Seitenweise geht hier nicht — markiere stattdessen den gewünschten Bereich im Dokument.",
+        sendOverBudget: "Die Formatierung war zu groß für die Übertragung — der Entwurf enthält den reinen Text (nichts ging still verloren).",
+        sendPlainFallback: "Word hat kein übernehmbares HTML geliefert — Formatierung und etwaige Bilder fehlen im Entwurf.",
+        sendImagesMissing: "{n} Bilder konnte Word nicht übergeben — sie fehlen im Entwurf.",
         sendBusy: "Sende Auswahl ...",
         sendOk: "Entwurf angelegt: {title}",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
-        noOffice: "Diese Seite laeuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
-        openLink: "Entwurf in KLARWERK oeffnen",
+        noOffice: "Diese Seite läuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
+        openLink: "Entwurf in KLARWERK öffnen",
         tabAsk: "Fragen",
         tabCapture: "Wissen erfassen",
         askTitle: "Klara fragen",
         askHint: "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
         askInputPlaceholder: "Frage eingeben, wenn nichts markiert ist ...",
         askCta: "Klara fragen",
-        aiGeneratedNotice: "Von kuenstlicher Intelligenz erzeugt — bitte fachlich pruefen.",
+        aiGeneratedNotice: "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
         askBusy: "Klara sucht im KLARWERK-Wissen ...",
-        askTruncated: "Die Markierung war laenger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
+        askTruncated: "Die Markierung war länger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
         askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
-        askTimeout: "Keine Antwort vom Server (Zeitueberschreitung). Bitte erneut versuchen.",
+        askTimeout: "Keine Antwort vom Server (Zeitüberschreitung). Bitte erneut versuchen.",
         askError: "Fragen fehlgeschlagen ({detail}).",
         askAnswerTitle: "Quellengebundene Antwort",
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
         // oder unbekanntem Konfliktstand. Jetzt sagt sie, was belegt ist und was nicht.
-        askEvidenceVerified: "Einstufung: gesichert — Quellen belegt, keine offenen Widersprueche bekannt.",
-        askEvidenceUnverified: "Einstufung: ungeprueft — nicht als konfliktfrei belegt. Vor Verwendung pruefen.",
+        askEvidenceVerified: "Einstufung: gesichert — Quellen belegt, keine offenen Widersprüche bekannt.",
+        askEvidenceUnverified: "Einstufung: ungeprüft — nicht als konfliktfrei belegt. Vor Verwendung prüfen.",
         askSourcesTitle: "Quellen",
         askTrust: "Vertrauen {n}",
         askGapTitle: "Keine belastbare Grundlage.",
-        askGapBody: "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissensluecke vermerkt — du kannst sie zusaetzlich als offene Frage nach KLARWERK geben.",
+        askGapBody: "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke vermerkt — du kannst sie zusätzlich als offene Frage nach KLARWERK geben.",
         askGapSendCta: "Als offene Frage an KLARWERK senden",
         askGapSentOk: "Offene Frage gesendet: {title}",
-        askGapOpenLink: "Offene Frage in KLARWERK oeffnen",
-        askInsertCta: "In Word einfuegen",
-        askInsertOk: "Antwort eingefuegt.",
-        askInsertFail: "Einfuegen fehlgeschlagen ({detail}). Du kannst den Text ueber „Kopieren\" uebernehmen.",
-        askInsertNoPermission: "Einfuegen nicht moeglich: Das Add-in hat keine Schreibberechtigung fuer dieses Dokument. Das Klara-Manifest muss neu geladen werden (Sideload) — mit der Berechtigung ReadWriteDocument UND einer hoeheren Versionsnummer (Office merkt sich das alte Manifest sonst im Cache). Bitte an die KLARWERK-Administration wenden. Solange kannst du den Text ueber „Kopieren\" uebernehmen.",
+        askGapOpenLink: "Offene Frage in KLARWERK öffnen",
+        askInsertCta: "In Word einfügen",
+        askInsertOk: "Antwort eingefügt.",
+        askInsertFail: "Einfügen fehlgeschlagen ({detail}). Du kannst den Text über „Kopieren\" übernehmen.",
+        askInsertNoPermission: "Einfügen nicht möglich: Das Add-in hat keine Schreibberechtigung für dieses Dokument. Das Klara-Manifest muss neu geladen werden (Sideload) — mit der Berechtigung ReadWriteDocument UND einer höheren Versionsnummer (Office merkt sich das alte Manifest sonst im Cache). Bitte an die KLARWERK-Administration wenden. Solange kannst du den Text über „Kopieren\" übernehmen.",
         askInsertEmpty: "Das Antwortfeld ist leer — bitte Text eingeben oder die Frage erneut stellen.",
-        askAnswerEditHint: "Du kannst die Antwort vor dem Einfuegen kuerzen oder anpassen. Einstufung und Quellen-Zeile kommen automatisch dazu — beim Einfuegen, beim Kopieren und auch bei Strg+C bzw. Cmd+C. Nur eine Teilauswahl bleibt roh: ein Bruchstueck ist keine Antwort.",
+        askAnswerEditHint: "Du kannst die Antwort vor dem Einfügen kürzen oder anpassen. Einstufung und Quellen-Zeile kommen automatisch dazu — beim Einfügen, beim Kopieren und auch bei Strg+C bzw. Cmd+C. Nur eine Teilauswahl bleibt roh: ein Bruchstück ist keine Antwort.",
         askCopyCta: "Kopieren",
         askCopyOk: "In die Zwischenablage kopiert.",
-        askCopyFail: "Die Zwischenablage des Browsers ist nicht verfuegbar. Der vollstaendige Text steht unten bereit und ist bereits markiert — bitte von dort kopieren.",
-        askCopyFallbackHint: "Vollstaendiger Text mit Einstufung und Quellen-Zeile — dieser Text ist zum Kopieren gedacht:",
-        askCopyNativeOk: "Kopiert. Einstufung und Quellen-Zeile wurden automatisch angehaengt.",
+        askCopyFail: "Die Zwischenablage des Browsers ist nicht verfügbar. Der vollständige Text steht unten bereit und ist bereits markiert — bitte von dort kopieren.",
+        askCopyFallbackHint: "Vollständiger Text mit Einstufung und Quellen-Zeile — dieser Text ist zum Kopieren gedacht:",
+        askCopyNativeOk: "Kopiert. Einstufung und Quellen-Zeile wurden automatisch angehängt.",
         // AUFTRAG-mega38 BLOCK B3 (bens GELB): der Text erscheint an ALLEN drei nativen Wegen —
         // auch beim blockierten ZIEHEN, wo nichts kopiert werden sollte. „NOCH NICHT kopiert"
         // war dort schlicht falsch. Jetzt ist der GANZE Text ausgangsneutral, nicht nur sein
         // Schlusssatz. (`askCopyNativeOk` bleibt unveraendert: es erscheint nur nach Kopieren und
         // Ausschneiden, und dort ist „Kopiert" richtig.)
-        askCopyNativePending: "NOCH NICHT ausgegeben: die Quellentitel werden gerade geladen. Ohne sie truege die Quellen-Zeile nur den Systemnamen statt der Belege. Bitte einen Moment warten und es erneut versuchen.",
-        askDragFail: "NICHT ausgegeben: dieser Ziehvorgang kann keine Daten aufnehmen. Damit nichts ohne Einstufung und Quellen-Zeile hinausgeht, wurde er abgebrochen. Der vollstaendige Text steht unten bereit und ist bereits markiert.",
-        askCopyPartial: "Teilauswahl — ohne Einstufung und ohne Quellen-Zeile. Ein Bruchstueck ist keine Antwort; fuer den vollstaendigen Text bitte alles markieren oder „Kopieren\" nutzen.",
+        askCopyNativePending: "NOCH NICHT ausgegeben: die Quellentitel werden gerade geladen. Ohne sie trüge die Quellen-Zeile nur den Systemnamen statt der Belege. Bitte einen Moment warten und es erneut versuchen.",
+        askDragFail: "NICHT ausgegeben: dieser Ziehvorgang kann keine Daten aufnehmen. Damit nichts ohne Einstufung und Quellen-Zeile hinausgeht, wurde er abgebrochen. Der vollständige Text steht unten bereit und ist bereits markiert.",
+        askCopyPartial: "Teilauswahl — ohne Einstufung und ohne Quellen-Zeile. Ein Bruchstück ist keine Antwort; für den vollständigen Text bitte alles markieren oder „Kopieren\" nutzen.",
         askShowMore: "Mehr anzeigen",
         askShowLess: "Weniger anzeigen",
         askStatusValidiert: "Validiert",
@@ -866,10 +872,10 @@
         askOpenQuestionPrefix: "Offene Frage: ",
         askOpenQuestionFallback: "Offene Frage aus Word",
         helpTitle: "Was kann Klara hier?",
-        helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie uebergibt (nur Entwurf, kein fertiges Wissensobjekt).",
-        helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT uebergeben konnte.",
-        helpCan3: "Fragen quellengebunden aus dem VALIDIERTEN Werkswissen beantworten — und die Antwort mit Quellenangabe ins Dokument einfuegen.",
-        helpNot1: "Klara ist kein Chatbot: ohne belastbare Grundlage wird NICHTS erfunden — die Frage bleibt ehrlich offen (Wissensluecke).",
+        helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie übergibt (nur Entwurf, kein fertiges Wissensobjekt).",
+        helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT übergeben konnte.",
+        helpCan3: "Fragen quellengebunden aus dem VALIDIERTEN Werkswissen beantworten — und die Antwort mit Quellenangabe ins Dokument einfügen.",
+        helpNot1: "Klara ist kein Chatbot: ohne belastbare Grundlage wird NICHTS erfunden — die Frage bleibt ehrlich offen (Wissenslücke).",
         helpNot2: "Noch NICHT: seitenweises Senden — Word gibt Seitengrenzen im Taskpane nicht her; markiere stattdessen den Bereich.",
       },
       en: {
@@ -2081,6 +2087,13 @@
       checkSession(); // ehrlicher Ist-Zustand statt Warte-Text
     });
     document.getElementById("send-btn").addEventListener("click", sendSelection);
+
+    // AUFTRAG-mega69 Block E: Auslieferungsstand anzeigen. __KLARA_STAND__ wird vom Build ersetzt;
+    // der Praefix-Vergleich (statt Gleichheit) haelt auch dann, wenn der Platzhalter-Name selbst
+    // einmal umbenannt wird, ohne dass diese Zeile mitzieht.
+    var KLARA_STAND = "__KLARA_STAND__";
+    document.getElementById("kw-stand").textContent =
+      KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
 
     renderStatics();
     // WP-KLARA-1b (K5): timeout-basierte Office-Erkennung. Office.onReady mit FRIST — laedt office.js

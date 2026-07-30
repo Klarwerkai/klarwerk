@@ -374,5 +374,29 @@ export function libraryRoutes(
       }
       reply.code(200).send(await library.graph());
     });
+
+    // AUFTRAG-mega68: die Nachbarschaft EINES Wissensobjekts — die Anwendersicht des Wissensnetzes
+    // (Detailseite). Begrenzt (NEIGHBOR_LIMIT) und ohne Bestands-Paarvergleich; Regel und
+    // Komplexität am Service (library-analytics neighbors()).
+    //
+    // HIER, IN DER KOMPOSITIONSWURZEL, FÄLLT DIE RECHTEENTSCHEIDUNG — dieselbe SCRUM-506-Regel wie
+    // Bibliotheks-Export und Herkunftskette (provenance-routes): Vertrauliches sehen nur Rollen mit
+    // `ko.validate`. Der Service bekommt die Entscheidung als DATUM und filtert fail-closed; ein
+    // unsichtbarer Nachbar fehlt auch in den Zählern. Das ZENTRUM selbst folgt bewusst dem
+    // BESTEHENDEN Lesepfad (GET /api/kos/:id liefert jedem ko.read-Inhaber auch Vertrauliches —
+    // die ehrliche Grenze aus mega45); diese Route gibt vom Zentrum ohnehin nur zurück, was die
+    // Detailseite bereits zeigt.
+    app.get<{ Params: { id: string } }>("/api/kos/:id/neighbors", async (request, reply) => {
+      const user = await guards.requirePermission("ko.read", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const includeConfidential = can(user.role, "ko.validate");
+        reply.code(200).send(await library.neighbors(request.params.id, { includeConfidential }));
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
   };
 }

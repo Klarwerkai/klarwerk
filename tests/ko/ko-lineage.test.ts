@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { AuditEntry, KnowledgeObject, KoSource } from "../../apps/web/src/api/types";
-import { koAuditEvents, lineageSummary, relatedKos } from "../../apps/web/src/lib/koLineage";
+import { koAuditEvents, lineageSummary } from "../../apps/web/src/lib/koLineage";
 
 const src = (label: string, url: string | null = null): KoSource => ({
   id: `src-${label}`,
@@ -36,42 +36,8 @@ const ko = (p: Partial<KnowledgeObject> & { id: string }): KnowledgeObject =>
     ...p,
   }) as KnowledgeObject;
 
-describe("SCRUM-130: verwandte Wissensobjekte", () => {
-  const current = ko({
-    id: "K1",
-    tags: ["druck", "ventil"],
-    category: "Anlage 1",
-    sources: [src("DIN 1")],
-  });
-  const all = [
-    current,
-    ko({ id: "K2", tags: ["ventil"] }), // Tag
-    ko({ id: "K3", category: "Anlage 1" }), // Kategorie
-    ko({ id: "K4", sources: [src("DIN 1")] }), // Quelle
-    ko({ id: "K5", tags: ["druck"], category: "Anlage 1" }), // Tag + Kategorie
-    ko({ id: "K6", tags: ["fremd"], category: "Anlage 9" }), // nichts
-  ];
-
-  it("findet KOs über Tag, Kategorie und Quelle, schließt sich selbst aus", () => {
-    const r = relatedKos(current, all);
-    const ids = r.map((x) => x.id);
-    expect(ids).not.toContain("K1");
-    expect(ids).toContain("K2");
-    expect(ids).toContain("K3");
-    expect(ids).toContain("K4");
-    expect(ids).not.toContain("K6");
-  });
-
-  it("rankt mehrfach verwandte KOs zuerst und nennt Gründe", () => {
-    const r = relatedKos(current, all);
-    expect(r[0]?.id).toBe("K5"); // Tag + Kategorie
-    expect(r[0]?.reasons).toEqual(expect.arrayContaining(["tag", "category"]));
-  });
-
-  it("respektiert das Limit", () => {
-    expect(relatedKos(current, all, 2)).toHaveLength(2);
-  });
-});
+// AUFTRAG-mega68: die SCRUM-130-Fälle zu `relatedKos` sind mit der Heuristik entfernt — die
+// Nachbarschaft kommt jetzt aus der begrenzten Server-Auskunft (tests/app/mega68-*).
 
 describe("SCRUM-142: Lineage/Herkunft", () => {
   it("filtert Audit-Ereignisse nach target und sortiert nach seq", () => {

@@ -14,6 +14,10 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { FacetFilter } from "../components/FacetFilter";
 import { HelpTip } from "../components/HelpTip";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
+// AUFTRAG-mega70 BLOCK B (bens Fundstellen 2–4 + die beim Nachprüfen gefundene fünfte Stelle):
+// ein Ziel, das die Rolle nicht erreicht, wird als Lage gezeigt, nicht als Weg — dasselbe Tor
+// wie auf der Startseite (mega51), keine zweite Rollenlogik.
+import { RoleLink } from "../components/RoleLink";
 import { FacetActiveBar } from "../components/facets/FacetActiveBar";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, cx } from "../components/ui";
@@ -565,9 +569,21 @@ export function Library(): JSX.Element {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           <HelpTip title={t("lib.help.filters.title")} body={t("lib.help.filters.body")} />
-          <Link to="/import">
-            <Button variant="ghost">{t("lib.reimport")}</Button>
-          </Link>
+          {/* AUFTRAG-mega70 BLOCK B (Stelle 4): /import verlangt admin UND Stufe 2. Für alle
+              anderen Rollen war das ein roher Link in den stillen Rückwurf; jetzt eine Lage.
+              (Fehlt einem Admin nur Stufe 2, bleibt der Weg begehbar — dort erklärt die
+              Stage2Notice die Lage, keine stille Umleitung.) */}
+          <RoleLink to="/import" className="inline-flex items-center gap-1.5">
+            {(erreichbar) =>
+              erreichbar ? (
+                <Button variant="ghost">{t("lib.reimport")}</Button>
+              ) : (
+                <span className="px-1 text-[13px] font-semibold text-muted">
+                  {t("lib.reimport")}
+                </span>
+              )
+            }
+          </RoleLink>
           <select
             aria-label={t("lib.exportFormat")}
             value={exportFormat}
@@ -637,21 +653,29 @@ export function Library(): JSX.Element {
           <div id={LIBRARY_GUIDE_PANEL_ID} className="mt-2">
             <p className="mb-2 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
             <div className="flex flex-wrap gap-2">
+              {/* AUFTRAG-mega70 BLOCK B (Stelle 2): der Eintrag „Zu prüfen" führt auf
+                  /validierung (controller) — für Betrachter und Experten jetzt eine Lage,
+                  keine stille Sackgasse. Die Erklärung selbst bleibt für alle stehen. */}
               {guide.items.map((item) => (
-                <Link
+                <RoleLink
                   key={item.id}
                   to={item.to}
-                  className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2 hover:border-ink/30"
+                  className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2"
+                  hoverClassName="hover:border-ink/30"
                 >
-                  <span
-                    className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-                  >
-                    {t(item.labelKey)}
-                  </span>
-                  <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
-                    {t(item.bodyKey)}
-                  </span>
-                </Link>
+                  {() => (
+                    <>
+                      <span
+                        className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                      >
+                        {t(item.labelKey)}
+                      </span>
+                      <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
+                        {t(item.bodyKey)}
+                      </span>
+                    </>
+                  )}
+                </RoleLink>
               ))}
             </div>
           </div>
@@ -864,12 +888,21 @@ export function Library(): JSX.Element {
                     <Card className="mb-2">
                       <p className="text-[13px] font-semibold text-text">{t(ownEmpty.titleKey)}</p>
                       <p className="mt-0.5 text-[12px] text-muted">{t(ownEmpty.hintKey)}</p>
-                      <Link
+                      {/* AUFTRAG-mega70 BLOCK B (die beim Nachprüfen gefundene FÜNFTE Stelle,
+                          vom Sammler bestätigt): /erfassen verlangt experte — für Betrachter
+                          war dieser betonte Leerzustands-Knopf ein Weg in den stillen Rückwurf. */}
+                      <RoleLink
                         to={ownEmpty.to}
-                        className="mt-2 inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+                        className="mt-2 inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white"
+                        hoverClassName="hover:opacity-90"
                       >
-                        {t(ownEmpty.ctaKey)} <span aria-hidden="true">→</span>
-                      </Link>
+                        {(erreichbar) => (
+                          <>
+                            {t(ownEmpty.ctaKey)}{" "}
+                            {erreichbar ? <span aria-hidden="true">→</span> : null}
+                          </>
+                        )}
+                      </RoleLink>
                     </Card>
                   );
                 })()}
@@ -1013,18 +1046,23 @@ export function Library(): JSX.Element {
                             )}
                           </Link>
                           {/* SCRUM-288: nur nutzbares/validiertes Wissen direkt in Ask; offene KOs → Review.
-                            SCRUM-294: im Demo-Kontext den Use-Fluss-Kontext weitertragen. */}
-                          <Link
+                            SCRUM-294: im Demo-Kontext den Use-Fluss-Kontext weitertragen.
+                            AUFTRAG-mega70 BLOCK B (Stelle 3): die Review-/Konflikt-Handlung führt
+                            auf /validierung bzw. /konflikte (controller) — für Betrachter und
+                            Experten jetzt eine Lage, kein Weg in den stillen Rückwurf. */}
+                          <RoleLink
                             to={demoHref(useCta.href, params)}
-                            title={t(useCta.labelKey)}
-                            className={`inline-flex shrink-0 items-center gap-1 rounded-btn border px-2.5 py-1 text-[12px] font-semibold hover:text-text ${
+                            className={`inline-flex shrink-0 items-center gap-1 rounded-btn border px-2.5 py-1 text-[12px] font-semibold ${
                               useCta.kind === "ask"
-                                ? "border-ink bg-ink text-white hover:text-white"
+                                ? "border-ink bg-ink text-white"
                                 : "border-hairline text-muted"
                             }`}
+                            hoverClassName={
+                              useCta.kind === "ask" ? "hover:text-white" : "hover:text-text"
+                            }
                           >
-                            {t(useCta.labelKey)}
-                          </Link>
+                            {() => t(useCta.labelKey)}
+                          </RoleLink>
                           {canRevalidate(k.status) ? (
                             <button
                               type="button"

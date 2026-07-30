@@ -767,7 +767,8 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       expect(html.split(key).length - 1, key).toBe(3);
     }
     // Die Rechte-Meldung nennt jetzt zusaetzlich den Versions-Bump und den Kopieren-Ausweg.
-    expect(html).toContain("hoehere");
+    // (mega69 Block C: sichtbare deutsche Texte tragen echte Umlaute.)
+    expect(html).toContain("höhere");
     expect(html).toContain("Kopieren");
   });
 

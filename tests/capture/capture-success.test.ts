@@ -2,10 +2,15 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { captureNextSteps, captureSavedStatus } from "../../apps/web/src/lib/captureSuccess";
 
+// AUFTRAG-mega70 BLOCK C: captureNextSteps ist rollenbewusst geworden — die betonte Handlung
+// richtet sich nach dem, was die Rolle darf. Diese Alt-Zusicherungen laufen als controller
+// (die Rolle, für die das SCRUM-286-Verhalten unverändert gilt); die Rollenfälle stehen in
+// tests/capture/mega70-naechste-handlung-rolle.test.ts.
+
 // SCRUM-276: nach dem Einreichen den nächsten Schritt im Kernfluss sichtbar machen.
 describe("SCRUM-276: captureNextSteps", () => {
   it("führt zum erstellten KO, in die Bibliothek (eigenes Wissen) und zur Validierung", () => {
-    const steps = captureNextSteps("ko-42");
+    const steps = captureNextSteps("ko-42", "controller");
     expect(steps.map((s) => s.to)).toEqual([
       "/wissen/ko-42",
       "/bibliothek?origin=non-demo",
@@ -16,21 +21,21 @@ describe("SCRUM-276: captureNextSteps", () => {
   // SCRUM-310: frisch erfasstes Wissen in der Bibliothek wiederfinden — gefiltert auf eigenes/
   // nicht-Demo-Wissen; Auffinden/Übersicht, NICHT primär (Review bleibt die betonte Handlung).
   it("bietet einen nicht-primären Bibliotheks-Schritt mit Herkunftsfilter eigenes Wissen", () => {
-    const lib = captureNextSteps("ko-9").find((s) => s.to.startsWith("/bibliothek"));
+    const lib = captureNextSteps("ko-9", "controller").find((s) => s.to.startsWith("/bibliothek"));
     expect(lib?.to).toBe("/bibliothek?origin=non-demo");
     expect(lib?.primary).toBeFalsy();
     expect(lib?.labelKey).toBe("capture.savedViewLibrary");
   });
 
   it("jeder Schritt hat ein nicht-leeres Label und ein vorhandenes Ziel", () => {
-    for (const s of captureNextSteps("ko-1")) {
+    for (const s of captureNextSteps("ko-1", "controller")) {
       expect(s.labelKey.length).toBeGreaterThan(0);
       expect(s.to.length).toBeGreaterThan(0);
     }
   });
 
   it("bettet die KO-ID in den Detail-Link ein", () => {
-    const [viewKo] = captureNextSteps("abc-123");
+    const [viewKo] = captureNextSteps("abc-123", "controller");
     expect(viewKo?.to).toBe("/wissen/abc-123");
   });
 
@@ -47,7 +52,7 @@ describe("SCRUM-276: captureNextSteps", () => {
 // die Validierung/Prüfung ist die betonte (primary) nächste Handlung.
 describe("SCRUM-286: Capture→Validation-Führung", () => {
   it("betont die Validierung als primäre nächste Handlung (nur dieser Schritt)", () => {
-    const steps = captureNextSteps("ko-7");
+    const steps = captureNextSteps("ko-7", "controller");
     // SCRUM-311: Review-Step zeigt vorgefiltert auf eigenes/nicht-Demo-Wissen, bleibt aber primär.
     const validate = steps.find((s) => s.to.startsWith("/validierung"));
     const viewKo = steps.find((s) => s.to.startsWith("/wissen/"));
@@ -71,8 +76,10 @@ describe("SCRUM-286: Capture→Validation-Führung", () => {
     const { badgeKey, hintKey } = captureSavedStatus();
     expect(text("de", badgeKey)).toContain("nicht validiert");
     expect(text("de", hintKey)).toContain("nicht validiert");
-    expect(text("de", hintKey)).toContain("prüfung");
+    // AUFTRAG-mega70 BLOCK C: der Text erklärt den Prozess (Validierung), statt „bitte zur
+    // Prüfung geben" zu fordern — eine Handlung, die z. B. eine Expertin nicht tun kann.
+    expect(text("de", hintKey)).toContain("validierung");
     expect(text("en", badgeKey)).toContain("not yet validated");
-    expect(text("en", hintKey)).toContain("review");
+    expect(text("en", hintKey)).toContain("validation");
   });
 });

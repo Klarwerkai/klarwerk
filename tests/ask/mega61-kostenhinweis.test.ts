@@ -1,19 +1,24 @@
 // ================================================================================================
-// AUFTRAG-mega61 BLOCK H — EIN KLICK, DER GELD KOSTET, SAGT ES VORHER.
+// AUFTRAG-mega61 BLOCK H — EIN KLICK, DER GELD KOSTEN KANN, SAGT ES VORHER.
+// AUFTRAG-mega69 BLOCK B1 (bens sammel65-Auflage 1) — UND ER SAGT ES NUR, WENN ES STIMMT.
 // ================================================================================================
 //
-// DER BEFUND (Register F16): Der Beispielklick auf der Fragenfläche löst SOFORT einen echten,
-// bezahlten Modellaufruf aus. Der Hinweis dazu existierte schon — aber nur zur Hälfte. Er sagte
-// „das ist eine echte Anfrage an die KI". Das Wort KOSTENPFLICHTIG stand ausschließlich im
-// Codekommentar (apps/web/src/pages/Ask.tsx), also genau dort, wo die Nutzerin es nie liest.
+// DER BEFUND (Register F16, mega61): Der Beispielklick auf der Fragenfläche löst SOFORT einen
+// Modellaufruf aus; das Wort KOSTENPFLICHTIG stand nur im Codekommentar. mega61 stellte den Satz
+// sichtbar hin — aber UNBEDINGT. bens sammel65-Befund: damit umging die Fragenfläche genau die
+// Bedingung, die mega67 überall sonst eingeführt hat („Kostenhinweis nur bei kostenpflichtiger
+// KI"). Läuft „answer" lokal/deterministisch, war der unbedingte Satz eine falsche
+// Tatsachenaussage.
 //
-// EIN KOMMENTAR IM CODE IST KEINE AUSSAGE AN DEN NUTZER. Genau das war hier der Fehler, und er
-// passt zum Thema dieses Auftrags: das Produkt argumentiert mit Ehrlichkeit und hat an der Stelle
-// geschwiegen, an der ein Klick Geld kostet.
+// DIE NEUE ARBEITSTEILUNG, die dieser Test pinnt:
+//  · `ask.examplesSendHint` trägt NUR die Sofort-Zusage (mega51: ein Beispiel sendet direkt,
+//    das muss vorher erkennbar sein) — und KEIN Kostenwort mehr, in keiner Sprache.
+//  · Die Kosten-Hälfte ist der ZENTRALE `AiCostHint` (ai.costHint), gebunden an
+//    `useAiBillable("answer")` — dieselbe Ableitung wie an jeder anderen Auslösestelle.
+//  · Die bedingte Anzeige selbst (Cloud/Lokal/Laden) belegt GEMOUNTET
+//    tests/ask/mega69-ask-kostenhinweis-mounted.test.tsx.
 //
-// KEIN BESTÄTIGUNGSDIALOG — das war eine bewusste Entscheidung aus mega51 und bleibt. Ein Beispiel,
-// das nur das Feld füllt, wäre kein Beispiel. Der Hinweis steht deshalb VOR dem Klick: an der
-// Beschriftung und als `title` an jedem einzelnen Chip.
+// KEIN BESTÄTIGUNGSDIALOG — das war eine bewusste Entscheidung aus mega51 und bleibt.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -37,21 +42,38 @@ const SPRACHEN: Record<string, Record<string, string>> = {
 // Das Geld-Wort je Sprache. Bewusst der Wortstamm, damit auch eine Umformulierung noch trägt.
 const GELD: Record<string, string> = { de: "kostenpflichtig", en: "chargeable", nl: "betaalde" };
 
-describe("mega61 H · der Beispielklick sagt vorher, dass er Geld kostet", () => {
-  it("der Hinweis nennt BEIDE Hälften — echte Anfrage UND kostenpflichtig, in allen drei Sprachen", () => {
+describe("mega61 H / mega69 B1 · der Beispielklick sagt vorher, was er tut — und Kosten nur bedingt", () => {
+  it("der Sofort-Hinweis existiert in allen drei Sprachen — und trägt KEIN Kostenwort mehr", () => {
     for (const [sprache, texte] of Object.entries(SPRACHEN)) {
       const hinweis = texte["ask.examplesSendHint"] ?? "";
-      expect(hinweis, `${sprache}: der Hinweis fehlt`).toBeTruthy();
+      expect(hinweis, `${sprache}: der Sofort-Hinweis fehlt`).toBeTruthy();
+      // mega69 B1: ein unbedingt angezeigter Satz darf keine Kostenbehauptung tragen — die steht
+      // BEDINGT im zentralen ai.costHint. Dieser Negativ-Pin verhindert, dass sie zurückrutscht.
       expect(
         hinweis.toLowerCase(),
-        `${sprache}: die Geld-Hälfte fehlt weiterhin — „${hinweis}“`,
-      ).toContain(GELD[sprache]);
+        `${sprache}: der unbedingte Hinweis behauptet wieder Kosten — „${hinweis}“`,
+      ).not.toContain(GELD[sprache]);
     }
   });
 
-  it("er steht an der Beschriftung UND als `title` an jedem Chip — vor der Auslösung", () => {
-    // Die zweite Stelle ist die wichtigere: die Beschriftung sieht man, wenn man hinschaut; der
-    // `title` erreicht auch den, der direkt auf einen Chip zielt.
+  it("die Kosten-Hälfte ist der ZENTRALE, bedingte AiCostHint an der Ableitung für „answer“", () => {
+    const ask = readFileSync(join(WURZEL, "apps", "web", "src", "pages", "Ask.tsx"), "utf8");
+    // Dieselbe Ableitung wie überall: useAiBillable("answer") → <AiCostHint billable={…}>.
+    expect(ask).toContain('useAiBillable("answer")');
+    expect(ask).toContain("<AiCostHint billable={answerBillable}");
+    // Und der zentrale Wortlaut nennt die Kosten weiterhin — als Möglichkeit (mega69 B2).
+    for (const [sprache, texte] of Object.entries(SPRACHEN)) {
+      const zentral = texte["ai.costHint"] ?? "";
+      expect(zentral.toLowerCase(), `${sprache}: ai.costHint nennt die Kosten nicht`).toContain(
+        GELD[sprache],
+      );
+      expect(zentral.toLowerCase(), `${sprache}: ai.costHint ist wieder absolut`).toContain(
+        { de: "kann", en: "may", nl: "kan" }[sprache] as string,
+      );
+    }
+  });
+
+  it("der Sofort-Hinweis steht an der Beschriftung UND als `title` an jedem Chip — vor der Auslösung", () => {
     const ask = readFileSync(join(WURZEL, "apps", "web", "src", "pages", "Ask.tsx"), "utf8");
     const vorkommen = ask.split('t("ask.examplesSendHint")').length - 1;
     expect(vorkommen, "der Hinweis steht nicht an beiden Stellen").toBeGreaterThanOrEqual(2);

@@ -108,6 +108,7 @@ export function RichTextEditor({
   onAttachFiles,
   placeholder,
   documentTitle,
+  captionFormRequest,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -124,6 +125,11 @@ export function RichTextEditor({
   onAttachFiles?: ((files: File[]) => void | Promise<void>) | undefined;
   // WP-BILD-1f: Dokument-Titel für den Kontext (Formularfeld, kein HTML). Optional.
   documentTitle?: string | undefined;
+  // AUFTRAG-mega69 Block A: eine Fläche AUSSERHALB des Editors (die Bildergalerie) bittet darum,
+  // das Bildbeschreibungs-Formular für ein bestimmtes verankertes Bild zu öffnen. Es ist DASSELBE
+  // Formular, derselbe describe-Weg — nur der Einstieg kommt von dort, wo das Bild betrachtet wird.
+  // `nonce` macht jede Bitte zu einem neuen Ereignis (zweimal dasselbe Bild öffnet zweimal).
+  captionFormRequest?: { imageId: string; nonce: number } | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung (WP-BILD-1c/1f, mega9 Block F) wird HIER
@@ -470,9 +476,10 @@ export function RichTextEditor({
 
   // AUFTRAG-mega9 Block F: Das Formular öffnet sich über eine SICHTBARE Aktion am Bild — nicht mehr
   // nur, indem man in die Fußnote hineinklickt. Es lädt den aktuellen Fußnotentext als Ausgangswert.
-  const openCaptionForm = (): void => {
-    const image = selectedImage;
-    if (!image || !ref.current?.contains(image)) {
+  // AUFTRAG-mega69 Block A: der Kern nimmt das Ziel-Bild als Argument, damit auch die Galerie
+  // (über `captionFormRequest`) DASSELBE Formular öffnen kann — kein zweites Formular.
+  const openCaptionFormFor = (image: HTMLImageElement): void => {
+    if (!ref.current?.contains(image)) {
       return;
     }
     // Die Fußnote gehört zur figure des Bildes; fehlt sie (Altbestand), legt die bestehende
@@ -495,6 +502,32 @@ export function RichTextEditor({
       draft: (caption.textContent ?? "").trim().slice(0, MAX_CAPTION_TEXT_CHARS),
     });
   };
+
+  const openCaptionForm = (): void => {
+    if (selectedImage) {
+      openCaptionFormFor(selectedImage);
+    }
+  };
+
+  // AUFTRAG-mega69 Block A: die Bitte der Galerie einlösen — das verankerte Bild im Editor-DOM
+  // finden und das Formular dafür öffnen. Attribut-Vergleich statt Selektor-Interpolation (kein
+  // Escaping-Thema); ohne Treffer passiert bewusst nichts (das Bild ist dann nicht mehr im Body).
+  // biome-ignore lint/correctness/useExhaustiveDependencies: openCaptionFormFor liest nur Refs/Setter — die Bitte selbst ist das Ereignis.
+  useEffect(() => {
+    if (!captionFormRequest || mode !== "edit") {
+      return;
+    }
+    const el = ref.current;
+    if (!el) {
+      return;
+    }
+    const image = Array.from(el.querySelectorAll("img[data-image-id]")).find(
+      (img) => img.getAttribute("data-image-id") === captionFormRequest.imageId,
+    );
+    if (image instanceof HTMLImageElement) {
+      openCaptionFormFor(image);
+    }
+  }, [captionFormRequest]);
 
   // AUFTRAG-mega11 Block D (bens SB-4): der JETZIGE Stand des Formularziels, direkt am DOM abgelesen.
   // Eine Quelle für die Anzeige einer späten Antwort UND für das Speichern — genau die Trennung,
@@ -1212,7 +1245,7 @@ export function RichTextEditor({
                   gab — sie trägt den Hinweis dauerhaft, nicht erst am Ergebnis.
                   AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund. */}
               <p className="mt-1">
-                <AiGeneratedNotice /> <AiCostHint />
+                <AiGeneratedNotice /> <AiCostHint billable={imageDescribe.billable} />
               </p>
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
@@ -1343,7 +1376,7 @@ export function RichTextEditor({
           {/* AUFTRAG-mega61 Block E: dieselbe Zusage an der Fußnoten-Leiste.
               AUFTRAG-mega62 Block F: und derselbe Kostenhinweis — es ist derselbe Modellaufruf. */}
           <p className="mt-1">
-            <AiGeneratedNotice /> <AiCostHint />
+            <AiGeneratedNotice /> <AiCostHint billable={imageDescribe.billable} />
           </p>
           {captionAi?.status === "suggestion" ? (
             <div className="mt-1.5 rounded-btn border border-ai/30 bg-surface p-2">

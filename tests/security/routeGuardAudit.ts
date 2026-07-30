@@ -308,6 +308,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (controller/admin), hinter Feature-Flag (Default AUS → 404). Datenschutzsensibel (BetrVG/DSGVO).
   "GET /api/analytics/expertise": { protection: "ko.assign" },
   "GET /api/graph": { protection: "ko.read" },
+  // AUFTRAG-mega68: Nachbarschaft eines Wissensobjekts (Anwendersicht des Wissensnetzes) —
+  // Leserecht wie das Objekt selbst; vertrauliche NACHBARN filtert die Route zusätzlich über die
+  // SCRUM-506-Regel (nur ko.validate sieht sie), belegt in tests/app/mega68-nachbarschaft-route.
+  "GET /api/kos/:id/neighbors": { protection: "ko.read" },
 
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---
   "POST /api/lifecycle/couple": { protection: "ko.create" },
@@ -391,6 +395,16 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // und BEWUSST kein weitergehendes Recht (auch eine Betrachterin muss wissen, welche Flächen es
   // gibt, sonst rendert die Oberfläche für sie tote Knöpfe).
   "GET /api/features": { protection: "auth" },
+
+  // --- Zugangs-Zustand des Imports (import-access-routes.ts) ---
+  // AUFTRAG-mega67 Block C/D: rein LESEND — Schalter-Zustand, die BENANNTEN Zugangsvariablen mit
+  // Ja/Nein und der HTTPS-Riegel. Niemals ein Wert, niemals eine Maske mit Länge; kein Aufruf an
+  // Confluence, kein Schreibweg. `users.manage` wie JEDE Confluence-Import-Route — der Import ist
+  // ohnehin admin-gebunden, eine weichere Tür für seinen Zustand wäre eine Rechte-Ausweitung durch
+  // die Hintertür. Die Route liegt bewusst NICHT hinter dem `confluenceImport`-Schalter: sie muss
+  // den Zustand „ausgeschaltet" melden können, und hinter dem Schalter gäbe es nur einen 404,
+  // ununterscheidbar von „kaputt".
+  "GET /api/import/confluence/zugang": { protection: "users.manage" },
 
   // --- Admin (admin-routes.ts) ---
   // AUFTRAG-mega14 Block H (SCRUM-437): LESENDER Demodaten-Stand für die Bereitschafts-Zeile.
