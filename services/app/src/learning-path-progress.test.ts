@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { demoKennwort } from "../../../tests/support/demoZugang";
 import { buildApp, buildServices } from "./build-app";
 
 // SCRUM-223: Lernpfad-Fortschritt end-to-end über die ECHTEN HTTP-Routen verifizieren
@@ -18,8 +19,9 @@ describe("SCRUM-223: Lernpfad-Fortschritt (HTTP end-to-end)", () => {
     });
     const headers = { authorization: `Bearer ${login.json().token}` };
     // Demo-Seed legt Lernpfade für experte/controller/admin an (SCRUM-217/218).
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers });
-    return { app, headers };
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers });
+    return { app, headers, erikKennwort: demoKennwort(seed, "erik@demo.klarwerk") };
   }
 
   it("Schritt abschließen → Fortschritt steigt, ist persistent und idempotent", async () => {
@@ -95,7 +97,7 @@ describe("SCRUM-223: Lernpfad-Fortschritt (HTTP end-to-end)", () => {
   });
 
   it("Fortschritt ist pro Nutzer getrennt", async () => {
-    const { app, headers } = await adminApp();
+    const { app, headers, erikKennwort } = await adminApp();
     const path = (
       await app.inject({ method: "GET", url: "/api/learning-paths/admin", headers })
     ).json();
@@ -112,7 +114,7 @@ describe("SCRUM-223: Lernpfad-Fortschritt (HTTP end-to-end)", () => {
     const login = await app.inject({
       method: "POST",
       url: "/api/auth/login",
-      payload: { email: "erik@demo.klarwerk", password: "demo-pass-erik" },
+      payload: { email: "erik@demo.klarwerk", password: erikKennwort },
     });
     const erik = { authorization: `Bearer ${login.json().token}` };
     const erikProgress = await app.inject({

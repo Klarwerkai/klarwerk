@@ -25,7 +25,13 @@
   --kw-ink: 22 34 44; /* #16222c */
   --kw-text: 27 30 33; /* #1b1e21 */
   --kw-text-soft: 35 39 43; /* #23272b */
-  --kw-muted: 104 112 120; /* #687078 */
+  /* AUFTRAG-mega62 Block D: #687078 → #636b73. Auf Weiß (5,03:1) und Seite (4,57:1) reichte der
+     alte Wert; auf --kw-hairline-soft (#f0f1f3) lag er bei 4,448:1 — und genau DIESE Paarung trägt
+     der Hinweisbanner (bg-hairline-soft + text-muted), also die Pflichtfläche aus Artikel 50 der
+     KI-Verordnung. Absatz 5 verlangt dort ausdrücklich Barrierefreiheit. Neu: 4,79:1 auf
+     hairline-soft, 4,92:1 auf der Seite, 5,41:1 auf Weiß. Die Rangfolge zu --kw-muted-2 bleibt
+     erhalten (muted-2 ist weiterhin das dunklere Kleintext-Token). */
+  --kw-muted: 99 107 115; /* #636b73 (≥4,5:1 auch auf hairline-soft — mega62 D) */
   --kw-muted-2: 97 106 114; /* #616a72 (E2E-014: ≥4,5:1 auf Weiß und Seite) */
   --kw-hairline: 228 231 234; /* #e4e7ea */
   --kw-hairline-soft: 240 241 243; /* #f0f1f3 */
@@ -33,13 +39,22 @@
   /* Marke */
   --kw-brand: 237 125 14; /* #ED7D0E */
   --kw-brand-300: 245 160 74; /* #f5a04a */
-  --kw-brand-text: 168 86 10; /* #a8560a (Text-Token, ≥4,5:1 — Pin: contrast-tokens-d5) */
+  /* AUFTRAG-mega62 Block D (Register F27): #a8560a → #9c5009. Der alte Wert erfüllte AA auf Weiß
+     (5,25:1) und auf der Seite (4,77:1), lag aber auf der Markenfläche --kw-funke-soft (#FDEADD)
+     bei 4,497:1 — knapp DARUNTER, weshalb diese Fläche für Markentext unbenutzbar war. Neu:
+     5,05:1 auf funke-soft, 5,89:1 auf Weiß, 5,35:1 auf der Seite, 5,56:1 auf modernem Papier. */
+  --kw-brand-text: 156 80 9; /* #9c5009 (Text-Token, ≥4,5:1 auch auf funke-soft — mega62 D) */
 
   /* Trust — nur Reife/Status */
   --kw-trust-pos-text: 37 107 70; /* #256b46 */
   --kw-trust-pos-fill: 58 160 106; /* #3aa06a */
   --kw-trust-pos-bg: 226 241 232; /* #e2f1e8 */
-  --kw-trust-warn-text: 154 106 18; /* #9a6a12 */
+  /* AUFTRAG-mega62 Block D: #9a6a12 → #8f620f. Auf der eigenen Fläche --kw-trust-warn-bg lag der
+     alte Wert bei 4,201:1 und auf der Seite bei 4,294:1 — beides unter AA. Diese Paarung trägt den
+     Entwurfsvermerk der beiden Rechtsseiten, den Hinweis nach einer Ablehnung auf der
+     Anmeldemaske und die Sperrfläche aus Block C; überall hängt eine Pflichtangabe daran.
+     Neu: 4,76:1 auf der eigenen Fläche, 4,87:1 auf der Seite, 5,36:1 auf Weiß. */
+  --kw-trust-warn-text: 143 98 15; /* #8f620f (≥4,5:1 auch auf trust-warn-bg — mega62 D) */
   --kw-trust-warn-fill: 200 134 26; /* #c8861a */
   --kw-trust-warn-bg: 250 241 219; /* #faf1db */
   --kw-trust-crit-text: 158 53 46; /* #9e352e */
@@ -87,9 +102,16 @@
   /* Marke: der Funke */
   --kw-brand: 232 99 10; /* Funke #E8630A */
   --kw-brand-300: 240 164 104; /* Funke hell #F0A468 (Werkbank-Vorlage, Hero-Kicker) */
-  /* --kw-brand-text bleibt ABSICHTLICH klassisch (#a8560a): Funke dunkel (#C2500A) misst auf
-     Papier nur 4,45:1 und fiele knapp unter AA für Kleintext (Messung:
-     tests/app/mega40-kontrast-modern.test.ts). #C2500A dient als Knopf-Fläche (--kw-funke-deep). */
+  /* --kw-brand-text wird hier ABSICHTLICH NICHT überschrieben — das moderne Thema erbt den
+     klassischen Wert. Funke dunkel (#C2500A) misst auf Papier nur 4,45:1 und fiele knapp unter AA
+     für Kleintext (Messung: tests/app/mega40-kontrast-modern.test.ts); #C2500A dient deshalb als
+     Knopf-Fläche (--kw-funke-deep).
+     AUFTRAG-mega63 Block C — KORREKTUR DIESES KOMMENTARS: Bis hierher stand „bleibt ABSICHTLICH
+     klassisch (#a8560a)". Der Klammerwert war seit mega62 D falsch — dort wurde der klassische
+     Token auf #9c5009 verdunkelt, und weil das moderne Thema ERBT, ist er hier mitgewandert.
+     Genau diese stille Mitwanderung war der Kontrastbefund in der modernen Seitenleiste. Ein
+     Kommentar, der einen geerbten Wert als festen ausgibt, verdeckt jede solche Bewegung; deshalb
+     nennt er jetzt die Erbschaft und keinen Zahlenwert, der ein zweites Mal veralten könnte. */
 
   /* Trust in Werkbank-Tönen */
   --kw-trust-pos-text: 17 107 60; /* Gesichert #116B3C */

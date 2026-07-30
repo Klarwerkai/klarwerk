@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import type { AskService } from "../../ask";
 import type { AuthService } from "../../auth";
 import {
@@ -75,6 +76,43 @@ function toDetectSubject(ko: KnowledgeObject): DetectSubject {
   };
 }
 
+// ================================================================================================
+// AUFTRAG-mega64 BLOCK A — DIE ZUGANGSDATEN VERLASSEN DEN QUELLTEXT.
+// ================================================================================================
+//
+// Bis mega64 standen die Kennwörter der drei Demo-Konten wörtlich in dieser Datei. Wer das
+// Repository lesen konnte, kannte die Zugangsdaten jedes freigegebenen Demo-Controllers jeder
+// Instanz, die einmal geseedet wurde — und der Login unterscheidet ein Demo-Konto von einem echten
+// nicht (`services/auth/src/routes.ts:238-272`). Der Brute-Force-Zähler hilft dagegen nicht: er
+// bremst Raten, nicht bereits bekannte richtige Zugangsdaten.
+//
+// AB HIER: bei jeder NEUANLAGE ein frisches Einmalkennwort aus `crypto.randomBytes`. Es steht
+// genau einmal an genau einer Stelle — im Rückgabewert dieses Aufrufs, damit der ausführende
+// Administrator es weitergeben kann. Nicht im Quelltext, nicht in einer Datei, nicht in einem
+// Protokoll.
+//
+// WAS HIER AUSDRÜCKLICH NICHT GEBAUT IST, und zwar weil es die Grundlage nicht gibt: der bessere
+// Weg wäre, die Konten ganz OHNE Kennwort-Login anzulegen und einen erzwungenen Wechsel bei der
+// ersten Anmeldung zu verlangen. Der Auth-Dienst kann das heute nicht — `User`
+// (`services/auth/src/types.ts:3-20`) trägt kein Feld, das „muss wechseln" bedeutet, und der
+// Anmeldeweg hat keine Stelle, die es auswerten könnte. Ein halber Wechselzwang (Kennwort setzen und
+// hoffen) wäre schlechter als ein ehrliches Einmalkennwort, weil er eine Zusage behauptete, die
+// niemand einlöst.
+export interface DemoZugang {
+  email: string;
+  /** Frisch erzeugt, NUR in dieser Antwort. Wird nirgends erneut ausgegeben. */
+  kennwort: string;
+}
+
+/**
+ * Ein Einmalkennwort: 18 Zufallsbytes als base64url, also 24 Zeichen aus 144 Bit Entropie.
+ * Deutlich über `MIN_PASSWORD_LENGTH` (8) des Auth-Dienstes, und base64url enthält keine Zeichen,
+ * die beim Weitergeben über eine Zeile verlorengehen oder eine Shell erschrecken.
+ */
+function einmalkennwort(): string {
+  return randomBytes(18).toString("base64url");
+}
+
 export interface SeedResult {
   skipped: boolean;
   users: number;
@@ -87,6 +125,12 @@ export interface SeedResult {
   pendingRevalidation: number;
   attachments: number;
   sources: number;
+  /**
+   * AUFTRAG-mega64 Block A: die Einmalkennwörter der in DIESEM Lauf NEU angelegten Demo-Konten.
+   * Leer, wenn nichts angelegt wurde (übersprungen) oder alle Konten schon bestanden — ein
+   * vorhandenes Konto bekommt bewusst KEIN neues Kennwort (s. `ensureDemoUser`).
+   */
+  einmalkennwoerter: DemoZugang[];
 }
 
 const EMPTY_RESULT: SeedResult = {
@@ -100,6 +144,7 @@ const EMPTY_RESULT: SeedResult = {
   pendingRevalidation: 0,
   attachments: 0,
   sources: 0,
+  einmalkennwoerter: [],
 };
 
 interface SeedActors {
@@ -120,13 +165,26 @@ export async function seedDemo(
 
   const { auth } = services;
   // Erstes Konto = Admin + freigegeben; weitere via diesen Admin freigeben.
+  // AUFTRAG-mega64 Block A: auch dieses Kennwort ist ab hier ein Einmalkennwort. Der CLI-Weg ist
+  // zwar gegen Produktion abgesichert (`seed.ts:12-17`) und läuft nur auf einer leeren Instanz —
+  // aber „gesperrt" ist eine andere Zusage als „das Kennwort steht nicht im Repository". Es steht
+  // ab hier nicht mehr darin, und `runSeed` gibt es dem Aufrufer einmalig aus.
+  const adminKennwort = einmalkennwort();
   const admin = await auth.register({
     name: "Demo Admin",
     email: "admin@demo.klarwerk",
-    password: "demo-admin-pass",
+    password: adminKennwort,
   });
-  const actors = await seedDemoUsers(services, admin.id);
-  return buildDemoContent(services, { adminId: admin.id, ...actors }, locale);
+  const { controllerId, expertId, zugaenge } = await seedDemoUsers(services, admin.id);
+  const inhalt = await buildDemoContent(
+    services,
+    { adminId: admin.id, controllerId, expertId },
+    locale,
+  );
+  return {
+    ...inhalt,
+    einmalkennwoerter: [{ email: admin.email, kennwort: adminKennwort }, ...zugaenge],
+  };
 }
 
 // SCRUM-181: Admin-getriebener Demo-Seed für eine BEREITS eingerichtete Instanz (Login existiert).
@@ -156,10 +214,23 @@ export async function seedDemoForAdmin(
     // Nur das bestehende Demo-Set aufräumen (echte Daten bleiben), dann frisch seeden.
     await purgeDemoSeed(services, adminId);
   }
-  const actors = await seedDemoUsers(services, adminId);
+  const { controllerId, expertId, zugaenge } = await seedDemoUsers(services, adminId);
   // SCRUM-487: Demo-Sprache = UI-Sprache des ladenden Admins (Frontend sendet locale); Default "de".
-  return buildDemoContent(services, { adminId, ...actors }, opts?.locale ?? "de");
+  const inhalt = await buildDemoContent(
+    services,
+    { adminId, controllerId, expertId },
+    opts?.locale ?? "de",
+  );
+  // AUFTRAG-mega64 Block A: die Einmalkennwörter der neu angelegten Konten reisen mit der Antwort
+  // zum ausführenden Administrator — und nur dorthin.
+  return { ...inhalt, einmalkennwoerter: zugaenge };
 }
+
+// Die E-Mail-Adressen der beiden Demo-Mitnutzer. Ausdrücklich exportiert und ausdrücklich OHNE
+// Kennwörter: die Adresse ist eine Kennung (der Purge braucht sie, Tests suchen danach), das
+// Kennwort ist ein Geheimnis. Bis mega64 standen beide zusammen hier.
+export const DEMO_CONTROLLER_EMAIL = "carla@demo.klarwerk";
+export const DEMO_EXPERT_EMAIL = "erik@demo.klarwerk";
 
 // Legt Controller/Experte an und gibt sie über den (realen) Admin frei. Idempotent: existiert ein
 // Demo-Konto bereits (force-Re-Seed nach unvollständigem Purge), wird es wiederverwendet statt an
@@ -167,54 +238,77 @@ export async function seedDemoForAdmin(
 async function seedDemoUsers(
   services: DemoSeedServices,
   adminId: string,
-): Promise<{ controllerId: string; expertId: string }> {
-  const carlaId = await ensureDemoUser(
+): Promise<{ controllerId: string; expertId: string; zugaenge: DemoZugang[] }> {
+  const carla = await ensureDemoUser(
     services,
-    { name: "Carla Controller", email: "carla@demo.klarwerk", password: "demo-pass-carla" },
+    { name: "Carla Controller", email: DEMO_CONTROLLER_EMAIL },
     adminId,
     "controller",
   );
-  const erikId = await ensureDemoUser(
+  const erik = await ensureDemoUser(
     services,
-    { name: "Erik Experte", email: "erik@demo.klarwerk", password: "demo-pass-erik" },
+    { name: "Erik Experte", email: DEMO_EXPERT_EMAIL },
     adminId,
   );
-  return { controllerId: carlaId, expertId: erikId };
+  return {
+    controllerId: carla.id,
+    expertId: erik.id,
+    // Nur die WIRKLICH neu angelegten Konten tragen ein Kennwort bei.
+    zugaenge: [carla.zugang, erik.zugang].filter((z): z is DemoZugang => z !== null),
+  };
 }
 
-// Ein Demo-Konto sicherstellen: vorhandenes wiederverwenden (freigeben/Rolle angleichen) oder neu
-// anlegen und über den realen Admin freigeben. Keine gefälschten Rechte — nur echte Service-Aufrufe.
+// ================================================================================================
+// AUFTRAG-mega64 BLOCK A — EIN DEMODATEN-LADEVORGANG VERGIBT KEINE RECHTE MEHR.
+// ================================================================================================
+//
+// Hier stand bis mega64 eine stille Rechtevergabe, und sie war der schlimmere Teil des Befunds:
+// Traf der Seed ein VORHANDENES Demo-Konto, gab er es wieder frei (`approveUser`), wenn es nicht
+// freigegeben war, und setzte die Rolle neu (`changeRole`). Wer die Demo-Konten nach einem Pilot
+// bewusst deaktiviert hatte, bekam sie durch einen Klick auf „Demodaten laden" reaktiviert — samt
+// Controllerrolle, ohne dass irgendwo etwas nach einer Rechteänderung ausgesehen hätte.
+//
+// Eine Deaktivierung IST eine Entscheidung. Ein Datenladevorgang darf sie nicht umkehren.
+//
+// Ein Bestandsaufrufer, der die Wiederfreigabe gebraucht hätte, existiert nicht: Der einzige Weg,
+// auf ein vorhandenes Demo-Konto zu treffen, ist der `force`-Re-Seed nach einem unvollständigen
+// Purge — und der Purge entfernt die Demo-Konten (`purgeDemoSeed`, s. u.), sodass sie danach neu
+// angelegt werden. Das vorhandene Konto wird weiterhin WIEDERVERWENDET (kein Scheitern an der
+// Dublettenprüfung), es wird nur nicht mehr angehoben. Die Demo-INHALTE entstehen davon unberührt:
+// sie werden über die Service-Ebene diesem Konto als Urheber zugeschrieben, was keine Freigabe
+// braucht.
 async function ensureDemoUser(
   services: DemoSeedServices,
-  input: { name: string; email: string; password: string },
+  input: { name: string; email: string },
   adminId: string,
   role?: "controller",
-): Promise<string> {
+): Promise<{ id: string; zugang: DemoZugang | null }> {
   const { auth } = services;
   const existing = (await auth.listUsers()).find((u) => u.email === input.email);
   if (existing) {
-    if (!existing.approved) {
-      await auth.approveUser(existing.id, adminId).catch(() => undefined);
-    }
-    if (role && existing.role !== role) {
-      await auth.changeRole(existing.id, role, adminId).catch(() => undefined);
-    }
-    return existing.id;
+    // Wiederverwenden, wie es ist: keine Freigabe, keine Rolle, kein neues Kennwort. Ein
+    // vorhandenes Kennwort zu rotieren wäre der zweite mögliche Fehler — es würde eine Anmeldung
+    // ungültig machen, die jemand vielleicht gerade benutzt, und das ohne dass er darum gebeten hat.
+    return { id: existing.id, zugang: null };
   }
-  const created = await auth.register(input);
+  const kennwort = einmalkennwort();
+  const created = await auth.register({ ...input, password: kennwort });
   await auth.approveUser(created.id, adminId);
   if (role) {
     await auth.changeRole(created.id, role, adminId);
   }
-  return created.id;
+  return { id: created.id, zugang: { email: created.email, kennwort } };
 }
 
 // Baut den eigentlichen Demo-Bestand über die echten Services — identisch für CLI und Admin-UI.
+// AUFTRAG-mega64 Block A: bewusst OHNE `einmalkennwoerter` im Rückgabetyp. Diese Funktion legt keine
+// Konten an und weiß deshalb nichts über Zugangsdaten; die beiden Aufrufer setzen sie an. Ein
+// `Omit` statt eines optionalen Feldes, damit „vergessen anzusetzen" ein Typfehler ist.
 async function buildDemoContent(
   services: DemoSeedServices,
   actors: SeedActors,
   locale: DemoLocale = "de",
-): Promise<SeedResult> {
+): Promise<Omit<SeedResult, "einmalkennwoerter">> {
   const {
     auth,
     ko,

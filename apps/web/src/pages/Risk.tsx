@@ -27,9 +27,9 @@ import {
   sortGapsByPriority,
 } from "../lib/gapPriority";
 import { type RiskLevel, domainRisk } from "../lib/knowledgeHealth";
-import { AUTHOR_UNKNOWN_KEY, authorDisplayName } from "../lib/koAuthor";
 import { buildRiskCockpit } from "../lib/riskCockpit";
 import { phaseLabelKey } from "../lib/taskAction";
+import { useAuthorName } from "../lib/useAuthorName";
 
 const RISK_TONE: Record<RiskLevel, string> = {
   kritisch: "bg-trust-crit-bg text-trust-crit-text",
@@ -76,12 +76,10 @@ export function Risk(): JSX.Element {
   });
 
   const maxKo = Math.max(1, ...(bus.data ?? []).map((b) => b.koCount));
-  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
-  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
-  const nameOf = (uid: string): string =>
-    authorDisplayName(uid, users.data?.find((u) => u.id === uid)?.name, (ref) =>
-      t(AUTHOR_UNKNOWN_KEY, { ref }),
-    );
+  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
+  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
+  // eine Aussage über die Person, wo gar keine feststand.
+  const nameOf = useAuthorName();
 
   // SCRUM-230: kompakter Cockpit-Einstieg aus echten Gap-/Conflict-Daten (kein Score, keine Engine).
   const cockpit = buildRiskCockpit(gaps.data ?? [], conflicts.data ?? []);

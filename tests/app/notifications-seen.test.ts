@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { InMemoryNotificationSeenRepo, PgNotificationSeenRepo } from "../../services/notifications";
+import { demoKennwort } from "../support/demoZugang";
 
 // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke — serverseitig, pro Nutzer, ehrlich.
 // HTTP-E2E über die echten Routen: GET liefert seen je Item, POST /seen markiert bewusst,
@@ -28,8 +29,17 @@ describe("SCRUM-397: Glocke mit Gelesen-Status (HTTP end-to-end)", () => {
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed liefert offene Konflikte/Lücken → die Glocke hat echte Einträge.
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
     return { app, admin, carla };
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { demoKennwort } from "../../../tests/support/demoZugang";
 import { buildApp, buildServices } from "./build-app";
 
 // SCRUM-239: Output-Factory-Workflow über die ECHTEN HTTP-Routen absichern (kein Service-Direktaufruf,
@@ -24,8 +25,13 @@ describe("SCRUM-239: Output-Factory-Workflow (HTTP end-to-end)", () => {
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed liefert Carla (controller) als zweiten Validator (needed=2).
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
     return { app, admin, carla };
   }
 

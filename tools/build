@@ -1,10 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
-npx tsc --noEmit
-# Teil C3 (bens P2-Nacharbeit): eigener Typecheck für die gemounteten .test.tsx-Dateien —
-# jsx + DOM-lib, die der Node-reine Root-Check bewusst nicht hat (tsconfig.tests-tsx.json).
-npx tsc -p tsconfig.tests-tsx.json
+# ==================================================================================================
+# AUFTRAG-mega61 BLOCK M — DAS TOR HATTE ZWEI WAHRHEITEN.
+# ==================================================================================================
+#
+# DER BEFUND (bens GELB aus sammel57): Seit mega59 fuhr DIESES Skript den Web-Typprüfer. Die
+# GitHub-CI ruft aber `npm run build` (.github/workflows/ci.yml), und das Wurzelskript war weiter
+# nur `tsc --noEmit` über `services` und `tests`; der Docker-Build fährt ohnehin nur `vite build`,
+# und `vite build` typprüft nicht. Lokal war das Tor also STRENGER als in der CI — genau die Sorte
+# „bei mir war es grün", die niemand nachvollziehen kann.
+#
+# DIE LÖSUNG, UND WARUM DIESE: Die drei Typprüfläufe stehen jetzt in `npm run build`
+# (package.json), und dieses Skript RUFT SIE AUF, statt sie zu wiederholen. Damit gibt es genau
+# EINE Definition des Typtors, und sie liegt dort, wo die CI sie ohnehin abholt. Der umgekehrte Weg
+# — die CI ruft `./tools/check` — wäre schlechter: die CI fährt ihre Schritte einzeln, damit ein
+# roter Schritt beim Namen genannt wird, und der UI-Smoke aus `tools/check` gehört dort nicht hin.
+#
+# BEWUSST KEIN `references`-Umbau der Wurzel-Konfiguration: sie ist absichtlich Node-rein, ohne DOM
+# und ohne JSX. Der Web-Typecheck braucht beides und bringt es in seiner EIGENEN Config mit.
+npm run --silent build
 
 # AUFTRAG-mega8 Block B: echter Produktions-Build der Oberfläche — derselbe Befehl, den der
 # webbuild-Stage im Dockerfile fährt. Vorher lief im Gate NUR tsc; ein Bündel-Fehler von rollup
@@ -30,4 +45,4 @@ npx tsc -p tsconfig.tests-tsx.json
 # (apps/web/package.json: `tsc --noEmit && vite build`) — der Befehl, den der Container ohnehin fährt.
 # BEWUSST KEIN `references`-Umbau der Wurzel-Config: sie ist absichtlich Node-rein, ohne DOM und ohne
 # JSX. Der Web-Typecheck braucht beides und bringt es in seiner EIGENEN Config mit.
-(cd apps/web && npx tsc --noEmit && npx vite build)
+(cd apps/web && npx vite build)

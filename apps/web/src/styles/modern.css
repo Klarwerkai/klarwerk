@@ -190,6 +190,28 @@
 [data-theme="modern"] .kw-sidebar .text-muted-2 {
   color: rgb(var(--kw-shell-muted-2));
 }
+/* ================================================================================================
+   AUFTRAG-mega63 BLOCK C — DER MARKENTEXT AUF DER NACHTFLÄCHE.
+   ================================================================================================
+   Befund ben (BERICHT-ben-sammel60-mega62.md, Abschnitt 4, Korrektur 2): mega62 D hat
+   --kw-brand-text global von #a8560a auf #9c5009 verdunkelt, damit der Markentext auf den HELLEN
+   Pflichtflächen AA erreicht. Die Verdunkelung zog eine reale DUNKLE Fläche mit: Der ·2-Marker der
+   Gruppentitel nutzt text-brand-text (shell/Sidebar.tsx:295), und diese Leiste steht im modernen
+   Thema auf --kw-night. Ein lokaler Override fehlte, also sank der Kontrast dort von 3,444 auf
+   3,069 — beides ohnehin unter AA, die Verdunkelung machte es nur schlechter.
+
+   DIE HELLEN PFLICHTFLÄCHEN BEHALTEN DEN DUNKLEREN TOKEN. Eine Fläche soll nicht dafür bezahlen,
+   dass eine andere denselben Token benutzt; die Antwort auf zwei gegenläufige Anforderungen ist
+   zwei Werte, nicht ein Kompromiss, der beide verfehlt.
+
+   --kw-brand-300 („Funke hell" #F0A468) ist dafür der vorhandene, benannte Ton: Die
+   Werkbank-Vorlage führt ihn ausdrücklich für Markentext auf Nachtblau (Hero-Kicker), und er misst
+   dort 8,795:1. Kein neuer Wert — ein neuer Markenton wäre eine Palette-Entscheidung und steht
+   einer Korrekturscheibe nicht zu. Gerechnet in tests/legal/mega62-kontrast-pflichtflaechen.test.ts
+   aus DIESER Regel, nicht aus einer hier notierten Zahl. */
+[data-theme="modern"] .kw-sidebar .text-brand-text {
+  color: rgb(var(--kw-brand-300));
+}
 [data-theme="modern"] .kw-sidebar .border-hairline {
   border-color: rgb(255 255 255 / 0.12);
 }

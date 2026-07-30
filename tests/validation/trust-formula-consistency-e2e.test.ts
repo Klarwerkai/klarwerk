@@ -5,6 +5,7 @@ import { libraryMaturity } from "../../apps/web/src/lib/libraryMaturity";
 import { trustExplainer } from "../../apps/web/src/lib/trustExplainer";
 import { useReadiness } from "../../apps/web/src/lib/useReadiness";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-359 / AG-05 / EK-22 / Top Requirement #7: die zentrale Trust-Formel (warn −0.5, down −1, Deckel 99)
 // wirkt serverseitig UND wird über die FE-Helfer (koOverview/useReadiness/libraryMaturity/trustExplainer)
@@ -67,8 +68,13 @@ describe("SCRUM-359: Trust-Formel → Server/FE-Konsistenz (HTTP + FE-Helfer)", 
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed legt Carla (controller, ko.validate) als zweiten, eigenständigen Prüfer an.
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
     return { app, admin, carla };
   }
 

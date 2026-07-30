@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { buildNotifications } from "../../services/app/src/notification-feed";
 import { deriveImpacts } from "../../services/app/src/routes/notifications-routes";
+import { demoKennwort } from "../support/demoZugang";
 
 // PMO-FEA-0002 / EK-19-Richtung: „Hat geholfen" erzeugt eine Wirkungs-Rückmeldung an den
 // ORIGINALAUTOR — auch Monate später sichtbar, kein Selbst-Applaus, keine Zähler/Scores.
@@ -28,8 +29,13 @@ describe("PMO-FEA-0002: Wirkungs-Rückmeldung an den Autor", () => {
       payload: { name: "Admin", email: "a@x.de", password: "secret123" },
     });
     const admin = await login(app, "a@x.de", "secret123");
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, erik };
   }
 

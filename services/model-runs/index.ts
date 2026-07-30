@@ -16,5 +16,9 @@ export type {
   ModelRunContext,
   ModelRunSubject,
   ModelRunSubjectKind,
+  // mega61 Block F: die maschinenlesbare Kennzeichnung erzeugter Ausgaben (KI-VO Art. 50 Abs. 2).
+  AiGeneratedMark,
+  AiOutputMode,
 } from "./src/types";
 export { sanitizeModelRunContext, MAX_MODEL_RUN_CONTEXT_ID_LENGTH } from "./src/types";
+export { aiGeneratedMark, KI_ERZEUGENDE_AUFGABEN } from "./src/types";

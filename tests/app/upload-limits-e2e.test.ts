@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { DEFAULT_UPLOAD_LIMITS, normalizeUploadLimits } from "../../services/knowledge-object";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-421 (Pedi 03.07.): Upload-Grenzen sichtbar + im Admin einstellbar, serverseitig erzwungen.
 describe("SCRUM-421: einstellbare Upload-Grenzen", () => {
@@ -23,8 +24,13 @@ describe("SCRUM-421: einstellbare Upload-Grenzen", () => {
       payload: { name: "Admin", email: "a@x.de", password: "secret123" },
     });
     const admin = await login(app, "a@x.de", "secret123");
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, erik };
   }
 

@@ -155,14 +155,26 @@ describe("mega46 F · der Sammler über die eine Schalter-Wahrheit", () => {
   it("jeder registrierte Schalter wird auch wirklich BENUTZT", () => {
     // Die Gegenrichtung: Ein Schalter, den niemand abfragt, ist eine Auskunft über nichts — die
     // Oberfläche würde eine Fläche schalten, die es nirgends gibt.
+    //
+    // AUFTRAG-mega61: Die Frage „wird er benutzt?" hatte bis hier nur EINE zulässige Antwort —
+    // `schalterAn("name")` im Server. Das passte, solange jeder Schalter über eine Route
+    // entschied. Die zwei Schalter aus mega61 entscheiden über reine OBERFLÄCHEN (die Rechtsseiten
+    // und den Hinweisbanner); serverseitig gibt es dort nichts zu registrieren, gelesen werden sie
+    // ausschließlich in `apps/web` über die Auskunft. Sie deshalb aus dem Registry zu nehmen wäre
+    // falsch herum — dann gäbe es wieder eine Fläche ohne die eine Schalter-Wahrheit.
+    //
+    // Die Regel bleibt also dieselbe („niemand darf ungefragt im Registry stehen"), sie erkennt
+    // jetzt nur BEIDE Leserarten: die Serverabfrage und den Zugriff auf die Auskunft.
     const inhalte = PRODUKT_WURZELN.flatMap(quelldateien)
       .filter((d) => d !== REGISTRY_DATEI)
       .map((d) => readFileSync(join(WURZEL, d), "utf8"));
     for (const name of SCHALTER_NAMEN) {
-      const benutzt = inhalte.some((inhalt) => inhalt.includes(`schalterAn("${name}")`));
-      expect(benutzt, `Schalter „${name}“ steht im Registry, wird aber nirgends abgefragt`).toBe(
-        true,
-      );
+      const serverFragt = inhalte.some((inhalt) => inhalt.includes(`schalterAn("${name}")`));
+      const flaecheFragt = inhalte.some((inhalt) => inhalt.includes(`features?.${name}`));
+      expect(
+        serverFragt || flaecheFragt,
+        `Schalter „${name}“ steht im Registry, wird aber nirgends abgefragt`,
+      ).toBe(true);
     }
   });
 });

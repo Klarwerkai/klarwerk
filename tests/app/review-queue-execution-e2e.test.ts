@@ -7,6 +7,7 @@ import {
   readMineOnlyFilter,
 } from "../../apps/web/src/lib/validationFilters";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-364 / AG-15 follow-up / FR-VAL-05/06 / VC-P1-2: der vollständige persönliche Review-Work-Queue-
 // Fluss end-to-end — Assignment-Benachrichtigung → fokussierte „Mir zugewiesen"-Linse → Bewertung →
@@ -36,9 +37,18 @@ describe("SCRUM-364: Review Queue Execution & Assignment Completion (HTTP end-to
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed legt Carla (controller, ko.validate) + Erik (experte) als eigenständige Nutzer an.
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, carla, erik };
   }
 

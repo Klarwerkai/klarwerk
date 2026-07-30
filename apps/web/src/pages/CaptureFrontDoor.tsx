@@ -11,6 +11,8 @@ import { useSession } from "../app/AuthContext";
 // kein zweiter Wächter, keine kopierte Logik, nur ein weiterer Anmelder an derselben Vorrichtung.
 import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
 import { useToast } from "../app/ToastContext";
+import { AiCostHint } from "../components/AiCostHint";
+import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
 import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
@@ -854,6 +856,13 @@ export function CaptureFrontDoor(): JSX.Element {
                   {t("fd.structureSuggest")}
                 </Button>
                 <HelpTip {...chelp("structureNow")} />
+                {/* AUFTRAG-mega61 Block E: dieselbe Aufgabe wie in Capture, aber hier fehlte der
+                    Hinweis — die Fläche ist eine eigene und muss ihn eigenständig tragen.
+                    AUFTRAG-mega62 Block F: und derselbe Grund gilt für den Kostenhinweis. Er deckt
+                    beide Auslöser dieses Kastens — „Vorschlag strukturieren" hier oben und
+                    „KI-Hilfe anwenden" darunter; sie liegen in derselben umrandeten Fläche. */}
+                <AiGeneratedNotice />
+                <AiCostHint />
                 {!hasStructureInput ? (
                   <span className="text-[12.5px] text-muted">{t("fd.needContentFirst")}</span>
                 ) : (

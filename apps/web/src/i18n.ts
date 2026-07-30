@@ -577,6 +577,14 @@ const de = {
   "adm.seedSkippedInline":
     "Nicht geladen: Der Demo-Bestand ist bereits vorhanden (keine Dubletten). Über „Demodaten entfernen“ kannst du ihn gezielt entfernen und danach neu laden.",
   "adm.seedForce": "Demo-Bestand neu laden",
+  // AUFTRAG-mega64 Block A: Bis mega64 standen die Kennwörter der Demo-Konten im Quelltext. Jetzt
+  // erzeugt der Server bei jeder Neuanlage frische und nennt sie genau einmal — in der Antwort auf
+  // diesen Ladevorgang. Der Text sagt beides ohne Umschweife: dass sie hier stehen, und dass es das
+  // einzige Mal ist. Ein „bitte notieren" ohne die Begründung wäre eine Bitte; mit ihr ist es eine
+  // Auskunft, aus der die Nutzerin die richtige Handlung selbst ableitet.
+  "adm.seedCredsTitle": "Einmalkennwörter der neuen Demo-Konten",
+  "adm.seedCredsHint":
+    "Diese Kennwörter wurden gerade zufällig erzeugt und werden NUR HIER angezeigt. Der Server bewahrt sie nicht auf und kann sie nicht wiederholen. Notiere oder gib sie jetzt weiter — nach einem Neuladen dieser Seite sind sie weg, und die Konten brauchen dann einen Kennwort-Reset.",
   "adm.factory.title": "Werkseinstellungen",
   "adm.factory.help":
     "Setzt die lokale Instanz vollständig zurück: alle Wissensobjekte, Anwender, Konflikte, Lücken und Einstellungen werden gelöscht. Danach beendet sich das Programm; beim nächsten Start beginnt die Ersteinrichtung und der erste Anwender wird wieder Admin. Nur in der lokalen Desktop-Version verfügbar.",
@@ -1709,7 +1717,12 @@ const de = {
     "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Vertrauen entscheiden, nichts wird automatisch gesichert.",
   "ask.examplesLabel": "Beispiele:",
   // AUFTRAG-mega51 BLOCK H: der Klick startet sofort eine echte Anfrage — das steht vorher da.
-  "ask.examplesSendHint": "Ein Klick fragt sofort — das ist eine echte Anfrage an die KI.",
+  // AUFTRAG-mega61 BLOCK H: die zweite Hälfte fehlte. Das Wort „kostenpflichtig“ stand nur im
+  // Codekommentar (pages/Ask.tsx), also genau dort, wo der Nutzer es nie liest. Ein Kommentar im
+  // Code ist keine Aussage an den Nutzer — und ein Produkt, das mit Ehrlichkeit argumentiert, darf
+  // an der Stelle nicht schweigen, an der ein Klick Geld kostet.
+  "ask.examplesSendHint":
+    "Ein Klick fragt sofort — das ist eine echte, kostenpflichtige Anfrage an die KI.",
   "ask.example.valve": "Was tun, wenn Ventil X bei Überdruck schließen muss?",
   "ask.example.filter": "Wie oft muss Filter F3 geprüft werden?",
   "ask.example.dosing": "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
@@ -2085,6 +2098,14 @@ const de = {
   // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag steht eine ehrliche Auskunft statt der
   // rohen Kennung — mit kurzem Merkmal, damit zwei Unbekannte nicht wie eine Person aussehen.
   "ko.authorUnknown": "Unbekannte Person ({{ref}})",
+  // AUFTRAG-mega62 Block H: der DRITTE Zustand. Er sagt bewusst nichts über die Person, sondern
+  // über uns — das Verzeichnis liegt nicht vor. „Unbekannte Person" an dieser Stelle wäre eine
+  // Aussage, die niemand geprüft hat, und genau so sah der Live-Befund aus Register A22 aus.
+  // AUFTRAG-mega63 Block B: aus dem einen dritten Zustand werden ZWEI. „Wird geladen" vergeht von
+  // selbst und verlangt Warten; „nicht abrufbar" bleibt und gehört gemeldet. Ein gemeinsamer Text
+  // machte aus einem Ausfall eine Geduldsfrage.
+  "ko.authorLoading": "Autorenname wird geladen …",
+  "ko.authorUnavailable": "Autorenname nicht abrufbar",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Neuen Autor wählen …",
   "ko.transfer": "Übergeben",
@@ -4096,6 +4117,283 @@ const de = {
   // SCRUM-487 (i18n): Front-Door-Lib-Konstanten (captureFrontDoor.ts).
   "cfd.fallbackTitle": "Unbenanntes Wissensobjekt",
   "cfd.structuringUnavailable": "Ich kann das gerade nicht verlässlich ordnen.",
+
+  // ==============================================================================================
+  // AUFTRAG-mega61 — RECHT UND TRANSPARENZ.
+  // ==============================================================================================
+  //
+  // Die Texte sind NICHT neu formuliert. Sie stammen wörtlich aus den rechtlich abgewogenen
+  // Entwürfen des Kopfes (_relay/kopf/RECHT-Entwuerfe-und-Overview.md Teil 1 und 2,
+  // RECHT-KI-Verordnung-Umsetzung.md Abschnitt 8, RECHT-Klaerung-und-Bannerkonzept.md Teil B) und
+  // sind sinngleich nach EN und NL übersetzt. Wer sie ändert, ändert eine Rechtsaussage.
+  //
+  // DIE `legal.tbd.*`-SCHLÜSSEL SIND EINE EIGENE KLASSE: Angaben, die niemand im Code kennt
+  // (Firmenname, Anschrift, Aufsichtsbehörde, Löschfristen, Anbieter). Sie tragen AUSNAHMSLOS den
+  // Wert von `legal.pending` — nichts wird erfunden, auch nicht plausibel. Der Sammler
+  // tests/legal/mega61-rechtsseiten.test.ts hält das fest und wird rot, sobald einer von ihnen
+  // einen ausgedachten Wert trägt.
+  "legal.pending": "— wird ergänzt —",
+  "legal.tbd.company": "— wird ergänzt —",
+  "legal.tbd.address": "— wird ergänzt —",
+  "legal.tbd.representative": "— wird ergänzt —",
+  "legal.tbd.email": "— wird ergänzt —",
+  "legal.tbd.phone": "— wird ergänzt —",
+  "legal.tbd.register": "— wird ergänzt —",
+  "legal.tbd.vatId": "— wird ergänzt —",
+  "legal.tbd.responsible": "— wird ergänzt —",
+  "legal.tbd.supervisoryAuthority": "— wird ergänzt —",
+  "legal.tbd.dataProtectionContact": "— wird ergänzt —",
+  "legal.tbd.dataProtectionOfficer": "— wird ergänzt —",
+  "legal.tbd.retention": "— wird ergänzt —",
+  "legal.tbd.serverLogs": "— wird ergänzt —",
+  "legal.tbd.modelProvider": "— wird ergänzt —",
+  "legal.tbd.mailProvider": "— wird ergänzt —",
+  "legal.tbd.hostingProvider": "— wird ergänzt —",
+  "legal.tbd.thirdCountry": "— wird ergänzt —",
+  "legal.tbd.version": "— wird ergänzt —",
+
+  // Der Vermerk am Anfang beider Seiten. Ohne ihn sieht ein „— wird ergänzt —“ wie ein Fehler aus,
+  // mit ihm wie eine Absicht — das ist der Unterschied zwischen schlampig und bewusst.
+  "legal.draftNotice.title": "Entwurfsstand",
+  "legal.draftNotice.body":
+    "Diese Anwendung befindet sich in einer geschlossenen Testphase und ist nicht öffentlich zugänglich. Die noch offenen Angaben werden vor der Veröffentlichung ergänzt.",
+  "legal.footer.title": "Rechtliches",
+  "legal.footer.imprint": "Impressum",
+  "legal.footer.privacy": "Datenschutz",
+  "legal.back": "Zurück zur Anwendung",
+
+  "legal.imprint.title": "Impressum",
+  "legal.imprint.ddg": "Angaben gemäß § 5 DDG",
+  "legal.imprint.representedBy": "Vertreten durch",
+  "legal.imprint.contact": "Kontakt",
+  "legal.imprint.contactEmail": "E-Mail",
+  "legal.imprint.contactPhone": "Telefon",
+  "legal.imprint.register": "Registereintrag",
+  "legal.imprint.registerNote":
+    "Dieser Abschnitt entfällt vollständig, solange kein Registereintrag besteht. Er wird dann gestrichen und nicht mit einem Ersatzwert gefüllt.",
+  "legal.imprint.vat": "Umsatzsteuer-Identifikationsnummer",
+  "legal.imprint.vatText": "Umsatzsteuer-Identifikationsnummer gemäß § 27a Umsatzsteuergesetz:",
+  "legal.imprint.responsible": "Verantwortlich für den Inhalt",
+  "legal.imprint.supervisory": "Aufsichtsbehörde",
+  "legal.imprint.supervisoryNote":
+    "Dieser Abschnitt entfällt. Er ist nur bei erlaubnispflichtigen Tätigkeiten anzugeben; die Bereitstellung einer Wissensmanagement-Software ist nach heutigem Stand nicht erlaubnispflichtig.",
+  "legal.imprint.status": "Hinweis zum Stand dieses Angebots",
+  "legal.imprint.statusBody":
+    "Dieses Angebot befindet sich in einer geschlossenen Testphase und ist ausschließlich für eingeladene Benutzerinnen und Benutzer bestimmt. Es richtet sich nicht an Verbraucher und stellt kein öffentliches Angebot dar.",
+
+  "legal.privacy.title": "Datenschutzerklärung",
+  "legal.privacy.label.purpose": "Zweck",
+  "legal.privacy.label.basis": "Rechtsgrundlage",
+  "legal.privacy.label.retention": "Speicherdauer",
+  "legal.privacy.label.recipient": "Empfänger",
+  "legal.privacy.s1.title": "1. Verantwortlicher",
+  "legal.privacy.s1.body":
+    "Verantwortlich für die Verarbeitung personenbezogener Daten im Sinne der Datenschutz-Grundverordnung ist:",
+  "legal.privacy.s1.dpo": "Datenschutzbeauftragter:",
+  "legal.privacy.s2.title": "2. Grundsatz",
+  "legal.privacy.s2.body":
+    "Wir verarbeiten personenbezogene Daten nur, soweit dies für den Betrieb dieser Anwendung erforderlich ist. Wir setzen keine Analyse-, Tracking- oder Werbedienste ein, laden keine Inhalte von fremden Servern in Ihren Browser und verwenden keine Zählpixel. Die Sicherheitsrichtlinie unseres Servers unterbindet Verbindungen Ihres Browsers zu fremden Anbietern technisch.",
+  "legal.privacy.s3.title": "3. Nutzerkonto und Anmeldung",
+  "legal.privacy.s3.body":
+    "Um die Anwendung zu nutzen, benötigen Sie ein Konto. Dabei verarbeiten wir Ihren Namen, Ihre E-Mail-Adresse und Ihr Passwort. Das Passwort wird ausschließlich in einer nicht rückrechenbaren Form gespeichert.",
+  "legal.privacy.s3.purpose":
+    "Bereitstellung des Zugangs, Zuordnung Ihrer Beiträge, Sicherheit des Zugangs.",
+  "legal.privacy.s3.basis":
+    "Erfüllung des Vertrags beziehungsweise des Nutzungsverhältnisses, Artikel 6 Absatz 1 Buchstabe b DSGVO.",
+  "legal.privacy.s3.retention": "Für die Dauer des Nutzungsverhältnisses.",
+  "legal.privacy.s3.reset":
+    "Wenn Sie Ihr Passwort zurücksetzen, erzeugen wir eine einmalige Kennung, die eine Stunde gültig ist und danach verfällt.",
+  "legal.privacy.s4.title": "4. Speicherung in Ihrem Endgerät",
+  "legal.privacy.s4.p1":
+    "Beim Anmelden setzen wir ein Cookie mit dem Namen kw_session. Es enthält ausschließlich eine Zufallskennung, keine Angaben über Sie. Es ist für Skripte im Browser nicht lesbar, wird nur über eine verschlüsselte Verbindung übertragen, gilt vierzehn Tage und wird beim Abmelden gelöscht. Auf unserem Server ist dazu nur ein Prüfwert gespeichert, nicht die Kennung selbst.",
+  "legal.privacy.s4.p2":
+    "Ohne dieses Cookie ist eine angemeldete Nutzung technisch nicht möglich. Es ist damit für den von Ihnen ausdrücklich gewünschten Dienst unbedingt erforderlich; eine Einwilligung ist dafür nach § 25 Absatz 2 TDDDG nicht erforderlich.",
+  "legal.privacy.s4.p3":
+    "Melden Sie sich über das Anmeldeverfahren Ihrer Organisation an, setzen wir für die Dauer dieses Vorgangs drei weitere Kennungen, die zehn Minuten gelten und unmittelbar nach dem Abschluss gelöscht werden.",
+  "legal.privacy.s4.p4":
+    "Zusätzlich merkt sich die Anwendung in Ihrem Browser Ihre Ansichtseinstellungen — etwa Sortierung, gewählte Filter, gespeicherte Ansichten, das gewählte Erscheinungsbild und die Information, welche Einführungshinweise Sie bereits gesehen haben. Diese Angaben verlassen Ihren Browser nicht und werden nicht an uns übertragen. Sie entstehen erst, wenn Sie die betreffende Funktion verwenden. Die Anwendung funktioniert auch dann vollständig, wenn Ihr Browser diese Speicherung unterbindet.",
+  "legal.privacy.s4.p5":
+    "Ein Hinweis, der Ihnen wichtig sein kann: Erfassen Sie Inhalte, während keine Verbindung zu unserem Server besteht, bewahrt die Anwendung diese Entwürfe in Ihrem Browser auf, bis sie übertragen werden können. In dieser Zwischenspeicherung können daher von Ihnen verfasste Inhalte liegen. Sie werden nach der Übertragung dort entfernt.",
+  "legal.privacy.s4.p6":
+    "Wenn Sie die Anwendung als installierte Anwendung nutzen, legt Ihr Browser Programmdateien in einem Zwischenspeicher ab, damit sie schneller startet. Antworten unseres Servers und Ihre Inhalte werden dort nicht abgelegt.",
+  // AUFTRAG-mega63 Block D: Block A führt einen NEUEN Browser-Token ein (kw_signout_pending). Diese
+  // Aufzählung ist eine Tatsachenaussage über unser Produkt — fehlte der Merker darin, wäre sie ab
+  // heute unvollständig. Zweck, Ort, Lebensdauer und die Einordnung als technisch notwendig stehen
+  // ausdrücklich dabei; eine darüber hinausgehende rechtliche Bewertung wird hier nicht getroffen.
+  //
+  // AUFTRAG-mega64 Block B — DIESER ABSATZ IST ERSETZT, NICHT ERGÄNZT.
+  // Er beschrieb bis mega63 einen Merker, der nur in EINEM Tab galt und beim Schließen des Tabs
+  // verschwand. Beides trifft ab mega64 nicht mehr zu: Der Merker liegt im dauerhaften
+  // Browserspeicher (`localStorage`) und gilt in allen Tabs desselben Browsers. Einen zweiten Absatz
+  // DANEBEN zu stellen wäre der schlimmere Fehler — es gäbe dann zwei Aussagen über denselben
+  // Merker, und die Nutzerin müsste raten, welche gilt.
+  //
+  // AUFTRAG-mega65 BLOCK B — DIE FRIST VERSCHWINDET AUS DIESEM ABSATZ, WEIL SIE AUS DEM CODE
+  // VERSCHWINDET.
+  //
+  // Hier stand bis mega64: „kommt beides nicht zustande, verfällt er spätestens nach vierundzwanzig
+  // Stunden von selbst." Das war eine falsche Tatsachenaussage in einer Rechtsfläche, und ben hat sie
+  // am Code belegt (sammel62, ROT-2): `abmeldeschuldGesetzt()` las die gespeicherte Frist in dem Tab,
+  // in dem die Abmeldung scheiterte, überhaupt nicht, und ein beschädigter Eintrag sperrte über
+  // Neustarts hinweg unbegrenzt.
+  //
+  // Der Code führt seit mega65 KEINE Frist mehr (Begründung in `app/abmeldeschuld.ts`), und dieser
+  // Satz sagt jetzt, was wirklich geschieht: Der Merker bleibt, bis die Beendigung bestätigt ist
+  // oder feststeht, dass die Sitzung nicht mehr besteht — und die Anwendung arbeitet von sich aus
+  // darauf hin, bei zurückkehrender Verbindung UND bei jedem neuen Aufbau. Das ist der ehrlichere
+  // Text: Er verspricht keinen Automatismus mit Uhr, sondern benennt die Bedingung und den Weg
+  // dorthin. Der Sammler `tests/legal/mega63-speicher-aufzaehlung.test.ts` hält beide Seiten
+  // zusammen — führt der Code keine Frist, darf hier keine stehen.
+  //
+  // Die vier Pflichtangaben stehen weiterhin vollständig darin: Zweck (Nutzung gesperrt bis zur
+  // Bestätigung), Ort (dauerhafter Browserspeicher, nicht Tab), Lebensdauer (bis zur Bestätigung
+  // bzw. bis feststeht, dass die Sitzung fort ist — ohne Frist), Einordnung (technisch notwendig).
+  "legal.privacy.s4.p7":
+    "Schlägt das Beenden Ihrer Sitzung fehl, merkt sich die Anwendung das in Ihrem Browser unter dem Namen kw_signout_pending, damit die Nutzung gesperrt bleibt, bis unser Server die Beendigung bestätigt hat. Weil Ihre Sitzung für alle Fenster und Tabs desselben Browsers gilt, liegt dieser Merker im dauerhaften Browserspeicher und wirkt ebenfalls in allen Fenstern und Tabs — ein zweites, schon offenes Fenster würde sonst weiter Inhalte zeigen, obwohl die Beendigung offen ist. Der Merker enthält keine Angaben über Sie und wird nicht an uns übertragen. Er bleibt, bis unser Server die Beendigung bestätigt hat oder feststeht, dass Ihre Sitzung nicht mehr besteht; dann wird er gelöscht. Von selbst verfällt er nicht. Damit das nicht an Ihnen hängen bleibt, versucht die Anwendung die Beendigung von sich aus erneut — sobald Ihre Verbindung wieder besteht und bei jedem neuen Aufbau der Anwendung; außerdem können Sie es jederzeit selbst auslösen. Er ist für die von Ihnen gewünschte Abmeldung technisch notwendig.",
+  "legal.privacy.s5.title": "5. Ihre Inhalte",
+  "legal.privacy.s5.body":
+    "Die Anwendung dient dazu, Wissen zu erfassen, zu prüfen und wiederzufinden. Die Inhalte, die Sie eingeben oder hochladen, werden zusammen mit dem Zeitpunkt und Ihrer Kennung als Urheber gespeichert, damit Beiträge nachvollziehbar bleiben und Rückfragen möglich sind.",
+  "legal.privacy.s5.basis": "Vertragserfüllung, Artikel 6 Absatz 1 Buchstabe b DSGVO.",
+  "legal.privacy.s6.title": "6. Nachvollziehbarkeit von Änderungen",
+  "legal.privacy.s6.body":
+    "Um Änderungen an geprüftem Wissen nachvollziehbar zu halten, führen wir ein fortlaufendes, gegen nachträgliche Veränderung gesichertes Protokoll. Darin stehen der Zeitpunkt, die Kennung der handelnden Person, die Art der Handlung und das betroffene Objekt. IP-Adresse und Browserkennung werden in diesem Protokoll nicht gespeichert. Auch Anmeldung und Abmeldung werden auf diese Weise vermerkt.",
+  "legal.privacy.s6.basis":
+    "Berechtigtes Interesse an der Integrität und Nachvollziehbarkeit geprüften Wissens, Artikel 6 Absatz 1 Buchstabe f DSGVO.",
+  "legal.privacy.s7.title": "7. Schutz vor Missbrauch",
+  "legal.privacy.s7.body":
+    "Um automatisierte Anmeldeversuche abzuwehren, zählen wir fehlgeschlagene Versuche kurzzeitig im Arbeitsspeicher, bezogen auf die IP-Adresse und die eingegebene E-Mail-Adresse. Diese Zähler werden nicht dauerhaft gespeichert.",
+  "legal.privacy.s7.basis":
+    "Berechtigtes Interesse an der Sicherheit der Anwendung, Artikel 6 Absatz 1 Buchstabe f DSGVO.",
+  "legal.privacy.s7.logs": "Betriebsprotokolle des Webservers:",
+  "legal.privacy.s8.title": "8. Künstliche Intelligenz",
+  "legal.privacy.s8.p1":
+    "Bestimmte Funktionen der Anwendung nutzen ein KI-Modell — etwa das Beantworten von Fragen, das Strukturieren von Notizen, das Vorschlagen von Bildbeschreibungen und das Gruppieren importierter Inhalte. Damit ein solches Ergebnis entstehen kann, werden die dafür benötigten Inhalte an den Betreiber des Modells übermittelt und dort verarbeitet.",
+  "legal.privacy.s8.p2":
+    "Die Anwendung zeigt Ihnen an jeder betroffenen Stelle an, dass ein KI-Modell arbeitet und welche Art von Modell das ist. Ergebnisse eines KI-Modells können unzutreffend sein und ersetzen keine fachliche Prüfung.",
+  // AUFTRAG-mega61 Block G: dieser Absatz ist die einzige Tatsachenzusicherung der Erklärung, die
+  // am Code hängt. Sie steht hier NUR, weil sie einen Test hat, der rot wird, wenn sie fällt
+  // (tests/ask/mega61-vertraulich-kein-cloud-kontext.test.ts). Und sie behauptet ausdrücklich
+  // NICHT mehr, als sie deckt: der Fragetext selbst wird übermittelt.
+  "legal.privacy.s8.p3":
+    "Wissensobjekte, die als vertraulich oder streng vertraulich eingestuft sind, werden aus dem Zusammenhang entfernt, bevor eine Frage an ein Modell geht — sie erreichen das Modell nicht. Der Text Ihrer Frage wird dagegen übermittelt: Bitte geben Sie dort keine vertraulichen Inhalte ein.",
+  "legal.privacy.s8.thirdCountry": "Übermittlung in ein Drittland:",
+  "legal.privacy.s9.title": "9. E-Mail-Versand",
+  "legal.privacy.s9.body":
+    "Für Einladungen und das Zurücksetzen von Passwörtern versenden wir E-Mails.",
+  "legal.privacy.s9.basis": "Vertragserfüllung, Artikel 6 Absatz 1 Buchstabe b DSGVO.",
+  "legal.privacy.s10.title": "10. Hosting",
+  "legal.privacy.s10.body": "Die Anwendung wird auf gemieteten Servern betrieben.",
+  "legal.privacy.s10.basis":
+    "Berechtigtes Interesse am wirtschaftlichen Betrieb, Artikel 6 Absatz 1 Buchstabe f DSGVO.",
+  "legal.privacy.s11.title": "11. Anbindung weiterer Systeme",
+  "legal.privacy.s11.body":
+    "Wenn Ihre Organisation den Import aus einem eigenen System einrichtet, werden die dafür nötigen Inhalte von dort abgerufen. Welche Systeme das sind, entscheidet Ihre Organisation.",
+  "legal.privacy.s12.title": "12. Keine automatisierte Entscheidung im Einzelfall",
+  "legal.privacy.s12.body":
+    "Es findet keine automatisierte Entscheidungsfindung einschließlich Profilbildung statt, die Ihnen gegenüber rechtliche Wirkung entfaltet oder Sie in ähnlicher Weise erheblich beeinträchtigt. Vorschläge des KI-Modells sind Vorschläge; über die Aufnahme und Prüfung von Wissen entscheiden Menschen.",
+  "legal.privacy.s13.title": "13. Ihre Rechte",
+  "legal.privacy.s13.body":
+    "Sie haben das Recht auf Auskunft über die zu Ihrer Person gespeicherten Daten, auf Berichtigung unrichtiger Daten, auf Löschung, auf Einschränkung der Verarbeitung, auf Datenübertragbarkeit und auf Widerspruch gegen eine Verarbeitung, die auf einem berechtigten Interesse beruht. Haben Sie eine Einwilligung erteilt, können Sie diese jederzeit mit Wirkung für die Zukunft widerrufen; die Rechtmäßigkeit der bis dahin erfolgten Verarbeitung bleibt unberührt.",
+  "legal.privacy.s13.contact": "Kontakt für alle diese Anliegen:",
+  "legal.privacy.s13.authority":
+    "Unabhängig davon haben Sie das Recht, sich bei einer Datenschutz-Aufsichtsbehörde zu beschweren, insbesondere bei der Behörde Ihres Aufenthaltsorts oder der für uns zuständigen Behörde:",
+  "legal.privacy.s14.title": "14. Erforderlichkeit der Angaben",
+  "legal.privacy.s14.body":
+    "Die Angabe von Name, E-Mail-Adresse und Passwort ist für die Einrichtung eines Zugangs erforderlich. Ohne diese Angaben können wir keinen Zugang bereitstellen. Eine gesetzliche Pflicht zur Bereitstellung besteht nicht.",
+  "legal.privacy.s15.title": "15. Änderungen",
+  "legal.privacy.s15.body":
+    "Wir passen diese Erklärung an, wenn sich die Anwendung oder die Rechtslage ändert. Stand dieser Fassung:",
+
+  // ==============================================================================================
+  // AUFTRAG-mega61 BLOCK B/D — DER HINWEISBANNER UND DIE FOLGE EINER ABLEHNUNG.
+  // ==============================================================================================
+  //
+  // WORTLAUT IST HIER RECHTLICH BINDEND. Die Wörter „Zustimmung“ und „Einwilligung“ kommen in
+  // diesen Texten NICHT vor, und das ist keine Stilfrage: Eine Auswahl, die man nicht folgenlos
+  // verweigern kann, wäre als Einwilligung unwirksam — eine Scheineinwilligung täuscht eine
+  // Rechtsgrundlage vor, die sie nicht hat. Was hier stattfindet, ist eine KENNTNISNAHME.
+  // Der Sammler tests/legal/mega61-banner-wortlaut.test.ts hält das über alle drei Sprachen fest.
+  "notice.banner.aria": "Hinweis zur Nutzung dieser Anwendung",
+  "notice.banner.title": "Kurz zur Kenntnis",
+  "notice.banner.ai":
+    "Diese Anwendung arbeitet mit künstlicher Intelligenz. Wenn Sie eine Frage stellen, Notizen strukturieren lassen oder eine Bildbeschreibung vorschlagen lassen, wird ein KI-Modell verwendet, und die dafür benötigten Inhalte werden an dessen Betreiber übermittelt. Ergebnisse eines KI-Modells können unzutreffend sein und ersetzen keine fachliche Prüfung. An jeder betroffenen Stelle sehen Sie, welches Modell arbeitet.",
+  "notice.banner.cookie":
+    "Für die Anmeldung wird ein technisch notwendiges Sitzungscookie gesetzt. Ohne dieses Cookie ist eine angemeldete Nutzung nicht möglich.",
+  "notice.banner.ack": "Verstanden — weiter",
+  "notice.banner.decline": "Nicht einverstanden",
+  "notice.decline.title": "Ihre Sitzung wird beendet",
+  "notice.decline.body":
+    "Das Sitzungscookie ist bereits gesetzt — ohne es ist eine angemeldete Nutzung technisch nicht möglich. Wir beenden deshalb jetzt Ihre Sitzung und löschen das Cookie. Sie können sich jederzeit wieder anmelden.",
+  "notice.decline.confirm": "Sitzung jetzt beenden",
+  "notice.decline.cancel": "Zurück zum Hinweis",
+  "notice.decline.loginHint":
+    "Ihre Sitzung wurde beendet, weil Sie mit dem Hinweis nicht einverstanden waren. Sie können sich jederzeit wieder anmelden.",
+
+  // AUFTRAG-mega62 Block C: Der Wortlaut behauptet NICHTS, was nicht feststeht. Er sagt nicht
+  // „Sie sind noch angemeldet" (das wissen wir nicht) und nicht „es hat geklappt" (das hat es
+  // nicht) — er sagt, dass die Beendigung unbestätigt ist, und was das bedeutet.
+  //
+  // AUFTRAG-mega64 BLOCK C — DIE SICHTBARE ZUSAGE SAGT, WAS DAS PRODUKT TUT.
+  //
+  // Hier stand bis mega63 unqualifiziert: „Solange das nicht geklärt ist, zeigen wir Ihnen keine
+  // Inhalte." Die Datenschutzerklärung nannte gleichzeitig die Tab-Grenze ehrlich (§ 4). Zwei Texte
+  // im selben Produkt, die verschieden viel versprachen — und der weitergehende stand dort, wo die
+  // Nutzerin ihn liest. ben hat das als Zusagenkante gemeldet (sammel61, Finding 2).
+  //
+  // Block B hat die Grenze beseitigt, statt den Text zu beschneiden: die Sperre gilt jetzt wirklich
+  // in allen Fenstern und Tabs. Der Satz darf deshalb stehen bleiben — und weil er das jetzt
+  // wirklich leistet, sagt er es auch AUSDRÜCKLICH. Dazu kommt der zweite Satz, den mega63 noch
+  // nicht sagen konnte: dass die Anwendung es von selbst erneut versucht. Das ist keine neue
+  // Zusicherung, sondern die Beschreibung des Nachholers in `AuthContext` — ohne ihn wüsste die
+  // Nutzerin nicht, dass Warten ein gangbarer Weg ist, und der Knopf wäre der einzige.
+  //
+  // AUFTRAG-mega65 Block B: Der Nachholer greift seit dieser Scheibe auch beim AUFBAU der Anwendung
+  // (bens GELB-1) — und das steht jetzt dabei. Es ist der Anlass, auf den die Nutzerin am ehesten
+  // selbst kommt („ich lade die Seite neu"); ihn zu verschweigen hieße, den Knopf als einzigen Weg
+  // erscheinen zu lassen. Eine Frist nennt dieser Text weiterhin nicht, denn das Produkt führt
+  // keine (s. `app/abmeldeschuld.ts` und § 4 der Datenschutzerklärung).
+  "notice.signOutFailed.title": "Ihre Sitzung wurde nicht bestätigt beendet",
+  "notice.signOutFailed.body":
+    "Sie haben dem Hinweis nicht zugestimmt, und wir wollten Ihre Sitzung beenden — der Server hat das aber nicht bestätigt. Möglicherweise besteht Ihre Sitzung noch. Solange das nicht geklärt ist, zeigen wir Ihnen keine Inhalte, und zwar in allen Fenstern und Tabs dieses Browsers. Die Anwendung versucht die Beendigung von selbst erneut — sobald Ihre Verbindung wieder besteht und bei jedem neuen Aufbau; Sie können es auch sofort erneut versuchen.",
+  "notice.signOutFailed.retry": "Beendigung erneut versuchen",
+  "notice.signOutFailed.again":
+    "Auch dieser Versuch kam nicht durch. Bitte prüfen Sie Ihre Netzverbindung.",
+
+  // ==============================================================================================
+  // AUFTRAG-mega61 BLOCK E — DER DAUERHAFT SICHTBARE SATZ AN JEDER KI-FLÄCHE.
+  // ==============================================================================================
+  //
+  // EIN Schlüssel für ALLE Modellflächen, und das ist Absicht: Artikel 50 Absatz 5 der
+  // KI-Verordnung verlangt die Information „klar und deutlich unterscheidbar“. Was auf jeder
+  // Fläche anders formuliert wäre, wäre weder klar noch unterscheidbar — und ein zweiter Wortlaut
+  // wäre eine zweite Wahrheit über dasselbe Produkt.
+  "ai.generatedNotice": "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+
+  // ==============================================================================================
+  // AUFTRAG-mega62 BLOCK F — DER KOSTENHINWEIS AN JEDER AUSLÖSESTELLE.
+  // ==============================================================================================
+  //
+  // EIN Schlüssel für ALLE Auslösestellen, aus demselben Grund wie oben: Sechs verschieden
+  // formulierte Warnungen über dieselbe Tatsache wären sechs Wahrheiten. Der Wortlaut ist an
+  // `ask.examplesSendHint` angelehnt, der diese Zusage seit mega51 an der Fragenfläche trägt —
+  // aber allgemein gehalten, weil er auch an Knöpfen steht, die nicht „fragen“.
+  //
+  // EIN HALBSATZ, KEINE BELEHRUNG: Er sagt, was der Klick auslöst, nicht was man tun soll.
+  "ai.costHint": "Ein Klick startet sofort eine echte, kostenpflichtige KI-Anfrage.",
+
+  // ==============================================================================================
+  // AUFTRAG-mega62 BLOCK E — DIE KENNZEICHNUNG, DIE MIT DER DATEI DAS HAUS VERLÄSST.
+  // ==============================================================================================
+  //
+  // Der Wortlaut steht so in Abschnitt 8 von `_relay/kopf/RECHT-KI-Verordnung-Umsetzung.md`. Er
+  // nennt das System, die Aufgabe und das Datum — ohne diese drei Angaben wäre „von KI erzeugt“
+  // eine Behauptung ohne Bezug, und in einer weitergereichten Datei ist der Bezug alles, was
+  // bleibt. Der Bildschirmhinweis (`ai.generatedNotice`) kann das nicht leisten: er reist nicht mit.
+  "ai.exportNotice":
+    "Von künstlicher Intelligenz erzeugt (KLARWERK, {{task}}, {{date}}). Inhaltlich zu prüfen.",
+  // Die Aufgabe im Klartext. Nur `answer` ist bisher nötig — die anderen beiden
+  // kennzeichnungspflichtigen Aufgaben (interview, describe) haben heute keinen eigenen Exportweg.
+  "ai.task.answer": "Frage beantwortet",
 };
 
 const en: typeof de = {
@@ -4636,6 +4934,10 @@ const en: typeof de = {
   "adm.seedSkippedInline":
     "Not loaded: the demo set is already present (no duplicates). Use “Remove demo data” to remove it and then load it again.",
   "adm.seedForce": "Reload demo set",
+  // AUFTRAG-mega64 Block A — see the German original for the reasoning.
+  "adm.seedCredsTitle": "One-time passwords for the new demo accounts",
+  "adm.seedCredsHint":
+    "These passwords were just generated at random and are shown HERE ONLY. The server does not keep them and cannot repeat them. Write them down or pass them on now — reloading this page loses them, and the accounts will then need a password reset.",
   "adm.factory.title": "Factory settings",
   "adm.factory.help":
     "Fully resets the local instance: all knowledge objects, users, conflicts, gaps and settings are deleted. The program then quits; on the next start the initial setup runs and the first user becomes admin again. Only available in the local desktop version.",
@@ -5679,7 +5981,8 @@ const en: typeof de = {
   "ask.demoPrefillHint":
     "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
   "ask.examplesLabel": "Examples:",
-  "ask.examplesSendHint": "One click asks right away — this is a real request to the AI.",
+  "ask.examplesSendHint":
+    "One click asks right away — this is a real, chargeable request to the AI.",
   "ask.example.valve": "What to do when Ventil X must close on Überdruck (overpressure)?",
   "ask.example.filter": "How often must Filter F3 be checked?",
   "ask.example.dosing":
@@ -5992,6 +6295,8 @@ const en: typeof de = {
   "ko.transferOriginal": "Original author",
   "ko.author": "Author",
   "ko.authorUnknown": "Unknown person ({{ref}})",
+  "ko.authorLoading": "Loading author name …",
+  "ko.authorUnavailable": "Author name unavailable",
   "ko.originalAuthor": "Original",
   "ko.transferPick": "Choose new author …",
   "ko.transfer": "Transfer",
@@ -7887,6 +8192,169 @@ const en: typeof de = {
   "dcmp.reason.partialDiff": "The field values differ partly and must be reviewed.",
   "cfd.fallbackTitle": "Untitled knowledge object",
   "cfd.structuringUnavailable": "I can't reliably organise this right now.",
+
+  // AUFTRAG-mega61: legal pages, notice banner, AI transparency. Sense-for-sense translation of the
+  // German source, which remains the legally authoritative wording.
+  "legal.pending": "— to be added —",
+  "legal.tbd.company": "— to be added —",
+  "legal.tbd.address": "— to be added —",
+  "legal.tbd.representative": "— to be added —",
+  "legal.tbd.email": "— to be added —",
+  "legal.tbd.phone": "— to be added —",
+  "legal.tbd.register": "— to be added —",
+  "legal.tbd.vatId": "— to be added —",
+  "legal.tbd.responsible": "— to be added —",
+  "legal.tbd.supervisoryAuthority": "— to be added —",
+  "legal.tbd.dataProtectionContact": "— to be added —",
+  "legal.tbd.dataProtectionOfficer": "— to be added —",
+  "legal.tbd.retention": "— to be added —",
+  "legal.tbd.serverLogs": "— to be added —",
+  "legal.tbd.modelProvider": "— to be added —",
+  "legal.tbd.mailProvider": "— to be added —",
+  "legal.tbd.hostingProvider": "— to be added —",
+  "legal.tbd.thirdCountry": "— to be added —",
+  "legal.tbd.version": "— to be added —",
+
+  "legal.draftNotice.title": "Draft status",
+  "legal.draftNotice.body":
+    "This application is in a closed test phase and is not publicly available. The details still open will be added before publication.",
+  "legal.footer.title": "Legal",
+  "legal.footer.imprint": "Imprint",
+  "legal.footer.privacy": "Privacy",
+  "legal.back": "Back to the application",
+
+  "legal.imprint.title": "Imprint",
+  "legal.imprint.ddg": "Information pursuant to section 5 DDG (German Digital Services Act)",
+  "legal.imprint.representedBy": "Represented by",
+  "legal.imprint.contact": "Contact",
+  "legal.imprint.contactEmail": "E-mail",
+  "legal.imprint.contactPhone": "Telephone",
+  "legal.imprint.register": "Register entry",
+  "legal.imprint.registerNote":
+    "This section is omitted entirely as long as there is no register entry. It is then deleted rather than filled with a substitute value.",
+  "legal.imprint.vat": "VAT identification number",
+  "legal.imprint.vatText":
+    "VAT identification number pursuant to section 27a of the German VAT Act:",
+  "legal.imprint.responsible": "Responsible for the content",
+  "legal.imprint.supervisory": "Supervisory authority",
+  "legal.imprint.supervisoryNote":
+    "This section is omitted. It only applies to activities requiring official authorisation; providing knowledge management software does not require authorisation as things stand today.",
+  "legal.imprint.status": "Note on the status of this offering",
+  "legal.imprint.statusBody":
+    "This offering is in a closed test phase and is intended exclusively for invited users. It is not directed at consumers and does not constitute a public offering.",
+
+  "legal.privacy.title": "Privacy policy",
+  "legal.privacy.label.purpose": "Purpose",
+  "legal.privacy.label.basis": "Legal basis",
+  "legal.privacy.label.retention": "Retention period",
+  "legal.privacy.label.recipient": "Recipient",
+  "legal.privacy.s1.title": "1. Controller",
+  "legal.privacy.s1.body":
+    "The controller for the processing of personal data within the meaning of the General Data Protection Regulation is:",
+  "legal.privacy.s1.dpo": "Data protection officer:",
+  "legal.privacy.s2.title": "2. Principle",
+  "legal.privacy.s2.body":
+    "We process personal data only as far as this is necessary to operate this application. We use no analytics, tracking or advertising services, load no content from third-party servers into your browser and use no tracking pixels. Our server's security policy technically prevents your browser from connecting to third-party providers.",
+  "legal.privacy.s3.title": "3. User account and sign-in",
+  "legal.privacy.s3.body":
+    "To use the application you need an account. In doing so we process your name, your e-mail address and your password. The password is stored exclusively in a form that cannot be reversed.",
+  "legal.privacy.s3.purpose": "Providing access, attributing your contributions, securing access.",
+  "legal.privacy.s3.basis":
+    "Performance of the contract or user relationship, Article 6(1)(b) GDPR.",
+  "legal.privacy.s3.retention": "For the duration of the user relationship.",
+  "legal.privacy.s3.reset":
+    "If you reset your password, we create a one-time identifier that is valid for one hour and then expires.",
+  "legal.privacy.s4.title": "4. Storage on your device",
+  "legal.privacy.s4.p1":
+    "When you sign in we set one cookie named kw_session. It contains only a random identifier, no information about you. It cannot be read by scripts in the browser, is transmitted only over an encrypted connection, is valid for fourteen days and is deleted when you sign out. On our server only a check value is stored, not the identifier itself.",
+  "legal.privacy.s4.p2":
+    "Without this cookie, signed-in use is technically impossible. It is therefore strictly necessary for the service you have expressly requested; no consent is required for it under section 25(2) TDDDG.",
+  "legal.privacy.s4.p3":
+    "If you sign in through your organisation's sign-in procedure, we set three further identifiers for the duration of that process; they are valid for ten minutes and are deleted immediately afterwards.",
+  "legal.privacy.s4.p4":
+    "In addition, the application remembers your view settings in your browser — for example sorting, selected filters, saved views, the chosen appearance and which introductory hints you have already seen. This information does not leave your browser and is not transmitted to us. It is only created once you use the function concerned. The application also works fully if your browser prevents this storage.",
+  "legal.privacy.s4.p5":
+    "One note that may matter to you: if you capture content while there is no connection to our server, the application keeps these drafts in your browser until they can be transmitted. This intermediate storage can therefore contain content written by you. It is removed there after transmission.",
+  "legal.privacy.s4.p6":
+    "If you use the application as an installed app, your browser stores program files in a cache so that it starts faster. Responses from our server and your content are not stored there.",
+  "legal.privacy.s4.p7":
+    "If ending your session fails, the application notes this in your browser under the name kw_signout_pending so that use stays blocked until our server has confirmed the session was ended. Because your session applies to every window and tab of the same browser, this marker is kept in persistent browser storage and takes effect in every window and tab as well — otherwise a second window that was already open would keep showing content even though the sign-out is still unresolved. The marker contains no information about you and is not transmitted to us. It stays until our server confirms the session was ended, or until it is established that your session no longer exists; then it is deleted. It does not expire on its own. So that this does not rest on you, the application retries ending the session by itself — as soon as your connection is back and whenever the application is opened again; you can also trigger it yourself at any time. It is technically necessary for the sign-out you requested.",
+  "legal.privacy.s5.title": "5. Your content",
+  "legal.privacy.s5.body":
+    "The application serves to capture, review and retrieve knowledge. The content you enter or upload is stored together with the time and your identifier as author, so that contributions remain traceable and questions can be asked.",
+  "legal.privacy.s5.basis": "Performance of the contract, Article 6(1)(b) GDPR.",
+  "legal.privacy.s6.title": "6. Traceability of changes",
+  "legal.privacy.s6.body":
+    "To keep changes to reviewed knowledge traceable, we keep a continuous log secured against subsequent alteration. It contains the time, the identifier of the acting person, the type of action and the object concerned. IP address and browser identifier are not stored in this log. Sign-in and sign-out are recorded in the same way.",
+  "legal.privacy.s6.basis":
+    "Legitimate interest in the integrity and traceability of reviewed knowledge, Article 6(1)(f) GDPR.",
+  "legal.privacy.s7.title": "7. Protection against misuse",
+  "legal.privacy.s7.body":
+    "To fend off automated sign-in attempts, we briefly count failed attempts in memory, related to the IP address and the e-mail address entered. These counters are not stored permanently.",
+  "legal.privacy.s7.basis":
+    "Legitimate interest in the security of the application, Article 6(1)(f) GDPR.",
+  "legal.privacy.s7.logs": "Web server operating logs:",
+  "legal.privacy.s8.title": "8. Artificial intelligence",
+  "legal.privacy.s8.p1":
+    "Certain functions of the application use an AI model — for example answering questions, structuring notes, suggesting image descriptions and grouping imported content. For such a result to come about, the content required for it is transmitted to the model's operator and processed there.",
+  "legal.privacy.s8.p2":
+    "At every place concerned, the application shows you that an AI model is working and what kind of model it is. Results from an AI model can be incorrect and do not replace professional review.",
+  "legal.privacy.s8.p3":
+    "Knowledge objects classified as confidential or strictly confidential are removed from the context before a question goes to a model — they do not reach the model. The text of your question, however, is transmitted: please do not enter confidential content there.",
+  "legal.privacy.s8.thirdCountry": "Transfer to a third country:",
+  "legal.privacy.s9.title": "9. Sending e-mail",
+  "legal.privacy.s9.body": "We send e-mails for invitations and password resets.",
+  "legal.privacy.s9.basis": "Performance of the contract, Article 6(1)(b) GDPR.",
+  "legal.privacy.s10.title": "10. Hosting",
+  "legal.privacy.s10.body": "The application runs on rented servers.",
+  "legal.privacy.s10.basis": "Legitimate interest in economical operation, Article 6(1)(f) GDPR.",
+  "legal.privacy.s11.title": "11. Connecting further systems",
+  "legal.privacy.s11.body":
+    "If your organisation sets up an import from a system of its own, the content required for it is retrieved from there. Your organisation decides which systems those are.",
+  "legal.privacy.s12.title": "12. No automated decision in individual cases",
+  "legal.privacy.s12.body":
+    "There is no automated decision-making, including profiling, that produces legal effects concerning you or similarly significantly affects you. Suggestions from the AI model are suggestions; people decide on the admission and review of knowledge.",
+  "legal.privacy.s13.title": "13. Your rights",
+  "legal.privacy.s13.body":
+    "You have the right to information about the data stored about you, to rectification of incorrect data, to erasure, to restriction of processing, to data portability and to object to processing based on a legitimate interest. If you have given consent, you may withdraw it at any time with effect for the future; the lawfulness of processing carried out until then remains unaffected.",
+  "legal.privacy.s13.contact": "Contact for all these matters:",
+  "legal.privacy.s13.authority":
+    "Independently of this, you have the right to lodge a complaint with a data protection supervisory authority, in particular with the authority of your place of residence or the authority responsible for us:",
+  "legal.privacy.s14.title": "14. Necessity of the information",
+  "legal.privacy.s14.body":
+    "Providing name, e-mail address and password is necessary to set up access. Without this information we cannot provide access. There is no statutory obligation to provide it.",
+  "legal.privacy.s15.title": "15. Changes",
+  "legal.privacy.s15.body":
+    "We adapt this statement when the application or the legal situation changes. Version date:",
+
+  "notice.banner.aria": "Note on using this application",
+  "notice.banner.title": "Briefly, for your information",
+  "notice.banner.ai":
+    "This application works with artificial intelligence. When you ask a question, have notes structured or have an image description suggested, an AI model is used, and the content required for it is transmitted to its operator. Results from an AI model can be incorrect and do not replace professional review. At every place concerned you can see which model is working.",
+  "notice.banner.cookie":
+    "A technically necessary session cookie is set for signing in. Without this cookie, signed-in use is not possible.",
+  "notice.banner.ack": "Understood — continue",
+  "notice.banner.decline": "I do not agree",
+  "notice.decline.title": "Your session will be ended",
+  "notice.decline.body":
+    "The session cookie is already set — without it, signed-in use is technically impossible. We are therefore ending your session now and deleting the cookie. You can sign in again at any time.",
+  "notice.decline.confirm": "End session now",
+  "notice.decline.cancel": "Back to the notice",
+  "notice.decline.loginHint":
+    "Your session was ended because you did not agree with the notice. You can sign in again at any time.",
+
+  "notice.signOutFailed.title": "Your session was not confirmed as ended",
+  "notice.signOutFailed.body":
+    "You did not agree with the notice and we tried to end your session — but the server did not confirm it. Your session may still be active. Until that is clear, we are not showing you any content, in every window and tab of this browser. The application retries ending the session by itself — as soon as your connection is back and whenever the application is opened again; you can also try again right away.",
+  "notice.signOutFailed.retry": "Try ending the session again",
+  "notice.signOutFailed.again":
+    "This attempt did not get through either. Please check your network connection.",
+
+  "ai.generatedNotice": "Generated by artificial intelligence — please review professionally.",
+  "ai.costHint": "One click immediately starts a real, chargeable AI request.",
+  "ai.exportNotice":
+    "Generated by artificial intelligence (KLARWERK, {{task}}, {{date}}). To be reviewed for content.",
+  "ai.task.answer": "question answered",
 };
 
 const nl: typeof de = {
@@ -8422,6 +8890,10 @@ const nl: typeof de = {
   "adm.seedSkippedInline":
     "Niet geladen: de demovoorraad is al aanwezig (geen duplicaten). Gebruik „Demogegevens verwijderen“ om deze te verwijderen en daarna opnieuw te laden.",
   "adm.seedForce": "Demovoorraad opnieuw laden",
+  // AUFTRAG-mega64 Block A — zie de Duitse versie voor de onderbouwing.
+  "adm.seedCredsTitle": "Eenmalige wachtwoorden van de nieuwe demoaccounts",
+  "adm.seedCredsHint":
+    "Deze wachtwoorden zijn net willekeurig gegenereerd en worden ALLEEN HIER weergegeven. De server bewaart ze niet en kan ze niet herhalen. Noteer ze of geef ze nu door — bij het opnieuw laden van deze pagina zijn ze weg en hebben de accounts een wachtwoordreset nodig.",
   "adm.factory.title": "Fabrieksinstellingen",
   "adm.factory.help":
     "Zet de lokale instantie volledig terug: alle kennisobjecten, gebruikers, conflicten, hiaten en instellingen worden verwijderd. Daarna sluit het programma zich af; bij de volgende start begint de eerste installatie en wordt de eerste gebruiker weer admin. Alleen beschikbaar in de lokale desktopversie.",
@@ -9467,7 +9939,7 @@ const nl: typeof de = {
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
   "ask.examplesLabel": "Voorbeelden:",
-  "ask.examplesSendHint": "Eén klik vraagt meteen — dit is een echte aanvraag aan de AI.",
+  "ask.examplesSendHint": "Eén klik vraagt meteen — dit is een echte, betaalde aanvraag aan de AI.",
   "ask.example.valve": "Wat te doen als klep X bij overdruk moet sluiten?",
   "ask.example.filter": "Hoe vaak moet filter F3 gecontroleerd worden?",
   "ask.example.dosing": "Waarom schommelt de doseerwaarde bij lijn L4 na elke ploegwissel?",
@@ -9774,6 +10246,8 @@ const nl: typeof de = {
   "ko.transferOriginal": "Oorspronkelijke auteur",
   "ko.author": "Auteur",
   "ko.authorUnknown": "Onbekende persoon ({{ref}})",
+  "ko.authorLoading": "Auteursnaam wordt geladen …",
+  "ko.authorUnavailable": "Auteursnaam niet beschikbaar",
   "ko.originalAuthor": "Origineel",
   "ko.transferPick": "Nieuwe auteur kiezen …",
   "ko.transfer": "Overdragen",
@@ -11664,6 +12138,170 @@ const nl: typeof de = {
     "De veldwaarden verschillen gedeeltelijk en moeten worden gecontroleerd.",
   "cfd.fallbackTitle": "Naamloos kennisobject",
   "cfd.structuringUnavailable": "Ik kan dit op dit moment niet betrouwbaar ordenen.",
+
+  // AUFTRAG-mega61: rechtspagina's, kennisgevingsbanner, AI-transparantie. Betekenisgetrouwe
+  // vertaling van de Duitse bron, die juridisch maatgevend blijft.
+  "legal.pending": "— wordt aangevuld —",
+  "legal.tbd.company": "— wordt aangevuld —",
+  "legal.tbd.address": "— wordt aangevuld —",
+  "legal.tbd.representative": "— wordt aangevuld —",
+  "legal.tbd.email": "— wordt aangevuld —",
+  "legal.tbd.phone": "— wordt aangevuld —",
+  "legal.tbd.register": "— wordt aangevuld —",
+  "legal.tbd.vatId": "— wordt aangevuld —",
+  "legal.tbd.responsible": "— wordt aangevuld —",
+  "legal.tbd.supervisoryAuthority": "— wordt aangevuld —",
+  "legal.tbd.dataProtectionContact": "— wordt aangevuld —",
+  "legal.tbd.dataProtectionOfficer": "— wordt aangevuld —",
+  "legal.tbd.retention": "— wordt aangevuld —",
+  "legal.tbd.serverLogs": "— wordt aangevuld —",
+  "legal.tbd.modelProvider": "— wordt aangevuld —",
+  "legal.tbd.mailProvider": "— wordt aangevuld —",
+  "legal.tbd.hostingProvider": "— wordt aangevuld —",
+  "legal.tbd.thirdCountry": "— wordt aangevuld —",
+  "legal.tbd.version": "— wordt aangevuld —",
+
+  "legal.draftNotice.title": "Conceptversie",
+  "legal.draftNotice.body":
+    "Deze toepassing bevindt zich in een gesloten testfase en is niet openbaar toegankelijk. De nog openstaande gegevens worden vóór publicatie aangevuld.",
+  "legal.footer.title": "Juridisch",
+  "legal.footer.imprint": "Colofon",
+  "legal.footer.privacy": "Privacy",
+  "legal.back": "Terug naar de toepassing",
+
+  "legal.imprint.title": "Colofon",
+  "legal.imprint.ddg": "Gegevens conform § 5 DDG (Duitse wet digitale diensten)",
+  "legal.imprint.representedBy": "Vertegenwoordigd door",
+  "legal.imprint.contact": "Contact",
+  "legal.imprint.contactEmail": "E-mail",
+  "legal.imprint.contactPhone": "Telefoon",
+  "legal.imprint.register": "Registerinschrijving",
+  "legal.imprint.registerNote":
+    "Dit onderdeel vervalt volledig zolang er geen registerinschrijving bestaat. Het wordt dan geschrapt en niet met een vervangende waarde gevuld.",
+  "legal.imprint.vat": "Btw-identificatienummer",
+  "legal.imprint.vatText": "Btw-identificatienummer conform § 27a van de Duitse omzetbelastingwet:",
+  "legal.imprint.responsible": "Verantwoordelijk voor de inhoud",
+  "legal.imprint.supervisory": "Toezichthoudende instantie",
+  "legal.imprint.supervisoryNote":
+    "Dit onderdeel vervalt. Het geldt alleen bij vergunningplichtige activiteiten; het aanbieden van kennismanagementsoftware is naar de huidige stand niet vergunningplichtig.",
+  "legal.imprint.status": "Opmerking over de stand van dit aanbod",
+  "legal.imprint.statusBody":
+    "Dit aanbod bevindt zich in een gesloten testfase en is uitsluitend bestemd voor uitgenodigde gebruikers. Het richt zich niet op consumenten en vormt geen openbaar aanbod.",
+
+  "legal.privacy.title": "Privacyverklaring",
+  "legal.privacy.label.purpose": "Doel",
+  "legal.privacy.label.basis": "Rechtsgrondslag",
+  "legal.privacy.label.retention": "Bewaartermijn",
+  "legal.privacy.label.recipient": "Ontvanger",
+  "legal.privacy.s1.title": "1. Verwerkingsverantwoordelijke",
+  "legal.privacy.s1.body":
+    "Verwerkingsverantwoordelijke voor de verwerking van persoonsgegevens in de zin van de Algemene verordening gegevensbescherming is:",
+  "legal.privacy.s1.dpo": "Functionaris voor gegevensbescherming:",
+  "legal.privacy.s2.title": "2. Uitgangspunt",
+  "legal.privacy.s2.body":
+    "Wij verwerken persoonsgegevens uitsluitend voor zover dat nodig is voor de werking van deze toepassing. Wij gebruiken geen analyse-, tracking- of advertentiediensten, laden geen inhoud van externe servers in uw browser en gebruiken geen telpixels. Het beveiligingsbeleid van onze server verhindert technisch dat uw browser verbinding maakt met externe aanbieders.",
+  "legal.privacy.s3.title": "3. Gebruikersaccount en aanmelden",
+  "legal.privacy.s3.body":
+    "Om de toepassing te gebruiken hebt u een account nodig. Daarbij verwerken wij uw naam, uw e-mailadres en uw wachtwoord. Het wachtwoord wordt uitsluitend opgeslagen in een vorm die niet terug te rekenen is.",
+  "legal.privacy.s3.purpose": "Toegang bieden, uw bijdragen toewijzen, de toegang beveiligen.",
+  "legal.privacy.s3.basis":
+    "Uitvoering van de overeenkomst respectievelijk de gebruiksrelatie, artikel 6, lid 1, onder b, AVG.",
+  "legal.privacy.s3.retention": "Voor de duur van de gebruiksrelatie.",
+  "legal.privacy.s3.reset":
+    "Als u uw wachtwoord opnieuw instelt, maken wij een eenmalige code aan die één uur geldig is en daarna vervalt.",
+  "legal.privacy.s4.title": "4. Opslag op uw apparaat",
+  "legal.privacy.s4.p1":
+    "Bij het aanmelden plaatsen wij één cookie met de naam kw_session. Het bevat uitsluitend een willekeurige code, geen gegevens over u. Het is niet leesbaar voor scripts in de browser, wordt alleen via een versleutelde verbinding verzonden, is veertien dagen geldig en wordt bij het afmelden verwijderd. Op onze server is daarvan alleen een controlewaarde opgeslagen, niet de code zelf.",
+  "legal.privacy.s4.p2":
+    "Zonder dit cookie is aangemeld gebruik technisch niet mogelijk. Het is daarmee strikt noodzakelijk voor de door u uitdrukkelijk gewenste dienst; toestemming is daarvoor conform § 25, lid 2, TDDDG niet vereist.",
+  "legal.privacy.s4.p3":
+    "Meldt u zich aan via de aanmeldprocedure van uw organisatie, dan plaatsen wij voor de duur van dat proces drie extra codes, die tien minuten geldig zijn en direct na afloop worden verwijderd.",
+  "legal.privacy.s4.p4":
+    "Daarnaast onthoudt de toepassing in uw browser uw weergave-instellingen — bijvoorbeeld sortering, gekozen filters, opgeslagen weergaven, het gekozen uiterlijk en welke introductietips u al hebt gezien. Deze gegevens verlaten uw browser niet en worden niet aan ons doorgegeven. Ze ontstaan pas wanneer u de betreffende functie gebruikt. De toepassing werkt ook volledig als uw browser deze opslag verhindert.",
+  "legal.privacy.s4.p5":
+    "Een opmerking die voor u van belang kan zijn: legt u inhoud vast terwijl er geen verbinding met onze server is, dan bewaart de toepassing deze concepten in uw browser totdat ze kunnen worden verzonden. In deze tussenopslag kan daarom door u geschreven inhoud staan. Die wordt daar na verzending verwijderd.",
+  "legal.privacy.s4.p6":
+    "Gebruikt u de toepassing als geïnstalleerde app, dan legt uw browser programmabestanden in een buffer zodat de app sneller start. Antwoorden van onze server en uw inhoud worden daar niet opgeslagen.",
+  "legal.privacy.s4.p7":
+    "Mislukt het beëindigen van uw sessie, dan noteert de toepassing dat in uw browser onder de naam kw_signout_pending, zodat het gebruik geblokkeerd blijft totdat onze server de beëindiging heeft bevestigd. Omdat uw sessie voor alle vensters en tabbladen van dezelfde browser geldt, staat deze markering in de blijvende browseropslag en werkt zij ook in alle vensters en tabbladen — een tweede, al geopend venster zou anders inhoud blijven tonen terwijl de beëindiging nog openstaat. De markering bevat geen gegevens over u en wordt niet aan ons doorgegeven. Zij blijft staan totdat onze server de beëindiging heeft bevestigd of vaststaat dat uw sessie niet meer bestaat; dan wordt zij verwijderd. Vanzelf vervalt zij niet. Om dat niet bij u te laten liggen, probeert de toepassing de beëindiging zelf opnieuw — zodra uw verbinding weer bestaat en bij elke nieuwe start van de toepassing; u kunt het ook op elk moment zelf in gang zetten. Zij is technisch noodzakelijk voor de door u gewenste afmelding.",
+  "legal.privacy.s5.title": "5. Uw inhoud",
+  "legal.privacy.s5.body":
+    "De toepassing dient om kennis vast te leggen, te toetsen en terug te vinden. De inhoud die u invoert of uploadt, wordt samen met het tijdstip en uw code als auteur opgeslagen, zodat bijdragen navolgbaar blijven en vragen mogelijk zijn.",
+  "legal.privacy.s5.basis": "Uitvoering van de overeenkomst, artikel 6, lid 1, onder b, AVG.",
+  "legal.privacy.s6.title": "6. Navolgbaarheid van wijzigingen",
+  "legal.privacy.s6.body":
+    "Om wijzigingen aan getoetste kennis navolgbaar te houden, voeren wij een doorlopend logboek dat is beveiligd tegen wijziging achteraf. Daarin staan het tijdstip, de code van de handelende persoon, de aard van de handeling en het betrokken object. IP-adres en browserkenmerk worden in dit logboek niet opgeslagen. Ook aan- en afmelden worden op deze wijze vastgelegd.",
+  "legal.privacy.s6.basis":
+    "Gerechtvaardigd belang bij de integriteit en navolgbaarheid van getoetste kennis, artikel 6, lid 1, onder f, AVG.",
+  "legal.privacy.s7.title": "7. Bescherming tegen misbruik",
+  "legal.privacy.s7.body":
+    "Om geautomatiseerde aanmeldpogingen af te weren, tellen wij mislukte pogingen kortstondig in het werkgeheugen, gerelateerd aan het IP-adres en het ingevoerde e-mailadres. Deze tellers worden niet duurzaam opgeslagen.",
+  "legal.privacy.s7.basis":
+    "Gerechtvaardigd belang bij de beveiliging van de toepassing, artikel 6, lid 1, onder f, AVG.",
+  "legal.privacy.s7.logs": "Bedrijfslogboeken van de webserver:",
+  "legal.privacy.s8.title": "8. Kunstmatige intelligentie",
+  "legal.privacy.s8.p1":
+    "Bepaalde functies van de toepassing gebruiken een AI-model — bijvoorbeeld het beantwoorden van vragen, het structureren van notities, het voorstellen van beeldbeschrijvingen en het groeperen van geïmporteerde inhoud. Om zo'n resultaat te laten ontstaan, wordt de daarvoor benodigde inhoud aan de exploitant van het model doorgegeven en daar verwerkt.",
+  "legal.privacy.s8.p2":
+    "De toepassing toont u op elke betrokken plek dat een AI-model werkt en welk soort model dat is. Resultaten van een AI-model kunnen onjuist zijn en vervangen geen vakinhoudelijke toetsing.",
+  "legal.privacy.s8.p3":
+    "Kennisobjecten die als vertrouwelijk of streng vertrouwelijk zijn ingedeeld, worden uit de context verwijderd voordat een vraag naar een model gaat — zij bereiken het model niet. De tekst van uw vraag wordt daarentegen wel doorgegeven: voer daar alstublieft geen vertrouwelijke inhoud in.",
+  "legal.privacy.s8.thirdCountry": "Doorgifte naar een derde land:",
+  "legal.privacy.s9.title": "9. Verzending van e-mail",
+  "legal.privacy.s9.body":
+    "Voor uitnodigingen en het opnieuw instellen van wachtwoorden versturen wij e-mails.",
+  "legal.privacy.s9.basis": "Uitvoering van de overeenkomst, artikel 6, lid 1, onder b, AVG.",
+  "legal.privacy.s10.title": "10. Hosting",
+  "legal.privacy.s10.body": "De toepassing draait op gehuurde servers.",
+  "legal.privacy.s10.basis":
+    "Gerechtvaardigd belang bij een economische bedrijfsvoering, artikel 6, lid 1, onder f, AVG.",
+  "legal.privacy.s11.title": "11. Aansluiting van verdere systemen",
+  "legal.privacy.s11.body":
+    "Richt uw organisatie een import uit een eigen systeem in, dan wordt de daarvoor benodigde inhoud daar opgehaald. Welke systemen dat zijn, bepaalt uw organisatie.",
+  "legal.privacy.s12.title": "12. Geen geautomatiseerde besluitvorming in individuele gevallen",
+  "legal.privacy.s12.body":
+    "Er vindt geen geautomatiseerde besluitvorming, met inbegrip van profilering, plaats die voor u rechtsgevolgen heeft of u op vergelijkbare wijze aanmerkelijk treft. Voorstellen van het AI-model zijn voorstellen; over het opnemen en toetsen van kennis beslissen mensen.",
+  "legal.privacy.s13.title": "13. Uw rechten",
+  "legal.privacy.s13.body":
+    "U hebt recht op inzage in de over u opgeslagen gegevens, op rectificatie van onjuiste gegevens, op wissing, op beperking van de verwerking, op gegevensoverdraagbaarheid en op bezwaar tegen een verwerking die op een gerechtvaardigd belang berust. Hebt u toestemming gegeven, dan kunt u die te allen tijde voor de toekomst intrekken; de rechtmatigheid van de tot dan toe verrichte verwerking blijft onaangetast.",
+  "legal.privacy.s13.contact": "Contact voor al deze verzoeken:",
+  "legal.privacy.s13.authority":
+    "Onafhankelijk daarvan hebt u het recht een klacht in te dienen bij een toezichthoudende autoriteit voor gegevensbescherming, in het bijzonder bij de autoriteit van uw verblijfplaats of de voor ons bevoegde autoriteit:",
+  "legal.privacy.s14.title": "14. Noodzaak van de gegevens",
+  "legal.privacy.s14.body":
+    "Het opgeven van naam, e-mailadres en wachtwoord is noodzakelijk om toegang in te richten. Zonder deze gegevens kunnen wij geen toegang bieden. Een wettelijke verplichting tot verstrekking bestaat niet.",
+  "legal.privacy.s15.title": "15. Wijzigingen",
+  "legal.privacy.s15.body":
+    "Wij passen deze verklaring aan wanneer de toepassing of de rechtssituatie verandert. Stand van deze versie:",
+
+  "notice.banner.aria": "Kennisgeving over het gebruik van deze toepassing",
+  "notice.banner.title": "Kort ter kennisname",
+  "notice.banner.ai":
+    "Deze toepassing werkt met kunstmatige intelligentie. Wanneer u een vraag stelt, notities laat structureren of een beeldbeschrijving laat voorstellen, wordt een AI-model gebruikt en wordt de daarvoor benodigde inhoud aan de exploitant ervan doorgegeven. Resultaten van een AI-model kunnen onjuist zijn en vervangen geen vakinhoudelijke toetsing. Op elke betrokken plek ziet u welk model werkt.",
+  "notice.banner.cookie":
+    "Voor het aanmelden wordt een technisch noodzakelijk sessiecookie geplaatst. Zonder dit cookie is aangemeld gebruik niet mogelijk.",
+  "notice.banner.ack": "Begrepen — verder",
+  "notice.banner.decline": "Niet akkoord",
+  "notice.decline.title": "Uw sessie wordt beëindigd",
+  "notice.decline.body":
+    "Het sessiecookie is al geplaatst — zonder dat cookie is aangemeld gebruik technisch niet mogelijk. Wij beëindigen daarom nu uw sessie en verwijderen het cookie. U kunt zich op elk moment opnieuw aanmelden.",
+  "notice.decline.confirm": "Sessie nu beëindigen",
+  "notice.decline.cancel": "Terug naar de kennisgeving",
+  "notice.decline.loginHint":
+    "Uw sessie is beëindigd omdat u niet akkoord ging met de kennisgeving. U kunt zich op elk moment opnieuw aanmelden.",
+
+  "notice.signOutFailed.title": "Uw sessie is niet bevestigd beëindigd",
+  "notice.signOutFailed.body":
+    "U ging niet akkoord met de kennisgeving en wij wilden uw sessie beëindigen — de server heeft dat echter niet bevestigd. Mogelijk bestaat uw sessie nog. Zolang dat niet duidelijk is, tonen wij u geen inhoud, en wel in alle vensters en tabbladen van deze browser. De toepassing probeert de beëindiging zelf opnieuw — zodra uw verbinding weer bestaat en bij elke nieuwe start van de toepassing; u kunt het ook direct opnieuw proberen.",
+  "notice.signOutFailed.retry": "Beëindiging opnieuw proberen",
+  "notice.signOutFailed.again": "Ook deze poging kwam niet door. Controleer uw netwerkverbinding.",
+
+  "ai.generatedNotice":
+    "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+  "ai.costHint": "Eén klik start meteen een echte, betaalde AI-aanvraag.",
+  "ai.exportNotice":
+    "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",
+  "ai.task.answer": "vraag beantwoord",
 };
 
 void i18n.use(initReactI18next).init({

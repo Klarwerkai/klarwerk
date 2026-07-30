@@ -7,6 +7,10 @@ import { useLocation } from "react-router-dom";
 import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
 // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
 import { KlaraAssistant } from "../components/KlaraAssistant";
+// AUFTRAG-mega61 Block A/B: Fußbereich und Hinweisbanner auf derselben Ebene wie Kopfzeile und
+// Meldungsfläche — bewusst NICHT im Torwächter, damit der Anmeldeweg unberührt bleibt.
+import { LegalFooter } from "../legal/LegalPages";
+import { NoticeBanner } from "../legal/NoticeBanner";
 import { CommandPalette } from "./CommandPalette";
 import { MobileNavDrawer } from "./MobileNavDrawer";
 import { Sidebar } from "./Sidebar";
@@ -41,6 +45,16 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
     return (
       <div className="h-full">
         {children}
+        {/* AUFTRAG-mega61 Block A/B: auch die shell-lose Route trägt Hinweis und Fußbereich —
+            „auf jeder Seite" heißt jede, sonst wäre die Zusage an genau einer Stelle unwahr.
+            BEWUSST ohne Umbau des Layouts dieser Route (kein flex, kein eigener Scrollbereich):
+            sie ist durch Rauchproben festgenagelt, und beides zusammen wäre eine Änderung zu viel
+            in einer Runde. Beide Flächen hängen im normalen Fluss hinter dem Inhalt — für einen
+            Fußbereich ist das ohnehin der richtige Ort. */}
+        <NoticeBanner />
+        <div className="px-4">
+          <LegalFooter />
+        </div>
         <ToastViewport />
       </div>
     );
@@ -63,8 +77,18 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
               <Topbar narrow onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={hamburgerRef} />
             </ModalRegion>
             <main ref={mainRef} className="flex-1 overflow-y-auto px-4 py-5">
-              <ModalRegion>{children}</ModalRegion>
+              <ModalRegion>
+                {children}
+                <LegalFooter />
+              </ModalRegion>
             </main>
+            {/* AUFTRAG-mega61 Block B: der Hinweis liegt als GESCHWISTER der Inhaltsfläche, nicht
+                darüber. Er nimmt echten Layout-Platz und verdeckt deshalb kein Bedienelement —
+                weder auf schmalen noch auf breiten Geräten, und ohne eine Ausgleichs-Polsterung,
+                die irgendwann jemand vergisst. */}
+            <ModalRegion>
+              <NoticeBanner />
+            </ModalRegion>
             <ModalRegion>
               <CommandPalette />
               <ToastViewport />
@@ -95,8 +119,14 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             <Topbar />
           </ModalRegion>
           <main ref={mainRef} className="flex-1 overflow-y-auto px-9 py-7">
-            <ModalRegion>{children}</ModalRegion>
+            <ModalRegion>
+              {children}
+              <LegalFooter />
+            </ModalRegion>
           </main>
+          <ModalRegion>
+            <NoticeBanner />
+          </ModalRegion>
         </div>
         <ModalRegion>
           <CommandPalette />

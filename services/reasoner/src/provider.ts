@@ -108,10 +108,17 @@ export interface ReasonerProvider {
     locale?: ReasonerLocale,
     confidential?: boolean,
   ): Promise<StructureResult>;
+  // AUFTRAG-mega61 Block G: `confidential` — dieselbe Bauform wie bei `structure` darüber. Bis
+  // mega60 war `answer` die EINZIGE Aufgabe ohne diesen Parameter, und deshalb reichte das
+  // Modell-Provider hart `false` an den Chokepoint (`cappedModelClient.complete`) durch. Der
+  // Wächter, der genau dort vertraulichen Egress abbricht, sieht ausschließlich dieses Boolean —
+  // er konnte auf dem Antwortweg also gar nicht auslösen. Der deterministische Fallback ignoriert
+  // den Parameter, wie überall.
   answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale?: ReasonerLocale,
+    confidential?: boolean,
   ): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
   // SCRUM-312: optionale, frei-/aktionsbasierte Anweisung (z. B. „klarer", „strukturieren").

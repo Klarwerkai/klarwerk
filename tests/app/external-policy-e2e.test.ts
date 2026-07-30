@@ -4,6 +4,7 @@ import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   normalizeExternalKnowledgeStage,
 } from "../../services/external-search";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-414 (Pedi 03.07.): Admin-Regler „externe Wissensabfrage" — 4 Stufen von blockiert
 // bis offen, persistiert, mit Server-Gate. HTTP end-to-end über die echten Routen.
@@ -28,8 +29,13 @@ describe("SCRUM-414: Regler externe Wissensabfrage", () => {
       payload: { name: "Admin", email: "a@x.de", password: "secret123" },
     });
     const admin = await login(app, "a@x.de", "secret123");
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, erik };
   }
 

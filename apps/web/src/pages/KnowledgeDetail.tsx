@@ -94,7 +94,6 @@ import {
 import { containsExternalUnchecked } from "../lib/externalProvenance";
 import { toSourcePayload as externalToSourcePayload } from "../lib/externalSearch";
 import { fileToThumbDataUrl, readFileAsDataUrl } from "../lib/files";
-import { AUTHOR_UNKNOWN_KEY, authorDisplayName } from "../lib/koAuthor";
 import { koCta } from "../lib/koCta";
 // WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
 import { formatKoTimestamp } from "../lib/koDates";
@@ -125,6 +124,7 @@ import {
   isSourceContributionValid,
 } from "../lib/sourceContribution";
 import { trustExplainer } from "../lib/trustExplainer";
+import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
 import {
   type FeedbackVerdict,
@@ -203,13 +203,14 @@ export function KnowledgeDetail(): JSX.Element {
   // SCRUM-95/96: Signale für die abgeleitete Gültigkeit-/Schutz-Sicht.
   const pending = useLifecyclePending();
   const conflicts = useConflicts();
+  // Das Verzeichnis wird hier noch für EINEN zweiten Zweck gebraucht: die Auswahlliste des
+  // Autoren-Transfers weiter unten. Das ist keine Namensauflösung, sondern eine Auswahl — deshalb
+  // bleibt sie hier und wandert nicht in den Haken.
   const dir = useDirectory();
-  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
-  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
-  const nameOf = (uid: string): string =>
-    authorDisplayName(uid, dir.data?.find((d) => d.id === uid)?.name, (ref) =>
-      t(AUTHOR_UNKNOWN_KEY, { ref }),
-    );
+  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
+  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
+  // eine Aussage über die Person, wo gar keine feststand.
+  const nameOf = useAuthorName();
   const qc = useQueryClient();
   const [edit, setEdit] = useState<EditState | null>(null);
   // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) für den ausführlichen Inhalt im Edit.

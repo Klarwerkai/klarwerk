@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-363 / AG-15 / FR-VAL-05/06: der In-App-Feed (/api/notifications) zeigt die persönlichen
 // offenen Review-Zuweisungen — nur die der angemeldeten Person, keine fremden. Konflikt-/Lücken-
@@ -27,9 +28,18 @@ describe("SCRUM-363: Assignment-Notification im Feed (HTTP end-to-end)", () => {
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed legt Carla (controller, ko.validate) + Erik (experte) als eigenständige Nutzer an.
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, carla, erik };
   }
 

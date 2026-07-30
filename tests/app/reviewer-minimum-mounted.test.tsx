@@ -22,6 +22,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   return {
     endpoints: {
       admin: { factoryResetStatus: ok({ pending: false }) },
+      // AUFTRAG-mega64 Block A: Der Demodaten-Knopf steht seit mega64 in einem `FeatureGate`, und
+      // das fragt die Schalter-Auskunft ab. Ohne diesen Eintrag wirft der Mock beim Rendern der
+      // ganzen Admin-Seite — dieser Test prüft das Reviewer-Minimum und ist auf die Auskunft nur
+      // insofern angewiesen, als die Seite überhaupt aufbauen muss. `demodaten: false` ist dabei die
+      // ehrliche Vorgabe: der Knopf erscheint hier nicht, und dieser Test behauptet nichts über ihn.
+      features: { get: ok({ features: { demodaten: false } }) },
       users: { list: ok([]) },
       analytics: { overview: ok(null) },
       audit: { list: ok([]), verify: ok({ ok: true }) },

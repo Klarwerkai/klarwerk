@@ -5,6 +5,11 @@ import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { useSession } from "../app/AuthContext";
 import { Button, Field, TextInput } from "../components/ui";
+// AUFTRAG-mega61 Block A/B/D: Fußbereich, Hinweistext und der Satz nach einer Ablehnung. Der
+// ABLAUF dieser Maske — die sechs Zustände, ihre Übergänge, die Mutationen — bleibt unangetastet;
+// hinzu kommen ausschließlich Anzeigeflächen unterhalb des Formulars.
+import { LegalFooter } from "../legal/LegalPages";
+import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
 
 type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent";
 
@@ -21,6 +26,11 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
   // im einzigen Passwortfeld würde sonst still ein falsches Passwort setzen (Aussperrung).
   const [pw2, setPw2] = useState("");
   const [err, setErr] = useState<string | null>(null);
+  // AUFTRAG-mega61 Block D: Wer den Hinweis abgelehnt hat, landet nach dem Abmelden hier. Ohne
+  // diesen Satz stünde er vor einer Anmeldemaske ohne Erklärung — eine Sackgasse mit Gedächtnis.
+  // Einmalig beim ersten Rendern gelesen UND gelöscht (`useState`-Initialisierer), damit der Satz
+  // nicht bei jedem späteren Zustandswechsel wieder auftaucht.
+  const [declined] = useState(takeDeclineMarker);
 
   const onError = (e: unknown): void =>
     setErr(e instanceof ApiError ? e.message : t("state.error"));
@@ -86,6 +96,15 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
         <div className="w-full max-w-[420px]">
           <h1 className="text-2xl font-semibold text-ink">{t(`auth.title.${mode}`)}</h1>
           <p className="mt-1.5 text-sm text-muted">{t(`auth.sub.${mode}`)}</p>
+
+          {declined ? (
+            <div
+              data-testid="auth-declined-hint"
+              className="mt-4 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[12.5px] text-trust-warn-text"
+            >
+              {t("notice.decline.loginHint")}
+            </div>
+          ) : null}
 
           {mode === "waiting" || mode === "forgotSent" ? (
             <div className="mt-6 space-y-4">
@@ -219,6 +238,18 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
               </button>
             </div>
           ) : null}
+
+          {/* AUFTRAG-mega61 Block B: derselbe Hinweis wie in der Anwendung, aber als schlichter
+              Textabsatz OHNE Knöpfe. Hier beginnt die Datenerhebung, also gehört die Information
+              hierher — es gibt aber noch kein Konto, an dem sich eine Kenntnisnahme vermerken
+              ließe, und ein Knopf, der nichts vermerken kann, wäre eine Geste ohne Wirkung. */}
+          <div className="mt-8 border-t border-hairline pt-4">
+            <NoticeText />
+            {/* AUFTRAG-mega61 Block A: der Fußbereich MUSS hier stehen — § 5 DDG verlangt das
+                Impressum von jeder Seite, und die Datenschutzerklärung muss vor der ersten
+                Datenerhebung verfügbar sein. Diese Maske IST die erste Datenerhebung. */}
+            <LegalFooter />
+          </div>
         </div>
       </div>
     </div>

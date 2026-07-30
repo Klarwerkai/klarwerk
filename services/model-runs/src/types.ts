@@ -15,6 +15,78 @@ export type ModelRunTask =
   | "group";
 export type ModelRunStatus = "success" | "error";
 
+// ================================================================================================
+// AUFTRAG-mega61 BLOCK F — DIE MASCHINENLESBARE KENNZEICHNUNG NACH ARTIKEL 50 ABSATZ 2.
+// ================================================================================================
+//
+// Die KI-Verordnung verlangt für ERZEUGTE Inhalte eine Kennzeichnung „in einem maschinenlesbaren
+// Format". Für Text gibt es kein wirksames, robustes Wasserzeichen — maschinenlesbar heißt hier
+// also ein ausdrückliches Feld in der Serverantwort. Das ist unstrittig maschinenlesbar, kostet
+// fast nichts und ist die Grundlage für die Kennzeichnung in Exporten.
+//
+// SIE STEHT HIER, WEIL HIER DIE AUFGABENBENENNUNG STEHT (`ModelRunTask` oben). Eine zweite
+// Aufgabenliste anzulegen wäre die zweite Wahrheit über dieselben acht Aufgaben.
+//
+// ------------------------------------------------------------------------------------------------
+// DIE RECHTSAUSLEGUNG, AUSDRÜCKLICH HIER UND NICHT IM BERICHT — damit sie nachvollziehbar bleibt,
+// wenn jemand in einem Jahr fragt, warum drei und nicht acht:
+//
+// Artikel 50 Absatz 2 nimmt aus, was „eine unterstützende Funktion für die Standardbearbeitung
+// ausführt oder die bereitgestellten Eingabedaten nicht wesentlich verändert".
+//
+//   GEKENNZEICHNET (neuer Text entsteht, den es vorher nicht gab):
+//     · `answer`    — formuliert eine Antwort. Dass der INHALT aus dem eigenen Bestand kommt,
+//                     ändert daran nichts: erzeugt wird die Formulierung, und sie ist es, die
+//                     gelesen wird.
+//     · `interview` — erzeugt Fragen.
+//     · `describe`  — erzeugt eine Bildbeschreibung.
+//
+//   NICHT GEKENNZEICHNET (unterstützende Standardbearbeitung an vorhandenem Material):
+//     · `assist`    — formuliert vorhandenen Text um.
+//     · `structure` — gliedert vorhandene Notizen.
+//     · `extract`   — holt Punkte aus einer vorhandenen Datei.
+//     · `group`     — ordnet vorhandene Dokumente in Themen.
+//     · `select`    — wählt aus vorhandenen Objekten aus und erzeugt gar keinen Text.
+//
+// DAS IST EINE LESART, KEINE ENTSCHEIDUNG EINES GERICHTS. „Nicht wesentlich verändern" ist
+// unbestimmt und höchstrichterlich nicht ausgelegt; `assist` liegt am nächsten an der Grenze, weil
+// es den Text tatsächlich neu schreibt. Eine Kennzeichnung zu viel ist kein Verstoß, eine zu wenig
+// schon — wenn die Einordnung kippt, ist die Erweiterung hier eine Zeile.
+// ------------------------------------------------------------------------------------------------
+
+/** Die drei Aufgaben, deren Ausgabe als KI-erzeugt zu kennzeichnen ist. */
+export const KI_ERZEUGENDE_AUFGABEN: readonly ModelRunTask[] = ["answer", "interview", "describe"];
+
+/**
+ * Der Betriebsmodus, in dem die Ausgabe entstand.
+ *
+ * BEWUSST GROB: „model" oder „deterministic", nicht Cloud/Lokal. Die feinere Auskunft gibt es
+ * bereits an genau einer Stelle (GET /api/reasoner/status und die Modellangabe daneben); sie hier
+ * zu wiederholen hieße, zwei Wahrheiten über denselben Provider zu führen.
+ */
+export type AiOutputMode = "model" | "deterministic";
+
+export interface AiGeneratedMark {
+  /** Immer `true`. Das Feld existiert nur an gekennzeichneten Ausgaben — es gibt kein `false`. */
+  aiGenerated: true;
+  task: ModelRunTask;
+  mode: AiOutputMode;
+  /** Zeitpunkt der Erzeugung, ISO 8601. */
+  at: string;
+}
+
+/**
+ * Die Kennzeichnung bauen. `demo` ist der bereits vorhandene Marker „aus dem deterministischen
+ * Rückfall" — daraus folgt der Betriebsmodus, ohne dass ein zweiter Zustand entsteht.
+ */
+export function aiGeneratedMark(
+  task: ModelRunTask,
+  demo: boolean,
+  at: string = new Date().toISOString(),
+): AiGeneratedMark {
+  return { aiGenerated: true, task, mode: demo ? "deterministic" : "model", at };
+}
+
 // AUFTRAG-mega26 Block A: LAUFKONTEXT — wer den Lauf ausgelöst hat und woran er lief.
 //
 // WARUM: bis mega25 trug ein ModelRunRecord ausschliesslich technische Metadaten (Task, Provider,

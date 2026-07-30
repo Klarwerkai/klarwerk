@@ -9,6 +9,15 @@ export interface User {
   role: Role;
   approved: boolean;
   createdAt: string;
+  // AUFTRAG-mega61 Block C: die Kenntnisnahme des Hinweises (Endgerätespeicher + KI-Transparenz).
+  // BEIDE Felder oder keins — der Zeitstempel allein sagt nicht, WAS gelesen wurde, und die
+  // Version allein nicht, WANN. Optional, weil Bestandskonten sie nicht haben: „kein Vermerk“ ist
+  // ein gültiger Zustand und bedeutet „Hinweis erscheint“.
+  //
+  // NICHT hier: IP-Adresse, Browserkennung. Der Vermerk ist eine Quittung, kein Protokoll über die
+  // Person — dieselbe Grenze, die das Prüfprotokoll in services/audit ohnehin zieht.
+  noticeAckAt?: string;
+  noticeAckVersion?: string;
 }
 
 export interface Session {

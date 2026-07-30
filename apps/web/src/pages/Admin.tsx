@@ -20,6 +20,9 @@ import { useAnalytics, useAudit, useUsers, useValidationBoard } from "../api/hoo
 import type { DemoSeedResult, ExternalKnowledgeStage } from "../api/types";
 import { useToast } from "../app/ToastContext";
 import { ROLES, type Role } from "../app/navigation";
+// AUFTRAG-mega64 Block A: der Demodaten-Knopf steht hinter dem Betriebsschalter — dieselbe
+// fail-closed Regel wie jede andere geschaltete Fläche (mega46 F2).
+import { FeatureGate } from "../components/FeatureGate";
 import { HelpTip } from "../components/HelpTip";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import {
@@ -509,14 +512,21 @@ export function Admin(): JSX.Element {
             <SectionLabel>{t("adm.seedTitle")}</SectionLabel>
             <p className="text-[12.5px] text-muted">{t("adm.seedHint")}</p>
             <div>
-              <Button
-                variant="ghost"
-                disabled={demoSeed.isPending}
-                onClick={() => demoSeed.mutate(false)}
-              >
-                <UserPlus size={15} />
-                {t("adm.seedButton")}
-              </Button>
+              {/* AUFTRAG-mega64 Block A: Nur das ANLEGEN steht hinter dem Schalter — der
+                  Entfernen-Knopf daneben ausdrücklich NICHT. Ein Betrieb, der die Vorführhilfe
+                  abschaltet, muss vorhandene Demodaten weiterhin loswerden können; sonst schlösse
+                  der Schalter den Bestand ein, statt die Quelle zu schließen. Genau dieselbe
+                  Aufteilung wie serverseitig in admin-routes.ts. */}
+              <FeatureGate feature="demodaten">
+                <Button
+                  variant="ghost"
+                  disabled={demoSeed.isPending}
+                  onClick={() => demoSeed.mutate(false)}
+                >
+                  <UserPlus size={15} />
+                  {t("adm.seedButton")}
+                </Button>
+              </FeatureGate>
               {/* SCRUM-412 (CI): Bestätigung = neutrale Fläche; Rot nur am destruktiven Knopf. */}
               {confirmPurge ? (
                 <span className="ml-2 inline-flex items-center gap-2 rounded-card border border-hairline bg-page px-2.5 py-1.5">
@@ -564,6 +574,35 @@ export function Admin(): JSX.Element {
                   <UserPlus size={13} />
                   {t("adm.seedForce")}
                 </button>
+              </div>
+            ) : null}
+            {/* ================================================================================
+                AUFTRAG-mega64 BLOCK A — DIE EINMALKENNWÖRTER, GENAU EINMAL.
+                ================================================================================
+                Bis mega64 standen die Kennwörter der Demo-Konten im Quelltext; jeder, der das
+                Repository lesen konnte, kannte sie. Jetzt erzeugt der Server bei jeder Neuanlage
+                frische und nennt sie NUR in der Antwort auf diesen einen Aufruf — er speichert
+                danach nur noch einen Prüfwert und kann sie nicht wiederholen.
+                Deshalb stehen sie hier, sofort, mit dem ausdrücklichen Hinweis, dass ein Neuladen
+                sie verliert. Sie werden bewusst NICHT in einen Zwischenspeicher, in eine Datei
+                oder in eine Meldung gelegt: was hier steht, steht nur solange diese Antwort im
+                Anwendungszustand lebt. */}
+            {(demoSeed.data?.einmalkennwoerter ?? []).length > 0 ? (
+              <div
+                data-testid="demo-einmalkennwoerter"
+                className="mt-1 rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-trust-warn-text"
+              >
+                <div className="font-mono text-[10px] uppercase tracking-wider">
+                  {t("adm.seedCredsTitle")}
+                </div>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed">{t("adm.seedCredsHint")}</p>
+                <ul className="mt-2 space-y-1">
+                  {(demoSeed.data?.einmalkennwoerter ?? []).map((zugang) => (
+                    <li key={zugang.email} className="font-mono text-[12px]">
+                      {zugang.email} · <span className="font-semibold">{zugang.kennwort}</span>
+                    </li>
+                  ))}
+                </ul>
               </div>
             ) : null}
             {demoSeed.isSuccess && !demoSeed.data?.skipped ? (

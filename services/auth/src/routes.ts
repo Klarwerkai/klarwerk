@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Mailer } from "../../notifications";
+import { HINWEIS_TEXT_VERSION, hinweisFaellig } from "./notice";
 import { type OidcProvider, createPkcePair, randomToken } from "./oidc";
 import { LoginRateLimiter } from "./rate-limit";
 import type { AuthService } from "./service";
@@ -286,6 +287,52 @@ export function authRoutes(
       const user = await requireUser(request, reply);
       if (user) {
         reply.code(200).send(user);
+      }
+    });
+
+    // ============================================================================================
+    // AUFTRAG-mega61 BLOCK C — LESEN UND SETZEN DER KENNTNISNAHME.
+    // ============================================================================================
+    //
+    // Zwei Endpunkte, beide auf das EIGENE Konto und nur darauf: Es gibt keinen Weg, eine fremde
+    // Kenntnisnahme zu lesen oder zu setzen — der Nutzer kommt aus der Sitzung, nicht aus dem Pfad.
+    //
+    // Die AKTUELLE Textfassung kommt aus der Antwort und nicht aus der Oberfläche. Sonst müsste die
+    // Oberfläche die Version kennen, könnte sie mitschicken, und dann quittierte der Client eine
+    // Fassung, die der Server gar nicht kennt. Der Server sagt, was gilt; der Client vergleicht.
+    app.get("/api/auth/notice", async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const vermerk = await service.noticeAck(user.id);
+        reply.code(200).send({
+          ...vermerk,
+          currentVersion: HINWEIS_TEXT_VERSION,
+          // Die Entscheidung fällt HIER, nicht in der Oberfläche — sonst gäbe es zwei Stellen, an
+          // denen „alte Fassung" ausgelegt wird, und die zweite läuft irgendwann auseinander.
+          due: hinweisFaellig(vermerk.acknowledgedVersion),
+        });
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
+
+    app.post("/api/auth/notice", async (request, reply) => {
+      const user = await requireUser(request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        await service.acknowledgeNotice(user.id, HINWEIS_TEXT_VERSION);
+        reply.code(200).send({
+          acknowledgedVersion: HINWEIS_TEXT_VERSION,
+          currentVersion: HINWEIS_TEXT_VERSION,
+          due: false,
+        });
+      } catch (error) {
+        sendError(reply, error);
       }
     });
 

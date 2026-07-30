@@ -9,6 +9,7 @@ import {
   TRASH_RETENTION_DAYS,
   type WithTx,
 } from "../../services/knowledge-object";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-422 (Pedi 03.07.): Papierkorb — gelöschte Artikel sind wiederherstellbar (Admin),
 // nach 4 Wochen automatische Endlöschung; Demo-Daten werden IMMER sofort endgültig gelöscht.
@@ -34,8 +35,13 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
       payload: { name: "Admin", email: "a@x.de", password: "secret123" },
     });
     const admin = await login(app, "a@x.de", "secret123");
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, erik };
   }
 

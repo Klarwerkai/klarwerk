@@ -280,13 +280,17 @@ type Ausnahme = { wert: string; rootToken: string; grund: string };
 
 const AUSNAHMEN: Ausnahme[] = [
   {
-    wert: "#A8560A",
+    // AUFTRAG-mega62 Block D: nachgeführt von #A8560A auf #9C5009. Der Wert selbst steht hier nur
+    // noch als Spiegel — geprüft wird ohnehin gegen den :root-Wert der Token-Datei (`rootToken`),
+    // also gegen die eine Wahrheit. Die Begründung der Ausnahme ist unverändert gültig.
+    wert: "#9C5009",
     rootToken: "brand-text",
     grund:
       "Marken-Textton. themes.css überschreibt --kw-brand-text im modern-Block ABSICHTLICH nicht: " +
       "Funke dunkel (#C2500A) misst als Text auf Papier nur 4,45:1 und fiele unter AA. Im " +
-      "modern-Thema ist deshalb der :root-Wert #a8560a wirksam (Kaskade) — Klara führt genau ihn " +
-      "für Links und den aktiven Reiter.",
+      "modern-Thema ist deshalb der :root-Wert wirksam (Kaskade) — Klara führt genau ihn " +
+      "für Links und den aktiven Reiter. Seit mega62 Block D ist das #9C5009 (vorher #A8560A, " +
+      "das auf der weichen Markenfläche #FDEADD mit 4,497:1 unter AA lag).",
   },
 ];
 

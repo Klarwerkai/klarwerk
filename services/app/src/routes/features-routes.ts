@@ -32,13 +32,39 @@
 // keine Anmeldeinformation — die Oberfläche braucht sie erst NACH dem Anmelden (vorher gibt es nur
 // die Anmeldemaske). Also die engste Tür, die den Zweck noch erfüllt. Ein Recht darüber hinaus
 // wäre falsch: Auch eine Betrachterin muss wissen, welche Flächen es gibt.
+//
+// ================================================================================================
+// AUFTRAG-mega61 BLOCK A — DIE PRÄMISSE VON OBEN GILT NICHT MEHR VOLLSTÄNDIG.
+// ================================================================================================
+//
+// „vorher gibt es nur die Anmeldemaske" war bis mega60 wahr. Seit mega61 gibt es ZWEI Flächen vor
+// der Anmeldung: /impressum und /datenschutz. Sie MÜSSEN dort liegen — eine Datenschutzerklärung,
+// die man erst nach der Kontoanlage lesen kann, kommt nach der ersten Datenerhebung und ist damit
+// wertlos. Und ihr Fußbereich steht auf der Anmeldemaske selbst.
+//
+// DESHALB antwortet diese Auskunft jetzt AUCH ohne Sitzung — aber nur mit der Teilmenge, deren
+// Fläche vor der Anmeldung überhaupt erreichbar ist (`schalterZustandVorAnmeldung`). Bewusst KEINE
+// zweite Route: mega46 hat gerade die Vielzahl der Schalterleser beseitigt, und eine zweite
+// Auskunft wäre der Rückfall. Bewusst auch nicht der volle Zustand: welche Fähigkeiten ein Betrieb
+// gebucht hat, geht einen Unangemeldeten nichts an.
+//
+// Der Aufrufer in der Oberfläche schlüsselt seinen Zwischenspeicher nach Sitzung (`useFeatures`),
+// damit die Teilmenge von vor der Anmeldung nicht als vollständige Antwort danach hängenbleibt.
 import type { FastifyPluginAsync } from "fastify";
-import { schalterZustand } from "../feature-flags";
-import type { Guards } from "../http";
+import { schalterZustand, schalterZustandVorAnmeldung } from "../feature-flags";
+import { type Guards, tokenFromRequest } from "../http";
 
 export function featuresRoutes(guards: Guards): FastifyPluginAsync {
   return async (app) => {
     app.get("/api/features", async (request, reply) => {
+      // Ohne mitgereichte Sitzung gar nicht erst nach ihr fragen: `requireUser` würde 401 senden
+      // und der Unangemeldete bekäme die Rechtsseiten nicht zu sehen. Wer einen Token mitbringt,
+      // durchläuft die unveränderte Prüfung — ein ABGELAUFENER Token ist weiterhin ein 401 und
+      // wird nicht stillschweigend zur öffentlichen Teilmenge herabgestuft.
+      if (!tokenFromRequest(request)) {
+        reply.code(200).send({ features: schalterZustandVorAnmeldung() });
+        return;
+      }
       const user = await guards.requireUser(request, reply);
       if (!user) {
         return;

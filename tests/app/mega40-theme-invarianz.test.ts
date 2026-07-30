@@ -61,17 +61,25 @@ const KLASSISCH: Record<string, string> = {
   ink: "#16222c",
   text: "#1b1e21",
   "text-soft": "#23272b",
-  muted: "#687078",
+  // AUFTRAG-mega62 Block D: bewusst NACHGEFÜHRT, nicht gelockert. Der Pin sichert zu, dass ein
+  // UMBAU nicht umfärbt — er ist kein Verbot einer begründeten Korrektur. Der alte Wert #687078
+  // erfüllte AA auf Weiß und Seite, aber nicht auf --kw-hairline-soft (4,448:1), und genau diese
+  // Paarung trägt die Pflichtfläche des Hinweisbanners. Wer den Wert künftig anfasst, wird hier
+  // weiterhin rot — nur eben gegen den korrigierten Stand.
+  muted: "#636b73",
   "muted-2": "#616a72",
   hairline: "#e4e7ea",
   "hairline-soft": "#f0f1f3",
   brand: "#ed7d0e",
   "brand-300": "#f5a04a",
-  "brand-text": "#a8560a",
+  // AUFTRAG-mega62 Block D (Register F27): nachgeführt — #a8560a lag auf --kw-funke-soft bei
+  // 4,497:1 und machte die Markenfläche für Text unbenutzbar.
+  "brand-text": "#9c5009",
   "trust-pos-text": "#256b46",
   "trust-pos-fill": "#3aa06a",
   "trust-pos-bg": "#e2f1e8",
-  "trust-warn-text": "#9a6a12",
+  // AUFTRAG-mega62 Block D: nachgeführt — #9a6a12 lag auf der eigenen Fläche bei 4,201:1.
+  "trust-warn-text": "#8f620f",
   "trust-warn-fill": "#c8861a",
   "trust-warn-bg": "#faf1db",
   "trust-crit-text": "#9e352e",

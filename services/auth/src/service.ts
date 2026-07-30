@@ -1,5 +1,6 @@
 import { createHash, randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import type { TxContext } from "../../db-tx";
 import type { OidcClaims } from "./oidc";
 import { hashPassword, verifyPassword } from "./password";
 import {
@@ -40,11 +41,21 @@ export type RoleChangePolicy = (
 const defaultCanChangeRole: RoleChangePolicy = (actor, targetUserId, newRole) =>
   !(actor.id === targetUserId && newRole !== "admin");
 
+// AUFTRAG-mega62 Block B: die Fähigkeit der Kompositionswurzel, EINE echte Transaktion zu öffnen —
+// storage-neutral, mit dem opaken TxContext aus services/db-tx (KEIN Pg-Typ in dieser Signatur).
+// Dieselbe Form, die KoService und AskService schon führen; build-app bindet sie an denselben Pool,
+// mit dem PgUserRepo und PgAuditRepo verdrahtet sind. Ohne Injektion (InMemory, Dev-Journal) bleibt
+// der sequentielle Weg — abgesichert über die Schreibreihenfolge, s. acknowledgeNotice.
+export type WithTx = <T>(fn: (tx: TxContext) => Promise<T>) => Promise<T>;
+
 export interface AuthServiceDeps {
   users: UserRepo;
   sessions: SessionRepo;
   resetTokens?: PasswordResetRepo;
   audit?: AuditService;
+  // AUFTRAG-mega62 Block B: optionale echte DB-Transaktion für die Kenntnisnahme des Hinweises
+  // (Konto-Vermerk + Prüfprotokoll-Eintrag committen/rollbacken gemeinsam).
+  withTx?: WithTx;
   now?: () => number;
   genId?: () => string;
   genToken?: () => string;
@@ -77,6 +88,8 @@ export class AuthService {
   private readonly genToken: () => string;
   private readonly resetTokens: PasswordResetRepo;
   private readonly canChangeRolePolicy: RoleChangePolicy;
+  // AUFTRAG-mega62 Block B: nur gesetzt, wenn die Kompositionswurzel einen echten Pg-Pool hat.
+  private readonly withTx: WithTx | undefined;
 
   constructor(deps: AuthServiceDeps) {
     this.users = deps.users;
@@ -87,6 +100,7 @@ export class AuthService {
     this.genToken = deps.genToken ?? (() => randomBytes(32).toString("hex"));
     this.resetTokens = deps.resetTokens ?? new InMemoryPasswordResetRepo();
     this.canChangeRolePolicy = deps.canChangeRole ?? defaultCanChangeRole;
+    this.withTx = deps.withTx;
   }
 
   // FR-AUTH-01: Ist noch kein Konto vorhanden? Dann ist Ersteinrichtung nötig (Setup-Screen).
@@ -246,6 +260,80 @@ export class AuthService {
     if (session) {
       await this.record(session.userId, "auth.logout", session.userId);
     }
+  }
+
+  // ==============================================================================================
+  // AUFTRAG-mega61 BLOCK C — DIE KENNTNISNAHME DES HINWEISES, AM KONTO.
+  // ==============================================================================================
+  //
+  // WARUM NICHT IM BROWSERSPEICHER: Im Browserspeicher zu merken, dass jemand den Hinweis ÜBER den
+  // Browserspeicher gelesen hat, wäre zirkulär — und beim Gerätewechsel wäre der Vermerk weg, der
+  // Hinweis käme wieder, und die Quittung wäre wertlos. Sie gehört deshalb an das Konto.
+  //
+  // Der Vorgang wird im Prüfprotokoll festgehalten, in dem ohnehin Anmeldung und Abmeldung stehen.
+  // Die Nutzlast trägt AUSSCHLIESSLICH die gelesene Textfassung — keine IP, keine Browserkennung.
+  // ==============================================================================================
+  // AUFTRAG-mega62 BLOCK B — DER VERMERK UND SEIN NACHWEIS ENTSTEHEN GEMEINSAM ODER GAR NICHT.
+  // ==============================================================================================
+  //
+  // BIS mega61 lief hier erst `users.update`, danach `record`. Scheiterte das Protokollieren, war
+  // der Vermerk am Konto trotzdem geschrieben: Die Route antwortete mit Fehler, der Banner war beim
+  // nächsten Laden weg, und der Satz „die Kenntnisnahme steht im Prüfprotokoll" war unwahr. Ein
+  // Nachweis, der im Fehlerfall lautlos zur Hälfte entsteht, ist als Nachweis wertlos.
+  //
+  // GEWÄHLTER WEG: die ECHTE gemeinsame Transaktion über den bestehenden opaken Vertrag
+  // (services/db-tx), den die Kompositionswurzel ohnehin schon an KoService und AskService bindet.
+  // Kein Umbau der Wurzel: `withTx` kommt als optionale Abhängigkeit herein, `UserRepo.update`
+  // nimmt den opaken Kontext additiv entgegen (wie AuditRepo.append seit SCRUM-523). Kein
+  // Nachholvertrag — der wäre eine zweite Wahrheit über denselben Nachweis, und ein Nachholer, den
+  // niemand beobachtet, ist selbst nur eine Zusage ohne Deckung.
+  //
+  // UND DIE REIHENFOLGE DREHT SICH TROTZDEM UM: Protokoll ZUERST, Konto danach. Das ist die
+  // Absicherung für JEDEN Persistenzweg, auch den ohne `withTx` (InMemory, Dev-Journal) — dort
+  // gibt es keine Transaktion, die etwas zurückrollen könnte. Von den beiden möglichen halben
+  // Zuständen ist nur EINER erträglich:
+  //
+  //   · Protokolleintrag ohne Konto-Vermerk → der Hinweis erscheint erneut, die Nutzerin quittiert
+  //     ein zweites Mal, das Protokoll trägt zwei Zeilen. Unschön, aber wahr.
+  //   · Konto-Vermerk ohne Protokolleintrag → der Banner ist weg, und es gibt keinen Nachweis,
+  //     dass informiert wurde. Genau der Zustand, gegen den dieser Block gebaut ist.
+  //
+  // Die Reihenfolge schließt den zweiten aus, die Transaktion (wo es sie gibt) zusätzlich den
+  // ersten. Beides zusammen, nicht eins statt des anderen.
+  async acknowledgeNotice(userId: string, version: string): Promise<PublicUser> {
+    const user = await this.users.findById(userId);
+    if (!user) {
+      throw new AuthError("NOT_FOUND", "Konto nicht gefunden.");
+    }
+    const updated: User = {
+      ...user,
+      noticeAckAt: new Date(this.now()).toISOString(),
+      noticeAckVersion: version,
+    };
+    const schreiben = async (tx?: TxContext): Promise<void> => {
+      await this.record(user.id, "notice.acknowledged", user.id, { version }, tx);
+      await this.users.update(updated, tx);
+    };
+    if (this.withTx) {
+      await this.withTx(schreiben);
+    } else {
+      await schreiben();
+    }
+    return toPublic(updated);
+  }
+
+  /** Der vermerkte Stand eines Kontos — die Grundlage der Entscheidung „Hinweis zeigen?“. */
+  async noticeAck(
+    userId: string,
+  ): Promise<{ acknowledgedAt?: string; acknowledgedVersion?: string }> {
+    const user = await this.users.findById(userId);
+    if (!user) {
+      throw new AuthError("NOT_FOUND", "Konto nicht gefunden.");
+    }
+    return {
+      ...(user.noticeAckAt ? { acknowledgedAt: user.noticeAckAt } : {}),
+      ...(user.noticeAckVersion ? { acknowledgedVersion: user.noticeAckVersion } : {}),
+    };
   }
 
   async authenticate(token: string): Promise<PublicUser | undefined> {
@@ -416,15 +504,19 @@ export class AuthService {
   }
 
   // FR-RBAC-02: Audit-Eintrag je Admin-Aktion (sofern Audit verdrahtet).
+  // AUFTRAG-mega62 Block B: `tx` optional und durchgereicht — nur acknowledgeNotice setzt ihn, alle
+  // übrigen Aufrufer rufen unverändert ohne. Ohne Audit-Verdrahtung passiert wie bisher nichts.
   private async record(
     actor: string,
     action: string,
     target: string,
     payload?: Record<string, unknown>,
+    tx?: TxContext,
   ): Promise<void> {
     if (this.audit) {
       await this.audit.record(
         payload ? { actor, action, target, payload } : { actor, action, target },
+        tx,
       );
     }
   }

@@ -32,6 +32,8 @@ import {
 } from "../lib/importGroups";
 import { koLabel } from "../lib/koLabel";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+import { AiCostHint } from "./AiCostHint";
+import { AiGeneratedNotice } from "./AiGeneratedNotice";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
 import { ImportStepHeading, useReportImportStage, useRewindImportStage } from "./ImportStepper";
@@ -446,6 +448,15 @@ export function ImportGroups({
           {!hasSelection ? (
             <p className="mt-1.5 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.needSelection)}</p>
           ) : null}
+          {/* AUFTRAG-mega61 Block E: der Gruppierungsschritt ruft ein Modell und hatte weder die
+              Modellangabe noch einen dauerhaften Hinweis — nur Badges NACH dem Lauf. */}
+          <p className="mt-1.5">
+            <AiGeneratedNotice />{" "}
+            {/* AUFTRAG-mega62 Block F: der Gruppierungslauf geht über den ganzen gewählten Stapel
+                und ist damit der teuerste Klick dieser Fläche — der Halbsatz gehört an den Knopf,
+                nicht hinter das Ergebnis. */}
+            <AiCostHint />
+          </p>
           {/* ================================================================================
               AUFTRAG-mega59 BLOCK F2 — DIE VORWARNUNG HAT VORHER GELOGEN.
               ================================================================================

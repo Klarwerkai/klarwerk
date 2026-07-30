@@ -29,3 +29,22 @@ process.env.KLARWERK_SELF_REGISTRATION = "1";
 // und wer den Proxy WIRKLICH prüfen will, injiziert ihn — so wie
 // `services/app/src/external-routes.test.ts` es längst tut (Fake-Provider, kein Netz).
 process.env.EXTERNAL_SEARCH = "off";
+
+// ================================================================================================
+// AUFTRAG-mega64 BLOCK A — DIE SUITE SCHALTET DAS DEMODATEN-WERKZEUG AUSDRÜCKLICH FREI.
+// ================================================================================================
+//
+// `POST /api/admin/demo-seed` liegt seit mega64 hinter einem fail-closed Betriebsschalter mit
+// Vorgabe AUS: ohne ihn existiert die Route nicht. 21 Bestandstestdateien benutzen genau diese
+// Route, um sich ihren Prüfbestand samt Controller- und Expertenkonto herzustellen — für sie ist
+// der Demo-Seed eine TESTVORRICHTUNG, kein Produktvertrag, und die Suite sagt das hier EINMAL statt
+// einundzwanzigmal.
+//
+// Dieselbe Bauform wie die Zeile über der Selbstregistrierung, und aus demselben Grund: ein
+// stiller Default im Produktcode wäre die Sperre wieder aufgehoben; eine ausdrückliche Zeile in der
+// Testumgebung ist eine Aussage über die Testumgebung.
+//
+// Der Sammler tests/app/mega64-demoseed-tor.test.ts löscht die Variable LOKAL und stellt den
+// vorgefundenen Zustand danach wieder her — er prüft das AUS-Verhalten und darf deshalb nicht von
+// dieser Zeile verdeckt werden.
+process.env.KLARWERK_DEMO_SEED = "1";

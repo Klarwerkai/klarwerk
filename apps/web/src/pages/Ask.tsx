@@ -4,9 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
-import { useConflicts, useDirectory, useKos, useReasonerStatus } from "../api/hooks";
+import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
 import type { AnswerResult } from "../api/types";
 import { useToast } from "../app/ToastContext";
+import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
 import { AiUnavailableHint } from "../components/AiUnavailableHint";
 // WP-UX-WOW-1 U1: sichere Markdown-Darstellung der Antwort (React-Elemente, kein HTML-Sink).
 import { AnswerMarkdown } from "../components/AnswerMarkdown";
@@ -43,10 +44,10 @@ import { conflictKnowledge, effectiveAnswer } from "../lib/effectiveAnswer";
 import { helpfulDisabled, helpfulLabel } from "../lib/helpfulSignal";
 import type { EvidenceTone } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
-import { AUTHOR_UNKNOWN_KEY, authorDisplayName } from "../lib/koAuthor";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
+import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
 
 // Tone → Badge-Stil (Tailwind-Tokens), bewusst in der Komponente gehalten.
@@ -113,13 +114,10 @@ export function Ask(): JSX.Element {
   const kos = useKos();
   // FUNKE F1 (nacht24): Wissensträger-Namen für die Quellen-Würdigung (Directory EINMAL je Seite;
   // Fallback bleibt ehrlich die Autor-Id).
-  const directory = useDirectory();
-  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
-  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
-  const authorNameOf = (uid: string): string =>
-    authorDisplayName(uid, directory.data?.find((d) => d.id === uid)?.name, (ref) =>
-      t(AUTHOR_UNKNOWN_KEY, { ref }),
-    );
+  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
+  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
+  // eine Aussage über die Person, wo gar keine feststand.
+  const authorNameOf = useAuthorName();
   // SCRUM-357 / AG-14: konfliktbewusste Quellen — ein konfliktbetroffenes Quell-KO erscheint NICHT
   // als uneingeschränkt nutzbar/gesichert (effektive, konfliktbegrenzte Nutzbarkeit + Konflikt-Chip).
   const conflicts = useConflicts();
@@ -317,6 +315,18 @@ export function Ask(): JSX.Element {
         title: s.label,
         ...(ko ? { statusLabel: t(`status.${ko.status}`), trust: ko.trust } : {}),
         ...(s.usability ? { usabilityLabel: t(useReadiness(s.usability).labelKey) } : {}),
+        // AUFTRAG-mega62 Block E (Register F29): das Kennzeichen reist jetzt MIT. Bis mega61 wurde
+        // hier nur die Reihenfolge exportiert — tragende Quellen standen oben, aber nichts sagte
+        // das, und im Markdown sah eine nur konsultierte Quelle aus wie eine tragende. Bei
+        // UNBEKANNTER Zuordnung bleibt das Feld bewusst leer (genau wie die Plakette unten): eine
+        // erfundene Einordnung wäre schlimmer als keine.
+        ...(attribution === "attributed"
+          ? {
+              attributionLabel: t(
+                s.carrying ? "ask.attribution.carrying.badge" : "ask.attribution.consulted.badge",
+              ),
+            }
+          : {}),
       };
     });
     const markdown = buildAnswerMarkdown({
@@ -338,6 +348,16 @@ export function Ask(): JSX.Element {
         steps: t("ask.steps"),
         sources: t("ask.sources"),
         footer: t("ask.export.footer"),
+        // AUFTRAG-mega62 Block E: die KI-Kennzeichnung im Wortlaut aus Abschnitt 8 des
+        // Rechtsdokuments — mit eingesetzter Aufgabe und Datum, damit sie sagt, WAS wann erzeugt
+        // wurde, statt nur „irgendwas mit KI".
+        aiNotice: t("ai.exportNotice", {
+          task: t("ai.task.answer"),
+          date: generatedAt.slice(0, 10),
+        }),
+        ...(attribution === "attributed"
+          ? {}
+          : { attributionUnknown: t("ask.attribution.unknown") }),
       },
     });
     return { markdown, filename: answerExportFilename(generatedAt) };
@@ -488,6 +508,12 @@ export function Ask(): JSX.Element {
         {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
       </output>
       <AiUnavailableHint show={!answerAi.available} />
+      {/* AUFTRAG-mega61 Block E: die Fragenfläche trug bisher KEINEN dauerhaft sichtbaren
+          KI-Hinweis — nur eine Pille mit `title`, also erst nach dem Zeigen mit der Maus. Der Satz
+          steht jetzt ohne Interaktion da, direkt am Eingabefeld und damit VOR der ersten Frage. */}
+      <p className="mt-1.5">
+        <AiGeneratedNotice />
+      </p>
 
       {/* WP-UX-WOW-1 U2/U3 (statt SCRUM-265-Statik): ehrliche Beispiel-Chips. Antwort-Beispiele
           kommen aus dem ECHTEN validierten Bestand (Badge damit ehrlich korrekt), dazu EINE bewusste
@@ -655,6 +681,14 @@ export function Ask(): JSX.Element {
             {result.answered ? (
               // AUFTRAG-mega52: stabiler Anker des ERGEBNISBEREICHS fuer die Browser-Sonde.
               <Card className="print-area mt-3" data-testid="ask-answer">
+                {/* AUFTRAG-mega62 Block E: der KI-Satz gehört IN die Druckfläche. Er stand bisher
+                    am Eingabefeld (weiter oben) und damit außerhalb von `.print-area` — im
+                    gedruckten Blatt bzw. im daraus erzeugten PDF fehlte die Kennzeichnung also
+                    genau dort, wo das Ergebnis das Haus verlässt. Der Satz oben bleibt: er kommt
+                    VOR der ersten Frage, dieser hier reist MIT dem Ergebnis. */}
+                <p className="mb-2">
+                  <AiGeneratedNotice />
+                </p>
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {/* SCRUM-250 / AUFTRAG-mega33 A2: Status und Evidenz kommen aus der EINEN

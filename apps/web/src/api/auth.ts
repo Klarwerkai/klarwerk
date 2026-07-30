@@ -15,8 +15,20 @@ export interface AuthStatus {
   oidcEnabled?: boolean;
 }
 
+// AUFTRAG-mega61 Block C: der Vermerk am Konto. `due` entscheidet der SERVER — die Oberfläche
+// vergleicht keine Versionen, sie fragt. Eine zweite Auslegung von „alte Fassung" wäre eine zweite
+// Wahrheit, und die eine, die auseinanderläuft, wäre immer die im Browser.
+export interface NoticeAck {
+  acknowledgedAt?: string;
+  acknowledgedVersion?: string;
+  currentVersion: string;
+  due: boolean;
+}
+
 export const authApi = {
   status: (): Promise<AuthStatus> => api.get<AuthStatus>("/auth/status"),
+  notice: (): Promise<NoticeAck> => api.get<NoticeAck>("/auth/notice"),
+  acknowledgeNotice: (): Promise<NoticeAck> => api.post<NoticeAck>("/auth/notice"),
   me: (): Promise<SessionUser> => api.get<SessionUser>("/auth/me"),
   login: (email: string, password: string): Promise<{ user: SessionUser }> =>
     api.post<{ user: SessionUser }>("/auth/login", { email, password }),

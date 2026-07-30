@@ -53,6 +53,8 @@ import {
   normalizePastedHtml,
   sanitizeHtml,
 } from "../lib/richText";
+import { AiCostHint } from "./AiCostHint";
+import { AiGeneratedNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
 // AUFTRAG-mega9 Block F: dieselbe Dialog-Vorrichtung wie überall sonst (Fokusfalle, Escape,
 // Rückgabe des Fokus) — kein eigener Dialog für das Bildbeschreibungs-Formular.
@@ -1206,6 +1208,12 @@ export function RichTextEditor({
                   : t(CAPTION_AI_TEXT.suggest)}
               </button>
               {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
+              {/* AUFTRAG-mega61 Block E: die Bildbeschreibung erzeugt Text, den es vorher nicht
+                  gab — sie trägt den Hinweis dauerhaft, nicht erst am Ergebnis.
+                  AUFTRAG-mega62 Block F: der Kostenhinweis daneben, aus demselben Grund. */}
+              <p className="mt-1">
+                <AiGeneratedNotice /> <AiCostHint />
+              </p>
 
               {/* 4. Der Vorschlag als EIGENER, sichtbar abgesetzter Block — als KI-Vorschlag
                   gekennzeichnet und NICHT mit der Nutzereingabe vermischt. */}
@@ -1332,6 +1340,11 @@ export function RichTextEditor({
               : t(CAPTION_AI_TEXT.suggest)}
           </button>
           {!imageDescribe.available ? <AiUnavailableHint show={true} /> : null}
+          {/* AUFTRAG-mega61 Block E: dieselbe Zusage an der Fußnoten-Leiste.
+              AUFTRAG-mega62 Block F: und derselbe Kostenhinweis — es ist derselbe Modellaufruf. */}
+          <p className="mt-1">
+            <AiGeneratedNotice /> <AiCostHint />
+          </p>
           {captionAi?.status === "suggestion" ? (
             <div className="mt-1.5 rounded-btn border border-ai/30 bg-surface p-2">
               <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">

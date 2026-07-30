@@ -1119,6 +1119,12 @@ export interface DemoSeedResult {
   duplicates: number;
   pendingRevalidation: number;
   attachments: number;
+  // AUFTRAG-mega64 Block A: die Einmalkennwörter der in DIESEM Ladevorgang neu angelegten
+  // Demo-Konten. Sie kommen genau einmal, in dieser Antwort — der Server hat sie danach nur noch
+  // als Prüfwert. Die Oberfläche zeigt sie deshalb SOFORT und sagt, dass es das einzige Mal ist.
+  // Optional, weil ein übersprungener Ladevorgang keine anlegt und weil Bestandsserver das Feld
+  // nicht kennen.
+  einmalkennwoerter?: Array<{ email: string; kennwort: string }>;
 }
 
 // Audit-P4 (SCRUM-398): Live-Wall — „frisch gesichert / hat heute geholfen" (read-only).
@@ -1154,6 +1160,24 @@ export interface Notification {
 // Ja/Nein. Die Namen sind Fachnamen, keine Umgebungsvariablen (der Server übersetzt; siehe
 // services/app/src/feature-flags.ts). BEWUSST hier eigenständig getippt und nicht aus services
 // importiert: apps/web darf die Modulgrenze nach services nicht überschreiten.
-export type FeatureName = "herkunft" | "confluenceImport" | "expertMatching";
+export type FeatureName =
+  | "herkunft"
+  | "confluenceImport"
+  | "expertMatching"
+  // AUFTRAG-mega61: die zwei Notausschalter. Ihre Vorgabe ist AN (Server: feature-flags.ts) — sie
+  // sperren nichts, sie erlauben nur das Abschalten einer Pflichtfläche, wenn sie im Betrieb stört.
+  // AUFTRAG-mega62 Block A: `hinweisbanner` deckt BEIDE Flächen des Hinweises — den Banner in der
+  // Anwendungshülle UND denselben Text auf der Anmeldemaske. Vorher nur die erste; ein
+  // Notausschalter für die Hälfte ist eine unwahre Auskunft.
+  | "rechtsseiten"
+  | "hinweisbanner"
+  // AUFTRAG-mega64 Block A: das Demodaten-Laden. Vorgabe AUS, fail-closed — ein Werkzeug, das
+  // Konten anlegt, ist keine Grundausstattung. Ohne diesen Schalter existiert die Route nicht
+  // (services/app/src/routes/admin-routes.ts), und der Knopf erscheint deshalb auch nicht.
+  | "demodaten";
 
-export type FeatureFlags = Record<FeatureName, boolean>;
+// AUFTRAG-mega61: `Partial`, weil ein UNANGEMELDETER Aufrufer nur die Teilmenge bekommt, deren
+// Fläche vor der Anmeldung erreichbar ist (rechtsseiten, hinweisbanner). Ein fehlender Schlüssel
+// wird vom einzigen Leser (`FeatureGate`) wie „aus“ gewertet — dieselbe fail-closed Regel wie
+// „noch nicht geladen“ und „Server hat nicht geantwortet“.
+export type FeatureFlags = Partial<Record<FeatureName, boolean>>;

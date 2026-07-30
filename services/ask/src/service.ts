@@ -1,6 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
-import { type KoService, type WithTx, dropConfidential } from "../../knowledge-object";
+import {
+  type KoService,
+  type WithTx,
+  dropConfidential,
+  isConfidential,
+} from "../../knowledge-object";
 import {
   type AnswerResult,
   DEFAULT_TOP_K,
@@ -158,9 +163,27 @@ export class AskService {
     const candidates = selectCandidates(question, refs, DEFAULT_TOP_K);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
+    // AUFTRAG-mega61 BLOCK G — DAS ZWEITE NETZ, AUS DEM KONTEXT ABGELEITET.
+    //
+    // Bis mega60 übergab dieser Aufruf die Vertraulichkeit NICHT; der Reasoner nahm sie als `false`
+    // an, und damit war der Egress-Wächter am Engpass auf dem Antwortweg wirkungslos (Begründung
+    // ausführlich in reasoner/src/service.ts an `answer`). Die Ableitung geschieht bewusst auf
+    // `prefiltered`, also NACH `dropConfidential` — auf dem, was WIRKLICH hinausgeht:
+    //   · Heute ist der Wert damit immer `false`. Es ändert sich kein Verhalten, keine Antwort
+    //     wird schlechter, keine Cloud-Kante fällt grundlos weg.
+    //   · Ließe ein künftiger Umbau ein vertrauliches Objekt bis hierher durch, wird er `true` —
+    //     die Cloud fällt aus der Providerkette UND `ConfidentialEgressError` schlägt an.
+    // Auf `prefilteredRaw` abzuleiten wäre falsch: dann würde eine Frage, die zufällig ein
+    // vertrauliches Objekt streift, ihre Antwort verlieren, obwohl das Objekt längst entfernt ist.
+    const kontextVertraulich = prefiltered.some((ko) => isConfidential(ko.confidentiality));
     const rawResult = opts?.retrievalOnly
       ? await this.reasoner.answerRetrievalOnly(question, candidates, locale)
-      : await this.reasoner.answer(question, candidates, locale);
+      : await this.reasoner.answer(question, candidates, locale, kontextVertraulich, {
+          // mega61 Block G: der Handelnde am Protokolleintrag. Kein Gegenstand — bei einer Antwort
+          // ist er eine Trefferliste und kein einzelnes Objekt (dieselbe Begründung, die in
+          // reasoner-routes.ts schon steht).
+          actor,
+        });
     // SCRUM-490 R2 (A2): Quellenpflicht — ein „Treffer" ohne echte Quelle ist KEIN belegter Treffer.
     // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
     // mega52 A3: wird der Treffer hier zur ehrlichen Leer-Antwort herabgestuft, fällt auch die

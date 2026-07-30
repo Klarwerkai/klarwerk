@@ -4,7 +4,6 @@ import { Link } from "react-router-dom";
 import {
   useAudit,
   useConflicts,
-  useDirectory,
   useGaps,
   useKos,
   useLifecyclePending,
@@ -14,12 +13,7 @@ import { useSession } from "../app/AuthContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
-import {
-  AUTHOR_UNKNOWN_KEY,
-  type KoAuthorParts,
-  authorDisplayName,
-  koAuthorParts,
-} from "../lib/koAuthor";
+import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkTone, type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { type TaskTone, knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
@@ -29,6 +23,7 @@ import {
   countTasksByFilter,
   filterTasks,
 } from "../lib/taskFilters";
+import { useAuthorName } from "../lib/useAuthorName";
 import { returnedToAuthor } from "../lib/validationStatus";
 import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
 
@@ -72,15 +67,12 @@ export function MyTasks(): JSX.Element {
   const gaps = useGaps();
   const audit = useAudit();
   const kos = useKos();
-  const dir = useDirectory();
   const { user } = useSession();
 
-  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
-  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
-  const nameOf = (uid: string): string =>
-    authorDisplayName(uid, dir.data?.find((d) => d.id === uid)?.name, (ref) =>
-      t(AUTHOR_UNKNOWN_KEY, { ref }),
-    );
+  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
+  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
+  // eine Aussage über die Person, wo gar keine feststand.
+  const nameOf = useAuthorName();
   // SCRUM-124: KOs, die mir (als Autor) nach Gelb/Rot zur Nacharbeit zurückgegeben wurden.
   const kosById = new Map((kos.data ?? []).map((k) => [k.id, k]));
   const authorOf = (koId: string): KoAuthorParts | undefined => {

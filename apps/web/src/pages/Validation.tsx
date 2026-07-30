@@ -38,7 +38,7 @@ import { isDemoContext } from "../lib/demoPilotPath";
 import { clearFacetSelection } from "../lib/facetFilter";
 import { EMPTY_RAIL_UI, type FacetRailUiState, facetRailGroups } from "../lib/facetRail";
 import { type FacetSelection, applyFacetSelection, toggleFacetValue } from "../lib/facets";
-import { AUTHOR_UNKNOWN_KEY, authorDisplayName, koAuthorParts } from "../lib/koAuthor";
+import { koAuthorParts } from "../lib/koAuthor";
 // WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
 import { formatKoTimestamp } from "../lib/koDates";
 import {
@@ -64,6 +64,7 @@ import {
   reviewWorkView,
   sortByReviewPriority,
 } from "../lib/reviewSignals";
+import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
 // WP-SHIP9-B3FIX: pending-Gate (ausgrauen + Aktionen sperren) und Board-weites pending-Prädikat (Polling).
 import { boardHasPendingAiCheck, validationAiGate } from "../lib/validationAiGate";
@@ -257,12 +258,10 @@ export function Validation(): JSX.Element {
     },
   });
   // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
-  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
-  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
-  const nameOf = (uid: string): string =>
-    authorDisplayName(uid, users.data?.find((d) => d.id === uid)?.name, (ref) =>
-      t(AUTHOR_UNKNOWN_KEY, { ref }),
-    );
+  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
+  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
+  // eine Aussage über die Person, wo gar keine feststand.
+  const nameOf = useAuthorName();
   // SCRUM-364 / AG-15 follow-up: „Mir zugewiesen"-Linse lazy aus ?mine=1 (Ziel der Assignment-
   // Benachrichtigung) — die übrigen Filter starten leer. Aktiviert nur die vorhandene mineOnly-Filterung.
   const [filter, setFilter] = useState<ValidationFilterState>(() => ({

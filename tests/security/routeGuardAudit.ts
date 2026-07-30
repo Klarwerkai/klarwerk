@@ -136,6 +136,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
     reason: "Beendet die Sitzung; löscht nur das Cookie.",
   },
   "GET /api/auth/me": { protection: "auth" },
+  // AUFTRAG-mega61 Block C: die Kenntnisnahme des Hinweises. Beide auf das EIGENE Konto und nur
+  // darauf — der Nutzer kommt aus der Sitzung, nicht aus dem Pfad; es gibt keinen Weg, eine fremde
+  // Quittung zu lesen oder zu setzen. Kein zusätzliches Recht nötig: Auch eine Betrachterin muss
+  // den Pflichthinweis quittieren können, sonst bekäme sie ihn bei jedem Laden erneut.
+  "GET /api/auth/notice": { protection: "auth" },
+  "POST /api/auth/notice": { protection: "auth" },
   "POST /api/auth/password": { protection: "auth" },
   "POST /api/auth/forgot": {
     protection: "public",

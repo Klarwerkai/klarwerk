@@ -389,6 +389,11 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
       audit,
       // SCRUM-443: FR-RBAC-03 serverseitig durchsetzen (kein Selbst-Entzug der Admin-Rolle).
       canChangeRole,
+      // AUFTRAG-mega62 Block B: dieselbe echte DB-Transaktion wie KoService/AskService — der
+      // Konto-Vermerk der Hinweis-Kenntnisnahme und sein Prüfprotokoll-Eintrag committen bzw.
+      // rollbacken gemeinsam. Nur mit echtem Pg-Pool gesetzt; ohne ihn trägt die Schreibreihenfolge
+      // (Protokoll zuerst) die verbleibende Zusage, s. AuthService.acknowledgeNotice.
+      ...(opts.withTx ? { withTx: opts.withTx } : {}),
     }),
     // AUFTRAG-mega20 Block D: die Ankerprüfung des Entwurfs bekommt ihre Auflösung HIER — capture
     // kennt den Objektspeicher nicht (Modulgrenze), die Composition-Root kennt beide. Dieselbe

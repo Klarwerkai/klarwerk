@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import type { Session, User } from "./types";
 
 // Persistenz-Schnittstellen. Die In-Memory-Implementierung dient Tests und Dev;
@@ -8,7 +9,15 @@ export interface UserRepo {
   findByEmail(email: string): Promise<User | undefined>;
   findById(id: string): Promise<User | undefined>;
   insert(user: User): Promise<void>;
-  update(user: User): Promise<void>;
+  /**
+   * AUFTRAG-mega62 Block B: `tx` ist ein OPTIONALER, opaker Transaktionskontext (services/db-tx) —
+   * additiv, abwärtskompatibel (alle bestehenden Aufrufer ohne tx bleiben unverändert). Zweck: die
+   * Kenntnisnahme des Hinweises schreibt Konto UND Prüfprotokoll; beides muss gemeinsam committen
+   * oder gemeinsam zurückrollen, sonst gäbe es einen Vermerk am Konto ohne Nachweis im Protokoll —
+   * genau den Zustand, den der Nachweis ausschließen soll. Dasselbe Muster wie AuditRepo.append
+   * und KoRepo.delete.
+   */
+  update(user: User, tx?: TxContext): Promise<void>;
   delete(id: string): Promise<void>;
   // SCRUM-504: atomarer Bootstrap-Claim. Fügt `user` als DEN Bootstrap-Admin ein und liefert true; ist
   // der einzige Bootstrap-Slot schon belegt (partieller Unique-Index / paralleler Gewinner), wird NICHTS
@@ -83,7 +92,11 @@ export class InMemoryUserRepo implements UserRepo {
     return Promise.resolve();
   }
 
-  update(user: User): Promise<void> {
+  // AUFTRAG-mega62 Block B: `_tx` wird bewusst ignoriert — im Speicher gibt es kein I/O-Fenster
+  // zwischen zwei Schreibern, und ein nachgebautes Rollback wäre eine Kulisse, die eine Zusage
+  // vortäuscht, die nur die Datenbank halten kann. Die Reihenfolge im Dienst (Protokoll ZUERST)
+  // trägt den Speicherfall (s. AuthService.acknowledgeNotice).
+  update(user: User, _tx?: TxContext): Promise<void> {
     this.users.set(user.id, user);
     return Promise.resolve();
   }

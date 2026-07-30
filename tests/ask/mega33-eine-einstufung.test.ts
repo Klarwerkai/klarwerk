@@ -139,6 +139,8 @@ const SURFACES: ReadonlyArray<{
           steps: "Schritte",
           sources: "Quellen",
           footer: "{{date}}",
+          // AUFTRAG-mega62 Block E: Pflichtfeld (s. answerExport.ts).
+          aiNotice: "KI-erzeugt",
         },
       });
       return md.includes("status:verified") || md.includes("evidence:ask.knowledgeClass.gesichert");

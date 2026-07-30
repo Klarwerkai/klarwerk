@@ -211,6 +211,15 @@ export default defineConfig({
             EXTERNAL_SEARCH: "off",
           }
         : {}),
+      // (2b) AUFTRAG-mega64 Block A: Das Demodaten-Laden liegt seit mega64 hinter einem fail-closed
+      //      Betriebsschalter mit Vorgabe AUS — ohne ihn existiert die Route nicht und der Knopf
+      //      „Demodaten laden" wird nicht gerendert. `smoke:ui:gate:daten` fährt genau über diesen
+      //      Produktweg (`tests-smoke/ersteinrichtung.setup.ts:95-108`) und braucht den Schalter
+      //      deshalb ausdrücklich. Er wird NUR für diesen Lauf gesetzt: der normale Tor-Lauf
+      //      (`smoke:ui:gate`, der Lauf in `tools/check`) seedet keine Demodaten und bekommt den
+      //      Schalter darum auch nicht — sonst stünde in der Tor-Umgebung ein Werkzeug scharf, das
+      //      dieser Lauf nicht benutzt.
+      ...(process.env.KLARWERK_SMOKE_SEED === "1" ? { KLARWERK_DEMO_SEED: "1" } : {}),
       // (3) Der Cloud-Schlüssel steht NICHT hier — er kommt als geerbte Prozessumgebung aus dem
       //     Start-Befehl (s. oben, `package.json`). Dort wird er im Tor auf LEER gesetzt (nicht
       //     „ungesetzt": leer, damit ein in Pedis Shell exportierter Wert die Hermetik nicht doch

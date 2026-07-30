@@ -4,6 +4,8 @@ import {
   type ModelRunRepo,
   type ModelRunStatus,
   type ModelRunTask,
+  // mega61 Block F: die maschinenlesbare Kennzeichnung erzeugter Ausgaben (KI-VO Art. 50 Abs. 2).
+  aiGeneratedMark,
   sanitizeModelRunContext,
 } from "../../model-runs";
 import { ModelCapacityError } from "./model-concurrency";
@@ -900,8 +902,13 @@ export class Reasoner {
       },
       confidential,
     );
+    // AUFTRAG-mega61 Block F: die Kennzeichnung an BEIDEN Rückgabewegen dieser Methode — der
+    // frühen (Modell hat geantwortet) und der späten (deterministischer Rückfall mit Ursache).
+    // Genau solche zwei Ausgänge sind der Grund, warum die Kennzeichnung zentral gesetzt wird und
+    // nicht in den Providern.
+    const kennzeichnung = aiGeneratedMark("describe", result.demo);
     if (!result.demo) {
-      return result;
+      return { ...result, aiGenerated: kennzeichnung };
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
@@ -916,7 +923,7 @@ export class Reasoner {
       : failure?.failureClass === "timeout"
         ? ("model-timeout" as const)
         : ("model-error" as const);
-    return { ...result, fallbackReason };
+    return { ...result, fallbackReason, aiGenerated: kennzeichnung };
   }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
@@ -991,12 +998,52 @@ export class Reasoner {
   }
 
   // SCRUM-167: Ask-/Antwortpfad ebenfalls über runTask protokolliert (nur Metadaten).
+  //
+  // ==============================================================================================
+  // AUFTRAG-mega61 BLOCK G — DAS SICHERHEITSNETZ WAR AUF DIESEM WEG STRUKTURELL TOT.
+  // ==============================================================================================
+  //
+  // BEFUND (nachgesehen, nicht vermutet): Bis mega60 hatte genau diese Methode als EINZIGE der acht
+  // Aufgaben keinen `confidential`-Parameter. Sie rief `runTask("answer", locale, …)` mit drei
+  // Argumenten; der vierte blieb auf seinem Vorgabewert `false`. Folgen, beide real:
+  //   · `providerChain` entfernte die Cloud-Kante NIE (service.ts:271 prüft `!confidential`).
+  //   · `ConfidentialEgressError` am Engpass (model-concurrency.ts:174-178) prüft AUSSCHLIESSLICH
+  //     dieses Boolean — er scannt keinen Prompt und keinen Kontext. Bei fest `false` konnte er auf
+  //     dem Antwortweg gar nicht auslösen.
+  //
+  // GEFAHR WAR ES TROTZDEM NICHT: `services/ask/src/service.ts` entfernt vertrauliche
+  // Wissensobjekte VOR diesem Aufruf (`dropConfidential`). Der Weg war also zu — aber durch EINE
+  // Barriere, ohne zweites Netz. Fiele diese Zeile je weg (Umbau, neuer Aufrufer von `answer`,
+  // anderer Retrieval-Pfad), ginge vertraulicher Text ungebremst an die Cloud, und nichts hätte
+  // angeschlagen.
+  //
+  // DIE KLEINSTE EHRLICHE EBENE: `answer` bekommt denselben vierten Parameter wie die anderen
+  // sieben Aufgaben und reicht ihn durch. Der Aufrufer leitet ihn aus dem Kontext ab, den er
+  // TATSÄCHLICH übergibt — heute also immer `false`, weil der Filter davor greift. Genau das ist
+  // die Absicht: KEINE Verhaltensänderung heute, aber ein Netz, das morgen fängt. Antwortvertrag
+  // und Substanztor bleiben unberührt.
   async answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
+    confidential = false,
+    // mega61 Block G, vierter Punkt: der Laufkontext. Bis hierher trug der Protokolleintrag der
+    // HÄUFIGSTEN KI-Handlung des Produkts weder Handelnden noch Gegenstand — ein Beleg, der sich
+    // dem, was er belegt, nicht zuordnen ließ. Der Gegenstand bleibt bewusst leer (bei einer
+    // Antwort ist er eine Trefferliste, kein Objekt); der Handelnde nicht mehr.
+    runContext?: ModelRunContext,
   ): Promise<AnswerResult> {
-    return this.runTask("answer", locale, (p) => p.answer(question, context, locale));
+    const result = await this.runTask(
+      "answer",
+      locale,
+      (p) => p.answer(question, context, locale, confidential),
+      confidential,
+      runContext,
+    );
+    // AUFTRAG-mega61 Block F: die Kennzeichnung wird HIER gesetzt und nicht in den Providern —
+    // es gibt drei Provider-Wege zu einer Antwort (Cloud, lokal, deterministisch), und drei
+    // Stellen wären drei Gelegenheiten, sie zu vergessen.
+    return { ...result, aiGenerated: aiGeneratedMark("answer", result.demo) };
   }
 
   // SCRUM-490 R2 (B1): RETRIEVAL-ONLY-Antwort für den Add-on-Pfad (Klara). Der Eingabetext ist der
@@ -1036,12 +1083,14 @@ export class Reasoner {
     // SCRUM-502 Schicht 2: vertraulicher Draft → Cloud aus der Kette.
     confidential = false,
   ): Promise<InterviewResult> {
-    return this.runTask(
+    const result = await this.runTask(
       "interview",
       locale,
       (p) => p.interview(answers, locale, confidential),
       confidential,
     );
+    // mega61 Block F: Interviewfragen sind erzeugter Text — gekennzeichnet.
+    return { ...result, aiGenerated: aiGeneratedMark("interview", result.demo) };
   }
 
   // PMO-FEA-0006: Wissenspunkte aus Dokumenttext extrahieren (optional mit Suchauftrag).

@@ -1140,6 +1140,8 @@ export class ModelProvider implements ReasonerProvider {
     question: string,
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
+    // AUFTRAG-mega61 Block G: kommt aus dem Kontext, den der Ask-Dienst wirklich übergibt.
+    confidential = false,
   ): Promise<AnswerResult> {
     // SCRUM-360: begrenzte, status-/trust-bewusste Top-K-Auswahl → das Modell bekommt nur eine
     // gedeckelte, relevant gerankte Quellenmenge (kein blindes Durchreichen aller KOs).
@@ -1165,8 +1167,11 @@ export class ModelProvider implements ReasonerProvider {
       await client.complete(
         answerSystem(locale),
         `${labels.question}: ${question}\n\n${labels.sources}:\n${grounding}`,
-        // Ask-Antwortkontext ist bereits Schicht-1-gefiltert (keine vertraulichen KOs im Pool).
-        false,
+        // AUFTRAG-mega61 Block G: hier stand hart `false`, begründet mit „Ask-Antwortkontext ist
+        // bereits Schicht-1-gefiltert". Das ist eine ANNAHME über einen entfernten Aufrufer, keine
+        // Garantie im Code — und sie machte den Egress-Wächter am Chokepoint auf diesem Weg
+        // wirkungslos. Jetzt kommt der Wert von dort, wo der Kontext entsteht.
+        confidential,
       )
     ).trim();
     // mega52 A2/A3: die Marken werden jetzt WIRKLICH zurückgelesen. Leer, wenn das Modell keine

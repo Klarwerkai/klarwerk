@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
-import { useConflicts, useDirectory, useKos, useLibrarySearch } from "../api/hooks";
+import { useConflicts, useKos, useLibrarySearch } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
@@ -47,7 +47,7 @@ import {
   toggleFacetValue,
 } from "../lib/facets";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
-import { AUTHOR_UNKNOWN_KEY, authorDisplayName, koAuthorParts } from "../lib/koAuthor";
+import { koAuthorParts } from "../lib/koAuthor";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import {
@@ -83,6 +83,7 @@ import {
   writeFacetSelectionToParams,
 } from "../lib/libraryUrlFilters";
 import { canRevalidate } from "../lib/revalidation";
+import { useAuthorName } from "../lib/useAuthorName";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../lib/useDebouncedValue";
 import { usePersistentDisclosure } from "../lib/usePersistentDisclosure";
 import { usePersistentEnum } from "../lib/usePersistentValue";
@@ -315,13 +316,10 @@ export function Library(): JSX.Element {
     setUrlSeed(null);
   }, [urlSeed, all.data]);
   // FR-LIF-04: Autor in jeder KO-Zeile sichtbar (Namen via Directory, Fallback ID).
-  const dir = useDirectory();
-  // AUFTRAG-mega51 BLOCK F2: ohne Verzeichniseintrag stand hier die ROHE Autoren-Kennung.
-  // Die ehrliche Auskunft kommt jetzt aus der einen Quelle (lib/koAuthor.ts).
-  const nameOf = (uid: string): string =>
-    authorDisplayName(uid, dir.data?.find((d) => d.id === uid)?.name, (ref) =>
-      t(AUTHOR_UNKNOWN_KEY, { ref }),
-    );
+  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
+  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
+  // eine Aussage über die Person, wo gar keine feststand.
+  const nameOf = useAuthorName();
   // SCRUM-357 / AG-14: Konfliktliste für die ehrliche „conflict-limited“-Reife je Treffer.
   const conflicts = useConflicts();
 

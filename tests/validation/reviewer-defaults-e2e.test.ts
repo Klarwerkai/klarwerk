@@ -4,6 +4,7 @@ import {
   FALLBACK_NEEDED_VALIDATIONS,
   normalizeDefaultNeeded,
 } from "../../services/validation/src/settings";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-395: Prüfer-Zuweisung beim Einreichen + Standard-Prüferanzahl (Admin-Default).
 // HTTP end-to-end über die echten Routen (Muster wie tests/app/notifications-assignment-e2e).
@@ -30,9 +31,18 @@ describe("SCRUM-395: Standard-Prüferanzahl + Prüfer-Vorschlag beim Einreichen"
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed legt Carla (controller) + Erik (experte) als eigenständige Nutzer an.
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, carla, erik };
   }
 

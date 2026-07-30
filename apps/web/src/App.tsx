@@ -12,6 +12,11 @@ import { AuthScreens } from "./auth/AuthScreens";
 import { ResetScreen } from "./auth/ResetScreen";
 import { SsoCallback } from "./auth/SsoCallback";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+// AUFTRAG-mega61 Block A: die beiden Rechtsseiten liegen VOR dem Anmeldetor, wie /reset und
+// /sso/callback — deshalb hier und nicht in routes.tsx (das läuft erst innerhalb der Shell).
+import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/LegalPages";
+// AUFTRAG-mega62 Block C: die Sperrfläche nach einem gescheiterten strengen Abmelden.
+import { SignOutBlocked } from "./legal/SignOutBlocked";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
 
@@ -26,6 +31,9 @@ function Splash(): JSX.Element {
 // erreichbarem Backend die Shell direkt gezeigt (Vorschau ohne Login).
 function Gate(): JSX.Element {
   const s = useSession();
+  // AUFTRAG-mega61 Block A: der Schalter der Rechtsseiten. Er wird UNBEDINGT gelesen (Regel der
+  // Hooks), ausgewertet wird er nur auf den beiden Pfaden unten.
+  const rechtsseiten = useRechtsseitenTor();
   const devPreview = import.meta.env.DEV && s.error && !s.user;
 
   // Passwort-Reset (E-Mail-Link) ist ohne Anmeldung erreichbar.
@@ -35,6 +43,30 @@ function Gate(): JSX.Element {
   // FR-AUTH-07: SSO-Callback liegt vor dem Auth-Gate (Code/State → Sitzung).
   if (window.location.pathname === "/sso/callback") {
     return <SsoCallback />;
+  }
+  // AUFTRAG-mega61 Block A: DER DRITTE ZWEIG DERSELBEN ART — Impressum und Datenschutzerklärung
+  // ohne Anmeldung. Sie MÜSSEN hier liegen: eine Datenschutzerklärung, die man erst nach der
+  // Kontoanlage lesen kann, kommt nach der ersten Datenerhebung und ist damit wertlos.
+  // Die Reihenfolge der bestehenden Zweige bleibt unangetastet — dieser steht dahinter, und die
+  // drei Pfade sind zueinander fremd, also entscheidet die Reihenfolge ohnehin nichts.
+  // Steht der Schalter auf aus, wird NICHT umgeleitet: der Ablauf läuft unverändert weiter, und
+  // die Seite verhält sich damit wie jede andere unbekannte Adresse.
+  const legalPage = legalPageForPath(window.location.pathname);
+  if (legalPage) {
+    if (!rechtsseiten.geklaert) {
+      return <Splash />;
+    }
+    if (rechtsseiten.an) {
+      return <LegalScreen page={legalPage} />;
+    }
+  }
+  // AUFTRAG-mega62 Block C: HIER ist die Sperre, und sie steht bewusst VOR jedem geschützten
+  // Zweig. Hat ein strenges Abmelden (Ablehnung des Hinweises) keine Bestätigung vom Server
+  // bekommen, besteht die Sitzung womöglich fort — dann darf die Anwendung nichts Geschütztes
+  // mehr zeigen, egal was `s.user` gerade sagt. Die Rechtsseiten oben bleiben erreichbar: sie
+  // sind Pflichtangaben und stehen auch Unangemeldeten offen.
+  if (s.signOutFailed) {
+    return <SignOutBlocked />;
   }
   if (s.isLoading) {
     return <Splash />;

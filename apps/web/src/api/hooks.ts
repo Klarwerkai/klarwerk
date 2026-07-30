@@ -96,6 +96,15 @@ export const useExpertise = (enabled: boolean) =>
 // nicht (ein Schalter wird beim Serverstart gesetzt), deshalb ausdrücklich KEIN Nachladen und kein
 // Ablauf — einmal je Sitzung genügt. Kein Retry: Antwortet der Server nicht, gilt „unbekannt", und
 // „unbekannt" heißt fail-closed „aus" (siehe FeatureGate).
+// AUFTRAG-mega61 Block A: die Auskunft antwortet jetzt AUCH einem Unangemeldeten — mit der
+// Teilmenge, deren Fläche vor der Anmeldung erreichbar ist (Rechtsseiten, Hinweisbanner). Damit
+// diese Teilmenge nicht wegen `staleTime: Infinity` als vollständige Antwort über die Anmeldung
+// hinweg hängenbleibt, verwirft `AuthProvider.refresh()` sie beim Sitzungswechsel ausdrücklich
+// mit (app/AuthContext.tsx).
+//
+// BEWUSST NICHT über einen sitzungsabhängigen Schlüssel gelöst, obwohl das die naheliegende Form
+// wäre: Diese Datei ist eine `.ts` und darf keine `.tsx` importieren — der Wurzel-Typprüfer läuft
+// ohne jsx (dieselbe Grenze, die schon `lib/aiAvailability.ts` von `lib/useAiAvailable.tsx` trennt).
 export const useFeatures = () =>
   useQuery({
     queryKey: ["features"],

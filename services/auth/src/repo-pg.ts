@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { PasswordResetRepo, ResetToken, SessionRepo, UserRepo } from "./repo";
 import { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./service";
 import type { Role, Session, User } from "./types";
@@ -20,6 +21,12 @@ CREATE TABLE IF NOT EXISTS users (
   bootstrap_admin boolean NOT NULL DEFAULT false
 );
 ALTER TABLE users ADD COLUMN IF NOT EXISTS bootstrap_admin boolean NOT NULL DEFAULT false;
+-- AUFTRAG-mega61 Block C: Kenntnisnahme des Hinweises am Konto (Zeitpunkt + gelesene Textfassung).
+-- Bewusst NULL-bar und ohne Vorgabewert: „kein Vermerk" ist ein gültiger Zustand und heißt
+-- „Hinweis erscheint". Ein Vorgabewert würde jedem Bestandskonto eine Quittung andichten, die es
+-- nie gegeben hat.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notice_ack_at text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notice_ack_version text;
 CREATE UNIQUE INDEX IF NOT EXISTS ko_users_one_bootstrap ON users (bootstrap_admin) WHERE bootstrap_admin;
 CREATE TABLE IF NOT EXISTS sessions (
   token text PRIMARY KEY,
@@ -84,6 +91,8 @@ interface UserRow {
   role: string;
   approved: boolean;
   created_at: string;
+  notice_ack_at: string | null;
+  notice_ack_version: string | null;
 }
 
 function toUser(row: UserRow): User {
@@ -96,6 +105,10 @@ function toUser(row: UserRow): User {
     role: row.role as Role,
     approved: row.approved,
     createdAt: row.created_at,
+    // mega61 Block C: NULL → Feld fehlt (nicht `null`). Der Typ kennt nur „da" oder „nicht da";
+    // ein drittes „ausdrücklich leer" gäbe es sonst nur in der Datenbank und nirgends sonst.
+    ...(row.notice_ack_at ? { noticeAckAt: row.notice_ack_at } : {}),
+    ...(row.notice_ack_version ? { noticeAckVersion: row.notice_ack_version } : {}),
   };
 }
 
@@ -167,9 +180,14 @@ export class PgUserRepo implements UserRepo {
     return (res.rowCount ?? 0) > 0;
   }
 
-  async update(user: User): Promise<void> {
-    await this.pool.query(
-      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8 WHERE id=$1",
+  // AUFTRAG-mega62 Block B: ohne tx die normale Pool-Query (heutiges Verhalten unverändert); MIT tx
+  // (von AuthService.acknowledgeNotice über die Kompositionswurzel gereicht) läuft das UPDATE auf
+  // DEMSELBEN Client wie der Prüfprotokoll-Eintrag — beide committen oder beide rollbacken
+  // (services/db-tx). Identisches Muster wie PgAuditRepo.
+  async update(user: User, tx?: TxContext): Promise<void> {
+    const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await ziel.query(
+      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10 WHERE id=$1",
       [
         user.id,
         user.name,
@@ -179,6 +197,10 @@ export class PgUserRepo implements UserRepo {
         user.role,
         user.approved,
         user.createdAt,
+        // mega61 Block C: `?? null` und nicht weglassen — sonst könnte ein Aufrufer, der den Nutzer
+        // ohne die beiden Felder gelesen hat, einen bestehenden Vermerk nicht mehr überschreiben.
+        user.noticeAckAt ?? null,
+        user.noticeAckVersion ?? null,
       ],
     );
   }

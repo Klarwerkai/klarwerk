@@ -15,6 +15,7 @@ import {
   validationReviewContext,
 } from "../../apps/web/src/lib/validationReviewContext";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-334: Der Review-Nacharbeitsfluss (SCRUM-330/331/332/333) wird runtime-nah über die ECHTEN
 // HTTP-Routen UND die FE-Entscheidungs-/Anzeige-Helfer als zusammenhängender Beta-Workflow geprüft:
@@ -46,8 +47,17 @@ describe("SCRUM-334: Review-Nacharbeitsfluss E2E (HTTP + FE-Helfer)", () => {
       payload: { name: "Admin", email: "a@x.de", password: "secret123" },
     });
     const admin = await login(app, "a@x.de", "secret123");
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin.headers });
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({
+      method: "POST",
+      url: "/api/admin/demo-seed",
+      headers: admin.headers,
+    });
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
 
     // 1) Reales offenes KO anlegen (needed=2).
     const created = await app.inject({

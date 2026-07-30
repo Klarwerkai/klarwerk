@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { demoKennwort } from "../support/demoZugang";
 
 // SCRUM-509: Downgrade der Vertraulichkeit kontrollieren + ungültige Stufen ablehnen (fail-safe).
 // - ungültige/fehlende Stufe → 400 (kein stilles Normalisieren auf „intern").
@@ -25,9 +26,15 @@ describe("SCRUM-509: Vertraulichkeits-Downgrade kontrolliert (HTTP end-to-end)",
       payload: { name: "Admin", email: "a@x.de", password: "secret123" },
     });
     const admin = await login(app, "a@x.de", "secret123");
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik"); // experte (ko.create)
-    const carla = await login(app, "carla@demo.klarwerk", "demo-pass-carla"); // controller (ko.validate)
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
+    // erik ist experte (ko.create), carla ist controller (ko.validate).
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
+    const carla = await login(
+      app,
+      "carla@demo.klarwerk",
+      demoKennwort(seed, "carla@demo.klarwerk"),
+    );
     return { app, admin, erik, carla };
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { demoKennwort } from "../../../tests/support/demoZugang";
 import { buildApp, buildServices } from "./build-app";
 
 // SCRUM-238: Import-/Review-Workflow über die ECHTEN HTTP-Routen absichern (kein Service-Direktaufruf,
@@ -24,8 +25,9 @@ describe("SCRUM-238: Import-/Review-Workflow (HTTP end-to-end)", () => {
     });
     const admin = await login(app, "a@x.de", "secret123");
     // Demo-Seed legt Erik (experte, kein ko.validate) für den Review-Guard an.
-    await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
-    const erik = await login(app, "erik@demo.klarwerk", "demo-pass-erik");
+    // AUFTRAG-mega64 Block A: das Kennwort kommt aus der Seed-ANTWORT, nicht mehr aus dem Quelltext.
+    const seed = await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers: admin });
+    const erik = await login(app, "erik@demo.klarwerk", demoKennwort(seed, "erik@demo.klarwerk"));
     return { app, admin, erik };
   }
 

@@ -7,7 +7,7 @@
     "node": ">=20.19"
   },
   "scripts": {
-    "build": "tsc --noEmit",
+    "build": "tsc --noEmit && tsc -p tsconfig.tests-tsx.json && cd apps/web && npx tsc --noEmit",
     "lint": "biome check .",
     "format": "biome check --write .",
     "arch": "depcruise --config .dependency-cruiser.cjs services",

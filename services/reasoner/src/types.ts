@@ -1,5 +1,6 @@
 // RT-001 (bens Sammel-Review 3): anbieterneutrale, strukturierte Fehlerklasse eines Judge-Versuchs
 // (nur Klasse + optionaler HTTP-Status — nie Rohmeldung/Secret/Provider-Detail) reist bis zum Runner.
+import type { AiGeneratedMark } from "../../model-runs";
 import type { ModelFailureInfo } from "./model-errors";
 
 // SCRUM-88 / FR-I18N-01: sprachbewusste Reasoner-Steuerung. Steuert Prompting, Interview-Fragen
@@ -64,6 +65,12 @@ export interface AnswerResult {
   citedSources: string[];
   steps: AnswerStep[];
   demo: boolean; // FR-RSN-04: ohne Modell als Demo erkennbar.
+  // AUFTRAG-mega61 Block F: die maschinenlesbare Kennzeichnung nach Artikel 50 Absatz 2 der
+  // KI-Verordnung. Sie wird ZENTRAL an der Dienstgrenze gesetzt (ReasonerService), damit sie
+  // nicht an jedem Provider einzeln vergessen werden kann; die Provider bauen ihr Ergebnis
+  // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
+  // Dienst und ist genau dort getestet.
+  aiGenerated?: AiGeneratedMark;
 }
 
 export interface StructureResult {
@@ -99,6 +106,12 @@ export interface InterviewResult {
   done: boolean; // Abschluss erreicht
   draft: StructureResult; // nachvollziehbar aus den Antworten verdichtet
   demo: boolean; // deterministischer Fallback klar markiert
+  // AUFTRAG-mega61 Block F: die maschinenlesbare Kennzeichnung nach Artikel 50 Absatz 2 der
+  // KI-Verordnung. Sie wird ZENTRAL an der Dienstgrenze gesetzt (ReasonerService), damit sie
+  // nicht an jedem Provider einzeln vergessen werden kann; die Provider bauen ihr Ergebnis
+  // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
+  // Dienst und ist genau dort getestet.
+  aiGenerated?: AiGeneratedMark;
 }
 
 // PMO-FEA-0006: ein aus einem Dokument extrahierter Wissenspunkt. sourceExcerpt ist die
@@ -338,6 +351,12 @@ export interface DescribeImageResult {
   // kennzeichnet den Vorschlag dann als „mit Dokument-Kontext erzeugt". Bei vertraulichem Bild
   // (Cloud ausgeschlossen) gibt es KEINEN Vorschlag und damit auch kein withContext.
   withContext?: boolean;
+  // AUFTRAG-mega61 Block F: die maschinenlesbare Kennzeichnung nach Artikel 50 Absatz 2 der
+  // KI-Verordnung. Sie wird ZENTRAL an der Dienstgrenze gesetzt (ReasonerService), damit sie
+  // nicht an jedem Provider einzeln vergessen werden kann; die Provider bauen ihr Ergebnis
+  // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
+  // Dienst und ist genau dort getestet.
+  aiGenerated?: AiGeneratedMark;
 }
 
 // Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.

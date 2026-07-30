@@ -12,6 +12,11 @@ const labels: AnswerExportLabels = {
   steps: "Argumentationsschritte",
   sources: "Quellen",
   footer: "Quellengebunden · erstellt am {{date}}.",
+  // AUFTRAG-mega62 Block E: die KI-Kennzeichnung ist PFLICHTFELD und keine Option — deshalb steht
+  // sie hier auch in der Attrappe. Ein optionales Feld hätte genau die Lücke offen gelassen, um
+  // die es geht: einen Export ohne Kennzeichnung, der trotzdem baut.
+  aiNotice:
+    "Von künstlicher Intelligenz erzeugt (KLARWERK, Frage beantwortet, 2026-07-27). Inhaltlich zu prüfen.",
 };
 
 describe("SCRUM-430: buildAnswerMarkdown", () => {

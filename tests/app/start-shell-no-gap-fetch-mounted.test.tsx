@@ -25,6 +25,10 @@ vi.mock("../../apps/web/src/api/auth", async (importOriginal) => {
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     ko: { list: vi.fn(async () => []) },
+    // AUFTRAG-mega61: Die Anwendungshülle fragt seit mega61 die Betriebsschalter ab (Fußbereich
+    // mit den Rechtsseiten, Hinweisbanner). Die Attrappe antwortet mit „alles aus" — dieser Fall
+    // dreht sich um /api/gaps, und keine der zwei Flächen soll ihn stören.
+    features: { get: vi.fn(async () => ({ features: {} })) },
     analytics: { overview: vi.fn(async () => ({ total: 0, byStatus: {} })) },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },

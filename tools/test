@@ -13,4 +13,23 @@ cd "$(dirname "$0")/.."
 # Zeile; das war falsch. Die Hermetik des Smokes wird jetzt dort gesetzt, wo sie wirkt:
 # `playwright.smoke.config.ts` → `webServer.env`.
 export KLARWERK_SKIP_KEYCHAIN="${KLARWERK_SKIP_KEYCHAIN:-1}"
+
+# ==================================================================================================
+# AUFTRAG-mega61 BLOCK N — DIE RESTE, DIE DEN SHIP-VORGANG GEFÄHRLICH MACHEN.
+# ==================================================================================================
+#
+# Vite legt beim Laden von `vitest.config.ts` eine Datei `vitest.config.ts.timestamp-<zahl>.mjs` im
+# Wurzelverzeichnis an und räumt sie nach einem SAUBEREN Lauf wieder weg. Nach einem abgebrochenen
+# Lauf (Strg-C, Absturz, Zeitüberschreitung) bleibt sie liegen. So sind 96 davon zusammengekommen.
+#
+# WARUM DAS MEHR IST ALS UNORDNUNG: Sie sind der Grund, warum beim Ship NIEMALS `git add -A` benutzt
+# werden darf — ein einziges unbedachtes `add -A` zöge sie in einen Commit. `.gitignore` deckt sie
+# zwar ab (Zeilen 10 und 12), aber eine Ignorierregel ist ein Netz, kein Aufräumen: sie wachsen
+# trotzdem weiter, und irgendwann sucht jemand in 300 Dateien den echten Änderungsstand.
+#
+# Deshalb VOR dem Lauf, nicht danach: ein abgebrochener Lauf kommt nie zu einer Aufräumzeile am
+# Ende. Der nächste Lauf räumt auf, was der vorige liegengelassen hat — das fängt genau den Fall,
+# der die Reste überhaupt erzeugt.
+rm -f vitest.config.ts.timestamp-*.mjs
+
 npx vitest run "$@"
