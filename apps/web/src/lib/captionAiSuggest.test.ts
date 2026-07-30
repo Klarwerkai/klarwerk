@@ -27,14 +27,23 @@ describe("WP-SHIP9-S2: captionSuggestOutcome — ehrlicher Ausfallgrund", () => 
   });
 
   it("alte Darstellungen unverändert: no-model / timeout / error", () => {
-    expect(captionSuggestOutcome(result({ fallbackReason: "no-model" })).messageKey).toBe(
-      CAPTION_AI_TEXT.fallbackNoModel,
-    );
-    expect(captionSuggestOutcome(result({ fallbackReason: "model-timeout" })).messageKey).toBe(
-      CAPTION_AI_TEXT.fallbackTimeout,
-    );
-    expect(captionSuggestOutcome(result({ fallbackReason: "model-error" })).messageKey).toBe(
-      CAPTION_AI_TEXT.fallbackError,
-    );
+    // AUFTRAG-mega59 BLOCK G: hier stand dreimal `…).messageKey` DIREKT auf dem Rückgabewert. Der ist
+    // eine unterschiedene Union (`{kind:"suggestion",text}` | `{kind:"fallback",messageKey}`), also
+    // gibt es `messageKey` erst NACH der Verengung. Der Zugriff war ein echter Typfehler und lag
+    // seit seiner Entstehung im blinden Fleck des Tors (apps/web lief in keinem `tsc`). Statt eines
+    // `as`-Casts wird hier über `toEqual` auf die VOLLE Form geprüft — das ist typsicher UND sagt
+    // zusätzlich, dass die Variante wirklich „fallback" ist und keinen Text mitschickt.
+    expect(captionSuggestOutcome(result({ fallbackReason: "no-model" }))).toEqual({
+      kind: "fallback",
+      messageKey: CAPTION_AI_TEXT.fallbackNoModel,
+    });
+    expect(captionSuggestOutcome(result({ fallbackReason: "model-timeout" }))).toEqual({
+      kind: "fallback",
+      messageKey: CAPTION_AI_TEXT.fallbackTimeout,
+    });
+    expect(captionSuggestOutcome(result({ fallbackReason: "model-error" }))).toEqual({
+      kind: "fallback",
+      messageKey: CAPTION_AI_TEXT.fallbackError,
+    });
   });
 });

@@ -100,7 +100,7 @@ export function Profile(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-2xl space-y-5">
-      <PageHeader kicker={t("prof.kicker")} title={t("nav.profile")} />
+      <PageHeader kicker={t("prof.kicker")} title={t("nav.profile")} pageKey="profil" />
       <Card className="space-y-5">
         <div className="flex items-center gap-3">
           <Avatar initials={initials} />

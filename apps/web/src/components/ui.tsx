@@ -13,17 +13,40 @@ export function cx(...parts: Array<string | false | undefined | null>): string {
   return parts.filter(Boolean).join(" ");
 }
 
+// ==================================================================================================
+// AUFTRAG-mega59 BLOCK H1 — DER ANKER, DEN EINE FEHLERKARTE NICHT HAT.
+// ==================================================================================================
+//
+// Die Rauchprobe „Alle Kernrouten rendern (keine weiße Seite)" hatte als einzigen Anker
+// `page.locator("h1, h2").first()`. Genau der Absturz, den ihr Name fangen soll, liefert selbst eine
+// Überschrift: jede Route steckt in einer Fehlergrenze (routes.tsx), deren Karte ein `<h2>` rendert.
+// Dazu drei weitere Wege zum falschen Grün — `PlaceholderPage` rendert ein `<h1>` mit DEMSELBEN
+// Titel wie die echte Seite; ein Rollen-Gate leitet auf `/start` um, das eine `h1` hat; der
+// Auffangpfad `*` tut dasselbe.
+//
+// `pageKey` ist der Anker, den keiner dieser vier Wege hat: `PlaceholderPage` und die Fehlerkarte
+// rendern KEINEN `PageHeader`, und die Umleitungen fängt die URL-Zusicherung. Ein Titel genügt dafür
+// nicht — deshalb ist es eine Kennung und keine Beschriftung.
+//
+// Bewusst OPTIONAL: eine fehlende Kennung soll keine Seite zerbrechen, sondern nur bedeuten, dass
+// diese Seite in der Routenprobe nicht namentlich verankert ist. Der Sammler dafür ist die Probe
+// selbst — sie wird rot, wenn eine der zwölf Kernrouten ihren Anker verliert.
 export function PageHeader({
   kicker,
   title,
   actions,
+  pageKey,
 }: {
   kicker?: string;
   title: string;
   actions?: ReactNode;
+  pageKey?: string;
 }): JSX.Element {
   return (
-    <div className="mb-6 flex items-start justify-between gap-4">
+    <div
+      className="mb-6 flex items-start justify-between gap-4"
+      data-testid={pageKey ? `page-${pageKey}` : undefined}
+    >
       <div>
         {kicker ? (
           <div className="font-mono text-micro uppercase tracking-wider text-muted-2">{kicker}</div>

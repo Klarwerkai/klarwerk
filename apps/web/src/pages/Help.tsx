@@ -25,7 +25,7 @@ export function Help(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader kicker={t("help.kicker")} title={t("nav.help")} />
+      <PageHeader kicker={t("help.kicker")} title={t("nav.help")} pageKey="hilfe" />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("help.intro")}</p>
       {/* SCRUM-305: kompakte Pilot-Checkliste für den ersten Nutzerlauf — ehrlich, Stage-1, nicht
           durchsuchbar (fixer Orientierungspunkt), stört die normale Hilfe-Suche nicht. */}

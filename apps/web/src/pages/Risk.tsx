@@ -106,7 +106,7 @@ export function Risk(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-4xl space-y-7">
-      <PageHeader kicker={t("risk.kicker")} title={t("nav.risk")} />
+      <PageHeader kicker={t("risk.kicker")} title={t("nav.risk")} pageKey="risiko" />
 
       {/* SCRUM-230: kompakter Cockpit-Einstieg — aggregierte Kennzahlen aus vorhandenen Daten. */}
       <div>

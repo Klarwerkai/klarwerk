@@ -4,9 +4,11 @@ import {
   DeterministicProvider,
   type KnowledgeRef,
   MIN_ANSWER_SUBSTANCE,
-  meetsRelevanceThreshold,
   rankCandidates,
 } from "../../services/reasoner";
+// AUFTRAG-mega59 BLOCK I: `meetsRelevanceThreshold` ist innere Regel, kein öffentlicher Vertrag —
+// white-box relativ, wie `refMatchText` (s. services/reasoner/index.ts).
+import { meetsRelevanceThreshold } from "../../services/reasoner/src/provider";
 import { ModelProvider, citedSourceIds } from "../../services/reasoner/src/provider-model";
 
 // ================================================================================================
@@ -51,9 +53,19 @@ describe("mega52 B1: das Relevanzmass", () => {
     }
   });
 
-  it("mega53 A1: unterhalb der Mindestsubstanz traegt auch der beste Treffer nichts", () => {
-    // Der Fall, den die alte Zusicherung als „true" festgeschrieben hatte.
-    expect(meetsRelevanceThreshold(1, 1)).toBe(false);
+  it("AUFTRAG-mega59 I: die ABSOLUTE Regel steht nicht mehr in dieser Funktion", () => {
+    // HIER STAND `expect(meetsRelevanceThreshold(1, 1)).toBe(false)` — die gemischte Bedeutung.
+    // Sie war seit mega58 doppelt: das Substanztor filtert JE KANDIDAT und VOR dem Bestwert, der
+    // Zweig in dieser Funktion war damit unerreichbar (Beweis: mega59-getrennte-regeln.test.ts).
+    //
+    // Zwei Regeln in einer Funktion sind kein Kompromiss, sondern eine Zuständigkeitslüge: wer sie
+    // liest, baut beim nächsten Umbau des Tors darauf. Ab jetzt trägt `meetsAnswerSubstance` die
+    // absolute Regel und diese Funktion die relative — der Absolutfall ist an die Wertetafel in
+    // tests/ask/mega57-suchbar-und-tragend.test.ts umgezogen, nicht entfallen.
+    //
+    // Rein relativ gilt: `1 * 2 > 1`, also passiert ein Ein-Wort-Treffer die RELATIVE Latte. Dass er
+    // trotzdem keine Antwort trägt, entscheidet das Tor davor — belegt im Wächter dieses Blocks.
+    expect(meetsRelevanceThreshold(1, 1)).toBe(true);
     expect(MIN_ANSWER_SUBSTANCE).toBe(2);
   });
 

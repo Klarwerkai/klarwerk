@@ -463,6 +463,72 @@ async function buildDemoContent(
     neededValidations: 2,
   });
 
+  // --- AUFTRAG-mega59 BLOCK A: der Bestand für den Vortest ------------------------------------
+  // Vier Objekte, die ein Industriebetrieb hat und dieser Bestand nicht hatte (Begründung je Slot
+  // in demo-content.ts). Sie tragen drei Vortest-Aufgaben, die vorher unlösbar waren:
+  //   1. „Lieferanten" — kam im ganzen Beispielbestand kein einzelnes Mal vor. Zwei Objekte, damit
+  //      die Suche BEIDE Zustände zeigt: koLieferantFrei wird unten validiert, koLieferantSchutz
+  //      bleibt offen. Das Wort steht in Titel UND Schlagwörtern (nicht nur im Fließtext), damit
+  //      die Suche es über Titel-Prefilter und Tag-Treffer sicher findet.
+  //   2. Vertraulichkeitsstufen — bis hierher lief JEDES Objekt ohne `confidentiality` und wurde
+  //      auf „intern" normalisiert. Ab jetzt kommt jede der drei Stufen mindestens einmal vor.
+  //   3. Anhang an einem NICHT-internen Objekt — der einzige bisherige Anhang hing an koValid
+  //      („intern"), die Kopplung Vertraulichkeit × Anhang war damit nicht vorführbar.
+  // Der Wächter dafür ist tests/app/mega59-vortest-bestand.test.ts; ohne ihn fiele genau das beim
+  // nächsten Umbau still wieder heraus.
+  const koLieferantFrei = await ko.create({
+    demoSeed: true,
+    title: t.koLieferantFrei.title,
+    statement: t.koLieferantFrei.statement,
+    type: "best_practice",
+    category: "Einkauf & Lieferanten",
+    author: erikId,
+    tags: ["lieferanten", "einkauf", "hydraulik", DEMO_TAG],
+    conditions: t.koLieferantFrei.conditions ?? [],
+    measures: t.koLieferantFrei.measures ?? [],
+    confidence: 70,
+    neededValidations: 2,
+  });
+  const koLieferantSchutz = await ko.create({
+    demoSeed: true,
+    title: t.koLieferantSchutz.title,
+    statement: t.koLieferantSchutz.statement,
+    type: "technik",
+    category: "Einkauf & Lieferanten",
+    author: carlaId,
+    tags: ["lieferanten", "einkauf", "konditionen", DEMO_TAG],
+    confidence: 55,
+    neededValidations: 2,
+    // Die mittlere Stufe — sichtbar in der Facette, und dieses Objekt trägt zusätzlich den Anhang.
+    confidentiality: "vertraulich",
+  });
+  await ko.create({
+    demoSeed: true,
+    title: t.koGeheim.title,
+    statement: t.koGeheim.statement,
+    type: "negativwissen",
+    category: "Anlage 4",
+    author: adminId,
+    tags: ["sicherheit", "vorfall", "analyse", DEMO_TAG],
+    confidence: 45,
+    neededValidations: 2,
+    // Die höchste Stufe — ohne sie hat die Vertraulichkeits-Facette nur zwei von drei Werten.
+    confidentiality: "streng_vertraulich",
+  });
+  const koWartung = await ko.create({
+    demoSeed: true,
+    title: t.koWartung.title,
+    statement: t.koWartung.statement,
+    type: "technik",
+    category: "Anlage 2",
+    author: erikId,
+    tags: ["wartung", "förderband", "sichtprüfung", DEMO_TAG],
+    conditions: t.koWartung.conditions ?? [],
+    measures: t.koWartung.measures ?? [],
+    confidence: 75,
+    neededValidations: 2,
+  });
+
   // --- SCRUM-487 Proben: Duplikatpaar (reifen), stale-date-Seite, unbelegter Claim ---
   // Alle demoSeed → der chirurgische Purge (KO.demoSeed) erfasst sie samt Folge-Einträgen.
   // Duplikatpaar: zwei sehr ähnliche, eigenständige Aussagen → zwei echte KOs. Die eigentliche
@@ -540,6 +606,14 @@ async function buildDemoContent(
   await validation.rate(koPflege.id, adminId, "up");
   // Kanzlei-Frist in Prüfung (1/2), Verein/Versicherung bleiben offen — ehrliche Varianz.
   await validation.rate(koKanzlei.id, carlaId, "up");
+
+  // AUFTRAG-mega59 A: die Suche nach „Lieferanten" muss BEIDE Zustände zeigen — koLieferantFrei
+  // wird validiert, koLieferantSchutz bleibt bewusst offen. Und die Wartungsquelle ist validiert,
+  // weil „Wartung" das Wort ist, mit dem die Testerin am Freitag anfängt.
+  await validation.rate(koLieferantFrei.id, carlaId, "up");
+  await validation.rate(koLieferantFrei.id, adminId, "up");
+  await validation.rate(koWartung.id, carlaId, "up");
+  await validation.rate(koWartung.id, adminId, "up");
 
   // --- Offene Validierungsaufgabe: koOpen Carla zuweisen (erscheint im Board/MyTasks) ---
   await validation.assign(koOpen.id, [carlaId], adminId);
@@ -681,6 +755,24 @@ async function buildDemoContent(
     objectId: ref.id,
     thumbnail: TINY_PNG,
     size: ref.size,
+  });
+
+  // AUFTRAG-mega59 A: derselbe Weg (Object-Store-`put`, dann `ko.addAttachment`) an einem
+  // NICHT-internen Objekt. Vorher hing der einzige Anhang des Bestands an einem „intern"-Objekt —
+  // die Kopplung Vertraulichkeit × Anhang ließ sich damit nicht vorführen, obwohl G2 sie als
+  // Rückkante bereits entschieden hat (der Anhang wird behandelt wie sein Wissensobjekt).
+  const refSchutz = await objects.put({
+    name: "preisstaffel.png",
+    mime: "image/png",
+    data: TINY_PNG,
+    purpose: "example",
+  });
+  await ko.addAttachment(koLieferantSchutz.id, carlaId, {
+    name: "preisstaffel.png",
+    mime: "image/png",
+    objectId: refSchutz.id,
+    thumbnail: TINY_PNG,
+    size: refSchutz.size,
   });
 
   // SCRUM-244: zusätzlich zur Anhang-Evidence eine externe Quelle → koValid trägt Quelle UND

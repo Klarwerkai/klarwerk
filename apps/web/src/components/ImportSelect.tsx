@@ -366,6 +366,16 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
         checkedRows[index] === true && entry.id ? [entry.id] : [],
       )
     : [];
+  // AUFTRAG-mega59 BLOCK F2: nimmt der GEWÄHLTE Stapel die Cloud-KI aus der Gruppierung? Abgeleitet
+  // aus GENAU den gewählten Vorschau-Einträgen — nicht aus der ganzen Vorschau, denn die Auswahl ist
+  // eine Teilmenge, und eine Warnung über nicht gewählte Einträge wäre falsch. Der Batch-Vertrag ist
+  // „ganz oder gar nicht": EIN vertraulicher Eintrag nimmt die Cloud für den ganzen Lauf heraus,
+  // deshalb `some`. Rein clientseitig auf schon geladenen Daten — kein neuer Aufruf.
+  const stackConfidential = preview
+    ? preview.preview.some(
+        (entry, index) => checkedRows[index] === true && entry.confidentialForAi === true,
+      )
+    : false;
 
   // AUFTRAG-mega9 Block E-4 (KW-E2E-008): Der Neu-Mount über den React-Key verwirft die aufgebaute
   // Gruppierung korrekt — aber damit auch das Wissen, DASS schon gruppiert wurde. Genau deshalb stand
@@ -779,6 +789,10 @@ export function ImportSelect({ chip }: { chip: ImportChipCriteria }): JSX.Elemen
                     criteria={preview.criteria}
                     selectedCandidateIds={selectedCandidateIds}
                     aiAvailable={groupAi.available}
+                    // AUFTRAG-mega59 BLOCK F2: die Vertraulichkeit des gewählten Stapels — ohne sie
+                    // schwieg die Vorwarnung bei aktivem Reasoner und log damit über das, was danach
+                    // als „Ohne KI gruppiert" erschien.
+                    stackConfidential={stackConfidential}
                     // AUFTRAG-mega9 Block E-4 (KW-E2E-008): schon gruppiert, aber zu einer ANDEREN
                     // Auswahl ⇒ der Knopf heißt „Gruppierung aktualisieren".
                     groupingStale={lastGroupedKey !== null && lastGroupedKey !== groupKey}

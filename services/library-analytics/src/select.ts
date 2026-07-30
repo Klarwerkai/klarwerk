@@ -7,6 +7,7 @@
 // WP-IC-PAKET-1e (bens sammel10): die Selektion vergleicht gegen dieselben KANONISCHEN Pro-Item-Werte
 // wie das Erkundungs-Aggregat (GETEILTE canonicalImportText-Funktion, keine Zweitlogik) — ein Klick
 // auf einen Summary-Chip (z. B. dekodierter Altbestands-Autor) matcht damit auch das rohe Alt-Item.
+import { candidateRequiresConfidential } from "./grouping";
 import { canonicalImportText } from "./text-codec";
 import { deriveTitleThemes } from "./themes";
 import type { ImportItem } from "./types";
@@ -242,6 +243,10 @@ export interface ImportPreviewEntry {
   // WP-IC-PAKET-1c (bens ROT-2): Decode-Marker aus dem Item durchgereicht — die Anzeige dekodiert
   // NUR ohne Marker (Altbestand) defensiv nach; markierte Texte sind kanonisch.
   textCodec?: "decoded";
+  // AUFTRAG-mega59 BLOCK F2: dieser Kandidat nimmt die Cloud-KI aus der Gruppierung heraus (nach
+  // GENAU dem Prädikat des Batch-Vertrags, s. grouping.ts). Additiv und nur bei `true` gesetzt —
+  // ein fehlendes Feld heißt „nach diesem Kandidaten kein Ausschluss", nie „geprüft und frei".
+  confidentialForAi?: true;
 }
 
 export interface ImportedStatus {
@@ -289,6 +294,17 @@ export function toPreviewEntry(
     ...(status?.alreadyQueued ? { alreadyQueued: true } : {}),
     ...(status?.sourceNewer ? { sourceNewer: true } : {}),
     ...(item.textCodec === "decoded" ? { textCodec: "decoded" as const } : {}),
+    // AUFTRAG-mega59 BLOCK F2: die AUSSCHLUSSINFORMATION reist mit — würde dieser Kandidat die
+    // Cloud-KI aus der Gruppierung nehmen? Gerechnet mit GENAU dem Prädikat, das der Batch-Vertrag
+    // benutzt (candidateRequiresConfidential), auf Daten, die die Route schon in der Hand hat: kein
+    // zusätzlicher Aufruf, kein neuer Egress, kein neues Feld an der Quelle.
+    //
+    // WARUM ÜBERHAUPT AN DER VORSCHAU: der Vor-Hinweis „es wird ohne KI gruppiert" hing allein am
+    // GLOBALEN Reasoner-Status und wusste nichts von der Vertraulichkeit des Stapels. Bei aktivem
+    // Reasoner gab es also keine Vorwarnung — und danach stand „Ohne KI gruppiert" da. Genau das hat
+    // der Chef live gesehen. Die Stufe liegt in `ImportPreviewEntry` bis hierher nicht vor, also
+    // reicht sie die Antwort mit (der im Auftrag benannte zweite Weg).
+    ...(candidateRequiresConfidential(item) ? { confidentialForAi: true as const } : {}),
   };
 }
 

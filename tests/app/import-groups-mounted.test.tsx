@@ -134,18 +134,45 @@ describe("WP-IC-4: Gruppen-Karten (gemountet)", () => {
 
   // WP-SHIP9-S1 (bens T9): die bestehenden Darstellungen bleiben UNVERÄNDERT — kein Grund-Zusatz
   // für no-model/model-timeout/model-error, und ohne demo weiterhin „KI-gruppiert".
-  it("bens T9: no-model/model-timeout/model-error unverändert (kein Grund-Zusatz)", async () => {
+  it("AUFTRAG-mega59 F1: JEDER Grund steht am Abzeichen — bens T9 ist bewusst zurückgenommen", async () => {
+    // HIER STAND bens T9, und er ist eine ZURÜCKGENOMMENE PRODUKTENTSCHEIDUNG, kein zerbrochener
+    // Wächter. T9 hielt fest, dass no-model, model-timeout und model-error KEINEN Grund-Zusatz
+    // tragen — damals bewusst, weil nur „confidential" einen neuen Text bekommen sollte.
+    //
+    // mega59 BLOCK F hat das als Befund umgedreht: das Abzeichen nannte seinen Grund in genau EINEM
+    // von vier Fällen. Ein nacktes „Ohne KI gruppiert" ist für den Nutzer nicht von einem Fehler zu
+    // unterscheiden, und die vier Fälle verlangen verschiedene Reaktionen — Konfiguration, Geduld,
+    // Meldung, oder gar keine (der Vertraulichkeits-Ausschluss ist korrekt). Der Fall prüft ab jetzt
+    // die Umkehrung: jeder BEKANNTE Grund erscheint, und zwar mit seinem EIGENEN Text.
     await i18n.changeLanguage("de");
-    for (const reason of ["no-model", "model-timeout", "model-error", undefined] as const) {
+    // Die Union ausgeschrieben, nicht als `Record<string, …>` — sonst nimmt der Typ jeden Wert an
+    // und ein umbenannter Grund fiele nur zur Laufzeit auf.
+    const GRUENDE: ReadonlyArray<[ImportGroupResponse["fallbackReason"] & string, string]> = [
+      ["no-model", "kein KI-Modell aktiv"],
+      ["model-timeout", "das KI-Modell hat nicht rechtzeitig geantwortet"],
+      ["model-error", "das KI-Modell hat einen Fehler gemeldet"],
+      ["confidential", "vertrauliche Kandidaten — Cloud-KI ausgeschlossen"],
+    ];
+    for (const [reason, text] of GRUENDE) {
       mount({ demo: true, fallbackReason: reason });
-      expect(container.textContent, String(reason)).toContain("Ohne KI gruppiert");
-      expect(container.textContent, String(reason)).not.toContain("vertrauliche Kandidaten");
-      expect(container.textContent, String(reason)).not.toContain(" — ");
+      expect(container.textContent, reason).toContain("Ohne KI gruppiert");
+      expect(container.textContent, reason).toContain(text);
       act(() => {
         root.unmount();
       });
       container.remove();
     }
+    // Ein FEHLENDER Grund bleibt ohne Zusatz — ein erfundener Grund wäre schlimmer als keiner.
+    mount({ demo: true, fallbackReason: undefined });
+    expect(container.textContent).toContain("Ohne KI gruppiert");
+    for (const [, text] of GRUENDE) {
+      expect(container.textContent).not.toContain(text);
+    }
+    act(() => {
+      root.unmount();
+    });
+    container.remove();
+    // Und der KI-Fall bleibt unberührt.
     mount({ demo: false });
     expect(container.textContent).toContain("KI-gruppiert");
     expect(container.textContent).not.toContain("Ohne KI gruppiert");
@@ -154,9 +181,15 @@ describe("WP-IC-4: Gruppen-Karten (gemountet)", () => {
   // WP-SHIP9-S1 (bens T8): DE/EN/NL-Abdeckung des neuen Textes + der Helfer mappt NUR confidential.
   it("bens T8: DE/EN/NL-Texte des Vertraulichkeitsgrundes lösen auf", async () => {
     expect(noAiReasonKey("confidential")).toBe(IMPORT_GROUPS_TEXT.reasonConfidential);
-    for (const other of ["no-model", "model-timeout", "model-error", undefined]) {
-      expect(noAiReasonKey(other as string | undefined)).toBeNull();
+    // AUFTRAG-mega59 BLOCK F1: die drei anderen Gründe liefern jetzt EBENFALLS einen Schlüssel — und
+    // jeder einen ANDEREN als „confidential", sonst wäre der spezifische Text wieder verwässert.
+    // Nur ein UNBEKANNTER Grund bleibt leer (ehrlicher als ein erfundener).
+    for (const other of ["no-model", "model-timeout", "model-error"]) {
+      const key = noAiReasonKey(other);
+      expect(key, other).not.toBeNull();
+      expect(key, other).not.toBe(IMPORT_GROUPS_TEXT.reasonConfidential);
     }
+    expect(noAiReasonKey(undefined)).toBeNull();
     const expected: Record<string, string> = {
       de: "vertrauliche Kandidaten — Cloud-KI ausgeschlossen",
       en: "confidential candidates — cloud AI excluded",

@@ -50,6 +50,22 @@ export interface DemoTexts {
   koReifenB: KoText;
   koStale: KoText;
   koUnbacked: KoText;
+  // AUFTRAG-mega59 BLOCK A (Vortest-Bestand): vier Objekte, die der Bestand für den Vortest am
+  // Freitag braucht und bis hierher NICHT hatte — nachgesehen, nicht vermutet.
+  //  · „Lieferanten" kam im ganzen Beispielbestand kein einzelnes Mal vor; Aufgabe 4 der Testerin
+  //    sucht danach. Zwei Objekte, damit die Suche BEIDE Zustände zeigt (validiert und offen); das
+  //    Wort steht in Titel UND Schlagwörtern, nicht nur im Fließtext.
+  //  · Alle 22 Altobjekte liefen ohne `confidentiality` und wurden dadurch auf „intern"
+  //    normalisiert (knowledge-object/src/confidentiality.ts) — die Vertraulichkeits-Facette hatte
+  //    nichts zu zeigen. koLieferantSchutz trägt „vertraulich", koGeheim „streng_vertraulich".
+  //  · Es gab genau EINEN Anhang, und der hing an einem „intern"-Objekt — die Kopplung
+  //    Vertraulichkeit × Anhang war nicht vorführbar. koLieferantSchutz bekommt deshalb einen.
+  //  · „Wartung" ist das zentrale Industriewort der Testerin (s. BLOCK B) und stand bisher nur als
+  //    Schlagwort, in keinem Titel und keiner Aussage.
+  koLieferantFrei: KoText;
+  koLieferantSchutz: KoText;
+  koGeheim: KoText;
+  koWartung: KoText;
   gapQuestion: string;
   warmConflict: ConflictText;
   carConflict: ConflictText;
@@ -161,6 +177,30 @@ const de: DemoTexts = {
   koUnbacked: {
     title: "Rückruf-Zeitpunkt (Annahme)",
     statement: "Kundinnen und Kunden bevorzugen Rückrufe am Vormittag.",
+  },
+  koLieferantFrei: {
+    title: "Lieferanten für Hydraulikteile: immer eine Zweitquelle führen",
+    statement:
+      "Für jedes Hydraulikteil führt der Einkauf mindestens zwei freigegebene Lieferanten — fällt ein Lieferant aus, steht die Fertigung sonst binnen Tagen still.",
+    conditions: ["Ein neues Hydraulikteil wird freigegeben"],
+    measures: ["Zweiten Lieferanten qualifizieren", "Freigabe im Einkauf dokumentieren"],
+  },
+  koLieferantSchutz: {
+    title: "Lieferanten des Presswerks: Konditionen und Preisstaffel",
+    statement:
+      "Die Preisstaffel der drei Lieferanten des Presswerks ist vertraulich und verlässt das Haus nicht — auch nicht in Angeboten an Kunden.",
+  },
+  koGeheim: {
+    title: "Sicherheitsvorfall Anlage 4: interne Ursachenanalyse",
+    statement:
+      "Die Ursachenanalyse zum Vorfall an Anlage 4 bleibt streng vertraulich, bis die Aufsichtsbehörde das Verfahren abgeschlossen hat.",
+  },
+  koWartung: {
+    title: "Wartung am Förderband: monatliche Sichtprüfung der Tragrollen",
+    statement:
+      "Die Wartung am Förderband umfasst jeden Monat eine Sichtprüfung aller Tragrollen; ein festgefressenes Lager reißt sonst den Gurt auf.",
+    conditions: ["Förderband länger als vier Wochen im Betrieb"],
+    measures: ["Tragrollen sichtprüfen", "Befund im Wartungsplan eintragen"],
   },
   gapQuestion: "Warum schwankt der Dosierwert an Linie L4 nach jedem Schichtwechsel?",
   warmConflict: {
@@ -298,6 +338,30 @@ const en: DemoTexts = {
     title: "Callback timing (assumption)",
     statement: "Customers prefer callbacks in the morning.",
   },
+  koLieferantFrei: {
+    title: "Suppliers for hydraulic parts: always keep a second source",
+    statement:
+      "For every hydraulic part, purchasing keeps at least two approved suppliers — if one supplier drops out, production comes to a halt within days.",
+    conditions: ["A new hydraulic part is approved"],
+    measures: ["Qualify a second supplier", "Document the approval in purchasing"],
+  },
+  koLieferantSchutz: {
+    title: "Suppliers of the press shop: terms and price scale",
+    statement:
+      "The price scale of the three suppliers of the press shop is confidential and does not leave the company — not even in offers to customers.",
+  },
+  koGeheim: {
+    title: "Safety incident on plant 4: internal root cause analysis",
+    statement:
+      "The root cause analysis of the incident on plant 4 stays strictly confidential until the supervisory authority has closed the proceedings.",
+  },
+  koWartung: {
+    title: "Maintenance on the conveyor: monthly visual check of the carrying rollers",
+    statement:
+      "Maintenance on the conveyor includes a monthly visual check of all carrying rollers; a seized bearing otherwise tears the belt open.",
+    conditions: ["Conveyor in operation for more than four weeks"],
+    measures: ["Visually check the carrying rollers", "Record the finding in the maintenance plan"],
+  },
   gapQuestion: "Why does the dosing value on line L4 fluctuate after every shift change?",
   warmConflict: {
     description:
@@ -430,6 +494,30 @@ const nl: DemoTexts = {
   koUnbacked: {
     title: "Terugbeltijdstip (aanname)",
     statement: "Klanten geven de voorkeur aan terugbelverzoeken in de ochtend.",
+  },
+  koLieferantFrei: {
+    title: "Leveranciers voor hydrauliekdelen: altijd een tweede bron aanhouden",
+    statement:
+      "Voor elk hydrauliekdeel houdt de inkoop minstens twee goedgekeurde leveranciers aan — valt één leverancier weg, dan staat de productie binnen dagen stil.",
+    conditions: ["Er wordt een nieuw hydrauliekdeel goedgekeurd"],
+    measures: ["Een tweede leverancier kwalificeren", "De goedkeuring in de inkoop vastleggen"],
+  },
+  koLieferantSchutz: {
+    title: "Leveranciers van de perserij: voorwaarden en prijsstaffel",
+    statement:
+      "De prijsstaffel van de drie leveranciers van de perserij is vertrouwelijk en verlaat het huis niet — ook niet in aanbiedingen aan klanten.",
+  },
+  koGeheim: {
+    title: "Veiligheidsincident installatie 4: interne oorzaakanalyse",
+    statement:
+      "De oorzaakanalyse van het incident bij installatie 4 blijft streng vertrouwelijk totdat de toezichthouder de procedure heeft afgerond.",
+  },
+  koWartung: {
+    title: "Onderhoud aan de transportband: maandelijkse visuele controle van de draagrollen",
+    statement:
+      "Het onderhoud aan de transportband omvat elke maand een visuele controle van alle draagrollen; een vastgelopen lager scheurt anders de band open.",
+    conditions: ["Transportband langer dan vier weken in bedrijf"],
+    measures: ["Draagrollen visueel controleren", "Bevinding in het onderhoudsplan vastleggen"],
   },
   gapQuestion: "Waarom schommelt de doseerwaarde op lijn L4 na elke ploegwisseling?",
   warmConflict: {

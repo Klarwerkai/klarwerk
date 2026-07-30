@@ -30,13 +30,20 @@ export {
   rankCandidates,
   statusTrustBoost,
   type RankedCandidate,
-  // AUFTRAG-mega52 B1: das Relevanzmaß selbst — eine Schwelle für beide Auswahlwege, testbar.
-  meetsRelevanceThreshold,
   // AUFTRAG-mega53 A1: die absolute Mindestsubstanz — darunter trägt auch der beste Treffer nichts.
   MIN_ANSWER_SUBSTANCE,
-  // AUFTRAG-mega57 A2: das absolute Tor auf dem SUBSTANZWERT — mehrdeutige Funktionsformen bleiben
-  // suchbar, zahlen aber nicht mehr auf die Mindestsubstanz ein.
-  meetsAnswerSubstance,
+  // AUFTRAG-mega59 BLOCK I — `meetsRelevanceThreshold` UND `meetsAnswerSubstance` STANDEN HIER, OHNE
+  // EINEN EINZIGEN AUFRUFER AUSSERHALB VON `provider.ts`.
+  //
+  // Beide hatten genau einen Nutzer: eine Testzusicherung. Ein Re-Export in dieser Datei ist aber die
+  // ÖFFENTLICHE FLÄCHE des Moduls — er sagt jedem Aufrufer „das darfst du benutzen, und es bleibt".
+  // Für einen Testhelfer ist das eine Zusage, die niemand geben wollte: sie bindet die Entkopplung
+  // zweier innerer Regeln an eine Modulgrenze.
+  //
+  // Der Zielzustand stand längst daneben (s. der Hinweis zu den rohen Clients unten): white-box
+  // relativ auf `./src/provider` zugreifen. Sechs Testdateien fahren dieses Muster bereits; die
+  // Zusicherungen zu diesen beiden Funktionen sind darauf umgezogen und haben dabei keine
+  // Aussagekraft verloren — dieselbe Funktion, derselbe Fall, nur ohne Versprechen nach außen.
   // SCRUM-361 / AG-03: Tokenisierung der Frage für den Repo-Prefilter (konsistent zum Ranking).
   queryTokens,
   // PMO-FEA-0006: ehrlicher Extract-Fallback (keine Fake-Punkte ohne Modell).

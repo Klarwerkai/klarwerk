@@ -69,6 +69,7 @@ import {
   estimateValuation,
   formatEur,
 } from "../lib/knowledgeValuation";
+import { koLabel } from "../lib/koLabel";
 import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
 import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
 import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
@@ -308,10 +309,17 @@ export function Output(): JSX.Element {
           <div className="mt-3">
             <SectionLabel>{t("out.provenanceTitle")}</SectionLabel>
             <ul className="mt-1.5 space-y-1">
+              {/* AUFTRAG-mega59 BLOCK E: hier stand die rohe Kennung in Monospace, obwohl `p.title`
+                  im SELBEN Datensatz liegt (serverseitig gefüllt in output/src/render.ts, und der
+                  Markdown-Renderer benutzt ihn längst). Jetzt führt der Titel; die Kennung bleibt
+                  über den `title`-Tooltip erreichbar, aber nachrangig. Fehlt der Titel, ist die
+                  Kennung der Rückfall — kein leerer Platz (s. lib/koLabel). */}
               {doc.provenance.map((p) => (
                 <li key={p.koId} className="text-[12px] text-muted">
-                  <span className="font-mono text-[11px] text-ink">{p.koId}</span> · {p.status} · T
-                  {p.trust} · {p.validity}
+                  <span className="font-semibold text-ink" title={p.koId}>
+                    {koLabel(p.title, p.koId)}
+                  </span>{" "}
+                  · {p.status} · T{p.trust} · {p.validity}
                   {p.uncertain ? (
                     <span className="text-trust-warn-text"> · {t("out.uncertain")}</span>
                   ) : null}

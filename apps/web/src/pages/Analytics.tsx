@@ -147,7 +147,7 @@ export function Analytics(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-4xl space-y-7">
-      <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} />
+      <PageHeader kicker={t("ana.kicker")} title={t("nav.analytics")} pageKey="analytics" />
 
       {/* SCRUM-431 (VIP/Investor): ruhiger Executive-Blick — vier Kern-Kennzahlen aus Live-Daten. */}
       <div>

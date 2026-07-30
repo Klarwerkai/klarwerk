@@ -67,7 +67,7 @@ export function Lifecycle(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl space-y-8">
-      <PageHeader kicker={t("lcy.kicker")} title={t("nav.lifecycle")} />
+      <PageHeader kicker={t("lcy.kicker")} title={t("nav.lifecycle")} pageKey="lebenszyklus" />
 
       {/* SCRUM-146: Anlagenänderung melden → Revalidierung anstoßen */}
       <div>

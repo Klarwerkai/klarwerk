@@ -110,6 +110,12 @@ describe("IC-3: sanitizeCriteria (nie raten, nur Valides)", () => {
 });
 
 describe("IC-3: toPreviewEntry", () => {
+  // AUFTRAG-mega59 BLOCK F2: die Projektion trägt ab jetzt `confidentialForAi` mit, wenn der Kandidat
+  // die Cloud-KI aus der Gruppierung nimmt. Die Test-Items dieses Rahmens haben KEINE gültige, freie
+  // Vertraulichkeitsstufe — nach dem Batch-Vertrag (grouping.ts: fehlendes Signal = fail-safe
+  // vertraulich) sind sie also ausgeschlossen, und das Feld steht bei jedem von ihnen. Die beiden
+  // Formprüfungen unten sind deshalb erweitert, nicht aufgeweicht: sie prüfen weiter die VOLLE Form
+  // mit `toEqual`, nur eben die richtige.
   it("projiziert kompakt inkl. hasImage aus bodyHtml", () => {
     const e = toPreviewEntry(
       item({ title: "T", author: "Anna", updatedAt: "2026-01-01", tags: ["x"], bodyHtml: "<img>" }),
@@ -124,6 +130,7 @@ describe("IC-3: toPreviewEntry", () => {
       // ist dieselbe wie beim Space-Filter: sourceScope, sonst category — hier fehlt sourceScope,
       // also gilt die category des Test-Items ("K").
       sourceScope: "K",
+      confidentialForAi: true,
     });
   });
 
@@ -133,6 +140,7 @@ describe("IC-3: toPreviewEntry", () => {
       hasImage: false,
       themes: [],
       sourceScope: "K",
+      confidentialForAi: true,
     });
   });
 

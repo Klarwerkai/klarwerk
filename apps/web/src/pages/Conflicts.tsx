@@ -252,7 +252,7 @@ export function Conflicts(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <PageHeader kicker={t("con.kicker")} title={t("con.title")} />
+      <PageHeader kicker={t("con.kicker")} title={t("con.title")} pageKey="konflikte" />
       <p className="-mt-3 mb-4 text-sm text-muted">{t("con.intro")}</p>
       <QueryState
         query={query}

@@ -106,11 +106,32 @@ for (const vp of VIEWPORTS) {
       console.log(`  Shift+Tab ${i}: ${await describeActive(page)}`);
     }
 
-    // Der Probe-Lauf misst und protokolliert; die Bewertung steht im Bericht. Eine einzige
-    // Mindestzusicherung: das Panel enthält überhaupt fokussierbare Elemente.
+    // ============================================================================================
+    // AUFTRAG-mega59 BLOCK H5 — DIE 25 TAB-SCHRITTE BEHAUPTETEN NICHTS.
+    // ============================================================================================
+    //
+    // Die einzige Zusicherung dieses Falls (`found.length > 0`) wurde VOR dem ersten Tastendruck
+    // gemessen. Danach liefen 25 Tabs, und ihr Ergebnis wurde nur PROTOKOLLIERT: `escaped` ging in
+    // ein `console.log` und in keine Zusicherung. Der Fall blieb also grün, wenn die Fokusfalle
+    // vollständig kaputt war — er hieß „Fokus-Protokoll" und war genau das, ein Protokoll.
+    //
+    // Aus der Protokollzeile wird eine ZUSICHERUNG. Zwei Bedingungen, beide nötig:
+    //   · `escaped` ist leer — der Fokus hat den Dialog nie verlassen (die Falle hält).
+    //   · der Pfad hat MEHR ALS EINE Station — sonst kreist der Fokus auf einem einzigen Knopf, und
+    //     „nie ausgetreten" wäre trivial erfüllt, ohne dass man sich bewegen könnte.
+    //
+    // Der Anker war vorhanden; es fehlte allein der Schritt von der Messung zur Aussage.
     expect(found.length).toBeGreaterThan(0);
-    // Und: der Fokus hat das Panel nie verlassen (Fokusfalle hält) — falls doch, ist DAS der Befund.
     const escaped = trail.filter((t) => t.includes("AUSSERHALB"));
     console.log(`  Fokus verließ den Dialog: ${escaped.length}× von 25`);
+    expect(
+      escaped,
+      `die Fokusfalle hält nicht: ${escaped.length}× von 25 Tabs außerhalb des Dialogs`,
+    ).toEqual([]);
+    const stationen = new Set(trail);
+    expect(
+      stationen.size,
+      `der Fokus kreist auf einer einzigen Station (${[...stationen].join(" | ")}) — „nie ausgetreten“ ist damit trivial erfüllt und belegt keine bedienbare Falle`,
+    ).toBeGreaterThan(1);
   });
 }

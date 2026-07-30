@@ -5,11 +5,11 @@ import {
   type KnowledgeRef,
   MIN_ANSWER_SUBSTANCE,
   keywordSelect,
-  meetsRelevanceThreshold,
   queryTokens,
   rankCandidates,
 } from "../../services/reasoner";
-import { refMatchText } from "../../services/reasoner/src/provider";
+// AUFTRAG-mega59 BLOCK I: innere Regel, white-box relativ (s. services/reasoner/index.ts).
+import { meetsRelevanceThreshold, refMatchText } from "../../services/reasoner/src/provider";
 import { ModelProvider } from "../../services/reasoner/src/provider-model";
 
 // ================================================================================================
@@ -137,10 +137,17 @@ describe("mega53 A4 · die Gegenprobe: der starke Treffer bleibt, die Störer fa
 // A2 — EINE SCHWELLE, ZWEI WEGE. Über die Bauform erhoben, nicht an zwei Beispielen behauptet.
 // ------------------------------------------------------------------------------------------------
 describe("mega53 A2 · beide Auswahlwege messen identisch", () => {
-  it("über die volle Wertetafel von meetsRelevanceThreshold", () => {
+  it("über die volle Wertetafel von meetsRelevanceThreshold — REIN RELATIV (mega59 I)", () => {
+    // AUFTRAG-mega59 BLOCK I: die Erwartung trug bis hierher `best >= MIN_ANSWER_SUBSTANCE` mit —
+    // die ABSOLUTE Regel, gemischt in die relative. Seit mega58 filtert das Substanztor je Kandidat
+    // und VOR dem Bestwert, der absolute Zweig war in dieser Funktion also unerreichbar (Beweis:
+    // tests/ask/mega59-getrennte-regeln.test.ts). Die Tafel prüft ab jetzt genau EINE Regel.
+    //
+    // Die absolute Schwelle ist damit nicht schwächer geprüft, nur an ihrem richtigen Ort: die
+    // Wertetafel zu `meetsAnswerSubstance` liegt in mega57-suchbar-und-tragend.test.ts.
     for (let best = 0; best <= 6; best += 1) {
       for (let score = 0; score <= 6; score += 1) {
-        const erwartet = best >= MIN_ANSWER_SUBSTANCE && score > 0 && score * 2 > best;
+        const erwartet = score > 0 && score * 2 > best;
         expect(meetsRelevanceThreshold(score, best), `score=${score} best=${best}`).toBe(erwartet);
       }
     }

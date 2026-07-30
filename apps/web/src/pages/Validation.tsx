@@ -477,7 +477,7 @@ export function Validation(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-6xl">
-      <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} />
+      <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} pageKey="validierung" />
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
       <p className="-mt-3 mb-4 text-sm text-muted">{t("val.intro")}</p>
@@ -834,7 +834,14 @@ export function Validation(): JSX.Element {
                       // bleibt sichtbar und zum KO-Detail (Lesen) klickbar; done/failed → normal bedienbar.
                       const gate = validationAiGate(k.aiCheck, aiModelActive);
                       return (
-                        <div key={k.id} className="space-y-2">
+                        // AUFTRAG-mega59 BLOCK H3: der Zeilen-Anker des Prüf-Boards. Die
+                        // Datenlage-Kalibrierung in tests-smoke/ui-smoke.spec.ts prüfte im
+                        // geseedeten Zweig eine ABWESENHEIT (kein Leer-Text) — die ist auch im Lade-
+                        // und im Fehlerzustand erfüllt, ein Lauf mit leerem oder fehlgeschlagenem
+                        // Board war damit grün und löste die Kalibrierung nicht ein. Für die
+                        // POSITIVE Zusicherung („mindestens ein Prüf-Eintrag ist sichtbar") gab es
+                        // auf /validierung keinen Anker; hier ist er.
+                        <div key={k.id} data-testid="validation-row" className="space-y-2">
                           {/* SCRUM-416: ganze Karte klickbar (freie Fläche → KO-Detail, sichtbarer
                           Hover); Entscheidungs-Knöpfe/Aufklapper/Links bleiben sauber getrennt. */}
                           <Card

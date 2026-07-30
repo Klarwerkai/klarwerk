@@ -870,9 +870,29 @@ const MIN_GRUNDFORM_LAENGE = 4;
 // Trennschärfe, als es an Treffern bringt.
 const GRUNDFORM_ENDUNGEN = ["ung", "en", "em", "es", "e", "n", "s", "t"] as const;
 
+// AUFTRAG-mega59 BLOCK B — DIE NOMINALISIERUNG IST DIE EINE ENDUNG, DIE ETWAS ÜBER DIE HERKUNFT SAGT.
+//
+// Alle anderen Einträge oben sind Flexion: sie beugen ein Wort, ohne seine Wortart zu verändern.
+// „-ung" ist die Ausnahme — sie MACHT aus einem Verbstamm ein Nomen. Genau deshalb ist sie die
+// einzige, aus der sich ableiten lässt, WAS das Ausgangswort war: „Wartung" ist ein Sachverhalt,
+// „ihr wart" eine Verbform. Beide fallen auf denselben Term „wart"; nur die Herkunft trennt sie.
+const NOMINALISIERUNGS_ENDUNG = "ung";
+
+// Das Merkmal, das der Abtrag mitführt. Bewusst ein zweites, PARALLELES Feld und niemals ein
+// zweites Token: der ausgegebene Term bleibt byteweise identisch, damit die Prefilter-Zusage aus
+// mega54 B4 (Vorauswahl und Ranking auf EXAKT denselben Termen) unangetastet bleibt.
+interface Herkunft {
+  nominalisierung: boolean;
+}
+
 // Der Endungs-Abtrag bis zum Fixpunkt — die erste Hälfte der Grundform, ohne jede Stoppwortkenntnis.
 // Getrennt ausgewiesen, weil BLOCK A der Vorsilbe eine andere Antwort gibt als der Endung (s. u.).
-function abtragEndungen(token: string): string {
+//
+// mega59 B: `herkunft` ist ein optionaler AUSGANG, kein Eingang — die Rechnung selbst ändert sich
+// nicht, sie berichtet nur zusätzlich, ob unterwegs die Nominalisierungsendung gefallen ist. Es
+// bleibt bei EINEM Endungs-Abtrag (Wächter: mega54-eine-zerlegung-sammler): die Regel ist hier
+// erweitert, nicht ein zweites Mal geschrieben.
+function abtragEndungen(token: string, herkunft?: Herkunft): string {
   let wort = token;
   let gekuerzt = true;
   while (gekuerzt) {
@@ -880,6 +900,9 @@ function abtragEndungen(token: string): string {
     for (const endung of GRUNDFORM_ENDUNGEN) {
       if (wort.endsWith(endung) && wort.length - endung.length >= MIN_GRUNDFORM_LAENGE) {
         wort = wort.slice(0, wort.length - endung.length);
+        if (herkunft && endung === NOMINALISIERUNGS_ENDUNG) {
+          herkunft.nominalisierung = true;
+        }
         gekuerzt = true;
         break;
       }
@@ -1046,14 +1069,59 @@ function istSubstanztragend(token: string): boolean {
   return !NICHT_SUBSTANZTRAGEND.has(token);
 }
 
+// ================================================================================================
+// AUFTRAG-mega59 BLOCK B — DIE MEHRDEUTIGKEIT WIRD HERKUNFTSTREU.
+// ================================================================================================
+//
+// DER PREIS, den mega57 gemessen und als Produktentscheidung gemeldet hat: `["wart", "Wartung"]`
+// steht in `MEHRDEUTIGE_FUNKTIONSFORMEN`, weil „wart" auch Präteritum von „sein" ist. Folge —
+// „Wartung" zahlt nicht auf die Mindestsubstanz ein, und die Frage „Wann ist die Wartung am Ventil
+// fällig?" endet gegen die Quelle „Wartungsplan / Die Wartung am Ventil erfolgt jährlich" in einer
+// Wissenslücke, obwohl die Antwort wörtlich dasteht. „Wartung" ist das zentrale Industriewort der
+// Testerin; am Freitag ist dieser Preis zu teuer.
+//
+// DER WEG, kleinster Eingriff und ohne die Trennung suchbar/tragend aufzugeben: „Wartung" verliert
+// seine Nominalisierungsendung erst durch den Abtrag von `-ung`. Führt der Abtrag dieses Merkmal
+// mit (s. `Herkunft`), lässt sich die Frage stellen, die die Liste allein nicht beantworten kann:
+// stammt dieses „wart" aus einem NOMEN oder aus einer VERBFORM? Das trennt „Wartung" und
+// „Wartungsplan" von „ihr wart" — ohne zweites Token, ohne zweite Zerlegung, ohne Listenpflege.
+//
+// DIE ENTSCHEIDUNG IST SYMMETRISCH UND FAIL-CLOSED: getragen wird ein Term nur, wenn er auf BEIDEN
+// Seiten aus einer Nominalisierung stammt. Frage und Quelle laufen durch dieselbe Funktion
+// (Symmetriezusage), und der Schnitt zweier Mengen ist von sich aus richtungsfrei. Die Alternative
+// „eine Seite genügt" wäre fail-open: die Frage „Wann war die Wartung?" träfe die Quelle „Wo wart
+// ihr?" und bekäme dafür Substanz gutgeschrieben, obwohl keine der beiden von der anderen redet.
+//
+// WAS DAS NICHT ÄNDERT: der ausgegebene Term (`queryTokens("Wartung")` bleibt `["wart"]`), die
+// Stoppwortsiebe, den Strom. Ein Wort, dessen Grundform ein STOPPWORT ist („Meinung" → „mein"),
+// fällt weiterhin ganz aus der Zerlegung — dieser Block macht mehrdeutige Formen tragend, er holt
+// keine Stoppwörter zurück. Genau diese Tür hat mega55 geschlossen, und sie bleibt zu.
+//
+// WAS NICHT GEDECKT IST, ausdrücklich: andere Nominalisierungsendungen (-heit, -keit, -nis, -schaft
+// stehen gar nicht in `GRUNDFORM_ENDUNGEN`), und der Fall, dass EIN Text dasselbe Token beide Male
+// führt („die Wartung, als ihr wart") — dann gilt der Term für diesen Text als Nominalisierung.
+// Das ist bewusst so: eine echte Nominalisierung im Text ist selbst der Beleg dafür, dass er von
+// der Sache redet, und der Mischfall ist konstruiert, nicht real.
+function traegtSubstanz(
+  token: string,
+  nominalA?: ReadonlySet<string>,
+  nominalB?: ReadonlySet<string>,
+): boolean {
+  if (istSubstanztragend(token)) {
+    return true;
+  }
+  return nominalA?.has(token) === true && nominalB?.has(token) === true;
+}
+
 // Deterministisch und ohne Seiteneffekt: gleiche Eingabe → gleiche Ausgabe, kein Zustand, kein Netz.
-function grundform(token: string): string {
+// (mega59 B: `herkunft` ist ein reiner Ausgang und ändert die Rückgabe nicht — s. `abtragEndungen`.)
+function grundform(token: string, herkunft?: Herkunft): string {
   // Eine Kennung ist kein Wort — an ihr gibt es nichts zu beugen (BLOCK A bliebe sonst wirkungslos,
   // sobald eine Kennung auf „e", „n", „s" oder „t" endet).
   if (istKennung(token)) {
     return token;
   }
-  const nachEndung = abtragEndungen(token);
+  const nachEndung = abtragEndungen(token, herkunft);
   const ohneGe = abtragGe(nachEndung);
   // AUFTRAG-mega55 A3 — DIE VORSILBE IST EIN ANDERER FALL ALS DIE ENDUNG.
   //
@@ -1078,12 +1146,24 @@ function grundform(token: string): string {
 // „werden", „wie"), danach läuft jedes verbleibende Token auf seine Grundform — und wird ERNEUT
 // gegen die Stoppwortmenge gehalten (mega55 A1). Ohne das zweite Sieb führt die Grundform genau die
 // Wörter wieder ein, die das erste entfernt hat.
-function tokenize(text: string): string[] {
+//
+// AUFTRAG-mega59 B: `ausNominalisierung` ist der optionale AUSGANG für das Herkunfts-Merkmal — ein
+// zweites, paralleles Feld NEBEN dem Tokenstrom, kein zweites Token und keine zweite Zerlegung. Die
+// Rückgabe bleibt byteweise dieselbe, ob der Ausgang mitgegeben wird oder nicht; wer ihn weglässt
+// (etwa `queryTokens` für den Repo-Prefilter), sieht exakt die Zerlegung von mega54.
+function tokenize(text: string, ausNominalisierung?: Set<string>): string[] {
   return text
     .toLowerCase()
     .split(/[^a-zäöüß0-9]+/)
     .filter((w) => (w.length > 2 || istKennung(w)) && !STOPWORDS.has(w))
-    .map(grundform)
+    .map((w) => {
+      const herkunft: Herkunft = { nominalisierung: false };
+      const norm = grundform(w, herkunft);
+      if (ausNominalisierung && herkunft.nominalisierung) {
+        ausNominalisierung.add(norm);
+      }
+      return norm;
+    })
     .filter((w) => !istStoppform(w));
 }
 
@@ -1106,17 +1186,118 @@ interface Ueberschneidung {
   readonly substanz: number; // davon die substanztragenden — die absolute Mindestsubstanz.
 }
 
-function ueberschneidung(a: readonly string[], b: readonly string[]): Ueberschneidung {
+// ================================================================================================
+// AUFTRAG-mega59 BLOCK C — DIE VALIDIERTE QUELLE GEHT AM KOMPOSITUM NICHT MEHR VERLOREN.
+// ================================================================================================
+//
+// DER BEFUND (S5, am Bestand nachgesehen): auf „Welche Farbe müssen Firmenwagen haben?" fällt die
+// VALIDIERTE Quelle `koCarBlau` („Firmenwagen: Pflichtfarbe Blau") weg, während die nur OFFENE
+// `koCarRot` trägt — weil „Farbe" dort im Kompositum „Pflichtfarbe" steckt.
+//
+// WO DIE LÜCKE NICHT SITZT, und das erspart die falsche Fährte: NICHT in der Vorauswahl. Der
+// Repo-Prefilter arbeitet mit `%term%` ILIKE, „farb" matcht „Pflichtfarbe" als Teilstring, der
+// Kandidat KOMMT AN. Er stirbt erst hier, am exakten Mengenschnitt (`ziel.has(word)`).
+//
+// DIE REGEL IST ENG UND FAIL-CLOSED — drei Bedingungen, jede einzelne notwendig:
+//
+//  1. MINDESTLÄNGE des Frageterms (vier Zeichen, dieselbe Zahl und derselbe Grund wie
+//     MIN_GRUNDFORM_LAENGE). Ohne sie fände „art" das „Wartung" — genau die Teilstring-Suche mitten
+//     im Wort, die diese Regel NICHT sein soll. Es ist zugleich die Zahl, die den tragenden Fall
+//     noch liefert: „farb" hat genau vier Zeichen.
+//  2. EINE BELEGBARE KOMPOSITUMGRENZE, nicht irgendeine Fundstelle: entweder steht der Term am
+//     WORTENDE („farb" in „pflichtfarb"), oder er endet an einem FUGEN-S („arbeit" in
+//     „arbeitsschutz"). Beides sind Stellen, an denen im Deutschen wirklich ein Kompositum
+//     zusammengesetzt wird. Eine Fundstelle mitten im Wort ist keine Grenze und zählt nicht.
+//  3. DER REST IST SELBST EIN WORTTEIL (auch mindestens vier Zeichen). Ohne diese dritte Bedingung
+//     wäre die zweite zahnlos: „wart" steht am Wortende von „erwart" (aus „erwarten"), und eine
+//     Wartungsfrage träfe plötzlich jede Erwartung. Zwei oder drei Zeichen davor sind eine
+//     Verbvorsilbe, kein Kompositumglied — vier sind die Grenze, ab der der Rest ein Wort sein kann.
+//
+// DIE GEGENRICHTUNG IST MITGENOMMEN, weil sie keine neue Annahme braucht: dieselbe Prüfung wird auf
+// beiden Seiten gefahren, ein Frage-KOMPOSITUM trifft also auch ein einfaches Quelltoken
+// („pflichtfarb" in der Frage gegen „farb" in der Quelle).
+//
+// ------------------------------------------------------------------------------------------------
+// AUFTRAG-mega60 BLOCK A — DIE ZUSAGE „GEZÄHLT WIRD AUCH AUF `substanz`" IST ZURÜCKGENOMMEN.
+// ------------------------------------------------------------------------------------------------
+//
+// mega59 C zählte den Kompositumtreffer auf `wert` UND auf `substanz` („ein echtes Fachwort, kein
+// Mitläufer"). Das war zu weit, und ben hat es an einem Gegenbeispiel nachgewiesen (ROT-1 gegen
+// sammel57, ohne Fehlerinjektion reproduzierbar): die Frage „Welcher Stand gilt am Ventil?" gegen die
+// Quelle „Der Widerstand am Ventil ist vorgeschrieben." erfüllt die drei Bedingungen unten
+// buchstäblich — „stand" steht am Wortende von „widerstand", der Rest „wider" ist selbst ein
+// Wortteil. Zusammen mit dem echten Treffer „ventil" ergab das ZWEI Substanzpunkte, und eine
+// sachfremde Quelle trug eine Antwort. Gleichartig: „Stand" gegen „Wohlstand". Der Fehler folgt aus
+// der Regel, er ist keine Wortkuriosität.
+//
+// WARUM KEINE VIERTE ZEICHENBEDINGUNG, und warum sie auch später keine sein wird: „Unterdruck" und
+// „Widerstand" sind morphologisch identisch gebaut — Präposition plus Substantiv —, semantisch aber
+// verschieden. Ein Unterdruck IST ein Druck, ein Widerstand ist KEIN Stand. Jede rein formale Regel,
+// die den einen trägt, trägt auch den anderen; eine weitere Bedingung verschiebt die Grenze nur.
+//
+// DIE ENGE, FAIL-CLOSED ENTSCHEIDUNG: der Kompositumtreffer zählt weiterhin auf `wert` — die Quelle
+// wird GEFUNDEN, kommt in die Kandidatenliste und wird gerankt —, aber NICHT auf `substanz`, und
+// zwar in BEIDEN Zweigen (Wortende und Fugen-s). Damit kann er eine Antwort weder allein tragen noch
+// den zweiten Substanzpunkt liefern; er erscheint nur als Mitläufer eines substanzstarken Treffers.
+// Das ist exakt die Trennung suchbar/tragend aus mega57, angewandt auf einen neuen Treffertyp.
+//
+// WAS DAMIT NICHT ERREICHT IST, ausdrücklich und ohne Beschönigung: der ursprüngliche Zweck von
+// mega59 C ist verfehlt. `koCarBlau` trägt die Antwort auf „Welche Farbe müssen Firmenwagen haben?"
+// weiterhin NICHT — die Frage liefert nur die zwei Terme „farb" und „firmenwag", und „farb" ist in
+// „pflichtfarb" nur ein Kompositumtreffer, der Substanzwert bleibt bei eins. Die Recall-Schuld S5 ist
+// damit nicht beglichen, sondern präziser beschrieben. Die dazu passende Lösung — eine begrenzte und
+// getestete Domänenrelation echter Fachkomposita — steht im Register und kommt nach dem Vortest.
+const MIN_KOMPOSITUM_TEIL = MIN_GRUNDFORM_LAENGE;
+const FUGEN_S = "s";
+
+function trifftAlsWortteil(teil: string, ganzes: string): boolean {
+  if (teil.length < MIN_KOMPOSITUM_TEIL || ganzes.length <= teil.length) {
+    return false;
+  }
+  // Am Wortende: „farb" in „pflichtfarb" — davor muss ein eigener Wortteil stehen.
+  if (ganzes.endsWith(teil) && ganzes.length - teil.length >= MIN_KOMPOSITUM_TEIL) {
+    return true;
+  }
+  // Am Fugen-s: „arbeit" in „arbeitsschutz" — die Fuge IST der Beleg für die Grenze.
+  return (
+    ganzes.startsWith(`${teil}${FUGEN_S}`) &&
+    ganzes.length - teil.length - FUGEN_S.length >= MIN_KOMPOSITUM_TEIL
+  );
+}
+
+// Trifft der Frageterm irgendein Zieltoken an einer Kompositumgrenze — in beiden Richtungen?
+function trifftAlsKompositum(wort: string, ziel: readonly string[]): boolean {
+  for (const anderes of ziel) {
+    if (trifftAlsWortteil(wort, anderes) || trifftAlsWortteil(anderes, wort)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function ueberschneidung(
+  a: readonly string[],
+  b: readonly string[],
+  nominalA?: ReadonlySet<string>,
+  nominalB?: ReadonlySet<string>,
+): Ueberschneidung {
   const ziel = new Set(b);
   const gemeinsam = new Set<string>();
+  // mega60 A: `exakt` ist die Teilmenge von `gemeinsam` OHNE die Kompositumtreffer. Nur sie kann
+  // Substanz tragen — der Kompositumtreffer bleibt suchbar (er steht in `gemeinsam` und zählt auf
+  // `wert`), aber er trägt nicht. Es bleibt bei EINEM Durchlauf über EINE Zerlegung.
+  const exakt = new Set<string>();
   for (const word of a) {
     if (ziel.has(word)) {
+      gemeinsam.add(word);
+      exakt.add(word);
+    } else if (trifftAlsKompositum(word, b)) {
       gemeinsam.add(word);
     }
   }
   let substanz = 0;
-  for (const word of gemeinsam) {
-    if (istSubstanztragend(word)) {
+  for (const word of exakt) {
+    if (traegtSubstanz(word, nominalA, nominalB)) {
       substanz += 1;
     }
   }
@@ -1196,12 +1377,30 @@ export function refMatchText(ref: KnowledgeRef): string {
 // Flexionen), nicht über ein aufgeweichtes Maß.
 export const MIN_ANSWER_SUBSTANCE = 2;
 
+// ==================================================================================================
+// AUFTRAG-mega59 BLOCK I — DIE ABSOLUTE UND DIE RELATIVE REGEL STEHEN GETRENNT.
+// ==================================================================================================
+//
+// HIER STAND DIE ABSOLUTE REGEL EIN ZWEITES MAL: `if (bestScore < MIN_ANSWER_SUBSTANCE) return false;`
+//
+// Seit mega58 filtert das Substanztor JE KANDIDAT, und zwar VOR dem Bestwert (s. `keywordSelect` und
+// `rankCandidates`). Damit war dieser Zweig TOT: `best` ist das Maximum über eine Menge, in der jeder
+// Kandidat `substanz >= MIN_ANSWER_SUBSTANCE` erfüllt, und weil `substanz <= wert` gilt, ist jeder
+// dieser Kandidaten auch im Überschneidungswert mindestens zwei. Der Bestwert konnte die Schwelle
+// also nicht mehr unterschreiten — außer die Menge war leer, und dann wird die Funktion gar nicht
+// aufgerufen.
+//
+// Tote Zweige sind nicht bloß Ballast: sie behaupten eine Zuständigkeit. Wer diese Funktion liest,
+// glaubte, sie trage die Mindestsubstanz mit — und hätte beim nächsten Umbau des Tors darauf gebaut.
+// Ab hier ist die Zuständigkeit eindeutig: `meetsAnswerSubstance` trägt die ABSOLUTE Regel, diese
+// Funktion die RELATIVE, und keine kennt die andere.
+//
+// DIE BEHAUPTUNG „DAS PRODUKT VERHÄLT SICH UNVERÄNDERT" IST BELEGT, NICHT KOMMENTIERT: der Beweis
+// der Unerreichbarkeit steht in tests/ask/mega59-getrennte-regeln.test.ts — er fährt beide
+// Auswahlwege über eine erschöpfende Wertetafel und zeigt, dass der Bestwert die Schwelle nie
+// unterschreiten KANN, weil das Tor je Kandidat davorsteht.
 export function meetsRelevanceThreshold(keywordScore: number, bestScore: number): boolean {
-  // Zuerst absolut: trägt der beste Treffer die Antwort überhaupt? Wenn nein, trägt sie niemand.
-  if (bestScore < MIN_ANSWER_SUBSTANCE) {
-    return false;
-  }
-  // Dann relativ: wer weniger als die Hälfte des besten Treffers erreicht, ist ein Mitläufer.
+  // Rein relativ: wer weniger als die Hälfte des besten Treffers erreicht, ist ein Mitläufer.
   return keywordScore > 0 && keywordScore * 2 > bestScore;
 }
 
@@ -1245,12 +1444,19 @@ export function keywordSelect(
   question: string,
   candidates: readonly KnowledgeRef[],
 ): KnowledgeRef[] {
-  const words = tokenize(question);
+  // mega59 B: dieselbe Zerlegung, zusätzlich mit dem Herkunfts-Merkmal — die Frage EINMAL, jede
+  // Quelle einmal. Beide Seiten laufen durch dieselbe Funktion (Symmetriezusage).
+  const nominalFrage = new Set<string>();
+  const words = tokenize(question, nominalFrage);
   // mega57 A2: das absolute Tor auf dem Substanzwert, die relative Regel auf dem Überschneidungswert.
   // mega58 A: und das Tor JE KANDIDAT, vor der relativen Regel — sonst kommt eine substanzlose
   // Quelle über ihren hohen Überschneidungswert mit und verdrängt den tragenden Treffer.
   const scored = candidates
-    .map((c) => ({ c, ...ueberschneidung(words, tokenize(refMatchText(c))) }))
+    .map((c) => {
+      const nominalQuelle = new Set<string>();
+      const zieltoken = tokenize(refMatchText(c), nominalQuelle);
+      return { c, ...ueberschneidung(words, zieltoken, nominalFrage, nominalQuelle) };
+    })
     .filter((x) => x.wert > 0 && meetsAnswerSubstance(x.substanz))
     .sort((a, b) => b.wert - a.wert);
   const best = scored.reduce((max, x) => Math.max(max, x.wert), 0);
@@ -1299,12 +1505,17 @@ export function rankCandidates(
   candidates: readonly KnowledgeRef[],
   topK: number = DEFAULT_TOP_K,
 ): RankedCandidate[] {
-  const words = tokenize(question);
+  // mega59 B: identisch zu `keywordSelect` — eine Zerlegung, ein Herkunfts-Merkmal, beide Seiten
+  // durch dieselbe Funktion. Die Regel darf sich zwischen den zwei Auswahlwegen nicht unterscheiden.
+  const nominalFrage = new Set<string>();
+  const words = tokenize(question, nominalFrage);
   const limit = Math.max(1, Math.floor(topK));
   const scored = candidates
     .map((ref) => {
       // WP-RETEST7 R5: gleiche Match-Basis wie keywordSelect — inkl. Bild-Fußnoten (captionTexts).
-      const { wert, substanz } = ueberschneidung(words, tokenize(refMatchText(ref)));
+      const nominalQuelle = new Set<string>();
+      const zieltoken = tokenize(refMatchText(ref), nominalQuelle);
+      const { wert, substanz } = ueberschneidung(words, zieltoken, nominalFrage, nominalQuelle);
       return { ref, keywordScore: wert, substanz, rankScore: wert + statusTrustBoost(ref) };
     })
     // mega57 A2: dasselbe absolute Tor wie in `keywordSelect`, auf demselben Substanzwert — eine

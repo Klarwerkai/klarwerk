@@ -52,6 +52,15 @@ export const IMPORT_GROUPS_TEXT = {
   // Cloud-KI wegen vertraulicher Kandidaten ausgeschlossen war (fallbackReason "confidential").
   noAiReason: "imp.groups.noAiReason",
   reasonConfidential: "imp.groups.reason.confidential",
+  // AUFTRAG-mega59 BLOCK F1: die drei ÜBRIGEN Gründe. Bis hierher nannte das Abzeichen seinen Grund
+  // in genau EINEM von vier Fällen — bei no-model, model-timeout und model-error stand es nackt da.
+  // Ein Abzeichen ohne Grund ist für den Nutzer nicht von einem Fehler unterscheidbar.
+  reasonNoModel: "imp.groups.reason.noModel",
+  reasonTimeout: "imp.groups.reason.timeout",
+  reasonError: "imp.groups.reason.error",
+  // AUFTRAG-mega59 BLOCK F2: der Vor-Hinweis für den Fall, dass NICHT das fehlende Modell, sondern
+  // die Vertraulichkeit des gewählten Stapels die Cloud-KI ausschließt.
+  willGroupWithoutAiConfidential: "imp.groups.willGroupWithoutAiConfidential",
   // WP-SHIP9-S1b (bens GELB): eigener Zustand „bereits zur Prüfung vorgemerkt" (offener Kandidat,
   // getrennt von „bereits importiert") — Badge am Kandidaten + eigene Bilanz-Zeile.
   hintQueued: "imp.groups.hintQueued",
@@ -146,11 +155,33 @@ export function groupLabelKey(group: ImportGroup): string | null {
 }
 
 // WP-SHIP9-S1 (bens W2-Auflage, Muster aiCheckFailureReasonKey): Ursache → i18n-Key für den
-// Grund-Zusatz am „Ohne KI gruppiert"-Badge. NUR "confidential" bekommt einen spezifischen Text;
-// no-model/model-timeout/model-error bleiben bewusst bei der bisherigen Darstellung (bens T9).
+// Grund-Zusatz am „Ohne KI gruppiert"-Badge.
+//
+// AUFTRAG-mega59 BLOCK F1 — ALLE VIER GRÜNDE, NICHT EINER.
+//
+// Bis hierher gab diese Funktion für „confidential" einen Text und für no-model, model-timeout und
+// model-error `null` zurück. Das Abzeichen stand in drei von vier Fällen NACKT da: der Nutzer sah
+// „Ohne KI gruppiert" und hatte keine Möglichkeit zu erfahren, ob das Modell fehlt, ob es zu langsam
+// war, ob es einen Fehler geworfen hat oder ob seine Daten die Cloud gar nicht verlassen durften.
+// Die vier Fälle verlangen VERSCHIEDENE Reaktionen — einmal Konfiguration, einmal Geduld, einmal
+// Meldung, einmal gar keine (der Ausschluss ist korrekt). Ein Text, der sie nicht unterscheidet,
+// nimmt dem Nutzer die Entscheidung ab, die er treffen müsste.
+//
+// Ein UNBEKANNTER Grund liefert weiterhin `null` — dann steht das Abzeichen ohne Zusatz, und das ist
+// ehrlicher als ein erfundener Grund. Die Union ist geschlossen, dieser Zweig ist also ein Vorbau
+// gegen einen künftigen fünften Wert, kein heute erreichbarer Zustand.
 export function noAiReasonKey(fallbackReason: string | undefined): string | null {
   if (fallbackReason === "confidential") {
     return IMPORT_GROUPS_TEXT.reasonConfidential;
+  }
+  if (fallbackReason === "no-model") {
+    return IMPORT_GROUPS_TEXT.reasonNoModel;
+  }
+  if (fallbackReason === "model-timeout") {
+    return IMPORT_GROUPS_TEXT.reasonTimeout;
+  }
+  if (fallbackReason === "model-error") {
+    return IMPORT_GROUPS_TEXT.reasonError;
   }
   return null;
 }

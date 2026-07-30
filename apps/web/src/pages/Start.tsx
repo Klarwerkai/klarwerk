@@ -238,6 +238,7 @@ export function Start(): JSX.Element {
       <PageHeader
         kicker={t("start.kicker")}
         title={t("start.greeting", { name: user?.name ?? "" })}
+        pageKey="start"
         actions={
           <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <RoleLink

@@ -2,6 +2,9 @@
 // Fängt: weiße Seite, kaputtes Bundle, tote Buttons im Hauptweg, kaputtes Routing.
 // Bewusst robuste Selektoren (Feldtypen + sichtbare deutsche Texte aus i18n.ts).
 import { expect, test } from "@playwright/test";
+// AUFTRAG-mega59 BLOCK H4: die geteilte Verkehrsmessung — bis hierher zählte im Browser-Smoke kein
+// einziger Fall Anfragen, und genau das war die Lücke hinter S1.
+import { RUHEFRIST_MS, zaehleAnfragen } from "./support/anfragezaehler";
 import { ensureLoggedIn } from "./support/auth";
 
 test.describe.configure({ mode: "serial" });
@@ -150,6 +153,19 @@ test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page })
   );
   await ensureLoggedIn(page);
   await page.goto("/fragen");
+  // ================================================================================================
+  // AUFTRAG-mega59 BLOCK H4 — DIESER FALL PRÜFTE NACH DEM ABSENDEN NUR ABWESENHEITEN.
+  // ================================================================================================
+  //
+  // Nach `press("Enter")` folgten zwei `toHaveCount(0)` auf Zustände, die VORHER schon galten, und
+  // ohne jede Frist. Sendet `Enter` durch eine Regression trotz gesperrtem Knopf doch — der Fall
+  // wäre grün, weil die Antwort im Moment der Prüfung noch nicht da ist. Eine Abwesenheit im DOM ist
+  // keine Aussage über einen VORGANG.
+  //
+  // Repariert ohne jede Produktänderung: der Verkehr wird gezählt. Das ist genau die Messung, die S1
+  // unmittelbar gefangen hätte (dort war das Problem die andere Richtung: nie ein Aufruf, trotzdem
+  // grün) — deshalb liegt sie als geteilte Hilfe unter `support/` und nicht als Einzelfall hier.
+  const askZaehler = zaehleAnfragen(page, /\/api\/ask/);
   const input = page.getByPlaceholder(/Ventil X/);
   await expect(input).toBeVisible({ timeout: 15_000 });
   await input.fill("Wie stelle ich den Dosierwert an Linie L4 nach Schichtwechsel ein?");
@@ -160,8 +176,15 @@ test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page })
   await expect(page.getByText(/kein Modell aktiv/i).first()).toBeVisible();
   // … und es entsteht folgerichtig KEIN Ergebnisbereich (weder Antwort noch Lücke).
   await input.press("Enter");
+  // DIE EIGENTLICHE ZUSICHERUNG: nach einer festen Ruhefrist ist NICHTS an /api/ask gegangen.
+  await askZaehler.ruhefrist(RUHEFRIST_MS);
+  expect(
+    askZaehler.anzahl(),
+    `Enter hat trotz gesperrtem Knopf gesendet: ${askZaehler.adressen().join(", ")}`,
+  ).toBe(0);
   await expect(page.getByTestId("ask-answer")).toHaveCount(0);
   await expect(page.getByTestId("ask-gap")).toHaveCount(0);
+  askZaehler.stoppen();
 });
 
 test("Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell", async ({
@@ -410,26 +433,64 @@ test("mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar", 
   expect(await page.evaluate(() => document.querySelector("[inert]") !== null)).toBe(false);
 });
 
+// ==================================================================================================
+// AUFTRAG-mega59 BLOCK H1 — DIESER FALL KONNTE GRÜN WERDEN, OHNE ETWAS ZU BELEGEN.
+// ==================================================================================================
+//
+// Sein einziger Anker war `page.locator("h1, h2").first()`. VIER Wege führten damit zu falschem Grün,
+// und der erste ist genau der Absturz, den der Name fangen soll:
+//
+//   1 JEDE Route steckt in einer Fehlergrenze (routes.tsx), deren Karte ein `<h2>` rendert
+//     (ErrorBoundary.tsx). Eine abgestürzte Seite hatte also eine sichtbare Überschrift.
+//   2 Fehlt der Eintrag in `PAGES`, rendert `PlaceholderPage` ein `<h1>` mit DEMSELBEN Titel wie die
+//     echte Seite — eine nie gebaute Seite war nicht von einer gebauten zu unterscheiden.
+//   3 Ein Rollen-Gate leitet auf `/start` um (routes.tsx), und `/start` hat eine `h1`.
+//   4 Der Auffangpfad `*` tut dasselbe — ein TIPPFEHLER in der Routenliste wäre grün gewesen.
+//
+// DIE REPARATUR schließt alle vier, und zwar mit zwei Zusicherungen statt einer:
+//   · `toHaveURL` schließt Loch 3 und 4 sofort: wer umgeleitet wurde, steht nicht mehr auf seiner
+//     Route. Das kostet keine Produktänderung und ist die stärkere der beiden Aussagen.
+//   · ein NAMENTLICHER Anker je Seite (`page-<schlüssel>`, gesetzt an `PageHeader`) schließt 1 und 2:
+//     weder die Fehlerkarte noch `PlaceholderPage` rendern einen `PageHeader`, sie können ihn also
+//     nicht liefern. Ein Titel genügt dafür nicht — deswegen ist es eine Kennung.
+//
+// Der Nachweis, dass die neue Fassung den alten hohlen Zustand ERKENNT, steht im Bericht: mit einer
+// absichtlich fehlerhaften Route (Eintrag aus `PAGES` entfernt bzw. Route verschrieben) wird sie rot,
+// wo die alte Fassung grün blieb.
+const KERNROUTEN: ReadonlyArray<{ pfad: string; schluessel: string }> = [
+  { pfad: "/start", schluessel: "start" },
+  { pfad: "/aufgaben", schluessel: "aufgaben" },
+  { pfad: "/bibliothek", schluessel: "bibliothek" },
+  { pfad: "/extern", schluessel: "extern" },
+  { pfad: "/validierung", schluessel: "validierung" },
+  { pfad: "/konflikte", schluessel: "konflikte" },
+  { pfad: "/risiko", schluessel: "risiko" },
+  { pfad: "/lebenszyklus", schluessel: "lebenszyklus" },
+  { pfad: "/analytics", schluessel: "analytics" },
+  { pfad: "/admin", schluessel: "admin" },
+  { pfad: "/hilfe", schluessel: "hilfe" },
+  { pfad: "/profil", schluessel: "profil" },
+];
+
 test("Alle Kernrouten rendern (keine weiße Seite)", async ({ page }) => {
   await ensureLoggedIn(page);
-  const routes = [
-    "/start",
-    "/aufgaben",
-    "/bibliothek",
-    "/extern",
-    "/validierung",
-    "/konflikte",
-    "/risiko",
-    "/lebenszyklus",
-    "/analytics",
-    "/admin",
-    "/hilfe",
-    "/profil",
-  ];
-  for (const r of routes) {
-    await page.goto(r);
-    // Jede Seite hat eine sichtbare Hauptüberschrift — weiße Seite/Crash fällt hier sofort auf.
-    await expect(page.locator("h1, h2").first()).toBeVisible({ timeout: 10_000 });
+  for (const { pfad, schluessel } of KERNROUTEN) {
+    await page.goto(pfad);
+    // 1. Wir sind noch dort, wo wir hinwollten — keine stille Umleitung auf /start.
+    await expect(page, `Umleitung von ${pfad}`).toHaveURL(new RegExp(`${pfad}$`), {
+      timeout: 10_000,
+    });
+    // 2. Die ECHTE Seite steht da — nicht die Fehlerkarte, nicht der Platzhalter.
+    await expect(
+      page.getByTestId(`page-${schluessel}`),
+      `kein Seitenanker auf ${pfad} — Fehlerkarte, Platzhalter oder fehlender pageKey`,
+    ).toBeVisible({ timeout: 10_000 });
+    // 3. Und die Fehlerkarte ist AUSDRÜCKLICH nicht da. Ohne diese Zeile könnte eine Seite ihren
+    //    Kopf rendern und darunter abstürzen — der Anker allein sagt nichts über den Rest.
+    await expect(
+      page.getByRole("heading", { name: /konnte nicht geladen werden/i }),
+      `Fehlerkarte auf ${pfad}`,
+    ).toHaveCount(0);
   }
 });
 
@@ -478,7 +539,28 @@ test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) =>
   const geseedet = process.env.KLARWERK_SMOKE_SEED === "1";
   const ohneModell = process.env.KLARWERK_SMOKE_OHNE_MODELL === "1";
 
+  // ================================================================================================
+  // AUFTRAG-mega59 BLOCK H3 — DER GESEEDETE ZWEIG PRÜFTE EINE ABWESENHEIT.
+  // ================================================================================================
+  //
+  // `await expect(leerText).toHaveCount(0)` ist auch im LADEZUSTAND und im FEHLERZUSTAND erfüllt
+  // (QueryState rendert den Leer-Text nur im geladenen, leeren Fall). Ein Lauf mit leerem oder
+  // fehlgeschlagenem Prüf-Board war damit grün — die Kalibrierung wurde nicht eingelöst, sie wurde
+  // behauptet. Und genau diese Kalibrierung ist die Deckung dafür, dass `smoke:ui:gate:daten` eine
+  // ZWEITE Datenlage ist und nicht eine Wiederholung der ersten.
+  //
+  // Repariert mit einer POSITIVEN Zusicherung, und mit dem Ausschluss der beiden Zwischenzustände
+  // BEVOR eine Aussage über die Datenlage fällt — sonst misst man wieder den Ladezustand.
   if (geseedet) {
+    // Erst Lade- und Fehlerzustand ausschließen (QueryState: `state.loading` / `state.error`) …
+    await expect(page.getByText("Lädt …")).toHaveCount(0);
+    await expect(page.getByText("Etwas ist schiefgelaufen.")).toHaveCount(0);
+    // … dann die eigentliche Aussage: es sind wirklich Prüf-Einträge DA.
+    await expect(
+      page.getByTestId("validation-row").first(),
+      "geseedeter Lauf ohne einen einzigen Prüf-Eintrag — die zweite Datenlage ist keine",
+    ).toBeVisible({ timeout: 15_000 });
+    // Und die alte Abwesenheitsprüfung bleibt als Zusatz stehen (sie ist nicht falsch, nur zu schwach).
     await expect(leerText).toHaveCount(0);
   } else if (ohneModell) {
     await expect(leerText.first()).toBeVisible({ timeout: 10_000 });

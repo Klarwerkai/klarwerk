@@ -709,6 +709,12 @@ export interface ImportPreviewEntry {
   sourceNewer?: boolean;
   // WP-IC-PAKET-1c (ROT-2): "decoded" = kanonisch dekodiert — Anzeige dekodiert NICHT erneut.
   textCodec?: "decoded";
+  // AUFTRAG-mega59 BLOCK F2: dieser Kandidat nimmt die Cloud-KI aus der Gruppierung heraus (Spiegel
+  // von services/library-analytics/src/select.ts). Damit kann die Vorwarnung die Vertraulichkeit des
+  // GEWÄHLTEN Stapels einrechnen, statt nur den globalen Reasoner-Status zu kennen. Additiv; ein
+  // älterer Server ohne das Feld führt in genau den bisherigen Zustand zurück (keine Vorwarnung aus
+  // diesem Grund), nie in eine falsche Entwarnung.
+  confidentialForAi?: boolean;
 }
 export interface ImportSelectResponse {
   matched: number;

@@ -13,11 +13,13 @@ import {
   DeterministicProvider,
   MIN_ANSWER_SUBSTANCE,
   keywordSelect,
-  meetsAnswerSubstance,
   queryTokens,
   rankCandidates,
 } from "../../services/reasoner";
-import { refMatchText } from "../../services/reasoner/src/provider";
+// AUFTRAG-mega59 BLOCK I: `meetsAnswerSubstance` ist ein INNERER Testhelfer und steht nicht mehr in
+// der öffentlichen Modulfläche (services/reasoner/index.ts). Der Zugriff läuft white-box relativ —
+// dasselbe dokumentierte Muster wie `refMatchText` daneben, das sechs Testdateien schon fahren.
+import { meetsAnswerSubstance, refMatchText } from "../../services/reasoner/src/provider";
 
 function ref(id: string, title: string, statement: string): KnowledgeRef {
   return { id, title, statement, status: "validiert", trust: 70 };
@@ -110,22 +112,27 @@ describe("AUFTRAG-mega57 D2 — suchbar bleibt suchbar", () => {
     expect(keywordSelect(FRAGE, [richtig, daneben]).map((x) => x.id)).toEqual(["wartung"]);
   });
 
-  it("DER GEMESSENE PREIS, benannt: wart plus EIN Fachwort reicht nicht mehr", () => {
-    // Das ist die Kehrseite der Trennung, und sie steht hier, damit sie sichtbar ist statt
-    // vergessen: teilen Frage und Quelle nur „Wartung" und EIN weiteres Fachwort, ist der
-    // Substanzwert eins, und die Antwort ist eine Wissenslücke. Vorher trug dieser Fall.
+  it("AUFTRAG-mega59 B: der gemessene Preis ist ZURÜCKGENOMMEN — wart plus EIN Fachwort trägt", () => {
+    // HIER STAND DER PREIS DIESER RUNDE, und er ist bewusst kassiert, nicht kaputtgegangen.
     //
-    // Das ist der EINE Punkt, an dem die Umsetzung von der wörtlichen D2-Formulierung des
-    // Auftrags abweicht („ein zweites echtes Fachwort danebenstehen … trägt weiterhin"). Beides
-    // zugleich ist unter A2 nicht möglich: entweder zahlt „wart" auf die Mindestsubstanz ein —
-    // dann trägt auch bens Grammatikpaar wieder — oder es zahlt nicht ein, dann kostet es hier.
-    // Gewählt ist A1 wörtlich („wart" gehört in die mehrdeutige Menge); der Preis ist gemessen
-    // und im Bericht als Produktentscheidung gemeldet, nicht stillschweigend eingebaut.
+    // mega57 hat an dieser Stelle gemessen und gemeldet: teilen Frage und Quelle nur „Wartung" und
+    // EIN weiteres Fachwort, ist der Substanzwert eins, und die Antwort ist eine Wissenslücke.
+    // Damals galt das als unvermeidbar — entweder zahlt „wart" auf die Mindestsubstanz ein, dann
+    // trägt auch bens Grammatikpaar wieder, oder es zahlt nicht ein, dann kostet es hier. Diese
+    // Alternative war vollständig, solange nur DER TERM entscheidet.
+    //
+    // mega59 BLOCK B hat die dritte Möglichkeit gebaut: nicht der Term entscheidet, sondern seine
+    // HERKUNFT. „Wartung" ist eine Nominalisierung (Abtrag von `-ung`), „ihr wart" eine Verbform;
+    // getragen wird nur, wenn BEIDE Seiten aus der Nominalisierung stammen. Damit trägt dieser
+    // Fall wieder, und bens Grammatikpaar in D1 trägt weiterhin nicht — beides zugleich.
+    //
+    // Es ist also eine zurückgenommene PRODUKTENTSCHEIDUNG, kein zerbrochener Wächter. Die
+    // Gegenprobe dazu (und die vollständige Regel) liegt in tests/ask/mega59-herkunftstreue.test.ts.
     const FRAGE = "Wann ist die Wartung am Ventil fällig?";
     const quelle = ref("wartung", "Wartungsplan", "Die Wartung am Ventil erfolgt jährlich.");
     expect(gemeinsam(FRAGE, quelle)).toEqual(["wart", "ventil"]);
-    expect(rankCandidates(FRAGE, [quelle])).toEqual([]);
-    expect(keywordSelect(FRAGE, [quelle])).toEqual([]);
+    expect(rankCandidates(FRAGE, [quelle]).map((x) => x.ref.id)).toEqual(["wartung"]);
+    expect(keywordSelect(FRAGE, [quelle]).map((x) => x.id)).toEqual(["wartung"]);
   });
 
   it("dasselbe gilt für die anderen Belege — sie behalten alle ihren Term", () => {

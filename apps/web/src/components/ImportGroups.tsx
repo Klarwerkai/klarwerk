@@ -6,7 +6,7 @@
 // Import-Weg (Review-Queue; Review-Invariante bleibt) in Batches mit ehrlichem Fortschritt und
 // endet in der Bilanz (übernommen/übersprungen/ausgeschlossen/fehlgeschlagen).
 import { ArrowRight, CheckCircle2, ChevronDown, Loader2, Sparkles } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
@@ -30,6 +30,7 @@ import {
   selectionCounts,
   toggleCandidate,
 } from "../lib/importGroups";
+import { koLabel } from "../lib/koLabel";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 // WP-COCKPIT-LINIE: Schritt-Überschriften (4 Gruppen freigeben · 5 Übernehmen & Bilanz) +
 // Meilenstein-Meldungen an die Schritt-Leiste.
@@ -189,6 +190,7 @@ export function ImportGroups({
   criteria,
   selectedCandidateIds,
   aiAvailable = true,
+  stackConfidential = false,
   groupingStale = false,
   onGrouped,
   onApplied,
@@ -204,6 +206,12 @@ export function ImportGroups({
   // Themen-Gruppierung bleibt ein voller, nutzbarer Kernablauf (Ergebnis ehrlich „Ohne KI gruppiert").
   // Ohne Modell kündigt nur ein Vor-Hinweis an, dass ohne KI gruppiert wird. Default true (kein Test-Bruch).
   aiAvailable?: boolean;
+  // AUFTRAG-mega59 BLOCK F2: trägt der GEWÄHLTE Stapel vertrauliche oder nicht freigegebene
+  // Einträge? Dann nimmt der Batch-Vertrag die Cloud-KI heraus, ganz unabhängig davon, ob ein Modell
+  // aktiv ist — und die Vorwarnung muss das sagen, statt bei aktivem Reasoner zu schweigen und
+  // hinterher „Ohne KI gruppiert" zu zeigen. Der Eltern-Kontext leitet es aus den gewählten
+  // Vorschau-Einträgen ab (`confidentialForAi`); Default false hält Bestandstests unverändert.
+  stackConfidential?: boolean;
   // AUFTRAG-mega9 Block E-4 (KW-E2E-008): In dieser Sitzung wurde SCHON gruppiert, aber zu einer
   // ANDEREN Auswahl — die damals aufgebauten Gruppen hat der Neu-Mount (React-Key) korrekt verworfen.
   // Dieses Wissen überlebt den Remount nur im Eltern-Kontext, deshalb kommt es als Prop herein: der
@@ -242,6 +250,18 @@ export function ImportGroups({
       panelRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
     }
   }, [data, bilanz]);
+
+  // AUFTRAG-mega59 BLOCK E: die Abbildung Kennung→Titel für die Fehlerbilanz — aus den BEREITS
+  // geladenen Kandidaten desselben Laufs. `data` bleibt gesetzt, wenn die Bilanz erscheint (der
+  // Apply-Weg liest selbst `data.candidates`), also gibt es hier nichts nachzuladen: kein neuer
+  // Serveraufruf, kein neuer Egress, kein neuer Host.
+  // Durch `displayImportText` wie überall sonst in dieser Komponente — sonst stünde in der Bilanz
+  // ein anders dekodierter Titel als in der Kandidatenliste darüber.
+  const titelJeKandidat = useMemo(
+    () =>
+      new Map((data?.candidates ?? []).map((c) => [c.id, displayImportText(c.title, c.textCodec)])),
+    [data],
+  );
 
   // WP-COCKPIT-LINIE: Meilensteine an die Schritt-Leiste — Gruppen sichtbar → Schritt 4 aktiv.
   // WP-SHIP8-CLOSE-2 (bens F2): „applied" meldet NICHT mehr jede Bilanz, sondern nur der
@@ -426,9 +446,28 @@ export function ImportGroups({
           {!hasSelection ? (
             <p className="mt-1.5 text-[12px] text-muted-2">{t(IMPORT_GROUPS_TEXT.needSelection)}</p>
           ) : null}
-          {hasSelection && !aiAvailable ? (
+          {/* ================================================================================
+              AUFTRAG-mega59 BLOCK F2 — DIE VORWARNUNG HAT VORHER GELOGEN.
+              ================================================================================
+              Hier stand `hasSelection && !aiAvailable`. `aiAvailable` kommt aus
+              `useAiAvailable("group")` und kennt AUSSCHLIESSLICH den globalen Reasoner-Status — von
+              der Vertraulichkeit des gewählten Stapels weiß es nichts. Bei aktivem Reasoner gab es
+              also KEINE Vorwarnung, und danach stand „Ohne KI gruppiert" da. Genau das hat der Chef
+              live gesehen: nicht ein Schönheitsfehler, sondern eine falsche Zustandsaussage.
+              Ab jetzt zählt beides — das fehlende Modell UND der vertrauliche Stapel. Der Grund wird
+              getrennt benannt, weil er verschiedene Reaktionen verlangt: beim fehlenden Modell ist
+              etwas zu konfigurieren, beim vertraulichen Stapel ist der Ausschluss KORREKT und der
+              Nutzer soll nur nicht überrascht werden.
+              Die Stufe wird clientseitig aus den GEWÄHLTEN Kandidaten abgeleitet (nicht aus der
+              ganzen Vorschau — die Auswahl ist eine Teilmenge), aus einem Feld, das die
+              Auswahl-Antwort mitbringt. Kein neuer Aufruf, kein neuer Egress, kein neuer Host. */}
+          {hasSelection && (!aiAvailable || stackConfidential) ? (
             <p className="mt-1.5 text-[12px] text-muted-2">
-              {t(IMPORT_GROUPS_TEXT.willGroupWithoutAi)}
+              {t(
+                stackConfidential
+                  ? IMPORT_GROUPS_TEXT.willGroupWithoutAiConfidential
+                  : IMPORT_GROUPS_TEXT.willGroupWithoutAi,
+              )}
             </p>
           ) : null}
         </>
@@ -519,9 +558,14 @@ export function ImportGroups({
             </ul>
             {bilanz.failed.length > 0 ? (
               <ul className="mt-1.5 space-y-0.5 text-[11.5px] text-trust-crit-text">
+                {/* AUFTRAG-mega59 BLOCK E: hier stand die rohe Kandidaten-Kennung, obwohl
+                    `data.candidates` mit `title` in DERSELBEN Komponente vorliegt. Die Abbildung
+                    Kennung→Titel entsteht aus den bereits geladenen Kandidaten — KEIN neuer
+                    Serveraufruf, kein neuer Egress. Fehlt ein Titel (Kandidat nicht mehr im
+                    Schnappschuss), bleibt die Kennung der Rückfall. */}
                 {bilanz.failed.map((f) => (
-                  <li key={f.id}>
-                    · {f.id} —{" "}
+                  <li key={f.id} title={f.id}>
+                    · {koLabel(titelJeKandidat.get(f.id), f.id)} —{" "}
                     {f.reason === "not-found"
                       ? t(IMPORT_GROUPS_TEXT.failNotFound)
                       : f.reason === "http-error"

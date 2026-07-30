@@ -523,7 +523,7 @@ export function Library(): JSX.Element {
     // auf `max-w-7xl`, die Filterschiene schrumpft von 300px auf 248px (s. unten) — zusammen rund
     // 200px mehr für den Titel, der im Erstnutzerlauf auf vier Zeilen umbrach.
     <div className="mx-auto max-w-7xl">
-      <PageHeader kicker={t("lib.kicker")} title={t("nav.library")} />
+      <PageHeader kicker={t("lib.kicker")} title={t("nav.library")} pageKey="bibliothek" />
       {/* ==========================================================================================
           AUFTRAG-mega51 BLOCK C — DIE BIBLIOTHEK IST ZUM SUCHEN DA, NICHT ZUM EXPORTIEREN.
           ==========================================================================================
@@ -875,6 +875,31 @@ export function Library(): JSX.Element {
                     </Card>
                   );
                 })()}
+                {/* ================================================================================
+                    AUFTRAG-mega59 BLOCK D — DER STUMME NULLZUSTAND.
+                    ================================================================================
+                    `QueryState` bewertet NUR die Serverantwort; Facetten und Zeitbereich filtern
+                    erst danach clientseitig. Liefert die Suche also Treffer, die Facetten aber
+                    nicht, rendert die Liste darunter eine leere Karte GANZ OHNE TEXT — bei aktiver
+                    Gruppierung ein leeres `div`. Der bereits geschlossene Fall (Suche ohne Treffer)
+                    ist davon nicht betroffen; das hier ist die benachbarte Lücke, und sie war die
+                    einzige Suchfläche der App ohne Leerzustand.
+                    Der Text nennt den GRUND (es gibt Treffer, die Filter zeigen keinen davon), und
+                    die Handlung ist der BESTEHENDE Reset-Handler `onResetFilters` — derselbe, den
+                    die Pillen-Leiste oben fährt. Kein zweiter Weg, kein zweiter Zustand. */}
+                {sorted.length === 0 ? (
+                  <Card>
+                    <p className="text-[13px] font-semibold text-text">
+                      {t("lib.facetEmpty.title")}
+                    </p>
+                    <p className="mt-0.5 text-[12px] text-muted">
+                      {t("lib.facetEmpty.hint", { count: ranked.length })}
+                    </p>
+                    <Button className="mt-2" variant="ghost" onClick={onResetFilters}>
+                      {t("lib.facetEmpty.reset")}
+                    </Button>
+                  </Card>
+                ) : null}
                 {(() => {
                   const koRows = (list: typeof win.visible): JSX.Element[] =>
                     list.map(({ ko: k, matches }) => {
@@ -1059,6 +1084,13 @@ export function Library(): JSX.Element {
                         </div>
                       );
                     });
+                  // AUFTRAG-mega59 BLOCK D: bei null sichtbaren Einträgen übernimmt der Leerzustand
+                  // darüber. Ohne dieses `null` stünde die leere Karte (bzw. bei aktiver Gruppierung
+                  // das leere `div`) weiter unter der Meldung — genau der stumme Zustand, den dieser
+                  // Block schließt, nur diesmal mit Text darüber.
+                  if (sorted.length === 0) {
+                    return null;
+                  }
                   // D-BIB: flache Liste ODER Untergruppen (auf-/zuklappbar, Größe absteigend) —
                   // dieselben Zeilen, nur anders gebündelt (das Fenster win.visible bleibt der Deckel).
                   return groupBy === "none" ? (

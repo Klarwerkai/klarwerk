@@ -159,7 +159,7 @@ export function MyTasks(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-4xl">
-      <PageHeader kicker={t("task.kicker")} title={t("nav.tasks")} />
+      <PageHeader kicker={t("task.kicker")} title={t("nav.tasks")} pageKey="aufgaben" />
       <div className="mb-4 flex flex-wrap gap-1.5">
         {TASK_FILTERS.map((f) => (
           <button

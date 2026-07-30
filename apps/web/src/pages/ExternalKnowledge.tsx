@@ -50,6 +50,7 @@ export function ExternalKnowledge(): JSX.Element {
       <PageHeader
         kicker={t("extpage.kicker")}
         title={t("extpage.title")}
+        pageKey="extern"
         actions={
           <HelpTip title={t("extpage.help.scope.title")} body={t("extpage.help.scope.body")} />
         }

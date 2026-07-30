@@ -2625,6 +2625,13 @@ const de = {
   "lib.answerButton": "Frage beantworten lassen",
   "lib.emptyQuery":
     "Keine Treffer für „{{q}}“. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
+  // AUFTRAG-mega59 BLOCK D: der stumme Nullzustand. Die Suche hat Treffer, die aktiven Facetten
+  // zeigen keinen davon — bis hierher rendert die Bibliothek dafür eine leere Karte ganz ohne Text
+  // (bei aktiver Gruppierung ein leeres div). Der Text nennt den GRUND, nicht nur die Zahl.
+  "lib.facetEmpty.title": "Treffer vorhanden — aber keiner passt zu den aktiven Filtern.",
+  "lib.facetEmpty.hint":
+    "Deine Suche hat {{count}} Treffer im Bestand. Die gesetzten Filter blenden alle davon aus.",
+  "lib.facetEmpty.reset": "Alle Filter zurücksetzen",
   "lib.matchIn": "Treffer in",
   "lib.match.title": "Titel",
   "lib.match.tag": "Tag",
@@ -2787,6 +2794,15 @@ const de = {
   "imp.groups.noAi": "Ohne KI gruppiert",
   "imp.groups.noAiReason": "Ohne KI gruppiert — {{reason}}",
   "imp.groups.reason.confidential": "vertrauliche Kandidaten — Cloud-KI ausgeschlossen",
+  // AUFTRAG-mega59 BLOCK F1: die drei bis hierher stummen Gründe. Ein nacktes „Ohne KI gruppiert"
+  // ist für den Nutzer nicht von einem Fehler unterscheidbar — und die vier Gründe verlangen
+  // verschiedene Reaktionen (Konfiguration, Geduld, Meldung, keine).
+  "imp.groups.reason.noModel": "kein KI-Modell aktiv",
+  "imp.groups.reason.timeout": "das KI-Modell hat nicht rechtzeitig geantwortet",
+  "imp.groups.reason.error": "das KI-Modell hat einen Fehler gemeldet",
+  // AUFTRAG-mega59 BLOCK F2: Vorwarnung bei vertraulichem Stapel — auch bei AKTIVEM Reasoner.
+  "imp.groups.willGroupWithoutAiConfidential":
+    "Dieser Stapel enthält vertrauliche oder nicht freigegebene Einträge — es wird ohne Cloud-KI nach Themen gruppiert (deterministisch).",
   "imp.groups.aiGrouped": "KI-gruppiert",
   "imp.groups.groupCount": "{{n}} Beiträge",
   "imp.groups.approve": "Freigeben",
@@ -6470,6 +6486,11 @@ const en: typeof de = {
   "lib.answerButton": "Get the question answered",
   "lib.emptyQuery":
     "No matches for '{{q}}'. Tip: rephrase, reset the filters, or search a single keyword.",
+  // AUFTRAG-mega59 BLOCK D — see the German entry for the finding.
+  "lib.facetEmpty.title": "There are matches — but none of them fits the active filters.",
+  "lib.facetEmpty.hint":
+    "Your search has {{count}} matches in the knowledge base. The active filters hide all of them.",
+  "lib.facetEmpty.reset": "Reset all filters",
   "lib.matchIn": "Matched in",
   "lib.match.title": "Title",
   "lib.match.tag": "Tag",
@@ -6620,6 +6641,12 @@ const en: typeof de = {
   "imp.groups.noAi": "Grouped without AI",
   "imp.groups.noAiReason": "Grouped without AI — {{reason}}",
   "imp.groups.reason.confidential": "confidential candidates — cloud AI excluded",
+  // AUFTRAG-mega59 BLOCK F1/F2 — see the German entries for the finding.
+  "imp.groups.reason.noModel": "no AI model active",
+  "imp.groups.reason.timeout": "the AI model did not answer in time",
+  "imp.groups.reason.error": "the AI model reported an error",
+  "imp.groups.willGroupWithoutAiConfidential":
+    "This batch contains confidential or unapproved entries — it will be grouped by theme without cloud AI (deterministic).",
   "imp.groups.aiGrouped": "AI-grouped",
   "imp.groups.groupCount": "{{n}} posts",
   "imp.groups.approve": "Approve",
@@ -10231,6 +10258,11 @@ const nl: typeof de = {
   "lib.answerButton": "Vraag laten beantwoorden",
   "lib.emptyQuery":
     "Geen resultaten voor „{{q}}“. Tip: anders formuleren, filters resetten of op één trefwoord zoeken.",
+  // AUFTRAG-mega59 BLOCK D — zie de Duitse regel voor de bevinding.
+  "lib.facetEmpty.title": "Er zijn resultaten — maar geen enkele past bij de actieve filters.",
+  "lib.facetEmpty.hint":
+    "Je zoekopdracht heeft {{count}} resultaten in de kennisbank. De actieve filters verbergen ze allemaal.",
+  "lib.facetEmpty.reset": "Alle filters resetten",
   "lib.matchIn": "Resultaat in",
   "lib.match.title": "Titel",
   "lib.match.tag": "Tag",
@@ -10380,6 +10412,12 @@ const nl: typeof de = {
   "imp.groups.noAi": "Zonder AI gegroepeerd",
   "imp.groups.noAiReason": "Zonder AI gegroepeerd — {{reason}}",
   "imp.groups.reason.confidential": "vertrouwelijke kandidaten — cloud-AI uitgesloten",
+  // AUFTRAG-mega59 BLOCK F1/F2 — zie de Duitse regels voor de bevinding.
+  "imp.groups.reason.noModel": "geen AI-model actief",
+  "imp.groups.reason.timeout": "het AI-model heeft niet tijdig geantwoord",
+  "imp.groups.reason.error": "het AI-model heeft een fout gemeld",
+  "imp.groups.willGroupWithoutAiConfidential":
+    "Deze stapel bevat vertrouwelijke of niet-vrijgegeven items — er wordt zonder cloud-AI op thema gegroepeerd (deterministisch).",
   "imp.groups.aiGrouped": "AI-gegroepeerd",
   "imp.groups.groupCount": "{{n}} bijdragen",
   "imp.groups.approve": "Vrijgeven",

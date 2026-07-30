@@ -14,4 +14,20 @@ npx tsc -p tsconfig.tests-tsx.json
 # EINSCHRÄNKUNG, bewusst benannt: hier liegt das ganze Repo, im Container nur apps/web. Ein Import
 # über die Modulgrenze nach services/ löst deshalb LOKAL auf und würde hier NICHT auffallen — genau
 # diese Klasse fängt der Scan in tests/capture/draft-limits-shared.test.ts ab.
-(cd apps/web && npx vite build)
+#
+# ==================================================================================================
+# AUFTRAG-mega59 BLOCK G — DAS PRÜFTOR WAR AN DER WEBOBERFLÄCHE BLIND.
+# ==================================================================================================
+#
+# DER BEFUND, nachgerechnet: `vite build` typprüft NICHT — es transpiliert über esbuild. Die
+# Wurzel-Config hat `"include": ["services", "tests"]`; `apps` steht nicht darin, Web-Dateien kamen
+# also nur über IMPORTE AUS TESTS ins Programm. Über die transitive Hülle waren 344 von 389 Dateien
+# erreicht — 45 NICHT, und darunter lag der ganze Rahmen: main.tsx, App.tsx, routes.tsx,
+# ErrorBoundary, die drei Anmeldeschirme, acht ganze Seiten und der komplette Intake-Teilbaum. Ein
+# Typfehler in pages/MyTasks.tsx machte nichts rot, und wir meldeten „komplett grün".
+#
+# DIE ÄNDERUNG IST EINE ZEILE und gleichwertig zu `npm --prefix apps/web run build`
+# (apps/web/package.json: `tsc --noEmit && vite build`) — der Befehl, den der Container ohnehin fährt.
+# BEWUSST KEIN `references`-Umbau der Wurzel-Config: sie ist absichtlich Node-rein, ohne DOM und ohne
+# JSX. Der Web-Typecheck braucht beides und bringt es in seiner EIGENEN Config mit.
+(cd apps/web && npx tsc --noEmit && npx vite build)

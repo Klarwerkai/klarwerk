@@ -56,8 +56,27 @@ test("Ersteinrichtung legt den Admin an und landet im Arbeitsbereich", async ({ 
 
   // „legt den ADMIN an" — die Behauptung im Testnamen wird auch geprüft, nicht nur gemacht:
   // die Verwaltung rendert nur für Admins (erstes Konto = Admin, service.ts:120-125).
+  //
+  // ==============================================================================================
+  // AUFTRAG-mega59 BLOCK H2 — DIESER NACHWEIS KONNTE OHNE ADMIN GRÜN WERDEN.
+  // ==============================================================================================
+  //
+  // Geprüft wurde `page.locator("h1, h2").first()`. Bei einem NICHT-Admin leitet das Rollen-Gate auf
+  // `/start` um (routes.tsx), und `/start` hat eine `h1` — der Fall war also grün, ohne die
+  // Admin-Eigenschaft zu belegen, obwohl sein Kommentar genau das behauptet.
+  //
+  // Zwei Zusicherungen schließen das, und keine braucht einen neuen Anker:
+  //   · `toHaveURL(/\/admin$/)` schließt die Umleitung aus. Wer kein Admin ist, steht auf /start.
+  //   · der admin-EIGENE Reiter „Daten" — den gibt es nur in der Verwaltung, und der Seed-Weg unten
+  //     bedient ihn ohnehin. Ein Nicht-Admin sieht ihn nirgends.
   await page.goto("/admin");
-  await expect(page.locator("h1, h2").first()).toBeVisible({ timeout: 10_000 });
+  await expect(page, "Rollen-Gate hat von /admin umgeleitet — kein Admin").toHaveURL(/\/admin$/, {
+    timeout: 10_000,
+  });
+  await expect(
+    page.getByRole("button", { name: "Daten", exact: true }),
+    "der admin-eigene Reiter „Daten“ fehlt — die Verwaltung rendert nicht als Admin",
+  ).toBeVisible({ timeout: 10_000 });
 
   // ──────────────────────────────────────────────────────────────────────────────────────────────
   // AUFTRAG-mega49 BLOCK A2 — DIE ZWEITE DATENLAGE, ÜBER DEN PRODUKTWEG.

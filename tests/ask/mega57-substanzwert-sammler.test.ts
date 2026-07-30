@@ -111,9 +111,34 @@ const DEKLARIERT = [
 // Produktcode, schrumpft sie hier mit, und alles darunter wird rot.
 const NICHT_TRAGEND = new Set(MEHRDEUTIGE.flatMap(({ form }) => queryTokens(form)));
 
-// Was eine Form zur Mindestsubstanz beisteuert: ihre Inhaltstoken ohne die nicht substanztragenden.
+// AUFTRAG-mega59 BLOCK B — DIE SUBSTANZ HÄNGT NICHT MEHR NUR AM TERM, SONDERN AN DER HERKUNFT.
+//
+// „Wartung" und „ihr wart" fallen auf denselben Term „wart"; seit mega59 trägt der eine und der
+// andere nicht — entschieden über die Nominalisierungsendung `-ung`. Eine Erhebung, die ALLEIN den
+// Term ansieht, kann diese Regel NICHT sehen: sie hielte „Wartung" weiter für substanzlos und
+// prüfte damit ab jetzt weniger, als ihr Kopf behauptet. Deshalb wird die Herkunft mitgeführt.
+//
+// Sie ist hier als deutsche Grammatik formuliert (Stamm + „ung"), NICHT als Kopie des
+// Produktabtrags — sonst prüfte der Sammler den Abtrag gegen sich selbst. Für jede Form ohne
+// Nominalisierungsendung ist das Ergebnis identisch zur bisherigen Erhebung; genau darum bleiben
+// alle vier Beine unverändert scharf.
+function ausNominalisierung(text: string): Set<string> {
+  const gefunden = new Set<string>();
+  for (const wort of text.toLowerCase().split(/[^a-zäöüß0-9]+/)) {
+    for (const token of queryTokens(wort)) {
+      if (wort.startsWith(`${token}ung`)) {
+        gefunden.add(token);
+      }
+    }
+  }
+  return gefunden;
+}
+
+// Was eine Form zur Mindestsubstanz beisteuert: ihre Inhaltstoken ohne die nicht substanztragenden
+// — außer der Term stammt in DIESEM Text aus einer Nominalisierung, dann trägt er (mega59 B).
 function substanzToken(text: string): string[] {
-  return queryTokens(text).filter((t) => !NICHT_TRAGEND.has(t));
+  const nominal = ausNominalisierung(text);
+  return queryTokens(text).filter((t) => !NICHT_TRAGEND.has(t) || nominal.has(t));
 }
 
 function ref(statement: string): KnowledgeRef {
@@ -250,6 +275,12 @@ describe("AUFTRAG-mega57 S2 — Paare aus beiden deklarierten Mengen", () => {
       (x) => x.form,
     );
     expect(traegt, "mehrdeutige Form zahlt auf die Mindestsubstanz ein").toEqual([]);
+    // mega59 B: die Erhebung SIEHT die Herkunftsregel — sonst wäre die Zeile darüber ab jetzt eine
+    // schwächere Aussage, als ihr Name behauptet. Der Beleg jeder Form (das echte Wort) trägt,
+    // sobald er eine Nominalisierung ist; die Funktionsform selbst trägt weiterhin nicht.
+    expect(substanzToken("wart"), "die Verbform darf nicht plötzlich tragen").toEqual([]);
+    expect(substanzToken("Wartung"), "die Erhebung ist blind für die Herkunft").toEqual(["wart"]);
+    expect(substanzToken("Haltung")).toEqual(["halt"]);
     const verstummt = MEHRDEUTIGE.filter(({ form }) => queryTokens(form).length === 0).map(
       (x) => x.form,
     );

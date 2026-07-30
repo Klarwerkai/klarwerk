@@ -31,10 +31,18 @@ export const GROUP_PROMPT_MAX_UTF8_BYTES = 60_000;
 // sobald EIN Kandidat vertraulich, streng vertraulich, ungültig klassifiziert ODER ohne Signal ist,
 // läuft die GESAMTE Gruppierung vertraulich (Provider-Kette dann nie Cloud). Nur wenn ALLE
 // Kandidaten eine explizit gültige, freigegebene Stufe („intern") tragen, darf die Cloud arbeiten.
+//
+// AUFTRAG-mega59 BLOCK F2: derselbe Vertrag, JE KANDIDAT lesbar. Der Batch-Vertrag bleibt wörtlich
+// derselbe (`some` über genau dieses Prädikat, EINE Definition) — er ist nur nicht mehr in der
+// Aggregation eingeschlossen. Die Oberfläche muss VOR dem Gruppieren warnen können, dass dieser
+// Stapel die Cloud-KI ausschließt; dafür braucht sie die Stufe je gewähltem Kandidaten, nicht ein
+// Sammelurteil über die ganze Vorschau (die Auswahl ist eine Teilmenge davon).
+export function candidateRequiresConfidential(item: ImportItem): boolean {
+  return !isValidConfidentiality(item.confidentiality) || isConfidential(item.confidentiality);
+}
+
 export function groupingRequiresConfidential(items: readonly ImportItem[]): boolean {
-  return items.some(
-    (item) => !isValidConfidentiality(item.confidentiality) || isConfidential(item.confidentiality),
-  );
+  return items.some(candidateRequiresConfidential);
 }
 
 // WP-VIP2-GATE (bens P0-1, endgueltig): EIGENER Vertrag für den FREITEXT-PROMPT (Select-Pfad).

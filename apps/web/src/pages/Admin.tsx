@@ -481,7 +481,7 @@ export function Admin(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-4xl space-y-6">
-      <PageHeader kicker={t("adm.kicker")} title={t("nav.admin")} />
+      <PageHeader kicker={t("adm.kicker")} title={t("nav.admin")} pageKey="admin" />
 
       {/* SCRUM-394 (Pedi): drei ruhige Bereiche statt Kartenwand — Konten · KI · Daten.
           Nichts entfernt, nur gruppiert; Wechsel rein clientseitig. */}
