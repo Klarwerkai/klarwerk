@@ -7,6 +7,7 @@ import {
   normalizeOverlapSettings,
 } from "../../../conflicts";
 import { type Guards, sendError } from "../http";
+import { type KoSichtbarkeitsZugang, paarSichtbar, sichtbarePaare } from "../sichtbarkeit";
 
 // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates). Liste +
 // Detail lesen alle Leseberechtigten; die menschlichen Abschlüsse (Fehlalarm / getrennt lassen /
@@ -17,10 +18,18 @@ export interface OverlapRoutesDeps {
   overlaps: OverlapService;
   settings: OverlapSettingsRepo;
   audit?: AuditService;
+  // AUFTRAG-mega74 BLOCK D (G5): Zugang zur Sichtbarkeit der beiden beteiligten Wissensobjekte.
+  // Injiziert, nicht importiert — die Regel wohnt in ../sichtbarkeit.
+  //
+  // AUFTRAG-mega76 BLOCK A: von `kos?` auf PFLICHT. Fehlte er, gab `/api/duplicates` die
+  // ungefilterte Liste mit `aspects`, `eigenanteilA` und `eigenanteilB` heraus — also gerade das,
+  // was NUR in je einem der beiden Objekte steht. Pflichtparameter ohne Umbau möglich: einziger
+  // Aufrufer ist die Kompositionswurzel (build-app.ts:944).
+  kos: KoSichtbarkeitsZugang;
 }
 
 export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { overlaps, settings, audit } = deps;
+  const { overlaps, settings, audit, kos } = deps;
   return async (app) => {
     app.get("/api/duplicates", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -30,7 +39,12 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       // SCRUM-496: DB-/Serverfehler NICHT roh durchreichen (das Board zeigte sonst die nackte
       // Postgres-Meldung). sendError generalisiert Infrastruktur-Fehler zu einem sauberen 500.
       try {
-        reply.code(200).send(await overlaps.unresolved());
+        // AUFTRAG-mega74 BLOCK D (G5): der Eintrag trägt `aspects` (wörtliche gemeinsame Aussagen),
+        // `eigenanteilA` und `eigenanteilB` — also gerade das, was NUR in je einem der beiden
+        // Objekte steht. Ohne dieses Tor las jeder `ko.read`-Inhaber den Kern eines vertraulichen
+        // Objekts, ohne es je zu öffnen.
+        const offen = await overlaps.unresolved();
+        reply.code(200).send(await sichtbarePaare(user, offen, kos));
       } catch (error) {
         sendError(reply, error);
       }
@@ -80,7 +94,8 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       }
       try {
         const entry = await overlaps.get(request.params.id);
-        if (!entry) {
+        // mega74 D: nicht sichtbar sieht aus wie nicht vorhanden.
+        if (!entry || !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Überschneidung nicht gefunden." });
           return;
         }

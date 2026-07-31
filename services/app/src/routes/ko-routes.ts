@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import type { AuditService } from "../../../audit";
 import type {
   ConflictInput,
@@ -34,8 +34,9 @@ import type { Reasoner } from "../../../reasoner";
 import type { ValidationService, Verdict } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
+import { darfSehen, sichtbareFuer } from "../sichtbarkeit";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -254,6 +255,106 @@ interface KoQuery {
   tag?: string;
 }
 
+// ================================================================================================
+// AUFTRAG-mega80 BLOCK A — EINE KENNUNG IST KEIN LESERECHT.
+// ================================================================================================
+//
+// DER BEFUND. `PUT /api/kos/:id` verzweigt per `{action}` in siebzehn Aktionen. Bis mega80 hat
+// KEINE davon das Sichtbarkeitstor (`sichtbaresKoOder404`) passiert: jede lädt ihr Zielobjekt über
+// den Dienst DIREKT aus dem Bestand.
+//
+// WAS DABEI GEMESSEN WURDE — und nur das steht hier (AUFTRAG-mega82 Block C, bens Befund an genau
+// diesem Kommentar): von den fünfzehn torpflichtigen Aktionen gaben ACHT das VOLLSTÄNDIGE Objekt
+// mit 200 zurück — Inhalt, Anhänge, Quellen, Metadaten: `revise`, `comment`, `attach`, `detach`,
+// `remove-source`, `category`, `tags`, `revalidate`. Wer die Kennung eines fremden vertraulichen
+// Objekts kannte, hatte es über sie gelesen und im selben Zug verändert. Die übrigen sieben
+// scheiterten vorher an einer Rechte- oder Nutzlastprüfung (403/400) — harmlos ist das nicht: ein
+// 403 unterscheidet „gibt es, du darfst nicht" von „gibt es nicht" und ist damit eine
+// Existenzauskunft über ein vertrauliches Objekt. Die Einzelurteile stehen in der Tabelle des
+// Berichts zu mega80; der ausführbare Beleg liegt in
+// tests/security/mega80-kennung-ist-kein-leserecht.test.ts.
+//
+// Das ist derselbe Satz, an dem mega74 bis mega79 gearbeitet haben, nur auf dem Schreib-Endpunkt:
+// EINE UNERRATBARKEIT ERSETZT KEINE AUTORISIERUNG. `ko.create` hat in diesem System jeder Experte;
+// `comment` verlangte sogar nur eine Anmeldung.
+//
+// DIE BAUFORM, und sie ist Teil des Auftrags: EIN Tor vor dem Switch, nicht siebzehn lokale
+// Sonderlöcher. Genau daran ist mega76 gescheitert, als der Schutz angeboten statt erzwungen war.
+// Die Reihenfolge ist ERST das Tor, DANN die fachliche Schreibberechtigung — sonst verrät ein 403
+// („du darfst nicht") wieder die Existenz, die der 404 gerade verbergen soll.
+//
+// DIE GRUNDMENGE STEHT HIER ALS TABELLE, nicht als Bedingung im Rumpf. Ein `Record` über die
+// vollständige Aktions-Union zwingt den Compiler, jede Aktion zu beurteilen: wer eine neue Aktion
+// zu `KoAktion` hinzufügt und hier nichts einträgt, kompiliert nicht. Was der Compiler NICHT sieht
+// — eine neue `case`-Marke im Switch, die niemand in die Union geschrieben hat —, fängt der
+// Wächter in tests/security/mega80-kennung-ist-kein-leserecht.test.ts ab: er erhebt seine
+// Grundmenge aus dem Switch SELBST und wird rot, sobald ihm eine Aktion abhandenkommt.
+type KoAktion =
+  | "rate"
+  | "assign"
+  | "admin-validate"
+  | "revise"
+  | "comment"
+  | "attach"
+  | "detach"
+  | "add-source"
+  | "append-document"
+  | "remove-source"
+  | "category"
+  | "tags"
+  | "confidentiality"
+  | "conflict"
+  | "resolve-conflict"
+  | "transfer-author"
+  | "revalidate";
+
+/**
+ * `tor` — die Aktion arbeitet AM Objekt unter `:id`. Sie passiert das Sichtbarkeitstor.
+ *
+ * `kein-zielobjekt` — die Aktion liest `:id` strukturell NICHT; ihr Gegenstand steht im Rumpf.
+ * Das ist eine BENANNTE Ausnahme mit Beleg, keine stillschweigende. Sie gilt genau für die zwei
+ * Konflikt-Aktionen, und zwar aus zwei unabhängigen Gründen zugleich:
+ *
+ *   1. Gegenstand. `conflict` legt einen Konflikt aus `body.conflict` an (koA/koB), und
+ *      `resolve-conflict` entscheidet über `body.conflictId`. Beide fassen das Objekt unter `:id`
+ *      nirgends an — die Kennung im Pfad ist bei ihnen reine Adressierungskosmetik des einen
+ *      Mutations-Endpunkts. Ein Tor darauf prüfte eine Kennung, die die Aktion nie liest, und
+ *      bräche den Betrieb an einem Aufrufer, der dort etwas anderes als ein Wissensobjekt sendet.
+ *   2. Rechte. `conflict` verlangt `ko.validate`; `conflict.resolve` haben laut Rechtematrix nur
+ *      `controller` und `admin` (rbac/src/policy.ts:16-17) — und beide halten `ko.validate`.
+ *      Für genau diese Rollen liefert `darfSehen` unbedingt `true` (sichtbarkeit.ts). Das Tor wäre
+ *      auf diesen zwei Aktionen also ein No-op auf der Sichtbarkeit und ALLEIN eine zusätzliche
+ *      Existenzforderung an eine ungelesene Kennung.
+ *
+ * Der Inhalt, den diese beiden ausgeben (Konflikt mit `description`/`detector.quotes`), ist damit
+ * durch `ko.validate` gedeckt — dieselbe Schwelle, die auch das Tor zöge. Der KO-ÜBERGREIFENDE
+ * Leseweg auf dieselben Zitate ist getrennt geschlossen (mega74 Block D, conflicts-routes.ts).
+ */
+type Torurteil = "tor" | "kein-zielobjekt";
+
+const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
+  rate: "tor",
+  assign: "tor",
+  "admin-validate": "tor",
+  revise: "tor",
+  comment: "tor",
+  attach: "tor",
+  detach: "tor",
+  "add-source": "tor",
+  "append-document": "tor",
+  "remove-source": "tor",
+  category: "tor",
+  tags: "tor",
+  confidentiality: "tor",
+  conflict: "kein-zielobjekt",
+  "resolve-conflict": "kein-zielobjekt",
+  "transfer-author": "tor",
+  revalidate: "tor",
+};
+
+/** Die Grundmenge als Datum — der Wächter liest sie, statt sie noch einmal abzuschreiben. */
+export const KO_AKTIONEN_MIT_TORURTEIL: Readonly<Record<string, Torurteil>> = ZIELOBJEKT_TOR;
+
 interface PutBody {
   action: string;
   verdict?: Verdict;
@@ -322,13 +423,31 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
     draftPromotion,
   } = deps;
 
+  // AUFTRAG-mega74 BLOCK B: die EINE Torwache dieses Moduls. Sie holt das Objekt, stellt die
+  // Sichtbarkeitsfrage an der EINEN Stelle (../sichtbarkeit) und antwortet fail-closed.
+  //
+  // WARUM 404 UND NICHT 403: ein 403 sagt „das gibt es, du darfst nur nicht". Bei einem
+  // vertraulichen Objekt ist schon die Existenz eine Auskunft — die Kennung eines Objekts erfährt
+  // man aus einem Konflikt, einer Benachrichtigung oder schlicht durch Raten. „Nicht sichtbar"
+  // muss deshalb genauso aussehen wie „gibt es nicht", bis hin zur Meldung.
+  async function sichtbaresKoOder404(user: SessionUser, id: string, reply: FastifyReply) {
+    const item = await ko.get(id);
+    if (!item || !darfSehen(user, item)) {
+      reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
+      return undefined;
+    }
+    return item;
+  }
+
   return async (app) => {
     app.get<{ Querystring: KoQuery }>("/api/kos", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send(await ko.list(request.query));
+      // mega74 B: ein unsichtbares Objekt fehlt in der Liste — es erscheint nicht als gesperrter
+      // Platzhalter. Ein Platzhalter wäre wieder eine Existenzauskunft.
+      reply.code(200).send(sichtbareFuer(user, await ko.list(request.query)));
     });
 
     app.get<{ Params: { id: string } }>("/api/kos/:id", async (request, reply) => {
@@ -336,9 +455,8 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       if (!user) {
         return;
       }
-      const item = await ko.get(request.params.id);
+      const item = await sichtbaresKoOder404(user, request.params.id, reply);
       if (!item) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
         return;
       }
       reply.code(200).send(item);
@@ -350,6 +468,11 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         return;
       }
       try {
+        // mega74 B: die Versionen tragen VOLL-Snapshots des Inhalts (SCRUM-159/161) — sie sind
+        // derselbe Inhalt in älteren Fassungen und brauchen deshalb dasselbe Tor.
+        if (!(await sichtbaresKoOder404(user, request.params.id, reply))) {
+          return;
+        }
         reply.code(200).send(await ko.versionsOf(request.params.id));
       } catch (error) {
         sendError(reply, error);
@@ -362,6 +485,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         return;
       }
       try {
+        // mega74 B: Belegzitate (`label`, `grund`/excerpt, Quell-URLs) sind Inhalt des Objekts.
+        if (!(await sichtbaresKoOder404(user, request.params.id, reply))) {
+          return;
+        }
         reply.code(200).send(await ko.evidenceOf(request.params.id));
       } catch (error) {
         sendError(reply, error);
@@ -378,7 +505,21 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       const raw = request.query.limit;
       const limit = raw !== undefined ? Number(raw) : undefined;
       try {
-        reply.code(200).send(await ko.recentEvidence(limit));
+        // AUFTRAG-mega74 BLOCK B: der KO-ÜBERGREIFENDE Index gab Belegstellen aller Objekte aus —
+        // `label`, Quell-URL und Verknüpfungsgrund, ohne je nach der Stufe des tragenden Objekts zu
+        // fragen. Das ist derselbe Inhalt wie `/api/kos/:id/evidence`, nur ohne das Tor davor.
+        //
+        // Die Auflösung ist je DISTINKTER Kennung, nicht je Datensatz: das Limit ist hart gedeckelt
+        // (MAX_EVIDENCE_LIMIT = 500), und ein Objekt trägt in aller Regel mehrere Belege.
+        const records = await ko.recentEvidence(limit);
+        const sichtbarkeit = new Map<string, boolean>();
+        for (const koId of new Set(records.map((r) => r.koId))) {
+          const traeger = await ko.get(koId);
+          // Fail-closed: ein Beleg, dessen tragendes Objekt nicht (mehr) auflösbar ist, wird nicht
+          // ausgegeben — sonst überlebte die Belegstelle ihr Objekt.
+          sichtbarkeit.set(koId, traeger ? darfSehen(user, traeger) : false);
+        }
+        reply.code(200).send(records.filter((r) => sichtbarkeit.get(r.koId) === true));
       } catch (error) {
         sendError(reply, error);
       }
@@ -1011,9 +1152,12 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       if (!user) {
         return;
       }
-      const target = await ko.get(request.params.id);
+      // mega80 A: auch das Löschen ist eine kennungsbasierte Aktion an einem Zielobjekt und geht
+      // durch DASSELBE Tor. Es gab hier zwar nie Inhalt heraus, unterschied aber 404 („gibt es
+      // nicht") von 403 („gibt es, du darfst nicht") — und damit war schon die Existenz eines
+      // fremden vertraulichen Objekts über diesen Weg erfragbar.
+      const target = await sichtbaresKoOder404(user, request.params.id, reply);
       if (!target) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
         return;
       }
       const mayDelete = can(user.role, "ko.validate") || target.author === user.id;
@@ -1044,6 +1188,25 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         reply.code(400).send({ error: "BAD_REQUEST", message });
       };
       try {
+        // mega80 A: DAS TOR. Es steht VOR dem Switch und vor jeder fachlichen Berechtigung.
+        //
+        // Eine unbekannte Aktion wird hier abgewiesen, bevor das Tor greift: sie fasst kein Objekt
+        // an und verrät deshalb auch keine Existenz — ein 400 ist die ehrlichere Antwort als ein
+        // 404, das ein „gibt es nicht" über ein Objekt behauptet, nach dem gar nicht gefragt wurde.
+        const torurteil = ZIELOBJEKT_TOR[body.action as KoAktion] as Torurteil | undefined;
+        if (!torurteil) {
+          return badRequest(`Unbekannte Aktion: ${body.action}`);
+        }
+        if (torurteil === "tor") {
+          // Erst WER (Anmeldung), dann OB SICHTBAR, dann — in der jeweiligen `case` — WAS ER DARF.
+          const anfragender = await guards.requireUser(request, reply);
+          if (!anfragender) {
+            return;
+          }
+          if (!(await sichtbaresKoOder404(anfragender, id, reply))) {
+            return;
+          }
+        }
         switch (body.action) {
           case "rate": {
             const user = await guards.requirePermission("ko.validate", request, reply);

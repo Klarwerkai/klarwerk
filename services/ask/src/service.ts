@@ -61,6 +61,32 @@ export interface AskResult {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über (Nutzer + ausgelieferte Quell-KOs). Der Client
   // reicht ihn beim „Danke" (/api/ask/helpful) zurück; der Server verifiziert die Quellen-Bindung.
   receipt: string;
+  // ==============================================================================================
+  // AUFTRAG-mega77 BLOCK A — HIER STAND `ungeprueftUnterdrueckt`, UND ER IST ENTFERNT.
+  // ==============================================================================================
+  //
+  // mega74 Teil 2b hat an dieser Stelle eine Zahl ausgegeben: wie viele UNGEPRÜFTE Kandidaten die
+  // `validatedOnly`-Einschränkung unterdrückt hat. Der Wunsch dahinter war richtig — „kein
+  // validiertes Wissen" ist eine Auskunft über unseren PRÜFSTAND, nicht über den BESTAND. Die
+  // Umsetzung trug aus zwei unabhängigen Gründen nicht, von denen jeder allein reicht:
+  //
+  //   1. SIE VERRIET. Die Zahl entstand OHNE Betrachterfilter — der AskService kennt an dieser
+  //      Stelle keinen Nutzer mit Sichtbarkeitsvertrag, nur einen `actor`-String. Der
+  //      Add-on-Principal besitzt `ask.validated` und gerade KEIN allgemeines Leserecht auf
+  //      unvalidierte Objekte, bekam aber ihre Anzahl. Eine gezielte Frage mit dem Ergebnis `1`
+  //      bestätigt die Existenz eines passenden unvalidierten Objekts; eng variierte
+  //      Wiederholungen machen daraus ein ABFRAGEORAKEL. Die Leckwirkung beginnt bei n = 1 —
+  //      dieselbe Grenze, die mega76 Block D bei den sechs Aggregaten gezogen hat.
+  //
+  //   2. SIE STIMMTE NICHT. Gezählt wurde nicht der Bestand, sondern die bereits gedeckelte
+  //      Vorauswahl (`prefilteredRaw`). Der Kommentar am Clientvertrag behauptete trotzdem, `0`
+  //      heiße „es gab wirklich nichts" und nicht „wir wissen es nicht" — durch die Berechnung war
+  //      das nicht gedeckt.
+  //
+  // Ohne Zähler bleibt die Wissenslücke, wie sie vor mega74 war: ehrlich und ohne Auskunft über
+  // fremden Bestand. WAS ES BRÄUCHTE, um die Auskunft richtig zu bauen, steht im Bericht zu
+  // mega77 (Betrachterfilter an dieser Stelle, ehrliche Aussage über die Vollständigkeit, Antwort
+  // auf das Orakel-Problem) — als Vorschlag, nicht als Bau.
 }
 
 export class AskService {
@@ -235,6 +261,10 @@ export class AskService {
         topK: DEFAULT_TOP_K,
       },
     });
+    // AUFTRAG-mega77 BLOCK A: hier wurde `ungeprueftUnterdrueckt` berechnet. Die Berechnung ist
+    // ERSATZLOS entfernt — Begründung am Feld-Grabstein in `AskResult` oben. Kurz: sie lief ohne
+    // Betrachterfilter (Leck ab n = 1, Orakel bei enger Wiederholung) und zählte die gedeckelte
+    // Vorauswahl statt des Bestands (die Zusage „0 heißt wirklich nichts" war nicht gedeckt).
     if (!result.answered) {
       // SCRUM-490 D1: "count_only" (addon-Pfad) legt KEINE Wissenslücke an — kein Gap-Record, kein
       // gespeicherter Fragetext, kein gap.created-Audit, kein gap im Response. Die aggregierte Zählung

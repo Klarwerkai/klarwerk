@@ -191,6 +191,7 @@ import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes"
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { validationRoutes } from "./routes/validation-routes";
+import { sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 
@@ -423,9 +424,23 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
     management: new ManagementService({
       koService: ko,
       listGaps: () => ask.listGaps(),
-      countOpenConflicts: async () => (await conflicts.unresolved()).length,
+      // AUFTRAG-mega76 BLOCK D: ein Konflikt zitiert BEIDE beteiligten Objekte; er zählt nur,
+      // wenn beide sichtbar sind — dieselbe Paar-Regel wie /api/conflicts. Die Auflösung der
+      // beiden Kennungen kann nur hier passieren: `services/management` kennt den KO-Bestand
+      // nicht und soll ihn nicht kennen.
+      countOpenConflicts: async (opts) => {
+        const offen = await conflicts.unresolved();
+        let zaehler = 0;
+        for (const fund of offen) {
+          const [a, b] = await Promise.all([ko.get(fund.koA), ko.get(fund.koB)]);
+          if (a && b && opts.sichtbar(a) && opts.sichtbar(b)) {
+            zaehler += 1;
+          }
+        }
+        return zaehler;
+      },
       pendingRevalidation: () => lifecycle.pendingRevalidation(),
-      busFactor: () => library.busFactor(),
+      busFactor: (opts) => library.busFactor(opts),
     }),
     // SCRUM-118: externer Such-Proxy (Wikipedia) — optional via Env abschaltbar.
     externalSearch: createExternalSearchFromEnv(),
@@ -931,7 +946,10 @@ export function buildApp(
   app.register(
     validationRoutes(services.validation, guards, { ko: services.ko, worker: aiCheckWorker }),
   );
-  app.register(conflictRoutes(services.conflicts, guards));
+  // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
+  // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
+  const koSichtbarkeit = { get: (id: string) => services.ko.get(id) };
+  app.register(conflictRoutes(services.conflicts, guards, koSichtbarkeit));
   // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
   // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
   app.register(aiCheckCoverageRoutes(services.ko, guards));
@@ -939,7 +957,12 @@ export function buildApp(
   // (Pedi 04.07.) einstellbare Anzeige-Schwelle.
   app.register(
     overlapRoutes(
-      { overlaps: services.overlaps, settings: services.overlapSettings, audit: services.audit },
+      {
+        overlaps: services.overlaps,
+        settings: services.overlapSettings,
+        audit: services.audit,
+        kos: koSichtbarkeit,
+      },
       guards,
     ),
   );
@@ -1017,6 +1040,8 @@ export function buildApp(
         audit: services.audit,
         // Audit-P3 (SCRUM-397): Gelesen-Status je Nutzer.
         seen: services.notificationSeen,
+        // AUFTRAG-mega74 BLOCK D (G5): dieselbe Quelle wie Konflikte und Überschneidungen.
+        kos: koSichtbarkeit,
       },
       guards,
     ),
@@ -1029,7 +1054,35 @@ export function buildApp(
   app.register(reasonerRoutes(services, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
-  app.register(objectRoutes(services.objects, guards));
+  // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche
+  // Wissensobjekte einen Anhang tragen. `services/object-store` darf das nicht selbst wissen
+  // (dieselbe Modulgrenze wie object-references.ts); die Kompositionswurzel reicht den Zugang.
+  //
+  // AUFTRAG-mega76 BLOCK B: dazu kommen die drei Herkünfte, die bis mega76 durchfielen —
+  // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie in
+  // object-references.ts, dort gegen Datenverlust, hier gegen Auskunft.
+  app.register(
+    objectRoutes(services.objects, guards, {
+      kos: () => services.ko.list(),
+      // AUFTRAG-mega78 BLOCK A: die Fassung reist MIT IHREM URHEBER. `v.author` ist die Person,
+      // die diese Fassung geschrieben hat (serverseitig aus der Anmeldung) — `v.snapshot.author`
+      // wäre der über Revisionen unveränderte Autor des Wissensobjekts und damit kein Nachweis.
+      versionen: async (koId) =>
+        (await services.ko.versionsOf(koId)).map((v) => ({ author: v.author, stand: v.snapshot })),
+      // `EvidenceRecord.createdBy` reist mit — der Urheber-Nachweis der Belegkette.
+      belege: (koId) => services.ko.evidenceOf(koId),
+      entwuerfe: async () =>
+        (await services.capture.listDrafts()).map((draft) => ({
+          originalAuthor: draft.originalAuthor,
+          lastEditor: draft.lastEditor,
+          bodyHtml: draft.payload.bodyHtml,
+          objectIds: [
+            ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
+            ...(draft.payload.anchorDocuments ?? []).map((doc) => doc.objectId),
+          ],
+        })),
+    }),
+  );
   app.register(mediaRoutes(services.media, guards));
   app.register(i18nRoutes(services.i18n));
   // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
@@ -1078,7 +1131,11 @@ export function buildApp(
     if (!user) {
       return;
     }
-    reply.code(200).send(await impactReport(services.ko, services.audit));
+    reply.code(200).send(
+      await impactReport(services.ko, services.audit, {
+        sichtbar: sichtbarkeitsfilterFuer(user),
+      }),
+    );
   });
 
   return app;

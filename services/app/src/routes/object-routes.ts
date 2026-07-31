@@ -3,10 +3,17 @@ import { isValidConfidentiality } from "../../../knowledge-object";
 import {
   type ObjectKind,
   type ObjectPurpose,
+  type ObjectRef,
   type ObjectStore,
   decodeDataUrl,
 } from "../../../object-store";
-import { type Guards, sendError } from "../http";
+import { type Guards, type SessionUser, sendError } from "../http";
+import {
+  type AnhangQuellen,
+  type AnhangUrteil,
+  type SichtbarkeitsFakten,
+  beurteileAnhang,
+} from "../sichtbarkeit";
 
 // AUFTRAG-mega20 Block C: die erlaubten Zwecke als LAUFZEIT-Prüfung. Der Typ allein hilft an einer
 // HTTP-Grenze nichts — dort kommt eine beliebige Zeichenkette an, und sie in den Vertrag zu casten
@@ -51,9 +58,72 @@ function safeAttachmentName(name: unknown): string {
 // Obergrenze des Object-Store plus JSON-Envelope; darüber → kontrolliertes 413.
 export const OBJECTS_BODY_LIMIT = 30 * 1024 * 1024; // 30 MiB
 
+// ================================================================================================
+// AUFTRAG-mega74 BLOCK C — G4: DIE KOPFZEILE, DIE EINE SPERRE EIN JAHR ÜBERLEBTE.
+// ================================================================================================
+//
+// Hier stand `Cache-Control: private, max-age=31536000, immutable` — ein Jahr, unveränderlich. Wer
+// einen Anhang einmal geholt hatte, behielt ihn ein Jahr im Browser, auch nachdem das tragende
+// Objekt gesperrt wurde. Bei einem ausgeschiedenen Mitarbeiter ist das genau der Fall, den ein
+// Zugriffsschutz verhindern soll: der Serverentzug wirkt, die Kopie im Browser nicht.
+//
+// DER SCHNITT, begründet:
+//   · VERTRAULICH → `no-store`. Kein Zwischenspeicher, nirgends, auch nicht auf der Platte. Für
+//     ein vertrauliches Original ist das die einzige Zusage, die trägt.
+//   · SONST → eine kurze Frist statt eines Jahres, und NIE `immutable`. `immutable` sagt dem
+//     Browser „frag nie wieder nach" — damit ist jede spätere Höherstufung wirkungslos, solange
+//     die Frist läuft. Fünf Minuten halten den Bildaufbau einer Seite zusammen (der eigentliche
+//     Nutzen), lassen eine Stufenänderung aber spätestens nach fünf Minuten durchgreifen.
+//
+// WAS ES KOSTET, ehrlich: Objekt-Ids sind stabil und nicht inhaltsgehasht, deshalb war die
+// Ein-Jahres-Zusage ohnehin nur für unveränderliche Bytes gedacht. Der reale Preis ist eine
+// Revalidierung je Bild nach fünf Minuten statt keiner — bei einem Wissensobjekt mit vielen
+// Bildern also ein Satz bedingter Anfragen pro Sitzung, die bei unverändertem Inhalt mit 304
+// beantwortet werden. Für Vertrauliches entfällt der Zwischenspeicher ganz; dort wird bewusst
+// Ladezeit gegen Entziehbarkeit getauscht.
+const CACHE_UNVERTRAULICH = "private, max-age=300";
+const CACHE_VERTRAULICH = "no-store";
+
 // SCRUM-121: Objekt-/Attachment-Speicher. Upload liefert eine ObjectRef (nur Metadaten);
 // das KO speichert die Referenz + kleine Vorschau statt des großen Originals.
-export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginAsync {
+//
+// AUFTRAG-mega76 BLOCK A: `traeger` war OPTIONAL und ist jetzt PFLICHT. Der alte Kommentar nannte
+// das „KEIN stiller Rückfall, sondern der Weg für Aufrufer ohne Wissensobjekt-Bestand" — genau das
+// war der Fehler: fehlte der Zugang, antwortete `urteile` mit `{ sichtbar: true }`, also mit einem
+// bedingungslosen Ja für JEDEN Anhang. Ein Schutz, den der Aufrufer weglassen kann, ist keiner.
+// Pflichtparameter ohne Umbau möglich: einziger Aufrufer ist die Kompositionswurzel
+// (build-app.ts:1045).
+export function objectRoutes(
+  store: ObjectStore,
+  guards: Guards,
+  quellen: AnhangQuellen,
+): FastifyPluginAsync {
+  // Die EINE Torwache dieser Datei. Sie beantwortet „darf dieser Mensch diesen Anhang sehen"
+  // ausschliesslich über das Prädikat aus Block A — keine zweite Auslegung hier.
+  async function urteile(
+    user: SessionUser,
+    objectId: string,
+    ref: ObjectRef,
+  ): Promise<AnhangUrteil> {
+    // `ObjectRef.confidentiality` ist bewusst ein roher String (object-store bleibt von
+    // knowledge-object entkoppelt, types.ts:94). Hier, an der Modulgrenze, wird er EINMAL geprüft;
+    // ein unbekannter Wert wird nicht geraten, sondern fällt weg.
+    const eigen: SichtbarkeitsFakten = {
+      confidentiality: isValidConfidentiality(ref.confidentiality) ? ref.confidentiality : null,
+      // Der Hochladende ist für das ungebundene Objekt das, was der Autor für ein Wissensobjekt
+      // ist: die Person, die es erzeugt hat. `lifecycle.owner` kommt serverseitig aus der
+      // Anmeldung (object-routes POST), nie aus dem Body — er ist damit belastbar.
+      author: ref.lifecycle?.owner ?? null,
+    };
+    // mega76 A, zweite Linie unter dem Pflichtparameter: ein Aufrufer, den der Compiler nicht
+    // sieht (JavaScript, `as never`, ein aus JSON gebautes Deps-Objekt), bekommt ein NEIN — nicht
+    // das alte bedingungslose Ja.
+    if (typeof quellen?.kos !== "function") {
+      return { sichtbar: false, vertraulich: true };
+    }
+    return beurteileAnhang(user, objectId, eigen, quellen);
+  }
+
   return async (app) => {
     app.post<{
       Body: {
@@ -110,7 +180,9 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
         return;
       }
       const obj = await store.read(request.params.id);
-      if (!obj) {
+      // mega74 C: dieselbe Form wie am Wissensobjekt — nicht sichtbar sieht aus wie nicht
+      // vorhanden. Ein 403 würde die Existenz des Anhangs bestätigen.
+      if (!obj || !(await urteile(user, request.params.id, obj.ref)).sichtbar) {
         reply.code(404).send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
         return;
       }
@@ -124,7 +196,10 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
         return;
       }
       const obj = await store.read(request.params.id);
-      if (!obj) {
+      const urteil = obj
+        ? await urteile(user, request.params.id, obj.ref)
+        : { sichtbar: false, vertraulich: true };
+      if (!obj || !urteil.sichtbar) {
         reply.code(404).send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
         return;
       }
@@ -148,7 +223,9 @@ export function objectRoutes(store: ObjectStore, guards: Guards): FastifyPluginA
             ? "inline"
             : `attachment; filename="${safeAttachmentName(obj.ref.name)}"`,
         )
-        .header("Cache-Control", "private, max-age=31536000, immutable")
+        // AUFTRAG-mega74 BLOCK C (G4): siehe die Begründung am Kopf der Datei. Die Stufe kommt aus
+        // dem GESPEICHERTEN Objekt, nie aus der Anfrage.
+        .header("Cache-Control", urteil.vertraulich ? CACHE_VERTRAULICH : CACHE_UNVERTRAULICH)
         .code(200)
         .send(decoded.bytes);
     });

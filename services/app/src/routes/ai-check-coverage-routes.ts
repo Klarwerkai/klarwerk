@@ -1,6 +1,7 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { KoService } from "../../../knowledge-object";
 import { type Guards, sendError } from "../http";
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // ================================================================================================
 // AUFTRAG-mega29 C2 (bens M28-3) — DIE LEEREN BOARDS BEKOMMEN EINE EHRLICHE FUSSNOTE.
@@ -29,7 +30,9 @@ export function aiCheckCoverageRoutes(ko: KoService, guards: Guards): FastifyPlu
         return;
       }
       try {
-        reply.code(200).send(await ko.aiCheckCoverageSummary());
+        reply
+          .code(200)
+          .send(await ko.aiCheckCoverageSummary({ sichtbar: sichtbarkeitsfilterFuer(user) }));
       } catch (error) {
         sendError(reply, error);
       }

@@ -36,7 +36,7 @@ describe("SCRUM-124+126: Rückgabe & Revalidierung end-to-end", () => {
     const ko = await koService.create(koInput("anna"));
     await validation.rate(ko.id, "controller", "warn");
 
-    const overview = await validation.overview();
+    const overview = await validation.overview({ sichtbar: () => true });
     expect(overview).toEqual([{ userId: "anna", open: 1, done: 0 }]);
     expect(await audit.list({ action: "ko.returned-to-author" })).toHaveLength(1);
   });

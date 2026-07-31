@@ -20,7 +20,6 @@
 // nur, eine NEUE aufzureissen. Der breitere Befund steht im Bericht zu mega45.
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService } from "../../../conflicts";
-import { isConfidential } from "../../../knowledge-object";
 import type { KoService } from "../../../knowledge-object";
 import type { ModelRunService } from "../../../model-runs";
 import {
@@ -29,9 +28,9 @@ import {
   type ProvenanceKonfliktIn,
   projectProvenance,
 } from "../../../provenance";
-import { can } from "../../../rbac";
 import { schalterAn } from "../feature-flags";
 import { type Guards, sendError } from "../http";
+import { darfSehen } from "../sichtbarkeit";
 
 /**
  * BLOCK D — DER SCHALTER. Vorgabe AUS.
@@ -71,12 +70,14 @@ export function provenanceRoutes(deps: ProvenanceDeps, guards: Guards): FastifyP
       }
       try {
         const ko = await deps.ko.get(request.params.id);
-        if (!ko) {
+        // AUFTRAG-mega74 BLOCK F: bis mega74 war diese Route ausdrücklich als „schließt keine
+        // bestehende Lücke" kommentiert (:19) — sie schützte die GEGENSEITE eines Konflikts, ließ
+        // das ZENTRUM aber ungefiltert durch, weil `GET /api/kos/:id` es ohnehin herausgab. Seit
+        // Block B gibt es das nicht mehr; damit wird diese Vorbereitung hier scharf.
+        if (!ko || !darfSehen(user, ko)) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
           return;
         }
-        // SCRUM-506-Regel, hier wiederverwendet: wer kuratiert, darf Vertrauliches sehen.
-        const darfVertraulichesSehen = can(user.role, "ko.validate");
 
         const [versionen, belege, konflikteAlle, laeufe] = await Promise.all([
           deps.ko.versionsOf(ko.id),
@@ -93,8 +94,12 @@ export function provenanceRoutes(deps: ProvenanceDeps, guards: Guards): FastifyP
           const gegenKo = await deps.ko.get(gegenId);
           // FAIL-CLOSED: ein nicht auffindbares Gegenstueck (geloescht, im Papierkorb, nicht
           // lesbar) gilt als UNSICHTBAR. Lieber eine Kante zu wenig als ein verratenes Objekt.
+          // AUFTRAG-mega74 BLOCK F: hier stand eine EIGENE Kopie der SCRUM-506-Regel
+          // (`can(user.role,"ko.validate") || !isConfidential(...)`). Sie ist durch das eine
+          // Prädikat ersetzt — sonst gäbe es nach Block A wieder zwei Orte, an denen dieselbe
+          // Frage beantwortet wird, und der Autor-Fall wäre hier stillschweigend anders.
           const gegenseite: ProvenanceGegenseite =
-            gegenKo && (darfVertraulichesSehen || !isConfidential(gegenKo.confidentiality))
+            gegenKo && darfSehen(user, gegenKo)
               ? { sichtbar: true, id: gegenKo.id, titel: gegenKo.title }
               : { sichtbar: false };
           konflikte.push({

@@ -143,11 +143,11 @@ describe("ValidationService", () => {
   it("FR-VAL-05: Zuweisung wird durch Bewertung erledigt", async () => {
     const ko = await koService.create(koInput());
     await service.assign(ko.id, ["u1"]);
-    let overview = await service.overview();
+    let overview = await service.overview({ sichtbar: () => true });
     expect(overview).toEqual([{ userId: "u1", open: 1, done: 0 }]);
 
     await service.rate(ko.id, "u1", "up");
-    overview = await service.overview();
+    overview = await service.overview({ sichtbar: () => true });
     expect(overview).toEqual([{ userId: "u1", open: 0, done: 1 }]);
   });
 
@@ -158,7 +158,7 @@ describe("ValidationService", () => {
     await service.assign(b.id, ["u1"]);
     await service.rate(a.id, "u1", "up");
 
-    const overview = await service.overview();
+    const overview = await service.overview({ sichtbar: () => true });
     const u1 = overview.find((s) => s.userId === "u1");
     expect(u1).toEqual({ userId: "u1", open: 1, done: 1 });
   });
@@ -193,7 +193,7 @@ describe("ValidationService", () => {
     await svc.rate(ko.id, "controller", "down");
 
     // Echte offene Zuweisung an den Autor (sichtbar in der Übersicht).
-    const overview = await svc.overview();
+    const overview = await svc.overview({ sichtbar: () => true });
     expect(overview).toEqual([{ userId: "anna", open: 1, done: 0 }]);
     // Audit-Event ko.returned-to-author mit Verdict.
     const returned = await audit.list({ action: "ko.returned-to-author" });
@@ -228,7 +228,7 @@ describe("ValidationService", () => {
     const ko = await koService.create(koInput({ author: "anna" }));
     await service.rate(ko.id, "u1", "warn");
     await service.rate(ko.id, "u2", "down");
-    const overview = await service.overview();
+    const overview = await service.overview({ sichtbar: () => true });
     expect(overview.find((s) => s.userId === "anna")).toEqual({
       userId: "anna",
       open: 1,

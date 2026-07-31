@@ -267,7 +267,7 @@ describe("mega33 C1 · eine Invariante, drei Spiegel — jede Bedingung einzeln 
     await services.ko.markAiCheckPending(subj.id);
     await services.ko.resolveAiCheck(subj.id, { ok: true, coverage }, subj.version);
 
-    const clean = await services.ko.aiCheckCoverageSummary();
+    const clean = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
     expect(clean.incomplete).toBe(0);
 
     // ============================================================================================
@@ -300,7 +300,7 @@ describe("mega33 C1 · eine Invariante, drei Spiegel — jede Bedingung einzeln 
     expect(stored?.aiCheck?.status).toBe("done");
     expect(stored?.aiCheck?.coverage?.capped).toBe(false);
 
-    const dirty = await services.ko.aiCheckCoverageSummary();
+    const dirty = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
     // Die Zusammenfassung zählt das Objekt jetzt als unvollständig — allein wegen der Zahlen.
     expect(dirty.incomplete).toBe(1);
     expect(dirty.noCoverage).toBe(0);

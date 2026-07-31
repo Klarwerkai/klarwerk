@@ -18,6 +18,7 @@ import {
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, sendError } from "../http";
+import { sichtbareFuer, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -156,7 +157,12 @@ export function libraryRoutes(
         // die Suche arbeitet bereits auf der bodyHtml-freien Datenquellen-Projektion; die
         // durchsuchbaren Bild-Fußnoten reisen als kleines persistiertes captionTexts-Feld mit
         // (der Client kennzeichnet damit die Fundstelle). Detailansichten laden einzeln voll.
-        reply.code(200).send(await library.search(q ?? "", filter));
+        //
+        // AUFTRAG-mega74 BLOCK B: die Suche gab Titel und Kernaussage vertraulicher Objekte an
+        // jeden `ko.read`-Inhaber aus — dieselbe Datei setzte die Regel im Export (:172) und in der
+        // Nachbarschaft (:395) längst durch, nur hier nicht. Die Projektion trägt Stufe und Autor
+        // mit, also fällt die Entscheidung hier an der Route.
+        reply.code(200).send(sichtbareFuer(user, await library.search(q ?? "", filter)));
       },
     );
 
@@ -340,7 +346,9 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
-      reply.code(200).send(await library.analytics());
+      // AUFTRAG-mega76 BLOCK D: dieselbe Übergabe wie /api/graph darunter — die Entscheidung
+      // fällt hier, der Dienst wendet sie auf seine Grundmenge an.
+      reply.code(200).send(await library.analytics({ sichtbar: sichtbarkeitsfilterFuer(user) }));
     });
 
     app.get("/api/analytics/busfactor", async (request, reply) => {
@@ -348,7 +356,7 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
-      reply.code(200).send(await library.busFactor());
+      reply.code(200).send(await library.busFactor({ sichtbar: sichtbarkeitsfilterFuer(user) }));
     });
 
     // Consultant-System (Experten-Matching): Thema → beitragende Personen. Hinter Feature-Flag
@@ -372,7 +380,9 @@ export function libraryRoutes(
       if (!user) {
         return;
       }
-      reply.code(200).send(await library.graph());
+      // AUFTRAG-mega74 BLOCK B: der Graph trug Titel aller Objekte. Die Entscheidung fällt hier
+      // (Kompositionswurzel) und reist als Datum in den Dienst; er wendet sie auf die Grundmenge an.
+      reply.code(200).send(await library.graph({ sichtbar: sichtbarkeitsfilterFuer(user) }));
     });
 
     // AUFTRAG-mega68: die Nachbarschaft EINES Wissensobjekts — die Anwendersicht des Wissensnetzes
@@ -392,8 +402,16 @@ export function libraryRoutes(
         return;
       }
       try {
-        const includeConfidential = can(user.role, "ko.validate");
-        reply.code(200).send(await library.neighbors(request.params.id, { includeConfidential }));
+        // AUFTRAG-mega74 BLOCK F: hier stand `includeConfidential = can(user.role,"ko.validate")` —
+        // eine EIGENE Kopie der SCRUM-506-Regel. Sie ist durch das eine Prädikat ersetzt; ohne das
+        // gäbe es nach Block A zwei Orte mit unterschiedlicher Antwort (der Autor fehlte hier).
+        // Das ZENTRUM bekommt dasselbe Tor wie der Hauptlesepfad — der Dienst wirft NOT_FOUND
+        // (→ 404), wenn es unter derselben Entscheidung nicht sichtbar ist.
+        reply
+          .code(200)
+          .send(
+            await library.neighbors(request.params.id, { sichtbar: sichtbarkeitsfilterFuer(user) }),
+          );
       } catch (error) {
         sendError(reply, error);
       }

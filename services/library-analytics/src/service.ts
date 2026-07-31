@@ -29,6 +29,7 @@ import {
   type ImportCandidate,
   type ImportItem,
   type ImportResult,
+  type KoSichtbar,
   LibraryError,
   type Neighborhood,
   type ReviewAction,
@@ -57,6 +58,32 @@ export const NEIGHBOR_LIMIT = 12;
 // Anteilsstatistik in Kleinstbeständen feuert (2 von 2 Objekten teilen IMMER 100 %).
 export const UBIQUITY_MAX_SHARE = 0.5;
 export const UBIQUITY_MIN_COUNT = 5;
+
+// ================================================================================================
+// AUFTRAG-mega77 BLOCK D — DIE ZWEITE LINIE UNTER DEM COMPILER, FÜR DIESES MODUL.
+// ================================================================================================
+//
+// DIESELBE KLASSE WIE mega76 BLOCK A, EINE EBENE TIEFER. mega76 hat vier ROUTEN-Zugänge zu
+// Pflichtparametern gemacht und in `services/app/src/sichtbarkeit.ts` eine zweite Linie darunter
+// gelegt (`zugangTauglich`) — für die Aufrufer, die der Compiler nicht sieht: JavaScript, ein
+// `as never`, ein aus JSON gebautes Deps-Objekt, ein `Partial<Deps>`. Die vier AUSKÜNFTE DIESES
+// DIENSTES trugen ihren Sichtbarkeitsfilter aber ebenfalls optional bzw. ohne Rückfallebene:
+// `graph()` hatte `= {}` und gab dann den vollen Bestand samt aller Titel heraus, `neighbors()`
+// fiel auf den milderen `includeConfidential`-Zweig zurück, `analytics()`/`busFactor()` (mega76
+// Block D) waren zwar Pflicht, aber ohne Verhalten für den Aufrufer unterhalb des Compilers.
+//
+// WARUM NICHT WÖRTLICH `zugangTauglich`. Sie liegt in `services/app` (Kompositionswurzel) und prüft
+// einen ZUGANG (`{ get(...) }`), nicht ein PRÄDIKAT. Dieses Modul darf `services/app` nicht
+// importieren — die Abhängigkeitsrichtung läuft app → library-analytics und wird von
+// dependency-cruiser erzwungen. Also steht hier GENAU EINE Stelle mit derselben Bauart und
+// derselben Aussage, und alle vier Auskünfte benutzen sie; kopiert wird sie nicht.
+//
+// FAIL-CLOSED HEISST HIER: ohne Entscheidung ist NICHTS sichtbar. Nicht „alles", nicht ein
+// Absturz — eine leere Grundmenge. Eine leere Antwort ist für jeden Aufrufer lesbar und verrät
+// nichts; ein `TypeError` wäre zwar auch kein Leck, aber er beschreibt den Fall nicht.
+function erzwingeSichtbar(sichtbar: KoSichtbar | undefined): KoSichtbar {
+  return typeof sichtbar === "function" ? sichtbar : () => false;
+}
 
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
 // gehört (kleingeschrieben verglichen — Adapter schreiben "Confluence"/"Jira").
@@ -985,7 +1012,11 @@ export class LibraryService {
           ? importFloor
           : currentConf;
       if (target !== currentConf) {
-        await this.koService.setConfidentiality(existing.id, target, item.author ?? actor);
+        // AUFTRAG-mega82 Block A: der Akteur dieser Mutation ist der ANNEHMENDE, nie `item.author`.
+        // Der Wert steht im Prüfprotokoll dieses Upgrades; ein aus dem Rumpf gelieferter Name
+        // machte dort einen Ungeprüften zum Handelnden. Begründung in voller Länge an der revise()
+        // weiter unten — es ist dieselbe Regel, und beide Stellen tragen sie gemeinsam.
+        await this.koService.setConfidentiality(existing.id, target, actor);
       }
 
       const current = existing.sources.find(matchesAnchor)?.sourceVersion ?? 0;
@@ -1000,6 +1031,32 @@ export class LibraryService {
           ...existing.sources.filter((s) => !matchesAnchor(s)),
           this.buildSource(item, actor, incoming),
         ];
+        // ==========================================================================================
+        // AUFTRAG-mega82 BLOCK A — WER IMPORTIERT, HANDELT. WER IM IMPORT GENANNT WIRD, HANDELT NICHT.
+        // ==========================================================================================
+        //
+        // DER REVISIONSAUTOR IST EIN NACHWEIS, KEINE ANZEIGE. `KoService.revise` schreibt ihn als
+        // Verfasser des Voll-Schnappschusses fort (knowledge-object/src/service.ts:447-459), und
+        // GENAU dieses Feld ist seit mega80 der Anker, an dem `zuordnungInFassung` misst, ob eine
+        // Fließtext-Fundstelle nachgewiesen oder nur behauptet ist (app/src/sichtbarkeit.ts:506).
+        //
+        // Bis mega82 stand hier `item.author ?? actor`. `item.author` kommt aus dem REQUEST: jeder
+        // Nutzer mit `ko.create` reicht über POST /api/library/import/candidates beliebige
+        // `ImportItem[]` ein, und `ImportItem` erlaubt sowohl freies `author` als auch `bodyHtml`
+        // (../types.ts). Damit war die Kette offen: fremde Objektkennung in den Rumpf, Kennung des
+        // HOCHLADENDEN dieses Objekts als `author` — die Differenzregel aus mega80 sieht die
+        // Fundstelle korrekt als NEU, `vomHochladenden` akzeptiert den gelieferten String, und die
+        // Rohbytes eines nie freigegebenen Objekts öffnen sich. Die Restgröße, die mega80 als
+        // „heute nicht akut" benannt hat, war über diesen generischen Eingang erreichbar.
+        //
+        // DIE REGEL: der authentifizierte `actor` ist der ALLEINIGE Mutations- und
+        // Schnappschussakteur. Der Quellautor reist unverändert weiter — aber ausschließlich als
+        // METADATUM: `originalAuthor` am Wissensobjekt (Wissensträger, Anzeige und busFactor) und
+        // `KoSource.author` am Herkunfts-Anker (buildSource unten). Beide sind erhoben: keine
+        // Autorisierung und kein Anhangs-Nachweis verzweigt über sie.
+        //
+        // Der Erstanlage-Zweig weiter unten war seit WP-SAMMEL21-FIX schon so gebaut. Diese Stelle
+        // und der Vertraulichkeits-Upgrade darüber waren die beiden, die es noch nicht waren.
         await this.koService.revise(
           existing.id,
           {
@@ -1009,7 +1066,7 @@ export class LibraryService {
             ...(item.bodyHtml ? { bodyHtml: item.bodyHtml } : {}),
             sources: nextSources,
           },
-          item.author ?? actor,
+          actor,
         );
       }
       return existing.id;
@@ -1260,10 +1317,12 @@ export class LibraryService {
   }
 
   // FR-LIB-02: Import per JSON ohne Duplikate.
-  async importJson(
-    rawItems: readonly ImportItem[],
-    defaultAuthor = "import",
-  ): Promise<ImportResult> {
+  //
+  // AUFTRAG-mega82 Block A: `actor` ist der EINREICHENDE Nutzer (library-routes.ts:210 übergibt
+  // `user.id`) und damit der Handelnde dieses Imports — nicht mehr bloß ein „Vorgabe-Autor", der
+  // einspringt, wenn das Item keinen nennt. Der Name ist deshalb mitgewandert; die Vorgabe
+  // `"import"` bleibt für Aufrufer ohne Sitzung (Tests, Werkzeuge) unverändert stehen.
+  async importJson(rawItems: readonly ImportItem[], actor = "import"): Promise<ImportResult> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
     const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
     const existing = await this.koService.list();
@@ -1281,9 +1340,24 @@ export class LibraryService {
         statement: item.statement,
         type: item.type,
         category: item.category,
-        // WP-RETEST7 R6: auch ein LEERER Autor-String fällt ehrlich auf den einreichenden
-        // Session-Nutzer zurück (kein KO ohne „von …“ mehr aus dem Import).
-        author: item.author?.trim() ? item.author : defaultAuthor,
+        // AUFTRAG-mega82 Block A: DIESELBE ABBILDUNG WIE IM ACCEPT-PFAD (WP-SAMMEL21-FIX weiter
+        // oben) — und bis mega82 war sie hier die einzige, die fehlte.
+        //
+        // `ko.author` ist keine Anzeige, sondern eine RECHTEPOSITION, und zwar gleich vierfach:
+        // `darfSehen` öffnet ein vertrauliches Wissensobjekt für seinen Autor
+        // (app/src/sichtbarkeit.ts:76), `DELETE /api/kos/:id` erlaubt ihm das Löschen
+        // (app/src/routes/ko-routes.ts:1154), `KoService.create` trägt denselben String als Verfasser
+        // des v1-Schnappschusses und als Akteur des `ko.created`-Belegs ein
+        // (knowledge-object/src/service.ts:1254/1266), und die Rückgabe an den Autor legt ihm eine
+        // Aufgabe an (validation/src/service.ts:131).
+        //
+        // `POST /api/library/import` verlangt nur `ko.create` und steht — anders als der
+        // Kandidaten-Accept — NICHT hinter dem Import-Schalter. Ein frei gelieferter `item.author`
+        // besetzte damit alle vier Positionen mit einem Namen, den nie jemand geprüft hat.
+        // Der Handelnde ist der Einreichende; der Quellautor reist als `originalAuthor` weiter
+        // (Wissensträger — Anzeige und busFactor, keine Autorisierung).
+        author: actor,
+        ...(item.author?.trim() ? { originalAuthor: item.author } : {}),
         tags: item.tags ?? [],
         // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
         confidentiality: item.confidentiality ?? "vertraulich",
@@ -1292,7 +1366,7 @@ export class LibraryService {
       imported += 1;
     }
     await this.audit?.record({
-      actor: defaultAuthor,
+      actor,
       action: "library.import",
       target: "library",
       payload: { imported, skipped },
@@ -1301,8 +1375,13 @@ export class LibraryService {
   }
 
   // FR-LIB-03: Bus-Faktor je Kategorie (Einzelquelle = nur ein Autor).
-  async busFactor(): Promise<BusFactorEntry[]> {
-    const list = await this.koService.list();
+  //
+  // AUFTRAG-mega76 BLOCK D: `sichtbar` ist PFLICHT und wird auf die GRUNDMENGE angewandt, nicht
+  // auf das Ergebnis — sonst zählten unsichtbare Objekte in `authorCount`/`koCount` weiter mit.
+  // Ein einzelnes vertrauliches KO in einer sonst leeren Kategorie erzeugte hier eine ganze Zeile
+  // MIT Kategorienamen, `koCount: 1`, `authorCount: 1` und `singleSource: true` (ben, sammel72).
+  async busFactor(opts: { sichtbar: KoSichtbar }): Promise<BusFactorEntry[]> {
+    const list = (await this.koService.list()).filter(erzwingeSichtbar(opts?.sichtbar));
     const byCategory = new Map<string, { authors: Set<string>; count: number }>();
     for (const ko of list) {
       const entry = byCategory.get(ko.category) ?? { authors: new Set<string>(), count: 0 };
@@ -1370,13 +1449,27 @@ export class LibraryService {
   // in `total` und in `truncated` (alles wird NACH dem Filter gezählt).
   async neighbors(
     koId: string,
-    opts: { includeConfidential: boolean; limit?: number },
+    // AUFTRAG-mega74 BLOCK F: statt eines `includeConfidential`-Schalters kommt hier die fertige
+    // Entscheidung je Objekt herein. Grund: seit Variante A hängt die Sichtbarkeit auch am AUTOR,
+    // und ein Boolescher Wert kann „vertraulich, aber mein eigenes" nicht ausdrücken — die Route
+    // hätte die Regel sonst ein zweites Mal auslegen müssen.
+    //
+    // AUFTRAG-mega77 BLOCK D: `sichtbar` ist PFLICHT, und der `includeConfidential`-Schalter ist
+    // ersatzlos weg. Er hatte seit mega74 KEINEN Aufrufer mehr (die Route liefert `sichtbar`), war
+    // aber weiterhin die zweite, mildere Auslegung derselben Regel — wer nur ihn setzte, bekam den
+    // ganzen nicht-vertraulichen Bestand ohne Autor-Ausnahme. Begründung zur Pflicht am Kopf von
+    // `erzwingeSichtbar`.
+    opts: { sichtbar: KoSichtbar; limit?: number },
   ): Promise<Neighborhood> {
+    const sichtbar = erzwingeSichtbar(opts?.sichtbar);
     const center = await this.koService.get(koId);
-    if (!center) {
+    // AUFTRAG-mega74 BLOCK F: das ZENTRUM folgte bis mega74 bewusst dem offenen Hauptlesepfad
+    // („die ehrliche Grenze aus mega45"). Seit Block B ist der geschlossen — also gilt hier
+    // dieselbe Entscheidung, und ein unsichtbares Zentrum sieht aus wie ein fehlendes.
+    if (!center || !sichtbar(center)) {
       throw new LibraryError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
-    const limit = opts.limit ?? NEIGHBOR_LIMIT;
+    const limit = opts?.limit ?? NEIGHBOR_LIMIT;
     const centerTags = new Set(center.tags);
     // EIN linearer Pass über die Such-Projektion (ohne bodyHtml): Kandidaten sammeln und dabei
     // zählen, wie viele Objekte jedes ZENTRUMS-Schlagwort tragen (inklusive des Zentrums selbst —
@@ -1389,9 +1482,7 @@ export class LibraryService {
     // unsichtbaren Bestand im Verhalten erkennbar machen. Jetzt rechnet die Antwort der
     // eingeschränkten Rolle, als gäbe es nur den sichtbaren Bestand (auch `total` im
     // Anteilsnenner misst ihn) — der Filter in `visible` unten ist dadurch mit abgedeckt.
-    const all = (await this.koService.listForSearch()).filter(
-      (ko) => opts.includeConfidential || !isConfidential(ko.confidentiality),
-    );
+    const all = (await this.koService.listForSearch()).filter(sichtbar);
     const carriers = new Map<string, number>();
     const candidates: { ko: KnowledgeObject; shared: string[] }[] = [];
     for (const ko of all) {
@@ -1440,8 +1531,21 @@ export class LibraryService {
   }
 
   // FR-LIB-04: Graph aus gemeinsamen Tags.
-  async graph(): Promise<Graph> {
-    const list = await this.koService.list();
+  //
+  // AUFTRAG-mega74 BLOCK B: der Graph gab Titel ALLER Objekte aus — er kannte die Vertraulichkeit
+  // nicht einmal. An der Route ließ sich das nicht nachholen: ein Knoten ist nur noch `{id, title}`,
+  // die Stufe ist dort weg, und die KANTEN hätten ein verborgenes Objekt ohnehin über die Struktur
+  // verraten (zwei sichtbare Objekte, verbunden über einen unsichtbaren Dritten).
+  //
+  // Deshalb kommt die fertige Entscheidung als Datum herein und wirkt auf die GRUNDMENGE, bevor
+  // gerechnet wird — dasselbe Vorgehen wie `neighbors` seit mega71 Block C. Der Dienst legt die
+  // Regel NICHT selbst aus; er wendet sie an.
+  //
+  // AUFTRAG-mega77 BLOCK D: `sichtbar` ist PFLICHT. Bis mega77 stand hier `= {}` und „ohne Filter
+  // bleibt das Verhalten wie bisher" — also der VOLLE Bestand mit allen Titeln. Das ist dieselbe
+  // Fail-open-Klasse wie mega76 Block A, nur an einer Dienstmethode statt an einer Route.
+  async graph(opts: { sichtbar: KoSichtbar }): Promise<Graph> {
+    const list = (await this.koService.list()).filter(erzwingeSichtbar(opts?.sichtbar));
     const nodes = list.map((ko) => ({ id: ko.id, title: ko.title }));
     const edges: GraphEdge[] = [];
     for (let i = 0; i < list.length; i += 1) {
@@ -1461,8 +1565,12 @@ export class LibraryService {
   }
 
   // FR-ANA-01: Bestände nach Status / Art / Kategorie.
-  async analytics(): Promise<Analytics> {
-    const list = await this.koService.list();
+  //
+  // AUFTRAG-mega76 BLOCK D: `sichtbar` ist PFLICHT. `total + 1` sowie je ein erhöhter Status-,
+  // Typ- und Kategorie-Bucket verrieten die Existenz eines vertraulichen Objekts; bei einer nur
+  // vertraulich belegten Kategorie nannte die Antwort sogar den Kategorienamen.
+  async analytics(opts: { sichtbar: KoSichtbar }): Promise<Analytics> {
+    const list = (await this.koService.list()).filter(erzwingeSichtbar(opts?.sichtbar));
     const byStatus: Record<string, number> = {};
     const byType: Record<string, number> = {};
     const byCategory: Record<string, number> = {};

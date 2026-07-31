@@ -1,4 +1,9 @@
-import type { Confidentiality, KnowledgeType, KoStatus } from "../../knowledge-object";
+import type {
+  Confidentiality,
+  KnowledgeObject,
+  KnowledgeType,
+  KoStatus,
+} from "../../knowledge-object";
 
 export interface ImportItem {
   title: string;
@@ -209,3 +214,19 @@ export interface Analytics {
   byType: Record<string, number>;
   byCategory: Record<string, number>;
 }
+
+// ================================================================================================
+// AUFTRAG-mega76 BLOCK D — DIE SICHTBARKEITSENTSCHEIDUNG ALS DATUM.
+// ================================================================================================
+//
+// Die Entscheidung „darf dieser Mensch dieses Objekt sehen" fällt in der Kompositionswurzel
+// (services/app/src/sichtbarkeit.ts) und reist von dort als PRÄDIKAT in die Dienste — nie als
+// Rolle, nie als Boolescher `includeConfidential`-Schalter. Der Grund steht dort ausführlich:
+// seit Variante A hängt die Sichtbarkeit auch am Autor, und ein Flag kann „vertrauliches, aber
+// eigenes Objekt" nicht ausdrücken. Ein Dienst, der ein Flag bekäme, müsste die Regel ein zweites
+// Mal auslegen.
+//
+// BEWUSST NICHT OPTIONAL, wo dieser Typ verlangt wird. Genau daran ist mega74 gescheitert: ein
+// optionaler Schutz ist ein angebotener Schutz, und ein zweiter Aufbau darf ihn dann typgültig
+// weglassen, ohne dass es jemand merkt.
+export type KoSichtbar = (ko: KnowledgeObject) => boolean;

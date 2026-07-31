@@ -1,17 +1,35 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService } from "../../../conflicts";
 import { type Guards, sendError } from "../http";
+import { type KoSichtbarkeitsZugang, paarSichtbar, sichtbarePaare } from "../sichtbarkeit";
 
 // Konflikt-API (§2.3/FR-CON). Erstellen/Auflösen auch über den KO-Dispatcher möglich;
 // hier zusätzlich Liste, Detail, Eskalation und Zweitmeinung.
-export function conflictRoutes(conflicts: ConflictService, guards: Guards): FastifyPluginAsync {
+//
+// AUFTRAG-mega74 BLOCK D (G5): der Konflikt trägt `description` und `detector.quotes.a/b` —
+// wörtliche Belegzitate BEIDER Objekte. Ohne den Zugang unten gab diese Datei sie jedem
+// `ko.read`-Inhaber heraus, auch wenn er keins der beiden Objekte öffnen durfte. Der Zugang wird
+// injiziert (Kompositionswurzel), nicht importiert: die Regel wohnt in ../sichtbarkeit, hier steht
+// nur ihre Anwendung.
+//
+// AUFTRAG-mega76 BLOCK A: `kos` war OPTIONAL und ist jetzt PFLICHT. Der Grund steht in
+// ../sichtbarkeit über `zugangTauglich`: ein fehlender Zugang lieferte hier nicht fail-closed,
+// sondern `offen` — die ungefilterte Konfliktliste mit allen wörtlichen Belegzitaten. Ein
+// Pflichtparameter war an dieser Stelle ohne Umbau möglich, weil die Kompositionswurzel der
+// EINZIGE Aufrufer ist (build-app.ts:937); es gab also keinen zweiten Bauweg zu versorgen.
+export function conflictRoutes(
+  conflicts: ConflictService,
+  guards: Guards,
+  kos: KoSichtbarkeitsZugang,
+): FastifyPluginAsync {
   return async (app) => {
     app.get("/api/conflicts", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {
         return;
       }
-      reply.code(200).send(await conflicts.unresolved());
+      const offen = await conflicts.unresolved();
+      reply.code(200).send(await sichtbarePaare(user, offen, kos));
     });
 
     app.get<{ Params: { id: string } }>("/api/conflicts/:id", async (request, reply) => {
@@ -20,7 +38,8 @@ export function conflictRoutes(conflicts: ConflictService, guards: Guards): Fast
         return;
       }
       const conflict = await conflicts.get(request.params.id);
-      if (!conflict) {
+      // Nicht sichtbar sieht aus wie nicht vorhanden — dieselbe Form wie am Wissensobjekt.
+      if (!conflict || !(await paarSichtbar(user, conflict.koA, conflict.koB, kos))) {
         reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
         return;
       }

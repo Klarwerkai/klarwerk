@@ -93,8 +93,11 @@ describe("mega69 C · Umlaut-Wächter: sichtbare deutsche Texte tragen echte Uml
   it("der Sammler erhebt wirklich die deutsche Oberfläche (kein leerer grüner Wächter)", () => {
     const texte = deutscheOberflaechentexte(quelle());
     expect(texte.length).toBeGreaterThanOrEqual(80);
-    // Stichprobe: die Pflichtangabe nach Artikel 50 ist unter den erhobenen Texten.
-    expect(texte.some((t) => t.key === "aiGeneratedNotice")).toBe(true);
+    // Stichprobe: ein DAUERHAFT sichtbarer Text des Fragen-Bereichs ist unter den erhobenen.
+    // AUFTRAG-mega81 BLOCK B: hier stand `aiGeneratedNotice`. Das war eine Stichprobe auf einen
+    // Satz, der seit mega81 zustandsgebunden ist — als Beleg dafür, dass der Sammler die SICHTBARE
+    // Oberfläche erhebt, taugt nur ein Text, der wirklich dauerhaft dasteht.
+    expect(texte.some((t) => t.key === "askReviewNotice")).toBe(true);
   });
 
   it("KEIN deutscher Oberflächentext steht in ASCII-Umschrift", () => {
@@ -110,8 +113,11 @@ describe("mega69 C · Umlaut-Wächter: sichtbare deutsche Texte tragen echte Uml
   it("die Datei sagt ihre Kodierung an (meta charset utf-8) und trägt echte Umlaute", () => {
     const src = quelle();
     expect(src).toContain('<meta charset="utf-8" />');
-    // Beleg statt Behauptung: mindestens die Artikel-50-Zeile trägt echte Mehrbyte-Zeichen.
-    expect(src).toContain("Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.");
+    // Beleg statt Behauptung: mindestens eine dauerhaft sichtbare Zeile trägt echte Mehrbyte-
+    // Zeichen. AUFTRAG-mega81 BLOCK B: hier stand die Artikel-50-Zeile. Sie ist seit mega81
+    // zustandsgebunden — als Kodierungsbeleg für die SICHTBARE Oberfläche wäre sie ein Text, den
+    // im Regelfall niemand zu Gesicht bekommt. Der fachliche Prüfhinweis steht immer da.
+    expect(src).toContain("Bitte vor Verwendung fachlich prüfen.");
   });
 });
 
@@ -132,7 +138,33 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // erzwungene bewusste Frage nach den Auslieferungsfolgen für installierte Add-ins
     // (Manifest-/Office-Cache, Sideload, Stempel). Danach: neuen Hash unten eintragen. Der Hash
     // steht NUR hier — niemand pflegt ihn an einer zweiten Stelle.
-    const PIN = "8af76f499712642077e2683df3b755b2dd42b722d46b93015befb29998054fbb";
+    // AUFTRAG-mega77 (A/B/C): Auslieferungsfolgen geprüft, bevor der Pin wanderte. Geändert wurden
+    // NUR Panel-Inhalte — eine entfernte Anzeigefläche (der Ungeprüft-Zähler), drei entfernte und
+    // vier umformulierte Wörterbuch-Schlüssel je Sprache sowie eine Zeitgrenze am Statusabruf.
+    // KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein neuer Fremd-Ursprung: ein
+    // installiertes Add-in braucht deshalb KEIN erneutes Sideload. Es holt die Datei beim nächsten
+    // Öffnen frisch vom Server; bis dahin kann der Office-Cache kurz den alten Stand zeigen — das
+    // ist das übliche Verhalten jeder Taskpane-Änderung und nicht neu. Der Stand-Stempel wandert
+    // weiter von selbst über den Build (`__KLARA_STAND__`, s. Fall oben).
+    // AUFTRAG-mega79 (A/B): Auslieferungsfolgen erneut geprüft, bevor der Pin wanderte. Geändert
+    // wurden AUSSCHLIESSLICH Panel-Inhalte und Kommentare — fünf umformulierte Wörterbuch-Schlüssel
+    // je Sprache (aiLage*, der Satz behauptete für Klaras Antwort ein Modell), ein erweiterter
+    // HTML-Kommentar und zwei Schnittmarken (KW-KLARA-ASK-FETCH-START/END) um das UNVERÄNDERTE
+    // `performAsk`. KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein neuer Fremd-Ursprung,
+    // KEIN neuer Abruf und keine geänderte Nutzlast: der abgesetzte Rumpf ist byte-gleich
+    // (`mode: "retrieval-only"`, in mega79 durch Ausführung erhoben). Ein installiertes Add-in
+    // braucht deshalb KEIN erneutes Sideload; es holt die Datei beim nächsten Öffnen frisch.
+    // AUFTRAG-mega81 (A/B): Auslieferungsfolgen erneut geprüft, bevor der Pin wanderte. Geändert
+    // wurden AUSSCHLIESSLICH Panel-Inhalte und Kommentare: ein zusätzlicher Absatz im Fragen-
+    // Bereich (`#ask-review-notice`), der bestehende `#ask-ai-notice` startet verborgen, ein neuer
+    // Wörterbuch-Schlüssel je Sprache (`askReviewNotice`), ein aus dem Antwortkörper GELESENES
+    // Feld (`aiGenerated`) und die Anzeige-Entscheidung `askAiNoticeVisible` samt Schnittmarken
+    // (KW-KLARA-AI-NOTICE-START/END). KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein
+    // neuer Fremd-Ursprung, KEIN neuer Abruf und keine geänderte Nutzlast: der abgesetzte Rumpf
+    // bleibt byte-gleich (`mode: "retrieval-only"`, in mega79/mega81 durch Ausführung erhoben) —
+    // es wird nur MEHR aus der ohnehin empfangenen Antwort gelesen. Ein installiertes Add-in
+    // braucht deshalb KEIN erneutes Sideload; es holt die Datei beim nächsten Öffnen frisch.
+    const PIN = "0cf394b1946bbb495d832470ca97389d49d4c6951ecbd2d2f6fc69e451787cd6";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

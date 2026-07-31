@@ -138,6 +138,10 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
       trust: 62,
       grade: "unverified",
       evidence: undefined,
+      // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal reist ebenfalls mit. Dieser
+      // Fixture-Body traegt KEIN `aiGenerated` — genau wie der echte retrieval-only-Weg, den dieses
+      // Add-in geht. Folge: die KI-Erzeugungsbehauptung wird NICHT gezeigt (askAiNoticeVisible).
+      aiGenerated: false,
     });
   });
 

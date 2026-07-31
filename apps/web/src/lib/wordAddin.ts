@@ -5,6 +5,12 @@
 // Fassungen auf denselben Fixtures aus und pinnt identisches Verhalten (kleinste ehrliche Lösung —
 // kein Build-Generator für eine einzelne statische Seite).
 
+import type { ReasonerStatus } from "../api/types";
+// AUFTRAG-mega75 Block B: KEINE zweite Wahrheit. Die beiden Funktionen, an denen auch AiModelInfo
+// in der Anwendung hängt, werden hier IMPORTIERT und AUFGERUFEN — nicht nachgebaut.
+import { deriveAiAvailable } from "./aiAvailability";
+import { aiTaskInfoPublic } from "./reasonerTaskInfo";
+
 // Titel des Front-Door-Entwurfs aus der Word-Selektion: erste nicht-leere Zeile, auf 60 Zeichen
 // gekappt. Ganz ohne brauchbare Zeile → ehrlicher Standardtitel (kein leerer Draft-Titel).
 export const WORD_ADDIN_FALLBACK_TITLE = "Wissens-Entwurf aus Word";
@@ -120,6 +126,143 @@ export function countUndeliveredWordImages(html: string): number {
   return missing;
 }
 
+// ================================================================================================
+// AUFTRAG-mega74 TEIL 2 — DIE BILDER WIRKLICH ÜBERGEBEN.
+// ================================================================================================
+//
+// Bis mega74 hat Klara den Verlust nur GEZÄHLT (countUndeliveredWordImages) und ehrlich gemeldet.
+// Die Office-Schnittstelle kennt aber einen Weg an die Bytes: `Body.inlinePictures` →
+// `InlinePicture.getBase64ImageSrc()`.
+//
+// DIE ANFORDERUNGSSTUFE, an der Dokumentation belegt (nicht aus dem Gedächtnis):
+//   · `Word.Body.inlinePictures`            → API set: WordApi **1.1**
+//   · `Word.InlinePictureCollection` (Klasse, `items`, `load`) → API set: WordApi **1.1**
+//   · `Word.InlinePicture.getBase64ImageSrc()` → API set: WordApi **1.1**
+// Damit bleibt das Manifest bei `WordApi MinVersion 1.1` (docs/word-addin/klara-manifest.xml:34-36)
+// UNVERÄNDERT — es gibt hier nichts für Pedi zu entscheiden.
+//
+// ZWEI NACHBARN SIND AUSDRÜCKLICH GEMIEDEN, weil sie höher lägen:
+//   · `InlinePictureCollection.getFirst()` / `getFirstOrNullObject()` → WordApi **1.3**.
+//     Deshalb `load("items")` + Index, nicht `getFirst()`.
+//   · `InlinePicture.imageFormat` → **WordApiDesktop 1.1** (also gar nicht die WordApi-Reihe).
+//     Deshalb wird der Bildtyp aus den BYTES erkannt (s. `wordImageMimeFromBase64`) und nicht
+//     erfragt. Das ist kein Notbehelf: die Magic Bytes sind eindeutiger als eine Typangabe.
+
+// Die vier Rastertypen, die der Server-Sanitizer inline akzeptiert (services/structure/src/
+// sanitize.ts:86-93 — `isSafeImgSrc`). Ein Bild, dessen Typ NICHT dazugehört, wird gar nicht erst
+// eingesetzt: es würde beim Speichern still weggeworfen, und Klara hätte einen Erfolg behauptet.
+const WORD_IMAGE_SIGNATURES: readonly { mime: string; prefix: string }[] = [
+  { mime: "image/png", prefix: "iVBORw0KGgo" },
+  { mime: "image/jpeg", prefix: "/9j/" },
+  { mime: "image/gif", prefix: "R0lGOD" },
+  // WEBP ist ein RIFF-Container: „RIFF" in Byte 0-3, die Typkennung „WEBP" erst in Byte 8-11.
+  // Byte 8 liegt NICHT auf einer Base64-Dreiergrenze — ein Präfixvergleich auf der kodierten
+  // Zeichenkette geht deshalb schief (der erste Anlauf tat genau das und war rot). Deshalb wird
+  // der Kopf hier wirklich dekodiert; s. `riffIstWebp`.
+  { mime: "image/webp", prefix: "UklGR" },
+];
+
+// Dekodiert die ersten Bytes und prüft die RIFF/WEBP-Kennung an ihrer echten Position.
+// Fehlschlag (ungültiges Base64, zu kurz) → false, also „kein WEBP" — fail-safe.
+function riffIstWebp(base64: string): boolean {
+  try {
+    const kopf = atob(base64.slice(0, 24));
+    return kopf.slice(0, 4) === "RIFF" && kopf.slice(8, 12) === "WEBP";
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Welcher Bildtyp steckt in diesem Base64? — aus den Bytes erkannt, nicht erfragt.
+ *
+ * `null` heißt „unbekannt oder nicht sanitizer-tauglich". Der Aufrufer setzt ein solches Bild NICHT
+ * ein und meldet es weiterhin als fehlend — lieber eine ehrliche Lücke als ein Bild, das der Server
+ * beim Speichern verwirft.
+ */
+export function wordImageMimeFromBase64(base64: string): string | null {
+  const clean = (base64 ?? "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+  if (clean.length === 0) {
+    return null;
+  }
+  for (const sig of WORD_IMAGE_SIGNATURES) {
+    if (clean.startsWith(sig.prefix)) {
+      if (sig.mime === "image/webp" && !riffIstWebp(clean)) {
+        return null;
+      }
+      return sig.mime;
+    }
+  }
+  return null;
+}
+
+export interface WordImageFillResult {
+  html: string;
+  /** Wie viele zuvor fehlende Bilder wirklich eingesetzt wurden. */
+  filled: number;
+  /** Wie viele danach IMMER NOCH fehlen — die Zahl, die Klara meldet. */
+  remaining: number;
+  /**
+   * Warum gar nichts eingesetzt wurde, wenn nichts eingesetzt wurde. `null` = kein Hindernis.
+   * `"anzahl-passt-nicht"` ist der wichtige Fall: siehe unten.
+   */
+  hindernis: "anzahl-passt-nicht" | null;
+}
+
+/**
+ * Setzt die über die Office-Schnittstelle geholten Bilder in das Word-HTML ein.
+ *
+ * DIE ZUORDNUNG IST DER HEIKLE TEIL, und sie ist bewusst streng. `inlinePictures` liefert ALLE
+ * eingebetteten Bilder des Bereichs in Dokumentreihenfolge; das HTML trägt seine `<img>`-Tags in
+ * derselben Reihenfolge. Zugeordnet wird deshalb über den INDEX (i-tes `<img>` ↔ i-tes Bild) —
+ * NICHT über „das nächste fehlende", denn Word liefert je nach Fassung einen Teil der Bilder schon
+ * als data:-URL, und dann wäre eine fortlaufende Zählung um genau diese Bilder verschoben.
+ *
+ * PASSEN DIE ANZAHLEN NICHT, WIRD NICHTS EINGESETZT. Eine Zuordnung, die wir nicht belegen können,
+ * wäre ein Bild an der falschen Stelle — und das ist schlimmer als ein fehlendes Bild, weil es wie
+ * Inhalt aussieht. In diesem Fall bleibt die heutige ehrliche Meldung stehen.
+ */
+export function fillWordImages(html: string, base64List: readonly string[]): WordImageFillResult {
+  const imgRe = /<img\b[^>]*>/gi;
+  const tags: string[] = [];
+  let m = imgRe.exec(html);
+  while (m !== null) {
+    tags.push(m[0]);
+    m = imgRe.exec(html);
+  }
+  const fehltVorher = countUndeliveredWordImages(html);
+  if (tags.length === 0 || tags.length !== base64List.length) {
+    return {
+      html,
+      filled: 0,
+      remaining: fehltVorher,
+      hindernis: tags.length === 0 ? null : "anzahl-passt-nicht",
+    };
+  }
+
+  let index = -1;
+  let filled = 0;
+  const out = html.replace(/<img\b[^>]*>/gi, (tag) => {
+    index += 1;
+    const srcMatch = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+    const src = (srcMatch?.[1] ?? srcMatch?.[2] ?? "").trim();
+    if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)) {
+      return tag; // Word hat dieses Bild bereits geliefert — nicht anfassen.
+    }
+    const roh = (base64List[index] ?? "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+    const mime = wordImageMimeFromBase64(roh);
+    if (!mime) {
+      return tag; // unbekannter Typ → bleibt ehrlich fehlend.
+    }
+    filled += 1;
+    const datenUrl = `data:${mime};base64,${roh}`;
+    return srcMatch
+      ? tag.replace(/src\s*=\s*(?:"[^"]*"|'[^']*')/i, `src="${datenUrl}"`)
+      : tag.replace(/^<img/i, `<img src="${datenUrl}"`);
+  });
+  return { html: out, filled, remaining: fehltVorher - filled, hindernis: null };
+}
+
 // UTF-8-Bytelänge (Budget-Messgröße — identisch zur Server-/DOCX-Mechanik).
 export function wordHtmlUtf8Bytes(value: string): number {
   return new TextEncoder().encode(value).length;
@@ -206,6 +349,16 @@ export interface AskOutcome {
   // AUFTRAG-mega34 B: die EINE Einstufung, vom Server. Bei `answered` immer gesetzt.
   grade?: AskGrade;
   evidence?: AskEvidence | undefined;
+  // AUFTRAG-mega81 BLOCK A: das SERVERSEITIGE Kennzeichnungssignal (`result.aiGenerated`, gesetzt
+  // in services/reasoner/src/service.ts an `answer`/`describe`/`interview`). Es reist mit, damit
+  // die KI-Kennzeichnung an das Verhalten gebunden werden kann statt an ihre Anwesenheit. Fehlt es
+  // — und auf dem retrieval-only-Weg des Add-ins fehlt es IMMER, weil `answerRetrievalOnly` es
+  // bewusst weglaesst —, wird nichts behauptet.
+  aiGenerated?: boolean;
+  // AUFTRAG-mega77 BLOCK A: hier stand `ungeprueft` — die Zahl der unterdrueckten ungeprueften
+  // Treffer aus mega74 Teil 2b, samt der Zusage „0 heisst es gab wirklich nichts". Feld, Zusage und
+  // serverseitige Berechnung sind entfernt (services/ask/src/service.ts): die Zahl entstand ohne
+  // Betrachterfilter und zaehlte die gedeckelte Vorauswahl statt des Bestands.
 }
 
 // AUFTRAG-mega34 B: der Grad aus dem Server-Feld — FAIL-SAFE. Fehlt das Feld (alter Server,
@@ -220,6 +373,27 @@ export function askGradeOf(evidence: unknown): AskGrade {
 // AUFTRAG-mega34 B2: DERSELBE Hinweis fuer Anzeige, Kopieren und Einfuegen. Die Texte kommen von
 // aussen (i18n der jeweiligen Laufzeit), die AUSWAHL trifft diese eine Funktion — damit die drei
 // Wege nicht auseinanderlaufen koennen.
+// ================================================================================================
+// AUFTRAG-mega81 BLOCK A — DIE KI-KENNZEICHNUNG HAENGT AM SIGNAL, NICHT AN DER FLAECHE.
+// ================================================================================================
+//
+// Bis mega80 stand „Von kuenstlicher Intelligenz erzeugt" DAUERHAFT im Fragen-Bereich des
+// Aufgabenfensters — unmittelbar ueber der Zeile, die (seit mega79 richtig) sagt, Klaras Antwort
+// entstehe IMMER ohne KI-Modell. Zwei unvereinbare Saetze uebereinander, fuer denselben Weg.
+//
+// Diese eine Funktion entscheidet, ob die Behauptung sichtbar wird — und sie entscheidet es
+// AUSSCHLIESSLICH an dem, was der Server ueber DIESE Antwort gesagt hat:
+//   · kein `aiGenerated` im Antwortkoerper  → keine Behauptung (der heutige retrieval-only-Weg),
+//   · `aiGenerated` da                      → Behauptung, unveraendert wie seit mega61.
+// Ohne angezeigte Antwort gibt es nichts zu kennzeichnen: eine Wissensluecke, ein Zeitablauf oder
+// ein Rechtefehler zeigt keinen erzeugten Text.
+//
+// GEBUNDEN, NICHT ABGESCHALTET: zeigt diese Flaeche spaeter einmal einen echten Modellweg, folgt
+// die Kennzeichnung von selbst — es ist dieselbe Funktion, dasselbe Signal.
+export function askAiNoticeVisible(outcome: AskOutcome | null | undefined): boolean {
+  return outcome?.kind === "answered" && outcome.aiGenerated === true;
+}
+
 export function answerInsertEvidenceNote(
   grade: AskGrade,
   texts: { verified: string; unverified: string },
@@ -330,8 +504,14 @@ export function performAsk(
             // fail-safe „unverified" — Word behauptet nie Sicherheit, die es nicht belegt bekam.
             grade: askGradeOf(result.evidence),
             evidence: (result.evidence ?? undefined) as AskEvidence | undefined,
+            // AUFTRAG-mega81 BLOCK A: das Kennzeichnungssignal wird GELESEN, nicht angenommen.
+            // `aiGenerated` ist am Server ein Objekt ({aiGenerated,task,mode,at}); hier zaehlt nur,
+            // OB es da ist — die Flaeche behauptet nie mehr, als der Server gesagt hat.
+            aiGenerated: Boolean(result.aiGenerated),
           };
         }
+        // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke. Der
+        // Antwortkoerper wird an dieser Stelle NICHT mehr nach einer Bestandszahl durchsucht.
         return { kind: "gap" };
       });
     })
@@ -776,4 +956,65 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
     undeliveredImages,
     plainTextFallback: false,
   };
+}
+
+// ================================================================================================
+// AUFTRAG-mega75 BLOCK A + B (Pedi 30.07.) — KLARA SAGT, MIT WELCHER KI SIE ARBEITET.
+// ================================================================================================
+//
+// PEDIS WIDERSPRUCH: `AiModelInfo` zeigt an jeder KI-Fläche der Anwendung, WOMIT gearbeitet wird —
+// abgeleitet aus dem öffentlichen, abstrahierten Status (/api/reasoner/status). Dieselbe Fläche im
+// Word-Add-in trug davon NICHTS: der KI-Satz stand dort als fester Text ohne jede Verbindung zum
+// tatsächlichen Zustand. Wer in KLARWERK eine KI arbeiten sah und in Klara „Keine belastbare
+// Grundlage" las, bekam nirgends gesagt, warum das kein Widerspruch ist.
+//
+// WARUM DIESE FUNKTION HIER STEHT UND NICHT IM TASKPANE: sie ist die EINE Stelle, an der die
+// KLARWERK-Ableitung für Klara ausgewertet wird — und sie leitet nichts selbst ab, sondern RUFT
+// `deriveAiAvailable` und `aiTaskInfoPublic` auf. Im TypeScript gibt es damit keine Kopie, sondern
+// echte Wiederverwendung. Nur das buildlose Taskpane muss spiegeln (kein Modulsystem, kein Build);
+// dieser Spiegel ist über den VOLLEN Vertrags-Zustandsraum gepinnt
+// (tests/app/mega75-klara-ki-status.test.ts) — der Äquivalenztest ist die Lieferung, nicht die Kopie.
+//
+// DIESELBE AUFGABE wie die Fläche in der Anwendung: `KlaraAssistant.tsx` bindet
+// `<AiModelInfo task="answer" />` ein. Verglichen wir eine andere Aufgabe, verglichen wir zwei Dinge.
+export const KLARA_AI_TASK = "answer";
+
+// Die Abrufphase — Klara kennt DREI ehrliche Zustände, nicht zwei. Ein Ladezustand, der wie ein
+// Befund aussieht, ist genau der Fehler, der bei A22 eine Runde gekostet hat: „noch nicht da"
+// heißt NICHT „keine KI", und „Dienst nicht erreichbar" heißt nicht „verfügbar".
+export type KlaraAiPhase = "laedt" | "da" | "unerreichbar";
+
+// Was diese Ableitung beschreibt: den HAUSSTAND von KLARWERK für die Aufgabe `answer` — arbeitet
+// dort gerade eine externe KI, eine hausinterne, oder keine — plus die beiden ehrlichen
+// Nicht-Aussagen. KEIN Modellname: der öffentliche Status ist bewusst abstrahiert (WP-VIP2-GATE),
+// und das bleibt so.
+//
+// AUFTRAG-mega79 BLOCK A: sie beschreibt AUSDRÜCKLICH NICHT Klaras Antwortweg. Der ist keine
+// Betriebsart, sondern eine Eigenschaft: Klaras Antwort läuft IMMER deterministisch, zitiert
+// validiertes Wissen wörtlich, und der markierte Text erreicht NIE ein Modell oder einen Embedder —
+// unabhängig davon, was hier herauskommt. Der sichtbare Satz im Aufgabenfenster hatte diese beiden
+// Dinge vermischt und behauptete bei „extern"/„intern", für Klaras Antwort arbeite eine KI. Das ist
+// korrigiert; die Ableitung selbst ist unverändert.
+export type KlaraAiLage = "laedt" | "unerreichbar" | "extern" | "intern" | "keine";
+
+export function klaraAiLage(phase: KlaraAiPhase, status: ReasonerStatus | undefined): KlaraAiLage {
+  if (phase === "laedt") {
+    return "laedt";
+  }
+  if (phase === "unerreichbar") {
+    return "unerreichbar";
+  }
+  // Nutzbarkeit JE AUFGABE — exakt die Ableitung, die auch die Knöpfe in der Anwendung ausgraut.
+  if (!deriveAiAvailable(status, KLARA_AI_TASK)) {
+    return "keine";
+  }
+  // Betriebsart aus derselben öffentlichen Ableitung wie AiModelInfo (ohne Modellname).
+  const mode = aiTaskInfoPublic(status).mode;
+  if (mode === "cloud") {
+    return "extern";
+  }
+  if (mode === "local") {
+    return "intern";
+  }
+  return "keine";
 }

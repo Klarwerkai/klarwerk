@@ -744,7 +744,26 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     }
     // KEINE wacklige Näherung: kein Seiten-API-Aufruf im Quelltext.
     expect(html).not.toContain("getPageRange");
-    expect(html).not.toContain("WordApiDesktop");
+    // AUFTRAG-mega74: dieser Wächter prüfte die bloße ZEICHENFOLGE „WordApiDesktop" — und schlug
+    // damit auf einen KOMMENTAR an, der erklärt, warum eine WordApiDesktop-Eigenschaft bewusst
+    // GEMIEDEN wird (`InlinePicture.imageFormat`). Ein Wächter, der Prosa nicht von Code
+    // unterscheidet, zwingt dazu, Begründungen zu verschweigen; genau daran sind am 30.07. drei
+    // Wächter gescheitert. Gemeint war immer die NUTZUNG, nicht die Erwähnung — also wird jetzt
+    // der kommentarbereinigte Quelltext geprüft.
+    const codeOhneKommentare = html
+      .replace(/<!--[\s\S]*?-->/g, "")
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    expect(
+      codeOhneKommentare,
+      "WordApiDesktop darf nicht BENUTZT werden (Erwähnung in einem Kommentar ist erlaubt).",
+    ).not.toContain("WordApiDesktop");
+    // Und die eine WordApiDesktop-Eigenschaft, die beim Bildweg naheliegt, ausdrücklich mit:
+    // der Bildtyp kommt aus den Bytes (wordImageMimeFromBase64), nicht aus `imageFormat`.
+    expect(codeOhneKommentare).not.toContain("imageFormat");
+    // Gegenprobe, damit dieser Wächter nicht vakuös wird: die Kommentar-Bereinigung darf nicht
+    // einfach ALLES entfernen — der tragende Code steht noch da.
+    expect(codeOhneKommentare).toContain("getBase64ImageSrc");
   });
 
   it("Befund 4 + Budget: ehrliche Bild-Bilanz und Budget-Fallback in allen drei Sprachen", () => {

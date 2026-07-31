@@ -1484,8 +1484,14 @@ export class KoService {
    * `unchecked` zählt Objekte GANZ OHNE Protokoll: über sie sagt kein Lauf etwas — das ist eine
    * andere Aussage als „unvollständig geprüft" und darf nicht mit ihr verschmelzen.
    */
-  async aiCheckCoverageSummary(): Promise<AiCheckCoverageSummary> {
-    const all = (await this.list({})).filter((ko) => !ko.demoSeed);
+  // AUFTRAG-mega76 BLOCK D: `sichtbar` ist PFLICHT. Die vier Zähler hängen algebraisch zusammen
+  // (`total` = `incomplete` + `unchecked` + `noCoverage` + Rest) — jedes vertrauliche Nicht-Demo-KO
+  // erhöhte `total` und genau einen Zustandszähler. Bei `total: 1` war die Existenz unmittelbar
+  // belegt (ben, sammel72). Gefiltert wird die GRUNDMENGE, gemeinsam mit dem Demo-Ausschluss.
+  async aiCheckCoverageSummary(opts: {
+    sichtbar: (ko: KnowledgeObject) => boolean;
+  }): Promise<AiCheckCoverageSummary> {
+    const all = (await this.list({})).filter((ko) => !ko.demoSeed && opts.sichtbar(ko));
     let incomplete = 0;
     let unchecked = 0;
     let noCoverage = 0;

@@ -3,6 +3,7 @@ import type { AiCheck, KoService } from "../../../knowledge-object";
 import type { BoardFilter, ValidationService } from "../../../validation";
 import { type AiCheckWorker, shouldReEnqueueAiCheck } from "../ai-check-worker";
 import { type Guards, sendError } from "../http";
+import { sichtbareFuer, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // WP-SUBMIT-ASYNC (Neustart-Robustheit, pragmatisch + ehrlich): der Prüf-Worker hält seine Queue
 // NUR im Speicher — nach einem Prozess-Neustart wäre ein pending-Job verloren. Beim Laden der
@@ -27,7 +28,11 @@ export function validationRoutes(
       if (!user) {
         return;
       }
-      const board = await validation.board(request.query);
+      // AUFTRAG-mega74 BLOCK E: `validation.board()` gibt VOLLE Wissensobjekte aus
+      // (validation/src/service.ts:185-215) — Titel, Kernaussage, alles. Das Prüf-Board war damit
+      // ein vollwertiger Lesepfad ohne Tor. Gefiltert wird VOR dem Re-Enqueue unten, damit die
+      // Route über ein unsichtbares Objekt auch keine Arbeit auslöst.
+      const board = sichtbareFuer(user, await validation.board(request.query));
       if (aiCheck) {
         const nowMs = Date.now();
         for (const item of board as { id: string; aiCheck?: AiCheck }[]) {
@@ -48,7 +53,8 @@ export function validationRoutes(
       if (!user) {
         return;
       }
-      reply.code(200).send(await validation.overview());
+      // AUFTRAG-mega76 BLOCK D: die Personenzeilen rechnen über den SICHTBAREN Zuweisungen.
+      reply.code(200).send(await validation.overview({ sichtbar: sichtbarkeitsfilterFuer(user) }));
     });
 
     // SCRUM-395: Standard-Prüferanzahl. Lesen dürfen alle Leseberechtigten (die

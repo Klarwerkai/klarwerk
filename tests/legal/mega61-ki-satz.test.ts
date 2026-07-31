@@ -25,6 +25,7 @@ import { describe, expect, it } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
 const WEB = join("apps", "web", "src");
+const ADDIN = join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html");
 const SCHLUESSEL = "ai.generatedNotice";
 
 // Wer den Satz trägt: entweder direkt, oder über die Modellangabe (die ihn seit mega61 enthält).
@@ -136,11 +137,57 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
   it("das Word-Add-in trägt ihn ebenfalls — mit eigenem Wörterbuch, gleichem Inhalt", () => {
     // Es ist kein React-Projekt und kann `apps/web/src/i18n.ts` baulich nicht lesen. Der Satz
     // steht deshalb sinngleich in seinem eigenen Wörterbuch — in allen drei Sprachen.
-    const addin = readFileSync(
-      join(WURZEL, "apps", "web", "public", "word-addin", "taskpane.html"),
-      "utf8",
-    );
+    const addin = readFileSync(ADDIN, "utf8");
     expect(addin).toContain('data-t="aiGeneratedNotice"');
     expect(addin.split("aiGeneratedNotice:").length - 1).toBe(3);
+  });
+
+  // ==============================================================================================
+  // AUFTRAG-mega81 BLOCK B — DIE REGEL WIRD AN DAS VERHALTEN GEBUNDEN, NICHT ABGESCHALTET.
+  // ==============================================================================================
+  //
+  // Der Fall darüber beweist ANWESENHEIT: der Schlüssel steht dreimal im Wörterbuch, ein Element
+  // trägt ihn. Genau das hielt bis mega80 eine FALSCHE Zuschreibung grün — der Satz stand dauerhaft
+  // und zustandsunabhängig im Fragen-Bereich, dessen einziger Antwortweg `retrieval-only` sendet
+  // und den der Server bewusst NICHT kennzeichnet (`answerRetrievalOnly`). Anwesenheit ist eine
+  // notwendige, aber keine hinreichende Bedingung; dasselbe Muster wie der Namenswächter aus
+  // mega77, eine Ebene weiter.
+  //
+  // Die Regel dieses Sammlers lautet deshalb ab hier nicht mehr „die Kennzeichnung ist da",
+  // sondern: SIE STEHT GENAU DORT, WO TATSÄCHLICH KI ERZEUGT. Die Compliance-Absicht bleibt
+  // vollständig — Artikel 50 verlangt die Information an der KI-Fläche, nicht an jeder Fläche.
+  //
+  // Der VERHALTENSNACHWEIS (Ausführung der echten Kette: Antwortkörper aus POST /api/ask →
+  // ausgeliefertes `performAsk` → Anzeige-Entscheidung) liegt in
+  // tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts. Hier steht die strukturelle Hälfte:
+  // keine Fläche behauptet die Erzeugung dauerhaft, und die Bindung ans Signal existiert.
+  it("im Add-in behauptet KEINE Fläche die KI-Erzeugung dauerhaft — sie hängt am Signal", () => {
+    const addin = readFileSync(ADDIN, "utf8");
+    // Jedes Element, das den Satz trägt, ist zustandsgebunden (Startzustand: verborgen).
+    const traeger = [...addin.matchAll(/<([a-z]+)\b([^>]*\bdata-t="aiGeneratedNotice"[^>]*)>/g)];
+    expect(traeger.length, "der Satz hängt an keinem Element mehr").toBeGreaterThan(0);
+    for (const el of traeger) {
+      const klassen = /\bclass="([^"]*)"/.exec(el[2] ?? "")?.[1] ?? "";
+      expect(
+        klassen,
+        `<${el[1]} data-t="aiGeneratedNotice"> steht dauerhaft sichtbar — die Erzeugungsbehauptung muss am serverseitigen aiGenerated-Signal hängen, nicht an der Fläche`,
+      ).toMatch(/\bhidden\b/);
+    }
+    // … und die Bindung ist wirklich verdrahtet: das Signal wird gelesen und entscheidet.
+    expect(addin, "das serverseitige Kennzeichnungssignal wird gar nicht gelesen").toContain(
+      "aiGenerated: Boolean(result.aiGenerated)",
+    );
+    expect(addin, "die Anzeige-Entscheidung fehlt").toContain("outcome.aiGenerated === true");
+    expect(addin, "die Entscheidung ist nicht ans Element gehängt").toContain(
+      'document.getElementById("ask-ai-notice")',
+    );
+  });
+
+  it("der fachliche Prüfhinweis bleibt dauerhaft — die Kennzeichnung wird nicht ersatzlos entfernt", () => {
+    // Block A ausdrücklich: richtiggestellt, nicht abgeschaltet. Was auf dem retrieval-only-Weg
+    // WAHR bleibt — die Antwort ist vor Verwendung fachlich zu prüfen —, steht weiter da.
+    const addin = readFileSync(ADDIN, "utf8");
+    expect(addin).toContain('data-t="askReviewNotice"');
+    expect(addin.split("askReviewNotice:").length - 1).toBe(3);
   });
 });

@@ -7,6 +7,7 @@ import { can } from "../../../rbac";
 import type { ValidationService } from "../../../validation";
 import type { Guards, SessionUser } from "../http";
 import { type ImpactNotice, type Notification, buildNotifications } from "../notification-feed";
+import { type KoSichtbarkeitsZugang, sichtbareEintraege, sichtbarePaare } from "../sichtbarkeit";
 
 // In-App-Benachrichtigungen (U-3): aggregiert aus vorhandenen Signalen. Für jeden
 // angemeldeten Nutzer lesbar; keine eigene Persistenz nötig.
@@ -21,6 +22,13 @@ export interface NotificationRoutesDeps {
   audit: AuditService;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   seen: NotificationSeenRepo;
+  // AUFTRAG-mega74 BLOCK D (G5): Zugang zur Sichtbarkeit der beteiligten Wissensobjekte.
+  //
+  // AUFTRAG-mega76 BLOCK A: von `kos?` auf PFLICHT. Diese Route ist die schwächste Tür des Satzes
+  // (sie steht auf `requireUser`, nicht auf `ko.read`); fehlte der Zugang, trug der Feed die
+  // Konflikt-`description`, die Duplikat-`rationale` und den KO-Titel einer Zuweisung ungefiltert.
+  // Pflichtparameter ohne Umbau möglich: einziger Aufrufer ist build-app.ts:1018.
+  kos: KoSichtbarkeitsZugang;
 }
 
 // PMO-FEA-0002: „Hat geholfen"-Ereignisse für den Originalautor. Bewusst ehrlich:
@@ -66,12 +74,38 @@ async function loadFeed(
   const gapViews = gaps.map((gap) => redactGapForViewer(gap, viewer));
   const impacts = deriveImpacts(helpful, user.id);
   const seen = new Set(seenIds);
-  return buildNotifications({ conflicts, overlaps, gaps: gapViews, assignments, impacts }).map(
-    (n) => ({
-      ...n,
-      seen: seen.has(n.id),
-    }),
-  );
+  // ================================================================================================
+  // AUFTRAG-mega74 BLOCK D (G5) — DIE SCHWÄCHSTE TÜR DES GANZEN SATZES.
+  // ================================================================================================
+  //
+  // Diese Route stand auf `requireUser` — schwächer als `ko.read` — und schrieb die Konflikt-
+  // `description`, die Duplikat-`rationale` und den KO-TITEL einer Zuweisung ungefiltert als
+  // `title` in den Feed (notification-feed.ts:57-68 und :81-89). Nur der Gap-Zweig war redigiert.
+  // Wer ein vertrauliches Objekt nicht öffnen durfte, bekam seinen Kern in der Glocke serviert.
+  //
+  // Die Impacts brauchen KEIN Tor: `deriveImpacts` gibt ausschliesslich Titel von Objekten aus,
+  // deren AUTOR der Betrachter selbst ist (`koAuthor !== userId` → continue, :36) — die trägt die
+  // Autor-Ausnahme des Prädikats ohnehin.
+  //
+  // AUFTRAG-mega76 BLOCK A: die drei Aufrufe standen unter `deps.kos ? ... : <ungefiltert>`. Der
+  // Zugang ist jetzt Pflicht, und die Filter laufen UNBEDINGT — es gibt keinen Zweig mehr, der das
+  // alte Ergebnis zurückgibt.
+  const sichtbareKonflikte = await sichtbarePaare(user, conflicts, deps.kos);
+  const sichtbareUeberschneidungen = await sichtbarePaare(user, overlaps, deps.kos);
+  // Eine Zuweisung nennt den Titel ihres Wissensobjekts. Sie ist bereits auf den Betrachter
+  // beschränkt (openAssignmentsFor), aber ein Prüfer ohne `ko.validate` kann auf ein vertrauliches
+  // Objekt angesetzt sein, das er nicht öffnen darf — dann darf auch der Titel nicht erscheinen.
+  const sichtbareZuweisungen = await sichtbareEintraege(user, assignments, deps.kos);
+  return buildNotifications({
+    conflicts: sichtbareKonflikte,
+    overlaps: sichtbareUeberschneidungen,
+    gaps: gapViews,
+    assignments: sichtbareZuweisungen,
+    impacts,
+  }).map((n) => ({
+    ...n,
+    seen: seen.has(n.id),
+  }));
 }
 
 export function notificationsRoutes(

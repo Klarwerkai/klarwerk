@@ -249,7 +249,15 @@ export class ValidationService {
   }
 
   // FR-VAL-06: Übersicht offen/erledigt pro Person.
-  async overview(): Promise<AssignmentSummary[]> {
+  //
+  // AUFTRAG-mega76 BLOCK D: `sichtbar` ist PFLICHT. Eine einzige Zuweisung auf ein vertrauliches
+  // KO erzeugte hier eine neue Personenzeile mit `open: 1` — damit wurden ZUGLEICH die Existenz
+  // eines vertraulichen Prüfobjekts und die Kennung der damit befassten Person sichtbar (ben,
+  // sammel72). `koService.get` blendet nur den Papierkorb aus und prüft keine Betrachtersicht;
+  // das Urteil kommt deshalb von aussen und greift an derselben Stelle wie der Papierkorb-Filter.
+  async overview(opts: {
+    sichtbar: (ko: KnowledgeObject) => boolean;
+  }): Promise<AssignmentSummary[]> {
     const all = await this.assignments.all();
     const byUser = new Map<string, AssignmentSummary>();
     for (const a of all) {
@@ -257,7 +265,7 @@ export class ValidationService {
       // sonst bleiben nach dem Löschen/Demo-Purge „Geister-Aufgaben" in den Kennzahlen stehen
       // (wie openAssignmentsFor, das gelöschte KOs bereits überspringt).
       const ko = await this.koService.get(a.koId);
-      if (!ko) {
+      if (!ko || !opts.sichtbar(ko)) {
         continue;
       }
       const summary = byUser.get(a.userId) ?? { userId: a.userId, open: 0, done: 0 };

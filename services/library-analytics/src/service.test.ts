@@ -435,7 +435,7 @@ describe("LibraryService", () => {
   });
 
   it("FR-LIB-03: Bus-Faktor erkennt Einzelquellen", async () => {
-    const bf = await ctx.library.busFactor();
+    const bf = await ctx.library.busFactor({ sichtbar: () => true });
     const a1 = bf.find((e) => e.category === "Anlage 1");
     expect(a1?.singleSource).toBe(true);
     expect(a1?.authorCount).toBe(1);
@@ -490,14 +490,14 @@ describe("LibraryService", () => {
   });
 
   it("FR-LIB-04: Graph verbindet KOs mit gemeinsamem Tag", async () => {
-    const graph = await ctx.library.graph();
+    const graph = await ctx.library.graph({ sichtbar: () => true });
     expect(graph.nodes).toHaveLength(2);
     expect(graph.edges).toHaveLength(1);
     expect(graph.edges[0]?.via).toBe("ventil");
   });
 
   it("FR-ANA-01: Analytics aggregiert nach Status/Art/Kategorie", async () => {
-    const a = await ctx.library.analytics();
+    const a = await ctx.library.analytics({ sichtbar: () => true });
     expect(a.total).toBe(2);
     expect(a.byStatus.offen).toBe(2);
     expect(a.byType.best_practice).toBe(1);

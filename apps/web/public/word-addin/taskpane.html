@@ -239,11 +239,60 @@
     <div class="card">
       <h2 data-t="askTitle"></h2>
       <p class="muted" data-t="askHint"></p>
+      <!-- AUFTRAG-mega74 TEIL 2b: WAS wirklich gefragt wird — sichtbar VOR dem Fragen. Bis mega74
+           schlug eine vorhandene Markierung das Eingabefeld stillschweigend (prepareAskQuestion),
+           und wer beides tat, erfuhr nie, dass seine getippte Frage verworfen wurde. -->
+      <p id="ask-source-note" class="muted" style="margin: 0 0 4px 0;"></p>
       <textarea id="ask-input" rows="3"></textarea>
       <!-- AUFTRAG-mega61 Block E: der dauerhaft sichtbare Satz, ohne Aufklappen, VOR der ersten
            Frage. Das Add-in hat kein React und kein gemeinsames i18n — der Wortlaut steht
-           deshalb sinngleich in seinem eigenen Woerterbuch (aiGeneratedNotice). -->
-      <p class="muted" id="ask-ai-notice" data-t="aiGeneratedNotice"></p>
+           deshalb sinngleich in seinem eigenen Woerterbuch (aiGeneratedNotice).
+
+           AUFTRAG-mega81 BLOCK A (bens ROT zu mega79): hier stand EIN Absatz, der dauerhaft und
+           zustandsunabhaengig „Von kuenstlicher Intelligenz erzeugt" behauptete — unmittelbar UEBER
+           der Zeile darunter, die sagt, Klaras Antwort entstehe IMMER ohne KI-Modell. Zwei
+           unvereinbare Saetze uebereinander, fuer denselben sichtbaren Antwortweg: der einzige
+           Antwortweg dieses Bereichs sendet `mode: "retrieval-only"`, und der Server laesst die
+           Kennzeichnung dort BEWUSST weg (answerRetrievalOnly, services/reasoner/src/service.ts).
+
+           Aus einem Absatz sind deshalb zwei geworden:
+             1. der fachliche Pruefhinweis — DAUERHAFT, denn er gilt auf diesem Weg unveraendert;
+             2. die KI-Kennzeichnung — an das serverseitige `aiGenerated`-Signal GEBUNDEN, also
+                heute nie sichtbar und morgen von selbst sichtbar, wenn diese Flaeche einmal einen
+                echten Modellweg zeigt. Abgeschaltet ist sie NICHT. -->
+      <p class="muted" id="ask-review-notice" data-t="askReviewNotice"></p>
+      <p class="muted hidden" id="ask-ai-notice" data-t="aiGeneratedNotice"></p>
+      <!-- AUFTRAG-mega75 Block A: WOMIT gearbeitet wird — dieselbe Auskunft, die AiModelInfo in der
+           Anwendung gibt, aus demselben oeffentlichen Status. Drei ehrliche Zustaende (extern /
+           hausintern / keine) plus die beiden Nicht-Aussagen „wird geprueft" und „nicht abrufbar".
+           OHNE Modellname: der oeffentliche Status ist bewusst abstrahiert (WP-VIP2-GATE).
+
+           AUFTRAG-mega79 BLOCK A (bens ROT zu mega77): diese Zeile sagte bei „extern"/„intern",
+           fuer KLARAS ANTWORT arbeite eine KI. Das war FALSCH — und zwar in beide Richtungen
+           falsch, denn die Verengung von mega77 („ganz KLARWERK" -> „Klaras Antwort") drehte die
+           Aussage genau um. Die Ableitung beobachtet die KLARWERK-Aufgabe `answer`; Klaras Antwort
+           in diesem Fenster laeuft davon UNABHAENGIG und IMMER ohne Modell (retrieval-only,
+           erhoben in tests/app/mega79-klara-antwort-ohne-modell.test.ts).
+
+           WAS DIE ZEILE JETZT TRAGT: zwei unverwechselbar getrennte Aussagen in EINEM Schluessel
+           je Sprache — (1) der HAUSSTAND von KLARWERK (Pedis urspruengliches Anliegen: er sah in
+           KLARWERK eine KI arbeiten und hier eine Absage) und (2) die EIGENSCHAFT von Klaras
+           Antwort, die kein Mangel ist, sondern der Grund, ihr zu trauen. „laedt" und „nicht
+           erreichbar" beziehen sich AUSSCHLIESSLICH auf diesen Statusabruf — der Antwortweg ist
+           auch ohne jeden Abruf bekannt und steht deshalb in JEDEM der fuenf Zustaende da. -->
+      <p class="muted" id="ask-ai-lage"></p>
+      <!-- AUFTRAG-mega75 Block C: unter WELCHER REGEL Klara steht. Das ist keine Entschuldigung,
+           sondern das Merkmal, das sie vertrauenswuerdig macht — und die Aufloesung von Pedis
+           Widerspruch: in KLARWERK arbeitet vielleicht eine KI, hier wird woertlich zitiert.
+           Dauerhaft sichtbar, also bei JEDER Antwort und JEDER Absage.
+
+           AUFTRAG-mega77 Block B: hier stand zusaetzlich „und der markierte Text verlaesst das
+           Haus nicht" (EN „never leaves your organisation", NL „verlaat het huis niet"). Das ist
+           ENTFERNT. Retrieval-only beweist, dass der markierte Text nicht an Modell oder Embedder
+           geht — es beweist NICHT, wo der KLARWERK-Server steht. Der Text geht per HTTP an ihn.
+           Eine Aussage ueber Serverstandort oder Organisationsgrenze ist eine BETRIEBSZUSAGE, die
+           dieser Code nicht erzwingt; belegt ist nur, dass keine EXTERNE KI ihn bekommt. -->
+      <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
       <button type="button" class="primary" id="ask-btn" data-t="askCta" disabled></button>
       <div id="ask-status" class="status hidden"></div>
       <div id="ask-answer-block" class="hidden">
@@ -288,6 +337,15 @@
         <div class="status warn">
           <strong data-t="askGapTitle"></strong>
           <p class="muted" data-t="askGapBody" style="margin-bottom: 0;"></p>
+          <!-- AUFTRAG-mega77 Block A: hier stand der Satz aus mega74 Teil 2b mit der Zahl der
+               unterdrueckten ungeprueften Treffer. Er ist ENTFERNT — die Zahl entstand ohne
+               Betrachterfilter (Leck ab n = 1) und zaehlte die gedeckelte Vorauswahl statt des
+               Bestands. Was bleibt, ist die ehrliche Wissensluecke ohne Auskunft ueber fremden
+               Bestand. -->
+          <!-- AUFTRAG-mega75 Block C: die Absage ist der Moment, in dem der Mensch „warum nicht?"
+               fragt — hier steht die Regel deshalb ein zweites Mal, im selben Wortlaut aus dem
+               selben Schluessel (eine Quelle, kein zweiter Text). -->
+          <p class="muted" data-t="askRuleNote" style="margin: 6px 0 0 0;"></p>
         </div>
         <button type="button" class="primary" id="ask-gap-send-btn" data-t="askGapSendCta" style="margin-top: 8px;"></button>
         <p id="ask-gap-open-block" class="hidden">
@@ -415,6 +473,77 @@
       return missing;
     }
 
+    // AUFTRAG-mega74 TEIL 2 — die Bilder wirklich uebergeben. Anforderungsstufe an der
+    // Dokumentation belegt: Body.inlinePictures, InlinePictureCollection und
+    // InlinePicture.getBase64ImageSrc() sind alle WordApi 1.1 — das Manifest bleibt bei 1.1.
+    // Gemieden, weil hoeher: getFirst() (1.3) und imageFormat (WordApiDesktop 1.1). Der Bildtyp
+    // kommt deshalb aus den Bytes. Ausfuehrliche Begruendung im Spiegelmodul lib/wordAddin.ts.
+    var WORD_IMAGE_SIGNATURES = [
+      { mime: "image/png", prefix: "iVBORw0KGgo" },
+      { mime: "image/jpeg", prefix: "/9j/" },
+      { mime: "image/gif", prefix: "R0lGOD" },
+      { mime: "image/webp", prefix: "UklGR" }
+    ];
+
+    // WEBP ist ein RIFF-Container: "RIFF" in Byte 0-3, die Typkennung "WEBP" erst in Byte 8-11.
+    // Byte 8 liegt NICHT auf einer Base64-Dreiergrenze — ein Praefixvergleich auf der kodierten
+    // Zeichenkette geht schief. Deshalb wird der Kopf wirklich dekodiert; Fehlschlag = kein WEBP.
+    function riffIstWebp(base64) {
+      try {
+        var kopf = atob(base64.slice(0, 24));
+        return kopf.slice(0, 4) === "RIFF" && kopf.slice(8, 12) === "WEBP";
+      } catch (e) {
+        return false;
+      }
+    }
+
+    function wordImageMimeFromBase64(base64) {
+      var clean = String(base64 || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+      if (clean.length === 0) { return null; }
+      for (var i = 0; i < WORD_IMAGE_SIGNATURES.length; i += 1) {
+        var sig = WORD_IMAGE_SIGNATURES[i];
+        if (clean.indexOf(sig.prefix) === 0) {
+          if (sig.mime === "image/webp" && !riffIstWebp(clean)) { return null; }
+          return sig.mime;
+        }
+      }
+      return null;
+    }
+
+    function fillWordImages(html, base64List) {
+      var imgRe = /<img\b[^>]*>/gi;
+      var tags = [];
+      var m = imgRe.exec(html);
+      while (m !== null) { tags.push(m[0]); m = imgRe.exec(html); }
+      var fehltVorher = countUndeliveredWordImages(html);
+      if (tags.length === 0 || tags.length !== base64List.length) {
+        return {
+          html: html,
+          filled: 0,
+          remaining: fehltVorher,
+          hindernis: tags.length === 0 ? null : "anzahl-passt-nicht"
+        };
+      }
+      var index = -1;
+      var filled = 0;
+      var out = html.replace(/<img\b[^>]*>/gi, function (tag) {
+        index += 1;
+        var srcMatch = /src\s*=\s*(?:"([^"]*)"|'([^']*)')/i.exec(tag);
+        var src = srcMatch ? (srcMatch[1] !== undefined ? srcMatch[1] : srcMatch[2]) : "";
+        src = (src || "").replace(/^\s+|\s+$/g, "");
+        if (/^data:image\/(png|jpe?g|gif|webp);base64,/i.test(src)) { return tag; }
+        var roh = String(base64List[index] || "").replace(/^data:[^,]*,/, "").replace(/\s+/g, "");
+        var mime = wordImageMimeFromBase64(roh);
+        if (!mime) { return tag; }
+        filled += 1;
+        var datenUrl = "data:" + mime + ";base64," + roh;
+        return srcMatch
+          ? tag.replace(/src\s*=\s*(?:"[^"]*"|'[^']*')/i, 'src="' + datenUrl + '"')
+          : tag.replace(/^<img/i, '<img src="' + datenUrl + '"');
+      });
+      return { html: out, filled: filled, remaining: fehltVorher - filled, hindernis: null };
+    }
+
     function wordHtmlUtf8Bytes(value) {
       return new TextEncoder().encode(value).length;
     }
@@ -507,6 +636,11 @@
       return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     }
 
+    // AUFTRAG-mega79 BLOCK B — Schnittmarken um den Frage-Abruf, damit ein Test ihn AUSFUEHREN
+    // kann statt seinen Quelltext zu lesen. Dieselbe Bauform wie KW-KLARA-AISTATE-FETCH-*: das
+    // Aufgabenfenster ist buildlos, also ist ein Schnitt die einzige Moeglichkeit, das WIRKLICH
+    // ausgelieferte `performAsk` (nicht seinen TypeScript-Zwilling) laufen zu lassen.
+    // KW-KLARA-ASK-FETCH-START
     function performAsk(question, locale, fetchFn, timeoutMs) {
       var controller = new AbortController();
       var timedOut = false;
@@ -555,8 +689,14 @@
                 // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
                 grade: askGradeOf(result.evidence),
                 evidence: result.evidence || undefined,
+                // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
+                // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
+                // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
+                aiGenerated: Boolean(result.aiGenerated),
               };
             }
+            // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
+            // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
             return { kind: "gap" };
           });
         })
@@ -568,6 +708,25 @@
           clearTimeout(timer);
           return outcome;
         });
+    }
+    // KW-KLARA-ASK-FETCH-END
+
+    // AUFTRAG-mega81 BLOCK A — die eine Entscheidung, ob die KI-Kennzeichnung sichtbar wird.
+    // Schnittmarken wie bei KW-KLARA-ASK-FETCH-*: das Aufgabenfenster ist buildlos, ein Schnitt ist
+    // die einzige Moeglichkeit, die WIRKLICH ausgelieferte Entscheidung auszufuehren statt ihren
+    // Quelltext zu lesen. Sie haengt AUSSCHLIESSLICH am serverseitigen Signal (`result.aiGenerated`)
+    // — nicht an der Flaeche, nicht an einer Einstellung, nicht an der Anwesenheit des Satzes.
+    // KW-KLARA-AI-NOTICE-START
+    function askAiNoticeVisible(outcome) {
+      return !!(outcome && outcome.kind === "answered" && outcome.aiGenerated === true);
+    }
+    // KW-KLARA-AI-NOTICE-END
+
+    // Sie an das Element haengen — EINE Stelle, von resetAskResult und renderAskOutcome gerufen.
+    function renderAiNotice(outcome) {
+      var el = document.getElementById("ask-ai-notice");
+      if (!el) { return; }
+      el.className = askAiNoticeVisible(outcome) ? "muted" : "muted hidden";
     }
 
     function canInsertAnswer(outcome) {
@@ -776,6 +935,40 @@
     function koDetailUrl(origin, koId) {
       return origin + "/wissen/" + encodeURIComponent(koId);
     }
+
+    // KW-KLARA-AISTATE-START
+    // AUFTRAG-mega75 Block B — Spiegel von apps/web/src/lib/wordAddin.ts#klaraAiLage.
+    //
+    // Dort wird NICHTS nachgebaut: `klaraAiLage` importiert und RUFT `deriveAiAvailable`
+    // (lib/aiAvailability.ts) und `aiTaskInfoPublic` (lib/reasonerTaskInfo.ts) — also genau die
+    // Funktionen, an denen auch AiModelInfo in der Anwendung haengt. Nur DIESE Fassung hier muss
+    // spiegeln, weil das Taskpane buildlos ist (kein Modulsystem, kein Bundler).
+    //
+    // Der Spiegel ist ueber den VOLLEN Vertrags-Zustandsraum gepinnt, nicht auf ein paar Beispiele:
+    // tests/app/mega75-klara-ki-status.test.ts faehrt jeden Punkt aus interface ReasonerStatus
+    // (api/types.ts) durch beide Fassungen und vergleicht. Ein Wechsel dort wird hier rot.
+    var KLARA_AI_TASK = "answer";
+
+    function deriveAiAvailable(status, task) {
+      if (!status) { return false; }
+      if (status.reachable === "unreachable") { return false; }
+      var taskUsable = status.tasks ? status.tasks[task] : undefined;
+      if (taskUsable === false) { return false; }
+      if (taskUsable === true) { return status.active === true; }
+      return status.active === true && status.mode !== "deterministic";
+    }
+
+    // DREI ehrliche Zustaende, nicht zwei: „laedt" ist KEIN Befund, und „nicht erreichbar" ist
+    // keine Verfuegbarkeitsaussage. Ein Ladezustand, der wie ein Befund aussieht, war der A22-Fehler.
+    function klaraAiLage(phase, status) {
+      if (phase === "laedt") { return "laedt"; }
+      if (phase === "unerreichbar") { return "unerreichbar"; }
+      if (!deriveAiAvailable(status, KLARA_AI_TASK)) { return "keine"; }
+      if (status.mode === "cloud") { return "extern"; }
+      if (status.mode === "local") { return "intern"; }
+      return "keine";
+    }
+    // KW-KLARA-AISTATE-END
     // KW-WORDADDIN-HELPERS-END
 
     // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
@@ -820,7 +1013,17 @@
         askHint: "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
         askInputPlaceholder: "Frage eingeben, wenn nichts markiert ist ...",
         askCta: "Klara fragen",
+        askSourceSelection: "Gefragt wird: deine Markierung im Dokument.",
+        askSourceSelectionOverride: "Gefragt wird: deine Markierung im Dokument — der Text unten wird dabei NICHT gesendet. Hebe die Markierung auf, um frei zu fragen.",
+        askSourceManual: "Gefragt wird: deine Eingabe unten.",
+        askReviewNotice: "Bitte vor Verwendung fachlich prüfen.",
         aiGeneratedNotice: "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
+        aiLageLaedt: "Der KI-Stand von KLARWERK wird abgefragt ... Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        aiLageUnerreichbar: "Der KI-Stand von KLARWERK ist gerade nicht abrufbar. Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        aiLageExtern: "In KLARWERK arbeitet für Antworten zurzeit eine externe KI (Cloud). Klaras Antwort in diesem Fenster entsteht davon unabhängig immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        aiLageIntern: "In KLARWERK arbeitet für Antworten zurzeit eine hausinterne KI. Klaras Antwort in diesem Fenster entsteht davon unabhängig immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        aiLageKeine: "In KLARWERK arbeitet für Antworten zurzeit keine KI. Für andere Aufgaben in KLARWERK kann das anders sein. Klaras Antwort in diesem Fenster entsteht ohnehin immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        askRuleNote: "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
         askBusy: "Klara sucht im KLARWERK-Wissen ...",
         askTruncated: "Die Markierung war länger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
@@ -918,7 +1121,17 @@
         askHint: "Select a statement in the document and ask Klara. The answer comes EXCLUSIVELY from KLARWERK knowledge — with sources. Without a selection you can ask freely below.",
         askInputPlaceholder: "Type a question if nothing is selected ...",
         askCta: "Ask Klara",
+        askSourceSelection: "Asking about: your selection in the document.",
+        askSourceSelectionOverride: "Asking about: your selection in the document — the text below is NOT sent. Clear the selection to ask freely.",
+        askSourceManual: "Asking about: your input below.",
+        askReviewNotice: "Please review professionally before use.",
         aiGeneratedNotice: "Generated by artificial intelligence — please review professionally.",
+        aiLageLaedt: "Retrieving KLARWERK's AI status ... Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        aiLageUnerreichbar: "KLARWERK's AI status is unavailable right now. Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        aiLageExtern: "In KLARWERK, answering currently uses an external AI (cloud). Klara's answer in this panel is independent of that and is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        aiLageIntern: "In KLARWERK, answering currently uses an in-house AI. Klara's answer in this panel is independent of that and is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        aiLageKeine: "In KLARWERK, answering currently uses no AI. Other tasks in KLARWERK may differ. Klara's answer in this panel is produced without an AI model in any case — rule-based, quoting validated knowledge word for word.",
+        askRuleNote: "How Klara works: validated KLARWERK knowledge is quoted word for word instead of being composed into a new answer. Your selected text is not sent to an external AI.",
         askEmpty: "Please select a statement in the document first or type a question below.",
         askBusy: "Klara is searching KLARWERK knowledge ...",
         askTruncated: "The selection was longer than {max} characters — the question was honestly truncated.",
@@ -1009,7 +1222,17 @@
         askHint: "Selecteer een uitspraak in het document en vraag Klara. Het antwoord komt UITSLUITEND uit KLARWERK-kennis — met bronnen. Zonder selectie kun je hieronder vrij vragen.",
         askInputPlaceholder: "Typ een vraag als er niets is geselecteerd ...",
         askCta: "Klara vragen",
+        askSourceSelection: "Gevraagd wordt: je selectie in het document.",
+        askSourceSelectionOverride: "Gevraagd wordt: je selectie in het document — de tekst hieronder wordt NIET verzonden. Hef de selectie op om vrij te vragen.",
+        askSourceManual: "Gevraagd wordt: je invoer hieronder.",
+        askReviewNotice: "Controleer dit vakinhoudelijk voordat je het gebruikt.",
         aiGeneratedNotice: "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
+        aiLageLaedt: "De AI-stand van KLARWERK wordt opgehaald ... Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        aiLageUnerreichbar: "De AI-stand van KLARWERK is nu niet op te halen. Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        aiLageExtern: "In KLARWERK werkt voor antwoorden momenteel een externe AI (cloud). Klara's antwoord in dit venster staat daar los van en komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        aiLageIntern: "In KLARWERK werkt voor antwoorden momenteel een interne AI. Klara's antwoord in dit venster staat daar los van en komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        aiLageKeine: "In KLARWERK werkt voor antwoorden momenteel geen AI. Voor andere taken in KLARWERK kan dat anders zijn. Klara's antwoord in dit venster komt sowieso zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        askRuleNote: "Zo werkt Klara: gevalideerde KLARWERK-kennis wordt woordelijk geciteerd in plaats van zelf geformuleerd. Je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
         askBusy: "Klara zoekt in KLARWERK-kennis ...",
         askTruncated: "De selectie was langer dan {max} tekens — de vraag is eerlijk ingekort.",
@@ -1124,10 +1347,89 @@
         document.getElementById("lang-" + code).className = code === lang ? "active" : "";
       });
       renderStatics();
+      renderAiLage(); // mega75 Block A: die KI-Lage in der neuen Sprache (Zustand bleibt, Text wechselt)
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
+
+    // ---- AUFTRAG-mega75 Block A: der oeffentliche KI-Zustand -----------------------------------
+    // Ueber den VORHANDENEN Vertrag GET /api/reasoner/status — same-origin, mit derselben Sitzung,
+    // mit der dieses Panel schon /api/ask und /api/drafts ruft. Kein neuer Endpunkt, kein neuer
+    // Guard, kein Add-in-eigener Modellaufruf. Die Route ist bewusst oeffentlich und abstrahiert
+    // (tests/security/routeGuardAudit.ts: protection "public"; vip2-gate: kein Modellname) — genau
+    // deshalb darf und muss Klara sie zeigen.
+    var aiLagePhase = "laedt";
+    var aiLageStatus = null;
+
+    function renderAiLage() {
+      var el = document.getElementById("ask-ai-lage");
+      if (!el) { return; }
+      var lage = klaraAiLage(aiLagePhase, aiLageStatus);
+      el.textContent = t("aiLage" + lage.charAt(0).toUpperCase() + lage.slice(1));
+    }
+
+    // AUFTRAG-mega77 BLOCK C — DER STATUSABRUF BRAUCHT EIN ENDE.
+    //
+    // Bis mega77 behandelte `ladeAiLage` Fehler, ungueltige Antworten und Zurueckweisungen als
+    // „nicht erreichbar", hatte aber WEDER ZEITGRENZE NOCH ABBRUCH. Ein Abruf, der weder erfuellt
+    // noch verworfen wird (haengende Verbindung, stiller Proxy, schlafendes Netz), blieb dauerhaft
+    // bei „laedt". Das ist keine Falschaussage — aber der fuenfte Zustand war damit nicht fuer
+    // jeden praktisch unerreichbaren Server erreichbar, und „wird geprueft" sieht auf Dauer aus
+    // wie ein Defekt.
+    //
+    // DIE LAENGE IST NICHT NEU ERFUNDEN: es ist dieselbe Frist, die dieses Aufgabenfenster seit
+    // WP-KLARA-1b fuer seinen ANDEREN kleinen Statusabruf verwendet — den Login-Poll gegen
+    // /api/auth/me (WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS). Beides sind kurze, same-origin
+    // Statusabfragen ohne Nutzlast; die lange Ask-Frist (WORD_ADDIN_ASK_TIMEOUT_MS = 15 s) gehoert
+    // zu einem Abruf, der serverseitig wirklich rechnet, und waere hier zu lang. Eine dritte Zahl
+    // waere eine dritte Wahrheit ueber dieselbe Frage.
+    // KW-KLARA-AISTATE-FETCH-START
+    function ladeAiLage() {
+      aiLagePhase = "laedt";
+      renderAiLage();
+      // Eigener AbortController je Abruf — dieselbe Bauart wie der Login-Poll: die Frist bricht den
+      // Abruf WIRKLICH ab und laeuft nicht bloss nebenher weiter.
+      var controller = new AbortController();
+      var beendet = false;
+      var frist = setTimeout(function () {
+        try { controller.abort(); } catch (e) { /* bereits beendet — egal */ }
+        // Der Abbruch loest die .catch-Kette aus; fuer den Fall, dass eine Laufzeit das NICHT tut
+        // (kein AbortSignal-Support im fetch-Polyfill), wird hier direkt geschlossen. Doppelt
+        // gesetzt schadet nicht — `beendet` verhindert, dass eine spaet eintreffende Antwort den
+        // bereits gefaellten Zustand wieder ueberschreibt.
+        if (!beendet) {
+          beendet = true;
+          aiLageStatus = null;
+          aiLagePhase = "unerreichbar";
+          renderAiLage();
+        }
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      fetch("/api/reasoner/status", { credentials: "include", signal: controller.signal })
+        .then(function (res) {
+          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          return res.json();
+        })
+        .then(function (body) {
+          // Ehrlich: nur ein wirklich gelesener Zustand zaehlt als „da". Alles andere ist nicht
+          // erreichbar — NIE „keine KI" behaupten, wenn wir es schlicht nicht wissen.
+          if (!body || typeof body !== "object") { throw new Error("leer"); }
+          if (beendet) { return; }
+          beendet = true;
+          aiLageStatus = body;
+          aiLagePhase = "da";
+          renderAiLage();
+        })
+        .catch(function () {
+          if (beendet) { return; }
+          beendet = true;
+          aiLageStatus = null;
+          aiLagePhase = "unerreichbar";
+          renderAiLage();
+        })
+        .then(function () { clearTimeout(frist); });
+    }
+    // KW-KLARA-AISTATE-FETCH-END
 
     // (a) Ehrlicher Anmelde-Status: GET /api/auth/me (bestehender Session-Endpunkt der App) mit
     // credentials: "include" — same-origin, da das Taskpane AUF der App-Domain liegt.
@@ -1388,10 +1690,38 @@
             showSendStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
           });
       };
-      if (selectedScope() === "document") {
-        readWholeDocument(finish);
+      // AUFTRAG-mega74 TEIL 2: zwischen „gelesen" und „gesendet" wird EINMAL versucht, die Bilder
+      // wirklich zu holen. Schlägt das fehl oder passt die Zuordnung nicht, geht exakt der
+      // bisherige Inhalt weiter — und die ehrliche Meldung bleibt stehen. Kein stiller Erfolg.
+      var scope = selectedScope();
+      var mitBildern = function (text, html, emptyKey) {
+        var inner = extractWordBodyHtml(html || "");
+        if (inner.length === 0 || countUndeliveredWordImages(inner) === 0) {
+          finish(text, html, emptyKey);
+          return;
+        }
+        holeWordBilder(scope, function (liste) {
+          if (!liste || liste.length === 0) {
+            finish(text, html, emptyKey);
+            return;
+          }
+          var gefuellt = fillWordImages(inner, liste);
+          if (gefuellt.filled === 0) {
+            finish(text, html, emptyKey);
+            return;
+          }
+          // BEWUSST OHNE html/body-Huelle: `extractWordBodyHtml` faellt ohne body-Tags auf den
+          // Rohstring zurueck (Word im Web liefert ohnehin oft nur Fragmente), also reicht der
+          // Rumpf. Eine Huelle haette ausserdem ein schliessendes body-Tag als LITERAL in dieses
+          // Skript gebracht — und die Testvorrichtung (mega36) schneidet den Quelltext am ersten
+          // Vorkommen genau dieses Tags. Deshalb steht es hier auch nicht im Kommentar.
+          finish(text, gefuellt.html, emptyKey);
+        });
+      };
+      if (scope === "document") {
+        readWholeDocument(mitBildern);
       } else {
-        readSelection(finish);
+        readSelection(mitBildern);
       }
     }
 
@@ -1434,6 +1764,76 @@
         });
       }).catch(function () {
         showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+      });
+    }
+
+    // ============================================================================================
+    // AUFTRAG-mega74 TEIL 2 — DIE BILDER ÜBER DIE OFFICE-SCHNITTSTELLE HOLEN.
+    // ============================================================================================
+    //
+    // ANFORDERUNGSSTUFE, an der Dokumentation belegt (learn.microsoft.com, Stand 17.06.2026):
+    //   · Body.inlinePictures ......................... WordApi 1.1   ← der Dokument-Umfang
+    //   · InlinePictureCollection (Klasse/items/load) .. WordApi 1.1
+    //   · InlinePicture.getBase64ImageSrc() ........... WordApi 1.1
+    // Das Manifest bleibt damit bei MinVersion 1.1 — es gibt hier NICHTS zu entscheiden.
+    //
+    // ABER, und das ist die ehrliche Grenze: in der 1.1-Ansicht von `Word.Range` gibt es KEIN
+    // `inlinePictures` (die 1.1-Eigenschaften sind contentControls, font, paragraphs,
+    // parentContentControl, style, text). Der AUSWAHL-Umfang kann die Bilder auf Stufe 1.1 also
+    // nicht direkt erfragen. Deshalb geht er über `getSelection().paragraphs` — und weil auch das
+    // je nach Host fehlen kann, wird es NICHT geglaubt, sondern zur LAUFZEIT versucht und bei
+    // jedem Fehlschlag ehrlich aufgegeben. Kein Manifest-Wechsel, kein Ausschluss älterer Hosts.
+    //
+    // DIE OBERGRENZE ist eine benannte Grenze und keine Zusage: über WORD_ADDIN_MAX_BILDER wird
+    // gar nicht erst geholt. Pedis 79-Seiten-Kundendokument ist genau der Fall, für den sie da ist
+    // — jedes Bild reist als Base64 (≈ Datei × 1,37) durch den Arbeitsspeicher des Taskpanes, und
+    // das Byte-Budget des Entwurfs (3,5 MB) ist ohnehin die harte Kante dahinter.
+    var WORD_ADDIN_MAX_BILDER = 60;
+
+    // Sammelt die Bild-Bytes des gewählten Umfangs. Ruft `done(liste)` mit den Base64-Zeichenketten
+    // in DOKUMENTREIHENFOLGE — oder `done(null)`, wenn es nicht ging. `null` heißt „wir wissen es
+    // nicht"; der Aufrufer meldet dann weiterhin ehrlich, dass Bilder fehlen.
+    function holeWordBilder(scope, done) {
+      if (!window.Word || typeof Word.run !== "function") { done(null); return; }
+      Word.run(function (context) {
+        var sammlungen = [];
+        if (scope === "document") {
+          sammlungen.push(context.document.body.inlinePictures);
+        } else {
+          // Auswahl: über die Absätze, s. Begründung oben. Wirft der Host hier, greift das catch.
+          var absaetze = context.document.getSelection().paragraphs;
+          absaetze.load("items");
+          return context.sync().then(function () {
+            var items = absaetze.items || [];
+            for (var a = 0; a < items.length; a += 1) { sammlungen.push(items[a].inlinePictures); }
+            return ladeBilder(context, sammlungen);
+          });
+        }
+        return ladeBilder(context, sammlungen);
+      }).then(function (liste) { done(liste); }, function () { done(null); });
+    }
+
+    // Zweiter Schritt, für beide Umfänge gleich: Sammlungen laden, dann je Bild die Bytes anfordern
+    // und in EINEM weiteren context.sync abholen (nicht je Bild ein eigener Rundlauf).
+    function ladeBilder(context, sammlungen) {
+      for (var i = 0; i < sammlungen.length; i += 1) { sammlungen[i].load("items"); }
+      return context.sync().then(function () {
+        var bilder = [];
+        for (var j = 0; j < sammlungen.length; j += 1) {
+          var items = sammlungen[j].items || [];
+          for (var k = 0; k < items.length; k += 1) { bilder.push(items[k]); }
+        }
+        if (bilder.length === 0) { return []; }
+        if (bilder.length > WORD_ADDIN_MAX_BILDER) { return null; }
+        var ergebnisse = [];
+        for (var m = 0; m < bilder.length; m += 1) { ergebnisse.push(bilder[m].getBase64ImageSrc()); }
+        return context.sync().then(function () {
+          var liste = [];
+          for (var n = 0; n < ergebnisse.length; n += 1) {
+            liste.push(String(ergebnisse[n].value || ""));
+          }
+          return liste;
+        });
       });
     }
 
@@ -1483,6 +1883,9 @@
       edit.value = "";
       edit.rows = 4;
       document.getElementById("ask-answer-toggle").className = "ghost hidden";
+      // AUFTRAG-mega81 BLOCK A: die Kennzeichnung einer FRUEHEREN Antwort darf nie stehen bleiben —
+      // sie gehoert zu der Antwort, ueber die der Server sie gesagt hat, und zu keiner anderen.
+      renderAiNotice(null);
       // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
       hideCopyFallback();
     }
@@ -1617,6 +2020,9 @@
       var truncatedNote = truncated
         ? " " + t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })
         : "";
+      // AUFTRAG-mega81 BLOCK A: die KI-Kennzeichnung folgt dem Antwortweg, ueber JEDEN Ausgang
+      // dieser Funktion — nicht nur ueber den, an den gerade jemand gedacht hat.
+      renderAiNotice(outcome);
       if (outcome.kind === "answered") {
         currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
@@ -1654,6 +2060,8 @@
         // Die ehrliche Wissensluecken-Karte: KEINE erfundene Antwort; /api/ask hat die Luecke
         // serverseitig bereits vermerkt — zusaetzlich kann sie als offene Frage (Draft) reisen.
         document.getElementById("ask-gap-block").className = "";
+        // AUFTRAG-mega77 BLOCK A: hier wurde der Satz mit der Zahl der unterdrueckten ungeprueften
+        // Treffer gesetzt. Entfernt — Begruendung an der Absage-Karte oben.
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         return;
       }
@@ -1674,6 +2082,29 @@
       if (!officeUsable()) { done(""); return; }
       Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
         done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
+      });
+    }
+
+    // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Eingabefeld sagt, WORAUS die Frage entsteht.
+    // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
+    // zweite, die morgen anders ausfaellt. Sie behauptet nichts, wenn sie nichts weiss: ohne
+    // Office bleibt sie leer.
+    function updateAskSourceNote() {
+      var note = document.getElementById("ask-source-note");
+      if (!note) { return; }
+      if (!officeUsable()) { note.textContent = ""; return; }
+      readAskSelection(function (selectionText) {
+        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        if (prep.from === "selection") {
+          var auchGetippt = document.getElementById("ask-input").value.trim().length > 0;
+          note.textContent = auchGetippt
+            ? t("askSourceSelectionOverride")
+            : t("askSourceSelection");
+        } else if (prep.from === "manual") {
+          note.textContent = t("askSourceManual");
+        } else {
+          note.textContent = "";
+        }
       });
     }
 
@@ -2057,6 +2488,20 @@
     document.getElementById("tab-ask").addEventListener("click", function () { setTab("ask"); });
     document.getElementById("tab-capture").addEventListener("click", function () { setTab("capture"); });
     document.getElementById("ask-btn").addEventListener("click", askKlara);
+    // AUFTRAG-mega74 TEIL 2b: die Herkunfts-Zeile wird aktuell gehalten — beim Tippen, beim
+    // Betreten des Feldes und (wo Office es anbietet) bei jeder Aenderung der Markierung im
+    // Dokument. Der Ereignis-Anschluss ist bewusst in try/catch: faellt er auf einem Host aus,
+    // bleibt die Zeile still statt falsch, und die uebrigen beiden Wege tragen weiter.
+    document.getElementById("ask-input").addEventListener("input", updateAskSourceNote);
+    document.getElementById("ask-input").addEventListener("focus", updateAskSourceNote);
+    try {
+      if (officeUsable() && Office.EventType && Office.EventType.DocumentSelectionChanged) {
+        Office.context.document.addHandlerAsync(
+          Office.EventType.DocumentSelectionChanged,
+          updateAskSourceNote
+        );
+      }
+    } catch (e) { /* Host ohne dieses Ereignis: die Zeile bleibt still, nie falsch. */ }
     document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
     document.getElementById("ask-copy-btn").addEventListener("click", copyAnswer);
     document.getElementById("ask-answer-toggle").addEventListener("click", toggleAnswerExpanded);
@@ -2117,6 +2562,9 @@
     }
     // Der Session-Check laeuft in JEDEM Fall — der Anmelde-Status ist auch im Browser sichtbar.
     checkSession();
+    // AUFTRAG-mega75 Block A: dito fuer die KI-Lage. Sie haengt nicht an Office und nicht an der
+    // Anmeldung (die Route ist oeffentlich) — bis die Antwort da ist, steht ehrlich „wird geprueft".
+    ladeAiLage();
   </script>
 </body>
 </html>

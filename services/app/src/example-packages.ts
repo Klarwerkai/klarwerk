@@ -320,6 +320,11 @@ export async function loadExamplePackage(
         const ref = await services.objects.put({
           // AUFTRAG-mega20 Block C: Demobestand, nicht Nutzerbestand — ausdrücklich deklariert.
           purpose: "example" as const,
+          // AUFTRAG-mega78 BLOCK A: derselbe `actor` legt gleich das Wissensobjekt an, dessen
+          // Fließtext dieses Bild nennt. Ohne diese Herkunft wäre die Bildreferenz im Body eine
+          // Zuordnung ohne Hochladenden — also kein Nachweis, und das Beispielbild verschwände.
+          owner: actor,
+
           name: `${externalId}-${i + 1}.png`,
           mime: "image/png",
           data: TINY_PNG,

@@ -1,5 +1,6 @@
 import type { AuditService } from "../../audit";
 import type { KoService } from "../../knowledge-object";
+import type { Sichtbarkeitsfilter } from "./sichtbarkeit";
 
 // FR-ANA-02: Wirkungs-Dashboard — zwei Kernmetriken über Zeit.
 export interface ImpactReport {
@@ -20,8 +21,17 @@ function weekKey(iso: string): string {
   return monday.toISOString().slice(0, 10);
 }
 
-export async function impactReport(ko: KoService, audit: AuditService): Promise<ImpactReport> {
-  const kos = await ko.list({});
+// AUFTRAG-mega76 BLOCK D: `sichtbar` ist PFLICHT. Ein vertrauliches validiertes KO erhöhte
+// `validatedTotal` UND genau den Wochenbucket seines `createdAt` — bei einem Wochenbucket mit Wert
+// 1 war neben der Existenz auch der Zeitraum eingrenzbar (ben, sammel72). Die Ask-Zähler stammen
+// aus dem Audit und sind eine zweite, unabhängige Grundmenge; sie heilen den KO-Leak nicht und
+// bleiben hier unberührt.
+export async function impactReport(
+  ko: KoService,
+  audit: AuditService,
+  opts: { sichtbar: Sichtbarkeitsfilter },
+): Promise<ImpactReport> {
+  const kos = (await ko.list({})).filter(opts.sichtbar);
   const validated = kos.filter((entry) => entry.status === "validiert");
   const validatedByWeek: Record<string, number> = {};
   for (const entry of validated) {

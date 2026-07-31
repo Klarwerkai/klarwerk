@@ -100,7 +100,7 @@ describe("mega31 A · der Preis der Umkehr an einem Bestand von 39 Objekten", ()
     const ids = await seed(services);
     await runAll(services, ids);
 
-    const summary = await services.ko.aiCheckCoverageSummary();
+    const summary = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
     expect(summary.total).toBe(BESTAND);
     // Jeder Lauf schließt sauber ab — `done`, kein Übersprung, kein Abbruch.
     const first = await services.ko.get(ids[0] as string);
@@ -126,7 +126,7 @@ describe("mega31 A · der Preis der Umkehr an einem Bestand von 39 Objekten", ()
     const ids = await seed(services);
     await runAll(services, ids);
 
-    const summary = await services.ko.aiCheckCoverageSummary();
+    const summary = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
     const first = await services.ko.get(ids[0] as string);
     expect(first?.aiCheck?.status).toBe("failed");
     // AUFTRAG-mega31 A1: VOR der Umkehr stand hier completed=20, skipped=0 — zwanzig Kandidaten
@@ -161,7 +161,7 @@ describe("mega31 A · der Preis der Umkehr an einem Bestand von 39 Objekten", ()
       });
     }
 
-    const summary = await services.ko.aiCheckCoverageSummary();
+    const summary = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
     // Vor der Umkehr: incomplete=0, unchecked=0 → die Fußnote auf den leeren Boards rendert NICHTS.
     expect(summary).toEqual({
       total: BESTAND,
@@ -178,7 +178,7 @@ describe("mega31 A · der Preis der Umkehr an einem Bestand von 39 Objekten", ()
       await services.ko.recordAiCheckOutcome(id, { ok: true }); // Abschluss ohne Protokoll
     }
 
-    const summary = await services.ko.aiCheckCoverageSummary();
+    const summary = await services.ko.aiCheckCoverageSummary({ sichtbar: () => true });
     // Vor der Umkehr standen diese 39 unter `unchecked` und wurden als „gar keinen Lauf" betextet.
     expect(summary).toEqual({
       total: BESTAND,

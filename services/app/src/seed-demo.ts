@@ -842,6 +842,9 @@ async function buildDemoContent(
     mime: "image/png",
     data: TINY_PNG,
     purpose: "example",
+    // AUFTRAG-mega78 BLOCK A: die HERKUNFT muss zu dem passen, der gleich die Zuordnung macht —
+    // sonst ist der Seed-Anhang eine Zuordnung ohne Hochladenden und damit kein Nachweis.
+    owner: erikId,
   });
   await ko.addAttachment(koValid.id, erikId, {
     name: "skizze.png",
@@ -860,6 +863,8 @@ async function buildDemoContent(
     mime: "image/png",
     data: TINY_PNG,
     purpose: "example",
+    // AUFTRAG-mega78 BLOCK A: s. o. — Hochladender und Urheber der Zuordnung sind dieselbe Person.
+    owner: carlaId,
   });
   await ko.addAttachment(koLieferantSchutz.id, carlaId, {
     name: "preisstaffel.png",

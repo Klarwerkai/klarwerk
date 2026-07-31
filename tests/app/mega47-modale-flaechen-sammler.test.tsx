@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-// AUFTRAG-mega47 Block B → AUFTRAG-mega48 Block B — DER SAMMLER FÜR MODALE FLÄCHEN.
+// AUFTRAG-mega47 Block B → mega48 Block B → AUFTRAG-mega72 — DER SAMMLER FÜR MODALE FLÄCHEN.
 //
 // DIE GESCHICHTE DIESER DATEI, ehrlich, weil sie die Bauform erklärt:
 //
@@ -15,25 +15,44 @@
 //  · sammel45 (ben, ROT): genau daran ist er gescheitert. `ImportSelect` bindet `FacetFilter` ein und
 //    LÄSST DEN PROP WEG — eine produktiv erreichbare dritte Fläche, die in der Erhebung schlicht
 //    nicht vorkam und deren `aria-modal="true"` reine Behauptung war. Ein Sammler, der nur findet,
-//    was sich freiwillig meldet, ist kein Sammler.
+//    was sich freiwillig meldet, ist kein Sammler. mega48 hat daraufhin die Modalgrenze zum Kontext
+//    gemacht (`app/ModalBoundaryContext.tsx`), den eine modale Fläche HOLT, und die Erhebung auf
+//    Aufrufer statt Freiwillige umgestellt — aber weiterhin über Zeichenkettenmuster.
 //
-// DESHALB ERHEBT ER JETZT AUFRUFER STATT FREIWILLIGE. Die Modalgrenze ist seit mega48 nicht mehr ein
-// Prop, den man vergessen kann, sondern ein Kontext, den eine modale Fläche HOLT
-// (`app/ModalBoundaryContext.tsx`). Daran hängt die Erhebung — in zwei Stufen, beide über den
-// Quellbaum und keine über eine Liste der heutigen Fälle:
+//  · sammel46 (ben, Register A17): auch DIESE Erhebung war ein statischer Musterwächter. Alias-
+//    Nutzung (`const C = FacetFilter`), `createElement(FacetFilter, …)`, ein per Spread gesetztes
+//    `aria-modal` und Modalität ohne die Zeichenfolge gingen vorbei — und weil kein unabhängiger
+//    Zähler existierte, UNSICHTBAR. Der dritte Wächter derselben kaputten Bauart in einer Woche.
 //
-//   (1) DIE BAUTEILE: jede Quelldatei, die `aria-modal` setzt — also App-Modalität BEHAUPTET. Das
-//       ist bewusst der Anker: er hängt nicht daran, ob jemand die Grenze auch benutzt, sondern an
-//       der Behauptung selbst. Jede solche Datei MUSS die eine Modalgrenze benutzen
-//       (`useModalBoundary`); eine zweite, selbstgebaute Bauform ist damit rot, statt unsichtbar zu
-//       sein. Aus der Datei werden die EXPORTIERTEN Komponenten gelesen (heute `FacetFilter`,
-//       `MobileNavDrawer`).
-//   (2) DIE AUFRUFER: jede Quelldatei, die eines dieser Bauteile im JSX EINBINDET. Weglassen kann
-//       man hier nichts mehr: wer das Bauteil benutzt, steht im Fund — mit oder ohne Props.
+// DESHALB (mega72) LÄUFT DIE ERHEBUNG JETZT ÜBER DEN ECHTEN SYNTAXBAUM — den TypeScript-Compiler,
+// der ohnehin im Projekt liegt (keine neue Abhängigkeit) — und wird gegen einen UNABHÄNGIGEN ZÄHLER
+// abgerechnet:
+//
+//   (1) KANDIDATEN: jede Stelle im Quellbaum, die modal sein KÖNNTE — `aria-modal` als JSX-Attribut,
+//       als Objekt-Eigenschaft (die Spread-Bauform) oder als nackte Zeichenkette (`setAttribute`),
+//       jedes `<dialog>`-Element (JSX oder `createElement("dialog")`), `role="dialog"` /
+//       `"alertdialog"` und jede `showModal`-Nutzung. Jeder Kandidat trägt Datei und Zeile.
+//   (2) URTEILE: jeder Kandidat bekommt GENAU EIN Urteil — an der Grenze (`useModalBoundary`), das
+//       Grenzmodul selbst, oder eine BEGRÜNDETE native Ausnahme (heute nur `BodyImageGallery`:
+//       `showModal()` bekommt Top-Layer und inerten Hintergrund vom Browser; die Ausnahme verliert
+//       ihre Gültigkeit automatisch, wenn der `showModal()`-Beleg aus der Datei verschwindet).
+//       Alles andere ist ROT mit Datei und Zeile. Die Summen werden exakt kalibriert: eine
+//       Erhebung, die still auf null fällt, ist ein Fehler und kein Erfolg.
+//   (3) DER UNABHÄNGIGE ZÄHLER: jede wörtliche Erwähnung von `aria-modal`, `showModal` und `<dialog`
+//       im kommentarbereinigten Quelltext muss abgerechnet sein — als Kandidat oder als belegte
+//       Prosa (Zeichenkette/Template/JsxText/Regex). Eine Erwähnung, die der Syntaxbaum nicht
+//       erklären kann, heißt: der Sammler konnte eine Bauform nicht lesen — und das wird ROT mit
+//       Datei und Zeile, statt still überganen zu werden. Dasselbe gilt auf der Aufrufer-Seite je
+//       Bauteil-Name (`\bFacetFilter\b` usw. gegen die gefundenen Identifikatoren).
+//   (4) AUFRUFER über Identifikatoren, nicht Zeichenketten: JSX (auch qualifiziert), `createElement`,
+//       Alias (`const C = FacetFilter;`) und Import-Alias (`import { FacetFilter as FF }`) gelten
+//       als Einbindung; Re-Exporte, HOC-Übergaben (`memo(FacetFilter)`) und jede unbekannte
+//       Verwendungsform sind ROT statt unsichtbar. Eine Datei, die nicht parsebar ist, ist ROT mit
+//       Datei und Zeile.
 //
 // Jedes Paar (Aufrufer × Bauteil) MUSS unten einen gemounteten Fall haben, und zwar an der ECHTEN
-// Verdrahtung: die Seite in der echten AppShell. Ein vierter Aufrufer, der morgen dazukommt, ist rot,
-// bis er hier steht. Die Gegenrichtung gilt auch — ein Fall ohne Fundstelle ist ebenfalls rot.
+// Verdrahtung: die Seite in der echten AppShell. Ein weiterer Aufrufer, der morgen dazukommt, ist
+// rot, bis er hier steht. Die Gegenrichtung gilt auch — ein Fall ohne Fundstelle ist ebenfalls rot.
 //
 // JE FALL WIRD BEIDES VERLANGT (mega48 B2):
 //   a) der geöffnete Dialog hat KEINEN `[inert]`-Vorfahren, und
@@ -42,21 +61,19 @@
 //      genau daran ist mega47 gescheitert.
 //
 // BENANNTE BLINDHEIT DIESER ERHEBUNG (es gibt sie immer; verschwiegen wird sie zur Falle):
-//   · Sie sieht nur, was im JSX beim Namen genannt wird. Ein Bauteil, das über eine Variable
-//     (`const C = FacetFilter; <C/>`), über `createElement(FacetFilter, …)` oder aus einer
-//     Wrapper-Komponente heraus eingebunden wird, fällt durch. Die Wrapper-Komponente selbst wäre
-//     allerdings wieder ein Fund, sobald sie das Bauteil im JSX nennt — die Kette bricht erst bei
-//     bewusster Indirektion.
-//   · Sie kennt nur Bauteile, die `aria-modal` im Quelltext SETZEN. Eine Fläche, die Modalität auf
-//     einem anderen Weg herstellt, fällt durch: `apps/web/src/components/Modal.tsx` (der
-//     Navigations-Wächter-Dialog und viele andere) trägt bewusst weder `role="dialog"` noch
-//     `aria-modal` und ist deshalb kein Fund — er ist damit aber auch NICHT gegen die Shell
-//     abgegrenzt. `BodyImageGallery` benutzt das native `showModal()`, das seine Modalität vom
-//     Browser bekommt (Top-Layer statt `inert`). Beide sind NICHT Gegenstand dieses Auftrags; sie
-//     sind eine eigene Scheibe, und sie sind hier ausdrücklich benannt, damit niemand die grüne
-//     Farbe dieser Datei für „alle Dialoge sind abgegrenzt" hält.
-//   · Ein `aria-modal`, das über eine Variable oder ein Spread-Objekt in den Dialog kommt, fällt
-//     ebenfalls durch das Muster.
+//   · Zur Laufzeit zusammengesetzte Namen: `setAttribute("aria-" + "modal", …)` oder ein
+//     Attributname aus einer Variablen sieht weder der Syntaxbaum-Anker noch der Wortzähler.
+//   · Markup in Zeichenketten (`innerHTML`, Template-Strings) gilt als Prosa — ein `<dialog>`, das
+//     erst zur Laufzeit aus einer Zeichenkette entsteht, ist kein Kandidat.
+//   · `role={variable}` bzw. eine `role` ohne wörtliches "dialog"/"alertdialog" fällt durch.
+//   · Modalität GANZ OHNE Marker bleibt unsichtbar: `apps/web/src/components/Modal.tsx` und die
+//     Command-Palette sind fixe Overlays ohne `<dialog>`, ohne `role`, ohne `aria-modal` — für
+//     JEDE statische Erhebung unsichtbar und weiterhin NICHT gegen die Shell abgegrenzt. Sie sind
+//     eine eigene Scheibe und hier ausdrücklich benannt, damit niemand die grüne Farbe dieser
+//     Datei für „alle Dialoge sind abgegrenzt" hält.
+//   · Der Wortzähler läuft über kommentarbereinigten Text; eine Zeichenkette, die selbst `//`
+//     enthält, unterdrückt Treffer derselben Zeile (er zählt dann zu WENIG — der Syntaxbaum-Anker
+//     bleibt davon unberührt, nur das Sicherheitsnetz wird an dieser Stelle dünner).
 //   · jsdom setzt `inert` nicht nativ durch. Belegbar ist hier die STRUKTUR (DOM-Abstammung), nicht
 //     die WIRKUNG. Dass ein gesperrter Bereich im echten Browser wirklich tot und ein nicht
 //     gesperrter Dialog wirklich bedienbar ist, belegt `tests-smoke/ui-smoke.spec.ts`.
@@ -64,6 +81,7 @@
 //     Browser-Verhalten von `inert`, nicht an der Struktur.
 import { readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
+import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -130,12 +148,27 @@ import { AppShell } from "../../apps/web/src/shell/AppShell";
 Element.prototype.scrollIntoView = () => {};
 
 // ---------------------------------------------------------------------------------------------
-// (1) Die Erhebung: der Quellbaum, nicht eine Liste.
+// (1) Die Erhebung: der echte Syntaxbaum plus ein unabhängiger Zähler (mega72, Register A17).
 // ---------------------------------------------------------------------------------------------
 
 const WURZEL = join(__dirname, "..", "..");
 const WEB_SRC = join("apps", "web", "src");
 const GRENZE_MODUL = "apps/web/src/app/ModalBoundaryContext.tsx";
+
+// BEGRÜNDETE native Ausnahmen: Flächen, deren Modalität der BROWSER herstellt (Top-Layer + inerter
+// Hintergrund über `showModal()`), nicht die Shell-Grenze. Die Ausnahme ist an ihren Beleg
+// gebunden — verschwindet `showModal()` aus der Datei, wird sie rot statt still weitergeschleppt.
+//
+// AUFTRAG-mega76 BLOCK E: der Schlüssel ist weiterhin die Datei, die WIRKUNG aber nicht mehr.
+// Ausgenommen wird nur noch der Kandidat der Art `showModal-nutzung` selbst (s. `beurteile`) —
+// jeder andere Kandidat derselben Datei muss die Modalgrenze der Shell weiterhin vorweisen. Eine
+// Ausnahme, die auf Dateiebene wirkt, deckt Funde ab, die sie nie begründet hat.
+const NATIV_MODAL_AUSNAHMEN = new Map<string, string>([
+  [
+    "apps/web/src/components/BodyImageGallery.tsx",
+    "Lightbox über natives showModal() — Top-Layer und inerter Hintergrund kommen vom Browser (WP-D9c)",
+  ],
+]);
 
 // Derselbe Fokus-Selektor wie in `apps/web/src/lib/focusables.ts` — bewusst gespiegelt: weicht er im
 // Produktcode still auf, fällt es hier auf.
@@ -170,66 +203,580 @@ function quelldateien(verzeichnis: string): string[] {
 }
 
 // Kommentare zählen nicht: dieser Sammler beschreibt seine eigene Bauform ausführlich in Prosa, und
-// eine Erwähnung ist keine Verdrahtung.
+// eine Erwähnung ist keine Verdrahtung. ZEILENTREU: Blockkommentare werden durch Leerraum ersetzt,
+// nicht entfernt — die Zeilennummern des gestrippten Textes sind die der Datei.
 function ohneKommentare(quelle: string): string {
-  return quelle.replace(/\/\*[\s\S]*?\*\//g, "").replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+  return quelle
+    .replace(/\/\*[\s\S]*?\*\//g, (kommentar) => kommentar.replace(/[^\n]/g, " "))
+    .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
 }
 
 function posix(pfad: string): string {
   return pfad.split(sep).join("/");
 }
 
-interface Fund {
+interface Quelle {
   datei: string;
-  quelle: string;
+  text: string;
+  gestrippt: string;
+  ast: ts.SourceFile;
+  // Was der Sammler nicht lesen konnte, wird rot mit Datei und Zeile — nicht übergangen.
+  leseFehler: string[];
 }
 
-const ALLE_QUELLEN: Fund[] = quelldateien(WEB_SRC).map((datei) => ({
-  datei: posix(datei),
-  quelle: ohneKommentare(readFileSync(join(WURZEL, datei), "utf8")),
-}));
-
-// Ein modales BAUTEIL behauptet App-Modalität …
-const MODAL_MUSTER = /aria-modal\s*=/;
-// … und muss dafür die EINE Modalgrenze der Shell benutzen.
-const GRENZE_MUSTER = /useModalBoundary\s*\(/;
-// Eine exportierte Komponente ist das, was ein Aufrufer einbinden kann.
-const EXPORT_MUSTER = /export function ([A-Z]\w*)/g;
-// Ein AUFRUFER nennt das Bauteil im JSX beim Namen.
-function einbindeMuster(komponente: string): RegExp {
-  return new RegExp(`<\\s*${komponente}[\\s/>]`);
+function quelleAus(datei: string, text: string): Quelle {
+  const art = datei.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+  const ast = ts.createSourceFile(datei, text, ts.ScriptTarget.Latest, true, art);
+  // `parseDiagnostics` ist die einzige Stelle, an der der Parser Syntaxfehler ablegt, ohne dass man
+  // ein ganzes Program bauen muss — im öffentlichen Typ fehlt das Feld, im Objekt liegt es immer.
+  const diagnosen =
+    (ast as ts.SourceFile & { parseDiagnostics?: ts.DiagnosticWithLocation[] }).parseDiagnostics ??
+    [];
+  const leseFehler = diagnosen.slice(0, 3).map((d) => {
+    const zeile = ast.getLineAndCharacterOfPosition(d.start).line + 1;
+    return `${datei}:${zeile} — ${ts.flattenDiagnosticMessageText(d.messageText, " ")}`;
+  });
+  return { datei, text, gestrippt: ohneKommentare(text), ast, leseFehler };
 }
+
+function ladeQuelle(datei: string): Quelle {
+  return quelleAus(posix(datei), readFileSync(join(WURZEL, datei), "utf8"));
+}
+
+function zeileVon(sf: ts.SourceFile, n: ts.Node): number {
+  return sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
+}
+
+type KandidatArt =
+  | "aria-modal-attribut"
+  | "aria-modal-eigenschaft"
+  | "aria-modal-zeichenkette"
+  | "dialog-jsx"
+  | "dialog-createElement"
+  | "role-dialog"
+  | "showModal-nutzung";
+
+interface Kandidat {
+  datei: string;
+  zeile: number;
+  art: KandidatArt;
+  /**
+   * AUFTRAG-mega76 BLOCK E: bei `dialog-jsx` der Bezeichner aus `ref={…}`.
+   *
+   * Er ist das Bindeglied, mit dem sich die native Ausnahme AM FUND belegen lässt statt an der
+   * Datei: nur ein `<dialog>`, dessen genau dieses `ref` irgendwo `showModal()` empfängt, wird
+   * vom Browser modal gemacht. Ein zweites `<dialog>` in derselben Datei bekommt nichts geschenkt.
+   */
+  ref?: string;
+}
+
+interface DateiErhebung {
+  quelle: Quelle;
+  kandidaten: Kandidat[];
+  // Spannen aller Text-Tokens (Zeichenketten, Templates, JsxText, Regex), die KEIN Kandidat sind —
+  // die belegte Prosa, gegen die der unabhängige Zähler abrechnet.
+  prosaSpannen: Array<readonly [number, number]>;
+  nutztGrenze: boolean;
+  exportierte: string[];
+  /**
+   * AUFTRAG-mega76 BLOCK E: die Ref-Bezeichner, auf denen in DIESER Datei `showModal()` läuft —
+   * `dialogRef.current.showModal()` ebenso wie `const d = dialogRef.current; d.showModal()`.
+   */
+  nativeRefs: Set<string>;
+}
+
+function istExportiert(n: ts.Declaration): boolean {
+  const flags = ts.getCombinedModifierFlags(n);
+  return (flags & (ts.ModifierFlags.Export | ts.ModifierFlags.Default)) !== 0;
+}
+
+function aufrufName(call: ts.CallExpression): string {
+  const c = call.expression;
+  if (ts.isIdentifier(c)) {
+    return c.text;
+  }
+  if (ts.isPropertyAccessExpression(c)) {
+    return c.name.text;
+  }
+  return "";
+}
+
+function istTextToken(n: ts.Node): boolean {
+  return (
+    ts.isStringLiteral(n) ||
+    ts.isJsxText(n) ||
+    n.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral ||
+    n.kind === ts.SyntaxKind.TemplateHead ||
+    n.kind === ts.SyntaxKind.TemplateMiddle ||
+    n.kind === ts.SyntaxKind.TemplateTail ||
+    n.kind === ts.SyntaxKind.RegularExpressionLiteral
+  );
+}
+
+function erhebeDatei(quelle: Quelle): DateiErhebung {
+  const sf = quelle.ast;
+  const kandidaten: Kandidat[] = [];
+  const prosaSpannen: Array<readonly [number, number]> = [];
+  const exportierte: string[] = [];
+  let nutztGrenze = false;
+  // Text-Tokens, die bereits als Kandidat erfasst sind, dürfen nicht zusätzlich Prosa werden —
+  // sonst wäre jede Erwähnung doppelt erklärt und der Zähler wertlos.
+  const kandidatTokens = new Set<ts.Node>();
+
+  const melde = (n: ts.Node, art: KandidatArt, ref?: string): void => {
+    kandidaten.push({ datei: quelle.datei, zeile: zeileVon(sf, n), art, ...(ref ? { ref } : {}) });
+  };
+
+  // AUFTRAG-mega76 BLOCK E — die Kette `<dialog ref={R}>` … `R.current.showModal()` nachziehen.
+  // `aliasse` fängt die Zwischenvariable ab (`const d = dialogRef.current`), `showModalZiele` die
+  // Bezeichner, auf denen der Aufruf wirklich steht. Erst beides zusammen belegt, dass GENAU
+  // dieses `<dialog>` vom Browser modal gemacht wird.
+  const aliasse = new Map<string, string>();
+  const showModalZiele = new Set<string>();
+
+  // Der Bezeichner hinter `X`, `X.current` oder einem Alias darauf.
+  const refBezeichner = (n: ts.Node): string | undefined => {
+    if (ts.isIdentifier(n)) {
+      return aliasse.get(n.text) ?? n.text;
+    }
+    if (ts.isPropertyAccessExpression(n) && n.name.text === "current") {
+      return refBezeichner(n.expression);
+    }
+    return undefined;
+  };
+
+  const besuch = (node: ts.Node): void => {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "useModalBoundary"
+    ) {
+      nutztGrenze = true;
+    }
+    if (ts.isFunctionDeclaration(node) && node.name && /^[A-Z]/.test(node.name.text)) {
+      if (istExportiert(node)) {
+        exportierte.push(node.name.text);
+      }
+    }
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      /^[A-Z]/.test(node.name.text) &&
+      node.initializer &&
+      (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)) &&
+      istExportiert(node)
+    ) {
+      exportierte.push(node.name.text);
+    }
+
+    // `aria-modal` als JSX-Attribut — die gerade Bauform.
+    if (ts.isJsxAttribute(node) && node.name.getText(sf) === "aria-modal") {
+      melde(node.name, "aria-modal-attribut");
+    }
+    // `aria-modal` als Objekt-Eigenschaft — die Spread-Bauform aus bens Befund.
+    if (
+      ts.isPropertyAssignment(node) &&
+      ts.isStringLiteral(node.name) &&
+      node.name.text === "aria-modal"
+    ) {
+      melde(node.name, "aria-modal-eigenschaft");
+      kandidatTokens.add(node.name);
+    }
+    // `aria-modal` als nackte Zeichenkette — `setAttribute` und Verwandte.
+    if (
+      (ts.isStringLiteral(node) || node.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) &&
+      (node as ts.StringLiteralLike).text === "aria-modal" &&
+      !kandidatTokens.has(node)
+    ) {
+      melde(node, "aria-modal-zeichenkette");
+      kandidatTokens.add(node);
+    }
+    // `<dialog>` im JSX.
+    if (
+      (ts.isJsxOpeningElement(node) || ts.isJsxSelfClosingElement(node)) &&
+      node.tagName.getText(sf) === "dialog"
+    ) {
+      const refAttr = node.attributes.properties.find(
+        (a): a is ts.JsxAttribute => ts.isJsxAttribute(a) && a.name.getText(sf) === "ref",
+      );
+      const refAusdruck =
+        refAttr?.initializer && ts.isJsxExpression(refAttr.initializer)
+          ? refAttr.initializer.expression
+          : undefined;
+      melde(node.tagName, "dialog-jsx", refAusdruck ? refBezeichner(refAusdruck) : undefined);
+    }
+    // `const d = dialogRef.current` — die Zwischenvariable, über die der Aufruf meist läuft.
+    if (
+      ts.isVariableDeclaration(node) &&
+      ts.isIdentifier(node.name) &&
+      node.initializer &&
+      ts.isPropertyAccessExpression(node.initializer) &&
+      node.initializer.name.text === "current" &&
+      ts.isIdentifier(node.initializer.expression)
+    ) {
+      aliasse.set(node.name.text, node.initializer.expression.text);
+    }
+    // `createElement("dialog", …)` — React wie DOM.
+    if (ts.isCallExpression(node) && aufrufName(node) === "createElement") {
+      const erstes = node.arguments[0];
+      if (erstes && ts.isStringLiteral(erstes) && erstes.text === "dialog") {
+        melde(erstes, "dialog-createElement");
+        kandidatTokens.add(erstes);
+      }
+    }
+    // `role="dialog"` / `role="alertdialog"` als JSX-Attribut oder Objekt-Eigenschaft.
+    if (
+      ts.isJsxAttribute(node) &&
+      node.name.getText(sf) === "role" &&
+      node.initializer &&
+      ts.isStringLiteral(node.initializer) &&
+      (node.initializer.text === "dialog" || node.initializer.text === "alertdialog")
+    ) {
+      melde(node.initializer, "role-dialog");
+      kandidatTokens.add(node.initializer);
+    }
+    if (
+      ts.isPropertyAssignment(node) &&
+      node.name.getText(sf).replace(/["']/g, "") === "role" &&
+      ts.isStringLiteral(node.initializer) &&
+      (node.initializer.text === "dialog" || node.initializer.text === "alertdialog")
+    ) {
+      melde(node.initializer, "role-dialog");
+      kandidatTokens.add(node.initializer);
+    }
+    // `showModal` — Punktzugriff oder Index-Zugriff.
+    if (ts.isPropertyAccessExpression(node) && node.name.text === "showModal") {
+      melde(node.name, "showModal-nutzung");
+      const ziel = refBezeichner(node.expression);
+      if (ziel) {
+        showModalZiele.add(ziel);
+      }
+    }
+    if (
+      ts.isElementAccessExpression(node) &&
+      ts.isStringLiteral(node.argumentExpression) &&
+      node.argumentExpression.text === "showModal"
+    ) {
+      melde(node.argumentExpression, "showModal-nutzung");
+      kandidatTokens.add(node.argumentExpression);
+    }
+
+    // Alles Text-Artige, das kein Kandidat wurde, ist belegte Prosa.
+    if (istTextToken(node) && !kandidatTokens.has(node)) {
+      prosaSpannen.push([node.getStart(sf), node.end] as const);
+    }
+
+    ts.forEachChild(node, besuch);
+  };
+  besuch(sf);
+
+  // Die Aliasse sind erst nach dem vollständigen Lauf bekannt (`const d = …` kann NACH dem
+  // `<dialog>` stehen). Deshalb werden beide Seiten hier abschliessend aufgelöst.
+  const nativeRefs = new Set([...showModalZiele].map((z) => aliasse.get(z) ?? z));
+  for (const k of kandidaten) {
+    if (k.ref) {
+      k.ref = aliasse.get(k.ref) ?? k.ref;
+    }
+  }
+  return { quelle, kandidaten, prosaSpannen, nutztGrenze, exportierte, nativeRefs };
+}
+
+// --- Der unabhängige Zähler: Wort-Erwähnungen gegen die Erklärung des Syntaxbaums abrechnen. ---
+
+function trefferZeilen(gestrippt: string, muster: RegExp): number[] {
+  const zeilen: number[] = [];
+  for (const m of gestrippt.matchAll(muster)) {
+    zeilen.push(gestrippt.slice(0, m.index).split("\n").length);
+  }
+  return zeilen;
+}
+
+function prosaTreffer(e: DateiErhebung, muster: RegExp): number {
+  let n = 0;
+  for (const [start, ende] of e.prosaSpannen) {
+    n += [...e.quelle.text.slice(start, ende).matchAll(muster)].length;
+  }
+  return n;
+}
+
+// Kern des Auftrags: eine Erwähnung, die weder Kandidat noch belegte Prosa ist, heißt „diese
+// Bauform konnte ich nicht lesen" — und das ist ROT, kein stilles Loch.
+function unabgerechnet(e: DateiErhebung, muster: RegExp, erklaerteKandidaten: number): string[] {
+  const zeilen = trefferZeilen(e.quelle.gestrippt, muster);
+  const erklaert = erklaerteKandidaten + prosaTreffer(e, muster);
+  if (zeilen.length <= erklaert) {
+    return [];
+  }
+  return [
+    `${e.quelle.datei}:${zeilen.join(",")} — ${zeilen.length} Erwähnung(en) von ${muster.source}, nur ${erklaert} abgerechnet (Kandidat oder Prosa): eine Bauform, die dieser Sammler nicht beurteilen konnte`,
+  ];
+}
+
+function modalAbgleich(e: DateiErhebung): string[] {
+  const anzahl = (arten: readonly KandidatArt[]): number =>
+    e.kandidaten.filter((k) => arten.includes(k.art)).length;
+  return [
+    ...unabgerechnet(
+      e,
+      /aria-modal/g,
+      anzahl(["aria-modal-attribut", "aria-modal-eigenschaft", "aria-modal-zeichenkette"]),
+    ),
+    ...unabgerechnet(e, /showModal/g, anzahl(["showModal-nutzung"])),
+    ...unabgerechnet(e, /<dialog\b/g, anzahl(["dialog-jsx"])),
+  ];
+}
+
+// --- Die Urteile: jeder Kandidat bekommt genau eines; ohne Grenze ist rot. ---
+
+type Urteil = "an-der-grenze" | "grenzmodul" | "nativ-modal-ausgenommen" | "OHNE GRENZE";
+
+interface Beurteilung {
+  kandidat: Kandidat;
+  urteil: Urteil;
+}
+
+function beurteile(erhebungen: DateiErhebung[]): { beurteilt: Beurteilung[]; rot: string[] } {
+  const beurteilt: Beurteilung[] = [];
+  const rot: string[] = [];
+  for (const e of erhebungen) {
+    const ausnahme = NATIV_MODAL_AUSNAHMEN.get(e.quelle.datei);
+    for (const k of e.kandidaten) {
+      let urteil: Urteil;
+      if (k.datei === GRENZE_MODUL) {
+        urteil = "grenzmodul";
+      } else if (e.nutztGrenze) {
+        urteil = "an-der-grenze";
+      } else if (
+        ausnahme !== undefined &&
+        (k.art === "showModal-nutzung" ||
+          (k.art === "dialog-jsx" && !!k.ref && e.nativeRefs.has(k.ref)))
+      ) {
+        // AUFTRAG-mega76 BLOCK E: die Ausnahme hing bis hier an der DATEI. Damit deckte sie
+        // ALLE Kandidaten dieser Datei — auch solche, die mit `showModal()` nichts zu tun haben
+        // (etwa ein zweites, rein React-gebautes Overlay in derselben Datei). Sie deckte also
+        // mehr ab, als sie sollte. Jetzt ist sie an DENSELBEN Fund gebunden, den sie begründet:
+        // ausgenommen ist die `showModal`-Nutzung selbst, sonst nichts.
+        urteil = "nativ-modal-ausgenommen";
+      } else {
+        urteil = "OHNE GRENZE";
+        rot.push(
+          `${k.datei}:${k.zeile} — ${k.art}: mögliche modale Fläche ohne die Modalgrenze der Shell (weder useModalBoundary noch begründete Ausnahme). Eine Modalität, die nur behauptet wird, ist genau der Fehler, den mega48 schließt.`,
+        );
+      }
+      beurteilt.push({ kandidat: k, urteil });
+    }
+    // Eine Ausnahme, die ihren Beleg verloren hat, ist eine Zusage von gestern.
+    if (ausnahme !== undefined && !e.kandidaten.some((k) => k.art === "showModal-nutzung")) {
+      rot.push(
+        `${e.quelle.datei} — als nativ-modal ausgenommen (${ausnahme}), aber ohne showModal() im Quelltext: die Ausnahme trägt nicht mehr`,
+      );
+    }
+  }
+  return { beurteilt, rot };
+}
+
+// --- Die Aufrufer: Identifikatoren statt Zeichenketten, unbekannte Formen rot statt unsichtbar. ---
 
 interface Bauteil {
   datei: string;
   komponente: string;
 }
 
-const BAUTEIL_DATEIEN: Fund[] = ALLE_QUELLEN.filter(
-  (f) => f.datei !== GRENZE_MODUL && MODAL_MUSTER.test(f.quelle),
-);
-
-const BAUTEILE: Bauteil[] = BAUTEIL_DATEIEN.flatMap((f) =>
-  [...f.quelle.matchAll(EXPORT_MUSTER)].map((m) => ({
-    datei: f.datei,
-    komponente: m[1] as string,
-  })),
-);
-
 interface Paar {
   einbinder: string;
   bauteil: string;
 }
 
-const ERWARTETE_PAARE: Paar[] = BAUTEILE.flatMap((b) =>
-  ALLE_QUELLEN.filter(
-    (f) => f.datei !== b.datei && einbindeMuster(b.komponente).test(f.quelle),
-  ).map((f) => ({ einbinder: f.datei, bauteil: b.komponente })),
-);
-
 function schluessel(p: Paar): string {
   return `${p.einbinder} → <${p.bauteil}>`;
 }
+
+type VerweisArt =
+  | "import"
+  | "jsx"
+  | "createElement"
+  | "alias-anlage"
+  | "typ"
+  | "eigenschaftsname"
+  | "deklaration"
+  | "export-weitergabe"
+  | "UNBEURTEILBAR";
+
+function istJsxTagName(n: ts.Node): boolean {
+  const p = n.parent;
+  if (
+    (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) &&
+    p.tagName === n
+  ) {
+    return true;
+  }
+  // Qualifizierte Tags (<Ns.Komponente/>): der Namensteil hängt an einem PropertyAccess im Tag.
+  if (ts.isPropertyAccessExpression(p) && p.name === n) {
+    return istJsxTagName(p);
+  }
+  return false;
+}
+
+function klassifiziere(n: ts.Identifier): { art: VerweisArt; alias?: string } {
+  const p = n.parent;
+  if (ts.isImportSpecifier(p)) {
+    const klausel = p.parent.parent;
+    if (p.isTypeOnly || (ts.isImportClause(klausel) && klausel.isTypeOnly)) {
+      return { art: "typ" };
+    }
+    if (p.propertyName === n && p.name.text !== n.text) {
+      return { art: "alias-anlage", alias: p.name.text };
+    }
+    return { art: "import" };
+  }
+  if (ts.isImportClause(p) && p.name === n) {
+    return { art: "import" };
+  }
+  if (ts.isExportSpecifier(p)) {
+    return { art: "export-weitergabe" };
+  }
+  if (istJsxTagName(n)) {
+    return { art: "jsx" };
+  }
+  if (ts.isCallExpression(p) && p.arguments[0] === n && aufrufName(p) === "createElement") {
+    return { art: "createElement" };
+  }
+  if (ts.isVariableDeclaration(p) && p.initializer === n && ts.isIdentifier(p.name)) {
+    return { art: "alias-anlage", alias: p.name.text };
+  }
+  if (ts.isTypeQueryNode(p) || ts.isTypeReferenceNode(p)) {
+    return { art: "typ" };
+  }
+  if (ts.isPropertyAssignment(p) && p.name === n) {
+    return { art: "eigenschaftsname" };
+  }
+  if (
+    (ts.isFunctionDeclaration(p) || ts.isClassDeclaration(p) || ts.isVariableDeclaration(p)) &&
+    p.name === n
+  ) {
+    return { art: "deklaration" };
+  }
+  return { art: "UNBEURTEILBAR" };
+}
+
+function sammleIdentifikatoren(sf: ts.SourceFile, name: string): ts.Identifier[] {
+  const funde: ts.Identifier[] = [];
+  const besuch = (n: ts.Node): void => {
+    if (ts.isIdentifier(n) && n.text === name) {
+      funde.push(n);
+    }
+    ts.forEachChild(n, besuch);
+  };
+  besuch(sf);
+  return funde;
+}
+
+interface VerweisBild {
+  paare: Paar[];
+  rot: string[];
+  identifikatoren: number;
+}
+
+function erhebeVerweise(erhebungen: DateiErhebung[], bauteile: Bauteil[]): VerweisBild {
+  const paare: Paar[] = [];
+  const rot: string[] = [];
+  let identifikatoren = 0;
+  for (const e of erhebungen) {
+    const sf = e.quelle.ast;
+    for (const b of bauteile) {
+      if (e.quelle.datei === b.datei) {
+        continue;
+      }
+      const direkte = sammleIdentifikatoren(sf, b.komponente);
+      const aliasNamen: string[] = [];
+      let nutzung = false;
+      let verwiesen = false;
+      let unklar = false;
+      for (const id of direkte) {
+        identifikatoren++;
+        const urteil = klassifiziere(id);
+        if (urteil.art === "jsx" || urteil.art === "createElement") {
+          nutzung = true;
+        } else if (urteil.art === "import" || urteil.art === "alias-anlage") {
+          verwiesen = true;
+          if (urteil.alias !== undefined) {
+            aliasNamen.push(urteil.alias);
+          }
+        } else if (urteil.art === "export-weitergabe" || urteil.art === "UNBEURTEILBAR") {
+          unklar = true;
+          rot.push(
+            `${e.quelle.datei}:${zeileVon(sf, id)} — Verweis auf <${b.komponente}> in nicht beurteilbarer Form (${urteil.art}): dieser Sammler kann nicht sagen, ob daraus eine modale Fläche wird`,
+          );
+        }
+        // „typ", „eigenschaftsname" und „deklaration" sind neutrale Formen ohne Fläche.
+      }
+      // Alias-Verwendungen, genau eine Stufe tief — die Bauform aus bens Befund.
+      for (const alias of aliasNamen) {
+        for (const id of sammleIdentifikatoren(sf, alias)) {
+          identifikatoren++;
+          const urteil = klassifiziere(id);
+          if (urteil.art === "jsx" || urteil.art === "createElement") {
+            nutzung = true;
+          } else if (urteil.art === "alias-anlage") {
+            unklar = true;
+            rot.push(
+              `${e.quelle.datei}:${zeileVon(sf, id)} — Alias eines Alias von <${b.komponente}> („${alias}“) — eine Stufe zu tief für diese Erhebung`,
+            );
+          } else if (urteil.art === "export-weitergabe" || urteil.art === "UNBEURTEILBAR") {
+            unklar = true;
+            rot.push(
+              `${e.quelle.datei}:${zeileVon(sf, id)} — Alias „${alias}“ von <${b.komponente}> in nicht beurteilbarer Form (${urteil.art})`,
+            );
+          }
+        }
+      }
+      if (nutzung) {
+        paare.push({ einbinder: e.quelle.datei, bauteil: b.komponente });
+      } else if (verwiesen && !unklar) {
+        rot.push(
+          `${e.quelle.datei} — verweist auf <${b.komponente}> (Import/Alias), aber ohne erkennbare Einbindung: entweder tot oder eine Bauform außerhalb der Sicht dieses Sammlers`,
+        );
+      }
+      // Der unabhängige Zähler je Bauteil-Name: jede Wort-Erwähnung muss ein Identifikator oder
+      // belegte Prosa sein (Alias-Namen sind eigene Wörter und zählen hier nicht mit).
+      rot.push(...unabgerechnet(e, new RegExp(`\\b${b.komponente}\\b`, "g"), direkte.length));
+    }
+  }
+  return { paare, rot, identifikatoren };
+}
+
+// --- Die eigentliche Erhebung über den heutigen Quellbaum. ---
+
+const ALLE_ERHEBUNGEN: DateiErhebung[] = quelldateien(WEB_SRC).map((d) =>
+  erhebeDatei(ladeQuelle(d)),
+);
+// KALIBRIERUNG (Bericht mega72): für die roten Läufe wurde hier von Hand je EINE synthetische
+// Quelle in den Bestand geschoben (Bauformen Alias, createElement, Spread-aria-modal) und der Lauf
+// einzeln rot gezeigt. Die dauerhafte Absicherung derselben Bauformen liegt unten als Tests auf
+// denselben Funktionen.
+
+const NICHT_LESBAR: string[] = ALLE_ERHEBUNGEN.flatMap((e) => e.quelle.leseFehler);
+const KANDIDATEN: Kandidat[] = ALLE_ERHEBUNGEN.flatMap((e) => e.kandidaten);
+const BEURTEILUNG = beurteile(ALLE_ERHEBUNGEN);
+const UNABGERECHNET: string[] = ALLE_ERHEBUNGEN.flatMap(modalAbgleich);
+
+// Ein modales BAUTEIL behauptet App-Modalität (aria-modal in irgendeiner Bauform) und ist weder das
+// Grenzmodul noch nativ ausgenommen; seine exportierten Komponenten sind das, was Aufrufer einbinden.
+const BAUTEIL_ERHEBUNGEN: DateiErhebung[] = ALLE_ERHEBUNGEN.filter(
+  (e) =>
+    e.quelle.datei !== GRENZE_MODUL &&
+    !NATIV_MODAL_AUSNAHMEN.has(e.quelle.datei) &&
+    e.kandidaten.some((k) => k.art.startsWith("aria-modal")),
+);
+const BAUTEILE: Bauteil[] = BAUTEIL_ERHEBUNGEN.flatMap((e) =>
+  e.exportierte.map((komponente) => ({ datei: e.quelle.datei, komponente })),
+);
+const BAUTEIL_ROT: string[] = BAUTEIL_ERHEBUNGEN.filter((e) => e.exportierte.length === 0).map(
+  (e) =>
+    `${e.quelle.datei} — behauptet aria-modal, exportiert aber keine Komponente: Aufrufer sind so nicht erhebbar`,
+);
+const VERWEISE: VerweisBild = erhebeVerweise(ALLE_ERHEBUNGEN, BAUTEILE);
+const ERWARTETE_PAARE: Paar[] = VERWEISE.paare;
 
 // ---------------------------------------------------------------------------------------------
 // (2) Die gemounteten Fälle — einer je Paar, an der ECHTEN Verdrahtung (Seite IN der echten Shell).
@@ -405,9 +952,293 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("mega48 Block B: die Erhebung greift", () => {
+describe("mega72 Block A: der unabhängige Zähler — die Erhebung merkt, was sie nicht lesen konnte", () => {
+  it("jede Quelldatei ist gelesen; was nicht parsebar ist, wäre rot mit Datei und Zeile", () => {
+    expect(ALLE_ERHEBUNGEN.length).toBeGreaterThan(100);
+    expect(
+      NICHT_LESBAR,
+      "\nDiese Dateien konnte der Sammler nicht lesen — sie sind damit UNBEURTEILT, nicht unbedenklich:\n",
+    ).toEqual([]);
+  });
+
+  it("jede Erwähnung einer modalen Bauform ist abgerechnet — nichts fällt still heraus", () => {
+    expect(
+      UNABGERECHNET,
+      "\nErwähnungen, die weder Kandidat noch belegte Prosa sind — Bauformen außerhalb der Sicht dieses Sammlers:\n",
+    ).toEqual([]);
+  });
+
+  it("die Erhebung fällt nicht still auf null: die sechs heute bekannten Fundstellen stehen im Fund", () => {
+    const probe = (datei: string, art: KandidatArt): boolean =>
+      KANDIDATEN.some((k) => k.datei === datei && k.art === art);
+    expect(probe("apps/web/src/components/FacetFilter.tsx", "aria-modal-attribut")).toBe(true);
+    expect(probe("apps/web/src/components/FacetFilter.tsx", "dialog-jsx")).toBe(true);
+    expect(probe("apps/web/src/shell/MobileNavDrawer.tsx", "aria-modal-attribut")).toBe(true);
+    expect(probe("apps/web/src/shell/MobileNavDrawer.tsx", "dialog-jsx")).toBe(true);
+    expect(probe("apps/web/src/components/BodyImageGallery.tsx", "dialog-jsx")).toBe(true);
+    expect(probe("apps/web/src/components/BodyImageGallery.tsx", "showModal-nutzung")).toBe(true);
+    expect(KANDIDATEN.length).toBeGreaterThanOrEqual(6);
+  });
+
+  // ==============================================================================================
+  // AUFTRAG-mega76 BLOCK E — DAS SCHRUMPFEN DER GRUNDMENGE, VOLLSTÄNDIG.
+  // ==============================================================================================
+  //
+  // BENS BEFUND: „der Sammler erkennt nicht jedes Schrumpfen seiner Grundmenge." Er hatte recht,
+  // und die Zahlen zeigen wie deutlich. Die einzige Untergrenze war `ALLE_ERHEBUNGEN.length > 100`
+  // — GEMESSEN sind es 382. Es hätten also 281 Quelldateien lautlos aus der Erhebung fallen
+  // können, und der Sammler wäre grün geblieben. `VERWEISE.identifikatoren > 0` war ebenso lose
+  // (gemessen: 8), und für die Verweispaare und die Bauteilliste gab es GAR KEINE Untergrenze.
+  //
+  // Jede Zahl hier ist der HEUTE GEMESSENE Wert, kein gerundeter Puffer. Sie darf steigen; fällt
+  // sie, findet der Sammler etwas nicht mehr — und das ist ein Fehler, kein Erfolg. Wer eine
+  // Fläche absichtlich entfernt, senkt die Zahl bewusst und begründet es hier.
+  it("die Grundmenge ist an KEINER Stelle still geschrumpft", () => {
+    const untergrenzen: Array<[string, number, number]> = [
+      ["gelesene Quelldateien", ALLE_ERHEBUNGEN.length, 382],
+      ["Kandidaten (mögliche modale Flächen)", KANDIDATEN.length, 6],
+      ["Dateien mit mindestens einem Kandidaten", new Set(KANDIDATEN.map((k) => k.datei)).size, 3],
+      ["beurteilte Verweispaare", VERWEISE.paare.length, 4],
+      ["untersuchte Identifikatoren", VERWEISE.identifikatoren, 8],
+      ["erhobene modale Bauteile", BAUTEILE.length, 2],
+    ];
+    for (const [was, ist, mindestens] of untergrenzen) {
+      expect(
+        ist,
+        `${was}: ${ist} < ${mindestens}. Eine geschrumpfte Erhebung ist von einer grünen nicht zu unterscheiden — genau darum steht hier die GEMESSENE Zahl und kein Puffer.`,
+      ).toBeGreaterThanOrEqual(mindestens);
+    }
+  });
+
+  it("KALIBRIERUNG — die native Ausnahme deckt NUR den belegten Fund, nicht die ganze Datei", () => {
+    // AUFTRAG-mega76 BLOCK E: bis mega76 hing die Ausnahme an der DATEI. Ein zweites, rein
+    // React-gebautes `<dialog>` in derselben Datei wäre damit stillschweigend mitgedeckt gewesen,
+    // obwohl der Browser es NICHT modal macht. Ohne diesen Fall wäre die Bindung eine Behauptung.
+    const quelle = (zeilen: string[]): DateiErhebung =>
+      erhebeDatei(quelleAus("apps/web/src/components/BodyImageGallery.tsx", zeilen.join("\n")));
+
+    // Das ECHTE Muster der Datei: ref → Alias → showModal.
+    const belegt = quelle([
+      "const dialogRef = useRef(null);",
+      "function oeffne() { const d = dialogRef.current; d.showModal(); }",
+      "const A = <dialog ref={dialogRef} />;",
+    ]);
+    expect(
+      beurteile([belegt]).rot,
+      "das `<dialog>`, dessen ref wirklich showModal() empfängt, ist begründet ausgenommen",
+    ).toEqual([]);
+
+    // Dieselbe Datei, ZWEI Dialoge — nur einer wird nativ modal gemacht.
+    const zweiter = quelle([
+      "const dialogRef = useRef(null);",
+      "const andererRef = useRef(null);",
+      "function oeffne() { const d = dialogRef.current; d.showModal(); }",
+      "const A = <dialog ref={dialogRef} />;",
+      "const B = <dialog ref={andererRef} />;",
+    ]);
+    const rot = beurteile([zweiter]).rot;
+    expect(
+      rot.length,
+      `Das zweite <dialog> bekommt vom Browser NICHTS — es muss die Modalgrenze der Shell vorweisen. Gemeldet wurde: ${JSON.stringify(rot)}`,
+    ).toBe(1);
+    expect(rot[0]).toContain("dialog-jsx");
+
+    // Und ein `<dialog>` ganz ohne ref ist erst recht nicht gedeckt.
+    const ohneRef = quelle([
+      "const dialogRef = useRef(null);",
+      "function oeffne() { dialogRef.current.showModal(); }",
+      "const A = <dialog />;",
+    ]);
+    expect(
+      beurteile([ohneRef]).rot.length,
+      "ein `<dialog>` ohne ref kann von showModal() gar nicht gemeint sein",
+    ).toBe(1);
+  });
+
+  it("jeder Kandidat trägt genau ein Urteil, und keines lautet OHNE GRENZE", () => {
+    // Exakte Kalibrierung: Kandidaten und Urteile decken sich Stück für Stück.
+    expect(BEURTEILUNG.beurteilt.length).toBe(KANDIDATEN.length);
+    const urteile: Urteil[] = [
+      "an-der-grenze",
+      "grenzmodul",
+      "nativ-modal-ausgenommen",
+      "OHNE GRENZE",
+    ];
+    const summe = urteile
+      .map((u) => BEURTEILUNG.beurteilt.filter((b) => b.urteil === u).length)
+      .reduce((a, b) => a + b, 0);
+    expect(summe).toBe(KANDIDATEN.length);
+    expect(BEURTEILUNG.rot, "\nKandidaten ohne tragfähiges Urteil:\n").toEqual([]);
+    // Und die Ausnahmen zeigen auf Dateien, die es noch gibt — sonst beschreibt die Liste gestern.
+    for (const [datei] of NATIV_MODAL_AUSNAHMEN) {
+      expect(
+        ALLE_ERHEBUNGEN.map((e) => e.quelle.datei),
+        `Ausnahme ohne Datei: ${datei}`,
+      ).toContain(datei);
+    }
+  });
+
+  it("jeder Verweis auf ein modales Bauteil ist beurteilt — unbeurteilbare Formen wären rot", () => {
+    expect(BAUTEIL_ROT).toEqual([]);
+    expect(VERWEISE.identifikatoren).toBeGreaterThan(0);
+    expect(
+      VERWEISE.rot,
+      "\nVerweise, die dieser Sammler nicht beurteilen konnte (oder Erwähnungen ohne Abrechnung):\n",
+    ).toEqual([]);
+  });
+});
+
+describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die Erhebung jetzt", () => {
+  const BAUTEIL_FACET: Bauteil = {
+    datei: "apps/web/src/components/FacetFilter.tsx",
+    komponente: "FacetFilter",
+  };
+  const synthetisch = (datei: string, zeilen: string[]): DateiErhebung =>
+    erhebeDatei(quelleAus(datei, zeilen.join("\n")));
+
+  it("Bauform 1 — Alias-Einbindung (const C = FacetFilter) wird als Aufrufer erhoben", () => {
+    const e = synthetisch("apps/web/src/pages/SynthAlias.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "const Umbenannt = FacetFilter;",
+      "export function Seite(): JSX.Element {",
+      "  return <Umbenannt themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    const v = erhebeVerweise([e], [BAUTEIL_FACET]);
+    expect(v.rot).toEqual([]);
+    expect(v.paare.map(schluessel)).toContain("apps/web/src/pages/SynthAlias.tsx → <FacetFilter>");
+  });
+
+  it("Bauform 2 — createElement(FacetFilter, …) wird als Aufrufer erhoben", () => {
+    const e = synthetisch("apps/web/src/pages/SynthCreate.tsx", [
+      'import { createElement } from "react";',
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "export function Seite(): unknown {",
+      "  return createElement(FacetFilter, null);",
+      "}",
+    ]);
+    const v = erhebeVerweise([e], [BAUTEIL_FACET]);
+    expect(v.rot).toEqual([]);
+    expect(v.paare.map(schluessel)).toContain("apps/web/src/pages/SynthCreate.tsx → <FacetFilter>");
+  });
+
+  it("Bauform 2b — Import-Alias (import { FacetFilter as FF }) wird als Aufrufer erhoben", () => {
+    const e = synthetisch("apps/web/src/pages/SynthImportAlias.tsx", [
+      'import { FacetFilter as FF } from "../components/FacetFilter";',
+      "export function Seite(): JSX.Element {",
+      "  return <FF themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    const v = erhebeVerweise([e], [BAUTEIL_FACET]);
+    expect(v.rot).toEqual([]);
+    expect(v.paare.map(schluessel)).toContain(
+      "apps/web/src/pages/SynthImportAlias.tsx → <FacetFilter>",
+    );
+  });
+
+  it("Bauform 3 — per Spread gesetztes aria-modal ist ein Kandidat und ohne Grenze rot, mit Datei und Zeile", () => {
+    const e = synthetisch("apps/web/src/components/SynthSpread.tsx", [
+      'const dialogProps = { "aria-modal": "true" };',
+      "export function Fenster(): JSX.Element {",
+      "  return <div {...dialogProps} />;",
+      "}",
+    ]);
+    expect(e.kandidaten).toEqual([
+      { datei: "apps/web/src/components/SynthSpread.tsx", zeile: 1, art: "aria-modal-eigenschaft" },
+    ]);
+    // Und der Zähler geht auf: die Erwähnung ist als Kandidat abgerechnet.
+    expect(modalAbgleich(e)).toEqual([]);
+    const { rot } = beurteile([e]);
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain("apps/web/src/components/SynthSpread.tsx:1");
+  });
+
+  it("Bauform 4 — setAttribute(„aria-modal“) und role=„dialog“ sind Kandidaten, ohne Grenze rot", () => {
+    const setAttr = synthetisch("apps/web/src/lib/synthSetAttr.ts", [
+      "export function markiere(el: HTMLElement): void {",
+      '  el.setAttribute("aria-modal", "true");',
+      "}",
+    ]);
+    expect(setAttr.kandidaten.map((k) => k.art)).toEqual(["aria-modal-zeichenkette"]);
+    expect(beurteile([setAttr]).rot).toHaveLength(1);
+
+    const rolle = synthetisch("apps/web/src/components/SynthRole.tsx", [
+      "export function Fenster(): JSX.Element {",
+      '  return <div role="dialog" />;',
+      "}",
+    ]);
+    expect(rolle.kandidaten.map((k) => k.art)).toEqual(["role-dialog"]);
+    expect(beurteile([rolle]).rot).toHaveLength(1);
+  });
+
+  it("was der Sammler nicht abrechnen kann, wird rot statt still übergangen (destrukturiertes showModal)", () => {
+    const e = synthetisch("apps/web/src/lib/synthDestrukturiert.ts", [
+      "export function oeffne(d: HTMLDialogElement): void {",
+      "  const { showModal } = d;",
+      "  showModal.call(d);",
+      "}",
+    ]);
+    // Kein Kandidat — aber der unabhängige Zähler sieht zwei Erwähnungen und schlägt an.
+    expect(e.kandidaten).toEqual([]);
+    const rot = modalAbgleich(e);
+    expect(rot).toHaveLength(1);
+    expect(rot[0]).toContain("apps/web/src/lib/synthDestrukturiert.ts:2,3");
+  });
+
+  it("eine nicht parsebare Datei wird rot mit Datei und Zeile, nicht still übersprungen", () => {
+    const kaputt = quelleAus("apps/web/src/lib/synthKaputt.ts", "const = ;\n");
+    expect(kaputt.leseFehler.length).toBeGreaterThan(0);
+    expect(kaputt.leseFehler[0]).toContain("apps/web/src/lib/synthKaputt.ts:1");
+  });
+
+  it("HOC-Übergabe und Re-Export sind rot statt unsichtbar", () => {
+    const hoc = synthetisch("apps/web/src/pages/SynthHoc.tsx", [
+      'import { memo } from "react";',
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "export const Verpackt = memo(FacetFilter);",
+    ]);
+    const vHoc = erhebeVerweise([hoc], [BAUTEIL_FACET]);
+    expect(vHoc.paare).toEqual([]);
+    expect(vHoc.rot.some((r) => r.includes("SynthHoc.tsx:3") && r.includes("UNBEURTEILBAR"))).toBe(
+      true,
+    );
+
+    const barrel = synthetisch("apps/web/src/components/synthBarrel.ts", [
+      'export { FacetFilter } from "./FacetFilter";',
+    ]);
+    const vBarrel = erhebeVerweise([barrel], [BAUTEIL_FACET]);
+    expect(vBarrel.rot.some((r) => r.includes("export-weitergabe"))).toBe(true);
+  });
+
+  it("Prosa bleibt Prosa: Kommentare und Erwähnungen in Zeichenketten sind keine Kandidaten", () => {
+    const e = synthetisch("apps/web/src/lib/synthProsa.ts", [
+      "// aria-modal in einem Kommentar, dazu <dialog> und showModal in Prosa",
+      'const hinweis = "ohne aria-modal keine behauptete Modalitaet";',
+      "export const nichts = hinweis;",
+    ]);
+    expect(e.kandidaten).toEqual([]);
+    // Der Zähler geht trotzdem auf: die String-Erwähnung ist als Prosa belegt, der Kommentar zählt nicht.
+    expect(modalAbgleich(e)).toEqual([]);
+  });
+
+  it("Positivprobe: eine Fläche an der Grenze wird als solche beurteilt, ohne rot", () => {
+    const e = synthetisch("apps/web/src/components/SynthBrav.tsx", [
+      'import { useModalBoundary } from "../app/ModalBoundaryContext";',
+      "export function Blatt(): JSX.Element {",
+      "  const grenze = useModalBoundary();",
+      '  return <dialog open aria-modal="true" aria-label={String(grenze !== null)} />;',
+      "}",
+    ]);
+    expect(e.nutztGrenze).toBe(true);
+    expect(e.kandidaten.map((k) => k.art).sort()).toEqual(["aria-modal-attribut", "dialog-jsx"]);
+    const { beurteilt, rot } = beurteile([e]);
+    expect(rot).toEqual([]);
+    expect(beurteilt.every((b) => b.urteil === "an-der-grenze")).toBe(true);
+  });
+});
+
+describe("mega48 Block B → mega72: die Erhebung am heutigen Bestand", () => {
   it("der Quellbaum wird wirklich gelesen (ein leerer Sammler wäre ein grüner Sammler)", () => {
-    expect(ALLE_QUELLEN.length).toBeGreaterThan(100);
     // Positiv-Sonde: die zwei heute bekannten modalen Bauteile müssen im Fund liegen …
     const komponenten = BAUTEILE.map((b) => b.komponente);
     expect(komponenten).toContain("FacetFilter");
@@ -424,45 +1255,19 @@ describe("mega48 Block B: die Erhebung greift", () => {
     // `ImportSelect` bindet FacetFilter ein und hat NIE einen Hintergrund hereingereicht. Die alte
     // Erhebung über die Zeichenfolge `backgroundRef={` sah ihn deshalb nicht — und genau daran ist
     // die Zusage „eine dritte Seite wird automatisch rot" am heutigen Baum gescheitert.
-    const importSelect = ALLE_QUELLEN.find(
-      (f) => f.datei === "apps/web/src/components/ImportSelect.tsx",
+    const importSelect = ALLE_ERHEBUNGEN.find(
+      (e) => e.quelle.datei === "apps/web/src/components/ImportSelect.tsx",
     );
     expect(importSelect, "ImportSelect.tsx nicht gefunden").toBeDefined();
-    expect(importSelect?.quelle).not.toMatch(/backgroundRef=\{/);
+    expect(importSelect?.quelle.gestrippt).not.toMatch(/backgroundRef=\{/);
     expect(ERWARTETE_PAARE.map(schluessel)).toContain(
       "apps/web/src/components/ImportSelect.tsx → <FacetFilter>",
     );
   });
-
-  it("die Muster erkennen die Bauform und nicht die Prosa darüber", () => {
-    expect(MODAL_MUSTER.test('        aria-modal="true"')).toBe(true);
-    expect(MODAL_MUSTER.test("aria-modalitaet")).toBe(false);
-    expect(GRENZE_MUSTER.test("const { host, enter } = useModalBoundary();")).toBe(true);
-    expect(GRENZE_MUSTER.test("useModalLocked()")).toBe(false);
-    expect(einbindeMuster("FacetFilter").test("      <FacetFilter\n")).toBe(true);
-    expect(einbindeMuster("FacetFilter").test("<FacetFilterZweiter ")).toBe(false);
-    expect(einbindeMuster("FacetFilter").test('import { FacetFilter } from "./FacetFilter";')).toBe(
-      false,
-    );
-    // Kommentare fallen vorher raus — sonst wäre dieser Sammler seine eigene Fundstelle.
-    expect(ohneKommentare("// useModalBoundary()\nconst a = 1;")).not.toMatch(GRENZE_MUSTER);
-  });
 });
 
 describe("mega48 Block B1: jeder Aufrufer einer modalen Fläche ist erfasst", () => {
-  it("wer aria-modal behauptet, benutzt die EINE Modalgrenze (keine zweite Bauform)", () => {
-    const ohneGrenze = BAUTEIL_DATEIEN.filter((f) => !GRENZE_MUSTER.test(f.quelle)).map(
-      (f) => f.datei,
-    );
-    expect(
-      ohneGrenze,
-      `\nBehauptet App-Modalität (aria-modal), holt sich aber nicht die Modalgrenze der Shell:\n${ohneGrenze.join(
-        "\n",
-      )}\nEine Modalität, die nur behauptet wird, ist genau der Fehler, den mega48 schließt.\n`,
-    ).toEqual([]);
-  });
-
-  it("kein Aufrufer ohne gemounteten Fall (ein vierter Aufrufer wird automatisch rot)", () => {
+  it("kein Aufrufer ohne gemounteten Fall (ein weiterer Aufrufer wird automatisch rot)", () => {
     const registriert = new Set(FAELLE.map(schluessel));
     const fehlend = ERWARTETE_PAARE.map(schluessel).filter((k) => !registriert.has(k));
     expect(

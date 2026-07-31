@@ -46,7 +46,7 @@ async function makeService(kos: KnowledgeObject[]) {
 describe("ManagementService (SCRUM-120)", () => {
   it("baut einen Snapshot aus echten Service-Daten", async () => {
     const svc = await makeService([ko({ id: "K1" }), ko({ id: "K2", status: "offen", trust: 40 })]);
-    const snap = await svc.snapshot();
+    const snap = await svc.snapshot({ sichtbar: () => true });
 
     expect(snap.generatedAt).toBe("2026-06-26T00:00:00.000Z");
     expect(snap.overview.totalKos).toBe(2);
@@ -68,7 +68,7 @@ describe("ManagementService (SCRUM-120)", () => {
       busFactor: async () => [],
       now: () => Date.parse("2026-06-26T00:00:00Z"),
     });
-    const snap = await svc.snapshot();
+    const snap = await svc.snapshot({ sichtbar: () => true });
     expect(snap.overview.totalKos).toBe(0);
     expect(snap.capital.score).toBe(0);
     expect(Number.isNaN(snap.overview.avgTrust)).toBe(false);

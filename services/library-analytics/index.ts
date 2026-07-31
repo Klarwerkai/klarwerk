@@ -47,6 +47,7 @@ export type {
   GraphNode,
   GraphEdge,
   Analytics,
+  KoSichtbar,
   Neighborhood,
   NeighborKo,
 } from "./src/types";
