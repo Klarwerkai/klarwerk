@@ -219,20 +219,40 @@ describe("AUFTRAG-mega9 Block D-3: die Menüpunkte im Drawer sind per Tastatur e
     expect(focusables[0]?.getAttribute("aria-label")).toBe(i18n.t("topbar.closeMenu"));
   });
 
-  it("Tab kreist nicht auf einem Element: nur die Ränder werden abgefangen, dazwischen läuft er durch", async () => {
+  it("Tab kreist nicht auf einem Element: er wandert Station für Station und schließt sich an den Rändern", async () => {
     await openDrawer();
     const focusables = focusablesInPanel();
     const first = focusables[0];
     const last = focusables[focusables.length - 1];
-    const middle = focusables[Math.floor(focusables.length / 2)];
-    if (!first || !last || !middle) {
+    const middleIndex = Math.floor(focusables.length / 2);
+    const middle = focusables[middleIndex];
+    const afterMiddle = focusables[middleIndex + 1];
+    if (!first || !last || !middle || !afterMiddle) {
       throw new Error("Zu wenige fokussierbare Elemente im Panel");
     }
 
-    // Mitte: der Handler mischt sich NICHT ein — der Browser wandert normal zum nächsten Element
-    // weiter. Würde er hier abfangen, bliebe der Fokus stehen, egal wie oft man drückt.
+    // ============================================================================================
+    // AUFTRAG-smoketor BLOCK B — HIER STAND EINE MECHANIK ALS STELLVERTRETER FÜR EIN VERHALTEN.
+    // ============================================================================================
+    //
+    // Bis smoketor sicherte diese Stelle `expect(await pressTab(middle)).toBe(false)` zu, also: der
+    // Handler ruft in der Mitte KEIN preventDefault. Die Begründung daneben lautete „würde er hier
+    // abfangen, bliebe der Fokus stehen". Genau diese Gleichsetzung war der Fehler — abfangen und
+    // stehenbleiben sind nicht dasselbe. Ein Handler darf abfangen UND den Fokus selbst
+    // weitersetzen; das Verhalten ist dann besser, die zugesicherte Mechanik aber verletzt.
+    //
+    // Und sie musste verletzt werden: im echten WebKit ist genau dieses „der Browser wandert schon
+    // weiter" falsch. Links und Knöpfe stehen dort standardmäßig nicht in der Tab-Reihenfolge, der
+    // Fokus fiel beim ersten Tab aus dem Dialog auf `body` und kam nie zurück — gemessen 25× von 25
+    // (`_relay/messung/smoketor-B-rot-webkit.log`). Der Drawer setzt den nächsten Fokus deshalb bei
+    // JEDEM Tab selbst (`MobileNavDrawer.tsx`).
+    //
+    // Die Zusicherung prüft jetzt, was sie immer meinte: nach einem Tab in der Mitte steht der Fokus
+    // auf der NÄCHSTEN Station. Das ist strenger als vorher — die alte Fassung sagte über den
+    // tatsächlichen Verbleib des Fokus in der Mitte gar nichts (jsdom bewegt ihn von sich aus nicht).
     middle.focus();
-    expect(await pressTab(middle)).toBe(false);
+    expect(await pressTab(middle)).toBe(true);
+    expect(document.activeElement).toBe(afterMiddle);
 
     // Rand vorwärts: vom letzten Element springt Tab zurück auf das erste (Falle schließt sich).
     last.focus();

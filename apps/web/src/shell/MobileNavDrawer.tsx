@@ -57,23 +57,56 @@ export function MobileNavDrawer({
     if (e.key !== "Tab") {
       return;
     }
-    // Fokusfalle: Tab am Ende springt zum Anfang, Shift+Tab am Anfang ans Ende — der Fokus verlässt
-    // das Panel nie.
+    // ============================================================================================
+    // AUFTRAG-smoketor BLOCK B (Registerpunkt A20) — DIE FALLE, DIE NUR AN DEN RÄNDERN ZUGRIFF.
+    // ============================================================================================
+    //
+    // GEMESSEN, nicht gelesen (`_relay/messung/smoketor-B-rot-webkit.log`, WebKit, 390×844 und
+    // 768×1024): der Fokus startet korrekt auf „Menü schließen" {im Dialog}, und schon Tab 1 landet
+    // auf `body` — 25× von 25 außerhalb. Kein anderes Element, sondern GAR KEINES.
+    //
+    // DIE URSACHE: WebKit nimmt Links und Knöpfe standardmäßig nicht in die Tab-Reihenfolge auf
+    // (macOS-Voreinstellung „Tab bewegt den Fokus nur zwischen Textfeldern und Listen"). Von den 23
+    // fokussierbaren Elementen, die `focusablesIn` im Panel findet, ist dort genau EINES nativ
+    // tabbar. Die alte Falle griff aber nur an den RÄNDERN — sie verlangte `active === last` bzw.
+    // `=== first`. Der X-Knopf ist `first`, also passierte beim ersten Tab nichts, WebKit fand im
+    // Panel kein nächstes tabbares Element, der Hintergrund war inert, und der Fokus fiel auf
+    // `body`. Ab da liegt er AUSSERHALB des Dialogs, dieser Handler hängt am `<dialog>` und feuert
+    // nie wieder: es gibt kein Zurück. In Chromium blieb das unsichtbar, weil dort jeder Link und
+    // Knopf nativ tabbar ist und die Ränder deshalb überhaupt erreicht wurden.
+    //
+    // DAS IST KEIN TESTARTEFAKT. Dieselbe Voreinstellung ist in echtem Safari die Werkseinstellung
+    // — das Menü war dort per Tastatur unbedienbar. Der Smoke hat einen echten Barrierefreiheits-
+    // defekt gefunden, keinen Messfehler.
+    //
+    // DIE REPARATUR pinnt das VERHALTEN und nicht ein Attribut: die Falle verlässt sich nicht mehr
+    // darauf, dass der Browser innerhalb des Panels weitertabbt, sondern setzt den nächsten Fokus
+    // bei JEDEM Tab selbst. Damit ist die Reihenfolge in allen Engines dieselbe und der Fokus kann
+    // das Panel gar nicht erst verlassen. In Chromium ist das verhaltensgleich zu vorher: die Liste
+    // steht in DOM-Reihenfolge und es gibt im Baum keinen positiven `tabIndex` (geprüft), also
+    // genau die Reihenfolge, die der Browser ohnehin genommen hätte.
+    //
+    // EHRLICHE GRENZE: `focusablesIn` filtert bewusst nicht auf Sichtbarkeit (jsdom rechnet kein
+    // Layout). Ein unsichtbares, aber fokussierbares Element im Panel würde jetzt angesteuert, wo
+    // der Browser es übersprungen hätte. Im Drawer gibt es keines (23 gemessene Stationen, alle
+    // sichtbar); für den Fall, dass sich das ändert, ist die Sonde die Wache.
     const focusables = focusablesIn(panelRef.current);
     if (focusables.length === 0) {
       e.preventDefault();
       return;
     }
-    const first = focusables[0];
-    const last = focusables[focusables.length - 1];
-    const active = document.activeElement;
-    if (e.shiftKey && (active === first || active === panelRef.current)) {
-      e.preventDefault();
-      last?.focus();
-    } else if (!e.shiftKey && active === last) {
-      e.preventDefault();
-      first?.focus();
-    }
+    e.preventDefault();
+    const active = document.activeElement as HTMLElement | null;
+    const stelle = active ? focusables.indexOf(active) : -1;
+    // Fokus (noch) nicht auf einer Station — z. B. auf dem Panel selbst (`tabIndex={-1}`): vorwärts
+    // an den Anfang, rückwärts ans Ende.
+    const ziel =
+      stelle === -1
+        ? e.shiftKey
+          ? focusables.length - 1
+          : 0
+        : (stelle + (e.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
+    focusables[ziel]?.focus();
   };
 
   return (
