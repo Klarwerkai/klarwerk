@@ -61,6 +61,7 @@ import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
 import { HelpTip } from "../components/HelpTip";
+import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { Modal } from "../components/Modal";
@@ -3237,6 +3238,8 @@ export function Capture(): JSX.Element {
         />
         {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
         {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
+
+        <KlaraPathTeaser surface="capture" />
 
         {/* KW-PROD-15: Vordertuer als klarer Default; die bisherigen Wege bleiben darunter erhalten. */}
         <Card className="mb-4 border-ai/30 bg-ai/5">

@@ -431,6 +431,18 @@ const de = {
   "start.ctaAsk": "Frage stellen",
   "start.ctaCapture": "Wissen erfassen",
   "start.ctaValidate": "Validierung öffnen",
+  "klara.path.ariaLabel": "Klara — kommender Assistenzweg",
+  "klara.path.kicker": "Mit Klara",
+  "klara.path.soon": "Demnächst",
+  "klara.path.start.title": "Klara begleitet Wissen von Anfang an.",
+  "klara.path.start.body":
+    "Bald kannst du Wissen direkt mit Klara festhalten, strukturieren und für die Prüfung vorbereiten.",
+  "klara.path.capture.title": "Erzähl es Klara — sie macht daraus einen klaren Entwurf.",
+  "klara.path.capture.body":
+    "Du gibst deine Erfahrung in eigenen Worten ein. Klara hilft beim Strukturieren; du prüfst und entscheidest.",
+  "klara.path.import.title": "Klara bereitet importiertes Wissen mit dir auf.",
+  "klara.path.import.body":
+    "Nach dem Upload hilft Klara künftig beim Ordnen, Klären und Vorbereiten für die Prüfung.",
   "start.todo": "Heute zu tun",
   "start.workTitle": "Nächste Handlungen",
   "start.severity.critical": "jetzt",
@@ -4858,6 +4870,18 @@ const en: typeof de = {
   "start.ctaAsk": "Ask a question",
   "start.ctaCapture": "Capture knowledge",
   "start.ctaValidate": "Open validation",
+  "klara.path.ariaLabel": "Klara — upcoming assisted path",
+  "klara.path.kicker": "With Klara",
+  "klara.path.soon": "Coming soon",
+  "klara.path.start.title": "Klara supports knowledge from the very beginning.",
+  "klara.path.start.body":
+    "Soon you can capture, structure and prepare knowledge for review directly with Klara.",
+  "klara.path.capture.title": "Tell Klara — she turns it into a clear draft.",
+  "klara.path.capture.body":
+    "Share your experience in your own words. Klara helps structure it; you review and decide.",
+  "klara.path.import.title": "Klara helps you prepare imported knowledge.",
+  "klara.path.import.body":
+    "After upload, Klara will help organise, clarify and prepare it for review.",
   "start.todo": "To do today",
   "start.workTitle": "Next actions",
   "start.severity.critical": "now",
@@ -8850,6 +8874,18 @@ const nl: typeof de = {
   "start.ctaAsk": "Vraag stellen",
   "start.ctaCapture": "Kennis vastleggen",
   "start.ctaValidate": "Validatie openen",
+  "klara.path.ariaLabel": "Klara — aankomende begeleide route",
+  "klara.path.kicker": "Met Klara",
+  "klara.path.soon": "Binnenkort",
+  "klara.path.start.title": "Klara begeleidt kennis vanaf het begin.",
+  "klara.path.start.body":
+    "Binnenkort kun je kennis direct met Klara vastleggen, structureren en voorbereiden op beoordeling.",
+  "klara.path.capture.title": "Vertel het Klara — zij maakt er een helder concept van.",
+  "klara.path.capture.body":
+    "Je deelt je ervaring in je eigen woorden. Klara helpt structureren; jij controleert en beslist.",
+  "klara.path.import.title": "Klara helpt geïmporteerde kennis voor te bereiden.",
+  "klara.path.import.body":
+    "Na het uploaden helpt Klara straks met ordenen, verduidelijken en voorbereiden op beoordeling.",
   "start.todo": "Vandaag te doen",
   "start.workTitle": "Volgende acties",
   "start.severity.critical": "nu",
