@@ -325,6 +325,100 @@ export function sanitizeHtml(input: string): string {
   return out.join("");
 }
 
+// ── AUFTRAG-mega84 Block B: Formatierung IN der Bildbeschreibung ────────────────────────────────
+//
+// Pedis entschiedener Umfang (31.07., 13:30): fett, kursiv, Zeilenumbruch — mehr nicht. Das ist
+// eine VERENGUNG der vorhandenen Allowlist, keine zweite: `sanitizeCaptionHtml` schickt seine
+// Eingabe zuerst durch den EINEN Sanitizer oben (`sanitizeHtml`) und wirft danach alles weg, was
+// nicht zu diesen dreien gehört. Es kann also nichts durch die Fußnote hereinkommen, was nicht
+// ohnehin schon durch den Body-Vertrag käme — kein `style`, keine Klassen, kein neues Tag.
+// Serverseitig sind `strong`/`em`/`br` in derselben Allowlist (services/structure/src/sanitize.ts),
+// `b`/`i` werden dort auf sie abgebildet; die Fußnote überlebt den Roundtrip damit unverändert.
+export const CAPTION_ALLOWED_TAGS: ReadonlySet<string> = new Set(["strong", "em", "br"]);
+
+// Ein Tag-Durchlauf über bereits sanitisiertes HTML: erlaubte Tags bleiben (NACKT — nach
+// `sanitizeHtml` trägt keines von ihnen Attribute, weil keines in ALLOWED_ATTRS steht), alles
+// andere fällt weg. Der Text dazwischen bleibt unberührt und damit escaped, wie er war.
+export function sanitizeCaptionHtml(input: string): string {
+  if (!input) {
+    return "";
+  }
+  const safe = sanitizeHtml(input);
+  const out: string[] = [];
+  const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
+  let last = 0;
+  let m: RegExpExecArray | null = tagRe.exec(safe);
+  while (m !== null) {
+    out.push(safe.slice(last, m.index));
+    last = tagRe.lastIndex;
+    const tag = (m[1] ?? "").toLowerCase();
+    if (CAPTION_ALLOWED_TAGS.has(tag)) {
+      out.push(m[0].startsWith("</") ? `</${tag}>` : `<${tag}>`);
+    }
+    m = tagRe.exec(safe);
+  }
+  out.push(safe.slice(last));
+  return out.join("");
+}
+
+// Der Zähler und die Grenze der Bildbeschreibung zählen KLARTEXT, nicht Markup — sonst würde ein
+// einziges <strong> dem Nutzer 17 Zeichen seines Budgets stehlen. Ein <br> zählt als ein Zeichen
+// (genau das, was htmlToPlainText daraus macht), damit die Kappung nie unter ihrer eigenen Zusage
+// bleibt.
+export function captionPlainText(html: string): string {
+  return htmlToPlainText(html);
+}
+
+// Für die Übernahme eines Vorschlags: Klartext → sicherer Fußnoten-Inhalt (dieselbe Escaping-Regel,
+// die der Sanitizer auf Textknoten anwendet — eine Quelle, keine Zweitkopie).
+export function escapeCaptionText(text: string): string {
+  return escapeText(text);
+}
+
+// Harte Kappung auf ein KLARTEXT-Budget, ohne das Markup zu zerreißen: Tags laufen kostenlos durch
+// (die Verschachtelung bleibt damit gültig), nur Textläufe werden gekürzt. Ergebnis ist nie länger
+// als `max` Klartextzeichen — es kann durch Whitespace-Kollaps kürzer wirken, nie länger.
+export function capCaptionHtml(html: string, max: number): string {
+  if (!html) {
+    return "";
+  }
+  const out: string[] = [];
+  let budget = max;
+  const tagRe = /<\/?([a-zA-Z][a-zA-Z0-9]*)((?:[^<>"']|"[^"]*"|'[^']*')*)>/g;
+  let last = 0;
+  const nimmText = (roh: string): void => {
+    if (!roh) {
+      return;
+    }
+    const klar = decodeHtmlEntities(roh);
+    if (klar.length <= budget) {
+      out.push(roh);
+      budget -= klar.length;
+      return;
+    }
+    out.push(escapeText(klar.slice(0, Math.max(0, budget))));
+    budget = 0;
+  };
+  let m: RegExpExecArray | null = tagRe.exec(html);
+  while (m !== null) {
+    nimmText(html.slice(last, m.index));
+    last = tagRe.lastIndex;
+    const tag = (m[1] ?? "").toLowerCase();
+    if (tag === "br") {
+      // Ein Umbruch wird zu einem Klartextzeichen — er muss sein Budget also auch bezahlen.
+      if (budget >= 1) {
+        out.push(m[0]);
+        budget -= 1;
+      }
+    } else {
+      out.push(m[0]);
+    }
+    m = tagRe.exec(html);
+  }
+  nimmText(html.slice(last));
+  return out.join("");
+}
+
 // WP-IC-PAKET-1 (Teil 1): Entity-Dekodierung als EIN Durchlauf über den zentralen Client-Decoder
 // (htmlEntities.ts, Spiegel des Server-Originals) — die alte Ersetzungskette ließ &uuml;/&#228; roh
 // stehen und war doppel-dekodier-anfällig (&amp; zuerst). Gleiches Verhalten wie

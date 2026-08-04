@@ -15,6 +15,7 @@ import { describe, expect, it } from "vitest";
 import type { DraftPayload } from "../../apps/web/src/api/types";
 import { frontDoorBodyFromDraft } from "../../apps/web/src/lib/captureFrontDoor";
 import {
+  type EditableElement,
   LEGACY_IMAGE_CAPTION_PLACEHOLDERS,
   blankLegacyCaptionPlaceholders,
   enhanceFiguresForEditing,
@@ -26,13 +27,14 @@ interface CaptionLike {
   textContent: string | null;
   getAttribute(name: string): string | null;
 }
+// AUFTRAG-mega88 Block B: der schmale Typ folgt dem gewachsenen Vertrag von
+// `enhanceFiguresForEditing` — seit der Bildstruktur-Invariante braucht die Funktion mehr als
+// `textContent`/`setAttribute`. Statt die Liste hier zu WIEDERHOLEN (und beim nächsten Zuwachs
+// erneut zu vergessen), wird der Element-Typ des Moduls benutzt; das jsdom-Element erfüllt ihn.
 interface DivLike {
   innerHTML: string;
   querySelector(selectors: string): CaptionLike | null;
-  querySelectorAll(selectors: string): Iterable<{
-    textContent: string | null;
-    setAttribute(name: string, value: string): void;
-  }>;
+  querySelectorAll(selectors: string): Iterable<EditableElement>;
 }
 interface DocumentLike {
   createElement(tag: string): DivLike;
@@ -46,33 +48,52 @@ const FIGURE =
 const LEGACY_FIGURE =
   '<figure><img src="/api/objects/x/raw"><figcaption data-image-id="kw-img-abc123-1">Noch keine Bildbeschreibung</figcaption></figure>';
 
-describe("WP-D7b: Bild-Fußnote im Editor editierbar (jsdom)", () => {
-  it("verankert figcaption editierbar und img nicht editierbar", () => {
+describe("WP-D7b: Bild-Fußnote im Editor verankert (jsdom)", () => {
+  // AUFTRAG-mega84 Block A: die Fußnote war bis mega82 ein EIGENER Editing-Host
+  // (contenteditable="true") — man klickte hinein und tippte. Genau das war Pedis Befund vom
+  // 31.07.: es öffnete sich kein Formular, es gab keine Formatierung. Sie ist jetzt das Gegenteil:
+  // nicht editierbar, aber als Bedienelement angekündigt und der Einstieg in das Formular.
+  it("verankert die figcaption als BEDIENELEMENT (nicht editierbar) und img nicht editierbar", () => {
     const el = doc.createElement("div");
     el.innerHTML = FIGURE;
-    enhanceFiguresForEditing(el);
+    enhanceFiguresForEditing(el, undefined, "Bildbeschreibung bearbeiten");
 
     expect(el.querySelector("img")?.getAttribute("contenteditable")).toBe("false");
-    expect(el.querySelector("figcaption")?.getAttribute("contenteditable")).toBe("true");
+    const caption = el.querySelector("figcaption");
+    expect(caption?.getAttribute("contenteditable")).toBe("false");
+    expect(caption?.getAttribute("role")).toBe("button");
+    expect(caption?.getAttribute("tabindex")).toBe("0");
+    expect(caption?.getAttribute("aria-label")).toBe("Bildbeschreibung bearbeiten");
+    expect(caption?.getAttribute("data-kw-caption-open")).toBe("");
   });
 
-  it("editierte Caption überlebt den Sanitize-Roundtrip OHNE contenteditable-Attribute", () => {
+  it("die Beschreibung überlebt den Sanitize-Roundtrip OHNE jedes Editor-Attribut", () => {
     const el = doc.createElement("div");
     el.innerHTML = FIGURE;
-    enhanceFiguresForEditing(el);
+    enhanceFiguresForEditing(el, "✎ Bildbeschreibung hinzufügen …", "Bildbeschreibung bearbeiten");
 
-    // Nutzer klickt in die leere Fußnote und tippt echten Text.
+    // Das Formular schreibt die Beschreibung in die Fußnote (applyCaptionHtml → innerHTML).
     const caption = el.querySelector("figcaption");
     if (!caption) {
       throw new Error("figcaption fehlt");
     }
     caption.textContent = "Diagramm der Quartalszahlen";
 
-    // emit() = sanitizeHtml(innerHTML): neuer Text bleibt, Anker bleibt, contenteditable fliegt raus.
+    // emit() = sanitizeHtml(innerHTML): Text und Anker bleiben, JEDES Editor-Attribut fliegt raus.
+    // Das ist der Grund, warum die Bedienbarkeit nichts kostet: figcaption erlaubt nur data-image-id.
     const emitted = sanitizeHtml(el.innerHTML);
     expect(emitted).toContain("Diagramm der Quartalszahlen");
     expect(emitted).not.toContain("Noch keine Bildbeschreibung");
-    expect(emitted).not.toContain("contenteditable");
+    for (const attr of [
+      "contenteditable",
+      "role=",
+      "tabindex",
+      "aria-label",
+      "data-kw-caption-open",
+      "data-kw-placeholder",
+    ]) {
+      expect(emitted, attr).not.toContain(attr);
+    }
     expect(emitted).toContain('data-image-id="kw-img-abc123-1"');
     expect(emitted).toContain("<figure>");
     expect(emitted).toContain("<figcaption");
@@ -92,13 +113,15 @@ describe("WP-D8: echter Front-Door-Zyklus (Server-Sanitize → Draft → Editor)
     // 3) RichTextEditor: contenteditable-Container + sanitisiertes innerHTML + Verankerung.
     const editor = doc.createElement("div");
     editor.innerHTML = sanitizeHtml(bodyHtml);
-    enhanceFiguresForEditing(editor);
+    enhanceFiguresForEditing(editor, undefined, "Bildbeschreibung bearbeiten");
     const caption = editor.querySelector("figcaption");
     if (!caption) {
       throw new Error("figcaption fehlt im Editor");
     }
-    expect(caption.getAttribute("contenteditable")).toBe("true");
-    // 4) Simuliertes Tippen in die Fußnote + onChange-Sanitize-Roundtrip (emit).
+    // AUFTRAG-mega84 Block A: verankert als BEDIENELEMENT, nicht mehr als Editing-Host.
+    expect(caption.getAttribute("role")).toBe("button");
+    expect(caption.getAttribute("contenteditable")).toBe("false");
+    // 4) Das Formular schreibt die Beschreibung + onChange-Sanitize-Roundtrip (emit).
     caption.textContent = "Aufbau des Pruefstands";
     const emitted = sanitizeHtml(editor.innerHTML);
     expect(emitted).toContain("Aufbau des Pruefstands");
@@ -106,9 +129,9 @@ describe("WP-D8: echter Front-Door-Zyklus (Server-Sanitize → Draft → Editor)
     // 5) Reload-Zyklus (value → innerHTML erneut): Edit bleibt, Verankerung greift erneut.
     const editor2 = doc.createElement("div");
     editor2.innerHTML = sanitizeHtml(emitted);
-    enhanceFiguresForEditing(editor2);
+    enhanceFiguresForEditing(editor2, undefined, "Bildbeschreibung bearbeiten");
     expect(editor2.querySelector("figcaption")?.textContent).toBe("Aufbau des Pruefstands");
-    expect(editor2.querySelector("figcaption")?.getAttribute("contenteditable")).toBe("true");
+    expect(editor2.querySelector("figcaption")?.getAttribute("role")).toBe("button");
   });
 
   it("Fokus-Guard-Pin: der Editor prueft contains(activeElement), nicht Identitaet (Ursache von ROT A)", () => {
@@ -123,13 +146,14 @@ describe("WP-D8: echter Front-Door-Zyklus (Server-Sanitize → Draft → Editor)
     expect(src).not.toContain("document.activeElement !== el");
   });
 
-  it("Affordanz-Pin: sichtbarer Editier-Stil fuer die Fussnote im Editor, keine Unsichtbar-Regeln", () => {
+  it("Affordanz-Pin: sichtbarer Bedien-Stil fuer die Fussnote im Editor, keine Unsichtbar-Regeln", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/web/src/index.css"), "utf8");
-    // Eigene Editor-Affordanz (greift nur, wenn die Verankerung contenteditable=true gesetzt hat).
-    const start = css.indexOf('.prose-kw figcaption[contenteditable="true"]');
+    // AUFTRAG-mega84 Block A: die Affordanz haengt am Editor-Marker, nicht mehr an contenteditable
+    // — und sie verspricht ab jetzt einen KLICK (Zeiger), kein Tippen (Textcursor).
+    const start = css.indexOf(".prose-kw figcaption[data-kw-caption-open] {");
     expect(start).toBeGreaterThanOrEqual(0);
     const rule = css.slice(start, css.indexOf("}", start));
-    expect(rule).toContain("cursor-text");
+    expect(rule).toContain("cursor-pointer");
     expect(rule).toContain("border-dashed");
     expect(rule).toContain("min-h-");
     // Keine Regel macht die Fußnote unsichtbar/unklickbar.
@@ -209,33 +233,44 @@ describe("WP-D10: echter (visueller) Platzhalter statt Platzhalter-TEXT", () => 
     expect(cmp).toContain("blankLegacyCaptionPlaceholders(sanitizeHtml(html))");
   });
 
-  it("CSS-Pin: :empty::before rendert data-kw-placeholder, :focus blendet aus, Leseansicht versteckt leere Fußnoten", () => {
+  it("CSS-Pin: :empty::before rendert data-kw-placeholder; die Leseansicht versteckt leere Fußnoten, der Editor NICHT", () => {
     const css = readFileSync(resolve(process.cwd(), "apps/web/src/index.css"), "utf8");
-    const emptyRuleStart = css.indexOf(
-      '.prose-kw figcaption[contenteditable="true"]:empty::before',
-    );
+    const emptyRuleStart = css.indexOf(".prose-kw figcaption[data-kw-caption-open]:empty::before");
     expect(emptyRuleStart).toBeGreaterThan(0);
     const emptyRule = css.slice(emptyRuleStart, css.indexOf("}", emptyRuleStart));
     expect(emptyRule).toContain("content: attr(data-kw-placeholder)");
-    const focusRuleStart = css.indexOf(
-      '.prose-kw figcaption[contenteditable="true"]:focus::before',
-    );
-    expect(focusRuleStart).toBeGreaterThan(0);
-    expect(css.slice(focusRuleStart, css.indexOf("}", focusRuleStart))).toContain("content: none");
-    // Leseansicht: leere Fußnote (NICHT contenteditable) wird ausgeblendet — der Editor-Selektor
-    // bleibt davon unberührt (:not-Guard).
-    expect(css).toContain('.prose-kw figcaption:empty:not([contenteditable="true"])');
+    // AUFTRAG-mega84 Block A: die :focus::before-Regel ist ENTFALLEN. Sie blendete die Einladung
+    // beim Fokus aus, weil man dann in ein Feld tippte — es gibt kein Feld mehr, in das man tippt,
+    // und die Aufforderung „öffne das Formular" gilt auch mit Fokus weiter.
+    expect(css).not.toContain(":focus::before");
+
+    // DIE FALLE, die mega84 fast gestellt hätte: der Leseansicht-Guard hieß
+    // `:not([contenteditable="true"])`. Die Fußnote im Editor trägt seit mega84
+    // `contenteditable="false"` — sie hätte den Selektor ERFÜLLT und wäre samt Platzhalter und
+    // Einstieg unsichtbar gewesen. Der Guard fragt deshalb nach dem Editor-Marker selbst.
+    expect(css).toContain(".prose-kw figcaption:empty:not([data-kw-caption-open])");
+    expect(css).not.toContain('figcaption:empty:not([contenteditable="true"])');
   });
 
-  it("Editor-Verdrahtung: alle drei enhance-Aufrufe reichen den lokalisierten Platzhalter durch", () => {
+  it("Editor-Verdrahtung: die Verankerung läuft über EINE Stelle, die Platzhalter UND Beschriftung durchreicht", () => {
     const src = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
       "utf8",
     );
-    const calls = src.match(/enhanceFiguresForEditing\([^)]*\)/g) ?? [];
-    expect(calls.length).toBe(3);
+    // AUFTRAG-mega84 Block A: vorher standen drei Aufrufe nebeneinander, jeder mit seiner eigenen
+    // Argumentliste — und jeder eine Gelegenheit, das zweite Argument zu vergessen (die Klasse, an
+    // der mega50 entstanden ist). Es gibt jetzt EINE Stelle, an der die Argumente stehen.
+    // Nicht `[^)]*`: die Argumente enthalten selbst Klammern (t(...)) — der alte Ausdruck hätte
+    // mitten im ersten Argument aufgehört und die Beschriftung nie gesehen.
+    const calls = src.match(/enhanceFiguresForEditing\([\s\S]*?\);/g) ?? [];
+    expect(calls.length).toBe(1);
     for (const call of calls) {
       expect(call).toContain('t("editor.captionPlaceholder")');
+      expect(call).toContain("CAPTION_AI_TEXT.captionOpenLabel");
     }
+    // … und alle Verankerungswege gehen durch sie: externer Wertwechsel, execCommand-Einfügung
+    // und das zuverlässige Range-Einfügen. Weniger als drei hieße, dass ein Weg wieder eine
+    // unverankerte — und damit unbedienbare — Fußnote hinterlässt.
+    expect((src.match(/verankereFiguren\(/g) ?? []).length).toBeGreaterThanOrEqual(3);
   });
 });

@@ -1,4 +1,3 @@
-import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, expect, it } from "vitest";
 import { setLanguage } from "../test/render";
@@ -20,28 +19,62 @@ describe("KlaraPathTeaser", () => {
     expect(html).toContain("Demnächst");
     expect(html).not.toMatch(/<a(?:\s|>)/);
     expect(html).not.toMatch(/<button(?:\s|>)/);
-    expect(html).not.toMatch(/href=|role=|tabindex=|onclick=|ArrowRight/);
+    expect(html).not.toContain("Mit Klara starten");
+    expect(html).not.toContain("Mit Klara Wissen erfassen");
+    expect(html).not.toContain("Import mit Klara begleiten");
   });
 
-  it("kennzeichnet die Vorschau in allen angebotenen Sprachen", async () => {
+  it.each(["start", "capture", "import"] as const)(
+    "erklaert auf %s den geplanten Microsoft-365-Weg im aufklappbaren Abschnitt",
+    (surface) => {
+      const html = renderToStaticMarkup(<KlaraPathTeaser surface={surface} />);
+
+      expect(html).toMatch(/<details(?:\s|>)/);
+      expect(html).toMatch(/<summary(?:\s|>)/);
+      expect(html).toContain("Was Klara in Microsoft 365 tun wird");
+      expect(html).toContain("Klara ist als Add-in für Microsoft 365 geplant.");
+      expect(html).toContain("Verfügbar ist das noch nicht.");
+      // Die Erklaerung ist der einzige interaktive Teil: weiterhin kein Link, kein Button.
+      expect(html).not.toMatch(/<a(?:\s|>)/);
+      expect(html).not.toMatch(/<button(?:\s|>)/);
+    },
+  );
+
+  it("gibt allen drei Einbindungen denselben Erklaertext", () => {
+    const auszug = (surface: "start" | "capture" | "import"): string => {
+      const html = renderToStaticMarkup(<KlaraPathTeaser surface={surface} />);
+      const treffer = html.match(/<details[\s\S]*<\/details>/);
+      expect(treffer).not.toBeNull();
+      return treffer?.[0] ?? "";
+    };
+
+    expect(auszug("capture")).toBe(auszug("start"));
+    expect(auszug("import")).toBe(auszug("start"));
+  });
+
+  it("folgt der gewählten Sprache", async () => {
     await setLanguage("en");
-    const english = renderToStaticMarkup(<KlaraPathTeaser surface="capture" />);
-    expect(english).toContain("Tell Klara — she turns it into a clear draft.");
-    expect(english).toContain("Coming soon");
+    expect(renderToStaticMarkup(<KlaraPathTeaser surface="capture" />)).toContain(
+      "Tell Klara — she turns it into a clear draft.",
+    );
 
     await setLanguage("nl");
-    const dutch = renderToStaticMarkup(<KlaraPathTeaser surface="import" />);
-    expect(dutch).toContain("Klara helpt geïmporteerde kennis voor te bereiden.");
-    expect(dutch).toContain("Binnenkort");
+    expect(renderToStaticMarkup(<KlaraPathTeaser surface="import" />)).toContain(
+      "Klara helpt geïmporteerde kennis voor te bereiden.",
+    );
   });
 
-  it.each([
-    ["../pages/Start.tsx", "start"],
-    ["../pages/Capture.tsx", "capture"],
-    ["../pages/Stufe2.tsx", "import"],
-  ])("bleibt auf %s als Vorschau eingebunden", (path, surface) => {
-    const page = readFileSync(new URL(path, import.meta.url), "utf8");
-    expect(page).toContain(`import { KlaraPathTeaser } from "../components/KlaraPathTeaser";`);
-    expect(page).toContain(`<KlaraPathTeaser surface="${surface}" />`);
+  it("erklaert Microsoft 365 auch auf Englisch und Niederlaendisch", async () => {
+    await setLanguage("en");
+    const en = renderToStaticMarkup(<KlaraPathTeaser surface="start" />);
+    expect(en).toContain("What Klara will do in Microsoft 365");
+    expect(en).toContain("Klara is planned as an add-in for Microsoft 365.");
+    expect(en).toContain("This is not available yet.");
+
+    await setLanguage("nl");
+    const nl = renderToStaticMarkup(<KlaraPathTeaser surface="start" />);
+    expect(nl).toContain("Wat Klara in Microsoft 365 gaat doen");
+    expect(nl).toContain("Klara is gepland als add-in voor Microsoft 365.");
+    expect(nl).toContain("Beschikbaar is dit nog niet.");
   });
 });

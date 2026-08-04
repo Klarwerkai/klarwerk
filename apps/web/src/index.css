@@ -78,31 +78,49 @@
   @apply mt-1 border-l-2 border-hairline pl-2 text-[12px] italic text-muted;
 }
 /* WP-D8 (Pedis Live-ROT A, Bedienbarkeit): sichtbare Affordanz NUR im Editor — die Verankerung
-   (enhanceFiguresForEditing) setzt contenteditable="true" ausschließlich im Bearbeiten-Modus, daher
-   greift der Attribut-Selektor nie in der Lese-/Vorschau-Ansicht. Gestrichelte Umrandung + Text-Cursor
-   + Mindesthöhe: auch ein nicht-technischer Tester SIEHT, dass man hier tippen kann, und eine leere
-   Fußnote bleibt klickbar. */
-.prose-kw figcaption[contenteditable="true"] {
-  @apply min-h-[1.6em] cursor-text rounded-input border border-dashed border-hairline bg-page px-2 py-1;
+   (enhanceFiguresForEditing) setzt das Attribut ausschließlich im Bearbeiten-Modus, daher greift der
+   Selektor nie in der Lese-/Vorschau-Ansicht.
+   AUFTRAG-mega84 Block A: der Anker ist jetzt data-kw-caption-open statt contenteditable="true" —
+   die Fußnote ist kein Tippfeld mehr, sondern der Einstieg in das Bildbeschreibungs-Formular.
+   Deshalb Zeiger-Cursor statt Text-Cursor: sie verspricht ab jetzt, was sie hält. */
+.prose-kw figcaption[data-kw-caption-open] {
+  @apply min-h-[1.6em] cursor-pointer rounded-input border border-dashed border-hairline bg-page px-2 py-1;
 }
-.prose-kw figcaption[contenteditable="true"]:focus {
-  @apply border-solid border-ai/50 outline-none;
+.prose-kw figcaption[data-kw-caption-open]:hover {
+  @apply border-ai/50 bg-ai-surface-1;
+}
+/* Sichtbarer Fokusring: der Tastaturweg ist dem Mausweg gleichwertig und muss auch so aussehen.
+   Bewusst ein Ring statt einer Randfarbe — bei :focus-visible sieht man ihn auch auf dem
+   gestrichelten Rand noch. */
+.prose-kw figcaption[data-kw-caption-open]:focus-visible {
+  @apply border-solid border-ai/50 outline-none ring-2 ring-ai/60 ring-offset-1;
 }
 /* WP-D10: ECHTER (rein visueller) Platzhalter für die leere Bild-Fußnote im Editor. Der Text kommt aus
    data-kw-placeholder (lokalisiert, NUR editorseitig von enhanceFiguresForEditing gesetzt und vom
    Sanitizer beim Speichern gestrippt) — er ist ein ::before-Artefakt, nie echter figcaption-Inhalt und
-   muss daher auch nie manuell gelöscht werden. */
-.prose-kw figcaption[contenteditable="true"]:empty::before {
+   muss daher auch nie manuell gelöscht werden.
+   AUFTRAG-mega84: er verschwindet NICHT mehr beim Fokus. Er war die Einladung, in ein Feld zu tippen,
+   das es nicht mehr gibt — jetzt ist er die Aufforderung, das Formular zu öffnen, und die gilt auch
+   dann noch, wenn die Fußnote gerade den Fokus hat. */
+.prose-kw figcaption[data-kw-caption-open]:empty::before {
   content: attr(data-kw-placeholder);
   @apply not-italic text-muted-2;
 }
-/* Beim Fokus verschwindet die Einladung sofort — der Nutzer tippt in eine sichtbar leere Fußnote. */
-.prose-kw figcaption[contenteditable="true"]:focus::before {
-  content: none;
+/* AUFTRAG-mega84 Block B: das Formularfeld der Bildbeschreibung ist ein contentEditable (es trägt
+   fett/kursiv/Umbruch) und hat deshalb kein natives `placeholder`. Derselbe rein visuelle
+   ::before-Behelf wie bei der Fußnote — der Text ist nie Inhalt und wird nie gespeichert. */
+.kw-caption-field:empty::before {
+  content: attr(data-kw-placeholder);
+  @apply text-muted-2;
 }
 /* WP-D10 (Leseansicht): eine LEERE Fußnote ist kein Inhalt und wird außerhalb des Editors nicht
-   angezeigt (kein leerer gestrichelter/linierter Streifen unter dem Bild). */
-.prose-kw figcaption:empty:not([contenteditable="true"]) {
+   angezeigt (kein leerer gestrichelter/linierter Streifen unter dem Bild).
+   AUFTRAG-mega84 Block A — HIER LAG EINE FALLE: der Guard hieß `:not([contenteditable="true"])`.
+   Seit mega84 trägt die Fußnote im Editor `contenteditable="false"` — sie hätte diesen Selektor
+   also ERFÜLLT und wäre im Editor ausgeblendet worden, samt Platzhalter und samt Einstieg. Der
+   Guard fragt deshalb ab jetzt nach dem Editor-Marker selbst und nicht nach einer
+   Editier-Eigenschaft, die sich ändern kann. */
+.prose-kw figcaption:empty:not([data-kw-caption-open]) {
   @apply hidden;
 }
 /* Formatierung Stufe 2: erhaltene Tabellen aus Import/Paste sauber darstellen (Ränder, Padding). */

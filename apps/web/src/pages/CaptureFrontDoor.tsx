@@ -713,6 +713,13 @@ export function CaptureFrontDoor(): JSX.Element {
             <HelpTip {...chelp("savedNext")} />
           </div>
           <p className="text-sm leading-relaxed text-trust-pos-text/90">{t("fd.submittedBody")}</p>
+          {/* AUFTRAG-196 (U1 A2, Pedi JA): `fd.submittedBody` spricht über den EDITOR („abgeschlossen
+              und geleert"). Was mit dem WISSENSOBJEKT geschieht, stand bisher nur auf der zweiten
+              Erfassungsfläche (`Capture.tsx:3430`). Derselbe dreisprachige Satz wird hier ZUSÄTZLICH
+              gerendert — kein neuer Schlüssel, kein neuer Zustand, keine zweite Wahrheit. Ersetzen
+              wäre falsch: `capture-front-door.test.ts:376-377` pinnt `fd.submittedBody` zweimal im
+              Quelltext. */}
+          <p className="text-sm leading-relaxed text-trust-pos-text/90">{t("capture.savedBody")}</p>
           <div className="flex flex-wrap gap-2">
             <Link
               className="inline-flex items-center justify-center rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
@@ -825,6 +832,11 @@ export function CaptureFrontDoor(): JSX.Element {
                 onChange={changeBodyHtml}
                 placeholder={t("fd.editorPlaceholder")}
                 captionFormRequest={captionRequest ?? undefined}
+                /* AUFTRAG-mega84 Block C: der Titel gehört zum Dokument-Kontext des
+                   KI-Bildbeschreibungs-Vorschlags — er fehlte hier. `derivedTitle` und nicht das
+                   rohe Feld: die Vordertür leitet den Titel ab, solange der Nutzer keinen tippt,
+                   und genau der abgeleitete ist der, unter dem der Beitrag später steht. */
+                documentTitle={derivedTitle}
               />
               {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
                   AUFTRAG-mega69 Block A: aus der Großansicht führt „Bildbeschreibung bearbeiten"

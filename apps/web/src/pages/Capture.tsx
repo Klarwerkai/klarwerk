@@ -437,6 +437,10 @@ export function Capture(): JSX.Element {
   const [showHelpers, setShowHelpers] = useState(false);
   // KW-STR / SCRUM-45/46/48: WYSIWYG-Body (sanitisiertes HTML), separat vom Reasoner-Draft.
   const [bodyHtml, setBodyHtml] = useState("");
+  const [captionRequest, setCaptionRequest] = useState<{
+    imageId: string;
+    nonce: number;
+  } | null>(null);
   // SCRUM-337: großer Knowledge-Studio-Arbeitsraum (Overlay) auf demselben bodyHtml-State.
   const [studioOpen, setStudioOpen] = useState(false);
   // SCRUM-339: kurzes, ehrliches Feedback nach Übernahme aus dem Studio (kein Auto-Save).
@@ -5211,6 +5215,7 @@ export function Capture(): JSX.Element {
                         open={studioOpen}
                         onClose={() => setStudioOpen(false)}
                         bodyHtml={bodyHtml}
+                        documentTitle={draft.title}
                         onApply={(next) => {
                           setBodyHtml(next);
                           setStudioApplied(true);
@@ -5248,9 +5253,18 @@ export function Capture(): JSX.Element {
                         images={editorImagesFromLocalImages(images)}
                         onAttachFiles={attachFiles}
                         documentTitle={draft.title}
+                        captionFormRequest={captionRequest ?? undefined}
                       />
                       {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
-                      <DraftBodyGallery bodyHtml={bodyHtml} />
+                      <DraftBodyGallery
+                        bodyHtml={bodyHtml}
+                        onEditCaption={(imageId) =>
+                          setCaptionRequest((prev) => ({
+                            imageId,
+                            nonce: (prev?.nonce ?? 0) + 1,
+                          }))
+                        }
+                      />
                       {/* SCRUM-426: Public-KI-Anreicherung — nur bei Admin-Freigabe (Stufe „offen"),
                         Ergebnisse extern/ungeprüft, nur bewusst in den Entwurf übernehmen. */}
                       <PublicAiEnrichPanel
@@ -5467,6 +5481,7 @@ export function Capture(): JSX.Element {
                     images={editorImagesFromLocalImages(images)}
                     onAttachFiles={attachFiles}
                     documentTitle={draft.title}
+                    captionFormRequest={captionRequest ?? undefined}
                     aiPanel={
                       <AiAssistBox
                         text={bodyTextForAssist(bodyHtml)}
@@ -5486,13 +5501,22 @@ export function Capture(): JSX.Element {
                     }
                   />
                   {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
-                  <DraftBodyGallery bodyHtml={bodyHtml} />
+                  <DraftBodyGallery
+                    bodyHtml={bodyHtml}
+                    onEditCaption={(imageId) =>
+                      setCaptionRequest((prev) => ({
+                        imageId,
+                        nonce: (prev?.nonce ?? 0) + 1,
+                      }))
+                    }
+                  />
                 </div>
 
                 <KnowledgeInputStudio
                   open={studioOpen}
                   onClose={() => setStudioOpen(false)}
                   bodyHtml={bodyHtml}
+                  documentTitle={draft.title}
                   onApply={(next) => {
                     setBodyHtml(next);
                     setStudioApplied(true);

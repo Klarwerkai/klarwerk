@@ -6,6 +6,7 @@
 // DOM-lib-frei (schmale Strukturtypen) — im Gate-tsc prüfbar und ohne Browser testbar.
 
 import type { DescribeImageResult } from "../api/types";
+import { capCaptionHtml, captionPlainText, escapeCaptionText } from "./richText";
 
 // Flache Copy-Schlüssel — EINE Quelle für Komponente + Test (Muster AI_TASK_INFO_TEXT).
 export const CAPTION_AI_TEXT = {
@@ -44,6 +45,20 @@ export const CAPTION_AI_TEXT = {
   // (Bild getauscht, Quelle gewechselt, Bildblock entfernt, Inhalt von außen ersetzt). Dann wird
   // NICHT geschrieben — und das wird gesagt, statt still auf ein abgelöstes Ziel zu schreiben.
   formStale: "editor.captionForm.stale",
+  // AUFTRAG-mega84 Block A: die Bildbeschreibung SELBST ist der Einstieg. Sie ist damit ein
+  // Bedienelement und braucht eine angekündigte Beschriftung — der Platzhalter allein ist eine
+  // Aufforderung an das Auge, nicht an den Screenreader (und bei GEFÜLLTER Fußnote gibt es ihn gar
+  // nicht: dort stünde sonst nur der Beschreibungstext, ohne dass jemand sagt, dass er anklickbar ist).
+  captionOpenLabel: "editor.captionForm.openLabel",
+  // AUFTRAG-mega84 Block B (Pedis entschiedener Umfang, 31.07. 13:30): fett, kursiv, Zeilenumbruch.
+  formBold: "editor.captionForm.bold",
+  formItalic: "editor.captionForm.italic",
+  formLineBreak: "editor.captionForm.lineBreak",
+  formFormatLabel: "editor.captionForm.formatLabel",
+  // AUFTRAG-mega86 Block B (bens GELB aus sammel84): Fett/Kursiv konnten still nichts tun — weder
+  // `execCommand` noch der Range-Rückfall richten etwas aus, wenn gar nichts markiert ist. Dann
+  // wird der Grund GESAGT, statt den Nutzer raten zu lassen, warum der Knopf wirkungslos blieb.
+  formSelectFirst: "editor.captionForm.selectFirst",
 } as const;
 
 // AUFTRAG-mega9 Block F: sichtbares Zeichen-Maximum der Bildbeschreibung — nach dem Muster, das der
@@ -51,19 +66,28 @@ export const CAPTION_AI_TEXT = {
 // still zu kürzen). Eine Fußnote ist eine kurze Bildunterschrift, kein Fließtext.
 export const MAX_CAPTION_TEXT_CHARS = 300;
 
-// Die Übernahme eines Vorschlags in ein FELD (nicht in die Fußnote): ersetzen oder anhängen. Beim
+// Die Übernahme eines Vorschlags in das FELD (nicht in die Fußnote): ersetzen oder anhängen. Beim
 // Anhängen entsteht genau ein Trenn-Leerzeichen, und das Ergebnis wird auf das Maximum begrenzt —
 // dieselbe Grenze, die das Feld sichtbar ausweist (kein stilles Überlaufen).
-export function applyCaptionSuggestionToText(
-  current: string,
+//
+// AUFTRAG-mega84 Block B: das Feld trägt seit heute FORMATIERUNG, sein Inhalt ist also HTML. Der
+// Vorschlag selbst bleibt KLARTEXT (das Modell liefert keine Auszeichnung) — er wird deshalb
+// escaped eingefügt, nie roh. Zwei Folgen, beide gewollt:
+//   · ein Vorschlag kann keine Formatierung mitbringen und damit auch keine einschleusen,
+//   · beim Anhängen bleibt die bereits gesetzte Formatierung des Nutzers erhalten.
+// Die Grenze zählt KLARTEXT (`capCaptionHtml`), nicht Markup — sonst kostete ein <strong> den
+// Nutzer 17 seiner 300 Zeichen.
+export function applyCaptionSuggestionToHtml(
+  currentHtml: string,
   suggestion: string,
   strategy: "replace" | "append",
 ): string {
+  const eingefügt = escapeCaptionText(suggestion);
   const next =
-    strategy === "replace" || current.trim().length === 0
-      ? suggestion
-      : `${current.trimEnd()} ${suggestion}`;
-  return next.slice(0, MAX_CAPTION_TEXT_CHARS);
+    strategy === "replace" || captionPlainText(currentHtml).trim().length === 0
+      ? eingefügt
+      : `${currentHtml} ${eingefügt}`;
+  return capCaptionHtml(next, MAX_CAPTION_TEXT_CHARS);
 }
 
 // Client-Spiegel des Server-Deckels (MAX_DESCRIBE_IMAGE_DATAURL_CHARS, services/reasoner): zu große
@@ -150,15 +174,11 @@ export function captionFormResponseApplicable(
   );
 }
 
-// Der Knopf erscheint NUR im Editier-Modus, NUR mit fokussierter Fußnote und NUR, wenn der
-// Eltern-Kontext den describe-Aufruf verdrahtet hat (sonst gäbe es einen toten Klick).
-export function captionSuggestVisible(
-  mode: "edit" | "preview",
-  hasFocusedCaption: boolean,
-  hasHandler: boolean,
-): boolean {
-  return mode === "edit" && hasFocusedCaption && hasHandler;
-}
+// AUFTRAG-mega84 Block A: `captionSuggestVisible` ist HIER ENTFALLEN. Sie steuerte die Sichtbarkeit
+// des INLINE-Vorschlagsknopfes an der fokussierten Fußnote — eines Weges, den es seit mega84 nicht
+// mehr gibt: die Fußnote ist kein Editing-Host mehr, sondern der Einstieg in das Formular, und der
+// Vorschlag lebt ausschließlich IM Formular. Eine Sichtbarkeitsregel für eine Fläche, die niemand
+// mehr rendern kann, wäre genau die tote, zweite Wahrheit, gegen die dieser Auftrag gebaut ist.
 
 // Ergebnis → Panel-Zustand. Ein Vorschlag existiert nur bei echtem Modell-Text; jeder Fallback
 // wird nach Ursache unterschieden (gleiche Dreiteilung wie die FALLBACK-Erklärung des
@@ -186,14 +206,20 @@ export function captionSuggestOutcome(result: DescribeImageResult): CaptionSugge
 
 // Schmaler Strukturtyp der Fußnote (statt HTMLElement) — Gate-tsc-tauglich, im Test direkt stubbar.
 export interface CaptionLike {
-  textContent: string | null;
+  innerHTML: string;
 }
 
-// Übernahme des Vorschlags: setzt den Text über die NORMALE Editier-Mechanik der figcaption
-// (textContent — kein HTML, Sanitizer-Verträge unangetastet; gespeichert wird erst beim emit()
-// des Editors, wie bei jeder Handeingabe).
-export function applyCaptionSuggestion(caption: CaptionLike, text: string): void {
-  caption.textContent = text;
+// AUFTRAG-mega84 Block B: Schreiben in die Fußnote. Bis mega82 lief das über `textContent` — das
+// war richtig, solange die Beschreibung reiner Text war, und ist es ab jetzt nicht mehr: Pedis
+// Formular kennt fett, kursiv und Zeilenumbruch.
+//
+// Die Sanitizer-Verträge bleiben trotzdem unangetastet, und zwar an ZWEI Stellen hintereinander:
+// hier landet ausschließlich, was `sanitizeCaptionHtml` durchgelassen hat (der vorhandene
+// Client-Sanitizer plus die Verengung auf die drei Tags), und beim Speichern läuft der Body wie
+// jede Handeingabe noch einmal durch `emit()` → `sanitizeHtml` und danach durch den autoritativen
+// Server-Sanitizer. Es gibt keinen Weg, auf dem ungeprüftes HTML in die Fußnote käme.
+export function applyCaptionHtml(caption: CaptionLike, html: string): void {
+  caption.innerHTML = html;
 }
 
 // Bild einer Fußnote → data:image-URL fürs Modell. data:-Quellen (eingebettete Editor-Bilder)

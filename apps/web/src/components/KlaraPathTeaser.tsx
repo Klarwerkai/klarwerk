@@ -30,6 +30,17 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
           <p className="mt-0.5 max-w-2xl text-[12.5px] leading-relaxed text-muted">
             {t(`klara.path.${surface}.body`)}
           </p>
+          {/* BASIC-338: Erklaerdropdown als natives details/summary — der einzige interaktive
+              Teil des Teasers. Kein Link, kein Startknopf, keine CTA: die Vorschau bleibt
+              `Demnaechst`. Der Text ist flaechenunabhaengig, alle drei Einbindungen erben ihn. */}
+          <details className="mt-2">
+            <summary className="w-fit cursor-pointer text-[12px] font-medium text-ai marker:text-ai/60">
+              {t("klara.path.m365.summary")}
+            </summary>
+            <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted">
+              {t("klara.path.m365.body")}
+            </p>
+          </details>
         </div>
       </div>
     </aside>

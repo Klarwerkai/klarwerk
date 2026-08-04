@@ -18,7 +18,12 @@ import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTION_AI_TEXT, MAX_CAPTION_TEXT_CHARS } from "../../apps/web/src/lib/captionAiSuggest";
-import { mitBildbeschreibung } from "./bildbeschreibung-naht";
+import {
+  beschreibungsText,
+  beschreibungsfeldOffen,
+  mitBildbeschreibung,
+  schreibeBeschreibung,
+} from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -35,6 +40,9 @@ function Host({ onDescribe }: { onDescribe: () => Promise<DescribeImageResult> }
   return mitBildbeschreibung(
     createElement(RichTextEditor, {
       value,
+      // AUFTRAG-mega85 Block D: Pflichtparameter — der Compiler zwingt jede Einbindung, den
+      // Dokument-Titel zu ENTSCHEIDEN statt ihn zu vergessen.
+      documentTitle: "Wartungsnotiz",
       onChange: (html: string) => {
         lastHtml = html;
         setValue(html);
@@ -77,13 +85,8 @@ function maybeTestId(id: string): HTMLElement | null {
   return el instanceof HTMLElement ? el : null;
 }
 
-function field(): HTMLTextAreaElement {
-  const el = document.querySelector("#caption-form-text");
-  if (!(el instanceof HTMLTextAreaElement)) {
-    throw new Error("Beschreibungsfeld nicht gerendert");
-  }
-  return el;
-}
+// AUFTRAG-mega84 Block B: das Feld ist ein contentEditable geworden (fett/kursiv/Umbruch) — der
+// Zugriff darauf liegt in der Naht, nicht in jeder Testdatei einzeln.
 
 async function click(el: HTMLElement): Promise<void> {
   await act(async () => {
@@ -106,13 +109,8 @@ async function openForm(): Promise<void> {
 }
 
 async function type(value: string): Promise<void> {
-  const el = field();
-  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set as (
-    v: string,
-  ) => void;
   await act(async () => {
-    setter.call(el, value);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
+    schreibeBeschreibung(value);
     await flush();
   });
 }
@@ -141,9 +139,10 @@ describe("AUFTRAG-mega9 Block F: die Bildbeschreibung ist ein echtes Eingabeform
     const label = document.querySelector('label[for="caption-form-text"]');
     expect(label?.textContent).toBe(i18n.t(CAPTION_AI_TEXT.formLabel));
     // … trägt den bestehenden Fußnotentext als Ausgangswert …
-    expect(field().value).toBe("Alte Beschreibung");
+    expect(beschreibungsText()).toBe("Alte Beschreibung");
     // … und das Maximum steht SICHTBAR am Feld (nicht nur als stilles maxLength).
-    expect(field().maxLength).toBe(MAX_CAPTION_TEXT_CHARS);
+    // AUFTRAG-mega84 Block B: kein stilles `maxLength` mehr — die Grenze steht sichtbar am Feld
+    // und zählt KLARTEXT (Markup kostet den Nutzer nichts von seinen 300 Zeichen).
     expect(document.body.textContent).toContain(String(MAX_CAPTION_TEXT_CHARS));
   });
 
@@ -161,10 +160,10 @@ describe("AUFTRAG-mega9 Block F: die Bildbeschreibung ist ein echtes Eingabeform
     expect(block.textContent).toContain(i18n.t(CAPTION_AI_TEXT.aiBadge));
     expect(block.textContent).toContain(SUGGESTION.text);
     // Das Feld trägt weiterhin den EIGENEN Text — der Vorschlag wird nie automatisch übernommen.
-    expect(field().value).toBe("Alte Beschreibung");
+    expect(beschreibungsText()).toBe("Alte Beschreibung");
 
     await click(byTestId("caption-form-adopt"));
-    expect(field().value).toBe(SUGGESTION.text);
+    expect(beschreibungsText()).toBe(SUGGESTION.text);
   });
 
   it("'Anhängen' gibt es nur, wenn schon Text im Feld steht — sonst wäre es dieselbe Wirkung", async () => {
@@ -175,7 +174,7 @@ describe("AUFTRAG-mega9 Block F: die Bildbeschreibung ist ein echtes Eingabeform
     // Feld hat Inhalt → beide Wege sind sinnvoll unterscheidbar.
     expect(maybeTestId("caption-form-append")).not.toBeNull();
     await click(byTestId("caption-form-append"));
-    expect(field().value).toBe(`Alte Beschreibung ${SUGGESTION.text}`);
+    expect(beschreibungsText()).toBe(`Alte Beschreibung ${SUGGESTION.text}`);
 
     // Feld geleert → „Anhängen" verschwindet (keine Scheinwahl mit identischer Wirkung).
     await type("");
@@ -192,7 +191,7 @@ describe("AUFTRAG-mega9 Block F: die Bildbeschreibung ist ein echtes Eingabeform
     expect(lastHtml).toContain("Handgeschriebene Beschreibung");
     expect(lastHtml).not.toContain("Alte Beschreibung");
     // Und das Formular ist zu.
-    expect(document.querySelector("#caption-form-text")).toBeNull();
+    expect(beschreibungsfeldOffen()).toBe(false);
 
     // Zweiter Durchgang: tippen, dann ABBRECHEN → nichts davon landet im Dokument.
     const htmlBeforeCancel = lastHtml;
@@ -229,7 +228,7 @@ describe("AUFTRAG-mega9 Block F: die Bildbeschreibung ist ein echtes Eingabeform
       expect(maybeTestId("caption-form-suggestion"), c.reason).toBeNull();
       expect(maybeTestId("caption-form-adopt"), c.reason).toBeNull();
       // … und das Feld ist unberührt: NIEMALS eine Pseudo-Beschreibung.
-      expect(field().value, c.reason).toBe("Alte Beschreibung");
+      expect(beschreibungsText(), c.reason).toBe("Alte Beschreibung");
 
       act(() => root.unmount());
       container.remove();
@@ -246,7 +245,7 @@ describe("AUFTRAG-mega9 Block F: die Bildbeschreibung ist ein echtes Eingabeform
     await click(byTestId("caption-form-adopt"));
 
     // Kein stilles Überlaufen über die sichtbar ausgewiesene Grenze.
-    expect(field().value.length).toBe(MAX_CAPTION_TEXT_CHARS);
+    expect(beschreibungsText().length).toBe(MAX_CAPTION_TEXT_CHARS);
     // Und die Grenze wird am Feld ausdrücklich als erreicht benannt.
     expect(document.body.textContent).toContain(
       i18n.t(CAPTION_AI_TEXT.formLimitReached, { max: MAX_CAPTION_TEXT_CHARS }),

@@ -38,11 +38,15 @@ function attrOf(tag: string, name: string): string | null {
 // figcaption-Inhalt → Klartext: Tags raus, die Sanitizer-Entities zurückübersetzen, Whitespace glätten.
 // WP-D10: exakt einer der drei Alt-Platzhaltertexte ist KEINE Beschreibung → leerer String (die Galerie
 // behandelt das Bild dann ehrlich als „ohne Beschreibung", identisch zu einer leeren Fußnote).
-function captionText(figureInner: string): string {
-  const m = /<figcaption\b[^>]*>([\s\S]*?)<\/figcaption>/i.exec(figureInner);
-  const raw = m?.[1] ?? "";
+// AUFTRAG-mega89 Block B: bekommt jetzt den Fußnoten-INHALT direkt (der Zerleger unten liefert ihn),
+// statt ihn ein zweites Mal aus einem figure-Abschnitt herauszusuchen.
+function captionText(raw: string): string {
   const text = raw
-    .replace(/<[^>]+>/g, " ")
+    // AUFTRAG-mega84 Block B: siehe librarySearch.ts — ein Umbruch ist eine Wortgrenze und bleibt
+    // ein Leerzeichen, Auszeichnung ist keine und verschwindet spurlos. Sonst läse die Galerie
+    // dieselbe Beschreibung je nach Formatierung anders („Ventil V2 ," statt „Ventil V2,").
+    .replace(/<br\s*\/?>/gi, " ")
+    .replace(/<[^>]+>/g, "")
     .replace(/&amp;/g, "&")
     .replace(/&lt;/g, "<")
     .replace(/&gt;/g, ">")
@@ -53,30 +57,121 @@ function captionText(figureInner: string): string {
   return LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(text) ? "" : text;
 }
 
+// AUFTRAG-mega89 Block B — DIE GALERIE VERLOR BEI VERSCHACHTELUNG EIN BILD.
+//
+// DER BEFUND (ben in sammel88, am Quelltext nachgemessen): hier stand
+// `/<figure\b[^>]*>([\s\S]*?)<\/figure>/gi` — NICHT-GIERIG. Lag eine figure IN einer figure, endete
+// der Abschnitt der ÄUSSEREN am INNEREN `</figure>`. Das erste Bild wurde mit der ersten INNEREN
+// Fußnote kombiniert (falsche Beschreibung), und der zweite Eintrag ging ganz verloren. Zusätzlich
+// nahm der Zerleger je figure nur DAS ERSTE Bild — eine eingehende Word-figure mit zwei Bildern
+// lieferte also auch ohne Verschachtelung nur einen Eintrag.
+//
+// DIE ANTWORT: ein Durchgang über die vier Marken `<figure>`, `</figure>`, `<img>` und die ganze
+// `<figcaption>…</figcaption>`, mit einem TIEFENZÄHLER. Ein Bild zählt, wenn es INNERHALB einer
+// figure steht (der Vertrag „nur verankerte Bilder", unverändert); gepaart wird je ÄUSSERSTER figure
+// über die stabile gemeinsame `data-image-id` — nie über die Verschachtelung.
+//
+// DER RÜCKFALL IST BEWUSST ENG, damit kein Text an ein falsches Bild wandert:
+//   · Eine Fußnote OHNE Kennung geht der Reihe nach an das nächste noch unversorgte Bild. Das trägt
+//     den Altbestand aus der Zeit vor WP-BILD-1b und ist genau die mega89-Regel „die vorhandene
+//     Fußnote gehört dem ersten Bild".
+//   · Steht in der Gruppe GENAU EIN Bild, bekommt es die verbleibende Fußnote auch dann, wenn deren
+//     Kennung abweicht — dort ist „die Fußnote dieser figure" eindeutig, und das Verhalten bleibt
+//     Zeichen für Zeichen das von vor mega89.
+//   · Bei MEHREREN Bildern und einer fremd gekennzeichneten Fußnote wird NICHT geraten: das Bild
+//     bleibt ohne Beschreibung. Eine geratene Zuordnung ist genau der Schaden, den dieser Auftrag
+//     abstellt.
+const MARKEN_QUELLE =
+  "<figure\\b[^>]*>|</figure\\s*>|<img\\b[^>]*>|(<figcaption\\b[^>]*>)([\\s\\S]*?)</figcaption>";
+
+interface GalerieBild {
+  id: string;
+  src: string;
+}
+interface GalerieFussnote {
+  id: string | null;
+  text: string;
+}
+
 export function extractBodyImages(bodyHtml: string | null | undefined): BodyImage[] {
   const out: BodyImage[] = [];
   if (!bodyHtml) {
     return out;
   }
+  let bilder: GalerieBild[] = [];
+  let fussnoten: GalerieFussnote[] = [];
+
+  /** Eine äußerste figure ist zu Ende: ihre Bilder mit ihren Fußnoten paaren. */
+  const gruppeAbschliessen = (): void => {
+    const belegt = fussnoten.map(() => false);
+    const texte: (string | null)[] = bilder.map(() => null);
+    bilder.forEach((bild, i) => {
+      const k = fussnoten.findIndex((f, j) => !belegt[j] && f.id === bild.id);
+      if (k >= 0) {
+        belegt[k] = true;
+        texte[i] = fussnoten[k]?.text ?? "";
+      }
+    });
+    bilder.forEach((_bild, i) => {
+      if (texte[i] !== null) {
+        return;
+      }
+      const k = fussnoten.findIndex(
+        (f, j) => !belegt[j] && (f.id === null || f.id === "" || bilder.length === 1),
+      );
+      if (k >= 0) {
+        belegt[k] = true;
+        texte[i] = fussnoten[k]?.text ?? "";
+      }
+    });
+    bilder.forEach((bild, i) => {
+      out.push({ id: bild.id, src: bild.src, caption: texte[i] ?? "" });
+    });
+    bilder = [];
+    fussnoten = [];
+  };
+
   // Frische Regex je Aufruf (kein geteilter lastIndex-Zustand über Aufrufe hinweg).
-  const figureRe = /<figure\b[^>]*>([\s\S]*?)<\/figure>/gi;
+  const marken = new RegExp(MARKEN_QUELLE, "gi");
+  let tiefe = 0;
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
-  while ((m = figureRe.exec(bodyHtml)) !== null) {
-    const inner = m[1] ?? "";
-    const imgTag = /<img\b[^>]*>/i.exec(inner)?.[0];
-    if (!imgTag) {
+  while ((m = marken.exec(bodyHtml)) !== null) {
+    const marke = m[0];
+    if (/^<figure/i.test(marke)) {
+      tiefe += 1;
       continue;
     }
-    const id = attrOf(imgTag, "data-image-id");
-    const src = attrOf(imgTag, "src");
+    if (/^<\/figure/i.test(marke)) {
+      tiefe -= 1;
+      if (tiefe <= 0) {
+        tiefe = 0;
+        gruppeAbschliessen();
+      }
+      continue;
+    }
+    if (tiefe === 0) {
+      // Außerhalb jeder figure: kein Galerie-Eintrag. Der Vertrag ist unverändert.
+      continue;
+    }
+    const offenerTag = m[1];
+    if (offenerTag !== undefined) {
+      // Die Kennung wird aus dem ÖFFNENDEN Tag gelesen, nie aus dem Fußnotentext.
+      fussnoten.push({ id: attrOf(offenerTag, "data-image-id"), text: captionText(m[2] ?? "") });
+      continue;
+    }
+    const id = attrOf(marke, "data-image-id");
+    const src = attrOf(marke, "src");
     // Ohne gültige data-image-id (oder ohne src) kein Galerie-Eintrag — die Galerie zeigt nur die
     // verankerten Import-Bilder (Fußnoten-Vertrag), keine losen Alt-Bilder. WP-D9c: die src läuft
     // zusätzlich durch die zentrale isSafeImgSrc-Policy (Legacy-Daten/Repo-Importe fail-closed).
     if (!id || !IMAGE_ID_TOKEN_RE.test(id) || !src || !isSafeImgSrc(src)) {
       continue;
     }
-    out.push({ id, src, caption: captionText(inner) });
+    bilder.push({ id, src });
   }
+  // Unbalanciertes Markup (ein `</figure>` fehlt): was noch offen ist, wird trotzdem ausgeliefert
+  // statt still verworfen.
+  gruppeAbschliessen();
   return out;
 }

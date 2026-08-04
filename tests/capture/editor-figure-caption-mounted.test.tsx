@@ -19,7 +19,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 // i18n VOR dem Editor importieren: initialisiert react-i18next global (useTranslation ohne Provider).
 import "../../apps/web/src/i18n";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
-import { mitBildbeschreibung } from "./bildbeschreibung-naht";
+import { mitBildbeschreibung, schreibeBeschreibung } from "./bildbeschreibung-naht";
 
 // React 18: act außerhalb eines Test-Renderers verlangt dieses Flag.
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -40,6 +40,9 @@ function Host({ initial }: { initial: string }) {
   return mitBildbeschreibung(
     createElement(RichTextEditor, {
       value,
+      // AUFTRAG-mega85 Block D: Pflichtparameter — der Compiler zwingt jede Einbindung, den
+      // Dokument-Titel zu ENTSCHEIDEN statt ihn zu vergessen.
+      documentTitle: "Wartungsnotiz",
       onChange: (html: string) => {
         emitted.push(html);
         setValue(html);
@@ -68,14 +71,8 @@ function findCaption(): HTMLElement {
   return caption;
 }
 
-// Tippen in die Fußnote simulieren: Textknoten ändern + natives input-Event (bubbelt zum Editor-Div,
-// React ruft den onInput-Handler → emit → onChange → value-Update → useEffect-Sync-Entscheidung).
-function typeIntoCaption(caption: HTMLElement, text: string): void {
-  act(() => {
-    caption.textContent = `${caption.textContent ?? ""}${text}`;
-    caption.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
+// AUFTRAG-mega84 Block A: `typeIntoCaption` ist entfallen — in die Fußnote wird nicht mehr getippt.
+// Was der Nutzer eingibt, geht durch das Formular (`schreibeBeschreibung` aus der gemeinsamen Naht).
 
 beforeEach(() => {
   emitted = [];
@@ -90,45 +87,49 @@ afterEach(() => {
 });
 
 describe("WP-D8b: gemounteter RichTextEditor — Fokus in der Bild-Fußnote", () => {
-  it("(a) Tippen in der fokussierten figcaption ersetzt den DOM-Knoten NICHT (kein innerHTML-Rewrite)", () => {
+  it("(a) Fokus IN der Fußnote zählt als Fokus im Editor — der Guard prüft contains, nicht Identität", () => {
     mount(FIGURE);
     const caption = findCaption();
-    // Enhancement des echten useEffect-Zyklus: figcaption ist als Editing-Host verankert.
-    expect(caption.getAttribute("contenteditable")).toBe("true");
-
-    // Echten Fokus setzen (jsdom fokussiert Elemente zuverlässig über tabindex; der Guard prüft NUR
-    // el.contains(document.activeElement) — die tabindex-Hilfe ändert an der geprüften Logik nichts).
-    caption.setAttribute("tabindex", "-1");
+    // AUFTRAG-mega84 Block A: die Fußnote ist kein Editing-Host mehr, aber sie ist FOKUSSIERBAR
+    // (role=button, tabindex=0) — und damit bleibt genau die Kante bestehen, die WP-D8 ausgelöst
+    // hat: document.activeElement ist dann NICHT der Editor-Container, sondern ein Nachfahre.
+    // Der Fokus-Guard muss `contains` prüfen; mit dem alten `!== el` hielte er den Editor für
+    // unfokussiert und schriebe sein innerHTML neu — der Knoten unter dem Fokus wäre weg.
+    expect(caption.getAttribute("contenteditable")).toBe("false");
+    expect(caption.getAttribute("tabindex")).toBe("0");
     act(() => {
       caption.focus();
     });
     expect(document.activeElement).toBe(caption);
-    // Der springende Punkt: activeElement ist NICHT der Editor-Container selbst (alter Guard griffe hier).
-    expect(document.activeElement).not.toBe(caption.closest('[contenteditable="true"][class]'));
+    expect(document.activeElement).not.toBe(container.querySelector('[role="textbox"]'));
 
-    // Mehrere Eingaben feuern — jede löst onChange → value-Update → useEffect aus.
-    typeIntoCaption(caption, "A");
-    typeIntoCaption(caption, "B");
-    typeIntoCaption(caption, "C");
-
-    // (a) DERSELBE DOM-Knoten lebt noch (kein innerHTML-Rewrite während des Tippens) …
+    // Ein Echo desselben Wertes von außen darf den fokussierten Teilbaum nicht neu aufbauen.
+    act(() => {
+      hostSetValue?.(FIGURE);
+    });
     expect(container.querySelector("figcaption")).toBe(caption);
-    // … und der Fokus blieb in der Fußnote (kein Caret-Zerstörungs-Symptom).
     expect(document.activeElement).toBe(caption);
   });
 
-  it("(b) onChange liefert den getippten Text sanitisiert — NIE Platzhaltertext/-attribute", () => {
+  it("(b) onChange liefert die über das Formular gesetzte Beschreibung sanitisiert — NIE Platzhaltertext/-attribute", () => {
     mount(FIGURE);
     const caption = findCaption();
     // WP-D10: der echte Mount-Zyklus hat den Altlast-Platzhalter GELEERT und die visuelle Einladung
     // als data-Attribut verankert (Text kommt nur noch aus CSS ::before, nie aus dem Inhalt).
     expect(caption.textContent).toBe("");
     expect(caption.getAttribute("data-kw-placeholder")).toBeTruthy();
-    caption.setAttribute("tabindex", "-1");
+
+    // AUFTRAG-mega84 Block A/B: der Weg in die Fußnote führt über das Formular — Klick auf die
+    // Beschreibung, Text eingeben, speichern. Inline getippt wird nicht mehr.
     act(() => {
-      caption.focus();
+      caption.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     });
-    typeIntoCaption(caption, "XYZ");
+    act(() => {
+      schreibeBeschreibung("XYZ");
+    });
+    act(() => {
+      (container.querySelector('[data-testid="caption-form-save"]') as HTMLElement).click();
+    });
 
     expect(emitted.length).toBeGreaterThan(0);
     const last = emitted[emitted.length - 1] ?? "";

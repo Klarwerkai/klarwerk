@@ -88,12 +88,13 @@ describe("Teil B: Galerie im Entwurf (DraftBodyGallery, gemountet)", () => {
   it("PIN: beide Entwurfs-Ansichten rendern die Galerie unter dem Editor (kein Duplikat)", async () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
-    // AUFTRAG-mega69 Block A: die Vordertür (Ankunftsort der Klara-Entwürfe) übergibt zusätzlich
-    // den Weg zur Bildbeschreibung (onEditCaption) — der Pin prüft je Datei die gerenderte Galerie
-    // und an der Vordertür die neue Verdrahtung. Capture.tsx behält die reine Galerie (der
-    // Klara-Weg landet dort nie; Word-Entwürfe werden zur Vordertür umgeleitet).
+    // AUFTRAG-mega69 Block A / mega84: beide Entwurfswege übergeben denselben Weg zur
+    // Bildbeschreibung. Der Pin prüft die Galerie und die Verdrahtung getrennt, statt eine
+    // prop-genaue Einzeilenformatierung festzuschreiben.
     const capture = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
-    expect(capture).toContain("<DraftBodyGallery bodyHtml={bodyHtml} />");
+    expect(capture).toContain("<DraftBodyGallery");
+    expect(capture).toContain("bodyHtml={bodyHtml}");
+    expect(capture).toContain("onEditCaption=");
     const frontDoor = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
       "utf8",

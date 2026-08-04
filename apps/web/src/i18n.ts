@@ -443,6 +443,9 @@ const de = {
   "klara.path.import.title": "Klara bereitet importiertes Wissen mit dir auf.",
   "klara.path.import.body":
     "Nach dem Upload hilft Klara künftig beim Ordnen, Klären und Vorbereiten für die Prüfung.",
+  "klara.path.m365.summary": "Was Klara in Microsoft 365 tun wird",
+  "klara.path.m365.body":
+    "Klara ist als Add-in für Microsoft 365 geplant. Sie soll Wissen dort aufnehmen, wo du ohnehin arbeitest, und es strukturiert für Klarwerk vorbereiten — prüfen und entscheiden bleibt bei dir. Verfügbar ist das noch nicht.",
   "start.todo": "Heute zu tun",
   "start.workTitle": "Nächste Handlungen",
   "start.severity.critical": "jetzt",
@@ -1547,6 +1550,8 @@ const de = {
   // WP-D10: rein VISUELLER Platzhalter der leeren Bild-Fußnote (data-kw-placeholder + CSS ::before) —
   // wird nie als Inhalt gespeichert. Kein Emoji, nur das Stift-Zeichen ✎.
   "editor.captionPlaceholder": "✎ Bildbeschreibung hinzufügen …",
+  "editor.captionNoAnchor":
+    "Zu diesem Bild lässt sich gerade keine Bildbeschreibung anlegen. Bitte fügen Sie das Bild erneut ein.",
   "editor.captionAi.suggest": "KI-Beschreibung vorschlagen",
   "editor.captionAi.loading": "KI-Beschreibung wird erstellt …",
   "editor.captionAi.panelTitle": "Vorschlag",
@@ -1581,6 +1586,13 @@ const de = {
   // AUFTRAG-mega11 Block D (bens SB-4): das Ziel des Formulars hat sich unter ihm verändert.
   "editor.captionForm.stale":
     "Dieses Bild hat sich inzwischen geändert — die Beschreibung wurde NICHT gespeichert, damit sie nicht beim falschen Bild landet. Bitte den Text kopieren, das Formular schließen und am aktuellen Bild erneut öffnen.",
+  "editor.captionForm.openLabel": "Bildbeschreibung bearbeiten (öffnet das Eingabeformular)",
+  "editor.captionForm.formatLabel": "Formatierung",
+  "editor.captionForm.bold": "Fett (Strg/Cmd + B)",
+  "editor.captionForm.italic": "Kursiv (Strg/Cmd + I)",
+  "editor.captionForm.lineBreak": "Zeilenumbruch (Umschalt + Eingabe)",
+  "editor.captionForm.selectFirst":
+    "Markiere zuerst den Text, den du auszeichnen möchtest — dann wirkt Fett oder Kursiv darauf.",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -4882,6 +4894,9 @@ const en: typeof de = {
   "klara.path.import.title": "Klara helps you prepare imported knowledge.",
   "klara.path.import.body":
     "After upload, Klara will help organise, clarify and prepare it for review.",
+  "klara.path.m365.summary": "What Klara will do in Microsoft 365",
+  "klara.path.m365.body":
+    "Klara is planned as an add-in for Microsoft 365. She will pick up knowledge where you already work and prepare it in a structured way for Klarwerk — reviewing and deciding stays with you. This is not available yet.",
   "start.todo": "To do today",
   "start.workTitle": "Next actions",
   "start.severity.critical": "now",
@@ -5895,6 +5910,8 @@ const en: typeof de = {
   "editor.fileFromDisk": "Attach file from computer …",
   "editor.imageFromAttachment": "From attachments",
   "editor.captionPlaceholder": "✎ Add image description …",
+  "editor.captionNoAnchor":
+    "No image description can be added for this image right now. Please insert the image again.",
   "editor.captionAi.suggest": "Suggest AI description",
   "editor.captionAi.loading": "Creating AI description …",
   "editor.captionAi.panelTitle": "Suggestion",
@@ -5927,6 +5944,13 @@ const en: typeof de = {
     "No suggestion requested yet. The text stays yours — a suggestion is never adopted automatically.",
   "editor.captionForm.stale":
     "This image has changed in the meantime — the caption was NOT saved, so it cannot end up on the wrong image. Please copy the text, close the form and reopen it on the current image.",
+  "editor.captionForm.openLabel": "Edit image description (opens the input form)",
+  "editor.captionForm.formatLabel": "Formatting",
+  "editor.captionForm.bold": "Bold (Ctrl/Cmd + B)",
+  "editor.captionForm.italic": "Italic (Ctrl/Cmd + I)",
+  "editor.captionForm.lineBreak": "Line break (Shift + Enter)",
+  "editor.captionForm.selectFirst":
+    "Select the text you want to mark up first — bold or italic then applies to it.",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -8886,6 +8910,9 @@ const nl: typeof de = {
   "klara.path.import.title": "Klara helpt geïmporteerde kennis voor te bereiden.",
   "klara.path.import.body":
     "Na het uploaden helpt Klara straks met ordenen, verduidelijken en voorbereiden op beoordeling.",
+  "klara.path.m365.summary": "Wat Klara in Microsoft 365 gaat doen",
+  "klara.path.m365.body":
+    "Klara is gepland als add-in voor Microsoft 365. Zij neemt kennis op waar je toch al werkt en bereidt die gestructureerd voor Klarwerk voor — controleren en beslissen blijft bij jou. Beschikbaar is dit nog niet.",
   "start.todo": "Vandaag te doen",
   "start.workTitle": "Volgende acties",
   "start.severity.critical": "nu",
@@ -9898,6 +9925,8 @@ const nl: typeof de = {
   "editor.fileFromDisk": "Bestand van je computer toevoegen …",
   "editor.imageFromAttachment": "Uit bijlagen",
   "editor.captionPlaceholder": "✎ Afbeeldingsbeschrijving toevoegen …",
+  "editor.captionNoAnchor":
+    "Voor deze afbeelding kan nu geen afbeeldingsbeschrijving worden aangemaakt. Voeg de afbeelding opnieuw in.",
   "editor.captionAi.suggest": "AI-beschrijving voorstellen",
   "editor.captionAi.loading": "AI-beschrijving wordt gemaakt …",
   "editor.captionAi.panelTitle": "Voorstel",
@@ -9930,6 +9959,13 @@ const nl: typeof de = {
     "Nog geen voorstel aangevraagd. De tekst blijft van jou — een voorstel wordt nooit automatisch overgenomen.",
   "editor.captionForm.stale":
     "Deze afbeelding is intussen gewijzigd — het bijschrift is NIET opgeslagen, zodat het niet bij de verkeerde afbeelding terechtkomt. Kopieer de tekst, sluit het formulier en open het opnieuw bij de huidige afbeelding.",
+  "editor.captionForm.openLabel": "Afbeeldingsbeschrijving bewerken (opent het invoerformulier)",
+  "editor.captionForm.formatLabel": "Opmaak",
+  "editor.captionForm.bold": "Vet (Ctrl/Cmd + B)",
+  "editor.captionForm.italic": "Cursief (Ctrl/Cmd + I)",
+  "editor.captionForm.lineBreak": "Regeleinde (Shift + Enter)",
+  "editor.captionForm.selectFirst":
+    "Selecteer eerst de tekst die je wilt opmaken — vet of cursief werkt dan daarop.",
   "editor.file": "Bestand koppelen",
   "editor.insertFile": "Bestandsbijlage als link invoegen",
   "editor.noFiles":
