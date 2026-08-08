@@ -221,13 +221,16 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
 
     expect(describeMock).toHaveBeenCalledTimes(1);
     // Signatur des EINEN Aufrufs: (dataUrl, locale, provenance, context) — s. ImageDescribeContext.
-    const [dataUrl, , , context] = describeMock.mock.calls[0] as [
+    const [dataUrl, , provenance, context] = describeMock.mock.calls[0] as [
       string,
       unknown,
-      unknown,
+      { source: string; confidentiality: string },
       string?,
     ];
     expect(dataUrl).toBe(PNG);
+    // Die Vordertür kennt die gewählte Stufe. Sie darf deshalb nicht auf den absichtlich
+    // fail-closed App-Default "vertraulich" zurückfallen, wenn der Entwurf "intern" ist.
+    expect(provenance).toEqual({ source: "draft", confidentiality: "intern" });
     // WP-BILD-1f: der umgebende Text reist im SELBEN Request mit (dieselbe Egress-Stelle).
     expect(context ?? "").toContain("Kessel");
 
