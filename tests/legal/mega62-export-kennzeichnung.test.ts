@@ -23,6 +23,14 @@ import { type AnswerExportInput, buildAnswerMarkdown } from "../../apps/web/src/
 
 const WURZEL = join(__dirname, "..", "..");
 
+// JOB 502 (Klara-Export, Quellidentität): `AnswerExportSource.sourceId` ist PFLICHT — jede Quelle
+// in diesen Fällen trägt deshalb ihre stabile Kennung. Sie stehen hier ausdrücklich als benannte
+// Konstanten und nicht als eingestreute Zeichenketten: dieselbe Quelle heißt in allen Fällen
+// gleich, und die Erwartungen unten prüfen weiterhin GENAU die Angaben, um die es mega62 ging —
+// die Kennung tritt hinzu, sie ersetzt nichts.
+const KO_LIEFERWEG_NORD = "ko-lieferweg-nord";
+const KO_ALTVERTRAG_2019 = "ko-altvertrag-2019";
+
 const LABELS = {
   answer: "Antwort",
   evidence: "Evidenz",
@@ -111,12 +119,18 @@ describe("mega62 E2 · der Export unterscheidet tragende von konsultierten Quell
       eingabe({
         sources: [
           {
+            sourceId: KO_LIEFERWEG_NORD,
             title: "Lieferweg Nord",
             attributionLabel: "trägt",
             statusLabel: "Gesichert",
             trust: 5,
           },
-          { title: "Altvertrag 2019", attributionLabel: "angesehen", statusLabel: "Entwurf" },
+          {
+            sourceId: KO_ALTVERTRAG_2019,
+            title: "Altvertrag 2019",
+            attributionLabel: "angesehen",
+            statusLabel: "Entwurf",
+          },
         ],
       }),
     );
@@ -128,8 +142,8 @@ describe("mega62 E2 · der Export unterscheidet tragende von konsultierten Quell
     const md = buildAnswerMarkdown(
       eingabe({
         sources: [
-          { title: "Lieferweg Nord", statusLabel: "Gesichert" },
-          { title: "Altvertrag 2019", statusLabel: "Gesichert" },
+          { sourceId: KO_LIEFERWEG_NORD, title: "Lieferweg Nord", statusLabel: "Gesichert" },
+          { sourceId: KO_ALTVERTRAG_2019, title: "Altvertrag 2019", statusLabel: "Gesichert" },
         ],
         labels: {
           ...LABELS,
@@ -146,7 +160,7 @@ describe("mega62 E2 · der Export unterscheidet tragende von konsultierten Quell
   it("UNBEKANNTE ZUORDNUNG wird gesagt, nicht verschwiegen", () => {
     const md = buildAnswerMarkdown(
       eingabe({
-        sources: [{ title: "Lieferweg Nord" }],
+        sources: [{ sourceId: KO_LIEFERWEG_NORD, title: "Lieferweg Nord" }],
         labels: { ...LABELS, attributionUnknown: "Zuordnung unbekannt." },
       }),
     );
@@ -162,7 +176,9 @@ describe("mega62 E2 · der Export unterscheidet tragende von konsultierten Quell
   it("bei bekannter Zuordnung steht der Unbekannt-Satz NICHT da", () => {
     const md = buildAnswerMarkdown(
       eingabe({
-        sources: [{ title: "Lieferweg Nord", attributionLabel: "trägt" }],
+        sources: [
+          { sourceId: KO_LIEFERWEG_NORD, title: "Lieferweg Nord", attributionLabel: "trägt" },
+        ],
         labels: { ...LABELS, attributionUnknown: "Zuordnung unbekannt." },
       }),
     );

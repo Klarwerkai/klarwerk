@@ -329,6 +329,14 @@ export function Ask(): JSX.Element {
     const sources = answerSources.map((s) => {
       const ko = kosById.get(s.id);
       return {
+        // JOB 502 (Klara-Export, Quellidentität): die Kennung, mit der diese Seite direkt darunter
+        // auf `/wissen/${s.id}` verlinkt, reist jetzt MIT in den Export. Bis hierher wurde sie hier
+        // weggeworfen — im Markdown blieben von zwei Fassungen desselben Dokuments zwei
+        // buchstabengleiche Zeilen übrig, und die Fundstelle war nicht mehr auffindbar. Bewusst
+        // OHNE Ersatzwert: `s.id` ist die reale Bestands-Id (aus `sourceRefs()`, gespeist aus
+        // `AnswerResult.sources`) und immer vorhanden; ein Fallback würde eine Kennung erfinden,
+        // wo gerade keine feststeht — genau der Fehler, den mega34 an anderer Stelle beseitigt hat.
+        sourceId: s.id,
         title: s.label,
         ...(ko ? { statusLabel: t(`status.${ko.status}`), trust: ko.trust } : {}),
         ...(s.usability ? { usabilityLabel: t(useReadiness(s.usability).labelKey) } : {}),
