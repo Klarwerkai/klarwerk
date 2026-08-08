@@ -8,6 +8,21 @@ export interface AnswerExportStep {
 }
 
 export interface AnswerExportSource {
+  /**
+   * JOB 502 (Klara-Export, Quellidentität): die stabile, BEREITS VORHANDENE Kennung der Quelle —
+   * dieselbe Id, mit der die Oberfläche auf `/wissen/<id>` verlinkt.
+   *
+   * Bis hierher trug die exportierte Zeile nur Titel, Status, Trust und Nutzbarkeit. Zwei Fassungen
+   * desselben Dokuments — gleicher Titel, gleicher Status, gleicher Wert — wurden damit zu zwei
+   * buchstabengleichen Zeilen: wer den Export später las, konnte die Fundstelle nicht mehr
+   * zurückverfolgen und sah nicht einmal, DASS es zwei verschiedene Quellen waren.
+   *
+   * Das Feld ist PFLICHT und nicht optional. Ein optionales Feld hätte genau die Lücke offen
+   * gelassen, um die es geht: einen Export ohne Rückverfolgbarkeit, der trotzdem baut. Die Kennung
+   * wird dabei nie erfunden — sie kommt aus dem Bestand (`SourceRef.id`), niemals aus einer
+   * Ersatznummerierung.
+   */
+  sourceId: string;
   title: string;
   statusLabel?: string;
   trust?: number;
@@ -75,6 +90,12 @@ function sourceLine(source: AnswerExportSource, trustLabel: string): string {
     source.statusLabel,
     source.trust !== undefined ? `${trustLabel} ${source.trust}` : undefined,
     source.usabilityLabel,
+    // JOB 502: die Kennung steht ZULETZT — und zwar bewusst. Alles davor sind Aussagen ÜBER die
+    // Quelle (trägt/angesehen, Status, Wert, Nutzbarkeit); sie werden gelesen. Die Id ist keine
+    // Aussage, sondern der Rückweg zur Fundstelle — sie gehört ans Ende, wo sie beim Lesen nicht
+    // im Weg steht, aber jederzeit greifbar ist. Sie steht in Backticks, damit sofort erkennbar
+    // ist, dass es eine technische Kennung ist und kein weiteres Urteilswort.
+    source.sourceId.trim() ? `\`${source.sourceId.trim()}\`` : undefined,
   ].filter((p): p is string => Boolean(p?.trim()));
   const suffix = parts.length > 0 ? ` — ${parts.join(" · ")}` : "";
   return `- ${source.title.trim()}${suffix}`;
