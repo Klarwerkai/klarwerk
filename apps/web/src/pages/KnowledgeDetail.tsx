@@ -729,10 +729,11 @@ export function KnowledgeDetail(): JSX.Element {
   }, [query.data, params, canEdit]);
 
   return (
-    // AUFTRAG-mega50 Block A: die Herkunft des Inhalts dieser Fläche — das Einzige, was sie zur
-    // Bildbeschreibung noch beitragen muss. Die koId ist wie bisher NUR hebender Backstop
-    // (Downgrade-Schutz), nie Freigabe-Anker; die Stufe bleibt fail-safe „vertraulich".
-    <ImageDescribeProvider provenance={draftProvenance(undefined, id)}>
+    // Bilder auf der geladenen Wissensdetailseite gehören zum gespeicherten Dokument und übernehmen
+    // deshalb dessen tatsächliche Vertraulichkeitsstufe. Solange das KO noch lädt, bleibt `undefined`
+    // weiterhin fail-safe „vertraulich"; die koId bleibt zusätzlich ein hebender Backstop gegen
+    // Downgrades. Der separat bearbeitete Freitext oben bleibt davon bewusst unberührt.
+    <ImageDescribeProvider provenance={draftProvenance(query.data?.confidentiality, id)}>
       {/* Pedi/VIP 06.07.: mehr Breite für die Detailseite — lange Wissenseinträge quetschten sich
           vorher in eine schmale Spalte (endloses dünnes Band), während rechts Platz leer blieb.
           max-w-6xl gibt dem Inhalt (breite 1.7fr-Spalte) spürbar mehr Lesebreite; die

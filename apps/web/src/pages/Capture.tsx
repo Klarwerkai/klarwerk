@@ -5557,6 +5557,7 @@ export function Capture(): JSX.Element {
                     images={editorImagesFromLocalImages(images)}
                     onAttachFiles={attachFiles}
                     documentTitle={draft.title}
+                    captionFormRequest={captionRequest ?? undefined}
                     aiPanel={
                       <AiAssistBox
                         text={bodyTextForAssist(bodyHtml)}
@@ -5574,7 +5575,6 @@ export function Capture(): JSX.Element {
                         compact
                       />
                     }
-                    captionFormRequest={captionRequest ?? undefined}
                   />
                   {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
                     AUFTRAG-PRO-337: derselbe Weg wie im Expertenzweig — die Galerie öffnet DAS

@@ -7,6 +7,7 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { AssistResult, Confidentiality, KnowledgeObject, StructureResult } from "../api/types";
 import { useSession } from "../app/AuthContext";
+import { ImageDescribeProvider } from "../app/ImageDescribeContext";
 // AUFTRAG-mega9 Block B (KW-E2E-002): DERSELBE Navigations-Wächter, den /erfassen schon nutzt —
 // kein zweiter Wächter, keine kopierte Logik, nur ein weiterer Anmelder an derselben Vorrichtung.
 import { GuardedLink, useNavGuard, useUnloadGuard } from "../app/NavGuardContext";
@@ -854,17 +855,19 @@ export function CaptureFrontDoor(): JSX.Element {
                 </div>
               ) : null}
               {/* SCRUM-474 P1: aktive Einladung statt leerer weißer Fläche. */}
-              <RichTextEditor
-                value={bodyHtml}
-                onChange={changeBodyHtml}
-                placeholder={t("fd.editorPlaceholder")}
-                captionFormRequest={captionRequest ?? undefined}
-                /* AUFTRAG-mega84 Block C: der Titel gehört zum Dokument-Kontext des
-                   KI-Bildbeschreibungs-Vorschlags — er fehlte hier. `derivedTitle` und nicht das
-                   rohe Feld: die Vordertür leitet den Titel ab, solange der Nutzer keinen tippt,
-                   und genau der abgeleitete ist der, unter dem der Beitrag später steht. */
-                documentTitle={derivedTitle}
-              />
+              <ImageDescribeProvider provenance={draftProvenance(confidentiality)}>
+                <RichTextEditor
+                  value={bodyHtml}
+                  onChange={changeBodyHtml}
+                  placeholder={t("fd.editorPlaceholder")}
+                  captionFormRequest={captionRequest ?? undefined}
+                  /* AUFTRAG-mega84 Block C: der Titel gehört zum Dokument-Kontext des
+                     KI-Bildbeschreibungs-Vorschlags — er fehlte hier. `derivedTitle` und nicht das
+                     rohe Feld: die Vordertür leitet den Titel ab, solange der Nutzer keinen tippt,
+                     und genau der abgeleitete ist der, unter dem der Beitrag später steht. */
+                  documentTitle={derivedTitle}
+                />
+              </ImageDescribeProvider>
               {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
                   AUFTRAG-mega69 Block A: aus der Großansicht führt „Bildbeschreibung bearbeiten"
                   in das EINE Formular des Editors (kein zweites Formular, kein zweiter Egress). */}

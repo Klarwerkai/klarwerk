@@ -378,8 +378,14 @@ const DISPOSITIONEN: Record<string, string> = {
     "Erfassung, direkter Editor im Hauptformular (mit KI-Palette). Die zweite Instanz derselben Datei — genau die, die mega85 datei-genau nicht sehen konnte. Seit PRO 337 ebenfalls mit dem Galerieeinstieg verbunden.",
   "apps/web/src/pages/Capture.tsx › Capture › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+enrichLocale+externalStage+images+onApply+onAttachFiles+onClose+open+runAssist] in [div<Card<div<div] #1":
     "Erfassung, Studio-Weg aus dem Hauptformular. Prop-gleich zur Reasoner-Instanz und nur ueber die JSX-Nachbarschaft von ihr unterscheidbar — deshalb gehoert sie zur Identitaet.",
-  "apps/web/src/pages/CaptureFrontDoor.tsx › CaptureFrontDoor › <RichTextEditor> [captionFormRequest+documentTitle+onChange+placeholder+value] in [div<form<Card<div] #1":
-    "Eingangstuer der Erfassung — die Flaeche, auf der Pedis Befund vom 31.07. entstand.",
+  // 10.08.2026, Zusammenfuehrung der GitHub-Linie: der Ahnenpfad hat sich von
+  // [div<form<Card<div] auf [ImageDescribeProvider<div<form<Card] geaendert. Die Flaeche ist
+  // dieselbe geblieben; ueber ihr steht jetzt der <ImageDescribeProvider> aus PR #1
+  // („inherit document confidentiality"), der die Vertraulichkeit des Entwurfs an den Weg zur
+  // Bildbeschreibung weiterreicht. Der Sammler hat das gemeldet, WEIL er es melden soll: eine
+  // umgehaengte Einbindung ist ein Befund, bis jemand hingesehen hat. Hier ist hingesehen worden.
+  "apps/web/src/pages/CaptureFrontDoor.tsx › CaptureFrontDoor › <RichTextEditor> [captionFormRequest+documentTitle+onChange+placeholder+value] in [ImageDescribeProvider<div<form<Card] #1":
+    "Eingangstuer der Erfassung — die Flaeche, auf der Pedis Befund vom 31.07. entstand. Seit PR #1 unter dem ImageDescribeProvider, der die Vertraulichkeit des Entwurfs mitfuehrt.",
   "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+files+images+onApply+onClose+open+runAssist] in [Field<div<Card<div] #1":
     "Wissensobjekt bearbeiten, Studio-Weg.",
   "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+value] in [Field<div<Card<div] #1":
