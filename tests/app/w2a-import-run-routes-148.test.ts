@@ -1,12 +1,21 @@
 // ================================================================================================
-// W2-A / AUFTRAG 148 — DER APP-/ROUTENANSCHLUSS, ROT VOR PRODUKTCODE
+// W2-A / AUFTRAG 148 — DER APP-/ROUTENANSCHLUSS
 // ================================================================================================
+//
+// STAND 10.08.2026: UMGESETZT. Diese Datei war als „rot vor Produktcode" geschrieben und blieb es
+// tagelang, weil der Umsetzungsauftrag nie kam — die Laufdomaene war gebaut, die Tabelle migriert,
+// und beides blieb ohne Anschluss. Der Anschluss steht jetzt:
+// `services/app/src/routes/import-run-routes.ts` plus die Verdrahtung in der Kompositionswurzel.
+// Alle vierzehn Faelle sind gruen.
+//
+// Der folgende Text beschreibt die LAGE BEI ABFASSUNG und bleibt als Begruendung stehen — er sagt,
+// warum es diese Faelle gibt. Er beschreibt nicht mehr den heutigen Zustand.
 //
 // PRO 144 hat die Laufdomäne in `services/library-analytics` gebaut und ihre öffentlichen Verträge
 // ausgeleitet. Was fehlt, ist der Anschluss: die Kompositionswurzel hält kein `ImportRunRepo`, und
 // es gibt keine Route, über die ein Betreiber einen Lauf starten oder sein Ergebnis lesen könnte.
 //
-// GENAU DAS — und nur das — hält diese Datei fest. Jeder Fall hier ist heute rot, WEIL die
+// GENAU DAS — und nur das — hält diese Datei fest. Jeder Fall hier war rot, WEIL die
 // Verdrahtung beziehungsweise die Route fehlt, nicht weil er etwas Neues behauptet. Die
 // Domänenregeln selbst sind bereits in `services/library-analytics/src/service.test.ts` grün;
 // sie werden hier nicht wiederholt, sondern über die öffentliche Fassade AUFGERUFEN.
@@ -16,7 +25,7 @@
 // über eine Servicemethode. Ein Test gegen ein injiziertes Doppel könnte grün sein, während die
 // Anwendung nichts ausliefert — das ist genau der Zustand, in dem W2 vor Preflight 138 war.
 //
-// WAS DIESE DATEI AUSDRÜCKLICH NICHT TUT: sie schreibt keinen Produktcode, ändert keine bestehende
+// WAS DIESE DATEI SELBST NICHT TAT: sie schrieb keinen Produktcode, änderte keine bestehende
 // Datei und aktiviert keine Oberfläche. Fall 5 bewacht ausdrücklich, dass das so bleibt.
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
