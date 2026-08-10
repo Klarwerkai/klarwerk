@@ -1,8 +1,12 @@
-import type { FastifyPluginAsync } from "fastify";
+import { randomUUID } from "node:crypto";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { type ConfluenceSourceAdapter, createConfluenceAdapterFromEnv } from "../../../confluence";
 import type { KoService } from "../../../knowledge-object";
 import {
   GROUP_PROMPT_MAX_UTF8_BYTES,
+  type ImportRun,
+  type ImportRunRepo,
+  type ImportRunStatus,
   type LibraryService,
   type SelectCriteria,
   TOP_AUTHORS,
@@ -17,6 +21,7 @@ import {
   groupingRequiresConfidential,
   promptRequiresConfidential,
   sanitizeCriteria,
+  sanitizeImportFailureReason,
   summarizeImportItems,
   toPreviewEntry,
 } from "../../../library-analytics";
@@ -49,6 +54,10 @@ export interface ConfluenceImportRouteDeps {
   // IC-3: Reasoner für die optionale Prompt→Kriterien-Ableitung (READ-ONLY Auswahl-Vorschau). Ohne
   // Reasoner (oder ohne aktives Modell) greift nur der deterministische Klick-Filter.
   reasoner?: Reasoner;
+  // W2-A/148: die Laufablage. OPTIONAL, weil mehrere Bestandstests diese Routen direkt bauen und
+  // nur den Import-Pfad prüfen — ohne sie bleibt es beim Verhalten vor 148. Die Kompositionswurzel
+  // reicht sie IMMER durch; im Produkt ist der Zweig damit nie der alte.
+  importRuns?: ImportRunRepo;
 }
 
 // WP-SHIP7-FIX (bens sammel17-Fix 3): harter Deckel der Apply-Ids je Aufruf (nach Dedupe) —
@@ -79,6 +88,126 @@ function readSelectedCandidateIds(raw: unknown): string[] | null {
     return [];
   }
   return raw.filter((id): id is string => typeof id === "string");
+}
+
+// ================================================================================================
+// W2-A/148 — DER ECHTE LAUF ALS PERSISTENTE TATSACHE (KW-S4-26 §133).
+// ================================================================================================
+
+/**
+ * Der Auftragsgegenstand dieses Laufs.
+ *
+ * `pruefeImportRun` verlangt ein Quellobjekt ODER einen expliziten Scope — ein Lauf ohne beides
+ * waere ein Auftrag ohne Gegenstand. Der Space-Import hat kein einzelnes Objekt, also traegt er
+ * den Container. Ist kein Space konfiguriert, ist der Gegenstand ehrlich die ganze Instanz; das
+ * ist eine Aussage, kein Platzhalter.
+ */
+function laufScope(): string {
+  const space = process.env.KLARWERK_CONFLUENCE_SPACE?.trim();
+  return space ? `space:${space}` : "instance";
+}
+
+/**
+ * Der Abschlussstatus aus dem, was der Lauf WIRKLICH getan hat.
+ *
+ * `PARTIAL` statt `COMPLETED`, sobald eine Seite scheiterte ODER der Space-Read am Deckel
+ * abgeschnitten wurde: ein abgeschnittener Lauf hat den Auftrag nicht erfuellt, auch wenn keine
+ * einzige gelesene Seite fehlschlug. Ihn `COMPLETED` zu nennen waere die teuerste Sorte Luege —
+ * eine, die spaeter niemand mehr nachprueft.
+ */
+function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
+  return summary.failed > 0 || summary.truncated ? "PARTIAL" : "COMPLETED";
+}
+
+/**
+ * Legt den Lauf an, fuehrt ihn aus und schreibt sein Ergebnis fort.
+ *
+ * DIE REIHENFOLGE IST DER GANZE PUNKT: `insertIfAbsent` steht VOR der Adapterpruefung. Faellt der
+ * Prozess zwischen Anlegen und Abschluss, bleibt ein Lauf in `QUEUED` zurueck — sichtbar haengend
+ * statt spurlos verschwunden. Das ist der Zustand, den §133 will.
+ *
+ * Die Antwort ist IMMER 200 mit `{importId, status}`, auch im Fehlerfall: der Start ist gelungen,
+ * der LAUF ist gescheitert. Ein 5xx wuerde beides vermengen und die Kennung verschlucken, unter
+ * der das Scheitern nachlesbar ist.
+ */
+async function starteMitLaufdomaene(
+  deps: ConfluenceImportRouteDeps,
+  importRuns: ImportRunRepo,
+  adapter: ConfluenceSourceAdapter | undefined,
+  actor: string,
+  reply: FastifyReply,
+): Promise<FastifyReply> {
+  const importId = randomUUID();
+  const lauf: ImportRun = {
+    importId,
+    sourceSystem: "confluence",
+    externalId: null,
+    sourceScope: laufScope(),
+    requestedSourceVersion: null,
+    status: "QUEUED",
+    sourceRecordId: null,
+    startedAt: new Date().toISOString(),
+    completedAt: null,
+    failureCode: null,
+    failureReason: null,
+    counters: { itemsTotal: 0, itemsCreated: 0, itemsBound: 0, itemsSkipped: 0, itemsFailed: 0 },
+  };
+  await importRuns.insertIfAbsent(lauf);
+
+  /** Ein Ende schreiben und melden — ein Weg fuer alle drei Ausgaenge. */
+  const beende = async (fortschritt: Parameters<ImportRunRepo["advance"]>[1]) => {
+    const beendet = await importRuns.advance(importId, fortschritt);
+    reply.code(200).send({ importId, status: beendet.status });
+    return reply;
+  };
+
+  if (!adapter) {
+    // Frueher endete das hier mit 503 und ohne Spur. Jetzt ist es ein Lauf, der sichtbar scheitert.
+    return beende({
+      status: "FAILED",
+      completedAt: new Date().toISOString(),
+      failureCode: "IMPORT_UNAVAILABLE",
+      failureReason: sanitizeImportFailureReason("Confluence-Import nicht konfiguriert."),
+    });
+  }
+
+  try {
+    const summary: ImportRunSummary = await runConfluenceImport({
+      adapter,
+      library: deps.library,
+      koService: deps.koService,
+      dryRun: false,
+      actor,
+    });
+    return await beende({
+      status: abschlussStatus(summary),
+      completedAt: new Date().toISOString(),
+      counters: {
+        itemsTotal: summary.found,
+        itemsCreated: summary.imported,
+        // REVIEW-INVARIANTE: der Import legt ausschliesslich Kandidaten an, nie ein Wissensobjekt.
+        // `itemsBound` zaehlt gebundene KOs — hier also belegbar null, nicht „noch unbekannt".
+        itemsBound: 0,
+        itemsSkipped: summary.skipped,
+        itemsFailed: summary.failed,
+      },
+    });
+  } catch (err) {
+    console.warn(
+      "[confluence-import] Lauf fehlgeschlagen:",
+      sanitizeLogText(err instanceof Error ? err.message : String(err)),
+    );
+    return beende({
+      status: "FAILED",
+      completedAt: new Date().toISOString(),
+      failureCode: "IMPORT_FAILED",
+      // Die Message ist bereits quellseitig redigiert; `sanitizeImportFailureReason` ist die
+      // zweite Linie und deckelt zusaetzlich die Laenge.
+      failureReason: sanitizeImportFailureReason(
+        err instanceof Error ? err.message : "Confluence-Import fehlgeschlagen.",
+      ),
+    });
+  }
 }
 
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
@@ -174,6 +303,29 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           return reply;
         }
         const adapter = makeAdapter();
+        const dryRun = request.body?.dryRun === true;
+
+        // ------------------------------------------------------------------------------------
+        // W2-A/148 (KW-S4-26 §133): DER ECHTE LAUF BEKOMMT SEINE IDENTITAET VOR JEDEM EFFEKT.
+        // ------------------------------------------------------------------------------------
+        //
+        // Bis hierher wurde ein Lauf ohne erreichbare Quelle mit 503 abgewiesen und hinterliess
+        // KEINE Spur — er war spurlos gescheitert. §133 verlangt das Gegenteil: der `ImportRun`
+        // wird PERSISTENT angelegt, bevor der erste externe oder fachliche Effekt eintritt. Ein
+        // Lauf ohne Quelle endet dann SICHTBAR auf FAILED und ist unter seiner `importId` lesbar.
+        //
+        // DER PROBELAUF (`dryRun: true`) BLEIBT UNBERUEHRT. Er ist eine Frage an die Quelle, kein
+        // Auftrag: ohne Adapter kann er nichts erproben, und 503 ist dort die ehrliche Antwort
+        // (confluence-import-routes.test.ts:96). Er legt deshalb auch keinen Lauf an.
+        //
+        // ZAEHLER STEHEN NICHT MEHR IN DER STARTANTWORT (§177-179: „Zaehler allein sind keine
+        // Resultatdatenquelle"). Sie sind am Lauf persistiert und ueber
+        // `GET /api/admin/import/runs/:importId/result` lesbar — dieselbe Zahl, aber an einem Ort,
+        // der sie ueberlebt.
+        if (!dryRun && deps.importRuns) {
+          return starteMitLaufdomaene(deps, deps.importRuns, adapter, user.id, reply);
+        }
+
         if (!adapter) {
           reply.code(503).send({
             error: "IMPORT_UNAVAILABLE",
@@ -181,7 +333,6 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           });
           return reply;
         }
-        const dryRun = request.body?.dryRun === true;
         try {
           const summary: ImportRunSummary = await runConfluenceImport({
             adapter,

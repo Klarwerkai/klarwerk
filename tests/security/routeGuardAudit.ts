@@ -198,6 +198,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // IC-1 (Import-Cockpit): READ-ONLY Erkundung — zählt/aggregiert nur, schreibt nichts. Gleiche
   // Admin-Auth wie der Import-Trigger; ebenfalls nur bei aktivem Confluence-Flag registriert.
   "POST /api/admin/import/confluence/explore": { protection: "users.manage" },
+  // W2-A/148: der Leseweg der Laufdomaene. Dasselbe Recht wie der Start — waere er weicher,
+  // koennte jemand ohne users.manage die Ergebnisse eines Imports lesen, den er nicht ausloesen darf.
+  "GET /api/admin/import/runs/:importId": { protection: "users.manage" },
+  "GET /api/admin/import/runs/:importId/result": { protection: "users.manage" },
+  "GET /api/admin/import/source-records/:sourceRecordId": { protection: "users.manage" },
   // IC-3 (Import-Cockpit): READ-ONLY Auswahl-VORSCHAU (Prompt/Filter → gefilterte Vorschau). Schreibt
   // nichts (keine Kandidaten); gleiche Admin-Auth, nur bei aktivem Confluence-Flag registriert.
   "POST /api/admin/import/confluence/select": { protection: "users.manage" },
@@ -294,6 +299,44 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "GET /api/gaps": { protection: "ko.read" },
   "PUT /api/gaps/:id": { protection: "ko.assign" },
   "DELETE /api/gaps/:id": { protection: "ko.validate" },
+
+  // --- Klara Status / Sitzung / Zustimmung (klara-ai-routes.ts, W1 S4) ---
+  //
+  // WARUM ÜBERALL `ko.read` UND KEIN EIGENES `klara.*`. Die Rechtematrix in
+  // `services/rbac/src/policy.ts` ist abgeschlossen; ein neues Recht wäre eine Erweiterung der
+  // Berechtigungsfläche, die dieser Auftrag ausdrücklich nicht vornehmen darf. `ko.read` ist genau
+  // das Recht, das ein Klara-Nutzer für den Ask-Weg ohnehin trägt — also kein Rechtezuwachs.
+  //
+  // DIE FEINE BINDUNG LEISTET NICHT RBAC. Actor, Add-in-Instanz und Dokumentkontext prüft der
+  // Sitzungsdienst (`klara-session-service.ts`). RBAC entscheidet nur, WER überhaupt fragen darf;
+  // WELCHE Sitzung er sieht, entscheidet die registrierte Zuordnung. Die drei `x-klara-*`-Header
+  // sind dabei Lookup, keine Attestierung (KW-S4-20 §102).
+  //
+  // Die Routen zerfallen in zwei Klassen, und die Unterscheidung ist der Grund für die
+  // Einzelbegründungen unten:
+  //   (a) Policy-/Statusmetadaten — Modus, Anbieter, Modell, Versionen. Konfigurationslage.
+  //   (b) Sitzungs-/Zustimmungsmetadaten — an eine Zuordnung gebunden, aber ebenfalls ohne
+  //       KO-Inhalt. Wissen fliesst über KEINE dieser sieben Routen.
+
+  // (a) Statusmetadaten, aber NUR gegen eine registrierte Zuordnung (BEN ROT-5 korrigiert):
+  // ohne gültige Sitzungsbindung antwortet die Route mit NOT_FOUND statt mit der Konfiguration.
+  "GET /api/klara/ai-status": { protection: "ko.read" },
+  // (b) Registriert die Zuordnung autoritativ und vergibt die opake documentContextId. Legt nur
+  // Sitzungsmetadaten an, liest und schreibt kein KO.
+  "POST /api/klara/sessions": { protection: "ko.read" },
+  // (b) Rebind des Dokumentkontexts (temporär → gespeichert). Entwertet die alte Auflösung und
+  // eine bestehende Zustimmung; kein KO-Zugriff.
+  "POST /api/klara/sessions/:sessionId/document-context": { protection: "ko.read" },
+  // (b) Liest den eigenen Sitzungszustand. Eine fremde sessionId ergibt NOT_FOUND — die Kennung
+  // ist kein Leserecht und keine Existenzauskunft.
+  "GET /api/klara/sessions/:sessionId": { protection: "ko.read" },
+  // (b) Zustimmung zur externen KI. Erteilt kein Recht auf KO-Inhalt, sondern hebt ausschliesslich
+  // die Sperre für den externen Weg auf — der derzeit ohnehin nicht ausführbar ist.
+  "POST /api/klara/sessions/:sessionId/consent": { protection: "ko.read" },
+  // (b) Widerruf, sofort wirksam. Reine Zustandsänderung an der eigenen Sitzung.
+  "DELETE /api/klara/sessions/:sessionId/consent": { protection: "ko.read" },
+  // (b) Schliesst die eigene Sitzung. Danach ist jeder Folgeaufruf CONFLICT.
+  "POST /api/klara/sessions/:sessionId/close": { protection: "ko.read" },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
   "GET /api/library/search": { protection: "ko.read" },

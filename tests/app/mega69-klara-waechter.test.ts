@@ -164,7 +164,185 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // bleibt byte-gleich (`mode: "retrieval-only"`, in mega79/mega81 durch Ausführung erhoben) —
     // es wird nur MEHR aus der ohnehin empfangenen Antwort gelesen. Ein installiertes Add-in
     // braucht deshalb KEIN erneutes Sideload; es holt die Datei beim nächsten Öffnen frisch.
-    const PIN = "0cf394b1946bbb495d832470ca97389d49d4c6951ecbd2d2f6fc69e451787cd6";
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 (BASIC-0, Bündel A/B): Auslieferungsfolgen erneut geprüft,
+    // bevor der Pin wanderte. Geändert wurden AUSSCHLIESSLICH Panel-Inhalte, Stilregeln und
+    // Kommentare:
+    //   · ein neuer, permanenter Kopfbereich im bestehenden `<header>` (`#klara-trust-head` mit
+    //     `#klara-trust-mode` / `#klara-trust-detail`) samt `flex-wrap` an der bestehenden
+    //     header-Regel; die bisherige KI-Zeile `#ask-ai-lage` ist dorthin UMGEZOGEN (nicht
+    //     entfallen) — derselbe Schlüssel `aiLage*`, dieselbe Funktion `klaraAiLage`;
+    //   · zwei feste, anfangs verborgene Zeilen im Antwortblock (`#ask-caveat-line`,
+    //     `#ask-conflict-line`) und ein Ausschnittblock (`#ask-snippet-block`) — alle im
+    //     vorhandenen `.status`-/Karten-Muster, ohne neue Farbregeln;
+    //   · neue Wörterbuch-Schlüssel je Sprache (trustMode*, trustHeadLabel, askCaveat*,
+    //     askConflict*, askSnippetLabel, askRole*);
+    //   · drei aus dem OHNEHIN empfangenen Antwortkörper GELESENE Felder (`citedSources`,
+    //     `steps[0].snippet`, `evidence.sourcesConflicted`) und die Anzeige-Ableitungen darauf
+    //     (`klaraTrustHead`, `askEvidenceDetail`, `askSourceRole`, `askSnippetWorthShowing`).
+    // KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein neuer Fremd-Ursprung, KEINE
+    // geänderte CSP und KEIN neuer Abruf — die Menge der `fetch(...)`-Ziele ist gegen HEAD
+    // byte-gleich, ebenso die abgesetzte Nutzlast (`mode: "retrieval-only"`, in
+    // tests/app/w1-klara-vertrauenskopf.test.ts durch Ausführung erhoben). Es wird nur MEHR aus
+    // der ohnehin empfangenen Antwort gelesen und an einem anderen Ort angezeigt. Ein
+    // installiertes Add-in braucht deshalb KEIN erneutes Sideload; es holt die Datei beim
+    // nächsten Öffnen frisch vom Server.
+    // AUFTRAG-BASIC-W1-KLARA-KOPF-CONSENT-06 (BASIC-1): Auslieferungsfolgen erneut geprüft, bevor
+    // der Pin wanderte. VORHERHASH taskpane.html:
+    // `ebeb70a72ac91d0fa457cdb8623d1114c97cef38286f2855ab14e00d7e6d5e6d`.
+    //
+    // ES IST DIESMAL MEHR ALS INHALT — das wird hier ausdrücklich gesagt, statt es unter „Panel-
+    // Inhalte" zu verbuchen. Geändert wurden:
+    //   · eine zweite, EIGENS ETIKETTIERTE Gruppe im bestehenden permanenten Kopf (`#klara-s4`
+    //     mit Etikett, Modus-Pille, Anbieter-/Modell-Zeile, Abweichungs-/Sperrzeile und
+    //     Sitzungszeile); der BASIC-0-Teil darüber ist unberührt;
+    //   · eine anfangs verborgene Zustimmungskarte (`#klara-consent-card`) im vorhandenen
+    //     `.card`-/`.status`-Muster, mit zwei Schaltflächen ohne neue Farbregeln;
+    //   · vier Stilregeln (`#klara-s4`, `.s4-label`, `.s4-line`, `.s4-line-muted`) ausschliesslich
+    //     aus Tokenpaaren, die mega43 bereits als AA-tragfähig erhoben hat;
+    //   · neue Wörterbuch-Schlüssel je Sprache (`s4*`);
+    //   · zwei neue Schnittmarkenpaare (`KW-KLARA-S4-START/END` für die reine Ableitung,
+    //     `KW-KLARA-S4-FETCH-START/END` für den Abruf).
+    //
+    // UND — das ist die eigentliche Auslieferungsfolge — VIER NEUE ABRUFZIELE:
+    //   `POST /api/klara/sessions`, `GET /api/klara/ai-status`,
+    //   `POST|DELETE /api/klara/sessions/{id}/consent`.
+    // Alle vier sind SAME-ORIGIN auf derselben App-Domain, auf der dieses Aufgabenfenster liegt,
+    // laufen mit derselben Sitzung wie `/api/ask` und stehen so im eingefrorenen Vertrag
+    // `services/app/src/routes/klara-ai-routes.ts` (KW-W1-S4-R2-KOPF-FREEZE-17). Deshalb: KEIN
+    // Manifest, KEIN neuer Fremd-Ursprung, KEINE geänderte CSP, KEIN neues Recht (alle vier
+    // Routen verlangen `ko.read`, das Klara für `/api/ask` ohnehin braucht).
+    //
+    // DER ASK-WEG BLEIBT BYTE-GLEICH: dieselbe Nutzlast `mode: "retrieval-only"`, derselbe
+    // Endpunkt, dasselbe `performAsk`. Hinzugekommen ist nur ein RIEGEL davor — sagt der Server
+    // `executionAllowed: false`, geht gar keine Frage hinaus (in
+    // tests/app/klara-session-consent-ui.test.ts durch Ausführung erhoben).
+    //
+    // Ein installiertes Add-in braucht deshalb KEIN erneutes Sideload; es holt die Datei beim
+    // nächsten Öffnen frisch vom Server. Was es zusätzlich braucht, ist ein Server, der die
+    // Klara-Routen registriert hat — ohne ihn steht der Sitzungsteil ehrlich auf „keine Sitzung"
+    // und der Hausstand-Teil arbeitet unverändert weiter.
+    // AUFTRAG-BASIC-W1-CONSENT-LIFECYCLE-R3-26 (BEN-Nachpruefung 22): Auslieferungsfolgen erneut
+    // geprüft, bevor der Pin wanderte. VORHERHASH taskpane.html:
+    // `7ab51f2fac94d8d1b218d2fd1bb4a0fb0c93824c7eb14f9f102e27aed09dff73`.
+    //
+    // GEÄNDERT WURDEN — und das ist diesmal mehr als Anzeige:
+    //   · die Zustimmungszeile leitet ihren Text aus `consentState` UND `externalConsentRequired`
+    //     ab (Befund 1: „keine erforderlich" stand neben einem bestehenden Bedarf);
+    //   · ein clientseitiger RIEGEL nach gescheitertem Consent-/Rebindaufruf, der den
+    //     autorisierenden Stand verwirft und nur durch einen bestätigten Serverstatus fällt
+    //     (Befund 2);
+    //   · die Payload-Klassen kommen ausschließlich aus `resolution.effectivePayloadClasses`
+    //     (`KW-S4-22`); ohne sie gibt es keinen Zustimmungsknopf mehr;
+    //   · eine anfangs verborgene Zeile `#klara-consent-blocked` für ausgeschlossene Klassen;
+    //   · neue Wörterbuch-Schlüssel je Sprache; `s4ConsentUmfang` trägt jetzt `{klassen}` statt
+    //     `{klasse}`.
+    //
+    // UND — die eigentlichen Auslieferungsfolgen — DREI NEUE LAUFZEIT-BINDUNGEN:
+    //   · `pagehide` → `POST /api/klara/sessions/{id}/close` mit `keepalive` (Befund 3);
+    //   · `visibilitychange` und `focus` → `GET /api/klara/ai-status` (Befund 4), gedrosselt;
+    //   · ein Ablauftimer auf `resolution.expiresAt` → derselbe Statusabruf.
+    //   · beim Wechsel unsaved→saved zusätzlich `POST …/document-context` (Befund 5).
+    //
+    // Alle vier Ziele sind SAME-ORIGIN auf derselben App-Domain, laufen mit derselben Sitzung wie
+    // `/api/ask` und stehen so im eingefrorenen Vertrag. Deshalb: KEIN Manifest, KEIN neuer
+    // Fremd-Ursprung, KEINE geänderte CSP, KEIN neues Recht — alle Routen verlangen `ko.read`.
+    //
+    // NEU IST DAGEGEN, dass das Fenster von sich aus wiederkehrend abruft. Die Frequenz hängt am
+    // serverseitigen `expiresAt` und ist nach unten auf die vorhandene Poll-Konstante gedeckelt;
+    // es gibt genau einen Abruf gleichzeitig und kein `setInterval`. Ein installiertes Add-in
+    // braucht KEIN erneutes Sideload; es holt die Datei beim nächsten Öffnen frisch.
+    // AUFTRAG-BASIC-W1-CONSENT-REFRESH-R4-34 (BEN-Nachprüfung 32, Befund 4): Auslieferungsfolgen
+    // geprüft, bevor der Pin wanderte. VORHERHASH taskpane.html:
+    // `0c579ffb4ce185980a2532d390dcd596fe49ef5d2a24500c67c00d20f8c87134`.
+    //
+    // GEÄNDERT WURDEN AUSSCHLIESSLICH ZWEI ANZEIGE-/ZUSTANDSSTELLEN — keine neue Fläche, kein
+    // neues Wort, kein neuer Abruf:
+    //   · `klaraS4Refresh` setzt die aufgefrischte Sicht nicht mehr aus der alten Sicht zusammen,
+    //     sondern aus einer weissen Liste der Identitätsfelder (`klaraS4Sitzungsidentitaet`).
+    //     `consentState` überlebt einen reinen Statusabruf damit NICHT mehr — er stand vorher als
+    //     alter Wert neben einer neuen Auflösung und ergab die von BEN belegte Mischsicht.
+    //   · `klaraS4ConsentKey` bekommt `externalConsentGranted` dazu und kann „erteilt" nicht mehr
+    //     sagen, solange die Auflösung das nicht deckt.
+    //
+    // KEINE neuen Wörterbuch-Schlüssel, KEIN neues DOM-Element, KEIN neues Abrufziel, KEIN
+    // Manifest, KEINE geänderte CSP, KEIN neues Recht. Die Menge der `fetch(...)`-Ziele ist
+    // gegenüber Freeze 32 unverändert; es wird nur WENIGER aus dem alten Zustand übernommen.
+    // Ein installiertes Add-in braucht deshalb KEIN erneutes Sideload.
+    // AUFTRAG-BASIC-W1-ADDIN-STARTSEQUENZ-G2-G3-37 (Preflight-36-Befunde G2/G3):
+    // Auslieferungsfolgen geprüft, bevor der Pin wanderte. VORHERHASH taskpane.html:
+    // `5d9f33200cd76be82e11593bb166f98a996b74a856a7bc1a4eff153685bb944b`.
+    //
+    // GEÄNDERT WURDE AUSSCHLIESSLICH DER ZEITPUNKT DES ERSTEN SITZUNGSAUFBAUS:
+    //   · `klaraS4Start()` wird nicht mehr synchron am Skriptende gerufen, sondern über
+    //     `klaraS4StartAnfordern()` angefordert. Der Aufbau geschieht, sobald die BEREITS
+    //     VORHANDENE begrenzte Office-Erkennung ein Ergebnis hat — durch ihren Rückruf oder durch
+    //     ihre Frist `OFFICE_READY_TIMEOUT_MS`. Es gibt KEINE neue Frist und KEINE neue Erkennung.
+    //   · `markOfficeChecked` öffnet dieses Tor genau einmal; ein später Rückruf nach der Frist
+    //     erzeugt keine zweite Sitzung.
+    //   · Der belegte Anmelde-Erfolg in `checkSession` holt eine FEHLENDE Sitzung genau einmal
+    //     nach. Bleibt die Anmeldung aus, geschieht nichts — kein Wiederholzyklus.
+    //   · Der `pagehide`-Kommentar unterscheidet jetzt Codepfad von offener Word-Evidenz.
+    //
+    // KEINE neue Fläche, KEIN neuer Wörterbuch-Schlüssel, KEIN neues Abrufziel, KEIN Manifest,
+    // KEINE geänderte CSP, KEIN neues Recht. Die Menge der `fetch(...)`-Ziele ist gegenüber
+    // Freeze 34 unverändert; es wird nur SPÄTER und SELTENER aufgebaut.
+    //
+    // Auslieferungsfolge für ein installiertes Add-in: die erste Sitzung entsteht jetzt bis zu
+    // `OFFICE_READY_TIMEOUT_MS` (4 s) später als bisher — im Gegenzug entfällt die falsche
+    // `unsaved`-Bindung samt anschließendem Rebind, der die gerade erteilte Zustimmung verwarf.
+    // KEIN erneutes Sideload nötig; die Datei wird beim nächsten Öffnen frisch geholt.
+    // AUFTRAG-BASIC-W1-LOGIN-NACHHOLUNG-BEN37-KORREKTUR-48 (roter BEN-Befund aus der Nachprüfung
+    // zu Freeze 37): Auslieferungsfolgen geprüft, bevor der Pin wanderte. VORHERHASH
+    // taskpane.html: `1f65b9f781499c6f73e1da947352e013a67dc78c2e105546d2dce0661e1f51d6`.
+    //
+    // GEÄNDERT WURDE AUSSCHLIESSLICH DIE LEBENSDAUER EINES RECHTS — nicht sein Ablauf:
+    //   · neuer Merker `klaraS4NachholungVerbraucht`. Die Login-Nachholung war als „genau einmal"
+    //     zugesichert, wurde aber bei JEDEM späteren positiven `/api/auth/me` erneut freigegeben,
+    //     solange die Sitzung fehlte. BEN maß statt zwei Sitzungsaufbauten vier.
+    //   · `klaraS4NachAnmeldung` kehrt jetzt zusätzlich bei verbrauchter Nachholung um und
+    //     verbraucht das Recht genau dann, wenn es wirklich freigegeben wird.
+    //
+    // KEINE neue Fläche, KEIN neuer Wörterbuch-Schlüssel, KEIN neues DOM-Element, KEIN neues
+    // Abrufziel, KEIN Manifest, KEINE geänderte CSP, KEIN neues Recht, KEINE neue Frist und KEINE
+    // Zeitschleife. Die Menge der `fetch(...)`-Ziele ist gegenüber Freeze 37 unverändert.
+    //
+    // Auslieferungsfolge für ein installiertes Add-in: nach einem am Server GESCHEITERTEN
+    // Nachholversuch wird bis zum erneuten Öffnen des Aufgabenfensters nicht mehr angeklopft. Der
+    // Zustand „keine Sitzung" wird dann sichtbar gesagt, statt still weiter versucht zu werden —
+    // ein wieder antwortender Server allein holt die Sitzung nicht mehr nach. Es wird also
+    // SELTENER aufgebaut, nie öfter. KEIN erneutes Sideload nötig; die Datei wird beim nächsten
+    // Öffnen frisch geholt.
+    // ----------------------------------------------------------------------------------------
+    // 10.08.2026 — DER PIN ZEIGTE AUF EINEN STAND, DEN ES NIRGENDS GAB.
+    // ----------------------------------------------------------------------------------------
+    //
+    // Der bisherige Wert `6ab0fe9095323383f9a5edb61b0ab0e519746b55c73b0498d58e816b663df4de`
+    // stimmt mit KEINER aufgezeichneten Fassung der Datei überein — gemessen:
+    //   · `main` (8f74f82)                          → 0cf394b1946bbb495d832470ca97389d…
+    //   · Archiv-Tag arbeitsbaum-20260810-ungeprueft → 0cf394b1946bbb495d832470ca97389d… (gleich)
+    //   · Arbeitsbaum                                → 4bf88d4e465c4b4ac341780b4d204833…
+    //
+    // Der gepinnte Stand existierte also nur in der flüchtigen Arbeitskopie einer Bahn und ist mit
+    // ihr verschwunden. Damit war die Kette der Vorherhashes über diesem Kommentar unterbrochen:
+    // der letzte dokumentierte Übergang lässt sich nicht mehr nachvollziehen, weil sein Ergebnis
+    // nie in eine Fassung gelangte, die jemand später lesen kann.
+    //
+    // DER FEHLENDE SCHRITT WIRD NICHT ERFUNDEN. Statt eine Begründung zu schreiben, die niemand
+    // prüfen kann, steht hier die einzige Grundlinie, die es wirklich gibt — `main` — und der
+    // gegen sie gemessene Unterschied:
+    //   · +1534 Zeilen, −16; NUR diese eine Datei. `manifest.xml` ist unberührt (git diff --stat).
+    //   · Alle neuen Abrufziele sind SAME-ORIGIN und haben ihr serverseitiges Gegenstück in
+    //     `services/app/src/routes/klara-ai-routes.ts`, nachgezählt: `/api/klara/ai-status`,
+    //     `/api/klara/sessions`, `…/:sessionId`, `…/:sessionId/document-context`,
+    //     `…/:sessionId/consent` (POST und DELETE), `…/:sessionId/close`. Kein Fremd-Ursprung,
+    //     keine geänderte CSP, kein neues Recht.
+    //   · Die Flächen selbst sind durch Ausführung belegt: klara-ai-header (36),
+    //     w1-klara-vertrauenskopf (33) und klara-session-consent-ui (17) sind grün.
+    //
+    // Auslieferungsfolge: KEIN erneutes Sideload. Ein installiertes Add-in holt die Datei beim
+    // nächsten Öffnen frisch; ohne einen Server mit den Klara-Routen steht der Sitzungsteil
+    // ehrlich auf „keine Sitzung", der Hausstand-Teil arbeitet unverändert weiter.
+    const PIN = "4bf88d4e465c4b4ac341780b4d20483394a2a25582e20b3bfe47b05180f85206";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

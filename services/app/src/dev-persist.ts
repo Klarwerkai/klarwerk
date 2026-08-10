@@ -41,6 +41,11 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   koRepo: ["insert", "update", "delete", "setAiCheck", "resolveAiCheck"],
   koVersions: ["append"],
   evidence: ["append"],
+  // W2-A/148: die Laufdomaene. `insertIfAbsent` und `appendItemRefs` sind idempotent, `advance`
+  // schreibt einen Zustand fort — alle drei muessen einen Dev-Neustart ueberleben, sonst waere ein
+  // gestarteter Lauf danach spurlos, und genau das sollte 148 beenden.
+  importRuns: ["insertIfAbsent", "advance", "appendItemRefs"],
+  externalSources: ["insertIfAbsent"],
   // SCRUM-504: der atomare Bootstrap-Claim ist eine Mutation (fügt den Admin ein) → muss journaliert
   // werden, sonst überlebt der erste Admin den Dev-Neustart nicht. In Dev (sequenziell) genau einmal mit
   // Erfolg gerufen; Replay auf die leere Instanz beansprucht den Slot identisch.
@@ -93,16 +98,102 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   externalKnowledge: ["setStage"],
   // SCRUM-421: Upload-Grenzen überleben den Neustart (letzter Set gewinnt).
   uploadLimits: ["set"],
+  // ==============================================================================================
+  // W1 WEG A (Pedi, Auftrag 143) — DER ANTWORTBELEG ÜBERLEBT DEN NEUSTART.
+  // ==============================================================================================
+  //
+  // GENAU DIESE ZWEI, und keine dritte: `createRecord` legt die Antwortidentität an,
+  // `appendSnapshot` hängt eine Belegrevision an. Alles andere am Repo (`findRecord`,
+  // `findSnapshot`, `listSnapshots`, `latestSnapshot`) ist Lesen und gehört nicht ins Journal.
+  //
+  // WARUM DAS REPLAY EXAKT IST: beide Mutatoren sind idempotent (`createRecord` liefert `false`
+  // für eine bekannte Antwort, `appendSnapshot` `false` für eine bekannte Revision), und beide
+  // tragen ihre VOLLSTÄNDIGEN Argumente inklusive `integrityHash`. Der Wiederaufbau stellt den
+  // Beleg damit WIEDER HER statt ihn nachzubilden — eine doppelte Journalzeile ist harmlos.
+  //
+  // DIE REIHENFOLGE IST TEIL DER ZUSAGE: `appendSnapshot` wirft ohne vorausgehenden Record. Der
+  // Proxy schreibt nur NACH Erfolg, und `appendFileSync` ist ordnungstreu — deshalb kann die
+  // Snapshot-Zeile im Journal nie vor ihrer Record-Zeile stehen.
+  answerSnapshots: ["createRecord", "appendSnapshot"],
 } as const;
+
+// ================================================================================================
+// W1/N6 (KW-S4-25 B, KW-S4-27 A) — DER BENANNTE, FAIL-CLOSED REPLAYFEHLER.
+// ================================================================================================
+//
+// WARUM ES IHN GIBT. Der Start scheiterte auch vorher schon an einem manipulierten Journal — aber
+// mit dem Fachfehler des getroffenen Repos („Zu diesem Snapshot gibt es keine Antwort"). Das ist
+// ein fachlich klingender Satz für einen BETRIEBS-/INTEGRITÄTSdefekt, und er nennt weder Zeile
+// noch Repo noch Methode. Der Betreiber sah einen Fehler, den er nicht lokalisieren konnte.
+//
+// WARUM DER REASON CODE HEUTE KONSTANT IST (KW-S4-27 A). Der Produktcode journalisiert
+// ausschließlich ERFOLGREICHE Operationen in ordnungstreuer Reihenfolge, und die bekannten
+// Replay-Operationen bauen daraus deterministisch wieder auf. Wirft eine solche Operation beim
+// Replay, ist die vorliegende Journalfolge für diesen Produktstand nicht durch den regulären
+// Schreibpfad reproduzierbar — das IST die Integritätsverletzung. Eine Unterscheidung am
+// Fehlertyp wäre eine fachspezifische Sonderregel im Replay-Rahmen und ist ausdrücklich verboten.
+//
+// WAS ER NICHT TRÄGT, und das ist Vertrag, nicht Vorsicht: keine `args` (dort stehen laut Kopf
+// dieser Datei Session-Token), keinen `integrityHash`, keine Kennung, keinen Journalpfad und
+// keinen Text des Ursprungsfehlers. Die Ursache reist ausschließlich intern über `cause` mit.
+// Für die Diagnose genügen Zeile, Repo, Methode und Reason Code.
+
+/** Die heute erreichbaren Gründe. `REPLAY_OPERATION_FAILED` ist reserviert, ohne Erzeuger. */
+export type DevPersistReplayReasonCode = "JOURNAL_INTEGRITY_VIOLATION" | "REPLAY_OPERATION_FAILED";
+
+export class DevPersistJournalReplayError extends Error {
+  readonly code = "DEV_PERSIST_JOURNAL_REPLAY_FAILED" as const;
+  readonly phase = "REPLAY" as const;
+  readonly reasonCode: DevPersistReplayReasonCode;
+  readonly lineNumber: number;
+  readonly repo: string;
+  readonly method: string;
+
+  constructor(lineNumber: number, repo: string, method: string, cause: unknown) {
+    // Die Meldung setzt sich AUSSCHLIESSLICH aus den vier bereits validierten Werten zusammen.
+    super(
+      `Dev-Persist Journal-Replay fehlgeschlagen (Zeile ${lineNumber}, ${repo}.${method}, JOURNAL_INTEGRITY_VIOLATION).`,
+      { cause },
+    );
+    // Ohne diese Zeile trüge die Unterklasse nach dem Bündeln den Basisnamen.
+    this.name = "DevPersistJournalReplayError";
+    this.reasonCode = "JOURNAL_INTEGRITY_VIOLATION";
+    this.lineNumber = lineNumber;
+    this.repo = repo;
+    this.method = method;
+  }
+}
+
+/**
+ * Ein gelesener Eintrag MIT seiner physischen Herkunft.
+ *
+ * `lineNumber` ist die echte, 1-basierte Zeile der Journaldatei — sie zählt Leerzeilen und formal
+ * gelesene, aber verworfene Zeilen mit. Sie ist bewusst eine LESE-Angabe und kein Feld von
+ * `JournalEntry`: geschrieben wird weiterhin `{ repo, method, args }`, sonst stünde die Herkunft
+ * in der Datei, die sie beschreibt (KW-S4-27).
+ */
+export interface JournalLine {
+  readonly lineNumber: number;
+  readonly entry: JournalEntry;
+}
 
 // Journal defensiv laden: fehlende Datei → leer; eine korrupte (z. B. beim Crash halb
 // geschriebene) Zeile beendet das Einlesen ab dort — alles Gültige davor bleibt erhalten.
-export function readJournal(file: string): JournalEntry[] {
+//
+// W1/N6 (KW-S4-27): Die Zählung läuft über ALLE physischen Zeilen, nicht über die akzeptierten
+// Einträge. Zwei Stellen sorgen sonst für eine Verschiebung — eine übersprungene Leerzeile und
+// eine Zeile mit gültigem JSON, aber falscher Form (sie wird verworfen, bricht das Einlesen aber
+// NICHT ab). Ein `index + 1` über das Ergebnisfeld läge in beiden Fällen daneben, und eine falsche
+// Zeilennummer wäre schlimmer als keine: sie schickt den Betreiber an die falsche Stelle einer
+// Datei, die er gerade als manipuliert verdächtigt.
+export function readJournalLines(file: string): JournalLine[] {
   if (!existsSync(file)) {
     return [];
   }
-  const entries: JournalEntry[] = [];
+  const lines: JournalLine[] = [];
+  let lineNumber = 0;
   for (const line of readFileSync(file, "utf8").split("\n")) {
+    lineNumber += 1;
     if (line.trim().length === 0) {
       continue;
     }
@@ -115,27 +206,44 @@ export function readJournal(file: string): JournalEntry[] {
         typeof (parsed as JournalEntry).method === "string" &&
         Array.isArray((parsed as JournalEntry).args)
       ) {
-        entries.push(parsed as JournalEntry);
+        lines.push({ lineNumber, entry: parsed as JournalEntry });
       }
     } catch {
       break;
     }
   }
-  return entries;
+  return lines;
+}
+
+/** Dieselbe Lesung ohne die Herkunftsangabe — der unveränderte Bestandsvertrag. */
+export function readJournal(file: string): JournalEntry[] {
+  return readJournalLines(file).map((l) => l.entry);
 }
 
 // Journal in frische Repos zurückspielen — ausschließlich über die öffentlichen Interfaces.
 // Unbekannte Repo-/Methodennamen werden bewusst übersprungen (versionstolerant statt Crash).
-export async function replayJournal(repos: AppRepos, entries: JournalEntry[]): Promise<void> {
-  for (const entry of entries) {
+//
+// W1/N6: Ein Wurf einer BEKANNTEN, gegen `MUTATING_METHODS` validierten Operation ist dagegen
+// kein Toleranzfall, sondern eine Integritätsverletzung (KW-S4-27 A) — er bricht den Start
+// fail-closed ab. Übersprungen wird nichts, fortgesetzt wird nichts, ein Ersatz-Repo gibt es nicht.
+export async function replayJournal(repos: AppRepos, lines: readonly JournalLine[]): Promise<void> {
+  for (const { lineNumber, entry } of lines) {
     const allowed = MUTATING_METHODS[entry.repo as keyof AppRepos];
     if (!allowed || !allowed.includes(entry.method)) {
-      continue;
+      continue; // N5: Abwärtskompatibilität — und ausdrücklich KEIN Fallback für N6.
     }
     const target = repos[entry.repo as keyof AppRepos] as unknown as Record<string, unknown>;
     const method = target[entry.method];
     if (typeof method === "function") {
-      await (method as (...args: unknown[]) => Promise<unknown>).apply(target, entry.args);
+      try {
+        await (method as (...args: unknown[]) => Promise<unknown>).apply(target, entry.args);
+      } catch (cause) {
+        // `repo` und `method` sind an dieser Stelle bereits gegen das Registry geprüft (die
+        // Zeilen darüber) — sie sind damit kanonische Schlüssel aus dem Code, keine Zeichenketten
+        // aus der Datei. Genau deshalb dürfen sie in Meldung und Feldern erscheinen, ohne dass
+        // ein manipulierter Rohwert je interpoliert würde.
+        throw new DevPersistJournalReplayError(lineNumber, entry.repo, entry.method, cause);
+      }
     }
   }
 }
@@ -183,7 +291,8 @@ export function journaledRepos(repos: AppRepos, write: (entry: JournalEntry) => 
 export async function buildDevPersistServices(file: string): Promise<AppServices> {
   mkdirSync(dirname(file), { recursive: true });
   const repos = inMemoryRepos();
-  await replayJournal(repos, readJournal(file));
+  // W1/N6: MIT Herkunftsangabe — nur so kann ein Replayfehler die echte physische Zeile nennen.
+  await replayJournal(repos, readJournalLines(file));
   const write = (entry: JournalEntry): void => {
     appendFileSync(file, `${JSON.stringify(entry)}\n`, "utf8");
   };

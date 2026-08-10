@@ -8,9 +8,12 @@ import Fastify, {
 } from "fastify";
 import type { Pool } from "pg";
 import {
+  type AnswerSnapshotRepo,
   AskService,
   type GapRepo,
+  InMemoryAnswerSnapshotRepo,
   InMemoryGapRepo,
+  PgAnswerSnapshotRepo,
   PgGapRepo,
   parseConfiguredReceiptSecret,
 } from "../../ask";
@@ -70,10 +73,12 @@ import {
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
   type KoRepo,
+  type KoSearchProjectionRepo,
   KoService,
   type KoVersionRepo,
   PgEvidenceRepo,
   PgKoRepo,
+  PgKoSearchProjectionRepo,
   PgKoVersionRepo,
   PgUploadLimitsRepo,
   type UploadLimitsRepo,
@@ -82,8 +87,14 @@ import {
 import {
   type CandidateRepo,
   InMemoryCandidateRepo,
+  type ExternalSourceRepo,
+  type ImportRunRepo,
+  InMemoryExternalSourceRepo,
+  InMemoryImportRunRepo,
   LibraryService,
   PgCandidateRepo,
+  PgExternalSourceRepo,
+  PgImportRunRepo,
 } from "../../library-analytics";
 import {
   InMemoryLifecycleRepo,
@@ -114,10 +125,15 @@ import { canChangeRole } from "../../rbac";
 import {
   type AssistPresetRepo,
   InMemoryAssistPresetRepo,
+  // W1 S4: Ablage der Klara-Sitzungen/Zustimmungen — dieselbe Modulgrenze wie die übrige
+  // Reasoner-Persistenz (Cross-Modul-Import nur über die öffentliche index.ts).
+  InMemoryKlaraSessionRepo,
   InMemoryReasonerPolicyRepo,
+  type KlaraSessionRepo,
   ModelCapacityError,
   ModelProvider,
   PgAssistPresetRepo,
+  PgKlaraSessionRepo,
   PgReasonerPolicyRepo,
   Reasoner,
   type ReasonerPolicyRepo,
@@ -155,7 +171,13 @@ import { type SemanticPrefilter, removeKoFromDuplicatePrefilter } from "./duplic
 import { cappedEmbeddingProvider } from "./embed-concurrency";
 import type { FactoryReset } from "./factory-reset";
 import { schalterAn } from "./feature-flags";
-import { type SessionUser, makeGuards, tokenFromRequest } from "./http";
+import {
+  type SessionUser,
+  isInternalOnlyError,
+  makeGuards,
+  sendError,
+  tokenFromRequest,
+} from "./http";
 import { impactReport } from "./impact";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
@@ -169,12 +191,14 @@ import { canSeeDraft, captureRoutes } from "./routes/capture-routes";
 import { checkTextRoutes } from "./routes/check-text-routes";
 import { conflictRoutes } from "./routes/conflicts-routes";
 import { confluenceImportRoutes } from "./routes/confluence-import-routes";
+import { importRunRoutes } from "./routes/import-run-routes";
 import { externalRoutes } from "./routes/external-routes";
 import { featuresRoutes } from "./routes/features-routes";
 import { helpRoutes } from "./routes/help-routes";
 import { i18nRoutes } from "./routes/i18n-routes";
 import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
+import { klaraAiRoutes } from "./routes/klara-ai-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -191,6 +215,12 @@ import { provenanceEnabled, provenanceRoutes } from "./routes/provenance-routes"
 import { reasonerRoutes } from "./routes/reasoner-routes";
 import { slidesRoutes } from "./routes/slides-routes";
 import { validationRoutes } from "./routes/validation-routes";
+// G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
+// App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
+import { stelleSuchprojektionBereit } from "./search-projection-startup";
+// W1 S4 (KW-S4-04 §59-100): Klara-Sitzung und Zustimmung. NUR Verdrahtung — die
+// Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
+import { KlaraSessionService } from "./services/klara-session-service";
 import { sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
@@ -201,6 +231,10 @@ export interface AppServices {
   auth: AuthService;
   ko: KoService;
   reasoner: Reasoner;
+  // W1 S4: Ablage der Klara-Sitzungen und ihrer Zustimmungen. Als eigenes Feld und nicht in
+  // `AppRepos`, weil es wie `searchProjections` ein abgeleiteter Betriebsdatenraum ist — die
+  // Dev-Persistenz journaliert ihn bewusst nicht; nach einem Replay ist er schlicht leer.
+  klaraSessions: KlaraSessionRepo;
   audit: AuditService;
   capture: CaptureService;
   ask: AskService;
@@ -227,6 +261,11 @@ export interface AppServices {
   media: MediaAnalysisService;
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
+  // W2-A/148: die Laufablage des Imports. Sie steht hier als Ablage — wie `klaraSessions` — weil
+  // die Routen sie direkt lesen; einen Dienst darum gibt es (noch) nicht, und einen zu erfinden,
+  // nur damit die Form stimmt, waere eine Schicht ohne Aufgabe.
+  importRuns: ImportRunRepo;
+  externalSources: ExternalSourceRepo;
   mailer: Mailer;
   // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke (öffentliche Modul-Schnittstelle).
   notificationSeen: NotificationSeenRepo;
@@ -267,6 +306,10 @@ export interface AppRepos {
   lifecycleRepo: LifecycleRepo;
   objects: ObjectRepo;
   candidates: CandidateRepo;
+  // W2-A/148 (KW-S4-26 §133): die Laufdomaene des Imports. Ohne sie in der Wurzel konnte kein
+  // Lauf angelegt werden — die Tabelle wurde migriert und blieb leer.
+  importRuns: ImportRunRepo;
+  externalSources: ExternalSourceRepo;
   modelRuns: ModelRunRepo;
   // Audit-P3 (SCRUM-397): pro Nutzer bewusst als gesehen markierte Benachrichtigungs-IDs.
   notificationSeen: NotificationSeenRepo;
@@ -280,6 +323,19 @@ export interface AppRepos {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
   uploadLimits: UploadLimitsRepo;
+  /**
+   * W1 Weg A: der Answer-Beleg-Schreibweg — und zwar HIER, nicht mehr als Option.
+   *
+   * Bis Auftrag 143 stand er als optionaler Parameter an `assembleServices`, mit dem ehrlich
+   * benannten Preis, dass der Beleg NICHT durch das Dev-Journal lief: nach einem Replay fehlten
+   * die Snapshots des Journallaufs. Pedis Entscheidung ist Weg A — die Zusage wird journalisiert
+   * und muss Neustarts überleben. Genau dafür gehört das Repo in `AppRepos`: dieser Satz Repos
+   * ist es, den `dev-persist.ts` journalierend umhüllt und beim Start aus dem Journal
+   * wiederherstellt. Der zugehörige Eintrag steht in `MUTATING_METHODS`
+   * (`createRecord`, `appendSnapshot`) — der Wächter in `tests/app/dev-persist.test.ts` erzwingt,
+   * dass beide Mengen deckungsgleich bleiben.
+   */
+  answerSnapshots: AnswerSnapshotRepo;
 }
 
 // Verdrahtet aus den Repos die vollständige Service-Landschaft. Ein gemeinsames
@@ -288,7 +344,25 @@ export interface AppRepos {
 // SCRUM-523 P.3 (WP-A2): `opts.withTx` ist NUR gesetzt, wenn der Aufrufer wirklich einen echten
 // Pg-Pool hat (buildPgServices unten) — Dev-Persistenz/InMemory rufen ohne opts, KoService fällt dann
 // auf den sequentiellen purgeKo-Pfad zurück (s. Kommentar dort).
-export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}): AppServices {
+// G27: `opts.searchProjections` liefert den PERSISTENTEN Adapter der Suchprojektion — gesetzt nur
+// von buildPgServices (echter Pool). Bewusst NICHT in `AppRepos`: die Projektion ist ein
+// ABGELEITETER Datenraum, kein eigenständiger Bestand. Sie gehört deshalb nicht in das
+// Mutations-Journal der Dev-Persistenz (SCRUM-387) — nach einem Replay ist sie schlicht leer und
+// wird vom idempotenten Backfill wiederhergestellt. Ohne Injektion baut sich der KoService seinen
+// In-Memory-Adapter über dasselbe KO-Repo (s. KoServiceDeps.searchProjections).
+export function assembleServices(
+  repos: AppRepos,
+  opts: {
+    withTx?: WithTx;
+    searchProjections?: KoSearchProjectionRepo;
+    // W1 S4: gesetzt nur von `buildPgServices` (echter Pool). Ohne Injektion die
+    // In-Memory-Ablage — derselbe Vertrag, andere Haltbarkeit; beide werden getrennt geprüft.
+    klaraSessions?: KlaraSessionRepo;
+    // W1 Weg A (Auftrag 143): `answerSnapshots` stand hier als Option, mit dem benannten Preis,
+    // dass der Beleg nicht durch das Dev-Journal lief. Die Restgrenze ist geschlossen — das Repo
+    // liegt jetzt in `AppRepos` und kommt wie jedes andere aus `repos.`.
+  } = {},
+): AppServices {
   const audit = new AuditService({ repo: repos.auditRepo });
   const ko = new KoService({
     repo: repos.koRepo,
@@ -301,6 +375,7 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
     // exactOptionalPropertyTypes: den Key nur setzen, wenn wirklich ein withTx da ist (sonst würde
     // `withTx: undefined` explizit gegen den optionalen KoServiceDeps.withTx?: WithTx verstoßen).
     ...(opts.withTx ? { withTx: opts.withTx } : {}),
+    ...(opts.searchProjections ? { searchProjections: opts.searchProjections } : {}),
   });
   // FR-RSN-02/06 + SCRUM-502 R8: echtes Cloud-Modell, wenn der Cloud-Key per Env/Keychain verfügbar ist
   // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
@@ -335,6 +410,11 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
     reasoner,
     koService: ko,
     gaps: repos.gaps,
+    // W3-C1 (Auftrag 76): ab hier schreibt der Antwortweg wirklich einen Beleg.
+    // W1 Weg A (Auftrag 143): das Repo kommt aus `repos.` — derselbe Satz, den die Dev-Persistenz
+    // journaliert. Kein bedingter Key mehr: es ist immer da, und damit läuft der Beleg in JEDER
+    // Komposition durch denselben Weg.
+    answerSnapshots: repos.answerSnapshots,
     audit,
     ...(process.env.KLARWERK_ASK_RECEIPT_SECRET
       ? { receiptSecret: parseConfiguredReceiptSecret(process.env.KLARWERK_ASK_RECEIPT_SECRET) }
@@ -383,6 +463,9 @@ export function assembleServices(repos: AppRepos, opts: { withTx?: WithTx } = {}
   return {
     audit,
     reasoner,
+    klaraSessions: opts.klaraSessions ?? new InMemoryKlaraSessionRepo(),
+    importRuns: repos.importRuns,
+    externalSources: repos.externalSources,
     ko,
     auth: new AuthService({
       users: repos.users,
@@ -515,6 +598,8 @@ export function inMemoryRepos(): AppRepos {
     lifecycleRepo: new InMemoryLifecycleRepo(),
     objects: new InMemoryObjectRepo(),
     candidates: new InMemoryCandidateRepo(),
+    importRuns: new InMemoryImportRunRepo(),
+    externalSources: new InMemoryExternalSourceRepo(),
     modelRuns: new InMemoryModelRunRepo(),
     notificationSeen: new InMemoryNotificationSeenRepo(),
     assistPresets: new InMemoryAssistPresetRepo(),
@@ -522,11 +607,16 @@ export function inMemoryRepos(): AppRepos {
     validationSettings: new InMemoryValidationSettingsRepo(),
     externalKnowledge: new InMemoryExternalKnowledgePolicyRepo(),
     uploadLimits: new InMemoryUploadLimitsRepo(),
+    // W1 Weg A (Auftrag 143): der Answer-Beleg gehört in denselben Repo-Satz wie alles andere —
+    // nur so umhüllt ihn die Dev-Persistenz und spielt ihn beim Start aus dem Journal zurück.
+    answerSnapshots: new InMemoryAnswerSnapshotRepo(),
   };
 }
 
 // In-Memory-Komposition (Tests, Dev ohne Datenbank).
 export function buildServices(): AppServices {
+  // W3-C1: auch die In-Memory-Komposition schreibt Belege — derselbe Vertrag, andere Haltbarkeit.
+  // W1 Weg A: das Repo kommt jetzt aus `inMemoryRepos()`; hier bleibt nichts nachzureichen.
   return assembleServices(inMemoryRepos());
 }
 
@@ -555,6 +645,10 @@ export function buildPgServices(pool: Pool): AppServices {
       objects: new PgObjectRepo(pool),
       // SCRUM-157: Import-/Source-Review-Queue persistent (Review-Stand überlebt Neustart).
       candidates: new PgCandidateRepo(pool),
+      // W2-A/148: Laufdomaene persistent — ein Lauf muss einen Neustart ueberleben, sonst waere
+      // „haengend in QUEUED" nach jedem Neustart ununterscheidbar von „nie gestartet".
+      importRuns: new PgImportRunRepo(pool),
+      externalSources: new PgExternalSourceRepo(pool),
       // SCRUM-164: ModelRun-Protokoll persistent (KI-Aufrufe nachvollziehbar).
       modelRuns: new PgModelRunRepo(pool),
       // Audit-P3 (SCRUM-397): Gelesen-Status der Glocke persistent.
@@ -569,6 +663,11 @@ export function buildPgServices(pool: Pool): AppServices {
       externalKnowledge: new PgExternalKnowledgePolicyRepo(pool),
       // SCRUM-421: Upload-Grenzen persistent.
       uploadLimits: new PgUploadLimitsRepo(pool),
+      // W3-C1 (Auftrag 76): der Answer-Beleg gegen die echte Datenbank. Die Tabellen
+      // `answer_records` und `answer_snapshots` stehen seit Freeze 61 im Migrationsweg.
+      // W1 Weg A (Auftrag 143): er steht jetzt bei den übrigen Repos statt in den Optionen —
+      // dieselbe Stelle, dieselbe Regel, in allen drei Kompositionen.
+      answerSnapshots: new PgAnswerSnapshotRepo(pool),
     },
     {
       // SCRUM-523 P.3 (WP-A2): EIN echter Pg-Pool (derselbe, mit dem PgKoRepo/PgAuditRepo oben
@@ -576,6 +675,13 @@ export function buildPgServices(pool: Pool): AppServices {
       // ausführen (services/db-tx). Ohne diesen Zweig (InMemory/Dev-Journal) bleibt der sequentielle
       // Fallback aktiv (s. KoService.purgeKo).
       withTx: (fn) => withPgTx(pool, fn),
+      // G27: die revisionsgebundene Suchprojektion liegt in DERSELBEN Datenbank wie der Bestand
+      // (dedizierte Kundeninstanz = ein Datenraum). Kein zweiter Dienst, kein geteilter Cache,
+      // keine kundenübergreifende Ablage.
+      searchProjections: new PgKoSearchProjectionRepo(pool),
+      // W1 S4: Klara-Sitzungen und Zustimmungen liegen in DERSELBEN Datenbank wie der
+      // Bestand — kein zweiter Dienst, keine kundenübergreifende Ablage.
+      klaraSessions: new PgKlaraSessionRepo(pool),
     },
   );
 }
@@ -607,6 +713,16 @@ function createSemanticPrefilterFromEnv(): SemanticPrefilter | undefined {
 // 500/Crash). Jeder andere Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht
 // (Validierungs-400 etc. unverändert). Als benannte Funktion exportiert, damit Tests denselben Handler
 // verdrahten wie die App (kein duplizierter Handler, keine Drift).
+// G27 R1 (KW-ARCH-G27-HTTP-MASKIERUNG-07 §1, KW-G27-R1-KOPF-AUSWERTUNG-07 §3): DER ZWEITE ÄUSSERE
+// WEG. `sendError` ist der Standardausgang der Routen, die abfangen — aber GENAU DIE SUCHROUTEN
+// fangen nicht ab: `GET /api/library/search`, `POST /api/ask` und `POST /api/reasoner` (task `ask`)
+// lassen den Fehler durch und landen hier. Fastifys Standardweg serialisiert dann `error.code` und
+// `error.message`, also den technischen Code UND die Control-State-Meldung („Zustand V2_BUILDING").
+// Der Status war zufällig schon 500; alles andere verletzte §4 der Entscheidung.
+//
+// KEINE ZWEITE WAHRHEIT. Geprüft wird das aus `http.ts` exportierte Prädikat und geantwortet über
+// dieselbe `sendError`-Funktion — die Codekenntnis und die generische Antwort stehen genau einmal
+// im Repository. Eine eigene Codeliste hier wäre die Duplikation, die morgen auseinanderläuft.
 export function modelBusyErrorHandler(
   error: FastifyError,
   _request: FastifyRequest,
@@ -617,6 +733,10 @@ export function modelBusyErrorHandler(
       error: "MODEL_BUSY",
       message: "KI-Modell derzeit ausgelastet. Bitte in Kürze erneut versuchen.",
     });
+    return;
+  }
+  if (isInternalOnlyError(error)) {
+    sendError(reply, error);
     return;
   }
   reply.send(error);
@@ -637,6 +757,27 @@ export function buildApp(
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.
   // unverändert).
   app.setErrorHandler(modelBusyErrorHandler);
+  // G27 R1 / Entscheidung 06 §3 — DIE READINESS-BINDUNG.
+  //
+  // `onReady` ist der von Fastify vorgesehene asynchrone Start-/Ready-Pfad: `app.ready()`,
+  // `app.listen()` und `app.inject()` warten ihn ab, und ein Fehler darin lässt die App gar nicht
+  // erst bereit werden. Genau das verlangt 06 §3 — „der notwendige Lauf wird synchron abgewartet,
+  // bevor die Anwendung als vollständig bereit gilt", und bei Fehlschlag bleibt sie fail-closed
+  // (06 §2, `FAILED`). Ein Hintergrundlauf mit gleichzeitig positiver Readiness ist ausdrücklich
+  // verboten; ein `void`-Aufruf hier wäre genau der.
+  //
+  // GENAU EINMAL JE APP-INITIALISIERUNG (06 §5): `onReady` läuft je Instanz einmal, nicht je
+  // Request und nicht je Route.
+  //
+  // G27 R2 (Entscheidung 15 §A): die Betriebsfolge selbst steht seit dieser Welle in
+  // `search-projection-startup.ts`. Sie ist unverändert dieselbe — sie ist nur nicht mehr privat,
+  // weil der CLI-Seed sie ebenfalls braucht und sie bis dahin nicht erreichen konnte. Kein
+  // zweiter Weg, keine zweite Zustandsmaschine: `stelleSuchprojektionBereit` ist der EINE Einstieg
+  // für App-Ready und `runSeed()`. Er wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht — die App
+  // wird dann nie ready und die Suche bleibt fail-closed.
+  app.addHook("onReady", async () => {
+    await stelleSuchprojektionBereit(services.ko);
+  });
   const guards = makeGuards(services.auth);
 
   // Add-on-API (Klara-Panel), hinter KLARWERK_ADDON_API: CORS NUR bei aktivem Flag, NUR für die eine
@@ -784,6 +925,51 @@ export function buildApp(
     services.reasoner.refreshReachabilityIfStale();
     return { ai: services.reasoner.publicStatus() }; // §2.1: ist die KI verfügbar?
   });
+
+  // ============================================================================================
+  // W1 S4 — KLARA-STATUS, SITZUNG UND ZUSTIMMUNG (KW-S4-04 §13-100)
+  // ============================================================================================
+  //
+  // NUR VERDRAHTUNG. Die Auflösung entsteht im Reasoner-Modul (`resolveKlaraPolicy`), die
+  // Sitzungsführung im Dienst; hier wird beides zusammengesteckt und registriert.
+  //
+  // Die Policyquelle liest die VORHANDENE Reasoner-Konfiguration bei jedem Zugriff frisch — eine
+  // Kopie oder ein Zwischenspeicher wäre eine zweite Wahrheit, und eine Admin-Änderung würde
+  // erst beim nächsten Neustart wirken. `configStatus()` liefert genau die Felder, die der
+  // Resolver braucht; Klara bekommt dadurch KEINE eigene Konfiguration (KW-S4-04 §129).
+  //
+  // Die beiden bestehenden Statusrouten darüber bleiben unverändert: Klara-spezifische Policy dort
+  // hineinzuziehen ist das ausdrückliche No-Go aus KW-S4-04 §54.
+  app.register(
+    klaraAiRoutes(
+      {
+        sessions: new KlaraSessionService({
+          repo: services.klaraSessions,
+          policy: () => {
+            const config = services.reasoner.configStatus();
+            const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
+            // W1 S4 R2 (BEN ROT-1): DIE EFFEKTIVE ANSWER-BINDUNG entscheidet, nicht die globale
+            // Bevorzugung. `config.provider`/`config.model` beschreiben den bevorzugten aktiven
+            // Provider; bei gleichzeitig verdrahtetem Cloud UND Local und Admin-Wahl
+            // `answer = local` meldete der Kopf dadurch `internal` MIT dem Cloud-Anbieter.
+            // `config.effectiveProvider.answer` ist die taskbezogene Wahrheit, die der Reasoner
+            // ohnehin schon führt — sie wird hier durchgereicht, nicht nachgerechnet.
+            return {
+              choice: antwortWahl,
+              source: config.policySource,
+              effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
+              cloudConfigured: config.cloudConfigured,
+              localConfigured: config.localConfigured,
+              providerLabel: config.provider,
+              modelLabel: config.model,
+              localProviderLabel: config.localProvider,
+            };
+          },
+        }),
+      },
+      guards,
+    ),
+  );
 
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
@@ -1107,6 +1293,17 @@ export function buildApp(
         guards,
         // IC-3: Reasoner für die optionale Prompt→Kriterien-Ableitung der Auswahl-Vorschau.
         reasoner: services.reasoner,
+        // W2-A/148: der echte Lauf bekommt seine Identität VOR dem ersten Effekt.
+        importRuns: services.importRuns,
+      }),
+    );
+    // W2-A/148: der Leseweg der Laufdomäne. Hinter demselben Schalter wie der Start — ein Lesepfad
+    // auf Läufe, die es ohne den Schalter gar nicht geben kann, wäre eine Route ins Leere.
+    app.register(
+      importRunRoutes({
+        importRuns: services.importRuns,
+        externalSources: services.externalSources,
+        guards,
       }),
     );
   }

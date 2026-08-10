@@ -89,11 +89,22 @@ describe("Teil B: Galerie im Entwurf (DraftBodyGallery, gemountet)", () => {
     const { readFileSync } = await import("node:fs");
     const { resolve } = await import("node:path");
     // AUFTRAG-mega69 Block A: die Vordertür (Ankunftsort der Klara-Entwürfe) übergibt zusätzlich
-    // den Weg zur Bildbeschreibung (onEditCaption) — der Pin prüft je Datei die gerenderte Galerie
-    // und an der Vordertür die neue Verdrahtung. Capture.tsx behält die reine Galerie (der
-    // Klara-Weg landet dort nie; Word-Entwürfe werden zur Vordertür umgeleitet).
+    // den Weg zur Bildbeschreibung (onEditCaption).
+    //
+    // 10.08.2026 — DER PIN PRUEFTE FORMATIERUNG STATT SUBSTANZ. Er verlangte in Capture.tsx
+    // woertlich `<DraftBodyGallery bodyHtml={bodyHtml} />` und stuetzte sich auf die Annahme
+    // „Capture.tsx behaelt die reine Galerie". Diese Annahme ist seit AUFTRAG-PRO-337 falsch: der
+    // Expertenzweig fuehrt denselben Weg zur Bildbeschreibung wie die Vordertuer, und Capture.tsx
+    // rendert die Galerie deshalb mit `onEditCaption` (Capture.tsx:5307 und 5549, beide mit
+    // Begruendung im Produktkommentar).
+    //
+    // Der Fall wird dadurch nicht schwaecher, sondern STRENGER: statt einer Zeichenkette, die
+    // schon ein Zeilenumbruch bricht, verlangt er jetzt in BEIDEN Ansichten dieselbe Substanz —
+    // die Galerie, das Editor-HTML und den Weg zur Bildbeschreibung.
     const capture = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
-    expect(capture).toContain("<DraftBodyGallery bodyHtml={bodyHtml} />");
+    expect(capture).toContain("<DraftBodyGallery");
+    expect(capture).toContain("bodyHtml={bodyHtml}");
+    expect(capture).toContain("onEditCaption=");
     const frontDoor = readFileSync(
       resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
       "utf8",

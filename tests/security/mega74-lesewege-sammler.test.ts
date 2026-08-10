@@ -126,6 +126,26 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/evidence": { urteil: "PRAEDIKAT", grund: "Block B — Index je Trägerobjekt aufgelöst." },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
   "GET /api/graph": { urteil: "PRAEDIKAT", grund: "Block B — Titel; Filter auf der Grundmenge." },
+  // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
+  // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
+  // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).
+  "GET /api/admin/import/runs/:importId": {
+    urteil: "KEIN_KO_INHALT",
+    grund: "Nur Kennungen, Status, Zähler — laufNachAussen, import-run-routes.ts:56-71.",
+  },
+  // Das Ergebnis führt zusätzlich die QUELLREVISION, und die trägt den Titel der Quellseite. Das
+  // ist Quellsystem-Text, kein Wissensobjekt — aber Text. Deshalb NICHT „kein KO-Inhalt", sondern
+  // das Rollentor: users.manage ist Admin, und Admin sieht Vertrauliches ohnehin.
+  "GET /api/admin/import/runs/:importId/result": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Führt die Quellrevision samt Seitentitel; admin-gebunden wie der Start selbst.",
+  },
+  "GET /api/admin/import/source-records/:sourceRecordId": {
+    urteil: "KURATORENTOR",
+    recht: "users.manage",
+    grund: "Quellrevision mit Seitentitel und Inhaltsverweis — nie der Inhalt selbst.",
+  },
   // --- Die Anhänge (Block C) ---------------------------------------------------------------
   "GET /api/objects/:id": { urteil: "PRAEDIKAT", grund: "Block C — G2, Anhang erbt seine Stufe." },
   "GET /api/objects/:id/raw": { urteil: "PRAEDIKAT", grund: "Block C — G2 + G4 (no-store)." },
@@ -238,6 +258,60 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/i18n/:locale/:key": { urteil: "KEIN_KO_INHALT", grund: "Oberflächentexte." },
   "GET /addin": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
   "GET /addin/*": { urteil: "KEIN_KO_INHALT", grund: "statisches Add-in-Bundle." },
+  // --- W1 S4: Klara-Status, Sitzung und Zustimmung (klara-ai-routes.ts) ----------------------
+  //
+  // ZWEI KLASSEN, EIN URTEIL. Beide geben nachweislich keinen KO-Inhalt aus — aber aus
+  // unterschiedlichen Gründen, und die Unterscheidung gehört ins Register, sonst liest der nächste
+  // Mensch sie als eine Zeile:
+  //
+  //   (a) POLICY-/STATUSMETADATEN. Modus, Anbieter, Modell, Policy- und Konfigurationsversion. Das
+  //       ist die Konfigurationslage, kein Bestand — dieselbe Klasse wie `/api/reasoner/status`.
+  //       Der Unterschied zu jenem: die Klara-Fassung antwortet NUR gegen eine registrierte
+  //       Zuordnung (BEN ROT-5), ist also enger, nicht weiter.
+  //
+  //   (b) SITZUNGS-/ZUSTIMMUNGSMETADATEN. Sitzungskennung, Dokumentkontext, Zustimmungszustand,
+  //       Auflösungskennung, Ablaufzeiten. Gebunden an EINE Zuordnung und damit an einen Actor;
+  //       eine fremde sessionId ergibt NOT_FOUND. Kein Feld dieser Antworten stammt aus einem
+  //       Wissensobjekt — der Retrieval-Test misst es zusätzlich mit Modell- und Embedder-Zähler
+  //       (`tests/app/klara-retrieval-only-remains-safe.test.ts`).
+  //
+  // LESEURTEIL, keine Messung — wie bei jedem Eintrag dieser Klasse. Nachschlagbar an den
+  // genannten Fundstellen.
+  "GET /api/klara/ai-status": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(a) Policylage: Modus/Anbieter/Modell/Versionen; nur gegen registrierte Zuordnung (klara-ai-routes.ts:86).",
+  },
+  "GET /api/klara/sessions/:sessionId": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(b) Sitzungsmetadaten des eigenen Actors; fremde Kennung ergibt NOT_FOUND (klara-session-service.ts laden()).",
+  },
+  "POST /api/klara/sessions": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(b) legt eine Zuordnung an und vergibt die opake documentContextId; antwortet mit Sitzungs-, nicht mit Bestandsdaten (klara-ai-routes.ts:114).",
+  },
+  "POST /api/klara/sessions/:sessionId/document-context": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(b) Rebind temporär→gespeichert; entwertet alte Auflösung und Zustimmung, berührt kein KO (klara-ai-routes.ts:142).",
+  },
+  "POST /api/klara/sessions/:sessionId/consent": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(b) hebt nur die Sperre für den externen Weg auf; erteilt KEIN Recht auf KO-Inhalt (klara-ai-routes.ts:191).",
+  },
+  "DELETE /api/klara/sessions/:sessionId/consent": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(b) Widerruf, sofort wirksam; reine Zustandsänderung an der eigenen Sitzung (klara-ai-routes.ts:213).",
+  },
+  "POST /api/klara/sessions/:sessionId/close": {
+    urteil: "KEIN_KO_INHALT",
+    grund:
+      "(b) schliesst die eigene Sitzung; danach ist jeder Folgeaufruf CONFLICT (klara-ai-routes.ts:235).",
+  },
   // --- AUFTRAG-mega76 BLOCK D: die sechs Aggregate — vom Leseurteil zur Messung -------------
   //
   // Diese sechs standen bis mega76 als `KEIN_KO_INHALT` hier — ein MENSCHLICHES Leseurteil mit der
