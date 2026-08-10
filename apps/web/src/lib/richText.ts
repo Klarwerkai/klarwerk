@@ -66,6 +66,12 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   td: new Set(["colspan", "rowspan"]),
   // WP-BILD-1a: Bild-Fußnoten-Anker — nur eine sichere, tokenisierte ID (keine sonstigen Attribute).
   figcaption: new Set(["data-image-id"]),
+  // JOB 509 / D5: Spiegel zu services/structure — auch der figure-CONTAINER trägt den Anker (Dreifach-
+  // anker figure/img/figcaption). GENAU dieses eine Attribut, keine allgemeine Freigabe: style, class,
+  // id und on* fallen weiter. Ohne diesen Eintrag löschte der Client den Container-Anker beim Speichern
+  // aus dem Editor — der serverseitig gesetzte Dreifachanker wäre nach einem Roundtrip wieder ein
+  // Zweifachanker. Die Identität ERZEUGT weiterhin nur der Server; der Client erhält sie.
+  figure: new Set(["data-image-id"]),
 };
 
 export const IMAGE_SCALE_VALUES = ["25", "50", "75", "100"] as const;
@@ -173,7 +179,8 @@ function renderAttrs(tag: string, raw: string): string {
     }
     // WP-BILD-1a/1b: data-image-id (auf figcaption UND img) nur als sicheres Token (Wort-/Bindestrich-
     // Zeichen) übernehmen; alles andere fällt weg (Anker bleibt harmlos, Sanitizer-Vertrag gewahrt).
-    if ((tag === "figcaption" || tag === "img") && name === "data-image-id") {
+    // JOB 509 / D5: identischer Filter am figure-Container — derselbe Vertrag wie serverseitig.
+    if ((tag === "figcaption" || tag === "img" || tag === "figure") && name === "data-image-id") {
       if (/^[\w-]{1,64}$/.test(value)) {
         out.push(`${name}="${value}"`);
       }

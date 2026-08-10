@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { InterviewSession } from "./interview";
-import { InMemoryDraftRepo } from "./repo";
+import { type DraftRepo, InMemoryDraftRepo } from "./repo";
+import { PgDraftRepo } from "./repo-pg";
 import { CaptureService } from "./service";
 
 describe("CaptureService", () => {
@@ -151,3 +152,287 @@ describe("InterviewSession (FR-CAP-02)", () => {
     expect(result.conditions).toEqual(["Antwort 1"]);
   });
 });
+
+// ================================================================================================
+// JOB 510 / R10 — DIE WORD-HERKUNFT UEBERLEBT SPEICHERN UND LADEN.
+// ================================================================================================
+//
+// Die PG-Abbildung speichert den GANZEN Draft als jsonb (repo-pg.ts: `data jsonb NOT NULL`).
+// Dieser Fake bildet genau das nach: JSON.stringify beim Schreiben, JSON.parse beim Lesen. Damit
+// ist der Persistenzweg ohne Datenbank und ohne Netz pruefbar, und In-Memory- und PG-Abbildung
+// werden am selben Vertrag gemessen — ohne Schemaaenderung, weil die Herkunft im JSON mitreist.
+class JsonRoundTripDraftRepo implements DraftRepo {
+  private readonly rows = new Map<string, string>();
+
+  insert(draft: Draft): Promise<void> {
+    this.rows.set(draft.id, JSON.stringify(draft));
+    return Promise.resolve();
+  }
+
+  findById(id: string): Promise<Draft | undefined> {
+    const row = this.rows.get(id);
+    return Promise.resolve(row ? (JSON.parse(row) as Draft) : undefined);
+  }
+
+  update(draft: Draft): Promise<void> {
+    this.rows.set(draft.id, JSON.stringify(draft));
+    return Promise.resolve();
+  }
+
+  delete(id: string): Promise<void> {
+    this.rows.delete(id);
+    return Promise.resolve();
+  }
+
+  list(): Promise<Draft[]> {
+    return Promise.resolve([...this.rows.values()].map((row) => JSON.parse(row) as Draft));
+  }
+}
+
+// Fremde/ungueltige Werte kommen aus einem Client-Body und nicht aus dem Typ — der Cast bildet
+// genau das nach, ohne die Typwahrheit im Produktcode aufzuweichen.
+const fremdeHerkunft = (wert: string): NonNullable<DraftPayload["origin"]> =>
+  wert as unknown as NonNullable<DraftPayload["origin"]>;
+
+describe("JOB 510 R10: Herkunft word_addin uebersteht Speichern und Laden", () => {
+  const dienst = (repo: DraftRepo): CaptureService => new CaptureService({ repo });
+
+  it("In-Memory: word_addin bleibt word_addin", async () => {
+    const s = dienst(new InMemoryDraftRepo());
+    const draft = await s.createDraft({ title: "Aus Word", origin: "word_addin" }, "anna");
+    expect(draft.payload.origin).toBe("word_addin");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBe("word_addin");
+  });
+
+  it("Persistenz (PG-Abbildung, jsonb-Rundlauf): word_addin bleibt word_addin", async () => {
+    const s = dienst(new JsonRoundTripDraftRepo());
+    const draft = await s.createDraft({ title: "Aus Word", origin: "word_addin" }, "anna");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBe("word_addin");
+  });
+
+  it("Fortsetzen verliert die Word-Herkunft nicht", async () => {
+    const s = dienst(new JsonRoundTripDraftRepo());
+    const draft = await s.createDraft({ title: "Aus Word", origin: "word_addin" }, "anna");
+    const weiter = await s.continueDraft(draft.id, { statement: "ergaenzt" }, "bob");
+    expect(weiter.payload.origin).toBe("word_addin");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBe("word_addin");
+  });
+
+  it("nicht als Word markiert: vorhandener Wert bleibt unveraendert", async () => {
+    const s = dienst(new JsonRoundTripDraftRepo());
+    const draft = await s.createDraft({ title: "Vordertuer", origin: "frontdoor" }, "anna");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBe("frontdoor");
+  });
+
+  it("fehlende Herkunft bleibt fehlend — kein stiller Default", async () => {
+    const s = dienst(new JsonRoundTripDraftRepo());
+    const draft = await s.createDraft({ title: "Ohne Herkunft" }, "anna");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBeUndefined();
+  });
+
+  it("leere Herkunft wird verworfen, nicht zu frontdoor normalisiert", async () => {
+    const s = dienst(new JsonRoundTripDraftRepo());
+    const draft = await s.createDraft({ title: "Leer", origin: fremdeHerkunft("") }, "anna");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBeUndefined();
+    expect(geladen?.payload.origin).not.toBe("frontdoor");
+  });
+
+  it("unbekannte Herkunft persistiert NICHT und wird nicht zu word_addin", async () => {
+    const s = dienst(new JsonRoundTripDraftRepo());
+    const draft = await s.createDraft({ title: "Fremd", origin: fremdeHerkunft("hacker") }, "anna");
+    const geladen = await s.getDraft(draft.id);
+    expect(geladen?.payload.origin).toBeUndefined();
+    expect(geladen?.payload.origin).not.toBe("word_addin");
+  });
+});
+
+// ================================================================================================
+// JOB 510 / D3 — DER ECHTE PG-VERTRAG UND DIE VOLLSTAENDIGE HERKUNFTSMATRIX.
+// ================================================================================================
+//
+// Warum das ueber den JSON-Rundlauf oben hinausgeht: `JsonRoundTripDraftRepo` bildet die
+// jsonb-Semantik NACH, prueft aber nicht das gebundene Repository. Hier laeuft `PgDraftRepo`
+// SELBST — mit einem Pool-Doppel statt einer Datenbank. Damit ist belegt, was der Fake nicht
+// belegen kann: welcher SQL-Text abgesetzt wird, was im JSON-PARAMETER steht und was aus
+// `DraftRow.data` zurueckkommt.
+
+interface Abfrage {
+  text: string;
+  werte: unknown[];
+}
+
+/**
+ * Pool-Doppel: genau die Teilmenge von `pg.Pool`, die `PgDraftRepo` benutzt (`query`).
+ *
+ * Es haelt den JSON-TEXT so, wie ihn das Repository als Parameter uebergibt, und liefert beim
+ * Lesen ein GEPARSTES Objekt zurueck — genau die Asymmetrie des echten Treibers: hinein geht ein
+ * String, aus einer jsonb-Spalte kommt ein Objekt. Wuerde das Doppel den String zurueckgeben,
+ * pruefte der Test seine eigene Erfindung statt die Abbildung.
+ */
+class PoolDoppel {
+  readonly abfragen: Abfrage[] = [];
+  private readonly tabelle = new Map<string, string>();
+
+  query<T>(text: string, werte: unknown[] = []): Promise<{ rows: T[] }> {
+    this.abfragen.push({ text, werte });
+    if (text.startsWith("INSERT") || text.startsWith("UPDATE")) {
+      this.tabelle.set(werte[0] as string, werte[1] as string);
+      return Promise.resolve({ rows: [] });
+    }
+    if (text.startsWith("SELECT data FROM drafts WHERE")) {
+      const roh = this.tabelle.get(werte[0] as string);
+      const rows = roh === undefined ? [] : [{ data: JSON.parse(roh) as Draft }];
+      return Promise.resolve({ rows: rows as T[] });
+    }
+    if (text.startsWith("SELECT data FROM drafts ORDER BY")) {
+      const rows = [...this.tabelle.values()].map((roh) => ({ data: JSON.parse(roh) as Draft }));
+      return Promise.resolve({ rows: rows as T[] });
+    }
+    if (text.startsWith("DELETE")) {
+      this.tabelle.delete(werte[0] as string);
+      return Promise.resolve({ rows: [] });
+    }
+    throw new Error(`unerwartete Abfrage: ${text}`);
+  }
+
+  /** Der zuletzt als Parameter uebergebene JSON-Text zu dieser Id — die echte Schreibwahrheit. */
+  letzterJsonParameter(id: string): string {
+    const treffer = this.abfragen.filter(
+      (a) => (a.text.startsWith("INSERT") || a.text.startsWith("UPDATE")) && a.werte[0] === id,
+    );
+    const letzte = treffer[treffer.length - 1];
+    if (!letzte) {
+      throw new Error(`kein Schreibparameter fuer ${id}`);
+    }
+    return letzte.werte[1] as string;
+  }
+}
+
+// Das Doppel traegt bewusst nur `query`; der Cast bindet es an den Konstruktorvertrag, ohne den
+// Produktcode aufzuweichen und ohne `any` (biome: noExplicitAny).
+type PgPool = ConstructorParameters<typeof PgDraftRepo>[0];
+const alsPool = (doppel: PoolDoppel): PgPool => doppel as unknown as PgPool;
+
+describe("JOB 510 D3: PgDraftRepo selbst — Insert/Find/Update mit Pool-Doppel", () => {
+  it("word_addin steht unveraendert im SQL-JSON-Parameter und in DraftRow.data", async () => {
+    const doppel = new PoolDoppel();
+    const repo = new PgDraftRepo(alsPool(doppel));
+    const s = new CaptureService({ repo });
+
+    const draft = await s.createDraft({ title: "Aus Word", origin: "word_addin" }, "anna");
+
+    // (1) INSERT: der Parameter selbst traegt die Herkunft zeichengleich.
+    const insert = doppel.abfragen[0];
+    expect(insert?.text).toContain("INSERT INTO drafts");
+    expect(insert?.werte[0]).toBe(draft.id);
+    expect(doppel.letzterJsonParameter(draft.id)).toContain('"origin":"word_addin"');
+
+    // (2) FIND: was aus `DraftRow.data` zurueckkommt, ist derselbe Wert.
+    const geladen = await repo.findById(draft.id);
+    expect(geladen?.payload.origin).toBe("word_addin");
+
+    // (3) UPDATE ueber den Dienst: die Herkunft ueberlebt auch das Fortschreiben.
+    const weiter = await s.continueDraft(draft.id, { statement: "ergaenzt" }, "bob");
+    expect(weiter.payload.origin).toBe("word_addin");
+    const update = doppel.abfragen.find((a) => a.text.startsWith("UPDATE"));
+    expect(update?.text).toContain("UPDATE drafts SET data=$2 WHERE id=$1");
+    expect(doppel.letzterJsonParameter(draft.id)).toContain('"origin":"word_addin"');
+    const nachUpdate = await repo.findById(draft.id);
+    expect(nachUpdate?.payload.origin).toBe("word_addin");
+    expect(nachUpdate?.payload.statement).toBe("ergaenzt");
+  });
+
+  it("das Doppel erfindet nichts: ohne Herkunft steht kein origin im JSON-Parameter", async () => {
+    const doppel = new PoolDoppel();
+    const repo = new PgDraftRepo(alsPool(doppel));
+    const s = new CaptureService({ repo });
+    const draft = await s.createDraft({ title: "Ohne Herkunft" }, "anna");
+    expect(doppel.letzterJsonParameter(draft.id)).not.toContain('"origin"');
+    const geladen = await repo.findById(draft.id);
+    expect(geladen?.payload.origin).toBeUndefined();
+  });
+});
+
+// Die fuenf bekannten Werte des Vertrags — einzeln, nicht stellvertretend (BEN2-D2 Mangel 5).
+const BEKANNTE_HERKUENFTE = ["tell", "studio", "expert", "frontdoor", "word_addin"] as const;
+
+describe("JOB 510 D3: Herkunftsmatrix ueber Create/Read und Update/Continue", () => {
+  const pgDienst = (): { s: CaptureService; doppel: PoolDoppel } => {
+    const doppel = new PoolDoppel();
+    return { s: new CaptureService({ repo: new PgDraftRepo(alsPool(doppel)) }), doppel };
+  };
+
+  for (const wert of BEKANNTE_HERKUENFTE) {
+    it(`${wert}: Create/Read haelt den Wert zeichengleich (In-Memory und PG)`, async () => {
+      const inMemory = new CaptureService({ repo: new InMemoryDraftRepo() });
+      const a = await inMemory.createDraft({ title: wert, origin: wert }, "anna");
+      expect((await inMemory.getDraft(a.id))?.payload.origin).toBe(wert);
+
+      const { s, doppel } = pgDienst();
+      const b = await s.createDraft({ title: wert, origin: wert }, "anna");
+      expect(doppel.letzterJsonParameter(b.id)).toContain(`"origin":"${wert}"`);
+      expect((await s.getDraft(b.id))?.payload.origin).toBe(wert);
+    });
+
+    it(`${wert}: Update/Continue setzt und erhaelt den Wert`, async () => {
+      const { s } = pgDienst();
+      // gesetzt ueber den Fortsetzungsweg (vorher gar keine Herkunft)
+      const gesetzt = await s.createDraft({ title: "ohne" }, "anna");
+      await s.continueDraft(gesetzt.id, { origin: wert }, "bob");
+      expect((await s.getDraft(gesetzt.id))?.payload.origin).toBe(wert);
+
+      // erhalten, wenn die Fortsetzung die Herkunft gar nicht mitschickt
+      const erhalten = await s.createDraft({ title: "mit", origin: wert }, "anna");
+      await s.continueDraft(erhalten.id, { statement: "ergaenzt" }, "bob");
+      expect((await s.getDraft(erhalten.id))?.payload.origin).toBe(wert);
+    });
+  }
+
+  it("fehlend: bleibt ueber Create/Read und Update/Continue fehlend — kein stiller Default", async () => {
+    const { s, doppel } = pgDienst();
+    const draft = await s.createDraft({ title: "Ohne" }, "anna");
+    expect((await s.getDraft(draft.id))?.payload.origin).toBeUndefined();
+    await s.continueDraft(draft.id, { statement: "ergaenzt" }, "bob");
+    expect((await s.getDraft(draft.id))?.payload.origin).toBeUndefined();
+    expect(doppel.letzterJsonParameter(draft.id)).not.toContain('"origin"');
+  });
+
+  it("leer: wird bei Create verworfen und bei Continue nicht nachgetragen", async () => {
+    const { s, doppel } = pgDienst();
+    const draft = await s.createDraft({ title: "Leer", origin: fremdeHerkunft("") }, "anna");
+    expect((await s.getDraft(draft.id))?.payload.origin).toBeUndefined();
+    expect(doppel.letzterJsonParameter(draft.id)).not.toContain('"origin"');
+
+    // Und ueber den Fortsetzungsweg: eine leere Herkunft ueberschreibt eine gueltige NICHT mit
+    // Muell — sie faellt weg. Eine erfundene Herkunft waere schlimmer als gar keine.
+    const gueltig = await s.createDraft({ title: "Word", origin: "word_addin" }, "anna");
+    await s.continueDraft(gueltig.id, { origin: fremdeHerkunft("") }, "bob");
+    const geladen = await s.getDraft(gueltig.id);
+    expect(geladen?.payload.origin).toBeUndefined();
+    expect(geladen?.payload.origin).not.toBe("frontdoor");
+  });
+
+  it("unbekannt: wird bei Create verworfen und bei Continue nicht zu word_addin", async () => {
+    const { s, doppel } = pgDienst();
+    const draft = await s.createDraft({ title: "Fremd", origin: fremdeHerkunft("hacker") }, "anna");
+    expect((await s.getDraft(draft.id))?.payload.origin).toBeUndefined();
+    expect(doppel.letzterJsonParameter(draft.id)).not.toContain("hacker");
+
+    const gueltig = await s.createDraft({ title: "Word", origin: "word_addin" }, "anna");
+    await s.continueDraft(gueltig.id, { origin: fremdeHerkunft("hacker") }, "bob");
+    const geladen = await s.getDraft(gueltig.id);
+    expect(geladen?.payload.origin).toBeUndefined();
+    expect(geladen?.payload.origin).not.toBe("word_addin");
+    expect(doppel.letzterJsonParameter(gueltig.id)).not.toContain("hacker");
+  });
+});
+
+// Typen aus dem Modulvertrag, ohne zusaetzliche Importzeile.
+type Draft = import("./types").Draft;
+type DraftPayload = import("./types").DraftPayload;

@@ -154,6 +154,46 @@ export function wrapImagesInFigures(
   });
 }
 
+// JOB 513/D3B (BEN2-D2 Mangel 1, Ownerauflage): PPTX besitzt DREI reale Budgetkanten, nicht eine. Wer
+// alle drei in denselben Zaehler schreibt und danach pauschal die HTML-Grenze meldet, nennt bei zwei von
+// drei Faellen die FALSCHE wirkende Grenze. Die Grenzart ist deshalb ein eigener, stabiler Maschinenwert.
+export type ImageBudgetLimitKind =
+  // Das finale bodyHtml in echten UTF-8-Bytes (MAX_INLINE_BODY_HTML_BYTES bzw. der uebergebene Wert).
+  // Gilt fuer DOCX UND PPTX — es ist die einzige Grenze, die der DOCX-Weg kennt.
+  | "body-html"
+  // Ein EINZELNES PPTX-Rohbild gegen PPTX_MAX_IMAGE_BYTES (Vorfilter vor der Base64-Kodierung).
+  | "pptx-single-image"
+  // Die SUMME der eingebetteten PPTX-Rohbilder gegen PPTX_MAX_TOTAL_IMAGE_BYTES.
+  | "pptx-total-images";
+
+// Ein budgetbedingter Verlust mit seiner Grenzart, dem REALEN Grenzwert und dem ausloesenden Wert.
+// `actualBytes` ist der groesste gemessene Ausloeser dieser Art — nie ein Mittelwert und nie geraten.
+export interface ImageBudgetDrop {
+  kind: ImageBudgetLimitKind;
+  limitBytes: number;
+  actualBytes: number;
+  count: number;
+}
+
+// Sammelt Drops je Grenzart: gleiche Art wird gezaehlt, der ausloesende Wert bleibt der groesste
+// gemessene. Rein und ohne Seiteneffekt auf die Eingabe — der Aufrufer nimmt das Ergebnis entgegen.
+export function addImageBudgetDrop(
+  drops: readonly ImageBudgetDrop[],
+  kind: ImageBudgetLimitKind,
+  limitBytes: number,
+  actualBytes: number,
+): ImageBudgetDrop[] {
+  const next = drops.map((d) => ({ ...d }));
+  const hit = next.find((d) => d.kind === kind && d.limitBytes === limitBytes);
+  if (hit) {
+    hit.count += 1;
+    hit.actualBytes = Math.max(hit.actualBytes, actualBytes);
+    return next;
+  }
+  next.push({ kind, limitBytes, actualBytes, count: 1 });
+  return next;
+}
+
 export interface InlineImageBudgetResult {
   html: string;
   total: number; // gesamte data:image-Bilder im Ausgangs-HTML
@@ -165,6 +205,11 @@ export interface InlineImageBudgetResult {
   // dann ist das HTML NICHT garantiert unter dem Budget (Text ist nicht droppbar); der Aufrufer muss
   // ehrlich reagieren (Client-JSON-Guard refust den Request), kein stiller 413.
   overflow: boolean;
+  // JOB 513/D3B/D3C: die `body-html`-Drops dieses Laufs mit Grenzwert und ausloesendem Bedarf.
+  // BEWUSST OPTIONAL und nur gesetzt, wenn wirklich etwas budgetbedingt weggefallen ist: ein leeres
+  // Feld waere eine Aussage ueber nichts. Der VERTRAG normalisiert danach auf ein Array
+  // (imageTransferContract), sodass Konsumenten immer eine Liste sehen — hier steht die Rohmessung.
+  budgetDrops?: ImageBudgetDrop[];
 }
 
 // WP-D1c: ECHTE UTF-8-Bytes (nicht String.length, das UTF-16-Codeeinheiten misst). Zentrale Messung
@@ -178,6 +223,105 @@ export function utf8ByteLength(text: string): number {
 // Titel/Statement, Quote-Escaping). DOM-frei, damit Node-Tests es ohne DOM-Globals importieren können;
 // files.ts (DOM-Wrapper) re-exportiert es.
 export const MAX_INLINE_BODY_HTML_BYTES = 3_500_000;
+
+// JOB 513/D2 (BILDBUDGET-/TRANSFERVERTRAG): EIN gemeinsamer, maschinenlesbarer Vertrag ueber den
+// tatsaechlichen Bildtransfer der dateibasierten Importkante — DOCX und PPTX liefern ihn identisch.
+// EHRLICH heisst hier: es gibt im Produkt KEINE feste "erlaubte Bildzahl"; wie viele Bilder ankommen,
+// ist eine Funktion der Bildgroessen gegen das BESTEHENDE Bytebudget (MAX_INLINE_BODY_HTML_BYTES bzw.
+// das je Lauf uebergebene budgetBytes). Der Vertrag nennt deshalb die WIRKSAME Bytegrenze und die
+// REALEN Ergebniszaehler — er erfindet keine Grenze und definiert keine zweite Zahl daneben.
+export interface ImageTransferContract {
+  // Wurde ueberhaupt ein Bildtransfer versucht? false = die Bilder wurden nur GEZAEHLT (PPTX-Altpfad
+  // ohne imageCaptionPlaceholder); dann sind alle Transferzaehler ehrlich 0 und kein Grund gilt.
+  attempted: boolean;
+  // Tatsaechlich in der QUELLE erkannte Bilder.
+  totalImages: number;
+  // Davon real im finalen bodyHtml angekommene Bilder.
+  embeddedImages: number;
+  // Davon tatsaechlich re-encodiert (nur der DOCX-Weg komprimiert; PPTX kodiert Rohbytes direkt).
+  compressedImages: number;
+  // Wegen des Bytebudgets weggelassene Bilder (Drop-to-fit).
+  droppedImageBudget: number;
+  // Wegen nicht darstellbaren Formats weggelassene Bilder (PPTX: EMF/WMF/TIFF/BMP …).
+  droppedImageFormat: number;
+  // Wegen defekter/unaufloesbarer Referenz weggelassene Bilder (Rels-Ziel oder Mediendatei fehlt).
+  droppedImageUnresolved: number;
+  // JOB 513/D3B (BEN2-D2 Mangel 2): Bildverweise AUSSERHALB des ausgewerteten Bildpfads (PPTX: ein
+  // `a:blip`, das nicht in einem `p:pic` steht — typisch ein Hintergrundbild). Sie sind weder Budget-
+  // noch Format- noch Defektverlust: sie wurden nie versucht. Bis D2 fielen sie zaehlerlos heraus, und
+  // genau dadurch konnte eine unausgeglichene Bilanz als vollstaendiger Erfolg erscheinen.
+  droppedImageOutsidePath: number;
+  // Mehrfachverweise auf DIESELBE Mediendatei (jenseits des ersten Verweises) — KEIN Verlustgrund,
+  // sondern eine getrennt gefuehrte Eigenschaft der Quelle.
+  duplicateImageRefs: number;
+  // JOB 513/D3B: je budgetbedingtem Verlust die tatsaechlich zuerst ausloesende Grenzart, ihr REALER
+  // Wert und der ausloesende Bedarf. Leer = kein budgetbedingter Verlust.
+  budgetDrops: ImageBudgetDrop[];
+  // Die WIRKSAME UTF-8-Bytegrenze dieses Laufs; null = es wirkte ueberhaupt keine Bytegrenze.
+  bodyBudgetBytes: number | null;
+  // Echte UTF-8-Bytes des finalen bodyHtml.
+  bodyBytes: number;
+  // true, wenn schon der NICHT-BILD-Anteil das Budget uebersteigt (Text ist nicht droppbar).
+  bodyOverflow: boolean;
+}
+
+// Baut den Vertrag aus den REALEN Zaehlern; nicht belegte Ursachen bleiben 0 (statt geraten zu werden).
+export function imageTransferContract(input: {
+  attempted: boolean;
+  totalImages: number;
+  embeddedImages: number;
+  bodyBytes: number;
+  bodyBudgetBytes: number | null;
+  bodyOverflow: boolean;
+  compressedImages?: number;
+  droppedImageBudget?: number;
+  droppedImageFormat?: number;
+  droppedImageUnresolved?: number;
+  droppedImageOutsidePath?: number;
+  duplicateImageRefs?: number;
+  budgetDrops?: readonly ImageBudgetDrop[];
+}): ImageTransferContract {
+  return {
+    attempted: input.attempted,
+    totalImages: input.totalImages,
+    embeddedImages: input.embeddedImages,
+    compressedImages: input.compressedImages ?? 0,
+    droppedImageBudget: input.droppedImageBudget ?? 0,
+    droppedImageFormat: input.droppedImageFormat ?? 0,
+    droppedImageUnresolved: input.droppedImageUnresolved ?? 0,
+    droppedImageOutsidePath: input.droppedImageOutsidePath ?? 0,
+    duplicateImageRefs: input.duplicateImageRefs ?? 0,
+    budgetDrops: (input.budgetDrops ?? []).map((d) => ({ ...d })),
+    bodyBudgetBytes: input.bodyBudgetBytes,
+    bodyBytes: input.bodyBytes,
+    bodyOverflow: input.bodyOverflow,
+  };
+}
+
+// Geht die Bilanz auf? uebernommen + Budget + Format + Defekt + ausserhalb des Bildpfads === tatsaechlich
+// erkannt. JOB 513/D3B: `droppedImageOutsidePath` ist neu in dieser Summe. Bis D2 fehlte er, und ein
+// Hintergrund-`a:blip` machte die Bilanz still unausgeglichen — der Vertrag meldete trotzdem
+// `all-transferred`. Ein `false` hier ist ab jetzt ein HARTES Rot (s. imageTransferOutcome), kein Hinweis.
+// Bei attempted === false ist die Frage gegenstandslos (es wurde nichts uebertragen).
+export function imageTransferBalanced(contract: ImageTransferContract): boolean {
+  if (!contract.attempted) {
+    return contract.embeddedImages === 0;
+  }
+  return (
+    contract.embeddedImages +
+      contract.droppedImageBudget +
+      contract.droppedImageFormat +
+      contract.droppedImageUnresolved +
+      contract.droppedImageOutsidePath ===
+    contract.totalImages
+  );
+}
+
+// JOB 513/D2: reine Zaehlung der data:image-Bildeinheiten (figure-Block oder blankes <img>) — dieselbe
+// Einheit, die das Byte-Budget droppt. Ohne Budgetlauf ist sie die ehrliche Gesamtzahl.
+export function countInlineImages(html: string): number {
+  return html.match(IMG_TAG_DATA_RE)?.length ?? 0;
+}
 
 // WP-D1d (bens ROT-Fix 1): hartes Byte-Budget für das GESAMTE finale bodyHtml (Struktur + Text + Tail +
 // alle behaltenen Bilder), in ECHTEN UTF-8-Bytes. Vorgehen: erst den NICHT-BILD-Anteil (alle Literale
@@ -238,6 +382,16 @@ export async function applyInlineImageBudget(
       dropped: matches.length,
       bytes: nonImageBytes,
       overflow: true,
+      // JOB 513/D3B: auch dieser Notbremsen-Zweig nennt die wirkende Grenzart und den ausloesenden
+      // Bedarf — hier ist es der nicht droppbare Text/Struktur-Anteil selbst.
+      budgetDrops: [
+        {
+          kind: "body-html",
+          limitBytes: budgetBytes,
+          actualBytes: nonImageBytes,
+          count: matches.length,
+        },
+      ],
     };
   }
 
@@ -246,6 +400,7 @@ export async function applyInlineImageBudget(
   let kept = 0;
   let compressed = 0;
   let dropped = 0;
+  let budgetDrops: ImageBudgetDrop[] = [];
   for (let i = 0; i < matches.length; i += 1) {
     const match = matches[i];
     if (!match) {
@@ -264,6 +419,9 @@ export async function applyInlineImageBudget(
       }
     } else {
       dropped += 1; // Notbremse: Bild weglassen — Original bleibt als Anhang (WP-D2).
+      // JOB 513/D3B: der ausloesende Wert ist der Bedarf, der die Grenze gerissen haette — der bereits
+      // belegte Anteil plus dieses Bild. Damit ist rekonstruierbar, WIE weit es darueber lag.
+      budgetDrops = addImageBudgetDrop(budgetDrops, "body-html", budgetBytes, usedBytes + tagBytes);
     }
   }
   parts.push(literals[matches.length] ?? ""); // Tail
@@ -278,6 +436,7 @@ export async function applyInlineImageBudget(
     dropped,
     bytes,
     overflow: bytes > budgetBytes,
+    ...(budgetDrops.length > 0 ? { budgetDrops } : {}),
   };
 }
 
@@ -288,6 +447,9 @@ export interface DocxRichResult {
   compressedImages: number; // WP-D1d: tatsächlich re-encodierte (komprimierte) Bilder
   droppedImages: number; // Bilder, die als Notbremse NICHT ins bodyHtml kamen
   htmlOverflow: boolean; // WP-D1d: true, wenn das bodyHtml das Budget trotz Notbremse übersteigt (Text)
+  // JOB 513/D2: der gemeinsame, maschinenlesbare Bildtransfer-Vertrag (identisch im PPTX-Weg). Die
+  // bestehenden Felder darueber bleiben unveraendert bedient — der Vertrag ist rein additiv.
+  imageTransfer: ImageTransferContract;
 }
 
 // WP-D1: strukturerhaltende Extraktion (HTML + Klartext in EINEM Durchgang über die Engine).
@@ -316,6 +478,15 @@ export async function extractDocxRich(
   let totalImages = 0;
   let compressedImages = 0;
   let htmlOverflow = false;
+  // JOB 513/D2: die Vertragszahlen entstehen aus den REALEN Zaehlern dieses Laufs. `totalImages` oben
+  // bleibt aus Rueckwaertskompatibilitaet an den Budgetlauf gebunden; der Vertrag zaehlt IMMER ehrlich.
+  let transferTotal = 0;
+  let transferEmbedded = 0;
+  let bodyBudgetBytes: number | null = null;
+  // JOB 513/D3B: der DOCX-Weg kennt genau EINE Budgetkante — `body-html`. Das ist keine Vereinfachung,
+  // sondern die Wahrheit dieses Pfads: mammoth liefert bereits eingebettete data:image-Quellen, es gibt
+  // hier weder Rohbyte-Vorfilter noch eine Summengrenze. Genau deshalb ist die Grenzart wichtig.
+  let budgetDrops: ImageBudgetDrop[] = [];
   if (opts.mapImage) {
     // WP-BILD-1a: VOR dem Budget umhüllen, damit das Budget die figure/figcaption-Bytes mitzählt und
     // eine Notbremse das ganze figure-Element droppt (Bild + Fußnote gemeinsam).
@@ -333,9 +504,23 @@ export async function extractDocxRich(
       totalImages = budgeted.total;
       compressedImages = budgeted.compressed;
       htmlOverflow = budgeted.overflow;
+      transferTotal = budgeted.total;
+      transferEmbedded = budgeted.kept;
+      budgetDrops = budgeted.budgetDrops ?? [];
+      // Die wirksame Grenze ist genau der uebergebene Wert der autoritativen Quelle — kein Echo, keine
+      // zweite Zahl (das oeffentliche Ergebnisobjekt von applyInlineImageBudget bleibt unveraendert).
+      bodyBudgetBytes = opts.imageBudgetBytes;
     } else {
+      // Ohne Bytebudget wirkt KEINE Grenze — alle erkannten Bilder bleiben im HTML (bodyBudgetBytes
+      // bleibt null; eine Grenze zu behaupten, die nicht wirkte, waere unehrlich).
+      transferTotal = countInlineImages(html);
+      transferEmbedded = transferTotal;
       html = await mapInlineImages(html, opts.mapImage);
     }
+  } else {
+    // Ohne mapImage werden die Rohbilder unveraendert uebernommen: kein Budget, kein Drop.
+    transferTotal = countInlineImages(html);
+    transferEmbedded = transferTotal;
   }
   return {
     html,
@@ -344,6 +529,21 @@ export async function extractDocxRich(
     compressedImages,
     droppedImages,
     htmlOverflow,
+    // Format- und Defektverluste kennt der DOCX-Weg nicht: mammoth liefert bereits eingebettete
+    // data:image-Quellen, es gibt keine Rels-Aufloesung und keine Formatablehnung beim Import (der
+    // Sanitizer entscheidet spaeter serverseitig). Diese realen Unterschiede zum PPTX-Weg werden mit 0
+    // ausgewiesen, nicht versteckt.
+    imageTransfer: imageTransferContract({
+      attempted: true,
+      totalImages: transferTotal,
+      embeddedImages: transferEmbedded,
+      compressedImages,
+      droppedImageBudget: droppedImages,
+      budgetDrops,
+      bodyBudgetBytes,
+      bodyBytes: utf8ByteLength(html),
+      bodyOverflow: htmlOverflow,
+    }),
   };
 }
 

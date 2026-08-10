@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
 import {
+  type KnowledgeObject,
   type KoService,
   type WithTx,
   dropConfidential,
@@ -38,6 +39,31 @@ const HELPFUL_TRUST_STEP = 2;
 // deutlich größer als DEFAULT_TOP_K (8): das Repository liefert eine großzügige, vorgefilterte Menge,
 // die finale, präzise Status-/Trust-/Relevanz-Sortierung + Top-K macht der Reasoner (selectCandidates).
 const ASK_CANDIDATE_PREFILTER_LIMIT = 200;
+
+// ================================================================================================
+// JOB 531 — DIE VORAUSWAHL DARF SICH NICHT AUF DIE RANGFOLGE DER DATENQUELLE VERLASSEN.
+// ================================================================================================
+//
+// DER BEFUND. Die Deckelung der Vorauswahl war richtig, ihre Annahme war es nicht: sie setzte
+// voraus, dass die Quelle RELEVANZ-bewusst deckelt. Die beiden Adapter tun das unterschiedlich —
+//   · InMemoryKoRepo sortiert (Term-Trefferzahl ↓, validiert, Trust ↓) und schneidet danach,
+//   · PgKoRepo sortiert `ORDER BY (status='validiert') DESC, trust DESC LIMIT n` OHNE Relevanzmaß.
+// Solange der Bestand klein ist, fällt das nicht auf. Wächst er, füllen schwach relevante, aber
+// validierte Objekte mit hohem Trust das Limit, und der eigentlich passende Treffer fällt aus der
+// Vorauswahl — im Produktionsadapter, nicht im Testadapter. Dieselbe Frage, derselbe Bestand,
+// zwei Ergebnisse; die Abweichung beginnt genau dort, wo niemand mehr nachzählt.
+//
+// DIE LÖSUNG, adapterunabhängig und weiterhin gedeckelt: je Fragebegriff EINE eigene, hart
+// begrenzte Quellabfrage; die Vereinigung wird nach der Zahl der abgedeckten Fragebegriffe
+// geordnet und erst dann auf das Gesamtlimit geschnitten. Ein seltener, hochspezifischer Begriff
+// hat wenige Treffer — der passende Kandidat steht dort weit vorn und überlebt jede Rangfolge der
+// Quelle. Es wird weiterhin NIE der Gesamtbestand geladen.
+//
+// WARUM DIE ZWEI DECKEL. `ASK_PREFILTER_TERM_LIMIT` begrenzt jede einzelne Abfrage; die Zahl der
+// Abfragen begrenzt `ASK_PREFILTER_MAX_TERMS`, damit eine absichtlich lange Frage die Datenquelle
+// nicht beliebig oft anfragen kann (Lastgrenze je Frage, nicht je Bestand).
+const ASK_PREFILTER_TERM_LIMIT = 50;
+const ASK_PREFILTER_MAX_TERMS = 8;
 
 // SCRUM-115: Lücken ohne gespeicherte Priorität (Altdaten) erhalten beim Lesen
 // den sicheren Default "mittel" — keine stille undefined-Priorität nach außen.
@@ -156,6 +182,46 @@ export class AskService {
     return run;
   }
 
+  // JOB 531: relevanzbewusste, gedeckelte Kandidaten-Vorauswahl (Begründung an den Konstanten oben).
+  //
+  // Je Fragebegriff eine eigene Quellabfrage mit hartem Limit; die Vereinigung wird nach der Zahl
+  // der abgedeckten Fragebegriffe geordnet (bei Gleichstand nach der besten Position, die die Quelle
+  // dem Kandidaten gegeben hat) und erst dann auf das Gesamtlimit geschnitten. Damit entscheidet
+  // über das Überleben im Deckel die Fragedeckung — nicht die Rangfolge der Datenquelle.
+  //
+  // Die Sicherheitsgrenzen bleiben unberührt: `validatedOnly` und `dropConfidential` greifen
+  // unverändert NACH dieser Vorauswahl, ebenso die Endauswahl `selectCandidates` (Top-K).
+  private async prefilterCandidates(terms: readonly string[]): Promise<KnowledgeObject[]> {
+    const genutzteTerme = terms.slice(0, ASK_PREFILTER_MAX_TERMS);
+    if (genutzteTerme.length === 0) {
+      return [];
+    }
+    const trefferlisten = await Promise.all(
+      genutzteTerme.map((term) =>
+        this.koService.findCandidates({ terms: [term], limit: ASK_PREFILTER_TERM_LIMIT }),
+      ),
+    );
+    const gesammelt = new Map<
+      string,
+      { ko: KnowledgeObject; termTreffer: number; besterRang: number }
+    >();
+    for (const liste of trefferlisten) {
+      liste.forEach((kandidat, rang) => {
+        const vorhanden = gesammelt.get(kandidat.id);
+        if (vorhanden) {
+          vorhanden.termTreffer += 1;
+          vorhanden.besterRang = Math.min(vorhanden.besterRang, rang);
+          return;
+        }
+        gesammelt.set(kandidat.id, { ko: kandidat, termTreffer: 1, besterRang: rang });
+      });
+    }
+    return [...gesammelt.values()]
+      .sort((a, b) => b.termTreffer - a.termTreffer || a.besterRang - b.besterRang)
+      .slice(0, ASK_CANDIDATE_PREFILTER_LIMIT)
+      .map((eintrag) => eintrag.ko);
+  }
+
   // FR-ASK-01/02/03: begründete Antwort über den Reasoner; ehrliche Verweigerung → Wissenslücke.
   // FR-I18N-01: locale steuert die Antwortsprache des Reasoners (Quelleninhalt bleibt original).
   async ask(
@@ -185,11 +251,10 @@ export class AskService {
     // Inhaltstoken (nur Stoppwörter) gibt es keine Kandidaten → ehrliche Wissenslücke. Das Repository
     // (InMemory/Pg) filtert ODER-weise über Titel/Aussage/Tags/Kategorie, gedeckelt auf den Prefilter-
     // Limit und mit validiert-/Trust-Bias, damit relevante validierte Treffer unter dem Limit bleiben.
+    // JOB 531: die Vorauswahl läuft term-weise und relevanzbewusst (s. prefilterCandidates) —
+    // gedeckelt wie bisher, aber unabhängig davon, wonach die Datenquelle ihre Treffer ordnet.
     const terms = queryTokens(question);
-    const prefilteredRaw =
-      terms.length === 0
-        ? []
-        : await this.koService.findCandidates({ terms, limit: ASK_CANDIDATE_PREFILTER_LIMIT });
+    const prefilteredRaw = await this.prefilterCandidates(terms);
     // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
     // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.
     // SCRUM-502: vertrauliche KOs gehen NIE in einen externen Kontext — hier upstream entfernt, damit sie
@@ -291,6 +356,10 @@ export class AskService {
         prefilterCount: prefiltered.length,
         candidateCount: candidates.length,
         topK: DEFAULT_TOP_K,
+        // JOB 531: die Vorauswahl ist term-weise gedeckelt — beide Grenzen sind auditierbar, damit
+        // die Last je Frage (Abfragezahl × Abfragelimit) belegt ist und nicht geschätzt werden muss.
+        prefilterQueries: Math.min(terms.length, ASK_PREFILTER_MAX_TERMS),
+        prefilterTermLimit: ASK_PREFILTER_TERM_LIMIT,
       },
     });
     // AUFTRAG-mega77 BLOCK A: hier wurde `ungeprueftUnterdrueckt` berechnet. Die Berechnung ist

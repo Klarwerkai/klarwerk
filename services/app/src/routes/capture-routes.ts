@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import {
   type CaptureService,
   type Draft,
@@ -57,6 +57,51 @@ async function requireVisibleDraft(
 // gelesen/geparst werden. 5 MiB ist ohnehin eine kleine Fläche; die Abwägung ist bewusst konservativ.
 export const DRAFTS_BODY_LIMIT = 5 * 1024 * 1024; // 5 MiB
 
+// JOB 511 (schliesst den SERVERANTEIL von R5 aus JOB 506) — DIE ABLEHNUNG SAGT, WAS VERLOREN GING.
+//
+// Fastifys Standardantwort oberhalb des Caps lautet "Payload Too Large". Sie ist wahr und zugleich
+// unbrauchbar: der Aufrufer erfaehrt NICHT, ob am Server bereits ein Entwurf entstanden ist und ob
+// Bilder uebernommen wurden. Genau daran scheiterte das sichtbare Versprechen "nichts geht still
+// verloren" (JOB 506, BEN-bestaetigt): aus einer generischen 413 laesst sich kein ehrlicher
+// Verlustzustand bauen, die Oberflaeche muesste raten.
+//
+// DIE ANTWORT IST DESHALB MASCHINENLESBAR UND STABIL: eigener Fehlercode statt Fastify-Interna,
+// draftCreated=false (der Body wurde nie geparst, der Handler lief nie, das Repository sah nie einen
+// Create) und imageTransfer="not_completed" als ausdrueckliche Aussage ueber die Bilduebernahme. Die
+// Feldmenge ist in drafts-body-limit.test.ts gepinnt: kein Rohstack, keine Groessenangabe, keine
+// stille Drift.
+export const DRAFT_BODY_TOO_LARGE = "DRAFT_BODY_TOO_LARGE";
+
+const DRAFT_BODY_TOO_LARGE_MESSAGE =
+  "Das Dokument ist zu gross fuer die Uebernahme. Es wurde kein Entwurf angelegt und keine Bilder wurden uebernommen. Bitte das Dokument verkleinern oder in Teilen uebernehmen.";
+
+// Der routen-eigene Fehlerweg von POST /api/drafts — und er ist mit Absicht ENG: er greift
+// AUSSCHLIESSLICH den Cap-Bruch ab (`FST_ERR_CTP_BODY_TOO_LARGE`, den Fastify wirft, wenn der Body
+// DRAFTS_BODY_LIMIT reisst) und uebersetzt ihn in den oben beschriebenen Vertrag. Jeder ANDERE
+// Fehler wird unveraendert an Fastifys Standardbehandlung zurueckgereicht (`reply.send(error)`):
+// ein Formfehler bleibt der gewohnte 400, ein Fehler aus dem Routen-Handler bleibt das, was
+// `sendError` daraus macht. Diese Enge ist der eigentliche Punkt — die Route bekommt EINE ehrliche
+// 413-Antwort, keinen zweiten, abweichenden Fehlerkanal fuer alles Uebrige.
+function draftBodyTooLargeErrorHandler(
+  error: FastifyError,
+  _request: FastifyRequest,
+  reply: FastifyReply,
+): void {
+  if (error.code !== "FST_ERR_CTP_BODY_TOO_LARGE") {
+    reply.send(error);
+    return;
+  }
+  reply.code(413).send({
+    error: DRAFT_BODY_TOO_LARGE,
+    message: DRAFT_BODY_TOO_LARGE_MESSAGE,
+    // Beides ist hier TATSACHE, nicht Vermutung: oberhalb des Caps bricht Fastify das Lesen des
+    // Bodys ab, bevor der Routen-Handler laeuft. `capture.createDraft` wurde also nie gerufen, das
+    // Repository sah keinen Create, und die Bilduebernahme hat nie begonnen.
+    draftCreated: false,
+    imageTransfer: "not_completed",
+  });
+}
+
 // Entwürfe (§2.4 / FR-CAP). Admin sieht den gemeinsamen Pool; normale Nutzer nur eigene Entwürfe.
 // Autor bleibt erhalten; Promote → KO.
 export interface CaptureRoutesDeps {
@@ -114,7 +159,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
 
     app.post<{ Body: DraftPayload }>(
       "/api/drafts",
-      { bodyLimit: DRAFTS_BODY_LIMIT, onRequest: requireAuthedBeforeParse },
+      {
+        bodyLimit: DRAFTS_BODY_LIMIT,
+        onRequest: requireAuthedBeforeParse,
+        errorHandler: draftBodyTooLargeErrorHandler,
+      },
       async (request, reply) => {
         const user = await guards.requirePermission("ko.create", request, reply);
         if (!user) {

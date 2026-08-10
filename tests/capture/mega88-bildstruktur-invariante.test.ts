@@ -222,7 +222,12 @@ describe("AUFTRAG-mega88 Block D: die Struktur übersteht die Persistenzgrenze u
       ["Server", amServer],
       ["zurück im Editor", zurueck],
     ] as const) {
-      expect(html, `${name}: die figure ist verlorengegangen`).toMatch(/<figure>/);
+      // 10.08.2026 (JOB 509 / D5): war `/<figure>/` und prüfte damit die Serialisierung statt der
+      // Substanz. Seit dem Dreifachanker trägt der Container `data-image-id`, und die alte Fassung
+      // wurde rot, obwohl die figure sehr wohl da ist. `/<figure[\s>]/` beweist weiterhin genau
+      // das, wofür der Fall geschrieben wurde — dass die figure die Grenze übersteht — und bricht
+      // nicht mehr am nächsten Attribut.
+      expect(html, `${name}: die figure ist verlorengegangen`).toMatch(/<figure[\s>]/);
       expect(html, `${name}: die Fußnote ist verlorengegangen`).toMatch(/<figcaption\b/);
       expect(html, `${name}: die Bildkennung ist verlorengegangen`).toMatch(
         /<img[^>]*\bdata-image-id="kw-img-[a-z0-9]+-1"/,

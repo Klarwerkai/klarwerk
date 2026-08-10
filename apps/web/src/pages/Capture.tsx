@@ -140,9 +140,13 @@ import {
   draftPayloadWithinLimit,
   fileImportHasContent,
   fileSourcePayload,
-  imagesOnlyNoticeKey,
-  importImageNotice,
+  // JOB 513/D3B: der reale Importpfad haengt ab hier am Bildtransfer-VERTRAG. `imagesOnlyNoticeKey`
+  // und `importImageNotice` sind hier abgeloest — sie rechneten auf der alten `imageInfo`-Bilanz, die
+  // Defekt-, Format- und Ausserhalb-Verluste nicht auseinanderhalten konnte.
+  imageTransferCauseNotices,
+  imageTransferSummary,
   mergeSelectedIntoOne,
+  mergeSlideImageTransfer,
   queueProgress,
   selectablePoints,
   selectedCount,
@@ -185,7 +189,12 @@ import {
 } from "../lib/createOperation";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 // WP-D11: Folien als Bilder — Server-Konvertierung + Budget-Mechanik des DOCX-/PPTX-Imports.
-import { MAX_INLINE_BODY_HTML_BYTES, applyInlineImageBudget, newImageRunToken } from "../lib/docx";
+import {
+  type ImageTransferContract,
+  MAX_INLINE_BODY_HTML_BYTES,
+  applyInlineImageBudget,
+  newImageRunToken,
+} from "../lib/docx";
 // AUFTRAG-mega7 Block A: eindeutige Leerwert-Semantik für den Body (Löschmarker beim Aktualisieren).
 import { draftBodyPatch } from "../lib/draftBody";
 import { draftTitle } from "../lib/draftForm";
@@ -726,6 +735,11 @@ export function Capture(): JSX.Element {
     // Upload, statt es (wie bisher) ungenutzt verpuffen zu lassen.
     htmlOverflow: boolean;
   } | null>(null);
+  // JOB 513/D3B (Ownerentscheidung Option b): der maschinenlesbare Bildtransfer-Vertrag des zuletzt
+  // gelesenen Dokuments. Er ist ab hier die AUTORITÄT für jede Bildaussage dieses Imports — beim Lesen
+  // für die Verlustgründe, beim Speichern (gekoppelt an den echten Anhang-Erfolg) für die Meldung, die
+  // der Nutzer sieht. null = keine Datei bzw. ein Weg ohne Bildtransfer.
+  const [fileImageTransfer, setFileImageTransfer] = useState<ImageTransferContract | null>(null);
   const [fileImageUrl, setFileImageUrl] = useState<string | null>(null); // OCR-Kandidat (nur auf Klick)
   const [fileBusy, setFileBusy] = useState(false);
   // WP-D11 (Pedis Entscheid): Folien zusätzlich als Bilder übernehmen (Server-Konvertierung).
@@ -1019,24 +1033,28 @@ export function Capture(): JSX.Element {
       setFileName(null);
       setFileText("");
       setFileRich(null);
-      const imageInfo = fileImageInfo;
+      const imageTransfer = fileImageTransfer;
       setFileImageInfo(null);
+      setFileImageTransfer(null);
       setFileOriginal(null);
       fileOriginalRef.current = { ref: null };
       setFileQuery("");
       const savedNote = t(CAPTURE_FILE_TEXT.wholeSaved, { name: input.fileName });
-      // WP-D1d (Fix 4): ehrliche Bild-Meldung mit EXPLIZITEN Zählern über die pure importImageNotice —
-      // „Original im Anhang" NUR bei originalAttached === true (echter Upload-Erfolg, nicht bloß „kein
-      // Fehler"); weggelassene Bilder ohne gesichertes Original werden als VERLOREN benannt.
-      const notice = imageInfo
-        ? importImageNotice({
-            total: imageInfo.total,
-            compressed: imageInfo.compressed,
-            dropped: imageInfo.dropped,
-            originalAttached,
-          })
+      // ==========================================================================================
+      // JOB 513/D3B — DIE GENUTZTE PRODUKTKANTE (Ownerentscheidung Option b).
+      // ==========================================================================================
+      // Hier lief bis D2 `importImageNotice` auf der alten `imageInfo`-Bilanz. Die kannte nur
+      // total/compressed/dropped — also weder die Grenzart eines Budgetverlusts noch den Unterschied
+      // zwischen „Format nicht darstellbar", „Verweis defekt" und „lag außerhalb des Bildpfads".
+      // Jetzt entscheidet der Vertrag, und zwar gekoppelt an den ECHTEN Anhang-Erfolg
+      // (`originalAttached`): ohne gesichertes Original behauptet KEIN Satz mehr einen Anhang.
+      // `imageTransferSummary` ist fail-closed — bei unausgeglichener Bilanz gibt es kein `complete`.
+      const summary = imageTransfer
+        ? imageTransferSummary(imageTransfer, { originalAttached })
         : null;
-      const imageNote = notice ? ` ${t(notice.key, notice.params)}` : "";
+      const imageNote = summary
+        ? summary.notices.map((n) => ` ${t(n.key, n.params)}`).join("")
+        : "";
       setNotice(`${savedNote}${imageNote}`);
       push("success", savedNote);
       if (!savedDraftId) {
@@ -1872,6 +1890,7 @@ export function Capture(): JSX.Element {
     setFileText("");
     setFileRich(null);
     setFileImageInfo(null);
+    setFileImageTransfer(null);
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
     setFileImageUrl(null);
@@ -2687,6 +2706,7 @@ export function Capture(): JSX.Element {
     setFileText("");
     setFileRich(null);
     setFileImageInfo(null);
+    setFileImageTransfer(null);
     setFileOriginal(null);
     fileOriginalRef.current = { ref: null };
     setErr(null);
@@ -2710,9 +2730,6 @@ export function Capture(): JSX.Element {
       let pptxTruncatedSlides: number | null = null;
       // WP-D11: ehrliche Bilanz der optionalen Folien-als-Bilder-Konvertierung (auch Fehlerfall).
       let slidesNote = "";
-      // WP-D9: ehrliche Teilverlust-Hinweise für Folien-Bilder (Format nicht unterstützt / Bild-Budget).
-      let pptxImagesDroppedFormat = 0;
-      let pptxImagesDroppedBudget = 0;
       // WP-D1c: Bild-Bilanz des DOCX-Imports — erst beim Speichern (an den Anhang-Erfolg gekoppelt)
       // gemeldet, NICHT hier (zur Lesezeit ist noch nichts angehängt).
       let imageInfo: {
@@ -2721,6 +2738,10 @@ export function Capture(): JSX.Element {
         dropped: number;
         htmlOverflow: boolean;
       } | null = null;
+      // JOB 513/D3B: der Vertrag dieses Laufs — er trägt die Grenzart je Budgetverlust, den Defekt-
+      // und den Ausserhalb-Pfad-Grund und die aufgehende Bilanz. `imageInfo` bleibt als schlanke
+      // Alt-Bilanz nur noch für die bestehende htmlOverflow-Verdrahtung stehen.
+      let imageTransfer: ImageTransferContract | null = null;
       // WP-D9c (bens ROT-Fix): hatte die QUELLE Bilder? Entscheidet die Importierbarkeit unabhängig davon,
       // was nach dem finalen Drop-to-fit übrig ist (All-dropped-Deck bleibt importierbar inkl. Original).
       let sourceHadImages = false;
@@ -2743,6 +2764,7 @@ export function Capture(): JSX.Element {
           // WP-D1e (Fix 3): htmlOverflow bis zum Speichern mitführen — dort wird VOR dem Upload abgebrochen.
           htmlOverflow: docx.htmlOverflow,
         };
+        imageTransfer = docx.imageTransfer;
         sourceHadImages = docx.totalImages > 0;
       } else if (kind === "pdf") {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
@@ -2760,8 +2782,6 @@ export function Capture(): JSX.Element {
         text = pptx.text;
         rich = { html: pptx.html, kind: "pptx" };
         pptxTruncatedSlides = pptx.truncated ? pptx.slideCount : null;
-        pptxImagesDroppedFormat = pptx.droppedImageFormat;
-        pptxImagesDroppedBudget = pptx.droppedImageBudget;
         imageInfo = {
           total: pptx.imageCount,
           compressed: 0,
@@ -2769,6 +2789,7 @@ export function Capture(): JSX.Element {
           dropped: pptx.imageCount - pptx.embeddedImages,
           htmlOverflow: pptx.htmlOverflow,
         };
+        imageTransfer = pptx.imageTransfer;
         sourceHadImages = pptx.imageCount > 0;
         // WP-D11 (Pedis Entscheid): optional JEDE Folie als Bild — Server-Konvertierung, Abschnitt
         // „Folienansicht" ANS ENDE. Die D9b/D9c-Budget-Regeln gelten unverändert: das kombinierte
@@ -2811,6 +2832,14 @@ export function Capture(): JSX.Element {
               sourceHadImages = sourceHadImages || slidesTotal > 0;
               const kept = countKeptSlides(budgeted.html, runToken, converted.slideCount);
               imageInfo = mergeSlideImageInfo(imageInfo, slidesTotal, kept);
+              // JOB 513/D3B: dieselbe Bilanz auch im Vertrag — sonst gäbe es zwei Wahrheiten über
+              // denselben Import. Verlorene Folienbilder sind Drop-to-fit am Beitragsbudget.
+              imageTransfer = mergeSlideImageTransfer(
+                imageTransfer,
+                slidesTotal,
+                kept,
+                budgeted.bytes,
+              );
               const truncatedPart = converted.truncated
                 ? ` ${t(SLIDE_IMAGES_TEXT.truncated, { max: converted.maxSlides })}`
                 : "";
@@ -2855,6 +2884,7 @@ export function Capture(): JSX.Element {
       setFileText(text);
       setFileRich(rich);
       setFileImageInfo(imageInfo);
+      setFileImageTransfer(imageTransfer);
       // WP-D2 („Original ist heilig"): die Quelldatei selbst merken — sie wird beim Speichern
       // (Ganzdokument-Entwurf bzw. Punkte-Queue-KOs) als Anhang in den Object-Store mitgeführt.
       setFileOriginal({
@@ -2884,19 +2914,22 @@ export function Capture(): JSX.Element {
       // Sind Bilder wirklich im Beitrag gelandet: „Bilder übernommen — ohne Text keine KI-Vorschläge."
       // Wurden ALLE gedroppt (Budget/Format): NICHT „übernommen" behaupten, sondern klar sagen, dass die
       // Bilder nicht in den Beitrag passten und das Original beim Speichern als Anhang mitgeführt wird.
-      // WP-D11b (GELB c): die Meldungswahl ist PURE extrahiert (imagesOnlyNoticeKey) und arbeitet
-      // auf der GEMERGTEN Bilanz — behaltene Folien verhindern die All-dropped-Meldung.
-      const imagesOnlyKey = imagesOnlyNoticeKey(text, imageInfo);
-      const imagesOnlyNote = imagesOnlyKey ? ` ${t(imagesOnlyKey)}` : "";
-      // WP-D9: ehrliche Teilverlust-Notizen für Folien-Bilder — NUR wenn wirklich etwas verloren ging
-      // (übernommene Bilder brauchen keinen Sonderhinweis). Der Dokumenttext ist davon unberührt.
-      const imageLossNote =
-        (pptxImagesDroppedFormat > 0
-          ? ` ${t(CAPTURE_FILE_TEXT.pptxImagesFormat, { count: pptxImagesDroppedFormat })}`
-          : "") +
-        (pptxImagesDroppedBudget > 0
-          ? ` ${t(CAPTURE_FILE_TEXT.pptxImagesBudget, { count: pptxImagesDroppedBudget })}`
-          : "");
+      // JOB 513/D3B: der bildreine Import ohne Text. Die Entscheidung kommt jetzt aus dem VERTRAG —
+      // „übernommen" wird nur behauptet, wenn wirklich Bilder im Beitrag gelandet sind. Über den
+      // Original-Anhang wird hier bewusst NICHTS gesagt: zur Lesezeit ist noch nichts angehängt, und
+      // genau diese verfrühte Zusage war der D2-Mangel.
+      const imagesOnlyNote =
+        text.trim().length === 0 && imageTransfer && imageTransfer.embeddedImages > 0
+          ? ` ${t(CAPTURE_FILE_TEXT.imagesOnlyNoText)}`
+          : "";
+      // JOB 513/D3B: die Verlustgründe kommen vollständig aus dem Vertrag — Budget MIT Grenzart und
+      // realem Grenzwert, Format, defekte Verweise und Bilder außerhalb des übernommenen Folienbereichs.
+      // Der handgeschriebene Zweizeiler davor kannte nur zwei der fünf Gründe und nannte die Grenze nie.
+      const imageLossNote = imageTransfer
+        ? imageTransferCauseNotices(imageTransfer)
+            .map((n) => ` ${t(n.key, n.params)}`)
+            .join("")
+        : "";
       // WP-D1c: KEINE „Original im Anhang"-Behauptung zur Lesezeit (noch nichts angehängt) — die
       // ehrliche, anhang-gekoppelte Bild-Meldung folgt beim Speichern (fileWholeDraft.onSuccess).
       setNotice(

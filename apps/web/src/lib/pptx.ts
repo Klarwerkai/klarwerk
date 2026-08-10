@@ -19,8 +19,12 @@
 
 import {
   IMAGE_ID_PREFIX,
+  type ImageBudgetDrop,
+  type ImageTransferContract,
   MAX_INLINE_BODY_HTML_BYTES,
+  addImageBudgetDrop,
   applyInlineImageBudget,
+  imageTransferContract,
   newImageRunToken,
 } from "./docx";
 
@@ -126,6 +130,18 @@ export interface PptxRichResult {
   embeddedImages: number; // als <figure> mit Fußnote übernommene Bilder
   droppedImageFormat: number; // nicht unterstütztes Format (EMF/WMF/TIFF/BMP …)
   droppedImageBudget: number; // Einzelbild- oder Gesamt-Bild-Budget überschritten
+  // JOB 513/D2: defekte/unaufloesbare Bildverweise (Rels-Ziel oder Mediendatei fehlt). Bisher fielen sie
+  // ZAEHLERLOS heraus — damit ging die Bilanz still nicht auf. Jetzt eigener Grund, getrennt von Budget
+  // und Format.
+  droppedImageUnresolved: number;
+  // JOB 513/D3B: `a:blip` AUSSERHALB des ausgewerteten `p:pic`-Pfads (typisch ein Hintergrundbild).
+  // Es wurde nie ein Transfer versucht — deshalb weder Budget- noch Format- noch Defektgrund. Ohne
+  // diesen Zaehler ging die Bilanz still nicht auf (BEN2-D2 Mangel 2).
+  droppedImageOutsidePath: number;
+  // JOB 513/D2: Mehrfachverweise auf DIESELBE Mediendatei (jenseits des ersten) — kein Verlustgrund.
+  duplicateImageRefs: number;
+  // JOB 513/D2: der gemeinsame, maschinenlesbare Bildtransfer-Vertrag (identisch im DOCX-Weg).
+  imageTransfer: ImageTransferContract;
 }
 
 const XML_ENTITIES: Record<string, string> = {
@@ -996,6 +1012,14 @@ export async function extractPptxRich(
   let droppedImageFormat = 0;
   let droppedImageBudget = 0;
   let totalImageBytes = 0;
+  // JOB 513/D2: defekte Verweise bekommen einen eigenen Zaehler, doppelte Verweise auf dieselbe
+  // Mediendatei werden getrennt gefuehrt (beide sind KEIN Budgetgrund).
+  let droppedImageUnresolved = 0;
+  let duplicateImageRefs = 0;
+  const seenMedia = new Set<string>();
+  // JOB 513/D3B: die Grenzarten dieses Laufs. `pptx-single-image` und `pptx-total-images` entstehen im
+  // Rohbyte-Vorfilter unten, `body-html` erst beim finalen Drop-to-fit.
+  let budgetDrops: ImageBudgetDrop[] = [];
 
   const htmlParts: string[] = [];
   const textParts: string[] = [];
@@ -1014,10 +1038,20 @@ export async function extractPptxRich(
       ? (rId: string): { src: string; id: string } | null => {
           const target = relMap?.get(rId);
           if (!target) {
+            droppedImageUnresolved += 1; // JOB 513/D2: rId ohne Rels-Ziel — defekt, nicht "budgetiert"
             return null;
           }
-          const bytes = files[normalizeMediaPath(target)];
+          const mediaPath = normalizeMediaPath(target);
+          // JOB 513/D2: doppelte Referenz auf dieselbe Mediendatei — getrennt gezaehlt, das Bild wird
+          // (wie bisher) an BEIDEN Stellen eingebettet; das ist kein Verlust.
+          if (seenMedia.has(mediaPath)) {
+            duplicateImageRefs += 1;
+          } else {
+            seenMedia.add(mediaPath);
+          }
+          const bytes = files[mediaPath];
           if (!bytes) {
+            droppedImageUnresolved += 1; // Ziel benannt, Mediendatei fehlt — defektes Archiv
             return null;
           }
           const ext = /\.([a-z0-9]+)$/i.exec(target)?.[1]?.toLowerCase() ?? "";
@@ -1027,11 +1061,29 @@ export async function extractPptxRich(
             return null;
           }
           // TEILVERLUST-Semantik (s. Konstanten): Bild-Budget gerissen → Bild weglassen, Import läuft.
-          if (
-            bytes.byteLength > maxImageBytes ||
-            totalImageBytes + bytes.byteLength > maxTotalImageBytes
-          ) {
+          // JOB 513/D3B (BEN2-D2 Mangel 1): die beiden Rohbyte-Grenzen werden GETRENNT geprueft, und die
+          // Reihenfolge ist Inhalt — geprueft wird zuerst die Einzelbildgrenze. Reisst ein Bild beide,
+          // ist `pptx-single-image` die tatsaechlich ZUERST ausloesende Grenze; sie wird gemeldet, nicht
+          // die Summengrenze. Bis D2 landeten beide Faelle im selben Zaehler und der Vertrag nannte
+          // danach pauschal das HTML-Budget — also bei zwei von drei Kanten die falsche Grenze.
+          if (bytes.byteLength > maxImageBytes) {
             droppedImageBudget += 1;
+            budgetDrops = addImageBudgetDrop(
+              budgetDrops,
+              "pptx-single-image",
+              maxImageBytes,
+              bytes.byteLength,
+            );
+            return null;
+          }
+          if (totalImageBytes + bytes.byteLength > maxTotalImageBytes) {
+            droppedImageBudget += 1;
+            budgetDrops = addImageBudgetDrop(
+              budgetDrops,
+              "pptx-total-images",
+              maxTotalImageBytes,
+              totalImageBytes + bytes.byteLength,
+            );
             return null;
           }
           totalImageBytes += bytes.byteLength;
@@ -1065,6 +1117,22 @@ export async function extractPptxRich(
   // kleineres Bild kann aber noch passen, nachdem ein früheres großes nicht mehr passte (also NICHT
   // strikt „letzte zuerst"). Identisch zum DOCX-Import; gedroppte zählen als droppedImageBudget.
   // htmlOverflow bleibt nur true, wenn der TEXT selbst nicht passt.
+  // JOB 513/D3B (BEN2-D2 Mangel 2 / Ownerauflage „unausgeglichen ist hartes ROT"): `imageCount` zaehlt
+  // JEDES `a:blip` der Folien; aufgeloest wird aber nur, was im ausgewerteten `p:pic`-Pfad steht. Die
+  // Differenz sind Bildverweise, fuer die nie ein Transfer VERSUCHT wurde — typisch ein Hintergrundbild
+  // (`p:bg`), ebenso ein `p:pic` ohne `r:embed`. Sie bekommen hier ihren eigenen, ehrlichen Grund,
+  // statt zaehlerlos herauszufallen. Damit geht die Bilanz konstruktiv auf; `imageTransferBalanced`
+  // bleibt trotzdem als fail-closed-Wache bestehen (sie prueft das Ergebnis, nicht die Absicht).
+  // Ohne Bildtransfer (`wantImages === false`) ist die Frage gegenstandslos: dann wurde bewusst NICHTS
+  // versucht, und der Vertrag meldet `not-attempted`.
+  const droppedImageOutsidePath = wantImages
+    ? Math.max(
+        0,
+        imageCount -
+          (embeddedImages + droppedImageBudget + droppedImageFormat + droppedImageUnresolved),
+      )
+    : 0;
+
   const budgeted = await applyInlineImageBudget(
     htmlParts.join(""),
     async (src) => src,
@@ -1072,6 +1140,13 @@ export async function extractPptxRich(
   );
   embeddedImages -= budgeted.dropped;
   droppedImageBudget += budgeted.dropped;
+  // Die `body-html`-Drops des finalen Deckels kommen aus applyInlineImageBudget und tragen dort bereits
+  // Grenzwert und ausloesenden Bedarf — sie werden angehaengt, nicht mit den Rohbyte-Kanten vermischt.
+  for (const drop of budgeted.budgetDrops ?? []) {
+    for (let n = 0; n < drop.count; n += 1) {
+      budgetDrops = addImageBudgetDrop(budgetDrops, drop.kind, drop.limitBytes, drop.actualBytes);
+    }
+  }
   return {
     html: budgeted.html,
     text: textParts.join("\n\n").trim(),
@@ -1085,5 +1160,26 @@ export async function extractPptxRich(
     embeddedImages,
     droppedImageFormat,
     droppedImageBudget,
+    droppedImageUnresolved,
+    droppedImageOutsidePath,
+    duplicateImageRefs,
+    // JOB 513/D2: EIN Vertrag aus den REALEN Zaehlern. Die wirksame Bytegrenze ist die BESTEHENDE
+    // autoritative Groesse (budgetBytes, default MAX_INLINE_BODY_HTML_BYTES) — keine zweite Zahl.
+    // `compressedImages` bleibt 0: der PPTX-Weg kodiert Rohbytes direkt, er re-encodiert nicht. Das ist
+    // ein realer Unterschied zum DOCX-Weg und wird ausgewiesen, nicht versteckt.
+    imageTransfer: imageTransferContract({
+      attempted: wantImages,
+      totalImages: imageCount,
+      embeddedImages,
+      droppedImageBudget,
+      droppedImageFormat,
+      droppedImageUnresolved,
+      droppedImageOutsidePath,
+      duplicateImageRefs,
+      budgetDrops,
+      bodyBudgetBytes: budgetBytes,
+      bodyBytes: budgeted.bytes,
+      bodyOverflow: budgeted.overflow,
+    }),
   };
 }

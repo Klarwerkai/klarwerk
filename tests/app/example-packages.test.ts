@@ -96,8 +96,25 @@ describe("WP-B6: POST /api/admin/examples/load", () => {
     // Bilder-Paket: figures haben den create-Pfad überlebt (Galerie) und die Fußnoten stehen im
     // persistierten Suchfeld (Fußnoten-Suche findet sie).
     const bild = kos.find((k) => k.title.includes("Führungsschiene"));
-    expect(bild?.bodyHtml).toContain("<figure>");
-    expect(bild?.bodyHtml).toContain("data-image-id");
+    // JOB 509 / D6: Der Server-Sanitizer verankert figure, Bild und Fußnote mit DEMSELBEN
+    // tokenvalidierten data-image-id (Dreifachanker, JOB 509 / D5). Die alte Erwartung auf die
+    // Zeichenkette "<figure>" traf den jetzt verankerten Container nicht mehr. Geprüft wird deshalb
+    // die Identität selbst statt der alten Form — schärfer als vorher, nicht lockerer.
+    const bildBody = bild?.bodyHtml ?? "";
+    const figures = [
+      ...bildBody.matchAll(/<figure data-image-id="([\w-]{1,64})">([\s\S]*?)<\/figure>/g),
+    ];
+    expect(figures.length).toBeGreaterThan(0);
+    for (const [, anchor, inner] of figures) {
+      // Token-Gleichheit aller drei Träger derselben Figure-Gruppe.
+      expect(inner).toContain(`<img data-image-id="${anchor}"`);
+      expect(inner).toContain(`<figcaption data-image-id="${anchor}">`);
+      // Je Träger genau ein Vorkommen — figure + img + figcaption.
+      expect(bildBody.split(`data-image-id="${anchor}"`).length - 1).toBe(3);
+    }
+    // Bodyweit eindeutig: zwei Bilder desselben KO teilen keinen Anker (Position ist nie Identität).
+    const anchors = figures.map(([, anchor]) => anchor);
+    expect(new Set(anchors).size).toBe(anchors.length);
     expect((bild?.captionTexts ?? []).some((c) => c.includes("Riefen"))).toBe(true);
     expect((await services.library.search("Zugentlastung")).length).toBe(1);
     // Unbekanntes Paket → ehrlicher 400.

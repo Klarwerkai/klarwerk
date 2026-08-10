@@ -1,3 +1,9 @@
+// @vitest-environment jsdom
+// JOB 509 / D5: Diese Datei trägt zusätzlich den ECHTEN Client-Editor-Roundtrip (Server-Sanitize →
+// Client-Sanitize → Editor-Verankerung → Save → Reload). Deshalb jsdom für die ganze Datei — dasselbe
+// Muster wie tests/capture/editor-figure-caption.test.ts. Die übrigen Fälle sind DOM-frei und laufen
+// unter jsdom unverändert. (BEN-D4, Punkt 3, Variante 2: die Roundtrip-Kausalität wird vollständig
+// hier belegt, ein sechster Testpfad ist damit nicht nötig.)
 // WP-BILD-1a (Pedi 20.07.): Bild-Fußnoten-Fundament. Jedes importierte Inline-Bild bekommt beim
 // DOCX-Import eine <figure> mit <figcaption data-image-id="…">. WP-D10: die Fußnote startet LEER —
 // ein Platzhalter ist KEIN Inhalt (Einladung nur visuell im Editor via data-kw-placeholder/CSS).
@@ -6,6 +12,7 @@
 // Server services/structure) erhalten figure/figcaption/data-image-id und strippen böse Attribute,
 // shouldPreserveRichBody wertet figure als reich, i18n-Platzhalter DE/EN/NL.
 import { describe, expect, it } from "vitest";
+import type { EditableElement } from "../../apps/web/src/lib/editorFigures";
 import i18n from "../../apps/web/src/i18n";
 import { shouldPreserveRichBody } from "../../apps/web/src/lib/bodyAiAssist";
 import {
@@ -17,11 +24,47 @@ import {
   utf8ByteLength,
   wrapImagesInFigures,
 } from "../../apps/web/src/lib/docx";
+import { enhanceFiguresForEditing } from "../../apps/web/src/lib/editorFigures";
 import { sanitizeHtml as clientSanitize } from "../../apps/web/src/lib/richText";
 import { sanitizeHtml as serverSanitize } from "../../services/structure";
 
 const PNG = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg==";
 const PLACEHOLDER = "Noch keine Bildbeschreibung";
+
+// JOB 509 / D5: schmaler, DOM-lib-freier Zugriff auf das von jsdom bereitgestellte document —
+// der Gate-tsc läuft ohne DOM-lib (gleiches Vorgehen wie im Editor-Test).
+interface CaptionLike {
+  textContent: string | null;
+  getAttribute(name: string): string | null;
+}
+// 10.08.2026: `querySelectorAll` war hier mit einem eigenen, schmaleren Elementtyp beschrieben
+// ({textContent, setAttribute}). Damit erfuellte `DivLike` den Vertrag `EditableFigureRoot` nicht
+// mehr, den `enhanceFiguresForEditing` verlangt — zwei Typfehler, obwohl zur Laufzeit ein ECHTES
+// DOM-Element uebergeben wird, das alles davon kann. Der Behelf beschreibt jetzt den echten
+// Elementtyp, statt einen zweiten daneben zu erfinden.
+interface DivLike {
+  innerHTML: string;
+  querySelector(selectors: string): CaptionLike | null;
+  querySelectorAll(selectors: string): Iterable<EditableElement>;
+}
+interface DocumentLike {
+  createElement(tag: string): DivLike;
+}
+const doc = (globalThis as unknown as { document: DocumentLike }).document;
+
+// JOB 509 / D5: Alle drei Träger einer figure müssen denselben Token führen.
+const ANCHOR_RE = /data-image-id="([^"]*)"/;
+function anchorOf(html: string, tag: string): string | null {
+  const open = new RegExp(`<${tag}\\b[^>]*>`).exec(html)?.[0] ?? "";
+  return ANCHOR_RE.exec(open)?.[1] ?? null;
+}
+function tripleAnchorOf(html: string): string {
+  const figure = anchorOf(html, "figure");
+  expect(figure).toMatch(/^[\w-]{1,64}$/);
+  expect(anchorOf(html, "img")).toBe(figure);
+  expect(anchorOf(html, "figcaption")).toBe(figure);
+  return String(figure);
+}
 
 function engineOf(html: string, text = "Text"): DocxEngine {
   return {
@@ -121,20 +164,46 @@ describe("WP-BILD-1a: Byte-Budget droppt das GANZE figure-Element", () => {
 });
 
 describe("WP-BILD-1a: Sanitizer erhalten figure/figcaption/data-image-id, strippen Böses", () => {
+  // JOB 509 / D5: Der Vertrag ist jetzt der DREIFACHANKER. Geprüft wird die ERHALTUNG durch BEIDE
+  // Sanitizer — das ist die Parität, auf die es ankommt. Die ERZEUGUNG eines fehlenden Ankers bleibt
+  // serverautoritativ (eigener Fall unten); der Client erfindet weiterhin keine Identität.
   const evil =
-    '<figure><img src="/api/objects/abc/raw"><figcaption data-image-id="kw-img-1" onclick="x()" style="color:red">Beschreibung</figcaption></figure>';
+    '<figure data-image-id="kw-img-1"><img src="/api/objects/abc/raw" data-image-id="kw-img-1"><figcaption data-image-id="kw-img-1" onclick="x()" style="color:red">Beschreibung</figcaption></figure>';
 
   for (const [label, sanitize] of [
     ["Client (richText)", clientSanitize],
     ["Server (services/structure)", serverSanitize],
   ] as const) {
-    it(`${label}: figure/figcaption/data-image-id bleiben, on*/style raus`, () => {
+    it(`${label}: Dreifachanker bleibt vollständig, on*/style raus`, () => {
       const clean = sanitize(evil);
-      expect(clean).toContain("<figure>");
+      expect(clean).toContain('<figure data-image-id="kw-img-1">');
       expect(clean).toContain('<figcaption data-image-id="kw-img-1">');
+      // Alle drei Träger — nicht zwei (das war der D3-Zweifachanker).
+      expect(clean.split('data-image-id="kw-img-1"').length - 1).toBe(3);
       expect(clean).toContain("Beschreibung");
       expect(clean).not.toContain("onclick");
       expect(clean).not.toContain("style");
+    });
+
+    it(`${label}: ungültiger Token am figure wird verworfen (kein Schlupfloch am Container)`, () => {
+      const clean = sanitize(
+        '<figure data-image-id="evil id spaces"><img src="/api/objects/x/raw"></figure>',
+      );
+      expect(clean).not.toContain("evil id spaces");
+    });
+
+    it(`${label}: figure bekommt KEINE allgemeine Attributfreigabe`, () => {
+      const clean = sanitize(
+        '<figure style="color:red" onclick="x()" class="panel" id="f1"><img src="/api/objects/x/raw"></figure>',
+      );
+      const open = /<figure\b[^>]*>/.exec(clean)?.[0] ?? "";
+      expect(open).not.toContain("style");
+      expect(open).not.toContain("onclick");
+      expect(open).not.toContain("class=");
+      // Eigenständiges id-Attribut (nicht das Teilstück in data-image-id) bleibt gesperrt.
+      expect(open).not.toMatch(/\sid=/);
+      // Am Container ist ausschließlich der Anker zulässig — sonst gar nichts.
+      expect(open).toMatch(/^<figure( data-image-id="[\w-]{1,64}")?>$/);
     });
 
     it(`${label}: ungültige data-image-id (Leerzeichen) wird verworfen`, () => {
@@ -228,17 +297,29 @@ describe("WP-BILD-1b: img und figcaption teilen dieselbe ID", () => {
     expect(out.split(`data-image-id="${id}"`).length - 1).toBe(2);
   });
 
-  it("beide Sanitizer erhalten data-image-id auch am img (gleiches Token-Muster)", () => {
-    const markup = `<figure><img data-image-id="${IMAGE_ID_PREFIX}s2-1" src="/api/objects/x/raw"><figcaption data-image-id="${IMAGE_ID_PREFIX}s2-1">c</figcaption></figure>`;
+  it("beide Sanitizer erhalten den Token an figure, img UND figcaption (drei Vorkommen)", () => {
+    const id = `${IMAGE_ID_PREFIX}s2-1`;
+    const markup = `<figure data-image-id="${id}"><img data-image-id="${id}" src="/api/objects/x/raw"><figcaption data-image-id="${id}">c</figcaption></figure>`;
     for (const sanitize of [clientSanitize, serverSanitize]) {
       const clean = sanitize(markup);
-      expect(clean.split(`data-image-id="${IMAGE_ID_PREFIX}s2-1"`).length - 1).toBe(2);
+      expect(clean.split(`data-image-id="${id}"`).length - 1).toBe(3);
     }
     // Böses Token am img wird verworfen (Vertrag gewahrt).
     const evilImg = '<img data-image-id="böse id" src="/api/objects/x/raw">';
     for (const sanitize of [clientSanitize, serverSanitize]) {
       expect(sanitize(evilImg)).not.toContain("data-image-id");
     }
+  });
+
+  // JOB 509 / D5: Der Server ERZEUGT die fehlende Container-Identität — genau hier lag die D3-Lücke.
+  it("Server hebt eine zweifach verankerte Altlast auf den Dreifachanker (Client erfindet nichts)", () => {
+    const id = `${IMAGE_ID_PREFIX}alt1-1`;
+    const zweifach = `<figure><img data-image-id="${id}" src="/api/objects/x/raw"><figcaption data-image-id="${id}">c</figcaption></figure>`;
+    const saved = serverSanitize(zweifach);
+    expect(saved.split(`data-image-id="${id}"`).length - 1).toBe(3);
+    expect(saved).toContain(`<figure data-image-id="${id}">`);
+    // Der Client verankert von sich aus nicht — er erhält nur, was da ist (Identität ist serverautoritativ).
+    expect(clientSanitize(zweifach).split(`data-image-id="${id}"`).length - 1).toBe(2);
   });
 });
 
@@ -254,10 +335,58 @@ describe("WP-BILD-1b: Save-/Reload-Roundtrip (Server-Sanitizer)", () => {
     // Erneutes Laden = erneut sanitisieren → byte-gleich (idempotent, kein Verlust).
     const reloaded = serverSanitize(saved);
     expect(reloaded).toBe(saved);
-    // Struktur + beide Anker + editierte Caption bleiben erhalten.
-    expect(saved).toContain("<figure>");
+    // Struktur + ALLE DREI Anker + editierte Caption bleiben erhalten.
+    expect(saved).toContain(`<figure data-image-id="${id}">`);
     expect(saved).toContain("Diagramm der Quartalszahlen");
     expect(saved).not.toContain(PLACEHOLDER);
-    expect(saved.split(`data-image-id="${id}"`).length - 1).toBe(2);
+    expect(saved.split(`data-image-id="${id}"`).length - 1).toBe(3);
+    expect(tripleAnchorOf(saved)).toBe(id);
+  });
+});
+
+// JOB 509 / D5 (BEN-D4 Punkt 3, Variante 2): DER vollständige Produktbeweis — Server → Client →
+// Editor → Save → Reload. Ohne Clientparität würde der Container-Anker beim ersten Speichern aus dem
+// Editor verschwinden und der Dreifachanker wäre wieder ein Zweifachanker.
+describe("JOB 509 / D5: Dreifachanker überlebt den echten Editor-Roundtrip (jsdom)", () => {
+  it("Server→Client→Editor→Save→Reload: derselbe Token bleibt auf allen drei Trägern", () => {
+    // 1) Import ohne Container-Anker → Server verankert autoritativ alle drei Träger.
+    const imported = wrapImagesInFigures(`<img src="${PNG}">`, PLACEHOLDER, "rt5");
+    const stored = serverSanitize(imported);
+    const id = tripleAnchorOf(stored);
+
+    // 2) Laden in den Editor: Client-Sanitize + Editor-Verankerung (echtes DOM).
+    const editor = doc.createElement("div");
+    editor.innerHTML = clientSanitize(stored);
+    enhanceFiguresForEditing(editor);
+    const caption = editor.querySelector("figcaption");
+    if (!caption) {
+      throw new Error("figcaption fehlt im Editor");
+    }
+    expect(caption.getAttribute("data-image-id")).toBe(id);
+
+    // 3) Nutzer tippt die Beschreibung; Speichern = Client-emit, danach Server-Sanitize.
+    caption.textContent = "Aufbau des Pruefstands";
+    const emitted = clientSanitize(editor.innerHTML);
+    expect(emitted).not.toContain("contenteditable");
+    const saved = serverSanitize(emitted);
+
+    // 4) Erneutes Laden: byte-gleich und weiterhin dreifach verankert.
+    const reloaded = serverSanitize(saved);
+    expect(reloaded).toBe(saved);
+    expect(tripleAnchorOf(reloaded)).toBe(id);
+    expect(reloaded.split(`data-image-id="${id}"`).length - 1).toBe(3);
+    expect(reloaded).toContain("Aufbau des Pruefstands");
+  });
+
+  it("zwei gleiche Bilder mit gleichem Text bleiben über den Roundtrip unterscheidbar", () => {
+    const one = `<figure><img src="/api/objects/x/raw"><figcaption>Ventil</figcaption></figure>`;
+    const stored = serverSanitize(`${one}${one}`);
+    const editor = doc.createElement("div");
+    editor.innerHTML = clientSanitize(stored);
+    enhanceFiguresForEditing(editor);
+    const reloaded = serverSanitize(clientSanitize(editor.innerHTML));
+    const ids = [...reloaded.matchAll(/<figure data-image-id="([^"]+)"/g)].map((m) => m[1]);
+    expect(ids.length).toBe(2);
+    expect(new Set(ids).size).toBe(2);
   });
 });

@@ -107,3 +107,72 @@ export function markCaptureIntroSeen(store: KeyValueStore | null | undefined): v
     // bewusst still: Persistenz ist ein Komfort, kein Funktionsbestandteil.
   }
 }
+
+// ================================================================================================
+// JOB 530 — WEITERE EINGABEOPTIONEN AN DER VORDERTÜR.
+// ================================================================================================
+// Die Vordertür (`/capture/frontdoor`) ist der schnelle Einstieg: ein Titel, ein Dokument. Die
+// übrigen Eingabeoptionen standen dort bisher NUR als Prosa („der vollständige Erfassen-Bereich hat
+// alle Wege"). Ein Satz ist kein Weg: wer Diktat, Interview, Dateiimport oder das Expertenformular
+// wollte, musste den Bereich erst betreten und dort selbst suchen.
+//
+// Sie werden hier einzeln erreichbar — ohne den Erfassungsstart wieder zuzustellen. Dafür dient
+// GENAU das Aufklappmuster, das der Erfassen-Bereich für „Weitere Wege" schon benutzt
+// (Knopf + `aria-expanded`/`aria-controls`, standardmäßig eingeklappt). Kein zweites Muster.
+//
+// ABGELEITET STATT ZWEITGESCHRIEBEN: die Liste ist `NARRATE_MODES` plus der Expertenpfad — also
+// alle bekannten Modi, in der Reihenfolge des Bestands. Eine Umsortierung oder ein neuer Modus zieht
+// die Vordertür ohne Nacharbeit mit; dieselbe Regel wie bei `RECOMMENDED_NARRATE_MODE`.
+export const FRONT_DOOR_OPTION_MODES: readonly CaptureMode[] = [...NARRATE_MODES, EXPERT_MODE];
+
+// Flache Copy-Schlüssel für den Aufklapp-Knopf — EINE Quelle für Komponente + Test.
+export const FRONT_DOOR_OPTIONS_TEXT = {
+  show: "fd.options.show",
+  hide: "fd.options.hide",
+} as const;
+
+// Beschriftung eines Wegs: DIESELBEN Modus-Namen wie in der Erfassen-Modusleiste. Ein zweiter
+// Textbestand für dieselben fünf Wege würde nur auseinanderlaufen.
+export function frontDoorOptionLabelKey(mode: CaptureMode): string {
+  return `capture.mode.${mode}`;
+}
+
+// Ein Satz je Weg — wofür er da ist. Das ist die eigentliche Entlastung: die Wahl fällt VOR dem
+// Seitenwechsel, nicht erst durch Ausprobieren im Erfassen-Bereich.
+export function frontDoorOptionHintKey(mode: CaptureMode): string {
+  return `fd.options.hint.${mode}`;
+}
+
+export const CAPTURE_FRONT_DOOR_OPTIONS_OPEN_KEY = "kw.capture.frontDoorOptionsOpen.v1";
+
+// Zustandsstabil heißt hier zweierlei, und beides hängt an dieser einen Quelle:
+//  · innerhalb eines Besuchs überlebt der Aufklappzustand jeden Zustandswechsel der Seite
+//    (Tippen, KI-Vorschlag, Entwurf laden) — er ist eigener Seitenzustand, kein Nebeneffekt;
+//  · über Besuche hinweg wird er pro Browser gemerkt, mit demselben schmalen Storage-Vertrag und
+//    derselben Defensive wie die Erstnutzer-Führung oben: Lesen/Schreiben darf NIE die Seite kippen.
+// Vorgabe ist EINGEKLAPPT — das ist der entlastete Erfassungsstart. Wer aufklappt, bekommt seine
+// Wahl beim nächsten Besuch zurück.
+export function frontDoorOptionsOpen(store: KeyValueStore | null | undefined): boolean {
+  if (!store) {
+    return false;
+  }
+  try {
+    return store.getItem(CAPTURE_FRONT_DOOR_OPTIONS_OPEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+export function rememberFrontDoorOptionsOpen(
+  store: KeyValueStore | null | undefined,
+  open: boolean,
+): void {
+  if (!store) {
+    return;
+  }
+  try {
+    store.setItem(CAPTURE_FRONT_DOOR_OPTIONS_OPEN_KEY, open ? "1" : "0");
+  } catch {
+    // bewusst still: Persistenz ist ein Komfort, kein Funktionsbestandteil.
+  }
+}

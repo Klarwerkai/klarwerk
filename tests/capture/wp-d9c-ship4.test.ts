@@ -89,13 +89,18 @@ describe("WP-D9c ROT-Fix 1: All-images-dropped-Kombinationsfall", () => {
     expect(src.indexOf("fileImportHasContent(text, rich.html, sourceHadImages)")).toBeLessThan(
       src.indexOf("setFileOriginal({"),
     );
-    // Meldungswahl: „übernommen" NUR wenn wirklich Bilder im Beitrag sind, sonst All-dropped-Variante.
-    // WP-D11b (GELB c): die Entscheidung ist jetzt PURE in captureFromFile.imagesOnlyNoticeKey
-    // extrahiert (Folien fließen über mergeSlideImageInfo in dieselbe Bilanz) — der Pin wandert
-    // mit: die Verdrahtung ruft die pure Funktion mit der gemergten Bilanz auf, die `keptImages > 0`-
-    // Logik samt imagesAllDropped-Key lebt unverändert in der Lib (dort direkt getestet).
-    expect(src).toContain("imagesOnlyNoticeKey(text, imageInfo)");
+    // Meldungswahl: „übernommen" NUR wenn wirklich Bilder im Beitrag sind.
+    // JOB 513/D3B (Ownerentscheidung Option b): die Entscheidung hängt jetzt am VERTRAG statt an der
+    // alten `imageInfo`-Bilanz. Der Pin wandert mit — er prüft weiterhin genau das, was er immer
+    // geprüft hat: dass die Behauptung „übernommen" an eine REALE Zahl eingebetteter Bilder gebunden
+    // ist und nicht an das bloße Vorhandensein von Quell-Bildern.
+    expect(src).toContain("imageTransfer.embeddedImages > 0");
+    expect(src).toContain("CAPTURE_FILE_TEXT.imagesOnlyNoText");
+    // Die Folien fließen weiterhin in DIESELBE Bilanz — jetzt zusätzlich in den Vertrag.
     expect(src).toContain("mergeSlideImageInfo(imageInfo, slidesTotal, kept)");
+    expect(src).toContain("mergeSlideImageTransfer(");
+    // Der Speicherzeitpunkt entscheidet über den Vertrag, gekoppelt an den echten Anhang-Erfolg.
+    expect(src).toContain("imageTransferSummary(imageTransfer, { originalAttached })");
     const lib = readFileSync(resolve(process.cwd(), "apps/web/src/lib/captureFromFile.ts"), "utf8");
     expect(lib).toContain("keptImages > 0");
     expect(lib).toContain("CAPTURE_FILE_TEXT.imagesAllDropped");

@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../build-app";
-import { DRAFTS_BODY_LIMIT } from "./capture-routes";
+import { DRAFTS_BODY_LIMIT, DRAFT_BODY_TOO_LARGE } from "./capture-routes";
 
-// WP-D1c: POST/PUT /api/drafts tragen einen dokument-tauglichen bodyLimit (DRAFTS_BODY_LIMIT, 25 MiB)
+// WP-D1c: POST/PUT /api/drafts tragen einen dokument-tauglichen bodyLimit (DRAFTS_BODY_LIMIT, 5 MiB)
 // statt des globalen 1-MiB-Fastify-Defaults — ein bildreicher Entwurf (viele komprimierte Inline-Bilder)
 // wird NICHT mehr mit 413 abgewiesen.
 
@@ -96,5 +96,162 @@ describe("WP-D1d: /api/drafts akzeptiert dokument-große Bodies (5-MiB-Ceiling)"
       },
     });
     expect(put.statusCode).toBe(200);
+  });
+});
+
+// ================================================================================================
+// JOB 511 · D1 — DIE 413-ANTWORT SAGT DIE WAHRHEIT ÜBER DEN VERLUST.
+// ================================================================================================
+//
+// DER BEFUND (JOB 506 · R5, von BEN bestätigt): Oberhalb des Caps endet der Ganzdokument-Import in
+// Fastifys GENERISCHER 413-Antwort (FST_ERR_CTP_BODY_TOO_LARGE / "Payload Too Large"). Die sagt
+// weder, dass KEIN Entwurf entstanden ist, noch dass die BILDÜBERNAHME nicht abgeschlossen wurde.
+// Genau das ist der Serveranteil des unbelegten Versprechens „nichts geht still verloren": der
+// Aufrufer kann aus der Antwort nicht entscheiden, ob er wiederholen, verkleinern oder aufgeben
+// muss — und eine Oberfläche kann daraus keinen ehrlichen Verlustzustand bauen.
+//
+// GEPRÜFT WIRD DER SERVERANTEIL, NICHT DIE OBERFLÄCHE: Statuscode, maschinenlesbare Felder,
+// Stabilität der Feldmenge (kein Rohstack, keine Zusatzfelder), der Create-Zähler bei 413 und die
+// Unversehrtheit der Nachbarverträge (401 vor dem Parsen, 400 bei Formfehler, 201 klein/gültig).
+function payloadMitGenauerGroesse(bytes: number): string {
+  const grundgeruest = {
+    title: "Wartungshandbuch",
+    statement: "Ganzes Dokument aus Word.",
+    type: "best_practice",
+    category: "Allgemein",
+    origin: "frontdoor",
+    bodyHtml: "",
+  };
+  // Reines ASCII → Zeichenlänge == Bytelänge; die Füllung trifft die Zielgröße exakt.
+  const leer = JSON.stringify(grundgeruest).length;
+  return JSON.stringify({ ...grundgeruest, bodyHtml: "Q".repeat(bytes - leer) });
+}
+
+async function adminAppMitCreateZaehler() {
+  const services = buildServices();
+  const echterCreate = services.capture.createDraft.bind(services.capture);
+  let createAufrufe = 0;
+  services.capture.createDraft = async (
+    payload: Parameters<typeof echterCreate>[0],
+    author: Parameters<typeof echterCreate>[1],
+  ) => {
+    createAufrufe += 1;
+    return echterCreate(payload, author);
+  };
+  const app = buildApp(services);
+  await app.inject({
+    method: "POST",
+    url: "/api/auth/register",
+    payload: { name: "Admin", email: "a@x.de", password: "secret123" },
+  });
+  const login = await app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email: "a@x.de", password: "secret123" },
+  });
+  return {
+    app,
+    headers: {
+      authorization: `Bearer ${login.json().token}`,
+      "content-type": "application/json",
+    },
+    createAufrufe: () => createAufrufe,
+  };
+}
+
+describe("JOB 511 D1 · 413 mit Verlustwahrheit", () => {
+  it("uebergross und angemeldet: 413, eigener Code, Verlustfelder", async () => {
+    const { app, headers } = await adminAppMitCreateZaehler();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: payloadMitGenauerGroesse(DRAFTS_BODY_LIMIT + 1024),
+    });
+    expect(res.statusCode).toBe(413);
+    expect(res.headers["content-type"]).toContain("application/json");
+    const body = res.json();
+    expect(body.error).toBe(DRAFT_BODY_TOO_LARGE);
+    expect(body.draftCreated).toBe(false);
+    expect(body.imageTransfer).toBe("not_completed");
+    expect(typeof body.message).toBe("string");
+    expect(body.message.length).toBeGreaterThan(20);
+    expect(body.message).not.toContain(DRAFT_BODY_TOO_LARGE);
+    expect(Object.keys(body).sort()).toEqual(["draftCreated", "error", "imageTransfer", "message"]);
+    expect(res.body).not.toContain("FST_ERR");
+  });
+
+  it("bei 413 bleibt der Create-Zaehler null und es existiert kein Entwurf", async () => {
+    const { app, headers, createAufrufe } = await adminAppMitCreateZaehler();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: payloadMitGenauerGroesse(DRAFTS_BODY_LIMIT + 1024),
+    });
+    expect(res.statusCode).toBe(413);
+    expect(createAufrufe()).toBe(0);
+    const liste = await app.inject({ method: "GET", url: "/api/drafts", headers });
+    expect(liste.statusCode).toBe(200);
+    expect(liste.json()).toEqual([]);
+  });
+
+  it("gueltig klein bleibt 201 und erzeugt genau einen Entwurf", async () => {
+    const { app, headers, createAufrufe } = await adminAppMitCreateZaehler();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: JSON.stringify({
+        title: "Kurznotiz",
+        statement: "Kurz.",
+        type: "best_practice",
+        category: "Allgemein",
+        origin: "frontdoor",
+      }),
+    });
+    expect(res.statusCode).toBe(201);
+    expect(createAufrufe()).toBe(1);
+    const liste = await app.inject({ method: "GET", url: "/api/drafts", headers });
+    expect(liste.json()).toHaveLength(1);
+  });
+
+  it("exakt unter der Grenze: kein 413, die Kante verschiebt sich nicht", async () => {
+    const { app, headers } = await adminAppMitCreateZaehler();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: payloadMitGenauerGroesse(DRAFTS_BODY_LIMIT - 1024),
+    });
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("nicht angemeldet und uebergross: 401 vor dem Parsen, ohne Groesseninformation", async () => {
+    const app = buildApp(buildServices());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers: { "content-type": "application/json" },
+      payload: payloadMitGenauerGroesse(DRAFTS_BODY_LIMIT + 1024),
+    });
+    expect(res.statusCode).toBe(401);
+    expect(res.body).not.toContain(String(DRAFTS_BODY_LIMIT));
+    expect(res.body).not.toContain(DRAFT_BODY_TOO_LARGE);
+    expect(res.body).not.toContain("imageTransfer");
+    expect(Object.keys(res.json()).sort()).toEqual(["error", "message"]);
+  });
+
+  it("malformt klein bleibt der unveraenderte 400-Formfehler", async () => {
+    const { app, headers } = await adminAppMitCreateZaehler();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: "{ kaputt",
+    });
+    expect(res.statusCode).toBe(400);
+    expect(res.body).not.toContain(DRAFT_BODY_TOO_LARGE);
+    expect(res.body).not.toContain("imageTransfer");
   });
 });

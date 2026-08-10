@@ -53,6 +53,16 @@ const TAG_MAP: Record<string, string> = {
   h6: "h3",
 };
 
+// WP-BILD-1a/1b + JOB 509 / R2: Der Bild-Fußnoten-Anker ist ein reines Token (Wort-/Bindestrich-
+// Zeichen, höchstens 64). Eine Wahrheit für Sanitizer UND Fußnoten-Scanner (captions.ts) — sonst
+// driften Schreib- und Leseseite der Identität auseinander.
+export const IMAGE_ANCHOR_ATTR = "data-image-id";
+const IMAGE_ANCHOR_TOKEN_RE = /^[\w-]{1,64}$/;
+
+export function isImageAnchorId(value: string): boolean {
+  return IMAGE_ANCHOR_TOKEN_RE.test(value);
+}
+
 // Erlaubte Attribute je Tag (alles andere wird verworfen, inkl. on*-Handler/style).
 const ALLOWED_ATTRS: Record<string, Set<string>> = {
   a: new Set(["href", "title"]),
@@ -64,6 +74,11 @@ const ALLOWED_ATTRS: Record<string, Set<string>> = {
   td: new Set(["colspan", "rowspan"]),
   // WP-BILD-1a: Bild-Fußnoten-Anker — nur eine sichere, tokenisierte ID (keine sonstigen Attribute).
   figcaption: new Set(["data-image-id"]),
+  // JOB 509 / R2+D5: auch die figure trägt den Anker (Dreifachanker figure/img/figcaption) — GENAU
+  // dieses eine Attribut, keine allgemeine Freigabe (style/class/id/on* fallen weiter). Vorher fiel ein
+  // am Container gesetzter Anker ersatzlos weg, womit die Klammer um Bild + Fußnote nur aus der Position
+  // bestand. Gesetzt wird er in anchorFigures(); hier steht nur, dass er die Allowlist passieren darf.
+  figure: new Set(["data-image-id"]),
 };
 
 const IMAGE_SCALE_VALUES = new Set(["25", "50", "75", "100"]);
@@ -168,8 +183,9 @@ function renderAttrs(tag: string, raw: string): string {
     }
     // WP-BILD-1a/1b: data-image-id (auf figcaption UND img) nur als sicheres Token (Wort-/Bindestrich-
     // Zeichen) übernehmen; alles andere fällt weg (Anker bleibt harmlos, Sanitizer-Vertrag gewahrt).
-    if ((tag === "figcaption" || tag === "img") && name === "data-image-id") {
-      if (/^[\w-]{1,64}$/.test(value)) {
+    // JOB 509 / R2: dieselbe Tokenprüfung gilt jetzt auch für figure — EINE Wahrheit (isImageAnchorId).
+    if ((tag === "figcaption" || tag === "img" || tag === "figure") && name === IMAGE_ANCHOR_ATTR) {
+      if (isImageAnchorId(value)) {
         out.push(`${name}="${value}"`);
       }
       continue;
@@ -245,6 +261,198 @@ function normalizeRichTextInput(input: string): string {
     return "";
   }
   return normalizeInlineFormatting(stripOfficeMarkup(input));
+}
+
+// ============================================================================================
+// JOB 509 / R2: FIGURE-/BILD-/FUSSNOTEN-ANKER — Identität statt Position.
+// ============================================================================================
+// Bisher entstand die Paarung Bild ↔ Fußnote allein aus der Verschachtelung. Das trägt genau so
+// lange, wie niemand die Reihenfolge anfasst: Zwei figures mit DERSELBEN Bildquelle und DEMSELBEN
+// Fußnotentext sind nach dem Sanitizing ununterscheidbar — Byte-Budget, Editor-Roundtrip, Import
+// oder Suche können sie dann vertauschen, ohne dass es auffällt.
+//
+// Dieser Durchlauf zieht die Identität deshalb in den Anker: Innerhalb jeder figure teilen der
+// CONTAINER, das Bild und die Fußnote GENAU EIN tokenvalidiertes data-image-id, das bodyweit
+// eindeutig ist. Vorhandene Anker führen (nichts wird ohne Not umbenannt); nur wenn keiner da oder
+// einer schon vergeben ist, entsteht ein frischer, rein zählend vergebener Anker — deterministisch,
+// ohne Zufall und ohne Uhrzeit.
+//
+// JOB 509 / D5: Der Anker wird am figure-Tag auch ERZEUGT, nicht nur erhalten. Ein Container ohne
+// eigene Identität wäre nur über seine Position auffindbar — genau das, was dieser Vertrag ausschließt.
+// Fehlt die Fußnote, teilen figure und img denselben Wert. Der Client-Sanitizer (richText.ts) erhält
+// denselben Anker unter demselben Tokenfilter, damit er den Editor-Roundtrip überlebt.
+const GENERATED_ANCHOR_PREFIX = "kw-fig-";
+const ANCHOR_TAG_RE = /<(\/?)(figure|img|figcaption)\b([^>]*)>/g;
+
+interface AnchorSlot {
+  readonly start: number;
+  readonly end: number;
+  readonly name: string;
+  readonly text: string;
+}
+
+interface FigureGroup {
+  readonly figure: AnchorSlot;
+  readonly children: AnchorSlot[];
+}
+
+// Liest den Anker aus einem bereits sanitisierten Open-Tag (Form: name="token", immer doppelt
+// gequotet — renderAttrs erzeugt nichts anderes). Ungültige Werte gelten als „kein Anker".
+function readAnchor(tagText: string): string | null {
+  const marker = ` ${IMAGE_ANCHOR_ATTR}="`;
+  const at = tagText.indexOf(marker);
+  if (at < 0) {
+    return null;
+  }
+  const from = at + marker.length;
+  const to = tagText.indexOf('"', from);
+  if (to < 0) {
+    return null;
+  }
+  const value = tagText.slice(from, to);
+  return isImageAnchorId(value) ? value : null;
+}
+
+function stripAnchor(tagText: string): string {
+  const marker = ` ${IMAGE_ANCHOR_ATTR}="`;
+  const at = tagText.indexOf(marker);
+  if (at < 0) {
+    return tagText;
+  }
+  const to = tagText.indexOf('"', at + marker.length);
+  return to < 0 ? tagText : tagText.slice(0, at) + tagText.slice(to + 1);
+}
+
+// Setzt den Anker; ein bereits passender Anker bleibt an SEINER Stelle stehen (Idempotenz: ein
+// zweiter Durchlauf darf das Markup nicht ein einziges Byte verschieben).
+function withAnchor(tagText: string, name: string, id: string): string {
+  if (readAnchor(tagText) === id) {
+    return tagText;
+  }
+  const base = stripAnchor(tagText);
+  const nameEnd = 1 + name.length;
+  return `${base.slice(0, nameEnd)} ${IMAGE_ANCHOR_ATTR}="${id}"${base.slice(nameEnd)}`;
+}
+
+function anchorFigures(html: string): string {
+  if (html.indexOf("<figure") < 0) {
+    return html;
+  }
+  const groups: FigureGroup[] = [];
+  const loose: AnchorSlot[] = [];
+  const used = new Set<string>();
+  const stack: FigureGroup[] = [];
+  ANCHOR_TAG_RE.lastIndex = 0;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = ANCHOR_TAG_RE.exec(html)) !== null) {
+    const name = m[2] ?? "";
+    if (m[1] === "/") {
+      if (name === "figure") {
+        stack.pop();
+      }
+      continue;
+    }
+    const slot: AnchorSlot = {
+      start: m.index,
+      end: ANCHOR_TAG_RE.lastIndex,
+      name,
+      text: m[0],
+    };
+    const present = readAnchor(slot.text);
+    if (present) {
+      used.add(present);
+    }
+    if (name === "figure") {
+      const group: FigureGroup = { figure: slot, children: [] };
+      groups.push(group);
+      stack.push(group);
+      continue;
+    }
+    const open = stack[stack.length - 1];
+    if (open) {
+      open.children.push(slot);
+    } else {
+      loose.push(slot);
+    }
+  }
+
+  const claimed = new Set<string>();
+  const replacements = new Map<number, string>();
+  let seq = 0;
+  const nextGeneratedAnchor = (): string => {
+    for (;;) {
+      seq += 1;
+      const candidate = `${GENERATED_ANCHOR_PREFIX}${seq}`;
+      if (!used.has(candidate)) {
+        used.add(candidate);
+        return candidate;
+      }
+    }
+  };
+
+  for (const group of groups) {
+    const figureAnchor = readAnchor(group.figure.text);
+    if (group.children.length === 0 && !figureAnchor) {
+      continue; // leere figure — es gibt nichts zu verankern
+    }
+    // Vorhandene Anker führen: erst der Container, dann seine Kinder in Dokumentreihenfolge.
+    let id = figureAnchor && !claimed.has(figureAnchor) ? figureAnchor : null;
+    if (!id) {
+      for (const child of group.children) {
+        const childAnchor = readAnchor(child.text);
+        if (childAnchor && !claimed.has(childAnchor)) {
+          id = childAnchor;
+          break;
+        }
+      }
+    }
+    if (!id) {
+      if (group.children.length === 0) {
+        // Container mit bereits vergebenem Anker und ohne Inhalt: der Doppelanker fällt.
+        replacements.set(group.figure.start, stripAnchor(group.figure.text));
+        continue;
+      }
+      id = nextGeneratedAnchor();
+    }
+    claimed.add(id);
+    // JOB 509 / D5: Der Container trägt den Anker immer mit — auch wenn er im Eingang keinen hatte.
+    replacements.set(group.figure.start, withAnchor(group.figure.text, "figure", id));
+    for (const child of group.children) {
+      replacements.set(child.start, withAnchor(child.text, child.name, id));
+    }
+  }
+
+  // Anker außerhalb jeder figure gehören zu keinem Paar. Sie bleiben stehen — es sei denn, sie
+  // beanspruchen die Identität einer figure ein zweites Mal; dann fällt der lose Anker.
+  for (const slot of loose) {
+    const present = readAnchor(slot.text);
+    if (present && claimed.has(present)) {
+      replacements.set(slot.start, stripAnchor(slot.text));
+    }
+  }
+
+  if (replacements.size === 0) {
+    return html;
+  }
+  const slots: AnchorSlot[] = [];
+  for (const group of groups) {
+    slots.push(group.figure, ...group.children);
+  }
+  slots.push(...loose);
+  slots.sort((a, b) => a.start - b.start);
+  const out: string[] = [];
+  let cursor = 0;
+  for (const slot of slots) {
+    const next = replacements.get(slot.start);
+    if (next === undefined || next === slot.text) {
+      continue;
+    }
+    out.push(html.slice(cursor, slot.start), next);
+    cursor = slot.end;
+  }
+  out.push(html.slice(cursor));
+  return out.join("");
 }
 
 // Allowlist-Tokenizer: läuft das HTML einmal durch, gibt nur erlaubte Tags + Text aus.
@@ -327,7 +535,9 @@ export function sanitizeHtml(input: string): string {
   for (let i = openStack.length - 1; i >= 0; i -= 1) {
     out.push(`</${openStack[i]}>`);
   }
-  return out.join("");
+  // JOB 509 / R2: zum Schluss die Bild-/Fußnoten-Paarung eindeutig verankern (siehe anchorFigures).
+  // Läuft nur an, wenn der Body überhaupt eine figure enthält.
+  return anchorFigures(out.join(""));
 }
 
 // WP-IC-PAKET-1 (Teil 1, Pedis Screenshot &uuml;/&auml;/&middot;): HTML-Entities EINMAL und vollständig

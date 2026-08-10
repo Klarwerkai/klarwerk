@@ -16,7 +16,7 @@ export interface DraftPayload {
   // sonst ginge die Stufe beim Promote verloren (fail-open). toKoInput reicht sie ans KO durch.
   confidentiality?: Confidentiality;
   // UI-Herkunft fuer Resume-Routing; keine Persistenzlogik, nur Payload-Metadatum.
-  origin?: "tell" | "studio" | "expert" | "frontdoor";
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
   // AUFTRAG-mega4/mega5 Block A (bens Auflage A): der Entwurf traegt AUCH die uebrigen inhaltlichen,
   // textuell sicherbaren Dirty-Felder, damit „Entwurf speichern" nichts still verliert und
   // „Fortsetzen" sie wiederherstellt: Prueferauswahl, offene/teilweise Quelle, externe Suchanfrage

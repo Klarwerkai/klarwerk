@@ -1,252 +1,195 @@
-// ================================================================================================
-// ASK 7/8 · AUFTRAG 160 — DIE HERMETISCHE SKALIERUNGSGEGENPROBE
-// ================================================================================================
-//
-// WOHER DIESE DATEI KOMMT. `CLAUDE_LIVENESS_SNAPSHOT.json` führt unter
-// `architecture_context/scaling_ask_targeted_test` den Befund:
-//
-//     „7/8 · ROT: ask-retrieval-topk-e2e erwartet gesichert, erhalten ungeprueft"
-//
-// BASIC 158 hat ihn lokalisiert: betroffen ist der Fall „relevantes validiertes KO wird trotz
-// vieler Störer als Quelle bevorzugt" aus `ask-retrieval-topk-e2e.test.ts`. Dort stehen 40 Störer
-// neben einem validierten Ziel-KO UND einer inhaltsgleichen, OFFENEN Zweitfassung. Der Befund ist
-// heute nicht reproduzierbar — aber sein Laufkontext hieß `scaling_…`, und über die tatsächliche
-// Bestandsgröße jenes Laufs ist nichts überliefert.
-//
-// WAS DIESE DATEI TUT — und was sie ausdrücklich NICHT tut. Sie MISST denselben Aufbau bei drei
-// deterministischen Bestandsgrößen (40 / 200 / 1000) und macht sichtbar, ob und ab wann die offene
-// Zweitfassung mitträgt. Sie stellt KEINE neue Produktzusage auf: nirgends wird verlangt, dass bei
-// 1000 Störern „gesichert" herauskommen MUSS. Eine solche Erwartung wäre eine erfundene Zusage und
-// ein verkappter Ranking-Auftrag.
-//
-// DIE EINE ZUSICHERUNG, DIE SIE TRIFFT, ist die fail-closed-Kopplung selbst
-// (`services/reasoner/src/provider.ts:56`):
-//
-//     knowledgeClass = carrying.every(status === "validiert") ? "gesichert" : "ungeprueft"
-//
-// Diese Kopplung muss bei JEDER Bestandsgröße gelten. Genau sie ist der Vertrag, an dem der rote
-// Befund hing — nicht die Frage, welches KO das Ranking gerade vorne sieht. Kippt die Klasse ohne
-// dass die tragende Menge das erklärt, ist das ein echter Defekt; kippt sie MIT, hat das Produkt
-// ehrlich geantwortet.
-//
-// HERMETISCH: kein echtes Modell, kein Netz — alles läuft über `app.inject` gegen die echten
-// HTTP-Routen und den echten Bestand, wie im Bestandstest.
 import { describe, expect, it } from "vitest";
-import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { AuditService, InMemoryAuditRepo } from "../../services/audit";
+import type { KnowledgeObject, KoCandidateQuery, KoService } from "../../services/knowledge-object";
+import { DEFAULT_TOP_K, Reasoner, queryTokens } from "../../services/reasoner";
+import { InMemoryGapRepo } from "../../services/ask/src/repo";
+import { AskService } from "../../services/ask/src/service";
 
-describe("Ask 7/8 · Skalierungsgegenprobe zum Retrieval-Grenzfall", () => {
-  type App = ReturnType<typeof buildApp>;
+// ================================================================================================
+// JOB 531 · ASK-TOPK-SCALING — DER SKALIERUNGSVERTRAG DER KANDIDATEN-VORAUSWAHL.
+// ================================================================================================
+//
+// DER BEFUND, DEN DIESER VERTRAG FESTHÄLT. Die Ask-Vorauswahl ist gedeckelt (gut), aber sie war
+// darauf angewiesen, dass die Datenquelle RELEVANZ-bewusst deckelt. Genau das tun die beiden
+// Adapter UNTERSCHIEDLICH:
+//
+//   · InMemoryKoRepo.findCandidates sortiert nach (Term-Trefferzahl ↓, validiert, Trust ↓) und
+//     schneidet DANACH auf `limit`. Ein hochrelevanter Treffer überlebt den Deckel immer.
+//   · PgKoRepo.findCandidates sortiert `ORDER BY (status='validiert') DESC, trust DESC LIMIT n` —
+//     OHNE Relevanzmaß. Wächst der Bestand, füllen schwach relevante, validierte Objekte mit
+//     hohem Trust das Limit, und der eigentlich passende Treffer fällt aus der Vorauswahl.
+//
+// Das ist keine Testlücke, sondern eine Verhaltensdifferenz zwischen Test-/Dev-Adapter und dem
+// Produktionsadapter: dieselbe Frage, derselbe Bestand, ein anderes Ergebnis — und zwar erst
+// AB einer bestimmten Bestandsgröße, also genau dann, wenn niemand mehr hinsieht.
+//
+// DER VERTRAG, den dieser Test bindet, ist deshalb adapterunabhängig formuliert:
+//   Die Vorauswahl von Ask muss einen Treffer, der MEHR Fragetoken abdeckt als die Störer,
+//   auch dann erreichen, wenn die Datenquelle ausschließlich nach (validiert, Trust) deckelt.
+// Die Deckelung selbst bleibt Pflicht: es wird nie der ganze Bestand geladen.
+//
+// Der Doppelgänger unten bildet die Pg-Rangfolge exakt nach (ODER-Match, dann validiert/Trust,
+// dann hartes Limit). Er ist bewusst kein Mock mit Wunschverhalten, sondern die ehrliche
+// Nachbildung des Produktionsadapters.
 
-  // Aufbau bewusst WORTGLEICH zum Bestandstest `ask-retrieval-topk-e2e.test.ts:11-46`: nur so misst
-  // diese Datei denselben Gegenstand und nicht einen ähnlichen.
-  async function adminApp() {
-    const app = buildApp(buildServices());
-    await app.inject({
-      method: "POST",
-      url: "/api/auth/register",
-      payload: { name: "Admin", email: "a@x.de", password: "secret123" },
-    });
-    const login = await app.inject({
-      method: "POST",
-      url: "/api/auth/login",
-      payload: { email: "a@x.de", password: "secret123" },
-    });
-    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
-  }
+const FRAGE = "Wie wird der Spezialzylinder SPZ42 gewartet?";
+// Die Texte der Objekte werden AUS den echten Fragetoken gebaut. Damit hängt der Vertrag nicht an
+// der Stemming-/Stoppwortlogik: er gilt für genau die Terme, die der Service wirklich abschickt.
+const TERME = queryTokens(FRAGE);
 
-  async function createKo(
-    app: App,
-    headers: Record<string, string>,
-    title: string,
-    statement: string,
-  ): Promise<string> {
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/kos",
-      headers,
-      payload: { title, statement, type: "best_practice", category: "Ask", neededValidations: 1 },
-    });
-    return res.json().id as string;
-  }
+// So viele schwach relevante Objekte, dass sie jede vernünftige Deckelung allein füllen.
+const STOERER = 300;
 
-  const validate = (app: App, headers: Record<string, string>, id: string) =>
-    app.inject({
-      method: "PUT",
-      url: `/api/kos/${id}`,
-      headers,
-      payload: { action: "rate", verdict: "up" },
-    });
+interface Aufruf {
+  terms: readonly string[];
+  limit: number;
+}
 
-  const FRAGE = "Wie wird die Spezialpresse SPX9 entlüftet?";
-  const ZIEL_TITEL = "Spezialpresse SPX9 entlüften";
-  const ZIEL_AUSSAGE =
-    "Vor dem Entlüften der Spezialpresse SPX9 den Hydraulikdruck vollständig ablassen.";
-
-  /** Das Beobachtungsergebnis EINES Laufs — reine Messung, keine Bewertung. */
-  interface Beobachtung {
-    readonly stoerer: number;
-    readonly answered: boolean;
-    readonly knowledgeClass: string;
-    readonly sources: string[];
-    readonly zielTraegt: boolean;
-    readonly offeneTraegt: boolean;
-  }
-
-  /**
-   * Der Aufbau des Grenzfalls bei wählbarer Bestandsgröße.
-   *
-   * DETERMINISTISCH: Titel und Aussagen sind aus dem Index abgeleitet, es gibt keinen Zufall und
-   * keine Zeitabhängigkeit. Derselbe Aufruf liefert denselben Bestand.
-   */
-  async function messen(stoerer: number): Promise<Beobachtung> {
-    const { app, headers } = await adminApp();
-
-    // Thematisch unpassende Störer, jeder zweite validiert — wie im Bestandstest.
-    for (let i = 0; i < stoerer; i += 1) {
-      const id = await createKo(
-        app,
-        headers,
-        `Förderband FB${i} spannen`,
-        `Riemen am Förderband FB${i} mit definierter Vorspannung montieren.`,
-      );
-      if (i % 2 === 0) {
-        await validate(app, headers, id);
+/**
+ * Doppelgänger des PRODUKTIONSADAPTERS (PgKoRepo-Semantik):
+ * ODER-Treffer über die Terme, Rangfolge (validiert zuerst, Trust absteigend), hartes Limit.
+ * KEIN Relevanzmaß — genau das ist der Unterschied zum In-Memory-Adapter.
+ */
+function pgAehnlicherKoService(bestand: readonly KnowledgeObject[]): {
+  koService: KoService;
+  aufrufe: Aufruf[];
+  geladeneZeilen: () => number;
+} {
+  const aufrufe: Aufruf[] = [];
+  let geladen = 0;
+  const koService = {
+    findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
+      const terms = query.terms.map((t) => t.trim().toLowerCase()).filter((t) => t.length > 0);
+      aufrufe.push({ terms, limit: query.limit });
+      if (terms.length === 0) {
+        return Promise.resolve([]);
       }
-    }
+      const treffer = bestand.filter((ko) => {
+        const text = `${ko.title} ${ko.statement}`.toLowerCase();
+        return terms.some((term) => text.includes(term));
+      });
+      const sortiert = [...treffer].sort(
+        (a, b) =>
+          Number(b.status === "validiert") - Number(a.status === "validiert") || b.trust - a.trust,
+      );
+      const seite = sortiert.slice(0, Math.max(0, Math.floor(query.limit)));
+      geladen += seite.length;
+      return Promise.resolve(seite);
+    },
+    // Der Ask-Pfad darf den Gesamtbestand NIE laden. Ein Aufruf hier ist ein Vertragsbruch.
+    list(): Promise<KnowledgeObject[]> {
+      throw new Error("ask darf den Gesamtbestand nicht laden (koService.list)");
+    },
+  } as unknown as KoService;
+  return { koService, aufrufe, geladeneZeilen: () => geladen };
+}
 
-    // Das validierte Ziel …
-    const ziel = await createKo(app, headers, ZIEL_TITEL, ZIEL_AUSSAGE);
-    await validate(app, headers, ziel);
-    // … und die inhaltsgleiche, OFFENE Zweitfassung. Sie ist der eigentliche Gegenstand: trägt sie
-    // mit, fällt die Klasse regelkonform auf „ungeprueft".
-    const offen = await createKo(app, headers, ZIEL_TITEL, ZIEL_AUSSAGE);
+function ko(
+  id: string,
+  title: string,
+  statement: string,
+  status: "validiert" | "offen",
+  trust: number,
+): KnowledgeObject {
+  return { id, title, statement, status, trust } as unknown as KnowledgeObject;
+}
 
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers,
-      payload: { question: FRAGE },
-    });
-    const body = res.json() as {
-      result: { answered: boolean; knowledgeClass: string; sources: string[] };
-    };
-
-    return {
-      stoerer,
-      answered: body.result.answered,
-      knowledgeClass: body.result.knowledgeClass,
-      sources: body.result.sources,
-      zielTraegt: body.result.sources.includes(ziel),
-      offeneTraegt: body.result.sources.includes(offen),
-    };
+function bestandMitEinemPassendenTreffer(): {
+  bestand: KnowledgeObject[];
+  zielId: string;
+} {
+  const bestand: KnowledgeObject[] = [];
+  const schwacherTerm = TERME[0] ?? "";
+  // Störer: treffen NUR den ersten Fragebegriff, sind aber validiert und maximal vertrauenswürdig.
+  for (let i = 0; i < STOERER; i += 1) {
+    bestand.push(
+      ko(
+        `stoerer-${i}`,
+        `Sammelhinweis ${i}`,
+        `Allgemeiner Hinweis ${i} zu ${schwacherTerm} ohne weiteren Zusammenhang.`,
+        "validiert",
+        99,
+      ),
+    );
   }
+  // Der eigentlich passende Treffer: deckt ALLE Fragebegriffe ab, ist validiert, hat aber einen
+  // niedrigeren Trust als die Störer — im reinen (validiert, Trust)-Ranking landet er hinten.
+  const zielId = "ziel-spz42";
+  bestand.push(
+    ko(
+      zielId,
+      "Spezialzylinder SPZ42 warten",
+      `Vor der Wartung ${TERME.join(" ")} drucklos machen und den Druckspeicher entleeren.`,
+      "validiert",
+      60,
+    ),
+  );
+  return { bestand, zielId };
+}
 
-  /**
-   * DIE EINE INVARIANTE, die bei jeder Bestandsgröße gelten muss.
-   *
-   * Sie prüft nicht, WELCHE Quelle gewinnt — sondern dass Klasse und tragende Menge zueinander
-   * passen. Das ist `provider.ts:56` von außen gesehen, und es ist die Grenze, an der der
-   * 7/8-Befund hing.
-   */
-  function pruefeKopplung(b: Beobachtung): void {
-    if (!b.answered) {
-      // Ohne Antwort gibt es keine tragende Menge — dann darf auch keine Klasse behauptet werden.
-      expect(b.sources, `${b.stoerer} Störer: keine Antwort, also keine Quellen`).toEqual([]);
-      return;
-    }
-    expect(
-      b.sources.length,
-      `${b.stoerer} Störer: eine Antwort braucht eine Quelle`,
-    ).toBeGreaterThan(0);
-    if (b.offeneTraegt) {
-      // Die offene Zweitfassung trägt mit → die Aussage IST ungeprüft. Alles andere wäre der
-      // fail-open-Fehler, den provider.ts:37-39 ausdrücklich ausschließt.
-      expect(
-        b.knowledgeClass,
-        `${b.stoerer} Störer: offene Zweitfassung trägt mit — die Klasse muss ungeprueft sein`,
-      ).toBe("ungeprueft");
-    }
-    if (b.knowledgeClass === "gesichert") {
-      // Umgekehrt: „gesichert" ist nur zulässig, wenn die offene Fassung NICHT mitträgt.
-      expect(
-        b.offeneTraegt,
-        `${b.stoerer} Störer: „gesichert" schließt die offene Zweitfassung aus`,
-      ).toBe(false);
-    }
-  }
+function askMit(koService: KoService) {
+  const audit = new AuditService({ repo: new InMemoryAuditRepo() });
+  const ask = new AskService({
+    reasoner: new Reasoner(),
+    koService,
+    gaps: new InMemoryGapRepo(),
+    audit,
+  });
+  return { ask, audit };
+}
 
-  // ------------------------------------------------------------------------------------------
-  // Die drei Bestandsgrößen. Getrennte Fälle statt einer Schleife, damit im Bericht sichtbar ist,
-  // WELCHE Größe gegebenenfalls kippt — eine Schleife meldete nur „irgendwo rot".
-  // ------------------------------------------------------------------------------------------
+describe("JOB 531: Ask-Kandidatenvorauswahl skaliert adapterunabhängig", () => {
+  it("findet den passenden Treffer auch dann, wenn die Datenquelle nur nach (validiert, Trust) deckelt", async () => {
+    // Kalibrierung: ohne mehrere Fragebegriffe prüft der Vertrag nichts.
+    expect(TERME.length).toBeGreaterThanOrEqual(2);
 
-  it("40 Störer: Klasse und tragende Menge sind gekoppelt", async () => {
-    const b = await messen(40);
-    pruefeKopplung(b);
-    // Die Beobachtung selbst wird festgehalten, nicht bewertet: bei dieser Größe ist der
-    // Bestandstest grün, also trägt hier nur das validierte Ziel.
-    expect(b.zielTraegt, "40 Störer: das validierte Ziel muss die Antwort tragen").toBe(true);
+    const { bestand, zielId } = bestandMitEinemPassendenTreffer();
+    const { koService, aufrufe } = pgAehnlicherKoService(bestand);
+    const { ask } = askMit(koService);
+
+    const { result, gap } = await ask.ask(FRAGE);
+
+    // Das Nutzerversprechen: der passende Treffer wird gefunden, obwohl 300 hoch-vertrauenswürdige
+    // Störer die reine (validiert, Trust)-Rangfolge anführen.
+    expect(result.answered).toBe(true);
+    expect(result.sources).toEqual([zielId]);
+    expect(gap).toBeNull();
+
+    // Die Deckelung bleibt Pflicht: jede Abfrage an die Datenquelle trägt ein hartes Limit, und
+    // keine einzelne Abfrage fordert den gesamten Bestand an.
+    expect(aufrufe.length).toBeGreaterThan(0);
+    for (const aufruf of aufrufe) {
+      expect(aufruf.limit).toBeGreaterThan(0);
+      expect(aufruf.limit).toBeLessThan(STOERER);
+    }
   });
 
-  it("200 Störer: Klasse und tragende Menge sind gekoppelt", async () => {
-    const b = await messen(200);
-    pruefeKopplung(b);
-    expect(b.answered, "200 Störer: der thematische Treffer bleibt auffindbar").toBe(true);
+  it("hält die Anzahl der Quellabfragen unabhängig von der Fragelänge beschränkt", async () => {
+    const { bestand } = bestandMitEinemPassendenTreffer();
+    const { koService, aufrufe } = pgAehnlicherKoService(bestand);
+    const { ask } = askMit(koService);
+
+    // Eine absichtlich sehr lange Frage darf die Datenquelle nicht beliebig oft anfragen.
+    const langeFrage = `${FRAGE} ${Array.from({ length: 40 }, (_v, i) => `Zusatzbegriff${i}`).join(" ")}`;
+    await ask.ask(langeFrage);
+
+    expect(aufrufe.length).toBeGreaterThan(0);
+    expect(aufrufe.length).toBeLessThanOrEqual(DEFAULT_TOP_K + 1);
   });
 
-  it("1000 Störer: Klasse und tragende Menge sind gekoppelt", async () => {
-    const b = await messen(1000);
-    pruefeKopplung(b);
-    // BEWUSST KEINE Erwartung an `knowledgeClass` oder `zielTraegt`. Ob das Ranking bei dieser
-    // Größe noch dasselbe wählt, ist genau die offene Frage hinter „7/8" — sie hier zu einer
-    // Zusage zu machen hieße, eine Produktannahme zu erfinden.
-    expect(typeof b.knowledgeClass, "1000 Störer: eine Klasse wird geliefert").toBe("string");
-  }, 120_000);
-
-  // ------------------------------------------------------------------------------------------
-  // Gegenpfade
-  // ------------------------------------------------------------------------------------------
-
-  it("KIPP-GEGENPFAD: trägt die offene Zweitfassung, ist die Antwort nie gesichert", async () => {
-    // Der Kippfall wird hier NICHT erzwungen, sondern über alle drei Größen gesucht. Findet er
-    // sich, muss die Klasse ungeprüft sein; findet er sich nicht, ist das ebenfalls ein Befund —
-    // und der Fall sagt das ehrlich, statt eine Bedingung zu behaupten.
-    const beobachtungen = [await messen(40), await messen(200)];
-    const gekippt = beobachtungen.filter((b) => b.offeneTraegt);
-    for (const b of gekippt) {
-      expect(b.knowledgeClass).toBe("ungeprueft");
-    }
-    // Auch der Nicht-Kipp ist eine gültige Beobachtung: dann trägt überall nur das validierte Ziel.
-    for (const b of beobachtungen.filter((x) => !x.offeneTraegt)) {
-      expect(
-        b.sources.every((s) => s !== ""),
-        `${b.stoerer} Störer: Quellen sind Kennungen`,
-      ).toBe(true);
-    }
-  }, 120_000);
-
-  it("WISSENSLÜCKEN-GEGENPFAD: ohne thematischen Treffer keine erfundene Quelle", async () => {
-    const { app, headers } = await adminApp();
-    for (let i = 0; i < 200; i += 1) {
-      const id = await createKo(
-        app,
-        headers,
-        `Förderband FB${i} spannen`,
-        `Riemen am Förderband FB${i} mit definierter Vorspannung montieren.`,
+  it("ohne thematischen Treffer bleibt es bei der ehrlichen Wissenslücke (kein Raten, kein Vollscan)", async () => {
+    const bestand: KnowledgeObject[] = [];
+    for (let i = 0; i < 120; i += 1) {
+      bestand.push(
+        ko(`filter-${i}`, `Filter F${i} wechseln`, `Filter F${i} tauschen.`, "validiert", 90),
       );
-      if (i % 2 === 0) {
-        await validate(app, headers, id);
-      }
     }
-    const res = await app.inject({
-      method: "POST",
-      url: "/api/ask",
-      headers,
-      payload: { question: "Wie hoch ist der aktuelle Wechselkurs?" },
-    });
-    const body = res.json() as { result: { answered: boolean; sources: string[] } };
-    // Der Bestand ist groß — trotzdem darf nichts als Quelle erscheinen, das die Frage nicht trägt.
-    expect(body.result.answered).toBe(false);
-    expect(body.result.sources).toEqual([]);
-  }, 120_000);
+    const { koService } = pgAehnlicherKoService(bestand);
+    const { ask } = askMit(koService);
+
+    const { result, gap } = await ask.ask("Wie hoch ist der aktuelle Wechselkurs?");
+    expect(result.answered).toBe(false);
+    expect(result.sources).toEqual([]);
+    expect(gap).not.toBeNull();
+  });
 });

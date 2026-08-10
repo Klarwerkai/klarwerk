@@ -95,7 +95,7 @@ describe("WP-D7b: Bild-Fußnote im Editor verankert (jsdom)", () => {
       expect(emitted, attr).not.toContain(attr);
     }
     expect(emitted).toContain('data-image-id="kw-img-abc123-1"');
-    expect(emitted).toContain("<figure>");
+    expect(emitted).toMatch(/<figure[\s>]/);
     expect(emitted).toContain("<figcaption");
   });
 });

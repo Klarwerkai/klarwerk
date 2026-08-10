@@ -934,6 +934,30 @@ export function ensureImageAnchors(root: EditableFigureRoot): number {
       verankert += 1;
     }
   }
+
+  // ==============================================================================================
+  // JOB 509 / D5 (nachgezogen 10.08.2026) — DER CONTAINER TRAEGT DEN ANKER MIT.
+  // ==============================================================================================
+  //
+  // Job 509 hat den Dreifachanker figure/img/figcaption eingefuehrt und ihn in BEIDEN Sanitizern
+  // durchgelassen — gesetzt hat ihn aber nur der Server (`anchorFigures`, services/structure).
+  // Der Editor erzeugte weiter nur den Doppelanker img/figcaption. Folge: derselbe Koerper ergab
+  // client- und serverseitig VERSCHIEDENES HTML, und genau das faengt
+  // tests/capture/mega88-bildstruktur-invariante („Client- und Server-Sanitizer urteilen GLEICH").
+  //
+  // Der Container bekommt die Kennung seines Bildes — er ERFINDET keine. Gibt es kein verankertes
+  // Bild, bleibt die figure ohne Anker: eine Huelle ohne Bild hat keine Identitaet zu tragen.
+  for (const figure of root.querySelectorAll("figure")) {
+    // `:scope > img` und NICHT `img`: mega89 Block B verbietet jede Paarung ueber einen beliebigen
+    // Nachfahren. Bei verschachtelten figures haette die aeussere sonst die Kennung des INNEREN
+    // Bildes uebernommen — derselbe Datenschaden wie in sammel88, nur eine Ebene hoeher.
+    const bild = figure.querySelector(":scope > img");
+    const id = bild === null ? "" : kennungVon(bild);
+    if (id !== "" && kennungVon(figure) !== id) {
+      figure.setAttribute("data-image-id", id);
+    }
+  }
+
   return verankert;
 }
 

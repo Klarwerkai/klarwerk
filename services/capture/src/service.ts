@@ -239,7 +239,7 @@ function normalizeDraftPayload(payload: DraftPayload): DraftPayload {
     extResults: _extResults,
     ...rest
   } = payload as DraftPayload & { extResults?: unknown };
-  const next: DraftPayload = { ...rest };
+  const next: DraftPayload = normalizeOriginIn(rest);
 
   const reviewerIds = normalizeReviewerIds(raw.reviewerIds);
   if (reviewerIds !== undefined && reviewerIds.length > 0) {
@@ -536,4 +536,35 @@ export class CaptureService {
     }
     return draft;
   }
+}
+
+// ================================================================================================
+// JOB 510 / R10 — DIE HERKUNFT IST EIN GEPRUEFTES FELD, KEIN DURCHREICHER.
+// ================================================================================================
+//
+// Bis hierher lief `origin` an der Persistenz-Grenze ungeprueft durch `...rest`: ein aus Word
+// stammender Entwurf konnte seine Herkunft zwar behalten, aber ebenso konnte JEDER beliebige
+// String aus einem Client-Body dauerhaft im geteilten Pool landen. Beides ist jetzt entschieden:
+// bekannte Werte bleiben ZEICHENGLEICH erhalten (auch `word_addin`), fehlende bleiben fehlend
+// (kein stiller Default), und unbekannte oder leere Werte werden VERWORFEN statt zu `frontdoor`
+// oder `word_addin` normalisiert — eine erfundene Herkunft waere schlimmer als gar keine.
+const ERLAUBTE_HERKUNFT: readonly NonNullable<DraftPayload["origin"]>[] = [
+  "tell",
+  "studio",
+  "expert",
+  "frontdoor",
+  "word_addin",
+];
+
+function normalizeOriginIn(payload: DraftPayload): DraftPayload {
+  const roh = (payload as Record<string, unknown>).origin;
+  if (roh === undefined) {
+    return payload;
+  }
+  const bekannt = ERLAUBTE_HERKUNFT.find((wert) => wert === roh);
+  if (bekannt !== undefined) {
+    return { ...payload, origin: bekannt };
+  }
+  const { origin: _verworfen, ...ohneHerkunft } = payload;
+  return ohneHerkunft;
 }

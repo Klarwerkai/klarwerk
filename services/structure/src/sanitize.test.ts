@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+// JOB 509 / R2: die zweite Einheit der Ankerkette (Fußnoten-Scanner) wird hier mitgeprüft — die
+// Paarung entsteht im Sanitizer und muss vom Scanner wieder auslesbar sein. Beide Einheiten liegen
+// im selben Modul; der Schreibscope dieses Durchgangs umfasst nur diese Testdatei.
+import { imageCaptionEntries, imageCaptionTexts } from "./captions";
 import { htmlToPlainText, sanitizeHtml } from "./sanitize";
 
 describe("KW-STR / NFR-SEC-04: sanitizeHtml", () => {
@@ -219,6 +223,204 @@ describe("FMT-1: sanitizeHtml normalisiert Office-/Richtext-Paste autoritativ", 
       '<p onclick="x()">ok</p><script>alert(1)</script><a href="javascript:alert(1)">x</a><img src="https://evil/x.png" alt="x">',
     );
     expect(clean).toBe('<p>ok</p><a rel="noopener noreferrer nofollow" target="_blank">x</a>');
+  });
+});
+
+// JOB 509 / R2 (Figure-/Caption-Anker): Nach dem Sanitizing, erneutem Parsen und einem ZWEITEN
+// Sanitizing muss die Paarung Figure ↔ Bild ↔ Fußnote eindeutig bleiben. Position allein darf nie
+// Identität sein: zwei figures mit identischer Bildquelle UND identischem Fußnotentext sind sonst
+// ununterscheidbar, sobald ein Zwischenschritt (Editor, Import, Byte-Budget) die Reihenfolge ändert.
+// Der Anker ist ein tokenvalidiertes data-image-id — keine allgemeine Attributfreigabe.
+const OBJ_SRC = "/api/objects/abc-1/raw";
+
+function figureFragments(html: string): string[] {
+  return [...html.matchAll(/<figure\b[^>]*>[\s\S]*?<\/figure>/g)].map((m) => m[0]);
+}
+
+function openTagOf(fragment: string, tag: string): string | null {
+  return new RegExp(`<${tag}\\b[^>]*>`).exec(fragment)?.[0] ?? null;
+}
+
+function anchorOf(fragment: string, tag: string): string | null {
+  const open = openTagOf(fragment, tag);
+  return open ? (/data-image-id="([^"]*)"/.exec(open)?.[1] ?? null) : null;
+}
+
+describe("JOB 509 / R2: sanitizeHtml verankert Figure/Bild/Fußnote eindeutig", () => {
+  it("Gegenprobe 1: gleiche Bildquelle UND gleicher Fußnotentext → je figure ein EIGENER Anker", () => {
+    const one = `<figure><img src="${OBJ_SRC}"><figcaption>Ventil</figcaption></figure>`;
+    const clean = sanitizeHtml(`${one}${one}`);
+    const figs = figureFragments(clean);
+    expect(figs.length).toBe(2);
+    const first = anchorOf(figs[0] ?? "", "img");
+    const second = anchorOf(figs[1] ?? "", "img");
+    // Beide figures sind verankert …
+    expect(first).toMatch(/^[\w-]{1,64}$/);
+    expect(second).toMatch(/^[\w-]{1,64}$/);
+    // … mit UNTERSCHIEDLICHEN Ankern (sonst ist die Paarung nur Position).
+    expect(first).not.toBe(second);
+    // JOB 509 / D5: ALLE DREI Träger derselben figure teilen exakt denselben Anker.
+    expect(anchorOf(figs[0] ?? "", "figcaption")).toBe(first);
+    expect(anchorOf(figs[1] ?? "", "figcaption")).toBe(second);
+    expect(anchorOf(figs[0] ?? "", "figure")).toBe(first);
+    expect(anchorOf(figs[1] ?? "", "figure")).toBe(second);
+  });
+
+  it("Gegenprobe 2: fehlende Fußnote → figure und Bild teilen trotzdem denselben Anker", () => {
+    const clean = sanitizeHtml(`<figure><img src="${OBJ_SRC}"></figure>`);
+    const id = anchorOf(clean, "img");
+    expect(id).toMatch(/^[\w-]{1,64}$/);
+    expect(anchorOf(clean, "figure")).toBe(id);
+    expect(clean).not.toContain("<figcaption");
+  });
+
+  it("Gegenprobe 3: ungültiges Attribut → verworfen, aber ein gültiger Anker entsteht", () => {
+    const clean = sanitizeHtml(
+      `<figure data-image-id="böse id" onclick="x()" class="evil"><img src="${OBJ_SRC}" data-image-id="auch böse"><figcaption data-image-id="und böse">Text</figcaption></figure>`,
+    );
+    expect(clean).not.toContain("onclick");
+    expect(clean).not.toContain("class=");
+    expect(clean).not.toContain("böse");
+    const anchor = anchorOf(clean, "img");
+    expect(anchor).toMatch(/^[\w-]{1,64}$/);
+    expect(anchorOf(clean, "figcaption")).toBe(anchor);
+    expect(anchorOf(clean, "figure")).toBe(anchor);
+  });
+
+  it("Gegenprobe 4: Skriptinhalt in der Fußnote fliegt raus, die Paarung bleibt", () => {
+    const clean = sanitizeHtml(
+      `<figure><img src="${OBJ_SRC}"><figcaption data-image-id="kw-img-1">Text<script>alert(1)</script></figcaption></figure>`,
+    );
+    expect(clean).not.toContain("<script");
+    expect(clean).not.toContain("alert(1)");
+    expect(clean).toContain("Text");
+    // Der vorhandene Fußnoten-Anker führt und wird auf Bild UND Container übertragen.
+    expect(anchorOf(clean, "img")).toBe("kw-img-1");
+    expect(anchorOf(clean, "figcaption")).toBe("kw-img-1");
+    expect(anchorOf(clean, "figure")).toBe("kw-img-1");
+  });
+
+  it("Gegenprobe 5: zweites Sanitizing ist byte-gleich und erhält die Paarung", () => {
+    const dirty = `<figure><img src="${OBJ_SRC}"><figcaption>A</figcaption></figure><figure><img src="${OBJ_SRC}"><figcaption>A</figcaption></figure>`;
+    const once = sanitizeHtml(dirty);
+    const twice = sanitizeHtml(once);
+    expect(twice).toBe(once);
+    const figs = figureFragments(twice);
+    const anchors = figs.map((f) => anchorOf(f, "img"));
+    expect(new Set(anchors).size).toBe(2);
+    expect(anchors.every((a) => a !== null)).toBe(true);
+  });
+
+  it("Gegenprobe 6: doppelt vergebener Anker wird vereindeutigt (Identität statt Kollision)", () => {
+    const dup = `<figure><img src="${OBJ_SRC}" data-image-id="kw-img-1"><figcaption data-image-id="kw-img-1">A</figcaption></figure>`;
+    const clean = sanitizeHtml(`${dup}${dup}`);
+    const figs = figureFragments(clean);
+    expect(figs.length).toBe(2);
+    const first = anchorOf(figs[0] ?? "", "img");
+    const second = anchorOf(figs[1] ?? "", "img");
+    // Der erste Träger behält seinen Anker, der zweite bekommt einen frischen.
+    expect(first).toBe("kw-img-1");
+    expect(second).not.toBe("kw-img-1");
+    expect(second).toMatch(/^[\w-]{1,64}$/);
+    expect(anchorOf(figs[1] ?? "", "figcaption")).toBe(second);
+    // Auch die Container sind eindeutig — kein Doppelanker über zwei figures hinweg.
+    expect(anchorOf(figs[0] ?? "", "figure")).toBe(first);
+    expect(anchorOf(figs[1] ?? "", "figure")).toBe(second);
+  });
+
+  it("eine im Eingang vorhandene figure-Ankerung überlebt und führt die Gruppe", () => {
+    const clean = sanitizeHtml(
+      `<figure data-image-id="kw-img-fuehrend"><img src="${OBJ_SRC}"><figcaption data-image-id="kw-img-alt">A</figcaption></figure>`,
+    );
+    expect(anchorOf(clean, "figure")).toBe("kw-img-fuehrend");
+    expect(anchorOf(clean, "img")).toBe("kw-img-fuehrend");
+    expect(anchorOf(clean, "figcaption")).toBe("kw-img-fuehrend");
+  });
+
+  it("Sicherheitsgrenze: figure bekommt KEINE allgemeine Attributfreigabe", () => {
+    const clean = sanitizeHtml(
+      `<figure style="color:red" onclick="x()" id="f1" class="panel"><img src="${OBJ_SRC}"></figure>`,
+    );
+    const open = openTagOf(clean, "figure") ?? "";
+    expect(open).not.toContain("style");
+    expect(open).not.toContain("onclick");
+    expect(open).not.toContain("class=");
+    // Eigenständiges id-Attribut (nicht das Teilstück in data-image-id) bleibt gesperrt.
+    expect(open).not.toMatch(/\sid=/);
+    // Genau ein erlaubtes Attribut am Container: der Anker.
+    expect(open).toMatch(/^<figure data-image-id="[\w-]{1,64}">$/);
+  });
+
+  // JOB 509 / D5 (BEN-D3-Mangel 1, BEN-D4-Pflicht 5): Der Vertrag ist der DREIFACHANKER. Der frühere
+  // D3-Pin („figure bleibt attributfrei") war die eigenmächtige Zielverengung und wird hier durch die
+  // Auftragswahrheit ersetzt: auch ein im Eingang unverankerter Container wird verankert.
+  it("Dreifachanker: figure, Bild und Fußnote tragen denselben gültigen Token", () => {
+    const clean = sanitizeHtml(`<figure><img src="${OBJ_SRC}"><figcaption>A</figcaption></figure>`);
+    const id = anchorOf(clean, "figure");
+    expect(id).toMatch(/^[\w-]{1,64}$/);
+    expect(anchorOf(clean, "img")).toBe(id);
+    expect(anchorOf(clean, "figcaption")).toBe(id);
+    // Genau drei Tokenvorkommen — je Träger eines.
+    expect(clean.split(`data-image-id="${id}"`).length - 1).toBe(3);
+    // Der unverankerte Container existiert nach dem Sanitizing nicht mehr.
+    expect(clean).not.toContain("<figure>");
+  });
+
+  it("Dreifachanker bleibt über ein zweites Server-Sanitizing byte-stabil", () => {
+    const once = sanitizeHtml(`<figure><img src="${OBJ_SRC}"><figcaption>A</figcaption></figure>`);
+    const twice = sanitizeHtml(once);
+    expect(twice).toBe(once);
+    const id = anchorOf(twice, "figure");
+    expect(anchorOf(twice, "img")).toBe(id);
+    expect(anchorOf(twice, "figcaption")).toBe(id);
+  });
+
+  it("lose Anker außerhalb einer figure werden nicht erfunden", () => {
+    expect(sanitizeHtml(`<img src="${OBJ_SRC}">`)).toBe(`<img src="${OBJ_SRC}">`);
+    expect(sanitizeHtml("<figcaption>frei</figcaption>")).toBe("<figcaption>frei</figcaption>");
+  });
+});
+
+// JOB 509 / R2, zweite Einheit: Der Fußnoten-Scanner muss die im Sanitizer gesetzte Identität
+// wieder herausgeben — sonst endet die Ankerkette an der Persistenzgrenze und die Suche/Galerie
+// müsste erneut über die Position raten. Der bestehende Textvertrag (imageCaptionTexts) bleibt
+// unverändert; die Paarung kommt als zusätzliche, ehrliche Ausgabe dazu (kein geratener Anker).
+describe("JOB 509 / R2: imageCaptionEntries gibt die Paarung Anker ↔ Fußnotentext zurück", () => {
+  const twoEqual = `<figure><img src="${OBJ_SRC}"><figcaption>Ventil</figcaption></figure><figure><img src="${OBJ_SRC}"><figcaption>Ventil</figcaption></figure>`;
+
+  it("gleiche Fußnotentexte, verschiedene Anker → eindeutige Zuordnung nach dem Sanitizing", () => {
+    const body = sanitizeHtml(twoEqual);
+    const entries = imageCaptionEntries(body);
+    expect(entries.map((e) => e.text)).toEqual(["Ventil", "Ventil"]);
+    const ids = entries.map((e) => e.imageId);
+    expect(ids.every((id) => id !== null)).toBe(true);
+    expect(new Set(ids).size).toBe(2);
+    // Die Anker des Scanners sind exakt die Anker der zugehörigen Bilder.
+    const imgAnchors = figureFragments(body).map((f) => anchorOf(f, "img"));
+    expect(ids).toEqual(imgAnchors);
+  });
+
+  it("Fußnote ohne Anker → imageId null (ehrlich, nicht geraten)", () => {
+    expect(imageCaptionEntries("<figcaption>frei</figcaption>")).toEqual([
+      { imageId: null, text: "frei" },
+    ]);
+  });
+
+  it("ungültiges Anker-Token im Rohbody → imageId null, Text bleibt", () => {
+    expect(imageCaptionEntries('<figcaption data-image-id="böse id">Text</figcaption>')).toEqual([
+      { imageId: null, text: "Text" },
+    ]);
+  });
+
+  it("Textvertrag unverändert: leere Fußnoten und Alt-Platzhalter fallen weiterhin weg", () => {
+    const body = `<figure><figcaption data-image-id="kw-img-1"></figcaption></figure><figure><figcaption data-image-id="kw-img-2">Noch keine Bildbeschreibung</figcaption></figure><figure><figcaption data-image-id="kw-img-3">Echt</figcaption></figure>`;
+    expect(imageCaptionEntries(body)).toEqual([{ imageId: "kw-img-3", text: "Echt" }]);
+    expect(imageCaptionTexts(body)).toEqual(["Echt"]);
+  });
+
+  it("imageCaptionTexts bleibt die Textprojektion derselben Einträge (eine Wahrheit)", () => {
+    const body = sanitizeHtml(twoEqual);
+    expect(imageCaptionTexts(body)).toEqual(imageCaptionEntries(body).map((e) => e.text));
   });
 });
 

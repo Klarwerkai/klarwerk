@@ -9,6 +9,20 @@ import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types
 import { reservedObjectLinkHtml } from "./bodyFileLink";
 // WP-D9b: verankerte figures im sicheren HTML erkennen (gleiche Quelle wie die BILD-1d-Galerie).
 import { extractBodyImages } from "./bodyImages";
+// JOB 513/D2: der TYP des Bildtransfer-Vertrags. Dieses Modul trifft KEINE Budgetentscheidung und fuehrt
+// KEINE eigene Bytegrenze — die wirksame Grenze reist im Vertrag mit (autoritativ bleiben
+// MAX_INLINE_BODY_HTML_BYTES in docx.ts und PPTX_MAX_IMAGE_BYTES/PPTX_MAX_TOTAL_IMAGE_BYTES in pptx.ts).
+// JOB 513/D3B: dazu kommt EIN Wert-Import — `imageTransferBalanced`. Das ist keine Budgetentscheidung,
+// sondern das reine Bilanzpraedikat des Vertrags; es wird hier als fail-closed-Wache vor jedem
+// Erfolgsurteil gebraucht und darf deshalb nicht als Kopie danebenliegen (eine zweite Fassung waere
+// eine zweite Wahrheit).
+import {
+  type ImageBudgetDrop,
+  type ImageBudgetLimitKind,
+  type ImageTransferContract,
+  addImageBudgetDrop,
+  imageTransferBalanced,
+} from "./docx";
 
 // Auswählbarer Punkt in der Liste (Checkbox-Zustand; Default: ausgewählt).
 export interface SelectableExtractPoint extends ExtractedPoint {
@@ -446,7 +460,22 @@ export const CAPTURE_FILE_TEXT = {
   // WP-D9b (Gelb-Fix 2): bildreiner Import — Bilder übernommen, kein Text für KI-Vorschläge.
   imagesOnlyNoText: "capture.file.imagesOnlyNoText",
   // WP-D9c (ROT-Fix): ALLE Bilder gedroppt (Budget/Format) — ehrlich KEIN „übernommen", Original-Hinweis.
+  // ACHTUNG: der DE/EN/NL-Text dieses Schluessels SAGT ZU, dass das Original als Anhang mitgeht. Er darf
+  // deshalb nur bei originalAttached === true gewaehlt werden (JOB 513/D3B, BEN2-D2 Mangel 3).
   imagesAllDropped: "capture.file.imagesAllDropped",
+  // JOB 513/D3B: derselbe Fall OHNE gesichertes Original. Bis D2 wurde hier `imagesAllDropped` gewaehlt
+  // und damit ein Anhang behauptet, den es nicht gibt — die teuerste Sorte Unwahrheit in diesem Produkt.
+  imagesAllDroppedNoOriginal: "capture.file.imagesAllDroppedNoOriginal",
+  // JOB 513/D3B: defekte/unaufloesbare Bildverweise bekommen einen ECHTEN lokalisierbaren Grund
+  // (BEN2-D2 Mangel 4). Bis D2 gab es dafuer nur `hasUnlocalizedCause: true` und eine leere Meldung.
+  imagesDefect: "capture.file.imagesDefect",
+  // JOB 513/D3B: Bildverweise ausserhalb des ausgewerteten Folienbereichs (z. B. Hintergrundbilder).
+  imagesOutsidePath: "capture.file.imagesOutsidePath",
+  // JOB 513/D3B: je Grenzart ein eigener Satz mit dem REALEN Grenzwert — damit die Oberflaeche nicht
+  // laenger fuer alle drei Kanten dieselbe (und in zwei Faellen falsche) Begruendung zeigt.
+  imagesBudgetBodyHtml: "capture.file.imagesBudgetBodyHtml",
+  imagesBudgetSingleImage: "capture.file.imagesBudgetSingleImage",
+  imagesBudgetTotalImages: "capture.file.imagesBudgetTotalImages",
   // WP-BILD-1a (Pedi 20.07.): ehrlicher Startwert der Bild-Fußnote — noch keine (KI-)Beschreibung.
   imageCaptionPlaceholder: "capture.file.imageCaptionPlaceholder",
   // WP-D1d: Bilder komprimiert BEHALTEN, Original im Anhang (Anhang WIRKLICH gelungen).
@@ -581,5 +610,276 @@ export function importImageNotice(input: ImportImageNoticeInput): ImportImageNot
   return {
     key: input.dropped > 0 ? CAPTURE_FILE_TEXT.imagesLost : CAPTURE_FILE_TEXT.imagesNoOriginal,
     params,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// JOB 513/D2: der stabile, maschinenlesbare UND lokalisierbare Grund des Bildtransfers.
+// ---------------------------------------------------------------------------
+// Grundsatz: Dieses Modul entscheidet NICHTS ueber Budgets. Es liest den Vertrag, den die autoritativen
+// Budgetquellen (docx.ts/pptx.ts) geliefert haben, und uebersetzt ihn in (a) EINEN stabilen Maschinen-
+// grund und (b) die dazu wahrheitsgemaessen, BESTEHENDEN i18n-Meldungen. Es erfindet weder eine
+// "erlaubte Bildzahl" noch eine zweite Bytegrenze.
+
+// Stabiler Maschinengrund. `not-attempted` = die Quelle trug Bilder, es wurde aber gar kein Transfer
+// versucht (PPTX-Altpfad ohne Bildeinbettung) — ausdruecklich KEIN Verlustgrund.
+export type ImageTransferOutcome =
+  | "no-images"
+  | "not-attempted"
+  // JOB 513/D3B: die Bilanz geht NICHT auf — uebernommen plus alle Verlustgruende ergeben nicht die
+  // erkannte Gesamtzahl. Das ist der fail-closed-Ausgang: er sagt ehrlich, dass etwas unerklaert bleibt,
+  // und er kann NIE `complete` werden.
+  | "unbalanced"
+  | "all-transferred"
+  | "partial-budget"
+  | "partial-format"
+  | "partial-defect"
+  | "partial-outside-path"
+  | "partial-mixed"
+  | "none-transferred";
+
+export function imageTransferOutcome(contract: ImageTransferContract): ImageTransferOutcome {
+  // JOB 513/D3B — DIE FAIL-CLOSED-WACHE STEHT VORNE, und das ist der ganze Punkt (Ownerauflage:
+  // „imageTransferBalanced(contract) === false ist hartes ROT und darf nie zu all-transferred/
+  // complete=true fuehren"). In D2 wurde die Bilanz hier ueberhaupt nicht geprueft: waren die drei
+  // Dropzaehler null, kam `all-transferred` — auch bei embeddedImages < totalImages. Genau so konnte
+  // eine sichtbare Uebertragungsluecke als uneingeschraenkter Erfolg erscheinen.
+  if (!imageTransferBalanced(contract)) {
+    return "unbalanced";
+  }
+  if (contract.totalImages <= 0) {
+    return "no-images";
+  }
+  if (!contract.attempted) {
+    return "not-attempted";
+  }
+  const causes = [
+    contract.droppedImageBudget,
+    contract.droppedImageFormat,
+    contract.droppedImageUnresolved,
+    contract.droppedImageOutsidePath,
+  ];
+  const dropped = causes.reduce((sum, n) => sum + n, 0);
+  if (dropped === 0) {
+    return "all-transferred";
+  }
+  if (contract.embeddedImages <= 0) {
+    return "none-transferred";
+  }
+  if (causes.filter((n) => n > 0).length > 1) {
+    return "partial-mixed";
+  }
+  if (contract.droppedImageBudget > 0) {
+    return "partial-budget";
+  }
+  if (contract.droppedImageFormat > 0) {
+    return "partial-format";
+  }
+  if (contract.droppedImageUnresolved > 0) {
+    return "partial-defect";
+  }
+  return "partial-outside-path";
+}
+
+// Eine lokalisierbare Meldung: bestehender i18n-Schluessel plus die realen Zahlen als Platzhalter.
+export interface ImageTransferNotice {
+  key: string;
+  params: Record<string, number>;
+}
+
+// JOB 513/D3B: je Grenzart der passende, wahrheitsgemaesse Satz. Eine gemeinsame Meldung fuer alle drei
+// Kanten waere in zwei von drei Faellen falsch — genau der Mangel, den BEN2 in D2 beanstandet hat.
+const BUDGET_LIMIT_KEY: Record<ImageBudgetLimitKind, string> = {
+  "body-html": CAPTURE_FILE_TEXT.imagesBudgetBodyHtml,
+  "pptx-single-image": CAPTURE_FILE_TEXT.imagesBudgetSingleImage,
+  "pptx-total-images": CAPTURE_FILE_TEXT.imagesBudgetTotalImages,
+};
+
+// JOB 513/D3B: die serverseitig konvertierten FOLIENBILDER fliessen in DENSELBEN Vertrag wie die
+// eingebetteten Bilder — sonst gaebe es zwei Bilanzen nebeneinander und keine waere die Wahrheit.
+// Verlorene Folienbilder sind Drop-to-fit am finalen Beitragsbudget, also `body-html`; eine andere
+// Grenzart kennt dieser Weg nicht. `null` bleibt `null` (es gab keinen Bildtransfer).
+export function mergeSlideImageTransfer(
+  contract: ImageTransferContract | null,
+  slidesTotal: number,
+  keptSlides: number,
+  bodyBytes: number,
+): ImageTransferContract | null {
+  if (!contract || slidesTotal <= 0) {
+    return contract;
+  }
+  const droppedSlides = Math.max(0, slidesTotal - keptSlides);
+  const budgetDrops =
+    droppedSlides > 0 && contract.bodyBudgetBytes !== null
+      ? addImageBudgetDrop(contract.budgetDrops, "body-html", contract.bodyBudgetBytes, bodyBytes)
+      : contract.budgetDrops.map((d) => ({ ...d }));
+  return {
+    ...contract,
+    attempted: true,
+    totalImages: contract.totalImages + slidesTotal,
+    embeddedImages: contract.embeddedImages + keptSlides,
+    droppedImageBudget: contract.droppedImageBudget + droppedSlides,
+    budgetDrops,
+    bodyBytes,
+  };
+}
+
+// JOB 513/D3B: NUR die Ursachen — was ist warum nicht angekommen. Diese Saetze sind unabhaengig davon
+// wahr, ob das Original spaeter als Anhang gesichert werden konnte, und sie duerfen deshalb schon beim
+// LESEN der Datei gezeigt werden. Alles, was eine Aussage ueber den Anhang trifft, gehoert dagegen in
+// `imageTransferSummary` und damit an den Speicherzeitpunkt (dort ist `originalAttached` erst bekannt).
+export function imageTransferCauseNotices(contract: ImageTransferContract): ImageTransferNotice[] {
+  const notices: ImageTransferNotice[] = [];
+  if (!contract.attempted || contract.totalImages <= 0) {
+    return notices;
+  }
+  if (contract.droppedImageBudget > 0) {
+    notices.push({
+      key: CAPTURE_FILE_TEXT.pptxImagesBudget,
+      params: { count: contract.droppedImageBudget },
+    });
+  }
+  // Je GRENZART der Satz mit dem REALEN Grenzwert. Erst damit ist rekonstruierbar, WELCHE Grenze
+  // gegriffen hat und WIE weit der Bedarf darueber lag.
+  for (const drop of contract.budgetDrops) {
+    notices.push({
+      key: BUDGET_LIMIT_KEY[drop.kind],
+      params: {
+        count: drop.count,
+        limitBytes: drop.limitBytes,
+        actualBytes: drop.actualBytes,
+      },
+    });
+  }
+  if (contract.droppedImageFormat > 0) {
+    notices.push({
+      key: CAPTURE_FILE_TEXT.pptxImagesFormat,
+      params: { count: contract.droppedImageFormat },
+    });
+  }
+  if (contract.droppedImageUnresolved > 0) {
+    notices.push({
+      key: CAPTURE_FILE_TEXT.imagesDefect,
+      params: { count: contract.droppedImageUnresolved },
+    });
+  }
+  if (contract.droppedImageOutsidePath > 0) {
+    notices.push({
+      key: CAPTURE_FILE_TEXT.imagesOutsidePath,
+      params: { count: contract.droppedImageOutsidePath },
+    });
+  }
+  return notices;
+}
+
+export interface ImageTransferSummary {
+  outcome: ImageTransferOutcome;
+  // Alle wahrheitsgemaessen Meldungen zu diesem Ergebnis, Ursache fuer Ursache getrennt.
+  notices: ImageTransferNotice[];
+  // true NUR, wenn wirklich jedes erkannte Bild angekommen ist. JOB 513/D3B: haengt allein am Ausgang —
+  // und der ist bei unausgeglichener Bilanz `unbalanced`, also niemals `all-transferred`.
+  complete: boolean;
+  // JOB 513/D3B: geht die Bilanz auf? false = es bleibt etwas unerklaert; der Aufrufer darf dann unter
+  // keinen Umstaenden Erfolg melden.
+  balanced: boolean;
+  // true, sobald das Bytebudget mindestens ein Bild gekostet hat.
+  budgetLimited: boolean;
+  // JOB 513/D3B: die tatsaechlich ausloesenden Grenzarten mit realem Grenzwert und ausloesendem Bedarf.
+  budgetDrops: ImageBudgetDrop[];
+  // true, wenn eine reale Ursache vorliegt, fuer die es KEINEN wahrheitsgemaessen Satz gibt.
+  // JOB 513/D3B: das ist ab jetzt GENAU der unausgeglichene Rest. Defekte und unaufgeloeste Verweise
+  // haben seit dieser Scheibe eigene DE/EN/NL-Schluessel und zaehlen deshalb nicht mehr dazu.
+  hasUnlocalizedCause: boolean;
+  // Die wirksame Bytegrenze aus der autoritativen Quelle; null = es wirkte keine.
+  bodyBudgetBytes: number | null;
+}
+
+// PFLICHT (Auftrag 5.4): ein budgetbedingter Drop erscheint NIE als uneingeschraenkter Erfolg —
+// `complete` ist dann false, `budgetLimited` true, und die Erfolgsmeldung `imagesKept` wird nicht
+// gewaehlt, sondern die Fassung, die die weggelassenen Bilder ausdruecklich beziffert.
+export function imageTransferSummary(
+  contract: ImageTransferContract,
+  opts: { originalAttached: boolean },
+): ImageTransferSummary {
+  const outcome = imageTransferOutcome(contract);
+  const balanced = imageTransferBalanced(contract);
+  const notices: ImageTransferNotice[] = [];
+  const dropped =
+    contract.droppedImageBudget +
+    contract.droppedImageFormat +
+    contract.droppedImageUnresolved +
+    contract.droppedImageOutsidePath;
+
+  if (outcome !== "no-images" && outcome !== "not-attempted") {
+    // ------------------------------------------------------------------------------------------
+    // KOPFMELDUNG — sie beantwortet zwei Fragen: was ist im Beitrag gelandet, und ist das ORIGINAL
+    // gesichert? JOB 513/D3B (BEN2-D2 Mangel 3 / Ownerauflage): `opts.originalAttached` entscheidet in
+    // JEDEM Zweig mit. Bis D2 wurde im All-dropped-Fall immer `imagesAllDropped` gewaehlt — ein Text,
+    // der ausdruecklich zusagt, das Original werde als Anhang mitgefuehrt. Bei originalAttached === false
+    // war das schlicht falsch.
+    // ------------------------------------------------------------------------------------------
+    if (contract.embeddedImages <= 0) {
+      if (dropped > 0) {
+        notices.push({
+          key: opts.originalAttached
+            ? CAPTURE_FILE_TEXT.imagesAllDropped
+            : CAPTURE_FILE_TEXT.imagesAllDroppedNoOriginal,
+          params: { dropped },
+        });
+      }
+    } else if (contract.droppedImageBudget > 0) {
+      // "… {{dropped}} wegen Groesse weggelassen" — hier zaehlt genau der BUDGET-Anteil; Format-,
+      // Defekt- und Ausserhalb-Anteile bekommen ihre eigene Meldung.
+      notices.push({
+        key: opts.originalAttached
+          ? CAPTURE_FILE_TEXT.imagesKeptDropped
+          : CAPTURE_FILE_TEXT.imagesLost,
+        params: {
+          kept: contract.embeddedImages,
+          compressed: contract.compressedImages,
+          dropped: contract.droppedImageBudget,
+        },
+      });
+    } else if (dropped === 0) {
+      notices.push({
+        key: opts.originalAttached
+          ? CAPTURE_FILE_TEXT.imagesKept
+          : CAPTURE_FILE_TEXT.imagesNoOriginal,
+        params: {
+          kept: contract.embeddedImages,
+          compressed: contract.compressedImages,
+          dropped: 0,
+        },
+      });
+    } else if (!opts.originalAttached) {
+      // JOB 513/D3B (BEN2-D2, Korrekturpflicht 5, zweiter Teil): Teilverlust OHNE Budgetanteil — also
+      // Format, Defekt oder ausserhalb des Bildpfads — UND ohne gesichertes Original. Bis D2 blieb der
+      // fehlende Anhang hier voellig unerwaehnt. Kein Erfolgssatz: nur die ehrliche Tatsache.
+      notices.push({
+        key: CAPTURE_FILE_TEXT.imagesNoOriginal,
+        params: {
+          kept: contract.embeddedImages,
+          compressed: contract.compressedImages,
+          dropped: 0,
+        },
+      });
+    }
+
+    notices.push(...imageTransferCauseNotices(contract));
+  }
+
+  return {
+    outcome,
+    notices,
+    // `all-transferred` setzt eine aufgehende Bilanz voraus (s. imageTransferOutcome) — `complete` kann
+    // damit strukturell nicht mehr true werden, solange etwas unerklaert ist.
+    complete: outcome === "all-transferred",
+    balanced,
+    budgetLimited: contract.droppedImageBudget > 0,
+    budgetDrops: contract.budgetDrops.map((d) => ({ ...d })),
+    // JOB 513/D3B: nur noch der unausgeglichene Rest ist unlokalisiert. Defekt und Ausserhalb-Pfad
+    // haben jetzt echte DE/EN/NL-Saetze (BEN2-D2 Mangel 4 geschlossen).
+    hasUnlocalizedCause: !balanced,
+    bodyBudgetBytes: contract.bodyBudgetBytes,
   };
 }

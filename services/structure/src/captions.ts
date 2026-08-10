@@ -11,8 +11,13 @@ export const LEGACY_IMAGE_CAPTION_PLACEHOLDERS: readonly string[] = [
   "Nog geen afbeeldingsbeschrijving",
 ];
 
+import { IMAGE_ANCHOR_ATTR, isImageAnchorId } from "./sanitize";
+
 const OPEN_TAG = "<figcaption";
 const CLOSE_TAG = "</figcaption>";
+// JOB 509 / R2: Anker-Attributname und Tokenprüfung kommen aus dem Sanitizer — Schreib- und
+// Leseseite der Identität teilen eine Wahrheit (kein zweiter, driftender Vertrag).
+const ANCHOR_ATTR = IMAGE_ANCHOR_ATTR;
 
 // WP-BILD-1f (bens P4): BODY-SPARENDER Scanner. Ein bodyHtml kann megabyte-große base64-src-Blöcke
 // (eingebettete Editor-Bilder) enthalten — eine Regex liefe zeichenweise mit Capture-Gruppen über
@@ -34,11 +39,56 @@ export function searchCaptionTexts(bodyHtml: string | null | undefined): string[
     .map((caption) => caption.slice(0, MAX_CAPTION_TEXT_LENGTH));
 }
 
-export function imageCaptionTexts(bodyHtml: string | null | undefined): string[] {
+// JOB 509 / R2: Der Fußnotentext allein sagt nicht, ZU WELCHEM Bild er gehört — bei zwei gleichen
+// Beschreibungen im selben Body bliebe nur die Position, und die ist keine Identität. Der Scanner
+// gibt deshalb zusätzlich den Anker heraus, den der Sanitizer gesetzt hat. `imageId` ist ehrlich
+// `null`, wenn die Fußnote keinen (oder keinen gültigen) Anker trägt — nichts wird geraten.
+export interface ImageCaptionEntry {
+  readonly imageId: string | null;
+  readonly text: string;
+}
+
+// Anker aus dem (kleinen) figcaption-Open-Tag lesen — reine indexOf-/Zeichenarbeit auf dem
+// Tag-Ausschnitt, nie über den Body (WP-BILD-1f, bens P4: base64-Bilddaten bleiben unberührt).
+function anchorFromOpenTag(openTag: string): string | null {
+  const at = openTag.indexOf(ANCHOR_ATTR);
+  if (at < 0) {
+    return null;
+  }
+  let i = at + ANCHOR_ATTR.length;
+  while (openTag[i] === " ") {
+    i += 1;
+  }
+  if (openTag[i] !== "=") {
+    return null;
+  }
+  i += 1;
+  while (openTag[i] === " ") {
+    i += 1;
+  }
+  const quote = openTag[i];
+  let value: string;
+  if (quote === '"' || quote === "'") {
+    const end = openTag.indexOf(quote, i + 1);
+    if (end < 0) {
+      return null;
+    }
+    value = openTag.slice(i + 1, end);
+  } else {
+    let end = i;
+    while (end < openTag.length && openTag[end] !== " ") {
+      end += 1;
+    }
+    value = openTag.slice(i, end);
+  }
+  return isImageAnchorId(value) ? value : null;
+}
+
+export function imageCaptionEntries(bodyHtml: string | null | undefined): ImageCaptionEntry[] {
   if (!bodyHtml) {
     return [];
   }
-  const out: string[] = [];
+  const out: ImageCaptionEntry[] = [];
   let cursor = 0;
   for (;;) {
     const start = bodyHtml.indexOf(OPEN_TAG, cursor);
@@ -66,9 +116,14 @@ export function imageCaptionTexts(bodyHtml: string | null | undefined): string[]
       .replace(/\s+/g, " ")
       .trim();
     if (text.length > 0 && !LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(text)) {
-      out.push(text);
+      out.push({ imageId: anchorFromOpenTag(bodyHtml.slice(start, openEnd)), text });
     }
     cursor = close + CLOSE_TAG.length;
   }
   return out;
+}
+
+// Textprojektion derselben Einträge — EINE Scannerwahrheit, kein zweiter Durchlauf über den Body.
+export function imageCaptionTexts(bodyHtml: string | null | undefined): string[] {
+  return imageCaptionEntries(bodyHtml).map((entry) => entry.text);
 }

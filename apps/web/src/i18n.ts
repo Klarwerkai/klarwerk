@@ -1205,6 +1205,22 @@ const de = {
     "Bilder übernommen — ohne Text sind keine KI-Vorschläge möglich.",
   "capture.file.imagesAllDropped":
     "Die Bilder konnten nicht in den Beitrag übernommen werden (zu groß oder Format nicht unterstützt) — das Original wird beim Speichern als Anhang mitgeführt.",
+  // JOB 513/D3B: derselbe Fall OHNE gesichertes Original. Der Satz darüber sagt einen Anhang zu; ohne
+  // Original wäre das eine Zusage ohne Deckung. Hier steht deshalb, was wirklich gilt.
+  "capture.file.imagesAllDroppedNoOriginal":
+    "{{dropped}} Bild(er) konnten nicht in den Beitrag übernommen werden, und das Original konnte NICHT als Anhang gesichert werden — diese Bilder sind verloren.",
+  // JOB 513/D3B: defekte/unauflösbare Bildverweise haben jetzt einen echten Grund statt einer Leerstelle.
+  "capture.file.imagesDefect":
+    "{{count}} Bild(er) konnten nicht gelesen werden — der Verweis in der Datei ist defekt oder die Bilddatei fehlt.",
+  "capture.file.imagesOutsidePath":
+    "{{count}} Bild(er) liegen außerhalb des übernommenen Folienbereichs (zum Beispiel Hintergrundbilder) und wurden nicht übernommen.",
+  // JOB 513/D3B: je Grenzart der reale Wert — nicht mehr für alle drei Kanten dieselbe Begründung.
+  "capture.file.imagesBudgetBodyHtml":
+    "Grenze „Beitragstext“: {{count}} Bild(er) passten nicht mehr in den Beitrag (höchstens {{limitBytes}} Byte; gebraucht wurden {{actualBytes}}).",
+  "capture.file.imagesBudgetSingleImage":
+    "Grenze „Einzelbild“: {{count}} Bild(er) sind für sich genommen zu groß (höchstens {{limitBytes}} Byte je Bild; das größte hatte {{actualBytes}}).",
+  "capture.file.imagesBudgetTotalImages":
+    "Grenze „Bildersumme“: {{count}} Bild(er) hätten die Gesamtgröße aller Bilder gesprengt (höchstens {{limitBytes}} Byte; gebraucht wurden {{actualBytes}}).",
   "capture.file.imageCaptionPlaceholder": "Noch keine Bildbeschreibung",
   "capture.file.imagesKept":
     "{{kept}} Bilder übernommen, davon {{compressed}} für die Textansicht komprimiert; das unveränderte Original liegt im Anhang.",
@@ -4148,6 +4164,17 @@ const de = {
   "fd.moreWays": "Mehr Erfassungswege",
   "fd.moreWaysBody":
     "Brauchst du das klassische Formular, Diktat oder das geführte Interview? Der vollständige Erfassen-Bereich hat alle Wege — diese Fläche hier ist der schnelle Einstieg.",
+  // JOB 530: die weiteren Eingabeoptionen hinter dem Aufklappmuster — je Weg ein ehrlicher Satz,
+  // wofür er da ist. Kein Versprechen, das der Weg nicht hält.
+  "fd.options.show": "Weitere Eingabeoptionen anzeigen",
+  "fd.options.hide": "Weitere Eingabeoptionen einklappen",
+  "fd.options.hint.freitext":
+    "Frei erzählen, die KI macht daraus einen Strukturvorschlag, den du prüfst.",
+  "fd.options.hint.diktat": "Sprechen statt tippen — der Text landet im selben Erzählfeld.",
+  "fd.options.hint.interview": "Geführte Rückfragen, wenn du nicht weißt, wo du anfangen sollst.",
+  "fd.options.hint.datei": "Wissen aus einer vorhandenen Datei übernehmen.",
+  "fd.options.hint.formular":
+    "Expertenmodus: dieselben Felder direkt ausfüllen, ohne Erzählschritt.",
   "fd.toastSaved": "Entwurf gespeichert.",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
@@ -5691,6 +5718,20 @@ const en: typeof de = {
     "Images carried over — without text, AI suggestions are not possible.",
   "capture.file.imagesAllDropped":
     "The images could not be carried into the article (too large or format not supported) — the original travels along as an attachment when saving.",
+  // JOB 513/D3B — see the German block: the line above promises an attachment; without a secured
+  // original that promise has no backing.
+  "capture.file.imagesAllDroppedNoOriginal":
+    "{{dropped}} image(s) could not be carried into the article, and the original could NOT be saved as an attachment — those images are lost.",
+  "capture.file.imagesDefect":
+    "{{count}} image(s) could not be read — the reference in the file is broken or the image file is missing.",
+  "capture.file.imagesOutsidePath":
+    "{{count}} image(s) sit outside the imported slide area (background images, for example) and were not carried over.",
+  "capture.file.imagesBudgetBodyHtml":
+    "Limit “article text”: {{count}} image(s) no longer fit into the article (at most {{limitBytes}} bytes; {{actualBytes}} were needed).",
+  "capture.file.imagesBudgetSingleImage":
+    "Limit “single image”: {{count}} image(s) are too large on their own (at most {{limitBytes}} bytes per image; the largest was {{actualBytes}}).",
+  "capture.file.imagesBudgetTotalImages":
+    "Limit “total images”: {{count}} image(s) would have exceeded the combined size of all images (at most {{limitBytes}} bytes; {{actualBytes}} were needed).",
   "capture.file.imageCaptionPlaceholder": "No image description yet",
   "capture.file.imagesKept":
     "{{kept}} images imported, {{compressed}} of them compressed for the text view; the unchanged original is in the attachment.",
@@ -8382,6 +8423,15 @@ const en: typeof de = {
   "fd.moreWays": "More capture paths",
   "fd.moreWaysBody":
     "Need the classic form, dictation or the guided interview? The full capture area has every path — this surface here is the fast entry point.",
+  "fd.options.show": "Show more input options",
+  "fd.options.hide": "Collapse more input options",
+  "fd.options.hint.freitext":
+    "Tell it freely; the AI turns it into a structure proposal that you review.",
+  "fd.options.hint.diktat": "Speak instead of typing — the text lands in the same telling field.",
+  "fd.options.hint.interview": "Guided follow-up questions when you don't know where to start.",
+  "fd.options.hint.datei": "Take knowledge from an existing file.",
+  "fd.options.hint.formular":
+    "Expert mode: fill the same fields directly, without the telling step.",
   "fd.toastSaved": "Draft saved.",
   "fd.toastSubmitted": "Submitted for review.",
   "fd.confirmDiscard": "Discard input? Unsaved content will be lost.",
@@ -9776,6 +9826,20 @@ const nl: typeof de = {
     "Afbeeldingen overgenomen — zonder tekst zijn er geen KI-voorstellen mogelijk.",
   "capture.file.imagesAllDropped":
     "De afbeeldingen konden niet in het artikel worden overgenomen (te groot of formaat niet ondersteund) — het origineel gaat bij het opslaan mee als bijlage.",
+  // JOB 513/D3B — zie het Duitse blok: de regel hierboven zegt een bijlage toe; zonder veiliggesteld
+  // origineel heeft die toezegging geen dekking.
+  "capture.file.imagesAllDroppedNoOriginal":
+    "{{dropped}} afbeelding(en) konden niet in het artikel worden overgenomen, en het origineel kon NIET als bijlage worden veiliggesteld — die afbeeldingen zijn verloren.",
+  "capture.file.imagesDefect":
+    "{{count}} afbeelding(en) konden niet worden gelezen — de verwijzing in het bestand is defect of het afbeeldingsbestand ontbreekt.",
+  "capture.file.imagesOutsidePath":
+    "{{count}} afbeelding(en) liggen buiten het overgenomen diagebied (bijvoorbeeld achtergrondafbeeldingen) en zijn niet overgenomen.",
+  "capture.file.imagesBudgetBodyHtml":
+    "Grens „artikeltekst”: {{count}} afbeelding(en) pasten niet meer in het artikel (hoogstens {{limitBytes}} byte; nodig waren {{actualBytes}}).",
+  "capture.file.imagesBudgetSingleImage":
+    "Grens „losse afbeelding”: {{count}} afbeelding(en) zijn op zichzelf te groot (hoogstens {{limitBytes}} byte per afbeelding; de grootste had {{actualBytes}}).",
+  "capture.file.imagesBudgetTotalImages":
+    "Grens „som van alle afbeeldingen”: {{count}} afbeelding(en) zouden de totale omvang van alle afbeeldingen hebben overschreden (hoogstens {{limitBytes}} byte; nodig waren {{actualBytes}}).",
   "capture.file.imageCaptionPlaceholder": "Nog geen afbeeldingsbeschrijving",
   "capture.file.imagesKept":
     "{{kept}} afbeeldingen overgenomen, waarvan {{compressed}} gecomprimeerd voor de tekstweergave; het ongewijzigde origineel zit in de bijlage.",
@@ -12456,6 +12520,14 @@ const nl: typeof de = {
   "fd.moreWays": "Meer vastleg-wegen",
   "fd.moreWaysBody":
     "Heb je het klassieke formulier, dictaat of het begeleide interview nodig? Het volledige vastleg-gebied heeft alle wegen — dit vlak hier is de snelle instap.",
+  "fd.options.show": "Meer invoeropties tonen",
+  "fd.options.hide": "Meer invoeropties inklappen",
+  "fd.options.hint.freitext":
+    "Vertel vrijuit; de AI maakt er een structuurvoorstel van dat jij controleert.",
+  "fd.options.hint.diktat": "Spreken in plaats van typen — de tekst komt in hetzelfde vertelveld.",
+  "fd.options.hint.interview": "Begeleide vervolgvragen als je niet weet waar je moet beginnen.",
+  "fd.options.hint.datei": "Kennis uit een bestaand bestand overnemen.",
+  "fd.options.hint.formular": "Expertmodus: dezelfde velden direct invullen, zonder vertelstap.",
   "fd.toastSaved": "Concept opgeslagen.",
   "fd.toastSubmitted": "Ter beoordeling ingediend.",
   "fd.confirmDiscard": "Invoer verwerpen? Niet-opgeslagen inhoud gaat verloren.",

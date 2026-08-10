@@ -30,6 +30,16 @@ import {
   assistActionInstructionKey,
   assistActionLabelKey,
 } from "../lib/captureAiAssist";
+// JOB 530: die weiteren Eingabeoptionen dieser Seite — Liste, Copy-Schlüssel und der gemerkte
+// Aufklappzustand kommen aus DEM Helfer, den auch der Erfassen-Bereich benutzt (Begründung dort).
+import {
+  FRONT_DOOR_OPTIONS_TEXT,
+  FRONT_DOOR_OPTION_MODES,
+  frontDoorOptionHintKey,
+  frontDoorOptionLabelKey,
+  frontDoorOptionsOpen,
+  rememberFrontDoorOptionsOpen,
+} from "../lib/captureEntry";
 import {
   FRONT_DOOR_STRUCTURING_UNAVAILABLE_KEY,
   buildFrontDoorPayload,
@@ -144,6 +154,23 @@ export function CaptureFrontDoor(): JSX.Element {
   // Vorgang der richtige Ausweg ist. Die Oberfläche BIETET die Handlung sichtbar an — sie führt sie
   // nicht hinter dem Rücken des Nutzers aus (mega22 Block E, dieselbe Regel).
   const [restartOffer, setRestartOffer] = useState<string | null>(null);
+  // JOB 530: Aufklappzustand der weiteren Eingabeoptionen. Zwei bewusste Entscheidungen:
+  //  · EIGENER Seitenzustand — deshalb setzt ihn kein Tippen, kein KI-Vorschlag und kein geladener
+  //    Entwurf zurück. Ein aus dem Render abgeleiteter Wert (etwa „offen, solange leer") hätte genau
+  //    das getan und die Fläche unter der Hand wieder zugeklappt.
+  //  · Lazy-Initialisierung aus dem Browser, gleiche Bauart wie `firstRun` im Erfassen-Bereich
+  //    (Capture.tsx): einmal beim Betreten gelesen, nicht bei jedem Render.
+  const [optionsOpen, setOptionsOpen] = useState<boolean>(() =>
+    frontDoorOptionsOpen(window.localStorage),
+  );
+
+  // Der Wechsel wird sofort gemerkt — die Wahl gilt beim nächsten Besuch weiter. Bewusst NICHT im
+  // Zustandsaktualisierer: der darf keine Nebenwirkung haben (React ruft ihn doppelt auf).
+  const toggleOptions = (): void => {
+    const next = !optionsOpen;
+    setOptionsOpen(next);
+    rememberFrontDoorOptionsOpen(window.localStorage, next);
+  };
 
   // SCRUM-474 P1: ausführliche ?-Hilfen aus der zentralen Erfassen-Hilfekarte (lib/captureHelp),
   // gleiches Muster wie im Prüfbereich (reviewHelp) und im geführten Erfassen (Capture.tsx).
@@ -1232,6 +1259,52 @@ export function CaptureFrontDoor(): JSX.Element {
             {/* SCRUM-488: keine interne Migrationssprache — was der vollständige Bereich dem Nutzer bietet. */}
             <SectionLabel>{t("fd.moreWays")}</SectionLabel>
             <p className="text-sm leading-relaxed text-muted">{t("fd.moreWaysBody")}</p>
+            {/* ============================================================================
+                JOB 530 — DIE WEITEREN EINGABEOPTIONEN SIND JETZT WEGE, NICHT NUR EIN SATZ.
+                ============================================================================
+                Der Absatz darüber sagte, dass es „alle Wege" gibt, und zeigte keinen einzigen.
+                Hier stehen sie einzeln — hinter GENAU dem Aufklappmuster, das der Erfassen-Bereich
+                für „Weitere Wege" schon benutzt (Knopf mit aria-expanded/aria-controls, zugeklappter
+                Start). Zugeklappt bleibt der Erfassungsstart ruhig; aufgeklappt fällt die Wahl
+                sichtbar, bevor der Nutzer die Seite verlässt.
+
+                GuardedLink, nicht <Link>: das Verlassen der Vordertür MIT ungespeichertem Inhalt ist
+                genau der Verlustpfad aus KW-E2E-002. Diese fünf Ausgänge melden sich an derselben
+                Vorrichtung an wie „Alle Erfassungs-Modi" oben — kein sechster Ausgang am Wächter
+                vorbei. Ziel ist `/erfassen`; der Modus wird dort gewählt, denn die Erfassen-Seite
+                nimmt (Bestand, unverändert) keinen Modus aus der Adresse entgegen. */}
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full justify-between"
+              onClick={toggleOptions}
+              aria-expanded={optionsOpen}
+              aria-controls="frontdoor-more-options"
+              data-testid="frontdoor-more-options-toggle"
+            >
+              {optionsOpen
+                ? `${t(FRONT_DOOR_OPTIONS_TEXT.hide)} ▴`
+                : `${t(FRONT_DOOR_OPTIONS_TEXT.show)} ▾`}
+            </Button>
+            {optionsOpen ? (
+              <ul id="frontdoor-more-options" className="space-y-1.5 border-t border-hairline pt-2">
+                {FRONT_DOOR_OPTION_MODES.map((mode) => (
+                  <li key={mode}>
+                    <GuardedLink
+                      className="block rounded-card border border-hairline px-2.5 py-1.5 hover:border-ink/30 hover:bg-page"
+                      to="/erfassen"
+                    >
+                      <span className="block text-[13px] font-semibold text-ink">
+                        {t(frontDoorOptionLabelKey(mode))}
+                      </span>
+                      <span className="mt-0.5 block text-[12px] leading-relaxed text-muted">
+                        {t(frontDoorOptionHintKey(mode))}
+                      </span>
+                    </GuardedLink>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
           </Card>
         </aside>
       </div>
