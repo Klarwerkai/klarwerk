@@ -183,6 +183,7 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
     // Deterministisch über die injizierbare Uhr des KoService — kein Cron, kein Warten.
     let clock = Date.parse("2026-07-03T12:00:00.000Z");
     const service = new KoService({ repo: new InMemoryKoRepo(), now: () => clock });
+    await service.activateSearchProjectionV2();
     const ko = await service.create({
       title: "Frist-Test",
       statement: "Läuft ab.",
@@ -227,6 +228,7 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
         purgeHookCalls++;
       },
     });
+    await service.activateSearchProjectionV2();
     const ko = await service.create({
       title: "Abgelaufen",
       statement: "im Papierkorb, Frist vorbei",
@@ -264,6 +266,7 @@ describe("SCRUM-422: Papierkorb für gelöschte Wissensobjekte", () => {
       now: () => clock,
       onPurge: async (id, actor) => {
         purged.push({ id, actor });
+        await service.activateSearchProjectionV2();
       },
     });
     const auto = await service.create({
@@ -519,6 +522,8 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       list: (filter) => inner.list(filter),
       // WP-BILD-1g: Suchpfad-Projektion + Caption-Backfill einfach durchreichen.
       listForSearch: (filter) => inner.listForSearch(filter),
+      // G27: neue Vertragsmethode (gezielter Mehrfach-Nachschlag) — reines Durchreichen.
+      listByIds: (ids) => inner.listByIds(ids),
       setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
       // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen.
       setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
@@ -664,6 +669,7 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       const audit = new AuditService({ repo: auditRepo });
       const clock = { value: Date.parse("2026-07-03T12:00:00.000Z") };
       const service = new KoService({ repo: koRepo, audit, withTx, now: () => clock.value });
+      await service.activateSearchProjectionV2();
 
       const ko = await service.create({
         title: `Erfolg (${path})`,
@@ -697,6 +703,7 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
         withTx,
         now: () => clock.value,
       });
+      await service.activateSearchProjectionV2();
 
       const ko = await service.create({
         title: `Delete scheitert (${path})`,
@@ -748,6 +755,7 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
         withTx,
         now: () => clock.value,
       });
+      await service.activateSearchProjectionV2();
 
       const ko = await service.create({
         title: `Audit scheitert (${path})`,

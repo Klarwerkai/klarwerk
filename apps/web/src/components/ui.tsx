@@ -58,13 +58,33 @@ export function PageHeader({
   );
 }
 
+// AUFTRAG-smoketor BLOCK A — DER ANKER, DEN ES NIE GAB.
+//
+// `Ask.tsx:712` schrieb `data-testid="ask-answer"` an `<Card>`, Zeile 1080 dasselbe mit `ask-gap`.
+// Beide Anker entstanden im DOM NIE: die Signatur unten nahm nur die fünf benannten Props und
+// reichte keine Restattribute weiter. Drei Fälle des Browser-Smoke hingen daran, in allen drei
+// Engines — und `tests-smoke/ui-smoke.spec.ts` sicherte zusätzlich zu, dass genau diese beiden
+// Anker NULL mal vorkommen. Diese Zusicherung war strukturell immer erfüllt.
+//
+// WARUM WEDER COMPILER NOCH LINT DAS SAHEN, und das ist der Grund, warum hier die GANZE Klasse
+// geschlossen wird statt der zwei Aufrufstellen: TypeScript prüft JSX-Attribute, deren Name kein
+// gültiger Bezeichner ist (alles mit Bindestrich), NICHT gegen den Props-Typ. `<Card data-foo>`
+// kompiliert deshalb fehlerfrei und verpufft. Ein Anker, den man an ein inneres `<div>` verschiebt,
+// repariert zwei Zeilen und lässt die Falle für jedes künftige `data-*` an einer Karte stehen.
+//
+// Bewusst NUR `data-*` und bewusst kein `HTMLAttributes<HTMLDivElement>`: `className`, `id` und
+// `onClick` bleiben die benannten Props mit ihrer Sonderlogik (`interactive`), und die Karte wird
+// nicht zum beliebig beschreibbaren `div`.
+type DatenAnker = { [K in `data-${string}`]?: string };
+
 export function Card({
   children,
   className,
   id,
   onClick,
   interactive = true,
-}: {
+  ...datenAnker
+}: DatenAnker & {
   children: ReactNode;
   className?: string;
   // Optionaler Anker für Deep-Links/Sprungmarken (SCRUM-227). Rein additiv.
@@ -94,6 +114,7 @@ export function Card({
     : undefined;
   return (
     <div
+      {...datenAnker}
       id={id}
       onClick={onClick}
       onKeyDown={handleKeyDown}

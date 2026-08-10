@@ -163,3 +163,38 @@ export type {
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener
 // Aufrufer (heute die extract-Route) muss ihn bilden können, ohne model-runs direkt zu kennen.
 export type { ModelRunContext, ModelRunSubject } from "../model-runs";
+
+// ================================================================================================
+// W1 S4 — KLARA POLICY RESOLVER, SITZUNG UND ZUSTIMMUNG (KW-S4-02/03/04)
+// ================================================================================================
+//
+// ÖFFENTLICH, WEIL DER APP-LAYER SIE BRAUCHT. `.dependency-cruiser.cjs` erlaubt Cross-Modul-Importe
+// ausschliesslich über diese index.ts; ohne die Exporte wäre jeder Zugriff aus
+// `services/app/src/**` ein Grenzverstoss. Die Entscheidungslogik selbst bleibt im Modul — die App
+// ruft den Resolver, sie rechnet ihn nicht nach (KW-S4-04 §129: keine Klara-eigene Kopie).
+export {
+  resolveKlaraPolicy,
+  klaraPolicyVersion,
+  klaraConfigurationVersion,
+  KLARA_MODES,
+  KLARA_RESOLUTION_TTL_MS,
+  KLARA_EXTERNAL_EXECUTION_MIGRATED,
+  KLARA_DETERMINISTIC_PROVIDER,
+  KLARA_DETERMINISTIC_MODEL,
+  type KlaraMode,
+  type KlaraDeviationReason,
+  type KlaraResolution,
+  type KlaraPolicyInput,
+} from "./src/klara-policy";
+// Die DDL-Konstanten sind migrationspflichtig: `services/app/src/db.migrate.test.ts` erzwingt für
+// JEDE exportierte `*_SCHEMA`-Konstante mit CREATE TABLE die Nennung in `migrate()`.
+export {
+  KLARA_SESSION_SCHEMA,
+  KLARA_CONSENT_SCHEMA,
+  InMemoryKlaraSessionRepo,
+  PgKlaraSessionRepo,
+  type KlaraSession,
+  type KlaraConsent,
+  type KlaraConsentStatus,
+  type KlaraSessionRepo,
+} from "./src/klara-policy-store";

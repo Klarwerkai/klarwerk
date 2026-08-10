@@ -67,6 +67,7 @@ import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeConte
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
+import { schreibeBeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -162,12 +163,8 @@ async function settle(ms = 0): Promise<void> {
   });
 }
 
-// Getippten Text über den nativen Setter setzen, damit Reacts onChange feuert.
-function typeInto(el: HTMLTextAreaElement, text: string): void {
-  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
-  setter?.call(el, text);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-}
+// AUFTRAG-mega84 Block B: das Feld ist ein contentEditable (fett/kursiv/Umbruch) — geschrieben
+// wird es über die Naht, die alle Bildbeschreibungs-Tests teilen (`schreibeBeschreibung`).
 
 describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibung", () => {
   it("Galerie-Großansicht → „Bildbeschreibung bearbeiten“ öffnet DAS Formular; Vorschlag läuft über den EINEN describe-Weg", async () => {
@@ -200,7 +197,7 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
     await settle();
 
     // 3. Es öffnet sich DAS bestehende Formular (mega9 Block F) — kein zweites.
-    const field = container.querySelector<HTMLTextAreaElement>("#caption-form-text");
+    const field = container.querySelector<HTMLElement>("#caption-form-text");
     expect(field, "das Bildbeschreibungs-Formular ist nicht offen").not.toBeNull();
     if (!field) {
       return;
@@ -208,7 +205,7 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
 
     // 4. Die Fußnote wird BEARBEITET …
     await act(async () => {
-      typeInto(field, "Kesselzulauf mit Manometer");
+      schreibeBeschreibung("Kesselzulauf mit Manometer");
     });
 
     // … und der Vorschlag angefordert — über den EINEN describe-Aufruf, mit umgebendem Text.

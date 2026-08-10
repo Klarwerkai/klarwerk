@@ -17,7 +17,12 @@ function koInput(overrides: Partial<CreateKoInput> = {}): CreateKoInput {
 }
 
 async function svc() {
-  return new KoService({ repo: new InMemoryKoRepo() });
+  const dienst = new KoService({ repo: new InMemoryKoRepo() });
+  // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
+  // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
+  // In der echten App tut das die Startorchestrierung in build-app.ts.
+  await dienst.activateSearchProjectionV2();
+  return dienst;
 }
 
 describe("SCRUM-361: KoService.findCandidates (InMemory)", () => {

@@ -76,7 +76,11 @@ describe("WP-BILD-1e: Fußnoten-Extraktion (pure)", () => {
 describe("WP-BILD-1e: Bibliotheks-Suche findet Bild-Fußnoten (echte Services)", () => {
   const create = async () => {
     const services = buildServices();
-    buildApp(services);
+    // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §3: `buildApp` VERDRAHTET nur — in Betrieb
+    // geht die App im `onReady`-Hook, den `ready()`/`inject()`/`listen()` auslösen. Ohne ihn bleibt
+    // der Control-State auf `UNINITIALIZED` und die Standardsuche fail-closed. Das ist dieselbe
+    // Reihenfolge wie im echten Start, keine Testeigenheit.
+    await buildApp(services).ready();
     await services.ko.create({
       title: "Dosierpumpe warten",
       statement: "Regelmäßig entlüften.",

@@ -5,7 +5,9 @@ Tests werden **aus Anforderungen/Akzeptanzkriterien** erzeugt — niemals aus be
 
 ## Arten
 - **API-Tests** (`/tests/api`): je Modul gegen echte DB im Container (Testcontainers). Prüfen HTTP-Antworten, DB-Zustand, ausgelöste Domain Events.
-- **Workflow-/E2E-Tests** (`/tests/workflows`): gesamte Umgebung + n8n hochgefahren, reale Workflows ausgelöst. Externe Systeme (Notion/Jira/Mail) mit WireMock/Mock simuliert — keine echten Seiteneffekte.
+- **Workflow-/E2E-Tests** (`/tests/workflows`): Wenn ein n8n-Integrationsworkflow durch eigenen
+  ADR eingeführt wurde, wird die gesamte benötigte Umgebung hochgefahren und der reale Workflow
+  ausgelöst. Externe Systeme werden mit WireMock/Mock simuliert — keine echten Seiteneffekte.
 - **Contract-Tests** (`/tests/contracts`): API- und Event-Schemata.
 
 ## Akzeptanz-Gate

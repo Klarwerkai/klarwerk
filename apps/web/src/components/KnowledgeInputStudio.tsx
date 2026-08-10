@@ -55,6 +55,7 @@ export function KnowledgeInputStudio({
   externalStage = "search_on_click",
   enrichLocale = "de",
   onAttachFiles,
+  documentTitle,
 }: {
   open: boolean;
   onClose: () => void;
@@ -72,6 +73,15 @@ export function KnowledgeInputStudio({
   // Pedi 06.07.: Datei/Bild vom Rechner direkt im Studio als Anhang hinzufügen (Bild → Bildanhang,
   // sonst Dokumentanhang). Wird vom Eltern-Capture bereitgestellt; fehlt der Callback, bleibt der Knopf aus.
   onAttachFiles?: (files: File[]) => void | Promise<void>;
+  // AUFTRAG-mega84 Block C: der Titel des Beitrags gehört zum Dokument-Kontext des
+  // KI-Bildbeschreibungs-Vorschlags (WP-BILD-1f, `collectImageContext`). Er fehlte hier — das
+  // Studio kannte den Titel gar nicht und reichte deshalb Kontext OHNE ihn weiter. Kein neuer
+  // Egress: der Titel reist im SELBEN describe-Aufruf wie das Bild, im vorhandenen Budget.
+  //
+  // AUFTRAG-mega85 Block D: PFLICHT, aus demselben Grund wie am RichTextEditor — das Studio ist der
+  // zweite Träger der Bildbeschreibung, und ein optionaler Durchreicher ist genauso vergessbar wie
+  // ein optionaler Prop. Der Compiler zählt die Einbindungen jetzt selbst auf.
+  documentTitle: string;
 }): JSX.Element | null {
   const { t } = useTranslation();
   // Interner Entwurf: beim Öffnen aus dem aktuellen Body initialisiert; Änderungen bleiben lokal,
@@ -345,6 +355,7 @@ export function KnowledgeInputStudio({
                   images={images}
                   files={files}
                   onAttachFiles={onAttachFiles}
+                  documentTitle={documentTitle}
                   aiPanel={
                     <AiAssistBox
                       text={bodyTextForAssist(draft)}

@@ -1,9 +1,16 @@
 import {
+  type ExternalSourceRecord,
   type ImportCandidate,
   type ImportItem,
+  type ImportRun,
+  type ImportRunCounters,
+  type ImportRunItemRef,
+  type ImportRunStatus,
   LibraryError,
   type ReviewAction,
   type ReviewStatus,
+  istImportItemOutcome,
+  istImportRunStatus,
 } from "./types";
 
 // WP-SHIP8-CLOSE-3 (bens ROT-2): der OFFENE Idempotenzraum der Review-Queue. Ein geclaimter
@@ -307,5 +314,454 @@ export class InMemoryCandidateRepo implements CandidateRepo {
       }
     }
     return Promise.resolve(removed);
+  }
+}
+
+// ================================================================================================
+// W2-A (KW-W2-17 Zeilen 35-39) — DIE REVISIONSIDENTITAET UND IHR REPO-VERTRAG
+// ================================================================================================
+
+/**
+ * Die kanonische Normalisierung des Quellsystems fuer BEIDE Identitaeten: getrimmt und
+ * kleingeschrieben, damit „Confluence", „confluence" und „ Confluence " dieselbe Quelle sind.
+ *
+ * BEWUSST OHNE den `confluence`-Rueckfall von `importProviderKey`. Dort ist er richtig: er heilt
+ * echten Altbestand, der vor Einfuehrung des Provider-Schluessels entstand. Hier gibt es keinen
+ * Altbestand — `sourceSystem` ist ein Pflichtfeld eines neuen Typs, und ein leerer Wert waere
+ * kein Altfall, sondern ein Fehler. Ihn stillschweigend zu Confluence zu machen hiesse, eine
+ * Tatsache zu erfinden; deshalb weist der Insert ihn zurueck (s. `pruefeRevisionsidentitaet`).
+ */
+export function externalSourceSystemKey(sourceSystem: string): string {
+  return sourceSystem.trim().toLowerCase();
+}
+
+/** Die FACHLICHE Quellenidentitaet: sourceSystem + externalId — „welche Seite". */
+export function externalSourceIdentityKey(sourceSystem: string, externalId: string): string {
+  return `${externalSourceSystemKey(sourceSystem)}::${externalId}`;
+}
+
+/** Die REVISIONSIDENTITAET: sourceSystem + externalId + sourceVersion — „welcher Stand". */
+export function externalSourceRevisionKey(
+  sourceSystem: string,
+  externalId: string,
+  sourceVersion: number,
+): string {
+  return `${externalSourceIdentityKey(sourceSystem, externalId)}@${sourceVersion}`;
+}
+
+/**
+ * Die Obergrenze der Quellversion. Sie ist KEINE Willkuer, sondern die Lehre aus der
+ * `source_version`-Migration weiter oben in diesem Modul: eine Ziffernfolge ohne Laengengrenze
+ * passiert jeden Regex-Guard und laeuft danach am `::int` ueber. Neun Stellen liegen sicher unter
+ * `2^31-1`; die Pruefung sitzt hier an der Grenze, nicht erst in der Datenbank.
+ */
+export const MAX_SOURCE_VERSION = 999_999_999;
+
+/**
+ * Fail-closed am Repo-Rand: eine Revision ohne vollstaendige, wohlgeformte Identitaet wird NICHT
+ * gespeichert. Der Grund ist die Eindeutigkeit selbst — ein leeres Quellsystem oder eine
+ * gebrochene Version machen den Unique-Vertrag loechrig, und zwar still.
+ */
+export function pruefeRevisionsidentitaet(record: ExternalSourceRecord): void {
+  if (externalSourceSystemKey(record.sourceSystem).length === 0) {
+    throw new LibraryError("BAD_REQUEST", "Quellrevision ohne Quellsystem.");
+  }
+  if (record.externalId.trim().length === 0) {
+    throw new LibraryError("BAD_REQUEST", "Quellrevision ohne externalId.");
+  }
+  if (
+    !Number.isInteger(record.sourceVersion) ||
+    record.sourceVersion < 0 ||
+    record.sourceVersion > MAX_SOURCE_VERSION
+  ) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      `Quellrevision mit ungueltiger sourceVersion (erlaubt: ganzzahlig 0..${MAX_SOURCE_VERSION}).`,
+    );
+  }
+  if (record.sourceRecordId.trim().length === 0) {
+    throw new LibraryError("BAD_REQUEST", "Quellrevision ohne sourceRecordId.");
+  }
+}
+
+/**
+ * DER SCHNAPPSCHUSS — die Unveraenderlichkeit als Laufzeitzusage statt als `readonly`.
+ *
+ * BENs Nachpruefung 33 (Befund A) hat den wunden Punkt getroffen: `readonly` im Interface ist eine
+ * Uebersetzungshilfe, keine Zusage zur Laufzeit, und `sourceMetadata` war ohnehin nur FLACH
+ * readonly. Wer dieselbe Objektreferenz ablegt und wieder herausgibt, hat nichts unveraenderlich
+ * gemacht — er hat nur aufgeschrieben, dass man es nicht tun soll.
+ *
+ * WARUM DIE JSON-RUNDREISE UND NICHT `structuredClone`. Der Massstab ist nicht „irgendeine tiefe
+ * Kopie", sondern PostgreSQL: dort geht der Datensatz durch `JSON.stringify` in eine
+ * `jsonb`-Spalte und kommt als frisch geparstes Objekt zurueck. Genau diese Rundreise wird hier
+ * nachgebildet — mit allen Folgen, die `jsonb` auch hat (ein `undefined` im `sourceMetadata`
+ * verschwindet in beiden Ablagen, ein Wert, der sich nicht serialisieren laesst, scheitert in
+ * beiden). `structuredClone` waere tiefer als die Datenbank und haette damit eine ZWEITE Semantik
+ * eingefuehrt — also genau das, was die Paritaet zerstoert.
+ */
+function externalSourceSnapshot(record: ExternalSourceRecord): ExternalSourceRecord {
+  return JSON.parse(JSON.stringify(record)) as ExternalSourceRecord;
+}
+
+/**
+ * Persistenz-Schnittstelle der Quellrevisionen (KW-W2-17 Zeilen 18-41).
+ *
+ * ES GIBT KEIN `update` UND KEIN `delete`. Das ist die Unveraenderlichkeit, ausgedrueckt im
+ * Vertrag statt in einem Kommentar: was der Aufrufer nicht aufrufen kann, kann er auch nicht
+ * versehentlich tun. Eine neue Quellversion ist eine neue Zeile — nie ein Ueberschreiben.
+ */
+export interface ExternalSourceRepo {
+  /**
+   * IDEMPOTENTER Insert ueber die Revisionsidentitaet. `true` = diese Revision war neu und wurde
+   * angelegt; `false` = sie existierte bereits und die VORHANDENE Zeile bleibt unangetastet.
+   *
+   * Auf PostgreSQL ein `ON CONFLICT DO NOTHING` gegen einen echten Unique-Index — damit legen
+   * selbst NEBENLAEUFIGE Laeufe keine zweite Zeile an. Der InMemory-Zweig spiegelt dieselbe Zusage.
+   */
+  /**
+   * WIRFT `LibraryError("CONFLICT")`, wenn die interne `sourceRecordId` bereits an eine ANDERE
+   * Revision vergeben ist. Das ist kein neuer Vertrag, sondern der bereits vorhandene
+   * PostgreSQL-Primaerschluessel, endlich in beiden Ablagen gleich benannt (BEN-33 Befund B).
+   */
+  insertIfAbsent(record: ExternalSourceRecord): Promise<boolean>;
+  /** Die konkrete Revision — oder undefined. */
+  findByRevision(
+    sourceSystem: string,
+    externalId: string,
+    sourceVersion: number,
+  ): Promise<ExternalSourceRecord | undefined>;
+  /** Nachschlag ueber die interne Klarwerk-Id. */
+  findById(sourceRecordId: string): Promise<ExternalSourceRecord | undefined>;
+  /** Alle Revisionen EINER Quelle, aufsteigend nach `sourceVersion`. */
+  listBySource(sourceSystem: string, externalId: string): Promise<ExternalSourceRecord[]>;
+  /** Die hoechste bekannte Version dieser Quelle — oder undefined, wenn es keine gibt. */
+  latestVersion(sourceSystem: string, externalId: string): Promise<number | undefined>;
+}
+
+export class InMemoryExternalSourceRepo implements ExternalSourceRepo {
+  /** Schluessel ist die REVISIONSIDENTITAET — nicht die sourceRecordId. */
+  private readonly nachRevision = new Map<string, ExternalSourceRecord>();
+  /**
+   * Der zweite Index: interne Id → Revisionsschluessel. Er hat zwei Aufgaben, und beide kommen aus
+   * BEN-33 Befund B. Erstens macht er die interne Id EINDEUTIG, so wie es der
+   * PostgreSQL-Primaerschluessel tut. Zweitens macht er `findById` deterministisch: die fruehere
+   * Schleife ueber alle Werte lieferte bei doppelt vergebener Id das, was in der Map zufaellig
+   * zuerst lag — eine Antwort, die von der Einfuegereihenfolge abhing.
+   */
+  private readonly revisionNachId = new Map<string, string>();
+
+  /**
+   * BEWUSST `async`, obwohl nichts erwartet wird — und das ist keine Formalie.
+   *
+   * `pruefeRevisionsidentitaet` WIRFT. Ohne `async` fluege der Fehler SYNCHRON aus dem Aufruf
+   * heraus, waehrend derselbe Fehler im Pg-Adapter (dort ist die Methode `async`) als abgelehntes
+   * Promise ankaeme. Derselbe Vertrag verhielte sich je Ablage verschieden — genau die Parität,
+   * die Akzeptanzkriterium 6 verlangt, waere am Fehlerweg gebrochen. Der Unit-Test hat das
+   * aufgedeckt; `async` stellt beide Ablagen gleich.
+   */
+  async insertIfAbsent(record: ExternalSourceRecord): Promise<boolean> {
+    pruefeRevisionsidentitaet(record);
+    const key = externalSourceRevisionKey(
+      record.sourceSystem,
+      record.externalId,
+      record.sourceVersion,
+    );
+    // Pruefen und Setzen ohne `await` dazwischen — dieselbe Unteilbarkeit wie im
+    // ON-CONFLICT-Insert von PostgreSQL (Muster: InMemoryCandidateRepo.insertIfAbsent).
+    //
+    // DIE REIHENFOLGE DER BEIDEN PRUEFUNGEN IST DIE PARITAET, nicht Geschmack. PostgreSQL prueft
+    // beim `ON CONFLICT (source_system, external_id, source_version_key) DO NOTHING` ZUERST den
+    // Arbiter-Index: trifft der Datensatz dieselbe Revision, ist das Ergebnis ein stiller No-op —
+    // auch dann, wenn die interne Id gleich ist. Erst wenn die Revision NEU ist und die interne Id
+    // schon vergeben, schlaegt der Primaerschluessel zu. Genau so urteilt es hier. Waere es
+    // umgekehrt, wuerde ein harmloser Wiederholungslauf derselben Quellversion ploetzlich werfen.
+    if (this.nachRevision.has(key)) {
+      return false;
+    }
+    if (this.revisionNachId.has(record.sourceRecordId)) {
+      throw new LibraryError(
+        "CONFLICT",
+        `Die interne Quellrevisions-Id ${record.sourceRecordId} ist bereits an eine andere Revision vergeben.`,
+      );
+    }
+    // Erst ab hier wird geschrieben: eine abgewiesene Revision hinterlaesst KEINE halbe Spur.
+    this.nachRevision.set(key, externalSourceSnapshot(record));
+    this.revisionNachId.set(record.sourceRecordId, key);
+    return true;
+  }
+
+  findByRevision(
+    sourceSystem: string,
+    externalId: string,
+    sourceVersion: number,
+  ): Promise<ExternalSourceRecord | undefined> {
+    return Promise.resolve(
+      this.schnappschuss(externalSourceRevisionKey(sourceSystem, externalId, sourceVersion)),
+    );
+  }
+
+  findById(sourceRecordId: string): Promise<ExternalSourceRecord | undefined> {
+    const key = this.revisionNachId.get(sourceRecordId);
+    return Promise.resolve(key === undefined ? undefined : this.schnappschuss(key));
+  }
+
+  listBySource(sourceSystem: string, externalId: string): Promise<ExternalSourceRecord[]> {
+    const identity = externalSourceIdentityKey(sourceSystem, externalId);
+    return Promise.resolve(
+      [...this.nachRevision.values()]
+        .filter((r) => externalSourceIdentityKey(r.sourceSystem, r.externalId) === identity)
+        .sort((a, b) => a.sourceVersion - b.sourceVersion)
+        .map(externalSourceSnapshot),
+    );
+  }
+
+  /**
+   * JEDER Leseweg gibt eine frische Kopie heraus — nie den Bestand selbst. Sonst waere die
+   * Unveraenderlichkeit nur halb: der Schreibweg geschuetzt, der Leseweg offen (BEN-33, Probe 2).
+   */
+  private schnappschuss(key: string): ExternalSourceRecord | undefined {
+    const treffer = this.nachRevision.get(key);
+    return treffer === undefined ? undefined : externalSourceSnapshot(treffer);
+  }
+
+  async latestVersion(sourceSystem: string, externalId: string): Promise<number | undefined> {
+    const alle = await this.listBySource(sourceSystem, externalId);
+    return alle.length > 0 ? alle[alle.length - 1]?.sourceVersion : undefined;
+  }
+}
+
+// ================================================================================================
+// AUFTRAG-144 (KW-S4-26 §92-114, KW-S4-28 F1) — DIE LAUFABLAGE
+// ================================================================================================
+//
+// ZWEI OPERATIONEN, DIE NICHT VERWECHSELT WERDEN DUERFEN, und der ganze Vertrag haengt daran:
+//   · `insertIfAbsent` LEGT AN und ueberschreibt nie. Ein zweiter Anlauf desselben Laufs ist ein
+//     stiller No-op mit `false` — auch wenn der uebergebene Lauf anders aussieht.
+//   · `advance` SCHREIBT FORT und legt nie an. Ein unbekannter Lauf ist ein `CONFLICT`, kein
+//     stilles Anlegen.
+// Waeren beide dasselbe (der Mutant „upsert statt insertIfAbsent"), koennte ein Wiederholungslauf
+// einen bereits abgeschlossenen Lauf auf QUEUED zuruecksetzen — und niemand saehe es.
+
+/** Ein Feldflicken der Fortschreibung. Nur was hier steht, wird ueberschrieben. */
+export interface ImportRunFortschritt {
+  readonly status: ImportRunStatus;
+  readonly sourceRecordId?: string | null;
+  readonly completedAt?: string | null;
+  readonly failureCode?: string | null;
+  readonly failureReason?: string | null;
+  readonly counters?: ImportRunCounters;
+}
+
+export interface ImportRunRepo {
+  /**
+   * IDEMPOTENT ueber die `importId`. `true` = neu angelegt; `false` = existierte bereits und die
+   * VORHANDENE Zeile bleibt unangetastet. Auf PostgreSQL ein `ON CONFLICT DO NOTHING` gegen den
+   * echten Primaerschluessel — nebenlaeufige Laeufe legen keinen zweiten an.
+   */
+  insertIfAbsent(run: ImportRun): Promise<boolean>;
+  /** Der Lauf — oder `undefined`. NIE ein erfundener Leer-Lauf (KW-S4-26 §142-143). */
+  findById(importId: string): Promise<ImportRun | undefined>;
+  /** Schreibt den Lauf fort. WIRFT `CONFLICT`, wenn es ihn nicht gibt. */
+  advance(importId: string, fortschritt: ImportRunFortschritt): Promise<ImportRun>;
+  /** Legt fehlende Elementreferenzen an; vorhandene `(importId, ordinal)` bleiben unberuehrt. */
+  appendItemRefs(refs: readonly ImportRunItemRef[]): Promise<number>;
+  /** Die Elementreferenzen EINES Laufs, stabil nach `ordinal` aufsteigend. */
+  listItemRefs(importId: string): Promise<ImportRunItemRef[]>;
+}
+
+/**
+ * Baut den Lauf FELD FUER FELD neu.
+ *
+ * Das ist kein Kopierstil, sondern die strukturelle Zusicherung aus `KW-S4-26` §108-110: was nicht
+ * zum kanonischen Vertrag gehoert, ueberlebt diese Grenze nicht. Ein Aufrufer, der versehentlich
+ * KO-Inhalt an den Lauf haengt, bekommt ihn hier abgeschnitten — statt ihn zu persistieren.
+ */
+function importRunSnapshot(run: ImportRun): ImportRun {
+  return {
+    importId: run.importId,
+    sourceSystem: run.sourceSystem,
+    externalId: run.externalId,
+    sourceScope: run.sourceScope,
+    requestedSourceVersion: run.requestedSourceVersion,
+    status: run.status,
+    sourceRecordId: run.sourceRecordId,
+    startedAt: run.startedAt,
+    completedAt: run.completedAt,
+    failureCode: run.failureCode,
+    failureReason: run.failureReason,
+    counters: {
+      itemsTotal: run.counters.itemsTotal,
+      itemsCreated: run.counters.itemsCreated,
+      itemsBound: run.counters.itemsBound,
+      itemsSkipped: run.counters.itemsSkipped,
+      itemsFailed: run.counters.itemsFailed,
+    },
+  };
+}
+
+/** Dieselbe Grenze fuer das Kind — sieben Felder, kein achtes. */
+function importRunItemRefSnapshot(ref: ImportRunItemRef): ImportRunItemRef {
+  return {
+    importId: ref.importId,
+    ordinal: ref.ordinal,
+    sourceRecordId: ref.sourceRecordId,
+    candidateItemId: ref.candidateItemId,
+    knowledgeObjectId: ref.knowledgeObjectId,
+    itemOutcome: ref.itemOutcome,
+    itemFailureCode: ref.itemFailureCode,
+  };
+}
+
+/**
+ * Fail-closed VOR dem Schreiben — in beiden Ablagen dieselbe Pruefung, damit derselbe Aufruf nicht
+ * je nach Ablage verschieden ausgeht (dieselbe Paritaetslehre wie bei `pruefeRevisionsidentitaet`).
+ */
+export function pruefeImportRun(run: ImportRun): void {
+  if (run.importId.trim() === "") {
+    throw new LibraryError("BAD_REQUEST", "Ein Importlauf ohne importId ist kein Lauf.");
+  }
+  if (!istImportRunStatus(run.status)) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      `Unbekannter Laufstatus ${JSON.stringify(run.status)} — die kanonische Menge hat genau neun Werte.`,
+    );
+  }
+  if (run.sourceSystem.trim() === "") {
+    throw new LibraryError("BAD_REQUEST", "Ein Importlauf ohne sourceSystem ist kein Lauf.");
+  }
+  // EIN LAUF OHNE SCOPE WAERE EIN AUFTRAG OHNE GEGENSTAND. `KW-S4-26` §63 laesst ausdruecklich
+  // beides zu — das konkrete Objekt ODER den expliziten Container —, aber nicht keines von beiden.
+  if (
+    (run.externalId === null || run.externalId.trim() === "") &&
+    (run.sourceScope === null || run.sourceScope.trim() === "")
+  ) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      "Ein Importlauf braucht ein Quellobjekt (externalId) ODER einen expliziten Scope (sourceScope).",
+    );
+  }
+  if (run.startedAt.trim() === "") {
+    throw new LibraryError("BAD_REQUEST", "Ein Importlauf ohne startedAt ist kein Lauf.");
+  }
+  const zaehler = run.counters;
+  for (const [name, wert] of Object.entries(zaehler)) {
+    if (!Number.isInteger(wert) || wert < 0) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        `Der Zaehler ${name} muss eine nicht-negative ganze Zahl sein — ein ehrlicher Zaehler erfindet nichts.`,
+      );
+    }
+  }
+}
+
+export function pruefeImportRunItemRef(ref: ImportRunItemRef): void {
+  if (ref.importId.trim() === "") {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      "Eine Elementreferenz ohne importId gehoert zu keinem Lauf.",
+    );
+  }
+  if (!Number.isInteger(ref.ordinal) || ref.ordinal < 0) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      "ordinal muss eine nicht-negative ganze Zahl sein — sie ist die Ordnung, nicht die Einfuegezeit.",
+    );
+  }
+  if (ref.candidateItemId.trim() === "") {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      "Eine Elementreferenz ohne candidateItemId referenziert nichts.",
+    );
+  }
+  if (!istImportItemOutcome(ref.itemOutcome)) {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      `Unbekanntes itemOutcome ${JSON.stringify(ref.itemOutcome)} — unbekannt ist fail-closed.`,
+    );
+  }
+}
+
+export class InMemoryImportRunRepo implements ImportRunRepo {
+  private readonly laeufe = new Map<string, ImportRun>();
+  /** Je Lauf: ordinal → Referenz. Die Map macht `(importId, ordinal)` eindeutig wie der Primaerschluessel. */
+  private readonly referenzen = new Map<string, Map<number, ImportRunItemRef>>();
+
+  async insertIfAbsent(run: ImportRun): Promise<boolean> {
+    pruefeImportRun(run);
+    // Pruefen und Setzen ohne `await` dazwischen — dieselbe Unteilbarkeit wie im
+    // ON-CONFLICT-Insert von PostgreSQL (Muster: InMemoryExternalSourceRepo.insertIfAbsent).
+    if (this.laeufe.has(run.importId)) {
+      return false;
+    }
+    this.laeufe.set(run.importId, importRunSnapshot(run));
+    return true;
+  }
+
+  async findById(importId: string): Promise<ImportRun | undefined> {
+    const treffer = this.laeufe.get(importId);
+    return treffer === undefined ? undefined : importRunSnapshot(treffer);
+  }
+
+  async advance(importId: string, fortschritt: ImportRunFortschritt): Promise<ImportRun> {
+    if (!istImportRunStatus(fortschritt.status)) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        `Unbekannter Laufstatus ${JSON.stringify(fortschritt.status)} — die kanonische Menge hat genau neun Werte.`,
+      );
+    }
+    const vorher = this.laeufe.get(importId);
+    if (vorher === undefined) {
+      // KEIN stilles Anlegen. Ein Fortschritt auf einem Lauf, den es nicht gibt, ist ein Befund.
+      throw new LibraryError(
+        "CONFLICT",
+        `Der Importlauf ${importId} existiert nicht — eine Fortschreibung legt keinen Lauf an.`,
+      );
+    }
+    // `startedAt` und die Identitaetsfelder reisen unveraendert mit: die Fortschreibung erfindet
+    // keine neue Vergangenheit.
+    const nachher: ImportRun = {
+      ...vorher,
+      status: fortschritt.status,
+      ...(fortschritt.sourceRecordId !== undefined
+        ? { sourceRecordId: fortschritt.sourceRecordId }
+        : {}),
+      ...(fortschritt.completedAt !== undefined ? { completedAt: fortschritt.completedAt } : {}),
+      ...(fortschritt.failureCode !== undefined ? { failureCode: fortschritt.failureCode } : {}),
+      ...(fortschritt.failureReason !== undefined
+        ? { failureReason: fortschritt.failureReason }
+        : {}),
+      ...(fortschritt.counters !== undefined ? { counters: fortschritt.counters } : {}),
+    };
+    pruefeImportRun(nachher);
+    this.laeufe.set(importId, importRunSnapshot(nachher));
+    return importRunSnapshot(nachher);
+  }
+
+  async appendItemRefs(refs: readonly ImportRunItemRef[]): Promise<number> {
+    let neu = 0;
+    for (const ref of refs) {
+      pruefeImportRunItemRef(ref);
+      const proLauf = this.referenzen.get(ref.importId) ?? new Map<number, ImportRunItemRef>();
+      this.referenzen.set(ref.importId, proLauf);
+      // VORHANDENES BLEIBT. Dieselbe Zusage wie `ON CONFLICT (import_id, ordinal) DO NOTHING`.
+      if (proLauf.has(ref.ordinal)) {
+        continue;
+      }
+      proLauf.set(ref.ordinal, importRunItemRefSnapshot(ref));
+      neu += 1;
+    }
+    return neu;
+  }
+
+  async listItemRefs(importId: string): Promise<ImportRunItemRef[]> {
+    const proLauf = this.referenzen.get(importId);
+    if (proLauf === undefined) {
+      return [];
+    }
+    // NACH ORDINAL, nicht nach Einfuegereihenfolge — spiegelt das `ORDER BY ordinal` des Adapters.
+    return [...proLauf.values()]
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((ref) => importRunItemRefSnapshot(ref));
   }
 }

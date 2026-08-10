@@ -168,6 +168,10 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
 describe("SCRUM-368: Ask-Vollkette (deterministischer Reasoner, echte Services)", () => {
   async function seeded() {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
+    // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
+    // In der echten App tut das die Startorchestrierung in build-app.ts.
+    await koService.activateSearchProjectionV2();
     const ventil = await koService.create({
       title: "Ventil bei Überdruck schließen",
       statement: "Bei Überdruck das Ventil X manuell schließen.",

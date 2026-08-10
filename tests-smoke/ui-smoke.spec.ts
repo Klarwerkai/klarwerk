@@ -182,6 +182,28 @@ test("Fragen ohne Modell: der Weg ist gesperrt und sagt warum", async ({ page })
     askZaehler.anzahl(),
     `Enter hat trotz gesperrtem Knopf gesendet: ${askZaehler.adressen().join(", ")}`,
   ).toBe(0);
+  // ================================================================================================
+  // AUFTRAG-smoketor BLOCK A — EINE ZUSICHERUNG, DIE NICHT SCHEITERN KANN, IST KEINE.
+  // ================================================================================================
+  //
+  // Die beiden `toHaveCount(0)` unten waren bis smoketor STRUKTURELL erfüllt und haben nichts
+  // geprüft: `ask-answer` und `ask-gap` stehen im Quelltext an `<Card>` (Ask.tsx:712 und 1080), und
+  // `Card` reichte keine Restattribute ans DOM durch. Die beiden Anker existierten damit in KEINEM
+  // Zustand der Seite — auch nicht in dem, den dieser Fall ausschließen will. Die Zeilen konnten
+  // nicht rot werden, egal was das Produkt tat.
+  //
+  // Die Durchreichung ist repariert (`apps/web/src/components/ui.tsx`), damit KÖNNEN sie es jetzt.
+  // Weil eine Abwesenheit für sich genommen aber nie von „der Selektor greift ohnehin ins Leere" zu
+  // unterscheiden ist, wird sie hier KALIBRIERT: `ask-result-anchor` (Ask.tsx:606) ist die immer
+  // gemountete Ergebnisfläche an einem echten `<div>`. Findet der Lauf sie, steht fest, dass die
+  // Seite geladen, die Ergebnisfläche gemountet ist und `getByTestId` auf dieser Fläche trägt — die
+  // beiden Nullen sind dann eine Aussage über den ZUSTAND statt über die Mechanik. Die
+  // Gegenrichtung — dass diese beiden Anker überhaupt entstehen KÖNNEN — belegt der @modell-Fall
+  // unten, der sie sichtbar erwartet.
+  await expect(
+    page.getByTestId("ask-result-anchor"),
+    "die Ergebnisflaeche ist nicht gemountet — die beiden Nullen darunter waeren dann eine Aussage ueber den Selektor und nicht ueber das Produkt",
+  ).toHaveCount(1);
   await expect(page.getByTestId("ask-answer")).toHaveCount(0);
   await expect(page.getByTestId("ask-gap")).toHaveCount(0);
   askZaehler.stoppen();

@@ -6,6 +6,8 @@ import {
   KoError,
   type KoFilter,
   type KoService,
+  // AUFTRAG-BASIC-380: der injizierte Sicherheitstrim — nur durchgereicht, nie ausgelegt.
+  type KoSichtbarkeitstrim,
   type KoSource,
   confidentialityRank,
   isConfidential,
@@ -1164,42 +1166,90 @@ export class LibraryService {
   // bleibt), die nächste Suche arbeitet den nächsten Schwung ab (konvergiert). Wirft der Backfill
   // eines Kandidaten (Laden/Scan/Write), fällt NUR dieser Kandidat auf „kein Caption-Match"
   // zurück — die Suche selbst scheitert NIE am Backfill (PII-freies Log: KO-Id + Fehlerklasse).
-  async search(query: string, filter: KoFilter = {}): Promise<KnowledgeObject[]> {
-    const list = await this.koService.listForSearch(filter);
+  // ================================================================================================
+  // G27 — DIE SUCHE LIEST DEN GANZEN GESPEICHERTEN INHALT, NICHT MEHR NUR DAS KURZFELD.
+  // ================================================================================================
+  //
+  // WAS SICH ÄNDERT. Bis hierher matchte diese Schleife auf `title`, `statement` und den
+  // persistierten Bild-Fußnoten. Der eigentliche Dokumenttext (`bodyHtml`) war KEIN Suchraum — ein
+  // Begriff, der erst nach Zeichen 500 des Fließtexts steht, war für die Bibliothek nicht
+  // vorhanden. Jetzt entscheidet die revisionsgebundene Suchprojektion (knowledge-object,
+  // search-projection.ts), und zwar GENAU DIESELBE, die auch Ask/Klara benutzt: ein Suchvertrag,
+  // keine zweite Auslegung.
+  //
+  // WAS GLEICH BLEIBT. Reihenfolge (Bestandsreihenfolge, das Ranking macht der Client), die
+  // Filter (type/status/category/tag am Repository), die Body-Freiheit der Trefferliste und der
+  // Fußnoten-Backfill für Altbestand. Auch die AUTORISIERUNG bleibt, wo sie war: an der Route
+  // (sichtbareFuer) — dieser Dienst liefert Kandidaten, keine Freigaben.
+  //
+  // ================================================================================================
+  // G27 R1 — DER BACKFILL IST AUS DIESEM WEG VERSCHWUNDEN (Entscheidung 04 §5)
+  // ================================================================================================
+  //
+  // Hier stand bis R1 ein gedeckelter Nachzug VOR `listForSearch`. Er war gut begründet (eine
+  // Vollladung je Objekt statt zwei) und trotzdem der Träger eines Architekturfehlers: weil er nur
+  // 20 Objekte je Anfrage fertigmachte, hing die Trefferliste an der Bestandsreihenfolge, und alles
+  // dahinter blieb in Projektionsfassung 1 — regulär durchsuchbar. Genau diesen Mischbetrieb hat
+  // BEN reproduziert.
+  //
+  // §5 stellt das klar: der Backfill ist Optimierung, nicht Migration und nicht Readiness, und der
+  // reguläre Suchpfad darf funktional nicht von ihm abhängen. Vollständigkeit verantwortet jetzt
+  // das Readiness Gate der Suchprojektion; der Altbestand wird über den ausdrücklichen Reconcile-
+  // bzw. Rebuild-Weg fertig. Die Konstante SEARCH_BACKFILL_LIMIT_PER_QUERY bleibt die Schwunggröße
+  // dieser Wartungsläufe.
+  // ================================================================================================
+  // AUFTRAG-BASIC-380 — DER TRIM WIRD DURCHGEREICHT, NICHT AUSGELEGT.
+  // ================================================================================================
+  //
+  // WAS SICH ÄNDERT: `opts.trim` reist von der Route (Kompositionswurzel) bis in die Datenquelle
+  // durch. Papierkorb- und Sichtbarkeitsprädikat wirken damit IN SQL, auf der GRUNDMENGE — vor
+  // jedem Deckel, Cursor oder Zähler, den ein späterer Abfragevertrag darüber legt. Genau die
+  // Doktrin, die dieser Dienst für `sichtbar` schon führt („auf die GRUNDMENGE angewandt, nicht
+  // auf das Ergebnis"), nur eine Ebene tiefer.
+  //
+  // WAS GLEICH BLEIBT: alles andere. Reihenfolge (Bestandsreihenfolge), Filter, Body-Freiheit,
+  // Treffer-Nachschlag. Und die AUTORISIERUNG bleibt, wo sie war — dieser Dienst legt die Regel
+  // NICHT aus, er trägt sie nur weiter; die Route entscheidet und filtert weiterhin zusätzlich
+  // (G-SHADOW: `oldAllowed ∧ newAllowed`, eine neue Regel darf Sichtbarkeit nie erweitern).
+  //
+  // OHNE `opts.trim` ist das Verhalten zeichengleich dem bisherigen (Altvertrag).
+  async search(
+    query: string,
+    filter: KoFilter = {},
+    opts: { trim?: KoSichtbarkeitstrim } = {},
+  ): Promise<KnowledgeObject[]> {
     const q = query.trim().toLowerCase();
     if (!q) {
-      return list;
+      // Leere Suchzeile = „zeig den Bestand", keine Textabfrage — unverändert. Und genau dieser
+      // Weg ist der teuerste (kein Suchbegriff grenzt vorher ein), also der, an dem der Trim in
+      // der Datenquelle am meisten zählt.
+      return this.koService.listForSearch(filter, opts.trim);
     }
+    // G27 R1 (Entscheidung 04 §5): HIER STAND DER GEDECKELTE NACHZUG — ersatzlos entfallen.
+    // Der reguläre Suchpfad darf funktional nicht mehr von ihm abhängen; er ist Wartung, nicht
+    // Migration und nicht Readiness. Der Altbestand wird über den ausdrücklichen Reconcile-/
+    // Rebuild-Weg fertig — und eine Instanz, die überhaupt sucht, ist freigegeben und damit
+    // vollständig projiziert.
+    const list = await this.koService.listForSearch(filter, opts.trim);
+    if (list.length === 0) {
+      return [];
+    }
+    // BEWUSST OHNE `limit`: die Bibliotheks-Trefferliste war nie gedeckelt, und ein stiller Deckel
+    // würde bei einer breiten Anfrage Treffer verschwinden lassen, ohne es zu sagen.
+    const treffer = new Map(
+      (await this.koService.findSearchHits({ terms: [q] })).map((hit) => [hit.koId, hit]),
+    );
     const out: KnowledgeObject[] = [];
-    let backfills = 0;
     for (const ko of list) {
-      if (ko.title.toLowerCase().includes(q) || ko.statement.toLowerCase().includes(q)) {
-        out.push(ko);
+      const hit = treffer.get(ko.id);
+      if (!hit) {
         continue;
       }
-      let captionTexts = ko.captionTexts;
-      if (captionTexts === undefined) {
-        if (backfills >= SEARCH_BACKFILL_LIMIT_PER_QUERY) {
-          continue; // Deckel erreicht: in DIESER Suche ehrlich ohne Caption-Match weiter.
-        }
-        backfills += 1;
-        try {
-          captionTexts = await this.koService.ensureCaptionTexts(ko.id);
-        } catch (error) {
-          // PII-frei: nur Id + Fehlerklasse — nie Inhalte. Der Kandidat bleibt ohne Caption-Match.
-          process.stderr.write(
-            `[KLARWERK] Caption-Backfill fehlgeschlagen (ko=${ko.id}, fehler=${
-              error instanceof Error ? error.name : "unknown"
-            }).\n`,
-          );
-          continue;
-        }
-      }
-      if (captionTexts.some((caption) => caption.toLowerCase().includes(q))) {
-        // Das (ggf. frisch backgefüllte) Feld reist im Treffer mit — der Client kennzeichnet
-        // damit die Fundstelle, ohne dass bodyHtml transportiert wird.
-        out.push({ ...ko, captionTexts });
-      }
+      // WP-BILD-1e/1g: das Fußnotenfeld reist im Treffer mit — der Client kennzeichnet damit die
+      // Fundstelle, ohne dass bodyHtml transportiert wird. Nach dem Backfill oben trägt die
+      // geladene Projektion es bereits; fehlt es dennoch (Objekt jenseits des Deckels), wird der
+      // Treffer ehrlich ohne Kennzeichnung ausgeliefert statt dafür ein zweites Mal zu laden.
+      out.push(ko);
     }
     return out;
   }

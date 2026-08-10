@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryKoSearchProjectionRepo } from "../../knowledge-object";
 import type { ConsoleMailer } from "../../notifications";
-import { buildApp, buildServices } from "./build-app";
+import { assembleServices, buildApp, buildServices, inMemoryRepos } from "./build-app";
 
 describe("buildApp (Composition Root)", () => {
   it("Health + Reasoner-Status (deterministisch)", async () => {
@@ -367,6 +368,120 @@ describe("FR-VAL-07: Benachrichtigungen", () => {
     const mailer = services.mailer as ConsoleMailer;
     expect(mailer.sent).toHaveLength(1);
     expect(mailer.sent[0]?.to).toBe("a@x.de");
+    await app.close();
+  });
+});
+
+// ================================================================================================
+// G27 R1 — DIE BETRIEBSORCHESTRIERUNG BEIM APP-START (KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06)
+// ================================================================================================
+//
+// WAS HIER GEMESSEN WIRD UND WARUM ES DER BLOCKER WAR. Bis zu dieser Welle rief in der ganzen
+// Kompositionswurzel NIEMAND die Aktivierung der Suchprojektion. Eine echte App startete deshalb
+// mit `UNINITIALIZED`, und weil die Suche seit R1 fail-closed ist, beantwortete sie überhaupt keine
+// Suchanfrage mehr. BENs ROT-1, wörtlich: „Eine echte App startet mit nicht freigegebener Suche."
+//
+// Die Zusicherungen unten laufen über `app.inject()` — das löst `app.ready()` aus und damit den
+// `onReady`-Hook. Sie messen also den ECHTEN Startweg und nicht einen nachgebauten.
+
+describe("G27 R1 · App-Start · zustandsabhängige Betriebsfolge (06 §2)", () => {
+  it("UNINITIALIZED: die App aktiviert V2 beim Start und ist danach fachlich suchbereit", async () => {
+    const services = buildServices();
+    // Vorzustand belegt, nicht angenommen.
+    expect((await services.ko.searchProjectionControl()).projectionState).toBe("UNINITIALIZED");
+
+    const app = buildApp(services);
+    await app.ready();
+
+    const control = await services.ko.searchProjectionControl();
+    expect(control.projectionState).toBe("V2_ACTIVE");
+    expect(control.activeProjectionVersion).toBe(2);
+    // Freigegeben ist eine GENERATION, und der Marker gilt für genau sie (09 §2/§3).
+    expect(control.activeGeneration).toBe(control.buildGeneration);
+    expect(control.integrityMarker).toBe(`V2-READY:${control.activeGeneration}`);
+    await app.close();
+  });
+
+  it("V2_ACTIVE: ein zweiter Start baut NICHTS neu — keine neue Generation (06 §5/§6)", async () => {
+    const services = buildServices();
+    const app = buildApp(services);
+    await app.ready();
+    const nachErstem = await services.ko.searchProjectionControl();
+
+    // Zweite App-Instanz auf DENSELBEN Diensten = Neustart eines Prozesses auf demselben Bestand.
+    const app2 = buildApp(services);
+    await app2.ready();
+    const nachZweitem = await services.ko.searchProjectionControl();
+
+    // Byte-gleich: kein Rebuild, keine erneute Aktivierung, kein Generationswechsel. Ein Rebuild
+    // bei jedem App-Start ist ein ausdrückliches No-Go (06 §6).
+    expect(nachZweitem).toEqual(nachErstem);
+    await app.close();
+    await app2.close();
+  });
+
+  it("V2_BUILDING: der Neustart setzt DIESELBE Generation fort statt neu zu beginnen", async () => {
+    const services = buildServices();
+    // Ein abgestürzter Bau: begonnen, nie fertig geworden.
+    await services.ko.beginSearchProjectionBuild();
+    const imBau = await services.ko.searchProjectionControl();
+    expect(imBau.projectionState).toBe("V2_BUILDING");
+
+    const app = buildApp(services);
+    await app.ready();
+
+    const control = await services.ko.searchProjectionControl();
+    expect(control.projectionState).toBe("V2_ACTIVE");
+    expect(control.activeGeneration).toBe(imBau.buildGeneration);
+    await app.close();
+  });
+
+  it("FAILED: der Neustart führt über die vollständige V2-Recovery zurück in den Betrieb", async () => {
+    const services = buildServices();
+    const vor = buildApp(services);
+    await vor.ready();
+    await vor.close();
+    await services.ko.rollbackSearchProjectionVersion("Störung");
+    expect((await services.ko.searchProjectionControl()).projectionState).toBe("FAILED");
+
+    const app = buildApp(services);
+    await app.ready();
+    expect((await services.ko.searchProjectionControl()).projectionState).toBe("V2_ACTIVE");
+    await app.close();
+  });
+
+  it("V2_ACTIVE mit gefallenem Marker: der Start repariert über die Recovery, nicht durch Wegsehen", async () => {
+    // Der Projektionsadapter wird über DIESELBE öffentliche Injektionsstelle verdrahtet, die auch
+    // `buildPgServices` benutzt — so kommt die Gegenprobe an den beschädigenden Eingriff heran,
+    // ohne in den Dienst hineinzugreifen.
+    const repos = inMemoryRepos();
+    const projections = new InMemoryKoSearchProjectionRepo(repos.koRepo);
+    const services = assembleServices(repos, { searchProjections: projections });
+    const vor = buildApp(services);
+    await vor.ready();
+    await vor.close();
+    const gesund = await services.ko.searchProjectionControl();
+
+    // Ein Objekt anlegen und danach seine bedienende Zeile entfernen — der Marker fällt.
+    const angelegt = await services.ko.create({
+      title: "Nach der Freigabe",
+      statement: "s",
+      type: "best_practice",
+      category: "Wartung",
+      author: "anna",
+      bodyHtml: "<p>Recoverywort</p>",
+    });
+    const projektion = await services.ko.searchProjectionOf(angelegt.id);
+    await projections.remove(angelegt.id, projektion?.koVersion as number);
+    expect((await services.ko.searchProjectionControl()).integrityMarker).toBeNull();
+
+    const app = buildApp(services);
+    await app.ready();
+    const control = await services.ko.searchProjectionControl();
+    expect(control.projectionState).toBe("V2_ACTIVE");
+    expect(control.integrityMarker).not.toBeNull();
+    // Eine NEUE Generation — der beschädigte Bestand wird nicht für geprüft erklärt.
+    expect(control.activeGeneration).toBeGreaterThan(gesund.activeGeneration as number);
     await app.close();
   });
 });

@@ -110,6 +110,103 @@ export function sichtbarkeitsfilterFuer(user: SessionUser): Sichtbarkeitsfilter 
 }
 
 // ================================================================================================
+// AUFTRAG-BASIC-380 — DIESELBE ENTSCHEIDUNG, EINE EBENE TIEFER: ALS SQL, VOR DEM `LIMIT`.
+// ================================================================================================
+//
+// DER BEFUND, DER DAS ERZWINGT (BASIC 379 §1.2, gemessen). Bis hierher standen ZWEI Sperren
+// oberhalb der Datenbank: der Papierkorb wurde im Anwendungsspeicher gefiltert
+// (`KoService.listForSearch`), die Sichtbarkeit an der Route (`sichtbareFuer`, s. o.). Solange
+// beide dort stehen, ist JEDE Paginierung falsch gebaut — ein `LIMIT 50` liefert 50 ZEILEN, von
+// denen danach getrashte und unsichtbare abgezogen werden:
+//
+//   · der Nutzer bekommt eine Seite mit WENIGER als 50 Einträgen,
+//   · ein Cursor auf die 50. Zeile ÜBERSPRINGT reale Treffer,
+//   · und jeder Zähler über dieser Menge ist eine EXISTENZAUSKUNFT — genau das, was REF-0001
+//     :48/:49 verbietet.
+//
+// Deshalb steht am Anfang des Wissensraum-Vertrags kein Datenmodell, sondern dieser eine Satz:
+// PAPIERKORB- UND SICHTBARKEITSPRÄDIKAT GEHÖREN VOR DAS `LIMIT`, ALSO IN DAS SQL.
+//
+// WARUM DAS HIER STEHT UND NIRGENDWO SONST (Gate `G-TRIM-EINS`). Diese Datei existiert, damit die
+// Frage „darf dieser Mensch dieses Objekt sehen" an EINEM Ort beantwortet wird (s. Kopf). Ein SQL-
+// Prädikat in einem Repository-Adapter wäre die zweite Auslegung derselben Regel — und die Lehre
+// aus A22 steht oben: sechs Flächen trugen dieselbe Zeile, und alle sechs waren falsch. Das
+// Prädikat entsteht deshalb HIER, neben `darfSehen`, und wird INJIZIERT — an genau derselben Naht,
+// an der heute schon `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist.
+//
+// WARUM DAS ÜBERHAUPT GEHT: der Rollenanteil von `darfSehen` ist ein EINZIGER Boolescher Wert
+// (`can(user.role, "ko.validate")`), der Autoranteil eine einzige Zeichenkette (`user.id`). Mehr
+// braucht die Regel nicht — deshalb lässt sie sich vollständig als Prädikat über drei Spalten
+// ausdrücken, ohne dass die Datenbank etwas über Rollen wissen müsste.
+//
+// ================================================================================================
+// DIE BENANNTEN GRENZEN DIESER ÜBERSETZUNG — BITTE NICHT ÜBERLESEN.
+// ================================================================================================
+//
+// (1) DIE LEBENDE ZEILE IST DIE TRIMQUELLE (Gate `G-TRIM-LIVE`). Das Prädikat liest ausschließlich
+//     `confidentiality_key`, `author_key` und `deleted_at_key` — generierte Spalten der `kos`-Zeile
+//     selbst. `ko_search_projection.classification_snapshot` ist AUSDRÜCKLICH VERBOTENE Trimquelle:
+//     er ist historischer Beleg und veraltet naturgemäß, sobald eine Stufe erhöht wird. Eine
+//     Höherstufung muss SOFORT wirken, nicht nach dem nächsten Projektionsbau.
+//
+// (2) DIE STUFENGRENZE IST ZEICHENGENAU `normalizeConfidentiality` (confidentiality.ts:15-17), und
+//     zwar nicht hier, sondern in der generierten Spalte (KO_SICHTBARKEIT_SCHEMA). Damit gibt es
+//     den CASE genau einmal, in der Datenbank, statt abschreibbar in jeder Abfrage.
+//
+// (3) DER PAPIERKORB WIRD ÜBER `deleted_at_key IS NULL` GEPRÜFT. Der Schreibweg setzt `deletedAt`
+//     ausschließlich auf einen ISO-Zeitpunkt und ENTFERNT das Feld beim Wiederherstellen
+//     (knowledge-object/src/service.ts) — für jeden erreichbaren Wert ist das deckungsgleich mit
+//     dem bisherigen `!ko.deletedAt`. Die eine denkbare Abweichung ist eine handgeschriebene
+//     Altzeile mit `deletedAt: ""`: die versteckt SQL, während Node sie zeigte. Das ist die
+//     fail-closed Richtung und erweitert Sichtbarkeit nie (G-SHADOW) — sie wird hier benannt und
+//     nicht stillschweigend in Kauf genommen.
+//
+// (4) HIER WIRD NICHTS VERSCHÄRFT UND NICHTS GELOCKERT. Die drei Stufen bleiben drei, zwei werden
+//     weiter identisch geschützt (Pedis Variante A, s. Kopf), eine unbekannte Stufe gilt weiter als
+//     „intern", und ein leerer Autor ist weiter KEINE Autorschaft. Der Paritätstest
+//     (tests/security/380-trim-paritaet.integration.test.ts) fährt beide Formen über alle
+//     Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres — Mengengleichheit,
+//     nicht Stichprobe.
+export interface SqlSichtbarkeitstrim {
+  sql(spaltenTraeger: string, abPlatzhalter: number): string;
+  readonly params: readonly unknown[];
+  trifftZu(ko: SichtbarkeitsFakten & { deletedAt?: string | null | undefined }): boolean;
+}
+
+export function sqlSichtbarkeitFuer(user: SessionUser): SqlSichtbarkeitstrim {
+  // Die beiden EINZIGEN Fakten, die `darfSehen` über den Betrachter braucht. Sie werden hier
+  // EINMAL erhoben und danach nicht mehr befragt — ein Cursor oder eine Folgeseite, die sie später
+  // neu auslegte, wäre genau das Leck, das BASIC 379 §3.3 mit der Betrachterbindung schließt.
+  const darfVertraulich = can(user.role, "ko.validate");
+  const betrachter = user.id;
+
+  return {
+    sql(spaltenTraeger: string, abPlatzhalter: number): string {
+      const rolle = `$${abPlatzhalter}`;
+      const autor = `$${abPlatzhalter + 1}`;
+      // Zeile für Zeile dieselbe Regel wie `darfSehen`, plus der Papierkorb davor:
+      //   · nicht getrasht,
+      //   · 'intern'                                  ⇒ jeder mit `ko.read` (die Route prüft es),
+      //   · `ko.validate`                             ⇒ auch vertraulich/streng_vertraulich,
+      //   · oder der Autor selbst — und ein LEERER Autor ist keine Autorschaft.
+      return (
+        `(${spaltenTraeger}.deleted_at_key IS NULL` +
+        ` AND (${spaltenTraeger}.confidentiality_key = 'intern'` +
+        ` OR ${rolle}::boolean` +
+        ` OR (COALESCE(${spaltenTraeger}.author_key, '') <> ''` +
+        ` AND ${spaltenTraeger}.author_key = ${autor})))`
+      );
+    },
+    params: [darfVertraulich, betrachter],
+    // KEIN Nachbau der Regel: derselbe `darfSehen`-Aufruf wie überall sonst, nur um den
+    // Papierkorb ergänzt — der in der SQL-Form ebenfalls Teil des Prädikats ist.
+    trifftZu(ko): boolean {
+      return !ko.deletedAt && darfSehen(user, ko);
+    },
+  };
+}
+
+// ================================================================================================
 // AUFTRAG-mega74 BLOCK D — DIE NEBENWEGE (G5): INHALT OHNE DAS OBJEKT ZU ÖFFNEN.
 // ================================================================================================
 //

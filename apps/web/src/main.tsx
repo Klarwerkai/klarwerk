@@ -3,13 +3,19 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { BrowserRouter } from "react-router-dom";
 import App from "./App";
-import "./i18n";
+import i18n from "./i18n";
 import "./index.css";
 import { initDesignTheme } from "./lib/designTheme";
+import { bindHtmlLang } from "./lib/htmlLang";
 
 // AUFTRAG-mega40 B: gespeicherte Design-Wahl VOR dem ersten Render anwenden (kein Aufblitzen des
 // falschen Themes; gilt auch für Routen ohne Topbar wie /mobile). Standard bleibt Klassisch.
 initDesignTheme();
+
+// AUFTRAG-101: <html lang> an die aktive i18n-Sprache binden. GENAU HIER, an der Wurzel — nicht in
+// den zwei Sprachumschaltern (Topbar, Profile), sonst entsteht mit dem dritten eine dritte Wahrheit.
+// Der Startwert `lang="de"` in index.html bleibt korrekt (Preflight 98); gebunden wird der Wechsel.
+bindHtmlLang(i18n);
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { staleTime: 30_000, retry: 1 } },

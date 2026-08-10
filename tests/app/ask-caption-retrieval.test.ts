@@ -13,7 +13,11 @@ const FIGURE = (caption: string): string =>
 describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
   it("KO mit NUR-Fußnoten-Treffer wird Antwortgrundlage; captionSources kennzeichnet die Fundstelle", async () => {
     const services = buildServices();
-    buildApp(services);
+    // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §3: `buildApp` VERDRAHTET nur — in Betrieb
+    // geht die App im `onReady`-Hook, den `ready()`/`inject()`/`listen()` auslösen. Ohne ihn bleibt
+    // der Control-State auf `UNINITIALIZED` und die Standardsuche fail-closed. Das ist dieselbe
+    // Reihenfolge wie im echten Start, keine Testeigenheit.
+    await buildApp(services).ready();
     const ko = await services.ko.create({
       title: "Wartungshinweis Portalanlage",
       statement: "Allgemeiner Hinweis zur Anlagenpflege ohne das Suchwort.",
@@ -38,7 +42,11 @@ describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
 
   it("Treffer in Titel/Aussage bleibt UNMARKIERT (captionSources nur für reine Fußnoten-Funde)", async () => {
     const services = buildServices();
-    buildApp(services);
+    // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §3: `buildApp` VERDRAHTET nur — in Betrieb
+    // geht die App im `onReady`-Hook, den `ready()`/`inject()`/`listen()` auslösen. Ohne ihn bleibt
+    // der Control-State auf `UNINITIALIZED` und die Standardsuche fail-closed. Das ist dieselbe
+    // Reihenfolge wie im echten Start, keine Testeigenheit.
+    await buildApp(services).ready();
     const ko = await services.ko.create({
       title: "Verschraubung der Grundplatte",
       statement: "Die Verschraubung wird quartalsweise nachgezogen.",
@@ -61,7 +69,11 @@ describe("WP-RETEST7 R5: Fragen matcht Bild-Fußnoten", () => {
 
   it("PIN: VERTRAULICHE KOs bleiben auch bei Fußnoten-Treffer draußen (Egress-Regel unverändert)", async () => {
     const services = buildServices();
-    buildApp(services);
+    // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §3: `buildApp` VERDRAHTET nur — in Betrieb
+    // geht die App im `onReady`-Hook, den `ready()`/`inject()`/`listen()` auslösen. Ohne ihn bleibt
+    // der Control-State auf `UNINITIALIZED` und die Standardsuche fail-closed. Das ist dieselbe
+    // Reihenfolge wie im echten Start, keine Testeigenheit.
+    await buildApp(services).ready();
     await services.ko.create({
       title: "Interner Hinweis",
       statement: "Allgemeine Aussage ohne das Suchwort.",

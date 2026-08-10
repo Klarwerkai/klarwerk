@@ -71,6 +71,11 @@ describe("SCRUM-487: Seed erzeugt lokalisierte Showcase-Kollisionen", () => {
   for (const locale of LOCALES) {
     it(`[${locale}] Firmenwagen- + Vorwärmung-Kollision mit lokalisierten Streitwerten`, async () => {
       const services = buildServices();
+      // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §4: mechanische Inbetriebnahme über den
+      // PRODUKTPFAD. Die Standardsuche ist seit R1 fail-closed; ein direkt gebauter Dienstsatz ist
+      // eine nicht in Betrieb genommene Instanz. In der echten App tut das der onReady-Hook der
+      // Kompositionswurzel — hier derselbe Aktivierungsweg, keine Abkürzung am Gate vorbei.
+      await services.ko.activateSearchProjectionV2();
       await seedDemo(services, locale);
       const open = await services.conflicts.unresolved();
       const t = DEMO_TEXTS[locale];

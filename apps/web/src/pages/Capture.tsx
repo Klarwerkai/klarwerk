@@ -61,6 +61,7 @@ import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
 import { HelpTip } from "../components/HelpTip";
+import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { Modal } from "../components/Modal";
@@ -440,6 +441,27 @@ export function Capture(): JSX.Element {
   const [studioOpen, setStudioOpen] = useState(false);
   // SCRUM-339: kurzes, ehrliches Feedback nach Übernahme aus dem Studio (kein Auto-Save).
   const [studioApplied, setStudioApplied] = useState(false);
+  // AUFTRAG-PRO-337: die Bitte der Bildergalerie, das Bildbeschreibungs-Formular des Editors für ein
+  // bestimmtes Bild zu öffnen — derselbe Weg wie CaptureFrontDoor.tsx und KnowledgeDetail.tsx.
+  //
+  // DER BEFUND, DER DAZU FÜHRTE: `onEditCaption` ist an `DraftBodyGallery`/`BodyImageGallery`
+  // OPTIONAL. Diese Seite hat ihn an BEIDEN Galerien vergessen, und weil er optional ist, erschien
+  // dort schlicht kein Knopf — geräuschlos, kein Fehler, keine Konsole. Es ist dieselbe Klasse wie
+  // mega50 (`onDescribeImage` auf zwei von vier Flächen vergessen): ein Vertrag, den man vergessen
+  // kann, wird vergessen. Der Editorweg (Klick auf die Beschreibung) trug hier schon immer; allein
+  // der Galerieeinstieg fehlte.
+  //
+  // EIN Zustand für BEIDE Galerien dieser Seite ist richtig und nicht nachlässig: die zwei Editoren
+  // liegen in einander AUSSCHLIESSENDEN Zweigen (`expertView` bzw. `!expertView && wizStep ===
+  // "refine"`) — es ist immer höchstens einer montiert, und nur der montierte kann die Bitte
+  // einlösen. Die `nonce` macht zwei Klicks auf dasselbe Bild unterscheidbar, sonst bliebe der
+  // zweite wirkungslos (der Effekt im Editor hängt an der Objektidentität der Bitte).
+  const [captionRequest, setCaptionRequest] = useState<{ imageId: string; nonce: number } | null>(
+    null,
+  );
+  const bildbeschreibungAusGalerie = (imageId: string): void => {
+    setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }));
+  };
   // SCRUM-375 / AG-12: erweiterte/technische Felder (Metadaten, Dokumente, Bilder) sind Progressive
   // Disclosure — standardmäßig eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt.
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -3238,6 +3260,8 @@ export function Capture(): JSX.Element {
         {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
         {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
 
+        <KlaraPathTeaser surface="capture" />
+
         {/* KW-PROD-15: Vordertuer als klarer Default; die bisherigen Wege bleiben darunter erhalten. */}
         <Card className="mb-4 border-ai/30 bg-ai/5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -3720,6 +3744,35 @@ export function Capture(): JSX.Element {
           </Card>
         ) : null}
 
+        {/* ======================================================================================
+            AUFTRAG-BASIC-u2 — DIE ZWEITE SUCHFLÄCHE SAGT EBENFALLS, WORIN SIE SUCHT.
+            ======================================================================================
+            Die Suche in „Entwürfe fortsetzen" durchsucht AUSSCHLIESSLICH die gespeicherten
+            Entwürfe. Wer hier validiertes Wissen sucht, fand bis hierher nichts und keinen Weg
+            weiter. Die Angabe steht genau dann, wenn auch das Suchfeld steht (die Liste klappt
+            das Feld mit auf) — eine Auskunft über eine Suche, die es gerade nicht gibt, wäre
+            wieder eine Behauptung.
+
+            Die Admin-Ansicht sieht ALLE Entwürfe: sie bekommt den eigenen, wahren Satz statt
+            einer Aussage über „deine" Entwürfe. Der Gegenweg läuft über GuardedLink, weil er
+            /erfassen wirklich verlässt und ungespeicherte Eingaben sonst still verlören;
+            `/bibliothek` ist ab Betrachter offen und braucht kein Rollentor. */}
+        {draftsOpen && (drafts.data?.length ?? 0) > 0 ? (
+          <div className="mb-1 flex flex-wrap items-center gap-x-2 gap-y-1 px-1 text-[12px] leading-relaxed text-muted">
+            <span>
+              {user?.role === "admin"
+                ? t("capture.draftScope.noteAdmin")
+                : t("capture.draftScope.note")}
+            </span>
+            <GuardedLink
+              to="/bibliothek"
+              data-testid="draft-scope-to-library"
+              className="inline-flex items-center gap-1 font-semibold text-ink hover:underline"
+            >
+              {t("capture.draftScope.toLibrary")} <span aria-hidden="true">→</span>
+            </GuardedLink>
+          </div>
+        ) : null}
         {/* SCRUM-113 / FE-CAP-07: Entwürfe fortsetzen (gemeinsamer Pool mit Mobile). AUFTRAG-sortfilter ·
           Punkt 2: die Liste ist in CaptureDraftList gekapselt — Filter (Volltext + Admin-Ersteller) und
           Sortierung leben dort (pro Browser gemerkt). Rendert sich selbst nur bei ≥ 1 Entwurf. */}
@@ -5208,6 +5261,7 @@ export function Capture(): JSX.Element {
                         open={studioOpen}
                         onClose={() => setStudioOpen(false)}
                         bodyHtml={bodyHtml}
+                        documentTitle={draft.title}
                         onApply={(next) => {
                           setBodyHtml(next);
                           setStudioApplied(true);
@@ -5245,9 +5299,15 @@ export function Capture(): JSX.Element {
                         images={editorImagesFromLocalImages(images)}
                         onAttachFiles={attachFiles}
                         documentTitle={draft.title}
+                        captionFormRequest={captionRequest ?? undefined}
                       />
-                      {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
-                      <DraftBodyGallery bodyHtml={bodyHtml} />
+                      {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
+                        AUFTRAG-PRO-337: aus der Großansicht führt „Bildbeschreibung bearbeiten" in
+                        DAS Formular dieses Editors — kein zweites Formular, kein zweiter Egress. */}
+                      <DraftBodyGallery
+                        bodyHtml={bodyHtml}
+                        onEditCaption={bildbeschreibungAusGalerie}
+                      />
                       {/* SCRUM-426: Public-KI-Anreicherung — nur bei Admin-Freigabe (Stufe „offen"),
                         Ergebnisse extern/ungeprüft, nur bewusst in den Entwurf übernehmen. */}
                       <PublicAiEnrichPanel
@@ -5481,15 +5541,22 @@ export function Capture(): JSX.Element {
                         compact
                       />
                     }
+                    captionFormRequest={captionRequest ?? undefined}
                   />
-                  {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML. */}
-                  <DraftBodyGallery bodyHtml={bodyHtml} />
+                  {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
+                    AUFTRAG-PRO-337: derselbe Weg wie im Expertenzweig — die Galerie öffnet DAS
+                    Formular dieses Editors. */}
+                  <DraftBodyGallery
+                    bodyHtml={bodyHtml}
+                    onEditCaption={bildbeschreibungAusGalerie}
+                  />
                 </div>
 
                 <KnowledgeInputStudio
                   open={studioOpen}
                   onClose={() => setStudioOpen(false)}
                   bodyHtml={bodyHtml}
+                  documentTitle={draft.title}
                   onApply={(next) => {
                     setBodyHtml(next);
                     setStudioApplied(true);

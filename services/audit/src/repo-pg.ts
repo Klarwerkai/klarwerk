@@ -116,4 +116,20 @@ export class PgAuditRepo implements AuditRepo {
     );
     return res.rows[0] ? toEntry(res.rows[0]) : undefined;
   }
+
+  /**
+   * W3-B (KW-W3-19): Punktzugriff ueber den PRIMAERSCHLUESSEL — `seq integer PRIMARY KEY` steht seit
+   * jeher im Schema (oben). Es braucht deshalb weder einen neuen Index noch eine Migration; genau
+   * das macht diesen Leseweg so klein.
+   *
+   * KEIN `ORDER BY`, KEIN `LIMIT`, KEIN Vollscan: ein Schluesselzugriff findet den adressierten
+   * Eintrag oder gar keinen. Ein fehlender `seq` liefert `undefined` und wirft nicht — das
+   * Fehlen ist eine Antwort, kein Fehler (KW-W3-19: `MISSING`).
+   */
+  async findBySeq(seq: number, tx?: TxContext): Promise<AuditEntry | undefined> {
+    const res = await this.queryable(tx).query<AuditRow>("SELECT * FROM audit WHERE seq = $1", [
+      seq,
+    ]);
+    return res.rows[0] ? toEntry(res.rows[0]) : undefined;
+  }
 }

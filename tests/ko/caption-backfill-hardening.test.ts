@@ -6,6 +6,7 @@
 //     Backfill-Fehler lassen die Suche NIE umfallen (Kandidat ohne Caption-Match, Feld ungesetzt).
 //  3. GRÖSSENDECKEL: captionTexts werden an der EINEN kanonischen Stelle hart gekappt
 //     (500 Zeichen je Caption, 50 Captions je KO) — für create, revise UND Backfill.
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
@@ -60,6 +61,8 @@ function countingRepo(inner: InMemoryKoRepo) {
     bumpTrust: (id, step, maxTrust, tx) => inner.bumpTrust(id, step, maxTrust, tx),
     list: (filter) => inner.list(filter),
     listForSearch: (filter) => inner.listForSearch(filter),
+    // G27: neue Vertragsmethode (gezielter Mehrfach-Nachschlag) — reines Durchreichen.
+    listByIds: (ids) => inner.listByIds(ids),
     setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
     // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen (hier nicht instrumentiert).
     setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
@@ -126,33 +129,55 @@ describe("WP-BILD-1h P1: setCaptionTexts überschreibt NIE (nur-wenn-fehlt)", ()
   });
 });
 
-describe("WP-BILD-1h P2: Backfill hart gedeckelt, single-flight, fehlertolerant", () => {
-  it("25 Legacy-Kandidaten → genau 20 Vollladungen; der Rest bleibt in DIESER Suche ohne Caption-Match", async () => {
-    const { inner, counting, library } = buildStack();
+// ================================================================================================
+// G27 R1 — DERSELBE VERTRAG, ABER AM MAINTENANCE-AUSLÖSER STATT AN DER SUCHE
+// ================================================================================================
+//
+// WAS SICH GEÄNDERT HAT UND WARUM. Bis G27 R1 hat dieser Block die Konvergenz DURCH DIE SUCHE
+// gemessen: 25 Legacy-Kandidaten, erste Suche 20 Treffer, zweite 25. Genau diese funktionale
+// Abhängigkeit hat Entscheidung 04 §5 abgelöst — „Der reguläre Suchpfad darf funktional nicht von
+// ihm abhängen"; der Backfill ist Optimierung, nicht Migration und nicht Readiness. Sie war
+// zugleich der Träger von BENs Befund: weil nur 20 Objekte je Anfrage fertig wurden, hing das
+// Suchergebnis an der Bestandsreihenfolge und alles dahinter blieb in Fassung 1 durchsuchbar.
+//
+// DER VERTRAG WIRD DESHALB ERSETZT, NICHT GELÖSCHT UND NICHT GELOCKERT. Alle drei Zusagen bleiben
+// wörtlich erhalten — harter Deckel, Single-Flight je KO-Id, Fehlertoleranz —, sie hängen nur an
+// ihrem neuen, ausdrücklichen Auslöser: dem Wartungslauf. Für den Fußnoten-Nachzug ist das genau
+// der von 05 §4 verlangte eigene Auslöser innerhalb der Rebuild-/Reconcile-Aufrufkette.
+describe("WP-BILD-1h P2 (G27 R1): Wartungslauf hart gedeckelt, single-flight, fehlertolerant", () => {
+  it("25 Legacy-Kandidaten → genau 20 Vollladungen je Wartungsschwung; der Rest folgt (konvergiert)", async () => {
+    const { inner, counting, koService } = buildStack();
     for (let i = 1; i <= 25; i++) {
       await inner.insert(legacyKo(`legacy-${String(i).padStart(2, "0")}`, FIGURE("Verschraubung")));
     }
-    const first = await library.search("Verschraubung");
     expect(SEARCH_BACKFILL_LIMIT_PER_QUERY).toBe(20);
+    const erster = await koService.backfillSearchProjections({
+      limit: SEARCH_BACKFILL_LIMIT_PER_QUERY,
+    });
+    expect(erster.geschrieben).toBe(20);
     expect(counting.totalLoads()).toBe(20); // harter Deckel — kein stilles Vollladen des Bestands
-    expect(first.length).toBe(20); // ehrlich: nur die backgefüllten matchen in dieser Suche
-
-    // Die NÄCHSTE Suche arbeitet den Rest ab (konvergiert): nur noch 5 Vollladungen nötig.
-    const second = await library.search("Verschraubung");
+    // Der ZWEITE Schwung arbeitet den Rest ab: nur noch 5 Vollladungen nötig.
+    const zweiter = await koService.backfillSearchProjections({
+      limit: SEARCH_BACKFILL_LIMIT_PER_QUERY,
+    });
+    expect(zweiter.geschrieben).toBe(5);
     expect(counting.totalLoads()).toBe(25);
-    expect(second.length).toBe(25);
-    // Dritte Suche: alles backgefüllt — keine einzige weitere Vollladung.
-    const third = await library.search("Verschraubung");
+    // Dritter Schwung: alles fertig — keine einzige weitere Vollladung, und das wird ehrlich gemeldet.
+    const dritter = await koService.backfillSearchProjections({
+      limit: SEARCH_BACKFILL_LIMIT_PER_QUERY,
+    });
+    expect(dritter).toEqual({ geprueft: 0, geschrieben: 0, v2Migriert: 0, gescheitert: 0 });
     expect(counting.totalLoads()).toBe(25);
-    expect(third.length).toBe(25);
+    // Und die Fußnoten sind über DIESEN Weg nachgezogen — ohne dass je eine Suche lief.
+    expect((await inner.findById("legacy-01"))?.captionTexts).toEqual(["Verschraubung"]);
   });
 
-  it("SINGLE-FLIGHT: zwei parallele Suchen laden denselben Legacy-KO genau EINMAL", async () => {
-    const { inner, counting, library } = buildStack();
+  it("SINGLE-FLIGHT: zwei parallele Wartungsläufe laden denselben Legacy-KO genau EINMAL", async () => {
+    const { inner, counting, koService } = buildStack();
     for (let i = 1; i <= 3; i++) {
       await inner.insert(legacyKo(`legacy-${i}`, FIGURE("Verschraubung")));
     }
-    // Beide Suchen starten, während die Vollladungen am Gate hängen — sie treffen sich im
+    // Beide Läufe starten, während die Vollladungen am Gate hängen — sie treffen sich im
     // In-Flight-Promise je KO-Id statt doppelt zu laden.
     let open!: () => void;
     counting.setGate(
@@ -160,33 +185,63 @@ describe("WP-BILD-1h P2: Backfill hart gedeckelt, single-flight, fehlertolerant"
         open = r;
       }),
     );
-    const a = library.search("Verschraubung");
-    const b = library.search("Verschraubung");
+    const a = koService.backfillSearchProjections({ limit: 20 });
+    const b = koService.backfillSearchProjections({ limit: 20 });
     await new Promise((r) => setTimeout(r, 20));
     open();
     counting.setGate(null);
     const [resA, resB] = await Promise.all([a, b]);
-    expect(resA.length).toBe(3);
-    expect(resB.length).toBe(3);
+    expect(resA.geprueft).toBe(3);
+    expect(resB.geprueft).toBe(3);
     for (const [id, count] of counting.findByIdCalls) {
       expect(`${id}:${count}`).toBe(`${id}:1`); // je Legacy-KO genau EINE Vollladung
     }
   });
 
-  it("Backfill-Fehler: die Suche liefert trotzdem, das Feld bleibt ungesetzt, Retry möglich", async () => {
-    const { inner, counting, library } = buildStack();
+  it("Wartungsfehler: der Lauf fällt NICHT um, das Feld bleibt ungesetzt, Retry möglich", async () => {
+    const { inner, counting, koService } = buildStack();
     await inner.insert(legacyKo("legacy-ok", FIGURE("Verschraubung")));
     await inner.insert(legacyKo("legacy-kaputt", FIGURE("Verschraubung")));
     counting.setFailIds(["legacy-kaputt"]);
-    const hits = await library.search("Verschraubung");
-    // Die Suche fällt NIE wegen des Backfills um — der kaputte Kandidat bleibt ohne Caption-Match.
-    expect(hits.map((k) => k.id)).toEqual(["legacy-ok"]);
+    const bilanz = await koService.backfillSearchProjections({ limit: 20 });
+    // Der Lauf fällt NIE an einem einzelnen Objekt um — er meldet den Fehlschlag ehrlich.
+    expect(bilanz.geschrieben).toBe(1);
+    expect(bilanz.gescheitert).toBe(1);
     expect((await inner.findById("legacy-kaputt"))?.captionTexts).toBeUndefined();
-    // Fehler behoben → die nächste Suche füllt nach (Single-Flight-Eintrag wurde abgeräumt).
+    // Fehler behoben → der nächste Lauf füllt nach (Single-Flight-Eintrag wurde abgeräumt).
     counting.setFailIds([]);
-    const retry = await library.search("Verschraubung");
-    expect(retry.map((k) => k.id).sort()).toEqual(["legacy-kaputt", "legacy-ok"]);
+    const retry = await koService.backfillSearchProjections({ limit: 20 });
+    expect(retry.geschrieben).toBe(1);
     expect((await inner.findById("legacy-kaputt"))?.captionTexts).toEqual(["Verschraubung"]);
+  });
+
+  it("KEIN SUCHWEG STÖSST DEN NACHZUG MEHR AN (Entscheidung 04 §5) — Quelltextzusicherung", () => {
+    const bibliothek = readFileSync("services/library-analytics/src/service.ts", "utf8");
+    const dienst = readFileSync("services/knowledge-object/src/service.ts", "utf8");
+    const suche = bibliothek.slice(
+      bibliothek.indexOf("async search("),
+      bibliothek.indexOf("async search(") + 1600,
+    );
+    expect(suche).not.toContain("backfillSearchProjections");
+    const kandidaten = dienst.slice(
+      dienst.indexOf("async findCandidates("),
+      dienst.indexOf("async findCandidates(") + 1600,
+    );
+    expect(kandidaten).not.toContain("backfillSearchProjections");
+    // Der Nachzug SELBST bleibt bestehen — er ist Wartung, nicht abgeschafft.
+    expect(dienst).toContain("async backfillSearchProjections(");
+  });
+
+  it("die Suche lädt selbst NICHTS mehr nach — ein Wartungslauf davor ist die einzige Quelle", async () => {
+    const { inner, counting, koService, library } = buildStack();
+    await inner.insert(legacyKo("legacy-1", FIGURE("Verschraubung")));
+    await koService.backfillSearchProjections({ limit: 20 });
+    await koService.activateSearchProjectionV2();
+    const geladenVorSuche = counting.totalLoads();
+    const treffer = await library.search("Verschraubung");
+    expect(treffer.map((k) => k.id)).toEqual(["legacy-1"]);
+    // NULL zusätzliche Vollladungen durch die Suche.
+    expect(counting.totalLoads()).toBe(geladenVorSuche);
   });
 });
 
@@ -207,6 +262,8 @@ describe("WP-D11b patches53-GELB: Race der laufenden Suchantwort (No-op-Fall lä
       bumpTrust: (id, step, maxTrust, tx) => inner.bumpTrust(id, step, maxTrust, tx),
       list: (filter) => inner.list(filter),
       listForSearch: (filter) => inner.listForSearch(filter),
+      // G27: neue Vertragsmethode (gezielter Mehrfach-Nachschlag) — reines Durchreichen.
+      listByIds: (ids) => inner.listByIds(ids),
       findById: (id) => inner.findById(id),
       findCandidates: (query) => inner.findCandidates(query),
       // AUFTRAG-mega20 Block A: neue Vertragsmethode (Erzeugungs-Anker) — reines Durchreichen.
@@ -268,6 +325,9 @@ describe("WP-BILD-1h P3: Größendeckel an der EINEN kanonischen Stelle", () => 
   it("die Suche matcht innerhalb des gekappten Texts — und ehrlich NICHT dahinter", async () => {
     const services = buildServices();
     buildApp(services);
+    // G27 R1: eine frische Instanz steht auf `UNINITIALIZED` und beantwortet keine Suche — erst der
+    // vollständige Gate-Lauf gibt Fassung 2 frei (05 §1).
+    await services.ko.activateSearchProjectionV2();
     // „Verschraubung" endet an Position 500 (innerhalb); „Zielwort" liegt hinter dem Schnitt.
     const inside = `${"x".repeat(500 - 13)}Verschraubung`;
     await services.ko.create({

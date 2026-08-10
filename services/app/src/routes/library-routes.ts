@@ -18,7 +18,7 @@ import {
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, sendError } from "../http";
-import { sichtbareFuer, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
+import { sichtbareFuer, sichtbarkeitsfilterFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -162,7 +162,34 @@ export function libraryRoutes(
         // jeden `ko.read`-Inhaber aus — dieselbe Datei setzte die Regel im Export (:172) und in der
         // Nachbarschaft (:395) längst durch, nur hier nicht. Die Projektion trägt Stufe und Autor
         // mit, also fällt die Entscheidung hier an der Route.
-        reply.code(200).send(sichtbareFuer(user, await library.search(q ?? "", filter)));
+        //
+        // ==========================================================================================
+        // AUFTRAG-BASIC-380 — DIESELBE ENTSCHEIDUNG REIST JETZT BIS IN DAS SQL.
+        // ==========================================================================================
+        //
+        // `sichtbareFuer` allein war eine Nachfilterung. Solange sie das EINZIGE Tor ist, ist jede
+        // spätere Paginierung falsch gebaut: ein `LIMIT` in SQL liefert Zeilen, von denen hier
+        // danach getrashte und unsichtbare abgezogen werden — kurze Seiten, überspringende Cursor,
+        // und ein Zähler, der eine Existenzauskunft wäre (BASIC 379 §1.2).
+        //
+        // Ab hier wird DIESELBE Entscheidung zusätzlich als SQL-Prädikat injiziert und wirkt auf der
+        // GRUNDMENGE, vor jedem Deckel. Es ist genau die Naht, an der schon `sichtbarkeitsfilterFuer`
+        // in die Analytics reist (:351) — nur eine Ebene tiefer.
+        //
+        // WARUM `sichtbareFuer` TROTZDEM STEHEN BLEIBT, und das ist kein doppelter Gürtel aus
+        // Bequemlichkeit: es ist G-SHADOW, wörtlich (`oldAllowed ∧ newAllowed`). Im Übergang darf
+        // eine neue Regel Sichtbarkeit NIE erweitern. Ein Dienst oder Adapter, der den Trim
+        // (etwa in einem zweiten Aufbau) nicht anwendet, findet hier weiterhin das Tor vor, das
+        // seit mega74 hier steht. Die Zusage der Route ändert sich damit nicht — sie wird nur
+        // billiger und, was mehr zählt, paginierbar.
+        reply
+          .code(200)
+          .send(
+            sichtbareFuer(
+              user,
+              await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
+            ),
+          );
       },
     );
 

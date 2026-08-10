@@ -604,6 +604,36 @@ export function Library(): JSX.Element {
           </a>
         </div>
       </div>
+      {/* ==========================================================================================
+          AUFTRAG-BASIC-u2 — EINE SUCHE, DIE NICHT SAGT, WORIN SIE SUCHT, LÄSST DEN NUTZER RATEN.
+          ==========================================================================================
+          DER BEFUND (Erstnutzerlauf): über dem breitesten Bedienelement der App stand keine Angabe
+          darüber, welchen Bestand es durchsucht. Wer hier seinen eben gespeicherten Entwurf sucht,
+          findet nichts — und liest einen Nulltreffer, der wie „das gibt es nirgends" klingt. Die
+          Angabe steht deshalb DIREKT unter dem Feld, in Alltagssprache, und der Weg in die andere
+          Suchwelt (die eigenen Entwürfe auf /erfassen) ist benannt statt vorausgesetzt.
+
+          `/erfassen` verlangt die Rolle „experte" — der Weg läuft deshalb über RoleLink (dasselbe
+          Tor, aus dem der Router sein Gate zieht), nicht über einen rohen Link, der eine Betrachterin
+          in den stillen Rückwurf schickte (mega70 Block D hält diese Bauform fest).
+
+          Ein `div`, kein `p`: die gesperrte RoleLink-Fassung ist ein `div` und dürfte in keinem
+          Absatz stehen. An Query, Filterung, Ranking und Sichtbarkeit ändert dieser Block nichts. */}
+      <div className="-mt-2 mb-4 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] leading-relaxed text-muted">
+        <span>{t("lib.scope.note")}</span>
+        <RoleLink
+          to="/erfassen"
+          className="inline-flex items-center gap-1 font-semibold text-ink"
+          hoverClassName="hover:underline"
+          testId="library-scope-to-drafts"
+        >
+          {(erreichbar) => (
+            <>
+              {t("lib.scope.toDrafts")} {erreichbar ? <span aria-hidden="true">→</span> : null}
+            </>
+          )}
+        </RoleLink>
+      </div>
       {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
       {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
       {/* SCRUM-460 (VIP): Suche liefert nicht nur „dumme“ Treffer — bei aktiver Suche eine echte,

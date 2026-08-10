@@ -18,6 +18,7 @@ import { EmptyStateCtas } from "../components/EmptyStateCtas";
 // FUNKE (nacht24 Paket 6): Wissenskapital-Kachel (F5) + offene Wissenslücken (F3).
 import { KnowledgeCapitalNumbers, OpenGapsSummary } from "../components/FunkeCards";
 import { HelpTip } from "../components/HelpTip";
+import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { LoadErrorState, StaleMarker } from "../components/LoadState";
 // AUFTRAG-mega51 BLOCK A: das EINE Tor für jeden Weg dieser Seite — was die Rolle nicht erreicht,
 // wird als Lage gezeigt, nicht als Link. Deshalb steht hier kein `Link` aus react-router-dom mehr.
@@ -281,6 +282,7 @@ export function Start(): JSX.Element {
       <p className="kw-start-purpose -mt-2 mb-5 max-w-2xl text-[14px] leading-relaxed text-text">
         {t("start.purpose")}
       </p>
+      <KlaraPathTeaser surface="start" />
       {/* SCRUM-429: ruhige Erststart-Führung nur für den neuen Admin (erster Besuch, ausblendbar). */}
       {role === "admin" ? <AdminFirstRunCard /> : null}
       {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}

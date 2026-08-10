@@ -109,6 +109,11 @@ describe("mega62 H · Hypothese 1 ist widerlegt, Hypothese 2 nicht reproduzierba
   it("das Verzeichnis kennt JEDEN Autor des echten Demo-Bestands — keine verwaiste Kennung", async () => {
     const services = buildServices();
     const app = buildApp(services);
+    // G27 R1 / Entscheidung 06 §3: `seedDemo` unten benutzt die Standardsuche, läuft aber VOR der
+    // ersten HTTP-Anfrage — die App wäre also noch nicht in Betrieb. `ready()` zieht den
+    // onReady-Hook (und damit die Inbetriebnahme der Projektion) an die Stelle vor, an der der
+    // echte Serverstart ihn ohnehin hat.
+    await app.ready();
     // AUFTRAG-mega64 Block A: das Kennwort kommt aus dem Seed-ERGEBNIS, nicht mehr aus dem
     // Quelltext — der Seed erzeugt für jedes neu angelegte Konto ein Einmalkennwort.
     const geseedet = await seedDemo(services);

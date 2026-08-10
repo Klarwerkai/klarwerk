@@ -4,6 +4,7 @@
 // der Ersteller-Filter greift nur in der Admin-Ansicht („ALLE ENTWÜRFE"). Leerer Filter = alle.
 import type { Draft } from "../api/types";
 import { draftTitle } from "./draftForm";
+import { htmlToPlainText } from "./richText";
 
 export const DRAFT_SORT_KEYS = ["recent", "oldest", "title"] as const;
 export type DraftSortKey = (typeof DRAFT_SORT_KEYS)[number];
@@ -31,15 +32,49 @@ export function draftSavedMs(draft: Draft): number {
   return Number.isFinite(ms) ? ms : 0;
 }
 
-// Durchsuchbarer Volltext eines Entwurfs: Titel + Aussage + enttaggter Fließtext (bodyHtml). Rein
-// String-basiert (kein DOM) — Tags werden grob entfernt, damit die Suche den sichtbaren Text trifft.
+// Durchsuchbarer Volltext eines Entwurfs: Titel + Aussage + Fließtext (bodyHtml) als Klartext.
+// Rein String-basiert (kein DOM).
+//
+// AUFTRAG-mega85 Block A (bens ROT-Punkt 1 zu mega84): hier stand `replace(/<[^>]*>/g, " ")` —
+// JEDES Tag wurde zu einem Leerzeichen. Bei tag-freien Entwürfen folgenlos, bei ausgezeichneten
+// nicht: aus „<em>Ventil V2</em>," wurde „Ventil V2 ,", und eine Suche nach „Ventil V2, sichtbar"
+// fand den formatierten Entwurf nicht mehr. Seit mega84 trägt die Bild-Fußnote Auszeichnung, also
+// trifft das echte Inhalte. Es ist DIESELBE Klasse, die mega84 an drei Lesern geschlossen hat
+// (librarySearch, captions, bodyImages) — dies war die vierte, unentdeckte Suchfläche.
+//
+// Korrigiert wird sie NICHT mit einer vierten Kopie der Regel, sondern über die kanonische
+// Reduktion `htmlToPlainText` (richText.ts, Server-Zwilling in services/structure): Block-ENDEN
+// werden zum Leerzeichen — ein Absatzwechsel IST eine Wortgrenze, „Ende“/„Anfang“ dürfen nicht zu
+// „EndeAnfang“ verwachsen —, Inline-Auszeichnung verschwindet spurlos, Entities werden dekodiert.
+//
+// ── DER SUCHVERTRAG (AUFTRAG-mega86 Block A, nach bens ROT aus sammel84) ───────────────────────
+//
+// mega85 hat hier zugesagt: „jede Anfrage, die vorher traf, trifft weiterhin". Diese Zusage ist
+// FALSCH, und ben hat sie mit vier Anfragen widerlegt — nachgerechnet und bestätigt, nicht
+// geglaubt. `htmlToPlainText` dekodiert Entities und normalisiert `\s+` zu EINEM Leerzeichen; die
+// alte Fassung tat beides nicht. Was hier gilt, ist enger:
+//
+//   SICHTBARER KLARTEXT BLEIBT SUCHBAR. Jede Wortfolge, die ein Mensch im Entwurf lesen kann, wird
+//   weiterhin gefunden — Wortgrenzen (Absatz, Listenpunkt, Zeilenumbruch, entfernte Auszeichnung)
+//   gelten dabei als GENAU EIN Leerzeichen. Nicht mehr gefunden werden vier Klassen technischer
+//   Altanfragen, und zwar bewusst:
+//     (1) gegen HTML-Entitätsschreibweisen — „&amp;" statt „&",
+//     (2) gegen mehrfachen Whitespace — „a  b" statt „a b",
+//     (3) gegen einen Zeilenumbruch als Zeichen — „dichtring\nventil",
+//     (4) gegen die Leerzeichen-Artefakte der alten Reduktion — „V2 ," statt „V2,".
+//   Keine dieser vier war je sichtbarer Text. Sie zu verlieren ist der ZWECK dieser Änderung, nicht
+//   ihr Preis — Artefakt (4) ist genau der Fehler, gegen den mega84 und mega85 angetreten sind.
+//
+// Die vier Klassen stehen einzeln als ausdrücklich ausgenommen im Test, jede mit bens Beispiel
+// (`tests/capture/mega85-suchtext-formatierung.test.ts`, Stufe 4). Der bleibende Teil wird dort
+// über eine feste, genannte Zahl von Anfragen gefahren — nicht über eine Untergrenze.
 function draftSearchText(draft: Draft, titleFallback: string): string {
   const payload = draft.payload;
   const parts = [
     draftTitle(draft, titleFallback),
     payload.title ?? "",
     payload.statement ?? "",
-    (payload.bodyHtml ?? "").replace(/<[^>]*>/g, " "),
+    htmlToPlainText(payload.bodyHtml ?? ""),
   ];
   return parts.join(" ").toLowerCase();
 }

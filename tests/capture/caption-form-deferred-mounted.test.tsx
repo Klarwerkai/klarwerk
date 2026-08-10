@@ -25,7 +25,7 @@ import type { DescribeImageResult } from "../../apps/web/src/api/types";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTION_AI_TEXT } from "../../apps/web/src/lib/captionAiSuggest";
-import { mitBildbeschreibung } from "./bildbeschreibung-naht";
+import { beschreibungsText, mitBildbeschreibung } from "./bildbeschreibung-naht";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -59,7 +59,7 @@ function Host(): JSX.Element {
   const [value, setValue] = useState(DOC);
   setValueFromOutside = setValue;
   return mitBildbeschreibung(
-    createElement(RichTextEditor, { value, onChange: setValue }),
+    createElement(RichTextEditor, { value, onChange: setValue, documentTitle: "Wartungsnotiz" }),
     deferredDescribe,
   );
 }
@@ -100,9 +100,12 @@ function maybeTestId(id: string): HTMLElement | null {
   return el instanceof HTMLElement ? el : null;
 }
 
-function field(): HTMLTextAreaElement | null {
-  const el = document.querySelector("#caption-form-text");
-  return el instanceof HTMLTextAreaElement ? el : null;
+// AUFTRAG-mega84 Block B: das Feld ist ein contentEditable (fett/kursiv/Umbruch) — gelesen wird
+// es über die Naht, die alle Bildbeschreibungs-Tests teilen.
+function field(): { value: string } | null {
+  return document.querySelector("#caption-form-text") === null
+    ? null
+    : { value: beschreibungsText() };
 }
 
 async function click(el: HTMLElement): Promise<void> {

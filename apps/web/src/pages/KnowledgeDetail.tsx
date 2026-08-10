@@ -1150,6 +1150,7 @@ export function KnowledgeDetail(): JSX.Element {
                             open={studioOpen}
                             onClose={() => setStudioOpen(false)}
                             bodyHtml={edit.bodyHtml}
+                            documentTitle={edit.title}
                             onApply={(bodyHtml) => {
                               setEdit({ ...edit, bodyHtml });
                               setStudioApplied(true);

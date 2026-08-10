@@ -24,7 +24,48 @@ import {
 // er trotzdem keine Autorität trägt und warum er DB-weit eindeutig sein muss statt im Objekt zu
 // liegen — alles ausgeschrieben in document-create.ts.
 import { normalizeCreateOperationId } from "./document-create";
-import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
+// G27 Welle 1 / S2 + Effective Search Document: die zweite, veränderliche Projektionsart und die
+// Zusammensetzung beider zu der einen Sicht, die der Suchkonsument bekommt.
+import {
+  type EffectiveSearchDocument,
+  composeEffectiveSearchDocument,
+} from "./effective-search-document";
+import {
+  type KoMetadataProjection,
+  metadataTextsEqual,
+  metadataTextsOf,
+} from "./metadata-projection";
+import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
+import type {
+  EvidenceRepo,
+  KoCandidateQuery,
+  KoFilter,
+  KoRepo,
+  KoSichtbarkeitstrim,
+  KoVersionRepo,
+} from "./repo";
+// G27: die revisionsgebundene Suchprojektion — reine Ableitung (search-projection.ts) und ihre
+// Persistenz (search-projection-repo.ts). Warum es sie gibt, steht im Kopf der Ableitungsdatei.
+import {
+  type ClassificationSnapshot,
+  type KoSearchHit,
+  type KoSearchProjection,
+  type KoSearchQuery,
+  SEARCH_PROJECTION_VERSION,
+  buildSearchProjection,
+  classificationFromVersionSnapshot,
+  reconstructedClassification,
+} from "./search-projection";
+import {
+  InMemoryKoSearchProjectionRepo,
+  type KoSearchProjectionRepo,
+  type ProjectionAudit,
+  type ProjectionControlState,
+  type ProjectionState,
+  UNINITIALIZED_CONTROL_STATE,
+  controlStateLifecycleGueltig,
+  integritaetsMarkerFuer,
+} from "./search-projection-repo";
 // SCRUM-527 (WP2): Quell-URL-Allowlist an der Persistenzgrenze (nur absolute http/https).
 import { safeSourceUrl, sanitizeSources } from "./source-url";
 import {
@@ -71,6 +112,60 @@ export const TRASH_RETENTION_DAYS = 28;
 // Anhang §3 (Truth-Impact ~ −12). Eine vollständige spec-konforme Trust-Formel bleibt Folge-Gap (EK-22).
 export const TRUTH_CONFLICT_TRUST_PENALTY = 12;
 
+// G27: wie viele Altbestands-Objekte eine EINZELNE Suchanfrage höchstens nachprojiziert. Dasselbe
+// Muster und dieselbe Größenordnung wie der Fußnoten-Backfill der Bibliothek
+// (SEARCH_BACKFILL_LIMIT_PER_QUERY = 20): die Suche darf nie zum Bestands-Durchlauf werden, und
+// der Rest wird von der nächsten Anfrage bzw. vom ausdrücklichen Lauf abgearbeitet (konvergiert).
+// G27 R1 (Entscheidung 04 §5): DER DECKEL BLEIBT, SEIN AUFRUFORT NICHT. Der gedeckelte Nachzug ist
+// weiterhin Hintergrundhilfe und Optimierung — aber KEIN Suchweg stößt ihn mehr an. „Der reguläre
+// Suchpfad darf funktional nicht von ihm abhängen"; er aktiviert nichts, gibt keine Readiness frei
+// und bestätigt keine Konsistenz. Der Wert bleibt die Schwunggröße für ausdrückliche
+// Wartungsläufe und ist Teil der öffentlichen Modulfläche.
+export const SEARCH_PROJECTION_BACKFILL_PER_QUERY = 20;
+
+// Der Schwung des UNGEDECKELTEN Abgleichs. Groß genug, dass der Bestand in wenigen Runden
+// abgearbeitet ist; endlich, damit eine einzelne Abfrage nicht unbegrenzt Zeilen zieht.
+const RECONCILE_SCHWUNG = 5000;
+
+/**
+ * Das Ergebnis der fünf Gate-Prüfungen. `alle` ist die EINE Zusage, an der die Freigabe hängt;
+ * `befunde` sagt PII-frei, woran es sonst liegt — „nicht bereit" ohne Grund wäre keine Auskunft.
+ */
+export interface SearchProjectionReadiness {
+  /** 1 — vollständiger Rebuild dieses Baus. */
+  rebuild: boolean;
+  /** 2 — Reconcile dieses Baus, ohne verbleibende Differenz. */
+  reconcile: boolean;
+  /** 3 — jedes lebende Objekt trägt BEIDE Hälften des Suchdokuments. */
+  konsistenz: boolean;
+  /** 4 — alle aktiven Zeilen in der Zielfassung, keine Mischversionen. */
+  projektionsversion: boolean;
+  /** 5 — Eindeutigkeit, Zeiger, Vollständigkeit, Pflichtfelder, Hash, Lifecycle. */
+  integritaet: boolean;
+  alle: boolean;
+  befunde: string[];
+}
+
+// Was EIN Nachzug eines Objekts herstellt (s. `ensureSearchArtifacts`). `v2Migriert` sagt, ob dabei
+// eine Zeile der alten Projektionsfassung ausdrücklich auf Fassung 2 gehoben wurde.
+interface SearchArtifacts {
+  captionTexts: string[];
+  projection: KoSearchProjection | undefined;
+  v2Migriert: boolean;
+}
+
+// Schlagwörter sind eine FOLGE, keine Menge: die Reihenfolge stammt vom Menschen und geht so in den
+// `tag_text` der Metadatenprojektion ein. Eine Umsortierung ist deshalb eine wirksame Änderung —
+// und ein Vergleich, der sie nicht sieht, wäre eine falsche Idempotenz-Zusage.
+function gleicheTagFolge(
+  a: readonly string[] | undefined,
+  b: readonly string[] | undefined,
+): boolean {
+  const links = a ?? [];
+  const rechts = b ?? [];
+  return links.length === rechts.length && links.every((tag, i) => tag === rechts[i]);
+}
+
 // SCRUM-169: defensives Limit für den read-only Evidence-Index (QM/Stufe 2).
 export const DEFAULT_EVIDENCE_LIMIT = 100;
 export const MAX_EVIDENCE_LIMIT = 500;
@@ -98,6 +193,11 @@ export interface KoServiceDeps {
   // SCRUM-160: optionales Evidence-Repo. Ist es gesetzt, werden Quellen/Objekt-Anhänge
   // als fachliche Evidence-Records zusätzlich zum KO-JSON persistiert.
   evidence?: EvidenceRepo;
+  // G27: Persistenz der revisionsgebundenen Suchprojektion. BEWUSST NICHT optional im Verhalten —
+  // fehlt die Injektion, baut der Service sich einen In-Memory-Adapter über DASSELBE KO-Repo.
+  // Grund: „gemeinsamer Suchvertrag für Bibliothek und Klara" darf nicht davon abhängen, ob eine
+  // Kompositionswurzel daran gedacht hat. Die Postgres-Variante wird von build-app injiziert.
+  searchProjections?: KoSearchProjectionRepo;
   now?: () => number;
   genId?: () => string;
   // SCRUM-395: optionaler Lieferant der Standard-Prüferanzahl (Admin-Einstellung im
@@ -320,6 +420,8 @@ export class KoService {
   private readonly audit: AuditService | undefined;
   private readonly versions: KoVersionRepo | undefined;
   private readonly evidence: EvidenceRepo | undefined;
+  // G27: immer vorhanden (s. KoServiceDeps.searchProjections).
+  private readonly searchProjections: KoSearchProjectionRepo;
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly defaultNeededValidations: (() => Promise<number | null | undefined>) | undefined;
@@ -339,6 +441,8 @@ export class KoService {
     this.audit = deps.audit;
     this.versions = deps.versions;
     this.evidence = deps.evidence;
+    this.searchProjections =
+      deps.searchProjections ?? new InMemoryKoSearchProjectionRepo(deps.repo);
     this.defaultNeededValidations = deps.defaultNeededValidations;
     this.onPurge = deps.onPurge;
     this.withTx = deps.withTx;
@@ -413,11 +517,19 @@ export class KoService {
       // 1) KO persistieren (Compare-and-Set auf rowVersion).
       await this.repo.update(updated);
       let snapshotWritten = false;
+      let projectionWritten = false;
       try {
         // 2) Nachgelagert: erst Snapshot, dann Audit. Ein Fehler in EINEM Schritt rollt ALLES zurück.
+        // G27: die Suchprojektion der NEUEN Version entsteht in DIESER Klammer — sie ist damit
+        // Teil desselben kontrollierten Schreibvorgangs wie der Versions-Snapshot. Scheitert sie,
+        // scheitert die Revision und der KO-Stand wird zurückgerollt; es gibt keinen Augenblick,
+        // in dem eine neue Inhaltsversion gilt und die Suche noch die alte Fassung kennt.
         if (snapshot) {
           await this.snapshot(updated, snapshot.author, snapshot.note);
           snapshotWritten = this.versions !== undefined;
+          await this.persistSearchProjection(updated, (geschrieben) => {
+            projectionWritten = geschrieben;
+          });
         }
         await audit?.();
         return value;
@@ -427,6 +539,13 @@ export class KoService {
         // geworfen; der Zustand ist bestmöglich wiederhergestellt (kein „wirksam, aber unbelegt").
         if (snapshotWritten) {
           await this.versions?.remove(updated.id, updated.version).catch(() => undefined);
+        }
+        // G27: eine Projektion zu einer zurückgerollten Version wäre eine Karteileiche, die kein
+        // Rebuild je anfasst (sie gehört zu keiner aktiven Version) — sie wird mitkompensiert.
+        if (projectionWritten) {
+          await this.searchProjections
+            .remove(updated.id, updated.version, { ruecknahme: true })
+            .catch(() => undefined);
         }
         await this.rollbackKo(before).catch(() => undefined);
         throw err;
@@ -457,6 +576,837 @@ export class KoService {
       author,
       note,
     });
+  }
+
+  // ==============================================================================================
+  // G27 — DIE SUCHPROJEKTION AM SCHREIBWEG
+  // ==============================================================================================
+  //
+  // Eine Projektion entsteht GENAU DANN, wenn eine neue Inhaltsversion gilt — also an denselben
+  // vier Stellen, an denen `snapshot()` läuft (Erstanlage, Erstanlage aus Dokumenten, Revision,
+  // Revision durch Dokumentübernahme). DREI davon tragen eine Fehlerklammer MIT Kompensation
+  // (`mutateKoTx`, `createWithDocumentsLocked`, `appendDocumentExtract`): scheitert dort ein
+  // späterer Schritt, wird eine von DIESEM Vorgang geschriebene Zeile wieder entfernt. Der Auftrag
+  // verlangt „neue KO-Version und Projektion im selben kontrollierten Schreibvorgang", und genau
+  // diese Klammer IST der kontrollierte Schreibvorgang dieses Moduls (SCRUM-507 R3).
+  //
+  // ZWEI AUSNAHMEN, ausdrücklich benannt, damit dieser Kommentar nicht mehr behauptet als der Code
+  // tut (G27, PLAN-BASIC-Befund D14):
+  //   · `finishCreated` (Version 1 über `create`) hat KEINE Fehlerklammer. Der Ablauf bleibt dort
+  //     bewusst untransaktional (WP-SHIP8-CLOSE-5); Auffang sind `ensureCreatedSideEffects` und
+  //     `backfillSearchProjections`. Das ist offene, benannte Arbeit — kein Versehen.
+  //   · In `appendDocumentExtract` steht der Aufruf AUSSERHALB der `if (revises)`-Bedingung und
+  //     läuft deshalb auch ohne Snapshot. Ohne Inhaltsrevision bleibt die Version dieselbe; dann
+  //     greift die Append-only-Regel und die bestehende Zeile bleibt unangetastet.
+  //
+  // Append-only: `insert` schreibt nur, wenn (koId, koVersion) noch frei ist. Eine bestehende
+  // Projektion wird NIE überschrieben — auch nicht von einem späten Wiederholungsversuch.
+  // Meldung: hat DIESER Aufruf geschrieben? NUR dann ist die Zeile kompensierbar — eine bereits
+  // vorhandene, gültige Zeile gehört einem anderen Vorgang und darf von diesem nicht entfernt
+  // werden.
+  // S1/S2: der Schreibweg legt BEIDE Hälften des Suchdokuments an. Die Inhaltszeile append-only an
+  // (koId, koVersion), die Metadatenzeile idempotent an `koId`. Die Metadatenprojektion steht
+  // bewusst AUSSERHALB der Append-only-Regel: sie ist versionslos, und ein `revise`, das nebenbei
+  // die Kategorie ändert, muss sie mitziehen — sonst bliebe der alte Wert suchbar.
+  //
+  // WARUM GEMELDET UND NICHT ZURÜCKGEGEBEN WIRD (G27 Welle 1, Korrektur der Kopfprüfung). Zwischen
+  // den beiden Hälften liegt eine Fehlerstelle: gelingt die Inhaltszeile und scheitert der
+  // Metadaten-Write, erreicht ein RÜCKGABEWERT den Aufrufer nie — die Zuweisung
+  // `projectionWritten = await …` wird nicht mehr ausgeführt und die Variable bliebe auf `false`
+  // stehen. Die Rücknahmeklammer des Aufrufers hielte die soeben geschriebene Zeile daraufhin für
+  // eine fremde und ließe sie liegen: eine Karteileiche an einer zurückgerollten Version, die kein
+  // Rebuild je anfasst und über die eine spätere, erfolgreiche Wiederholung unter der
+  // Append-only-Regel stolpern würde. `meldeGeschrieben` läuft deshalb SOFORT nach dem Insert und
+  // vor dem Metadaten-Write — der Aufrufer weiß es dann auch im Fehlerfall.
+  //
+  // Die Kompensation selbst bleibt bewusst beim AUFRUFER und wandert nicht hier herein: nur er
+  // kennt den ganzen Vorgang, und nur dort hängt die ehrliche Meldung eines übrig gebliebenen
+  // Restes (`rollbackCreatedKo`) an derselben Entscheidung. Wer keine Klammer hat, meldet auch
+  // nicht — s. die benannte Ausnahme `finishCreated`: dort BLEIBT das Wissensobjekt im Bestand,
+  // seine Inhaltszeile ist also keine Karteileiche, und zuständig ist der idempotente Nachzug.
+  private async persistSearchProjection(
+    ko: KnowledgeObject,
+    meldeGeschrieben?: (geschrieben: boolean) => void,
+  ): Promise<void> {
+    const at = new Date(this.now()).toISOString();
+    const geschrieben = await this.searchProjections.insert(buildSearchProjection(ko, at));
+    meldeGeschrieben?.(geschrieben);
+    await this.projectMetadata(ko, at);
+  }
+
+  /**
+   * Die MUTABLE METADATA PROJECTION eines Objekts auf den aktuellen Stand bringen (S2).
+   *
+   * Die Idempotenz und die Monotonie der `metadata_revision` liegen im Speicher, nicht hier
+   * (metadata-projection-repo.ts): derselbe fachliche Stand ein zweites Mal geschrieben lässt die
+   * Revision stehen. Diese Methode ist deshalb überall unbedenklich aufrufbar — im Schreibweg, im
+   * Backfill und im Nachzug — ohne dass ein Zähler versehentlich zweimal klettert.
+   */
+  private async projectMetadata(
+    ko: KnowledgeObject,
+    at: string,
+  ): Promise<KoMetadataProjectionResult> {
+    const { categoryText, tagText } = metadataTextsOf(ko);
+    return this.searchProjections.metadata.upsert({ koId: ko.id, categoryText, tagText, at });
+  }
+
+  /**
+   * Die revisionsgebundene Klassifizierungsreferenz für eine NEU ABGELEITETE Zeile
+   * (Rebuild/Fassungsnachführung) — Detailentscheidungen B und I, in genau dieser Reihenfolge:
+   *
+   *   1 Es gibt bereits eine Zeile der geltenden Fassung mit Snapshot ⇒ SIE BLEIBT. Ein Rebuild
+   *     darf historische Content-Projections nicht still überschreiben, und ein später geänderter
+   *     Vertraulichkeitswert darf die Geschichte nicht umschreiben.
+   *   2 Es gibt den unveränderlichen `KoVersionSnapshot` dieser Version ⇒ daraus lesen (`verified`).
+   *   3 Sonst ⇒ bestverfügbare Rekonstruktion aus dem heutigen Objektstand, ausdrücklich als
+   *     `reconstructed_from_current_ko` / `historical_confidence = unknown` gekennzeichnet.
+   *
+   * Fall 3 BLOCKIERT DEN REBUILD NICHT (Abschnitt I, No-Go 4): alle übrigen Projektionsdaten sind
+   * deterministisch rekonstruierbar, und das Live-Gate hängt ohnehin ausschließlich am aktuellen
+   * KO-/Policy-Zustand — nicht an dieser Zeile.
+   */
+  private async classificationForRebuild(
+    ko: KnowledgeObject,
+    alt: KoSearchProjection | undefined,
+  ): Promise<ClassificationSnapshot> {
+    if (alt && alt.projectionVersion === SEARCH_PROJECTION_VERSION) {
+      return alt.classificationSnapshot;
+    }
+    const snapshot = (await this.versions?.listByKo(ko.id))?.find((s) => s.version === ko.version);
+    return snapshot ? classificationFromVersionSnapshot(snapshot) : reconstructedClassification(ko);
+  }
+
+  /**
+   * IDEMPOTENTER Einzel-Backfill: stellt sicher, dass die AKTIVE Version eines Objekts eine
+   * Projektion hat. Für Altbestand aus der Zeit vor G27 und für Objekte, die an der Persistenz
+   * vorbei entstanden sind (Journal-Replay, direkter Repo-Insert in Tests).
+   *
+   * Liefert die Projektion — oder `undefined`, wenn es das Objekt nicht (mehr) gibt. Der Aufrufer
+   * bekommt damit eine ehrliche Antwort statt einer stillen Leermenge.
+   */
+  async ensureSearchProjection(id: string): Promise<KoSearchProjection | undefined> {
+    return (await this.ensureSearchArtifacts(id)).projection;
+  }
+
+  /**
+   * ALTBESTANDS-BACKFILL — sicher und idempotent, in gedeckelten Schwüngen.
+   *
+   * Es gibt bewusst KEINEN Start-Hook, der beim Hochfahren den ganzen Bestand durchpflügt: das
+   * wäre bei einem großen Bestand ein Deployment-Risiko ohne Not. Stattdessen arbeitet der
+   * Backfill in Schwüngen (`limit`) — aufgerufen von den Suchwegen (kleiner Deckel je Anfrage,
+   * konvergiert) und für den ausdrücklichen Lauf mit einem großen Deckel.
+   *
+   * IDEMPOTENT auf zwei Ebenen: die Arbeitsliste enthält nur Objekte, deren Suchdokument noch
+   * nicht auf dem geltenden Stand ist, und die Schreibvorgänge selbst sind append-only (Inhalt)
+   * bzw. änderungsbedingt (Metadaten). Ein zweiter Lauf schreibt deshalb nichts mehr und meldet
+   * das ehrlich.
+   *
+   * `v2Migriert` zählt die Zeilen, die aus Projektionsfassung 1 auf Fassung 2 nachgeführt wurden —
+   * die Fassungsmigration ist damit eine gemessene Zahl und kein stiller Nebeneffekt.
+   */
+  async backfillSearchProjections(opts: { limit?: number } = {}): Promise<{
+    geprueft: number;
+    geschrieben: number;
+    v2Migriert: number;
+    gescheitert: number;
+  }> {
+    const limit = Math.max(0, Math.floor(opts.limit ?? 500));
+    const offen = await this.searchProjections.missingActive(limit);
+    let geschrieben = 0;
+    let v2Migriert = 0;
+    let gescheitert = 0;
+    for (const id of offen) {
+      try {
+        const ergebnis = await this.ensureSearchArtifacts(id);
+        if (ergebnis.projection) {
+          geschrieben += 1;
+        }
+        if (ergebnis.v2Migriert) {
+          v2Migriert += 1;
+        }
+      } catch (error) {
+        // NEVER BLOCK, exakt wie der Fußnoten-Backfill: ein Objekt, dessen Vollladung scheitert,
+        // bleibt in DIESER Anfrage ohne Projektion und damit ehrlich unauffindbar — die Suche
+        // selbst darf daran nie umfallen. PII-frei: nur Id und Fehlerklasse, nie Inhalte.
+        gescheitert += 1;
+        process.stderr.write(
+          `[KLARWERK] Suchprojektion-Backfill fehlgeschlagen (ko=${id}, fehler=${
+            error instanceof Error ? error.name : "unknown"
+          }).\n`,
+        );
+      }
+    }
+    return { geprueft: offen.length, geschrieben, v2Migriert, gescheitert };
+  }
+
+  /**
+   * V1/V2-MISCHBESTAND, EINDEUTIG BENANNT (Detailentscheidung D).
+   *
+   * Fassung 2 ist semantisch inkompatibel zu Fassung 1 (andere Feldgrenze, eigenes `body_text`,
+   * Kategorie/Schlagwörter ausgelagert). Ein Bestand, der beides führt, darf das nicht verschweigen:
+   * diese Zahl sagt, wie viele Zeilen noch welcher Fassung angehören. `offenV1` ist die Arbeit, die
+   * der Backfill noch vor sich hat.
+   */
+  async searchProjectionVersions(): Promise<{
+    geltendeFassung: number;
+    zeilen: { projectionVersion: number; count: number }[];
+    offenV1: number;
+    gemischt: boolean;
+  }> {
+    const zeilen = await this.searchProjections.inventoryByProjectionVersion();
+    const veraltet = zeilen.filter((z) => z.projectionVersion !== SEARCH_PROJECTION_VERSION);
+    return {
+      geltendeFassung: SEARCH_PROJECTION_VERSION,
+      zeilen,
+      offenV1: veraltet.reduce((summe, z) => summe + z.count, 0),
+      gemischt: veraltet.length > 0 && zeilen.length > veraltet.length,
+    };
+  }
+
+  /**
+   * VOLLSTÄNDIGER REBUILD — die einzige Operation, die bestehende Projektionen ersetzen darf.
+   *
+   * Sie ist kein Widerspruch zur Append-only-Regel, sondern deren Gegenstück: die Regel verhindert
+   * STILLES Überschreiben im Normalbetrieb; der Rebuild ist eine benannte, ausdrückliche Handlung.
+   * Ihr Prüfstein steht in der Architekturentscheidung und ist hier messbar: bei unverändertem
+   * Inhalt UND unveränderter `projection_version` ergibt der Rebuild denselben `content_hash` —
+   * `unveraendert` zählt genau das.
+   *
+   * Der Rebuild berührt AUSSCHLIESSLICH die aktive Version jedes Objekts. Historische Zeilen
+   * bleiben, wie sie sind: sie gehören zu Fassungen, deren Inhalt hier gar nicht mehr vorliegt
+   * (das KO trägt nur den aktuellen Stand) — sie neu abzuleiten wäre eine Erfindung.
+   *
+   * DETERMINISTISCH heißt: derselbe Bestand ergibt dasselbe Ergebnis, auf jeder Maschine, in jeder
+   * Reihenfolge, beliebig oft. Der einzige Wert von außen ist der Zeitstempel — und der geht weder
+   * in den Hash noch (als vermeintlich historischer Zeitpunkt) in den Klassifizierungs-Snapshot ein:
+   * `captured_at = now` ist ausdrücklich verboten (Abschnitt I). Die historische Einstufung stammt
+   * entweder aus der bestehenden Zeile, aus dem unveränderlichen Versionsstand oder ist eine als
+   * solche gekennzeichnete Rekonstruktion (s. `classificationForRebuild`).
+   */
+  async rebuildSearchProjections(): Promise<{
+    geprueft: number;
+    geschrieben: number;
+    unveraendert: number;
+    v2Migriert: number;
+  }> {
+    const at = new Date(this.now()).toISOString();
+    let geprueft = 0;
+    let geschrieben = 0;
+    let unveraendert = 0;
+    let v2Migriert = 0;
+    for (const ko of await this.repo.list({})) {
+      if (ko.deletedAt) {
+        continue;
+      }
+      geprueft += 1;
+      const alt = await this.searchProjections.find(ko.id, ko.version);
+      if (alt && alt.projectionVersion !== SEARCH_PROJECTION_VERSION) {
+        v2Migriert += 1;
+      }
+      const frisch = buildSearchProjection(ko, at, {
+        classification: await this.classificationForRebuild(ko, alt),
+      });
+      if (alt?.contentHash === frisch.contentHash) {
+        unveraendert += 1;
+      }
+      // `createdAt` der bestehenden Zeile bleibt erhalten — sie wurde neu abgeleitet, nicht neu
+      // geboren; nur `updatedAt` klettert.
+      await this.searchProjections.replace(
+        alt ? { ...frisch, createdAt: alt.createdAt, updatedAt: at } : frisch,
+      );
+      geschrieben += 1;
+      // Die zweite Hälfte des Suchdokuments gehört zum Rebuild: eine Inhaltszeile ohne
+      // Metadatenzeile wäre nach Kategorie oder Schlagwort nicht auffindbar.
+      await this.projectMetadata(ko, at);
+    }
+    return { geprueft, geschrieben, unveraendert, v2Migriert };
+  }
+
+  // ==============================================================================================
+  // G27 R1 — DER ZUSTANDSAUTOMAT, DAS READINESS GATE UND DIE ATOMARE FREIGABE
+  // ==============================================================================================
+  //
+  // WAS HIER NEU IST UND WARUM. Bis R1 gab es im gesamten Modul KEINE Aktivierungsgrenze: kein
+  // Control-State, kein Gate, keinen Zustandsautomaten, keine Reconcile-Operation, keinen Rollback.
+  // `findActive` filterte auf die aktive KO-Version — und ließ eine Zeile der Projektionsfassung 1
+  // unverändert durch. Genau das hat BEN reproduziert. Diese Grenze wird hier erstmals eingeführt.
+  //
+  // DIE FOLGE (04 §2, 05 §1), und nichts daneben:
+  //     neu:       UNINITIALIZED → V2_BUILDING → V2_READY → V2_ACTIVE
+  //     Migration: V1_ACTIVE     → V2_BUILDING → V2_READY → V2_ACTIVE
+  //     Fehler:                    V2_BUILDING → FAILED
+  //     Rollback:  V2_ACTIVE → V1_ACTIVE (nur bei bewusst erhaltener VOLLSTÄNDIGER V1)
+  //                V2_ACTIVE → FAILED    (sonst; danach vollständiger Rebuild)
+  //
+  // JEDER ÜBERGANG IST BEDINGT UND WIRD ABGELEHNT, WENN DER VORZUSTAND NICHT PASST — nie still
+  // korrigiert. Ein „eigentlich war doch klar, was gemeint war" ist an dieser Stelle genau der
+  // Mischbetrieb, den die Architektur verbietet.
+
+  /** Der Control-State, read-only. DIE autoritative Auskunft über Fassung und Readiness (04 §1). */
+  async searchProjectionControl(): Promise<ProjectionControlState> {
+    return this.searchProjections.controlState();
+  }
+
+  /** Bestandsaufnahme der aktiven Zeilen — Grundlage des Gates, read-only. */
+  async searchProjectionAudit(): Promise<ProjectionAudit> {
+    return this.searchProjections.activeProjectionAudit();
+  }
+
+  // Ein Übergang, der nicht greift, ist ein Fehler und kein Hinweis: der Aufrufer hat einen
+  // Vorzustand angenommen, den die Instanz nicht (mehr) hat.
+  private async wechsle(
+    erwartet: ProjectionState,
+    naechster: ProjectionControlState,
+  ): Promise<ProjectionControlState> {
+    const geschrieben = await this.searchProjections.compareAndSetControlState(erwartet, naechster);
+    if (!geschrieben) {
+      const ist = await this.searchProjections.controlState();
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `Zustandswechsel abgelehnt: erwartet ${erwartet}, vorgefunden ${ist.projectionState}.`,
+      );
+    }
+    return naechster;
+  }
+
+  /**
+   * DIE AUSDRÜCKLICHE ERKLÄRUNG „diese Instanz steht im V1-Betrieb" — der Einstieg des
+   * Migrationspfads (04 §2) und zugleich die Bedingung, unter der ein späterer Rollback nach
+   * `V1_ACTIVE` überhaupt zulässig ist („nur solange V1 bewusst erhalten wurde").
+   *
+   * Sie wird NICHT abgeleitet: eine Instanz rutscht nicht deshalb nach `V1_ACTIVE`, weil V1-Zeilen
+   * herumliegen (05 §1 verbietet genau das). Sie wird erklärt — und die Erklärung wird geprüft:
+   * jede aktive Zeile muss tatsächlich Fassung 1 sein und der Bestand vollständig. Eine Erklärung,
+   * die der Bestand nicht trägt, wäre eine Behauptung, kein Zustand.
+   */
+  async declareSearchProjectionV1Active(): Promise<ProjectionControlState> {
+    const control = await this.searchProjections.controlState();
+    // (a) NUR aus dem Anfangszustand. `FAILED` ist kein Legacy-Zustand, sondern ein
+    // abgebrochener V2-Zyklus; `V2_*` erst recht nicht. Damit ist „nach begonnenem oder aktiviertem
+    // V2 ist die Rückkehr nach V1_ACTIVE verboten" (09 §4) nicht mehr eine Frage des Bestands,
+    // sondern des Zustands — und BENs ROT-6-Abkürzung „nimm einfach den vorgefundenen Zustand als
+    // CAS-Erwartung" gibt es nicht mehr.
+    if (control.projectionState !== "UNINITIALIZED") {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `V1_ACTIVE ist aus ${control.projectionState} nicht zulässig.`,
+      );
+    }
+    // (b) NIE nach einem V2-Zyklus. Die Generation ist der einzige Beleg, der einen einmal
+    // begonnenen Bau überlebt — auch dann, wenn der Bestand hinterher zufällig wieder wie V1
+    // aussieht.
+    if (control.buildGeneration !== 0 || control.activeGeneration !== null) {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `V1_ACTIVE ist nach einem V2-Zyklus nicht zulässig (Generation ${control.buildGeneration}).`,
+      );
+    }
+    const audit = await this.searchProjections.activeProjectionAudit();
+    // (c) EIN ECHTER BESTAND. Genau BENs ROT-6: `every([])` ist wahr, und deshalb konnte eine
+    // fabrikneue, leere Instanz sich zur Legacy-Instanz erklären. Eine Legacy-Instanz IST aber
+    // definiert durch das, was sie mitbringt — ohne Bestand gibt es nichts zu bestätigen, und der
+    // vorgeschriebene Weg einer neuen Instanz ist `UNINITIALIZED → V2_BUILDING → …` (05 §1).
+    if (audit.kos === 0) {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        "V1_ACTIVE ist nicht erklärbar: die Instanz führt keinen Bestand (leere Neuinstanz).",
+      );
+    }
+    if (!this.istVollstaendigInFassung(audit, 1)) {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        "V1_ACTIVE ist nicht erklärbar: der Bestand ist nicht vollständig in Fassung 1.",
+      );
+    }
+    return this.wechsle("UNINITIALIZED", {
+      ...UNINITIALIZED_CONTROL_STATE,
+      activeProjectionVersion: 1,
+      targetProjectionVersion: 1,
+      projectionState: "V1_ACTIVE",
+    });
+  }
+
+  // „Vollständig in Fassung N": jedes nicht gelöschte Objekt hat beide Hälften, und ALLE aktiven
+  // Zeilen tragen dieselbe Fassung — UND es gibt überhaupt Zeilen. Der leere Bestand erfüllte das
+  // früher trivial (`every([])`); seit 09 §4 ist das ausdrücklich kein Beleg mehr.
+  private istVollstaendigInFassung(audit: ProjectionAudit, fassung: number): boolean {
+    if (audit.kos !== audit.mitInhalt || audit.kos !== audit.mitMetadaten) {
+      return false;
+    }
+    return (
+      audit.aktiveFassungen.length > 0 &&
+      audit.aktiveFassungen.every((f) => f.projectionVersion === fassung)
+    );
+  }
+
+  /**
+   * Beginn des Fassungswechsels: `UNINITIALIZED` | `V1_ACTIVE` | `FAILED` → `V2_BUILDING`.
+   *
+   * AB HIER BEANTWORTET DIE INSTANZ KEINE SUCHE MEHR (`activeProjectionVersion = null`). Das ist
+   * gewollt und ausdrücklich entschieden: „Im Zweifel gilt: kurzzeitig keine Suche ist besser als
+   * inkonsistente Suche" (03 §3). Ein Bau, der nebenher weiter V1 ausliefert, wäre der verbotene
+   * Mischbetrieb.
+   *
+   * Die Vorbedingungen der Freigabe werden zurückgesetzt: ein neuer Bau muss sie neu verdienen —
+   * ein Rebuild von gestern trägt keine Freigabe von heute.
+   */
+  async beginSearchProjectionBuild(): Promise<ProjectionControlState> {
+    const control = await this.searchProjections.controlState();
+    const erlaubt: ProjectionState[] = ["UNINITIALIZED", "V1_ACTIVE", "FAILED"];
+    if (!erlaubt.includes(control.projectionState)) {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `V2_BUILDING ist aus ${control.projectionState} nicht zulässig.`,
+      );
+    }
+    // DIE NEUE GENERATION (09 §2). Sie ist streng monoton und wird NIE wiederverwendet: genau
+    // dadurch ist ein Marker eines abgebrochenen Zyklus für den nächsten wertlos, und genau
+    // dadurch kann eine Freigabe erkennen, dass sie einen fremden Bau prüfen würde.
+    return this.wechsle(control.projectionState, {
+      ...UNINITIALIZED_CONTROL_STATE,
+      projectionState: "V2_BUILDING",
+      targetProjectionVersion: SEARCH_PROJECTION_VERSION,
+      buildStartedAt: new Date(this.now()).toISOString(),
+      lastFailure: control.lastFailure,
+      buildGeneration: control.buildGeneration + 1,
+    });
+  }
+
+  /**
+   * Der ausdrückliche Fehlerpfad nach `FAILED` (04 §2, erweitert um 09 §2: `V2_BUILDING`,
+   * `V2_READY` und `V2_ACTIVE` führen alle über DIESELBE Tür).
+   *
+   * Die Generation bleibt stehen (sie ist Geschichte, nicht Zustand), Freigabe und Marker fallen:
+   * ab hier ist nichts mehr aktiv, und der Weg zurück führt ausschließlich über einen neuen,
+   * vollständigen Zyklus.
+   */
+  async failSearchProjectionBuild(grund: string): Promise<ProjectionControlState> {
+    const control = await this.searchProjections.controlState();
+    const erlaubt: ProjectionState[] = ["V2_BUILDING", "V2_READY", "V2_ACTIVE"];
+    if (!erlaubt.includes(control.projectionState)) {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `FAILED ist aus ${control.projectionState} nicht zulässig.`,
+      );
+    }
+    return this.wechsle(control.projectionState, {
+      ...control,
+      projectionState: "FAILED",
+      activeProjectionVersion: null,
+      activeGeneration: null,
+      integrityMarker: null,
+      lastSuccessfulRebuild: null,
+      lastReconcile: null,
+      lastFailure: `${new Date(this.now()).toISOString()} ${grund}`,
+    });
+  }
+
+  /**
+   * RECONCILE — die UNGEDECKELTE Gegenprobe „ist der Bestand vollständig nachgezogen?".
+   *
+   * Der Unterschied zum gedeckelten Backfill ist nicht die Technik, sondern die Zusage: der Backfill
+   * ist Optimierung in Schwüngen und darf jederzeit unfertig aufhören; Reconcile arbeitet die
+   * Arbeitsliste ab, bis sie leer ist oder kein Fortschritt mehr entsteht, und MELDET die
+   * verbleibende Differenz. Bei Differenz ≠ 0 gibt es keine Freigabe und `last_reconcile` bleibt
+   * ungesetzt (04 §3.2).
+   *
+   * HIER — und nur hier — hängt seit 05 §4 auch der FUSSNOTEN-NACHZUG: `ensureSearchArtifacts` ist
+   * die eine Vollladung, aus der captionTexts, Inhalts- und Metadatenprojektion gemeinsam
+   * entstehen. Sein Auslöser ist damit ausdrücklich die Rebuild-/Reconcile-Aufrufkette und nicht
+   * mehr eine Suchanfrage.
+   */
+  async reconcileSearchProjections(): Promise<{
+    offenVorher: number;
+    nachgezogen: number;
+    differenz: number;
+  }> {
+    const offenVorher = (await this.searchProjections.missingActive(RECONCILE_SCHWUNG)).length;
+    let nachgezogen = 0;
+    for (;;) {
+      const bilanz = await this.backfillSearchProjections({ limit: RECONCILE_SCHWUNG });
+      nachgezogen += bilanz.geschrieben;
+      // Nichts mehr offen — oder nichts mehr zu bewegen (ein Objekt, dessen Vollladung dauerhaft
+      // scheitert, darf hier nicht zur Endlosschleife werden; es bleibt ehrlich in der Differenz).
+      if (bilanz.geprueft === 0 || bilanz.geschrieben + bilanz.v2Migriert === 0) {
+        break;
+      }
+    }
+    const differenz = (await this.searchProjections.missingActive(RECONCILE_SCHWUNG)).length;
+    if (differenz === 0) {
+      const control = await this.searchProjections.controlState();
+      if (control.projectionState === "V2_BUILDING") {
+        await this.wechsle("V2_BUILDING", {
+          ...control,
+          lastReconcile: new Date(this.now()).toISOString(),
+        });
+      }
+    }
+    return { offenVorher, nachgezogen, differenz };
+  }
+
+  /**
+   * DIE FÜNF PRÜFUNGEN VOR DER FREIGABE (04 §3, abschließend präzisiert in 05 §3).
+   *
+   * Rein lesend — diese Methode aktiviert nichts und ändert nichts. Sie beantwortet genau eine
+   * Frage: dürfte jetzt freigegeben werden?
+   *
+   *   1 vollständiger Rebuild   — gelaufen UND jünger als der Beginn dieses Baus,
+   *   2 Reconcile abgeschlossen — dito, und ohne verbleibende Differenz,
+   *   3 Konsistenzprüfung      — jedes lebende Objekt hat BEIDE Hälften des Suchdokuments,
+   *   4 Projektionsversions-   — alle AKTIVEN Zeilen tragen die Zielfassung, keine Mischversionen,
+   *     prüfung
+   *   5 Integritätsprüfung     — eindeutige aktive Fassung, konsistente Zeiger, vollständige
+   *                              Projektion, keine Mischversionen, keine fehlenden Pflichtfelder,
+   *                              Hash-Konsistenz und gültiger Lifecycle.
+   *
+   * Die frühere „Aktivitätsprüfung" ist KEIN sechster Punkt; sie ist in 5 aufgegangen (05 §3).
+   */
+  async searchProjectionReadiness(): Promise<SearchProjectionReadiness> {
+    const control = await this.searchProjections.controlState();
+    const audit = await this.searchProjections.activeProjectionAudit();
+    const ziel = control.targetProjectionVersion;
+    const befunde: string[] = [];
+
+    const juengerAlsBau = (wert: string | null): boolean =>
+      wert !== null && (control.buildStartedAt === null || wert >= control.buildStartedAt);
+
+    const rebuild = juengerAlsBau(control.lastSuccessfulRebuild);
+    if (!rebuild) {
+      befunde.push("kein vollständiger Rebuild für diesen Bau");
+    }
+    const reconcile = juengerAlsBau(control.lastReconcile);
+    if (!reconcile) {
+      befunde.push("kein abgeschlossener Reconcile für diesen Bau");
+    }
+    const konsistenz = audit.kos === audit.mitInhalt && audit.kos === audit.mitMetadaten;
+    if (!konsistenz) {
+      befunde.push(
+        `unvollständige Projektion (${audit.mitInhalt}/${audit.kos} Inhalt, ${audit.mitMetadaten}/${audit.kos} Metadaten)`,
+      );
+    }
+    const eindeutig = audit.aktiveFassungen.length <= 1;
+    const projektionsversion =
+      ziel !== null &&
+      eindeutig &&
+      audit.aktiveFassungen.every((f) => f.projectionVersion === ziel);
+    if (!projektionsversion) {
+      befunde.push(
+        `aktive Zeilen nicht durchgängig in Fassung ${ziel ?? "?"} (${audit.aktiveFassungen
+          .map((f) => `${f.projectionVersion}:${f.count}`)
+          .join(",")})`,
+      );
+    }
+    const lifecycle = controlStateLifecycleGueltig(control);
+    if (!lifecycle) {
+      befunde.push("Control-State-Zeiger passen nicht zum Zustand");
+    }
+    const pflichtfelder = audit.pflichtfelderFehlen === 0;
+    if (!pflichtfelder) {
+      befunde.push(`${audit.pflichtfelderFehlen} aktive Zeilen ohne Pflichtfelder`);
+    }
+    const hash = konsistenz && projektionsversion ? await this.hashIntegritaet() : false;
+    if (!hash) {
+      befunde.push("Hash-Konsistenz der aktiven Zeilen nicht belegt");
+    }
+    // 09 §2.4 — DIE GENERATIONSBINDUNG, als Teil der Integritätsprüfung und nicht als sechster
+    // Punkt. Sie beantwortet die eine Frage, die alle anderen Prüfungen offen lassen: gehören die
+    // Zeilen, die ich gerade für vollständig und konsistent befunden habe, überhaupt zu DIESEM Bau?
+    // Ohne sie wäre „alle aktiven Zeilen sind V2" auch dann wahr, wenn die Hälfte davon aus einem
+    // abgebrochenen früheren Zyklus stammt oder nebenher von jemand anderem geschrieben wurde.
+    const generation =
+      projektionsversion && ziel === SEARCH_PROJECTION_VERSION
+        ? await this.searchProjections.activeRowsInGeneration(control.buildGeneration)
+        : false;
+    if (!generation) {
+      befunde.push(`aktive Zeilen nicht durchgängig in Generation ${control.buildGeneration}`);
+    }
+    const integritaet =
+      eindeutig &&
+      lifecycle &&
+      konsistenz &&
+      projektionsversion &&
+      pflichtfelder &&
+      hash &&
+      generation;
+    const alle = rebuild && reconcile && konsistenz && projektionsversion && integritaet;
+    return {
+      rebuild,
+      reconcile,
+      konsistenz,
+      projektionsversion,
+      integritaet,
+      alle,
+      befunde,
+    };
+  }
+
+  /**
+   * Trägt jede aktive Zeile noch den Inhalt, aus dem sie abgeleitet wurde? Der Hash ist die
+   * einzige Zusage, die das beantworten kann, ohne den ganzen Text zu vergleichen — und er ist
+   * bewusst zeitfrei (der Zeitstempel geht nicht ein), sonst wäre jede Neuableitung ein Unterschied.
+   */
+  private async hashIntegritaet(): Promise<boolean> {
+    for (const ko of await this.repo.list({})) {
+      if (ko.deletedAt) {
+        continue;
+      }
+      const alt = await this.searchProjections.find(ko.id, ko.version);
+      if (!alt) {
+        return false;
+      }
+      const frisch = buildSearchProjection(ko, alt.updatedAt, {
+        classification: alt.classificationSnapshot,
+      });
+      if (frisch.contentHash !== alt.contentHash) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /**
+   * `V2_BUILDING → V2_READY`, aber NUR wenn alle fünf Prüfungen bestehen. Bestehen sie nicht,
+   * bleibt die Instanz im Bau (wiederholbar) — sie rutscht weder in `FAILED` noch gar in
+   * `V2_READY`. Der Befund reist mit, damit „warum nicht?" beantwortbar bleibt.
+   */
+  async finishSearchProjectionBuild(): Promise<{
+    control: ProjectionControlState;
+    readiness: SearchProjectionReadiness;
+  }> {
+    const readiness = await this.searchProjectionReadiness();
+    const control = await this.searchProjections.controlState();
+    if (control.projectionState !== "V2_BUILDING") {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `V2_READY ist aus ${control.projectionState} nicht zulässig.`,
+      );
+    }
+    if (!readiness.alle) {
+      return { control, readiness };
+    }
+    const naechster = await this.wechsle("V2_BUILDING", {
+      ...control,
+      projectionState: "V2_READY",
+      buildFinishedAt: new Date(this.now()).toISOString(),
+    });
+    return { control: naechster, readiness };
+  }
+
+  /**
+   * DIE FREIGABE — `V2_READY → V2_ACTIVE`, genau EINE atomare Operation (04 §3).
+   *
+   * Die fünf Prüfungen laufen unmittelbar davor NOCH EINMAL: zwischen `finishSearchProjectionBuild`
+   * und hier kann Zeit vergangen sein, und eine Freigabe auf einen veralteten Befund wäre keine
+   * Prüfung, sondern eine Erinnerung. Erst danach schreibt EIN bedingter Zustandswechsel
+   * `active_projection_version = 2`. Es gibt keinen Zwischenzustand, in dem zwei Fassungen liefern
+   * könnten — und ein zweiter, nebenläufiger Versuch scheitert an der Bedingung.
+   */
+  async releaseSearchProjectionVersion(
+    erwarteteGeneration?: number,
+  ): Promise<ProjectionControlState> {
+    return this.searchProjections.withExclusiveControlLock(async (sitzung) => {
+      const control = sitzung.control;
+      if (control.projectionState !== "V2_READY") {
+        throw new KoError(
+          "SEARCH_PROJECTION_NOT_READY",
+          `Freigabe ist aus ${control.projectionState} nicht zulässig.`,
+        );
+      }
+      // FREMDGENERATION (09 §5). Wer eine bestimmte Generation geprüft hat, gibt auch nur DIESE
+      // frei. Ist inzwischen ein neuer Bau begonnen worden, ist der Befund von vorhin eine
+      // Erinnerung und keine Prüfung — die Freigabe wird verweigert, nicht stillschweigend auf den
+      // neuen Bau umgedeutet.
+      if (erwarteteGeneration !== undefined && erwarteteGeneration !== control.buildGeneration) {
+        throw new KoError(
+          "SEARCH_PROJECTION_NOT_READY",
+          `Freigabe abgelehnt: geprüfte Generation ${erwarteteGeneration}, vorgefunden ${control.buildGeneration}.`,
+        );
+      }
+      // DIE FÜNF PRÜFUNGEN LAUFEN HIER, UNTER DER SPERRE — nicht davor. Das ist der Unterschied
+      // zwischen „geprüft und dann freigegeben" und „geprüft UND freigegeben": solange dieser
+      // Rahmen steht, kann keine Projektionsmutation committen (09 §2.1-§2.4). Genau das Fenster,
+      // in dem BEN eine Zeile zwischen bestandener Readiness und CAS auf Fassung 1 verändert hat,
+      // gibt es nicht mehr.
+      const readiness = await this.searchProjectionReadiness();
+      if (!readiness.alle) {
+        throw new KoError(
+          "SEARCH_PROJECTION_NOT_READY",
+          `Freigabe abgelehnt: ${readiness.befunde.join("; ")}`,
+        );
+      }
+      const at = new Date(this.now()).toISOString();
+      const naechster: ProjectionControlState = {
+        ...control,
+        projectionState: "V2_ACTIVE",
+        activeProjectionVersion: SEARCH_PROJECTION_VERSION,
+        // Freigegeben wird GENAU die geprüfte Generation — und der Marker sagt für genau sie aus,
+        // dass sie geprüft ist. Beides in demselben Schreibvorgang wie der Zustandswechsel.
+        activeGeneration: control.buildGeneration,
+        integrityMarker: integritaetsMarkerFuer(control.buildGeneration),
+        activatedAt: at,
+        buildFinishedAt: control.buildFinishedAt ?? at,
+      };
+      await sitzung.schreibe(naechster);
+      return naechster;
+    });
+  }
+
+  /**
+   * DIE GANZE FOLGE als eine benannte Handlung: Bau beginnen, vollständig neu ableiten,
+   * abgleichen, prüfen, freigeben. Jeder Schritt bleibt einzeln aufrufbar und beobachtbar — das
+   * hier ist die Bequemlichkeit für Betrieb und Gegenprobe, nicht eine zweite Semantik.
+   *
+   * Sie wird NIE von einem Suchweg aufgerufen. Eine Suche, die den Zustandsautomaten mitfährt,
+   * wäre der synchrone Nachzug vor jeder Suche, den 03 §4 ausdrücklich abgelehnt hat.
+   */
+  async activateSearchProjectionV2(): Promise<{
+    control: ProjectionControlState;
+    readiness: SearchProjectionReadiness;
+  }> {
+    await this.beginSearchProjectionBuild();
+    return this.continueSearchProjectionBuild();
+  }
+
+  /**
+   * DER IDEMPOTENTE WIEDERANLAUF EINES LAUFENDEN BAUS (06 §2, `V2_BUILDING`).
+   *
+   * Er ist der Schwanz von `activateSearchProjectionV2` OHNE den Beginn — und genau das ist die
+   * Zusage „kontrolliert idempotent fortsetzen": die Generation des abgebrochenen Baus bleibt
+   * stehen, die Zeilen dieses Baus bleiben gültig, und was fehlt, wird nachgezogen. Ein Prozess,
+   * der beim Neustart einfach `beginSearchProjectionBuild()` riefe, würde stattdessen eine neue
+   * Generation aufmachen und den halbfertigen Bestand des Vorgängers entwerten — bei einem
+   * Neustart in einer Absturzschleife käme die Instanz nie an.
+   *
+   * Der Zustand wird NICHT aus Zeilen abgeleitet (06 §2, letzter Satz): fortgesetzt wird nur, was
+   * der persistierte Control-State als laufenden Bau ausweist.
+   */
+  async continueSearchProjectionBuild(): Promise<{
+    control: ProjectionControlState;
+    readiness: SearchProjectionReadiness;
+  }> {
+    const laufend = await this.searchProjections.controlState();
+    if (laufend.projectionState !== "V2_BUILDING") {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `Fortsetzung ist aus ${laufend.projectionState} nicht zulässig.`,
+      );
+    }
+    const generation = laufend.buildGeneration;
+    const at = new Date(this.now()).toISOString();
+    await this.rebuildSearchProjections();
+    const nachRebuild = await this.searchProjections.controlState();
+    await this.wechsle("V2_BUILDING", { ...nachRebuild, lastSuccessfulRebuild: at });
+    await this.reconcileSearchProjections();
+    const { readiness } = await this.finishSearchProjectionBuild();
+    if (!readiness.alle) {
+      return { control: await this.searchProjections.controlState(), readiness };
+    }
+    // Freigegeben wird ausdrücklich die Generation, die dieser Lauf gebaut hat.
+    return { control: await this.releaseSearchProjectionVersion(generation), readiness };
+  }
+
+  /**
+   * ROLLBACK — und zwar EINDEUTIG: das Ergebnis ist IMMER `FAILED`
+   * (KW-ARCH-G27-ROLLBACK-PROJEKTIONSSPEICHERUNG-08 §1).
+   *
+   * WAS SICH GEÄNDERT HAT UND WARUM. Bis hierher konnte diese Methode auch nach `V1_ACTIVE`
+   * zurückführen, „solange V1 bewusst erhalten wurde". BEN hat gezeigt, dass dieser Zweig im
+   * Produktbetrieb unerreichbar ist: der Primärschlüssel ist `(ko_id, ko_version)`, und der
+   * V2-Rebuild ERSETZT die V1-Zeile derselben aktiven KO-Version. Grün war er nur, weil ein Test
+   * die V1-Zeilen vorher über einen direkten Repository-Zugriff zurückgeschrieben hat — ein
+   * Backdoor, kein Produktweg. Entscheidung 08 hat daraufhin ausdrücklich entschieden: für G27 R1
+   * gibt es KEINEN produktiven Rollback auf V1. Ein Zweig, den kein Produktweg erreichen kann, ist
+   * keine Rückfalloption, sondern eine Zusage, die im Ernstfall nicht trägt.
+   *
+   * Der eine verbindliche Recovery-Pfad lautet deshalb:
+   *
+   *     V2_ACTIVE → FAILED → V2_BUILDING → V2_READY → V2_ACTIVE
+   *
+   * Bis der vollständige Rebuild durch ist, bleibt die Suche fail-closed — kurzzeitig keine Suche
+   * ist besser als eine Fassung, die es nicht mehr vollständig gibt (03 §3).
+   */
+  async rollbackSearchProjectionVersion(grund: string): Promise<ProjectionControlState> {
+    const control = await this.searchProjections.controlState();
+    if (control.projectionState !== "V2_ACTIVE") {
+      throw new KoError(
+        "SEARCH_PROJECTION_NOT_READY",
+        `Rollback ist aus ${control.projectionState} nicht zulässig.`,
+      );
+    }
+    return this.failSearchProjectionBuild(grund);
+  }
+
+  /**
+   * DIE VOLLSTÄNDIGE V2-RECOVERY als eine benannte Handlung (Entscheidung 08 §1) — der einzige Weg
+   * aus `FAILED` und aus einem beschädigten `V2_ACTIVE` zurück in den Betrieb.
+   *
+   * Aus `V2_ACTIVE` führt sie ZUERST nach `FAILED`: eine Recovery, die den aktiven Zustand
+   * überspränge, würde den beschädigten Bestand still weiterbedienen, während sie ihn neu baut.
+   */
+  async recoverSearchProjectionV2(grund: string): Promise<{
+    control: ProjectionControlState;
+    readiness: SearchProjectionReadiness;
+  }> {
+    const control = await this.searchProjections.controlState();
+    if (control.projectionState === "V2_ACTIVE" || control.projectionState === "V2_READY") {
+      await this.failSearchProjectionBuild(grund);
+    }
+    return this.activateSearchProjectionV2();
+  }
+
+  /** Read-only Einblick in die Projektion einer bestimmten (oder der aktiven) Version. */
+  async searchProjectionOf(id: string, version?: number): Promise<KoSearchProjection | undefined> {
+    const ko = await this.repo.findById(id);
+    if (!ko) {
+      return undefined;
+    }
+    return this.searchProjections.find(ko.id, version ?? ko.version);
+  }
+
+  /** Read-only: alle Projektionen eines Objekts (aufsteigend nach Version). */
+  async searchProjectionsOf(id: string): Promise<KoSearchProjection[]> {
+    return this.searchProjections.listByKo(id);
+  }
+
+  /** Read-only Einblick in die veränderliche Metadatenprojektion (S2). */
+  async metadataProjectionOf(id: string): Promise<KoMetadataProjection | undefined> {
+    return this.searchProjections.metadata.find(id);
+  }
+
+  /**
+   * Read-only Einblick in DAS zusammengesetzte Suchdokument EINES Objekts.
+   *
+   * Bewusst KEIN zweiter Suchweg: hier wird nichts gesucht, gefiltert oder gerankt — es gibt nur
+   * die eine Frage „was steht für dieses Objekt gerade im Suchdokument?" zurück, und zwar
+   * ausschließlich aus den beiden Projektionen. Der einzige Sucheinstieg bleibt `findSearchHits`.
+   */
+  async effectiveSearchDocumentOf(
+    id: string,
+    version?: number,
+  ): Promise<EffectiveSearchDocument | undefined> {
+    const content = await this.searchProjectionOf(id, version);
+    if (!content) {
+      return undefined;
+    }
+    return composeEffectiveSearchDocument(content, await this.searchProjections.metadata.find(id));
+  }
+
+  /**
+   * DER GEMEINSAME SUCHVERTRAG. Bibliothek (`LibraryService.search`) und Ask/Klara
+   * (`AskService.ask` über `findCandidates`) laufen BEIDE hierdurch — es gibt keinen zweiten Weg
+   * an den durchsuchbaren Text. Geliefert werden ausschließlich Treffer auf der Projektion der
+   * AKTIVEN KO-Version; historische Fassungen sind in der Standardsuche unsichtbar.
+   *
+   * Diese Methode SCHREIBT NICHTS und stößt seit G27 R1 auch NICHTS mehr an: kein Backfill, kein
+   * Fußnoten-Nachzug, keine Migration. Der Suchweg liest — mehr nicht (04 §5).
+   *
+   * SIE WIRFT, wenn keine Projektionsfassung freigegeben ist (04 §4). Das ist eine sichtbare
+   * Verhaltensänderung und keine reine Reparatur: eine Instanz im Bau beantwortet keine Suche,
+   * statt eine unvollständige Teilmenge zu liefern. Der Fehler ist rein intern; Routen, Statuskarte
+   * und äußerer Treffervertrag bleiben unverändert.
+   */
+  async findSearchHits(query: KoSearchQuery): Promise<KoSearchHit[]> {
+    return this.searchProjections.findActive(query);
   }
 
   // SCRUM-160: Evidence-Records append-only schreiben. No-op ohne Evidence-Repo;
@@ -679,6 +1629,9 @@ export class KoService {
     // zieht die fehlenden Belege dann IDEMPOTENT nach (ensureCreatedSideEffects) und ist ohne
     // vollständige Belege fail-closed — hier bleibt der Ablauf bewusst untransaktional schlank.
     await this.snapshot(ko, author, "erstellt");
+    // G27: die Suchprojektion der Version 1 entsteht im selben Belegschritt wie der Snapshot —
+    // ein frisch angelegtes Objekt ist ab diesem Moment auffindbar, mit seinem VOLLEN Text.
+    await this.persistSearchProjection(ko);
     // WP-SHIP8-CLOSE-6 (bens ROT-1): auch die ERSTANLAGE schreibt ihren Beleg exactly-once über
     // dieselbe stabile Event-Id wie der Nachzieh-Pfad — ein Race zwischen create und einem
     // parallelen Nachzug kann nie zwei ko.created-Einträge erzeugen.
@@ -895,9 +1848,17 @@ export class KoService {
     }
 
     let snapshotWritten = false;
+    let projectionWritten = false;
     try {
       await this.snapshot(ko, input.author, "erstellt (Dokumentinhalt übernommen)");
       snapshotWritten = this.versions !== undefined;
+      // G27: derselbe Belegschritt wie bei der allgemeinen Erstanlage — hier aber INNERHALB der
+      // Rücknahmeklammer. Die Meldung sagt, ob DIESER Vorgang die Zeile geschrieben hat; nur dann
+      // darf die Rücknahme sie wieder entfernen (s. `rollbackCreatedKo`). Sie trifft ein, BEVOR
+      // die zweite Projektionshälfte geschrieben wird — auch deren Fehler nimmt die Zeile mit.
+      await this.persistSearchProjection(ko, (geschrieben) => {
+        projectionWritten = geschrieben;
+      });
       for (const attachment of attachments) {
         await this.appendEvidence({
           koId: ko.id,
@@ -959,7 +1920,7 @@ export class KoService {
       // mega19 stand hier `.catch(() => undefined)` — scheiterte `delete`, blieb ein vollständiges
       // Wissensobjekt im kanonischen Bestand (Body, Anker, Belegstellen), je nach vorherigem
       // Fehler ohne Snapshot, ohne Evidence, ohne Audit, und der Aufrufer erfuhr davon NICHTS.
-      await this.rollbackCreatedKo(ko, snapshotWritten, input.author, err);
+      await this.rollbackCreatedKo(ko, { snapshotWritten, projectionWritten }, input.author, err);
       throw err;
     }
   }
@@ -1060,67 +2021,132 @@ export class KoService {
   /**
    * AUFTRAG-mega20 Block A — DIE RÜCKNAHME, DIE IHREN EIGENEN FEHLSCHLAG BENENNT.
    *
-   * Gelingt sie, ist der Fall wie bisher: nichts bleibt, der ursprüngliche Fehler fliegt weiter.
-   * Gelingt sie NICHT, steht das Wissensobjekt im Bestand — und genau dann tut diese Methode drei
-   * Dinge, in dieser Reihenfolge und unabhängig voneinander:
+   * Zurückzunehmen sind ZWEI Spuren: das Wissensobjekt und — seit G27 — die Suchprojektion, sofern
+   * DIESER Vorgang sie geschrieben hat. Jede kann für sich gelingen oder scheitern, deshalb gibt es
+   * vier Ausgänge und nicht zwei:
    *
-   *   1. sie MARKIERT das Objekt (`needsRepair`) — best effort, s. document-create.ts;
-   *   2. sie schreibt einen AUDIT-Beleg, der auch festhält, ob (1) durchkam;
-   *   3. sie WIRFT `CREATE_ROLLBACK_FAILED` mit der Kennung des zurückgebliebenen Objekts.
+   *   A. NICHTS BLEIBT — Objekt gelöscht, und die neu geschriebene Projektionszeile ist entfernt
+   *      (oder es gab keine zu entfernen). Die Methode kehrt still zurück, der Aufrufer sieht nur
+   *      den ursprünglichen Fehler.
+   *   B. NUR DAS WISSENSOBJEKT BLEIBT (`repo.delete` scheitert) — der bisher allein beschriebene
+   *      Fall: `needsRepair` MARKIERT das Objekt (best effort, s. document-create.ts), das AUDIT
+   *      hält fest, ob die Markierung durchkam (`marked`), und `CREATE_ROLLBACK_FAILED` benennt
+   *      das zurückgebliebene Objekt.
+   *   C. NUR DIE PROJEKTIONSZEILE BLEIBT (ihr `remove` scheitert, das Objekt wird gelöscht) — dann
+   *      gibt es kein Objekt mehr, an dem ein Vermerk haften könnte; `needsRepair` wird gar nicht
+   *      erst versucht (`marked: false` bei `koRemoved: true`). AUDIT und `CREATE_ROLLBACK_FAILED`
+   *      sind die einzigen Kanäle, und die Meldung benennt die Zeile, nicht den Bestand.
+   *   D. BEIDE RESTE — beide werden im AUDIT getrennt benannt (`koRemoved: false`,
+   *      `searchProjectionLeftBehind: true`), Vermerk und `CREATE_ROLLBACK_FAILED` folgen wie in B,
+   *      weil sichtbarer Bestand schwerer wiegt als eine liegengebliebene Zeile.
    *
-   * Punkt 3 ersetzt den ursprünglichen Fehler bewusst NICHT — er trägt ihn als `cause` mit. Für
-   * den Aufrufer ist die wichtigere Nachricht die neue: „es ist etwas übrig, und zwar dieses hier".
+   * In B, C und D geschieht dasselbe in dieser Reihenfolge und unabhängig voneinander: markieren
+   * (nur wo es noch ein Objekt gibt) → Audit schreiben → `CREATE_ROLLBACK_FAILED` werfen. Aus einem
+   * Fehlschlag der Rücknahme folgt also NICHT, dass das Wissensobjekt im Bestand steht — welcher
+   * Rest gemeint ist, sagen Meldung und Payload.
+   *
+   * Der geworfene Fehler ersetzt den ursprünglichen bewusst NICHT — er trägt ihn als `cause` mit.
+   * Für den Aufrufer ist die wichtigere Nachricht die neue: „es ist etwas übrig, und zwar dieses
+   * hier".
+   *
+   * G27: die SUCHPROJEKTION gehört zu dem, was zurückgenommen werden muss, und sie wird VOR dem
+   * harten `repo.delete` entfernt. Danach wäre sie nicht mehr erreichbar: die Standardsuche liefert
+   * sie nicht (der JOIN auf das Wissensobjekt fällt weg), `missingActive` findet sie nicht, der
+   * Rebuild läuft über den Bestand und `removeByKo` wird für ein längst gelöschtes Objekt nie mehr
+   * gerufen — eine Karteileiche für immer. Entfernt wird ausschließlich eine Zeile, die DIESER
+   * Vorgang geschrieben hat (`written.projectionWritten`).
    */
   private async rollbackCreatedKo(
     ko: KnowledgeObject,
-    snapshotWritten: boolean,
+    written: { snapshotWritten: boolean; projectionWritten: boolean },
     author: string,
     failed: unknown,
   ): Promise<void> {
-    if (snapshotWritten) {
+    if (written.snapshotWritten) {
       await this.versions?.remove(ko.id, ko.version).catch(() => undefined);
     }
+    // G27: zuerst die Projektion, dann das Objekt — s. Kopfkommentar. Ein Fehlschlag wird NICHT
+    // geschluckt: er entscheidet unten mit darüber, ob diese Rücknahme sauber war.
+    let projectionFailure: unknown;
+    let projectionLeftBehind = false;
+    if (written.projectionWritten) {
+      try {
+        await this.searchProjections.remove(ko.id, ko.version, { ruecknahme: true });
+      } catch (err) {
+        projectionFailure = err;
+        projectionLeftBehind = true;
+      }
+    }
+    // S2: die Metadatenzeile gehört zu DIESER Erstanlage — bei einer Erstanlage gibt es keinen
+    // Vorzustand, den sie tragen könnte. Sie wird deshalb mit zurückgenommen; ohne das bliebe die
+    // Kategorie eines nie entstandenen Objekts im abgeleiteten Datenraum stehen. Best effort und
+    // getrennt vom Inhaltsrest bewertet: sie ist über `removeByKo` später wieder erreichbar.
+    if (written.projectionWritten) {
+      await this.searchProjections.metadata.remove(ko.id).catch(() => undefined);
+    }
     let rollbackFailure: unknown;
+    let koRemoved = false;
     try {
       await this.repo.delete(ko.id);
-      return; // sauber zurückgenommen — es bleibt nichts, der Aufrufer sieht nur den Urfehler.
+      koRemoved = true;
     } catch (err) {
       rollbackFailure = err;
+    }
+    if (koRemoved && !projectionLeftBehind) {
+      return; // sauber zurückgenommen — es bleibt nichts, der Aufrufer sieht nur den Urfehler.
     }
     const note: KoRepairNote = {
       at: new Date(this.now()).toISOString(),
       failedStep: describeFailure(failed),
-      rollbackFailure: describeFailure(rollbackFailure),
+      // Der führende Fehlschlag der Rücknahme: das nicht gelöschte Objekt wiegt schwerer als die
+      // liegengebliebene Projektionszeile, weil es sichtbarer Bestand ist.
+      rollbackFailure: describeFailure(rollbackFailure ?? projectionFailure),
     };
     let marked = false;
-    try {
-      // AUFTRAG-mega21 Block A: Vermerk UND Vorgangszustand im SELBEN Write. Zwei getrennte
-      // Updates wären zwei Gelegenheiten, nur eine Hälfte zu schreiben — und ein Rest mit Vermerk,
-      // aber ohne Zustand (oder umgekehrt) wäre genau die halbe Wahrheit, die adoptCreatedKo
-      // deshalb aus BEIDEN Spuren liest.
-      await this.repo.update({
-        ...ko,
-        needsRepair: note,
-        ...(ko.createOperation
-          ? { createOperation: { ...ko.createOperation, state: "repair_required" as const } }
-          : {}),
-      });
-      marked = true;
-    } catch {
-      // Der Vermerk ist nicht der einzige Kanal (s. document-create.ts) — hier wird deshalb
-      // weitergemacht statt abgebrochen. Dass er fehlt, steht unten im Audit.
+    if (!koRemoved) {
+      try {
+        // AUFTRAG-mega21 Block A: Vermerk UND Vorgangszustand im SELBEN Write. Zwei getrennte
+        // Updates wären zwei Gelegenheiten, nur eine Hälfte zu schreiben — und ein Rest mit
+        // Vermerk, aber ohne Zustand (oder umgekehrt) wäre genau die halbe Wahrheit, die
+        // adoptCreatedKo deshalb aus BEIDEN Spuren liest.
+        await this.repo.update({
+          ...ko,
+          needsRepair: note,
+          ...(ko.createOperation
+            ? { createOperation: { ...ko.createOperation, state: "repair_required" as const } }
+            : {}),
+        });
+        marked = true;
+      } catch {
+        // Der Vermerk ist nicht der einzige Kanal (s. document-create.ts) — hier wird deshalb
+        // weitergemacht statt abgebrochen. Dass er fehlt, steht unten im Audit.
+      }
     }
+    // Ist das Objekt weg und nur die Projektionszeile geblieben, gibt es kein Objekt mehr, an dem
+    // ein Vermerk haften könnte — dann sind Audit und geworfener Fehler die einzigen Kanäle. Der
+    // Payload benennt beide Reste getrennt, damit niemand aus `marked: false` auf ein
+    // zurückgebliebenes Wissensobjekt schließt.
     await this.audit
       ?.record({
         actor: author,
         action: "ko.create-rollback-failed",
         target: ko.id,
-        payload: { ...note, marked },
+        payload: {
+          ...note,
+          marked,
+          koRemoved,
+          searchProjectionLeftBehind: projectionLeftBehind,
+          ...(projectionLeftBehind
+            ? { searchProjectionFailure: describeFailure(projectionFailure) }
+            : {}),
+        },
       })
       .catch(() => undefined);
     throw new KoError(
       "CREATE_ROLLBACK_FAILED",
-      `Die Anlage ist gescheitert, die Rücknahme ebenfalls — das Wissensobjekt ${ko.id} steht unvollständig belegt im Bestand und muss geprüft werden.`,
+      koRemoved
+        ? `Die Anlage ist gescheitert; das Wissensobjekt ${ko.id} wurde zurückgenommen, seine Suchprojektion (Version ${ko.version}) aber nicht — sie muss entfernt werden.`
+        : `Die Anlage ist gescheitert, die Rücknahme ebenfalls — das Wissensobjekt ${ko.id} steht unvollständig belegt im Bestand und muss geprüft werden.`,
       { koId: ko.id, cause: failed },
     );
   }
@@ -1269,6 +2295,10 @@ export class KoService {
         });
       }
     }
+    // G27: die Suchprojektion gehört zu den Belegen, die der Nachzug herstellen muss — sonst wäre
+    // ein adoptiertes/wiederhergestelltes Objekt zwar da, aber unauffindbar. Idempotent wie alles
+    // an dieser Stelle (append-only; ein zweiter Nachzug schreibt nichts).
+    await this.ensureSearchProjection(ko.id);
   }
 
   // SCRUM-415: Vertraulichkeitsstufe eines KO setzen/ändern. Jede Änderung landet im Audit
@@ -1464,8 +2494,19 @@ export class KoService {
   // SCRUM-523 P.3 (WP2): Der Read-Pfad löscht/auditiert NICHT mehr. Früher rief list() den Trash-Sweep
   // (Endlöschung + Audit) auf — damit war kein Lesen (und kein Import-Dry-Run) schreibfrei. Die
   // Endlöschung ist jetzt eine EXPLIZITE Operation (runTrashSweep), die reine Leseoperationen nie auslöst.
-  async list(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
-    return (await this.repo.list(filter)).filter((k) => !k.deletedAt);
+  // AUFTRAG-BASIC-391 (Plan aus BASIC 385): der optionale Sicherheitstrim reist DURCH bis in die
+  // Datenquelle. Ist er gesetzt, hat die Datenbank Papierkorb UND Sichtbarkeit bereits angewandt —
+  // vor jeder Zählung und vor jedem Deckel.
+  //
+  // DER NODE-SEITIGE PAPIERKORBFILTER BLEIBT STEHEN, aus demselben Grund wie bei `listForSearch`:
+  // er bedient JEDEN Aufrufer OHNE Trim unverändert (Projektionsnachzug, Hash-Integrität,
+  // library-analytics) und ist mit Trim ein No-op. Er ist ab hier die zweite Linie und nicht mehr
+  // die einzige.
+  //
+  // KEIN DEFAULT — siehe KoRepo.list: vier Aufrufer dieses Repos brauchen die getrashten Zeilen
+  // zwingend. Nur die normale Listenroute übergibt den Trim.
+  async list(filter: KoFilter = {}, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
+    return (await this.repo.list(filter, trim)).filter((k) => !k.deletedAt);
   }
 
   /**
@@ -1540,8 +2581,19 @@ export class KoService {
 
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Sicht OHNE bodyHtml — die Bibliotheks-Suche arbeitet
   // über title/statement/captionTexts; die Projektion passiert an der Datenquelle (Repo).
-  async listForSearch(filter: KoFilter = {}): Promise<KnowledgeObject[]> {
-    return (await this.repo.listForSearch(filter)).filter((k) => !k.deletedAt);
+  //
+  // AUFTRAG-BASIC-380: der optionale Sicherheitstrim reist DURCH bis in die Datenquelle. Ist er
+  // gesetzt, hat die Datenbank Papierkorb UND Sichtbarkeit bereits angewandt — vor jedem Deckel.
+  //
+  // DER NODE-SEITIGE PAPIERKORBFILTER BLEIBT STEHEN, und das ist kein Versehen. Er bedient
+  // weiterhin JEDEN Aufrufer OHNE Trim (Projektionsbau, Analytics, Themen) unverändert; mit Trim
+  // ist er ein No-op, weil die Datenbank dieselben Zeilen schon ausgeschlossen hat. Er ist ab hier
+  // die zweite Linie und nicht mehr die einzige — genau die Richtung, die BASIC 379 §1.2 verlangt.
+  async listForSearch(
+    filter: KoFilter = {},
+    trim?: KoSichtbarkeitstrim,
+  ): Promise<KnowledgeObject[]> {
+    return (await this.repo.listForSearch(filter, trim)).filter((k) => !k.deletedAt);
   }
 
   // WP-BILD-1g/1h: EINMALIGER Legacy-Backfill des abgeleiteten captionTexts-Suchfelds. Lädt das
@@ -1550,20 +2602,65 @@ export class KoService {
   // Versions-Bump, kein Audit). WP-BILD-1h (bens sammel15-ROT 2): SINGLE-FLIGHT pro KO-Id
   // prozessweit — parallele Suchen laden denselben Legacy-KO nicht mehrfach; der Eintrag wird
   // IMMER (finally) abgeräumt, damit ein Fehlschlag später erneut versucht werden kann.
-  private readonly captionBackfillsInFlight = new Map<string, Promise<string[]>>();
+  // ==============================================================================================
+  // G27 — EIN NACHZUG, EINE VOLLLADUNG.
+  // ==============================================================================================
+  //
+  // Vor G27 gab es EIN abgeleitetes Suchfeld (captionTexts) und einen Backfill dafür. Jetzt gibt es
+  // ZWEI abgeleitete Artefakte am selben Objekt (captionTexts + Suchprojektion) — und beide
+  // brauchen dieselbe teure Zutat: das VOLLE bodyHtml. Sie getrennt nachzuziehen hieße, ein
+  // Legacy-Objekt mit megabyte-großen Bilddaten ZWEIMAL je Suchanfrage zu laden. Deshalb ist dies
+  // EIN Nachzug: eine Vollladung, ALLE Ableitungen, ein Single-Flight-Eintrag. Seit S1/S2 sind es
+  // drei: captionTexts, Immutable Content Projection (ggf. auf Fassung 2 nachgeführt) und Mutable
+  // Metadata Projection.
+  private readonly searchBackfillsInFlight = new Map<string, Promise<SearchArtifacts>>();
 
-  async ensureCaptionTexts(id: string): Promise<string[]> {
-    const inFlight = this.captionBackfillsInFlight.get(id);
+  private async ensureSearchArtifacts(id: string): Promise<SearchArtifacts> {
+    const inFlight = this.searchBackfillsInFlight.get(id);
     if (inFlight) {
       return inFlight;
     }
-    const run = (async (): Promise<string[]> => {
+    const run = (async (): Promise<SearchArtifacts> => {
       const ko = await this.repo.findById(id);
       if (!ko || ko.deletedAt) {
-        return [];
+        return { captionTexts: [], projection: undefined, v2Migriert: false };
       }
+      const at = new Date(this.now()).toISOString();
+      // 1) Die Inhaltsprojektion der AKTIVEN Version — append-only, also ein No-op, wenn sie in der
+      //    geltenden Fassung steht.
+      let projection = await this.searchProjections.find(ko.id, ko.version);
+      let v2Migriert = false;
+      if (!projection) {
+        // Kein unveränderlicher Versionsstand? Dann ist der Klassifizierungswert eine BESTVERFÜGBARE
+        // Rekonstruktion und wird ausdrücklich als solche gekennzeichnet (Abschnitt I) — nie als
+        // bestätigte Geschichte, nie als Grundlage einer Freigabe.
+        const frisch = buildSearchProjection(ko, at, {
+          classification: await this.classificationForRebuild(ko, undefined),
+        });
+        const geschrieben = await this.searchProjections.insert(frisch);
+        // Race mit einem nebenläufigen Schreiber: die andere Zeile gewinnt (append-only), und wir
+        // liefern SIE — nicht unsere verworfene Fassung.
+        projection = geschrieben
+          ? frisch
+          : ((await this.searchProjections.find(ko.id, ko.version)) ?? frisch);
+      } else if (projection.projectionVersion !== SEARCH_PROJECTION_VERSION) {
+        // FASSUNGSNACHFÜHRUNG (Detailentscheidung D): eine Zeile der Fassung 1 ist semantisch
+        // inkompatibel — sie führt Kategorie/Schlagwörter im Inhalt, kennt kein `body_text` und
+        // keine Klassifizierungsreferenz. Sie wird deshalb AUSDRÜCKLICH ersetzt, nicht still
+        // weiterbenutzt. Betroffen ist ausschließlich die AKTIVE Version; historische Zeilen bleiben
+        // unangetastet (kein stilles Überschreiben alter Content-Projections).
+        const frisch = buildSearchProjection(ko, at, {
+          classification: await this.classificationForRebuild(ko, projection),
+        });
+        await this.searchProjections.replace({ ...frisch, createdAt: projection.createdAt });
+        projection = frisch;
+        v2Migriert = true;
+      }
+      // 2) Die veränderliche Metadatenprojektion — idempotent, klettert nur bei echter Änderung.
+      await this.projectMetadata(ko, at);
+      // 3) WP-BILD-1g/1h: das abgeleitete captionTexts-Feld (unverändertes Verhalten).
       if (ko.captionTexts) {
-        return ko.captionTexts;
+        return { captionTexts: ko.captionTexts, projection, v2Migriert };
       }
       const captionTexts = searchCaptionTexts(ko.bodyHtml);
       const inserted = await this.repo.setCaptionTexts(id, captionTexts);
@@ -1573,14 +2670,18 @@ export class KoService {
         // nachladen (ein schmaler Einzel-KO-Read) und DIESE an die laufende Suche geben — nie den
         // alten Scan, der die frischeren Fußnoten verfehlen würde.
         const fresh = await this.repo.findById(id);
-        return fresh?.captionTexts ?? captionTexts;
+        return { captionTexts: fresh?.captionTexts ?? captionTexts, projection, v2Migriert };
       }
-      return captionTexts;
+      return { captionTexts, projection, v2Migriert };
     })().finally(() => {
-      this.captionBackfillsInFlight.delete(id);
+      this.searchBackfillsInFlight.delete(id);
     });
-    this.captionBackfillsInFlight.set(id, run);
+    this.searchBackfillsInFlight.set(id, run);
     return run;
+  }
+
+  async ensureCaptionTexts(id: string): Promise<string[]> {
+    return (await this.ensureSearchArtifacts(id)).captionTexts;
   }
 
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Hintergrund-Prüf-Status. markAiCheckPending vermerkt den
@@ -1622,10 +2723,44 @@ export class KoService {
   }
 
   // SCRUM-361 / AG-03: begrenzte, datenquellennahe Kandidatenabfrage für Ask (kein All-Pool-Load).
-  // Delegiert an das Repository (InMemory/Pg API-kompatibel); die Endsortierung/Top-K bleibt im Ask-/
-  // Reasoner-Pfad (selectCandidates).
+  //
+  // ==============================================================================================
+  // G27 — DIESE ABFRAGE LÄUFT JETZT ÜBER DIE SUCHPROJEKTION.
+  // ==============================================================================================
+  //
+  // Vorher: `repo.findCandidates` — ILIKE über Titel, Aussage, Kategorie, Schlagwörter und
+  // Bild-Fußnoten. Der Dokumentinhalt (`bodyHtml`) war KEIN Suchraum, also konnte Klara ihn nicht
+  // finden; ein Begriff hinter Zeichen 500 der Aussage existierte für sie nicht.
+  //
+  // Jetzt: derselbe gemeinsame Suchvertrag, den auch die Bibliothek benutzt (`findSearchHits` →
+  // Projektion der AKTIVEN KO-Version). Alles, was vorher auffindbar war, ist es weiterhin — die
+  // Projektion enthält Titel, Aussage, Kategorie, Schlagwörter und Fußnoten unverändert — und der
+  // sichtbare Dokumenttext kommt hinzu.
+  //
+  // Zwei Schritte, bewusst getrennt: die Projektion liefert eine schmale, gedeckelte ID-Liste
+  // (kein Textinhalt über den Draht), erst danach werden GENAU diese Objekte body-frei geladen.
+  // Die Reihenfolge der Trefferliste (validiert zuerst, dann Trust) bleibt erhalten; die feine
+  // Relevanz-/Top-K-Auswahl macht weiterhin der Reasoner (`selectCandidates`).
   async findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
-    return (await this.repo.findCandidates(query)).filter((k) => !k.deletedAt);
+    // G27 R1 (04 §5): HIER STAND DER GEDECKELTE NACHZUG — er ist ersatzlos entfallen.
+    //
+    // Er war der Grund, warum BENs Mischbetrieb überhaupt entstehen konnte: er machte den Bestand
+    // in Schwüngen von 20 fertig, ließ alles dahinter in Fassung 1 liegen und die Suche lief
+    // unmittelbar danach darüber. Damit hing das Suchergebnis an der Bestandsreihenfolge und an der
+    // Zahl vorheriger Kandidaten — genau die funktionale Abhängigkeit, die §5 untersagt.
+    //
+    // Vollständigkeit ist jetzt Sache des Gates: eine Instanz, die sucht, ist freigegeben, und eine
+    // freigegebene Instanz ist vollständig projiziert. Ist sie es nicht, wirft die Suche — sie
+    // liefert keine von der Reihenfolge abhängige Teilmenge.
+    const hits = await this.findSearchHits({ terms: query.terms, limit: query.limit });
+    if (hits.length === 0) {
+      return [];
+    }
+    const rang = new Map(hits.map((hit, index) => [hit.koId, index]));
+    const kos = await this.repo.listByIds(hits.map((hit) => hit.koId));
+    return kos
+      .filter((ko) => !ko.deletedAt)
+      .sort((a, b) => (rang.get(a.id) ?? 0) - (rang.get(b.id) ?? 0));
   }
 
   // ---- SCRUM-422: Papierkorb -----------------------------------------------------------
@@ -1691,10 +2826,16 @@ export class KoService {
         await this.repo.delete(id, tx);
         await audit.record(auditInput, tx);
       });
+      // G27: der abgeleitete Suchindex folgt der Endlöschung. NACH dem Commit und bewusst
+      // fehlertolerant: das Objekt ist weg, die Standardsuche kann eine verwaiste Zeile ohnehin
+      // nicht mehr zeigen (der JOIN auf `kos` trägt sie nicht) — ein Fehler hier darf einen
+      // vollzogenen, belegten Purge nicht nachträglich zum Scheitern bringen.
+      await this.searchProjections.removeByKo(id).catch(() => undefined);
       return;
     }
     await audit?.record(auditInput);
     await this.repo.delete(id);
+    await this.searchProjections.removeByKo(id).catch(() => undefined);
   }
 
   // SCRUM-523 P.3 (WP2): Endlöschung abgelaufener Papierkorb-Einträge — jetzt eine EXPLIZITE Operation
@@ -2065,6 +3206,7 @@ export class KoService {
       await this.repo.update(committed);
 
       let snapshotWritten = false;
+      let projectionWritten = false;
       try {
         // Nachgelagerte BELEGE der Änderung (Versions-Snapshot, Evidence-Records, Audit) — genau
         // das Muster aus `mutateKoTx`: schlägt einer fehl, wird der Commit KOMPENSIEREND
@@ -2073,6 +3215,15 @@ export class KoService {
           await this.snapshot(committed, author, "überarbeitet (Dokumentinhalt übernommen)");
           snapshotWritten = this.versions !== undefined;
         }
+        // G27: die Projektion der jetzt gültigen Version entsteht in DERSELBEN
+        // Kompensationsklammer. MIT `revises` trägt die Übernahme neuen Inhalt und es entsteht eine
+        // neue Version — dann schreibt dieser Aufruf. OHNE `revises` bleibt der Body unberührt (die
+        // Operation bindet nur Anker und Belegstellen) und die Version dieselbe; dann greift die
+        // Append-only-Regel, `insert` ist ein No-op und die bestehende, gültige Projektion bleibt
+        // unangetastet. Genau diese Unterscheidung trägt die Meldung.
+        await this.persistSearchProjection(committed, (geschrieben) => {
+          projectionWritten = geschrieben;
+        });
         // Die Evidence-Records tragen die JETZT gültige Inhaltsversion: Anker und Belegstellen
         // gehören zu der Fassung, die diese Operation hinterlässt — nicht zur Vorversion.
         await this.appendEvidence({
@@ -2135,8 +3286,23 @@ export class KoService {
         // Zustand. Der verbotene wäre Inhalt ohne aktive Herkunft, und der ist hier nicht
         // erreichbar: Inhalt und Quellen stehen in DEMSELBEN Schreibvorgang, der gerade
         // zurückgenommen wird.
+        //
+        // G27: die Projektion der VERWORFENEN Version wird neben dem Snapshot entfernt — vor dem
+        // Zurücksetzen des Inhalts. Bliebe sie liegen, träfe eine spätere, ERFOLGREICHE
+        // Wiederholung auf dieselbe Versionsnummer, und die Append-only-Regel machte den
+        // verworfenen Text zur Projektion der dann gültigen Fassung: suchbarer Inhalt, den es in
+        // dieser Fassung nie gab. Entfernt wird ausschließlich, was DIESER Vorgang geschrieben hat
+        // — ohne Inhaltsrevision bleibt die gültige Zeile der bestehenden Version unberührt.
+        //
+        // Wie in `mutateKoTx` werden Fehler der Kompensation geschluckt und der Ursachen-Fehler
+        // geworfen; der Zustand ist dann bestmöglich, aber nicht garantiert wiederhergestellt.
         if (snapshotWritten) {
           await this.versions?.remove(id, version).catch(() => undefined);
+        }
+        if (projectionWritten) {
+          await this.searchProjections
+            .remove(id, version, { ruecknahme: true })
+            .catch(() => undefined);
         }
         await this.rollbackKo(before).catch(() => undefined);
         throw err;
@@ -2144,32 +3310,96 @@ export class KoService {
     });
   }
 
-  // FR-KO-03: Kategorie/Tags nachträglich änderbar (Metadaten, ohne Versions-Bump).
-  // SCRUM-509 R3: über den serialisierten mutateKo-Pfad (Lock + rowVersion-CAS) — ein nebenläufiges
-  // Vertraulichkeits-Upgrade kann nicht durch ein veraltetes Voll-Objekt überschrieben werden.
-  async updateCategory(id: string, category: string, actor = "system"): Promise<KnowledgeObject> {
-    return this.mutateKo(id, (ko) => {
-      const updated = { ...ko, category };
-      return {
-        updated,
-        value: updated,
-        audit: async () => {
-          await this.audit?.record({
-            actor,
-            action: "ko.category-changed",
-            target: id,
-            payload: { category },
-          });
-        },
-      };
+  // ==============================================================================================
+  // G27 WELLE 1 / S2 — DIE METADATENÄNDERUNG WIRD MIT IHRER PROJEKTION UND IHREM BELEG WIRKSAM
+  // ==============================================================================================
+  //
+  // FR-KO-03: Kategorie/Tags nachträglich änderbar (Metadaten, OHNE Versions-Bump — KW-ARCH-G27,
+  // Abschnitt 1). SCRUM-509 R3: über den serialisierten Lock-Pfad (withKoLock + rowVersion-CAS) —
+  // ein nebenläufiges Vertraulichkeits-Upgrade kann nicht durch ein veraltetes Voll-Objekt
+  // überschrieben werden.
+  //
+  // DREI DINGE WERDEN GEMEINSAM WIRKSAM (Abschnitt 4): der autoritative Zustand, die
+  // `metadata_revision` samt Mutable Metadata Projection und der unveränderliche Audit-Beleg. Ein
+  // Erfolg darf nicht gemeldet werden, wenn die Suchmetadaten dauerhaft alt bleiben — genau das war
+  // der Befund, der zu dieser Welle geführt hat.
+  //
+  // WARUM DER AUDIT HIER NACH DEM SCHREIBEN LÄUFT (anders als in `mutateKo`): der Beleg muss die
+  // NEUE `metadata_revision` tragen, und die entsteht erst im Speicher — nur er kann idempotent
+  // entscheiden, ob überhaupt hochgezählt wird. Ein vorab geratener Wert wäre bei einer
+  // Wiederholung schlicht falsch. Dafür trägt der Pfad die volle Kompensation aus `mutateKoTx`:
+  // scheitert Projektion oder Beleg, wird der autoritative Stand zurückgerollt UND die Projektion
+  // auf diesen Stand zurückgeführt (monoton, also mit erneut kletternder Revision — die Zahl darf
+  // nie sinken, auch nicht bei einer Rücknahme).
+  private async mutateKoMetadata(
+    id: string,
+    actor: string,
+    beleg: { action: string; grund: string },
+    apply: (ko: KnowledgeObject) => KnowledgeObject,
+  ): Promise<KnowledgeObject> {
+    return this.withKoLock(id, async () => {
+      const before = await this.require(id);
+      const updated = apply(before);
+      const vorher = metadataTextsOf(before);
+      const nachher = metadataTextsOf(updated);
+      if (
+        before.category === updated.category &&
+        gleicheTagFolge(before.tags, updated.tags) &&
+        metadataTextsEqual(vorher, nachher)
+      ) {
+        // IDENTISCHE WIEDERHOLUNG: kein Write, kein Beleg, kein Revisions-Bump. Nur die Zusicherung,
+        // dass die Projektion überhaupt existiert (Altbestand) — und die ist selbst idempotent.
+        await this.projectMetadata(before, new Date(this.now()).toISOString());
+        return before;
+      }
+      await this.repo.update(updated);
+      try {
+        const ergebnis = await this.projectMetadata(updated, new Date(this.now()).toISOString());
+        await this.audit?.record({
+          actor,
+          action: beleg.action,
+          target: id,
+          payload: {
+            // Der Audit-Mindestinhalt aus Abschnitt 4: KO-Id (= target), vorher/nachher, Actor
+            // (= actor), Zeitpunkt (setzt die Audit-Kette selbst), metadata_revision und Ursache.
+            grund: beleg.grund,
+            vorher: { category: before.category, tags: [...(before.tags ?? [])] },
+            nachher: { category: updated.category, tags: [...(updated.tags ?? [])] },
+            metadataRevision: ergebnis.projection.metadataRevision,
+            metadataChanged: ergebnis.changed,
+            // Rückwärtskompatibel: der bisherige Beleg trug genau dieses Feld.
+            category: updated.category,
+          },
+        });
+        return updated;
+      } catch (err) {
+        // Kompensation: der autoritative Stand geht zurück, und die Projektion wird auf DIESEN
+        // Stand zurückgeführt — sonst bliebe die Suche auf einem Wert stehen, den es nicht gibt.
+        await this.rollbackKo(before).catch(() => undefined);
+        await this.projectMetadata(before, new Date(this.now()).toISOString()).catch(
+          () => undefined,
+        );
+        throw err;
+      }
     });
   }
 
-  async updateTags(id: string, tags: string[]): Promise<KnowledgeObject> {
-    return this.mutateKo(id, (ko) => {
-      const updated = { ...ko, tags };
-      return { updated, value: updated };
-    });
+  async updateCategory(id: string, category: string, actor = "system"): Promise<KnowledgeObject> {
+    return this.mutateKoMetadata(
+      id,
+      actor,
+      { action: "ko.category-changed", grund: "ko.updateCategory" },
+      (ko) => ({ ...ko, category }),
+    );
+  }
+
+  async updateTags(id: string, tags: string[], actor = "system"): Promise<KnowledgeObject> {
+    return this.mutateKoMetadata(
+      id,
+      actor,
+      { action: "ko.tags-changed", grund: "ko.updateTags" },
+      (ko) => ({ ...ko, tags }),
+    );
   }
 
   // SCRUM-358 / AG-14-SERVER-TRUST / VC-P1-1 / FR-VAL-01: serverseitige Konfliktwirkung.
@@ -2217,6 +3447,42 @@ export class KoService {
         return ko; // Version hat sich geändert (Revise) → Bewertung galt der Vorversion, nicht schreiben.
       }
       const updated = { ...ko, trust: state.trust, status: state.status };
+      await this.repo.update(updated);
+      return updated;
+    });
+  }
+
+  // ==============================================================================================
+  // W3-C (KW-W3-19, Pedi 03.08.) — DEN VERWEIS AUF DIE ENTSCHEIDUNG FESTHALTEN.
+  // ==============================================================================================
+  //
+  // WARUM DAS EIN EIGENER SCHREIBVORGANG IST UND NICHT EIN FELD AN `setValidationState`. Der
+  // Verweis besteht aus `seq` und `hash` eines Auditeintrags, und beide vergibt das Auditrepository
+  // ERST BEIM ANHÄNGEN. Zum Zeitpunkt von `setValidationState` existiert er also noch gar nicht —
+  // und bei `warn`/`down` entsteht die maßgebliche Entscheidung sogar noch später (die Rückgabe an
+  // den Autor). Ein Parameter dort wäre eine Einladung, etwas zu übergeben, das man noch nicht hat.
+  //
+  // DIESELBE ABSICHERUNG WIE DER STATUS-SCHREIBVORGANG: per-KO serialisiert (`withKoLock`) und mit
+  // Compare-and-Set gegen die bewertete Version. Hat ein `revise` zwischenzeitlich die Version
+  // erhöht, unterbleibt das Schreiben — sonst hinge der Verweis einer überholten Entscheidung an
+  // einer Fassung, für die sie nie galt.
+  //
+  // DER WERT WIRD DURCHGEREICHT, NICHT GEPRÜFT: dieser Dienst weiß vom Audit nichts und darf nichts
+  // wissen. Die Prüfung ist Sache des Lesers (`pruefeValidationDecisionRef` im Audit-Modul).
+  async setValidationDecisionRef(
+    id: string,
+    ref: { auditSeq: number; auditHash: string },
+    opts: { expectedVersion?: number } = {},
+  ): Promise<KnowledgeObject> {
+    return this.withKoLock(id, async () => {
+      const ko = await this.require(id);
+      if (opts.expectedVersion !== undefined && ko.version !== opts.expectedVersion) {
+        return ko; // Version hat sich geändert (Revise) → die Entscheidung galt der Vorversion.
+      }
+      const updated: KnowledgeObject = {
+        ...ko,
+        validationDecisionRef: { auditSeq: ref.auditSeq, auditHash: ref.auditHash },
+      };
       await this.repo.update(updated);
       return updated;
     });

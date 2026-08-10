@@ -114,15 +114,90 @@ export const QUELL_PFADE: readonly string[] = [
 
 // Was NICHT Eingang ist — je Eintrag mit Grund. Der Sammler im Test liest diese Liste; eine
 // Ausnahme ohne Grund gibt es damit nicht, und eine stillschweigende auch nicht.
-export const NICHT_EINGANG: Readonly<Record<string, string>> = {
-  dist: "das ERGEBNIS des Baus — es mit sich selbst zu vergleichen waere zirkulaer.",
-  node_modules:
-    "installiertes Ergebnis, kein Quellstand. Der Eingang, der darueber entscheidet, ist package-lock.json — und der steht oben. Ein rekursiver Zeitstempel-Scan ueber node_modules waere zudem bei jedem Aufruf teuer.",
-  "test-results": "Ausgabe der Playwright-Laeufe, kein Build-Eingang.",
-  ".gitignore": "Werkzeug-Konfiguration von git, geht nicht in das Buendel ein.",
-  "README.md": "Doku, geht nicht in das Buendel ein.",
-  ".DS_Store": "Finder-Rest von macOS, kein Projektinhalt.",
+//
+// AUFTRAG-PRO-CI-DIST-FRISCHE-01 (ben, reproduziert): die Liste war eine flache Zuordnung
+// Name → Grund, und der Test verlangte fuer JEDE Ausnahme, dass es den Eintrag unter `apps/web`
+// gerade GIBT. Fuer `test-results` — das Ausgabeverzeichnis von Playwright — ist das keine Aussage
+// ueber den Quellstand, sondern eine Aussage ueber den Zufall: nach einem Smoke-Lauf ist es da,
+// nach `git clean` oder auf einem frischen Klon nicht. DERSELBE Arbeitsbaum war deshalb im
+// Vollcheck mal gruen und mal rot („verwaiste Ausnahme"), und ein parallel laufender Playwright
+// konnte das Urteil mitten im Lauf drehen. Ein Vertrag, der so wackelt, belegt nichts.
+//
+// WARUM NICHT EINFACH DIE VERWAIST-PRUEFUNG STREICHEN: sie faengt einen echten Fall — eine Ausnahme
+// fuer etwas, das es gar nicht mehr gibt, waechst still weiter und deckt irgendwann etwas ab, das
+// unter demselben Namen zurueckkommt. Die Pruefung war nicht falsch, ihr fehlte eine
+// Unterscheidung: `.gitignore` und `README.md` sind VERSIONIERT, ihr Fehlen ist ein Befund;
+// `dist`, `node_modules`, `test-results` und `.DS_Store` ENTSTEHEN erst durch einen Lauf, ihr
+// Fehlen ist der Normalfall eines frischen Klons. Genau diese Unterscheidung steht jetzt im
+// Vertrag, statt vom Zustand der Maschine abzuhaengen.
+export interface Ausnahme {
+  // Warum der Eintrag kein Build-Eingang ist — Pflichtangabe, sonst gaebe es stille Ausnahmen.
+  grund: string;
+  // `true`: der Eintrag ENTSTEHT durch einen Lauf (Bau, Installation, Smoke, Finder) und darf
+  // fehlen. `false`: der Eintrag ist versioniert und MUSS da sein — fehlt er, ist die Ausnahme
+  // verwaist und der Vertrag wird rot.
+  fluechtig: boolean;
+}
+
+export const NICHT_EINGANG: Readonly<Record<string, Ausnahme>> = {
+  dist: {
+    grund: "das ERGEBNIS des Baus — es mit sich selbst zu vergleichen waere zirkulaer.",
+    fluechtig: true,
+  },
+  node_modules: {
+    grund:
+      "installiertes Ergebnis, kein Quellstand. Der Eingang, der darueber entscheidet, ist package-lock.json — und der steht oben. Ein rekursiver Zeitstempel-Scan ueber node_modules waere zudem bei jedem Aufruf teuer.",
+    fluechtig: true,
+  },
+  "test-results": {
+    grund:
+      "Ausgabe der Playwright-Laeufe, kein Build-Eingang. Entsteht erst beim Smoke und wird geraeumt — deshalb fluechtig.",
+    fluechtig: true,
+  },
+  ".gitignore": {
+    grund: "Werkzeug-Konfiguration von git, geht nicht in das Buendel ein.",
+    fluechtig: false,
+  },
+  "README.md": {
+    grund: "Doku, geht nicht in das Buendel ein.",
+    fluechtig: false,
+  },
+  ".DS_Store": {
+    grund:
+      "Finder-Rest von macOS, kein Projektinhalt. Legt der Finder an, sonst gibt es ihn nicht — deshalb fluechtig.",
+    fluechtig: true,
+  },
 };
+
+export interface EingangsUrteil {
+  // Eintraege unter `apps/web`, die weder von QUELL_PFADE gedeckt noch begruendet ausgenommen sind.
+  ungeklaert: string[];
+  // Ausnahmen, die als verpflichtend vorhanden gefuehrt werden, aber fehlen.
+  verwaistePflicht: string[];
+  // QUELL_PFADE-Eintraege, die es unter `apps/web` nicht gibt (Tippfehler waeren sonst still).
+  fehlendeQuellen: string[];
+  // Ausnahmen ohne tragfaehige Begruendung.
+  ohneGrund: string[];
+}
+
+// Die ENTSCHEIDUNG ueber die Eingangsmenge — rein, ueber einer uebergebenen Eintragsliste. Dass
+// diese Funktion das Dateisystem NICHT selbst liest, ist der Punkt: nur so kann der Vertrag beide
+// Zustaende (fluechtiges Verzeichnis da / nicht da) selbst erzeugen, statt sie beim gerade
+// laufenden Playwright zu erfragen.
+export function pruefeEingangsmenge(eintraege: readonly string[]): EingangsUrteil {
+  const vorhanden = new Set(eintraege);
+  const gedeckt = new Set(QUELL_PFADE.map((p) => p.replace(/^apps\/web\//, "")));
+  return {
+    ungeklaert: eintraege.filter((e) => !gedeckt.has(e) && !(e in NICHT_EINGANG)),
+    verwaistePflicht: Object.entries(NICHT_EINGANG)
+      .filter(([name, a]) => !a.fluechtig && !vorhanden.has(name))
+      .map(([name]) => name),
+    fehlendeQuellen: [...gedeckt].filter((name) => !vorhanden.has(name)),
+    ohneGrund: Object.entries(NICHT_EINGANG)
+      .filter(([, a]) => a.grund.trim().length <= 20)
+      .map(([name]) => name),
+  };
+}
 
 export const DIST_PFAD = "apps/web/dist";
 

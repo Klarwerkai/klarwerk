@@ -27,6 +27,9 @@ function Host({ onChange }: { onChange: (html: string) => void }): JSX.Element {
   return mitBildbeschreibung(
     createElement(RichTextEditor, {
       value,
+      // AUFTRAG-mega85 Block D: Pflichtparameter — der Compiler zwingt jede Einbindung, den
+      // Dokument-Titel zu ENTSCHEIDEN statt ihn zu vergessen.
+      documentTitle: "Wartungsnotiz",
       onChange: (html: string) => {
         onChange(html);
         setValue(html); // kontrollierter Normalfall: die Emission kommt als value zurück

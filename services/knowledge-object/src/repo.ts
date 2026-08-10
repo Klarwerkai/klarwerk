@@ -16,6 +16,53 @@ export interface KoFilter {
   tag?: string;
 }
 
+// ================================================================================================
+// AUFTRAG-BASIC-380 — DER SICHERHEITSTRIM ALS INJIZIERTES DATUM, NICHT ALS ZWEITE REGEL.
+// ================================================================================================
+//
+// WARUM ES DIESEN PORT GIBT. BASIC 379 §1.2 hat zwei Sperren gemessen, die VOR jeder Paginierung
+// stehen: der Papierkorb wird im Anwendungsspeicher gefiltert (`KoService.listForSearch`), die
+// Sichtbarkeit an der Route (`sichtbareFuer`). Solange beide OBERHALB von SQL stehen, ist jede
+// Paginierung falsch gebaut — ein `LIMIT 50` liefert 50 ZEILEN, von denen danach getrashte und
+// unsichtbare abgezogen werden. Der Nutzer bekommt eine kurze Seite, ein Cursor überspringt reale
+// Treffer, und jeder Zähler über dieser Menge ist eine Existenzauskunft (REF-0001 :48/:49).
+//
+// WARUM ALS PORT UND NICHT ALS IMPORT. Die Regel „darf dieser Mensch dieses Objekt sehen" verbindet
+// Rolle (auth), Rechtematrix (rbac) und Stufe am Objekt (knowledge-object). Sie fällt deshalb seit
+// mega74 in der KOMPOSITIONSWURZEL — `services/app/src/sichtbarkeit.ts` — und dieses Modul darf sie
+// nicht importieren (Modulgrenze). Der Trim reist also als DATUM herein, exakt so, wie heute schon
+// `sichtbar: sichtbarkeitsfilterFuer(user)` in die Analytics reist — nur eine Ebene tiefer, bis in
+// das SQL.
+//
+// WAS DIESER PORT AUSDRÜCKLICH NICHT IST: eine zweite Auslegung der Regel. Er trägt keine Logik,
+// nur die fertige Entscheidung in zwei Formen — als SQL-Prädikat für die Datenquelle und als
+// Prädikat für die Adapter ohne SQL. Dass beide Formen dieselbe Menge liefern, ist kein Zufall,
+// sondern gepinnt: tests/security/380-trim-paritaet.integration.test.ts fährt sie über alle
+// Kombinationen aus Stufe × Autorschaft × Rolle gegen ein echtes Postgres.
+export interface KoSichtbarkeitstrim {
+  /**
+   * Das SQL-Prädikat über die LEBENDE `kos`-Zeile.
+   *
+   * `spaltenTraeger` ist der Name oder Alias, unter dem `kos` in der Abfrage steht;
+   * `abPlatzhalter` die Nummer, ab der die eigenen `$n`-Platzhalter laufen dürfen (der Aufrufer
+   * hat seine eigenen bereits vergeben). Die Rückgabe ist EIN geklammerter Ausdruck — sie lässt
+   * sich ohne weitere Klammern in eine WHERE-Klausel einreihen.
+   *
+   * BEWUSST die lebende Zeile und NIE ein Snapshot: eine Stufe, die nach dem Projektionsbau
+   * erhöht wurde, muss sofort wirken (Gate `G-TRIM-LIVE`, BASIC 379 §1.3).
+   */
+  sql(spaltenTraeger: string, abPlatzhalter: number): string;
+  /** Die Werte zu den Platzhaltern, in genau der Reihenfolge, in der `sql` sie vergibt. */
+  readonly params: readonly unknown[];
+  /**
+   * DIESELBE Entscheidung für Adapter ohne SQL (In-Memory).
+   *
+   * Bewusst nicht nachgebaut, sondern von derselben Quelle abgeleitet wie das SQL-Prädikat —
+   * sonst wäre der In-Memory-Weg die zweite Wahrheit, die `sichtbarkeit.ts` gerade verhindert.
+   */
+  trifftZu(ko: KnowledgeObject): boolean;
+}
+
 // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidatenabfrage für Ask. Statt den
 // gesamten Pool (`list()`) in den Speicher zu laden, liefert das Repository eine VORGEFILTERTE,
 // auf `limit` begrenzte Kandidatenmenge: KOs, deren durchsuchbarer Text (Titel/Aussage/Tags/Kategorie)
@@ -72,11 +119,34 @@ export interface KoRepo {
     maxTrust: number,
     tx?: TxContext,
   ): Promise<number | undefined>;
-  list(filter: KoFilter): Promise<KnowledgeObject[]>;
+  // AUFTRAG-BASIC-391 (Plan aus BASIC 385): OPTIONALER Sicherheitstrim, dieselbe Form wie bei
+  // `listForSearch`. Ist er gesetzt, wirken Papierkorb- UND Sichtbarkeitsprädikat in der
+  // DATENQUELLE — vor jeder Zählung und vor jedem Deckel, den ein späterer Abfragevertrag darüber
+  // legt.
+  //
+  // ER IST UND BLEIBT OPTIONAL, UND DAS IST KEINE BEQUEMLICHKEIT. `list` hat sieben Aufrufer, und
+  // VIER von ihnen brauchen die getrashten Zeilen zwingend: der Papierkorb (`trashed`), der
+  // Import-Anker (`findByImportCandidateId` — ohne ihn entsteht beim Retry ein Doppel-KO), der
+  // Sweep (`runTrashSweep`) und die Quellanker (`trashedSourceAnchors`). Ein Default hier bräche
+  // alle vier in einem Zug. Nur die normale Listenroute übergibt den Trim.
+  list(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]>;
   // WP-BILD-1g (bens sammel14-ROT): PROJEKTION für den Suchpfad — dieselbe Filterlogik wie list(),
   // aber OHNE bodyHtml (Pg: SELECT data - 'bodyHtml'; InMemory: Feld weggelassen). Die Suche
   // arbeitet über title/statement/captionTexts und traversiert nie megabyte-große Body-Strings.
-  listForSearch(filter: KoFilter): Promise<KnowledgeObject[]>;
+  //
+  // AUFTRAG-BASIC-380: OPTIONALER Sicherheitstrim (s. KoSichtbarkeitstrim). Ist er gesetzt, wirken
+  // Papierkorb- UND Sichtbarkeitsprädikat in der DATENQUELLE — also vor jedem Deckel, jedem Cursor
+  // und jedem Zähler, den ein späterer Abfragevertrag darüber legt. Fehlt er, verhält sich die
+  // Methode ZEICHENGLEICH wie bisher: der Altvertrag (`GET /api/kos`, Projektionsbau, Analytics)
+  // bleibt unangetastet, und die Sichtbarkeit fällt weiterhin dort, wo sie heute fällt.
+  listForSearch(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]>;
+  // G27: GEZIELTER Mehrfach-Nachschlag zu einer bekannten Id-Menge — die Ergänzung zur
+  // revisionsgebundenen Suchprojektion. Die Projektion liefert IDs (schmal, indexgestützt); die
+  // Ask-/Bibliotheksseite braucht danach die Wissensobjekte selbst (Status, Trust, Stufe, Autor —
+  // alles, woran die Autorisierung und das Ranking hängen). Dieselbe body-freie Projektion wie
+  // listForSearch: `bodyHtml` verlässt die Datenquelle für den Suchweg nie.
+  // Reihenfolge ist NICHT zugesichert — der Aufrufer ordnet nach seiner Trefferliste.
+  listByIds(ids: readonly string[]): Promise<KnowledgeObject[]>;
   // WP-BILD-1g/1h: schmaler Backfill des ABGELEITETEN captionTexts-Suchfelds (Legacy-KOs von vor
   // der Schreibregel). VERTRAG (bens sammel15-ROT 1): schreibt ATOMAR NUR, WENN DAS FELD FEHLT —
   // ein bereits gesetztes Feld (nebenläufiger revise/Voll-Write mit frischerem Scan) wird nie
@@ -262,17 +332,41 @@ export class InMemoryKoRepo implements KoRepo {
     return Promise.resolve(trust);
   }
 
-  list(filter: KoFilter): Promise<KnowledgeObject[]> {
-    return Promise.resolve([...this.items.values()].filter((ko) => matches(ko, filter)));
-  }
-
-  // WP-BILD-1g: Suchpfad-Projektion — bodyHtml wird weggelassen (analog zur Pg-Projektion).
-  listForSearch(filter: KoFilter): Promise<KnowledgeObject[]> {
+  // AUFTRAG-BASIC-391: der injizierte Trim wirkt auf der GRUNDMENGE — auf derselben Stufe wie das
+  // SQL-Prädikat in PgKoRepo, nicht auf dem Ergebnis. Ohne Trim unverändert.
+  list(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
     return Promise.resolve(
       [...this.items.values()]
         .filter((ko) => matches(ko, filter))
+        .filter((ko) => trim === undefined || trim.trifftZu(ko)),
+    );
+  }
+
+  // WP-BILD-1g: Suchpfad-Projektion — bodyHtml wird weggelassen (analog zur Pg-Projektion).
+  // AUFTRAG-BASIC-380: der injizierte Trim wirkt hier auf DERSELBEN Stufe wie das SQL-Prädikat in
+  // PgKoRepo — auf der GRUNDMENGE, vor jeder weiteren Verarbeitung. `trifftZu` liest das VOLLE
+  // gespeicherte Objekt (nicht die body-freie Projektion), damit Papierkorb, Stufe und Autor auch
+  // dann tragen, wenn die Projektion sie später einmal nicht mehr mitführte.
+  listForSearch(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
+    return Promise.resolve(
+      [...this.items.values()]
+        .filter((ko) => matches(ko, filter))
+        .filter((ko) => trim === undefined || trim.trifftZu(ko))
         .map(({ bodyHtml: _omitted, ...rest }) => rest),
     );
+  }
+
+  // G27: gezielter Mehrfach-Nachschlag (s. Interface). Body-frei wie listForSearch.
+  listByIds(ids: readonly string[]): Promise<KnowledgeObject[]> {
+    const out: KnowledgeObject[] = [];
+    for (const id of new Set(ids)) {
+      const ko = this.items.get(id);
+      if (ko) {
+        const { bodyHtml: _omitted, ...rest } = ko;
+        out.push(rest);
+      }
+    }
+    return Promise.resolve(out);
   }
 
   // WP-BILD-1g/1h: Cache-Write des abgeleiteten Suchfelds — ATOMAR NUR-WENN-FELD-FEHLT (analog

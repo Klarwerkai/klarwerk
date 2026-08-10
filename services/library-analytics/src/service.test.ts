@@ -2,10 +2,26 @@ import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AuditService, InMemoryAuditRepo } from "../../audit";
 import { InMemoryKoRepo, KoService } from "../../knowledge-object";
-import { InMemoryCandidateRepo } from "./repo";
+import { InMemoryCandidateRepo, InMemoryImportRunRepo } from "./repo";
 import { PgCandidateRepo } from "./repo-pg";
 import { LibraryService, sanitizeImportConfidentiality } from "./service";
-import type { ImportCandidate, ImportItem, SourceAdapter } from "./types";
+import {
+  IMPORT_RUN_STATUSES,
+  istImportRunStatus,
+  pruefeGapBindung,
+  pruefeInhaltsreferenzBindung,
+  sanitizeImportFailureReason,
+} from "./types";
+import type {
+  ContentReferenceState,
+  ImportCandidate,
+  ImportItem,
+  ImportRun,
+  ImportRunItemRef,
+  ImportRunStatus,
+  KnowledgeGapRelationState,
+  SourceAdapter,
+} from "./types";
 
 function confItem(over: Partial<ImportItem> = {}): ImportItem {
   return {
@@ -24,6 +40,10 @@ function confItem(over: Partial<ImportItem> = {}): ImportItem {
 
 async function setup() {
   const koService = new KoService({ repo: new InMemoryKoRepo() });
+  // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
+  // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
+  // In der echten App tut das die Startorchestrierung in build-app.ts.
+  await koService.activateSearchProjectionV2();
   await koService.create({
     title: "Ventil schließen",
     statement: "Bei Überdruck Ventil X schließen.",
@@ -411,6 +431,10 @@ describe("LibraryService", () => {
   it("SCRUM-470 (ben #7): Flag AUS → kein pageId-Pfad (kein pageId-Dedup, kein Upsert, kein Anker)", async () => {
     // Eigener Service mit AUSGESCHALTETEM Strang = heutiges Bestandsverhalten.
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
+    // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
+    // In der echten App tut das die Startorchestrierung in build-app.ts.
+    await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService, externalUpsert: false });
 
     // Zwei Items mit GLEICHER pageId, aber unterschiedlichem title|statement. Bei Flag AN wäre das
@@ -443,6 +467,7 @@ describe("LibraryService", () => {
 
   it("Consultant Experten-Matching: Thema → Personen (originalAuthor), alphabetisch statt nach Menge", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     // Kategorie "Dach": zoe mit 2 Beiträgen, anna mit 1 — nach Menge käme zoe zuerst.
     await koService.create({
       title: "z1",
@@ -509,6 +534,7 @@ describe("LibraryService — Audit (FR-AUD-01)", () => {
   it("protokolliert den Import", async () => {
     const audit = new AuditService({ repo: new InMemoryAuditRepo() });
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService, audit });
     await library.importJson(
       [{ title: "X", statement: "Y", type: "lernkurve", category: "A" }],
@@ -614,6 +640,7 @@ function fakePool() {
 describe("SCRUM-157: Import-Kandidaten persistent (CandidateRepo)", () => {
   async function koCtx() {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     await koService.create({
       title: "Bestehend",
       statement: "Schon da.",
@@ -706,6 +733,7 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
 
   it("createImportCandidates+accept: ungültige confidentiality im Payload → KO vertraulich (nie intern)", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService });
     const poisoned = {
       title: "Fremd A",
@@ -722,6 +750,7 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
 
   it("importJson: unbekannter confidentiality-Typ im Payload → KO vertraulich (nie intern)", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService });
     const poisoned = {
       title: "Fremd B",
@@ -758,6 +787,7 @@ describe("SCRUM-510 R2b: quellneutraler Upsert (Fake-2.-Adapter, keine Confluenc
 
   it("Nicht-Confluence-Adapter kann upserten + re-syncen (nur Anheben, kein Downgrade)", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     const library = new LibraryService({ koService, externalUpsert: true });
 
     const first = await fakeAdapter.collect();
@@ -799,6 +829,7 @@ describe("SCRUM-510 R2b: quellneutraler Upsert (Fake-2.-Adapter, keine Confluenc
 describe("SCRUM-515: persistierte Alt-Kandidaten werden beim Accept erneut sanitisiert", () => {
   it("Legacy-Queue-Kandidat mit ungültiger confidentiality → Accept restriktiv (vertraulich, nie intern), bereinigt persistiert", async () => {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     const candidates = new InMemoryCandidateRepo();
     const library = new LibraryService({ koService, candidates, externalUpsert: true });
 
@@ -884,5 +915,316 @@ describe("SCRUM-510 (WP3): InMemoryCandidateRepo.insertIfAbsent (Idempotenz-Vert
       true,
     );
     expect(await repo.all()).toHaveLength(2);
+  });
+});
+
+// ================================================================================================
+// AUFTRAG-144 (KW-S4-26 §59-114, KW-S4-28 F1/F2/F3) — DIE LAUFDOMAENE ALS PERSISTENTER GEGENSTAND
+// ================================================================================================
+//
+// WARUM DIESE FAELLE HIER STEHEN UND NICHT IN EINER EIGENEN DATEI: Auftrag 144 gibt sechs Pfade
+// frei und verlangt bei jedem weiteren Testpfad einen Stopp mit engem Scopeblocker. `service.test.ts`
+// ist der freigegebene Ort fuer die InMemory-Vertragsfaelle; eine eigene `import-run-repo.test.ts`
+// waere sauberer geschnitten, ist aber NICHT zwingend erforderlich — also entsteht sie nicht.
+//
+// WAS HIER BEWIESEN WIRD: der Lauf ist ein Gegenstand mit Lebenslauf, nicht ein Zaehler. KW-S4-26
+// §177-179 sagt es woertlich — „Zaehler allein sind keine Resultatdatenquelle". Jede Zusicherung
+// unten hat eine benannte Gegenmutation; ohne sie belegt Gruen nichts.
+describe("AUFTRAG-144 · W2-A Laufdomaene · InMemory-Vertrag", () => {
+  const T0 = "2026-08-03T09:00:00.000Z";
+
+  function lauf(over: Partial<ImportRun> = {}): ImportRun {
+    return {
+      importId: "run-1",
+      sourceSystem: "Confluence",
+      externalId: "P1",
+      sourceScope: "WART",
+      requestedSourceVersion: 3,
+      status: "QUEUED",
+      sourceRecordId: null,
+      startedAt: T0,
+      completedAt: null,
+      failureCode: null,
+      failureReason: null,
+      counters: {
+        itemsTotal: 0,
+        itemsCreated: 0,
+        itemsBound: 0,
+        itemsSkipped: 0,
+        itemsFailed: 0,
+      },
+      ...over,
+    };
+  }
+
+  function ref(over: Partial<ImportRunItemRef> = {}): ImportRunItemRef {
+    return {
+      importId: "run-1",
+      ordinal: 0,
+      sourceRecordId: "src-1",
+      candidateItemId: "cand-1",
+      knowledgeObjectId: null,
+      itemOutcome: "CREATED",
+      itemFailureCode: null,
+      ...over,
+    };
+  }
+
+  // U1 — DIE STATUSMENGE IST EXAKT NEUN, IN KANONISCHER REIHENFOLGE.
+  // KW-S4-26 §77-87 zaehlt sie auf. Waere die Liste nur „mindestens diese", koennte ein zehnter,
+  // erfundener Zustand still dazukommen und die Oberflaeche muesste ihn deuten.
+  it("U1 · die kanonische Statusmenge ist exakt neun Werte in der Reihenfolge des Kanons", () => {
+    expect(IMPORT_RUN_STATUSES).toEqual([
+      "QUEUED",
+      "FETCHING",
+      "PERSISTING_SOURCE",
+      "EXTRACTING",
+      "CREATING_KNOWLEDGE",
+      "ANALYZING",
+      "COMPLETED",
+      "PARTIAL",
+      "FAILED",
+    ]);
+    expect(IMPORT_RUN_STATUSES).toHaveLength(9);
+  });
+
+  // U2 — UNBEKANNTER STATUS IST FAIL-CLOSED, NICHT „unbekannt heisst neutral".
+  // Gegenmutation: `istImportRunStatus` gibt konstant `true` zurueck → dieser Fall faellt.
+  it("U2 · ein unbekannter Status wird als solcher erkannt und nicht durchgelassen", () => {
+    expect(istImportRunStatus("COMPLETED")).toBe(true);
+    expect(istImportRunStatus("ERFOLG")).toBe(false);
+    expect(istImportRunStatus("")).toBe(false);
+    expect(istImportRunStatus(undefined)).toBe(false);
+    expect(istImportRunStatus(7)).toBe(false);
+    // Und der Schreibweg laesst ihn nicht herein.
+    const repo = new InMemoryImportRunRepo();
+    return expect(
+      repo.insertIfAbsent(lauf({ status: "ERFOLG" as unknown as ImportRunStatus })),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+  });
+
+  // U3 — LAUFANLAGE IST IDEMPOTENT UND UEBERSCHREIBT NIE.
+  // DIE Zusicherung gegen den Mutanten „upsert statt insertIfAbsent": der zweite Aufruf mit
+  // ABWEICHENDEM Inhalt meldet `false` UND laesst den ersten Lauf unangetastet. Ein `upsert`
+  // meldete `true` oder ueberschriebe den Status — beides faellt hier auf.
+  it("U3 · derselbe Lauf zweimal angelegt: false, und der erste Stand bleibt unangetastet", async () => {
+    const repo = new InMemoryImportRunRepo();
+    expect(await repo.insertIfAbsent(lauf())).toBe(true);
+    expect(await repo.insertIfAbsent(lauf({ status: "COMPLETED", sourceRecordId: "src-9" }))).toBe(
+      false,
+    );
+    const gelesen = await repo.findById("run-1");
+    expect(gelesen?.status).toBe("QUEUED");
+    expect(gelesen?.sourceRecordId).toBeNull();
+  });
+
+  // U4 — UNBEKANNTER LAUF BLEIBT UNBEKANNT.
+  // KW-S4-26 §142-143: „der Dienst erfindet keine leeren Fachwerte". Gegenmutation: `findById`
+  // liefert bei Nichttreffer einen Leerlauf mit status QUEUED → dieser Fall faellt.
+  it("U4 · eine unbekannte importId liefert undefined — nie einen erfundenen Leer-Lauf", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await repo.insertIfAbsent(lauf());
+    expect(await repo.findById("gibt-es-nicht")).toBeUndefined();
+    expect(await repo.listItemRefs("gibt-es-nicht")).toEqual([]);
+  });
+
+  // U5 — FORTSCHREIBUNG IST ECHT UND GEZIELT.
+  // Der Lauf muss seinen Lebenslauf gehen koennen (§51 „les- und fortschreibbar"), ohne dass die
+  // Anlage zum Upsert wird. Beides zugleich ist der Kern von U3+U5.
+  it("U5 · der Lauf wird fortgeschrieben: Status, Quellrevision, Zeiten und ehrliche Zaehler", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await repo.insertIfAbsent(lauf());
+    const nachher = await repo.advance("run-1", {
+      status: "COMPLETED",
+      sourceRecordId: "src-1",
+      completedAt: "2026-08-03T09:05:00.000Z",
+      counters: {
+        itemsTotal: 3,
+        itemsCreated: 2,
+        itemsBound: 0,
+        itemsSkipped: 1,
+        itemsFailed: 0,
+      },
+    });
+    expect(nachher.status).toBe("COMPLETED");
+    expect(nachher.sourceRecordId).toBe("src-1");
+    expect(nachher.completedAt).toBe("2026-08-03T09:05:00.000Z");
+    expect(nachher.counters.itemsTotal).toBe(3);
+    // startedAt ist unveraenderlich — die Fortschreibung erfindet keine neue Vergangenheit.
+    expect(nachher.startedAt).toBe(T0);
+    expect((await repo.findById("run-1"))?.status).toBe("COMPLETED");
+  });
+
+  it("U6 · die Fortschreibung eines unbekannten Laufs ist ein Konflikt, kein stilles Anlegen", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await expect(repo.advance("gibt-es-nicht", { status: "FETCHING" })).rejects.toMatchObject({
+      code: "CONFLICT",
+    });
+    expect(await repo.findById("gibt-es-nicht")).toBeUndefined();
+  });
+
+  // U7 — ITEMREFS SIND JE LAUF STABIL GEORDNET.
+  // Gegenmutation: `listItemRefs` gibt die Einfuegereihenfolge zurueck → dieser Fall faellt, weil
+  // hier ABSICHTLICH verkehrt herum eingefuegt wird. Ohne die verkehrte Einfuegung waere die
+  // Zusicherung strukturell erfuellt und wertlos.
+  it("U7 · ItemRefs kommen nach ordinal sortiert zurueck, auch wenn sie verkehrt eingefuegt wurden", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await repo.insertIfAbsent(lauf());
+    await repo.appendItemRefs([
+      ref({ ordinal: 2, candidateItemId: "cand-3" }),
+      ref({ ordinal: 0, candidateItemId: "cand-1" }),
+      ref({ ordinal: 1, candidateItemId: "cand-2" }),
+    ]);
+    const refs = await repo.listItemRefs("run-1");
+    expect(refs.map((r) => r.ordinal)).toEqual([0, 1, 2]);
+    expect(refs.map((r) => r.candidateItemId)).toEqual(["cand-1", "cand-2", "cand-3"]);
+  });
+
+  it("U8 · dieselbe (importId, ordinal) wird nicht doppelt angelegt und nicht ueberschrieben", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await repo.insertIfAbsent(lauf());
+    expect(await repo.appendItemRefs([ref({ ordinal: 0, candidateItemId: "cand-1" })])).toBe(1);
+    expect(await repo.appendItemRefs([ref({ ordinal: 0, candidateItemId: "cand-ANDERS" })])).toBe(
+      0,
+    );
+    const refs = await repo.listItemRefs("run-1");
+    expect(refs).toHaveLength(1);
+    expect(refs[0]?.candidateItemId).toBe("cand-1");
+  });
+
+  // U9 — DAS KIND TRAEGT NUR KANONISCHE IDs, KEINEN FACHINHALT.
+  // KW-S4-26 §108-110: „Es kopiert keine Knowledge Objects, Validierungen, Konflikte oder
+  // Wissensluecken." Die Feldmenge selbst ist die Zusicherung.
+  it("U9 · ItemRef traegt exakt die sieben kanonischen Felder — kein kopierter Fachinhalt", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await repo.insertIfAbsent(lauf());
+    await repo.appendItemRefs([ref({ knowledgeObjectId: "ko-1" })]);
+    const [gelesen] = await repo.listItemRefs("run-1");
+    expect(Object.keys(gelesen ?? {}).sort()).toEqual([
+      "candidateItemId",
+      "importId",
+      "itemFailureCode",
+      "itemOutcome",
+      "knowledgeObjectId",
+      "ordinal",
+      "sourceRecordId",
+    ]);
+  });
+
+  // U10 — A/A/A-INVARIANTE 1 (KW-S4-28 F2, §46-49).
+  // RELATION_NOT_AVAILABLE -> null ; AVAILABLE -> [] | kanonische IDs.
+  // Gegenmutation: `RELATION_NOT_AVAILABLE` mit `[]` durchlassen → genau der von §103 verbotene
+  // Zustand „leere Liste ohne autoritative Relation", der wie „es gibt keine Luecken" aussieht.
+  it("U10 · Gap-Bindung: RELATION_NOT_AVAILABLE erzwingt null, [] ist nur mit AVAILABLE erlaubt", () => {
+    expect(() =>
+      pruefeGapBindung({
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      pruefeGapBindung({ knowledgeGapRelationState: "AVAILABLE", knowledgeGapIds: [] }),
+    ).not.toThrow();
+    expect(() =>
+      pruefeGapBindung({ knowledgeGapRelationState: "AVAILABLE", knowledgeGapIds: ["gap-1"] }),
+    ).not.toThrow();
+    // DER verbotene Zustand.
+    expect(() =>
+      pruefeGapBindung({
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: [],
+      }),
+    ).toThrow(/RELATION_NOT_AVAILABLE/);
+    expect(() =>
+      pruefeGapBindung({
+        knowledgeGapRelationState: "RELATION_NOT_AVAILABLE",
+        knowledgeGapIds: ["gap-1"],
+      }),
+    ).toThrow(/RELATION_NOT_AVAILABLE/);
+    // AVAILABLE mit null ist die Gegenrichtung derselben Luecke.
+    expect(() =>
+      pruefeGapBindung({ knowledgeGapRelationState: "AVAILABLE", knowledgeGapIds: null }),
+    ).toThrow(/AVAILABLE/);
+    // Unbekannter Zustand ist fail-closed, nicht „wohlwollend".
+    expect(() =>
+      pruefeGapBindung({
+        knowledgeGapRelationState: "VIELLEICHT" as unknown as KnowledgeGapRelationState,
+        knowledgeGapIds: null,
+      }),
+    ).toThrow();
+    // Eine leere ID in der Liste ist keine kanonische ID.
+    expect(() =>
+      pruefeGapBindung({ knowledgeGapRelationState: "AVAILABLE", knowledgeGapIds: ["  "] }),
+    ).toThrow();
+  });
+
+  // U11 — A/A/A-INVARIANTE 2 (KW-S4-28 F3, §82-85).
+  // NOT_CAPTURED -> null ; AVAILABLE -> nicht-leere kanonische Referenz.
+  // Gegenmutation: leere Zeichenkette als Ersatz fuer die fehlende Referenz (§105 verboten) —
+  // sie sieht wie eine Referenz aus und ist keine.
+  it("U11 · Inhaltsreferenz: NOT_CAPTURED erzwingt null, die leere Zeichenkette ist nie ein Ersatz", () => {
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "NOT_CAPTURED",
+        rawOrRenderedContentReference: null,
+      }),
+    ).not.toThrow();
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "AVAILABLE",
+        rawOrRenderedContentReference: "obj://quelle/rev-3",
+      }),
+    ).not.toThrow();
+    // DER verbotene Zustand.
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "NOT_CAPTURED",
+        rawOrRenderedContentReference: "",
+      }),
+    ).toThrow(/NOT_CAPTURED/);
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "NOT_CAPTURED",
+        rawOrRenderedContentReference: "obj://x",
+      }),
+    ).toThrow(/NOT_CAPTURED/);
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "AVAILABLE",
+        rawOrRenderedContentReference: null,
+      }),
+    ).toThrow(/AVAILABLE/);
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "AVAILABLE",
+        rawOrRenderedContentReference: "   ",
+      }),
+    ).toThrow(/AVAILABLE/);
+    expect(() =>
+      pruefeInhaltsreferenzBindung({
+        contentReferenceState: "SPAETER" as unknown as ContentReferenceState,
+        rawOrRenderedContentReference: null,
+      }),
+    ).toThrow();
+  });
+
+  // U12 — DER FEHLERGRUND IST SANITISIERT PERSISTIERT, NICHT ROH.
+  // KW-S4-26 §138: „Fehlergruende sanitisiert und ohne Secrets oder Quellinhalt speichern".
+  it("U12 · ein Lauf mit FAILED traegt Code und sanitisierten Grund, aber kein Geheimnis", async () => {
+    const repo = new InMemoryImportRunRepo();
+    await repo.insertIfAbsent(lauf());
+    const nachher = await repo.advance("run-1", {
+      status: "FAILED",
+      failureCode: "SOURCE_UNREACHABLE",
+      failureReason: sanitizeImportFailureReason(
+        "GET https://wiki/rest?token=geheim123 fehlgeschlagen: Seiteninhalt 'Pumpe entlueften'",
+      ),
+      completedAt: "2026-08-03T09:06:00.000Z",
+    });
+    expect(nachher.status).toBe("FAILED");
+    expect(nachher.failureCode).toBe("SOURCE_UNREACHABLE");
+    expect(nachher.failureReason).not.toMatch(/geheim123/);
+    expect(nachher.failureReason).not.toMatch(/token=/);
+    expect(nachher.failureReason).toBeTruthy();
   });
 });

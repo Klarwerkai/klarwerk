@@ -1,10 +1,14 @@
 // Öffentliche API des Moduls knowledge-object.
 export {
   KoService,
+  // G27: Deckel des Altbestands-Backfills je Suchanfrage (die Suche wird nie zum Bestandslauf).
+  SEARCH_PROJECTION_BACKFILL_PER_QUERY,
   normalizeEvidenceLimit,
   DEFAULT_EVIDENCE_LIMIT,
   MAX_EVIDENCE_LIMIT,
   TRUTH_CONFLICT_TRUST_PENALTY,
+  // G27 R1: das Ergebnis der fünf Gate-Prüfungen vor der atomaren Freigabe.
+  type SearchProjectionReadiness,
   // SCRUM-422: Papierkorb-Aufbewahrungsfrist (Tage bis zur automatischen Endlöschung).
   TRASH_RETENTION_DAYS,
 } from "./src/service";
@@ -52,6 +56,8 @@ export {
   type KoRepo,
   type KoVersionRepo,
   type KoFilter,
+  // AUFTRAG-BASIC-380: der injizierte Sicherheitstrim (Papierkorb + Sichtbarkeit) fuer den Suchweg.
+  type KoSichtbarkeitstrim,
   type KoCandidateQuery,
   koCandidateText,
   koCandidateScore,
@@ -66,8 +72,109 @@ export {
   KO_IMPORT_ANCHOR_SCHEMA,
   // AUFTRAG-mega20 Block A: additive Anker-Migration der ERSTANLAGE (nach KO_SCHEMA ausfuehren).
   KO_CREATE_OPERATION_SCHEMA,
+  // AUFTRAG-BASIC-380: additive ALTER-only-Stufe der drei Sichtbarkeits-Schluesselspalten
+  // (nach KO_SCHEMA ausfuehren). Der generische Migrationswaechter faengt sie NICHT — sie haengt
+  // an einem eigens benannten Pin (T-M-3, services/app/src/db.migrate.test.ts).
+  KO_SICHTBARKEIT_SCHEMA,
   KO_VERSIONS_SCHEMA,
 } from "./src/repo-pg";
+// ================================================================================================
+// G27 — DER GEMEINSAME SUCHVERTRAG (revisionsgebundene Search Projection)
+// ================================================================================================
+//
+// Bibliothek (library-analytics) und produktives Klara (ask) lesen GENAU diese Bausteine — es gibt
+// keinen zweiten Feldsatz und keinen zweiten Weg an den durchsuchbaren Text. Die Begründung jeder
+// Einzelentscheidung steht in src/search-projection.ts.
+export {
+  SEARCH_PROJECTION_VERSION,
+  SEARCH_PROJECTION_LANGUAGE,
+  SEARCH_PROJECTION_FIELDS,
+  SEARCH_PROJECTION_MATCH_FIELDS,
+  MAX_SEARCH_TEXT_LENGTH,
+  CLASSIFICATION_SOURCE,
+  buildSearchProjection,
+  searchProjectionContentHash,
+  normalizeSearchFragment,
+  normalizeSearchTerms,
+  visibleTextFromBodyHtml,
+  classificationValueOf,
+  classificationAtVersion,
+  classificationFromVersionSnapshot,
+  reconstructedClassification,
+  isReconstructedClassification,
+  resolveCapturedAt,
+  serializeClassificationSnapshot,
+  parseClassificationSnapshot,
+  type KoSearchProjection,
+  type KoSearchHit,
+  type KoSearchQuery,
+  type SearchProjectionStatus,
+  type ClassificationSnapshot,
+  type ClassificationValue,
+  type ClassificationProvenance,
+  type ClassificationConfidence,
+  type CapturedAtSource,
+} from "./src/search-projection";
+export {
+  InMemoryKoSearchProjectionRepo,
+  type KoSearchProjectionRepo,
+  // G27 R1 — der persistente Projection Control State (KW-ARCH-G27-PROJECTION-CONTROL-STATE-04).
+  // DIE autoritative Quelle für aktive Projektionsfassung und Readiness; ohne Export wäre weder
+  // die Kompositionswurzel noch eine Gegenprobe an den Zustand zu verdrahten.
+  PROJECTION_STATES,
+  UNINITIALIZED_CONTROL_STATE,
+  controlStateLifecycleGueltig,
+  freigegebeneProjektionsfassung,
+  neuerProjektionsSpeicher,
+  type InMemoryProjektionsSpeicher,
+  type ProjectionAudit,
+  type ProjectionControlState,
+  type ProjectionState,
+  // G27 R1 — Generation, atomare Freigabe und Integrität (KW-ARCH-G27-GENERATION-UND-INTEGRITAET-09).
+  // Die vier konstanten Suchprüfungen und der generationsgebundene Marker sind exportiert, weil die
+  // Startorchestrierung in `services/app/src/build-app.ts` einen vorgefundenen `V2_ACTIVE`-Zustand
+  // validieren muss, OHNE ihn nachzubauen — und weil eine Gegenprobe sonst nur behaupten könnte,
+  // was sie prüfen soll.
+  freigegebeneProjektion,
+  integritaetsMarkerFuer,
+  integritaetsMarkerGueltig,
+  type ProjectionControlSitzung,
+} from "./src/search-projection-repo";
+export {
+  PgKoSearchProjectionRepo,
+  // Additive DDL der Projektionstabelle — MUSS in services/app/src/db.ts migriert werden
+  // (db.migrate.test.ts erzwingt genau das für jede exportierte DDL-Konstante).
+  KO_SEARCH_PROJECTION_SCHEMA,
+  // G27 R1: additive DDL der instanzweiten Steuertabelle — ebenfalls migrationspflichtig.
+  KO_PROJECTION_CONTROL_SCHEMA,
+} from "./src/search-projection-repo-pg";
+// G27 Welle 1 / S2 — die VERÄNDERLICHE Metadatenprojektion (Schlüssel `ko_id`, eigene
+// `metadata_revision`). Sie ist die zweite Hälfte des Suchvertrags, nicht sein Ersatz.
+export {
+  METADATA_PROJECTION_FIELDS,
+  METADATA_PROJECTION_MATCH_FIELDS,
+  METADATA_REVISION_NONE,
+  metadataTextsOf,
+  metadataTextsEqual,
+  type KoMetadataProjection,
+} from "./src/metadata-projection";
+export {
+  InMemoryKoMetadataProjectionRepo,
+  type KoMetadataProjectionRepo,
+  type KoMetadataProjectionResult,
+  type KoMetadataProjectionUpsert,
+} from "./src/metadata-projection-repo";
+export {
+  PgKoMetadataProjectionRepo,
+  KO_METADATA_PROJECTION_SCHEMA,
+} from "./src/metadata-projection-repo-pg";
+// G27 Welle 1 — die Zusammensetzung beider Projektionsarten zu DER Sicht des Suchkonsumenten.
+export {
+  EFFECTIVE_SEARCH_DOCUMENT_FIELDS,
+  composeEffectiveSearchDocument,
+  matchEffectiveSearchDocument,
+  type EffectiveSearchDocument,
+} from "./src/effective-search-document";
 export { KoError, KNOWLEDGE_TYPES, MAX_ATTACHMENT_BYTES, MAX_ATTACHMENTS } from "./src/types";
 // SCRUM-421: einstellbare Upload-Grenzen (persistiert).
 export {

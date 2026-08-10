@@ -1,6 +1,25 @@
 import type { Pool } from "pg";
-import type { CandidateRepo, ClaimResolution, ImportCandidateRemoval } from "./repo";
-import { type ImportCandidate, LibraryError, type ReviewAction } from "./types";
+import {
+  type CandidateRepo,
+  type ClaimResolution,
+  type ExternalSourceRepo,
+  type ImportCandidateRemoval,
+  type ImportRunFortschritt,
+  type ImportRunRepo,
+  externalSourceSystemKey,
+  pruefeImportRun,
+  pruefeImportRunItemRef,
+  pruefeRevisionsidentitaet,
+} from "./repo";
+import {
+  type ExternalSourceRecord,
+  type ImportCandidate,
+  type ImportRun,
+  type ImportRunItemRef,
+  LibraryError,
+  type ReviewAction,
+  istImportRunStatus,
+} from "./types";
 
 // SCRUM-157: Postgres-Adapter der Import-/Source-Review-Queue. Vollständiger Kandidat als
 // JSONB (Status/Duplicate/Note/koId/createdAt bleiben erhalten). Additive Tabelle.
@@ -301,5 +320,385 @@ export class PgCandidateRepo implements CandidateRepo {
       [entries.map((e) => e.id), entries.map((e) => e.status)],
     );
     return res.rows.map((row) => row.id);
+  }
+}
+
+// ================================================================================================
+// W2-A (KW-W2-17 Zeilen 35-39) — DIE REVISIONSIDENTITAET, DATENBANKSEITIG ERZWUNGEN
+// ================================================================================================
+//
+// ADDITIV UND WIEDERHOLBAR wie jedes Schema in diesem Repository: `CREATE TABLE IF NOT EXISTS`,
+// `ADD COLUMN IF NOT EXISTS`, `CREATE UNIQUE INDEX IF NOT EXISTS`. KEIN `DROP`, KEIN `TRUNCATE`,
+// kein Umschreiben von Altbestand — es gibt hier ohnehin keinen, aber die Form bleibt dieselbe.
+//
+// DER SCHLUESSEL IST TEXT, NICHT INTEGER — UND DAS IST DIE LEHRE VON OBEN.
+// Die `source_version`-Spalte der Kandidatentabelle musste ZWEIMAL geheilt werden: erst wegen
+// eines unsicheren Casts (WP-B), dann wegen einer Ziffernfolge ohne Laengengrenze, die den Guard
+// passierte und am `::int` ueberlief (WP-B2). Beide Male war die Ursache dieselbe: ein CAST im
+// generierten Ausdruck. Hier gibt es ihn nicht. Der Index laeuft ueber den ROHEN Textwert der
+// Version; er ist damit
+//   · TOTAL — kein `CASE` kann NULL liefern, und NULLs waeren im Unique-Index verschieden,
+//     also genau die Luecke, die eine Revisionsidentitaet nicht haben darf,
+//   · ueberlaufsicher, weil nichts gecastet wird,
+//   · und braucht nie eine Heilungsmigration.
+// Die numerische Ordnung entsteht dort, wo sie hingehoert: beim Lesen, aus dem typisierten
+// `sourceVersion` des Datensatzes. Der Preis ist ehrlich benannt — `listBySource`/`latestVersion`
+// sortieren im Anwendungscode statt in der Datenbank. Bei einer Handvoll Revisionen je Quelle ist
+// das kein Preis; sollte eine Quelle je tausende Revisionen tragen, ist eine zusaetzliche,
+// SORTIER-Spalte (kein Schluessel!) der naechste Schritt.
+//
+// `source_system` wird kleingeschrieben und getrimmt — deckungsgleich mit
+// `externalSourceSystemKey` in repo.ts. Zwei Normalisierungen fuer denselben Schluessel waeren
+// zwei Gelegenheiten, sie auseinanderlaufen zu lassen.
+export const EXTERNAL_SOURCE_SCHEMA = `
+CREATE TABLE IF NOT EXISTS external_source_records (
+  source_record_id text PRIMARY KEY,
+  data jsonb NOT NULL
+);
+ALTER TABLE external_source_records
+  ADD COLUMN IF NOT EXISTS source_system text
+  GENERATED ALWAYS AS (lower(btrim(data->>'sourceSystem'))) STORED;
+ALTER TABLE external_source_records
+  ADD COLUMN IF NOT EXISTS external_id text
+  GENERATED ALWAYS AS (data->>'externalId') STORED;
+ALTER TABLE external_source_records
+  ADD COLUMN IF NOT EXISTS source_version_key text
+  GENERATED ALWAYS AS (data->>'sourceVersion') STORED;
+-- BEN-33 BEFUND C: EIN UNIQUE-INDEX UEBER NULL-FAEHIGE SPALTEN SAGT FAST NICHTS ZU.
+-- PostgreSQL haelt zwei NULLs fuer verschieden. Solange die drei Schluesselspalten NULL sein
+-- durften, konnten beliebig viele Zeilen OHNE Identitaet nebeneinander stehen — der Index hat sie
+-- alle durchgelassen. Der Adapter prueft zwar seine eigenen Aufrufe (pruefeRevisionsidentitaet),
+-- aber ein roher Insert ging daran vorbei, und genau danach hat BEN gefragt.
+--
+-- Die Bedingung ist deshalb ZWEISTUFIG und spiegelt Satz fuer Satz die Anwendungspruefung:
+--   · der CHECK weist einen unvollstaendigen Datensatz schon beim Insert ab (SQLSTATE 23514),
+--   · die drei NOT-NULL-Spalten schliessen die NULL-Luecke des Unique-Index STRUKTURELL.
+-- Die Versionsregel ^[0-9]{1,9}$ ist wortgleich die Grenze aus MAX_SOURCE_VERSION (repo.ts):
+-- ganzzahlig, nicht negativ, hoechstens neun Stellen — dieselbe Lehre wie bei source_version oben,
+-- nur hier ohne jeden Cast.
+--
+-- ADDITIV UND WIEDERHOLBAR: der CHECK haengt an einer Existenzpruefung (ADD CONSTRAINT kennt kein
+-- IF NOT EXISTS), SET NOT NULL ist von sich aus ein No-op, wenn die Spalte es schon ist. Nichts
+-- wird entfernt, geleert oder umgeschrieben — dieselbe Form wie jedes Schema in diesem Repository.
+--
+-- EHRLICH BENANNT: traefe eine Bestandsinstanz wider Erwarten eine Zeile ohne vollstaendige
+-- Identitaet, SCHLUEGE DIESE MIGRATION FEHL statt sie stillschweigend zu loeschen oder zu heilen.
+-- Das ist die Haltung des ganzen Repositorys — lieber laut stehenbleiben als leise etwas erfinden.
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'external_source_records_identitaet_ck'
+       AND conrelid = 'external_source_records'::regclass
+  ) THEN
+    ALTER TABLE external_source_records
+      ADD CONSTRAINT external_source_records_identitaet_ck CHECK (
+        btrim(source_record_id) <> ''
+        AND btrim(coalesce(data->>'sourceSystem', '')) <> ''
+        AND btrim(coalesce(data->>'externalId', '')) <> ''
+        AND coalesce(data->>'sourceVersion', '') ~ '^[0-9]{1,9}$'
+      );
+  END IF;
+END $$;
+ALTER TABLE external_source_records ALTER COLUMN source_system SET NOT NULL;
+ALTER TABLE external_source_records ALTER COLUMN external_id SET NOT NULL;
+ALTER TABLE external_source_records ALTER COLUMN source_version_key SET NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS external_source_records_revision_uq
+  ON external_source_records (source_system, external_id, source_version_key);
+CREATE INDEX IF NOT EXISTS idx_external_source_records_quelle
+  ON external_source_records (source_system, external_id);
+`;
+
+interface ExternalSourceRow {
+  data: ExternalSourceRecord;
+}
+
+/**
+ * Die Verletzung GENAU des Primaerschluessels von `external_source_records` — nicht „irgendein
+ * 23505". Der Constraint-Name steht mit im Fehler; ihn mitzupruefen verhindert, dass eine spaeter
+ * hinzugefuegte zweite Eindeutigkeit stillschweigend als „interne Id doppelt" gemeldet wird.
+ */
+function istPrimaerschluesselVerletzung(err: unknown): boolean {
+  const kandidat = err as { code?: unknown; constraint?: unknown } | null;
+  return kandidat?.code === "23505" && kandidat?.constraint === "external_source_records_pkey";
+}
+
+export class PgExternalSourceRepo implements ExternalSourceRepo {
+  constructor(private readonly pool: Pool) {}
+
+  /**
+   * IDEMPOTENT ueber den echten Unique-Index. `ON CONFLICT DO NOTHING` ist hier mehr als eine
+   * Bequemlichkeit: es ist die Zusage, dass die VORHANDENE Zeile unangetastet bleibt. Ein
+   * `DO UPDATE` waere genau das stille Ueberschreiben, das KW-W2-17 Zeile 38-39 verbietet.
+   *
+   * Das Konflikt-Ziel ist BEWUSST als Spaltenliste geschrieben und nicht als Constraint-Name:
+   * so waehlt Postgres den passenden Index selbst, und ein spaeterer Namenswechsel bricht den
+   * Insert nicht still.
+   */
+  async insertIfAbsent(record: ExternalSourceRecord): Promise<boolean> {
+    pruefeRevisionsidentitaet(record);
+    try {
+      const res = await this.pool.query(
+        `INSERT INTO external_source_records(source_record_id, data)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (source_system, external_id, source_version_key) DO NOTHING
+       RETURNING source_record_id`,
+        [record.sourceRecordId, JSON.stringify(record)],
+      );
+      return (res.rowCount ?? 0) > 0;
+    } catch (err) {
+      // BEN-33 Befund B: der Primaerschluessel schuetzt die interne Id — er tat es schon immer,
+      // aber der Aufrufer sah dabei einen ROHEN Datenbankfehler, waehrend die InMemory-Ablage die
+      // Doppelvergabe gar nicht bemerkte. Beide Ablagen melden jetzt denselben fachlichen Satz.
+      // BEWUSST ENG: nur die Verletzung GENAU dieses Primaerschluessels wird uebersetzt; jeder
+      // andere Datenbankfehler reist unveraendert weiter, damit hier nichts verschluckt wird.
+      if (istPrimaerschluesselVerletzung(err)) {
+        throw new LibraryError(
+          "CONFLICT",
+          `Die interne Quellrevisions-Id ${record.sourceRecordId} ist bereits an eine andere Revision vergeben.`,
+        );
+      }
+      throw err;
+    }
+  }
+
+  async findByRevision(
+    sourceSystem: string,
+    externalId: string,
+    sourceVersion: number,
+  ): Promise<ExternalSourceRecord | undefined> {
+    const res = await this.pool.query<ExternalSourceRow>(
+      `SELECT data FROM external_source_records
+        WHERE source_system = $1 AND external_id = $2 AND source_version_key = $3`,
+      [externalSourceSystemKey(sourceSystem), externalId, String(sourceVersion)],
+    );
+    return res.rows[0]?.data;
+  }
+
+  async findById(sourceRecordId: string): Promise<ExternalSourceRecord | undefined> {
+    const res = await this.pool.query<ExternalSourceRow>(
+      "SELECT data FROM external_source_records WHERE source_record_id = $1",
+      [sourceRecordId],
+    );
+    return res.rows[0]?.data;
+  }
+
+  async listBySource(sourceSystem: string, externalId: string): Promise<ExternalSourceRecord[]> {
+    const res = await this.pool.query<ExternalSourceRow>(
+      `SELECT data FROM external_source_records
+        WHERE source_system = $1 AND external_id = $2`,
+      [externalSourceSystemKey(sourceSystem), externalId],
+    );
+    // Numerisch sortiert am typisierten Feld — s. die Begruendung am Schema.
+    return res.rows.map((row) => row.data).sort((a, b) => a.sourceVersion - b.sourceVersion);
+  }
+
+  async latestVersion(sourceSystem: string, externalId: string): Promise<number | undefined> {
+    const alle = await this.listBySource(sourceSystem, externalId);
+    return alle.length > 0 ? alle[alle.length - 1]?.sourceVersion : undefined;
+  }
+}
+
+// ================================================================================================
+// AUFTRAG-144 (KW-S4-26 §92-114, KW-S4-28 F1) — DIE LAUFDOMAENE, DATENBANKSEITIG ERZWUNGEN
+// ================================================================================================
+//
+// ADDITIV UND WIEDERHOLBAR wie jedes Schema in diesem Repository: `CREATE TABLE IF NOT EXISTS`,
+// `ADD COLUMN IF NOT EXISTS`, `CREATE INDEX IF NOT EXISTS`, Constraints hinter einer
+// Existenzpruefung. KEIN `DROP`, KEIN `TRUNCATE`, KEIN `DO UPDATE` — Letzteres waere genau das
+// stille Ueberschreiben eines laufenden Imports, das Auftrag 144 §70 ausschliesst.
+//
+// ZWEI TABELLEN UND EIN FREMDSCHLUESSEL. Die Elementreferenz ist ein KINDvertrag (§108) und kein
+// zweiter Gegenstand: ohne Lauf gibt es sie nicht. Der Fremdschluessel sagt das der Datenbank, statt
+// es dem Adapter zu ueberlassen — eine verwaiste Referenz waere eine Ergebnisaussage ohne Lauf.
+//
+// DER STATUS HAENGT AN EINEM CHECK, NICHT NUR AM ADAPTER. Ein roher Insert mit erfundenem Status
+// ginge sonst an der Anwendungspruefung vorbei; danach stuende ein Zustand in der Datenbank, den
+// niemand deuten kann. Die Liste im CHECK ist wortgleich `IMPORT_RUN_STATUSES`.
+//
+// KEINE GENERIERTE ORDNUNGSSPALTE. `ordinal` ist eine ECHTE Spalte und Teil des Primaerschluessels
+// — die Ordnung ist ein Vertrag, kein aus JSONB abgeleiteter Nebeneffekt. Das ist die Lehre aus der
+// Kandidatentabelle oben, nur von der anderen Seite: was Schluessel ist, wird nicht generiert.
+export const IMPORT_RUN_SCHEMA = `
+CREATE TABLE IF NOT EXISTS import_runs (
+  import_id text PRIMARY KEY,
+  data jsonb NOT NULL
+);
+ALTER TABLE import_runs
+  ADD COLUMN IF NOT EXISTS status text
+  GENERATED ALWAYS AS (data->>'status') STORED;
+ALTER TABLE import_runs
+  ADD COLUMN IF NOT EXISTS source_system text
+  GENERATED ALWAYS AS (lower(btrim(data->>'sourceSystem'))) STORED;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'import_runs_status_ck'
+       AND conrelid = 'import_runs'::regclass
+  ) THEN
+    ALTER TABLE import_runs
+      ADD CONSTRAINT import_runs_status_ck CHECK (
+        btrim(import_id) <> ''
+        AND btrim(coalesce(data->>'sourceSystem', '')) <> ''
+        AND btrim(coalesce(data->>'startedAt', '')) <> ''
+        AND data->>'status' IN (
+          'QUEUED','FETCHING','PERSISTING_SOURCE','EXTRACTING','CREATING_KNOWLEDGE',
+          'ANALYZING','COMPLETED','PARTIAL','FAILED'
+        )
+      );
+  END IF;
+END $$;
+ALTER TABLE import_runs ALTER COLUMN status SET NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_import_runs_quelle ON import_runs (source_system);
+
+CREATE TABLE IF NOT EXISTS import_run_item_refs (
+  import_id text NOT NULL,
+  ordinal integer NOT NULL,
+  data jsonb NOT NULL,
+  PRIMARY KEY (import_id, ordinal)
+);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'import_run_item_refs_lauf_fk'
+       AND conrelid = 'import_run_item_refs'::regclass
+  ) THEN
+    ALTER TABLE import_run_item_refs
+      ADD CONSTRAINT import_run_item_refs_lauf_fk
+      FOREIGN KEY (import_id) REFERENCES import_runs(import_id);
+  END IF;
+END $$;
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+     WHERE conname = 'import_run_item_refs_element_ck'
+       AND conrelid = 'import_run_item_refs'::regclass
+  ) THEN
+    ALTER TABLE import_run_item_refs
+      ADD CONSTRAINT import_run_item_refs_element_ck CHECK (
+        ordinal >= 0
+        AND btrim(coalesce(data->>'candidateItemId', '')) <> ''
+        AND data->>'itemOutcome' IN ('CREATED','BOUND','SKIPPED','FAILED')
+      );
+  END IF;
+END $$;
+CREATE INDEX IF NOT EXISTS idx_import_run_item_refs_lauf
+  ON import_run_item_refs (import_id, ordinal);
+`;
+
+interface ImportRunRow {
+  data: ImportRun;
+}
+
+interface ImportRunItemRefRow {
+  data: ImportRunItemRef;
+}
+
+export class PgImportRunRepo implements ImportRunRepo {
+  constructor(private readonly pool: Pool) {}
+
+  /**
+   * IDEMPOTENT ueber den echten Primaerschluessel. `ON CONFLICT DO NOTHING` ist hier die Zusage,
+   * dass die VORHANDENE Zeile unangetastet bleibt — ein `DO UPDATE` wuerde einen laufenden oder
+   * abgeschlossenen Import still ueberschreiben.
+   */
+  async insertIfAbsent(run: ImportRun): Promise<boolean> {
+    pruefeImportRun(run);
+    const res = await this.pool.query(
+      `INSERT INTO import_runs(import_id, data)
+       VALUES ($1, $2::jsonb)
+       ON CONFLICT (import_id) DO NOTHING
+       RETURNING import_id`,
+      [run.importId, JSON.stringify(run)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  async findById(importId: string): Promise<ImportRun | undefined> {
+    const res = await this.pool.query<ImportRunRow>(
+      "SELECT data FROM import_runs WHERE import_id = $1",
+      [importId],
+    );
+    return res.rows[0]?.data;
+  }
+
+  /**
+   * EIN Statement, keine Lese-Aendere-Schreibe-Folge.
+   *
+   * `data || $2::jsonb` mischt die Flickenfelder auf oberster Ebene ein und laesst alles andere —
+   * insbesondere `startedAt` und die Identitaetsfelder — unberuehrt. Ein `SELECT` mit
+   * anschliessendem `UPDATE` haette zwischen beiden Schritten ein Fenster, in dem ein zweiter
+   * Schreiber gewinnt und still ueberschrieben wird.
+   *
+   * `rowCount = 0` heisst: es gibt diesen Lauf nicht. Das ist ein `CONFLICT` und kein Anlass, ihn
+   * anzulegen.
+   */
+  async advance(importId: string, fortschritt: ImportRunFortschritt): Promise<ImportRun> {
+    if (!istImportRunStatus(fortschritt.status)) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        `Unbekannter Laufstatus ${JSON.stringify(fortschritt.status)} — die kanonische Menge hat genau neun Werte.`,
+      );
+    }
+    const flicken: Record<string, unknown> = { status: fortschritt.status };
+    if (fortschritt.sourceRecordId !== undefined) {
+      flicken.sourceRecordId = fortschritt.sourceRecordId;
+    }
+    if (fortschritt.completedAt !== undefined) {
+      flicken.completedAt = fortschritt.completedAt;
+    }
+    if (fortschritt.failureCode !== undefined) {
+      flicken.failureCode = fortschritt.failureCode;
+    }
+    if (fortschritt.failureReason !== undefined) {
+      flicken.failureReason = fortschritt.failureReason;
+    }
+    if (fortschritt.counters !== undefined) {
+      flicken.counters = fortschritt.counters;
+    }
+    const res = await this.pool.query<ImportRunRow>(
+      `UPDATE import_runs SET data = data || $2::jsonb
+        WHERE import_id = $1
+        RETURNING data`,
+      [importId, JSON.stringify(flicken)],
+    );
+    const zeile = res.rows[0];
+    if (zeile === undefined) {
+      throw new LibraryError(
+        "CONFLICT",
+        `Der Importlauf ${importId} existiert nicht — eine Fortschreibung legt keinen Lauf an.`,
+      );
+    }
+    return zeile.data;
+  }
+
+  async appendItemRefs(refs: readonly ImportRunItemRef[]): Promise<number> {
+    let neu = 0;
+    for (const ref of refs) {
+      pruefeImportRunItemRef(ref);
+      const res = await this.pool.query(
+        `INSERT INTO import_run_item_refs(import_id, ordinal, data)
+         VALUES ($1, $2, $3::jsonb)
+         ON CONFLICT (import_id, ordinal) DO NOTHING
+         RETURNING ordinal`,
+        [ref.importId, ref.ordinal, JSON.stringify(ref)],
+      );
+      neu += (res.rowCount ?? 0) > 0 ? 1 : 0;
+    }
+    return neu;
+  }
+
+  /** `ORDER BY ordinal` — ohne diese Zeile gibt PostgreSQL keine Reihenfolge zu. */
+  async listItemRefs(importId: string): Promise<ImportRunItemRef[]> {
+    const res = await this.pool.query<ImportRunItemRefRow>(
+      `SELECT data FROM import_run_item_refs
+        WHERE import_id = $1
+        ORDER BY ordinal ASC`,
+      [importId],
+    );
+    return res.rows.map((zeile) => zeile.data);
   }
 }

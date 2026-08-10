@@ -16,6 +16,10 @@ import type { Gap } from "./types";
 async function setup() {
   const koRepo = new InMemoryKoRepo();
   const koService = new KoService({ repo: koRepo });
+  // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
+  // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
+  // In der echten App tut das die Startorchestrierung in build-app.ts.
+  await koService.activateSearchProjectionV2();
   await koService.create({
     title: "Ventil bei Überdruck schließen",
     statement: "Bei Überdruck Ventil X manuell schließen.",
@@ -325,6 +329,7 @@ describe("SCRUM-490 R2: Add-on Retrieval-only + Quellenpflicht", () => {
 
   async function askWith(reasoner: Reasoner) {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
+    await koService.activateSearchProjectionV2();
     await koService.create({
       title: "Ventil bei Überdruck",
       statement: "Bei Überdruck Ventil X schließen.",

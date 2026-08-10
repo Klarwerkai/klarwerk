@@ -1,4 +1,5 @@
 import type { Conflict, KnowledgeObject, OverlapEntry } from "../api/types";
+import { htmlToPlainText } from "./richText";
 
 export type CompareTone = "green" | "yellow" | "red";
 export type CompareScoreSource = "detector" | "heuristic" | "mixed";
@@ -39,8 +40,14 @@ function compact(value: string): string {
   return value.replace(/\s+/g, " ").trim();
 }
 
+// AUFTRAG-mega85 Block A: hier stand `replace(/<[^>]*>/g, " ")` — jedes Tag wurde zu einem
+// Leerzeichen. Anders als bei der Suche fällt das hier dem Menschen INS AUGE: der angezeigte
+// Vergleichswert las „Ventil V2 ,“ statt „Ventil V2,“, also etwas, das so in keinem der beiden
+// Wissensobjekte steht. Seit mega84 trägt die Bild-Fußnote Auszeichnung, damit trifft es echte
+// Inhalte. Gelesen wird jetzt über die kanonische Reduktion (`htmlToPlainText`, richText.ts) statt
+// über eine eigene Regel; `compact` bleibt, weil der Vergleichswert auch aus anderen Quellen kommt.
 function stripHtml(value: string | null | undefined): string {
-  return compact((value ?? "").replace(/<[^>]*>/g, " "));
+  return compact(htmlToPlainText(value ?? ""));
 }
 
 function tokens(value: string): Set<string> {

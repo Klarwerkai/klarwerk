@@ -127,6 +127,11 @@ export interface ImportCandidate {
 // stimmt nicht mehr mit dem Bestand überein — die Route antwortet 409, nichts wird verändert.
 // WP-SHIP8-CLOSE-2 (bens F1): CONFLICT = ein Persistenz-Write traf 0 Zeilen (der Kandidat ist
 // zwischenzeitlich verschwunden) — ehrlicher Abbruch statt stillem Ok.
+// W2-A (BEN-33 Befund B): CONFLICT traegt zusaetzlich den zweiten Fall derselben Art — ein
+// Persistenz-Write, der an einer bereits vergebenen SCHLUESSELIDENTITAET scheitert, naemlich eine
+// `sourceRecordId`, die schon zu einer anderen Quellrevision gehoert. BEWUSST KEIN neuer Code:
+// beide Faelle sind derselbe Satz („der Bestand sagt nein, es wurde nichts geschrieben"), und ein
+// eigener Code waere ein Vertragswert, den heute niemand auf einen HTTP-Status abbildet.
 export type LibraryErrorCode =
   | "NOT_FOUND"
   | "ALREADY_REVIEWED"
@@ -230,3 +235,294 @@ export interface Analytics {
 // optionaler Schutz ist ein angebotener Schutz, und ein zweiter Aufbau darf ihn dann typgültig
 // weglassen, ohne dass es jemand merkt.
 export type KoSichtbar = (ko: KnowledgeObject) => boolean;
+
+// ================================================================================================
+// W2-A (KW-W2-17, Zeilen 18-41) — DIE QUELLREVISION ALS UNVERAENDERLICHER GEGENSTAND
+// ================================================================================================
+//
+// WAS HIER ENTSTEHT UND WAS AUSDRUECKLICH NICHT. `KW-W2-17` fuehrt fuer den ersten W2-Schnitt KEIN
+// universelles Dokumentaggregat ein, sondern einen begrenzten, revisionsgebundenen und
+// UNVERAENDERLICHEN `ExternalSourceRecord`. Genau der steht hier — mit exakt den zehn kanonischen
+// Feldern, keinem mehr und keinem weniger.
+//
+// WARUM IM VORHANDENEN MODUL. `library-analytics` besitzt bereits die Kandidaten-Persistenz und
+// den Accept-Pfad; die Quellrevision gehoert in denselben Datenraum. Ein neuer Top-Level-Service
+// waere die zweite Importdomaene, die `KW-W2-17` Zeile 11 und 102 verbieten.
+//
+// ZWEI IDENTITAETEN, die nicht verwechselt werden duerfen (Zeilen 35-37):
+//   · FACHLICHE Quellenidentitaet  = sourceSystem + externalId          („welche Seite")
+//   · REVISIONSIDENTITAET          = sourceSystem + externalId + sourceVersion  („welcher Stand")
+// `sourceRecordId` ist die stabile INTERNE Klarwerk-Id und NIE ein Ersatz fuer eine der beiden.
+//
+// UNVERAENDERLICH heisst hier woertlich: der Repo-Vertrag (repo.ts) kennt bewusst KEINE
+// Update-Operation. Eine neue Confluence-Version erzeugt eine NEUE Zeile; alte Revisionen werden
+// nie ueberschrieben (Zeilen 38-39).
+export interface ExternalSourceRecord {
+  /** Stabile interne Klarwerk-Id dieser Revision. */
+  readonly sourceRecordId: string;
+  /** Das Quellsystem, z. B. "Confluence". Teil beider Identitaeten. */
+  readonly sourceSystem: string;
+  /** Die Kennung des Quellobjekts im Quellsystem (Confluence: die pageId). */
+  readonly externalId: string;
+  /** Die Version des Quellobjekts (Confluence: version.number). */
+  readonly sourceVersion: number;
+  /** Die absolute Quell-URL, falls die Quelle eine liefert. */
+  readonly url: string | null;
+  /** Der Titel des Quellobjekts zum Zeitpunkt dieser Revision. */
+  readonly title: string;
+  /**
+   * Der VERWEIS auf den Roh-/Renderinhalt dieser Revision — nicht der Inhalt selbst.
+   *
+   * `KW-W2-17` nennt das Feld `rawOrRenderedContentReference`. Ob dahinter spaeter eine
+   * Objektspeicher-Kennung, ein Dateiname oder ein anderer Anker steht, ist BEWUSST offen und
+   * gehoert nicht in diesen Schnitt (PLAN-…-24 §10, offene Frage 4). `null` heisst ehrlich:
+   * fuer diese Revision liegt kein Inhaltsverweis vor — nicht „der Inhalt ist leer".
+   */
+  readonly rawOrRenderedContentReference: string | null;
+  /** Zeitpunkt der Aufnahme dieser Revision in Klarwerk (ISO). */
+  readonly importedAt: string;
+  /** Inhaltsabdruck dieser Revision — Vorbild: content_hash der Suchprojektion. */
+  readonly contentHash: string;
+  /**
+   * Quellseitige Zusatzangaben (Space/Container, Elternpfad, Aenderungszeitpunkt, …).
+   *
+   * BEWUSST ein offener Sack und KEIN durchdeklariertes Schema: was eine Quelle mitliefert,
+   * unterscheidet sich je Adapter, und ein festes Feld je Quelle waere der Anfang der
+   * quell-spezifischen Sonderbehandlung, die der Import-Kern seit SCRUM-510 vermeidet.
+   */
+  readonly sourceMetadata: Readonly<Record<string, unknown>>;
+}
+
+// ================================================================================================
+// AUFTRAG-144 (KW-S4-26 §59-114, KW-S4-28 F1/F2/F3) — DER IMPORTLAUF ALS GEGENSTAND MIT LEBENSLAUF
+// ================================================================================================
+//
+// WARUM HIER UND NICHT IN `services/app`. `KW-S4-28 F1` entscheidet den Eigentuemer: `ImportRun`,
+// `ImportRunItemRef`, ihre Typen, Repos und Schemata liegen bei `ExternalSourceRecord` und
+// `ImportCandidate` in `library-analytics`. `services/app` bleibt Kompositionswurzel und
+// Orchestrierungsadapter und besitzt KEINE eigene Laufpersistenz — sonst gaebe es zwei
+// Fachwahrheiten ueber denselben Lauf.
+//
+// WAS DIESER SCHNITT NICHT IST: kein sichtbares W2-A, kein Feature-Gate, keine Route, keine
+// Navigation. Er ist die Domaenen- und Persistenzbasis darunter — allein nicht auslieferbar.
+
+/**
+ * Die kanonische Statusmenge aus `KW-S4-26` §77-87 — EXAKT diese neun, in dieser Reihenfolge.
+ *
+ * BEWUSST eine geschlossene Liste und kein offener String. Waere sie „mindestens diese", koennte
+ * ein zehnter, erfundener Zustand still dazukommen, und die Oberflaeche muesste ihn deuten. Nur
+ * `COMPLETED` ist voller Erfolg (§89-90); `PARTIAL`, `FAILED` und alles Unbekannte duerfen nie als
+ * vollstaendiges Ergebnis erscheinen.
+ */
+export const IMPORT_RUN_STATUSES = [
+  "QUEUED",
+  "FETCHING",
+  "PERSISTING_SOURCE",
+  "EXTRACTING",
+  "CREATING_KNOWLEDGE",
+  "ANALYZING",
+  "COMPLETED",
+  "PARTIAL",
+  "FAILED",
+] as const;
+
+export type ImportRunStatus = (typeof IMPORT_RUN_STATUSES)[number];
+
+/** Fail-closed: alles, was nicht wortgleich in der kanonischen Liste steht, ist kein Status. */
+export function istImportRunStatus(wert: unknown): wert is ImportRunStatus {
+  return typeof wert === "string" && (IMPORT_RUN_STATUSES as readonly string[]).includes(wert);
+}
+
+/**
+ * Was mit EINEM Element des Laufs geschehen ist. `CREATED` = ein Wissensobjekt ist entstanden,
+ * `BOUND` = ein vorhandenes wurde gebunden, `SKIPPED` = bewusst uebergangen (z. B. Dublette),
+ * `FAILED` = an diesem Element gescheitert. Der Lauf als Ganzes bleibt davon unberuehrt: erst die
+ * Summe der Elementtatsachen entscheidet ueber `COMPLETED`/`PARTIAL`/`FAILED` (§137).
+ */
+export const IMPORT_ITEM_OUTCOMES = ["CREATED", "BOUND", "SKIPPED", "FAILED"] as const;
+
+export type ImportItemOutcome = (typeof IMPORT_ITEM_OUTCOMES)[number];
+
+export function istImportItemOutcome(wert: unknown): wert is ImportItemOutcome {
+  return typeof wert === "string" && (IMPORT_ITEM_OUTCOMES as readonly string[]).includes(wert);
+}
+
+/**
+ * Die ehrliche Zusammenfassung der PERSISTIERTEN Elementtatsachen — nie deren Ersatz.
+ *
+ * `KW-S4-26` §177-179 sagt es woertlich: „Zaehler allein sind keine Resultatdatenquelle." Sie
+ * duerfen aus den persistierten `ImportRunItemRef` berechnet oder transaktional mit ihnen
+ * fortgeschrieben werden, ersetzen aber niemals die referenzierbaren Einzelergebnisse.
+ */
+export interface ImportRunCounters {
+  readonly itemsTotal: number;
+  readonly itemsCreated: number;
+  readonly itemsBound: number;
+  readonly itemsSkipped: number;
+  readonly itemsFailed: number;
+}
+
+export interface ImportRun {
+  /** Die stabile Kennung dieses Laufs. Primaerschluessel in beiden Ablagen. */
+  readonly importId: string;
+  readonly sourceSystem: string;
+  /**
+   * Das konkrete Quellobjekt — ODER `null`, wenn der Lauf einen Container umfasst. Dann traegt
+   * `sourceScope` den expliziten Importauftrag. Beide zugleich `null` waere ein Lauf ohne Scope
+   * und ist verboten (`pruefeImportRun`).
+   */
+  readonly externalId: string | null;
+  readonly sourceScope: string | null;
+  /** Die angeforderte Quellversion, falls der Auftrag eine nennt. */
+  readonly requestedSourceVersion: number | null;
+  readonly status: ImportRunStatus;
+  /** Die im Lauf persistierte Quellrevision — `null`, solange sie nicht geschrieben ist. */
+  readonly sourceRecordId: string | null;
+  readonly startedAt: string;
+  readonly completedAt: string | null;
+  readonly failureCode: string | null;
+  /** SANITISIERT (`sanitizeImportFailureReason`) — nie roh, nie mit Secret oder Quellinhalt. */
+  readonly failureReason: string | null;
+  readonly counters: ImportRunCounters;
+}
+
+/**
+ * Der Kindvertrag des Laufs (`KW-S4-26` §92-110) — geordnet, persistent und ausschliesslich aus
+ * kanonischen IDs.
+ *
+ * ER KOPIERT NICHTS. Kein KO-Inhalt, keine Validierungsentscheidung, kein Konfliktobjekt, keine
+ * Wissensluecke. Die Feldmenge SELBST ist diese Zusicherung: was hier nicht steht, kann auch nicht
+ * versehentlich zur zweiten Wahrheit werden. Validierung, Konflikte und Gaps werden serverseitig
+ * ueber diese Referenzen aus ihren autoritativen Domaenen GELESEN (§112-114).
+ */
+export interface ImportRunItemRef {
+  readonly importId: string;
+  /** Die stabile Ordnung INNERHALB des Laufs, ab 0. Sie ist die Reihenfolge, nicht die Einfuegezeit. */
+  readonly ordinal: number;
+  readonly sourceRecordId: string | null;
+  readonly candidateItemId: string;
+  /** Das entstandene bzw. gebundene Wissensobjekt — `null`, solange keines existiert. */
+  readonly knowledgeObjectId: string | null;
+  readonly itemOutcome: ImportItemOutcome;
+  readonly itemFailureCode: string | null;
+}
+
+// ================================================================================================
+// KW-S4-28 F2/F3 — ZWEI ZUSTANDS-/WERTEPAARE, DIE NUR GEMEINSAM WAHR SIND
+// ================================================================================================
+//
+// Beide Paare folgen derselben Haltung: `null` ist eine AUSSAGE („dazu kann das System nichts
+// sagen") und nie ein Platzhalter fuer „leer". Der Server setzt beide Felder; der Client darf
+// weder umdeuten noch ableiten. Unbekannte oder widerspruechliche Paare sind fail-closed (§96-99)
+// — sie duerfen keine Resultatflaeche aktivieren.
+
+export type KnowledgeGapRelationState = "AVAILABLE" | "RELATION_NOT_AVAILABLE";
+
+export interface KnowledgeGapBinding {
+  readonly knowledgeGapRelationState: KnowledgeGapRelationState;
+  readonly knowledgeGapIds: string[] | null;
+}
+
+export type ContentReferenceState = "AVAILABLE" | "NOT_CAPTURED";
+
+export interface ContentReferenceBinding {
+  readonly contentReferenceState: ContentReferenceState;
+  readonly rawOrRenderedContentReference: string | null;
+}
+
+/**
+ * `RELATION_NOT_AVAILABLE -> null` · `AVAILABLE -> [] | kanonische IDs` (`KW-S4-28` §46-49).
+ *
+ * DER UNTERSCHIED, DEN DIESE PRUEFUNG SCHUETZT: `[]` heisst „eine autoritative Relation ist da und
+ * liefert fuer dieses KO keine Luecken". `null` heisst „es gibt diese Relation nicht". Ein `[]`
+ * ohne Relation saehe aus wie „keine Wissensluecken" und waere eine Behauptung, die niemand belegen
+ * kann — §103 verbietet ihn deshalb ausdruecklich.
+ */
+export function pruefeGapBindung(bindung: KnowledgeGapBinding): void {
+  const zustand = bindung.knowledgeGapRelationState;
+  const ids = bindung.knowledgeGapIds;
+  if (zustand === "RELATION_NOT_AVAILABLE") {
+    if (ids !== null) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        "RELATION_NOT_AVAILABLE verlangt knowledgeGapIds = null — eine Liste ohne autoritative Relation waere eine unbelegbare Aussage.",
+      );
+    }
+    return;
+  }
+  if (zustand === "AVAILABLE") {
+    if (!Array.isArray(ids)) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        "AVAILABLE verlangt eine Liste kanonischer Gap-IDs (auch die leere) — null waere die Gegenrichtung derselben Luecke.",
+      );
+    }
+    if (ids.some((id) => typeof id !== "string" || id.trim() === "")) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        "AVAILABLE verlangt ausschliesslich nicht-leere kanonische Gap-IDs.",
+      );
+    }
+    return;
+  }
+  throw new LibraryError(
+    "BAD_REQUEST",
+    `Unbekannter knowledgeGapRelationState ${JSON.stringify(zustand)} — unbekannt ist fail-closed, nicht wohlwollend.`,
+  );
+}
+
+/**
+ * `NOT_CAPTURED -> null` · `AVAILABLE -> nicht-leere kanonische Referenz` (`KW-S4-28` §82-85).
+ *
+ * `null` heisst NIE „der Inhalt war leer", sondern: fuer diese unveraenderliche Quellrevision wurde
+ * kein Roh-/Renderinhalt erfasst. Die leere Zeichenkette als Ersatz ist ausdruecklich verboten
+ * (§105) — sie sieht wie eine Referenz aus und ist keine.
+ */
+export function pruefeInhaltsreferenzBindung(bindung: ContentReferenceBinding): void {
+  const zustand = bindung.contentReferenceState;
+  const referenz = bindung.rawOrRenderedContentReference;
+  if (zustand === "NOT_CAPTURED") {
+    if (referenz !== null) {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        "NOT_CAPTURED verlangt rawOrRenderedContentReference = null — auch die leere Zeichenkette ist kein Ersatz.",
+      );
+    }
+    return;
+  }
+  if (zustand === "AVAILABLE") {
+    if (typeof referenz !== "string" || referenz.trim() === "") {
+      throw new LibraryError(
+        "BAD_REQUEST",
+        "AVAILABLE verlangt eine nicht-leere kanonische Inhaltsreferenz.",
+      );
+    }
+    return;
+  }
+  throw new LibraryError(
+    "BAD_REQUEST",
+    `Unbekannter contentReferenceState ${JSON.stringify(zustand)} — unbekannt ist fail-closed.`,
+  );
+}
+
+/** Obergrenze des persistierten Fehlergrunds — ein Grund ist ein Satz, kein Protokoll. */
+export const IMPORT_FAILURE_REASON_MAX_CHARS = 300;
+
+/**
+ * Macht aus einem rohen Fehlertext einen SPEICHERBAREN Grund (`KW-S4-26` §138).
+ *
+ * ZWEI QUELLEN VON UNGEWOLLTEM: Abfrageteile von URLs tragen Token und Schluessel; zitierte
+ * Abschnitte tragen Quellinhalt. Beide werden entfernt, nicht maskiert — ein maskiertes Geheimnis
+ * ist immer noch ein gespeichertes Geheimnis.
+ *
+ * EHRLICHE GRENZE: das ist die LETZTE Verteidigungslinie, keine Erlaubnis, Geheimnisse bis hierher
+ * zu tragen. Wer einen Fehlergrund baut, laesst Token gar nicht erst hinein.
+ */
+export function sanitizeImportFailureReason(roh: string): string {
+  const ohneAbfrage = roh.replace(/((?:https?|ftp):\/\/\S*?)\?\S*/gi, "$1?…");
+  const ohneZitate = ohneAbfrage.replace(/(['"`])(?:\\.|(?!\1).)*\1/g, "…");
+  const geglaettet = ohneZitate.replace(/\s+/g, " ").trim();
+  return geglaettet.length > IMPORT_FAILURE_REASON_MAX_CHARS
+    ? `${geglaettet.slice(0, IMPORT_FAILURE_REASON_MAX_CHARS)}…`
+    : geglaettet;
+}

@@ -39,6 +39,7 @@ import { ImportHistorySection } from "../components/ImportHistory";
 // AUFTRAG-mega32 H2: der JSON-Kasten lebt jetzt im Cockpit, nicht mehr daneben.
 import { ImportJsonUpload } from "../components/ImportJsonUpload";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
+import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
@@ -410,6 +411,7 @@ export function ImportReview(): JSX.Element {
   return (
     <div className="mx-auto max-w-3xl">
       <Stufe2Header titleKey="nav.import" ticket="SCRUM-116" />
+      <KlaraPathTeaser surface="import" />
 
       {/* WP-COCKPIT-LINIE: der geführte Fünf-Schritte-Fluss — Leiste oben zeigt, wo man steht;
           die bestehenden Bausteine (Kacheln, Landkarte, Eingrenzen, Gruppen, Bilanz) melden ihre

@@ -12,6 +12,10 @@ import { AskService } from "./service";
 async function setup() {
   const koRepo = new InMemoryKoRepo();
   const koService = new KoService({ repo: koRepo });
+  // G27 R1 / Entscheidung 06 §4: mechanische Initialisierung über den PRODUKTPFAD. Die Suche ist
+  // seit R1 fail-closed; ein direkter Testaufbau ist eine nicht in Betrieb genommene Instanz.
+  // In der echten App tut das die Startorchestrierung in build-app.ts.
+  await koService.activateSearchProjectionV2();
   const audit = new AuditService({ repo: new InMemoryAuditRepo() });
   const ask = new AskService({
     reasoner: new Reasoner(),

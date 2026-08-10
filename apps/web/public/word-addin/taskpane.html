@@ -79,11 +79,81 @@
       display: flex;
       align-items: baseline;
       justify-content: space-between;
+      /* AUFTRAG-W1-VERTRAUENSKOPF-08 Block A: `flex-wrap` ist der GANZE Eingriff an dieser Regel.
+         Der Vertrauenskopf ist ein drittes Flex-Kind mit voller Breite und rutscht damit auf eine
+         eigene Zeile UNTER Marke und Sprachwahl — ohne die beiden bestehenden Kinder anzufassen.
+         Ein Umbau auf `flex-direction: column` haette Marke und Sprachwahl auseinandergerissen. */
+      flex-wrap: wrap;
       gap: 8px;
       margin: -14px -14px 0;
       padding: 12px 14px;
       background: var(--ink);
     }
+    /* Der permanente Vertrauenskopf sitzt IM Kopfband — sichtbar vor, waehrend und nach einer
+       Frage und in BEIDEN Reitern. Auf schmalen Aufgabenfenstern bleibt er lesbar, weil Pille und
+       Satz untereinander stehen statt nebeneinander. */
+    #klara-trust-head {
+      flex: 0 0 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+      margin-top: 2px;
+    }
+    /* Die Zustandspille traegt den Zustand als TEXT. Die Farbe ist die zweite, redundante Spur —
+       nie die einzige (Anforderung: Inhalt nicht nur farblich kodieren). */
+    .trust-pill {
+      display: inline-block;
+      max-width: 100%;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid var(--shell-muted);
+      color: var(--shell-fg);
+      background: transparent;
+    }
+    .trust-pill-ok { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
+    .trust-pill-warn { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+    .trust-detail {
+      margin: 0;
+      color: var(--shell-muted);
+      font-size: 11.5px;
+      line-height: 1.45;
+    }
+    /* AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1): die sitzungsbezogene Gruppe im selben Kopf.
+       Sie sitzt auf demselben Nachtblau wie der Rest des Bandes und benutzt DIESELBEN zwei
+       Textfarben, die dort bereits AA-belegt sind (--shell-fg und --shell-muted auf --ink) —
+       keine neue Farbe, keine neue Flaeche. Die duenne Trennlinie macht sichtbar, dass hier eine
+       ANDERE Frage beantwortet wird als daruber. */
+    #klara-s4 {
+      flex: 0 0 100%;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 3px;
+      margin-top: 6px;
+      padding-top: 6px;
+      border-top: 1px solid var(--shell-muted);
+    }
+    .s4-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      color: var(--shell-muted);
+    }
+    .s4-line {
+      margin: 0;
+      max-width: 100%;
+      /* Lange Anbieter-/Modellnamen duerfen im schmalen Aufgabenfenster NICHT abschneiden
+         (Auftrag §102) — sie brechen um, auch mitten im Wort, wenn es sein muss. */
+      overflow-wrap: anywhere;
+      color: var(--shell-fg);
+      font-size: 11.5px;
+      line-height: 1.4;
+    }
+    .s4-line-muted { color: var(--shell-muted); }
     .brand { font-size: 18px; font-weight: 700; color: var(--shell-fg); }
     .brand small { color: var(--shell-muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
     .lang button {
@@ -197,6 +267,42 @@
     }
     .src-badge-validiert { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
     .src-badge-pruefung { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+    /* AUFTRAG-W1-VERTRAUENSKOPF-08 Block B: die Rolle einer Quelle IN DER ANTWORT — tragend oder
+       nur herangezogen — traegt BEWUSST KEINE eigene Regel. Sie wird als reiner Text an den
+       Listeneintrag gehaengt, genau wie der Trust-Wert daneben, und erbt dessen Farbe.
+
+       DAS IST KEINE SPARSAMKEIT, SONDERN DAS ERGEBNIS DES KONTRASTWAECHTERS (mega43/mega44 B1):
+       eine Regel, die nur `color` setzt und deren Klasse erst zur LAUFZEIT vergeben wird, hat im
+       Markup keine Fundstelle. Der Waechter kann ihre Flaeche dann nicht bestimmen und misst
+       konservativ gegen JEDE deckende Flaeche des Stilblocks — auch gegen das dunkle Kopfband, auf
+       dem diese Zeile nie steht. Statt den Waechter mit einer Ausnahme zu entschaerfen, entfaellt
+       die Regel: die Unterscheidung traegt das WORT („traegt die Antwort" / „herangezogen"), und
+       das ist ohnehin die zugaenglichere Loesung — Inhalt, nicht Farbe. */
+    /* Die entfaltete Evidenz: Vorbehalt und Konfliktlage stehen GETRENNT und tragen eigene Toene.
+       Bis hierher waren beide derselbe Satz — genau das war der Befund aus dem Ist-Delta 05.
+
+       SIE BEKOMMEN BEWUSST KEINE EIGENEN FARBREGELN, sondern benutzen das vorhandene
+       `.status` / `.status.ok` / `.status.warn` — dieselbe Bauform wie die Einstufungszeile
+       darueber. Zwei Gruende: (1) diese Flaechen sind DECKEND (eigener Hintergrund) und damit vom
+       Kontrastwaechter eindeutig messbar, waehrend eine Regel, die nur `color` setzt und deren
+       Klasse erst zur Laufzeit vergeben wird, im Markup keine Fundstelle haette; (2) drei
+       gleichartige Zeilen untereinander sind ruhiger als drei erfundene Formen. */
+    #ask-evidence-detail { margin: 0; }
+    /* Der real gelieferte Ausschnitt — nur lesbar, klar als Zitat markiert, NIE eine Herleitung. */
+    #ask-snippet-block { margin: 8px 0 0; }
+    .snippet-label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); }
+    .snippet-text {
+      display: block;
+      margin-top: 3px;
+      padding: 6px 8px;
+      border-radius: 8px;
+      background: var(--page);
+      border: 1px solid var(--hairline);
+      font-size: 12px;
+      line-height: 1.45;
+      white-space: pre-wrap;
+      color: var(--text);
+    }
   </style>
 </head>
 <body>
@@ -207,7 +313,72 @@
       <button type="button" id="lang-en">EN</button>
       <button type="button" id="lang-nl">NL</button>
     </div>
+    <!-- ==========================================================================================
+         AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER PERMANENTE VERTRAUENSKOPF (BASIC-0).
+         ==========================================================================================
+         Er steht IM Kopfband und AUSSERHALB des Fragen-Abschnitts. Damit ist er sichtbar, bevor
+         eine Frage gestellt wurde, waehrend sie laeuft, danach — und ebenso im Reiter „Wissen
+         erfassen". Bis hierher sass dieselbe Auskunft in `#section-ask` unter dem Eingabefeld und
+         verschwand beim Reiterwechsel (Ist-Delta 05 §3.5).
+
+         `role="status"` + `aria-live="polite"` statt `alert`: der Zustand aendert sich von selbst
+         (Statusabruf, Sprachwechsel) und soll gemeldet, aber nicht unterbrechend vorgelesen werden.
+
+         GENAU EIN Kopf. KW-W1-13 verlangt, dass BASIC-1 DIESEN erweitert und keinen zweiten baut;
+         die Erweiterungsstelle ist `detailKeys` in wordAddin.ts#klaraTrustHead — heute leer, weil
+         Provider, Modell, Admin-Vorgabe, Abweichung, Sitzung und Consent noch nicht existieren. -->
+    <div id="klara-trust-head" role="status" aria-live="polite">
+      <span id="klara-trust-mode" class="trust-pill"></span>
+      <p id="klara-trust-detail" class="trust-detail"></p>
+      <!-- ========================================================================================
+           AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE SITZUNGSBEZOGENE AUFLOESUNG.
+           ========================================================================================
+           Der Block darueber ist BASIC-0: der HAUSSTAND von KLARWERK aus dem oeffentlichen,
+           abstrahierten Status, plus die Eigenschaft von Klaras Antwortweg. Er bleibt unveraendert.
+
+           DIESER Block ist etwas anderes und traegt deshalb ein eigenes Etikett: was fuer DIESE
+           Klara-Sitzung serverseitig aufgeloest wurde — Modus, Anbieter, Modell, Abweichung und
+           Sitzungs-/Zustimmungsstand. Jeder Wert kommt WOERTLICH aus KlaraSessionView/KlaraResolution
+           (GET /api/klara/ai-status, KW-W1-S4-R2-KOPF-FREEZE-17). Das Add-in leitet nichts ab.
+
+           Zwei Gruppen, zwei Etiketten, keine Vermischung: die eine beantwortet „arbeitet in
+           KLARWERK eine KI?", die andere „was gilt in dieser Sitzung?". Ein gemeinsamer Kasten
+           haette beide Fragen zu einer verschmolzen. -->
+      <div id="klara-s4">
+        <span class="s4-label" id="klara-s4-label"></span>
+        <span id="klara-s4-mode" class="trust-pill"></span>
+        <p id="klara-s4-provider" class="s4-line"></p>
+        <p id="klara-s4-deviation" class="s4-line s4-line-muted hidden"></p>
+        <p id="klara-s4-session" class="s4-line s4-line-muted"></p>
+      </div>
+    </div>
   </header>
+
+  <!-- ============================================================================================
+       AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE EINMALIGE SITZUNGSZUSTIMMUNG.
+       ============================================================================================
+       Sie erscheint AUSSCHLIESSLICH, wenn der Server sie verlangt und noch nicht erteilt hat
+       (`resolution.externalConsentRequired === true && externalConsentGranted === false`). Das
+       Add-in entscheidet den Bedarf NICHT (No-Go 1); es liest ihn.
+
+       Der Kasten nennt Anbieter, Modell, Sitzung und die betroffene Payload-Klasse — genau die
+       vier Angaben aus `KW-S4-03 §2.2`. Zustimmen und Widerrufen rufen die REALEN Endpunkte;
+       nichts wird lokal als Wahrheit gespeichert (No-Go 2). Auf dem deterministischen und dem
+       internen Weg erscheint der Kasten gar nicht — dort waere eine External-Zustimmung eine
+       erfundene Frage. -->
+  <div class="card hidden" id="klara-consent-card">
+    <h2 id="klara-consent-title"></h2>
+    <p class="muted" id="klara-consent-body"></p>
+    <p class="muted" id="klara-consent-scope"></p>
+    <!-- KW-S4-22 §4: serverseitig ausgeschlossene Datenklassen werden GENANNT, nicht still
+         entfernt. Anfangs verborgen, wie alle zustandsgebundenen Zeilen dieses Fensters. -->
+    <p class="muted hidden" id="klara-consent-blocked"></p>
+    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+      <button type="button" class="primary" id="klara-consent-grant"></button>
+      <button type="button" class="ghost hidden" id="klara-consent-revoke"></button>
+    </div>
+    <div id="klara-consent-status" class="status hidden"></div>
+  </div>
 
   <div class="card" id="session-card">
     <h2 data-t="greetTitle"></h2>
@@ -279,8 +450,16 @@
            KLARWERK eine KI arbeiten und hier eine Absage) und (2) die EIGENSCHAFT von Klaras
            Antwort, die kein Mangel ist, sondern der Grund, ihr zu trauen. „laedt" und „nicht
            erreichbar" beziehen sich AUSSCHLIESSLICH auf diesen Statusabruf — der Antwortweg ist
-           auch ohne jeden Abruf bekannt und steht deshalb in JEDEM der fuenf Zustaende da. -->
-      <p class="muted" id="ask-ai-lage"></p>
+           auch ohne jeden Abruf bekannt und steht deshalb in JEDEM der fuenf Zustaende da.
+
+           AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DIESE ZEILE IST UMGEZOGEN, NICHT ENTFALLEN.
+           Sie steht jetzt im `<header>` als `#klara-trust-detail` (Vertrauenskopf). Der Grund ist
+           nicht Optik: hier war sie an den Fragen-Reiter gebunden und im Erfassen-Reiter
+           unsichtbar, obwohl `KW-S4-01 §2` sie „immer ganz oben im Kopf" verlangt. Wortlaut,
+           Zustandsraum und Ableitung sind UNVERAENDERT — es ist derselbe Schluessel `aiLage*`,
+           dieselbe Funktion `klaraAiLage`, dieselben drei Woerterbuecher. Die Zusicherungen aus
+           mega75/mega77/mega79 gelten damit unveraendert weiter; sie pruefen den Text, nicht den
+           Ort. Der Ort wird ab jetzt von tests/app/w1-klara-vertrauenskopf.test.ts gepinnt. -->
       <!-- AUFTRAG-mega75 Block C: unter WELCHER REGEL Klara steht. Das ist keine Entschuldigung,
            sondern das Merkmal, das sie vertrauenswuerdig macht — und die Aufloesung von Pedis
            Widerspruch: in KLARWERK arbeitet vielleicht eine KI, hier wird woertlich zitiert.
@@ -303,6 +482,16 @@
              AUFTRAG-mega35 B: die Ueberschrift ist neutral („Quellengebundene Antwort") — die
              Worte „gesichert"/„geprueft" stehen NUR noch in dieser Einstufungszeile. -->
         <p id="ask-evidence-note" class="status hidden" style="margin: 0 0 8px;"></p>
+        <!-- AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ENTFALTUNG der bereits gelieferten Evidenz.
+             Bis hierher fasste die Zeile darueber fuenf unterscheidbare Pruefvorbehalte und die
+             gesamte Konfliktlage zu ZWEI Texten zusammen — die Nutzerin erfuhr, DASS etwas nicht
+             belegt ist, nie WAS. Hier stehen jetzt Vorbehalt und Konflikt GETRENNT, mit eigenem
+             Ton und eigener Zeile. Beide Werte kommen unveraendert aus `result.evidence`; es wird
+             nichts berechnet (KW-W1-13). -->
+        <div id="ask-evidence-detail">
+          <p id="ask-caveat-line" class="status warn hidden" style="margin: 0 0 8px;"></p>
+          <p id="ask-conflict-line" class="status warn hidden" style="margin: 0 0 8px;"></p>
+        </div>
         <!-- klara1b Teil B: editierbares, kompaktes Feld VOR dem Eintragen. AUFTRAG-mega35 A1: das
              Feld traegt NUR den Antwortkoerper — Einstufung und Quellen-Zeile gehoeren nicht dazu
              und werden erst im Moment des Kopierens/Einfuegens angesetzt (composeOutputText); sie
@@ -328,6 +517,19 @@
         </div>
         <!-- klara1b Teil B: die Quellenliste bleibt (Titel-Link, Status/Trust-Badge) — aber
              GETRENNT vom einzufuegenden Antworttext (nur Anzeige, wandert nie ins Dokument). -->
+        <!-- AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: HOECHSTENS der erste real gelieferte
+             `steps[0].snippet`, ehrlich als „Verwendeter Ausschnitt" bezeichnet.
+             AUSDRUECKLICH KEINE Begruendungskette und KEIN W3-Versprechen (KW-W1-13): es ist ein
+             Zitat, das der Server mitgeschickt hat, kein Herleitungsprotokoll — ein solches
+             existiert nirgends im System.
+             Er erscheint NUR, wenn er sich vom angezeigten Antworttext unterscheidet. Auf dem
+             heutigen retrieval-only-Weg IST die Antwort die woertliche Aussage der tragenden
+             Quelle; derselbe Text zweimal unter zwei Namen waere genau die Vortaeuschung, die
+             mega39 D2 in der Konsole bereits entfernt hat. -->
+        <div id="ask-snippet-block" class="hidden">
+          <span class="snippet-label" id="ask-snippet-label"></span>
+          <span class="snippet-text" id="ask-snippet-text"></span>
+        </div>
         <div id="ask-sources-block" class="hidden">
           <h2 data-t="askSourcesTitle"></h2>
           <ul class="muted" id="ask-sources"></ul>
@@ -672,6 +874,22 @@
                 if (typeof id === "string" && id.trim().length > 0) { sources.push(id); }
               }
             }
+            // AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: die tragende Teilmenge und der erste
+            // Ausschnitt werden GELESEN, nie hergeleitet. Fehlt ein Feld, bleibt es undefined —
+            // die Flaeche behauptet dann nichts (dieselbe Beweislast-Umkehr wie askGradeOf).
+            var cited;
+            if (result && Array.isArray(result.citedSources)) {
+              cited = [];
+              for (var c = 0; c < result.citedSources.length; c += 1) {
+                var cid = result.citedSources[c];
+                if (typeof cid === "string" && cid.trim().length > 0) { cited.push(cid); }
+              }
+            }
+            var firstStep = result && Array.isArray(result.steps) ? result.steps[0] : undefined;
+            var snippet =
+              firstStep && typeof firstStep.snippet === "string" && firstStep.snippet.trim().length > 0
+                ? firstStep.snippet.trim()
+                : undefined;
             if (
               result &&
               result.answered === true &&
@@ -689,6 +907,8 @@
                 // Grad fail-safe "unverified" — Word behauptet nie Sicherheit ohne Beleg.
                 grade: askGradeOf(result.evidence),
                 evidence: result.evidence || undefined,
+                citedSources: cited,
+                snippet: snippet,
                 // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
                 // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
                 // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
@@ -766,6 +986,56 @@
     // drei Wege, keine Abweichung.
     function answerInsertEvidenceNote(grade, texts) {
       return grade === "verified" ? texts.verified : texts.unverified;
+    }
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askEvidenceDetail.
+    // Es wird NICHTS berechnet: gelesen wird nur, was `result.evidence` mitgebracht hat. Die
+    // Regel selbst bleibt in services/ask/src/answer-evidence.ts (KW-W1-13).
+    var ASK_CAVEAT_KEYS = ["unknown", "unchecked", "noCoverage", "incomplete", "unattributed"];
+
+    function askCount(value) {
+      return typeof value === "number" && isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+    }
+
+    function askEvidenceDetail(evidence) {
+      var raw = evidence || null;
+      var cc = raw ? raw.checkCaveat : null;
+      var caveat = null;
+      if (cc && typeof cc === "object") {
+        var reason = cc.reason;
+        caveat = {
+          key: typeof reason === "string" && ASK_CAVEAT_KEYS.indexOf(reason) >= 0 ? reason : "other",
+          unproven: askCount(cc.unproven),
+          total: askCount(cc.total),
+        };
+      }
+      // FAIL-SAFE: „keine offenen Konflikte" NUR, wenn der Server BEIDE Felder ausdruecklich mit
+      // false gesendet hat. Alles andere ist „konnte nicht geprueft werden" — nie eine Entwarnung.
+      var conflict = "unproven";
+      if (raw && raw.sourcesConflicted === true) {
+        conflict = "conflicted";
+      } else if (raw && raw.sourcesConflicted === false && raw.conflictsUnproven === false) {
+        conflict = "clear";
+      }
+      return { caveat: caveat, conflict: conflict };
+    }
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askSnippetWorthShowing.
+    // Auf dem heutigen retrieval-only-Weg IST die Antwort die Aussage der tragenden Quelle: dann
+    // sind Antwort und Ausschnitt identisch, und derselbe Satz unter zwei Namen saehe aus wie ein
+    // zweiter Beleg. Genau das hat mega39 D2 in der Konsole entfernt.
+    function askSnippetWorthShowing(answer, snippet) {
+      var s = typeof snippet === "string" ? snippet.replace(/\s+/g, " ").trim() : "";
+      if (s.length === 0) { return false; }
+      var a = typeof answer === "string" ? answer.replace(/\s+/g, " ").trim() : "";
+      return s !== a;
+    }
+
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — Spiegel von wordAddin.ts#askSourceRole.
+    // Ohne `citedSources` wird KEINE Rolle behauptet — die Liste sieht dann aus wie bisher.
+    function askSourceRole(id, citedSources) {
+      if (!Array.isArray(citedSources) || citedSources.length === 0) { return "unknown"; }
+      return citedSources.indexOf(id) >= 0 ? "carrying" : "consulted";
     }
 
     // AUFTRAG-mega34 B2: der EINGEFUEGTE Text traegt die Einstufung mit. Das ist der Punkt, an dem
@@ -969,6 +1239,281 @@
       return "keine";
     }
     // KW-KLARA-AISTATE-END
+
+    // ============================================================================================
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — Spiegel von wordAddin.ts#klaraTrustHead.
+    // ============================================================================================
+    //
+    // BEWUSST AUSSERHALB der mega75-Schnittmarken. Der Sammler von
+    // tests/app/mega75-klara-ki-status.test.ts liest GENAU den Block zwischen KW-KLARA-AISTATE-*
+    // und vergleicht die dort verzweigten Vertragswerte (mode/reachable) mit den echten
+    // KLARWERK-Ableitungsmodulen. Diese Uebersetzung darf diesen Zustandsraum weder erweitern noch
+    // verengen — sie verzweigt deshalb ausschliesslich auf dem ERGEBNIS von `klaraAiLage`, nie auf
+    // einem Feld von ReasonerStatus. Der einzige Zustandsbesitzer bleibt `klaraAiLage`.
+    //
+    // KW-W1-13: `detailKeys` ist die BASIC-1-Erweiterungsstelle (Provider, Modell, Admin-Vorgabe,
+    // Abweichung, Sitzung, Consent). Heute leer — es gibt keine Vertragsdaten, aus denen sie zu
+    // fuellen waere, und Platzhalter waeren erfundene Werte.
+    // KW-KLARA-TRUSTHEAD-START
+    function klaraTrustKey(prefix, lage) {
+      return prefix + lage.charAt(0).toUpperCase() + lage.slice(1);
+    }
+
+    function klaraTrustHead(phase, status) {
+      var lage = klaraAiLage(phase, status);
+      // Der Ton sagt „ist der Stand BEKANNT?" — NICHT „ist er gut?". Ein Ladezustand ist kein
+      // Befund; „nicht erreichbar" ist keine Verfuegbarkeitsaussage (der A22-Fehler).
+      var tone = lage === "laedt" ? "neutral" : lage === "unerreichbar" ? "warn" : "ok";
+      return {
+        lage: lage,
+        modeKey: klaraTrustKey("trustMode", lage),
+        detailKey: klaraTrustKey("aiLage", lage),
+        tone: tone,
+        detailKeys: [],
+      };
+    }
+    // KW-KLARA-TRUSTHEAD-END
+
+    // ============================================================================================
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE ANZEIGE-ABLEITUNG DES S4-VERTRAGS.
+    // ============================================================================================
+    //
+    // WAS SIE TUT: sie UEBERSETZT eine `KlaraSessionView`/`KlaraResolution` in Anzeige-Schluessel.
+    // WAS SIE NICHT TUT: entscheiden. Modus, Anbieter, Modell, Abweichung, Consentbedarf und
+    // Ausfuehrbarkeit stehen im Antwortobjekt; hier wird nichts abgeleitet, gewichtet oder
+    // ergaenzt (Auftrag No-Go 1).
+    //
+    // WARUM SIE INLINE STEHT UND NICHT IN wordAddin.ts: der erlaubte Dateibereich dieses Auftrags
+    // umfasst apps/web/public/word-addin/** und schliesst `apps/web/src/**` ausdruecklich aus.
+    // Das Aufgabenfenster ist buildlos; damit die WIRKLICH ausgelieferte Ableitung geprueft werden
+    // kann und nicht nur ihr Quelltext, traegt sie eigene Schnittmarken — dieselbe Bauform wie
+    // KW-KLARA-AISTATE-* und KW-KLARA-ASK-FETCH-*. Die Grenze ist im Bericht benannt.
+    //
+    // FAIL-SAFE IN EINE RICHTUNG: was der Server nicht gesagt hat, wird nicht behauptet. Ein
+    // unbekannter Modus, ein unbekannter Grund oder ein fehlendes Feld fuehren in einen benannten
+    // Vorbehalt — nie in „bereit", nie in „keine KI", nie in eine erfundene Bezeichnung.
+    // KW-KLARA-S4-START
+    var KLARA_S4_MODES = ["deterministic", "internal", "external"];
+    var KLARA_S4_REASONS = [
+      "external_not_configured",
+      "internal_not_configured",
+      "external_not_migrated",
+      "external_consent_missing",
+      "policy_incomplete",
+    ];
+    var KLARA_S4_CONSENT_STATES = [
+      "none",
+      "pending",
+      "granted",
+      "expired",
+      "revoked",
+      "invalidated",
+    ];
+
+    function klaraS4ModeKey(mode) {
+      return KLARA_S4_MODES.indexOf(mode) >= 0
+        ? "s4Mode" + mode.charAt(0).toUpperCase() + mode.slice(1)
+        : "s4ModeUnbekannt";
+    }
+
+    // Ein Grund, den diese Fassung nicht kennt, wird GENERISCH benannt — niemals verschwiegen.
+    function klaraS4ReasonKey(reason) {
+      if (KLARA_S4_REASONS.indexOf(reason) < 0) { return "s4ReasonOther"; }
+      var camel = reason.replace(/_([a-z])/g, function (_m, c) { return c.toUpperCase(); });
+      return "s4Reason" + camel.charAt(0).toUpperCase() + camel.slice(1);
+    }
+
+    /**
+     * BEN-BEFUND 1 (Nachpruefung 22 §3.2): `consentState: "none"` wurde bedingungslos auf
+     * „keine erforderlich" abgebildet — und stand damit im selben Kopf neben „Gesperrt: Ihre
+     * Zustimmung fehlt" und dem geoeffneten Zustimmungskasten. Das war kein Fixturezustand: der
+     * echte Server liefert vor der ersten Zustimmung genau `none` + `required: true`.
+     *
+     * „none" heisst serverseitig nur „zu dieser Sitzung ist kein Consentsatz vorhanden". Ob das
+     * „keine noetig" oder „noch nicht erteilt" bedeutet, entscheidet ALLEIN
+     * `externalConsentRequired`. Deshalb geht dieses Feld hier mit ein.
+     */
+    function klaraS4ConsentKey(state, required, granted) {
+      // AUFTRAG-34 (BEN-Befund 4, Nachpruefung 32) — DIE AUFLOESUNG SCHLAEGT DIE SITZUNGSSICHT.
+      //
+      // `externalConsentGranted` steht in der AUFLOESUNG und ist damit immer so frisch wie der
+      // zuletzt gelesene Status. `consentState` steht in der SITZUNGSSICHT, die ein reiner
+      // Statusabruf gar nicht mitliefert. Wo beide sich widersprechen, gewinnt deshalb die
+      // Auflösung — sonst entsteht genau die Mischsicht, die BEN belegt hat: der Kopf sagte
+      // „erteilt", waehrend dieselbe Antwort `granted: false` trug.
+      //
+      // Der Riegel steht hier ZUERST, damit die Funktion strukturell unfaehig ist, „erteilt" zu
+      // sagen, solange die Auflösung das nicht deckt. Eine Regel, die nur an der Aufrufstelle
+      // haengt, waere beim naechsten Aufrufer wieder verloren.
+      if (granted !== true && state === "granted") {
+        return required === true ? "s4ConsentErforderlich" : "s4ConsentUnbekannt";
+      }
+      // FEHLT der Wert (reiner Statusabruf liefert keine Sitzungssicht), traegt allein die
+      // Auflösung. Ist er dagegen DA, aber unbekannt, bleibt es beim benannten Vorbehalt — ein
+      // Wort, das diese Fassung nicht kennt, darf nicht als „keine erforderlich" durchgehen.
+      if (state === undefined || state === null || state === "") {
+        if (granted === true) { return "s4ConsentGranted"; }
+        return required === true ? "s4ConsentErforderlich" : "s4ConsentNone";
+      }
+      if (!geliefertesConsentwort(state)) {
+        return "s4ConsentUnbekannt";
+      }
+      if (state === "none") {
+        return required === true ? "s4ConsentErforderlich" : "s4ConsentNone";
+      }
+      return "s4Consent" + state.charAt(0).toUpperCase() + state.slice(1);
+    }
+
+    /** Ein Consentwort zaehlt nur, wenn der Vertrag es kennt. */
+    function geliefertesConsentwort(state) {
+      return KLARA_S4_CONSENT_STATES.indexOf(state) >= 0;
+    }
+
+    // ============================================================================================
+    // KW-S4-22 — DIE PAYLOAD-KLASSEN. AUSSCHLIESSLICH `effectivePayloadClasses`.
+    // ============================================================================================
+    //
+    // KW-S4-22 §2 ist eindeutig: „Fuer den Consentdialog massgeblich ist ausschliesslich
+    // `effectivePayloadClasses`". Die frueher hier gelesenen Felder `payloadClass` und
+    // `allowedPayloadClasses` sind ausdrueckliche No-Gos (§No-Gos: „nur eine allgemeine
+    // payloadClass ohne konkreten Resolutionbezug", „allowedPayloadClasses als breiten
+    // Policy-Maximalumfang im Consent anzeigen") — sie werden deshalb nicht mehr gelesen.
+    //
+    // FAIL-SAFE (§4): fehlt das Feld, ist es leer oder traegt es einen unbrauchbaren Eintrag, dann
+    // ist der Status fuer externe Ausfuehrung UNVOLLSTAENDIG. Es gibt dann keine Zustimmung —
+    // nicht etwa eine Zustimmung mit dem Zusatz „unbekannt". Ein Consent ohne bekannte
+    // Datenklassen ist nach §Belegter Ist-Zustand „nicht hinreichend bestimmt".
+    function klaraS4Payloadklassen(resolution) {
+      var roh = resolution ? resolution.effectivePayloadClasses : null;
+      if (!Array.isArray(roh) || roh.length === 0) { return null; }
+      var sauber = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        // Ein unbrauchbarer Eintrag macht die GANZE Liste unbrauchbar — er stillschweigend zu
+        // ueberspringen hiesse, eine kuerzere Liste als vollstaendig auszugeben.
+        if (typeof roh[i] !== "string" || roh[i].trim().length === 0) { return null; }
+        sauber.push(roh[i]);
+      }
+      return sauber;
+    }
+
+    /** Serverseitig ausgeschlossene Klassen mit ihrem Grund — nur gelesen, nie gebildet. */
+    function klaraS4BlockierteKlassen(resolution) {
+      var roh = resolution ? resolution.blockedPayloadClasses : null;
+      if (!Array.isArray(roh) || roh.length === 0) { return []; }
+      var raus = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var e = roh[i];
+        if (e && typeof e.payloadClass === "string" && e.payloadClass.length > 0) {
+          raus.push({
+            payloadClass: e.payloadClass,
+            reasonCode: typeof e.reasonCode === "string" ? e.reasonCode : "",
+          });
+        }
+      }
+      return raus;
+    }
+
+    // Die Auflösung hat eine eigene, KURZE Frist (KLARA_RESOLUTION_TTL_MS serverseitig). Läuft sie
+    // ab, bleibt der zuletzt gelesene Stand sichtbar — aber ausdruecklich ALS VERALTET. Ein alter
+    // Stand, der wie ein aktueller aussieht, ist die gefaehrlichere Anzeige.
+    function klaraS4Veraltet(view, nowMs) {
+      var bis = view && view.resolution ? Date.parse(view.resolution.expiresAt) : Number.NaN;
+      return isFinite(bis) && nowMs >= bis;
+    }
+
+    /**
+     * phase: "laedt" | "bereit" | "unerreichbar" | "keineSitzung" | "gesperrt"
+     * view : KlaraSessionView (nur bei "bereit" ausgewertet)
+     *
+     * `gesperrt` ist NEU (BEN-Befund 2): der clientseitige Riegel nach einem fehlgeschlagenen
+     * Widerruf. Er traegt bewusst KEINE Sicht — der zuletzt gelesene, autorisierende Stand ist
+     * verworfen, nicht bloss ueberdeckt.
+     */
+    function klaraS4Anzeige(phase, view, nowMs) {
+      var leer = {
+        stateKey: "s4StateLaedt",
+        tone: "neutral",
+        modeKey: null,
+        provider: null,
+        model: null,
+        deviationKey: null,
+        adminModeKey: null,
+        blockedKey: null,
+        consentKey: null,
+        consentVisible: false,
+        revokeVisible: false,
+        askAllowed: false,
+        veraltet: false,
+        payloadClasses: null,
+        payloadResolved: false,
+        blockedClasses: [],
+        consentPossible: false,
+      };
+      if (phase === "laedt") { return leer; }
+      if (phase === "gesperrt") {
+        // Fail-safe: nichts erlaubt, nichts behauptet, bis ein NEUER bestaetigter Serverstatus da
+        // ist. Insbesondere kein `revokeVisible` — es gibt keinen belegten Consent mehr.
+        return Object.assign({}, leer, { stateKey: "s4StateGesperrtLokal", tone: "warn" });
+      }
+      if (phase === "unerreichbar") {
+        return Object.assign({}, leer, { stateKey: "s4StateUnerreichbar", tone: "warn" });
+      }
+      if (phase === "keineSitzung") {
+        return Object.assign({}, leer, { stateKey: "s4StateKeineSitzung", tone: "warn" });
+      }
+      var r = view && view.resolution ? view.resolution : null;
+      if (!r) {
+        // Antwort ohne Auflösung: das ist KEIN „bereit". Ehrlich als nicht abrufbar behandeln.
+        return Object.assign({}, leer, { stateKey: "s4StateUnerreichbar", tone: "warn" });
+      }
+      var veraltet = klaraS4Veraltet(view, nowMs);
+      var erlaubt = r.executionAllowed === true;
+      var abweichung = r.deviation === true;
+      var klassen = klaraS4Payloadklassen(r);
+      var stateKey = !erlaubt
+        ? "s4StateBlockiert"
+        : veraltet
+          ? "s4StateVeraltet"
+          : abweichung
+            ? "s4StateAbweichung"
+            : "s4StateBereit";
+      var tone = stateKey === "s4StateBereit" ? "ok" : "warn";
+      var consentNoetig = r.externalConsentRequired === true && r.externalConsentGranted !== true;
+      return {
+        stateKey: stateKey,
+        tone: tone,
+        modeKey: klaraS4ModeKey(r.effectiveMode),
+        // WOERTLICH aus der Antwort. Fehlt der Wert, wird er NICHT erfunden und nicht ersetzt.
+        provider: typeof r.provider === "string" && r.provider.length > 0 ? r.provider : null,
+        model: typeof r.model === "string" && r.model.length > 0 ? r.model : null,
+        deviationKey: abweichung ? klaraS4ReasonKey(r.deviationReason) : null,
+        adminModeKey: abweichung ? klaraS4ModeKey(r.adminConfiguredMode) : null,
+        blockedKey: erlaubt ? null : klaraS4ReasonKey(r.blockedReason),
+        consentKey: klaraS4ConsentKey(
+          view.consentState,
+          r.externalConsentRequired,
+          r.externalConsentGranted,
+        ),
+        consentVisible: consentNoetig,
+        revokeVisible: r.externalConsentGranted === true,
+        askAllowed: erlaubt,
+        veraltet: veraltet,
+        // KW-S4-22 §2/§4 — nur das eine autorisierte Feld, und nur wenn es vollstaendig ist.
+        payloadClasses: klassen,
+        payloadResolved: klassen !== null,
+        blockedClasses: klaraS4BlockierteKlassen(r),
+        /**
+         * ZUSTIMMEN IST NUR MOEGLICH, WENN DIE DATENKLASSEN AUFGELOEST SIND.
+         *
+         * KW-S4-22: „Ein Consent ohne bekannte Datenklassen ist nicht hinreichend bestimmt" und
+         * bei fehlendem Feld gilt „kein Consent, kein externer Modellaufruf". Der Kasten bleibt
+         * deshalb sichtbar — der Bedarf besteht ja — aber die Schaltflaeche wird NICHT angeboten.
+         * Ein Knopf, der eine unbestimmte Zustimmung erteilt, waere schlimmer als kein Knopf.
+         */
+        consentPossible: consentNoetig && klassen !== null,
+      };
+    }
+    // KW-KLARA-S4-END
     // KW-WORDADDIN-HELPERS-END
 
     // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
@@ -1023,6 +1568,90 @@
         aiLageExtern: "In KLARWERK arbeitet für Antworten zurzeit eine externe KI (Cloud). Klaras Antwort in diesem Fenster entsteht davon unabhängig immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         aiLageIntern: "In KLARWERK arbeitet für Antworten zurzeit eine hausinterne KI. Klaras Antwort in diesem Fenster entsteht davon unabhängig immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         aiLageKeine: "In KLARWERK arbeitet für Antworten zurzeit keine KI. Für andere Aufgaben in KLARWERK kann das anders sein. Klaras Antwort in diesem Fenster entsteht ohnehin immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — die Kurzetiketten des Vertrauenskopfs. Sie tragen
+        // den Zustand als TEXT; die Farbe ist nur die zweite Spur. „wird geprüft" und „nicht
+        // abrufbar" sind ausdrücklich KEINE Aussage über vorhandene KI — der Ladezustand ist kein
+        // Befund, und Nichtwissen ist nicht „keine KI".
+        trustHeadLabel: "Klaras KI-Stand",
+        // Bewusst „abgerufen" und NICHT „geprüft": mega35 B haelt die Worte „geprüft"/„gesichert"
+        // ausschliesslich der Einstufungszeile vor. Eine Testerin ohne Vorwissen kann „der Stand
+        // wird geprüft" (Netzabruf) nicht von „geprüftes Wissen" (Antwortklasse) trennen — genau
+        // diese Verwechslung hat mega35 geschlossen.
+        trustModeLaedt: "Stand wird abgerufen",
+        trustModeUnerreichbar: "Stand nicht abrufbar",
+        trustModeExtern: "KLARWERK: externe KI",
+        trustModeIntern: "KLARWERK: hausinterne KI",
+        trustModeKeine: "KLARWERK: keine KI",
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — die fünf benannten Prüfvorbehalte des Servers.
+        // Sie lagen bisher im Antwortkörper und wurden verworfen; jetzt stehen sie da.
+        askCaveatUnknown: "Eine tragende Quelle ist im Bestand nicht auffindbar.",
+        askCaveatUnchecked: "Eine tragende Quelle hat keinen Prüf-Lauf.",
+        askCaveatNoCoverage: "Ein Prüf-Lauf liegt ohne Abdeckungsnachweis vor.",
+        askCaveatIncomplete: "Ein Prüf-Lauf ist unvollständig geblieben.",
+        askCaveatUnattributed: "Der Server konnte keiner Quelle zuordnen, worauf die Antwort steht.",
+        askCaveatOther: "Es liegt ein Vorbehalt vor, dessen Grund diese Fassung nicht kennt.",
+        askCaveatCount: "({unproven} von {total} tragenden Quellen ohne vollständigen Beleg.)",
+        // Die Konfliktlage steht GETRENNT vom Vorbehalt — sie war bis hierher derselbe Satz.
+        // „nicht geprüft" ist ausdrücklich nicht „keine": nichts da ist nicht nichts vorhanden.
+        askConflictConflicted: "Achtung: Eine tragende Quelle steht in einem offenen Konflikt.",
+        askConflictUnproven: "Die Konfliktlage ist unbekannt — das heißt nicht, dass keine besteht.",
+        askConflictClear: "Keine offenen Konflikte auf den tragenden Quellen.",
+        // ---- AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der sitzungsbezogene Stand ---------------------
+        // Eigenes Etikett, eigene Wörter. Diese Texte sprechen über DIESE Sitzung, nicht über den
+        // Hausstand — und ausdrücklich nicht über Klaras Antwortweg, der unverändert zitiert.
+        s4Label: "In dieser Sitzung",
+        s4ModeDeterministic: "Ohne Modell",
+        s4ModeInternal: "On-Premise Enterprise AI",
+        s4ModeExternal: "Externe KI",
+        s4ModeUnbekannt: "Modus unbekannt",
+        s4StateLaedt: "Sitzungsstand wird abgerufen ...",
+        s4StateBereit: "Sitzungsstand liegt vor.",
+        s4StateAbweichung: "Es gilt ein anderer Modus als eingerichtet.",
+        s4StateBlockiert: "Die Ausführung ist gesperrt.",
+        s4StateUnerreichbar: "Der Sitzungsstand ist nicht abrufbar.",
+        s4StateKeineSitzung: "Für dieses Fenster besteht keine Sitzung.",
+        s4StateVeraltet: "Der angezeigte Stand ist abgelaufen.",
+        s4StateGesperrtLokal:
+          "Der letzte Aufruf ist fehlgeschlagen. Bis der Server einen neuen Stand bestätigt, gilt hier nichts als erlaubt.",
+        s4Anbieter: "Anbieter {provider} · Modell {model}",
+        s4Abweichung: "Eingerichtet war {soll}. Grund der Abweichung: {grund}",
+        s4Blockiert: "Gesperrt. Grund: {grund}",
+        s4Veraltet: "Dieser Stand ist abgelaufen und wird neu abgerufen.",
+        s4Sitzung: "Zustimmung: {stand}",
+        s4SitzungKeine: "Zur Zustimmung liegt kein Stand vor.",
+        s4Unbekannt: "unbekannt",
+        s4ReasonExternalNotConfigured: "Es ist kein externer Anbieter eingerichtet.",
+        s4ReasonInternalNotConfigured: "Es ist keine On-Premise Enterprise AI eingerichtet.",
+        s4ReasonExternalNotMigrated: "Der externe Weg ist noch nicht freigeschaltet.",
+        s4ReasonExternalConsentMissing: "Ihre Zustimmung für den externen Weg fehlt.",
+        s4ReasonPolicyIncomplete: "Die Regeln sind unvollständig hinterlegt.",
+        s4ReasonOther: "Der Server nennt einen Grund, den diese Version nicht kennt.",
+        s4ConsentNone: "keine erforderlich",
+        s4ConsentErforderlich: "erforderlich, noch nicht erteilt",
+        s4ConsentPending: "offen",
+        s4ConsentGranted: "erteilt",
+        s4ConsentExpired: "abgelaufen",
+        s4ConsentRevoked: "widerrufen",
+        s4ConsentInvalidated: "entwertet",
+        s4ConsentUnbekannt: "Stand unbekannt",
+        s4ConsentTitel: "Zustimmung für den externen Weg",
+        s4ConsentText: "Für diese Sitzung wird ein externer Anbieter genutzt. Ohne Ihre Zustimmung wird nichts dorthin gesendet. Sie gilt nur für diese Sitzung und Sie können sie jederzeit widerrufen.",
+        s4ConsentUmfang: "Anbieter {provider} · Modell {model} · Sitzung {session} · Betroffene Daten: {klassen}",
+        s4ConsentKlassenFehlen:
+          "Der Server hat noch nicht aufgelöst, welche Daten übertragen würden. Ohne diese Angabe kann hier nicht zugestimmt werden.",
+        s4ConsentKlassenBlockiert: "Ausgeschlossen bleiben: {klassen}",
+        s4ConsentKnopf: "Zustimmen",
+        s4ConsentWiderruf: "Widerrufen",
+        s4ConsentBusy: "Wird an den Server übertragen ...",
+        s4ConsentFehler: "Die Zustimmung konnte nicht übertragen werden. Bitte erneut versuchen.",
+        s4RebindFehler:
+          "Das Dokument wurde gespeichert, der neue Dokumentbezug konnte aber nicht eingetragen werden.",
+        s4FragenGesperrt: "Der Server erlaubt für diese Sitzung derzeit keine Ausführung.",
+        // Der real gelieferte Ausschnitt. Ehrlich als Zitat bezeichnet, ausdrücklich KEINE
+        // Herleitung — ein Herleitungsprotokoll gibt es in diesem System nirgends.
+        askSnippetLabel: "Verwendeter Ausschnitt",
+        askRoleCarrying: "trägt die Antwort",
+        askRoleConsulted: "herangezogen",
         askRuleNote: "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
         askBusy: "Klara sucht im KLARWERK-Wissen ...",
@@ -1131,6 +1760,73 @@
         aiLageExtern: "In KLARWERK, answering currently uses an external AI (cloud). Klara's answer in this panel is independent of that and is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
         aiLageIntern: "In KLARWERK, answering currently uses an in-house AI. Klara's answer in this panel is independent of that and is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
         aiLageKeine: "In KLARWERK, answering currently uses no AI. Other tasks in KLARWERK may differ. Klara's answer in this panel is produced without an AI model in any case — rule-based, quoting validated knowledge word for word.",
+        trustHeadLabel: "Klara's AI status",
+        trustModeLaedt: "Checking status",
+        trustModeUnerreichbar: "Status unavailable",
+        trustModeExtern: "KLARWERK: external AI",
+        trustModeIntern: "KLARWERK: in-house AI",
+        trustModeKeine: "KLARWERK: no AI",
+        askCaveatUnknown: "A carrying source cannot be found in the library.",
+        askCaveatUnchecked: "A carrying source has no check run.",
+        askCaveatNoCoverage: "A check run exists without coverage evidence.",
+        askCaveatIncomplete: "A check run remained incomplete.",
+        askCaveatUnattributed: "The server could not attribute the answer to any source.",
+        askCaveatOther: "A caveat applies whose reason this build does not know.",
+        askCaveatCount: "({unproven} of {total} carrying sources without full evidence.)",
+        askConflictConflicted: "Caution: a carrying source is in an open conflict.",
+        askConflictUnproven: "The conflict situation is unknown — that does not mean there is none.",
+        askConflictClear: "No open conflicts on the carrying sources.",
+        s4Label: "In this session",
+        s4ModeDeterministic: "Without a model",
+        s4ModeInternal: "On-Premise Enterprise AI",
+        s4ModeExternal: "External AI",
+        s4ModeUnbekannt: "Mode unknown",
+        s4StateLaedt: "Retrieving session status ...",
+        s4StateBereit: "Session status is available.",
+        s4StateAbweichung: "A mode other than the configured one applies.",
+        s4StateBlockiert: "Execution is blocked.",
+        s4StateUnerreichbar: "The session status cannot be retrieved.",
+        s4StateKeineSitzung: "There is no session for this pane.",
+        s4StateVeraltet: "The status shown has expired.",
+        s4StateGesperrtLokal:
+          "The last call failed. Until the server confirms a new status, nothing counts as allowed here.",
+        s4Anbieter: "Provider {provider} · Model {model}",
+        s4Abweichung: "Configured was {soll}. Reason for the deviation: {grund}",
+        s4Blockiert: "Blocked. Reason: {grund}",
+        s4Veraltet: "This status has expired and is being retrieved again.",
+        s4Sitzung: "Consent: {stand}",
+        s4SitzungKeine: "No consent status is available.",
+        s4Unbekannt: "unknown",
+        s4ReasonExternalNotConfigured: "No external provider is configured.",
+        s4ReasonInternalNotConfigured: "No On-Premise Enterprise AI is configured.",
+        s4ReasonExternalNotMigrated: "The external path is not enabled yet.",
+        s4ReasonExternalConsentMissing: "Your consent for the external path is missing.",
+        s4ReasonPolicyIncomplete: "The rules are stored incompletely.",
+        s4ReasonOther: "The server gives a reason this build does not know.",
+        s4ConsentNone: "none required",
+        s4ConsentErforderlich: "required, not yet given",
+        s4ConsentPending: "open",
+        s4ConsentGranted: "granted",
+        s4ConsentExpired: "expired",
+        s4ConsentRevoked: "revoked",
+        s4ConsentInvalidated: "invalidated",
+        s4ConsentUnbekannt: "status unknown",
+        s4ConsentTitel: "Consent for the external path",
+        s4ConsentText: "This session uses an external provider. Without your consent nothing is sent there. It applies to this session only and you can revoke it at any time.",
+        s4ConsentUmfang: "Provider {provider} · Model {model} · Session {session} · Data concerned: {klassen}",
+        s4ConsentKlassenFehlen:
+          "The server has not yet resolved which data would be transmitted. Without that, consent cannot be given here.",
+        s4ConsentKlassenBlockiert: "Excluded: {klassen}",
+        s4ConsentKnopf: "Give consent",
+        s4ConsentWiderruf: "Revoke",
+        s4ConsentBusy: "Transmitting to the server ...",
+        s4ConsentFehler: "The consent could not be transmitted. Please try again.",
+        s4RebindFehler:
+          "The document was saved, but the new document binding could not be registered.",
+        s4FragenGesperrt: "The server currently allows no execution for this session.",
+        askSnippetLabel: "Excerpt used",
+        askRoleCarrying: "carries the answer",
+        askRoleConsulted: "consulted",
         askRuleNote: "How Klara works: validated KLARWERK knowledge is quoted word for word instead of being composed into a new answer. Your selected text is not sent to an external AI.",
         askEmpty: "Please select a statement in the document first or type a question below.",
         askBusy: "Klara is searching KLARWERK knowledge ...",
@@ -1232,6 +1928,73 @@
         aiLageExtern: "In KLARWERK werkt voor antwoorden momenteel een externe AI (cloud). Klara's antwoord in dit venster staat daar los van en komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         aiLageIntern: "In KLARWERK werkt voor antwoorden momenteel een interne AI. Klara's antwoord in dit venster staat daar los van en komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         aiLageKeine: "In KLARWERK werkt voor antwoorden momenteel geen AI. Voor andere taken in KLARWERK kan dat anders zijn. Klara's antwoord in dit venster komt sowieso zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        trustHeadLabel: "Klara's AI-stand",
+        trustModeLaedt: "Stand wordt opgehaald",
+        trustModeUnerreichbar: "Stand niet op te halen",
+        trustModeExtern: "KLARWERK: externe AI",
+        trustModeIntern: "KLARWERK: interne AI",
+        trustModeKeine: "KLARWERK: geen AI",
+        askCaveatUnknown: "Een dragende bron is niet vindbaar in de bibliotheek.",
+        askCaveatUnchecked: "Een dragende bron heeft geen controleronde.",
+        askCaveatNoCoverage: "Er is een controleronde zonder dekkingsbewijs.",
+        askCaveatIncomplete: "Een controleronde is onvolledig gebleven.",
+        askCaveatUnattributed: "De server kon het antwoord aan geen enkele bron toewijzen.",
+        askCaveatOther: "Er geldt een voorbehoud waarvan deze versie de reden niet kent.",
+        askCaveatCount: "({unproven} van {total} dragende bronnen zonder volledig bewijs.)",
+        askConflictConflicted: "Let op: een dragende bron staat in een open conflict.",
+        askConflictUnproven: "De conflictsituatie is onbekend — dat betekent niet dat er geen is.",
+        askConflictClear: "Geen open conflicten op de dragende bronnen.",
+        s4Label: "In deze sessie",
+        s4ModeDeterministic: "Zonder model",
+        s4ModeInternal: "On-Premise Enterprise AI",
+        s4ModeExternal: "Externe AI",
+        s4ModeUnbekannt: "Modus onbekend",
+        s4StateLaedt: "Sessiestand wordt opgehaald ...",
+        s4StateBereit: "De sessiestand is beschikbaar.",
+        s4StateAbweichung: "Er geldt een andere modus dan is ingericht.",
+        s4StateBlockiert: "De uitvoering is geblokkeerd.",
+        s4StateUnerreichbar: "De sessiestand kan niet worden opgehaald.",
+        s4StateKeineSitzung: "Voor dit venster bestaat geen sessie.",
+        s4StateVeraltet: "De getoonde stand is verlopen.",
+        s4StateGesperrtLokal:
+          "De laatste aanroep is mislukt. Totdat de server een nieuwe stand bevestigt, geldt hier niets als toegestaan.",
+        s4Anbieter: "Aanbieder {provider} · Model {model}",
+        s4Abweichung: "Ingericht was {soll}. Reden van de afwijking: {grund}",
+        s4Blockiert: "Geblokkeerd. Reden: {grund}",
+        s4Veraltet: "Deze stand is verlopen en wordt opnieuw opgehaald.",
+        s4Sitzung: "Toestemming: {stand}",
+        s4SitzungKeine: "Er is geen stand over de toestemming.",
+        s4Unbekannt: "onbekend",
+        s4ReasonExternalNotConfigured: "Er is geen externe aanbieder ingericht.",
+        s4ReasonInternalNotConfigured: "Er is geen On-Premise Enterprise AI ingericht.",
+        s4ReasonExternalNotMigrated: "De externe weg is nog niet vrijgegeven.",
+        s4ReasonExternalConsentMissing: "Uw toestemming voor de externe weg ontbreekt.",
+        s4ReasonPolicyIncomplete: "De regels zijn onvolledig vastgelegd.",
+        s4ReasonOther: "De server noemt een reden die deze versie niet kent.",
+        s4ConsentNone: "geen vereist",
+        s4ConsentErforderlich: "vereist, nog niet verleend",
+        s4ConsentPending: "open",
+        s4ConsentGranted: "verleend",
+        s4ConsentExpired: "verlopen",
+        s4ConsentRevoked: "ingetrokken",
+        s4ConsentInvalidated: "ongeldig gemaakt",
+        s4ConsentUnbekannt: "stand onbekend",
+        s4ConsentTitel: "Toestemming voor de externe weg",
+        s4ConsentText: "Deze sessie gebruikt een externe aanbieder. Zonder uw toestemming wordt daar niets naartoe gestuurd. Zij geldt alleen voor deze sessie en u kunt haar altijd intrekken.",
+        s4ConsentUmfang: "Aanbieder {provider} · Model {model} · Sessie {session} · Betrokken gegevens: {klassen}",
+        s4ConsentKlassenFehlen:
+          "De server heeft nog niet bepaald welke gegevens zouden worden verzonden. Zonder die opgave kan hier geen toestemming worden gegeven.",
+        s4ConsentKlassenBlockiert: "Uitgesloten blijven: {klassen}",
+        s4ConsentKnopf: "Toestemmen",
+        s4ConsentWiderruf: "Intrekken",
+        s4ConsentBusy: "Wordt naar de server verzonden ...",
+        s4ConsentFehler: "De toestemming kon niet worden verzonden. Probeer het opnieuw.",
+        s4RebindFehler:
+          "Het document is opgeslagen, maar de nieuwe documentbinding kon niet worden vastgelegd.",
+        s4FragenGesperrt: "De server staat voor deze sessie momenteel geen uitvoering toe.",
+        askSnippetLabel: "Gebruikt fragment",
+        askRoleCarrying: "draagt het antwoord",
+        askRoleConsulted: "geraadpleegd",
         askRuleNote: "Zo werkt Klara: gevalideerde KLARWERK-kennis wordt woordelijk geciteerd in plaats van zelf geformuleerd. Je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
         askBusy: "Klara zoekt in KLARWERK-kennis ...",
@@ -1339,6 +2102,15 @@
       // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
       document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
       document.documentElement.lang = lang;
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: der Vertrauenskopf wird MIT den statischen Texten
+      // gefuellt, nicht erst durch den Statusabruf. Damit ist er ab dem ersten Bildaufbau da —
+      // im Zustand „wird geprueft", der die Wahrheit ist, solange nichts abgerufen wurde. Ein
+      // Kopf, der erst nach einem Netzabruf erscheint, waere kein permanenter Kopf.
+      renderAiLage();
+      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: derselbe Grund fuer den sitzungsbezogenen Teil. Er steht
+      // ab dem ersten Bildaufbau da — im Zustand „wird abgerufen", und nach einem Sprachwechsel in
+      // der neuen Sprache, ohne den gehaltenen Serverstand zu verlieren.
+      renderKlaraS4();
     }
 
     function setLang(next) {
@@ -1346,8 +2118,12 @@
       ["de", "en", "nl"].forEach(function (code) {
         document.getElementById("lang-" + code).className = code === lang ? "active" : "";
       });
-      renderStatics();
-      renderAiLage(); // mega75 Block A: die KI-Lage in der neuen Sprache (Zustand bleibt, Text wechselt)
+      renderStatics(); // mega75 Block A: die KI-Lage in der neuen Sprache (Zustand bleibt, Text
+                       // wechselt) — sie haengt jetzt IN renderStatics, s. dort.
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Vorbehalt, Konfliktlage und Ausschnitt sind Texte zu
+      // einem GEHALTENEN Zustand (currentAskOutcome). Ohne diese Zeile stuenden sie nach einem
+      // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
+      renderAskEvidence();
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
@@ -1362,11 +2138,22 @@
     var aiLagePhase = "laedt";
     var aiLageStatus = null;
 
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: dieselbe Funktion, dieselben Zustaende, dieselben
+    // Texte — nur ein anderer Ort. Sie schreibt jetzt in den permanenten Kopf statt in eine Zeile
+    // des Fragen-Reiters. `klaraTrustHead` uebersetzt nur; den Zustand besitzt weiterhin
+    // `klaraAiLage`. Der Zustand steht als TEXT in der Pille; die Farbe ist die zweite Spur.
     function renderAiLage() {
-      var el = document.getElementById("ask-ai-lage");
-      if (!el) { return; }
-      var lage = klaraAiLage(aiLagePhase, aiLageStatus);
-      el.textContent = t("aiLage" + lage.charAt(0).toUpperCase() + lage.slice(1));
+      var head = document.getElementById("klara-trust-head");
+      var pill = document.getElementById("klara-trust-mode");
+      var detail = document.getElementById("klara-trust-detail");
+      if (!head || !pill || !detail) { return; }
+      var kopf = klaraTrustHead(aiLagePhase, aiLageStatus);
+      pill.textContent = t(kopf.modeKey);
+      pill.className = "trust-pill trust-pill-" + kopf.tone;
+      detail.textContent = t(kopf.detailKey);
+      // Der Kopf meldet sich als Statusbereich — mit einem Namen, den ein Screenreader ansagen
+      // kann, statt nur „Statusbereich".
+      head.setAttribute("aria-label", t("trustHeadLabel"));
     }
 
     // AUFTRAG-mega77 BLOCK C — DER STATUSABRUF BRAUCHT EIN ENDE.
@@ -1431,6 +2218,579 @@
     }
     // KW-KLARA-AISTATE-FETCH-END
 
+    // ============================================================================================
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — SITZUNG, STATUS UND ZUSTIMMUNG AM ECHTEN VERTRAG
+    // ============================================================================================
+    //
+    // Sieben Endpunkte, alle same-origin und mit derselben Sitzung wie /api/ask (KW-W1-S4-R2-
+    // KOPF-FREEZE-17). Der Ablauf ist vorgeschrieben und NICHT umkehrbar:
+    //
+    //   1. POST /api/klara/sessions  →  der SERVER vergibt `documentContextId`. Das Add-in schickt
+    //      nur einen `documentDescriptor` und darf die Kontext-Id niemals selbst bilden.
+    //   2. erst danach traegt jeder weitere Abruf die drei Header x-klara-session /
+    //      x-klara-instance / x-klara-document. Fehlt einer, antwortet der Server generisch 404.
+    //
+    // WAS NICHT GESPEICHERT WIRD: nichts. Sitzungs-Id, Instanz-Id und Dokument-Nonce leben in
+    // diesen Variablen und sterben mit dem Aufgabenfenster. Kein localStorage, kein
+    // sessionStorage, kein Cookie, keine Add-in-Einstellung — eine Zustimmung, die ein Neuladen
+    // ueberlebt, waere keine Sitzungszustimmung mehr (Auftrag No-Go 2).
+    var klaraS4Phase = "laedt";
+    var klaraS4Sicht = null;
+    var klaraS4SessionId = null;
+    // Eine Instanz-Id je Laden des Aufgabenfensters. Sie ist OPAK — der Server vergleicht sie nur
+    // auf Gleichheit und liest nichts aus ihr heraus.
+    var klaraS4InstanceId = klaraS4NeueId("inst");
+    var klaraS4DocumentId = null;
+    var klaraS4Nonce = klaraS4NeueId("doc");
+    var klaraS4Laeuft = false;
+    // Untergrenze fuer den Statusrefresh: sie deckelt sowohl einen bereits abgelaufenen
+    // Ablaufzeitpunkt (kein Dauerfeuer) als auch die Drosselung der Sichtbarkeits-/Fokusanlaesse.
+    // Es ist derselbe Wert, den dieses Aufgabenfenster seit WP-KLARA-1b fuer den Anmelde-Poll
+    // benutzt — eine dritte Zahl waere eine dritte Wahrheit ueber dieselbe Frage.
+    var WORD_ADDIN_S4_REFRESH_MIN_MS = WORD_ADDIN_LOGIN_POLL_INTERVAL_MS;
+    // Nur zur Nachvollziehbarkeit: welcher Anlass den letzten Abruf ausgeloest hat.
+    var klaraS4LetzterRefreshGrund = null;
+    // Der clientseitige Riegel nach einem gescheiterten Consent-/Rebind-Aufruf (BEN-Befund 2).
+    var klaraS4Riegelstand = false;
+
+    function klaraS4NeueId(praefix) {
+      var puffer = new Uint8Array(16);
+      // Kryptographisch, nicht Math.random: die Werte binden eine Sitzung an ein Fenster.
+      (self.crypto || window.crypto).getRandomValues(puffer);
+      var hex = "";
+      for (var i = 0; i < puffer.length; i += 1) {
+        hex += ("0" + puffer[i].toString(16)).slice(-2);
+      }
+      return praefix + "-" + hex;
+    }
+
+    /**
+     * Der Dokumentbeschreiber. Office.js gibt fuer ein GESPEICHERTES Dokument eine URL heraus
+     * (`Office.context.document.url`); ein ungespeichertes Dokument hat keine stabile Kennung —
+     * dafuer sieht der Vertrag ausdruecklich `kind: "unsaved"` mit einem Client-Nonce vor.
+     * Erfunden wird hier nichts: liegt keine URL vor, wird das auch so gemeldet.
+     */
+    function klaraS4Beschreiber() {
+      var url = "";
+      try {
+        url = (window.Office && Office.context && Office.context.document
+          && Office.context.document.url) || "";
+      } catch (e) { url = ""; }
+      return typeof url === "string" && url.length > 0
+        ? { kind: "saved", canonicalUrl: url }
+        : { kind: "unsaved", clientDocumentNonce: klaraS4Nonce };
+    }
+
+    function klaraS4Header() {
+      return {
+        "x-klara-session": klaraS4SessionId || "",
+        "x-klara-instance": klaraS4InstanceId,
+        "x-klara-document": klaraS4DocumentId || "",
+      };
+    }
+
+    // KW-KLARA-S4-FETCH-START
+    function klaraS4Abruf(pfad, methode, koerper) {
+      var controller = new AbortController();
+      var frist = setTimeout(function () {
+        try { controller.abort(); } catch (e) { /* bereits beendet */ }
+      }, WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS);
+      var init = {
+        method: methode,
+        credentials: "include",
+        signal: controller.signal,
+        headers: klaraS4Header(),
+      };
+      if (koerper) {
+        init.headers["content-type"] = "application/json";
+        init.body = JSON.stringify(koerper);
+      }
+      return fetch(pfad, init)
+        .then(function (res) {
+          if (!res.ok) { throw new Error("HTTP " + res.status); }
+          return res.json();
+        })
+        .then(function (body) {
+          if (!body || typeof body !== "object") { throw new Error("leer"); }
+          return body;
+        })
+        .then(
+          function (body) { clearTimeout(frist); return body; },
+          function (err) { clearTimeout(frist); throw err; }
+        );
+    }
+
+    /**
+     * Die nicht-autorisierenden Felder der Sitzungssicht. Bewusst eine WEISSE Liste: was hier
+     * nicht steht, ueberlebt einen reinen Statusabruf nicht. `consentState` und `closed` fehlen
+     * absichtlich — ueber beides sagt `GET /api/klara/ai-status` nichts.
+     */
+    function klaraS4Sitzungsidentitaet(sicht) {
+      var raus = {};
+      if (!sicht) { return raus; }
+      var felder = [
+        "sessionId",
+        "tenantId",
+        "actorId",
+        "addinInstanceId",
+        "documentContextId",
+        "createdAt",
+      ];
+      for (var i = 0; i < felder.length; i += 1) {
+        if (sicht[felder[i]] !== undefined) { raus[felder[i]] = sicht[felder[i]]; }
+      }
+      return raus;
+    }
+
+    function klaraS4Uebernehmen(sicht) {
+      // DIE EINZIGE Stelle, die den Riegel loest: ein bestaetigter Serverstatus. Nicht Zeitablauf,
+      // nicht eine Nutzerhandlung, nicht ein zweiter Versuch (Auftrag §2).
+      klaraS4Riegelstand = false;
+      klaraS4Sicht = sicht;
+      klaraS4SessionId = sicht.sessionId || klaraS4SessionId;
+      // Die Kontext-Id kommt VOM SERVER zurueck und wird ab jetzt gefuehrt — nie selbst gebildet.
+      klaraS4DocumentId = sicht.documentContextId || klaraS4DocumentId;
+      klaraS4Phase = "bereit";
+      renderKlaraS4();
+    }
+
+    function klaraS4Fehlschlag(phase) {
+      klaraS4Sicht = null;
+      // Ein stehender Riegel ist die staerkere Aussage: „nicht abrufbar" wuerde die Sperre
+      // aufweichen, obwohl der ungewisse Autorisierungsstand unveraendert ungewiss ist.
+      klaraS4Phase = klaraS4Riegelstand ? "gesperrt" : phase;
+      renderKlaraS4();
+    }
+
+    // ============================================================================================
+    // AUFTRAG-37 (Preflight-36-Befunde G2 und G3) — WANN DIE ERSTE SITZUNG ENTSTEHEN DARF.
+    // ============================================================================================
+    //
+    // Bisher lief `klaraS4Start()` SYNCHRON am Skriptende. Zwei belegte Folgen:
+    //
+    //   G2  `Office.onReady` war da erst REGISTRIERT, nicht gelaufen. Ein gespeichertes Dokument
+    //       wurde deshalb als `unsaved` gebunden. Der Rebind repariert das spaeter — und verwirft
+    //       dabei nach KW-S4-20 §3 die gerade erteilte Zustimmung. Der Nutzer verliert sie ohne
+    //       erkennbaren Grund.
+    //
+    //   G3  Wer unangemeldet oeffnet — im WebView mit eigenen Cookies der Normalfall — bekam
+    //       keine Sitzung und behielt sie fuer die ganze Fensterlaufzeit nicht, auch nach
+    //       erfolgreicher Anmeldung.
+    //
+    // BEIDE gehen jetzt ueber EINEN Weg: `klaraS4StartAnfordern`. Er ist die einzige Stelle, die
+    // entscheidet, OB und WANN gestartet wird — und er ist mehrfach aufrufbar, ohne je eine
+    // zweite Sitzung zu erzeugen.
+    //
+    // KEINE neue Frist, KEINE neue Erkennung: gewartet wird auf die bereits vorhandene begrenzte
+    // Office-Erkennung (`OFFICE_READY_TIMEOUT_MS`), die ohnehin in jedem Fall zu einem Ergebnis
+    // kommt — durch den Rueckruf oder durch ihre Frist.
+    var klaraS4Angefordert = false;
+    var klaraS4OfficeGeklaert = false;
+    var klaraS4WartetAufOffice = false;
+    // BEN-37: die Nachholung ist ein VERBRAUCHSGUT, kein Dauerrecht. Ohne diesen Merker war jeder
+    // spaetere positive Statusabruf ein neuer Freigabeschluessel, solange die Sitzung fehlte —
+    // ein am Server gescheiterter Nachholversuch wurde damit bei jedem Sprachwechsel wiederholt.
+    var klaraS4NachholungVerbraucht = false;
+
+    /**
+     * Wird von `markOfficeChecked` genau einmal ausgeloest — egal ob der Rueckruf oder die Frist
+     * zuerst kam. Ein SPAETER Rueckruf nach der Frist findet das Tor bereits offen und startet
+     * deshalb nichts zweites.
+     */
+    function klaraS4OfficeGeklaertMelden() {
+      if (klaraS4OfficeGeklaert) { return; }
+      klaraS4OfficeGeklaert = true;
+      if (klaraS4WartetAufOffice) {
+        klaraS4WartetAufOffice = false;
+        klaraS4Start();
+      }
+    }
+
+    /**
+     * Die EINZIGE Stelle, an der ein Sitzungsaufbau angefordert wird.
+     *
+     * Drei Riegel, jeder gegen eine eigene Doppelung:
+     *   · `klaraS4Angefordert` — der Aufbau wurde schon einmal angestossen (Start ODER Nachholung)
+     *   · `klaraS4Laeuft`      — gerade laeuft einer
+     *   · `klaraS4SessionId`   — es gibt bereits eine Sitzung
+     */
+    function klaraS4StartAnfordern() {
+      if (klaraS4Angefordert || klaraS4Laeuft || klaraS4SessionId) { return; }
+      klaraS4Angefordert = true;
+      if (!klaraS4OfficeGeklaert) {
+        // Warten — nicht pollen. Das Tor oeffnet sich in jedem Fall (Rueckruf oder Frist).
+        klaraS4WartetAufOffice = true;
+        return;
+      }
+      klaraS4Start();
+    }
+
+    /**
+     * G3: die Nachholung nach erfolgreicher Anmeldung. Sie feuert GENAU EINMAL pro Fensterlaufzeit
+     * und nur dann, wenn beim Start wirklich keine Sitzung zustande kam. Bleibt die Anmeldung aus,
+     * geschieht nichts — kein Wiederholzyklus, kein Dauerfeuer gegen einen Endpunkt.
+     *
+     * „Einmal" heisst: einmal ANGESTOSSEN, nicht einmal GELUNGEN. Scheitert der Versuch am Server,
+     * bleibt es bis zum erneuten Oeffnen des Aufgabenfensters bei „keine Sitzung" — sichtbar
+     * gesagt statt still weiter angeklopft. Der Riegel haengt am Verbrauch, nicht am Fehlerbild;
+     * auch ein wieder antwortender Server loest deshalb keinen zweiten Versuch aus.
+     *
+     * Verbraucht wird erst, wenn wirklich freigegeben wird: laeuft gerade ein Aufbau, kehrt die
+     * Funktion vorher um und das Recht bleibt fuer den Fall erhalten, dass jener Aufbau scheitert.
+     */
+    function klaraS4NachAnmeldung() {
+      if (klaraS4SessionId || klaraS4Laeuft || klaraS4NachholungVerbraucht) { return; }
+      // Der Start hat es versucht und nichts bekommen: die Anforderung wird EINMAL freigegeben.
+      klaraS4NachholungVerbraucht = true;
+      klaraS4Angefordert = false;
+      klaraS4StartAnfordern();
+    }
+
+    /** Sitzung eroeffnen und danach den gebundenen Status lesen. */
+    function klaraS4Start() {
+      if (klaraS4Laeuft) { return Promise.resolve(); }
+      klaraS4Laeuft = true;
+      klaraS4Phase = "laedt";
+      renderKlaraS4();
+      var beschreiber = klaraS4Beschreiber();
+      return klaraS4Abruf("/api/klara/sessions", "POST", {
+        addinInstanceId: klaraS4InstanceId,
+        documentDescriptor: beschreiber,
+      })
+        .then(function (sicht) {
+          // Merken, WOMIT gebunden wurde — nur so ist ein spaeterer Wechsel erkennbar (Befund 5).
+          klaraS4GebundeneArt = beschreiber.kind;
+          klaraS4Uebernehmen(sicht);
+          // Der Statusabruf ist die eigentliche Auflösung; erst er traegt alle drei Header.
+          return klaraS4Abruf("/api/klara/ai-status", "GET", null).then(function (aufloesung) {
+            klaraS4Uebernehmen(Object.assign({}, sicht, { resolution: aufloesung }));
+            // Ab jetzt haelt sich der Stand selbst frisch (Befund 4).
+            klaraS4RefreshPlanen();
+          });
+        })
+        .catch(function () {
+          // Ohne Sitzung gibt es keinen sitzungsbezogenen Stand. Das wird GESAGT, nicht kaschiert.
+          klaraS4Fehlschlag(klaraS4SessionId ? "unerreichbar" : "keineSitzung");
+        })
+        .then(function () { klaraS4Laeuft = false; });
+    }
+
+    function klaraS4Zustimmen() {
+      if (!klaraS4SessionId) { return; }
+      klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
+      klaraS4Abruf("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
+        "POST", null)
+        .then(function (sicht) { klaraS4Uebernehmen(sicht); klaraS4Consentmeldung(null, ""); })
+        .catch(function () { klaraS4Riegel("s4ConsentFehler"); });
+    }
+
+    function klaraS4Widerrufen() {
+      if (!klaraS4SessionId) { return; }
+      klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
+      klaraS4Abruf("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
+        "DELETE", null)
+        .then(function (sicht) { klaraS4Uebernehmen(sicht); klaraS4Consentmeldung(null, ""); })
+        // BEN-BEFUND 2: HIER stand `klaraS4Consentmeldung(...)` — nur eine Meldung. Der alte,
+        // AUTORISIERENDE Stand (`granted` / `executionAllowed: true`) blieb stehen und Ask blieb
+        // frei. Wer widerruft und einen Fehler sieht, muss davon ausgehen duerfen, dass nichts
+        // mehr auf seine Zustimmung hin geschieht.
+        .catch(function () { klaraS4Riegel("s4ConsentFehler"); });
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 2 — DER RIEGEL. FAIL-SAFE HEISST: DEN ALTEN STAND VERWERFEN, NICHT UEBERDECKEN.
+    // ============================================================================================
+    //
+    // Ein gescheiterter Zustimmungs- oder Widerrufsaufruf laesst den Client in Ungewissheit: der
+    // Server kann die Aenderung vollzogen haben oder nicht. In dieser Lage ist der zuletzt
+    // gelesene Stand keine Wahrheit mehr — er ist eine VERMUTUNG, und zwar die guenstigere.
+    //
+    // Deshalb wird er verworfen (`klaraS4Sicht = null`), die Phase auf `gesperrt` gesetzt und Ask
+    // gesperrt. Aufgehoben wird das AUSSCHLIESSLICH durch einen neuen, bestaetigten Serverstatus
+    // (`klaraS4Uebernehmen`) — nie durch Zeitablauf, nie durch eine Nutzerhandlung, nie lokal.
+    function klaraS4Riegel(meldungsKey) {
+      // Der Riegel ist eine eigenstaendige SPERRE, keine Phase. Waere er nur eine Phase, koennte
+      // ihn der unmittelbar folgende Abruf ueberschreiben — scheitert der naemlich ebenfalls,
+      // landete die Anzeige bei „nicht abrufbar", und DIESE Phase sperrt Ask nicht. Genau so
+      // waere die Sperre auf dem Weg zu ihrer eigenen Bestaetigung verlorengegangen.
+      klaraS4Riegelstand = true;
+      klaraS4Sicht = null;
+      klaraS4Phase = "gesperrt";
+      klaraS4Consentmeldung("warn", t(meldungsKey));
+      renderKlaraS4();
+      // Und sofort ehrlich nachfragen: der Riegel ist kein Endzustand, sondern ein Warteraum.
+      klaraS4Refresh("riegel");
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 4 — DER STATUSREFRESH. EIN ABGELAUFENER STAND DARF NICHT AKTUELL AUSSEHEN.
+    // ============================================================================================
+    //
+    // Bisher wurde der Status nach dem Sitzungsstart GENAU EINMAL gelesen. Lief die Auflösung ab,
+    // wechselte die Policy oder wurde die Sitzung invalidiert, blieb der alte DOM stehen — die
+    // reine Ableitung haette ihn bei erneutem Aufruf als veraltet erkannt, aber niemand rief sie.
+    //
+    // BAUART: dieselbe wie der bereits nach BEN ROT-1 gehaertete Anmelde-Poll weiter unten —
+    // sequenzielle `setTimeout`-Kette (KEIN `setInterval`, keine ueberlappenden Abrufe), eigener
+    // AbortController je Abruf, und eine Generation, die Alt-Laeufe neutralisiert. Es wird kein
+    // zweiter Mechanismus erfunden.
+    //
+    // AUSLOESER (Auftrag §4): Ablauf der Auflösung, Rueckkehr der Sichtbarkeit, Fokus, sowie jeder
+    // Riegel. Policy-/Resolutionwechsel und Invalidierung braucht keinen eigenen Ausloeser — sie
+    // werden von genau diesen Abrufen SICHTBAR, weil der Server die neue Auflösung liefert.
+    var klaraS4RefreshGeneration = 0;
+    var klaraS4RefreshTimer = null;
+    var klaraS4RefreshLaeuft = false;
+    var klaraS4LetzterRefreshMs = 0;
+
+    function klaraS4RefreshStoppen() {
+      klaraS4RefreshGeneration += 1;
+      if (klaraS4RefreshTimer !== null) {
+        clearTimeout(klaraS4RefreshTimer);
+        klaraS4RefreshTimer = null;
+      }
+    }
+
+    /**
+     * Plant den naechsten Abruf auf den Ablaufzeitpunkt der Auflösung — nicht auf ein festes
+     * Intervall. Der Server sagt, wie lange sein Wort gilt; genau so lange wird gewartet.
+     * Untergrenze, damit eine bereits abgelaufene oder kaputte Zeitangabe kein Dauerfeuer erzeugt.
+     */
+    function klaraS4RefreshPlanen() {
+      klaraS4RefreshStoppen();
+      var generation = klaraS4RefreshGeneration;
+      var bis = klaraS4Sicht && klaraS4Sicht.resolution
+        ? Date.parse(klaraS4Sicht.resolution.expiresAt)
+        : Number.NaN;
+      if (!isFinite(bis)) { return; }
+      var inMs = Math.max(bis - Date.now(), WORD_ADDIN_S4_REFRESH_MIN_MS);
+      klaraS4RefreshTimer = setTimeout(function () {
+        klaraS4RefreshTimer = null;
+        if (generation !== klaraS4RefreshGeneration) { return; }
+        // ERST neu zeichnen: der Stand ist jetzt abgelaufen und wird auch so gezeigt, BEVOR der
+        // Abruf laeuft. Sonst saehe er waehrend des Abrufs weiter aktuell aus.
+        renderKlaraS4();
+        klaraS4Refresh("ablauf");
+      }, inMs);
+    }
+
+    /**
+     * Liest den gebundenen Status neu. `grund` dient der Nachvollziehbarkeit im Test und im DOM.
+     * Genau EIN Abruf gleichzeitig; ein zweiter Anlass waehrend eines laufenden wird verworfen,
+     * nicht eingereiht.
+     */
+    function klaraS4Refresh(grund) {
+      if (!klaraS4SessionId || !klaraS4DocumentId) { return Promise.resolve(); }
+      if (klaraS4RefreshLaeuft) { return Promise.resolve(); }
+      klaraS4RefreshLaeuft = true;
+      klaraS4LetzterRefreshMs = Date.now();
+      klaraS4LetzterRefreshGrund = grund;
+      return klaraS4Abruf("/api/klara/ai-status", "GET", null)
+        .then(function (aufloesung) {
+          // Der bestaetigte Serverstatus ist das EINZIGE, was einen Riegel wieder oeffnet.
+          //
+          // AUFTRAG-34 (BEN-Befund 4): HIER stand `Object.assign({}, basis, {resolution})` — und
+          // damit wanderte der ALTE `consentState` der Sitzungssicht in die NEUE Auflösung.
+          // `GET /api/klara/ai-status` liefert vertragsgemaess nur `KlaraResolution`; ueber die
+          // Zustimmung sagt diese Antwort mit `consentState` NICHTS. Den alten Wert
+          // weiterzutragen hiess, eine Auskunft zu erfinden, die der Server nicht gegeben hat.
+          //
+          // Uebernommen wird deshalb nur die IDENTITAET der Sitzung (Sitzungs- und
+          // Dokumentkontext-Id, Versionen) — nichts, was autorisiert. Der Zustimmungsstand wird
+          // ausdruecklich FALLENGELASSEN; die Anzeige leitet ihn danach aus der frischen
+          // Auflösung ab (`klaraS4ConsentKey`).
+          klaraS4Uebernehmen(
+            Object.assign(klaraS4Sitzungsidentitaet(klaraS4Sicht), { resolution: aufloesung }),
+          );
+          klaraS4RefreshPlanen();
+          // Erst mit gueltigem Stand pruefen, ob der Dokumentkontext noch stimmt (Befund 5).
+          return klaraS4DokumentPruefen();
+        })
+        .catch(function () {
+          // Nicht abrufbar heisst nicht abrufbar — und ganz sicher nicht „weiterhin erlaubt".
+          klaraS4Fehlschlag("unerreichbar");
+        })
+        .then(function () { klaraS4RefreshLaeuft = false; });
+    }
+
+    /**
+     * Ein Anlass von aussen (Sichtbarkeit, Fokus). Gedrosselt, damit ein Fenster, das bei jedem
+     * Mausklick Fokusereignisse feuert, nicht denselben Abruf dutzendfach ausloest.
+     */
+    function klaraS4RefreshAnlass(grund) {
+      if (Date.now() - klaraS4LetzterRefreshMs < WORD_ADDIN_S4_REFRESH_MIN_MS) { return; }
+      klaraS4Refresh(grund);
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 5 — DER DOKUMENT-REBIND AN DEN VORHANDENEN SERVERWEG.
+    // ============================================================================================
+    //
+    // Der Beschreiber wird bei JEDEM Refresh neu gebildet. Wechselt er von `unsaved` auf `saved` —
+    // also traegt Word jetzt eine Adresse, wo vorher keine war —, ist das ein ANDERER
+    // Dokumentkontext. Kein stilles Umschreiben (KW-S4-20 §3): es geht ueber die vorhandene Route
+    // `POST /api/klara/sessions/{id}/document-context`, und der Server entwertet dabei die alte
+    // Auflösung und verwirft eine bestehende Zustimmung. Das Add-in traegt nichts hinueber.
+    //
+    // KEINE HEURISTIK: es wird nicht geraten, ob gespeichert wurde. Gemessen wird ausschliesslich,
+    // ob `Office.context.document.url` jetzt einen Wert hat und vorher keinen — eine Tatsache,
+    // keine Vermutung. Ein Speichern-Ereignis bietet dieses Aufgabenfenster nicht (belegt in
+    // PLAN-BASIC-W1-RESTLUECKEN-PREFLIGHT-21 §5.2), und es wird auch keines erfunden.
+    var klaraS4GebundeneArt = null;
+    var klaraS4RebindLaeuft = false;
+
+    function klaraS4DokumentPruefen() {
+      if (klaraS4RebindLaeuft || !klaraS4SessionId) { return Promise.resolve(); }
+      var jetzt = klaraS4Beschreiber();
+      if (jetzt.kind !== "saved" || klaraS4GebundeneArt !== "unsaved") { return Promise.resolve(); }
+      klaraS4RebindLaeuft = true;
+      return klaraS4Abruf(
+        "/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/document-context",
+        "POST",
+        { documentDescriptor: jetzt },
+      )
+        .then(function (sicht) {
+          klaraS4GebundeneArt = "saved";
+          klaraS4Uebernehmen(sicht);
+          klaraS4RefreshPlanen();
+        })
+        .catch(function () {
+          // Der Rebind ist gescheitert: der gefuehrte Kontext passt womoeglich nicht mehr zum
+          // Dokument. Das ist genau die Lage, in der nichts mehr autorisiert sein darf.
+          klaraS4Riegel("s4RebindFehler");
+        })
+        .then(function () { klaraS4RebindLaeuft = false; });
+    }
+
+    // ============================================================================================
+    // BEN-BEFUND 3 — DIE SITZUNG WIRD BEIM SCHLIESSEN WIRKLICH GESCHLOSSEN.
+    // ============================================================================================
+    //
+    // `pagehide` ist der Lebenszyklus-Anker der Wahl — `unload` wird in modernen Engines beim
+    // Zuruecklegen in den Cache uebersprungen. OB der Word-WebView `pagehide` beim Schliessen des
+    // Aufgabenfensters wirklich feuert, ist NICHT belegt: es gab bisher keinen realen Sideload
+    // (Preflight 33/36). Belegt ist nur der Codepfad — dass der Rueckruf, WENN er kommt, genau
+    // einmal schliesst. Diese Zeile ist deshalb kein Verhaltensversprechen fuer Word.
+    // `keepalive: true` haelt den
+    // Abruf ueber das Entladen hinweg am Leben — `sendBeacon` scheidet aus, weil es die drei
+    // Bindungsheader nicht setzen kann und der Server ohne sie generisch 404 antwortet.
+    //
+    // WIEDERHOLUNG IST SICHER: `klaraS4Geschlossen` verhindert einen zweiten Aufruf, und der Ruf
+    // erzeugt KEINE lokale Autorisierung — er setzt keinen Zustand, er raeumt nur auf.
+    var klaraS4Geschlossen = false;
+
+    function klaraS4Schliessen() {
+      if (klaraS4Geschlossen || !klaraS4SessionId || !klaraS4DocumentId) { return false; }
+      klaraS4Geschlossen = true;
+      klaraS4RefreshStoppen();
+      try {
+        fetch("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/close", {
+          method: "POST",
+          credentials: "include",
+          keepalive: true,
+          headers: klaraS4Header(),
+        }).catch(function () { /* das Fenster geht ohnehin; der Server laesst die Sitzung ablaufen */ });
+      } catch (e) { /* kein fetch mehr verfuegbar — der serverseitige Ablauf traegt weiter */ }
+      return true;
+    }
+    // KW-KLARA-S4-FETCH-END
+
+    // KW-S4-22: `klaraS4Payloadklasse()` ist ENTFALLEN. Sie las `payloadClass` und
+    // `allowedPayloadClasses` — beides ausdrueckliche No-Gos des kanonischen Vertrags. Massgeblich
+    // ist allein `resolution.effectivePayloadClasses`, gelesen in `klaraS4Payloadklassen`.
+
+    function klaraS4Consentmeldung(ton, text) {
+      var box = document.getElementById("klara-consent-status");
+      if (!box) { return; }
+      box.className = ton ? "status " + ton : "status hidden";
+      box.textContent = text;
+    }
+
+    /**
+     * Die Anzeige. Sie SCHREIBT nur, was `klaraS4Anzeige` aus der Serverantwort abgeleitet hat —
+     * und laesst weg, was der Server nicht gesagt hat, statt es zu ersetzen.
+     */
+    function renderKlaraS4() {
+      var gruppe = document.getElementById("klara-s4");
+      if (!gruppe) { return; }
+      var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      document.getElementById("klara-s4-label").textContent = t("s4Label");
+      var pille = document.getElementById("klara-s4-mode");
+      pille.textContent = a.modeKey ? t(a.modeKey) : t(a.stateKey);
+      pille.className = "trust-pill trust-pill-" + a.tone;
+      // Anbieter und Modell WOERTLICH. Kein Wert, keine Zeile — nie ein Platzhalter, der wie ein
+      // Anbieter aussieht.
+      var anbieter = document.getElementById("klara-s4-provider");
+      var anbieterText = a.provider && a.model
+        ? t("s4Anbieter", { provider: a.provider, model: a.model })
+        : "";
+      anbieter.textContent = anbieterText;
+      anbieter.className = anbieterText ? "s4-line" : "s4-line hidden";
+      var abw = document.getElementById("klara-s4-deviation");
+      var abwText = a.blockedKey
+        ? t("s4Blockiert", { grund: t(a.blockedKey) })
+        : a.deviationKey
+          ? t("s4Abweichung", { soll: t(a.adminModeKey), grund: t(a.deviationKey) })
+          : a.veraltet
+            ? t("s4Veraltet")
+            : "";
+      abw.textContent = abwText;
+      abw.className = abwText ? "s4-line s4-line-muted" : "s4-line s4-line-muted hidden";
+      document.getElementById("klara-s4-session").textContent =
+        a.consentKey ? t("s4Sitzung", { stand: t(a.consentKey) }) : t("s4SitzungKeine");
+
+      // Der Zustimmungskasten: sichtbar GENAU dann, wenn der Server ihn verlangt.
+      var karte = document.getElementById("klara-consent-card");
+      karte.className = a.consentVisible || a.revokeVisible ? "card" : "card hidden";
+      document.getElementById("klara-consent-title").textContent = t("s4ConsentTitel");
+      document.getElementById("klara-consent-body").textContent = t("s4ConsentText");
+      // KW-S4-22: der Umfang nennt Anbieter, Modell, Sitzung und die EFFEKTIVEN Datenklassen.
+      // Sind die Klassen nicht aufgeloest, steht dort kein Ersatzwert, sondern der ausdrueckliche
+      // Satz, dass ohne sie nicht zugestimmt werden kann.
+      document.getElementById("klara-consent-scope").textContent = a.payloadResolved
+        ? t("s4ConsentUmfang", {
+            provider: a.provider || t("s4Unbekannt"),
+            model: a.model || t("s4Unbekannt"),
+            session: klaraS4SessionId || t("s4Unbekannt"),
+            klassen: a.payloadClasses.join(", "),
+          })
+        : t("s4ConsentKlassenFehlen");
+      // Serverseitig ausgeschlossene Klassen werden GENANNT, nicht still entfernt (KW-S4-22 §4).
+      var blockiert = document.getElementById("klara-consent-blocked");
+      if (a.blockedClasses.length > 0) {
+        var teile = [];
+        for (var bi = 0; bi < a.blockedClasses.length; bi += 1) {
+          var bc = a.blockedClasses[bi];
+          teile.push(bc.reasonCode ? bc.payloadClass + " (" + bc.reasonCode + ")" : bc.payloadClass);
+        }
+        blockiert.textContent = t("s4ConsentKlassenBlockiert", { klassen: teile.join(", ") });
+        blockiert.className = "muted";
+      } else {
+        blockiert.textContent = "";
+        blockiert.className = "muted hidden";
+      }
+      var zu = document.getElementById("klara-consent-grant");
+      zu.textContent = t("s4ConsentKnopf");
+      // NICHT `consentVisible`, sondern `consentPossible`: ohne aufgeloeste Datenklassen gibt es
+      // keinen Knopf, der eine unbestimmte Zustimmung erteilen koennte.
+      zu.className = a.consentPossible ? "primary" : "primary hidden";
+      var weg = document.getElementById("klara-consent-revoke");
+      weg.textContent = t("s4ConsentWiderruf");
+      weg.className = a.revokeVisible ? "ghost" : "ghost hidden";
+      updateAskState();
+    }
+
+    /**
+     * Fragen ist gesperrt, solange der Server die Ausfuehrung nicht erlaubt — UND solange der
+     * clientseitige Riegel steht (BEN-Befund 2). Waehrend `laedt`, `unerreichbar` oder
+     * `keineSitzung` wird weiterhin nicht gesperrt: das waere eine Behauptung ueber Ungelesenes.
+     */
+    function klaraS4FragenGesperrt() {
+      if (klaraS4Riegelstand) { return true; }
+      return klaraS4Phase === "bereit"
+        && klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now()).askAllowed === false;
+    }
+
     // (a) Ehrlicher Anmelde-Status: GET /api/auth/me (bestehender Session-Endpunkt der App) mit
     // credentials: "include" — same-origin, da das Taskpane AUF der App-Domain liegt.
     function checkSession() {
@@ -1457,6 +2817,11 @@
           }
           // K5: der Knopf haengt an Anmeldung UND Office-Bereitschaft (eine Entscheidungsstelle).
           updateSendState();
+          // AUFTRAG-37 (G3): der belegte Anmelde-Erfolg ist der Moment, in dem eine fehlende
+          // Sitzung nachgeholt werden darf. `klaraS4NachAnmeldung` prueft selbst, ob ueberhaupt
+          // eine fehlt — dieser Aufruf ist deshalb gefahrlos, auch wenn `checkSession` (ueber
+          // `setLang`) mehrfach laeuft.
+          if (signedIn) { klaraS4NachAnmeldung(); }
         })
         .catch(function () {
           signedIn = false;
@@ -1886,13 +3251,26 @@
       // AUFTRAG-mega81 BLOCK A: die Kennzeichnung einer FRUEHEREN Antwort darf nie stehen bleiben —
       // sie gehoert zu der Antwort, ueber die der Server sie gesagt hat, und zu keiner anderen.
       renderAiNotice(null);
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: dasselbe fuer Einstufung, Vorbehalt, Konfliktlage
+      // und Ausschnitt. Ein Vorbehalt der VORIGEN Frage neben der naechsten Antwort waere eine
+      // Falschaussage — und ein stehengebliebenes „keine offenen Konflikte" die gefaehrlichste.
+      // `currentAskOutcome` ist hier bereits null; renderAskEvidence raeumt daran entlang.
+      renderAskEvidence();
       // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
       hideCopyFallback();
     }
 
     // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
+    //
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: dazu kommt die serverseitige Ausfuehrbarkeit. Sagt die
+    // Auflösung `executionAllowed: false`, ist der Knopf gesperrt UND traegt den Grund als Titel —
+    // ein gesperrter Knopf ohne Grund ist eine Sackgasse. Solange der Stand noch laedt oder nicht
+    // abrufbar ist, wird NICHT gesperrt: das waere eine Behauptung ueber etwas Ungelesenes.
     function updateAskState() {
-      document.getElementById("ask-btn").disabled = !signedIn;
+      var gesperrt = klaraS4FragenGesperrt();
+      var btn = document.getElementById("ask-btn");
+      btn.disabled = !signedIn || gesperrt;
+      btn.title = gesperrt ? t("s4FragenGesperrt") : "";
       updateInsertState();
     }
 
@@ -2006,6 +3384,24 @@
         badge.className = "src-badge src-badge-" + resolved[i].status;
         badge.textContent = t(ASK_STATUS_KEYS[resolved[i].status] || "askStatusUnknown");
         item.appendChild(badge);
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
+        // oder nur herangezogen. Zwei verschiedene Aussagen stehen hier nebeneinander: die Pille
+        // links sagt, wie REIF die Quelle ist; dieser Zusatz sagt, ob die Antwort auf ihr STEHT.
+        // Ohne `citedSources` (alter Server) wird keine Rolle behauptet und nichts angezeigt.
+        var rolle = askSourceRole(
+          resolved[i].id,
+          currentAskOutcome ? currentAskOutcome.citedSources : undefined
+        );
+        if (rolle !== "unknown") {
+          // Reiner Text wie der Trust-Wert darunter — keine eigene Regel, keine eigene Farbe.
+          // Die Unterscheidung traegt das WORT; das ist zugleich die Loesung des Kontrastwaechters
+          // (s. Stilblock) und die zugaenglichere Darstellung.
+          item.appendChild(
+            document.createTextNode(
+              " — " + t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted")
+            )
+          );
+        }
         if (resolved[i].trust !== null) {
           item.appendChild(
             document.createTextNode(" — " + t("askTrust", { n: String(resolved[i].trust) }))
@@ -2014,6 +3410,101 @@
         list.appendChild(item);
       }
       document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
+    }
+
+    // ============================================================================================
+    // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — EINE STELLE FUER DIE GANZE EVIDENZ.
+    // ============================================================================================
+    //
+    // Sie liest `currentAskOutcome` und ist deshalb auch nach einem SPRACHWECHSEL aufrufbar, ohne
+    // dass die Antwort neu geholt werden muss. Drei Aussagen, sichtbar GETRENNT:
+    //   1. die Einstufung (belegt / nicht belegt)      — unveraendert aus mega34,
+    //   2. der benannte Pruefvorbehalt samt Zaehlung   — bis hierher unsichtbar,
+    //   3. die Konfliktlage                            — bis hierher von 2. ununterscheidbar.
+    // Dazu der real gelieferte Ausschnitt, sofern er nicht ohnehin die Antwort ist.
+    //
+    // Nichts davon wird berechnet: `askEvidenceDetail` liest nur `outcome.evidence` (KW-W1-13).
+    var ASK_CAVEAT_TEXT_KEYS = {
+      unknown: "askCaveatUnknown",
+      unchecked: "askCaveatUnchecked",
+      noCoverage: "askCaveatNoCoverage",
+      incomplete: "askCaveatIncomplete",
+      unattributed: "askCaveatUnattributed",
+      other: "askCaveatOther",
+    };
+    var ASK_CONFLICT_TEXT_KEYS = {
+      conflicted: "askConflictConflicted",
+      unproven: "askConflictUnproven",
+      clear: "askConflictClear",
+    };
+
+    // Die beiden Zeilen sind FESTE Elemente des Markups: sie werden gefuellt und ein-/ausgeblendet,
+    // nicht erzeugt. Sie benutzen dieselben `.status`-Toene wie die Einstufungszeile darueber —
+    // deckende Flaechen, vom Kontrastwaechter eindeutig messbar (s. Stilblock).
+    function evidenceLine(id, textValue, tone) {
+      var el = document.getElementById(id);
+      if (!el) { return; }
+      if (!textValue) {
+        el.className = "status warn hidden";
+        el.textContent = "";
+        return;
+      }
+      el.className = "status " + tone;
+      el.textContent = textValue;
+    }
+
+    function renderAskEvidence() {
+      var noteEl = document.getElementById("ask-evidence-note");
+      var snippetBlock = document.getElementById("ask-snippet-block");
+      if (!noteEl || !snippetBlock) { return; }
+      var outcome = currentAskOutcome;
+      if (!outcome || outcome.kind !== "answered") {
+        noteEl.className = "status hidden";
+        noteEl.textContent = "";
+        evidenceLine("ask-caveat-line", "", "warn");
+        evidenceLine("ask-conflict-line", "", "warn");
+        snippetBlock.className = "hidden";
+        return;
+      }
+      // 1. Die Einstufung — unveraendert dieselbe Auswahl wie fuer Kopieren und Einfuegen.
+      var askGrade = askGradeOf(outcome.evidence);
+      noteEl.textContent = answerInsertEvidenceNote(askGrade, {
+        verified: t("askEvidenceVerified"),
+        unverified: t("askEvidenceUnverified"),
+      });
+      noteEl.className = askGrade === "verified" ? "status" : "status warn";
+
+      var detail = askEvidenceDetail(outcome.evidence);
+      // 2. Der benannte Vorbehalt. Ein unbekannter Grund wird generisch benannt — NIE verschwiegen.
+      var vorbehalt = "";
+      if (detail.caveat) {
+        var grund = t(ASK_CAVEAT_TEXT_KEYS[detail.caveat.key] || "askCaveatOther");
+        var zahl =
+          detail.caveat.total > 0
+            ? " " + t("askCaveatCount", {
+                unproven: String(detail.caveat.unproven),
+                total: String(detail.caveat.total),
+              })
+            : "";
+        vorbehalt = grund + zahl;
+      }
+      evidenceLine("ask-caveat-line", vorbehalt, "warn");
+      // 3. Die Konfliktlage — EIGENE Zeile, eigener Ton. „nicht geprueft" ist nicht „keine".
+      evidenceLine(
+        "ask-conflict-line",
+        t(ASK_CONFLICT_TEXT_KEYS[detail.conflict] || "askConflictUnproven"),
+        detail.conflict === "clear" ? "ok" : "warn"
+      );
+
+      // Der Ausschnitt — hoechstens einer, und nur wenn er nicht die Antwort selbst ist.
+      if (askSnippetWorthShowing(outcome.answer, outcome.snippet)) {
+        document.getElementById("ask-snippet-label").textContent = t("askSnippetLabel");
+        document.getElementById("ask-snippet-text").textContent = outcome.snippet;
+        snippetBlock.className = "";
+      } else {
+        snippetBlock.className = "hidden";
+        document.getElementById("ask-snippet-text").textContent = "";
+      }
     }
 
     function renderAskOutcome(outcome, truncated) {
@@ -2029,13 +3520,10 @@
         // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
         // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
         // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
-        var askGrade = askGradeOf(outcome.evidence);
-        var evidenceEl = document.getElementById("ask-evidence-note");
-        evidenceEl.textContent = answerInsertEvidenceNote(askGrade, {
-          verified: t("askEvidenceVerified"),
-          unverified: t("askEvidenceUnverified"),
-        });
-        evidenceEl.className = askGrade === "verified" ? "status" : "status warn";
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: Einstufung, Vorbehalt, Konfliktlage und Ausschnitt
+        // entstehen jetzt an EINER Stelle (renderAskEvidence) — dieselbe, die auch der
+        // Sprachwechsel ruft. Zwei Aufrufstellen waeren zwei Gelegenheiten auseinanderzulaufen.
+        renderAskEvidence();
         // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
         // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
         // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
@@ -2109,6 +3597,14 @@
     }
 
     function askKlara() {
+      // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: der zweite Riegel. Der gesperrte Knopf ist die Anzeige,
+      // DIESE Zeile ist die Wirkung — bei `executionAllowed: false` verlaesst KEINE Anfrage das
+      // Aufgabenfenster. Ein Gate, das nur ein `disabled`-Attribut ist, ist kein Gate.
+      if (klaraS4FragenGesperrt()) {
+        resetAskResult();
+        showAskStatus("warn", t("s4FragenGesperrt"));
+        return;
+      }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
         if (prep.from === "empty") {
@@ -2549,6 +4045,10 @@
       officeChecked = true;
       officeReady = Boolean(ready);
       updateSendState();
+      // AUFTRAG-37 (G2): erst JETZT steht fest, ob Office einen Dokumentkontext liefert. Vorher
+      // war jede Bindung geraten. Das Tor oeffnet genau einmal — ein spaeter Rueckruf nach der
+      // Frist findet es offen (AK3).
+      klaraS4OfficeGeklaertMelden();
     }
     if (window.Office && Office.onReady) {
       var officeTimer = setTimeout(function () { markOfficeChecked(false); }, OFFICE_READY_TIMEOUT_MS);
@@ -2565,6 +4065,24 @@
     // AUFTRAG-mega75 Block A: dito fuer die KI-Lage. Sie haengt nicht an Office und nicht an der
     // Anmeldung (die Route ist oeffentlich) — bis die Antwort da ist, steht ehrlich „wird geprueft".
     ladeAiLage();
+    // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: die Sitzung wird beim Laden des Aufgabenfensters eroeffnet
+    // und danach der gebundene Stand gelesen. Die beiden Knoepfe des Zustimmungskastens haengen
+    // hier — nicht an inline-Attributen, damit sie derselben Content-Security-Policy folgen wie
+    // alle uebrigen Schaltflaechen dieses Fensters.
+    document.getElementById("klara-consent-grant").addEventListener("click", klaraS4Zustimmen);
+    document.getElementById("klara-consent-revoke").addEventListener("click", klaraS4Widerrufen);
+    // BEN-BEFUND 3: die Sitzung wird beim Verlassen des Fensters WIRKLICH geschlossen. `pagehide`
+    // statt `unload` — moderne Engines ueberspringen `unload` beim Zuruecklegen in den Cache.
+    window.addEventListener("pagehide", function () { klaraS4Schliessen(); });
+    // BEN-BEFUND 4: Rueckkehr der Sichtbarkeit und Fokus sind belegte Lebenszykluspunkte, an denen
+    // ein Stand veraltet sein KANN. Beide fragen nach — gedrosselt, nie ueberlappend.
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) { klaraS4RefreshAnlass("sichtbar"); }
+    });
+    window.addEventListener("focus", function () { klaraS4RefreshAnlass("fokus"); });
+    // AUFTRAG-37: ANFORDERN statt starten. Der Aufbau geschieht, sobald die bereits vorhandene
+    // begrenzte Office-Erkennung ein Ergebnis hat — durch ihren Rueckruf oder durch ihre Frist.
+    klaraS4StartAnfordern();
   </script>
 </body>
 </html>

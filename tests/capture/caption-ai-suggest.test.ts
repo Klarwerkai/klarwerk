@@ -8,28 +8,28 @@ import { describe, expect, it } from "vitest";
 import {
   CAPTION_AI_TEXT,
   MAX_CAPTION_IMAGE_DATAURL_CHARS,
-  applyCaptionSuggestion,
+  applyCaptionHtml,
   captionResponseApplicable,
   captionSuggestOutcome,
-  captionSuggestVisible,
   checkCaptionImageDataUrl,
 } from "../../apps/web/src/lib/captionAiSuggest";
 import { MAX_DESCRIBE_IMAGE_DATAURL_CHARS } from "../../services/reasoner";
 
 describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
-  it("der Knopf erscheint NUR im Editier-Modus, mit Fußnote und verdrahtetem Aufruf", () => {
-    expect(captionSuggestVisible("edit", true, true)).toBe(true);
-    // Leseansicht/Vorschau: NIE (Pedis Präzisierung — Vorschlag nur beim Bearbeiten).
-    expect(captionSuggestVisible("preview", true, true)).toBe(false);
-    // Ohne fokussierte Fußnote oder ohne Handler: kein toter Klick.
-    expect(captionSuggestVisible("edit", false, true)).toBe(false);
-    expect(captionSuggestVisible("edit", true, false)).toBe(false);
-  });
+  // AUFTRAG-mega84 Block A: Hier stand der Fall zu `captionSuggestVisible` — der Sichtbarkeitsregel
+  // des INLINE-Vorschlagsknopfes an der fokussierten Fußnote. Diese Fläche gibt es nicht mehr (die
+  // Fußnote ist der Einstieg ins Formular, nicht selbst ein Tippfeld), die Funktion damit auch nicht.
+  // Ihre eine echte Zusage — „nie in der Leseansicht" — hält jetzt der Editor baulich: die
+  // Verankerung, die die Fußnote überhaupt erst bedienbar macht, läuft ausschließlich im
+  // Bearbeiten-Modus (gepinnt in editor-figure-caption-mounted).
 
-  it("Übernehmen setzt den Vorschlag als Fußnoten-TEXT (normale Editier-Mechanik, kein HTML)", () => {
-    const caption = { textContent: "alter Text" };
-    applyCaptionSuggestion(caption, "Eine Kreiselpumpe auf dem Prüfstand.");
-    expect(caption.textContent).toBe("Eine Kreiselpumpe auf dem Prüfstand.");
+  it("Übernehmen schreibt den Vorschlag als sanitisiertes Fußnoten-HTML (Formatierung bleibt erhalten)", () => {
+    // AUFTRAG-mega84 Block B: die Fußnote trägt seit heute fett/kursiv/Umbruch — geschrieben wird
+    // deshalb innerHTML statt textContent. Was hier ankommt, ist immer schon durch
+    // `sanitizeCaptionHtml` gelaufen (siehe richText-Fälle).
+    const caption = { innerHTML: "<em>alter</em> Text" };
+    applyCaptionHtml(caption, "Eine <strong>Kreiselpumpe</strong> auf dem Prüfstand.");
+    expect(caption.innerHTML).toBe("Eine <strong>Kreiselpumpe</strong> auf dem Prüfstand.");
   });
 
   it("Modell-Text wird zum Vorschlag; jeder Fallback bekommt seine ehrliche Ursachen-Meldung", () => {
@@ -94,22 +94,42 @@ describe("WP-BILD-1c: Fußnoten-KI-Vorschlag (pure UI-Logik)", () => {
     }
   });
 
-  it("Editor-Verdrahtung: Sichtbarkeit läuft über captionSuggestVisible, Übernahme über applyCaptionSuggestion", () => {
+  it("Editor-Verdrahtung: EIN Weg in das Formular, EIN describe-Aufruf, Übernahme über applyCaptionHtml", () => {
     const editorSrc = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
       "utf8",
     );
-    // Der Knopf ist an die pure Sichtbarkeitsregel gebunden (kein eigener Zweitpfad im JSX) …
-    // AUFTRAG-mega50 Block A: die Regel selbst ist unverändert; ihr dritter Parameter („ist ein
-    // describe-Weg verdrahtet?") ist baulich immer wahr geworden, seit der Weg aus der App kommt
-    // statt aus dem Prop `onDescribeImage`. Genau dieser Parameter war es, der Vorschlagsleiste und
-    // Formular auf zwei der vier Flächen still verschwinden ließ.
-    expect(editorSrc).toContain("captionSuggestVisible(mode, selectedCaption !== null, true)");
-    // Dass der alte, vergessliche Vertrag wirklich weg ist (und nicht nur ungenutzt herumsteht),
-    // hält `tests/app/mega50-bildbeschreibung-sammler.test.ts` — dort wird der Quelltext ohne
-    // Kommentare gelesen, sonst schlüge die Erklärung des Umbaus als Fundstelle durch.
-    // … die Übernahme nutzt die normale Editier-Mechanik (textContent + emit, kein innerHTML).
-    expect(editorSrc).toContain("applyCaptionSuggestion(selectedCaption, captionAi.text)");
+    // AUFTRAG-mega84 Block A: hier stand der Pin auf `captionSuggestVisible(mode, selectedCaption
+    // !== null, true)` — die Sichtbarkeitsregel der INLINE-Vorschlagsleiste an der fokussierten
+    // Fußnote. Diese Leiste gibt es nicht mehr: die Fußnote ist kein Editing-Host, sie hat keinen
+    // Cursor, und ihr Klick öffnet das Formular. Ein Pin auf eine Bedingung, die nie mehr wahr
+    // werden kann, wäre ein grüner Test über eine tote Fläche.
+    expect(editorSrc).not.toContain("captionSuggestVisible");
+    // Der Zustand dahinter ist ebenfalls weg — geprüft am Quelltext OHNE Kommentare, sonst schlüge
+    // die Erklärung des Umbaus als Fundstelle durch (Muster aus dem mega50-Sammler).
+    const ohneKommentare = editorSrc
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/(^|[^:])\/\/[^\n]*/g, "$1");
+    expect(ohneKommentare).not.toContain("selectedCaption");
+
+    // Was an ihre Stelle tritt: ALLE Wege ins Formular laufen durch EINE Funktion. Das ist der
+    // bauliche Grund, warum es weiterhin nur ein Formular gibt — Klick auf die Beschreibung,
+    // Tastatur, der Knopf der Bild-Werkzeugleiste und die Galerie-Bitte (mega69).
+    expect(editorSrc).toContain(
+      "const openCaptionFormForCaption = (caption: HTMLElement): void =>",
+    );
+    expect((editorSrc.match(/openCaptionFormForCaption\(/g) ?? []).length).toBeGreaterThanOrEqual(
+      3,
+    );
+
+    // AUFTRAG-mega84 Block B: geschrieben wird HTML (fett/kursiv/Umbruch), aber ausschließlich
+    // sanitisiertes — und die Grenze zählt Klartext, nicht Markup.
+    expect(editorSrc).toContain("applyCaptionHtml(");
+    expect(editorSrc).toContain("sanitizeCaptionHtml(");
+    expect(editorSrc).toContain("capCaptionHtml(");
+
+    // Unverändert: EIN describe-Aufruf mit EINER Deckelprüfung davor.
     expect(editorSrc).toContain("checkCaptionImageDataUrl(dataUrl)");
+    expect((editorSrc.match(/imageDescribe\.describe\(/g) ?? []).length).toBe(1);
   });
 });

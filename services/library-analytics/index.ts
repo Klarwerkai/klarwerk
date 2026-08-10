@@ -32,7 +32,11 @@ export {
   type CandidateRepo,
   type ClaimResolution,
 } from "./src/repo";
-export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA } from "./src/repo-pg";
+// W2-A (KW-W2-17): die Quellrevisions-DDL gehoert in die Fassade, weil `services/app/src/db.ts`
+// ausschliesslich hierueber importieren darf (dependency-cruiser). Ohne diese Ausleitung war die
+// in `repo-pg.ts` exportierte Konstante fuer die App unerreichbar — der Migrationswaechter meldete
+// sie zu Recht als nicht migriert (Preflight 39 F1, Preflight 52 §2).
+export { PgCandidateRepo, IMPORT_CANDIDATES_SCHEMA, EXTERNAL_SOURCE_SCHEMA } from "./src/repo-pg";
 export type {
   ImportItem,
   ImportResult,
@@ -113,3 +117,48 @@ export {
   captionsMatchQuery,
   LEGACY_IMAGE_CAPTION_PLACEHOLDERS,
 } from "./src/search-captions";
+// ================================================================================================
+// AUFTRAG-144 (KW-S4-28 F1) — DIE W2-A-LAUFDOMAENE AN DER MODULGRENZE
+// ================================================================================================
+//
+// L2 AUS BASIC-PREFLIGHT 141, HIER GESCHLOSSEN: die Quellrevisions-DDL war ausgeleitet, `Repo` und
+// `Typ` aber nicht — „die Tabelle wird angelegt und bleibt leer, weil der Repo hinter der
+// Modulgrenze eingeschlossen ist". Ohne diese Ausleitung kann die Kompositionswurzel gar keine
+// Instanz halten, und jede weitere Zeile waere unmoeglich.
+//
+// ENG UND ADDITIV (Auftragsvertrag §1): ausgeleitet werden ausschliesslich die oeffentlichen Typ-
+// und Repovertraege sowie die Schemakonstante, die `services/app/src/db.ts` importieren MUSS.
+// KEINE internen Tabellen- oder Hilfsdetails: `importRunSnapshot`, `ImportRunRow`, die
+// Schluesselbildung und die Zeilenformen bleiben drinnen.
+export {
+  InMemoryExternalSourceRepo,
+  InMemoryImportRunRepo,
+  pruefeImportRun,
+  pruefeImportRunItemRef,
+  type ExternalSourceRepo,
+  type ImportRunFortschritt,
+  type ImportRunRepo,
+} from "./src/repo";
+export { IMPORT_RUN_SCHEMA, PgExternalSourceRepo, PgImportRunRepo } from "./src/repo-pg";
+export {
+  IMPORT_ITEM_OUTCOMES,
+  IMPORT_RUN_STATUSES,
+  IMPORT_FAILURE_REASON_MAX_CHARS,
+  istImportItemOutcome,
+  istImportRunStatus,
+  pruefeGapBindung,
+  pruefeInhaltsreferenzBindung,
+  sanitizeImportFailureReason,
+} from "./src/types";
+export type {
+  ContentReferenceBinding,
+  ContentReferenceState,
+  ExternalSourceRecord,
+  ImportItemOutcome,
+  ImportRun,
+  ImportRunCounters,
+  ImportRunItemRef,
+  ImportRunStatus,
+  KnowledgeGapBinding,
+  KnowledgeGapRelationState,
+} from "./src/types";

@@ -51,7 +51,14 @@ export function imageCaptionTexts(bodyHtml: string | null | undefined): string[]
     }
     const text = bodyHtml
       .slice(openEnd + 1, close)
-      .replace(/<[^>]*>/g, " ")
+      // AUFTRAG-mega84 Block B: die Fußnote trägt seit heute Auszeichnung (fett/kursiv/Umbruch).
+      // Vorher wurde JEDES Tag durch ein Leerzeichen ersetzt — bei tag-freien Fußnoten folgenlos,
+      // bei ausgezeichneten aber nicht: aus „<em>Ventil V2</em>," wurde „Ventil V2 ,". Derselbe
+      // Text hätte sich damit je nach Formatierung unterschieden, und eine Suche nach
+      // „V2, sichtbar" hätte die formatierte Fußnote nicht mehr gefunden. Ein Umbruch IST eine
+      // Wortgrenze und bleibt ein Leerzeichen; Auszeichnung ist keine und verschwindet spurlos.
+      .replace(/<br\s*\/?>/gi, " ")
+      .replace(/<[^>]*>/g, "")
       .replace(/\s+/g, " ")
       .trim();
     if (text.length > 0 && !LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(text)) {

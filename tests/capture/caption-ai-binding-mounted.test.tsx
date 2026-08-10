@@ -1,10 +1,16 @@
 // @vitest-environment jsdom
 // WP-BILD-1f (bens P1, PFLICHT-Test): der KI-Beschreibungs-Vorschlag ist FEST an seine
 // Ausgangs-Fußnote gebunden. Deferred-Promise-Szenario A → B: der Nutzer startet den Vorschlag in
-// Fußnote A, wechselt WÄHREND des laufenden Requests in Fußnote B — As späte Antwort darf weder
+// Fußnote A, wechselt WÄHREND des laufenden Requests zu Fußnote B — As späte Antwort darf weder
 // das Panel noch den Inhalt von B verändern (still verworfen). Gegenprobe: bleibt der Nutzer auf A,
 // erscheint der Vorschlag und die Übernahme trifft exakt A. Echter React-Mount (Muster WP-D8b:
 // react-dom/client + act aus apps/web/node_modules, createElement statt JSX).
+//
+// AUFTRAG-mega84 Block A: DER WEG ZUM VORSCHLAG HAT SICH GEÄNDERT, DIE ZUSAGE NICHT. Bis mega82
+// klickte man IN die Fußnote (Editing-Host) und bekam eine Vorschlagsleiste am oberen Editorrand;
+// seit mega84 öffnet derselbe Klick das Formular, und der Vorschlag lebt darin. Der Fußnoten-Wechsel
+// mitten im Request ist damit ein Formular-Wechsel — der Fall, den dieser Test beschreibt, ist
+// unverändert erreichbar und bleibt gepinnt. Verschoben hat sich nur, WO der Nutzer klickt.
 import { afterEach, describe, expect, it } from "vitest";
 import { act, createElement, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
@@ -40,7 +46,7 @@ function deferred(): Deferred {
 function Host({ onDescribe }: { onDescribe: () => Promise<DescribeImageResult> }) {
   const [value, setValue] = useState(TWO_FIGURES);
   return mitBildbeschreibung(
-    createElement(RichTextEditor, { value, onChange: setValue }),
+    createElement(RichTextEditor, { value, onChange: setValue, documentTitle: "Wartungsnotiz" }),
     onDescribe,
   );
 }
@@ -62,19 +68,26 @@ function caption(imageId: string): HTMLElement {
   return cap;
 }
 
+// AUFTRAG-mega84 Block A: der Klick auf die Fußnote öffnet das Formular für genau dieses Bild.
 function clickInto(el: HTMLElement): void {
   act(() => {
     el.dispatchEvent(new MouseEvent("click", { bubbles: true }));
   });
 }
 
-// Der Vorschlags-Knopf ist der EINZIGE ✨-Knopf (kein aiPanel gemountet).
+// Der Vorschlags-Knopf des Formulars — seit mega84 der einzige, den es überhaupt noch gibt.
 function suggestButton(): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").includes("✨"),
-  );
+  const btn = container.querySelector('[data-testid="caption-form-suggest"]');
   if (!(btn instanceof HTMLButtonElement)) {
     throw new Error("Vorschlags-Knopf nicht gerendert");
+  }
+  return btn;
+}
+
+function knopf(testid: string): HTMLButtonElement {
+  const btn = container.querySelector(`[data-testid="${testid}"]`);
+  if (!(btn instanceof HTMLButtonElement)) {
+    throw new Error(`Knopf ${testid} nicht gerendert`);
   }
   return btn;
 }
@@ -91,13 +104,13 @@ describe("WP-BILD-1f P1: Vorschlag ist an die Ausgangs-Fußnote gebunden (Deferr
     const d = deferred();
     mount(() => d.promise);
 
-    // In Fußnote A klicken → Knopf erscheint → Vorschlag anfordern (Request hängt am Deferred).
+    // Auf Fußnote A klicken → das Formular für A öffnet → Vorschlag anfordern (hängt am Deferred).
     clickInto(caption("kw-a"));
     await act(async () => {
       suggestButton().click();
     });
 
-    // WÄHREND des laufenden Requests in Fußnote B wechseln.
+    // WÄHREND des laufenden Requests auf Fußnote B wechseln (das Formular zeigt jetzt B).
     clickInto(caption("kw-b"));
 
     // JETZT erst antwortet das Modell — die Antwort gehört zu A, das Ziel hat gewechselt.
@@ -125,18 +138,19 @@ describe("WP-BILD-1f P1: Vorschlag ist an die Ausgangs-Fußnote gebunden (Deferr
       await Promise.resolve();
     });
 
-    // Panel zeigt den Vorschlag (Ziel unverändert).
+    // Das Formular zeigt den Vorschlag (Ziel unverändert).
     expect(container.textContent ?? "").toContain("Eine Kreiselpumpe auf dem Prüfstand.");
-    // Übernehmen-Knopf (gefüllter bg-ai-Primärknopf im Panel) → Text landet in A, nicht in B.
-    const applyBtn = [...container.querySelectorAll("button")].find((b) =>
-      b.className.includes("bg-ai "),
-    );
-    if (!(applyBtn instanceof HTMLButtonElement)) {
-      throw new Error("Übernehmen-Knopf nicht gerendert");
-    }
+
+    // Übernehmen setzt ihn ins FELD — nicht in die Fußnote. Erst Speichern schreibt.
     act(() => {
-      applyBtn.click();
+      knopf("caption-form-adopt").click();
     });
+    expect(caption("kw-a").textContent).toBe("A");
+    act(() => {
+      knopf("caption-form-save").click();
+    });
+
+    // Jetzt trifft er exakt A — und B bleibt unberührt.
     expect(caption("kw-a").textContent).toBe("Eine Kreiselpumpe auf dem Prüfstand.");
     expect(caption("kw-b").textContent).toBe("B");
   });

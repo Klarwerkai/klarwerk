@@ -179,14 +179,29 @@ describe("Tor-Ausnahme (AUFTRAG-mega25 Block B)", () => {
 
     // Was das Tor tatsächlich fährt (mit allen seinen Filtern) …
     const imTor = new Set(list([...gate.args], gateEnv).map(schluessel));
-    // … gegen die vollständige Suite unter derselben Konfiguration, auf die Engine des Tors begrenzt.
-    const projektArg = gate.args.find((a) => a.startsWith("--project"));
-    alle = list([...configArgs, ...(projektArg ? [projektArg] : [])], gateEnv);
+    // … gegen die vollständige Suite unter derselben Konfiguration, auf die Projekte des Tors
+    // begrenzt.
+    //
+    // AUFTRAG-163 — HIER STAND `find` STATT `filter`, UND DAS WAR EINE STILLE LÜCKE.
+    // Seit das Tor ZWEI Projekte fährt (`--project=chromium --project=chromium-zustand`, der
+    // isolierte Kontext des Demo-Kernwegs), hätte `find` nur das erste genommen: `imTor` kannte dann
+    // beide Projekte, `alle` nur eines. Die Differenz wäre weiterhin berechenbar gewesen — der Pin
+    // hätte das zweite Projekt aber schlicht nicht mehr abgedeckt und das nirgends gesagt. Genau
+    // diese Sorte lautloser Schwächung ist der Grund, aus dem es diesen Pin überhaupt gibt
+    // (mega25 Block B). `filter` nimmt alle konfigurierten Projektargumente.
+    const projektArgs = gate.args.filter((a) => a.startsWith("--project"));
+    alle = list([...configArgs, ...projektArgs], gateEnv);
 
     // Der Setup-Lauf ist Vorbedingung, kein Prüffall: er hängt als `dependencies` an jeder Engine und
     // steht in BEIDEN Aufzählungen. Ausgenommen ist er damit nie.
+    //
+    // AUFTRAG-163: seit dem isolierten Kontext gibt es ein ZWEITES Setup (`setup-zustand`) — der
+    // zweite Server hat einen eigenen, jungfräulichen Bestand und braucht seine eigene
+    // Ersteinrichtung. Der Filter fragt deshalb nach dem PRÄFIX statt nach dem exakten Namen; sonst
+    // stünde die Ersteinrichtung des zweiten Kontexts plötzlich in der Ausnahmeliste und der Pin
+    // meldete eine Abweichung, die keine ist.
     ausgenommen = alle
-      .filter((f) => !f.projects.includes("setup"))
+      .filter((f) => !f.projects.some((p) => p.startsWith("setup")))
       .filter((f) => !imTor.has(schluessel(f)));
   });
 

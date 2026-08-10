@@ -431,6 +431,24 @@ const de = {
   "start.ctaAsk": "Frage stellen",
   "start.ctaCapture": "Wissen erfassen",
   "start.ctaValidate": "Validierung öffnen",
+  "klara.path.ariaLabel": "Klara — kommender Assistenzweg",
+  "klara.path.kicker": "Mit Klara",
+  "klara.path.soon": "Demnächst",
+  "klara.path.start.title": "Klara begleitet Wissen von Anfang an.",
+  "klara.path.start.body":
+    "Bald kannst du Wissen direkt mit Klara festhalten, strukturieren und für die Prüfung vorbereiten.",
+  "klara.path.start.cta": "Mit Klara Wissen erfassen",
+  "klara.path.capture.title": "Erzähl es Klara — sie macht daraus einen klaren Entwurf.",
+  "klara.path.capture.body":
+    "Du gibst deine Erfahrung in eigenen Worten ein. Klara hilft beim Strukturieren; du prüfst und entscheidest.",
+  "klara.path.capture.cta": "Mit Klara starten",
+  "klara.path.import.title": "Klara bereitet importiertes Wissen mit dir auf.",
+  "klara.path.import.body":
+    "Nach dem Upload hilft Klara künftig beim Ordnen, Klären und Vorbereiten für die Prüfung.",
+  "klara.path.import.cta": "Import mit Klara begleiten",
+  "klara.path.m365.summary": "Was Klara in Microsoft 365 tun wird",
+  "klara.path.m365.body":
+    "Klara ist als bidirektionales Add-in für Microsoft 365 geplant. Sie soll Wissen dort aufnehmen, wo du ohnehin arbeitest, es strukturiert für Klarwerk vorbereiten und geprüftes Unternehmenswissen aus Klarwerk direkt in Microsoft 365 bereitstellen — prüfen und entscheiden bleibt bei dir. Verfügbar ist das noch nicht.",
   "start.todo": "Heute zu tun",
   "start.workTitle": "Nächste Handlungen",
   "start.severity.critical": "jetzt",
@@ -609,7 +627,7 @@ const de = {
   "adm.ai.help":
     "Bestimme global oder je Einsatz, welche KI arbeitet. „Auto“ nutzt das Modell, wenn ein Schlüssel hinterlegt ist; „Deterministisch“ arbeitet bewusst ohne Modell. Schlüssel bleiben ausschließlich auf dem Server — nie im Browser.",
   "adm.ai.internExtern":
-    "Du kannst intern (eigener On-Prem-LLM) oder extern (Cloud) arbeiten lassen — global als Standard oder fein je Aufgabe. Die interne Option erscheint, sobald ein eigener LLM erreichbar ist; beide lassen sich mit „Key testen“ / „Lokalen LLM testen“ live prüfen.",
+    "Du kannst intern (On-Premise Enterprise AI, eigener LLM) oder extern (Cloud) arbeiten lassen — global als Standard oder fein je Aufgabe. Die interne Option erscheint, sobald ein eigener LLM erreichbar ist; beide lassen sich mit „Key testen“ / „Lokalen LLM testen“ live prüfen.",
   "adm.ai.status": "Aktiver Provider: {{provider}} · Modus: {{mode}}",
   "adm.ai.modeModel": "Modell",
   "adm.ai.modeDemo": "Deterministisch",
@@ -629,9 +647,9 @@ const de = {
   "adm.firstrun.note":
     "Kein Zwang, keine Reihenfolge: Du kannst jederzeit frei loslegen. Ausgeblendet bleibt sie ausgeblendet.",
   "adm.firstrun.ki.loading": "KI-Status wird geprüft …",
-  "adm.firstrun.ki.both": "Beide KIs verbunden: Cloud-KI und dein eigener lokaler LLM.",
+  "adm.firstrun.ki.both": "Beide KIs verbunden: Cloud-KI und deine On-Premise Enterprise AI.",
   "adm.firstrun.ki.cloudOnly":
-    "Cloud-KI verbunden. Der eigene lokale LLM ist noch nicht angebunden (Admin → KI).",
+    "Cloud-KI verbunden. Die On-Premise Enterprise AI ist noch nicht angebunden (Admin → KI).",
   "adm.firstrun.ki.localOnly":
     "Lokaler LLM verbunden. Die Cloud-KI ist noch nicht konfiguriert (Admin → KI).",
   "adm.firstrun.ki.none":
@@ -709,7 +727,7 @@ const de = {
   "adm.sich.keys.t": "Schlüssel bleiben im Schlüsselbund",
   "adm.sich.keys.b":
     "API-Schlüssel liegen ausschließlich serverseitig bzw. im macOS-Schlüsselbund — nie im Browser, nie im Code oder Repository.",
-  "adm.sich.localAi.t": "Eigene & lokale KI möglich",
+  "adm.sich.localAi.t": "On-Premise Enterprise AI möglich",
   "adm.sich.localAi.b":
     "Neben der Cloud-KI lässt sich ein eigener lokaler LLM anbinden. Die lokale KI ist nur über einen privaten Tunnel erreichbar, nie öffentlich.",
   "adm.sich.external.t": "Externe Wissensabfrage standardmäßig eingeschränkt",
@@ -1399,7 +1417,18 @@ const de = {
   "capture.draftSort.title": "Titel A→Z",
   "capture.draftAuthorLabel": "Ersteller",
   "capture.draftAuthorAll": "Alle Ersteller",
-  "capture.draftEmptyFiltered": "Keine Entwürfe passen zum Filter.",
+  // AUFTRAG-BASIC-u2: die Gegenseite derselben Frage. Diese Suche durchsucht AUSSCHLIESSLICH die
+  // gespeicherten Entwürfe; „Keine Entwürfe passen zum Filter." war eine Auskunft über einen
+  // Filter, nicht über einen Suchraum, und liess offen, wo das Gesuchte sonst stehen könnte.
+  // Die Admin-Ansicht sieht ALLE Entwürfe — sie bekommt deshalb einen eigenen, wahren Satz statt
+  // einer Behauptung über „deine" Entwürfe.
+  "capture.draftScope.note":
+    "Diese Suche durchsucht nur deine gespeicherten Entwürfe — kein Wissen aus der Bibliothek.",
+  "capture.draftScope.noteAdmin":
+    "Diese Suche durchsucht nur gespeicherte Entwürfe (Admin-Ansicht: alle) — kein Wissen aus der Bibliothek.",
+  "capture.draftScope.toLibrary": "Im Klarwerk-Wissen suchen",
+  "capture.draftEmptyFiltered":
+    "Keine gespeicherten Entwürfe passen zu deiner Suche. Durchsucht wurden nur Entwürfe — validiertes Wissen steht in der Bibliothek.",
   "capture.draftJustSaved": "gerade gespeichert",
   "capture.draftCreatorMeta": "Ersteller: {{name}}",
   "capture.draftSavedMeta": "Gespeichert: {{date}}",
@@ -1535,6 +1564,11 @@ const de = {
   // WP-D10: rein VISUELLER Platzhalter der leeren Bild-Fußnote (data-kw-placeholder + CSS ::before) —
   // wird nie als Inhalt gespeichert. Kein Emoji, nur das Stift-Zeichen ✎.
   "editor.captionPlaceholder": "✎ Bildbeschreibung hinzufügen …",
+  // AUFTRAG-mega88 Block C: der ehrliche Restfall — zu diesem Bild lässt sich keine Fußnote
+  // herstellen. Seit der Bildstruktur-Invariante ist er nicht mehr erreichbar; er schweigt trotzdem
+  // nicht mehr, falls er es doch einmal wird.
+  "editor.captionNoAnchor":
+    "Zu diesem Bild lässt sich gerade keine Bildbeschreibung anlegen. Bitte fügen Sie das Bild erneut ein.",
   "editor.captionAi.suggest": "KI-Beschreibung vorschlagen",
   "editor.captionAi.loading": "KI-Beschreibung wird erstellt …",
   "editor.captionAi.panelTitle": "Vorschlag",
@@ -1569,6 +1603,15 @@ const de = {
   // AUFTRAG-mega11 Block D (bens SB-4): das Ziel des Formulars hat sich unter ihm verändert.
   "editor.captionForm.stale":
     "Dieses Bild hat sich inzwischen geändert — die Beschreibung wurde NICHT gespeichert, damit sie nicht beim falschen Bild landet. Bitte den Text kopieren, das Formular schließen und am aktuellen Bild erneut öffnen.",
+  // AUFTRAG-mega84 Block A: die Bildbeschreibung selbst ist der Einstieg — sie sagt das auch an.
+  "editor.captionForm.openLabel": "Bildbeschreibung bearbeiten (öffnet das Eingabeformular)",
+  // AUFTRAG-mega84 Block B (Pedi, 31.07.): fett, kursiv, Zeilenumbruch — mehr nicht.
+  "editor.captionForm.formatLabel": "Formatierung",
+  "editor.captionForm.bold": "Fett (Strg/Cmd + B)",
+  "editor.captionForm.italic": "Kursiv (Strg/Cmd + I)",
+  "editor.captionForm.lineBreak": "Zeilenumbruch (Umschalt + Eingabe)",
+  "editor.captionForm.selectFirst":
+    "Markiere zuerst den Text, den du auszeichnen möchtest — dann wirkt Fett oder Kursiv darauf.",
   "editor.file": "Datei verlinken",
   "editor.insertFile": "Datei-Anhang als Link einfügen",
   "editor.noFiles":
@@ -2649,6 +2692,18 @@ const de = {
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Druck/PDF)",
   "lib.search": "Volltextsuche …",
+  // ==============================================================================================
+  // AUFTRAG-BASIC-u2 — DIE SUCHE SAGT, WORIN SIE SUCHT.
+  // ==============================================================================================
+  // Die Bibliothek durchsucht das für den Actor zugängliche Klarwerk-Wissen — NICHT die eigenen,
+  // noch nicht eingereichten Entwürfe. Bis hierher stand über dem breiten Suchfeld nichts davon,
+  // und der Nulltreffer sagte „Keine Treffer" — ein Satz, der wie „das gibt es nirgends" klingt,
+  // während der gesuchte Entwurf auf /erfassen liegt. Der Suchraum wird jetzt genannt, und die
+  // andere Suchwelt bekommt einen Namen und einen Weg. An Query, Filterung und Ranking ändert das
+  // nichts: es ist eine AUSKUNFT über den Bestand, keine neue Regel über ihn.
+  "lib.scope.note":
+    "Durchsucht wird das Klarwerk-Wissen, das für dich freigegeben ist — nicht deine eigenen, noch nicht eingereichten Entwürfe.",
+  "lib.scope.toDrafts": "Eigene Entwürfe durchsuchen",
   "lib.allStatus": "Alle Status",
   "lib.allTypes": "Alle Wissensarten",
   "lib.allCategories": "Alle Kategorien",
@@ -2658,13 +2713,17 @@ const de = {
   "lib.review": "Prüfen",
   "lib.revalidateDone": "Re-Validierung gestartet.",
   "lib.reimport": "Re-Import (JSON)",
-  "lib.empty": "Keine Treffer.",
+  // AUFTRAG-BASIC-u2: der Nulltreffer nennt den SUCHRAUM. „Keine Treffer." behauptete durch
+  // Weglassen, es gebe nichts — hier steht jetzt, worin nichts gefunden wurde und wo das Fehlende
+  // sonst noch liegen kann.
+  "lib.empty":
+    "Keine Treffer im Klarwerk-Wissen, das für dich freigegeben ist. Deine eigenen, noch nicht eingereichten Entwürfe stehen unter „Entwürfe fortsetzen“.",
   "lib.answerTitle": "Antwort statt nur Treffer?",
   "lib.answerHint":
     "Lass dir „{{q}}“ quellengebunden beantworten — mit klaren Quell-Links, nicht nur Artikel.",
   "lib.answerButton": "Frage beantworten lassen",
   "lib.emptyQuery":
-    "Keine Treffer für „{{q}}“. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
+    "Keine Treffer für „{{q}}“ im Klarwerk-Wissen, das für dich freigegeben ist. Deine eigenen, noch nicht eingereichten Entwürfe sind hier nicht dabei. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
   // AUFTRAG-mega59 BLOCK D: der stumme Nullzustand. Die Suche hat Treffer, die aktiven Facetten
   // zeigen keinen davon — bis hierher rendert die Bibliothek dafür eine leere Karte ganz ohne Text
   // (bei aktiver Gruppierung ein leeres div). Der Text nennt den GRUND, nicht nur die Zahl.
@@ -3448,7 +3507,7 @@ const de = {
   "shelp.mrun.title":
     "Diese Liste protokolliert die letzten Einsätze der KI: welche Aufgabe lief, welches Modell geantwortet hat, wie lange es gedauert hat und ob ein Ersatzweg nötig war. Inhalte deiner Texte stehen hier bewusst nicht — nur technische Eckdaten. So bleibt nachvollziehbar, was die KI wann getan hat.",
   "shelp.rcfg.title":
-    "Hier siehst du, welche KI für welche Aufgabe eingestellt ist — die Cloud-KI, eure eigene lokale KI oder der regelbasierte Modus ganz ohne Modell. Die Zuordnung lässt sich je Aufgabe ändern, und die App zeigt ehrlich an, was gerade wirksam ist. KI-Schlüssel bleiben dabei immer auf dem Server; im Browser landet nie einer.",
+    "Hier siehst du, welche KI für welche Aufgabe eingestellt ist — die Cloud-KI, eure On-Premise Enterprise AI oder der regelbasierte Modus ganz ohne Modell. Die Zuordnung lässt sich je Aufgabe ändern, und die App zeigt ehrlich an, was gerade wirksam ist. KI-Schlüssel bleiben dabei immer auf dem Server; im Browser landet nie einer.",
   "shelp.evx.title":
     "Der Evidenz-Index ist die Qualitätssicht auf die Beleglage: Er zeigt, welche Wissensobjekte gut belegt sind und wo Nachweise fehlen. Damit findest du gezielt die Einträge, die vor dem nächsten Einsatz Belege brauchen. Gut belegtes Wissen ist das Rückgrat jeder verlässlichen Antwort.",
   "shelp.prov.title":
@@ -4063,7 +4122,7 @@ const de = {
   "fd.assistProposalCheck": "{{action}}: KI-generiert. Bitte prüfen, bevor du etwas übernimmst.",
   "fd.accept": "Übernehmen",
   "fd.discardProposal": "Vorschlag verwerfen",
-  "fd.submitReview": "Prüfen / Einreichen",
+  "fd.submitReview": "Prüfen & einreichen",
   "fd.saveDraft": "Als Entwurf speichern",
   "fd.discardInput": "Eingabe verwerfen",
   "fd.back": "Zurück",
@@ -4456,6 +4515,78 @@ const de = {
   // Die Aufgabe im Klartext. Nur `answer` ist bisher nötig — die anderen beiden
   // kennzeichnungspflichtigen Aufgaben (interview, describe) haben heute keinen eigenen Exportweg.
   "ai.task.answer": "Frage beantwortet",
+
+  // ==============================================================================================
+  // AUFTRAG-BASIC-W2-RESULTAT-VIEW-KERN-23 — Importresultat: Original und Wissen getrennt.
+  // ==============================================================================================
+  //
+  // Die Texte tragen die Aussage; die Farbe ist die zweite Spur, nie die einzige. Jeder Laufzustand
+  // hat deshalb einen eigenen Namen UND einen eigenen Hinweis, was er für das Gezeigte bedeutet —
+  // „teilweise" und „fehlgeschlagen" dürfen nie wie ein Erfolg klingen (`KW-W2-17`).
+  "w2.result.heading": "Importergebnis",
+  "w2.run.heading": "Lauf",
+  "w2.run.status.QUEUED": "In der Warteschlange",
+  "w2.run.status.FETCHING": "Quelle wird abgerufen",
+  "w2.run.status.PERSISTING_SOURCE": "Original wird gesichert",
+  "w2.run.status.EXTRACTING": "Aussagen werden entnommen",
+  "w2.run.status.CREATING_KNOWLEDGE": "Wissenseinheiten entstehen",
+  "w2.run.status.ANALYZING": "Prüfung läuft",
+  "w2.run.status.COMPLETED": "Abgeschlossen",
+  "w2.run.status.PARTIAL": "Teilweise fehlgeschlagen",
+  "w2.run.status.FAILED": "Fehlgeschlagen",
+  "w2.run.status.unknown": "Zustand unbekannt",
+  "w2.run.hint.QUEUED": "Der Lauf hat noch nicht begonnen. Es liegt noch kein Ergebnis vor.",
+  "w2.run.hint.FETCHING": "Der Lauf ist unterwegs. Was hier steht, ist ein Zwischenstand.",
+  "w2.run.hint.PERSISTING_SOURCE": "Der Lauf ist unterwegs. Was hier steht, ist ein Zwischenstand.",
+  "w2.run.hint.EXTRACTING": "Der Lauf ist unterwegs. Was hier steht, ist ein Zwischenstand.",
+  "w2.run.hint.CREATING_KNOWLEDGE":
+    "Der Lauf ist unterwegs. Was hier steht, ist ein Zwischenstand.",
+  "w2.run.hint.ANALYZING": "Der Lauf ist unterwegs. Was hier steht, ist ein Zwischenstand.",
+  "w2.run.hint.COMPLETED": "Der Lauf ist vollständig durchgelaufen.",
+  "w2.run.hint.PARTIAL":
+    "Ein Teil des Laufs ist fehlgeschlagen. Das Gezeigte ist unvollständig — es ist kein abgeschlossener Import.",
+  "w2.run.hint.FAILED":
+    "Der Lauf ist fehlgeschlagen. Was unten steht, ist deshalb nicht das beabsichtigte Ergebnis.",
+  "w2.run.hint.unknown":
+    "Der Server hat einen Zustand gemeldet, den diese Version nicht kennt. Das Gezeigte ist deshalb nicht als abgeschlossen zu lesen.",
+  "w2.run.failureCode": "Fehlercode",
+  "w2.run.failureReason": "Grund",
+  // Das ORIGINAL — der eine Block links. Er ist das Dokument, nicht das Wissen.
+  "w2.source.heading": "Original",
+  "w2.source.lead": "Das importierte Dokument in genau der Fassung, aus der das Wissen entstand.",
+  "w2.source.missing": "Zu diesem Lauf wurde kein Original geliefert.",
+  "w2.source.missingRequired": "Zu diesem Original fehlen Pflichtangaben.",
+  "w2.source.title": "Titel",
+  "w2.source.system": "System",
+  "w2.source.version": "Version",
+  "w2.source.url": "Adresse",
+  "w2.source.importedAt": "Importiert am",
+  "w2.source.externalId": "Kennung im Quellsystem",
+  // Das WISSEN — der andere Block. Bewusst eigene Überschrift, eigener Rahmen, eigene Sprache.
+  "w2.knowledge.heading": "Wissenseinheiten",
+  "w2.knowledge.lead": "Aus diesem einen Original entstandene, eigenständige Einheiten.",
+  "w2.knowledge.count": "{{count}} Einheiten",
+  "w2.knowledge.empty":
+    "Aus diesem Lauf ist keine Wissenseinheit entstanden. Das ist kein erfolgreicher Import.",
+  "w2.item.position": "Einheit {{position}}",
+  "w2.item.statementMissing": "Zu dieser Einheit wurde keine Aussage geliefert.",
+  "w2.item.locator": "Fundstelle",
+  "w2.item.locatorMissing": "Fundstelle fehlt",
+  "w2.item.status": "Validierung",
+  "w2.item.statusMissing": "Validierungsstatus fehlt",
+  "w2.item.conflicts": "Konflikte: {{count}}",
+  "w2.item.conflictsNone": "Keine Konflikte gemeldet",
+  "w2.item.gaps": "Wissenslücken: {{count}}",
+  "w2.item.gapsNone": "Keine Wissenslücken gemeldet",
+  // AUFTRAG-81 (Befund aus Preflight 78): Diese zwei Schlüssel wurden von `importResultView.ts`
+  // erzeugt und in `SourceRecordCard.tsx` an `t()` gereicht — standen aber in keinem Wörterbuch.
+  // i18next gibt ohne `parseMissingKeyHandler` den Schlüssel selbst aus; eine fehlende Angabe am
+  // Original hätte dem Nutzer wörtlich „w2.value.missing" gezeigt.
+  // Die Unterscheidung spiegelt `f.required` an der Erzeugungsstelle: fehlt eine PFLICHTangabe,
+  // ist das ein Mangel; fehlt eine freiwillige, hat die Quelle schlicht nichts geliefert. Beides
+  // als „fehlt" zu benennen wäre eine Behauptung über die Quelle, die niemand belegen kann.
+  "w2.value.missing": "Pflichtangabe fehlt",
+  "w2.value.none": "Nicht geliefert",
 };
 
 const en: typeof de = {
@@ -4858,6 +4989,24 @@ const en: typeof de = {
   "start.ctaAsk": "Ask a question",
   "start.ctaCapture": "Capture knowledge",
   "start.ctaValidate": "Open validation",
+  "klara.path.ariaLabel": "Klara — upcoming assisted path",
+  "klara.path.kicker": "With Klara",
+  "klara.path.soon": "Coming soon",
+  "klara.path.start.title": "Klara supports knowledge from the very beginning.",
+  "klara.path.start.body":
+    "Soon you can capture, structure and prepare knowledge for review directly with Klara.",
+  "klara.path.start.cta": "Capture knowledge with Klara",
+  "klara.path.capture.title": "Tell Klara — she turns it into a clear draft.",
+  "klara.path.capture.body":
+    "Share your experience in your own words. Klara helps structure it; you review and decide.",
+  "klara.path.capture.cta": "Start with Klara",
+  "klara.path.import.title": "Klara helps you prepare imported knowledge.",
+  "klara.path.import.body":
+    "After upload, Klara will help organise, clarify and prepare it for review.",
+  "klara.path.import.cta": "Import with Klara",
+  "klara.path.m365.summary": "What Klara will do in Microsoft 365",
+  "klara.path.m365.body":
+    "Klara is planned as a bidirectional add-in for Microsoft 365. She will pick up knowledge where you already work, prepare it in a structured way for Klarwerk and make reviewed company knowledge from Klarwerk available directly in Microsoft 365 — reviewing and deciding stays with you. This is not available yet.",
   "start.todo": "To do today",
   "start.workTitle": "Next actions",
   "start.severity.critical": "now",
@@ -5024,7 +5173,7 @@ const en: typeof de = {
   "adm.ai.help":
     "Choose globally or per use which AI does the work. “Auto” uses the model when a key is configured; “Deterministic” deliberately works without a model. Keys stay on the server only — never in the browser.",
   "adm.ai.internExtern":
-    "You can run internal (your own on-prem LLM) or external (cloud) — globally as the default or fine-grained per task. The internal option appears as soon as an own LLM is reachable; test both live via “Test key” / “Test local LLM”.",
+    "You can run internal (On-Premise Enterprise AI, your own LLM) or external (cloud) — globally as the default or fine-grained per task. The internal option appears as soon as an own LLM is reachable; test both live via “Test key” / “Test local LLM”.",
   "adm.ai.status": "Active provider: {{provider}} · mode: {{mode}}",
   "adm.ai.modeModel": "Model",
   "adm.ai.modeDemo": "Deterministic",
@@ -5044,9 +5193,9 @@ const en: typeof de = {
   "adm.firstrun.note":
     "No pressure, no fixed order: you can start freely anytime. Once hidden, it stays hidden.",
   "adm.firstrun.ki.loading": "Checking AI status …",
-  "adm.firstrun.ki.both": "Both AIs connected: cloud AI and your own local LLM.",
+  "adm.firstrun.ki.both": "Both AIs connected: cloud AI and your On-Premise Enterprise AI.",
   "adm.firstrun.ki.cloudOnly":
-    "Cloud AI connected. Your own local LLM is not wired up yet (Admin → AI).",
+    "Cloud AI connected. Your On-Premise Enterprise AI is not wired up yet (Admin → AI).",
   "adm.firstrun.ki.localOnly":
     "Local LLM connected. The cloud AI is not configured yet (Admin → AI).",
   "adm.firstrun.ki.none":
@@ -5111,7 +5260,7 @@ const en: typeof de = {
   "adm.sich.keys.t": "Keys stay in the keychain",
   "adm.sich.keys.b":
     "API keys live exclusively server-side or in the macOS keychain — never in the browser, never in code or the repository.",
-  "adm.sich.localAi.t": "Own & local AI possible",
+  "adm.sich.localAi.t": "On-Premise Enterprise AI possible",
   "adm.sich.localAi.b":
     "Besides the cloud AI you can wire up your own local LLM. The local AI is reachable only via a private tunnel, never public.",
   "adm.sich.external.t": "External knowledge lookup restricted by default",
@@ -5739,7 +5888,14 @@ const en: typeof de = {
   "capture.draftSort.title": "Title A→Z",
   "capture.draftAuthorLabel": "Creator",
   "capture.draftAuthorAll": "All creators",
-  "capture.draftEmptyFiltered": "No drafts match the filter.",
+  // AUFTRAG-BASIC-u2 — see the German entry for the finding.
+  "capture.draftScope.note":
+    "This search covers only your saved drafts — no knowledge from the library.",
+  "capture.draftScope.noteAdmin":
+    "This search covers only saved drafts (admin view: all of them) — no knowledge from the library.",
+  "capture.draftScope.toLibrary": "Search the Klarwerk knowledge",
+  "capture.draftEmptyFiltered":
+    "No saved drafts match your search. Only drafts were searched — validated knowledge lives in the library.",
   "capture.draftJustSaved": "just saved",
   "capture.draftCreatorMeta": "Creator: {{name}}",
   "capture.draftSavedMeta": "Saved: {{date}}",
@@ -5871,6 +6027,8 @@ const en: typeof de = {
   "editor.fileFromDisk": "Attach file from computer …",
   "editor.imageFromAttachment": "From attachments",
   "editor.captionPlaceholder": "✎ Add image description …",
+  "editor.captionNoAnchor":
+    "No image description can be added for this image right now. Please insert the image again.",
   "editor.captionAi.suggest": "Suggest AI description",
   "editor.captionAi.loading": "Creating AI description …",
   "editor.captionAi.panelTitle": "Suggestion",
@@ -5903,6 +6061,13 @@ const en: typeof de = {
     "No suggestion requested yet. The text stays yours — a suggestion is never adopted automatically.",
   "editor.captionForm.stale":
     "This image has changed in the meantime — the caption was NOT saved, so it cannot end up on the wrong image. Please copy the text, close the form and reopen it on the current image.",
+  "editor.captionForm.openLabel": "Edit image description (opens the input form)",
+  "editor.captionForm.formatLabel": "Formatting",
+  "editor.captionForm.bold": "Bold (Ctrl/Cmd + B)",
+  "editor.captionForm.italic": "Italic (Ctrl/Cmd + I)",
+  "editor.captionForm.lineBreak": "Line break (Shift + Enter)",
+  "editor.captionForm.selectFirst":
+    "Select the text you want to mark up first — bold or italic then applies to it.",
   "editor.file": "Link a file",
   "editor.insertFile": "Insert file attachment as a link",
   "editor.noFiles":
@@ -6847,6 +7012,10 @@ const en: typeof de = {
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (print/PDF)",
   "lib.search": "Full-text search …",
+  // AUFTRAG-BASIC-u2 — see the German entry for the finding.
+  "lib.scope.note":
+    "This searches the Klarwerk knowledge released to you — not your own drafts that you have not submitted yet.",
+  "lib.scope.toDrafts": "Search your own drafts",
   "lib.allStatus": "All statuses",
   "lib.allTypes": "All knowledge types",
   "lib.allCategories": "All categories",
@@ -6856,13 +7025,15 @@ const en: typeof de = {
   "lib.review": "Review",
   "lib.revalidateDone": "Re-validation started.",
   "lib.reimport": "Re-import (JSON)",
-  "lib.empty": "No matches.",
+  // AUFTRAG-BASIC-u2: the empty state names the SEARCH SPACE — see the German entry.
+  "lib.empty":
+    "No matches in the Klarwerk knowledge released to you. Your own drafts that you have not submitted yet live under “Resume drafts”.",
   "lib.answerTitle": "An answer instead of just hits?",
   "lib.answerHint":
     "Get '{{q}}' answered source-bound — with clear source links, not just articles.",
   "lib.answerButton": "Get the question answered",
   "lib.emptyQuery":
-    "No matches for '{{q}}'. Tip: rephrase, reset the filters, or search a single keyword.",
+    "No matches for '{{q}}' in the Klarwerk knowledge released to you. Your own drafts that you have not submitted yet are not included here. Tip: rephrase, reset the filters, or search a single keyword.",
   // AUFTRAG-mega59 BLOCK D — see the German entry for the finding.
   "lib.facetEmpty.title": "There are matches — but none of them fits the active filters.",
   "lib.facetEmpty.hint":
@@ -7600,7 +7771,7 @@ const en: typeof de = {
   "shelp.mrun.title":
     "This list logs the AI's recent runs: which task ran, which model answered, how long it took and whether a fallback was needed. The content of your texts is deliberately not stored here — only technical facts. That keeps traceable what the AI did and when.",
   "shelp.rcfg.title":
-    "Here you see which AI is configured for which task — the cloud AI, your own local AI or the rule-based mode without any model. The assignment can be changed per task, and the app honestly shows what is currently in effect. AI keys always stay on the server; none ever reaches the browser.",
+    "Here you see which AI is configured for which task — the cloud AI, your On-Premise Enterprise AI or the rule-based mode without any model. The assignment can be changed per task, and the app honestly shows what is currently in effect. AI keys always stay on the server; none ever reaches the browser.",
   "shelp.evx.title":
     "The evidence index is the quality view of your proof situation: it shows which knowledge objects are well evidenced and where records are missing. It helps you find exactly the entries that need evidence before their next use. Well-evidenced knowledge is the backbone of every reliable answer.",
   "shelp.prov.title":
@@ -8190,7 +8361,7 @@ const en: typeof de = {
   "fd.assistProposalCheck": "{{action}}: AI-generated. Please review before you adopt anything.",
   "fd.accept": "Adopt",
   "fd.discardProposal": "Discard suggestion",
-  "fd.submitReview": "Review / submit",
+  "fd.submitReview": "Review & submit",
   "fd.saveDraft": "Save as draft",
   "fd.discardInput": "Discard input",
   "fd.back": "Back",
@@ -8452,6 +8623,60 @@ const en: typeof de = {
   "ai.exportNotice":
     "Generated by artificial intelligence (KLARWERK, {{task}}, {{date}}). To be reviewed for content.",
   "ai.task.answer": "question answered",
+
+  "w2.result.heading": "Import result",
+  "w2.run.heading": "Run",
+  "w2.run.status.QUEUED": "Queued",
+  "w2.run.status.FETCHING": "Fetching the source",
+  "w2.run.status.PERSISTING_SOURCE": "Storing the original",
+  "w2.run.status.EXTRACTING": "Extracting statements",
+  "w2.run.status.CREATING_KNOWLEDGE": "Creating knowledge units",
+  "w2.run.status.ANALYZING": "Analysis running",
+  "w2.run.status.COMPLETED": "Completed",
+  "w2.run.status.PARTIAL": "Partially failed",
+  "w2.run.status.FAILED": "Failed",
+  "w2.run.status.unknown": "State unknown",
+  "w2.run.hint.QUEUED": "The run has not started yet. There is no result yet.",
+  "w2.run.hint.FETCHING": "The run is under way. What you see is an interim state.",
+  "w2.run.hint.PERSISTING_SOURCE": "The run is under way. What you see is an interim state.",
+  "w2.run.hint.EXTRACTING": "The run is under way. What you see is an interim state.",
+  "w2.run.hint.CREATING_KNOWLEDGE": "The run is under way. What you see is an interim state.",
+  "w2.run.hint.ANALYZING": "The run is under way. What you see is an interim state.",
+  "w2.run.hint.COMPLETED": "The run went through completely.",
+  "w2.run.hint.PARTIAL":
+    "Part of the run failed. What you see is incomplete — it is not a finished import.",
+  "w2.run.hint.FAILED": "The run failed. What you see below is therefore not the intended result.",
+  "w2.run.hint.unknown":
+    "The server reported a state this build does not know. What you see must not be read as finished.",
+  "w2.run.failureCode": "Error code",
+  "w2.run.failureReason": "Reason",
+  "w2.source.heading": "Original",
+  "w2.source.lead": "The imported document in exactly the revision the knowledge came from.",
+  "w2.source.missing": "No original was delivered for this run.",
+  "w2.source.missingRequired": "Mandatory details are missing for this original.",
+  "w2.source.title": "Title",
+  "w2.source.system": "System",
+  "w2.source.version": "Version",
+  "w2.source.url": "Address",
+  "w2.source.importedAt": "Imported on",
+  "w2.source.externalId": "Identifier in the source system",
+  "w2.knowledge.heading": "Knowledge units",
+  "w2.knowledge.lead": "Independent units created from this one original.",
+  "w2.knowledge.count": "{{count}} units",
+  "w2.knowledge.empty": "This run produced no knowledge unit. That is not a successful import.",
+  "w2.item.position": "Unit {{position}}",
+  "w2.item.statementMissing": "No statement was delivered for this unit.",
+  "w2.item.locator": "Location in the source",
+  "w2.item.locatorMissing": "Location missing",
+  "w2.item.status": "Validation",
+  "w2.item.statusMissing": "Validation status missing",
+  "w2.item.conflicts": "Conflicts: {{count}}",
+  "w2.item.conflictsNone": "No conflicts reported",
+  "w2.item.gaps": "Knowledge gaps: {{count}}",
+  "w2.item.gapsNone": "No knowledge gaps reported",
+  // AUFTRAG-81: mirror of the DE keys — see the note there.
+  "w2.value.missing": "Required value missing",
+  "w2.value.none": "Not delivered",
 };
 
 const nl: typeof de = {
@@ -8850,6 +9075,24 @@ const nl: typeof de = {
   "start.ctaAsk": "Vraag stellen",
   "start.ctaCapture": "Kennis vastleggen",
   "start.ctaValidate": "Validatie openen",
+  "klara.path.ariaLabel": "Klara — aankomende begeleide route",
+  "klara.path.kicker": "Met Klara",
+  "klara.path.soon": "Binnenkort",
+  "klara.path.start.title": "Klara begeleidt kennis vanaf het begin.",
+  "klara.path.start.body":
+    "Binnenkort kun je kennis direct met Klara vastleggen, structureren en voorbereiden op beoordeling.",
+  "klara.path.start.cta": "Kennis vastleggen met Klara",
+  "klara.path.capture.title": "Vertel het Klara — zij maakt er een helder concept van.",
+  "klara.path.capture.body":
+    "Je deelt je ervaring in je eigen woorden. Klara helpt structureren; jij controleert en beslist.",
+  "klara.path.capture.cta": "Starten met Klara",
+  "klara.path.import.title": "Klara helpt geïmporteerde kennis voor te bereiden.",
+  "klara.path.import.body":
+    "Na het uploaden helpt Klara straks met ordenen, verduidelijken en voorbereiden op beoordeling.",
+  "klara.path.import.cta": "Import met Klara begeleiden",
+  "klara.path.m365.summary": "Wat Klara in Microsoft 365 gaat doen",
+  "klara.path.m365.body":
+    "Klara is gepland als bidirectionele add-in voor Microsoft 365. Zij neemt kennis op waar je toch al werkt, bereidt die gestructureerd voor Klarwerk voor en stelt gecontroleerde bedrijfskennis uit Klarwerk rechtstreeks in Microsoft 365 beschikbaar — controleren en beslissen blijft bij jou. Beschikbaar is dit nog niet.",
   "start.todo": "Vandaag te doen",
   "start.workTitle": "Volgende acties",
   "start.severity.critical": "nu",
@@ -9016,7 +9259,7 @@ const nl: typeof de = {
   "adm.ai.help":
     "Bepaal globaal of per taak welke AI werkt. „Auto” gebruikt het model als er een sleutel is ingesteld; „Deterministisch” werkt bewust zonder model. Sleutels blijven uitsluitend op de server — nooit in de browser.",
   "adm.ai.internExtern":
-    "Je kunt intern (eigen on-prem-LLM) of extern (cloud) laten werken — globaal als standaard of fijn per taak. De interne optie verschijnt zodra een eigen LLM bereikbaar is; beide zijn met „Sleutel testen” / „Lokale LLM testen” live te controleren.",
+    "Je kunt intern (On-Premise Enterprise AI, eigen LLM) of extern (cloud) laten werken — globaal als standaard of fijn per taak. De interne optie verschijnt zodra een eigen LLM bereikbaar is; beide zijn met „Sleutel testen” / „Lokale LLM testen” live te controleren.",
   "adm.ai.status": "Actieve provider: {{provider}} · Modus: {{mode}}",
   "adm.ai.modeModel": "Model",
   "adm.ai.modeDemo": "Deterministisch",
@@ -9035,9 +9278,9 @@ const nl: typeof de = {
   "adm.firstrun.note":
     "Geen dwang, geen volgorde: je kunt altijd vrij aan de slag. Eenmaal verborgen blijft ze verborgen.",
   "adm.firstrun.ki.loading": "AI-status wordt gecontroleerd …",
-  "adm.firstrun.ki.both": "Beide AI's verbonden: cloud-AI en je eigen lokale LLM.",
+  "adm.firstrun.ki.both": "Beide AI's verbonden: cloud-AI en je On-Premise Enterprise AI.",
   "adm.firstrun.ki.cloudOnly":
-    "Cloud-AI verbonden. De eigen lokale LLM is nog niet aangesloten (Admin → AI).",
+    "Cloud-AI verbonden. De On-Premise Enterprise AI is nog niet aangesloten (Admin → AI).",
   "adm.firstrun.ki.localOnly":
     "Lokale LLM verbonden. De cloud-AI is nog niet geconfigureerd (Admin → AI).",
   "adm.firstrun.ki.none":
@@ -9101,7 +9344,7 @@ const nl: typeof de = {
   "adm.sich.keys.t": "Sleutels blijven in de sleutelhanger",
   "adm.sich.keys.b":
     "API-sleutels staan uitsluitend aan de serverkant of in de macOS-sleutelhanger — nooit in de browser, nooit in de code of repository.",
-  "adm.sich.localAi.t": "Eigen & lokale AI mogelijk",
+  "adm.sich.localAi.t": "On-Premise Enterprise AI mogelijk",
   "adm.sich.localAi.b":
     "Naast de cloud-AI kun je een eigen lokale LLM aansluiten. De lokale AI is alleen via een private tunnel bereikbaar, nooit openbaar.",
   "adm.sich.external.t": "Externe kennisopvraag standaard beperkt",
@@ -9730,7 +9973,14 @@ const nl: typeof de = {
   "capture.draftSort.title": "Titel A→Z",
   "capture.draftAuthorLabel": "Maker",
   "capture.draftAuthorAll": "Alle makers",
-  "capture.draftEmptyFiltered": "Geen concepten passen bij het filter.",
+  // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
+  "capture.draftScope.note":
+    "Deze zoekopdracht doorzoekt alleen jouw opgeslagen concepten — geen kennis uit de bibliotheek.",
+  "capture.draftScope.noteAdmin":
+    "Deze zoekopdracht doorzoekt alleen opgeslagen concepten (adminweergave: alle) — geen kennis uit de bibliotheek.",
+  "capture.draftScope.toLibrary": "In de Klarwerk-kennis zoeken",
+  "capture.draftEmptyFiltered":
+    "Geen opgeslagen concepten passen bij je zoekopdracht. Alleen concepten zijn doorzocht — gevalideerde kennis staat in de bibliotheek.",
   "capture.draftJustSaved": "zojuist opgeslagen",
   "capture.draftCreatorMeta": "Maker: {{name}}",
   "capture.draftSavedMeta": "Opgeslagen: {{date}}",
@@ -9862,6 +10112,8 @@ const nl: typeof de = {
   "editor.fileFromDisk": "Bestand van je computer toevoegen …",
   "editor.imageFromAttachment": "Uit bijlagen",
   "editor.captionPlaceholder": "✎ Afbeeldingsbeschrijving toevoegen …",
+  "editor.captionNoAnchor":
+    "Voor deze afbeelding kan nu geen afbeeldingsbeschrijving worden aangemaakt. Voeg de afbeelding opnieuw in.",
   "editor.captionAi.suggest": "AI-beschrijving voorstellen",
   "editor.captionAi.loading": "AI-beschrijving wordt gemaakt …",
   "editor.captionAi.panelTitle": "Voorstel",
@@ -9894,6 +10146,13 @@ const nl: typeof de = {
     "Nog geen voorstel aangevraagd. De tekst blijft van jou — een voorstel wordt nooit automatisch overgenomen.",
   "editor.captionForm.stale":
     "Deze afbeelding is intussen gewijzigd — het bijschrift is NIET opgeslagen, zodat het niet bij de verkeerde afbeelding terechtkomt. Kopieer de tekst, sluit het formulier en open het opnieuw bij de huidige afbeelding.",
+  "editor.captionForm.openLabel": "Afbeeldingsbeschrijving bewerken (opent het invoerformulier)",
+  "editor.captionForm.formatLabel": "Opmaak",
+  "editor.captionForm.bold": "Vet (Ctrl/Cmd + B)",
+  "editor.captionForm.italic": "Cursief (Ctrl/Cmd + I)",
+  "editor.captionForm.lineBreak": "Regeleinde (Shift + Enter)",
+  "editor.captionForm.selectFirst":
+    "Selecteer eerst de tekst die je wilt opmaken — vet of cursief werkt dan daarop.",
   "editor.file": "Bestand koppelen",
   "editor.insertFile": "Bestandsbijlage als link invoegen",
   "editor.noFiles":
@@ -10824,6 +11083,10 @@ const nl: typeof de = {
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Print/PDF)",
   "lib.search": "Zoeken in volledige tekst …",
+  // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
+  "lib.scope.note":
+    "Doorzocht wordt de Klarwerk-kennis die voor jou is vrijgegeven — niet je eigen concepten die je nog niet hebt ingediend.",
+  "lib.scope.toDrafts": "Eigen concepten doorzoeken",
   "lib.allStatus": "Alle statussen",
   "lib.allTypes": "Alle kennissoorten",
   "lib.allCategories": "Alle categorieën",
@@ -10833,13 +11096,15 @@ const nl: typeof de = {
   "lib.review": "Controleren",
   "lib.revalidateDone": "Hervalidatie gestart.",
   "lib.reimport": "Opnieuw importeren (JSON)",
-  "lib.empty": "Geen resultaten.",
+  // AUFTRAG-BASIC-u2: de nulstand noemt de ZOEKRUIMTE — zie de Duitse regel.
+  "lib.empty":
+    "Geen resultaten in de Klarwerk-kennis die voor jou is vrijgegeven. Je eigen concepten die je nog niet hebt ingediend staan onder „Concepten hervatten“.",
   "lib.answerTitle": "Een antwoord in plaats van alleen resultaten?",
   "lib.answerHint":
     "Laat „{{q}}“ met bronvermelding beantwoorden — met duidelijke bronlinks, niet alleen artikelen.",
   "lib.answerButton": "Vraag laten beantwoorden",
   "lib.emptyQuery":
-    "Geen resultaten voor „{{q}}“. Tip: anders formuleren, filters resetten of op één trefwoord zoeken.",
+    "Geen resultaten voor „{{q}}“ in de Klarwerk-kennis die voor jou is vrijgegeven. Je eigen concepten die je nog niet hebt ingediend horen hier niet bij. Tip: anders formuleren, filters resetten of op één trefwoord zoeken.",
   // AUFTRAG-mega59 BLOCK D — zie de Duitse regel voor de bevinding.
   "lib.facetEmpty.title": "Er zijn resultaten — maar geen enkele past bij de actieve filters.",
   "lib.facetEmpty.hint":
@@ -11578,7 +11843,7 @@ const nl: typeof de = {
   "shelp.mrun.title":
     "Deze lijst protocolleert de laatste inzetten van de KI: welke taak liep, welk model antwoordde, hoe lang het duurde en of een uitwijkroute nodig was. De inhoud van je teksten staat hier bewust niet — alleen technische kerngegevens. Zo blijft navolgbaar wat de KI wanneer heeft gedaan.",
   "shelp.rcfg.title":
-    "Hier zie je welke KI voor welke taak is ingesteld — de cloud-KI, jullie eigen lokale KI of de op regels gebaseerde modus helemaal zonder model. De toewijzing laat zich per taak wijzigen, en de app toont eerlijk wat er op dit moment werkzaam is. KI-sleutels blijven daarbij altijd op de server; in de browser belandt er nooit een.",
+    "Hier zie je welke KI voor welke taak is ingesteld — de cloud-KI, jullie On-Premise Enterprise AI of de op regels gebaseerde modus helemaal zonder model. De toewijzing laat zich per taak wijzigen, en de app toont eerlijk wat er op dit moment werkzaam is. KI-sleutels blijven daarbij altijd op de server; in de browser belandt er nooit een.",
   "shelp.evx.title":
     "De bewijs-index is de kwaliteitsweergave op de bewijslast: die toont welke kennisobjecten goed onderbouwd zijn en waar onderbouwing ontbreekt. Daarmee vind je gericht de items die vóór de volgende inzet onderbouwing nodig hebben. Goed onderbouwde kennis is de ruggengraat van elk betrouwbaar antwoord.",
   "shelp.prov.title":
@@ -12170,7 +12435,7 @@ const nl: typeof de = {
   "fd.assistProposalCheck": "{{action}}: KI-gegenereerd. Controleer voordat je iets overneemt.",
   "fd.accept": "Overnemen",
   "fd.discardProposal": "Voorstel verwerpen",
-  "fd.submitReview": "Controleren / indienen",
+  "fd.submitReview": "Controleren & indienen",
   "fd.saveDraft": "Als concept opslaan",
   "fd.discardInput": "Invoer verwerpen",
   "fd.back": "Terug",
@@ -12436,6 +12701,62 @@ const nl: typeof de = {
   "ai.exportNotice":
     "Door kunstmatige intelligentie gegenereerd (KLARWERK, {{task}}, {{date}}). Inhoudelijk te controleren.",
   "ai.task.answer": "vraag beantwoord",
+
+  "w2.result.heading": "Importresultaat",
+  "w2.run.heading": "Uitvoering",
+  "w2.run.status.QUEUED": "In de wachtrij",
+  "w2.run.status.FETCHING": "Bron wordt opgehaald",
+  "w2.run.status.PERSISTING_SOURCE": "Origineel wordt vastgelegd",
+  "w2.run.status.EXTRACTING": "Uitspraken worden ontleend",
+  "w2.run.status.CREATING_KNOWLEDGE": "Kenniseenheden ontstaan",
+  "w2.run.status.ANALYZING": "Controle loopt",
+  "w2.run.status.COMPLETED": "Afgerond",
+  "w2.run.status.PARTIAL": "Gedeeltelijk mislukt",
+  "w2.run.status.FAILED": "Mislukt",
+  "w2.run.status.unknown": "Toestand onbekend",
+  "w2.run.hint.QUEUED": "De uitvoering is nog niet begonnen. Er is nog geen resultaat.",
+  "w2.run.hint.FETCHING": "De uitvoering loopt nog. Wat hier staat, is een tussenstand.",
+  "w2.run.hint.PERSISTING_SOURCE": "De uitvoering loopt nog. Wat hier staat, is een tussenstand.",
+  "w2.run.hint.EXTRACTING": "De uitvoering loopt nog. Wat hier staat, is een tussenstand.",
+  "w2.run.hint.CREATING_KNOWLEDGE": "De uitvoering loopt nog. Wat hier staat, is een tussenstand.",
+  "w2.run.hint.ANALYZING": "De uitvoering loopt nog. Wat hier staat, is een tussenstand.",
+  "w2.run.hint.COMPLETED": "De uitvoering is volledig doorlopen.",
+  "w2.run.hint.PARTIAL":
+    "Een deel van de uitvoering is mislukt. Wat u ziet is onvolledig — het is geen afgeronde import.",
+  "w2.run.hint.FAILED":
+    "De uitvoering is mislukt. Wat hieronder staat, is daarom niet het beoogde resultaat.",
+  "w2.run.hint.unknown":
+    "De server meldde een toestand die deze versie niet kent. Wat u ziet mag niet als afgerond worden gelezen.",
+  "w2.run.failureCode": "Foutcode",
+  "w2.run.failureReason": "Reden",
+  "w2.source.heading": "Origineel",
+  "w2.source.lead": "Het geïmporteerde document in precies de versie waaruit de kennis ontstond.",
+  "w2.source.missing": "Voor deze uitvoering is geen origineel geleverd.",
+  "w2.source.missingRequired": "Bij dit origineel ontbreken verplichte gegevens.",
+  "w2.source.title": "Titel",
+  "w2.source.system": "Systeem",
+  "w2.source.version": "Versie",
+  "w2.source.url": "Adres",
+  "w2.source.importedAt": "Geïmporteerd op",
+  "w2.source.externalId": "Kenmerk in het bronsysteem",
+  "w2.knowledge.heading": "Kenniseenheden",
+  "w2.knowledge.lead": "Zelfstandige eenheden die uit dit ene origineel zijn ontstaan.",
+  "w2.knowledge.count": "{{count}} eenheden",
+  "w2.knowledge.empty":
+    "Deze uitvoering heeft geen kenniseenheid opgeleverd. Dat is geen geslaagde import.",
+  "w2.item.position": "Eenheid {{position}}",
+  "w2.item.statementMissing": "Voor deze eenheid is geen uitspraak geleverd.",
+  "w2.item.locator": "Vindplaats",
+  "w2.item.locatorMissing": "Vindplaats ontbreekt",
+  "w2.item.status": "Validatie",
+  "w2.item.statusMissing": "Validatiestatus ontbreekt",
+  "w2.item.conflicts": "Conflicten: {{count}}",
+  "w2.item.conflictsNone": "Geen conflicten gemeld",
+  "w2.item.gaps": "Kennishiaten: {{count}}",
+  "w2.item.gapsNone": "Geen kennishiaten gemeld",
+  // AUFTRAG-81: spiegel van de DE-sleutels — zie de toelichting daar.
+  "w2.value.missing": "Verplichte gegevens ontbreken",
+  "w2.value.none": "Niet geleverd",
 };
 
 void i18n.use(initReactI18next).init({

@@ -1,6 +1,8 @@
 import { type AppServices, buildPgServices, buildServices } from "./build-app";
 import { createPool, migrate } from "./db";
 import { TERMINAL, amTerminalUebergeben } from "./kennwort-uebergabe";
+// G27 R2 (Entscheidung 15 §A): derselbe kanonische Startupvertrag, den auch App-Ready fährt.
+import { stelleSuchprojektionBereit } from "./search-projection-startup";
 import { type SeedResult, seedDemo } from "./seed-demo";
 
 // SCRUM-156/181: CLI-Runner für den Demo-Seed. Die eigentliche Seed-Logik liegt in `seed-demo.ts`
@@ -26,6 +28,35 @@ export async function runSeed(): Promise<void> {
       "[seed:demo] Kein DATABASE_URL — In-Memory-Lauf, Daten NICHT persistent. Für sichtbaren Review DATABASE_URL setzen.",
     );
     services = buildServices();
+  }
+  // ============================================================================================
+  // G27 R2 (KW-ARCH-G27-SEED-UND-SCHEMAVERTRAG-15 §A) — DER SEED NIMMT DIE INSTANZ IN BETRIEB.
+  // ============================================================================================
+  //
+  // WAS HIER FEHLTE. `runSeed` baut seine Dienste selbst und lief damit an der
+  // Startorchestrierung der App vorbei. Der Control-State blieb auf dem migrierten Seed
+  // `UNINITIALIZED` stehen; `seedDemo()` braucht aber die Standardsuche (Duplikat-/Bestandsprüfung),
+  // und die ist seit G27 R1 fail-closed. Der ausgelieferte CLI-Seed brach deshalb mit
+  // `SEARCH_PROJECTION_NOT_READY (UNINITIALIZED)` ab — ein echter Betriebsfehler, kein Testartefakt.
+  //
+  // DERSELBE HELPER WIE APP-READY, nicht ein zweiter Weg (15 §A, No-Gos: keine zweite
+  // Seed-Zustandsmaschine, kein unbedingter Aktivierungs-Sonderpfad). Er führt genau dieselbe
+  // zustandsabhängige Folge aus und wirft, wenn die Instanz nicht `V2_ACTIVE` erreicht.
+  //
+  // UND ER STEHT VOR `seedDemo()`. Ein Fehler beendet den Lauf hier — es gibt keinen partiellen
+  // Seed-Erfolg. Demodaten auf einer nicht suchbereiten Instanz sähen aus wie ein gelungener Lauf
+  // und wären beim ersten Suchversuch wertlos. Gemeldet wird die Ursache ohne Zugangsdaten; der
+  // Exitcode macht den Fehlschlag für Aufrufer und CI sichtbar.
+  try {
+    await stelleSuchprojektionBereit(services.ko);
+  } catch (error) {
+    console.error(
+      `[seed:demo] Abbruch vor dem Laden der Demodaten: ${
+        error instanceof Error ? error.message : "Suchprojektion nicht betriebsbereit."
+      }`,
+    );
+    process.exitCode = 1;
+    return;
   }
   const result: SeedResult = await seedDemo(services);
   if (result.skipped) {

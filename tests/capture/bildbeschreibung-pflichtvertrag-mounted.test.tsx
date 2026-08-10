@@ -37,7 +37,11 @@ beforeEach(() => {
 
 function Host(): JSX.Element {
   const [value, setValue] = useState(FIGURE);
-  return createElement(RichTextEditor, { value, onChange: setValue });
+  return createElement(RichTextEditor, {
+    value,
+    onChange: setValue,
+    documentTitle: "Wartungsnotiz",
+  });
 }
 
 // Dieselbe Auswahl-Geste wie in den übrigen Fußnoten-Fällen (caption-ai-binding-mounted).

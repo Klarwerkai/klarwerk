@@ -81,13 +81,19 @@ describe("WP-D7 Befund 1: zentrale accept-Konstante inkl. .pptx", () => {
 describe("WP-D7 Befund 2: Bild-Fußnote im Editor editierbar", () => {
   const rte = () => readSource("apps/web/src/components/RichTextEditor.tsx");
 
-  it("verankert figcaption editierbar und img nicht editierbar (Source-Pin)", () => {
+  it("verankert die figcaption als Bedienelement und img nicht editierbar (Source-Pin)", () => {
     // WP-D7b: die DOM-Logik lebt jetzt in editorFigures.ts (DOM-lib-frei, testbar); der Editor ruft sie auf.
+    // AUFTRAG-mega84 Block A: die Fußnote wird NICHT mehr editierbar verankert. Sie war ein eigener
+    // contenteditable-Editing-Host — genau der Zustand, den Pedi am 31.07. gemeldet hat: man tippt
+    // hinein, es öffnet sich kein Formular, es gibt keine Formatierung. Verankert wird sie jetzt als
+    // angekündigtes, fokussierbares Bedienelement, das in das Formular führt.
     const lib = readSource("apps/web/src/lib/editorFigures.ts");
-    expect(lib).toContain('caption.setAttribute("contenteditable", "true")');
+    expect(lib).toContain('caption.setAttribute("contenteditable", "false")');
+    expect(lib).toContain('caption.setAttribute("role", "button")');
+    expect(lib).toContain('caption.setAttribute("tabindex", "0")');
     expect(lib).toContain('img.setAttribute("contenteditable", "false")');
-    // figcaption wird NIE auf contenteditable=false gesetzt.
-    expect(lib).not.toContain('figcaption.setAttribute("contenteditable", "false")');
+    // Und sie wird NIE wieder zum Editing-Host gemacht.
+    expect(lib).not.toContain('caption.setAttribute("contenteditable", "true")');
 
     const src = rte();
     expect(src).toContain("enhanceFiguresForEditing");

@@ -1,6 +1,13 @@
 import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
-import type { EvidenceRepo, KoCandidateQuery, KoFilter, KoRepo, KoVersionRepo } from "./repo";
+import type {
+  EvidenceRepo,
+  KoCandidateQuery,
+  KoFilter,
+  KoRepo,
+  KoSichtbarkeitstrim,
+  KoVersionRepo,
+} from "./repo";
 import {
   type AiCheck,
   type EvidenceRecord,
@@ -121,6 +128,54 @@ CREATE UNIQUE INDEX IF NOT EXISTS kos_create_operation_owner_uq
 // und Fehlerübersetzung (insert unten). Zwei Kopien wären zwei Gelegenheiten, sie auseinanderlaufen
 // zu lassen, und die Übersetzung fiele dann still auf „unerwarteter Fehler" zurück.
 const KO_CREATE_OPERATION_CONSTRAINT = "kos_create_operation_owner_uq";
+
+// ================================================================================================
+// AUFTRAG-BASIC-380 — DIE DREI SCHLÜSSELSPALTEN, OHNE DIE DER TRIM NICHT IN DAS SQL PASST.
+// ================================================================================================
+//
+// WOFÜR SIE DA SIND. Papierkorb- und Sichtbarkeitsprädikat müssen VOR dem `LIMIT` wirken, also in
+// der Datenquelle (BASIC 379 §1.2/§2.5). Das Prädikat entsteht in `services/app/src/sichtbarkeit.ts`
+// (`sqlSichtbarkeitFuer`) und fragt genau drei Dinge: die Vertraulichkeitsstufe, den Autor und ob
+// das Objekt im Papierkorb liegt. Alle drei liegen heute nur im JSONB-Dokument.
+//
+// WARUM ECHTE SPALTEN UND KEIN AUSDRUCK IM PRÄDIKAT. Zwei Gründe, und der erste ist der wichtigere:
+//
+//   1. DIE STUFENGRENZE DARF NICHT ZWEIMAL AUSGELEGT WERDEN. `normalizeConfidentiality`
+//      (confidentiality.ts:15-17) sagt: alles außer 'vertraulich'/'streng_vertraulich' ist
+//      'intern'. Stünde derselbe CASE als Ausdruck in jeder Abfrage, wäre er an jeder Fundstelle
+//      neu abschreibbar — genau die zweite Wahrheit, gegen die `sichtbarkeit.ts:39-41` gebaut ist.
+//      Als GENERIERTE Spalte gibt es ihn genau einmal, und die Datenbank hält ihn.
+//   2. Ein Ausdruck über `data->>` ist nicht index-gedeckt. `idx_kos_sichtbarkeit` deckt den Trim.
+//
+// DAS HAUSMUSTER, WÖRTLICH ÜBERNOMMEN: dieselbe Form wie KO_IMPORT_ANCHOR_SCHEMA (:62-69) und
+// KO_CREATE_OPERATION_SCHEMA (:107-118) — eine EIGENE, additive Migrationsstufe nach KO_SCHEMA
+// (das per Test gepinnt frei von ALTER-Statements bleibt), `ADD COLUMN IF NOT EXISTS`, generiert
+// und damit ohne jeden Schreibweg, der sie auseinanderlaufen lassen könnte.
+//
+// WAS SIE NICHT TUT: sie ändert KEINE Zeile in `kos.data`, sie löscht nichts, sie leitet nichts ab,
+// was nicht schon dasteht. Rückrollen heißt „Feature aus" — die Spalten dürfen stehen bleiben, weil
+// sie nur ableiten (BASIC 379 §5.5).
+//
+// UND DIE BENANNTE LÜCKE IM MIGRATIONSWÄCHTER: `db.migrate.test.ts` sammelt nur *_SCHEMA-Konstanten,
+// deren Template ein `CREATE TABLE` trägt. Diese hier trägt keines und wird vom generischen Wächter
+// NICHT erfasst — sie hängt deshalb an einem eigens benannten Pin (T-M-3, db.migrate.test.ts).
+export const KO_SICHTBARKEIT_SCHEMA = `
+ALTER TABLE kos
+  ADD COLUMN IF NOT EXISTS confidentiality_key text
+  GENERATED ALWAYS AS (
+    CASE WHEN data->>'confidentiality' IN ('vertraulich','streng_vertraulich')
+         THEN data->>'confidentiality' ELSE 'intern' END
+  ) STORED;
+ALTER TABLE kos
+  ADD COLUMN IF NOT EXISTS author_key text
+  GENERATED ALWAYS AS (data->>'author') STORED;
+ALTER TABLE kos
+  ADD COLUMN IF NOT EXISTS deleted_at_key text
+  GENERATED ALWAYS AS (data->>'deletedAt') STORED;
+CREATE INDEX IF NOT EXISTS idx_kos_sichtbarkeit
+  ON kos (confidentiality_key, author_key)
+  WHERE deleted_at_key IS NULL;
+`;
 
 // SCRUM-159: unveränderliche KO-Version-Snapshots. PK (ko_id, version) + ON CONFLICT DO NOTHING
 // garantieren, dass eine einmal geschriebene Version nie überschrieben wird.
@@ -279,7 +334,19 @@ export class PgKoRepo implements KoRepo {
   }
 
   // Gemeinsamer Filterbau für list()/listForSearch() — identische WHERE-Logik, andere Projektion.
-  private buildListFilter(filter: KoFilter): { where: string; params: unknown[] } {
+  //
+  // AUFTRAG-BASIC-380: der optionale Sicherheitstrim reiht sich HIER ein, in dieselbe WHERE-Klausel
+  // wie die Fachfilter — und damit in dieselbe Anweisung, die ein späterer Abfragevertrag mit
+  // `LIMIT`, Cursor und Zählern versehen würde. Das ist der ganze Punkt (Gate `G-TRIM-SQL`): ein
+  // Nachfiltern in Node über einem bereits gedeckelten Ergebnis liefert kurze Seiten, überspringende
+  // Cursor und Zähler, die eine Existenzauskunft sind.
+  //
+  // Er steht bewusst ZULETZT: die Fachfilter behalten damit ihre Platzhalternummern, und der Trim
+  // setzt seine eigenen dahinter fort. Kein Aufrufer muss Nummern raten.
+  private buildListFilter(
+    filter: KoFilter,
+    trim?: KoSichtbarkeitstrim,
+  ): { where: string; params: unknown[] } {
     const clauses: string[] = [];
     const params: unknown[] = [];
     if (filter.type) {
@@ -299,11 +366,22 @@ export class PgKoRepo implements KoRepo {
       params.push(JSON.stringify([filter.tag]));
       clauses.push(`data->'tags' @> $${params.length}::jsonb`);
     }
+    if (trim) {
+      // Der Trim rendert sein Prädikat selbst — dieser Adapter kennt die Regel nicht und soll sie
+      // nicht kennen (G-TRIM-EINS: sie entsteht an EINER Stelle, neben `darfSehen`).
+      clauses.push(trim.sql("kos", params.length + 1));
+      params.push(...trim.params);
+    }
     return { where: clauses.length > 0 ? ` WHERE ${clauses.join(" AND ")}` : "", params };
   }
 
-  async list(filter: KoFilter): Promise<KnowledgeObject[]> {
-    const { where, params } = this.buildListFilter(filter);
+  // AUFTRAG-BASIC-391: mit injiziertem Trim stehen Papierkorb- und Sichtbarkeitsprädikat in der
+  // WHERE-Klausel DIESER Anweisung — vor jeder Zählung und vor jedem Deckel. Die Projektion bleibt
+  // bewusst `SELECT data` (volle Sicht): die body-freie Projektion gilt weiterhin NUR dem Suchpfad,
+  // und `bodyHtml` aus `GET /api/kos` zu entfernen ist ein eigener, kompatibilitätsgeprüfter
+  // Auftrag (O-379-5). Ohne Trim ist die Abfrage zeichengleich der bisherigen.
+  async list(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
+    const { where, params } = this.buildListFilter(filter, trim);
     const res = await this.pool.query<DataRow>(`SELECT data FROM kos${where}`, params);
     return res.rows.map((row) => row.data);
   }
@@ -311,11 +389,28 @@ export class PgKoRepo implements KoRepo {
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Projektion AN DER DATENQUELLE — Postgres entfernt
   // bodyHtml (mit potenziell megabyte-großen base64-Bildern) bereits im SELECT; der Riesen-String
   // verlässt die Datenbank für die Suche gar nicht erst. Gleiche Filterlogik wie list().
-  async listForSearch(filter: KoFilter): Promise<KnowledgeObject[]> {
-    const { where, params } = this.buildListFilter(filter);
+  // AUFTRAG-BASIC-380: mit injiziertem Trim steht das Papierkorb- und Sichtbarkeitsprädikat in der
+  // WHERE-Klausel DIESER Anweisung — vor jedem Deckel, den ein Abfragevertrag später anhängt. Ohne
+  // Trim ist die Abfrage zeichengleich die bisherige.
+  async listForSearch(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
+    const { where, params } = this.buildListFilter(filter, trim);
     const res = await this.pool.query<DataRow>(
       `SELECT data - 'bodyHtml' AS data FROM kos${where}`,
       params,
+    );
+    return res.rows.map((row) => row.data);
+  }
+
+  // G27: gezielter Mehrfach-Nachschlag zu einer bekannten Id-Menge (s. KoRepo.listByIds).
+  // EINE Abfrage über den Primärschlüssel (`= ANY`), body-frei projiziert — kein N+1 und kein
+  // Voll-Load des Bestands, nachdem die Suchprojektion die Menge bereits eingegrenzt hat.
+  async listByIds(ids: readonly string[]): Promise<KnowledgeObject[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<DataRow>(
+      "SELECT data - 'bodyHtml' AS data FROM kos WHERE id = ANY($1::text[])",
+      [[...new Set(ids)]],
     );
     return res.rows.map((row) => row.data);
   }

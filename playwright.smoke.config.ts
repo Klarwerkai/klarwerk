@@ -19,6 +19,50 @@ import { defineConfig, devices } from "@playwright/test";
 const PORT = 3123;
 
 // ────────────────────────────────────────────────────────────────────────────────────────────────
+// AUFTRAG-163 — DER ZWEITE, ZUSTANDSISOLIERTE KONTEXT.
+//
+// DER BEFUND (159, gemessen): Der Smoke-Server hält seinen Bestand in EINER `inMemoryRepos()`-
+// Instanz (`services/app/src/build-app.ts:564`), und bei `workers: 1` teilen sich ALLE Sonden und
+// alle Engines genau diesen einen Bestand. Einen Reset dazwischen gibt es nicht — der Werksreset
+// ist ohne Journal `factoryResetUnavailable` (`services/app/src/server.ts:83-86`), eine
+// Testhintertür existiert nicht (Preflight 161 hat danach gesucht).
+//
+// Die Folge war konkret: Der Demo-Kernweg (`demo-ux-v1-capture-frontdoor.spec.ts`) legt einen
+// Entwurf und ein Wissensobjekt an. Beides ist richtiges Produktverhalten und für sich grün — im
+// GESAMTTOR kippte es aber zwei Sonden, und beide zu Recht:
+//   · `ui-smoke.spec.ts:552` sichert im hermetischen Tor zu, dass das Prüf-Board LEER ist
+//     (`:587-588`, Zweig `ohneModell`). Ein eingereichtes Objekt füllt es.
+//   · `mega88-bildanker-browser.spec.ts:134` fiel am gespeicherten Entwurf.
+// Gegenprobe: ohne die Datei waren beide grün. Die Ursache lag beim Kernweg, nicht bei ihnen.
+//
+// AUSDRÜCKLICH VERWORFEN: die Datei so zu benennen, dass sie zuletzt läuft. Das ist genau die
+// Bauform, die `tests-smoke/support/auth.ts:12-15` als „Mangel der Vorrichtung" protokolliert und
+// die mega24 abgeschafft hat — sie ist unsichtbar (ein Dateiname trägt keine Zusicherung), nicht
+// prüfbar (kein Wächter erzwingt „läuft zuletzt") und sie löst nichts: der Bestand bliebe geteilt.
+//
+// STATTDESSEN ein ZWEITER Server auf eigenem Port mit eigener `inMemoryRepos()`-Instanz und eigener
+// Ersteinrichtung. Was der Kernweg anlegt, sieht keine andere Sonde — nicht weil die Reihenfolge
+// günstig ist, sondern weil es einen ANDEREN Bestand betrifft. Die Isolation hängt damit am
+// Prozess, nicht an einer Konvention.
+//
+// DER WIRKNACHWEIS IST DIE REIHENFOLGE-UNABHÄNGIGKEIT, NICHT DAS BLOSSE GRÜN — derselbe Massstab,
+// den mega24 weiter unten für die Ersteinrichtung angelegt hat. In der Voreinstellung läuft
+// `chromium-zustand` zuletzt; ein grüner Lauf allein wäre deshalb überbestimmt (Isolation ODER
+// Reihenfolge könnten ihn tragen). Gemessen wurde daher beides getrennt, indem `chromium`
+// vorübergehend von `chromium-zustand` abhängig gemacht wurde — der zustandsanlegende Kontext lief
+// dann als ERSTER:
+//
+//   · zuerst laufend + EIGENER Server   → 34/34 grün
+//   · zuerst laufend + GETEILTER Server → 2 rot (mega88:134 und ui-smoke:552, wie in 159)
+//
+// Die Trennung ist damit die wirksame Ursache, nicht die Reihenfolge. Beide Hilfsänderungen wurden
+// nach der Messung zurückgebaut; hier steht der Endzustand.
+const PORT_ZUSTAND = 3124;
+
+/** Die eine Sonde, die Bestand anlegt — sie läuft ausschliesslich im isolierten Kontext. */
+const ZUSTAND_SPEC = /demo-ux-v1-capture-frontdoor\.spec\.ts/;
+
+// ────────────────────────────────────────────────────────────────────────────────────────────────
 // AUFTRAG-mega25 Blöcke A + C — DIE UMGEBUNG DES SMOKE-SERVERS WIRD HIER DEKLARIERT, NIRGENDWO SONST.
 //
 // DER BEFUND (ben, sammel24): `tools/test:8` exportierte `KLARWERK_SKIP_KEYCHAIN=1` in einem
@@ -84,6 +128,53 @@ if (!GATE && !shipSmokeKeyVorhanden) {
   );
 }
 
+// AUFTRAG-163: Die Serverumgebung steht ab jetzt an EINER Stelle und wird von beiden Servern
+// benutzt. Vorher war sie inline im einzigen `webServer`-Eintrag; mit einem zweiten Server wäre
+// aus einer Kopie schnell eine zweite Wahrheit über Modell und Egress geworden — genau das, was
+// mega25 an dieser Datei geschlossen hat. Der einzige Unterschied zwischen beiden Servern ist die
+// Portnummer.
+const smokeServerEnv = (port: number): Record<string, string> => ({
+  PORT: String(port),
+  // (1) Der Schlüsselbund bleibt auf JEDEM Testweg zu — auch im vollen Smoke. Das ist bens
+  //     Zusatzbedingung aus sammel24 und gilt unabhängig davon, welchen Weg Pedi wählt: dass
+  //     ein automatisiertes Tor ohne ausdrückliche Freigabe das persönliche Zugangsdatum eines
+  //     Menschen aus dessen Schlüsselbund zieht, ist in keiner Variante der Endzustand.
+  //     Wirkung im Produkt: `services/app/src/build-app.ts:305` reicht bei gesetzter Variable
+  //     `() => undefined` als Keychain-Lookup durch — der `security`-Aufruf in
+  //     `services/reasoner/src/model-client.ts:156-166` läuft dann gar nicht erst an.
+  KLARWERK_SKIP_KEYCHAIN: "1",
+  // (2) Der dritte Weg zu einem aktiven Modell (SCRUM-424, eigener lokaler LLM) wird im Tor
+  //     ebenfalls zugedreht — sonst hinge die Zusage „hermetisch" daran, ob auf der Maschine
+  //     zufällig ein On-Prem-Endpunkt konfiguriert ist.
+  ...(GATE
+    ? {
+        KLARWERK_LOCAL_LLM_URL: "",
+        KLARWERK_LOCAL_LLM_MODEL: "",
+        // AUFTRAG-mega25, aus dem Zusatzbefund von `tests/setup-env.ts` gelernt: „hermetisch"
+        // heisst KEIN Netz, nicht bloss „kein Modell". Der externe Such-Proxy (Wikipedia) ist
+        // der zweite Weg, auf dem dieser Server einen Dritten kontaktieren könnte. Heute läuft
+        // ihn keine Smoke-Sonde — genau so eine „heute noch nicht"-Lücke war aber Block B.
+        // Deshalb im Tor strukturell zu, statt darauf zu vertrauen, dass es so bleibt.
+        EXTERNAL_SEARCH: "off",
+      }
+    : {}),
+  // (2b) AUFTRAG-mega64 Block A: Das Demodaten-Laden liegt seit mega64 hinter einem fail-closed
+  //      Betriebsschalter mit Vorgabe AUS — ohne ihn existiert die Route nicht und der Knopf
+  //      „Demodaten laden" wird nicht gerendert. `smoke:ui:gate:daten` fährt genau über diesen
+  //      Produktweg (`tests-smoke/ersteinrichtung.setup.ts:95-108`) und braucht den Schalter
+  //      deshalb ausdrücklich. Er wird NUR für diesen Lauf gesetzt: der normale Tor-Lauf
+  //      (`smoke:ui:gate`, der Lauf in `tools/check`) seedet keine Demodaten und bekommt den
+  //      Schalter darum auch nicht — sonst stünde in der Tor-Umgebung ein Werkzeug scharf, das
+  //      dieser Lauf nicht benutzt.
+  ...(process.env.KLARWERK_SMOKE_SEED === "1" ? { KLARWERK_DEMO_SEED: "1" } : {}),
+  // (3) Der Cloud-Schlüssel steht NICHT hier — er kommt als geerbte Prozessumgebung aus dem
+  //     Start-Befehl (s. oben, `package.json`). Dort wird er im Tor auf LEER gesetzt (nicht
+  //     „ungesetzt": leer, damit ein in Pedis Shell exportierter Wert die Hermetik nicht doch
+  //     noch aufreisst) und im vollen Lauf aus KLARWERK_SHIP_SMOKE_API_KEY gefüllt. Dass beides
+  //     tatsächlich am Server ankommt, prüft `tests-smoke/smoke-umgebung.spec.ts` — in BEIDEN
+  //     Richtungen: „im Tor kein Modell" und „im vollen Lauf ein Cloud-Modell".
+});
+
 export default defineConfig({
   testDir: "./tests-smoke",
   timeout: 60_000,
@@ -144,9 +235,42 @@ export default defineConfig({
       testMatch: /ersteinrichtung\.setup\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
-    { name: "chromium", use: { ...devices["Desktop Chrome"] }, dependencies: ["setup"] },
-    { name: "firefox", use: { ...devices["Desktop Firefox"] }, dependencies: ["setup"] },
-    { name: "webkit", use: { ...devices["Desktop Safari"] }, dependencies: ["setup"] },
+    // AUFTRAG-163: die zustandsanlegende Sonde läuft hier NICHT mit — sie hat ihren eigenen Server
+    // (s. `PORT_ZUSTAND`). Ohne dieses `testIgnore` liefe sie in beiden Kontexten und der geteilte
+    // Bestand wäre wieder gefüllt.
+    {
+      name: "chromium",
+      use: { ...devices["Desktop Chrome"] },
+      dependencies: ["setup"],
+      testIgnore: ZUSTAND_SPEC,
+    },
+    {
+      name: "firefox",
+      use: { ...devices["Desktop Firefox"] },
+      dependencies: ["setup"],
+      testIgnore: ZUSTAND_SPEC,
+    },
+    {
+      name: "webkit",
+      use: { ...devices["Desktop Safari"] },
+      dependencies: ["setup"],
+      testIgnore: ZUSTAND_SPEC,
+    },
+    // AUFTRAG-163: der isolierte Kontext. Eigene Ersteinrichtung, weil der zweite Server einen
+    // eigenen, jungfräulichen Bestand hat — das EINE Konto muss dort erst entstehen. Beide
+    // Setup-Projekte fahren dieselbe Datei; sie navigiert relativ (`page.goto("/")`) und erbt die
+    // `baseURL` aus dem Projekt, weshalb hier KEIN Helfer angefasst werden musste.
+    {
+      name: "setup-zustand",
+      testMatch: /ersteinrichtung\.setup\.ts/,
+      use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${PORT_ZUSTAND}` },
+    },
+    {
+      name: "chromium-zustand",
+      testMatch: ZUSTAND_SPEC,
+      use: { ...devices["Desktop Chrome"], baseURL: `http://127.0.0.1:${PORT_ZUSTAND}` },
+      dependencies: ["setup-zustand"],
+    },
   ],
   use: {
     baseURL: `http://127.0.0.1:${PORT}`,
@@ -157,75 +281,48 @@ export default defineConfig({
     // was er behauptet zu messen.
     serviceWorkers: "block",
   },
-  webServer: {
-    // In-Memory-Backend (keine DATABASE_URL, kein Dev-Persist) → jeder Lauf startet jungfräulich
-    // mit Ersteinrichtung.
-    //
-    // AUFTRAG-mega24 — RICHTIGSTELLUNG: hier stand bis mega23 „deterministischer Reasoner (kein
-    // API-Key nötig, ehrliche Entwürfe)". Das ist FALSCH und war es spätestens seit
-    // „KI-Ehrlichkeit" (AI-STATE V1-V5, Commit c4a6a5b). Gemessen in mega24:
-    //
-    //   Der Server erbt hier die Umgebung des Aufrufers. OHNE `KLARWERK_SKIP_KEYCHAIN` zieht er auf
-    //   dieser Maschine ECHTE Cloud-Zugangsdaten aus dem Schlüsselbund — `npm run smoke:ui` macht
-    //   dann echte Modell-Läufe und damit echten EGRESS (im Lauf sichtbar als „CloudReasoner aktiv"
-    //   und als KI-Prüf-Zeilen des Servers). MIT `KLARWERK_SKIP_KEYCHAIN=1` ist kein Modell aktiv,
-    //   und der Test „Kernfluss … @modell" kann gar nicht grün werden: der Knopf „Mit KI
-    //   strukturieren" wird dann bewusst HART ausgegraut, statt still deterministisch zu antworten
-    //   (`apps/web/src/lib/aiAvailability.ts:29-49`) — das ist gewolltes Produktverhalten.
-    //
-    // Der deterministische Fallback existiert also weiter, aber er trägt diesen einen Test NICHT.
-    // Deshalb ist er mit `@modell` markiert und läuft im hermetischen Tor-Lauf nicht mit
-    // (`npm run smoke:ui:gate`, s. `tools/check`). Pedis Entscheidung (SCRUM-552): dass die volle
-    // Smoke-Suite für ihr Grün einen echten Modell-Lauf braucht, bleibt befristet bestehen.
-    //
-    // AUFTRAG-mega25 — HIER wird die Umgebung des Servers festgelegt, und zwar VOLLSTÄNDIG für
-    // alles, was über Modell und Egress entscheidet. Playwright mischt `process.env` unter, aber
-    // die Einträge dieses Objekts GEWINNEN (playwright/lib/runner/index.js: `{...process.env,
-    // ...options.env}`) — was hier steht, kann eine Aufrufer-Shell nicht mehr überschreiben.
-    command: "npm start",
-    url: `http://127.0.0.1:${PORT}/health`,
-    reuseExistingServer: false,
-    timeout: 60_000,
-    env: {
-      PORT: String(PORT),
-      // (1) Der Schlüsselbund bleibt auf JEDEM Testweg zu — auch im vollen Smoke. Das ist bens
-      //     Zusatzbedingung aus sammel24 und gilt unabhängig davon, welchen Weg Pedi wählt: dass
-      //     ein automatisiertes Tor ohne ausdrückliche Freigabe das persönliche Zugangsdatum eines
-      //     Menschen aus dessen Schlüsselbund zieht, ist in keiner Variante der Endzustand.
-      //     Wirkung im Produkt: `services/app/src/build-app.ts:305` reicht bei gesetzter Variable
-      //     `() => undefined` als Keychain-Lookup durch — der `security`-Aufruf in
-      //     `services/reasoner/src/model-client.ts:156-166` läuft dann gar nicht erst an.
-      KLARWERK_SKIP_KEYCHAIN: "1",
-      // (2) Der dritte Weg zu einem aktiven Modell (SCRUM-424, eigener lokaler LLM) wird im Tor
-      //     ebenfalls zugedreht — sonst hinge die Zusage „hermetisch" daran, ob auf der Maschine
-      //     zufällig ein On-Prem-Endpunkt konfiguriert ist.
-      ...(GATE
-        ? {
-            KLARWERK_LOCAL_LLM_URL: "",
-            KLARWERK_LOCAL_LLM_MODEL: "",
-            // AUFTRAG-mega25, aus dem Zusatzbefund von `tests/setup-env.ts` gelernt: „hermetisch"
-            // heisst KEIN Netz, nicht bloss „kein Modell". Der externe Such-Proxy (Wikipedia) ist
-            // der zweite Weg, auf dem dieser Server einen Dritten kontaktieren könnte. Heute läuft
-            // ihn keine Smoke-Sonde — genau so eine „heute noch nicht"-Lücke war aber Block B.
-            // Deshalb im Tor strukturell zu, statt darauf zu vertrauen, dass es so bleibt.
-            EXTERNAL_SEARCH: "off",
-          }
-        : {}),
-      // (2b) AUFTRAG-mega64 Block A: Das Demodaten-Laden liegt seit mega64 hinter einem fail-closed
-      //      Betriebsschalter mit Vorgabe AUS — ohne ihn existiert die Route nicht und der Knopf
-      //      „Demodaten laden" wird nicht gerendert. `smoke:ui:gate:daten` fährt genau über diesen
-      //      Produktweg (`tests-smoke/ersteinrichtung.setup.ts:95-108`) und braucht den Schalter
-      //      deshalb ausdrücklich. Er wird NUR für diesen Lauf gesetzt: der normale Tor-Lauf
-      //      (`smoke:ui:gate`, der Lauf in `tools/check`) seedet keine Demodaten und bekommt den
-      //      Schalter darum auch nicht — sonst stünde in der Tor-Umgebung ein Werkzeug scharf, das
-      //      dieser Lauf nicht benutzt.
-      ...(process.env.KLARWERK_SMOKE_SEED === "1" ? { KLARWERK_DEMO_SEED: "1" } : {}),
-      // (3) Der Cloud-Schlüssel steht NICHT hier — er kommt als geerbte Prozessumgebung aus dem
-      //     Start-Befehl (s. oben, `package.json`). Dort wird er im Tor auf LEER gesetzt (nicht
-      //     „ungesetzt": leer, damit ein in Pedis Shell exportierter Wert die Hermetik nicht doch
-      //     noch aufreisst) und im vollen Lauf aus KLARWERK_SHIP_SMOKE_API_KEY gefüllt. Dass beides
-      //     tatsächlich am Server ankommt, prüft `tests-smoke/smoke-umgebung.spec.ts` — in BEIDEN
-      //     Richtungen: „im Tor kein Modell" und „im vollen Lauf ein Cloud-Modell".
+  // AUFTRAG-163: ZWEI Server. Der erste trägt die bestehende Suite, der zweite ausschliesslich die
+  // zustandsanlegende Sonde (`chromium-zustand`). Beide bekommen ihre Umgebung aus DERSELBEN
+  // Funktion — der einzige Unterschied ist der Port, und damit ein eigener `inMemoryRepos()`-Satz
+  // im eigenen Prozess.
+  webServer: [
+    {
+      // In-Memory-Backend (keine DATABASE_URL, kein Dev-Persist) → jeder Lauf startet jungfräulich
+      // mit Ersteinrichtung.
+      //
+      // AUFTRAG-mega24 — RICHTIGSTELLUNG: hier stand bis mega23 „deterministischer Reasoner (kein
+      // API-Key nötig, ehrliche Entwürfe)". Das ist FALSCH und war es spätestens seit
+      // „KI-Ehrlichkeit" (AI-STATE V1-V5, Commit c4a6a5b). Gemessen in mega24:
+      //
+      //   Der Server erbt hier die Umgebung des Aufrufers. OHNE `KLARWERK_SKIP_KEYCHAIN` zieht er auf
+      //   dieser Maschine ECHTE Cloud-Zugangsdaten aus dem Schlüsselbund — `npm run smoke:ui` macht
+      //   dann echte Modell-Läufe und damit echten EGRESS (im Lauf sichtbar als „CloudReasoner aktiv"
+      //   und als KI-Prüf-Zeilen des Servers). MIT `KLARWERK_SKIP_KEYCHAIN=1` ist kein Modell aktiv,
+      //   und der Test „Kernfluss … @modell" kann gar nicht grün werden: der Knopf „Mit KI
+      //   strukturieren" wird dann bewusst HART ausgegraut, statt still deterministisch zu antworten
+      //   (`apps/web/src/lib/aiAvailability.ts:29-49`) — das ist gewolltes Produktverhalten.
+      //
+      // Der deterministische Fallback existiert also weiter, aber er trägt diesen einen Test NICHT.
+      // Deshalb ist er mit `@modell` markiert und läuft im hermetischen Tor-Lauf nicht mit
+      // (`npm run smoke:ui:gate`, s. `tools/check`). Pedis Entscheidung (SCRUM-552): dass die volle
+      // Smoke-Suite für ihr Grün einen echten Modell-Lauf braucht, bleibt befristet bestehen.
+      //
+      // AUFTRAG-mega25 — HIER wird die Umgebung des Servers festgelegt, und zwar VOLLSTÄNDIG für
+      // alles, was über Modell und Egress entscheidet. Playwright mischt `process.env` unter, aber
+      // die Einträge dieses Objekts GEWINNEN (playwright/lib/runner/index.js: `{...process.env,
+      // ...options.env}`) — was hier steht, kann eine Aufrufer-Shell nicht mehr überschreiben.
+      command: "npm start",
+      url: `http://127.0.0.1:${PORT}/health`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: smokeServerEnv(PORT),
     },
-  },
+    {
+      command: "npm start",
+      url: `http://127.0.0.1:${PORT_ZUSTAND}/health`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+      env: smokeServerEnv(PORT_ZUSTAND),
+    },
+  ],
 });

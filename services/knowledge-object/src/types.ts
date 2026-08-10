@@ -201,6 +201,29 @@ export interface KnowledgeObject {
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für die Anzeige
   // „X von Y grün" auf der Validierungsseite. Nur die Board-Sicht setzt es; sonst undefined.
   reviewVotes?: { up: number; warn: number; down: number };
+  // ============================================================================================
+  // W3-C (KW-W3-19, Pedi 03.08.) — DER VERWEIS AUF DIE VALIDIERUNGSENTSCHEIDUNG.
+  // ============================================================================================
+  //
+  // Pedis Entscheidung: AUSSCHLIESSLICH das Knowledge Object trägt sie. Ein Rating als Träger
+  // wurde verworfen — `adminValidate()` schreibt gar kein Rating und bräuchte einen zweiten Ort.
+  //
+  // ES IST EIN VERWEIS, KEIN ZWEITER WAHRHEITSORT. Der Auditeintrag bleibt die Wahrheit; wer den
+  // Verweis benutzt, löst ihn über `findBySeq` ein und prüft ihn (Audit-Modul:
+  // `pruefeValidationDecisionRef`) — er glaubt ihn nicht. Der Wert stammt ausschließlich aus dem
+  // Rückgabewert von `AuditService.record()`; eine spätere Suche oder Rekonstruktion über
+  // Zeitpunkt, Actor, KO-Version oder aktuellen Status ist ausdrücklicher No-Go von KW-W3-19.
+  //
+  // OPTIONAL UND OHNE MIGRATION: das KO liegt als Voll-JSONB (`kos.data`). Fehlt das Feld, ist es
+  // ein KO ohne festgehaltene Entscheidung — Altbestand oder nie validiert. Das ist EHRLICH
+  // `MISSING`, nicht „ungeprüft" und schon gar nicht „gültig". Kein Backfill.
+  //
+  // WARUM HIER KEINE VERSION DANEBEN STEHT: die geprüfte KO-Fassung reist im Auditpayload mit, und
+  // das Subject der Prüfung kommt aus der HEUTIGEN `version` des KO. Würde die Version hier
+  // mitgespeichert, meldete eine durch `revise()` überholte Entscheidung dauerhaft `OK` — genau
+  // der schlechte Kompromiss, den die Entscheidung ausschließt. Nach einer Revision bleibt der
+  // Verweis stehen und wird folgerichtig `WRONG_SUBJECT`.
+  validationDecisionRef?: { auditSeq: number; auditHash: string };
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -413,7 +436,15 @@ export type KoErrorCode =
   // AUFTRAG-mega21 Block A: der Vorgang steht auf `repair_required` — Anlage UND Rücknahme sind
   // gescheitert, das Objekt ist möglicherweise unvollständig belegt. Ein Wiederholversuch bekommt
   // diesen Rest NIE als Erfolg (das war bens SB-4), sondern eine ehrliche Auskunft.
-  | "CREATE_REPAIR_REQUIRED";
+  | "CREATE_REPAIR_REQUIRED"
+  // G27 R1 (KW-ARCH-G27-RESTFRAGEN-05 §2): die Standardsuche ist NICHT verfügbar, weil keine
+  // Projektionsfassung freigegeben ist (`UNINITIALIZED`, `V2_BUILDING`, `V2_READY`, `FAILED`) oder
+  // der Control-State beschädigt/inkonsistent ist. REIN ADDITIV und rein INTERN: technische
+  // Betriebslogik der Suchinfrastruktur, keine Änderung am KO-Fachmodell, keine Routen- und keine
+  // Vertragsänderung nach außen. Er existiert, weil die Alternative — `[]` — gelogen hätte: eine
+  // leere Treffermenge bedeutet fachlich „nichts gefunden" und darf „Suche nicht verfügbar" nicht
+  // verschleiern (Entscheidung 04 §4).
+  | "SEARCH_PROJECTION_NOT_READY";
 
 export class KoError extends Error {
   readonly code: KoErrorCode;

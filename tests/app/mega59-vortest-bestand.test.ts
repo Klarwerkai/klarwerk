@@ -31,6 +31,11 @@ import {
 
 async function bestand() {
   const services = buildServices();
+  // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §4: mechanische Inbetriebnahme über den
+  // PRODUKTPFAD. Die Standardsuche ist seit R1 fail-closed; ein direkt gebauter Dienstsatz ist
+  // eine nicht in Betrieb genommene Instanz. In der echten App tut das der onReady-Hook der
+  // Kompositionswurzel — hier derselbe Aktivierungsweg, keine Abkürzung am Gate vorbei.
+  await services.ko.activateSearchProjectionV2();
   const r = await seedDemo(services);
   expect(r.skipped, "der Seed ist übersprungen — der Wächter würde ins Leere prüfen").toBe(false);
   return services.ko.list();

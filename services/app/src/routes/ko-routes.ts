@@ -36,7 +36,7 @@ import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
 import type { AssignmentNotifier } from "../notify";
-import { darfSehen, sichtbareFuer } from "../sichtbarkeit";
+import { darfSehen, sichtbareFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
 
 // Knowledge-Object-API (§2.3). Mutationen laufen über EINEN Endpunkt
 // PUT /api/kos/:id, der per {action} an das passende Modul verzweigt — die
@@ -447,7 +447,31 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       }
       // mega74 B: ein unsichtbares Objekt fehlt in der Liste — es erscheint nicht als gesperrter
       // Platzhalter. Ein Platzhalter wäre wieder eine Existenzauskunft.
-      reply.code(200).send(sichtbareFuer(user, await ko.list(request.query)));
+      //
+      // ==========================================================================================
+      // AUFTRAG-BASIC-391 — DIESELBE ENTSCHEIDUNG REIST JETZT BIS IN DAS SQL.
+      // ==========================================================================================
+      //
+      // `sichtbareFuer` allein war eine Nachfilterung, und `KoService.list` warf den Papierkorb im
+      // Anwendungsspeicher weg. Solange beides oberhalb von SQL steht, wäre jede spätere Zählung
+      // oder Paginierung falsch gebaut: ein `LIMIT` lieferte Zeilen, von denen danach noch welche
+      // abgezogen werden — kurze Seiten, überspringende Cursor, und jeder Zähler wäre eine
+      // Existenzauskunft (BASIC 380 `R-3`, vermessen in BASIC 385).
+      //
+      // Ab hier wird DIESELBE Entscheidung zusätzlich als SQL-Prädikat injiziert und wirkt auf der
+      // GRUNDMENGE. Es ist genau die Naht, die die Bibliothekssuche seit BASIC 380 benutzt.
+      //
+      // DIES IST DIE EINZIGE STELLE, DIE DEN TRIM ÜBERGIBT. Papierkorb (`/api/kos/trash`),
+      // Import-Anker, Sweep und Quellanker laufen weiter ungetrimmt über `repo.list` — sie MÜSSEN
+      // getrashte Zeilen sehen. Ein Default am Repository oder am Service bräche alle vier.
+      //
+      // WARUM `sichtbareFuer` TROTZDEM STEHEN BLEIBT: G-SHADOW, wörtlich (`oldAllowed ∧
+      // newAllowed`). Eine neue Regel darf Sichtbarkeit nie erweitern; ein Aufbau ohne Trim findet
+      // hier weiterhin das Tor vor, das seit mega74 steht. Die Zusage dieser Route ändert sich
+      // damit nicht — sie wird nur zählbar und paginierbar.
+      reply
+        .code(200)
+        .send(sichtbareFuer(user, await ko.list(request.query, sqlSichtbarkeitFuer(user))));
     });
 
     app.get<{ Params: { id: string } }>("/api/kos/:id", async (request, reply) => {
@@ -1715,7 +1739,10 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             if (!user) {
               return;
             }
-            reply.code(200).send(await ko.updateTags(id, body.tags ?? []));
+            // G27 Welle 1 / S2: der Schlagwortweg ist jetzt auditiert — und ein Beleg mit dem
+            // Actor „system" wäre schlechter als keiner. Er bekommt denselben angemeldeten
+            // Benutzer wie der Kategorieweg direkt darüber.
+            reply.code(200).send(await ko.updateTags(id, body.tags ?? [], user.id));
             return;
           }
           // SCRUM-415/509: Vertraulichkeitsstufe setzen/ändern. Basisrecht ko.create (wie Bearbeiten).

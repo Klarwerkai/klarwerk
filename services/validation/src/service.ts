@@ -32,6 +32,35 @@ export interface AssignmentNotice {
   at: string;
 }
 
+// ================================================================================================
+// W3-B (KW-W3-19) — DIE VALIDIERUNGSREFERENZ AM RUECKGABEWERT
+// ================================================================================================
+//
+// WARUM SIE HIER STEHT UND NICHT IN `ValidationOutcome`. Jener Typ liegt in `trust.ts` und wird von
+// der PUREN Funktion `computeOutcome` erzeugt, die von Audit nichts weiss und nichts wissen darf.
+// Traege er das Feld, muesste eine reine Rechenfunktion etwas fuellen, das sie nicht kennt — oder
+// es bliebe strukturell leer und waere eine Einladung zum Erfinden. Die Referenz gehoert deshalb an
+// den Rueckgabewert der DIENSTmethoden.
+//
+// `null` IST EINE EHRLICHE ANTWORT: `audit` ist optional (s. Deps unten). Ohne verdrahteten Audit
+// gibt es keinen Eintrag und damit keine Referenz. Rekonstruktion ueber Zeitpunkt, Actor oder
+// Status ist ausdruecklicher No-Go von KW-W3-19.
+export interface ValidationDecisionRefWertForm {
+  readonly auditSeq: number;
+  readonly auditHash: string;
+}
+export type ValidationDecisionRefWert = ValidationDecisionRefWertForm | null;
+
+/** Aus dem Auditbeleg wird die Referenz — reines Durchreichen, keine Ableitung. */
+function refAus(beleg: { seq: number; hash: string } | undefined): ValidationDecisionRefWert {
+  return beleg ? { auditSeq: beleg.seq, auditHash: beleg.hash } : null;
+}
+
+/** Der fachliche Ausgang PLUS der Beleg, auf den er sich stuetzt. */
+export type ValidationDecision = ValidationOutcome & {
+  readonly validationDecisionRef: ValidationDecisionRefWert;
+};
+
 export interface ValidationServiceDeps {
   koService: KoService;
   ratings: RatingRepo;
@@ -87,7 +116,7 @@ export class ValidationService {
   }
 
   // FR-VAL-01/02: Bewertung verbuchen, Trust/Status neu berechnen, am KO setzen.
-  async rate(koId: string, userId: string, verdict: Verdict): Promise<ValidationOutcome> {
+  async rate(koId: string, userId: string, verdict: Verdict): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
@@ -114,11 +143,15 @@ export class ValidationService {
       { trust: outcome.trust, status: outcome.status },
       { expectedVersion: ratedVersion },
     );
-    await this.audit?.record({
+    // W3-B (KW-W3-19): der Rueckgabewert wird FESTGEHALTEN statt verworfen. Er ist die Referenz —
+    // eine spaetere Suche nach „dem passenden Eintrag" ist ausdruecklich verboten.
+    // `koVersion` reist bewusst im Payload mit: die Entscheidung gilt fuer die BEWERTETE Fassung,
+    // und nur so kann ein Leser spaeter `WRONG_SUBJECT` von „passt" unterscheiden.
+    const beleg = await this.audit?.record({
       actor: userId,
       action: "ko.rated",
       target: koId,
-      payload: { verdict },
+      payload: { verdict, koVersion: ratedVersion },
     });
     // FR-VAL-05: Bewertung erledigt eine offene Zuweisung des Nutzers.
     const assignment = await this.assignments.find(koId, userId);
@@ -127,10 +160,48 @@ export class ValidationService {
     }
     // SCRUM-124: Gelb/Rot (warn/down) gibt das Objekt zur Nacharbeit an den Autor zurück.
     // Schemafrei über das vorhandene Assignment-Modell + Audit; Grün (up) erzeugt nichts.
+    // ==========================================================================================
+    // BEN-70 ROT-2 — DIE SPAETERE ENTSCHEIDUNG IST DIE ENTSCHEIDUNG.
+    // ==========================================================================================
+    //
+    // Bis Freeze 67 wurde der Rueckgabewert von `returnToAuthor` hier VERWORFEN, und `rate()`
+    // lieferte weiter die Referenz des vorherigen `ko.rated`-Ereignisses. Der Weg war gebaut,
+    // aber nicht angeschlossen — eine halbe Zusage.
+    //
+    // Bei `warn`/`down` faellt die tragende Entscheidung in der RUECKGABE AN DEN AUTOR: sie
+    // bestimmt, was mit dem Objekt geschieht. Genau ihre Referenz reist deshalb nach aussen.
+    // Bei `up` gibt es keine Rueckgabe — dort bleibt es bei der Bewertungsreferenz (eigener
+    // Gegenkontrollfall, damit die Korrektur nicht einfach „immer die letzte" liefert).
+    let referenz = refAus(beleg);
     if (verdict === "warn" || verdict === "down") {
-      await this.returnToAuthor(koId, ko.author, userId, verdict);
+      const rueckgabeRef = await this.returnToAuthor(
+        koId,
+        ko.author,
+        userId,
+        verdict,
+        ratedVersion,
+      );
+      if (rueckgabeRef) {
+        referenz = rueckgabeRef;
+      }
     }
-    return outcome;
+    // ==========================================================================================
+    // W3-C (Pedi 03.08.) — DIE ENTSCHEIDUNG WIRD AM OBJEKT FESTGEHALTEN.
+    // ==========================================================================================
+    //
+    // HIER UND NICHT FRÜHER: erst an dieser Stelle steht fest, WELCHE Entscheidung trägt. Bei
+    // `warn`/`down` ist es die Rückgabe an den Autor, bei `up` die Bewertung — die Fallunterscheidung
+    // ist zwei Zeilen weiter oben gefallen. Ein Festhalten vor `audit.record()` wäre unmöglich (den
+    // `seq` gibt es dann noch nicht), eines vor dieser Zeile wäre falsch.
+    //
+    // MIT DER BEWERTETEN VERSION ALS COMPARE-AND-SET: hat ein `revise` zwischenzeitlich die Version
+    // erhöht, unterbleibt das Festhalten — dieselbe Regel, die schon `setValidationState` schützt.
+    if (referenz) {
+      await this.koService.setValidationDecisionRef(koId, referenz, {
+        expectedVersion: ratedVersion,
+      });
+    }
+    return { ...outcome, validationDecisionRef: referenz };
   }
 
   // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — der Admin schließt die Validierung eines
@@ -138,18 +209,35 @@ export class ValidationService {
   // Bewusst nur Admin (Route-Guard users.manage); der Vorgang ist als eigene Aktion im Audit
   // nachvollziehbar. Trust wird auf den Deckel (99) gesetzt — kein Wahrheitsversprechen (PI-K2),
   // aber die höchste Evidenzstufe, die das System vergibt.
-  async adminValidate(koId: string, actorId: string): Promise<ValidationOutcome> {
+  async adminValidate(koId: string, actorId: string): Promise<ValidationDecision> {
     const ko = await this.koService.get(koId);
     if (!ko) {
       throw new ValidationError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
     }
     await this.koService.setValidationState(koId, { trust: TRUST_MAX, status: "validiert" });
-    await this.audit?.record({
+    const beleg = await this.audit?.record({
       actor: actorId,
       action: "ko.admin-validated",
       target: koId,
+      payload: { koVersion: ko.version },
     });
-    return { up: ko.neededValidations, warn: 0, down: 0, trust: TRUST_MAX, status: "validiert" };
+    // W3-C (Pedi 03.08.): auch die Admin-Entscheidung wird am KO festgehalten — und GENAU SIE ist
+    // der Grund, warum das Rating als Träger ausschied: hier entsteht keins. Compare-and-Set gegen
+    // die validierte Fassung, damit ein zwischenzeitliches `revise` den Verweis nicht erbt.
+    const referenz = refAus(beleg);
+    if (referenz) {
+      await this.koService.setValidationDecisionRef(koId, referenz, {
+        expectedVersion: ko.version,
+      });
+    }
+    return {
+      up: ko.neededValidations,
+      warn: 0,
+      down: 0,
+      trust: TRUST_MAX,
+      status: "validiert",
+      validationDecisionRef: referenz,
+    };
   }
 
   // SCRUM-124: dedupliziert eine offene Zuweisung an den Autor + Audit-Event.
@@ -158,7 +246,8 @@ export class ValidationService {
     author: string,
     by: string,
     verdict: Verdict,
-  ): Promise<void> {
+    koVersion: number,
+  ): Promise<ValidationDecisionRefWert> {
     const existing = await this.assignments.find(koId, author);
     if (existing) {
       if (existing.status !== "open") {
@@ -167,12 +256,16 @@ export class ValidationService {
     } else {
       await this.assignments.create({ koId, userId: author, status: "open" });
     }
-    await this.audit?.record({
+    // Auch die Rueckgabe an den Autor IST eine Entscheidung (KW-W3-19) — sie traegt deshalb
+    // dieselbe Bindung. Die Methode ist privat; ihre Referenz reist ueber den Rueckgabewert zum
+    // Aufrufer, statt hier zu verfallen.
+    const beleg = await this.audit?.record({
       actor: by,
       action: "ko.returned-to-author",
       target: koId,
-      payload: { verdict, author },
+      payload: { verdict, author, koVersion },
     });
+    return refAus(beleg);
   }
 
   // FR-VAL-03/04: Board zeigt nur offene KOs, Filter kombinierbar.

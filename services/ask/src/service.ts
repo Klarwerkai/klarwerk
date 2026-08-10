@@ -19,8 +19,18 @@ import { TRUST_MAX } from "../../validation";
 import { normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
-import type { GapRepo } from "./repo";
-import { AskError, type Gap, type GapPriority, isGapPriority } from "./types";
+import type { AnswerSnapshotRepo, GapRepo } from "./repo";
+import {
+  ANSWER_SNAPSHOT_SCHEMA_VERSION,
+  type AnswerEvidenceRef,
+  type AnswerEvidenceSnapshot,
+  AskError,
+  type Gap,
+  type GapPriority,
+  answerSnapshotStatus,
+  hashAnswerSnapshot,
+  isGapPriority,
+} from "./types";
 
 const HELPFUL_TRUST_STEP = 2;
 
@@ -51,12 +61,27 @@ export interface AskServiceDeps {
   // withPgTx (build-app); ohne Injektion (InMemory/Dev-Journal) läuft der serialisierte, synchron-
   // atomare Fallback (kein echtes I/O-Fenster, Analogie zum purgeKo-Fallback).
   withTx?: WithTx;
+  /**
+   * W3-C1 (Auftrag 76): der Beleg-Schreibweg — BEWUSST OPTIONAL.
+   *
+   * Ohne Repo laeuft der Antwortweg byte-identisch wie bisher; es entsteht nur kein Snapshot.
+   * Ein Pflichtfeld haette dieselbe Wirkung gehabt wie das Pflicht-`findBySeq` aus Auftrag 67:
+   * Bruch in fremden Aufbauten (Tests, Dev-Journal) ausserhalb jeder Dateigrenze. Die Lehre ist
+   * frisch und wird hier angewandt.
+   */
+  answerSnapshots?: AnswerSnapshotRepo;
 }
 
 export interface AskResult {
   // WP-RETEST7 R5: + captionSources — Quellen, deren Treffer NUR über die Bild-Fußnoten zustande
   // kam (Fundstellen-Kennzeichnung analog zur Bibliothek: Badge „Bildbeschreibung").
   result: AnswerResult & { captionSources: string[] };
+  /**
+   * W3-C1 (Auftrag 76): die stabile Identitaet DIESER Antwort — oder `null`, wenn kein
+   * Beleg-Repo verdrahtet ist. `null` heisst ehrlich „es wurde nichts persistiert", nicht
+   * „die Antwort hat keine Identitaet": eine Kennung ohne Beleg waere eine leere Zusage.
+   */
+  answerId: string | null;
   gap: Gap | null;
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über (Nutzer + ausgelieferte Quell-KOs). Der Client
   // reicht ihn beim „Danke" (/api/ask/helpful) zurück; der Server verifiziert die Quellen-Bindung.
@@ -98,6 +123,8 @@ export class AskService {
   private readonly genId: () => string;
   private readonly receiptSecret: Buffer;
   private readonly withTx: WithTx | undefined;
+  /** W3-C1: der Beleg-Schreibweg. `undefined` heisst: dieser Aufbau schreibt keine Snapshots. */
+  private readonly answerSnapshots: AnswerSnapshotRepo | undefined;
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert die gekoppelten „Danke"-Schreibvorgänge (die
   // Audit-Kette ist per Konstruktion ein Single-Writer — ihre seq/prevHash bilden eine Totalordnung).
   // Ohne diese Serialisierung würden zwei gleichzeitige Danke VERSCHIEDENER Nutzer (verschiedene
@@ -117,6 +144,7 @@ export class AskService {
     // kurzlebig, das Secret verlässt den Server nie.
     this.receiptSecret = deps.receiptSecret ?? randomBytes(32);
     this.withTx = deps.withTx;
+    this.answerSnapshots = deps.answerSnapshots;
   }
 
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): serialisiert fn hinter der `helpfulChain` (ein Vorgänger-
@@ -247,6 +275,10 @@ export class AskService {
     // Quelle getragen hat, darf keiner ein Vertrauensplus zuschreiben. Die Oberfläche bietet den
     // Knopf dann gar nicht erst an (Ask.tsx) — der 403 ist die serverseitige Rückfallebene.
     const receipt = signAnswerReceipt(this.receiptSecret, actor, result.citedSources, this.now());
+    // W3-C1 (Auftrag 76): der Beleg entsteht GENAU HIER — nach der Antwort, aus derselben
+    // Ausfuehrung, vor jeder Verzweigung. So traegt jeder der drei Rueckgabewege dieselbe
+    // Identitaet, und keiner kann sie stillschweigend verlieren.
+    const answerId = await this.schreibeAntwortbeleg(result);
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -271,12 +303,114 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, gap: null, receipt };
+        return { result, answerId, gap: null, receipt };
       }
       const gap = await this.createGap(question, actor, opts?.demoSeed);
-      return { result, gap, receipt };
+      return { result, answerId, gap, receipt };
     }
-    return { result, gap: null, receipt };
+    return { result, answerId, gap: null, receipt };
+  }
+
+  /**
+   * ============================================================================================
+   * W3-C1 (Auftrag 76) — DER BELEG DIESER ANTWORT, EINMAL UND UNVERAENDERLICH.
+   * ============================================================================================
+   *
+   * WAS HIER GESCHIEHT: aus dem, was die Antwort GETRAGEN hat, entsteht Revision 1 eines
+   * unveraenderlichen Schnappschusses. Nicht mehr.
+   *
+   * WAS HIER AUSDRUECKLICH NICHT GESCHIEHT: keine Neusuche, kein zweiter Reasoner-Lauf, keine
+   * Client-Evidence, kein Nachschlagen einer Validierungsentscheidung. Der Schreibweg liest
+   * NICHTS — er schreibt nur nieder, was der Antwortlauf ohnehin schon in der Hand hat.
+   *
+   * DIE DREI LEEREN FELDER SIND DER EHRLICHE TEIL. `resolutionId` bleibt leer, weil der
+   * Antwortweg W1 nicht beruehrt; `sourceRecordId`, weil niemand Quellrevisionen schreibt; und
+   * `validationDecisionRef`, weil es zwischen Bewertung und Antwort keinen Traeger gibt
+   * (Prewrite 72 §2). Jedes davon traegt seinen maschinenlesbaren Grund — ein leeres Feld ohne
+   * Grund waere ein Schweigen, das wie eine Aussage aussieht.
+   *
+   * FEHLER HIER DUERFEN DIE ANTWORT NICHT VERSCHLUCKEN: der Beleg ist eine Zugabe, keine
+   * Vorbedingung. Schlaegt das Schreiben fehl, bekommt der Fragende trotzdem seine Antwort —
+   * und die fehlende Kennung sagt ehrlich, dass kein Beleg entstand.
+   */
+  private async schreibeAntwortbeleg(
+    result: AnswerResult & { captionSources: string[] },
+  ): Promise<string | null> {
+    const repo = this.answerSnapshots;
+    if (!repo) {
+      return null;
+    }
+    const answerId = this.genId();
+    const jetzt = new Date(this.now()).toISOString();
+    const evidence: AnswerEvidenceRef[] = result.sources.map((koId) => ({
+      knowledgeObjectId: koId,
+      // Die KO-Fassung ist im Antwortweg heute nicht gebunden. `null` MIT Grund statt einer
+      // erfundenen Version — und genau deshalb bleibt der Status unter COMPLETE.
+      knowledgeObjectVersion: null,
+      evidenceRole: result.citedSources.includes(koId) ? "carrying" : "consulted",
+      sourceRecordId: null,
+      sourceRecordIdReason: "w2a_not_wired",
+      locator: null,
+      locatorReason: "no_locator_from_import",
+    }));
+    const roh: AnswerEvidenceSnapshot = {
+      answerId,
+      snapshotRevision: 1,
+      supersedesSnapshotRevision: null,
+      schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      capturedAt: jetzt,
+      citedSources: [...result.citedSources],
+      evidence,
+      resolutionId: null,
+      resolutionIdReason: "w1_not_on_answer_path",
+      validationDecisionRef: null,
+      validationDecisionRefReason: "w3c_no_decision_carrier",
+      status: "PENDING_EVIDENCE",
+      integrityHash: "",
+    };
+    const mitStatus: AnswerEvidenceSnapshot = { ...roh, status: answerSnapshotStatus(roh) };
+    const snapshot: AnswerEvidenceSnapshot = {
+      ...mitStatus,
+      integrityHash: hashAnswerSnapshot(mitStatus),
+    };
+    // ============================================================================================
+    // AUFTRAG 89 (BEN 82, Befund 1) — HIER STAND DIE ZUSAGE OBEN UND NICHTS, DAS SIE EINLOEST.
+    // ============================================================================================
+    //
+    // Der Kommentar dieser Methode versprach seit Auftrag 76, ein Fehler beim Belegschreiben duerfe
+    // die bereits erzeugte Antwort nicht verschlucken. Die Laufzeit hielt das NICHT: beide Aufrufe
+    // lagen in keinem Fangzweig, und ein Ausfall der Ablage erreichte den Fragenden als Ausnahme.
+    // BEN hat beide Faelle einzeln injiziert; beide endeten ohne Antwort. Eine Zusage im Quelltext,
+    // die die Laufzeit nicht haelt, ist schlimmer als gar keine — sie beruhigt den naechsten Leser.
+    //
+    // GEFANGEN WIRD GENAU DAS I/O, NICHT MEHR. Der Fangzweig umschliesst die zwei Schreibaufrufe
+    // und nicht den Aufbau des Snapshots darueber: dessen Hashen und Statusableiten ist reine
+    // Rechnung. Wuerde SIE werfen, waere das ein Programmfehler — und den zu verschlucken hiesse,
+    // einen Defekt als „kein Beleg" zu tarnen.
+    //
+    // DREI PREISE, BENANNT STATT WEGGEREDET:
+    //  (1) Ein Kettenbruch aus Freeze 59 (`pruefeSnapshotKette`) faellt hier ebenfalls in den
+    //      Fangzweig und erscheint als „kein Beleg" statt als Fehler. Fuer Revision 1 auf einer
+    //      frischen `answerId` ist er praktisch ausgeschlossen — ausgeschlossen ist er nicht.
+    //  (2) `AskServiceDeps` kennt keine Protokollsenke. Ein Ausfall ist damit ununterscheidbar von
+    //      „kein Repo verdrahtet"; fuer den Aufrufer ist beides dieselbe Auskunft („nichts
+    //      persistiert"), fuer den Betrieb waere ein anhaltender Ausfall still. Ein
+    //      unterscheidbares Signal waere eine ENTSCHEIDUNG und gehoert nicht in diese Korrektur.
+    //  (3) Faellt `appendSnapshot` NACH erfolgreichem `createRecord` aus, bleibt ein Record ohne
+    //      Snapshot zurueck. Aufraeumen ist ausgeschlossen (append-only); der spaetere Lesepfad
+    //      muss diesen Zustand vertragen.
+    try {
+      await repo.createRecord({
+        answerId,
+        askExecutionId: this.genId(),
+        createdAt: jetzt,
+        schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+      });
+      await repo.appendSnapshot(snapshot);
+    } catch {
+      return null;
+    }
+    return answerId;
   }
 
   // FR-ASK-04: „Hat geholfen" erhöht Trust leicht und erzeugt einen Audit-Eintrag.

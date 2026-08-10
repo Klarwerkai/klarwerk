@@ -7,6 +7,11 @@ import { purgeDemoSeed, seedDemoForAdmin } from "./seed-demo";
 describe("SCRUM-156: seedDemo", () => {
   it("erzeugt die zentralen Stage-1-Mindestsignale über echte Services", async () => {
     const services = buildServices();
+    // G27 R1 / KW-ARCH-G27-BETRIEBSORCHESTRIERUNG-06 §4: mechanische Inbetriebnahme über den
+    // PRODUKTPFAD. Die Standardsuche ist seit R1 fail-closed; ein direkt gebauter Dienstsatz ist
+    // eine nicht in Betrieb genommene Instanz. In der echten App tut das der onReady-Hook der
+    // Kompositionswurzel — hier derselbe Aktivierungsweg, keine Abkürzung am Gate vorbei.
+    await services.ko.activateSearchProjectionV2();
     const r = await seedDemo(services);
 
     expect(r.skipped).toBe(false);
@@ -85,6 +90,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("SCRUM-492: Showcase-Konflikte tragen kollision mit wörtlich belegten Streitwerten", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     await seedDemo(services);
     const open = await services.conflicts.unresolved();
 
@@ -108,6 +114,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("Pedi 02.07.: purgeDemoSeed entfernt ALLE Demodaten — auch nach Tester-Bearbeitung", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     await seedDemo(services);
     const before = await services.ko.list({});
     const demoBefore = before.filter(
@@ -129,6 +136,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("Pedi 05.07.: purgeDemoSeed entfernt auch die Demo-Anwender (Demo-Domain)", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     await seedDemo(services); // legt admin@/carla@/erik@demo.klarwerk an
     // Realer Admin, damit der Demo-Admin nicht als letzter aktiver Admin geschützt bleibt.
     const real = await services.auth.register({
@@ -156,6 +164,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("Pedi 14.07.: Demodaten laden AUCH neben echten Daten; idempotent über Herkunfts-Flag", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     // Realer Admin richtet ein und erfasst ein EIGENES (echtes) Wissensobjekt.
     const admin = await services.auth.register({
       name: "Echter Admin",
@@ -197,6 +206,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("Pedi 14.07. (Kern): 'Demodaten entfernen' purged NUR Demo-Daten; echtes KO + Anhängsel bleiben", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     const admin = await services.auth.register({
       name: "Echter Admin",
       email: "real@firma.example",
@@ -274,6 +284,7 @@ describe("SCRUM-156: seedDemo", () => {
   it("SCRUM-487: Probe-KOs (reifen-Duplikat, stale, unbelegt) je Sprache im geladenen Bestand", async () => {
     for (const locale of ["de", "en", "nl"] as const) {
       const services = buildServices();
+      await services.ko.activateSearchProjectionV2();
       await seedDemo(services, locale);
       const kos = await services.ko.list();
       const t = DEMO_TEXTS[locale];
@@ -300,6 +311,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("SCRUM-487: gemockter Online-Reasoner → reifen-Duplikat wird als Befund erkannt", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     services.reasoner.judgeDuplicate = async (a, b) => {
       // Nur das reifen-Paar als Duplikat werten (beide Kerntexte enthalten „reifen").
       if (!/reifen/i.test(a) || !/reifen/i.test(b)) {
@@ -329,6 +341,7 @@ describe("SCRUM-156: seedDemo", () => {
 
   it("ist idempotent: zweiter Lauf überspringt, keine Duplikate", async () => {
     const services = buildServices();
+    await services.ko.activateSearchProjectionV2();
     const first = await seedDemo(services);
     const before = (await services.ko.list()).length;
 

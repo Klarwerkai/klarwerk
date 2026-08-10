@@ -2,8 +2,22 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { guardedLocalPgTestUrl } from "../../db-tx";
-import { IMPORT_CANDIDATES_SCHEMA, PgCandidateRepo } from "./repo-pg";
-import type { ImportCandidate, ImportItem } from "./types";
+import { InMemoryImportRunRepo } from "./repo";
+import {
+  EXTERNAL_SOURCE_SCHEMA,
+  IMPORT_CANDIDATES_SCHEMA,
+  IMPORT_RUN_SCHEMA,
+  PgCandidateRepo,
+  PgExternalSourceRepo,
+  PgImportRunRepo,
+} from "./repo-pg";
+import type {
+  ExternalSourceRecord,
+  ImportCandidate,
+  ImportItem,
+  ImportRun,
+  ImportRunItemRef,
+} from "./types";
 
 // SCRUM-510 (WP2-Batch3): echte Postgres-Belege für die gehärtete Import-Migration + den atomaren
 // ON-CONFLICT-Insert. Braucht Docker (Testcontainers); läuft NUR unter `test:integration`, nie im
@@ -508,5 +522,548 @@ describe("SCRUM-510 (WP2): Import-Migration + ON CONFLICT gegen echtes Postgres"
     expect(await repo.clearAuditPending("s8-p", "import.candidate-accept:s8-p:op-8")).toBe(true);
     expect(await repo.removeByIds([{ id: "s8-p", status: "angenommen" }])).toEqual(["s8-p"]);
     expect(await repo.findById("s8-p")).toBeUndefined();
+  });
+
+  // ==============================================================================================
+  // W2-A (KW-W2-17 Zeilen 18-41) — DIE QUELLREVISION GEGEN ECHTES POSTGRESQL
+  // ==============================================================================================
+  //
+  // Dieselben Zusagen wie im InMemory-Unittest (external-source-repo.test.ts), hier gegen den
+  // echten Server. Die Paritaet ist die eigentliche Aussage: ein Vertrag, der nur in einer der
+  // beiden Ablagen gilt, ist kein Vertrag (Akzeptanzkriterium 6).
+  //
+  // Der Unterschied, den nur dieser Lauf zeigen kann: ob die Revisionsidentitaet wirklich
+  // DATENBANKSEITIG erzwungen wird. Eine Anwendungspruefung verliert jedes Rennen; ein
+  // Unique-Index nicht.
+  async function w2aReset(p: Pool): Promise<void> {
+    await p.query("DROP TABLE IF EXISTS external_source_records");
+    await p.query(EXTERNAL_SOURCE_SCHEMA);
+  }
+
+  function w2aRevision(over: Partial<ExternalSourceRecord> = {}): ExternalSourceRecord {
+    return {
+      sourceRecordId: "sr-pg-1",
+      sourceSystem: "Confluence",
+      externalId: "98765",
+      sourceVersion: 1,
+      url: "https://wiki.example.test/pages/98765",
+      title: "Wartung der Spezialpresse",
+      rawOrRenderedContentReference: null,
+      importedAt: "2026-08-02T14:00:00.000Z",
+      contentHash: "hash-v1",
+      sourceMetadata: { sourceScope: "TECH" },
+      ...over,
+    };
+  }
+
+  it("W2-A: additives Schema, wiederholbar — und der Unique-Vertrag der Revisionsidentitaet steht", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    // WIEDERHOLBAR: ein zweiter Lauf derselben DDL ist ein No-op, kein Fehler.
+    await expect(pool.query(EXTERNAL_SOURCE_SCHEMA)).resolves.toBeDefined();
+
+    // KEIN DROP, KEIN TRUNCATE in der Migration selbst (das DROP oben ist Testaufbau).
+    expect(EXTERNAL_SOURCE_SCHEMA).not.toMatch(/DROP\s+TABLE/i);
+    expect(EXTERNAL_SOURCE_SCHEMA).not.toMatch(/TRUNCATE/i);
+    expect(EXTERNAL_SOURCE_SCHEMA).not.toMatch(/DROP\s+INDEX/i);
+
+    const indizes = await pool.query<{ indexname: string }>(
+      "SELECT indexname FROM pg_indexes WHERE tablename = 'external_source_records'",
+    );
+    expect(indizes.rows.map((r) => r.indexname)).toContain("external_source_records_revision_uq");
+
+    // Der Index ist WIRKLICH eindeutig — direkter Constraint-Beweis am rohen SQL, ohne Adapter.
+    const roh = w2aRevision();
+    await pool.query("INSERT INTO external_source_records(source_record_id,data) VALUES($1,$2)", [
+      roh.sourceRecordId,
+      JSON.stringify(roh),
+    ]);
+    await expect(
+      pool.query("INSERT INTO external_source_records(source_record_id,data) VALUES($1,$2)", [
+        "sr-pg-zweit",
+        JSON.stringify({ ...roh, sourceRecordId: "sr-pg-zweit", contentHash: "anders" }),
+      ]),
+    ).rejects.toThrow(/unique|duplicate/i);
+  });
+
+  it("W2-A: dieselbe Revisionsidentitaet zweimal → genau EINE Zeile, die erste bleibt wertgleich", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    const erste = w2aRevision({ contentHash: "hash-original", title: "Fassung 1" });
+    expect(await repo.insertIfAbsent(erste)).toBe(true);
+    // Zweiter Lauf derselben Quellversion mit ABWEICHENDEM Inhalt und anderer interner Id.
+    expect(
+      await repo.insertIfAbsent(
+        w2aRevision({
+          sourceRecordId: "sr-pg-2",
+          contentHash: "hash-anders",
+          title: "Anderer Titel",
+        }),
+      ),
+    ).toBe(false);
+
+    const alle = await repo.listBySource("Confluence", "98765");
+    expect(alle).toHaveLength(1);
+    // WERTGLEICH Feld fuer Feld — nichts wurde still umgeschrieben.
+    expect(alle[0]).toEqual(erste);
+    expect(await repo.findById("sr-pg-2")).toBeUndefined();
+  });
+
+  it("W2-A: eine NEUE Quellversion erzeugt eine NEUE Zeile — die alte bleibt unangetastet", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    const v1 = w2aRevision({ sourceVersion: 1, contentHash: "hash-v1", title: "Fassung 1" });
+    const v2 = w2aRevision({
+      sourceRecordId: "sr-pg-2",
+      sourceVersion: 2,
+      contentHash: "hash-v2",
+      title: "Fassung 2",
+    });
+    expect(await repo.insertIfAbsent(v1)).toBe(true);
+    expect(await repo.insertIfAbsent(v2)).toBe(true);
+
+    const alle = await repo.listBySource("Confluence", "98765");
+    expect(alle.map((r) => r.sourceVersion)).toEqual([1, 2]);
+    expect(alle[0]).toEqual(v1);
+    expect(await repo.latestVersion("Confluence", "98765")).toBe(2);
+    expect(await repo.findByRevision("Confluence", "98765", 1)).toEqual(v1);
+  });
+
+  it("W2-A: NEBENLAEUFIG — zwanzig gleichzeitige Inserts derselben Revision ergeben EINE Zeile", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    // Echte Nebenlaeufigkeit ueber den Pool. Eine Anwendungspruefung („erst lesen, dann schreiben")
+    // wuerde hier verlieren; der Unique-Index nicht.
+    const ergebnisse = await Promise.all(
+      Array.from({ length: 20 }, (_, i) =>
+        repo.insertIfAbsent(w2aRevision({ sourceRecordId: `sr-parallel-${i}` })),
+      ),
+    );
+    expect(ergebnisse.filter(Boolean)).toHaveLength(1);
+    const zeilen = await pool.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM external_source_records",
+    );
+    expect(zeilen.rows[0]?.n).toBe("1");
+  });
+
+  it("W2-A: das Quellsystem ist normalisiert, ein anderes System ist eine EIGENE Quelle", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    expect(await repo.insertIfAbsent(w2aRevision({ sourceSystem: "Confluence" }))).toBe(true);
+    // Gross-/Kleinschreibung und Rand-Leerzeichen sind DIESELBE Quelle.
+    expect(
+      await repo.insertIfAbsent(
+        w2aRevision({ sourceRecordId: "sr-pg-2", sourceSystem: " CONFLUENCE " }),
+      ),
+    ).toBe(false);
+    // Ein anderes Quellsystem mit zufaellig gleicher Kennung ist eine eigene Quelle.
+    expect(
+      await repo.insertIfAbsent(w2aRevision({ sourceRecordId: "sr-pg-3", sourceSystem: "Jira" })),
+    ).toBe(true);
+
+    expect(await repo.listBySource("confluence", "98765")).toHaveLength(1);
+    expect(await repo.listBySource("Jira", "98765")).toHaveLength(1);
+  });
+
+  it("W2-A: fail-closed — unvollstaendige Identitaet erreicht die Datenbank gar nicht", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    // Dieselben Ablehnungen wie InMemory — als abgelehntes Promise, nicht als synchroner Wurf.
+    await expect(repo.insertIfAbsent(w2aRevision({ sourceSystem: "  " }))).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(repo.insertIfAbsent(w2aRevision({ externalId: " " }))).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(repo.insertIfAbsent(w2aRevision({ sourceVersion: 1.5 }))).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    const zeilen = await pool.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM external_source_records",
+    );
+    expect(zeilen.rows[0]?.n).toBe("0");
+  });
+
+  it("W2-A: eine unbekannte Quelle liefert ehrlich nichts", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+    expect(await repo.findByRevision("Confluence", "gibt-es-nicht", 1)).toBeUndefined();
+    expect(await repo.listBySource("Confluence", "gibt-es-nicht")).toEqual([]);
+    expect(await repo.latestVersion("Confluence", "gibt-es-nicht")).toBeUndefined();
+    expect(await repo.findById("sr-gibt-es-nicht")).toBeUndefined();
+  });
+
+  // ==============================================================================================
+  // BEN-33 — DIE DREI NACHGEPRUEFTEN BEFUNDE GEGEN ECHTES POSTGRESQL
+  // ==============================================================================================
+  //
+  // Diese Faelle sind die PARITAETSSEITE der drei InMemory-Faelle in external-source-repo.test.ts.
+  // Sie sagen nicht „PostgreSQL kann das auch", sondern: BEIDE Ablagen geben auf dieselbe Frage
+  // dieselbe Antwort — Erfolgs- WIE Fehlervertrag. Ein Vertrag, der nur in einer Ablage gilt, ist
+  // keiner (Akzeptanzkriterium 6 aus Auftrag 31).
+
+  it("BEN-33/A: eine Mutation des Eingabewerts erreicht die gespeicherte Zeile nicht", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    const eingabe = w2aRevision({ sourceMetadata: { sourceScope: "TECH", pfad: { tiefe: 1 } } });
+    expect(await repo.insertIfAbsent(eingabe)).toBe(true);
+    (eingabe as { title: string }).title = "nachtraeglich veraendert";
+    (eingabe.sourceMetadata as { sourceScope: string }).sourceScope = "MUTIERT";
+    (eingabe.sourceMetadata as { pfad: { tiefe: number } }).pfad.tiefe = 99;
+
+    // Das ist der MASSSTAB fuer die InMemory-Ablage: jsonb hat beim Schreiben einen Schnappschuss
+    // genommen, und jeder Lesevorgang liefert ein frisches Objekt.
+    const gelesen = await repo.findByRevision("Confluence", "98765", 1);
+    expect(gelesen?.title).toBe("Wartung der Spezialpresse");
+    expect(gelesen?.sourceMetadata).toEqual({ sourceScope: "TECH", pfad: { tiefe: 1 } });
+
+    const a = await repo.findById("sr-pg-1");
+    const b = await repo.findById("sr-pg-1");
+    expect(a).toEqual(b);
+    expect(a).not.toBe(b);
+  });
+
+  it("BEN-33/B: dieselbe sourceRecordId fuer eine ANDERE Revision wird als CONFLICT abgewiesen", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    expect(await repo.insertIfAbsent(w2aRevision())).toBe(true);
+    // Der Primaerschluessel schuetzt die interne Id. Der Aufrufer darf davon aber nicht einen
+    // rohen Datenbankfehler sehen und InMemory einen fachlichen — beide melden CONFLICT.
+    await expect(
+      repo.insertIfAbsent(w2aRevision({ externalId: "andere-seite", sourceVersion: 2 })),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+
+    expect(await repo.findByRevision("Confluence", "andere-seite", 2)).toBeUndefined();
+    const zeilen = await pool.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM external_source_records",
+    );
+    expect(zeilen.rows[0]?.n).toBe("1");
+    expect((await repo.findById("sr-pg-1"))?.externalId).toBe("98765");
+  });
+
+  it("BEN-33/B: dieselbe sourceRecordId bei GLEICHER Revision bleibt idempotent — kein Fehler", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+    const repo = new PgExternalSourceRepo(pool);
+
+    expect(await repo.insertIfAbsent(w2aRevision())).toBe(true);
+    // Der Arbiter-Index greift VOR dem Primaerschluessel: ein Wiederholungslauf derselben
+    // Quellversion bleibt ein stiller No-op. Genau diese Reihenfolge spiegelt InMemory.
+    expect(await repo.insertIfAbsent(w2aRevision({ contentHash: "anders" }))).toBe(false);
+    expect((await repo.findById("sr-pg-1"))?.contentHash).toBe("hash-v1");
+  });
+
+  it("BEN-33/C: ROHE Inserts mit unvollstaendiger Identitaet scheitern am Schema — keiner wird gespeichert", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+
+    // BEWUSST am Adapter VORBEI. Der Adapter prueft seine eigenen Aufrufe; BEN hat zu Recht
+    // gefragt, was die Datenbank selbst zusagt. Ein Unique-Index ueber NULL-faehige Spalten sagt
+    // fast nichts zu: PostgreSQL haelt zwei NULLs fuer verschieden, also waeren beliebig viele
+    // Zeilen ohne Identitaet erlaubt gewesen.
+    const { sourceSystem, externalId, sourceVersion, ...ohneIdentitaet } = w2aRevision();
+    const unvollstaendig: { name: string; id: string; data: Record<string, unknown> }[] = [
+      {
+        name: "ohne sourceSystem",
+        id: "sr-roh-1",
+        data: { ...ohneIdentitaet, externalId, sourceVersion },
+      },
+      {
+        name: "ohne externalId",
+        id: "sr-roh-2",
+        data: { ...ohneIdentitaet, sourceSystem, sourceVersion },
+      },
+      {
+        name: "ohne sourceVersion",
+        id: "sr-roh-3",
+        data: { ...ohneIdentitaet, sourceSystem, externalId },
+      },
+      { name: "voellig ohne Identitaet", id: "sr-roh-4", data: ohneIdentitaet },
+      {
+        name: "leeres Quellsystem",
+        id: "sr-roh-5",
+        data: { ...ohneIdentitaet, sourceSystem: "   ", externalId, sourceVersion },
+      },
+      {
+        name: "gebrochene Version",
+        id: "sr-roh-6",
+        data: { ...ohneIdentitaet, sourceSystem, externalId, sourceVersion: 1.5 },
+      },
+      {
+        name: "leere interne Id",
+        id: "",
+        data: { ...ohneIdentitaet, sourceRecordId: "", sourceSystem, externalId, sourceVersion },
+      },
+    ];
+
+    for (const fall of unvollstaendig) {
+      await expect(
+        pool.query("INSERT INTO external_source_records(source_record_id,data) VALUES($1,$2)", [
+          fall.id,
+          JSON.stringify(fall.data),
+        ]),
+        fall.name,
+      ).rejects.toThrow();
+    }
+
+    // BENs eigentliche Probe: ZWEI unvollstaendige Zeilen nebeneinander. Sie kommen jetzt nicht
+    // einmal einzeln hinein.
+    const zeilen = await pool.query<{ n: string }>(
+      "SELECT count(*)::text AS n FROM external_source_records",
+    );
+    expect(zeilen.rows[0]?.n).toBe("0");
+
+    // Gegenprobe: die VOLLSTAENDIGE Identitaet passiert denselben rohen Weg anstandslos —
+    // die Sperre ist eine Sperre, keine Verengung.
+    const gut = w2aRevision();
+    await expect(
+      pool.query("INSERT INTO external_source_records(source_record_id,data) VALUES($1,$2)", [
+        gut.sourceRecordId,
+        JSON.stringify(gut),
+      ]),
+    ).resolves.toBeDefined();
+  });
+
+  it("BEN-33/C: die drei Schluesselspalten sind DB-seitig NOT NULL — die Luecke ist strukturell zu", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aReset(pool);
+
+    const spalten = await pool.query<{ column_name: string; is_nullable: string }>(
+      `SELECT column_name, is_nullable FROM information_schema.columns
+        WHERE table_name = 'external_source_records'
+          AND column_name IN ('source_system','external_id','source_version_key')
+        ORDER BY column_name`,
+    );
+    expect(spalten.rows.map((r) => r.column_name)).toEqual([
+      "external_id",
+      "source_system",
+      "source_version_key",
+    ]);
+    expect(spalten.rows.every((r) => r.is_nullable === "NO")).toBe(true);
+
+    // Und die Identitaetsbedingung haengt wirklich als CHECK an der Tabelle (nicht nur im Adapter).
+    const bedingungen = await pool.query<{ conname: string }>(
+      `SELECT conname FROM pg_constraint
+        WHERE conrelid = 'external_source_records'::regclass AND contype = 'c'`,
+    );
+    expect(bedingungen.rows.map((r) => r.conname)).toContain(
+      "external_source_records_identitaet_ck",
+    );
+  });
+
+  // ==============================================================================================
+  // AUFTRAG-144 (KW-S4-26 §59-114, KW-S4-28 F1) — DIE LAUFDOMAENE GEGEN ECHTES POSTGRESQL
+  // ==============================================================================================
+  //
+  // DIE PARITAET IST DIE AUSSAGE. Auftrag 144 §51 verlangt woertlich: derselbe Lauf ist in InMemory
+  // UND PostgreSQL semantisch gleich les- und fortschreibbar. Ein Vertrag, der nur in einer Ablage
+  // gilt, ist keiner — dieselbe Lehre, die schon bei der Quellrevision oben gezogen wurde.
+  //
+  // Was nur DIESER Lauf zeigen kann: ob Idempotenz und Ordnung an ECHTEN Constraints haengen und
+  // nicht an einer Anwendungspruefung, die jedes Rennen verliert.
+  async function w2aLaufReset(p: Pool): Promise<void> {
+    await p.query("DROP TABLE IF EXISTS import_run_item_refs");
+    await p.query("DROP TABLE IF EXISTS import_runs");
+    await p.query(IMPORT_RUN_SCHEMA);
+  }
+
+  const LAUF_T0 = "2026-08-03T09:00:00.000Z";
+
+  function pgLauf(over: Partial<ImportRun> = {}): ImportRun {
+    return {
+      importId: "run-pg-1",
+      sourceSystem: "Confluence",
+      externalId: "98765",
+      sourceScope: "TECH",
+      requestedSourceVersion: 2,
+      status: "QUEUED",
+      sourceRecordId: null,
+      startedAt: LAUF_T0,
+      completedAt: null,
+      failureCode: null,
+      failureReason: null,
+      counters: {
+        itemsTotal: 0,
+        itemsCreated: 0,
+        itemsBound: 0,
+        itemsSkipped: 0,
+        itemsFailed: 0,
+      },
+      ...over,
+    };
+  }
+
+  function pgRef(over: Partial<ImportRunItemRef> = {}): ImportRunItemRef {
+    return {
+      importId: "run-pg-1",
+      ordinal: 0,
+      sourceRecordId: "sr-pg-1",
+      candidateItemId: "cand-pg-1",
+      knowledgeObjectId: null,
+      itemOutcome: "CREATED",
+      itemFailureCode: null,
+      ...over,
+    };
+  }
+
+  it("P1 · additives, wiederholbares Laufschema — ohne DROP, TRUNCATE oder DO UPDATE", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aLaufReset(pool);
+    // WIEDERHOLBAR: derselbe zweite Lauf der DDL ist ein No-op, kein Fehler. Das ist die
+    // Idempotenz der Migration selbst, an der echten Instanz und nicht am Text behauptet.
+    await expect(pool.query(IMPORT_RUN_SCHEMA)).resolves.toBeDefined();
+    await expect(pool.query(IMPORT_RUN_SCHEMA)).resolves.toBeDefined();
+
+    // Die verbotenen Formen kommen in der Migration selbst nicht vor (die DROPs oben sind
+    // Testaufbau). `DO UPDATE` waere das stille Ueberschreiben, das Auftrag 144 §70 ausschliesst.
+    expect(IMPORT_RUN_SCHEMA).not.toMatch(/DROP\s+TABLE/i);
+    expect(IMPORT_RUN_SCHEMA).not.toMatch(/DROP\s+INDEX/i);
+    expect(IMPORT_RUN_SCHEMA).not.toMatch(/TRUNCATE/i);
+    expect(IMPORT_RUN_SCHEMA).not.toMatch(/DO\s+UPDATE/i);
+
+    const tabellen = await pool.query<{ table_name: string }>(
+      `SELECT table_name FROM information_schema.tables
+        WHERE table_schema = 'public' AND table_name IN ('import_runs','import_run_item_refs')
+        ORDER BY table_name`,
+    );
+    expect(tabellen.rows.map((r) => r.table_name)).toEqual(["import_run_item_refs", "import_runs"]);
+  });
+
+  it("P2 · Laufanlage ist am ECHTEN Schluessel idempotent und ueberschreibt die erste Zeile nie", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aLaufReset(pool);
+    const repo = new PgImportRunRepo(pool);
+
+    expect(await repo.insertIfAbsent(pgLauf())).toBe(true);
+    // Zweiter Anlauf mit ABWEICHENDEM Inhalt: false, und der erste Stand bleibt. Ein `upsert`
+    // meldete `true` oder schriebe COMPLETED — beides faellt genau hier auf.
+    expect(await repo.insertIfAbsent(pgLauf({ status: "COMPLETED", sourceRecordId: "sr-9" }))).toBe(
+      false,
+    );
+    const gelesen = await repo.findById("run-pg-1");
+    expect(gelesen?.status).toBe("QUEUED");
+    expect(gelesen?.sourceRecordId).toBeNull();
+
+    // Der Schutz haengt an einem ECHTEN Primaerschluessel, nicht am Adapter: der rohe Insert faellt.
+    await expect(
+      pool.query("INSERT INTO import_runs(import_id, data) VALUES($1,$2::jsonb)", [
+        "run-pg-1",
+        JSON.stringify(pgLauf({ status: "FAILED" })),
+      ]),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("P3 · derselbe Lauf ist in PostgreSQL gleich lesbar und fortschreibbar wie InMemory", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aLaufReset(pool);
+    const pg = new PgImportRunRepo(pool);
+    const mem = new InMemoryImportRunRepo();
+
+    for (const repo of [pg, mem] as const) {
+      expect(await repo.insertIfAbsent(pgLauf())).toBe(true);
+      const nachher = await repo.advance("run-pg-1", {
+        status: "PARTIAL",
+        sourceRecordId: "sr-pg-1",
+        completedAt: "2026-08-03T09:07:00.000Z",
+        counters: {
+          itemsTotal: 3,
+          itemsCreated: 1,
+          itemsBound: 1,
+          itemsSkipped: 0,
+          itemsFailed: 1,
+        },
+      });
+      // Feld fuer Feld dieselbe Semantik — das ist die Paritaetsaussage.
+      expect(nachher.status).toBe("PARTIAL");
+      expect(nachher.sourceRecordId).toBe("sr-pg-1");
+      expect(nachher.completedAt).toBe("2026-08-03T09:07:00.000Z");
+      expect(nachher.startedAt).toBe(LAUF_T0);
+      expect(nachher.counters).toEqual({
+        itemsTotal: 3,
+        itemsCreated: 1,
+        itemsBound: 1,
+        itemsSkipped: 0,
+        itemsFailed: 1,
+      });
+      expect((await repo.findById("run-pg-1"))?.status).toBe("PARTIAL");
+
+      // Unbekannter Lauf bleibt unbekannt — in BEIDEN Ablagen, ohne erfundenen Leer-Lauf.
+      expect(await repo.findById("gibt-es-nicht")).toBeUndefined();
+      expect(await repo.listItemRefs("gibt-es-nicht")).toEqual([]);
+      await expect(repo.advance("gibt-es-nicht", { status: "FETCHING" })).rejects.toMatchObject({
+        code: "CONFLICT",
+      });
+    }
+  });
+
+  it("P4 · ItemRefs kommen aus der Datenbank nach ordinal geordnet — verkehrt eingefuegt", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aLaufReset(pool);
+    const repo = new PgImportRunRepo(pool);
+    await repo.insertIfAbsent(pgLauf());
+
+    // ABSICHTLICH verkehrt herum. Ohne diese Reihenfolge waere die Zusicherung strukturell
+    // erfuellt und wertlos — PostgreSQL gibt ohne ORDER BY keine Reihenfolge zu.
+    await repo.appendItemRefs([
+      pgRef({ ordinal: 2, candidateItemId: "cand-3", itemOutcome: "FAILED", itemFailureCode: "X" }),
+      pgRef({ ordinal: 0, candidateItemId: "cand-1" }),
+      pgRef({
+        ordinal: 1,
+        candidateItemId: "cand-2",
+        knowledgeObjectId: "ko-2",
+        itemOutcome: "BOUND",
+      }),
+    ]);
+    const refs = await repo.listItemRefs("run-pg-1");
+    expect(refs.map((r) => r.ordinal)).toEqual([0, 1, 2]);
+    expect(refs.map((r) => r.candidateItemId)).toEqual(["cand-1", "cand-2", "cand-3"]);
+    expect(refs[1]?.knowledgeObjectId).toBe("ko-2");
+    expect(refs[2]?.itemFailureCode).toBe("X");
+
+    // Dieselbe (importId, ordinal) ein zweites Mal: kein Duplikat, kein Ueberschreiben.
+    expect(await repo.appendItemRefs([pgRef({ ordinal: 0, candidateItemId: "cand-ANDERS" })])).toBe(
+      0,
+    );
+    expect((await repo.listItemRefs("run-pg-1"))[0]?.candidateItemId).toBe("cand-1");
+
+    // Und die Eindeutigkeit haengt am ECHTEN Schluessel, nicht am Adapter.
+    await expect(
+      pool.query(
+        "INSERT INTO import_run_item_refs(import_id, ordinal, data) VALUES($1,$2,$3::jsonb)",
+        ["run-pg-1", 0, JSON.stringify(pgRef({ candidateItemId: "roh" }))],
+      ),
+    ).rejects.toMatchObject({ code: "23505" });
+  });
+
+  it("P5 · Neustartbeleg: ein neuer Adapter auf derselben Datenbank sieht denselben Lauf", async (ctx) => {
+    const pool = requirePool(ctx);
+    await w2aLaufReset(pool);
+    const ersterAdapter = new PgImportRunRepo(pool);
+    await ersterAdapter.insertIfAbsent(pgLauf());
+    await ersterAdapter.advance("run-pg-1", { status: "ANALYZING", sourceRecordId: "sr-pg-1" });
+    await ersterAdapter.appendItemRefs([pgRef({ ordinal: 0 }), pgRef({ ordinal: 1 })]);
+
+    // Ein FRISCHER Adapter haelt keinerlei Zustand — was er sieht, steht wirklich in der Datenbank.
+    const nachNeustart = new PgImportRunRepo(pool);
+    const lauf = await nachNeustart.findById("run-pg-1");
+    expect(lauf?.status).toBe("ANALYZING");
+    expect(lauf?.sourceRecordId).toBe("sr-pg-1");
+    expect(lauf?.startedAt).toBe(LAUF_T0);
+    expect((await nachNeustart.listItemRefs("run-pg-1")).map((r) => r.ordinal)).toEqual([0, 1]);
   });
 });

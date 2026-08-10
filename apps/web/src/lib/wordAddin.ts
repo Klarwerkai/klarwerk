@@ -338,6 +338,12 @@ export interface AskEvidence {
   checkCaveat?: { reason: string; unproven: number; total: number } | null;
   // Die Konfliktlage selbst ist unbekannt (serverseitiger Abruf gescheitert).
   conflictsUnproven?: boolean;
+  // AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: mindestens eine TRAGENDE Quelle steht in einem offenen
+  // Konflikt. Der Server berechnet und sendet das Feld seit mega34 (services/ask/src/answer-evidence.ts
+  // — Anker `sourcesConflicted`); dieser Clienttyp kannte es bis hierher NICHT und hat es deshalb
+  // verworfen. Nichts wird hier berechnet: die Konfliktlage bleibt vollstaendig serverseitig
+  // (KW-W1-13: „Keine Konflikte oder Validierung clientseitig berechnen").
+  sourcesConflicted?: boolean;
 }
 
 export interface AskOutcome {
@@ -349,6 +355,17 @@ export interface AskOutcome {
   // AUFTRAG-mega34 B: die EINE Einstufung, vom Server. Bei `answered` immer gesetzt.
   grade?: AskGrade;
   evidence?: AskEvidence | undefined;
+  // AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: die TRAGENDE Teilmenge (`AnswerResult.citedSources`),
+  // auf der die serverseitige Evidenzregel ohnehin rechnet. `sources` bleibt unveraendert die
+  // vollstaendige Transparenzliste. Auf dem heutigen retrieval-only-Weg sind beide Mengen gleich
+  // (`[best.id]`) — die Unterscheidung ist deshalb REAL, aber nicht sichtbar wirksam; ein Server
+  // ohne das Feld fuehrt in „keine Aussage", nie in eine falsche.
+  citedSources?: string[] | undefined;
+  // AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: HOECHSTENS der erste real gelieferte
+  // `AnswerResult.steps[0].snippet` — ehrlich als „Verwendeter Ausschnitt" bezeichnet.
+  // AUSDRUECKLICH KEINE Begruendungskette: KW-W1-13 verbietet, aus `steps` eine Argumentation zu
+  // konstruieren, und mega39 D2 hat genau diese Vortaeuschung in der Konsole bereits entfernt.
+  snippet?: string | undefined;
   // AUFTRAG-mega81 BLOCK A: das SERVERSEITIGE Kennzeichnungssignal (`result.aiGenerated`, gesetzt
   // in services/reasoner/src/service.ts an `answer`/`describe`/`interview`). Es reist mit, damit
   // die KI-Kennzeichnung an das Verhalten gebunden werden kann statt an ihre Anwesenheit. Fehlt es
@@ -399,6 +416,126 @@ export function answerInsertEvidenceNote(
   texts: { verified: string; unverified: string },
 ): string {
   return grade === "verified" ? texts.verified : texts.unverified;
+}
+
+// ================================================================================================
+// AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B — DIE VORHANDENE EVIDENZ ENTFALTEN.
+// ================================================================================================
+//
+// DER BEFUND (Ist-Delta 05, §3.2/3.3). Der Server liefert seit mega34 einen reichen Evidenzzustand:
+// FUENF unterscheidbare Pruefvorbehalte samt Zaehlung, dazu die Konfliktlage in ZWEI getrennten
+// Feldern. Das Aufgabenfenster las davon nur `grade` und zeigte ZWEI Texte. Die Nutzerin erfuhr
+// also, DASS etwas nicht belegt ist — nie, WAS. Und die Konfliktwarnung, die W1 ausdruecklich
+// verlangt, war von jedem anderen Vorbehalt ununterscheidbar.
+//
+// HIER WIRD NICHTS BERECHNET. Diese Funktion liest ausschliesslich, was im Antwortkoerper steht.
+// KW-W1-13 verbietet ausdruecklich, Konflikte oder Validierung clientseitig zu bestimmen — die
+// Regel bleibt in services/ask/src/answer-evidence.ts, und zwar als einzige Fassung.
+export type AskCaveatKey =
+  | "unknown"
+  | "unchecked"
+  | "noCoverage"
+  | "incomplete"
+  | "unattributed"
+  // Ein Grund, den dieser Client nicht kennt (neuer Server, abgeschnittener Body). Er wird als
+  // GENERISCHER Vorbehalt gezeigt — nie verschwiegen. Schweigen waere hier fail-open.
+  | "other";
+
+// Die Konfliktlage in genau drei Anzeige-Zustaenden. `unproven` ist NICHT „keine Konflikte":
+// „nichts da" ist nicht „nichts vorhanden" — dieselbe Beweislast-Umkehr, die der Server mit
+// `conflictsUnproven` bereits fuehrt.
+export type AskConflictState = "conflicted" | "unproven" | "clear";
+
+export interface AskEvidenceDetail {
+  caveat: { key: AskCaveatKey; unproven: number; total: number } | null;
+  conflict: AskConflictState;
+}
+
+const ASK_CAVEAT_KEYS: readonly string[] = [
+  "unknown",
+  "unchecked",
+  "noCoverage",
+  "incomplete",
+  "unattributed",
+];
+
+function askCount(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? Math.floor(value) : 0;
+}
+
+export function askEvidenceDetail(evidence: unknown): AskEvidenceDetail {
+  const raw = evidence as
+    | { checkCaveat?: unknown; sourcesConflicted?: unknown; conflictsUnproven?: unknown }
+    | null
+    | undefined;
+
+  // `checkCaveat: null` ist eine ECHTE Aussage des Servers: jede tragende Quelle ist belegt.
+  // `undefined` dagegen heisst nur, dass nichts gesagt wurde — beides fuehrt hier zu keiner
+  // Vorbehalts-Zeile, aber der Grad bleibt in diesem Fall ueber `askGradeOf` fail-safe unbelegt.
+  const cc = raw?.checkCaveat;
+  const caveat =
+    cc && typeof cc === "object"
+      ? (() => {
+          const reason = (cc as { reason?: unknown }).reason;
+          return {
+            key: (typeof reason === "string" && ASK_CAVEAT_KEYS.includes(reason)
+              ? reason
+              : "other") as AskCaveatKey,
+            unproven: askCount((cc as { unproven?: unknown }).unproven),
+            total: askCount((cc as { total?: unknown }).total),
+          };
+        })()
+      : null;
+
+  // FAIL-SAFE: „keine offenen Konflikte" wird NUR behauptet, wenn der Server BEIDE Felder
+  // ausdruecklich mit `false` gesendet hat. Ein fehlendes Feld, ein alter Server oder ein
+  // gescheiterter Konfliktabruf fuehren in „konnte nicht geprueft werden" — nie in eine Entwarnung.
+  const conflict: AskConflictState =
+    raw?.sourcesConflicted === true
+      ? "conflicted"
+      : raw?.sourcesConflicted === false && raw?.conflictsUnproven === false
+        ? "clear"
+        : "unproven";
+
+  return { caveat, conflict };
+}
+
+// AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: lohnt der Ausschnitt eine eigene Zeile?
+//
+// AUF DEM HEUTIGEN WEG IST DIE ANTWORT DIE AUSSAGE DER TRAGENDEN QUELLE. `answerRetrievalOnly`
+// liefert `answer = best.statement` UND `steps[0].snippet = best.statement`
+// (services/reasoner/src/provider.ts) — beide Texte sind dann IDENTISCH. Derselbe Satz zweimal,
+// einmal als „Antwort" und einmal als „Verwendeter Ausschnitt", sieht aus wie ein zweiter Beleg,
+// ist aber derselbe. Genau diese Vortaeuschung hat mega39 D2 in der Fragen-Konsole entfernt
+// (`stepsWorthShowing`); sie wird hier nicht neu eingefuehrt.
+//
+// Der Vergleich normalisiert nur Leerraum — keine inhaltliche Aehnlichkeitsrechnung. Im Zweifel
+// wird der Ausschnitt GEZEIGT: etwas Zusaetzliches zu sehen ist harmlos, eine Dopplung fuer einen
+// Beleg zu halten nicht.
+export function askSnippetWorthShowing(
+  answer: string | null | undefined,
+  snippet: string | null | undefined,
+): boolean {
+  const s = typeof snippet === "string" ? snippet.replace(/\s+/g, " ").trim() : "";
+  if (s.length === 0) {
+    return false;
+  }
+  const a = typeof answer === "string" ? answer.replace(/\s+/g, " ").trim() : "";
+  return s !== a;
+}
+
+// Die Rolle EINER Quelle in der Antwort. `citedSources` ist die tragende Teilmenge; fehlt sie oder
+// ist sie leer, wird KEINE Rolle behauptet (`unknown`) — die Liste sieht dann aus wie bisher.
+export type AskSourceRole = "carrying" | "consulted" | "unknown";
+
+export function askSourceRole(
+  id: string,
+  citedSources: readonly string[] | undefined,
+): AskSourceRole {
+  if (!Array.isArray(citedSources) || citedSources.length === 0) {
+    return "unknown";
+  }
+  return citedSources.indexOf(id) >= 0 ? "carrying" : "consulted";
 }
 
 // Der eine Ask-Lauf gegen POST /api/ask (Fetch injizierbar → testbar mit Fake-fetch, DOM-frei).
@@ -487,6 +624,21 @@ export function performAsk(
               (id): id is string => typeof id === "string" && id.trim().length > 0,
             )
           : [];
+        // AUFTRAG-W1-VERTRAUENSKOPF-08 Buendel B: die tragende Teilmenge und der erste Ausschnitt.
+        // Beide werden GELESEN, nie hergeleitet — fehlt das Feld, bleibt es `undefined`, und die
+        // Flaeche behauptet dann nichts (dieselbe Beweislast-Umkehr wie `askGradeOf`).
+        const cited = Array.isArray(result?.citedSources)
+          ? (result.citedSources as unknown[]).filter(
+              (id): id is string => typeof id === "string" && id.trim().length > 0,
+            )
+          : undefined;
+        const firstStep = Array.isArray(result?.steps)
+          ? ((result.steps as unknown[])[0] as { snippet?: unknown } | undefined)
+          : undefined;
+        const snippet =
+          typeof firstStep?.snippet === "string" && firstStep.snippet.trim().length > 0
+            ? firstStep.snippet.trim()
+            : undefined;
         if (
           result &&
           result.answered === true &&
@@ -504,6 +656,8 @@ export function performAsk(
             // fail-safe „unverified" — Word behauptet nie Sicherheit, die es nicht belegt bekam.
             grade: askGradeOf(result.evidence),
             evidence: (result.evidence ?? undefined) as AskEvidence | undefined,
+            citedSources: cited,
+            snippet,
             // AUFTRAG-mega81 BLOCK A: das Kennzeichnungssignal wird GELESEN, nicht angenommen.
             // `aiGenerated` ist am Server ein Objekt ({aiGenerated,task,mode,at}); hier zaehlt nur,
             // OB es da ist — die Flaeche behauptet nie mehr, als der Server gesagt hat.
@@ -1017,4 +1171,64 @@ export function klaraAiLage(phase: KlaraAiPhase, status: ReasonerStatus | undefi
     return "intern";
   }
   return "keine";
+}
+
+// ================================================================================================
+// AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER PERMANENTE KOPF (BASIC-0).
+// ================================================================================================
+//
+// WARUM UEBERHAUPT. `KW-S4-01 §2` verlangt, dass Klara den tatsaechlich wirksamen KI-Zustand
+// „immer ganz oben im Kopf" zeigt. Die vorhandene Zeile sass IM Fragen-Reiter, UNTER dem
+// Eingabefeld — und war im Erfassen-Reiter unsichtbar. Sie sagte das Richtige an der falschen
+// Stelle und nur die halbe Zeit.
+//
+// WAS DIESE FUNKTION NICHT TUT. Sie leitet NICHTS ab. Der einzige Zustandsbesitzer bleibt
+// `klaraAiLage` — dieselbe Funktion, die `AiModelInfo` in der Anwendung ueber `deriveAiAvailable`
+// und `aiTaskInfoPublic` speist, gepinnt ueber den vollen Vertrags-Zustandsraum
+// (tests/app/mega75-klara-ki-status.test.ts). Hier wird ihr Ergebnis nur in eine Kopf-Darstellung
+// uebersetzt. Deshalb steht dieser Block AUSSERHALB der mega75-Schnittmarken: er darf den dort
+// gepinnten Zustandsraum weder erweitern noch verengen.
+//
+// KW-W1-13 (BASIC-0-Dateigrenze): Modus, Provider, Modell, Admin-Vorgabe, Abweichung,
+// `resolutionId`, Sitzung und Consent gehoeren zu BASIC-1 und existieren heute in KEINER Zeile
+// Produktcode. Sie werden hier NICHT erfunden. `detailKeys` ist die dafuer vorgesehene, heute
+// bewusst LEERE Erweiterungsstelle — BASIC-1 fuellt sie, statt einen zweiten Kopf zu bauen.
+export type KlaraTrustTone = "neutral" | "ok" | "warn";
+
+export interface KlaraTrustHead {
+  // Der Zustand, unveraendert von `klaraAiLage` — EIN Besitzer, keine zweite Wahrheit.
+  lage: KlaraAiLage;
+  // Kurzetikett der Zustandspille. Traegt den Zustand als TEXT; die Farbe ist nur eine zweite,
+  // redundante Spur (Anforderung: „Inhalt nicht nur farblich kodieren").
+  modeKey: string;
+  // Der ausfuehrliche, bereits bestehende und dreisprachig gepinnte Satz.
+  detailKey: string;
+  tone: KlaraTrustTone;
+  // BASIC-1-Erweiterungsstelle. Heute leer — und zwar nicht aus Versehen: es gibt keine
+  // Vertragsdaten, aus denen sie zu fuellen waere.
+  detailKeys: readonly string[];
+}
+
+function klaraTrustKey(prefix: string, lage: KlaraAiLage): string {
+  return `${prefix}${lage.charAt(0).toUpperCase()}${lage.slice(1)}`;
+}
+
+export function klaraTrustHead(
+  phase: KlaraAiPhase,
+  status: ReasonerStatus | undefined,
+): KlaraTrustHead {
+  const lage = klaraAiLage(phase, status);
+  // Der Ton sagt „ist der Stand BEKANNT?" — NICHT „ist er gut?". `extern` ist deshalb `ok`: die
+  // Auskunft steht, und ob eine externe KI im Haus arbeitet, ist eine Tatsache und kein Mangel.
+  // Ein Ladezustand ist kein Befund (`neutral`), und „nicht erreichbar" ist keine
+  // Verfuegbarkeitsaussage (`warn`) — genau der A22-Fehler, den mega75 geschlossen hat.
+  const tone: KlaraTrustTone =
+    lage === "laedt" ? "neutral" : lage === "unerreichbar" ? "warn" : "ok";
+  return {
+    lage,
+    modeKey: klaraTrustKey("trustMode", lage),
+    detailKey: klaraTrustKey("aiLage", lage),
+    tone,
+    detailKeys: [],
+  };
 }
