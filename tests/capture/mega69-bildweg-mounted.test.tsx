@@ -245,4 +245,64 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
     const caption = container.querySelector("[contenteditable] figcaption");
     expect(caption?.textContent).toContain("Kesselzulauf mit Manometer");
   });
+
+  // ==============================================================================================
+  // JOB 504 D2 — DER FORTGESETZTE ENTWURF OHNE VERTRAULICHKEITSFELD.
+  // ==============================================================================================
+  //
+  // BEN-D1 (`BEN-PRUEFUNG-JOB-504-D1.md`, Mangel 1) belegt die fail-open-Luecke: die Vordertuer
+  // machte beim Fortsetzen aus einem FEHLENDEN `payload.confidentiality` ein ausdrueckliches
+  // "intern" — VOR `failSafeConfidentiality`. Der Server (`classifyProvenanceConfidential`,
+  // reasoner-routes.ts) darf einem gueltigen "intern" glauben und laesst die Cloud-Kante stehen;
+  // Bild UND umgebender Kontext gingen damit an den externen Anbieter, obwohl NIEMAND diese Stufe
+  // je erklaert hat. Genau das beobachtet dieser Test AM ECHTEN describe-Aufruf.
+  it("Entwurf OHNE Vertraulichkeitsfeld: der Vorschlag reist fail-closed als „vertraulich“, nie als „intern“", async () => {
+    getMock.mockResolvedValue({
+      id: "d-alt-1",
+      // GENAU der Klara-/Altentwurf aus dem Befund: kein `confidentiality` im Payload.
+      payload: { title: "Kesselwartung", bodyHtml: DRAFT_BODY },
+    });
+    mount("/capture/frontdoor?draft=d-alt-1");
+    await settle();
+    await settle(350);
+
+    const thumb = container.querySelector<HTMLButtonElement>(
+      'button[aria-label="Bild 1 vergrößern"]',
+    );
+    expect(thumb, "Galerie-Thumbnail des importierten Bildes fehlt").not.toBeNull();
+    await act(async () => {
+      thumb?.click();
+    });
+    const editBtn = container.querySelector<HTMLButtonElement>(
+      '[data-testid="gallery-caption-edit"]',
+    );
+    expect(editBtn).not.toBeNull();
+    await act(async () => {
+      editBtn?.click();
+    });
+    await settle();
+    expect(container.querySelector<HTMLElement>("#caption-form-text")).not.toBeNull();
+
+    await act(async () => {
+      schreibeBeschreibung("Kesselzulauf mit Manometer");
+    });
+    const suggest = container.querySelector<HTMLButtonElement>(
+      '[data-testid="caption-form-suggest"]',
+    );
+    await act(async () => {
+      suggest?.click();
+    });
+    await settle();
+
+    expect(describeMock).toHaveBeenCalledTimes(1);
+    const [, , provenance] = describeMock.mock.calls[0] as [
+      string,
+      unknown,
+      { source: string; confidentiality: string },
+      string?,
+    ];
+    // Die Kernaussage: ein NIE erklaerter Wert darf nicht als Freigabe beim Egress erscheinen.
+    expect(provenance).toEqual({ source: "draft", confidentiality: "vertraulich" });
+    expect(provenance.confidentiality).not.toBe("intern");
+  });
 });

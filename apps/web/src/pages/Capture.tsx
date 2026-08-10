@@ -180,7 +180,7 @@ import {
   resolveWizardStep,
   wizardChips,
 } from "../lib/captureWizard";
-import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
+import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentiality";
 // AUFTRAG-mega20 Block A: der Wiederholschlüssel der Erstanlage (stabil über Wiederholungen).
 import {
   createConflictOffersRestart,
@@ -484,6 +484,14 @@ export function Capture(): JSX.Element {
   const [confidentiality, setConfidentiality] = useState<Confidentiality>(
     CAPTURE_FIELD_DEFAULTS.confidentiality,
   );
+  // JOB 504 D2: der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf trug KEINE
+  // Stufe". Er steuert AUSSCHLIESSLICH die Modell-Provenienz (ImageDescribeProvider) und wird
+  // bewusst NICHT auf "intern" geglaettet: `failSafeConfidentiality` (lib/reasonerProvenance.ts)
+  // muss den fehlenden Wert selbst sehen, sonst wird aus einem UNGESETZTEN Persistenzfeld eine
+  // ausdrueckliche Cloud-Freigabe. Der Formularstandard "intern" bleibt unveraendert bestehen.
+  const [declaredConfidentiality, setDeclaredConfidentiality] = useState<
+    Confidentiality | undefined
+  >(CAPTURE_FIELD_DEFAULTS.confidentiality);
   const [neededValidations, setNeededValidations] = useState(
     CAPTURE_FIELD_DEFAULTS.neededValidations,
   );
@@ -1720,6 +1728,7 @@ export function Capture(): JSX.Element {
       setAsset("");
       setNeededValidations("");
       setConfidentiality("intern");
+      setDeclaredConfidentiality("intern");
       setReviewerIds([]);
       setPendingSources([]);
       // AUFTRAG-mega4 Block A: der Erfolgspfad räumt jetzt AUCH Quellenformular und externe Suche —
@@ -1782,7 +1791,10 @@ export function Capture(): JSX.Element {
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
     setBodyHtml(p.bodyHtml ?? "");
     // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
-    setConfidentiality(p.confidentiality ?? "intern");
+    // JOB 504 D2: der Rohwert bleibt roh (kann fehlen); die Formularanzeige normalisiert wie bisher
+    // auf "intern" — jetzt ueber den geteilten Helfer statt eines eigenen `??`-Vorschalters.
+    setConfidentiality(confidentialityOf(p.confidentiality));
+    setDeclaredConfidentiality(p.confidentiality);
     // AUFTRAG-mega4/mega5 Block A: die mitgesicherten inhaltlichen Dirty-Felder 1:1 wiederherstellen —
     // Prüferauswahl, offene Quellen (sourceProvider → provider, s. fromDraftSources), teilweise
     // ausgefülltes Quellenformular und die externe SUCHANFRAGE. Die Trefferliste selbst wird nach
@@ -1950,6 +1962,7 @@ export function Capture(): JSX.Element {
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
+    setDeclaredConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
     setNeededValidations(CAPTURE_FIELD_DEFAULTS.neededValidations);
     setTags([]);
     setReviewerIds([]);
@@ -3274,7 +3287,7 @@ export function Capture(): JSX.Element {
     // die Herkunft ihres Inhalts. Der Weg selbst (describe-Aufruf, Sprache, Verfügbarkeit) kommt aus
     // der App. Vorher stand hier ZWEIMAL derselbe sechszeilige Block, einmal je Editor-Einbindung;
     // zwei Kopien sind zwei Wahrheiten, und die dritte und vierte Fläche hatten gar keine.
-    <ImageDescribeProvider provenance={draftProvenance(confidentiality)}>
+    <ImageDescribeProvider provenance={draftProvenance(declaredConfidentiality)}>
       <div className="mx-auto max-w-5xl">
         <PageHeader
           kicker={t("capture.kicker")}
@@ -4724,7 +4737,12 @@ export function Capture(): JSX.Element {
                     >
                       <select
                         value={confidentiality}
-                        onChange={(e) => setConfidentiality(e.target.value as Confidentiality)}
+                        onChange={(e) => {
+                          const gewaehlt = e.target.value as Confidentiality;
+                          setConfidentiality(gewaehlt);
+                          // Bewusste Auswahl IST eine Deklaration — ab hier gilt sie fuer den Egress.
+                          setDeclaredConfidentiality(gewaehlt);
+                        }}
                         aria-label={t("conf.field")}
                         className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
                       >

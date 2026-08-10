@@ -38,6 +38,23 @@ const db = vi.hoisted(() => {
   };
 });
 
+// JOB 504 D2: Sonde auf den Provider-Provenancewert, den Capture.tsx TATSAECHLICH setzt. Kein
+// Quelltext-String-Test: der Wert entsteht aus dem echten Resume-Klickpfad (Liste → „Fortsetzen"
+// → loadDraft → State → Prop). Die uebrigen Kontext-Exporte bleiben bedient, damit kein Aufrufer
+// im Baum ins Leere laeuft.
+const describeProvenance = vi.hoisted(() => ({ last: undefined as unknown }));
+vi.mock("../../apps/web/src/app/ImageDescribeContext", () => ({
+  ImageDescribeProvider: ({
+    provenance,
+    children,
+  }: { provenance?: unknown; children?: unknown }) => {
+    describeProvenance.last = provenance;
+    return children as JSX.Element;
+  },
+  ImageDescribeValueProvider: ({ children }: { children?: unknown }) => children as JSX.Element,
+  useImageDescribe: () => ({ available: false, describe: async () => ({ text: null, demo: true }) }),
+}));
+
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
@@ -258,6 +275,7 @@ beforeEach(async () => {
   await i18n.changeLanguage("de");
   nav.proceeded = false;
   db.reset();
+  describeProvenance.last = undefined;
 });
 
 afterEach(() => {
@@ -340,5 +358,60 @@ describe("Block A: Entwurf speichern sichert den vollständigen Dirty-State und 
     expect(payload.type).toBe(otherType);
     expect(payload.confidentiality).toBe(otherConf);
     expect(payload.neededValidations).toBe(2);
+  });
+});
+
+// ================================================================================================
+// JOB 504 D2 — DER ZWEITE RESUME-WEG: /erfassen.
+// ================================================================================================
+//
+// Dieselbe fail-open-Luecke wie an der Vordertuer (BEN-D1, Mangel 1), hier an `Capture.tsx`: ein
+// fortgesetzter Entwurf OHNE `payload.confidentiality` wurde vor der Normalisierung zu "intern" —
+// und damit zu einer ausdruecklichen Cloud-Freigabe fuer den Bildbeschreibungs-Egress. Beobachtet
+// wird der Provenancewert, den die Seite dem ImageDescribeProvider WIRKLICH uebergibt.
+function seedDraft(payload: Record<string, unknown>): void {
+  db.store.push({
+    id: "d-seed",
+    payload,
+    originalAuthor: "u1",
+    lastEditor: "u1",
+    createdAt: "2026-07-25T10:00:00.000Z",
+    updatedAt: "2026-07-25T10:00:00.000Z",
+  });
+}
+
+describe("JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs", () => {
+  it("FEHLENDES Feld bleibt fail-closed — „vertraulich“, niemals „intern“", async () => {
+    seedDraft({ title: "Altentwurf", statement: "Text aus Alt-/Klara-Entwurf", origin: "tell" });
+    await mount();
+    await resumeSavedDraft();
+    expect(describeProvenance.last).toEqual({ source: "draft", confidentiality: "vertraulich" });
+    expect((describeProvenance.last as { confidentiality?: string }).confidentiality).not.toBe(
+      "intern",
+    );
+  });
+
+  it("GESPEICHERTES „intern“ bleibt „intern“ — die bewusste Auswahl wird nicht verschaerft", async () => {
+    seedDraft({
+      title: "Bewusst intern",
+      statement: "Frei nutzbar",
+      origin: "tell",
+      confidentiality: "intern",
+    });
+    await mount();
+    await resumeSavedDraft();
+    expect(describeProvenance.last).toEqual({ source: "draft", confidentiality: "intern" });
+  });
+
+  it("GESPEICHERTES „vertraulich“ bleibt „vertraulich“ — kein Downgrade", async () => {
+    seedDraft({
+      title: "Vertraulich",
+      statement: "Nicht nach draussen",
+      origin: "tell",
+      confidentiality: "vertraulich",
+    });
+    await mount();
+    await resumeSavedDraft();
+    expect(describeProvenance.last).toEqual({ source: "draft", confidentiality: "vertraulich" });
   });
 });

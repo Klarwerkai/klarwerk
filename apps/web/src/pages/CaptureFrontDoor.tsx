@@ -52,7 +52,7 @@ import {
   withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
-import { CONFIDENTIALITY_LEVELS } from "../lib/confidentiality";
+import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentiality";
 // AUFTRAG-mega23 Block A: DIESELBE Quelle wie der Erfassen-Weg — Erzeugung des Schlüssels, wann er
 // fällt, und welcher 409 einen neuen Vorgang rechtfertigt. Kein zweiter Mechanismus, keine eigene
 // Auslegung an dieser Tür.
@@ -100,6 +100,14 @@ export function CaptureFrontDoor(): JSX.Element {
   // SCRUM-502 Schicht 2 (Round 3): Vertraulichkeit auch im Front-Door erfassen — steuert den
   // Reasoner-Egress (source:"draft") UND fließt in den Entwurf/das spätere KO. Standard „intern".
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
+  // JOB 504 D2: der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf trug KEINE
+  // Stufe". Er steuert AUSSCHLIESSLICH die Modell-Provenienz und wird bewusst NICHT auf "intern"
+  // geglaettet: `failSafeConfidentiality` (lib/reasonerProvenance.ts) muss den fehlenden Wert selbst
+  // sehen, sonst wird aus einem UNGESETZTEN Feld eine ausdrueckliche Cloud-Freigabe. Der
+  // Formularstandard "intern" bleibt davon unberuehrt (bewusste Auswahl, s. `confidentiality`).
+  const [declaredConfidentiality, setDeclaredConfidentiality] = useState<
+    Confidentiality | undefined
+  >("intern");
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
@@ -301,11 +309,15 @@ export function CaptureFrontDoor(): JSX.Element {
         }
         const loadedTitle = draft.payload.title ?? "";
         const loadedBody = frontDoorBodyFromDraft(draft.payload);
-        const loadedConfidentiality = draft.payload.confidentiality ?? "intern";
+        // JOB 504 D2: der Rohwert bleibt roh (kann fehlen); die Formularanzeige normalisiert wie
+        // bisher auf "intern" — jetzt ueber den geteilten Helfer statt eines eigenen `??`-Vorschalters.
+        const declared = draft.payload.confidentiality;
+        const loadedConfidentiality = confidentialityOf(declared);
         setActiveDraftId(draft.id);
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
         setConfidentiality(loadedConfidentiality);
+        setDeclaredConfidentiality(declared);
         // AUFTRAG-mega9 Block B: der geladene Stand IST der gesicherte Stand — ein gerade geöffneter
         // Entwurf ist nicht „ungespeichert" und löst keine Warnung aus.
         savedStateRef.current = {
@@ -827,7 +839,12 @@ export function CaptureFrontDoor(): JSX.Element {
               </div>
               <select
                 value={confidentiality}
-                onChange={(event) => setConfidentiality(event.target.value as Confidentiality)}
+                onChange={(event) => {
+                  const gewaehlt = event.target.value as Confidentiality;
+                  setConfidentiality(gewaehlt);
+                  // Eine bewusste Auswahl IST eine Deklaration — ab hier gilt sie auch fuer den Egress.
+                  setDeclaredConfidentiality(gewaehlt);
+                }}
                 aria-label={t("conf.field")}
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
               >
@@ -855,7 +872,7 @@ export function CaptureFrontDoor(): JSX.Element {
                 </div>
               ) : null}
               {/* SCRUM-474 P1: aktive Einladung statt leerer weißer Fläche. */}
-              <ImageDescribeProvider provenance={draftProvenance(confidentiality)}>
+              <ImageDescribeProvider provenance={draftProvenance(declaredConfidentiality)}>
                 <RichTextEditor
                   value={bodyHtml}
                   onChange={changeBodyHtml}
