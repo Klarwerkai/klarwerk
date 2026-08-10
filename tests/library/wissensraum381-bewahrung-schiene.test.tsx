@@ -56,6 +56,25 @@ import { Library } from "../../apps/web/src/pages/Library";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
+// ================================================================================================
+// 10.08.2026 — ZEITBOMBE ENTSCHAERFT.
+// ================================================================================================
+//
+// Die Alters-Facette faechert nach ≤30 Tagen / ≤180 Tagen / ≤1 Jahr / aelter — gemessen an der
+// ECHTEN Uhr. Die vier Fixtures trugen feste Daten und verteilten sich NUR ZUFAELLIG auf mehrere
+// Faecher, naemlich solange „heute" nahe genug an ihnen lag. Ab 2027 waeren alle vier ins letzte
+// Fach gefallen, die Achse haette nur noch einen Wert getragen und waere ausgeblendet worden —
+// und R-14 waere rot geworden, ohne dass jemand etwas geaendert haette.
+//
+// Gefunden durch einen Lauf mit um zwei Jahre vorgestellter Uhr, nicht durch Lesen.
+// Die Abstaende sind jetzt RELATIV und treffen ihre Faecher an jedem Tag gleich.
+const TAG_MS = 24 * 60 * 60 * 1000;
+const VOR_TAGEN = (n: number): string => new Date(Date.now() - n * TAG_MS).toISOString();
+const ALTER_D30 = VOR_TAGEN(10); // Fach „≤ 30 Tage"
+const ALTER_D180 = VOR_TAGEN(100); // Fach „≤ 180 Tage"
+const ALTER_Y1 = VOR_TAGEN(300); // Fach „≤ 1 Jahr"
+const ALTER_ALT = "2019-03-01T00:00:00.000Z"; // bewusst fest: SOLL immer im aeltesten Fach liegen
+
 function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
   return {
     id: "ko",
@@ -75,7 +94,7 @@ function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
     neededValidations: 2,
     assignments: [],
     asset: null,
-    createdAt: "2026-07-20T00:00:00.000Z",
+    createdAt: ALTER_D30,
     history: [],
     ...overrides,
   } as unknown as KnowledgeObject;
@@ -96,7 +115,7 @@ function vielfaeltigerBestand(): KnowledgeObject[] {
       confidentiality: "intern",
       type: "best_practice",
       trust: 90,
-      createdAt: "2026-07-20T00:00:00.000Z",
+      createdAt: ALTER_D30,
     }),
     ko({
       id: "b",
@@ -107,7 +126,7 @@ function vielfaeltigerBestand(): KnowledgeObject[] {
       confidentiality: "vertraulich",
       type: "technik",
       trust: 30,
-      createdAt: "2019-03-01T00:00:00.000Z",
+      createdAt: ALTER_ALT,
     }),
     ko({
       id: "c",
@@ -119,7 +138,7 @@ function vielfaeltigerBestand(): KnowledgeObject[] {
       type: "best_practice",
       trust: 60,
       status: "offen",
-      createdAt: "2026-01-05T00:00:00.000Z",
+      createdAt: ALTER_Y1,
     }),
     // Der vierte Beitrag trägt die beiden Achsen, die sonst nur EINEN Wert hätten und deshalb gar
     // nicht gezeichnet würden: `origin` (Demo/Nicht-Demo über `demoSeed`) und `language` (die
@@ -136,7 +155,7 @@ function vielfaeltigerBestand(): KnowledgeObject[] {
       type: "best_practice",
       trust: 0,
       demoSeed: true,
-      createdAt: "2026-06-01T00:00:00.000Z",
+      createdAt: ALTER_D180,
     } as Partial<KnowledgeObject>),
   ];
 }

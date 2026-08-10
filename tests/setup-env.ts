@@ -48,3 +48,46 @@ process.env.EXTERNAL_SEARCH = "off";
 // vorgefundenen Zustand danach wieder her — er prüft das AUS-Verhalten und darf deshalb nicht von
 // dieser Zeile verdeckt werden.
 process.env.KLARWERK_DEMO_SEED = "1";
+
+// ================================================================================================
+// ZEITSPRUNG — ZEITBOMBEN ZUENDEN, BEVOR SIE VON SELBST HOCHGEHEN.
+// ================================================================================================
+//
+// Am 10.08.2026 war ein Test seit acht Tagen rot, ohne dass ihn jemand angefasst hatte: er verglich
+// einen fest verdrahteten Zeitstempel gegen die echte Uhr und musste ab dem Folgetag scheitern.
+// Solche Faelle sind vor ihrem Stichtag UNSICHTBAR — kein Testlauf der Welt zeigt sie, weil sie
+// heute noch gruen sind.
+//
+// Deshalb dieser Schalter. Er verschiebt die Uhr des gesamten Laufs um `KW_ZEITSPRUNG`
+// Millisekunden nach vorn. Was dann rot wird, haengt an einem festen Datum und wird von selbst
+// rot werden — nur spaeter und ohne erkennbaren Grund.
+//
+//     KW_ZEITSPRUNG=63072000000  npx vitest run     # +2 Jahre
+//     KW_ZEITSPRUNG=315360000000 npx vitest run     # +10 Jahre
+//
+// Ohne die Variable aendert sich NICHTS: kein Aufwand, kein Verhalten, keine Nebenwirkung im
+// normalen Lauf. Die Suche hat auf Anhieb zwei Bomben gefunden, die eine statische Textsuche
+// beide uebersehen hatte — Fixtures, die mit der Zeit „stale" bzw. aus ihrem Altersfach fallen.
+if (process.env.KW_ZEITSPRUNG) {
+  const versatz = Number(process.env.KW_ZEITSPRUNG);
+  if (!Number.isFinite(versatz)) {
+    throw new Error(`KW_ZEITSPRUNG ist keine Zahl: ${process.env.KW_ZEITSPRUNG}`);
+  }
+  const Echt = Date;
+  const echtNow = Date.now.bind(Date);
+  class Verschoben extends Echt {
+    constructor(...a: unknown[]) {
+      if (a.length === 0) {
+        super(echtNow() + versatz);
+      } else {
+        // @ts-expect-error Die Originalsignaturen werden unveraendert durchgereicht.
+        super(...a);
+      }
+    }
+    static override now(): number {
+      return echtNow() + versatz;
+    }
+  }
+  // @ts-expect-error Das globale Date wird bewusst ersetzt.
+  globalThis.Date = Verschoben;
+}

@@ -44,7 +44,7 @@ function confluencePage(
     id,
     title,
     body: { storage: { value: "<p>Inhalt der Seite.</p>" } },
-    version: { number: 1, when: "2026-06-01T00:00:00.000Z", by: { displayName: "Autor" } },
+    version: { number: 1, when: FRISCH_ISO, by: { displayName: "Autor" } },
     ...(opts.restricted
       ? {
           restrictions: {
@@ -55,13 +55,27 @@ function confluencePage(
   } as unknown as ConfluencePage;
 }
 
+// ================================================================================================
+// 10.08.2026 — ZEITBOMBE ENTSCHAERFT.
+// ================================================================================================
+//
+// Die „frischen" Fixtures trugen das feste Datum 2026-06-01. `groupingCandidates` markiert eine
+// Quelle als `stale`, sobald sie aelter als STALE_AFTER_DAYS (365) ist — gemessen an der ECHTEN
+// Uhr. Am 01.06.2027 waeren diese Faelle also von selbst rot geworden, ohne dass jemand etwas
+// geaendert haette, und niemand haette den Grund gesehen.
+//
+// Gefunden wurde das nicht durch Lesen, sondern durch einen Lauf mit um zwei Jahre vorgestellter
+// Uhr. Die Fixtures sind jetzt RELATIV zur Gegenwart: „frisch" heisst 30 Tage alt und bleibt es.
+// Der ausdrueckliche Stale-Fall weiter unten behaelt sein festes Datum von 2020 — er SOLL alt sein.
+const FRISCH_ISO = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+
 function item(overrides: Partial<ImportItem> & { title: string }): ImportItem {
   return {
     statement: "kurz",
     type: "best_practice",
     category: "K",
     provider: "Confluence",
-    updatedAt: "2026-06-01T00:00:00.000Z",
+    updatedAt: FRISCH_ISO,
     textCodec: "decoded",
     ...overrides,
   } as ImportItem;
