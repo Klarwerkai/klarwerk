@@ -317,7 +317,87 @@ export function askLocale(lang: string): "de" | "en" | "nl" {
   return lang === "nl" ? "nl" : "de";
 }
 
-export type AskOutcomeKind = "answered" | "gap" | "auth" | "error" | "timeout";
+// ================================================================================================
+// AUFTRAG-JOB507-D4 — RETRY-AFTER: EINE ZAHL, SECHS KLASSEN, EINE OBERGRENZE.
+// ================================================================================================
+//
+// Der Server sperrt bei zu vielen Versuchen und antwortet mit 429 + `Retry-After`
+// (services/auth/src/routes.ts:194 — ganze Sekunden aus `rate-limit.ts`; das Add-on-Ratenlimit
+// nutzt die Plugin-Vorgabe). RFC 9110 laesst dort ZWEI Formen zu: `delta-seconds` oder ein
+// HTTP-Datum. Das Panel kannte den Fall bisher gar nicht — 429 fiel in den generischen
+// `!res.ok`-Zweig und wurde als „fehlgeschlagen (HTTP 429)" gezeigt. Technisch wahr, praktisch
+// nutzlos: die eine Auskunft, die der Wartende braucht — WIE LANGE —, war da und wurde weggeworfen.
+//
+// DIE REIHENFOLGE IST FEST, weil eine wackelige Reihenfolge hier eine falsche Zahl bedeutet:
+//   1. fehlend            → null   (nichts gesagt)
+//   2. leer/nur Leerraum  → null   (nichts gesagt)
+//   3. ganze Sekunden     → Wert, auf die Obergrenze gedeckelt
+//   4. negative Sekunden  → 0      (vergangen; RFC-widrig, aber eindeutig gemeint: sofort)
+//   5. HTTP-Datum         → Zukunft: aufgerundete Differenz, gedeckelt; Vergangenheit/jetzt: 0
+//   6. alles andere       → null   (ungueltig — lieber keine Zahl als eine geratene)
+//
+// `null` und `0` sind AUSDRUECKLICH nicht dasselbe: 0 heisst „jetzt wieder", null heisst „wir
+// wissen es nicht" — und die Oberflaeche sagt dann auch nur das.
+//
+// DIE OBERGRENZE ist kein Schoenheitswert. Ein defekter oder feindseliger Zwischenserver darf dem
+// Panel keine Wartezeit von Tagen in den sichtbaren Text schreiben; eine Stunde ist die Grenze,
+// hinter der eine Zahl im Aufgabenfenster ohnehin keine Handlungsanweisung mehr ist.
+export const WORD_ADDIN_RETRY_AFTER_MAX_SECONDS = 3600;
+
+// WARUM HIER EINE FORM GEPRUEFT WIRD, BEVOR `Date.parse` UEBERHAUPT LAEUFT: `Date.parse` ist in
+// V8 absichtlich nachsichtig und nimmt auch Zeichenfolgen an, die kein HTTP-Datum sind. Der
+// Red-first-Lauf hat genau das aufgedeckt — `Retry-After: 12.5` (offensichtlicher Unsinn, den ein
+// kaputter Zwischenserver schickt) wurde als Datum gelesen, landete in der Vergangenheit und kam
+// als „jetzt wieder erlaubt" heraus statt als „unbrauchbar". Das ist der schlechtere Ausgang: eine
+// erfundene Auskunft sieht aus wie eine echte.
+//
+// Geprueft wird deshalb die IMF-fixdate-Form aus RFC 9110 („Sun, 06 Nov 1994 08:49:37 GMT") — genau
+// die Form, die der Server selbst erzeugen wuerde. Ein ISO-Zeitstempel wird BEWUSST NICHT
+// akzeptiert: er ist an dieser Kopfzeile nicht vertragsgemaess, und „unbekannt" ist ehrlicher als
+// eine Zahl aus einer Form, auf die sich niemand geeinigt hat.
+const RETRY_AFTER_HTTP_DATE = /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
+export function parseRetryAfterSeconds(
+  value: string | null | undefined,
+  nowMs: number,
+): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  const raw = value.trim();
+  if (raw.length === 0) {
+    return null;
+  }
+  if (/^\d+$/.test(raw)) {
+    return Math.min(Number(raw), WORD_ADDIN_RETRY_AFTER_MAX_SECONDS);
+  }
+  if (/^-\d+$/.test(raw)) {
+    return 0;
+  }
+  const parsed = RETRY_AFTER_HTTP_DATE.test(raw) ? Date.parse(raw) : Number.NaN;
+  if (Number.isFinite(parsed)) {
+    const seconds = Math.ceil((parsed - nowMs) / 1000);
+    if (seconds <= 0) {
+      return 0;
+    }
+    return Math.min(seconds, WORD_ADDIN_RETRY_AFTER_MAX_SECONDS);
+  }
+  return null;
+}
+
+// AUFTRAG-JOB507-D4: der 403-Ausgang ist NEU und er ist kein Detail. Bis hierher warf `performAsk`
+// 401 und 403 in einen Topf („auth"), und das Panel sagte in beiden Faellen „Nicht angemeldet".
+// Bei 403 ist das irrefuehrend: die Sitzung IST da, dem Konto fehlt `ko.read`. Wer daraufhin ein
+// zweites Mal anmeldet, aendert nichts und erfaehrt den Grund nie. Der Wissensluecken-Weg des
+// Panels unterschied beides laengst (sendOpenQuestion) — jetzt tut es der Fragen-Weg auch.
+export type AskOutcomeKind =
+  | "answered"
+  | "gap"
+  | "auth"
+  | "forbidden"
+  | "rate-limited"
+  | "error"
+  | "timeout";
 
 // ================================================================================================
 // AUFTRAG-mega34 BLOCK B (bens zweiter ROT-Befund) — WORD BEKOMMT DIE EINSTUFUNG.
@@ -372,6 +452,9 @@ export interface AskOutcome {
   // — und auf dem retrieval-only-Weg des Add-ins fehlt es IMMER, weil `answerRetrievalOnly` es
   // bewusst weglaesst —, wird nichts behauptet.
   aiGenerated?: boolean;
+  // AUFTRAG-JOB507-D4: bei `rate-limited` die gelesene Wartezeit in Sekunden — `null`, wenn der
+  // Server keine oder eine unbrauchbare genannt hat. Die Oberflaeche zeigt dann KEINE Zahl.
+  retryAfterSeconds?: number | null;
   // AUFTRAG-mega77 BLOCK A: hier stand `ungeprueft` — die Zahl der unterdrueckten ungeprueften
   // Treffer aus mega74 Teil 2b, samt der Zusage „0 heisst es gab wirklich nichts". Feld, Zusage und
   // serverseitige Berechnung sind entfernt (services/ask/src/service.ts): die Zahl entstand ohne
@@ -553,6 +636,9 @@ export interface AskFetchResponseLike {
   ok: boolean;
   status: number;
   json(): Promise<unknown>;
+  // AUFTRAG-JOB507-D4: die Kopfzeilen sind OPTIONAL, damit jeder bestehende Fake ohne Umbau weiter
+  // gilt — fehlt der Zugriff, ist die Wartezeit ehrlich unbekannt statt geraten.
+  headers?: { get(name: string): string | null } | undefined;
 }
 
 export type AskFetchFn = (url: string, init: AskFetchInit) => Promise<AskFetchResponseLike>;
@@ -607,8 +693,22 @@ export function performAsk(
     signal: controller.signal,
   })
     .then((res): Promise<AskOutcome> | AskOutcome => {
-      if (res.status === 401 || res.status === 403) {
+      if (res.status === 401) {
         return { kind: "auth" };
+      }
+      // AUFTRAG-JOB507-D4: 403 ist FEHLENDES RECHT (`ko.read`), keine fehlende Anmeldung.
+      if (res.status === 403) {
+        return { kind: "forbidden" };
+      }
+      // AUFTRAG-JOB507-D4: 429 ist eine Sperre auf Zeit — die Zeit steht im Kopf und wird gelesen.
+      if (res.status === 429) {
+        return {
+          kind: "rate-limited",
+          retryAfterSeconds: parseRetryAfterSeconds(
+            res.headers ? res.headers.get("retry-after") : null,
+            Date.now(),
+          ),
+        };
       }
       if (!res.ok) {
         return { kind: "error", detail: `HTTP ${res.status}` };
@@ -1110,6 +1210,53 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
     undeliveredImages,
     plainTextFallback: false,
   };
+}
+
+// ================================================================================================
+// AUFTRAG-JOB507-D4 — WAS DIE ANTWORT DES DRAFT-POSTS BEDEUTET, WIRD EINMAL ENTSCHIEDEN.
+// ================================================================================================
+//
+// Der Entwurf-Sender und der Wissensluecken-Weg schicken beide an POST /api/drafts und lasen die
+// Antwort bis hierher JEDER FUER SICH: der eine kannte 401/403, der andere nur „nicht ok". Alles
+// dazwischen — 413 vom Route-bodyLimit (DRAFTS_BODY_LIMIT, 5 MiB) und 429 vom Ratenlimit — landete
+// in „Senden fehlgeschlagen (HTTP 413)". Der Satz ist nicht falsch, aber er ist keine Auskunft: er
+// sagt weder, WORAN es lag, noch was zu tun ist, und er sieht aus wie ein Serverfehler, obwohl das
+// Dokument schlicht zu gross war.
+//
+// FAIL-CLOSED IST DER KERN DIESER FUNKTION: als angelegt gilt AUSSCHLIESSLICH das dokumentierte
+// 201 der Route (services/app/src/routes/capture-routes.ts). Jede andere Antwort ist Create-0 —
+// auch ein kuenftiges 200 oder 202. Damit kann kein neuer Statuscode versehentlich als Erfolg
+// durchrutschen und einen Entwurf behaupten, den es nicht gibt.
+export type DraftResponseKind =
+  | "created"
+  | "auth"
+  | "forbidden"
+  | "too-large"
+  | "rate-limited"
+  | "error";
+
+export function classifyDraftResponse(status: number): DraftResponseKind {
+  if (status === 201) {
+    return "created";
+  }
+  if (status === 401) {
+    return "auth";
+  }
+  if (status === 403) {
+    return "forbidden";
+  }
+  if (status === 413) {
+    return "too-large";
+  }
+  if (status === 429) {
+    return "rate-limited";
+  }
+  return "error";
+}
+
+/** Die eine Stelle, an der „es liegt jetzt ein Entwurf im Pool" behauptet werden darf. */
+export function draftWasCreated(kind: DraftResponseKind): boolean {
+  return kind === "created";
 }
 
 // ================================================================================================

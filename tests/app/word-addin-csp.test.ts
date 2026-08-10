@@ -8,6 +8,8 @@
 // die beiden Icons brauchen als statische Bilder KEINE Ausnahme mehr), exakter String-Vergleich auf den
 // query-gestrippten Pfad. Präfix-/Traversal-/Encoding-Varianten UND die Icons fallen fail-closed in die
 // strikte globale CSP (frame-ancestors 'none' + X-Frame-Options).
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { beforeAll, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import {
@@ -132,6 +134,87 @@ describe("WP-KLARA-1b K1: isWordAddinCspPath — exakter Vergleich, fail-closed"
     ]) {
       expect(isWordAddinCspPath(bad), String(bad)).toBe(false);
     }
+  });
+});
+
+// ================================================================================================
+// AUFTRAG-JOB507-D4 — DIE CSP MUSS ZU DEM PASSEN, WAS DAS PANEL WIRKLICH TUT.
+// ================================================================================================
+//
+// Die Header-Matrix oben beweist, WELCHE Antwort die Ersatz-CSP bekommt. Sie sagt nichts darueber,
+// ob diese CSP das Panel ueberhaupt arbeiten laesst. Genau diese Luecke ist praktisch relevant
+// geworden: mit den sichtbaren Zustaenden fuer 413/429/403 haengen jetzt fuenf verschiedene
+// same-origin-Abrufe an der Oberflaeche (/api/auth/me, /api/reasoner/status, /api/ask, /api/kos/:id,
+// /api/drafts). Waere einer davon absolut auf eine fremde Herkunft gezogen, blockierte
+// `connect-src 'self'` ihn stillschweigend — der Nutzer saehe nur „nicht erreichbar".
+//
+// Dieser Test liest die Abrufziele AUS DER AUSGELIEFERTEN SEITE und misst sie gegen die real
+// ausgelieferte CSP. Er behauptet nichts ueber Hosts, er zaehlt nach.
+const TASKPANE_FILE = "apps/web/public/word-addin/taskpane.html";
+
+function taskpaneSource(): string {
+  return readFileSync(resolve(process.cwd(), TASKPANE_FILE), "utf8");
+}
+
+describe("AUFTRAG-JOB507-D4: CSP und Panelverhalten sind konsistent", () => {
+  it("jedes Abrufziel des Panels ist same-origin (absoluter /api-Pfad) — passt zu connect-src 'self'", () => {
+    const html = taskpaneSource();
+    // `fetch(` deckt die vier direkten Abrufe; `fetchFn(` ist der EINE injizierte Abruf in
+    // performAsk (er ist injizierbar, damit der Ask-Fluss ohne Netz testbar bleibt) — beide Formen
+    // zaehlen, sonst waere der wichtigste Endpunkt des Panels gerade nicht erfasst.
+    const ziele = [...html.matchAll(/\bfetch(?:Fn)?\(\s*"([^"]+)"/g)].map((m) => m[1] ?? "");
+    // Kalibrierung: der Test darf nicht vakuoes werden, wenn der Abrufweg einmal umbenannt wird.
+    expect(ziele.length).toBeGreaterThanOrEqual(5);
+    for (const ziel of ziele) {
+      expect(ziel, ziel).toMatch(/^\/api\//);
+      expect(ziel, ziel).not.toMatch(/^https?:/);
+    }
+    // Die fuenf real benutzten Endpunkte sind wirklich dabei.
+    for (const endpunkt of [
+      "/api/auth/me",
+      "/api/reasoner/status",
+      "/api/ask",
+      "/api/kos/",
+      "/api/drafts",
+    ]) {
+      expect(
+        ziele.some((ziel) => ziel.startsWith(endpunkt)),
+        endpunkt,
+      ).toBe(true);
+    }
+    expect(WORD_ADDIN_CSP).toContain("connect-src 'self'");
+  });
+
+  it("die einzige externe Ressource ist office.js — und genau sie steht in script-src", () => {
+    const html = taskpaneSource();
+    const externeScripts = [...html.matchAll(/<script\s+src="([^"]+)"/g)].map((m) => m[1] ?? "");
+    expect(externeScripts).toEqual(["https://appsforoffice.microsoft.com/lib/1/hosted/office.js"]);
+    expect(WORD_ADDIN_CSP).toContain(
+      "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
+    );
+    // Inline-Skript und Inline-Styles der buildlosen Seite brauchen 'unsafe-inline' — belegt statt behauptet.
+    expect(html).toContain("<script>");
+    expect(WORD_ADDIN_CSP).toContain("style-src 'self' 'unsafe-inline'");
+    // Die eingesetzten Word-Bilder reisen als data:-URL (fillWordImages) → img-src muss data: tragen.
+    expect(html).toContain('"data:" + mime + ";base64," + roh');
+    expect(WORD_ADDIN_CSP).toContain("img-src 'self' data:");
+  });
+
+  it("die ausgelieferte Taskpane-Antwort traegt genau diese Erlaubnisse (echter Header, kein Quelltext-Pin)", async () => {
+    const app = await buildRealApp();
+    const res = await app.inject({ method: "GET", url: "/word-addin/taskpane.html" });
+    expect(res.statusCode).toBe(200);
+    const csp = String(res.headers["content-security-policy"] ?? "");
+    for (const direktive of [
+      "connect-src 'self'",
+      "img-src 'self' data:",
+      "script-src 'self' 'unsafe-inline' https://appsforoffice.microsoft.com",
+    ]) {
+      expect(csp, direktive).toContain(direktive);
+    }
+    // Fail-closed bleibt fail-closed: keine fremde Verbindungs- oder Objektfläche.
+    expect(csp).toContain("object-src 'none'");
+    expect(csp).not.toContain("connect-src *");
   });
 });
 

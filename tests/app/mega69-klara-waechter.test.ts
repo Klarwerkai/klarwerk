@@ -342,7 +342,22 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Auslieferungsfolge: KEIN erneutes Sideload. Ein installiertes Add-in holt die Datei beim
     // nächsten Öffnen frisch; ohne einen Server mit den Klara-Routen steht der Sitzungsteil
     // ehrlich auf „keine Sitzung", der Hausstand-Teil arbeitet unverändert weiter.
-    const PIN = "4bf88d4e465c4b4ac341780b4d20483394a2a25582e20b3bfe47b05180f85206";
+    // AUFTRAG-JOB507-D4 (10.08.2026): Auslieferungsfolgen geprueft, bevor der Pin wanderte.
+    // VORHERHASH taskpane.html: `4bf88d4e465c4b4ac341780b4d20483394a2a25582e20b3bfe47b05180f85206`.
+    //
+    // GEAENDERT WURDE AUSSCHLIESSLICH DIE DEUTUNG EINES VORHANDENEN ANTWORTKOPFS:
+    //   · `parseRetryAfterSeconds` samt Deckel `WORD_ADDIN_RETRY_AFTER_MAX_SECONDS = 3600` und
+    //     der strengen IMF-fixdate-Pruefung `RETRY_AFTER_HTTP_DATE`. Grund laut Auftrag: `Date.parse`
+    //     ist nachsichtig und liest auch „12.5" als Datum — eine erfundene Auskunft saehe dann aus
+    //     wie eine echte. `null` heisst „unbekannt", `0` heisst „jetzt"; das ist nicht dasselbe.
+    //   · Der Block ist der SPIEGEL von `apps/web/src/lib/wordAddin.ts#parseRetryAfterSeconds`;
+    //     die ausfuehrliche Begruendung steht dort.
+    //
+    // KEIN neues Abrufziel (die Menge der `fetch(...)`-Ziele ist gegen den Vorgaengerstand
+    // unveraendert), KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE neue Nutzlast.
+    // Gedeutet wird nur ein Kopf, den der Server ohnehin schon sendet. Ein installiertes Add-in
+    // braucht deshalb KEIN erneutes Sideload.
+    const PIN = "c72d6f9ba57ed888b91b1eb8f10ee09612ea5232de4b8c8570201cd9e71f276e";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

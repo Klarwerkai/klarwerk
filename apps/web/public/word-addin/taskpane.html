@@ -838,6 +838,48 @@
       return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
     }
 
+    // AUFTRAG-JOB507-D4 — Retry-After: eine Zahl, sechs Klassen, eine Obergrenze. Spiegel von
+    // apps/web/src/lib/wordAddin.ts#parseRetryAfterSeconds; die ausfuehrliche Begruendung steht dort.
+    // Feste Reihenfolge: fehlend → null · leer → null · ganze Sekunden → gedeckelt · negative
+    // Sekunden → 0 · HTTP-Datum → Zukunft gedeckelt / Vergangenheit 0 · sonst → null.
+    // `null` heisst „unbekannt", `0` heisst „jetzt" — das ist nicht dasselbe.
+    var WORD_ADDIN_RETRY_AFTER_MAX_SECONDS = 3600;
+    // Die Datumsform wird GEPRUEFT, bevor Date.parse laeuft: Date.parse ist nachsichtig und liest
+    // auch „12.5" als Datum (im Red-first-Lauf belegt) — eine erfundene Auskunft saehe dann aus wie
+    // eine echte. Erlaubt ist die IMF-fixdate-Form aus RFC 9110; alles andere bleibt „unbekannt".
+    var RETRY_AFTER_HTTP_DATE = /^[A-Za-z]{3}, \d{2} [A-Za-z]{3} \d{4} \d{2}:\d{2}:\d{2} GMT$/;
+
+    function parseRetryAfterSeconds(value, nowMs) {
+      if (value === null || value === undefined) { return null; }
+      var raw = String(value).replace(/^\s+|\s+$/g, "");
+      if (raw.length === 0) { return null; }
+      if (/^\d+$/.test(raw)) { return Math.min(Number(raw), WORD_ADDIN_RETRY_AFTER_MAX_SECONDS); }
+      if (/^-\d+$/.test(raw)) { return 0; }
+      var parsed = RETRY_AFTER_HTTP_DATE.test(raw) ? Date.parse(raw) : NaN;
+      if (isFinite(parsed)) {
+        var seconds = Math.ceil((parsed - nowMs) / 1000);
+        if (seconds <= 0) { return 0; }
+        return Math.min(seconds, WORD_ADDIN_RETRY_AFTER_MAX_SECONDS);
+      }
+      return null;
+    }
+
+    // AUFTRAG-JOB507-D4 — was die Antwort des Draft-POSTs bedeutet, wird EINMAL entschieden.
+    // Spiegel von wordAddin.ts#classifyDraftResponse. FAIL-CLOSED: nur das dokumentierte 201 der
+    // Route gilt als angelegter Entwurf; jede andere Antwort ist Create-0.
+    function classifyDraftResponse(status) {
+      if (status === 201) { return "created"; }
+      if (status === 401) { return "auth"; }
+      if (status === 403) { return "forbidden"; }
+      if (status === 413) { return "too-large"; }
+      if (status === 429) { return "rate-limited"; }
+      return "error";
+    }
+
+    function draftWasCreated(kind) {
+      return kind === "created";
+    }
+
     // AUFTRAG-mega79 BLOCK B — Schnittmarken um den Frage-Abruf, damit ein Test ihn AUSFUEHREN
     // kann statt seinen Quelltext zu lesen. Dieselbe Bauform wie KW-KLARA-AISTATE-FETCH-*: das
     // Aufgabenfenster ist buildlos, also ist ein Schnitt die einzige Moeglichkeit, das WIRKLICH
@@ -860,7 +902,19 @@
         signal: controller.signal,
       })
         .then(function (res) {
-          if (res.status === 401 || res.status === 403) { return { kind: "auth" }; }
+          if (res.status === 401) { return { kind: "auth" }; }
+          // AUFTRAG-JOB507-D4: 403 ist FEHLENDES RECHT (ko.read), keine fehlende Anmeldung.
+          if (res.status === 403) { return { kind: "forbidden" }; }
+          // AUFTRAG-JOB507-D4: 429 ist eine Sperre auf Zeit — die Zeit steht im Kopf.
+          if (res.status === 429) {
+            return {
+              kind: "rate-limited",
+              retryAfterSeconds: parseRetryAfterSeconds(
+                res.headers ? res.headers.get("retry-after") : null,
+                Date.now()
+              ),
+            };
+          }
           if (!res.ok) { return { kind: "error", detail: "HTTP " + res.status }; }
           return res.json().then(function (body) {
             var result = body && body.result ? body.result : null;
@@ -1550,6 +1604,16 @@
         sendOk: "Entwurf angelegt: {title}",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
+        // AUFTRAG-JOB507-D4: die drei Absagen, die bisher alle „Senden fehlgeschlagen (HTTP nnn)"
+        // hiessen. Jede nennt die Ursache UND haelt die entscheidende Zusage fest: nichts angelegt.
+        sendTooLarge:
+          "Das Dokument ist zu groß für die Übertragung — es wurde KEIN Entwurf angelegt. Bitte einen kleineren Bereich markieren.",
+        sendForbidden:
+          "Fehlendes Recht: Dein Konto darf keine Entwürfe anlegen — es wurde KEIN Entwurf angelegt.",
+        sendRateLimited:
+          "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen. Es wurde KEIN Entwurf angelegt.",
+        sendRateLimitedUnknown:
+          "Zu viele Anfragen — bitte später erneut versuchen. Es wurde KEIN Entwurf angelegt.",
         noOffice: "Diese Seite läuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
         openLink: "Entwurf in KLARWERK öffnen",
         tabAsk: "Fragen",
@@ -1659,6 +1723,12 @@
         askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         askTimeout: "Keine Antwort vom Server (Zeitüberschreitung). Bitte erneut versuchen.",
         askError: "Fragen fehlgeschlagen ({detail}).",
+        // AUFTRAG-JOB507-D4: 403 am Fragen-Weg heisst FEHLENDES RECHT (ko.read) — nicht „melde dich
+        // an". Der bestehende Schluessel askForbidden gehoert zum Offene-Frage-Weg und bleibt dort.
+        askForbiddenRead:
+          "Fehlendes Recht: Dein Konto darf das KLARWERK-Wissen nicht lesen. Bitte an die KLARWERK-Administration wenden.",
+        askRateLimited: "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen.",
+        askRateLimitedUnknown: "Zu viele Anfragen — bitte später erneut versuchen.",
         askAnswerTitle: "Quellengebundene Antwort",
         // AUFTRAG-mega34 B2: die Einstufung — im Panel UND im eingefuegten Text. Bis hierher
         // versprach diese Flaeche unbedingt "geprueftes Wissen", auch bei gedeckelter Abdeckung
@@ -1742,6 +1812,14 @@
         sendOk: "Draft created: {title}",
         sendAuth: "Not signed in — please sign in to KLARWERK first.",
         sendError: "Sending failed ({detail}). NO draft was created.",
+        sendTooLarge:
+          "The document is too large to transfer — NO draft was created. Please select a smaller range.",
+        sendForbidden:
+          "Missing permission: your account may not create drafts — NO draft was created.",
+        sendRateLimited:
+          "Too many requests — please try again in {n} seconds. NO draft was created.",
+        sendRateLimitedUnknown:
+          "Too many requests — please try again later. NO draft was created.",
         noOffice: "This page runs as the Klara panel inside Microsoft Word. In a browser you can only see the sign-in status — sending is disabled here.",
         openLink: "Open draft in KLARWERK",
         tabAsk: "Ask",
@@ -1834,6 +1912,10 @@
         askAuth: "Not signed in — please sign in to KLARWERK first.",
         askTimeout: "No answer from the server (timeout). Please try again.",
         askError: "Asking failed ({detail}).",
+        askForbiddenRead:
+          "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
+        askRateLimited: "Too many requests — please try again in {n} seconds.",
+        askRateLimitedUnknown: "Too many requests — please try again later.",
         askAnswerTitle: "Source-bound answer",
         // AUFTRAG-mega34 B2: the classification — in the panel AND in the inserted text.
         askEvidenceVerified: "Classification: assured — sources evidenced, no open contradictions known.",
@@ -1910,6 +1992,14 @@
         sendOk: "Concept aangemaakt: {title}",
         sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         sendError: "Versturen mislukt ({detail}). Er is GEEN concept aangemaakt.",
+        sendTooLarge:
+          "Het document is te groot voor de overdracht — er is GEEN concept aangemaakt. Selecteer een kleiner bereik.",
+        sendForbidden:
+          "Ontbrekend recht: je account mag geen concepten aanmaken — er is GEEN concept aangemaakt.",
+        sendRateLimited:
+          "Te veel verzoeken — probeer het over {n} seconden opnieuw. Er is GEEN concept aangemaakt.",
+        sendRateLimitedUnknown:
+          "Te veel verzoeken — probeer het later opnieuw. Er is GEEN concept aangemaakt.",
         noOffice: "Deze pagina draait als Klara-paneel in Microsoft Word. In een browser zie je alleen de aanmeldstatus — versturen is hier uitgeschakeld.",
         openLink: "Concept in KLARWERK openen",
         tabAsk: "Vragen",
@@ -2002,6 +2092,10 @@
         askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
         askError: "Vragen mislukt ({detail}).",
+        askForbiddenRead:
+          "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
+        askRateLimited: "Te veel verzoeken — probeer het over {n} seconden opnieuw.",
+        askRateLimitedUnknown: "Te veel verzoeken — probeer het later opnieuw.",
         askAnswerTitle: "Bronvast antwoord",
         // AUFTRAG-mega34 B2: de classificatie — in het paneel EN in de ingevoegde tekst.
         askEvidenceVerified: "Classificatie: gewaarborgd — bronnen aangetoond, geen open tegenstrijdigheden bekend.",
@@ -2838,6 +2932,28 @@
       el.textContent = text;
     }
 
+    // AUFTRAG-JOB507-D4 — DER SICHTBARE SATZ ZU EINER ANTWORT, DIE KEINEN ENTWURF ANGELEGT HAT.
+    //
+    // Bis hierher gab es diesen Satz dreimal in drei Auspraegungen: der Entwurf-Sender kannte
+    // 401/403 und warf alles andere in „Senden fehlgeschlagen (HTTP nnn)", der Offene-Frage-Weg
+    // kannte 401/403 getrennt, und 413/429 kannte niemand. Jetzt entscheidet EINE Stelle, was der
+    // Mensch liest — und sie sagt in jedem Zweig dazu, dass NICHTS angelegt wurde.
+    function draftFailureText(kind, res) {
+      if (kind === "auth") { return t("sendAuth"); }
+      if (kind === "forbidden") { return t("sendForbidden"); }
+      if (kind === "too-large") { return t("sendTooLarge"); }
+      if (kind === "rate-limited") {
+        var wartezeit = parseRetryAfterSeconds(
+          res && res.headers ? res.headers.get("retry-after") : null,
+          Date.now()
+        );
+        return wartezeit === null
+          ? t("sendRateLimitedUnknown")
+          : t("sendRateLimited", { n: String(wartezeit) });
+      }
+      return t("sendError", { detail: "HTTP " + (res ? res.status : "?") });
+    }
+
     // WP-KLARA-1c (Pedis Live-Befund): Anmelde-RUECKWEG ohne Navigation — das Panel bleibt auf
     // taskpane.html, die Anmeldung oeffnet in einem EIGENEN Fenster, das Panel pollt /api/auth/me.
     // WP-IC-PAKET-1c (bens ROT-1, Poll-Lifecycle):
@@ -3021,13 +3137,14 @@
           body: prepared.payload,
         })
           .then(function (res) {
-            if (res.status === 401 || res.status === 403) {
-              showSendStatus("warn", t("sendAuth"));
-              checkSession();
-              return null;
-            }
-            if (!res.ok) { throw new Error("HTTP " + res.status); }
-            return res.json();
+            // AUFTRAG-JOB507-D4: EINE Klassifikation entscheidet, ob ein Entwurf behauptet werden
+            // darf. Alles ausser dem dokumentierten 201 ist Create-0 — und bekommt seinen eigenen,
+            // ehrlichen Satz statt „HTTP nnn".
+            var draftKind = classifyDraftResponse(res.status);
+            if (draftWasCreated(draftKind)) { return res.json(); }
+            showSendStatus("warn", draftFailureText(draftKind, res));
+            if (draftKind === "auth") { checkSession(); }
+            return null;
           })
           .then(function (draft) {
             if (!draft) { return; }
@@ -3558,6 +3675,23 @@
         checkSession(); // 401 → Login-Hinweis-Block erscheint wieder
         return;
       }
+      // AUFTRAG-JOB507-D4: 403 ist fehlendes Recht — eine erneute Anmeldung aendert daran nichts,
+      // also fordert die Oberflaeche sie auch nicht mehr.
+      if (outcome.kind === "forbidden") {
+        showAskStatus("warn", t("askForbiddenRead"));
+        return;
+      }
+      // AUFTRAG-JOB507-D4: 429 nennt die Wartezeit, wenn der Server eine genannt hat — und sonst
+      // ehrlich keine Zahl.
+      if (outcome.kind === "rate-limited") {
+        showAskStatus(
+          "warn",
+          outcome.retryAfterSeconds === null || outcome.retryAfterSeconds === undefined
+            ? t("askRateLimitedUnknown")
+            : t("askRateLimited", { n: String(outcome.retryAfterSeconds) })
+        );
+        return;
+      }
       if (outcome.kind === "timeout") {
         showAskStatus("warn", t("askTimeout"));
         return;
@@ -3945,18 +4079,23 @@
       })
         .then(function (res) {
           gapBtn.disabled = false;
-          if (res.status === 401) {
+          // AUFTRAG-JOB507-D4: derselbe Draft-Weg, dieselbe Klassifikation. 403 behaelt hier seinen
+          // EIGENEN Text (es geht um das Recht, offene Fragen zu senden — nicht um Entwuerfe
+          // allgemein); 413 und 429 bekommen erstmals ueberhaupt einen ehrlichen Zustand.
+          var gapKind = classifyDraftResponse(res.status);
+          if (draftWasCreated(gapKind)) { return res.json(); }
+          if (gapKind === "auth") {
             showAskStatus("warn", t("askAuth"));
             checkSession();
             return null;
           }
           // WP-KLARA-ASK-FIX (bens Fix 4): 403 ist FEHLENDES RECHT, keine fehlende Anmeldung.
-          if (res.status === 403) {
+          if (gapKind === "forbidden") {
             showAskStatus("warn", t("askForbidden"));
             return null;
           }
-          if (!res.ok) { throw new Error("HTTP " + res.status); }
-          return res.json();
+          showAskStatus("warn", draftFailureText(gapKind, res));
+          return null;
         })
         .then(function (draft) {
           if (!draft) { return; }

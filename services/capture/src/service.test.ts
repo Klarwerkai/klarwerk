@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import { buildApp, buildServices } from "../../app/src/build-app";
+import { DRAFTS_BODY_LIMIT } from "../../app/src/routes/capture-routes";
 import { InterviewSession } from "./interview";
 import { type DraftRepo, InMemoryDraftRepo } from "./repo";
 import { PgDraftRepo } from "./repo-pg";
@@ -132,6 +134,118 @@ describe("CaptureService", () => {
   it("toKoInput verlangt vollständige Pflichtfelder", async () => {
     const draft = await service.createDraft({ title: "nur Titel" }, "anna");
     await expect(service.toKoInput(draft.id)).rejects.toMatchObject({ code: "INCOMPLETE" });
+  });
+});
+
+// ================================================================================================
+// AUFTRAG-JOB507-D4 — DIE 413-/201-PERSISTENZKANTE, REAL AUSGEFUEHRT.
+// ================================================================================================
+//
+// Das Word-Panel schickt seinen Entwurf an POST /api/drafts. Die Route traegt einen eigenen
+// bodyLimit (DRAFTS_BODY_LIMIT, 5 MiB — capture-routes.ts) und antwortet darueber mit einem
+// kontrollierten 413. Bisher war NUR die Statuszeile dieses Falls getestet
+// (routes/drafts-body-limit.test.ts prueft die 201-Seite) — nicht die Frage, die den Nutzer
+// wirklich betrifft: LIEGT DANN EIN HALBER ENTWURF IM POOL?
+//
+// Hier laeuft deshalb kein Mock, sondern die reale App gegen den realen Capture-Pool, und gezaehlt
+// wird der BESTAND, nicht der Statuscode:
+//   · ueber dem Limit → 413 und der Pool bleibt bei 0 (Create-0),
+//   · darunter        → 201 und der Pool traegt genau 1 (Create-1).
+// Die Kalibrierung ist Teil der Aussage: ohne den 201-Zweig waere „0 Entwuerfe" auch dann gruen,
+// wenn createDraft ueberhaupt nicht mehr funktioniert.
+describe("AUFTRAG-JOB507-D4: POST /api/drafts — 413 legt NICHTS an, 201 legt genau EINEN an", () => {
+  async function adminApp(): Promise<{
+    app: ReturnType<typeof buildApp>;
+    headers: Record<string, string>;
+  }> {
+    const app = buildApp(buildServices());
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "d4@klarwerk.test", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "d4@klarwerk.test", password: "secret123" },
+    });
+    return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+  }
+
+  async function poolSize(
+    app: ReturnType<typeof buildApp>,
+    headers: Record<string, string>,
+  ): Promise<number> {
+    const res = await app.inject({ method: "GET", url: "/api/drafts", headers });
+    expect(res.statusCode).toBe(200);
+    return (res.json() as unknown[]).length;
+  }
+
+  it("Body ueber DRAFTS_BODY_LIMIT → 413 und der Entwurfspool bleibt leer; danach 201 → genau ein Entwurf", async () => {
+    const { app, headers } = await adminApp();
+    expect(await poolSize(app, headers)).toBe(0);
+
+    // Create-0: ein Word-Import ueber dem Transport-Cap.
+    const zuGross = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: {
+        title: "Riesiges Handbuch aus Word",
+        statement: "Zu grosser Import.",
+        type: "best_practice",
+        category: "Allgemein",
+        bodyHtml: `<p>${"x".repeat(DRAFTS_BODY_LIMIT + 1024)}</p>`,
+        origin: "frontdoor",
+      },
+    });
+    expect(zuGross.statusCode).toBe(413);
+    expect(await poolSize(app, headers)).toBe(0);
+
+    // Create-1: derselbe Weg, nur im Rahmen — der Beleg, dass die 0 oben nicht am Aufbau lag.
+    const passt = await app.inject({
+      method: "POST",
+      url: "/api/drafts",
+      headers,
+      payload: {
+        title: "Ventil entlasten vor der Wartung",
+        statement: "Bei Ueberdruck zuerst entlasten.",
+        type: "best_practice",
+        category: "Allgemein",
+        bodyHtml: "<p>Ventil entlasten vor der Wartung</p>",
+        origin: "frontdoor",
+      },
+    });
+    expect(passt.statusCode).toBe(201);
+    expect(await poolSize(app, headers)).toBe(1);
+
+    // Und der EINE Entwurf ist wirklich der kleine — nicht ein Rest des abgewiesenen.
+    const pool = (await app.inject({ method: "GET", url: "/api/drafts", headers })).json() as {
+      payload: { title?: string; bodyHtml?: string };
+    }[];
+    expect(pool[0]?.payload.title).toBe("Ventil entlasten vor der Wartung");
+    expect(pool[0]?.payload.bodyHtml ?? "").toContain("Ventil entlasten vor der Wartung");
+  });
+
+  it("ein zweites Uebergross-Ereignis aendert den Bestand nicht (413 ist wiederholbar folgenlos)", async () => {
+    const { app, headers } = await adminApp();
+    for (let i = 0; i < 2; i += 1) {
+      const res = await app.inject({
+        method: "POST",
+        url: "/api/drafts",
+        headers,
+        payload: {
+          title: `Versuch ${i}`,
+          statement: "x",
+          type: "best_practice",
+          category: "Allgemein",
+          bodyHtml: `<p>${"y".repeat(DRAFTS_BODY_LIMIT + 1024)}</p>`,
+          origin: "frontdoor",
+        },
+      });
+      expect(res.statusCode, `Versuch ${i}`).toBe(413);
+    }
+    expect(await poolSize(app, headers)).toBe(0);
   });
 });
 

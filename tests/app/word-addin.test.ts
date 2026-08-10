@@ -6,7 +6,7 @@
 // CSP-Verdrahtung (public/word-addin, gezielte Server-Ausnahme NUR für /word-addin/*).
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 import { deriveStatus } from "../../apps/web/src/lib/displayStatus";
 import { MAX_INLINE_BODY_HTML_BYTES } from "../../apps/web/src/lib/docx";
 import {
@@ -18,10 +18,12 @@ import {
   WORD_ADDIN_LOGIN_POLL_MAX_MS,
   answerIsLong,
   askSourceStatus,
+  classifyDraftResponse,
   classifyInsertError,
   countUndeliveredWordImages,
   deriveDraftTitleFromSelection,
   draftPostPayload,
+  draftWasCreated,
   extractWordBodyHtml,
   koDetailUrl,
   loginPollDecision,
@@ -33,6 +35,7 @@ import {
   wordHtmlToPlainText,
   wordHtmlUtf8Bytes,
 } from "../../apps/web/src/lib/wordAddin";
+import { type KlaraPanel, createKlaraPanel, reply } from "./klara-panel-fixture";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -328,6 +331,30 @@ describe("klara1b Teil A/B: robustes Einfuegen + Kopieren + kompakte Antwort (DO
   });
 });
 
+// AUFTRAG-JOB507-D4: die Antwort des Draft-POSTs wird KLASSIFIZIERT statt an drei Stellen erraten.
+// Die Zusage ist bewusst fail-closed: NUR das dokumentierte 201 der Route
+// (services/app/src/routes/capture-routes.ts) gilt als angelegter Entwurf; jede andere Antwort ist
+// Create-0. Damit kann kein neuer Statuscode versehentlich als Erfolg durchrutschen.
+describe("AUFTRAG-JOB507-D4: Draft-Antwortklassen (DOM-freies Modul)", () => {
+  it("classifyDraftResponse: 201 created, 401 auth, 403 forbidden, 413 too-large, 429 rate-limited, sonst error", () => {
+    expect(classifyDraftResponse(201)).toBe("created");
+    expect(classifyDraftResponse(401)).toBe("auth");
+    expect(classifyDraftResponse(403)).toBe("forbidden");
+    expect(classifyDraftResponse(413)).toBe("too-large");
+    expect(classifyDraftResponse(429)).toBe("rate-limited");
+    for (const status of [200, 202, 204, 400, 404, 409, 500, 502]) {
+      expect(classifyDraftResponse(status), String(status)).toBe("error");
+    }
+  });
+
+  it("draftWasCreated: genau eine Klasse zaehlt als Entwurf — alles andere ist Create-0", () => {
+    expect(draftWasCreated(classifyDraftResponse(201))).toBe(true);
+    for (const status of [200, 401, 403, 413, 429, 500]) {
+      expect(draftWasCreated(classifyDraftResponse(status)), String(status)).toBe(false);
+    }
+  });
+});
+
 describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", () => {
   it("Marker-Block extrahieren, ausführen und auf Fixtures gegen das Modul vergleichen", async () => {
     const html = read(TASKPANE);
@@ -337,7 +364,7 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, wordHtmlToPlainText: wordHtmlToPlainText, draftPostPayload: draftPostPayload, prepareWordDraftRequest: prepareWordDraftRequest, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES, classifyInsertError: classifyInsertError, askSourceStatus: askSourceStatus, koDetailUrl: koDetailUrl, performInsert: performInsert, performCopy: performCopy, answerIsLong: answerIsLong, WORD_ADDIN_ANSWER_COMPACT_CHARS: WORD_ADDIN_ANSWER_COMPACT_CHARS };`,
+      `${block}; return { deriveDraftTitleFromSelection: deriveDraftTitleFromSelection, selectionToBodyHtml: selectionToBodyHtml, loginPollDecision: loginPollDecision, loginPollStep: loginPollStep, extractWordBodyHtml: extractWordBodyHtml, countUndeliveredWordImages: countUndeliveredWordImages, wordHtmlToPlainText: wordHtmlToPlainText, draftPostPayload: draftPostPayload, prepareWordDraftRequest: prepareWordDraftRequest, WORD_ADDIN_BODY_BUDGET_BYTES: WORD_ADDIN_BODY_BUDGET_BYTES, classifyInsertError: classifyInsertError, askSourceStatus: askSourceStatus, koDetailUrl: koDetailUrl, performInsert: performInsert, performCopy: performCopy, answerIsLong: answerIsLong, classifyDraftResponse: classifyDraftResponse, draftWasCreated: draftWasCreated, WORD_ADDIN_ANSWER_COMPACT_CHARS: WORD_ADDIN_ANSWER_COMPACT_CHARS };`,
     );
     const inline = factory() as {
       deriveDraftTitleFromSelection: (text: string) => string;
@@ -370,8 +397,23 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       performInsert: typeof performInsert;
       performCopy: typeof performCopy;
       answerIsLong: (text: string) => boolean;
+      classifyDraftResponse: typeof classifyDraftResponse;
+      draftWasCreated: typeof draftWasCreated;
       WORD_ADDIN_ANSWER_COMPACT_CHARS: number;
     };
+    // AUFTRAG-JOB507-D4: die Draft-Antwortklassen sind im buildlosen Panel dieselben wie im Modul.
+    for (const status of [201, 200, 401, 403, 413, 429, 500]) {
+      expect(inline.classifyDraftResponse(status), `class:${status}`).toBe(
+        classifyDraftResponse(status),
+      );
+      expect(
+        inline.draftWasCreated(inline.classifyDraftResponse(status)),
+        `created:${status}`,
+      ).toBe(draftWasCreated(classifyDraftResponse(status)));
+    }
+    // Kalibrierung: der Vergleich unterscheidet wirklich (sonst waeren zwei gleich kaputte Fassungen gleich).
+    expect(inline.classifyDraftResponse(413)).toBe("too-large");
+    expect(inline.draftWasCreated(inline.classifyDraftResponse(413))).toBe(false);
     const fixtures = [
       "",
       "   \n \n",
@@ -819,5 +861,155 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     expect(html).toContain(
       '{ id: id, title: id, trust: null, standDate: null, status: "unknown" }',
     );
+  });
+});
+
+// ================================================================================================
+// AUFTRAG-JOB507-D4 — DIE SICHTBAREN ZUSTAENDE, AUSGEFUEHRT STATT GEPINNT.
+// ================================================================================================
+//
+// Alle Tests oberhalb pruefen entweder reine Logik oder Zeichenfolgen im Quelltext. Was ein Mensch
+// im Aufgabenfenster WIRKLICH liest, stand in keinem ausgefuehrten Test — genau dort lagen die
+// Loecher: ein 413 und ein 429 landeten im generischen „Senden fehlgeschlagen (HTTP 413)"-Zweig,
+// und niemand konnte belegen, dass dabei KEIN Entwurf behauptet wird.
+//
+// Diese Gruppe faehrt das AUSGELIEFERTE Inline-Skript im jsdom (tests/app/klara-panel-fixture.ts)
+// und liest die Oberflaeche ab. Die Zaehlung ist die eigentliche Zusage:
+//   Create-1 = genau EIN POST /api/drafts UND ein sichtbarer Entwurf-Link,
+//   Create-0 = genau EIN POST /api/drafts UND KEIN Link, KEIN Erfolgstext.
+describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/EN/NL)", () => {
+  let panel: KlaraPanel | null = null;
+
+  // Lieferung 3: `restore()` laeuft UNBEDINGT — ohne Bedingung, ohne „falls vorhanden". Die feste
+  // Reihenfolge (stopLoginPolling → Timer → Fetch → Office/Word → DOM) steht in der Fixture.
+  afterEach(() => {
+    if (panel !== null) {
+      panel.restore();
+      panel = null;
+    }
+  });
+
+  function openPanel(draftReply: ReturnType<typeof reply>): KlaraPanel {
+    panel = createKlaraPanel({ routes: { "/api/drafts": draftReply } });
+    return panel;
+  }
+
+  function draftPosts(open: KlaraPanel): number {
+    return open.calls.filter((call) => call.url === "/api/drafts" && call.method === "POST").length;
+  }
+
+  it("Fixture-Vertrag: `q` ist im dynamischen Skriptrumpf deklariert, das Rueckgabeobjekt traegt die fuenf Bedienstellen", () => {
+    const open = openPanel(reply(201, { id: "draft-1" }));
+    expect(open.scriptSource).toContain("function q(selector) { return document.querySelector(");
+    for (const member of ["setLang", "setTab", "sendSelection", "q", "stopLoginPolling"] as const) {
+      expect(typeof open[member], member).toBe("function");
+    }
+    // Das Panel steht wirklich im DOM (und nicht nur als Zeichenkette im Test).
+    expect(open.q("#send-btn")).not.toBeNull();
+    expect(open.text("#session-card h2").length).toBeGreaterThan(0);
+  });
+
+  it("201 → Create-1: genau ein POST, Erfolgstext mit Titel, Entwurf-Link sichtbar", async () => {
+    const open = openPanel(reply(201, { id: "draft-42" }));
+    await open.flush();
+    open.sendSelection();
+    await open.flush();
+    expect(draftPosts(open)).toBe(1);
+    expect(open.q("#send-status")?.className).toBe("status ok");
+    expect(open.text("#send-status")).toContain("Ventil entlasten vor der Wartung");
+    // Der Entwurf ist wirklich da → der Deep-Link geht auf.
+    expect(open.q("#open-block")?.className).toBe("");
+    expect(open.q("#open-link")?.href).toContain("/capture/frontdoor?draft=draft-42");
+  });
+
+  it("413 → Create-0: genau ein POST, eigener Zu-gross-Zustand, KEIN Link und KEIN Erfolgstext", async () => {
+    const open = openPanel(reply(413, { error: "FST_ERR_CTP_BODY_TOO_LARGE" }));
+    await open.flush();
+    open.sendSelection();
+    await open.flush();
+    expect(draftPosts(open)).toBe(1);
+    expect(open.q("#send-status")?.className).toBe("status warn");
+    expect(open.text("#send-status")).toBe(open.t("sendTooLarge"));
+    // Die entscheidende Zusage: nichts behauptet, nichts verlinkt.
+    expect(open.q("#open-block")?.className).toBe("hidden");
+    expect(open.text("#send-status")).not.toContain("Entwurf angelegt:");
+  });
+
+  it("403 → fehlendes Recht statt Anmeldeaufforderung; 401 → Anmeldeweg", async () => {
+    const forbidden = openPanel(reply(403, { error: "FORBIDDEN" }));
+    await forbidden.flush();
+    forbidden.sendSelection();
+    await forbidden.flush();
+    expect(forbidden.text("#send-status")).toBe(forbidden.t("sendForbidden"));
+    expect(forbidden.q("#open-block")?.className).toBe("hidden");
+    forbidden.restore();
+    panel = null;
+
+    const unauth = openPanel(reply(401, { error: "UNAUTHORIZED" }));
+    await unauth.flush();
+    unauth.sendSelection();
+    await unauth.flush();
+    expect(unauth.text("#send-status")).toBe(unauth.t("sendAuth"));
+  });
+
+  it("429 → Wartezeit aus Retry-After sichtbar; ohne Header ehrlich ohne Zahl", async () => {
+    const withHeader = openPanel(reply(429, { error: "RATE_LIMITED" }, { "retry-after": "90" }));
+    await withHeader.flush();
+    withHeader.sendSelection();
+    await withHeader.flush();
+    expect(withHeader.text("#send-status")).toBe(withHeader.t("sendRateLimited", { n: "90" }));
+    expect(withHeader.text("#send-status")).toContain("90");
+    expect(withHeader.q("#open-block")?.className).toBe("hidden");
+    withHeader.restore();
+    panel = null;
+
+    const blind = openPanel(reply(429, { error: "RATE_LIMITED" }));
+    await blind.flush();
+    blind.sendSelection();
+    await blind.flush();
+    expect(blind.text("#send-status")).toBe(blind.t("sendRateLimitedUnknown"));
+    // Keine geratene Zahl, wenn der Server keine genannt hat.
+    expect(blind.text("#send-status")).not.toMatch(/\d/);
+  });
+
+  it("DE/EN/NL: der 413-Zustand wechselt die Sprache mit und bleibt in jeder Sprache eine Absage", async () => {
+    const open = openPanel(reply(413, {}));
+    await open.flush();
+    const gesehen: string[] = [];
+    for (const [code, anker] of [
+      ["de", "KEIN Entwurf"],
+      ["en", "NO draft"],
+      ["nl", "GEEN concept"],
+    ] as const) {
+      open.setLang(code);
+      await open.flush();
+      open.sendSelection();
+      await open.flush();
+      const sichtbar = open.text("#send-status");
+      expect(sichtbar, code).toBe(open.t("sendTooLarge"));
+      expect(sichtbar, code).toContain(anker);
+      gesehen.push(sichtbar);
+    }
+    // Drei Sprachen, drei verschiedene Saetze — kein stiller Rueckfall auf Deutsch.
+    expect(new Set(gesehen).size).toBe(3);
+    expect(open.q("#open-block")?.className).toBe("hidden");
+  });
+
+  it("Sprachumschaltung setzt auch das lang-Attribut und die Bereichs-Umschaltung bleibt reine Sichtbarkeit", async () => {
+    const open = openPanel(reply(201, { id: "d1" }));
+    await open.flush();
+    open.setLang("nl");
+    await open.flush();
+    expect(open.q("#ask-title-probe")).toBeNull(); // es gibt keine Testhilfen im Produkt
+    expect(
+      (globalThis as unknown as { document: { documentElement: { lang: string } } }).document
+        .documentElement.lang,
+    ).toBe("nl");
+    open.setTab("capture");
+    expect(open.q("#section-capture")?.className).toBe("");
+    expect(open.q("#section-ask")?.className).toBe("hidden");
+    open.setTab("ask");
+    expect(open.q("#section-ask")?.className).toBe("");
+    expect(open.q("#section-capture")?.className).toBe("hidden");
   });
 });

@@ -18,6 +18,7 @@ import {
   type AskOutcome,
   WORD_ADDIN_ASK_MAX_CHARS,
   WORD_ADDIN_ASK_TIMEOUT_MS,
+  WORD_ADDIN_RETRY_AFTER_MAX_SECONDS,
   WORD_ADDIN_TITLE_MAX,
   answerInsertEvidenceNote,
   answerSelectionIsWhole,
@@ -30,6 +31,7 @@ import {
   formatAskDateLabel,
   newestSourceDateLabel,
   openQuestionDraftTitle,
+  parseRetryAfterSeconds,
   performAsk,
   prepareAskQuestion,
   stripAskAnswerMarkdown,
@@ -44,6 +46,25 @@ function read(rel: string): string {
 
 function fakeRes(status: number, body: unknown): AskFetchResponseLike {
   return { ok: status >= 200 && status < 300, status, json: async () => body };
+}
+
+// AUFTRAG-JOB507-D4: eine Antwort MIT Kopfzeilen — der Retry-After-Weg liest sie wirklich aus.
+function fakeResWithHeaders(
+  status: number,
+  body: unknown,
+  headers: Record<string, string>,
+): AskFetchResponseLike {
+  return {
+    ok: status >= 200 && status < 300,
+    status,
+    json: async () => body,
+    headers: {
+      get: (name: string): string | null => {
+        const key = Object.keys(headers).find((k) => k.toLowerCase() === name.toLowerCase());
+        return key === undefined ? null : (headers[key] ?? null);
+      },
+    },
+  };
 }
 
 const ANSWERED_BODY = {
@@ -208,16 +229,117 @@ describe("WP-KLARA-ASK Teil 1: performAsk — der Konsolen-Vertrag mit Fake-fetc
     expect(blankSources).toEqual({ kind: "gap" });
   });
 
-  it("401/403 → kind auth (Login-Hinweis im Panel)", async () => {
-    for (const status of [401, 403]) {
-      const outcome = await performAsk(
-        "Frage",
-        "de",
-        async () => fakeRes(status, { error: "X" }),
-        WORD_ADDIN_ASK_TIMEOUT_MS,
-      );
-      expect(outcome).toEqual({ kind: "auth" });
-    }
+  // ============================================================================================
+  // AUFTRAG-JOB507-D4 — DER 403-VERTRAG, WIE ER WIRKLICH GILT.
+  // ============================================================================================
+  //
+  // Bis hierher warf `performAsk` 401 und 403 in EINEN Topf („auth") und das Panel sagte in beiden
+  // Faellen „Nicht angemeldet — bitte zuerst bei KLARWERK anmelden." Das ist bei 403 falsch, und
+  // zwar irrefuehrend falsch: 403 bedeutet, die Sitzung IST da, aber dem Konto fehlt die
+  // Berechtigung `ko.read` (services/app/src/routes/ask-routes.ts, guards.requirePermission).
+  // Wer daraufhin ein zweites Mal anmeldet, aendert nichts und erfaehrt den Grund nie.
+  //
+  // Der Vertrag ist damit derselbe, den der Wissensluecken-Weg im Panel SCHON hatte
+  // (sendOpenQuestion: 401 → askAuth, 403 → askForbidden) — er gilt jetzt an beiden Stellen gleich.
+  it("401 → kind auth; 403 → kind forbidden (fehlendes Recht ist keine fehlende Anmeldung)", async () => {
+    const unauth = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(401, { error: "UNAUTHORIZED" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(unauth).toEqual({ kind: "auth" });
+    const forbidden = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(403, { error: "FORBIDDEN" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(forbidden).toEqual({ kind: "forbidden" });
+  });
+
+  // ============================================================================================
+  // AUFTRAG-JOB507-D4 — RETRY-AFTER: SECHS KLASSEN, EINE REIHENFOLGE, EINE OBERGRENZE.
+  // ============================================================================================
+  //
+  // Der Server sendet bei einer Sperre 429 mit `Retry-After` (services/auth/src/routes.ts:194 —
+  // ganze Sekunden aus rate-limit.ts; RFC 9110 erlaubt zusaetzlich ein HTTP-Datum). Das Panel kannte
+  // den Fall gar nicht: 429 fiel in den generischen `!res.ok`-Zweig und wurde als „Fragen
+  // fehlgeschlagen (HTTP 429)" gezeigt — technisch wahr, praktisch nutzlos.
+  //
+  // Die Reihenfolge ist BEWUSST fest und wird hier ausgefuehrt, nicht behauptet:
+  //   1. fehlend (null/undefined)      → null  „wir wissen es nicht"
+  //   2. leer/nur Leerraum             → null
+  //   3. ganze Sekunden (delta-seconds) → Wert, gedeckelt
+  //   4. negative Sekunden             → 0     (vergangen: sofort wieder erlaubt)
+  //   5. HTTP-Datum                    → Zukunft: aufgerundete Differenz, gedeckelt; Vergangenheit: 0
+  //   6. alles andere                  → null  (ungueltig — NIE eine geratene Zahl)
+  // `null` und `0` sind AUSDRUECKLICH verschieden: 0 heisst „jetzt", null heisst „unbekannt".
+  it("parseRetryAfterSeconds: sechs Klassen deterministisch, null ist nicht 0", () => {
+    const now = Date.parse("2026-08-10T12:00:00.000Z");
+    // 1. fehlend
+    expect(parseRetryAfterSeconds(null, now)).toBeNull();
+    expect(parseRetryAfterSeconds(undefined, now)).toBeNull();
+    // 2. leer
+    expect(parseRetryAfterSeconds("", now)).toBeNull();
+    expect(parseRetryAfterSeconds("   ", now)).toBeNull();
+    // 3. positive Sekunden (mit Leerraum-Toleranz, wie sie ein Header-Wert mitbringt)
+    expect(parseRetryAfterSeconds("120", now)).toBe(120);
+    expect(parseRetryAfterSeconds("  7  ", now)).toBe(7);
+    expect(parseRetryAfterSeconds("0", now)).toBe(0);
+    // 4. vergangene/negative Sekunden → sofort
+    expect(parseRetryAfterSeconds("-5", now)).toBe(0);
+    // 5. HTTP-Datum
+    expect(parseRetryAfterSeconds("Mon, 10 Aug 2026 12:02:30 GMT", now)).toBe(150);
+    expect(parseRetryAfterSeconds("Mon, 10 Aug 2026 11:59:00 GMT", now)).toBe(0);
+    // 6. ungueltig — inklusive der Faelle, die `Date.parse` allein NACHSICHTIG durchgewunken haette
+    // (im Red-first-Lauf belegt: "12.5" wurde als Datum gelesen und kam als 0 heraus). Ein
+    // ISO-Zeitstempel gilt hier bewusst ebenfalls als unbekannt: er ist an dieser Kopfzeile nicht
+    // vertragsgemaess, und „unbekannt" ist ehrlicher als eine Zahl aus einer geratenen Form.
+    expect(parseRetryAfterSeconds("bald", now)).toBeNull();
+    expect(parseRetryAfterSeconds("12.5", now)).toBeNull();
+    expect(parseRetryAfterSeconds("NaN", now)).toBeNull();
+    expect(parseRetryAfterSeconds("2026-08-10T12:02:30.000Z", now)).toBeNull();
+    expect(parseRetryAfterSeconds("Mon, 10 Aug 2026 12:02:30", now)).toBeNull();
+  });
+
+  it("parseRetryAfterSeconds: harte Obergrenze — weder Sekunden noch Datum kommen darueber", () => {
+    const now = Date.parse("2026-08-10T12:00:00.000Z");
+    expect(WORD_ADDIN_RETRY_AFTER_MAX_SECONDS).toBe(3600);
+    expect(parseRetryAfterSeconds(String(WORD_ADDIN_RETRY_AFTER_MAX_SECONDS), now)).toBe(
+      WORD_ADDIN_RETRY_AFTER_MAX_SECONDS,
+    );
+    expect(parseRetryAfterSeconds("999999999", now)).toBe(WORD_ADDIN_RETRY_AFTER_MAX_SECONDS);
+    // Ein Datum weit in der Zukunft wird auf dieselbe Grenze gedeckelt — eine Zahl, eine Grenze.
+    expect(parseRetryAfterSeconds("Tue, 11 Aug 2026 12:00:00 GMT", now)).toBe(
+      WORD_ADDIN_RETRY_AFTER_MAX_SECONDS,
+    );
+    // Aufrundung: 500 ms Rest sind eine angefangene Sekunde, keine halbe.
+    expect(parseRetryAfterSeconds("Mon, 10 Aug 2026 12:00:01 GMT", now + 500)).toBe(1);
+  });
+
+  it("429 → kind rate-limited mit gelesener Wartezeit; ohne/ungueltigem Header ehrlich null", async () => {
+    const withHeader = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeResWithHeaders(429, { error: "RATE_LIMITED" }, { "retry-after": "90" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(withHeader).toEqual({ kind: "rate-limited", retryAfterSeconds: 90 });
+    const withoutHeader = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeRes(429, { error: "RATE_LIMITED" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(withoutHeader).toEqual({ kind: "rate-limited", retryAfterSeconds: null });
+    const invalid = await performAsk(
+      "Frage",
+      "de",
+      async () => fakeResWithHeaders(429, {}, { "Retry-After": "bald" }),
+      WORD_ADDIN_ASK_TIMEOUT_MS,
+    );
+    expect(invalid).toEqual({ kind: "rate-limited", retryAfterSeconds: null });
   });
 
   it("haengender Server → kind timeout (eigene Frist je Request); 5xx/offline → kind error", async () => {
@@ -319,7 +441,7 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     expect(end).toBeGreaterThan(start);
     const block = html.slice(start, end);
     const factory = new Function(
-      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, askGradeOf: askGradeOf, answerInsertEvidenceNote: answerInsertEvidenceNote, composeAnswerOutput: composeAnswerOutput, stripComposedMetaLines: stripComposedMetaLines, answerSelectionIsWhole: answerSelectionIsWhole, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, stripAskAnswerMarkdown: stripAskAnswerMarkdown, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS };`,
+      `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, askGradeOf: askGradeOf, answerInsertEvidenceNote: answerInsertEvidenceNote, composeAnswerOutput: composeAnswerOutput, stripComposedMetaLines: stripComposedMetaLines, answerSelectionIsWhole: answerSelectionIsWhole, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, stripAskAnswerMarkdown: stripAskAnswerMarkdown, parseRetryAfterSeconds: parseRetryAfterSeconds, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS, WORD_ADDIN_RETRY_AFTER_MAX_SECONDS: WORD_ADDIN_RETRY_AFTER_MAX_SECONDS };`,
     );
     const inline = factory() as {
       prepareAskQuestion: typeof prepareAskQuestion;
@@ -337,11 +459,45 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       newestSourceDateLabel: typeof newestSourceDateLabel;
       openQuestionDraftTitle: typeof openQuestionDraftTitle;
       stripAskAnswerMarkdown: typeof stripAskAnswerMarkdown;
+      parseRetryAfterSeconds: typeof parseRetryAfterSeconds;
       WORD_ADDIN_ASK_MAX_CHARS: number;
       WORD_ADDIN_ASK_TIMEOUT_MS: number;
+      WORD_ADDIN_RETRY_AFTER_MAX_SECONDS: number;
     };
     expect(inline.WORD_ADDIN_ASK_MAX_CHARS).toBe(WORD_ADDIN_ASK_MAX_CHARS);
     expect(inline.WORD_ADDIN_ASK_TIMEOUT_MS).toBe(WORD_ADDIN_ASK_TIMEOUT_MS);
+    expect(inline.WORD_ADDIN_RETRY_AFTER_MAX_SECONDS).toBe(WORD_ADDIN_RETRY_AFTER_MAX_SECONDS);
+    // AUFTRAG-JOB507-D4: der Retry-After-Vertrag ist in BEIDEN Fassungen derselbe — ueber alle sechs
+    // Klassen und die Obergrenze, mit hereingereichtem „jetzt" (keine Uhrzeit-Wackelei im Vergleich).
+    const retryNow = Date.parse("2026-08-10T12:00:00.000Z");
+    const retryFixtures: (string | null | undefined)[] = [
+      null,
+      undefined,
+      "",
+      "   ",
+      "0",
+      "120",
+      "  7  ",
+      "-5",
+      "999999999",
+      String(WORD_ADDIN_RETRY_AFTER_MAX_SECONDS),
+      "Mon, 10 Aug 2026 12:02:30 GMT",
+      "Mon, 10 Aug 2026 11:59:00 GMT",
+      "Tue, 11 Aug 2026 12:00:00 GMT",
+      "bald",
+      "12.5",
+      "NaN",
+      "2026-08-10T12:02:30.000Z",
+      "Mon, 10 Aug 2026 12:02:30",
+    ];
+    for (const value of retryFixtures) {
+      expect(inline.parseRetryAfterSeconds(value, retryNow), `retry:${String(value)}`).toBe(
+        parseRetryAfterSeconds(value, retryNow),
+      );
+    }
+    // Kalibrierung: der Vergleich ist nicht vakuoes — die Klassen unterscheiden sich wirklich.
+    expect(inline.parseRetryAfterSeconds("120", retryNow)).toBe(120);
+    expect(inline.parseRetryAfterSeconds("bald", retryNow)).toBeNull();
     const questionFixtures: [string, string][] = [
       ["Auswahl", "Manuell"],
       ["   ", "Freie Frage?"],
@@ -372,6 +528,10 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       ["answered", async () => fakeRes(200, ANSWERED_BODY)],
       ["gap", async () => fakeRes(200, GAP_BODY)],
       ["auth", async () => fakeRes(401, {})],
+      // AUFTRAG-JOB507-D4: der neue 403- und der neue 429-Ausgang laufen durch DENSELBEN Vergleich.
+      ["forbidden", async () => fakeRes(403, {})],
+      ["rate-limited", async () => fakeResWithHeaders(429, {}, { "retry-after": "45" })],
+      ["rate-limited-blank", async () => fakeRes(429, {})],
       ["error", async () => fakeRes(500, {})],
       [
         "offline",
