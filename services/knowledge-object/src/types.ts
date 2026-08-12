@@ -198,6 +198,28 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // ============================================================================================
+  // JOB 679 / D2 (K1.2, Weg A) — WO DAS WISSEN HERKOMMT, UND WARUM ES HIER STEHT.
+  // ============================================================================================
+  //
+  // Der Erfassungsweg des Entwurfs, aus dem dieses Objekt entstanden ist. Bis JOB 679 endete er am
+  // Entwurf: `toKoInput` (services/capture) zaehlt die Felder einzeln auf, und `origin` war nicht
+  // darunter — die Herkunft fiel an der Persistenzgrenze weg. Die Oberflaeche konnte einen
+  // Herkunfts-Chip deshalb nicht ehrlich zeigen; sie haette eine Faehigkeit angekuendigt, deren
+  // Wirkung lautlos ausbleibt.
+  //
+  // DIE WERTMENGE IST DIESELBE WIE AM ENTWURF (`DraftPayload["origin"]`, services/capture/types.ts)
+  // und wird dort bereits geprueft: `normalizeOriginIn` laesst nur bekannte Werte durch und
+  // VERWIRFT unbekannte, statt sie auf einen Standard zu normalisieren. Hier wird deshalb nichts
+  // nachgeprueft und nichts erfunden — was ankommt, ist bereits entschieden. Bewusst als eigene
+  // Aufzaehlung und nicht als Import aus `capture`: die beiden Dienste haengen nicht voneinander ab,
+  // und eine Modulkante fuer ein Feld waere der teurere Preis.
+  //
+  // OPTIONAL UND OHNE MIGRATION: das KO liegt als Voll-JSONB (`kos.data`, repo-pg.ts). Ein
+  // zusaetzliches optionales Feld landet im Dokument; Altbestand hat den Schluessel schlicht nicht.
+  // Kein DDL, kein Backfill. FEHLT das Feld, ist die Herkunft UNBEKANNT — das ist ehrlich und
+  // heisst ausdruecklich nicht „ueber die Vordertuer erfasst".
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für die Anzeige
   // „X von Y grün" auf der Validierungsseite. Nur die Board-Sicht setzt es; sonst undefined.
   reviewVotes?: { up: number; warn: number; down: number };

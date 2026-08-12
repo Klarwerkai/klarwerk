@@ -207,6 +207,12 @@ export interface KnowledgeObject {
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
   confidentiality?: Confidentiality;
+  // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg, aus dem dieses Objekt entstanden ist — Spiegel
+  // von `services/knowledge-object/src/types.ts`. Bis JOB 679 endete die Herkunft am Entwurf; seit
+  // Weg A reicht `toKoInput` sie durch, und die Oberfläche kann sie ehrlich anzeigen.
+  // FEHLT das Feld, ist die Herkunft UNBEKANNT (Altbestand) — das heißt ausdrücklich nicht
+  // „über die Vordertür erfasst". Der Herkunfts-Chip erscheint deshalb nur beim gesetzten Wert.
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
@@ -448,7 +454,10 @@ export interface DraftPayload {
   confidentiality?: Confidentiality;
   // SCRUM-457 (Pedi 06.07.): wo der Entwurf gespeichert wurde, damit „Fortsetzen" GENAU dort
   // wieder öffnet — statt den Ort aus dem Inhalt zu raten. Alt-Entwürfe ohne Marker: Heuristik.
-  origin?: "tell" | "studio" | "expert" | "frontdoor";
+  // JOB 679 / D2 (K1.2, Weg A): `word_addin` ergänzt — der Wert existiert serverseitig seit
+  // JOB 510 R10 (`services/capture/src/types.ts`), fehlte hier aber. Damit war die Herkunft aus
+  // Word für den Client nicht einmal benennbar. Jetzt sind beide Seiten zeichengleich.
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
   // AUFTRAG-mega4/mega5 Block A (bens Auflage A): „Entwurf speichern" sicherte bisher nur Text + drei
   // Skalar-Metadaten. Der Entwurf trägt jetzt ALLE inhaltlichen, textuell sicherbaren Dirty-Felder —
   // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage und den Interviewfortschritt — und der

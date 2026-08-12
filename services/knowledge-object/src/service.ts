@@ -229,6 +229,11 @@ export interface CreateKoInput {
   demoSeed?: boolean; // Demodaten-Merker (nur der Seed setzt das; nie über die öffentliche Route)
   // SCRUM-415: optionale Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg des Entwurfs, aus dem dieses KO entsteht.
+  // Bewusst ein VERWEIS auf die Wertmenge am Modell statt einer zweiten Aufzaehlung — so koennen
+  // Eingabe und Objekt nicht auseinanderlaufen. Die Pruefung ist bereits am Entwurf gefallen
+  // (`normalizeOriginIn`, services/capture); hier wird nichts nachgeprueft und nichts erfunden.
+  origin?: KnowledgeObject["origin"];
   // SCRUM-470 (Confluence-Import): optionale Herkunftsquellen ab Erfassen (z. B. Confluence-Seite mit
   // pageId/spaceKey/Version). Additiv — ohne Feld bleibt es wie bisher bei []. Nur der Import-Pfad setzt es.
   sources?: KoSource[];
@@ -1500,6 +1505,11 @@ export class KoService {
         ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
         : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),
+      // JOB 679 / D2 (K1.2, Weg A): die Herkunft nur setzen, wenn der Entwurf eine MITBRINGT —
+      // dieselbe Bauform wie `confidentiality` und `importCandidateId` daneben. Kein stiller
+      // Default: ein KO ohne Herkunft bleibt ein KO ohne Herkunft, und genau das liest die
+      // Oberflaeche als „unbekannt" statt als „Vordertuer".
+      ...(input.origin ? { origin: input.origin } : {}),
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),

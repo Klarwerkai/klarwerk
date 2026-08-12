@@ -1029,6 +1029,20 @@ export function Library(): JSX.Element {
                                     {t("demo.badge.label")}
                                   </span>
                                 ) : null}
+                                {/* JOB 679 / D2 (K1.2): Herkunfts-Chip „Aus Word" — dieselbe
+                                  neutrale Tönung und Größe wie das Demo-Badge darüber, weil
+                                  beide dasselbe sagen: WOHER, nicht WIE GUT. Die Bedingung
+                                  fragt genau den einen Wert ab; ohne `origin` (Altbestand)
+                                  erscheint nichts. */}
+                                {k.origin === "word_addin" ? (
+                                  <span
+                                    data-testid="ko-origin-word-addin"
+                                    title={t("ko.originWordAddin.hint")}
+                                    className="shrink-0 rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2"
+                                  >
+                                    {t("ko.originWordAddin.label")}
+                                  </span>
+                                ) : null}
                                 <KnowledgeTypeTag type={k.type} />
                               </span>
                               <KoAuthorLine {...koAuthorParts(k, nameOf)} />

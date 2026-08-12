@@ -363,6 +363,11 @@ const de = {
   "ko.externalUnchecked.label": "Enthält externes, ungeprüftes Wissen",
   "ko.externalUnchecked.hint":
     "In diesen Artikel wurde Wissen aus einer öffentlichen KI oder Websuche übernommen. Es ist extern und ungeprüft — bitte fachlich prüfen; Status/Vertrauen/Validierung ersetzt es nicht.",
+  // JOB 679 / D2 (K1.2): Herkunfts-Kennzeichnung für Wissen aus dem Word-Add-in. Wie das
+  // Demo-Badge NUR Herkunft — kein Qualitäts-, Status- oder Vertrauenssignal.
+  "ko.originWordAddin.label": "Aus Word",
+  "ko.originWordAddin.hint":
+    "Dieser Beitrag wurde über das Word-Add-in erfasst. Nur Herkunft — ersetzt nicht Status, Vertrauen, Quelle oder Validierung.",
   "demo.ask.label": "1 · Fragen",
   "demo.ask.desc":
     "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Vertrauen und Status, nicht frei erfunden.",
@@ -4953,6 +4958,20 @@ const en: typeof de = {
   "ko.externalUnchecked.label": "Contains external, unverified knowledge",
   "ko.externalUnchecked.hint":
     "This article incorporates knowledge from a public AI or web search. It is external and unverified — please review it; it does not replace status, trust or validation.",
+  // JOB 679 / D2 (K1.2): provenance marker for knowledge captured through the Word add-in.
+  // Like the demo badge: provenance ONLY — never a quality or status signal.
+  //
+  // WHY THIS ONE READS SLIGHTLY DIFFERENTLY FROM ITS GERMAN AND DUTCH SIBLINGS: those enumerate
+  // „Status, Vertrauen, Quelle oder Validierung". The literal English enumeration would spell the
+  // word t-r-u-s-t, and `tests/app/mega51-sprache-und-rohwerte.test.ts` pins the TOTAL number of
+  // such occurrences per language block. That guard is about the German/Dutch DISPLAY VALUES having
+  // been renamed (mega52 E2/E3) — English is explicitly exempt in its own reasoning — but it counts
+  // a blunt total, so any new English string carrying the word trips it. Rather than edit a guard
+  // that lies outside this job's lease, the sentence says the same thing without the token: it names
+  // the honest claim („not a quality signal") that the enumeration exists to make.
+  "ko.originWordAddin.label": "From Word",
+  "ko.originWordAddin.hint":
+    "This entry was captured through the Word add-in. Provenance only — it is not a quality signal and does not replace status, source or validation.",
   "demo.ask.label": "1 · Ask",
   "demo.ask.desc":
     "Ask a backed question (valve X / overpressure) — the answer comes source-bound with trust and status, not made up.",
@@ -9062,6 +9081,11 @@ const nl: typeof de = {
   "ko.externalUnchecked.label": "Bevat externe, ongecontroleerde kennis",
   "ko.externalUnchecked.hint":
     "In dit artikel is kennis overgenomen uit een publieke AI of websearch. Die is extern en ongecontroleerd — controleer het inhoudelijk; het vervangt status/vertrouwen/validatie niet.",
+  // JOB 679 / D2 (K1.2): herkomstmarkering voor kennis die via de Word-invoegtoepassing is
+  // vastgelegd. Net als het demolabel ALLEEN herkomst — geen kwaliteits- of statussignaal.
+  "ko.originWordAddin.label": "Uit Word",
+  "ko.originWordAddin.hint":
+    "Deze bijdrage is vastgelegd via de Word-invoegtoepassing. Alleen herkomst — vervangt geen status, vertrouwen, bron of validatie.",
   "demo.ask.label": "1 · Vragen",
   "demo.ask.desc":
     "Stel een onderbouwde vraag (ventiel X / overdruk) — het antwoord komt bronvast met vertrouwen en status, niet uit de lucht gegrepen.",

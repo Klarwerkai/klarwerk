@@ -789,6 +789,20 @@ export function KnowledgeDetail(): JSX.Element {
                         {t("ko.externalUnchecked.label")}
                       </span>
                     ) : null}
+                    {/* JOB 679 / D2 (K1.2): Herkunfts-Chip „Aus Word". Neutrale Tönung wie das
+                      Demo-Badge daneben — Herkunft ist KEIN Qualitäts-, Status- oder
+                      Vertrauenssignal (dafür stehen Reife-Plakette und StatusPill davor).
+                      Die Bedingung fragt GENAU den einen Wert ab: fehlt `origin` (Altbestand),
+                      erscheint nichts — „unbekannt" wird nicht als „Vordertür" gedeutet. */}
+                    {ko.origin === "word_addin" ? (
+                      <span
+                        data-testid="ko-origin-word-addin"
+                        title={t("ko.originWordAddin.hint")}
+                        className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2"
+                      >
+                        {t("ko.originWordAddin.label")}
+                      </span>
+                    ) : null}
                     <span className="font-mono text-[12px] text-muted">
                       {t("ko.ovTrust")} <span className="font-semibold text-ink">{ov.trust}</span>
                     </span>

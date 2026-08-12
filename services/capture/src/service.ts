@@ -526,6 +526,18 @@ export class CaptureService {
       // SCRUM-509 R2: die Vertraulichkeitsstufe des Entwurfs ans KO durchreichen (kein Verlust beim
       // Promote). ko.create prüft/lehnt ungültige Werte ab — keine stille Intern-Normalisierung.
       ...(p.confidentiality !== undefined ? { confidentiality: p.confidentiality } : {}),
+      // JOB 679 / D2 (K1.2, Weg A): DIE HERKUNFT REIST MIT. Genau hier ging sie bis heute verloren:
+      // diese Rückgabe zählt die Felder einzeln auf, und `origin` war nicht darunter — ein über das
+      // Word-Add-in erfasster Entwurf verlor seinen Erfassungsweg in dem Moment, in dem aus ihm ein
+      // Wissensobjekt wurde. Der Herkunfts-Chip in Bibliothek und KO-Detail konnte deshalb nie
+      // auslösen (belegt in JOB 679 D1, Glied 3 der dortigen Belegkette).
+      //
+      // Dieselbe Bauform wie `confidentiality` eine Zeile darüber, und aus demselben Grund: gesetzt
+      // wird NUR, wenn der Entwurf wirklich eine Herkunft trägt. Kein stiller Default — `origin`
+      // ist zu diesem Zeitpunkt bereits durch `normalizeOriginIn` gegangen, das unbekannte Werte
+      // VERWIRFT statt sie zu `frontdoor` oder `word_addin` zu normalisieren. Was hier ankommt, ist
+      // entschieden; hier wird nichts nachgeprüft und nichts erfunden.
+      ...(p.origin !== undefined ? { origin: p.origin } : {}),
     };
   }
 
