@@ -132,7 +132,7 @@ describe("WP-KLARA-2: Word-HTML-Aufbereitung (DOM-freies Modul)", () => {
     const parsed = JSON.parse(withHtml.payload) as Record<string, string>;
     expect(parsed.bodyHtml).toContain("<h1>Titel</h1>"); // roh — h1→h2 mappt der Server-Sanitizer
     expect(parsed.title).toBe("Titel");
-    expect(parsed.origin).toBe("frontdoor");
+    expect(parsed.origin).toBe("word_addin");
     const noHtml = prepareWordDraftRequest("", "Nur Text\nZweite Zeile");
     expect(noHtml.usedHtml).toBe(false);
     expect((JSON.parse(noHtml.payload) as Record<string, string>).bodyHtml).toBe(
@@ -597,7 +597,7 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(html).toContain('fetch("/api/auth/me", { credentials: "include" })');
     expect(html).toContain('fetch("/api/drafts"');
     expect(html).toContain('credentials: "include"');
-    expect(html).toContain('origin: "frontdoor"');
+    expect(html).toContain('origin: "word_addin"');
     // WP-KLARA-ASK: das Funktionsversprechen ist da — die Ehrlichkeit verschiebt sich von „keine KI"
     // zu „NUR validiertes Wissen, kein Chatbot, nichts erfunden" (DE-Texte, Hilfe + Gap-Karte).
     expect(html).toContain("kein Chatbot");

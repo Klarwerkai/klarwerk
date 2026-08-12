@@ -809,7 +809,7 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     expect(html).toContain("body: body,");
     expect(html).toContain("grade: askGradeOf(currentAskOutcome && currentAskOutcome.evidence),");
     expect(html).not.toContain("buildAnswerInsertText(currentAskOutcome.answer");
-    // Wissensluecke: BESTEHENDER Draft-Weg (origin frontdoor) + lokalisierte Titel-Konvention +
+    // Wissensluecke: BESTEHENDER Draft-Weg (origin word_addin, K1.1/JOB 660) + lokalisierte Titel-Konvention +
     // Deep-Link. WP-KLARA-ASK-FIX (bens Fix 4): gap-only-Gate, Knopf-Sperre, 403 als fehlendes
     // Recht, voller Fragetext im Draft-Body (kein Verlust durch die 500-Zeichen-Statement-Kappung).
     const gapSend = html.indexOf("function sendOpenQuestion()");
@@ -819,7 +819,7 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     expect(gapBlock).toContain('showAskStatus("warn", t("askForbidden"))');
     expect(gapBlock).toContain("bodyHtml: selectionToBodyHtml(currentAskQuestion)");
     expect(gapBlock).toContain('t("askOpenQuestionPrefix")');
-    expect(gapBlock).toContain('origin: "frontdoor"');
+    expect(gapBlock).toContain('origin: "word_addin"');
     expect(html).toContain('"/capture/frontdoor?draft=" + encodeURIComponent(draft.id)');
     // Fix 2: Einfuegen erst NACH abgeschlossener Quellenaufloesung; Fix 3: ehrliche Stand-Zeile.
     expect(html).toContain("currentAskSourcesResolved");

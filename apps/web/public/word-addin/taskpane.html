@@ -775,7 +775,7 @@
     }
 
     function draftPostPayload(title, statement, bodyHtml) {
-      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, origin: "frontdoor" });
+      return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, origin: "word_addin" });
     }
 
     function prepareWordDraftRequest(html, text) {
@@ -3108,7 +3108,7 @@
     }
 
     // (b) Kernfunktion: gewaehlten Umfang lesen → Front-Door-ENTWURF ueber die bestehende Draft-API
-    // (POST /api/drafts; origin "frontdoor"). WP-KLARA-2: das WORD-HTML reist als bodyHtml mit —
+    // (POST /api/drafts; origin "word_addin"). WP-KLARA-2: das WORD-HTML reist als bodyHtml mit —
     // die autoritative Saeuberung (Allowlist, h1→h2, Tabellen, data:image) macht der Server-
     // Sanitizer am Draft-Weg; der Klartext bleibt zusaetzlich erhalten (statement, Fallback).
     function sendSelection() {
@@ -4048,7 +4048,7 @@
     }
 
     // Teil 2 (Wissensluecke): die offene Frage als Front-Door-ENTWURF nach KLARWERK (bestehender
-    // Draft-Weg, origin frontdoor) — die Luecke wird im System handelbar (Risiko-Board-Gedanke).
+    // Draft-Weg, origin word_addin) — die Luecke wird im System handelbar (Risiko-Board-Gedanke).
     function sendOpenQuestion() {
       // WP-KLARA-ASK-FIX (bens Fix 4): NUR eine echte Wissensluecke darf als offene Frage reisen —
       // nie ein Fehler-/Timeout-Zustand (dort ist unklar, ob es Wissen gibt).
@@ -4074,7 +4074,7 @@
           // der Server-Sanitizer bleibt autoritativ) — die 500-Zeichen-Kappung des statements
           // verliert damit nichts.
           bodyHtml: selectionToBodyHtml(currentAskQuestion),
-          origin: "frontdoor",
+          origin: "word_addin",
         }),
       })
         .then(function (res) {
