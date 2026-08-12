@@ -357,7 +357,36 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // unveraendert), KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE neue Nutzlast.
     // Gedeutet wird nur ein Kopf, den der Server ohnehin schon sendet. Ein installiertes Add-in
     // braucht deshalb KEIN erneutes Sideload.
-    const PIN = "c72d6f9ba57ed888b91b1eb8f10ee09612ea5232de4b8c8570201cd9e71f276e";
+    //
+    // ============================================================================================
+    // K1.1 · JOB 660 D3 (12.08.2026) — DER PIN WANDERT WEGEN DER WORD-HERKUNFT.
+    // ============================================================================================
+    // VORHERHASH taskpane.html: `c72d6f9ba57ed888b91b1eb8f10ee09612ea5232de4b8c8570201cd9e71f276e`.
+    //
+    // GEAENDERT WURDEN GENAU VIER STELLEN, alle in derselben Sache: Entwuerfe aus dem Word-
+    // Aufgabenfenster trugen im gespeicherten Herkunftsfeld `frontdoor` — dieselbe Herkunft wie ein
+    // Entwurf aus der Web-Vordertuer. Der Server kennt `word_addin` als eigene Herkunft laengst
+    // (services/capture/src/service.test.ts, Bloecke „JOB 510 R10" und „JOB 510 D3"); das Panel hat
+    // sie nur nie gesendet.
+    //   · Zeile 778  — `draftPostPayload`, Herkunft → `word_addin`
+    //   · Zeile 4077 — Wissensluecken-Payload, Herkunft → `word_addin`
+    //   · Zeile 3111 — zugehoeriger Kommentar nachgezogen
+    //   · Zeile 4051 — zugehoeriger Kommentar nachgezogen
+    //
+    // AUSDRUECKLICH NICHT ANGEFASST — es sind APP-ROUTEN, keine Herkunftswerte:
+    //   · Zeile 3167 und 4105 — `"/capture/frontdoor?draft=" + …` (Entwurf-fortsetzen-Mechanik)
+    //   · Zeile 3164 — der Kommentar, der genau diese Route beschreibt
+    // Ein Suchen-und-Ersetzen haette alle sieben Fundstellen erwischt und die Deep-Links zerstoert.
+    // Der Wachhund dagegen ist `tests/app/k1-word-addin-origin-panel.test.ts`: er prueft BEIDE
+    // Richtungen — Herkunft muss gewandert sein, die zwei Routen duerfen es nicht.
+    //
+    // AUSLIEFERUNGSFOLGE, vor dem Wandern des Pins geprueft: KEIN Manifest-, CSP-, Rechte- oder
+    // Endpunktwechsel, KEINE neue Nutzlast, KEIN Sideload. Ein installiertes Add-in holt die
+    // Paneldatei beim naechsten Oeffnen frisch; der Office-Cache kann bis dahin kurz den alten
+    // Stand zeigen — dann sendet das Panel noch `frontdoor`. Der Server nimmt beide Werte
+    // unveraendert an (BEKANNTE_HERKUENFTE), es geht also nichts verloren; die Unterscheidung
+    // greift, sobald die Datei neu geladen ist.
+    const PIN = "8f5829557d111c2439dc922adb8023350dc9c2a388edff992a5c377a369cb2d0";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

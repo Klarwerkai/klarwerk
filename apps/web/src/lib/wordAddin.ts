@@ -1143,7 +1143,7 @@ export function wordHtmlToPlainText(html: string): string {
 // WP-SHIP8-FINAL (bens Bedingung 4, Payload-Messung FINAL): der EXAKTE Draft-POST-Body — das
 // Budget misst DIESEN String (Envelope inkl. JSON-Escaping), nicht mehr die rohen HTML-Bytes.
 export function draftPostPayload(title: string, statement: string, bodyHtml: string): string {
-  return JSON.stringify({ title, statement, bodyHtml, origin: "frontdoor" });
+  return JSON.stringify({ title, statement, bodyHtml, origin: "word_addin" });
 }
 
 export interface WordDraftRequest {
