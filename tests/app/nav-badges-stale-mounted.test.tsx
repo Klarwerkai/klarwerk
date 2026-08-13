@@ -27,7 +27,15 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk() };
+  // JOB 690 D2: eine Quelle, die sich SELBST auflöst (leere Id-Liste). Kein resolve/reject nach
+  // außen — genau deshalb kann sie den Zustand der vier gesteuerten Kanäle nicht überschreiben.
+  const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
+  // JOB 690 D2: die FÜNFTE Badgequelle (Lebenszyklus-Fällige). BEWUSST KEIN „channel"-Mock: der
+  // Aufgaben-Badge führt sie in seiner LADEZUSTANDSLISTE, und ein Kanal, den dieser Fall nicht
+  // auflöst, hielte `tasks` dauerhaft auf „loading" — die Stale-Zusicherung („alte Zahl bleibt
+  // PLUS Störungshinweis") wäre dann nicht mehr erreichbar. Ein sofort auflösender Stub lässt die
+  // Steuerung vollständig bei den vier vorhandenen Kanälen.
+  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: sofortLeer() };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -44,6 +52,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
+    // JOB 690 D2: die Attrappe ist ABSCHLIESSEND — ohne diesen Eintrag wirft useLifecyclePending
+    // auf `endpoints.lifecycle.pending` (`Cannot read properties of undefined`). D1-Regression.
+    lifecycle: { pending: d.lifecycle.fn },
   },
 }));
 

@@ -24,7 +24,18 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk() };
+  // JOB 690 D2: eine Quelle, die sich SELBST auflöst (leere Id-Liste). Kein resolve/reject nach
+  // außen — genau deshalb kann sie den Zustand der vier gesteuerten Kanäle nicht überschreiben.
+  const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
+  // JOB 690 D2: die FÜNFTE Badgequelle (Lebenszyklus-Fällige). BEWUSST KEIN „channel"-Mock wie die
+  // vier darüber, sondern ein SOFORT auflösender Stub — und das ist der ganze Trick dieser Ergänzung:
+  // Der Aufgaben-Badge führt die neue Quelle in seiner LADEZUSTANDSLISTE. Ein Kanal, den keiner der
+  // bestehenden Fälle auflöst, hielte `tasks` dauerhaft auf „loading" und würde genau die
+  // Zusicherungen brechen, die diese Datei seit mega2/mega3 hält. Ein sofort auflösender Stub lässt
+  // die Steuerung vollständig bei den vier vorhandenen Kanälen: die Gruppe ist geladen, sobald SIE
+  // geladen sind, und sie ist gestört, sobald SIE stören. Damit bleibt es bei „nur die Mocks
+  // ergänzen" — keine Zeile der bestehenden Fälle ändert sich.
+  return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: sofortLeer() };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -41,6 +52,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
+    // JOB 690 D2: die Attrappe ist ABSCHLIESSEND — sie ersetzt das ganze endpoints-Modul. Ohne
+    // diesen Eintrag greift useLifecyclePending auf `endpoints.lifecycle.pending` zu, findet
+    // `undefined` und wirft (`Cannot read properties of undefined`). Genau daran sind die drei
+    // Fälle dieser beiden Dateien in D1 gescheitert.
+    lifecycle: { pending: d.lifecycle.fn },
   },
 }));
 

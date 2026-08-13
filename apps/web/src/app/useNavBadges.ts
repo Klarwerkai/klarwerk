@@ -1,5 +1,12 @@
-import { useConflicts, useDuplicates, useGapsSummary, useValidationBoard } from "../api/hooks";
+import {
+  useConflicts,
+  useDuplicates,
+  useGapsSummary,
+  useLifecyclePending,
+  useValidationBoard,
+} from "../api/hooks";
 import { type HasData, type LoadPhase, groupLoadPhase, isGroupStale } from "../lib/loadingState";
+import { countUnresolvedConflicts } from "../lib/taskFilters";
 
 // SCRUM-486 E: Jeder Sidebar-Badge trägt neben der Zahl seine ART (i18n-Schlüssel mit {{count}}), damit
 // Tooltip/aria-label sagen, WAS die Zahl bedeutet — Widersprüche vs. Dubletten vs. Aufgaben vs. Prüfung.
@@ -42,6 +49,10 @@ export function useNavBadges(): Record<string, NavBadge> {
   const conflicts = useConflicts();
   const duplicates = useDuplicates();
   const gaps = useGapsSummary();
+  // JOB 690 D-019: die FÜNFTE Aufgabenquelle. `GET /lifecycle/pending` liefert eine reine
+  // Id-Liste (`api/endpoints.ts:573`) — textfrei, also FUNKE-FIX3 P0 gewahrt: die Shell holt
+  // keinen Volltext, nur eine Länge.
+  const lifecycle = useLifecyclePending();
   // Jede Kennzahl ist atomar mit IHREN Quellen: erst wenn alle Daten haben, wird eine echte Zahl gezeigt;
   // scheitert eine Quelle dauerhaft ohne Daten → state "error". Der Marker bietet Wiederholen (refetch).
   type NavSource = HasData & { refetch?: () => unknown };
@@ -57,10 +68,32 @@ export function useNavBadges(): Record<string, NavBadge> {
     },
   });
   const boardCount = board.data?.length ?? 0;
+  // JOB 690 D-019: EINE Regel für „offene Arbeit", nicht zwei. `countUnresolvedConflicts` ist
+  // derselbe Vergleich, den die Aufgabenseite fährt (`lib/taskFilters.ts`, `MyTasks.tsx:98`).
+  const offeneKonflikte = countUnresolvedConflicts(
+    conflicts.data as { status: string }[] | undefined,
+  );
+  const lifecycleCount = lifecycle.data?.length ?? 0;
   return {
-    tasks: badge(boardCount + (gaps.data?.open ?? 0), board, gaps),
+    // JOB 690 D-019: vier Quellen statt zwei — Board, offene Lücken, UNGELÖSTE Konflikte,
+    // Lebenszyklus-Fällige. Die zurückgegebenen Entwürfe fehlen weiterhin (sie bräuchten zwei
+    // Volltextquellen, s. Kommentar zu FUNKE-FIX3 P0 oben); der Badge behauptet deshalb KEINE
+    // vollständige Übereinstimmung mit der Seitenzahl. Im Demo-Bestand sind es null.
+    //
+    // ALLE VIER QUELLEN STEHEN AUCH IN DER LADEZUSTANDSLISTE, nicht nur im Summanden. Das ist
+    // kein Beiwerk: ohne sie zeigte der Badge eine zu kleine Zahl, während zwei Quellen noch
+    // laden — eine stille Falschaussage statt eines ehrlichen Ladepunkts (mega2 Block C).
+    tasks: badge(
+      boardCount + (gaps.data?.open ?? 0) + offeneKonflikte + lifecycleCount,
+      board,
+      gaps,
+      conflicts,
+      lifecycle,
+    ),
     validation: badge(boardCount, board),
-    conflicts: badge(conflicts.data?.length ?? 0, conflicts),
+    // JOB 690 D-019: derselbe Helfer — ein GELÖSTER Konflikt ist keine offene Arbeit und zählt
+    // hier nicht mehr mit (vorher `conflicts.data?.length`).
+    conflicts: badge(offeneKonflikte, conflicts),
     // Berater-Konzept Duplikate 04.07. (Stufe D4): offene Überschneidungen als Sidebar-Badge.
     duplicates: badge(duplicates.data?.length ?? 0, duplicates),
     lifecycle: { count: 0, state: "loaded", stale: false, refetch: () => {} },
