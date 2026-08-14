@@ -7,7 +7,7 @@ import type {
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
 } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageDescribe } from "../app/ImageDescribeContext";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
@@ -457,13 +457,56 @@ export function RichTextEditor({
   // AUFTRAG-mega84 Block A: die Bild-Fußnoten im Editor verankern — an EINER Stelle, damit
   // Platzhalter und Beschriftung nicht an einem von vier Aufrufern hängen bleiben (genau die
   // Vergesslichkeit, an der mega50 entstanden ist).
-  const verankereFiguren = (el: HTMLElement): void => {
-    enhanceFiguresForEditing(
-      el,
-      t("editor.captionPlaceholder"),
-      t(CAPTION_AI_TEXT.captionOpenLabel),
-    );
-  };
+  // I47 Punkt 5 (JOB 994 D1): `useCallback` mit `[t]` — die EINE Aufrufstelle bleibt die eine
+  // Aufrufstelle (mega84 Block A, gepinnt in `tests/capture/editor-figure-caption.test.ts`), und
+  // ihre Identität wechselt genau dann, wenn sich die Übersetzung ändert. Damit ist sie zugleich
+  // der ehrliche Auslöser des Auffrischungseffekts unten: kein Auslöser, den der Rumpf nicht liest.
+  const verankereFiguren = useCallback(
+    (el: HTMLElement): void => {
+      enhanceFiguresForEditing(
+        el,
+        t("editor.captionPlaceholder"),
+        t(CAPTION_AI_TEXT.captionOpenLabel),
+      );
+    },
+    [t],
+  );
+
+  // I47 PUNKT 5 (JOB 994 D1) — DER SPRACHWECHSEL AM OFFENEN EDITOR.
+  //
+  // DER BEFUND: die beiden Texte oben werden NICHT von React gerendert, sondern per `setAttribute`
+  // in den DOM geschrieben — `data-kw-placeholder` (der visuelle Einlade-Text der leeren Fußnote)
+  // und `aria-label` (die angekündigte Beschriftung). Der einzige Aufrufer war bis hierher der
+  // Ladeeffekt mit `[value, mode]`. Wechselt die Sprache am offenen Editor, rendert React die
+  // Werkzeugleiste neu — diese zwei Attribute blieben in der alten Sprache stehen, bis der nächste
+  // Wert- oder Moduswechsel kam. I47 nennt das die einzige der fünf Härtungen, die ein Nutzer
+  // heute merken könnte.
+  //
+  // WARUM EIN EIGENER EFFEKT UND NICHT `t` IN DIE ALTEN ABHÄNGIGKEITEN: der Ladeeffekt SCHREIBT
+  // `el.innerHTML` neu. Liefe er bei jedem Sprachwechsel mit, verlöre der Nutzer mitten im Tippen
+  // Auswahl und Einfügemarke — und die Lauf-Nummern für Fußnotenformular und Bildbeschreibung
+  // würden ungültig, obwohl sich am Inhalt nichts geändert hat. Dieser Effekt schreibt deshalb
+  // KEINEN Inhalt: `enhanceFiguresForEditing` setzt ausschließlich Attribute an vorhandenen Knoten.
+  // Inhalt, Fokus und die Bildanker bleiben unberührt — genau das pinnt
+  // `tests/capture/editor-language-refresh-mounted.test.tsx` (S-3 bis S-5).
+  //
+  // WARUM `i18n.language` UND NICHT `t`: die Sprache ist der Auslöser, den wir meinen. `t` ist eine
+  // Funktion, deren Identität von der Bindung abhängt; die Sprachkennung ist ein Wert, der sich
+  // genau dann ändert, wenn sich die Sprache ändert. Der Auslöser soll das sagen, was gemeint ist.
+  //
+  // WARUM ÜBER `verankereFiguren` UND NICHT DIREKT: die Verankerung läuft seit mega84 Block A über
+  // GENAU EINE Stelle — der Wächter in `tests/capture/editor-figure-caption.test.ts` zählt sie. Ein
+  // zweiter direkter Aufruf wäre exakt die Vergesslichkeit, gegen die diese eine Stelle gebaut
+  // wurde; dieser Durchgang hat sie zwischenzeitlich eingebaut und ist daran rot geworden.
+  // Beide Abhängigkeiten werden im Rumpf gelesen: es gibt hier keinen Auslöser, der nur behauptet
+  // wird.
+  useEffect(() => {
+    const el = ref.current;
+    if (mode !== "edit" || !el) {
+      return;
+    }
+    verankereFiguren(el);
+  }, [verankereFiguren, mode]);
 
   // AUFTRAG-mega84 Block A: die figcaption unter einem Ereignis finden (oder null).
   const captionAtNode = (node: Node | null): HTMLElement | null => {
