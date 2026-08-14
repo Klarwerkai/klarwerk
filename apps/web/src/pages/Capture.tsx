@@ -969,7 +969,27 @@ export function Capture(): JSX.Element {
       originalFailure: AttachmentFailure | null;
       originalAttached: boolean;
     }> => {
-      let payload = wholeDocumentDraftPayload({ ...input, locale: i18n.language });
+      // ==========================================================================================
+      // JOB 512 (R5) — DIE QUELLBILDZAHL STEIGT HIER IN DEN ENTWURF EIN.
+      // ==========================================================================================
+      //
+      // `fileImageInfo.total` ist die Zahl der Bilder in der QUELLDATEI, erhoben VOR jedem Budget-
+      // und Formatabzug (PPTX: `pptx.imageCount`, oben Z. 2799; DOCX: `docx.totalImages`, Z. 2774;
+      // konvertierte Folien kommen über `mergeSlideImageInfo` hinzu).
+      //
+      // GENAU HIER und nicht später: `onSuccess` räumt den gesamten Dateizustand (Z. 1041-1049,
+      // darunter `setFileImageInfo(null)`) und verlinkt danach auf die Vordertür (`?draft=<id>`,
+      // Z. 4322). Die Entwurfsgalerie rendert erst dort, an einem GELADENEN Entwurf — ein Wert, der
+      // nur im Zustand dieser Seite steht, käme bei ihr nie an. Er muss in die Ladung.
+      //
+      // Kein Import ⇒ kein Feld: `fileImageInfo` ist dann `null`, und ein fehlendes Feld heisst
+      // `unbekannt`, nicht `0`. Aus fehlenden Bildern auf einen Verlust zu schliessen wäre eine
+      // Falschmeldung an jedem bildlosen Entwurf.
+      let payload = wholeDocumentDraftPayload({
+        ...input,
+        locale: i18n.language,
+        ...(fileImageInfo ? { sourceImageCount: fileImageInfo.total } : {}),
+      });
       let originalFailure: AttachmentFailure | null = null;
       // WP-D1d (Fix 4): originalAttached ist NUR true, wenn der Upload WIRKLICH gelang — nicht schon,
       // wenn es keinen Fehler gab (ohne Original bleibt es false). Beweis = erhaltene objectId.

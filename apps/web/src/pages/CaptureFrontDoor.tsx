@@ -91,6 +91,11 @@ export function CaptureFrontDoor(): JSX.Element {
   const [title, setTitle] = useState("");
   const [bodyHtml, setBodyHtml] = useState("");
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // JOB 512 (R5): die Quellbildzahl des geladenen Entwurfs. Sie stammt aus der Entwurfsnutzlast und
+  // NICHT aus einem Importzustand — der Ganzdokument-Import räumt seinen Dateizustand direkt nach
+  // dem Speichern (Capture.tsx:1041-1049) und verlinkt erst danach hierher (`?draft=<id>`). `null`
+  // heisst „dieser Entwurf kennt seine Quellzahl nicht" und führt zu KEINER Verlustaussage.
+  const [quellBildzahl, setQuellBildzahl] = useState<number | null>(null);
   // AUFTRAG-mega69 Block A: Bitte der Galerie, das Bildbeschreibungs-Formular des Editors für ein
   // bestimmtes Bild zu öffnen (Pedis Weg: importiertes Bild → Großansicht → Beschreibung). Der
   // nonce macht jede Bitte zu einem neuen Ereignis — dasselbe Bild kann erneut geöffnet werden.
@@ -261,6 +266,9 @@ export function CaptureFrontDoor(): JSX.Element {
   const resetForNewEntry = (): void => {
     setTitle("");
     setBodyHtml("");
+    // JOB 512: ein neuer, leerer Vorgang erbt die Quellzahl des vorigen Entwurfs NICHT — sonst
+    // meldete das leere Formular einen Verlust aus einem Dokument, mit dem es nichts zu tun hat.
+    setQuellBildzahl(null);
     // AUFTRAG-mega9 Block B: bewusst geleertes Formular = neuer, sauberer Bezugspunkt.
     savedStateRef.current = { title: "", bodyHtml: "", confidentiality };
     setSubmittedKo(null);
@@ -294,6 +302,7 @@ export function CaptureFrontDoor(): JSX.Element {
   useEffect(() => {
     if (!resumeDraftId) {
       setActiveDraftId(null);
+      setQuellBildzahl(null);
       return;
     }
 
@@ -316,6 +325,9 @@ export function CaptureFrontDoor(): JSX.Element {
         setActiveDraftId(draft.id);
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
+        // JOB 512 (R5): der Rohwert bleibt roh. Ob er brauchbar ist, entscheidet fail-closed
+        // `bildverlust` — eine Altladung mit kaputtem Feld darf keine Meldung erzeugen.
+        setQuellBildzahl(draft.payload.sourceImageCount ?? null);
         setConfidentiality(loadedConfidentiality);
         setDeclaredConfidentiality(declared);
         // AUFTRAG-mega9 Block B: der geladene Stand IST der gesicherte Stand — ein gerade geöffneter
@@ -893,6 +905,9 @@ export function CaptureFrontDoor(): JSX.Element {
                 onEditCaption={(imageId) =>
                   setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }))
                 }
+                /* JOB 512 (R5): der Vergleichswert für den Bildverlust — aus der Nutzlast des
+                   geladenen Entwurfs. Ohne ihn kann die Galerie einen Verlust nicht erkennen. */
+                quellBildzahl={quellBildzahl}
               />
               {/* AUFTRAG-mega9 Block A (KW-E2E-001): die sichtbare Feldvalidierung AM Inhaltsfeld.
                   Der Prüfer hat den wunden Punkt benannt: „eine etwaige Einreichsperre braucht eine

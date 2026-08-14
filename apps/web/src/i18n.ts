@@ -2036,6 +2036,10 @@ const de = {
   "ko.galleryNext": "Nächstes Bild",
   // AUFTRAG-mega69 Block A: der Weg vom betrachteten Bild zum Bildbeschreibungs-Formular.
   "ko.galleryEditCaption": "Bildbeschreibung bearbeiten",
+  // JOB 512 (R5): Der Text nennt, WAS fehlt und WORAUS — und ausdrücklich keine technische Ursache
+  // (kein „Budget", kein „Transfer"). Der Nutzer soll erkennen, dass sein Dokument unvollständig
+  // angekommen ist; die Ursache gehört in die Import-Quittung, nicht unter die Galerie.
+  "ko.galleryLoss": "{{n}} von {{m}} Bildern aus der Quelldatei fehlen in diesem Entwurf.",
   "ko.body.readTitle": "Ausführlicher Inhalt aus dem Knowledge-Editor",
   "ko.body.readNote":
     "Blöcke und KI-Vorschläge sind redaktionelle Struktur. Maßgeblich bleiben Status, Vertrauen und Quellen dieses Wissensobjekts.",
@@ -6455,6 +6459,7 @@ const en: typeof de = {
   "ko.galleryPrev": "Previous image",
   "ko.galleryNext": "Next image",
   "ko.galleryEditCaption": "Edit image description",
+  "ko.galleryLoss": "{{n}} of {{m}} images from the source file are missing in this draft.",
   "ko.body.readTitle": "Detailed content from the knowledge editor",
   "ko.body.readNote":
     "Blocks and AI suggestions are editorial structure. The status, trust and sources of this knowledge object remain authoritative.",
@@ -10564,6 +10569,7 @@ const nl: typeof de = {
   "ko.galleryPrev": "Vorige afbeelding",
   "ko.galleryNext": "Volgende afbeelding",
   "ko.galleryEditCaption": "Afbeeldingsbeschrijving bewerken",
+  "ko.galleryLoss": "{{n}} van {{m}} afbeeldingen uit het bronbestand ontbreken in dit concept.",
   "ko.body.readTitle": "Uitgebreide inhoud uit de Knowledge-Editor",
   "ko.body.readNote":
     "Blokken en AI-voorstellen zijn redactionele structuur. Bepalend blijven status, vertrouwen en bronnen van dit kennisobject.",

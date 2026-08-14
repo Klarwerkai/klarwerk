@@ -458,6 +458,23 @@ export interface DraftPayload {
   // JOB 510 R10 (`services/capture/src/types.ts`), fehlte hier aber. Damit war die Herkunft aus
   // Word für den Client nicht einmal benennbar. Jetzt sind beide Seiten zeichengleich.
   origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
+  // ==========================================================================================
+  // JOB 512 (R5) — DIE QUELLBILDZAHL MUSS DEN ENTWURF ÜBERLEBEN.
+  // ==========================================================================================
+  //
+  // Die Zahl der Bilder in der QUELLDATEI, erhoben beim Import VOR jedem Budget-/Formatabzug
+  // (PPTX: `a:blip`, pptx.ts:565/1103; DOCX: `totalImages`). Ohne sie kann die Entwurfsgalerie
+  // einen Bildverlust prinzipiell nicht erkennen: „0 von 0" sieht aus wie ein Dokument, das nie
+  // Bilder hatte.
+  //
+  // WARUM SIE IN DER NUTZLAST STEHT UND NICHT IM ZUSTAND: Der Ganzdokument-Import setzt kein
+  // `bodyHtml` im Editor. Er legt den Entwurf an, räumt danach den gesamten Dateizustand
+  // (Capture.tsx:1041-1049) und verlinkt auf die Vordertür (`?draft=<id>`). Die Galerie rendert
+  // also IMMER an einem geladenen Entwurf — ein Wert im flüchtigen Importzustand käme dort nie an.
+  //
+  // Fehlt das Feld (getippter Entwurf, Klara, Altbestand), bleibt die Aussage `unbekannt`; es wird
+  // dann KEIN Verlust behauptet (lib/bildverlust.ts).
+  sourceImageCount?: number;
   // AUFTRAG-mega4/mega5 Block A (bens Auflage A): „Entwurf speichern" sicherte bisher nur Text + drei
   // Skalar-Metadaten. Der Entwurf trägt jetzt ALLE inhaltlichen, textuell sicherbaren Dirty-Felder —
   // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage und den Interviewfortschritt — und der

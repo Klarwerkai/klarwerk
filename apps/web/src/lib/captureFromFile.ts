@@ -397,6 +397,10 @@ export function wholeDocumentDraftPayload(input: {
   html?: string;
   sourceKind?: WholeDocumentSourceKind;
   locale?: string | null;
+  // JOB 512 (R5): die beim Import erhobene Quellbildzahl — VOR jedem Budget-/Formatabzug. Sie muss
+  // in die Ladung, weil der Ganzdokument-Weg den Dateizustand direkt nach dem Speichern räumt und
+  // die Entwurfsgalerie erst am GELADENEN Entwurf rendert (Capture.tsx:1041-1049, :4322).
+  sourceImageCount?: number;
 }): DraftPayload {
   const title = wholeDocumentTitle(input);
   const bodyHtml = wholeDocumentBodyHtml(input);
@@ -411,6 +415,9 @@ export function wholeDocumentDraftPayload(input: {
     measures: [],
     bodyHtml,
     origin: "frontdoor",
+    // Nur setzen, wenn der Importweg die Zahl WIRKLICH kennt: ein Feld mit `undefined` ist etwas
+    // anderes als eine behauptete `0`, und `0` hiesse „die Quelle hatte keine Bilder".
+    ...(input.sourceImageCount !== undefined ? { sourceImageCount: input.sourceImageCount } : {}),
   };
 }
 

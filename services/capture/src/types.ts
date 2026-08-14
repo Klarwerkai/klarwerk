@@ -17,6 +17,13 @@ export interface DraftPayload {
   confidentiality?: Confidentiality;
   // UI-Herkunft fuer Resume-Routing; keine Persistenzlogik, nur Payload-Metadatum.
   origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
+  // JOB 512 (R5): Zahl der Bilder in der QUELLDATEI, erhoben beim Import VOR jedem Budget-/
+  // Formatabzug. Sie reist mit dem Entwurf, weil die Entwurfsgalerie an einem GELADENEN Entwurf
+  // rendert und einen Bildverlust ohne Vergleichsgroesse nicht erkennen kann. Reines
+  // Payload-Metadatum ohne Persistenzlogik: `normalizeDraftPayload` reicht es ueber `...rest`
+  // unveraendert durch. Der Client entscheidet fail-closed (apps/web/src/lib/bildverlust.ts) —
+  // fehlt oder unbrauchbar, wird KEIN Verlust behauptet.
+  sourceImageCount?: number;
   // AUFTRAG-mega4/mega5 Block A (bens Auflage A): der Entwurf traegt AUCH die uebrigen inhaltlichen,
   // textuell sicherbaren Dirty-Felder, damit „Entwurf speichern" nichts still verliert und
   // „Fortsetzen" sie wiederherstellt: Prueferauswahl, offene/teilweise Quelle, externe Suchanfrage
