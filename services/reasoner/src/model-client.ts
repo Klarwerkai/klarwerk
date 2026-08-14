@@ -82,8 +82,27 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       if (!res.ok) {
         throw new ModelHttpError(`Modell-API antwortete mit ${res.status}`, res.status);
       }
-      const data = (await res.json()) as { content?: { text?: string }[] };
-      return data.content?.[0]?.text ?? "";
+      // Den ersten TEXT-Block nehmen, nicht blind Block 0. Denkfaehige Modelle stellen
+      // einen `thinking`-Block voran; der traegt kein `text`, sodass `content[0].text`
+      // `undefined` ist und der Client fuer JEDEN Aufruf "" zurueckgab. Ein leerer String
+      // ist kein gueltiges JSON -> `parseExtractResponse` scheitert -> `hardFailure` ->
+      // der Nutzer las "Ein Teil des Dokuments konnte nicht vollstaendig verarbeitet
+      // werden", obwohl die API mit 200 geantwortet hatte. Der Request setzt `thinking`
+      // nirgends: auf Modellen ohne Standard-Denken (etwa claude-sonnet-4-6) ist Block 0
+      // deshalb ein Textblock und alles lief; auf Modellen, die adaptives Denken von sich
+      // aus einschalten, brach derselbe Code lautlos. Der Fehler lag also nicht im Code,
+      // der zuletzt geaendert wurde, sondern in der Modellwahl der Umgebung.
+      const data = (await res.json()) as {
+        content?: { type?: string; text?: string }[];
+      };
+      const blocks = data.content ?? [];
+      // Erst der ausdrueckliche Textblock; sonst der erste Block, der ueberhaupt Text
+      // traegt (aeltere Antwortformen ohne `type`-Feld bleiben so lesbar).
+      const text = (
+        blocks.find((block) => block?.type === "text") ??
+        blocks.find((block) => typeof block?.text === "string")
+      )?.text;
+      return text ?? "";
     } catch (err) {
       if (timedOut) {
         throw new ModelTimeoutError(
