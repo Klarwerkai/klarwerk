@@ -17,6 +17,7 @@ import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
+import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
 import {
   GAP_PRIORITIES,
@@ -44,7 +45,7 @@ const PRIORITY_TONE: Record<PriorityTone, string> = {
 };
 
 export function Risk(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const bus = useBusFactor();
   const gaps = useGaps();
   const conflicts = useConflicts();
@@ -324,8 +325,23 @@ export function Risk(): JSX.Element {
                     <div className="min-w-0 flex-1">
                       {/* FUNKE-FIX2 P0 (bens Erforderlich 4): Fragetext nur an Berechtigte — der
                           Server redigiert für Unberechtigte (g.redacted), dann Neutralbezeichnung. */}
-                      <div className="truncate text-[13.5px] text-text">
-                        {g.redacted ? t("risk.gapRedacted") : g.question}
+                      {/* GAP-SPRACHHERKUNFT: dieselbe Lueckenliste wie in "Meine Aufgaben" —
+                          ohne diese Stelle saehe jeder den alten Zustand, der ueber
+                          "Risiko & Luecken" geht statt ueber die Aufgabenliste (Auflage 1 des
+                          Design-Leads). Titel und Etikett sind GESCHWISTER: der Titel kuerzt
+                          (`truncate`), das Etikett bleibt (`shrink-0`). */}
+                      <div className="flex items-baseline gap-1.5">
+                        <div className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                          {g.redacted ? t("risk.gapRedacted") : g.question}
+                        </div>
+                        {(() => {
+                          const sprache = gapLocaleTag(g.locale, i18n.language);
+                          return sprache ? (
+                            <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                              {sprache}
+                            </span>
+                          ) : null;
+                        })()}
                       </div>
                       {/* SCRUM-253: ehrliche nächste Handlung je offener Lücke (priorisieren/zuweisen/erfassen). */}
                       {g.status === "offen" ? (

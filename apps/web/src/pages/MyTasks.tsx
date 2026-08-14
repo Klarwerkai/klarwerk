@@ -53,6 +53,10 @@ interface Task {
   author?: KoAuthorParts;
   // SCRUM-287: Review-Zustand nur bei Validierungsaufgaben (DOM-frei aus KO-Feldern).
   review?: ReviewWorkView;
+  // GAP-SPRACHHERKUNFT: Sprachname einer fremdsprachigen Wissenslücke. BEWUSST ein eigenes Feld
+  // und kein Anhang an `label`: Der Titel wird einzeilig gekürzt (`truncate`), und ein angehängtes
+  // Etikett fiele als Erstes weg — ausgerechnet bei den langen Titeln, für die es gebaut wurde.
+  localeTag?: string;
 }
 
 // Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit).
@@ -131,13 +135,13 @@ export function MyTasks(): JSX.Element {
     ...(gaps.data ?? [])
       .filter((g) => g.status === "offen")
       .map((g) => {
-        const bezeichnung = g.redacted ? t("task.gapRedacted") : g.question;
         const sprache = gapLocaleTag(g.locale, i18n.language);
         return task({
           id: g.id,
-          label: sprache ? `${bezeichnung} · ${sprache}` : bezeichnung,
+          label: g.redacted ? t("task.gapRedacted") : g.question,
           typeKey: "task.gap",
           to: "/risiko",
+          ...(sprache ? { localeTag: sprache } : {}),
         });
       }),
   ];
@@ -219,8 +223,19 @@ export function MyTasks(): JSX.Element {
                             </span>
                           </span>
                           <span className="min-w-0 flex-1">
-                            <span className="block truncate text-[13.5px] text-text">
-                              {it.label}
+                            {/* GAP-SPRACHHERKUNFT: Titel und Etikett sind GESCHWISTER, nicht
+                                verschachtelt. Der Titel kürzt (`truncate`, `min-w-0`), das Etikett
+                                bleibt (`shrink-0`). Als Textanhang im Titel wäre es genau bei den
+                                langen Titeln weggeschnitten worden, für die es gedacht ist. */}
+                            <span className="flex items-baseline gap-1.5">
+                              <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                                {it.label}
+                              </span>
+                              {it.localeTag ? (
+                                <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                                  {it.localeTag}
+                                </span>
+                              ) : null}
                             </span>
                             {/* Pedi 05.07.: Klartext „was ist zu tun" — die Karte war nicht
                                 selbsterklärend. Ein Satz, direkt unter dem Titel. */}
