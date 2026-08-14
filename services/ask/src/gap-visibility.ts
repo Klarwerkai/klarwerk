@@ -1,3 +1,4 @@
+import type { ReasonerLocale } from "../../reasoner";
 import type { Gap, GapPriority } from "./types";
 
 // FUNKE-FIX2 P0 (bens Blocker Gap-Freitext): adressatengerechte Sichtbarkeit des Wissenslücken-
@@ -20,6 +21,9 @@ export interface GapView {
   priority: GapPriority;
   createdAt: string;
   demoSeed?: boolean;
+  // GAP-SPRACHHERKUNFT: Sprache, in der die Lücke entstand. Bewusst AUCH in der redigierten Sicht
+  // (siehe unten) — eine Sprachangabe ist kein Fragetext und verrät nichts über den Inhalt.
+  locale?: ReasonerLocale;
   // true → der Fragetext wurde für diesen Betrachter zurückgehalten (fail-closed Redaktion).
   redacted?: boolean;
 }
@@ -48,6 +52,10 @@ export function redactGapForViewer(gap: Gap, viewer: GapViewerContext): GapView 
     priority: gap.priority,
     createdAt: gap.createdAt,
     ...(gap.demoSeed ? { demoSeed: true } : {}),
+    // GAP-SPRACHHERKUNFT: in BEIDEN Zweigen mitgeliefert. Gerade der Betrachter ohne Detailrecht
+    // sieht nur eine Neutralbezeichnung — ohne die Sprachangabe stünde bei ihm ein unerklärter
+    // fremdsprachiger Eintrag. Die Sprache ist datensparsam: sie sagt nichts über den Inhalt.
+    ...(gap.locale ? { locale: gap.locale } : {}),
   };
   if (authorized) {
     return { ...base, question: gap.question };

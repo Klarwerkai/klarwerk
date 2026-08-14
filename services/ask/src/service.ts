@@ -374,7 +374,10 @@ export class AskService {
       if (opts?.gapPolicy === "count_only") {
         return { result, answerId, gap: null, receipt };
       }
-      const gap = await this.createGap(question, actor, opts?.demoSeed);
+      // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
+      // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
+      // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
+      const gap = await this.createGap(question, actor, opts?.demoSeed, locale);
       return { result, answerId, gap, receipt };
     }
     return { result, answerId, gap: null, receipt };
@@ -603,7 +606,12 @@ export class AskService {
     return summarizeGaps(await this.listGaps());
   }
 
-  private async createGap(question: string, createdBy: string, demoSeed?: boolean): Promise<Gap> {
+  private async createGap(
+    question: string,
+    createdBy: string,
+    demoSeed?: boolean,
+    locale?: ReasonerLocale,
+  ): Promise<Gap> {
     const gap: Gap = {
       id: this.genId(),
       // SCRUM-284: datensparsam + lesbar — gespeicherte Gap-Frage normalisieren/begrenzen.
@@ -616,6 +624,9 @@ export class AskService {
       // Nutzer, nie "system") — Grundlage, dass der Ersteller „seinen" Fragetext wiedersehen darf.
       ...(createdBy && createdBy !== "system" ? { createdBy } : {}),
       ...(demoSeed ? { demoSeed: true } : {}),
+      // GAP-SPRACHHERKUNFT: immer setzen, wenn bekannt — auch "de". Ein fehlendes Feld wäre sonst
+      // mehrdeutig (Altbestand oder deutsche Lücke?), und genau daran scheitern Migrationen.
+      ...(locale ? { locale } : {}),
     };
     await this.gaps.insert(gap);
     await this.audit?.record({ actor: "system", action: "gap.created", target: gap.id });

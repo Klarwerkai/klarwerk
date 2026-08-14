@@ -13,6 +13,7 @@ import { useSession } from "../app/AuthContext";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { Card, PageHeader } from "../components/ui";
+import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
 import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkTone, type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
@@ -60,7 +61,7 @@ function task(input: Omit<Task, "severity">): Task {
 }
 
 export function MyTasks(): JSX.Element {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const board = useValidationBoard();
   const conflicts = useConflicts();
   const lifecycle = useLifecyclePending();
@@ -122,16 +123,23 @@ export function MyTasks(): JSX.Element {
     // FUNKE-FIX2 P0 (bens Erforderlich 3): /aufgaben ist ab Rolle experte erreichbar — ohne Detail-
     // Berechtigung liefert der Server den Fragetext redigiert (g.redacted); dann NUR eine neutrale
     // Aufgabenbezeichnung statt des Freitextes (der Volltext erscheint nur für Berechtigte).
+    // GAP-SPRACHHERKUNFT: Der Fragetext behält die Sprache seiner Quelle — kommt die Frage über
+    // das Word-Add-in aus einem englischen Dokument, steht ein englischer Titel in der deutschen
+    // Liste und liest sich wie ein Fehler. Übersetzt wird er nicht (er ist der Beleg der
+    // Originalfrage); stattdessen benennt ein Etikett die Herkunft. Gleiche Sprache und
+    // Altbestände ohne Angabe bekommen keins (siehe lib/gapLocaleTag).
     ...(gaps.data ?? [])
       .filter((g) => g.status === "offen")
-      .map((g) =>
-        task({
+      .map((g) => {
+        const bezeichnung = g.redacted ? t("task.gapRedacted") : g.question;
+        const sprache = gapLocaleTag(g.locale, i18n.language);
+        return task({
           id: g.id,
-          label: g.redacted ? t("task.gapRedacted") : g.question,
+          label: sprache ? `${bezeichnung} · ${sprache}` : bezeichnung,
           typeKey: "task.gap",
           to: "/risiko",
-        }),
-      ),
+        });
+      }),
   ];
   const grouped = groupTasks(tasks);
 

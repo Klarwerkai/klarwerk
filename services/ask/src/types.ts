@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import type { ReasonerLocale } from "../../reasoner";
 
 // FR-ASK-05 / SCRUM-115: Priorität einer Wissenslücke. Default "mittel".
 export type GapPriority = "hoch" | "mittel" | "niedrig";
@@ -25,6 +26,15 @@ export interface Gap {
   // Herkunfts-Markierung: vom Demo-Seed erzeugte Lücke (stabil, überlebt Bearbeitung/Persistenz).
   // Der Demo-Purge entfernt gezielt genau diese — kein fragiler Titel-/Text-Abgleich mehr.
   demoSeed?: boolean;
+  // GAP-SPRACHHERKUNFT: Sprache, in der diese Lücke entstanden ist. Der Fragetext behält die
+  // Sprache seiner Quelle — kommt die Frage über das Word-Add-in aus einem englischen Dokument,
+  // steht ein englischer Titel in der deutschen Aufgabenliste. Übersetzen verböte sich (der Titel
+  // ist der Beleg der Originalfrage), Unterdrücken auch (der Offene-Frage-Weg des Panels baut auf
+  // der Lücke auf). Also wird die Herkunft mitgeführt und angezeigt.
+  // Anders als `createdBy` ist dies KEIN Freitext und verrät nichts über den Inhalt — deshalb
+  // trägt auch die redigierte Sicht das Feld. Fehlt bei Altbeständen; die Oberfläche zeigt dann
+  // kein Etikett, statt eine Sprache zu behaupten.
+  locale?: ReasonerLocale;
 }
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden

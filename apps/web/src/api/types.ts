@@ -430,6 +430,11 @@ export interface Gap {
   // Betrachter zurückgehalten (question ist dann ""); die UI zeigt eine Neutralbezeichnung statt
   // Freitext. Volltext bekommen nur Ersteller/Assignee/Detail-Rolle.
   redacted?: boolean;
+  // GAP-SPRACHHERKUNFT: Sprache, in der die Lücke entstand — der Titel behält die Sprache seiner
+  // Quelle (Word-Add-in, markierter Dokumenttext). Die Liste hängt daraus ein Etikett an, statt
+  // einen fremdsprachigen Eintrag wie einen Fehler aussehen zu lassen (siehe lib/gapLocaleTag).
+  // Fehlt bei Altbeständen; dann wird kein Etikett gezeigt.
+  locale?: "de" | "en" | "nl";
 }
 
 // FUNKE-FIX2 P0 (bens Erforderlich 1): rein aggregierte Zähler der offenen Wissenslücken — KEIN
