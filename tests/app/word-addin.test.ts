@@ -566,8 +566,14 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     const text = (tag: string) => doc.getElementsByTagName(tag)[0]?.textContent ?? "";
     expect(text("ProviderName")).toBe("KLARWERK");
     expect(doc.getElementsByTagName("DisplayName")[0]?.getAttribute("DefaultValue")).toBe("Klara");
+    // JOB 899 (OFFEN.md K7): Hier stand die URL NACKT und zeichengenau gepinnt. Das war eine
+    // ZWEITE Wahrheit neben dem Manifest — und sie stand der Cachebindung im Weg: jede Kennung in
+    // `SourceLocation` machte genau diese Zeile rot. Geprüft wird jetzt dieselbe Invariante wie in
+    // `word-addin-taskpane-cache.test.ts`: Basis-URL plus die aus DEMSELBEN Dokument gelesene
+    // `<Version>`. Eine Versions-/URL-Divergenz wird damit hier ebenso rot wie dort; eine
+    // fortgeschriebene Version bleibt grün, ohne dass jemand diese Zeile nachpflegen muss.
     expect(doc.getElementsByTagName("SourceLocation")[0]?.getAttribute("DefaultValue")).toBe(
-      "https://app.klarwerk.ai/word-addin/taskpane.html",
+      `https://app.klarwerk.ai/word-addin/taskpane.html?v=${text("Version")}`,
     );
     // WP-KLARA-1b (K3): bis KLARA-2 reichte ReadDocument (nur lesen). WP-KLARA-ASK (Teil 2):
     // „Antwort in Word einfuegen" ist eine bewusste Dokumentmutation (setSelectedDataAsync) —

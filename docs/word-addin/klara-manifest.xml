@@ -36,7 +36,22 @@
     </Sets>
   </Requirements>
   <DefaultSettings>
-    <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/taskpane.html" />
+    <!-- JOB 899 (OFFEN.md K7): DIE TASKPANE-URL TRAEGT DIE MANIFESTVERSION ALS CACHEKENNUNG.
+         Ohne sie blieb ein ausgeliefertes Taskpane bei jedem Client im Cache, und es gab keinen Weg,
+         ihn zu entwerten: aenderte sich nur die Seite und nicht das Manifest, hatte kein Client einen
+         Anlass, sie neu zu holen. Der Versionssprung allein half nicht — er steuert den Cache des
+         MANIFESTS, nicht den Inhalt des Taskpanes. Bei einem Kunden mit dreissig Arbeitsplaetzen
+         kostete das dreissig Cache-Leerungen, und niemand weiss vorher, dass er sie braucht.
+         DIE KENNUNG IST EXAKT <Version> — KEIN INHALTS-HASH, KEIN ZEITSTEMPEL. Ein Inhaltshash zoege
+         die URL bei jeder Textaenderung mit und entwertete genau den BEWUSSTEN Versionsschritt, den
+         diese Bindung erhalten will; ein Zeitstempel machte die URL bei identischem Inhalt
+         verschieden. Ein Taskpane-Release VERLANGT damit einen Versionsschritt — das ist die Zusage.
+         KEINE NEUE DOMAIN, KEIN LAUFZEIT-EGRESS: derselbe Host, derselbe Pfad, nur eine Query. Die
+         Auslieferung ist davon unberuehrt — `services/app/src/web-static.ts` schneidet Query und
+         Fragment vor dem Pfadvergleich ab, `/word-addin/*` trifft also weiterhin zu.
+         WER DIE VERSION HIER HEBT, HEBT SIE AUCH OBEN. Beide Werte werden gemeinsam geprueft
+         (`tests/app/word-addin-taskpane-cache.test.ts`, `tests/app/word-addin.test.ts`). -->
+    <SourceLocation DefaultValue="https://app.klarwerk.ai/word-addin/taskpane.html?v=1.0.0.1" />
   </DefaultSettings>
   <!-- WP-KLARA-1b (K3, Least-Privilege): bis KLARA-2 las das Add-in nur die Selektion — ReadDocument.
        WP-KLARA-ASK (Teil 2, Pedis Entscheid 22.07.): "Antwort in Word einfuegen" ist eine bewusste
