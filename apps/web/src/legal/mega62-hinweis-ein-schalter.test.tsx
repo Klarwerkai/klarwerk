@@ -117,8 +117,23 @@ describe("mega62 A · der Hinweis auf der Anmeldemaske folgt dem Schalter", () =
     // Der gewählte Weg (ein Vertrag statt zwei) ist nur dann wahr, wenn beide Träger DIESELBE
     // Auskunft lesen. Belegt wird das an der Quelle: `NoticeText` und `NoticeBanner` fragen beide
     // `useHinweisbannerAn()` — es gibt keinen zweiten Schalternamen für die zweite Fläche.
-    const { readFileSync } = await import("node:fs");
-    const quelle = readFileSync(`${process.cwd()}/apps/web/src/legal/NoticeBanner.tsx`, "utf8");
+    const { existsSync, readFileSync } = await import("node:fs");
+    // CWDFEST-20260815: Der Pfad hing am Arbeitsverzeichnis (`${process.cwd()}/apps/web/...`) und
+    // stimmte nur beim Start aus dem Repo-Wurzelverzeichnis. `apps/web` hat aber eine EIGENE
+    // vitest-Konfiguration; von dort gestartet suchte der Test unter `apps/web/apps/web/...` und
+    // fiel mit ENOENT — nicht, weil die Zusage gebrochen war, sondern weil er sich selbst nicht
+    // fand. Ein Test, der je nach Startort rot ist, verbrennt Vertrauen in jedes andere Rot.
+    //
+    // `new URL("./…", import.meta.url)` waere der uebliche Weg, scheitert hier aber: Unter vitest
+    // wird das Modul von Vite serviert, `import.meta.url` traegt kein `file:`-Schema, und
+    // `readFileSync` lehnt es ab ("The URL must be of scheme file"). Also beide moeglichen
+    // Startorte ausdruecklich nennen — sichtbar statt magisch.
+    const orte = ["apps/web/src/legal/NoticeBanner.tsx", "src/legal/NoticeBanner.tsx"].map(
+      (rel) => `${process.cwd()}/${rel}`,
+    );
+    const pfad = orte.find((p) => existsSync(p));
+    expect(pfad, `NoticeBanner.tsx an keinem erwarteten Ort: ${orte.join(", ")}`).toBeDefined();
+    const quelle = readFileSync(pfad as string, "utf8");
     const traeger = quelle.split("const an = useHinweisbannerAn();").length - 1;
     // Genau zwei Leser: `NoticeText` (Anmeldemaske) und `NoticeBanner` (Anwendungshülle).
     expect(traeger, "beide Flächen lesen dieselbe Auskunft").toBe(2);
