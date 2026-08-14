@@ -2,6 +2,13 @@ import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { KO_SEARCH_PROJECTION_SCHEMA, KO_SICHTBARKEIT_SCHEMA } from "../../knowledge-object";
+import {
+  IRREVERSIBLE_DATENMIGRATIONEN,
+  MIGRATIONS_SOLLLISTE,
+  erzeugeStrukturbeleg,
+  istStrukturstufe,
+  klassifiziereStufe,
+} from "./migrationsbeleg";
 
 // SCRUM-496 (die Lehre): Auf Postgres brach /duplikate ab, weil OVERLAP_SCHEMA + OVERLAP_SETTINGS_SCHEMA
 // zwar existierten, aber NIE in migrate() aufgenommen wurden → die Tabellen fehlten (nur PG; In-Memory
@@ -29,8 +36,11 @@ function walkTsFiles(dir: string): string[] {
   return out;
 }
 
-// Exportierte DDL-Schema-Konstanten (nur solche, deren Template ein CREATE TABLE trägt — keine
-// JSON-/Validierungs-„SCHEMA"-Konstanten ohne Tabelle).
+// Exportierte DDL-Schema-Konstanten — keine JSON-/Validierungs-„SCHEMA"-Konstanten ohne Tabelle.
+//
+// JOB 727 D2: Die Auswahl fragte bis hierher nur nach `CREATE TABLE`. Eine reine ALTER-Stufe fiel
+// dadurch schweigend durch, und es gibt vier davon. `istStrukturstufe` fragt jetzt nach beidem;
+// gemessen ändert das die Menge von 29 auf 33 und trifft damit die `schemas`-Liste genau.
 function exportedDdlSchemas(): string[] {
   const names = new Set<string>();
   const re = /export const (\w+_SCHEMA)\s*=\s*`([\s\S]*?)`/g;
@@ -38,12 +48,32 @@ function exportedDdlSchemas(): string[] {
     const src = readFileSync(file, "utf8");
     for (const m of src.matchAll(re)) {
       const [, name, body] = m;
-      if (name && body && /CREATE TABLE/i.test(body)) {
+      if (name && body && istStrukturstufe(body)) {
         names.add(name);
       }
     }
   }
   return [...names].sort();
+}
+
+// Der Quelltext einer Schemakonstante, so wie er wirklich ausgeführt wird — für die Klassifikation.
+function ddlVon(name: string): string {
+  const re = new RegExp(`export const ${name}\\s*=\\s*\`([\\s\\S]*?)\``);
+  for (const file of walkTsFiles(SERVICES_DIR)) {
+    const treffer = re.exec(readFileSync(file, "utf8"));
+    if (treffer?.[1]) {
+      return treffer[1];
+    }
+  }
+  return "";
+}
+
+// Die Kennungen der `schemas`-Liste in ihrer AUSGEFÜHRTEN Reihenfolge (nicht sortiert — die
+// Reihenfolge ist Vertragsbestandteil, s. db.ts:62-67).
+function migrateSchemaNamen(): string[] {
+  return [...migrateSchemaList().matchAll(/\b([A-Z][A-Z0-9_]*_SCHEMA)\b/g)]
+    .map((m) => m[1] as string)
+    .filter((name, i, alle) => alle.indexOf(name) === i);
 }
 
 // Der Inhalt der `schemas`-Liste in migrate() (die tatsächlich ausgeführten DDLs).
@@ -152,5 +182,128 @@ describe("BASIC 380 (T-M-3): die ALTER-only-Stufe KO_SICHTBARKEIT_SCHEMA läuft 
     expect(KO_SICHTBARKEIT_SCHEMA).not.toMatch(/TRUNCATE/i);
     expect(KO_SICHTBARKEIT_SCHEMA).not.toMatch(/UPDATE\s+kos/i);
     expect(KO_SICHTBARKEIT_SCHEMA).not.toMatch(/DELETE\s+FROM/i);
+  });
+});
+
+// ================================================================================================
+// JOB 727 D2 — DIE FILTERLÜCKE SELBST, NICHT NUR IHRE EINZELFÄLLE.
+// ================================================================================================
+//
+// T-M-3 oben sichert EINE ALTER-only-Stufe mit einem eigens geschriebenen Fall. Das ist richtig und
+// bleibt. Es skaliert nur nicht: für jede weitere Stufe braucht es wieder einen Menschen, der die
+// Lücke kennt. Der Kommentar bei :114-116 behauptete deshalb eine Abdeckung, die es nicht gab —
+// BASIC4 727/D1 §3.3 hat das nachgemessen, BEN hat es bestätigt.
+//
+// DIESER FALL PRÜFT DIE INVENTUR STATT DER EINZELSTUFE. Er ist rot, solange `exportedDdlSchemas()`
+// auf `CREATE TABLE` filtert — und er bleibt grün, ohne dass jemand ihn anfasst, wenn eine fünfte
+// ALTER-only-Stufe dazukommt.
+const ALTER_ONLY_STUFEN = [
+  "AUDIT_EVENT_ID_SCHEMA",
+  "KO_CREATE_OPERATION_SCHEMA",
+  "KO_IMPORT_ANCHOR_SCHEMA",
+  "KO_SICHTBARKEIT_SCHEMA",
+] as const;
+
+describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke", () => {
+  it("jede ALTER-only-Stufe der schemas-Liste steht in der Inventur", () => {
+    const inventur = exportedDdlSchemas();
+    for (const name of ALTER_ONLY_STUFEN) {
+      expect(
+        inventur,
+        `${name} fehlt in der Inventur — der Scanner filtert auf CREATE TABLE und übersieht reine ALTER-Stufen schweigend`,
+      ).toContain(name);
+    }
+  });
+
+  it("die vier ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
+    // Die Gegenkontrolle zum Fall darüber: wären sie CREATE-TABLE-Stufen, hätte der alte Filter
+    // sie ohnehin gesehen und der Nachweis wäre leer.
+    for (const name of ALTER_ONLY_STUFEN) {
+      expect(ddlVon(name), `${name} nicht auffindbar`).not.toBe("");
+      expect(ddlVon(name), `${name} trägt doch ein CREATE TABLE`).not.toMatch(/CREATE\s+TABLE/i);
+      expect(istStrukturstufe(ddlVon(name)), `${name} gilt nicht als Strukturstufe`).toBe(true);
+    }
+  });
+});
+
+// ================================================================================================
+// JOB 727 D2 — DIE SOLLLISTE IST IN BEIDE RICHTUNGEN GEBUNDEN.
+// ================================================================================================
+//
+// BEN 727/D1 hat gerügt, dass die destruktive Menge unvollständig erhoben war: `IMPORT_CANDIDATES_
+// SCHEMA` trägt `DROP COLUMN ... CASCADE`, eine dedupliziernde `DELETE FROM` und zwei `DROP INDEX`
+// — in D1 stand, `KO_CREATE_OPERATION_SCHEMA` sei die einzige nicht-additive Stelle. Diese Fälle
+// stellen das fest und halten es fest.
+describe("JOB 727 D2: die ausgeschriebene Sollliste deckt die ausgeführte Liste — beidseitig", () => {
+  it("keine ausgeführte Stufe fehlt in der Sollliste, und keine Sollstufe ist überzählig", () => {
+    const ausgefuehrt = migrateSchemaNamen();
+    const soll = MIGRATIONS_SOLLLISTE.map((s) => s.stufe);
+    expect(
+      soll.filter((s) => !ausgefuehrt.includes(s)),
+      "in der Sollliste, aber nicht in migrate()",
+    ).toEqual([]);
+    expect(
+      ausgefuehrt.filter((s) => !soll.includes(s)),
+      "in migrate(), aber nicht in der Sollliste",
+    ).toEqual([]);
+  });
+
+  it("die Sollliste steht in der ausgeführten Reihenfolge — sie ist Vertragsbestandteil", () => {
+    expect(MIGRATIONS_SOLLLISTE.map((s) => s.stufe)).toEqual(migrateSchemaNamen());
+  });
+
+  it("jede Stufe trägt genau die Risikoklasse, die ihr Quelltext hergibt", () => {
+    for (const { stufe, risiko } of MIGRATIONS_SOLLLISTE) {
+      const ddl = ddlVon(stufe);
+      expect(ddl, `${stufe} nicht auffindbar`).not.toBe("");
+      expect(
+        klassifiziereStufe(ddl),
+        `${stufe}: die Sollliste sagt ${risiko}, der Quelltext sagt etwas anderes — eine Stufe hat still ihr Risiko geändert`,
+      ).toBe(risiko);
+    }
+  });
+
+  it("die beiden nicht-additiven Stufen sind namentlich benannt — nicht als Menge behauptet", () => {
+    const nichtAdditiv = MIGRATIONS_SOLLLISTE.filter((s) => s.risiko !== "ADDITIV").map(
+      (s) => s.stufe,
+    );
+    expect(nichtAdditiv).toEqual(["KO_CREATE_OPERATION_SCHEMA", "IMPORT_CANDIDATES_SCHEMA"]);
+  });
+
+  it("IMPORT_CANDIDATES_SCHEMA trägt alle drei Befunde aus BEN 727/D1", () => {
+    const ddl = ddlVon("IMPORT_CANDIDATES_SCHEMA");
+    expect(ddl).toMatch(/DROP\s+COLUMN\s+source_version\s+CASCADE/i);
+    expect(ddl).toMatch(/DELETE\s+FROM\s+import_candidates/i);
+    expect(ddl.match(/DROP\s+INDEX/gi)?.length ?? 0).toBeGreaterThanOrEqual(2);
+    expect(klassifiziereStufe(ddl)).toBe("IRREVERSIBEL");
+  });
+
+  it("migrateAuthTokensAtRest ist als irreversibel geführt — Ausklammern beseitigt das Risiko nicht", () => {
+    const eintrag = IRREVERSIBLE_DATENMIGRATIONEN.find(
+      (m) => m.stufe === "migrateAuthTokensAtRest",
+    );
+    expect(eintrag, "die Datenmigration fehlt in der Inventur").toBeDefined();
+    expect(eintrag?.risiko).toBe("IRREVERSIBEL");
+    // Sie steht wirklich im Startvorgang, direkt nach migrate() — sonst wäre der Eintrag Theorie.
+    const server = readFileSync("services/app/src/server.ts", "utf8");
+    expect(server).toContain("migrateAuthTokensAtRest");
+    // Und ihr Quelltext trägt wirklich, was der Eintrag behauptet.
+    const auth = readFileSync("services/auth/src/repo-pg.ts", "utf8");
+    expect(auth).toMatch(/DELETE\s+FROM\s+sessions/i);
+    expect(auth).toMatch(/UPDATE\s+\$\{table\}\s+SET\s+token/i);
+  });
+
+  it("der Beleg ist deterministisch und trägt Kennung, Reihenfolge, Quellhash und Risiko", () => {
+    const eingaben = MIGRATIONS_SOLLLISTE.map((s) => ({ stufe: s.stufe, ddl: ddlVon(s.stufe) }));
+    const a = erzeugeStrukturbeleg(eingaben);
+    const b = erzeugeStrukturbeleg(eingaben);
+    expect(a.beleghash).toBe(b.beleghash);
+    expect(a.stufen).toHaveLength(MIGRATIONS_SOLLLISTE.length);
+    expect(a.stufen[0]?.ordinal).toBe(0);
+    expect(a.stufen.map((s) => s.stufe)).toEqual(migrateSchemaNamen());
+    expect(a.hoechstesRisiko).toBe("IRREVERSIBEL");
+    for (const stufe of a.stufen) {
+      expect(stufe.quellhash, `${stufe.stufe} ohne Quellhash`).toMatch(/^[0-9a-f]{64}$/);
+    }
   });
 });
