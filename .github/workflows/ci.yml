@@ -4,6 +4,25 @@ on:
   pull_request: {}
 
 jobs:
+  # I51 (OFFEN.md): DIESER JOB PRÜFTE ZWEI WOCHEN LANG EINE ANDERE PIPELINE ALS DAS SHIP-TOR.
+  #
+  # Hier standen `npm run build`, `lint`, `arch` und `test` als Viererliste. `./tools/check` ruft
+  # dieselben Werkzeuge auf — PLUS den hermetischen Chromium-UI-Smoke. Der Kommentar in
+  # `tools/check` benannte das seit mega24 selbst: „CI fährt ihn bis heute nicht." Damit hat nichts
+  # in der Automatisierung diese Smoke-Suite je ausgeführt; sie war rund fünfzehn Runden rot,
+  # während das Tor grün meldete.
+  #
+  # Ein Unterschied war nicht nur organisatorisch, sondern wirksam: `tools/test:15` setzt
+  # `export KLARWERK_SKIP_KEYCHAIN="${KLARWERK_SKIP_KEYCHAIN:-1}"`. `npm run test` ist blankes
+  # `vitest run` ohne diese Variable — in CI lief damit ein anderer Zweig des Produktcodes als bei
+  # jedem lokalen Lauf. Der Aufruf des Gesamttors schließt das mit.
+  #
+  # Und der Punkt, der schwerer wiegt als ein roter Lauf: die Regel unten in dieser Datei sagt
+  # „Nichts kommt nach main, das diese Pipeline nicht grün durchläuft." Solange das Ship-Tor eine
+  # andere Pipeline prüfte, stand die Regel in der Datei, die niemand als Maßstab nahm.
+  #
+  # Der Vertrag dazu ist `tests/app/ci-check-contract.test.ts`: er wird rot, sobald hier wieder
+  # Einzelkommandos stehen oder die Browser-Provisionierung verschwindet.
   check:
     runs-on: ubuntu-latest
     steps:
@@ -14,20 +33,25 @@ jobs:
           cache: "npm"
       - run: npm ci
       - run: npm ci --prefix apps/web
-      - name: build
-        run: npm run build
-      - name: lint
-        run: npm run lint
-      - name: architecture
-        run: npm run arch
-      - name: test
-        run: npm run test
+      # `--with-deps` ist der Unterschied zum lokalen `npm run smoke:browser:setup`: der Runner
+      # bringt die Systembibliotheken für Chromium nicht mit. Ohne diesen Schritt bricht das Tor
+      # unten am fehlenden Browser ab — bewusst mit Fehler, denn `tools/check` kennt kein „skip,
+      # wenn Chromium fehlt".
+      - name: browser (Chromium für den hermetischen UI-Smoke)
+        run: npx playwright install --with-deps chromium
+      # Dasselbe Tor wie an der Hand: Build, Lint, Architektur, Tests UND der Chromium-Smoke —
+      # hermetisch, ohne Modell und ohne Egress (`smoke:ui:gate`, nicht `smoke:ui`).
+      - name: gate (./tools/check — dasselbe Gesamttor wie lokal)
+        run: ./tools/check
 
   # SCRUM-496: der schnelle Gate-Lauf oben prüft nur JS/Referenzen — ein SQL-Syntaxfehler im
   # migrate()-DDL (z. B. reservierter Tabellenname) fiel dort NICHT auf und brach erst beim
   # Prod-Boot ab. Dieser Job fährt die Integrationstests (migrate() + App gegen echtes Postgres
   # via Testcontainers; Docker ist auf ubuntu-latest vorhanden) — so ein Fehler stoppt jetzt die
   # Pipeline, nicht den Deploy.
+  #
+  # I51: Er bleibt bewusst getrennt und unverändert. Das Gesamttor oben braucht kein Docker, und
+  # dieser Job soll nicht daran hängen.
   integration:
     runs-on: ubuntu-latest
     steps:
