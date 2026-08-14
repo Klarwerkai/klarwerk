@@ -4,6 +4,10 @@ import type { TxContext } from "../../db-tx";
 // WP-BILD-1h: searchCaptionTexts = Scanner + kanonischer Größendeckel — der EINE Pfad für
 // create, revise und Legacy-Backfill (keine ungedeckelten captionTexts in der Persistenz).
 import { htmlToPlainText, sanitizeHtml, searchCaptionTexts } from "../../structure";
+// JOB 593 / Ownerentscheidung Option A: die EINE Normalform der kanonischen Anlagenkennung.
+// Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
+// Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
+import { normalizeAsset } from "./asset";
 import {
   isConfidential,
   isConfidentialityDowngrade,
@@ -261,6 +265,17 @@ export interface ReviseKoInput {
   // SCRUM-470 (Confluence Re-Sync): Herkunfts-Anker fortschreiben (z. B. neue Confluence-Version).
   // Ohne Feld bleiben die Quellen über die Revision erhalten (Alt-Verhalten).
   sources?: KoSource[];
+  // JOB 593 / D9 (BEN-Auflage 1 zu D8): DER KORREKTURWEG DER KANONISCHEN KENNUNG.
+  // Bis hierher führte `ReviseKoInput` die Kennung nicht — sie war nach der Anlage über KEINEN
+  // Weg mehr änderbar. Eine kanonische Kennung, die man nach einem Tippfehler nicht korrigieren
+  // kann, ist kanonisch falsch: der Fehler wäre unsterblich, und `sameAsset` trennte zwei
+  // Objekte derselben Anlage für immer.
+  // DREI ZUSTÄNDE, ALLE DREI GEWOLLT: Feld fehlt → Kennung bleibt unangetastet (kein stiller
+  // Verlust beim Titeländern). Feld trägt einen Text → neue Kennung, in derselben Normalform
+  // wie beim Anlegen. Feld ist `null` → Kennung bewusst entfernt. Deshalb wird unten auf
+  // `!== undefined` geprüft und nicht mit `??` gearbeitet: bei `??` wäre „entfernen" nicht
+  // ausdrückbar. Dieselbe Bauform wie `bodyHtml` daneben.
+  asset?: string | null;
 }
 
 // ==============================================================================================
@@ -1498,7 +1513,11 @@ export class KoService {
       author: input.author,
       neededValidations: needed,
       assignments: [],
-      asset: input.asset ?? null,
+      // JOB 593 (Option A, N5): die kanonische Anlagenkennung entsteht HIER in ihrer Normalform.
+      // Vorher legte der Dienst sie roh ab; getrimmt hat allein der Browser. Jeder browserfreie
+      // Weg (Word-Add-in, Import, Seed, API) erzeugte damit eine zweite Schreibweise derselben
+      // Anlage — und `sameAsset` (conflicts/detect.ts:126) vergleicht zeichengenau.
+      asset: normalizeAsset(input.asset),
       // SCRUM-415: nur speichern, wenn tatsächlich vertraulich — „intern"/ungültig bleibt weg,
       // Alt-Verhalten und bestehende Tests unberührt.
       ...(isConfidential(normalizeConfidentiality(input.confidentiality))
@@ -2999,6 +3018,26 @@ export class KoService {
         // SCRUM-129: Quellen über Revisionen erhalten; SCRUM-470: optional fortschreiben (Re-Sync-Anker).
         // SCRUM-527 (WP2): Allowlist auf jede Quell-URL — säubert auch Altbestand beim nächsten Revise.
         sources: sanitizeSources(changes.sources ?? ko.sources ?? []),
+        // JOB 593 / D9 — DER KORREKTURWEG UND DER ALTBESTANDSVERTRAG IN EINER ZEILE.
+        //
+        // KORREKTUR (BEN-Auflage 1): eine mitgelieferte Kennung ersetzt die bisherige — durch
+        // DIESELBE `normalizeAsset` wie beim Anlegen. Eine zweite Normalform am zweiten
+        // Schreibrand wäre genau die zweite Wahrheit zurück, die Option A beseitigt.
+        //
+        // ALTBESTAND (BEN-Auflage 2): kommt KEINE Kennung mit, wird die bestehende trotzdem durch
+        // die Normalform geführt. Damit heilt jedes Objekt bei seiner nächsten Revision, ohne
+        // Massenlauf und ohne Datenberührung ohne Anlass. Das ist kein neues Verfahren, sondern
+        // das Hausmuster der Zeile direkt darüber: `sanitizeSources` „säubert auch Altbestand
+        // beim nächsten Revise" (SCRUM-527/WP2). Zwei Wanderungswege für dieselbe Sorte
+        // Altlast wären eine Regel zu viel.
+        //
+        // VERLUSTSCHUTZ: Die Heilung wirkt nur auf den LEBENDEN Stand und schreibt die Historie
+        // nicht um. Die Vorversion hält den rohen Wert fest, wie er geschrieben wurde — ihr
+        // Snapshot entsteht beim Anlegen (`snapshot(ko, author, "erstellt")`, s. u.) und wird
+        // von `append` nie ersetzt (repo.ts:468). Der einzige Fall, in dem überhaupt Zeichen
+        // verschwinden, ist eine Kennung aus reinem Leerraum — sie konnte nie eine Information
+        // tragen.
+        asset: normalizeAsset(changes.asset !== undefined ? changes.asset : ko.asset),
       };
       return {
         updated: revised,
