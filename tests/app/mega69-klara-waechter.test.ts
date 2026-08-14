@@ -20,6 +20,28 @@
 //     zwingt zu der Frage, die am 30.07. niemand gestellt hat — was bedeutet die Änderung für ein
 //     bereits installiertes Add-in (Manifest-Cache? Sideload nötig? reicht der Stempel)? Erst nach
 //     dieser bewussten Antwort wird der Pin aktualisiert. Genau EINE Stelle, keine Doppelpflege.
+//
+// ================================================================================================
+// JOB 537 · D4 (Pedis Entscheidung) — ES GIBT EINEN ZWEITEN WÄCHTER. BEIDE SIND GEWOLLT.
+// ================================================================================================
+//
+// `tests/app/mega69-klara-merkmale.test.ts` steht seit JOB 537 D4 NEBEN dieser Datei. Pedi hat
+// ausdrücklich „beide koexistieren, getrennte Schutzzwecke" entschieden und dabei „Pin ersetzen"
+// und „Pin schliessen" verworfen. Die Arbeitsteilung, gemessen und nicht behauptet:
+//
+//   · DIESE Datei fragt „HAT SICH ETWAS BEWEGT?" — der Pin unten wird bei jeder Byteänderung rot,
+//     auch bei einem Tippfehler in einem Kommentar. Er kann nicht sagen, WAS sich bewegt hat.
+//   · Der Merkmalsvertrag fragt „FEHLT ETWAS TRAGENDES?" — er prüft zehn ausführbare Eigenschaften
+//     und bleibt bei einer reinen Kommentaränderung grün.
+//
+// In JOB 537 D4 gemessen: eine eingefügte Kommentarzeile in taskpane.html macht den Pin rot und
+// lässt alle 23 Fälle des Merkmalsvertrags grün. Eine zerstörte tragende Zeile macht BEIDE rot,
+// und der Merkmalsvertrag benennt dabei, WELCHE Eigenschaft fehlt.
+//
+// WER EINEN DER BEIDEN FÜR EINE DUBLETTE HÄLT UND ENTFERNT, verliert genau eine der beiden Fragen.
+// Wandert der Pin unten das nächste Mal, prüft der Merkmalsvertrag die Prosa-Zusagen mit, die in
+// diesem Kommentar seit mega77 bei jedem Wandern wiederholt werden („kein neues Abrufziel, kein
+// Manifest, keine geänderte CSP, kein neues Recht, keine geänderte Nutzlast").
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
