@@ -28,6 +28,32 @@
   }
 }
 
+/* SCHEIBE D-037 — LANGE LINKS UND BREITE TABELLEN SPRENGEN DIE WISSENSSEITE NICHT MEHR.
+   Befund: im gesamten CSS null Treffer für `overflow-wrap`, `word-break`, `hyphens`, `overflow-x`
+   oder `min-w-0`, und kein Typografie-Plugin (`tailwind.config.ts:72` → `plugins: []`). Ein Link,
+   dessen Text die volle URL ist, war damit ein einziges unumbrechbares Wort.
+
+   WARUM `anywhere` UND NICHT `break-word`: nur `anywhere` geht in die Berechnung der
+   min-content-Breite ein. Genau daran hängt der zweite Fall der Scheibe — „die min-content-Breite
+   vieler Spalten überschreibt die 100 %". Mit `break-word` bräche der Text zwar um, die Spalte
+   bliebe aber so breit wie ihr längstes Wort, und die Tabelle spränge weiter aus der Seite.
+
+   Die Regel bleibt bewusst auf `.prose-kw` begrenzt: sie gilt dem sanitisierten Fremdinhalt, nicht
+   der Oberfläche. In selbstgesetztem Text wäre ein Umbruch mitten im Wort ein Rückschritt. */
+.prose-kw {
+  /* Ohne dies hat ein Flex-Kind die min-content-Breite als Untergrenze — der Container würde vom
+     breitesten Inhalt aufgespannt, und jede Deckelung darin liefe ins Leere. */
+  min-width: 0;
+}
+.prose-kw p,
+.prose-kw li,
+.prose-kw a,
+.prose-kw blockquote,
+.prose-kw td,
+.prose-kw th {
+  overflow-wrap: anywhere;
+}
+
 /* KW-STR / SCRUM-45/46/48: leichte Typo für den sanitisierten WYSIWYG-Body. */
 .prose-kw h2 {
   @apply mb-1 mt-3 text-[16px] font-semibold;
@@ -126,6 +152,14 @@
 /* Formatierung Stufe 2: erhaltene Tabellen aus Import/Paste sauber darstellen (Ränder, Padding). */
 .prose-kw table {
   @apply my-2 w-full border-collapse text-[13.5px];
+  /* SCHEIBE D-037 (2), soweit reines CSS trägt: die Deckelung wirkt zusammen mit der
+     Umbruchregel an `td`/`th` oben — sinken die Spalten auf eine umbrechbare min-content-Breite,
+     hält `w-full` wieder, und die Tabelle bleibt in der Spalte.
+     KEIN `display: block; overflow-x: auto` an der Tabelle: das zerstörte das Tabellenlayout, und
+     die Scheibe verwirft diesen Behelf ausdrücklich. Die echte Scroll-Hülle gehört in den
+     Renderpfad (`components/ko/KoRead.tsx`) und liegt außerhalb der Zielpfade dieses Auftrags —
+     s. Rückgabe, Abschnitt „Was nicht gebaut ist". */
+  max-width: 100%;
 }
 .prose-kw th,
 .prose-kw td {
