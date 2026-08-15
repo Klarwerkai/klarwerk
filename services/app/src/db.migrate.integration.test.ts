@@ -130,7 +130,9 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
       await pool.query("DELETE FROM import_runs");
 
       // 1 Beide Tabellen existieren und sind abfragbar.
-      const laeufe = await pool.query("SELECT import_id, data, status, source_system FROM import_runs");
+      const laeufe = await pool.query(
+        "SELECT import_id, data, status, source_system FROM import_runs",
+      );
       expect(laeufe.rowCount).toBe(0);
       const refs = await pool.query("SELECT import_id, ordinal, data FROM import_run_item_refs");
       expect(refs.rowCount).toBe(0);
@@ -154,7 +156,10 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
         data_type: "text",
         is_nullable: "NO",
       });
-      expect(spalte("import_runs", "data")).toMatchObject({ data_type: "jsonb", is_nullable: "NO" });
+      expect(spalte("import_runs", "data")).toMatchObject({
+        data_type: "jsonb",
+        is_nullable: "NO",
+      });
       // `status` ist abgeleitet UND nicht nullbar — beides zusammen ist die Zusage.
       expect(spalte("import_runs", "status")).toMatchObject({
         data_type: "text",
@@ -190,17 +195,14 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
 
       // 5 Die generierten Spalten leiten wirklich ab: `source_system` wird getrimmt und
       //    kleingeschrieben, `status` gespiegelt. Der Server rechnet, nicht der Aufrufer.
-      await pool.query(
-        `INSERT INTO import_runs(import_id, data) VALUES ('ir-1', $1::jsonb)`,
-        [
-          JSON.stringify({
-            importId: "ir-1",
-            sourceSystem: "  Confluence  ",
-            startedAt: "2026-01-01T00:00:00.000Z",
-            status: "QUEUED",
-          }),
-        ],
-      );
+      await pool.query(`INSERT INTO import_runs(import_id, data) VALUES ('ir-1', $1::jsonb)`, [
+        JSON.stringify({
+          importId: "ir-1",
+          sourceSystem: "  Confluence  ",
+          startedAt: "2026-01-01T00:00:00.000Z",
+          status: "QUEUED",
+        }),
+      ]);
       const abgeleitet = await pool.query<{ status: string; source_system: string }>(
         "SELECT status, source_system FROM import_runs WHERE import_id = 'ir-1'",
       );

@@ -110,10 +110,9 @@ describe("JOB 690 D-019: der Aufgaben-Badge zählt dieselben Quellen wie die Auf
       duplicates: [],
     });
     const badges = useNavBadges();
-    expect(
-      badges.conflicts?.count,
-      "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit",
-    ).toBe(2);
+    expect(badges.conflicts?.count, "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit").toBe(
+      2,
+    );
   });
 
   it("ohne Lebenszyklus-Daten bleibt der Badge im Ladezustand statt eine zu kleine Zahl zu zeigen", () => {

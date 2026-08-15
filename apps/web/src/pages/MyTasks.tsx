@@ -96,7 +96,11 @@ export function MyTasks(): JSX.Element {
             // SCRUM-351: in den FOKUSSIERTEN Rework-Kontext führen (Feedback + geordnete Schritte),
             // nicht auf die nackte KO-Detailseite — so wird Review → Rework → Validation ein Fluss.
             to: reworkHref(r.koId),
-            author: authorOf(r.koId),
+            // CWDFEST/EXACTOPTIONAL: `authorOf` liefert `KoAuthorParts | undefined`, und
+            // `exactOptionalPropertyTypes` (aktiv im Gate `./tools/check`, NICHT im blossen
+            // `tsc --noEmit` der Wurzel) verbietet, `undefined` ausdruecklich an ein optionales
+            // Feld zu uebergeben. Deshalb weglassen statt undefined setzen.
+            ...(authorOf(r.koId) ? { author: authorOf(r.koId) as KoAuthorParts } : {}),
           }),
         )
       : []),
@@ -121,7 +125,7 @@ export function MyTasks(): JSX.Element {
         label: kosById.get(id)?.title ?? id,
         typeKey: "task.revalidation",
         to: "/lebenszyklus",
-        author: authorOf(id),
+        ...(authorOf(id) ? { author: authorOf(id) as KoAuthorParts } : {}),
       }),
     ),
     // FUNKE-FIX2 P0 (bens Erforderlich 3): /aufgaben ist ab Rolle experte erreichbar — ohne Detail-

@@ -17,8 +17,8 @@ import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
 import { HelpTip } from "../components/HelpTip";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { captureGapHref, gapPrivacyNoticeKey } from "../lib/captureFromGap";
-import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { canSeeExpertise, contributorNamesFor, expertiseVisible } from "../lib/expertiseView";
+import { gapLocaleTag } from "../lib/gapLocaleTag";
 import {
   GAP_PRIORITIES,
   type PriorityTone,

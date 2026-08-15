@@ -52,7 +52,10 @@ vi.mock("../../apps/web/src/app/ImageDescribeContext", () => ({
     return children as JSX.Element;
   },
   ImageDescribeValueProvider: ({ children }: { children?: unknown }) => children as JSX.Element,
-  useImageDescribe: () => ({ available: false, describe: async () => ({ text: null, demo: true }) }),
+  useImageDescribe: () => ({
+    available: false,
+    describe: async () => ({ text: null, demo: true }),
+  }),
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({

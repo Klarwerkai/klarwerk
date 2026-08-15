@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { InMemoryGapRepo } from "../../services/ask/src/repo";
+import { AskService } from "../../services/ask/src/service";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import type { KnowledgeObject, KoCandidateQuery, KoService } from "../../services/knowledge-object";
 import { DEFAULT_TOP_K, Reasoner, queryTokens } from "../../services/reasoner";
-import { InMemoryGapRepo } from "../../services/ask/src/repo";
-import { AskService } from "../../services/ask/src/service";
 
 // ================================================================================================
 // JOB 531 · ASK-TOPK-SCALING — DER SKALIERUNGSVERTRAG DER KANDIDATEN-VORAUSWAHL.

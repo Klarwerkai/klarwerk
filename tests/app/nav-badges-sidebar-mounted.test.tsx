@@ -160,7 +160,10 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
     // Auf der unveränderten Base zählt der Badge nur Board + Lücken = 3 — dieses Badge gibt es
     // dort nicht, und der Test fällt genau daran (nicht an einer fehlenden Datei).
     const aufgaben = badge("tasks", 8);
-    expect(aufgaben, "Der Aufgaben-Badge zeigt nicht die Summe aller vier Quellen (erwartet 8)").not.toBeNull();
+    expect(
+      aufgaben,
+      "Der Aufgaben-Badge zeigt nicht die Summe aller vier Quellen (erwartet 8)",
+    ).not.toBeNull();
     expect(aufgaben?.textContent).toContain("8");
     // Die zu kleine Zahl der Zwei-Quellen-Zählung darf NICHT dastehen.
     expect(badge("tasks", 3), "Der Badge zeigt weiterhin die alte Zwei-Quellen-Summe 3").toBeNull();
@@ -181,7 +184,10 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
 
     // Echte Null ⇒ GAR KEIN Badge (mega2 Block C). Auf der Base zählt der Konflikte-Badge die
     // Länge der Liste und zeigt deshalb eine 1 — daran fällt der Test.
-    expect(badge("conflicts", 1), "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit").toBeNull();
+    expect(
+      badge("conflicts", 1),
+      "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit",
+    ).toBeNull();
     expect(badge("tasks", 1), "Der Aufgaben-Badge zählt den gelösten Konflikt c3 mit").toBeNull();
     expect(badge("conflicts", 0)).toBeNull();
     expect(badge("tasks", 0)).toBeNull();
@@ -201,9 +207,18 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
     // Solange die Lebenszyklus-Quelle lädt, darf der Aufgaben-Badge KEINE Zahl behaupten — weder
     // die alte Zwei-Quellen-Summe 3 noch die Teilsumme 5 ohne Lebenszyklus. Er zeigt den
     // Ladepunkt. Auf der Base steht dort die 3, und genau daran fällt dieser Fall.
-    expect(badge("tasks", 3), "Der Aufgaben-Badge zeigt die alte Zwei-Quellen-Summe, obwohl eine Quelle noch lädt").toBeNull();
-    expect(badge("tasks", 5), "Der Aufgaben-Badge zeigt eine Teilsumme, obwohl eine Quelle noch lädt").toBeNull();
-    expect(loadingBadges().length, "Kein Ladepunkt, obwohl die Lebenszyklus-Quelle noch lädt").toBeGreaterThan(0);
+    expect(
+      badge("tasks", 3),
+      "Der Aufgaben-Badge zeigt die alte Zwei-Quellen-Summe, obwohl eine Quelle noch lädt",
+    ).toBeNull();
+    expect(
+      badge("tasks", 5),
+      "Der Aufgaben-Badge zeigt eine Teilsumme, obwohl eine Quelle noch lädt",
+    ).toBeNull();
+    expect(
+      loadingBadges().length,
+      "Kein Ladepunkt, obwohl die Lebenszyklus-Quelle noch lädt",
+    ).toBeGreaterThan(0);
 
     // Und wenn sie dauerhaft scheitert: ehrlicher Fehler-Marker statt endlosem Ladepunkt oder
     // erfundener Zahl. Vor allem: die Seitenleiste stürzt nicht ab (D1-Regression war ein
@@ -212,7 +227,10 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
       d.lifecycle.reject(new Error("kaputt"));
       await flush();
     });
-    expect(errorBadges().length, "Kein Fehler-Marker, obwohl die Lebenszyklus-Quelle gescheitert ist").toBeGreaterThan(0);
+    expect(
+      errorBadges().length,
+      "Kein Fehler-Marker, obwohl die Lebenszyklus-Quelle gescheitert ist",
+    ).toBeGreaterThan(0);
     expect(badge("tasks", 3)).toBeNull();
     // Die Seitenleiste steht noch — der Absturzfall ist damit ausgeschlossen.
     expect(container.querySelector("nav")).not.toBeNull();

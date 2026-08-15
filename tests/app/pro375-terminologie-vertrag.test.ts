@@ -78,7 +78,11 @@ const STRINGS = objektAus(addinSrc, "var STRINGS = {", "\n    };") as unknown as
 // WAS fehlt.
 
 /** EIN Text. Wirft benannt, wenn Sprachblock oder Schluessel fehlen. */
-function textAus(quelle: Record<string, Record<string, string>>, lang: string, key: string): string {
+function textAus(
+  quelle: Record<string, Record<string, string>>,
+  lang: string,
+  key: string,
+): string {
   const wert = blockAus(quelle, lang)[key];
   if (wert === undefined) {
     throw new Error(`Schluessel ${key} fehlt in Sprachblock ${lang}`);

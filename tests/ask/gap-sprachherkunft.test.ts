@@ -28,11 +28,7 @@ import { InMemoryGapRepo } from "../../services/ask/src/repo";
 import { AskService } from "../../services/ask/src/service";
 import { AuditService, InMemoryAuditRepo } from "../../services/audit";
 import { InMemoryKoRepo, KoService } from "../../services/knowledge-object";
-import {
-  type AnswerResult,
-  Reasoner,
-  type ReasonerProvider,
-} from "../../services/reasoner";
+import { type AnswerResult, Reasoner, type ReasonerProvider } from "../../services/reasoner";
 
 const ENGLISCHE_FRAGE = "Are countersunk screws allowed in food contact zones?";
 

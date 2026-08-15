@@ -12,7 +12,6 @@
 // Server services/structure) erhalten figure/figcaption/data-image-id und strippen böse Attribute,
 // shouldPreserveRichBody wertet figure als reich, i18n-Platzhalter DE/EN/NL.
 import { describe, expect, it } from "vitest";
-import type { EditableElement } from "../../apps/web/src/lib/editorFigures";
 import i18n from "../../apps/web/src/i18n";
 import { shouldPreserveRichBody } from "../../apps/web/src/lib/bodyAiAssist";
 import {
@@ -24,6 +23,7 @@ import {
   utf8ByteLength,
   wrapImagesInFigures,
 } from "../../apps/web/src/lib/docx";
+import type { EditableElement } from "../../apps/web/src/lib/editorFigures";
 import { enhanceFiguresForEditing } from "../../apps/web/src/lib/editorFigures";
 import { sanitizeHtml as clientSanitize } from "../../apps/web/src/lib/richText";
 import { sanitizeHtml as serverSanitize } from "../../services/structure";

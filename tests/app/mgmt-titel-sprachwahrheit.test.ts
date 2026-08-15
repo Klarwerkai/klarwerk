@@ -45,8 +45,8 @@ describe("D-020 · T1 · kein deutscher Titel ist der englische", () => {
     it(`${schluessel}: DE ist nicht der EN-Wert`, () => {
       expect(
         wert("de", schluessel),
-        `Der deutsche Titel ist zeichengleich mit dem englischen. Ein deutscher Leser sieht ` +
-          `damit eine englische Ueberschrift — genau der Befund D-020.`,
+        "Der deutsche Titel ist zeichengleich mit dem englischen. Ein deutscher Leser sieht " +
+          "damit eine englische Ueberschrift — genau der Befund D-020.",
       ).not.toBe(wert("en", schluessel));
     });
   }
