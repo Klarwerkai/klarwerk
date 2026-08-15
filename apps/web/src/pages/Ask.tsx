@@ -737,6 +737,15 @@ export function Ask(): JSX.Element {
                     >
                       {t(`ask.status.${effective?.status.key ?? "unverified"}`)}
                     </span>
+                    {/* SCHEIBE D-048 (1) — NICHT AUSGEFÜHRT, und das ist ein Befund, kein Versäumnis.
+                      Die Scheibe will dieses Evidenz-Etikett streichen („zwei Kästchen, eine
+                      Tatsache"). Gemessen ist es jedoch TRAGEND für eine bestehende Zusage:
+                      `tests/ask/ask-check-caveat-mounted.test.tsx:207` und `:216` pinnen wörtlich
+                      „Evidenz: Ungeprüft" — als Beleg aus mega32 E/mega33 A, dass die Antwortansicht
+                      NIRGENDS „Gesichert" sagt, wenn sie es nicht weiß, weder sichtbar noch im
+                      Export. Sein Entfernen macht diesen Wächter rot (in diesem Durchgang gemessen).
+                      Die Testdatei liegt außerhalb der Lease dieses Auftrags; ein Eingriff dort wäre
+                      ein LEASE-VERSTOSS. Gemeldet unter BLOCKIERT in der Rückgabe. */}
                     <span
                       className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${EVIDENCE_TONE[effective?.evidence.tone ?? "neutral"]}`}
                     >
@@ -767,10 +776,26 @@ export function Ask(): JSX.Element {
                       {t("ask.trust.unattributed")}
                     </span>
                   ) : (
-                    <ConfidenceBar
-                      value={result.trust}
-                      showLabel={effective?.grade === "verified"}
-                    />
+                    /* SCHEIBE D-048 (2): Der Balken trug seinen Wert SICHTBAR unbeschriftet — aus
+                      der Ansicht heraus war nicht erkennbar, was dort null ist. Er bekommt das
+                      Wort davor. NACHGEMESSENE PRAEZISIERUNG zur Scheibe: ganz ohne Beschriftung
+                      war er nicht — `ConfidenceBar` fuehrt seit mega51 D1 `title` und `aria-label`
+                      (`evidence.confidenceLabel`). Fuer die Vorlesehilfe war der Wert also benannt,
+                      fuer das AUGE nicht; genau diese Luecke schliesst die Zeile hier.
+                      KEIN neuer i18n-Schluessel: `val.trust` traegt das Wort in DE/EN/NL bereits —
+                      und in DE/NL ohne das Fachwort „Trust", wie es der Sammler
+                      `tests/app/mega52-vertrauenswert-sammler.test.ts` verlangt.
+                      `showLabel` bleibt unangetastet: das QUALITAETSWORT („Gesichert" ab 85) darf
+                      weiterhin nur stehen, wenn die Einstufung es traegt (mega33 A4/mega35 E). */
+                    <span className="flex items-center gap-1.5">
+                      <span className="font-mono text-[10.5px] font-semibold uppercase text-muted-2">
+                        {t("val.trust")}
+                      </span>
+                      <ConfidenceBar
+                        value={result.trust}
+                        showLabel={effective?.grade === "verified"}
+                      />
+                    </span>
                   )}
                 </div>
                 {/* SCRUM-430 (VIP): Antwort inkl. Quellen exportieren/teilen — Kopieren, Markdown-Download,
