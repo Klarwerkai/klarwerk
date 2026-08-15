@@ -23,6 +23,8 @@ import {
   type TaskFilterKey,
   countTasksByFilter,
   filterTasks,
+  isOpenGap,
+  isUnresolvedConflict,
 } from "../lib/taskFilters";
 import { useAuthorName } from "../lib/useAuthorName";
 import { returnedToAuthor } from "../lib/validationStatus";
@@ -104,8 +106,12 @@ export function MyTasks(): JSX.Element {
           }),
         )
       : []),
+    // SCHEIBE D-019b: dieselbe Regel wie der Seitenleisten-Zähler, aus derselben Quelle. Hier stand
+    // `c.status !== "geloest"` als eigener Ausdruck — dieselbe Aussage, zweimal geschrieben. Genau
+    // daraus entstand der Befund von JOB 690 („54" in der Leiste, „57" auf der Seite): zwei Kopien
+    // driften auseinander, sobald eine von beiden nachgezogen wird und die andere nicht.
     ...(conflicts.data ?? [])
-      .filter((c) => c.status !== "geloest")
+      .filter(isUnresolvedConflict)
       .map((c) =>
         task({ id: c.id, label: c.description, typeKey: "task.conflict", to: "/konflikte" }),
       ),
@@ -136,18 +142,19 @@ export function MyTasks(): JSX.Element {
     // Liste und liest sich wie ein Fehler. Übersetzt wird er nicht (er ist der Beleg der
     // Originalfrage); stattdessen benennt ein Etikett die Herkunft. Gleiche Sprache und
     // Altbestände ohne Angabe bekommen keins (siehe lib/gapLocaleTag).
-    ...(gaps.data ?? [])
-      .filter((g) => g.status === "offen")
-      .map((g) => {
-        const sprache = gapLocaleTag(g.locale, i18n.language);
-        return task({
-          id: g.id,
-          label: g.redacted ? t("task.gapRedacted") : g.question,
-          typeKey: "task.gap",
-          to: "/risiko",
-          ...(sprache ? { localeTag: sprache } : {}),
-        });
-      }),
+    // SCHEIBE D-019b: wie oben — `g.status === "offen"` stand hier abgeschrieben. Bei Lücken ist die
+    // Positivform richtig (der Typ kennt genau `offen | geschlossen`); dass sie es ist, steht jetzt
+    // an EINER Stelle begründet (lib/taskFilters.ts) statt hier stillschweigend vorausgesetzt.
+    ...(gaps.data ?? []).filter(isOpenGap).map((g) => {
+      const sprache = gapLocaleTag(g.locale, i18n.language);
+      return task({
+        id: g.id,
+        label: g.redacted ? t("task.gapRedacted") : g.question,
+        typeKey: "task.gap",
+        to: "/risiko",
+        ...(sprache ? { localeTag: sprache } : {}),
+      });
+    }),
   ];
   const grouped = groupTasks(tasks);
 
