@@ -22,7 +22,17 @@ if ! command -v pg_dump >/dev/null 2>&1; then
   exit 1
 fi
 
-DEST="${1:-${BACKUP_DIR:-./backups}}"
+# CWD-VERTRAG (JOB 943): Das Standardziel `./backups` war RELATIV zum Aufrufort. Wer dieses
+# Skript aus einem anderen Verzeichnis startet — Cron, Coolify, ein Terminal irgendwo —, legte
+# sein Backup dort ab und bekam trotzdem "fertig" gemeldet. Bei einem Backup ist das die
+# gefaehrlichste Sorte Fehler: Man glaubt, eines zu haben. Der Vertragspruefer
+# (`tools/check-cwd-contract.mjs`) hat genau das gefunden.
+#
+# Die Wurzel wird aus dem Skriptpfad abgeleitet, NICHT per `cd`: Ein `cd` wuerde auch ein
+# relativ uebergebenes Zielverzeichnis ($1) anders aufloesen und damit das Verhalten fuer
+# Aufrufer aendern, die es heute richtig benutzen. Nur der Standard wird absolut.
+WURZEL="$(cd "$(dirname "$0")/../.." && pwd)"
+DEST="${1:-${BACKUP_DIR:-$WURZEL/backups}}"
 mkdir -p "$DEST"
 
 # Zeitstempel UTC, sortierbar. (date ist hier ok — reines Shell-Tool, kein App-Code.)

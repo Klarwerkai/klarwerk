@@ -659,6 +659,199 @@ function klassifiziere(n: ts.Identifier): { art: VerweisArt; alias?: string } {
   return { art: "UNBEURTEILBAR" };
 }
 
+// ================================================================================================
+// JOB 917 D2 (bens Prüflücke 1+2) — HERKUNFT STATT NAMENSTEXT.
+// ================================================================================================
+//
+// Bis hierher verglich die Aufruferermittlung ausschließlich GLEICHEN NAMENSTEXT
+// (`sammleIdentifikatoren(sf, b.komponente)`). Das ist Syntaxwahrheit, nicht Symbolwahrheit: ein
+// fremdes `Modal` aus einer anderen Datei, eine lokale Deklaration desselben Namens oder eine
+// Namenskollision zählten als produktiver Aufrufer — und ein Namensraum-Zugriff (`Ns.Modal`) fiel
+// umgekehrt heraus. bens Urteil dazu: der Wächter bekäme eine „scheinbar semantische, tatsächlich
+// kollisionsanfällige Aussage".
+//
+// Ab jetzt entscheidet die BINDUNG: welcher Modulpfad und welcher Exportname steht hinter dem
+// Namen, den diese Datei benutzt. Aufgelöst wird ohne TypeScript-Program (das würde den gesamten
+// Baum typprüfen); die Importdeklarationen der Datei reichen dafür aus und sind deterministisch.
+interface Bindung {
+  /** Repo-relative Datei des Moduls — leer, wenn nicht auf eine Projektdatei auflösbar. */
+  modul: string;
+  /** Exportname; `*` für einen Namensraumimport, `default` für den Vorgabeexport. */
+  export: string;
+}
+
+let QUELLDATEIEN_INDEX: Set<string> | null = null;
+function quelldateienIndex(): Set<string> {
+  if (QUELLDATEIEN_INDEX === null) {
+    QUELLDATEIEN_INDEX = new Set(quelldateien(WEB_SRC));
+  }
+  return QUELLDATEIEN_INDEX;
+}
+
+/**
+ * Ein relativer Spezifizierer wird zur Projektdatei. Paketimporte (`react`, `@x/y`) sind bewusst
+ * `null`: sie können kein hier registriertes Bauteil sein.
+ */
+function moduldatei(vonDatei: string, spez: string): string | null {
+  if (!spez.startsWith(".")) {
+    return null;
+  }
+  const teile = vonDatei.split("/");
+  teile.pop();
+  for (const stueck of spez.split("/")) {
+    if (stueck === "." || stueck === "") {
+      continue;
+    }
+    if (stueck === "..") {
+      teile.pop();
+    } else {
+      teile.push(stueck);
+    }
+  }
+  const basis = teile.join("/");
+  const index = quelldateienIndex();
+  for (const kandidat of [
+    basis,
+    `${basis}.tsx`,
+    `${basis}.ts`,
+    `${basis}/index.tsx`,
+    `${basis}/index.ts`,
+  ]) {
+    if (index.has(kandidat)) {
+      return kandidat;
+    }
+  }
+  return null;
+}
+
+const BINDUNGS_CACHE = new WeakMap<ts.SourceFile, Map<string, Bindung>>();
+
+/** Lokaler Name → Herkunft. Typ-only-Importe sind keine Flächen und bleiben draußen. */
+function bindungenVon(quelle: { datei: string; ast: ts.SourceFile }): Map<string, Bindung> {
+  const zwischen = BINDUNGS_CACHE.get(quelle.ast);
+  if (zwischen !== undefined) {
+    return zwischen;
+  }
+  const map = new Map<string, Bindung>();
+  for (const st of quelle.ast.statements) {
+    if (!ts.isImportDeclaration(st) || !ts.isStringLiteral(st.moduleSpecifier)) {
+      continue;
+    }
+    const klausel = st.importClause;
+    if (!klausel || klausel.isTypeOnly) {
+      continue;
+    }
+    const ziel = moduldatei(quelle.datei, st.moduleSpecifier.text) ?? "";
+    if (klausel.name) {
+      map.set(klausel.name.text, { modul: ziel, export: "default" });
+    }
+    const gebunden = klausel.namedBindings;
+    if (gebunden && ts.isNamespaceImport(gebunden)) {
+      map.set(gebunden.name.text, { modul: ziel, export: "*" });
+    }
+    if (gebunden && ts.isNamedImports(gebunden)) {
+      for (const sp of gebunden.elements) {
+        if (sp.isTypeOnly) {
+          continue;
+        }
+        map.set(sp.name.text, { modul: ziel, export: (sp.propertyName ?? sp.name).text });
+      }
+    }
+  }
+  BINDUNGS_CACHE.set(quelle.ast, map);
+  return map;
+}
+
+/**
+ * Die lokalen Namen, unter denen DIESE Datei GENAU DIESES Bauteil führt — plus die Namen etwaiger
+ * Namensraumimporte desselben Moduls. Trägt die Datei den gleichen Namenstext aus anderer Quelle
+ * (oder deklariert ihn selbst), steht er hier NICHT: das ist bens Kollisionsfall.
+ */
+function lokaleNamenFuer(
+  quelle: { datei: string; ast: ts.SourceFile },
+  b: Bauteil,
+): { namen: Set<string>; namensraeume: Set<string> } {
+  const namen = new Set<string>();
+  const namensraeume = new Set<string>();
+  for (const [name, bindung] of bindungenVon(quelle)) {
+    if (bindung.modul !== b.datei) {
+      continue;
+    }
+    if (bindung.export === b.komponente) {
+      namen.add(name);
+    } else if (bindung.export === "*") {
+      namensraeume.add(name);
+    }
+  }
+  return { namen, namensraeume };
+}
+
+/**
+ * Der Re-Export (`export { Modal } from "./Modal"`) ist KEINE Importbindung und stand deshalb nach
+ * der Umstellung auf Herkunft plötzlich nicht mehr im Rot — obwohl er ein echter Weitergabeweg ist,
+ * dem dieser Sammler nicht folgen kann. Er wird hier eigens erkannt und bleibt unbeurteilbar.
+ */
+function reexportZeilen(quelle: { datei: string; ast: ts.SourceFile }, b: Bauteil): number[] {
+  const zeilen: number[] = [];
+  for (const st of quelle.ast.statements) {
+    if (
+      !ts.isExportDeclaration(st) ||
+      !st.moduleSpecifier ||
+      !ts.isStringLiteral(st.moduleSpecifier)
+    ) {
+      continue;
+    }
+    if (moduldatei(quelle.datei, st.moduleSpecifier.text) !== b.datei) {
+      continue;
+    }
+    const gebunden = st.exportClause;
+    if (gebunden && ts.isNamedExports(gebunden)) {
+      for (const sp of gebunden.elements) {
+        if ((sp.propertyName ?? sp.name).text === b.komponente) {
+          zeilen.push(zeileVon(quelle.ast, sp));
+        }
+      }
+    } else if (!gebunden) {
+      // `export * from "./Modal"` — trägt das Bauteil weiter, ohne es zu nennen.
+      zeilen.push(zeileVon(quelle.ast, st));
+    }
+  }
+  return zeilen;
+}
+
+/**
+ * Namensraum-Zugriff auf das Bauteil: `<Ns.Modal/>` oder `createElement(Ns.Modal, …)`.
+ * Gezählt wird nur, wenn `Ns` wirklich das Modul des Bauteils bezeichnet.
+ */
+function namensraumNutzungen(
+  sf: ts.SourceFile,
+  namensraeume: Set<string>,
+  komponente: string,
+): ts.PropertyAccessExpression[] {
+  const funde: ts.PropertyAccessExpression[] = [];
+  const besuch = (n: ts.Node): void => {
+    if (
+      ts.isPropertyAccessExpression(n) &&
+      ts.isIdentifier(n.expression) &&
+      namensraeume.has(n.expression.text) &&
+      n.name.text === komponente
+    ) {
+      const p = n.parent;
+      const imTag =
+        (ts.isJsxOpeningElement(p) || ts.isJsxSelfClosingElement(p) || ts.isJsxClosingElement(p)) &&
+        p.tagName === n;
+      const imCreateElement =
+        ts.isCallExpression(p) && p.arguments[0] === n && aufrufName(p) === "createElement";
+      if (imTag || imCreateElement) {
+        funde.push(n);
+      }
+    }
+    ts.forEachChild(n, besuch);
+  };
+  besuch(sf);
+  return funde;
+}
+
 function sammleIdentifikatoren(sf: ts.SourceFile, name: string): ts.Identifier[] {
   const funde: ts.Identifier[] = [];
   const besuch = (n: ts.Node): void => {
@@ -675,11 +868,14 @@ interface VerweisBild {
   paare: Paar[];
   rot: string[];
   identifikatoren: number;
+  /** Gleicher Namenstext, andere Herkunft — kein Paar, aber sichtbar statt stillschweigend. */
+  fremdbefunde: string[];
 }
 
 function erhebeVerweise(erhebungen: DateiErhebung[], bauteile: Bauteil[]): VerweisBild {
   const paare: Paar[] = [];
   const rot: string[] = [];
+  const fremdbefunde: string[] = [];
   let identifikatoren = 0;
   for (const e of erhebungen) {
     const sf = e.quelle.ast;
@@ -687,28 +883,52 @@ function erhebeVerweise(erhebungen: DateiErhebung[], bauteile: Bauteil[]): Verwe
       if (e.quelle.datei === b.datei) {
         continue;
       }
+      // Weiterhin nach Namenstext gesammelt — aber NUR NOCH für den unabhängigen Zähler unten.
       const direkte = sammleIdentifikatoren(sf, b.komponente);
-      const aliasNamen: string[] = [];
-      let nutzung = false;
-      let verwiesen = false;
-      let unklar = false;
-      for (const id of direkte) {
-        identifikatoren++;
-        const urteil = klassifiziere(id);
-        if (urteil.art === "jsx" || urteil.art === "createElement") {
-          nutzung = true;
-        } else if (urteil.art === "import" || urteil.art === "alias-anlage") {
-          verwiesen = true;
-          if (urteil.alias !== undefined) {
-            aliasNamen.push(urteil.alias);
-          }
-        } else if (urteil.art === "export-weitergabe" || urteil.art === "UNBEURTEILBAR") {
-          unklar = true;
-          rot.push(
-            `${e.quelle.datei}:${zeileVon(sf, id)} — Verweis auf <${b.komponente}> in nicht beurteilbarer Form (${urteil.art}): dieser Sammler kann nicht sagen, ob daraus eine modale Fläche wird`,
+      // HERKUNFT ZUERST: unter welchen lokalen Namen führt DIESE Datei GENAU DIESES Bauteil?
+      const { namen: lokale, namensraeume } = lokaleNamenFuer(e.quelle, b);
+      for (const zeile of reexportZeilen(e.quelle, b)) {
+        rot.push(
+          `${e.quelle.datei}:${zeile} — Verweis auf <${b.komponente}> in nicht beurteilbarer Form (export-weitergabe): dieser Sammler kann nicht sagen, ob daraus eine modale Fläche wird`,
+        );
+      }
+      if (lokale.size === 0 && namensraeume.size === 0) {
+        // Gleicher Namenstext, andere oder gar keine Herkunft: KEIN Paar. Das ist bens
+        // Kollisionsfall — und er ist kein Fehler, sondern ein zulässiger Zustand, den der Sammler
+        // nur nicht mehr verwechseln darf.
+        if (direkte.length > 0) {
+          fremdbefunde.push(
+            `${e.quelle.datei} — führt den Namenstext „${b.komponente}", aber ohne Bindung an ${b.datei}: kein Aufrufer`,
           );
         }
-        // „typ", „eigenschaftsname" und „deklaration" sind neutrale Formen ohne Fläche.
+        rot.push(...unabgerechnet(e, new RegExp(`\\b${b.komponente}\\b`, "g"), direkte.length));
+        continue;
+      }
+      const aliasNamen: string[] = [];
+      // Namensraum-Zugriff (`<Ns.Modal/>`, `createElement(Ns.Modal, …)`) ist eine Einbindung —
+      // aber nur, wenn `Ns` wirklich das Modul dieses Bauteils bezeichnet.
+      let nutzung = namensraumNutzungen(sf, namensraeume, b.komponente).length > 0;
+      let verwiesen = namensraeume.size > 0;
+      let unklar = false;
+      for (const name of lokale) {
+        for (const id of sammleIdentifikatoren(sf, name)) {
+          identifikatoren++;
+          const urteil = klassifiziere(id);
+          if (urteil.art === "jsx" || urteil.art === "createElement") {
+            nutzung = true;
+          } else if (urteil.art === "import" || urteil.art === "alias-anlage") {
+            verwiesen = true;
+            if (urteil.alias !== undefined) {
+              aliasNamen.push(urteil.alias);
+            }
+          } else if (urteil.art === "export-weitergabe" || urteil.art === "UNBEURTEILBAR") {
+            unklar = true;
+            rot.push(
+              `${e.quelle.datei}:${zeileVon(sf, id)} — Verweis auf <${b.komponente}> in nicht beurteilbarer Form (${urteil.art}): dieser Sammler kann nicht sagen, ob daraus eine modale Fläche wird`,
+            );
+          }
+          // „typ", „eigenschaftsname" und „deklaration" sind neutrale Formen ohne Fläche.
+        }
       }
       // Alias-Verwendungen, genau eine Stufe tief — die Bauform aus bens Befund.
       for (const alias of aliasNamen) {
@@ -742,7 +962,7 @@ function erhebeVerweise(erhebungen: DateiErhebung[], bauteile: Bauteil[]): Verwe
       rot.push(...unabgerechnet(e, new RegExp(`\\b${b.komponente}\\b`, "g"), direkte.length));
     }
   }
-  return { paare, rot, identifikatoren };
+  return { paare, rot, identifikatoren, fremdbefunde };
 }
 
 // --- Die eigentliche Erhebung über den heutigen Quellbaum. ---
@@ -777,6 +997,105 @@ const BAUTEIL_ROT: string[] = BAUTEIL_ERHEBUNGEN.filter((e) => e.exportierte.len
 );
 const VERWEISE: VerweisBild = erhebeVerweise(ALLE_ERHEBUNGEN, BAUTEILE);
 const ERWARTETE_PAARE: Paar[] = VERWEISE.paare;
+
+// ================================================================================================
+// JOB 917 D2 (bens Prüflücken 3, 5 und 6) — DAS AUSDRÜCKLICHE REGISTER DER MARKERLOSEN TRÄGER.
+// ================================================================================================
+//
+// Die Erhebung oben findet ein Bauteil nur, wenn es MODALITÄT BEHAUPTET (aria-modal, showModal,
+// <dialog>). Genau daran scheitert sie bei der Klasse, um die es hier geht: Flächen, die den
+// ganzen Bildschirm einnehmen, den Hintergrund verdecken und über `open` gesteuert werden — aber
+// keinen einzigen Marker tragen. Für den Sammler sind sie unsichtbar, und ihre Zahl ist aus dem
+// Bestand nicht ableitbar.
+//
+// Deshalb ein AUSDRÜCKLICHES Register statt einer Heuristik. bens Einwand gegen eine unbeherrschte
+// `fixed inset-0`-Suche bleibt gültig — sie wird hier auch nicht als Erkenner benutzt, sondern nur
+// als BEZUGSMENGE: jede Datei, die so eine Fläche aufspannt, muss in GENAU EINER der drei Klassen
+// unten stehen. Wer eine vierte hinzufügt, wird rot.
+//
+// DIE ENTDECKUNGSGRENZE STEHT OFFEN: über Flächen, die auf anderem Weg den Bildschirm füllen
+// (eigene Klassennamen, berechnete Stile, Portale ohne diese Klasse), sagt dieses Register NICHTS.
+// Es behauptet Vollständigkeit ausschließlich innerhalb seiner Bezugsmenge.
+// JOB 917/D3 (BEN D2, Korrekturpflicht 2): Hier stand `/fixed inset-0/` — die WÖRTLICHE
+// Klassenfolge. Dieselbe Tailwind-Fläche in anderer Reihenfolge (`inset-0 fixed`) oder in
+// gleichwertiger Schreibweise (`fixed inset-x-0 inset-y-0`, vier Randklassen) ging daran vorbei und
+// wäre als neuer markerloser Träger STILL geblieben — die Bezugsmenge hätte sie nie gesehen.
+//
+// Geprüft wird jetzt die AUSSAGE statt der Zeichenfolge: eine Fläche spannt den Bildschirm auf,
+// wenn `fixed` gesetzt ist UND alle vier Seiten gebunden sind — gleich ob über `inset-0`, über die
+// beiden Achsen oder über vier Randklassen. Die Reihenfolge ist dabei bedeutungslos, weil eine
+// Klassenliste eine MENGE ist und keine Folge.
+const VOLLFLAECHE_ALLE_SEITEN = [
+  /\binset-0\b/,
+  /\binset-x-0\b[\s\S]*\binset-y-0\b|\binset-y-0\b[\s\S]*\binset-x-0\b/,
+  /\btop-0\b[\s\S]*\bright-0\b[\s\S]*\bbottom-0\b[\s\S]*\bleft-0\b/,
+];
+
+function spanntVollflaecheAuf(quelltext: string): boolean {
+  if (!/\bfixed\b/.test(quelltext)) {
+    return false;
+  }
+  return VOLLFLAECHE_ALLE_SEITEN.some((muster) => muster.test(quelltext));
+}
+
+/**
+ * Markerlose Modalträger: Vollbild, verdeckend, über `open` gesteuert — ohne `aria-modal`, ohne
+ * `showModal`, ohne `<dialog>`. Schlüssel ist Modulpfad PLUS Exportname, nicht der Namenstext.
+ *
+ * KEINE dieser drei Flächen trägt heute die Modalgrenze der Shell (gemessen: `Modal.tsx` und
+ * `KnowledgeInputStudio.tsx` kennen `ModalBoundaryContext` gar nicht, `CommandPalette.tsx` liest
+ * ihn nur über `useModalLocked`). Das ist der Befund, nicht sein Fehlen — und er wird hier
+ * festgehalten, nicht repariert: Dialogsemantik ist ausdrücklich nicht Gegenstand dieses Baus.
+ */
+const MARKERLOSE_TRAEGER: Bauteil[] = [
+  { datei: "apps/web/src/components/Modal.tsx", komponente: "Modal" },
+  { datei: "apps/web/src/shell/CommandPalette.tsx", komponente: "CommandPalette" },
+  { datei: "apps/web/src/components/KnowledgeInputStudio.tsx", komponente: "KnowledgeInputStudio" },
+];
+
+/**
+ * Vollbildflächen, die AUSDRÜCKLICH nicht modal sind — bens Negativgrenze. Sie dürfen nicht allein
+ * wegen ihrer Layoutklassen zu Kandidaten werden, und ihr Grund steht dabei.
+ */
+const NICHT_MODALE_VOLLFLAECHEN = new Map<string, string>([
+  [
+    "apps/web/src/components/HelpTip.tsx",
+    "Hilfe-Sprechblase: die Vollfläche ist der Klickfänger zum Schließen, der Inhalt bleibt ein Popover neben dem Auslöser",
+  ],
+  [
+    "apps/web/src/components/AiModelInfo.tsx",
+    "Modellauskunft als Popover: dieselbe Bauform, reine Auskunft ohne Bedienfluss",
+  ],
+]);
+
+/**
+ * Jede Datei der Bezugsmenge, die in KEINER der drei Klassen steht. Genau das ist die Gegenprobe
+ * gegen einen still hinzugefügten markerlosen Träger.
+ */
+// GEMESSEN beim ersten Lauf dieser Probe: die Bezugsmenge kennt VIER Klassen, nicht drei.
+// `BodyImageGallery.tsx` spannt eine Vollfläche auf, trägt aber echte native Modalität
+// (`showModal()`), und genau deshalb steht sie in `NATIV_MODAL_AUSNAHMEN` und NICHT in `BAUTEILE`.
+// Sie hier zu vergessen hätte den Wächter gegen den Bestand rot gemacht — an einer Fläche, die die
+// STÄRKSTE Form von Modalität hat. Die native Ausnahme ist deshalb die vierte zulässige Klasse.
+function unregistrierteVollflaechen(
+  erhebungen: DateiErhebung[],
+  markerTragende: Bauteil[],
+): string[] {
+  const mitMarker = new Set(markerTragende.map((b) => b.datei));
+  const markerlos = new Set(MARKERLOSE_TRAEGER.map((b) => b.datei));
+  return erhebungen
+    .filter((e) => spanntVollflaecheAuf(e.quelle.gestrippt))
+    .map((e) => e.quelle.datei)
+    .filter(
+      (d) =>
+        !mitMarker.has(d) &&
+        !markerlos.has(d) &&
+        !NICHT_MODALE_VOLLFLAECHEN.has(d) &&
+        !NATIV_MODAL_AUSNAHMEN.has(d),
+    );
+}
+
+const MARKERLOSE_VERWEISE: VerweisBild = erhebeVerweise(ALLE_ERHEBUNGEN, MARKERLOSE_TRAEGER);
 
 // ---------------------------------------------------------------------------------------------
 // (2) Die gemounteten Fälle — einer je Paar, an der ECHTEN Verdrahtung (Seite IN der echten Shell).
@@ -1208,6 +1527,215 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     ]);
     const vBarrel = erhebeVerweise([barrel], [BAUTEIL_FACET]);
     expect(vBarrel.rot.some((r) => r.includes("export-weitergabe"))).toBe(true);
+  });
+
+  // ==============================================================================================
+  // JOB 917 D2 — HERKUNFT STATT NAMENSTEXT (bens Prüflücken 1 und 2).
+  // ==============================================================================================
+
+  it("KOLLISION: gleicher Namenstext aus ANDERER Quelle ist KEIN Aufrufer", () => {
+    const e = synthetisch("apps/web/src/pages/SynthFremd.tsx", [
+      // Ein fremdes FacetFilter — gleicher Name, anderes Modul.
+      'import { FacetFilter } from "../lib/facetRail";',
+      "export function Seite(): JSX.Element {",
+      "  return <FacetFilter themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    const v = erhebeVerweise([e], [BAUTEIL_FACET]);
+    expect(v.paare).toEqual([]);
+    // Nicht rot — ein fremdes gleichnamiges Bauteil ist zulässig. Aber sichtbar:
+    expect(v.fremdbefunde.some((f) => f.includes("SynthFremd.tsx"))).toBe(true);
+  });
+
+  it("KOLLISION: eine LOKAL deklarierte gleichnamige Komponente ist KEIN Aufrufer", () => {
+    const e = synthetisch("apps/web/src/pages/SynthLokal.tsx", [
+      "function FacetFilter(): JSX.Element {",
+      '  return <div className="fixed inset-0" />;',
+      "}",
+      "export function Seite(): JSX.Element {",
+      "  return <FacetFilter />;",
+      "}",
+    ]);
+    const v = erhebeVerweise([e], [BAUTEIL_FACET]);
+    expect(v.paare).toEqual([]);
+    expect(v.fremdbefunde.some((f) => f.includes("SynthLokal.tsx"))).toBe(true);
+  });
+
+  it("HERKUNFT: Namensraum-Zugriff (<Ns.FacetFilter/>) wird herkunftstreu als Aufrufer erhoben", () => {
+    const e = synthetisch("apps/web/src/pages/SynthNs.tsx", [
+      'import * as FF from "../components/FacetFilter";',
+      "export function Seite(): JSX.Element {",
+      "  return <FF.FacetFilter themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    const v = erhebeVerweise([e], [BAUTEIL_FACET]);
+    expect(v.rot).toEqual([]);
+    expect(v.paare.map(schluessel)).toContain("apps/web/src/pages/SynthNs.tsx → <FacetFilter>");
+  });
+
+  it("HERKUNFT: createElement(Ns.FacetFilter, …) ebenso — und ein FREMDER Namensraum nicht", () => {
+    const treffer = synthetisch("apps/web/src/pages/SynthNsCreate.tsx", [
+      'import { createElement } from "react";',
+      'import * as FF from "../components/FacetFilter";',
+      "export function Seite(): unknown {",
+      "  return createElement(FF.FacetFilter, null);",
+      "}",
+    ]);
+    expect(erhebeVerweise([treffer], [BAUTEIL_FACET]).paare.map(schluessel)).toContain(
+      "apps/web/src/pages/SynthNsCreate.tsx → <FacetFilter>",
+    );
+    const fremd = synthetisch("apps/web/src/pages/SynthNsFremd.tsx", [
+      'import { createElement } from "react";',
+      'import * as FF from "../lib/facetRail";',
+      "export function Seite(): unknown {",
+      "  return createElement(FF.FacetFilter, null);",
+      "}",
+    ]);
+    expect(erhebeVerweise([fremd], [BAUTEIL_FACET]).paare).toEqual([]);
+  });
+
+  // ==============================================================================================
+  // JOB 917 D2 — DAS REGISTER DER MARKERLOSEN TRÄGER (bens Prüflücken 3, 5 und 6).
+  // ==============================================================================================
+
+  it("REGISTER: jede Vollbildfläche des Bestands steht in GENAU EINER der drei Klassen", () => {
+    expect(unregistrierteVollflaechen(ALLE_ERHEBUNGEN, BAUTEILE)).toEqual([]);
+  });
+
+  it("REGISTER: ein NEUER markerloser Vollbildträger außerhalb des Registers wird rot", () => {
+    const neu = synthetisch("apps/web/src/components/SynthNeuerTraeger.tsx", [
+      "export function SynthNeuerTraeger({ open }: { open: boolean }): JSX.Element | null {",
+      "  if (!open) return null;",
+      '  return <div className="fixed inset-0 z-50 bg-black/50">Inhalt</div>;',
+      "}",
+    ]);
+    expect(unregistrierteVollflaechen([neu], BAUTEILE)).toEqual([
+      "apps/web/src/components/SynthNeuerTraeger.tsx",
+    ]);
+  });
+
+  // ==============================================================================================
+  // JOB 917/D3 (BEN D2, Korrekturpflicht 2) — DIE BEZUGSMENGE HING AN EINER ZEICHENFOLGE.
+  //
+  // `/fixed inset-0/` sah nur diese eine Schreibweise. Drei gleichwertige Formen gingen vorbei und
+  // wären als neuer markerloser Träger NIE aufgefallen — die gefährlichste Art Lücke, weil der
+  // Wächter dabei grün bleibt. Jede Form bekommt hier ihre eigene Gegenprobe.
+  // ==============================================================================================
+  const AEQUIVALENTE_VOLLFLAECHEN: { name: string; klassen: string }[] = [
+    { name: "SynthUmgekehrt", klassen: "inset-0 fixed z-50 bg-black/50" },
+    { name: "SynthAchsen", klassen: "fixed inset-x-0 inset-y-0 z-50 bg-black/50" },
+    { name: "SynthRaender", klassen: "fixed top-0 right-0 bottom-0 left-0 z-50 bg-black/50" },
+  ];
+
+  it.each(AEQUIVALENTE_VOLLFLAECHEN)(
+    "REGISTER: die äquivalente Vollfläche $name wird unregistriert ebenfalls rot",
+    ({ name, klassen }) => {
+      const datei = `apps/web/src/components/${name}.tsx`;
+      const neu = synthetisch(datei, [
+        `export function ${name}({ open }: { open: boolean }): JSX.Element | null {`,
+        "  if (!open) return null;",
+        `  return <div className="${klassen}">Inhalt</div>;`,
+        "}",
+      ]);
+      expect(
+        unregistrierteVollflaechen([neu], BAUTEILE),
+        `„${klassen}" spannt denselben Bildschirm auf und muss dieselbe Meldung erzeugen`,
+      ).toEqual([datei]);
+    },
+  );
+
+  it("REGISTER: eine NICHT-Vollfläche bleibt außerhalb der Bezugsmenge (Positivkontrolle)", () => {
+    // Ohne diesen Fall wäre die Verallgemeinerung oben nicht von „meldet einfach alles" zu
+    // unterscheiden. `fixed` allein — ohne gebundene Seiten — ist keine Vollfläche.
+    const klein = synthetisch("apps/web/src/components/SynthKleinerBalken.tsx", [
+      "export function SynthKleinerBalken(): JSX.Element {",
+      '  return <div className="fixed bottom-4 right-4 z-50">Hinweis</div>;',
+      "}",
+    ]);
+    expect(unregistrierteVollflaechen([klein], BAUTEILE)).toEqual([]);
+  });
+
+  // ==============================================================================================
+  // JOB 917/D3 (BEN D2, Korrekturpflicht 1) — DIE SHELL-GRENZE, GEMESSEN STATT BEHAUPTET.
+  //
+  // BEN verlangt je Einbinder einen gemounteten Fall mit NACHGEWIESENER Shell-Grenze — und sagt im
+  // selben Atemzug: „falls das Produkt die Grenze tatsächlich nicht besitzt, den Stand nicht als
+  // baubereit ausgeben." Genau das ist die Lage. Gemessen am gebundenen Stand:
+  //
+  //   Modal.tsx, KnowledgeInputStudio.tsx, HelpTip.tsx, AiModelInfo.tsx → useModalBoundary: 0
+  //   CommandPalette.tsx                                               → nur useModalLocked (liest)
+  //   FacetFilter.tsx                                                  → useModalBoundary (hält)
+  //
+  // Ein gemounteter Fall könnte hier keine Grenze belegen, weil keine da ist; er würde nur die
+  // Abwesenheit umständlich wiederholen. Was dieser Wächter stattdessen leistet: er hält den
+  // GEMESSENEN Zustand fest, in BEIDE Richtungen. Baut jemand die Grenze ein, ohne das Register zu
+  // pflegen, wird es rot — und die Behauptung „markerlos, aber abgegrenzt" kann nicht still
+  // entstehen.
+  // ==============================================================================================
+  const GRENZE_IST: { datei: string; stand: "keine" | "liest" | "haelt" }[] = [
+    { datei: "apps/web/src/components/Modal.tsx", stand: "keine" },
+    { datei: "apps/web/src/components/KnowledgeInputStudio.tsx", stand: "keine" },
+    { datei: "apps/web/src/components/HelpTip.tsx", stand: "keine" },
+    { datei: "apps/web/src/components/AiModelInfo.tsx", stand: "keine" },
+    { datei: "apps/web/src/shell/CommandPalette.tsx", stand: "liest" },
+    { datei: "apps/web/src/components/FacetFilter.tsx", stand: "haelt" },
+  ];
+
+  it.each(GRENZE_IST)(
+    "SHELL-GRENZE: $datei steht auf $stand — und tut es nachweislich",
+    ({ datei, stand }) => {
+      const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
+      expect(e, `Registereintrag ohne Datei: ${datei}`).toBeDefined();
+      const quelle = e?.quelle.gestrippt ?? "";
+      const haelt = /\buseModalBoundary\b/.test(quelle);
+      const liest = /\buseModalLocked\b/.test(quelle);
+      const gemessen = haelt ? "haelt" : liest ? "liest" : "keine";
+      expect(
+        gemessen,
+        `Das Register sagt „${stand}", gemessen ist „${gemessen}". Wer die Grenze ändert, ändert hier mit — sonst behauptet der Wächter eine Modalwahrheit, die das Produkt nicht hat.`,
+      ).toBe(stand);
+    },
+  );
+
+  it("REGISTER: jeder Eintrag existiert, exportiert seinen Namen und ist wirklich markerlos", () => {
+    for (const b of MARKERLOSE_TRAEGER) {
+      const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === b.datei);
+      expect(e, `Registereintrag ohne Datei: ${b.datei}`).toBeDefined();
+      expect(e?.exportierte, `${b.datei} exportiert <${b.komponente}> nicht (mehr)`).toContain(
+        b.komponente,
+      );
+      // Trüge die Fläche einen Marker, gehörte sie in die abgeleitete Erhebung — nicht hierher.
+      expect(
+        e?.kandidaten.filter((k) => k.art.startsWith("aria-modal")) ?? [],
+        `${b.datei} trägt jetzt aria-modal: der Eintrag gehört aus dem markerlosen Register heraus`,
+      ).toEqual([]);
+    }
+  });
+
+  it("REGISTER: die Einbinder der markerlosen Träger sind herkunftstreu erhoben und vollständig", () => {
+    expect(MARKERLOSE_VERWEISE.rot).toEqual([]);
+    // Die Akte, die ben verlangt: Modulpfad + Exportname + produktive Einbinder, herkunftstreu
+    // erhoben. Wächst oder schrumpft sie, ist das eine sichtbare Entscheidung, keine Verschiebung.
+    expect(MARKERLOSE_VERWEISE.paare.map(schluessel).sort()).toEqual([
+      "apps/web/src/app/NavGuardContext.tsx → <Modal>",
+      "apps/web/src/components/AppendToArticleModal.tsx → <Modal>",
+      "apps/web/src/components/ConflictTargetPicker.tsx → <Modal>",
+      "apps/web/src/components/RichTextEditor.tsx → <Modal>",
+      "apps/web/src/pages/Capture.tsx → <KnowledgeInputStudio>",
+      "apps/web/src/pages/Capture.tsx → <Modal>",
+      "apps/web/src/pages/Conflicts.tsx → <Modal>",
+      "apps/web/src/pages/Duplicates.tsx → <Modal>",
+      "apps/web/src/pages/KnowledgeDetail.tsx → <KnowledgeInputStudio>",
+      "apps/web/src/shell/AppShell.tsx → <CommandPalette>",
+    ]);
+  });
+
+  it("NEGATIVGRENZE: die nichtmodalen Vollflächen erzeugen keinen modalen Kandidaten", () => {
+    for (const datei of NICHT_MODALE_VOLLFLAECHEN.keys()) {
+      const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
+      expect(e, `Negativeintrag ohne Datei: ${datei}`).toBeDefined();
+      expect(e?.kandidaten ?? [], `${datei} behauptet jetzt Modalität`).toEqual([]);
+    }
   });
 
   it("Prosa bleibt Prosa: Kommentare und Erwähnungen in Zeichenketten sind keine Kandidaten", () => {

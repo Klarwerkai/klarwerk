@@ -1525,6 +1525,34 @@ export function GraphView(): JSX.Element {
                 {/* Knoten — navigierbar zum KO-Detail, wenn das KO im Bestand bekannt ist. */}
                 {layout.nodes.map((n) => {
                   const navigable = isNavigableNode(n.id, knownKoIds);
+                  // ====================================================================
+                  // SCHEIBE D-038 (3) — DIE BESCHRIFTUNG LÄUFT NACH AUSSEN, NICHT INS BILD.
+                  // ====================================================================
+                  // `layoutGraph` legt ALLE Knoten auf EINEN Kreis (lib/graphLayout.ts:59-89).
+                  // Bis hierher stand jedes Label mit `textAnchor="middle"` 11 px über seinem
+                  // Knoten — auf einem Kreis heisst das: die Schrift des rechten Knotens läuft
+                  // nach links INS Bild hinein, quer über seine Nachbarn, und unten am Kreis
+                  // rückte das „über dem Knoten" das Label sogar NÄHER an die Mitte (gemessen:
+                  // drei von sechs Ankern lagen innerhalb ihres eigenen Knotenrings).
+                  // Radial heisst hier zweierlei: der Anker wandert um LABEL_ABSTAND nach
+                  // AUSSEN, und die Schrift läuft von der Mitte WEG (rechts `start`, links
+                  // `end`). Damit steht sie dort, wo der Kreis Platz lässt.
+                  // Das Layout selbst bleibt unangetastet — die Mitte wird hier aus der
+                  // viewBox abgeleitet, nicht in graphLayout.ts nachgerüstet (NICHT-ZIEL der
+                  // Scheibe: „kein neues Layout-Verfahren").
+                  // Platzrechnung: Radius 150 um (320|220) bei viewBox 640×440, Versatz 13 →
+                  // äusserster Anker bei y≈57 bzw. x≈483; auch ein volles 15-Zeichen-Label
+                  // bleibt innerhalb der Fläche. Die Kürzung unten bleibt deshalb, wie sie war.
+                  const dx = n.x - layout.width / 2;
+                  const dy = n.y - layout.height / 2;
+                  const strahl = Math.sqrt(dx * dx + dy * dy);
+                  // Der Einzelknoten sitzt IN der Mitte (graphLayout: `n <= 1`) — er hat keine
+                  // Aussenrichtung. Für ihn bleibt es bei der zentrierten Beschriftung darüber;
+                  // eine erfundene Richtung wäre schlechter als die alte Fassung.
+                  const radial = strahl > 0.5;
+                  const LABEL_ABSTAND = 13;
+                  const labelX = radial ? n.x + (dx / strahl) * LABEL_ABSTAND : n.x;
+                  const labelY = radial ? n.y + (dy / strahl) * LABEL_ABSTAND : n.y - 11;
                   const go = (): void => {
                     if (navigable) {
                       navigate(koDetailPath(n.id));
@@ -1559,9 +1587,12 @@ export function GraphView(): JSX.Element {
                         fill="currentColor"
                       />
                       <text
-                        x={n.x}
-                        y={n.y - 11}
-                        textAnchor="middle"
+                        x={labelX}
+                        y={labelY}
+                        textAnchor={radial ? (dx > 0 ? "start" : "end") : "middle"}
+                        // Auf der Höhe des Knotens (3 und 9 Uhr) soll die Zeile mit ihm fluchten,
+                        // statt mit der Grundlinie darunter zu hängen.
+                        dominantBaseline={radial ? "middle" : undefined}
                         className="fill-text text-[9px]"
                       >
                         {n.title.length > 16 ? `${n.title.slice(0, 15)}…` : n.title}

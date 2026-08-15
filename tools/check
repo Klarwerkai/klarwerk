@@ -2,6 +2,10 @@
 # tools/check — Gesamtgate: Build + Lint + Architektur + Tests. Nur grün = lieferbar.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# JOB 943 (Register I14): der cwd-Vertrag steht VOR allem anderen — er kostet Millisekunden und
+# beantwortet die Frage, ob die folgenden Schritte überhaupt am richtigen Bestand arbeiten. Er ist
+# fail-closed: eine markerlose oder gleichnamige falsche Wurzel bricht hier ab, statt sie zu raten.
+echo "▶ cwd-vertrag";  node tools/check-cwd-contract.mjs || { echo "✖ cwd-Vertrag verletzt"; exit 1; }
 echo "▶ build";        ./tools/build
 echo "▶ lint";         ./tools/lint
 echo "▶ architecture"; npx depcruise --config .dependency-cruiser.cjs services || { echo "✖ Architekturregeln verletzt"; exit 1; }
