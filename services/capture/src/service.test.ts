@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { buildApp, buildServices } from "../../app/src/build-app";
-import { DRAFTS_BODY_LIMIT } from "../../app/src/routes/capture-routes";
+import { DRAFTS_BODY_LIMIT, buildApp, buildServices } from "../../app";
 import { InterviewSession } from "./interview";
 import { type DraftRepo, InMemoryDraftRepo } from "./repo";
 import { PgDraftRepo } from "./repo-pg";
