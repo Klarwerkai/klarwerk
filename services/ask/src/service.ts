@@ -140,6 +140,18 @@ export interface AskResult {
   // auf das Orakel-Problem) — als Vorschlag, nicht als Bau.
 }
 
+/**
+ * JOB 541 D3: Ist dieser Actor der System-Platzhalter statt eines Menschen?
+ *
+ * `ask()` setzt als Vorgabe die Zeichenkette `"system"`. Sie ist ein PLATZHALTER und keine
+ * Kontokennung — hier wird sie als solcher erkannt, statt sie in ein Eigentum zu verwandeln.
+ */
+export const SYSTEM_ACTOR = "system";
+
+function istSystemActor(actor: string | undefined): boolean {
+  return actor === undefined || actor.trim().length === 0 || actor === SYSTEM_ACTOR;
+}
+
 export class AskService {
   private readonly reasoner: Reasoner;
   private readonly koService: KoService;
@@ -343,7 +355,7 @@ export class AskService {
     // W3-C1 (Auftrag 76): der Beleg entsteht GENAU HIER — nach der Antwort, aus derselben
     // Ausfuehrung, vor jeder Verzweigung. So traegt jeder der drei Rueckgabewege dieselbe
     // Identitaet, und keiner kann sie stillschweigend verlieren.
-    const answerId = await this.schreibeAntwortbeleg(result);
+    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, actor);
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
@@ -407,6 +419,8 @@ export class AskService {
    */
   private async schreibeAntwortbeleg(
     result: AnswerResult & { captionSources: string[] },
+    herangezogen: readonly KnowledgeObject[],
+    actor: string | undefined,
   ): Promise<string | null> {
     const repo = this.answerSnapshots;
     if (!repo) {
@@ -414,17 +428,48 @@ export class AskService {
     }
     const answerId = this.genId();
     const jetzt = new Date(this.now()).toISOString();
-    const evidence: AnswerEvidenceRef[] = result.sources.map((koId) => ({
-      knowledgeObjectId: koId,
-      // Die KO-Fassung ist im Antwortweg heute nicht gebunden. `null` MIT Grund statt einer
-      // erfundenen Version — und genau deshalb bleibt der Status unter COMPLETE.
-      knowledgeObjectVersion: null,
-      evidenceRole: result.citedSources.includes(koId) ? "carrying" : "consulted",
-      sourceRecordId: null,
-      sourceRecordIdReason: "w2a_not_wired",
-      locator: null,
-      locatorReason: "no_locator_from_import",
-    }));
+    // ============================================================================================
+    // JOB 541 D3 — DIE FASSUNG UND DIE ENTSCHEIDUNG WERDEN GEBUNDEN, NICHT GESUCHT.
+    // ============================================================================================
+    //
+    // `herangezogen` sind die Objekte, die dieser Antwortlauf WIRKLICH in der Hand hatte
+    // (`prefiltered`, nach Vertraulichkeits- und Validiert-Filter). Ihre `version` ist die Fassung
+    // zum Ausfuehrungszeitpunkt, und ihr `validationDecisionRef` ist die Entscheidung, die zu
+    // diesem Zeitpunkt am Objekt stand.
+    //
+    // DAS IST KEINE NEUSUCHE — und der Unterschied ist der ganze Punkt von KW-W3-18. Eine Neusuche
+    // waere ein zweiter Blick in den Bestand, der etwas ANDERES finden koennte als der Antwortlauf.
+    // Hier wird nur aufgeschrieben, was der Lauf ohnehin schon hielt. Deshalb kommen die Werte aus
+    // dem uebergebenen Feld und nicht aus `this.koService`.
+    //
+    // FEHLT ein Objekt in der Liste (etwa weil der Reasoner eine Quelle nennt, die nicht unter den
+    // Kandidaten war), bleibt die Fassung ehrlich `null`. Erfunden wird sie nicht.
+    const nachId = new Map(herangezogen.map((ko) => [ko.id, ko]));
+    const evidence: AnswerEvidenceRef[] = result.sources.map((koId) => {
+      const ko = nachId.get(koId);
+      const tragend = result.citedSources.includes(koId);
+      const entscheidung = ko?.validationDecisionRef;
+      return {
+        knowledgeObjectId: koId,
+        knowledgeObjectVersion: ko?.version ?? null,
+        evidenceRole: tragend ? "carrying" : "consulted",
+        sourceRecordId: null,
+        sourceRecordIdReason: "w2a_not_wired",
+        locator: null,
+        locatorReason: "no_locator_from_import",
+        // KW-W3-23 §2: GENAU EINES von beidem. Traegt das Objekt eine Entscheidung, steht sie hier;
+        // sonst der Grund, warum nicht — und der haengt an der ROLLE: eine tragende Quelle SOLL
+        // eine Entscheidung haben (`NOT_AVAILABLE_AT_EXECUTION` ist dann eine echte Luecke), eine
+        // bloss herangezogene muss keine haben (`NOT_REQUIRED`).
+        ...(entscheidung !== undefined
+          ? { validationDecisionRef: entscheidung }
+          : {
+              validationReferenceAbsenceReason: tragend
+                ? ("NOT_AVAILABLE_AT_EXECUTION" as const)
+                : ("NOT_REQUIRED" as const),
+            }),
+      };
+    });
     const roh: AnswerEvidenceSnapshot = {
       answerId,
       snapshotRevision: 1,
@@ -435,8 +480,11 @@ export class AskService {
       evidence,
       resolutionId: null,
       resolutionIdReason: "w1_not_on_answer_path",
+      // KW-W3-23 §3: der obere Ort wird von NEUEN Snapshots nicht mehr beschrieben. Der Grund sagt
+      // das ausdruecklich — und ersetzt `w3c_no_decision_carrier`, das seit dem KO-Traeger nicht
+      // mehr stimmt.
       validationDecisionRef: null,
-      validationDecisionRefReason: "w3c_no_decision_carrier",
+      validationDecisionRefReason: "w3_23_ref_liegt_je_evidence",
       status: "PENDING_EVIDENCE",
       integrityHash: "",
     };
@@ -477,6 +525,27 @@ export class AskService {
         askExecutionId: this.genId(),
         createdAt: jetzt,
         schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
+        // ========================================================================================
+        // JOB 541 D3 — DAS EIGENTUM ENTSTEHT HIER, UND `system` IST KEIN KONTO.
+        // ========================================================================================
+        //
+        // DER FUND, der diese Zeilen so aussehen laesst: `ask()` traegt seit jeher die VORGABE
+        // `actor = "system"` (s. Signatur oben). Ein Antwortlauf ohne angemeldeten Fragenden
+        // kommt hier also mit der Zeichenkette `"system"` an — nicht mit `undefined`.
+        //
+        // Wuerde daraus `{ kind: "user", userId: "system" }`, dann koennte ein Konto namens
+        // `system` spaeter jede Systemantwort der Instanz lesen. Das ist kein erfundener Angriff,
+        // sondern die naheliegendste Form dieses Fehlers — und mit einer Zeichenkette als
+        // Eigentumsbegriff waere sie unvermeidbar.
+        //
+        // Deshalb wird der Platzhalter hier ausdruecklich als SYSTEM gelesen. Der Preis ist
+        // benannt: ein echtes Konto, das `system` heisst, verliert den Zugriff auf seine eigenen
+        // Antworten. Das ist die richtige Richtung — lieber ein Zugriff zu wenig auf eigene als
+        // einer zu viel auf fremde.
+        owner:
+          actor === undefined || istSystemActor(actor)
+            ? { kind: "system" }
+            : { kind: "user", userId: actor },
       });
       await repo.appendSnapshot(snapshot);
     } catch {

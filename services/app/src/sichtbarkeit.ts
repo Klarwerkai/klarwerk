@@ -366,9 +366,18 @@ export async function sichtbareEintraege<T extends { koId: string }>(
 // noch WEITER öffnen, nie schliessen.
 //
 // DIE VERBLEIBENDE, BENANNTE GRENZE: hängt dasselbe Objekt an einer sichtbaren aktuellen Fassung
-// UND (nur) im Schnappschuss eines vertraulichen Objekts, bleibt die Zwischenspeicher-Zusage bei
-// der kurzen Frist statt `no-store`. Die Bytes sind über die sichtbare Fassung ohnehin erlaubt
-// erreichbar; der Unterschied ist die Frist, nicht der Zugang.
+// UND (nur) im Schnappschuss eines vertraulichen Objekts, fällt die Zwischenspeicher-Zusage auf den
+// unvertraulichen Wortlaut statt auf `no-store`. Die Bytes sind über die sichtbare Fassung ohnehin
+// erlaubt erreichbar.
+//
+// JOB 579 D5: Diese Grenze WAR grösser, und die alte Formulierung hier („der Unterschied ist die
+// Frist, nicht der Zugang") beschrieb genau das, was seither entfallen ist. Der unvertrauliche
+// Wortlaut lautet nicht mehr `private, max-age=300`, sondern `private, no-cache, must-revalidate`
+// (object-routes.ts) — es gibt keine Frist mehr, in der eine Kopie ohne Rückfrage weiterverwendet
+// werden dürfte. Der verbleibende Unterschied ist damit nur noch, dass ein Zwischenspeicher die
+// Bytes ABLEGEN darf, statt sie gar nicht erst zu halten; wiederverwendet werden sie in beiden
+// Fällen erst nach einer neuen Autorisierung. Die Grenze ist geblieben, ihr Gewicht ist gefallen —
+// und sie steht weiter hier, weil sie benannt gehört und nicht stillschweigend verschwinden soll.
 //
 // ================================================================================================
 // AUFTRAG-mega78 BLOCK A — EINE BEHAUPTUNG IST KEIN BERECHTIGUNGSNACHWEIS.

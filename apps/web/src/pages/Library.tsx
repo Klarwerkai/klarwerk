@@ -52,6 +52,10 @@ import {
 } from "../lib/facets";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { koAuthorParts } from "../lib/koAuthor";
+// JOB 528: DER VORHANDENE Helfer, derselbe wie auf der Validierungskarte. Er liefert `null`
+// bei fehlendem, leerem oder unparsebarem Wert — genau diese Null IST die Zusage
+// „kein Platzhalterdatum". Ein zweiter Formatierer waere eine zweite Wahrheit ueber dasselbe.
+import { formatKoTimestamp } from "../lib/koDates";
 import { LIBRARY_RESULT_LIMIT, windowList } from "../lib/libraryDisplay";
 import { EXPORT_FORMATS, type ExportFormat, exportFilename, exportUrl } from "../lib/libraryExport";
 import {
@@ -181,7 +185,10 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
 };
 
 export function Library(): JSX.Element {
-  const { t } = useTranslation();
+  // JOB 528: `i18n` kam hinzu, weil die Zeit in der AKTUELLEN Sprache gebildet werden muss.
+  // Ohne den Haken staende sie in einer festen Sprache da — die Validierungsflaeche macht es
+  // seit WP-D10 richtig, jetzt beide gleich.
+  const { t, i18n } = useTranslation();
   // Startfilter aus der URL (?q=…), gesetzt von der globalen Topbar-Suche.
   // Pedi 05.07.: zusätzlich ?category=… vorbelegen — Verweise aus Risiko & Lücken landen so
   // direkt auf den Objekten der betroffenen Domäne.
@@ -1046,6 +1053,23 @@ export function Library(): JSX.Element {
                                 <KnowledgeTypeTag type={k.type} />
                               </span>
                               <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+                              {/* JOB 528 — DIE ERSTELLZEIT, und ausschliesslich sie.
+                                  Die Ownerentscheidung vom 13.08.2026 bindet `createdAt` und
+                                  verwirft `koChangedMs` sowie „beide anzeigen" ausdruecklich.
+                                  Liefert der Helfer `null` (fehlend, leer, unparsebar), faellt
+                                  die GANZE Zeile weg — kein Ersatzwert, kein 01.01.1970. */}
+                              {(() => {
+                                const erstellt = formatKoTimestamp(k.createdAt, i18n.language);
+                                return erstellt ? (
+                                  <span
+                                    data-testid="ko-zeitstempel"
+                                    title={t("ko.createdAt")}
+                                    className="font-mono text-[10.5px] text-muted-2"
+                                  >
+                                    {`${t("ko.createdAt")} ${erstellt}`}
+                                  </span>
+                                ) : null;
+                              })()}
                               {/* SCRUM-245: kompakte, ehrliche Match-Gründe (nur bei aktiver Suche). */}
                               {trimmedQ && matches.length > 0 ? (
                                 <span className="mt-0.5 flex flex-wrap items-center gap-1">

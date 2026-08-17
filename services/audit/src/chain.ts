@@ -17,6 +17,182 @@ export function hashEntry(entry: Omit<AuditEntry, "hash">): string {
   return createHash("sha256").update(material).digest("hex");
 }
 
+// ==================================================================================================
+// JOB 498 · D8 — HASHVERSION V2 NEBEN V1, NICHT STATT V1
+// ==================================================================================================
+//
+// `hashEntry` oben bleibt Zeichen für Zeichen, was es war. Das ist keine Vorsicht, sondern die
+// Bedingung dafür, dass der Altbestand überhaupt noch prüfbar ist: 871 Einträge tragen kein
+// `hashVersion`, und ihr gespeicherter Hash IST der V1-Hash. Jede Änderung an dieser Funktion
+// würde sie alle gleichzeitig ungültig machen.
+//
+// V2 schließt drei benannte Lücken von V1:
+//
+//   1. FELDGRENZE. V1 verbindet mit `|`; ein `|` IM Wert verschiebt die Grenze, und zwei
+//      verschiedene Einträge können dasselbe Material erzeugen. V2 stellt jedem Feld seine
+//      UTF-8-BYTEZAHL voran — die Grenze steht damit in der Länge, nicht im Trennzeichen.
+//   2. DOMÄNE. Ein V1-Material kann nie zufällig ein V2-Material sein.
+//   3. VERSION IM MATERIAL. Sie ist das letzte Feld; ein Downgrade bricht den Hash.
+//
+// Dazu die Kanonisierung der Payload: `jsonb` liest Objektschlüssel kanonisch sortiert zurück,
+// `JSON.stringify` folgt der Einfügereihenfolge. V2 hasht deshalb nicht die Schreibweise, sondern
+// den WERT — der belegte Livebefund (182 von 871 Abweichungen) entsteht unter V2 gar nicht erst.
+
+export const AUDIT_HASH_VERSION_V1 = 1;
+export const AUDIT_HASH_VERSION_V2 = 2;
+
+/** Die Domänenkennung des V2-Materials. */
+export const AUDIT_HASH_DOMAIN_V2 = "klarwerk.audit.v2";
+
+// Als Codepunkt konstruiert statt als rohes Byte in der Quelle — ein NUL im Quelltext ist für
+// Diffs, Editoren und Werkzeuge eine Zumutung und verbirgt genau das, was hier zählt.
+const FELDTRENNER = String.fromCharCode(0x1f); // U+001F UNIT SEPARATOR
+const LAENGENTRENNER = String.fromCharCode(0x00);
+
+const utf8 = new TextEncoder();
+
+/** Die UTF-8-BYTEZAHL eines Feldwertes — normativ, niemals die Zeichenzahl. */
+function bytelaenge(wert: string): number {
+  return utf8.encode(wert).length;
+}
+
+/**
+ * Vergleich nach UNICODE-CODEPOINT, nicht nach UTF-16-Einheit.
+ *
+ * WARUM NICHT DIE EINGEBAUTE SORTIERUNG: `Array.prototype.sort()` vergleicht UTF-16-Codeeinheiten.
+ * Ein Astralzeichen wie U+1F600 beginnt mit dem Surrogat 0xD83D und landet damit VOR U+FFFD,
+ * obwohl sein Codepoint (128512) weit darüber liegt. Wer so sortiert, erzeugt für dieselbe
+ * Schlüsselmenge je nach Zeichenvorrat verschiedene kanonische Formen — und damit verschiedene
+ * Hashes für denselben Wert.
+ */
+function vergleicheCodepunkte(a: string, b: string): number {
+  const links = Array.from(a);
+  const rechts = Array.from(b);
+  const kuerzeste = Math.min(links.length, rechts.length);
+  for (let i = 0; i < kuerzeste; i++) {
+    const l = (links[i] as string).codePointAt(0) as number;
+    const r = (rechts[i] as string).codePointAt(0) as number;
+    if (l !== r) {
+      return l - r;
+    }
+  }
+  return links.length - rechts.length;
+}
+
+/**
+ * Kanonische JSON-Darstellung: Objektschlüssel rekursiv nach Unicode-Codepoint, ARRAYS UNVERÄNDERT.
+ *
+ * DIE ARRAYREGEL IST DIE WICHTIGERE HÄLFTE. `inspect-chain.test.ts` nagelt sie fest: `ids:["b","a"]`
+ * gegenüber `ids:["a","b"]` ist eine INHALTSÄNDERUNG und darf nicht wegnormiert werden. Ein
+ * Kanonisierer, der auch Arrays sortierte, machte aus einer echten Manipulation eine gültige Kette
+ * — er wäre schlimmer als gar keiner.
+ *
+ * Wertsemantik wie `JSON.stringify`: `toJSON` wird beachtet, Objektschlüssel mit `undefined`
+ * entfallen, `undefined` in Arrays wird zu `null`, nicht endliche Zahlen werden zu `null`.
+ */
+export function canonicalJson(value: unknown): string {
+  const wert = entpacke(value);
+  if (wert === null) {
+    return "null";
+  }
+  if (typeof wert === "number") {
+    return Number.isFinite(wert) ? JSON.stringify(wert) : "null";
+  }
+  if (typeof wert === "boolean" || typeof wert === "string") {
+    return JSON.stringify(wert);
+  }
+  if (typeof wert !== "object") {
+    // undefined, function, symbol — dieselbe Behandlung wie in JSON.stringify an Arraystellen.
+    return "null";
+  }
+  if (Array.isArray(wert)) {
+    return `[${wert.map((element) => canonicalJson(element)).join(",")}]`;
+  }
+  const objekt = wert as Record<string, unknown>;
+  const schluessel = Object.keys(objekt)
+    .filter((k) => entpacke(objekt[k]) !== undefined)
+    .sort(vergleicheCodepunkte);
+  return `{${schluessel.map((k) => `${JSON.stringify(k)}:${canonicalJson(objekt[k])}`).join(",")}}`;
+}
+
+function entpacke(value: unknown): unknown {
+  if (value !== null && typeof value === "object") {
+    const mitToJson = value as { toJSON?: unknown };
+    if (typeof mitToJson.toJSON === "function") {
+      return (mitToJson as { toJSON: () => unknown }).toJSON();
+    }
+  }
+  return value;
+}
+
+/**
+ * Das V2-Hashmaterial, ausgeschrieben.
+ *
+ * Aufbau: Domäne, dann je Feld `UTF-8-Bytezahl` + NUL + Wert, alle Teile mit U+001F getrennt.
+ * Feldfolge: `seq`, `at`, `actor`, `action`, `target`, `canonicalJson(payload)`, `prevHash`,
+ * `hashVersion`.
+ *
+ * Die Funktion ist ausdrücklich exportiert, damit der Sollvektor SEINE LÄNGE belegen kann
+ * (118 Bytes) und nicht nur seinen Hash. Ein Vektor, von dem nur der Hash geprüft wird, sagt bei
+ * einem Fehler nicht, WO er liegt.
+ */
+export function auditMaterialV2(entry: Omit<AuditEntry, "hash">): string {
+  const felder = [
+    String(entry.seq),
+    entry.at,
+    entry.actor,
+    entry.action,
+    entry.target,
+    canonicalJson(entry.payload),
+    entry.prevHash,
+    String(entry.hashVersion ?? AUDIT_HASH_VERSION_V2),
+  ];
+  const kodiert = felder.map((wert) => `${bytelaenge(wert)}${LAENGENTRENNER}${wert}`);
+  return AUDIT_HASH_DOMAIN_V2 + FELDTRENNER + kodiert.join(FELDTRENNER);
+}
+
+/** Der V1-Hash unter seinem Versionsnamen. Identisch mit `hashEntry` — kein zweites Verhalten. */
+export const hashEntryV1 = hashEntry;
+
+/** Der V2-Hash über das Material aus `auditMaterialV2`. */
+export function hashEntryV2(entry: Omit<AuditEntry, "hash">): string {
+  return createHash("sha256").update(auditMaterialV2(entry), "utf8").digest("hex");
+}
+
+/**
+ * DIE EINE ZENTRALE VERSIONSWAHL. Alle Prüfwege benutzen sie — `verifyChain`, `inspectChain`, die
+ * Kandidatensuche und `pruefeValidationDecisionRef`.
+ *
+ * Fehlend oder `1` ⇒ V1. `2` ⇒ V2. Jeder andere Wert ⇒ `undefined`, und das heißt FAIL-CLOSED:
+ * Wer eine Version nicht kennt, darf sie nicht durchwinken. Ein berechneter Hash wäre hier die
+ * gefährlichste Antwort, weil er eine Prüfung behauptet, die nie stattgefunden hat.
+ */
+export function hashEntryFuerVersion(entry: Omit<AuditEntry, "hash">): string | undefined {
+  const version = entry.hashVersion ?? AUDIT_HASH_VERSION_V1;
+  if (version === AUDIT_HASH_VERSION_V1) {
+    return hashEntryV1(entry);
+  }
+  if (version === AUDIT_HASH_VERSION_V2) {
+    return hashEntryV2(entry);
+  }
+  return undefined;
+}
+
+// Die Prüffelder eines Eintrags — ohne `hash` (den prüfen wir) und ohne `eventId` (der geht in
+// kein Material ein). `hashVersion` MUSS mit, sonst wählt der Prüfer die falsche Version.
+function pruefmaterial(entry: AuditEntry): Omit<AuditEntry, "hash"> {
+  return {
+    seq: entry.seq,
+    at: entry.at,
+    actor: entry.actor,
+    action: entry.action,
+    target: entry.target,
+    payload: entry.payload,
+    prevHash: entry.prevHash,
+    hashVersion: entry.hashVersion,
+  };
+}
+
 // FR-AUD-02: Manipulation ist erkennbar — die Kette verifiziert lückenlos.
 export function verifyChain(entries: readonly AuditEntry[]): boolean {
   let prev = GENESIS;
@@ -24,16 +200,8 @@ export function verifyChain(entries: readonly AuditEntry[]): boolean {
     if (entry.prevHash !== prev) {
       return false;
     }
-    const expected = hashEntry({
-      seq: entry.seq,
-      at: entry.at,
-      actor: entry.actor,
-      action: entry.action,
-      target: entry.target,
-      payload: entry.payload,
-      prevHash: entry.prevHash,
-    });
-    if (entry.hash !== expected) {
+    const expected = hashEntryFuerVersion(pruefmaterial(entry));
+    if (expected === undefined || entry.hash !== expected) {
       return false;
     }
     prev = entry.hash;
@@ -226,6 +394,15 @@ function payloadDeviationKind(
   entry: AuditEntry,
   cap: number,
 ): "serialisation" | "unresolved" | "unchecked" {
+  // JOB 498 D8 — EINE UNBEKANNTE VERSION IST NICHT „NICHT GEPRÜFT", SONDERN „NICHT AUFLÖSBAR".
+  //
+  // Der Unterschied ist keine Wortklauberei: `unchecked` sagt in der Oberfläche „nicht geprüft"
+  // und meint die Umordnungsschranke — eine Aussage über UNSEREN Aufwand. Eine unbekannte
+  // Hashversion ist etwas anderes: sie ist geprüft worden, und die Prüfung ist gescheitert, weil
+  // es kein Material gibt, mit dem sie gelingen könnte. Das ist `unresolved`.
+  if (hashEntryFuerVersion(pruefmaterial(entry)) === undefined) {
+    return "unresolved";
+  }
   if (countOrderings(entry.payload, cap) > cap) {
     return "unchecked";
   }
@@ -236,9 +413,14 @@ function payloadDeviationKind(
     action: entry.action,
     target: entry.target,
     prevHash: entry.prevHash,
+    hashVersion: entry.hashVersion,
   };
   for (const candidate of orderingVariants(entry.payload)) {
-    if (hashEntry({ ...base, payload: candidate as Record<string, unknown> }) === entry.hash) {
+    const kandidat = hashEntryFuerVersion({
+      ...base,
+      payload: candidate as Record<string, unknown>,
+    });
+    if (kandidat === entry.hash) {
       return "serialisation";
     }
   }
@@ -265,16 +447,10 @@ export function inspectChain(
 
   for (const entry of entries) {
     const linkageOk = entry.prevHash === prev;
-    const expected = hashEntry({
-      seq: entry.seq,
-      at: entry.at,
-      actor: entry.actor,
-      action: entry.action,
-      target: entry.target,
-      payload: entry.payload,
-      prevHash: entry.prevHash,
-    });
-    const payloadOk = entry.hash === expected;
+    // JOB 498 D8: dieselbe zentrale Versionswahl wie in `verifyChain`. `undefined` heißt
+    // „unbekannte Version" und ist damit nie gleich einem gespeicherten Hash — fail-closed.
+    const expected = hashEntryFuerVersion(pruefmaterial(entry));
+    const payloadOk = expected !== undefined && entry.hash === expected;
 
     let kind: ChainDeviationKind | undefined;
     if (!linkageOk) {

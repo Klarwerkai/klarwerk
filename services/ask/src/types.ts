@@ -112,13 +112,49 @@ export type AnswerNullReason =
    * `null` MIT DIESEM GRUND die einzige ehrliche Antwort — nicht ein erfundener Beleg und nicht
    * ein Grund, der laengst behoben ist.
    */
-  | "w3c_no_decision_carrier";
+  | "w3c_no_decision_carrier"
+  /**
+   * KW-W3-23 §3 — DER OBERE ORT WIRD NICHT MEHR BESCHRIEBEN.
+   *
+   * Seit W3-23 traegt jede Evidence ihre eigene Referenz. Das top-level Feld bleibt bestehen, weil
+   * Altbestand es fuehrt — ein NEUER Snapshot laesst es aber leer, und dieser Grund sagt warum.
+   *
+   * Er ist ausdruecklich NICHT `w3c_no_decision_carrier`: dieser Grund behauptete, es gebe keinen
+   * Traeger von der Entscheidung zur Antwort. Den gibt es seit `KnowledgeObject.validationDecisionRef`
+   * sehr wohl — er steht nur an der richtigen Stelle, naemlich unten je Evidence. Den alten Grund
+   * weiterzuschreiben waere eine Unwahrheit ueber den heutigen Bestand.
+   */
+  | "w3_23_ref_liegt_je_evidence";
 
 /** Die Validation-Referenz aus `KW-W3-19` — Sequenz UND Hash, nie nur eine der beiden. */
 export interface AnswerValidationDecisionRef {
   readonly auditSeq: number;
   readonly auditHash: string;
 }
+
+/**
+ * ================================================================================================
+ * KW-W3-23 §2 — WARUM EINE REFERENZ FEHLT. MASCHINENLESBAR, JE EVIDENCE.
+ * ================================================================================================
+ *
+ * Der Unterschied zu `AnswerNullReason` darueber ist keine Doppelung, sondern eine andere Frage.
+ * `AnswerNullReason` beantwortet: warum ist ein Feld des SNAPSHOTS leer (W1 nicht verdrahtet, kein
+ * Locator aus dem Import). Diese Aufzaehlung beantwortet: warum traegt DIESE EINE Evidence keine
+ * Validierungsentscheidung. Die zweite Frage gab es vor W3-23 nicht, weil es die per-Evidence-
+ * Referenz nicht gab.
+ *
+ * · `NOT_AVAILABLE_AT_EXECUTION` — zum Ausfuehrungszeitpunkt trug das Knowledge Object keine
+ *   Entscheidung. Der Regelfall fuer nie validierte oder nach `revise()` ueberholte Objekte. Er ist
+ *   eine EHRLICHE Luecke und kein Defekt — aber an einer Pflicht-Evidence verhindert er `COMPLETE`.
+ * · `NOT_REQUIRED` — die Evidence ist nachweislich nicht verpflichtend (`consulted`). Nur hier ist
+ *   das Fehlen folgenlos.
+ * · `LEGACY_UNBOUND` — Lesebestand. NEUE Snapshots schreiben diesen Grund nicht; er beschreibt
+ *   Altbestand, dessen Zuordnung nie erfasst wurde.
+ */
+export type ValidationReferenceAbsenceReason =
+  | "NOT_AVAILABLE_AT_EXECUTION"
+  | "NOT_REQUIRED"
+  | "LEGACY_UNBOUND";
 
 /**
  * EINE herangezogene Wissenseinheit. `knowledgeObjectId` und `knowledgeObjectVersion` sind die
@@ -135,7 +171,41 @@ export interface AnswerEvidenceRef {
   readonly sourceRecordIdReason: AnswerNullReason | null;
   readonly locator: string | null;
   readonly locatorReason: AnswerNullReason | null;
+  /**
+   * KW-W3-23 §2 — DIE VALIDIERUNGSENTSCHEIDUNG DIESER EINEN WISSENSEINHEIT.
+   *
+   * Hier steht sie, und nur hier. Der top-level Ort am Snapshot ist Lesebestand (KW-W3-23 §3):
+   * er konnte bei zwei Quellen nicht sagen, welcher der beiden er gehoert, und die naheliegenden
+   * Auswege — die erste, die letzte oder die „tragende" Referenz gelten zu lassen — sind
+   * ausdruecklich verboten. Eine Referenz belegt eine Entscheidung ueber EIN Subject.
+   */
+  readonly validationDecisionRef?: AnswerValidationDecisionRef;
+  /**
+   * KW-W3-23 §2, Invariante 2: je Evidence ist beim Snapshotabschluss GENAU EINES von beiden
+   * vorhanden. Beides zugleich ist ein Widerspruch und endet fail-closed auf `INVALIDATED`;
+   * keines von beiden verhindert `COMPLETE`.
+   */
+  readonly validationReferenceAbsenceReason?: ValidationReferenceAbsenceReason;
 }
+
+/**
+ * ================================================================================================
+ * JOB 541 D3 — WEM DIE ANTWORT GEHOERT. EIN VERBUND, KEINE ZEICHENKETTE.
+ * ================================================================================================
+ *
+ * WARUM NICHT `owner: string` MIT DEM WERT `"system"`: Weil dann ein Nutzerkonto namens `system`
+ * die Systemantworten der ganzen Instanz lesen koennte. Das ist kein erfundener Angriff — es ist
+ * die naheliegendste Form dieses Fehlers, und sie ist mit einer Zeichenkette unvermeidbar.
+ *
+ * Der Verbund macht die Verwechslung UNMOEGLICH statt unwahrscheinlich: Eine Systemantwort hat
+ * kein Feld, in dem eine Nutzerkennung stehen koennte, und ein Vergleich gegen eine Nutzerkennung
+ * kann bei ihr nie zutreffen.
+ */
+export type AnswerOwner =
+  /** Vom System erzeugt (kein angemeldeter Fragender). Gehoert KEINEM Konto. */
+  | { readonly kind: "system" }
+  /** Von einem Menschen erzeugt — mit seiner tatsaechlichen Kennung. */
+  | { readonly kind: "user"; readonly userId: string };
 
 /** Die stabile Identitaet einer Antwort. Sie entsteht einmal und aendert sich nie. */
 export interface AnswerRecord {
@@ -143,6 +213,26 @@ export interface AnswerRecord {
   readonly askExecutionId: string;
   readonly createdAt: string;
   readonly schemaVersion: number;
+  /**
+   * JOB 541 D3: Eigentum. OPTIONAL, weil Altbestand es nicht traegt — ein Record ohne `owner` ist
+   * ein Altbestandsrecord und wird fail-closed wie eine Systemantwort behandelt (niemand
+   * „besitzt" ihn).
+   */
+  readonly owner?: AnswerOwner;
+}
+
+/**
+ * Gehoert dieser Record dem fragenden Konto?
+ *
+ * Fail-closed an drei Stellen: fehlendes Eigentum ist kein Eigentum, eine Systemantwort gehoert
+ * keinem Konto, und eine leere Kennung passt auf nichts.
+ */
+export function gehoertNutzer(record: AnswerRecord, userId: string): boolean {
+  const owner = record.owner;
+  if (owner === undefined || owner.kind !== "user") {
+    return false;
+  }
+  return userId.trim().length > 0 && owner.userId === userId;
 }
 
 /**
@@ -222,6 +312,15 @@ export function answerSnapshotHashMaterial(snapshot: AnswerEvidenceSnapshot): re
         `sourceRecordIdReason=${hashWert(ref.sourceRecordIdReason)}`,
         `locator=${hashWert(ref.locator)}`,
         `locatorReason=${hashWert(ref.locatorReason)}`,
+        // KW-W3-23: die per-Evidence-Referenz IST Inhalt des Belegs und gehoert deshalb ins
+        // Material. Ohne sie liesse sich eine Entscheidung nachtraeglich an eine Evidence haengen
+        // oder von ihr loesen, ohne dass der Hash es merkt — und genau das soll er merken.
+        `evidenceValidationRef=${
+          ref.validationDecisionRef === undefined
+            ? NULL_MARKER
+            : `${ref.validationDecisionRef.auditSeq}#${ref.validationDecisionRef.auditHash}`
+        }`,
+        `evidenceAbsenceReason=${hashWert(ref.validationReferenceAbsenceReason ?? null)}`,
       ].join("\u001e"),
     );
   });
@@ -250,6 +349,117 @@ function ergaenzungVollstaendig(ref: AnswerEvidenceRef): boolean {
 }
 
 /**
+ * KW-W3-23 §3 — DAS LEGACY-LESEMODELL. EINE ZUORDNUNG, DIE ES GIBT, ODER GAR KEINE.
+ *
+ * Alte Snapshots tragen ihre Validierungsreferenz oben. Bei GENAU EINER Evidence ist die Zuordnung
+ * eindeutig: es gibt nur eine Wissenseinheit, der die Entscheidung gehoeren kann. Sie darf deshalb
+ * im Lesemodell dieser Evidence zugeordnet ANGEZEIGT werden.
+ *
+ * Bei mehreren Evidenzen ist sie unbestimmt — und bleibt es. Die Karte ist dann LEER, nicht
+ * geraten. Das ist der ganze Grund, warum es diese Funktion gibt statt einer stillen Ersetzung im
+ * Leseweg: „ich weiss es nicht" muss darstellbar sein.
+ *
+ * Traegt eine Evidence bereits ihre eigene Referenz, ist der Snapshot kein Legacy-Fall; dann
+ * entsteht hier nichts.
+ */
+export function legacyValidationZuordnung(
+  snapshot: AnswerEvidenceSnapshot,
+): ReadonlyMap<string, AnswerValidationDecisionRef> {
+  const zuordnung = new Map<string, AnswerValidationDecisionRef>();
+  const oben = snapshot.validationDecisionRef;
+  if (oben === null) {
+    return zuordnung;
+  }
+  if (snapshot.evidence.some((ref) => ref.validationDecisionRef !== undefined)) {
+    return zuordnung;
+  }
+  const einzige = snapshot.evidence.length === 1 ? snapshot.evidence.at(0) : undefined;
+  if (einzige !== undefined) {
+    zuordnung.set(einzige.knowledgeObjectId, oben);
+  }
+  return zuordnung;
+}
+
+/**
+ * Die WIRKSAME Referenz einer Evidence: ihre eigene, sonst die zugeordnete Legacy-Referenz.
+ *
+ * Genau hier — und nur hier — treffen neuer und alter Wahrheitsort aufeinander. Die Reihenfolge
+ * ist Absicht: die eigene Referenz gewinnt immer, die Legacy-Referenz greift nur, wo es keine
+ * eigene gibt UND die Zuordnung eindeutig ist.
+ */
+function wirksameReferenz(
+  ref: AnswerEvidenceRef,
+  legacy: ReadonlyMap<string, AnswerValidationDecisionRef>,
+): AnswerValidationDecisionRef | undefined {
+  return ref.validationDecisionRef ?? legacy.get(ref.knowledgeObjectId);
+}
+
+/** KW-W3-23 §2, Invariante 1: Referenz und Abwesenheitsgrund schliessen sich aus. */
+function ausschlussVerletzt(ref: AnswerEvidenceRef): boolean {
+  return (
+    ref.validationDecisionRef !== undefined && ref.validationReferenceAbsenceReason !== undefined
+  );
+}
+
+/**
+ * KW-W3-23 §3, letzter Absatz: Widersprechen top-level und per-Evidence einander, gilt fail-closed
+ * `INVALIDATED`.
+ *
+ * Ein Widerspruch liegt vor, sobald der Snapshot BEIDE Orte benutzt und ein per-Evidence-Wert vom
+ * top-level-Wert abweicht. Ein neuer Snapshot schreibt oben gar nichts; wer beides schreibt,
+ * behauptet zwei Wahrheiten ueber dieselbe Entscheidung.
+ */
+function widersprichtLegacy(snapshot: AnswerEvidenceSnapshot): boolean {
+  const oben = snapshot.validationDecisionRef;
+  if (oben === null) {
+    return false;
+  }
+  return snapshot.evidence.some((ref) => {
+    const eigen = ref.validationDecisionRef;
+    return (
+      eigen !== undefined &&
+      (eigen.auditSeq !== oben.auditSeq || eigen.auditHash !== oben.auditHash)
+    );
+  });
+}
+
+/**
+ * KW-W3-23 §3, erster Absatz: „Alte Snapshots ... bleiben lesbar."
+ *
+ * DER FALL, den diese Funktion beantwortet: ein Snapshot AUS DER ZEIT VOR W3-23. Er traegt oben
+ * keine Referenz, sondern einen maschinenlesbaren GRUND (`validationDecisionRefReason`), und unten
+ * kennt seine Evidence die neuen Felder gar nicht — sie gab es beim Schreiben noch nicht.
+ *
+ * Ihn deshalb als „Invariante verletzt" zu fuehren waere falsch und waere ausgerechnet die
+ * Bestrafung der Ehrlichkeit, die W3-A hergestellt hat: dieser Snapshot hat seine Luecke sauber
+ * benannt, nur eben an der damals einzigen Stelle. Er wird gelesen wie ein `LEGACY_UNBOUND`:
+ * NIE `COMPLETE`, aber auch kein `INCOMPLETE` und kein Defekt.
+ *
+ * Ein NEUER Snapshot faellt hier nicht hinein — der Schreibweg setzt seit W3-23 je Evidence
+ * entweder eine Referenz oder einen Grund. Und ein Snapshot ohne Referenz UND ohne Grund an
+ * BEIDEN Orten ist weiterhin `INCOMPLETE`: der schweigt, statt zu benennen.
+ */
+function legacyOhneEvidenzfelder(snapshot: AnswerEvidenceSnapshot): boolean {
+  return (
+    snapshot.validationDecisionRefReason !== null &&
+    !snapshot.evidence.some(
+      (ref) =>
+        ref.validationDecisionRef !== undefined ||
+        ref.validationReferenceAbsenceReason !== undefined,
+    )
+  );
+}
+
+/** Legacy-Mehrquellenfall: oben eine Referenz, unten keine, und mehr als eine Evidence. */
+function legacyMehrquellen(snapshot: AnswerEvidenceSnapshot): boolean {
+  return (
+    snapshot.validationDecisionRef !== null &&
+    snapshot.evidence.length > 1 &&
+    !snapshot.evidence.some((ref) => ref.validationDecisionRef !== undefined)
+  );
+}
+
+/**
  * DER ABSCHLUSSSTATUS, ABGELEITET STATT BEHAUPTET.
  *
  * Die Reihenfolge der Pruefungen IST die Regel:
@@ -267,11 +477,49 @@ export function answerSnapshotStatus(snapshot: AnswerEvidenceSnapshot): AnswerSn
   if (!snapshot.evidence.every(primaerGebunden)) {
     return "INCOMPLETE";
   }
+  // ============================================================================================
+  // KW-W3-23 §4 — DER VOLLSTAENDIGKEITSSTATUS HAENGT AN DEN PER-EVIDENCE-REFERENZEN.
+  // ============================================================================================
+  //
+  // Bis W3-23 stand hier `snapshot.validationDecisionRef !== null` — EIN Feld fuer die ganze
+  // Antwort. Bei zwei Quellen machte das aus einer offenen Zuordnung ein `COMPLETE`. Genau diese
+  // Falschgruenklasse ersetzt der Abschnitt hier.
+  //
+  // `INCOMPLETE` bedeutet: eine historisch NOTWENDIGE Bindung wurde nicht erfasst. Das gilt in
+  // drei Lagen — der unbestimmte Legacy-Mehrquellenfall, eine Evidence ohne Referenz UND ohne
+  // Grund (die Invariante aus §2 ist verletzt), und eine Pflicht-Evidence, die nur einen
+  // Abwesenheitsgrund traegt.
+  if (legacyMehrquellen(snapshot)) {
+    return "INCOMPLETE";
+  }
+  const legacy = legacyValidationZuordnung(snapshot);
+  const altbestand = legacyOhneEvidenzfelder(snapshot);
+  for (const ref of snapshot.evidence) {
+    const wirksam = wirksameReferenz(ref, legacy);
+    const grund = ref.validationReferenceAbsenceReason;
+    if (wirksam !== undefined) {
+      continue;
+    }
+    // Altbestand hat seinen Grund oben benannt — er zaehlt wie `LEGACY_UNBOUND`.
+    if (altbestand) {
+      continue;
+    }
+    if (grund === undefined) {
+      return "INCOMPLETE";
+    }
+    if (ref.evidenceRole === "carrying") {
+      return "INCOMPLETE";
+    }
+  }
+  // `COMPLETE` verlangt JEDE Evidence mit wirksamer Referenz — auch die ergaenzenden. Eine
+  // `consulted`-Evidence mit zulaessigem `NOT_REQUIRED` ist deshalb `PARTIAL`, nicht `COMPLETE`:
+  // primaere Evidence vollstaendig, nur die Ergaenzung fehlt (KW-W3-23 §4).
+  const alleReferenzen = snapshot.evidence.every(
+    (ref) => wirksameReferenz(ref, legacy) !== undefined,
+  );
   const alleErgaenzungen =
-    snapshot.evidence.every(ergaenzungVollstaendig) &&
-    snapshot.resolutionId !== null &&
-    snapshot.validationDecisionRef !== null;
-  return alleErgaenzungen ? "COMPLETE" : "PARTIAL";
+    snapshot.evidence.every(ergaenzungVollstaendig) && snapshot.resolutionId !== null;
+  return alleErgaenzungen && alleReferenzen ? "COMPLETE" : "PARTIAL";
 }
 
 /**
@@ -362,6 +610,18 @@ export interface AnswerIntegrityContext {
    * waere die Regel nicht ausdrueckbar — nur behauptbar.
    */
   readonly validationIstPrimaer?: boolean;
+  /**
+   * KW-W3-23 §4 — DER REFERENZBEFUND JE EVIDENCE, statt einmal fuer die ganze Antwort.
+   *
+   * Geschluesselt ueber `knowledgeObjectId` und NICHT ueber den Listenindex: KW-W3-23 §2 sagt
+   * woertlich, dass die Reihenfolge der Evidence-Liste die Zuordnung nicht veraendert. Ein
+   * indexbasierter Kontext haette genau das getan.
+   *
+   * Ein Befund gilt nur fuer eine Evidence, die auch WIRKLICH eine Referenz traegt. Ein ehrlich
+   * benannter Abwesenheitsgrund ist kein gebrochener Beleg — dieselbe Regel wie beim top-level
+   * Feld, eine Ebene tiefer.
+   */
+  readonly evidenceValidationRefStates?: ReadonlyMap<string, AnswerValidationRefState>;
 }
 
 /**
@@ -451,6 +711,65 @@ export function answerSnapshotIntegrity(
     return "REDACTED";
   }
   // ============================================================================================
+  // KW-W3-23 §4 — DIE PRIORITAETSLEITER JE EVIDENCE.
+  // ============================================================================================
+  //
+  //   1 Snapshot-/Hashintegritaet          (oben, unveraendert)
+  //   2 Widerspruch der beiden Wahrheitsorte / verletzter Ausschluss
+  //   3 Pflicht-Evidence mit HASH_MISMATCH, WRONG_EVENT_TYPE oder WRONG_SUBJECT
+  //   4 Pflicht-Evidence mit MISSING
+  //   5 REDACTED
+  //   6 Vollstaendigkeitsstatus
+  //
+  // Der Widerspruch steht GANZ OBEN in dieser Leiter, weil er kein Referenzbefund ist, sondern
+  // eine Aussage ueber den Snapshot selbst: er behauptet zwei verschiedene Entscheidungen ueber
+  // dieselbe Sache. Das ist naeher an einer Manipulation als an einer fehlenden Auskunft.
+  if (widersprichtLegacy(snapshot) || snapshot.evidence.some(ausschlussVerletzt)) {
+    return "INVALIDATED";
+  }
+  const legacyKarte = legacyValidationZuordnung(snapshot);
+  const befunde = kontext.evidenceValidationRefStates;
+  if (befunde !== undefined) {
+    let redigiert = false;
+    for (const ref of snapshot.evidence) {
+      // Nur eine Evidence, die eine Referenz TRAEGT, kann einen gebrochenen Beleg haben.
+      if (wirksameReferenz(ref, legacyKarte) === undefined) {
+        continue;
+      }
+      const befund = befunde.get(ref.knowledgeObjectId);
+      if (befund === undefined || befund === "OK") {
+        continue;
+      }
+      const pflicht = ref.evidenceRole === "carrying";
+      if (
+        befund === "HASH_MISMATCH" ||
+        befund === "WRONG_EVENT_TYPE" ||
+        befund === "WRONG_SUBJECT"
+      ) {
+        // Ein defekter Beleg an einer Pflicht-Evidence ist ein Integritaetsdefekt. An einer
+        // ergaenzenden Evidence bleibt die Antwort belastbar — sie wird unten `DEGRADED`.
+        if (pflicht) {
+          return "INVALIDATED";
+        }
+        continue;
+      }
+      if (befund === "MISSING") {
+        if (pflicht) {
+          return "INVALIDATED";
+        }
+        continue;
+      }
+      if (befund === "REDACTED") {
+        redigiert = true;
+      }
+    }
+    // NACH der Defektschleife: Manipulation schlaegt Redaktion. Ein gebrochener Beleg darf nie
+    // als „da war was, Sie duerfen es nur nicht sehen" beschoenigt werden.
+    if (redigiert) {
+      return "REDACTED";
+    }
+  }
+  // ============================================================================================
   // PRIORITAET 3 — DIE ALLGEMEINE SPERRE (KW-W3-22 Entscheidung 1).
   // ============================================================================================
   //
@@ -471,9 +790,18 @@ export function answerSnapshotIntegrity(
   if (primaer !== undefined) {
     return primaer;
   }
+  // KW-W3-23 §3: der Legacy-Mehrquellenfall ist hinsichtlich der Validierungszuordnung unbestimmt
+  // — `DEGRADED`, nicht `VALID` und nicht `INVALIDATED`. Er ist kein Defekt, aber auch keine
+  // vollstaendige Auskunft.
+  if (legacyMehrquellen(snapshot)) {
+    return "DEGRADED";
+  }
+  // Die top-level Referenz steht hier NICHT mehr in der Bedingung: seit KW-W3-23 traegt die
+  // Evidence ihre Referenz selbst, und ein neuer Snapshot schreibt oben gar nichts mehr. Wer sie
+  // hier noch verlangte, machte jeden korrekten neuen Snapshot dauerhaft `DEGRADED`.
   const ergaenzungOffen =
     !snapshot.evidence.every(ergaenzungVollstaendig) ||
     snapshot.resolutionId === null ||
-    snapshot.validationDecisionRef === null;
+    snapshot.evidence.some((ref) => wirksameReferenz(ref, legacyKarte) === undefined);
   return ergaenzungOffen ? "DEGRADED" : "VALID";
 }

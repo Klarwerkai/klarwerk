@@ -29,6 +29,19 @@ CREATE UNIQUE INDEX IF NOT EXISTS audit_event_id_uq
   WHERE event_id IS NOT NULL;
 `;
 
+// JOB 498 D8: ADDITIVE Migrationsstufe DIREKT nach AUDIT_EVENT_ID_SCHEMA — die Hashversion je
+// Eintrag. `AUDIT_EVENT_ID_SCHEMA` ist der bereits vorhandene Präzedenzfall derselben Bauform.
+//
+// `NOT NULL DEFAULT 1` IST DIE GANZE MIGRATION DES ALTBESTANDS: jede vorhandene Zeile bekommt
+// genau die Version, mit der sie tatsächlich gehasht wurde. Es wird nichts umgerechnet, nichts
+// nachgetragen und nichts angefasst — der Altbestand ist V1, und die Spalte sagt das nun auch.
+//
+// KEIN DROP, KEIN TRUNCATE, KEIN UPDATE, KEIN DELETE. Die Stufe ist wiederholbar
+// (`IF NOT EXISTS`) und in `migrationsbeleg.ts` als `ADDITIV` geführt.
+export const AUDIT_HASH_VERSION_SCHEMA = `
+ALTER TABLE audit ADD COLUMN IF NOT EXISTS hash_version integer NOT NULL DEFAULT 1;
+`;
+
 interface AuditRow {
   seq: number;
   at: string;
@@ -40,6 +53,9 @@ interface AuditRow {
   hash: string;
   // WP-SHIP8-CLOSE-6 (bens ROT-1): Idempotenzschlüssel (nur bei recordOnce-Einträgen gesetzt).
   event_id?: string | null;
+  // JOB 498 D8: die Hashversion der Zeile. Optional getypt, weil eine Bestandsinstanz VOR der
+  // Migration die Spalte nicht hat — `toEntry` fällt dann auf 1 zurück, was für sie richtig ist.
+  hash_version?: number | null;
 }
 
 function toEntry(row: AuditRow): AuditEntry {
@@ -53,6 +69,14 @@ function toEntry(row: AuditRow): AuditEntry {
     prevHash: row.prev_hash,
     hash: row.hash,
     ...(row.event_id ? { eventId: row.event_id } : {}),
+    // JOB 498 D8 — HIER, UND NICHT IM SCHEMA, LAG DIE EIGENTLICHE LÜCKE.
+    //
+    // `all()`, `last()` und `findBySeq()` fragen mit `SELECT *` ab; die neue Spalte KÄME also
+    // ohnehin aus der Datenbank zurück. Sie fiele erst hier weg, weil diese Funktion sie nicht
+    // abbildet. Genau das meinte BEN2-D4 mit „ginge beim Roundtrip verloren" — es ist eine
+    // Funktion, kein Schema. Ohne diese Zeile läse jeder V2-Eintrag als versionslos zurück und
+    // würde gegen V1 nachgerechnet: die ganze Kette fiele auseinander, obwohl die Spalte steht.
+    hashVersion: row.hash_version ?? 1,
   };
 }
 
@@ -67,8 +91,11 @@ export class PgAuditRepo implements AuditRepo {
   }
 
   async append(entry: AuditEntry, tx?: TxContext): Promise<void> {
+    // JOB 498 D8: `hash_version` wird AUSDRÜCKLICH geschrieben, nicht dem Spaltendefault
+    // überlassen. Der Default ist 1 — ein V2-Eintrag käme sonst als V1 zurück und wäre damit
+    // unprüfbar, obwohl beim Schreiben alles stimmte.
     await this.queryable(tx).query(
-      "INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+      "INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,hash_version) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)",
       [
         entry.seq,
         entry.at,
@@ -78,6 +105,7 @@ export class PgAuditRepo implements AuditRepo {
         JSON.stringify(entry.payload),
         entry.prevHash,
         entry.hash,
+        entry.hashVersion ?? 1,
       ],
     );
   }
@@ -86,8 +114,8 @@ export class PgAuditRepo implements AuditRepo {
   // Schreiber desselben Events trifft ON CONFLICT (DO NOTHING) und bekommt ehrlich false zurück.
   async appendOnce(entry: AuditEntry, tx?: TxContext): Promise<boolean> {
     const res = await this.queryable(tx).query(
-      `INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,event_id)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      `INSERT INTO audit(seq,at,actor,action,target,payload,prev_hash,hash,event_id,hash_version)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
        ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING
        RETURNING seq`,
       [
@@ -100,6 +128,9 @@ export class PgAuditRepo implements AuditRepo {
         entry.prevHash,
         entry.hash,
         entry.eventId ?? null,
+        // BEIDE INSERT-Pfade führen die Version. BEN2 hat an D7 gerügt, dass nur einer genannt war:
+        // „Ohne beide INSERT-Spalten schreibt ein neuer V2-Eintrag den Datenbank-Default 1."
+        entry.hashVersion ?? 1,
       ],
     );
     return (res.rowCount ?? 0) > 0;

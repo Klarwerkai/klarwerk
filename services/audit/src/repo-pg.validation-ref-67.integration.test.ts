@@ -2,9 +2,15 @@ import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { guardedLocalPgTestUrl } from "../../db-tx";
-import { hashEntry } from "./chain";
+import { GENESIS, hashEntry } from "./chain";
 import { InMemoryAuditRepo, pruefeValidationDecisionRef } from "./repo";
-import { AUDIT_EVENT_ID_SCHEMA, AUDIT_SCHEMA, PgAuditRepo } from "./repo-pg";
+import {
+  AUDIT_EVENT_ID_SCHEMA,
+  AUDIT_HASH_VERSION_SCHEMA,
+  AUDIT_SCHEMA,
+  PgAuditRepo,
+} from "./repo-pg";
+import { AuditService } from "./service";
 import type { AuditEntry } from "./types";
 
 // ================================================================================================
@@ -48,6 +54,7 @@ describe("W3-B/67: findBySeq gegen echtes PostgreSQL, paritaetisch zu InMemory",
       if (available) {
         await pool?.query(AUDIT_SCHEMA);
         await pool?.query(AUDIT_EVENT_ID_SCHEMA);
+        await pool?.query(AUDIT_HASH_VERSION_SCHEMA);
       }
       return;
     }
@@ -66,6 +73,7 @@ describe("W3-B/67: findBySeq gegen echtes PostgreSQL, paritaetisch zu InMemory",
       });
       await pool.query(AUDIT_SCHEMA);
       await pool.query(AUDIT_EVENT_ID_SCHEMA);
+      await pool.query(AUDIT_HASH_VERSION_SCHEMA);
       available = true;
     } catch {
       available = false;
@@ -168,5 +176,61 @@ describe("W3-B/67: findBySeq gegen echtes PostgreSQL, paritaetisch zu InMemory",
     ).toBe("MISSING");
     // Es liegt sehr wohl EIN Eintrag in der Tabelle — er darf nur nicht ersatzweise herhalten.
     expect((await pg.all()).length).toBe(1);
+  });
+
+  // ==============================================================================================
+  // JOB 498 D8 (D6 T6) — DIE HASHVERSION IST IN BEIDEN ABLAGEN DIESELBE ZUSAGE
+  // ==============================================================================================
+  //
+  // Die Paritaet ist auch hier die eigentliche Aussage. Eine Version, die nur InMemory ueberlebt,
+  // waere kein Vertrag, sondern ein Zufall: der Wert entstuende im Dienst, ginge beim Schreiben
+  // verloren und kaeme als 1 zurueck — und die Kette fiele auseinander, sobald jemand sie prueft.
+  it("T6 — derselbe V2-Eintrag liest in BEIDEN Ablagen mit hashVersion 2 zurueck", async (ctx) => {
+    const p = requirePool(ctx);
+    await p.query("DELETE FROM audit");
+    const pg = new PgAuditRepo(p);
+    const mem = new InMemoryAuditRepo();
+
+    for (const [name, repo] of [
+      ["pg", pg],
+      ["mem", mem],
+    ] as const) {
+      const dienst = new AuditService({ repo });
+      const geschrieben = await dienst.record({
+        actor: "anna",
+        action: "ko.rated",
+        target: "ko-v2",
+        payload: { verdict: "up", koVersion: 3 },
+      });
+      expect(geschrieben.hashVersion, name).toBe(2);
+
+      const gelesen = await repo.findBySeq(geschrieben.seq);
+      expect(gelesen?.hashVersion, name).toBe(2);
+      expect(gelesen?.hash, name).toBe(geschrieben.hash);
+      // Und die Kette verifiziert nach dem Zuruecklesen — bei Pg also ueber den echten Roundtrip.
+      expect(await dienst.verify(), name).toBe(true);
+    }
+  });
+
+  it("T6 — der Altbestand liest in BEIDEN Ablagen als Version 1 zurueck", async (ctx) => {
+    const p = requirePool(ctx);
+    await p.query("DELETE FROM audit");
+    const pg = new PgAuditRepo(p);
+    const mem = new InMemoryAuditRepo();
+
+    // `eintrag()` baut ohne `hashVersion` und hasht mit V1 — genau eine Altzeile.
+    const alt = eintrag({ seq: 1, prevHash: GENESIS });
+    expect(alt.hashVersion).toBeUndefined();
+    for (const [name, repo] of [
+      ["pg", pg],
+      ["mem", mem],
+    ] as const) {
+      await repo.append(alt);
+      const gelesen = await repo.findBySeq(1);
+      // Pg fuellt die Spalte aus `entry.hashVersion ?? 1`; InMemory gibt das Objekt unveraendert
+      // zurueck. Beide ergeben dieselbe PRUEFENTSCHEIDUNG: V1.
+      expect(gelesen?.hashVersion ?? 1, name).toBe(1);
+      expect(gelesen?.hash, name).toBe(alt.hash);
+    }
   });
 });

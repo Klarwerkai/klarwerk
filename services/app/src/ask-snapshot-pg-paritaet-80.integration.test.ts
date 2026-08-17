@@ -1,6 +1,7 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { hashAnswerSnapshot } from "../../ask";
 import { guardedLocalPgTestUrl } from "../../db-tx";
 import { buildPgServices } from "./build-app";
 import { migrate } from "./db";
@@ -231,5 +232,91 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
         JSON.stringify({ answerId, snapshotRevision: 1 }),
       ]),
     ).rejects.toThrow(/unique|duplicate/i);
+  });
+
+  // ==============================================================================================
+  // JOB 541 D3 — DIE PARITAET DER NEUEN FORM (KW-W3-23 und Eigentum).
+  // ==============================================================================================
+  //
+  // Der Auftrag verlangt ausdruecklich mehr als „JSONB-Plausibilitaet": belegt werden muss, dass
+  // der ERWEITERTE Record, die PER-EVIDENCE-Felder und das Lesen samt Rechte-/Integritaetszustand
+  // gegen die REALE Pg-Implementierung tragen. Die Fragen unten gehen deshalb an die Datenbank und
+  // danach durch den Pg-Adapter zurueck — nicht an ein InMemory-Repo.
+
+  it("JOB 541 D3: der Record traegt sein Eigentum in der DATENBANK — und `system` ist kein Konto", async () => {
+    const zeilen = await db().query<{ kind: string | null; user_id: string | null }>(
+      "SELECT data->'owner'->>'kind' AS kind, data->'owner'->>'userId' AS user_id FROM answer_records",
+    );
+    expect(zeilen.rows.length).toBeGreaterThan(0);
+    for (const r of zeilen.rows) {
+      // Die Antworten oben liefen mit Actor `anna` — also Nutzereigentum mit echter Kennung.
+      expect(r.kind).toBe("user");
+      expect(r.user_id).toBe("anna");
+      // Und ausdruecklich NICHT die Zeichenkette `system` als Kennung.
+      expect(r.user_id).not.toBe("system");
+    }
+  });
+
+  it("JOB 541 D3: die per-Evidence-Felder stehen in der DATENBANK, das top-level Feld bleibt leer", async () => {
+    const zeilen = await db().query<{
+      oben: string | null;
+      grund: string | null;
+      evidenz: unknown;
+    }>(
+      `SELECT data->>'validationDecisionRef' AS oben,
+              data->>'validationDecisionRefReason' AS grund,
+              data->'evidence' AS evidenz
+         FROM answer_snapshots
+        WHERE data->>'snapshotRevision' = '1'`,
+    );
+    expect(zeilen.rows.length).toBeGreaterThan(0);
+    for (const r of zeilen.rows) {
+      // KW-W3-23 §3: neue Snapshots beschreiben den oberen Ort nicht mehr.
+      expect(r.oben).toBeNull();
+      expect(r.grund).toBe("w3_23_ref_liegt_je_evidence");
+      const evidenz = (r.evidenz ?? []) as {
+        knowledgeObjectVersion: number | null;
+        validationDecisionRef?: unknown;
+        validationReferenceAbsenceReason?: string;
+      }[];
+      expect(evidenz.length).toBeGreaterThan(0);
+      for (const e of evidenz) {
+        // Die Fassung ist gebunden — nicht null, nicht 0.
+        expect(e.knowledgeObjectVersion).not.toBeNull();
+        expect(e.knowledgeObjectVersion).not.toBe(0);
+        // Genau eines von beidem, auch nach dem Weg durch JSONB.
+        const hatRef = e.validationDecisionRef !== undefined;
+        const hatGrund = e.validationReferenceAbsenceReason !== undefined;
+        expect(hatRef !== hatGrund).toBe(true);
+      }
+    }
+  });
+
+  it("JOB 541 D3: der Pg-Adapter LIEST die neue Form unveraendert zurueck", async () => {
+    const zeile = await db().query<{ answer_id: string }>(
+      "SELECT answer_id FROM answer_records LIMIT 1",
+    );
+    const answerId = zeile.rows[0]?.answer_id;
+    expect(answerId).toBeDefined();
+    if (!answerId) {
+      throw new Error("keine answerId in der Datenbank");
+    }
+    // DURCH DEN ADAPTER, nicht am SQL vorbei: hier entscheidet sich, ob die Form den Rueckweg
+    // uebersteht — genau das, was „JSONB ist plausibel" NICHT belegt.
+    const record = await app().answerSnapshots.findRecord(answerId);
+    expect(record?.owner).toEqual({ kind: "user", userId: "anna" });
+    const snapshot = await app().answerSnapshots.latestSnapshot(answerId);
+    expect(snapshot).toBeDefined();
+    expect(snapshot?.validationDecisionRef).toBeNull();
+    for (const e of snapshot?.evidence ?? []) {
+      expect(e.knowledgeObjectVersion).not.toBeNull();
+      const hatRef = e.validationDecisionRef !== undefined;
+      const hatGrund = e.validationReferenceAbsenceReason !== undefined;
+      expect(hatRef !== hatGrund).toBe(true);
+    }
+    // Und der Integritaetshash traegt die neuen Felder mit: nachgerechnet stimmt er.
+    if (snapshot) {
+      expect(snapshot.integrityHash).toBe(hashAnswerSnapshot(snapshot));
+    }
   });
 });

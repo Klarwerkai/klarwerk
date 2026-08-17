@@ -321,6 +321,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // (a) Statusmetadaten, aber NUR gegen eine registrierte Zuordnung (BEN ROT-5 korrigiert):
   // ohne gültige Sitzungsbindung antwortet die Route mit NOT_FOUND statt mit der Konfiguration.
   "GET /api/klara/ai-status": { protection: "ko.read" },
+  // W3-C (JOB 541 D3): die kanonische Antwort-Erklaerung. `ko.read`, weil sie Kennungen und
+  // Fassungen von Wissensobjekten zeigt; die Eigentumspruefung liegt zusaetzlich im Dienst.
+  "GET /api/klara/answers/:answerId/explanation": { protection: "ko.read" },
   // (b) Registriert die Zuordnung autoritativ und vergibt die opake documentContextId. Legt nur
   // Sitzungsmetadaten an, liest und schreibt kein KO.
   "POST /api/klara/sessions": { protection: "ko.read" },

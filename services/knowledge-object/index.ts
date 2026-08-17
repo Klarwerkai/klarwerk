@@ -188,6 +188,18 @@ export {
   UPLOAD_LIMITS_SCHEMA,
 } from "./src/upload-limits";
 export { displayStatus, type DisplayStatus } from "./src/display-status";
+// JOB 557 (Pedi 13.08.2026): das kanonische Eigentümer-Aggregat. OHNE diesen Export bliebe es
+// unerreichbar — und damit genau die unverdrahtete Empfangsstelle, die D5 gerügt hat. Der
+// Validierungsdienst liest `responsibleOf`/`responsibleKindOf` über DIESE Fassade; eine Kante in
+// die Modulinnereien gäbe es nicht.
+export {
+  normalizeOwnership,
+  ownershipOf,
+  responsibleKindOf,
+  responsibleOf,
+  sameOwnership,
+  withRole,
+} from "./src/ownership";
 // SCRUM-527 (WP2): zentrale Quell-URL-Allowlist (nur absolute http/https) an der Persistenzgrenze.
 export { safeSourceUrl, sanitizeSources } from "./src/source-url";
 // SCRUM-415: Vertraulichkeitsstufen (Helfer + Konstante) — auch von anderen Modulen (Output) nutzbar.
@@ -206,6 +218,8 @@ export type {
   EvidenceKind,
   EvidenceRecord,
   KnowledgeObject,
+  // JOB 557: die Form des Eigentümer-Aggregats.
+  KnowledgeOwnership,
   KnowledgeType,
   Confidentiality,
   KoStatus,

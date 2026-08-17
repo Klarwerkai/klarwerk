@@ -1,3 +1,6 @@
+import { createHash } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import fastifyStatic from "@fastify/static";
 import type { FastifyInstance } from "fastify";
 
@@ -11,13 +14,98 @@ export function isAssetRequest(url: string): boolean {
   return /\.[a-z0-9]+$/i.test(lastSegment);
 }
 
+// ================================================================================================
+// JOB 1077 — DIE AUSGELIEFERTE FASSUNG ENTSTEHT BEI DER AUSLIEFERUNG.
+// ================================================================================================
+//
+// DAS PROBLEM, gemessen und nicht vermutet: Ein installiertes Klara-Add-in hält seine Seite so
+// lange, bis der Webview sie neu holt. Bis hierher konnte niemand — der Mensch davor am wenigsten —
+// erkennen, ob die Seite im Aufgabenfenster noch die ist, die der Server ausliefert.
+//
+// DER ERSTE ENTWURF (D5) schrieb die Nummer als handgepflegtes Literal in die Quelldatei. Das ist
+// im Ansatz nicht schliessbar: Ein Literal ändert sich durch ein Neuladen nicht, also konnte die
+// Kette „Wechsel auslösen → neu laden → die neue Seite meldet die neue Fassung" nie geschlossen
+// werden. Die Quelle wird deshalb UMGEDREHT: Die Datei trägt nur den Platzhalter, und der Server
+// stempelt ihn in den GESENDETEN Körper. Daraus folgt die tragende Eigenschaft —
+//
+//   EINE AUSGELIEFERTE SEITE KANN NIEMALS EINE ANDERE FASSUNG BEHAUPTEN ALS DER SERVER,
+//   DER SIE GESCHICKT HAT.
+//
+// Beide Antworten, die gestempelte Seite und der Kopf `X-KW-Available-Version`, entstehen aus
+// EINEM Wert. Ein Client mit einer älteren Lieferung sieht die Abweichung sofort.
+//
+// WARUM EINE EIGENE ROUTE UND KEIN `onSend`-EINGRIFF — der naheliegende Weg wäre ein Stempel im
+// bestehenden Hook gewesen, und er wäre ein STILLER Fehler: `@fastify/static` antwortet mit einem
+// Stream und einem ETag über den PLATTENINHALT. Wird der Körper danach verändert, zeigt der
+// Validator auf einen anderen Inhalt als den gesendeten — und bei `no-cache` führt genau das zu
+// einem `304` auf veralteten Inhalt. Ausgerechnet der Mechanismus, der Frische herstellen soll,
+// hätte Altes zementiert. Diese Route bildet den Validator deshalb über den Körper, der WIRKLICH
+// hinausgeht.
+//
+// KEIN NEUER VERTRAG NACH AUSSEN: `no-cache`, `Content-Type` und das laute 404 bei fehlendem
+// Add-in bleiben, wie `tests/app/mega69-klara-auslieferung.test.ts` sie am Draht gepinnt hat.
+
+/** Die eine Adresse, auf die das Klara-Manifest zeigt (`docs/word-addin/klara-manifest.xml`). */
+export const KLARA_TASKPANE_PFAD = "/word-addin/taskpane.html";
+
+/** Der Kopf, über den eine geladene Seite erfährt, was der Server HEUTE ausliefert. */
+export const KLARA_FASSUNG_KOPF = "x-kw-available-version";
+
+/** Steht so in der Quelldatei — und niemals in einer Antwort. */
+export const KLARA_FASSUNG_PLATZHALTER = "__KW_FASSUNG__";
+
+/**
+ * Die ausgelieferte Fassung. Sie ist DIESELBE Zahl wie `<Version>` im Klara-Manifest — eine Zahl,
+ * zwei Orte, ein Wert; gepinnt in `tests/app/word-addin-taskpane-version-contract.test.ts` (E3).
+ *
+ * Sie ist bewusst NICHT der Bau-Stempel `__KLARA_STAND__`: der beantwortet „wann wurde gebaut",
+ * diese Zahl „ist meine Seite noch die, die ausgeliefert wird". Zwei Fragen, zwei Mechaniken.
+ */
+export const KLARA_TASKPANE_FASSUNG = "1.0.0.1";
+
+/** Ersetzt den Platzhalter im Körper. Rührt `__KLARA_STAND__` ausdrücklich nicht an. */
+export function stempleFassung(html: string, fassung: string): string {
+  return html.split(KLARA_FASSUNG_PLATZHALTER).join(fassung);
+}
+
 // Statische Auslieferung der gebauten SPA + SPA-Fallback. Bewusst mit dem @fastify/static-Default
 // (wildcard: true): Dateien werden pro Anfrage dynamisch von der Platte aufgelöst — ein
 // Frontend-Rebuild mit neuen Bundle-Hashes wird also OHNE Server-Neustart ausgeliefert.
 // Zuvor (wildcard: false) globte @fastify/static das dist-Verzeichnis einmalig beim Start; neue
 // Hash-Dateinamen aus einem späteren Rebuild waren dem laufenden Prozess unbekannt → NotFound
 // lieferte index.html (text/html) für .js → weiße Seite.
-export async function registerWebStatic(app: FastifyInstance, dist: string): Promise<void> {
+//
+// JOB 1077: `fassung` ist injizierbar, damit ein Test ZWEI Auslieferungen desselben Server-Codes
+// gegeneinander stellen kann — ohne sie liesse sich „A geladen, B verfügbar" nur behaupten.
+export async function registerWebStatic(
+  app: FastifyInstance,
+  dist: string,
+  fassung: string = KLARA_TASKPANE_FASSUNG,
+): Promise<void> {
+  // JOB 1077: Die EIGENE Route für Klaras eine Datei — VOR dem Static-Plugin registriert, damit
+  // sichtbar ist, dass sie den Vorrang hat (find-my-way zieht die exakte Route ohnehin dem
+  // Wildcard vor). Fastify legt die HEAD-Route selbst dazu (`exposeHeadRoutes`); sie durchläuft
+  // denselben Handler und liefert damit denselben Kopf ohne Körper.
+  app.get(KLARA_TASKPANE_PFAD, async (_request, reply) => {
+    let roh: string;
+    try {
+      roh = await readFile(join(dist, "word-addin", "taskpane.html"), "utf8");
+    } catch {
+      // LAUT scheitern, nie still als SPA-HTML: ein fehlendes Add-in im Build ist ein Defekt,
+      // kein Navigationspfad (dieselbe Entscheidung wie bei den Assets unten).
+      reply.code(404).type("text/plain").send("Not Found");
+      return;
+    }
+    const koerper = stempleFassung(roh, fassung);
+    reply
+      .header("Cache-Control", "no-cache")
+      .header(KLARA_FASSUNG_KOPF, fassung)
+      // Der Validator über den GESENDETEN Körper — s. Kopfkommentar.
+      .header("ETag", `"${createHash("sha256").update(koerper).digest("hex").slice(0, 32)}"`)
+      .type("text/html; charset=utf-8")
+      .send(koerper);
+  });
+
   await app.register(fastifyStatic, {
     root: dist,
     setHeaders: (res, filePath) => {

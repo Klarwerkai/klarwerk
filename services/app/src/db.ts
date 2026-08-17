@@ -1,6 +1,6 @@
 import { Pool } from "pg";
 import { ANSWER_SNAPSHOT_SCHEMA, ASK_SCHEMA } from "../../ask";
-import { AUDIT_EVENT_ID_SCHEMA, AUDIT_SCHEMA } from "../../audit";
+import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
 import { CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
@@ -82,6 +82,10 @@ export async function migrate(pool: Pool): Promise<void> {
     // WP-SHIP8-CLOSE-6 (bens ROT-1): additive Event-Id-Stufe DIREKT nach AUDIT_SCHEMA
     // (exactly-once-Belege via partiellem Unique-Index auf event_id).
     AUDIT_EVENT_ID_SCHEMA,
+    // JOB 498 D8: die Hashversion je Eintrag, additiv und DIREKT nach der Event-Id-Stufe. Sie
+    // ALTERt dieselbe Tabelle `audit` und muss deshalb nach AUDIT_SCHEMA laufen; die Nähe zu
+    // AUDIT_EVENT_ID_SCHEMA ist Ordnung, der Vorrang von AUDIT_SCHEMA ist Zwang.
+    AUDIT_HASH_VERSION_SCHEMA,
     CAPTURE_SCHEMA,
     ASK_SCHEMA,
     // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT

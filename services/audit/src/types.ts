@@ -12,6 +12,17 @@ export interface AuditEntry {
   // (recordOnce; z. B. "ko.created:<koId>"). Reiner Idempotenzschlüssel — geht NICHT in den
   // Ketten-Hash ein (hashEntry hasht die Inhaltsfelder; Altbestand ohne Feld bleibt verifizierbar).
   eventId?: string | undefined;
+  // JOB 498 D8: WELCHES HASHMATERIAL GILT FÜR DIESEN EINTRAG.
+  //
+  // Fehlend oder `1` bedeutet V1 — der Altbestand trägt das Feld nicht und bleibt damit ohne
+  // jede Umrechnung bitgenau verifizierbar. `2` bedeutet V2 (domänengetrennt, längenpräfigiert,
+  // kanonisierte Payload). JEDER ANDERE WERT ist ungültig und fällt fail-closed auf.
+  //
+  // ANDERS ALS `eventId` GEHT DIESES FELD IN DEN HASH EIN, und zwar als letztes Feld des
+  // V2-Materials. Ohne diese Bindung wäre ein Downgrade auf `1` ein stiller Angriff: die Version
+  // stünde neben dem Hash statt in ihm, und wer sie senkt, bekäme eine gültige V1-Prüfung
+  // geschenkt. Deshalb ist sie Teil des Materials und nicht bloß ein Begleitwert.
+  hashVersion?: number | undefined;
 }
 
 export interface AuditInput {

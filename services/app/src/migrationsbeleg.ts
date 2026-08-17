@@ -183,6 +183,9 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   { stufe: "KO_EVIDENCE_SCHEMA", risiko: "ADDITIV" },
   { stufe: "AUDIT_SCHEMA", risiko: "ADDITIV" },
   { stufe: "AUDIT_EVENT_ID_SCHEMA", risiko: "ADDITIV" },
+  // JOB 498 D8: die fünfte ALTER-only-Stufe. `ADD COLUMN IF NOT EXISTS ... NOT NULL DEFAULT 1`
+  // legt an und schreibt nichts um — kein Marker aus RISIKOMARKER trifft.
+  { stufe: "AUDIT_HASH_VERSION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "CAPTURE_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ASK_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ANSWER_SNAPSHOT_SCHEMA", risiko: "ADDITIV" },

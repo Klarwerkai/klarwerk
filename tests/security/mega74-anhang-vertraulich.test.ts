@@ -192,7 +192,12 @@ describe("mega74 C · G4 — die Zwischenspeicher-Zusage am DRAHT, nicht im Quel
     expect(cc).not.toContain("31536000");
   });
 
-  it("interner Anhang: kurze Frist statt eines Jahres, und ebenfalls nie immutable", async () => {
+  // JOB 579 D5: Hier stand `private, max-age=300`. Die kurze Frist war besser als das Jahr und
+  // trotzdem das Loch — 300 Sekunden Wiederverwendung OHNE Rückfrage, in denen kein Serverentzug
+  // greift. Der Wortlaut ist deshalb auf Revalidierung vor jeder Wiederverwendung umgestellt; die
+  // beiden Gegenproben von mega74 (nie `immutable`, nie das Jahr) bleiben unverändert stehen und
+  // sind um die Frist selbst ergänzt.
+  it("interner Anhang: Revalidierung vor jeder Wiederverwendung — keine Frist, nie immutable", async () => {
     const { app, autor } = await setup();
     const { objectId } = await koMitAnhang(app, autor, false);
 
@@ -203,10 +208,13 @@ describe("mega74 C · G4 — die Zwischenspeicher-Zusage am DRAHT, nicht im Quel
     });
     expect(raw.statusCode).toBe(200);
     const cc = String(raw.headers["cache-control"]);
-    expect(cc, "kurze Frist — eine Höherstufung muss durchgreifen können").toBe(
-      "private, max-age=300",
-    );
+    expect(
+      cc,
+      "eine Höherstufung muss beim NÄCHSTEN Abruf durchgreifen, nicht erst nach 300 s",
+    ).toBe("private, no-cache, must-revalidate");
     expect(cc).not.toContain("immutable");
     expect(cc).not.toContain("31536000");
+    // Die Frist selbst darf nicht zurückkommen — sie war der Gegenstand von JOB 579.
+    expect(cc).not.toContain("max-age");
   });
 });

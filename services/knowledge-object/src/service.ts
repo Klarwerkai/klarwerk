@@ -40,6 +40,9 @@ import {
   metadataTextsOf,
 } from "./metadata-projection";
 import type { KoMetadataProjectionResult } from "./metadata-projection-repo";
+// JOB 557: das kanonische Eigentümer-Aggregat. Regeln, Rückfallentscheidung und Grenzen stehen in
+// ownership.ts — hier wird nur angewendet, nichts nachgebaut.
+import { normalizeOwnership, ownershipOf, sameOwnership, withRole } from "./ownership";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -79,6 +82,7 @@ import {
   type EvidenceRecord,
   KNOWLEDGE_TYPES,
   type KnowledgeObject,
+  type KnowledgeOwnership,
   type KnowledgeType,
   type KoAppendOp,
   type KoAttachment,
@@ -253,6 +257,18 @@ export interface CreateKoInput {
   // setzt ihn; die öffentlichen Schreibrouten verwerfen das Feld wie `sources` (sonst könnte
   // ein Client die Crash-Recovery eines fremden Review-Claims kapern).
   importCandidateId?: string;
+  // JOB 557: das Eigentümer-Aggregat ab Erfassen — für SERVERPFADE (Import, Seed, interne Anlage),
+  // die die Verantwortung schon kennen.
+  //
+  // BEWUSST `unknown` UND NICHT `KnowledgeOwnership`: die Eingabe kommt von aussen, und
+  // AUSSCHLIESSLICH `normalizeOwnership` entscheidet über ihre Form. Ein getypter Parameter wäre
+  // eine Einladung, die Prüfung durch einen Cast am Aufrufer zu ersetzen.
+  //
+  // DIE ÖFFENTLICHE SCHREIBROUTE VERWIRFT DAS FELD (wie `sources` und `importCandidateId`):
+  // `ko.create` hält in diesem System jeder Experte, und wer ein Objekt anlegt, dürfte damit sonst
+  // die Nacharbeit eines FREMDEN Menschen erklären. Der autorisierte Weg ist `setOwnership`
+  // (Recht `ko.validate`, s. dort).
+  ownership?: unknown;
 }
 
 export interface ReviseKoInput {
@@ -1532,6 +1548,13 @@ export class KoService {
       // WP-SHIP8-CLOSE-3/4 (bens ROT-1): stabiler Kandidaten-Anker des Import-Accepts (DB-unique
       // erzwungen — der Insert eines zweiten KO desselben Kandidaten scheitert am Index/Guard).
       ...(input.importCandidateId ? { importCandidateId: input.importCandidateId } : {}),
+      // JOB 557: das Eigentümer-Aggregat nur setzen, wenn der Aufrufer eines MITBRINGT — dieselbe
+      // Bauform wie `confidentiality` und `origin` daneben. KEIN stiller Default auf den Autor: ein
+      // Objekt ohne benannte Verantwortung bleibt ein Objekt ohne benannte Verantwortung, und genau
+      // das liest `responsibleOf` als Rückfall statt als Eigentum.
+      ...(normalizeOwnership(input.ownership)
+        ? { ownership: normalizeOwnership(input.ownership) as KnowledgeOwnership }
+        : {}),
       // AUFTRAG-mega20 Block A: DB-unique erzwungen (kos_create_operation_uq) — der Insert eines
       // zweiten KO desselben Erzeugungs-Vorgangs scheitert am Index/Guard und wird adoptiert.
       ...(extras?.createOperationId ? { createOperationId: extras.createOperationId } : {}),
@@ -2372,6 +2395,102 @@ export class KoService {
           });
         },
       };
+    });
+  }
+
+  // ==============================================================================================
+  // JOB 557 — DER AUTORISIERTE EIGENTUMSGEBER.
+  // ==============================================================================================
+  //
+  // D6 hat das Aggregat gebaut, aber keinen produktiven Weg, es zu SETZEN: die öffentliche Route
+  // verwarf das Feld, und ausserhalb der Tests gab es keinen Erzeuger. Ein Feld, das im Betrieb
+  // niemand füllt, ist keine kanonische Wahrheit, sondern eine Empfangsstelle. Das ist dieser Weg.
+  //
+  // DIE RECHTEPRÜFUNG STEHT AN DER ROUTE (`ko.validate`), wie bei `category` und `confidentiality`.
+  // Der Dienst prüft die NUTZLAST — und zwar defensiv (`unknown`), statt sich auf einen Cast des
+  // Aufrufers zu verlassen. Beides zusammen ist die Zusage: „Normale Einreichende dürfen keine
+  // fremde Verantwortung bestimmen."
+  //
+  // FAIL-CLOSED BEI UNBRAUCHBARER ANGABE. Eine Eingabe, die zu `null` normalisiert, wird ABGELEHNT
+  // statt still übernommen. Sonst wäre ein Tippfehler im Feldnamen ein LÖSCHVORGANG am Eigentum —
+  // dieselbe Entscheidung wie bei `INVALID_CONFIDENTIALITY`. Ein ausdrückliches Entfernen des
+  // Aggregats gibt es bewusst NICHT: es wäre ein eigener Vorgang mit eigener Ownerfrage (wem darf
+  // man die Verantwortung wieder wegnehmen?), und diese Frage ist nicht entschieden.
+  async setOwnership(id: string, value: unknown, actor: string): Promise<KnowledgeObject> {
+    const next = normalizeOwnership(value);
+    if (!next) {
+      throw new KoError(
+        "INVALID_OWNERSHIP",
+        "Ungültige Eigentümerangabe — erwartet werden owner, reviewers oder validators.",
+      );
+    }
+    return this.mutateKo(id, (ko) => {
+      const previous = ownershipOf(ko);
+      const updated: KnowledgeObject = { ...ko, ownership: next };
+      return {
+        updated,
+        value: updated,
+        audit: async () => {
+          await this.audit?.record({
+            actor,
+            action: "ko.ownership",
+            target: id,
+            // Der Beleg nennt beide Stände. Ohne den vorherigen wäre nicht erkennbar, ob hier
+            // Verantwortung ERSTMALS benannt oder einer Person WEGGENOMMEN wurde.
+            payload: {
+              owner: next.owner ?? null,
+              reviewers: next.reviewers,
+              validators: next.validators,
+              previousOwner: previous?.owner ?? null,
+            },
+          });
+        },
+      };
+    });
+  }
+
+  // ==============================================================================================
+  // JOB 557 — DIE FORTSCHREIBUNG AUS TATSÄCHLICHEN EREIGNISSEN.
+  // ==============================================================================================
+  //
+  // `reviewers` und `validators` sind keine Eingabefelder, die jemand von aussen pflegt — sie sind
+  // die SPUR dessen, was wirklich passiert ist: eine Prüfzuweisung und eine abgeschlossene
+  // Validierung. Genau das war BENs zweiter Mangel an D6 („nur normalisierbare Listen").
+  //
+  // IDEMPOTENT UND OHNE LEERSCHREIBUNG: ändert sich nichts, wird NICHT geschrieben und KEIN Beleg
+  // erzeugt. Ein Audit-Eintrag „nichts hat sich geändert" wäre Rauschen, das echte Änderungen
+  // unauffindbar macht — und ein Write wäre ein rowVersion-Sprung ohne Grund, der einem
+  // nebenläufigen Vorgang grundlos ein STALE_WRITE beschert.
+  //
+  // DIESER WEG ERZEUGT NIE EIGENTUM (s. `withRole`): dass jemand geprüft hat, sagt nichts darüber,
+  // wem das Objekt gehört.
+  async recordOwnershipRole(
+    id: string,
+    role: "reviewers" | "validators",
+    ids: readonly unknown[],
+    actor: string,
+  ): Promise<KnowledgeObject | undefined> {
+    return this.withKoLock(id, async () => {
+      // Ein zwischenzeitlich gelöschtes Objekt ist kein Fehler dieses Nebenwegs: die
+      // Zuweisung/Validierung hat ihre eigene Antwort schon gegeben. Still übergehen statt werfen.
+      const ko = await this.repo.findById(id);
+      if (!ko || ko.deletedAt) {
+        return undefined;
+      }
+      const previous = ownershipOf(ko);
+      const next = withRole(previous, role, ids);
+      if (sameOwnership(previous, next) || next === null) {
+        return ko;
+      }
+      const updated: KnowledgeObject = { ...ko, ownership: next };
+      await this.audit?.record({
+        actor,
+        action: "ko.ownership-role",
+        target: id,
+        payload: { role, added: next[role].filter((x) => !(previous?.[role] ?? []).includes(x)) },
+      });
+      await this.repo.update(updated);
+      return updated;
     });
   }
 

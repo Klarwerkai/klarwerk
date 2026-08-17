@@ -303,6 +303,8 @@ type KoAktion =
   | "category"
   | "tags"
   | "confidentiality"
+  // JOB 557: die Verantwortung am Objekt benennen (Recht `ko.validate`, s. den Zweig unten).
+  | "ownership"
   | "conflict"
   | "resolve-conflict"
   | "transfer-author"
@@ -346,6 +348,8 @@ const ZIELOBJEKT_TOR: Record<KoAktion, Torurteil> = {
   category: "tor",
   tags: "tor",
   confidentiality: "tor",
+  // JOB 557: die Aktion arbeitet AM Objekt unter `:id` — sie passiert das Sichtbarkeitstor.
+  ownership: "tor",
   conflict: "kein-zielobjekt",
   "resolve-conflict": "kein-zielobjekt",
   "transfer-author": "tor",
@@ -387,6 +391,9 @@ interface PutBody {
   sourceId?: string;
   // SCRUM-415: Vertraulichkeitsstufe setzen/ändern.
   level?: string;
+  // JOB 557: das Eigentümer-Aggregat. BEWUSST `unknown` — die Form entscheidet ausschliesslich
+  // `normalizeOwnership` in der Datenschicht, nicht ein Cast an dieser Route.
+  ownership?: unknown;
   // AUFTRAG-mega18 Block A-1: die Nutzlast der VERBUND-OPERATION „Dokumentinhalt übernehmen".
   // Sie fasst zusammen, was bis mega17 drei getrennte Aufrufe waren (attach → n× add-source →
   // revise) — und zwar nicht, um Netzverkehr zu sparen, sondern weil die GRENZEN ZWISCHEN diesen
@@ -566,10 +573,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // Kandidaten-Anker gehört AUSSCHLIESSLICH dem Import-Accept (sonst könnte ein Client
           // die Crash-Recovery eines fremden Review-Claims auf sein eigenes KO umlenken bzw.
           // den DB-Unique-Anker eines Kandidaten vorab besetzen).
+          // JOB 557: `ownership` ebenfalls verwerfen. `ko.create` hat jeder Experte; über den
+          // Spread wäre das Feld allein durch seine Existenz an `CreateKoInput` öffentlich setzbar
+          // gewesen — und wer ein Objekt anlegt, könnte damit die Nacharbeit eines fremden
+          // Menschen erklären. Serverwerte werden hier nicht aus ungeprüftem Clientspread geerbt;
+          // der autorisierte Weg ist die Aktion `ownership` (Recht `ko.validate`) weiter unten.
           const {
             reviewerIds,
             sources: _ignoredSources,
             importCandidateId: _ignoredAnchor,
+            ownership: _ignoredOwnership,
             ...input
           } = request.body;
           const created = await ko.create({ ...input, author: user.id });
@@ -1763,6 +1776,30 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
             } catch (error) {
               sendError(reply, error);
             }
+            return;
+          }
+          // ==========================================================================================
+          // JOB 557 (Pedi 13.08.2026) — WER DIE VERANTWORTUNG BENENNEN DARF.
+          // ==========================================================================================
+          //
+          // `ko.validate` UND NICHT `ko.create`, und das ist die tragende Entscheidung dieses Zweigs.
+          // `ko.create` hält in diesem System jeder Experte (rbac/src/policy.ts). Wer damit das
+          // Eigentum setzen dürfte, könnte die Nacharbeit eines FREMDEN Menschen erklären — die
+          // `warn`/`down`-Rückgabe landet seit diesem Job beim benannten Eigentümer. Eine
+          // Schreibbefugnis am eigenen Objekt ist keine Befugnis, fremde Verantwortung zu bestimmen.
+          //
+          // `ko.validate` halten laut Rechtematrix nur `controller` und `admin` — dieselbe Schwelle,
+          // die auch das Herabstufen der Vertraulichkeit trägt.
+          //
+          // DIE NUTZLAST WIRD HIER NICHT GEPRÜFT: das tut `setOwnership` in der Datenschicht,
+          // defensiv und per-KO serialisiert. Eine zweite Prüfung an der Route wäre eine zweite
+          // Wahrheit über dieselbe Form; ungültige Angaben kommen als 400 zurück (sendError).
+          case "ownership": {
+            const user = await guards.requirePermission("ko.validate", request, reply);
+            if (!user) {
+              return;
+            }
+            reply.code(200).send(await ko.setOwnership(id, body.ownership, user.id));
             return;
           }
           case "conflict": {

@@ -131,7 +131,20 @@ describe("W3-C1/76 · ein Antwortlauf persistiert genau einen Snapshot", () => {
     expect(s?.citedSources).not.toContain("ko-b");
   });
 
-  it("validationDecisionRef bleibt null — mit einem Grund, der HEUTE stimmt", async () => {
+  // ============================================================================================
+  // JOB 541 D3 — DIESE ZUSICHERUNG WURDE SACHLICH FORTGESCHRIEBEN, NICHT GELOESCHT.
+  // ============================================================================================
+  //
+  // Hier stand bis D3: `validationDecisionRefReason === "w3c_no_decision_carrier"` — „es gibt
+  // keinen Traeger von der Entscheidung zur Antwort". Dieser Satz war bei Auftrag 76 richtig und
+  // ist es heute NICHT mehr: `KnowledgeObject.validationDecisionRef` existiert und wird von
+  // `setValidationDecisionRef` geschrieben. BEN hat den ueberholten Grund in der D2-Pruefung
+  // ausdruecklich benannt.
+  //
+  // Die Zusicherung wird deshalb ersetzt und nicht bloss entfernt: Das obere Feld bleibt leer —
+  // aber jetzt, WEIL die Referenz nach KW-W3-23 je Evidence liegt, und nicht, weil es keine gaebe.
+  // Der Unterschied ist der ganze Fortschritt dieses Durchgangs.
+  it("das top-level Feld bleibt leer — jetzt WEIL die Referenz je Evidence liegt", async () => {
     const { dienst, snapshots } = await aufbau(true);
     const out = await dienst.ask("Frage", "anna", "de");
     if (!out.answerId) {
@@ -139,9 +152,16 @@ describe("W3-C1/76 · ein Antwortlauf persistiert genau einen Snapshot", () => {
     }
     const s = await snapshots.findSnapshot(out.answerId, 1);
     expect(s?.validationDecisionRef).toBeNull();
-    // Der alte Grund ist seit Freeze 67 erledigt — er darf nicht mehr behauptet werden.
+    // Beide ueberholten Gruende duerfen an einem NEUEN Snapshot nicht mehr stehen.
     expect(s?.validationDecisionRefReason).not.toBe("w3b_findbyseq_missing");
-    expect(s?.validationDecisionRefReason).toBe("w3c_no_decision_carrier");
+    expect(s?.validationDecisionRefReason).not.toBe("w3c_no_decision_carrier");
+    expect(s?.validationDecisionRefReason).toBe("w3_23_ref_liegt_je_evidence");
+    // Und die neue Wahrheit steht unten: jede Evidence traegt genau eines von beidem.
+    for (const e of s?.evidence ?? []) {
+      const hatRef = e.validationDecisionRef !== undefined;
+      const hatGrund = e.validationReferenceAbsenceReason !== undefined;
+      expect(hatRef !== hatGrund).toBe(true);
+    }
   });
 
   it("resolutionId und sourceRecordId bleiben unveraendert leer mit ihren eigenen Gruenden", async () => {

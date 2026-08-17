@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import { GENESIS, verifyChain } from "./chain";
+import { GENESIS, hashEntry, verifyChain } from "./chain";
 import { InMemoryAuditRepo } from "./repo";
 import { AuditService } from "./service";
 
@@ -116,6 +116,66 @@ describe("WP-SHIP8-CLOSE-6 (bens ROT-1): recordOnce — exactly-once je Event-Id
       unresolvedDeviations: 0,
       uncheckedDeviations: 0,
     });
+  });
+});
+
+// ================================================================================================
+// JOB 498 D8 — NEUE EINTRÄGE SIND V2 (D6 T2, T4, T5)
+// ================================================================================================
+describe("JOB 498 D8: record und recordOnce schreiben Hashversion 2", () => {
+  it("T2 — `record` liefert hashVersion 2, und die Kette verifiziert", async () => {
+    const service = new AuditService({ repo: new InMemoryAuditRepo() });
+    const entry = await service.record({ actor: "a", action: "ko.created", target: "ko-1" });
+    expect(entry.hashVersion).toBe(2);
+    expect(verifyChain([entry])).toBe(true);
+    expect(await service.verify()).toBe(true);
+  });
+
+  it("T4 — die Version steht VOR dem Einfrieren im Eintrag", async () => {
+    const service = new AuditService({ repo: new InMemoryAuditRepo() });
+    const entry = await service.record({ actor: "a", action: "x", target: "y" });
+    // Beides zusammen ist die Aussage: der Eintrag ist eingefroren UND trägt die Version. Wäre sie
+    // nachträglich gesetzt worden, hätte das Einfrieren sie verschluckt — lautlos, weil ein Write
+    // auf ein gefrorenes Objekt außerhalb des strict mode einfach nichts tut.
+    expect(Object.isFrozen(entry)).toBe(true);
+    expect(entry.hashVersion).toBe(2);
+  });
+
+  it("T5 — zwei parallele `recordOnce` derselben Event-Id: EIN Eintrag, Version 2, Kette intakt", async () => {
+    const service = new AuditService({ repo: new InMemoryAuditRepo() });
+    const ergebnisse = await Promise.all([
+      service.recordOnce("ko.created:ko-v2", { actor: "a", action: "ko.created", target: "ko-v2" }),
+      service.recordOnce("ko.created:ko-v2", { actor: "b", action: "ko.created", target: "ko-v2" }),
+    ]);
+    expect(ergebnisse.filter(Boolean)).toHaveLength(1);
+    const eintraege = await service.list({ target: "ko-v2" });
+    expect(eintraege).toHaveLength(1);
+    expect(eintraege[0]?.hashVersion).toBe(2);
+    expect(await service.verify()).toBe(true);
+  });
+
+  it("eine gemischte Kette aus Alt- und Neubestand bleibt gültig", async () => {
+    // Der Altbestand kommt hier als versionsloser Eintrag direkt ins Repo — genau so, wie ihn
+    // eine Bestandsdatenbank vor der Migration liefert.
+    const repo = new InMemoryAuditRepo();
+    const alt = {
+      seq: 1,
+      at: "2026-07-01T00:00:00.000Z",
+      actor: "alt",
+      action: "ko.created",
+      target: "ko-alt",
+      payload: {} as Record<string, unknown>,
+      prevHash: GENESIS,
+    };
+    await repo.append({ ...alt, hash: hashEntry(alt) });
+    const service = new AuditService({ repo });
+    const neu = await service.record({ actor: "neu", action: "ko.updated", target: "ko-alt" });
+    expect(neu.seq).toBe(2);
+    expect(neu.hashVersion).toBe(2);
+    expect(await service.verify()).toBe(true);
+    const bericht = await service.verifyReport();
+    expect(bericht.ok).toBe(true);
+    expect(bericht.count).toBe(2);
   });
 });
 

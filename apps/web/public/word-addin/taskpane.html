@@ -13,6 +13,11 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
+  <!-- JOB 1077: die GELADENE Fassung. Sie steht hier NICHT als Zahl, sondern als Platzhalter;
+       gestempelt wird sie beim Ausliefern (services/app/src/web-static.ts, stempleFassung).
+       Damit kann diese Seite niemals eine andere Fassung behaupten als der Server, der sie
+       geschickt hat — und ein Neuladen aendert sie WIRKLICH. Unersetzt (Quelle/Dev): "dev". -->
+  <meta name="kw-loaded-version" content="__KW_FASSUNG__" />
   <title>Klara — KLARWERK</title>
   <script src="https://appsforoffice.microsoft.com/lib/1/hosted/office.js"></script>
   <style>
@@ -597,6 +602,14 @@
        sich also bei jeder Auslieferung VON SELBST und wird nirgends von Hand gepflegt. Unersetzt
        (Quelle/Dev) steht hier ehrlich "dev". Sprachneutral (Datum + Kuerzel), bewusst unauffaellig. -->
   <p class="muted" id="kw-stand" style="margin-top: 10px; margin-bottom: 0; font-size: 10px; text-align: right;"></p>
+
+  <!-- JOB 1077: der Fassungswechsel. Zwei Zeilen, eine Frage — „ist meine Seite noch die, die
+       ausgeliefert wird?". Sie steht bewusst NEBEN dem Bau-Stempel darueber und nicht in ihm:
+       der Stempel sagt, wann gebaut wurde, diese Zeile, ob die Lieferung noch aktuell ist.
+       Der Knopf ist im Auslieferungszustand verborgen und erscheint NUR, wenn beide Nummern
+       bekannt sind und sich unterscheiden — eine ausgebliebene Auskunft ist keine Bestaetigung. -->
+  <p class="muted" id="kw-fassung" style="margin-top: 4px; margin-bottom: 0; font-size: 10px; text-align: right;"></p>
+  <button type="button" class="ghost hidden" id="kw-fassung-btn" style="margin-top: 4px; float: right; font-size: 11px;"></button>
 
   <script>
     "use strict";
@@ -1568,6 +1581,75 @@
       };
     }
     // KW-KLARA-S4-END
+
+    // ============================================================================================
+    // JOB 1077 — DIE FASSUNGSKETTE. VIER FUNKTIONEN, EINE FRAGE.
+    // ============================================================================================
+    //
+    // Sie stehen zwischen Schnittmarken — dieselbe Bauform wie KW-KLARA-ASK-FETCH-* und
+    // KW-KLARA-S4-FETCH-*. Das Aufgabenfenster ist buildlos; ein Schnitt ist die einzige
+    // Moeglichkeit, die WIRKLICH AUSGELIEFERTE Entscheidung auszufuehren statt ihren Quelltext zu
+    // lesen. Genau daran ist die D5-Fassung gescheitert: sie wurde nachgebaut und stimmte nicht.
+    //
+    // EHRLICHE ZUSTAENDE, und jeder ist gepinnt:
+    //   · Ausgebliebene Auskunft ist KEINE Bestaetigung. Abbruch, fehlender Kopf, Antwort nicht
+    //     `ok`, gar kein `fetch` → `null`, kein Wechsel, und die Zeile sagt „Abgleich nicht
+    //     moeglich" — nie „aktuell".
+    //   · Ungestempelt heisst `dev`, nicht „Fehler" und nicht irgendeine Nummer.
+    //   · Der Wechsel gilt mit der LIEFERUNG, nicht mit der Absicht: bringt das Neuladen wieder
+    //     die alte Fassung (Cache, Rueckrollung), bleibt der Hinweis stehen.
+    // KW-KLARA-FASSUNG-START
+    var KW_TASKPANE_PFAD = "/word-addin/taskpane.html";
+    var KW_FASSUNG_META = "kw-loaded-version";
+    var KW_FASSUNG_KOPF = "X-KW-Available-Version";
+
+    /** Die GELADENE Fassung — ausschliesslich aus dem Dokument, nie aus der Adresse. */
+    function kwGeladeneFassungAus(doc) {
+      var el = doc && doc.querySelector
+        ? doc.querySelector('meta[name="' + KW_FASSUNG_META + '"]')
+        : null;
+      var wert = el && el.getAttribute ? String(el.getAttribute("content") || "") : "";
+      // Der unersetzte Platzhalter ist kein Fassungswert — wer die Quelldatei direkt oeffnet,
+      // bekommt keinen erfundenen Wechselhinweis.
+      if (wert.length === 0 || wert.indexOf("__") === 0) { return "dev"; }
+      return wert;
+    }
+
+    /** Offen ist ein Wechsel NUR, wenn BEIDE Seiten bekannt sind und sich unterscheiden. */
+    function kwWechselOffen(geladen, verfuegbar) {
+      if (typeof geladen !== "string" || geladen.length === 0) { return false; }
+      if (typeof verfuegbar !== "string" || verfuegbar.length === 0) { return false; }
+      return geladen !== verfuegbar;
+    }
+
+    /** Der VERFUEGBARE Stand — ein HEAD auf die eigene Adresse, der Kopf traegt die Antwort. */
+    function kwVerfuegbareFassungLaden(fetchFn, pfad) {
+      return Promise.resolve()
+        .then(function () {
+          if (typeof fetchFn !== "function") { return null; }
+          return fetchFn(pfad, { method: "HEAD", credentials: "include", cache: "no-store" });
+        })
+        .then(function (res) {
+          if (!res || res.ok !== true || !res.headers || typeof res.headers.get !== "function") {
+            return null;
+          }
+          var wert = res.headers.get(KW_FASSUNG_KOPF);
+          if (typeof wert !== "string") { return null; }
+          var sauber = wert.replace(/^\s+|\s+$/g, "");
+          return sauber.length > 0 ? sauber : null;
+        })
+        .catch(function () { return null; });
+    }
+
+    /** Die PRODUKTFUNKTION: sie laedt neu — und nur, wenn wirklich ein Wechsel offen ist. */
+    function kwWechselAusloesen(geladen, verfuegbar, reloadFn) {
+      if (!kwWechselOffen(geladen, verfuegbar)) { return false; }
+      if (typeof reloadFn !== "function") { return false; }
+      reloadFn();
+      return true;
+    }
+    // KW-KLARA-FASSUNG-END
+
     // KW-WORDADDIN-HELPERS-END
 
     // Alle Texte dreisprachig (App-Regel DE/EN/NL) — bewusst HIER, nicht in i18n.ts der SPA.
@@ -1773,6 +1855,10 @@
         askForbidden: "Fehlendes Recht: Dein Konto darf keine offenen Fragen als Entwurf senden.",
         askOpenQuestionPrefix: "Offene Frage: ",
         askOpenQuestionFallback: "Offene Frage aus Word",
+        fassungAktuell: "Stand {geladen} · aktuell",
+        fassungWechsel: "Stand {geladen} · neue Fassung {verfuegbar} verfügbar",
+        fassungUnbekannt: "Stand {geladen} · Abgleich nicht möglich",
+        fassungCta: "Neu laden",
         helpTitle: "Was kann Klara hier?",
         helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie übergibt (nur Entwurf, kein fertiges Wissensobjekt).",
         helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT übergeben konnte.",
@@ -1953,6 +2039,10 @@
         askForbidden: "Missing permission: your account may not send open questions as drafts.",
         askOpenQuestionPrefix: "Open question: ",
         askOpenQuestionFallback: "Open question from Word",
+        fassungAktuell: "Build {geladen} · up to date",
+        fassungWechsel: "Build {geladen} · new build {verfuegbar} available",
+        fassungUnbekannt: "Build {geladen} · comparison not possible",
+        fassungCta: "Reload",
         helpTitle: "What can Klara do here?",
         helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting, tables and images as far as Word provides them (draft only, not a finished knowledge object).",
         helpCan2: "Tell you honestly whether you are signed in, whether sending worked and what Word could NOT provide.",
@@ -2133,6 +2223,10 @@
         askForbidden: "Ontbrekend recht: je account mag geen open vragen als concept versturen.",
         askOpenQuestionPrefix: "Open vraag: ",
         askOpenQuestionFallback: "Open vraag uit Word",
+        fassungAktuell: "Stand {geladen} · actueel",
+        fassungWechsel: "Stand {geladen} · nieuwe versie {verfuegbar} beschikbaar",
+        fassungUnbekannt: "Stand {geladen} · vergelijken niet mogelijk",
+        fassungCta: "Opnieuw laden",
         helpTitle: "Wat kan Klara hier?",
         helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak, tabellen en afbeeldingen voor zover Word ze levert (alleen concept, geen afgerond kennisobject).",
         helpCan2: "Eerlijk zeggen of je bent aangemeld, of het versturen is gelukt en wat Word NIET kon leveren.",
@@ -2205,6 +2299,9 @@
       // ab dem ersten Bildaufbau da — im Zustand „wird abgerufen", und nach einem Sprachwechsel in
       // der neuen Sprache, ohne den gehaltenen Serverstand zu verlieren.
       renderKlaraS4();
+      // JOB 1077: dieselbe Ueberlegung fuer die Fassungszeile — sie ist Text zu einem GEHALTENEN
+      // Zustand und stuende ohne diese Zeile nach einem Sprachwechsel in der alten Sprache da.
+      renderKwFassung();
     }
 
     function setLang(next) {
@@ -4175,6 +4272,49 @@
     document.getElementById("kw-stand").textContent =
       KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
 
+    // ---- JOB 1077: die Fassungszeile ----------------------------------------------------------
+    // Der Zustand wird GEHALTEN, damit ein Sprachwechsel ihn nicht verliert (dieselbe Falle, die
+    // refreshAnswerToggleLabel und renderAskEvidence loesen).
+    var kwGeladeneFassung = kwGeladeneFassungAus(document);
+    var kwVerfuegbareFassung = null;
+
+    function renderKwFassung() {
+      var zeile = document.getElementById("kw-fassung");
+      var knopf = document.getElementById("kw-fassung-btn");
+      if (!zeile || !knopf) { return; }
+      var offen = kwWechselOffen(kwGeladeneFassung, kwVerfuegbareFassung);
+      knopf.textContent = t("fassungCta");
+      knopf.className = offen ? "ghost" : "ghost hidden";
+      if (offen) {
+        zeile.textContent = t("fassungWechsel", {
+          geladen: kwGeladeneFassung,
+          verfuegbar: kwVerfuegbareFassung,
+        });
+        return;
+      }
+      // Nichts abgerufen oder nichts bekommen: das wird GESAGT, nicht als „aktuell" ausgegeben.
+      zeile.textContent = kwVerfuegbareFassung === null
+        ? t("fassungUnbekannt", { geladen: kwGeladeneFassung })
+        : t("fassungAktuell", { geladen: kwGeladeneFassung });
+    }
+
+    function kwFassungAbgleichen() {
+      return kwVerfuegbareFassungLaden(
+        function (url, init) { return fetch(url, init); },
+        KW_TASKPANE_PFAD
+      ).then(function (verfuegbar) {
+        kwVerfuegbareFassung = verfuegbar;
+        renderKwFassung();
+        return verfuegbar;
+      });
+    }
+
+    document.getElementById("kw-fassung-btn").addEventListener("click", function () {
+      kwWechselAusloesen(kwGeladeneFassung, kwVerfuegbareFassung, function () {
+        window.location.reload();
+      });
+    });
+
     renderStatics();
     // WP-KLARA-1b (K5): timeout-basierte Office-Erkennung. Office.onReady mit FRIST — laedt office.js
     // nicht (Blocker/Offline/normaler Browser) oder wird Office nie bereit, kippt der Zustand nach
@@ -4204,6 +4344,11 @@
     // AUFTRAG-mega75 Block A: dito fuer die KI-Lage. Sie haengt nicht an Office und nicht an der
     // Anmeldung (die Route ist oeffentlich) — bis die Antwort da ist, steht ehrlich „wird geprueft".
     ladeAiLage();
+    // JOB 1077: dieselbe Stelle, dieselbe Bauart — die Fassungszeile steht ab dem ersten
+    // Bildaufbau da (im Zustand „Abgleich nicht moeglich", was die Wahrheit ist, solange
+    // nichts abgerufen wurde) und wird durch den HEAD-Abgleich ersetzt, sobald er antwortet.
+    renderKwFassung();
+    kwFassungAbgleichen();
     // AUFTRAG-W1-KLARA-KOPF-CONSENT-06: die Sitzung wird beim Laden des Aufgabenfensters eroeffnet
     // und danach der gebundene Stand gelesen. Die beiden Knoepfe des Zustimmungskastens haengen
     // hier — nicht an inline-Attributen, damit sie derselben Content-Security-Policy folgen wie

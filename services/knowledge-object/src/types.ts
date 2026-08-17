@@ -86,6 +86,28 @@ export interface AiCheck {
 
 export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";
 
+// ================================================================================================
+// JOB 557 (Pedi 13.08.2026) — DAS KANONISCHE EIGENTÜMER-AGGREGAT.
+// ================================================================================================
+//
+// `author` ist PROVENIENZ (wer den Text erzeugt hat), nicht Verantwortung. Wem das Objekt gehört,
+// wer es geprüft und wer es validiert hat, stand bis JOB 557 nirgends — und deshalb ging die
+// Nacharbeit einer `warn`/`down`-Bewertung an den Erzeuger. Die Regeln, die Rückfallentscheidung
+// und ihre Grenzen stehen in `ownership.ts`; hier steht nur die Form.
+//
+// `owner` IST OPTIONAL, die beiden Folgen sind es NICHT. Ein Aggregat kann sagen „geprüft haben A
+// und B, wem es gehört ist offen" — das ist eine ehrliche Aussage. Umgekehrt wäre eine FEHLENDE
+// Liste ununterscheidbar von einer leeren; nach der Normalform ist sie deshalb immer da, notfalls
+// leer. Ein Aggregat, in dem alle drei nichts sagen, wird gar nicht abgelegt (s. normalizeOwnership).
+export interface KnowledgeOwnership {
+  /** Wer die Verantwortung trägt. Fehlt er, gibt es keinen — kein stiller Rückfall auf `author`. */
+  owner?: string;
+  /** Wer tatsächlich zur Prüfung zugewiesen wurde (dedupliziert, in Zuweisungsreihenfolge). */
+  reviewers: string[];
+  /** Wer die abgeschlossene Validierung getragen hat (dedupliziert, in Entscheidungsreihenfolge). */
+  validators: string[];
+}
+
 export interface HistoryEntry {
   version: number;
   at: string;
@@ -246,6 +268,20 @@ export interface KnowledgeObject {
   // der schlechte Kompromiss, den die Entscheidung ausschließt. Nach einer Revision bleibt der
   // Verweis stehen und wird folgerichtig `WRONG_SUBJECT`.
   validationDecisionRef?: { auditSeq: number; auditHash: string };
+  // ============================================================================================
+  // JOB 557 (Pedi 13.08.2026) — WEM DAS OBJEKT GEHÖRT, WER ES GEPRÜFT UND WER ES VALIDIERT HAT.
+  // ============================================================================================
+  //
+  // OPTIONAL UND OHNE MIGRATION: das KO liegt als Voll-JSONB (`kos.data`, repo-pg.ts). Ein
+  // zusätzliches optionales Feld landet im Dokument; Altbestand hat den Schlüssel schlicht nicht.
+  // Kein DDL, kein Backfill.
+  //
+  // FEHLT DAS FELD, IST DIE VERANTWORTUNG UNBENANNT — und das heisst ausdrücklich NICHT „der Autor
+  // ist Eigentümer". Der Rückfall auf den Autor fällt erst bei der Verantwortungs-FRAGE
+  // (`responsibleOf`), damit am Objekt ablesbar bleibt, ob Eigentum benannt oder nur ersetzt ist.
+  // Ein stiller `owner = author`-Default beim Anlegen ist ausdrücklich verworfen: er wäre genau die
+  // Gleichsetzung von Erzeuger und Verantwortlichem, die Pedis Entscheidung zurückgewiesen hat.
+  ownership?: KnowledgeOwnership;
   asset: string | null;
   createdAt: string;
   history: HistoryEntry[];
@@ -423,6 +459,11 @@ export type KoErrorCode =
   | "INVALID_UPLOAD_LIMITS"
   // SCRUM-509: ungültige Vertraulichkeitsstufe (kein stilles Normalisieren auf „intern").
   | "INVALID_CONFIDENTIALITY"
+  // JOB 557: die gelieferte Eigentümerangabe trägt nichts Brauchbares. Sie wird ABGELEHNT statt
+  // still zu `null` normalisiert — ein stilles `null` würde ein vorhandenes Aggregat löschen, und
+  // ein Löschen darf nicht die Nebenwirkung eines Tippfehlers sein (fail-closed, wie
+  // INVALID_CONFIDENTIALITY daneben).
+  | "INVALID_OWNERSHIP"
   // SCRUM-509 R2: Herabstufung ohne Prüfer-/Admin-Rolle (atomar an der Datenschicht geprüft).
   | "DOWNGRADE_FORBIDDEN"
   // SCRUM-509 R3: optimistische Concurrency — der Voll-Objekt-Write war veraltet (rowVersion-Konflikt).

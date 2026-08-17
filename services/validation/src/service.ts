@@ -1,5 +1,8 @@
 import type { AuditService } from "../../audit";
 import type { KnowledgeObject, KoFilter, KoService } from "../../knowledge-object";
+// JOB 557 (Pedi 13.08.2026): „der Erzeuger ist nicht der Verantwortliche." Beide Helfer kommen über
+// die MODULFASSADE — keine Kante in die Innereien von knowledge-object.
+import { responsibleKindOf, responsibleOf } from "../../knowledge-object";
 import type { AssignmentRepo, RatingRepo } from "./repo";
 import {
   FALLBACK_NEEDED_VALIDATIONS,
@@ -174,16 +177,26 @@ export class ValidationService {
     // Gegenkontrollfall, damit die Korrektur nicht einfach „immer die letzte" liefert).
     let referenz = refAus(beleg);
     if (verdict === "warn" || verdict === "down") {
-      const rueckgabeRef = await this.returnToAuthor(
-        koId,
-        ko.author,
-        userId,
-        verdict,
-        ratedVersion,
-      );
+      // ========================================================================================
+      // JOB 557 — HIER WURDE ERZEUGER MIT VERANTWORTLICHEM VERWECHSELT.
+      // ========================================================================================
+      // Bis hierher stand `ko.author`: die Nacharbeit ging an die Person, die den TEXT geschrieben
+      // hat. Genau diese Gleichsetzung hat Pedis Entscheidung zu JOB 557 verworfen. `responsibleOf`
+      // liefert den benannten Eigentümer — und fällt NUR für Altbestand ohne Aggregat auf den Autor
+      // zurück, benannt und an genau einer Stelle (ownership.ts).
+      const rueckgabeRef = await this.returnToResponsible(koId, ko, userId, verdict, ratedVersion);
       if (rueckgabeRef) {
         referenz = rueckgabeRef;
       }
+    }
+    // JOB 557: eine ABGESCHLOSSENE Validierung schreibt fort, WER sie getragen hat. Nicht die
+    // Bewertung allein — erst der Übergang nach „validiert" ist die Entscheidung. Getragen haben
+    // ihn die grünen Stimmen DIESER Fassung; wer `warn`/`down` gestimmt hat, hat nicht validiert.
+    if (outcome.status === "validiert") {
+      const tragende = all
+        .filter((r) => ratingVersion(r) === ratedVersion && r.verdict === "up")
+        .map((r) => r.userId);
+      await this.koService.recordOwnershipRole(koId, "validators", tragende, userId);
     }
     // ==========================================================================================
     // W3-C (Pedi 03.08.) — DIE ENTSCHEIDUNG WIRD AM OBJEKT FESTGEHALTEN.
@@ -230,6 +243,10 @@ export class ValidationService {
         expectedVersion: ko.version,
       });
     }
+    // JOB 557: auch die Admin-Validierung ist eine abgeschlossene Validierung — und sie hat genau
+    // EINE tragende Identität. Sie wird fortgeschrieben, sonst wäre `validators` für den Weg leer,
+    // über den die Validierung am häufigsten endgültig entschieden wird.
+    await this.koService.recordOwnershipRole(koId, "validators", [actorId], actorId);
     return {
       up: ko.neededValidations,
       warn: 0,
@@ -240,30 +257,61 @@ export class ValidationService {
     };
   }
 
-  // SCRUM-124: dedupliziert eine offene Zuweisung an den Autor + Audit-Event.
-  private async returnToAuthor(
+  // SCRUM-124: dedupliziert eine offene Zuweisung an den VERANTWORTLICHEN + Audit-Event.
+  //
+  // ==============================================================================================
+  // JOB 557 — DER BELEG DARF KEINE NICHT-AUTORIN `author` NENNEN.
+  // ==============================================================================================
+  //
+  // Der Methodenname hiess `returnToAuthor` und war damit selbst Teil der Verwechslung. Er ist
+  // PRIVAT — kein Vertrag nach aussen — und deshalb hier berichtigt statt stehengelassen.
+  //
+  // DAS PAYLOAD TRÄGT JETZT BEIDE ANGABEN, JEDE AN IHREM NAMEN:
+  //   · `author`      — die Provenienz. Sie ist IMMER der wirkliche Autor des Objekts; dieses Feld
+  //                     kann nach dieser Änderung keine fremde Person mehr transportieren. Es
+  //                     bleibt stehen, weil bestehende Leser es erwarten.
+  //   · `responsible` — wer die Nacharbeit tatsächlich bekommen hat.
+  //   · `responsibleKind` — ob das ein BENANNTER Eigentümer war oder der Rückfall auf den Autor.
+  //     Ohne diese Angabe müsste ein Leser raten, welcher der beiden Fälle vorliegt — und genau
+  //     dieses Raten ist der Befund dieses Jobs.
+  //
+  // DER AKTIONSNAME BLEIBT `ko.returned-to-author`, und das ist eine gemessene Grenze, keine
+  // Nachlässigkeit: er ist ein Vertrag mit zwei Verbrauchern ausserhalb dieser Lease.
+  // `services/audit/src/repo.ts` führt ihn in `VALIDATION_DECISION_ACTIONS` — eine unbekannte
+  // Aktion machte den `validationDecisionRef` am Objekt zu `WRONG_EVENT_TYPE`. Und
+  // `apps/web/src/lib/validationStatus.ts` leitet aus genau diesem Namen den sichtbaren Zustand
+  // „Nacharbeit" ab; ein neuer Name liesse das Board schweigen. Die Benennung des Antwortausgangs
+  // ist weiterhin die offene Ownerfrage O-557-2.
+  private async returnToResponsible(
     koId: string,
-    author: string,
+    ko: KnowledgeObject,
     by: string,
     verdict: Verdict,
     koVersion: number,
   ): Promise<ValidationDecisionRefWert> {
-    const existing = await this.assignments.find(koId, author);
+    const verantwortlich = responsibleOf(ko);
+    const existing = await this.assignments.find(koId, verantwortlich);
     if (existing) {
       if (existing.status !== "open") {
         await this.assignments.update({ ...existing, status: "open" });
       }
     } else {
-      await this.assignments.create({ koId, userId: author, status: "open" });
+      await this.assignments.create({ koId, userId: verantwortlich, status: "open" });
     }
-    // Auch die Rueckgabe an den Autor IST eine Entscheidung (KW-W3-19) — sie traegt deshalb
-    // dieselbe Bindung. Die Methode ist privat; ihre Referenz reist ueber den Rueckgabewert zum
-    // Aufrufer, statt hier zu verfallen.
+    // Auch die Rueckgabe IST eine Entscheidung (KW-W3-19) — sie traegt deshalb dieselbe Bindung.
+    // Die Methode ist privat; ihre Referenz reist ueber den Rueckgabewert zum Aufrufer, statt hier
+    // zu verfallen.
     const beleg = await this.audit?.record({
       actor: by,
       action: "ko.returned-to-author",
       target: koId,
-      payload: { verdict, author, koVersion },
+      payload: {
+        verdict,
+        author: ko.author,
+        responsible: verantwortlich,
+        responsibleKind: responsibleKindOf(ko),
+        koVersion,
+      },
     });
     return refAus(beleg);
   }
@@ -323,6 +371,13 @@ export class ValidationService {
       target: koId,
       payload: { userIds },
     });
+    // JOB 557: eine TATSÄCHLICHE Zuweisung schreibt die Prüferinnen im Aggregat fort — idempotent
+    // und dedupliziert. Ohne diesen Schritt bliebe `reviewers` ein Feld, das nur normalisiert
+    // werden kann und das im Betrieb niemand füllt (BENs zweiter Mangel an D6).
+    //
+    // NACH dem Beleg und NACH den Zuweisungen: die Fortschreibung ist die Spur eines Ereignisses,
+    // nicht seine Vorbedingung. Sie erzeugt KEIN Eigentum (s. `withRole`) — wer prüft, besitzt nicht.
+    await this.koService.recordOwnershipRole(koId, "reviewers", userIds, actor);
   }
 
   // SCRUM-363 / AG-15 / FR-VAL-05/06: die OFFENEN Review-Zuweisungen GENAU dieser Person (keine fremde

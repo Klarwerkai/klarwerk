@@ -408,7 +408,40 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Stand zeigen — dann sendet das Panel noch `frontdoor`. Der Server nimmt beide Werte
     // unveraendert an (BEKANNTE_HERKUENFTE), es geht also nichts verloren; die Unterscheidung
     // greift, sobald die Datei neu geladen ist.
-    const PIN = "8f5829557d111c2439dc922adb8023350dc9c2a388edff992a5c377a369cb2d0";
+    // ============================================================================================
+    // JOB 1077 D7 (17.08.2026) — DER PIN WANDERT WEGEN DER FASSUNGSKETTE.
+    // ============================================================================================
+    // VORHERHASH taskpane.html: `8f5829557d111c2439dc922adb8023350dc9c2a388edff992a5c377a369cb2d0`.
+    //
+    // GEAENDERT WURDE, und zum ersten Mal seit langem ist es MEHR als Panelinhalt:
+    //   · ein neues Meta `kw-loaded-version` mit dem PLATZHALTER `__KW_FASSUNG__` — keine Zahl,
+    //     die jemand pflegt; ersetzt wird sie beim AUSLIEFERN (services/app/src/web-static.ts);
+    //   · eine Anzeigezeile `#kw-fassung` und ein anfangs VERBORGENER Knopf `#kw-fassung-btn`,
+    //     beide im vorhandenen `.muted`/`.ghost`-Muster, ohne neue Farbregel;
+    //   · vier Woerterbuch-Schluessel je Sprache (`fassungAktuell`, `fassungWechsel`,
+    //     `fassungUnbekannt`, `fassungCta`);
+    //   · ein Schnittmarkenpaar `KW-KLARA-FASSUNG-START/END` um vier reine Funktionen
+    //     (`kwGeladeneFassungAus`, `kwWechselOffen`, `kwVerfuegbareFassungLaden`,
+    //     `kwWechselAusloesen`) und deren Verdrahtung am Skriptende.
+    //
+    // UND — die eigentliche Auslieferungsfolge — EIN NEUES ABRUFZIEL:
+    //   `HEAD /word-addin/taskpane.html`.
+    // Es ist DIE EIGENE ADRESSE dieser Seite, nicht eine fremde. KEIN Manifest, KEINE geaenderte
+    // CSP (`connect-src 'self'` deckt den eigenen Ursprung), KEIN neues Recht (oeffentliche
+    // statische Auslieferung), KEINE Nutzlast (HEAD sendet und empfaengt keinen Koerper), und
+    // genau EIN Abruf je Laden des Aufgabenfensters — kein Intervall. Die ausfuehrliche Antwort
+    // auf „CSP? Recht? Manifest?" steht bei `BEKANNTE_ABRUFZIELE` in
+    // `tests/app/mega69-klara-merkmale.test.ts`.
+    //
+    // DER BAU-STEMPEL BLEIBT UNBERUEHRT: `__KLARA_STAND__` beantwortet „wann wurde gebaut",
+    // `__KW_FASSUNG__` „ist meine Seite noch die, die ausgeliefert wird". Zwei Platzhalter, zwei
+    // Ersetzer — der eine im Build, der andere im Server; gepinnt als eigener Fall (E5).
+    //
+    // AUSLIEFERUNGSFOLGE: KEIN erneutes Sideload. Ein installiertes Add-in holt die Datei beim
+    // naechsten Oeffnen frisch. Antwortet ein AELTERER Server den Kopf nicht, bleibt die neue
+    // Zeile ehrlich bei „Abgleich nicht moeglich" — nie bei „aktuell"; die Seite funktioniert im
+    // Uebrigen unveraendert weiter.
+    const PIN = "ee0f53d837343abec3c3e4e89545d3a118e7404842e1ba30e7d797407ff80059";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

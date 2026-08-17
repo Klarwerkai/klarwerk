@@ -18,8 +18,20 @@ export {
   answerSnapshotHashMaterial,
   answerSnapshotIntegrity,
   answerSnapshotStatus,
+  // JOB 541 D3: dieselbe Lehre wie oben — was `services/app` fuer den Lesepfad braucht, muss die
+  // Fassade weiterreichen. `gehoertNutzer` und die Legacy-Zuordnung sind genau solche Stellen.
+  gehoertNutzer,
   hashAnswerSnapshot,
+  legacyValidationZuordnung,
 } from "./src/types";
+// W3-C (JOB 541 D3): das reine Lesemodell der Antwort-Erklaerung.
+export { baueAnswerExplanation } from "./src/answer-explanation";
+export type {
+  AnswerExplanationEvidence,
+  AnswerExplanationOutcome,
+  AnswerExplanationSicht,
+  AnswerExplanationView,
+} from "./src/answer-explanation";
 export type {
   AnswerEvidenceRef,
   AnswerEvidenceSnapshot,
@@ -33,6 +45,8 @@ export type {
   AnswerRecord,
   AnswerSnapshotStatus,
   AnswerValidationDecisionRef,
+  AnswerOwner,
+  ValidationReferenceAbsenceReason,
 } from "./src/types";
 export {
   ANSWER_RECEIPT_TTL_MS,

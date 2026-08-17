@@ -1,4 +1,4 @@
-import type { FastifyPluginAsync } from "fastify";
+import type { FastifyPluginAsync, FastifyReply } from "fastify";
 import { isValidConfidentiality } from "../../../knowledge-object";
 import {
   type ObjectKind,
@@ -67,22 +67,81 @@ export const OBJECTS_BODY_LIMIT = 30 * 1024 * 1024; // 30 MiB
 // Objekt gesperrt wurde. Bei einem ausgeschiedenen Mitarbeiter ist das genau der Fall, den ein
 // Zugriffsschutz verhindern soll: der Serverentzug wirkt, die Kopie im Browser nicht.
 //
+// ================================================================================================
+// JOB 579 · D5 — DIE FRIST WAR DAS LOCH. SIE IST WEG.
+// ================================================================================================
+//
+// mega74 ersetzte das Jahr durch fünf Minuten. Das war besser und immer noch falsch: `max-age=300`
+// ist die Erlaubnis, die Bytes **300 Sekunden lang ohne jede Rückfrage** weiterzuverwenden. In
+// diesem Fenster wirkt kein Serverentzug — nicht die Höherstufung des tragenden Objekts, nicht
+// seine Löschung, nicht der Rollenentzug. Genau dieses Fenster ist am Draht gemessen worden
+// (JOB 579 D3, Sequenz S-B) und ist der gesamte Gegenstand dieses Durchgangs.
+//
 // DER SCHNITT, begründet:
 //   · VERTRAULICH → `no-store`. Kein Zwischenspeicher, nirgends, auch nicht auf der Platte. Für
-//     ein vertrauliches Original ist das die einzige Zusage, die trägt.
-//   · SONST → eine kurze Frist statt eines Jahres, und NIE `immutable`. `immutable` sagt dem
-//     Browser „frag nie wieder nach" — damit ist jede spätere Höherstufung wirkungslos, solange
-//     die Frist läuft. Fünf Minuten halten den Bildaufbau einer Seite zusammen (der eigentliche
-//     Nutzen), lassen eine Stufenänderung aber spätestens nach fünf Minuten durchgreifen.
+//     ein vertrauliches Original ist das die einzige Zusage, die trägt. UNVERÄNDERT.
+//   · SONST → `private, no-cache, must-revalidate`. KEINE Frist mehr.
+//       `no-cache`        erlaubt das Ablegen und verbietet die Wiederverwendung OHNE Rückfrage.
+//                         Damit greift jeder Entzug beim nächsten Abruf — sofort, nicht nach 300 s.
+//       `private`         bleibt nötig: `no-cache` erlaubt einem GETEILTEN Zwischenspeicher das
+//                         Ablegen weiterhin; `private` verbietet es.
+//       `must-revalidate` ist daneben redundant (es regelt den veralteten Zustand, den es ohne
+//                         Frischefrist gar nicht gibt) und steht bewusst da: bei einer Kopfzeile,
+//                         die ein Jahr lang unbemerkt falsch stand, ist die eindeutige Absicht für
+//                         den nächsten Leser den Preis wert.
+//   · JEDE NICHTAUSLIEFERUNG (404, 415) → `no-store`. Ein Fehlerzweig darf keine frühere positive
+//     Zusage erben, und eine Ablehnung ist nichts, was irgendwo liegenbleiben dürfte.
 //
-// WAS ES KOSTET, ehrlich: Objekt-Ids sind stabil und nicht inhaltsgehasht, deshalb war die
-// Ein-Jahres-Zusage ohnehin nur für unveränderliche Bytes gedacht. Der reale Preis ist eine
-// Revalidierung je Bild nach fünf Minuten statt keiner — bei einem Wissensobjekt mit vielen
-// Bildern also ein Satz bedingter Anfragen pro Sitzung, die bei unverändertem Inhalt mit 304
-// beantwortet werden. Für Vertrauliches entfällt der Zwischenspeicher ganz; dort wird bewusst
-// Ladezeit gegen Entziehbarkeit getauscht.
-const CACHE_UNVERTRAULICH = "private, max-age=300";
+// WAS DER SERVER NICHT KANN — und was hier deshalb NICHT versprochen wird: **Eine bereits
+// abgelegte lokale Kopie kann er nicht löschen.** Keine Kopfzeile kann das. Die Zusage lautet
+// ausschliesslich: Revalidierung vor Wiederverwendung, und beim nächsten Abruf sofortiger
+// serverseitiger Entzug (404, keine Bytes).
+//
+// WAS ES KOSTET, ehrlich: `no-cache` OHNE Validator bedeutet **vollständige Neuübertragung** bei
+// jeder Wiederverwendung. Es gibt hier bewusst keinen `ETag` und kein `Last-Modified`, also auch
+// kein `304` — die Validator-Scheibe ist eine eigene, spätere Tranche. Bei einem Wissensobjekt mit
+// vielen Bildern ist dieser Preis spürbar; er ist der bewusst gewählte Tausch von Ladezeit gegen
+// Entziehbarkeit. (Der frühere Satz an dieser Stelle versprach „bedingte Anfragen, die mit 304
+// beantwortet werden" — es gab nie einen Validator, der das hätte einlösen können.)
+const CACHE_UNVERTRAULICH = "private, no-cache, must-revalidate";
 const CACHE_VERTRAULICH = "no-store";
+// Jede Nichtauslieferung — 404 wie 415, Metadaten- wie Rohbyteroute.
+const CACHE_KEINE_ANTWORT = "no-store";
+
+// Beide im Produkt LEBENDEN Authwege: `http.ts` liest den `authorization`-Kopf und fällt auf das
+// Sitzungs-Cookie zurück. Nur die Nennung BEIDER trägt. Ehrlich eingeordnet: neben `private,
+// no-cache` ist die praktische Wirkung klein — `Vary` ist die zweite Linie für den Fall, dass ein
+// Zwischenspeicher `private` nicht respektiert. Es ist nicht die tragende Zusage.
+const VARY_AUTH = "Cookie, Authorization";
+
+/**
+ * `Vary` setzen, ohne vorhandene Werte zu verlieren.
+ *
+ * Ein blindes `.header("Vary", …)` würde einen Wert überschreiben, den ein Plugin oder ein Hook
+ * bereits gesetzt hat — und ein verlorener `Vary`-Anteil ist ein Zwischenspeicher, der zwei
+ * verschiedene Antworten für dieselbe Adresse verwechselt. Gemessen (JOB 579 D3) trägt heute
+ * nichts etwas nach; die Zusammenführung steht trotzdem hier, weil sie genau dann gebraucht wird,
+ * wenn sich das ändert, und niemand daran denken würde.
+ *
+ * Der Vergleich ist ohne Rücksicht auf Gross-/Kleinschreibung: `Vary`-Feldnamen sind
+ * Kopfzeilennamen, und die unterscheiden sie nicht.
+ */
+function mitVary(reply: FastifyReply): FastifyReply {
+  const vorhanden = String(reply.getHeader("vary") ?? "")
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  const bekannt = new Set(vorhanden.map((s) => s.toLowerCase()));
+  const ergaenzt = [...vorhanden];
+  for (const feld of VARY_AUTH.split(",").map((s) => s.trim())) {
+    if (!bekannt.has(feld.toLowerCase())) {
+      bekannt.add(feld.toLowerCase());
+      ergaenzt.push(feld);
+    }
+  }
+  reply.header("Vary", ergaenzt.join(", "));
+  return reply;
+}
 
 // SCRUM-121: Objekt-/Attachment-Speicher. Upload liefert eine ObjectRef (nur Metadaten);
 // das KO speichert die Referenz + kleine Vorschau statt des großen Originals.
@@ -182,11 +241,21 @@ export function objectRoutes(
       const obj = await store.read(request.params.id);
       // mega74 C: dieselbe Form wie am Wissensobjekt — nicht sichtbar sieht aus wie nicht
       // vorhanden. Ein 403 würde die Existenz des Anhangs bestätigen.
+      //
+      // JOB 579 D5: und derselbe Cachevertrag für BEIDE Fälle. Ob die Kennung gar nicht existiert
+      // oder nur unsichtbar ist, darf sich weder am Status noch am Rumpf noch an einer Kopfzeile
+      // unterscheiden — sonst wird die Kopfzeile zum Existenzorakel, das der 404 gerade verhindern
+      // soll.
       if (!obj || !(await urteile(user, request.params.id, obj.ref)).sichtbar) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
+        mitVary(reply)
+          .header("Cache-Control", CACHE_KEINE_ANTWORT)
+          .code(404)
+          .send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
         return;
       }
-      reply.code(200).send(obj);
+      // Die erfolgreiche Antwort hängt am Betrachter — dieselbe Adresse liefert je nach Anmeldung
+      // Metadaten oder 404.
+      mitVary(reply).code(200).send(obj);
     });
 
     // SCRUM-45/46/48 (KW-STR): rohe Bytes für <img src="/api/objects/:id/raw"> im Editor-Body.
@@ -200,12 +269,22 @@ export function objectRoutes(
         ? await urteile(user, request.params.id, obj.ref)
         : { sichtbar: false, vertraulich: true };
       if (!obj || !urteil.sichtbar) {
-        reply.code(404).send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
+        // JOB 579 D5: bytegleich zur Metadatenroute — Status, Rumpf und Cachevertrag.
+        mitVary(reply)
+          .header("Cache-Control", CACHE_KEINE_ANTWORT)
+          .code(404)
+          .send({ error: "NOT_FOUND", message: "Objekt nicht gefunden." });
         return;
       }
       const decoded = decodeDataUrl(obj.data);
       if (!decoded) {
-        reply.code(415).send({ error: "UNSUPPORTED", message: "Kein dekodierbares Objekt." });
+        // JOB 579 D5: auch dieser Zweig ist eine Nichtauslieferung. Ohne die Zeile erbte er die
+        // Vorgabe der Route — also eine positive Cachezusage für eine Antwort, die gar keine
+        // Bytes trägt.
+        mitVary(reply)
+          .header("Cache-Control", CACHE_KEINE_ANTWORT)
+          .code(415)
+          .send({ error: "UNSUPPORTED", message: "Kein dekodierbares Objekt." });
         return;
       }
       // SCRUM-503: Content-Type NICHT aus dem nutzerkontrollierten `mime` durchreichen. Nur eine
@@ -214,7 +293,7 @@ export function objectRoutes(
       // App-Origin rendert. nosniff verhindert MIME-Sniffing auf octet-stream.
       const claimedMime = obj.ref.mime || decoded.mime;
       const isSafeInlineImage = SAFE_INLINE_IMAGE_MIMES.has(claimedMime);
-      reply
+      mitVary(reply)
         .header("Content-Type", isSafeInlineImage ? claimedMime : "application/octet-stream")
         .header("X-Content-Type-Options", "nosniff")
         .header(

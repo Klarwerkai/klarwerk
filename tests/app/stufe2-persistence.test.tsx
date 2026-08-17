@@ -54,11 +54,16 @@ describe("W1 · RoleProvider persistiert den Stufe-2-Toggle", () => {
   let container: HTMLDivElement;
   let root: ReturnType<typeof createRoot>;
 
+  // JOB 1022 D5: die Sonde zeigt zusätzlich die effektive ROLLE. Sie ist die Bedingung, auf die
+  // `mountAndResolveAdmin` unten wirklich warten muss — `stufe2` ist `effectiveStufe2(role, toggle)`
+  // und bleibt `false`, solange die Session nicht als Admin aufgelöst ist. Ohne diese Anzeige gab es
+  // im DOM kein Merkmal, an dem „aufgelöst" von „noch nicht aufgelöst" zu unterscheiden war.
   function Probe(): JSX.Element {
-    const { stufe2, setStufe2 } = useRole();
+    const { role, stufe2, setStufe2 } = useRole();
     return createElement(
       "div",
       null,
+      createElement("span", null, `R:${role}`),
       createElement("span", null, stufe2 ? "S2:on" : "S2:off"),
       createElement("button", { onClick: () => setStufe2(true) }, "enable"),
       createElement("button", { onClick: () => setStufe2(false) }, "disable"),
@@ -83,16 +88,34 @@ describe("W1 · RoleProvider persistiert den Stufe-2-Toggle", () => {
         ),
       );
     });
-    // Session auflösen lassen (status → me), damit die effektive Rolle Admin ist.
-    for (let i = 0; i < 6 && !(container.textContent ?? "").includes("S2:on"); i += 1) {
+    // ── JOB 1022 D5 — DIE SCHLEIFE WARTET JETZT AUF DIE BEDINGUNG, DIE SIE BEHAUPTET ────────────
+    //
+    // Hier stand: höchstens sechs Runden à 20 ms, mit `break`, sobald `S2:(on|off)` im DOM steht —
+    // und `S2:off` steht SOFORT beim ersten Render. Faktisch wartete die Schleife damit zwei Runden,
+    // also ~40 ms, und fuhr dann weiter, egal ob die Session aufgelöst war. Die Session braucht aber
+    // ZWEI aufeinanderfolgende Abrufe (`status` → `me`); erst danach ist die Rolle Admin und
+    // `effectiveStufe2(role, toggle)` kann überhaupt `true` werden.
+    //
+    // FOLGE, und sie ist gemessen: Auf einer unbelasteten Maschine reichen die 40 ms; unter Last
+    // nicht. Der unabhängige Prüfer von JOB 1022 D4 hat genau deshalb `S2:off` gesehen und diese
+    // Datei als neu rot gemeldet, während derselbe Stand hier grün lief — in dieser Umgebung
+    // brechen drei Socket-Testdateien sofort mit `listen EPERM` ab und erzeugen die Last nicht.
+    // Nachgewiesen mit einer Sonde: 30 ms künstliche Verzögerung in `status` genügen, damit die
+    // ALTE Schleife mit `expected 'S2:off' to contain 'S2:on'` fehlschlägt.
+    //
+    // KEINE ZUSAGE IST GELOCKERT — im Gegenteil: gewartet wird jetzt auf `R:admin`, also auf die
+    // Vorbedingung, die der Funktionsname behauptet, und ihr Ausbleiben ist ein eigener,
+    // sprechender Fehlschlag statt einer stillen Weiterfahrt. Jede `expect`-Zeile der Fälle
+    // darunter steht unverändert.
+    for (let i = 0; i < 50 && !(container.textContent ?? "").includes("R:admin"); i += 1) {
       await act(async () => {
         await new Promise((r) => setTimeout(r, 20));
       });
-      if ((container.textContent ?? "").match(/S2:(on|off)/)) {
-        // Rolle ist da; Schleife bricht ab, sobald ein stabiler Zustand steht.
-        if (i >= 1) break;
-      }
     }
+    expect(
+      container.textContent,
+      "die Admin-Session wurde nicht aufgelöst — ohne sie prüft kein Fall dieser Datei etwas",
+    ).toContain("R:admin");
   }
 
   function unmount(): void {

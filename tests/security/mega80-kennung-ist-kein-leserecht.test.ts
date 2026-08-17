@@ -181,6 +181,11 @@ function nutzlast(action: string, ctx: { attachmentId: string; koB: string }): o
       return { action, tags: ["mega80"] };
     case "confidentiality":
       return { action, level: "intern" };
+    // JOB 557: die Verantwortung am Objekt benennen. Eine fachlich gültige Mindestnutzlast —
+    // ob der Anfragende sie setzen DARF, entscheidet der Zweig (`ko.validate`), und genau das
+    // soll dieser Wächter nicht vorwegnehmen.
+    case "ownership":
+      return { action, ownership: { owner: "eva-eigentuemerin" } };
     case "conflict":
       return {
         action,

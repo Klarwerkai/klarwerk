@@ -39,8 +39,11 @@ function walkTsFiles(dir: string): string[] {
 // Exportierte DDL-Schema-Konstanten — keine JSON-/Validierungs-„SCHEMA"-Konstanten ohne Tabelle.
 //
 // JOB 727 D2: Die Auswahl fragte bis hierher nur nach `CREATE TABLE`. Eine reine ALTER-Stufe fiel
-// dadurch schweigend durch, und es gibt vier davon. `istStrukturstufe` fragt jetzt nach beidem;
-// gemessen ändert das die Menge von 29 auf 33 und trifft damit die `schemas`-Liste genau.
+// dadurch schweigend durch. `istStrukturstufe` fragt jetzt nach beidem und trifft damit die
+// `schemas`-Liste genau.
+//
+// JOB 498 D8: mit `AUDIT_HASH_VERSION_SCHEMA` sind es FÜNF reine ALTER-Stufen, und die Menge
+// umfasst 34 statt 33 Konstanten. Die Zahlen stehen hier, weil sie sonst still veralten.
 function exportedDdlSchemas(): string[] {
   const names = new Set<string>();
   const re = /export const (\w+_SCHEMA)\s*=\s*`([\s\S]*?)`/g;
@@ -141,9 +144,11 @@ describe("G27 Welle 1 (Abschnitt J): die additive V1→V2-Stufe der Suchprojekti
 // DIE GEMESSENE LÜCKE IM WÄCHTER (BASIC 379 §2.5, hier nachgemessen): `exportedDdlSchemas()` oben
 // sammelt nur *_SCHEMA-Konstanten, DEREN TEMPLATE EIN `CREATE TABLE` TRÄGT. Eine reine
 // ALTER-Stufe fällt durch dieses Netz — sie ist exportiert, sie sieht aus wie ein Schema, und der
-// generische Test übersieht sie schweigend. Drei solche Stufen gibt es bereits
+// generische Test übersieht sie schweigend. Drei solche Stufen gab es bereits
 // (KO_IMPORT_ANCHOR_SCHEMA, KO_CREATE_OPERATION_SCHEMA, AUDIT_EVENT_ID_SCHEMA); sie hängen alle an
-// eigens benannten Prüfungen. KO_SICHTBARKEIT_SCHEMA ist die vierte.
+// eigens benannten Prüfungen. KO_SICHTBARKEIT_SCHEMA ist die vierte, AUDIT_HASH_VERSION_SCHEMA
+// (JOB 498 D8) die fünfte — letztere hängt am Inventurfall weiter unten und braucht deshalb
+// keinen eigens geschriebenen Einzelfall mehr. Genau dafür wurde er gebaut.
 //
 // DAS IST DIESELBE FEHLERKLASSE WIE SCRUM-496, nur eine Stufe tiefer — und sie ist hier
 // SICHERHEITSRELEVANT: fehlt die Stufe gegen eine Bestandsdatenbank, fehlen die Schlüsselspalten,
@@ -197,8 +202,13 @@ describe("BASIC 380 (T-M-3): die ALTER-only-Stufe KO_SICHTBARKEIT_SCHEMA läuft 
 // DIESER FALL PRÜFT DIE INVENTUR STATT DER EINZELSTUFE. Er ist rot, solange `exportedDdlSchemas()`
 // auf `CREATE TABLE` filtert — und er bleibt grün, ohne dass jemand ihn anfasst, wenn eine fünfte
 // ALTER-only-Stufe dazukommt.
+//
+// JOB 498 D8: DIE FÜNFTE STUFE IST DER BEWEIS, DASS DIESER FALL WIRKLICH MITWÄCHST.
+// `AUDIT_HASH_VERSION_SCHEMA` ist genau der Fall, für den er geschrieben wurde: eine reine
+// ALTER-Stufe, die der alte `CREATE TABLE`-Filter schweigend übersehen hätte.
 const ALTER_ONLY_STUFEN = [
   "AUDIT_EVENT_ID_SCHEMA",
+  "AUDIT_HASH_VERSION_SCHEMA",
   "KO_CREATE_OPERATION_SCHEMA",
   "KO_IMPORT_ANCHOR_SCHEMA",
   "KO_SICHTBARKEIT_SCHEMA",
@@ -215,7 +225,7 @@ describe("JOB 727 D2: die Strukturinventur hat keine CREATE-TABLE-Filterlücke",
     }
   });
 
-  it("die vier ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
+  it("die fünf ALTER-only-Stufen tragen wirklich kein CREATE TABLE — sonst prüfte der Fall nichts", () => {
     // Die Gegenkontrolle zum Fall darüber: wären sie CREATE-TABLE-Stufen, hätte der alte Filter
     // sie ohnehin gesehen und der Nachweis wäre leer.
     for (const name of ALTER_ONLY_STUFEN) {

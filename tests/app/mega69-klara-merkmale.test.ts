@@ -126,7 +126,31 @@ function m6FremdeZiele(src: string): string[] {
 
 /** M7 · Die Menge der Abrufziele ist der bekannte Bestand. Ein NEUES Ziel ist die
  *  Auslieferungsfolge, die ein Pin allein nicht benennen kann. */
-const BEKANNTE_ABRUFZIELE = 9;
+// ================================================================================================
+// JOB 1077 D7 — DIE BEWUSSTE ANTWORT ZUM ZEHNTEN ABRUFZIEL (9 → 10).
+// ================================================================================================
+//
+// Diese Zahl wird nicht „nachgezogen", weil ein Test rot war. M7 hat genau die Frage gestellt, für
+// die er gebaut wurde — „CSP? Recht? Manifest?" —, und hier steht die Antwort, bevor die Zahl steigt.
+//
+// DAS NEUE ZIEL: ein `HEAD` auf `/word-addin/taskpane.html` (`kwFassungAbgleichen`). Es ist das
+// ungewöhnlichste Ziel dieser Liste, weil es KEINE fremde Adresse ist, sondern DIE EIGENE: genau der
+// Pfad, von dem diese Seite selbst geladen wurde. Die Seite fragt ihren eigenen Server, ob sie noch
+// die ausgelieferte Fassung ist.
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt die eigene Adresse; es kommt kein Ursprung
+//               hinzu, den die Seite nicht ohnehin schon benutzt hat, um zu existieren.
+//   · Recht:    keines. Die Auslieferung ist öffentlich statisch — dieselbe Route, die den GET
+//               beantwortet, beantwortet den HEAD (`services/app/src/web-static.ts`).
+//   · Manifest: unverändert. Kein neuer Pfad, keine neue Domain, keine neue Berechtigung; die
+//               K7-Kennung `?v=<Version>` bleibt unberührt (gepinnt in
+//               `tests/app/word-addin-taskpane-version-contract.test.ts`, B5).
+//   · Nutzlast: keine. `HEAD` sendet keinen Körper und empfängt keinen; gelesen wird EIN Kopf.
+//   · Frequenz: einmal je Laden des Aufgabenfensters. Kein Intervall, kein Wiederholzyklus.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Antwortet ein älterer
+// Server den Kopf nicht, bleibt die Zeile ehrlich bei „Abgleich nicht möglich" — nie bei „aktuell".
+const BEKANNTE_ABRUFZIELE = 10;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }

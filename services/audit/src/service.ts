@@ -1,5 +1,12 @@
 import type { TxContext } from "../../db-tx";
-import { type ChainInspection, GENESIS, hashEntry, inspectChain, verifyChain } from "./chain";
+import {
+  AUDIT_HASH_VERSION_V2,
+  type ChainInspection,
+  GENESIS,
+  hashEntryV2,
+  inspectChain,
+  verifyChain,
+} from "./chain";
 import type { AuditRepo } from "./repo";
 import type { AuditEntry, AuditFilter, AuditInput } from "./types";
 
@@ -26,6 +33,11 @@ export class AuditService {
     const last = await this.repo.last(tx);
     const seq = last ? last.seq + 1 : 1;
     const prevHash = last ? last.hash : GENESIS;
+    // JOB 498 D8: NEUE EINTRÄGE SIND V2 — und `hashVersion` steht IM `partial`, also VOR der
+    // Hashbildung und vor `Object.freeze`. Nachträglich ginge es gar nicht: `InMemoryAuditRepo.append`
+    // friert den Eintrag ein, und `service.test.ts` nagelt das mit `Object.isFrozen` fest. Ein
+    // später gesetztes Feld läge außerdem neben dem Hash statt in ihm — genau die Lücke, die V2
+    // schließt.
     const partial: Omit<AuditEntry, "hash"> = {
       seq,
       at: new Date(this.now()).toISOString(),
@@ -34,8 +46,9 @@ export class AuditService {
       target: input.target,
       payload: input.payload ?? {},
       prevHash,
+      hashVersion: AUDIT_HASH_VERSION_V2,
     };
-    const entry: AuditEntry = { ...partial, hash: hashEntry(partial) };
+    const entry: AuditEntry = { ...partial, hash: hashEntryV2(partial) };
     await this.repo.append(entry, tx);
     return entry;
   }
@@ -60,8 +73,11 @@ export class AuditService {
       payload: input.payload ?? {},
       prevHash,
       eventId,
+      // Wie in `record`: die Version steht vor der Hashbildung im Eintrag. Das
+      // Exactly-once-Verhalten bleibt davon unberührt — es hängt an `eventId`, nicht am Hash.
+      hashVersion: AUDIT_HASH_VERSION_V2,
     };
-    return this.repo.appendOnce({ ...partial, hash: hashEntry(partial) }, tx);
+    return this.repo.appendOnce({ ...partial, hash: hashEntryV2(partial) }, tx);
   }
 
   async list(filter: AuditFilter = {}): Promise<AuditEntry[]> {

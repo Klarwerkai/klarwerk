@@ -277,6 +277,15 @@ const REGISTER: Record<string, Eintrag> = {
   //
   // LESEURTEIL, keine Messung — wie bei jedem Eintrag dieser Klasse. Nachschlagbar an den
   // genannten Fundstellen.
+  // W3-C (JOB 541 D3): Die Erklaerung gibt Kennungen und Fassungen der belegenden Wissensobjekte
+  // aus — keine Titel, keine Aussagen, keinen Text. Sie ist trotzdem KEIN `KEIN_KO_INHALT`-Fall,
+  // sondern ein gefilterter: der Dienst prueft das Eigentum an der Antwort und schwaerzt
+  // vertrauliche Belege je Leser.
+  "GET /api/klara/answers/:answerId/explanation": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "services/app/src/services/answer-explanation.ts — gehoertNutzer() als Eigentumstor, isConfidential() schwaerzt je Beleg.",
+  },
   "GET /api/klara/ai-status": {
     urteil: "KEIN_KO_INHALT",
     grund:

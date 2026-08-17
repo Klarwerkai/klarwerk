@@ -665,68 +665,157 @@ export function Ask(): JSX.Element {
           <>
             {/* SCRUM-366 / AG-P2-2 / AG-P2-3 / PI-K2: Antwortvertrag — ruhige Karte, die vor dem Lesen
               klar macht: Worauf basiert die Antwort? Gesichert, ungeprüft oder Wissenslücke? Quellen-
-              bilanz + ehrliche Trust-Notiz (kein Wahrheitsversprechen) + sicherer nächster Schritt. */}
-            <Card
-              className={`mt-5 ${
-                contract.tone === "pos"
-                  ? "border-trust-pos-fill bg-trust-pos-bg"
-                  : "border-trust-warn-fill bg-trust-warn-bg"
-              }`}
-            >
-              <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                {t("ask.contract.label")}
-              </span>
-              <p
-                className={`mt-0.5 text-[13px] font-semibold ${
-                  contract.tone === "pos" ? "text-trust-pos-text" : "text-trust-warn-text"
+              bilanz + ehrliche Trust-Notiz (kein Wahrheitsversprechen) + sicherer nächster Schritt.
+
+              SCHEIBE D-047 (JOB 1022) — DIESE KASTENFORM GILT NUR NOCH FÜR DIE WISSENSLÜCKE.
+              Im beantworteten Zustand stand sie VOR der Antwort und war damit eine zweite, mit der
+              Antwortkarte konkurrierende Einordnungsfläche: dieselbe Tatsache, zweimal gerahmt.
+              Genau diese Parallelstruktur löst D-047 ab. Ihre Texte sind NICHT gestrichen — sie
+              stehen im Antwortfall als kompakte Einordnungs-/Nachlaufstruktur unter der Antwort
+              (`ask-contract-line` weiter unten), jeder genau einmal.
+              Im LÜCKENFALL bleibt der Kasten unverändert: dort gibt es keine Antwort, unter die
+              etwas rücken könnte, und ein Wegfall wäre eine ersatzlose Textstreichung — die Falle,
+              in die eine unbedachte Ablösung hier läuft, weil kein Antwort-Test sie sehen würde. */}
+            {!result.answered ? (
+              <Card
+                className={`mt-5 ${
+                  contract.tone === "pos"
+                    ? "border-trust-pos-fill bg-trust-pos-bg"
+                    : "border-trust-warn-fill bg-trust-warn-bg"
                 }`}
               >
-                {t(contract.titleKey)}
-              </p>
-              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-                {t(contract.bodyKey)}
-              </p>
-              {sourceSummary && sourceSummary.total > 0 ? (
-                <div className="mt-2 flex flex-wrap gap-1.5">
-                  <span className="rounded-pill bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
-                    {t("ask.contract.sumTotal", { count: sourceSummary.total })}
-                  </span>
-                  {sourceSummary.validated > 0 ? (
-                    <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
-                      {t("ask.contract.sumValidated", { count: sourceSummary.validated })}
-                    </span>
-                  ) : null}
-                  {sourceSummary.open > 0 ? (
-                    <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
-                      {t("ask.contract.sumOpen", { count: sourceSummary.open })}
-                    </span>
-                  ) : null}
-                  {sourceSummary.conflictLimited > 0 ? (
-                    <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
-                      {t("ask.contract.sumConflict", { count: sourceSummary.conflictLimited })}
-                    </span>
-                  ) : null}
-                </div>
-              ) : null}
-              {contract.sourceBound ? (
-                <p className="mt-2 text-[11.5px] leading-relaxed text-muted-2">
-                  {t(ANSWER_CONTRACT_TRUST_NOTE_KEY)}
+                <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                  {t("ask.contract.label")}
+                </span>
+                <p
+                  className={`mt-0.5 text-[13px] font-semibold ${
+                    contract.tone === "pos" ? "text-trust-pos-text" : "text-trust-warn-text"
+                  }`}
+                >
+                  {t(contract.titleKey)}
                 </p>
-              ) : null}
-              <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
-            </Card>
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                  {t(contract.bodyKey)}
+                </p>
+                {sourceSummary && sourceSummary.total > 0 ? (
+                  <div className="mt-2 flex flex-wrap gap-1.5">
+                    <span className="rounded-pill bg-surface px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
+                      {t("ask.contract.sumTotal", { count: sourceSummary.total })}
+                    </span>
+                    {sourceSummary.validated > 0 ? (
+                      <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
+                        {t("ask.contract.sumValidated", { count: sourceSummary.validated })}
+                      </span>
+                    ) : null}
+                    {sourceSummary.open > 0 ? (
+                      <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
+                        {t("ask.contract.sumOpen", { count: sourceSummary.open })}
+                      </span>
+                    ) : null}
+                    {sourceSummary.conflictLimited > 0 ? (
+                      <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
+                        {t("ask.contract.sumConflict", { count: sourceSummary.conflictLimited })}
+                      </span>
+                    ) : null}
+                  </div>
+                ) : null}
+                {contract.sourceBound ? (
+                  <p className="mt-2 text-[11.5px] leading-relaxed text-muted-2">
+                    {t(ANSWER_CONTRACT_TRUST_NOTE_KEY)}
+                  </p>
+                ) : null}
+                <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
+              </Card>
+            ) : null}
             {result.answered ? (
+              // ==========================================================================
+              // SCHEIBE D-047 (JOB 1022) — DIE ANTWORT STEHT VORN.
+              // ==========================================================================
+              // Live gemessen (mega38 A, dieselbe Messung): der Antwortblock begann bei 674 px in
+              // einem 678 px hohen Sichtbereich. Wer eine Frage stellte, bekam zuerst Kennzeichnung,
+              // Einordnung, Status, Evidenz und Werkzeuge zu lesen — und die Antwort selbst gar
+              // nicht zu sehen. Fünf Vorworte vor der Auskunft.
+              // Sie ist ab hier das ERSTE Inhaltselement dieser Karte; alles, was sie einordnet,
+              // steht dahinter. Erst die Sache, dann ihre Rahmung.
+              // WP-UX-WOW-1 U1 bleibt unangetastet: Markdown wird SICHER als React-Elemente
+              // gerendert (kein HTML-Sink); Kopieren/Download/Druck nutzen weiter den ROHEN Text
+              // über `buildExport`.
+              // Die Klasse `ask-answer-body` ist kein Stil, sondern der Anker, an dem
+              // `tests/app/job1022-antwort-steht-vorn.test.tsx` die Erstplatzierung am GERENDERTEN
+              // DOM misst — Quelltextreihenfolge wäre hier kein Beleg.
+              //
+              // WARUM DIESE ERKLÄRUNG VOR DER KARTE STEHT UND NICHT DARIN: mega62 E1 prüft, dass
+              // `<AiGeneratedNotice` innerhalb der ersten 2000 Zeichen nach `className="print-area`
+              // steht — sonst wäre die Kennzeichnung ans Kartenende gerutscht. Ein Kommentarblock
+              // in der Karte verbraucht dieses Budget, ohne etwas zu rendern. Gekürzt wird deshalb
+              // nicht die Begründung, sondern ihr Ort.
               // AUFTRAG-mega52: stabiler Anker des ERGEBNISBEREICHS fuer die Browser-Sonde.
               <Card className="print-area mt-3" data-testid="ask-answer">
-                {/* AUFTRAG-mega62 Block E: der KI-Satz gehört IN die Druckfläche. Er stand bisher
-                    am Eingabefeld (weiter oben) und damit außerhalb von `.print-area` — im
-                    gedruckten Blatt bzw. im daraus erzeugten PDF fehlte die Kennzeichnung also
-                    genau dort, wo das Ergebnis das Haus verlässt. Der Satz oben bleibt: er kommt
-                    VOR der ersten Frage, dieser hier reist MIT dem Ergebnis. */}
-                <p className="mb-2">
+                {/* D-047: die Antwort zuerst — Begründung unmittelbar über dieser Karte. */}
+                <AnswerMarkdown
+                  text={result.answer ?? ""}
+                  className="ask-answer-body text-[15px] leading-relaxed text-text"
+                />
+                {/* mega62 Block E: der KI-Satz gehört IN die Druckfläche (sonst fehlt er im PDF).
+                    D-047: er folgt UNMITTELBAR auf die Antwort statt ihr voranzugehen — Artikel 50
+                    verlangt die Kennzeichnung an der erzeugten Ausgabe, nicht vor ihr. Wortlaut,
+                    Bauteil und Druckfläche unverändert. */}
+                <p className="mt-2">
                   <AiGeneratedNotice />
                 </p>
-                <div className="mb-3 flex items-center justify-between gap-3">
+                {/* D-047 — DIE EINORDNUNG ALS ZEILE STATT ALS KASTEN: Kernsatz und Quellenbilanz
+                    kompakt unter der Antwort, Erläuterung/Trust-Notiz/nächster Schritt als
+                    Nachlauf. Derselbe Inhalt wie im abgelösten Kasten, kein Text gestrichen,
+                    keiner doppelt. */}
+                <div
+                  data-testid="ask-contract-line"
+                  className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1"
+                >
+                  <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                    {t("ask.contract.label")}
+                  </span>
+                  <span
+                    className={`text-[12.5px] font-semibold ${
+                      contract.tone === "pos" ? "text-trust-pos-text" : "text-trust-warn-text"
+                    }`}
+                  >
+                    {t(contract.titleKey)}
+                  </span>
+                  {sourceSummary && sourceSummary.total > 0 ? (
+                    <>
+                      <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold text-text">
+                        {t("ask.contract.sumTotal", { count: sourceSummary.total })}
+                      </span>
+                      {sourceSummary.validated > 0 ? (
+                        <span className="rounded-pill bg-trust-pos-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-pos-text">
+                          {t("ask.contract.sumValidated", { count: sourceSummary.validated })}
+                        </span>
+                      ) : null}
+                      {sourceSummary.open > 0 ? (
+                        <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text">
+                          {t("ask.contract.sumOpen", { count: sourceSummary.open })}
+                        </span>
+                      ) : null}
+                      {sourceSummary.conflictLimited > 0 ? (
+                        <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
+                          {t("ask.contract.sumConflict", { count: sourceSummary.conflictLimited })}
+                        </span>
+                      ) : null}
+                    </>
+                  ) : null}
+                </div>
+                <div className="mt-1.5 border-t border-hairline pt-1.5">
+                  <p className="text-[12.5px] leading-relaxed text-muted">{t(contract.bodyKey)}</p>
+                  {contract.sourceBound ? (
+                    <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
+                      {t(ANSWER_CONTRACT_TRUST_NOTE_KEY)}
+                    </p>
+                  ) : null}
+                  <p className="mt-1 text-[12px] font-medium text-text">
+                    {t(contract.nextStepKey)}
+                  </p>
+                </div>
+                <div className="mb-3 mt-3 flex items-center justify-between gap-3">
                   <div className="flex flex-wrap items-center gap-1.5">
                     {/* SCRUM-250 / AUFTRAG-mega33 A2: Status und Evidenz kommen aus der EINEN
                       effektiven Einstufung — nicht mehr je einzeln aus der rohen Knowledge-Class.
@@ -814,12 +903,6 @@ export function Ask(): JSX.Element {
                     {t("ask.export.print")}
                   </Button>
                 </div>
-                {/* WP-UX-WOW-1 U1: Markdown der Antwort SICHER gerendert (Subset via React-Elemente);
-                  Kopieren/Download/Druck nutzen weiter den ROHEN Text (buildExport unverändert). */}
-                <AnswerMarkdown
-                  text={result.answer ?? ""}
-                  className="text-[15px] leading-relaxed text-text"
-                />
                 {reviewGuard ? (
                   <div className="mt-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
                     <div className="font-semibold">{t(reviewGuard.labelKey)}</div>

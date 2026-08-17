@@ -199,6 +199,8 @@ import { impactRoutes } from "./routes/impact-routes";
 import { importAccessRoutes } from "./routes/import-access-routes";
 import { importRunRoutes } from "./routes/import-run-routes";
 import { klaraAiRoutes } from "./routes/klara-ai-routes";
+// W3-C (JOB 541 D3): die kanonische Antwort-Erklaerroute und ihr Lesedienst.
+import { klaraAnswerExplanationRoutes } from "./routes/klara-answer-explanation-routes";
 import { knowledgeCheckRoutes } from "./routes/knowledge-check-routes";
 import { koRoutes } from "./routes/ko-routes";
 import { libraryRoutes } from "./routes/library-routes";
@@ -218,6 +220,7 @@ import { validationRoutes } from "./routes/validation-routes";
 // G27 R2 (Entscheidung 15 §A): der EINE kanonische Startupvertrag der Suchprojektion — von
 // App-Ready hier und von `runSeed()` in `seed.ts` gemeinsam benutzt.
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
+import { AnswerExplanationService } from "./services/answer-explanation";
 // W1 S4 (KW-S4-04 §59-100): Klara-Sitzung und Zustimmung. NUR Verdrahtung — die
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
 import { ImportAccessService } from "./services/import-access-service";
@@ -239,6 +242,10 @@ export interface AppServices {
   audit: AuditService;
   capture: CaptureService;
   ask: AskService;
+  // W3-C (JOB 541 D3): der Belegspeicher der Antworten. Er steht hier und nicht nur als Dep des
+  // AskService, weil der Erklaer-Lesepfad ihn ebenfalls braucht — und beide MUESSEN denselben
+  // benutzen: zwei Zugaenge waeren zwei Bestaende ueber denselben Beleg.
+  answerSnapshots: AnswerSnapshotRepo;
   validation: ValidationService;
   conflicts: ConflictService;
   // Berater-Konzept Duplikate 04.07. (Stufe D3): Überschneidungs-/Duplikat-Erkennung (eigene Entität).
@@ -493,6 +500,10 @@ export function assembleServices(
       objectExists: async (objectId) => (await objects.metadata(objectId)) !== undefined,
     }),
     ask,
+    // W3-C (JOB 541 D3): der Belegspeicher wird durchgereicht, weil der Erklaer-Lesepfad ihn
+    // braucht. Er ist DASSELBE Repo, das der Schreibweg oben benutzt — ein zweites waere ein
+    // zweiter Bestand und damit ein zweiter Wahrheitsort ueber denselben Beleg.
+    answerSnapshots: repos.answerSnapshots,
     validation: new ValidationService({
       koService: ko,
       ratings: repos.ratings,
@@ -1167,6 +1178,20 @@ export function buildApp(
   // impactRoutes darunter.
   app.register(
     askRoutes({ ask: services.ask, ko: services.ko, conflicts: services.conflicts }, guards),
+  );
+  // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
+  // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine
+  // zweite Aufloesung.
+  app.register(
+    klaraAnswerExplanationRoutes(
+      {
+        explanations: new AnswerExplanationService({
+          answerSnapshots: services.answerSnapshots,
+          ko: services.ko,
+        }),
+      },
+      guards,
+    ),
   );
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   app.register(

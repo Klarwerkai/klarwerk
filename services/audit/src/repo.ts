@@ -1,5 +1,5 @@
 import type { TxContext } from "../../db-tx";
-import { hashEntry, verifyChain } from "./chain";
+import { hashEntryFuerVersion, verifyChain } from "./chain";
 import type { AuditEntry } from "./types";
 
 // SCRUM-523 P.3 (WP-A2): append/last nehmen einen OPTIONALEN, opaken TxContext (services/db-tx) an —
@@ -130,7 +130,15 @@ export function pruefeValidationDecisionRef(
     // belegt — dieselbe Aussage wie ein fehlender Eintrag.
     return "MISSING";
   }
-  if (entry.hash !== ref.auditHash || hashEntry(entry) !== entry.hash || !verifyChain(kette)) {
+  // JOB 498 D8 — DIE DRITTE HASHSTELLE, und die einzige INNERHALB einer Sicherheitsprüfung.
+  //
+  // Sie muss dieselbe zentrale Versionswahl benutzen wie `verifyChain` und `inspectChain`. Täte sie
+  // es nicht, wäre der Schaden asymmetrisch und still: ein V2-Eintrag würde gegen V1 nachgerechnet,
+  // der Vergleich schlüge fehl, und eine GÜLTIGE Validierungsentscheidung erschiene als
+  // `HASH_MISMATCH` — die Referenz verlöre ihre Deckung, ohne dass irgendetwas manipuliert wäre.
+  // `undefined` (unbekannte Version) ist nie gleich einem gespeicherten Hash und fällt fail-closed.
+  const eigenhash = hashEntryFuerVersion(entry);
+  if (entry.hash !== ref.auditHash || eigenhash !== entry.hash || !verifyChain(kette)) {
     // Gebrochene Kette faellt bewusst auf HASH_MISMATCH und nicht auf einen neuen Zustand:
     // KW-W3-19 legt die Zustandsmenge fest, und was hier kaputt ist, IST die Hashbindung —
     // nur eine Ebene hoeher als die einzelne Zeile.
