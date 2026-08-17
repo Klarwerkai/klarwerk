@@ -2830,8 +2830,18 @@ const de = {
   "imp.access.whereSet":
     "Diese Werte werden als Umgebungsvariablen auf dem Server gesetzt — nicht hier. Klarwerk zeigt nur, ob sie stehen, nie ihren Inhalt.",
   "imp.access.whoMay": "Ändern kann das, wer Zugang zum Server dieser Installation hat.",
+  // JOB-924 D6: Der frühere Satz („wird nicht festgehalten") ist überholt — es WIRD festgehalten,
+  // es gibt nur noch keinen erfolgreichen Lauf. Beide Sätze sind ausdrücklich rückblickend: der
+  // Zeitpunkt sagt, dass es damals ging, nicht dass es jetzt geht. Das wüsste nur ein Aufruf, und
+  // den macht diese Fläche nicht.
+  // Die Wortwahl „ist bisher nicht festgehalten" statt „wird nicht festgehalten" ist der ganze
+  // Unterschied: Der Ort EXISTIERT, es steht nur noch nichts darin. `mega67-zugang-flaeche-mounted`
+  // pinnt „nicht festgehalten" als Beleg, dass der Unbekannt-Fall BENANNT wird statt zu schweigen —
+  // dieser Vertrag bleibt gültig, nur die Behauptung dahinter wird wahr.
   "imp.access.lastConnectedUnknown":
-    "Wann zuletzt erfolgreich verbunden wurde, wird nicht festgehalten — das wäre hier nur zu erraten.",
+    "Ein erfolgreich abgeschlossener Import ist bisher nicht festgehalten.",
+  "imp.access.lastConnected":
+    "Zuletzt erfolgreich abgeschlossener Import: {{date}}. Ob es jetzt funktioniert, sagt dieser Rückblick nicht.",
   // AUFTRAG-ic7-import-vision: EHRLICHE Quellen-Galerie „wo die Reise hingeht".
   "imp.gallery.planned": "geplant",
   // AUFTRAG-mega32 BLOCK G: EINE aufklappbare Zeile mit ANZAHL. Standard zugeklappt; aufgeklappt
@@ -7169,8 +7179,9 @@ const en: typeof de = {
   "imp.access.whereSet":
     "These values are set as environment variables on the server — not here. Klarwerk only shows whether they are set, never their content.",
   "imp.access.whoMay": "This can be changed by whoever has access to this installation's server.",
-  "imp.access.lastConnectedUnknown":
-    "When the last successful connection happened is not recorded — it could only be guessed here.",
+  "imp.access.lastConnectedUnknown": "No successfully completed import has been recorded yet.",
+  "imp.access.lastConnected":
+    "Last successfully completed import: {{date}}. Whether it works now, this look back does not say.",
   "imp.gallery.planned": "planned",
   "imp.gallery.plannedGroup": "Planned ({{count}})",
   "imp.gallery.systemsTitle": "Systems",
@@ -11269,8 +11280,9 @@ const nl: typeof de = {
     "Deze waarden worden als omgevingsvariabelen op de server gezet — niet hier. Klarwerk laat alleen zien of ze er staan, nooit hun inhoud.",
   "imp.access.whoMay":
     "Dit kan worden gewijzigd door wie toegang heeft tot de server van deze installatie.",
-  "imp.access.lastConnectedUnknown":
-    "Wanneer voor het laatst succesvol verbinding is gemaakt, wordt niet vastgelegd — dat zou hier alleen te raden zijn.",
+  "imp.access.lastConnectedUnknown": "Er is nog geen succesvol afgeronde import vastgelegd.",
+  "imp.access.lastConnected":
+    "Laatste succesvol afgeronde import: {{date}}. Of het nu werkt, zegt deze terugblik niet.",
   "imp.gallery.planned": "gepland",
   "imp.gallery.plannedGroup": "Gepland ({{count}})",
   "imp.gallery.systemsTitle": "Systemen",

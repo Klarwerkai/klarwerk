@@ -1253,8 +1253,13 @@ export type FeatureFlags = Partial<Record<FeatureName, boolean>>;
 // ================================================================================================
 // Was hier NICHT steht, ist der eigentliche Punkt: kein Wert, kein Maskenfeld, keine Länge. Der Typ
 // trägt gar keinen Platz, in den ein Geheimnis passen würde (s. services/confluence/src/
-// credential-state.ts). Und `lastConnectedAt` ist heute IMMER null — es gibt im Bestand keinen Ort,
-// der einen erfolgreichen Kontakt festhält, und eine erfundene Zahl wäre schlimmer als keine.
+// credential-state.ts).
+//
+// JOB-924 D6: `lastConnectedAt` ist NICHT mehr immer null. Der frühere Satz an dieser Stelle („es
+// gibt im Bestand keinen Ort, der einen erfolgreichen Kontakt festhält") war überholt — den Ort
+// gibt es seit AUFTRAG-144: `ImportRun.completedAt` bei Status `COMPLETED`. Der Server liefert
+// jetzt den jüngsten gültigen dieser Zeitpunkte, unverändert als ISO-Zeichenkette. `null` bleibt
+// eine AUSSAGE und kein Platzhalter: „es ist kein erfolgreicher Lauf belegt."
 export interface ImportAccessStatus {
   system: string;
   /** Ist der Import eingeschaltet? Schalter aus ⇒ die Import-Routen existieren gar nicht. */

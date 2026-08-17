@@ -334,6 +334,27 @@ export function istImportRunStatus(wert: unknown): wert is ImportRunStatus {
 }
 
 /**
+ * JOB-924: DIE ZWEITE FAIL-CLOSED GRENZE DIESER DOMAENE — ein GUELTIGER Abschlusszeitpunkt.
+ *
+ * `ImportRun.completedAt` ist im Vertrag ein freier String, weil die Ablage ihn roh durchreicht:
+ * JSONB kennt keinen Zeitstempeltyp, und ein Altbestand kann alles enthalten. Wer aus diesem Feld
+ * eine AUSSAGE macht („zuletzt erfolgreich verbunden"), braucht deshalb eine eigene Grenze — sonst
+ * wird aus unbrauchbarem Text eine Zahl, die wie Wissen aussieht.
+ *
+ * WARUM NICHT `Date.parse` ALLEIN: `Date.parse("2026")` ist gueltig und ergaebe den 1. Januar —
+ * eine erfundene Genauigkeit aus einer Jahreszahl. WARUM NICHT DIE FORM ALLEIN: `2026-13-45T…`
+ * hat die richtige Form und bezeichnet keinen Tag. Deshalb beides.
+ */
+const IMPORT_ZEITPUNKT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d{1,9})?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function istImportZeitpunkt(wert: unknown): wert is string {
+  if (typeof wert !== "string" || !IMPORT_ZEITPUNKT.test(wert)) {
+    return false;
+  }
+  return Number.isFinite(Date.parse(wert));
+}
+
+/**
  * Was mit EINEM Element des Laufs geschehen ist. `CREATED` = ein Wissensobjekt ist entstanden,
  * `BOUND` = ein vorhandenes wurde gebunden, `SKIPPED` = bewusst uebergangen (z. B. Dublette),
  * `FAILED` = an diesem Element gescheitert. Der Lauf als Ganzes bleibt davon unberuehrt: erst die

@@ -11,6 +11,7 @@ import {
   type ReviewStatus,
   istImportItemOutcome,
   istImportRunStatus,
+  istImportZeitpunkt,
 } from "./types";
 
 // WP-SHIP8-CLOSE-3 (bens ROT-2): der OFFENE Idempotenzraum der Review-Queue. Ein geclaimter
@@ -553,6 +554,84 @@ export interface ImportRunFortschritt {
   readonly counters?: ImportRunCounters;
 }
 
+// ================================================================================================
+// JOB-924 — DER LETZTE ERFOLG. EINE REGEL, ZWEI ABLAGEN.
+// ================================================================================================
+//
+// WARUM DIE AUSWAHL HIER STEHT UND NICHT ZWEIMAL: Sie soll in beiden Ablagen WORTGLEICH gelten.
+// Haette PostgreSQL sie als SQL und der Speicher als Schleife, gaebe es zwei Fassungen derselben
+// Regel — und die zweite wuerde beim naechsten Umbau still abweichen. Genau diese Paritaet verlangt
+// BEN7s Pruefluecke 1. Der Adapter liefert deshalb nur ROHZEILEN; entschieden wird hier.
+//
+// WARUM SIE NICHT ALS `ORDER BY … DESC LIMIT 1` IN SQL GEHOERT: Das sortierte TEXTUELL.
+// `2026-08-10T11:00:00+02:00` ist textuell groesser als `2026-08-10T09:00:00.000Z` und bezeichnet
+// denselben Augenblick; `2026-9-…` waere textuell groesser als `2026-10-…`. Der Vergleich muss auf
+// dem AUGENBLICK stattfinden, nicht auf der Schreibweise.
+
+/**
+ * Der Rohbefund eines Laufs, so schmal wie die Auswahl ihn braucht.
+ *
+ * Alle drei Felder sind bewusst `unknown`: Der PostgreSQL-Adapter liest sie als Text aus einer
+ * JSONB-Spalte, und was dort steht, hat niemand typgeprueft. Ein `string` an dieser Stelle waere
+ * eine Zusicherung, die die Ablage nicht geben kann.
+ */
+export interface ImportErfolgsbefund {
+  readonly sourceSystem: unknown;
+  readonly status: unknown;
+  readonly completedAt: unknown;
+}
+
+/** Nur dieser eine Status ist voller Erfolg (`KW-S4-26` §89-90). */
+const VOLLER_ERFOLG: ImportRunStatus = "COMPLETED";
+
+/**
+ * Der juengste GUELTIGE Abschlusszeitpunkt eines erfolgreichen Laufs dieses Quellsystems —
+ * oder `null`, wenn es keinen gibt. Vier Huerden, jede fail-closed:
+ *
+ *  1. fremdes Quellsystem  → zaehlt nicht (ein Sharepoint-Erfolg belegt keinen Confluence-Kontakt);
+ *  2. unbekannter Status   → zaehlt nicht (ein zehnter, erfundener Zustand ist kein Erfolg);
+ *  3. `PARTIAL`/`FAILED`   → zaehlt nicht (ein halber Lauf ist kein Kontaktbeleg);
+ *  4. unbrauchbarer Text   → zaehlt nicht (`istImportZeitpunkt`).
+ *
+ * Zurueck kommt die GESPEICHERTE Zeichenkette, nicht eine umformatierte: Der Server reicht durch,
+ * was dasteht; formatiert wird erst in der Flaeche, in der Zeitzone des Betrachters.
+ *
+ * GLEICHSTAND: Zwei Schreibweisen desselben Augenblicks (`…T09:00:00.000Z` und `…T11:00:00+02:00`)
+ * sind gleich gross. Ohne feste Entscheidung haenge das Ergebnis an der Zeilenreihenfolge — und die
+ * ist in einer Map eine andere als in einem `SELECT` ohne `ORDER BY`. Es gewinnt deshalb die
+ * lexikografisch kleinere Zeichenkette: dieselbe Antwort in beiden Ablagen, unabhaengig von der
+ * Reihenfolge.
+ */
+export function waehleLetztenErfolg(
+  sourceSystem: string,
+  befunde: readonly ImportErfolgsbefund[],
+): string | null {
+  let beste: string | null = null;
+  let besterAugenblick = Number.NEGATIVE_INFINITY;
+  for (const befund of befunde) {
+    if (befund.sourceSystem !== sourceSystem) {
+      continue;
+    }
+    if (!istImportRunStatus(befund.status)) {
+      continue;
+    }
+    if (befund.status !== VOLLER_ERFOLG) {
+      continue;
+    }
+    if (!istImportZeitpunkt(befund.completedAt)) {
+      continue;
+    }
+    const augenblick = Date.parse(befund.completedAt);
+    if (augenblick > besterAugenblick) {
+      besterAugenblick = augenblick;
+      beste = befund.completedAt;
+    } else if (augenblick === besterAugenblick && beste !== null && befund.completedAt < beste) {
+      beste = befund.completedAt;
+    }
+  }
+  return beste;
+}
+
 export interface ImportRunRepo {
   /**
    * IDEMPOTENT ueber die `importId`. `true` = neu angelegt; `false` = existierte bereits und die
@@ -560,6 +639,11 @@ export interface ImportRunRepo {
    * echten Primaerschluessel — nebenlaeufige Laeufe legen keinen zweiten an.
    */
   insertIfAbsent(run: ImportRun): Promise<boolean>;
+  /**
+   * JOB-924: Der juengste gueltige `COMPLETED.completedAt` dieses Quellsystems — oder `null`.
+   * BEIDE Ablagen entscheiden das ueber `waehleLetztenErfolg`; der Vertrag ist wortgleich.
+   */
+  findLastSuccessAt(sourceSystem: string): Promise<string | null>;
   /** Der Lauf — oder `undefined`. NIE ein erfundener Leer-Lauf (KW-S4-26 §142-143). */
   findById(importId: string): Promise<ImportRun | undefined>;
   /** Schreibt den Lauf fort. WIRFT `CONFLICT`, wenn es ihn nicht gibt. */
@@ -701,6 +785,11 @@ export class InMemoryImportRunRepo implements ImportRunRepo {
   async findById(importId: string): Promise<ImportRun | undefined> {
     const treffer = this.laeufe.get(importId);
     return treffer === undefined ? undefined : importRunSnapshot(treffer);
+  }
+
+  /** JOB-924: dieselbe geteilte Regel wie im Adapter — hier ueber die vollstaendigen Laeufe. */
+  async findLastSuccessAt(sourceSystem: string): Promise<string | null> {
+    return waehleLetztenErfolg(sourceSystem, [...this.laeufe.values()]);
   }
 
   async advance(importId: string, fortschritt: ImportRunFortschritt): Promise<ImportRun> {

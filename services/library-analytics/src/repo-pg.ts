@@ -10,6 +10,7 @@ import {
   pruefeImportRun,
   pruefeImportRunItemRef,
   pruefeRevisionsidentitaet,
+  waehleLetztenErfolg,
 } from "./repo";
 import {
   type ExternalSourceRecord,
@@ -593,6 +594,17 @@ interface ImportRunRow {
   data: ImportRun;
 }
 
+/**
+ * JOB-924: die Projektion der Auswahl — drei Textspalten, sonst nichts. `unknown`, weil `->>` auf
+ * einem fehlenden oder nicht-skalaren Feld auch `null` liefert; die Pruefung sitzt in
+ * `waehleLetztenErfolg`, nicht hier.
+ */
+interface ImportErfolgRow {
+  source_system: unknown;
+  status: unknown;
+  completed_at: unknown;
+}
+
 interface ImportRunItemRefRow {
   data: ImportRunItemRef;
 }
@@ -623,6 +635,41 @@ export class PgImportRunRepo implements ImportRunRepo {
       [importId],
     );
     return res.rows[0]?.data;
+  }
+
+  /**
+   * JOB-924: DER LETZTE ERFOLG — dieselbe Entscheidung wie im Speicher, gefaellt von derselben
+   * Funktion.
+   *
+   * WAS SQL HIER TUT UND WAS NICHT: Es verengt auf das Quellsystem und projiziert genau die drei
+   * Felder, die die Auswahl braucht — zwei kurze Texte je Zeile statt des ganzen Laufdokuments.
+   * Es entscheidet NICHTS.
+   *
+   * KEIN `ORDER BY … LIMIT 1`, und das ist Absicht: Die Spalte ist JSONB-Text, die Ordnung waere
+   * lexikografisch, und `2026-08-10T11:00:00+02:00` staende damit ueber `2026-08-10T09:00:00.000Z`,
+   * obwohl beide denselben Augenblick meinen. Ein `LIMIT 1` auf dieser Ordnung schnitte den wahren
+   * juengsten Erfolg weg — sichtbar erst, wenn irgendwann ein Lauf mit Zonenversatz geschrieben
+   * wird. KEIN `::timestamptz` aus demselben Grund in der anderen Richtung: ein Altwert wie
+   * `gestern` liesse den Cast WERFEN, waehrend der Speicher ihn still verwirft — dieselbe Abfrage
+   * ginge je nach Ablage verschieden aus.
+   */
+  async findLastSuccessAt(sourceSystem: string): Promise<string | null> {
+    const res = await this.pool.query<ImportErfolgRow>(
+      `SELECT data->>'sourceSystem' AS source_system,
+              data->>'status'       AS status,
+              data->>'completedAt'  AS completed_at
+         FROM import_runs
+        WHERE data->>'sourceSystem' = $1`,
+      [sourceSystem],
+    );
+    return waehleLetztenErfolg(
+      sourceSystem,
+      res.rows.map((zeile) => ({
+        sourceSystem: zeile.source_system,
+        status: zeile.status,
+        completedAt: zeile.completed_at,
+      })),
+    );
   }
 
   /**

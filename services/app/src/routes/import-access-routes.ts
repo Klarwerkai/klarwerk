@@ -42,34 +42,36 @@
 // ohnehin admin-gebunden, eine weichere Tür für seinen Zustand wäre eine Rechte-Ausweitung durch
 // die Hintertür. Die Oberfläche fragt deshalb gar nicht erst, wenn die Rolle es nicht trägt
 // (kein 403-Rauschen), genau wie bei /api/reasoner/config.
+//
+// ================================================================================================
+// JOB 924 · D6 — DIE ROUTE STELLT DIE ANFRAGE UND BAUT DIE ANTWORT NICHT MEHR SELBST.
+// ================================================================================================
+//
+// BIS D5 STAND HIER: „es gibt im Bestand keinen Ort, der einen erfolgreichen Confluence-Kontakt
+// festhält." Diese Begründung war überholt und ist gemessen widerlegt — den Ort gibt es seit
+// AUFTRAG-144: `ImportRun.completedAt` mit Status `COMPLETED`, persistiert und in der
+// Kompositionswurzel gehalten. Die Route las ihn nur nicht, und das feste `lastConnectedAt: null`
+// war deshalb keine Ehrlichkeit mehr, sondern eine veraltete Auskunft.
+//
+// WARUM DIE ROUTE JETZT NUR NOCH EINEN AUFRUF TUT: Mit der vierten Tatsache bräuchte sie ein
+// Repository. Eine Route, die eine Ablage kennt, ist der Anfang der zweiten Wahrheit — die nächste
+// Zeile läse dann direkt, und niemand käme mehr an der Auswahlregel vorbei. Die vollständige
+// Antwort baut deshalb `ImportAccessService`; hier bleibt das Recht und die Weitergabe.
 import type { FastifyPluginAsync } from "fastify";
-import { confluenceCredentialState } from "../../../confluence";
-import { schalterAn } from "../feature-flags";
 import type { Guards } from "../http";
+import type { ImportAccessService } from "../services/import-access-service";
 
-export function importAccessRoutes(guards: Guards): FastifyPluginAsync {
+export function importAccessRoutes(
+  guards: Guards,
+  zugang: ImportAccessService,
+): FastifyPluginAsync {
   return async (app) => {
     app.get("/api/import/confluence/zugang", async (request, reply) => {
       const user = await guards.requirePermission("users.manage", request, reply);
       if (!user) {
         return;
       }
-      const credentials = confluenceCredentialState();
-      reply.code(200).send({
-        system: "confluence",
-        // Ist der Import für dieses System eingeschaltet? (Schalter aus ⇒ die Routen existieren nicht.)
-        enabled: schalterAn("confluenceImport"),
-        // Die Variablen, benannt, mit Ja/Nein — und der Grund, falls trotz aller vier kein Zugang
-        // zustande käme (unverschlüsselte Basis-URL).
-        credentials: credentials.vars,
-        credentialsUsable: credentials.usable,
-        blocker: credentials.blocker,
-        // Wann zuletzt erfolgreich verbunden wurde, wäre nach Block C zu zeigen — „FALLS das ohne
-        // neuen Aufruf ablesbar ist". Es ist es nicht: es gibt im Bestand keinen Ort, der einen
-        // erfolgreichen Confluence-Kontakt festhält. Statt einer erfundenen Zahl steht hier
-        // ausdrücklich nichts — und die Fläche sagt ehrlich, dass sie es nicht weiß.
-        lastConnectedAt: null,
-      });
+      reply.code(200).send(await zugang.zugangsstatus());
     });
   };
 }

@@ -220,6 +220,7 @@ import { validationRoutes } from "./routes/validation-routes";
 import { stelleSuchprojektionBereit } from "./search-projection-startup";
 // W1 S4 (KW-S4-04 §59-100): Klara-Sitzung und Zustimmung. NUR Verdrahtung — die
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
+import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
 import { sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
@@ -262,8 +263,12 @@ export interface AppServices {
   // SCRUM-165: read-only Einsicht in das ModelRun-Protokoll.
   modelRuns: ModelRunService;
   // W2-A/148: die Laufablage des Imports. Sie steht hier als Ablage — wie `klaraSessions` — weil
-  // die Routen sie direkt lesen; einen Dienst darum gibt es (noch) nicht, und einen zu erfinden,
-  // nur damit die Form stimmt, waere eine Schicht ohne Aufgabe.
+  // die Import-Routen sie direkt lesen.
+  // JOB-924 D6: Fuer die ZUGANGS-Auskunft gilt das nicht mehr. Der Satz „einen Dienst darum gibt es
+  // (noch) nicht, und einen zu erfinden, nur damit die Form stimmt, waere eine Schicht ohne
+  // Aufgabe" stand hier zu Recht, solange jene Route drei lokale Tatsachen zusammensetzte. Mit dem
+  // letzten erfolgreichen Lauf als vierter hat die Schicht eine Aufgabe: die Auswahlregel von der
+  // Route fernhalten. `ImportAccessService` bekommt diese Ablage; die Route bekommt nur ihn.
   importRuns: ImportRunRepo;
   externalSources: ExternalSourceRepo;
   mailer: Mailer;
@@ -1279,7 +1284,11 @@ export function buildApp(
   // ausserhalb des `confluenceImport`-Schalters registriert (anders als die Import-Routen unten):
   // eine Auskunft, die selbst hinter dem Schalter laege, koennte den Zustand „ausgeschaltet" nicht
   // melden — und genau der ist einer der vier Zustaende aus Block D.
-  app.register(importAccessRoutes(guards));
+  // JOB-924 D6: Die Route bekommt den Dienst, nicht die Ablage. Die Ablage geht AUSSCHLIESSLICH
+  // hier hinein — das ist die einzige Stelle, an der beide zusammenkommen.
+  app.register(
+    importAccessRoutes(guards, new ImportAccessService({ importRuns: services.importRuns })),
+  );
   app.register(adminRoutes(services, guards, opts.factoryReset)); // SCRUM-181: Demo-Seed; Pedi 05.07.: Werksreset
   // SCRUM-510 WP2: Admin-Trigger für den Confluence-Space-Import — NUR bei aktivem Import-Flag registriert
   // (Flag OFF → Route existiert nicht). Echte Admin-Auth; alles landet nur als Review-Kandidat.
