@@ -305,6 +305,191 @@ export async function sichtbareEintraege<T extends { koId: string }>(
 }
 
 // ================================================================================================
+// JOB 1125 — DIE ZWEITE STUFE: DAS PAAR ENTSCHEIDET ÜBER DIE EXISTENZ, DAS FELD ÜBER DEN INHALT.
+// ================================================================================================
+//
+// DER BEFUND, DER DAS ERZWINGT (JOB 968 §4, L1 — „hoch"): Die Paarregel oben ist BINÄR. Sie fragt
+// „darf dieser Betrachter beide Objekte sehen?" — und wenn ja, fließt ALLES: `eigenanteilA`,
+// `eigenanteilB`, `aspects`, `description`, `detector.quotes.a/b`. Das ist für den Regelfall
+// richtig und war nie das Problem. Das Problem ist, dass es keine zweite Stufe GIBT: Der Feed der
+// Benachrichtigungen hat mit `redacted` längst eine (notification-feed.ts:26-28), Konflikte und
+// Überschneidungen haben keine. JOB 968 nennt das wörtlich die „einzige Stelle, an der G5s Sorge
+// nach der Paarprüfung noch trägt".
+//
+// WARUM DAS KEINE VIERTE SICHTBARKEITSREGEL IST — und das ist der Kern des Entwurfs. Die Redaktion
+// stellt KEINE neue Frage. Sie stellt DIESELBE Frage (`darfSehen`) ein zweites Mal, diesmal je
+// Seite statt über das Paar. Eine zweite Auslegung von „darf sehen" wäre genau die zweite Wahrheit,
+// gegen die diese Datei gebaut ist (s. Dateikopf) — deshalb steht hier kein einziges neues
+// Prädikat, sondern nur eine feinere Anwendung des vorhandenen.
+//
+// WARUM ES HIER WOHNT UND NICHT IN DEN ROUTEN: beide Routen sagen es selbst — „die Regel wohnt in
+// ../sichtbarkeit, hier steht nur ihre Anwendung" (conflicts-routes.ts:12-13, overlap-routes.ts:22).
+// Zwei Kopien der Redaktion in zwei Routen wären dieselbe Krankheit wie die vier optionalen
+// Zugänge vor mega76.
+//
+// EINE VERSUCHUNG, DIE HIER AUSDRÜCKLICH NICHT GENOMMEN WIRD. Die naheliegende zweite Stufe wäre
+// „zeige den Fund, sobald EINE Seite sichtbar ist, und redigiere die andere". Das wäre eine
+// LOCKERUNG: `:220-222` sagt, warum der Fund beide Seiten braucht — „schon die Aussage ‚dein
+// Objekt widerspricht einem anderen' ist eine Auskunft über das andere". Die Paarregel bleibt
+// deshalb unverändert davor stehen. Die Redaktion macht den Schutz enger, nie weiter.
+//
+// WAS SIE KONKRET ÄNDERT: Der Unterschied zu `paarSichtbar` liegt allein in der dritten Bedingung
+// von `feldFreigabe` — der Vertraulichkeitsstufe. Ohne sie wäre diese Stufe zur Paarregel
+// RECHNERISCH REDUNDANT (dieselbe Frage, zweimal gestellt, immer dieselbe Antwort) und damit
+// wertlos; mit ihr schließt sie die von BEN als Prüflücke 4 benannte und von JOB 968 als L2
+// ausdrücklich NICHT GEMESSENE Lücke. Die Begründung steht vollständig an `feldFreigabe`.
+//
+// Und sie trennt zwei Zustände, die heute ununterscheidbar sind: „es gibt nichts" und „es gibt
+// etwas, du liest den Inhalt nicht". Erst diese Trennung macht den neutralen Ersatz in der
+// Oberfläche möglich (Pflicht 2) — und erst sie macht `redacted` zu einer AUSSAGE statt zu einem
+// leeren Feld, das die Oberfläche stillschweigend wegblendet.
+
+/** Freigabe je Seite eines Paar-Fundes. Bewusst zwei Booleans und kein `boolean`: die Seiten
+ *  können unterschiedlich ausfallen, und genau diese Asymmetrie ist der Gegenstand. */
+export interface PaarFeldFreigabe {
+  a: boolean;
+  b: boolean;
+}
+
+/**
+ * Darf der INHALT dieser Seite mitgeliefert werden?
+ *
+ * DREI BEDINGUNGEN, und die dritte ist der eigentliche Gegenstand dieses Auftrags:
+ *   1. Das Objekt lässt sich auflösen. Ein Zitat darf sein Objekt nicht überleben (`:224`).
+ *   2. Der Betrachter darf das Objekt sehen (`darfSehen`) — dieselbe Frage wie oben, je Seite.
+ *   3. Das Objekt ist NICHT vertraulich, es sei denn, der Betrachter ist sein Autor.
+ *
+ * WARUM (3) UND WARUM SIE NICHT SCHON IN `darfSehen` STEHT — bitte nicht als Verschärfung um der
+ * Strenge willen lesen, sie schließt eine gemessene Lücke:
+ *
+ * `darfSehen` beantwortet „darf dieser Mensch dieses OBJEKT ÖFFNEN". Für eine Controllerin lautet
+ * die Antwort auch bei `vertraulich` ja — richtig so, sie kuratiert es. Der Eigenanteil und das
+ * Zitat sind aber keine Öffnung des Objekts, sondern eine KOPIE seines Inhalts, die AUSSERHALB
+ * des Objekts lebt. Für den Inhalt selbst gilt eine zweite, strengere Regel:
+ * `dropConfidential` (knowledge-object/src/confidentiality.ts:44-53) hält vertrauliche Inhalte aus
+ * jedem weitergehenden Kontext heraus — „solche KOs gehen NIE in externe Kontexte". Diese Kopien
+ * tragen jedoch KEIN `confidentiality`-Feld (overlap-types.ts:40-60, conflicts/src/types.ts), sind
+ * für jenen Filter also unsichtbar und wandern an ihm vorbei.
+ *
+ * Das ist genau der „Vertraulichkeitsgleichlauf", den BEN als Prüflücke 4 zu JOB 968 benannt hat
+ * („vertrauliche Seite darf nicht über Paarregel-Zitate oder Eigenanteile leaken") und den JOB 968
+ * selbst als L2 führt — mit dem ausdrücklichen Zusatz „Ob beide dasselbe sagen, ist NICHT
+ * gemessen". Gemessen ist es jetzt: sie sagen NICHT dasselbe, und (3) ist die Antwort darauf.
+ *
+ * DIE AUTOR-AUSNAHME bleibt, aus demselben Grund wie in `darfSehen:63-65`: der Autor liest hier
+ * seinen eigenen Text. Ihm den zu verbergen wäre keine Datensparsamkeit, sondern eine Schikane.
+ *
+ * WAS DAS FÜR DIE KURATORIN HEISST, ausdrücklich benannt: Sie sieht den Fund weiterhin (die
+ * Paarregel lässt ihn durch) und weiß, DASS es ihn gibt — aber die wörtlichen Belege stehen dann
+ * nicht mehr im Board. Sie öffnet die beiden Objekte, die sie ohnehin öffnen darf. Der Weg bleibt
+ * offen, der Nebenweg schließt sich. Genau das ist G5s Formulierung: „Inhalt, ohne das Objekt zu
+ * öffnen".
+ */
+export async function feldFreigabe(
+  user: SessionUser,
+  koA: string,
+  koB: string,
+  zugang: KoSichtbarkeitsZugang,
+): Promise<PaarFeldFreigabe> {
+  if (!zugangTauglich(zugang)) {
+    return { a: false, b: false };
+  }
+  const erlaubt = async (id: string): Promise<boolean> => {
+    const ko = await zugang.get(id);
+    if (!ko || !darfSehen(user, ko)) {
+      return false;
+    }
+    if (!isConfidential(ko.confidentiality)) {
+      return true;
+    }
+    // Leerer/fehlender Autor ist KEINE Autorschaft — dieselbe Zeile wie in `darfSehen:74-76`.
+    return typeof ko.author === "string" && ko.author.length > 0 && ko.author === user.id;
+  };
+  return { a: await erlaubt(koA), b: await erlaubt(koB) };
+}
+
+// ------------------------------------------------------------------------------------------------
+// Die redigierten Projektionen. Form und Wortwahl folgen `redactGapForViewer`
+// (services/ask/src/gap-visibility.ts:42-64), damit es im Produkt genau EIN Redaktionsmuster gibt:
+// Struktur bleibt, Inhalt geht, `redacted: true` sagt es ausdrücklich.
+// ------------------------------------------------------------------------------------------------
+
+/** Die an den Client gehende Sicht einer Überschneidung. `eigenanteil*` leer und `aspects` leer,
+ *  wo die zugehörige Seite nicht freigegeben ist. */
+export type UeberschneidungsSicht<T extends UeberschneidungsFelder> = T & { redacted?: true };
+
+export interface UeberschneidungsFelder {
+  koA: string;
+  koB: string;
+  aspects: readonly unknown[];
+  eigenanteilA: string;
+  eigenanteilB: string;
+  detector?: { rationale?: string } | undefined;
+}
+
+/**
+ * `aspects` sind GEMEINSAME Aussagen mit je einem Zitat aus BEIDEN Objekten (overlap-types.ts:45).
+ * Sie hängen deshalb an beiden Seiten: fehlt EINE Freigabe, gehen sie ganz. Ein halbes Zitatpaar
+ * wäre kein Schutz, sondern eine Auskunft mit Rest.
+ *
+ * `detector.rationale` ist die Modell-Begründung. Sie fasst BEIDE Objekte zusammen und wird
+ * derselben Regel unterworfen — sie ist der Titel, den die Glocke anzeigt
+ * (notification-feed.ts:66), also der am weitesten hinausreichende dieser Texte.
+ */
+export function redigiereUeberschneidung<T extends UeberschneidungsFelder>(
+  eintrag: T,
+  freigabe: PaarFeldFreigabe,
+): UeberschneidungsSicht<T> {
+  const beide = freigabe.a && freigabe.b;
+  if (beide) {
+    return eintrag;
+  }
+  const detector = eintrag.detector;
+  return {
+    ...eintrag,
+    aspects: [],
+    eigenanteilA: freigabe.a ? eintrag.eigenanteilA : "",
+    eigenanteilB: freigabe.b ? eintrag.eigenanteilB : "",
+    ...(detector ? { detector: { ...detector, rationale: "" } } : {}),
+    redacted: true,
+  };
+}
+
+export interface KonfliktFelder {
+  koA: string;
+  koB: string;
+  description: string;
+  detector?: { rationale?: string; quotes?: { a: string; b: string } } | undefined;
+}
+
+export type KonfliktSicht<T extends KonfliktFelder> = T & { redacted?: true };
+
+/**
+ * `description` beschreibt den Widerspruch zwischen beiden Aussagen und `detector.quotes.a/b` sind
+ * die wörtlichen Belege je Seite (conflicts/src/types.ts:47/:57). Die Zitate hängen an je EINER
+ * Seite, `description` und `rationale` an beiden.
+ *
+ * Ein einzelnes Zitat wird NICHT durchgelassen, wenn die andere Seite fehlt: der Konflikt sagt
+ * „diese Aussage widerspricht jener", und schon das ist eine Auskunft über die andere (`:221-222`).
+ * Deshalb dieselbe Grenze wie bei den `aspects`.
+ */
+export function redigiereKonflikt<T extends KonfliktFelder>(
+  konflikt: T,
+  freigabe: PaarFeldFreigabe,
+): KonfliktSicht<T> {
+  if (freigabe.a && freigabe.b) {
+    return konflikt;
+  }
+  const detector = konflikt.detector;
+  return {
+    ...konflikt,
+    description: "",
+    ...(detector ? { detector: { ...detector, rationale: "", quotes: { a: "", b: "" } } } : {}),
+    redacted: true,
+  };
+}
+
+// ================================================================================================
 // AUFTRAG-mega74 BLOCK C — DIE RÜCKKANTE (G2): EIN ANHANG WIRD BEHANDELT WIE SEIN OBJEKT.
 // ================================================================================================
 //

@@ -118,6 +118,13 @@ const MATRIX: Record<string, Rolle> = {
   "tests/library/import-select.test.ts": "test",
   "tests/app/job1042-hierarchie-idkette.test.ts": "test",
   "tests/app/job1042-hierarchie-kette-bis-import.test.ts": "test",
+  // JOB 1131 D1: die beiden serverseitigen Prüflücken aus JOB 931 (BEN4, Prüflücken 2 und 3) —
+  // der Mappervertrag der Ahnenkette (leere/fehlende Ahnen, leere Titel, mehrstufig) und der
+  // Orchestrierungsvertrag der Importreihenfolge (Kind vor Elternteil ist folgenlos, Namensdublette,
+  // Waise, zwei Seitenbäume). Beide Dateien tragen die Hierarchiebegriffe jetzt selbst und werden
+  // vom Sammler oben erhoben; sie stehen hier, weil genau das seine Aufgabe ist.
+  "services/confluence/src/mapper.test.ts": "test",
+  "services/app/src/confluence-import.test.ts": "test",
   // Der Sammler zählt sich selbst mit — er trägt die Begriffe in seiner eigenen Matrix. Das ist
   // kein Schönheitsfehler, sondern die Probe darauf, dass er wirklich den Baum liest und nicht
   // eine fest verdrahtete Liste zurückgibt.

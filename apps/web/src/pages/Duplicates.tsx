@@ -21,6 +21,74 @@ import {
 } from "../lib/duplicateBoard";
 import { groupFindingsByBeitrag, overlapFinding, resolveKo } from "../lib/findingGroups";
 
+// ================================================================================================
+// JOB 1125 — DER NEUTRALE ERSATZ: „ES GIBT ETWAS, DU LIEST DEN INHALT NICHT."
+// ================================================================================================
+//
+// WARUM DAS NÖTIG IST, und es ist kein Schönheitsfehler: Die Felder unten hängen an
+// `e.eigenanteilA ? … : null` und `e.aspects.length > 0 ? … : null`. Redigiert der Server ein Feld
+// (leerer String, leere Liste), verschwindet der Block STILLSCHWEIGEND — der Betrachter sieht
+// keinen Unterschied zwischen „hier stand nie etwas" und „hier wurde etwas zurückgehalten". Genau
+// diese zwei Zustände auseinanderzuhalten ist der Zweck von `redacted` (Pflicht 2).
+//
+// WARUM DIE TEXTE HIER STEHEN UND NICHT IN `i18n.ts`: `apps/web/src/i18n.ts` liegt nicht im
+// Schreibscope dieses Auftrags (Abschnitt 9). Sie sind deshalb dreisprachig LOKAL geführt — nicht
+// einsprachig mit Fallback, denn ein deutscher Satz in der englischen Oberfläche wäre ein
+// sichtbarer Mangel. Die Rückgabe benennt die Überführung nach `i18n.ts` als engen Rest mit
+// Startpin; sie ist eine Verschiebung, kein Neubau.
+interface Redaktionstext {
+  titel: string;
+  grund: string;
+}
+
+const REDAKTION_DE: Redaktionstext = {
+  titel: "Inhalt zurückgehalten",
+  grund: "Mindestens eine Seite dieses Fundes darfst du nicht lesen.",
+};
+
+const REDAKTIONSTEXT: Record<string, Redaktionstext | undefined> = {
+  de: REDAKTION_DE,
+  en: {
+    titel: "Content withheld",
+    grund: "You may not read at least one side of this finding.",
+  },
+  nl: {
+    titel: "Inhoud achtergehouden",
+    grund: "Je mag ten minste één kant van deze bevinding niet lezen.",
+  },
+};
+
+function redaktionstext(sprache: string): Redaktionstext {
+  // `i18n.language` kann „de-DE" sein — auf den Sprachanteil kürzen, sonst fiele jede
+  // Regionalvariante auf Deutsch zurück.
+  //
+  // Der deutsche Satz steht als eigene Konstante und nicht als `REDAKTIONSTEXT.de`: unter
+  // `noUncheckedIndexedAccess` (apps/web/tsconfig.json — strenger als der Root-Typecheck) ist
+  // auch der Zugriff auf einen bekannten Schlüssel `| undefined`, und ein `??`-Fallback auf einen
+  // möglicherweise undefinierten Wert ist kein Fallback. Gefunden hat das `tools/build`, nicht
+  // `tsc --noEmit` im Wurzelverzeichnis.
+  return REDAKTIONSTEXT[sprache.split("-")[0] ?? "de"] ?? REDAKTION_DE;
+}
+
+/** Liest den Redaktionsmarker der Serversicht. Lokal gelesen statt in `api/types.ts` ergänzt:
+ *  auch diese Datei liegt nicht im Schreibscope (siehe oben). */
+function istRedigiert(eintrag: unknown): boolean {
+  return (eintrag as { redacted?: boolean } | null)?.redacted === true;
+}
+
+function RedaktionsHinweis(): JSX.Element {
+  const { i18n } = useTranslation();
+  const text = redaktionstext(i18n.language);
+  return (
+    <div className="mt-4 rounded-card border border-hairline bg-page p-2.5">
+      <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+        {text.titel}
+      </div>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted">{text.grund}</p>
+    </div>
+  );
+}
+
 // Ein echtes Wissensobjekt (oder Hinweis, dass es entfernt wurde).
 function KoPanel({
   ko,
@@ -223,6 +291,11 @@ export function Duplicates(): JSX.Element {
                                   </Link>
                                 </div>
                               ) : null}
+
+                              {/* JOB 1125: steht VOR den Feldern und ersetzt sie nicht — eine
+                                  freigegebene Seite bleibt sichtbar (Pflicht 3, zweiter Halbsatz),
+                                  der Hinweis erklärt nur, warum die andere fehlt. */}
+                              {istRedigiert(e) ? <RedaktionsHinweis /> : null}
 
                               {e.aspects.length > 0 ? (
                                 <div className="mt-4">

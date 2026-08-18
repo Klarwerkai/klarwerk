@@ -17,7 +17,8 @@
 //   B3   Die Word-Laufzeit wertet den Zustand aus, in beiden Fassungen (TS-Modul und Inline-HTML).
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { answerGrade } from "../../apps/web/src/lib/answerGrade";
+// `answerGrade` wird hier nicht mehr gebraucht: die Paritätstafel, die den Spiegel gegen die
+// Server-Regel hielt, steht seit JOB 619 D5 in `tests/app/mega34-answer-grade-parity.test.ts`.
 import {
   type AskOutcome,
   answerInsertEvidenceNote,
@@ -125,64 +126,17 @@ describe("mega34 B1 · der Server liefert einen quellengebundenen Evidenzzustand
 });
 
 // ================================================================================================
-// B1b — DER PARITÄTSWÄCHTER.
+// B1b — DER PARITÄTSWÄCHTER STEHT NICHT MEHR HIER.
 // ================================================================================================
 //
-// WARUM EIN SPIEGEL UND KEIN GEMEINSAMES MODUL: `apps/web` darf nicht aus `services/` importieren.
-// Der webbuild-Stage im Dockerfile kopiert nur `apps/web`; ein Import über die Modulgrenze löst
-// LOKAL auf und bricht die Produktion. Das Verbot ist selbst gepinnt
-// (tests/capture/draft-limits-shared.test.ts). Gemeinsamer Code ist damit baulich ausgeschlossen —
-// also hält ein Wächter die beiden Kodierungen aneinander, wie bei der Vollständigkeits-Invariante
-// (coverage-complete.ts) und den elf Entwurfs-Grenzwerten.
-describe("mega34 B1 · Server-Regel und Oberflächen-Spiegel sagen dasselbe", () => {
-  it("über die VOLLSTÄNDIGE Wahrheitstafel — 2^4 Kombinationen mal drei Klassen", () => {
-    const KLASSEN = ["gesichert", "ungeprueft", "meinung"] as const;
-    let geprueft = 0;
-    for (const knowledgeClass of KLASSEN) {
-      for (const answered of [true, false]) {
-        for (const conflicted of [true, false]) {
-          for (const checkUnproven of [true, false]) {
-            for (const conflictsUnproven of [true, false]) {
-              const spiegel = answerGrade({
-                answered,
-                knowledgeClass,
-                sourcesConflicted: conflicted,
-                sourcesCheckUnproven: checkUnproven,
-                conflictsUnproven,
-              });
-              // Dieselben Bedingungen serverseitig herstellen: eine Quelle, deren Abdeckung den
-              // Prüfstand setzt, plus ein Konflikt auf ihr, plus der Abrufzustand.
-              const server = answerEvidence({
-                answer: {
-                  answered,
-                  knowledgeClass,
-                  sources: answered ? ["k1"] : [],
-                  // mega53 B4: dieselbe eine Quelle trägt die Antwort — so misst die Tafel
-                  // weiterhin genau die Prüf-/Konfliktlage und nicht zusätzlich die Zuordnung.
-                  citedSources: answered ? ["k1"] : [],
-                },
-                sourceKos: new Map([["k1", ko("k1", checkUnproven ? CAPPED : PROVEN)]]),
-                openConflicts: conflictsUnproven
-                  ? null
-                  : conflicted
-                    ? ([{ id: "c1", koA: "k1", koB: "k9", status: "offen" }] as never)
-                    : [],
-              });
-              expect(
-                server.grade,
-                `Klasse=${knowledgeClass} answered=${answered} konflikt=${conflicted} pruefung=${checkUnproven} abruf=${conflictsUnproven}`,
-              ).toBe(spiegel);
-              geprueft += 1;
-            }
-          }
-        }
-      }
-    }
-    expect(geprueft).toBe(3 * 2 * 2 * 2 * 2);
-  });
-});
-
-// ================================================================================================
+// Er ist in JOB 619 D5 unverändert nach `tests/app/mega34-answer-grade-parity.test.ts` gezogen —
+// den Pfad, den `services/ask/src/answer-evidence.ts:27` seit mega34 als seinen Wächter nennt und
+// der bis dahin ins Leere zeigte. Die Wahrheitstafel läuft dort, mit denselben 48 Fällen.
+//
+// VERSCHOBEN, NICHT KOPIERT: BEN8 zu D4 („ABLÖSUNG") hält fest, dass der Wahrheitstafel-Wächter
+// der ALLEINIGE Paritätsvertrag bleibt und kein paralleler Entscheidungsweg entstehen darf. Eine
+// zweite Tafel neben der ersten wäre genau das gewesen.
+//
 // B2/B3 — DIE WORD-LAUFZEIT.
 // ================================================================================================
 function fakeFetch(evidence: unknown): never {

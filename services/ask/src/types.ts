@@ -35,6 +35,23 @@ export interface Gap {
   // trägt auch die redigierte Sicht das Feld. Fehlt bei Altbeständen; die Oberfläche zeigt dann
   // kein Etikett, statt eine Sprache zu behaupten.
   locale?: ReasonerLocale;
+  // ============================================================================================
+  // JOB 1111 / D-032 — DIESELBE FRAGE IST EINE LÜCKE MIT HÄUFIGKEIT, NICHT FÜNF DUBLETTEN.
+  // ============================================================================================
+  // `compareKey`: die formnormalisierte Fassung des Fragetextes (`gapCompareKey`). Sie wird
+  // GESPEICHERT und nicht beim Lesen nachgerechnet — aus zwei Gründen. Erstens braucht die
+  // Datenbank eine Spalte, über die ein Unique-Index laufen kann; ein nachgerechneter Wert kann
+  // das nicht. Zweitens wäre eine zweite Auslegung derselben Regel (Speicher rechnet nach,
+  // Datenbank vergleicht gespeichert) genau der Fehler, den die Parität verhindern soll.
+  // Fehlt bei Altbeständen — und genau deshalb bleiben bestehende Dubletten unangetastet:
+  // ohne Schlüssel gibt es keinen Treffer, also auch keine stille Zusammenführung.
+  compareKey?: string;
+  // `askCount`: wie oft dieselbe Frage zu DIESER offenen Lücke geführt hat. Das ist der
+  // Ehrlichkeitszusatz aus D-032: fünf Dubletten sind Unordnung, aber sie sagen etwas — diese
+  // Frage kam fünfmal. Wer zusammenführt, ohne die Zahl zu retten, macht die Liste ordentlicher
+  // und die Auskunft ärmer. Fehlt bei Altbeständen; die Oberfläche zeigt dann NICHTS, statt eine
+  // Häufigkeit zu behaupten, die nie gezählt wurde.
+  askCount?: number;
 }
 
 // FUNKE-FIX P0 (bens ROT-1): FORBIDDEN — ein „Danke" ohne gültigen, dieses KO belegenden

@@ -59,6 +59,11 @@ interface Task {
   // und kein Anhang an `label`: Der Titel wird einzeilig gekürzt (`truncate`), und ein angehängtes
   // Etikett fiele als Erstes weg — ausgerechnet bei den langen Titeln, für die es gebaut wurde.
   localeTag?: string;
+  // JOB 1111 / D-032: wie oft dieselbe Frage zu dieser Lücke geführt hat. Wie `localeTag` BEWUSST
+  // ein eigenes Feld und kein Anhang an `label` — der Titel wird einzeilig gekürzt (`truncate`),
+  // und ein angehängtes Zeichen fiele als Erstes weg, ausgerechnet bei den langen Titeln.
+  // Nur gesetzt, wenn wirklich mehr als einmal gefragt wurde.
+  askCount?: number;
 }
 
 // Aufgabe mit aus dem typeKey abgeleiteter Severity bauen (eine Quelle der Wahrheit).
@@ -153,6 +158,9 @@ export function MyTasks(): JSX.Element {
         typeKey: "task.gap",
         to: "/risiko",
         ...(sprache ? { localeTag: sprache } : {}),
+        // JOB 1111 / D-032: erst ab zwei. Eine „1×" wäre Rauschen, und bei Altbeständen ohne Feld
+        // wäre sie eine Behauptung über etwas, das nie gezählt wurde.
+        ...(typeof g.askCount === "number" && g.askCount > 1 ? { askCount: g.askCount } : {}),
       });
     }),
   ];
@@ -245,6 +253,22 @@ export function MyTasks(): JSX.Element {
                               {it.localeTag ? (
                                 <span className="shrink-0 rounded-pill border border-hairline px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
                                   {it.localeTag}
+                                </span>
+                              ) : null}
+                              {/* JOB 1111 / D-032: die gerettete Häufigkeit. GESCHWISTER des Titels
+                                  und `shrink-0` — dieselbe Bauform wie das Sprach-Etikett, aus
+                                  demselben Grund (es fiel dort als Erstes dem `truncate` zum Opfer).
+                                  Die Beschriftung ist bewusst rein numerisch: ein Wort dazu bräuchte
+                                  einen neuen Schlüssel in `i18n.ts`, und diese Datei liegt nicht in
+                                  der Lease dieses Auftrags. „7×" liest sich in DE, EN und NL gleich;
+                                  ein deutsches Wort wäre in zwei von drei Sprachen falsch. Der
+                                  ausformulierte Satz ist als Folgeschritt in der Rückgabe benannt. */}
+                              {it.askCount ? (
+                                <span
+                                  data-testid="gap-frequency"
+                                  className="shrink-0 rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold text-muted-2"
+                                >
+                                  {it.askCount}×
                                 </span>
                               ) : null}
                             </span>

@@ -38,6 +38,10 @@ import {
 } from "../lib/draftForm";
 import { conflictKnowledge } from "../lib/effectiveAnswer";
 import type { EvidenceTone } from "../lib/knowledgeClass";
+// D-036 (JOB 1118): derselbe Dreiphasenvertrag, den Start und Analytics schon fahren —
+// `loading | loaded | error`. Er ist der Grund, warum unten keine Leerbehauptung mehr aus
+// fehlenden Daten entsteht und ein dauerhaft gescheiterter Abruf nicht als „lädt" endet.
+import { isGroupError, isGroupLoading } from "../lib/loadingState";
 import { summarizeAnswer } from "../lib/mobileAsk";
 import {
   type ConfirmState,
@@ -372,7 +376,16 @@ export function Mobile(): JSX.Element {
               <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                 {t("mob.drafts")}
               </div>
-              {(drafts.data ?? []).length === 0 ? (
+              {/* D-036: „keine Entwürfe" ist eine AUSSAGE ÜBER DEN BESTAND — sie darf erst
+                  fallen, wenn der Bestand bekannt ist. Bis dahin sagt die Fläche, dass sie lädt;
+                  bei einem dauerhaft gescheiterten Abruf sagt sie das, statt weiter „lädt" zu
+                  behaupten (Fehler und Laden bleiben getrennt). Die Reihenfolge ist die Aussage:
+                  erst lädt, dann Fehler, dann — und nur dann — die Leerbehauptung. */}
+              {isGroupLoading([drafts]) ? (
+                <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
+              ) : isGroupError([drafts]) ? (
+                <p className="text-[12.5px] text-trust-crit-text">{t("state.error")}</p>
+              ) : (drafts.data ?? []).length === 0 ? (
                 <p className="text-[12.5px] text-muted">{t("mob.draftsEmpty")}</p>
               ) : (
                 <ul className="space-y-1.5">
@@ -621,7 +634,15 @@ export function Mobile(): JSX.Element {
                   />
                 </div>
                 <div className="mt-3">
-                  {(search.data ?? []).length === 0 ? (
+                  {/* D-036: dieselbe Trennung wie bei den Entwürfen. „Kein Treffer" ist eine
+                      Aussage über den Bestand und nicht über den Abrufstand — sie wartet, bis der
+                      Bestand bekannt ist. Das gilt auch nach jedem neuen Suchwort: der debounced
+                      Parameter erzeugt eine neue Abfrage, und die fällt wieder in `loading`. */}
+                  {isGroupLoading([search]) ? (
+                    <p className="text-[12.5px] text-muted">{t("state.loading")}</p>
+                  ) : isGroupError([search]) ? (
+                    <p className="text-[12.5px] text-trust-crit-text">{t("state.error")}</p>
+                  ) : (search.data ?? []).length === 0 ? (
                     <p className="text-[12.5px] text-muted">{t("mob.searchEmpty")}</p>
                   ) : (
                     <ul className="space-y-1.5">

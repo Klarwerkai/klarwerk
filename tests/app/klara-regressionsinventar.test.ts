@@ -141,6 +141,10 @@ const INVENTAR: readonly string[] = [
   "tests/app/mega43-klara-werkbank-palette.test.ts",
   "tests/app/mega45-word-textrueckfall.test.ts",
   "tests/app/mega52-vertrauenswert-sammler.test.ts",
+  // JOB 504 D3: die Fallmatrix des fortgesetzten Entwurfs. Sie trägt „klara" nicht im Namen, wohl
+  // aber im Inhalt — der geprüfte Deep-Link `/capture/frontdoor?draft=…` ist genau der, den das
+  // Klara-Taskpane baut. Damit greift die Inhaltsachse `taskpane`, und K2 verlangt diesen Eintrag.
+  "tests/app/mega69-capture-draft-resume.test.tsx",
   "tests/app/mega69-klara-auslieferung.test.ts",
   "tests/app/mega69-klara-merkmale.test.ts",
   "tests/app/mega69-klara-waechter.test.ts",

@@ -312,6 +312,12 @@ const de = {
   "auth.name": "Name",
   "auth.email": "E-Mail",
   "auth.password": "Passwort",
+  // JOB 1097 / D-026: die Längenregel stand bisher nur als `minLength` im Markup — sie EXISTIERTE,
+  // wurde aber nirgends angeschrieben, und der Nutzer erfuhr sie erst im Fehlschlag. Auf der
+  // Adminseite sagt das Produkt es längst („Passwort (mind. 8 Zeichen)"); auf der öffentlichen
+  // Maske nicht. Eigener Schlüssel statt Wiederverwendung von `adm.field.password`: dort ist die
+  // Regel Teil der Feldbeschriftung, hier ein Zusatz zu einer bestehenden Beschriftung.
+  "auth.passwordRule": "mind. 8 Zeichen",
   "auth.passwordRepeat": "Passwort wiederholen",
   "auth.passwordMismatch": "Die Passwörter stimmen nicht überein.",
   // WP-VIP2-GATE (bens P1): Selbstregistrierung serverseitig abgeschaltet (Einladungs-Betrieb).
@@ -4924,6 +4930,7 @@ const en: typeof de = {
   "auth.name": "Name",
   "auth.email": "Email",
   "auth.password": "Password",
+  "auth.passwordRule": "min. 8 characters",
   "auth.passwordRepeat": "Repeat password",
   "auth.passwordMismatch": "The passwords do not match.",
   // WP-VIP2-GATE: self-registration disabled server-side (invite-only operation).
@@ -9051,6 +9058,7 @@ const nl: typeof de = {
   "auth.name": "Naam",
   "auth.email": "E-mail",
   "auth.password": "Wachtwoord",
+  "auth.passwordRule": "min. 8 tekens",
   "auth.passwordRepeat": "Wachtwoord herhalen",
   "auth.passwordMismatch": "De wachtwoorden komen niet overeen.",
   // WP-VIP2-GATE: zelfregistratie server-side uitgeschakeld (alleen op uitnodiging).

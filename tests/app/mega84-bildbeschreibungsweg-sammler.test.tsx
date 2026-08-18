@@ -77,7 +77,7 @@
 // Alias ohne ihn compiliert also gar nicht erst (`tests/capture/mega85-titelvertrag-mounted.test.tsx`),
 // und ein Editor ohne Provider wirft zur Laufzeit
 // (`tests/capture/bildbeschreibung-pflichtvertrag-mounted.test.tsx`).
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, sep } from "node:path";
 import ts from "typescript";
 import { afterEach, describe, expect, it } from "vitest";
@@ -717,5 +717,312 @@ describe("mega84 Block D · Stufe 3: von der Beschreibung führt ein bedienbarer
     });
     expect(flaeche().querySelectorAll("#caption-form-text")).toHaveLength(1);
     expect(flaeche().querySelectorAll('[data-testid="caption-form-suggest"]')).toHaveLength(1);
+  });
+});
+
+// ================================================================================================
+// JOB 1122 · DER VON-AUSSEN-TRÄGER UND DIE GRENZEN DER SYMBOLAUFLÖSUNG
+// ================================================================================================
+//
+// WORAUS DAS FOLGT: BEN5 hat zu JOB 996/D2 GRÜN geurteilt und dabei fünf Prüflücken benannt, die
+// ausdrücklich KEINE Korrekturpflicht sind. Vier davon schliesst dieser Block:
+//
+//   (1) „Den Aufruferpfad von `Stage2Notice.tsx:38` bis zum tatsächlich übergebenen `Icon`
+//       erheben und die Ausnahme fachlich bestätigen oder auflösen."        → A
+//   (3) „`export { default as X }`, `export { X as Y }` und zyklische `export *`-Ketten jeweils
+//       auf kanonische Herkunft ODER FAIL-CLOSED BEFUND prüfen."            → B und C
+//   (4) „Zwei disjunkte lokale Scopes mit gleichem Namen vorlegen und belegen, dass kein falsches
+//       Endsymbol als erfolgreich gilt."                                    → D
+//   sowie BEN5s Promptverbesserung: „Eine bekannte unauflösbare Stelle bleibt nur mit konkretem
+//   Fundort, fachlicher Disposition und Test auf veralteten Eintrag zulässig." → E
+//
+// DAS ERGEBNIS VON A VORWEG, weil es die Lage ändert: Der einzige reale von-aussen-Träger ist
+// NICHT unauflösbar. `GateFrame` nimmt sein Symbol als Parameter, aber beide Aufrufer stehen in
+// derselben Datei und übergeben benannte Importe. Die Stelle braucht keine Ausnahme, sondern eine
+// Auflösung — und genau die steht unten als Fall.
+
+const STAGE2 = "apps/web/src/components/Stage2Notice.tsx";
+
+/** Ein aufgelöstes Symbol: woher es kommt und wie es dort heisst. */
+interface Symbolherkunft {
+  /** `modul#name` bei aufgelösten Symbolen, sonst `null`. */
+  kanonisch: string | null;
+  /** Der im Aufruf geschriebene Name — nur Anzeige, nie Auswahlkriterium. */
+  geschrieben: string;
+}
+
+/** Importtabelle einer Datei: geschriebener Name → `modul#exportname`. */
+function importtabelle(baum: ts.SourceFile): Map<string, string> {
+  const tabelle = new Map<string, string>();
+  for (const anweisung of baum.statements) {
+    if (!ts.isImportDeclaration(anweisung) || !ts.isStringLiteral(anweisung.moduleSpecifier)) {
+      continue;
+    }
+    const modul = anweisung.moduleSpecifier.text;
+    const bindung = anweisung.importClause?.namedBindings;
+    if (bindung && ts.isNamedImports(bindung)) {
+      for (const el of bindung.elements) {
+        // `import { X as Y }` → geschrieben Y, exportiert X.
+        tabelle.set(el.name.text, `${modul}#${(el.propertyName ?? el.name).text}`);
+      }
+    }
+    if (anweisung.importClause?.name) {
+      tabelle.set(anweisung.importClause.name.text, `${modul}#default`);
+    }
+  }
+  return tabelle;
+}
+
+/**
+ * Erhebt, welche Symbole ein JSX-Attribut eines bestimmten Elements trägt.
+ * Beispiel: `<GateFrame icon={Layers} …>` → Herkunft von `Layers`.
+ */
+function attributsymbole(datei: string, element: string, attribut: string): Symbolherkunft[] {
+  const roh = readFileSync(join(WURZEL, datei), "utf8");
+  const baum = ts.createSourceFile(datei, roh, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const tabelle = importtabelle(baum);
+  const gefunden: Symbolherkunft[] = [];
+
+  const besuche = (knoten: ts.Node): void => {
+    const offen =
+      ts.isJsxSelfClosingElement(knoten) || ts.isJsxOpeningElement(knoten) ? knoten : null;
+    if (offen && tagName(offen) === element) {
+      for (const eigenschaft of offen.attributes.properties) {
+        if (!ts.isJsxAttribute(eigenschaft) || eigenschaft.name.getText(baum) !== attribut) {
+          continue;
+        }
+        const wert = eigenschaft.initializer;
+        // Nur ein blosser Bezeichner ist auflösbar. Ein Ausdruck (Ternär, Aufruf, Feldzugriff)
+        // bleibt fail-closed unaufgelöst — er kann zur Laufzeit alles sein.
+        if (
+          wert &&
+          ts.isJsxExpression(wert) &&
+          wert.expression &&
+          ts.isIdentifier(wert.expression)
+        ) {
+          const name = wert.expression.text;
+          gefunden.push({ kanonisch: tabelle.get(name) ?? null, geschrieben: name });
+        } else {
+          gefunden.push({ kanonisch: null, geschrieben: wert ? wert.getText(baum) : "(leer)" });
+        }
+      }
+    }
+    ts.forEachChild(knoten, besuche);
+  };
+  besuche(baum);
+  return gefunden;
+}
+
+// ── E · Register bekannter unauflösbarer Stellen ────────────────────────────────────────────────
+// BEN5 verlangt für JEDEN Eintrag: konkreter Fundort, fachliche Disposition und ein Test, der den
+// Eintrag rot macht, sobald er veraltet ist. Das Register ist LEER — nicht weil niemand hingesehen
+// hat, sondern weil der einzige Kandidat in A aufgelöst wurde.
+const UNAUFLOESBAR_BEKANNT: Record<string, string> = {};
+
+describe("JOB 1122 · A: der reale von-aussen-Träger ist bis zum übergebenen Symbol aufgelöst", () => {
+  it("GateFrame nimmt sein Symbol als Parameter und rendert es an genau einer Stelle", () => {
+    // Die Ausgangslage, die BEN5 als unauflösbar geführt hat: `<Icon size={28} …>` bezieht sein
+    // Symbol nicht aus einem Import, sondern aus dem Parameter `icon`. Syntaktisch endet die
+    // Erhebung hier — deshalb galt die Stelle als von-aussen.
+    const roh = readFileSync(join(WURZEL, STAGE2), "utf8");
+    expect(roh, "GateFrame benennt seinen Symbolparameter nicht mehr `icon: Icon`.").toContain(
+      "icon: Icon,",
+    );
+    expect(roh, "Das durchgereichte Symbol wird nicht mehr als <Icon> gerendert.").toContain(
+      "<Icon size={28}",
+    );
+  });
+
+  it("beide Aufrufer übergeben ein benanntes, importiertes Symbol — nichts bleibt offen", () => {
+    const symbole = attributsymbole(STAGE2, "GateFrame", "icon");
+
+    expect(
+      symbole.length,
+      "Die Zahl der GateFrame-Aufrufer hat sich geändert. Jeder neue Aufrufer braucht eine eigene Auflösung.",
+    ).toBe(2);
+
+    const offen = symbole.filter((s) => s.kanonisch === null);
+    expect(
+      offen.map((s) => s.geschrieben),
+      "Ein GateFrame-Aufrufer übergibt ein Symbol, das nicht auf einen Import zurückführbar ist. Fail-closed: solange das so ist, ist der Träger nicht aufgelöst.",
+    ).toEqual([]);
+  });
+
+  it("die aufgelösten Symbole sind genau die beiden Torsymbole aus lucide-react", () => {
+    const kanonisch = attributsymbole(STAGE2, "GateFrame", "icon")
+      .map((s) => s.kanonisch)
+      .sort();
+
+    // Das ist die fachliche Auflösung der Prüflücke 1: Stufe-2-Tor trägt `Layers`, Rollentor `Lock`.
+    expect(kanonisch).toEqual(["lucide-react#Layers", "lucide-react#Lock"]);
+  });
+
+  it("die Auflösung hängt am Import, nicht am geschriebenen Namen", () => {
+    // Gegenprobe an einer Sonde: derselbe geschriebene Name, andere Herkunft — die Auflösung
+    // muss der Herkunft folgen. Sonst wäre der Name wieder die Wahrheit, und genau das hat
+    // JOB 996 abgelöst.
+    const baum = ts.createSourceFile(
+      "sonde.tsx",
+      'import { Lock as Layers } from "andere-quelle";\nexport function P() {\n  return <GateFrame icon={Layers} />;\n}\n',
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    const tabelle = importtabelle(baum);
+    expect(
+      tabelle.get("Layers"),
+      "Der Alias wird nicht auf sein Exportsymbol zurückgeführt — dann trägt wieder der geschriebene Name die Auswahl.",
+    ).toBe("andere-quelle#Lock");
+  });
+});
+
+describe("JOB 1122 · B: Weiterexport-Formen sind kalibriert, nicht stillschweigend übergangen", () => {
+  // BEN5-Prüflücke 3, erste Hälfte. Der heutige Sammler löst Weiterexporte NICHT auf — das ist
+  // eine bekannte Grenze (siehe „DIE VERBLEIBENDE GRENZE" oben). Diese Fälle halten sie fest,
+  // damit sie ein BEFUND bleibt und nicht zur stillen Annahme wird.
+  const FORMEN: { name: string; quelle: string }[] = [
+    {
+      name: "export { default as X }",
+      quelle: 'export { default as RichTextEditor } from "./RichTextEditor";\n',
+    },
+    {
+      name: "export { X as Y }",
+      quelle: 'export { RichTextEditor as Editor } from "./RichTextEditor";\n',
+    },
+  ];
+
+  for (const form of FORMEN) {
+    it(`${form.name}: die Erhebung meldet keine Einbindung — die Form ist kein stiller Träger`, () => {
+      const sonde = liesQuelle("barrel.ts", form.quelle);
+
+      // Fail-closed heisst hier: ein Weiterexport ist KEINE Einbindung und darf auch keine
+      // vortäuschen. Würde die Erhebung hier etwas melden, wäre die Fundmenge unecht.
+      expect(
+        sonde.einbindungen,
+        `Die Erhebung erzeugt aus "${form.name}" eine Einbindung. Ein Weiterexport bindet nichts ein.`,
+      ).toEqual([]);
+      expect(
+        sonde.komponenten.map((k) => k.name),
+        `Die Erhebung hält "${form.name}" für eine Komponentendefinition.`,
+      ).toEqual([]);
+    });
+  }
+
+  it("ein Weiterexport verdeckt eine echte Einbindung derselben Datei nicht", () => {
+    // Kalibrierung in die Gegenrichtung: neben dem Weiterexport steht eine echte Einbindung.
+    // Sie muss weiterhin gefunden werden — sonst prüfte der Fall oben nur Blindheit.
+    const sonde = liesQuelle(
+      "gemischt.tsx",
+      'export { RichTextEditor as Editor } from "./RichTextEditor";\n' +
+        "export function Probe() {\n  return <RichTextEditor value={v} documentTitle={t} />;\n}\n",
+    );
+    expect(sonde.einbindungen.map((e) => e.komponente)).toEqual(["RichTextEditor"]);
+    expect(sonde.einbindungen[0]?.huelle).toBe("Probe");
+  });
+});
+
+describe("JOB 1122 · C: zyklische Barrel-Ketten enden in einem Befund, nicht in einer Schleife", () => {
+  // BEN5-Prüflücke 3, zweite Hälfte. Ein Zyklus `a → b → a` darf die Erhebung weder aufhängen
+  // noch ein Endsymbol erfinden.
+  it("eine zyklische export-*-Kette wird ohne Endlosgang und ohne erfundenes Ziel gelesen", () => {
+    const a = liesQuelle("a.ts", 'export * from "./b";\n');
+    const b = liesQuelle("b.ts", 'export * from "./a";\n');
+
+    for (const [name, quelle] of [
+      ["a.ts", a],
+      ["b.ts", b],
+    ] as const) {
+      expect(quelle.einbindungen, `${name} erzeugt aus einem Zyklus eine Einbindung.`).toEqual([]);
+      expect(quelle.komponenten, `${name} erzeugt aus einem Zyklus eine Komponente.`).toEqual([]);
+    }
+  });
+
+  it("ein Zyklus mit echter Einbindung dazwischen verliert die Einbindung nicht", () => {
+    const gemischt = liesQuelle(
+      "zyklisch.tsx",
+      'export * from "./a";\n' +
+        "export function Probe() {\n  return <RichTextEditor value={v} documentTitle={t} />;\n}\n" +
+        'export * from "./b";\n',
+    );
+    expect(gemischt.einbindungen.map((e) => e.komponente)).toEqual(["RichTextEditor"]);
+  });
+});
+
+describe("JOB 1122 · D: disjunkte lokale Scopes erzeugen kein falsches Endsymbol", () => {
+  // BEN5-Prüflücke 4. Zwei Funktionen, in beiden eine lokale Komponente gleichen Namens. Die
+  // Erhebung ist absichtlich nicht scopegenau — sie darf deshalb keine der beiden Einbindungen
+  // der falschen Hülle zuordnen und keine als „aufgelöst" ausgeben.
+  const ZWEI_SCOPES =
+    "export function Eins() {\n" +
+    "  const Panel = () => <div />;\n" +
+    "  return <Panel value={a} />;\n" +
+    "}\n" +
+    "export function Zwei() {\n" +
+    "  const Panel = () => <span />;\n" +
+    "  return <Panel value={b} />;\n" +
+    "}\n";
+
+  it("jede Einbindung bleibt bei ihrer eigenen Hülle", () => {
+    const sonde = liesQuelle("scopes.tsx", ZWEI_SCOPES);
+    const panels = sonde.einbindungen.filter((e) => e.komponente === "Panel");
+
+    expect(panels.length, "Nicht beide Panel-Einbindungen erhoben.").toBe(2);
+    expect(
+      panels.map((e) => e.huelle).sort(),
+      "Eine Einbindung wurde der falschen Hülle zugeordnet — dann wäre die Fundidentität falsch.",
+    ).toEqual(["Eins", "Zwei"]);
+  });
+
+  it("gleichnamige lokale Symbole werden nicht zu EINEM Symbol verschmolzen", () => {
+    const sonde = liesQuelle("scopes.tsx", ZWEI_SCOPES);
+    const panels = sonde.einbindungen.filter((e) => e.komponente === "Panel");
+
+    // Ein lokales `Panel` steht in keiner Importtabelle. Genau deshalb darf es nie als kanonisch
+    // aufgelöst gelten — sonst würde ein Name aus Scope A als Symbol aus Scope B verkauft.
+    const baum = ts.createSourceFile(
+      "scopes.tsx",
+      ZWEI_SCOPES,
+      ts.ScriptTarget.Latest,
+      true,
+      ts.ScriptKind.TSX,
+    );
+    expect(
+      importtabelle(baum).get("Panel"),
+      "Ein lokal deklariertes Symbol taucht in der Importtabelle auf — dann ist die Herkunft erfunden.",
+    ).toBeUndefined();
+
+    // Und die beiden bleiben durch ihre Hülle unterscheidbar, obwohl sie gleich heissen.
+    expect(new Set(panels.map((e) => e.huelle)).size).toBe(2);
+  });
+});
+
+describe("JOB 1122 · E: bekannte Ausnahmen tragen Fundort, Disposition und Veraltungstest", () => {
+  it("jeder Eintrag im Ausnahmeregister nennt einen realen Fundort und eine Disposition", () => {
+    for (const [fundort, disposition] of Object.entries(UNAUFLOESBAR_BEKANNT)) {
+      expect(fundort, "Ein Registereintrag ohne Dateipfad ist kein Fundort.").toContain(
+        "apps/web/src/",
+      );
+      expect(
+        disposition.length,
+        `Der Eintrag "${fundort}" trägt keine fachliche Disposition.`,
+      ).toBeGreaterThan(30);
+      // Der Veraltungstest: die genannte Datei muss es geben. Ein Eintrag auf eine verschwundene
+      // Datei ist ein veralteter Eintrag und wird rot.
+      const datei = fundort.split(" ")[0] ?? "";
+      expect(
+        existsSync(join(WURZEL, datei)),
+        `Der Registereintrag zeigt auf "${datei}", das es nicht mehr gibt — veralteter Eintrag.`,
+      ).toBe(true);
+    }
+  });
+
+  it("das Register ist leer, weil der einzige Kandidat aufgelöst wurde", () => {
+    // Diese Zusicherung ist der sichtbare Unterschied zu JOB 996: dort war der Stage2Notice-Fall
+    // über eine Ausnahme dispositioniert. Käme er zurück ins Register, ohne dass Block A rot wird,
+    // wäre eine Auflösung stillschweigend gegen eine Ausnahme getauscht worden.
+    expect(
+      Object.keys(UNAUFLOESBAR_BEKANNT),
+      "Es gibt wieder bekannte unauflösbare Stellen. Jede braucht Fundort, Disposition und den Nachweis, dass sie nicht auflösbar ist.",
+    ).toEqual([]);
   });
 });

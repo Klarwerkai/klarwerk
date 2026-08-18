@@ -30,6 +30,17 @@
 ## 2. Backup-Zeitplan (Vorschlag — Betreiber bestätigt/terminiert)
 
 - **Täglich:** automatischer `pg_dump` (Coolify-Scheduled-Task), verschlüsselt ablegen.
+
+> **Unbestätigt (U4) · Das tägliche Backup der Datenbank läuft als Coolify-Scheduled-Task (`pg_dump`).**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — beschrieben ist das Verfahren, nicht seine Einrichtung.
+> **Restrisiko:** ist die Aufgabe nicht eingerichtet, existiert im Wiederherstellungsfall kein aktueller Dump.
+> **Bestätiger:** Ops/Pedi
+
+> **Unbestätigt (U8) · Die Coolify-Postgres-Ressource wird durch ein Coolify-Backup gesichert.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — früher erwähnt, aber der DR-Drill steht aus.
+> **Restrisiko:** ohne belegtes Backup ist die Wiederherstellbarkeit der Live-Daten unbewiesen.
+> **Bestätiger:** Ops/Pedi
+
 - **Täglich/Snapshot-Kadenz:** Hetzner-Server-/Volume-Snapshot.
 - **Bei jedem Update:** zusätzlicher manueller `pg_dump` vor riskanten Migrationen (`maintenance-update-process.md` §6).
 - **Bei Secret-/Config-Änderung:** Env-Inventar im Passwort-Manager aktualisieren.

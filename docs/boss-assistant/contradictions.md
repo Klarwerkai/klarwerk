@@ -187,6 +187,12 @@ Kein Widerspruch — **umgebungsabhängig** (`build-app.ts`: `DATABASE_URL` gese
 | Umgebung | Persistenz | Backup |
 |---|---|---|
 | Live-Server (Coolify, `app.klarwerk.ai`) | **Postgres** (`DATABASE_URL` gesetzt) | Coolify-Backup (früher erwähnt, DR-Drill offen) |
+
+> **Unbestätigt (U8) · Die Coolify-Postgres-Ressource wird durch ein Coolify-Backup gesichert.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — früher erwähnt, aber der DR-Drill steht aus.
+> **Restrisiko:** ohne belegtes Backup ist die Wiederherstellbarkeit der Live-Daten unbewiesen.
+> **Bestätiger:** Ops/Pedi
+
 | Desktop-App (Pedis Mac) | Journal `.localdb/state.jsonl` (`KLARWERK_DEV_PERSIST=1`) | — |
 | **Mac-Studio-Insel (VIP)** | **Journal, NICHT Postgres** (Launcher setzt DEV_PERSIST, kein DATABASE_URL) | **KEINS — bei Plattendefekt weg (SPOF, KLLM-70)** |
 

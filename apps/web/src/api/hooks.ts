@@ -1,4 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
+// JOB 577: die kanonische Normalisierung von „nicht vorhanden / nicht sichtbar" (404) in den
+// Datenzustand `null`. Sie steht in einer eigenen Datei, weil sie ein VERTRAG ist und keine
+// Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
+// eine Stelle und nicht in drei Hook-Kommentare (s. api/abwesenheit.ts).
+import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
 
 // Lese-Hooks (TanStack Query) gegen die Modul-Endpunkte. Mutationen werden je
@@ -85,10 +90,14 @@ export const useBusFactor = () =>
 // Consultant-System (Experten-Matching): nur für berechtigte Rollen aktiv (ko.assign → controller/admin;
 // siehe canSeeExpertise). Kein Retry — bei ausgeschaltetem Flag antwortet der Server 404, das soll nicht
 // wiederholt werden. Ohne `enabled` bleibt es exakt beim heutigen Verhalten (kein Aufruf, keine Anzeige).
+//
+// JOB 577: `retry: false` bleibt (es unterdrückt die Wiederholung), aber es hat die Sichtbarkeit nie
+// geregelt — der Query endete trotzdem in `isError`. `alsAbwesenheit` macht aus dem 404 den
+// Datenzustand `null`; die Absicht des Kommentars oben ist damit durchgesetzt statt nur benannt.
 export const useExpertise = (enabled: boolean) =>
   useQuery({
     queryKey: ["analytics", "expertise"],
-    queryFn: endpoints.analytics.expertise,
+    queryFn: alsAbwesenheit(endpoints.analytics.expertise),
     enabled,
     retry: false,
   });
@@ -105,10 +114,16 @@ export const useExpertise = (enabled: boolean) =>
 // BEWUSST NICHT über einen sitzungsabhängigen Schlüssel gelöst, obwohl das die naheliegende Form
 // wäre: Diese Datei ist eine `.ts` und darf keine `.tsx` importieren — der Wurzel-Typprüfer läuft
 // ohne jsx (dieselbe Grenze, die schon `lib/aiAvailability.ts` von `lib/useAiAvailable.tsx` trennt).
+//
+// JOB 577: „unbekannt heißt fail-closed aus" stand hier als Absicht — durchgesetzt hat es der
+// Renderer (`FeatureGate`: `features.data?.features[feature] ?? false`). Mit `alsAbwesenheit` ist
+// ein 404 jetzt `data === null`, und die optionale Verkettung dort greift aus einem DATENzustand
+// statt aus einem übergangenen Fehler. Dass die Fläche dabei unsichtbar bleibt, ist ab jetzt
+// gemessen (tests/app/577-abwesenheit-verbraucher-mounted.test.tsx).
 export const useFeatures = () =>
   useQuery({
     queryKey: ["features"],
-    queryFn: endpoints.features.get,
+    queryFn: alsAbwesenheit(endpoints.features.get),
     staleTime: Number.POSITIVE_INFINITY,
     retry: false,
   });
@@ -116,10 +131,14 @@ export const useFeatures = () =>
 // Fläche auf „Rolle trägt users.manage" gesetzt — die Route verlangt es, und ein Aufruf ohne das
 // Recht wäre nur 403-Rauschen (dieselbe Regel wie bei useReasonerConfig). `retry: false`, weil ein
 // 403/404 hier eine Antwort ist und keine Störung, die sich durch Wiederholen bessert.
+//
+// JOB 577: „ein 403/404 ist hier eine Antwort und keine Störung" — auch das war eine Absicht ohne
+// Durchsetzung. Der 404 wird jetzt zu `null`; der 403 bleibt ausdrücklich ein Fehler, weil er in
+// diesem Haus eine Route anzeigt, die von der einheitlichen 404-Form abweicht (s. abwesenheit.ts).
 export const useImportAccessConfluence = (enabled = true) =>
   useQuery({
     queryKey: ["import-access", "confluence"],
-    queryFn: endpoints.importAccess.confluence,
+    queryFn: alsAbwesenheit(endpoints.importAccess.confluence),
     enabled,
     retry: false,
   });

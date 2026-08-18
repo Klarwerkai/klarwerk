@@ -4,6 +4,9 @@ import { useTranslation } from "react-i18next";
 import { authApi } from "../api/auth";
 import { ApiError } from "../api/client";
 import { Button, Field, TextInput } from "../components/ui";
+// JOB 1097 / D-028 + D-027: dieselbe Markenfläche und dieselbe Sprachwahl wie die Anmeldemaske —
+// aus EINER Quelle. Der Markenblock stand hier vorher zeichengleich ein zweites Mal.
+import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
 
 // Passwort-Reset einlösen (FR-AUTH-08). Aufruf über den E-Mail-Link
 // https://klarwerk.ai/reset?token=… — ohne Anmeldung erreichbar.
@@ -24,30 +27,14 @@ export function ResetScreen(): JSX.Element {
 
   return (
     <div className="flex h-full">
-      <div className="hidden w-1/2 flex-col justify-between bg-ink p-10 text-white lg:flex">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white">
-            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-              <circle cx="10" cy="10" r="6.5" fill="none" stroke="#ED7D0E" strokeWidth="3.4" />
-              <circle cx="10" cy="10" r="3" fill="#ED7D0E" />
-            </svg>
-          </span>
-          <span className="leading-tight">
-            <span className="block text-[15px] font-bold tracking-[2px]">KLARWERK</span>
-            <span className="block font-mono text-[10px] uppercase tracking-[1.5px] text-white/50">
-              Reasoning System
-            </span>
-          </span>
-        </div>
-        <div className="max-w-sm">
-          <p className="text-xl font-semibold leading-snug">{t("auth.tagline")}</p>
-          <p className="mt-3 text-sm text-white/60">{t("auth.taglineSub")}</p>
-        </div>
-        <div className="font-mono text-[11px] text-white/40">klarwerk.ai</div>
-      </div>
+      <BrandPanel />
 
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-[420px]">
+          <BrandCompact />
+          <div className="mb-4 flex justify-end">
+            <PublicLangSwitch />
+          </div>
           <h1 className="text-2xl font-semibold text-ink">{t("auth.title.reset")}</h1>
           <p className="mt-1.5 text-sm text-muted">{t("auth.sub.reset")}</p>
 
@@ -78,9 +65,16 @@ export function ResetScreen(): JSX.Element {
                 reset.mutate();
               }}
             >
-              <Field label={t("auth.newPassword")}>
+              {/* JOB 1097 / D-023 + D-026: benanntes Feld für den Passwortmanager, Autofokus auf
+                  dem einzigen Eingabefeld dieser Maske, und die Längenregel steht VOR der Eingabe
+                  statt erst im Fehlschlag. */}
+              <Field label={`${t("auth.newPassword")} (${t("auth.passwordRule")})`}>
                 <TextInput
+                  id="reset-new-password"
+                  name="new-password"
                   type="password"
+                  autoComplete="new-password"
+                  autoFocus
                   value={pw}
                   onChange={(e) => setPw(e.target.value)}
                   minLength={8}

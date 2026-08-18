@@ -26,6 +26,38 @@
   body {
     @apply bg-page text-text font-sans antialiased;
   }
+
+  /* ============================================================================================
+     SCHEIBE D-024 — WER MIT DER TASTATUR BEDIENT, SIEHT IMMER, WO ER STEHT.
+     ============================================================================================
+
+     BEFUND: Es gab keinen globalen Fokusstil. Über alle drei CSS-Dateien fand sich genau EINE
+     `:focus-visible`-Regel, und die gilt den Bild-Fußnoten im Editor (weiter unten). Der zentrale
+     `Button` (components/ui.tsx) hatte damit KEINEN Fokusstil; der zentrale `TextInput` löscht den
+     Browser-Ring mit `outline-none` und ersetzte ihn nur durch eine 30-%-Randfarbe. `outline-none`
+     steht an rund fünfzig Stellen, vier davon ersatzlos — darunter die fokussierbaren Graph-Knoten
+     und das Feld der Befehlspalette.
+
+     WARUM EINE EINZIGE REGEL GENÜGT und keine Komponente angefasst wird: `outline-none` schaltet
+     den BROWSER-UMRISS ab (`outline`), nicht den Ring. Der Ring ist ein `box-shadow`. Beide sind
+     verschiedene Eigenschaften — die vorhandenen `outline-none`-Stellen können ihn deshalb gar
+     nicht aushebeln. Genau das ist der Hebel dieser Scheibe: eine Zeile trifft Knopf, Link,
+     Eingabe und Graph-Knoten auf einen Schlag.
+
+     WARUM `ring` UND NICHT `border`: ein Fokusstil über `border` oder `padding` verschiebt beim
+     Fokussieren die Nachbarn. `ring` ist ein Schatten und nimmt keinen Platz ein; `ring-offset`
+     hält ihn außen, sodass er nichts verdeckt. Kein Layout springt.
+
+     WARUM `ring-offset-page` UND NICHT die Vorgabe: der Offset ist eine gezeichnete Fläche, kein
+     Loch. Ohne das Seiten-Token stünde dort Weiß — auf dunklem Grund ein heller Spalt zwischen
+     Element und Ring.
+
+     DIE FUSSNOTEN-REGEL WEITER UNTEN BLEIBT BEWUSST STEHEN. Sie ist spezifischer (Klasse +
+     Attribut + Pseudoklasse) und gewinnt unabhängig von der Reihenfolge; ihre eigene Farbwahl ist
+     dort begründet (sie muss auf dem gestrichelten Rand sichtbar bleiben). */
+  *:focus-visible {
+    @apply outline-none ring-2 ring-brand/60 ring-offset-2 ring-offset-page;
+  }
 }
 
 /* SCHEIBE D-037 — LANGE LINKS UND BREITE TABELLEN SPRENGEN DIE WISSENSSEITE NICHT MEHR.

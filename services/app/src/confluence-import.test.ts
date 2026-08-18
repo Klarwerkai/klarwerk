@@ -264,3 +264,191 @@ describe("SCRUM-510 WP2: runConfluenceImport", () => {
     expect(p3?.note).toContain("Parallelkonflikt");
   });
 });
+
+// ================================================================================================
+// JOB 1131 · D1 — DIE IMPORTREIHENFOLGE IST FOLGENLOS, UND DIE VIER HIERARCHIEFÄLLE BLEIBEN GETRENNT.
+// ================================================================================================
+//
+// HERKUNFT. BEN4 hat zu JOB 931 als Prüflücke 3 wörtlich notiert: *„Spätere Umsetzung braucht
+// Orchestrierungs-/Importtest zur Reihenfolge: Ort `services/app/src/confluence-import`-Tests;
+// Fall Kind vor Elternteil; erwartet identisches Importurteil, weil keine Elternauflösung
+// stattfindet."*
+//
+// DAS SOLL IST DER IST-ZUSTAND — und das ist Absicht, nicht Bequemlichkeit. Die PRO-Rückgabe zu
+// JOB 931 hat den Vertrag gemessen und ihn unbequem benannt (L1): *„Die Orchestrierung ist
+// hierarchieblind."* `runConfluenceImport` iteriert `items` als flache Liste
+// (`confluence-import.ts:212`), sortiert nicht nach Eltern, baut keinen Baum und löst keinen
+// einzigen Bezug auf. BEN4 hat dazu ausdrücklich in die Promptverbesserungen geschrieben: *„wenn
+// der heutige Vertrag hierarchieblind ist, ist als Soll ausdrücklich `keine Elternsortierung,
+// Reihenfolge folgenlos` einzutragen"* — und: *„Ein nicht auflösbarer Bezug darf als
+// Ist-Kalibrierfall auch `kein Fehlersignal` erwarten."*
+//
+// DIESE FÄLLE ERFINDEN DESHALB KEINEN DEFEKT. Sie nageln fest, was der Vertrag heute WIRKLICH
+// zusagt, damit eine spätere Änderung daran nicht unbemerkt durchgeht. Genau darin liegt ihr Wert:
+// führt jemand später eine Elternsortierung ein, wird `R-1` rot und zwingt zur bewussten
+// Entscheidung, statt die Zusage still zu verschieben.
+
+/** Eine Seite mit Elternkette — `sourcePath` trägt die Elterntitel, Wurzel zuerst. */
+function seite(externalId: string, title: string, sourcePath?: string[]): ImportItem {
+  return item({ externalId, title, ...(sourcePath ? { sourcePath } : {}) });
+}
+
+/** Der Vergleichsabdruck eines Laufs: was zählt, ist das Urteil je Seite — nicht seine Position. */
+function urteilJeSeite(summary: Awaited<ReturnType<typeof runConfluenceImport>>) {
+  return Object.fromEntries(
+    summary.perPage.map((p) => [p.ref, { status: p.status, note: p.note }]),
+  );
+}
+
+describe("JOB 1131 · Importreihenfolge — Kind vor Elternteil ist folgenlos", () => {
+  it("R-1: Kind-vor-Eltern und Eltern-vor-Kind liefern DASSELBE Importurteil", async () => {
+    const eltern = seite("P-ELTERN", "KW Gruppe A");
+    const kind = seite("P-KIND", "KW Kind A1", ["KW Gruppe A"]);
+
+    const a = setup();
+    const vorwaerts = await runConfluenceImport({
+      adapter: fakeAdapter({ items: [eltern, kind], failed: [] }),
+      library: a.library,
+      koService: a.koService,
+      dryRun: false,
+      actor: "admin",
+    });
+
+    const b = setup();
+    const rueckwaerts = await runConfluenceImport({
+      // DIESELBEN Seiten, umgekehrte Auslieferung: das Kind kommt VOR seinem Elternteil.
+      adapter: fakeAdapter({ items: [kind, eltern], failed: [] }),
+      library: b.library,
+      koService: b.koService,
+      dryRun: false,
+      actor: "admin",
+    });
+
+    expect(urteilJeSeite(rueckwaerts)).toEqual(urteilJeSeite(vorwaerts));
+    expect(rueckwaerts.imported).toBe(vorwaerts.imported);
+    expect(rueckwaerts.skipped).toBe(vorwaerts.skipped);
+    expect(rueckwaerts.failed).toBe(vorwaerts.failed);
+    expect(rueckwaerts.imported, "beide Seiten werden eingereiht").toBe(2);
+    // Und der Bestand ist in beiden Läufen derselbe.
+    expect(await b.library.listImportCandidates()).toHaveLength(2);
+  });
+
+  it("R-2: das Kind trägt seinen sourcePath unverändert — auch ohne importierten Elternteil", async () => {
+    const { koService, library } = setup();
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({
+        items: [seite("P-KIND", "KW Kind A1", ["KW Gruppe A"])],
+        failed: [],
+      }),
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported).toBe(1);
+    const kandidaten = await library.listImportCandidates();
+    expect(kandidaten[0]?.item.sourcePath, "der Pfad reist unverändert durch").toEqual([
+      "KW Gruppe A",
+    ]);
+  });
+});
+
+describe("JOB 1131 · die vier Hierarchiefälle bleiben getrennt", () => {
+  it("H-1: NAMENSDUBLETTE — gleicher Titel, andere pageId ⇒ ZWEI Einträge, keine Dublettenmeldung", async () => {
+    // T7 der Matrix: die Idempotenz läuft über provider@externalId@version (V9), NIE über den
+    // Titel. Zwei gleichnamige Seiten in verschiedenen Teilbäumen sind zwei Seiten.
+    const { koService, library } = setup();
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({
+        items: [
+          seite("P-A1", "KW Kind A1", ["KW Gruppe A"]),
+          seite("P-B1", "KW Kind A1", ["KW Gruppe B"]),
+        ],
+        failed: [],
+      }),
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported, "beide werden eingereiht").toBe(2);
+    expect(s.skipped, "KEINE Dublettenmeldung — der Titel ist kein Schlüssel").toBe(0);
+    expect(s.perPage.every((p) => p.status === "imported")).toBe(true);
+    const pfade = (await library.listImportCandidates()).map((c) => c.item.sourcePath);
+    expect(pfade, "und ihre Pfade bleiben getrennt").toEqual(
+      expect.arrayContaining([["KW Gruppe A"], ["KW Gruppe B"]]),
+    );
+  });
+
+  it("H-2: WAISE — sourcePath auf einen nicht importierten Elternteil ist KEIN Fehler", async () => {
+    // T8 der Matrix samt BEN4s ausdrücklicher Weisung: „Ein nicht auflösbarer Bezug darf als
+    // Ist-Kalibrierfall auch `kein Fehlersignal` erwarten." Weil nie ein Bezug aufgelöst wird,
+    // gibt es den Zustand „Elternteil fehlt" im Importurteil gar nicht.
+    const { koService, library } = setup();
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({
+        items: [seite("P-WAISE", "KW Waise", ["KW Fremdeltern"])],
+        failed: [],
+      }),
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported, "die Waise wird ganz normal eingereiht").toBe(1);
+    expect(s.failed, "kein failed").toBe(0);
+    expect(s.skipped, "kein skipped").toBe(0);
+    expect(s.perPage[0]?.status).toBe("imported");
+    expect(s.perPage[0]?.note, "und ausdrücklich KEINE erfundene Fehlermeldung").toBeUndefined();
+  });
+
+  it("H-3: ZWEI SEITENBÄUME — getrennte Wurzeln bleiben getrennt, nichts verschmilzt", async () => {
+    const { koService, library } = setup();
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({
+        items: [
+          seite("P-A", "KW Gruppe A"),
+          seite("P-A1", "KW Kind A1", ["KW Gruppe A"]),
+          seite("P-B", "KW Gruppe B"),
+          seite("P-B1", "KW Kind B1", ["KW Gruppe B"]),
+        ],
+        failed: [],
+      }),
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported).toBe(4);
+    const kandidaten = await library.listImportCandidates();
+    const wurzeln = kandidaten.filter((c) => c.item.sourcePath === undefined);
+    expect(wurzeln, "die beiden Wurzelseiten tragen keinen Pfad").toHaveLength(2);
+    const kinder = kandidaten.filter((c) => c.item.sourcePath !== undefined);
+    expect(kinder.map((c) => c.item.sourcePath)).toEqual(
+      expect.arrayContaining([["KW Gruppe A"], ["KW Gruppe B"]]),
+    );
+  });
+
+  it("H-4: KALIBRIERUNG — dieselbe pageId zweimal IST eine Dublette (der Schlüssel greift wirklich)", async () => {
+    // Ohne diesen Fall wäre H-1 auch dann grün, wenn die Dedup überhaupt nichts täte.
+    const { koService, library } = setup();
+    const s = await runConfluenceImport({
+      adapter: fakeAdapter({
+        items: [
+          seite("P-GLEICH", "KW Kind A1", ["KW Gruppe A"]),
+          seite("P-GLEICH", "KW Kind A1", ["KW Gruppe B"]),
+        ],
+        failed: [],
+      }),
+      library,
+      koService,
+      dryRun: false,
+      actor: "admin",
+    });
+    expect(s.imported, "nur EINMAL eingereiht").toBe(1);
+    expect(s.skipped).toBe(1);
+    expect(s.perPage.find((p) => p.status === "skipped")?.note).toBe(
+      "Dublette im selben Lauf (idempotent)",
+    );
+  });
+});

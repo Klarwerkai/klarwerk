@@ -219,7 +219,46 @@ export interface KoServiceDeps {
   onPurge?: (koId: string, actor: string) => Promise<void>;
   // SCRUM-523 P.3 (WP-A2): optionale echte DB-Transaktion für purgeKo (repo.delete + audit.record).
   withTx?: WithTx;
+  // ============================================================================================
+  // JOB 1104 (Scheibe S0-TX, aus JOB 1045 D4 §2.2) — DER ZWEITE, TRANSAKTIONSGEBUNDENE HAKEN.
+  // ============================================================================================
+  //
+  // WARUM ZWEI HAKEN UND NICHT EIN ERWEITERTER. Die drei heutigen Mitglieder von `onPurge`
+  // (`conflicts.onKoRemoved`, `overlaps.onKoRemoved`, `removeKoFromDuplicatePrefilter`) führen
+  // KEINEN `tx`-Parameter. Ein einziger erweiterter Haken zwänge entweder ihre Signaturen mit in
+  // die Transaktion — genau die Modulgrenzen-Verletzung, die `db-tx` vermeidet — oder gäbe eine
+  // Atomaritätszusage, die drei von vier Mitgliedern nicht halten können.
+  //
+  // Zwei Haken, zwei ehrlich verschiedene Zusagen: `onPurge` bleibt vor der Transaktion und behält
+  // seine idempotente Selbstheilung; `onPurgeTx` läuft darin und ist all-or-nothing.
+  onPurgeTx?: PurgeTxCleanup;
 }
+
+/**
+ * Transaktionsgebundene Aufräumung der Endlöschung (JOB 1045 D4 §2.2).
+ *
+ * Läuft als ERSTER Schritt innerhalb von `withTx`, auf DEMSELBEN `TxContext` wie `repo.delete`
+ * und `audit.record`. Rückgabe: der Beitrag zum `ko.purged`-Payload (etwa
+ * `{ kantenGeloescht: 3 }`).
+ *
+ * WARUM EIN RÜCKGABEWERT UND NICHT `void`: die Zahl entsteht IM Transaktionskörper. Ohne sie
+ * müsste der Aufrufer ein zweites Mal zählen — eine zusätzliche Leseoperation innerhalb der
+ * gehaltenen Sperre, und der Beleg wäre nicht mehr aus derselben Sicht geschrieben wie die Wirkung.
+ *
+ * REGISTRIEREN DARF MAN HIER AUSSCHLIESSLICH Schreiber, deren öffentliche Schnittstelle einen
+ * `tx?: TxContext` führt und ihn über `pgQueryable` auf denselben `PoolClient` auflöst, den
+ * `withTx` geöffnet hat — heute erfüllen das `KoRepo`, `AuditRepo` und `UserRepo`.
+ *
+ * AUSGESCHLOSSEN sind Netz, Modellaufruf, HTTP, Dateisystem und Embedding-Dienst: ein Rollback der
+ * Transaktion nähme sie nicht zurück. Ebenso ausgeschlossen sind Schleifen über Einzelobjekte —
+ * der Körper hält eine Verbindung aus dem Pool, und n Einzelanweisungen halten die Sperre n-mal
+ * so lange. Was hier steht, sind mengenbasierte Anweisungen gegen denselben Datenraum.
+ */
+export type PurgeTxCleanup = (
+  koId: string,
+  actor: string,
+  tx: TxContext | undefined,
+) => Promise<Record<string, unknown>>;
 
 export interface CreateKoInput {
   title: string;
@@ -464,6 +503,8 @@ export class KoService {
   // SCRUM-523 P.3 (WP2): Purge-Aufräum-Hook. Spät bindbar (setPurgeCleanup), da die Composition-Root
   // conflicts/overlaps/Embedding-Cleanup erst NACH dem KoService erstellt (Reihenfolge in assembleServices).
   private onPurge: ((koId: string, actor: string) => Promise<void>) | undefined;
+  // JOB 1104 (S0-TX): der transaktionsgebundene Haken. Ebenfalls spät bindbar, aus demselben Grund.
+  private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
   private readonly withTx: WithTx | undefined;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
@@ -481,6 +522,7 @@ export class KoService {
       deps.searchProjections ?? new InMemoryKoSearchProjectionRepo(deps.repo);
     this.defaultNeededValidations = deps.defaultNeededValidations;
     this.onPurge = deps.onPurge;
+    this.onPurgeTx = deps.onPurgeTx;
     this.withTx = deps.withTx;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
@@ -490,6 +532,14 @@ export class KoService {
   // Embedding-Cleanup erst nach dem KoService). Nur EIN Hook — er ist die zentrale Aufräum-Kaskade.
   setPurgeCleanup(hook: (koId: string, actor: string) => Promise<void>): void {
     this.onPurge = hook;
+  }
+
+  // JOB 1104 (S0-TX): den transaktionsgebundenen Haken spät verdrahten — exakt analog zu
+  // `setPurgeCleanup`, und mit derselben Einschränkung: NUR EIN Hook. Wer etwas hinzufügt, tut es
+  // in der Kompositionswurzel sichtbar; es gibt bewusst keinen Registrierungsmechanismus, der
+  // Aufräumarbeit unbemerkt in die Transaktion tragen könnte.
+  setPurgeTxCleanup(hook: PurgeTxCleanup): void {
+    this.onPurgeTx = hook;
   }
 
   // SCRUM-509 R2 / 507 R2: serialisiert fn per-KO (Lesen+Schreiben ohne Interleave). Fehler eines
@@ -2967,12 +3017,33 @@ export class KoService {
       payload: { reason, ...extraPayload },
     };
     const audit = this.audit;
+    // ============================================================================================
+    // JOB 1104 (S0-TX) — DER TRANSAKTIONSGEBUNDENE AUFRÄUMSCHRITT, ERSTER SCHRITT IN (B).
+    // ============================================================================================
+    //
+    // WARUM ER VOR `repo.delete` STEHT UND NICHT DANACH — zwei unabhängige, beide zwingende Gründe
+    // (JOB 1045 D4 §2.3):
+    //
+    //   1. REFERENZIELLE INTEGRITÄT. Ein Folgeartefakt referenziert das Objekt. Wird das KO zuerst
+    //      gelöscht, verletzt jede noch stehende Zeile die Regel „kein Verweis ohne Ziel" — bei
+    //      einem Fremdschlüssel ohne Kaskade schlägt das Delete schlicht fehl.
+    //   2. DER PAYLOAD-BEITRAG. Die Zahl entfernter Artefakte muss vorliegen, BEVOR `audit.record`
+    //      den `ko.purged`-Beleg schreibt. Sonst belegte das Audit einen Vorgang, dessen Umfang es
+    //      nicht kennt.
+    //
+    // Jeder Fehler hier verlässt den Transaktionskörper; `withPgTx` rollt zurück und reicht ihn
+    // weiter. Ergebnis: nichts aufgeräumt, kein KO gelöscht, kein Beleg. Genau das unterscheidet
+    // dieses Fenster vom vorgeschalteten `onPurge`, in dem ein nicht idempotenter Schreiber ein
+    // Datenverlustfenster wäre.
+    const beitragAus = async (tx: TxContext | undefined): Promise<Record<string, unknown>> =>
+      (await this.onPurgeTx?.(id, actor, tx)) ?? {};
     // 2) Delete + Audit — s. (B) oben. MIT withTx: EINE echte DB-Transaktion, beide Schreiber
     // committen/rollbacken gemeinsam. OHNE withTx: sequentieller Fallback (Audit vor Delete, WP-A).
     if (this.withTx && audit) {
       await this.withTx(async (tx) => {
+        const beitrag = await beitragAus(tx);
         await this.repo.delete(id, tx);
-        await audit.record(auditInput, tx);
+        await audit.record({ ...auditInput, payload: { ...auditInput.payload, ...beitrag } }, tx);
       });
       // G27: der abgeleitete Suchindex folgt der Endlöschung. NACH dem Commit und bewusst
       // fehlertolerant: das Objekt ist weg, die Standardsuche kann eine verwaiste Zeile ohnehin
@@ -2981,7 +3052,12 @@ export class KoService {
       await this.searchProjections.removeByKo(id).catch(() => undefined);
       return;
     }
-    await audit?.record(auditInput);
+    // Sequentieller Fallback — ausdrücklich OHNE Atomaritätszusage (D4 §2.5). Er ist NUR in
+    // Kompositionen ohne echte Datenbank erreichbar (InMemory, Dev-Journal); wo es keine
+    // Transaktionsgrenze gibt, behauptet dieser Vertrag auch keine. Der Haken läuft trotzdem —
+    // sonst bliebe in genau diesen Kompositionen ein verwaistes Folgeartefakt stehen.
+    const beitragOhneTx = await beitragAus(undefined);
+    await audit?.record({ ...auditInput, payload: { ...auditInput.payload, ...beitragOhneTx } });
     await this.repo.delete(id);
     await this.searchProjections.removeByKo(id).catch(() => undefined);
   }

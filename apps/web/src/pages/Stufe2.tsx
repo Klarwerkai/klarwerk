@@ -79,19 +79,22 @@ import { buildProvenanceIndex } from "../lib/provenanceIndex";
 import { evaluateDataWindow } from "../lib/qmDataWindow";
 import { isModelConfigured, reasonerModeTone } from "../lib/reasonerStatus";
 
-function Stufe2Header({ titleKey, ticket }: { titleKey: string; ticket: string }): JSX.Element {
+// JOB 691 / D-021: DER INTERNE VORGANGSCHIP IST HIER RAUS.
+//
+// Bis hierher nahm dieser Kopf einen Pflichtparameter `ticket` und rendete ihn als sichtbaren
+// Chip `Stufe 2 · SCRUM-…` neben dem Seitentitel. Eine Vorgangsnummer ist Werkstattwissen: sie
+// sagt einem Kunden nichts, und sie gehoert nicht auf eine Flaeche, die er sieht.
+//
+// DIE HERKUNFT GEHT NICHT VERLOREN — sie wandert an die Stelle, an der sie hingehoert: als
+// Kommentar an die jeweilige Seite. Wer wissen will, aus welchem Vorgang eine Seite stammt,
+// findet es im Quelltext; wer die Anwendung benutzt, wird nicht mehr damit behelligt.
+//
+// Der Parameter ist BEWUSST ganz entfernt und nicht bloss optional gemacht: ein optionaler
+// `ticket`-Prop waere die Einladung, den Chip beim naechsten Mal wieder zu setzen.
+// Festgehalten wird das am gemounteten Kopf in `Stufe2.kopf.test.tsx` (Bloecke A1/A2).
+function Stufe2Header({ titleKey }: { titleKey: string }): JSX.Element {
   const { t } = useTranslation();
-  return (
-    <PageHeader
-      kicker={t("s2.kicker")}
-      title={t(titleKey)}
-      actions={
-        <span className="rounded-pill bg-ai-surface-1 px-2.5 py-1 font-mono text-[11px] font-semibold text-ai">
-          Stufe 2 · {ticket}
-        </span>
-      }
-    />
-  );
+  return <PageHeader kicker={t("s2.kicker")} title={t(titleKey)} />;
 }
 
 function Notice({ textKey }: { textKey: string }): JSX.Element {
@@ -156,7 +159,8 @@ export function Output(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Stufe2Header titleKey="nav.output" ticket="SCRUM-117" />
+      {/* Herkunft: SCRUM-117 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
+      <Stufe2Header titleKey="nav.output" />
 
       <Card className="mb-4">
         <SectionLabel>{t("out.kindTitle")}</SectionLabel>
@@ -410,7 +414,8 @@ export function ImportReview(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Stufe2Header titleKey="nav.import" ticket="SCRUM-116" />
+      {/* Herkunft: SCRUM-116 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
+      <Stufe2Header titleKey="nav.import" />
       <KlaraPathTeaser surface="import" />
 
       {/* WP-COCKPIT-LINIE: der geführte Fünf-Schritte-Fluss — Leiste oben zeigt, wo man steht;
@@ -1406,7 +1411,8 @@ export function Capital(): JSX.Element {
   const snapshot = useManagementSnapshot();
   return (
     <div className="mx-auto max-w-3xl">
-      <Stufe2Header titleKey="nav.capital" ticket="SCRUM-120" />
+      {/* Herkunft: SCRUM-120 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
+      <Stufe2Header titleKey="nav.capital" />
       <QueryState query={snapshot}>
         {(snap) =>
           snap.overview.totalKos === 0 ? (
@@ -1464,7 +1470,8 @@ export function GraphView(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Stufe2Header titleKey="nav.graph" ticket="SCRUM-119" />
+      {/* Herkunft: SCRUM-119 (D-021: Vorgangsnummer als Kommentar, nicht als sichtbarer Chip). */}
+      <Stufe2Header titleKey="nav.graph" />
       <QueryState query={graphQ} emptyText={t("s2.graphEmpty")}>
         {(raw) => {
           if (raw.nodes.length === 0) {

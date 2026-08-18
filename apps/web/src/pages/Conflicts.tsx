@@ -138,16 +138,77 @@ function CollisionTiles({ collision }: { collision: ResolvedCollision }): JSX.El
   );
 }
 
+// ================================================================================================
+// JOB 1125 — DER NEUTRALE ERSATZ, gleiche Bauart wie auf der Duplikate-Seite.
+// ================================================================================================
+//
+// Ohne ihn verschwinden `origin.quoteA && origin.quoteB ? … : null` und `origin.rationale ? … :
+// null` bei Redaktion lautlos: der Betrachter sähe eine Karte ohne Beleg und hielte sie für einen
+// Fund ohne Zitate. Der Marker macht aus dem leeren Feld eine Aussage.
+//
+// Die Texte stehen aus demselben Grund lokal wie in `Duplicates.tsx`: `apps/web/src/i18n.ts` ist
+// nicht im Schreibscope dieses Auftrags. Dreisprachig, nicht einsprachig mit Fallback.
+interface Redaktionstext {
+  titel: string;
+  grund: string;
+}
+
+const REDAKTION_DE: Redaktionstext = {
+  titel: "Belege zurückgehalten",
+  grund: "Mindestens eine der beiden Aussagen darfst du nicht lesen.",
+};
+
+const REDAKTIONSTEXT: Record<string, Redaktionstext | undefined> = {
+  de: REDAKTION_DE,
+  en: {
+    titel: "Evidence withheld",
+    grund: "You may not read at least one of the two statements.",
+  },
+  nl: {
+    titel: "Bewijs achtergehouden",
+    grund: "Je mag ten minste één van beide uitspraken niet lezen.",
+  },
+};
+
+// Eigene Konstante als Fallback statt `REDAKTIONSTEXT.de` — Begründung siehe gleichnamige Stelle
+// in `Duplicates.tsx` (`noUncheckedIndexedAccess`, von `tools/build` gefunden).
+function redaktionstext(sprache: string): Redaktionstext {
+  return REDAKTIONSTEXT[sprache.split("-")[0] ?? "de"] ?? REDAKTION_DE;
+}
+
+function istRedigiert(eintrag: unknown): boolean {
+  return (eintrag as { redacted?: boolean } | null)?.redacted === true;
+}
+
+function RedaktionsHinweis(): JSX.Element {
+  const { i18n } = useTranslation();
+  const text = redaktionstext(i18n.language);
+  return (
+    <div className="mt-2 rounded-card border border-hairline bg-page p-2.5">
+      <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+        {text.titel}
+      </div>
+      <p className="mt-1 text-[12px] leading-relaxed text-muted">{text.grund}</p>
+    </div>
+  );
+}
+
 // Herkunfts-Badge: „Automatisch erkannt · Sicherheit % · Begründung + zwei Zitate" bzw. „Manuell".
 function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element {
   const { t } = useTranslation();
   const origin = conflictOriginInfo(conflict);
+  // JOB 1125: der Hinweis gehört an den Ort der fehlenden Belege — also in dieselbe Karte, in der
+  // sonst Begründung und Zitate stünden.
+  const redigiert = istRedigiert(conflict);
   if (!origin.isAuto) {
     return (
       <div className="mt-1.5">
         <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
           {t(origin.labelKey)}
         </span>
+        {/* Auch ein manuell angelegter Konflikt trägt `description` — die Redaktion gilt hier
+            genauso, sonst hätte der manuelle Weg keinen Hinweis. */}
+        {redigiert ? <RedaktionsHinweis /> : null}
       </div>
     );
   }
@@ -178,6 +239,7 @@ function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element 
           <ConflictQuote labelKey={CONFLICT_BOARD_TEXT.quoteB} quote={origin.quoteB} />
         </div>
       ) : null}
+      {redigiert ? <RedaktionsHinweis /> : null}
     </div>
   );
 }

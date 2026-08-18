@@ -42,8 +42,31 @@ CREATE TABLE IF NOT EXISTS password_resets (
 `;
 
 // WP-VIP2-GATE (bens P1, Token-at-Rest): ADDITIVE Einmal-Migration des Klartext-Bestands.
-// WP-VIP2-GATE-2 (bens Fix 2, DEPLOY-VERTRAG): das Deployment ist Single-Instanz (Coolify, EINE
-// Instanz) — die Start-Migration laeuft also ohne parallelen Neuprozess. ZUSAETZLICH faehrt der
+// WP-VIP2-GATE-2 (bens Fix 2, DEPLOY-VERTRAG) — SINGLE-INSTANZ IST EINE ANNAHME UEBER DIE
+// BETRIEBSUMGEBUNG, KEINE GEMESSENE EIGENSCHAFT DIESES PRODUKTS.
+//
+// ANGENOMMEN wird: das Deployment laeuft als EINE Instanz (Coolify) — die Start-Migration liefe
+// also ohne parallelen Neuprozess. Diese Voraussetzung liegt AUSSERHALB des Codes und ist im Repo
+// nirgends belegt: sie ist NICHT gemessen. JOB 947 fuehrt sie als U1 unter den unbelegten
+// Behauptungen und haelt fest, warum das hier schwerer wiegt als anderswo — es ist die einzige
+// Stelle, an der eine solche Annahme als VERTRAG im Produktcode steht.
+//
+// WAS BEI MEHR ALS EINER INSTANZ GESCHIEHT: zwei Prozesse starten gleichzeitig und fahren die
+// Migration unten zeitgleich; sie lesen dieselben Klartext-Zeilen und schreiben parallel ihre
+// Hashes. Der Vertrag „laeuft ohne parallelen Neuprozess" bricht dann — und zwar STILL, weil
+// nichts im Code das bemerkt.
+//
+// WAS DIE ANNAHME DESHALB TRAEGT — UND WAS NICHT: sie traegt die REIHENFOLGE-Zusage („kein
+// paralleler Neuprozess"), nicht die Datensicherheit. Die faengt der Dual-Read ab, der unmittelbar
+// unten beschrieben ist; er ist der Grund, warum ein zweiter Prozess kein Lockout-Fenster erzeugt.
+// Die Einschraenkung ist also benannt, ohne die vorhandene Absicherung kleinzureden.
+//
+// ZU BESTAETIGEN durch Ops/Pedi: die tatsaechliche Instanzzahl steht in der Coolify-Konfiguration
+// und ist eine Owner-Auskunft, kein Bau (JOB 947, Ownerfrage O-1). Solange sie aussteht, bleibt
+// diese Zeile eine Annahme mit benanntem Restrisiko — nach dem Muster, das `docs/TEAM6_UPDATE.md`
+// fuer `pg_trgm` bereits verwendet.
+//
+// ZUSAETZLICH faehrt der
 // AuthService uebergangsweise Dual-Read (Hash zuerst, dann Klartext mit In-Place-Rehashing, s.
 // findSessionDualRead): selbst ein Rolling-Deploy mit kurzzeitigem Altprozess erzeugt damit KEIN
 // Lockout-Fenster (Klartext-Zeilen des Altprozesses werden beim ersten Zugriff gefunden und

@@ -6,6 +6,41 @@ export interface GapRepo {
   update(gap: Gap): Promise<void>;
   delete(id: string): Promise<void>;
   all(): Promise<Gap[]>;
+  /**
+   * ============================================================================================
+   * JOB 1111 / D-032 — ANLEGEN ODER HOCHZÄHLEN, UNTEILBAR.
+   * ============================================================================================
+   *
+   * WARUM DAS IN DIE ABLAGE GEHÖRT UND NICHT IN DEN DIENST: Ein „erst suchen, dann einfügen" im
+   * Dienst verliert jedes Rennen. Zwei gleichzeitige Fragen sehen beide „gibt es noch nicht" und
+   * legen beide an — genau die Dubletten, die D-032 beseitigt. Prüfen und Setzen müssen deshalb
+   * ohne Unterbrechung geschehen: im Speicher ohne `await` dazwischen, in PostgreSQL als
+   * `ON CONFLICT` gegen einen echten Unique-Index. Dieselbe Lehre wie beim Antwort-Snapshot
+   * (`appendSnapshot`): eine Anwendungsprüfung behauptet Eindeutigkeit, ein Index erzwingt sie.
+   *
+   * VERGLICHEN WIRD `gap.compareKey`, und nur bei OFFENEN Lücken. Eine geschlossene Lücke ist
+   * abgearbeitet; dieselbe Frage darf danach wieder aufkommen. Trägt `gap.compareKey` keinen
+   * Wert, wird NICHT verglichen — dann ist es immer eine Neuanlage.
+   *
+   * `created: false` heisst: es gab bereits eine offene Lücke mit diesem Schlüssel; ihr Zähler
+   * ist um eins erhöht, und sie — nicht die übergebene — kommt zurück.
+   *
+   * WARUM OPTIONAL, obwohl beide Betriebsablagen ihn führen: Zwei Testdoppel in
+   * `services/ask/src/snapshot-ko-version-und-ref.test.ts` und
+   * `services/ask/src/snapshot-verdrahtung-76.test.ts` erfüllen `GapRepo` als Attrappe. Beide
+   * Dateien liegen NICHT in der Lease dieses Auftrags; eine Pflichtmethode hätte sie rot gemacht,
+   * und ein Eingriff dort wäre ein Lease-Verstoss. Fachlich kostet das nichts: diese Attrappen
+   * speichern nichts (`all()` liefert immer leer, `findById()` immer `undefined`), sie könnten
+   * also ohnehin nie eine Dublette finden. Im Betrieb gibt es genau zwei Ablagen — `InMemoryGapRepo`
+   * und `PgGapRepo` —, und beide führen den Weg. Dass die Methode PFLICHT wird, ist als kleiner
+   * Folgeschritt in der Rückgabe benannt.
+   */
+  insertOrIncrement?(gap: Gap): Promise<{ gap: Gap; created: boolean }>;
+}
+
+/** Der Zähler einer Lücke; Altbestände ohne Feld gelten als einmal gefragt. */
+function haeufigkeit(gap: Gap): number {
+  return typeof gap.askCount === "number" && gap.askCount > 0 ? gap.askCount : 1;
 }
 
 export class InMemoryGapRepo implements GapRepo {
@@ -14,6 +49,21 @@ export class InMemoryGapRepo implements GapRepo {
   insert(gap: Gap): Promise<void> {
     this.gaps.set(gap.id, gap);
     return Promise.resolve();
+  }
+
+  insertOrIncrement(gap: Gap): Promise<{ gap: Gap; created: boolean }> {
+    // KEIN `await` in diesem Block — das ist die Unteilbarkeit, die den Parallelfall trägt.
+    if (gap.compareKey) {
+      for (const vorhanden of this.gaps.values()) {
+        if (vorhanden.status === "offen" && vorhanden.compareKey === gap.compareKey) {
+          const erhoeht: Gap = { ...vorhanden, askCount: haeufigkeit(vorhanden) + 1 };
+          this.gaps.set(erhoeht.id, erhoeht);
+          return Promise.resolve({ gap: erhoeht, created: false });
+        }
+      }
+    }
+    this.gaps.set(gap.id, gap);
+    return Promise.resolve({ gap, created: true });
   }
 
   findById(id: string): Promise<Gap | undefined> {

@@ -1,7 +1,13 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService } from "../../../conflicts";
 import { type Guards, sendError } from "../http";
-import { type KoSichtbarkeitsZugang, paarSichtbar, sichtbarePaare } from "../sichtbarkeit";
+import {
+  type KoSichtbarkeitsZugang,
+  feldFreigabe,
+  paarSichtbar,
+  redigiereKonflikt,
+  sichtbarePaare,
+} from "../sichtbarkeit";
 
 // Konflikt-API (§2.3/FR-CON). Erstellen/Auflösen auch über den KO-Dispatcher möglich;
 // hier zusätzlich Liste, Detail, Eskalation und Zweitmeinung.
@@ -29,7 +35,16 @@ export function conflictRoutes(
         return;
       }
       const offen = await conflicts.unresolved();
-      reply.code(200).send(await sichtbarePaare(user, offen, kos));
+      // JOB 1125: erste Stufe Existenz (Paar), zweite Stufe Inhalt (Feld je Seite). Siehe die
+      // ausführliche Begründung in ../sichtbarkeit über `feldFreigabe`.
+      const sichtbar = await sichtbarePaare(user, offen, kos);
+      const sichten = [];
+      for (const konflikt of sichtbar) {
+        sichten.push(
+          redigiereKonflikt(konflikt, await feldFreigabe(user, konflikt.koA, konflikt.koB, kos)),
+        );
+      }
+      reply.code(200).send(sichten);
     });
 
     app.get<{ Params: { id: string } }>("/api/conflicts/:id", async (request, reply) => {
@@ -39,11 +54,17 @@ export function conflictRoutes(
       }
       const conflict = await conflicts.get(request.params.id);
       // Nicht sichtbar sieht aus wie nicht vorhanden — dieselbe Form wie am Wissensobjekt.
+      // JOB 1125, Pflicht 3: das bleibt ein 404 und wird NICHT zur leeren Redaktion. Fehlendes
+      // Paar und zurückgehaltener Inhalt sind zwei verschiedene Aussagen.
       if (!conflict || !(await paarSichtbar(user, conflict.koA, conflict.koB, kos))) {
         reply.code(404).send({ error: "NOT_FOUND", message: "Konflikt nicht gefunden." });
         return;
       }
-      reply.code(200).send(conflict);
+      reply
+        .code(200)
+        .send(
+          redigiereKonflikt(conflict, await feldFreigabe(user, conflict.koA, conflict.koB, kos)),
+        );
     });
 
     app.post<{ Params: { id: string } }>("/api/conflicts/:id/escalate", async (request, reply) => {

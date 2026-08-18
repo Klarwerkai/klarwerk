@@ -10,6 +10,10 @@ import { Button, Field, TextInput } from "../components/ui";
 // hinzu kommen ausschließlich Anzeigeflächen unterhalb des Formulars.
 import { LegalFooter } from "../legal/LegalPages";
 import { NoticeText, takeDeclineMarker } from "../legal/NoticeBanner";
+// JOB 1097 / D-028 + D-027: Markenfläche und Sprachwahl liegen als EINE Quelle daneben. Der
+// Markenblock stand vorher zeichengleich auch in `ResetScreen.tsx` — jede Änderung hätte an beide
+// Stellen gemusst, sonst wären sie auseinandergelaufen.
+import { BrandCompact, BrandPanel, PublicLangSwitch } from "./BrandPanel";
 
 type Mode = "login" | "register" | "waiting" | "setup" | "forgot" | "forgotSent";
 
@@ -68,32 +72,25 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
     setMode(m);
   };
 
+  // JOB 1097 / D-026: die Längenregel gilt überall dort, wo ein NEUES Passwort gesetzt wird — bei
+  // der Anmeldung gilt sie nicht, und dort steht sie deshalb auch nicht.
+  const neuesPasswort = mode === "register" || mode === "setup";
+  const passwortLabel = neuesPasswort
+    ? `${t("auth.password")} (${t("auth.passwordRule")})`
+    : t("auth.password");
+
   return (
     <div className="flex h-full">
-      <div className="hidden w-1/2 flex-col justify-between bg-ink p-10 text-white lg:flex">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-9 w-9 place-items-center rounded-[10px] bg-white">
-            <svg width="20" height="20" viewBox="0 0 20 20" aria-hidden="true">
-              <circle cx="10" cy="10" r="6.5" fill="none" stroke="#ED7D0E" strokeWidth="3.4" />
-              <circle cx="10" cy="10" r="3" fill="#ED7D0E" />
-            </svg>
-          </span>
-          <span className="leading-tight">
-            <span className="block text-[15px] font-bold tracking-[2px]">KLARWERK</span>
-            <span className="block font-mono text-[10px] uppercase tracking-[1.5px] text-white/50">
-              Reasoning System
-            </span>
-          </span>
-        </div>
-        <div className="max-w-sm">
-          <p className="text-xl font-semibold leading-snug">{t("auth.tagline")}</p>
-          <p className="mt-3 text-sm text-white/60">{t("auth.taglineSub")}</p>
-        </div>
-        <div className="font-mono text-[11px] text-white/40">klarwerk.ai</div>
-      </div>
+      <BrandPanel />
 
       <div className="flex flex-1 items-center justify-center p-6">
         <div className="w-full max-w-[420px]">
+          <BrandCompact />
+          {/* D-027: die Sprachwahl steht VOR dem Formular — wer die Maske nicht liest, soll sie
+              nicht erst suchen müssen. */}
+          <div className="mb-4 flex justify-end">
+            <PublicLangSwitch />
+          </div>
           <h1 className="text-2xl font-semibold text-ink">{t(`auth.title.${mode}`)}</h1>
           <p className="mt-1.5 text-sm text-muted">{t(`auth.sub.${mode}`)}</p>
 
@@ -137,23 +134,47 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                 }
               }}
             >
-              {mode === "register" || mode === "setup" ? (
+              {/* JOB 1097 / D-023: `id`, `name` und `autoComplete` an JEDEM Feld. Ohne sie hat ein
+                  Passwortmanager keinen einzigen Anhaltspunkt — repo-weit gab es genau EIN
+                  `autoComplete`, auf der Adminseite. `TextInput` reicht alle Input-Attribute per
+                  `...props` durch; es braucht keinen Umbau, nur Attribute an der Aufrufstelle.
+
+                  Der Autofokus steht auf dem ERSTEN Feld des jeweiligen Modus: bei Registrieren
+                  und Ersteinrichtung ist das der Name, sonst die E-Mail. */}
+              {neuesPasswort ? (
                 <Field label={t("auth.name")}>
-                  <TextInput value={name} onChange={(e) => setName(e.target.value)} required />
+                  <TextInput
+                    id="auth-name"
+                    name="name"
+                    autoComplete="name"
+                    autoFocus
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    required
+                  />
                 </Field>
               ) : null}
               <Field label={t("auth.email")}>
                 <TextInput
+                  id="auth-email"
+                  name="email"
                   type="email"
+                  autoComplete="email"
+                  autoFocus={!neuesPasswort}
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   required
                 />
               </Field>
               {mode !== "forgot" ? (
-                <Field label={t("auth.password")}>
+                <Field label={passwortLabel}>
                   <TextInput
+                    id="auth-password"
+                    name="password"
                     type="password"
+                    // Der Unterschied ist kein Detail: `current-password` lässt den Manager das
+                    // gespeicherte Passwort anbieten, `new-password` schlägt ein neues vor.
+                    autoComplete={neuesPasswort ? "new-password" : "current-password"}
                     value={pw}
                     onChange={(e) => setPw(e.target.value)}
                     minLength={mode === "login" ? undefined : 8}
@@ -161,11 +182,14 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
                   />
                 </Field>
               ) : null}
-              {mode === "register" || mode === "setup" ? (
+              {neuesPasswort ? (
                 <div className="space-y-1.5">
                   <Field label={t("auth.passwordRepeat")}>
                     <TextInput
+                      id="auth-password-repeat"
+                      name="password-repeat"
                       type="password"
+                      autoComplete="new-password"
                       value={pw2}
                       onChange={(e) => setPw2(e.target.value)}
                       minLength={8}
@@ -190,43 +214,43 @@ export function AuthScreens({ needsSetup }: { needsSetup: boolean }): JSX.Elemen
             </form>
           )}
 
-          {mode === "login" && !needsSetup ? (
+          {/* JOB 1097 / D-025 (a): Trenner UND SSO-Satz erscheinen nur, wenn SSO überhaupt
+              vorgesehen ist. Vorher rendered die Maske im `else`-Zweig zwei Zeilen für eine
+              Nicht-Funktion — und `oidcEnabled` hat den Vorgabewert `false`, das stand auf einer
+              Instanz ohne OIDC also DAUERHAFT da. Ein „oder"-Trenner, auf den nichts folgt, ist
+              zudem ein Trenner ohne zweite Seite. */}
+          {mode === "login" && !needsSetup && oidcEnabled ? (
             <div className="mt-5">
               <div className="mb-3 flex items-center gap-3 text-[11px] uppercase tracking-wider text-muted-2">
                 <span className="h-px flex-1 bg-hairline" />
                 {t("auth.or")}
                 <span className="h-px flex-1 bg-hairline" />
               </div>
-              {oidcEnabled ? (
-                <Button
-                  variant="ghost"
-                  className="w-full"
-                  onClick={() => window.location.assign(authApi.ssoStartUrl)}
-                >
-                  {t("auth.ssoButton")}
-                </Button>
-              ) : (
-                <p className="text-center text-[12px] text-muted-2">{t("auth.ssoUnavailable")}</p>
-              )}
+              <Button
+                variant="ghost"
+                className="w-full"
+                onClick={() => window.location.assign(authApi.ssoStartUrl)}
+              >
+                {t("auth.ssoButton")}
+              </Button>
             </div>
           ) : null}
 
+          {/* D-025 (b): Reihenfolge und Gewicht getauscht. „Passwort vergessen?" ist der
+              Alltagsfall und stand vorher unten und leise; „Registrieren" trifft die meisten
+              Besucher genau einmal und stand oben und halbfett. */}
           {!needsSetup && mode === "login" ? (
             <div className="mt-5 space-y-2 text-center text-[13px] text-muted">
-              <button
-                type="button"
-                className="font-semibold text-ink"
-                onClick={() => go("register")}
-              >
-                {t("auth.toRegister")}
+              <button type="button" className="font-semibold text-ink" onClick={() => go("forgot")}>
+                {t("auth.toForgot")}
               </button>
               <div>
                 <button
                   type="button"
                   className="text-muted hover:text-ink"
-                  onClick={() => go("forgot")}
+                  onClick={() => go("register")}
                 >
-                  {t("auth.toForgot")}
+                  {t("auth.toRegister")}
                 </button>
               </div>
             </div>

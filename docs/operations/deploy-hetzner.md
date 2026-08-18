@@ -51,6 +51,12 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
    bzw. Betreiber-Secret-Store).
 4. **Domain + TLS:** In der App-Ressource die Domain eintragen (`https://app.klarwerk.ai`);
    Coolify holt das Let's-Encrypt-Zertifikat selbst.
+
+> **Unbestätigt (U3) · Die TLS-Terminierung erfolgt über Coolify/Traefik mit Let's-Encrypt-Zertifikat.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — Zertifikats- und Proxyzustand sind Laufzeit-Konfiguration und aus dem Repo nicht prüfbar.
+> **Restrisiko:** trägt die Terminierung nicht, ist „API über HTTPS erreichbar" unerfüllt und die Verbindung ungeschützt.
+> **Bestätiger:** Ops/Pedi
+
 5. **Deploy** klicken; Build-Log beobachten (erster Build lädt npm-Pakete, dauert ein paar Minuten).
 
 ## 3. Nach dem Deploy — Reihenfolge ist sicherheitskritisch
@@ -75,6 +81,17 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
 - **Update (manuell):** Pedi pusht → in Coolify „Redeploy" (oder Auto-Deploy per Webhook aktivieren —
   bewusst NICHT eingeschaltet, damit Pedi entscheidet, wann Externe einen neuen Stand sehen).
 - **Rollback:** Coolify → vorheriges Deployment redeployen.
+
+> **Unbestätigt (U6) · Auto-Deploy per Webhook ist in Coolify aktivierbar.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — das ist eine Möglichkeit der Plattform, kein eingeschalteter Zustand.
+> **Restrisiko:** wer ihn für aktiv hält, erwartet nach einem Push einen Deploy, der nicht stattfindet.
+> **Bestätiger:** Ops/Pedi
+
+> **Unbestätigt (U5) · Ein Rollback erfolgt durch erneutes Deployen des vorherigen Stands in Coolify.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — der Weg ist beschrieben, aber nie geprobt; der DR-Drill steht aus.
+> **Restrisiko:** trägt der Weg im Ernstfall nicht, bleibt nur der Wiederaufbau aus Snapshot und Dump.
+> **Bestätiger:** Ops/Pedi
+
 - **Backup:** Hetzner-Snapshots + regelmäßiger `pg_dump` der Coolify-Postgres-Ressource —
   ein vollständiger Dump enthält Wissensobjekte, Anhänge UND Audit-Log gemeinsam.
 - **Logs:** Coolify → App → Logs (der App-Prozess loggt Betriebsmodus und Fehler).

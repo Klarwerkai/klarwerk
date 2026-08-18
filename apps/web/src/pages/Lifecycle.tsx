@@ -69,30 +69,6 @@ export function Lifecycle(): JSX.Element {
     <div className="mx-auto max-w-3xl space-y-8">
       <PageHeader kicker={t("lcy.kicker")} title={t("nav.lifecycle")} pageKey="lebenszyklus" />
 
-      {/* SCRUM-146: Anlagenänderung melden → Revalidierung anstoßen */}
-      <div>
-        <SectionLabel>{t("lcy.assetTitle")}</SectionLabel>
-        <Card className="space-y-2">
-          <p className="text-[13px] text-muted">{t("lcy.assetHint")}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={assetRef}
-              onChange={(e) => setAssetRef(e.target.value)}
-              placeholder={t("lcy.assetPlaceholder")}
-              className="h-9 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
-            />
-            <Button
-              variant="primary"
-              disabled={assetChanged.isPending || assetRef.trim().length === 0}
-              onClick={() => assetChanged.mutate(assetRef.trim())}
-            >
-              {t("lcy.assetTrigger")}
-            </Button>
-          </div>
-          {note ? <p className="text-[12.5px] text-trust-warn-text">{note}</p> : null}
-        </Card>
-      </div>
-
       {/* Pending-Revalidierung (bestehend, unverändert) */}
       <div>
         <SectionLabel>{t("lcy.pendingTitle")}</SectionLabel>
@@ -197,6 +173,30 @@ export function Lifecycle(): JSX.Element {
             </div>
           )}
         </QueryState>
+      </div>
+
+      {/* SCRUM-146: Anlagenänderung melden → Revalidierung anstoßen */}
+      <div>
+        <SectionLabel>{t("lcy.assetTitle")}</SectionLabel>
+        <Card className="space-y-2">
+          <p className="text-[13px] text-muted">{t("lcy.assetHint")}</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <input
+              value={assetRef}
+              onChange={(e) => setAssetRef(e.target.value)}
+              placeholder={t("lcy.assetPlaceholder")}
+              className="h-9 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
+            />
+            <Button
+              variant="primary"
+              disabled={assetChanged.isPending || assetRef.trim().length === 0}
+              onClick={() => assetChanged.mutate(assetRef.trim())}
+            >
+              {t("lcy.assetTrigger")}
+            </Button>
+          </div>
+          {note ? <p className="text-[12.5px] text-trust-warn-text">{note}</p> : null}
+        </Card>
       </div>
 
       {/* SCRUM-145: Rollenspezifischer Lernpfad */}

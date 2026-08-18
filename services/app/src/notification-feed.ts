@@ -25,6 +25,8 @@ export interface Notification {
   koId?: string;
   // FUNKE-FIX3 P0 (bens Blocker B): true → der Titel (Gap-Fragetext) wurde für diesen Betrachter
   // zurückgehalten; der Client zeigt eine neutrale Bezeichnung (DE/EN/NL), NIE den Fragetext.
+  // JOB 1125: gilt jetzt genauso für `conflict` (description) und `duplicate` (Modell-Begründung).
+  // Die Bedeutung ist in allen drei Fällen dieselbe — Titel leer, Neutralbezeichnung im Client.
   redacted?: boolean;
 }
 
@@ -36,13 +38,19 @@ export interface Notification {
 // AskService.listGaps()-Objekte. Bei redacted bleibt der Titel leer (fail-closed, selbst wenn ein
 // Aufrufer versehentlich einen Fragetext mitgibt); der Client zeigt dann die Neutralbezeichnung.
 export function buildNotifications(input: {
-  conflicts: Conflict[];
+  // JOB 1125: `& { redacted?: boolean }` ist ADDITIV — eine rohe `Conflict[]`/`OverlapEntry[]`
+  // passt unverändert weiter hinein. Der Feed KANN dadurch die redigierten Sichten aus
+  // `sichtbarkeit.redigiereKonflikt`/`redigiereUeberschneidung` entgegennehmen und respektiert
+  // sie, wenn er sie bekommt. Er erfindet die Redaktion nicht selbst: der Betrachter ist hier
+  // nicht bekannt, und eine zweite Auslegung der Sichtbarkeitsregel an dieser Stelle wäre genau
+  // die Bauart, gegen die `sichtbarkeit.ts` geschrieben ist.
+  conflicts: (Conflict & { redacted?: boolean })[];
   gaps: GapView[];
   assignments?: AssignmentNotice[];
   impacts?: ImpactNotice[];
   // Pedi 04.07.: offene Überschneidungen (Duplikate) erscheinen wie Konflikte in der Glocke, damit
   // ein neuer Fund auch ohne Besuch der Duplikate-Seite auffällt.
-  overlaps?: OverlapEntry[];
+  overlaps?: (OverlapEntry & { redacted?: boolean })[];
 }): Notification[] {
   const items: Notification[] = [];
   for (const im of input.impacts ?? []) {
@@ -55,16 +63,35 @@ export function buildNotifications(input: {
     });
   }
   for (const c of input.conflicts) {
-    items.push({ id: `con-${c.id}`, kind: "conflict", title: c.description, at: c.createdAt });
+    // JOB 1125: `description` beschreibt den Widerspruch zwischen beiden Aussagen — bei redigiertem
+    // Konflikt bleibt der Titel leer und der Marker trägt die Aussage.
+    items.push({
+      id: `con-${c.id}`,
+      kind: "conflict",
+      title: c.redacted ? "" : c.description,
+      at: c.createdAt,
+      ...(c.redacted ? { redacted: true } : {}),
+    });
   }
   for (const o of input.overlaps ?? []) {
     // Titel: die Modell-Begründung (selbsterklärend), sonst ein kurzer Fallback für den
     // deterministischen (textgleichen) Fund. Die Glocke setzt „Mögliches Duplikat:" davor.
+    //
+    // JOB 1125: dieselbe Behandlung wie bei den Wissenslücken unten. Die Begründung fasst BEIDE
+    // Objekte zusammen und ist der am weitesten hinausreichende dieser Texte — sie steht in der
+    // Glocke auf jeder Seite der Anwendung. Ist der Eintrag redigiert
+    // (sichtbarkeit.redigiereUeberschneidung), bleibt der Titel LEER und der Marker sagt es:
+    // fail-closed selbst dann, wenn ein Aufrufer versehentlich einen Rohtext mitgibt. Der
+    // Fallbacktext wäre hier kein Ersatz, sondern eine Aussage über den Fund („überschneiden sich
+    // stark") — deshalb entfällt auch er.
     items.push({
       id: `dup-${o.id}`,
       kind: "duplicate",
-      title: o.detector?.rationale?.trim() || "Zwei Beiträge überschneiden sich stark.",
+      title: o.redacted
+        ? ""
+        : o.detector?.rationale?.trim() || "Zwei Beiträge überschneiden sich stark.",
       at: o.createdAt,
+      ...(o.redacted ? { redacted: true } : {}),
     });
   }
   for (const g of input.gaps) {

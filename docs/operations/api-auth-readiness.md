@@ -78,6 +78,11 @@ Klarwerk stellt eine **interne, auth-geschützte REST-API** (`/api/*`, Fastify) 
 
 > **Folge für das Jira-Kriterium:** Der **Auth-Teil** ist real, getestet und Smoke-belegt. Der **HTTPS-Teil** hängt am korrekt konfigurierten Coolify-Proxy (deploy-ready, aber Ops-Verantwortung) — in **diesem** Item wurde **keine** Domain/kein Proxy provisioniert.
 
+> **Unbestätigt (U3) · Die TLS-Terminierung erfolgt über Coolify/Traefik mit Let's-Encrypt-Zertifikat.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — Zertifikats- und Proxyzustand sind Laufzeit-Konfiguration und aus dem Repo nicht prüfbar.
+> **Restrisiko:** trägt die Terminierung nicht, ist „API über HTTPS erreichbar" unerfüllt und die Verbindung ungeschützt.
+> **Bestätiger:** Ops/Pedi
+
 ---
 
 ## 7. Ist externe Nutzung heute produktiv „safe" möglich?

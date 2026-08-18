@@ -430,6 +430,13 @@ export interface Gap {
   // Betrachter zurückgehalten (question ist dann ""); die UI zeigt eine Neutralbezeichnung statt
   // Freitext. Volltext bekommen nur Ersteller/Assignee/Detail-Rolle.
   redacted?: boolean;
+  // JOB 1111 / D-032: wie oft dieselbe Frage zu DIESER offenen Lücke geführt hat. Der
+  // Ehrlichkeitszusatz gegen den Verlust beim Zusammenführen — fünf Dubletten sagen „diese Frage
+  // kam fünfmal", und ohne diese Zahl wäre das Signal beim Aufräumen weg. Bewusst AUCH in der
+  // redigierten Sicht sinnvoll: eine Häufigkeit ist kein Fragetext und verrät nichts über den
+  // Inhalt. Fehlt bei Altbeständen und bei einmal gefragten Lücken; die Liste zeigt dann NICHTS,
+  // statt eine nie gezählte Häufigkeit zu behaupten.
+  askCount?: number;
   // GAP-SPRACHHERKUNFT: Sprache, in der die Lücke entstand — der Titel behält die Sprache seiner
   // Quelle (Word-Add-in, markierter Dokumenttext). Die Liste hängt daraus ein Etikett an, statt
   // einen fremdsprachigen Eintrag wie einen Fehler aussehen zu lassen (siehe lib/gapLocaleTag).

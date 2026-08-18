@@ -434,45 +434,31 @@ export function Ask(): JSX.Element {
       {isDemoContext(params) ? <DemoBanner surface="ask" /> : null}
       <div className="-mt-3 mb-5 flex flex-wrap items-center gap-2">
         <p className="text-sm text-muted">{t("ask.intro")}</p>
-        <span
-          title={t("ask.reasoner.hint")}
-          className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${REASONER_TONE[badge.tone]}`}
-        >
-          {t(badge.labelKey)}
+        {/* ==========================================================================
+            SCHEIBE D-034 (JOB 1106) — DER MODUS-CHIP ERKLÄRT SICH NICHT MEHR NUR DER MAUS.
+            ==========================================================================
+            Der Chip trug seine Erklärung ausschliesslich als `title`: ein `<span>` ohne Fokus,
+            ohne `aria-label`. Für Touch, Tastatur und Vorleseprogramm stand dort ein Fachwort
+            ohne jede Auflösung. Der `title` BLEIBT — er ist der kürzeste Weg für die Maus und
+            nimmt niemandem etwas. Daneben steht ab hier das VORHANDENE Bauteil `HelpTip`: ein
+            echter Knopf, per Tabulator erreichbar, der denselben Satz (`ask.reasoner.hint`) als
+            LESBAREN Text öffnet — überschrieben mit genau dem Modus, um den es geht, damit die
+            Zuordnung auch ohne Blick auf den Chip eindeutig ist. Kein neuer Text, kein neuer
+            i18n-Schlüssel, kein neues Bauteil.
+            Gehütet von `tests/app/ask-fragt-zuerst-mounted.test.tsx`. */}
+        <span className="inline-flex shrink-0 items-center gap-1">
+          <span
+            data-testid="ask-reasoner-mode"
+            title={t("ask.reasoner.hint")}
+            className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${REASONER_TONE[badge.tone]}`}
+          >
+            {t(badge.labelKey)}
+          </span>
+          <span data-testid="ask-reasoner-help" className="inline-flex">
+            <HelpTip title={t(badge.labelKey)} body={t("ask.reasoner.hint")} />
+          </span>
         </span>
       </div>
-
-      {/* SCRUM-289: vor dem Fragen erklären, warum Klarwerk kein generischer Chat ist. */}
-      <Card className="mb-4 border-dashed">
-        <h2 className="text-[14px] font-semibold text-ink">{t(guide.titleKey)}</h2>
-        <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          {/* AUFTRAG-mega71 BLOCK E (Stelle 1): der Eintrag „prüfen lassen" führt auf /validierung
-              (controller) — für Betrachter und Experten jetzt eine Lage, keine stille Sackgasse.
-              Die Erklärung selbst bleibt für alle stehen (dieselbe Entscheidung wie Library). */}
-          {guide.items.map((item) => (
-            <RoleLink
-              key={item.id}
-              to={item.to}
-              className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2"
-              hoverClassName="hover:border-ink/30"
-            >
-              {() => (
-                <>
-                  <span
-                    className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-                  >
-                    {t(item.labelKey)}
-                  </span>
-                  <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
-                    {t(item.bodyKey)}
-                  </span>
-                </>
-              )}
-            </RoleLink>
-          ))}
-        </div>
-      </Card>
 
       {/* SCRUM-295: im Demo-/Use-Kontext mit vorbefüllter Startfrage (z. B. aus KO-Detail „Wissen
           nutzen") ehrlich führen: Frage ist nur Startpunkt, kein Auto-Submit; Antwort bleibt
@@ -1274,6 +1260,61 @@ export function Ask(): JSX.Element {
           </>
         ) : null}
       </div>
+
+      {/* ==========================================================================
+          SCHEIBE D-034 (JOB 1106) — ERST FRAGEN, DANN ERKLÄREN.
+          ==========================================================================
+          Diese Erklär-Karte (SCRUM-289: warum Klarwerk kein generischer Chat ist) stand VOR dem
+          Eingabefeld — als dritter von vier Textblöcken, die eine Leserin durchqueren musste,
+          bevor sie ihre Frage tippen konnte, und mit einer Kachel, die auf diese Seite selbst
+          verlinkt. D-034 lässt ausdrücklich beides zu: „hinter das Eingabefeld verschieben ODER
+          in ein `<details>` falten (Kopfzeile bleibt sichtbar)". Hier steht beides zusammen, und
+          zwar aus einem Grund: nur gefaltet bliebe sie das oberste Element (dieselbe Falle, die
+          D-035 für Admin/Lebenszyklus ausdrücklich benennt), nur verschoben stünde sie als volle
+          Karte am Seitenende.
+          IHR ORT IST BEWUSST HINTER DER ERGEBNISFLÄCHE. Wartezustand und Antwort sind erklärte
+          Nicht-Ziele dieser Scheibe — mega38 Block A hat sie mühsam nach oben gebracht, und
+          nichts von hier darf sich zwischen Frage und Antwort schieben. Solange keine Frage
+          gestellt ist, ist die Ergebnisfläche leer; die Erklärung steht dann optisch unmittelbar
+          unter den Beispiel-Chips, also genau dort, wo sie beim ersten Besuch gebraucht wird.
+          KEIN TEXT ENTFÄLLT: Titel, Fliesstext und beide Kacheln sind unverändert; der Titel ist
+          jetzt zusätzlich die sichtbare Kopfzeile der Faltung.
+          Gehütet von `tests/app/ask-fragt-zuerst-mounted.test.tsx`. */}
+      <details data-testid="ask-guide" className="mt-5">
+        <summary className="cursor-pointer">
+          <h2 className="inline text-[14px] font-semibold text-ink">{t(guide.titleKey)}</h2>
+        </summary>
+        <Card className="mt-2 border-dashed">
+          <p className="text-[12.5px] leading-relaxed text-muted">{t(guide.bodyKey)}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {/* AUFTRAG-mega71 BLOCK E (Stelle 1): der Eintrag „prüfen lassen" führt auf
+                /validierung (controller) — für Betrachter und Experten eine Lage, keine stille
+                Sackgasse. Die Erklärung selbst bleibt für alle stehen (dieselbe Entscheidung wie
+                Library). */}
+            {guide.items.map((item) => (
+              <RoleLink
+                key={item.id}
+                to={item.to}
+                className="inline-flex items-start gap-2 rounded-btn border border-hairline bg-surface px-2.5 py-2"
+                hoverClassName="hover:border-ink/30"
+              >
+                {() => (
+                  <>
+                    <span
+                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                    >
+                      {t(item.labelKey)}
+                    </span>
+                    <span className="max-w-[18rem] text-[12px] leading-relaxed text-muted">
+                      {t(item.bodyKey)}
+                    </span>
+                  </>
+                )}
+              </RoleLink>
+            ))}
+          </div>
+        </Card>
+      </details>
     </div>
   );
 }

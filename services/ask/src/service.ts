@@ -17,7 +17,7 @@ import {
   selectCandidates,
 } from "../../reasoner";
 import { TRUST_MAX } from "../../validation";
-import { normalizeGapQuestion } from "./gap-text";
+import { gapCompareKey, normalizeGapQuestion } from "./gap-text";
 import { type GapSummary, summarizeGaps } from "./gap-visibility";
 import { signAnswerReceipt, verifyAnswerReceipt } from "./receipt";
 import type { AnswerSnapshotRepo, GapRepo } from "./repo";
@@ -681,6 +681,9 @@ export class AskService {
     demoSeed?: boolean,
     locale?: ReasonerLocale,
   ): Promise<Gap> {
+    // JOB 1111 / D-032: der Vergleichsschlüssel entsteht HIER, aus demselben Text, der gespeichert
+    // wird — nicht aus dem Rohtext. So können Text und Schlüssel niemals auseinanderlaufen.
+    const compareKey = gapCompareKey(question);
     const gap: Gap = {
       id: this.genId(),
       // SCRUM-284: datensparsam + lesbar — gespeicherte Gap-Frage normalisieren/begrenzen.
@@ -696,10 +699,29 @@ export class AskService {
       // GAP-SPRACHHERKUNFT: immer setzen, wenn bekannt — auch "de". Ein fehlendes Feld wäre sonst
       // mehrdeutig (Altbestand oder deutsche Lücke?), und genau daran scheitern Migrationen.
       ...(locale ? { locale } : {}),
+      // Ein LEERER Schlüssel ist kein Schlüssel: eine Frage ganz ohne Buchstaben („???") darf
+      // nicht mit jeder anderen solchen Frage über eine gemeinsame Leere zusammenfallen. Dann
+      // wird das Feld weggelassen und die Lücke ist wie ein Altbestand nicht dedupfähig.
+      ...(compareKey ? { compareKey, askCount: 1 } : {}),
     };
-    await this.gaps.insert(gap);
-    await this.audit?.record({ actor: "system", action: "gap.created", target: gap.id });
-    return gap;
+    // ============================================================================================
+    // JOB 1111 / D-032 — HIER ENTSCHEIDET SICH: NEUE LÜCKE ODER EINE WEITERE STIMME.
+    // ============================================================================================
+    // Die Unteilbarkeit liegt in der Ablage (`insertOrIncrement`), nicht hier — ein Suchen im
+    // Dienst mit anschliessendem Einfügen verlöre jedes Rennen zweier gleichzeitiger Fragen.
+    // Eine Ablage ohne diesen Weg führt nicht zusammen und legt wie bisher an. Das betrifft keine
+    // Betriebsablage, sondern nur speicherlose Testattrappen (Begründung am Interface in `repo.ts`).
+    const { gap: gespeichert, created } = this.gaps.insertOrIncrement
+      ? await this.gaps.insertOrIncrement(gap)
+      : await this.gaps.insert(gap).then(() => ({ gap, created: true }));
+    if (created) {
+      await this.audit?.record({ actor: "system", action: "gap.created", target: gespeichert.id });
+    }
+    // BEWUSST KEIN Audit-Eintrag bei der Wiederholung: es wurde keine Lücke angelegt, und
+    // `gap.created` für einen nicht angelegten Datensatz wäre eine falsche Auskunft. Ein eigener
+    // Vorgang (`gap.repeated`) bräuchte eine Beschriftung in `apps/web/src/i18n.ts`; diese Datei
+    // liegt nicht in der Lease dieses Auftrags. Als kleiner Folgeschritt in der Rückgabe benannt.
+    return gespeichert;
   }
 
   private async save(gap: Gap): Promise<Gap> {

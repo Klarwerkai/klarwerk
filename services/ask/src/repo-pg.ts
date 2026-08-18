@@ -2,11 +2,42 @@ import type { Pool } from "pg";
 import { type AnswerSnapshotRepo, type GapRepo, pruefeSnapshotKette } from "./repo";
 import { type AnswerEvidenceSnapshot, type AnswerRecord, AskError, type Gap } from "./types";
 
+// ================================================================================================
+// JOB 1111 / D-032 — DER DAUERHAFTE SITZ DER EINDEUTIGKEIT.
+// ================================================================================================
+//
+// DAS MUSTER IST ÜBERNOMMEN, NICHT ERFUNDEN: jsonb-Vollobjekt plus Generated-Spalte plus
+// Unique-Index — genau wie `ANSWER_SNAPSHOT_SCHEMA` weiter unten und wie im Bestand mehrfach
+// erprobt. Eine Anwendungsprüfung behauptet Eindeutigkeit; ein Index erzwingt sie.
+//
+// DER INDEX IST BEWUSST PARTIELL (`WHERE ... = 'offen'`). Eine geschlossene Lücke ist abgearbeitet;
+// dieselbe Frage darf danach wieder aufkommen. Ein Index über ALLE Zeilen würde das verhindern und
+// aus einer erledigten Aufgabe eine Sperre machen.
+//
+// UND ER IST BEWUSST NULL-DURCHLÄSSIG — hier weicht diese Stufe absichtlich von BEN-33 Befund C
+// ab („Schlüsselspalten sind NOT NULL"). Altbestände tragen keinen `compareKey`; ihre
+// Generated-Spalte ist NULL, und PostgreSQL hält zwei NULLs für verschieden. Genau das ist hier
+// gewollt: **bestehende Dubletten bleiben unangetastet** (D-032, Nicht-Ziel). Ein `SET NOT NULL`
+// würde die Migration am Altbestand scheitern lassen, ein Backfill wäre die stille Migration, die
+// diese Scheibe ausdrücklich NICHT vornimmt.
+//
+// ADDITIV: nur `CREATE TABLE IF NOT EXISTS`, `ADD COLUMN IF NOT EXISTS` und
+// `CREATE UNIQUE INDEX IF NOT EXISTS`. Kein DROP, kein DELETE, kein UPDATE — die Stufe bleibt in
+// `migrationsbeleg.ts` als `ADDITIV` klassifiziert (im Zielest über die echte Funktion gemessen).
+//
+// UNBEWIESENE HYPOTHESE, ehrlich benannt: dass PostgreSQL diese DDL annimmt, ist in dieser
+// Umgebung nicht geprüft — es läuft hier keine Datenbank. Belegt ist, was der Adapter absetzt und
+// wie er sich bei Konflikt verhält (Fake-Pool), und dass die Stufe additiv bleibt.
 export const ASK_SCHEMA = `
 CREATE TABLE IF NOT EXISTS gaps (
   id text PRIMARY KEY,
   data jsonb NOT NULL
 );
+ALTER TABLE gaps
+  ADD COLUMN IF NOT EXISTS compare_key text
+  GENERATED ALWAYS AS (data->>'compareKey') STORED;
+CREATE UNIQUE INDEX IF NOT EXISTS gaps_offener_vergleichsschluessel_uq
+  ON gaps (compare_key) WHERE (data->>'status') = 'offen';
 `;
 
 interface GapRow {
@@ -18,6 +49,51 @@ export class PgGapRepo implements GapRepo {
 
   async insert(gap: Gap): Promise<void> {
     await this.pool.query("INSERT INTO gaps(id,data) VALUES($1,$2)", [gap.id, JSON.stringify(gap)]);
+  }
+
+  /**
+   * JOB 1111 / D-032 — anlegen oder hochzählen, in EINEM Konfliktweg.
+   *
+   * `ON CONFLICT ... DO NOTHING` gegen den partiellen Unique-Index: greift der Index, kommt keine
+   * Zeile zurück, und erst dann wird gezählt. Das Hochzählen läuft als EINE Anweisung über
+   * `jsonb_set` — kein Lesen-Rechnen-Schreiben, das zwei gleichzeitige Läufe auf denselben Wert
+   * setzen könnte. Altbestände ohne Zähler gelten dabei als einmal gefragt (`COALESCE`).
+   *
+   * Ohne `compareKey` wird gar nicht verglichen: dann ist es eine gewöhnliche Neuanlage.
+   */
+  async insertOrIncrement(gap: Gap): Promise<{ gap: Gap; created: boolean }> {
+    if (!gap.compareKey) {
+      await this.insert(gap);
+      return { gap, created: true };
+    }
+    const angelegt = await this.pool.query<GapRow>(
+      `INSERT INTO gaps(id,data) VALUES($1,$2::jsonb)
+       ON CONFLICT (compare_key) WHERE (data->>'status') = 'offen'
+       DO NOTHING RETURNING data`,
+      [gap.id, JSON.stringify(gap)],
+    );
+    if ((angelegt.rowCount ?? 0) > 0) {
+      return { gap: angelegt.rows[0]?.data ?? gap, created: true };
+    }
+    const erhoeht = await this.pool.query<GapRow>(
+      `UPDATE gaps
+          SET data = jsonb_set(
+                data,
+                '{askCount}',
+                to_jsonb(COALESCE((data->>'askCount')::int, 1) + 1)
+              )
+        WHERE (data->>'compareKey') = $1 AND (data->>'status') = 'offen'
+        RETURNING data`,
+      [gap.compareKey],
+    );
+    const treffer = erhoeht.rows[0]?.data;
+    if (!treffer) {
+      // Die offene Lücke ist zwischen Konflikt und Zählung verschwunden (geschlossen oder
+      // gelöscht). Ehrlich: dann gibt es nichts hochzuzählen — der Aufrufer bekommt seinen
+      // eigenen Datensatz zurück, ohne dass eine fremde Zeile erfunden wird.
+      return { gap, created: false };
+    }
+    return { gap: treffer, created: false };
   }
 
   async findById(id: string): Promise<Gap | undefined> {

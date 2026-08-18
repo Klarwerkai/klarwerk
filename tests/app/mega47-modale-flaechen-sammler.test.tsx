@@ -1993,3 +1993,327 @@ describe("mega48 Block A2: zwei Flächen nehmen sich die Grenze nicht mehr gegen
     ).toBe(true);
   });
 });
+
+// ================================================================================================
+// JOB 1130 · D1 — DIE VIER A17-BAUFORMEN BEISSEN WIRKLICH, UND DIE IDENTITÄT TRÄGT DIE BINDUNG.
+// ================================================================================================
+//
+// HERKUNFT. BEN7 hat zu JOB 966 vier Prüflücken benannt; alle vier liegen in genau dieser Datei:
+//   1. Integrationstest B1 — gleichnamiges Fremdsymbol ersetzt echte Einbindung, erwartet rot.
+//   2. Mutationsprobe für die vier A17-Wege — Entfernung der Erkennung macht den Fall rot.
+//   3. Zähler-Test — wörtliche Erwähnung ohne erklärte Registrierung, erwartet rot mit Datei/Zeile.
+//   4. Prop-Weitergabe — `<Rahmen komponente={FacetFilter} />`, erwartet fail-closed.
+//
+// WARUM DAS NÖTIG IST, obwohl die Bauform-Fixtures seit mega72 existieren: Die PRO-Rückgabe zu
+// JOB 966 hat es selbst als offene Grenze benannt — *„Die Wirksamkeit der Fixtures ist nicht
+// gegengeprüft. Ein Fixture kann existieren und trotzdem nichts fangen"* — und verweist auf bens
+// Befund aus 905 D1, wonach *„vier der sechs Positivformen bereits VOR der Änderung grün waren"*.
+// Ein grüner Positivfall allein beweist nur, dass etwas erhoben wurde; er beweist NICHT, dass die
+// Erhebung an dem Merkmal hängt, das den Fall trägt.
+//
+// DIE BAUFORM DER PROBE ist deshalb der NEGATIV-ZWILLING: zu jedem Positivfall dieselbe Datei
+// OHNE das erkennungstragende Merkmal. Bleibt der Fund aus, hängt die Erkennung nachweislich an
+// genau diesem Merkmal — und der Positivfall beisst. Das ist ein DAUERHAFTER Wächter und keine
+// einmalige Mutation am Sammlercode: er bleibt stehen und schlägt an, wenn jemand die Erkennung
+// später aufweicht.
+//
+// GEMESSEN AM ECHTEN SAMMLER: jeder Fall geht durch `erhebeDatei`, `erhebeVerweise`, `beurteile`
+// bzw. `modalAbgleich` — dieselben Funktionen, die den heutigen Quellbaum erheben.
+describe("JOB 1130 · die vier A17-Bauformen beissen — Negativ-Zwillinge", () => {
+  const BAUTEIL: Bauteil = {
+    datei: "apps/web/src/components/FacetFilter.tsx",
+    komponente: "FacetFilter",
+  };
+  const synth = (datei: string, zeilen: string[]): DateiErhebung =>
+    erhebeDatei(quelleAus(datei, zeilen.join("\n")));
+  const paareVon = (e: DateiErhebung): string[] =>
+    erhebeVerweise([e], [BAUTEIL]).paare.map(schluessel);
+
+  it("M-1: Bauform 1 (Alias) — OHNE die Alias-Zuweisung entsteht kein Aufrufer", () => {
+    // Positivkontrolle: mit Alias ist es ein Aufrufer (dieselbe Zusage wie Bauform 1 oben).
+    const mit = synth("apps/web/src/pages/M1Mit.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "const Umbenannt = FacetFilter;",
+      "export function Seite(): JSX.Element {",
+      "  return <Umbenannt themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    expect(paareVon(mit)).toContain("apps/web/src/pages/M1Mit.tsx → <FacetFilter>");
+
+    // NEGATIV-ZWILLING: derselbe Import, dieselbe Nutzung eines lokalen Namens — aber der Name
+    // stammt NICHT aus dem Bauteil. Fällt die Aliaskette weg, darf kein Paar entstehen.
+    const ohne = synth("apps/web/src/pages/M1Ohne.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "const Umbenannt = () => null;",
+      "export function Seite(): JSX.Element {",
+      "  return <Umbenannt />;",
+      "}",
+    ]);
+    expect(
+      paareVon(ohne),
+      "ohne die Aliaskette hängt die Erkennung an nichts mehr — kein Aufrufer",
+    ).toEqual([]);
+  });
+
+  it("M-2: Bauform 2 (createElement) — OHNE den createElement-Aufruf entsteht kein Aufrufer", () => {
+    const mit = synth("apps/web/src/pages/M2Mit.tsx", [
+      'import { createElement } from "react";',
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "export function Seite(): unknown {",
+      "  return createElement(FacetFilter, null);",
+      "}",
+    ]);
+    expect(paareVon(mit)).toContain("apps/web/src/pages/M2Mit.tsx → <FacetFilter>");
+
+    // NEGATIV-ZWILLING: der Import bleibt, der Aufruf verschwindet. Der Sammler darf daraus
+    // KEINE Einbindung machen — und er meldet den toten Verweis, statt ihn zu verschweigen.
+    const ohne = synth("apps/web/src/pages/M2Ohne.tsx", [
+      'import { createElement } from "react";',
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "export function Seite(): unknown {",
+      "  return createElement('div', null);",
+      "}",
+    ]);
+    expect(paareVon(ohne), "ohne den Aufruf ist es keine Einbindung").toEqual([]);
+    expect(
+      erhebeVerweise([ohne], [BAUTEIL]).rot.some((r) => r.includes("ohne erkennbare Einbindung")),
+      "der tote Verweis wird gemeldet, nicht still übergangen",
+    ).toBe(true);
+  });
+
+  it("M-3: Bauform 3 (Spread-aria-modal) — OHNE den Marker entsteht kein Kandidat", () => {
+    const mit = synth("apps/web/src/components/M3Mit.tsx", [
+      'const dialogProps = { "aria-modal": "true" };',
+      "export function Fenster(): JSX.Element {",
+      "  return <div {...dialogProps} />;",
+      "}",
+    ]);
+    expect(mit.kandidaten.map((k) => k.art)).toEqual(["aria-modal-eigenschaft"]);
+    expect(beurteile([mit]).rot).toHaveLength(1);
+
+    // NEGATIV-ZWILLING: identische Bauform (Objekt + Spread), nur ohne das Merkmal.
+    const ohne = synth("apps/web/src/components/M3Ohne.tsx", [
+      'const dialogProps = { "data-rolle": "true" };',
+      "export function Fenster(): JSX.Element {",
+      "  return <div {...dialogProps} />;",
+      "}",
+    ]);
+    expect(
+      ohne.kandidaten,
+      "ein Spread ohne aria-modal ist kein modaler Kandidat — sonst wäre jeder Spread einer",
+    ).toEqual([]);
+    expect(beurteile([ohne]).rot).toEqual([]);
+  });
+
+  it("M-4: Bauform 4 (setAttribute / role=dialog) — OHNE den Marker entsteht kein Kandidat", () => {
+    const mitAttr = synth("apps/web/src/lib/m4MitAttr.ts", [
+      "export function markiere(el: HTMLElement): void {",
+      '  el.setAttribute("aria-modal", "true");',
+      "}",
+    ]);
+    expect(mitAttr.kandidaten.map((k) => k.art)).toEqual(["aria-modal-zeichenkette"]);
+
+    const ohneAttr = synth("apps/web/src/lib/m4OhneAttr.ts", [
+      "export function markiere(el: HTMLElement): void {",
+      '  el.setAttribute("data-rolle", "true");',
+      "}",
+    ]);
+    expect(ohneAttr.kandidaten, "ein beliebiges setAttribute ist kein Kandidat").toEqual([]);
+    expect(beurteile([ohneAttr]).rot).toEqual([]);
+
+    const mitRolle = synth("apps/web/src/components/M4MitRolle.tsx", [
+      "export function Fenster(): JSX.Element {",
+      '  return <div role="dialog" />;',
+      "}",
+    ]);
+    expect(mitRolle.kandidaten.map((k) => k.art)).toEqual(["role-dialog"]);
+
+    const ohneRolle = synth("apps/web/src/components/M4OhneRolle.tsx", [
+      "export function Fenster(): JSX.Element {",
+      '  return <div role="region" />;',
+      "}",
+    ]);
+    expect(ohneRolle.kandidaten, "role=region ist keine Modalität").toEqual([]);
+    expect(beurteile([ohneRolle]).rot).toEqual([]);
+  });
+});
+
+describe("JOB 1130 · Symbolidentität — ein Fremdtreffer ersetzt keine echte Einbindung", () => {
+  const BAUTEIL: Bauteil = {
+    datei: "apps/web/src/components/FacetFilter.tsx",
+    komponente: "FacetFilter",
+  };
+  const synth = (datei: string, zeilen: string[]): DateiErhebung =>
+    erhebeDatei(quelleAus(datei, zeilen.join("\n")));
+
+  it("I-1: TÄUSCHUNGSKOMPENSATION — verschwindet die echte Einbindung, verdeckt der gleichnamige Fremdtreffer sie NICHT", () => {
+    // DER FALL, den ben „Täuschungskompensation" nennt und den BEN7 als Prüflücke 1 verlangt:
+    // In einer Datei, die als Aufrufer geführt wird, wird die echte Einbindung durch ein
+    // gleichnamiges Fremdsymbol ERSETZT. Ein namensbasierter Sammler meldete hier weiter grün —
+    // genau das „war doch grün", vor dem Register A17 warnt.
+    const echt = synth("apps/web/src/pages/TaeuschungVorher.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "export function Seite(): JSX.Element {",
+      "  return <FacetFilter themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    const vorher = erhebeVerweise([echt], [BAUTEIL]);
+    expect(vorher.paare.map(schluessel), "Vorbedingung: die echte Einbindung IST ein Paar").toEqual(
+      ["apps/web/src/pages/TaeuschungVorher.tsx → <FacetFilter>"],
+    );
+
+    // Dieselbe Datei, dieselbe JSX-Zeile, derselbe Namenstext — nur die Herkunft ist eine andere.
+    const getauscht = synth("apps/web/src/pages/TaeuschungNachher.tsx", [
+      'import { FacetFilter } from "../lib/facetRail";',
+      "export function Seite(): JSX.Element {",
+      "  return <FacetFilter themes={[]} authors={[]} spaces={[]} />;",
+      "}",
+    ]);
+    const nachher = erhebeVerweise([getauscht], [BAUTEIL]);
+    expect(
+      nachher.paare,
+      "der Fremdtreffer darf das Paar NICHT ersetzen — sonst bliebe der Wegfall unsichtbar",
+    ).toEqual([]);
+    expect(
+      nachher.fremdbefunde.some((f) => f.includes("TaeuschungNachher.tsx")),
+      "und er wird sichtbar gemacht statt stillschweigend verworfen",
+    ).toBe(true);
+  });
+
+  it("I-2: die Ersetzung ist am ZÄHLER ablesbar — kein Paar, aber auch kein stiller Nullfund", () => {
+    // Der Wert von I-1 hängt daran, dass der Wegfall NICHT als „nichts passiert" endet: Der
+    // Sammler führt den Fremdbefund und lässt den Aufrufer aus den Paaren fallen. Genau diese
+    // Kombination — leere Paare UND ein benannter Befund — unterscheidet „ersetzt" von „nie da".
+    const fremd = synth("apps/web/src/pages/TaeuschungZaehler.tsx", [
+      'import { FacetFilter } from "../lib/facetRail";',
+      "export function Seite(): JSX.Element {",
+      "  return <FacetFilter />;",
+      "}",
+    ]);
+    const bild = erhebeVerweise([fremd], [BAUTEIL]);
+    expect(bild.paare).toEqual([]);
+    expect(bild.fremdbefunde).toHaveLength(1);
+    expect(bild.fremdbefunde[0]).toContain(
+      "ohne Bindung an apps/web/src/components/FacetFilter.tsx",
+    );
+  });
+});
+
+describe("JOB 1130 · der Zähler und die fail-closed Prop-Weitergabe", () => {
+  const BAUTEIL: Bauteil = {
+    datei: "apps/web/src/components/FacetFilter.tsx",
+    komponente: "FacetFilter",
+  };
+  const synth = (datei: string, zeilen: string[]): DateiErhebung =>
+    erhebeDatei(quelleAus(datei, zeilen.join("\n")));
+
+  it("Z-1: GEMESSENE DECKUNG — vier Vorkommensformen sind ALLE abgerechnet, keine fällt still heraus", () => {
+    // BEN7-Prüflücke 3 verlangt: „zusätzliche wörtliche Erwähnung ohne erklärte
+    // Kandidatenregistrierung — erwartet rot mit Datei/Zeile."
+    //
+    // DIESER FALL HÄLT DAS GEMESSENE ERGEBNIS FEST, und das Ergebnis ist besser als erwartet:
+    // Ich habe drei Formen gesucht, die durchrutschen — Zeichenkette, Element-Zugriff
+    // (`d["showModal"]`) und Property-Zugriff über eine Zwischenvariable (`const o = d.showModal`).
+    // KEINE davon fällt heraus: die Zeichenkette ist belegte Prosa („Alles Text-Artige, das kein
+    // Kandidat wurde, ist belegte Prosa"), die beiden Zugriffsformen werden Kandidaten. Ein
+    // erfundener Defekt wäre hier die falsche Antwort — der Sammler deckt diese Formen wirklich.
+    //
+    // Der Wert dieses Falls liegt in der Gegenrichtung: er pinnt die Deckung. Wer eine dieser
+    // Formen später aus der Erkennung nimmt, macht ihn rot.
+    const alsProsa = synth("apps/web/src/lib/z1Prosa.ts", [
+      "export const VORLAGE: string[] = [",
+      '  "<dialog>",',
+      '  "aria-modal",',
+      "];",
+    ]);
+    expect(modalAbgleich(alsProsa), "Zeichenkette: als belegte Prosa abgerechnet").toEqual([]);
+
+    const alsElementZugriff = synth("apps/web/src/lib/z1Zugriff.ts", [
+      "export function ruf(d: HTMLDialogElement): void {",
+      '  d["showModal"]();',
+      "}",
+    ]);
+    expect(alsElementZugriff.kandidaten.map((k) => k.art)).toEqual(["showModal-nutzung"]);
+    expect(modalAbgleich(alsElementZugriff), "Element-Zugriff: als Kandidat erklärt").toEqual([]);
+
+    const ueberZwischenvariable = synth("apps/web/src/lib/z1Zwischen.ts", [
+      "export function oeffne(d: HTMLDialogElement): void {",
+      "  const oeffner = d.showModal;",
+      "  oeffner.call(d);",
+      "}",
+    ]);
+    expect(
+      ueberZwischenvariable.kandidaten.length,
+      "Property-Zugriff ohne Aufruf: ebenfalls erkannt",
+    ).toBeGreaterThan(0);
+    expect(modalAbgleich(ueberZwischenvariable)).toEqual([]);
+
+    const alsAttribut = synth("apps/web/src/components/Z1Attribut.tsx", [
+      "export function Fenster(): JSX.Element {",
+      '  return <div aria-modal="true" />;',
+      "}",
+    ]);
+    expect(alsAttribut.kandidaten.map((k) => k.art)).toEqual(["aria-modal-attribut"]);
+    expect(modalAbgleich(alsAttribut)).toEqual([]);
+  });
+
+  it("Z-2: der Zähler BEISST — eine nicht abrechenbare Form wird rot, mit Datei und Zeile", () => {
+    // Die Wirksamkeitsprobe zum Fall darüber: gäbe es KEINE Form, die der Zähler meldet, wäre
+    // „alles abgerechnet" auch bei einem blinden Zähler grün. Die destrukturierte Bindung ist
+    // die belegte Lücke — `showModal` steht zweimal wörtlich im Code und wird kein Kandidat.
+    const e = synth("apps/web/src/lib/z2Destrukturiert.ts", [
+      "export function oeffne(d: HTMLDialogElement): void {",
+      "  const { showModal } = d;",
+      "  showModal.call(d);",
+      "}",
+    ]);
+    expect(e.kandidaten, "kein Kandidat erklärt diese Form").toEqual([]);
+    const rot = modalAbgleich(e);
+    expect(rot, "und darum meldet der Zähler sie").toHaveLength(1);
+    expect(rot[0], "mit Datei und Zeilen").toContain("apps/web/src/lib/z2Destrukturiert.ts:2,3");
+  });
+
+  it("Z-3: KALIBRIERUNG — eine erklärte Registrierung wird NICHT rot (der Zähler rechnet wirklich ab)", () => {
+    // Ohne diesen Fall wäre jedes Rot oben auch dann grün, wenn der Zähler pauschal alles meldet.
+    const erklaert = synth("apps/web/src/components/Z3Erklaert.tsx", [
+      "export function Fenster(): JSX.Element {",
+      '  return <div aria-modal="true" />;',
+      "}",
+    ]);
+    expect(erklaert.kandidaten.map((k) => k.art)).toEqual(["aria-modal-attribut"]);
+    expect(modalAbgleich(erklaert), "als Kandidat erklärt ⇒ abgerechnet ⇒ nicht rot").toEqual([]);
+  });
+
+  it("P-1: PROP-WEITERGABE bleibt fail-closed — <Rahmen komponente={FacetFilter} /> ist keine Einbindung", () => {
+    // BEN7-Prüflücke 4. Ob der Empfänger das Bauteil je rendert, kann eine dateiweise Erhebung
+    // nicht wissen. Der Sammler darf daraus deshalb WEDER eine Einbindung machen (das wäre eine
+    // erfundene Zusage) NOCH stillschweigend nichts (das wäre die Lücke). Er meldet sie.
+    const e = synth("apps/web/src/pages/P1Prop.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      'import { Rahmen } from "../components/Rahmen";',
+      "export function Seite(): JSX.Element {",
+      "  return <Rahmen komponente={FacetFilter} />;",
+      "}",
+    ]);
+    const bild = erhebeVerweise([e], [BAUTEIL]);
+    expect(bild.paare, "eine durchgereichte Referenz ist KEINE belegte Einbindung").toEqual([]);
+    expect(
+      bild.rot.length,
+      "und sie verschwindet auch nicht still — der Sammler meldet den unbeurteilbaren Verweis",
+    ).toBeGreaterThan(0);
+    expect(bild.rot.join("\n")).toContain("apps/web/src/pages/P1Prop.tsx");
+  });
+
+  it("P-2: KALIBRIERUNG — dieselbe Datei MIT echter Einbindung ergibt sehr wohl ein Paar", () => {
+    const e = synth("apps/web/src/pages/P2Direkt.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      'import { Rahmen } from "../components/Rahmen";',
+      "export function Seite(): JSX.Element {",
+      "  return <Rahmen><FacetFilter themes={[]} authors={[]} spaces={[]} /></Rahmen>;",
+      "}",
+    ]);
+    expect(erhebeVerweise([e], [BAUTEIL]).paare.map(schluessel)).toContain(
+      "apps/web/src/pages/P2Direkt.tsx → <FacetFilter>",
+    );
+  });
+});

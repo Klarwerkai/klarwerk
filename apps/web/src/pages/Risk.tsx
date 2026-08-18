@@ -225,7 +225,14 @@ export function Risk(): JSX.Element {
       {/* Consultant-System (Experten-Matching): Thema → Personen, die schon dazu beigetragen haben —
           als Hilfe „wen könnte man kurz um eine Einordnung bitten". Kein Ranking, keine Zahlen; die
           Reihenfolge bleibt alphabetisch (Backend). Sichtbar nur mit ko.assign UND aktivem Flag. */}
-      {expertiseVisible(role, expertise.data) ? (
+      {/* JOB 577: `expertise.data` kann seit der 404-Normalisierung auch `null` sein — der
+          ausdrückliche Datenzustand „keine Fläche". Er fällt hier auf die BEREITS GEPRÜFTE Lage
+          `undefined` zurück, für die `expertiseVisible(rolle, undefined) === false` in
+          `lib/expertiseView.test.ts` festgeschrieben ist. Bewusst die kleinste korrekte Anpassung:
+          Der Vertrag der beiden Hilfsfunktionen bleibt unangetastet, und die Fläche erscheint bei
+          Abwesenheit nicht. Dass genau das passiert, ist gemessen — nicht angenommen
+          (tests/app/577-abwesenheit-verbraucher-mounted.test.tsx, Fall V1). */}
+      {expertiseVisible(role, expertise.data ?? undefined) ? (
         <div>
           <div className="mb-2 flex items-center gap-1.5">
             <SectionLabel>{t("expertise.title")}</SectionLabel>
@@ -234,7 +241,11 @@ export function Risk(): JSX.Element {
           <p className="mb-2 text-[12px] text-muted-2">{t("expertise.intro")}</p>
           <Card className="space-y-3">
             {(expertise.data ?? []).map((entry) => {
-              const names = contributorNamesFor(expertise.data, entry.category, nameOf);
+              const names = contributorNamesFor(
+                expertise.data ?? undefined,
+                entry.category,
+                nameOf,
+              );
               if (names.length === 0) {
                 return null;
               }

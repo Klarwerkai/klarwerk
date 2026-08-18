@@ -22,6 +22,11 @@ npm run typecheck  # Typprüfung
   Zusätzlich am Server `X-Robots-Tag: noindex` setzen (siehe `../../docs/operations/pre-launch-protection.md`).
 - **Vorab-Zugangsschutz:** HTTP Basic Auth auf Proxy-Ebene (Coolify/Traefik), **nicht** im Frontend-Bundle.
   Siehe `../../docs/operations/pre-launch-protection.md`.
+
+> **Unbestätigt (U2) · Der Vorab-Zugangsschutz per HTTP Basic Auth läuft auf Proxy-Ebene (Coolify/Traefik).**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — im Repo liegt keine Proxy-Konfiguration, die das belegt.
+> **Restrisiko:** ist der Schutz nicht eingerichtet, ist die Vorab-Umgebung offen erreichbar, obwohl sie hier als geschützt beschrieben wird.
+> **Bestätiger:** Ops/Pedi
 - **App-Login:** Die Anwendung selbst ist vollständig auth-/rollengeschützt (Backend-Auth).
 
 ## Architektur-Hinweis

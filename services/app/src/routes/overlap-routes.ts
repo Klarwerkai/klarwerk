@@ -7,7 +7,13 @@ import {
   normalizeOverlapSettings,
 } from "../../../conflicts";
 import { type Guards, sendError } from "../http";
-import { type KoSichtbarkeitsZugang, paarSichtbar, sichtbarePaare } from "../sichtbarkeit";
+import {
+  type KoSichtbarkeitsZugang,
+  feldFreigabe,
+  paarSichtbar,
+  redigiereUeberschneidung,
+  sichtbarePaare,
+} from "../sichtbarkeit";
 
 // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-API (/api/duplicates). Liste +
 // Detail lesen alle Leseberechtigten; die menschlichen Abschlüsse (Fehlalarm / getrennt lassen /
@@ -44,7 +50,21 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         // Objekte steht. Ohne dieses Tor las jeder `ko.read`-Inhaber den Kern eines vertraulichen
         // Objekts, ohne es je zu öffnen.
         const offen = await overlaps.unresolved();
-        reply.code(200).send(await sichtbarePaare(user, offen, kos));
+        // JOB 1125: zwei Stufen, nicht eine. `sichtbarePaare` entscheidet, ob der Fund überhaupt
+        // EXISTIERT; die Feldredaktion danach entscheidet je Seite über den INHALT. Die zweite
+        // Stufe läuft auch dann, wenn die erste alles durchgelassen hat — sonst wäre sie nur ein
+        // Kommentar (die Lehre aus mega76 Block A: ein Schutz, der nur manchmal greift, ist keiner).
+        const sichtbar = await sichtbarePaare(user, offen, kos);
+        const sichten = [];
+        for (const eintrag of sichtbar) {
+          sichten.push(
+            redigiereUeberschneidung(
+              eintrag,
+              await feldFreigabe(user, eintrag.koA, eintrag.koB, kos),
+            ),
+          );
+        }
+        reply.code(200).send(sichten);
       } catch (error) {
         sendError(reply, error);
       }
@@ -95,11 +115,20 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
       try {
         const entry = await overlaps.get(request.params.id);
         // mega74 D: nicht sichtbar sieht aus wie nicht vorhanden.
+        //
+        // JOB 1125, Pflicht 3 — die beiden Zustände bleiben VERSCHIEDEN: hier steht weiter das
+        // 404 (kein Paar, kein Existenzsignal), NICHT eine leere Redaktion. Ein redigierter
+        // Eintrag sagt „es gibt etwas, du liest den Inhalt nicht"; das 404 sagt „hier ist nichts".
+        // Diese beiden Sätze dürfen nie zusammenfallen — sonst wäre das 404 selbst eine Auskunft.
         if (!entry || !(await paarSichtbar(user, entry.koA, entry.koB, kos))) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Überschneidung nicht gefunden." });
           return;
         }
-        reply.code(200).send(entry);
+        reply
+          .code(200)
+          .send(
+            redigiereUeberschneidung(entry, await feldFreigabe(user, entry.koA, entry.koB, kos)),
+          );
       } catch (error) {
         sendError(reply, error);
       }

@@ -79,12 +79,24 @@
 - Hetzner-**Snapshot** des Servers/Volumes.
 - **`pg_dump`** (Coolify-Scheduled-Task, verschlüsselt ablegen) — zusätzlich manuell vor riskanten Updates.
 
+> **Unbestätigt (U4) · Das tägliche Backup der Datenbank läuft als Coolify-Scheduled-Task (`pg_dump`).**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — beschrieben ist das Verfahren, nicht seine Einrichtung.
+> **Restrisiko:** ist die Aufgabe nicht eingerichtet, existiert im Wiederherstellungsfall kein aktueller Dump.
+> **Bestätiger:** Ops/Pedi
+
+
 **Rollback (wenn Update fehlschlägt):**
 1. **App-Code:** in Coolify auf das **vorherige Deployment/Image** zurücksetzen (Redeploy previous) **oder** Git-Revert + Push → CI → Deploy.
 2. **Datenbank:** bei fehlerhafter Migration **Restore** aus letztem `pg_dump`/Snapshot.
 3. **Provider/Model:** Env auf vorherigen Wert (`REASONER_MODEL`/Key entfernen → deterministischer Fallback bleibt verfügbar).
 4. **Secrets:** bei Rotation-Problem alten Wert (sofern noch gültig) reaktivieren bzw. neu rotieren (`secrets-management.md` §7).
 5. Nach Rollback: `/health` + Kernpfad-Smoke; Vorfall dokumentieren.
+
+> **Unbestätigt (U5) · Ein Rollback erfolgt durch erneutes Deployen des vorherigen Stands in Coolify.**
+> **Vorbehalt:** durch Ops/Pedi zu bestätigen — der Weg ist beschrieben, aber nie geprobt; der DR-Drill steht aus.
+> **Restrisiko:** trägt der Weg im Ernstfall nicht, bleibt nur der Wiederaufbau aus Snapshot und Dump.
+> **Bestätiger:** Ops/Pedi
+
 
 ---
 

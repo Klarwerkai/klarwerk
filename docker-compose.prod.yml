@@ -1,5 +1,13 @@
-# Produktions-Setup: App + Postgres. Für Coolify oder einen Ein-Befehl-Deploy
+# Produktions-Setup: App + Postgres — ein eigenständiges Ein-Befehl-Setup
 # (`docker compose -f docker-compose.prod.yml up -d --build`). Werte aus .env.
+#
+# NICHT die Coolify-Deploy-Quelle. Coolify deployt über das Dockerfile und injiziert
+# DATABASE_URL per Coolify-Laufzeit-Env (belegt in docs/boss-assistant/contradictions.md:205-207).
+# Eine Änderung an dieser Datei wirkt daher NICHT auf den Coolify-Betrieb; wer den Live-Stand
+# beeinflussen will, ändert das Dockerfile oder die Coolify-Konfiguration. Bis JOB 1107 stand hier
+# „Für Coolify" — genau der Widerspruch W1 aus JOB 947, dessen Preis ist, dass eine Änderung hier
+# ins Leere läuft und das erst auffällt, wenn eine Erwartung nicht eintritt.
+# Gehütet von tests/app/coolify-compose-quellwahrheit.test.ts.
 services:
   db:
     image: postgres:16-alpine

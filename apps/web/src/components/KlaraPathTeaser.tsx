@@ -8,6 +8,11 @@ export function KlaraPathTeaser({ surface }: { surface: KlaraPathSurface }): JSX
 
   return (
     <aside
+      // JOB 691 / D-021: die eine Marke, an der der Teaser belastbar gezaehlt wird. Eine Zaehlung
+      // ueber Textfragmente waere eine Scheinmessung — sie traefe auch den Fliesstext daneben.
+      // Ausschliesslich Testadressierbarkeit: Text, i18n-Schluessel, Layout und Verhalten bleiben
+      // unveraendert.
+      data-testid="klara-path-teaser"
       aria-label={t("klara.path.ariaLabel")}
       className="mb-5 rounded-card border border-ai/30 bg-ai/5 px-4 py-3.5"
     >

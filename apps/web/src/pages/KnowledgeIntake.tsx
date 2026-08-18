@@ -16,6 +16,9 @@ import { dominantCategory, pickExampleKo } from "../lib/intakeExample";
 import { INTAKE_MIN_LENGTH } from "../lib/intakeSimilarity";
 import type { IntakeStarter } from "../lib/intakeStarters";
 import { type IntakeSuggestion, deriveIntakeSuggestion } from "../lib/intakeSuggestion";
+// D-036 (JOB 1118): derselbe Dreiphasenvertrag wie in Start, Analytics und Mobile —
+// `loading | loaded | error`.
+import { isGroupError, isGroupLoading } from "../lib/loadingState";
 
 // SCRUM-527 (Design-Batch B): der zusammengesetzte „Wissen erfassen"-Fluss als zuhörendes System —
 // Leerzustand (WP1) → Freitext + Live-Reaktion (WP2) → editierbarer Struktur-Vorschlag (WP3) → Abschluss
@@ -93,7 +96,22 @@ export function KnowledgeIntake(): JSX.Element {
 
   return (
     <div className="mx-auto max-w-2xl">
-      {showEmptyState ? (
+      {/* D-036: Der Leerzustand lebt von einem ECHTEN Beispiel aus dem Bestand. Solange `useKos`
+          lädt, liefert `pickExampleKo` zwangsläufig `null` — die Seite sähe dann genau so aus wie
+          bei einem Bestand, der kein passendes Beispiel hat. Diese beiden Lagen sind nicht
+          dasselbe, und die Fläche darf sie nicht gleich darstellen. Die Frage bleibt in jeder
+          Phase stehen: sie hängt nicht am Bestand, und der Nutzer soll sofort sehen, wo er ist. */}
+      {showEmptyState && isGroupLoading([kos]) ? (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-semibold leading-snug text-ink">{t("intake.question")}</h1>
+          <p className="text-[13px] text-muted">{t("state.loading")}</p>
+        </div>
+      ) : showEmptyState && isGroupError([kos]) ? (
+        <div className="space-y-6">
+          <h1 className="text-2xl font-semibold leading-snug text-ink">{t("intake.question")}</h1>
+          <p className="text-[13px] text-trust-crit-text">{t("state.error")}</p>
+        </div>
+      ) : showEmptyState ? (
         <IntakeEmptyState example={example} onStart={start} />
       ) : (
         <div className="space-y-4">

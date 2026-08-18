@@ -1,11 +1,107 @@
 {
-  "version": 1,
+  "version": 2,
   "erhoben_am": "2026-08-18",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
   "gesamt_fallinstanzen": 119,
   "projekte": {
+    "setup-zustand": {
+      "soll": 1,
+      "titel": [
+        "ersteinrichtung.setup.ts › Ersteinrichtung legt den Admin an und landet im Arbeitsbereich"
+      ]
+    },
+    "setup": {
+      "soll": 1,
+      "titel": [
+        "ersteinrichtung.setup.ts › Ersteinrichtung legt den Admin an und landet im Arbeitsbereich"
+      ]
+    },
     "chromium": {
+      "soll": 37,
+      "titel": [
+        "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
+        "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
+        "a18-live-region-browser.spec.ts › N1 · <output hidden> steht gar nicht im AX-Baum — versteckt ist keine Statusflaeche",
+        "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
+        "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
+        "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
+        "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
+        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
+        "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
+        "mega88-bildanker-browser.spec.ts › mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar",
+        "mega88-bildanker-browser.spec.ts › mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen",
+        "mega88-bildanker-browser.spec.ts › mega88: zwei Bilder auf zwei Wegen bekommen zwei EIGENE Beschreibungen",
+        "mega89-mehrbild-browser.spec.ts › mega89: zwei Bilder in EINER eingehenden Figure — getrennt beschreiben, speichern, erneut öffnen, Galerie",
+        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 390x844 (Telefon)",
+        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 768x1024 (Tablet)",
+        "navguard-back-probe.spec.ts › Kante 10 + 4: Zurück hält die Seite, die Adresszeile stimmt, der Inhalt steht noch",
+        "navguard-back-probe.spec.ts › Kante 2: Mehrfach-Zurück wird mit dem exakten Delta behandelt",
+        "navguard-back-probe.spec.ts › Kante 3: schnelles Doppel-Zurück stapelt keine Dialoge und springt nicht weg",
+        "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
+        "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
+        "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
+        "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
+        "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
+        "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
+        "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
+        "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
+        "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
+        "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
+        "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
+        "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",
+        "word-taskpane-kopieren.spec.ts › mega36 E · Kalibrierung: eine TEILAUSWAHL kommt roh aus der echten Zwischenablage",
+        "word-taskpane-kopieren.spec.ts › mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeile",
+        "word-taskpane-kopieren.spec.ts › mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echte Zwischenablage"
+      ]
+    },
+    "firefox": {
+      "soll": 37,
+      "titel": [
+        "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
+        "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
+        "a18-live-region-browser.spec.ts › N1 · <output hidden> steht gar nicht im AX-Baum — versteckt ist keine Statusflaeche",
+        "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
+        "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
+        "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
+        "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
+        "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
+        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
+        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
+        "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
+        "mega88-bildanker-browser.spec.ts › mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar",
+        "mega88-bildanker-browser.spec.ts › mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen",
+        "mega88-bildanker-browser.spec.ts › mega88: zwei Bilder auf zwei Wegen bekommen zwei EIGENE Beschreibungen",
+        "mega89-mehrbild-browser.spec.ts › mega89: zwei Bilder in EINER eingehenden Figure — getrennt beschreiben, speichern, erneut öffnen, Galerie",
+        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 390x844 (Telefon)",
+        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 768x1024 (Tablet)",
+        "navguard-back-probe.spec.ts › Kante 10 + 4: Zurück hält die Seite, die Adresszeile stimmt, der Inhalt steht noch",
+        "navguard-back-probe.spec.ts › Kante 2: Mehrfach-Zurück wird mit dem exakten Delta behandelt",
+        "navguard-back-probe.spec.ts › Kante 3: schnelles Doppel-Zurück stapelt keine Dialoge und springt nicht weg",
+        "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
+        "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
+        "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
+        "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
+        "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
+        "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
+        "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
+        "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
+        "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
+        "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
+        "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
+        "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
+        "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
+        "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",
+        "word-taskpane-kopieren.spec.ts › mega36 E · Kalibrierung: eine TEILAUSWAHL kommt roh aus der echten Zwischenablage",
+        "word-taskpane-kopieren.spec.ts › mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeile",
+        "word-taskpane-kopieren.spec.ts › mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echte Zwischenablage"
+      ]
+    },
+    "webkit": {
       "soll": 37,
       "titel": [
         "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
@@ -56,102 +152,6 @@
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind unterscheidbar",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · die Vordertür läuft bei 390x844 (Telefon) nicht waagerecht über",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · die Vordertür läuft bei 768x1024 (Tablet) nicht waagerecht über"
-      ]
-    },
-    "firefox": {
-      "soll": 37,
-      "titel": [
-        "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
-        "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
-        "a18-live-region-browser.spec.ts › N1 · <output hidden> steht gar nicht im AX-Baum — versteckt ist keine Statusflaeche",
-        "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
-        "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
-        "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
-        "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
-        "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
-        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
-        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
-        "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
-        "mega88-bildanker-browser.spec.ts › mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar",
-        "mega88-bildanker-browser.spec.ts › mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen",
-        "mega88-bildanker-browser.spec.ts › mega88: zwei Bilder auf zwei Wegen bekommen zwei EIGENE Beschreibungen",
-        "mega89-mehrbild-browser.spec.ts › mega89: zwei Bilder in EINER eingehenden Figure — getrennt beschreiben, speichern, erneut öffnen, Galerie",
-        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 390x844 (Telefon)",
-        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 768x1024 (Tablet)",
-        "navguard-back-probe.spec.ts › Kante 10 + 4: Zurück hält die Seite, die Adresszeile stimmt, der Inhalt steht noch",
-        "navguard-back-probe.spec.ts › Kante 2: Mehrfach-Zurück wird mit dem exakten Delta behandelt",
-        "navguard-back-probe.spec.ts › Kante 3: schnelles Doppel-Zurück stapelt keine Dialoge und springt nicht weg",
-        "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
-        "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
-        "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
-        "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
-        "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
-        "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
-        "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
-        "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
-        "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
-        "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
-        "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
-        "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
-        "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
-        "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",
-        "word-taskpane-kopieren.spec.ts › mega36 E · Kalibrierung: eine TEILAUSWAHL kommt roh aus der echten Zwischenablage",
-        "word-taskpane-kopieren.spec.ts › mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeile",
-        "word-taskpane-kopieren.spec.ts › mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echte Zwischenablage"
-      ]
-    },
-    "setup": {
-      "soll": 1,
-      "titel": [
-        "ersteinrichtung.setup.ts › Ersteinrichtung legt den Admin an und landet im Arbeitsbereich"
-      ]
-    },
-    "setup-zustand": {
-      "soll": 1,
-      "titel": [
-        "ersteinrichtung.setup.ts › Ersteinrichtung legt den Admin an und landet im Arbeitsbereich"
-      ]
-    },
-    "webkit": {
-      "soll": 37,
-      "titel": [
-        "a18-live-region-browser.spec.ts › KALIBRIERUNG A · die generische CDP-Sitzung gibt Rolle, Ignoriert und die drei Live-Felder wirklich aus",
-        "a18-live-region-browser.spec.ts › KALIBRIERUNG B · Playwrights ARIA-Repraesentation nennt dieselbe Rolle, fuehrt aber KEINE Live-Eigenschaft",
-        "a18-live-region-browser.spec.ts › N1 · <output hidden> steht gar nicht im AX-Baum — versteckt ist keine Statusflaeche",
-        "a18-live-region-browser.spec.ts › P1 · <output> ohne ARIA-Attribute ist eine Statusflaeche mit live=polite, atomic und relevant",
-        "a18-live-region-browser.spec.ts › PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit live=polite gefuehrt",
-        "a18-live-region-browser.spec.ts › R1 · <p> ist KEINE Statusflaeche: der Browser fuehrt paragraph und keine Live-Eigenschaft",
-        "huelle-tabelle-browser.spec.ts › huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, Speichern und Wiederöffnen",
-        "huelle2-reihenfolge-browser.spec.ts › huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung beim richtigen Bild",
-        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser trägt auch der reine TASTATURweg (markieren, Fokus, Leertaste)",
-        "mega87-caption-formatierung-browser.spec.ts › mega87: im echten Browser überlebt die MAUS-Auswahl den Klick auf Fett",
-        "mega87-caption-formatierung-browser.spec.ts › mega87: ohne Markierung sagt der echte Browser den Grund, statt stumm zu bleiben",
-        "mega88-bildanker-browser.spec.ts › mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar",
-        "mega88-bildanker-browser.spec.ts › mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen",
-        "mega88-bildanker-browser.spec.ts › mega88: zwei Bilder auf zwei Wegen bekommen zwei EIGENE Beschreibungen",
-        "mega89-mehrbild-browser.spec.ts › mega89: zwei Bilder in EINER eingehenden Figure — getrennt beschreiben, speichern, erneut öffnen, Galerie",
-        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 390x844 (Telefon)",
-        "mobile-drawer-focus-probe.spec.ts › D-1 Fokus-Protokoll im mobilen Menü — 768x1024 (Tablet)",
-        "navguard-back-probe.spec.ts › Kante 10 + 4: Zurück hält die Seite, die Adresszeile stimmt, der Inhalt steht noch",
-        "navguard-back-probe.spec.ts › Kante 2: Mehrfach-Zurück wird mit dem exakten Delta behandelt",
-        "navguard-back-probe.spec.ts › Kante 3: schnelles Doppel-Zurück stapelt keine Dialoge und springt nicht weg",
-        "navguard-back-probe.spec.ts › Kante 4: Vorwärts nach „Hier bleiben\" funktioniert unverändert",
-        "navguard-back-probe.spec.ts › Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert",
-        "navguard-back-probe.spec.ts › Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber",
-        "smoke-umgebung.spec.ts › Umgebung des Smoke-Servers ist die zugesagte",
-        "ui-smoke.spec.ts › Alle Kernrouten rendern (keine weiße Seite)",
-        "ui-smoke.spec.ts › Fragen antwortet ehrlich (Antwort oder Wissenslücke, nie erfunden) @modell",
-        "ui-smoke.spec.ts › Fragen ohne Modell: der Weg ist gesperrt und sagt warum",
-        "ui-smoke.spec.ts › Kernfluss: Erzählen → Wissensseite → Einreichen @modell",
-        "ui-smoke.spec.ts › mega47: Filterblatt auf schmalem Gerät ist wirklich bedienbar",
-        "ui-smoke.spec.ts › mega48: bei offenem Filterblatt ist KEINE Shell-Fläche mehr erreichbar",
-        "ui-smoke.spec.ts › mega49: die Datenlage dieses Laufs ist die zugesagte",
-        "wissensraum381-ortszeile-browser.spec.ts › R-17: /bibliothek rendert mit Routenanker UND sichtbarer Ortszeile",
-        "wissensraum381-ortszeile-browser.spec.ts › R-18: nur Tastatur — Tab erreicht den Umschalter, Enter schaltet, der Fokus bleibt",
-        "wissensraum381-ortszeile-browser.spec.ts › R-19: schmal — die Ortszeile bleibt auf der Seite, das Filterblatt bleibt ortsfrei",
-        "word-taskpane-kopieren.spec.ts › mega36 E · Kalibrierung: eine TEILAUSWAHL kommt roh aus der echten Zwischenablage",
-        "word-taskpane-kopieren.spec.ts › mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeile",
-        "word-taskpane-kopieren.spec.ts › mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echte Zwischenablage"
       ]
     }
   }
