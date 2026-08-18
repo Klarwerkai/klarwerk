@@ -418,7 +418,39 @@ function anchorFigures(html: string): string {
     claimed.add(id);
     // JOB 509 / D5: Der Container trägt den Anker immer mit — auch wenn er im Eingang keinen hatte.
     replacements.set(group.figure.start, withAnchor(group.figure.text, "figure", id));
+
+    // SHIP 12 (18.08.2026): ZWEI BILDER SIND ZWEI GEGENSTÄNDE, auch in EINER Hülle.
+    //
+    // Bis hierher bekam die ganze Gruppe einen Anker, der auf alle Kinder geschrieben wurde. Für
+    // den Regelfall — ein Bild, eine Fußnote — ist das genau richtig und bleibt so. Word liefert
+    // aber regelmäßig EINE figure mit ZWEI Bildern; die trugen danach beide `kw-fig-1`.
+    //
+    // Der Schaden entstand eine Etage später und war deshalb schwer zu finden: Der Editor macht die
+    // Hülle flach (`editorFigures.ts`), respektiert dabei vorhandene Kennungen — zu Recht, denn
+    // Überschreiben hat früher Zuordnungen zerstört — und trug die Doppelung weiter. Im Browser
+    // standen dann zwei Bilder mit derselben Identität: Wer beide beschreibt, beschreibt am Ende
+    // dasselbe oder verliert eine Beschreibung beim Wiederöffnen. Drei Browserfälle melden das seit
+    // dem 15.08. (huelle-tabelle, huelle2-reihenfolge, mega89-mehrbild) und galten als Editordefekt.
+    //
+    // JEDES WEITERE BILD bekommt deshalb hier seine eigene Identität. Ein bereits vorhandener,
+    // noch freier Anker führt weiter (Stabilität, dieselbe Regel wie oben); sonst entsteht ein
+    // frischer, rein zählend vergebener.
+    //
+    // DIE FUSSNOTE BLEIBT BEIM ERSTEN BILD. Bei einer Fußnote und zwei Bildern ist nicht
+    // entscheidbar, welches sie beschreibt — sie an beide zu hängen behauptete genau das für jedes
+    // von ihnen. Das ist wörtlich dieselbe Antwort wie in `editorFigures.ts`, nicht eine zweite.
+    let erstesBild = true;
     for (const child of group.children) {
+      if (child.name === "img" && !erstesBild) {
+        const eigener = readAnchor(child.text);
+        const zweit = eigener && !claimed.has(eigener) ? eigener : nextGeneratedAnchor();
+        claimed.add(zweit);
+        replacements.set(child.start, withAnchor(child.text, child.name, zweit));
+        continue;
+      }
+      if (child.name === "img") {
+        erstesBild = false;
+      }
       replacements.set(child.start, withAnchor(child.text, child.name, id));
     }
   }

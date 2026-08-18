@@ -266,6 +266,47 @@ describe("JOB 509 / R2: sanitizeHtml verankert Figure/Bild/Fußnote eindeutig", 
     expect(anchorOf(figs[1] ?? "", "figure")).toBe(second);
   });
 
+  // ── SHIP-12-BLOCKER, gemessen am 18.08.2026 ─────────────────────────────────────────────────
+  //
+  // DER FALL KOMMT AUS WORD, nicht aus einer Randbetrachtung: Word liefert regelmaessig EINE
+  // figure mit ZWEI Bildern und EINER Fussnote. Bis heute bekam diese Gruppe EINEN Anker, der auf
+  // ALLE Kinder geschrieben wurde — beide Bilder trugen danach `kw-fig-1`.
+  //
+  // Der Schaden entsteht erst eine Etage spaeter und war deshalb schwer zu finden: Der Editor macht
+  // die Huelle flach (`editorFigures.ts`), respektiert dabei aber vorhandene Kennungen — zu Recht,
+  // denn Ueberschreiben hat frueher Zuordnungen zerstoert. Er traegt die Doppelung also weiter, und
+  // im Browser stehen zwei Bilder mit derselben Identitaet. Wer beide beschreibt, beschreibt am Ende
+  // dasselbe, oder verliert eine Beschreibung beim Wiederoeffnen.
+  //
+  // Drei Browserfaelle haben das seit dem 15.08. gemeldet (huelle-tabelle, huelle2-reihenfolge,
+  // mega89-mehrbild) und galten als "Bildkennungs-Defekt im Editor". Nachgemessen liegt die Ursache
+  // hier, serverseitig: `data-image-id="kw-fig-1"` an beiden Bildern, vergeben vor jedem Editorlauf.
+  //
+  // ZWEI BILDER SIND ZWEI GEGENSTAENDE, auch in einer Huelle. Die Fussnote bleibt beim ersten: Bei
+  // einer Fussnote und zwei Bildern ist nicht entscheidbar, welches sie beschreibt — sie an beide zu
+  // haengen behauptete genau das fuer jedes von ihnen (dieselbe Regel wie in editorFigures.ts).
+  it("Ship 12: ZWEI Bilder in EINER figure bekommen ZWEI verschiedene Anker", () => {
+    const clean = sanitizeHtml(
+      `<figure><img src="${OBJ_SRC}" alt="Schiene"><img src="${OBJ_SRC}" alt="Lager"><figcaption>Nur eine</figcaption></figure>`,
+    );
+    const bilder = [...clean.matchAll(/<img\b[^>]*>/g)].map((m) => m[0]);
+    expect(bilder.length).toBe(2);
+    const ids = bilder.map((tag) => /data-image-id="([^"]*)"/.exec(tag)?.[1] ?? null);
+    for (const id of ids) {
+      expect(id).toMatch(/^[\w-]{1,64}$/);
+    }
+    expect(new Set(ids).size, "beide Bilder tragen dieselbe Identitaet").toBe(2);
+    // Die Fussnote gehoert zum ERSTEN Bild — eine Zuordnung, nicht zwei Behauptungen.
+    expect(anchorOf(clean, "figcaption")).toBe(ids[0]);
+  });
+
+  it("Ship 12: der Lauf ist idempotent — ein zweiter Durchgang verschiebt kein Byte", () => {
+    const einmal = sanitizeHtml(
+      `<figure><img src="${OBJ_SRC}" alt="A"><img src="${OBJ_SRC}" alt="B"><figcaption>X</figcaption></figure>`,
+    );
+    expect(sanitizeHtml(einmal)).toBe(einmal);
+  });
+
   it("Gegenprobe 2: fehlende Fußnote → figure und Bild teilen trotzdem denselben Anker", () => {
     const clean = sanitizeHtml(`<figure><img src="${OBJ_SRC}"></figure>`);
     const id = anchorOf(clean, "img");
