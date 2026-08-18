@@ -8,6 +8,7 @@ import { Info } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useReasonerConfig, useReasonerStatus } from "../api/hooks";
+import type { ReasonerTask } from "../api/types";
 import { useRole } from "../app/RoleContext";
 import { deriveAiBillable } from "../lib/aiAvailability";
 import { AI_TASK_INFO_TEXT, aiTaskInfo, aiTaskInfoPublic } from "../lib/reasonerTaskInfo";
@@ -20,7 +21,9 @@ import { AiCostHint } from "./AiCostHint";
 // heute schon die Modellangabe trägt, ihn ohne weiteres Zutun mitbekommt.
 import { AiGeneratedNotice } from "./AiGeneratedNotice";
 
-export function AiModelInfo({ task }: { task: string }): JSX.Element {
+// JOB 615 D7: die Fläche nennt eine Aufgabe — und zwar eine, die es gibt. Der geschlossene Typ
+// macht einen Tippfehler an JEDER der vielen Einbaustellen zum Compilerfehler.
+export function AiModelInfo({ task }: { task: ReasonerTask }): JSX.Element {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const { role } = useRole();

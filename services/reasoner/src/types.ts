@@ -152,15 +152,35 @@ export type ReasonerConfigMode = "model" | "fallback" | "demo";
 // ehrlich keinen Text (nie erfinden).
 // WP-IC-4: group (KI-Gruppierung der Import-Kandidaten) als weitere, in der KI-Verwaltung
 // sichtbare Aufgabe — mit ehrlichem deterministischem Themen-Fallback (der Flow bleibt benutzbar).
-export type ReasonerTask =
-  | "structure"
-  | "assist"
-  | "interview"
-  | "answer"
-  | "select"
-  | "extract"
-  | "describe"
-  | "group";
+//
+// JOB 615 D7: DIE EINE AUFGABENQUELLE — und warum sie ausgerechnet hier steht.
+//
+// Bis D6 gab es drei Beschreibungen derselben Sache: die Liste `REASONER_TASKS` in `service.ts`,
+// diese Union hier und eine dritte in `apps/web/src/api/types.ts` mit nur sieben Werten. Der Typ
+// wanderte nicht mit, wenn die Liste wuchs — `group` fehlte in der Oberfläche.
+//
+// Die Liste gehört in DIESE Datei, nicht in `service.ts`: `types.ts` ist die abhängigkeitsfreie
+// Basisschicht, und `service.ts` importiert daraus (service.ts:57). Läge sie dort, müsste `types.ts`
+// aus `service.ts` importieren — ein Zirkelbezug, den `.dependency-cruiser.cjs` (`no-circular`)
+// zu Recht verbietet. `service.ts` reicht sie unverändert weiter, damit alle Bestandsimporteure
+// (services/reasoner/index.ts:10) unberührt bleiben.
+export const REASONER_TASKS = [
+  "structure",
+  "assist",
+  "interview",
+  "answer",
+  "select",
+  "extract",
+  "describe",
+  "group",
+] as const;
+
+// Abgeleitet, nicht abgeschrieben: kommt eine Aufgabe hinzu, wandert der Typ ohne Zutun mit.
+export type ReasonerTask = (typeof REASONER_TASKS)[number];
+
+// Die geschlossene Karte je Aufgabe. Sie ersetzt `Record<string, boolean>` überall dort, wo der
+// Server VOLLSTÄNDIG antwortet — ein Tippfehler ist damit ein Typfehler und nicht mehr `undefined`.
+export type ReasonerTaskMap = Record<ReasonerTask, boolean>;
 
 // KI-Verwaltung (Pedi 02./03.07.): je Aufgabe bewusst wählen.
 //  - "auto"          Cloud → lokal → deterministisch (was verfügbar ist, in dieser Reihenfolge)

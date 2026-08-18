@@ -13,13 +13,26 @@ echo "▶ test";         ./tools/test "$@"
 
 # AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
 #
-# WARUM ÜBERHAUPT: bis mega23 war `smoke:ui` kein Teil dieses Gates, und CI fährt ihn bis heute
-# nicht (.github/workflows/ci.yml ruft build/lint/arch/test einzeln auf). Damit hat NICHTS in der
-# Automatisierung diese Suite je ausgeführt. Ergebnis: sie war rund fünfzehn Runden lang rot, das
-# Tor meldete durchgehend grün, und aufgefallen ist es erst am Ship-Tor. Gefunden wurden dabei ZWEI
-# echte Defekte — die kollidierenden Zugangsdaten UND ein seit SCRUM-458 stale Kernfluss-Test, der
-# gar nicht mehr lief. Ein Tor, das eine ganze Fehlerklasse (weiße Seite, totes Bündel, verschobener
-# Kernfluss) baulich nicht sehen kann, schweigt genau dann, wenn es reden müsste.
+# WARUM ÜBERHAUPT: bis mega23 war `smoke:ui` kein Teil dieses Gates, und die Automatisierung fuhr
+# ihn damals nicht mit — `.github/workflows/ci.yml` rief `npm run build`, `lint`, `arch` und `test`
+# einzeln auf. In jener Zeit hat NICHTS in der Automatisierung diese Suite ausgeführt. Ergebnis:
+# sie war rund fünfzehn Runden lang rot, das Tor meldete durchgehend grün, und aufgefallen ist es
+# erst am Ship-Tor. Gefunden wurden dabei ZWEI echte Defekte — die kollidierenden Zugangsdaten UND
+# ein seit SCRUM-458 stale Kernfluss-Test, der gar nicht mehr lief. Ein Tor, das eine ganze
+# Fehlerklasse (weiße Seite, totes Bündel, verschobener Kernfluss) baulich nicht sehen kann,
+# schweigt genau dann, wenn es reden müsste.
+#
+# STAND HEUTE (JOB 1080 / D3, nachgemessen): Das ist erledigt. `ci.yml:44-45` fährt das Gesamttor
+# als EINEN Schritt (`./tools/check`) und provisioniert davor Chromium — der `check`-Job führt
+# diese Suite also mit. Der frühere Zustand ist dabei kein Gerücht, sondern in der Repohistorie
+# belegt: Commit `57ef021a` (14.08.2026) trägt ein `ci.yml` mit SHA-256 `e509ee14…60d4`, das genau
+# die Viererliste enthält und weder `./tools/check` noch eine Browser-Provisionierung kennt.
+#
+# WAS DAMIT NICHT BELEGT IST — die Grenze gehört an dieselbe Stelle wie die Behauptung: dass gerade
+# diese Abweichung einen bestimmten roten CI-Lauf verursacht hat. Dafür bräuchte es ein Laufartefakt
+# des damaligen Workflows, und das liegt hier nicht vor. Belegt ist die frühere Struktur, nicht die
+# Ursache eines konkreten Fehllaufs. Gegen einen Rückfall wachen
+# `tests/app/ci-check-contract.test.ts` und `tests/app/job1080-ci-workflow-abgleich.test.ts`.
 #
 # WARUM NUR CHROMIUM: gemessen in mega24 — Tor ohne Smoke 49 s, mit allen drei Engines 123 s (2,5×),
 # mit Chromium allein rund 75 s (1,5×). Die drei Engines gibt es wegen browsernaher History-Mechanik

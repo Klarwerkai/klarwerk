@@ -158,6 +158,19 @@ async function start(): Promise<void> {
     app.log.warn(policy.detail);
   }
   await app.listen({ port, host: "0.0.0.0" });
+  // JOB 517 — PID-DATEI FUER DEN RESTORE-DRILL. Additiv und nur bei gesetztem KLARWERK_PID_FILE;
+  // ohne die Variable aendert sich nichts.
+  //
+  // Warum NACH `app.listen` und nicht davor: Die Datei ist die Zusage „dieser Prozess nimmt
+  // Requests an". Wer sie vorher schriebe, liesse den Drill gegen einen Server laufen, der noch
+  // nicht horcht — und ein Verbindungsfehler saehe dann wie ein Restorefehler aus. Scheitert
+  // `listen`, wird die Datei nie geschrieben, und der Drill bricht am fehlenden PID ab statt an
+  // einer falschen Zusage.
+  const pidFile = process.env.KLARWERK_PID_FILE;
+  if (pidFile && pidFile.trim() !== "") {
+    writeFileSync(pidFile, `${process.pid}\n`, "utf8");
+    app.log.info(`PID-Datei geschrieben: ${pidFile} (pid ${process.pid})`);
+  }
   // Ehrlicher Betriebsmodus im Log — hilft bei „warum sind meine Daten weg?"-Diagnosen.
   const mode = databaseUrl ? "Postgres" : journal ? "Dev-Persistenz (Journal)" : "In-Memory";
   app.log.info(`KLARWERK läuft auf :${port} — Datenhaltung: ${mode}`);

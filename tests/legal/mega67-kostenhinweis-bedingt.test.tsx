@@ -16,6 +16,10 @@
 // Sätze zusammen bedingt, baut eine Rechtslücke. Deshalb belegt JEDER Fall unten BEIDE Sätze:
 // der Kostenhinweis folgt der Bedingung, der KI-Satz steht IMMER.
 import { afterEach, describe, expect, it, vi } from "vitest";
+// JOB 615 D7: `AiModelInfo` nimmt seit der Schließung des Aufgabenvertrags nur noch einen echten
+// Aufgabennamen an. Der Helfer unten reicht ihn durch und trägt deshalb denselben Typ — die
+// Erwartungen dieses Tests bleiben unverändert, nur der Durchreichetyp wird ehrlich.
+import type { ReasonerTask } from "../../apps/web/src/api/types";
 
 // Nicht-Admin: die per-Aufgabe-Auflösung (/api/reasoner/config, users.manage) wird gar nicht erst
 // gezogen (vip2-gate) — genau der Weg, den die überwiegende Mehrheit der Nutzer sieht. Die Auskunft
@@ -54,7 +58,7 @@ const flush = async (): Promise<void> => {
   }
 };
 
-async function mount(task: string): Promise<{ container: HTMLElement; unmount: () => void }> {
+async function mount(task: ReasonerTask): Promise<{ container: HTMLElement; unmount: () => void }> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });

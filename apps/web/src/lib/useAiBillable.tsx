@@ -8,9 +8,11 @@
 // ruft ihn bewusst NICHT — er sitzt als Blatt auch in Bäumen ohne Provider (Editor,
 // Bildbeschreibungs-Formulare). Dort kommt der Boolean von oben herein.
 import { useReasonerStatus } from "../api/hooks";
+import type { ReasonerTask } from "../api/types";
 import { deriveAiBillable } from "./aiAvailability";
 
-export function useAiBillable(task: string | readonly string[]): boolean {
+// JOB 615 D7: geschlossener Aufgabentyp, auch in der Mehrfachform (s. useAiAvailable.tsx).
+export function useAiBillable(task: ReasonerTask | readonly ReasonerTask[]): boolean {
   const status = useReasonerStatus();
   return deriveAiBillable(status.data, task);
 }

@@ -108,10 +108,20 @@ export interface FileTypePickerProps {
   iconFor?: (source: GallerySource) => ReactNode;
   // Optionale Gruppen-Überschrift (i18n-Text).
   title?: string;
-  // AUFTRAG-mega32 BLOCK G: Klappt „geplant" hinter EINE Zeile? AUSDRÜCKLICH opt-in, weil dieses
-  // Bauteil ZWEI Oberflächen trägt: die Import-Galerie UND den Dateityp-Picker im Erfassen. Der
-  // Block gilt nur der Import-Seite; das Erfassen bleibt unverändert. Ein stillschweigend geteiltes
-  // Verhalten wäre genau die Art Nebenwirkung, die hier niemand bestellt hat.
+  // Klappt „geplant" hinter EINE Zeile?
+  //
+  // D-045 (JOB 1021): Das war bis hierher ein ausdrückliches Opt-in — eingeführt in mega32 Block G
+  // nur für die Import-Galerie, während das Erfassen unverändert blieb. Diese Trennung ist
+  // AUFGEHOBEN: Einklappen ist jetzt der STANDARD für beide Oberflächen. Der Grund ist derselbe,
+  // der ihn in der Galerie erzwungen hat — zwei Drittel der Fläche tun nichts —, und er gilt im
+  // Erfassen genauso.
+  //
+  // `false` bleibt als ausdrücklicher ALTMODUS erhalten: alle geplanten Kacheln sofort sichtbar,
+  // kein Aufklapper. Er ist keine Altlast, sondern die bewusste Ausnahme für Aufrufer, die den
+  // vollständigen Bestand in einem Blick brauchen — und für Bestandstests, die genau ihn prüfen.
+  //
+  // Beide Modi hängen an `tests/app/file-type-picker-planned-default.test.tsx`; wer den Default
+  // zurückdreht, macht dort R1 rot.
   collapsePlanned?: boolean;
   // Speicherschlüssel des Aufklappers. Fehlt er, bleibt der Zustand rein flüchtig.
   plannedStorageKey?: string;
@@ -122,7 +132,7 @@ export function FileTypePicker({
   onActivate,
   iconFor = defaultIconFor,
   title,
-  collapsePlanned = false,
+  collapsePlanned = true,
   plannedStorageKey,
 }: FileTypePickerProps): JSX.Element {
   const { t } = useTranslation();

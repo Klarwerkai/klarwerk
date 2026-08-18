@@ -39,18 +39,53 @@ mkdir -p "$DEST"
 STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
 OUT="$DEST/klarwerk-${STAMP}.dump"
 
+# JOB 517 — ERZEUGUNG UND VEROEFFENTLICHUNG SIND GETRENNT.
+#
+# Vorher wurde der Dump DIREKT unter seinem Endnamen geschrieben. Daraus folgten zwei Loecher,
+# beide ohne jede Fehlermeldung:
+#
+#   L1  Kein Hashwerkzeug vorhanden -> der Dump blieb OHNE Pruefsumme liegen, Exit 0, und der
+#       Text "(sha256 nicht verfuegbar)" wurde als WERT gefuehrt. Ein unbeglaubigtes Backup,
+#       das aussieht wie ein beglaubigtes.
+#   L2  `pg_dump` scheitert mittendrin -> eine TEILDATEI blieb unter dem Endnamen liegen.
+#       `set -euo pipefail` beendete das Skript, raeumte aber nichts weg. Wer im Verzeichnis
+#       das juengste `klarwerk-*.dump` greift, greift die Teildatei — am Namen ist sie von
+#       einem fertigen Backup nicht zu unterscheiden.
+#
+# Deshalb: NICHTS wird unter dem Endnamen geschrieben. Der Endname entsteht ausschliesslich
+# durch Umbenennen, und zwar Sidecar zuerst, Dump zuletzt. So gibt es keinen Zeitpunkt, zu dem
+# ein `*.dump` ohne seine Pruefsumme sichtbar ist — Konsumenten suchen nach genau diesem Muster.
+#
+# Der Arbeitsname liegt im SELBEN Verzeichnis, nicht in /tmp: `mv` ist nur innerhalb eines
+# Dateisystems atomar (`rename(2)`). Zeigt BACKUP_DIR auf eine Netzfreigabe mit anderer
+# Semantik, gilt die Atomizitaetszusage nicht — das steht so auch in RESTORE.md.
+STAGE="${OUT}.partial"
+trap 'rm -f "$STAGE" "${STAGE}.sha256"' EXIT
+
 echo "[backup] Dump nach: $OUT"
 # -Fc = Custom-Format (komprimiert, für pg_restore). Die URL steht NUR im Argument, nicht im Log.
-pg_dump --format=custom --no-owner --no-privileges --file "$OUT" "$DB_URL"
+pg_dump --format=custom --no-owner --no-privileges --file "$STAGE" "$DB_URL"
 
-# Kleine Integritäts-Notiz: Größe + SHA-256 (best effort).
-SIZE="$(wc -c < "$OUT" | tr -d ' ')"
+# Pruefsumme ist PFLICHT, nicht "best effort": ohne sie wird nichts veroeffentlicht.
 if command -v shasum >/dev/null 2>&1; then
-  SUM="$(shasum -a 256 "$OUT" | awk '{print $1}')"
+  SUM="$(shasum -a 256 "$STAGE" | awk '{print $1}')"
 elif command -v sha256sum >/dev/null 2>&1; then
-  SUM="$(sha256sum "$OUT" | awk '{print $1}')"
+  SUM="$(sha256sum "$STAGE" | awk '{print $1}')"
 else
-  SUM="(sha256 nicht verfügbar)"
+  echo "[backup] ABBRUCH: weder shasum noch sha256sum gefunden — ohne Pruefsumme wird kein" >&2
+  echo "[backup] Backup veroeffentlicht. Der unvollstaendige Arbeitsstand wird verworfen." >&2
+  exit 3
 fi
+
+SIZE="$(wc -c < "$STAGE" | tr -d ' ')"
+# Sidecarformat wie `shasum -a 256`: 64 Hex, zwei Leerzeichen, DER ENDNAME (nicht der Arbeitsname).
+echo "${SUM}  $(basename "$OUT")" > "${STAGE}.sha256"
+
+# DIE VEROEFFENTLICHUNG. Reihenfolge ist nicht beliebig: Sidecar zuerst, Dump zuletzt.
+mv "${STAGE}.sha256" "${OUT}.sha256"
+mv "$STAGE" "$OUT"
+trap - EXIT
+
 echo "[backup] fertig — ${SIZE} Bytes, sha256=${SUM}"
+echo "[backup] Pruefsumme: ${OUT}.sha256"
 echo "[backup] Wiederherstellung: siehe scripts/backup/RESTORE.md"

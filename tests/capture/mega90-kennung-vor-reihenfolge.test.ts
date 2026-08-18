@@ -195,7 +195,26 @@ describe("AUFTRAG-mega90 Block A: Stufe 3 — was nicht passt, wird nicht gerate
     ).toEqual([{ id: "kw-img-fremd-7", text: "Aus einem anderen Beitrag" }]);
   });
 
-  it("EIN Bild ohne Kennung übernimmt die der einen übrigen Fußnote (Stufe 2b, Stabilität)", () => {
+  // ── JOB 916: DIESER FALL IST ABGELÖST UND DURCH SEINE UMKEHRUNG ERSETZT ────────────────────────
+  //
+  // Hier stand: „EIN Bild ohne Kennung übernimmt die der einen übrigen Fußnote (Stufe 2b,
+  // Stabilität)", mit der Begründung, sonst bekäme das Bild eine NEUE Kennung „und die Beschreibung
+  // stünde verwaist daneben".
+  //
+  // Die Begründung hielt der eigenen Kontrollfolge nicht stand: eine nach Stufe 2 ÜBRIGE Fußnote
+  // kann keine unmarkierte mehr sein — Stufe 2 nimmt genau die. Was Stufe 2b erreichte, trug also
+  // ZWANGSLÄUFIG eine fremde Kennung, hier `kw-img-alt-9`. „Stabilität" hieß damit: das Bild erbt
+  // eine Herkunft, die niemand belegt hat, und behauptet sie anschließend als seine eigene. Das ist
+  // derselbe Schaden, den der Fall direkt darunter („zwei ABWEICHENDE Kennungen werden NICHT
+  // gegeneinander verrechnet") seit jeher verbietet — die Einzelzahl war die einzige Ausnahme.
+  //
+  // Und die verwaiste Beschreibung ist kein Gegenargument, sondern die gewollte Folge: sie bleibt
+  // SICHTBAR mit ihrer eigenen Kennung stehen (Stufe 3). Sichtbar danebenstehender Text ist
+  // reparierbar, eine überschriebene Kennung ist es nicht.
+  //
+  // Der Fall wird nicht ersatzlos gestrichen, sondern UMGEDREHT — dieselbe Konstellation, die
+  // geltende Zusage.
+  it("EIN Bild ohne Kennung übernimmt eine FREMDE Fußnotenkennung NICHT mehr", () => {
     // Die figure ist nicht flach (sie enthält eine zweite figure) und trägt genau EIN eigenes Bild.
     const root = wurzelMit(
       [
@@ -209,14 +228,23 @@ describe("AUFTRAG-mega90 Block A: Stufe 3 — was nicht passt, wird nicht gerate
     );
     ensureImageAnchors(root);
     const gefunden = paare(root);
-    expect(gefunden.map((p) => p.fussnote)).toEqual(["Text A", "Text B"]);
+
+    // Das Bild bekommt eine eigene, neue Kennung — nicht die fremde.
+    expect(gefunden[0]?.id ?? "").toMatch(/^kw-img-[a-z0-9]+-\d+$/);
     expect(
       gefunden[0]?.id,
-      "Das Bild hat eine NEUE Kennung bekommen, statt die seiner eindeutigen Fußnote zu übernehmen — die Beschreibung stünde verwaist daneben",
-    ).toBe("kw-img-alt-9");
-    expect(gefunden[0]?.fussnoteId, "Die Kennung der Fußnote wurde überschrieben").toBe(
-      "kw-img-alt-9",
-    );
+      "Das Bild hat die FREMDE Kennung seiner Fußnote übernommen — genau die abgelöste Stufe 2b",
+    ).not.toBe("kw-img-alt-9");
+    expect(gefunden[0]?.fussnote, "Der fremde Text ist an das Bild gewandert").toBe("");
+
+    // Die verschachtelte Schwester bleibt korrekt gepaart — die Ablösung greift eng.
+    expect(gefunden[1]?.fussnote).toBe("Text B");
+
+    // Und der Text ist nicht verschwunden: er steht sichtbar mit SEINER Kennung daneben.
+    expect(
+      verwaisteFussnoten(root),
+      "Der Text der fremd gekennzeichneten Fußnote ist verschwunden oder hat seine Kennung verloren",
+    ).toEqual([{ id: "kw-img-alt-9", text: "Text A" }]);
   });
 
   it("zwei ABWEICHENDE Kennungen werden NICHT gegeneinander verrechnet", () => {

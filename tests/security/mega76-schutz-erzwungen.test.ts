@@ -232,8 +232,35 @@ describe("mega76 A · eine Route ohne ihre Schutzabhängigkeit antwortet fail-cl
 describe("mega77 D · eine Dienstmethode ohne ihren Sichtbarkeitsfilter antwortet fail-closed", () => {
   const GEHEIMER_TITEL = "GEHEIMZITAT-KNOTEN";
 
-  // Der Bestand: ein sichtbares und ein vertrauliches Objekt, verbunden über ein gemeinsames
-  // Schlagwort. Ohne die Verbindung könnte `neighbors` nichts verraten, und der Test wäre leer.
+  // ================================================================================================
+  // JOB 901 · D5 — DIE KALIBRIERUNG, DIE DEN SCHUTZBEWEIS VON DER OFFENEN OWNERFRAGE LÖST.
+  // ================================================================================================
+  //
+  // DER BEFUND (BEN4 zu D4): Dieser Bestand trug bis hier ZWEI Objekte, beide mit demselben
+  // Schlagwort. Das ist genau der Kleinstbestandsfall, über den die offene Ownerentscheidung **F2**
+  // streitet: „Sollen bei zwei, drei und vier ausschliesslich gleich getaggten sichtbaren Objekten
+  // null Kanten oder Kanten entstehen?"
+  //
+  // Solange der Wächter auf dieser Kante steht, entscheidet F2 mit, ob er überhaupt noch misst:
+  // Wird F2 mit „null Kanten" beantwortet, verschwindet die Kante — und die Gegenprobe
+  // (`mitFilter` MUSS den vertraulichen Nachbarn sehen) fällt, obwohl am Schutz nichts kaputt ist.
+  // **Ein Wächter, der an einer offenen Produktentscheidung hängt, bewacht sie mit, statt den
+  // Schutz zu bewachen.** Gemessen: unter dem bindenden 2/3/4-Vertrag fiel der alte Bestand mit
+  // `expected [] to include 'GEHEIMZITAT-KNOTEN'`.
+  //
+  // DIE KALIBRIERUNG: fünf sichtbare Objekte, aber nur ZWEI Träger des Schlagworts
+  // `ventil-spezial`. Drei Fülleobjekte tragen eigene Schlagwörter und eigene Kategorien, damit
+  // keine zusätzlichen Nachbarn entstehen und die Nachbarschaftsprobe scharf bleibt.
+  //
+  // Damit steht die Kante aus zwei Gründen, die F2 BEIDE nicht berührt:
+  //   · **Kein Kleinstbestand mehr** — bei fünf Objekten greift die 2/3/4-Regel nicht, gleich wie
+  //     sie entschieden wird.
+  //   · **Nicht ubiquitär** — die Ausschlussregel verlangt `count >= UBIQUITY_MIN_COUNT` (5) UND
+  //     `count / total > UBIQUITY_MAX_SHARE` (0,5); hier sind es 2 von 5
+  //     (`services/library-analytics/src/service.ts:1551`).
+  //
+  // Der Schutzbeweis ist damit von der Ownerfrage entkoppelt: F2 kann später in JEDE Richtung
+  // fallen, ohne dass dieser Wächter blind wird.
   async function bestand() {
     const koService = new KoService({ repo: new InMemoryKoRepo() });
     const offen = await koService.create({
@@ -242,7 +269,7 @@ describe("mega77 D · eine Dienstmethode ohne ihren Sichtbarkeitsfilter antworte
       type: "best_practice",
       category: "Anlage 1",
       author: "anna",
-      tags: ["ventil"],
+      tags: ["ventil-spezial"],
     });
     await koService.create({
       title: GEHEIMER_TITEL,
@@ -250,9 +277,26 @@ describe("mega77 D · eine Dienstmethode ohne ihren Sichtbarkeitsfilter antworte
       type: "best_practice",
       category: "Anlage 1",
       author: "anna",
-      tags: ["ventil"],
+      tags: ["ventil-spezial"],
       confidentiality: "vertraulich",
     });
+    // Die drei Füllobjekte: sie heben den Bestand über die Kleinstbestandsgrenze und drücken den
+    // Anteil des geteilten Schlagworts auf 2/5 — unter beide Ausschlussschwellen. Eigene
+    // Schlagwörter UND eigene Kategorien, damit sie weder Nachbarn noch Kanten erzeugen.
+    for (const [nr, tag] of [
+      [1, "dichtung"],
+      [2, "lager"],
+      [3, "welle"],
+    ] as const) {
+      await koService.create({
+        title: `Fuellobjekt ${nr}`,
+        statement: "Hebt den Bestand, ohne die Nachbarschaft zu berühren.",
+        type: "best_practice",
+        category: `Anlage ${nr + 1}`,
+        author: "bert",
+        tags: [tag],
+      });
+    }
     return { library: new LibraryService({ koService }), offenId: offen.id };
   }
 
@@ -300,7 +344,12 @@ describe("mega77 D · eine Dienstmethode ohne ihren Sichtbarkeitsfilter antworte
     const { library } = await bestand();
 
     const mitFilter = await library.analytics({ sichtbar: () => true });
-    expect(mitFilter.total, "Gegenprobe: mit Filter wird gezählt").toBe(2);
+    // JOB 901 D5: hier stand `2`. Der Wert folgt der oben kalibrierten Bestandsgröße und ist von
+    // 2 auf 5 gestiegen — die ZUSAGE des Falls ist unverändert („mit Filter wird gezählt"),
+    // gezählt wird nur ein größerer Bestand. Ausdrücklich benannt, weil eine stillschweigend
+    // angepasste Zahl in einem Sicherheitstest genau die Art Änderung ist, die später niemand mehr
+    // zuordnen kann.
+    expect(mitFilter.total, "Gegenprobe: mit Filter wird gezählt").toBe(5);
 
     const ohne = await library.analytics(undefined as never);
     expect(

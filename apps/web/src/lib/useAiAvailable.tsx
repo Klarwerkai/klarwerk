@@ -6,11 +6,14 @@
 // einen RoleProvider binden. Die feine per-Aufgabe-Zuordnung bleibt in der AiModelInfo-Blase sichtbar;
 // das harte Ausgrauen folgt dem globalen „ist überhaupt ein Modell nutzbar?".
 import { useReasonerStatus } from "../api/hooks";
+import type { ReasonerTask } from "../api/types";
 import { type AiAvailability, deriveAiAvailable } from "./aiAvailability";
 
 export type { AiAvailability } from "./aiAvailability";
 
-export function useAiAvailable(task: string): AiAvailability {
+// JOB 615 D7: der Hook reicht den geschlossenen Aufgabentyp durch. Vorher nahm er jeden String an
+// und schob ihn in die verengte Ableitung — die Grenze half dann erst beim Aufrufer, nicht hier.
+export function useAiAvailable(task: ReasonerTask): AiAvailability {
   const status = useReasonerStatus();
   // „lädt" nur, solange noch kein Status vorliegt — dann NICHT vorschnell ausgrauen (kein Flackern).
   const isLoading = status.isLoading && !status.data;

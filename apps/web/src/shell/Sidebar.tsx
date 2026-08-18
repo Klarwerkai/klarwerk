@@ -1,9 +1,18 @@
 import { LogOut } from "lucide-react";
 import { useTranslation } from "react-i18next";
+import { useLocation } from "react-router-dom";
 import { useSession } from "../app/AuthContext";
-import { GuardedNavLink } from "../app/NavGuardContext";
+import { GuardedLink, GuardedNavLink } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
-import { FOOT_ITEMS, NAV_GROUPS, type NavItem, ROLES, type Role, canSee } from "../app/navigation";
+import {
+  FOOT_ITEMS,
+  NAV_GROUPS,
+  type NavItem,
+  ROLES,
+  type Role,
+  canSee,
+  istAktiverEintrag,
+} from "../app/navigation";
 import { type NavBadge, navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
 import { Logo } from "./Logo";
 
@@ -141,60 +150,65 @@ function BadgeStale({
 
 function NavRow({ item, badge }: { item: NavItem; badge?: NavBadge | undefined }): JSX.Element {
   const { t } = useTranslation();
+  const { pathname } = useLocation();
   const badgeLabelKey = item.badgeKey ? navBadgeLabelKey(item.badgeKey) : undefined;
   const Icon = item.icon;
+  const isActive = istAktiverEintrag(item, pathname);
   return (
     // AUFTRAG-mega11 Block B-2 (bens SB-2): die hier von Hand verdrahtete Wächter-Logik (Vorbild für
-    // alles Übrige) steckt jetzt in GuardedNavLink — dieselbe Wirkung, aber als Bauteil, das eine
+    // alles Übrige) steckt in den Guarded-Bauteilen — dieselbe Wirkung, aber als Bauteil, das eine
     // künftige Navigationsquelle nicht mehr vergessen kann.
-    <GuardedNavLink
+    //
+    // JOB 562: WARUM HIER `GuardedLink` STEHT UND NICHT `GuardedNavLink`. `NavLink` bestimmt seinen
+    // Aktivzustand ausschliesslich aus dem eigenen `to` und setzt `aria-current` selbst; ein von
+    // aussen gesetztes `aria-current` wirkt dort nur, wenn `NavLink` ohnehin schon aktiv ist. Für
+    // die Entscheidung `ENTSCHEIDUNGEN/JOB-562.md:17` — der Bibliothekseintrag ist auch auf
+    // `/wissen/:id` aktiv — reicht das nicht. Die Aktivfrage wird deshalb EINMAL von
+    // `istAktiverEintrag` beantwortet und hier angewandt: eine Regel, eine Stelle, kein zweiter
+    // Aktivbegriff neben dem des Routers. Die bisherige Präfixwirkung ist in dieser Regel enthalten.
+    <GuardedLink
       to={item.path}
-      className={({ isActive }) =>
-        [
-          "group flex items-center gap-2.5 rounded-nav px-2.5 py-2 text-sm font-medium transition-colors",
-          isActive
-            ? "bg-brand text-white outline outline-2 outline-brand outline-offset-2"
-            : "text-text hover:bg-hairline-soft",
-        ].join(" ")
-      }
+      aria-current={isActive ? "page" : undefined}
+      className={[
+        "group flex items-center gap-2.5 rounded-nav px-2.5 py-2 text-sm font-medium transition-colors",
+        isActive
+          ? "bg-brand text-white outline outline-2 outline-brand outline-offset-2"
+          : "text-text hover:bg-hairline-soft",
+      ].join(" ")}
     >
-      {({ isActive }) => (
-        <>
-          <span
-            className={`grid h-[27px] w-[27px] shrink-0 place-items-center rounded-[8px] ${
-              isActive ? "bg-white/15 text-white" : "bg-[rgba(16,24,32,.05)] text-ink"
-            }`}
-          >
-            <Icon size={16} strokeWidth={2} />
-          </span>
-          <span className="truncate">{t(item.labelKey)}</span>
-          {item.badgeKey && badge && badge.state === "error" ? (
-            // Dauerhaft gescheitert → sichtbarer Fehler-Marker mit Wiederholen (kein stilles Fehlen, keine 0).
-            <BadgeError active={isActive} label={t("nav.badge.error")} onRetry={badge.refetch} />
-          ) : item.badgeKey && badge && badge.state === "loading" ? (
-            // Noch nicht geladen → neutraler Ladepunkt statt einer erfundenen Zahl/0.
-            <BadgeLoading active={isActive} label={t("nav.badge.loading")} />
-          ) : item.badgeKey && badge && badge.stale ? (
-            // Refetch der vorhandenen Zahl scheiterte → alte Zahl WEITER zeigen + Störungshinweis/Retry.
-            <BadgeStale
-              count={badge.count}
-              tone={item.badgeTone}
-              active={isActive}
-              label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
-              staleLabel={t("nav.badge.stale")}
-              onRetry={badge.refetch}
-            />
-          ) : item.badgeKey && badge && badge.count > 0 ? (
-            <Badge
-              count={badge.count}
-              tone={item.badgeTone}
-              active={isActive}
-              label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
-            />
-          ) : null}
-        </>
-      )}
-    </GuardedNavLink>
+      <span
+        className={`grid h-[27px] w-[27px] shrink-0 place-items-center rounded-[8px] ${
+          isActive ? "bg-white/15 text-white" : "bg-[rgba(16,24,32,.05)] text-ink"
+        }`}
+      >
+        <Icon size={16} strokeWidth={2} />
+      </span>
+      <span className="truncate">{t(item.labelKey)}</span>
+      {item.badgeKey && badge && badge.state === "error" ? (
+        // Dauerhaft gescheitert → sichtbarer Fehler-Marker mit Wiederholen (kein stilles Fehlen, keine 0).
+        <BadgeError active={isActive} label={t("nav.badge.error")} onRetry={badge.refetch} />
+      ) : item.badgeKey && badge && badge.state === "loading" ? (
+        // Noch nicht geladen → neutraler Ladepunkt statt einer erfundenen Zahl/0.
+        <BadgeLoading active={isActive} label={t("nav.badge.loading")} />
+      ) : item.badgeKey && badge && badge.stale ? (
+        // Refetch der vorhandenen Zahl scheiterte → alte Zahl WEITER zeigen + Störungshinweis/Retry.
+        <BadgeStale
+          count={badge.count}
+          tone={item.badgeTone}
+          active={isActive}
+          label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
+          staleLabel={t("nav.badge.stale")}
+          onRetry={badge.refetch}
+        />
+      ) : item.badgeKey && badge && badge.count > 0 ? (
+        <Badge
+          count={badge.count}
+          tone={item.badgeTone}
+          active={isActive}
+          label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
+        />
+      ) : null}
+    </GuardedLink>
   );
 }
 

@@ -1,4 +1,7 @@
-import type { ConfluenceSourceAdapter } from "../../confluence";
+// JOB 1042 D3: der Befundtyp wird NICHT neu aus dem Paket-Index geholt (index.ts liegt ausserhalb
+// der Lease) und auch nicht hier nachgebaut — er wird aus dem bereits oeffentlichen `CollectResult`
+// abgeleitet. Eine Wahrheit, kein zweiter Typ, keine Scopeerweiterung.
+import type { CollectResult, ConfluenceSourceAdapter } from "../../confluence";
 import type { KoService } from "../../knowledge-object";
 import {
   type ImportItem,
@@ -24,6 +27,15 @@ export interface ImportRunSummary {
   // UNVOLLSTÄNDIG. `found` zählt dann nur die gesehenen Seiten; es gibt weitere, ungelesene Seiten.
   // Ein Lauf mit truncated=true darf NIE als vollständiger Import gelesen werden.
   truncated: boolean;
+  // JOB 1042 D3: der Hierarchie-Befund des Sammellaufs, unverändert vom Adapter durchgereicht.
+  // Er ist eine AUSKUNFT über die Elternketten der Quelle und beeinflusst keine der Zahlen
+  // darüber — die fail-closed Regel für mangelhafte Ketten ist eine offene Ownerentscheidung
+  // (Vollurteil zu D2, Korrekturpflicht 1). Bis sie getroffen ist, wird gemeldet, nicht gesperrt.
+  //
+  // WARUM ER BIS HIERHER REIST: Ein Befund, den nur der Adapter kennt, hilft niemandem. Dies ist
+  // die Station, die ein Mensch nach einem Importlauf liest — der Urteilspunkt „SERVERINTERN,
+  // Verluststelle gefunden, Zielwirkung offen" schliesst sich erst hier.
+  hierarchie?: NonNullable<CollectResult["hierarchie"]>;
   perPage: { ref: string; status: ImportPageStatus; note?: string }[];
 }
 
@@ -184,7 +196,7 @@ export function importStatusFor(
 }
 
 export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<ImportRunSummary> {
-  const { items, failed: collectFailed, truncated } = await deps.adapter.collectAll();
+  const { items, failed: collectFailed, truncated, hierarchie } = await deps.adapter.collectAll();
   const seen = await existingVersions(deps.koService);
   const pending = await pendingKeys(deps.library);
 
@@ -261,6 +273,8 @@ export async function runConfluenceImport(deps: ConfluenceImportDeps): Promise<I
     skipped: items.length - imported,
     failed: collectFailed.length,
     truncated,
+    // JOB 1042 D3: unveraendert durchgereicht — nur gesetzt, wenn der Adapter ihn geliefert hat.
+    ...(hierarchie ? { hierarchie } : {}),
     perPage,
   };
 }

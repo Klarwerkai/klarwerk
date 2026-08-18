@@ -75,12 +75,18 @@ function captionText(raw: string): string {
 //   · Eine Fußnote OHNE Kennung geht der Reihe nach an das nächste noch unversorgte Bild. Das trägt
 //     den Altbestand aus der Zeit vor WP-BILD-1b und ist genau die mega89-Regel „die vorhandene
 //     Fußnote gehört dem ersten Bild".
-//   · Steht in der Gruppe GENAU EIN Bild, bekommt es die verbleibende Fußnote auch dann, wenn deren
-//     Kennung abweicht — dort ist „die Fußnote dieser figure" eindeutig, und das Verhalten bleibt
-//     Zeichen für Zeichen das von vor mega89.
-//   · Bei MEHREREN Bildern und einer fremd gekennzeichneten Fußnote wird NICHT geraten: das Bild
-//     bleibt ohne Beschreibung. Eine geratene Zuordnung ist genau der Schaden, den dieser Auftrag
-//     abstellt.
+//   · Eine fremd gekennzeichnete Fußnote wird NICHT geraten: das Bild bleibt ohne Beschreibung.
+//     Eine geratene Zuordnung ist genau der Schaden, den dieser Auftrag abstellt.
+//
+// JOB 916 — HIER STAND EINE AUSNAHME FÜR DIE EINZELZAHL, UND SIE IST ABGELÖST. Sie lautete: steht
+// in der Gruppe GENAU EIN Bild, bekommt es die verbleibende Fußnote auch bei ABWEICHENDER Kennung
+// (`|| bilder.length === 1`), weil „die Fußnote dieser figure" dort eindeutig sei. Eindeutig war
+// aber nur die STELLE, nicht die ZUGEHÖRIGKEIT: eine Fußnote, die eine fremde `data-image-id`
+// trägt, sagt ausdrücklich, zu welchem Bild sie gehört — und das ist ein anderes. Die Galerie zeigte
+// unter dem Bild eine Beschreibung, die nachweislich nicht seine war.
+//
+// Damit gilt die Regel jetzt unabhängig von der Anzahl, und Editor und Galerie sprechen weiterhin
+// dieselbe: der Zwilling im Editor ist die ebenfalls abgelöste Stufe 2b (`editorFigures.ts`).
 const MARKEN_QUELLE =
   "<figure\\b[^>]*>|</figure\\s*>|<img\\b[^>]*>|(<figcaption\\b[^>]*>)([\\s\\S]*?)</figcaption>";
 
@@ -116,9 +122,11 @@ export function extractBodyImages(bodyHtml: string | null | undefined): BodyImag
       if (texte[i] !== null) {
         return;
       }
-      const k = fussnoten.findIndex(
-        (f, j) => !belegt[j] && (f.id === null || f.id === "" || bilder.length === 1),
-      );
+      // JOB 916: hier stand zusätzlich `|| bilder.length === 1`. Die Bedingung ist ENTFERNT — sie
+      // gab dem einzigen Bild einer figure die verbleibende Fußnote auch dann, wenn deren Kennung
+      // auf ein ANDERES Bild zeigte. Was bleibt, ist die zulässige Altfallzuordnung: eine Fußnote
+      // ohne Kennung geht der Reihe nach an das nächste unversorgte Bild.
+      const k = fussnoten.findIndex((f, j) => !belegt[j] && (f.id === null || f.id === ""));
       if (k >= 0) {
         belegt[k] = true;
         texte[i] = fussnoten[k]?.text ?? "";

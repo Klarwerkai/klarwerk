@@ -1045,7 +1045,10 @@ export interface ReasonerStatus {
   reachable?: "none" | "unverified" | "active" | "unreachable";
   // PAKET 3 (D-AISTATE, bens V4): abstrakte per-Task-Nutzbarkeit (nur true/false je Aufgabe, KEIN
   // Provider-/Modellname). Fehlt sie (alte Antwort), fällt der Hook auf den globalen Status zurück.
-  tasks?: Record<string, boolean>;
+  // JOB 615 D7: geschlossen auf die acht bekannten Aufgaben, aber PARTIELL — ein älterer Server
+  // darf die Karte weglassen oder nur einen Teil senden (Rückwärtskompatibilität), ein unbekannter
+  // Schlüssel ist dagegen ein Typfehler statt eines stillen `undefined`.
+  tasks?: Partial<Record<ReasonerTask, boolean>>;
   // AUFTRAG-mega67 BLOCK G (Pedi 30.07.), Wortlaut geschärft in mega71 Block D (bens B2-Ehrlichkeit):
   // die Cloud KANN für DIESE Aufgabe kostenpflichtig verwendet werden — ein Cloud-Modell liegt in
   // ihrer Kette. Eine MÖGLICHKEIT, keine Abrechnungstatsache: bei `reachable: "unverified"`, für
@@ -1054,20 +1057,39 @@ export interface ReasonerStatus {
   // das ist NUTZBARKEIT und wird auch vom kostenlosen lokalen Modell erfüllt. Weiterhin nur ein
   // Boolean, kein Provider-/Modellname (vip2-gate). Fehlt es (alte Antwort), behauptet die
   // Oberfläche nichts.
-  billable?: Record<string, boolean>;
+  // JOB 615 D7: dieselbe geschlossene, partielle Form wie `tasks` — aus demselben Grund.
+  billable?: Partial<Record<ReasonerTask, boolean>>;
 }
 
 // SCRUM-166: read-only Provider-/Model-Konfiguration (nur Metadaten, keine Secrets).
 export type ReasonerConfigMode = "model" | "fallback" | "demo";
 // WP-BILD-1c: describe (KI-Bildbeschreibungs-Vorschlag) als weitere KI-Aufgabe.
-export type ReasonerTask =
-  | "structure"
-  | "assist"
-  | "interview"
-  | "answer"
-  | "select"
-  | "extract"
-  | "describe";
+//
+// JOB 615 D7: DIESELBEN acht Aufgaben wie der Server — und `group` war hier zuvor NICHT dabei.
+// Die Union führte sieben Werte, während `REASONER_TASKS` serverseitig acht kennt; eine gültige
+// Serverantwort war der Oberfläche damit unbekannt.
+//
+// WARUM DIE LISTE HIER STEHT UND NICHT IMPORTIERT WIRD: Der Produktcode unter `apps/web/src` darf
+// nicht aus `services/` importieren — der webbuild-Stage im Dockerfile kopiert NUR `apps/web`, ein
+// solcher Import bricht den Produktions-Build. Diese Grenze ist im Bestand festgehalten
+// (`tests/capture/draft-limits-shared.test.ts`, „AUFTRAG-mega8 Block A“) und in `tools/build`
+// begründet. Derselbe Fall wurde dort für `DRAFT_LIMITS` bereits so gelöst: beide Seiten halten die
+// Werte selbst, und ein Wächtertest vergleicht sie Wert für Wert. Für die Aufgabenliste tut das
+// `tests/reasoner/job615-public-status-task-contract.test.ts` — er wird rot, sobald eine Seite
+// wandert, ohne dass die andere nachgezogen wird.
+export const REASONER_TASKS = [
+  "structure",
+  "assist",
+  "interview",
+  "answer",
+  "select",
+  "extract",
+  "describe",
+  "group",
+] as const;
+
+// Abgeleitet, nicht abgeschrieben — die Union kann nicht mehr hinter der Liste zurückbleiben.
+export type ReasonerTask = (typeof REASONER_TASKS)[number];
 
 export interface ReasonerConfigStatus {
   provider: string;

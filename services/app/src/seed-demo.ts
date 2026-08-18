@@ -910,13 +910,59 @@ async function buildDemoContent(
 // im Auth-Service verhindert zusätzlich, dass der letzte aktive Admin verschwindet.
 // Hinweis: „Fragen gesamt" in den Kennzahlen kommt aus dem UNVERÄNDERLICHEN Audit-Log
 // (jede Frage ist echte Historie) und lässt sich bewusst nicht „wegputzen".
+/**
+ * JOB 1052 D3 — EIN GESCHEITERTER LÖSCHVERSUCH, MIT BESTAND UND KENNUNG.
+ *
+ * BEN4s Prüflücke 5 verlangt wörtlich, dass ein fehlgeschlagener Versuch die Erfolgsmenge nicht
+ * erhöht. Damit das prüfbar ist, muss der Fehlschlag irgendwo stehen — eine Zahl allein kann nicht
+ * sagen, WAS nicht wegging. Deshalb Bestand, Kennung und Grund je Eintrag.
+ */
+export interface PurgeFehler {
+  readonly bestand: "kos" | "conflicts" | "duplicates" | "gaps" | "users";
+  readonly id: string;
+  readonly grund: string;
+}
+
+/**
+ * ================================================================================================
+ * JOB 1052 D3 — DIE ZÄHLER MELDEN ERFOLGE, NICHT VERSUCHE.
+ * ================================================================================================
+ *
+ * DER BEFUND, den BEN4 im D2-Urteil als konkreten Vertragsfehler benannt hat (Korrekturpflicht 2):
+ *
+ *   > „Vorzähler, ausschließlich erfolgreiche Löschungen und Nachzähler müssen konsistent sein.
+ *   > Der erkannte Versuchszähler darf nicht in den Resetvertrag übernommen werden."
+ *
+ * Er lag an drei Stellen dieser Datei, und zwar in derselben Bauform: `resolve`/`dismiss`/
+ * `deleteGap` wurden mit angehängtem `.catch(() => undefined)` gerufen und der Zähler DANACH
+ * erhöht. Der Fehler wurde verschluckt — und trotzdem als Entfernung gemeldet. Gemessen an einem
+ * Lauf mit ausfallender Konfliktauflösung: **„gemeldet als entfernt = 2", tatsächlich entfernt 0.**
+ *
+ * `kos` hieß zudem `demoKos.length` — die FUNDzahl, ausgegeben unter einem Namen, den jeder als
+ * Entfernungszahl liest.
+ *
+ * DIE TRENNUNG, die das behebt: `gefunden` ist der Vorzähler, die fünf Zahlen oben sind die
+ * Erfolge, `fehler` nennt jede Lücke dazwischen. Bei einem störungsfreien Lauf sind Vor- und
+ * Erfolgszähler gleich und `fehler` leer — das ist die Konsistenz, die die Auflage verlangt.
+ */
 export interface PurgeResult {
+  /** Erfolgreich endgültig gelöschte Demo-Wissensobjekte. */
   kos: number;
   conflicts: number;
   // SCRUM-487: aus den demoSeed-KOs entstandene Duplikat-Einträge (analog Konflikte über KO-Zugehörigkeit).
   duplicates: number;
   gaps: number;
   users: number;
+  /** Der Vorzähler je Bestand: was der Lauf als zu entfernen VORGEFUNDEN hat. */
+  gefunden: {
+    kos: number;
+    conflicts: number;
+    duplicates: number;
+    gaps: number;
+    users: number;
+  };
+  /** Jeder Versuch, der nicht gelungen ist — vollständig, nicht als Zahl. */
+  fehler: PurgeFehler[];
 }
 
 export async function purgeDemoSeed(
@@ -928,13 +974,26 @@ export async function purgeDemoSeed(
     (k) => k.demoSeed === true || (k.tags ?? []).includes(DEMO_TAG),
   );
   const demoIds = new Set(demoKos.map((k) => k.id));
+  // JOB 1052 D3: Vorzähler und Fehlerliste stehen neben den Erfolgszählern. Ohne sie liesse sich
+  // „nichts entfernt" nicht von „nichts vorgefunden" unterscheiden — und genau diese Verwechslung
+  // war der gemeldete Vertragsfehler.
+  const gefunden = { kos: demoKos.length, conflicts: 0, duplicates: 0, gaps: 0, users: 0 };
+  const fehler: PurgeFehler[] = [];
+  const grundVon = (ursache: unknown): string =>
+    ursache instanceof Error ? ursache.message : "unbekannter Fehler";
+
   let removedConflicts = 0;
   for (const c of await conflicts.unresolved()) {
     if (demoIds.has(c.koA) || demoIds.has(c.koB)) {
-      await conflicts
-        .resolve(c.id, actor, "Demodaten entfernt (beide Seiten verworfen)")
-        .catch(() => undefined);
-      removedConflicts += 1;
+      gefunden.conflicts += 1;
+      // HIER STAND DER FEHLER: `.catch(() => undefined)` und danach unbedingtes `+= 1`. Der
+      // Zähler wurde also gerade dann erhöht, wenn die Auflösung NICHT stattgefunden hatte.
+      try {
+        await conflicts.resolve(c.id, actor, "Demodaten entfernt (beide Seiten verworfen)");
+        removedConflicts += 1;
+      } catch (ursache) {
+        fehler.push({ bestand: "conflicts", id: c.id, grund: grundVon(ursache) });
+      }
     }
   }
   // SCRUM-487: aus den demoSeed-KOs entstandene DUPLIKAT-Einträge ebenso schließen (KO-Zugehörigkeit),
@@ -943,16 +1002,31 @@ export async function purgeDemoSeed(
   let removedDuplicates = 0;
   for (const d of await overlaps.unresolved()) {
     if (demoIds.has(d.koA) || demoIds.has(d.koB)) {
-      await overlaps
-        .dismiss(d.id, actor, "Demodaten entfernt (Duplikat, beide Seiten verworfen)")
-        .catch(() => undefined);
-      removedDuplicates += 1;
+      gefunden.duplicates += 1;
+      try {
+        await overlaps.dismiss(
+          d.id,
+          actor,
+          "Demodaten entfernt (Duplikat, beide Seiten verworfen)",
+        );
+        removedDuplicates += 1;
+      } catch (ursache) {
+        fehler.push({ bestand: "duplicates", id: d.id, grund: grundVon(ursache) });
+      }
     }
   }
+  let removedKos = 0;
   for (const k of demoKos) {
     // SCRUM-422: Demo-Daten IMMER endgültig löschen — nie in den Papierkorb
     // (gilt auch für nur per Tag markierte Alt-Demo-KOs ohne demoSeed-Flag).
+    //
+    // JOB 1052 D3: Der Abbruch bei einem Fehler BLEIBT. Ein scheiternder Objektlöschweg ist der
+    // Fall, in dem ein Reset laut sein muss — ihn hier zu sammeln und weiterzulaufen wäre eine
+    // Änderung der Resetsemantik, und die gehört zur noch offenen Ownerentscheidung über die
+    // Postbedingungen (Korrekturpflicht 1). Gezählt wird trotzdem erst NACH dem Erfolg: `kos`
+    // meldet damit auch dann keine Zahl, die nicht stattgefunden hat.
     await ko.delete(k.id, actor, { hard: true });
+    removedKos += 1;
   }
   // Pedi 14.07.: Demo-Wissenslücke(n) über die STABILE Herkunfts-Markierung (Gap-Feld `demoSeed`)
   // entfernen — kein fragiler Frage-Präfix-/Titel-Abgleich mehr. So bleiben echte, vom Nutzer
@@ -960,8 +1034,13 @@ export async function purgeDemoSeed(
   let removedGaps = 0;
   for (const g of await ask.listGaps()) {
     if (g.demoSeed === true) {
-      await ask.deleteGap(g.id, true).catch(() => undefined);
-      removedGaps += 1;
+      gefunden.gaps += 1;
+      try {
+        await ask.deleteGap(g.id, true);
+        removedGaps += 1;
+      } catch (ursache) {
+        fehler.push({ bestand: "gaps", id: g.id, grund: grundVon(ursache) });
+      }
     }
   }
   // Bug (Pedi 05.07.): Demo-ANWENDER entfernen — alle Konten unter der Demo-Domain, außer dem
@@ -972,18 +1051,23 @@ export async function purgeDemoSeed(
     if (u.id === actor || !isDemoEmail(u.email)) {
       continue;
     }
+    gefunden.users += 1;
     try {
       await auth.deleteUser(u.id, actor);
       removedUsers += 1;
-    } catch {
-      // z. B. letzter aktiver Admin — bleibt bestehen, kein Abbruch.
+    } catch (ursache) {
+      // z. B. letzter aktiver Admin — bleibt bestehen, kein Abbruch. JOB 1052 D3: Der Zähler war
+      // hier schon richtig; neu ist nur, dass der Fehlschlag nicht mehr spurlos verschwindet.
+      fehler.push({ bestand: "users", id: u.id, grund: grundVon(ursache) });
     }
   }
   return {
-    kos: demoKos.length,
+    kos: removedKos,
     conflicts: removedConflicts,
     duplicates: removedDuplicates,
     gaps: removedGaps,
     users: removedUsers,
+    gefunden,
+    fehler,
   };
 }

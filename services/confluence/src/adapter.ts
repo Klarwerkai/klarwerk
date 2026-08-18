@@ -7,7 +7,13 @@
 // Roh-Client, seine token-tragende Config und der env-Resolver bleiben modul-intern.
 
 import type { ImportItem, SourceAdapter } from "../../library-analytics";
-import { type ConfluenceMapOptions, mapConfluencePageToImportItem } from "./mapper";
+import {
+  type ConfluenceMapOptions,
+  confluenceAhnenBefund,
+  confluenceAncestorIds,
+  mapConfluencePageToImportItem,
+} from "./mapper";
+import type { ConfluencePage } from "./rest-client";
 import {
   ConfluenceRestClient,
   type ConfluenceRestConfig,
@@ -25,6 +31,101 @@ export interface CollectResult {
   // SCRUM-510 (WP3): true, wenn der Space-Read am Seiten-Cap abgeschnitten wurde (nicht vollständig). Der
   // Import-Kern macht daraus einen ehrlichen „unvollständig"-Status — nie eine stille „fertig"-Meldung.
   truncated: boolean;
+  // JOB 1042 D3: der Hierarchie-Befund über die EINGESAMMELTEN Seiten. Additiv und rein
+  // diagnostisch — er verändert weder `items` noch `failed` (s. hierarchieBefund).
+  hierarchie?: ConfluenceHierarchieBefund;
+}
+
+// ================================================================================================
+// JOB 1042 D3 — DER BAUMBEFUND ÜBER DIE GESAMTE SAMMLUNG
+// ================================================================================================
+//
+// Der Baumleser im Mapper urteilt je SEITE (fehlende ID, Zyklus). Zwei der vom Vollurteil
+// verlangten Negativfälle (Prüflücke 5) sind aber erst über die GANZE Sammlung sichtbar: eine
+// doppelt gelieferte Seiten-ID und ein Elternteil, den die Sammlung gar nicht enthält. Deshalb
+// sitzt diese Auswertung hier und nicht im Mapper.
+//
+// ER MELDET, ER SPERRT NICHT. Ob ein Mangel den Import anhalten soll (fail-closed) oder nicht, ist
+// die ausdrücklich offene Ownerentscheidung aus Korrekturpflicht 1. Bis sie getroffen ist, bleiben
+// `items`, `failed` und `truncated` von diesem Befund UNBERÜHRT — er ist eine Auskunft.
+export interface ConfluenceHierarchieBefund {
+  /** Gelieferte Seiten insgesamt (auch doppelt gelieferte zählen einzeln). */
+  seiten: number;
+  /** Seiten mit vollständiger, verwendbarer ID-Kette. */
+  mitKette: number;
+  /** Seiten ohne jeden Vorfahren — die obersten Seiten des Containers. */
+  wurzeln: number;
+  /** Längste vorgefundene Kette (0, wenn es nur Wurzeln gibt). */
+  maximaleTiefe: number;
+  /** Seiten-IDs, deren Kette mindestens einen Vorfahren ohne ID enthält. */
+  fehlendeId: string[];
+  /** Seiten-IDs, die in ihrer eigenen Kette stehen oder einen Vorfahren doppelt führen. */
+  zyklus: string[];
+  /** Seiten-IDs, die in dieser Sammlung mehr als einmal vorkommen (je ID einmal genannt). */
+  doppelteId: string[];
+  /** Seiten-IDs, deren direkter Elternteil in dieser Sammlung fehlt. */
+  verwaisterElternteil: string[];
+}
+
+/**
+ * Wertet die Ahnenketten einer eingesammelten Seitenmenge aus. Reine Funktion, keine Nebenwirkung.
+ *
+ * Die Reihenfolge der gemeldeten IDs folgt der Liefer-Reihenfolge — ein Befund soll zwischen zwei
+ * Läufen über denselben Bestand gleich aussehen.
+ */
+export function hierarchieBefund(pages: readonly ConfluencePage[]): ConfluenceHierarchieBefund {
+  const vorhandeneIds = new Set(pages.map((p) => p.id?.trim()).filter((id): id is string => !!id));
+  const gesehen = new Set<string>();
+  const doppelteId: string[] = [];
+  const fehlendeId: string[] = [];
+  const zyklus: string[] = [];
+  const verwaisterElternteil: string[] = [];
+  let mitKette = 0;
+  let wurzeln = 0;
+  let maximaleTiefe = 0;
+
+  for (const page of pages) {
+    const id = page.id?.trim() ?? "";
+    if (id) {
+      if (gesehen.has(id) && !doppelteId.includes(id)) {
+        doppelteId.push(id);
+      }
+      gesehen.add(id);
+    }
+    if (!Array.isArray(page.ancestors) || page.ancestors.length === 0) {
+      wurzeln += 1;
+      continue;
+    }
+    const befund = confluenceAhnenBefund(page);
+    if (befund === "fehlende-id") {
+      fehlendeId.push(id);
+      continue; // ohne Kette lässt sich weder Tiefe noch Elternteil bestimmen
+    }
+    if (befund === "zyklus") {
+      zyklus.push(id);
+    }
+    const kette = confluenceAncestorIds(page);
+    if (!kette) {
+      continue;
+    }
+    mitKette += 1;
+    maximaleTiefe = Math.max(maximaleTiefe, kette.length);
+    const elternteil = kette[kette.length - 1];
+    if (elternteil !== undefined && !vorhandeneIds.has(elternteil)) {
+      verwaisterElternteil.push(id);
+    }
+  }
+
+  return {
+    seiten: pages.length,
+    mitKette,
+    wurzeln,
+    maximaleTiefe,
+    fehlendeId,
+    zyklus,
+    doppelteId,
+    verwaisterElternteil,
+  };
 }
 
 export class ConfluenceSourceAdapter implements SourceAdapter {
@@ -57,7 +158,10 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
         });
       }
     }
-    return { items, failed, truncated };
+    // JOB 1042 D3: der Befund wird über die GELIEFERTEN Seiten gebildet, nicht über die erfolgreich
+    // gemappten. Eine Seite, deren Mapping scheitert, hat trotzdem eine Ahnenkette — und gerade sie
+    // will man im Befund sehen.
+    return { items, failed, truncated, hierarchie: hierarchieBefund(pages) };
   }
 }
 

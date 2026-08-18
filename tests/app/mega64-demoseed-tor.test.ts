@@ -132,6 +132,71 @@ describe("mega64 A · das Tor vor dem Demodaten-Laden", () => {
       expect(res.statusCode, `„${wert}" hätte scharfstellen müssen`).toBe(200);
     }
   });
+
+  // ================================================================================================
+  // JOB 1081 · D5 — DER VOLLSTÄNDIGE PARSERVERTRAG, ZEICHENGENAU.
+  // ================================================================================================
+  //
+  // WARUM DIESER FALL NEBEN B STEHT UND IHN NICHT ERSETZT. Fall B belegt die RICHTUNG (Vorgabe AUS,
+  // nur `1`/`true` schaltet scharf) und ist damit richtig. Er lässt aber zwei Eigenschaften des
+  // Parsers ungeprüft, und beide sind still: `schalterAn` liest den Rohwert OHNE `trim()` und
+  // vergleicht ZEICHENGENAU (`wert === "1" || wert === "true"`, feature-flags.ts).
+  //
+  // GEMESSEN, nicht vermutet: Setzt man in den Parser ein `?.trim().toLowerCase()`, bleibt Fall B
+  // vollständig grün (7 von 7) — obwohl damit `" TRUE "`, `"True"` und `" 1 "` das Werkzeug
+  // scharfstellen würden, das Konten anlegt. Der Wächter war für genau diese Änderung blind.
+  //
+  // DIE MATRIX STAMMT AUS DEM GELESENEN PARSER, nicht aus Plausibilität. Jede Zeile ist die
+  // Auswertung von `wert === "1" || wert === "true"` für den jeweiligen Rohwert — deshalb steht die
+  // Erwartung als Datum daneben und nicht als Prosa. Wer die Auswertung ändert, muss diese Tabelle
+  // ändern, und das ist genau die Absicht: eine Änderung an der Schärfstellung eines
+  // kontenanlegenden Werkzeugs soll eine sichtbare Entscheidung sein.
+  //
+  // `undefined` steht bewusst MIT in der Tabelle, obwohl Fall A den fehlenden Schalter schon prüft:
+  // dort ist er der BEFUND, hier ist er die erste Zeile eines geschlossenen Vertrags. Eine Matrix
+  // mit einer Lücke an der wichtigsten Stelle wäre keine.
+  it("B2 · der Parservertrag: zeichengenau, ohne Trim, ohne Kleinschreibung", async () => {
+    const matrix: readonly [string | undefined, boolean][] = [
+      // fehlend und leer — der Normalzustand eines Betriebs, der nichts eingeschaltet hat.
+      [undefined, false],
+      ["", false],
+      // ausdrückliches Nein.
+      ["0", false],
+      ["false", false],
+      // die EINZIGEN beiden Werte, die scharfstellen.
+      ["1", true],
+      ["true", true],
+      // umgangssprachliche Zustimmung zählt nicht — sie ist nicht eindeutig genug für ein
+      // Werkzeug, das Konten anlegt.
+      ["on", false],
+      ["ja", false],
+      ["yes", false],
+      // GROSS-/KLEINSCHREIBUNG: der Vergleich ist zeichengenau. Ohne diese drei Zeilen bliebe ein
+      // `toLowerCase()` im Parser unbemerkt.
+      ["TRUE", false],
+      ["True", false],
+      ["JA", false],
+      // WHITESPACE: der Rohwert wird nicht getrimmt. Ohne diese drei Zeilen bliebe ein `trim()`
+      // im Parser unbemerkt — und ein versehentliches Leerzeichen in einer Betriebsdatei
+      // entschiede über ein kontenanlegendes Werkzeug.
+      [" 1", false],
+      ["1 ", false],
+      [" true ", false],
+    ];
+
+    const befund: Record<string, number> = {};
+    const erwartet: Record<string, number> = {};
+    for (const [wert, scharf] of matrix) {
+      const schluessel = wert === undefined ? "<fehlend>" : `„${wert}"`;
+      const { app, headers } = await adminApp(wert);
+      const res = await app.inject({ method: "POST", url: "/api/admin/demo-seed", headers });
+      befund[schluessel] = res.statusCode;
+      erwartet[schluessel] = scharf ? 200 : 404;
+    }
+    // BEWUSST erst sammeln, dann urteilen: eine Schleife mit sofortigem `expect` bricht beim ersten
+    // Fund ab und verschweigt die übrigen. Wer den Parser ändert, soll die ganze Fläche sehen.
+    expect(befund).toEqual(erwartet);
+  });
 });
 
 describe("mega64 A · die Kennwörter verlassen den Quelltext", () => {

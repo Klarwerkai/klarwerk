@@ -50,9 +50,32 @@ export interface NavItem {
   /** Badge-Quelle (Zähler aus useNavBadges). */
   badgeKey?: string;
   badgeTone?: BadgeTone;
+  /**
+   * JOB 562 (Entscheidung `00_CONTROL/ENTSCHEIDUNGEN/JOB-562.md:17`): weitere Routenpräfixe, unter
+   * denen dieser Eintrag als aktuelle Seite gilt.
+   *
+   * Der Anlass: eine Wissensseite `/wissen/:id` gehört zur Bibliothek, hat aber keinen eigenen
+   * Menüpunkt — und soll auch keinen bekommen (`:19` verwirft „Eigener Eintrag für die
+   * Detailseite" ausdrücklich). Ohne diese Angabe wäre auf der Detailseite gar kein Eintrag
+   * ausgezeichnet, und die Nutzerin verlöre ihren Ort im Menü.
+   */
+  aktivAuchUnter?: readonly string[];
   /** §-Bezug + Screenshot aus dem Design-Handoff (Doku/Platzhalter). */
   section: string;
   shot: string;
+}
+
+/**
+ * Gilt dieser Eintrag unter dieser Route als aktuelle Seite?
+ *
+ * EINE Regel an EINER Stelle — der Renderer entscheidet nicht selbst. Sie bildet die bisherige
+ * Präfixwirkung ab (eine Unterroute hält ihren Eintrag aktiv) und erweitert sie um die in
+ * `aktivAuchUnter` benannten Pfade. Der Präfixvergleich verlangt eine Segmentgrenze: `/bibliothek`
+ * ist unter `/bibliothek/x` aktiv, unter `/bibliotheksrat` NICHT.
+ */
+export function istAktiverEintrag(item: NavItem, pathname: string): boolean {
+  const passt = (p: string): boolean => pathname === p || pathname.startsWith(`${p}/`);
+  return passt(item.path) || (item.aktivAuchUnter ?? []).some(passt);
 }
 
 export interface NavGroup {
@@ -116,6 +139,8 @@ export const NAV_GROUPS: NavGroup[] = [
         labelKey: "nav.library",
         icon: BookOpen,
         minRole: "viewer",
+        // JOB 562: die Wissensseite gehört zur Bibliothek und bekommt keinen eigenen Menüpunkt.
+        aktivAuchUnter: ["/wissen"],
         section: "7.10",
         shot: "07",
       },

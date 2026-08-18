@@ -53,6 +53,84 @@ export function confluenceSourcePath(page: ConfluencePage): string[] | undefined
   return path.length > 0 ? path : undefined;
 }
 
+// ================================================================================================
+// JOB 1042 D3 — DIE IDENTITÄT DER ELTERNKETTE, NEBEN IHREM NAMEN
+// ================================================================================================
+//
+// DER BEFUND (Vollurteil zu D2, Z. 48-50): „Der tatsächliche Informationsverlust liegt im Mapper:
+// Vorfahren-IDs verschwinden, Titel bleiben." Nachgemessen: `rest-client.ts:43` fordert
+// `ancestors` samt `id` an — die Identität KOMMT an und wird zwei Zeilen später weggeworfen.
+//
+// WARUM DER TITELPFAD BLEIBT, WIE ER IST: er ist die ANZEIGE (Ordnerbaum, Vorschau, Dreizustand)
+// und dort richtig. Was ihm fehlt, ist Dauerhaftigkeit: benennt jemand einen Elternordner um,
+// ändert sich der Pfad, obwohl es derselbe Ordner ist. Titel und Identität bekommen deshalb
+// GETRENNTE Rollen (Urteil, Hinweise Z. 263-265) — nicht ein Feld, das beides halb kann.
+//
+// KEINE ORDNUNG, KEINE ERFINDUNG: `ancestors` trägt je Ahne genau `id` und `title`, also keine
+// Geschwisterposition. Ein `ordinal` würde hier weder aus der Antwortreihenfolge noch aus einer
+// Titelsortierung abgeleitet (Urteil Z. 267-268) — es fehlt schlicht, und das ist die ehrliche
+// Angabe. Die TIEFE braucht kein eigenes Feld: sie ist die Länge dieser Kette.
+
+/**
+ * Der Zustand EINER Ahnenkette. Dieser Typ BENENNT einen Mangel — er entscheidet nicht, was der
+ * Import daraufhin tut. Die fail-closed Regel für fehlende IDs ist eine offene Ownerentscheidung
+ * (Korrekturpflicht 1 des Vollurteils) und wird hier bewusst nicht vorweggenommen.
+ */
+export type ConfluenceAhnenBefund = "ok" | "fehlende-id" | "zyklus";
+
+/** Getrimmte ID eines Ahnen, oder `undefined` wenn keine brauchbare vorliegt. */
+function ahnenId(ancestor: { id?: string } | undefined): string | undefined {
+  const id = ancestor?.id?.trim();
+  return id && id.length > 0 ? id : undefined;
+}
+
+/**
+ * Die STABILE Elternkette: die Vorfahren-IDs in Quell-Reihenfolge (Wurzel zuerst), ohne die Seite
+ * selbst — dieselbe Form und dieselbe Zurückhaltung wie `confluenceSourcePath`.
+ *
+ * `undefined` heisst „keine verwendbare Kette" und deckt ZWEI Fälle ab: die Seite ist eine
+ * Wurzelseite, ODER mindestens ein Ahne trägt keine ID. Der zweite Fall ist der wichtige: eine
+ * TEILWEISE Kette wäre schlimmer als gar keine, weil jede Zuordnung zwischen Titel und ID ab dem
+ * Loch verschoben wäre. Welcher der beiden Fälle vorliegt, sagt `confluenceAhnenBefund`.
+ */
+export function confluenceAncestorIds(page: ConfluencePage): string[] | undefined {
+  if (!Array.isArray(page.ancestors) || page.ancestors.length === 0) {
+    return undefined;
+  }
+  const ids: string[] = [];
+  for (const ancestor of page.ancestors) {
+    const id = ahnenId(ancestor);
+    if (id === undefined) {
+      return undefined; // lückenhaft ⇒ keine Kette (s. o.)
+    }
+    ids.push(id);
+  }
+  return ids;
+}
+
+/**
+ * Der Befund zur Ahnenkette einer Seite — die Diagnose, nicht die Reaktion.
+ *
+ * `ok` schliesst die WURZELSEITE ausdrücklich ein: keine Ahnen zu haben ist kein Mangel, sondern
+ * die Lage der obersten Seite. Ein `zyklus` liegt vor, wenn die Seite in ihrer eigenen Kette steht
+ * oder ein Vorfahr darin doppelt vorkommt — beides kann Confluence nicht liefern und deutet auf
+ * beschädigte oder manipulierte Antwortdaten.
+ */
+export function confluenceAhnenBefund(page: ConfluencePage): ConfluenceAhnenBefund {
+  if (!Array.isArray(page.ancestors) || page.ancestors.length === 0) {
+    return "ok";
+  }
+  const ids = confluenceAncestorIds(page);
+  if (ids === undefined) {
+    return "fehlende-id";
+  }
+  const eigene = page.id?.trim();
+  if (eigene && ids.includes(eigene)) {
+    return "zyklus";
+  }
+  return new Set(ids).size === ids.length ? "ok" : "zyklus";
+}
+
 export function mapConfluencePageToImportItem(
   page: ConfluencePage,
   opts: ConfluenceMapOptions,

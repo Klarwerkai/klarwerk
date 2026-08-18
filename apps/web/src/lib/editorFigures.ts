@@ -370,20 +370,38 @@ function kennungVon(el: EditableElement): string {
 //   für Altbestand und fremdes Markup (mega89) — sie steht jetzt HINTER der stabilen Kennung, nicht
 //   davor. Nur hier bekommt eine Fußnote eine Kennung geschrieben, und nur, weil sie keine hatte.
 //
-//   STUFE 2b — EINDEUTIGKEIT, ENG. Genau EIN Bild, genau EINE noch unversorgte Fußnote, und das
-//   Bild trägt SELBST keine Kennung: dann übernimmt das Bild die Kennung der Fußnote. Das ist der
-//   Stabilitätsfall, den der Code vor mega90 über den `capId`-Rückfall abgedeckt hat — er darf nicht
-//   verloren gehen, sonst bekäme genau dieses Bild eine NEUE Kennung und seine Beschreibung stünde
-//   verwaist daneben. Gespiegelt aus dem Galerie-Zerleger (`bodyImages.ts`, `bilder.length === 1`),
-//   damit Editor und Galerie dieselbe Regel sprechen.
-//
 //   STUFE 3 — NICHT RATEN. Was danach übrig ist — eine Fußnote mit einer Kennung, zu der es in
 //   dieser Einheit kein Bild gibt —, wird KEINEM Bild untergeschoben. Ihr Inhalt bleibt sichtbar
 //   erhalten (wie bisher die überzähligen Fußnoten), ihre Kennung bleibt unangetastet.
 //
+// ── JOB 916: HIER STAND EINE STUFE 2b, UND SIE IST ABGELÖST ───────────────────────────────────────
+//
+// Sie lautete: genau EIN Bild ohne eigene Kennung und genau EINE übrige Fußnote → das Bild
+// übernimmt deren Kennung. Begründet war das als „Stabilität" — sonst bekäme das Bild eine NEUE
+// Kennung und seine Beschreibung stünde verwaist daneben.
+//
+// DIE BEGRÜNDUNG HIELT NICHT STAND, und der Grund steht in der Kontrollfolge selbst: eine nach
+// Stufe 2 ÜBRIGE Fußnote kann keine unmarkierte mehr sein — Stufe 2 nimmt genau die. Was Stufe 2b
+// erreichte, trug also ZWANGSLÄUFIG eine fremde Kennung. „Stabilität" hieß an dieser Stelle: das
+// Bild erbt eine Herkunft, die niemand belegt hat, und behauptet sie anschließend als seine eigene.
+// Das ist derselbe Schaden wie in sammel89 — der Fehler löscht seine eigene Spur —, nur an einer
+// Stelle, die ihn als Vorzug führte.
+//
+// SEITHER GILT AN ALLEN VIER STELLEN DASSELBE: Stufe 3 hier, `offenerAnker` und `gemeinsameKennung`
+// bei der Wanderung, die Nachnormalisierung unten und der Galerie-Zerleger (`bodyImages.ts`, wo
+// dieselbe Ausnahme als `|| bilder.length === 1` stand und mit abgelöst wurde). Zwei verschiedene,
+// nicht leere Kennungen werden nirgends mehr gegeneinander verrechnet.
+//
+// DIE REICHWEITE, ausdrücklich: das gilt für die PAARUNG getrennter Einheiten. INNERHALB einer
+// flachen `<figure>` bleibt die figure die Bindungseinheit — sie läuft gar nicht hier durch,
+// sondern kommt erst in der Nachnormalisierung an, und dort ist der Sanitizer autoritativ
+// (`anchorFigures`, `services/structure`: die Kennung der figure ist führend). Das ist kein
+// Schlupfloch, sondern die Grenze zu einem stärkeren, älteren Vertrag; sie ist in
+// `tests/capture/job916-stufe2b-abloesung.test.ts` in BEIDEN Richtungen gepinnt.
+//
 // DIE EINE STELLE, DIE NICHT AUFGEHT, und sie wird nicht gebogen: EIN Bild mit Kennung A und EINE
 // Fußnote mit einer ABWEICHENDEN Kennung X. Beide Seiten tragen eine Wahrheit, und jede Paarung
-// müsste eine davon überschreiben. Deshalb greift Stufe 2b dort NICHT: das Bild bekommt eine leere
+// müsste eine davon überschreiben. Sie fällt deshalb in Stufe 3: das Bild bekommt eine leere
 // Fußnote, der Text von X bleibt sichtbar stehen. Sichtbar danebenstehender Text ist reparierbar;
 // eine überschriebene Kennung ist es nicht.
 //
@@ -428,20 +446,8 @@ function paare(
       fussnoten.find((f) => frei(f) && kennungVon(f) === ""),
     );
   }
-  const uebrig = fussnoten.filter(frei);
-  // Stufe 2b: genau ein Bild OHNE eigene Kennung und genau eine übrige Fußnote.
-  const einziges = bilder[0];
-  const eine = uebrig[0];
-  if (
-    bilder.length === 1 &&
-    einziges !== undefined &&
-    uebrig.length === 1 &&
-    eine !== undefined &&
-    kennungVon(einziges) === "" &&
-    !fussnoteFuer.has(einziges)
-  ) {
-    nimm(einziges, eine);
-  }
+  // JOB 916: HIER STAND STUFE 2b, und sie ist ENTFERNT, nicht abgeschaltet. Was danach übrig ist,
+  // fällt in Stufe 3 — die Begründung steht oben im Regelabschnitt.
   return fussnoteFuer;
 }
 
@@ -498,8 +504,9 @@ function paare(
 //   <figure><table><tr><td><figure><img><figcaption data-image-id="X"></figcaption></figure>
 //   </td></tr></table><figcaption data-image-id="Y">Aussen</figcaption></figure>
 //
-// Die eindeutig übrig gebliebene äußere Fußnote mit `Y` wurde danach über Stufe 2b gepaart, gewann
-// in der Prioritätsregel (leeres `bildId`, `capId` VOR `ankerId`) und ERSETZTE die leere innere
+// Die eindeutig übrig gebliebene äußere Fußnote mit `Y` wurde danach über die damalige Stufe 2b
+// gepaart (seit JOB 916 abgelöst — sie paarte fremd gekennzeichnete Fußnoten; siehe den
+// Regelabschnitt über `paare()`), gewann in der damaligen Prioritätsregel und ERSETZTE die leere innere
 // Fußnote samt ihrer Kennung `X`. Text ging dabei nicht verloren — ZUORDNUNGSWAHRHEIT schon: `X` war
 // weg, und `Y` behauptete eine Zugehörigkeit, die niemand belegt hatte.
 //
@@ -584,7 +591,7 @@ function vertraeglich(a: string, b: string): boolean {
  *     ersetzt. Sie ist die zurückgegebene `fussnote`.
  * Alles andere schließt: mehrere direkte Fußnoten (welche gälte?), irgendein gefüllter Text (er ist
  * die Beschreibung dieses Bildes), eine widersprüchliche Kennung (jede Zuordnung überschriebe eine
- * vorhandene Wahrheit — dieselbe Stelle, die Stufe 2b schon nicht biegt).
+ * vorhandene Wahrheit — dieselbe Regel, die seit JOB 916 auch in `paare()` ohne Ausnahme gilt).
  *
  * Was hier NICHT geprüft wird, und das ist Absicht: die Kennung der EINGEHENDEN Fußnote. Sie ist zu
  * diesem Zeitpunkt noch nicht bekannt; ihr Abgleich steht in `gemeinsameKennung` (H2-01).
@@ -769,13 +776,19 @@ function flacheFigurenHtml(figure: EditableElement, neueKennung: () => string): 
     const fussnote = fussnoteFuer.get(teil.el) ?? null;
     const bildId = kennungVon(teil.el);
     const capId = fussnote === null ? "" : kennungVon(fussnote);
-    // Vorhandene Kennung des BILDES gewinnt; sonst die der zugeordneten Fußnote (Stufe 2b); sonst neu.
-    const id = bildId !== "" ? bildId : capId !== "" ? capId : neueKennung();
+    // Vorhandene Kennung des BILDES gewinnt; sonst eine neue.
+    //
+    // JOB 916: hier stand als Mittelglied `capId !== "" ? capId` — der Ausgabe-Zwilling von
+    // Stufe 2b. Er ist mit ihr ENTFALLEN und war danach unerreichbar: ein Bild ohne eigene Kennung
+    // bekommt eine Fußnote nur noch über Stufe 2, und die nimmt ausschließlich Fußnoten OHNE
+    // Kennung — `capId` ist in diesem Zweig also zwangsläufig leer. Ihn stehen zu lassen hieße,
+    // die abgelöste Regel als toten Pfad weiterzuführen.
+    const id = bildId !== "" ? bildId : neueKennung();
     teil.el.setAttribute("data-image-id", id);
     let fussnoteHtml = `<figcaption data-image-id="${id}"></figcaption>`;
     if (fussnote !== null) {
       // Die vorhandene Fußnote wird MITSAMT ihrer Auszeichnung übernommen (mega84 Block B). Ihre
-      // Kennung wird NUR gesetzt, wenn sie keine hat — nach Stufe 1 und 2b ist sie sonst bereits
+      // Kennung wird NUR gesetzt, wenn sie keine hat — nach Stufe 1 ist sie sonst bereits
       // identisch, und ein Überschreiben wäre genau der Schaden aus sammel89.
       if (capId === "") {
         fussnote.setAttribute("data-image-id", id);

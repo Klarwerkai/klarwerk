@@ -42,8 +42,20 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 //       den Unberechtigten ununterscheidbar. Laege das Tor dahinter, verriete die Antwortzeit
 //       oder ein abweichender Status, ob es die Sache gibt.
 //
+//   (5) SEITENEFFEKTFREIHEIT — die abgewiesene Anfrage hinterlaesst nichts. ERGAENZT IN JOB 830 D2
+//       auf die Auflage von BEN JOB 830 D1: „`explore`, `select`, `group`, `apply` benoetigen den
+//       beschriebenen exakten 403-/SEITENEFFEKTvertrag." Die Punkte (1) bis (4) belegen, WAS die
+//       Antwort sagt; keiner von ihnen belegt, was die Anfrage im Bestand ANRICHTET.
+//
+//       Warum das eine eigene Zusage ist: Die vier Routen legen auf ihrem Erfolgsweg Dinge an —
+//       `confluence-import-routes.ts:155` `importRuns.insertIfAbsent(lauf)` und `:807`
+//       `library.createImportCandidates(...)`. Ein Guard, der zwar 403 sendet, den Fachweg aber
+//       vorher schon angestossen hat, waere an allen vier obigen Punkten gruen und trotzdem
+//       falsch. Genau diese Luecke schliesst (5).
+//
 // AUSDRUECKLICH NICHT ENTSCHIEDEN: Die Rechtewahl **E1b** — ob `users.manage` das RICHTIGE Recht
-// ist. Dieser Vertrag pinnt das heute im Produkt verlangte Recht, nichts weiter.
+// ist. Dieser Vertrag pinnt das heute im Produkt verlangte Recht, nichts weiter. BEN JOB 830 D1
+// haelt ausdruecklich fest: „`users.manage` ist Iststand, nicht Freigabe."
 
 const ADMIN = {
   name: "Admin 876",
@@ -240,4 +252,84 @@ describe("JOB 876 D2 · Rechtetor R2–R5: das Tor liegt VOR der Objektaufloesun
       expect(b.body, "die Koerper unterscheiden sich nach Existenz").toBe(a.body);
     });
   }
+});
+
+// Der Weg, auf dem ein Seiteneffekt dieser vier Routen ueberhaupt sichtbar wuerde.
+//
+// NICHT `/api/kos`: Die Routen legen bei Erfolg **Review-Kandidaten** an, keine Wissensobjekte —
+// `confluence-import-routes.ts:713` sagt es woertlich („createImportCandidates → Review-Queue")
+// und `:807` ruft es auf. Eine Nullmessung an `/api/kos` waere gruen geblieben, egal wie viele
+// Kandidaten entstehen; sie haette die Zusage nur vorgetaeuscht. Gemessen wird deshalb die
+// Review-Queue selbst (`library-routes.ts:261`).
+const KANDIDATEN = "/api/library/import/candidates";
+
+describe("JOB 830 D2 · Rechtetor R2–R5: die abgewiesene Anfrage hinterlaesst nichts", () => {
+  // Bauform aus `w2a-import-run-routes-148.test.ts:263-270`: Bestandszahl vorher == nachher,
+  // gelesen MIT Adminrecht — der Unberechtigte darf den Bestand ja gar nicht sehen, sonst
+  // pruefte der Fall erneut nur das Tor.
+  for (const route of ROUTEN) {
+    it(`${route.name} — kein Bestandszuwachs nach der Verweigerung`, async () => {
+      const { app, headers } = await appMitAdmin();
+      const bea = await ohneRecht(app, headers);
+
+      const vorher = await app.inject({ method: "GET", url: KANDIDATEN, headers });
+      expect(vorher.statusCode, vorher.body).toBe(200);
+      const bestandVorher = (vorher.json() as unknown[]).length;
+
+      const abgewiesen = await app.inject({
+        method: "POST",
+        url: route.url,
+        headers: bea,
+        payload: {
+          spaceKey: "KWMARKE-SPACE-830",
+          candidateId: "KWMARKE-ID-830",
+          criteria: { thema: "KWMARKE-THEMA-830" },
+          selectedCandidateIds: ["KWMARKE-ID-830"],
+          includeIds: ["KWMARKE-ID-830"],
+        },
+      });
+      expect(abgewiesen.statusCode, abgewiesen.body).toBe(403);
+
+      const nachher = await app.inject({ method: "GET", url: KANDIDATEN, headers });
+      expect(nachher.statusCode, nachher.body).toBe(200);
+      expect(
+        (nachher.json() as unknown[]).length,
+        `${route.name}: die verweigerte Anfrage hat einen Kandidaten angelegt`,
+      ).toBe(bestandVorher);
+    });
+  }
+
+  it("die Messung ist nicht vakuoes: derselbe Leseweg sieht einen echten Zuwachs", async () => {
+    // OHNE DIESEN FALL waere die Zusage oben wertlos. Bliebe die Review-Queue aus einem
+    // beliebigen Grund immer leer — falsche Rolle, veraenderte Antwortform, anderer Speicher —,
+    // dann waere „vorher == nachher" auch dann gruen, wenn die vier Routen munter Kandidaten
+    // anlegten. Hier wird belegt, dass GENAU DIESER Leseweg einen Zuwachs ueberhaupt anzeigt.
+    const { app, headers } = await appMitAdmin();
+
+    const vorher = await app.inject({ method: "GET", url: KANDIDATEN, headers });
+    expect(vorher.statusCode, vorher.body).toBe(200);
+    const bestandVorher = (vorher.json() as unknown[]).length;
+
+    const angelegt = await app.inject({
+      method: "POST",
+      url: KANDIDATEN,
+      headers,
+      payload: {
+        items: [
+          {
+            title: "KWMARKE-KONTROLLE-830",
+            statement: "Kontrolllauf fuer die Bestandsmessung",
+            type: "best_practice",
+          },
+        ],
+      },
+    });
+    expect(angelegt.statusCode, angelegt.body).toBe(201);
+
+    const nachher = await app.inject({ method: "GET", url: KANDIDATEN, headers });
+    expect(
+      (nachher.json() as unknown[]).length,
+      "der Leseweg zeigt keinen Zuwachs — dann traegt die Nullmessung oben nicht",
+    ).toBe(bestandVorher + 1);
+  });
 });

@@ -51,8 +51,10 @@ import type {
   ReasonerProbeResult,
   ReasonerReachability,
   ReasonerStatus,
+  ReasonerTask,
   ReasonerTaskChoice,
   ReasonerTaskConfig,
+  ReasonerTaskMap,
   StructureResult,
 } from "./types";
 
@@ -95,16 +97,27 @@ const VALID_CHOICES: readonly ReasonerTaskChoice[] = [
 
 // WP-BILD-1c: die EINE Task-Liste für Policy-Validierung und KI-Verwaltungs-Anzeige (vorher drei
 // Inline-Kopien). "describe" = KI-Bildbeschreibungs-Vorschlag (nur mit Vision-fähigem Cloud-Client).
-export const REASONER_TASKS = [
-  "structure",
-  "assist",
-  "interview",
-  "answer",
-  "select",
-  "extract",
-  "describe",
-  "group",
-] as const;
+//
+// JOB 615 D7: Die Liste steht jetzt in `./types` (dort steht auch, warum genau dort) und wird hier
+// nur DURCHGEREICHT. Kein zweiter Wortlaut, keine Drift — `tests/reasoner/
+// job615-public-status-task-contract.test.ts` macht eine wiederkehrende zweite Liste gezielt rot.
+// Importiert UND re-exportiert: die Datei benutzt die Liste selbst (publicStatus, configStatus),
+// und `services/reasoner/index.ts:10` holt sie weiterhin von hier.
+import { REASONER_TASKS } from "./types";
+export { REASONER_TASKS };
+
+// JOB 615 D7: baut eine VOLLSTÄNDIGE Karte über die geschlossene Aufgabenmenge.
+//
+// Vorher stand hier `Object.fromEntries(...)`. Dessen Rückgabetyp ist `{ [k: string]: T }` — genau
+// darüber entstand die offene Signatur `Record<string, boolean>`, in der ein Tippfehler nicht
+// auffällt, sondern als `undefined` bis zur Oberfläche reist und dort still einen Knopf ausgraut.
+// Der `reduce` schreibt in ein Ziel geschlossener Form; fehlt eine Aufgabe, ist das ein Typfehler.
+function aufgabenKarte(wert: (task: ReasonerTask) => boolean): ReasonerTaskMap {
+  return REASONER_TASKS.reduce((karte, task) => {
+    karte[task] = wert(task);
+    return karte;
+  }, {} as ReasonerTaskMap);
+}
 
 // WP-IC-4: harte Server-Kappung der KI-Gruppierung — mehr Kandidaten je Aufruf lehnt die Route
 // mit einer ehrlichen Meldung ab (weiter eingrenzen), statt still zu kappen.
@@ -818,17 +831,17 @@ export class Reasoner {
     active: boolean;
     mode: "cloud" | "local" | "deterministic";
     reachable: ReasonerReachability;
-    tasks: Record<string, boolean>;
-    billable: Record<string, boolean>;
+    tasks: ReasonerTaskMap;
+    billable: ReasonerTaskMap;
   } {
     const active = this.usingAnyModel();
     return {
       active,
       mode: this.usingPrimary() ? "cloud" : this.usingSecondary() ? "local" : "deterministic",
       reachable: this.reachabilityState(),
-      tasks: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.taskModelUsable(task)])),
+      tasks: aufgabenKarte((task) => this.taskModelUsable(task)),
       // AUFTRAG-mega67 BLOCK G: kostet ein Klick auf DIESE Aufgabe wirklich Geld? (s. taskBillable)
-      billable: Object.fromEntries(REASONER_TASKS.map((task) => [task, this.taskBillable(task)])),
+      billable: aufgabenKarte((task) => this.taskBillable(task)),
     };
   }
 

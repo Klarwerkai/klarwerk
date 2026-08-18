@@ -98,13 +98,23 @@ describe("AUFTRAG-mega89 Block B: die Galerie paart über die Kennung, nicht üb
     ]);
   });
 
-  it("bei EINEM Bild bleibt die Zuordnung genau wie bisher — auch bei abweichender Kennung", () => {
-    // Kein Rückschritt an einer Stelle, die nie kaputt war: in einer figure mit genau EINEM Bild
-    // ist „die Fußnote dieser figure" eindeutig, unabhängig von der Kennung.
+  // ── JOB 916: DIESER FALL IST ABGELÖST UND DURCH SEINE UMKEHRUNG ERSETZT ────────────────────────
+  //
+  // Hier stand: „bei EINEM Bild bleibt die Zuordnung genau wie bisher — auch bei abweichender
+  // Kennung", begründet mit „Kein Rückschritt an einer Stelle, die nie kaputt war: in einer figure
+  // mit genau EINEM Bild ist ‚die Fußnote dieser figure' eindeutig, unabhängig von der Kennung."
+  //
+  // Eindeutig war daran nur die STELLE, nicht die ZUGEHÖRIGKEIT. Eine Fußnote mit fremder
+  // `data-image-id` sagt ausdrücklich, zu welchem Bild sie gehört — und das ist ein anderes. Die
+  // Galerie zeigte unter dem Bild eine Beschreibung, die nachweislich nicht seine war; die Stelle
+  // war also nicht „nie kaputt", sondern ihr Schaden war nur nie gemessen worden.
+  //
+  // Der Fall wird nicht ersatzlos gestrichen, sondern UMGEDREHT: die Konstellation bleibt
+  // abgedeckt, nur trägt sie jetzt die geltende Zusage. Ein Streichen hätte eine Lücke
+  // hinterlassen, in der weder das alte noch das neue Verhalten gemessen wäre.
+  it("bei EINEM Bild wandert eine fremd gekennzeichnete Fußnote ebenfalls NICHT an es", () => {
     const html = `<figure><img src="${A}" data-image-id="kw-img-alt-1"><figcaption data-image-id="kw-img-fremd-9">Riefen in Laufrichtung</figcaption></figure>`;
-    expect(extractBodyImages(html)).toEqual([
-      { id: "kw-img-alt-1", src: A, caption: "Riefen in Laufrichtung" },
-    ]);
+    expect(extractBodyImages(html)).toEqual([{ id: "kw-img-alt-1", src: A, caption: "" }]);
   });
 
   it("ein Bild außerhalb jeder figure kommt weiterhin NICHT in die Galerie", () => {

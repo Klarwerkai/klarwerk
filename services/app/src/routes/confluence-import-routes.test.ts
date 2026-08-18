@@ -62,7 +62,7 @@ describe("SCRUM-510 WP2: POST /api/admin/import/confluence", () => {
     expect(res.statusCode).toBe(401);
   });
 
-  it("Flag ON, Nicht-Admin → abgelehnt (kein Import-Zugang)", async () => {
+  it("Flag ON, registriert aber nicht freigegeben → 401 (Anmeldetor, nicht Rechtetor)", async () => {
     process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
     const app = buildApp(buildServices());
     // erster User ist Admin (Bootstrap); ein ZWEITER ist ein normaler Nutzer ohne users.manage
@@ -88,8 +88,19 @@ describe("SCRUM-510 WP2: POST /api/admin/import/confluence", () => {
       headers: { authorization: `Bearer ${login.json().token ?? ""}` },
       payload: {},
     });
-    // Abgelehnt (401 unbestätigt / 403 kein users.manage) — jedenfalls KEIN 2xx.
-    expect(res.statusCode).toBeGreaterThanOrEqual(400);
+    // JOB 832 D2 — DIE ZWEIDEUTIGKEIT IST AUFGELÖST, GEMESSEN STATT VERMUTET.
+    //
+    // Hier stand `toBeGreaterThanOrEqual(400)` mit dem Kommentar „401 unbestätigt / 403 kein
+    // users.manage" — der Fall wusste selbst nicht, welches Tor er trifft, und blieb deshalb grün,
+    // egal welches greift. Nachgemessen: es ist **401**. Der zweite Nutzer wird nur registriert und
+    // bleibt bis zur Admin-Freigabe INAKTIV; er kommt gar nicht bis zur Rechteprüfung.
+    //
+    // Damit ist dieser Fall ein ANMELDE-Beleg, kein Rechte-Beleg — und er wird jetzt als solcher
+    // festgeschrieben (exakte Zahl statt Bereich, also strenger, nicht lockerer). Der kausale
+    // Rechtepfad mit einer FREIGEGEBENEN Identität ohne `users.manage` liegt in
+    // `tests/security/import-guard-kausal-403.test.ts`.
+    expect(res.statusCode).toBe(401);
+    expect(res.json().error).toBe("UNAUTHENTICATED");
     expect(res.statusCode).not.toBe(404); // Route existiert (Flag AN) — die Ablehnung ist Auth, kein Fehl-Routing
   });
 
@@ -209,7 +220,13 @@ describe("WP-E: kein Doppel-Send/Crash auf der Import-Route (KLARWERK_ADDON_API=
     }
   });
 
-  it("Guard-Pfad (ohne users.manage) → genau eine Antwort, keine Doppel-Sendung", async () => {
+  // JOB 832 D2: Der Titel hieß „Guard-Pfad (ohne users.manage)" und prüfte `401`/`UNAUTHENTICATED`.
+  // Der FALL ist richtig — er prüft die Doppelsendung, und dafür genügt jedes Guardurteil. Sein
+  // Titel war es nicht: wer die Testliste überfliegt, hielt damit das RECHTEtor für abgedeckt,
+  // obwohl hier das ANMELDEtor gemessen wird (der Kommentar unten sagt es seit jeher richtig).
+  // Nur der Name ist angeglichen; Aufbau und Erwartungen sind unverändert. Der kausale Rechtepfad
+  // liegt in `tests/security/import-guard-kausal-403.test.ts`.
+  it("Guard-Pfad (ohne Anmeldung) → genau eine Antwort, keine Doppel-Sendung", async () => {
     const rejections = await withRejectionSpy(async () => {
       const { app } = await wpEApp(new Error("egal"));
       // ohne Session → requirePermission sendet 401; der Handler darf danach nichts mehr senden.

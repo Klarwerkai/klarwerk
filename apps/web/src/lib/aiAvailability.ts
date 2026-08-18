@@ -8,7 +8,7 @@
 // AUSNAHME (NICHT hierüber ausgrauen): die Duplikat-/Konfliktprüfung. Ihre deterministische Ebene
 // läuft IMMER (Kernfunktion, Pedi) — nur die echten LLM-Funktionen (Struktur, Assist, Bildbeschreibung,
 // Gruppierung, Ask/Klara, Extraktion) werden hier gesteuert.
-import type { ReasonerStatus } from "../api/types";
+import type { ReasonerStatus, ReasonerTask } from "../api/types";
 
 export interface AiAvailability {
   // true = für diese Aufgabe ist ein nutzbares Modell vorhanden (Cloud/Lokal), LLM-Aktion erlaubt.
@@ -26,9 +26,12 @@ export interface AiAvailability {
 // „zuletzt unerreichbar" graut weiter aus (`unverified` zählt als nutzbar — kein Fake-Grau beim
 // Start). Fehlt die per-Task-Karte (alte Antwort), entscheidet der globale Status (aktiv UND nicht
 // deterministisch). Kein Provider-/Modellname nötig (vip2-gate).
+// JOB 615 D7: `task` ist der geschlossene Aufgabentyp, nicht mehr ein freier String. Ein
+// verschriebener Name erreicht diese Funktion damit gar nicht erst — vorher wurde er zu einem
+// `undefined`-Kartenwert und graute still einen Knopf aus (BEN-PRUEFUNG-JOB-615-D6.md §4).
 export function deriveAiAvailable(
   status: Pick<ReasonerStatus, "active" | "mode" | "reachable" | "tasks"> | undefined,
-  task: string,
+  task: ReasonerTask,
 ): boolean {
   if (!status) {
     return false;
@@ -64,9 +67,10 @@ export function deriveAiAvailable(
 // MEHRERE AUFGABEN: manche Flächen tragen EINEN Hinweis für zwei Auslöser in derselben Umrandung
 // (CaptureFrontDoor: „Vorschlag strukturieren" + „KI-Hilfe anwenden"). Kostet EINER von beiden,
 // muss der Satz stehen — sonst klickt jemand den teuren, ohne gewarnt zu sein.
+// JOB 615 D7: dieselbe Verengung wie oben — auch in der Mehrfachform, die AiCostHint benutzt.
 export function deriveAiBillable(
   status: Pick<ReasonerStatus, "billable"> | undefined,
-  task: string | readonly string[],
+  task: ReasonerTask | readonly ReasonerTask[],
 ): boolean {
   if (!status?.billable) {
     return false;

@@ -152,6 +152,19 @@ describe("uxpol3: Capture-Dateityp-Seam (echte Produktionskomponente gemountet)"
 
   it("(d) geplant-Kacheln (Excel/Audio-Video) öffnen NICHTS und zeigen nur den ehrlichen Hinweis", () => {
     mount();
+    // D-045 (JOB 1021/D5): Seit der Default-Ablösung liegen die geplanten Kacheln im Erfassen
+    // hinter dem Aufklapper — `CaptureFileImport` reicht bewusst KEIN `collapsePlanned` durch und
+    // misst damit den neuen Standard. Der Aufklapper wird hier geöffnet, WEIL die Zusage dieses
+    // Falles die geplanten Kacheln selbst betrifft, nicht ihre Erreichbarkeit. Es ist kein
+    // gelockerter Anspruch: jede Zusicherung unten steht unverändert; nur der Weg zur Kachel führt
+    // jetzt über eine Aktivierung — und dass sie dort ankommt, belegt der Fall gleich mit.
+    const aufklapper = container?.querySelector('[data-testid="planned-disclosure"]');
+    if (!(aufklapper instanceof HTMLButtonElement)) {
+      throw new Error("Aufklapper für geplante Formate fehlt im gemounteten Erfassen-Baum");
+    }
+    act(() => {
+      aufklapper.click();
+    });
     for (const id of CAPTURE_PLANNED) {
       clickSpy.mockClear();
       act(() => {

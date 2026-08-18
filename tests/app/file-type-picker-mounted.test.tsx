@@ -64,10 +64,18 @@ function tileById(id: string): HTMLButtonElement {
 
 describe("FileTypePicker — aktiv löst echten Fluss aus, bald/geplant nie (Ehrlichkeit)", () => {
   beforeEach(() => {
+    // D-045 (JOB 1021/D5): BEWUSST ALTMODUSGEBUNDENER MOUNT. Seit der Default-Ablösung klappt
+    // `FileTypePicker` geplante Formate ohne Prop ein. Fall (c) unten klickt aber eine
+    // „geplant"-Kachel unmittelbar — er prüft die Ehrlichkeitszusage aus IC-7, nicht das
+    // Aufklappverhalten. `collapsePlanned={false}` hält hier deshalb genau den bisherigen
+    // sichtbaren Modus fest; der NEUE Default wird in
+    // `tests/app/file-type-picker-planned-default.test.tsx` gemessen. Keine Erwartung ist
+    // gelockert — nur der Modus ist jetzt ausgesprochen statt stillschweigend.
     mount(
       createElement(FileTypePicker, {
         sources: FILE_SOURCES,
         onActivate: (id: string) => activated.push(id),
+        collapsePlanned: false,
       }),
     );
   });
