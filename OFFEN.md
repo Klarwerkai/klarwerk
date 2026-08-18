@@ -34,6 +34,35 @@ Diese Datei liegt im Repository, nicht in einem Chat-Gedächtnis und nicht in ei
 
 **Ganz oben, weil es Fragen sind und keine Berichte.** Alles hier wartet auf eine Entscheidung oder einen Handgriff von Pedi; niemand sonst kann es tun. Sortiert nach Frist, nicht nach Alter.
 
+### 1a-KA — KLARA ALS VOLLWERTIGE ASSISTENTIN (Pedis Richtungsbeschluss, 18.08.2026)
+
+Beschlossen von Pedi am Abend des 18.08. gemeinsam mit der Werkstatt; Vollfassung in
+`Projekt_klarwerk/00_CONTROL/AUSTAUSCH/werkstatt-klara-assistentin-beschlossen-20260818.md`.
+**Word-Vertiefung vor allem anderen, M6/M7 zurückgestellt.** Zwei Weichen hat Pedi persönlich
+gestellt: (1) Dokumenttext an externe KI **ja**, aber nur mit ausdrücklicher Einwilligung je
+Dokument — Klara darf aktiv fragen, Vertrauliches bleibt immer draußen (damit ist S4
+entschieden); (2) Aufmerksamkeit **auf Anlass** (Öffnen und Schreibpausen, hausintern) mit
+leisen Angebotskarten, **nie unterbrechen**.
+
+Leitbild, wörtlich verankert: eine vollwertige Assistentin · die mitdenkt wie die Assistenten
+alter Schule · die Rettungsschwimmerin, die **nie mit Halbwissen bedient** · neue Maßstäbe,
+„die Sterne sind unser Ziel".
+
+Baureihenfolge ist der Anker: **KA1 bis KA4 sofort**, KA5/KA6 nach KA4, KA7 erst nach der
+Dubletten-Kette, KA8 nach KA6. Abgrenzungen ausdrücklich: Die Dubletten-Kette (JOB 989/686/631)
+wird **gelesen, nicht angefasst**; JOB 639 bleibt eigenständig; K7 ist erledigt.
+
+| Kennung | Zustand | Anker | Sache | Warum |
+|---|---|---|---|---|
+| KA1 | OFFEN | SOFORT | **Dokument-Begriffsbild, hausintern:** Aus dem ganzen Dokument (der Ganzes-Dokument-Leseweg in `apps/web/public/word-addin/taskpane.html` existiert) werden Suchbegriffe gewonnen — mit derselben Tokenisierung wie die Suche (`services/knowledge-object/src/search-projection.ts`), OHNE externe KI, ohne Egress. Gebaut, wenn: das Panel zu einem offenen Dokument eine Begriffsliste hält, ohne dass ein Modellaufruf stattfindet | Grundstein jeder Assistenz: Klara muss wissen, worum es gerade geht — zum Nulltarif und ohne Vertraulichkeitsfrage |
+| KA2 | OFFEN | SOFORT | **Bestandsblick „Gibt es dazu schon etwas?":** Die KA1-Begriffe fragen den validierten Bestand über die bestehende Frage-/Suchmechanik ab (`services/app/src/routes/ask-routes.ts`, deterministischer Pfad `answerRetrievalOnly`, `services/reasoner/src/service.ts:1119`); das Panel zeigt Treffer mit Status. AUSDRÜCKLICH: nutzt die bestehende Suche, fasst die Dubletten-Kette (JOB 989/686/631, `services/app/src/routes/check-text-routes.ts`) NICHT an | Das Homeoffice-Beispiel von Pedi: „Hier gibt es schon diese Anweisung" — der erste sichtbare Assistentin-Moment |
+| KA3 | OFFEN | SOFORT | **Angebotskarten statt Unterbrechung:** Beim Panel-Öffnen und nach Schreibpausen (Tastenruhe-Debounce, Richtwert 30 s) erneuert Klara den Bestandsblick leise; Ergebnisse erscheinen als Karten („Dazu gibt es schon: … — Ansehen") in `apps/web/public/word-addin/taskpane.html`; kein Popup, kein Fokusraub, Texte dreisprachig in `apps/web/src/i18n.ts`. Gebaut, wenn: die Karte kommt und geht, ohne dass der Anwender je den Cursor verliert | Pedis Anti-Aktionismus-Auflage — Hilfe wird angeboten, nie aufgedrängt |
+| KA4 | OFFEN | SOFORT | **Einwilligung je Dokument + aktives Fragen (setzt Pedis S4-Entscheid um):** Karte/Schalter „Externe KI für dieses Dokument erlauben"; Klara darf aktiv fragen, wenn eine Aufgabe die externe KI braucht („Dafür brauche ich die externe KI — darf ich dieses Dokument senden? Vertraulich Markiertes bleibt hier."); ein Nein wird gemerkt und nicht wiederholt erfragt. Serverseitig hebt die Einwilligung die Zwangsflags `validatedOnly`/`retrievalOnly` in `services/app/src/routes/ask-routes.ts:179-200` NUR für die eingewilligte Sitzung+Dokument, protokolliert; vertraulich Markiertes wird weiter hart abgestreift (bestehendes dropConfidential-Muster). Gebaut, wenn: ohne Einwilligung verhält sich der Server bytegleich wie heute (Red-first-Test) | Die eine Weiche, die die ganze Schreib-Stufe entsperrt — mit dem Sicherheitsversprechen, das Klara von allen anderen Assistenten unterscheidet |
+| KA5 | OFFEN | NACH-KA4 | **Fragen an Dokument und Markierung:** Frage im Panel nimmt optional die Markierung oder das KA1-Begriffsbild als Kontext mit; die Antwortkette trägt den Kontext bereits (`services/reasoner/src/service.ts:1089-1103`, `answer(question, context, …)`); mit KA4-Einwilligung antwortet die externe KI dokumentbezogen, ohne sie wie heute quellengebunden aus dem Bestand. Gebaut, wenn: dieselbe Frage mit und ohne Markierung nachweislich verschiedene, quellenbelegte Antworten trägt | „Wenn ich Klara frage: hast du Information dazu?" — jetzt versteht sie, wozu |
+| KA6 | OFFEN | NACH-KA4 | **Schreiben auf Zuruf — erstellen, vervollständigen, umformulieren:** nur mit KA4-Einwilligung; das Ergebnis erscheint IMMER als Vorschlag im Panel und wird erst auf Klick eingefügt (der Einfüge-Weg im Taskpane existiert); jede eingefügte Passage trägt ihre Herkunft (validierte Quelle bzw. Kennzeichnung als KI-Formulierung — bestehendes „KI-ENTWURF"-Kennzeichnungsmuster). Klara schreibt NIE selbsttätig ins Dokument. Fläche: `apps/web/public/word-addin/taskpane.html`. Gebaut, wenn: ein leeres Dokument per Zuruf zu einem gekennzeichneten Entwurf wird, ohne einen einzigen ungefragten Schreibzugriff | Pedis Kernwunsch („hilf mir, den Text zu erstellen") — im Rahmen der Rettungsschwimmer-Regel |
+| KA7 | OFFEN | NACH-DUBLETTEN-KETTE | **Widerspruchs-Hinweis:** Sobald die Dubletten-Kette (JOB 989 ff., `check-text-routes.ts`) konvergiert ist, bewertet die Angebotskarte Abweichungen ausdrücklich („Deine Formulierung weicht ab von: [validierte Anweisung]"). KEINE neue Vergleichslogik im Add-in — es zeigt Serverbefunde. Quelle der Befunde: `services/app/src/routes/check-text-routes.ts`, Fläche `apps/web/public/word-addin/taskpane.html`. Bis dahin zeigt KA2 Treffer ohne Wertung | Pedis Beispiel „hier gibt es diesen Konflikt" — wartet bewusst auf die laufende Kette, statt sie zu doppeln |
+| KA8 | OFFEN | NACH-KA6 | **Vorausdenken, erste Stufe:** Nach dem Einreichen eines Entwurfs bietet Klara den nächsten sinnvollen Schritt an (bestehende Zustandsflächen: Punkt-für-Punkt-Einreichung, Prüfweg, offene Lücken) — eine Karte, ein Satz, ein Klick. Fläche: `apps/web/public/word-addin/taskpane.html`, Texte `apps/web/src/i18n.ts`. Gebaut, wenn: nach „Als Entwurf senden" eine belegte Nächster-Schritt-Karte erscheint | Der Anfang von Pedis „Assistentin, die den übernächsten Schritt kennt" — klein geschnitten, damit das Muster trägt |
+
 ### 1a — Vor morgen 14:00
 
 | Kennung | Zustand | Anker | Sache | Warum |
