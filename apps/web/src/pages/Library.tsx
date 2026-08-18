@@ -72,6 +72,18 @@ import {
   saveLibraryView,
 } from "../lib/libraryFacets";
 import { type MaturityTone, libraryMaturity, libraryUseCta } from "../lib/libraryMaturity";
+// JOB 381: der Geltungsbereich der Bibliothek. Die Entscheidung „gehoert mir" faellt AUSSCHLIESSLICH
+// dort — inklusive der Messung, warum weder `author` noch `originalAuthor` die Erstellerkennung ist.
+import {
+  ALLE_INHALTE_LABEL,
+  DEFAULT_LIBRARY_SCOPE,
+  LIBRARY_SCOPE_PARAM,
+  type LibraryScope,
+  MEINE_ABLAGE_LABEL,
+  SCOPE_BAR_LABEL,
+  applyLibraryScope,
+  parseLibraryScope,
+} from "../lib/libraryOwnScope";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../lib/libraryQuery";
 import { type MatchField, searchLibrary } from "../lib/librarySearch";
 import {
@@ -365,6 +377,15 @@ export function Library(): JSX.Element {
   // seit v0.9.12 (DELETE /api/kos/:id prüft Autor-oder-ko.validate serverseitig).
   const { role } = useRole();
   const { user } = useSession();
+  // ============================================================================================
+  // JOB 381 — DER GELTUNGSBEREICH LEBT IN DER ADRESSE, NICHT IN EINEM ZWEITEN ZUSTAND.
+  // ============================================================================================
+  //
+  // Bewusst KEIN `useState` daneben: die Adresse ist bereits die Wahrheit dieser Seite (Facetten,
+  // Bereich und `q` liegen dort). Ein zweiter Zustand muesste mit ihr abgeglichen werden, und der
+  // Reload-Fall (`R-18`: „ein Neuladen stellt denselben Geltungsbereich wieder her") faellt so
+  // ohne eigenen Effekt heraus — die Adresse IST der Speicher.
+  const scope = parseLibraryScope(params.get(LIBRARY_SCOPE_PARAM));
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
 
   // D-BIB gespeicherte Sichten: benannt, LOKAL je Nutzer (localStorage-Muster wie die
@@ -466,7 +487,11 @@ export function Library(): JSX.Element {
   // Grund: die Filterschiene steht ab sofort NEBEN der Trefferliste, nicht darin. Läge sie weiter im
   // children-Slot von QueryState, verschwände sie (samt Suchfeld) bei jedem Lade- und Fehlerzustand —
   // dann könnte man aus einem Fehler nicht mehr heraussuchen. Die Rechnung selbst ist unverändert.
-  const koItems = query.data ?? [];
+  // JOB 381: der Geltungsbereich wirkt auf die ECHTE Treffermenge, und zwar HIER — vor Relevanz,
+  // Facetten, Sortierung und Fensterung. Damit traegt er durch jede abgeleitete Anzeige (Zaehler,
+  // Gruppen, Leerzustand), statt nur die Liste zu kuerzen. Eine Fassung, die stattdessen nur den
+  // URL-Parameter schriebe, waere die Attrappe, die Pedis Entscheidung ausdruecklich ausschliesst.
+  const koItems = applyLibraryScope(query.data ?? [], scope, user?.id);
   // SCRUM-245: client-seitig nach nachvollziehbarer Relevanz re-ranken (verwirft nichts).
   const ranked = searchLibrary(koItems, trimmedQ);
   // Die Werte je KO kommen aus der je Datenlauf memoisierten Ableitung (facetBase) — nur Lookups je
@@ -509,6 +534,32 @@ export function Library(): JSX.Element {
   // Eine Filter-/Suchänderung setzt das Fenster zurück — sonst zeigte die Liste nach dem Filtern
   // weiter 600 Zeilen, obwohl der Nutzer gerade eingegrenzt hat.
   const resetWindow = (): void => setWindowLimit(LIBRARY_RESULT_LIMIT);
+  // ============================================================================================
+  // JOB 381 — DAS UMSCHALTEN DES GELTUNGSBEREICHS.
+  // ============================================================================================
+  //
+  // `replace: true` wie der Facetten-Effekt daneben: Umschalten ist eine Sicht-Anpassung, kein
+  // Ortswechsel — sonst stolperte der Zurueck-Knopf durch jede Umschaltung. `prev` wird KOPIERT
+  // und nur der eine Schluessel angefasst, damit fremde Parameter (`q`, Facetten, geteilte Links)
+  // unberuehrt bleiben. Der Fokus bleibt dabei auf der gedrueckten Schaltflaeche (`A-6`/`R-18`):
+  // es aendert sich nur ein Suchparameter, die Seite wird nicht neu montiert.
+  const setScope = (next: LibraryScope): void => {
+    resetWindow();
+    setParams(
+      (prev) => {
+        const nextParams = new URLSearchParams(prev);
+        if (next === DEFAULT_LIBRARY_SCOPE) {
+          // Der Standard steht NICHT in der Adresse: ein `?raum=alle` waere Rauschen in jedem
+          // geteilten Link und liesse den Standard wie eine getroffene Wahl aussehen.
+          nextParams.delete(LIBRARY_SCOPE_PARAM);
+        } else {
+          nextParams.set(LIBRARY_SCOPE_PARAM, next);
+        }
+        return nextParams;
+      },
+      { replace: true },
+    );
+  };
   const onToggleFacet = (key: string, value: string): void => {
     resetWindow();
     setFacetSel((prev) =>
@@ -550,6 +601,59 @@ export function Library(): JSX.Element {
           doppelte Feld-Id im DOM. Die Schiene filtert, die Kopfzeile sucht. Das mobile Filterblatt
           (mega47/48) ist unberührt: es zeigt weiter alle Filter, und das Suchfeld steht darüber auf
           der Seite selbst — erreichbar, ohne das Blatt zu öffnen. */}
+      {/* ==========================================================================================
+          JOB 381 — DIE ORTSZEILE: WORIN WIRD GERADE GESUCHT.
+          ==========================================================================================
+          Sie steht ÜBER dem Suchfeld und nicht darunter, weil sie benennt, WORIN gesucht wird —
+          `R-17` misst genau diese y-Position, und die Tabreihenfolge folgt damit der Leserichtung
+          (`A-9`). Sie steht auf der SEITE und nie im Filterblatt: „Die Schiene filtert, die
+          Kopfzeile sucht" (`R-19`); der Geltungsbereich ist kein Filter, sondern die Angabe des
+          Bestands, auf den sich alles andere bezieht.
+
+          Zwei echte `button[aria-pressed]` und nie ein Auswahlmenü — auch schmal nicht (`R-19`).
+          Ein `select` wäre auf kleinen Geräten die naheliegende Sparform, verstecken aber genau
+          die Angabe, die hier sichtbar bleiben soll.
+
+          Die Reihenfolge „Meine Ablage" vor „Alle Inhalte" ist Pedis Entscheidung, nicht Geschmack
+          (`ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`, Tabelle). */}
+      <div
+        data-testid="library-scope-bar"
+        data-raum={scope}
+        className="mb-3 flex flex-wrap items-center gap-2"
+      >
+        {/* `fieldset`/`legend` statt `role="group"`: dasselbe Versprechen an die Vorlesehilfe,
+            aber mit dem Element, das es nativ traegt (Biome `a11y/useSemanticElements`). Die
+            sichtbare Beschriftung IST die Legende — kein zweiter Text daneben. */}
+        <fieldset className="m-0 flex items-center gap-2 border-0 p-0">
+          <legend className="float-left mr-2 text-[12px] font-semibold text-muted-2">
+            {SCOPE_BAR_LABEL}
+          </legend>
+          <div className="inline-flex overflow-hidden rounded-btn border border-hairline">
+            {(
+              [
+                { scope: "meine" as const, label: MEINE_ABLAGE_LABEL },
+                { scope: "alle" as const, label: ALLE_INHALTE_LABEL },
+              ] satisfies { scope: LibraryScope; label: string }[]
+            ).map((eintrag) => {
+              const aktiv = scope === eintrag.scope;
+              return (
+                <button
+                  key={eintrag.scope}
+                  type="button"
+                  aria-pressed={aktiv}
+                  onClick={() => setScope(eintrag.scope)}
+                  className={cx(
+                    "px-3 py-1.5 text-[12.5px] font-semibold outline-none transition-colors",
+                    aktiv ? "bg-ink text-surface" : "bg-surface text-muted hover:text-text",
+                  )}
+                >
+                  {eintrag.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
+      </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="min-w-[15rem] flex-1">
           <label htmlFor="library-search" className="sr-only">
