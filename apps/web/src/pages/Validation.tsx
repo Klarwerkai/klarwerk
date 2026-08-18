@@ -20,7 +20,10 @@ import { FacetFilter } from "../components/FacetFilter";
 import { HelpTip } from "../components/HelpTip";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
-import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
+// D-033: `StatusPill` ist hier nicht mehr importiert — die Prüfkarte trägt statt der groben
+// Status-Pille die feinere Prüfstands-Plakette. Die Komponente selbst bleibt unangetastet und
+// wird von Bibliothek und Mobilansicht weiterhin verwendet.
+import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/trust";
 import { Button, Card, PageHeader, QueryState } from "../components/ui";
 // WP-SHIP9-B3FIX: Poll-Intervall (geteilt mit Capture) + ehrliches Ausgrauen/Sperren, solange die
 // KI-Prüfung eines Eintrags noch läuft — die Liste bekommt den Übergang pending → done selbst mit.
@@ -871,9 +874,30 @@ export function Validation(): JSX.Element {
                               >
                                 {k.title}
                               </Link>
-                              <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                              {/* JOB 1100 / D-033: die Marke der Etikettenzeile. Sie ist die
+                                  einzige belastbare Art, die Etiketten zu ZÄHLEN — eine Zählung
+                                  über Textfragmente träfe auch den Titel und die Meta-Zeilen
+                                  darunter. Ausschliesslich Testadressierbarkeit: Reihenfolge,
+                                  Abstände und Tönung bleiben unverändert. */}
+                              <div
+                                data-testid="validation-card-labels"
+                                className="mt-1 flex flex-wrap items-center gap-1.5"
+                              >
                                 <KnowledgeTypeTag type={k.type} />
-                                <StatusPill status={sig.status} />
+                                {/* D-033 (a): HIER STAND DIE STATUS-PILLE — und sie sagte auf
+                                    diesem Board fast nichts. Das Prüfboard holt ausschliesslich
+                                    offene Objekte (`services/validation/src/service.ts:327`,
+                                    `status: "offen"`), also trug die Pille auf jeder Karte
+                                    praktisch denselben Wert. Dieselben Felder wertet
+                                    `reviewWorkView` feiner aus — neu erfasst, zugewiesen,
+                                    Bewertung begonnen, validiert. Diese Plakette lag bis hierher
+                                    im Aufklapper und ist jetzt an ihrer Stelle: Der Tausch ist
+                                    verlustfrei, weil die feinere Aussage die gröbere enthält. */}
+                                <span
+                                  className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase ${REVIEW_WORK_TONE[reviewWork.tone]}`}
+                                >
+                                  {t(reviewWork.labelKey)}
+                                </span>
                                 {/* WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Pruefung — laeuft/
                                 fehlgeschlagen (Ursache im Tooltip, Retry reiht neu ein);
                                 done/Altbestand zeigt bewusst nichts. */}
@@ -887,18 +911,27 @@ export function Validation(): JSX.Element {
                                   // partner vertraulich war (Paar-Eigenschaft, s. aiCheckStatusCard).
                                   subjectConfidentiality={k.confidentiality}
                                 />
-                                {/* SCRUM-416: Trust bleibt sichtbar (entscheidungsrelevant) — rückt zu den Badges. */}
+                                {/* D-033 (b): VERTRAUEN UND GRÜNANTEIL SIND EIN ABZEICHEN.
+                                    Bei null Bewertungen sagten die beiden getrennten Pillen
+                                    buchstäblich dasselbe. Zusammengelegt statt gestrichen — und
+                                    zwar bewusst: „Vertrauen" trägt zusätzlich die Gelb-Stimmen,
+                                    die Ask-Rückmeldungen und den Konfliktabzug, die auf dieser
+                                    Karte sonst nirgends erscheinen. Wer es streicht, verliert sie.
+                                    BEIDE TÖNUNGEN BLEIBEN: der Rahmen trägt das Trust-Band, der
+                                    Stimmenteil behält seine eigene Erreicht-Färbung — auch das
+                                    ist Information, nicht Dekoration.
+                                    SCRUM-416 (Trust sichtbar) und Pedi 05.07. (Fortschritt + ?-Hilfe)
+                                    gelten unverändert weiter; nur die Form ist verdichtet. */}
                                 <span
-                                  className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${TRUST_TONE[sig.trustBand]}`}
+                                  className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${TRUST_TONE[sig.trustBand]}`}
                                 >
-                                  {t("val.trust")} {sig.trust}
-                                </span>
-                                {/* Pedi 05.07.: Validierungs-Fortschritt je Artikel — prägnant + ?-Hilfe:
-                                wie viele grüne Freigaben erfasst sind und wie viele noch fehlen. */}
-                                <span className="inline-flex items-center gap-1">
+                                  <span>
+                                    {t("val.trust")} {sig.trust}
+                                  </span>
+                                  <span aria-hidden="true">·</span>
                                   <span
                                     title={t("val.votesHint", { need: sig.needed })}
-                                    className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${
+                                    className={`rounded-pill px-1 ${
                                       sig.greenVotes >= sig.needed
                                         ? "bg-trust-pos-bg text-trust-pos-text"
                                         : "bg-trust-warn-bg text-trust-warn-text"
@@ -926,8 +959,12 @@ export function Validation(): JSX.Element {
                                     {t("val.staleVotes", { count: sig.staleVotes })}
                                   </span>
                                 ) : null}
+                                {/* D-033 (c): Die Kategorie stand ohne Beschriftungswort zwischen
+                                    lauter Prüfzuständen und las sich dadurch wie ein weiterer.
+                                    Der Schlüssel ist der vorhandene, dreisprachige aus der
+                                    Bibliotheks-Facette — kein neuer Text. */}
                                 <span className="font-mono text-[11px] text-muted-2">
-                                  {k.category}
+                                  {t("lib.facet.category")}: {k.category}
                                 </span>
                                 {/* WP-D10 (Fix 4) + WP-BILD-1f (Pedi): dezentes Erstellungsdatum plus
                                 Ersteller (Erstellt am … von …) — unterscheidet gleichnamige
@@ -978,11 +1015,13 @@ export function Validation(): JSX.Element {
                                         {t("val.assigned")}
                                       </span>
                                     ) : null}
-                                    <span
-                                      className={`rounded-pill px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${REVIEW_WORK_TONE[reviewWork.tone]}`}
-                                    >
-                                      {t(reviewWork.labelKey)}
-                                    </span>
+                                    {/* D-033 (a): Die Prüfstands-Plakette stand bis hierher AN
+                                        DIESER STELLE — im Aufklapper, während die gröbere
+                                        Status-Pille vorn auf der Karte saß. Sie ist jetzt oben in
+                                        der Etikettenzeile und steht deshalb hier nicht mehr:
+                                        zweimal dieselbe Aussage wäre keine Verdichtung. Der
+                                        Hinweistext `reviewWork.hintKey` bleibt unverändert im
+                                        Entscheidungs-HelpTip weiter unten erreichbar. */}
                                     {vhelp("signals")}
                                   </div>
                                   {/* SCRUM-326: Review-Kontext — neu/offen vs. revidiert (Version>1) + Hinweis. */}

@@ -1,9 +1,30 @@
 import { X } from "lucide-react";
-import { type KeyboardEvent, type RefObject, useEffect, useRef } from "react";
+import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useModalBoundary } from "../app/ModalBoundaryContext";
 import { focusFirstIn, focusablesIn } from "../lib/focusables";
 import { Sidebar } from "./Sidebar";
+
+// ================================================================================================
+// JOB 1103 — DIE ANSAGETEXTE.
+// ================================================================================================
+//
+// Sie stehen hier und nicht in `i18n.ts`, weil diese Datei fuer JOB 1103 nicht im Schreibscope
+// liegt; passende Schluessel existieren nicht (geprueft: `topbar.*` traegt `openMenu`, `closeMenu`
+// und `menuLabel`, aber keine Zustandsansage). Der GEGENSTAND kommt trotzdem uebersetzt — er wird
+// unten aus `t("topbar.menuLabel")` zusammengesetzt; nur das Zustandswort ist deutschfest. Die
+// Rueckgabe weist das als offenen Rest aus.
+//
+// WARUM DER GEGENSTAND IM TEXT STEHT: „Geoeffnet" allein ist fuer jemanden, der die Seite nicht
+// sieht, nicht zuordenbar — auf einer Seite koennen mehrere Flaechen aufgehen. Die Ansage nennt
+// deshalb, WAS sich geoeffnet hat.
+const ZUSTAND_GEOEFFNET = "geöffnet";
+const ZUSTAND_GESCHLOSSEN = "geschlossen";
+
+/** Der angesagte Satz. Exportiert, damit der Test die ZUSAMMENSETZUNG prüft und nicht eine Kopie. */
+export function menueAnsage(menuename: string, offen: boolean): string {
+  return `${menuename} ${offen ? ZUSTAND_GEOEFFNET : ZUSTAND_GESCHLOSSEN}`;
+}
 
 // E2E-017 (bens Sammel-Review 2, Block F): der Off-Canvas-Navigations-Drawer ist ein ECHTES modales
 // Panel — Dialogsemantik + aria-modal, initialer Fokus beim Öffnen, Escape schließt, eine Fokusfalle
@@ -27,6 +48,28 @@ export function MobileNavDrawer({
   const { t } = useTranslation();
   const { enter } = useModalBoundary();
   const panelRef = useRef<HTMLDialogElement | null>(null);
+  // ==============================================================================================
+  // JOB 1103 — DER ANSAGEKANAL (JOB 908, Lücke L4 / Folgevertrag F3).
+  // ==============================================================================================
+  //
+  // Bis hierher meldete der Drawer sein Öffnen und Schließen NUR über Dialogsemantik und Fokus
+  // (`aria-modal` + `.focus()`) — im A18-Register als `kanalart: "nicht-live"` verzeichnet. Beides
+  // beschreibt einen ZUSTAND, keines meldet ein EREIGNIS.
+  //
+  // DIE ANSAGE STARTET LEER, und das ist keine Nachlässigkeit: Stünde der Text schon beim ersten
+  // Rendern da, sagte jeder Seitenaufruf „Navigationsmenü geschlossen" an — eine Ansage für ein
+  // Ereignis, das nie stattgefunden hat. Gefüllt wird erst bei einem echten Wechsel.
+  const [ansage, setAnsage] = useState("");
+  // Der zuletzt angesagte Zustand, mit dem Montagezustand als Startwert. Damit ist die Montage
+  // selbst nie ein Ereignis — angesagt wird ausschließlich ein WECHSEL.
+  const zuletztAngesagt = useRef<boolean>(open);
+  useEffect(() => {
+    if (zuletztAngesagt.current === open) {
+      return;
+    }
+    zuletztAngesagt.current = open;
+    setAnsage(menueAnsage(t("topbar.menuLabel"), open));
+  }, [open, t]);
 
   // Öffnen: Hintergrund gesperrt, Fokus ins Panel. Schließen (Cleanup): die Abmeldung gibt den
   // Hintergrund frei und den Fokus zurück — erst das eine, dann das andere, sonst liefe der Restore
@@ -44,8 +87,41 @@ export function MobileNavDrawer({
     return release;
   }, [open, triggerRef, enter]);
 
+  // ==============================================================================================
+  // JOB 1103 — WARUM DIE REGION AUSSERHALB VON `if (!open) return null` LEBT.
+  // ==============================================================================================
+  //
+  // Das ist der eigentliche Bau dieses Auftrags, und er ist keine Stilfrage. Eine Ansage entsteht
+  // aus einer ÄNDERUNG in einer VORHANDENEN Live-Region — nicht daraus, dass die Region
+  // verschwindet. Läge sie im Panel, wäre sie beim Schließen im selben Moment aus dem Baum wie der
+  // Text, den sie tragen soll: das Öffnen wäre meldbar, das Schließen nie.
+  //
+  // Sie liegt zugleich AUSSERHALB des `<dialog>`, und damit ist der Kanal von der Dialogrolle
+  // getrennt — genau die Trennung, die dieser Auftrag verlangt. `aria-modal` sagt „hier ist ein
+  // modaler Bereich"; die Region sagt „gerade ist etwas passiert". Zwei Aussagen, zwei Träger.
+  //
+  // DER TRÄGER IST EIN `<output>`, kein `<div role="status">`. Das ist die Bauform, die dieses
+  // Projekt für Live-Regionen bereits führt — der A18-Registertest hält sie als eigenen Fall fest
+  // (B1: „der Träger ist ein `<output>` — der Kanal, den ein aria-live-Raster übersieht"). Ein
+  // `<output>` trägt die Statusrolle nativ; sie hängt damit nicht an einem Attribut, das ein
+  // späterer Umbau unbemerkt entfernen könnte.
+  //
+  // `aria-live="polite"` steht trotzdem ausdrücklich da: es sagt die Höflichkeitsstufe, statt sie
+  // der Rollenableitung zu überlassen. `aria-atomic="true"` lässt die Region als GANZES vortragen
+  // statt nur den geänderten Teilknoten.
+  const ansagebereich = (
+    <output
+      data-testid="drawer-live-status"
+      aria-live="polite"
+      aria-atomic="true"
+      className="sr-only"
+    >
+      {ansage}
+    </output>
+  );
+
   if (!open) {
-    return null;
+    return ansagebereich;
   }
 
   const onKeyDown = (e: KeyboardEvent<HTMLDialogElement>): void => {
@@ -110,42 +186,45 @@ export function MobileNavDrawer({
   };
 
   return (
-    <div className="fixed inset-0 z-40 flex">
-      {/* AUFTRAG-mega4 Block C (bens Sammel-Review 4): der Backdrop ist eine NICHT fokussierbare, rein
+    <>
+      {ansagebereich}
+      <div className="fixed inset-0 z-40 flex">
+        {/* AUFTRAG-mega4 Block C (bens Sammel-Review 4): der Backdrop ist eine NICHT fokussierbare, rein
           präsentierende Fläche (aria-hidden, kein Button, kein Tab-Stop) — er liegt bewusst außerhalb des
           inerten Hintergrunds UND außerhalb des Dialogs, darf aber deshalb keine erreichbare Nicht-Drawer-
           Fläche sein. Vorher war er ein <button> und damit programmatisch/assistiv fokussierbar (bens
           Blocker). Die zugängliche Schließen-Aktion bleibt der X-Knopf im Dialog + Escape; der Backdrop-
           Klick bleibt reine Maus-Bequemlichkeit. */}
-      {/* biome-ignore lint/a11y/useKeyWithClickEvents: Tastatur-Schließen läuft über Escape/X im Dialog, nicht über diese aria-hidden Fläche. */}
-      <div
-        aria-hidden="true"
-        data-testid="drawer-backdrop"
-        onClick={onClose}
-        className="absolute inset-0 bg-ink/40"
-      />
-      {/* Natives <dialog> (implizite Dialog-Rolle) als Off-Canvas-Panel. Bewusst OHNE showModal() —
+        {/* biome-ignore lint/a11y/useKeyWithClickEvents: Tastatur-Schließen läuft über Escape/X im Dialog, nicht über diese aria-hidden Fläche. */}
+        <div
+          aria-hidden="true"
+          data-testid="drawer-backdrop"
+          onClick={onClose}
+          className="absolute inset-0 bg-ink/40"
+        />
+        {/* Natives <dialog> (implizite Dialog-Rolle) als Off-Canvas-Panel. Bewusst OHNE showModal() —
           der Drawer verwaltet Fokus/Inert/Escape selbst und behält so das bestehende Backdrop-/
           Slide-in-Verhalten; `open` hält es sichtbar, die Positionierung kommt aus den Klassen. */}
-      <dialog
-        ref={panelRef}
-        open
-        aria-modal="true"
-        aria-label={t("topbar.menuLabel")}
-        tabIndex={-1}
-        onKeyDown={onKeyDown}
-        className="relative z-10 m-0 h-full w-[252px] max-w-[85vw] bg-transparent p-0 text-text shadow-popover outline-none"
-      >
-        <button
-          type="button"
-          aria-label={t("topbar.closeMenu")}
-          onClick={onClose}
-          className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+        <dialog
+          ref={panelRef}
+          open
+          aria-modal="true"
+          aria-label={t("topbar.menuLabel")}
+          tabIndex={-1}
+          onKeyDown={onKeyDown}
+          className="relative z-10 m-0 h-full w-[252px] max-w-[85vw] bg-transparent p-0 text-text shadow-popover outline-none"
         >
-          <X size={18} />
-        </button>
-        <Sidebar />
-      </dialog>
-    </div>
+          <button
+            type="button"
+            aria-label={t("topbar.closeMenu")}
+            onClick={onClose}
+            className="absolute right-2 top-2 z-10 grid h-8 w-8 place-items-center rounded-btn text-muted hover:bg-hairline-soft hover:text-text"
+          >
+            <X size={18} />
+          </button>
+          <Sidebar />
+        </dialog>
+      </div>
+    </>
   );
 }

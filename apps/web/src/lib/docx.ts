@@ -56,6 +56,160 @@ export function mapDocxHeadings(html: string): string {
   return html.replace(/<(\/?)h1\b/gi, "<$1h2").replace(/<(\/?)h[4-6]\b/gi, "<$1h3");
 }
 
+// ================================================================================================
+// JOB 1115 / D-042 + D-043 — ZWEI NACHBEARBEITUNGSSCHRITTE DERSELBEN KETTE
+// ================================================================================================
+//
+// Beide stammen aus demselben Live-Import („Project equipment design guide Rev. 0.91 b short.docx",
+// Weg *Ganzes Dokument*, DESIGN_AN_CHEF/LIEFERUNG-20260815-BLOCK3.md) und sitzen deshalb hier
+// nebeneinander, direkt hinter `mapDocxHeadings`:
+//
+//   D-042  Der Entwurf begann mit fünf Absätzen, die kein Wissen sind, sondern Dokumentenrahmen —
+//          „BAADER" · „Design guide" · „Project equipment" · „en" · „BAADER project equipment
+//          design guide | Rev. 0.9 | EN". Die Zeile „en" ist ein Sprachkürzel als eigener Absatz.
+//          Wer diesen Entwurf einreicht, veröffentlicht Kopfzeilen als Wissen.
+//   D-043  Derselbe Import erzeugte 116 Links auf Word-interne Sprungmarken (`href="#_Toc…"`) samt
+//          Seitenzahlen, die es im Web nicht gibt; zwei Links trugen gar kein Ziel. Ein
+//          Inhaltsverzeichnis, das klickbar aussieht und nichts tut.
+//
+// Bis hierher reichte dieses Modul die mammoth-Ausgabe durch und bearbeitete sie nur an definierten
+// Stellen nach — eine Bereinigung von Rahmenzeilen und eine Nachbearbeitung der Anker gab es nicht.
+
+// D-042, KONSERVATIV: eine Rahmenzeile ist ein ETIKETT, kein Satz. Die Grenze ist bewusst großzügig
+// gesetzt — sie allein entfernt nichts. Erst die Konjunktion aus vier Bedingungen tut das (s. u.).
+const FRAME_LINE_MAX_CHARS = 80;
+
+/** Vergleichsform einer Zeile: Weißraum vereinheitlicht, Groß-/Kleinschreibung egal. */
+function normalizeFrameLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim().toLowerCase();
+}
+
+// Die Wiederkehr wird ZEILENWEISE gezählt, nicht als Teilzeichenkette — und das ist kein Detail:
+// „en" steckt als Teilkette in „Foreword information", „Ventil" und Dutzenden weiterer Wörter. Eine
+// Teilkettensuche hielte deshalb praktisch jede kurze Zeile für wiederkehrend und würde echtes
+// Wissen entfernen. Gezählt werden ganze Zeilen des Klartextes, den dieselbe Engine liefert.
+function countFrameLineOccurrences(documentText: string, text: string): number {
+  const needle = normalizeFrameLine(text);
+  if (needle === "") {
+    return 0;
+  }
+  let found = 0;
+  for (const line of documentText.split(/\r\n?|\n/)) {
+    if (normalizeFrameLine(line) === needle) {
+      found += 1;
+    }
+  }
+  return found;
+}
+
+/**
+ * Ist dieser Absatz ein Dokumentenrahmen? Vier Bedingungen, alle nötig — im Zweifel bleibt der
+ * Absatz stehen. D-042 wörtlich: „lieber eine Kopfzeile zu viel als ein Satz Wissen zu wenig."
+ *
+ *  1. nicht leer;
+ *  2. kurz (≤ FRAME_LINE_MAX_CHARS) — ein Etikett, kein Absatz;
+ *  3. endet NICHT auf ein Satzendezeichen — wer einen Satz schreibt, schließt ihn;
+ *  4. die Zeile kommt im Dokument MEHRFACH vor. Das ist die eigentliche Evidenz: eine Kopf-/
+ *     Fußzeile wiederholt sich, ein Satz Wissen nicht. Ohne sie wäre alles Übrige Vermutung.
+ */
+export function isDocxFrameLine(text: string, documentText: string): boolean {
+  const trimmed = text.trim();
+  if (trimmed === "" || trimmed.length > FRAME_LINE_MAX_CHARS) {
+    return false;
+  }
+  if (/[.!?:;]$/.test(trimmed)) {
+    return false;
+  }
+  return countFrameLineOccurrences(documentText, trimmed) >= 2;
+}
+
+export interface DocxFrameStripResult {
+  html: string;
+  /**
+   * Die entfernten Zeilen in ihrer Reihenfolge, als ROHER HTML-Text (so, wie mammoth sie geliefert
+   * hat — Entitäten bleiben also Entitäten). Nichts wird verworfen: der Aufrufer bewahrt sie.
+   */
+  frameLines: string[];
+}
+
+// Ein führender reiner Textabsatz. `[^<]*` ist Absicht: ein Absatz mit Auszeichnung, Bild oder Link
+// ist kein Rahmenetikett und beendet die Suche — genau dadurch bleibt ein Word-Inhaltsverzeichnis
+// (`<p><a …>…</a></p>`) strukturell außer Reichweite dieses Schritts.
+const LEADING_TEXT_P_RE = /^\s*<p(?:\s[^>]*)?>([^<]*)<\/p>/i;
+
+/**
+ * D-042: entfernt den zusammenhängenden Block von Rahmenzeilen AM ANFANG des Wissenskörpers.
+ *
+ * Nur der führende Block, und er endet beim ersten Absatz, der die Prüfung nicht besteht — bei einer
+ * Überschrift, einem Bild, einer Tabelle oder einem echten Satz ist Schluss. Was weiter unten im
+ * Fließtext erneut auftaucht, bleibt unangetastet: dort ist es Inhalt, nicht Rahmen.
+ *
+ * Ohne Fund wird die Eingabe UNVERÄNDERT zurückgegeben (dieselbe Zeichenkette, kein Neuaufbau) —
+ * ein Dokument ohne Rahmenzeilen bleibt damit zeichengleich.
+ */
+export function stripDocxFrameLines(html: string, documentText: string): DocxFrameStripResult {
+  const frameLines: string[] = [];
+  let rest = html;
+  for (;;) {
+    const match = LEADING_TEXT_P_RE.exec(rest);
+    if (!match) {
+      break;
+    }
+    const inner = match[1] ?? "";
+    if (!isDocxFrameLine(inner, documentText)) {
+      break;
+    }
+    frameLines.push(inner.trim());
+    rest = rest.slice(match[0].length);
+  }
+  if (frameLines.length === 0) {
+    return { html, frameLines: [] };
+  }
+  return { html: rest, frameLines };
+}
+
+const A_TAG_RE = /<a\b([^>]*)>([\s\S]*?)<\/a>/gi;
+const HREF_ATTR_RE = /\bhref\s*=\s*(?:"([^"]*)"|'([^']*)')/i;
+
+/**
+ * D-043: verwandelt Inhaltsverzeichnis-Links in reinen Text — Linkoptik weg, Text bleibt.
+ *
+ * Erkennungsregel wörtlich aus D-043: `href` beginnt mit `#_Toc` oder fehlt ganz. Alles andere wird
+ * NICHT angefasst; ein behaltener Link wird nicht neu zusammengesetzt, sondern als exakt dieselbe
+ * Zeichenkette zurückgegeben (sonst wäre „unverändert" eine Behauptung statt einer Tatsache).
+ *
+ * Ausdrücklich unberührt: echte externe Links (`http…`) und die Fußnoten-Anker der Bilder — Letztere
+ * sind `figcaption`/`figure` mit `data-image-id` und keine `<a>`; dieser Schritt sieht sie nie.
+ *
+ * Warum umschreiben und nicht in echte Sprungmarken verwandeln: die Zielüberschriften verlieren beim
+ * Import ihre Anker, echte Sprungziele gäbe es also gar nicht. Die Seitenzahlen bleiben stehen als
+ * das, was sie sind — eine Spur des Originals (D-043, empfohlener Weg (b)).
+ */
+export function neutralizeDocxTocLinks(html: string): string {
+  return html.replace(A_TAG_RE, (match, attrs: string, inner: string) => {
+    const href = HREF_ATTR_RE.exec(attrs);
+    if (!href) {
+      return inner; // gar kein Ziel — sah klickbar aus, tat nichts
+    }
+    const value = (href[1] ?? href[2] ?? "").trim();
+    return /^#_Toc/i.test(value) ? inner : match;
+  });
+}
+
+/**
+ * Die bewahrten Rahmenzeilen als Quellenvermerk-Block.
+ *
+ * Er wird dem Körper VORANGESTELLT und landet damit unmittelbar hinter dem Quelle-Blockquote, das
+ * `wholeDocumentBodyHtml` (captureFromFile.ts) davorsetzt — beide lesen sich als eine Vermerkfläche.
+ * `blockquote` ist im Server-Sanitizer erlaubt (services/structure/sanitize.ts:18); Attribute trägt
+ * es bewusst keine, denn für `blockquote` führt der Sanitizer keine Attribut-Allowlist und würde
+ * jede Markierung ersatzlos verwerfen. Eine Markierung zu setzen, die das Speichern nicht überlebt,
+ * wäre eine Zusage ohne Deckung.
+ */
+function frameLinesNote(frameLines: readonly string[]): string {
+  return `<blockquote><p>${frameLines.join(" · ")}</p></blockquote>`;
+}
+
 // WP-D1: eingebettete data:image-Quellen asynchron abbilden (im Browser: Downscale auf max.
 // Kantenlänge, s. files.ts) — DOM-frei, mapFn injizierbar. Nicht-data:-Quellen bleiben unberührt.
 const IMG_DATA_SRC_RE = /(<img\b[^>]*?\bsrc=")(data:image\/[a-zA-Z0-9.+-]+;base64,[^"]*)(")/gi;
@@ -447,6 +601,11 @@ export interface DocxRichResult {
   compressedImages: number; // WP-D1d: tatsächlich re-encodierte (komprimierte) Bilder
   droppedImages: number; // Bilder, die als Notbremse NICHT ins bodyHtml kamen
   htmlOverflow: boolean; // WP-D1d: true, wenn das bodyHtml das Budget trotz Notbremse übersteigt (Text)
+  // JOB 1115/D-042: die aus dem Wissenskörper entfernten Rahmenzeilen, in ihrer Reihenfolge. Leer,
+  // wenn nichts entfernt wurde. Sie sind zusätzlich im HTML als Quellenvermerk-Block bewahrt — dieses
+  // Feld ist die maschinenlesbare Fassung derselben Wahrheit, damit ein Aufrufer sie später auch in
+  // den EINEN Quelle-Blockquote (captureFromFile.ts) einfügen kann, ohne sie erneut zu parsen.
+  frameLines: string[];
   // JOB 513/D2: der gemeinsame, maschinenlesbare Bildtransfer-Vertrag (identisch im PPTX-Weg). Die
   // bestehenden Felder darueber bleiben unveraendert bedient — der Vertrag ist rein additiv.
   imageTransfer: ImageTransferContract;
@@ -474,6 +633,23 @@ export async function extractDocxRich(
   const htmlResult = await engine.convertToHtml(input);
   const textResult = await engine.extractRawText(input);
   let html = mapDocxHeadings(htmlResult.value.trim());
+  const documentText = textResult.value.trim();
+  // JOB 1115: D-042 und D-043 als zwei Schritte DERSELBEN Kette, unmittelbar hinter der
+  // Überschriften-Abbildung — sie braucht D-042, um „vor der ersten Überschrift" überhaupt bestimmen
+  // zu können (h1 ist an dieser Stelle bereits h2).
+  //
+  // REIHENFOLGE, und sie ist nicht beliebig: erst die Rahmenzeilen, dann die Anker. Solange die
+  // Inhaltsverzeichnis-Absätze noch ihr `<a>` tragen, sind sie für D-042 keine reinen Textabsätze und
+  // damit strukturell geschützt. Andersherum stünden sie nach D-043 als nackte kurze Absätze vor der
+  // ersten Überschrift und hingen allein an der Wiederkehrprüfung.
+  const entrahmt = stripDocxFrameLines(html, documentText);
+  const frameLines = entrahmt.frameLines;
+  html = neutralizeDocxTocLinks(entrahmt.html);
+  // Bewahren statt wegwerfen: der Vermerk wird VOR den Körper gesetzt. Ohne Fund passiert hier
+  // nichts — ein Dokument ohne Rahmenzeilen bleibt zeichengleich.
+  if (frameLines.length > 0) {
+    html = `${frameLinesNote(frameLines)}${html}`;
+  }
   let droppedImages = 0;
   let totalImages = 0;
   let compressedImages = 0;
@@ -524,7 +700,11 @@ export async function extractDocxRich(
   }
   return {
     html,
-    text: textResult.value.trim(),
+    // Der Klartext bleibt VOLLSTÄNDIG — er trägt die KI-Punkte-Extraktion, und dort ist eine
+    // Kopfzeile harmlos. Entfernt wird ausschliesslich aus dem Wissenskörper, den ein Mensch
+    // einreicht. Zwei verschiedene Zwecke, zwei verschiedene Wahrheiten — bewusst nicht angeglichen.
+    text: documentText,
+    frameLines,
     totalImages,
     compressedImages,
     droppedImages,

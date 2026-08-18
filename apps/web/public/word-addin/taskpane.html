@@ -412,6 +412,23 @@
        VALIDIERTEN Werkswissen ueber den BESTEHENDEN Konsolen-Vertrag POST /api/ask (Same-Origin-
        Session; serverseitige Permission ko.read wie in der Fragen-Konsole — kein neuer Guard). -->
   <div id="section-ask">
+    <!-- ==========================================================================================
+         KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149, OFFEN.md KA1).
+         ==========================================================================================
+         Worum es im offenen Dokument gerade geht — hausintern gewonnen, ohne KI, ohne Egress.
+         Die Flaeche steht VOR dem Fragen-Block, weil sie den Kontext beschreibt, in dem gefragt
+         wird; sie ist ein reines Anzeigefeld und traegt keine Schaltflaeche.
+
+         Bewusst KEINE Beispielbegriffe im Markup: eine vorgefuellte Liste saehe im Browser (ohne
+         Word) wie ein Ergebnis aus, das es nicht gibt. Leer ist hier die Wahrheit, und der Satz
+         darunter sagt sie. -->
+    <div class="card" id="ka1-block">
+      <h2 data-t="ka1Title"></h2>
+      <p class="muted" data-t="ka1Hint"></p>
+      <ul class="muted" id="ka1-terms"></ul>
+      <p class="muted" id="ka1-empty"></p>
+    </div>
+    <!-- KW-KA1-TERMS-END (Markup) -->
     <div class="card">
       <h2 data-t="askTitle"></h2>
       <p class="muted" data-t="askHint"></p>
@@ -4367,6 +4384,377 @@
     // AUFTRAG-37: ANFORDERN statt starten. Der Aufbau geschieht, sobald die bereits vorhandene
     // begrenzte Office-Erkennung ein Ergebnis hat — durch ihren Rueckruf oder durch ihre Frist.
     klaraS4StartAnfordern();
+
+    // ============================================================================================
+    // KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149 · D1, OFFEN.md KA1).
+    // ============================================================================================
+    //
+    // DIE ZUSAGE, woertlich: „das Panel haelt zu einem offenen Dokument eine Begriffsliste, ohne
+    // dass ein Modellaufruf stattfindet". Gewonnen wird hausintern, aus dem ganzen Dokument, mit
+    // DERSELBEN Tokenisierung wie die Suche — kein Modell, kein Embedder, kein Netzaufruf.
+    //
+    // WARUM HIER EINE KOPIE STEHT UND WAS SIE ABSICHERT. Dieses Aufgabenfenster ist buildlos: kein
+    // Modulsystem, kein Bundler — `queryTokens` laesst sich hier nicht einbinden. Die Regel MUSS
+    // werden — und eine ungeprueft gespiegelte Suchregel ist eine zweite Suchwahrheit, die beim
+    // naechsten Eingriff an der echten auseinanderlaeuft. Dagegen steht der Aequivalenztest in
+    // tests/app/word-addin.test.ts: er extrahiert GENAU diesen Block, fuehrt ihn aus und vergleicht
+    // sein Ergebnis mit `normalizeSearchTerms(queryTokens(normalizeSearchFragment(text)))` — den
+    // echten Hausfunktionen. Weicht hier etwas ab, wird er rot. Dieselbe Bauform wie
+    // KW-WORDADDIN-HELPERS-* und KW-KLARA-AISTATE-*.
+    //
+    // DIE STOPPWORTLISTE IST NICHT ABGESCHRIEBEN, sondern mechanisch aus
+    // services/reasoner/src/provider.ts gezogen (424 Eintraege, keine Doppelten). Von Hand waere
+    // ein einzelner Tippfehler unvermeidlich gewesen — und er faellt erst auf, wenn zufaellig eine
+    // Fixture ueber genau dieses Wort stolpert.
+    //
+    // DER BLOCK IST EIGENSTAENDIG AUSFUEHRBAR: er ruft auf oberster Ebene nichts, was ausserhalb
+    // von ihm definiert waere, und startet sich nur, wenn seine Flaeche wirklich im DOM steht.
+    var KA1_MAX_TERMS = 12;
+
+    // Spiegel von STOPWORDS (provider.ts) — Grundbestand, Pronomen, Praepositionen, Konjunktionen,
+    // Hilfs-/Modalformen, Pronominaladverbien, Partikeln und die kurze englische Liste.
+    var KA1_STOPWORDS = [
+      "aber", "alle", "allem", "allen", "aller", "alles", "als", "also",
+      "auch", "auf", "aus", "bei", "bin", "bis", "bist", "das",
+      "dass", "dein", "dem", "den", "der", "des", "die", "dir",
+      "doch", "dort", "durch", "ein", "eine", "einem", "einen", "einer",
+      "eines", "er", "es", "etwas", "euer", "für", "gegen", "hat",
+      "hatte", "hier", "ich", "ihm", "ihr", "ihre", "ist", "kann",
+      "man", "mein", "mit", "muss", "nach", "nicht", "noch", "nur",
+      "ob", "oder", "ohne", "sehr", "sein", "sich", "sie", "sind",
+      "soll", "über", "uns", "und", "unter", "viel", "vom", "von",
+      "vor", "war", "was", "weil", "welche", "welchem", "welchen", "welcher",
+      "welches", "wenn", "wer", "werde", "werden", "wie", "wird", "wo",
+      "wann", "warum", "zum", "zur", "zwischen", "mich", "dich", "euch",
+      "ihn", "ihnen", "mir", "wir", "einander", "meiner", "deiner", "seiner",
+      "ihrem", "ihrer", "unser", "unserer", "eure", "eurem", "eurer", "dies",
+      "dieser", "jene", "jenem", "jener", "solch", "solcher", "dessen", "deren",
+      "denen", "derer", "selbst", "selber", "derselbe", "dieselbe", "dasselbe", "demselben",
+      "denselben", "desselben", "jede", "jedem", "jeder", "manche", "mancher", "einige",
+      "einiger", "mehrere", "mehrerer", "wenige", "weniger", "beide", "beider", "andere",
+      "anderer", "sämtliche", "sämtlicher", "kein", "keiner", "jemand", "niemand", "irgend",
+      "irgendein", "irgendeiner", "jeweils", "all", "hinter", "neben", "während", "außer",
+      "entlang", "gegenüber", "innerhalb", "außerhalb", "statt", "anstatt", "trotz", "gemäß",
+      "binnen", "bezüglich", "beim", "ans", "aufs", "ins", "fürs", "unterm",
+      "hinterm", "nebst", "wider", "halber", "per", "pro", "via", "zufolge",
+      "angesichts", "hinsichtlich", "aufgrund", "infolge", "anhand", "mithilfe", "zugunsten", "entgegen",
+      "unweit", "oberhalb", "unterhalb", "diesseits", "jenseits", "betreffs", "ungeachtet", "zuzüglich",
+      "abzüglich", "einschließlich", "ausschließlich", "denn", "sondern", "sowie", "sowohl", "weder",
+      "damit", "obwohl", "bevor", "nachdem", "seitdem", "sobald", "solange", "indem",
+      "sofern", "zumal", "jedoch", "wobei", "außerdem", "zudem", "beziehungsweise", "obgleich",
+      "wenngleich", "soweit", "soviel", "insofern", "insoweit", "desto", "umso", "allein",
+      "respektive", "sei", "seid", "seien", "wäre", "warst", "wärst", "wärt",
+      "habe", "habt", "hast", "hätte", "wirst", "wurde", "können", "konnte",
+      "müssen", "dürfen", "darf", "durfte", "mögen", "mag", "magst", "mögt",
+      "mochte", "möchte", "gewesen", "geworden", "worden", "gehabt", "gekonnt", "gemusst",
+      "gesollt", "gedurft", "gemocht", "gewesener", "gewordener", "gehabter", "gekonnter", "gemusster",
+      "gesollter", "gedurfter", "gemochter", "dabei", "dadurch", "dafür", "dagegen", "daher",
+      "danach", "daneben", "daran", "darauf", "daraus", "darin", "darum", "darunter",
+      "darüber", "davon", "davor", "dazu", "dennoch", "deshalb", "deswegen", "trotzdem",
+      "hierbei", "hierdurch", "hierfür", "hierin", "hiermit", "hiernach", "hierauf", "hieraus",
+      "hierzu", "hieran", "hierum", "hierüber", "wodurch", "wofür", "woher", "wohin",
+      "womit", "wonach", "woran", "worauf", "woraus", "worin", "worum", "worunter",
+      "worüber", "wovon", "wovor", "wozu", "dahin", "hierher", "hierhin", "hiervon",
+      "hiervor", "hierunter", "hiergegen", "hierneben", "wogegen", "woneben", "schon", "mal",
+      "nein", "etwa", "ganz", "gar", "zwar", "eigentlich", "überhaupt", "allerdings",
+      "immer", "wieder", "dann", "sonst", "bereits", "jetzt", "oben", "unten",
+      "nie", "niemals", "sogar", "durchaus", "vielleicht", "womöglich", "insbesondere", "ebenfalls",
+      "ebenso", "hingegen", "wen", "wem", "wessen", "weshalb", "wieso", "wieviel",
+      "weswegen", "oft", "häufig", "selten", "stets", "freilich", "sicherlich", "selbstverständlich",
+      "keineswegs", "keinesfalls", "jedenfalls", "allenfalls", "mindestens", "zumindest", "lediglich", "bloß",
+      "beinahe", "kaum", "allzu", "ziemlich", "meist", "meistens", "nochmals", "abermals",
+      "erneut", "the", "and", "for", "are", "you", "your", "what",
+      "when", "how", "why", "with", "this", "that", "not", "from",
+      "into", "does", "did", "can", "has", "have", "their", "them",
+      "they", "there", "here", "about", "over", "please", "note", "context"
+    ];
+
+    // Spiegel von NAMED_HTML_ENTITIES (services/structure/src/sanitize.ts).
+    var KA1_ENTITIES = {
+      amp: "&", lt: "<", gt: ">", quot: '"', apos: "'", nbsp: " ",
+      auml: "ä", ouml: "ö", uuml: "ü", Auml: "Ä", Ouml: "Ö", Uuml: "Ü",
+      szlig: "ß", middot: "·", ndash: "–", mdash: "—", hellip: "…", sect: "§",
+      para: "¶", deg: "°", plusmn: "±", sup2: "²", sup3: "³", euro: "€",
+      copy: "©", reg: "®", trade: "™", laquo: "«", raquo: "»", bdquo: "„",
+      ldquo: "“", rdquo: "”", lsquo: "‘", rsquo: "’", eacute: "é", egrave: "è",
+      agrave: "à", acirc: "â", ecirc: "ê", icirc: "î", ocirc: "ô", ucirc: "û",
+      ccedil: "ç", ntilde: "ñ", aacute: "á", iacute: "í", oacute: "ó", uacute: "ú",
+      times: "×", divide: "÷"
+    };
+    var KA1_ENTITY_RE = /&(#\d{1,7}|#[xX][0-9a-fA-F]{1,6}|[a-zA-Z][a-zA-Z0-9]{1,30});/g;
+
+    // Spiegel von decodeHtmlEntities — FAIL-CLOSED wie das Original: ein ungueltiger oder
+    // steuerzeichen-artiger Codepunkt bleibt als Roh-Text stehen, statt ein Zeichen zu erfinden.
+    function ka1DecodeEntities(text) {
+      return String(text).replace(KA1_ENTITY_RE, function (treffer, koerper) {
+        if (koerper.charAt(0) === "#") {
+          var hex = koerper.charAt(1) === "x" || koerper.charAt(1) === "X";
+          var code = parseInt(hex ? koerper.slice(2) : koerper.slice(1), hex ? 16 : 10);
+          var steuer =
+            (code < 32 && code !== 9 && code !== 10 && code !== 13) ||
+            code === 0x7f ||
+            (code >= 0x80 && code <= 0x9f);
+          if (!isFinite(code) || Math.floor(code) !== code || steuer ||
+              (code >= 0xd800 && code <= 0xdfff) || code > 0x10ffff) {
+            return treffer;
+          }
+          return String.fromCodePoint(code);
+        }
+        return Object.prototype.hasOwnProperty.call(KA1_ENTITIES, koerper)
+          ? KA1_ENTITIES[koerper]
+          : treffer;
+      });
+    }
+
+    // Spiegel von istUnsichtbar/entferneUnsichtbare (search-projection.ts): ERSATZLOS entfernen —
+    // ein Zero-Width-Space steht INNERHALB eines Wortes, ein Leerzeichen an seiner Stelle wuerde
+    // „Donau[ZWSP]dampfschiff" in zwei Indexwoerter zerlegen.
+    function ka1IstUnsichtbar(code) {
+      return (
+        code <= 0x08 || code === 0x0b || code === 0x0c ||
+        (code >= 0x0e && code <= 0x1f) || code === 0x7f ||
+        (code >= 0x200b && code <= 0x200d) || code === 0x2060 || code === 0xfeff
+      );
+    }
+
+    function ka1EntferneUnsichtbare(text) {
+      var raus = "";
+      for (var i = 0; i < text.length; i += 1) {
+        if (!ka1IstUnsichtbar(text.charCodeAt(i))) { raus += text.charAt(i); }
+      }
+      return raus;
+    }
+
+    // Spiegel von normalizeSearchFragment: Entities → NFKC → unsichtbare Zeichen → Leerraum.
+    function ka1NormalizeFragment(text) {
+      if (!text) { return ""; }
+      return ka1EntferneUnsichtbare(ka1DecodeEntities(text).normalize("NFKC"))
+        .replace(/\s+/g, " ")
+        .replace(/^\s+|\s+$/g, "");
+    }
+
+    // --- Spiegel der Inhaltstoken-Regel (provider.ts) -------------------------------------------
+    var KA1_MIN_GRUNDFORM_LAENGE = 4;
+    var KA1_GRUNDFORM_ENDUNGEN = ["ung", "en", "em", "es", "e", "n", "s", "t"];
+
+    // mega54 A: Buchstabe UND Ziffer — „f3", „m12", „dn50" ueberleben die Laengengrenze.
+    function ka1IstKennung(token) {
+      return /[0-9]/.test(token) && /[a-zäöüß]/.test(token);
+    }
+
+    function ka1AbtragEndungen(token) {
+      var wort = token;
+      var gekuerzt = true;
+      while (gekuerzt) {
+        gekuerzt = false;
+        for (var i = 0; i < KA1_GRUNDFORM_ENDUNGEN.length; i += 1) {
+          var endung = KA1_GRUNDFORM_ENDUNGEN[i];
+          if (wort.length - endung.length >= KA1_MIN_GRUNDFORM_LAENGE &&
+              wort.slice(wort.length - endung.length) === endung) {
+            wort = wort.slice(0, wort.length - endung.length);
+            gekuerzt = true;
+            break;
+          }
+        }
+      }
+      return wort;
+    }
+
+    function ka1AbtragGe(wort) {
+      return wort.indexOf("ge") === 0 && wort.length - 2 >= KA1_MIN_GRUNDFORM_LAENGE
+        ? wort.slice(2)
+        : wort;
+    }
+
+    // mega55 A2 / mega56 A3: die Stoppwortmenge samt ihrer EIGENEN Grundformen und der Zwischen-
+    // stufe vor dem „ge"-Abtrag. Ohne diese Huelle bliebe „werd" (aus „werden") ein Inhaltstoken.
+    var KA1_STOPPFORMEN = (function () {
+      var menge = {};
+      for (var i = 0; i < KA1_STOPWORDS.length; i += 1) {
+        var wort = KA1_STOPWORDS[i];
+        var nachEndung = ka1AbtragEndungen(wort);
+        menge[wort] = true;
+        menge[nachEndung] = true;
+        menge[ka1AbtragGe(nachEndung)] = true;
+      }
+      return menge;
+    })();
+
+    function ka1IstStoppform(token) {
+      return Object.prototype.hasOwnProperty.call(KA1_STOPPFORMEN, token);
+    }
+
+    function ka1IstStoppwort(token) {
+      return KA1_STOPWORDS.indexOf(token) >= 0;
+    }
+
+    // mega55 A3: entsteht das Stoppwort erst durch den „ge"-Abtrag, war das „ge" vermutlich Teil
+    // des Wortes („Gesicht" → „gesich" → „sich") — dann wird der Abtrag zurueckgenommen.
+    function ka1Grundform(token) {
+      if (ka1IstKennung(token)) { return token; }
+      var nachEndung = ka1AbtragEndungen(token);
+      var ohneGe = ka1AbtragGe(nachEndung);
+      if (ohneGe !== nachEndung && ka1IstStoppform(ohneGe) && !ka1IstStoppform(nachEndung)) {
+        return nachEndung;
+      }
+      return ohneGe;
+    }
+
+    // Spiegel von tokenize/queryTokens: zwei Siebe — Stoppwort und Laenge auf der OBERFLAECHENform,
+    // danach die Grundform, die ERNEUT gegen die Stoppwortmenge gehalten wird (mega55 A1).
+    function ka1Tokenize(text) {
+      var roh = String(text).toLowerCase().split(/[^a-zäöüß0-9]+/);
+      var raus = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var wort = roh[i];
+        if (!((wort.length > 2 || ka1IstKennung(wort)) && !ka1IstStoppwort(wort))) { continue; }
+        var norm = ka1Grundform(wort);
+        if (!ka1IstStoppform(norm)) { raus.push(norm); }
+      }
+      return raus;
+    }
+
+    // Spiegel von normalizeSearchTerms: bereinigen, kleinschreiben, entdoppeln — Reihenfolge des
+    // ersten Vorkommens bleibt erhalten.
+    function ka1NormalizeTerms(terms) {
+      var raus = [];
+      var gesehen = {};
+      for (var i = 0; i < terms.length; i += 1) {
+        var term = ka1NormalizeFragment(terms[i]).toLowerCase();
+        if (term.length === 0 || Object.prototype.hasOwnProperty.call(gesehen, term)) { continue; }
+        gesehen[term] = true;
+        raus.push(term);
+      }
+      return raus;
+    }
+
+    /**
+     * DIE EINE KETTE — und der Deckel schneidet ZULETZT.
+     *
+     * Erst bereinigen (`pr&uuml;fen` ist dasselbe Wort wie „prüfen"), dann die Inhaltstoken der
+     * Suche, dann die kanonische Termbereinigung. Erst danach der Deckel: sonst zaehlten
+     * Wiederholungen gegen ihn, und ein Dokument, das dasselbe Wort zwoelfmal nennt, haette ein
+     * Begriffsbild aus EINEM Begriff.
+     */
+    function ka1TermsFromText(text) {
+      return ka1NormalizeTerms(ka1Tokenize(ka1NormalizeFragment(text))).slice(0, KA1_MAX_TERMS);
+    }
+
+    // --- Anzeige --------------------------------------------------------------------------------
+    // Dreisprachig wie alles in diesem Fenster. Die Texte stehen HIER und nicht im grossen
+    // Woerterbuch, weil dieser Auftrag ausschliesslich in seinem Markerblock schreiben darf; sie
+    // werden unten in STRINGS eingetragen, damit `data-t` und der Sprachwechsel sie finden.
+    var KA1_TEXTE = {
+      de: {
+        ka1Title: "Worum es hier geht",
+        ka1Hint: "Aus dem ganzen Dokument gewonnen — im Haus, ohne KI und ohne dass Text das Fenster verlässt.",
+        ka1Empty: "Noch keine Begriffe: Das Dokument enthält keinen auswertbaren Text.",
+        ka1NoOffice: "Noch keine Begriffe: Diese Seite läuft ohne Word, es gibt kein offenes Dokument."
+      },
+      en: {
+        ka1Title: "What this is about",
+        ka1Hint: "Derived from the whole document — in-house, without AI and without any text leaving this pane.",
+        ka1Empty: "No terms yet: the document contains no usable text.",
+        ka1NoOffice: "No terms yet: this page runs without Word, so there is no open document."
+      },
+      nl: {
+        ka1Title: "Waar dit over gaat",
+        ka1Hint: "Uit het hele document afgeleid — intern, zonder AI en zonder dat tekst dit venster verlaat.",
+        ka1Empty: "Nog geen begrippen: het document bevat geen bruikbare tekst.",
+        ka1NoOffice: "Nog geen begrippen: deze pagina draait zonder Word, er is geen open document."
+      }
+    };
+
+    // Die aktuelle Sprache, ohne den Block an die Umgebung zu binden: laeuft er isoliert (Test),
+    // gilt Deutsch.
+    function ka1Sprache() {
+      return typeof lang === "string" && KA1_TEXTE[lang] ? lang : "de";
+    }
+
+    function ka1Text(schluessel) {
+      return KA1_TEXTE[ka1Sprache()][schluessel];
+    }
+
+    /**
+     * Zeichnet die Liste. `verfuegbar` = es gibt ein offenes Dokument, aus dem gelesen werden
+     * konnte. Eine leere Liste bleibt LEER — nie mit Beispielbegriffen gefuellt; der Satz darunter
+     * sagt, WARUM sie leer ist, und unterscheidet dabei „kein Word" von „kein Text im Dokument".
+     */
+    function ka1Anzeigen(terms, verfuegbar) {
+      var liste = document.getElementById("ka1-terms");
+      var leer = document.getElementById("ka1-empty");
+      if (!liste || !leer) { return; }
+      liste.textContent = "";
+      for (var i = 0; i < terms.length; i += 1) {
+        var eintrag = document.createElement("li");
+        // textContent, kein HTML-Sink: die Begriffe stammen aus einem fremden Dokument.
+        eintrag.textContent = terms[i];
+        liste.appendChild(eintrag);
+      }
+      if (terms.length > 0) {
+        leer.textContent = "";
+        leer.className = "muted hidden";
+        return;
+      }
+      leer.textContent = verfuegbar ? ka1Text("ka1Empty") : ka1Text("ka1NoOffice");
+      leer.className = "muted";
+    }
+
+    // Der gehaltene Zustand — damit ein Sprachwechsel die Zeile nicht in der alten Sprache
+    // stehenlaesst (dieselbe Falle, die refreshAnswerToggleLabel und renderAskEvidence loesen).
+    var ka1Terms = [];
+    var ka1Verfuegbar = false;
+
+    function ka1Neuzeichnen() {
+      ka1Anzeigen(ka1Terms, ka1Verfuegbar);
+    }
+
+    /**
+     * Der Lesevorgang. Er benutzt den VORHANDENEN konsistenten Ganzes-Dokument-Weg
+     * (`readWholeDocument`: body.text + body.getHtml() in EINEM context.sync-Batch) — kein zweiter
+     * Office-Snapshot, und ausdruecklich NICHT die Markierung: KA1 beschreibt das Dokument.
+     *
+     * Ohne Word wird gar nicht erst gegriffen: `readWholeDocument` wuerde sonst seinen eigenen
+     * Sendefehler in die ERFASSEN-Flaeche schreiben — eine Meldung am falschen Ort fuer einen
+     * Vorgang, den niemand ausgeloest hat.
+     */
+    function ka1Aktualisieren() {
+      if (!window.Word || typeof Word.run !== "function" ||
+          typeof readWholeDocument !== "function") {
+        ka1Terms = [];
+        ka1Verfuegbar = false;
+        ka1Neuzeichnen();
+        return;
+      }
+      readWholeDocument(function (text) {
+        ka1Terms = ka1TermsFromText(String(text || ""));
+        ka1Verfuegbar = true;
+        ka1Neuzeichnen();
+      });
+    }
+
+    // Start und Sprachwechsel — beides im Block, damit dieser Auftrag ausserhalb seines Markers
+    // keine Zeile braucht. Der Sprach-Rueckruf wird NACH den bestehenden registriert und laeuft
+    // deshalb nach `setLang`; das bestehende Verhalten bleibt unberuehrt.
+    if (typeof document !== "undefined" && document.getElementById("ka1-terms")) {
+      if (typeof STRINGS !== "undefined") {
+        var ka1Sprachen = ["de", "en", "nl"];
+        for (var ka1i = 0; ka1i < ka1Sprachen.length; ka1i += 1) {
+          var ka1Code = ka1Sprachen[ka1i];
+          var ka1Quelle = KA1_TEXTE[ka1Code];
+          STRINGS[ka1Code].ka1Title = ka1Quelle.ka1Title;
+          STRINGS[ka1Code].ka1Hint = ka1Quelle.ka1Hint;
+          var ka1Knopf = document.getElementById("lang-" + ka1Code);
+          if (ka1Knopf) { ka1Knopf.addEventListener("click", ka1Neuzeichnen); }
+        }
+        if (typeof renderStatics === "function") { renderStatics(); }
+      }
+      // Der ehrliche Ausgangszustand steht ab dem ersten Bildaufbau da; sobald Office geklaert ist,
+      // wird gelesen. Ohne Word bleibt es beim ehrlichen „kein offenes Dokument".
+      ka1Neuzeichnen();
+      ka1Aktualisieren();
+    }
+    // KW-KA1-TERMS-END
   </script>
 </body>
 </html>

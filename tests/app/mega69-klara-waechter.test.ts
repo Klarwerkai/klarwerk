@@ -441,7 +441,37 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // naechsten Oeffnen frisch. Antwortet ein AELTERER Server den Kopf nicht, bleibt die neue
     // Zeile ehrlich bei „Abgleich nicht moeglich" — nie bei „aktuell"; die Seite funktioniert im
     // Uebrigen unveraendert weiter.
-    const PIN = "ee0f53d837343abec3c3e4e89545d3a118e7404842e1ba30e7d797407ff80059";
+    // ============================================================================================
+    // JOB 1149 D2 (18.08.2026) — DER PIN WANDERT WEGEN DES DOKUMENT-BEGRIFFSBILDS (KA1).
+    // ============================================================================================
+    // VORHERHASH taskpane.html: `ee0f53d837343abec3c3e4e89545d3a118e7404842e1ba30e7d797407ff80059`.
+    //
+    // GEAENDERT WURDE IN JOB 1149 D1 GENAU EIN ZUSAMMENHAENGENDES PAAR VON SCHNITTMARKEN
+    // (`KW-KA1-TERMS-START/END`), an zwei Stellen derselben Datei — keine Zeile ausserhalb:
+    //   · im Abschnitt `#section-ask` eine Karte `#ka1-block` mit Liste `#ka1-terms` und der
+    //     Leerzeile `#ka1-empty`, im vorhandenen `.card`/`.muted`-Muster, ohne neue Farbregel;
+    //   · am Skriptende der Block, der aus dem offenen Dokument die Begriffsliste bildet: die
+    //     GESPIEGELTE Suchregel des Hauses (Bereinigung, Zerlegung, Termbereinigung), ein Deckel,
+    //     die Anzeige und die Woerterbuchschluessel, die sich selbst in `STRINGS` eintragen.
+    //
+    // DIE EIGENTLICHE AUSLIEFERUNGSFOLGE IST HIER, DASS ES KEINE GIBT — und das ist belegt, nicht
+    // behauptet: KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE neue Nutzlast und vor
+    // allem KEIN neues Abrufziel. Der Block sendet ueberhaupt nichts; die Begriffe entstehen
+    // ausschliesslich im Aufgabenfenster aus dem Text, den Word ohnehin schon geliefert hat
+    // (`readWholeDocument`). Gepinnt ist das doppelt in `tests/app/word-addin.test.ts`, Gruppe
+    // „JOB 1149 · KA1": einmal zur LAUFZEIT (Spione auf den Sendewegen, die stumm bleiben) und
+    // einmal STRUKTURELL (im ausgelieferten Markerblock steht kein Sendeweg) — ein Zweig, den keine
+    // Fixture betritt, faellt damit trotzdem auf.
+    //
+    // KEINE ZWEITE SUCHWAHRHEIT: das Aufgabenfenster ist buildlos und kann die Hausregeln nicht
+    // einbinden, es muss sie spiegeln. Gemessen wird deshalb nicht der Quelltext der Kopie, sondern
+    // ihr VERHALTEN gegen `normalizeSearchTerms(queryTokens(normalizeSearchFragment(...)))` auf
+    // zwoelf Fixtures — dieselbe Bauform wie bei `KW-WORDADDIN-HELPERS-*`. Laeuft die Kopie eines
+    // Tages von der Hausregel weg, wird jener Test rot, bevor diese Zeile hier es wird.
+    //
+    // KEIN erneutes Sideload. Ein installiertes Add-in holt die Datei beim naechsten Oeffnen frisch;
+    // zeigt der Office-Cache kurz den alten Stand, fehlt genau die Karte — nichts wird falsch.
+    const PIN = "47f6cf2c72b229c562a99bc15dacd4bac919b60d21038ec418ccbf2ae3b1f39d";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

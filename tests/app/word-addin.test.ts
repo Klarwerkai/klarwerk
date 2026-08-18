@@ -35,6 +35,10 @@ import {
   wordHtmlToPlainText,
   wordHtmlUtf8Bytes,
 } from "../../apps/web/src/lib/wordAddin";
+// KA1 (JOB 1149): die KANONISCHEN Suchregeln des Hauses. Das Taskpane ist buildlos und muss sie
+// spiegeln; genau deshalb werden sie hier importiert und die Spiegelfassung gegen sie gemessen.
+import { normalizeSearchFragment, normalizeSearchTerms } from "../../services/knowledge-object";
+import { queryTokens } from "../../services/reasoner";
 import { type KlaraPanel, createKlaraPanel, reply } from "./klara-panel-fixture";
 
 function read(rel: string): string {
@@ -1017,5 +1021,211 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     open.setTab("ask");
     expect(open.q("#section-ask")?.className).toBe("");
     expect(open.q("#section-capture")?.className).toBe("hidden");
+  });
+});
+
+// ================================================================================================
+// JOB 1149 · KA1 — DAS DOKUMENT-BEGRIFFSBILD, HAUSINTERN UND OHNE JEDEN EGRESS.
+// ================================================================================================
+//
+// DIE ZUSAGE, woertlich aus `OFFEN.md` (Zeile KA1): „das Panel haelt zu einem offenen Dokument eine
+// Begriffsliste, ohne dass ein Modellaufruf stattfindet".
+//
+// WARUM DIESE TESTS SO GEBAUT SIND. Das Aufgabenfenster ist buildlos — es kann `queryTokens` und
+// `normalizeSearchTerms` nicht importieren und MUSS sie spiegeln. Eine Spiegelfassung ohne
+// Aequivalenzmessung waere eine zweite Suchwahrheit, die morgen auseinanderlaeuft; genau davor
+// warnt der Auftrag. Gemessen wird deshalb nicht der Quelltext der Kopie, sondern ihr VERHALTEN
+// gegen die echten Hausregeln — dieselbe Bauform, die dieses Fenster seit WP-KLARA-1 fuer
+// `KW-WORDADDIN-HELPERS-*` benutzt.
+describe("JOB 1149 · KA1: Begriffsbild — Aequivalenz zur Suchregel, Deckel, Kein-Egress", () => {
+  // Der Gate-tsc laeuft Node-rein ohne DOM-lib (dieselbe Lage wie bei XmlParser oben) — die zwei
+  // Eigenschaften, die diese Tests wirklich lesen, stehen deshalb als schmaler Struktur-Typ da.
+  interface PanelKnoten {
+    textContent: string | null;
+    className: string;
+    children: ArrayLike<unknown>;
+  }
+  interface PanelDoc {
+    body: { innerHTML: string };
+    getElementById(id: string): PanelKnoten | null;
+  }
+
+  /** Der ausgelieferte KA1-Block, ausgefuehrt statt gelesen. */
+  function ladeKa1(): {
+    KA1_MAX_TERMS: number;
+    ka1TermsFromText: (text: string) => string[];
+    ka1Anzeigen: (terms: string[], verfuegbar: boolean) => void;
+  } {
+    const html = read(TASKPANE);
+    const start = html.indexOf("// KW-KA1-TERMS-START");
+    const end = html.indexOf("// KW-KA1-TERMS-END");
+    expect(start, "Markerblock KW-KA1-TERMS-START fehlt").toBeGreaterThan(0);
+    expect(end, "Markerblock KW-KA1-TERMS-END fehlt").toBeGreaterThan(start);
+    const block = html.slice(start, end);
+    const factory = new Function(
+      `${block}; return { KA1_MAX_TERMS: KA1_MAX_TERMS, ka1TermsFromText: ka1TermsFromText, ka1Anzeigen: ka1Anzeigen };`,
+    );
+    return factory() as ReturnType<typeof ladeKa1>;
+  }
+
+  /**
+   * DIE KANONISCHE LISTE — aus den echten Hausfunktionen zusammengesetzt, nicht nachgebaut.
+   *
+   * Die Reihenfolge der drei Schritte ist die Aussage: erst die Bereinigung (`&uuml;` ist derselbe
+   * Buchstabe wie „ü", NFKC, unsichtbare Zeichen, Leerraum), dann die Inhaltstoken-Zerlegung der
+   * Suche, dann die kanonische Termbereinigung der Suchadapter. Wer eine dieser Stufen weglaesst,
+   * bekommt eine andere Liste — und genau das machen die Gegenmutationen sichtbar.
+   */
+  function kanonisch(text: string, max: number): string[] {
+    return normalizeSearchTerms(queryTokens(normalizeSearchFragment(text))).slice(0, max);
+  }
+
+  // Ein realistischer Dokumentanfang mit GENAU den sechs Eigenschaften, die der Auftrag verlangt:
+  // Umlaute, eine HTML-Entitaet, eine Wiederholung, Stoppwoerter, Kurzwoerter und Inhaltswoerter.
+  const DOKUMENT =
+    "Die Wartung der Hallenkr&auml;ne ist zu pr&uuml;fen. " +
+    "Bei der Wartung gilt: der Kran wird vorher entlastet, das Ventil ab M12 geschlossen.";
+
+  it("die Spiegelfassung ist VERHALTENSGLEICH zur Suchregel des Hauses", () => {
+    const ka1 = ladeKa1();
+    const fixtures = [
+      DOKUMENT,
+      "",
+      "   \n\t  ",
+      "und oder aber weil dann", // ausschliesslich Stoppwoerter → leer
+      "an im so ob je", // ausschliesslich Kurzwoerter → leer
+      "F3 M12 DN50 Q1", // Kennungen ueberleben die Laengengrenze (mega54 A)
+      "Pr&uuml;fung gepr&uuml;ft pr&uuml;fen Pr&uuml;fungen", // Entitaet + vier Beugungen EINES Worts
+      "Donau​dampfschiff", // Zero-Width MITTEN im Wort — darf nicht trennen
+      "Arbeitsschutz, Arbeitsschutz; Arbeitsschutz!", // Wiederholung mit Satzzeichen
+      "Ümläute UND GROSSschreibung",
+      "Wartungsplan\nVentil\r\nHallenkran",
+      "x".repeat(300),
+    ];
+    for (const fx of fixtures) {
+      expect(ka1.ka1TermsFromText(fx), `terms:${fx.slice(0, 24)}`).toEqual(
+        kanonisch(fx, ka1.KA1_MAX_TERMS),
+      );
+    }
+  });
+
+  it("das Beispieldokument ergibt EXAKT die kanonische Liste — mit allen sechs Eigenschaften", () => {
+    const ka1 = ladeKa1();
+    const terms = ka1.ka1TermsFromText(DOKUMENT);
+    expect(terms).toEqual(kanonisch(DOKUMENT, ka1.KA1_MAX_TERMS));
+    // KALIBRIERUNG: die Liste ist nicht leer — sonst waeren alle Zusagen darunter vakuoes.
+    expect(terms.length).toBeGreaterThan(3);
+    // Die HTML-Entitaet ist AUFGELOEST: aus `pr&uuml;fen` wird der Stamm mit echtem Umlaut.
+    expect(terms.some((term) => term.includes("ü"))).toBe(true);
+    expect(terms.join(" ")).not.toContain("uuml");
+    // Die WIEDERHOLUNG zaehlt einmal: „Wartung" steht zweimal im Text, einmal in der Liste.
+    const wartung = terms.filter((term) => term.startsWith("wart"));
+    expect(wartung.length).toBe(1);
+    // STOPPWOERTER und KURZWOERTER sind draussen.
+    for (const raus of ["die", "der", "ist", "zu", "bei", "das", "und", "ab"]) {
+      expect(terms, `Stopp-/Kurzwort ${raus}`).not.toContain(raus);
+    }
+    // Die KENNUNG ueberlebt die Laengengrenze (mega54 A) — genau dafuer gibt es sie.
+    expect(terms).toContain("m12");
+  });
+
+  it("der Deckel gilt und schneidet erst NACH der Entdopplung", () => {
+    const ka1 = ladeKa1();
+    expect(ka1.KA1_MAX_TERMS).toBeGreaterThan(0);
+    // 40 verschiedene Inhaltswoerter, jedes dreimal — der Deckel greift, die Dopplung nicht.
+    const viele = Array.from({ length: 40 }, (_v, i) => `Begriffwort${i} Begriffwort${i}`).join(
+      " ",
+    );
+    const terms = ka1.ka1TermsFromText(viele);
+    expect(terms.length).toBe(ka1.KA1_MAX_TERMS);
+    expect(new Set(terms).size).toBe(terms.length);
+    expect(terms).toEqual(kanonisch(viele, ka1.KA1_MAX_TERMS));
+  });
+
+  it("Kein-Egress: die Begriffsgewinnung ruft weder fetch noch Modell noch Embedder", () => {
+    const ka1 = ladeKa1();
+    const globals = globalThis as unknown as { fetch?: unknown; XMLHttpRequest?: unknown };
+    const hatteFetch = "fetch" in globals;
+    const originalFetch = globals.fetch;
+    const hatteXhr = "XMLHttpRequest" in globals;
+    const originalXhr = globals.XMLHttpRequest;
+    const rufe: string[] = [];
+    globals.fetch = (url: unknown): never => {
+      rufe.push(`fetch:${String(url)}`);
+      throw new Error("KA1 darf nicht senden");
+    };
+    globals.XMLHttpRequest = function XhrSpion(): never {
+      rufe.push("xhr");
+      throw new Error("KA1 darf nicht senden");
+    };
+    try {
+      ka1.ka1TermsFromText(DOKUMENT);
+      ka1.ka1TermsFromText("");
+      ka1.ka1TermsFromText("Ventil pr&uuml;fen");
+    } finally {
+      if (hatteFetch) {
+        globals.fetch = originalFetch;
+      } else {
+        Reflect.deleteProperty(globals, "fetch");
+      }
+      if (hatteXhr) {
+        globals.XMLHttpRequest = originalXhr;
+      } else {
+        Reflect.deleteProperty(globals, "XMLHttpRequest");
+      }
+    }
+    expect(rufe, "KA1 hat gesendet").toEqual([]);
+    // Der STRUKTURELLE Beleg daneben: im ausgelieferten Block steht kein Sendeweg. Ein Test, der
+    // nur die Laufzeit misst, uebersieht einen Zweig, den keine Fixture betritt.
+    const html = read(TASKPANE);
+    const block = html.slice(
+      html.indexOf("// KW-KA1-TERMS-START"),
+      html.indexOf("// KW-KA1-TERMS-END"),
+    );
+    for (const verboten of ["fetch(", "XMLHttpRequest", "sendBeacon", "/api/", "WebSocket"]) {
+      expect(block, `KA1-Block enthaelt ${verboten}`).not.toContain(verboten);
+    }
+  });
+
+  it("die Anzeige zeigt die Begriffe — und bei fehlendem Office ehrlich NICHTS statt Beispielen", () => {
+    const ka1 = ladeKa1();
+    const doc = (globalThis as unknown as { document: PanelDoc }).document;
+    const vorher = doc.body.innerHTML;
+    doc.body.innerHTML =
+      '<div id="ka1-block" class="hidden"><ul id="ka1-terms"></ul><p id="ka1-empty"></p></div>';
+    try {
+      ka1.ka1Anzeigen(["wart", "ventil", "hallenkran"], true);
+      const liste = doc.getElementById("ka1-terms");
+      expect(liste?.textContent).toContain("ventil");
+      expect(liste?.children.length).toBe(3);
+      // Office/Word nicht verfuegbar: die Liste ist LEER — nie mit Beispielbegriffen gefuellt.
+      ka1.ka1Anzeigen([], false);
+      expect(doc.getElementById("ka1-terms")?.children.length).toBe(0);
+      const leer = doc.getElementById("ka1-empty");
+      expect((leer?.textContent ?? "").length).toBeGreaterThan(0);
+      expect(leer?.className ?? "").not.toContain("hidden");
+      // Und ein leeres Dokument MIT Office ist ebenfalls ehrlich leer.
+      ka1.ka1Anzeigen([], true);
+      expect(doc.getElementById("ka1-terms")?.children.length).toBe(0);
+    } finally {
+      doc.body.innerHTML = vorher;
+    }
+  });
+
+  it("das Panel haelt das Begriffsbild als Zustand und zeigt ohne Word den ehrlichen Zustand", async () => {
+    // Die Fixture entfernt `Word` bewusst — das ist GENAU der ehrliche Nicht-verfuegbar-Fall.
+    const open = createKlaraPanel({});
+    try {
+      await open.flush();
+      expect(open.q("#ka1-block")).not.toBeNull();
+      // Die Fixture kennt bewusst kein `children` (schmaler Struktur-Typ, keine DOM-lib) — die
+      // leere Liste wird deshalb an ihrem Text gemessen. Beides sagt dasselbe: da steht nichts.
+      expect(open.text("#ka1-terms")).toBe("");
+      expect(open.text("#ka1-empty").length).toBeGreaterThan(0);
+      // Und die Begriffsgewinnung hat KEINEN einzigen Abruf ausgeloest.
+      expect(open.calls.filter((call) => call.url.startsWith("/api/ask"))).toEqual([]);
+    } finally {
+      open.restore();
+    }
   });
 });
