@@ -163,6 +163,20 @@ export type {
 // mega26 Block A: der Laufkontext ist Teil der ÖFFENTLICHEN Reasoner-Fläche — ein gebundener
 // Aufrufer (heute die extract-Route) muss ihn bilden können, ohne model-runs direkt zu kennen.
 export type { ModelRunContext, ModelRunSubject } from "../model-runs";
+// JOB 508 D9: der Titelvorschlag an der Dienstgrenze — eine reine Ableitung aus einem bereits
+// vorliegenden `DescribeImageResult`, ohne Modellaufruf und ohne Laufzeit-Import.
+//
+// WARUM DIESER EXPORT HIER STEHT, OBWOHL HEUTE NIEMAND IHN RUFT: `.dependency-cruiser.cjs` lässt
+// Cross-Modul-Importe ausschliesslich über diese Datei zu (s. Kommentar zu den Klara-Exporten
+// oben). Ohne die Zeile wäre die Ableitung aus `services/app/src/**` strukturell unerreichbar —
+// sie ist die Voraussetzung jeder späteren Anbindung, nicht die Anbindung selbst.
+//
+// WAS DIESER EXPORT AUSDRÜCKLICH NICHT BEDEUTET: dass ein Anwender irgendwo einen Titelvorschlag
+// sieht. Die Kette Persistenz → Service → Wiretyp → Clientabruf → Renderer ist NICHT geschlossen;
+// `describeImage` in `./src/service` ruft diese Ableitung nicht, und kein Renderer zeigt ihr
+// Ergebnis an. Das ist serverinterne Vorarbeit — siehe den Kopf von `./src/titel-vorschlag`.
+export { titelVorschlag, TITEL_MAX_ZEICHEN } from "./src/titel-vorschlag";
+export type { TitelVorschlagErgebnis, TitelVorschlagGrund } from "./src/titel-vorschlag";
 
 // ================================================================================================
 // W1 S4 — KLARA POLICY RESOLVER, SITZUNG UND ZUSTIMMUNG (KW-S4-02/03/04)

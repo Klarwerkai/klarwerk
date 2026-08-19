@@ -7,23 +7,23 @@
 // Ehrlichkeitszusagen auch von hier gelten, und dass die Ableitung ohne jeden Dienst auskommt.
 //
 // ================================================================================================
-// EINE OFFENE STELLE, DIE HIER STEHEN MUSS STATT NUR IM BERICHT.
+// D9: DER VERTRAG GREIFT NICHT MEHR INS LEERE — UND WAS ER TROTZDEM NICHT BELEGT.
 // ================================================================================================
 //
-// Der Auftrag verlangt in Pflichtlieferung 3 die Anbindung in `services/reasoner/src/index.ts`.
-// DIESEN PFAD GIBT ES NICHT — und zwar nicht zufällig: KEIN einziges Modul dieses Repos führt eine
-// `src/index.ts`. Die Dienstgrenze liegt überall auf `services/<modul>/index.ts`, und genau diesen
-// Pfad nennt auch die Spezifikation (D7 §5.3: „`services/reasoner/index.ts` — Fassadenexport").
+// In D8 war der Fassadenexport nicht geleast. V4 stand deshalb als Vorbereitungswächter mit einem
+// `if (ausFassade === undefined) … return` da und war LEER WAHR. BEN hat das in D8 zu Recht als
+// „vakuumen Fassadenvertrag" beanstandet (Prüflücke 1): ein Fall, der ohne Anbindung durchwinkt,
+// belegt keine Anbindung.
 //
-// `services/reasoner/index.ts` ist in der Lease dieses Durchgangs NICHT freigegeben, und die Lease
-// sagt ausdrücklich: „Wird ein weiterer Pfad noetig, ist das ein BLOCKIERT … nicht ein stiller
-// fuenfter Write." Der Fassadenexport bleibt deshalb offen; er ist in der Rückgabe mit Pfad,
-// gemessenem Pin und der exakt nötigen Zeile ausgewiesen.
+// In D9 ist `services/reasoner/index.ts` geleast, der Export steht, und V4 hat keinen
+// Frühausstieg mehr. Fehlt der Export, wird dieser Test rot — das ist in D9 mit einer
+// Gegenmutation gemessen und in der Rückgabe mit Ausgabe belegt.
 //
-// V4 unten ist der VORBEREITUNGSWÄCHTER dafür. Er ist heute leer wahr — das sage ich hier deutlich,
-// damit ihn niemand als Beleg für eine Anbindung liest, die es noch nicht gibt. Sobald die Zeile in
-// der Fassade steht, greift er und verhindert die schlechtere Auflösung: eine zweite Kopie der
-// Ableitung neben der einen kanonischen.
+// WAS DIESER VERTRAG AUSDRÜCKLICH NICHT BELEGT: dass irgendwo ein Titelvorschlag SICHTBAR wird.
+// Er misst die Erreichbarkeit an der Dienstgrenze, sonst nichts. `describeImage` ruft die
+// Ableitung nicht, kein Wiretyp trägt einen Titel, kein Renderer zeigt ihn. D9 begrenzt das
+// Versprechen deshalb ausdrücklich auf serverinterne Vorarbeit — siehe den Kopf von
+// `services/reasoner/src/titel-vorschlag.ts`.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -72,18 +72,35 @@ describe("JOB508 · Vertrag an der Dienstgrenze", () => {
     expect(quelle).not.toMatch(/process\.env/u);
   });
 
-  it("V4 (Vorbereitungswächter, heute LEER WAHR): trägt die Fassade den Export, ist es DIESE Funktion", async () => {
+  it("V4: die Fassade trägt den Export — und zwar DIESE Funktion, keine Kopie", async () => {
     const fassade = (await import("../../services/reasoner")) as Record<string, unknown>;
-    const ausFassade = fassade.titelVorschlag;
-    if (ausFassade === undefined) {
-      // Erwarteter Zustand dieses Durchgangs — die Fassade ist nicht geleast. Der Fall behauptet
-      // hier NICHTS über die Anbindung; er hält nur fest, dass es keine zweite Ableitung gibt.
-      expect(readFileSync(FASSADE, "utf8")).not.toContain("titel-vorschlag");
-      return;
-    }
-    // Sobald der Export steht: dieselbe Funktion, keine Kopie. Eine zweite Ableitung neben der
-    // einen kanonischen wäre die schlechtere Auflösung (Regel „EINE kanonische Quelle").
-    expect(ausFassade).toBe(titelVorschlag);
+    // KEINE Verzweigung, kein Frühausstieg, kein leer wahrer Zweig: Fehlt der Export, scheitert
+    // dieser Fall. Genau das verlangt BEN im D8-Urteil (Prüflücke 1) — der Vertrag darf nicht ins
+    // Leere greifen. Bis D8 stand hier ein `if (ausFassade === undefined) … return`, der den Fall
+    // ohne Anbindung durchwinkte; das war der „vakuume Fassadenvertrag".
+    expect(
+      fassade.titelVorschlag,
+      "services/reasoner/index.ts exportiert titelVorschlag nicht",
+    ).toBeDefined();
+    // Dieselbe Funktion, keine zweite Ableitung neben der einen kanonischen (Regel „EINE
+    // kanonische Quelle"). Identität, nicht bloß Typgleichheit.
+    expect(fassade.titelVorschlag).toBe(titelVorschlag);
+    // Die Anzeigegrenze reist mit — sonst erfindet ein späterer Aufrufer sie ein zweites Mal.
+    expect(fassade.TITEL_MAX_ZEICHEN).toBe(TITEL_MAX_ZEICHEN);
+  });
+
+  it("V4b: die Fassade zieht die Ableitung aus der einen kanonischen Datei", () => {
+    // Ergänzt V4 um die Quellenseite: Der Export muss aus `./src/titel-vorschlag` stammen. Ein
+    // Re-Export derselben Funktion über einen Umweg wäre identitätsgleich und würde V4 nicht
+    // auffallen — hier fällt er auf.
+    //
+    // Gemessen wird eine echte EXPORT-ANWEISUNG, nicht bloßes Vorkommen der Zeichenkette: Der
+    // Dateikopf nennt den Pfad in einem Kommentar, und ein Fall, den ein Kommentar grün hält,
+    // misst nichts. (In D9 gemessen: mit der reinen Textsuche überlebte dieser Fall die
+    // Gegenmutation, die V4 rot machte.)
+    const exportAusModul =
+      /^export\s+(?:type\s+)?\{[^}]*\}\s+from\s+"\.\/src\/titel-vorschlag";$/mu;
+    expect(readFileSync(FASSADE, "utf8")).toMatch(exportAusModul);
   });
 
   it("V5: die Dienstgrenze dieses Moduls ist services/reasoner/index.ts — es gibt keine src/index.ts", () => {

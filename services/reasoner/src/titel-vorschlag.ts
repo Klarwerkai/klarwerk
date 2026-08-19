@@ -1,9 +1,29 @@
 // ================================================================================================
-// JOB 508 · D8 — DER TITELVORSCHLAG. EINE REINE ABLEITUNG, KEIN ZWEITER MODELLAUFRUF.
+// JOB 508 · D9 — DER TITELVORSCHLAG. EINE REINE ABLEITUNG, KEIN ZWEITER MODELLAUFRUF.
 // ================================================================================================
 //
-// DAS NUTZERVERSPRECHEN: Wer ein Wissensobjekt ablegt, bekommt einen brauchbaren Titelvorschlag
-// statt eines leeren Feldes — reproduzierbar, begründet und ohne Netzaufruf prüfbar.
+// ------------------------------------------------------------------------------------------------
+// REICHWEITE: SERVERINTERNE VORARBEIT. KEIN SICHTBARER NUTZEN.
+// ------------------------------------------------------------------------------------------------
+//
+// Bis D8 stand hier: „DAS NUTZERVERSPRECHEN: Wer ein Wissensobjekt ablegt, bekommt einen
+// brauchbaren Titelvorschlag statt eines leeren Feldes." DAS WAR EINE BEHAUPTUNG, KEINE MESSUNG —
+// BEN hat D8 genau dafür mit PRODUKT ROT beurteilt: „erreicht weder die reale Reasoner-Fassade
+// noch Wire, Client oder Renderer".
+//
+// Was heute wirklich gilt, in D9 an der Quelle nachgemessen:
+//
+//   · Die Ableitung ist gebaut und über `services/reasoner/index.ts` an der Dienstgrenze
+//     erreichbar. Das ist die Voraussetzung einer Anbindung — nicht die Anbindung.
+//   · `describeImage` in `./src/service` ruft sie NICHT.
+//   · `DescribeImageResult` trägt kein Titelfeld, also führt auch kein Wiretyp einen Titel.
+//   · Der Client holt in `apps/web/src/api/endpoints.ts` dasselbe Ergebnis ohne Titel.
+//   · Der Renderer schreibt eine Bildbeschreibung in die FIGCAPTION
+//     (`apps/web/src/components/RichTextEditor.tsx`) — nicht in ein Titelfeld.
+//
+// KEIN ANWENDER SIEHT HEUTE EINEN TITELVORSCHLAG, und diese Datei darf nichts anderes behaupten.
+// Wer die Kette schliessen will, braucht die in der D9-Rückgabe namentlich aufgeführten Pfade;
+// sie waren in diesem Durchgang nicht geleast.
 //
 // WAS DIESE DATEI IST: eine reine Funktion von einem bereits vorhandenen `DescribeImageResult` auf
 // einen Titelvorschlag. Sie ruft KEIN Modell, sie öffnet KEINE Verbindung, sie liest KEINE Umgebung.
