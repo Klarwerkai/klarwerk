@@ -4908,6 +4908,259 @@
       ka1Aktualisieren();
     }
     // KW-KA1-TERMS-END
+
+    // KW-KA3-KARTEN-START
+    // ============================================================================================
+    // JOB 1151 · KA3 — ANGEBOTSKARTEN STATT UNTERBRECHUNG.
+    // ============================================================================================
+    //
+    // Pedis Auflage, woertlich (werkstatt-klara-assistentin-beschlossen-20260818.md):
+    // „Die Chefsekretaerin klopft an, sie platzt nicht herein." Die Abnahme aus OFFEN.md ist der
+    // Cursor: „die Karte kommt und geht, ohne dass der Anwender je den Cursor verliert".
+    //
+    // WAS DIESER BLOCK TUT: er ruft auf ANLASS den Bestandsblick und legt sein Ergebnis als leise
+    // Karte ins Panel. Zwei Anlaesse, mehr nicht — das Oeffnen und die Ruhe nach dem Schreiben.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT — und das ist die Zusage, nicht eine Nebenbemerkung:
+    //   · kein `alert`, kein Dialog, kein `window.open`
+    //   · kein `focus()`, `blur()`, `select()`, `setSelectionRange()` und kein `scrollIntoView`
+    //   · kein `insertText`, kein `setSelectedDataAsync` — KA3 fasst KEINEN Schreibweg an
+    //   · kein Pollingintervall: `KA3_TASTENRUHE_MS` ist eine RUHEFRIST, kein Takt
+    // Die Karte wird erzeugt, gefuellt und wieder verborgen; der Fokus bleibt, wo er war.
+    //
+    // DER BESTANDSBLICK GEHOERT KA2, NICHT HIER. KA3 baut keine Suche, keine Tokenisierung und
+    // keine Dublettenbewertung nach — es konsumiert den Vertrag `window.klaraBestandsblick(grund)`,
+    // den KA2 bereitstellt: eine Funktion, die ein Versprechen auf `{ treffer: [{id, title,
+    // status}] }` liefert. SOLANGE ES IHN NICHT GIBT, TUT KA3 NICHTS: keine Karte, kein Platzhalter,
+    // kein erfundener Treffer. Das ist fail-closed und zugleich die Uebergabestelle zwischen den
+    // beiden Bahnen — KA2 setzt die Funktion in seinem eigenen Marker.
+    //
+    // WARUM `DocumentSelectionChanged` DER SCHREIBANLASS IST: Das Taskpane-API kennt KEIN
+    // Tastenereignis des Dokuments. Der einzige dokumentierte Aktivitaetsanlass ist der Wechsel der
+    // Markierung — denselben benutzt dieses Fenster bereits fuer die Herkunftszeile. „Tastenruhe"
+    // heisst hier deshalb: seit dem letzten gemeldeten Anlass ist nichts mehr passiert. Das ist die
+    // ehrliche Naeherung, nicht ein Versprechen ueber Tastendruecke.
+    //
+    // WARUM DIESER BLOCK GANZ UNTEN STEHT: `officeUsable()` wird erst durch `markOfficeChecked`
+    // wahr (Zeile darueber). Wer sich frueher anmeldet, meldet sich an einem Host an, den es zu
+    // diesem Zeitpunkt noch nicht gibt. Fuer den echten Word-Host, der `onReady` VERZOEGERT feuert,
+    // bindet `ka3EreignisBinden` zusaetzlich beim ersten Fokus nach — ohne eigenen Timer.
+    var KA3_TASTENRUHE_MS = 30000;
+
+    // Die drei Texte. Sie stehen sinngleich in `apps/web/src/i18n.ts` (klara.offer.*) — dasselbe
+    // Doppelmuster wie `aiGeneratedNotice` ↔ `ai.generatedNotice`, weil dieses Fenster buildlos ist.
+    // Sie werden in das VORHANDENE Woerterbuch eingehaengt: kein zweites Nachschlagewerk, kein
+    // eigenes `t()`, keine vierte Textquelle.
+    var KA3_TEXTE = {
+      de: {
+        klaraOfferLabel: "Klaras Angebote",
+        klaraOfferLead: "Dazu gibt es schon:",
+        klaraOfferOpen: "Ansehen",
+      },
+      en: {
+        klaraOfferLabel: "Klara's suggestions",
+        klaraOfferLead: "There is already something on this:",
+        klaraOfferOpen: "View",
+      },
+      nl: {
+        klaraOfferLabel: "Klara's suggesties",
+        klaraOfferLead: "Hierover is al iets:",
+        klaraOfferOpen: "Bekijken",
+      },
+    };
+    for (var ka3Sprache in KA3_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(KA3_TEXTE, ka3Sprache) && STRINGS[ka3Sprache]) {
+        var ka3Tabelle = KA3_TEXTE[ka3Sprache];
+        for (var ka3Schluessel in ka3Tabelle) {
+          if (Object.prototype.hasOwnProperty.call(ka3Tabelle, ka3Schluessel)) {
+            STRINGS[ka3Sprache][ka3Schluessel] = ka3Tabelle[ka3Schluessel];
+          }
+        }
+      }
+    }
+
+    var ka3Timer = null;
+    // Die Generation ist der Debounce: jeder neue Anlass erhoeht sie und macht damit sowohl einen
+    // wartenden Timer als auch eine spaet eintreffende Antwort ungueltig.
+    var ka3Generation = 0;
+    var ka3Laeuft = false;
+    var ka3Beendet = false;
+    var ka3Gebunden = false;
+    var ka3Treffer = [];
+
+    /** Der KA2-Vertrag — oder `null`. `null` heisst: KA3 schweigt. */
+    function ka3Vertrag() {
+      var vertrag = window.klaraBestandsblick;
+      return typeof vertrag === "function" ? vertrag : null;
+    }
+
+    /**
+     * Die Karte. Sie wird beim ersten Bedarf erzeugt und sitzt unter der Sitzungskarte — sichtbar
+     * in BEIDEN Reitern, weil sie zum Dokument gehoert und nicht zu einem Bereich.
+     * `aria-live="polite"`: gemeldet, nie unterbrechend — genau Pedis Auflage in Barrierearm.
+     */
+    function ka3KarteElement() {
+      var vorhanden = document.getElementById("ka3-karten");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.createElement("div");
+      karte.id = "ka3-karten";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      var anker = document.getElementById("session-card");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(karte, anker.nextSibling);
+      } else {
+        document.body.appendChild(karte);
+      }
+      return karte;
+    }
+
+    /** Was KA2 geliefert hat — gelesen, nie erfunden. Ein Eintrag ohne Id ist kein Treffer. */
+    function ka3Normalisieren(ergebnis) {
+      var roh = ergebnis && Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
+      var raus = [];
+      for (var i = 0; i < roh.length; i += 1) {
+        var e = roh[i];
+        if (!e || typeof e.id !== "string" || e.id.length === 0) { continue; }
+        raus.push({
+          id: e.id,
+          title: typeof e.title === "string" && e.title.replace(/^\s+|\s+$/g, "").length > 0
+            ? e.title
+            : e.id,
+          status: typeof e.status === "string" ? e.status : null,
+        });
+      }
+      return raus;
+    }
+
+    /**
+     * Zeichnen. KEIN Fokuseingriff, kein Scrollen: die Karte erscheint und verschwindet, der Cursor
+     * bleibt, wo der Anwender ihn gelassen hat. Der Weg zum Objekt ist ein LINK auf die bestehende
+     * KO-Detailroute — dasselbe Muster wie die Quellenliste, kein `window.open` aus KA3.
+     */
+    function ka3Zeichnen() {
+      var karte = ka3KarteElement();
+      karte.setAttribute("aria-label", t("klaraOfferLabel"));
+      while (karte.firstChild) { karte.removeChild(karte.firstChild); }
+      if (!ka3Treffer || ka3Treffer.length === 0) {
+        // Null Treffer ENTFERNT eine vorher stehende Karte — ein alter Fund neben neuem Text waere
+        // eine Falschaussage ueber den Bestand.
+        karte.className = "card hidden";
+        return;
+      }
+      var lead = document.createElement("p");
+      lead.className = "muted";
+      lead.textContent = t("klaraOfferLead");
+      karte.appendChild(lead);
+      var liste = document.createElement("ul");
+      liste.className = "muted";
+      for (var i = 0; i < ka3Treffer.length; i += 1) {
+        var treffer = ka3Treffer[i];
+        var zeile = document.createElement("li");
+        zeile.appendChild(document.createTextNode(treffer.title));
+        // Der Status kommt aus KA2 und benutzt die VORHANDENE Ampel der Quellenliste — kein
+        // zweites Vokabular fuer dieselbe Sache.
+        if (treffer.status && ASK_STATUS_KEYS[treffer.status]) {
+          var badge = document.createElement("span");
+          badge.className = "src-badge src-badge-" + treffer.status;
+          badge.textContent = t(ASK_STATUS_KEYS[treffer.status]);
+          zeile.appendChild(badge);
+        }
+        zeile.appendChild(document.createTextNode(" — "));
+        var weg = document.createElement("a");
+        weg.href = koDetailUrl(window.location.origin, treffer.id);
+        weg.target = "_blank";
+        weg.rel = "noopener noreferrer";
+        weg.textContent = t("klaraOfferOpen");
+        zeile.appendChild(weg);
+        liste.appendChild(zeile);
+      }
+      karte.appendChild(liste);
+      karte.className = "card";
+    }
+
+    /** Sprachwechsel: derselbe gehaltene Stand, neuer Text. Nur wenn es die Karte schon gibt. */
+    function ka3Neuzeichnen() {
+      if (document.getElementById("ka3-karten")) { ka3Zeichnen(); }
+    }
+
+    /**
+     * Der Abruf. GENAU EINER gleichzeitig (`ka3Laeuft`) — ein zweiter Anlass waehrend eines
+     * laufenden wird verworfen, nicht eingereiht. Eine Antwort einer ueberholten Generation wird
+     * fallengelassen; ein Fehler entfernt die Karte, statt eine alte stehen zu lassen.
+     */
+    function ka3Ausfuehren(grund) {
+      if (ka3Beendet || ka3Laeuft) { return; }
+      var vertrag = ka3Vertrag();
+      if (!vertrag) { return; }
+      ka3Laeuft = true;
+      var generation = ka3Generation;
+      Promise.resolve()
+        .then(function () { return vertrag(grund); })
+        .then(function (ergebnis) {
+          if (ka3Beendet || generation !== ka3Generation) { return; }
+          ka3Treffer = ka3Normalisieren(ergebnis);
+          ka3Zeichnen();
+        })
+        .catch(function () {
+          if (ka3Beendet || generation !== ka3Generation) { return; }
+          // Ein Fehler ist kein Bestand: die Karte geht: weder alt noch erfunden.
+          ka3Treffer = [];
+          ka3Zeichnen();
+        })
+        .then(function () { ka3Laeuft = false; });
+    }
+
+    /** Der Schreibanlass. Jeder neue verwirft den wartenden Timer — kein Dauerfeuer, kein Takt. */
+    function ka3Planen() {
+      if (ka3Beendet) { return; }
+      ka3Generation += 1;
+      var generation = ka3Generation;
+      if (ka3Timer !== null) { clearTimeout(ka3Timer); }
+      ka3Timer = setTimeout(function () {
+        ka3Timer = null;
+        if (generation !== ka3Generation) { return; }
+        ka3Ausfuehren("tastenruhe");
+      }, KA3_TASTENRUHE_MS);
+    }
+
+    /** Nach `pagehide` laeuft nichts nach — kein Timer, keine spaete Antwort. */
+    function ka3Stoppen() {
+      ka3Beendet = true;
+      ka3Generation += 1;
+      if (ka3Timer !== null) { clearTimeout(ka3Timer); ka3Timer = null; }
+    }
+
+    function ka3EreignisBinden() {
+      if (ka3Gebunden || !officeUsable()) { return; }
+      try {
+        if (Office.EventType && Office.EventType.DocumentSelectionChanged) {
+          Office.context.document.addHandlerAsync(
+            Office.EventType.DocumentSelectionChanged,
+            ka3Planen
+          );
+          ka3Gebunden = true;
+        }
+      } catch (e) {
+        // Host ohne dieses Ereignis: KA3 behaelt den Oeffnungsanlass und schweigt sonst — es wird
+        // kein Ersatzsignal erfunden und kein Takt eingefuehrt.
+      }
+    }
+
+    ka3EreignisBinden();
+    ka3Ausfuehren("oeffnen");
+    window.addEventListener("pagehide", ka3Stoppen);
+    // Der echte Word-Host meldet `onReady` verzoegert; beim ersten Fokus ist er sicher da. Kein
+    // eigener Timer — der waere genau das Dauerfeuer, das dieser Block vermeidet.
+    window.addEventListener("focus", ka3EreignisBinden);
+    // Der Sprachwechsel wird HIER mitgehoert statt in `setLang` — der Rueckruf laeuft nach dem
+    // bestehenden, `lang` steht also schon auf der neuen Sprache.
+    ["de", "en", "nl"].forEach(function (ka3Code) {
+      var knopf = document.getElementById("lang-" + ka3Code);
+      if (knopf) { knopf.addEventListener("click", ka3Neuzeichnen); }
+    });
+    // KW-KA3-KARTEN-END
   </script>
 </body>
 </html>

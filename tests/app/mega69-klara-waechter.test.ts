@@ -517,7 +517,63 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     Sitzungsweg dieses Panels laengst sendet. Same-origin, also kein Preflight.
     //   · KEINE neue Nutzlast: der Koerper ist unveraendert (`question`, `locale`, `mode`).
     //   · Ein AELTERER Server ignoriert die drei Kopfzeilen schlicht — nichts geht verloren.
-    const PIN = "440f752828424b538e0c69978b360d7f25092687c2a9b280faa19b1b77a4b737";
+    // ============================================================================================
+    // JOB 1151 D3 (19.08.2026) — DER PIN WANDERT EIN DRITTES MAL: KA3 KOMMT ZU KA1 UND KA4 DAZU.
+    // ============================================================================================
+    // DREI VORHERSTAENDE, weil dieser Pin drei Wanderungen hinter sich hat und alle drei belegt
+    // sein muessen:
+    //   · vor KA1 (JOB 1149 D2): `ee0f53d837343abec3c3e4e89545d3a118e7404842e1ba30e7d797407ff80059`
+    //   · vor KA4 (JOB 1152 D3): `47f6cf2c72b229c562a99bc15dacd4bac919b60d21038ec418ccbf2ae3b1f39d`
+    //   · vor KA3 (dieser Nachzug): `440f752828424b538e0c69978b360d7f25092687c2a9b280faa19b1b77a4b737`
+    //
+    // WARUM DREIMAL. KA1, KA3 und KA4 standen ALLE DREI auf Base `9b87037` und haben alle drei
+    // genau diese Pinzeile ersetzt. Integriert wurde zuerst KA1 (`90eddf2`), dann KA4 (`45ab152`);
+    // KA3 wird hier nachgezogen. Die zwei Begruendungsbloecke darueber bleiben deshalb
+    // UNVERAENDERT stehen — sie beantworten die Auslieferungsfrage fuer das Begriffsbild und fuer
+    // die Dokument-Einwilligung und sind durch diesen Nachzug nicht falsch geworden. Dieser Block
+    // kommt DAZU, er ersetzt keinen von beiden.
+    //
+    // GEAENDERT WURDE DURCH KA3 AUSSCHLIESSLICH PANELINHALT — eine einzige zusammenhaengende
+    // Markenregion `KW-KA3-KARTEN-START/END` (253 Zeilen), unveraendert gegenueber JOB 1151 D1/D2
+    // und im Nachzug byteweise uebertragen, nur an einer anderen STELLE eingesetzt:
+    //   · `KA3_TASTENRUHE_MS = 30000` — die Tastenruhe aus Pedis Richtwert in OFFEN.md;
+    //   · `ka3Vertrag`, `ka3KarteElement`, `ka3Normalisieren`, `ka3Zeichnen`, `ka3Neuzeichnen`,
+    //     `ka3Ausfuehren`, `ka3Planen`, `ka3Stoppen`, `ka3EreignisBinden` — reine Ableitung und
+    //     DOM-Erzeugung; die Karten entstehen programmatisch, damit die Datei genau EINE
+    //     zusammenhaengende Aenderungsstelle traegt;
+    //   · neue Woerterbuch-Schluessel je Sprache (`ka3*`), eingehaengt in das vorhandene
+    //     `STRINGS`-Objekt; das Gegenstueck fuer die Web-Oberflaeche liegt in `apps/web/src/i18n.ts`
+    //     (`klara.offer.label` / `.lead` / `.open`).
+    //
+    // ZUR STELLE, weil sie das Einzige ist, was der Nachzug wirklich geaendert hat: in D2 stand der
+    // Block unmittelbar hinter `klaraS4StartAnfordern();`. Dort steht seit `90eddf2` der
+    // KA1-Block. KA3 sitzt jetzt HINTER `KW-KA1-TERMS-END` — weiterhin am Skriptende und weiterhin
+    // nach allem, was er braucht (`STRINGS`, `t`, `ASK_STATUS_KEYS`, `koDetailUrl`,
+    // `officeUsable`, `markOfficeChecked`). Der KA1-Block dazwischen definiert nur eigene Namen.
+    //
+    // KA1 UND KA4 BLEIBEN VOLLSTAENDIG: der Diff dieses Durchgangs gegen `45ab152` enthaelt in
+    // `taskpane.html` NUR die 253 KA3-Zeilen — keine Zeile des Begriffsbilds und keine Zeile der
+    // Dokument-Einwilligung wurde angefasst. Beide bleiben ausfuehrbar bewacht
+    // (`tests/app/word-addin.test.ts`, Gruppe „JOB 1149 · KA1"; `tests/app/word-addin-ask.test.ts`).
+    //
+    // KEIN NEUES ABRUFZIEL: die Karten fragen KEINEN Server. Sie beziehen ihren Bestand ueber die
+    // clientseitige KA2-Naht `window.klaraBestandsblick(grund)` — eine Funktion im selben Fenster,
+    // kein `fetch`. Fehlt sie, zeichnet KA3 nichts (fail-closed). Die Menge der `fetch(...)`-Ziele
+    // ist gegen `45ab152` unveraendert; ausfuehrbar belegt durch `BEKANNTE_ABRUFZIELE` in
+    // `tests/app/mega69-klara-merkmale.test.ts`, das gegen diesen Stand gruen steht.
+    // Das „Ansehen" der Karte ist ein gewoehnlicher Verweis auf die eigene App-Domain, wie ihn die
+    // vorhandene Quellenliste schon traegt — kein Abruf, keine Nutzlast.
+    //
+    // KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE geaenderte Nutzlast, KEIN neuer
+    // Fremd-Ursprung und KEIN `setInterval` — die Tastenruhe ist ein Entprellen mit Generationen-
+    // zaehler, es laeuft nie mehr als ein Durchgang.
+    //
+    // AUSLIEFERUNGSFOLGE fuer ein installiertes Add-in: KEIN erneutes Sideload. Die Datei wird beim
+    // naechsten Oeffnen frisch vom Server geholt; bis dahin kann der Office-Cache kurz den alten
+    // Stand zeigen — dann fehlen nur die Karten, alles Uebrige arbeitet unveraendert weiter. Der
+    // Anwender verliert dabei nie den Cursor: die Karte wird ausserhalb des Eingabebereichs
+    // gezeichnet und ruft nie `focus()` — das ist die Abnahme aus `OFFEN.md`, Abschnitt „1a-KA".
+    const PIN = "c3b0625382d3eb74078d49d70a4598dfb15f02db4b70877e90ae1c46af66195f";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

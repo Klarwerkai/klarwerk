@@ -3460,6 +3460,20 @@ const de = {
   "klara.page.profile": "Dein Konto: Name, Sprache, Abmelden.",
   "klara.page.koDetail":
     "Die Detailseite eines Wissensobjekts: Inhalt, Versionen, Quellen, Anhänge, Prüf-Historie und Aktionen je nach Rolle.",
+  // ==============================================================================================
+  // JOB 1151 (KA3) — DIE ANGEBOTSKARTE. „Die Chefsekretärin klopft an, sie platzt nicht herein."
+  // ==============================================================================================
+  //
+  // Drei Texte für die leise Karte, die Klara im Word-Aufgabenfenster beim Öffnen und nach einer
+  // Schreibpause legt. Sie stehen HIER, weil `apps/web/src/i18n.ts` die Produktwörterbuchquelle ist
+  // (KA3 nennt sie ausdrücklich) — und sinngleich ein zweites Mal im buildlosen Wörterbuch des
+  // Aufgabenfensters (`apps/web/public/word-addin/taskpane.html`, Marker `KW-KA3-KARTEN`). Das ist
+  // dasselbe Doppelmuster, das `ai.generatedNotice` ↔ `aiGeneratedNotice` seit mega61 trägt: das
+  // Panel hat kein Modulsystem und kann diese Datei nicht importieren. Eine DRITTE Textquelle
+  // entsteht dabei nicht.
+  "klara.offer.label": "Klaras Angebote",
+  "klara.offer.lead": "Dazu gibt es schon:",
+  "klara.offer.open": "Ansehen",
   // Sektions-Erklärungen (Berater-Lieferung 05.07.): je Überschrift EIN Erklärtext (shelp.*).
   "shelp.adm.seedTitle":
     "Hier lädst du fertige Beispieldaten, mit denen du KLARWERK gefahrlos ausprobieren kannst. Das geht nur, solange die Instanz noch leer ist — so mischen sich echte Daten und Beispiele nie. Alle Beispieldaten sind als solche markiert und lassen sich später mit einem Klick rückstandslos entfernen.",
@@ -7766,6 +7780,10 @@ const en: typeof de = {
   "klara.page.profile": "Your account: name, language, sign out.",
   "klara.page.koDetail":
     "The detail page of a knowledge object: content, versions, sources, attachments, review history and role-based actions.",
+  // JOB 1151 (KA3) — see the German entry for the finding and the two-dictionary pattern.
+  "klara.offer.label": "Klara's suggestions",
+  "klara.offer.lead": "There is already something on this:",
+  "klara.offer.open": "View",
   // Section explanations (consultant delivery 05.07., interim EN — refined in delivery 3).
   "shelp.adm.seedTitle":
     "Here you load ready-made sample data to try KLARWERK safely. This only works while the instance is still empty — so real data and samples never mix. All sample data is marked as such and can later be removed completely with one click.",
@@ -11870,6 +11888,10 @@ const nl: typeof de = {
   "klara.page.profile": "Jouw account: naam, taal, afmelden.",
   "klara.page.koDetail":
     "De detailpagina van een kennisobject: inhoud, versies, bronnen, bijlagen, beoordelingshistorie en acties afhankelijk van je rol.",
+  // JOB 1151 (KA3) — zie de Duitse regel voor de bevinding en het dubbele woordenboekpatroon.
+  "klara.offer.label": "Klara's suggesties",
+  "klara.offer.lead": "Hierover is al iets:",
+  "klara.offer.open": "Bekijken",
   "shelp.adm.seedTitle":
     "Hier laad je kant-en-klare voorbeelddata waarmee je KLARWERK gevaarloos kunt uitproberen. Dat kan alleen zolang de instantie nog leeg is — zo vermengen echte data en voorbeelden zich nooit. Alle voorbeelddata is als zodanig gemarkeerd en laat zich later met één klik spoorloos verwijderen.",
   "shelp.adm.createTitle":

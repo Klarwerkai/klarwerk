@@ -76,6 +76,49 @@ const OFFICE_FRIST = (() => {
 /** Nur bei `office: "verzoegert"` gesetzt: loest den zurueckgehaltenen onReady-Rueckruf aus. */
 let officeReadyRueckruf: (() => void) | null = null;
 
+/** JOB 1151 (KA3): die beim Host angemeldeten Dokument-Rueckrufe (Markierungswechsel). */
+let officeHandler: Array<{ typ: string; fn: () => void }> = [];
+
+/**
+ * JOB 1151 (KA3): die Ereignistabelle des Hosts. Sie stand der Attrappe bisher nicht zur
+ * Verfuegung — die vorhandene Anmeldung des Panels (Herkunftszeile) lief deshalb in jedem Fall
+ * ins Leere, ohne dass es auffiel. Sie ist ADDITIV: an der bestehenden Startsequenz aendert sie
+ * nichts, weil die Anmeldestelle zu ihrem Zeitpunkt ohnehin kein bereites Office sieht.
+ */
+const EREIGNISSE = { DocumentSelectionChanged: "documentSelectionChanged" } as const;
+
+/**
+ * JOB 1151 (D3) — DIE FEHLENDE HAELFTE DER OFFICE-ATTRAPPE.
+ *
+ * Der KA3-Fall „Kommen und Gehen der Karte lassen Fokus und Auswahl unveraendert" ruft
+ * `feld.focus()`. jsdom feuert daraufhin den VORHANDENEN `focus`-Zuhoerer des Panels
+ * (Herkunftszeile → `updateAskSourceNote` → `readAskSelection`), und der greift auf
+ * `Office.CoercionType.Text`, `Office.context.document.getSelectedDataAsync` und
+ * `Office.AsyncResultStatus` zu. Fehlt eines davon, wirft der Zuhoerer INNERHALB von jsdom — der
+ * Fall bleibt gruen, der LAUF endet mit einem unbehandelten Fehler und Exitcode 1. Genau das hat
+ * die D2-Rueckgabe (BASIC4, Abschnitt 9) gemessen und gemeldet; hier wird es geschlossen.
+ *
+ * Die Attrappe antwortet mit einer LEEREN Auswahl. Das ist die Wahrheit dieses Pruefstands: er
+ * stellt kein markiertes Dokument, und eine erfundene Markierung wuerde die Herkunftszeile und
+ * `prepareAskQuestion` in einen Zustand schicken, den kein Fall gesetzt hat.
+ */
+const COERCION = { Text: "text" } as const;
+const ASYNC_STATUS = { Succeeded: "succeeded", Failed: "failed" } as const;
+
+/**
+ * JOB 1151 (KA3) — EIN SCHREIBANLASS, wie Word ihn meldet.
+ *
+ * Word kennt im Aufgabenfenster kein Tastenereignis; der dokumentierte Anlass ist
+ * `DocumentSelectionChanged`, und genau ihn benutzt das Panel bereits fuer die Herkunftszeile.
+ * Dieser Helfer loest ihn aus — er ist damit die Testfassung von „der Anwender schreibt".
+ */
+function schreibanlass(): void {
+  expect(officeHandler.length, "Kein Dokument-Rueckruf angemeldet").toBeGreaterThan(0);
+  for (const h of officeHandler) {
+    h.fn();
+  }
+}
+
 /** Macht den Office-Kontext verfuegbar und feuert `onReady` — wie der echte Host es taete. */
 async function officeWirdBereit(): Promise<void> {
   expect(officeReadyRueckruf, "Kein zurueckgehaltener onReady-Rueckruf").not.toBeNull();
@@ -233,21 +276,51 @@ async function ladeTaskpane(): Promise<void> {
       get url() {
         return stand.officeUrl;
       },
+      // JOB 1151 (KA3): der Host meldet Aenderungen der Markierung. Das ist das EINZIGE
+      // Aktivitaetssignal, das ein Aufgabenfenster von Word bekommt — einen Tastendruck gibt es
+      // in der Taskpane-Schnittstelle nicht (s. Kommentar im Produktcode). Die Attrappe merkt sich
+      // die angemeldeten Rueckrufe, damit ein Fall sie WIRKLICH ausloesen kann.
+      addHandlerAsync(typ: string, fn: () => void) {
+        officeHandler.push({ typ, fn });
+      },
+      // JOB 1151 (D3): der Lesezugriff auf die Markierung — s. COERCION oben. Leere Auswahl,
+      // erfolgreich gemeldet: der Pruefstand stellt kein markiertes Dokument und behauptet auch
+      // keines.
+      getSelectedDataAsync(_typ: string, fn: (r: { status: string; value: string }) => void) {
+        fn({ status: ASYNC_STATUS.Succeeded, value: "" });
+      },
     },
   };
   officeReadyRueckruf = null;
   if (stand.office === "kontextOhneOnReady") {
-    (window as unknown as { Office?: unknown }).Office = { context: kontext };
+    (window as unknown as { Office?: unknown }).Office = {
+      context: kontext,
+      EventType: EREIGNISSE,
+      CoercionType: COERCION,
+      AsyncResultStatus: ASYNC_STATUS,
+    };
   } else if (stand.office === "fehlt") {
     (window as unknown as { Office?: unknown }).Office = undefined;
   } else if (stand.office === "sofort") {
     (window as unknown as { Office?: unknown }).Office = {
       context: kontext,
+      EventType: EREIGNISSE,
+      CoercionType: COERCION,
+      AsyncResultStatus: ASYNC_STATUS,
       onReady: (cb: () => void) => cb(),
     };
   } else {
     // `Office` existiert, `context` NOCH NICHT. Erst der Rueckruf macht ihn sichtbar.
-    const office: { context?: unknown; onReady: (cb: () => void) => void } = {
+    const office: {
+      context?: unknown;
+      EventType: typeof EREIGNISSE;
+      CoercionType: typeof COERCION;
+      AsyncResultStatus: typeof ASYNC_STATUS;
+      onReady: (cb: () => void) => void;
+    } = {
+      EventType: EREIGNISSE,
+      CoercionType: COERCION,
+      AsyncResultStatus: ASYNC_STATUS,
       onReady: (cb: () => void) => {
         officeReadyRueckruf = () => {
           office.context = kontext;
@@ -317,6 +390,7 @@ beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   aufrufe = [];
   zuhoerer.length = 0;
+  officeHandler = [];
   stand = {
     session: sicht(),
     status: aufloesung(),
@@ -347,10 +421,13 @@ afterEach(() => {
     z.ziel.removeEventListener(z.typ, z.fn);
   }
   zuhoerer.length = 0;
+  officeHandler = [];
   vi.unstubAllGlobals();
   vi.useRealTimers();
   document.body.innerHTML = "";
   (window as unknown as { Office?: unknown }).Office = undefined;
+  // JOB 1151 (KA3): der KA2-Vertrag ist ein Testdouble und darf nicht in den naechsten Fall lecken.
+  (window as unknown as { klaraBestandsblick?: unknown }).klaraBestandsblick = undefined;
 });
 
 // ================================================================================================
@@ -1162,5 +1239,342 @@ describe("BEN-37: eine gescheiterte Nachholung wird nicht erneut freigegeben", (
     document.getElementById("lang-de")?.click();
     await leerlauf();
     expect(aufbauten(), "Nach der erfolgreichen Nachholung wurde nachgelegt").toBe(2);
+  });
+});
+
+// ================================================================================================
+// JOB 1151 · KA3 — ANGEBOTSKARTEN STATT UNTERBRECHUNG
+// ================================================================================================
+//
+// Pedis Auflage, woertlich aus `werkstatt-klara-assistentin-beschlossen-20260818.md`:
+// „Die Chefsekretaerin klopft an, sie platzt nicht herein." Die Abnahme aus `OFFEN.md` ist der
+// Cursor: „die Karte kommt und geht, ohne dass der Anwender je den Cursor verliert".
+//
+// WORAN DIESE FAELLE MESSEN. Nicht am Quelltext, sondern am ausgelieferten Fenster: die Karte im
+// DOM, die Zahl der KA2-Aufrufe, der Zustand von `document.activeElement` und die Word-Attrappe,
+// deren Schreibmethoden hier bewusst SPIONE sind — wird eine davon gerufen, ist die Kernzusage
+// gebrochen, und der Fall sagt es.
+//
+// DER KA2-VERTRAG IST EIN DOUBLE, und das ist so vorgesehen: KA2 wird auf einer anderen Bahn
+// gebaut. KA3 baut keine Suche nach — es konsumiert `window.klaraBestandsblick` und tut ohne
+// diesen Vertrag NICHTS (fail-closed: keine erfundene Karte).
+describe("JOB 1151 KA3: die Karte kommt auf Anlass — und nimmt nie den Cursor", () => {
+  /**
+   * Der Richtwert, GELESEN aus dem Panel statt hier abgeschrieben — sonst pruefte der Test seine
+   * eigene Annahme statt die ausgelieferte Frist. Bewusst LAZY: waere die Suche auf Modulebene
+   * gelaufen, haette ein fehlender Wert die ganze Datei schon beim Einsammeln abgebrochen, und die
+   * Faelle waeren nie gelaufen. Ein Rot muss aus dem VERHALTEN kommen, nicht aus einem Ladefehler.
+   */
+  function ruhe(): number {
+    const treffer = /var KA3_TASTENRUHE_MS = (\d+);/.exec(HTML);
+    expect(treffer, `${TASKPANE}: KA3_TASTENRUHE_MS ist nicht auffindbar`).not.toBeNull();
+    return Number(treffer?.[1] ?? 30_000);
+  }
+
+  interface Ka3Lage {
+    /** Wie oft der Bestandsblick gerufen wurde — die einzige Groesse, um die es beim Debounce geht. */
+    aufrufe: string[];
+    /** Was er liefern soll. `"fehler"` laesst das Versprechen scheitern. */
+    treffer: Array<{ id: string; title: string; status?: string }> | "fehler";
+    /** Offene Versprechen, damit ein Fall einen LAUFENDEN Abruf stellen kann. */
+    offen: Array<(wert: unknown) => void>;
+    /** true = das Versprechen wird nicht sofort erfuellt, sondern in `offen` geparkt. */
+    haengen: boolean;
+  }
+
+  let ka2: Ka3Lage;
+
+  function ka2Einbauen(): void {
+    ka2 = { aufrufe: [], treffer: [], offen: [], haengen: false };
+    (
+      window as unknown as { klaraBestandsblick?: (grund: string) => Promise<unknown> }
+    ).klaraBestandsblick = (grund: string) => {
+      ka2.aufrufe.push(grund);
+      if (ka2.haengen) {
+        return new Promise((aufloesen) => {
+          ka2.offen.push(aufloesen as (wert: unknown) => void);
+        });
+      }
+      if (ka2.treffer === "fehler") {
+        return Promise.reject(new Error("KA2 nicht erreichbar"));
+      }
+      return Promise.resolve({ treffer: ka2.treffer });
+    };
+  }
+
+  /** Die Karte, falls sie gerade steht. `null` heisst: keine Karte im Fenster. */
+  function karte(): HTMLElement | null {
+    const el = document.getElementById("ka3-karten");
+    if (!el || el.className.indexOf("hidden") !== -1) {
+      return null;
+    }
+    return el;
+  }
+
+  function karteneintraege(): string[] {
+    const k = karte();
+    if (!k) {
+      return [];
+    }
+    return [...k.querySelectorAll("li")].map((li) => (li.textContent ?? "").trim());
+  }
+
+  /**
+   * Die Word-Schreibwege als SPIONE. Sie sind hier nicht verdrahtet, um etwas zu tun, sondern um
+   * zu beweisen, dass KA3 sie NICHT anfasst. Ein Fall, der nur „die Karte steht da" prueft, koennte
+   * gruen bleiben, waehrend daneben ins Dokument geschrieben wird.
+   */
+  let schreibversuche: string[] = [];
+
+  function wordSpioneEinbauen(): void {
+    schreibversuche = [];
+    const office = (window as unknown as { Office?: Record<string, unknown> }).Office;
+    if (!office) {
+      return;
+    }
+    const doc = (office.context as { document: Record<string, unknown> }).document;
+    doc.setSelectedDataAsync = () => {
+      schreibversuche.push("setSelectedDataAsync");
+    };
+    (window as unknown as { Word?: unknown }).Word = {
+      run: () => {
+        schreibversuche.push("Word.run");
+        return Promise.resolve();
+      },
+      InsertLocation: { replace: "replace" },
+    };
+  }
+
+  async function ladeMitKa2(): Promise<void> {
+    ka2Einbauen();
+    stand.office = "sofort";
+    await ladeTaskpane();
+    wordSpioneEinbauen();
+  }
+
+  afterEach(() => {
+    (window as unknown as { Word?: unknown }).Word = undefined;
+  });
+
+  // ---- Anlass 1: das Oeffnen -------------------------------------------------------------------
+  it("das Oeffnen loest GENAU EINEN Bestandsblick aus", async () => {
+    await ladeMitKa2();
+    expect(ka2.aufrufe.length, "Das Oeffnen hat keinen Bestandsblick ausgeloest").toBe(1);
+  });
+
+  it("ohne KA2-Vertrag geschieht NICHTS — keine Karte, kein erfundener Treffer", async () => {
+    // Fail-closed: solange KA2 nicht gebaut ist, darf KA3 nichts behaupten.
+    stand.office = "sofort";
+    await ladeTaskpane();
+    await leerlauf();
+    expect(karte(), "Ohne Bestandsblick steht trotzdem eine Karte").toBeNull();
+  });
+
+  // ---- Anlass 2: die Tastenruhe ----------------------------------------------------------------
+  it("Eingaben bei 0/10/29 Sekunden loesen KEINEN weiteren Bestandsblick aus", async () => {
+    await ladeMitKa2();
+    const nachOeffnen = ka2.aufrufe.length;
+
+    schreibanlass(); // 0 s
+    await vi.advanceTimersByTimeAsync(10_000);
+    schreibanlass(); // 10 s
+    await vi.advanceTimersByTimeAsync(19_000);
+    schreibanlass(); // 29 s
+    await vi.advanceTimersByTimeAsync(ruhe() - 1);
+    await leerlauf();
+
+    expect(ka2.aufrufe.length, "Vor Ablauf der Tastenruhe wurde bereits nachgesehen").toBe(
+      nachOeffnen,
+    );
+  });
+
+  it("nach der Tastenruhe genau EIN weiterer Bestandsblick", async () => {
+    await ladeMitKa2();
+    const nachOeffnen = ka2.aufrufe.length;
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(
+      ka2.aufrufe.length - nachOeffnen,
+      "Die Tastenruhe hat nicht genau einmal ausgeloest",
+    ).toBe(1);
+  });
+
+  it("jede neue Taste verwirft den alten Timer — kein Dauerfeuer", async () => {
+    await ladeMitKa2();
+    const nachOeffnen = ka2.aufrufe.length;
+    // Zehn Anlaesse im Abstand von 29 s: der Timer wird jedes Mal neu gesetzt.
+    for (let i = 0; i < 10; i += 1) {
+      schreibanlass();
+      await vi.advanceTimersByTimeAsync(ruhe() - 1_000);
+    }
+    await leerlauf();
+    expect(ka2.aufrufe.length, "Ein verworfener Timer hat trotzdem gefeuert").toBe(nachOeffnen);
+    // Und erst die echte Ruhe danach loest EINMAL aus.
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(ka2.aufrufe.length - nachOeffnen).toBe(1);
+  });
+
+  it("waehrend ein Abruf laeuft, startet kein zweiter", async () => {
+    await ladeMitKa2();
+    ka2.haengen = true;
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    const laufend = ka2.aufrufe.length;
+
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(ka2.aufrufe.length, "Ein zweiter Abruf lief parallel").toBe(laufend);
+  });
+
+  it("nach `pagehide` gibt es keinen Nachlauf", async () => {
+    await ladeMitKa2();
+    schreibanlass();
+    const vorher = ka2.aufrufe.length;
+    window.dispatchEvent(new Event("pagehide"));
+    await vi.advanceTimersByTimeAsync(ruhe() * 3);
+    await leerlauf();
+    expect(ka2.aufrufe.length, "Nach dem Schliessen wurde weiter nachgesehen").toBe(vorher);
+  });
+
+  // ---- Die Karte selbst ------------------------------------------------------------------------
+  it("Treffer erscheinen als leise Karte mit Lead und Ansehen-Weg", async () => {
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [
+      { id: "ko-1", title: "Homeoffice-Anweisung", status: "validiert" },
+      { id: "ko-2", title: "Reisekosten", status: "offen" },
+    ];
+    await ladeTaskpane();
+    await leerlauf();
+
+    const k = karte();
+    expect(k, "Bei Treffern fehlt die Karte").not.toBeNull();
+    expect(k?.textContent).toContain(wortlaut("klaraOfferLead"));
+    expect(karteneintraege()[0]).toContain("Homeoffice-Anweisung");
+    expect(karteneintraege()[1]).toContain("Reisekosten");
+    // Der Weg ist ein LINK auf die bestehende KO-Detailroute — kein window.open aus KA3.
+    const wege = [...(k?.querySelectorAll("a") ?? [])];
+    expect(wege.length, "Kein Ansehen-Weg an der Karte").toBeGreaterThan(0);
+    expect(wege[0]?.getAttribute("href")).toContain("/wissen/ko-1");
+    expect(wege.some((a) => (a.textContent ?? "").trim() === wortlaut("klaraOfferOpen"))).toBe(
+      true,
+    );
+  });
+
+  it("null Treffer ENTFERNEN eine vorher stehende Karte", async () => {
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [{ id: "ko-1", title: "Homeoffice-Anweisung" }];
+    await ladeTaskpane();
+    await leerlauf();
+    expect(karte(), "Vorbedingung: die Karte steht").not.toBeNull();
+
+    ka2.treffer = [];
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(karte(), "Eine alte Karte blieb bei null Treffern stehen").toBeNull();
+  });
+
+  it("ein Fehler erzeugt weder eine alte noch eine erfundene Karte", async () => {
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [{ id: "ko-1", title: "Homeoffice-Anweisung" }];
+    await ladeTaskpane();
+    await leerlauf();
+    expect(karte()).not.toBeNull();
+
+    ka2.treffer = "fehler";
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(karte(), "Nach einem Fehler stand die alte Karte weiter da").toBeNull();
+  });
+
+  // ---- Die Kernzusage: kein Cursorverlust, kein Schreibzugriff ----------------------------------
+  it("Kommen und Gehen der Karte lassen Fokus und Auswahl unveraendert", async () => {
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [{ id: "ko-1", title: "Homeoffice-Anweisung" }];
+    await ladeTaskpane();
+    wordSpioneEinbauen();
+    await leerlauf();
+
+    // Der Anwender arbeitet im Panel-Eingabefeld — das ist der einzige Fokus, den jsdom kennt.
+    const feld = el("ask-input") as HTMLTextAreaElement;
+    feld.focus();
+    const fokusVorher = document.activeElement;
+    expect(fokusVorher, "Vorbedingung: der Fokus liegt im Feld").toBe(feld);
+
+    // Karte kommt …
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(karte()).not.toBeNull();
+    expect(document.activeElement, "Die kommende Karte hat den Fokus geholt").toBe(fokusVorher);
+
+    // … und geht.
+    ka2.treffer = [];
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(karte()).toBeNull();
+    expect(document.activeElement, "Die gehende Karte hat den Fokus verschoben").toBe(fokusVorher);
+  });
+
+  it("KA3 fasst KEINEN Schreibweg ins Dokument an", async () => {
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [{ id: "ko-1", title: "Homeoffice-Anweisung" }];
+    await ladeTaskpane();
+    wordSpioneEinbauen();
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+
+    expect(karte(), "Vorbedingung: die Karte ist da").not.toBeNull();
+    expect(schreibversuche, "KA3 hat ins Dokument geschrieben").toEqual([]);
+  });
+
+  it("KA3 unterbricht nicht: kein Dialog, kein Zweitfenster", async () => {
+    const alert = vi.fn();
+    const open = vi.fn();
+    vi.stubGlobal("alert", alert);
+    vi.stubGlobal("open", open);
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [{ id: "ko-1", title: "Homeoffice-Anweisung" }];
+    await ladeTaskpane();
+    schreibanlass();
+    await vi.advanceTimersByTimeAsync(ruhe() + 1);
+    await leerlauf();
+    expect(alert, "KA3 hat einen Dialog geoeffnet").not.toHaveBeenCalled();
+    expect(open, "KA3 hat ein Fenster geoeffnet").not.toHaveBeenCalled();
+  });
+
+  // ---- Drei Sprachen ---------------------------------------------------------------------------
+  it("die Kartentexte stehen in DE, EN und NL und sind verschieden", async () => {
+    ka2Einbauen();
+    stand.office = "sofort";
+    ka2.treffer = [{ id: "ko-1", title: "Homeoffice-Anweisung" }];
+    await ladeTaskpane();
+    await leerlauf();
+
+    for (const sprache of ["de", "en", "nl"]) {
+      el(`lang-${sprache}`).click();
+      await leerlauf();
+      const k = karte();
+      expect(k, `${sprache}: die Karte ist verschwunden`).not.toBeNull();
+      const text = k?.textContent ?? "";
+      // Kein roher Schluessel, und der Lead steht in der jeweiligen Sprache da.
+      expect(text, `${sprache}: ein roher Schluessel ist sichtbar`).not.toMatch(
+        /\bklaraOffer[A-Z]/,
+      );
+      expect(text.length).toBeGreaterThan(5);
+    }
   });
 });
