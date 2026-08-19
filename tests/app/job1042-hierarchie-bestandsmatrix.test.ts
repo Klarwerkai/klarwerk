@@ -111,6 +111,9 @@ const MATRIX: Record<string, Rolle> = {
   "services/app/src/demo-corpus.ts": "fixture",
   // ---- Tests ----
   "tests/app/confluence-ancestors-expand.test.ts": "test",
+  // JOB 1132 D1 (18.08.2026): der nicht importierte Elternteil (JOB 931 T8/B2) und die vier
+  // Zustaende der Lauf-Route. Traegt die Begriffe, weil er `sourcePath`-Ketten fuehrt.
+  "tests/app/confluence-import-deeplink-mounted.test.tsx": "test",
   "tests/app/import-folder-tree.test.ts": "test",
   "tests/app/import-folder-tree-mounted.test.tsx": "test",
   "tests/app/import-folder-key-collision.test.tsx": "test",

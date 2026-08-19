@@ -189,11 +189,19 @@ describe("SCRUM-490 H: /addin/* Bundle-Serving", () => {
     // Flag OFF: Route/Hook nicht registriert → globaler 404 ist hier KORREKT (Pfad existiert nicht).
     expect((await app.inject({ method: "GET", url: "/addin/taskpane.html" })).statusCode).toBe(404);
     // Und mit Flag ON bleibt jede Nicht-/addin-Route vom Hook unberührt.
+    //
+    // JOB 1113 D2: Hier stand `toEqual({ status: "ok" })`. Das war ein STELLVERTRETER für die
+    // Zusage der Zeile darüber, kein Vertrag über den Körper von /health — und er brach bei der
+    // ersten additiven Änderung (D1 ergänzte `version` und `commit`, `build-app.ts:998-1002`).
+    // Geprüft wird jetzt die Zusage selbst: derselbe Körper mit Flag AUS wie mit Flag EIN. Das ist
+    // strenger als vorher (es schliesst jede Abweichung aus, nicht nur eine bekannte Form) und
+    // überlebt jede künftige Ergänzung an /health, die den Hook nichts angeht.
+    const healthOff = await app.inject({ method: "GET", url: "/health" });
     process.env.KLARWERK_ADDON_API = "1";
     const on = buildApp(buildServices());
     const health = await on.inject({ method: "GET", url: "/health" });
     expect(health.statusCode).toBe(200);
-    expect(health.json()).toEqual({ status: "ok" });
+    expect(health.json()).toEqual(healthOff.json());
   });
 });
 

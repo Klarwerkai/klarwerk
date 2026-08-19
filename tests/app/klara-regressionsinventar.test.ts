@@ -113,6 +113,9 @@ const ACHSEN: Achse[] = [
 // nachgefuehrt am 18.08.2026 nach der Integration von 35 Nachtstaenden: drei Dateien
 // kamen neu in den Baum und wurden von der Erhebung gefunden. Genau dafuer ist K2
 // gebaut -- es meldet, was das Inventar noch nicht kennt, statt still zu wachsen.
+// JOB 1113 (18.08.2026): eine weitere Datei kam hinzu -- der /health-Waechter, gefunden
+// ueber die Achse `version`. K2 hat sie gemeldet, nicht das Inventar sie stillschweigend
+// aufgenommen; nachgefuehrt wurde genau dieser eine Eintrag.
 // ------------------------------------------------------------------------------------------------
 const INVENTAR: readonly string[] = [
   "apps/web/src/components/KlaraPathTeaser.test.tsx",
@@ -125,6 +128,9 @@ const INVENTAR: readonly string[] = [
   "tests/app/contrast-tokens-d5.test.ts",
   "tests/app/csp-upgrade-insecure-requests.test.ts",
   "tests/app/g27-klara-library-current-truth.test.ts",
+  // JOB 1113: neu und von der Achse `version` gefunden (Muster `version\.ts`) — der Wächter für
+  // /health mit Version und Deploy-Commit gehört sachlich zum Versionsschritt.
+  "tests/app/health-version-commit.test.ts",
   "tests/app/k1-word-addin-origin-panel.test.ts",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",

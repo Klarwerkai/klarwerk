@@ -510,6 +510,66 @@ export function countFolderNodes(groups: readonly PreviewTreeGroup[]): number {
   return groups.reduce((n, group) => n + 1 + countFolderNodes(group.children ?? []), 0);
 }
 
+// ================================================================================================
+// JOB 1132 — DER ORDNER, DEN NIEMAND MITGEBRACHT HAT.
+// ================================================================================================
+//
+// JOB 931 D1 (§3 `T8`, §4 `B2`) hat den Fall gemessen und benannt: Ein Kind, dessen Elternseite
+// AUSSERHALB der Importmenge liegt, erzeugt hier einen Ordnerknoten wie jeden anderen — „sichtbar,
+// aber ohne Warnung, ohne `failed`, ohne Zähler". BEN4 hat daraus Prüflücke 1 gemacht.
+//
+// DER PUNKT IST NICHT, DASS DER ORDNER FALSCH WÄRE. Er ist richtig: das Kind gehört dorthin, und
+// ein erfundener Sammelordner wäre schlechter (V7). Der Punkt ist, dass der Baum an dieser Stelle
+// AUSSIEHT wie eine aufgelöste Hierarchie, obwohl nie ein Bezug aufgelöst wurde — die Orchestrierung
+// ist hierarchieblind (JOB 931 `L1`). Wer den Ordner sieht, hält seinen Namen für eine mitimportierte
+// Seite. Diese Funktion sagt, wo das nicht stimmt.
+//
+// SIE ENTSCHEIDET NICHTS UND ÄNDERT NICHTS. Sie benennt, damit eine spätere Anzeige den Ordner
+// kennzeichnen kann, statt zu schweigen. Genau das ist `B2` — und `B2` steht dort ausdrücklich VOR
+// `B1` (Ids statt Titel), weil es billiger ist und die Lücke sofort sichtbar macht.
+
+/** Ein Ordner, dessen Name in dieser Auswahl keine eigene Zeile hat. */
+export interface OrdnerOhneEigeneZeile {
+  /** Der Ordnername — der Elterntitel aus `sourcePath`, bereits kanonisch. */
+  segment: string;
+  /** Der volle Pfad von der Wurzel (`sourceScope`) an, Wurzel zuerst, inklusive `segment`. */
+  pfad: string[];
+  /** Wie viele Zeilen unter diesem Ordner hängen. Sie sind echt — nur ihr Elternteil fehlt. */
+  rows: number;
+}
+
+/**
+ * Welche Ordner des Quell-Ordnerbaums tragen den Titel einer Seite, die in DIESER Auswahl gar
+ * nicht vorkommt? Reihenfolge: Baumreihenfolge, Eltern vor Kindern.
+ *
+ * DIE WURZEL ZÄHLT NIE MIT. Sie ist der Quell-Container (`sourceScope`, bei Confluence der Space),
+ * keine Seite — sie als „fehlende Elternseite" zu melden wäre genau die erfundene Auflösung, die
+ * hier verhindert werden soll.
+ *
+ * EHRLICHE GRENZE, die JOB 931 `L2` festhält: Gedeckt wird über den TITEL, nicht über eine Id —
+ * `sourcePath` führt nur Titel. Eine gleichnamige Seite aus einem anderen Zweig deckt den Ordner
+ * deshalb mit, und eine umbenannte Elternseite gilt als fehlend. Das ist die Grenze des heutigen
+ * Vertrags, nicht ein Fehler dieser Funktion; sie verschwindet erst mit `B1` (`sourcePathIds`).
+ */
+export function ordnerOhneEigeneZeile(rows: readonly PreviewRow[]): OrdnerOhneEigeneZeile[] {
+  const titel = new Set(
+    rows.map((row) => displayImportText(row.entry.title ?? "", row.entry.textCodec).trim()),
+  );
+  const raus: OrdnerOhneEigeneZeile[] = [];
+  const gehe = (gruppen: readonly PreviewTreeGroup[], pfad: readonly string[]): void => {
+    for (const gruppe of gruppen) {
+      const hier = [...pfad, gruppe.value];
+      // `pfad.length > 0` schließt die Wurzel aus — siehe oben.
+      if (pfad.length > 0 && !titel.has(gruppe.value)) {
+        raus.push({ segment: gruppe.value, pfad: hier, rows: gruppe.rows.length });
+      }
+      gehe(gruppe.children ?? [], hier);
+    }
+  };
+  gehe(folderTree(rows), []);
+  return raus;
+}
+
 // A4: WARUM der Ordner-Modus gerade nicht die Vorgabe ist — genau eine Zeile, ehrlich benannt.
 // null = er ist verfügbar.
 export type FolderModeUnavailableReason = "no-path" | "single-folder";

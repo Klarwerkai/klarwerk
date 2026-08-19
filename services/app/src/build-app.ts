@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import cors, { type FastifyCorsOptions } from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
 import Fastify, {
@@ -758,6 +759,72 @@ export function modelBusyErrorHandler(
   reply.send(error);
 }
 
+// ================================================================================================
+// JOB 1113 / JOB-947-B3 — DIE BEIDEN BENANNTEN QUELLEN FÜR /health
+// ================================================================================================
+
+/**
+ * Was ausgegeben wird, wenn der Deploy-Commit nicht bekannt ist.
+ *
+ * Ehrlich und ausdrücklich: **nie ein erfundener Hash, nie ein Platzhalter, der wie einer aussieht.**
+ * Ein unbekannter Stand ist eine Information; ein falscher wäre eine Falschaussage.
+ */
+export const BUILD_UNBEKANNT = "unbekannt";
+
+/** Die EINE Umgebungsvariable, aus der der Deploy-Commit kommt. Der Name ist Teil des Vertrags. */
+export const BUILD_COMMIT_ENV = "KLARWERK_BUILD_COMMIT";
+
+// Ein Git-Objektname: 7 bis 40 hexadezimale Zeichen. Alles andere ist KEIN Commit.
+const COMMIT_RE = /^[0-9a-f]{7,40}$/i;
+
+/**
+ * Der Deploy-Commit aus der benannten Quelle — oder ehrlich `unbekannt`.
+ *
+ * Die Formprüfung ist kein Zierat: eine halb verdrahtete Auslieferungskette reicht gern einen
+ * Branchnamen, ein `latest` oder einen uneingesetzten `$SOURCE_COMMIT` durch. Das als Deploy-Commit
+ * auszugeben wäre derselbe Fehler wie ein erfundener Hash — nur unauffälliger. Wer den Wert setzt,
+ * setzt ihn richtig oder gar nicht.
+ *
+ * ABSICHTLICH KEINE PLATTFORM-AUTOMATIK: der Baum kennt (gemessen) keine Commit-Variable, und JOB
+ * 947 warnt ausdrücklich davor, Plattformverhalten zu behaupten, das nie gemessen wurde. Deshalb
+ * genau EIN Name, den die Auslieferung selbst setzen muss.
+ */
+export function buildCommit(env: NodeJS.ProcessEnv = process.env): string {
+  const roh = (env[BUILD_COMMIT_ENV] ?? "").trim();
+  return COMMIT_RE.test(roh) ? roh : BUILD_UNBEKANNT;
+}
+
+// Einmal gelesen, dann gemerkt: die Datei ändert sich zur Laufzeit nicht, und /health soll keine
+// Plattenzugriffe pro Anfrage machen.
+let versionGemerkt: string | null = null;
+
+/**
+ * Die Version aus `package.json` — der einzigen Versionsquelle, die im Produktionsimage existiert.
+ *
+ * WARUM NICHT `apps/web/src/version.ts`, wo `APP_VERSION` steht: `Dockerfile:37-38` kopiert in die
+ * Laufzeitstufe ausschliesslich `services` und `apps/web/dist`. **`apps/web/src` ist im Image nicht
+ * vorhanden** — ein Import von dort bräche den Container beim Start. `package.json` liegt dort
+ * (`Dockerfile:33`). Die Quelle ist damit gemessen, nicht gewählt.
+ *
+ * Dass beide Stellen dieselbe Nummer tragen, erzwingt `tests/app/health-version-commit.test.ts`;
+ * ohne diesen Wächter wäre `package.json` eine zweite Wahrheit statt einer Kopie.
+ */
+export function buildVersion(): string {
+  if (versionGemerkt !== null) {
+    return versionGemerkt;
+  }
+  try {
+    const roh = readFileSync(new URL("../../../package.json", import.meta.url), "utf8");
+    const wert = (JSON.parse(roh) as { version?: unknown }).version;
+    versionGemerkt = typeof wert === "string" && wert.trim() !== "" ? wert.trim() : BUILD_UNBEKANNT;
+  } catch {
+    // Eine unlesbare oder kaputte package.json macht den Server nicht krank — sie macht die
+    // Versionsangabe ehrlich unbekannt.
+    versionGemerkt = BUILD_UNBEKANNT;
+  }
+  return versionGemerkt;
+}
+
 export function buildApp(
   services: AppServices = buildServices(),
   // Pedi 05.07. (Beta): optionale Werksreset-Fähigkeit. Standard = nicht verfügbar (Tests/Produktion);
@@ -918,7 +985,21 @@ export function buildApp(
     app.register(addinStaticRoutes());
   }
 
-  app.get("/health", async () => ({ status: "ok" }));
+  // JOB 1113 (JOB-947-B3): /health nennt jetzt zusätzlich VERSION und DEPLOY-COMMIT.
+  //
+  // JOB 947 nannte den Zustand davor K-VAKUUM: ein `/health`, das nur `{"status":"ok"}` liefert,
+  // kann nicht unterscheiden, WELCHER Stand antwortet — „Coolify Success" belegte damit den
+  // Deploy-Lauf, nie den Deploy-Stand. Genau eine Auslieferung (Ship 9) hat den Commit einmal von
+  // Hand gegengelesen; ab hier ist das eine Abfrage statt einer Erinnerung.
+  //
+  // `status` bleibt unverändert `"ok"` — der Container-Healthcheck (`Dockerfile:42-43`) prüft
+  // genau dieses Feld, und die bestehenden Bestandstests binden es. Die beiden neuen Felder sind
+  // rein additiv.
+  app.get("/health", async () => ({
+    status: "ok",
+    version: buildVersion(),
+    commit: buildCommit(),
+  }));
   // FR-RSN-05 + WP-VIP2-GATE (bens P1): die beiden OEFFENTLICHEN Status-Routen sind ABSTRAHIERT —
   // KEIN Provider-/Modellname (der stand hier frueher anonym lesbar). Provider-Details liefert
   // ausschliesslich die ECHTE Admin-Sicht GET /api/reasoner/config (users.manage — WP-VIP2-GATE-2
