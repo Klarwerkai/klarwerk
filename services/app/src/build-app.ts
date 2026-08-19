@@ -956,36 +956,34 @@ export function buildApp(
   //
   // Die beiden bestehenden Statusrouten darüber bleiben unverändert: Klara-spezifische Policy dort
   // hineinzuziehen ist das ausdrückliche No-Go aus KW-S4-04 §54.
-  app.register(
-    klaraAiRoutes(
-      {
-        sessions: new KlaraSessionService({
-          repo: services.klaraSessions,
-          policy: () => {
-            const config = services.reasoner.configStatus();
-            const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
-            // W1 S4 R2 (BEN ROT-1): DIE EFFEKTIVE ANSWER-BINDUNG entscheidet, nicht die globale
-            // Bevorzugung. `config.provider`/`config.model` beschreiben den bevorzugten aktiven
-            // Provider; bei gleichzeitig verdrahtetem Cloud UND Local und Admin-Wahl
-            // `answer = local` meldete der Kopf dadurch `internal` MIT dem Cloud-Anbieter.
-            // `config.effectiveProvider.answer` ist die taskbezogene Wahrheit, die der Reasoner
-            // ohnehin schon führt — sie wird hier durchgereicht, nicht nachgerechnet.
-            return {
-              choice: antwortWahl,
-              source: config.policySource,
-              effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
-              cloudConfigured: config.cloudConfigured,
-              localConfigured: config.localConfigured,
-              providerLabel: config.provider,
-              modelLabel: config.model,
-              localProviderLabel: config.localProvider,
-            };
-          },
-        }),
-      },
-      guards,
-    ),
-  );
+  // KW-KA4: DERSELBE Dienst, zwei Aufrufer. Er stand bis hierher inline in der Registrierung; für
+  // die Einwilligung je Dokument braucht ihn auch `askRoutes` (Ausführungstor vor dem Ask). Eine
+  // zweite Instanz wäre eine zweite Wahrheit über denselben Sitzungsbestand — deshalb wird die
+  // vorhandene gehoben und weitergereicht, nicht kopiert. Keine neue Ablage, keine neue Route.
+  const klaraSessions = new KlaraSessionService({
+    repo: services.klaraSessions,
+    policy: () => {
+      const config = services.reasoner.configStatus();
+      const antwortWahl = config.taskConfig.perTask.answer ?? config.taskConfig.global;
+      // W1 S4 R2 (BEN ROT-1): DIE EFFEKTIVE ANSWER-BINDUNG entscheidet, nicht die globale
+      // Bevorzugung. `config.provider`/`config.model` beschreiben den bevorzugten aktiven
+      // Provider; bei gleichzeitig verdrahtetem Cloud UND Local und Admin-Wahl
+      // `answer = local` meldete der Kopf dadurch `internal` MIT dem Cloud-Anbieter.
+      // `config.effectiveProvider.answer` ist die taskbezogene Wahrheit, die der Reasoner
+      // ohnehin schon führt — sie wird hier durchgereicht, nicht nachgerechnet.
+      return {
+        choice: antwortWahl,
+        source: config.policySource,
+        effectiveAnswerProvider: config.effectiveProvider.answer ?? "deterministic",
+        cloudConfigured: config.cloudConfigured,
+        localConfigured: config.localConfigured,
+        providerLabel: config.provider,
+        modelLabel: config.model,
+        localProviderLabel: config.localProvider,
+      };
+    },
+  });
+  app.register(klaraAiRoutes({ sessions: klaraSessions }, guards));
 
   // HTTP-Oberfläche der Module. Auth bringt seine eigenen Routen mit; die übrigen
   // Module werden über App-Routen verdrahtet, die den gemeinsamen Guard nutzen.
@@ -1176,8 +1174,13 @@ export function buildApp(
   // AUFTRAG-mega34 B1: die Ask-Route liefert zusätzlich den kanonischen Evidenzzustand und braucht
   // dafür Bestand und Konflikte. Beide liegen hier ohnehin — dasselbe Muster wie livewallRoutes und
   // impactRoutes darunter.
+  // KW-KA4: `klaraSessions` ist das bestehende Ausführungstor von oben — dieselbe Instanz, kein
+  // zweiter Dienst. Ohne es verhielte sich die Ask-Route byteweise wie vor KA4 (fail-closed).
   app.register(
-    askRoutes({ ask: services.ask, ko: services.ko, conflicts: services.conflicts }, guards),
+    askRoutes(
+      { ask: services.ask, ko: services.ko, conflicts: services.conflicts, klaraSessions },
+      guards,
+    ),
   );
   // W3-C (KW-W3-18, JOB 541 D3): die EINE Erklaerroute. Sie bekommt denselben Belegspeicher wie
   // der Schreibweg und denselben Wissensbestand wie der Antwortweg — kein eigener Zugang, keine

@@ -383,6 +383,23 @@
       <button type="button" class="ghost hidden" id="klara-consent-revoke"></button>
     </div>
     <div id="klara-consent-status" class="status hidden"></div>
+    <!-- KW-KA4-DOKUMENT-CONSENT-START (Fläche)
+         Das AKTIVE Fragen. Es steht IM Zustimmungskasten und nicht als Popup: „Die Chefsekretärin
+         klopft an, sie platzt nicht herein" (Werkstattbeschluss, Weiche 2). Kein Fokusraub, kein
+         Overlay — der Anwender kann es schlicht stehen lassen.
+         Der Ablehnungsknopf merkt sich das Nein FÜR DIESES DOKUMENT und diese Panelinstanz; der
+         Erlauben-Knopf darüber bleibt sichtbar, damit die Entscheidung jederzeit umkehrbar ist
+         (Auftrag Lieferung 6: „Eine manuell erreichbare Schaltfläche darf sichtbar bleiben"). -->
+    <div id="ka4-frage" class="hidden" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hairline);">
+      <strong id="ka4-frage-titel" style="font-size: 12.5px;"></strong>
+      <p class="muted" id="ka4-frage-text" style="margin: 4px 0 6px;"></p>
+      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+        <button type="button" class="primary" id="ka4-frage-ja"></button>
+        <button type="button" class="ghost" id="ka4-frage-nein"></button>
+      </div>
+    </div>
+    <p class="muted hidden" id="ka4-abgelehnt" style="margin-top: 8px;"></p>
+    <!-- KW-KA4-DOKUMENT-CONSENT-END (Fläche) -->
   </div>
 
   <div class="card" id="session-card">
@@ -914,8 +931,72 @@
     // kann statt seinen Quelltext zu lesen. Dieselbe Bauform wie KW-KLARA-AISTATE-FETCH-*: das
     // Aufgabenfenster ist buildlos, also ist ein Schnitt die einzige Moeglichkeit, das WIRKLICH
     // ausgelieferte `performAsk` (nicht seinen TypeScript-Zwilling) laufen zu lassen.
+    // KW-KA4-DOKUMENT-CONSENT-START
+    //
+    // ============================================================================================
+    // KA4 — DIE EINWILLIGUNG GILT JE DOKUMENT, UND SIE WIRD NIE HIER ENTSCHIEDEN.
+    // ============================================================================================
+    //
+    // Pedis Weiche (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie
+    // still. Je Dokument eine ausdrueckliche Einwilligung; Klara darf auch AKTIV fragen …
+    // Vertraulich Markiertes bleibt IMMER draussen."
+    //
+    // WAS DIESER BLOCK TUT — und was ausdruecklich NICHT:
+    //   · Er FUEHRT den Ablehnungsvermerk je Dokument, damit Klara nicht zweimal dasselbe fragt.
+    //     Nur im Arbeitsspeicher dieser Panelinstanz: kein localStorage, kein sessionStorage. Ein
+    //     Nein, das ein Neuladen ueberlebt, waere eine dauerhafte Entscheidung — und eine
+    //     dauerhafte ZUSTIMMUNG waere noch schlimmer. Beide gehoeren dem Server.
+    //   · Er ENTSCHEIDET NICHTS. Ob externe KI laeuft, sagt allein die serverseitige Aufloesung
+    //     (`klaraS4Anzeige`), und ob sie ausgefuehrt werden darf, allein
+    //     `KlaraSessionService.pruefeExterneAusfuehrung` am Ask-Weg. Ein lokales Ja autorisiert
+    //     nichts — der Server prueft neun Bindungen, nicht ein Bool aus dem Panel.
+    //   · Er MERKT SICH KEIN JA. Eine erteilte Zustimmung steht im Serverzustand
+    //     (`consentState`), nicht hier; sie hier zu spiegeln hiesse, sie ueberleben zu lassen,
+    //     wenn der Server sie laengst entwertet hat (Rebind, Widerruf, Ablauf, Policywechsel).
+    //
+    // DER DOKUMENTWECHSEL entwertet den Vermerk von selbst: der Schluessel IST die vom Server
+    // vergebene `documentContextId`, und ein Rebind liefert eine neue. Nichts muss aufgeraeumt
+    // werden, und nichts kann versehentlich stehenbleiben.
+    var ka4Abgelehnt = Object.create(null);
+
+    /** Der Schluessel ist die SERVERSEITIGE Dokumentkennung — nie eine selbst gebildete. */
+    function ka4DokumentSchluessel() {
+      return typeof klaraS4DocumentId === "string" ? klaraS4DocumentId : "";
+    }
+
+    function ka4WurdeAbgelehnt() {
+      var schluessel = ka4DokumentSchluessel();
+      return schluessel.length > 0 && ka4Abgelehnt[schluessel] === true;
+    }
+
+    /** Ein Nein gilt fuer DIESES Dokument und diese Panelinstanz — sonst nichts. */
+    function ka4Ablehnen() {
+      var schluessel = ka4DokumentSchluessel();
+      if (schluessel.length > 0) { ka4Abgelehnt[schluessel] = true; }
+    }
+
+    /**
+     * Darf Klara fuer dieses Dokument AKTIV fragen?
+     *
+     * Drei Bedingungen, alle noetig: der Server verlangt die Zustimmung ueberhaupt, sie ist noch
+     * nicht erteilt, und der Anwender hat fuer dieses Dokument noch nicht Nein gesagt. Fehlt die
+     * Anzeige (Ladephase, Abruf gescheitert), wird NICHT gefragt — eine Frage auf unbekanntem
+     * Stand waere geraten.
+     */
+    function ka4DarfAktivFragen(anzeige) {
+      if (!anzeige || anzeige.consentVisible !== true) { return false; }
+      if (anzeige.consentPossible !== true) { return false; }
+      return !ka4WurdeAbgelehnt();
+    }
+    // KW-KA4-DOKUMENT-CONSENT-END
+
     // KW-KLARA-ASK-FETCH-START
-    function performAsk(question, locale, fetchFn, timeoutMs) {
+    // KW-KA4: `bindungsKopf` ist ein PARAMETER und wird bewusst NICHT hier drinnen geholt.
+    // Der Block zwischen diesen Marken wird von den Spiegeltests EXTRAHIERT und isoliert
+    // ausgefuehrt (tests/app/word-addin-ask.test.ts) — er darf deshalb nur kennen, was er selbst
+    // mitbringt oder uebergeben bekommt. Ein Aufruf von `klaraS4Header()` von hier aus machte den
+    // Block unausfuehrbar; gemessen als `ReferenceError: klaraS4Header is not defined`.
+    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf) {
       var controller = new AbortController();
       var timedOut = false;
       var timer = setTimeout(function () {
@@ -924,10 +1005,25 @@
       }, timeoutMs);
       // WP-KLARA-ASK-FIX (bens Fix 1): IMMER der server-garantierte retrieval-only-Modus —
       // markierter Dokumenttext darf NIE zur Cloud; clientseitig gibt es keine andere Wahl.
+      //
+      // KW-KA4: `mode` bleibt UNVERAENDERT gesetzt. Er ist die Bitte um die Enge, nicht ihre
+      // Aufhebung — der Server entscheidet ueber die Einwilligung und ignoriert jeden Wunsch des
+      // Clients. Neu sind allein die drei BINDUNGS-Kopfzeilen: dieselben, die der Sitzungsweg
+      // schon fuehrt (`klaraS4Header`), damit der Server das vorhandene Ausfuehrungstor auf
+      // exakt diese Sitzung UND dieses Dokument anwenden kann. Sie sind opak und autorisieren
+      // fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server
+      // behandelt die Anfrage wie bisher.
+      var askKopf = { "content-type": "application/json" };
+      var bindung = bindungsKopf || {};
+      for (var kopfName in bindung) {
+        if (Object.prototype.hasOwnProperty.call(bindung, kopfName) && bindung[kopfName]) {
+          askKopf[kopfName] = bindung[kopfName];
+        }
+      }
       return fetchFn("/api/ask", {
         method: "POST",
         credentials: "include",
-        headers: { "content-type": "application/json" },
+        headers: askKopf,
         body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only" }),
         signal: controller.signal,
       })
@@ -1797,8 +1893,23 @@
         s4ConsentRevoked: "widerrufen",
         s4ConsentInvalidated: "entwertet",
         s4ConsentUnbekannt: "Stand unbekannt",
-        s4ConsentTitel: "Zustimmung für den externen Weg",
-        s4ConsentText: "Für diese Sitzung wird ein externer Anbieter genutzt. Ohne Ihre Zustimmung wird nichts dorthin gesendet. Sie gilt nur für diese Sitzung und Sie können sie jederzeit widerrufen.",
+        // KW-KA4: der Wortlaut nennt jetzt DAS DOKUMENT, nicht die Sitzung. Das ist keine
+        // Kosmetik — die Zustimmung ist serverseitig an `documentContextId` gebunden
+        // (`klara-session-service.ts:251`), und ein Rebind verwirft sie. Wer „für diese Sitzung"
+        // liest, erwartet, dass sie beim Dokumentwechsel gilt; genau das tut sie nicht.
+        s4ConsentTitel: "Externe KI für dieses Dokument erlauben",
+        s4ConsentText: "Für dieses Dokument würde ein externer Anbieter genutzt. Ohne Ihre Erlaubnis wird nichts dorthin gesendet. Sie gilt nur für dieses Dokument und diese Sitzung, Sie können sie jederzeit widerrufen — und vertraulich Markiertes bleibt in jedem Fall hier.",
+        // Der aktive Fragesatz, wörtlich aus `OFFEN.md:64` (KA4).
+        ka4FrageTitel: "Darf ich dafür die externe KI hinzuziehen?",
+        ka4FrageText: "Dafür brauche ich die externe KI — darf ich dieses Dokument senden? Vertraulich Markiertes bleibt hier.",
+        ka4FrageJa: "Ja, für dieses Dokument erlauben",
+        // KEIN „hausintern"/„im Haus": das ist eine Aussage über den SERVERSTANDORT, die dieser
+        // Code nicht erzwingt (Regelwerk Regel 5; dieselbe Lehre wie mega77 Block B, wo genau
+        // dieser Satz aus dem Panel entfernt wurde). Belegbar ist nur, was NICHT geschieht: kein
+        // externer Modellaufruf. Gefunden hat das der Terminologie-Wächter
+        // `tests/app/pro375-terminologie-vertrag.test.ts` — zu Recht.
+        ka4FrageNein: "Nein, ohne externe KI",
+        ka4Abgelehnt: "Für dieses Dokument bleibt die externe KI aus. Sie können das oben jederzeit ändern.",
         s4ConsentUmfang: "Anbieter {provider} · Modell {model} · Sitzung {session} · Betroffene Daten: {klassen}",
         s4ConsentKlassenFehlen:
           "Der Server hat noch nicht aufgelöst, welche Daten übertragen würden. Ohne diese Angabe kann hier nicht zugestimmt werden.",
@@ -1992,8 +2103,14 @@
         s4ConsentRevoked: "revoked",
         s4ConsentInvalidated: "invalidated",
         s4ConsentUnbekannt: "status unknown",
-        s4ConsentTitel: "Consent for the external path",
-        s4ConsentText: "This session uses an external provider. Without your consent nothing is sent there. It applies to this session only and you can revoke it at any time.",
+        // KW-KA4: names THIS DOCUMENT — the consent is bound to `documentContextId` server-side.
+        s4ConsentTitel: "Allow external AI for this document",
+        s4ConsentText: "An external provider would be used for this document. Without your permission nothing is sent there. It applies to this document and this session only, you can revoke it at any time — and anything marked confidential stays here in any case.",
+        ka4FrageTitel: "May I bring in the external AI for this?",
+        ka4FrageText: "I need the external AI for this — may I send this document? Anything marked confidential stays here.",
+        ka4FrageJa: "Yes, allow for this document",
+        ka4FrageNein: "No, without external AI",
+        ka4Abgelehnt: "For this document external AI stays off. You can change this above at any time.",
         s4ConsentUmfang: "Provider {provider} · Model {model} · Session {session} · Data concerned: {klassen}",
         s4ConsentKlassenFehlen:
           "The server has not yet resolved which data would be transmitted. Without that, consent cannot be given here.",
@@ -2176,8 +2293,14 @@
         s4ConsentRevoked: "ingetrokken",
         s4ConsentInvalidated: "ongeldig gemaakt",
         s4ConsentUnbekannt: "stand onbekend",
-        s4ConsentTitel: "Toestemming voor de externe weg",
-        s4ConsentText: "Deze sessie gebruikt een externe aanbieder. Zonder uw toestemming wordt daar niets naartoe gestuurd. Zij geldt alleen voor deze sessie en u kunt haar altijd intrekken.",
+        // KW-KA4: noemt DIT DOCUMENT — de toestemming is serverzijdig aan `documentContextId` gebonden.
+        s4ConsentTitel: "Externe AI voor dit document toestaan",
+        s4ConsentText: "Voor dit document zou een externe aanbieder worden gebruikt. Zonder uw toestemming wordt daar niets naartoe gestuurd. Zij geldt alleen voor dit document en deze sessie, u kunt haar altijd intrekken — en wat vertrouwelijk is gemarkeerd blijft in elk geval hier.",
+        ka4FrageTitel: "Mag ik hiervoor de externe AI inschakelen?",
+        ka4FrageText: "Hiervoor heb ik de externe AI nodig — mag ik dit document versturen? Wat vertrouwelijk is gemarkeerd blijft hier.",
+        ka4FrageJa: "Ja, toestaan voor dit document",
+        ka4FrageNein: "Nee, zonder externe AI",
+        ka4Abgelehnt: "Voor dit document blijft externe AI uit. U kunt dit hierboven altijd wijzigen.",
         s4ConsentUmfang: "Aanbieder {provider} · Model {model} · Sessie {session} · Betrokken gegevens: {klassen}",
         s4ConsentKlassenFehlen:
           "De server heeft nog niet bepaald welke gegevens zouden worden verzonden. Zonder die opgave kan hier geen toestemming worden gegeven.",
@@ -2985,6 +3108,22 @@
       var weg = document.getElementById("klara-consent-revoke");
       weg.textContent = t("s4ConsentWiderruf");
       weg.className = a.revokeVisible ? "ghost" : "ghost hidden";
+      // KW-KA4-DOKUMENT-CONSENT-START (Anzeige)
+      // Aktiv gefragt wird NUR, wenn der Server die Zustimmung verlangt, sie erteilbar ist und der
+      // Anwender fuer DIESES Dokument noch nicht Nein gesagt hat. Der Erlauben-Knopf darueber
+      // bleibt in jedem Fall stehen — ein Nein sperrt die Frage, nicht den Weg.
+      var frage = document.getElementById("ka4-frage");
+      var darfFragen = ka4DarfAktivFragen(a);
+      frage.className = darfFragen ? "" : "hidden";
+      document.getElementById("ka4-frage-titel").textContent = t("ka4FrageTitel");
+      document.getElementById("ka4-frage-text").textContent = t("ka4FrageText");
+      document.getElementById("ka4-frage-ja").textContent = t("ka4FrageJa");
+      document.getElementById("ka4-frage-nein").textContent = t("ka4FrageNein");
+      var abgelehnt = document.getElementById("ka4-abgelehnt");
+      var zeigeAbgelehnt = ka4WurdeAbgelehnt() && a.consentVisible === true;
+      abgelehnt.textContent = zeigeAbgelehnt ? t("ka4Abgelehnt") : "";
+      abgelehnt.className = zeigeAbgelehnt ? "muted" : "muted hidden";
+      // KW-KA4-DOKUMENT-CONSENT-END (Anzeige)
       updateAskState();
     }
 
@@ -3868,7 +4007,10 @@
           prep.question,
           askLocale(lang),
           function (url, init) { return fetch(url, init); },
-          WORD_ADDIN_ASK_TIMEOUT_MS
+          WORD_ADDIN_ASK_TIMEOUT_MS,
+          // KW-KA4: die Bindung wird HIER geholt und hineingereicht — der Ask-Block selbst bleibt
+          // damit isoliert ausfuehrbar (siehe Begruendung an `performAsk`).
+          klaraS4Header()
         ).then(function (outcome) {
           currentAskOutcome = outcome;
           updateAskState(); // Knopf wieder frei (sofern angemeldet)
@@ -4371,6 +4513,17 @@
     // hier — nicht an inline-Attributen, damit sie derselben Content-Security-Policy folgen wie
     // alle uebrigen Schaltflaechen dieses Fensters.
     document.getElementById("klara-consent-grant").addEventListener("click", klaraS4Zustimmen);
+    // KW-KA4-DOKUMENT-CONSENT-START (Ereignisse)
+    // „Ja" ist KEIN eigener Weg: es ruft dieselbe Zustimmung wie der Knopf darueber. Ein zweiter
+    // Erteilungspfad waere eine zweite Wahrheit ueber denselben Serverzustand.
+    document.getElementById("ka4-frage-ja").addEventListener("click", klaraS4Zustimmen);
+    // „Nein" merkt sich die Ablehnung fuer DIESES Dokument und faellt danach still zurueck —
+    // keine Nachfrage, kein zweiter Versuch, kein Serveraufruf.
+    document.getElementById("ka4-frage-nein").addEventListener("click", function () {
+      ka4Ablehnen();
+      renderKlaraS4();
+    });
+    // KW-KA4-DOKUMENT-CONSENT-END (Ereignisse)
     document.getElementById("klara-consent-revoke").addEventListener("click", klaraS4Widerrufen);
     // BEN-BEFUND 3: die Sitzung wird beim Verlassen des Fensters WIRKLICH geschlossen. `pagehide`
     // statt `unload` — moderne Engines ueberspringen `unload` beim Zuruecklegen in den Cache.

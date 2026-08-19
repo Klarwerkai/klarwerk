@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   assembleServices,
@@ -233,5 +235,103 @@ describe("W1 S4 · Gegenprobe 12 — der Sitzungszustand hängt an der Ablage", 
       ).statusCode,
     ).toBe(200);
     await app2.close();
+  });
+});
+
+// ================================================================================================
+// KW-KA4 — DER TASKPANE-VERTRAG: EINWILLIGUNG JE DOKUMENT, AKTIVES FRAGEN, NEIN WIRD GEMERKT
+// ================================================================================================
+//
+// Diese Fälle lesen die AUSGELIEFERTE Datei, nicht einen Nachbau. Das Panel ist buildlos; sein
+// Wortlaut und seine Schnittmarken SIND das Produkt. Geprüft wird, was Pedis Weiche wörtlich
+// verlangt — und was sie ausdrücklich verbietet.
+describe("KW-KA4 · Taskpane: Einwilligung je Dokument", () => {
+  const TASKPANE = "apps/web/public/word-addin/taskpane.html";
+  const quelle = (): string => readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
+  /**
+   * ALLE Abschnitte zwischen den Marken, verkettet — nicht nur der erste.
+   *
+   * Gemessen und nachgebessert: Der Marker steht viermal (Fläche, Logik, Anzeige, Ereignisse), und
+   * eine Fassung, die nur `split(...)[1]` liest, prüft den HTML-Block und meldet die Logik als
+   * fehlend. Der erste Lauf war genau deshalb rot (`lauf-04-ui-vertrag.log`, KA4-U3/U4) — der Test
+   * hatte recht, meine Leseweise war falsch.
+   */
+  const ka4Block = (): string => {
+    const stuecke = quelle().split("KW-KA4-DOKUMENT-CONSENT-START").slice(1);
+    return stuecke.map((s) => s.split("KW-KA4-DOKUMENT-CONSENT-END")[0] ?? "").join("\n");
+  };
+
+  it("KA4-U1: der Consent-Wortlaut nennt in allen drei Sprachen DAS DOKUMENT, nicht nur die Sitzung", () => {
+    // Die Zustimmung ist serverseitig an `documentContextId` gebunden
+    // (`klara-session-service.ts:251`) und ein Rebind verwirft sie. Wer „für diese Sitzung" liest,
+    // erwartet Geltung über den Dokumentwechsel hinaus — genau das trifft nicht zu.
+    const text = quelle();
+    expect(text).toContain("Externe KI für dieses Dokument erlauben");
+    expect(text).toContain("Allow external AI for this document");
+    expect(text).toContain("Externe AI voor dit document toestaan");
+  });
+
+  it("KA4-U2: der aktive Fragesatz steht wörtlich so da, wie das Register ihn bindet", () => {
+    // `OFFEN.md:64` gibt ihn vor; er ist Pedis Zusage an den Anwender, kein Vorschlag.
+    expect(quelle()).toContain(
+      "Dafür brauche ich die externe KI — darf ich dieses Dokument senden? Vertraulich Markiertes bleibt hier.",
+    );
+  });
+
+  it("KA4-U3: das Nein lebt NUR im Arbeitsspeicher — kein local/sessionStorage", () => {
+    // Die schärfste Zusage dieses Blocks. Eine dauerhafte Ablehnung wäre eine Entscheidung ohne
+    // Server; eine dauerhafte Zustimmung wäre eine Sicherheitslücke. Beide gehören dem
+    // Serverzustand, der sie jederzeit entwerten kann (Rebind, Widerruf, Ablauf, Policywechsel).
+    const block = ka4Block();
+    expect(block.length, "der KA4-Block muss existieren").toBeGreaterThan(200);
+    // Geprüft wird die VERWENDUNG, nicht die Erwähnung: die Zusage selbst steht als Kommentar im
+    // Block („kein localStorage, kein sessionStorage") und wäre einem reinen Zeichenverbot zum
+    // Opfer gefallen. Gemessen im ersten Lauf (`lauf-05-ui-korrigiert.log`) — der Test hätte die
+    // eigene Begründung verboten.
+    // `\.[A-Za-z]` statt `\s*[.[]`: der zweite Anlauf scheiterte am SATZPUNKT hinter
+    // „kein sessionStorage." im Begründungskommentar (`lauf-06`). Ein echter Zugriff trägt hinter
+    // dem Punkt unmittelbar einen Bezeichner (`setItem`, `getItem`) oder eine Klammer.
+    const zugriff = /\b(localStorage|sessionStorage)(\.[A-Za-z]|\[)/;
+    expect(zugriff.test(block), "kein echter Storage-Zugriff im KA4-Block").toBe(false);
+    expect(block).toContain("ka4Abgelehnt");
+  });
+
+  it("KA4-U4: der Ablehnungsvermerk hängt an der SERVERSEITIGEN Dokumentkennung", () => {
+    // Damit entwertet ein Rebind ihn von selbst: der Server vergibt eine neue `documentContextId`,
+    // der alte Schlüssel wird nie wieder getroffen. Kein Aufräumcode, kein Restzustand.
+    const block = ka4Block();
+    expect(block).toContain("function ka4DokumentSchluessel()");
+    expect(block).toContain("klaraS4DocumentId");
+  });
+
+  it("KA4-U5: der Ask trägt die drei Bindungs-Kopfzeilen — und `mode` bleibt gesetzt", () => {
+    // Die Kopfzeilen sind der Anschluss an das serverseitige Tor. `mode: "retrieval-only"` bleibt
+    // unverändert: der Client bittet weiter um die Enge; aufheben darf sie allein der Server.
+    const askBlock =
+      quelle().split("KW-KLARA-ASK-FETCH-START")[1]?.split("KW-KLARA-ASK-FETCH-END")[0] ?? "";
+    expect(askBlock).toContain("klaraS4Header()");
+    expect(askBlock).toContain('mode: "retrieval-only"');
+  });
+
+  it("KA4-U6: das Panel merkt sich ein NEIN, aber niemals ein JA", () => {
+    // Kein clientseitiges Bool, das eine Erlaubnis behauptet — der ausdrückliche No-Go des
+    // Auftrags („kein clientseitiges Bool-Bypass").
+    const block = ka4Block();
+    expect(block).not.toContain("ka4Erlaubt");
+    expect(block).not.toContain("ka4Zugestimmt");
+  });
+
+  it("KA4-U7: „Ja“ ruft denselben Zustimmungsweg wie der bestehende Knopf", () => {
+    // Ein zweiter Erteilungspfad wäre eine zweite Wahrheit über denselben Serverzustand.
+    expect(quelle()).toContain(
+      'document.getElementById("ka4-frage-ja").addEventListener("click", klaraS4Zustimmen)',
+    );
+  });
+
+  it("KA4-U8: der manuelle Erlauben-Knopf bleibt bestehen — ein Nein sperrt die Frage, nicht den Weg", () => {
+    // Auftrag Lieferung 6, zweiter Halbsatz: „Eine manuell erreichbare Schaltfläche darf sichtbar
+    // bleiben." Der Ablehnungszweig fasst `klara-consent-grant` deshalb nicht an.
+    expect(ka4Block()).not.toContain("klara-consent-grant");
+    expect(quelle()).toContain('document.getElementById("klara-consent-grant")');
   });
 });

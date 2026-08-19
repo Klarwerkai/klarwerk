@@ -62,7 +62,114 @@ export interface AskRouteDeps {
   ask: AskService;
   ko: KoService;
   conflicts: ConflictService;
+  /**
+   * KW-KA4: das bestehende Ausführungstor aus `services/klara-session-service.ts`. OPTIONAL und
+   * additiv — fehlt es, verhält sich diese Route byteweise wie vor KA4 (siehe `ka4Freigabe`).
+   */
+  klaraSessions?: Ka4Freigabepruefer | undefined;
 }
+
+// ================================================================================================
+// KW-KA4-DOKUMENT-CONSENT — DIE EINWILLIGUNG JE DOKUMENT ENTSCHEIDET, NICHT DER CLIENT.
+// ================================================================================================
+//
+// PEDIS WEICHE (Werkstattbeschluss 18.08.2026): „Externe KI mit Dokumenttext: JA, aber nie still.
+// Je Dokument eine ausdrückliche Einwilligung … Vertraulich Markiertes bleibt IMMER draußen."
+//
+// WAS HIER STEHT UND WAS AUSDRÜCKLICH NICHT. Hier steht die ANWENDUNG des Tors, nicht das Tor
+// selbst. Ob eine Zustimmung trägt, entscheidet allein `KlaraSessionService.pruefeExterneAusfuehrung`
+// — dieselbe Prüfung, die neun Bindungen einzeln vergleicht (`klara-session-service.ts:243-261`),
+// frisch liest, nicht deckende Zustimmungen entwertet und die Auflösung selbst befragt. Eine
+// zweite Auslegung dieser Regel an dieser Stelle wäre genau der Fehler, den KW-S4-23 abstellt.
+//
+// DREI EIGENSCHAFTEN, die diesen Weg zu einer Sicherheitsgrenze machen:
+//
+//   1. FAIL-CLOSED IN JEDER RICHTUNG. Kein Dienst, fehlende Kopfzeile, leerer Wert, geworfener
+//      Fehler, `erlaubt: false` — jeder dieser Fälle endet in der unveränderten Enge. Es gibt
+//      keinen Zweig, in dem ein unklarer Zustand zur Freigabe führt.
+//   2. DIE KOPFZEILEN AUTORISIEREN NICHT. Sie sind Lookup (`klara-ai-routes.ts:36-38`: „Die Werte
+//      sind OPAK — der Server interpretiert sie nie, er prüft nur Gleichheit"). Wer fremde Werte
+//      schickt, bekommt dieselbe Absage wie bei einer fremden Sitzung: der Dienst wirft `NOT_FOUND`,
+//      und der Fang unten macht daraus eine Nichtfreigabe. Ein Client-Bool gibt es nicht und darf
+//      es nie geben.
+//   3. DER VERTRAULICHKEITSFILTER HÄNGT NICHT DARAN. `dropConfidential` läuft in
+//      `services/ask/src/service.ts:275` VOR der Kandidatenauswahl und unabhängig von jeder
+//      Option — er kann durch eine Freigabe strukturell nicht ausgeschaltet werden. Das ist keine
+//      Zusage dieser Datei, sondern eine Eigenschaft des Bestands, und sie ist der Grund, warum
+//      KA4 die Vertraulichkeit nicht eigens erzwingen muss.
+//
+// WAS DIE FREIGABE HEUTE BEWIRKT: nichts, und das ist richtig so. `KLARA_EXTERNAL_EXECUTION_MIGRATED`
+// steht in `services/reasoner/src/klara-policy.ts:161` auf `false`; jede externe Auflösung wird
+// deshalb mit `external_not_migrated` blockiert, und `pruefeExterneAusfuehrung` kann gar kein
+// `erlaubt: true` liefern. Der Weg ist gebaut, geprüft und wartet auf genau eine benannte
+// Entscheidung an genau einer Stelle — er schaltet sich nicht selbst frei.
+
+/** Die schmale Sicht auf das bestehende Tor — mehr braucht diese Route nicht zu kennen. */
+export interface Ka4Freigabepruefer {
+  pruefeExterneAusfuehrung(
+    sessionId: string,
+    bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
+  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
+}
+
+// Dieselben Kopfzeilen wie der Klara-Sitzungsweg (`klara-ai-routes.ts:40-42`) — eine Schreibweise,
+// kein zweiter Transportvertrag.
+const KLARA_SESSION_HEADER = "x-klara-session";
+const KLARA_INSTANCE_HEADER = "x-klara-instance";
+const KLARA_DOCUMENT_HEADER = "x-klara-document";
+
+function klaraKopf(headers: Record<string, unknown>, name: string): string {
+  const wert = headers[name];
+  return typeof wert === "string" ? wert.trim() : "";
+}
+
+/**
+ * Darf dieser Ask die erzwungene Enge verlassen?
+ *
+ * PROTOKOLL AUSDRÜCKLICH METADATA-ONLY: geloggt werden Entscheidung und Grund — nie die Frage, nie
+ * ein Dokumentinhalt, nie eine Kopfzeile. Die Kennungen sind zwar opak, aber ein Protokoll, das
+ * sie mitschreibt, wäre eine Verknüpfungsspur über Dokumente hinweg; sie bleibt deshalb draußen.
+ */
+async function ka4Freigabe(
+  pruefer: Ka4Freigabepruefer | undefined,
+  headers: Record<string, unknown>,
+  actorId: string,
+  log: { info: (obj: unknown, msg: string) => void },
+): Promise<boolean> {
+  if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
+    return false;
+  }
+  const sessionId = klaraKopf(headers, KLARA_SESSION_HEADER);
+  const addinInstanceId = klaraKopf(headers, KLARA_INSTANCE_HEADER);
+  const documentContextId = klaraKopf(headers, KLARA_DOCUMENT_HEADER);
+  if (!sessionId || !addinInstanceId || !documentContextId) {
+    // Kein Protokolleintrag: eine Anfrage ganz ohne Klara-Bindung ist der Normalfall und keine
+    // Entscheidung über eine Einwilligung.
+    return false;
+  }
+  try {
+    const freigabe = await pruefer.pruefeExterneAusfuehrung(sessionId, {
+      actorId,
+      addinInstanceId,
+      documentContextId,
+    });
+    const erlaubt = freigabe?.erlaubt === true;
+    log.info(
+      { ka4: { entscheidung: erlaubt ? "freigegeben" : "blockiert", grund: freigabe?.grund } },
+      "ask.ka4.dokument-consent",
+    );
+    return erlaubt;
+  } catch (err) {
+    // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
+    // kein Serverfehler — der Ask läuft in der unveränderten Enge weiter.
+    log.info(
+      { ka4: { entscheidung: "blockiert", grund: "bindung_ungueltig" } },
+      "ask.ka4.dokument-consent",
+    );
+    return false;
+  }
+}
+// KW-KA4-DOKUMENT-CONSENT-END
 
 // AUFTRAG-mega53 B4 — DIE ZWEITE DER VIER STELLEN.
 //
@@ -175,6 +282,17 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         };
         const auth = request.authContext;
         if (auth?.authKind === "addon") {
+          // KW-KA4: NUR eine serverbestätigte Einwilligung für exakt diese Sitzung UND dieses
+          // Dokument hebt die Enge auf. Ohne sie fällt der Ablauf in den unveränderten Zweig
+          // darunter — Zeile für Zeile derselbe wie vor KA4.
+          if (
+            await ka4Freigabe(deps.klaraSessions, request.headers, auth.principal.id, request.log)
+          ) {
+            // `gapPolicy` bleibt: die Wissenslücken-Nebenwirkung ist keine Egressfrage und war nie
+            // Gegenstand der Einwilligung.
+            await answer(auth.principal.id, { gapPolicy: "count_only" });
+            return;
+          }
           // SCRUM-490 D1/D2: validated-only + count_only für den Nur-Lese-Add-on-Key. R2 (B1):
           // retrievalOnly → der vertrauliche Dokumenttext wird NIE ans Modell/den Embedder gegeben; die
           // Antwort ist rein Retrieval gegen validierte, nicht-vertrauliche KOs (kein Egress).
@@ -203,6 +321,15 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Wissensluecke wird weiter vermerkt (Session-Nutzer, bestehende gap-Semantik) — darauf
         // baut der Offene-Frage-Weg des Panels. Konsole ohne mode: byte-identisches Verhalten.
         if (request.body.mode === "retrieval-only") {
+          // KW-KA4: derselbe Riegel wie im Add-on-Zweig. Dieser Weg ist der, den das Word-Panel
+          // heute tatsächlich fährt (same-origin, Sitzungscookie — `taskpane.html:910-916`), und
+          // deshalb muss die Einwilligung genau hier greifen.
+          if (await ka4Freigabe(deps.klaraSessions, request.headers, user.id, request.log)) {
+            // Der normale Answerweg — dieselbe Form wie der Konsolen-Ask darunter, keine
+            // Sonderbehandlung: `validatedOnly`/`retrievalOnly` entfallen, alles andere bleibt.
+            await answer(user.id);
+            return;
+          }
           await answer(user.id, { validatedOnly: true, retrievalOnly: true });
           return;
         }

@@ -1,6 +1,8 @@
+import Fastify, { type FastifyInstance } from "fastify";
 import { describe, expect, it } from "vitest";
 import { ModelCapacityError } from "../../reasoner";
 import { buildApp, buildServices } from "./build-app";
+import { askRoutes } from "./routes/ask-routes";
 
 // SCRUM-242: Ask-/Fragen-Workflow über die ECHTEN HTTP-Routen absichern (kein Service-Direktaufruf,
 // keine Repo-Manipulation). Frage via POST /api/ask (ko.read) → { result: AnswerResult, gap }.
@@ -435,5 +437,337 @@ describe("SCRUM-498 B2: /api/ask bei Modell-Cap-Überlauf → 503 + Retry-After 
     expect(res.headers["retry-after"]).toBeDefined();
     expect(res.json().error).toBe("MODEL_BUSY");
     expect(res.payload).not.toContain("ModelCapacityError"); // kein Stacktrace nach außen
+  });
+});
+
+// ================================================================================================
+// KW-KA4 — EINWILLIGUNG JE DOKUMENT: DER SERVERSEITIGE SICHERHEITSVERTRAG
+// ================================================================================================
+//
+// PEDIS WEICHE, wörtlich aus dem Werkstattbeschluss vom 18.08.2026: „Externe KI mit Dokumenttext:
+// JA, aber nie still. Je Dokument eine ausdrückliche Einwilligung … Vertraulich Markiertes bleibt
+// IMMER draußen."
+//
+// DIE ABNAHME steht wörtlich in `OFFEN.md:64` (KA4) und ist eine Bytegleich-Zusage, keine Funktion:
+//
+//     „Gebaut, wenn: ohne Einwilligung verhält sich der Server bytegleich wie heute (Red-first-Test)"
+//
+// Genau deshalb steht der SNAPSHOT hier zuerst und ist der wichtigste Fall der Datei: Er misst den
+// vollständigen Optionssatz, mit dem die Route heute in `AskService.ask` geht, und friert ihn ein.
+// Nach dem Bau muss er unverändert sein. Ein Sicherheitsbau, der die bestehende Enge auch nur um
+// ein Feld lockert, ist gescheitert — auch wenn alle neuen Fälle grün sind.
+//
+// WARUM DER OPTIONSSATZ UND NICHT NUR DIE ANTWORT: Die Antwort ist eine Ableitung; die Optionen
+// SIND die Sicherheitsgrenze (`validatedOnly` → nur validierte KOs, `retrievalOnly` → kein
+// Modell-/Embedderaufruf, `gapPolicy` → keine Nebenwirkung). Ein Test, der nur die Antwort
+// vergleicht, wäre auch dann grün, wenn die Enge fiele und der deterministische Pfad zufällig
+// dasselbe liefert.
+describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
+  const INSTANZ = "ka4-instanz-1";
+  const DESCRIPTOR = { kind: "saved" as const, hostDocumentId: "ka4-word-doc-1" };
+
+  /**
+   * Ein Spion auf `AskService.ask` — die einzige Stelle, an der die Sicherheitsoptionen wirklich
+   * ankommen. Er hüllt den echten Dienst ein und verändert nichts: gemessen wird der PRODUKTIVE
+   * Aufruf, nicht ein Nachbau.
+   */
+  function mitSpion() {
+    const services = buildServices();
+    const gesehen: { question: string; actor: string; locale: string; opts: unknown }[] = [];
+    const echt = services.ask.ask.bind(services.ask);
+    services.ask.ask = (async (
+      question: string,
+      actor?: string,
+      locale?: string,
+      opts?: unknown,
+    ) => {
+      gesehen.push({ question, actor: actor ?? "", locale: locale ?? "", opts: opts ?? null });
+      return echt(question, actor, locale as never, opts as never);
+    }) as typeof services.ask.ask;
+    return { app: buildApp(services), gesehen };
+  }
+
+  async function adminHeaders(app: ReturnType<typeof buildApp>) {
+    await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { name: "Admin", email: "ka4@x.de", password: "secret123" },
+    });
+    const login = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      payload: { email: "ka4@x.de", password: "secret123" },
+    });
+    return { authorization: `Bearer ${login.json().token}`, "x-klara-instance": INSTANZ };
+  }
+
+  /** Die echte, serverseitig registrierte Sitzung — der Server vergibt die documentContextId. */
+  async function klaraSitzung(app: ReturnType<typeof buildApp>, auth: Record<string, string>) {
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/klara/sessions",
+      headers: auth,
+      payload: { addinInstanceId: INSTANZ, documentDescriptor: DESCRIPTOR },
+    });
+    if (res.statusCode !== 201) {
+      throw new Error(`Klara-Sitzung nicht angelegt: ${res.statusCode} ${res.body}`);
+    }
+    const body = res.json();
+    return {
+      sessionId: body.sessionId as string,
+      documentContextId: body.documentContextId as string,
+      headers: {
+        ...auth,
+        "x-klara-session": body.sessionId as string,
+        "x-klara-document": body.documentContextId as string,
+      },
+    };
+  }
+
+  it("KA4-S1 (SNAPSHOT): der Klara-Ask ohne Einwilligung trägt exakt validatedOnly + retrievalOnly", async () => {
+    const { app, gesehen } = mitSpion();
+    const auth = await adminHeaders(app);
+    const sitzung = await klaraSitzung(app, auth);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: sitzung.headers,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(gesehen).toHaveLength(1);
+    // DER EINGEFRORENE SATZ. `toEqual` und nicht `toMatchObject`: ein zusätzliches Feld wäre
+    // ebenfalls eine Verhaltensänderung und muss auffallen.
+    expect(gesehen[0]?.opts).toEqual({ validatedOnly: true, retrievalOnly: true });
+  });
+
+  it("KA4-S2 (SNAPSHOT): dieselbe Enge auch mit gesendeten, aber nicht eingewilligten Klara-Kopfzeilen", async () => {
+    // Die Kopfzeilen allein sind KEINE Autorisierung. Sie zu senden darf die Optionen nicht
+    // verändern — sonst wäre der Transport selbst die Freigabe.
+    const { app, gesehen } = mitSpion();
+    const auth = await adminHeaders(app);
+    const sitzung = await klaraSitzung(app, auth);
+
+    await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: sitzung.headers,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+    expect(gesehen[0]?.opts).toEqual({ validatedOnly: true, retrievalOnly: true });
+  });
+
+  it("KA4-S3: ein Consent-Versuch ohne externe Auflösung wird abgelehnt — der Bestand kennt keinen externen Modus", async () => {
+    // Der Grund steht in `services/reasoner/src/klara-policy.ts:161`
+    // (`KLARA_EXTERNAL_EXECUTION_MIGRATED = false`) und in `klara-session-service.ts:764-768`:
+    // ohne verdrahteten Cloud-Anbieter ist der effektive Modus nicht `external`, und dann ist eine
+    // Zustimmung gar nicht erteilbar. Dieser Fall hält den Ist-Zustand fest — er ist die
+    // Voraussetzung dafür, dass KA4-S1/S2 überhaupt etwas beweisen: ohne ihn wäre „bytegleich"
+    // auch dann grün, wenn die Freigabe schlicht nie erreichbar ist, ohne dass jemand es merkt.
+    const { app } = mitSpion();
+    const auth = await adminHeaders(app);
+    const sitzung = await klaraSitzung(app, auth);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/klara/sessions/${sitzung.sessionId}/consent`,
+      headers: sitzung.headers,
+    });
+    expect(res.statusCode).toBe(409);
+  });
+});
+
+// ================================================================================================
+// KW-KA4 · DIE CONSENT- UND NEGATIVMATRIX AM ECHTEN ROUTENPFAD
+// ================================================================================================
+//
+// WARUM HIER EIN INJIZIERTES TOR STEHT — und warum das kein Nachbau ist. Die Fälle oben fahren die
+// vollständige App; sie können den POSITIVEN Pfad aber strukturell nicht erreichen, weil
+// `KLARA_EXTERNAL_EXECUTION_MIGRATED` (`services/reasoner/src/klara-policy.ts:161`) auf `false`
+// steht und jede externe Auflösung mit `external_not_migrated` blockiert. Fall KA4-S3 belegt das
+// am Draht: der Consent-Versuch endet mit 409.
+//
+// Geprüft wird deshalb genau das, was diese Route selbst verantwortet: WIE sie auf die Antwort des
+// Tors reagiert. Das Tor selbst ist Null-Diff-Pfad und in `klara-session-service.test.ts` eigens
+// abgenommen; es hier nachzubauen wäre eine zweite Auslegung derselben Regel. `askRoutes` wird
+// dafür direkt registriert — dasselbe Hausmuster wie `tests/security/mega76-schutz-erzwungen.test.ts`.
+//
+// DER ENTSCHEIDENDE PUNKT: Die Route darf NUR bei `erlaubt: true` lockern. Jede andere Antwort,
+// jeder Fehler und jede fehlende Angabe muss in exakt demselben Optionssatz enden, den KA4-S1
+// eingefroren hat.
+describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert", () => {
+  const BINDUNG = {
+    "x-klara-session": "sess-1",
+    "x-klara-instance": "inst-1",
+    "x-klara-document": "doc-s-1",
+  };
+
+  /**
+   * Eine minimale App mit genau dieser Route. `guards` gibt einen Sitzungsnutzer zurück; der
+   * Ask-Dienst ist ein Spion, der den Optionssatz festhält, statt zu antworten.
+   */
+  async function routeMit(pruefer: unknown) {
+    const gesehen: unknown[] = [];
+    const ask = {
+      ask: async (_q: string, _actor: string, _locale: string, opts?: unknown) => {
+        gesehen.push(opts ?? null);
+        return {
+          result: {
+            answered: false,
+            knowledgeClass: "unbekannt",
+            sources: [],
+            citedSources: [],
+            steps: [],
+            answer: null,
+            trust: 0,
+          },
+          gap: null,
+        };
+      },
+    };
+    const app = Fastify();
+    app.register(
+      askRoutes(
+        {
+          ask: ask as never,
+          ko: { get: async () => undefined } as never,
+          conflicts: { unresolved: async () => [] } as never,
+          klaraSessions: pruefer as never,
+        },
+        {
+          requireUser: async () => ({ id: "nutzer-1", role: "admin" }),
+          requirePermission: async () => ({ id: "nutzer-1", role: "admin" }),
+        } as never,
+      ),
+    );
+    await app.ready();
+    return { app, gesehen };
+  }
+
+  const frage = (app: FastifyInstance, headers: Record<string, string>) =>
+    app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers,
+      payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
+    });
+
+  const ENGE = { validatedOnly: true, retrievalOnly: true };
+
+  it("KA4-P1: `erlaubt: true` für exakt diese Bindung → die Enge entfällt", async () => {
+    let gesehenBindung: unknown = null;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async (sessionId: string, bindung: unknown) => {
+        gesehenBindung = { sessionId, bindung };
+        return { erlaubt: true };
+      },
+    });
+    const res = await frage(app, BINDUNG);
+    expect(res.statusCode).toBe(200);
+    // Der normale Answerweg: KEINE erzwungenen Flags mehr.
+    expect(gesehen[0]).toBe(null);
+    // Und die Bindung wird VOLLSTÄNDIG durchgereicht — Sitzung UND Dokument, nicht nur eines.
+    expect(gesehenBindung).toEqual({
+      sessionId: "sess-1",
+      bindung: { actorId: "nutzer-1", addinInstanceId: "inst-1", documentContextId: "doc-s-1" },
+    });
+    await app.close();
+  });
+
+  it("KA4-N1: `erlaubt: false` → unveränderte Enge", async () => {
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => ({
+        erlaubt: false,
+        grund: "CONSENT_RECONFIRMATION_REQUIRED",
+      }),
+    });
+    await frage(app, BINDUNG);
+    expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
+  });
+
+  it("KA4-N2: fremde/abgelaufene Sitzung (Dienst wirft) → unveränderte Enge, kein 500", async () => {
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        throw new Error("NOT_FOUND");
+      },
+    });
+    const res = await frage(app, BINDUNG);
+    expect(res.statusCode).toBe(200);
+    expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
+  });
+
+  it("KA4-N3: fehlende Kopfzeilen → gar keine Torbefragung, unveränderte Enge", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        gefragt += 1;
+        return { erlaubt: true };
+      },
+    });
+    // Jede der drei Angaben einzeln weggelassen — jede für sich muss die Freigabe verhindern.
+    await frage(app, { "x-klara-instance": "inst-1", "x-klara-document": "doc-s-1" });
+    await frage(app, { "x-klara-session": "sess-1", "x-klara-document": "doc-s-1" });
+    await frage(app, { "x-klara-session": "sess-1", "x-klara-instance": "inst-1" });
+    await frage(app, {});
+    expect(gefragt, "ohne vollständige Bindung wird das Tor gar nicht erst gefragt").toBe(0);
+    expect(gesehen).toEqual([ENGE, ENGE, ENGE, ENGE]);
+    await app.close();
+  });
+
+  it("KA4-N4: leere Kopfzeilen zählen nicht als Bindung", async () => {
+    let gefragt = 0;
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => {
+        gefragt += 1;
+        return { erlaubt: true };
+      },
+    });
+    await frage(app, {
+      "x-klara-session": "  ",
+      "x-klara-instance": "inst-1",
+      "x-klara-document": "doc-s-1",
+    });
+    expect(gefragt).toBe(0);
+    expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
+  });
+
+  it("KA4-N5: gar kein Tor verdrahtet → unveränderte Enge (mega76-Bauart)", async () => {
+    const { app, gesehen } = await routeMit(undefined);
+    await frage(app, BINDUNG);
+    expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
+  });
+
+  it("KA4-N6: ein Client-Bool im Körper autorisiert NICHTS", async () => {
+    // Der ausdrückliche No-Go des Auftrags: „kein clientseitiges Bool-Bypass".
+    const { app, gesehen } = await routeMit({
+      pruefeExterneAusfuehrung: async () => ({ erlaubt: false }),
+    });
+    await app.inject({
+      method: "POST",
+      url: "/api/ask",
+      headers: BINDUNG,
+      payload: {
+        question: "Wie entlüfte ich die Pumpe?",
+        mode: "retrieval-only",
+        externalConsentGranted: true,
+        consent: true,
+        allowExternal: true,
+      },
+    });
+    expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
+  });
+
+  it("KA4-N7: eine kaputte Torantwort ohne `erlaubt` gilt als NEIN", async () => {
+    const { app, gesehen } = await routeMit({ pruefeExterneAusfuehrung: async () => ({}) });
+    await frage(app, BINDUNG);
+    expect(gesehen[0]).toEqual(ENGE);
+    await app.close();
   });
 });

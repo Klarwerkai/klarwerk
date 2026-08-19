@@ -471,7 +471,53 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //
     // KEIN erneutes Sideload. Ein installiertes Add-in holt die Datei beim naechsten Oeffnen frisch;
     // zeigt der Office-Cache kurz den alten Stand, fehlt genau die Karte — nichts wird falsch.
-    const PIN = "47f6cf2c72b229c562a99bc15dacd4bac919b60d21038ec418ccbf2ae3b1f39d";
+    // ============================================================================================
+    // JOB 1152 D3 (19.08.2026) — DER PIN WANDERT EIN ZWEITES MAL: KA4 KOMMT ZU KA1 DAZU.
+    // ============================================================================================
+    // ZWEI VORHERSTAENDE, weil dieser Pin zwei Wanderungen hinter sich hat und beide belegt sein
+    // muessen:
+    //   · vor KA1 (JOB 1149 D2): `ee0f53d837343abec3c3e4e89545d3a118e7404842e1ba30e7d797407ff80059`
+    //   · vor KA4 (dieser Nachzug): `47f6cf2c72b229c562a99bc15dacd4bac919b60d21038ec418ccbf2ae3b1f39d`
+    //
+    // WARUM ZWEIMAL. KA1 und KA4 standen beide auf Base `9b87037` und haben BEIDE genau diese
+    // Pinzeile ersetzt. KA1 wurde zuerst integriert (`90eddf2`); KA4 wird hier nachgezogen. Der
+    // Begruendungsblock von JOB 1149 D2 darueber bleibt deshalb UNVERAENDERT stehen — er
+    // beantwortet die Auslieferungsfrage fuer das Dokument-Begriffsbild und ist durch den KA4-
+    // Nachzug nicht falsch geworden. Dieser Block kommt DAZU, er ersetzt ihn nicht.
+    //
+    // GEAENDERT WURDE DURCH KA4 — Panelinhalt und EIN zusaetzliches Kopfzeilenfeld am bestehenden
+    // Abruf (unveraendert gegenueber JOB 1152 D1/D2, nur auf die neue Base uebertragen):
+    //   · der Consent-Wortlaut nennt in DE/EN/NL jetzt DAS DOKUMENT statt nur die Sitzung
+    //     (`s4ConsentTitel`, `s4ConsentText`) — die Zustimmung ist serverseitig an
+    //     `documentContextId` gebunden, ein Rebind verwirft sie;
+    //   · fuenf neue Woerterbuch-Schluessel je Sprache (`ka4FrageTitel`, `ka4FrageText`,
+    //     `ka4FrageJa`, `ka4FrageNein`, `ka4Abgelehnt`);
+    //   · ein Schnittmarkenpaar `KW-KA4-DOKUMENT-CONSENT-START/END` um vier reine Funktionen
+    //     (`ka4DokumentSchluessel`, `ka4WurdeAbgelehnt`, `ka4Ablehnen`, `ka4DarfAktivFragen`),
+    //     den Frageblock, seine Anzeige und seine zwei Ereignisbindungen;
+    //   · ein anfangs VERBORGENER Block `#ka4-frage` und eine verborgene Zeile `#ka4-abgelehnt`,
+    //     beide im vorhandenen `.primary`/`.ghost`/`.muted`-Muster, ohne neue Farbregel;
+    //   · `performAsk` bekommt einen fuenften Parameter `bindungsKopf`; der Aufrufer reicht die
+    //     bereits vorhandenen `klaraS4Header()` hinein.
+    //
+    // KA1 BLEIBT VOLLSTAENDIG: der uebertragene Delta ist zeilengenau derselbe wie gegen `9b87037`
+    // (162 Einfuegungen, 9 Loeschungen, im Nachzug gemessen). Es kam nur KA4 hinzu; keine Zeile des
+    // Begriffsbilds wurde angefasst. Die KA1-Zusagen bleiben von `tests/app/word-addin.test.ts`,
+    // Gruppe „JOB 1149 · KA1", ausfuehrbar bewacht.
+    //
+    // AUSLIEFERUNGSFOLGE — unveraendert gegenueber D1/D2 und hier erneut am kombinierten Stand
+    // geprueft:
+    //   · KEIN Manifestwrite, KEIN erneutes Sideload. Ein installiertes Add-in holt die Paneldatei
+    //     beim naechsten Oeffnen frisch; der bestehende Fassungsstempel (`__KW_FASSUNG__`) meldet
+    //     den Wechsel von selbst.
+    //   · KEINE neue Office-API und KEIN neues Recht — es kommt keine Word-JS-Faehigkeit hinzu.
+    //   · KEINE geaenderte CSP und KEIN NEUES ABRUFZIEL: der Ask geht unveraendert an
+    //     `POST /api/ask` am eigenen Ursprung. Neu sind allein drei KOPFZEILEN
+    //     (`x-klara-session`, `x-klara-instance`, `x-klara-document`) — dieselben, die der
+    //     Sitzungsweg dieses Panels laengst sendet. Same-origin, also kein Preflight.
+    //   · KEINE neue Nutzlast: der Koerper ist unveraendert (`question`, `locale`, `mode`).
+    //   · Ein AELTERER Server ignoriert die drei Kopfzeilen schlicht — nichts geht verloren.
+    const PIN = "440f752828424b538e0c69978b360d7f25092687c2a9b280faa19b1b77a4b737";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
