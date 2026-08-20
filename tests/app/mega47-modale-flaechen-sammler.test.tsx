@@ -79,7 +79,8 @@
 //     gesperrter Dialog wirklich bedienbar ist, belegt `tests-smoke/ui-smoke.spec.ts`.
 //   · Reine Zeiger-Bedienbarkeit (`pointer-events`, Überdeckung) ist nicht Gegenstand; sie hängt am
 //     Browser-Verhalten von `inert`, nicht an der Struktur.
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
 import ts from "typescript";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -182,9 +183,14 @@ function istQuelldatei(pfad: string): boolean {
   return !pfad.endsWith(".test.ts") && !pfad.endsWith(".test.tsx");
 }
 
-function quelldateien(verzeichnis: string): string[] {
+// JOB 1181 D1: die Wurzel ist ein Parameter geworden. Grund steht in Block F unten — BENs dritte
+// Prüflücke zu D3 verlangt einen Träger, den der BAUMSCANNER wirklich liest, nicht einen, der einer
+// Funktion als Text übergeben wird. Ohne diesen Parameter liesse sich das nur belegen, indem eine
+// Datei in `apps/web/src/` entsteht; der Lease dieses Durchgangs verbietet jeden Produktcode. Der
+// Standardwert ist unverändert `WURZEL`, jeder bestehende Aufruf verhält sich zeichengleich.
+function quelldateien(verzeichnis: string, wurzel: string = WURZEL): string[] {
   const gefunden: string[] = [];
-  for (const eintrag of readdirSync(join(WURZEL, verzeichnis), { withFileTypes: true })) {
+  for (const eintrag of readdirSync(join(wurzel, verzeichnis), { withFileTypes: true })) {
     if (
       eintrag.name === "node_modules" ||
       eintrag.name === "dist" ||
@@ -194,7 +200,7 @@ function quelldateien(verzeichnis: string): string[] {
     }
     const relativ = join(verzeichnis, eintrag.name);
     if (eintrag.isDirectory()) {
-      gefunden.push(...quelldateien(relativ));
+      gefunden.push(...quelldateien(relativ, wurzel));
     } else if (istQuelldatei(relativ)) {
       gefunden.push(relativ);
     }
@@ -1236,9 +1242,9 @@ function unregistrierteWirkflaechen(
  * jede der bisherigen Erhebungen unsichtbar. Gemessen heute: drei Stylesheets, kein Treffer.
  * Der Fall hält das fest und wird rot, sobald dort eine Fläche entsteht.
  */
-function stylesheetdateien(verzeichnis: string): string[] {
+function stylesheetdateien(verzeichnis: string, wurzel: string = WURZEL): string[] {
   const gefunden: string[] = [];
-  for (const eintrag of readdirSync(join(WURZEL, verzeichnis), { withFileTypes: true })) {
+  for (const eintrag of readdirSync(join(wurzel, verzeichnis), { withFileTypes: true })) {
     if (
       eintrag.name === "node_modules" ||
       eintrag.name === "dist" ||
@@ -1248,7 +1254,7 @@ function stylesheetdateien(verzeichnis: string): string[] {
     }
     const relativ = join(verzeichnis, eintrag.name);
     if (eintrag.isDirectory()) {
-      gefunden.push(...stylesheetdateien(relativ));
+      gefunden.push(...stylesheetdateien(relativ, wurzel));
     } else if (relativ.endsWith(".css")) {
       gefunden.push(posix(relativ));
     }
@@ -1256,18 +1262,71 @@ function stylesheetdateien(verzeichnis: string): string[] {
   return gefunden;
 }
 
-function stylesheetVollbildregeln(): string[] {
-  const funde: string[] = [];
-  for (const datei of stylesheetdateien(join("apps", "web"))) {
-    const text = ohneKommentare(readFileSync(join(WURZEL, datei), "utf8"));
+// JOB 1181 D1: BENs zweite Prüflücke zu D3 verlangt, dass die Stylesheet-Wache die REGEL UND den
+// importierenden Träger nennt. Bis hierher nannte sie nur die Datei — wer sie las, wusste nicht, wo
+// die Fläche im Baum hängt. Der Fund trägt jetzt beides.
+interface StylesheetFund {
+  datei: string;
+  regel: string;
+  zeile: number;
+  /** Quelldateien, die genau dieses Stylesheet importieren. Leer heisst: die Fläche hängt an nichts. */
+  traeger: string[];
+}
+
+function stylesheetVollbildregeln(
+  wurzel: string = WURZEL,
+  unter: string = join("apps", "web"),
+  erhebungen: DateiErhebung[] = ALLE_ERHEBUNGEN,
+): StylesheetFund[] {
+  const funde: StylesheetFund[] = [];
+  for (const datei of stylesheetdateien(unter, wurzel)) {
+    const text = ohneKommentare(readFileSync(join(wurzel, datei), "utf8"));
     if (!/position\s*:\s*fixed/.test(text)) {
       continue;
     }
-    if (/\b100vw\b|\b100vh\b|inset\s*:\s*0/.test(text)) {
-      funde.push(`${datei} — Stylesheet-Regel mit position:fixed und Vollbildmass`);
+    const massMuster = /\b100vw\b|\b100vh\b|inset\s*:\s*0/;
+    if (!massMuster.test(text)) {
+      continue;
     }
+    const zeilen = text.split("\n");
+    const treffer = zeilen.findIndex((z) => massMuster.test(z));
+    funde.push({
+      datei,
+      regel: `${datei} — Stylesheet-Regel mit position:fixed und Vollbildmass`,
+      zeile: treffer + 1,
+      traeger: importierendeTraeger(datei, erhebungen),
+    });
   }
   return funde;
+}
+
+/**
+ * Wer importiert dieses Stylesheet? Gemessen am AST über die Import-Spezifizierer, nicht über die
+ * Zeichenfolge des Dateinamens — ein Kommentar, der die Datei erwähnt, ist kein Träger.
+ */
+function importierendeTraeger(stylesheet: string, erhebungen: DateiErhebung[]): string[] {
+  const blatt = stylesheet.split("/").pop() ?? stylesheet;
+  const traeger: string[] = [];
+  for (const e of erhebungen) {
+    const sf = e.quelle.ast;
+    let trifft = false;
+    const gehe = (n: ts.Node): void => {
+      if (
+        (ts.isImportDeclaration(n) || ts.isExportDeclaration(n)) &&
+        n.moduleSpecifier !== undefined &&
+        ts.isStringLiteral(n.moduleSpecifier) &&
+        n.moduleSpecifier.text.endsWith(blatt)
+      ) {
+        trifft = true;
+      }
+      ts.forEachChild(n, gehe);
+    };
+    gehe(sf);
+    if (trifft) {
+      traeger.push(e.quelle.datei);
+    }
+  }
+  return traeger;
 }
 
 const MARKERLOSE_VERWEISE: VerweisBild = erhebeVerweise(ALLE_ERHEBUNGEN, MARKERLOSE_TRAEGER);
@@ -3278,5 +3337,826 @@ it("nur Woerter, keine Kette", async () => {
     const befund = belegAssertionErfuellt("const x = 1;", D044);
     expect(befund.erfuellt).toBe(false);
     expect(befund.bruchstelle).toBe("kein ausgefuehrter it/test-Rumpf");
+  });
+});
+
+// ================================================================================================
+// JOB 1181 · D1 — BLOCK F: DIE VIERTE A17-FORM. MODALITÄT, DEREN ZEICHENFOLGE NICHT IN DER DATEI
+// STEHT — UND DER DRITTE ZUSTAND `UNAUFGELÖST`, DAMIT NICHTS MEHR STILL DURCHFÄLLT.
+// ================================================================================================
+//
+// BEFUND ZUERST, WEIL ER DIE RICHTUNG DES AUFTRAGS ÄNDERT. Register A17 sagt, der Modal-Sammler sei
+// „ein statischer Musterwächter, kein AST-Wächter". GEMESSEN am heutigen Stand dieser Datei ist das
+// für DREI der vier genannten Formen überholt — mega72 hat die Erhebung auf den Syntaxbaum gestellt
+// (`ts.createSourceFile` in `quelleAus`), und JOB 1130 hat jede Form mit einem Negativ-Zwilling
+// unterlegt. Die Belegstellen stehen in Block G unten, damit sie mitlaufen statt in einer Rückgabe
+// zu verwelken. Die VIERTE Form — „Modalität ohne die Zeichenfolge" — steht dagegen wirklich offen,
+// und sie ist die einzige, die man nicht durch schärferes Hinsehen auf DIESE Datei erledigen kann:
+// die tragende Zeichenfolge existiert in ihr gar nicht.
+//
+// DREI BAUWEGE, alle drei am echten Baum vermessen (397 Quelldateien, 257 `className`-Bindungen):
+//
+//   F-a  Die deckende Klasse steht in einem ANDEREN MODUL: `className={TONE[stufe]}`, wobei `TONE`
+//        importiert ist. Der gestrippte Text dieser Datei enthält `fixed inset-0` nirgends —
+//        `spanntVollflaecheAuf` liefert `false`, und zwar STILL.
+//   F-b  Die Klasse steht in einem STYLESHEET (`.module.css`) und wird nur importiert. Gemessen:
+//        heute NULL im Baum — der Fall wird deshalb an einem echten temporären Baum gefahren, den
+//        derselbe Scanner liest (BENs zweite Prüflücke zu D3, wörtlich).
+//   F-c  Die Klasse kommt von AUSSEN als Prop oder aus einem berechneten Zugriff. Sie ist
+//        grundsätzlich nicht statisch auflösbar.
+//
+// DIE ANTWORT IST NICHT „schärfer raten". Für F-a wird MODULÜBERGREIFEND AUFGELÖST: der Sammler
+// schlägt den importierten Bezeichner in der Erhebung des Zielmoduls nach und nimmt dessen
+// Zeichenketten in den Flächentext auf. Was danach übrig bleibt — F-c und alles Berechnete —, wird
+// als UNAUFGELÖST GEMELDET, mit Datei, Zeile und Ausdruck. Kein drittes, stilles Ergebnis.
+//
+// DIE ZWEITEILUNG IST DIE ZUSAGE (Bauform übernommen aus BASIC2 JOB 1173 D1, Fail-Closed-Sammler):
+//     jede Klassenbindung  ==  aufgelöst  +  unaufgelöst
+// Die Summe wird geprüft. Fiele eine Bindung aus BEIDEN Mengen, wäre der Sammler wieder grün, ohne
+// etwas zu belegen — und genau das ist die Fehlerklasse, vor der A17 warnt.
+
+/** Wo eine Klassenbindung steht und woraus sie sich speist. */
+interface Klassenbindung {
+  datei: string;
+  zeile: number;
+  /** Der Ausdruck, wie er im Code steht — gekürzt, damit die Meldung lesbar bleibt. */
+  ausdruck: string;
+  /** Zeichenketten, die der Sammler auflösen konnte: lokal literal ODER im Zielmodul nachgeschlagen. */
+  aufgeloest: string[];
+  /** Bestandteile, deren Wert statisch nicht feststeht — Props, Parameter, berechnete Zugriffe. */
+  offen: string[];
+  /** Woher die aufgelösten Teile kamen: leer, wenn alles literal in dieser Datei stand. */
+  ausModulen: string[];
+}
+
+/** Modulindex: Dateipfad → Erhebung. Ohne ihn bliebe die Auflösung eine Behauptung. */
+function baueModulindex(erhebungen: DateiErhebung[]): Map<string, DateiErhebung> {
+  const index = new Map<string, DateiErhebung>();
+  for (const e of erhebungen) {
+    index.set(e.quelle.datei, e);
+  }
+  return index;
+}
+
+/** `../lib/x` von `apps/web/src/pages/A.tsx` aus → `apps/web/src/lib/x.ts` (oder `.tsx`, oder `/index.ts`). */
+function loeseImportpfad(vonDatei: string, spezifizierer: string): string[] {
+  if (!spezifizierer.startsWith(".")) {
+    return [];
+  }
+  const teile = vonDatei.split("/").slice(0, -1);
+  for (const stueck of spezifizierer.split("/")) {
+    if (stueck === "." || stueck === "") {
+      continue;
+    }
+    if (stueck === "..") {
+      teile.pop();
+    } else {
+      teile.push(stueck);
+    }
+  }
+  const basis = teile.join("/");
+  return [`${basis}.ts`, `${basis}.tsx`, `${basis}/index.ts`, `${basis}/index.tsx`, basis];
+}
+
+/** Alle Zeichenketten unter einem Knoten — die Rohmasse, aus der eine Klassenliste besteht. */
+function zeichenkettenUnter(n: ts.Node): string[] {
+  const gefunden: string[] = [];
+  const gehe = (k: ts.Node): void => {
+    if (ts.isStringLiteral(k) || k.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
+      gefunden.push((k as ts.StringLiteral).text);
+    } else if (
+      k.kind === ts.SyntaxKind.TemplateHead ||
+      k.kind === ts.SyntaxKind.TemplateMiddle ||
+      k.kind === ts.SyntaxKind.TemplateTail
+    ) {
+      gefunden.push((k as ts.TemplateHead).text);
+    }
+    ts.forEachChild(k, gehe);
+  };
+  gehe(n);
+  return gefunden;
+}
+
+/**
+ * Der Wert eines Bezeichners im Zielmodul, als Zeichenkettenmenge. Eine Ebene tief und nicht
+ * weiter: das ist belegbar und begrenzt. Reicht die eine Ebene nicht, bleibt der Bezeichner offen —
+ * er verschwindet nicht.
+ *
+ * DIE FUNKTIONSDEKLARATION IST HIER NICHT OPTIONAL, sondern der eigentliche Fall. Gemessen am
+ * heutigen Baum liegen ALLE NEUN modulfremden Klassenquellen in einer Funktion und in keiner
+ * Konstanten: `priorityTone`, `evidenceKindTone`, `kiStateTone`, `modelRunStatusTone`,
+ * `importCandidateStatusTone`, `evidenceFreshnessTone`, `isExpertMode`, `isRecommendedMode`,
+ * `useReadiness`. Wer nur `const` nachschlägt, löst am echten Bestand exakt NICHTS auf und hält
+ * das für einen Befund über den Baum — es wäre einer über den Sucher.
+ *
+ * RÜCKGABE-SEMANTIK, und sie trägt die Zweiteilung: `null` heisst „Deklaration nicht gefunden" und
+ * führt in OFFEN. Ein LEERES Feld heisst „gefunden und ausgewertet, trägt nachweislich keine
+ * Zeichenkette" — das ist ein Ergebnis, kein Zweifel, und zählt als aufgelöst.
+ */
+function werteImZielmodul(ziel: DateiErhebung, name: string): string[] | null {
+  const sf = ziel.quelle.ast;
+  let treffer: string[] | null = null;
+  const gehe = (n: ts.Node): void => {
+    if (treffer !== null) {
+      return;
+    }
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.name.text === name) {
+      treffer = n.initializer ? zeichenkettenUnter(n.initializer) : [];
+      return;
+    }
+    if (ts.isFunctionDeclaration(n) && n.name?.text === name) {
+      treffer = n.body ? zeichenkettenUnter(n.body) : [];
+      return;
+    }
+    if (ts.isEnumDeclaration(n) && n.name.text === name) {
+      treffer = zeichenkettenUnter(n);
+      return;
+    }
+    ts.forEachChild(n, gehe);
+  };
+  gehe(sf);
+  return treffer;
+}
+
+/** Namen, die als AUFRUF eine Klassenliste zusammensetzen — sie tragen selbst keine Klasse. */
+const KLASSENFUEGER = new Set(["cx", "cn", "clsx", "classNames", "twMerge", "join"]);
+
+/**
+ * Die Klassenbindungen einer Datei, jede in aufgelöst und offen zerlegt. AM SYNTAXBAUM: nur echte
+ * `className`-Attribute und `createElement(…, { className })` — eine Erwähnung in Prosa ist keine
+ * Bindung, und ein `data-className` ist keine.
+ */
+function klassenbindungen(e: DateiErhebung, index: Map<string, DateiErhebung>): Klassenbindung[] {
+  const sf = e.quelle.ast;
+  const funde: Klassenbindung[] = [];
+
+  // Importierte Bezeichner dieser Datei: Name → Modulpfad.
+  const herkunft = new Map<string, string>();
+  const gehe0 = (n: ts.Node): void => {
+    if (ts.isImportDeclaration(n) && ts.isStringLiteral(n.moduleSpecifier)) {
+      const spez = n.moduleSpecifier.text;
+      const c = n.importClause;
+      if (c?.name) {
+        herkunft.set(c.name.text, spez);
+      }
+      if (c?.namedBindings) {
+        if (ts.isNamedImports(c.namedBindings)) {
+          for (const s of c.namedBindings.elements) {
+            herkunft.set(s.name.text, spez);
+          }
+        } else {
+          herkunft.set(c.namedBindings.name.text, spez);
+        }
+      }
+    }
+    ts.forEachChild(n, gehe0);
+  };
+  gehe0(sf);
+
+  // Lokal deklarierte Namen mit literalem Wert — sie sind in DIESER Datei auflösbar.
+  const lokal = new Map<string, string[]>();
+  const gehe1 = (n: ts.Node): void => {
+    if (ts.isVariableDeclaration(n) && ts.isIdentifier(n.name) && n.initializer) {
+      lokal.set(n.name.text, zeichenkettenUnter(n.initializer));
+    }
+    ts.forEachChild(n, gehe1);
+  };
+  gehe1(sf);
+
+  const zerlege = (ausdruck: ts.Node, zeile: number): void => {
+    const aufgeloest: string[] = [];
+    const offen: string[] = [];
+    const ausModulen: string[] = [];
+
+    const gehe = (k: ts.Node): void => {
+      if (ts.isStringLiteral(k) || k.kind === ts.SyntaxKind.NoSubstitutionTemplateLiteral) {
+        aufgeloest.push((k as ts.StringLiteral).text);
+        return;
+      }
+      if (
+        k.kind === ts.SyntaxKind.TemplateHead ||
+        k.kind === ts.SyntaxKind.TemplateMiddle ||
+        k.kind === ts.SyntaxKind.TemplateTail
+      ) {
+        aufgeloest.push((k as ts.TemplateHead).text);
+        return;
+      }
+      if (ts.isIdentifier(k)) {
+        const name = k.text;
+        if (KLASSENFUEGER.has(name)) {
+          return;
+        }
+        const lokalerWert = lokal.get(name);
+        if (lokalerWert !== undefined && lokalerWert.length > 0) {
+          aufgeloest.push(...lokalerWert);
+          return;
+        }
+        const spez = herkunft.get(name);
+        if (spez !== undefined) {
+          for (const kandidat of loeseImportpfad(e.quelle.datei, spez)) {
+            const ziel = index.get(kandidat);
+            if (ziel === undefined) {
+              continue;
+            }
+            const werte = werteImZielmodul(ziel, name);
+            if (werte !== null) {
+              aufgeloest.push(...werte);
+              ausModulen.push(`${name} ← ${kandidat}`);
+              return;
+            }
+          }
+        }
+        offen.push(name);
+        return;
+      }
+      ts.forEachChild(k, gehe);
+    };
+    gehe(ausdruck);
+
+    funde.push({
+      datei: e.quelle.datei,
+      zeile,
+      ausdruck: ausdruck.getText(sf).replace(/\s+/g, " ").slice(0, 80),
+      aufgeloest,
+      offen,
+      ausModulen,
+    });
+  };
+
+  const gehe2 = (n: ts.Node): void => {
+    if (ts.isJsxAttribute(n) && ts.isIdentifier(n.name) && n.name.text === "className") {
+      const init = n.initializer;
+      if (init && ts.isJsxExpression(init) && init.expression) {
+        zerlege(init.expression, zeileVon(sf, n));
+      }
+    }
+    // `createElement(X, { className: … })` — dieselbe Bindung, andere Schreibweise.
+    if (ts.isCallExpression(n) && aufrufName(n) === "createElement") {
+      for (const arg of n.arguments) {
+        if (!ts.isObjectLiteralExpression(arg)) {
+          continue;
+        }
+        for (const eig of arg.properties) {
+          if (
+            ts.isPropertyAssignment(eig) &&
+            (ts.isIdentifier(eig.name) || ts.isStringLiteral(eig.name)) &&
+            eig.name.text === "className"
+          ) {
+            zerlege(eig.initializer, zeileVon(sf, eig));
+          }
+        }
+      }
+    }
+    ts.forEachChild(n, gehe2);
+  };
+  gehe2(sf);
+  return funde;
+}
+
+/**
+ * DER FLÄCHENTEXT, GEGEN DEN GEPRÜFT WIRD — gestrippte Quelle PLUS alles, was modulübergreifend
+ * aufgelöst wurde. Genau hier wird A17s vierte Form eingesammelt: eine Fläche, deren `fixed inset-0`
+ * in einem anderen Modul steht, ist ab jetzt sichtbar.
+ */
+function flaechentext(e: DateiErhebung, index: Map<string, DateiErhebung>): string {
+  const zusatz = klassenbindungen(e, index)
+    .filter((b) => b.ausModulen.length > 0)
+    .flatMap((b) => b.aufgeloest);
+  return zusatz.length === 0 ? e.quelle.gestrippt : `${e.quelle.gestrippt}\n${zusatz.join(" ")}`;
+}
+
+const MODULINDEX = baueModulindex(ALLE_ERHEBUNGEN);
+const ALLE_BINDUNGEN: Klassenbindung[] = ALLE_ERHEBUNGEN.flatMap((e) =>
+  klassenbindungen(e, MODULINDEX),
+);
+const AUFGELOEST_VOLLSTAENDIG = ALLE_BINDUNGEN.filter((b) => b.offen.length === 0);
+const UNAUFGELOEST = ALLE_BINDUNGEN.filter((b) => b.offen.length > 0);
+
+// ------------------------------------------------------------------------------------------------
+// BLOCK G — DER REGISTERBEFUND ZU A17, ALS LAUFENDER TEST STATT ALS SATZ IN EINER RÜCKGABE.
+// ------------------------------------------------------------------------------------------------
+//
+// A17 nennt vier Formen. Drei davon sind seit mega72/JOB 1130 erfasst, und zwar mit Negativ-
+// Zwilling — die Erkennung hängt nachweislich am tragenden Merkmal und nicht am Zufall. Diese
+// Belege stehen hier NOCH EINMAL in einer Form, die A17 direkt beantwortet: eine Rückgabe verwelkt,
+// ein Test läuft jeden Tag mit. Wer eine dieser Formen später aus der Erhebung nimmt, macht diesen
+// Block rot — und dann stimmt A17 wieder, statt nur so auszusehen.
+describe("JOB 1181 · Register A17: welche der vier Formen der Sammler HEUTE erfasst", () => {
+  const BAUTEIL: Bauteil = {
+    datei: "apps/web/src/components/FacetFilter.tsx",
+    komponente: "FacetFilter",
+  };
+  const synth = (datei: string, zeilen: string[]): DateiErhebung =>
+    erhebeDatei(quelleAus(datei, zeilen.join("\n")));
+
+  it("die Erhebung läuft über den SYNTAXBAUM, nicht über Zeichenfolgen — belegt am Verhalten", () => {
+    // Der Beleg ist nicht der Import von `typescript`, sondern eine Unterscheidung, die NUR ein
+    // Baum treffen kann: derselbe Text, einmal als Code und einmal als Zeichenkette.
+    const alsCode = synth("apps/web/src/components/G1Code.tsx", [
+      "export function F(): JSX.Element {",
+      '  return <div aria-modal="true" />;',
+      "}",
+    ]);
+    const alsText = synth("apps/web/src/lib/g1Text.ts", [
+      "export const HINWEIS = '<div aria-modal=\"true\" />';",
+    ]);
+    expect(alsCode.kandidaten.map((k) => k.art)).toEqual(["aria-modal-attribut"]);
+    expect(
+      alsText.kandidaten,
+      "identische Zeichenfolge, aber als Zeichenkette — ein Musterwächter fände sie, ein Baum nicht",
+    ).toEqual([]);
+    // Und sie fällt trotzdem nicht still durch: der unabhängige Zähler rechnet sie als Prosa ab.
+    expect(modalAbgleich(alsText)).toEqual([]);
+  });
+
+  it("A17-FORM 1 (Alias-Nutzung): ERFASST — mit Negativ-Zwilling", () => {
+    const mit = synth("apps/web/src/pages/G2Alias.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "const Anders = FacetFilter;",
+      "export const S = <Anders />;",
+    ]);
+    expect(erhebeVerweise([mit], [BAUTEIL]).paare.map(schluessel)).toEqual([
+      "apps/web/src/pages/G2Alias.tsx → <FacetFilter>",
+    ]);
+    const ohne = synth("apps/web/src/pages/G2OhneAlias.tsx", [
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "const Anders = () => null;",
+      "export const S = <Anders />;",
+    ]);
+    expect(
+      erhebeVerweise([ohne], [BAUTEIL]).paare,
+      "die Erkennung hängt an der Aliaskette",
+    ).toEqual([]);
+  });
+
+  it("A17-FORM 2 (createElement): ERFASST — als Einbindung UND als Modalitätskandidat", () => {
+    const einbindung = synth("apps/web/src/pages/G3Create.tsx", [
+      'import { createElement } from "react";',
+      'import { FacetFilter } from "../components/FacetFilter";',
+      "export const S = createElement(FacetFilter, null);",
+    ]);
+    expect(erhebeVerweise([einbindung], [BAUTEIL]).paare.map(schluessel)).toEqual([
+      "apps/web/src/pages/G3Create.tsx → <FacetFilter>",
+    ]);
+    const nativ = synth("apps/web/src/lib/g3Nativ.ts", [
+      'import { createElement } from "react";',
+      'export const D = createElement("dialog", null);',
+    ]);
+    expect(nativ.kandidaten.map((k) => k.art)).toContain("dialog-createElement");
+  });
+
+  it("A17-FORM 3 (Spread-gesetztes aria-modal): ERFASST — mit Negativ-Zwilling", () => {
+    const mit = synth("apps/web/src/components/G4Spread.tsx", [
+      'const p = { "aria-modal": "true" };',
+      "export const F = <div {...p} />;",
+    ]);
+    expect(mit.kandidaten.map((k) => k.art)).toEqual(["aria-modal-eigenschaft"]);
+    const ohne = synth("apps/web/src/components/G4OhneSpread.tsx", [
+      'const p = { "data-x": "true" };',
+      "export const F = <div {...p} />;",
+    ]);
+    expect(ohne.kandidaten, "ein Spread ohne den Marker ist kein Kandidat").toEqual([]);
+  });
+
+  it("A17-FORM 4 (Modalität ohne die Zeichenfolge): NICHT durch Marker erfassbar — sie ist der Bau", () => {
+    // Der Beleg für die Lücke, und er ist das Gegenstück zu den drei Fällen darüber: KEIN Marker,
+    // KEINE Vollflächenklasse im Text dieser Datei — und deshalb sieht die markergestützte Erhebung
+    // hier nichts, völlig zu Recht. Was sie sehen MÜSSTE, steht in einem anderen Modul.
+    const traeger = synth("apps/web/src/components/G5Fremdklasse.tsx", [
+      'import { schirmklasse } from "../lib/g5schirm";',
+      "export function Fenster(): JSX.Element {",
+      "  return <div className={schirmklasse()} />;",
+      "}",
+    ]);
+    expect(traeger.kandidaten, "kein Marker in dieser Datei").toEqual([]);
+    expect(
+      spanntVollflaecheAuf(traeger.quelle.gestrippt),
+      "und keine Vollflächenklasse — der gestrippte Text dieser Datei enthält sie schlicht nicht",
+    ).toBe(false);
+    expect(wirkungssignale(traeger.quelle.gestrippt), "auch die zweite Richtung ist blind").toEqual(
+      [],
+    );
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// BLOCK H — DIE ZWEITEILUNG: JEDE KLASSENBINDUNG IST AUFGELÖST ODER GEMELDET.
+// ------------------------------------------------------------------------------------------------
+describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Zustand", () => {
+  it("ERHALTUNGSZUSAGE: aufgelöst + unaufgelöst == alle Bindungen (keine fällt aus beiden)", () => {
+    // Die Zusage aus BASIC2 JOB 1173 D1, hier auf Klassenbindungen angewandt. Ohne sie könnte eine
+    // Bindung aus BEIDEN Mengen fallen — und der Sammler bliebe grün, ohne etwas zu belegen.
+    expect(AUFGELOEST_VOLLSTAENDIG.length + UNAUFGELOEST.length).toBe(ALLE_BINDUNGEN.length);
+    // Und die beiden Mengen überschneiden sich nicht: das Merkmal ist dasselbe, nur negiert.
+    const schluesselVon = (b: Klassenbindung): string => `${b.datei}:${b.zeile}:${b.ausdruck}`;
+    const inA = new Set(AUFGELOEST_VOLLSTAENDIG.map(schluesselVon));
+    expect(UNAUFGELOEST.filter((b) => inA.has(schluesselVon(b)))).toEqual([]);
+  });
+
+  it("ein UNABHÄNGIGER Rohzähler anderer Bauart bestätigt die Grundmenge", () => {
+    // Anderer Bau, nicht dieselbe Funktion zweimal: ein Zeichenscanner über den gestrippten Text,
+    // der `className=` zählt, ohne den Baum zu befragen. Er darf MEHR finden (Zeichenketten,
+    // durchgereichte Attribute ohne Ausdruck), aber niemals WENIGER als die Baumerhebung.
+    let roh = 0;
+    for (const e of ALLE_ERHEBUNGEN) {
+      roh += (e.quelle.gestrippt.match(/className\s*=/g) ?? []).length;
+    }
+    expect(
+      roh,
+      `Der Zeichenscanner findet ${roh} Stellen, die Baumerhebung ${ALLE_BINDUNGEN.length}. Findet der Baum MEHR, liest einer von beiden falsch.`,
+    ).toBeGreaterThanOrEqual(ALLE_BINDUNGEN.length);
+  });
+
+  it("die unaufgelösten Bindungen werden MIT DATEI, ZEILE UND AUSDRUCK gemeldet", () => {
+    // Der Kern des Auftrags: „jede der vier Formen wird ERFASST oder als UNAUFGELÖST gemeldet —
+    // kein stilles Durchfallen". Eine Meldung ohne Fundstelle wäre wieder ein stilles Durchfallen,
+    // nur mit Zahl. Jede Meldung trägt deshalb den Ort.
+    expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
+      207,
+    );
+    for (const b of UNAUFGELOEST) {
+      expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
+      expect(b.zeile, `${b.datei}: Meldung ohne Zeile`).toBeGreaterThan(0);
+      expect(b.ausdruck.length, `${b.datei}:${b.zeile}: Meldung ohne Ausdruck`).toBeGreaterThan(0);
+      expect(
+        b.offen.length,
+        `${b.datei}:${b.zeile}: als offen geführt, ohne offenen Teil`,
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  it("KALIBRIERUNG: eine vollständig literale Bindung wird NICHT gemeldet (sonst meldete er alles)", () => {
+    const index = baueModulindex([]);
+    const literal = erhebeDatei(
+      quelleAus(
+        "apps/web/src/components/H1Literal.tsx",
+        ['export const F = <div className={"fixed inset-0 bg-ink/50"} />;'].join("\n"),
+      ),
+    );
+    const bindungen = klassenbindungen(literal, index);
+    expect(bindungen).toHaveLength(1);
+    expect(bindungen[0]?.offen, "alles literal ⇒ nichts offen").toEqual([]);
+    expect(bindungen[0]?.aufgeloest).toContain("fixed inset-0 bg-ink/50");
+  });
+
+  it("KALIBRIERUNG: `cx(…)` selbst ist kein offener Teil — der Fügername trägt keine Klasse", () => {
+    const index = baueModulindex([]);
+    const e = erhebeDatei(
+      quelleAus(
+        "apps/web/src/components/H2Cx.tsx",
+        ['export const F = <div className={cx("fixed", "inset-0")} />;'].join("\n"),
+      ),
+    );
+    const b = klassenbindungen(e, index)[0];
+    expect(b?.offen, "sonst wäre jede zusammengesetzte Klassenliste unauflösbar").toEqual([]);
+    expect(b?.aufgeloest.sort()).toEqual(["fixed", "inset-0"]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// BLOCK I — F-a: DIE KLASSE LIEGT IN EINEM ANDEREN MODUL. JETZT WIRD SIE GELESEN.
+// ------------------------------------------------------------------------------------------------
+describe("JOB 1181 · A17-Form 4a: modulübergreifende Auflösung der tragenden Klasse", () => {
+  /** Zwei Module als Paar — der Träger und das Modul, in dem seine Klasse wirklich steht. */
+  function paar(
+    traegerZeilen: string[],
+    zielZeilen: string[],
+  ): {
+    traeger: DateiErhebung;
+    index: Map<string, DateiErhebung>;
+  } {
+    const ziel = erhebeDatei(quelleAus("apps/web/src/lib/i1schirm.ts", zielZeilen.join("\n")));
+    const traeger = erhebeDatei(
+      quelleAus("apps/web/src/components/I1Traeger.tsx", traegerZeilen.join("\n")),
+    );
+    return { traeger, index: baueModulindex([ziel, traeger]) };
+  }
+
+  const TRAEGER_MIT_IMPORT = [
+    'import { SCHIRM } from "../lib/i1schirm";',
+    "export function Fenster(): JSX.Element {",
+    "  return <div className={SCHIRM} />;",
+    "}",
+  ];
+
+  it("VORHER-BELEG: ohne Auflösung geht der Träger DURCH — die alte Sicht bleibt grün", () => {
+    // §6 des Auftrags wörtlich: „Der Träger geht durch, der Sammler bleibt grün, obwohl er greifen
+    // müsste." Genau das wird hier festgehalten, und zwar dauerhaft: `spanntVollflaecheAuf` auf dem
+    // GESTRIPPTEN TEXT — die Sicht, die bis zu diesem Durchgang die einzige war — sieht nichts.
+    const { traeger } = paar(TRAEGER_MIT_IMPORT, [
+      'export const SCHIRM = "fixed inset-0 bg-ink/60";',
+    ]);
+    expect(
+      spanntVollflaecheAuf(traeger.quelle.gestrippt),
+      "die alte Sicht ist blind — und das ist der Grund für diesen Bau",
+    ).toBe(false);
+    expect(unregistrierteVollflaechen([traeger], BAUTEILE), "und meldet nichts").toEqual([]);
+  });
+
+  it("NACHHER: über den Modulindex wird dieselbe Fläche ERFASST", () => {
+    const { traeger, index } = paar(TRAEGER_MIT_IMPORT, [
+      'export const SCHIRM = "fixed inset-0 bg-ink/60";',
+    ]);
+    const text = flaechentext(traeger, index);
+    expect(text, "der Flächentext trägt jetzt die Klasse aus dem Zielmodul").toContain(
+      "fixed inset-0",
+    );
+    expect(spanntVollflaecheAuf(text), "und damit spannt sie eine Vollfläche auf").toBe(true);
+    expect(verdecktDenHintergrund(text), "und verdeckt den Hintergrund").toBe(true);
+  });
+
+  it("NEGATIV-ZWILLING: dieselbe Bauform, das Zielmodul trägt KEINE Vollfläche — kein Fund", () => {
+    // Ohne diesen Fall wäre der Fund oben auch dann grün, wenn die Auflösung pauschal alles
+    // einsammelte. Die Erkennung muss am INHALT des Zielmoduls hängen, nicht an der Bauform.
+    const { traeger, index } = paar(TRAEGER_MIT_IMPORT, [
+      'export const SCHIRM = "rounded-card border px-3 py-2";',
+    ]);
+    const text = flaechentext(traeger, index);
+    expect(text).toContain("rounded-card");
+    expect(spanntVollflaecheAuf(text), "ein Kärtchen ist keine Vollfläche").toBe(false);
+  });
+
+  it("NEGATIV-ZWILLING 2: der Import fehlt — dann gibt es nichts aufzulösen, und es wird gemeldet", () => {
+    const ziel = erhebeDatei(
+      quelleAus("apps/web/src/lib/i1schirm.ts", 'export const SCHIRM = "fixed inset-0 bg-ink/60";'),
+    );
+    const ohneImport = erhebeDatei(
+      quelleAus(
+        "apps/web/src/components/I1Ohne.tsx",
+        [
+          "export function Fenster(): JSX.Element {",
+          "  return <div className={SCHIRM} />;",
+          "}",
+        ].join("\n"),
+      ),
+    );
+    const index = baueModulindex([ziel, ohneImport]);
+    expect(spanntVollflaecheAuf(flaechentext(ohneImport, index)), "nichts aufgelöst").toBe(false);
+    // ABER: er fällt nicht still durch. `SCHIRM` steht als offener Teil in der Meldung.
+    const b = klassenbindungen(ohneImport, index)[0];
+    expect(b?.offen, "der unauflösbare Bezeichner wird benannt").toEqual(["SCHIRM"]);
+  });
+
+  it("die Auflösung greift auch bei einer FUNKTION im Zielmodul (so liegt es im echten Baum)", () => {
+    const ziel = erhebeDatei(
+      quelleAus(
+        "apps/web/src/lib/i1schirm.ts",
+        [
+          "export function schirmklasse(voll: boolean): string {",
+          '  return voll ? "fixed inset-0 bg-ink/60" : "hidden";',
+          "}",
+        ].join("\n"),
+      ),
+    );
+    const traeger = erhebeDatei(
+      quelleAus(
+        "apps/web/src/components/I2Traeger.tsx",
+        [
+          'import { schirmklasse } from "../lib/i1schirm";',
+          "export const F = <div className={schirmklasse(true)} />;",
+        ].join("\n"),
+      ),
+    );
+    const index = baueModulindex([ziel, traeger]);
+    expect(spanntVollflaecheAuf(flaechentext(traeger, index))).toBe(true);
+  });
+
+  it("AM ECHTEN BESTAND: die modulfremden Klassenquellen sind namentlich belegt", () => {
+    const ausModulen = ALLE_BINDUNGEN.filter((b) => b.ausModulen.length > 0);
+    const quellen = [...new Set(ausModulen.flatMap((b) => b.ausModulen))].sort();
+    // GEMESSEN am heutigen Baum: neun. Alle neun liegen in einer FUNKTION, keine in einer
+    // Konstanten — wer nur `const` nachschlägt, löst hier exakt nichts auf und merkt es nicht.
+    expect(
+      quellen.length,
+      `Modulfremde Klassenquellen: ${quellen.join(" · ")}`,
+    ).toBeGreaterThanOrEqual(9);
+    expect(quellen).toContain("priorityTone ← apps/web/src/lib/gapPriority.ts");
+    expect(quellen).toContain("evidenceKindTone ← apps/web/src/lib/evidenceIndex.ts");
+    expect(quellen).toContain("kiStateTone ← apps/web/src/lib/adminFirstRun.ts");
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// BLOCK J — BENS DREI PRÜFLÜCKEN AUS DER D3-ABNAHME, AN EINEM BAUM, DEN DER SCANNER WIRKLICH LIEST.
+// ------------------------------------------------------------------------------------------------
+//
+// BEN hat JOB 1093 D3 GRÜN beurteilt und drei Prüflücken benannt. Zwei davon verlangen ausdrücklich
+// mehr als eine Funktionseingabe: eine TEMPORÄRE QUELLDATEI, die der Baumscanner tatsächlich liest.
+// Bis zu diesem Durchgang war das nicht möglich, ohne eine Datei in `apps/web/src/` anzulegen — und
+// der Lease dieses Durchgangs verbietet jeden Produktcode. Deshalb hat `quelldateien` seit heute
+// einen Wurzelparameter (Standardwert unverändert `WURZEL`): der Scanner läuft über einen echten,
+// wegwerfbaren Baum in `os.tmpdir()`, mit demselben Code, der den Produktbaum liest.
+describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => {
+  let baum = "";
+
+  function lege(pfad: string, inhalt: string): void {
+    const voll = join(baum, pfad);
+    mkdirSync(join(voll, ".."), { recursive: true });
+    writeFileSync(voll, inhalt, "utf8");
+  }
+
+  /** Derselbe Weg wie `ALLE_ERHEBUNGEN`, nur mit anderer Wurzel. */
+  function erhebeBaum(): DateiErhebung[] {
+    return quelldateien(join("apps", "web", "src"), baum).map((d) =>
+      erhebeDatei(quelleAus(posix(d), readFileSync(join(baum, d), "utf8"))),
+    );
+  }
+
+  beforeEach(() => {
+    baum = mkdtempSync(join(tmpdir(), "kw1181-"));
+    mkdirSync(join(baum, "apps", "web", "src"), { recursive: true });
+  });
+
+  afterEach(() => {
+    rmSync(baum, { recursive: true, force: true });
+  });
+
+  it("PRÜFLÜCKE 2: ein Stylesheet mit position:fixed;inset:0 wird rot — MIT Regel UND Träger", () => {
+    // BENs Wortlaut: „ein temporäres `Screen.module.css` mit `position: fixed; inset: 0` plus einem
+    // importierenden unregistrierten Träger → die Stylesheet-Wache wird rot und nennt Regel und
+    // Träger; nach der Registrierung bzw. der byteexakten Rücknahme ist sie wieder grün."
+    lege(
+      "apps/web/src/Screen.module.css",
+      ".schirm {\n  position: fixed;\n  inset: 0;\n  background: rgba(0,0,0,.6);\n}\n",
+    );
+    lege(
+      "apps/web/src/components/SchirmTraeger.tsx",
+      [
+        'import styles from "../Screen.module.css";',
+        "export function Schirm(): JSX.Element {",
+        "  return <div className={styles.schirm} />;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+
+    const erhebungen = erhebeBaum();
+    expect(
+      erhebungen.map((e) => e.quelle.datei),
+      "der Scanner hat den Träger wirklich gelesen",
+    ).toContain("apps/web/src/components/SchirmTraeger.tsx");
+
+    const funde = stylesheetVollbildregeln(baum, join("apps", "web"), erhebungen);
+    expect(funde, "die Stylesheet-Wache ist rot").toHaveLength(1);
+    const fund = funde[0];
+    expect(fund?.regel, "sie nennt die REGEL").toContain("position:fixed und Vollbildmass");
+    expect(fund?.datei).toBe("apps/web/src/Screen.module.css");
+    expect(fund?.zeile, "mit Zeile").toBeGreaterThan(0);
+    expect(fund?.traeger, "und sie nennt den TRÄGER — das war bis heute die Lücke").toEqual([
+      "apps/web/src/components/SchirmTraeger.tsx",
+    ]);
+
+    // UND: keine der beiden bisherigen Richtungen sieht diesen Träger. Genau darum ist die
+    // Stylesheet-Wache kein Beiwerk, sondern der einzige Sucher in diesem Suchraum.
+    const traeger = erhebungen.find(
+      (e) => e.quelle.datei === "apps/web/src/components/SchirmTraeger.tsx",
+    );
+    const text = traeger?.quelle.gestrippt ?? "";
+    expect(spanntVollflaecheAuf(text), "Richtung A ist blind").toBe(false);
+    expect(wirktModalAmBestand(text), "Richtung B ist blind").toBe(false);
+  });
+
+  it("PRÜFLÜCKE 2 · GEGENPROBE: dasselbe Stylesheet OHNE Vollbildmass bleibt grün", () => {
+    // Ohne diesen Fall wäre die Wache von „meldet jedes Stylesheet" nicht zu unterscheiden.
+    lege("apps/web/src/Screen.module.css", ".leiste {\n  position: fixed;\n  bottom: 8px;\n}\n");
+    lege(
+      "apps/web/src/components/SchirmTraeger.tsx",
+      'import styles from "../Screen.module.css";\nexport const S = <div className={styles.leiste} />;\n',
+    );
+    expect(stylesheetVollbildregeln(baum, join("apps", "web"), erhebeBaum())).toEqual([]);
+  });
+
+  it("PRÜFLÜCKE 2 · KALIBRIERUNG: eine Vollbildregel OHNE Träger wird gemeldet, aber ohne Träger", () => {
+    // Ein Stylesheet, das niemand importiert, ist eine Fläche, die an nichts hängt. Der Unterschied
+    // muss ablesbar sein — sonst liest sich „kein Träger" wie „nicht geprüft".
+    lege("apps/web/src/Screen.module.css", ".schirm {\n  position: fixed;\n  inset: 0;\n}\n");
+    const funde = stylesheetVollbildregeln(baum, join("apps", "web"), erhebeBaum());
+    expect(funde).toHaveLength(1);
+    expect(funde[0]?.traeger, "die Regel steht, aber kein Modul bindet sie ein").toEqual([]);
+  });
+
+  it("PRÜFLÜCKE 3: ein unregistrierter Wirkträger als GELESENE Quelldatei — der Abgleich wird rot", () => {
+    // BENs Wortlaut: „ein unregistrierter Effektträger als tatsächlich vom Baumscanner gelesene
+    // temporäre Quelldatei (nicht nur als Funktionseingabe) → der Gesamtabgleich meldet exakt
+    // diesen unerklärten Restfall und geht rot."
+    lege(
+      "apps/web/src/components/HeimlicheSperre.tsx",
+      [
+        'import { useEffect } from "react";',
+        "export function HeimlicheSperre({ offen }: { offen: boolean }): null {",
+        "  useEffect(() => {",
+        '    document.body.style.overflow = offen ? "hidden" : "";',
+        "  }, [offen]);",
+        "  return null;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    // Eine zweite, harmlose Datei, damit der Lauf nicht auf einer Ein-Datei-Menge grün wird.
+    lege(
+      "apps/web/src/components/Harmlos.tsx",
+      'export const H = <div className="rounded-card p-3" />;\n',
+    );
+
+    const erhebungen = erhebeBaum();
+    expect(erhebungen, "beide Dateien wurden vom SCANNER gelesen").toHaveLength(2);
+
+    const rest = unregistrierteWirkflaechen(erhebungen, BAUTEILE);
+    expect(
+      rest,
+      "der Abgleich meldet exakt den einen unerklärten Restfall — nicht mehr und nicht weniger",
+    ).toEqual(["apps/web/src/components/HeimlicheSperre.tsx"]);
+
+    // Und der Grund steht dabei: B3 Scrollsperre. Eine Meldung ohne Grund wäre nur eine Zahl.
+    const traeger = erhebungen.find((e) => e.quelle.datei === rest[0]);
+    expect(wirkungssignale(traeger?.quelle.gestrippt ?? "")).toContain("B3 Scrollsperre");
+    // Richtung A sieht ihn nicht — kein `fixed`, keine vier Seiten, gar keine Fläche.
+    expect(unregistrierteVollflaechen(erhebungen, BAUTEILE), "Richtung A ist blind").toEqual([]);
+  });
+
+  it("PRÜFLÜCKE 3 · GEGENPROBE: derselbe Träger OHNE die Wirkung bleibt draussen", () => {
+    lege(
+      "apps/web/src/components/HeimlicheSperre.tsx",
+      [
+        'import { useEffect } from "react";',
+        "export function HeimlicheSperre({ offen }: { offen: boolean }): null {",
+        "  useEffect(() => {",
+        "    void offen;",
+        "  }, [offen]);",
+        "  return null;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    expect(unregistrierteWirkflaechen(erhebeBaum(), BAUTEILE)).toEqual([]);
+  });
+
+  it("PRÜFLÜCKE 1: eine erst zur Laufzeit entstehende Deckklasse wird UNAUFGELÖST gemeldet", () => {
+    // BENs Wortlaut: „ein Träger, dessen deckende Klasse erst zur Laufzeit aus einer importierten
+    // oder berechneten Variablen entsteht → die AST-/Render-Gegenrichtung findet ihn, ODER der Test
+    // markiert ihn ausdrücklich als ausserhalb der statischen Aussage — niemals still grün."
+    //
+    // GEMESSEN: der berechnete Zugriff ist statisch NICHT auflösbar, und genau das wird gesagt.
+    lege(
+      "apps/web/src/components/BerechneterSchirm.tsx",
+      [
+        "export function Schirm({ stufe }: { stufe: string }): JSX.Element {",
+        "  const tabelle = fremdeTabelle();",
+        "  return <div className={tabelle[stufe]} />;",
+        "}",
+        "",
+      ].join("\n"),
+    );
+    const erhebungen = erhebeBaum();
+    const index = baueModulindex(erhebungen);
+    const bindungen = erhebungen.flatMap((e) => klassenbindungen(e, index));
+    expect(bindungen, "die Bindung wird erhoben").toHaveLength(1);
+    expect(
+      bindungen[0]?.offen,
+      "und ausdrücklich als unauflösbar geführt — nicht als eine Datei ohne Fläche verbucht",
+    ).toContain("tabelle");
+    expect(bindungen[0]?.aufgeloest, "es gibt nichts aufzulösen").toEqual([]);
+    expect(`${bindungen[0]?.datei}:${bindungen[0]?.zeile}`).toBe(
+      "apps/web/src/components/BerechneterSchirm.tsx:3",
+    );
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
+// ------------------------------------------------------------------------------------------------
+describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — dieselben 397 Quelldateien wie in D3", () => {
+    // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
+    // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
+    // ausdrückliche Erhaltungszusage dieses Durchgangs.
+    expect(ALLE_ERHEBUNGEN.length, "D3 hat 397 gemessen").toBe(397);
+    expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
+  });
+
+  it("beide D3-Suchrichtungen stehen unverändert bei null unerklärten Restfällen", () => {
+    expect(unregistrierteVollflaechen(ALLE_ERHEBUNGEN, BAUTEILE), "Richtung A").toEqual([]);
+    expect(unregistrierteWirkflaechen(ALLE_ERHEBUNGEN, BAUTEILE), "Richtung B").toEqual([]);
+  });
+
+  it("der erweiterte Flächentext nimmt der Erhebung KEINE Datei weg (nur Zugewinn möglich)", () => {
+    // Die schärfere Sicht darf ausschliesslich hinzufügen: `flaechentext` hängt an, es entfernt
+    // nichts. Würde sie je etwas verlieren, wäre der Zugewinn mit einem stillen Verlust erkauft —
+    // und genau das prüft dieser Fall Datei für Datei über den ganzen Bestand.
+    const verloren = ALLE_ERHEBUNGEN.filter(
+      (e) =>
+        spanntVollflaecheAuf(e.quelle.gestrippt) &&
+        !spanntVollflaecheAuf(flaechentext(e, MODULINDEX)),
+    ).map((e) => e.quelle.datei);
+    expect(verloren, "\nDurch die Modulauflösung aus der Erhebung gefallen:\n").toEqual([]);
+
+    const gewonnen = ALLE_ERHEBUNGEN.filter(
+      (e) =>
+        !spanntVollflaecheAuf(e.quelle.gestrippt) &&
+        spanntVollflaecheAuf(flaechentext(e, MODULINDEX)),
+    ).map((e) => e.quelle.datei);
+    // GEMESSEN heute: null. Keine der neun modulfremden Klassenquellen trägt eine Vollfläche —
+    // der Suchraum ist gewachsen, die Fundmenge nicht. Das ist der Befund, nicht sein Fehlen.
+    expect(gewonnen, `Neu erfasste Vollflächen: ${gewonnen.join(" · ")}`).toEqual([]);
   });
 });
