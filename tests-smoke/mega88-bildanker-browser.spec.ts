@@ -146,6 +146,40 @@ async function entwurfLoeschen(page: Page, id: string): Promise<void> {
   }
 }
 
+/**
+ * AUFTRAG-JOB-1187 D2 — DIE MERKMALE DES EDITOR-DOM, AN EINEM ZEITPUNKT.
+ *
+ * BEN verlangt den Vergleich „mit dem DOM UNMITTELBAR NACH DEM DROP". Dafür braucht es einen
+ * Abzug beider Zeitpunkte, und zwar aus DEM Editor-Knoten, den der Nutzer sieht — nicht aus dem
+ * gespeicherten HTML. Gelesen werden genau die Merkmale, die das Urteil nennt: Bild, `src`, `alt`,
+ * Maßstab, Bild- und Fußnotenkennung, Anker, Fußnote, Text und Reihenfolge.
+ *
+ * `reihenfolge` trägt die Kennungen ALLER Bilder in Dokumentreihenfolge — bei einem Bild ist das
+ * eine kurze Liste, aber es ist dasselbe Merkmal, das bei zweien trägt, und es fällt auf, wenn der
+ * Rundlauf ein zweites Bild erfindet oder die Reihung dreht.
+ */
+async function merkmale(page: Page): Promise<Record<string, unknown>> {
+  return page.evaluate((fussnoteSel) => {
+    const editor = document.querySelector('[contenteditable="true"]');
+    const bilder = Array.from(editor?.querySelectorAll("img") ?? []);
+    const fussnoten = Array.from(document.querySelectorAll(fussnoteSel));
+    const bild = bilder[0] ?? null;
+    const cap = fussnoten[0] ?? null;
+    return {
+      bildzahl: bilder.length,
+      reihenfolge: bilder.map((b) => b.getAttribute("data-image-id")),
+      src: bild?.getAttribute("src") ?? null,
+      alt: bild?.getAttribute("alt") ?? null,
+      massstab: bild?.getAttribute("data-kw-scale") ?? null,
+      kennungAmBild: bild?.getAttribute("data-image-id") ?? null,
+      ankerVorhanden: bild?.closest("figure") ? "ja" : "nein",
+      fussnotenzahl: fussnoten.length,
+      kennungAnFussnote: cap?.getAttribute("data-image-id") ?? null,
+      fussnotenText: (cap?.textContent ?? "").trim(),
+    };
+  }, FUSSNOTE);
+}
+
 test("mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, erneut lesen", async ({
   page,
 }) => {
@@ -210,6 +244,36 @@ test("mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, er
 // dabei das Merkmal, an dem in 1187 D1 die Gegenmutation hing — sie fällt zuerst, wenn der
 // Speicherweg etwas verliert.
 //
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// AUFTRAG-JOB-1187 D2 — DIE KETTE BEGINNT JETZT BEIM ECHTEN DROP, NICHT BEI EINGESETZTEM MARKUP.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// BEN zu 1187 D1, ROT (04:37): „Der verlangte durchgehende Rundlauf beginnt nicht mit einem echten
+// Drop, sondern setzt das Bild für die Persistenzprüfung direkt über `insertImageSrcHtml` ein." Und
+// ausdrücklich: „Ein direkter Aufruf von `insertImageSrcHtml` oder ein manuell eingesetztes Markup
+// erfüllt den Schritt Drop nicht."
+//
+// DIE KETTE, wie sie hier läuft — EIN Test, kein Fallpaar, keine Attrappe an irgendeiner Stelle:
+//
+//   1. ECHTES DROP: `bildFallenLassen` baut im Browser ein echtes `DataTransfer` mit einer echten
+//      `File` und feuert `dragover` + `drop` auf den echten Editor-Knoten. Von dort läuft das
+//      Produkt allein weiter: `onDrop` → `handleMediaFiles` → `insertImageFile` →
+//      `fileToThumbDataUrl` (echtes `<canvas>`) → `insertHtmlReliable` → die Invariante.
+//   2. ABZUG des Editor-DOM UNMITTELBAR danach (`merkmale`) — das ist der Prüfling.
+//   3. SPEICHERN über den VORHANDENEN Entwurfsweg: der Knopf „Als Entwurf speichern"
+//      (`speichernUndWiederOeffnen`), also `POST /api/drafts` → `capture-routes.ts:160` →
+//      `services/capture/src/service.ts:339` → `sanitizeDraftPayload` (`:45-49`) →
+//      `sanitizeHtml` aus `services/structure`. Kein nachgebauter Sanitizer-Aufruf im Test.
+//   4. ERNEUT ÖFFNEN über die Oberfläche: `/capture/frontdoor?draft=<id>`, der
+//      Wiederaufnahme-Weg der Vordertür.
+//   5. MERKMALSWEISER VERGLEICH gegen den Abzug aus Schritt 2.
+//
+// WAS DAS GEGENÜBER 1187 D1 HINZUFÜGT: dort war Schritt 1 durch den Aufruf des Produkt-Helfers
+// ersetzt, weil jsdom kein `<canvas>` hat. Genau diese Ersetzung hat BEN beanstandet — zu Recht:
+// zwischen Drop-Ereignis, `fileToThumbDataUrl` und dem gespeicherten DOM liegt eine Strecke, die
+// ein eingesetztes Markup nie durchläuft. **Der jsdom-Befund aus D1 bleibt gültig für den Weg, den
+// er gemessen hat; dieser Fall erweitert ihn auf den echten Drop.**
+//
 // ── WARUM DER NAME NICHT MITGEWACHSEN IST — vermerkt statt verschwiegen ───────────────────────────
 //
 // Dieser Fall tut seit JOB 1189 D1 MEHR, als sein Titel sagt: er fährt den ganzen Kreis. Der Titel
@@ -239,40 +303,56 @@ test("mega88: Drop — ein fallengelassenes Bild ist sofort beschreibbar", async
   await beschreibungSchreiben(page, DROP_BESCHREIBUNG);
   await expect(page.locator(FUSSNOTE).first()).toContainText(DROP_BESCHREIBUNG);
 
-  // Beidseitig verankert VOR dem Rundlauf — sonst wäre der Vergleich danach gegen `null`.
-  const kennung = await page.locator(FUSSNOTE).first().getAttribute("data-image-id");
-  expect(kennung ?? "", "Die Fußnote des fallengelassenen Bildes trägt keine Kennung").toMatch(
+  // ── DER ABZUG UNMITTELBAR NACH DEM DROP — der Prüfling, gegen den nachher verglichen wird ──────
+  const vorher = await merkmale(page);
+
+  // KALIBRIERUNG, und ohne sie wäre der Vergleich unten wertlos: ein Merkmal, das schon VORHER
+  // `null` ist, überlebt jeden Rundlauf. Erst wenn die tragenden Merkmale wirklich gefüllt sind,
+  // sagt „unverändert" etwas aus. Genau diese Kalibrierung hat in JOB 1187 D1 eine falsche
+  // Erwartung von mir gefangen, bevor sie grün werden konnte.
+  expect(vorher.bildzahl, "Das echte Drop hat gar kein Bild in den Editor gebracht").toBe(1);
+  expect(vorher.fussnotenzahl, "Das fallengelassene Bild hat keine eigene Fußnote").toBe(1);
+  expect(
+    String(vorher.src ?? ""),
+    "Das eingebettete Bild ist keine data:-URL — dann ist es nicht der Weg über fileToThumbDataUrl",
+  ).toMatch(/^data:image\//);
+  expect(vorher.ankerVorhanden, "Das Bild steht in keiner figure").toBe("ja");
+  expect(String(vorher.kennungAmBild ?? ""), "Das Bild trägt keine Kennung").toMatch(
     /^kw-img-[a-z0-9]+-\d+$/,
   );
-  await expect(
-    page.locator(`img[data-image-id="${kennung}"]`),
-    "Das fallengelassene Bild trägt die Kennung seiner Fußnote nicht",
-  ).toHaveCount(1);
+  expect(
+    vorher.kennungAnFussnote,
+    "Bild und Fußnote tragen verschiedene Kennungen — die beidseitige Verankerung fehlt schon vor dem Rundlauf",
+  ).toBe(vorher.kennungAmBild);
+  expect(vorher.fussnotenText, "Die Beschreibung steht nicht in der Fußnote").toContain(
+    DROP_BESCHREIBUNG,
+  );
 
-  // DER KREIS: speichern, erneut lesen.
+  // ── DER KREIS: speichern über den vorhandenen Entwurfsweg, dann erneut öffnen ───────────────────
   const id = await speichernUndWiederOeffnen(page);
   try {
+    // Auf den geladenen Zustand warten, BEVOR der Abzug genommen wird — sonst misst er die noch
+    // leere Fläche und der Vergleich wäre eine Wettlaufbedingung mit Testfarbe.
     await expect(
       page.locator(FUSSNOTE),
       "Nach dem Wiederöffnen ist die Fußnote des fallengelassenen Bildes weg oder verdoppelt",
     ).toHaveCount(1, { timeout: 15_000 });
 
-    await expect(
-      page.locator(FUSSNOTE).first(),
-      "Nach dem Wiederöffnen ist die Beschreibung des fallengelassenen Bildes verschwunden",
-    ).toContainText(DROP_BESCHREIBUNG, { timeout: 15_000 });
+    const nachher = await merkmale(page);
 
-    await expect(
-      page.locator(FUSSNOTE).first(),
-      "Die Bildkennung hat den Rundlauf nicht überlebt — genau das Merkmal, an dem in JOB 1187 D1 die Gegenmutation hing",
-    ).toHaveAttribute("data-image-id", kennung ?? "");
+    // ── DER MERKMALSWEISE VERGLEICH — je Merkmal eine eigene Erwartung ──────────────────────────
+    // Eine Sammelzusicherung über das ganze Objekt würde beim Bruch nur „irgendetwas stimmt nicht"
+    // sagen. Hier steht, WELCHES Merkmal den Rundlauf nicht überlebt hat.
+    for (const merkmal of Object.keys(vorher)) {
+      expect(
+        nachher[merkmal],
+        `Das Merkmal „${merkmal}" hat den Rundlauf nicht überlebt: unmittelbar nach dem Drop ${JSON.stringify(
+          vorher[merkmal],
+        )}, nach Speichern und erneutem Öffnen ${JSON.stringify(nachher[merkmal])}`,
+      ).toEqual(vorher[merkmal]);
+    }
 
-    await expect(
-      page.locator(`img[data-image-id="${kennung}"]`),
-      "Nach dem Wiederöffnen zeigt die Fußnote auf ein Bild, das es nicht mehr gibt — die beidseitige Verankerung ist gebrochen",
-    ).toHaveCount(1);
-
-    // …und sie ist weiterhin BEDIENBAR, nicht bloß sichtbar.
+    // …und die Beschreibung ist weiterhin BEDIENBAR, nicht bloß sichtbar.
     await page.locator(FUSSNOTE).first().click();
     await expect(page.locator(FELD)).toBeVisible({ timeout: 10_000 });
     await expect(page.locator(FELD)).toContainText(DROP_BESCHREIBUNG);
