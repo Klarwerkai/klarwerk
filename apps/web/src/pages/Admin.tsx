@@ -1382,92 +1382,6 @@ export function Admin(): JSX.Element {
 
       {section === "konten" ? (
         <>
-          {/* SCRUM-147: Nutzer anlegen */}
-          <Card className="space-y-3">
-            <SectionLabel>{t("adm.createTitle")}</SectionLabel>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <Field label={t("adm.name")}>
-                <TextInput
-                  value={newUser.name}
-                  onChange={(e) => setNewUser((u) => ({ ...u, name: e.target.value }))}
-                />
-              </Field>
-              <Field label={t("adm.email")}>
-                <TextInput
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser((u) => ({ ...u, email: e.target.value }))}
-                />
-              </Field>
-              <Field label={t("adm.password")}>
-                <TextInput
-                  type="password"
-                  minLength={8}
-                  value={newUser.password}
-                  onChange={(e) => setNewUser((u) => ({ ...u, password: e.target.value }))}
-                />
-              </Field>
-              {/* SCRUM: Passwort-Bestätigung — ein Vertipper würde den neuen Nutzer sonst aussperren. */}
-              <Field label={t("adm.newPasswordRepeat")}>
-                <TextInput
-                  type="password"
-                  minLength={8}
-                  value={newUserPw2}
-                  onChange={(e) => setNewUserPw2(e.target.value)}
-                />
-                {passwordRepeatMismatch(newUser.password, newUserPw2) ? (
-                  <p className="mt-1.5 text-[12px] text-trust-crit-text">
-                    {t("adm.passwordMismatch")}
-                  </p>
-                ) : null}
-              </Field>
-              <Field label={t("adm.role")}>
-                <select
-                  value={newUser.role}
-                  onChange={(e) => setNewUser((u) => ({ ...u, role: e.target.value as Role }))}
-                  className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
-                >
-                  {ROLES.map((r) => (
-                    <option key={r} value={r}>
-                      {t(`role.name.${r}`)}
-                    </option>
-                  ))}
-                </select>
-              </Field>
-            </div>
-            {/* SCRUM-463: Knopf nicht mehr stumm deaktivieren. Fehlt etwas, sagt ein Klick
-                ehrlich, was — sonst „passiert nichts" ohne jede Rückmeldung. */}
-            <div className="space-y-1.5">
-              <Button
-                variant="primary"
-                disabled={create.isPending}
-                onClick={() => {
-                  const issues = newUserIssues(newUser);
-                  if (issues.length > 0) {
-                    push(
-                      "error",
-                      `${t("adm.createInvalid")} ${issues
-                        .map((i) => t(`adm.field.${i}`))
-                        .join(", ")}`,
-                    );
-                    return;
-                  }
-                  if (newUser.password !== newUserPw2) {
-                    push("error", t("adm.passwordMismatch"));
-                    return;
-                  }
-                  create.mutate();
-                }}
-              >
-                <UserPlus size={15} />
-                {t("adm.create")}
-              </Button>
-              {newUserIssues(newUser).length > 0 ? (
-                <p className="text-[12px] text-muted-2">{t("adm.createHint")}</p>
-              ) : null}
-            </div>
-          </Card>
-
           {/* Nutzerliste + Freigabe/Rolle/Reset/Löschen */}
           <QueryState query={query} emptyText={t("adm.empty")}>
             {(users) => (
@@ -1580,6 +1494,92 @@ export function Admin(): JSX.Element {
               </Card>
             )}
           </QueryState>
+
+          {/* SCRUM-147: Nutzer anlegen */}
+          <Card className="space-y-3">
+            <SectionLabel>{t("adm.createTitle")}</SectionLabel>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label={t("adm.name")}>
+                <TextInput
+                  value={newUser.name}
+                  onChange={(e) => setNewUser((u) => ({ ...u, name: e.target.value }))}
+                />
+              </Field>
+              <Field label={t("adm.email")}>
+                <TextInput
+                  type="email"
+                  value={newUser.email}
+                  onChange={(e) => setNewUser((u) => ({ ...u, email: e.target.value }))}
+                />
+              </Field>
+              <Field label={t("adm.password")}>
+                <TextInput
+                  type="password"
+                  minLength={8}
+                  value={newUser.password}
+                  onChange={(e) => setNewUser((u) => ({ ...u, password: e.target.value }))}
+                />
+              </Field>
+              {/* SCRUM: Passwort-Bestätigung — ein Vertipper würde den neuen Nutzer sonst aussperren. */}
+              <Field label={t("adm.newPasswordRepeat")}>
+                <TextInput
+                  type="password"
+                  minLength={8}
+                  value={newUserPw2}
+                  onChange={(e) => setNewUserPw2(e.target.value)}
+                />
+                {passwordRepeatMismatch(newUser.password, newUserPw2) ? (
+                  <p className="mt-1.5 text-[12px] text-trust-crit-text">
+                    {t("adm.passwordMismatch")}
+                  </p>
+                ) : null}
+              </Field>
+              <Field label={t("adm.role")}>
+                <select
+                  value={newUser.role}
+                  onChange={(e) => setNewUser((u) => ({ ...u, role: e.target.value as Role }))}
+                  className="h-10 w-full rounded-input border border-hairline bg-surface px-2 text-sm"
+                >
+                  {ROLES.map((r) => (
+                    <option key={r} value={r}>
+                      {t(`role.name.${r}`)}
+                    </option>
+                  ))}
+                </select>
+              </Field>
+            </div>
+            {/* SCRUM-463: Knopf nicht mehr stumm deaktivieren. Fehlt etwas, sagt ein Klick
+                ehrlich, was — sonst „passiert nichts" ohne jede Rückmeldung. */}
+            <div className="space-y-1.5">
+              <Button
+                variant="primary"
+                disabled={create.isPending}
+                onClick={() => {
+                  const issues = newUserIssues(newUser);
+                  if (issues.length > 0) {
+                    push(
+                      "error",
+                      `${t("adm.createInvalid")} ${issues
+                        .map((i) => t(`adm.field.${i}`))
+                        .join(", ")}`,
+                    );
+                    return;
+                  }
+                  if (newUser.password !== newUserPw2) {
+                    push("error", t("adm.passwordMismatch"));
+                    return;
+                  }
+                  create.mutate();
+                }}
+              >
+                <UserPlus size={15} />
+                {t("adm.create")}
+              </Button>
+              {newUserIssues(newUser).length > 0 ? (
+                <p className="text-[12px] text-muted-2">{t("adm.createHint")}</p>
+              ) : null}
+            </div>
+          </Card>
         </>
       ) : null}
 
