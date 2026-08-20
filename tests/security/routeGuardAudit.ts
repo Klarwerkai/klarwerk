@@ -119,6 +119,20 @@ export function routeKey(method: string, url: string): string {
 export interface ExpectedRoute {
   protection: Protection;
   reason?: string;
+  // JOB 1331 D1 (Befund aus JOB 658 D2, am 20.08.2026 durch JOB 1318 D1 als einziger von acht
+  // Pfaden bestätigt): `protection` ist das ROUTENrecht — wer die Tür überhaupt aufbekommt. Viele
+  // Lesewege entscheiden ZUSÄTZLICH je Zeile, ob dieser Nutzer dieses Objekt sehen darf. Bis hierher
+  // war das in dieser Tabelle unsichtbar: `GET /api/kos/:id/provenance` stand als reines `ko.read`,
+  // obwohl seit mega74 `darfSehen` mitläuft — von einer Route ohne Zeilenrecht nicht zu
+  // unterscheiden.
+  //
+  // Es stehen die GEMESSENEN Prädikatnamen aus `services/app/src/sichtbarkeit.ts`, nicht die Namen
+  // dateilokaler Torwachen: `sichtbaresKoOder404` ist eine solche Torwache und wurde in mega76
+  // Block C aus der Namensliste des Sammlers entfernt, weil sie ihm ihren NAMEN glaubte. Der
+  // Wächter `g10-herkunft-zentrum-vertraulich.test.ts` löst lokale Helfer über ihren RUMPF auf und
+  // macht jeden Eintrag rot, den die Erhebung nicht deckt — und jede Route rot, die ein Zeilenrecht
+  // fährt, ohne es hier zu führen.
+  zeilenrecht?: readonly string[];
 }
 
 export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
@@ -215,17 +229,24 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/admin/import/cleanup": { protection: "users.manage" },
   // WP-B6: kuratierte Beispielpakete für die VIP-2-Tester (admin-routes).
   "POST /api/admin/examples/load": { protection: "users.manage" },
-  "GET /api/analytics/impact": { protection: "ko.read" },
+  "GET /api/analytics/impact": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- KO (ko-routes.ts) ---
-  "GET /api/kos": { protection: "ko.read" },
-  "GET /api/kos/:id": { protection: "ko.read" },
-  "GET /api/kos/:id/versions": { protection: "ko.read" },
-  "GET /api/kos/:id/evidence": { protection: "ko.read" },
+  "GET /api/kos": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // Die Torwache heisst hier `sichtbaresKoOder404`; ihr RUMPF ruft `darfSehen` (ko-routes.ts:484).
+  // Es steht das gemessene Prädikat, nicht der Name der Torwache — s. Kopfkommentar zu `zeilenrecht`.
+  "GET /api/kos/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/kos/:id/versions": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/kos/:id/evidence": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   // AUFTRAG-mega45 Block A/D: die Herkunftskette eines Objekts. Nur bei gesetztem
   // KLARWERK_PROVENANCE_ENABLED überhaupt registriert; das Recht ist dasselbe wie am Objekt selbst.
-  "GET /api/kos/:id/provenance": { protection: "ko.read" },
-  "GET /api/evidence": { protection: "ko.read" },
+  // JOB 1331: DIES ist die Zeile, die JOB 658 D2 als Befund gemeldet hat — sie führte `ko.read`
+  // ohne das seit mega74 zusätzlich wirkende `darfSehen` (provenance-routes.ts:105, Registrierung :89).
+  "GET /api/kos/:id/provenance": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "GET /api/evidence": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
   "POST /api/kos": { protection: "ko.create" },
   // AUFTRAG-mega19 Block B: die Erstanlage AUS Dokumenten (Inhalt + Anker + Belegstellen in EINEM
   // Vorgang). Dasselbe Basisrecht wie das gewöhnliche Einreichen — die Route ist eine ENGERE Tür
@@ -234,8 +255,9 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/kos/from-document": { protection: "ko.create" },
   // WP-SUBMIT-ASYNC: Retry der Hintergrund-KI-Prüfung — Prüfer-Recht (Knopf auf der Board-Karte).
   "POST /api/kos/:id/ai-check": { protection: "ko.validate" },
-  "DELETE /api/kos/:id": { protection: "ko.read" }, // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
-  "PUT /api/kos/:id": { protection: "action-dispatched" },
+  // + Route prüft Autor-oder-Controller/Admin (Pedi 02.07.)
+  "DELETE /api/kos/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
+  "PUT /api/kos/:id": { protection: "action-dispatched", zeilenrecht: ["darfSehen"] },
   // SCRUM-421: Upload-Grenzen — lesen alle Leseberechtigten (Anzeige), ändern nur Admin.
   "GET /api/upload-limits": { protection: "ko.read" },
   "PUT /api/upload-limits": { protection: "users.manage" },
@@ -245,8 +267,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/kos/trash/:id": { protection: "users.manage" },
 
   // --- Validation (validation-routes.ts) ---
-  "GET /api/validation/board": { protection: "ko.read" },
-  "GET /api/validation/overview": { protection: "ko.read" },
+  "GET /api/validation/board": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  "GET /api/validation/overview": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // SCRUM-395: Standard-Prüferanzahl — lesen dürfen alle Leseberechtigten (Anzeige beim
   // Erfassen), ändern nur die Nutzerverwaltung.
   "GET /api/validation/settings": { protection: "ko.read" },
@@ -258,11 +283,14 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- AI-Check-Abdeckung (ai-check-coverage-routes.ts) ---
   // AUFTRAG-mega29 C2: schmale Bestands-Zusammenfassung (drei Zähler, keine Objektdaten) für die
   // LEEREN Konflikt-/Duplikat-Boards — dieselbe Lesegrenze wie die beiden Boards selbst.
-  "GET /api/ai-check/coverage-summary": { protection: "ko.read" },
+  "GET /api/ai-check/coverage-summary": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Conflicts (conflicts-routes.ts) ---
-  "GET /api/conflicts": { protection: "ko.read" },
-  "GET /api/conflicts/:id": { protection: "ko.read" },
+  "GET /api/conflicts": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
+  "GET /api/conflicts/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
   "POST /api/conflicts/:id/escalate": { protection: "conflict.resolve" },
   "POST /api/conflicts/:id/dismiss": { protection: "conflict.resolve" },
   "POST /api/conflicts/:id/second-opinion": { protection: "ko.validate" },
@@ -270,11 +298,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Duplicates / Overlaps (overlap-routes.ts) ---
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Liste/Detail lesen alle Leseberechtigten; die
   // menschlichen Abschlüsse sind kuratorische (redaktionelle) Entscheidungen (ko.validate).
-  "GET /api/duplicates": { protection: "ko.read" },
+  "GET /api/duplicates": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
   // Pedi 04.07.: einstellbare Anzeige-Schwelle — lesen alle Leseberechtigten, setzen nur Admin.
   "GET /api/duplicates/settings": { protection: "ko.read" },
   "PUT /api/duplicates/settings": { protection: "users.manage" },
-  "GET /api/duplicates/:id": { protection: "ko.read" },
+  "GET /api/duplicates/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
   "POST /api/duplicates/:id/dismiss": { protection: "ko.validate" },
   "POST /api/duplicates/:id/keep-separate": { protection: "ko.validate" },
   "POST /api/duplicates/:id/link-related": { protection: "ko.validate" },
@@ -345,22 +373,28 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/klara/sessions/:sessionId/close": { protection: "ko.read" },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
-  "GET /api/library/search": { protection: "ko.read" },
+  "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "GET /api/library/export": { protection: "ko.read" },
   "POST /api/library/import": { protection: "ko.create" },
   "POST /api/library/import/candidates": { protection: "ko.create" },
   "GET /api/library/import/candidates": { protection: "ko.read" },
   "PUT /api/library/import/candidates/:id": { protection: "ko.validate" },
-  "GET /api/analytics": { protection: "ko.read" },
-  "GET /api/analytics/busfactor": { protection: "ko.read" },
+  "GET /api/analytics": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
+  "GET /api/analytics/busfactor": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   // Consultant-System (Experten-Matching): ENGER als die übrigen Analytics — nur ko.assign
   // (controller/admin), hinter Feature-Flag (Default AUS → 404). Datenschutzsensibel (BetrVG/DSGVO).
   "GET /api/analytics/expertise": { protection: "ko.assign" },
-  "GET /api/graph": { protection: "ko.read" },
+  "GET /api/graph": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   // AUFTRAG-mega68: Nachbarschaft eines Wissensobjekts (Anwendersicht des Wissensnetzes) —
   // Leserecht wie das Objekt selbst; vertrauliche NACHBARN filtert die Route zusätzlich über die
   // SCRUM-506-Regel (nur ko.validate sieht sie), belegt in tests/app/mega68-nachbarschaft-route.
-  "GET /api/kos/:id/neighbors": { protection: "ko.read" },
+  "GET /api/kos/:id/neighbors": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
 
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---
   "POST /api/lifecycle/couple": { protection: "ko.create" },
@@ -377,14 +411,25 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/output/generate": { protection: "ko.read" },
 
   // --- Management / Model-runs / External / Audit / Reasoner / Objects ---
-  "GET /api/management/snapshot": { protection: "ko.read" },
+  "GET /api/management/snapshot": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbarkeitsfilterFuer"],
+  },
   "GET /api/model-runs": { protection: "ko.read" },
   "GET /api/external/search": { protection: "ko.read" },
-  "GET /api/notifications": { protection: "auth" },
+  // Der Feed wird über den lokalen Helfer `loadFeed` gebaut; dessen RUMPF ruft beide Prädikate
+  // (notifications-routes.ts:116) — nachgeprüft, nicht dem Helfernamen geglaubt.
+  "GET /api/notifications": {
+    protection: "auth",
+    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare"],
+  },
   // Audit-P3 (SCRUM-397): eigenen Gelesen-Status markieren — jeder angemeldete Nutzer, nur eigene Sicht.
-  "POST /api/notifications/seen": { protection: "auth" },
+  "POST /api/notifications/seen": {
+    protection: "auth",
+    zeilenrecht: ["sichtbareEintraege", "sichtbarePaare"],
+  },
   // Audit-P4 (SCRUM-398): Live-Wall — read-only Aggregation aus KO-Bestand + Wirkungs-Audit.
-  "GET /api/livewall": { protection: "ko.read" },
+  "GET /api/livewall": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   // FUNKE F1 (nacht24 Paket 6): persönliche Wirkungs-Zähler — jeder angemeldete Nutzer,
   // AUSSCHLIESSLICH über die eigene Identität (user.id) abgeleitet, nur Zahlen.
   "GET /api/me/impact": { protection: "auth" },
@@ -421,8 +466,8 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/reasoner/conflict-self-test": { protection: "users.manage" },
   "POST /api/reasoner/duplicate-self-test": { protection: "users.manage" },
   "POST /api/objects": { protection: "ko.create" },
-  "GET /api/objects/:id": { protection: "ko.read" },
-  "GET /api/objects/:id/raw": { protection: "ko.read" },
+  "GET /api/objects/:id": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
+  "GET /api/objects/:id/raw": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
 
   // --- media (media-routes.ts, SCRUM-382) ---
   "GET /api/media/status": { protection: "auth" },
