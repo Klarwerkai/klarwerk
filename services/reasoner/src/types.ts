@@ -377,6 +377,39 @@ export interface DescribeImageResult {
   // unverändert ohne sie. Deshalb hier optional — die Zusage „immer gesetzt" gilt ab dem
   // Dienst und ist genau dort getestet.
   aiGenerated?: AiGeneratedMark;
+  // ============================================================================================
+  // JOB 1164 · D1 (TV1 Stufe 1): DER TITELVORSCHLAG — ADDITIV, OPTIONAL, SERVERINTERN.
+  // ============================================================================================
+  //
+  // WAS ES IST: die Ableitung aus `titel-vorschlag.ts`, an derselben Dienstgrenze gesetzt wie
+  // `aiGenerated` (service.ts, `describeImage`). Es entsteht KEIN zweiter Modellaufruf — die
+  // Ableitung ist eine reine Funktion über das bereits vorliegende Ergebnis.
+  //
+  // WAS ES NICHT IST: ein sichtbarer Nutzen. Kein Anwender sieht heute einen Titelvorschlag; der
+  // Renderer ist Stufe 2 und existiert nicht. Diese Zeile darf nichts anderes behaupten.
+  //
+  // GESETZT NUR IM ERFOLGSFALL. Konnte kein Titel abgeleitet werden, FEHLT das Feld — es steht
+  // dann nicht mit `titel: null` da. „Kein Feld" ist eindeutig; ein Feld ohne Titel wäre etwas,
+  // das man für einen Vorschlag halten kann. Der Werteraum ist damit enger als der Typ; der Typ
+  // trägt die vollständige Form, weil Stufe 2 den Grund anzeigen können soll, ohne den Draht
+  // erneut zu ändern.
+  //
+  // WARUM DIE FORM HIER AUSGESCHRIEBEN STEHT UND NICHT IMPORTIERT WIRD — gemessen, nicht
+  // vermutet: `titel-vorschlag.ts` importiert `DescribeImageResult` aus DIESER Datei. Ein
+  // `import type { TitelVorschlagErgebnis } from "./titel-vorschlag"` schließt den Ring, und
+  // `.dependency-cruiser.cjs` (`no-circular`, severity error, `tsPreCompilationDeps: true`)
+  // meldet ihn als Verstoß — nachgemessen in diesem Durchgang:
+  //   `titel-vorschlag.ts → types.ts → titel-vorschlag.ts`.
+  // Dieselbe Begründung, aus der `REASONER_TASKS` in dieser Datei liegt (s. dort), verbietet also
+  // den umgekehrten Import.
+  //
+  // DASS DIE BEIDEN FORMEN NICHT AUSEINANDERLAUFEN, SICHERT DER COMPILER: `describeImage` weist
+  // hier das Ergebnis von `titelVorschlag()` zu. Divergiert eine Seite, ist die Zuweisung ein
+  // Typfehler — die Kopplung ist geprüft, nicht behauptet. Zusätzlich vergleicht
+  // `tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts` beide Formen im Quelltext.
+  titelVorschlag?:
+    | { readonly titel: string; readonly grund: "abgeleitet" }
+    | { readonly titel: null; readonly grund: "kein_text" | "demo" | "vertraulich" | "leer" };
 }
 
 // Key-Test (Pedi 02.07.): Ergebnis eines echten Mini-Aufrufs — ehrlich, keine Vermutung.

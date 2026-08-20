@@ -1038,6 +1038,27 @@ export interface DescribeImageResult {
   // WP-BILD-1f (Pedi 22.07.): true, wenn der Vorschlag mit umgebendem Dokument-Kontext erzeugt wurde
   // (die UI kennzeichnet ihn dann als „mit Dokument-Kontext erzeugt").
   withContext?: boolean;
+  // ============================================================================================
+  // JOB 1164 · D1 (TV1 Stufe 1): der Titelvorschlag auf dem Draht — ADDITIV und OPTIONAL.
+  // ============================================================================================
+  //
+  // WAS DIE OBERFLÄCHE HEUTE DAMIT MACHT: nichts. Es gibt keinen Leser. Das Feld reist, damit
+  // Stufe 2 den Renderer bauen kann, ohne den Draht erneut anzufassen — es ist ausdrücklich
+  // Vorarbeit und KEIN sichtbarer Nutzen. Fehlt es (älterer Server, kein ableitbarer Titel),
+  // bleibt alles wie bisher; die Oberfläche behauptet dann nichts.
+  //
+  // ABWESEND HEISST „KEIN VORSCHLAG". Der Server setzt das Feld ausschließlich im Erfolgsfall
+  // (services/reasoner/src/service.ts, `mitTitelVorschlag`). Ein Leser muss also nie zwischen
+  // „fehlt" und „leer" unterscheiden — es gibt nur das eine.
+  //
+  // WARUM DIE FORM HIER WIEDERHOLT STEHT: `apps/web/src` darf nicht aus `services/` importieren —
+  // der webbuild-Stage im Dockerfile kopiert NUR `apps/web`, ein solcher Import bricht den
+  // Produktions-Build (dieselbe Grenze wie bei `REASONER_TASKS` oben und bei `DRAFT_LIMITS`).
+  // Gegen die stille Drift tritt `tests/reasoner/job1164-wiretyp-dienstgrenze.test.ts` an: er
+  // vergleicht beide Formen im Quelltext und wird rot, sobald eine Seite wandert.
+  titelVorschlag?:
+    | { titel: string; grund: "abgeleitet" }
+    | { titel: null; grund: "kein_text" | "demo" | "vertraulich" | "leer" };
 }
 
 // WP-VIP2-GATE (bens P1): /api/reasoner/status ist abstrahiert — nur Verfügbarkeit + STUFE

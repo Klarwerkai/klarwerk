@@ -28,6 +28,8 @@ import {
 } from "./provider";
 import { ModelProvider, outputLanguageRule } from "./provider-model";
 import { InMemoryReasonerPolicyRepo, type ReasonerPolicyRepo } from "./reasoner-policy";
+// JOB 1164 D1: die reine Ableitung des Titelvorschlags (kein Modell, kein Netz, kein Zustand).
+import { titelVorschlag } from "./titel-vorschlag";
 
 import type {
   AnswerResult,
@@ -122,6 +124,32 @@ function aufgabenKarte(wert: (task: ReasonerTask) => boolean): ReasonerTaskMap {
 // WP-IC-4: harte Server-Kappung der KI-Gruppierung — mehr Kandidaten je Aufruf lehnt die Route
 // mit einer ehrlichen Meldung ab (weiter eingrenzen), statt still zu kappen.
 export const MAX_GROUP_CANDIDATES = 200;
+
+// ================================================================================================
+// JOB 1164 · D1 (TV1 Stufe 1) — DER TITELVORSCHLAG AN DER DIENSTGRENZE.
+// ================================================================================================
+//
+// REICHWEITE: serverinterne Vorarbeit. Das Feld reist ab hier durch Route und Client (beide reichen
+// das Ergebnisobjekt unverändert durch — gemessen in JOB 1161 D1: `reasoner-routes.ts:322-324`,
+// `endpoints.ts:473`). Ein Anwender sieht davon nichts; der Renderer ist Stufe 2.
+//
+// EINE STELLE, NICHT ZWEI. `describeImage` hat zwei Rückgabewege — Modell hat geantwortet und
+// deterministischer Rückfall mit Ursache. Beide laufen durch diese Funktion, aus demselben Grund,
+// aus dem `aiGenerated` zentral gesetzt wird: zwei Stellen wären zwei Gelegenheiten, eine zu
+// vergessen.
+//
+// NUR DER ERFOLGSFALL WIRD GESETZT. Liefert die Ableitung keinen Titel, bleibt das Feld ABWESEND —
+// nicht `titel: null`, nicht leer. Der Aufrufer soll „kein Vorschlag" nicht von einem leeren
+// Vorschlag unterscheiden müssen; es gibt dann schlicht nichts.
+//
+// DAS ERGEBNIS MUSS VOLLSTÄNDIG SEIN, BEVOR ES HIER ANKOMMT: `titelVorschlag` prüft
+// `fallbackReason === "confidential"` ZUERST (titel-vorschlag.ts:139) — ein vertrauliches Bild darf
+// über den Umweg eines Titels keine Aussage erzeugen. Wer diese Funktion vor dem Setzen von
+// `fallbackReason` aufruft, hebelt genau diese Prüfung aus.
+function mitTitelVorschlag(ergebnis: DescribeImageResult): DescribeImageResult {
+  const vorschlag = titelVorschlag(ergebnis);
+  return vorschlag.grund === "abgeleitet" ? { ...ergebnis, titelVorschlag: vorschlag } : ergebnis;
+}
 
 // WP-BILD-1c/1f: schneller String-Vorab-Deckel für die describe-Bild-Daten (data:image-URL-Länge in
 // Zeichen). AUTORITATIV ist die DEKODIERTE Bytegrenze MAX_DESCRIBE_IMAGE_BYTES (5 MB, bens P3 —
@@ -972,7 +1000,7 @@ export class Reasoner {
     // nicht in den Providern.
     const kennzeichnung = aiGeneratedMark("describe", result.demo);
     if (!result.demo) {
-      return { ...result, aiGenerated: kennzeichnung };
+      return mitTitelVorschlag({ ...result, aiGenerated: kennzeichnung });
     }
     const modelFailure = failureBox.current;
     const failure = modelFailure === null ? null : classifyModelFailure(modelFailure.err);
@@ -987,7 +1015,10 @@ export class Reasoner {
       : failure?.failureClass === "timeout"
         ? ("model-timeout" as const)
         : ("model-error" as const);
-    return { ...result, fallbackReason, aiGenerated: kennzeichnung };
+    // JOB 1164 D1: der Vorschlag entsteht aus dem VOLLSTÄNDIGEN Ergebnis — `fallbackReason` gehört
+    // dazu und wird erst hier gesetzt. Würde er vorher abgeleitet, sähe die Ableitung kein
+    // `confidential` und der Egress-Ausschluss käme als „demo" heraus. Die Reihenfolge ist Absicht.
+    return mitTitelVorschlag({ ...result, fallbackReason, aiGenerated: kennzeichnung });
   }
 
   // FR-RSN-04/FR-I18N-01: Modellfehler dürfen den Betrieb nicht stoppen → deterministischer
