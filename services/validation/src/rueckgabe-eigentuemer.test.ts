@@ -130,25 +130,34 @@ describe("JOB 557 D7 · Rückgabe an den Verantwortlichen", () => {
     expect(payload.author, "die Provenienz fehlt im Beleg").toBe(ERZEUGERIN);
   });
 
-  // ── DIE GRENZE DES AKTIONSNAMENS, gemessen und ausdrücklich gepinnt ───────────────────────────
+  // ── DER AKTIONSNAME, jetzt positiv geprüft statt als Grenze gepinnt ───────────────────────────
   //
-  // Naheliegend wäre, die Aktion bei einer Nicht-Autorin `ko.returned-to-owner` zu nennen. Das ist
-  // hier NICHT gebaut, und der Grund ist keine Bequemlichkeit, sondern eine Messung: der Name ist
-  // ein VERTRAG mit zwei Verbrauchern, die beide außerhalb der Lease dieses Auftrags liegen.
-  //   · `services/audit/src/repo.ts` führt `VALIDATION_DECISION_ACTIONS` als benannte Allowlist der
-  //     Entscheidungsereignisse. Eine unbekannte Aktion macht den `validationDecisionRef` am Objekt
-  //     zu `WRONG_EVENT_TYPE` — die festgehaltene Entscheidung gälte als ungültig.
-  //   · `apps/web/src/lib/validationStatus.ts` leitet aus genau diesem Aktionsnamen den sichtbaren
-  //     Zustand „Nacharbeit" ab (`RETURN_ACTION`). Ein neuer Name ließe das Board schweigen.
-  // Die Benennung des Antwortausgangs ist deshalb weiterhin die offene Ownerfrage O-557-2 aus D6.
-  // Dieser Fall hält den Ist-Zustand fest, damit die Grenze ablesbar bleibt statt vergessen zu werden.
-  it("GRENZE · der Aktionsname bleibt der bestehende Vertrag (O-557-2 offen)", async () => {
+  // WAS HIER VORHER STAND UND WARUM ES WEG IST. Bis D8 hielt an dieser Stelle ein Fall namens
+  // `GRENZE` fest, dass die Aktion auch bei benannter Eigentümerin `ko.returned-to-author` heisst.
+  // Seine Begründung war ausdrücklich keine fachliche, sondern eine Scopegrenze: der Name sei ein
+  // Vertrag mit zwei Verbrauchern, „die beide außerhalb der Lease dieses Auftrags liegen"
+  // (`services/audit/src/repo.ts` und `apps/web/src/lib/validationStatus.ts`).
+  //
+  // Diese Begründung ist entfallen: D8 hat GENAU diese zwei Verbraucher im selben Durchgang
+  // mitgezogen. Damit pinnte der Fall nur noch einen Zustand, den BEN als fachlich falsch verworfen
+  // hat — der Erzeuger ist nicht der Verantwortliche —, und das Urteil zu D7 sagte dazu wörtlich, er
+  // „schreibt bewusst den fachlich falschen Bestand `ko.returned-to-author` fest und belegt daher
+  // keine Abnahme dieser Pflicht". Ein Test, der einen verworfenen Zustand festhält, ist keine
+  // Zusicherung, sondern eine Bremse.
+  //
+  // An seiner Stelle steht jetzt die positive Prüfung desselben Vertrags. Die Ownerfrage O-557-2 ist
+  // mit `ENTSCHEIDUNGEN/JOB-557.md` beantwortet („Ja, kanonisches Eigentümer-Aggregat bauen").
+  it("E3b · bei benannter Eigentümerin heisst die Aktion ehrlich `ko.returned-to-owner`", async () => {
     const ko = await mitEigentuemerin();
     await service.rate(ko.id, PRUEFERIN, "warn");
     const rueckgabe = (await auditRepo.all()).filter((e) =>
       String(e.action).startsWith("ko.returned-to-"),
     );
-    expect(String(rueckgabe[rueckgabe.length - 1]?.action)).toBe("ko.returned-to-author");
+    expect(rueckgabe.length, "es gibt gar kein Rückgabeereignis").toBeGreaterThan(0);
+    expect(
+      String(rueckgabe[rueckgabe.length - 1]?.action),
+      "die Rückgabe an die Eigentümerin trägt weiterhin den Autornamen — genau die Gleichsetzung, die Pedis Entscheidung zu JOB 557 verworfen hat",
+    ).toBe("ko.returned-to-owner");
   });
 
   // ── E4–E5: Bestandsschutz. Auf der Base GRÜN — sie dürfen es bleiben. ─────────────────────────

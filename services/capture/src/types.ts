@@ -100,6 +100,42 @@ export interface Draft {
   updatedAt: string;
 }
 
+// ================================================================================================
+// JOB 1171 D1 (KA8 Stufe 1a) — DER NAECHSTE SINNVOLLE SCHRITT ZU EINEM ENTWURF.
+// ================================================================================================
+//
+// KEIN SICHTBARER NUTZEN. Dieser Typ ist der DATENLIEFERANT, nicht die Karte. Niemand sieht nach
+// diesem Bau einen naechsten Schritt; die Karte ist Stufe 1b (Web) und Stufe 2 (Panel).
+//
+// ADDITIV UND OPTIONAL: unterhalb steht nur Neues. Kein bestehendes Feld aendert sich, keine
+// Pflicht wird enger, und `Draft` bleibt unberuehrt — der Schritt ist eine ABLEITUNG aus dem
+// Entwurf und wird nirgends an ihm gespeichert.
+//
+// WARUM ER NICHT GESPEICHERT WIRD: derselbe Grund, aus dem `ext.validity.*` in der Oberflaeche
+// ehrlich sagt, seine Werte wuerden „aus dem aktuellen Zustand ABGELEITET, nicht gespeichert". Ein
+// persistierter naechster Schritt waere ab dem Moment falsch, in dem sich der Entwurf aendert —
+// und niemand saehe ihm an, dass er veraltet ist.
+export type NaechsterSchrittArt =
+  // Der Entwurf beruft sich auf ein gesichertes Original, das es nicht (mehr) gibt.
+  | "anker_fehlt"
+  // `toKoInput` wuerde an den KO-Pflichtfeldern abbrechen (INCOMPLETE, s. service.ts).
+  | "vervollstaendigen"
+  // Nichts steht mehr im Weg — der Entwurf kann zum Wissensobjekt werden.
+  | "einreichen";
+
+export interface NaechsterSchritt {
+  readonly art: NaechsterSchrittArt;
+  /**
+   * DIE HERKUNFT DER AUSSAGE: die Felder, die genau diesen Schritt ausgeloest haben.
+   *
+   * Sie ist der Unterschied zwischen einer Ableitung und einer geratenen Empfehlung. Ein Schritt
+   * ohne rueckfuehrbare Herkunft duerfte nicht entstehen — deshalb ist die Liste nie leer, und
+   * jeder Eintrag benennt ein Feld, das es wirklich gibt (`anchorsMissing` aus der Ankerpruefung
+   * oder ein `payload.*` aus `DraftPayload`).
+   */
+  readonly herkunft: readonly string[];
+}
+
 export type CaptureErrorCode =
   | "NOT_FOUND"
   | "INVALID_NEEDED"

@@ -5161,6 +5161,674 @@
       if (knopf) { knopf.addEventListener("click", ka3Neuzeichnen); }
     });
     // KW-KA3-KARTEN-END
+
+    // KW-KA6-SCHREIBEN-START
+    // ============================================================================================
+    // JOB 1153 · KA6 STUFE 1 — DIE SCHREIBFLAECHE. VORSCHLAG STATT SCHREIBEN.
+    // ============================================================================================
+    //
+    // DIE DREI WOERTLICHEN ZUSAGEN aus `OFFEN.md` (KA6):
+    //   · „das Ergebnis erscheint IMMER als Vorschlag im Panel und wird erst auf Klick eingefuegt"
+    //   · „jede eingefuegte Passage traegt ihre Herkunft"
+    //   · „Klara schreibt NIE selbsttaetig ins Dokument"
+    //
+    // WAS DIESER BLOCK TUT: er legt einen dritten Bereich in den Fragen-Reiter mit drei Zurufen,
+    // schickt den Zuruf ueber den BESTEHENDEN Weg `performAsk` → `POST /api/ask`, legt das Ergebnis
+    // in das VORHANDENE Vorschlagsfeld `#ask-answer-edit` und uebernimmt es erst auf Klick ueber den
+    // BESTEHENDEN Einfuegeweg `performInsert(text, buildInsertAttempts())`.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT:
+    //   · Er schaltet NICHTS frei. Ob ausgefuehrt werden darf, sagt allein die serverseitige
+    //     Aufloesung (`executionAllowed`); dieser Block LIEST sie und richtet sich danach.
+    //   · Er ruft keine eigene Route, kein eigenes Modell, keinen eigenen Egress.
+    //   · Er fasst `Word.run` und `setSelectedDataAsync` nur EINMAL an: im Klick-Rueckruf des
+    //     Einfuegeknopfes, ueber `buildInsertAttempts()`. Kein Timer, kein Autostart.
+    //   · Er unterbricht nicht: kein Popup, kein `focus()`, kein `scrollIntoView` — Pedis
+    //     Anti-Aktionismus-Auflage gilt hier genauso wie in KA3.
+    //
+    // ============================================================================================
+    // DIE DRITTE HERKUNFTSKLASSE — UND WARUM SIE HIER ENTSTEHT UND NICHT IM SPIEGELMODUL.
+    // ============================================================================================
+    //
+    // `composeAnswerOutput` (wordAddin.ts) kennt zwei Klassen: „gesichert" und „ungeprueft". Beide
+    // sind Aussagen ueber QUELLEN. Eine per Zuruf formulierte Passage ist keine von beiden — sie
+    // steht auf keiner Quelle, sie ist formuliert. Deshalb bekommt sie eine eigene Zeile, und
+    // deshalb entsteht sie HIER: `wordAddin.ts` ist in diesem Durchgang Null-Diff.
+    //
+    // Gebaut wird sie aus dem vorhandenen `buildAnswerInsertText(koerper, zeile)` — kein zweiter
+    // Textbauer. BEWUSST NICHT ueber `composeAnswerOutput`: der haengt IMMER eine Quellen-Zeile an,
+    // und „Quelle: KLARWERK (…)" unter einer formulierten Passage waere eine Quellenbehauptung ohne
+    // Deckung — genau die Klasse von Unehrlichkeit, gegen die dieses Produkt gebaut ist.
+    //
+    // SIE HAENGT AM SERVERSIGNAL, NICHT AN DER FLAECHE. Nur wenn der Antwortkoerper
+    // `result.aiGenerated` traegt, wird „KI-formuliert" behauptet — dieselbe Bindung, die
+    // `askAiNoticeVisible` seit mega81 fuer die Panelanzeige traegt. Ohne das Signal faellt die
+    // Ausgabe auf den unveraenderten Bestandsweg `composeOutputText` zurueck.
+    //
+    // WORTLAUT: „KI-formuliert", nicht „KI-erzeugt". Der Waechter
+    // `tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts` verlangt, dass jede sichtbare
+    // ERZEUGUNGS-Behauptung zustandsgebunden ist; „formuliert" ist die praezisere und zugleich
+    // waechterkonforme Bezeichnung — und es ist der Begriff, den KA6 selbst benutzt.
+    var KA6_TEXTE = {
+      de: {
+        ka6Title: "Schreiben auf Zuruf",
+        ka6Hint: "Klara formuliert einen Vorschlag. Er landet im Antwortfeld darüber und geht erst auf deinen Klick ins Dokument.",
+        ka6ZurufErstellen: "Erstellen",
+        ka6ZurufVervollstaendigen: "Vervollständigen",
+        ka6ZurufUmformulieren: "Umformulieren",
+        ka6AuftragErstellen: "Formuliere einen Textvorschlag zu:",
+        ka6AuftragVervollstaendigen: "Vervollständige diesen Text:",
+        ka6AuftragUmformulieren: "Formuliere diesen Text klarer:",
+        ka6Busy: "Klara formuliert einen Vorschlag ...",
+        ka6Ready: "Vorschlag steht im Antwortfeld — nichts wurde ins Dokument geschrieben.",
+        ka6Empty: "Markiere zuerst Text im Dokument oder gib oben ein, worum es gehen soll.",
+        ka6NoBasis: "Kein Vorschlag: Es gibt dazu keine belastbare Grundlage. Erfunden wird nichts.",
+        ka6Fehler: "Der Vorschlag konnte nicht geholt werden ({detail}). Es wurde nichts geschrieben.",
+        ka6InsertCta: "Vorschlag in Word einfügen",
+        ka6InsertEmpty: "Das Antwortfeld ist leer — es gibt nichts einzufügen.",
+        ka6InsertOk: "Vorschlag eingefügt — mit Herkunftszeile.",
+        ka6Herkunft: "KI-formuliert — kein zitiertes KLARWERK-Wissen. Vor Verwendung fachlich prüfen.",
+        // D2/Pflicht 2 (fail-closed): Der Server hat geantwortet, aber die Antwort NICHT als
+        // formuliert gekennzeichnet. Dann entsteht kein Vorschlag — lieber keiner als einer mit
+        // falscher Herkunft.
+        ka6KeinSignal: "Kein Vorschlag: Der Server hat diese Antwort nicht als KI-formuliert gekennzeichnet. Ohne diese Angabe wird hier nichts als Vorschlag ausgegeben.",
+        // Die beiden Blockgründe stehen GETRENNT, und das ist keine Formsache: der eine ist eine
+        // Betriebsentscheidung, an der der Anwender nichts ändern kann; der andere ist eine Frage
+        // an ihn selbst, die er beantworten kann. Ein gemeinsamer Satz nähme ihm den Unterschied.
+        ka6BlockedNotMigrated: "Formulieren ist hier ausgeschaltet: Der externe Weg ist noch nicht freigeschaltet. Das ist eine Betriebsentscheidung — du kannst daran nichts ändern.",
+        ka6BlockedConsentMissing: "Formulieren ist gesperrt, weil deine Zustimmung für den externen Weg fehlt. Du kannst sie oben im Zustimmungskasten erteilen.",
+        ka6BlockedOther: "Formulieren ist für diese Sitzung gesperrt. Der Server nennt als Grund: {grund}",
+        ka6BlockedUnknown: "Ob formuliert werden darf, ist noch nicht bekannt — der Sitzungsstand wird abgerufen. Solange wird kein Zuruf angeboten."
+      },
+      en: {
+        ka6Title: "Write on request",
+        ka6Hint: "Klara drafts a suggestion. It lands in the answer field above and only goes into the document when you click.",
+        ka6ZurufErstellen: "Draft",
+        ka6ZurufVervollstaendigen: "Complete",
+        ka6ZurufUmformulieren: "Rephrase",
+        ka6AuftragErstellen: "Draft a passage about:",
+        ka6AuftragVervollstaendigen: "Complete this text:",
+        ka6AuftragUmformulieren: "Phrase this text more clearly:",
+        ka6Busy: "Klara is drafting a suggestion ...",
+        ka6Ready: "The suggestion is in the answer field — nothing was written into the document.",
+        ka6Empty: "Select text in the document first, or type above what it should be about.",
+        ka6NoBasis: "No suggestion: there is no reliable basis for this. Nothing is invented.",
+        ka6Fehler: "The suggestion could not be fetched ({detail}). Nothing was written.",
+        ka6InsertCta: "Insert suggestion into Word",
+        ka6InsertEmpty: "The answer field is empty — there is nothing to insert.",
+        ka6InsertOk: "Suggestion inserted — with its provenance line.",
+        ka6Herkunft: "AI-phrased — not quoted KLARWERK knowledge. Please review professionally before use.",
+        ka6KeinSignal: "No suggestion: the server did not mark this answer as AI-phrased. Without that signal nothing is offered here as a suggestion.",
+        ka6BlockedNotMigrated: "Drafting is switched off here: the external path is not enabled yet. That is an operational decision — there is nothing you can change about it.",
+        ka6BlockedConsentMissing: "Drafting is blocked because your consent for the external path is missing. You can give it in the consent card above.",
+        ka6BlockedOther: "Drafting is blocked for this session. The server gives this reason: {grund}",
+        ka6BlockedUnknown: "Whether drafting is allowed is not known yet — the session status is being retrieved. Until then no request is offered."
+      },
+      nl: {
+        ka6Title: "Schrijven op verzoek",
+        ka6Hint: "Klara maakt een voorstel. Het komt in het antwoordveld hierboven en gaat pas op jouw klik het document in.",
+        ka6ZurufErstellen: "Opstellen",
+        ka6ZurufVervollstaendigen: "Aanvullen",
+        ka6ZurufUmformulieren: "Herformuleren",
+        ka6AuftragErstellen: "Stel een tekstvoorstel op over:",
+        ka6AuftragVervollstaendigen: "Vul deze tekst aan:",
+        ka6AuftragUmformulieren: "Formuleer deze tekst duidelijker:",
+        ka6Busy: "Klara stelt een voorstel op ...",
+        ka6Ready: "Het voorstel staat in het antwoordveld — er is niets in het document geschreven.",
+        ka6Empty: "Selecteer eerst tekst in het document of typ hierboven waar het over moet gaan.",
+        ka6NoBasis: "Geen voorstel: hiervoor is geen betrouwbare basis. Er wordt niets verzonnen.",
+        ka6Fehler: "Het voorstel kon niet worden opgehaald ({detail}). Er is niets geschreven.",
+        ka6InsertCta: "Voorstel in Word invoegen",
+        ka6InsertEmpty: "Het antwoordveld is leeg — er is niets in te voegen.",
+        ka6InsertOk: "Voorstel ingevoegd — met herkomstregel.",
+        ka6Herkunft: "AI-geformuleerd — geen geciteerde KLARWERK-kennis. Controleer dit vakinhoudelijk vóór gebruik.",
+        ka6KeinSignal: "Geen voorstel: de server heeft dit antwoord niet als AI-geformuleerd gemarkeerd. Zonder dat signaal wordt hier niets als voorstel aangeboden.",
+        ka6BlockedNotMigrated: "Formuleren staat hier uit: de externe weg is nog niet vrijgegeven. Dat is een bedrijfsbeslissing — daar kun jij niets aan veranderen.",
+        ka6BlockedConsentMissing: "Formuleren is geblokkeerd omdat jouw toestemming voor de externe weg ontbreekt. Je kunt die hierboven in het toestemmingsvak geven.",
+        ka6BlockedOther: "Formuleren is voor deze sessie geblokkeerd. De server noemt als reden: {grund}",
+        ka6BlockedUnknown: "Of er geformuleerd mag worden is nog niet bekend — de sessiestand wordt opgehaald. Tot dan wordt er geen verzoek aangeboden."
+      }
+    };
+    // In das VORHANDENE Woerterbuch einhaengen — kein zweites Nachschlagewerk, kein eigenes `t()`.
+    // Dasselbe Muster wie KA3 (`KA3_TEXTE`); sinngleich stehen die Schluessel zusaetzlich als
+    // `klara.write.*` in `apps/web/src/i18n.ts`, weil dieses Fenster buildlos ist und jene Datei
+    // nicht importieren kann.
+    for (var ka6Sprache in KA6_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(KA6_TEXTE, ka6Sprache) && STRINGS[ka6Sprache]) {
+        var ka6Tabelle = KA6_TEXTE[ka6Sprache];
+        for (var ka6Schluessel in ka6Tabelle) {
+          if (Object.prototype.hasOwnProperty.call(ka6Tabelle, ka6Schluessel)) {
+            STRINGS[ka6Sprache][ka6Schluessel] = ka6Tabelle[ka6Schluessel];
+          }
+        }
+      }
+    }
+
+    /** Traegt der aktuelle Vorschlag das serverseitige Kennzeichnungssignal? */
+    var ka6KiFormuliert = false;
+    var ka6Laeuft = false;
+
+    /** Die drei Zurufe. Jeder traegt seinen eigenen Auftragssatz — kein gemeinsamer Sammelbegriff. */
+    var KA6_ZURUFE = [
+      { id: "ka6-zuruf-erstellen", name: "ka6ZurufErstellen", auftrag: "ka6AuftragErstellen" },
+      { id: "ka6-zuruf-vervollstaendigen", name: "ka6ZurufVervollstaendigen", auftrag: "ka6AuftragVervollstaendigen" },
+      { id: "ka6-zuruf-umformulieren", name: "ka6ZurufUmformulieren", auftrag: "ka6AuftragUmformulieren" }
+    ];
+
+    /**
+     * Die Flaeche. Sie wird beim ersten Bedarf erzeugt und sitzt AM ENDE des Fragen-Bereichs —
+     * unter dem Antwortfeld, in das sie schreibt. `role="region"` mit `aria-live="polite"`:
+     * gemeldet, nie unterbrechend.
+     */
+    function ka6BlockElement() {
+      var vorhanden = document.getElementById("ka6-block");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.createElement("div");
+      karte.id = "ka6-block";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+
+      var titel = document.createElement("h2");
+      titel.id = "ka6-titel";
+      karte.appendChild(titel);
+
+      var hinweisText = document.createElement("p");
+      hinweisText.id = "ka6-lead";
+      hinweisText.className = "muted";
+      karte.appendChild(hinweisText);
+
+      // Der Grund, WENN nicht formuliert werden darf. Eigenes Element, damit „gesperrt" und
+      // „bereit" nie denselben Platz teilen und kein Zustand den anderen ueberschreibt.
+      var grund = document.createElement("p");
+      grund.id = "ka6-hinweis";
+      grund.className = "muted hidden";
+      karte.appendChild(grund);
+
+      var zurufe = document.createElement("div");
+      zurufe.id = "ka6-zurufe";
+      zurufe.className = "hidden";
+      zurufe.setAttribute("style", "display: flex; gap: 6px; flex-wrap: wrap; margin-top: 6px;");
+      for (var i = 0; i < KA6_ZURUFE.length; i += 1) {
+        var knopf = document.createElement("button");
+        knopf.type = "button";
+        knopf.id = KA6_ZURUFE[i].id;
+        knopf.className = "ghost";
+        zurufe.appendChild(knopf);
+      }
+      karte.appendChild(zurufe);
+
+      var status = document.createElement("div");
+      status.id = "ka6-status";
+      status.className = "status hidden";
+      karte.appendChild(status);
+
+      // Der EIGENE Einfuegeknopf. Er benutzt denselben Einfuegeweg wie der Ask-Knopf
+      // (`performInsert` + `buildInsertAttempts`), aber einen eigenen Textbauer — s. oben.
+      // Der Ask-Knopf bleibt dabei unberuehrt und ohne Ask-Antwort weiterhin gesperrt
+      // (`canInsertAnswer(currentAskOutcome)`), es entsteht also keine zweite ungegatete Ausgabe.
+      var einfuegen = document.createElement("button");
+      einfuegen.type = "button";
+      einfuegen.id = "ka6-insert-btn";
+      einfuegen.className = "primary hidden";
+      einfuegen.setAttribute("style", "margin-top: 8px;");
+      karte.appendChild(einfuegen);
+
+      var anker = document.getElementById("section-ask");
+      if (anker) { anker.appendChild(karte); } else { document.body.appendChild(karte); }
+      return karte;
+    }
+
+    function ka6Meldung(ton, text) {
+      var box = document.getElementById("ka6-status");
+      if (!box) { return; }
+      box.className = text ? ("status " + (ton === "ok" ? "ok" : "warn")) : "status hidden";
+      box.textContent = text || "";
+    }
+
+    /**
+     * Die Ausfuehrbarkeit — GELESEN aus der serverseitigen Aufloesung, nie hier entschieden.
+     *
+     * Drei Ausgaenge, und der mittlere ist der wichtige: solange der Sitzungsstand nicht `bereit`
+     * ist, wird NICHT formuliert und auch nicht behauptet, es sei gesperrt. Unbekannt ist unbekannt.
+     */
+    /**
+     * D2/Pflicht 1+3: Steht gerade ein KA6-Vorschlag im gemeinsamen Feld?
+     *
+     * Der Zustand ist die Klammer der Invariante: Er entscheidet, welcher Herkunft der Feldinhalt
+     * gehoert, und wird an genau drei Stellen gesetzt — beim Start eines Zurufs (aus), bei seinem
+     * belegten Erfolg (an) und beim Eintreffen einer Ask-Antwort (aus). Kein vierter Schreiber.
+     */
+    var ka6VorschlagAktiv = false;
+
+    /**
+     * D2/Pruefluecke 6.4: der ROHE Sperrgrund aus der Sitzungssicht.
+     *
+     * `klaraS4ReasonKey` bildet jeden unbekannten Grund auf `s4ReasonOther` ab (:1501) — nuetzlich
+     * fuer die Uebersetzung, aber der konkrete Grund geht dabei verloren. Er steht unveraendert in
+     * `klaraS4Sicht.resolution.blockedReason` (dieselbe Quelle, aus der `blockedKey` gebildet
+     * wird, :1644/:1671). Fehlt er, wird NICHTS erfunden — dann bleibt der Sammelbegriff.
+     */
+    function ka6RohGrund() {
+      var sicht = typeof klaraS4Sicht !== "undefined" && klaraS4Sicht ? klaraS4Sicht : null;
+      var aufloesung = sicht && sicht.resolution ? sicht.resolution : null;
+      return aufloesung && typeof aufloesung.blockedReason === "string"
+        ? aufloesung.blockedReason
+        : "";
+    }
+
+    function ka6Lage() {
+      if (typeof klaraS4Anzeige !== "function") { return { erlaubt: false, grundKey: null }; }
+      if (klaraS4Phase !== "bereit") { return { erlaubt: false, grundKey: null }; }
+      var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      return { erlaubt: a.askAllowed === true, grundKey: a.blockedKey };
+    }
+
+    /**
+     * Der Klartext zum Blockgrund. `external_not_migrated` und `external_consent_missing` bekommen
+     * BEWUSST eigene Saetze: die eine ist eine Betriebsentscheidung, die andere eine Frage an den
+     * Anwender. Ein unbekannter Grund wird generisch benannt — nie verschwiegen.
+     */
+    function ka6GrundText(grundKey) {
+      if (grundKey === "s4ReasonExternalNotMigrated") { return t("ka6BlockedNotMigrated"); }
+      if (grundKey === "s4ReasonExternalConsentMissing") { return t("ka6BlockedConsentMissing"); }
+      if (grundKey) {
+        // D2/Pruefluecke 6.4: Ein UNBEKANNTER Grund wird von `klaraS4ReasonKey` auf den Sammel-
+        // schluessel `s4ReasonOther` abgebildet (taskpane.html:1501) — der Originalgrund geht dabei
+        // verloren, und der Anwender las bisher nur „Der Server nennt als Grund: Sonstiges".
+        // Das ist ein benannter, aber inhaltsleerer Hinweis. Steht der Rohgrund in der Sitzungs-
+        // sicht, wird ER genannt; sonst bleibt es beim uebersetzten Sammelbegriff.
+        var roh = ka6RohGrund();
+        return t("ka6BlockedOther", { grund: roh || t(grundKey) });
+      }
+      return t("ka6BlockedUnknown");
+    }
+
+    /** Zeichnen. Kein Fokuseingriff, kein Scrollen — die Flaeche erscheint und schweigt sonst. */
+    function ka6Zeichnen() {
+      var karte = ka6BlockElement();
+      karte.className = "card";
+      document.getElementById("ka6-titel").textContent = t("ka6Title");
+      document.getElementById("ka6-lead").textContent = t("ka6Hint");
+      for (var i = 0; i < KA6_ZURUFE.length; i += 1) {
+        var knopf = document.getElementById(KA6_ZURUFE[i].id);
+        if (knopf) {
+          knopf.textContent = t(KA6_ZURUFE[i].name);
+          knopf.disabled = ka6Laeuft;
+        }
+      }
+      document.getElementById("ka6-insert-btn").textContent = t("ka6InsertCta");
+
+      var lage = ka6Lage();
+      var zurufe = document.getElementById("ka6-zurufe");
+      var grund = document.getElementById("ka6-hinweis");
+      // „bietet KEINEN Zuruf an" heisst: der Knopf ist WEG, nicht bloss ausgegraut. Ein gesperrter
+      // Knopf laedt zum Klicken ein und erklaert nichts.
+      zurufe.className = lage.erlaubt ? "" : "hidden";
+      grund.textContent = lage.erlaubt ? "" : ka6GrundText(lage.grundKey);
+      grund.className = lage.erlaubt ? "muted hidden" : "muted";
+      if (!lage.erlaubt) {
+        // Ein Vorschlag aus einer frueheren, erlaubten Lage darf nicht einfuegbar stehen bleiben.
+        document.getElementById("ka6-insert-btn").className = "primary hidden";
+      }
+    }
+
+    /** Sprachwechsel und Zustandswechsel: derselbe gehaltene Stand, neuer Text. */
+    function ka6Neuzeichnen() {
+      if (document.getElementById("ka6-block")) { ka6Zeichnen(); }
+    }
+
+    /**
+     * DER AUSZUGEBENDE TEXT — hier entsteht die dritte Herkunftsklasse.
+     *
+     * Traegt der Vorschlag das serverseitige Kennzeichnungssignal, bekommt er die KA6-Zeile und
+     * KEINE Quellen-Zeile (er steht auf keiner Quelle). Ohne das Signal ist es keine
+     * KI-Formulierung — dann gilt unveraendert der Bestandsweg mit Quelle und Einstufung.
+     */
+    function ka6Ausgabetext(koerper) {
+      return ka6KiFormuliert
+        ? buildAnswerInsertText(koerper, t("ka6Herkunft"))
+        : composeOutputText(koerper);
+    }
+
+    // ============================================================================================
+    // JOB 1153 D3 · DER KOPIERKNOPF — VOM GESCHLOSSENEN AUSGANG ZUM OFFENEN UEBERNAHMEWEG.
+    // ============================================================================================
+    //
+    // WAS D2 HIER STEHEN HATTE, UND WARUM ES NICHT REICHTE:
+    //   D2 hat den Kopierknopf bewusst zugelassen — gesperrt, weil `updateInsertState` (:3658)
+    //   `copyBtn.disabled = !insertable` setzt und `insertable` ein `currentAskOutcome` verlangt,
+    //   das ein KA6-Vorschlag nie setzt. Die Begruendung lautete: ueber einen geschlossenen
+    //   Ausgang kann nichts Ungekennzeichnetes hinaus, also sei die Zusage erfuellt.
+    //   BEN hat das mit ROT beantwortet, und der Einwand traegt: Ein Anwender, der auf „Kopieren"
+    //   drueckt und nichts bekommt, hoert nicht auf, uebernehmen zu wollen — er markiert, zieht,
+    //   nimmt das Kontextmenue. Ein zugemauerter Ausgang loest das Problem nicht, er verschiebt es
+    //   auf Wege, die man dann einzeln absichern muss. Und die Zusage selbst wird kleiner, statt
+    //   eingeloest zu werden.
+    //
+    // WAS HIER STEHT — UND WARUM ES KEIN ZWEITER WEG IST:
+    //   Geoeffnet wird nur der RIEGEL. Der Kopierweg selbst bleibt Zeile fuer Zeile der bestehende:
+    //   `copyAnswer` (:4160) liest `getEditedAnswerText()`, baut ueber `composeOutputText(body)`
+    //   und uebergibt an `performCopy`. Kein Rueckruf wird ersetzt, keine Ausgabelogik kopiert.
+    //   Dass dabei die KA6-Herkunft entsteht, besorgt der Wrapper um `composeOutputText` ganz
+    //   unten — und der zeigt seit D3 auf `ka6Ausgabetext`, also auf EXAKT denselben Bauer, den
+    //   der Einfuegeklick (:5601) und die nativen Ereignisse (:5719/:5723) benutzen.
+    //
+    // WARUM ES DIESE FUNKTION UEBERHAUPT BRAUCHT:
+    //   `updateInsertState` wird an genau drei Stellen gerufen (:3644, :3905, :3913) — alle drei
+    //   liegen im Ask-Weg. Ein KA6-Zuruf laeuft an ihnen vorbei, der Knopf behielte also einfach
+    //   den Zustand, den der letzte Ask-Vorgang hinterlassen hat. Der Riegel muss deshalb an den
+    //   KA6-Zustandsuebergaengen mitgefuehrt werden, nicht nur am Ask-Weg.
+    function ka6KopierknopfOeffnen() {
+      var knopf = document.getElementById("ask-copy-btn");
+      if (!knopf) { return; }
+      // Geoeffnet wird NUR fuer einen belegten KA6-Vorschlag. Beide Bedingungen sind noetig:
+      // `ka6VorschlagAktiv` sagt, wem der Feldinhalt gehoert, `ka6KiFormuliert` sagt, dass das
+      // serverseitige Kennzeichnungssignal wirklich da war. Ohne die zweite oeffnete dieser Knopf
+      // im fail-closed-Fall einen Ausgang fuer einen Text, den D2 gerade verworfen hat.
+      if (ka6VorschlagAktiv && ka6KiFormuliert) { knopf.disabled = false; }
+    }
+
+    /**
+     * Der Rueckweg. Endet ein KA6-Vorschlag, entscheidet wieder ALLEIN der Bestand ueber den
+     * Knopf — deshalb wird hier nichts eigenes gesetzt, sondern die Bestandsfunktion gerufen.
+     * Sie laeuft durch den Wrapper unten, der bei inaktivem KA6 nichts mehr hinzufuegt.
+     */
+    function ka6KnopfzustandZurueck() {
+      if (typeof updateInsertState === "function") { updateInsertState(); }
+    }
+
+    /**
+     * Der Zuruf. Er geht ueber den BESTEHENDEN Vertrag `performAsk` → `POST /api/ask` mit den
+     * bestehenden Bindungskopfzeilen — keine neue Route, kein Add-in-eigener Modellaufruf. Ob der
+     * Server daraus eine Formulierung macht, entscheidet die Einwilligungsprüfung an der Route
+     * (`ask-routes.ts`, KW-KA4); dieses Fenster bittet nur und liest, was zurueckkommt.
+     */
+    function ka6Absenden(art) {
+      if (ka6Laeuft) { return; }
+      if (!ka6Lage().erlaubt) { ka6Zeichnen(); return; }
+      readAskSelection(function (selectionText) {
+        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        if (prep.from === "empty") {
+          ka6Meldung("warn", t("ka6Empty"));
+          return;
+        }
+        ka6Laeuft = true;
+        ka6KiFormuliert = false;
+        // D2/Pflicht 3 (Ask → KA6): Ein laufender Zuruf raeumt den vorigen Stand ab, BEVOR etwas
+        // Neues entsteht. Bliebe der alte Zustand stehen, truege ein Uebernahmeweg in der
+        // Zwischenzeit die Herkunft der falschen Quelle.
+        ka6VorschlagAktiv = false;
+        document.getElementById("ka6-insert-btn").className = "primary hidden";
+        // D3: derselbe Gedanke fuer den vierten Weg — der Kopierknopf faellt in den Bestands-
+        // zustand zurueck, bevor der neue Zuruf laeuft. Sonst stuende er waehrend des Abrufs auf
+        // einem Feldinhalt offen, der gerade seine Herkunft verliert.
+        ka6KnopfzustandZurueck();
+        ka6Zeichnen();
+        ka6Meldung("warn", t("ka6Busy"));
+        performAsk(
+          t(art.auftrag) + " " + prep.question,
+          askLocale(lang),
+          // KEIN eigener Abruf-Einstieg: die gebundene Standardfunktion wird durchgereicht. Ein
+          // zusaetzlicher `fetch(...)`-Wrapper waere eine elfte Abrufstelle in einer Datei, deren
+          // Merkmalsvertrag (`tests/app/mega69-klara-merkmale.test.ts`, M6/M7) genau diese Menge
+          // fuehrt — und er brauchte eine bewusste Antwort auf „CSP? Recht? Manifest?", obwohl
+          // dieser Block gar kein neues Ziel anspricht: `/api/ask` steht laengst in der Liste.
+          window.fetch.bind(window),
+          WORD_ADDIN_ASK_TIMEOUT_MS,
+          klaraS4Header()
+        ).then(function (outcome) {
+          ka6Laeuft = false;
+          ka6Zeichnen();
+          if (outcome.kind === "gap") {
+            // Keine erfundene Passage. Dieselbe Ehrlichkeit wie der Fragen-Weg.
+            ka6Meldung("warn", t("ka6NoBasis"));
+            return;
+          }
+          if (outcome.kind !== "answered") {
+            ka6Meldung("warn", t("ka6Fehler", { detail: outcome.detail || outcome.kind }));
+            return;
+          }
+          // ========================================================================================
+          // JOB 1153 D2 · PFLICHT 2 — FAIL-CLOSED STATT RUECKFALL.
+          // ========================================================================================
+          // Bis D1 stand hier `ka6KiFormuliert = outcome.aiGenerated === true;` — und ohne Signal
+          // lief die Ausgabe still auf den Bestandsweg, also auf „gesichert"/„ungeprueft". BEN hat
+          // das als unzulaessig benannt, und der Grund ist inhaltlich: Ein per Zuruf geholter Text
+          // IST eine Formulierung. Ihn als quellengesichert auszugeben, ist nicht eine fehlende
+          // Angabe, sondern eine falsche — die schlechtere der beiden Unehrlichkeiten.
+          //
+          // Deshalb: ohne belastbares Signal entsteht GAR KEIN Vorschlag. Das Feld bleibt leer, der
+          // Einfuegeknopf bleibt weg, und die Flaeche sagt warum.
+          if (outcome.aiGenerated !== true) {
+            ka6KiFormuliert = false;
+            ka6VorschlagAktiv = false;
+            document.getElementById("ka6-insert-btn").className = "primary hidden";
+            // D3: der Kopierknopf gehoert zu den Ausgaengen, die fail-closed zu bleiben haben.
+            // Er wird hier nicht bloss nicht geoeffnet, sondern ausdruecklich nachgefuehrt.
+            ka6KnopfzustandZurueck();
+            ka6Meldung("warn", t("ka6KeinSignal"));
+            return;
+          }
+          ka6KiFormuliert = true;
+          // D2/Pflicht 1+3: Ab hier gehoert der Feldinhalt KA6 — jeder Uebernahmeweg muss das
+          // wissen, und der Ask-Weg muss es beim naechsten Mal wieder loeschen koennen.
+          ka6VorschlagAktiv = true;
+          // Das Ergebnis erscheint als VORSCHLAG — im vorhandenen Feld, ohne Fokusraub.
+          document.getElementById("ask-answer-edit").value = outcome.answer;
+          applyAnswerCompaction(outcome.answer);
+          document.getElementById("ka6-insert-btn").className = "primary";
+          // D3/Lieferung 1: Ab hier steht ein belegter Vorschlag im Feld — und damit ist der
+          // Kopierknopf ein offener Uebernahmeweg, nicht laenger ein zugemauerter Ausgang.
+          ka6KopierknopfOeffnen();
+          ka6Meldung("ok", t("ka6Ready"));
+        });
+      });
+    }
+
+    /**
+     * Die Uebernahme — der EINZIGE Weg, auf dem dieser Block das Dokument beruehrt, und er haengt
+     * an genau einem Klick. Der Einfuegeweg ist der bestehende: Word.run zuerst, setSelectedDataAsync
+     * als Rueckfall, Berechtigungsfehler ehrlich klassifiziert.
+     */
+    function ka6Einfuegen() {
+      var koerper = getEditedAnswerText();
+      if (koerper.replace(/^\s+|\s+$/g, "").length === 0) {
+        ka6Meldung("warn", t("ka6InsertEmpty"));
+        return;
+      }
+      if (!officeUsable()) {
+        ka6Meldung("warn", t("noOffice"));
+        return;
+      }
+      var text = ka6Ausgabetext(koerper);
+      performInsert(text, buildInsertAttempts()).then(function (outcome) {
+        if (outcome.ok) {
+          ka6Meldung("ok", t("ka6InsertOk"));
+        } else if (outcome.failure === "permission") {
+          ka6Meldung("warn", t("askInsertNoPermission"));
+        } else {
+          ka6Meldung("warn", t("askInsertFail", { detail: outcome.detail || "Word-API" }));
+        }
+      });
+    }
+
+    if (typeof document !== "undefined" && document.getElementById("section-ask")) {
+      ka6Zeichnen();
+      for (var ka6i = 0; ka6i < KA6_ZURUFE.length; ka6i += 1) {
+        (function (art) {
+          var knopf = document.getElementById(art.id);
+          if (knopf) { knopf.addEventListener("click", function () { ka6Absenden(art); }); }
+        })(KA6_ZURUFE[ka6i]);
+      }
+      document.getElementById("ka6-insert-btn").addEventListener("click", ka6Einfuegen);
+      // Der Sprachwechsel wird HIER mitgehoert (Bauform aus KA3) — der Rueckruf laeuft nach dem
+      // bestehenden, `lang` steht also schon auf der neuen Sprache.
+      ["de", "en", "nl"].forEach(function (ka6Code) {
+        var knopf = document.getElementById("lang-" + ka6Code);
+        if (knopf) { knopf.addEventListener("click", ka6Neuzeichnen); }
+      });
+      // ============================================================================================
+      // WARUM HIER EIN WRAPPER STEHT UND KEIN TAKT.
+      // ============================================================================================
+      // Die Ausfuehrbarkeit aendert sich asynchron: beim Sitzungsaufbau, beim Statusrefresh, beim
+      // Riegel, beim Rebind. Alle diese Wege enden in `renderKlaraS4` — das ist die eine Stelle, an
+      // der der neue Stand sichtbar wird. Der Wrapper haengt sich dort an, ruft das Original
+      // ZUERST und unveraendert und zeichnet danach die Schreibflaeche nach.
+      //
+      // Die Alternative waere ein eigener Takt gewesen. Genau den verbietet KA3 mit derselben
+      // Begruendung, die hier gilt: ein Intervall fragt auch dann, wenn sich nichts geaendert hat.
+      if (typeof renderKlaraS4 === "function") {
+        var ka6RenderS4Bestand = renderKlaraS4;
+        renderKlaraS4 = function () {
+          ka6RenderS4Bestand.apply(this, arguments);
+          ka6Neuzeichnen();
+        };
+      }
+
+      // ==========================================================================================
+      // JOB 1153 D2 · PFLICHT 3 (KA6 → Ask) — DER RUECKWEG.
+      // ==========================================================================================
+      // `renderAskOutcome` ist die EINE Stelle, an der der Fragen-Weg das gemeinsame Feld befuellt
+      // (taskpane.html:3902). Sobald er das tut, gehoert der Feldinhalt wieder ihm — und die
+      // KA6-Herkunft muss weg sein, bevor irgendein Uebernahmeweg sie mitnehmen kann.
+      //
+      // Derselbe Wrapper-Gedanke wie beim `renderKlaraS4` darueber: das Original zuerst und
+      // unveraendert, danach der eigene Nachtrag. Kein Eingriff in den Bestandsrumpf.
+      if (typeof renderAskOutcome === "function") {
+        var ka6RenderAskBestand = renderAskOutcome;
+        renderAskOutcome = function () {
+          ka6VorschlagAktiv = false;
+          ka6KiFormuliert = false;
+          document.getElementById("ka6-insert-btn").className = "primary hidden";
+          var ka6Ergebnis = ka6RenderAskBestand.apply(this, arguments);
+          // D3: der Kopierknopf wird NACH dem Original nachgefuehrt. Das Original setzt ihn auf
+          // seinen Ask-Zustand — aber nicht auf jedem Ausgang (`updateInsertState` steht in
+          // zwei der Zweige, :3905/:3913). Diese Zeile schliesst den Rest: sobald der Ask-Weg
+          // das Feld uebernommen hat, entscheidet allein er ueber den Knopf.
+          ka6KnopfzustandZurueck();
+          return ka6Ergebnis;
+        };
+      }
+
+      // ==========================================================================================
+      // JOB 1153 D2 · PFLICHT 1 — DIE HERKUNFT ALS INVARIANTE ALLER UEBERNAHMEWEGE.
+      // ==========================================================================================
+      //
+      // DER BEFUND, gegen den hier gebaut wird — in D2 im Quelltext nachgeschlagen:
+      //
+      //   Die nativen Wege pruefen als ERSTES `currentAskOutcome.kind !== "answered"` und steigen
+      //   sonst SOFORT aus (`handleAnswerClipboard`:4212, `handleAnswerDragStart`:4268). Ein
+      //   KA6-Vorschlag setzt `currentAskOutcome` nicht — die Bestandsrueckrufe tun also gar
+      //   nichts, es gibt kein `preventDefault`, und der Host kopiert bzw. zieht den ROHEN
+      //   Feldinhalt: KI-Text ohne jede Kennzeichnung. Das ist die schwerste der vier Luecken,
+      //   und sie ist nicht dadurch zu schliessen, dass man `composeOutputText` umbaut — dort
+      //   kommt dieser Fall gar nicht an.
+      //
+      // WARUM EIGENE RUECKRUFE UND KEIN EINGRIFF IN DIE BESTANDSFUNKTIONEN:
+      //   · Die Bestandsfunktionen liegen ausserhalb des Markers `KW-KA6-SCHREIBEN`, den die Lease
+      //     dieses Durchgangs als Schreibgrenze bindet.
+      //   · Sie sind fuer den Ask-Weg richtig, wie sie sind. Ihr fruehes `return` ist kein Fehler,
+      //     sondern ihre korrekte Zustaendigkeitsgrenze.
+      //   · Reihenfolge: Die Bestandsrueckrufe sind bei :4401-4407 gebunden, diese hier danach.
+      //     Bei einem KA6-Vorschlag tut der Bestand nichts; dieser Rueckruf uebernimmt. Liegt eine
+      //     ASK-Antwort im Feld, ist `ka6VorschlagAktiv` false (s. Pflicht 3 oben) und dieser
+      //     Rueckruf haelt sich vollstaendig heraus — der Bestand bleibt allein zustaendig.
+      //
+      // Ausgegeben wird ueber `ka6Ausgabetext` — DERSELBE Bauer wie beim Einfuegeklick. Genau das
+      // ist die Invariante: ein Text, ein Bauer, alle Wege.
+      var ka6Feld = document.getElementById("ask-answer-edit");
+      if (ka6Feld) {
+        var ka6NativerWeg = function (ev, behaelter, schneiden) {
+          if (!ka6VorschlagAktiv) { return; }
+          var wert = ka6Feld.value;
+          if (wert.replace(/^\s+|\s+$/g, "").length === 0) { return; }
+          // Eine TEILAUSWAHL bleibt roh — dieselbe entschiedene Ausnahme wie am Ask-Weg
+          // (mega36 B2): ein Bruchstueck ist keine Passage und traegt keine Herkunft. Der Hinweis
+          // dazu ist der bestehende, damit die Flaeche an allen Wegen dasselbe sagt.
+          if (typeof answerSelectionIsWhole === "function" &&
+              !answerSelectionIsWhole(wert, ka6Feld.selectionStart, ka6Feld.selectionEnd)) {
+            showAskStatus("warn", t("askCopyPartial"));
+            return;
+          }
+          if (!behaelter || typeof behaelter.setData !== "function") {
+            // Kein brauchbarer Behaelter: dann geht hier NICHTS roh hinaus. Abbrechen und den
+            // abgeleiteten Volltext im Rueckfallfeld anbieten — derselbe Vertrag wie am Ask-Weg.
+            if (ev.preventDefault) { ev.preventDefault(); }
+            showCopyFallback(ka6Ausgabetext(wert));
+            return;
+          }
+          if (ev.preventDefault) { ev.preventDefault(); }
+          behaelter.setData("text/plain", ka6Ausgabetext(wert));
+          if (schneiden) {
+            var von = Math.max(0, Math.min(ka6Feld.selectionStart, ka6Feld.selectionEnd));
+            var bis = Math.min(wert.length, Math.max(ka6Feld.selectionStart, ka6Feld.selectionEnd));
+            ka6Feld.value = wert.slice(0, von) + wert.slice(bis);
+          }
+        };
+        ka6Feld.addEventListener("copy", function (ev) {
+          ka6NativerWeg(ev, ev.clipboardData || window.clipboardData || null, false);
+        });
+        ka6Feld.addEventListener("cut", function (ev) {
+          ka6NativerWeg(ev, ev.clipboardData || window.clipboardData || null, true);
+        });
+        ka6Feld.addEventListener("dragstart", function (ev) {
+          ka6NativerWeg(ev, ev.dataTransfer || null, false);
+        });
+      }
+
+      // ==========================================================================================
+      // JOB 1153 D3 · DER VIERTE WEG — DER RIEGEL, UND WER IHN ZURUECKNIMMT.
+      // ==========================================================================================
+      // `updateInsertState` (:3650) ist die eine Stelle, an der der Kopierknopf seinen Zustand
+      // bekommt. Derselbe Wrapper-Gedanke wie bei `renderKlaraS4` und `renderAskOutcome`: das
+      // Original zuerst und unveraendert, danach der eigene Nachtrag.
+      //
+      // WARUM DER NACHTRAG NUR OEFFNEN KANN UND NIE SCHLIESST:
+      //   Das Original hat gerade den Ask-Zustand gesetzt. Wuerde der Nachtrag auch schliessen,
+      //   gaebe es zwei Schreiber fuer denselben Riegel, und der letzte gewaenne — bei Ask genau
+      //   der falsche. So bleibt die Zustaendigkeit sauber getrennt: der Bestand entscheidet fuer
+      //   den Ask-Weg, dieser Nachtrag ergaenzt ausschliesslich den KA6-Fall.
+      //
+      // KEINE REKURSION, ausgefuehrt statt behauptet: `ka6KopierknopfOeffnen` ruft
+      // `updateInsertState` nicht. Der Rueckweg `ka6KnopfzustandZurueck` ruft ihn, aber er wird
+      // nur aus den KA6-Zustandsuebergaengen heraus gerufen, nie aus diesem Wrapper.
+      if (typeof updateInsertState === "function") {
+        var ka6InsertStateBestand = updateInsertState;
+        updateInsertState = function () {
+          ka6InsertStateBestand.apply(this, arguments);
+          ka6KopierknopfOeffnen();
+        };
+      }
+
+      // ==========================================================================================
+      // EIN TEXT, EIN BAUER, ALLE WEGE — jetzt woertlich.
+      // ==========================================================================================
+      // Dieser Wrapper stand schon in D2, und er hat dort die Herkunftszeile ein ZWEITES Mal
+      // gebaut (`buildAnswerInsertText(koerper, t("ka6Herkunft"))`). Das war dieselbe Formel wie
+      // in `ka6Ausgabetext`, aber eben eine zweite Fassung — genau die Kopie der Logik, die beim
+      // naechsten Umbau auseinanderlaeuft. D3 loest das auf: hier steht nur noch der VERWEIS auf
+      // den einen Bauer. Damit gibt es in dieser Datei genau eine Stelle, an der die dritte
+      // Herkunftsklasse entsteht — `ka6Ausgabetext` — und alle vier Uebernahmewege enden dort:
+      //   · Einfuegeklick            → `ka6Einfuegen`  → ka6Ausgabetext
+      //   · Kopierknopf              → `copyAnswer`    → composeOutputText → ka6Ausgabetext
+      //   · copy / cut / dragstart   → `ka6NativerWeg` → ka6Ausgabetext
+      //
+      // KEINE REKURSION, ausgefuehrt: In den Zweig laeuft nur, wer `ka6KiFormuliert === true`
+      // hat. `ka6Ausgabetext` nimmt bei genau dieser Bedingung den `buildAnswerInsertText`-Zweig
+      // und ruft `composeOutputText` gar nicht erst. Umgekehrt landet der Bestandsfall
+      // (`ka6KiFormuliert === false`) hier im `ka6ComposeBestand` und kommt nie zurueck.
+      if (typeof composeOutputText === "function") {
+        var ka6ComposeBestand = composeOutputText;
+        composeOutputText = function (koerper) {
+          if (ka6VorschlagAktiv && ka6KiFormuliert) {
+            return ka6Ausgabetext(koerper);
+          }
+          return ka6ComposeBestand.apply(this, arguments);
+        };
+      }
+    }
+    // KW-KA6-SCHREIBEN-END
   </script>
 </body>
 </html>

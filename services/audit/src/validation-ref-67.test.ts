@@ -124,11 +124,21 @@ describe("W3-B/67 · die sechs Zustaende der Referenzpruefung (KW-W3-19)", () =>
     ).toBe("WRONG_EVENT_TYPE");
   });
 
-  it("die erlaubte Action-Menge ist BENANNT und traegt genau die drei Entscheidungen", () => {
+  // JOB 557 D9: Die Menge traegt jetzt VIER Namen. Die Rueckgabe zur Nacharbeit ist EINE
+  // Entscheidung, die unter zwei Namen auftritt — je nachdem, wer wirklich zustaendig ist:
+  // `ko.returned-to-owner` bei benannter Eigentuemerin, `ko.returned-to-author` beim echten
+  // Autor-Fallback (`services/validation/src/service.ts`, `returnToResponsible`).
+  //
+  // Beide MUESSEN hier stehen, und beide aus einem eigenen Grund: der neue Name, weil eine
+  // Owner-Rueckgabe sonst als `WRONG_EVENT_TYPE` gaelte und die festgehaltene Entscheidung
+  // ungueltig waere; der alte, weil jedes vor D8 geschriebene Ereignis ihn traegt und ein
+  // Entfernen saemtliche Altbelege rueckwirkend entwerten wuerde.
+  it("die erlaubte Action-Menge ist BENANNT und traegt genau die vier Entscheidungen", () => {
     expect([...VALIDATION_DECISION_ACTIONS].sort()).toEqual([
       "ko.admin-validated",
       "ko.rated",
       "ko.returned-to-author",
+      "ko.returned-to-owner",
     ]);
     for (const action of VALIDATION_DECISION_ACTIONS) {
       const e = eintrag({ action });

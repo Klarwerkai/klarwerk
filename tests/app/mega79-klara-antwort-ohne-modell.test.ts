@@ -51,6 +51,63 @@ const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
 const SPRACHEN = ["de", "en", "nl"] as const;
 type Sprache = (typeof SPRACHEN)[number];
 
+// ================================================================================================
+// JOB 1175 · D1 — DER MODELLSPION SITZT AM CHOKEPOINT, NICHT AUF `reasoner.answer`.
+// ================================================================================================
+//
+// WAS VORHER SCHIEFGING (G26 Punkt 2): Der Spion ersetzte `services.reasoner.answer` — eine Methode,
+// die dieser Test selbst einsetzt. Er belegte damit, dass DIESER EINE Weg kein Modell ruft, nicht
+// dass KEIN Weg eines ruft. Ein Aufruf am Reasoner vorbei lief daran vorbei; gemessen in JOB 1175
+// D1, bevor diese Zeilen entstanden: ein direkter `cappedModelClient(...).complete(...)` liess alle
+// vier Faelle gruen.
+//
+// WO DER CHOKEPOINT LIEGT, sagt das Haus selbst — ich habe die Definition uebernommen und keine
+// zweite erfunden: `tests/security/egress-chokepoint.test.ts:43` fuehrt genau zwei Dateien als
+// erlaubte Egress-Stellen, und `:41-42` nennt ihren Pflicht-Wrapper:
+//
+//     services/reasoner/src/model-client.ts   →  cappedModelClient
+//     services/media/src/transcriber.ts       →  cappedTranscriber
+//
+// `cappedModelClient` ist in `services/reasoner/src/model-concurrency.ts:163` definiert und
+// umschliesst `complete` UND `completeVision` (`:174`, `:182`). JEDER Modellaufruf des App-Graphen
+// passiert ihn — deshalb sitzt der Spion hier und nicht eine Ebene davor.
+//
+// GRENZE, ausdruecklich: Dieser Spion deckt den MODELL-Chokepoint. Der zweite Eintrag der Allowlist
+// (`cappedTranscriber`, Audio) ist NICHT ueberwacht — Klaras Antwortweg beruehrt ihn nicht, und ihn
+// mitzunehmen waere eine Zusage, die dieser Test nicht misst.
+const modellSpy = vi.hoisted(() => ({ calls: 0 }));
+vi.mock("../../services/reasoner/src/model-concurrency", async (importOriginal) => {
+  const original =
+    await importOriginal<typeof import("../../services/reasoner/src/model-concurrency")>();
+  return {
+    ...original,
+    cappedModelClient: (
+      inner: Parameters<typeof original.cappedModelClient>[0],
+      opts: Parameters<typeof original.cappedModelClient>[1],
+    ) => {
+      const capped = original.cappedModelClient(inner, opts);
+      const vision = capped.completeVision?.bind(capped);
+      return {
+        ...capped,
+        complete: (...args: Parameters<typeof capped.complete>) => {
+          modellSpy.calls += 1;
+          return capped.complete(...args);
+        },
+        // Der Bildweg laeuft durch DENSELBEN Chokepoint (model-concurrency.ts:180-182) — ein Spion,
+        // der ihn auslaesst, haette genau die Luecke, die dieser Auftrag schliesst.
+        ...(vision
+          ? {
+              completeVision: (...args: Parameters<NonNullable<typeof capped.completeVision>>) => {
+                modellSpy.calls += 1;
+                return vision(...args);
+              },
+            }
+          : {}),
+      };
+    },
+  };
+});
+
 // Der Embedder-Spy wrappt das Modul — jeder embed()-Aufruf im App-Graph zaehlt. Bauform uebernommen
 // aus tests/app/word-ask-retrieval-only.test.ts (dort seit WP-KLARA-ASK-FIX in Gebrauch).
 const embedSpy = vi.hoisted(() => ({ calls: 0 }));
@@ -199,6 +256,7 @@ async function ketteApp() {
   // Hintergrund-Pruefjobs zu Ende laufen lassen, DANN die Spys nullen — gemessen wird nur der Ask.
   await services.aiCheckWorker?.idle();
   embedSpy.calls = 0;
+  modellSpy.calls = 0;
   return { app, headers, koId, modellAufrufe: () => modellAufrufe };
 }
 
@@ -207,6 +265,8 @@ interface Kettenbefund {
   geantwortet: boolean;
   woertlich: boolean;
   modellAufrufe: number;
+  // JOB 1175: die Zahl am CHOKEPOINT — sie faengt auch, was `reasoner.answer` nie sieht.
+  chokepointAufrufe: number;
   embedderAufrufe: number;
   gegenlaufModellAufrufe: number;
 }
@@ -236,6 +296,7 @@ async function erhebeKette(): Promise<Kettenbefund> {
   };
   const nachAsk = modellAufrufe();
   const embedderNachAsk = embedSpy.calls;
+  const chokepointNachAsk = modellSpy.calls;
 
   // GEGENLAUF: dieselbe Frage OHNE `mode`. Er beweist, dass der Modell-Spy an einer echten Flaeche
   // sitzt — ohne ihn waere „0 Aufrufe" nicht von „nie hingeschaut" zu unterscheiden.
@@ -252,6 +313,7 @@ async function erhebeKette(): Promise<Kettenbefund> {
     geantwortet: body.result.answered === true && body.result.sources.includes(koId),
     woertlich: body.result.answer === VALIDIERTE_AUSSAGE,
     modellAufrufe: nachAsk,
+    chokepointAufrufe: chokepointNachAsk,
     embedderAufrufe: embedderNachAsk,
     gegenlaufModellAufrufe: modellAufrufe() - nachAsk,
   };
@@ -261,6 +323,9 @@ async function erhebeKette(): Promise<Kettenbefund> {
 function ketteErzwingtOhneModell(k: Kettenbefund): boolean {
   return (
     k.modellAufrufe === 0 &&
+    // JOB 1175: die eigentliche Zusage. `modellAufrufe` deckt nur den Reasoner-Weg; erst diese
+    // Null sagt „im ganzen App-Graphen ist kein Modellaufruf durch den Chokepoint gegangen".
+    k.chokepointAufrufe === 0 &&
     k.embedderAufrufe === 0 &&
     k.geantwortet &&
     k.woertlich &&
@@ -385,12 +450,74 @@ describe("AUFTRAG-mega79: die Anzeige haengt am tatsaechlichen Antwortweg", () =
       true,
     );
     expect(k.modellAufrufe, "Auf Klaras Antwortweg wurde ein Modell gerufen").toBe(0);
+    expect(
+      k.chokepointAufrufe,
+      "Am Chokepoint (cappedModelClient) wurde ein Modellaufruf gezaehlt — irgendein Weg im " +
+        "App-Graphen hat ein Modell gerufen, nicht nur der Reasoner-Weg",
+    ).toBe(0);
     expect(k.embedderAufrufe, "Auf Klaras Antwortweg wurde ein Embedder gerufen").toBe(0);
     expect(
       k.gegenlaufModellAufrufe,
       "Der Modell-Spy greift nicht — dann waere die Null oben blind",
     ).toBeGreaterThan(0);
   }, 30000);
+
+  // ==============================================================================================
+  // JOB 1175 · DIE ZWEI POSITIVEN KALIBRIERZELLEN
+  // ==============================================================================================
+  //
+  // KEIN ROTER ERSTLAUF — und das ist hier richtig so, statt einen zu behaupten: Diese beiden Faelle
+  // pruefen nicht das Produkt, sondern das MESSWERKZEUG. Ein Spion, der greift, greift ab der ersten
+  // Sekunde; ein roter Erstlauf waere nur zu erzeugen, indem man den Spion vorher kaputt macht.
+  //
+  // WARUM SIE TROTZDEM DER WICHTIGERE TEIL SIND: Jeder gruene Negativfall oben steht auf einer Null.
+  // Eine Null aus einem Zaehler, der nie hochgezaehlt hat, ist von einer Null aus Blindheit nicht zu
+  // unterscheiden. Der Embedder-Zaehler stand seit mega79 genau so da — er hat in keinem einzigen
+  // Fall je einen Aufruf gesehen.
+  //
+  // IHRE GEGENPROBE ist der Spion selbst: legt man ihn stumm (die Zaehlzeile entfernen), werden
+  // GENAU diese beiden Faelle rot und kein anderer.
+
+  it("KALIBRIERUNG MODELL: der Chokepoint-Spion zaehlt einen echten Modellaufruf", async () => {
+    const { cappedModelClient } = await import("../../services/reasoner/src/model-concurrency");
+    modellSpy.calls = 0;
+
+    // Ein echter Aufruf durch DEN Wrapper, den `egress-chokepoint.test.ts:41-43` als Pflichtweg
+    // fuehrt. Kein Netz, kein Schluessel: der innere Client ist ein Doppel — gemessen wird, dass der
+    // SPION den Durchgang bemerkt, nicht was ein Anbieter antwortet.
+    const antwort = await cappedModelClient(
+      { name: "kalibrierung", complete: async () => "ECHTE MODELLANTWORT" },
+      { rejectsConfidential: false },
+    ).complete("system", "user", false);
+
+    expect(antwort, "der gewrappte Client muss die Antwort durchreichen").toBe(
+      "ECHTE MODELLANTWORT",
+    );
+    expect(
+      modellSpy.calls,
+      "Der Chokepoint-Spion hat einen echten Modellaufruf NICHT bemerkt — dann ist jede Null " +
+        "oben wertlos",
+    ).toBe(1);
+  });
+
+  it("KALIBRIERUNG EMBEDDER: der Embedder-Spion zaehlt einen echten embed()-Aufruf", async () => {
+    const { createEmbeddingProviderFromEnv } = await import("../../services/embedding");
+    embedSpy.calls = 0;
+
+    // Der Vorgabemodus des Moduls ist `stub` (services/embedding/src/provider.ts:113-116) — ein
+    // echter Provider mit echtem `embed()`, ohne Netz und ohne Schluessel. Genau der Weg, den der
+    // Spion bei `:57-75` wrappt.
+    const provider = createEmbeddingProviderFromEnv({});
+    expect(provider, "ohne Provider gibt es nichts zu kalibrieren").toBeDefined();
+
+    const ergebnis = await provider?.embed(["Ventil vor der Wartung entlasten"]);
+    expect(ergebnis?.vectors.length, "der Provider muss einen Vektor liefern").toBe(1);
+    expect(
+      embedSpy.calls,
+      "Der Embedder-Spion hat einen echten embed()-Aufruf NICHT bemerkt — genau die Luecke aus " +
+        "G26 Punkt 2: ein Zaehler ohne positiven Beleg ist von einem kaputten nicht zu unterscheiden",
+    ).toBe(1);
+  });
 
   it("kein sichtbarer Zustand behauptet ein Modell fuer Klaras Antwort — in keiner Sprache", async () => {
     const k = await erhebeKette();

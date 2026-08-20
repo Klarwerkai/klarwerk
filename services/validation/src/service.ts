@@ -275,13 +275,33 @@ export class ValidationService {
   //     Ohne diese Angabe müsste ein Leser raten, welcher der beiden Fälle vorliegt — und genau
   //     dieses Raten ist der Befund dieses Jobs.
   //
-  // DER AKTIONSNAME BLEIBT `ko.returned-to-author`, und das ist eine gemessene Grenze, keine
-  // Nachlässigkeit: er ist ein Vertrag mit zwei Verbrauchern ausserhalb dieser Lease.
-  // `services/audit/src/repo.ts` führt ihn in `VALIDATION_DECISION_ACTIONS` — eine unbekannte
-  // Aktion machte den `validationDecisionRef` am Objekt zu `WRONG_EVENT_TYPE`. Und
-  // `apps/web/src/lib/validationStatus.ts` leitet aus genau diesem Namen den sichtbaren Zustand
-  // „Nacharbeit" ab; ein neuer Name liesse das Board schweigen. Die Benennung des Antwortausgangs
-  // ist weiterhin die offene Ownerfrage O-557-2.
+  // ==============================================================================================
+  // JOB 557 D8 (BEN-Korrekturpflicht zu D7) — DER AKTIONSNAME SAGT JETZT DIE ROLLE.
+  // ==============================================================================================
+  //
+  // D7 liess den Namen `ko.returned-to-author` auch dann stehen, wenn eine benannte Eigentümerin
+  // die Nacharbeit bekam — und begründete das mit zwei Verbrauchern ausserhalb der damaligen
+  // Lease. BEN hat das als Verstoss gewertet, und zu Recht: „`ko.returned-to-author` ist bei
+  // `responsibleKind = owner` eine unwahre Produktbezeichnung." Ein Protokoll, das die falsche
+  // Rolle nennt, ist schlimmer als keins — es sieht aus wie eine Auskunft.
+  //
+  // DER NAME FOLGT DESHALB DERSELBEN QUELLE WIE DAS PAYLOAD: `responsibleKindOf(ko)`. Es gibt
+  // keine zweite Ableitung und keinen zweiten Ort, an dem die Entscheidung fallen könnte —
+  // Name und `responsibleKind` können nicht auseinanderlaufen.
+  //
+  //   · benannte Eigentümerin  → `ko.returned-to-owner`
+  //   · kein Aggregat (Altbestand) → `ko.returned-to-author`, und dort ist der Name WAHR.
+  //
+  // BEIDE VERBRAUCHER SIND IN DEMSELBEN DURCHGANG MITGEZOGEN — das ist die von BEN verlangte
+  // Atomarität, und ohne sie wäre der neue Name ein Schaden statt einer Korrektur:
+  //   · `services/audit/src/repo.ts` führt BEIDE Namen in `VALIDATION_DECISION_ACTIONS`; ohne den
+  //     neuen wäre der `validationDecisionRef` am Objekt `WRONG_EVENT_TYPE` — die festgehaltene
+  //     Entscheidung gälte als ungültig.
+  //   · `apps/web/src/lib/validationStatus.ts` leitet „Nacharbeit" aus BEIDEN Namen ab; ohne den
+  //     neuen schwiege das Board über einen Zustand, den es gibt.
+  //
+  // HISTORISCHE EREIGNISSE BLEIBEN LESBAR: der alte Name verschwindet an keiner Lesestelle. Was
+  // sich ändert, ist ausschliesslich, was NEU emittiert wird.
   private async returnToResponsible(
     koId: string,
     ko: KnowledgeObject,
@@ -290,6 +310,8 @@ export class ValidationService {
     koVersion: number,
   ): Promise<ValidationDecisionRefWert> {
     const verantwortlich = responsibleOf(ko);
+    // EINE Quelle für Name und Payload — s. Kopfkommentar. Zwei Ableitungen wären zwei Wahrheiten.
+    const art = responsibleKindOf(ko);
     const existing = await this.assignments.find(koId, verantwortlich);
     if (existing) {
       if (existing.status !== "open") {
@@ -303,13 +325,13 @@ export class ValidationService {
     // zu verfallen.
     const beleg = await this.audit?.record({
       actor: by,
-      action: "ko.returned-to-author",
+      action: art === "owner" ? "ko.returned-to-owner" : "ko.returned-to-author",
       target: koId,
       payload: {
         verdict,
         author: ko.author,
         responsible: verantwortlich,
-        responsibleKind: responsibleKindOf(ko),
+        responsibleKind: art,
         koVersion,
       },
     });

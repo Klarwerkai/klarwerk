@@ -217,11 +217,158 @@ function switchRumpf(): string {
   return quelltext.slice(ab);
 }
 
+// ------------------------------------------------------------------------------------------------
+// JOB 1173 D1 — DIE ERHEBUNG WIRD FAIL-CLOSED (G26 Punkt 1)
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND, den dieser Umbau schliesst. Bis hierher lautete die Erhebung:
+//
+//     [...switchRumpf().matchAll(/^\s*case "([a-z-]+)": \{/gm)]
+//
+// Dieses Muster sieht AUSSCHLIESSLICH doppelt zitierte Kleinbuchstaben-Marken mit `{` in derselben
+// Zeile. Es sieht NICHT: `case 'aktion'` · `` case `aktion` `` · `case "Aktion"` · `case "aktion2"`
+// · `case "aktion_neu"` · `case "aktion":` ohne `{` · die Klammer in der naechsten Zeile.
+//
+// DIE FOLGE WAR NICHT „eine Aktion fehlt in der Liste", sondern schlimmer: Eine so geschriebene
+// Aktion fiel aus der GRUNDMENGE — und dieser Waechter, der prueft, ob jede Aktion ihr Recht
+// verlangt und das Sichtbarkeitstor passiert, prueft sie dann GAR NICHT ERST. Er meldet gruen,
+// weil er nicht hinsieht. An einer Sicherheitsflaeche ist das die teuerste Sorte Stille.
+//
+// GEMESSEN, nicht vermutet (JOB 1173 D1, Rohprotokoll in der Arbeitsspur): Zwei temporaer in
+// `ko-routes.ts` eingefuegte Aktionen — `case 'pruefsiegel'` und `case "archivStufe2"`, beide mit
+// echtem `requirePermission` — liessen diesen Test unveraendert bei `5 passed (5)`. Keine einzige
+// Zusicherung bemerkte sie.
+//
+// DIE REGEL, die stattdessen gilt (dieselbe wie in `tests/smoke/support/tor-einstiege.ts`, JOB 1160):
+//
+//     Jede `case`-Marke im Rumpf faellt in GENAU EINEN von zwei Zustaenden —
+//       1 ERKANNTE AKTION      (String-Literal, beliebig zitiert) → Teil der Grundmenge
+//       2 UNAUFGELOESTER BEFUND (alles Uebrige)                   → dieser Test wird ROT
+//     Einen dritten Zustand, „still uebersehen", gibt es nicht mehr.
+
+/** Eine im Rumpf gefundene `case`-Marke — roh, vor jeder Deutung. */
+interface CaseMarke {
+  /** Der Text zwischen `case` und dem Doppelpunkt, unveraendert. */
+  roh: string;
+  /** Zeilennummer in `ko-routes.ts`, damit ein Befund seine Fundstelle nennt. */
+  zeile: number;
+  /** Offset im Rumpf — die Zweiggrenze wird daraus bestimmt, nicht per erneuter Textsuche. */
+  ab: number;
+}
+
+/** Zeilennummer eines Rumpf-Offsets, bezogen auf die ganze Datei. */
+function zeileImQuelltext(offsetImRumpf: number): number {
+  const quelltext = readFileSync(KO_ROUTES, "utf8");
+  const ab = quelltext.indexOf('app.put<{ Params: { id: string }; Body: PutBody }>("/api/kos/:id"');
+  return quelltext.slice(0, ab + offsetImRumpf).split("\n").length;
+}
+
+/**
+ * ERHEBUNG 1 — bewusst BREIT: jede `case`-Marke, gleich welcher Zitierung, Schreibweise oder
+ * Klammerstellung. Was hier hereinkommt, muss unten gedeutet werden; nichts faellt heraus.
+ */
+function caseMarkenBreit(): CaseMarke[] {
+  const rumpf = switchRumpf();
+  return [...rumpf.matchAll(/^[ \t]*case[ \t]+([^\n:]+?)[ \t]*:/gm)].map((m) => ({
+    roh: (m[1] as string).trim(),
+    zeile: zeileImQuelltext(m.index ?? 0),
+    ab: m.index ?? 0,
+  }));
+}
+
+/**
+ * ERHEBUNG 2 — DER UNABHAENGIGE ROHZAEHLER, ANDERER BAUART.
+ *
+ * Kein Regex ueber den Rumpf, sondern ein ZEICHENSCANNER: Er laeuft einmal durch den Text, kennt
+ * Zeichenketten (`"`, `'`, `` ` ``) und Kommentare (`//`, `/* … *\/`) und zaehlt `case`-Schluessel-
+ * woerter nur AUSSERHALB davon. Damit haengt er an keiner Annahme ueber Zitierung oder Format.
+ *
+ * WARUM ZWEI ZAEHLUNGEN. Ein Sammler, der sich selbst prueft, prueft nichts. Weichen die beiden
+ * Bauarten voneinander ab, ist eine von beiden blind — und der Test wird rot, statt die kleinere
+ * Zahl stillschweigend zu benutzen. Genau diese Bauart verlangt G26 Punkt 1.
+ */
+function caseMarkenScan(): number {
+  const rumpf = switchRumpf();
+  let i = 0;
+  let treffer = 0;
+  const len = rumpf.length;
+  while (i < len) {
+    const z = rumpf[i] as string;
+    // Kommentare ueberspringen
+    if (z === "/" && rumpf[i + 1] === "/") {
+      const ende = rumpf.indexOf("\n", i);
+      i = ende < 0 ? len : ende;
+      continue;
+    }
+    if (z === "/" && rumpf[i + 1] === "*") {
+      const ende = rumpf.indexOf("*/", i + 2);
+      i = ende < 0 ? len : ende + 2;
+      continue;
+    }
+    // Zeichenketten ueberspringen (mit Maskierung)
+    if (z === '"' || z === "'" || z === "`") {
+      i += 1;
+      while (i < len && rumpf[i] !== z) {
+        i += rumpf[i] === "\\" ? 2 : 1;
+      }
+      i += 1;
+      continue;
+    }
+    // Das Schluesselwort selbst — nur als ganzes Wort.
+    if (rumpf.startsWith("case", i)) {
+      const davor = i === 0 ? "\n" : (rumpf[i - 1] as string);
+      const danach = rumpf[i + 4] ?? "";
+      if (/[\s{;]/.test(davor) && /[\s]/.test(danach)) {
+        treffer += 1;
+      }
+      i += 4;
+      continue;
+    }
+    i += 1;
+  }
+  return treffer;
+}
+
+/** Das Ergebnis der Deutung: eine Aktion — oder ein Befund mit Fundstelle. */
+interface Deutung {
+  aktionen: { name: string; marke: CaseMarke }[];
+  unaufgeloest: string[];
+}
+
+/**
+ * Die Deutung jeder Marke. EINE Form ist auswertbar: ein reines String-Literal, gleich mit welchen
+ * Anfuehrungszeichen. Alles andere — ein Bezeichner, ein Ausdruck, eine Zahl, eine Verkettung —
+ * ist NICHT als Aktionsname lesbar und wird zum Befund. Nicht, weil es verboten waere, sondern
+ * weil dieser Waechter dann nicht mehr sagen kann, welches Recht die Aktion verlangt.
+ */
+function grundmenge(): Deutung {
+  const aktionen: { name: string; marke: CaseMarke }[] = [];
+  const unaufgeloest: string[] = [];
+  const gesehen = new Set<string>();
+  for (const marke of caseMarkenBreit()) {
+    const literal = /^(["'`])([^"'`]*)\1$/.exec(marke.roh);
+    if (!literal) {
+      unaufgeloest.push(
+        `ko-routes.ts:${marke.zeile} — \`case ${marke.roh}:\` ist kein lesbares String-Literal. Diese Aktion kann von diesem Waechter nicht auf ihr Recht geprueft werden.`,
+      );
+      continue;
+    }
+    const name = literal[2] as string;
+    if (name.length === 0) {
+      unaufgeloest.push(`ko-routes.ts:${marke.zeile} — leere Aktionsmarke \`case ${marke.roh}:\`.`);
+      continue;
+    }
+    if (gesehen.has(name)) {
+      continue;
+    }
+    gesehen.add(name);
+    aktionen.push({ name, marke });
+  }
+  return { aktionen, unaufgeloest };
+}
+
 function aktionenAusDemSwitch(): string[] {
-  const gefunden = [...switchRumpf().matchAll(/^\s*case "([a-z-]+)": \{/gm)].map(
-    (m) => m[1] as string,
-  );
-  return [...new Set(gefunden)];
+  return grundmenge().aktionen.map((a) => a.name);
 }
 
 /**
@@ -237,13 +384,19 @@ function aktionenAusDemSwitch(): string[] {
  */
 function rechtDerAktion(action: string): string {
   const rumpf = switchRumpf();
-  const ab = rumpf.indexOf(`case "${action}": {`);
-  if (ab < 0) {
+  // JOB 1173 D1: Die Fundstelle kommt aus DER ERHEBUNG, nicht aus einer zweiten Textsuche mit
+  // `case "${action}": {`. Diese Suche trug denselben Formfehler wie die alte Erhebung — eine
+  // einfach zitierte oder anders geschriebene Aktion haette sie nicht gefunden, und der Test waere
+  // mit „Zweig nicht gefunden" gescheitert statt mit der Sache. Positionen sind formunabhaengig.
+  const marken = caseMarkenBreit();
+  const eigene = grundmenge().aktionen.find((a) => a.name === action)?.marke;
+  if (!eigene) {
     throw new Error(`Der Zweig der Aktion "${action}" wurde im Switch nicht gefunden.`);
   }
+  const ab = eigene.ab;
   // Bis zur nächsten `case`-Marke — der Zweig endet dort, und nur sein eigener Aufruf zählt.
-  const naechste = rumpf.slice(ab + 1).search(/^\s*case "[a-z-]+": \{/m);
-  const zweig = naechste < 0 ? rumpf.slice(ab) : rumpf.slice(ab, ab + 1 + naechste);
+  const naechsteMarke = marken.find((m) => m.ab > ab);
+  const zweig = naechsteMarke === undefined ? rumpf.slice(ab) : rumpf.slice(ab, naechsteMarke.ab);
   const treffer = zweig.match(/requirePermission\("([a-z.]+)"/);
   if (!treffer?.[1]) {
     throw new Error(
@@ -253,11 +406,42 @@ function rechtDerAktion(action: string): string {
   return treffer[1];
 }
 
-// Heute bekannt: siebzehn. Die Untergrenze ist die Schrumpf-Sicherung — ein Suchmuster, das
-// plötzlich weniger findet, macht diesen Test ROT statt heimlich wirkungslos.
-const BEKANNTE_AKTIONEN = 17;
+// Heute im Switch: ACHTZEHN. JOB 1173 D1 hat die Zahl nachgemessen — sie stand hier auf
+// siebzehn, während `ko-routes.ts` bereits achtzehn Aktionen führte (`ownership` kam mit JOB 557
+// dazu, ko-routes.ts:1797). Die Untergrenze war damit um eins zu niedrig: Wäre eine Aktion aus
+// der Erhebung gefallen, hätte `18 → 17` die Schrumpf-Sicherung NICHT ausgelöst. Eine
+// Untergrenze, die einen echten Verlust durchlässt, sichert nichts.
+const BEKANNTE_AKTIONEN = 18;
 
 describe("mega80 A — eine Kennung ist kein Leserecht", () => {
+  // ── JOB 1173 D1 · G26 Punkt 1: die Erhebung ist fail-closed ─────────────────────────────────
+  it("löst JEDE case-Marke des Switch auf — erkannte Aktion oder roter Befund, kein dritter Zustand", () => {
+    const { aktionen, unaufgeloest } = grundmenge();
+
+    // Erste Hälfte: Was nicht als Aktionsname lesbar ist, wird BENANNT statt übersehen. Jede Zeile
+    // hier ist eine Aktion, deren Recht dieser Wächter nicht prüfen kann — an einer
+    // Sicherheitsfläche ist das ein Fehler, keine Nebensache.
+    expect(
+      unaufgeloest,
+      "Im Switch stehen case-Marken, die dieser Wächter nicht als Aktion lesen kann. Solange sie so geschrieben sind, prüft er sie NICHT auf ihr Recht — er wäre grün, ohne hingesehen zu haben.",
+    ).toEqual([]);
+
+    // Zweite Hälfte: die unabhängige Zählung anderer Bauart. Der Zeichenscanner kennt weder
+    // Zitierung noch Format; weicht er von der Erhebung ab, ist eine der beiden blind.
+    const roh = caseMarkenScan();
+    const breit = caseMarkenBreit().length;
+    expect(
+      breit,
+      `Der Zeichenscanner zählt ${roh} case-Marken, das Erhebungsmuster ${breit}. Eine der beiden Bauarten übersieht etwas — und die kleinere Zahl wäre genau der stille Durchlass, den G26 Punkt 1 benennt.`,
+    ).toBe(roh);
+
+    // Und die Erhebung darf die Rohmenge nicht durch Deutung verlieren: jede Marke ist entweder
+    // Aktion oder Befund. (Mehrfachnennungen desselben Namens zählen einmal.)
+    expect(new Set(caseMarkenBreit().map((m) => m.roh)).size).toBe(
+      aktionen.length + unaufgeloest.length,
+    );
+  });
+
   it("erhebt die Grundmenge aus dem Switch und ordnet jeder Aktion genau ein Torurteil zu", () => {
     const ausDemSwitch = aktionenAusDemSwitch();
 

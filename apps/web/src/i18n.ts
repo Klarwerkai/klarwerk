@@ -240,6 +240,12 @@ const de = {
   "audit.action.ko_confidentiality": "Vertraulichkeit geändert",
   "audit.action.ko_conflict_review": "Konflikt-Review",
   "audit.action.ko_returned_to_author": "An Autor zurückgegeben",
+  // JOB 557 D8: Die Rückgabe zur Nacharbeit trägt seit D8 zwei Namen — je nachdem, wer wirklich
+  // zuständig ist. Der Schlüssel darüber bleibt unverändert und gilt für den Autor-Fallback und
+  // für alle historischen Ereignisse; dieser hier benennt die Rückgabe an eine BENANNTE
+  // Eigentümerin. Ein Protokoll, das beide Fälle gleich beschriftet, sagt der lesenden Person
+  // etwas Falsches darüber, wer etwas tun muss.
+  "audit.action.ko_returned_to_owner": "An Eigentümer zurückgegeben",
   "audit.action.ko_source_added": "Quelle hinzugefügt",
   "audit.action.ko_source_removed": "Quelle entfernt",
   "ktype.bauchgefuehl": "Intuition",
@@ -587,6 +593,20 @@ const de = {
   "capture.wizard.titleLabel": "Titel",
   "capture.wizard.structData": "Kernaussage, Bedingungen & Maßnahmen",
   "capture.wizard.discard": "Verwerfen",
+  // ==============================================================================================
+  // JOB 1154 D2 — DIE SCHRITTLEISTE SAGT, WARUM EIN SCHRITT ZU IST.
+  // ==============================================================================================
+  // Bis hierher waren gesperrte Schritte nur ausgegraut. Wer die Bauart nicht kennt, sieht dann
+  // drei tote Knoepfe und keinen Weg — besonders der zweite Schritt, der erst nach dem
+  // Strukturieren aufgeht. Drei Zustaende, drei eigene Saetze: Es gibt genau drei Gruende, aus
+  // denen ein Schritt zu ist, und sie verlangen verschiedene Reaktionen (nichts tun, erst
+  // erzaehlen, ueber den Einreichen-Knopf gehen). Ein gemeinsamer Sammelsatz koennte das nicht
+  // unterscheiden — deshalb prueft `capture-d030-i18n.test.tsx` (E3) ausdruecklich, dass die drei
+  // Texte je Sprache paarweise verschieden bleiben.
+  "capture.wizard.step.lockedCurrent": "Du bist bereits in diesem Schritt.",
+  "capture.wizard.step.lockedNeedDraft":
+    "Noch kein Entwurf: erzähl zuerst dein Wissen und lass es strukturieren.",
+  "capture.wizard.step.lockedViaSubmit": "Dieser Schritt öffnet sich über „Prüfen & einreichen“.",
   "ko.couple.title": "Anlagen-Kopplung",
   "ko.deleteButton": "Wissensobjekt löschen",
   "ko.deleteQ":
@@ -3474,6 +3494,48 @@ const de = {
   "klara.offer.label": "Klaras Angebote",
   "klara.offer.lead": "Dazu gibt es schon:",
   "klara.offer.open": "Ansehen",
+  // ==============================================================================================
+  // JOB 1153 (KA6 Stufe 1) — DIE SCHREIBFLÄCHE. Vorschlag statt Schreiben.
+  // ==============================================================================================
+  //
+  // Dieselbe Doppelablage wie `klara.offer.*` aus KA3 und `ai.generatedNotice` ↔ `aiGeneratedNotice`
+  // seit mega61: hier steht die Produktwörterbuchquelle, sinngleich ein zweites Mal im buildlosen
+  // Wörterbuch des Aufgabenfensters (`apps/web/public/word-addin/taskpane.html`, Marker
+  // `KW-KA6-SCHREIBEN`). Das Panel hat kein Modulsystem und kann diese Datei nicht importieren;
+  // eine DRITTE Textquelle entsteht dabei nicht.
+  //
+  // `klara.write.provenance` ist die DRITTE Herkunftsklasse. Sie steht bewusst neben „gesichert"
+  // (`askEvidenceVerified`) und „ungeprüft" (`askEvidenceUnverified`) und sagt etwas anderes als
+  // beide: jene sprechen über QUELLEN, diese über die Entstehung. Der Wortlaut sagt „formuliert",
+  // nicht „erzeugt" — das ist der Begriff aus KA6 und zugleich der, den der Wächter
+  // `tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts` von einer dauerhaft sichtbaren
+  // Erzeugungsbehauptung unterscheidet.
+  "klara.write.title": "Schreiben auf Zuruf",
+  "klara.write.hint":
+    "Klara formuliert einen Vorschlag. Er landet im Antwortfeld darüber und geht erst auf deinen Klick ins Dokument.",
+  "klara.write.create": "Erstellen",
+  "klara.write.complete": "Vervollständigen",
+  "klara.write.rephrase": "Umformulieren",
+  "klara.write.busy": "Klara formuliert einen Vorschlag ...",
+  "klara.write.ready": "Vorschlag steht im Antwortfeld — nichts wurde ins Dokument geschrieben.",
+  "klara.write.empty": "Markiere zuerst Text im Dokument oder gib oben ein, worum es gehen soll.",
+  "klara.write.noBasis":
+    "Kein Vorschlag: Es gibt dazu keine belastbare Grundlage. Erfunden wird nichts.",
+  "klara.write.insertCta": "Vorschlag in Word einfügen",
+  "klara.write.insertOk": "Vorschlag eingefügt — mit Herkunftszeile.",
+  "klara.write.provenance":
+    "KI-formuliert — kein zitiertes KLARWERK-Wissen. Vor Verwendung fachlich prüfen.",
+  // Die beiden Blockgründe bleiben GETRENNT: `external_not_migrated` ist eine Betriebsentscheidung,
+  // an der der Anwender nichts ändern kann; `external_consent_missing` ist eine Frage an ihn selbst.
+  // Ein gemeinsamer Satz nähme ihm genau diesen Unterschied.
+  "klara.write.blockedNotMigrated":
+    "Formulieren ist hier ausgeschaltet: Der externe Weg ist noch nicht freigeschaltet. Das ist eine Betriebsentscheidung — du kannst daran nichts ändern.",
+  "klara.write.blockedConsentMissing":
+    "Formulieren ist gesperrt, weil deine Zustimmung für den externen Weg fehlt. Du kannst sie oben im Zustimmungskasten erteilen.",
+  "klara.write.blockedOther":
+    "Formulieren ist für diese Sitzung gesperrt. Der Server nennt als Grund: {{grund}}",
+  "klara.write.blockedUnknown":
+    "Ob formuliert werden darf, ist noch nicht bekannt — der Sitzungsstand wird abgerufen. Solange wird kein Zuruf angeboten.",
   // Sektions-Erklärungen (Berater-Lieferung 05.07.): je Überschrift EIN Erklärtext (shelp.*).
   "shelp.adm.seedTitle":
     "Hier lädst du fertige Beispieldaten, mit denen du KLARWERK gefahrlos ausprobieren kannst. Das geht nur, solange die Instanz noch leer ist — so mischen sich echte Daten und Beispiele nie. Alle Beispieldaten sind als solche markiert und lassen sich später mit einem Klick rückstandslos entfernen.",
@@ -4878,6 +4940,8 @@ const en: typeof de = {
   "audit.action.ko_confidentiality": "Confidentiality changed",
   "audit.action.ko_conflict_review": "Conflict review",
   "audit.action.ko_returned_to_author": "Returned to author",
+  // JOB 557 D8 — see the German entry for the finding and the two-name rule.
+  "audit.action.ko_returned_to_owner": "Returned to owner",
   "audit.action.ko_source_added": "Source added",
   "audit.action.ko_source_removed": "Source removed",
   "ktype.bauchgefuehl": "Intuition",
@@ -5207,6 +5271,11 @@ const en: typeof de = {
   "capture.wizard.titleLabel": "Title",
   "capture.wizard.structData": "Core statement, conditions & measures",
   "capture.wizard.discard": "Discard",
+  // JOB 1154 D2 — see the German block: three locked states, three distinct sentences.
+  "capture.wizard.step.lockedCurrent": "You are already in this step.",
+  "capture.wizard.step.lockedNeedDraft":
+    "No draft yet: tell your knowledge first and have it structured.",
+  "capture.wizard.step.lockedViaSubmit": "This step opens via “Review & submit”.",
   "ko.couple.title": "Asset coupling",
   "ko.deleteButton": "Delete knowledge object",
   "ko.deleteQ":
@@ -7784,6 +7853,30 @@ const en: typeof de = {
   "klara.offer.label": "Klara's suggestions",
   "klara.offer.lead": "There is already something on this:",
   "klara.offer.open": "View",
+  // JOB 1153 (KA6 stage 1) — see the German block for the reasoning and the two-dictionary pattern.
+  "klara.write.title": "Write on request",
+  "klara.write.hint":
+    "Klara drafts a suggestion. It lands in the answer field above and only goes into the document when you click.",
+  "klara.write.create": "Draft",
+  "klara.write.complete": "Complete",
+  "klara.write.rephrase": "Rephrase",
+  "klara.write.busy": "Klara is drafting a suggestion ...",
+  "klara.write.ready":
+    "The suggestion is in the answer field — nothing was written into the document.",
+  "klara.write.empty": "Select text in the document first, or type above what it should be about.",
+  "klara.write.noBasis": "No suggestion: there is no reliable basis for this. Nothing is invented.",
+  "klara.write.insertCta": "Insert suggestion into Word",
+  "klara.write.insertOk": "Suggestion inserted — with its provenance line.",
+  "klara.write.provenance":
+    "AI-phrased — not quoted KLARWERK knowledge. Please review professionally before use.",
+  "klara.write.blockedNotMigrated":
+    "Drafting is switched off here: the external path is not enabled yet. That is an operational decision — there is nothing you can change about it.",
+  "klara.write.blockedConsentMissing":
+    "Drafting is blocked because your consent for the external path is missing. You can give it in the consent card above.",
+  "klara.write.blockedOther":
+    "Drafting is blocked for this session. The server gives this reason: {{grund}}",
+  "klara.write.blockedUnknown":
+    "Whether drafting is allowed is not known yet — the session status is being retrieved. Until then no request is offered.",
   // Section explanations (consultant delivery 05.07., interim EN — refined in delivery 3).
   "shelp.adm.seedTitle":
     "Here you load ready-made sample data to try KLARWERK safely. This only works while the instance is still empty — so real data and samples never mix. All sample data is marked as such and can later be removed completely with one click.",
@@ -9010,6 +9103,8 @@ const nl: typeof de = {
   "audit.action.ko_confidentiality": "Vertrouwelijkheid gewijzigd",
   "audit.action.ko_conflict_review": "Conflictreview",
   "audit.action.ko_returned_to_author": "Terug naar auteur",
+  // JOB 557 D8 — zie de Duitse regel voor de bevinding en de tweenamenregel.
+  "audit.action.ko_returned_to_owner": "Terug naar eigenaar",
   "audit.action.ko_source_added": "Bron toegevoegd",
   "audit.action.ko_source_removed": "Bron verwijderd",
   "ktype.bauchgefuehl": "Intuïtie",
@@ -9327,6 +9422,11 @@ const nl: typeof de = {
   "capture.wizard.titleLabel": "Titel",
   "capture.wizard.structData": "Kernuitspraak, voorwaarden & maatregelen",
   "capture.wizard.discard": "Verwerpen",
+  // JOB 1154 D2 — zie het Duitse blok: drie vergrendelde toestanden, drie eigen zinnen.
+  "capture.wizard.step.lockedCurrent": "Je bent al in deze stap.",
+  "capture.wizard.step.lockedNeedDraft":
+    "Nog geen concept: vertel eerst je kennis en laat die structureren.",
+  "capture.wizard.step.lockedViaSubmit": "Deze stap opent via „Controleren & indienen”.",
   "ko.couple.title": "Koppeling met installatie",
   "ko.deleteButton": "Kennisobject verwijderen",
   "ko.deleteQ":
@@ -11892,6 +11992,33 @@ const nl: typeof de = {
   "klara.offer.label": "Klara's suggesties",
   "klara.offer.lead": "Hierover is al iets:",
   "klara.offer.open": "Bekijken",
+  // JOB 1153 (KA6 fase 1) — zie het Duitse blok voor de onderbouwing en het dubbele
+  // woordenboekpatroon.
+  "klara.write.title": "Schrijven op verzoek",
+  "klara.write.hint":
+    "Klara maakt een voorstel. Het komt in het antwoordveld hierboven en gaat pas op jouw klik het document in.",
+  "klara.write.create": "Opstellen",
+  "klara.write.complete": "Aanvullen",
+  "klara.write.rephrase": "Herformuleren",
+  "klara.write.busy": "Klara stelt een voorstel op ...",
+  "klara.write.ready":
+    "Het voorstel staat in het antwoordveld — er is niets in het document geschreven.",
+  "klara.write.empty":
+    "Selecteer eerst tekst in het document of typ hierboven waar het over moet gaan.",
+  "klara.write.noBasis":
+    "Geen voorstel: hiervoor is geen betrouwbare basis. Er wordt niets verzonnen.",
+  "klara.write.insertCta": "Voorstel in Word invoegen",
+  "klara.write.insertOk": "Voorstel ingevoegd — met herkomstregel.",
+  "klara.write.provenance":
+    "AI-geformuleerd — geen geciteerde KLARWERK-kennis. Controleer dit vakinhoudelijk vóór gebruik.",
+  "klara.write.blockedNotMigrated":
+    "Formuleren staat hier uit: de externe weg is nog niet vrijgegeven. Dat is een bedrijfsbeslissing — daar kun jij niets aan veranderen.",
+  "klara.write.blockedConsentMissing":
+    "Formuleren is geblokkeerd omdat jouw toestemming voor de externe weg ontbreekt. Je kunt die hierboven in het toestemmingsvak geven.",
+  "klara.write.blockedOther":
+    "Formuleren is voor deze sessie geblokkeerd. De server noemt als reden: {{grund}}",
+  "klara.write.blockedUnknown":
+    "Of er geformuleerd mag worden is nog niet bekend — de sessiestand wordt opgehaald. Tot dan wordt er geen verzoek aangeboden.",
   "shelp.adm.seedTitle":
     "Hier laad je kant-en-klare voorbeelddata waarmee je KLARWERK gevaarloos kunt uitproberen. Dat kan alleen zolang de instantie nog leeg is — zo vermengen echte data en voorbeelden zich nooit. Alle voorbeelddata is als zodanig gemarkeerd en laat zich later met één klik spoorloos verwijderen.",
   "shelp.adm.createTitle":

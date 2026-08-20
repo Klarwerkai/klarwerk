@@ -233,11 +233,47 @@ function erhebeErzeuger(): Erzeuger[] {
 //
 // GEPRÜFT WERDEN STATTDESSEN ZWEI MASCHINELL FESTSTELLBARE EIGENSCHAFTEN DES MODULS:
 //
-//   (1) ES SCHREIBT NICHT. Keine DOM-Schreibform im ganzen Modul — keine Zuweisung an
-//       `innerHTML`/`outerHTML`/`textContent`/`nodeValue`, kein `insertAdjacentHTML`,
-//       `setAttribute`, `appendChild`, `replaceWith`, `append`/`prepend`, `insertBefore`,
-//       `replaceChildren`, `createElement`, `document.write`. Ein Modul ohne jede Schreibform kann
-//       den Beitragskörper nicht verändern und die Invariante folglich weder tragen noch umgehen.
+//   (1) ES ENTHÄLT KEINE DER BEKANNTEN DIREKTEN DOM-SCHREIBFORMEN. Keine direkte Zuweisung an
+//       `innerHTML`/`outerHTML`/`textContent`/`nodeValue`, kein direkter Aufruf von
+//       `insertAdjacentHTML`, `setAttribute`, `appendChild`, `replaceWith`, `append`/`prepend`,
+//       `insertBefore`, `replaceChildren`, `createElement`, `document.write`.
+//
+//       ================================================================================
+//       JOB 1185 D1 — DIESE ZUSAGE IST VERENGT WORDEN, UND HIER STEHT WARUM.
+//       ================================================================================
+//
+//       BIS HIERHER STAND: „ES SCHREIBT NICHT. Keine DOM-Schreibform im ganzen Modul … Ein Modul
+//       ohne jede Schreibform kann den Beitragskörper nicht verändern." Das war eine ALLGEMEINE
+//       Zusage über eine ENDLICHE Prüfung — und ben hat sie in `sammel92` (Register I50, zweitens)
+//       als solche benannt: der AST-Teil erkennt nur eine endliche Liste direkter
+//       Property-Zuweisungen und Methodennamen.
+//
+//       VIER FORMEN LAGERN DIE WIRKUNG AUS, OHNE EINE DER AUFGEZÄHLTEN GESTALTEN ZU HABEN. Alle
+//       vier wurden am 20.08.2026 einzeln in dieses Modul eingespeist und gefahren — der Wächter
+//       blieb JEDES MAL GRÜN (11/11), obwohl wirklich geschrieben wurde:
+//
+//         (a) Zuweisung über einen ZEICHENKETTENSCHLÜSSEL — `ziel["innerHTML"] = html`.
+//             Die Erhebung verlangt `ts.isPropertyAccessExpression(k.left)`; das hier ist eine
+//             ElementAccessExpression. Gleiche Wirkung, andere Knotenart.
+//         (b) `Reflect.set(ziel, "innerHTML", html)` — ein Aufruf, dessen Methodenname `set`
+//             lautet und deshalb in keiner der beiden Listen steht.
+//         (c) ALIASIERTER Methodenaufruf — `const anhaengen = ziel.appendChild.bind(ziel);
+//             anhaengen(knoten)`. Der wirksame Aufruf ist ein blosser Identifier ohne
+//             PropertyAccess; gerufen wird `bind`, und das steht nicht in der Liste.
+//         (d) IMPORTIERTER SCHREIBHELFER — `enhanceFiguresForEditing(ziel, …)`. Ein
+//             Identifier-Aufruf; was hinter dem Namen steht, sieht dieser Syntaxbaum nicht.
+//
+//       WAS DIESE ZUSAGE DESHALB HEUTE HEISST — und nur das: das Modul enthält keine der
+//       vierzehn oben aufgezählten Gestalten. Sie heisst NICHT „es schreibt nicht". Der
+//       Unterschied ist die ganze Korrektur, und der Kalibrierungsfall weiter unten
+//       („die vier Auslagerungsformen aus I50 sind NICHT erfasst") hält ihn fest, damit
+//       niemand die engere Zusage später wieder für die breite hält.
+//
+//       DIE WAHL, WIE ES WEITERGEHT, IST NICHT HIER GETROFFEN. ben nennt zwei Wege — die Zusage
+//       verengen (dieser Weg) oder die Erhebung tragfähig machen (positive Modulgrenze oder
+//       Laufzeitprobe mit schreibgeschütztem DOM-Adapter). Beide liegen mit Kosten, Bindung und
+//       Risiko in `RUECKGABE-BASIC4-JOB-1185-D1-LIEST-MARKUP-WAECHTER.md`; entschieden wird dort
+//       nicht, sondern vom KOPF.
 //
 //   (2) JEDES `<img`-LITERAL IST EIN SUCHMUSTER, KEIN ERZEUGTES MARKUP. Das Literal muss als Quelle
 //       eines regulären Ausdrucks enden: entweder unmittelbar als Argument von `RegExp(…)` /
@@ -572,7 +608,9 @@ describe("AUFTRAG-mega88 Block E, Stufe 1: wer Bildmarkup erzeugt, hat ein Urtei
   });
 
   // AUFTRAG-mega90 Block D — hier wird die Ausnahme eng.
-  it("jede `liest-markup`-Stelle BELEGT, dass sie liest: keine Schreibform, jedes <img> ein Suchmuster", () => {
+  // JOB 1185 D1: der Testname sagt jetzt, was wirklich geprüft wird. Vorher hiess er „keine
+  // Schreibform"; das war die allgemeine Zusage, die die Erhebung nicht halten kann (s. Kopf).
+  it("jede `liest-markup`-Stelle belegt: keine BEKANNTE DIREKTE Schreibform, jedes <img> ein Suchmuster", () => {
     const leser = Object.entries(ERZEUGER_DISPOSITION).filter(([, d]) => d === "liest-markup");
     expect(
       leser.length,
@@ -585,6 +623,68 @@ describe("AUFTRAG-mega88 Block E, Stufe 1: wer Bildmarkup erzeugt, hat ein Urtei
         `${datei} ist als reine LESE-Stelle disponiert, belegt das aber nicht. „Baut keinen vollständigen Anker" beweist nicht „schreibt nichts".`,
       ).toEqual([]);
     }
+  });
+
+  // ==============================================================================================
+  // JOB 1185 D1 — DIE GRENZE DER ZUSAGE IST GEMESSEN, NICHT BEHAUPTET.
+  // ==============================================================================================
+  //
+  // Der Kopf dieses Blocks sagt seit JOB 1185, dass die Erhebung nur BEKANNTE DIREKTE Schreibformen
+  // sieht. Ein Satz im Kommentar ist aber genau die Sorte Zusage, die hier gerade korrigiert wurde:
+  // er kann veralten, ohne dass es jemand merkt. Deshalb steht die Grenze hier als FALL.
+  //
+  // ER IST BEWUSST HERUM GEBAUT: er belegt, dass die vier Formen NICHT erkannt werden. Schliesst
+  // jemand später eine davon (Weg B), wird DIESER Fall rot — und zwingt damit dazu, im selben Zug
+  // auch die Zusage im Kopf wieder zu erweitern. Ohne ihn liefen Erhebung und Zusage erneut
+  // auseinander, nur in die andere Richtung.
+  //
+  // Gefahren wird durch DIESELBE Funktion, die oben den echten Baum beurteilt — eine Attrappe der
+  // Prüflogik würde nichts belegen.
+  const AUSLAGERUNGSFORMEN: ReadonlyArray<readonly [string, string]> = [
+    [
+      "(a) Zuweisung über einen Zeichenkettenschlüssel",
+      'export function s(ziel: Record<string, string>, html: string): void { ziel["innerHTML"] = html; }',
+    ],
+    [
+      "(b) Reflect.set",
+      'export function s(ziel: object, html: string): void { Reflect.set(ziel, "innerHTML", html); }',
+    ],
+    [
+      "(c) aliasierter Methodenaufruf",
+      "export function s(ziel: HTMLElement, k: Node): void { const f = ziel.appendChild.bind(ziel); f(k); }",
+    ],
+    [
+      "(d) importierter Schreibhelfer",
+      'import { enhanceFiguresForEditing } from "./editorFigures";\nexport function s(ziel: HTMLElement): void { enhanceFiguresForEditing(ziel, "x", "y"); }',
+    ],
+  ];
+
+  it("die vier Auslagerungsformen aus I50 sind NICHT erfasst — die Zusage ist entsprechend eng", () => {
+    for (const [name, quelle] of AUSLAGERUNGSFORMEN) {
+      expect(
+        leserBefunde("apps/web/src/lib/erfundene-auslagerung.ts", quelle),
+        `${name} wird jetzt ERKANNT. Das ist ein Fortschritt — aber die Zusage im Kopf dieses Blocks ist noch die enge („keine BEKANNTEN DIREKTEN Schreibformen"). Erweitere sie im selben Zug, sonst sagt der Wächter erneut weniger, als er kann.`,
+      ).toEqual([]);
+    }
+  });
+
+  it("KALIBRIERUNG — die vier Formen schreiben wirklich, der direkte Fall wird erkannt", () => {
+    // Ohne diesen Fall wäre der Fall darüber wertlos: „nicht erkannt" könnte auch heissen, dass
+    // `leserBefunde` gar nichts erkennt. Die DIREKTE Gestalt derselben Wirkung MUSS auffallen.
+    expect(
+      leserBefunde(
+        "apps/web/src/lib/erfundene-auslagerung.ts",
+        "export function s(ziel: HTMLElement, html: string): void { ziel.innerHTML = html; }",
+      ),
+      "die direkte Zuweisung an innerHTML MUSS erkannt werden",
+    ).not.toEqual([]);
+    expect(
+      leserBefunde(
+        "apps/web/src/lib/erfundene-auslagerung.ts",
+        "export function s(ziel: HTMLElement, k: Node): void { ziel.appendChild(k); }",
+      ),
+      "der direkte Aufruf von appendChild MUSS erkannt werden",
+    ).not.toEqual([]);
   });
 
   // DIE ZELLE, DIE IN mega89 GEFEHLT HAT, und sie ist der ganze Punkt dieses Blocks: ein ERFUNDENER

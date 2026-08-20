@@ -208,6 +208,40 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         );
     });
 
+    // ============================================================================================
+    // JOB 1171 D1 (KA8 Stufe 1a) — DIE AUSKUNFT UEBER DEN NAECHSTEN SINNVOLLEN SCHRITT.
+    // ============================================================================================
+    //
+    // KEIN SICHTBARER NUTZEN. Diese Route ist der Datenlieferant, nicht die Karte. Es gibt heute
+    // keinen Aufrufer: die Clientverdrahtung ist Stufe 1a-b und wartet auf die Integration von
+    // JOB 1164 D1 (`apps/web/src/api/types.ts` traegt dort einen zweiten, nicht integrierten
+    // Stand), die Web-Karte ist Stufe 1b, die Panel-Karte Stufe 2.
+    //
+    // REINE LESUNG, und das ist die Zusage: kein Schreibpfad, keine Nebenwirkung, kein neuer
+    // gespeicherter Zustand. `anchorsMissing` wird ueber `verifyDraftAnchors` GELESEN, nicht
+    // geaendert. Dieselbe Berechtigung und dieselbe Sichtbarkeitsentscheidung wie die uebrigen
+    // Entwurfsrouten — eine zweite Auffassung davon, wer einen Entwurf sehen darf, waere eine zu
+    // viel (s. `canSeeDraft` oben).
+    //
+    // DER LEERFALL LIEFERT EIN LEERES OBJEKT, nicht `null` und nicht einen leeren String: ist kein
+    // Schritt ableitbar, FEHLT der Schluessel. Ein gesetztes Feld ohne Wert waere eine Auskunft,
+    // die so aussieht, als haette jemand nachgedacht. Geprueft wird das entsprechend mit dem
+    // `in`-Operator und nicht gegen `undefined`.
+    app.get<{ Params: { id: string } }>(
+      "/api/drafts/:id/naechster-schritt",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
+          return;
+        }
+        const schritt = await capture.naechsterSchrittFuerEntwurf(request.params.id);
+        reply.code(200).send(schritt ? { naechsterSchritt: schritt } : {});
+      },
+    );
+
     app.put<{ Params: { id: string }; Body: DraftPayload }>(
       "/api/drafts/:id",
       // WP-D1c/WP-D1d: derselbe dokument-taugliche Cap + Auth-vor-Parsing wie POST — ein bildreicher

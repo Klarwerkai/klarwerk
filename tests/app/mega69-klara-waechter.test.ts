@@ -573,7 +573,43 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Stand zeigen — dann fehlen nur die Karten, alles Uebrige arbeitet unveraendert weiter. Der
     // Anwender verliert dabei nie den Cursor: die Karte wird ausserhalb des Eingabebereichs
     // gezeichnet und ruft nie `focus()` — das ist die Abnahme aus `OFFEN.md`, Abschnitt „1a-KA".
-    const PIN = "c3b0625382d3eb74078d49d70a4598dfb15f02db4b70877e90ae1c46af66195f";
+    // ==========================================================================================
+    // NACHFUEHRUNG JOB 1153 · D3 — und die Pruefung, die der Waechter dafuer verlangt.
+    // ==========================================================================================
+    // Der Pin steigt hier zum dritten Mal fuer KA6: D1 hat die Schreibflaeche gebaut (Pin blieb
+    // damals stehen und war zu Recht rot), D2 macht die Herkunft zur Invariante aller
+    // Uebernahmewege, D3 oeffnet den vierten dieser Wege. Alle drei Staende liegen im Marker
+    // `KW-KA6-SCHREIBEN`.
+    //
+    //   c3b06253… → 55345e78…  (D1, BASIC4: die Schreibflaeche)
+    //   55345e78… → 6a833163…  (D2, BASIC3: Herkunft auf allen Wegen, fail-closed, Zustandswechsel)
+    //   6a833163… → d163274d…  (D3, BASIC4: der Kopierknopf als offener Uebernahmeweg)
+    //
+    // AUSLIEFERUNGSFOLGEN, einzeln geprueft — dieselbe Liste, die dieser Waechter fuer KA3 fuehrt:
+    //   · KEIN neues Abrufziel. D3 fuegt keinen einzigen `fetch(...)`-Aufruf hinzu; die Menge der
+    //     Ziele bleibt unveraendert (`BEKANNTE_ABRUFZIELE` in mega69-klara-merkmale steht gruen).
+    //   · KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE geaenderte Nutzlast, KEIN
+    //     neuer Fremd-Ursprung.
+    //   · KEIN `setInterval`, kein Takt, kein Autostart. D3 haengt an einem DRITTEN Wrapper um
+    //     eine bereits gerufene Funktion (`updateInsertState`) — dieselbe Bauform wie D2 sie fuer
+    //     `renderAskOutcome` und `composeOutputText` gewaehlt hat.
+    //   · KEIN zusaetzlicher Schreibweg ins Dokument. Die beiden Schreibaufrufe bleiben, wo sie
+    //     sind (`buildInsertAttempts`), hinter genau einem Klick. Der Kopierknopf schreibt in die
+    //     Zwischenablage, nicht ins Dokument — die Kernzusage „Klara schreibt NIE selbsttaetig"
+    //     bleibt an denselben zwei Aufrufen gemessen und steht unveraendert bei null.
+    //   · HIER STEHT DIE AUSNAHME, und sie wird nicht weggeschrieben: D3 ist die erste
+    //     KA6-Nachfuehrung, die ERWEITERT statt einzuschraenken. Der Kopierknopf war fuer einen
+    //     KA6-Vorschlag bisher gesperrt und ist es ab jetzt nicht mehr. Das ist beauftragt (BENs
+    //     D2-Urteil, ROT: „`disabled`, ‚gesperrt' oder ‚liefert nichts' erfuellt die Abnahme
+    //     nicht") und es oeffnet keinen ungekennzeichneten Ausgang: der Knopf geht durch
+    //     `copyAnswer` → `composeOutputText` → `ka6Ausgabetext`, also durch denselben einen
+    //     Herkunftsbauer wie der Einfuegeklick. Geoeffnet wird nur bei
+    //     `ka6VorschlagAktiv && ka6KiFormuliert`; der fail-closed-Fall aus D2 bleibt zu.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Die Datei wird beim naechsten
+    //     Oeffnen frisch geholt; bis dahin kann der Office-Cache kurz den D2-Stand zeigen — dann
+    //     bleibt der Kopierknopf bei KA6 gesperrt wie bisher. Das ist ein fehlender Komfort, kein
+    //     falsch gekennzeichneter Text.
+    const PIN = "d163274da590c91c1e7bf999731aab1d91c9e98a9b59fa245d86ba73098873cc";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

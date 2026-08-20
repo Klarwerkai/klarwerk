@@ -9,15 +9,38 @@
 // Autoritaet (`IsKoVersionCurrent`) wird die Sichtbarkeit deshalb hier aufgeloest und dem
 // Projektionsmodul als DATUM gereicht.
 //
-// DIE SICHTBARKEITSREGEL, an die sich dieser Weg bindet, ist NICHT neu erfunden: es ist die Regel
-// aus SCRUM-506, die der Bibliotheks-Export bereits fuehrt (library-routes.ts) — vertrauliche
-// Objekte nur fuer Rollen mit `ko.validate` (Controller/Admin). Dieselbe Rolle, dieselbe Semantik,
-// dasselbe Praedikat `isConfidential`.
+// DIE SICHTBARKEITSREGEL, an die sich dieser Weg bindet, ist NICHT neu erfunden — aber sie heisst
+// heute anders als zu mega45: das Praedikat `darfSehen` (services/app/src/sichtbarkeit.ts:67-77).
+// Es traegt die SCRUM-506-Regel `can(role,"ko.validate")` (sichtbarkeit.ts:71) UND seit Pedis
+// Variante A die Autor-Ausnahme (sichtbarkeit.ts:76). Eine eigene Kopie der Regel steht hier nicht
+// mehr; die Entscheidung faellt an genau einer Stelle (sichtbarkeit.ts:1-24).
 //
-// EHRLICHE GRENZE, ausdruecklich benannt: diese Route ist damit STRENGER als der uebrige Lesepfad.
-// `GET /api/kos/:id` und `GET /api/conflicts` liefern heute JEDEM Inhaber von `ko.read` auch
-// vertrauliche Objekte. Diese Projektion schliesst also keine bestehende Luecke — sie vermeidet
-// nur, eine NEUE aufzureissen. Der breitere Befund steht im Bericht zu mega45.
+// WAS DIESE ROUTE HEUTE TUT — nachgemessen am 20.08.2026 (JOB 1170 D1). Das ist der Stand, der
+// gilt; die historische Fassung steht darunter und ist als solche gekennzeichnet:
+//
+//   · Sie schuetzt ihr ZENTRUM. Ein Leser ohne Sichtbarkeit auf das angefragte Objekt bekommt
+//     404 statt der Projektion — `:105`, `if (!ko || !darfSehen(user, ko))`. Am Draht gepinnt in
+//     tests/security/job1170-herkunft-zentrum-vertraulich.test.ts.
+//   · Sie schuetzt die GEGENSEITE eines Konflikts unveraendert — `:130`,
+//     `gegenKo && darfSehen(user, gegenKo)`, fail-closed: ein nicht aufloesbares Gegenstueck
+//     gilt als unsichtbar.
+//   · Sie ist damit NICHT mehr strenger als der uebrige Lesepfad, sondern gleich streng.
+//     `GET /api/kos/:id` faehrt dieselbe Entscheidung ueber `sichtbaresKoOder404`
+//     (ko-routes.ts:440-447, Aufruf :489) und antwortet ebenfalls 404; `GET /api/conflicts`
+//     faehrt sie ueber `sichtbarePaare` und `feldFreigabe` (conflicts-routes.ts:40-45).
+//
+// Die beiden dateiinternen Zeilennummern tragen ihr Codezitat mit sich: eine spaetere
+// Verschiebung macht den Verweis ungenau, aber nicht unauffindbar. Genau daran ist die alte
+// Fassung gescheitert.
+//
+// HISTORISCH — damit niemand den alten Satz vermisst oder ihn zweimal widerlegt: bis
+// AUFTRAG-mega74 (30.07.2026) stand hier „diese Projektion schliesst keine bestehende Luecke" und
+// „`GET /api/kos/:id` und `GET /api/conflicts` liefern heute JEDEM Inhaber von `ko.read` auch
+// vertrauliche Objekte". Beide Saetze waren ab mega74 Block B falsch. Der Bau hat das damals
+// 56 Zeilen weiter unten richtiggestellt (s. Block F an der Sperre) und die alte Fassung hier
+// stehen lassen — zwei Wahrheiten in einer Datei, gefunden in JOB 1167 D1, geschlossen in
+// JOB 1170 D1. Ein Kommentar, der die Lage falsch beschreibt, ist gefaehrlicher als gar keiner:
+// er haelt den naechsten Auftrag davon ab, eine bereits scharfe Route anzusehen.
 import type { FastifyPluginAsync } from "fastify";
 import type { ConflictService } from "../../../conflicts";
 import type { KoService } from "../../../knowledge-object";
@@ -71,9 +94,14 @@ export function provenanceRoutes(deps: ProvenanceDeps, guards: Guards): FastifyP
       try {
         const ko = await deps.ko.get(request.params.id);
         // AUFTRAG-mega74 BLOCK F: bis mega74 war diese Route ausdrücklich als „schließt keine
-        // bestehende Lücke" kommentiert (:19) — sie schützte die GEGENSEITE eines Konflikts, ließ
-        // das ZENTRUM aber ungefiltert durch, weil `GET /api/kos/:id` es ohnehin herausgab. Seit
-        // Block B gibt es das nicht mehr; damit wird diese Vorbereitung hier scharf.
+        // bestehende Lücke" kommentiert (die alte Fassung steht als HISTORISCH im Kopf dieser
+        // Datei) — sie schützte die GEGENSEITE eines Konflikts, ließ das ZENTRUM aber ungefiltert
+        // durch, weil `GET /api/kos/:id` es ohnehin herausgab. Seit Block B gibt es das nicht
+        // mehr; damit wird diese Vorbereitung hier scharf.
+        //
+        // JOB 1170 D1: diese Zeile ist ab jetzt am Draht gepinnt — wer `darfSehen` hier entfernt,
+        // macht tests/security/job1170-herkunft-zentrum-vertraulich.test.ts rot (gemessen: genau
+        // dieser eine Fall, die Nachbardateien bleiben grün).
         if (!ko || !darfSehen(user, ko)) {
           reply.code(404).send({ error: "NOT_FOUND", message: "Wissensobjekt nicht gefunden." });
           return;

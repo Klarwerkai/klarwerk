@@ -96,3 +96,85 @@ describe("SCRUM-124: Rückgabe/Nacharbeit aus Audit", () => {
     expect(mine[0]?.verdict).toBe("down");
   });
 });
+
+// ================================================================================================
+// JOB 557 · D8 — DER ZWEITE VERBRAUCHER KENNT BEIDE NAMEN, UND ER VERWECHSELT SIE NICHT
+// ================================================================================================
+//
+// Die Rückgabe an eine benannte Eigentümerin heisst seit D8 `ko.returned-to-owner`. Für diese
+// Datei folgen daraus zwei Dinge, die auseinandergehalten werden müssen:
+//
+//   · DER STATUS AM OBJEKT (`isReturnedForRework`) gilt für BEIDE Namen. „In Nacharbeit" ist eine
+//     Eigenschaft des Wissensobjekts, nicht der Person — und ein Board, das den neuen Namen nicht
+//     kennt, schwiege über einen Zustand, den es gibt.
+//   · DIE PERSÖNLICHE AUFGABENLISTE (`returnedToAuthor`) gilt es NICHT. Sie beantwortet „was liegt
+//     bei MIR", und bei einer Owner-Rückgabe liegt es gerade nicht bei der Autorin. Würde der neue
+//     Name hier einfach mitzählen, hätte D8 die Verwechslung nur an eine andere Stelle verschoben.
+//
+// HISTORISCHE EREIGNISSE BLEIBEN LESBAR: Altbestand trägt ausschliesslich `ko.returned-to-author`,
+// und diese Einträge müssen weiterhin denselben Zustand ergeben wie am Tag ihrer Entstehung.
+describe("JOB 557 D8: Nacharbeitsstatus und persönliche Aufgabe sind zwei Aussagen", () => {
+  it("V4a · der neue Owner-Name führt zum sichtbaren Nacharbeitsstatus", () => {
+    const entries = [
+      ev(1, "ko.created", "K1"),
+      ev(2, "ko.returned-to-owner", "K1", {
+        verdict: "down",
+        author: "anna",
+        responsible: "eva",
+        responsibleKind: "owner",
+      }),
+    ];
+    expect(isReturnedForRework(entries, "K1")).toBe(true);
+  });
+
+  it("V4b · eine spätere Überarbeitung beendet auch die Owner-Nacharbeit", () => {
+    // Ohne diesen Fall wäre der neue Name zwar bekannt, aber nicht abschliessbar — das Board
+    // zeigte „Nacharbeit" für immer.
+    const entries = [
+      ev(1, "ko.returned-to-owner", "K1", { verdict: "warn" }),
+      ev(2, "ko.revised", "K1"),
+    ];
+    expect(isReturnedForRework(entries, "K1")).toBe(false);
+  });
+
+  it("V4c · HISTORISCH: Alteinträge bleiben lesbar und ergeben denselben Zustand", () => {
+    // Der Altbestand kennt den neuen Namen nicht. Er darf durch diese Änderung nichts verlieren.
+    const entries = [ev(1, "ko.returned-to-author", "K1", { verdict: "warn" })];
+    expect(isReturnedForRework(entries, "K1")).toBe(true);
+    const kos = [ko({ id: "K1", author: "anna" })];
+    expect(returnedToAuthor(entries, kos, "anna")).toHaveLength(1);
+  });
+
+  it("V4d · eine Owner-Rückgabe erscheint NICHT in der Aufgabenliste der Autorin", () => {
+    const kos = [ko({ id: "K1", author: "anna" })];
+    const entries = [
+      ev(2, "ko.returned-to-owner", "K1", {
+        verdict: "down",
+        author: "anna",
+        responsible: "eva",
+        responsibleKind: "owner",
+      }),
+    ];
+    // Das Objekt IST in Nacharbeit …
+    expect(isReturnedForRework(entries, "K1")).toBe(true);
+    // … aber nicht bei ihr. Sonst wäre der ehrliche Name nur eine andere Verwechslung.
+    expect(returnedToAuthor(entries, kos, "anna")).toEqual([]);
+  });
+
+  it("V4e · fällt die Rückgabe auf die Autorin zurück, steht sie sehr wohl in ihrer Liste", () => {
+    // Die Gegenkontrolle zu V4d: der Fallback bleibt vollständig erhalten. Ohne diesen Fall wäre
+    // „erscheint nicht" auch dann grün, wenn die Liste generell leer bliebe.
+    const kos = [ko({ id: "K1", author: "anna" })];
+    const entries = [
+      ev(2, "ko.returned-to-author", "K1", {
+        verdict: "warn",
+        author: "anna",
+        responsible: "anna",
+        responsibleKind: "author-fallback",
+      }),
+    ];
+    const mine = returnedToAuthor(entries, kos, "anna");
+    expect(mine).toHaveLength(1);
+    expect(mine[0]?.verdict).toBe("warn");
+  });
+});

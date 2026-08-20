@@ -1,3 +1,16 @@
+// @vitest-environment jsdom
+//
+// JOB 1153 (KA6 Stufe 1): DIE UMGEBUNGSDIREKTIVE IST NEU — und sie ist die einzige Zeile dieser
+// Datei, die nicht zu einem KA6-Fall gehoert. Der KA6-Vertrag verlangt einen VERHALTENSfall am
+// ganzen Aufgabenfenster (Spion auf `Word.run` und `setSelectedDataAsync`), und der braucht ein
+// Dokument. Die neun bestehenden Faelle sind DOM-frei; dass sie unter jsdom unveraendert gruen
+// bleiben, ist gemessen und in der Rueckgabe belegt.
+//
+// Der Gate-`tsc` laeuft ohne DOM-lib (`tsconfig.json`: `lib: ["ES2022"]`, `tests/**/*.ts` ist im
+// Check) und `@types/jsdom` gibt es nicht. Die DOM-Zugriffe werden deshalb ueber schmale
+// Struktur-Typen abgegriffen — dasselbe Muster, das `tests/app/word-addin-taskpane-cache.test.ts:36-46`
+// bereits traegt. Kein neues Muster, keine neue Abhaengigkeit.
+//
 // WP-KLARA-ASK (Pedis Entscheid 22.07., bens Option B): das Klara-Funktionsversprechen — Aussage
 // in Word markieren, Klara fragen, quellengebundene Antwort aus dem VALIDIERTEN Werkswissen.
 // Getestet (Muster KLARA-2: DOM-freie Helfer + Inline-Spiegel + Quelltext-Pins):
@@ -10,7 +23,7 @@
 //  (5) Inline-Spiegel im buildlosen Taskpane verhaltensgleich, i18n x3, Tab-Struktur.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type AskFetchFn,
   type AskFetchInit,
@@ -941,5 +954,892 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     expect(match).not.toBeNull();
     // new Function parst das komplette Skript — wirft bei Syntaxfehlern (entspricht node --check).
     expect(() => new Function(match?.[1] ?? "")).not.toThrow();
+  });
+});
+
+// ================================================================================================
+// JOB 1153 · KA6 STUFE 1 — DIE SCHREIBFLAECHE, AM AUSGELIEFERTEN FENSTER GEMESSEN.
+// ================================================================================================
+//
+// DIE DREI WOERTLICHEN ABNAHMEKRITERIEN aus `OFFEN.md` (KA6):
+//   · „das Ergebnis erscheint IMMER als Vorschlag im Panel und wird erst auf Klick eingefuegt"
+//   · „jede eingefuegte Passage traegt ihre Herkunft"
+//   · „Klara schreibt NIE selbsttaetig ins Dokument"
+//
+// WARUM DIESE FAELLE DAS GANZE FENSTER LADEN statt einen Block zu schneiden: die dritte Zusage ist
+// eine Aussage ueber ABWESENHEIT — „kein Schreibaufruf vor dem Klick". Eine Abwesenheit laesst sich
+// an einer einzeln gerufenen Hilfsfunktion nicht messen; nur ein Spion am HOST kann sie belegen.
+// Er sitzt deshalb auf `Word.run` und `setSelectedDataAsync` — den beiden einzigen Aufrufen, ueber
+// die Text in das Dokument gelangt (vollstaendig nachgezaehlt in
+// `_relay/kopf/outbox/RUECKGABE-BASIC4-JOB-1146-D1-KA6-ISTDELTA.md`, Abschnitt 4 zu Teilzusage 7).
+//
+// GEGENMUTATIONS-EMPFINDLICHKEIT, ausdruecklich: Laesst man den Vorschlag direkt einfuegen, steigt
+// der Spionzaehler VOR dem Klick — Fall 1 wird rot. Nimmt man die Kennzeichnung weg, fehlt sie im
+// ausgegebenen Text — Fall 2 wird rot. Beides ist im Durchgang ausgefuehrt und belegt.
+
+/**
+ * Schmale Struktur-Typen statt DOM-lib (Begruendung im Dateikopf). Es wird nur beschrieben, was
+ * diese Faelle wirklich anfassen — eine breitere Attrappe waere eine Behauptung ueber Formen, die
+ * hier niemand prueft.
+ */
+interface Ka6Element {
+  className: string;
+  textContent: string | null;
+  value: string;
+  disabled: boolean;
+  click(): void;
+  // JOB 1153 D2: Die nativen Uebernahmewege brauchen die Auswahlgrenzen (eine TEILAUSWAHL bleibt
+  // bewusst roh) und einen Weg, das echte Ereignis am Feld auszuloesen.
+  selectionStart: number;
+  selectionEnd: number;
+  dispatchEvent(ereignis: Event): boolean;
+}
+interface Ka6Dokument {
+  getElementById(id: string): Ka6Element | null;
+  body: { innerHTML: string };
+}
+interface Ka6Fenster {
+  Office?: unknown;
+  Word?: unknown;
+  addEventListener(typ: string, fn: unknown): void;
+  removeEventListener(typ: string, fn: unknown): void;
+  // JOB 1153 D2: das echte Ereignis wird mit dem Konstruktor DES FENSTERS gebaut — ein
+  // Node-eigenes `Event` wuerde von jsdom nicht als dasselbe erkannt. `navigator` traegt den
+  // Zwischenablage-Spion des Kopierknopf-Wegs.
+  Event: new (
+    typ: string,
+    init?: { bubbles?: boolean; cancelable?: boolean },
+  ) => Event;
+  navigator: object;
+}
+const umgebung = globalThis as unknown as { document: Ka6Dokument; window: Ka6Fenster };
+
+/** Die Serverlage, die ein Fall stellt. Jedes Feld entspricht einem echten Vertragsfeld. */
+interface Ka6Lage {
+  /** `KlaraResolution.executionAllowed` — darf fuer diese Sitzung ueberhaupt ausgefuehrt werden? */
+  executionAllowed: boolean;
+  /** `KlaraResolution.blockedReason` — der BENANNTE Grund, nicht ein Freitext. */
+  blockedReason: string | null;
+  /** `KlaraResolution.effectiveMode`. */
+  effectiveMode: "deterministic" | "internal" | "external";
+  /** Traegt der Antwortkoerper von `/api/ask` das Kennzeichnungssignal `aiGenerated`? */
+  aiGenerated: boolean;
+  /** Antwortet `/api/ask` mit einer belegten Antwort — oder mit einer Wissensluecke? */
+  answered: boolean;
+}
+
+const KA6_ANTWORTTEXT = "Vor jeder Wartung an Linie 3 zuerst den Not-Aus ziehen.";
+
+// ================================================================================================
+// WAS DER SPION ZAEHLT — UND WARUM NICHT EINFACH `Word.run`.
+// ================================================================================================
+//
+// Der Auftrag nennt „`Word.run` und `setSelectedDataAsync` bei 0". Am ausgelieferten Fenster kann
+// das nicht zutreffen, und zwar aus einem belegten Grund: `Word.run` ist NICHT der Schreibweg,
+// sondern der Einstieg in die Word-API ueberhaupt. KA1 benutzt ihn beim Oeffnen LESEND
+// (`ka1Aktualisieren` → `readWholeDocument` → `body.load("text")` / `getHtml()`), und mega74 holt
+// darueber Bilder. Gemessen: genau ein `Word.run` vor jedem Klick — ein Lesezugriff.
+//
+// Die Zusage von KA6 lautet aber „Klara schreibt NIE selbsttaetig ins Dokument", und schreiben tun
+// exakt zwei Aufrufe: `range.insertText(...)` INNERHALB von `Word.run` und
+// `setSelectedDataAsync(...)`. Genau die zaehlt der Spion — er misst damit die Zusage und nicht
+// ihren Traeger. `ka6WordRunGesamt` laeuft daneben mit, damit die Lesezugriffe sichtbar bleiben
+// statt zu verschwinden; die Abweichung vom Auftragswortlaut ist in der Rueckgabe benannt.
+let ka6WordRunGesamt = 0;
+let ka6InsertText = 0;
+let ka6SetSelected = 0;
+let ka6Eingefuegt: string[] = [];
+let ka6Zuhoerer: Array<{ typ: string; fn: unknown }> = [];
+
+/** Die Summe der echten SCHREIBAUFRUFE — die eine Zahl, an der die Kernzusage haengt. */
+function ka6Schreibaufrufe(): number {
+  return ka6InsertText + ka6SetSelected;
+}
+
+function ka6Aufloesung(lage: Ka6Lage): Record<string, unknown> {
+  return {
+    resolutionId: "res-ka6",
+    mode: lage.effectiveMode,
+    provider: "KLARWERK On-Premise",
+    model: "haus-modell",
+    adminConfiguredMode: lage.effectiveMode,
+    effectiveMode: lage.effectiveMode,
+    deviation: lage.blockedReason !== null,
+    deviationReason: lage.blockedReason,
+    externalConsentRequired: lage.effectiveMode === "external",
+    externalConsentGranted: false,
+    executionAllowed: lage.executionAllowed,
+    blockedReason: lage.blockedReason,
+    resolvedAt: new Date(Date.now() - 1000).toISOString(),
+    expiresAt: new Date(Date.now() + 300_000).toISOString(),
+    policyVersion: "p1",
+    configurationVersion: "c1",
+    // Genau die eine Klasse, die `klara-policy.ts:175` als KLARA_PAYLOAD_CLASS_QUESTION fuehrt.
+    effectivePayloadClasses: ["question"],
+    blockedPayloadClasses: [],
+  };
+}
+
+function ka6Sitzung(lage: Ka6Lage): Record<string, unknown> {
+  return {
+    sessionId: "sess-ka6",
+    tenantId: "t1",
+    actorId: "a1",
+    addinInstanceId: "inst-ka6",
+    documentContextId: "doc-ka6",
+    createdAt: new Date(Date.now() - 5000).toISOString(),
+    consentState: "none",
+    closed: false,
+    resolution: ka6Aufloesung(lage),
+  };
+}
+
+/** Der Antwortkoerper von `POST /api/ask` — in der Form, die `performAsk` wirklich liest. */
+function ka6AskKoerper(lage: Ka6Lage): Record<string, unknown> {
+  if (!lage.answered) {
+    return { result: { answered: false, answer: null, sources: [], trust: 0 }, gap: { id: "g-1" } };
+  }
+  return {
+    result: {
+      answered: true,
+      answer: KA6_ANTWORTTEXT,
+      sources: ["ko-ka6"],
+      citedSources: ["ko-ka6"],
+      trust: 55,
+      evidence: { grade: "unverified", sourcesConflicted: false, conflictsUnproven: false },
+      // AUFTRAG-mega81: das SERVERSEITIGE Kennzeichnungssignal. Der Client liest es, er nimmt es
+      // nicht an — deshalb steht es hier als Fixture und nicht als Annahme im Panel.
+      ...(lage.aiGenerated ? { aiGenerated: { aiGenerated: true, task: "answer" } } : {}),
+    },
+    gap: null,
+  };
+}
+
+function ka6Antwort(koerper: unknown, ok = true, status = 200): unknown {
+  return { ok, status, json: () => Promise.resolve(koerper) };
+}
+
+function ka6Router(lage: Ka6Lage) {
+  return (url: string, init?: { method?: string }) => {
+    const methode = (init?.method ?? "GET").toUpperCase();
+    if (url === "/api/auth/me") {
+      return Promise.resolve(ka6Antwort({ id: "u1", name: "Pruefer" }));
+    }
+    if (url === "/api/reasoner/status") {
+      return Promise.resolve(ka6Antwort({ enabled: false, reachable: "none" }));
+    }
+    if (url === "/api/klara/sessions" && methode === "POST") {
+      return Promise.resolve(ka6Antwort(ka6Sitzung(lage)));
+    }
+    if (url === "/api/klara/ai-status") {
+      return Promise.resolve(ka6Antwort(ka6Aufloesung(lage)));
+    }
+    if (url === "/api/ask" && methode === "POST") {
+      return Promise.resolve(ka6Antwort(ka6AskKoerper(lage)));
+    }
+    if (url.startsWith("/api/kos/")) {
+      return Promise.resolve(
+        ka6Antwort({ id: "ko-ka6", title: "Wartungsplan L3", trust: 55, status: "validiert" }),
+      );
+    }
+    return Promise.resolve(ka6Antwort({}, false, 404));
+  };
+}
+
+/** Alle anstehenden Mikrotasks abarbeiten lassen (Bauform aus w1-klara-lifecycle-taskpane). */
+async function ka6Leerlauf(runden = 10): Promise<void> {
+  for (let i = 0; i < runden; i += 1) {
+    await Promise.resolve();
+    await new Promise((r) => process.nextTick(r));
+  }
+}
+
+/**
+ * Laedt das VOLLSTAENDIGE Aufgabenfenster und haengt die Spione an den Host. Nichts wird
+ * herausgeschnitten — was hier gruen ist, ist am ausgelieferten Fenster gruen.
+ */
+async function ladeKa6Fenster(lage: Ka6Lage): Promise<void> {
+  // Lage und Fenster entstehen an EINER Stelle: der Router muss stehen, bevor das Inline-Skript
+  // laeuft — es ruft `/api/auth/me`, `/api/klara/sessions` und `/api/klara/ai-status` sofort.
+  vi.stubGlobal("fetch", ka6Router(lage));
+  const quelle = read(TASKPANE);
+  const skriptStart = quelle.lastIndexOf("<script>");
+  const skriptEnde = quelle.lastIndexOf("</script>");
+  expect(skriptStart, `${TASKPANE}: Inline-Skript nicht gefunden`).toBeGreaterThan(0);
+  const skript = quelle.slice(skriptStart + "<script>".length, skriptEnde);
+
+  const bodyStart = quelle.indexOf("<body>");
+  expect(bodyStart, `${TASKPANE}: <body> nicht gefunden`).toBeGreaterThan(0);
+  const markup = quelle.slice(bodyStart + "<body>".length, skriptStart);
+  // Fail-closed: waere das Markup leer, pruefte dieser Fall ein leeres Dokument.
+  expect(markup.length, `${TASKPANE}: Markup ist leer`).toBeGreaterThan(2000);
+  umgebung.document.body.innerHTML = markup;
+
+  // ============================================================================================
+  // DIE OFFICE-ATTRAPPE — VOLLSTAENDIG, weil eine halbe Attrappe den Lauf abbrechen laesst.
+  // ============================================================================================
+  // `CoercionType` und `AsyncResultStatus` sind KEIN Beiwerk: der vorhandene Fokus-/Eingabe-Zuhoerer
+  // des Panels (Herkunftszeile → `updateAskSourceNote` → `readAskSelection`) greift auf beide zu.
+  // Fehlt eines, wirft der Zuhoerer INNERHALB von jsdom, der Fall bleibt gruen und der LAUF endet
+  // mit Exitcode 1. Genau das ist in JOB 1151 D2 gemessen und gemeldet worden.
+  const COERCION = { Text: "text" } as const;
+  const ASYNC_STATUS = { Succeeded: "succeeded", Failed: "failed" } as const;
+  const kontext = {
+    document: {
+      url: "",
+      addHandlerAsync() {
+        /* Der Pruefstand loest keinen Markierungswechsel aus. */
+      },
+      getSelectedDataAsync(_typ: string, fn: (r: { status: string; value: string }) => void) {
+        // Leere Auswahl: dieser Pruefstand stellt kein markiertes Dokument und behauptet keines.
+        fn({ status: ASYNC_STATUS.Succeeded, value: "" });
+      },
+      // DER SPION AUF WEG 2 (`buildInsertAttempts`, Rueckfall).
+      setSelectedDataAsync(
+        text: string,
+        _opts: unknown,
+        fn: (r: { status: string }) => void,
+      ): void {
+        ka6SetSelected += 1;
+        ka6Eingefuegt.push(text);
+        fn({ status: ASYNC_STATUS.Succeeded });
+      },
+    },
+  };
+  umgebung.window.Office = {
+    context: kontext,
+    EventType: {},
+    CoercionType: COERCION,
+    AsyncResultStatus: ASYNC_STATUS,
+    onReady: (cb: () => void) => cb(),
+  };
+  // DER SPION AUF WEG 1 (`buildInsertAttempts`, primaerer Word.run-Weg). Gezaehlt wird der
+  // SCHREIBAUFRUF `insertText` — der `Word.run` daneben ist auch der Leseweg von KA1.
+  umgebung.window.Word = {
+    InsertLocation: { replace: "replace" },
+    run: (fn: (ctx: unknown) => unknown) => {
+      ka6WordRunGesamt += 1;
+      const range = {
+        insertText: (text: string) => {
+          ka6InsertText += 1;
+          ka6Eingefuegt.push(text);
+        },
+      };
+      const ctx = {
+        document: {
+          getSelection: () => range,
+          body: { text: "", load: () => undefined, getHtml: () => ({ value: "" }) },
+        },
+        sync: () => Promise.resolve(),
+      };
+      return Promise.resolve(fn(ctx));
+    },
+  };
+
+  // jsdom teilt EIN `window` ueber alle Faelle. Ohne Aufraeumen reagierten im dritten Fall drei
+  // Fensterinstanzen gleichzeitig — ein Messfehler des Pruefstands, kein Befund am Fenster.
+  const originalAdd = umgebung.window.addEventListener.bind(umgebung.window);
+  umgebung.window.addEventListener = (typ: string, fn: unknown) => {
+    ka6Zuhoerer.push({ typ, fn });
+    originalAdd(typ, fn);
+  };
+
+  new Function(skript)();
+  await ka6Leerlauf();
+}
+
+function ka6El(id: string): Ka6Element {
+  const gefunden = umgebung.document.getElementById(id);
+  expect(gefunden, `#${id} fehlt im Aufgabenfenster`).not.toBeNull();
+  return gefunden as Ka6Element;
+}
+
+function ka6Sichtbar(id: string): boolean {
+  const el = umgebung.document.getElementById(id);
+  return el !== null && !el.className.includes("hidden");
+}
+
+/** Der Wortlaut eines KA6-Schluessels — GELESEN aus dem ausgelieferten Fenster, nie abgeschrieben. */
+function ka6Wortlaut(key: string): string {
+  const quelle = read(TASKPANE);
+  const treffer = new RegExp(`^\\s*${key}: "([^"]*)"`, "m").exec(quelle);
+  expect(treffer, `${TASKPANE}: ${key} fehlt im Woerterbuch`).not.toBeNull();
+  const wert = treffer?.[1] ?? "";
+  expect(wert.length, `${TASKPANE}: ${key} ist leer`).toBeGreaterThan(0);
+  return wert;
+}
+
+/** Die erlaubte Lage: hausintern, ausfuehrbar, mit Kennzeichnungssignal (klara-policy.ts:240-258). */
+function ka6Erlaubt(over: Partial<Ka6Lage> = {}): Ka6Lage {
+  return {
+    executionAllowed: true,
+    blockedReason: null,
+    effectiveMode: "internal",
+    aiGenerated: true,
+    answered: true,
+    ...over,
+  };
+}
+
+describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    ka6WordRunGesamt = 0;
+    ka6InsertText = 0;
+    ka6SetSelected = 0;
+    ka6Eingefuegt = [];
+    ka6Zuhoerer = [];
+  });
+
+  afterEach(() => {
+    for (const z of ka6Zuhoerer) {
+      umgebung.window.removeEventListener(z.typ, z.fn);
+    }
+    ka6Zuhoerer = [];
+    umgebung.window.Office = undefined;
+    umgebung.window.Word = undefined;
+    umgebung.document.body.innerHTML = "";
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+  });
+
+  it("Die Flaeche existiert und bietet GENAU DREI Zurufe: erstellen, vervollstaendigen, umformulieren", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    expect(ka6Sichtbar("ka6-block"), "Die Schreibflaeche fehlt").toBe(true);
+    for (const id of [
+      "ka6-zuruf-erstellen",
+      "ka6-zuruf-vervollstaendigen",
+      "ka6-zuruf-umformulieren",
+    ]) {
+      expect(ka6Sichtbar(id), `Zuruf ${id} fehlt`).toBe(true);
+    }
+    // Kalibrierung: die drei tragen VERSCHIEDENE Beschriftungen — sonst waere „drei Zurufe" eine
+    // Behauptung ueber drei gleiche Knoepfe.
+    const namen = [
+      ka6El("ka6-zuruf-erstellen").textContent,
+      ka6El("ka6-zuruf-vervollstaendigen").textContent,
+      ka6El("ka6-zuruf-umformulieren").textContent,
+    ];
+    expect(new Set(namen).size, `Die Zurufe heissen gleich: ${namen.join(" / ")}`).toBe(3);
+  });
+
+  it("KERN 1: ein Zuruf erzeugt GENAU EINEN Vorschlag im vorhandenen Feld — und NULL Schreibaufrufe", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+
+    // (a) Das Ergebnis erscheint als VORSCHLAG im vorhandenen Feld.
+    expect(ka6El("ask-answer-edit").value, "Kein Vorschlag im Vorschlagsfeld").toContain(
+      KA6_ANTWORTTEXT,
+    );
+    // (b) „Klara schreibt NIE selbsttaetig ins Dokument" — beide SCHREIBWEGE bei NULL.
+    expect(ka6InsertText, "insertText wurde ohne Klick gerufen").toBe(0);
+    expect(ka6SetSelected, "setSelectedDataAsync wurde ohne Klick gerufen").toBe(0);
+    expect(ka6Eingefuegt, "Es wurde ohne Klick Text ins Dokument gegeben").toEqual([]);
+    // (c) KALIBRIERUNG: der Spion ist nicht blind — er hat sehr wohl `Word.run` gesehen (KA1 liest
+    // beim Oeffnen das Dokument). Ohne diese Zeile waere die Null oben auch dann gruen, wenn die
+    // Attrappe gar nicht angeschlossen ist.
+    expect(
+      ka6WordRunGesamt,
+      "Der Word-Spion hat gar nichts gesehen — er haengt nicht",
+    ).toBeGreaterThan(0);
+  });
+
+  it('KERN 2: erst der Klick fuegt ein — und die Passage traegt die dritte Klasse „KI-formuliert"', async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+    expect(ka6Schreibaufrufe(), "Vorbedingung verletzt: schon vor dem Klick geschrieben").toBe(0);
+
+    ka6El("ka6-insert-btn").click();
+    await ka6Leerlauf(20);
+
+    // GENAU EIN Schreibvorgang — der moderne Word.run-Weg gewinnt, der Rueckfall bleibt unberuehrt.
+    expect(ka6InsertText, "Der Einfuegeweg lief nicht ueber insertText").toBe(1);
+    expect(ka6SetSelected, "Der Rueckfall lief zusaetzlich").toBe(0);
+    expect(ka6Eingefuegt).toHaveLength(1);
+
+    const ausgegeben = ka6Eingefuegt[0] ?? "";
+    expect(ausgegeben, "Der Koerper fehlt im ausgegebenen Text").toContain(KA6_ANTWORTTEXT);
+    // Die dritte Klasse steht im AUSGEGEBENEN Text, nicht nur im Panel.
+    expect(ausgegeben, 'Die Kennzeichnung „KI-formuliert" fehlt im ausgegebenen Text').toContain(
+      ka6Wortlaut("ka6Herkunft"),
+    );
+    // ... und sie ist von den beiden Bestandsklassen UNTERSCHEIDBAR: keine von ihnen steht daneben.
+    expect(ausgegeben).not.toContain(ka6Wortlaut("askEvidenceVerified"));
+    expect(ausgegeben).not.toContain(ka6Wortlaut("askEvidenceUnverified"));
+  });
+
+  it("KERN 3 (D2, fail-closed): ohne `aiGenerated` entsteht GAR KEIN Vorschlag", async () => {
+    // ============================================================================================
+    // WAS SICH GEGENUEBER D1 GEAENDERT HAT — UND WARUM.
+    // ============================================================================================
+    // D1 hat hier den RUECKFALL festgeschrieben: ohne Signal wurde trotzdem ein Vorschlag
+    // ausgegeben, nur eben ueber `composeOutputText` — also mit „gesichert" oder „ungeprueft".
+    // BEN hat genau das als Scheinbeleg beanstandet (D1-Urteil, TESTAUSSAGEKRAFT) und die Regel
+    // woertlich gesetzt: „Ohne belastbares Formulierungssignal wird fail-closed KEIN
+    // KA6-Vorschlag freigegeben; ein Rueckfall auf `gesichert`/`ungeprueft` ist unzulaessig."
+    //
+    // Der Grund ist inhaltlich, nicht formal: Ein per Zuruf geholter Text IST eine Formulierung.
+    // Ihn als „gesichert" auszugeben, waere die schlechtere Unehrlichkeit — nicht eine fehlende
+    // Angabe, sondern eine falsche.
+    const lage = ka6Erlaubt({ aiGenerated: false });
+    await ladeKa6Fenster(lage);
+
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+
+    // (a) Das Vorschlagsfeld bleibt LEER — es gibt nichts, was falsch etikettiert werden koennte.
+    expect(
+      ka6El("ask-answer-edit").value,
+      "Ohne Formulierungssignal wurde trotzdem ein Vorschlag eingestellt",
+    ).toBe("");
+    // (b) Der Einfuegeknopf wird gar nicht erst angeboten.
+    expect(ka6Sichtbar("ka6-insert-btn"), "Der Einfuegeknopf steht trotz fail-closed bereit").toBe(
+      false,
+    );
+    // (c) Die Flaeche sagt den Grund — Schweigen waere hier fail-open in der Anzeige.
+    expect(ka6El("ka6-status").textContent ?? "").toContain(ka6Wortlaut("ka6KeinSignal"));
+    // (d) Und es wurde nichts geschrieben.
+    expect(ka6Schreibaufrufe(), "Es wurde geschrieben, obwohl kein Vorschlag entstand").toBe(0);
+  });
+
+  it("EHRLICHKEIT 1: `external_not_migrated` — Grund im Klartext, KEIN Zuruf", async () => {
+    const lage = ka6Erlaubt({
+      executionAllowed: false,
+      blockedReason: "external_not_migrated",
+      effectiveMode: "external",
+    });
+    await ladeKa6Fenster(lage);
+
+    expect(ka6Sichtbar("ka6-hinweis"), "Kein Grund sichtbar, obwohl gesperrt").toBe(true);
+    expect(ka6El("ka6-hinweis").textContent ?? "").toContain(ka6Wortlaut("ka6BlockedNotMigrated"));
+    // „bietet KEINEN Zuruf an" — die Knoepfe sind weg, nicht bloss `disabled`.
+    expect(ka6Sichtbar("ka6-zurufe"), "Die Zurufe werden trotz Sperre angeboten").toBe(false);
+  });
+
+  it("EHRLICHKEIT 2: `external_consent_missing` — ein ANDERER Grund (die beiden bleiben getrennt)", async () => {
+    const lage = ka6Erlaubt({
+      executionAllowed: false,
+      blockedReason: "external_consent_missing",
+      effectiveMode: "external",
+    });
+    await ladeKa6Fenster(lage);
+
+    const gezeigt = ka6El("ka6-hinweis").textContent ?? "";
+    expect(gezeigt).toContain(ka6Wortlaut("ka6BlockedConsentMissing"));
+    // DIE TRENNUNG IST DER PUNKT: die eine ist eine Betriebsentscheidung, die andere eine Frage an
+    // den Anwender. Ein gemeinsamer Satz waere genau die Vermischung, die der Auftrag verbietet.
+    expect(gezeigt, "Beide Blockgruende zeigen denselben Satz").not.toContain(
+      ka6Wortlaut("ka6BlockedNotMigrated"),
+    );
+    expect(ka6Wortlaut("ka6BlockedConsentMissing")).not.toBe(ka6Wortlaut("ka6BlockedNotMigrated"));
+    expect(ka6Sichtbar("ka6-zurufe")).toBe(false);
+  });
+
+  it("EHRLICHKEIT 3: keine belastbare Grundlage → ehrliche Meldung, KEIN erfundener Vorschlag", async () => {
+    const lage = ka6Erlaubt({ answered: false });
+    await ladeKa6Fenster(lage);
+
+    ka6El("ask-input").value = "Etwas, wozu es nichts gibt";
+    ka6El("ka6-zuruf-umformulieren").click();
+    await ka6Leerlauf(20);
+
+    expect(ka6El("ask-answer-edit").value, "Es wurde ein Vorschlag erfunden").toBe("");
+    expect(ka6El("ka6-status").textContent ?? "").toContain(ka6Wortlaut("ka6NoBasis"));
+    expect(ka6Schreibaufrufe(), "Trotz fehlender Grundlage wurde geschrieben").toBe(0);
+  });
+
+  it("EHRLICHKEIT 4: Zuruf ohne Text — die Flaeche sagt, was fehlt, und ruft NICHTS ab", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    // Weder Markierung (die Attrappe meldet eine leere Auswahl) noch Eingabe.
+    ka6El("ask-input").value = "";
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+
+    expect(ka6El("ka6-status").textContent ?? "").toContain(ka6Wortlaut("ka6Empty"));
+    expect(ka6El("ask-answer-edit").value, "Ohne Eingabe entstand ein Vorschlag").toBe("");
+    expect(ka6Schreibaufrufe(), "Ohne Eingabe wurde geschrieben").toBe(0);
+  });
+
+  it("EHRLICHKEIT 5: Serverfehler — ehrliche Meldung, kein halber Vorschlag, kein Schreibaufruf", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+    // Der Zuruf laeuft in einen 500er. `performAsk` liefert dafuer `kind: "error"`.
+    vi.stubGlobal("fetch", (url: string) =>
+      url === "/api/ask"
+        ? Promise.resolve(ka6Antwort({}, false, 500))
+        : Promise.resolve(ka6Antwort({})),
+    );
+
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ka6-zuruf-vervollstaendigen").click();
+    await ka6Leerlauf(20);
+
+    const gemeldet = ka6El("ka6-status").textContent ?? "";
+    // Der Rahmen des Fehlersatzes steht da — inklusive des konkreten Details, nicht nur „Fehler".
+    expect(gemeldet.length, "Der Fehler wurde verschwiegen").toBeGreaterThan(0);
+    expect(gemeldet).toContain(ka6Wortlaut("ka6Fehler").split("(")[0]?.trim() ?? "");
+    expect(gemeldet, "Das konkrete Detail fehlt in der Meldung").toContain("HTTP 500");
+    expect(ka6El("ask-answer-edit").value, "Trotz Fehler steht ein Vorschlag im Feld").toBe("");
+    expect(ka6Schreibaufrufe(), "Trotz Fehler wurde geschrieben").toBe(0);
+  });
+
+  it("BEWAHREN: die Ask-Flaeche und ihr Einfuegeknopf bleiben unveraendert erreichbar", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    // Der bestehende Fragen-Weg steht unveraendert da …
+    for (const id of [
+      "ask-input",
+      "ask-btn",
+      "ask-answer-edit",
+      "ask-insert-btn",
+      "ask-copy-btn",
+    ]) {
+      expect(umgebung.document.getElementById(id), `#${id} ist verschwunden`).not.toBeNull();
+    }
+    // … und sein Einfuegeknopf ist ohne Ask-Antwort weiterhin GESPERRT. Das ist der Beleg, dass der
+    // KA6-Vorschlag im gemeinsamen Feld keine zweite, ungegatete Ausgabe oeffnet.
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+    expect(
+      ka6El("ask-insert-btn").disabled,
+      "Der Ask-Einfuegeknopf wurde durch KA6 entsperrt",
+    ).toBe(true);
+  });
+
+  // ==============================================================================================
+  // JOB 1153 D2 · PFLICHT 1 — DIE HERKUNFT IST EINE INVARIANTE ALLER UEBERNAHMEWEGE.
+  // ==============================================================================================
+  //
+  // BENs Kern in einem Satz: „KI-formuliert" darf kein Etikett sein, das nur auf EINEM Weg klebt.
+  // Der Vorschlag kann das Feld auf VIER Wegen verlassen; traegt nur der Einfuegeklick die
+  // Herkunft, wandert KI-Text ungekennzeichnet ins Dokument.
+  //
+  // GEMESSEN WIRD JE WEG DER TATSAECHLICH UEBERTRAGENE STRING — nicht, dass ein Ereignis feuerte.
+  // Das ist BENs woertliche Auflage („Fuer jeden Weg ist der tatsaechlich uebertragene String zu
+  // pruefen"), und sie ist der Unterschied zwischen einer Deckung und einer Behauptung.
+  //
+  // DER IST-BEFUND, gegen den hier gebaut wird (in D2 im Quelltext nachgeschlagen):
+  //   · Kopierknopf   → `copyAnswer` baut ueber `composeOutputText` — ohne KA6-Herkunft.
+  //   · copy / cut    → `handleAnswerClipboard` steigt bei `currentAskOutcome.kind !== "answered"`
+  //                     SOFORT aus (taskpane.html:4212). Bei einem KA6-Vorschlag ist dieser Zustand
+  //                     gar nicht gesetzt — es gibt kein `preventDefault`, und der Host kopiert den
+  //                     ROHEN Feldinhalt. Das ist die schwerste der vier Luecken.
+  //   · dragstart     → `handleAnswerDragStart` mit demselben Ausstieg (:4268).
+  const KA6_ZURUF_IDS = [
+    "ka6-zuruf-erstellen",
+    "ka6-zuruf-vervollstaendigen",
+    "ka6-zuruf-umformulieren",
+  ] as const;
+
+  /** Ein Zwischenablage-Behaelter, der den uebergebenen String festhaelt. */
+  function ka6Behaelter(): { setData: (typ: string, wert: string) => void; wert: () => string } {
+    let gespeichert = "";
+    return {
+      setData: (_typ: string, wert: string) => {
+        gespeichert = wert;
+      },
+      wert: () => gespeichert,
+    };
+  }
+
+  /** Ein Ereignis mit Behaelter — `copy`/`cut` tragen `clipboardData`, `dragstart` `dataTransfer`. */
+  function ka6Ereignis(typ: "copy" | "cut" | "dragstart"): {
+    ereignis: Event;
+    wert: () => string;
+    verhindert: () => boolean;
+  } {
+    const behaelter = ka6Behaelter();
+    let verhindert = false;
+    const ereignis = new umgebung.window.Event(typ, {
+      bubbles: true,
+      cancelable: true,
+    }) as Event & {
+      clipboardData?: unknown;
+      dataTransfer?: unknown;
+      preventDefault: () => void;
+    };
+    if (typ === "dragstart") {
+      (ereignis as { dataTransfer?: unknown }).dataTransfer = behaelter;
+    } else {
+      (ereignis as { clipboardData?: unknown }).clipboardData = behaelter;
+    }
+    ereignis.preventDefault = () => {
+      verhindert = true;
+    };
+    return { ereignis, wert: behaelter.wert, verhindert: () => verhindert };
+  }
+
+  /** Holt einen Vorschlag ueber den genannten Zuruf und prueft, dass er wirklich im Feld steht. */
+  async function ka6VorschlagHolen(zurufId: string): Promise<void> {
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El(zurufId).click();
+    await ka6Leerlauf(20);
+    expect(
+      ka6El("ask-answer-edit").value,
+      `${zurufId}: kein Vorschlag im Feld — alles Weitere misst ins Leere`,
+    ).toContain(KA6_ANTWORTTEXT);
+  }
+
+  it("PFLICHT 1: alle VIER Uebernahmewege tragen die Herkunft — fuer ALLE DREI Zurufe", async () => {
+    const herkunft = ka6Wortlaut("ka6Herkunft");
+    const verified = ka6Wortlaut("askEvidenceVerified");
+    const unverified = ka6Wortlaut("askEvidenceUnverified");
+    // ============================================================================================
+    // DIE INVARIANTE, PRAEZISE GEFASST — D3: EINE erlaubte Form, nicht mehr zwei.
+    // ============================================================================================
+    // D2 hat hier zwei Formen zugelassen: (a) der Weg gibt aus UND traegt die Herkunft, oder
+    // (b) der Weg ist geschlossen. Form (b) hat BEN gestrichen, und zwar mit einer Begruendung,
+    // die ueber diesen einen Knopf hinausgeht: „Ein geschlossener, ausgelassener oder nicht
+    // ausgeloester beauftragter Weg zaehlt NICHT als Invariante." Eine Zusage, die man auch
+    // dadurch erfuellen kann, dass man den Weg zumauert, misst am Ende nur noch die eigene
+    // Zumauerung — sie wird gruen, waehrend das Versprechen („der Vorschlag laesst sich
+    // uebernehmen, und zwar gekennzeichnet") kleiner wird statt eingeloest.
+    //
+    // Ab hier gilt deshalb fuer JEDE Zelle dasselbe: der Weg ist offen, er uebertraegt, und der
+    // uebertragene String traegt Koerper UND Herkunft. `gesperrt` wird weiter GEMESSEN — aber
+    // nicht mehr als Ausnahme verrechnet, sondern als Fehlschlag. Genau das macht die
+    // Sperr-Gegenmutation (Lieferung 5) sichtbar: ein `disabled` gesetzter Kopierknopf faellt
+    // hier durch, statt sich als erfuellte Form (b) auszugeben.
+    const matrix: Array<{ zuruf: string; weg: string; text: string; gesperrt: boolean }> = [];
+
+    for (const zurufId of KA6_ZURUF_IDS) {
+      // WEG 1 — der Einfuegeklick.
+      await ladeKa6Fenster(ka6Erlaubt());
+      await ka6VorschlagHolen(zurufId);
+      ka6El("ka6-insert-btn").click();
+      await ka6Leerlauf(20);
+      matrix.push({
+        zuruf: zurufId,
+        weg: "einfuegeklick",
+        text: ka6Eingefuegt.at(-1) ?? "",
+        gesperrt: false,
+      });
+
+      // ==========================================================================================
+      // WEG 2 — DER KOPIERKNOPF. D3: er ist ein VERPFLICHTEND FUNKTIONSFAEHIGER Uebernahmeweg.
+      // ==========================================================================================
+      // D2 hat diese Zelle als „gesperrt" gemeldet und das als erfuellte Zusage gewertet: ueber
+      // einen geschlossenen Ausgang koenne nichts Ungekennzeichnetes hinaus. BEN hat das mit ROT
+      // beantwortet und den Massstab woertlich gesetzt: „`disabled`, ‚gesperrt' oder ‚liefert
+      // nichts' erfuellt die Abnahme nicht; nach jedem der drei erfolgreichen Zurufe muss er
+      // aktiviert sein." Der Grund ist inhaltlich und nicht formal — ein Anwender, der auf
+      // „Kopieren" drueckt und nichts bekommt, sucht sich den naechsten Weg (markieren, ziehen,
+      // Kontextmenue), und ein zugemauerter Ausgang erzieht zu genau den Umwegen, die diese
+      // Invariante eigentlich absichern soll.
+      //
+      // GEMESSEN WIRD IN DIESER REIHENFOLGE, und die erste Messung ist die neue:
+      //   1. Ist der Knopf VOR dem Klick aktiviert? (`disabled === false`)
+      //   2. Was hat er tatsaechlich uebertragen?
+      // Er hat ZWEI Behaelter, je nach Host: die echte Zwischenablage
+      // (`navigator.clipboard.writeText`) oder — wenn die fehlt — das abgeleitete Rueckfallfeld
+      // (taskpane.html:4175). Gemessen werden beide; welcher greift, entscheidet die Umgebung,
+      // nicht der Test. Der Spion belegt zugleich, dass ueberhaupt etwas uebertragen wurde.
+      await ladeKa6Fenster(ka6Erlaubt());
+      await ka6VorschlagHolen(zurufId);
+      const kopiert: string[] = [];
+      Object.defineProperty(umgebung.window.navigator, "clipboard", {
+        configurable: true,
+        value: {
+          writeText: (t: string) => {
+            kopiert.push(t);
+            return Promise.resolve();
+          },
+        },
+      });
+      // Der Sperrzustand wird VOR dem Klick abgelesen. Danach waere die Messung wertlos: ein
+      // gesperrter Knopf laesst den Rueckruf gar nicht erst laufen, und „nichts uebertragen"
+      // saehe dann aus wie ein Bauer, der schweigt, statt wie ein Ausgang, der zu ist.
+      const kopierknopfGesperrt = ka6El("ask-copy-btn").disabled === true;
+      ka6El("ask-copy-btn").click();
+      await ka6Leerlauf(20);
+      const ausFallback = ka6El("ask-copy-fallback-text").value ?? "";
+      matrix.push({
+        zuruf: zurufId,
+        weg: "kopierknopf",
+        text: kopiert.at(-1) ?? ausFallback,
+        gesperrt: kopierknopfGesperrt,
+      });
+
+      // WEG 3 und 4 — die nativen Ereignisse am Feld selbst.
+      for (const typ of ["copy", "cut", "dragstart"] as const) {
+        await ladeKa6Fenster(ka6Erlaubt());
+        await ka6VorschlagHolen(zurufId);
+        const feld = ka6El("ask-answer-edit");
+        // Vollauswahl: eine Teilauswahl bleibt bewusst roh (mega36 B2) und ist nicht dieser Fall.
+        feld.selectionStart = 0;
+        feld.selectionEnd = (feld.value ?? "").length;
+        const { ereignis, wert } = ka6Ereignis(typ);
+        feld.dispatchEvent(ereignis);
+        await ka6Leerlauf(5);
+        // Native Ereignisse kennen kein „gesperrt": sie feuern immer, wenn das Feld bedienbar ist.
+        matrix.push({ zuruf: zurufId, weg: typ, text: wert(), gesperrt: false });
+      }
+    }
+
+    // ZUR ZAEHLUNG, damit sie niemand nachrechnen muss: BEN nennt VIER Wege und fasst dabei
+    // `copy`/`cut` als einen zusammen („Klick-Einfuegen, Kopieren, Ausschneiden und Ziehen" —
+    // der Kopierknopf steht bei ihm unter „Kopieren"). Gemessen werden hier FUENF Ereignisfaelle,
+    // weil `copy` und `cut` im Produkt zwar denselben Rueckruf teilen, aber zwei verschiedene
+    // Ereignisse sind — und `cut` zusaetzlich das Feld veraendert. Fuenf × drei Zurufe = 15.
+    // Das ist mehr als die Mindestforderung, nicht weniger; keine der vier Nennungen fehlt.
+    expect(matrix, `Die Matrix ist unvollstaendig: ${matrix.length} Zellen`).toHaveLength(15);
+    for (const weg of ["einfuegeklick", "kopierknopf", "copy", "cut", "dragstart"]) {
+      expect(
+        matrix.filter((z) => z.weg === weg),
+        `Weg ${weg} ist nicht fuer alle drei Zurufe gemessen`,
+      ).toHaveLength(3);
+    }
+    for (const zelle of matrix) {
+      const wo = `${zelle.zuruf} / ${zelle.weg}`;
+      // D3, Lieferung 1 und 5: KEINE Ausnahme mehr fuer geschlossene Wege. Diese Zeile ist die,
+      // an der ein gesperrter Kopierknopf scheitert — sie steht VOR der Textpruefung, damit die
+      // Meldung die Ursache nennt („gesperrt") und nicht nur ihre Folge („nichts uebertragen").
+      expect(
+        zelle.gesperrt,
+        `${wo}: der Weg war gesperrt — ein geschlossener Weg zaehlt nicht als Invariante`,
+      ).toBe(false);
+      // Der Weg ist offen — er traegt den Koerper UND die Herkunft.
+      expect(zelle.text.length, `${wo}: es wurde ueberhaupt nichts uebertragen`).toBeGreaterThan(0);
+      expect(zelle.text, `${wo}: der Antwortkoerper fehlt`).toContain(KA6_ANTWORTTEXT);
+      expect(zelle.text, `${wo}: die Herkunft „KI-formuliert" fehlt`).toContain(herkunft);
+      // Und die drei Klassen bleiben unterscheidbar — keine Bestandsklasse steht daneben.
+      expect(zelle.text, `${wo}: traegt zusaetzlich „gesichert"`).not.toContain(verified);
+      expect(zelle.text, `${wo}: traegt zusaetzlich „ungeprueft"`).not.toContain(unverified);
+    }
+    // ============================================================================================
+    // D3 · DIE KALIBRIERUNG DES NEUEN „AKTIVIERT" — drei Lagen, damit die Zusage etwas bedeutet.
+    // ============================================================================================
+    // „Der Kopierknopf ist nach dem Zuruf aktiviert" waere eine leere Aussage, wenn er IMMER offen
+    // waere. Ein hart auf `disabled = false` gestellter Knopf erfuellte die Matrix oben und
+    // oeffnete zugleich einen Ausgang fuer ein leeres oder fremdes Feld. Deshalb wird hier beides
+    // gemessen: dass er im Ausgangszustand ZU ist, dass der Bestandsweg ihn weiterhin oeffnet,
+    // und dass der KA6-Zuruf ihn oeffnet.
+    await ladeKa6Fenster(ka6Erlaubt());
+    // (1) Frisches Fenster, kein Vorschlag, keine Antwort — der Knopf ist GESPERRT.
+    expect(
+      ka6El("ask-copy-btn").disabled,
+      'Der Kopierknopf steht schon ohne jeden Vorschlag offen — dann sagt „aktiviert" nichts aus',
+    ).toBe(true);
+    // (2) Der BESTANDSWEG oeffnet ihn unveraendert. Das ist zugleich der Beleg, dass D3 die
+    //     Ask-Verdrahtung (`updateInsertState`) nicht ersetzt, sondern nur ergaenzt hat.
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ask-btn").click();
+    await ka6Leerlauf(30);
+    expect(
+      ka6El("ask-copy-btn").disabled,
+      "Der Kopierknopf bleibt nach einer echten Ask-Antwort gesperrt — der Bestandsweg wurde beschaedigt",
+    ).toBe(false);
+    // (3) Und der KA6-Zuruf oeffnet ihn ebenfalls — an einem Fenster, das ihn zuvor zu hatte.
+    await ladeKa6Fenster(ka6Erlaubt());
+    expect(ka6El("ask-copy-btn").disabled, "Vorbedingung verletzt: schon vor dem Zuruf offen").toBe(
+      true,
+    );
+    await ka6VorschlagHolen("ka6-zuruf-erstellen");
+    expect(
+      ka6El("ask-copy-btn").disabled,
+      "Der KA6-Zuruf hat den Kopierknopf nicht aktiviert",
+    ).toBe(false);
+  });
+
+  it("PFLICHT 1 (Gegenprobe): die nativen Wege brechen den Host-Standard ab, statt roh hinauszulassen", async () => {
+    // Ohne diesen Fall koennte ein Weg den richtigen String in den Behaelter legen UND daneben den
+    // Host seinen eigenen, rohen Ziehvorgang fortsetzen lassen. Dann stuende die Herkunft im
+    // Behaelter und der rohe Koerper im Dokument.
+    for (const typ of ["copy", "cut", "dragstart"] as const) {
+      await ladeKa6Fenster(ka6Erlaubt());
+      await ka6VorschlagHolen("ka6-zuruf-erstellen");
+      const feld = ka6El("ask-answer-edit");
+      feld.selectionStart = 0;
+      feld.selectionEnd = (feld.value ?? "").length;
+      const { ereignis, verhindert } = ka6Ereignis(typ);
+      feld.dispatchEvent(ereignis);
+      await ka6Leerlauf(5);
+      expect(verhindert(), `${typ}: der Host-Standard wurde nicht abgebrochen`).toBe(true);
+    }
+  });
+
+  // ==============================================================================================
+  // JOB 1153 D2 · PFLICHT 3 — DIE ZUSTANDSUEBERGAENGE IM GEMEINSAMEN FELD.
+  // ==============================================================================================
+  //
+  // Ask und KA6 teilen sich `#ask-answer-edit`. Bleibt beim Wechsel ein Rest der einen Quelle
+  // stehen, traegt die andere eine fremde Herkunft — in beide Richtungen gleich schlimm.
+  it("PFLICHT 3a: Ask → KA6 — der KA6-Vorschlag traegt KA6-Herkunft, kein Ask-Rest", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    // Zuerst der ECHTE Ask-Weg.
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ask-btn").click();
+    await ka6Leerlauf(30);
+    expect(ka6El("ask-answer-edit").value, "Der Ask-Weg hat gar nicht geantwortet").toContain(
+      KA6_ANTWORTTEXT,
+    );
+
+    // Danach der KA6-Zuruf im selben Feld.
+    await ka6VorschlagHolen("ka6-zuruf-umformulieren");
+    ka6El("ka6-insert-btn").click();
+    await ka6Leerlauf(20);
+
+    const ausgegeben = ka6Eingefuegt.at(-1) ?? "";
+    expect(ausgegeben, "Nach Ask → KA6 fehlt die KA6-Herkunft").toContain(
+      ka6Wortlaut("ka6Herkunft"),
+    );
+    expect(ausgegeben, "Ein Ask-Rest steht noch im KA6-Vorschlag").not.toContain(
+      ka6Wortlaut("askEvidenceVerified"),
+    );
+    expect(ausgegeben).not.toContain(ka6Wortlaut("askEvidenceUnverified"));
+  });
+
+  it("PFLICHT 3b: KA6 → Ask — die Ask-Antwort traegt KEINE KA6-Herkunft mehr", async () => {
+    await ladeKa6Fenster(ka6Erlaubt());
+
+    // Zuerst KA6 …
+    await ka6VorschlagHolen("ka6-zuruf-erstellen");
+    // … danach der echte Ask-Weg im selben Feld.
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ask-btn").click();
+    await ka6Leerlauf(30);
+
+    // Der Ask-Weg gibt ueber seinen eigenen Knopf aus — der ist erst nach der Quellenaufloesung frei.
+    expect(ka6El("ask-insert-btn").disabled, "Der Ask-Knopf blieb gesperrt").toBe(false);
+    ka6El("ask-insert-btn").click();
+    await ka6Leerlauf(20);
+
+    const ausgegeben = ka6Eingefuegt.at(-1) ?? "";
+    expect(ausgegeben, "Der Ask-Weg gab gar nichts aus").toContain(KA6_ANTWORTTEXT);
+    expect(
+      ausgegeben,
+      "Die KA6-Herkunft klebt noch an einer Ask-Antwort — ein Rest der Vorquelle",
+    ).not.toContain(ka6Wortlaut("ka6Herkunft"));
+  });
+
+  // ==============================================================================================
+  // JOB 1153 D2 · PRUEFLUECKE 6.4 aus dem D1-Urteil — der unbekannte Sperrgrund.
+  // ==============================================================================================
+  it("PRUEFLUECKE 6.4: ein unbekannter `blockedReason` wird im Klartext genannt, kein Zuruf", async () => {
+    await ladeKa6Fenster(
+      ka6Erlaubt({
+        executionAllowed: false,
+        blockedReason: "irgendein_neuer_grund",
+        effectiveMode: "external",
+      }),
+    );
+
+    const gezeigt = ka6El("ka6-hinweis").textContent ?? "";
+    expect(gezeigt.length, "Der Grund wird verschwiegen").toBeGreaterThan(0);
+    // Der konkrete Grund steht drin — nicht bloss ein Sammelsatz.
+    expect(gezeigt, "Der genannte Grund fehlt im Klartext").toContain("irgendein_neuer_grund");
+    expect(ka6Sichtbar("ka6-zurufe"), "Zurufe werden trotz unbekannter Sperre angeboten").toBe(
+      false,
+    );
   });
 });

@@ -1095,6 +1095,181 @@ function unregistrierteVollflaechen(
     );
 }
 
+// ================================================================================================
+// JOB 1093 D2 — DIE KALIBRIERUNG VON `MARKERLOSE_TRAEGER` GEGEN DEN ECHTEN BESTAND.
+// ================================================================================================
+//
+// BENS ROTGRUND ZU D1: ein Inventar, das seine Grundgesamtheit aus den vorhandenen MARKERN und aus
+// dem REGISTER ableitet, misst genau die Quellen, deren Vollständigkeit es belegen soll. Das
+// Register oben stand deshalb ohne Gegenprobe da — es behauptete drei Träger und prüfte diese
+// Behauptung an sich selbst. `unregistrierteVollflaechen` fragt zwar den Bestand, aber nur danach,
+// ob eine Vollfläche IRGENDWO eingetragen ist; ob der Eintrag der richtige ist, prüfte niemand.
+//
+// Hier wird die Zugehörigkeit AUS DER FLÄCHE ABGELEITET, ohne das Register zu befragen. Zwei
+// Merkmale trennen — gemessen am heutigen Bestand — die modale Fläche vom Popover, das dieselbe
+// Vollfläche nur als Klickfänger benutzt:
+//
+//   (A) VERDECKUNG — die Fläche legt sich deckend über den Hintergrund (Tönung ab 30 % oder ein
+//       Blur). Genau das IST die Modalität: der Rest der Anwendung verschwindet hinter ihr.
+//       `Modal.tsx` bg-ink/40 · `CommandPalette.tsx` bg-ink/30 · `KnowledgeInputStudio.tsx`
+//       bg-page/95 + backdrop-blur — gegen `HelpTip.tsx` und `AiModelInfo.tsx`, deren
+//       `fixed inset-0` FARBLOS ist und deren Inhalt als Popover NEBEN dem Auslöser sitzt.
+//   (B) TASTATUR-AUSGANG — `Escape` schliesst. Eine Fläche, die die Bedienung an sich zieht, muss
+//       einen Ausgang ohne Zeiger haben; ein Popover braucht ihn nicht und hat ihn nicht.
+//
+// Markierte Flächen bleiben draussen: sie gehören in die abgeleitete Erhebung oben, nicht ins
+// markerlose Register. Die Ableitung hängt damit NICHT an den Markern — sie benutzt sie erst nach
+// dem Fund zur Abgrenzung, nie als Sucher.
+function verdecktDenHintergrund(quelltext: string): boolean {
+  if (/\bbackdrop-blur/.test(quelltext)) {
+    return true;
+  }
+  for (const treffer of quelltext.matchAll(/\bbg-[a-z0-9-]+\/(\d{1,3})\b/g)) {
+    if (Number(treffer[1] ?? "0") >= 30) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function istMarkerloserTraegerAmBestand(e: DateiErhebung): boolean {
+  if (e.kandidaten.length > 0) {
+    return false;
+  }
+  const quelle = e.quelle.gestrippt;
+  return (
+    spanntVollflaecheAuf(quelle) &&
+    verdecktDenHintergrund(quelle) &&
+    /"Escape"|'Escape'/.test(quelle)
+  );
+}
+
+// ================================================================================================
+// JOB 1093 D3 — DIE ZWEITE SUCHRICHTUNG: ÜBER WIRKUNG STATT ÜBER BAUFORM.
+// ================================================================================================
+//
+// BENS ROTGRUND ZU D2, und er trifft: Die erste Richtung nimmt eine Datei nur auf, wenn sie eine
+// bestimmte BAUFORM zeigt — `fixed` plus vier gebundene Seiten, ein Portal, ein bekannter
+// Zustandsname, ein bekannter Schliessweg. Damit entscheidet die Vorfilterung, was überhaupt
+// geprüft wird. D2 hat das selbst benannt („DIE ENTDECKUNGSGRENZE STEHT OFFEN") und trotzdem
+// „10 Überlagerungsflächen im gesamten Baum" behauptet. Die Zahl war nie belegt, nur ungeprüft.
+//
+// Diese Richtung fragt nicht, WIE eine Fläche gebaut ist, sondern WAS SIE TUT. Sieben Signale,
+// keines davon abhängig von `fixed inset-0`, Portal oder einer Zustandsnamenliste:
+//
+//   B1 FOKUSFALLE      — Tab wird abgefangen oder der Fokus bewusst geführt
+//   B2 INERT           — der Hintergrund wird ausgeschaltet
+//   B3 SCROLLSPERRE    — der Körper darf nicht mehr scrollen
+//   B4 NATIVER DIALOG  — `<dialog>` / `showModal()`
+//   B5 ARIA-MODALITÄT  — `aria-modal`, `role="dialog"|"alertdialog"`
+//   B6 VOLLBILDFORM    — der Bildschirm wird gefüllt OHNE `fixed`+vier Seiten:
+//                        `w-screen`/`h-screen`/`min-h-screen`, `100vw`/`100vh`
+//   B7 SHELL-GRENZE    — `useModalBoundary` / `useModalLocked`
+//
+// B1–B5 und B7 sind HARTE Signale: wer eines davon zeigt, greift in die Bedienung ein. B6 allein
+// ist Layout (`max-w-[calc(100vw-1rem)]` ist keine Modalfläche) und zählt nur MIT Verdeckung.
+const B6_VOLLBILDFORM = /\bw-screen\b|\bh-screen\b|\bmin-h-screen\b|\b100vw\b|\b100vh\b/;
+
+const WIRKUNGSSIGNALE: ReadonlyArray<readonly [string, RegExp, boolean]> = [
+  ["B1 Fokusfalle", /\bfocusablesIn\b|\bfocusFirstIn\b|\bfocusTrap\b|["']Tab["']/, true],
+  ["B2 inert", /\binert\b/, true],
+  ["B3 Scrollsperre", /(?:body|documentElement)\s*\.\s*style\s*\.\s*overflow/, true],
+  ["B4 nativer Dialog", /\bshowModal\b|<dialog\b/, true],
+  ["B5 aria-Modalitaet", /aria-modal|role\s*=\s*["'](?:alert)?dialog["']/, true],
+  ["B6 Vollbildform", B6_VOLLBILDFORM, false],
+  ["B7 Shell-Grenze", /\buseModalBoundary\b|\buseModalLocked\b/, true],
+];
+
+/** Die Namen der Signale, die dieser Quelltext zeigt — für die Meldung, nicht nur für das Urteil. */
+function wirkungssignale(quelltext: string): string[] {
+  return WIRKUNGSSIGNALE.filter(([, muster]) => muster.test(quelltext)).map(([name]) => name);
+}
+
+function wirktModalAmBestand(quelltext: string): boolean {
+  const hart = WIRKUNGSSIGNALE.some(([, muster, istHart]) => istHart && muster.test(quelltext));
+  if (hart) {
+    return true;
+  }
+  return B6_VOLLBILDFORM.test(quelltext) && verdecktDenHintergrund(quelltext);
+}
+
+/**
+ * Module, die modale Wirkung BEREITSTELLEN, aber selbst keine Fläche sind. Ohne diese Liste
+ * meldete die zweite Richtung ihre eigene Infrastruktur — und der Grund stünde nirgends.
+ *
+ * Sie ist bewusst kurz und einzeln begründet: eine Ausnahme ohne Grund ist eine Lücke mit Namen.
+ */
+const WIRKUNG_OHNE_FLAECHE = new Map<string, string>([
+  [
+    "apps/web/src/lib/focusables.ts",
+    "Fokus-Hilfsmodul: liefert Selektor und Fokusfunktionen, rendert selbst kein Element",
+  ],
+]);
+
+/**
+ * Die zweite Richtung als Wächter: jede Datei mit modaler WIRKUNG, die in keiner der bekannten
+ * Klassen steht. Sie benutzt `spanntVollflaecheAuf` NICHT — genau darin liegt ihr Wert.
+ */
+function unregistrierteWirkflaechen(
+  erhebungen: DateiErhebung[],
+  markerTragende: Bauteil[],
+): string[] {
+  const mitMarker = new Set(markerTragende.map((b) => b.datei));
+  const markerlos = new Set(MARKERLOSE_TRAEGER.map((b) => b.datei));
+  return erhebungen
+    .filter((e) => wirktModalAmBestand(e.quelle.gestrippt))
+    .map((e) => e.quelle.datei)
+    .filter(
+      (d) =>
+        d !== GRENZE_MODUL &&
+        !mitMarker.has(d) &&
+        !markerlos.has(d) &&
+        !NICHT_MODALE_VOLLFLAECHEN.has(d) &&
+        !NATIV_MODAL_AUSNAHMEN.has(d) &&
+        !WIRKUNG_OHNE_FLAECHE.has(d),
+    );
+}
+
+/**
+ * DER SUCHRAUM, IN DEN RICHTUNG A NIE GESEHEN HAT. Sie liest ausschliesslich `.ts`/`.tsx`
+ * (`istQuelldatei`). Eine Vollbildfläche kann aber in einem Stylesheet stehen — dort wäre sie für
+ * jede der bisherigen Erhebungen unsichtbar. Gemessen heute: drei Stylesheets, kein Treffer.
+ * Der Fall hält das fest und wird rot, sobald dort eine Fläche entsteht.
+ */
+function stylesheetdateien(verzeichnis: string): string[] {
+  const gefunden: string[] = [];
+  for (const eintrag of readdirSync(join(WURZEL, verzeichnis), { withFileTypes: true })) {
+    if (
+      eintrag.name === "node_modules" ||
+      eintrag.name === "dist" ||
+      eintrag.name.startsWith(".")
+    ) {
+      continue;
+    }
+    const relativ = join(verzeichnis, eintrag.name);
+    if (eintrag.isDirectory()) {
+      gefunden.push(...stylesheetdateien(relativ));
+    } else if (relativ.endsWith(".css")) {
+      gefunden.push(posix(relativ));
+    }
+  }
+  return gefunden;
+}
+
+function stylesheetVollbildregeln(): string[] {
+  const funde: string[] = [];
+  for (const datei of stylesheetdateien(join("apps", "web"))) {
+    const text = ohneKommentare(readFileSync(join(WURZEL, datei), "utf8"));
+    if (!/position\s*:\s*fixed/.test(text)) {
+      continue;
+    }
+    if (/\b100vw\b|\b100vh\b|inset\s*:\s*0/.test(text)) {
+      funde.push(`${datei} — Stylesheet-Regel mit position:fixed und Vollbildmass`);
+    }
+  }
+  return funde;
+}
+
 const MARKERLOSE_VERWEISE: VerweisBild = erhebeVerweise(ALLE_ERHEBUNGEN, MARKERLOSE_TRAEGER);
 
 // ---------------------------------------------------------------------------------------------
@@ -1730,6 +1905,251 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     ]);
   });
 
+  // ==============================================================================================
+  // JOB 1093 D2 — DIE KALIBRIERUNG: EINE POSITIV- UND EINE NEGATIVDATEI AUS DEM ECHTEN BESTAND.
+  //
+  // Ohne beide misst die Liste nur sich selbst. Die Positivdatei belegt, dass die Ableitung
+  // wirklich greift; die Negativdatei belegt, dass sie nicht einfach jede Vollfläche meldet.
+  // Beide sind ECHTE Produktdateien — keine synthetische Quelle, weil eine synthetische Datei
+  // genau die Frage offen liesse, um die es geht: trägt das Merkmal am heutigen Bestand?
+  // ==============================================================================================
+
+  it("KALIBRIERUNG POSITIV: Modal.tsx ist AM BESTAND als markerloser Träger belegt, nicht per Liste", () => {
+    const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === "apps/web/src/components/Modal.tsx");
+    expect(e, "Positivdatei der Kalibrierung fehlt im Bestand").toBeDefined();
+    const quelle = e?.quelle.gestrippt ?? "";
+    // Die vier Aussagen einzeln, damit im Rotfall dasteht, WELCHE davon nicht mehr gilt.
+    expect(e?.kandidaten ?? [], "Modal.tsx trägt jetzt einen Marker").toEqual([]);
+    expect(spanntVollflaecheAuf(quelle), "Modal.tsx spannt keine Vollfläche mehr auf").toBe(true);
+    expect(verdecktDenHintergrund(quelle), "Modal.tsx verdeckt den Hintergrund nicht mehr").toBe(
+      true,
+    );
+    expect(/"Escape"|'Escape'/.test(quelle), "Modal.tsx hat keinen Tastatur-Ausgang mehr").toBe(
+      true,
+    );
+    expect(e !== undefined && istMarkerloserTraegerAmBestand(e)).toBe(true);
+  });
+
+  it("KALIBRIERUNG NEGATIV: HelpTip.tsx ist es NICHT — dieselbe Vollfläche, andere Sache", () => {
+    const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === "apps/web/src/components/HelpTip.tsx");
+    expect(e, "Negativdatei der Kalibrierung fehlt im Bestand").toBeDefined();
+    const quelle = e?.quelle.gestrippt ?? "";
+    // Sie liegt in DERSELBEN Bezugsmenge — genau das macht sie zur tauglichen Negativprobe.
+    expect(spanntVollflaecheAuf(quelle), "HelpTip.tsx gehört nicht mehr zur Bezugsmenge").toBe(
+      true,
+    );
+    expect(
+      verdecktDenHintergrund(quelle),
+      "der Klickfänger von HelpTip ist farblos — färbt ihn jemand ein, wird die Fläche modal und gehört ins Register",
+    ).toBe(false);
+    expect(e !== undefined && istMarkerloserTraegerAmBestand(e)).toBe(false);
+    expect(MARKERLOSE_TRAEGER.map((b) => b.datei)).not.toContain(
+      "apps/web/src/components/HelpTip.tsx",
+    );
+  });
+
+  it("KALIBRIERUNG: das Register deckt sich mit dem, was der Bestand hergibt", () => {
+    // DIE VOLLSTÄNDIGKEITSPRÜFUNG. Sie fragt NICHT, ob jede Vollfläche irgendwo eingetragen ist,
+    // sondern ob GENAU DIE Flächen im Register stehen, die es nach ihrer eigenen Semantik
+    // hineingehören. Wird ein Eintrag entfernt, wird sie rot — daran hängt der Red-first-Beleg.
+    const abgeleitet = ALLE_ERHEBUNGEN.filter(istMarkerloserTraegerAmBestand)
+      .map((e) => e.quelle.datei)
+      .sort();
+    const registriert = MARKERLOSE_TRAEGER.map((b) => b.datei).sort();
+    expect(
+      abgeleitet,
+      "\nLinks steht, was der BESTAND hergibt, rechts das Register. Fehlt links ein Eintrag, gehört er aus dem Register gestrichen; fehlt rechts einer, ist eine markerlose Modalfläche UNREGISTRIERT.\n",
+    ).toEqual(registriert);
+  });
+
+  // ==============================================================================================
+  // JOB 1093 D3 — DIE ZWEITE SUCHRICHTUNG UND DER RESTLOSE ABGLEICH.
+  //
+  // BEN zu D2: die Aussage „10 Überlagerungsflächen im gesamten Baum" und „keine vierte" sind
+  // UNBEWIESENE HYPOTHESEN, weil die erste Richtung nur Dateien mit bestimmten Bauformen aufnimmt.
+  // Hier steht die Gegenrichtung, und hier steht der Abgleich, den BEN prüft: jeder Fund der einen
+  // Richtung ist in der anderen enthalten ODER einzeln begründet abwesend. Zielzahl: NULL
+  // unerklärte Restfälle.
+  // ==============================================================================================
+
+  /** Richtung A am heutigen Bestand: die Bauform-Menge (Vollfläche über `fixed` + vier Seiten). */
+  const RICHTUNG_A = (): string[] =>
+    ALLE_ERHEBUNGEN.filter((e) => spanntVollflaecheAuf(e.quelle.gestrippt))
+      .map((e) => e.quelle.datei)
+      .sort();
+
+  /** Richtung B am heutigen Bestand: die Wirkungsmenge. Kennt `spanntVollflaecheAuf` nicht. */
+  const RICHTUNG_B = (): string[] =>
+    ALLE_ERHEBUNGEN.filter((e) => wirktModalAmBestand(e.quelle.gestrippt))
+      .map((e) => e.quelle.datei)
+      .sort();
+
+  /**
+   * Die begründeten Abwesenheiten. Jede Zeile ist eine Aussage über den heutigen Bestand, die rot
+   * wird, sobald sie nicht mehr stimmt — und nicht eine Liste, die Restfälle wegdefiniert.
+   */
+  const NUR_A_BEGRUENDET = new Map<string, string>([
+    [
+      "apps/web/src/components/KnowledgeInputStudio.tsx",
+      "Vollbild und verdeckend, aber OHNE modale Wirkung: keine Fokusfalle, keine Scrollsperre, kein inert, kein Marker. Ein Produktbefund, kein Erhebungsfehler.",
+    ],
+    [
+      "apps/web/src/components/HelpTip.tsx",
+      "Popover: die Vollfläche ist ein farbloser Klickfänger, der Inhalt sitzt daneben — keine Wirkung, die in die Bedienung eingreift",
+    ],
+    [
+      "apps/web/src/components/AiModelInfo.tsx",
+      "dieselbe Popover-Bauform wie HelpTip — reine Auskunft ohne Bedienfluss",
+    ],
+  ]);
+
+  const NUR_B_BEGRUENDET = new Map<string, string>([
+    [
+      "apps/web/src/app/ModalBoundaryContext.tsx",
+      "das Grenzmodul selbst: es IST die Wirkung (inert, Fokusführung), aber keine Fläche — der Sammler führt es als GRENZE_MODUL und schliesst es überall aus",
+    ],
+    [
+      "apps/web/src/lib/focusables.ts",
+      "Fokus-Hilfsmodul ohne eigenes Element — steht mit Grund in WIRKUNG_OHNE_FLAECHE",
+    ],
+  ]);
+
+  it("ABGLEICH: beide Suchrichtungen sind restlos abgeglichen — null unerklärte Restfälle", () => {
+    const a = RICHTUNG_A();
+    const b = RICHTUNG_B();
+    const nurA = a.filter((d) => !b.includes(d));
+    const nurB = b.filter((d) => !a.includes(d));
+
+    // Beide Richtungen müssen überhaupt etwas finden — sonst wäre der Abgleich zweier leerer
+    // Mengen trivial grün.
+    expect(a.length, "Richtung A (Bauform) findet nichts mehr").toBeGreaterThanOrEqual(8);
+    expect(b.length, "Richtung B (Wirkung) findet nichts mehr").toBeGreaterThanOrEqual(7);
+
+    const unerklaertA = nurA.filter((d) => !NUR_A_BEGRUENDET.has(d));
+    const unerklaertB = nurB.filter((d) => !NUR_B_BEGRUENDET.has(d));
+    expect(
+      unerklaertA,
+      "\nNur in Richtung A gefunden und NICHT begründet abwesend in B — das ist ein unerklärter Restfall:\n",
+    ).toEqual([]);
+    expect(
+      unerklaertB,
+      "\nNur in Richtung B gefunden und NICHT begründet abwesend in A — das ist ein unerklärter Restfall:\n",
+    ).toEqual([]);
+
+    // Die Gegenrichtung: eine Begründung, deren Fall es gar nicht mehr gibt, beschreibt gestern.
+    for (const datei of NUR_A_BEGRUENDET.keys()) {
+      expect(nurA, `Begründung ohne Restfall (nur-A): ${datei}`).toContain(datei);
+    }
+    for (const datei of NUR_B_BEGRUENDET.keys()) {
+      expect(nurB, `Begründung ohne Restfall (nur-B): ${datei}`).toContain(datei);
+    }
+  });
+
+  it("ZWEITE RICHTUNG: am heutigen Bestand steht jede Wirkungsfläche in einer bekannten Klasse", () => {
+    expect(
+      unregistrierteWirkflaechen(ALLE_ERHEBUNGEN, BAUTEILE),
+      "\nModale WIRKUNG ohne Registereintrag — der eigentliche Fund dieser Richtung:\n",
+    ).toEqual([]);
+  });
+
+  it("STYLESHEET-SUCHRAUM: keine Vollbildfläche in einem .css — dort hat Richtung A nie gesehen", () => {
+    // Richtung A liest ausschliesslich `.ts`/`.tsx`. Gemessen: drei Stylesheets, kein Treffer.
+    expect(stylesheetdateien(join("apps", "web")).length).toBeGreaterThan(0);
+    expect(stylesheetVollbildregeln()).toEqual([]);
+  });
+
+  // ---- DIE BEIDEN GEGENFAELLE AUSSERHALB DER BISHERIGEN VORFILTERUNG (Lieferungen 3 und 4) ----
+
+  it("GEGENFALL 1: ein markerloser Träger mit `w-screen h-screen` — A ist blind, B meldet ihn", () => {
+    const traeger = synthetisch("apps/web/src/components/SynthSchirmflaeche.tsx", [
+      'import { useEffect } from "react";',
+      "export function SynthSchirmflaeche({ open, onClose }: { open: boolean; onClose: () => void }) {",
+      "  useEffect(() => {",
+      "    if (!open) return;",
+      '    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };',
+      '    document.addEventListener("keydown", onKey);',
+      '    return () => document.removeEventListener("keydown", onKey);',
+      "  }, [open, onClose]);",
+      "  if (!open) return null;",
+      '  return <div className="fixed w-screen h-screen z-50 bg-ink/70">Inhalt</div>;',
+      "}",
+    ]);
+
+    // (1) DIE LÜCKE, GEMESSEN: die erste Richtung sieht diesen Träger nicht. Ohne diese Zeile wäre
+    //     der Fall unten nicht von „war ohnehin schon abgedeckt" zu unterscheiden.
+    expect(
+      spanntVollflaecheAuf(traeger.quelle.gestrippt),
+      "`w-screen h-screen` ist keine `fixed`+vier-Seiten-Fläche — genau das ist BENs Befund",
+    ).toBe(false);
+    expect(unregistrierteVollflaechen([traeger], BAUTEILE)).toEqual([]);
+
+    // (2) UND DIE ZWEITE RICHTUNG FINDET IHN TROTZDEM.
+    expect(traeger.kandidaten, "der Träger ist markerlos").toEqual([]);
+    expect(wirkungssignale(traeger.quelle.gestrippt)).toContain("B6 Vollbildform");
+    expect(unregistrierteWirkflaechen([traeger], BAUTEILE)).toEqual([
+      "apps/web/src/components/SynthSchirmflaeche.tsx",
+    ]);
+  });
+
+  it("GEGENFALL 2: ein fokusgesperrter Träger mit `openIndex` — A ist blind, B meldet ihn", () => {
+    // BENs zweite Prüflücke wörtlich: ein nativer oder fokusgesperrter Modalträger mit nicht
+    // erkanntem Zustandsnamen und OHNE die bisherige UE-Signatur.
+    const traeger = synthetisch("apps/web/src/components/SynthFokusfalle.tsx", [
+      'import { useRef, useState } from "react";',
+      'import { focusablesIn } from "../lib/focusables";',
+      "export function SynthFokusfalle() {",
+      "  const [openIndex] = useState<number | null>(null);",
+      "  const panelRef = useRef<HTMLDivElement | null>(null);",
+      "  const onKeyDown = (e: KeyboardEvent) => {",
+      '    if (e.key !== "Tab") return;',
+      "    e.preventDefault();",
+      "    focusablesIn(panelRef.current)[0]?.focus();",
+      "  };",
+      "  if (openIndex === null) return null;",
+      '  return <div ref={panelRef} onKeyDown={onKeyDown} className="absolute h-full w-full bg-ink/60">x</div>;',
+      "}",
+    ]);
+
+    expect(
+      spanntVollflaecheAuf(traeger.quelle.gestrippt),
+      "kein `fixed`, kein Portal — für die erste Richtung existiert dieser Träger nicht",
+    ).toBe(false);
+    expect(unregistrierteVollflaechen([traeger], BAUTEILE)).toEqual([]);
+
+    expect(traeger.kandidaten, "der Träger ist markerlos").toEqual([]);
+    expect(wirkungssignale(traeger.quelle.gestrippt)).toContain("B1 Fokusfalle");
+    expect(unregistrierteWirkflaechen([traeger], BAUTEILE)).toEqual([
+      "apps/web/src/components/SynthFokusfalle.tsx",
+    ]);
+  });
+
+  it("ZWEITE RICHTUNG · KALIBRIERUNG: eine Fläche ohne Wirkung wird NICHT gemeldet", () => {
+    // Ohne diesen Fall wäre die zweite Richtung von „meldet alles" nicht zu unterscheiden. Der
+    // Prüfstein kommt aus dem ECHTEN Bestand: `HelpTip.tsx` und `ToastViewport.tsx` tragen beide
+    // das Signal B6 (`100vw`), aber ohne Verdeckung — und bleiben deshalb draussen.
+    for (const datei of [
+      "apps/web/src/components/HelpTip.tsx",
+      "apps/web/src/shell/ToastViewport.tsx",
+    ]) {
+      const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
+      expect(e, `Kalibrierdatei fehlt im Bestand: ${datei}`).toBeDefined();
+      const quelle = e?.quelle.gestrippt ?? "";
+      expect(wirkungssignale(quelle), `${datei} sollte B6 tragen`).toContain("B6 Vollbildform");
+      expect(
+        wirktModalAmBestand(quelle),
+        `${datei} ist Layout, keine Wirkfläche — meldet die zweite Richtung sie, ist sie zu grob`,
+      ).toBe(false);
+    }
+
+    // Und ein synthetischer Balken ohne jedes Signal ebenfalls nicht.
+    const balken = synthetisch("apps/web/src/components/SynthOhneWirkung.tsx", [
+      "export function SynthOhneWirkung(): JSX.Element {",
+      '  return <div className="fixed bottom-4 right-4 z-50">Hinweis</div>;',
+      "}",
+    ]);
+    expect(unregistrierteWirkflaechen([balken], BAUTEILE)).toEqual([]);
+  });
+
   it("NEGATIVGRENZE: die nichtmodalen Vollflächen erzeugen keinen modalen Kandidaten", () => {
     for (const datei of NICHT_MODALE_VOLLFLAECHEN.keys()) {
       const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
@@ -2315,5 +2735,548 @@ describe("JOB 1130 · der Zähler und die fail-closed Prop-Weitergabe", () => {
     expect(erhebeVerweise([e], [BAUTEIL]).paare.map(schluessel)).toContain(
       "apps/web/src/pages/P2Direkt.tsx → <FacetFilter>",
     );
+  });
+});
+
+// ================================================================================================
+// JOB 1020 · D13 — DIE BELEG-ASSERTIONSKETTE, HIER UND NUR HIER.
+// ================================================================================================
+//
+// BENS BEFUND ZU D12, wörtlich: „Der technisch grüne Endstand kalibriert nur eine neue testlokale
+// Assertionslogik; er schliesst weder den zentralen Wächter noch den konkreten D-044-Dialog an."
+// Die Prüflogik lag ausschliesslich in `tests/app/d044-assertionskette.test.ts` und prüfte dort
+// sich selbst — der Sammler, der tatsächlich über Freigaben entscheidet, kannte sie nicht
+// (gemessen vor diesem Durchgang: `belegAssertionErfuellt` in dieser Datei = 0 Treffer).
+//
+// KORREKTURPFLICHT 1 lässt zwei Wege: „in den tatsächlich entscheidenden zentralen Wächter
+// integrieren ODER aus einer gemeinsamen Implementierung importieren". D13 nimmt den ERSTEN,
+// und zwar aus einem gemessenen Grund: Der Importweg verlangt einen `export` aus einer
+// `.test.ts`-Datei, und den verbietet die Hausregel `lint/suspicious/noExportsInTest`. Der
+// Bestand befolgt sie ausdrücklich statt sie zu unterdrücken (`tests/security/
+// egress-encapsulation.test.ts:51`: „Kein Export (Biome: noExportsInTest)"). Ein `biome-ignore`
+// hätte eine bewusste Hausregel für eine Bequemlichkeit ausgehebelt — und nebenbei alle zwölf
+// Kalibrierfälle bei jedem Sammlerlauf ein zweites Mal ausgeführt (gemessen: 71 → 83 Fälle).
+//
+// DIE LOGIK EXISTIERT DAMIT GENAU EINMAL, hier. `d044-assertionskette.test.ts` führt sie nicht
+// mehr, sondern wacht darüber, dass sie hier steht und nicht wieder zweimal entsteht.
+//
+// WAS SIE PRÜFT: dass EIN ausgeführter `it`/`test`-Rumpf die ganze Belegkette an DERSELBEN
+// Variablen trägt —
+//
+//   Markerselektor  →  dialogVar
+//   dialogVar       →  dessen `aria-labelledby` wird gelesen
+//   dialogVar       →  Argument der Namensauflösung
+//   deren Ergebnis  →  nameVar
+//   nameVar         →  Nichtleerheitsaussage
+//   nameVar         →  Vergleich mit der registrierten Erwartung
+//
+// Es gibt KEINEN SourceFile-Rückfall: Wer die Kette auf zwei Tests verteilt, bleibt abgelehnt.
+// Genau das war der D11-Fehler, den BEN mit zwei synthetischen Formen belegt hat.
+
+/** Der Registereintrag eines Belegs — vier Felder, so wie der Wächter ihn führt. */
+interface Beleg {
+  /** Der Selektor, mit dem der registrierte Dialog ausgewählt wird. */
+  readonly marker: string;
+  /** Die Beschriftungsbindung, die an ihm gelesen werden muss. */
+  readonly bindung: string;
+  /** Die Funktion, die den zugänglichen Namen ermittelt. */
+  readonly namensaufloesung: string;
+  /** Die Erwartung, gegen die der ermittelte Name stehen muss. */
+  readonly inhaltserwartung: string;
+}
+
+const D044: Beleg = {
+  marker: '[data-testid="editor-zoom"]',
+  bindung: "aria-labelledby",
+  namensaufloesung: "zugaenglicherName",
+  inhaltserwartung: "editor.zoom.title",
+};
+
+function baum(quelltext: string): ts.SourceFile {
+  return ts.createSourceFile(
+    "beleg.test.tsx",
+    quelltext,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+}
+
+function kinder(knoten: ts.Node): ts.Node[] {
+  const raus: ts.Node[] = [];
+  knoten.forEachChild((k) => {
+    raus.push(k);
+  });
+  return raus;
+}
+
+function alleKnoten(knoten: ts.Node): ts.Node[] {
+  const raus: ts.Node[] = [knoten];
+  for (const k of kinder(knoten)) {
+    raus.push(...alleKnoten(k));
+  }
+  return raus;
+}
+
+/** Enthält der Teilbaum ein Stringliteral, das `text` enthält? */
+function literalEnthaelt(knoten: ts.Node, text: string): boolean {
+  return alleKnoten(knoten).some(
+    (k) =>
+      (ts.isStringLiteral(k) || ts.isNoSubstitutionTemplateLiteral(k)) && k.text.includes(text),
+  );
+}
+
+/** Die Rümpfe aller `it`/`test`-Aufrufe — und NUR die. Kein SourceFile-Rückfall. */
+function testRuempfe(sf: ts.SourceFile): ts.Node[] {
+  const raus: ts.Node[] = [];
+  for (const k of alleKnoten(sf)) {
+    if (!ts.isCallExpression(k)) {
+      continue;
+    }
+    const name = ts.isIdentifier(k.expression)
+      ? k.expression.text
+      : ts.isPropertyAccessExpression(k.expression) && ts.isIdentifier(k.expression.expression)
+        ? k.expression.expression.text
+        : "";
+    if (name !== "it" && name !== "test") {
+      continue;
+    }
+    const rumpf = k.arguments.find((a) => ts.isArrowFunction(a) || ts.isFunctionExpression(a));
+    if (rumpf && (ts.isArrowFunction(rumpf) || ts.isFunctionExpression(rumpf)) && rumpf.body) {
+      raus.push(rumpf.body);
+    }
+  }
+  return raus;
+}
+
+/** Der Name der Variablen, in die dieser Knoten deklariert oder zugewiesen wird — oder null. */
+function zielVariable(knoten: ts.Node): string | null {
+  let lauf: ts.Node | undefined = knoten;
+  while (lauf) {
+    if (ts.isVariableDeclaration(lauf) && ts.isIdentifier(lauf.name)) {
+      return lauf.name.text;
+    }
+    if (
+      ts.isBinaryExpression(lauf) &&
+      lauf.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isIdentifier(lauf.left)
+    ) {
+      return lauf.left.text;
+    }
+    lauf = lauf.parent;
+  }
+  return null;
+}
+
+/** Steht dieser Ausdruck für die Variable `name` — direkt oder als deren Eigenschaftszugriff? */
+function istVariable(ausdruck: ts.Node, name: string): boolean {
+  if (ts.isIdentifier(ausdruck)) {
+    return ausdruck.text === name;
+  }
+  if (ts.isPropertyAccessExpression(ausdruck) || ts.isElementAccessExpression(ausdruck)) {
+    return istVariable(ausdruck.expression, name);
+  }
+  if (ts.isNonNullExpression(ausdruck) || ts.isParenthesizedExpression(ausdruck)) {
+    return istVariable(ausdruck.expression, name);
+  }
+  return false;
+}
+
+interface Kettenbefund {
+  readonly erfuellt: boolean;
+  /** Welches Glied zuerst gerissen ist — für eine Fehlermeldung, die etwas sagt. */
+  readonly bruchstelle: string;
+}
+
+function belegAssertionErfuellt(quelltext: string, beleg: Beleg): Kettenbefund {
+  const sf = baum(quelltext);
+  const ruempfe = testRuempfe(sf);
+  if (ruempfe.length === 0) {
+    return { erfuellt: false, bruchstelle: "kein ausgefuehrter it/test-Rumpf" };
+  }
+
+  let letzteBruchstelle = "kein Rumpf traegt die Kette";
+
+  for (const rumpf of ruempfe) {
+    const knoten = alleKnoten(rumpf);
+
+    // (1) Markerselektion -> dialogVar
+    const dialogVars = new Set<string>();
+    for (const k of knoten) {
+      if (!ts.isCallExpression(k)) {
+        continue;
+      }
+      if (!k.arguments.some((a) => literalEnthaelt(a, beleg.marker))) {
+        continue;
+      }
+      const v = zielVariable(k);
+      if (v) {
+        dialogVars.add(v);
+      }
+    }
+    if (dialogVars.size === 0) {
+      letzteBruchstelle = "Markerselektion ergibt keine Dialogvariable";
+      continue;
+    }
+
+    for (const dialogVar of dialogVars) {
+      // (2) `aria-labelledby` wird AN dialogVar gelesen
+      const bindungGelesen = knoten.some(
+        (k) =>
+          ts.isCallExpression(k) &&
+          ts.isPropertyAccessExpression(k.expression) &&
+          istVariable(k.expression.expression, dialogVar) &&
+          k.arguments.some((a) => literalEnthaelt(a, beleg.bindung)),
+      );
+      if (!bindungGelesen) {
+        letzteBruchstelle = `\`${beleg.bindung}\` wird nicht an \`${dialogVar}\` gelesen`;
+        continue;
+      }
+
+      // (3) Namensaufloesung MIT dialogVar als Argument -> nameVar (oder inline)
+      const aufloesungen = knoten.filter(
+        (k) =>
+          ts.isCallExpression(k) &&
+          ts.isIdentifier(k.expression) &&
+          k.expression.text === beleg.namensaufloesung &&
+          k.arguments.some((a) => istVariable(a, dialogVar)),
+      ) as ts.CallExpression[];
+      if (aufloesungen.length === 0) {
+        letzteBruchstelle = `\`${beleg.namensaufloesung}(...)\` erhaelt nicht \`${dialogVar}\``;
+        continue;
+      }
+
+      for (const aufloesung of aufloesungen) {
+        const nameVar = zielVariable(aufloesung);
+
+        /**
+         * Steht dieser Ausdruck fuer das Ergebnis der Aufloesung AN DIESEM Dialog?
+         *
+         * Drei zulaessige Formen, und keine mehr:
+         *   · derselbe Aufruf (direkt im `expect`),
+         *   · die Variable, in die er geschrieben wurde (die echte Zwischenvariablenform),
+         *   · ein WEITERER Aufruf derselben Aufloesung mit DERSELBEN Dialogvariablen.
+         *
+         * Die dritte Form ist noetig, weil `expect(zugaenglicherName(dialog)).toBeTruthy()`
+         * und `expect(zugaenglicherName(dialog)).toBe(...)` zwei AST-Knoten sind, aber
+         * denselben Wert bezeichnen. Knotenidentitaet zu verlangen waere nicht strenger,
+         * sondern nur falsch — sie wuerde eine gueltige Belegform ablehnen. Die Bindung an
+         * `dialogVar` bleibt dabei unangetastet: ein Aufruf mit einem fremden Element
+         * erfuellt keine der drei Formen.
+         */
+        const istNamenswert = (a: ts.Node): boolean => {
+          if (a === aufloesung || alleKnoten(a).includes(aufloesung)) {
+            return true;
+          }
+          if (nameVar !== null && istVariable(a, nameVar)) {
+            return true;
+          }
+          return alleKnoten(a).some(
+            (k) =>
+              ts.isCallExpression(k) &&
+              ts.isIdentifier(k.expression) &&
+              k.expression.text === beleg.namensaufloesung &&
+              k.arguments.some((arg) => istVariable(arg, dialogVar)),
+          );
+        };
+
+        // (4) Nichtleerheit, an DENSELBEN Namenswert gebunden
+        const nichtleer = knoten.some((k) => {
+          if (!ts.isCallExpression(k) || !ts.isIdentifier(k.expression)) {
+            return false;
+          }
+          if (k.expression.text !== "expect") {
+            return false;
+          }
+          if (!k.arguments.some((a) => istNamenswert(a))) {
+            return false;
+          }
+          const kette = k.parent;
+          if (!kette || !ts.isPropertyAccessExpression(kette)) {
+            return false;
+          }
+          const matcher = kette.name.text;
+          return (
+            matcher.startsWith("toBeGreaterThan") ||
+            matcher === "toBeTruthy" ||
+            matcher === "toHaveLength" ||
+            matcher === "not"
+          );
+        });
+        if (!nichtleer) {
+          letzteBruchstelle = "keine Nichtleerheitsaussage am selben Namenswert";
+          continue;
+        }
+
+        // (5) Vergleich mit der registrierten Erwartung, am DEMSELBEN Namenswert
+        const verglichen = knoten.some((k) => {
+          if (!ts.isCallExpression(k) || !ts.isIdentifier(k.expression)) {
+            return false;
+          }
+          if (k.expression.text !== "expect") {
+            return false;
+          }
+          if (!k.arguments.some((a) => istNamenswert(a))) {
+            return false;
+          }
+          const kette = k.parent;
+          if (!kette || !ts.isPropertyAccessExpression(kette)) {
+            return false;
+          }
+          const aufruf = kette.parent;
+          if (!aufruf || !ts.isCallExpression(aufruf)) {
+            return false;
+          }
+          return aufruf.arguments.some((a) => literalEnthaelt(a, beleg.inhaltserwartung));
+        });
+        if (!verglichen) {
+          letzteBruchstelle = `der Namenswert wird nicht gegen \`${beleg.inhaltserwartung}\` verglichen`;
+          continue;
+        }
+
+        return { erfuellt: true, bruchstelle: "" };
+      }
+    }
+  }
+
+  return { erfuellt: false, bruchstelle: letzteBruchstelle };
+}
+
+/**
+ * Der D10-NACHBAU — nur zum Vergleich, und ausdrücklich ein Nachbau, nicht der Originalstand.
+ *
+ * Der echte D10-Wächter steckt nicht in dieser Base (in D12 nachgemessen). Was hier steht, ist die
+ * von BEN wörtlich beschriebene D10-Semantik — vier freie `String.includes` über die ganze Datei —
+ * damit der kausale Unterschied überhaupt messbar wird. Er belegt eine Aussage über den NACHBAU.
+ */
+function wortpruefungD10(quelltext: string, beleg: Beleg): boolean {
+  return (
+    quelltext.includes(beleg.marker) &&
+    quelltext.includes(beleg.bindung) &&
+    quelltext.includes(beleg.namensaufloesung) &&
+    quelltext.includes(beleg.inhaltserwartung)
+  );
+}
+
+// ================================================================================================
+// JOB 1020 · D13 — DIE BELEG-ASSERTIONSKETTE LÄUFT IM ZENTRALEN WÄCHTER.
+// ================================================================================================
+//
+// DIE FÄLLE UNTEN RUFEN DIE IMPLEMENTIERUNG DIREKT DARÜBER AUF — dieselbe und einzige. Das ist
+// BENs Kernforderung: „die synthetischen Positiv-/Negativfälle müssen genau diesen ausgeführten
+// Code prüfen." In D12 prüften sie eine Kopie in ihrer eigenen Datei, die der Sammler nie anfasste.
+//
+// ZWEI GRUPPEN:
+//   · KALIBRIERUNG (P1-P2, N1-N6, D10-Vergleich): der vollständige D12-Bestand, hierher übernommen.
+//     Er kalibriert jetzt die Implementierung, die der Sammler wirklich ausführt.
+//   · BELEGKETTE: BENs Prüflücke 1, wörtlich — „Zwei Belegdateien durch den tatsächlich
+//     entscheidenden Wächter laufen lassen — einmal auf zwei `it`-Rümpfe verteilt, einmal mit
+//     Namensauflösung an einer fremden Elementvariable. Erwartet: Beide Kandidaten bleiben
+//     abgelehnt; die echte Zwischenvariablenform wird angenommen."
+//
+// WAS SIE NICHT SIND: ein Beleg, dass der D-044-Dialog existiert. Er existiert nicht (gemessen in
+// D13: `editor-zoom`, `editor.zoom.title`, `zugaenglicherName`, `zoom`, `d044` — je 0 Treffer in
+// 433 Produktdateien). Die Prüfung ist damit die geschärfte ABNAHMEREGEL für einen künftigen
+// Belegtest, nicht sein Ersatz.
+describe("JOB 1020 D13: die Beleg-Assertionskette entscheidet IM zentralen Wächter", () => {
+  // Die drei Belegformen als reine TESTDATEN — die Logik kommt aus der gemeinsamen Implementierung.
+  const ECHTE_ZWISCHENVARIABLE = [
+    'it("D-044: der Zoomdialog traegt einen lokalisierten Namen", async () => {',
+    "  const dialog = container.querySelector('[data-testid=\"editor-zoom\"]');",
+    '  const ziel = dialog.getAttribute("aria-labelledby");',
+    "  const name = zugaenglicherName(dialog);",
+    "  expect(name.length).toBeGreaterThan(2);",
+    '  expect(name).toBe(i18n.t("editor.zoom.title"));',
+    "});",
+  ].join("\n");
+
+  const AUF_ZWEI_TESTS_VERTEILT = [
+    'it("erster Test: Marker und Bindung an derselben Variablen", async () => {',
+    "  const dialog = container.querySelector('[data-testid=\"editor-zoom\"]');",
+    '  dialog.getAttribute("aria-labelledby");',
+    "});",
+    'it("zweiter Test: Aufloesung und Vergleich an derselben Variablen", async () => {',
+    "  const name = zugaenglicherName(dialog);",
+    "  expect(name.length).toBeGreaterThan(2);",
+    '  expect(name).toBe(i18n.t("editor.zoom.title"));',
+    "});",
+  ].join("\n");
+
+  const NAMENSAUFLOESUNG_AM_FREMDEN_ELEMENT = [
+    'it("Marker richtig, Namensvergleich am fremden Element", async () => {',
+    "  const dialog = container.querySelector('[data-testid=\"editor-zoom\"]');",
+    '  dialog.getAttribute("aria-labelledby");',
+    '  const anderes = container.querySelector("h1");',
+    "  const name = zugaenglicherName(anderes);",
+    "  expect(name.length).toBeGreaterThan(2);",
+    '  expect(name).toBe(i18n.t("editor.zoom.title"));',
+    "});",
+  ].join("\n");
+
+  it("BELEGKETTE · die echte Zwischenvariablenform wird ANGENOMMEN", () => {
+    const befund = belegAssertionErfuellt(ECHTE_ZWISCHENVARIABLE, D044);
+    expect(befund.bruchstelle, "die echte Form darf an keinem Glied reissen").toBe("");
+    expect(befund.erfuellt).toBe(true);
+  });
+
+  it("BELEGKETTE · auf zwei it-Rümpfe verteilt bleibt der Kandidat ABGELEHNT", () => {
+    // Die Kette ist inhaltlich lückenlos und benutzt sogar dieselbe Variable `dialog` — sie steht
+    // nur in ZWEI Rümpfen. Ein Prüfer, der auf die ganze Quelldatei zurückfiele (das war der
+    // D11-Fehler), gäbe genau hier fälschlich frei.
+    expect(belegAssertionErfuellt(AUF_ZWEI_TESTS_VERTEILT, D044).erfuellt).toBe(false);
+  });
+
+  it("BELEGKETTE · Namensauflösung am fremden Element bleibt ABGELEHNT", () => {
+    const befund = belegAssertionErfuellt(NAMENSAUFLOESUNG_AM_FREMDEN_ELEMENT, D044);
+    expect(befund.erfuellt).toBe(false);
+    // Und die Bruchstelle benennt das Glied, das gerissen ist — eine Ablehnung ohne Grund wäre
+    // von einem stillen Fehlschlag nicht zu unterscheiden.
+    expect(befund.bruchstelle).toContain("zugaenglicherName");
+  });
+
+  it("BELEGKETTE · die Kettenprüfung steht GENAU EINMAL im Bestand", () => {
+    // Die Zusage aus Pflicht 1: „Nach diesem Durchgang darf es die Logik nicht mehr zweimal geben."
+    // Gezählt wird über den ganzen Testbaum, nicht nur über die zwei bekannten Dateien — sonst
+    // entstünde eine dritte Kopie unbemerkt.
+    const dateien: string[] = [];
+    const sammle = (verzeichnis: string): void => {
+      for (const eintrag of readdirSync(join(WURZEL, verzeichnis), { withFileTypes: true })) {
+        if (eintrag.name === "node_modules" || eintrag.name.startsWith(".")) {
+          continue;
+        }
+        const relativ = join(verzeichnis, eintrag.name);
+        if (eintrag.isDirectory()) {
+          sammle(relativ);
+        } else if (relativ.endsWith(".ts") || relativ.endsWith(".tsx")) {
+          dateien.push(relativ);
+        }
+      }
+    };
+    sammle("tests");
+
+    const definitionen = dateien.filter((d) =>
+      /function\s+belegAssertionErfuellt\s*\(/.test(readFileSync(join(WURZEL, d), "utf8")),
+    );
+    expect(
+      definitionen.map(posix),
+      "die Kettenprüfung ist mehr als einmal definiert — genau das schliesst Pflicht 1 aus",
+    ).toEqual(["tests/app/mega47-modale-flaechen-sammler.test.tsx"]);
+  });
+
+  // ==============================================================================================
+  // KALIBRIERUNG — der vollständige D12-Bestand, jetzt an der ausgeführten Implementierung.
+  // ==============================================================================================
+  // P1 ist textgleich mit `ECHTE_ZWISCHENVARIABLE` oben — die Form wird deshalb NICHT ein zweites
+  // Mal hingeschrieben. Zwei Fassungen derselben Belegform könnten auseinanderlaufen, und dann
+  // prüften Kalibrierung und BEN-Fall verschiedene Dinge unter demselben Namen.
+  const P2_DIREKT = `
+it("D-044: derselbe Beleg, ohne Zwischenvariable", async () => {
+  const dialog = container.querySelector('[data-testid="editor-zoom"]');
+  dialog.getAttribute("aria-labelledby");
+  expect(zugaenglicherName(dialog)).toBeTruthy();
+  expect(zugaenglicherName(dialog)).toBe(i18n.t("editor.zoom.title"));
+});
+`;
+
+  const N1_ZWEI_TESTS = `
+it("erster Test: Marker und Bindung", async () => {
+  const dialog = container.querySelector('[data-testid="editor-zoom"]');
+  expect(dialog.getAttribute("aria-labelledby")).toBeTruthy();
+});
+it("zweiter Test: Namensvergleich", async () => {
+  const name = zugaenglicherName(irgendetwas);
+  expect(name.length).toBeGreaterThan(2);
+  expect(name).toBe(i18n.t("editor.zoom.title"));
+});
+`;
+
+  const N3_OHNE_NICHTLEERHEIT = `
+it("Kette ohne Nichtleerheitsaussage", async () => {
+  const dialog = container.querySelector('[data-testid="editor-zoom"]');
+  dialog.getAttribute("aria-labelledby");
+  const name = zugaenglicherName(dialog);
+  expect(name).toBe(i18n.t("editor.zoom.title"));
+});
+`;
+
+  const N4_AUFGEBROCHENE_VARIABLE = `
+it("Zwischenvariable aufgebrochen: verglichen wird ein anderer Wert", async () => {
+  const dialog = container.querySelector('[data-testid="editor-zoom"]');
+  dialog.getAttribute("aria-labelledby");
+  const name = zugaenglicherName(dialog);
+  const anderer = textVon(container.querySelector("h1"));
+  expect(anderer.length).toBeGreaterThan(2);
+  expect(anderer).toBe(i18n.t("editor.zoom.title"));
+});
+`;
+
+  const N5_NUR_WOERTER = `
+// Ein Kommentar mit [data-testid="editor-zoom"], aria-labelledby, zugaenglicherName
+// und editor.zoom.title — alle vier Woerter, keine einzige Beziehung.
+it("nur Woerter, keine Kette", async () => {
+  expect(true).toBe(true);
+});
+`;
+
+  it("P1 · die ECHTE Form mit Zwischenvariable wird als zusammenhängender Beleg erkannt", () => {
+    const befund = belegAssertionErfuellt(ECHTE_ZWISCHENVARIABLE, D044);
+    expect(befund.bruchstelle).toBe("");
+    expect(befund.erfuellt).toBe(true);
+  });
+
+  it("P2 · die direkte Form ohne Zwischenvariable wird ebenfalls erkannt", () => {
+    expect(belegAssertionErfuellt(P2_DIREKT, D044).erfuellt).toBe(true);
+  });
+
+  it("N1 · zwei getrennte Testfälle ergeben KEINEN Beleg, auch wenn ihre Summe alles enthält", () => {
+    expect(belegAssertionErfuellt(N1_ZWEI_TESTS, D044).erfuellt).toBe(false);
+  });
+
+  it("N3 · fehlende Nichtleerheitsaussage am selben Namenswert ergibt KEINEN Beleg", () => {
+    const befund = belegAssertionErfuellt(N3_OHNE_NICHTLEERHEIT, D044);
+    expect(befund.erfuellt).toBe(false);
+    expect(befund.bruchstelle).toContain("Nichtleerheitsaussage");
+  });
+
+  it("N4 · aufgebrochene Zwischenvariable ergibt KEINEN Beleg", () => {
+    expect(belegAssertionErfuellt(N4_AUFGEBROCHENE_VARIABLE, D044).erfuellt).toBe(false);
+  });
+
+  it("N5 · vier Wörter ohne jede Beziehung ergeben KEINEN Beleg", () => {
+    expect(belegAssertionErfuellt(N5_NUR_WOERTER, D044).erfuellt).toBe(false);
+  });
+
+  it("D10-Nachbau gibt N1, N4 und N5 fälschlich frei — die integrierte Prüfung nicht", () => {
+    for (const [name, quelle] of [
+      ["N1 zwei Tests", N1_ZWEI_TESTS],
+      ["N2 fremdes Element", NAMENSAUFLOESUNG_AM_FREMDEN_ELEMENT],
+      ["N4 aufgebrochene Variable", N4_AUFGEBROCHENE_VARIABLE],
+      ["N5 nur Wörter", N5_NUR_WOERTER],
+    ] as const) {
+      expect(wortpruefungD10(quelle, D044), `${name}: D10-Nachbau muss freigeben`).toBe(true);
+      expect(
+        belegAssertionErfuellt(quelle, D044).erfuellt,
+        `${name}: die integrierte Prüfung muss ablehnen`,
+      ).toBe(false);
+    }
+  });
+
+  it("und beide sind sich bei den echten Formen einig", () => {
+    for (const quelle of [ECHTE_ZWISCHENVARIABLE, P2_DIREKT]) {
+      expect(wortpruefungD10(quelle, D044)).toBe(true);
+      expect(belegAssertionErfuellt(quelle, D044).erfuellt).toBe(true);
+    }
+  });
+
+  it("N1 bleibt auch dann rot, wenn beide Tests in derselben Datei stehen", () => {
+    // Genau das war der D11-Rückfall: `pruefeTestfall(sf)` auf die komplette Quelldatei.
+    const zusammen = `${N1_ZWEI_TESTS}\n${N5_NUR_WOERTER}`;
+    expect(belegAssertionErfuellt(zusammen, D044).erfuellt).toBe(false);
+  });
+
+  it("eine Datei ganz ohne it/test-Rumpf ist rot und sagt auch, warum", () => {
+    const befund = belegAssertionErfuellt("const x = 1;", D044);
+    expect(befund.erfuellt).toBe(false);
+    expect(befund.bruchstelle).toBe("kein ausgefuehrter it/test-Rumpf");
   });
 });

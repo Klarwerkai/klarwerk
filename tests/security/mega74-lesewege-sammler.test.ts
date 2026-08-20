@@ -248,6 +248,14 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Entwürfe: eigener Bestand, nach Eigentümer begrenzt -----------------------------------
   "GET /api/drafts": { urteil: "EIGENER_BESTAND", grund: "visibleDraftsFor — Eigentümerlogik." },
   "GET /api/drafts/:id": { urteil: "EIGENER_BESTAND", grund: "requireVisibleDraft." },
+  // JOB 1171 D1: die ableitende Auskunft. Zweifach begrenzt — derselbe Torwächter wie die
+  // Einzelroute darüber, UND ihre Antwort trägt gar keinen Inhalt: `{ art, herkunft }` sind eine
+  // Kennung und Feldnamen (`payload.title`, `anchorsMissing`), kein Titel, keine Kernaussage,
+  // kein Body. Beurteilt nach dem strengeren der beiden Gründe.
+  "GET /api/drafts/:id/naechster-schritt": {
+    urteil: "EIGENER_BESTAND",
+    grund: "requireVisibleDraft (capture-routes.ts) — und die Antwort führt nur Feldnamen.",
+  },
   "GET /api/me/impact": { urteil: "EIGENER_BESTAND", grund: "vier eigene Zähler (impact.ts:88)." },
   // --- Kein Inhalt eines Wissensobjekts ------------------------------------------------------
   "GET /health": { urteil: "KEIN_KO_INHALT", grund: "Betriebszustand." },

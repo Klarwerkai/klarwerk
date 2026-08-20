@@ -64,7 +64,17 @@ export interface ValidationDecisionRef {
 export const VALIDATION_DECISION_ACTIONS: readonly string[] = [
   "ko.rated",
   "ko.admin-validated",
+  // JOB 557 D8: die Rückgabe zur Nacharbeit ist EINE Entscheidung, die unter ZWEI Namen auftritt —
+  // je nachdem, wer wirklich zuständig ist (`services/validation/src/service.ts`,
+  // `returnToResponsible`). Beide gehören deshalb hierher.
+  //
+  // `ko.returned-to-author` steht ausdrücklich WEITER hier, und das ist keine Nachlässigkeit,
+  // sondern die Lesbarkeit des Bestands: jedes vor D8 geschriebene Ereignis trägt diesen Namen,
+  // und jede damals festgehaltene `validationDecisionRef` zeigt darauf. Würde er hier entfernt,
+  // kippten sämtliche Altentscheidungen auf `WRONG_EVENT_TYPE` — eine Rückdatierung von
+  // Ungültigkeit auf Belege, an denen niemand etwas verändert hat.
   "ko.returned-to-author",
+  "ko.returned-to-owner",
 ];
 
 /**

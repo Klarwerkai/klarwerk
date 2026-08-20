@@ -3,7 +3,7 @@ import type { CreateKoInput } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
 import { DRAFT_LIMITS } from "./draft-limits";
 import type { DraftRepo } from "./repo";
-import { CaptureError, type Draft, type DraftPayload } from "./types";
+import { CaptureError, type Draft, type DraftPayload, type NaechsterSchritt } from "./types";
 
 export interface CaptureServiceDeps {
   repo: DraftRepo;
@@ -34,6 +34,100 @@ export interface DraftAnchorCheck {
   checked: boolean;
   /** Die Objektkennungen, auf die sich der Entwurf beruft, die es aber nicht (mehr) gibt. */
   missing: string[];
+}
+
+/**
+ * Die Objektkennungen, auf die sich dieser Entwurf beruft — einmal im Code.
+ *
+ * JOB 1171 D1: bis hierher stand diese Sammlung inline in `verifyDraftAnchors`. Die Ableitung des
+ * naechsten Schritts braucht dieselbe Menge (um „nicht pruefbar" von „nichts zu pruefen" zu
+ * unterscheiden), und zwei Auffassungen davon, was ein Anker dieses Entwurfs ist, waeren eine zu
+ * viel. Reine Extraktion: dieselben Felder, dieselbe Reihenfolge, dieselbe Filterung — es aendert
+ * sich kein Verhalten.
+ */
+function ankerKennungen(draft: Draft): string[] {
+  return [
+    ...new Set(
+      [
+        ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
+        // Auch die gesicherten Originale selbst: ein Ankerdokument ohne zugehörige Belegstelle
+        // wäre zwar nutzlos, aber es steht im Entwurf — und was im Entwurf steht, wird geprüft.
+        ...(draft.payload.anchorDocuments ?? []).map((doc) => doc.objectId),
+      ].filter((id): id is string => typeof id === "string" && id.length > 0),
+    ),
+  ];
+}
+
+// ================================================================================================
+// JOB 1171 D1 (KA8 Stufe 1a) — DIE ABLEITUNG DES NAECHSTEN SINNVOLLEN SCHRITTS.
+// ================================================================================================
+//
+// KEIN SICHTBARER NUTZEN. Diese Funktion ist der Datenlieferant, nicht die Karte. Sie aendert
+// nichts und speichert nichts; sie liest den Entwurf und das Ergebnis der Ankerpruefung, die der
+// Aufrufer ohnehin schon in der Hand hat.
+//
+// DIE VIER KO-PFLICHTFELDER sind genau die, an denen `toKoInput` weiter unten mit INCOMPLETE
+// abbricht. Sagte die Auskunft „einreichen" und das Einreichen scheiterte, waere sie eine Zusage
+// ohne Deckung — also muss sie DASSELBE beurteilen.
+//
+// Und zwar mit derselben SCHAERFE: `toKoInput` prueft `!p.title` (falsy), nicht auf Leerraum.
+// Ein Titel aus lauter Leerzeichen kommt dort durch — hier deshalb ebenso. Strenger zu pruefen
+// waere eine stille Verschaerfung an einer Stelle, an der niemand sie erwartet: die Auskunft
+// verlangte Nacharbeit, wo das Einreichen laengst ginge.
+//
+// `toKoInput` ruft diese Funktion NICHT auf, und das ist Absicht: seine vier Einzelpruefungen
+// verengen dort die Typen fuer die nachfolgende Zuweisung; ein Funktionsaufruf verloere das und
+// braeuchte Behauptungen (`as`) statt Beweise. Die Uebereinstimmung ist deshalb NICHT behauptet,
+// sondern gepinnt — der Vertragstest fuehrt beide Wege ueber dieselben Entwuerfe und vergleicht.
+const KO_PFLICHTFELDER = ["title", "statement", "type", "category"] as const;
+
+function fehlendePflichtfelder(payload: DraftPayload): string[] {
+  return KO_PFLICHTFELDER.filter((feld) => !payload[feld]).map((feld) => `payload.${feld}`);
+}
+
+/**
+ * Der naechste sinnvolle Schritt — oder NICHTS.
+ *
+ * DIE REIHENFOLGE IST DIE AUSSAGE, und sie ist begruendet:
+ *
+ *  1. FEHLENDE ANKER zuerst. Sie sind der einzige Zustand, der bereits entschieden ist: der
+ *     Entwurf beruft sich auf ein Original, das der Objektspeicher nicht kennt. `toKoInput` bricht
+ *     hier hart mit MISSING_DRAFT_ANCHOR ab — alles andere zu raten waere sinnlos.
+ *
+ *  2. FEHLENDE PFLICHTFELDER als Naechstes, und ausdruecklich VOR der Pruefbarkeitsfrage: dass
+ *     ein Entwurf ohne Kernaussage nicht eingereicht werden kann, steht unabhaengig davon fest,
+ *     ob sein Ankerbestand pruefbar war.
+ *
+ *  3. DER EHRLICHE LEERFALL. Beruft sich der Entwurf auf Originale, konnte die Existenz aber
+ *     nicht geprueft werden (`checked: false`), dann ist UNBEKANNT, ob das Einreichen gelaenge.
+ *     Hier kommt NICHTS zurueck — kein Satz, kein leeres Feld. Der Bestand hat diesen Unterschied
+ *     eigens im Typ vorgesehen (`DraftAnchorCheck`, oben: „`checked: false` heisst ‚konnte nicht
+ *     geprueft werden' und ist ausdruecklich NICHT dasselbe wie ‚alles in Ordnung'"). Ihn hier
+ *     einzuebnen hiesse, eine Zusage ohne Deckung zu geben.
+ *
+ *     Traegt der Entwurf gar keinen Ankerbezug, greift der Fall NICHT: dann gibt es nichts zu
+ *     pruefen, und eine nicht verdrahtete Pruefung nimmt der Auskunft nichts.
+ *
+ *  4. SONST: einreichen. Herkunft sind die vier Pflichtfelder, die den Weg tatsaechlich freigeben.
+ */
+export function leiteNaechstenSchrittAb(
+  draft: Draft,
+  anker: DraftAnchorCheck,
+): NaechsterSchritt | undefined {
+  if (anker.missing.length > 0) {
+    return { art: "anker_fehlt", herkunft: ["anchorsMissing"] };
+  }
+  const fehlend = fehlendePflichtfelder(draft.payload);
+  if (fehlend.length > 0) {
+    return { art: "vervollstaendigen", herkunft: fehlend };
+  }
+  if (!anker.checked && ankerKennungen(draft).length > 0) {
+    return undefined;
+  }
+  return {
+    art: "einreichen",
+    herkunft: KO_PFLICHTFELDER.map((feld) => `payload.${feld}`),
+  };
 }
 
 // SCRUM-524 P.1 (WP5): Entwürfe sind ein GETEILTER Pool (FR-CAP-06) und ihr bodyHtml wird beim Fortsetzen
@@ -367,16 +461,7 @@ export class CaptureService {
    * Formularzustand und sagt über den Bestand nichts aus.
    */
   async verifyDraftAnchors(draft: Draft): Promise<DraftAnchorCheck> {
-    const ids = [
-      ...new Set(
-        [
-          ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
-          // Auch die gesicherten Originale selbst: ein Ankerdokument ohne zugehörige Belegstelle
-          // wäre zwar nutzlos, aber es steht im Entwurf — und was im Entwurf steht, wird geprüft.
-          ...(draft.payload.anchorDocuments ?? []).map((doc) => doc.objectId),
-        ].filter((id): id is string => typeof id === "string" && id.length > 0),
-      ),
-    ];
+    const ids = ankerKennungen(draft);
     if (!this.objectExists || ids.length === 0) {
       // Nichts zu prüfen ODER nicht prüfbar — der Unterschied steht im Rückgabewert, nicht in
       // einer stillen Annahme.
@@ -460,6 +545,25 @@ export class CaptureService {
       },
       anchorsMissing: [...fehlend],
     };
+  }
+
+  /**
+   * JOB 1171 D1 (KA8 Stufe 1a) — DIE AUSKUNFT. REINE LESUNG.
+   *
+   * Sie liest den Entwurf, laesst die vorhandene Ankerpruefung laufen und leitet daraus ab. Sie
+   * schreibt nichts: kein `update`, kein `insert`, kein neuer Zustand, keine Spalte. Zweimal
+   * gerufen liefert sie dasselbe, solange sich der Entwurf nicht aendert.
+   *
+   * `undefined` heisst zweierlei, und beides ist ehrlich: den Entwurf gibt es nicht — oder es ist
+   * kein Schritt ableitbar (s. `leiteNaechstenSchrittAb`). Ein erfundener Satz oder ein leerer
+   * String waeren an dieser Stelle schlimmer als gar keine Auskunft.
+   */
+  async naechsterSchrittFuerEntwurf(id: string): Promise<NaechsterSchritt | undefined> {
+    const draft = await this.repo.findById(id);
+    if (!draft) {
+      return undefined;
+    }
+    return leiteNaechstenSchrittAb(draft, await this.verifyDraftAnchors(draft));
   }
 
   // FR-CAP-07: beim Fortsetzen bleibt der Originalautor erhalten.

@@ -25,6 +25,7 @@ import {
   ANSWER_SNAPSHOT_SCHEMA_VERSION,
   type AnswerEvidenceRef,
   type AnswerEvidenceSnapshot,
+  type AskCaller,
   AskError,
   type Gap,
   type GapPriority,
@@ -141,15 +142,46 @@ export interface AskResult {
 }
 
 /**
- * JOB 541 D3: Ist dieser Actor der System-Platzhalter statt eines Menschen?
+ * Der Name, unter dem eine Systemausfuehrung im PRUEFPROTOKOLL erscheint.
  *
- * `ask()` setzt als Vorgabe die Zeichenkette `"system"`. Sie ist ein PLATZHALTER und keine
- * Kontokennung — hier wird sie als solcher erkannt, statt sie in ein Eigentum zu verwandeln.
+ * Das ist eine Beschriftung fuer Menschen, KEIN Eigentumsbegriff. Wer daraus wieder eine
+ * Eigentumsentscheidung ableitet, baut den Fehler aus D3 nach.
  */
 export const SYSTEM_ACTOR = "system";
 
-function istSystemActor(actor: string | undefined): boolean {
-  return actor === undefined || actor.trim().length === 0 || actor === SYSTEM_ACTOR;
+/**
+ * ================================================================================================
+ * JOB 541 D4 — DIE ABSICHT KOMMT VOM AUFRUFER, NICHT AUS DEM WERT.
+ * ================================================================================================
+ *
+ * HIER STAND BIS D3 `istSystemActor(actor)` mit `actor === SYSTEM_ACTOR`. Genau dieser Vergleich
+ * ist der Datenfehler, den BEN beanstandet hat: Er verwechselt eine echte Kontokennung mit dem
+ * Systemkontext, und ein Konto namens `system` verliert dadurch seine eigenen Antworten.
+ *
+ * DIE REGEL JETZT, ohne Ausnahme:
+ *   · kein Aufrufer angegeben  → Systemausfuehrung. **Abwesenheit** ist das Signal, nicht ein Wort.
+ *   · leere Zeichenkette       → dito; eine leere Kennung ist keine Kennung.
+ *   · ein Aufrufervertrag      → wird uebernommen, wie er ist. Der Aufrufer sagt, was er ist.
+ *   · irgendeine Kennung       → **immer** ein Nutzer, auch wenn sie `system` lautet.
+ *
+ * Es gibt in dieser Funktion keinen Vergleich gegen `SYSTEM_ACTOR` mehr — und es darf keinen
+ * geben. Der Wächter dazu steht in `snapshot-ko-version-und-ref.test.ts` (JOB 541 D4).
+ */
+export function aufruferAus(actor: string | AskCaller | undefined): AskCaller {
+  if (actor === undefined) {
+    return { kind: "system" };
+  }
+  if (typeof actor !== "string") {
+    return actor;
+  }
+  // Die Kennung wird UNVERAENDERT uebernommen; getrimmt wird nur fuer die Leerprüfung, damit ein
+  // versehentliches Leerzeichen nicht zu einem Konto namens " " wird.
+  return actor.trim().length === 0 ? { kind: "system" } : { kind: "user", userId: actor };
+}
+
+/** Die Beschriftung des Aufrufers fuer Protokoll, Beleg und Wissenslücke — nie fuer Eigentum. */
+function aufruferBeschriftung(aufrufer: AskCaller): string {
+  return aufrufer.kind === "system" ? SYSTEM_ACTOR : aufrufer.userId;
 }
 
 export class AskService {
@@ -238,7 +270,11 @@ export class AskService {
   // FR-I18N-01: locale steuert die Antwortsprache des Reasoners (Quelleninhalt bleibt original).
   async ask(
     question: string,
-    actor = "system",
+    // JOB 541 D4: Die Vorgabe ist jetzt **Abwesenheit**, nicht die Zeichenkette `"system"`. Ein
+    // Aufruf ohne Fragenden ist damit typisch als Systemausfuehrung erkennbar, statt an einem Wort
+    // zu haengen. Beide Altformen bleiben zulaessig: eine blosse Kennung (alle bestehenden
+    // Aufrufer) und der ausdrueckliche Vertrag `{ kind: … }`.
+    actor?: string | AskCaller,
     locale: ReasonerLocale = "de",
     // SCRUM-490 D2: validatedOnly (Add-on-Principal ask.validated) → der Reasoner sieht AUSSCHLIESSLICH
     // validierte KOs; unvalidierte („offen") Kandidaten werden vor der Auswahl verworfen. Für den
@@ -257,6 +293,12 @@ export class AskService {
       retrievalOnly?: boolean;
     },
   ): Promise<AskResult> {
+    // JOB 541 D4: Die Absicht wird EINMAL aufgeloest, gleich hier — und danach getrennt gefuehrt:
+    //   `aufrufer`  ist der Vertrag und die EINZIGE Quelle des Eigentums.
+    //   `actorId`   ist die Beschriftung fuer Protokoll, Beleg und Wissensluecke.
+    // Vorher war beides dieselbe Zeichenkette, und genau daraus entstand der Eigentumsfehler.
+    const aufrufer = aufruferAus(actor);
+    const actorId = aufruferBeschriftung(aufrufer);
     // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: Ask nutzt NICHT mehr `koService.list()` (Laden des
     // gesamten Pools) als Kernpfad, sondern eine datenquellennahe, begrenzte Kandidaten-Vorauswahl
     // (`findCandidates`). Die Frage wird in Inhaltstoken zerlegt (identisch zum Ranking); ohne
@@ -313,7 +355,7 @@ export class AskService {
           // mega61 Block G: der Handelnde am Protokolleintrag. Kein Gegenstand — bei einer Antwort
           // ist er eine Trefferliste und kein einzelnes Objekt (dieselbe Begründung, die in
           // reasoner-routes.ts schon steht).
-          actor,
+          actor: actorId,
         });
     // SCRUM-490 R2 (A2): Quellenpflicht — ein „Treffer" ohne echte Quelle ist KEIN belegter Treffer.
     // answered=true mit leeren sources → als ehrliche Leer-Antwort behandeln (nie eine Quelle vortäuschen).
@@ -351,15 +393,15 @@ export class AskService {
     // Beleg leer und ein „Danke" scheitert ehrlich mit 403. Das ist gewollt: wer nicht weiß, welche
     // Quelle getragen hat, darf keiner ein Vertrauensplus zuschreiben. Die Oberfläche bietet den
     // Knopf dann gar nicht erst an (Ask.tsx) — der 403 ist die serverseitige Rückfallebene.
-    const receipt = signAnswerReceipt(this.receiptSecret, actor, result.citedSources, this.now());
+    const receipt = signAnswerReceipt(this.receiptSecret, actorId, result.citedSources, this.now());
     // W3-C1 (Auftrag 76): der Beleg entsteht GENAU HIER — nach der Antwort, aus derselben
     // Ausfuehrung, vor jeder Verzweigung. So traegt jeder der drei Rueckgabewege dieselbe
     // Identitaet, und keiner kann sie stillschweigend verlieren.
-    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, actor);
+    const answerId = await this.schreibeAntwortbeleg(result, prefiltered, aufrufer);
     // FR-ANA-02 / SCRUM-361: Telemetrie nachvollziehbar + ehrlich — Prefilter-/Kandidatengröße,
     // Top-K und der Retrieval-Modus (kein Inhaltstext, keine Frage im Audit).
     await this.audit?.record({
-      actor,
+      actor: actorId,
       action: "ask.query",
       target: result.sources[0] ?? "-",
       payload: {
@@ -389,7 +431,7 @@ export class AskService {
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
-      const gap = await this.createGap(question, actor, opts?.demoSeed, locale);
+      const gap = await this.createGap(question, actorId, opts?.demoSeed, locale);
       return { result, answerId, gap, receipt };
     }
     return { result, answerId, gap: null, receipt };
@@ -420,7 +462,9 @@ export class AskService {
   private async schreibeAntwortbeleg(
     result: AnswerResult & { captionSources: string[] },
     herangezogen: readonly KnowledgeObject[],
-    actor: string | undefined,
+    // JOB 541 D4: Hier kam bis D3 eine Zeichenkette an, und der Schreibweg entschied SELBST, ob sie
+    // ein Konto meint. Jetzt kommt die Entscheidung fertig an — der Schreibweg trifft sie nicht mehr.
+    aufrufer: AskCaller,
   ): Promise<string | null> {
     const repo = this.answerSnapshots;
     if (!repo) {
@@ -526,26 +570,24 @@ export class AskService {
         createdAt: jetzt,
         schemaVersion: ANSWER_SNAPSHOT_SCHEMA_VERSION,
         // ========================================================================================
-        // JOB 541 D3 — DAS EIGENTUM ENTSTEHT HIER, UND `system` IST KEIN KONTO.
+        // JOB 541 D4 — DAS EIGENTUM WIRD HIER NUR NOCH ABGESCHRIEBEN, NICHT MEHR ENTSCHIEDEN.
         // ========================================================================================
         //
-        // DER FUND, der diese Zeilen so aussehen laesst: `ask()` traegt seit jeher die VORGABE
-        // `actor = "system"` (s. Signatur oben). Ein Antwortlauf ohne angemeldeten Fragenden
-        // kommt hier also mit der Zeichenkette `"system"` an — nicht mit `undefined`.
+        // HIER STAND BIS D3 `actor === undefined || istSystemActor(actor)`. Der Vergleich las die
+        // Zeichenkette `"system"` als Systemkontext — und BEN hat den Preis dafuer als Datenfehler
+        // beurteilt: ein echtes Konto mit der Kennung `system` verlor seine eigenen Antworten
+        // (404 auf die eigene Erklaerung).
         //
-        // Wuerde daraus `{ kind: "user", userId: "system" }`, dann koennte ein Konto namens
-        // `system` spaeter jede Systemantwort der Instanz lesen. Das ist kein erfundener Angriff,
-        // sondern die naheliegendste Form dieses Fehlers — und mit einer Zeichenkette als
-        // Eigentumsbegriff waere sie unvermeidbar.
+        // D3 hielt diesen Preis fuer noetig, weil sonst „ein Konto namens `system` jede
+        // Systemantwort lesen koennte". Das trifft nicht zu, und der Grund steht in types.ts:
+        // `AnswerOwner` ist ein VERBUND. Eine Systemantwort hat kein Feld, in dem eine
+        // Nutzerkennung stehen koennte — `gehoertNutzer` verlangt `kind === "user"` und kann bei
+        // ihr nie zutreffen. Der Verbund schuetzt bereits; der Stringvergleich davor hat die
+        // Kennung nur weggeworfen, ehe der Schutz greifen konnte.
         //
-        // Deshalb wird der Platzhalter hier ausdruecklich als SYSTEM gelesen. Der Preis ist
-        // benannt: ein echtes Konto, das `system` heisst, verliert den Zugriff auf seine eigenen
-        // Antworten. Das ist die richtige Richtung — lieber ein Zugriff zu wenig auf eigene als
-        // einer zu viel auf fremde.
-        owner:
-          actor === undefined || istSystemActor(actor)
-            ? { kind: "system" }
-            : { kind: "user", userId: actor },
+        // Der Aufrufer sagt jetzt, was er ist (`aufruferAus`, oben). Diese Stelle entscheidet
+        // nichts mehr — sie schreibt nieder.
+        owner: aufrufer,
       });
       await repo.appendSnapshot(snapshot);
     } catch {

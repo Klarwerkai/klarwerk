@@ -224,6 +224,31 @@ export type AnswerOwner =
   /** Von einem Menschen erzeugt — mit seiner tatsaechlichen Kennung. */
   | { readonly kind: "user"; readonly userId: string };
 
+/**
+ * ================================================================================================
+ * JOB 541 D4 — WER FRAGT. DER AUFRUFERVERTRAG, DER DAS EIGENTUM ERZEUGT.
+ * ================================================================================================
+ *
+ * WARUM ES DIESEN TYP BRAUCHT, obwohl `AnswerOwner` schon existiert: `AnswerOwner` schuetzt das
+ * ERGEBNIS, aber D3 entschied die Frage davor — anhand einer Zeichenkette. `ask()` trug die Vorgabe
+ * `actor = "system"`, und der Schreibweg las diese Zeichenkette als Systemkontext. Damit verlor ein
+ * echtes Konto mit der Kennung `system` seine eigenen Antworten (BEN-Urteil D3, Punkt 5).
+ *
+ * DER FEHLER LAG NICHT IM VERBUND, SONDERN IM VERGLEICH DAVOR. Der Verbund macht die Verwechslung
+ * bereits unmoeglich — eine Systemantwort hat kein Feld fuer eine Nutzerkennung. Der Stringvergleich
+ * warf die Kennung aber weg, ehe der Verbund sie schuetzen konnte.
+ *
+ * DESHALB TRAEGT DIE ABSICHT JETZT DER AUFRUFER, nicht der Wert: Wer als System ausfuehrt, sagt es
+ * (`{ kind: "system" }`); wer als Mensch fragt, gibt seine Kennung (`{ kind: "user", userId }`).
+ * `{ kind: "system" }` wird **niemals** aus `actor === "system"` oder `userId === "system"`
+ * abgeleitet. Eine Kennung ist eine Kennung — auch wenn sie zufaellig `system` lautet.
+ */
+export type AskCaller =
+  /** Ausfuehrung ohne angemeldeten Fragenden — Seed, Hintergrundlauf, interner Aufruf. */
+  | { readonly kind: "system" }
+  /** Ein angemeldeter Mensch mit seiner tatsaechlichen Kennung. */
+  | { readonly kind: "user"; readonly userId: string };
+
 /** Die stabile Identitaet einer Antwort. Sie entsteht einmal und aendert sich nie. */
 export interface AnswerRecord {
   readonly answerId: string;

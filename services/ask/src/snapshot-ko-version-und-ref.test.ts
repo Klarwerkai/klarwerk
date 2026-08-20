@@ -131,6 +131,101 @@ describe("JOB 541 D3 · die KO-Fassung wird zum Ausfuehrungszeitpunkt gebunden",
   });
 });
 
+// ================================================================================================
+// JOB 541 D4 (BEN-Prüflücke 1) — SYSTEMKONTEXT IST KEINE NUTZER-ID.
+// ================================================================================================
+//
+// DER BEFUND aus dem D3-Urteil, wörtlich: „`actor === "system"` verwechselt eine echte Nutzer-ID
+// mit dem Systemkontext und verletzt damit die bindende Eigentumsregel." Und die Nebenwirkung, die
+// D3 selbst im Quelltext ausgeschrieben hatte: „ein echtes Konto, das `system` heisst, verliert
+// den Zugriff auf seine eigenen Antworten."
+//
+// D3 hielt das für den kleineren Preis — „lieber ein Zugriff zu wenig auf eigene als einer zu viel
+// auf fremde". BEN widerspricht, und zu Recht: **der Preis muss gar nicht gezahlt werden.** Der
+// Verbund `AnswerOwner` (types.ts:221) macht die Verwechslung bereits unmöglich — eine
+// Systemantwort hat kein Feld, in dem eine Nutzerkennung stehen könnte. Was den Fehler erzeugte,
+// war nicht der Verbund, sondern der **Stringvergleich davor**, der die Kennung verwarf, ehe der
+// Verbund sie schützen konnte.
+//
+// Gemessen wird deshalb die Trennung selbst: WOHER die Absicht kommt (Aufrufervertrag), nicht WIE
+// die Kennung heisst.
+describe("JOB 541 D4 · Systemkontext und Nutzeridentität sind verschiedene Dinge", () => {
+  it("ein authentifizierter Nutzer mit der ID `system` besitzt seine Antwort SELBST", async () => {
+    const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));
+    await legeKoAn(koService, "X");
+
+    const lauf = await dienst.ask(FRAGE, { kind: "user", userId: "system" }, "de");
+    expect(lauf.answerId, "der Antwortlauf muss eine Kennung ausweisen").not.toBeNull();
+
+    const record = await snapshots.findRecord(String(lauf.answerId));
+    expect(
+      record?.owner,
+      "Die Kennung `system` wurde als Systemkontext missdeutet — das Konto verliert seine eigene Antwort.",
+    ).toEqual({ kind: "user", userId: "system" });
+  });
+
+  it("DER PRODUKTIONSPFAD · auch als blosse Kennung `system` bleibt es ein Nutzer", async () => {
+    // DIESER FALL IST DER WICHTIGERE, und er kam erst durch die Rückmutation ans Licht: Die
+    // HTTP-Routen übergeben `user.id` als ZEICHENKETTE (`reasoner-routes.ts:171`,
+    // `ask-routes.ts:279`) — nicht als Vertrag. Ein Test, der nur den Objektpfad prüft, sieht den
+    // Stringvergleich gar nicht und bliebe grün, während der Fehler im Produkt weiterlebte.
+    const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));
+    await legeKoAn(koService, "X");
+
+    const lauf = await dienst.ask(FRAGE, "system", "de");
+    const record = await snapshots.findRecord(String(lauf.answerId));
+    expect(
+      record?.owner,
+      "Die Kennung `system` wird wieder als Systemkontext gelesen — der Stringvergleich ist zurück.",
+    ).toEqual({ kind: "user", userId: "system" });
+  });
+
+  it("der Owner überlebt bis in den Snapshot-Schreibweg — nicht nur bis zur Dienstgrenze", async () => {
+    // BEN verlangt „durchgängig bis `AnswerRecord.owner` verdrahtet". Ein Owner, der am Record
+    // steht, aber ohne Beleg dasteht, wäre eine halbe Verdrahtung: der Lesepfad findet dann zwar
+    // das Eigentum, aber keine Erklärung dazu.
+    const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));
+    await legeKoAn(koService, "X");
+
+    const lauf = await dienst.ask(FRAGE, { kind: "user", userId: "system" }, "de");
+    const record = await snapshots.findRecord(String(lauf.answerId));
+    const snapshot = await snapshots.latestSnapshot(String(lauf.answerId));
+
+    expect(record?.owner).toEqual({ kind: "user", userId: "system" });
+    expect(snapshot, "zum Record fehlt der Beleg — der Schreibweg ist abgebrochen").toBeDefined();
+    expect(snapshot?.answerId).toBe(record?.answerId);
+  });
+
+  it("KALIBRIERUNG · ein Lauf OHNE Fragenden bleibt Systemeigentum", async () => {
+    // Ohne diesen Fall wäre die Korrektur überbestimmt: „alles ist ein Nutzer" erfüllte die beiden
+    // Fälle oben mühelos und zerstörte dabei genau die Trennung, um die es geht.
+    const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));
+    await legeKoAn(koService, "X");
+
+    const lauf = await dienst.ask(FRAGE);
+    const record = await snapshots.findRecord(String(lauf.answerId));
+    expect(record?.owner).toEqual({ kind: "system" });
+  });
+
+  it("KALIBRIERUNG · der ausdrückliche Systemaufrufer bleibt Systemeigentum", async () => {
+    const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));
+    await legeKoAn(koService, "X");
+
+    const lauf = await dienst.ask(FRAGE, { kind: "system" }, "de");
+    const record = await snapshots.findRecord(String(lauf.answerId));
+    expect(record?.owner).toEqual({ kind: "system" });
+  });
+
+  it("ein gewöhnlicher Nutzer bleibt unverändert Eigentümer — kein Regress", async () => {
+    const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));
+    await legeKoAn(koService, "X");
+
+    const lauf = await dienst.ask(FRAGE, "anna", "de");
+    const record = await snapshots.findRecord(String(lauf.answerId));
+    expect(record?.owner).toEqual({ kind: "user", userId: "anna" });
+  });
+});
+
 describe("JOB 541 D3 · die Validierungsentscheidung wird je Evidence gebunden", () => {
   it("traegt das Objekt eine Entscheidung, steht sie AN DIESER Evidence", async () => {
     const { dienst, snapshots, koService } = await aufbau((ids) => ids.slice(0, 1));

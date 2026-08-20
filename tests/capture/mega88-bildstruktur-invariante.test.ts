@@ -277,3 +277,130 @@ describe("AUFTRAG-mega88 Block D: die Struktur übersteht die Persistenzgrenze u
     expect(serverSanitize(imEditor)).toBe(sanitizeHtml(imEditor));
   });
 });
+
+// ================================================================================================
+// JOB 1183 · D1 — DIE INVARIANTE WIRD GERUFEN, ABER NICHT ERZWUNGEN (I47, erstens).
+// ================================================================================================
+//
+// DER BEFUND, den ben in `sammel88` benannt und ausdrücklich als NICHT-Blocker eingeordnet hat:
+// „Die Invariante wird an allen bekannten Editor-Wegen gerufen, aber nicht an der Emissionsgrenze
+// erzwungen — `emit()` ruft sie nicht; ein künftiger Weg über `appendChild`, `replaceChildren` oder
+// `Range.insertNode` könnte an ihr vorbei schreiben. Der Sammler ist Diagnose, nicht Garantie."
+//
+// DIE EMISSIONSGRENZE, in diesem Durchgang belegt und nicht behauptet:
+//
+//     apps/web/src/components/RichTextEditor.tsx:448-455
+//       const emit = (): void => {
+//         const next = sanitizeHtml(ref.current?.innerHTML ?? "");
+//         …
+//       };
+//
+// `emit()` liest `innerHTML` und sanitisiert. `verankereFiguren` — die EINE Aufrufstelle der
+// Invariante (`:464`) — kommt darin NICHT vor. Die Verankerung hängt an fünf getrennten Aufrufern
+// (`:444`, `:508`, `:735`, `:1042`, `:1059`); wer an ihnen vorbei schreibt und dann `emit()` ruft,
+// emittiert unverankerte Struktur.
+//
+// WAS DIESE FÄLLE TUN — und was sie ausdrücklich NICHT tun: Sie stellen den heutigen Zustand für
+// JEDE der drei genannten Schreibformen EINZELN fest (eine Form allein bewiese nur sich selbst).
+// Sie ERZWINGEN nichts: der Verschluss läge in `emit()`, und `emit()` ist in diesem Durchgang
+// ausdrücklich nicht geleast. Was hier steht, ist die Diagnose in ihrer belegten Form — damit ein
+// späterer Durchgang sie nicht noch einmal erheben muss.
+describe("JOB 1183: die Emissionsgrenze erzwingt die Invariante nicht", () => {
+  /** Ein Bild in einen Editor-Body bringen — auf einem Weg, der KEINE Zuweisung an innerHTML ist. */
+  const WEGE: Array<{ name: string; schreibe: (root: ElementLike) => void }> = [
+    {
+      name: "appendChild",
+      schreibe: (root) => {
+        const img = doc.createElement("img");
+        img.setAttribute("src", TINY);
+        img.setAttribute("alt", "über appendChild");
+        (root as unknown as { appendChild(k: unknown): void }).appendChild(img);
+      },
+    },
+    {
+      name: "replaceChildren",
+      schreibe: (root) => {
+        const img = doc.createElement("img");
+        img.setAttribute("src", TINY);
+        img.setAttribute("alt", "über replaceChildren");
+        (root as unknown as { replaceChildren(...k: unknown[]): void }).replaceChildren(img);
+      },
+    },
+    {
+      name: "Range.insertNode",
+      schreibe: (root) => {
+        const img = doc.createElement("img");
+        img.setAttribute("src", TINY);
+        img.setAttribute("alt", "über Range.insertNode");
+        const bereich = (
+          globalThis as unknown as { document: { createRange(): unknown } }
+        ).document.createRange() as {
+          selectNodeContents(n: unknown): void;
+          collapse(b: boolean): void;
+          insertNode(n: unknown): void;
+        };
+        bereich.selectNodeContents(root);
+        bereich.collapse(false);
+        bereich.insertNode(img);
+      },
+    },
+  ];
+
+  for (const weg of WEGE) {
+    it(`${weg.name}: schreibt an der Invariante vorbei — und emit() holt sie NICHT nach`, () => {
+      const root = wurzelMit("<p>Text</p>");
+      weg.schreibe(root);
+
+      // 1. Das Bild ist da und UNVERANKERT — kein Editor-Weg hat die Invariante gerufen.
+      const nachSchreiben = urteile(root);
+      expect(nachSchreiben.bilder, `${weg.name}: das Bild ist gar nicht angekommen`).toBe(1);
+      expect(
+        nachSchreiben.verankert,
+        `${weg.name}: unerwartet bereits verankert — dann erzwingt etwas die Invariante, das dieser Fall nicht kennt`,
+      ).toBe(0);
+
+      // 2. DIE EMISSIONSGRENZE: genau das, was `emit()` tut — `sanitizeHtml` über `innerHTML`.
+      //    Sie stellt die Invariante NICHT her; das unverankerte Bild verlässt den Editor so.
+      const emittiert = sanitizeHtml(root.innerHTML);
+      expect(
+        emittiert,
+        `${weg.name}: das Bild ist beim Emittieren verschwunden — dann misst dieser Fall nicht, was er soll`,
+      ).toMatch(/<img[\s>]/);
+      expect(
+        /data-image-id/.test(emittiert),
+        `${weg.name}: emit() hat die Verankerung nachgeholt — dann ist der Befund I47 (erstens) überholt und gehört ins Register`,
+      ).toBe(false);
+
+      // 3. Die Invariante WIRKT — sobald jemand sie ruft. Sie ist nicht kaputt, sie ist ungebunden.
+      enhanceFiguresForEditing(root, "✎ …", "L");
+      expect(
+        urteile(root).verankert,
+        `${weg.name}: die Invariante greift auf diesem Weg auch dann nicht, wenn sie gerufen wird`,
+      ).toBe(1);
+    });
+  }
+
+  it("UNAUFGELOEST: die Erzwingung an der Emissionsgrenze ist mit diesem Waechter nicht herstellbar", () => {
+    // Lieferung 4 des Auftrags: was die Erhebung nicht sieht, wird ausdrücklich unaufgelöst
+    // gemeldet statt still durchgelassen. Dieser Fall ist die Meldung — er hält fest, WAS fehlt und
+    // WO der Verschluss läge, ohne ihn zu bauen.
+    //
+    // Der Verschluss wäre eine Zeile in `emit()` (RichTextEditor.tsx:448-455): dort die Verankerung
+    // aufrufen, bevor `sanitizeHtml` läuft. Das ist Produktcode und in diesem Durchgang NICHT
+    // geleast — und es ist womöglich eine Architekturfrage, weil `emit()` heute bewusst nur liest.
+    //
+    // Solange das offen ist, gilt bens Satz unverändert: der Sammler ist Diagnose, nicht Garantie.
+    // Dieser Fall ist grün, weil er eine RICHTIGE Aussage über den heutigen Zustand macht — er
+    // behauptet keine Erzwingung.
+    const root = wurzelMit("<p>Text</p>");
+    const img = doc.createElement("img");
+    img.setAttribute("src", TINY);
+    (root as unknown as { appendChild(k: unknown): void }).appendChild(img);
+
+    expect(
+      /data-image-id/.test(sanitizeHtml(root.innerHTML)),
+      "Die Emissionsgrenze verankert inzwischen doch — dann ist I47 (erstens) erledigt und dieser " +
+        "Fall gehört ersetzt, nicht angepasst",
+    ).toBe(false);
+  });
+});

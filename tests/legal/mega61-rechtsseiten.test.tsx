@@ -39,6 +39,33 @@
 // werden erfasst, und Erwähnungen in Kommentar oder Zeichenkette lösen ihn nicht mehr aus. Weil das
 // so ist, prüft der Wächter seit mega86 auch SICH SELBST mit (die Selbstausnahme ist weg) — obwohl
 // diese Datei den Pfad mehrfach nennt.
+//
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// AUFTRAG-JOB-1184 D1 — DIE UMSTELLUNG HATTE AN EINER STELLE DECKUNG VERLOREN.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DER BEFUND (ben, sammel85, `OFFEN.md:384` = I44, zweitens, ausdrücklich als NICHT-BLOCKER
+// eingeordnet): Bei Aufrufen stand `ts.isStringLiteral` — ein gültiges `` import(`./x`) `` oder
+// `` require(`./x`) `` mit Template-Literal OHNE Platzhalter entging dem Wächter, **obwohl die alte
+// Namenssuche den Pfad sah**. Der Umstieg auf den Syntaxbaum war richtig und hat trotzdem an
+// genau dieser Stelle etwas verloren, das vorher da war.
+//
+// GEMESSEN AM 20.08.2026, und die Messung ist der eigentliche Beleg: Trägt diese Datei selbst einen
+// solchen Import, bleibt der Wächter mit `isStringLiteral` **grün** — 16 von 16 Fällen, Rahmen-
+// Treffer 0 —, obwohl sie den Anwendungsrahmen zieht. Mit `isStringLiteralLike` wird derselbe
+// Stand rot: der Verstoßfall UND der Selbstbeleg unten.
+//
+// SEITHER GILT HIER:
+//   · `ts.isStringLiteralLike` bei Aufrufen — deckt `"…"` UND das Template-Literal ohne Platzhalter.
+//   · Ein Pfad MIT Platzhalter (`` `./${name}` ``) ist statisch nicht auflösbar. Er wird
+//     AUSDRÜCKLICH GEMELDET (`unaufgeloesteAufrufe`) statt still übergangen — „keine Aussage" ist
+//     nicht dasselbe wie „kein Import".
+//
+// WAS AUSDRÜCKLICH OFFEN BLEIBT, weil I44 es als zweite, VORBESTEHENDE Blindstelle nennt und
+// dieser Auftrag sie nicht deckt: Die Erhebung durchsucht nur `.tsx` (`dateien("tests", ".tsx")`),
+// während die Meldung von „allen Tests unter tests/**" spricht. Gemessen liegen dort heute
+// 181 `.tsx` und 616 `.ts`. Ein `tests/**/*.ts`, das den Rahmen importiert, sieht dieser Wächter
+// nicht — das ist gemeldet, nicht behoben.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -94,7 +121,7 @@ function importierteModule(quelle: string, dateiname: string): string[] {
         (ts.isIdentifier(knoten.expression) && knoten.expression.text === "require"))
     ) {
       const erstes = knoten.arguments[0];
-      if (erstes && ts.isStringLiteral(erstes)) {
+      if (erstes && ts.isStringLiteralLike(erstes)) {
         module.push(erstes.text);
       }
     }
@@ -102,6 +129,53 @@ function importierteModule(quelle: string, dateiname: string): string[] {
   };
   besuche(baum);
   return module;
+}
+
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// AUFTRAG-JOB-1184 D1 — DIE AUFRUFE, DIE STATISCH NICHT AUFLÖSBAR SIND, WERDEN GEMELDET.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// `isStringLiteralLike` oben deckt zwei Formen: das gewöhnliche `"…"` und das Template-Literal
+// OHNE Platzhalter (`NoSubstitutionTemplateLiteral`). Beide sind statisch lesbare Pfade.
+//
+// ES BLEIBT EINE DRITTE FORM, und sie darf nicht still durchfallen: `` import(`./${name}`) `` ist
+// gültiges TypeScript und statisch NICHT auflösbar. Der Wächter kann darüber keine Aussage machen —
+// aber „keine Aussage" ist etwas anderes als „kein Import". Wer sie gleichsetzt, baut genau die
+// stille Lücke, gegen die dieser Wächter gerichtet ist.
+//
+// Deshalb sammelt diese Funktion die unauflösbaren Aufrufstellen mit Datei und Zeile. Sie ist
+// bewusst NEBEN `importierteModule` gebaut und nicht in ihr: `importiertRahmen` beantwortet eine
+// Ja/Nein-Frage und soll das weiter tun. Ein Befund ist keine Antwort auf diese Frage — er ist der
+// ehrliche Vermerk, dass die Frage hier nicht beantwortbar war.
+function unaufgeloesteAufrufe(quelle: string, dateiname: string): string[] {
+  const baum = ts.createSourceFile(
+    dateiname,
+    quelle,
+    ts.ScriptTarget.Latest,
+    true,
+    ts.ScriptKind.TSX,
+  );
+  const offen: string[] = [];
+  const besuche = (knoten: ts.Node): void => {
+    if (
+      ts.isCallExpression(knoten) &&
+      (knoten.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(knoten.expression) && knoten.expression.text === "require"))
+    ) {
+      const erstes = knoten.arguments[0];
+      // DIESELBE Literalregel wie in `importierteModule` — bewusst wieder `ts.isStringLiteralLike`
+      // und keine eigene Auslegung. Die beiden Stellen sind zwei Fragen an EINE Regel: „was ist
+      // auflösbar" und „was blieb übrig". Fielen sie auseinander, gäbe es einen Aufruf, der weder
+      // erfasst noch gemeldet wird — die stille Lücke in ihrer schlimmsten Form.
+      if (erstes && !ts.isStringLiteralLike(erstes)) {
+        const zeile = baum.getLineAndCharacterOfPosition(erstes.getStart()).line + 1;
+        offen.push(`${dateiname}:${zeile}`);
+      }
+    }
+    ts.forEachChild(knoten, besuche);
+  };
+  besuche(baum);
+  return offen;
 }
 
 // Der Anwendungsrahmen selbst — und NUR er. Das Präfix reicht nicht: ein Nachbarmodul wie
@@ -150,6 +224,21 @@ describe("mega61 A · die gemounteten Torwächter-Tests liegen im Web-Typprüfpf
     }
     expect(verstoesse).toEqual([]);
   });
+
+  // AUFTRAG-JOB-1184 D1: die zweite Hälfte derselben Erhebung. Ein `import()`/`require()`, dessen
+  // Pfad erst zur Laufzeit entsteht, ist für diesen Wächter unlesbar — und genau deshalb muss er
+  // ihn NENNEN statt ihn zu übergehen. Heute ist die Liste leer; wer den ersten solchen Aufruf
+  // einführt, bekommt hier den Ort und die Entscheidung, statt eine stille Lücke zu erben.
+  it("kein Test unter tests/** verbirgt seinen Modulpfad hinter einem Platzhalter", () => {
+    const offen: string[] = [];
+    for (const datei of dateien("tests", ".tsx")) {
+      offen.push(...unaufgeloesteAufrufe(readFileSync(join(WURZEL, datei), "utf8"), datei));
+    }
+    expect(
+      offen,
+      `Diese Aufrufe sind statisch nicht auflösbar — der Wächter kann über sie NICHTS sagen. Entweder den Pfad statisch schreiben oder hier ausdrücklich entscheiden, was gelten soll:\n${offen.join("\n")}`,
+    ).toEqual([]);
+  });
 });
 
 // ── AUFTRAG-mega86 Block D: der Erkenner selbst wird gefahren ────────────────────────────────────
@@ -169,6 +258,18 @@ describe("mega86 D · der Rahmen-Erkenner liest Importe, nicht Zeichenfolgen", (
     { form: "dynamischer Import", quelle: 'const m = await import("../../apps/web/src/App");' },
     { form: "require", quelle: 'const m = require("../../apps/web/src/App.tsx");' },
     { form: "mit Endung", quelle: 'import App from "../../apps/web/src/App.tsx";' },
+    // AUFTRAG-JOB-1184 D1 (I44, zweitens): ein Template-Literal OHNE Platzhalter ist ein gültiger,
+    // statisch lesbarer Modulpfad — TypeScript lädt das Modul genauso. Bis heute Nacht sah der
+    // Wächter ihn NICHT (`ts.isStringLiteral`), obwohl die Textsuche davor ihn gesehen hatte.
+    // Gemessen: mit `isStringLiteral` bleibt der Wächter grün, obwohl die Datei den Rahmen zieht.
+    {
+      form: "dynamischer Import als Template-Literal ohne Platzhalter",
+      quelle: "const m = await import(`../../apps/web/src/App`);",
+    },
+    {
+      form: "require als Template-Literal ohne Platzhalter",
+      quelle: "const m = require(`../../apps/web/src/App.tsx`);",
+    },
   ];
 
   for (const fall of ECHTE_IMPORTE) {
@@ -200,6 +301,55 @@ describe("mega86 D · der Rahmen-Erkenner liest Importe, nicht Zeichenfolgen", (
       ).toBe(false);
     });
   }
+
+  // ── AUFTRAG-JOB-1184 D1: die dritte Form, und sie ist die heikelste ────────────────────────────
+  //
+  // Ein Pfad mit Platzhalter ist statisch nicht auflösbar. Der Wächter darf ihn deshalb WEDER als
+  // Rahmen-Import melden (er weiß es nicht) NOCH stillschweigend übergehen (er weiß eben NICHT,
+  // dass es keiner ist). Beide Richtungen werden hier einzeln gefahren.
+  const MIT_PLATZHALTER = [
+    {
+      form: "dynamischer Import mit Platzhalter",
+      quelle: "const m = await import(`../../apps/web/src/${name}`);",
+    },
+    {
+      form: "require mit Platzhalter",
+      quelle: "const m = require(`../../apps/web/src/${name}`);",
+    },
+    {
+      form: "Aufruf mit Variable statt Literal",
+      quelle: "const m = await import(pfad);",
+    },
+  ];
+
+  for (const fall of MIT_PLATZHALTER) {
+    it(`${fall.form}: wird NICHT als Rahmen-Import behauptet`, () => {
+      expect(
+        importiertRahmen(fall.quelle, "sonde.tsx"),
+        "Der Wächter würde eine Auflösung behaupten, die er nicht hat.",
+      ).toBe(false);
+    });
+
+    it(`${fall.form}: wird als UNAUFGELÖST gemeldet, nicht still übergangen`, () => {
+      expect(
+        unaufgeloesteAufrufe(fall.quelle, "sonde.tsx"),
+        "Genau das ist die stille Lücke: der Aufruf fällt durch, ohne dass jemand davon erfährt.",
+      ).toEqual(["sonde.tsx:1"]);
+    });
+  }
+
+  it("GEGENPROBE — ein statisch lesbarer Aufruf erzeugt KEINEN Befund", () => {
+    // Ohne sie wäre die Meldung oben wertlos: sie könnte auch daher kommen, dass JEDER Aufruf als
+    // unaufgelöst gilt. Beide Literalformen einzeln, weil eine einzige nur sich selbst beweist.
+    expect(
+      unaufgeloesteAufrufe('const m = await import("../../apps/web/src/App");', "sonde.tsx"),
+      "ein gewöhnliches Stringliteral ist auflösbar",
+    ).toEqual([]);
+    expect(
+      unaufgeloesteAufrufe("const m = await import(`../../apps/web/src/App`);", "sonde.tsx"),
+      "ein Template-Literal OHNE Platzhalter ist ebenfalls auflösbar",
+    ).toEqual([]);
+  });
 
   it("diese Datei nennt den Rahmenpfad — und importiert ihn nicht", () => {
     // Der Selbstbeleg: ohne ihn wäre nicht gezeigt, dass die Selbstausnahme wirklich entbehrlich ist.

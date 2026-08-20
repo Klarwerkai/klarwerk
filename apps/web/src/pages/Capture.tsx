@@ -3867,39 +3867,88 @@ export function Capture(): JSX.Element {
           als bewusst wählbarer Expertenpfad erhalten (progressive disclosure, NICHTS entfernt). */}
         {/* SCRUM-384: sichtbare Schritt-Leiste des Wizards (Erzählen → Wissensseite → Einreichen);
           fertige Schritte sind anklickbar — vor und zurück ohne Datenverlust. */}
-        {captureWorkspaceOpen && !expertView ? (
-          <div className="mb-3 flex flex-wrap items-center gap-1.5">
-            {chips.map((c, i) => {
-              const clickable =
-                (c.id === "raw" && wizStep !== "tell") ||
-                (c.id === "studio" && draft !== null && wizStep !== "refine");
+        {/* JOB 1154 D2: Die Leiste sagt jetzt, WARUM ein Schritt zu ist. Bis hierher waren
+          gesperrte Schritte nur ausgegraut — drei tote Knoepfe ohne Weg fuer jeden, der die
+          Bauart nicht kennt. Betroffen ist vor allem der zweite Schritt, der erst nach dem
+          Strukturieren aufgeht; ohne Hinweis sieht das aus wie ein Defekt.
+          Die Gruende werden EINMAL bestimmt und dreifach verwendet: als Tooltip am Knopf (Maus),
+          als angekuendigte Beschreibung ueber `aria-describedby` (Hilfstechnik — ein `title`
+          allein erreicht Screenreader nicht verlaesslich) und als sichtbare Zeile darunter
+          (alle uebrigen). Eine gemeinsame Quelle, damit die drei Wege nicht auseinanderlaufen. */}
+        {captureWorkspaceOpen && !expertView
+          ? (() => {
+              const schritte = chips.map((c) => {
+                const clickable =
+                  (c.id === "raw" && wizStep !== "tell") ||
+                  (c.id === "studio" && draft !== null && wizStep !== "refine");
+                // Genau drei Gruende, und sie verlangen verschiedene Reaktionen: nichts tun,
+                // erst erzaehlen, ueber den Einreichen-Knopf gehen.
+                const sperrgrund = clickable
+                  ? null
+                  : c.id === "review"
+                    ? t("capture.wizard.step.lockedViaSubmit")
+                    : c.id === "studio" && draft === null
+                      ? t("capture.wizard.step.lockedNeedDraft")
+                      : t("capture.wizard.step.lockedCurrent");
+                return { chip: c, clickable, sperrgrund };
+              });
+              const sichtbareGruende = [
+                ...new Set(
+                  schritte.map((s) => s.sperrgrund).filter((g): g is string => g !== null),
+                ),
+              ];
               return (
-                <span key={c.id} className="inline-flex items-center gap-1.5">
-                  {i > 0 ? (
-                    <span aria-hidden="true" className="text-[11px] text-muted-2">
-                      →
-                    </span>
+                <div className="mb-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {schritte.map(({ chip: c, clickable, sperrgrund }, i) => (
+                      <span key={c.id} className="inline-flex items-center gap-1.5">
+                        {i > 0 ? (
+                          <span aria-hidden="true" className="text-[11px] text-muted-2">
+                            →
+                          </span>
+                        ) : null}
+                        <button
+                          type="button"
+                          disabled={!clickable}
+                          // `disabled` sperrt, sagt der Hilfstechnik aber nichts ueber den Grund
+                          // und nimmt den Knopf zugleich aus dem Fokuslauf. `aria-disabled` und
+                          // `aria-current` machen aus „tot" ein angekuendigtes „hier bist du".
+                          aria-disabled={!clickable}
+                          aria-current={c.state === "active" ? "step" : undefined}
+                          title={sperrgrund ?? undefined}
+                          aria-describedby={sperrgrund ? `capture-step-lock-${c.id}` : undefined}
+                          onClick={() => setWizStep(c.id === "studio" ? "refine" : "tell")}
+                          className={`rounded-pill px-2.5 py-1 text-[11.5px] font-semibold ${
+                            c.state === "active"
+                              ? "bg-ink text-white"
+                              : c.state === "done"
+                                ? "border border-hairline text-text"
+                                : "border border-hairline text-muted-2"
+                          } ${clickable ? "hover:text-text" : ""}`}
+                        >
+                          {i + 1} · {t(c.labelKey)}
+                        </button>
+                        {sperrgrund ? (
+                          <span id={`capture-step-lock-${c.id}`} className="sr-only">
+                            {sperrgrund}
+                          </span>
+                        ) : null}
+                      </span>
+                    ))}
+                    <HelpTip {...chelp("wizardSteps")} />
+                  </div>
+                  {sichtbareGruende.length > 0 ? (
+                    <p
+                      data-testid="capture-step-lockreason"
+                      className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
+                    >
+                      {sichtbareGruende.join(" · ")}
+                    </p>
                   ) : null}
-                  <button
-                    type="button"
-                    disabled={!clickable}
-                    onClick={() => setWizStep(c.id === "studio" ? "refine" : "tell")}
-                    className={`rounded-pill px-2.5 py-1 text-[11.5px] font-semibold ${
-                      c.state === "active"
-                        ? "bg-ink text-white"
-                        : c.state === "done"
-                          ? "border border-hairline text-text"
-                          : "border border-hairline text-muted-2"
-                    } ${clickable ? "hover:text-text" : ""}`}
-                  >
-                    {i + 1} · {t(c.labelKey)}
-                  </button>
-                </span>
+                </div>
               );
-            })}
-            <HelpTip {...chelp("wizardSteps")} />
-          </div>
-        ) : null}
+            })()
+          : null}
 
         {/* Erzähl-Einstieg nur im Schritt „Erzählen" (bzw. immer im Expertenmodus). */}
         {captureWorkspaceOpen && (expertView || wizStep === "tell") ? (
