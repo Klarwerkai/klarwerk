@@ -27,6 +27,13 @@ export function BodyImageGallery({
   const { t } = useTranslation();
   const images: BodyImage[] = extractBodyImages(bodyHtml);
   const [openIndex, setOpenIndex] = useState<number | null>(null);
+  // JOB 1117 (schließt JOB-908-M3): der ANSAGETEXT der Fläche. Ein Zustand, eine Quelle — Öffnen,
+  // Bildwechsel und Schließen schreiben hier hinein, die beiden Live-Bereiche unten lesen nur.
+  const [ansage, setAnsage] = useState<string>("");
+  // Der zuletzt ANGESAGTE Zustand: unterscheidet „gerade geöffnet" von „im offenen Dialog gewechselt"
+  // und verhindert, dass ein bloßes Neurendern (extractBodyImages liefert je Render ein neues Feld)
+  // dieselbe Lage ein zweites Mal meldet.
+  const angesagterIndexRef = useRef<number | null>(null);
   // Das Thumbnail, das die Großansicht geöffnet hat — für die Fokus-Rückkehr beim Schließen.
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
@@ -111,6 +118,51 @@ export function BodyImageGallery({
     return () => window.removeEventListener("keydown", onKey);
   }, [openIndex, images.length]);
 
+  // JOB 1117 (JOB-908-M3 als DOM-EREIGNISVERTRAG) — DIE GALERIE WAR STUMM.
+  //
+  // DER BEFUND (PRO4 JOB-908-D1, L4, am Produkt nachgemessen): „Keine der vier Modalflächen trägt
+  // einen Ansagebereich … Öffnen, Schliessen, Filterergebnis, Bildwechsel in der Galerie — nichts
+  // davon wird angesagt." Sehend ist die Lage am Zähler „Bild 2 von 3" ablesbar; ohne Sicht gab es
+  // schlicht nichts, was den Wechsel mitteilt.
+  //
+  // DIE ANTWORT: EIN Ereignisvertrag statt vier Meldestellen. Jeder Weg, der die Großansicht
+  // bewegt — Thumbnail-Klick, Vor/Zurück-Knopf, Pfeiltaste, das Klemmen bei geschrumpfter Liste,
+  // X-Knopf, Escape/cancel, programmatisches close() — endet in EINEM Zustandswechsel von
+  // `openIndex`. Genau der wird hier einmal in Text übersetzt. Deshalb kann kein Pfad die Ansage
+  // vergessen und keiner sie doppelt absetzen.
+  //
+  // DIE TEXTE STAMMEN AUSSCHLIESSLICH AUS BESTEHENDEN i18n-SCHLÜSSELN (ko.gallery, ko.galleryCount,
+  // ko.galleryClose) — dieser Auftrag darf `i18n.ts` nicht schreiben. Die Form ist bewusst
+  // gleichförmig: „<Fläche>: <Lage>" beim Betreten und Verlassen, die nackte Lage beim Wechsel
+  // im schon betretenen Dialog.
+  //
+  // ERFUNDEN WIRD NICHTS: die Beschreibung wird angehängt, WENN es sie wirklich gibt. Ein Bild ohne
+  // Fußnote (und ein WP-D10-Altlastplatzhalter zählt als ohne, das entscheidet extractBodyImages)
+  // meldet nur seine Lage — nie die Kennung, nie die Quelle, nie einen Ersatztext.
+  useEffect(() => {
+    const vorher = angesagterIndexRef.current;
+    if (vorher === openIndex) {
+      return; // kein Zustandswechsel — nur ein Neurendern
+    }
+    angesagterIndexRef.current = openIndex;
+    if (openIndex === null) {
+      if (vorher !== null) {
+        setAnsage(`${t("ko.gallery")}: ${t("ko.galleryClose")}`);
+      }
+      return;
+    }
+    // Dieselbe defensive Klemmung wie in der Anzeige (GELB d) — die Meldung nennt, was zu sehen ist.
+    const idx = Math.min(openIndex, Math.max(0, images.length - 1));
+    const bild = images[idx];
+    if (bild === undefined) {
+      return; // leere Liste im Schließ-Takt: die Schließen-Meldung folgt beim Zustandswechsel
+    }
+    const lage = t("ko.galleryCount", { n: idx + 1, m: images.length });
+    const beschreibung = bild.caption.trim();
+    const kern = beschreibung ? `${lage} — ${beschreibung}` : lage;
+    setAnsage(vorher === null ? `${t("ko.gallery")}: ${kern}` : kern);
+  }, [openIndex, images, t]);
+
   // Schließen IMMER über die native close()-API — das close-Ereignis synchronisiert dann State + Fokus
   // (eine Austrittsstelle für X-Knopf, Escape/cancel und programmatische Schließungen).
   const requestClose = (): void => {
@@ -141,6 +193,14 @@ export function BodyImageGallery({
   return (
     <div className="mt-3 border-t border-hairline pt-2">
       <SectionLabel>{t("ko.gallery")}</SectionLabel>
+      {/* JOB 1117: der Ansagebereich für den GESCHLOSSENEN Zustand. Er steht AUSSERHALB des Dialogs
+          und ist von Anfang an da — ein Live-Bereich, der erst zusammen mit seinem Text eingefügt
+          wird, wird von Sprachausgaben typischerweise überhört. Solange die Großansicht offen ist,
+          bleibt er leer: der modale Bereich unten spricht dann, und nur einer darf sprechen (die
+          Inhalte ausserhalb eines echten Modals sind für die Sprachausgabe ohnehin unerreichbar). */}
+      <p aria-live="polite" aria-atomic="true" className="sr-only">
+        {openIndex === null ? ansage : ""}
+      </p>
       <div className="mt-1.5 grid grid-cols-4 gap-2 sm:grid-cols-6">
         {images.map((img, i) => (
           <button
@@ -175,6 +235,12 @@ export function BodyImageGallery({
           aria-label={t("ko.gallery")}
           className="fixed inset-0 z-50 flex h-full w-full flex-col items-center justify-center bg-ink/80 p-4"
         >
+          {/* JOB 1117: der Ansagebereich INNERHALB des Modals — nur er ist erreichbar, solange
+              showModal() den Rest der Seite inert macht. Er wird leer eingesetzt und erst im Effekt
+              oben gefüllt; damit ist die Änderung eines bestehenden Bereichs das Ereignis. */}
+          <p aria-live="polite" aria-atomic="true" className="sr-only">
+            {ansage}
+          </p>
           <div className="flex w-full max-w-3xl items-center justify-between gap-2 pb-2">
             <span className="font-mono text-[12px] font-semibold text-white">
               {shownIndex !== null && images.length > 0
