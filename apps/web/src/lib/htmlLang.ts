@@ -35,12 +35,25 @@ type I18nLike = {
   off(event: string, listener: SprachZuhoerer): void;
 };
 
+// Die erlaubte Menge steht GENAU EINMAL — dieselbe Lehre wie beim Ereignisnamen darüber. Der
+// Vertragstest führt sie nicht als eigene Liste, sondern prüft diese hier (Fall 14): eine später
+// erweiterte Menge fällt dadurch auf, statt still mitzulaufen.
+//
+// WARUM EINE ERLAUBTE MENGE UND KEINE NORMALISIERUNG: Ownerentscheidung zu JOB 536 vom 13.08.2026
+// (`00_CONTROL/ENTSCHEIDUNGEN/JOB-536.md`) — „genau `de|en|nl` zulassen, alles andere als No-op
+// behandeln, ausdrücklich nicht normalisieren". Das ist kein Widerspruch zur Notiz im Dateikopf:
+// dort ist die NORMALISIERUNG ausgeschlossen (aus `de-DE` würde `de`), nicht die Prüfung. `de-DE`
+// wird deshalb nicht zurechtgebogen, sondern gar nicht erst geschrieben.
+export const ERLAUBTE_SPRACHEN: readonly string[] = ["de", "en", "nl"];
+
 // Setzt das EINE Wurzel-Attribut. Zwei No-ops, beide bewusst:
 //  · kein Dokument (node-Testumgebung, DOM-freier Renderpfad) → nichts tun, nie ein Absturz;
-//  · leere Sprache → NICHT auf "" setzen, sondern den vorhandenen, korrekten Startwert stehen
-//    lassen. Eine leere Deklaration wäre schlechter als die statische aus index.html.
+//  · jede Sprache ausserhalb der erlaubten Menge → den vorhandenen, korrekten Wert stehen lassen.
+//    Das schliesst die leere Sprache ein: "" steht nicht in der Menge, und eine leere Deklaration
+//    wäre schlechter als die statische aus index.html. Die frühere gesonderte Leerprüfung ist
+//    darin aufgegangen — zwei Prüfungen für dieselbe Zusicherung wären eine zu viel.
 export function applyHtmlLang(sprache: string): void {
-  if (sprache === "") {
+  if (!ERLAUBTE_SPRACHEN.includes(sprache)) {
     return;
   }
   const doc = (globalThis as unknown as { document?: DocumentLike }).document;

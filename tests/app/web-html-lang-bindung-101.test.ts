@@ -2,6 +2,7 @@
 import { afterEach, beforeAll, describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
+  ERLAUBTE_SPRACHEN,
   HTML_LANG_ATTRIBUTE,
   I18N_LANGUAGE_CHANGED_EVENT,
   applyHtmlLang,
@@ -180,5 +181,56 @@ describe("AUFTRAG-101 · <html lang> folgt der aktiven i18n-Sprache", () => {
       Object.defineProperty(globalThis, "document", beschreibung);
     }
     expect((globalThis as { document?: unknown }).document).toBeDefined();
+  });
+
+  // ==============================================================================================
+  // JOB 1472 · D1 — DIE ERLAUBTE MENGE IST GENAU `de|en|nl`.
+  // ==============================================================================================
+  //
+  // HERKUNFT: Ownerentscheidung zu JOB 536, getroffen von Pedi am 13.08.2026
+  // (`00_CONTROL/ENTSCHEIDUNGEN/JOB-536.md`): *„genau `de|en|nl` zulassen, alles andere als No-op
+  // behandeln, ausdrücklich nicht normalisieren."* JOB 1289 hat am 20.08. am Produktstand
+  // nachgemessen, dass die Prüfung fehlt und `applyHtmlLang` jeden nichtleeren Wert schreibt.
+  //
+  // WARUM DIE FÄLLE SO GEBAUT SIND — die Falle ist dieselbe wie im Dateikopf, eine Ebene tiefer:
+  // Ein No-op ist von einer NORMALISIERUNG nur dann zu unterscheiden, wenn der vorher stehende
+  // Wert ein anderer ist als der, auf den normalisiert würde. Fall 13 setzt deshalb „en" vor und
+  // ruft `applyHtmlLang("de-DE")`: Stünde danach „de", wäre normalisiert worden — und der Fall
+  // wäre auch mit einer Normalisierung grün, die der Auftrag ausdrücklich ausschliesst.
+  //
+  // Fall 11 ist die KALIBRIERUNG in die Gegenrichtung: Er ist auch ohne die Prüfung grün und hält
+  // fest, dass die Prüfung nicht zu viel wegnimmt. Rot vor dem Bau sind 12, 13 und 14.
+
+  it("11 · KALIBRIERUNG: die drei erlaubten Sprachen kommen an", () => {
+    for (const sprache of ["de", "en", "nl"]) {
+      // Ein Vorwert ausserhalb der Menge — sonst könnte „unverändert" wie „übernommen" aussehen.
+      dokument().documentElement.setAttribute(HTML_LANG_ATTRIBUTE, "xx");
+      applyHtmlLang(sprache);
+      expect(langAttribut(), `„${sprache}" ist erlaubt und muss ankommen`).toBe(sprache);
+    }
+  });
+
+  it("12 · ein unbekannter Wert ist No-op — der vorhandene Wert bleibt stehen", () => {
+    dokument().documentElement.setAttribute(HTML_LANG_ATTRIBUTE, "de");
+    applyHtmlLang("fr");
+    expect(langAttribut(), "fr steht nicht in der erlaubten Menge und darf nicht ankommen").toBe(
+      "de",
+    );
+  });
+
+  it("13 · ein Regionalcode wird NICHT normalisiert, sondern ist No-op", () => {
+    dokument().documentElement.setAttribute(HTML_LANG_ATTRIBUTE, "en");
+    applyHtmlLang("de-DE");
+    expect(
+      langAttribut(),
+      "de-DE ist weder erlaubt noch wird es zu de normalisiert — en muss stehen bleiben",
+    ).toBe("en");
+  });
+
+  it("14 · die erlaubte Menge ist genau de, en, nl — und wächst nicht still mit", () => {
+    // Die Fälle 11 bis 13 nennen ihre Werte wörtlich und prüfen deshalb Verhalten, nicht die
+    // Liste gegen sich selbst. Dieser Fall pinnt zusätzlich die Liste: Wer eine vierte Sprache
+    // aufnimmt, ohne die Zusicherung neu zu verhandeln, macht ihn rot.
+    expect([...ERLAUBTE_SPRACHEN]).toEqual(["de", "en", "nl"]);
   });
 });
