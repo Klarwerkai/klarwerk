@@ -27,7 +27,22 @@ export function livewallRoutes(deps: LiveWallRoutesDeps, guards: Guards): Fastif
       // AUFTRAG-mega74 BLOCK E: die Live-Wall nennt Titel UND Autor je Objekt (livewall.ts:42-48)
       // und zog ihre Grundmenge ungefiltert aus `ko.list()`. Gefiltert wird die GRUNDMENGE, nicht
       // das Ergebnis — sonst zählten unsichtbare Objekte in den Aggregaten weiter mit.
-      reply.code(200).send(buildLiveWall({ kos: sichtbareFuer(user, kos), helpful, today }));
+      const sichtbar = sichtbareFuer(user, kos);
+      // JOB 1325 (G14, dritter Ausgabezweig): derselbe Satz galt bisher nur für `kos`. Der
+      // `helped`-Zweig zog seine Titel aus dem `answer.helpful`-Audit, dessen Payload den ECHTEN
+      // KO-Titel trägt (ask/service.ts:626) — und `livewall.ts:51` prüft davon nur den TYP, nicht
+      // die Sichtbarkeit. Ein vertrauliches Objekt stand damit samt Titel in der Wall und zählte
+      // in `helpedToday` mit. Der zweite Verbraucher desselben Stroms filtert längst
+      // (notifications-routes.ts:45); hier fehlte es. Auch das ist die GRUNDMENGE, nicht das
+      // Ergebnis — `helpedToday` (livewall.ts:57) zählt dadurch von selbst richtig.
+      const sichtbareIds = new Set(sichtbar.map((ko) => ko.id));
+      reply.code(200).send(
+        buildLiveWall({
+          kos: sichtbar,
+          helpful: helpful.filter((e) => sichtbareIds.has(e.target)),
+          today,
+        }),
+      );
     });
   };
 }
