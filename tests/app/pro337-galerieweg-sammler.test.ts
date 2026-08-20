@@ -47,9 +47,14 @@ import { describe, expect, it } from "vitest";
 //     Die Richtung des Irrtums ist bewusst so gewählt.
 //  3. SIE PRÜFT DIE ANWESENHEIT DER VERDRAHTUNG, NICHT IHRE WIRKUNG. Dass die Bitte im Editor
 //     wirklich ankommt und dasselbe Formular öffnet, belegt der gemountete Test
-//     `tests/capture/pro337-bildbeschreibung-endtoend.test.tsx`; für die Erfassen-Seite zusätzlich
-//     `tests/capture/pro337-capture-galerieweg-mounted.test.tsx`. Dieser Sammler ist der Wächter
-//     gegen das VERGESSEN, nicht der Beweis der Funktion.
+//     `tests/capture/pro337-bildbeschreibung-endtoend.test.tsx`. Er deckt BEIDE Einstiege ab,
+//     auch den der Erfassen-Seite — sein Fall `:187` hält ausdrücklich fest, dass beide „in
+//     DASSELBE Fenster münden, nicht in zwei, die sich ähneln".
+//     JOB 1329 D1: Hier stand zusätzlich ein zweiter, inzwischen umbenannter Mounted-Test der
+//     Erfassen-Seite. Sein Name löste nicht mehr auf; da die Umbenennung ihn in genau die oben
+//     genannte Datei überführt hat, ist der Verweis ENTFALLEN und nicht ersetzt worden — ein
+//     zweites Mal denselben Pfad zu nennen wäre eine erfundene zweite Deckung.
+//     Dieser Sammler ist der Wächter gegen das VERGESSEN, nicht der Beweis der Funktion.
 
 const WEB_SRC = join(process.cwd(), "apps", "web", "src");
 

@@ -45,7 +45,7 @@ import { useAiBillable } from "../lib/useAiBillable";
 // FAIL-CLOSED wie die Modalgrenze: `useImageDescribe()` wirft ohne Provider. Ein Editor, der außer-
 // halb der App montiert wird, entsteht damit gar nicht erst still ohne Bildbeschreibung.
 //
-// Der Wächter dazu ist `tests/app/mega50-bildbeschreibung-sammler.test.tsx` — er erhebt die
+// Der Wächter dazu ist `tests/app/mega50-bildbeschreibung-sammler.test.ts` — er erhebt die
 // tatsächlichen Aufrufer aus dem Quellbaum, nicht eine Liste der heutigen vier Flächen.
 
 export interface ImageDescribeValue {

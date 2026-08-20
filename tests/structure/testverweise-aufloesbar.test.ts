@@ -122,34 +122,34 @@ function alleVerweise(): Verweis[] {
 const istDa = (ziel: string): boolean => existsSync(resolve(WURZEL, ziel));
 
 // ================================================================================================
-// DIE QUARANTÄNE — DREI BENANNTE ALTLASTEN, KEINE EINZIGE STILL.
+// DIE QUARANTÄNE — LEER. ALLE DREI ALTLASTEN SIND GEHEILT.
 // ================================================================================================
 //
-// Diese drei Verweise waren beim Bau dieser Datei bereits tot und liegen AUSSERHALB der
-// Productwrite-Lease dieses Durchgangs (JOB 619 D5 schreibt nur die drei Testdateien seiner Lease).
-// Sie werden deshalb hier benannt statt geheilt — mit Fundstelle, Ist-Ziel und dem, was vermutlich
-// gemeint war. Ein späterer Auftrag kann sie an genau diesen Stellen schliessen.
+// Beim Bau dieser Datei standen hier DREI tote Verweise. Sie lagen AUSSERHALB der Productwrite-
+// Lease jenes Durchgangs (JOB 619 D5 schrieb nur die drei Testdateien seiner Lease) und wurden
+// deshalb benannt statt geheilt — mit Fundstelle, Ist-Ziel und dem, was vermutlich gemeint war.
 //
-// KEIN DECKEL OHNE WACHE: Wird ein Eintrag auflösbar (weil jemand ihn repariert hat), wird der Fall
-// „die Quarantäne verrottet nicht" ROT und zwingt zum Streichen des Eintrags. Eine Ausnahmeliste,
-// die nur wachsen kann, ist keine Ausnahmeliste, sondern eine Abschaltung.
-const QUARANTAENE: readonly { quelle: string; ziel: string; gemeint: string }[] = [
-  {
-    quelle: "tests/app/pro337-galerieweg-sammler.test.ts",
-    ziel: "tests/capture/pro337-capture-galerieweg-mounted.test.tsx",
-    gemeint: "tests/capture/pro337-bildbeschreibung-endtoend.test.tsx (umbenannt)",
-  },
-  {
-    quelle: "apps/web/src/app/ImageDescribeContext.tsx",
-    ziel: "tests/app/mega50-bildbeschreibung-sammler.test.tsx",
-    gemeint: "tests/app/mega50-bildbeschreibung-sammler.test.ts (Endung .ts, nicht .tsx)",
-  },
-  {
-    quelle: "apps/web/src/i18n.ts",
-    ziel: "tests/legal/mega61-rechtsseiten.test.ts",
-    gemeint: "tests/legal/mega61-rechtsseiten.test.tsx (Endung .tsx, nicht .ts)",
-  },
-];
+// JOB 1329 D1 HAT ALLE DREI GEHEILT und die Liste geleert:
+//   · `apps/web/src/i18n.ts:4375`                    Endung `.ts` → `.tsx`
+//   · `apps/web/src/app/ImageDescribeContext.tsx:48` Endung `.tsx` → `.ts`
+//   · `tests/app/pro337-galerieweg-sammler.test.ts`  der zweite, auf eine umbenannte Datei
+//     zeigende Verweis ist ENTFALLEN — die Umbenennung hat ihn in den bereits daneben genannten
+//     Test überführt, ein zweites Mal denselben Pfad zu nennen wäre eine erfundene Deckung.
+// Jede Zielexistenz ist gemessen, nicht angenommen.
+//
+// DIE LEERE LISTE IST DER NORMALFALL, NICHT DER AUSNAHMEZUSTAND. Sie darf wieder wachsen — aber
+// nur mit Fundstelle, Ist-Ziel und Soll, und nur solange der Eintrag ausserhalb der Lease des
+// jeweiligen Durchgangs liegt. Ein Eintrag ohne diesen Grund ist eine Abschaltung mit Zusatzschritt.
+//
+// KEIN DECKEL OHNE WACHE — in BEIDE Richtungen, und die zweite ist die schärfere:
+//   · Wird ein Eintrag auflösbar (die tote Zieldatei entsteht), wird „die Quarantäne verrottet
+//     nicht" ROT.
+//   · Wird ein Verweis repariert, verschwindet er aus dem Quelltext und der Eintrag wird VERWAIST —
+//     dann wird „jeder Quarantäne-Eintrag steht wirklich so im Quelltext" ROT. Das ist der Fall,
+//     den JOB 1329 D1 dreimal ausgelöst hat; er ist der kausale Rotbeleg jenes Durchgangs.
+// Bei leerer Liste tragen beide Fälle trivial — die Wache liegt dann bei „kein toter Verweis
+// ausserhalb der benannten Quarantäne", und die ist jetzt die einzige Grenze. Genau so gehört es.
+const QUARANTAENE: readonly { quelle: string; ziel: string; gemeint: string }[] = [];
 
 const inQuarantaene = (v: Verweis): boolean =>
   QUARANTAENE.some((q) => q.quelle === v.quelle && q.ziel === v.ziel);

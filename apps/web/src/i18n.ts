@@ -4372,7 +4372,7 @@ const de = {
   // DIE `legal.tbd.*`-SCHLÜSSEL SIND EINE EIGENE KLASSE: Angaben, die niemand im Code kennt
   // (Firmenname, Anschrift, Aufsichtsbehörde, Löschfristen, Anbieter). Sie tragen AUSNAHMSLOS den
   // Wert von `legal.pending` — nichts wird erfunden, auch nicht plausibel. Der Sammler
-  // tests/legal/mega61-rechtsseiten.test.ts hält das fest und wird rot, sobald einer von ihnen
+  // tests/legal/mega61-rechtsseiten.test.tsx hält das fest und wird rot, sobald einer von ihnen
   // einen ausgedachten Wert trägt.
   "legal.pending": "— wird ergänzt —",
   "legal.tbd.company": "— wird ergänzt —",
