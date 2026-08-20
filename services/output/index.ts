@@ -14,3 +14,15 @@ export {
 } from "./src/types";
 // AUFTRAG-mega29 C3: der Ehrlichkeits-Satz des Herkunftsblocks (+ der Renderer, der ihn trägt).
 export { OUTPUT_NO_CHECK_NOTE, renderProvenance } from "./src/render";
+// KA6 Stufe 1 (JOB 1491 D1): der Zuruf, der einen VORSCHLAG erzeugt und nichts schreibt.
+export { ZurufService, ZurufError, ZURUF_ARTEN } from "./src/zuruf";
+export type {
+  ZurufArt,
+  ZurufEingabe,
+  ZurufVorschlag,
+  ZurufServiceDeps,
+  ZurufFehlerCode,
+  ZurufAuftrag,
+  ZurufBeleg,
+  Formulierer,
+} from "./src/zuruf";
