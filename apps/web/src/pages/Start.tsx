@@ -208,7 +208,28 @@ export function Start(): JSX.Element {
   // Gruppe. Solange die tragenden Quellen (Board, Konflikte, Revalidierung, Gap-Summary) nicht geladen
   // sind, darf die Startseite KEINE echte 0 und kein „nichts zu tun" behaupten — das wäre eine
   // Negativaussage aus fehlenden Daten. Vor `loaded` zeigt die Übersicht einen ehrlichen Ladezustand.
-  const workSources = [board, conflicts, pending, gapsSummary];
+  //
+  // JOB 1217: DER LERNFORTSCHRITT GEHÖRT DAZU — ABER NUR, WENN ES EINEN PFAD GIBT.
+  //
+  // `useLearningProgress` hängt an `learningPath.data?.id` (:185). Zwischen „Pfad geladen" und
+  // „Fortschritt geladen" liegt zwangsläufig ein Fenster, und in ihm rechnet `:203` bereits:
+  // `learningOpenSteps` meldet wegen `done?.length ?? 0` (workCenter.ts:141) die VOLLE Schrittzahl.
+  // Ohne den Fortschritt in dieser Gruppe zeigt die Übersicht sie an — eine erfundene Zahl NACH OBEN.
+  //
+  // WARUM BEDINGT UND NICHT EINFACH ANGEHÄNGT: `useLearningProgress` ist ohne Pfad-Id dauerhaft
+  // `enabled: false` (api/hooks.ts:158) und liefert dann NIE `data`. Fest angehängt bliebe die Gruppe
+  // für jede Rolle ohne Lernpfad ewig im Ladezustand — das wäre die zweite Unwahrheit statt der
+  // ersten, genau die, vor der loadingState.ts:6-8 warnt. Gibt es keinen Pfad, gibt es auch kein
+  // Fenster: `learningOpenSteps(null|undefined, …)` ist dann echte 0 (workCenter.ts:138-140).
+  //
+  // Die Bedingung SPIEGELT die des Hooks (`enabled: !!pathId`) und prüft deshalb die ID, nicht das
+  // Datum: `byRole` liefert bei einer Rolle ohne Pfad `null` — dann ist `data` gesetzt, `data.id`
+  // aber nicht, und die Abfrage bleibt untätig. Eine Prüfung auf `data === undefined` würde genau
+  // diesen Fall übersehen und die Gruppe ewig laden lassen.
+  const lernfortschrittGehoertDazu = Boolean(learningPath.data?.id);
+  const workSources = lernfortschrittGehoertDazu
+    ? [board, conflicts, pending, gapsSummary, learningProgress]
+    : [board, conflicts, pending, gapsSummary];
   const workLoading = isGroupLoading(workSources);
   // AUFTRAG-mega3 Block B (bens D9): dritte Phase „error" — eine dauerhaft gescheiterte tragende Quelle
   // (ohne nutzbare Daten) zeigt einen ehrlichen Fehlerzustand mit Wiederholen, statt endlos „lädt".
