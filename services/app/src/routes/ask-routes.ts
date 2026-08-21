@@ -6,6 +6,8 @@ import { can } from "../../../rbac";
 import { authorizesAsk } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
 import { type Guards, type SessionUser, sendError } from "../http";
+// JOB 1591 D1 (W5): NUR gelesen — das bestehende Praedikat, kein zweites.
+import { sichtbarkeitsfilterFuer } from "../sichtbarkeit";
 
 // SCRUM-498 B1 (ben-Review): bewusste Eingabe-Härtung von POST /api/ask, definiert über die GÜLTIGE
 // HÜLLE eines Requests:
@@ -330,7 +332,32 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             await answer(user.id);
             return;
           }
-          await answer(user.id, { validatedOnly: true, retrievalOnly: true });
+          // JOB 1591 D1 (W5) — Pedis Befund um 21:28, und der Weg, auf dem er entstanden ist.
+          //
+          // GENAU HIER laeuft die Frage des Word-Panels (der Kommentar vier Zeilen weiter oben
+          // sagt es: same-origin, Sitzungscookie). `validatedOnly` verwirft alles, was noch
+          // niemand geprueft hat, BEVOR ausgewaehlt wird — Pedis eigener Entwurf war deshalb nie
+          // Kandidat, und die Antwort „es gibt kein validiertes Wissen" sprach ueber unseren
+          // Pruefstand statt ueber unseren Bestand.
+          //
+          // Die Enge bleibt: `validatedOnly` und `retrievalOnly` stehen unveraendert, ein
+          // ungeprueftes Objekt wird NIE Grundlage einer Antwort. Dazu kommt allein die MELDUNG,
+          // dass es eines gibt — gefiltert durch die Sichtbarkeit DIESES Nutzers.
+          //
+          // Warum der Filter hier gebildet wird und nicht im Dienst: `darfSehen` braucht einen
+          // `SessionUser`, und den gibt es genau an dieser Stelle (preValidation, `ko.read`). Der
+          // AskService kennt nur eine Beschriftung. Deshalb reicht die Route die fertige
+          // Entscheidung hinein, statt den Dienst die Regel ein zweites Mal auslegen zu lassen —
+          // die Bauform, die `sichtbarkeitsfilterFuer` ausdruecklich dafuer anbietet.
+          //
+          // Der Add-on-Zweig oben bekommt diesen Filter NICHT und darf ihn nicht bekommen: dort
+          // gibt es keinen `SessionUser`, und eine Meldung ohne Betrachter waere das
+          // Abfrageorakel, das AUFTRAG-mega77 aus gutem Grund entfernt hat.
+          await answer(user.id, {
+            validatedOnly: true,
+            retrievalOnly: true,
+            ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
+          });
           return;
         }
         await answer(user.id);

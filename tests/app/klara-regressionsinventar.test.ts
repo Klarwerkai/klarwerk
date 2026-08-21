@@ -174,6 +174,9 @@ const INVENTAR: readonly string[] = [
   "tests/app/theme-deckungsregister.test.ts",
   "tests/app/w1-klara-lifecycle-taskpane.test.tsx",
   "tests/app/w1-klara-vertrauenskopf.test.ts",
+  // W5 (JOB 1591 D2): der Pruefstand zu „vorhanden, aber ungeprueft" — gemeldet, nie behauptet.
+  // K2 hat ihn gemeldet, statt ihn still aufzunehmen — genau dafuer ist der Fall gebaut.
+  "tests/app/w5-ungeprueft-gemeldet.test.ts",
   // W6 (JOB 1621): neu im Baum und von der Erhebung ueber die Achse `taskpane` gefunden. Der
   // Waechter des Dublettenwegs gehoert sachlich in die Klara-Regression — er haelt fest, dass der
   // Aufruf von `POST /api/check-text` fail-closed bleibt und nichts ueber den Bestand erfindet.

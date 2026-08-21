@@ -325,7 +325,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/drafts/:id/promote": { protection: "ko.create" },
 
   // --- Ask (ask-routes.ts) ---
-  "POST /api/ask": { protection: "ko.read" },
+  // JOB 1591 D2 (W5): Die Route entscheidet seit D1 ZUSAETZLICH je Zeile — auf dem
+  // Session-Panel-Weg (`mode: "retrieval-only"`) reicht sie `sichtbarkeitsfilterFuer(user)` in den
+  // AskService, damit vorhandener, aber ungeprueter Bestand nur dem Berechtigten gemeldet wird.
+  // Ohne diesen Eintrag waere die Route in der Pruefliste von einer ohne Zeilenrecht nicht zu
+  // unterscheiden. Der Add-on-Zweig derselben Route fuehrt das Praedikat NICHT.
+  "POST /api/ask": { protection: "ko.read", zeilenrecht: ["sichtbarkeitsfilterFuer"] },
   "POST /api/ask/helpful": { protection: "ko.read" },
   // SCRUM-527: Live-Check (Ähnlichkeit/Widerspruch eines Entwurfstextes gegen den Bestand).
   "POST /api/knowledge/check": { protection: "ko.read" },

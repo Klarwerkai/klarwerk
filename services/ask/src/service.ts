@@ -139,6 +139,64 @@ export interface AskResult {
   // fremden Bestand. WAS ES BRÄUCHTE, um die Auskunft richtig zu bauen, steht im Bericht zu
   // mega77 (Betrachterfilter an dieser Stelle, ehrliche Aussage über die Vollständigkeit, Antwort
   // auf das Orakel-Problem) — als Vorschlag, nicht als Bau.
+  //
+  // ==============================================================================================
+  // JOB 1591 D1 (W5) — DER VORSCHLAG VON mega77 IST JETZT GEBAUT. KEIN ZAEHLER, SONDERN EIN FILTER.
+  // ==============================================================================================
+  //
+  // Pedis Befund um 21:28: Er speichert einen Absatz als Entwurf (Zustand „Offen / ZU PRUEFEN"),
+  // markiert ihn und fragt „haben wir diese Information schon?". Klara antwortet „Es gibt kein
+  // VALIDIERTES Wissen zu dieser Frage." Das ist eine Auskunft ueber unseren PRUEFSTAND, waehrend
+  // gefragt war nach unserem BESTAND — und der Anwender merkt den Unterschied nicht.
+  //
+  // Die zwei Gruende, aus denen mega77 den Zaehler entfernt hat, sind BEIDE beantwortet — nicht
+  // umgangen:
+  //
+  //   1. GEGEN DAS LECK: Es wird nichts mehr ohne Betrachter gemeldet. `ungeprueftSichtbarFuer`
+  //      ist die FERTIGE Sichtbarkeitsentscheidung, die der Aufrufer mitbringt — genau die
+  //      Bauform, die `sichtbarkeitsfilterFuer` in `services/app/src/sichtbarkeit.ts` fuer
+  //      „Dienste, die selbst ueber den Bestand laufen" anbietet. Der Dienst legt die Regel NICHT
+  //      selbst aus; er wendet sie an. Wer keinen Filter uebergibt, bekommt `null` — und `null`
+  //      heisst „nicht gefragt", nicht „nichts da". DER ADD-ON-PFAD UEBERGIBT KEINEN: der
+  //      Add-on-Principal besitzt `ask.validated` und kein allgemeines Leserecht, hat keinen
+  //      `SessionUser` und damit keinen Sichtbarkeitsvertrag. Fuer ihn bleibt alles, wie mega77 es
+  //      hinterlassen hat. Das Abfrageorakel entsteht dort gar nicht erst.
+  //
+  //   2. GEGEN DIE FALSCHE ZAHL: Es wird KEINE Zahl mehr behauptet. Gemeldet werden die
+  //      IDENTIFIZIERTEN Objekte aus derselben gedeckelten Vorauswahl, die auch die Antwort
+  //      speist — und eine leere Liste heisst deshalb ausdruecklich NICHT „es gibt wirklich
+  //      nichts". Sie heisst „in dieser Vorauswahl war nichts". Genau diese Zusage hat mega74
+  //      gegeben und nicht gehalten; sie wird hier nicht wiederholt.
+  //
+  // WAS SICH NICHT AENDERT — die Grenze aus bens Fix 1 (P0) steht unberuehrt: `validatedOnly`
+  // bleibt, die gemeldeten Objekte werden NIE Grundlage einer Antwort. Sie gehen nicht in `refs`,
+  // nicht in `candidates`, nicht an den Reasoner, nicht in `sources`, nicht in den Antworttext.
+  // Gemeldet wird die EXISTENZ mit Zustand — `{id, title, status}` —, nie der ungeprüfte Inhalt.
+  // Das ist der ganze Unterschied zwischen „wir haben nichts" und „wir haben etwas, das noch
+  // niemand geprueft hat".
+  // JOB 1591 D2: ABWESEND statt `null`. Bis D1 stand hier `ungeprueft: … | null`, und der
+  // Add-on-Zweig trug dadurch `"ungeprueft":null` im Antwortkoerper — der WERT war leer, der NAME
+  // stand trotzdem da. `mega77` verbietet den Namen im Koerper, und zwar zu Recht: schon die
+  // Anwesenheit eines Feldes verraet, dass es dieses Merkmal gibt, und macht es zum Ansatzpunkt.
+  // Ab D2 fehlt das Feld vollstaendig, wo kein Betrachter uebergeben wurde. Das ist eine
+  // VERSCHAERFUNG gegenueber D1, keine Lockerung: der unberechtigte Weg trug das Wort vorher,
+  // jetzt traegt er es nicht mehr. Die Semantik bleibt dieselbe — abwesend heisst „nicht
+  // gefragt", eine leere Liste heisst „nachgesehen und in dieser Vorauswahl nichts gefunden".
+  ungeprueft?: UngeprueftHinweis[];
+}
+
+/**
+ * Ein vorhandenes, aber NICHT validiertes Objekt — gemeldet, nie behauptet.
+ *
+ * Bewusst dieselben drei Felder, die der Bestandsblick KA2 dem Panel schon liefert
+ * (`{treffer:[{id,title,status}]}`): kein zweiter Vertrag fuer dieselbe Sache
+ * (`ENTSCHEIDUNGEN/JOB-646.md`). `statement` ist NICHT dabei und darf es nicht werden — der
+ * ungeprüfte INHALT ist genau das, was hier nicht behauptet werden darf.
+ */
+export interface UngeprueftHinweis {
+  id: string;
+  title: string;
+  status: string;
 }
 
 /**
@@ -286,11 +344,23 @@ export class AskService {
     // SCRUM-490 R2 (B1): retrievalOnly (Add-on-Pfad) → der (vertrauliche) Dokumenttext wird NICHT ans
     // Modell synthetisiert. Die Antwort entsteht rein aus dem Retrieval gegen die bereits gefilterten
     // (validiert, nicht-vertraulich) Kandidaten — kein Cloud-/Local-LLM, kein Embedder, kein Egress.
+    // JOB 1591 D1 (W5): die FERTIGE Sichtbarkeitsentscheidung des Betrachters. Ausdruecklich ein
+    // Filter und KEIN `includeUnvalidated`-Schalter — dieselbe Begruendung, die
+    // `sichtbarkeitsfilterFuer` traegt: seit der Autor-Ausnahme kann ein Boolescher Wert
+    // „vertrauliches, aber eigenes Objekt" nicht mehr ausdruecken, und ein Dienst, der ein Flag
+    // bekaeme, muesste die Regel ein zweites Mal auslegen. UNGESETZT (Add-on-Pfad, Systemaufrufe,
+    // jeder bestehende Aufrufer) → `ungeprueft` ist `null`, und der Ablauf ist Zeile fuer Zeile
+    // der bisherige.
     opts?: {
       demoSeed?: boolean;
       validatedOnly?: boolean;
       gapPolicy?: "create" | "count_only";
       retrievalOnly?: boolean;
+      // Der Rueckruf bekommt das ganze Objekt und entscheidet selbst, welche Felder seine Regel
+      // braucht — heute `confidentiality` und `author`. Bewusst NICHT auf diese zwei Felder
+      // eingeengt: eine engere Signatur wuerde `Sichtbarkeitsfilter` ausschliessen und die Route
+      // zwingen, die Regel doch wieder selbst auszulegen.
+      ungeprueftSichtbarFuer?: (ko: KnowledgeObject) => boolean;
     },
   ): Promise<AskResult> {
     // JOB 541 D4: Die Absicht wird EINMAL aufgeloest, gleich hier — und danach getrennt gefuehrt:
@@ -319,6 +389,29 @@ export class AskService {
         ? prefilteredRaw.filter((ko) => ko.status === "validiert")
         : prefilteredRaw,
     );
+    // JOB 1591 D1 (W5): WAS DIE ENGE VERSCHLUCKT HAT — gemeldet, nicht verwendet.
+    //
+    // Die Menge entsteht aus DERSELBEN `prefilteredRaw`, aus der auch die Antwort entsteht; sie
+    // wird nirgends zusaetzlich erhoben, es gibt keine zweite Abfrage und keinen zweiten Weg.
+    // DREI Filter, in dieser Reihenfolge, jeder mit eigenem Grund:
+    //   · `dropConfidential` — dieselbe harte Linie wie eine Zeile tiefer. Vertrauliches verlaesst
+    //     diesen Dienst nicht, auch nicht als blosser Titel. Das ist ENGER als das, was der
+    //     Betrachter sehen duerfte (`darfSehen` laesst dem Autor sein eigenes vertrauliches
+    //     Objekt); die Enge ist Absicht, weil das Panel derselbe Kanal ist, fuer den bens Fix 1
+    //     die Linie gezogen hat. Wer sie lockern will, entscheidet — er baut nicht nach.
+    //   · `status !== "validiert"` — genau die Kandidaten, die `validatedOnly` verworfen hat.
+    //     Ohne `validatedOnly` ist die Menge leer, denn dann wurde nichts wegen des Pruefstands
+    //     verworfen: es gibt nichts zu melden, was nicht ohnehin Grundlage sein durfte.
+    //   · der Betrachterfilter — die Antwort auf mega77s Grund 1.
+    // JOB 1591 D2: Das Feld entsteht als ganzes oder gar nicht — s. Grabstein am Vertrag oben.
+    const ungeprueftFeld: { ungeprueft?: UngeprueftHinweis[] } = opts?.ungeprueftSichtbarFuer
+      ? {
+          ungeprueft: dropConfidential(prefilteredRaw)
+            .filter((ko) => ko.status !== "validiert")
+            .filter((ko) => opts.ungeprueftSichtbarFuer?.(ko) ?? false)
+            .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
+        }
+      : {};
     const refs: KnowledgeRef[] = prefiltered.map((ko) => ({
       id: ko.id,
       title: ko.title,
@@ -426,15 +519,15 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt };
+        return { result, answerId, gap: null, receipt, ...ungeprueftFeld };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       const gap = await this.createGap(question, actorId, opts?.demoSeed, locale);
-      return { result, answerId, gap, receipt };
+      return { result, answerId, gap, receipt, ...ungeprueftFeld };
     }
-    return { result, answerId, gap: null, receipt };
+    return { result, answerId, gap: null, receipt, ...ungeprueftFeld };
   }
 
   /**

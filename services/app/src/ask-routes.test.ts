@@ -540,7 +540,14 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
     expect(gesehen).toHaveLength(1);
     // DER EINGEFRORENE SATZ. `toEqual` und nicht `toMatchObject`: ein zusätzliches Feld wäre
     // ebenfalls eine Verhaltensänderung und muss auffallen.
-    expect(gesehen[0]?.opts).toEqual({ validatedOnly: true, retrievalOnly: true });
+    // JOB 1591 D2 (Auflage 3): Der Satz hat ein drittes Glied bekommen — den Betrachterfilter des
+    // Session-Panel-Wegs. Die `toEqual`-Schärfe bleibt: ein VIERTES Feld fällt weiterhin auf, und
+    // ein nicht-funktionaler Wert an dieser Stelle macht den Fall rot. Begründung am ENGE-Block.
+    expect(gesehen[0]?.opts).toEqual({
+      validatedOnly: true,
+      retrievalOnly: true,
+      ungeprueftSichtbarFuer: expect.any(Function),
+    });
   });
 
   it("KA4-S2 (SNAPSHOT): dieselbe Enge auch mit gesendeten, aber nicht eingewilligten Klara-Kopfzeilen", async () => {
@@ -556,7 +563,11 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
       headers: sitzung.headers,
       payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
     });
-    expect(gesehen[0]?.opts).toEqual({ validatedOnly: true, retrievalOnly: true });
+    expect(gesehen[0]?.opts).toEqual({
+      validatedOnly: true,
+      retrievalOnly: true,
+      ungeprueftSichtbarFuer: expect.any(Function),
+    });
   });
 
   it("KA4-S3: ein Consent-Versuch ohne externe Auflösung wird abgelehnt — der Bestand kennt keinen externen Modus", async () => {
@@ -654,7 +665,33 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
       payload: { question: "Wie entlüfte ich die Pumpe?", mode: "retrieval-only" },
     });
 
-  const ENGE = { validatedOnly: true, retrievalOnly: true };
+  // ==============================================================================================
+  // JOB 1591 · D2 · AUFLAGE 3 — DER EINGEFRORENE SATZ WIRD GENAUER, NICHT WEICHER.
+  // ==============================================================================================
+  //
+  // Der Satz stand bis D2 auf `{ validatedOnly, retrievalOnly }` und war mit `toEqual` gepinnt:
+  // „ein zusaetzliches Feld waere ebenfalls eine Verhaltensaenderung und muss auffallen." ES IST
+  // AUFGEFALLEN — genau so, wie es sollte, und deshalb steht dieser Block hier.
+  //
+  // W5 (JOB 1591 D1) reicht auf DIESEM Weg — und nur auf ihm — die fertige
+  // Sichtbarkeitsentscheidung des Betrachters hinein. `expect.any(Function)` ist dabei KEINE
+  // Aufweichung: `toEqual` bleibt `toEqual`, die Feldmenge bleibt exakt gepinnt, und ein VIERTES
+  // Feld faellt weiterhin sofort auf. Was sich aendert, ist allein, dass der Satz jetzt drei
+  // Glieder hat statt zwei — und dass das dritte eine Funktion sein MUSS. Ein `undefined`, ein
+  // `true` oder ein weggelassenes Feld macht diese Faelle rot.
+  //
+  // WELCHER ZWEIG HIER GEPRUEFT WIRD, und das ist der Kern von Auflage 3: Jeder Fall in dieser
+  // Datei faehrt `mode: "retrieval-only"` mit Sitzung (`frage()` oben, :649-655) — das ist der
+  // SESSION-PANEL-WEG. Diese Datei kennt den Add-on-Zweig ueberhaupt nicht: eine Suche nach
+  // `x-klarwerk-addon-key` findet hier null Treffer. Sein `toEqual` liegt in
+  // `services/app/src/addon-principal.test.ts` und ist von D2 NICHT beruehrt worden.
+  // Der ausfuehrbare Beleg dafuer, dass der Add-on-Zweig das Feld NICHT fuehrt, steht als eigener
+  // Fall in `tests/app/w5-ungeprueft-gemeldet.test.ts` (W7) — belegt, nicht behauptet.
+  const ENGE = {
+    validatedOnly: true,
+    retrievalOnly: true,
+    ungeprueftSichtbarFuer: expect.any(Function),
+  };
 
   it("KA4-P1: `erlaubt: true` für exakt diese Bindung → die Enge entfällt", async () => {
     let gesehenBindung: unknown = null;
