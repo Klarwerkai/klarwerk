@@ -867,3 +867,130 @@ export function normalizeSearchTerms(terms: readonly string[]): string[] {
 // Der Treffer-Vertrag selbst ist mit S1/S2 in die Zusammensetzung gewandert: er braucht BEIDE
 // Projektionsarten und steht deshalb in effective-search-document.ts (`matchEffectiveSearchDocument`).
 // Hier bleibt nur, was eine reine Eigenschaft der Content Projection ist.
+
+// ================================================================================================
+// JOB 1531 · D1 (M-5, Anker S2) — „KLEP" FINDET „VENTIL" NICHT.
+// ================================================================================================
+//
+// S2 beschreibt die Lage, nicht die Loesung: „literaler Token-Schnitt und `ILIKE`, keine Synonyme,
+// keine Uebersetzung, keine Embeddings." Und S6 sagt, warum das mehr weh tut als es klingt:
+// „‚Urlaubsregelung' und ‚Urlaubszeiten' sind fuer einen literalen Vergleich zwei verschiedene
+// Woerter."
+//
+// WAS HIER ENTSTEHT, IST DIE DETERMINISTISCHE SEITE: eine DEKLARIERTE Zuordnung. Kein Modell, kein
+// Egress, keine Netzverbindung, kein Scharfschalten des semantischen Vorfilters (der bleibt AUS —
+// Hardware- und Kostenentscheidung, OFFEN.md S6).
+//
+// ================================================================================================
+// WARUM DAS NICHT IN `normalizeSearchTerms` GEHOERT — gemessen, nicht gemutmasst.
+// ================================================================================================
+//
+// Der naheliegende Ort waere `normalizeSearchTerms` (oben, Z. 853): dort laufen alle Adapter
+// zusammen. **Er ist der falsche, und der Beleg ist ein Vertragstest:**
+//
+//   tests/app/word-addin.test.ts:1080   kanonisch(text) = normalizeSearchTerms(queryTokens(...))
+//   tests/app/word-addin.test.ts:1106   expect(ka1.ka1TermsFromText(fx)).toEqual(kanonisch(...))
+//
+// Das Aufgabenfenster ist buildlos, kann nichts importieren und SPIEGELT `normalizeSearchTerms`
+// von Hand (`taskpane.html:4770`). Der Test misst die Aequivalenz beider Fassungen. **Wer
+// `normalizeSearchTerms` um Synonyme erweitert, macht diesen Test rot** — und die Spiegelfassung
+// mitzuziehen ist hier ausgeschlossen: `taskpane.html` gehoert PRO3 (W6) und steht unter Null-Diff.
+//
+// UND ES IST AUCH FACHLICH DIE FALSCHE STELLE. `normalizeSearchTerms` beantwortet „was hat der
+// Nutzer eingegeben?" — eine Bereinigung. Die Erweiterung beantwortet „wonach wird ausserdem
+// gesucht?". Das sind zwei Aussagen, und das Haus haelt zwei Aussagen auseinander (vgl.
+// `service.ts:2723-2724`: „das ist eine andere Aussage … und darf nicht mit ihr verschmelzen").
+//
+// ================================================================================================
+// DIE TABELLE IST KLEIN, UND DAS IST ABSICHT.
+// ================================================================================================
+//
+// Eine erfundene Synonymliste waere derselbe Fehler, den mir BEN heute in JOB 1521 nachgewiesen
+// hat: eine unbelegte Setzung, die wie eine Messung aussieht. **Jeder Eintrag hier traegt deshalb
+// seine Fundstelle**, und `tests/knowledge/s2-synonyme.test.ts` prueft, dass keiner ohne dasteht.
+// Wer die Menge erweitern will, braucht eine Quelle — nicht eine Meinung.
+
+/** Ein deklariertes Wortpaar mit der Stelle, an der es belegt ist. */
+export interface SuchZuordnung {
+  /** Die Begriffe, die einander bedeuten. Mindestens zwei, kleingeschrieben. */
+  readonly begriffe: readonly string[];
+  /** Wo dieses Paar herkommt. Ohne Fundstelle kein Eintrag. */
+  readonly quelle: string;
+}
+
+/**
+ * Die deklarierten Zuordnungen. **Nur belegte Faelle** — die beiden aus OFFEN.md.
+ *
+ * Bewusst KEINE automatische Uebersetzung und keine Ableitung: `klep`/`ventil` steht hier, weil
+ * OFFEN.md es als den Fall benennt, an dem S2 haengt — nicht, weil eine Regel Niederlaendisch nach
+ * Deutsch abbildet. Eine solche Regel waere die „Uebersetzung", die S2 ausschliesst.
+ */
+export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
+  { begriffe: ["klep", "ventil"], quelle: "OFFEN.md S2 — ‚klep' findet ‚Ventil' nicht" },
+  {
+    begriffe: ["urlaubsregelung", "urlaubszeiten"],
+    quelle: "OFFEN.md S6 — zwei verschiedene Woerter fuer den literalen Vergleich",
+  },
+];
+
+/** Was diese Erweiterung zusichert — als Datum, damit ein Test es lesen kann. */
+export const S2_ERWEITERUNG_GRENZE = {
+  /** Kein Modellaufruf, kein Egress, keine Netzverbindung. */
+  brauchtNetz: false,
+  /** Der semantische Vorfilter bleibt unberuehrt und AUS. */
+  ruehrtVorfilterAn: false,
+  /** Nur deklarierte Paare — nichts wird abgeleitet oder uebersetzt. */
+  leitetAb: false,
+  /** Die Eingabeterme bleiben erhalten; es wird nur ergaenzt. */
+  entferntTerme: false,
+} as const;
+
+/** Der Index: Begriff -> die anderen Begriffe derselben Zuordnung. Einmal gebaut, nicht je Abfrage. */
+const ZUORDNUNGS_INDEX: ReadonlyMap<string, readonly string[]> = (() => {
+  const index = new Map<string, string[]>();
+  for (const zuordnung of SUCH_ZUORDNUNGEN) {
+    for (const begriff of zuordnung.begriffe) {
+      const andere = zuordnung.begriffe.filter((b) => b !== begriff);
+      const vorhanden = index.get(begriff);
+      if (vorhanden) {
+        // Ein Begriff in zwei Zuordnungen: beide gelten, keine gewinnt.
+        vorhanden.push(...andere.filter((b) => !vorhanden.includes(b)));
+      } else {
+        index.set(begriff, [...andere]);
+      }
+    }
+  }
+  return index;
+})();
+
+/**
+ * Erweitert bereits bereinigte Suchterme um ihre deklarierten Entsprechungen.
+ *
+ * @param terme Das Ergebnis von `normalizeSearchTerms` — bereinigt, kleingeschrieben, entdoppelt.
+ *
+ * @returns Dieselben Terme in derselben Reihenfolge, gefolgt von den ergaenzten. **Die Eingabe
+ *          wird nie gekuerzt und nie umsortiert:** Ein Aufrufer, der die Erweiterung nicht will,
+ *          bekommt bei leerer Tabelle exakt seine Eingabe zurueck — und die Reihenfolge des ersten
+ *          Vorkommens ist dieselbe Zusage, die `normalizeSearchTerms` gibt.
+ */
+export function expandSearchTerms(terme: readonly string[]): string[] {
+  const raus: string[] = [];
+  const gesehen = new Set<string>();
+  for (const term of terme) {
+    if (!gesehen.has(term)) {
+      gesehen.add(term);
+      raus.push(term);
+    }
+  }
+  // Erst nach ALLEN Eingabetermen ergaenzen — sonst haenge die Reihenfolge davon ab, welcher Term
+  // zufaellig eine Zuordnung hat, und ein gedeckelter Aufrufer verloere echte Eingaben zuerst.
+  for (const term of terme) {
+    for (const weiterer of ZUORDNUNGS_INDEX.get(term) ?? []) {
+      if (!gesehen.has(weiterer)) {
+        gesehen.add(weiterer);
+        raus.push(weiterer);
+      }
+    }
+  }
+  return raus;
+}
