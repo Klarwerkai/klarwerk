@@ -42,6 +42,8 @@
 // In-Memory-Fassung vorhanden. Das persistente Aggregat samt Postgres-Repo, Deduplizierung,
 // Versionierung und transaktionsgebundener Endlöschung ist eine eigene Scheibe (JOB 1139); sie
 // füllt genau diesen Port, statt ein zweites Modell daneben zu stellen.
+import { kanonischesPaar } from "./kanten-paar";
+import type { KantenArt, KantenRichtung, KuratierteKante } from "./kanten-types";
 import type { Confidentiality, KnowledgeObject, KoStatus } from "./types";
 
 // ================================================================================================
@@ -50,39 +52,21 @@ import type { Confidentiality, KnowledgeObject, KoStatus } from "./types";
 //
 // Feldbestand und Bedeutung stammen unverändert aus dem geschlossenen Vertrag (D2 §2.3). Sie sind
 // hier NICHT neu erfunden, damit die Persistenzscheibe denselben Satz vorfindet.
-
-/** Die fachliche Beziehungsart. Bewusst geschlossen: eine freie Zeichenkette wäre kein Vertrag. */
-export type KantenArt = "gehoert_zu" | "ergaenzt" | "ersetzt" | "widerspricht" | "beispiel_fuer";
-
-/**
- * `gerichtet` behält die Reihenfolge der Endpunkte (A ersetzt B ist nicht B ersetzt A).
- * `ungerichtet` und `symmetrisch` tragen keine Richtungsaussage; ihr Endpunktpaar wird von der
- * Persistenzscheibe kanonisch abgelegt.
- */
-export type KantenRichtung = "gerichtet" | "ungerichtet" | "symmetrisch";
-
-/**
- * `widerrufen` ist eine URHEBERAUSSAGE: ein Mensch hat die Beziehung zurückgenommen. Deshalb setzt
- * ein Papierkorbvorgang am Endpunkt diesen Wert NICHT (D3 §3.3) — sonst wäre nach der
- * Wiederherstellung nicht mehr unterscheidbar, ob jemand widerrufen hat oder ob die Kante nur ein
- * Papierkorbereignis überlebt hat. Die Sichtbarkeit trägt das allein.
- */
-export type KantenStatus = "aktiv" | "widerrufen";
-
-export interface KuratierteKante {
-  /** Eigene Identität, nicht aus den Endpunkten abgeleitet. */
-  id: string;
-  quelleId: string;
-  zielId: string;
-  art: KantenArt;
-  richtung: KantenRichtung;
-  /** Der Mensch, der sie gesetzt hat. Nie ein Automat (D2 §2.6). */
-  urheber: string;
-  gesetztAm: string;
-  geaendertAm: string;
-  status: KantenStatus;
-  version: number;
-}
+//
+// SEIT JOB 1495 D3 STEHEN SIE IN `kanten-types.ts` — unverändert, Feld für Feld. Der Grund ist
+// technisch: `kanten-paar.ts` trägt die Kanonisierungsregel und braucht dieselben Typen; diese
+// Datei importiert die Regel. Lägen die Typen weiterhin hier, wäre das ein Importzyklus (von
+// `dependency-cruiser` beim ersten Versuch gemeldet).
+//
+// SIE WERDEN HIER WEITER EXPORTIERT. Jeder bestehende Importpfad bleibt gültig — insbesondere der
+// des Vertragstests (`tests/ko/kanten-lesekette-sichtbarkeit.test.ts:25-29`). Es wird nichts
+// weggenommen, nur ein zweiter, tieferer Ort geschaffen.
+export type {
+  KantenArt,
+  KantenRichtung,
+  KantenStatus,
+  KuratierteKante,
+} from "./kanten-types";
 
 // ================================================================================================
 // DER BESTAND — ALS PORT.
@@ -107,8 +91,14 @@ export interface KantenRepo {
 export class InMemoryKantenRepo implements KantenRepo {
   private readonly kanten = new Map<string, KuratierteKante>();
 
+  // H3 (JOB 1495 D3): Die Zusage aus `KantenRichtung` oben — „ihr Endpunktpaar wird kanonisch
+  // abgelegt" — wird hier eingelöst. Sie stand seit dem ersten Entwurf im Kommentar; die
+  // Persistenzscheibe, die sie tragen sollte (JOB 1139), ist verloren. Bis sie neu entsteht, legt
+  // sonst NIEMAND kanonisch ab, und „A ergänzt B" wäre ein anderer Eintrag als „B ergänzt A".
+  //
+  // Gerichtete Kanten bleiben unberührt: bei ihnen IST die Reihenfolge die Aussage.
   async setze(kante: KuratierteKante): Promise<void> {
-    this.kanten.set(kante.id, { ...kante });
+    this.kanten.set(kante.id, { ...kanonischesPaar(kante) });
   }
 
   async fuerKo(koId: string): Promise<readonly KuratierteKante[]> {
