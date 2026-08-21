@@ -259,3 +259,115 @@ export class KantenLeseService {
     return { koId, kanten: ansichten, total: ansichten.length };
   }
 }
+
+// ================================================================================================
+// JOB 1553 · D1 (H3 / SCRUM-550+551) — DER QUALITÄTSBLICK. VIER ZAHLEN, KEINE OBJEKTDATEN.
+// ================================================================================================
+//
+// WAS „QUALITÄT" HIER HEISST, IST NICHT ERFUNDEN. Der Auftrag hält fest, dass der Begriff nirgends
+// definiert steht — er ist deshalb aus dem einzigen Präzedenzfall dieses Moduls abgeleitet:
+// `KoService.aiCheckCoverageSummary` (`service.ts:2730`). Von dort stammen vier Entscheidungen:
+//
+//  1. **`sichtbar` ist PFLICHT, nicht optional.** Begründung dort im Quelltext (`:2726-2729`): die
+//     Zähler hängen algebraisch zusammen, „jedes vertrauliche Nicht-Demo-KO erhöhte `total` und
+//     genau einen Zustandszähler. Bei `total: 1` war die Existenz unmittelbar belegt (ben,
+//     sammel72). Gefiltert wird die GRUNDMENGE." Genau deshalb steht hier kein `sichtbar?`:
+//     Es gibt keine sinnvolle Lesart einer Kennzahl ohne Entscheidung, und fail-closed wäre die
+//     schwächere Antwort — ein vergessenes Prädikat soll gar nicht erst übersetzen.
+//  2. **Demo-Bestand fällt aus der Grundmenge** (`:2733` `!ko.demoSeed`).
+//  3. **„Bewusst so schmal wie möglich … keine Objektdaten, keine Titel, keine IDs."**
+//  4. **Verschiedene Aussagen bekommen verschiedene Zähler** und werden nicht verschmolzen
+//     (`:2723`: „das ist eine andere Aussage … und darf nicht mit ihr verschmelzen").
+//
+// WAS DAS NETZ BIS HEUTE ÜBER SICH SELBST SAGTE: genau eine Zahl, `KantenRepo.anzahl()`
+// (`kanten-repo.ts:93`) — und sie ist UNGETRIMMT, ausdrücklich „für Prüfstände und Zähler". Für
+// einen Qualitätsblick ist sie unbrauchbar: sie zählt Beziehungen, die die Rolle nicht sehen darf.
+//
+// WAS HIER BEWUSST NICHT ENTSTEHT — „Kanten auf gelöschte Objekte". Diese Zahl lässt sich nicht
+// bauen, ohne den Kern dieses Dienstes zu brechen: `alsAnsicht` macht widerrufen, unauflösbar und
+// unsichtbar AUSDRÜCKLICH ununterscheidbar (siehe dort). Eine Zahl darüber wäre genau die Auskunft,
+// die diese Ununterscheidbarkeit verhindert — und ab n=1 ist sie eine.
+
+/** Die Objektliste, über die der Qualitätsblick zählt — erfüllt von `KoService.list`. */
+export interface QualitaetKoBestand {
+  alle(): Promise<readonly KnowledgeObject[]>;
+}
+
+/**
+ * Vier Zahlen über das kuratierte Netz — **alle über derselben getrimmten Grundmenge**.
+ *
+ * `vernetzt + verwaist === total` ist zugesagt und geprüft. Diese algebraische Kopplung ist der
+ * Grund, warum die Grundmenge VOR dem Zählen gefiltert wird: sonst verriete jede der Zahlen die
+ * Existenz dessen, was sie mitzählt.
+ *
+ * **Keine Zahl über Weggelassenes.** Es gibt keinen Zähler für widerrufene, unauflösbare oder
+ * unsichtbare Beziehungen — siehe der Block oben.
+ */
+export interface NetzQualitaet {
+  /** Sichtbare Nicht-Demo-Objekte. Die Grundmenge, auf die sich alles Weitere bezieht. */
+  total: number;
+  /** Davon mit mindestens einer sichtbaren kuratierten Beziehung zu einem Objekt der Grundmenge. */
+  vernetzt: number;
+  /** Davon ohne jede solche Beziehung. Eigener Zähler, weil es eine eigene Aussage ist. */
+  verwaist: number;
+  /** Verschiedene sichtbare Beziehungen INNERHALB der Grundmenge — jede genau einmal. */
+  kanten: number;
+}
+
+/**
+ * Erhebt den Qualitätsblick aufs kuratierte Netz.
+ *
+ * **Die drei Zahlen und warum gerade sie** (Auftrag §3 Nr. 2):
+ *
+ * * `vernetzt` — Beziehungen zu erheben ist der Zweck von H3; diese Zahl sagt, wie weit er
+ *   gediehen ist, statt dass jemand es schätzt.
+ * * `verwaist` — sie benennt den Rest, den noch jemand kuratieren müsste: das Rohmaterial für
+ *   „wo sind die Lücken", ohne selbst zu urteilen, ob eine Lücke schlimm ist.
+ * * `kanten` — erst zusammen mit `vernetzt` unterscheidet sie ein breit geknüpftes Netz von einem,
+ *   in dem wenige Objekte viele Beziehungen tragen.
+ *
+ * **Gebaut auf dem vorhandenen Lesedienst, nicht daneben:** die Sichtbarkeitsentscheidung wird über
+ * `kantenFuer` erfragt und damit geerbt, statt ein zweites Mal ausgelegt zu werden.
+ *
+ * **Als Modulfunktion, nicht als Methode:** `KantenLeseService` sagt zu, genau eine Methode zu
+ * tragen (`tests/ko/kanten-lesekette-sichtbarkeit.test.ts:252` hält das fest). Ein Lesezusatz ist
+ * kein Grund, eine fremde Zusicherung anzutasten.
+ *
+ * **Kosten, ehrlich:** ein `kantenFuer` je Objekt der Grundmenge, darunter eine Objektabfrage je
+ * Beziehung. Ein Bündelweg gehört in `KantenRepo` und damit nicht in diese Lease.
+ */
+export async function netzQualitaet(
+  deps: KantenLeseServiceDeps & { bestand: QualitaetKoBestand },
+  opts: { sichtbar: KantenSichtbar },
+): Promise<NetzQualitaet> {
+  // TRIMM VOR ALLEM ANDEREN — und der Demo-Ausschluss gehört mit hinein, sonst zählte eine
+  // Demo-Beziehung ein echtes Objekt als vernetzt.
+  const grundmenge = (await deps.bestand.alle()).filter((ko) => !ko.demoSeed && opts.sichtbar(ko));
+  const inGrundmenge = new Set(grundmenge.map((ko) => ko.id));
+
+  const dienst = new KantenLeseService(deps);
+  const kantenIds = new Set<string>();
+  let vernetzt = 0;
+  let verwaist = 0;
+
+  for (const ko of grundmenge) {
+    const auskunft = await dienst.kantenFuer(ko.id, { sichtbar: opts.sichtbar });
+    // `kantenFuer` trimmt nach Sichtbarkeit, kennt den Demo-Ausschluss aber nicht — die Kante muss
+    // deshalb BEIDE Enden in der Grundmenge haben, sonst wäre sie eine Aussage über etwas, das
+    // nicht mitgezählt wird.
+    let eigene = 0;
+    for (const kante of auskunft.kanten) {
+      if (inGrundmenge.has(kante.gegenstueck.id)) {
+        kantenIds.add(kante.id);
+        eigene++;
+      }
+    }
+    if (eigene > 0) {
+      vernetzt++;
+    } else {
+      verwaist++;
+    }
+  }
+
+  return { total: grundmenge.length, vernetzt, verwaist, kanten: kantenIds.size };
+}
