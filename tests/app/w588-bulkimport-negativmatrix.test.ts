@@ -443,3 +443,170 @@ describe("JOB 588 D5 · ImportRun- und Teilfehlerwirkung", () => {
     expect((gelesen.json() as { failureCode: string }).failureCode).toBe("IMPORT_UNAVAILABLE");
   });
 });
+
+// ================================================================================================
+// JOB 588 D6 · MODELLFREIHEIT — DIE VIER FAELLE AUS D4, WIEDERAUFGENOMMEN
+// ================================================================================================
+//
+// WARUM SIE HIER STEHEN UND NICHT IN EINER EIGENEN DATEI: Das rote D5-Urteil sagt es woertlich
+// (`BEN-PRUEFUNG-JOB-588-D5.md:15`): „Der alte D4-Waechter ist nicht parallel vorhanden, sondern
+// verloren. Gerade deshalb ist seine Wiederaufnahme keine DOPPELRUNDE; der neu angelegte
+// D5-Zielpfad muss den belegten Schutz des Vorlaufs zusammen mit den zwoelf neuen Faellen tragen."
+//
+// WAS GENAU ZUGESAGT IST — und was nicht. Die Ownerentscheidung
+// `00_CONTROL/ENTSCHEIDUNGEN/JOB-588.md` beantwortet die Reichweite abschliessend:
+//
+//     „Nur Import und Speichern — das ist heute schon wahr"
+//
+// Ausdruecklich VERWORFEN wurden „Ganze Kette inkl. Auswahl und Annahme" und „Modell darf laufen,
+// aber nicht blockieren". Die Faelle unten pruefen deshalb GENAU den zugesagten Abschnitt:
+// Importstart, Erkundung, Kandidatenpersistenz. Sie behaupten NICHTS ueber `/select`, `/group`
+// oder `/apply` — dort ist ein Modellaufruf erlaubt, und MF-5 belegt, dass er dort auch wirklich
+// stattfindet.
+//
+// WARUM EIN SPION UND NICHT „kein Reasoner uebergeben": Die zwoelf D5-Faelle registrieren die
+// Routen OHNE `reasoner`. Eine Zusicherung „null Modellaufrufe" waere dort gegenstandslos — es
+// gaebe nichts, was rufen koennte. Der Spion unten wird VERDRAHTET; erst dadurch ist die Null
+// eine Messung statt einer Abwesenheit. MF-5 ist die Gegenprobe, die das belegt.
+//
+// DIE BEIDEN MODELLKANTEN, gemessen im Bestand (nicht angenommen):
+//   · `confluence-import-routes.ts:524`  reasoner.deriveImportCriteria(...)   — in `/select`
+//   · `confluence-import-routes.ts:684`  reasoner.groupCandidates(...)        — in `/group`
+// Der Importkern `services/app/src/confluence-import.ts` (289 Z.) enthaelt keine davon.
+
+/** Ein Reasoner-Spion: er kann alles, was die Importrouten von ihm verlangen, und zaehlt mit. */
+function spionReasoner() {
+  const rufe: string[] = [];
+  const reasoner = {
+    deriveImportCriteria: async () => {
+      rufe.push("deriveImportCriteria");
+      return { criteria: {}, fallbackReason: null };
+    },
+    groupCandidates: async () => {
+      rufe.push("groupCandidates");
+      return { groups: [], demo: false, fallbackReason: null };
+    },
+    // `exactOptionalPropertyTypes` ist an: `reasoner?: Reasoner` nimmt KEIN `undefined` entgegen.
+    // Deshalb `NonNullable` — der Spion ist immer da, nur eben ein Stub.
+  } as unknown as NonNullable<Parameters<typeof confluenceImportRoutes>[0]["reasoner"]>;
+  return { reasoner, rufe };
+}
+
+/** Aufbau C — wie Aufbau B, aber MIT verdrahtetem Reasoner-Spion. */
+async function appMitSpion(adapter: ConfluenceSourceAdapter) {
+  const services = buildServices();
+  const app = buildApp(services);
+  const { reasoner, rufe } = spionReasoner();
+  app.register(
+    confluenceImportRoutes({
+      library: services.library,
+      koService: services.ko,
+      guards: makeGuards(services.auth),
+      makeAdapter: () => adapter,
+      importRuns: services.importRuns,
+      reasoner,
+    }),
+  );
+  app.register(
+    importRunRoutes({
+      importRuns: services.importRuns,
+      externalSources: services.externalSources,
+      guards: makeGuards(services.auth),
+    }),
+  );
+  return { ...(await mitAdmin(app)), services, rufe };
+}
+
+describe("JOB 588 D6 · MF — Modellfreiheit im zugesagten Abschnitt", () => {
+  it("MF-1: der IMPORTSTART laeuft ohne einen einzigen Modellaufruf", async () => {
+    const { app, headers, rufe } = await appMitSpion(
+      fixtureAdapter([quellSeite("mf-1-a", 1), quellSeite("mf-1-b", 1)]),
+    );
+
+    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
+    expect(start.statusCode, start.body).toBe(200);
+
+    expect(rufe, "der Importstart hat das Modell gerufen").toEqual([]);
+  });
+
+  it("MF-2: die ERKUNDUNG laeuft ohne einen einzigen Modellaufruf", async () => {
+    const { app, headers, rufe } = await appMitSpion(
+      fixtureAdapter([quellSeite("mf-2-a", 1), quellSeite("mf-2-b", 2)]),
+    );
+
+    const erkundung = await app.inject({
+      method: "POST",
+      url: `${START}/explore`,
+      headers,
+      payload: {},
+    });
+    expect(erkundung.statusCode, erkundung.body).toBe(200);
+
+    expect(rufe, "die Erkundung hat das Modell gerufen").toEqual([]);
+  });
+
+  it("MF-3: die KANDIDATENPERSISTENZ entsteht ohne einen einzigen Modellaufruf", async () => {
+    const { app, headers, rufe, services } = await appMitSpion(
+      fixtureAdapter([quellSeite("mf-3-a", 1), quellSeite("mf-3-b", 1)]),
+    );
+
+    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
+    expect(start.statusCode, start.body).toBe(200);
+
+    // Erst LESEN, dann urteilen: ohne diesen Abruf pruefte der Fall nur den Start, nicht die
+    // Persistenz. Gelesen wird ueber DENSELBEN Weg wie die zwoelf D5-Faelle
+    // (`services.library.listImportCandidates()`, s. N5b `:304`) — nicht ueber die Lauf-Itemrefs,
+    // die eine andere Ablage sind.
+    expect(
+      (await services.library.listImportCandidates()).length,
+      "ohne persistierte Kandidaten prueft dieser Fall nichts",
+    ).toBeGreaterThan(0);
+
+    expect(rufe, "die Kandidatenpersistenz hat das Modell gerufen").toEqual([]);
+  });
+
+  it("MF-4: der kalibrierte FREITEXT-GRENZFALL laeuft ebenfalls modellfrei", async () => {
+    // Der Grenzfall aus D4: eine Seite, deren Inhalt genau die Sorte Freitext ist, die ein Modell
+    // reizen wuerde — lang, unstrukturiert, ohne Kategoriehinweis. Sie darf den Import trotzdem
+    // nicht an ein Modell geben; die Zusage haengt nicht am Inhalt.
+    const roman = "Ein langer, unstrukturierter Fliesstext ohne jede Gliederung. ".repeat(40);
+    const seite = { ...quellSeite("mf-4-roman", 1), statement: roman } as ImportItem;
+    const { app, headers, rufe, services } = await appMitSpion(fixtureAdapter([seite]));
+
+    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
+    expect(start.statusCode, start.body).toBe(200);
+
+    // Zwei Vorbedingungen, sonst prueft der Fall nichts: der Text ist wirklich lang, UND der
+    // Import hat ihn wirklich verarbeitet.
+    expect(roman.length, "der Grenzfall ist nicht lang genug, um einer zu sein").toBeGreaterThan(
+      1000,
+    );
+    expect(
+      (await services.library.listImportCandidates()).length,
+      "der lange Text ist gar nicht erst eingereiht worden",
+    ).toBeGreaterThan(0);
+
+    expect(rufe, "der Freitext-Grenzfall hat das Modell gerufen").toEqual([]);
+  });
+
+  it("MF-5: KALIBRIERUNG — derselbe Spion registriert sehr wohl, wenn das Modell laeuft", async () => {
+    // OHNE DIESEN FALL BEWEISEN MF-1 BIS MF-4 NICHTS. Eine leere Rufliste kann zwei Ursachen
+    // haben: es wurde nicht gerufen — oder der Spion ist gar nicht verdrahtet. Hier wird die
+    // zweite Ursache ausgeschlossen, und zwar an einer Route, an der ein Modellaufruf laut
+    // Ownerentscheidung ausdruecklich ERLAUBT ist (`/select` gehoert zur Auswahl, nicht zum
+    // Import).
+    const { app, headers, rufe } = await appMitSpion(fixtureAdapter([quellSeite("mf-5-a", 1)]));
+
+    const auswahl = await app.inject({
+      method: "POST",
+      url: `${START}/select`,
+      headers,
+      payload: { prompt: "nur die Seiten zu Anlage 1", promptConfidential: false },
+    });
+    expect(auswahl.statusCode, auswahl.body).toBe(200);
+
+    expect(rufe, "der Spion ist nicht verdrahtet — dann sagen MF-1 bis MF-4 nichts aus").toContain(
+      "deriveImportCriteria",
+    );
+  });
+});
