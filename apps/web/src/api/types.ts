@@ -181,6 +181,22 @@ export interface AiCheckCoverageSummary {
   noCoverage: number;
 }
 
+// A28 (OFFEN.md:165) — DAS DAUERHAFTE SIGNAL AM EIGENEN WISSENSOBJEKT.
+// Spiegel von services/app/src/duplicate-signal.ts (die Oberfläche importiert keine Services).
+//
+// DREI FELDER, UND DAS IST DIE GRENZE: Vorhandensein und Art, sonst nichts. Kein Feld für die
+// Gegenseite — weder Kennung noch Titel noch Inhalt. Wer hier ein viertes Feld ergänzen wollte,
+// müsste erst den Kern ändern und käme an dessen Tests nicht vorbei
+// (services/app/src/duplicate-signal.test.ts G-1/G-2, tests/ko/a28-signal-*.test.ts).
+export interface EigenerBefund {
+  /** Das EIGENE Objekt, an dem das Signal hängt. */
+  koId: string;
+  /** Es gibt mindestens eine offene Dublette an diesem Objekt. */
+  dublette: boolean;
+  /** Es gibt mindestens einen offenen Konflikt an diesem Objekt. */
+  konflikt: boolean;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;

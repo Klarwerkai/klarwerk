@@ -289,6 +289,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   },
 
   // --- Conflicts (conflicts-routes.ts) ---
+  // JOB 1546 D2 (A28, OFFEN.md:165): das dauerhafte Signal am EIGENEN Objekt. Routenrecht ist
+  // `ko.read` wie bei den beiden Boards; das Zeilenrecht ist `sichtbareFuer` und danach die
+  // Autorschaft selbst (`eigeneKoIds` in conflicts-routes.ts, Rumpf = dieselbe Zeichenkettenpruefung
+  // wie `darfSehen`). Die Antwort traegt ausschliesslich eigene Kennungen und zwei Wahrheitswerte —
+  // kein Feld fuer die Gegenseite, weil `EigenerBefund` keines hat.
+  "GET /api/duplicate-signal": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
   "GET /api/conflicts": { protection: "ko.read", zeilenrecht: ["sichtbarePaare"] },
   "GET /api/conflicts/:id": { protection: "ko.read", zeilenrecht: ["paarSichtbar"] },
   "POST /api/conflicts/:id/escalate": { protection: "conflict.resolve" },

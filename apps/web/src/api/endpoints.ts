@@ -22,6 +22,7 @@ import type {
   Draft,
   DraftPayload,
   DuplicateSelfTestResult,
+  EigenerBefund,
   EnrichResult,
   EvidenceRecord,
   ExampleLoadResponse,
@@ -329,6 +330,13 @@ export const endpoints = {
   // die Finding-Endpunkte liefern nur OFFENE Befunde und wissen nichts über die Laufabdeckung.
   aiCheck: {
     coverageSummary: () => api.get<AiCheckCoverageSummary>("/ai-check/coverage-summary"),
+  },
+  // A28 (JOB 1546 D2): das dauerhafte Signal am EIGENEN Objekt. Bewusst NICHT unter `conflicts`
+  // oder `duplicates` — die beiden liefern Paare mit wörtlichen Belegzitaten und sind deshalb an
+  // `paarSichtbar` gebunden (BEIDE Objekte müssen sichtbar sein). Dieser Weg liefert nur
+  // Vorhandensein und Art am eigenen Objekt und trägt darum genau dort, wo jene schweigen müssen.
+  duplicateSignal: {
+    list: () => api.get<EigenerBefund[]>("/duplicate-signal"),
   },
   conflicts: {
     list: () => api.get<Conflict[]>("/conflicts"),

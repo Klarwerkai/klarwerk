@@ -1258,7 +1258,13 @@ export function buildApp(
   // AUFTRAG-mega74 BLOCK D (G5): der EINE Zugang, über den die Nebenwege die Sichtbarkeit ihrer
   // beteiligten Wissensobjekte erfragen. Hier gebaut, damit alle drei dieselbe Quelle benutzen.
   const koSichtbarkeit = { get: (id: string) => services.ko.get(id) };
-  app.register(conflictRoutes(services.conflicts, guards, koSichtbarkeit));
+  // JOB 1546 D2 (A28, OFFEN.md:165): zwei Argumente MEHR am bestehenden Aufruf, kein zweiter
+  // Aufrufweg. `services.overlaps` liefert die offenen Ueberschneidungen, `services.ko` den
+  // Bestand, aus dem die EIGENEN Objekte des Betrachters bestimmt werden. Damit bekommt die Regel
+  // aus `7fb6ace` ihren ersten Aufrufer — bis hierher hatte sie keinen (gemessen in JOB 1546 D1).
+  app.register(
+    conflictRoutes(services.conflicts, guards, koSichtbarkeit, services.overlaps, services.ko),
+  );
   // AUFTRAG-mega29 C2: die schmale Abdeckungs-Zusammenfassung, die die LEEREN Konflikt-/Duplikat-
   // Boards brauchen, um nicht als „geprüft und frei" gelesen zu werden.
   app.register(aiCheckCoverageRoutes(services.ko, guards));

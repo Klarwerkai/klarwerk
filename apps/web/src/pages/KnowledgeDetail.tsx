@@ -9,6 +9,7 @@ import {
   useAudit,
   useConflicts,
   useDirectory,
+  useEigeneBefunde,
   useExternalPolicy,
   useKo,
   useKoEvidence,
@@ -210,6 +211,17 @@ export function KnowledgeDetail(): JSX.Element {
   // SCRUM-95/96: Signale für die abgeleitete Gültigkeit-/Schutz-Sicht.
   const pending = useLifecyclePending();
   const conflicts = useConflicts();
+  // A28 (OFFEN.md:165), JOB 1546 D3 — DAS DAUERHAFTE SIGNAL AM EIGENEN OBJEKT.
+  //
+  // WARUM ES NEBEN `useConflicts` STEHT UND NICHT DARIN AUFGEHT: `GET /api/conflicts` liefert Paare
+  // MIT wörtlichen Belegzitaten und ist deshalb an `paarSichtbar` gebunden — dort müssen BEIDE
+  // Objekte sichtbar sein (sichtbarkeit.ts:258-263). Ist die Gegenseite vertraulich und der
+  // Betrachter nicht ihr Kurator, verschwindet das ganze Paar; das Abzeichen unten bliebe aus.
+  // Genau daran scheiterte A28: der Autor erfuhr an seinem EIGENEN Objekt nichts.
+  //
+  // Dieser Weg trägt nur Vorhandensein und Art (`EigenerBefund`, drei Felder, kein Feld für die
+  // Gegenseite) und kann deshalb sprechen, wo jener schweigen muss — „unabhängig von seiner Rolle".
+  const eigeneBefunde = useEigeneBefunde();
   // Das Verzeichnis wird hier noch für EINEN zweiten Zweck gebraucht: die Auswahlliste des
   // Autoren-Transfers weiter unten. Das ist keine Namensauflösung, sondern eine Auswahl — deshalb
   // bleibt sie hier und wandert nicht in den Haken.
@@ -751,6 +763,9 @@ export function KnowledgeDetail(): JSX.Element {
             const impact = conflictImpact(ko.id, conflicts.data ?? []);
             const usability = conflictLimitedUsability(ov.usability, impact);
             const notice = conflictNotice(impact);
+            // A28: der Befund an DIESEM Objekt, falls es dem Betrachter gehört. Kein Eintrag
+            // bedeutet: kein offener Befund — das Signal ist eine Meldung, keine Bestandsliste.
+            const a28 = (eigeneBefunde.data ?? []).find((b) => b.koId === ko.id);
             return (
               <>
                 <Card className="mb-5">
@@ -764,6 +779,30 @@ export function KnowledgeDetail(): JSX.Element {
                     {notice ? (
                       <span
                         title={t(notice.hintKey)}
+                        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
+                      >
+                        {t("conflict.impact.badge")}
+                      </span>
+                    ) : null}
+                    {/* A28: das dauerhafte Signal am eigenen Objekt. Es nennt Vorhandensein und
+                      Art — mehr trägt `EigenerBefund` nicht, und mehr darf hier nie stehen.
+                      Die Beschriftungen sind BESTEHENDE Katalogschlüssel (i18n.ts ist für diesen
+                      Durchgang gesperrt, BASIC/KA5). */}
+                    {a28?.dublette ? (
+                      <span
+                        data-testid="a28-signal-dublette"
+                        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
+                      >
+                        {t("dup.probable")}
+                      </span>
+                    ) : null}
+                    {/* Der Konflikt bekommt hier NUR dann ein Abzeichen, wenn das bestehende
+                      Konflikt-Signal darüber ausbleibt — sonst stünde dieselbe Aussage zweimal.
+                      Der Fall, in dem es ausbleibt, ist genau der A28-Fall: die Gegenseite ist
+                      für diesen Betrachter nicht sichtbar, das Paar fällt aus `/api/conflicts`. */}
+                    {a28?.konflikt && !notice ? (
+                      <span
+                        data-testid="a28-signal-konflikt"
                         className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
                       >
                         {t("conflict.impact.badge")}

@@ -73,6 +73,10 @@ export const useConflicts = () =>
   // nicht schon beim Rendern des Hooks. Sonst reißt jede Oberfläche, die diesen Hook mitzieht,
   // an einem teilweise gesetzten `endpoints`-Objekt ab, bevor react-query überhaupt lädt.
   useQuery({ queryKey: ["conflicts"], queryFn: () => endpoints.conflicts.list() });
+// A28 (OFFEN.md:165), JOB 1546: das dauerhafte Signal an den EIGENEN Objekten des Betrachters.
+// Lazy wie `useConflicts`, aus demselben Grund.
+export const useEigeneBefunde = () =>
+  useQuery({ queryKey: ["duplicate-signal"], queryFn: () => endpoints.duplicateSignal.list() });
 // Berater-Konzept Duplikate 04.07. (Stufe D4): offene Überschneidungen fürs Duplikate-Board.
 export const useDuplicates = () =>
   useQuery({ queryKey: ["duplicates"], queryFn: endpoints.duplicates.list });
