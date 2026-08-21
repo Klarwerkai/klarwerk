@@ -5012,6 +5012,80 @@
     var ka3Gebunden = false;
     var ka3Treffer = [];
 
+    // ============================================================================================
+    // W6 (OFFEN.md) — DER WEG ZUR DUBLETTENPRUEFUNG. Aufruf, nicht Vertragsort.
+    // ============================================================================================
+    //
+    // W6 lautet: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt sie
+    // nirgends." Gemessen auf diesem Stand: `check-text` hat in `apps/` NULL Treffer; niemand
+    // ruft sie. Das ist der ganze Befund, und diese Funktion ist sein fehlendes Glied.
+    //
+    // WARUM SIE NICHT DER BESTANDSBLICK IST — die Unterscheidung traegt den ganzen Auftrag:
+    // KA2 speist `window.klaraBestandsblick` aus `POST /api/ask` (retrieval-only) und
+    // `GET /api/kos/:id` — belegt in RUECKGABE-BASIC2-JOB-1571-D1, Bausteintabelle; die
+    // Dubletten-Kette bleibt dort ausdruecklich unberuehrt. „Gibt es dazu schon etwas?" und
+    // „ist dieser Text eine Dublette?" sind zwei verschiedene Fragen mit zwei Diensten.
+    // DESHALB SCHLIESST KA2 W6 NICHT — und deshalb steht diese Funktion hier.
+    //
+    // SIE BESETZT DEN VERTRAGSORT NICHT. Sie wird hier NICHT an `window.klaraBestandsblick`
+    // gehaengt: dieser Slot gehoert PRO3 (1571 D3), und zwei Anbieter an einem Slot waeren genau
+    // der zweite Weg, den `ENTSCHEIDUNGEN/JOB-646.md` verbietet. Sie liefert deshalb GENAU die
+    // Vertragsform `{treffer:[{id,title,status}]}`, damit der Vertragsort sie ohne Anpassung
+    // einsetzen oder mit dem Bestandsblick zusammenfuehren kann. Bis dahin ist sie inert.
+    //
+    // KEIN ZWEITER OFFICE-SCHNAPPSCHUSS: den Text reicht der Aufrufer herein (`leseText`) —
+    // dieselbe Zurueckhaltung, mit der KA2 `ka1Terms` benutzt statt selbst zu lesen. Auch `fetchFn`
+    // wird hereingereicht, genau wie bei `performAsk` (:999) — so ist der Weg ohne Netz und ohne
+    // Word-Host ausfuehrbar und damit pruefbar.
+    //
+    // FAIL-CLOSED IN JEDER RICHTUNG: zu kurzer Text, Fehlerantwort, kaputter Koerper, Ausnahme —
+    // immer `{treffer: []}`. Klara schweigt lieber, als etwas zu behaupten. Ein Eintrag ohne
+    // Kennung ist kein Treffer (dieselbe Regel wie `ka3Normalisieren`), und `status` bleibt
+    // `null`: die Dublettenpruefung fuehrt kein Statusfeld, und ein erfundenes waere eine Luege.
+    var W6_MINDESTZEICHEN = 40;   // check-text-routes.ts:20 — darunter antwortet die Route 400.
+    var W6_HOECHSTZEICHEN = 8000; // check-text-routes.ts:21 — darueber ebenfalls.
+
+    // KW-KLARA-W6-CHECKTEXT-START
+    function w6DublettenAusCheckText(grund, leseText, fetchFn, sprache) {
+      return Promise.resolve()
+        .then(function () { return typeof leseText === "function" ? leseText(grund) : null; })
+        .then(function (text) {
+          if (typeof text !== "string") { return { treffer: [] }; }
+          var schnitt = text.length > W6_HOECHSTZEICHEN ? text.slice(0, W6_HOECHSTZEICHEN) : text;
+          if (schnitt.trim().length < W6_MINDESTZEICHEN) { return { treffer: [] }; }
+          if (typeof fetchFn !== "function") { return { treffer: [] }; }
+          return fetchFn("/api/check-text", {
+            method: "POST",
+            credentials: "include",
+            headers: { "content-type": "application/json" },
+            body: JSON.stringify({
+              text: schnitt,
+              locale: typeof sprache === "string" && sprache ? sprache : "de",
+              source: "transient-document"
+            })
+          }).then(function (res) {
+            if (!res || !res.ok) { return { treffer: [] }; }
+            return res.json().then(function (koerper) {
+              var roh = koerper && Array.isArray(koerper.duplicates) ? koerper.duplicates : [];
+              var treffer = [];
+              for (var i = 0; i < roh.length; i += 1) {
+                var d = roh[i];
+                var id = d && typeof d.koId === "string" ? d.koId : "";
+                if (!id) { continue; }
+                treffer.push({
+                  id: id,
+                  title: d && typeof d.koTitle === "string" ? d.koTitle : "",
+                  status: null
+                });
+              }
+              return { treffer: treffer };
+            });
+          });
+        })
+        .catch(function () { return { treffer: [] }; });
+    }
+    // KW-KLARA-W6-CHECKTEXT-END
+
     /** Der KA2-Vertrag — oder `null`. `null` heisst: KA3 schweigt. */
     function ka3Vertrag() {
       var vertrag = window.klaraBestandsblick;

@@ -170,6 +170,11 @@ const INVENTAR: readonly string[] = [
   "tests/app/theme-deckungsregister.test.ts",
   "tests/app/w1-klara-lifecycle-taskpane.test.tsx",
   "tests/app/w1-klara-vertrauenskopf.test.ts",
+  // W6 (JOB 1621): neu im Baum und von der Erhebung ueber die Achse `taskpane` gefunden. Der
+  // Waechter des Dublettenwegs gehoert sachlich in die Klara-Regression — er haelt fest, dass der
+  // Aufruf von `POST /api/check-text` fail-closed bleibt und nichts ueber den Bestand erfindet.
+  // K2 hat ihn gemeldet, das Inventar hat ihn nicht stillschweigend aufgenommen.
+  "tests/app/w6-dublettenweg-checktext.test.ts",
   "tests/app/word-addin-ask.test.ts",
   "tests/app/word-addin-csp.test.ts",
   "tests/app/word-addin-taskpane-cache.test.ts",

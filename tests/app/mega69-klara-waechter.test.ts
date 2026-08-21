@@ -623,7 +623,22 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     Oeffnen frisch geholt; bis dahin kann der Office-Cache kurz den alten Stand zeigen —
     //     dann gilt dort weiter die alte, zu grosszuegige Regel. Das ist der Zustand von gestern,
     //     kein neues Risiko.
-    const PIN = "2c3a56b0647434a1d8f1a7e248ef1dd9edd2df2719e66544d86879d35ce6957b";
+    //
+    // W6 (JOB 1621) — DIE NACHFUEHRUNG DIESES DURCHGANGS, mit denselben drei Fragen:
+    //   · KEIN zusaetzlicher Schreibweg, kein neuer Ausgang. Neu ist ein LESENDER Aufruf von
+    //     `POST /api/check-text` (Block `KW-KLARA-W6-CHECKTEXT-*`). Die Route ist ein Dry-Run und
+    //     antwortet `persisted:false`; die beiden Schreibaufrufe des Fensters bleiben bei null.
+    //   · NICHTS WIRD SICHTBAR. Die Funktion ist INERT: sie haengt an keinem Anlass und an keinem
+    //     Vertragsort — `window.klaraBestandsblick` gehoert PRO3 (1571 D3, Regel A). Solange sie
+    //     niemand einsetzt, ruft sie niemand, und die Oberflaeche aendert sich nicht.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
+    //     fehlt der Block schlicht — der Zustand von gestern, kein neues Risiko.
+    //
+    // PIN-HERKUNFT (CHEF, 21.08. 17:35): G24 und W6 haben taskpane.html BEIDE veraendert, jeder
+    // von einem anderen Startpin aus. Deshalb passte WEDER der Pin aus 1610 (2c3a56b0…) NOCH der
+    // aus 1621 (870b08d6…) — beide beschreiben je nur eine der beiden Aenderungen. Der Wert unten
+    // ist der gemessene Hash der zusammengefuehrten Datei, die beide Blocks traegt.
+    const PIN = "82a91f3095fc54e55ee640f4a44f438f45274179e933cc81787d5b8e06d722bc";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
