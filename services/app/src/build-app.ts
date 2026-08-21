@@ -56,7 +56,7 @@ import {
 } from "../../conflicts";
 // SCRUM-523 P.3 (WP-A2): gemeinsamer Transaktions-Kernel — nur die Kompositionswurzel bindet withPgTx
 // an den echten, mit PgKoRepo/PgAuditRepo geteilten Pool (s. buildPgServices unten).
-import { withPgTx } from "../../db-tx";
+import { gatedPool, withPgTx } from "../../db-tx";
 import { InMemoryEmbeddingStore, createEmbeddingProviderFromEnv } from "../../embedding";
 import {
   type ExternalKnowledgePolicyRepo,
@@ -638,7 +638,35 @@ export function buildServices(): AppServices {
 }
 
 // Postgres-Komposition: dieselbe App, alle Repos gegen eine echte Datenbank.
-export function buildPgServices(pool: Pool): AppServices {
+//
+// ================================================================================================
+// JOB 596 · D9 — HIER, UND NUR HIER, WIRD DIE RESETSPERRE VERDRAHTET.
+// ================================================================================================
+//
+// Die Ownerentscheidung (`00_CONTROL/ENTSCHEIDUNGEN/JOB-596.md`) lautet „zentrale Sperrrichtung"
+// statt elf einzeln geänderter Adapter. DIES IST DIESE EINE STELLE: Der rohe Pool wird EINMAL
+// umhüllt, und alle 28 Weitergaben unten bekommen die Hülle. Kein Adapter wurde angefasst, keiner
+// muss von der Sperre wissen — genau das war der Sinn der Entscheidung.
+//
+// BEN hat an D8 gerügt, dass der `gatedPool` nur exportiert und nicht verdrahtet war: „damit wirkt
+// die zentrale Resetsperre dort nicht, wo die 24 Adapter zugreifen." Das traf. Der Beleg, dass es
+// jetzt anders ist, steht in `tests/db-tx/job596-adapter-sperre.test.ts` — er greift über
+// `services.objects` auf einen BESTEHENDEN Adapter zu und misst, dass während eines Resets keine
+// einzige Nutzanweisung die Datenbank erreicht.
+//
+// WER DEN ROHEN POOL WEITER BRAUCHT — und warum das kein zweiter Weg ist:
+//
+//   · `migrate(pool)` und `migrateAuthTokensAtRest(pool)` in `server.ts:23/:27` laufen VOR diesem
+//     Aufruf, beim Start, bevor irgendein Reset laufen kann. Sie nehmen den rohen Pool und dürfen
+//     das: Ein Schemalauf, der sich an einer Resetsperre abwiese, käme nie durch den Start.
+//   · `fuehreBestandsresetAus()` nimmt den ROHEN Pool (s. `services/db-tx/src/bestandsreset.ts`) —
+//     sonst nähme der Reset die GETEILTE Sperre seiner eigenen Kapselung und stünde sich mit der
+//     EXKLUSIVEN selbst im Weg. Der Fall `R1` in `gated-pool.test.ts` hält das fest.
+//
+// Beide sind benannte Ausnahmen mit Grund, kein belassener Parallelweg: Nach dem Start hat kein
+// Adapter mehr einen Weg an der Hülle vorbei.
+export function buildPgServices(rohPool: Pool): AppServices {
+  const pool = gatedPool(rohPool);
   return assembleServices(
     {
       auditRepo: new PgAuditRepo(pool),
