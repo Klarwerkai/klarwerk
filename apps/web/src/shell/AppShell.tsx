@@ -5,6 +5,11 @@ import { useLocation } from "react-router-dom";
 // Hintergrund entsteht — modale Flächen HOLEN sie sich (useModalBoundary), sie bekommen sie nicht
 // mehr als Prop gereicht.
 import { ModalBoundaryProvider, ModalRegion } from "../app/ModalBoundaryContext";
+// JOB 1850 (A-1265-NAVGUARD): Der Wächter für ungespeicherte Eingaben hängt ABSICHTLICH oberhalb der
+// Fehlergrenze (App.tsx:96-98) und damit oberhalb dieser Shell. Diese Brücke reicht ihm die hier
+// entstehende Modalgrenze hinauf, damit sein Dialog in `<main>` portalisiert wird — ohne dass einer
+// der beiden Anbieter seinen Platz verlässt.
+import { NavGuardModalBoundaryBridge } from "../app/NavGuardContext";
 // Klara v1 (Pedi 05.07.): kontextsensitive Hilfe — schwebender ?-Knopf, nie aufdringlich.
 import { KlaraAssistant } from "../components/KlaraAssistant";
 // AUFTRAG-mega61 Block A/B: Fußbereich und Hinweisbanner auf derselben Ebene wie Kopfzeile und
@@ -72,6 +77,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
             Bereich, müsste man `<main>` sperren — und das Filterblatt läge wieder im gesperrten
             Teilbaum (genau bens sammel44-Blocker). */}
         <ModalBoundaryProvider hostRef={mainRef}>
+          <NavGuardModalBoundaryBridge />
           <div className="flex min-h-0 flex-1 flex-col">
             <ModalRegion>
               <Topbar narrow onOpenMenu={() => setDrawerOpen(true)} menuButtonRef={hamburgerRef} />
@@ -111,6 +117,7 @@ export function AppShell({ children }: { children: ReactNode }): JSX.Element {
           und die Facetten stehen als Spalte statt als Blatt), aber die Bauform ist EINE — sonst
           entstünde beim nächsten Overlay wieder ein zweiter, halber Weg. */}
       <ModalBoundaryProvider hostRef={mainRef}>
+        <NavGuardModalBoundaryBridge />
         <ModalRegion>
           <Sidebar />
         </ModalRegion>

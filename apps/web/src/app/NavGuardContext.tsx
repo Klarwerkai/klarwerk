@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
   Link,
@@ -22,6 +23,7 @@ import {
 } from "react-router-dom";
 import { Modal } from "../components/Modal";
 import { Button } from "../components/ui";
+import { useModalBoundary } from "./ModalBoundaryContext";
 import {
   type PopGuard,
   createPopGuard,
@@ -55,6 +57,45 @@ interface NavGuardValue {
 }
 
 const NavGuardCtx = createContext<NavGuardValue | null>(null);
+
+// ── JOB 1850 (A-1265-NAVGUARD): der Dialog gehört in die Modalgrenze ───────────────────────────────
+//
+// Der Anbieter steht ABSICHTLICH oberhalb der Fehlergrenze (App.tsx:96-98) und damit oberhalb der
+// Shell — die Modalgrenze entsteht aber IN der Shell (AppShell.tsx:4-6). Beide Zusicherungen bleiben
+// stehen: statt eine von beiden zu verschieben, meldet die Shell ihre Grenze hier herauf, und nur der
+// RENDERORT des Dialogs wandert (per Portal in `<main>`). Fehlt die Grenze — genau der Absturzfall,
+// für den der Anbieter oben steht —, rendert der Dialog unverändert an seinem alten Platz weiter.
+//
+// Bewusst strukturell typisiert statt `ModalBoundaryValue` importiert: dieser Wächter braucht nur
+// `host` und `enter`, und `ModalBoundaryContext` exportiert seinen Wertetyp nicht.
+interface GuardModalBoundary {
+  host: () => HTMLElement | null;
+  enter: (surface: {
+    panel: () => HTMLElement | null;
+    trigger: () => HTMLElement | null;
+  }) => () => void;
+}
+
+const NavGuardBoundaryCtx = createContext<((grenze: GuardModalBoundary | null) => void) | null>(
+  null,
+);
+
+/**
+ * Reicht die Modalgrenze der Shell an den weiter oben hängenden NavGuard-Anbieter hoch.
+ * Gehört INNERHALB von `<ModalBoundaryProvider>` (AppShell), rendert selbst nichts.
+ */
+export function NavGuardModalBoundaryBridge(): null {
+  const melde = useContext(NavGuardBoundaryCtx);
+  const { host, enter } = useModalBoundary();
+  useEffect(() => {
+    if (!melde) {
+      return undefined;
+    }
+    melde({ host, enter });
+    return () => melde(null);
+  }, [melde, host, enter]);
+  return null;
+}
 
 export function useNavGuard(): NavGuardValue {
   const value = useContext(NavGuardCtx);
@@ -125,6 +166,16 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
   // AUFTRAG-mega5 Block A: beim Öffnen des Dialogs EINMAL eingefroren — die Liste ändert sich nicht
   // mitten im offenen Dialog (kein Knopf, der unter dem Zeiger erscheint/verschwindet).
   const [unsavable, setUnsavable] = useState<string[]>([]);
+
+  // JOB 1850: die von der Shell heraufgemeldete Modalgrenze (null = keine Shell, z. B. Absturzfall
+  // oder Anmeldeweg). `portalHost` wird erst beim ÖFFNEN gelesen — die Grenze sagt das ausdrücklich
+  // zu (ModalBoundaryContext.tsx:58-60), und beim Rendern des Anbieters gibt es `<main>` noch nicht.
+  const [boundary, setBoundary] = useState<GuardModalBoundary | null>(null);
+  const [portalHost, setPortalHost] = useState<HTMLElement | null>(null);
+  // Das Panel dieser Fläche: Ziel der Sperre, wenn eine weitere Fläche darüber öffnet.
+  const panelRef = useRef<HTMLDivElement | null>(null);
+  // Der Auslöser, auf den die Grenze den Fokus zurückgibt (ModalBoundaryContext.tsx:163).
+  const triggerRef = useRef<HTMLElement | null>(null);
 
   // Der POP-Handler läuft AUSSERHALB von React (Fenster-Ereignis) und braucht den Dialog-Zustand
   // synchron — zwei schnelle Zurück-Klicks liegen in getrennten Aufgaben, aber vor dem nächsten
@@ -242,67 +293,118 @@ export function NavGuardProvider({ children }: { children: ReactNode }): JSX.Ele
     }
   };
 
-  return (
-    <NavGuardCtx.Provider value={{ setGuard, guard }}>
-      {/* Nur MIT Router: dort hält er den Anker (Ort + History-Index) für den Zurück-Wächter nach. */}
-      {inRouter ? <AnchorTracker onLocation={trackAnchor} /> : null}
-      {children}
-      <Modal
-        open={pending !== null}
-        onClose={close}
-        title={unsavable.length > 0 ? t("nav.guard.unsavableTitle") : t("nav.guard.title")}
-      >
-        {/* AUFTRAG-mega5 Block A (bens Ship-Gate 1): sind nicht sicherbare Inhalte im Spiel, sagt der
+  // JOB 1850: Solange der Dialog offen ist, hängt er in der Modalgrenze — Hintergrund gesperrt
+  // (`inert` auf allen gemeldeten Bereichen), Fokusrückgabe beim Schließen durch die Grenze selbst.
+  // Ohne Grenze passiert hier nichts, und der Dialog bleibt an seinem alten Platz bedienbar.
+  useEffect(() => {
+    if (pending === null || boundary === null) {
+      setPortalHost(null);
+      return undefined;
+    }
+    // Der Auslöser ist das, was beim Öffnen den Fokus trug (die Navigationsquelle).
+    triggerRef.current = document.activeElement as HTMLElement | null;
+    setPortalHost(boundary.host());
+    const release = boundary.enter({
+      panel: () => panelRef.current,
+      trigger: () => triggerRef.current,
+    });
+    return () => {
+      release();
+      setPortalHost(null);
+    };
+  }, [pending, boundary]);
+
+  // Anfangsfokus in den Dialog — die Grenze sperrt den Hintergrund, setzt aber keinen Fokus
+  // (dieselbe Aufteilung wie in MobileNavDrawer).
+  useEffect(() => {
+    if (portalHost === null) {
+      return;
+    }
+    panelRef.current
+      ?.querySelector<HTMLElement>(
+        'button:not([disabled]), [href], input:not([disabled]), select, textarea, [tabindex]:not([tabindex="-1"])',
+      )
+      ?.focus();
+  }, [portalHost]);
+
+  // Nur solange etwas ansteht: geschlossen darf keine Bediengrenze im Baum stehen bleiben, sonst
+  // fände `panel()` beim nächsten Öffnen einen Knoten von vorhin.
+  const dialog =
+    pending === null ? null : (
+      // `contents` hält die Bediengrenze layoutneutral — dieselbe Begründung wie bei `ModalRegion`.
+      <div ref={panelRef} data-navguard-dialog="" className="contents">
+        <Modal
+          open={pending !== null}
+          onClose={close}
+          title={unsavable.length > 0 ? t("nav.guard.unsavableTitle") : t("nav.guard.title")}
+        >
+          {/* AUFTRAG-mega5 Block A (bens Ship-Gate 1): sind nicht sicherbare Inhalte im Spiel, sagt der
             Dialog VOR dem Wechsel ausdrücklich und einzeln, WAS verloren ginge — und bietet nur
             „Hier bleiben" oder bewusstes Verwerfen an. Ein „Speichern", das erfolgreich wegnavigiert
             und die benannten Inhalte dabei still fallen lässt, gibt es hier nicht. */}
-        {unsavable.length > 0 ? (
-          <>
-            <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.unsavableLead")}</p>
-            <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-text">
-              {unsavable.map((reason) => (
-                <li key={reason}>{reason}</li>
-              ))}
-            </ul>
-            <p className="mt-2 text-[12px] leading-relaxed text-muted">
-              {t("nav.guard.unsavableHint")}
-            </p>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button variant="primary" onClick={close}>
-                {t("nav.guard.stay")}
-              </Button>
-              {/* AUFTRAG-mega14 Block F (SCRUM-412): DER Fund des Live-Tests. Im echten Browser
+          {unsavable.length > 0 ? (
+            <>
+              <p className="text-[13px] leading-relaxed text-text">
+                {t("nav.guard.unsavableLead")}
+              </p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-[13px] leading-relaxed text-text">
+                {unsavable.map((reason) => (
+                  <li key={reason}>{reason}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[12px] leading-relaxed text-muted">
+                {t("nav.guard.unsavableHint")}
+              </p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button variant="primary" onClick={close}>
+                  {t("nav.guard.stay")}
+                </Button>
+                {/* AUFTRAG-mega14 Block F (SCRUM-412): DER Fund des Live-Tests. Im echten Browser
                   gemessen: „Verwerfen und wechseln" rendert rgb(104,112,120) — Zeichen für Zeichen
                   dieselbe Farbe wie „Hier bleiben" daneben. Unterscheidbar waren die beiden allein
                   am Text, und hinter einem davon liegt Datenverlust. Dieser Dialog ist zugleich das
                   Weggehen aus Erfassen UND aus Mobil — er erklärt beide Live-Befunde auf einmal. */}
-              <Button variant="danger" onClick={runPending}>
-                {t("nav.guard.discard")}
-              </Button>
-            </div>
-          </>
-        ) : (
-          <>
-            <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.body")}</p>
-            <div className="mt-4 flex flex-wrap justify-end gap-2">
-              <Button variant="ghost" onClick={close}>
-                {t("nav.guard.stay")}
-              </Button>
-              {/* AUFTRAG-mega14 Block F (SCRUM-412): DER Fund des Live-Tests. Im echten Browser
+                <Button variant="danger" onClick={runPending}>
+                  {t("nav.guard.discard")}
+                </Button>
+              </div>
+            </>
+          ) : (
+            <>
+              <p className="text-[13px] leading-relaxed text-text">{t("nav.guard.body")}</p>
+              <div className="mt-4 flex flex-wrap justify-end gap-2">
+                <Button variant="ghost" onClick={close}>
+                  {t("nav.guard.stay")}
+                </Button>
+                {/* AUFTRAG-mega14 Block F (SCRUM-412): DER Fund des Live-Tests. Im echten Browser
                   gemessen: „Verwerfen und wechseln" rendert rgb(104,112,120) — Zeichen für Zeichen
                   dieselbe Farbe wie „Hier bleiben" daneben. Unterscheidbar waren die beiden allein
                   am Text, und hinter einem davon liegt Datenverlust. Dieser Dialog ist zugleich das
                   Weggehen aus Erfassen UND aus Mobil — er erklärt beide Live-Befunde auf einmal. */}
-              <Button variant="danger" onClick={runPending}>
-                {t("nav.guard.discard")}
-              </Button>
-              <Button variant="primary" disabled={saving} onClick={() => void saveAndGo()}>
-                {t("nav.guard.save")}
-              </Button>
-            </div>
-          </>
-        )}
-      </Modal>
+                <Button variant="danger" onClick={runPending}>
+                  {t("nav.guard.discard")}
+                </Button>
+                <Button variant="primary" disabled={saving} onClick={() => void saveAndGo()}>
+                  {t("nav.guard.save")}
+                </Button>
+              </div>
+            </>
+          )}
+        </Modal>
+      </div>
+    );
+
+  return (
+    <NavGuardCtx.Provider value={{ setGuard, guard }}>
+      <NavGuardBoundaryCtx.Provider value={setBoundary}>
+        {/* Nur MIT Router: dort hält er den Anker (Ort + History-Index) für den Zurück-Wächter nach. */}
+        {inRouter ? <AnchorTracker onLocation={trackAnchor} /> : null}
+        {children}
+        {/* JOB 1850: MIT Modalgrenze hängt der Dialog im Portal-Anker der Shell (`<main>`) und trägt
+            damit Hintergrundsperre und Fokusführung; OHNE sie rendert er unverändert an seinem
+            angestammten Platz — der Absturzfall aus App.tsx:96-98 bleibt bedienbar. */}
+        {portalHost && dialog ? createPortal(dialog, portalHost) : dialog}
+      </NavGuardBoundaryCtx.Provider>
     </NavGuardCtx.Provider>
   );
 }

@@ -1252,6 +1252,14 @@ const WIRKUNG_OHNE_FLAECHE = new Map<string, string>([
     "apps/web/src/lib/focusables.ts",
     "Fokus-Hilfsmodul: liefert Selektor und Fokusfunktionen, rendert selbst kein Element",
   ],
+  [
+    "apps/web/src/app/NavGuardContext.tsx",
+    // JOB 1850 (A-1265-NAVGUARD): Der Wächter MELDET seinen Dialog an der Modalgrenze an (`enter` +
+    // Portal in `<main>`) und trägt seit diesem Bau Hintergrundsperre und Fokusführung. Die
+    // Vollfläche selbst zeichnet er nicht — die kommt aus `Modal.tsx`, das bereits als markerloser
+    // Träger registriert ist; der eigene Wrapper ist `display: contents` und damit layoutneutral.
+    "meldet den Navigations-Dialog an der Grenze an (enter + Portal), rendert aber keine eigene Vollfläche — die zeichnet das registrierte `Modal.tsx`",
+  ],
 ]);
 
 /**
@@ -2196,6 +2204,10 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     [
       "apps/web/src/lib/focusables.ts",
       "Fokus-Hilfsmodul ohne eigenes Element — steht mit Grund in WIRKUNG_OHNE_FLAECHE",
+    ],
+    [
+      "apps/web/src/app/NavGuardContext.tsx",
+      "JOB 1850: Wirkung ja (meldet sich mit `enter` an und portalisiert in `<main>`), Bauform nein — die Vollfläche kommt aus `Modal.tsx`. Steht mit Grund in WIRKUNG_OHNE_FLAECHE",
     ],
   ]);
 
@@ -4252,11 +4264,25 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 // BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — dieselben 397 Quelldateien wie in D3", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — 399 Quelldateien, D3s 397 plus die zwei aus D44", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
     // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
-    expect(ALLE_ERHEBUNGEN.length, "D3 hat 397 gemessen").toBe(397);
+    //
+    // JOB 1860 D1: von 397 auf 399 NACHGEZOGEN, nicht gelockert. Der Sammler hat richtig
+    // angeschlagen — es sind zwei echte Quelldateien dazugekommen, und zwar GENAU diese zwei
+    // (gemessen gegen den Baum von `527ae6b` mit der Regel des Sammlers, .ts/.tsx unter
+    // `apps/web/src` ohne `.test.*`):
+    //
+    //     + apps/web/src/components/D44Gliederung.tsx
+    //     + apps/web/src/components/d44Struktur.ts
+    //
+    // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
+    // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
+    expect(
+      ALLE_ERHEBUNGEN.length,
+      "erwartet 399: D3s 397 + D44Gliederung.tsx + d44Struktur.ts",
+    ).toBe(399);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 
