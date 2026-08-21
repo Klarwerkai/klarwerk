@@ -541,6 +541,52 @@ interface Beurteilung {
   urteil: Urteil;
 }
 
+// ================================================================================================
+// B52/E · GELB-1 (JOB 1660) — DIE NATIVE AUSNAHME HAENGT AM KANDIDATEN, NICHT AN DER DATEI.
+// ================================================================================================
+//
+// DER BEFUND, aus der Erntekontrolle PRO2 (`1652 D1`, Befund 2) — Zitat aus fremder Rueckgabe:
+//   „Der Schluessel ist an jeder der vier Stellen die Datei … nie der Kandidat. Damit gilt
+//    weiterhin: eine ZWEITE, nicht native `aria-modal`-Flaeche in einer ausgenommenen Datei
+//    rutscht durch, weil die Ausnahme die ganze Datei freistellt."
+//
+// NACHGEMESSEN, und das Bild ist genauer als der Befund: von den vier Stellen war EINE bereits
+// kandidatengebunden — `beurteile` (mega76 BLOCK E) prueft `showModal-nutzung` bzw. den
+// `dialog-jsx` mit nativer Ref. Die drei UEBRIGEN aber schlossen die Datei als GANZES aus den
+// Erhebungen aus: `BAUTEIL_ERHEBUNGEN`, `unregistrierteVollflaechen`, `unregistrierteWirkflaechen`.
+// Dort traf der Befund zu.
+//
+// DIE REGEL STEHT JETZT AN EINER STELLE. `nativGedeckt` ist woertlich die Bedingung, die
+// `beurteile` schon benutzte — kein zweiter Begriff von „nativ" (ENTSCHEIDUNGEN/JOB-646.md).
+// `nativAusnahmeDecktDatei` sagt, ob die Ausnahme ALLE modalen Funde einer Datei traegt; nur dann
+// darf eine dateiweite Erhebung sie ueberspringen. Sobald in einer ausgenommenen Datei EIN Fund
+// auftaucht, den `showModal()` nicht deckt, ist die Datei wieder in der Erhebung.
+//
+// DIE RICHTUNG IST EINSEITIG: die neue Regel ist STRENGER als die alte. Sie kann Funde nur
+// hinzufuegen, nie entfernen — eine Datei ohne Ausnahme verhaelt sich unveraendert.
+
+/** Deckt die native Ausnahme DIESEN Fund? Dieselbe Bedingung, die `beurteile` seit mega76 fuehrt. */
+function nativGedeckt(e: DateiErhebung, k: Kandidat): boolean {
+  return (
+    k.art === "showModal-nutzung" || (k.art === "dialog-jsx" && !!k.ref && e.nativeRefs.has(k.ref))
+  );
+}
+
+/**
+ * Deckt die native Ausnahme ALLE Funde dieser Datei — darf eine dateiweite Erhebung sie also
+ * ueberspringen?
+ *
+ * `every` ueber die Kandidaten ist der ganze Punkt: eine Datei faellt nur dann heraus, wenn es in
+ * ihr NICHTS gibt, was die Ausnahme nicht begruendet. Ein zweites, rein React-gebautes Overlay in
+ * derselben Datei holt sie zurueck in die Erhebung.
+ */
+function nativAusnahmeDecktDatei(e: DateiErhebung): boolean {
+  if (!NATIV_MODAL_AUSNAHMEN.has(e.quelle.datei)) {
+    return false;
+  }
+  return e.kandidaten.every((k) => nativGedeckt(e, k));
+}
+
 function beurteile(erhebungen: DateiErhebung[]): { beurteilt: Beurteilung[]; rot: string[] } {
   const beurteilt: Beurteilung[] = [];
   const rot: string[] = [];
@@ -552,11 +598,7 @@ function beurteile(erhebungen: DateiErhebung[]): { beurteilt: Beurteilung[]; rot
         urteil = "grenzmodul";
       } else if (e.nutztGrenze) {
         urteil = "an-der-grenze";
-      } else if (
-        ausnahme !== undefined &&
-        (k.art === "showModal-nutzung" ||
-          (k.art === "dialog-jsx" && !!k.ref && e.nativeRefs.has(k.ref)))
-      ) {
+      } else if (ausnahme !== undefined && nativGedeckt(e, k)) {
         // AUFTRAG-mega76 BLOCK E: die Ausnahme hing bis hier an der DATEI. Damit deckte sie
         // ALLE Kandidaten dieser Datei — auch solche, die mit `showModal()` nichts zu tun haben
         // (etwa ein zweites, rein React-gebautes Overlay in derselben Datei). Sie deckte also
@@ -991,7 +1033,9 @@ const UNABGERECHNET: string[] = ALLE_ERHEBUNGEN.flatMap(modalAbgleich);
 const BAUTEIL_ERHEBUNGEN: DateiErhebung[] = ALLE_ERHEBUNGEN.filter(
   (e) =>
     e.quelle.datei !== GRENZE_MODUL &&
-    !NATIV_MODAL_AUSNAHMEN.has(e.quelle.datei) &&
+    // B52/E GELB-1: nicht mehr „Datei ausgenommen", sondern „Ausnahme deckt ALLE Funde dieser
+    // Datei". Ein zweites, nicht natives Overlay holt die Datei in die Bauteil-Erhebung zurueck.
+    !nativAusnahmeDecktDatei(e) &&
     e.kandidaten.some((k) => k.art.startsWith("aria-modal")),
 );
 const BAUTEILE: Bauteil[] = BAUTEIL_ERHEBUNGEN.flatMap((e) =>
@@ -1089,16 +1133,14 @@ function unregistrierteVollflaechen(
 ): string[] {
   const mitMarker = new Set(markerTragende.map((b) => b.datei));
   const markerlos = new Set(MARKERLOSE_TRAEGER.map((b) => b.datei));
-  return erhebungen
-    .filter((e) => spanntVollflaecheAuf(e.quelle.gestrippt))
-    .map((e) => e.quelle.datei)
-    .filter(
-      (d) =>
-        !mitMarker.has(d) &&
-        !markerlos.has(d) &&
-        !NICHT_MODALE_VOLLFLAECHEN.has(d) &&
-        !NATIV_MODAL_AUSNAHMEN.has(d),
-    );
+  return (
+    erhebungen
+      .filter((e) => spanntVollflaecheAuf(e.quelle.gestrippt))
+      // B52/E GELB-1: die Ausnahme ueberspringt die Datei nur, wenn sie ALLE ihre Funde deckt.
+      .filter((e) => !nativAusnahmeDecktDatei(e))
+      .map((e) => e.quelle.datei)
+      .filter((d) => !mitMarker.has(d) && !markerlos.has(d) && !NICHT_MODALE_VOLLFLAECHEN.has(d))
+  );
 }
 
 // ================================================================================================
@@ -1222,18 +1264,22 @@ function unregistrierteWirkflaechen(
 ): string[] {
   const mitMarker = new Set(markerTragende.map((b) => b.datei));
   const markerlos = new Set(MARKERLOSE_TRAEGER.map((b) => b.datei));
-  return erhebungen
-    .filter((e) => wirktModalAmBestand(e.quelle.gestrippt))
-    .map((e) => e.quelle.datei)
-    .filter(
-      (d) =>
-        d !== GRENZE_MODUL &&
-        !mitMarker.has(d) &&
-        !markerlos.has(d) &&
-        !NICHT_MODALE_VOLLFLAECHEN.has(d) &&
-        !NATIV_MODAL_AUSNAHMEN.has(d) &&
-        !WIRKUNG_OHNE_FLAECHE.has(d),
-    );
+  return (
+    erhebungen
+      .filter((e) => wirktModalAmBestand(e.quelle.gestrippt))
+      // B52/E GELB-1: dieselbe Bindung wie oben — Datei nur ueberspringen, wenn die Ausnahme sie
+      // ganz traegt.
+      .filter((e) => !nativAusnahmeDecktDatei(e))
+      .map((e) => e.quelle.datei)
+      .filter(
+        (d) =>
+          d !== GRENZE_MODUL &&
+          !mitMarker.has(d) &&
+          !markerlos.has(d) &&
+          !NICHT_MODALE_VOLLFLAECHEN.has(d) &&
+          !WIRKUNG_OHNE_FLAECHE.has(d),
+      )
+  );
 }
 
 /**
@@ -1531,6 +1577,86 @@ describe("mega72 Block A: der unabhängige Zähler — die Erhebung merkt, was s
     expect(probe("apps/web/src/components/BodyImageGallery.tsx", "dialog-jsx")).toBe(true);
     expect(probe("apps/web/src/components/BodyImageGallery.tsx", "showModal-nutzung")).toBe(true);
     expect(KANDIDATEN.length).toBeGreaterThanOrEqual(6);
+  });
+
+  // ==============================================================================================
+  // B52/E · GELB-1 (JOB 1660) — DIE AUSNAHME DECKT NUR, WAS SIE BEGRUENDET.
+  // ==============================================================================================
+  //
+  // Die Faelle fuettern `nativAusnahmeDecktDatei` mit gebauten Erhebungen. Das ist Absicht: am
+  // echten Bestand traegt die Ausnahme heute ALLE Funde ihrer einen Datei (beide Kandidaten sind
+  // nativ) — die Luecke waere dort also unsichtbar. Genau deshalb wird sie hier hergestellt.
+  const erhebungFuer = (kandidaten: Array<Partial<Kandidat>>, nativeRefs: string[] = []) =>
+    ({
+      quelle: {
+        datei: "apps/web/src/components/BodyImageGallery.tsx",
+        gestrippt: "",
+        leseFehler: [],
+      },
+      kandidaten: kandidaten.map((k) => ({
+        datei: "apps/web/src/components/BodyImageGallery.tsx",
+        zeile: 1,
+        art: "aria-modal-attribut" as KandidatArt,
+        ...k,
+      })),
+      prosaSpannen: [],
+      nutztGrenze: false,
+      exportierte: ["BodyImageGallery"],
+      nativeRefs: new Set(nativeRefs),
+    }) as unknown as DateiErhebung;
+
+  it("GELB-1 · eine Datei faellt nur heraus, wenn die Ausnahme ALLE ihre Funde deckt", () => {
+    // (a) Nur native Funde — genau die Lage am echten Bestand: die Ausnahme traegt, Datei raus.
+    expect(
+      nativAusnahmeDecktDatei(
+        erhebungFuer(
+          [{ art: "showModal-nutzung" }, { art: "dialog-jsx", ref: "dialogRef" }],
+          ["dialogRef"],
+        ),
+      ),
+      "die begruendete native Ausnahme traegt nicht mehr — das waere eine Verschaerfung zu viel",
+    ).toBe(true);
+
+    // (b) DIE LUECKE AUS DEM BEFUND: ein zweites, rein React-gebautes Overlay in derselben Datei.
+    // Vorher deckte die Ausnahme es mit ab, weil sie an der DATEI hing.
+    expect(
+      nativAusnahmeDecktDatei(
+        erhebungFuer(
+          [
+            { art: "showModal-nutzung" },
+            { art: "dialog-jsx", ref: "dialogRef" },
+            { art: "aria-modal-attribut", zeile: 999 },
+          ],
+          ["dialogRef"],
+        ),
+      ),
+      "ein nicht nativer Fund rutscht weiterhin unter der Dateiausnahme durch — GELB-1 ist offen",
+    ).toBe(false);
+
+    // (c) Ein `<dialog>` OHNE native Ref ist kein nativer Fund — die Ref ist das Bindeglied.
+    expect(
+      nativAusnahmeDecktDatei(
+        erhebungFuer([{ art: "dialog-jsx", ref: "andererRef" }], ["dialogRef"]),
+      ),
+    ).toBe(false);
+
+    // (d) Eine Datei ohne Ausnahme ist nie gedeckt — die Regel erfindet keine neue Ausnahme.
+    const fremd = erhebungFuer([{ art: "showModal-nutzung" }]);
+    (fremd.quelle as { datei: string }).datei = "apps/web/src/components/FacetFilter.tsx";
+    expect(nativAusnahmeDecktDatei(fremd)).toBe(false);
+  });
+
+  it("GELB-1 · die eine ausgenommene Datei ist am ECHTEN Bestand weiterhin gedeckt", () => {
+    // Kalibrierung gegen den Bestand: waere sie es nicht, haette dieser Durchgang eine bestehende
+    // Zusage gekippt statt eine Luecke geschlossen.
+    for (const [datei] of NATIV_MODAL_AUSNAHMEN) {
+      const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
+      expect(e, `${datei}: ausgenommen, aber gar nicht erhoben`).toBeDefined();
+      expect(
+        e ? nativAusnahmeDecktDatei(e) : false,
+        `${datei}: die Ausnahme deckt heute NICHT mehr alle Funde — dann gehoert sie geprueft, nicht gesetzt`,
+      ).toBe(true);
+    }
   });
 
   // ==============================================================================================
