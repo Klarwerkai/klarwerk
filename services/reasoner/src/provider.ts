@@ -1322,9 +1322,16 @@ export function queryTokens(text: string): string[] {
 // WP-RETEST7 R5: der durchsuchbare Text eines Refs — Titel + Aussage + (falls vorhanden) die
 // persistierten Bild-Fußnoten. EINE Quelle für keywordSelect UND rankCandidates, damit ein KO,
 // dessen Wissen nur in der Fußnote steht, das Relevanz-Gate passieren kann.
+// G27 (JOB 1565 D1): der Dokumentkörper zählt ab hier mit — ADDITIV und ohne neue Grenze. Bis heute
+// endete der durchsuchbare Ausschnitt faktisch an der Aussage; ein Wort, das nur im Fließtext steht,
+// machte das Objekt über die Suchprojektion zwar zum Kandidaten, fiel aber an diesem Maß. Der Text
+// kommt fertig geschnitten aus der Projektion (`bodyText`) — hier wird nichts geparst und nichts
+// gekürzt (Begründung an `KnowledgeRef.bodyText`). Fehlt das Feld, ist der Rückgabewert Zeichen für
+// Zeichen der alte.
 export function refMatchText(ref: KnowledgeRef): string {
   const captions = ref.captionTexts?.length ? ` ${ref.captionTexts.join(" ")}` : "";
-  return `${ref.title} ${ref.statement}${captions}`;
+  const body = ref.bodyText?.trim() ? ` ${ref.bodyText.trim()}` : "";
+  return `${ref.title} ${ref.statement}${captions}${body}`;
 }
 
 // AUFTRAG-mega52 B1 — DAS RELEVANZMASS.

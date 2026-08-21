@@ -24,6 +24,28 @@ export interface KnowledgeRef {
   // Fußnoten (captionTexts-Suchfeld, WP-BILD-1g) fließen ADDITIV in Matching/Ranking ein —
   // KEIN bodyHtml, kein neuer Scanner; Altbestand ohne Feld matcht wie bisher.
   captionTexts?: readonly string[];
+  // ==============================================================================================
+  // G27 (JOB 1565 D1) — DER DOKUMENTKÖRPER, ALS BEREITS GESCHNITTENER KLARTEXT
+  // ==============================================================================================
+  //
+  // DER BEFUND: Der Körper ist gespeichert, angezeigt, exportierbar — und für das Relevanzmaß nicht
+  // vorhanden. `refMatchText` baute bis heute nur Titel + Aussage + Bild-Fußnoten. Ein Treffer, der
+  // AUSSCHLIESSLICH im Dokumenttext steht, wird über die Suchprojektion zwar Kandidat, fällt aber am
+  // Relevanztor — die Antwort bleibt eine Wissenslücke, obwohl das Wissen im Haus liegt.
+  //
+  // WARUM KEIN `bodyHtml` UND KEIN SCANNER: Der sichtbare Klartext existiert bereits als
+  // persistiertes Feld der Suchprojektion (`search-projection.ts:637`, `bodyText`), gewonnen über
+  // den EINEN kanonischen Scanner und dort schon geschnitten (`MAX_SEARCH_TEXT_LENGTH`). Der
+  // Reasoner scannt deshalb nichts, parst nichts und kennt `knowledge-object` weiterhin nicht — er
+  // nimmt entgegen, was die Projektion ohnehin gerechnet hat.
+  //
+  // WER WIE VIEL DAVON MITGIBT, IST NICHT HIER ENTSCHIEDEN — und das ist Absicht. Der Aufrufer
+  // baut bis zu `ASK_CANDIDATE_PREFILTER_LIMIT` (200) Refs je Frage; bei voller Ausschöpfung des
+  // Projektionsdeckels wären das 200 × 200.000 = 40 Mio. Zeichen, die je Frage tokenisiert würden.
+  // Dieses Feld erfindet deshalb KEINE eigene Grenze: eine neu erfundene Zahl wäre exakt derselbe
+  // Fehler wie die 500 aus `wordAddin.ts:925`, nur mit einer größeren Ziffer. Die Menge gehört zum
+  // Aufrufer, wo sie messbar ist; fehlt das Feld, matcht der Altbestand wie bisher.
+  bodyText?: string;
 }
 
 // FR-RSN-03: Trennung gesichert / ungeprüft / Meinung / extern / Annahme / unbekannt.
