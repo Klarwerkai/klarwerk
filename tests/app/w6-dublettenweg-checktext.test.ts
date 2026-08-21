@@ -147,11 +147,25 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     // Die Grenze dieses Durchgangs, als Zusicherung statt als Zusage im Text: `taskpane.html`
     // haengt die Funktion NICHT an `window.klaraBestandsblick`. Der Slot gehoert PRO3 (1571 D3);
     // zwei Anbieter an einem Slot waeren der zweite Weg aus ENTSCHEIDUNGEN/JOB-646.md.
+    //
+    // EINGEGRENZT AM 21.08. (CHEF), nachdem PRO3 den Fehlalarm gemeldet statt weggeraeumt hat:
+    // Bis KA2 gebaut war, enthielt die Datei GAR KEINE solche Zuweisung, und eine Suche ueber die
+    // ganze Datei war deshalb unauffaellig richtig. Seit JOB 1571 D5 steht dort GENAU EINE — die
+    // von Regel A, also die des rechtmaessigen Eigentuemers (ENTSCHEIDUNGEN/JOB-1571.md). Eine
+    // Zeichenkettensuche ueber die ganze Datei kann den Eigentuemer nicht vom Eindringling
+    // unterscheiden; sie fiel damit ueber genau den Bau, den sie schuetzen sollte.
+    // Gemessen wird ab jetzt NUR der W6-Block — also genau die erklaerte Absicht dieses Falls.
+    // Der Waechter bleibt scharf: nimmt W6 sich den Slot, wird er weiterhin rot.
+    const w6Start = HTML.indexOf("KW-KLARA-W6-CHECKTEXT-START");
+    const w6Ende = HTML.indexOf("KW-KLARA-W6-CHECKTEXT-END");
+    expect(w6Start, "der W6-Block fehlt in taskpane.html").toBeGreaterThan(-1);
+    expect(w6Ende, "das Ende des W6-Blocks fehlt in taskpane.html").toBeGreaterThan(w6Start);
+    const w6Block = HTML.slice(w6Start, w6Ende);
     expect(
-      HTML,
+      w6Block,
       "der Weg hat sich den Vertragsort genommen — das ist PRO3s Gebiet (1571 D3)",
     ).not.toContain("window.klaraBestandsblick =");
-    expect(HTML).not.toContain("window.klaraBestandsblick=");
+    expect(w6Block).not.toContain("window.klaraBestandsblick=");
     // Der Konsument liest ihn weiterhin — die Uebergabestelle bleibt, wie sie war.
     expect(HTML, "der KA2-Vertrag wird nicht mehr gelesen").toContain(
       "var vertrag = window.klaraBestandsblick;",
