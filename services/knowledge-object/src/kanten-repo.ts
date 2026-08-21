@@ -22,7 +22,7 @@
 // ausdrücklich getrennt (kanten-service.ts:36-39). Und kein Postgres — der Adapter braucht
 // Migration und Modulexport, die beide außerhalb der Lease liegen (D3-Rückgabe §5). Dieser Bestand
 // ist die Vorlage, die ein solcher Adapter zu übersetzen hätte, nicht sein Ersatz.
-import { beziehungsSchluessel, kanonischesPaar } from "./kanten-paar";
+import { beziehungsSchluessel, istSelbstbeziehung, kanonischesPaar } from "./kanten-paar";
 import type { KantenRepo } from "./kanten-service";
 import type { KuratierteKante } from "./kanten-types";
 
@@ -53,6 +53,14 @@ export class DeduplizierenderKantenBestand implements KantenRepo {
    * zweiter Mensch die Urheberschaft eines ersten still übernehmen.
    */
   async setze(kante: KuratierteKante): Promise<void> {
+    // JOB 1543 D1 (SCRUM-546): AM EINGANG abgewiesen, nicht still verschluckt. Ein stilles Ignorieren
+    // hieße, dass ein Kurator seine Beziehung gesetzt glaubt, während der Bestand leer bleibt — und
+    // die Kuratierung ist eine Urheberaussage, über deren Verbleib niemand raten soll.
+    if (istSelbstbeziehung(kante)) {
+      throw new Error(
+        `Eine Beziehung braucht zwei Enden: ${kante.quelleId} kann nicht auf sich selbst zeigen.`,
+      );
+    }
     const kanonisch = kanonischesPaar(kante);
     const schluessel = beziehungsSchluessel(kanonisch);
     const vorhanden = this.nachBeziehung.get(schluessel);

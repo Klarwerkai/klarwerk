@@ -42,7 +42,7 @@
 // In-Memory-Fassung vorhanden. Das persistente Aggregat samt Postgres-Repo, Deduplizierung,
 // Versionierung und transaktionsgebundener Endlöschung ist eine eigene Scheibe (JOB 1139); sie
 // füllt genau diesen Port, statt ein zweites Modell daneben zu stellen.
-import { kanonischesPaar } from "./kanten-paar";
+import { istSelbstbeziehung, kanonischesPaar } from "./kanten-paar";
 import type { KantenArt, KantenRichtung, KuratierteKante } from "./kanten-types";
 import type { Confidentiality, KnowledgeObject, KoStatus } from "./types";
 
@@ -98,6 +98,14 @@ export class InMemoryKantenRepo implements KantenRepo {
   //
   // Gerichtete Kanten bleiben unberührt: bei ihnen IST die Reihenfolge die Aussage.
   async setze(kante: KuratierteKante): Promise<void> {
+    // JOB 1543 D1 (SCRUM-546): dieselbe Schranke wie im `DeduplizierenderKantenBestand`. Zwei
+    // Bestände, die eine Beziehung verschieden streng annehmen, wären genau die zweite Wahrheit,
+    // gegen die dieses Modul gebaut ist.
+    if (istSelbstbeziehung(kante)) {
+      throw new Error(
+        `Eine Beziehung braucht zwei Enden: ${kante.quelleId} kann nicht auf sich selbst zeigen.`,
+      );
+    }
     this.kanten.set(kante.id, { ...kanonischesPaar(kante) });
   }
 
@@ -195,6 +203,14 @@ async function alsAnsicht(
   sichtbar: KantenSichtbar,
 ): Promise<KuratierteKanteAnsicht | undefined> {
   if (kante.status !== "aktiv") {
+    return undefined;
+  }
+  // JOB 1543 D1 (SCRUM-546), VIERTER GRUND: eine Kante auf sich selbst hat kein Gegenstück. Ohne
+  // diese Zeile liefert die Ableitung unten das ANGEFRAGTE Objekt als seinen eigenen Nachbarn, und
+  // `total` zählt ihn mit. Der Bestand weist solche Kanten seit demselben Durchgang schon am
+  // Eingang ab (`kanten-repo.ts`); diese Schranke gilt Beständen, die vor der Regel gefüllt wurden
+  // — die Persistenzscheibe (JOB 1139) ist noch nicht gebaut, ihre Altdaten kennt heute niemand.
+  if (istSelbstbeziehung(kante)) {
     return undefined;
   }
   const gegenId = kante.quelleId === koId ? kante.zielId : kante.quelleId;
