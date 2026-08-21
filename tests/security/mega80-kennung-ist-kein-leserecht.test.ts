@@ -267,8 +267,7 @@ function zeileImQuelltext(offsetImRumpf: number): number {
  * ERHEBUNG 1 — bewusst BREIT: jede `case`-Marke, gleich welcher Zitierung, Schreibweise oder
  * Klammerstellung. Was hier hereinkommt, muss unten gedeutet werden; nichts faellt heraus.
  */
-function caseMarkenBreit(): CaseMarke[] {
-  const rumpf = switchRumpf();
+function caseMarkenBreit(rumpf: string = switchRumpf()): CaseMarke[] {
   return [...rumpf.matchAll(/^[ \t]*case[ \t]+([^\n:]+?)[ \t]*:/gm)].map((m) => ({
     roh: (m[1] as string).trim(),
     zeile: zeileImQuelltext(m.index ?? 0),
@@ -287,8 +286,7 @@ function caseMarkenBreit(): CaseMarke[] {
  * Bauarten voneinander ab, ist eine von beiden blind — und der Test wird rot, statt die kleinere
  * Zahl stillschweigend zu benutzen. Genau diese Bauart verlangt G26 Punkt 1.
  */
-function caseMarkenScan(): number {
-  const rumpf = switchRumpf();
+function caseMarkenScan(rumpf: string = switchRumpf()): number {
   let i = 0;
   let treffer = 0;
   const len = rumpf.length;
@@ -341,11 +339,11 @@ interface Deutung {
  * ist NICHT als Aktionsname lesbar und wird zum Befund. Nicht, weil es verboten waere, sondern
  * weil dieser Waechter dann nicht mehr sagen kann, welches Recht die Aktion verlangt.
  */
-function grundmenge(): Deutung {
+function grundmenge(rumpf?: string): Deutung {
   const aktionen: { name: string; marke: CaseMarke }[] = [];
   const unaufgeloest: string[] = [];
   const gesehen = new Set<string>();
-  for (const marke of caseMarkenBreit()) {
+  for (const marke of caseMarkenBreit(rumpf)) {
     const literal = /^(["'`])([^"'`]*)\1$/.exec(marke.roh);
     if (!literal) {
       unaufgeloest.push(
@@ -413,6 +411,46 @@ function rechtDerAktion(action: string): string {
 // Untergrenze, die einen echten Verlust durchlässt, sichert nichts.
 const BEKANNTE_AKTIONEN = 18;
 
+// ------------------------------------------------------------------------------------------------
+// JOB 1561 D2 — DIE KALIBRIEREINGABE (G26 Punkt 1)
+// ------------------------------------------------------------------------------------------------
+//
+// WARUM DIESER TEXT HIER STEHT. Der Test darueber sagt „loest JEDE case-Marke auf". Das ist eine
+// BEHAUPTUNG, solange der Switch in `ko-routes.ts` ausschliesslich die uebliche Form `case "x": {`
+// enthaelt — und das tut er heute. Ein Waechter, der nur an der Form geprueft wird, die er ohnehin
+// kennt, ist nicht kalibriert: er koennte fuer jede andere Form blind sein, ohne dass ein Lauf es
+// zeigt. BEN hat genau das an D1 geruegt („Scheinbeleg ... ohne konkrete alternative Eingabe").
+//
+// Dies ist deshalb echter Switch-Text, den die Erhebung tatsaechlich verarbeitet — kein Testtitel,
+// keine Beschreibung. Er enthaelt die zwei vom Chef benannten abweichenden Formen:
+//
+//   1 `case 'pruefsiegel':`  — einfache Anfuehrungszeichen
+//   2 `case "archivstufe":`  — die Klammer erst in der NAECHSTEN Zeile
+//
+// und als Kontrolle im selben Text die uebliche Form `case "revalidate": {`. Ohne sie wuerde der
+// Fall nicht zeigen, dass der alte Regex ueberhaupt etwas sieht — er saehe schlicht nichts, und
+// „nichts gefunden" ist kein Kalibrierbeleg, sondern koennte auch ein kaputter Ausdruck sein.
+const ABWEICHEND_FORMATIERTE_EINGABE = [
+  "  switch (action) {",
+  "    case 'pruefsiegel': {",
+  '      await requirePermission("ko.validate");',
+  "      return { ok: true };",
+  "    }",
+  '    case "archivstufe":',
+  "    {",
+  '      await requirePermission("ko.update");',
+  "      return { ok: true };",
+  "    }",
+  '    case "revalidate": {',
+  '      await requirePermission("ko.validate");',
+  "      return { ok: true };",
+  "    }",
+  "  }",
+].join("\n");
+
+/** Der Erhebungsausdruck, wie er BIS JOB 1173 D1 lautete — ausgefuehrt statt zitiert. */
+const ALTER_ENGER_ERHEBUNGSREGEX = /^\s*case "([a-z-]+)": \{/gm;
+
 describe("mega80 A — eine Kennung ist kein Leserecht", () => {
   // ── JOB 1173 D1 · G26 Punkt 1: die Erhebung ist fail-closed ─────────────────────────────────
   it("löst JEDE case-Marke des Switch auf — erkannte Aktion oder roter Befund, kein dritter Zustand", () => {
@@ -440,6 +478,37 @@ describe("mega80 A — eine Kennung ist kein Leserecht", () => {
     expect(new Set(caseMarkenBreit().map((m) => m.roh)).size).toBe(
       aktionen.length + unaufgeloest.length,
     );
+  });
+
+  // ── JOB 1561 D2 · G26 Punkt 1: der Kalibrierfall an einer ECHTEN abweichenden Eingabe ─────────
+  it("erhebt eine einfach zitierte case-Marke und eine mit Klammer in der nächsten Zeile — beide sah der alte Ausdruck nicht", () => {
+    // 1 · DER MASSSTAB. Der alte Ausdruck wird hier AUSGEFÜHRT, nicht beschrieben. An derselben
+    // Eingabe sieht er nur die übliche Form — die zwei abweichenden fehlen ihm. Das ist die
+    // Messung, die D1 schuldig geblieben ist: Sie zeigt, dass diese Eingabe den Unterschied
+    // überhaupt trennt. Fände der alte Ausdruck alle drei, wäre der Fall wertlos.
+    const alt = [...ABWEICHEND_FORMATIERTE_EINGABE.matchAll(ALTER_ENGER_ERHEBUNGSREGEX)].map(
+      (m) => m[1],
+    );
+    expect(
+      alt,
+      "Der alte Erhebungsausdruck müsste an dieser Eingabe genau die übliche Form finden und die zwei abweichenden verfehlen. Tut er das nicht, prüft dieser Fall nicht, was er zu prüfen vorgibt.",
+    ).toEqual(["revalidate"]);
+
+    // 2 · DIE ERHEBUNG VON HEUTE sieht alle drei — roh, vor jeder Deutung.
+    expect(
+      caseMarkenBreit(ABWEICHEND_FORMATIERTE_EINGABE).map((m) => m.roh),
+      "Die Erhebung übersieht eine abweichend formatierte case-Marke. Genau diese Aktion fiele aus der Grundmenge und würde von diesem Wächter NIE auf ihr Recht geprüft.",
+    ).toEqual(["'pruefsiegel'", '"archivstufe"', '"revalidate"']);
+
+    // 3 · Und der unabhängige Zeichenscanner bestätigt die Zahl an derselben Eingabe. Zwei
+    // Bauarten, ein Ergebnis — sonst ist eine von beiden blind.
+    expect(caseMarkenScan(ABWEICHEND_FORMATIERTE_EINGABE)).toBe(3);
+
+    // 4 · Die Deutung macht daraus AKTIONEN, keine Befunde: eine einfach zitierte Marke ist ein
+    // lesbares String-Literal, ihr Recht ist prüfbar. Sie darf nicht als „unauflösbar" enden.
+    const { aktionen, unaufgeloest } = grundmenge(ABWEICHEND_FORMATIERTE_EINGABE);
+    expect(unaufgeloest).toEqual([]);
+    expect(aktionen.map((a) => a.name)).toEqual(["pruefsiegel", "archivstufe", "revalidate"]);
   });
 
   it("erhebt die Grundmenge aus dem Switch und ordnet jeder Aktion genau ein Torurteil zu", () => {

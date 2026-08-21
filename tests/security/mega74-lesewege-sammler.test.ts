@@ -71,7 +71,8 @@
 //       für den Fall OHNE Schutzabhängigkeit — mega76-schutz-erzwungen.test.ts.
 //   · Routen ausserhalb `services/app` (etwa `services/auth/src/routes.ts`) sind nicht Gegenstand:
 //       sie geben keine Wissensobjekte aus. Das ist ein Urteil, keine Messung.
-import { readFileSync, readdirSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -999,5 +1000,69 @@ sahen die vier Fail-open-Zweige aus mega74 aus — und der Sammler war dabei gr�
     expect(luegner.praedikatImAufruf, "die Prüfung oben würde diesen Fall als Lügner melden").toBe(
       false,
     );
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// JOB 1561 · B52 TEIL C, GRENZE 1 — DIE REKURSION IST GEBAUT, ABER BIS HIER UNBELEGT.
+// ------------------------------------------------------------------------------------------------
+//
+// GEFUNDEN DURCH EINE MUTATIONSPROBE, nicht durch Lesen. `dateien()` steigt seit mega76 in
+// Unterverzeichnisse ab (`:461`, `if (eintrag.isDirectory())`). Baut man diesen Abstieg aus —
+//
+//     if (false && eintrag.isDirectory()) { … }
+//
+// — bleiben ALLE 17 Faelle dieser Datei gruen. Gemessen in JOB 1561.
+//
+// DER GRUND, und er ist derselbe, den der Kommentar bei `:456` selbst voraussagt: `routes/` hat
+// heute **35 Dateien direkt und 0 in Unterverzeichnissen**. Es gibt nichts zu finden, also faellt
+// der Ausbau nicht auf. Die Untergrenze (`:773`) prueft nur `>= MINDESTZAHL` — sie merkt nicht,
+// OB die Rekursion arbeitet, sondern nur, dass genug Dateien da sind.
+//
+// Damit gilt fuer diese Grenze genau das, was OFFEN.md ueber die ganze Bauart sagt: „Der Waechter
+// haelt, was heute im Code steht, aber nicht jede Bauform von morgen." Legt jemand morgen
+// `routes/import/` an, faellt es niemandem auf — bis eine ungeschuetzte Route darin steht.
+//
+// Dieser Fall schliesst das, nach dem Muster der Kalibrierung bei `:949`: an einem synthetischen
+// Baum, nicht am Bestand, damit er unabhaengig davon traegt, ob `routes/` je Unterordner bekommt.
+describe("JOB 1561 · B52/C Grenze 1: die Erhebung steigt wirklich ab", () => {
+  it("KALIBRIERUNG — eine Datei in einem Unterverzeichnis wird erhoben", () => {
+    const wurzel = mkdtempSync(join(tmpdir(), "kw-b52c-"));
+    try {
+      writeFileSync(join(wurzel, "oben.ts"), 'app.get("/api/oben", async () => {});');
+      mkdirSync(join(wurzel, "tiefer"));
+      writeFileSync(join(wurzel, "tiefer", "unten.ts"), 'app.get("/api/unten", async () => {});');
+
+      const gefunden = dateien(wurzel).map((p) => p.replace(`${wurzel}/`, ""));
+
+      // Ohne Rekursion stuende hier nur ["oben.ts"] — das ist der ganze Unterschied.
+      expect(gefunden).toContain("oben.ts");
+      expect(
+        gefunden,
+        "die Datei im Unterverzeichnis fehlt — die Erhebung steigt nicht ab",
+      ).toContain("tiefer/unten.ts");
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
+  });
+
+  it("KALIBRIERUNG — Testdateien bleiben auch tiefer draussen", () => {
+    // Die Gegenprobe: Der Abstieg darf die Filterregel nicht aufweichen. Ohne sie waere der Fall
+    // oben auch dann gruen, wenn `dateien()` blind alles einsammelte.
+    const wurzel = mkdtempSync(join(tmpdir(), "kw-b52c-"));
+    try {
+      mkdirSync(join(wurzel, "tiefer"));
+      writeFileSync(join(wurzel, "tiefer", "echt.ts"), "export const a = 1;");
+      writeFileSync(join(wurzel, "tiefer", "echt.test.ts"), "export const b = 2;");
+
+      const gefunden = dateien(wurzel).map((p) => p.replace(`${wurzel}/`, ""));
+
+      expect(gefunden).toContain("tiefer/echt.ts");
+      expect(gefunden, "eine .test.ts gehoert nicht in die Erhebung").not.toContain(
+        "tiefer/echt.test.ts",
+      );
+    } finally {
+      rmSync(wurzel, { recursive: true, force: true });
+    }
   });
 });
