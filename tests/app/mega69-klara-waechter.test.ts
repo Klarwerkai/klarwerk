@@ -609,7 +609,21 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     Oeffnen frisch geholt; bis dahin kann der Office-Cache kurz den D2-Stand zeigen — dann
     //     bleibt der Kopierknopf bei KA6 gesperrt wie bisher. Das ist ein fehlender Komfort, kein
     //     falsch gekennzeichneter Text.
-    const PIN = "d163274da590c91c1e7bf999731aab1d91c9e98a9b59fa245d86ba73098873cc";
+    //
+    // G24 (JOB 1601/1610) — DIE NACHFUEHRUNG DIESES DURCHGANGS, mit denselben drei Fragen:
+    //   · KEIN zusaetzlicher Schreibweg, kein neuer Ausgang. Geaendert ist genau eine
+    //     Normalisierung (`aiGenerated`) plus die reine Pruefung `istKiKennzeichnung` daneben
+    //     (Block `KW-KLARA-AI-MARK-*`). Die beiden Schreibaufrufe bleiben unberuehrt bei null.
+    //   · DIE KENNZEICHNUNG WIRD STRENGER, NIE SCHWAECHER. Bisher rechnete das Fenster
+    //     `Boolean(result.aiGenerated)` — damit schaltete auch ein beliebiges Objekt oder ein
+    //     wahrer Skalar die Behauptung „Von kuenstlicher Intelligenz erzeugt" EIN. Jetzt gilt nur
+    //     noch der echte Serververtrag (`{aiGenerated:true, task, mode}`). Sie erscheint also
+    //     seltener, und zwar ausschliesslich bei Werten, die der Server nie sendet.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Die Datei wird beim naechsten
+    //     Oeffnen frisch geholt; bis dahin kann der Office-Cache kurz den alten Stand zeigen —
+    //     dann gilt dort weiter die alte, zu grosszuegige Regel. Das ist der Zustand von gestern,
+    //     kein neues Risiko.
+    const PIN = "2c3a56b0647434a1d8f1a7e248ef1dd9edd2df2719e66544d86879d35ce6957b";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

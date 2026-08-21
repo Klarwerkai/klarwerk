@@ -494,6 +494,52 @@ export function askAiNoticeVisible(outcome: AskOutcome | null | undefined): bool
   return outcome?.kind === "answered" && outcome.aiGenerated === true;
 }
 
+// ================================================================================================
+// G24 (OFFEN.md:159, mega83 B) — UNBEKANNT IST HIER NICHT FAIL-SAFE.
+// ================================================================================================
+//
+// Bis hierher stand an beiden Zwillingsstellen `Boolean(result.aiGenerated)`. Das ist in genau
+// einer Richtung falsch, und zwar in der gefaehrlichen: FEHLEND und `false` sind sicher (kein
+// Hinweis), aber **ein unerwarteter wahrer Skalar oder ein beliebiges Objekt schaltet die
+// Kennzeichnung faelschlich EIN** — `Boolean("nein")`, `Boolean({})`, `Boolean(1)` sind alle wahr.
+// Dann behauptet die Flaeche „Von kuenstlicher Intelligenz erzeugt" ueber einen Text, ueber den
+// der Server das nie gesagt hat.
+//
+// DER SERVERVERTRAG IST EIN OBJEKT, kein Boolean: `AiGeneratedMark`
+// (services/model-runs/src/types.ts:69-76) traegt `aiGenerated: true`, `task` und `mode` — und
+// existiert NUR an gekennzeichneten Ausgaben; ein `false` gibt es dort nicht.
+//
+// Diese Pruefung erkennt genau dieses Objekt an und sonst nichts. Sie ist REIN (keine Zeit, kein
+// Zustand) und steht wortgleich im Aufgabenfenster (`taskpane.html`, Block KW-KLARA-AI-MARK-*),
+// weil jenes buildlos ist und nicht importieren kann. Dass beide Fassungen dieselbe Menge
+// anerkennen, ist gepinnt — `tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts`.
+//
+// DIE MENGEN SIND GESPIEGELT, NICHT ERFUNDEN: `KI_ERZEUGENDE_AUFGABEN` (types.ts:58) und
+// `AiOutputMode` (:67). Die Oberflaeche importiert keine Services — derselbe Grund wie bei
+// `apps/web/src/api/types.ts`. Ein Test haelt die Spiegelung gegen das Original.
+const G24_AUFGABEN: readonly string[] = ["answer", "interview", "describe"];
+const G24_MODI: readonly string[] = ["model", "deterministic"];
+
+/**
+ * Ist dieser Wert die serverseitige KI-Kennzeichnung — und nicht bloss irgendetwas Wahres?
+ *
+ * Im Zweifel `false`: nicht behaupten, was nicht belegt ist. Damit kann diese Funktion die
+ * Kennzeichnung nur ENGER machen als `Boolean(...)`, nie breiter.
+ */
+export function istKiKennzeichnung(wert: unknown): boolean {
+  if (typeof wert !== "object" || wert === null) {
+    return false;
+  }
+  const marke = wert as { aiGenerated?: unknown; task?: unknown; mode?: unknown };
+  return (
+    marke.aiGenerated === true &&
+    typeof marke.task === "string" &&
+    G24_AUFGABEN.includes(marke.task) &&
+    typeof marke.mode === "string" &&
+    G24_MODI.includes(marke.mode)
+  );
+}
+
 export function answerInsertEvidenceNote(
   grade: AskGrade,
   texts: { verified: string; unverified: string },
@@ -759,9 +805,9 @@ export function performAsk(
             citedSources: cited,
             snippet,
             // AUFTRAG-mega81 BLOCK A: das Kennzeichnungssignal wird GELESEN, nicht angenommen.
-            // `aiGenerated` ist am Server ein Objekt ({aiGenerated,task,mode,at}); hier zaehlt nur,
-            // OB es da ist — die Flaeche behauptet nie mehr, als der Server gesagt hat.
-            aiGenerated: Boolean(result.aiGenerated),
+            // G24: und es wird GEPRUEFT statt nur auf Wahrheit gecastet — `Boolean(...)` schaltete
+            // die Behauptung auch bei einem beliebigen Objekt oder einem wahren Skalar ein.
+            aiGenerated: istKiKennzeichnung(result.aiGenerated),
           };
         }
         // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke. Der

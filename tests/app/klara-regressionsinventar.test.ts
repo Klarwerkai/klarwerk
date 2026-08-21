@@ -127,6 +127,11 @@ const INVENTAR: readonly string[] = [
   "services/reasoner/src/klara-policy.test.ts",
   "tests/app/contrast-tokens-d5.test.ts",
   "tests/app/csp-upgrade-insecure-requests.test.ts",
+  // G24 (JOB 1601/1610): neu im Baum und von der Erhebung gefunden. Der Waechter der
+  // KI-Kennzeichnung gehoert sachlich in die Klara-Regression — er haelt fest, dass die
+  // Erzeugungsbehauptung nur am echten Serververtrag haengt. K2 hat ihn gemeldet, das Inventar
+  // hat ihn nicht stillschweigend aufgenommen.
+  "tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts",
   "tests/app/g27-klara-library-current-truth.test.ts",
   // JOB 1113: neu und von der Achse `version` gefunden (Muster `version\.ts`) — der Wächter für
   // /health mit Version und Deploy-Commit gehört sachlich zum Versionsschritt.

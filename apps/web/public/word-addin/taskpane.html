@@ -1092,7 +1092,8 @@
                 // AUFTRAG-mega81 BLOCK A: das serverseitige Kennzeichnungssignal wird GELESEN.
                 // Auf dem retrieval-only-Weg dieses Fensters fehlt es immer (der Server laesst es
                 // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
-                aiGenerated: Boolean(result.aiGenerated),
+                // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
+                aiGenerated: istKiKennzeichnung(result.aiGenerated),
               };
             }
             // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
@@ -1116,6 +1117,29 @@
     // die einzige Moeglichkeit, die WIRKLICH ausgelieferte Entscheidung auszufuehren statt ihren
     // Quelltext zu lesen. Sie haengt AUSSCHLIESSLICH am serverseitigen Signal (`result.aiGenerated`)
     // — nicht an der Flaeche, nicht an einer Einstellung, nicht an der Anwesenheit des Satzes.
+    // G24 (OFFEN.md:159, mega83 B) — UNBEKANNT IST HIER NICHT FAIL-SAFE.
+    //
+    // Hier stand `Boolean(result.aiGenerated)`. Fehlend und `false` waren sicher, aber ein
+    // beliebiges Objekt oder ein wahrer Skalar schaltete die KI-Behauptung FAELSCHLICH ein
+    // (`Boolean({})`, `Boolean("nein")`, `Boolean(1)` sind alle wahr). Der Serververtrag ist ein
+    // Objekt: `{aiGenerated: true, task, mode, at}` (services/model-runs/src/types.ts:69-76).
+    // Diese Pruefung erkennt genau das an und sonst nichts — im Zweifel nicht behaupten.
+    //
+    // WORTGLEICH mit `istKiKennzeichnung` in apps/web/src/lib/wordAddin.ts. Dieses Fenster ist
+    // buildlos und kann nicht importieren; dass beide dieselbe Menge anerkennen, haelt
+    // tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts — und zwar an der WIRKLICH
+    // ausgelieferten Datei, ueber die Schnittmarken unten.
+    // KW-KLARA-AI-MARK-START
+    function istKiKennzeichnung(wert) {
+      if (typeof wert !== "object" || wert === null) { return false; }
+      var aufgaben = ["answer", "interview", "describe"];
+      var modi = ["model", "deterministic"];
+      return wert.aiGenerated === true
+        && typeof wert.task === "string" && aufgaben.indexOf(wert.task) !== -1
+        && typeof wert.mode === "string" && modi.indexOf(wert.mode) !== -1;
+    }
+    // KW-KLARA-AI-MARK-END
+
     // KW-KLARA-AI-NOTICE-START
     function askAiNoticeVisible(outcome) {
       return !!(outcome && outcome.kind === "answered" && outcome.aiGenerated === true);

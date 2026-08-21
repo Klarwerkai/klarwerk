@@ -50,6 +50,9 @@ import {
   stripAskAnswerMarkdown,
   stripComposedMetaLines,
 } from "../../apps/web/src/lib/wordAddin";
+// G24 (JOB 1610): die Fixture baut den Serververtrag nicht mehr NACH, sie BENUTZT ihn. Siehe
+// `ka6AskKoerper` — der Grund steht dort.
+import { aiGeneratedMark } from "../../services/model-runs";
 
 const TASKPANE = "apps/web/public/word-addin/taskpane.html";
 
@@ -1024,6 +1027,12 @@ interface Ka6Lage {
   effectiveMode: "deterministic" | "internal" | "external";
   /** Traegt der Antwortkoerper von `/api/ask` das Kennzeichnungssignal `aiGenerated`? */
   aiGenerated: boolean;
+  /**
+   * G24 (JOB 1610): ein ROHER Wert an der Stelle des Kennzeichnungssignals — fuer den Fall, dass
+   * der Server etwas schickt, das kein gueltiger Marker ist. Nur `KERN 3b` benutzt ihn; ohne ihn
+   * baut die Fixture den echten Vertrag ueber `aiGeneratedMark()`.
+   */
+  aiGeneratedRoh?: unknown;
   /** Antwortet `/api/ask` mit einer belegten Antwort — oder mit einer Wissensluecke? */
   answered: boolean;
 }
@@ -1109,7 +1118,22 @@ function ka6AskKoerper(lage: Ka6Lage): Record<string, unknown> {
       evidence: { grade: "unverified", sourcesConflicted: false, conflictsUnproven: false },
       // AUFTRAG-mega81: das SERVERSEITIGE Kennzeichnungssignal. Der Client liest es, er nimmt es
       // nicht an — deshalb steht es hier als Fixture und nicht als Annahme im Panel.
-      ...(lage.aiGenerated ? { aiGenerated: { aiGenerated: true, task: "answer" } } : {}),
+      //
+      // G24 (JOB 1610): HIER STAND EIN HANDGEBAUTES `{ aiGenerated: true, task: "answer" }` —
+      // OHNE `mode`. Der echte Server setzt `mode` IMMER (model-runs/src/types.ts:87 baut die
+      // Marke unbedingt mit `aiGenerated`, `task`, `mode` und `at`). Die Fixture hat den Vertrag
+      // also unvollstaendig nachgebaut und damit etwas anderes geprueft als das Produkt: Solange
+      // der Client `Boolean(...)` rechnete, war jedes Objekt wahr und die Luecke unsichtbar.
+      // Genau deshalb hat DIESE Datei den G24-Fehler mitgetragen, statt ihn zu fangen.
+      //
+      // Der Fix ist nicht „ein Feld nachtragen", sondern die Ursache: die Fixture BENUTZT jetzt
+      // den Erzeuger des Vertrags. Kommt ein Feld hinzu, reist es von selbst mit — eine
+      // Handform kann nicht wieder hinter den Vertrag zurueckfallen.
+      ...("aiGeneratedRoh" in lage
+        ? { aiGenerated: lage.aiGeneratedRoh }
+        : lage.aiGenerated
+          ? { aiGenerated: aiGeneratedMark("answer", false) }
+          : {}),
     },
     gap: null,
   };
@@ -1407,6 +1431,39 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     // (c) Die Flaeche sagt den Grund — Schweigen waere hier fail-open in der Anzeige.
     expect(ka6El("ka6-status").textContent ?? "").toContain(ka6Wortlaut("ka6KeinSignal"));
     // (d) Und es wurde nichts geschrieben.
+    expect(ka6Schreibaufrufe(), "Es wurde geschrieben, obwohl kein Vorschlag entstand").toBe(0);
+  });
+
+  it("KERN 3b (G24): ein UNVOLLSTAENDIGER Marker zaehlt wie KEIN Signal", async () => {
+    // ============================================================================================
+    // G24 (OFFEN.md:159) — DER FALL, DER OHNE DEN FIX ROT FAELLT.
+    // ============================================================================================
+    // Bis JOB 1601 rechnete das Aufgabenfenster `Boolean(result.aiGenerated)`. Ein Objekt — auch
+    // ein unvollstaendiges — ist damit WAHR, und der Vorschlag waere als KI-formuliert
+    // durchgegangen. Hier steht genau so ein Wert: die Marke ohne `mode`.
+    //
+    // DIESE FORM IST NICHT ERFUNDEN. Sie stand bis heute in DIESER Datei als Fixture
+    // (`{ aiGenerated: true, task: "answer" }`) und hat den Fehler dadurch mitgetragen statt ihn
+    // zu fangen — der Grund steht bei `ka6AskKoerper`. Jetzt ist sie der Negativfall.
+    //
+    // Erwartung: dasselbe Verhalten wie bei KERN 3 (gar kein Signal) — fail-closed, kein
+    // Vorschlag, kein Knopf, benannter Grund. Im Zweifel nicht behaupten.
+    const lage = ka6Erlaubt({ aiGeneratedRoh: { aiGenerated: true, task: "answer" } });
+    await ladeKa6Fenster(lage);
+
+    ka6El("ask-input").value = "Wartungsablauf fuer Linie 3";
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+
+    expect(
+      ka6El("ask-answer-edit").value,
+      "Ein unvollstaendiger Marker hat einen Vorschlag freigegeben — G24 ist nicht geschlossen",
+    ).toBe("");
+    expect(
+      ka6Sichtbar("ka6-insert-btn"),
+      "Der Einfuegeknopf steht trotz ungueltigem Marker bereit",
+    ).toBe(false);
+    expect(ka6El("ka6-status").textContent ?? "").toContain(ka6Wortlaut("ka6KeinSignal"));
     expect(ka6Schreibaufrufe(), "Es wurde geschrieben, obwohl kein Vorschlag entstand").toBe(0);
   });
 

@@ -174,8 +174,12 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
       ).toMatch(/\bhidden\b/);
     }
     // … und die Bindung ist wirklich verdrahtet: das Signal wird gelesen und entscheidet.
+    // G24 (JOB 1601/1610): hier stand `aiGenerated: Boolean(result.aiGenerated)`. Der Pin ist
+    // nachgezogen, weil `Boolean(...)` die Kennzeichnung auch bei einem beliebigen Objekt oder
+    // einem wahren Skalar EINgeschaltet haette — die Bindung ist damit strenger geworden, nicht
+    // schwaecher, und dieser Fall prueft weiterhin dasselbe: dass das Signal GELESEN wird.
     expect(addin, "das serverseitige Kennzeichnungssignal wird gar nicht gelesen").toContain(
-      "aiGenerated: Boolean(result.aiGenerated)",
+      "aiGenerated: istKiKennzeichnung(result.aiGenerated)",
     );
     expect(addin, "die Anzeige-Entscheidung fehlt").toContain("outcome.aiGenerated === true");
     expect(addin, "die Entscheidung ist nicht ans Element gehängt").toContain(
