@@ -13,6 +13,7 @@ import {
   type KoSearchProjection,
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
+  expandSearchTerms,
   normalizeSearchTerms,
 } from "./search-projection";
 import { KoError } from "./types";
@@ -695,7 +696,12 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const { fassung: aktiveFassung, generation } = freigegebeneProjektion(
       await this.controlState(),
     );
-    const terms = normalizeSearchTerms(query.terms);
+    // JOB 1531 D2 (S2): die deklarierte Zuordnung wird AUFGERUFEN, nicht neu gebaut. Sie steht
+    // seit `6ebd903` in `search-projection.ts:976` und war bis hierher wirkungslos — ein Baustein
+    // in der Luft. `expandSearchTerms` ERGAENZT die bereinigten Terme; es ersetzt
+    // `normalizeSearchTerms` nicht, weil das zwei verschiedene Aussagen sind (was gab der Nutzer
+    // ein / wonach wird ausserdem gesucht) und weil der Panelspiegel an der Bereinigung haengt.
+    const terms = expandSearchTerms(normalizeSearchTerms(query.terms));
     if (terms.length === 0) {
       return [];
     }

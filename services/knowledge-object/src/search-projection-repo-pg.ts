@@ -7,6 +7,7 @@ import {
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
   type SearchProjectionStatus,
+  expandSearchTerms,
   normalizeSearchTerms,
   parseClassificationSnapshot,
   serializeClassificationSnapshot,
@@ -528,7 +529,10 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const { fassung: aktiveFassung, generation } = freigegebeneProjektion(
       await this.controlState(),
     );
-    const terms = normalizeSearchTerms(query.terms);
+    // JOB 1531 D2 (S2): derselbe Aufruf wie im In-Memory-Adapter (search-projection-repo.ts:698).
+    // Beide Speicher muessen dieselbe Kandidatenmenge sehen — sonst faende „klep" das „Ventil" je
+    // nach Betriebsart einmal und einmal nicht.
+    const terms = expandSearchTerms(normalizeSearchTerms(query.terms));
     // Ohne `limit` entfällt die LIMIT-Klausel (s. KoSearchQuery) — die Bibliothek verliert
     // dadurch keinen Treffer still.
     const limit = query.limit === undefined ? undefined : Math.max(0, Math.floor(query.limit));

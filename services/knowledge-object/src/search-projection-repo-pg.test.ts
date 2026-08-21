@@ -208,8 +208,13 @@ describe("G27: PgKoSearchProjectionRepo — die Standardsuche", () => {
     expect(sql).not.toContain(`p.generation = ${AKTIVE_GENERATION}`);
     expect(sql).toContain("p.search_text ILIKE");
     expect(sql).toContain("ORDER BY (k.status='validiert') DESC");
-    expect(sql).toContain("LIMIT $5");
-    expect(params).toEqual([2, AKTIVE_GENERATION, "%ventil%", "%presse%", 200]);
+    // JOB 1531 D3 (S2): `$5` → `$6` und ein Term mehr. GRUND: Seit D2 ruft dieser Adapter
+    // `expandSearchTerms` auf (`search-projection-repo-pg.ts:534`); die deklarierte Zuordnung
+    // ergänzt zu „ventil" das Wort „klep" (`search-projection.ts:928`). Der Deckel rückt dadurch
+    // um einen Platzhalter weiter. **Die Zusage dieses Falls ist unberührt** — geprüft bleibt,
+    // dass das LIMIT parametrisiert ist und nicht als Literal im Statement steht.
+    expect(sql).toContain("LIMIT $6");
+    expect(params).toEqual([2, AKTIVE_GENERATION, "%ventil%", "%presse%", "%klep%", 200]);
 
     // Ein Treffer, der in KEINEM Kurzfeld steht, wird als Dokumenttext-Fund gemeldet.
     expect(hits[0]?.matched).toEqual({
@@ -228,7 +233,10 @@ describe("G27: PgKoSearchProjectionRepo — die Standardsuche", () => {
     await repo.findActive({ terms: ["ventil"] });
     const { sql, params } = suchAbfragen(calls)[0] as { sql: string; params: unknown[] };
     expect(sql).not.toContain("LIMIT");
-    expect(params).toEqual([2, AKTIVE_GENERATION, "%ventil%"]);
+    // JOB 1531 D3 (S2): ein Term mehr. GRUND: derselbe Aufruf wie oben — „ventil" bringt seit der
+    // Zuordnung „klep" mit. **Die Zusage dieses Falls ist unberührt**: ohne `limit` entfällt die
+    // LIMIT-Klausel weiterhin, und genau das prüft die Zeile darüber.
+    expect(params).toEqual([2, AKTIVE_GENERATION, "%ventil%", "%klep%"]);
   });
 
   it("leere Terme → keine Suchabfrage (kein All-Pool-Scan)", async () => {
