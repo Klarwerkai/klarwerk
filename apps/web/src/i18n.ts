@@ -1088,6 +1088,12 @@ const de = {
   "studio.viewStructured": "Strukturiert",
   "studio.viewSwitch": "Ansicht: einfach oder strukturiert",
   "studio.attachFromDisk": "Datei/Bild vom Rechner anhängen",
+  // D44 Teil 1 (JOB 1832, Chef-Entscheidung 21.08. 21:00): GENAU ZWEI Schlüssel für die
+  // Gliederungsleiste — die Beschriftung und der ehrliche Leerzustand. Der Baustein, der sie
+  // liest (`components/D44Gliederung.tsx` aus JOB 1612 D1), ist im Produkt noch nicht angekommen;
+  // solange niemand sie ruft, sind es vorbereitete Texte und KEIN erledigter Anker.
+  "studio.d44.gliederung": "Gliederung",
+  "studio.d44.keineUeberschriften": "Keine Überschriften im Beitrag",
   "studio.state.dirty": "Nicht übernommen",
   "studio.state.clean": "Keine Studio-Änderungen",
   "studio.confirmDiscard.q": "Nicht übernommene Änderungen verwerfen?",
@@ -5700,6 +5706,8 @@ const en: typeof de = {
   "studio.viewStructured": "Structured",
   "studio.viewSwitch": "View: simple or structured",
   "studio.attachFromDisk": "Attach file/image from computer",
+  "studio.d44.gliederung": "Outline",
+  "studio.d44.keineUeberschriften": "No headings in this article",
   "studio.state.dirty": "Not applied",
   "studio.state.clean": "No studio changes",
   "studio.confirmDiscard.q": "Discard changes that haven't been applied?",
@@ -9849,6 +9857,8 @@ const nl: typeof de = {
   "studio.viewStructured": "Gestructureerd",
   "studio.viewSwitch": "Weergave: eenvoudig of gestructureerd",
   "studio.attachFromDisk": "Bestand/afbeelding van je computer toevoegen",
+  "studio.d44.gliederung": "Overzicht",
+  "studio.d44.keineUeberschriften": "Geen koppen in dit artikel",
   "studio.state.dirty": "Niet overgenomen",
   "studio.state.clean": "Geen wijzigingen in de studio",
   "studio.confirmDiscard.q": "Niet-overgenomen wijzigingen verwerpen?",
