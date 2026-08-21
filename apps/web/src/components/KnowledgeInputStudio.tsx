@@ -31,6 +31,8 @@ import {
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { AiAssistBox } from "./AiAssistBox";
 import { BodyTemplateChooser } from "./BodyTemplateChooser";
+// D44: die Gliederungsleiste des Entwurfs und die Marke, an der sie die Editorfläche findet.
+import { D44Gliederung, D44_EDITOR_MARKE } from "./D44Gliederung";
 import { EditorAttachmentContext } from "./EditorAttachmentContext";
 import { EditorContentQuality } from "./EditorContentQuality";
 import { EditorGuidance } from "./EditorGuidance";
@@ -347,8 +349,17 @@ export function KnowledgeInputStudio({
                 SCRUM-347: nur im Bearbeiten-View — in der Vorschau ist kein Editor sichtbar, dort
                 wären Formatier-/Shortcut-Hinweise irreführend. */}
             {view === "edit" ? <KnowledgeStudioTips /> : null}
+            {/* D44: die Gliederung des Entwurfs, aus denselben h2/h3, die der Editor rendert.
+                Sie steht ÜBER der Editorfläche und nicht daneben — ein zweispaltiger Aufbau wäre
+                ein Umbau des Arbeitsraums. */}
+            {view === "edit" ? <D44Gliederung bodyHtml={draft} /> : null}
             {view === "edit" ? (
-              <div className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3">
+              // D44: die Marke, an der die Leiste die Editorfläche findet. Ein Attribut auf dem
+              // VORHANDENEN Kasten — kein neuer Wrapper, der den Bauteilpfad verschöbe.
+              <div
+                {...{ [D44_EDITOR_MARKE]: true }}
+                className="min-h-[55vh] rounded-card border border-hairline bg-surface p-2 sm:p-3"
+              >
                 <RichTextEditor
                   value={draft}
                   onChange={setDraft}
