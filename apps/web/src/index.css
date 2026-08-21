@@ -109,6 +109,29 @@
   @apply my-2 max-w-full rounded-card;
   height: auto;
 }
+
+/* JOB 1880 · D1 (Anker D44-BILDHOEHE) — DER DECKEL IM EDITIERENDEN BEREICH.
+
+   Entschieden vom Chef am 21.08. um 21:00 (`00_CONTROL/ENTSCHEIDUNGEN/JOB-1620.md`, Weg a):
+   „Der Deckel `max-height: 320px` im editierenden `.prose-kw` bleibt." Gebaut war er nie — der
+   Stand aus `1620 D1` ist ROT und nicht eingebaut. Es fehlte nicht die Entscheidung, sondern
+   diese Zeile.
+
+   WARUM NUR IM EDITIERENDEN BEREICH: `RichTextEditor.tsx` rendert ZWEI Flaechen mit `.prose-kw` —
+   das contenteditable beim Bearbeiten (:1804-1824) und die Vorschau darunter (:1843-1846). Beim
+   Bearbeiten ist ein ueberhohes Bild ein Hindernis: es schiebt den Text aus dem Blick und man
+   scrollt an ihm vorbei. In der Lesefassung ist genau dieselbe Hoehe der Inhalt. Deshalb haengt
+   der Deckel am Attribut, nicht an der Klasse.
+
+   DIE BEGRENZUNG AUF `.prose-kw` BLEIBT — der Kommentar bei :73 sagt warum: die Regeln dieses
+   Blocks gelten „dem sanitisierten Fremdinhalt, nicht der Oberflaeche". Diese Regel weitet das
+   nicht aus, sie verengt es zusaetzlich.
+
+   KEIN SCHALTER: Nach Weg (a) entfallen `D44BildhoeheSchalter.tsx` und `d44Bild.ts` samt
+   Aufhebungsregel. Der Deckel gilt schlicht. */
+.prose-kw[contenteditable="true"] img {
+  max-height: 320px;
+}
 .prose-kw img[data-kw-scale="25"] {
   width: 25%;
 }
