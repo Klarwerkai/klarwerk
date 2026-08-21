@@ -137,6 +137,10 @@ const INVENTAR: readonly string[] = [
   // /health mit Version und Deploy-Commit gehört sachlich zum Versionsschritt.
   "tests/app/health-version-commit.test.ts",
   "tests/app/k1-word-addin-origin-panel.test.ts",
+  // JOB 1720 D1 (KA3): der erste Vertrag ueberhaupt fuer die Angebotskarten. Er laedt das
+  // ausgelieferte Aufgabenfenster und misst Pedis Auflage am Verhalten — Inhaltsachse `taskpane`,
+  // deshalb verlangt K2 diesen Eintrag.
+  "tests/app/ka3-fokusverhalten.test.tsx",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
   "tests/app/klara-ai-status-contract.test.ts",
