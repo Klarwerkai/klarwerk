@@ -1,0 +1,241 @@
+// ================================================================================================
+// JOB 1496 · D1 (M-2, Schritt 2) — DIE VERTRAGSFLÄCHE DES GRAPH-LESEMODELLS.
+// ================================================================================================
+//
+// WARUM DIESE DATEI GETRENNT STEHT. Drei Bahnen bauen auf dem Lesemodell auf (Auftrag §88), und
+// PRO5 setzt in `services/wissensnetz/src/luecken*.ts` unmittelbar darauf. Was sie brauchen, ist
+// nicht die Abfrage, sondern der Vertrag: welche Form die Eingangsdaten haben, welche Form die
+// Antwort hat. Steht beides in derselben Datei wie die Auswertung, kann man das eine nicht
+// übernehmen, ohne das andere mitzuziehen.
+//
+// ================================================================================================
+// WARUM PORTS UND KEINE IMPORTE — gemessen, nicht Geschmack.
+// ================================================================================================
+//
+// Die Datenquelle dieses Lesemodells ist `KantenLeseService` aus
+// `services/knowledge-object/src/kanten-service.ts` (JOB 1140 D1, im Produkt). Ein direkter Import
+// von dort ist diesem Modul VERBOTEN: `.dependency-cruiser.cjs:16-27` erlaubt Cross-Modul-Importe
+// ausschliesslich über die öffentliche `index.ts` des Zielmoduls, und `kanten-service` ist in
+// `services/knowledge-object/index.ts` NICHT exportiert (gemessen: 0 Treffer). Dasselbe gilt für
+// `KoService.list`.
+//
+// Deshalb beschreibt diese Datei die beiden Quellen als PORTS — als Mindestform, die der echte
+// Dienst strukturell erfüllt. Das ist dieselbe Bauform, mit der `kanten-service.ts:97` seinen
+// eigenen Bestand beschreibt (`KantenRepo`), und sie hat hier einen zweiten Vorzug: Das Lesemodell
+// ist heute schon prüfbar, obwohl das Kantenaggregat aus JOB 1139 D2 noch entsteht.
+//
+// DASS DER PORT ZUR WIRKLICHKEIT PASST, IST NICHT BEHAUPTET, SONDERN GEPRÜFT:
+// `tests/wissensnetz/lesemodell-sicht.test.ts` weist den echten `KantenLeseService` diesem Port zu.
+// Tests liegen nicht unter `services/` und unterliegen der Modulgrenze nicht — der Beweis ist dort
+// erlaubt, wo er hingehört, und er ist ein Typfehler, sobald PRO die Fläche ändert.
+
+// ================================================================================================
+// DIE SICHTBARKEITSENTSCHEIDUNG — ÜBERGEBEN, NIE SELBST AUSGELEGT.
+// ================================================================================================
+//
+// Wörtlich dieselbe Begründung wie in `kanten-service.ts:120-127`: Dieses Modul beantwortet NICHT,
+// wer was sehen darf. Die Frage verbindet Rolle, Rechtematrix und Stufe am Objekt und wird an genau
+// EINER Stelle beantwortet (`services/app/src/sichtbarkeit.ts`). Ein eigenes Prädikat hier wäre die
+// zweite Wahrheit, gegen die jene Datei gebaut ist — und dieses Lesemodell wäre dann gegen seine
+// eigene Erfindung grün.
+
+/**
+ * Die Mindestform eines Wissensobjekts für dieses Lesemodell. Bewusst schmal: `category` trägt das
+ * Thema, `author` den Beitrag. Titel und Aussage stehen hier NICHT — eine Themenübersicht braucht
+ * sie nicht, und was nicht mitreist, kann nicht auslaufen.
+ */
+export interface WissensnetzKo {
+  id: string;
+  category: string;
+  author?: string | null | undefined;
+}
+
+/**
+ * WARUM DIESE PORTS GENERISCH SIND — gemessen, nicht Stilfrage.
+ *
+ * Die Sichtbarkeitsentscheidung kommt aus `services/app/src/sichtbarkeit.ts:51-54`, und ihr
+ * Parameter ist ENG typisiert (`confidentiality?: Confidentiality | null | undefined`). Schriebe
+ * dieses Modul die Fakten mit `confidentiality?: string`, wäre der Hausfilter unter
+ * `strictFunctionTypes` NICHT mehr zuweisbar: eine Funktion, die nur die enge Union annimmt, darf
+ * nicht dort stehen, wo eine beliebige Zeichenkette erlaubt ist.
+ *
+ * Die Union hier nachzubauen wäre die zweite Wahrheit, gegen die `sichtbarkeit.ts` gebaut ist.
+ * Also nennt dieses Modul den Objekttyp gar nicht, sondern lässt ihn offen: `K` ist, was der
+ * Aufrufer führt (im Produkt `KnowledgeObject`), und das Prädikat spricht über genau dieses `K`.
+ * Das Lesemodell selbst liest daraus nur `id`, `category` und `author`.
+ */
+export type WissensnetzSichtbar<K> = (ko: K) => boolean;
+
+/** Die Leseseite des KO-Bestands, die dieses Lesemodell braucht — erfüllt von `KoService.list`. */
+export interface WissensnetzKoLeser<K extends WissensnetzKo = WissensnetzKo> {
+  /**
+   * Die Grundmenge, UNGETRIMMT. Das Lesemodell trimmt selbst und zählt danach — genau in dieser
+   * Reihenfolge, siehe `lesemodell.ts`. Ein vorgetrimmter Port würde die Zusage an eine Stelle
+   * verlagern, die dieses Modul nicht prüfen kann.
+   */
+  alle(): Promise<readonly K[]>;
+}
+
+/**
+ * Die Kantenauskunft, soweit dieses Lesemodell sie braucht: nur die Zahl der SICHTBAREN Kanten.
+ * `KuratierteKanten` (kanten-service.ts:172) trägt mehr; ein Port nimmt sich, was er nutzt.
+ */
+export interface WissensnetzKantenAuskunft {
+  total: number;
+}
+
+/**
+ * Die Leseseite der kuratierten Kanten — erfüllt von `KantenLeseService.kantenFuer`.
+ *
+ * `kantenFuer` ist bewusst in METHODENSCHREIBWEISE deklariert und nicht als Eigenschaft mit
+ * Funktionstyp: nur so vergleicht TypeScript die Parameter bivariant, und nur so darf der echte
+ * Dienst hier stehen, obwohl sein `sichtbar` über die enge Faktenform spricht und dieses Modul
+ * über `K`. Der Beweis, dass er wirklich passt, steht im Test — nicht in diesem Kommentar.
+ */
+export interface WissensnetzKantenLeser<K> {
+  kantenFuer(
+    koId: string,
+    opts: { sichtbar?: WissensnetzSichtbar<K> },
+  ): Promise<WissensnetzKantenAuskunft>;
+}
+
+// ================================================================================================
+// DIE ANTWORT.
+// ================================================================================================
+//
+// Sie beantwortet die Fragen 1 und 2 der Abnahmefrage (Auftrag §102-108) und liefert für Frage 3
+// das Rohmaterial — nicht die Auswertung. Die Grenze ist ausdrücklich gezogen (Auftrag §110-112):
+// PRO5 baut die Lückenauswertung in `luecken*.ts`. Hier stehen deshalb ZÄHLER, keine Schwellen,
+// keine Rangfolge nach Bedürftigkeit und kein Urteil „hier fehlt etwas".
+
+/** Ein Mensch und sein Umfang innerhalb eines Themas. Nur Sichtbares ist gezählt. */
+export interface WissensnetzBeitrag {
+  urheber: string;
+  objekte: number;
+}
+
+export interface WissensnetzThema {
+  thema: string;
+  /** Sichtbare Objekte dieses Themas. Zählt NACH dem Trimm. */
+  objekte: number;
+  /**
+   * Absteigend nach Umfang, Name als Stichentscheid. **Am `BEITRAGENDE_DECKEL` abgeschnitten** —
+   * ob das geschehen ist, sagt `beitragendeAbgeschnitten`.
+   */
+  beitragende: WissensnetzBeitrag[];
+  /**
+   * `true`, wenn die Beitragendenliste dieses Themas am Deckel beschnitten wurde.
+   *
+   * Der Deckel selbst folgt der Begründung, die `lesemodell.ts` für den Themendeckel gibt: eine
+   * unbegrenzte Antwort ist ein Speicherrisiko, das der Aufrufer nicht sieht. Sie galt eine Ebene
+   * tiefer genauso und war dort nicht angewandt.
+   *
+   * **Es gibt bewusst KEINE Zahl der weggelassenen Beitragenden** — sie wäre eine Mengenauskunft
+   * über nicht Ausgeliefertes, derselbe Fehlertyp, den `abgeschnitten` eine Ebene höher vermeidet
+   * und den `kanten-service.ts:27-30` ausdrücklich verbietet.
+   *
+   * **Nicht optional**, wie `ohneBeitragende`: immer bestimmbar, und `undefined` wäre hier keine
+   * ehrliche Auslassung.
+   *
+   * **Folge für die Summenprobe:** Bei `true` ist die Summe der `beitragende[].objekte` plus
+   * `ohneBeitragende` **kleiner** als `objekte` — die Differenz ist dann kein stiller Fehler,
+   * sondern genau das, was dieser Schalter ansagt.
+   */
+  beitragendeAbgeschnitten: boolean;
+  /**
+   * Sichtbare Objekte dieses Themas OHNE benannten Urheber. Sie zählen in `objekte` mit, stehen
+   * aber in keinem `beitragende`-Eintrag — **ohne diese Zahl bliebe die Differenz unerklärt.**
+   * Dieselbe Bauform wie `ohneThema` eine Ebene höher: kein erfundener Sammelurheber
+   * („Unbekannt"), sondern eine eigene Zahl.
+   *
+   * **Nicht optional.** Anders als `verknuepft`/`unverknuepft` hängt sie an keiner Anforderung —
+   * sie ist immer erhebbar, und eine `undefined` wäre hier keine ehrliche Auslassung, sondern
+   * eine fehlende Auskunft.
+   *
+   * ROHMATERIAL FÜR FRAGE 3, NICHT IHRE ANTWORT: Ob ein Thema ohne benannte Urheber eine Lücke
+   * IST, entscheidet PRO5 in `luecken*.ts` — hier steht nur, wie viele es sind.
+   */
+  ohneBeitragende: number;
+  /**
+   * Sichtbare Objekte MIT mindestens einer sichtbaren kuratierten Kante — und ohne.
+   * `undefined`, solange `mitVerknuepfung` nicht angefordert wurde (siehe `lesemodell.ts`):
+   * eine Null wäre hier eine Aussage, und zwar eine falsche.
+   *
+   * DAS IST DAS ROHMATERIAL FÜR FRAGE 3, NICHT IHRE ANTWORT. Ob ein unverknüpftes Objekt eine
+   * Lücke ist, entscheidet PRO5 — hier steht nur, wie viele es sind.
+   */
+  verknuepft?: number;
+  unverknuepft?: number;
+}
+
+/**
+ * Die beiden Gründe, aus denen die Kantenzähler ausgelassen werden können. Geschlossene Union:
+ * ein dritter Grund ist ein Typfehler, kein stiller Sonderfall.
+ */
+export type VerknuepfungAusgelassenGrund = "kein-kantenport" | "zu-viele-objekte";
+
+export interface WissensnetzSicht {
+  themen: WissensnetzThema[];
+  /** Sichtbare Objekte insgesamt, NACH dem Trimm. */
+  objekteGesamt: number;
+  /** Verschiedene sichtbare Beitragende insgesamt. */
+  beitragendeGesamt: number;
+  /**
+   * Sichtbare Objekte OHNE Thema. Sie stehen in keinem `themen`-Eintrag, weil ein erfundenes
+   * Sammelthema („Sonstiges") auf der Seite wie ein echtes aussähe. Die Summe der Themenzähler ist
+   * deshalb `objekteGesamt - ohneThema` — und diese Zahl ist selbst Rohmaterial für Frage 3.
+   */
+  ohneThema: number;
+  /**
+   * Verschiedene sichtbare Beitragende, die zu KEINEM Thema beitragen, weil alle ihre sichtbaren
+   * Objekte ohne Thema sind. Sie zählen in `beitragendeGesamt` mit, stehen aber in keinem
+   * `beitragende`-Eintrag — **ohne diese Zahl bliebe die Differenz unerklärt.**
+   *
+   * Sie schliesst die Personenseite derselben Gleichung, die eine Zeile höher für die Objektseite
+   * schon steht: verschiedene Urheber über alle `themen[].beitragende` **plus** diese Zahl ergibt
+   * `beitragendeGesamt`. Ohne sie zeigt eine Seite eine Kopfzahl, die die Themenliste nicht
+   * einlöst.
+   *
+   * **Die Gleichung gilt genau dann, wenn `abgeschnitten` `false` ist.** Diese Zahl wird gegen
+   * ALLE gebildeten Themen gerechnet, nicht gegen die am Deckel beschnittene Ausgabe: Wer nur
+   * in einem weggeschnittenen Thema steht, ist nicht themenlos, und ihn hier zu zählen wäre eine
+   * falsche Auskunft. Bei `abgeschnitten: true` ist die Summe deshalb eine Untergrenze — genau
+   * das sagt `abgeschnitten` an.
+   *
+   * **Nicht optional**, aus demselben Grund wie `ohneBeitragende`: immer erhebbar, kostet nichts,
+   * und ein `undefined` wäre keine ehrliche Auslassung, sondern eine fehlende Auskunft.
+   *
+   * ROHMATERIAL FÜR FRAGE 3, NICHT IHRE ANTWORT: Ob jemand, der nur ausserhalb der Themen
+   * beiträgt, eine Lücke IST, entscheidet PRO5 in `luecken*.ts` — hier steht nur, wie viele es
+   * sind. Kein erfundener Sammelurheber, keine Kennungen.
+   */
+  beitragendeNurOhneThema: number;
+  /**
+   * `true`, wenn `mitVerknuepfung` angefordert war, die sichtbare Grundmenge aber über
+   * `KANTEN_ABFRAGE_DECKEL` lag und die Kantenzähler deshalb ausgelassen wurden.
+   *
+   * Ohne dieses Feld wären „nicht angefordert" und „zu gross" beide nur `undefined` — der Aufrufer
+   * könnte eine fehlende Zahl nicht von einer nicht gestellten Frage unterscheiden.
+   */
+  verknuepfungAusgelassen: boolean;
+  /**
+   * **Warum** ausgelassen wurde — steht nur da, wenn `verknuepfungAusgelassen` `true` ist.
+   *
+   * Der Schalter allein warf zwei Ursachen zusammen, die entgegengesetzte Reaktionen verlangen:
+   * ein nicht verdrahteter Kantenport ist ein Fehler der Kompositionswurzel und gehört repariert;
+   * eine zu grosse Grundmenge ist erwartetes Verhalten und verlangt eine engere Abfrage. Aus einem
+   * einzelnen `true` war das nicht zu unterscheiden — dieselbe stille Differenz, gegen die dieses
+   * Modul an drei anderen Stellen gebaut ist.
+   *
+   * **Ohne Auslassung fehlt der Schlüssel** (nicht `undefined` als Wert): ein Grund ohne
+   * Auslassung wäre eine Aussage über nichts — dieselbe Entscheidung wie bei
+   * `verknuepft`/`unverknuepft`.
+   */
+  verknuepfungAusgelassenGrund?: VerknuepfungAusgelassenGrund;
+  /**
+   * `true`, wenn die Themenliste am Deckel abgeschnitten wurde. Es gibt bewusst KEINE Zahl der
+   * weggelassenen Themen: sie wäre eine Mengenauskunft über nicht Ausgeliefertes — derselbe
+   * Fehlertyp, den `kanten-service.ts:27-30` als Schnittzähler ausdrücklich verbietet.
+   */
+  abgeschnitten: boolean;
+}
