@@ -119,10 +119,35 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
           {t(CAPTURE_FILE_TEXT.pick)}
         </button>
       </div>
-      <p className="sr-only" aria-live="polite">
+      {/* AUFTRAG-1840 (Anker A-1292-MELDUNG): EIN Träger statt zweier.
+          Vorher stand der Ablehnungsgrund in einer stummen `sr-only`-Live-Region UND zwei Zeilen
+          weiter noch einmal sichtbar. Für eine Vorlesehilfe war das derselbe Satz zweimal: einmal
+          aus der Live-Region angesagt, einmal beim Weiterwandern im Baum gelesen.
+
+          Jetzt trägt das SICHTBARE Element selbst den Kanal. `<output>` ist die Bauform dieses
+          Hauses — es trägt implizit `role="status"` (biome `useSemanticElements`), genau wie
+          nebenan in `FileTypePicker.tsx:214`, das diese Komponente selbst rendert. `aria-live`
+          ergänzt die Rolle explizit, `aria-atomic` sorgt dafür, dass der Grund als EIN Satz
+          vorgelesen wird und nicht in Bruchstücken.
+
+          UNANGETASTET, und das ist Absicht: Die Region bleibt DAUERHAFT montiert und im Leerfall
+          leer. `tests/app/a18-ansagen-ereignisse.test.tsx` führt genau das als Ausgangszustand
+          von I1 („`sr-only`-Live-Bereich montiert, Inhalt leer"), und B2 derselben Datei belegt,
+          warum: eine erst im Fehlerfall eingehängte Region wird von Vorlesehilfen überhört.
+
+          DIE KLASSE IST STATISCH, und das ist kein Schönheitsgriff: `mega47-modale-flaechen-
+          sammler.test.tsx` sammelt Klassenbindungen und pinnt die Zahl der unauflösbaren auf 207.
+          Eine bedingte `className={a ? "x" : "y"}` kann er nicht auflösen und hätte die Zahl auf
+          208 gehoben — gemessen. Alle Live-Regionen dieses Hauses tragen deshalb eine feste
+          Klasse (`MobileNavDrawer.tsx:117`, `LoadState.tsx:34`, `FileTypePicker.tsx:216`), und
+          diese hier auch. Ohne Inhalt ist das Element leer und nimmt keine Höhe ein. */}
+      <output
+        aria-live="polite"
+        aria-atomic="true"
+        className="block text-[12px] text-trust-crit-text"
+      >
         {dropReject ?? ""}
-      </p>
-      {dropReject ? <p className="mb-2 text-[12px] text-trust-crit-text">{dropReject}</p> : null}
+      </output>
       <FileTypePicker
         sources={fileSourcesForSurface("capture")}
         onActivate={(id) => {

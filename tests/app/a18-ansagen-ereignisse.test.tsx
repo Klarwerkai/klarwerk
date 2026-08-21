@@ -125,17 +125,23 @@ const REGISTER: readonly Ereignis[] = [
   {
     id: "I1",
     oberflaeche: "Erfassen · Dateiimport",
-    ausgangszustand: "`sr-only`-Live-Bereich montiert, Inhalt leer",
+    ausgangszustand: "Live-Bereich montiert, Inhalt leer",
     aktion: "nicht unterstuetzten Dateityp ablegen",
     ergebniszustand: "Ablehnungsgrund mit Dateityp steht im Live-Bereich",
-    kanal: 'sr-only + aria-live="polite"',
+    // JOB 1840 D1 (Anker A-1292-MELDUNG): NACHGEFUEHRT, weil der Kanal gebaut wurde. Vorher stand
+    // der Grund in einer stummen `sr-only`-Region UND zwei Zeilen weiter noch einmal sichtbar —
+    // fuer eine Vorlesehilfe derselbe Satz zweimal. Jetzt traegt das SICHTBARE Element den Kanal:
+    // `<output>` mit impliziter Statusrolle, dazu `aria-live` und `aria-atomic`. Der hier schon
+    // benannte `baumzustand` war das ZIEL und ist seit diesem Durchgang der Istzustand; die
+    // Dauermontage aus dem Ausgangszustand ist unangetastet (siehe B2).
+    kanal: '<output> + aria-live="polite" + aria-atomic="true"',
     kanalart: "live",
     hoeflichkeit: "polite",
     textschluessel: "imp.groups.failHttp",
     wiederholung: "zweite Ablehnung desselben Typs setzt denselben Text erneut",
     negativfall: "zulaessiger Typ → Inhalt bleibt leer",
     baumzustand: "role=status mit dem Ablehnungsgrund",
-    quellen: ["components/CaptureFileImport.tsx:122-124"],
+    quellen: ["components/CaptureFileImport.tsx:137-143"],
   },
   {
     id: "I2",
