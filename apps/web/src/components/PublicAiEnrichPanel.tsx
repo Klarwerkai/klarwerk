@@ -1,7 +1,6 @@
 import { useMutation } from "@tanstack/react-query";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import type { EnrichResult, ExternalKnowledgeStage, ExternalResult } from "../api/types";
@@ -9,6 +8,7 @@ import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { safeHttpUrl } from "../lib/safeUrl";
 import { ExternalUrlText } from "./ExternalUrlText";
 import { HelpTip } from "./HelpTip";
+import { RoleLink } from "./RoleLink";
 import { Button, SectionLabel, TextInput } from "./ui";
 
 // SCRUM-426 (Pedi 03.07.): Public-KI-Anreicherung im Rohwissen-Erfassen + Studio.
@@ -80,13 +80,22 @@ export function PublicAiEnrichPanel({
           {t("enrich.disabledHint")}
         </p>
         {/* SCRUM-434 (Pedi 03.07., VIP): Ein-Klick-Sprung zum Regler — spart dem Admin das Suchen.
-            /admin ist geschützt; wer keine Rechte hat, landet ehrlich auf dem Start. */}
-        <Link
+            AUFTRAG-mega70 BLOCK B (JOB 1973 · B4): der Satz „wer keine Rechte hat, landet ehrlich
+            auf dem Start" stand hier bis heute — und genau das ist die stille Umleitung, die B32
+            abschafft. Dieses Panel rendert in `Capture` und `KnowledgeInputStudio`, also ab Rolle
+            `experte`; `/admin` verlangt `admin`. */}
+        <RoleLink
           to="/admin"
-          className="mt-1.5 inline-block font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai hover:underline"
+          className="mt-1.5 inline-flex items-center gap-1 font-mono text-[10.5px] font-semibold uppercase tracking-wider text-ai"
+          hoverClassName="hover:underline"
         >
-          {t("enrich.openAdmin")} →
-        </Link>
+          {(erreichbar) => (
+            <>
+              {t("enrich.openAdmin")}
+              {erreichbar ? <span aria-hidden="true">→</span> : null}
+            </>
+          )}
+        </RoleLink>
       </div>
     );
   }

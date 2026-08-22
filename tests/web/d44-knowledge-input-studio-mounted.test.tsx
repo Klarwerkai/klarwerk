@@ -31,6 +31,9 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+// AUFTRAG-mega70 BLOCK B (JOB 1973 D2): siehe Begruendung an `studioMounten`.
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { D44_EDITOR_MARKE } from "../../apps/web/src/components/D44Gliederung";
 import { KnowledgeInputStudio } from "../../apps/web/src/components/KnowledgeInputStudio";
 // Nur importiert, nicht veraendert — ohne initialisiertes i18n scheitert `useTranslation`.
@@ -88,10 +91,17 @@ afterEach(() => {
 
 /** Das ECHTE Studio, offen und im Bearbeiten-View (`view` startet auf `"edit"`). */
 function studioMounten(bodyHtml: string): void {
-  // Die zwei Kontexte, die das Studio ueber seine Unterbauteile zieht — beide gemessen, beide
-  // aus dem Hausmuster (`tests/capture/mega17-quellen-hinweis-mounted.test.tsx:100-113`):
+  // Die Kontexte, die das Studio ueber seine Unterbauteile zieht — jeder gemessen, alle aus dem
+  // Hausmuster (`tests/capture/mega17-quellen-hinweis-mounted.test.tsx:100-113`):
   //   ohne QueryClient  -> „No QueryClient set, use QueryClientProvider to set one"
   //   ohne Router       -> „Cannot destructure property 'basename' … as it is null"
+  //   ohne RoleProvider -> „useRole muss innerhalb von <RoleProvider> verwendet werden."
+  //   ohne AuthProvider -> „useSession muss innerhalb von <AuthProvider> verwendet werden."
+  // AUFTRAG-mega70 BLOCK B (JOB 1973 D2): die letzten beiden sind NEU und der Preis einer
+  // Produktverbesserung — `PublicAiEnrichPanel` zeigt seinen Regler-Hinweis auf `/admin` jetzt
+  // ueber `RoleLink`. In der Anwendung liegen beide Provider ohnehin ueber allem (`App.tsx`);
+  // dieser Pruefstand montiert das Bauteil einzeln und muss sie deshalb selbst stellen.
+  // KEINE Zusicherung wird dadurch weicher: die drei Faelle pruefen dieselben Aussagen.
   // `retry: false`, damit kein Fall auf einen Wiederholungslauf wartet.
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   act(() => {
@@ -100,17 +110,25 @@ function studioMounten(bodyHtml: string): void {
         QueryClientProvider,
         { client: qc },
         createElement(
-          MemoryRouter,
-          { initialEntries: ["/erfassen"] },
-          mitBildbeschreibung(
-            createElement(KnowledgeInputStudio, {
-              open: true,
-              onClose: () => undefined,
-              bodyHtml,
-              onApply: () => undefined,
-              runAssist: async () => "",
-              documentTitle: "Wartungsnotiz",
-            }),
+          AuthProvider,
+          null,
+          createElement(
+            RoleProvider,
+            null,
+            createElement(
+              MemoryRouter,
+              { initialEntries: ["/erfassen"] },
+              mitBildbeschreibung(
+                createElement(KnowledgeInputStudio, {
+                  open: true,
+                  onClose: () => undefined,
+                  bodyHtml,
+                  onApply: () => undefined,
+                  runAssist: async () => "",
+                  documentTitle: "Wartungsnotiz",
+                }),
+              ),
+            ),
           ),
         ),
       ),

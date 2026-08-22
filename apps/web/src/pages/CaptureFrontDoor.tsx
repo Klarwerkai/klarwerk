@@ -17,6 +17,7 @@ import { AiGeneratedNotice } from "../components/AiGeneratedNotice";
 import { DraftBodyGallery } from "../components/DraftBodyGallery";
 import { HelpTip } from "../components/HelpTip";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { RoleLink } from "../components/RoleLink";
 import { Button, Card, PageHeader, SectionLabel, TextInput } from "../components/ui";
 import {
   applyBodyAssist,
@@ -773,12 +774,20 @@ export function CaptureFrontDoor(): JSX.Element {
               Quelltext. */}
           <p className="text-sm leading-relaxed text-trust-pos-text/90">{t("capture.savedBody")}</p>
           <div className="flex flex-wrap gap-2">
-            <Link
-              className="inline-flex items-center justify-center rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+            {/* AUFTRAG-mega70 BLOCK B (JOB 1973 · B1): DIE Sackgasse aus bens sammel66 — die
+                Erfolgskarte bietet als BETONTEN naechsten Schritt „Zur Pruefung geben" an und
+                wirft die Erfasserin wortlos auf `/start`. Die Vordertuer verlangt `experte`
+                (`navigation.ts`, `CAPTURE_FRONT_DOOR_ROUTE`), `/validierung` verlangt
+                `controller` — wer hier einreicht, darf dem Knopf also in aller Regel NICHT
+                folgen. Dieselbe Bauform wie B4: die Angabe bleibt stehen, sie hoert auf, ein Weg
+                zu sein. Kein Pfeil in der Lage-Fassung. */}
+            <RoleLink
+              className="inline-flex items-center justify-center rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white"
+              hoverClassName="hover:opacity-90"
               to="/validierung"
             >
-              {t("fd.openValidation")}
-            </Link>
+              {() => t("fd.openValidation")}
+            </RoleLink>
             <Link
               className="inline-flex items-center justify-center rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
               to={`/wissen/${submittedKo.id}`}

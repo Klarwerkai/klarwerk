@@ -47,6 +47,7 @@ import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeNeighborhood } from "../components/KnowledgeNeighborhood";
 import { KoRevisionSummary } from "../components/KoRevisionSummary";
 import { RichTextEditor } from "../components/RichTextEditor";
+import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
 import { KoReadView } from "../components/ko/KoReadView";
@@ -1043,12 +1044,24 @@ export function KnowledgeDetail(): JSX.Element {
                               {t("ko.rework.edit")}
                             </button>
                           ) : null}
-                          <Link
+                          {/* AUFTRAG-mega70 BLOCK B (JOB 1973 · B2): dieser Block haengt an
+                              `canEdit = role !== "viewer"` (`:257`), steht also ab `experte`;
+                              `/validierung` verlangt `controller`. Eine Expertin in der Nacharbeit
+                              sah hier einen Rueckweg, der sie auf `/start` warf. Der Pfeil ist das
+                              Versprechen „hier geht es weiter" und gehoert deshalb an die
+                              begehbare Fassung — dieselbe Bauform wie B4. */}
+                          <RoleLink
                             to="/validierung"
-                            className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold text-muted hover:text-text"
+                            className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold text-muted"
+                            hoverClassName="hover:text-text"
                           >
-                            {t("ko.rework.back")} <span aria-hidden="true">→</span>
-                          </Link>
+                            {(erreichbar) => (
+                              <>
+                                {t("ko.rework.back")}
+                                {erreichbar ? <span aria-hidden="true">→</span> : null}
+                              </>
+                            )}
+                          </RoleLink>
                         </div>
                       </div>
                     ) : null}
@@ -2063,12 +2076,23 @@ export function KnowledgeDetail(): JSX.Element {
                                 </ul>
                               </div>
                             ) : null}
-                            <Link
+                            {/* AUFTRAG-mega70 BLOCK B (JOB 1973 · B3): dieser Verweis haengt NUR
+                                an `events.length > 0` — er hat KEINE Rollenbedingung und stand
+                                damit fuer jede Rolle da, waehrend `/graph` `admin` verlangt. Das
+                                ist die stillste der vier Sackgassen: sie trifft schon eine
+                                Betrachterin, die nichts falsch gemacht hat. */}
+                            <RoleLink
                               to="/graph"
-                              className="inline-block text-[12px] font-semibold text-ai hover:underline"
+                              className="inline-flex items-center gap-1 text-[12px] font-semibold text-ai"
+                              hoverClassName="hover:underline"
                             >
-                              {t("ko.lineageGraphLink")} →
-                            </Link>
+                              {(erreichbar) => (
+                                <>
+                                  {t("ko.lineageGraphLink")}
+                                  {erreichbar ? <span aria-hidden="true">→</span> : null}
+                                </>
+                              )}
+                            </RoleLink>
                           </Card>
                         </>
                       );

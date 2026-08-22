@@ -104,9 +104,14 @@ describe("Block C: Dirty-Flow-Module haben keine Ausgänge, die den Wächter umg
       why: "2x Räumung des location.state auf DERSELBEN Route (/erfassen, replace) — kein Seitenwechsel.",
     },
     "pages/CaptureFrontDoor.tsx": {
-      rawLink: 3,
+      rawLink: 2,
       rawNavigate: 3,
-      why: "3x <Link> in der Erfolgsansicht (savedStateRef auf den geleerten Stand ⇒ beweisbar nicht dirty) und 3x navigate nach bewusstem Verwerfen bzw. erfolgreichem Speichern.",
+      // AUFTRAG-mega70 BLOCK B (JOB 1973 · B1): 3 -> 2. Der dritte rohe Link war „Zur Prüfung
+      // geben" (`/validierung`, controller) auf der Erfolgskarte — die Sackgasse aus bens
+      // sammel66. Er ist jetzt ein `RoleLink` und zählt damit nicht mehr als roher Ausgang.
+      // Die Zahl wird GESENKT, nicht gelockert: das Budget ist eine Obergrenze für rohe
+      // Navigation, und ein Ausgang weniger ist strikt enger als vorher.
+      why: "2x <Link> in der Erfolgsansicht (savedStateRef auf den geleerten Stand ⇒ beweisbar nicht dirty; der dritte ist seit mega70 Block B ein RoleLink) und 3x navigate nach bewusstem Verwerfen bzw. erfolgreichem Speichern.",
     },
     "pages/Mobile.tsx": {
       rawLink: 0,
