@@ -1,5 +1,5 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { OverlapService } from "../../../conflicts";
+import type { ConflictService, OverlapService } from "../../../conflicts";
 import type { Confidentiality, KoService } from "../../../knowledge-object";
 import type { Reasoner } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
@@ -58,6 +58,21 @@ export interface CheckTextRouteDeps {
   // zurück — der Judge (Modell) läuft trotzdem. Für Stufe 1 werden beide bewusst NICHT übergeben.
   reasoner: Reasoner;
   semanticPrefilter?: SemanticPrefilter | undefined;
+  // ============================================================================================
+  // JOB 1970 RIEGEL 1 — DER KONFLIKTDIENST KANN JETZT HEREIN, UND ER MUSS ES NICHT.
+  // ============================================================================================
+  //
+  // KA7 (Widerspruchs-Hinweis) zeigt Serverbefunde; die Quelle dafuer ist diese Route. Der Kern
+  // `checkText` fuehrt den Konfliktzweig laengst — er bleibt ohne Dienst schlicht leer
+  // (`check-text-detection.ts:186-188`: `deps.conflicts ? await … : []`). Was fehlte, war der
+  // Weg hierher.
+  //
+  // OPTIONAL UND ADDITIV, mit Absicht: die Kompositionswurzel reicht heute KEINEN Konfliktdienst
+  // durch (`build-app.ts:1328-1337` — gemessen). Ohne ihn verhaelt sich diese Route byteweise wie
+  // vorher, und die gesetzte Zusicherung `expect(body.conflicts).toEqual([])`
+  // (`check-text-routes.test.ts:124`) bleibt unangetastet. Erst wenn jemand den Dienst hier
+  // hereinreicht, traegt die Antwort Konflikte — und dann sind es ECHTE, keine erfundenen.
+  conflicts?: ConflictService | undefined;
 }
 
 // Ergebnis-Form → Response-Vertrag. snippet OPTIONAL (der Kern erzeugt heute keinen Beleg-Snippet →
@@ -76,8 +91,20 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
       rationale: d.rationale ?? null,
       ...(d.snippet !== undefined ? { snippet: d.snippet } : {}),
     })),
-    // v1: Konflikt-Erkennung kommt später (modellgetrieben) → hier bewusst leer.
-    conflicts: [],
+    // JOB 1970 RIEGEL 2: bis hierher stand `conflicts: []` FEST — die Antwort behauptete „keine
+    // Konflikte", auch wenn der Kern welche gefunden hatte. Jetzt traegt sie, was DER KERN sagt,
+    // in derselben Form wie `duplicates`. Ohne Konfliktdienst liefert der Kern eine leere Liste
+    // (`check-text-detection.ts:186-188`), also bleibt die Antwort heute byteweise dieselbe —
+    // aber sie ist ab jetzt ABGELEITET statt behauptet.
+    conflicts: result.conflicts.map((c) => ({
+      koId: c.koId,
+      koTitle: c.koTitle,
+      type: c.type,
+      confidence: c.confidence ?? null,
+      method: c.method,
+      rationale: c.rationale ?? null,
+      ...(c.snippet !== undefined ? { snippet: c.snippet } : {}),
+    })),
     answer: null,
     note,
     persisted: false,
@@ -176,7 +203,15 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         const checkDeps = deepAllowed
           ? {
               ...stage1Deps,
+              // JOB 1970 D4 (bens Auflage 1): der Konfliktdienst wird AUSSCHLIESSLICH hier
+              // gereicht — im freigegebenen tiefen, nicht vertraulichen Zweig. Stand er wie in D3
+              // in `stage1Deps`, erreichte ihn auch der vertrauliche Fall (`checkDeps` waehlt dort
+              // genau dieses Objekt) und rief `assessAgainstPool` einmal ergebnislos. Dass der
+              // Dienst ohne Judge sofort `[]` liefert (conflicts/src/service.ts:481-483), ersetzt
+              // die Zusicherung „null Dienstaufrufe" nicht.
+              ...(deps.conflicts ? { conflicts: deps.conflicts } : {}),
               duplicateJudge: (a: string, b: string) => deps.reasoner.judgeDuplicate(a, b, locale),
+              conflictJudge: (a: string, b: string) => deps.reasoner.judgeConflict(a, b),
               semanticPrefilter: deps.semanticPrefilter,
             }
           : stage1Deps;

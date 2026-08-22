@@ -1329,6 +1329,7 @@ export function buildApp(
         {
           ko: services.ko,
           overlaps: services.overlaps,
+          conflicts: services.conflicts,
           // Stufe 2 (want:"deep"): Modell-Judge + (env-gegated) Semantic-Prefilter. Stufe 1 nutzt beide nicht.
           reasoner: services.reasoner,
           semanticPrefilter,
