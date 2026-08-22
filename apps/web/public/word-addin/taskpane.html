@@ -5193,6 +5193,58 @@
     var W6_HOECHSTZEICHEN = 8000; // check-text-routes.ts:21 — darueber ebenfalls.
 
     // KW-KLARA-W6-CHECKTEXT-START
+    // ------------------------------------------------------------------------------------------
+    // C5 (JOB 1963 · D4) — DER ERZEUGER DER WERTUNG. Rest 1 aus meinem D3.
+    //
+    // WOHER — GEMESSEN, NICHT ANGENOMMEN. Der Auftrag fragt: welche Stelle kennt sowohl die
+    // Formulierung des Nutzers als auch die validierte Anweisung? Es ist GENAU DIESE:
+    //   · die Formulierung des Nutzers reicht der Aufrufer als `leseText` herein (kein zweiter
+    //     Office-Schnappschuss, siehe unten),
+    //   · die validierte Anweisung kommt aus der Antwort zurueck. Der Pool der Route besteht
+    //     AUSSCHLIESSLICH aus validierten Objekten — `check-text-detection.ts`, Praedikat
+    //     `isValidatedCandidate`: `k.status === "validiert" && !k.demoSeed && ...`. Jeder Treffer
+    //     IST also eine validierte Anweisung, und `koTitle` benennt sie.
+    // KA2 kennt die Anweisung nicht (es liest nur `ka1Terms`), KA3 kennt den Nutzertext nicht.
+    //
+    // WANN IST ES EINE ABWEICHUNG — abgeleitet aus dem Vokabular, nicht gewaehlt. `OverlapRelation`
+    // (`services/conflicts/src/duplicate-detect.ts`) kennt fuenf Werte:
+    //     identisch · a_enthaelt_b · b_enthaelt_a · teilweise · verwandt
+    // `identisch` heisst: der Text IST die validierte Anweisung — dann weicht nichts ab, und die
+    // Zeile bliebe eine Falschaussage. Die anderen VIER heissen alle: die beiden Texte decken
+    // einander nicht. Welcher der beiden mehr enthaelt, spielt fuer die Aussage „weicht ab" keine
+    // Rolle — deshalb haengt die Regel NICHT an der Richtung und kann sich nicht daran verdrehen.
+    // Ein unbekannter sechster Wert erzeugt KEINE Wertung: fail-closed, nichts wird behauptet.
+    //
+    // WAS IN DER FUELLSTELLE STEHT, und die Grenze dazu offen ausgesprochen: `koTitle` — der
+    // Titel der validierten Anweisung. Es ist der EINZIGE Anweisungstext, den die Antwort fuehrt
+    // (`rationale` gibt es nur im Modellpfad, den dieser Ruf nicht anfordert; `snippet` erzeugt im
+    // ganzen Baum niemand). Die Folge ist eine Wiederholung: die Karte nennt den Titel bereits als
+    // Trefferzeile. Das ist KEINE Erfindung und keine Notloesung, sondern die ehrliche Obergrenze
+    // dessen, was heute im Umlauf ist — der bessere Inhalt waere der Anweisungstext selbst, und
+    // den muesste die Route erst mitschicken. Das ist nicht diese Flaeche.
+    // ------------------------------------------------------------------------------------------
+    var W6_KEINE_ABWEICHUNG = "identisch";
+    var W6_ABWEICHENDE_RELATIONEN = ["a_enthaelt_b", "b_enthaelt_a", "teilweise", "verwandt"];
+
+    /**
+     * Die Wertung eines Treffers — oder `null`. `null` heisst: die Karte zeigt keine Wertung und
+     * sieht aus wie ohne diesen Bau (KA3 `ka3Zeichnen`, Zweig `if (treffer.deviatesFrom)`).
+     */
+    function w6WertungAusRelation(d, titel) {
+      var relation = d && typeof d.relation === "string" ? d.relation : "";
+      if (relation === W6_KEINE_ABWEICHUNG) { return null; }
+      // Nur die vier BENANNTEN Abweichungen. Ein leerer, fehlender oder unbekannter Wert behauptet
+      // nichts — dieselbe Zurueckhaltung wie bei `status`, das hier bewusst `null` bleibt.
+      var bekannt = false;
+      for (var r = 0; r < W6_ABWEICHENDE_RELATIONEN.length; r += 1) {
+        if (W6_ABWEICHENDE_RELATIONEN[r] === relation) { bekannt = true; break; }
+      }
+      if (!bekannt) { return null; }
+      // Ohne benennbare Anweisung keine Wertung: „weicht ab von: " mit leerem Ende waere ein
+      // angefangener Satz, kein Befund.
+      return typeof titel === "string" && titel.replace(/^\s+|\s+$/g, "").length > 0 ? titel : null;
+    }
+
     function w6DublettenAusCheckText(grund, leseText, fetchFn, sprache) {
       return Promise.resolve()
         .then(function () { return typeof leseText === "function" ? leseText(grund) : null; })
@@ -5219,10 +5271,12 @@
                 var d = roh[i];
                 var id = d && typeof d.koId === "string" ? d.koId : "";
                 if (!id) { continue; }
+                var titel = d && typeof d.koTitle === "string" ? d.koTitle : "";
                 treffer.push({
                   id: id,
-                  title: d && typeof d.koTitle === "string" ? d.koTitle : "",
-                  status: null
+                  title: titel,
+                  status: null,
+                  deviatesFrom: w6WertungAusRelation(d, titel)
                 });
               }
               return { treffer: treffer };

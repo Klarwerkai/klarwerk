@@ -670,7 +670,29 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
     //     fehlt die Wertungszeile schlicht — der Zustand von gestern, kein neues Risiko.
     // Der alte Wert (41f30bf3…) beschreibt den Stand VOR C3/C4 und waere ab jetzt blind.
-    const PIN = "db555534272e9ba388d6e8e4d2aa5fea0ba70c416e2cb33af77738d3cd622b90";
+    //
+    // PIN-NACHFUEHRUNG (PRO6, JOB 1963 · D4, 22.08.) — BEWUSST GEPRUEFT, NICHT ABGESCHRIEBEN.
+    // Neu ist der ERZEUGER der Wertung: `w6WertungAusRelation` im Block `KW-KLARA-W6-CHECKTEXT-*`
+    // und die eine Zeile, die ihn in die Trefferform legt. `D2` hatte das Feld gezeichnet, aber
+    // niemand fuellte es; jetzt fuellt es der Weg, der die Antwort ohnehin liest. Die drei Fragen:
+    //   · KEIN zusaetzlicher Schreibweg, KEIN neuer Ausgang, KEINE neue Abrufstelle. Es kommt kein
+    //     `fetch` hinzu — dieselbe eine Antwort wird nur weiter ausgewertet (`relation`, das schon
+    //     mitkam und bisher verworfen wurde). `BEKANNTE_ABRUFZIELE` unveraendert bei 10, die zwei
+    //     Schreibaufrufe des Fensters bleiben null, die Route bleibt unberuehrt (JOB 989/686/631).
+    //   · WAS SICHTBAR WIRD, und wann NICHT. Die Wertung erscheint NUR bei den vier benannten
+    //     Abweichungen des Vokabulars (`OverlapRelation`); bei `identisch` und bei jedem
+    //     unbekannten Wert entsteht sie nicht — dort saehe die Karte aus wie zuvor. Belegt am
+    //     GERENDERTEN Text, nicht am Quelltext: `ka3-fokusverhalten.test.tsx`, Faelle C5-1 bis C5-4
+    //     fahren Antwort -> Erzeuger -> `ka3Normalisieren` -> `ka3Zeichnen` -> Kartentext.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER. Der Weg bleibt inert (kein Aufrufer, siehe Rueckgabe),
+    //     `window.klaraBestandsblick` bleibt bei KA2 (Regel A), KA2 liefert unveraendert genau
+    //     seine drei Felder, und die S4-Moduszeile ist nicht beruehrt. `w6-dublettenweg-
+    //     checktext.test.ts` pinnt die Vertragsform weiterhin VOLLSTAENDIG — jetzt vierfeldrig,
+    //     also enger als vorher, nicht lockerer.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
+    //     bleibt die Wertung leer — der Zustand von gestern, kein neues Risiko.
+    // Der alte Wert (db555534…) beschreibt den Stand VOR dem Erzeuger und waere ab jetzt blind.
+    const PIN = "e6ca187e8831bf2e32c7facf1a3020f23e2ebe61e23af32fccdd72db7e87694d";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

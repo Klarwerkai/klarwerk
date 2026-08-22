@@ -78,7 +78,12 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     expect(body.source).toBe("transient-document");
   });
 
-  it("W6-2 · die Antwort wird in die VERTRAGSFORM uebersetzt — id, title, status", async () => {
+  it("W6-2 · die Antwort wird in die VERTRAGSFORM uebersetzt — id, title, status, deviatesFrom", async () => {
+    // NACHGEFUEHRT (JOB 1963 D4): die Vertragsform hat seit `D2` ein VIERTES, optionales Feld —
+    // `deviatesFrom`, die Wertung (`ka3Normalisieren` liest es, `ka3Zeichnen` zeichnet es). Diese
+    // Zelle pinnt die Form weiterhin VOLLSTAENDIG und exakt; sie ist nicht gelockert, sondern um
+    // das hinzugekommene Feld ergaenzt. Der Unterschied der beiden Eintraege ist Absicht und
+    // zugleich der Beleg des Erzeugers: `identisch` weicht nicht ab, `teilweise` schon.
     const { fetchFn } = sonde({
       duplicates: [
         { koId: "ko-1", koTitle: "Ventilwartung", relation: "identisch", confidence: 0.9 },
@@ -89,8 +94,8 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
 
     expect(ergebnis).toEqual({
       treffer: [
-        { id: "ko-1", title: "Ventilwartung", status: null },
-        { id: "ko-2", title: "Druckentlastung", status: null },
+        { id: "ko-1", title: "Ventilwartung", status: null, deviatesFrom: null },
+        { id: "ko-2", title: "Druckentlastung", status: null, deviatesFrom: "Druckentlastung" },
       ],
     });
   });
@@ -113,7 +118,10 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
       duplicates: [{ koTitle: "ohne Id" }, { koId: "", koTitle: "leer" }, { koId: "ko-3" }],
     });
     const ergebnis = await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn);
-    expect(ergebnis).toEqual({ treffer: [{ id: "ko-3", title: "", status: null }] });
+    // `ko-3` traegt weder Titel noch `relation` — also auch keine Wertung (JOB 1963 D4).
+    expect(ergebnis).toEqual({
+      treffer: [{ id: "ko-3", title: "", status: null, deviatesFrom: null }],
+    });
   });
 
   it("W6-5 · FAIL-CLOSED: zu kurzer Text wird gar nicht erst gerufen", async () => {

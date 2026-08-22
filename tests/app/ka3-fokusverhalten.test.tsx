@@ -548,4 +548,135 @@ describe("KA3 · Pedis Auflage am VERHALTEN: die Karte kommt und geht, der Curso
       expect(text, `${JSON.stringify(wert)}: der Rohwert steht auf der Karte`).not.toContain("42");
     }
   });
+
+  // ==============================================================================================
+  // C5 (JOB 1963 · D4) — DER ERZEUGER DER WERTUNG, AM GERENDERTEN ERGEBNIS GEMESSEN.
+  //
+  // §RENDER: nicht „Zeile X setzt das Feld", sondern die Kette laeuft und der Text steht in der
+  // AUSGABE. Diese Faelle fahren deshalb den WIRKLICHEN Erzeuger:
+  //
+  //   Antwort von /api/check-text  ->  w6DublettenAusCheckText (aus der ausgelieferten Datei
+  //   geschnitten und ausgefuehrt)  ->  ka3Normalisieren  ->  ka3Zeichnen  ->  Text der Karte
+  //
+  // Nichts davon wird gestellt ausser der HTTP-Antwort selbst. Der Erzeuger wird nicht
+  // nachgebaut und die Trefferform nicht von Hand gesetzt — sonst pruefte der Fall seine eigene
+  // Annahme statt den Bau.
+  // ==============================================================================================
+
+  type W6Weg = (
+    grund: string,
+    leseText: (grund: string) => unknown,
+    fetchFn: (url: string, init: Record<string, unknown>) => Promise<unknown>,
+    sprache?: string,
+  ) => Promise<{ treffer: { id: string; title: string; deviatesFrom: string | null }[] }>;
+
+  /** Der ausgelieferte Erzeuger — geschnitten und ausgefuehrt, nicht gelesen. */
+  function ausgelieferterW6Weg(): W6Weg {
+    const start = HTML.indexOf("// KW-KLARA-W6-CHECKTEXT-START");
+    const ende = HTML.indexOf("// KW-KLARA-W6-CHECKTEXT-END");
+    expect(start, `${TASKPANE}: der W6-Block ist nicht auffindbar`).toBeGreaterThan(0);
+    expect(ende, `${TASKPANE}: das Ende des W6-Blocks fehlt`).toBeGreaterThan(start);
+    const block = HTML.slice(start, ende);
+    // Die zwei Laengengrenzen stehen ausserhalb der Schnittmarken (sie tragen die Begruendung mit
+    // den Zeilennummern der Route); fuer den Schnitt werden sie hier gestellt.
+    const fabrik = new Function(
+      `var W6_MINDESTZEICHEN = 40; var W6_HOECHSTZEICHEN = 8000;${block} return w6DublettenAusCheckText;`,
+    );
+    return fabrik() as W6Weg;
+  }
+
+  const NUTZERTEXT =
+    "Ventil vor jeder Wartung drucklos schalten und gegen Wiedereinschalten sichern.";
+
+  /** Eine Antwort der Route stellen — mehr wird nicht gestellt. */
+  function routenAntwort(duplicates: unknown[]) {
+    return (_url: string, _init: Record<string, unknown>) =>
+      Promise.resolve({ ok: true, json: () => Promise.resolve({ duplicates, conflicts: [] }) });
+  }
+
+  /**
+   * Die ganze Kette bis zum gerenderten Text. Der Rueckgabewert des ECHTEN Erzeugers wird als
+   * KA2-Attrappe gestellt — genau die Uebergabestelle, die KA3 im Betrieb konsumiert.
+   */
+  async function karteAusRoutenantwort(duplicates: unknown[]): Promise<string> {
+    const ergebnis = await ausgelieferterW6Weg()(
+      "tastenruhe",
+      () => NUTZERTEXT,
+      routenAntwort(duplicates),
+      "de",
+    );
+    await ladeTaskpane();
+    stelleVertrag(ergebnis);
+    cursorFeld().focus();
+    markierungGeaendert();
+    const karte = await warteAufKarte();
+    expect(karte, "die Karte ist nicht erschienen — der Fall waere leer").not.toBeNull();
+    return karte?.textContent ?? "";
+  }
+
+  it("C5-1 · RENDERBELEG: aus einer echten Routenantwort entsteht die sichtbare Wertung", async () => {
+    const text = await karteAusRoutenantwort([
+      {
+        koId: "ko-1",
+        koTitle: "Wartungsplan Halle 2",
+        relation: "teilweise",
+        method: "deterministic",
+      },
+    ]);
+
+    // Gelesen wird die AUSGABE der Karte, nicht der Quelltext.
+    expect(text, "die Wertung steht nicht auf der gezeichneten Karte").toContain(
+      "Deine Formulierung weicht ab von: Wartungsplan Halle 2",
+    );
+    expect(text, "ein roher Schluessel ist sichtbar").not.toMatch(/\bklaraOffer[A-Z]/);
+    expect(text).not.toContain("{anweisung}");
+  });
+
+  it("C5-2 · `identisch` erzeugt KEINE Wertung — der Text IST die Anweisung", async () => {
+    const text = await karteAusRoutenantwort([
+      {
+        koId: "ko-1",
+        koTitle: "Wartungsplan Halle 2",
+        relation: "identisch",
+        method: "deterministic",
+      },
+    ]);
+
+    // Der Treffer steht auf der Karte …
+    expect(text, "der Treffer selbst ist verschwunden").toContain("Wartungsplan Halle 2");
+    // … aber „weicht ab" waere hier eine Falschaussage.
+    expect(text, "aus `identisch` wurde eine Abweichung").not.toContain("weicht ab");
+  });
+
+  it("C5-3 · alle vier benannten Abweichungen erzeugen sie, ein unbekannter Wert nicht", async () => {
+    for (const relation of ["a_enthaelt_b", "b_enthaelt_a", "teilweise", "verwandt"]) {
+      document.body.innerHTML = "";
+      Reflect.deleteProperty(window, "klaraBestandsblick");
+      const text = await karteAusRoutenantwort([
+        { koId: "ko-1", koTitle: "Anweisung A", relation, method: "deterministic" },
+      ]);
+      expect(text, `${relation}: keine Wertung gezeichnet`).toContain(
+        "Deine Formulierung weicht ab von: Anweisung A",
+      );
+    }
+
+    // Fail-closed: ein Wert, den das Vokabular nicht kennt, behauptet nichts.
+    for (const relation of ["unsicher", "verschieden", "", undefined]) {
+      document.body.innerHTML = "";
+      Reflect.deleteProperty(window, "klaraBestandsblick");
+      const text = await karteAusRoutenantwort([
+        { koId: "ko-1", koTitle: "Anweisung A", relation, method: "deterministic" },
+      ]);
+      expect(text, `aus ${JSON.stringify(relation)} wurde eine Wertung`).not.toContain("weicht ab");
+    }
+  });
+
+  it("C5-4 · ohne benennbare Anweisung bleibt der Satz ungesagt statt angefangen", async () => {
+    // Ein Treffer ohne Titel: „weicht ab von: " mit leerem Ende waere ein angefangener Satz.
+    const text = await karteAusRoutenantwort([
+      { koId: "ko-1", koTitle: "   ", relation: "teilweise", method: "deterministic" },
+    ]);
+
+    expect(text, "ein angefangener Satz steht auf der Karte").not.toContain("weicht ab");
+  });
 });
