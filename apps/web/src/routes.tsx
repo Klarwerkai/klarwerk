@@ -43,6 +43,9 @@ const PAGES: Record<string, ComponentType> = {
   aufgaben: MyTasks,
   erfassen: Capture,
   captureFrontDoor: CaptureFrontDoor,
+  // JOB 1972: Seitenauflösung für den bewachten Deep-Link `/erfassen/neu`. Ohne diesen Schlüssel
+  // fiele die berechtigte Rolle auf den `PlaceholderPage`-Zweig (:88) statt auf die Erfassung.
+  captureIntake: KnowledgeIntake,
   fragen: Ask,
   bibliothek: Library,
   extern: ExternalKnowledge,
