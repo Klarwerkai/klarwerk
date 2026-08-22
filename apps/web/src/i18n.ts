@@ -73,7 +73,10 @@ const de = {
   "role.name.controller": "Controller",
   "role.name.admin": "Administrator",
   "action.logout": "Abmelden",
-  "topbar.search": "Wissen, Funktionen oder Anlagen suchen…",
+  // JOB 1119 (D-002): Die globale Suche navigiert ausschließlich nach `/bibliothek?q=…`
+  // (`shell/Topbar.tsx:396-400`) — Funktionen und Anlagen findet sie nicht. Die Zusage nennt jetzt,
+  // wohin sie wirklich führt. Der Weg selbst bleibt unverändert; nur das Versprechen wird ehrlich.
+  "topbar.search": "Wissen in der Bibliothek suchen…",
   "topbar.mobile": "Mobil",
   // mega40 B: Design-Umschalter (zweites, rein optisches Design „Werkbank/Modern").
   "topbar.design.classic": "Design: Klassisch",
@@ -2748,7 +2751,28 @@ const de = {
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Druck/PDF)",
-  "lib.search": "Volltextsuche …",
+  // ==============================================================================================
+  // JOB 1119 (D-002) — DAS SUCHFELD SAGT OHNE TIPPEN, WORIN ES SUCHT.
+  // ==============================================================================================
+  //
+  // Bis hierher trug das Feld nur den Platzhalter „Volltextsuche …", und sein Label war `sr-only`.
+  // „Volltextsuche" ist eine Auskunft über die TECHNIK, nicht über den Inhalt: sie sagt, WIE gesucht
+  // wird, nicht WORIN. Das Label sagt jetzt sichtbar, was das Feld ist; der Platzhalter nennt die
+  // Felder.
+  //
+  // DER SUCHRAUM IST GEMESSEN, NICHT GERATEN. Der Treffer-Vertrag prüft `search_text` (Titel,
+  // Kernaussage, Fließtext, Bildbeschreibungen) ODER Kategorie ODER Schlagwort
+  // (`services/knowledge-object/src/effective-search-document.ts:116-146`; der Postgres-Adapter
+  // bildet dieselbe Regel als `COALESCE(md.tag_text,'') ILIKE …` in der WHERE-Bedingung ab,
+  // `search-projection-repo-pg.ts:565-592`). SCHLAGWÖRTER WERDEN ALSO DURCHSUCHT — der
+  // Katalogvorschlag „Schlagworte durchsucht dieses Feld nicht" stützte sich auf den Kommentar in
+  // `search-projection.ts:614-620`, und der sagt nur, was nicht in `search_text` EINFLIESST.
+  // Gemessen wird der Vertrag in `tests/app/library-search-truth-mounted.test.tsx`, Block E.
+  //
+  // `lib.scope.note` (unten, AUFTRAG-BASIC-u2) bleibt daneben stehen und sagt etwas anderes: WELCHER
+  // BESTAND durchsucht wird. Feld und Bestand sind zwei Fragen; eine ersetzt die andere nicht.
+  "lib.searchLabel": "Bibliothek durchsuchen",
+  "lib.search": "Suche in Titel, Text, Kategorie und Schlagwort …",
   // ==============================================================================================
   // AUFTRAG-BASIC-u2 — DIE SUCHE SAGT, WORIN SIE SUCHT.
   // ==============================================================================================
@@ -2779,8 +2803,12 @@ const de = {
   "lib.answerHint":
     "Lass dir „{{q}}“ quellengebunden beantworten — mit klaren Quell-Links, nicht nur Artikel.",
   "lib.answerButton": "Frage beantworten lassen",
+  // JOB 1119 (D-002): der Nulltreffer nennt jetzt auch die FELDER. Der Nutzer, der nichts findet,
+  // hat genau eine Frage — „wo hat es denn überhaupt gesucht?" —, und der Tipp „anders formulieren"
+  // beantwortete sie nicht. Die Aufzählung ist der gemessene Suchraum (s. `lib.search` oben), nicht
+  // eine Vermutung darüber.
   "lib.emptyQuery":
-    "Keine Treffer für „{{q}}“ im Klarwerk-Wissen, das für dich freigegeben ist. Deine eigenen, noch nicht eingereichten Entwürfe sind hier nicht dabei. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
+    "Keine Treffer für „{{q}}“ im Klarwerk-Wissen, das für dich freigegeben ist. Deine eigenen, noch nicht eingereichten Entwürfe sind hier nicht dabei. Gesucht wurde in Titel, Kernaussage, Text, Bildbeschreibung, Kategorie und Schlagwort. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
   // AUFTRAG-mega59 BLOCK D: der stumme Nullzustand. Die Suche hat Treffer, die aktiven Facetten
   // zeigen keinen davon — bis hierher rendert die Bibliothek dafür eine leere Karte ganz ohne Text
   // (bei aktiver Gruppierung ein leeres div). Der Text nennt den GRUND, nicht nur die Zahl.
@@ -2790,7 +2818,10 @@ const de = {
   "lib.facetEmpty.reset": "Alle Filter zurücksetzen",
   "lib.matchIn": "Treffer in",
   "lib.match.title": "Titel",
-  "lib.match.tag": "Tag",
+  // JOB 1119 (D-002): „Schlagwort", wie die Facette daneben (`lib.facet.tag`). Abzeichen und
+  // Facette bezeichnen DASSELBE Feld; zwei Wörter dafür auf einer Seite sind für den Leser zwei
+  // Dinge. Im englischen Block bleibt „Tag" stehen — dort ist es das richtige Wort.
+  "lib.match.tag": "Schlagwort",
   "lib.match.category": "Kategorie",
   "lib.match.type": "Wissensart",
   "lib.match.text": "Text",
@@ -4790,7 +4821,8 @@ const en: typeof de = {
   "role.name.controller": "Controller",
   "role.name.admin": "Administrator",
   "action.logout": "Sign out",
-  "topbar.search": "Search knowledge, features or assets…",
+  // JOB 1119 (D-002) — see the German entry.
+  "topbar.search": "Search knowledge in the library…",
   "topbar.mobile": "Mobile",
   "topbar.design.classic": "Design: Classic",
   "topbar.design.modern": "Design: Modern",
@@ -7184,7 +7216,9 @@ const en: typeof de = {
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (print/PDF)",
-  "lib.search": "Full-text search …",
+  // JOB 1119 (D-002) — see the German entry for the finding and the measured search space.
+  "lib.searchLabel": "Search the library",
+  "lib.search": "Search title, text, category and tag …",
   // AUFTRAG-BASIC-u2 — see the German entry for the finding.
   "lib.scope.note":
     "This searches the Klarwerk knowledge released to you — not your own drafts that you have not submitted yet.",
@@ -7205,8 +7239,9 @@ const en: typeof de = {
   "lib.answerHint":
     "Get '{{q}}' answered source-bound — with clear source links, not just articles.",
   "lib.answerButton": "Get the question answered",
+  // JOB 1119 (D-002) — see the German entry.
   "lib.emptyQuery":
-    "No matches for '{{q}}' in the Klarwerk knowledge released to you. Your own drafts that you have not submitted yet are not included here. Tip: rephrase, reset the filters, or search a single keyword.",
+    "No matches for '{{q}}' in the Klarwerk knowledge released to you. Your own drafts that you have not submitted yet are not included here. The search covered title, key statement, text, image description, category and tag. Tip: rephrase, reset the filters, or search a single keyword.",
   // AUFTRAG-mega59 BLOCK D — see the German entry for the finding.
   "lib.facetEmpty.title": "There are matches — but none of them fits the active filters.",
   "lib.facetEmpty.hint":
@@ -8956,7 +8991,8 @@ const nl: typeof de = {
   "role.name.controller": "Controller",
   "role.name.admin": "Administrator",
   "action.logout": "Afmelden",
-  "topbar.search": "Zoek naar kennis, functies of bijlagen…",
+  // JOB 1119 (D-002) — zie de Duitse regel.
+  "topbar.search": "Kennis in de bibliotheek zoeken…",
   "topbar.mobile": "Mobiel",
   "topbar.design.classic": "Ontwerp: Klassiek",
   "topbar.design.modern": "Ontwerp: Modern",
@@ -11323,7 +11359,9 @@ const nl: typeof de = {
   "lib.format.markdown": "Tekst (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Print/PDF)",
-  "lib.search": "Zoeken in volledige tekst …",
+  // JOB 1119 (D-002) — zie de Duitse regel voor de bevinding en de gemeten zoekruimte.
+  "lib.searchLabel": "Bibliotheek doorzoeken",
+  "lib.search": "Zoek in titel, tekst, categorie en trefwoord …",
   // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
   "lib.scope.note":
     "Doorzocht wordt de Klarwerk-kennis die voor jou is vrijgegeven — niet je eigen concepten die je nog niet hebt ingediend.",
@@ -11344,8 +11382,9 @@ const nl: typeof de = {
   "lib.answerHint":
     "Laat „{{q}}“ met bronvermelding beantwoorden — met duidelijke bronlinks, niet alleen artikelen.",
   "lib.answerButton": "Vraag laten beantwoorden",
+  // JOB 1119 (D-002) — zie de Duitse regel.
   "lib.emptyQuery":
-    "Geen resultaten voor „{{q}}“ in de Klarwerk-kennis die voor jou is vrijgegeven. Je eigen concepten die je nog niet hebt ingediend horen hier niet bij. Tip: anders formuleren, filters resetten of op één trefwoord zoeken.",
+    "Geen resultaten voor „{{q}}“ in de Klarwerk-kennis die voor jou is vrijgegeven. Je eigen concepten die je nog niet hebt ingediend horen hier niet bij. Er is gezocht in titel, kernuitspraak, tekst, afbeeldingsbeschrijving, categorie en trefwoord. Tip: anders formuleren, filters resetten of op één trefwoord zoeken.",
   // AUFTRAG-mega59 BLOCK D — zie de Duitse regel voor de bevinding.
   "lib.facetEmpty.title": "Er zijn resultaten — maar geen enkele past bij de actieve filters.",
   "lib.facetEmpty.hint":
@@ -11353,7 +11392,8 @@ const nl: typeof de = {
   "lib.facetEmpty.reset": "Alle filters resetten",
   "lib.matchIn": "Resultaat in",
   "lib.match.title": "Titel",
-  "lib.match.tag": "Tag",
+  // JOB 1119 (D-002) — zie de Duitse regel: hetzelfde woord als de facet ernaast.
+  "lib.match.tag": "Trefwoord",
   "lib.match.category": "Categorie",
   "lib.match.type": "Kennissoort",
   "lib.match.text": "Tekst",

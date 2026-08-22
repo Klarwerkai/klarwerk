@@ -656,8 +656,16 @@ export function Library(): JSX.Element {
       </div>
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="min-w-[15rem] flex-1">
-          <label htmlFor="library-search" className="sr-only">
-            {t("lib.search")}
+          {/* JOB 1119 (D-002): das Label war `sr-only` und trug denselben Text wie der Platzhalter.
+              Ein Platzhalter verschwindet beim ersten Zeichen — die Auskunft, worin gesucht wird,
+              verschwand also genau dann, wenn sie gebraucht wurde. Sichtbar getrennt: das Label
+              sagt, WAS das Feld ist, der Platzhalter WELCHE Felder es durchsucht, und der
+              Bestandshinweis darunter (`lib.scope.note`, BASIC-u2) WELCHEN Bestand. */}
+          <label
+            htmlFor="library-search"
+            className="mb-1 block text-[12px] font-semibold text-text"
+          >
+            {t("lib.searchLabel")}
           </label>
           <div className="relative">
             <Search
