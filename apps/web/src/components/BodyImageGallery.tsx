@@ -17,6 +17,27 @@ import { SectionLabel } from "./ui";
 // keinen Weg dorthin. Die Galerie bleibt Leseansicht — der Callback führt zum EINEN bestehenden
 // Formular des Editors (kein zweites Formular, kein zweiter describe-Aufruf). Fehlt er (reine
 // Leseansicht ohne Editierrecht), erscheint kein Knopf.
+// ================================================================================================
+// D44 Teil 2, Weg (a) (JOB 1831 D4) — DER KLICK AUS DEM EDITOR ÖFFNET DIESE GROSSANSICHT.
+// ================================================================================================
+//
+// Entschieden am 21.08. (`ENTSCHEIDUNGEN/JOB-1620.md`): Ein Klick auf ein Bild im Editor zeigt es
+// gross — und zwar HIER, in der vorhandenen, ben-abgenommenen Grossansicht. Kein zweiter Weg, kein
+// Attribut am `<img>`, keine neue Persistenz.
+//
+// DER VERTRAG IST EIN DOM-EREIGNIS, und das hat einen gemessenen Grund: Editor und Galerie sind in
+// `Capture.tsx` (:5416/:5427, :5641/:5669) und `CaptureFrontDoor.tsx` (:888/:903) GESCHWISTER. Sie
+// kennen einander nicht; ihre einzige Verbindung ist der gemeinsame Elternteil. Das Ereignis steigt
+// vom Editor genau bis dorthin auf, und die Galerie holt es an ihrem EIGENEN Elternknoten ab —
+// deshalb trifft ein Klick im ersten Editorpaar nie die Galerie des zweiten.
+export const D44_BILD_EREIGNIS = "kw:d44-bild-oeffnen";
+
+/** Was der Editor meldet. `nonce` folgt `captionFormRequest` (RichTextEditor.tsx:298). */
+export interface D44BildEreignis {
+  readonly imageId: string;
+  readonly nonce: number;
+}
+
 export function BodyImageGallery({
   bodyHtml,
   onEditCaption,
@@ -36,6 +57,15 @@ export function BodyImageGallery({
   const angesagterIndexRef = useRef<number | null>(null);
   // Das Thumbnail, das die Großansicht geöffnet hat — für die Fokus-Rückkehr beim Schließen.
   const triggerRef = useRef<HTMLButtonElement | null>(null);
+  // D44 Teil 2: der eigene Wurzelknoten — an SEINEM Elternteil wird das Editor-Ereignis abgeholt.
+  const wurzelRef = useRef<HTMLDivElement | null>(null);
+  // D44 Teil 2: WOHER die aktuell offene Ansicht kam. Wird bei jedem Öffnen gesetzt und beim
+  // Schliessen zurückgesetzt — eine blosse `triggerRef === null`-Prüfung genügt NICHT: nach einem
+  // früheren Thumbnail-Klick bliebe die alte Referenz stehen, und der Fokus spränge vom Editorbild
+  // zurück in die Galerie (BEN-PRUEFUNG-JOB-1831-D2, Z.10).
+  const herkunftRef = useRef<"thumbnail" | "editor" | null>(null);
+  // D44 Teil 2: das Editorbild, das geöffnet hat — Ziel der Fokusrückkehr.
+  const editorBildRef = useRef<HTMLElement | null>(null);
   const dialogRef = useRef<HTMLDialogElement | null>(null);
   const closeBtnRef = useRef<HTMLButtonElement | null>(null);
   const prevBtnRef = useRef<HTMLButtonElement | null>(null);
@@ -101,6 +131,45 @@ export function BodyImageGallery({
       setOpenIndex(images.length - 1);
     }
   }, [openIndex, images.length]);
+
+  // D44 Teil 2, Weg (a): das Editor-Ereignis am EIGENEN Elternknoten abholen.
+  //
+  // Nicht an `document`: Stehen zwei Editor-Galerie-Paare im Baum (Capture.tsx hat zwei), träfe ein
+  // globaler Zuhörer beide, und ein Klick im ersten Editor öffnete die zweite Galerie. Der
+  // Elternknoten ist die kleinste Fläche, die Editor UND Galerie gemeinsam haben.
+  //
+  // Zusätzlich wird gegen die eigene Bildliste geprüft: Was diese Galerie nicht kennt, öffnet sie
+  // nicht (fail-closed) — eine leere Grossansicht wäre schlimmer als keine.
+  useEffect(() => {
+    const eltern = wurzelRef.current?.parentElement;
+    if (!eltern) {
+      return;
+    }
+    const beiKlick = (e: Event): void => {
+      const detail = (e as CustomEvent<D44BildEreignis>).detail;
+      if (!detail?.imageId) {
+        return;
+      }
+      const idx = images.findIndex((b) => b.id === detail.imageId);
+      if (idx < 0) {
+        return;
+      }
+      // Das auslösende Bild merken und für die Rückkehr fokussierbar machen. `tabindex` überlebt
+      // das Speichern NICHT: jeder Weg ins bodyHtml läuft durch `sanitizeHtml` (RichTextEditor
+      // `emit()`), und `services/structure/src/sanitize.ts:70` erlaubt am `<img>` genau vier
+      // Attribute. Der Sanitizer ist die Zusicherung, nicht dieser Kommentar.
+      const bild = e.target instanceof HTMLElement ? e.target.closest("img") : null;
+      if (bild instanceof HTMLElement) {
+        bild.setAttribute("tabindex", "-1");
+        editorBildRef.current = bild;
+      }
+      triggerRef.current = null; // die alte Thumbnail-Referenz gilt für DIESES Öffnen nicht
+      herkunftRef.current = "editor";
+      setOpenIndex(idx);
+    };
+    eltern.addEventListener(D44_BILD_EREIGNIS, beiKlick);
+    return () => eltern.removeEventListener(D44_BILD_EREIGNIS, beiKlick);
+  }, [images]);
 
   // Pfeiltasten blättern innerhalb des offenen Dialogs (Escape übernimmt der native cancel-Pfad).
   useEffect(() => {
@@ -174,6 +243,20 @@ export function BodyImageGallery({
 
   const onDialogClose = (): void => {
     setOpenIndex(null);
+    // D44 Teil 2: die Rückkehr folgt der HERKUNFT dieses Öffnens, nicht einem Altzustand. Die
+    // Rücksetzung unten ist der Kern — ohne sie wäre `herkunftRef` derselbe Altlastwert wie zuvor
+    // `triggerRef`, nur mit besserem Namen.
+    const woher = herkunftRef.current;
+    herkunftRef.current = null;
+    if (woher === "editor") {
+      const bild = editorBildRef.current;
+      editorBildRef.current = null;
+      bild?.focus();
+      // Das Hilfsattribut wieder abräumen: der Editor-DOM soll aussehen wie vorher. Der Sanitizer
+      // hätte es ohnehin verworfen — sauber ist beides.
+      bild?.removeAttribute("tabindex");
+      return;
+    }
     // Bestehende Fokus-Rückkehr: zurück zum auslösenden Thumbnail.
     triggerRef.current?.focus();
   };
@@ -191,7 +274,7 @@ export function BodyImageGallery({
   const open = shownIndex !== null ? images[shownIndex] : undefined;
 
   return (
-    <div className="mt-3 border-t border-hairline pt-2">
+    <div ref={wurzelRef} className="mt-3 border-t border-hairline pt-2">
       <SectionLabel>{t("ko.gallery")}</SectionLabel>
       {/* JOB 1117: der Ansagebereich für den GESCHLOSSENEN Zustand. Er steht AUSSERHALB des Dialogs
           und ist von Anfang an da — ein Live-Bereich, der erst zusammen mit seinem Text eingefügt
@@ -211,6 +294,8 @@ export function BodyImageGallery({
             className="group overflow-hidden rounded-card border border-hairline bg-page hover:border-ai/50"
             onClick={(e) => {
               triggerRef.current = e.currentTarget;
+              // D44 Teil 2: dieses Öffnen kam vom Thumbnail — die Rückkehr geht dorthin.
+              herkunftRef.current = "thumbnail";
               setOpenIndex(i);
             }}
           >

@@ -56,6 +56,9 @@ import {
 import { AiCostHint } from "./AiCostHint";
 import { AiGeneratedNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
+// D44 Teil 2, Weg (a): nur der Ereignisname und seine Nutzlast — keine Komponente, kein Zyklus
+// (`BodyImageGallery` importiert nichts aus dieser Datei, gemessen).
+import { type D44BildEreignis, D44_BILD_EREIGNIS } from "./BodyImageGallery";
 // AUFTRAG-mega9 Block F: dieselbe Dialog-Vorrichtung wie überall sonst (Fokusfalle, Escape,
 // Rückgabe des Fokus) — kein eigener Dialog für das Bildbeschreibungs-Formular.
 import { Modal } from "./Modal";
@@ -522,6 +525,46 @@ export function RichTextEditor({
     emit();
   };
 
+  // D44 Teil 2, Weg (a): meldet einen Klick auf ein verankertes Bild an die Galerie desselben
+  // Editors. `bubbles: true` ist der Kern — das Ereignis muss den gemeinsamen Elternknoten von
+  // Editor und Galerie erreichen; `composed` bleibt aus, es soll den Baum nicht verlassen.
+  //
+  // `nonce` folgt dem Hausmuster von `captionFormRequest` (siehe :298): Zweimal dasselbe Bild
+  // muss zweimal öffnen. Ein reiner Kennungsvergleich bliebe beim zweiten Klick stumm, weil sich
+  // nichts geändert hätte — der Nutzer klickte, und die Grossansicht bliebe zu.
+  const d44NonceRef = useRef(0);
+  const meldeBildklick = (node: Node | null): void => {
+    const el = ref.current;
+    if (!el || mode !== "edit") {
+      return;
+    }
+    const element = node instanceof Element ? node : (node?.parentElement ?? null);
+    const bild = element?.closest("img");
+    const imageId = bild?.getAttribute("data-image-id");
+    if (!bild || !imageId || !el.contains(bild)) {
+      return;
+    }
+    d44NonceRef.current += 1;
+    const nutzlast: D44BildEreignis = { imageId, nonce: d44NonceRef.current };
+    // JOB 1890 D13 — DAS EREIGNIS GEHT VOM BILD AUS, NICHT VON DER FLAECHE.
+    //
+    // Hier stand `el.dispatchEvent(...)`. Damit war `event.target` IMMER das contenteditable
+    // <div>, und der Empfaenger (`BodyImageGallery.tsx:161`) sucht sein Bild ueber
+    // `e.target.closest("img")` — `closest` steigt AUFWAERTS, ein <div> ist kein <img> und hat
+    // keines ueber sich. Das Bild wurde deshalb nie gefunden, `setAttribute("tabindex", "-1")`
+    // (:163) lief nie, und die Fokusrueckkehr beim Schliessen (:252-256) hatte kein Ziel.
+    //
+    // `bubbles: true` bleibt und traegt das Ereignis vom Bild ueber diese Flaeche bis zum
+    // gemeinsamen Elternknoten von Editor und Galerie — dort haengt der Zuhoerer. Die
+    // Bildidentitaet aendert sich nicht: sie kam und kommt aus `detail.imageId`.
+    bild.dispatchEvent(
+      new CustomEvent<D44BildEreignis>(D44_BILD_EREIGNIS, {
+        detail: nutzlast,
+        bubbles: true,
+      }),
+    );
+  };
+
   const selectImage = (img: HTMLImageElement | null): void => {
     if (!img || !ref.current?.contains(img)) {
       setSelectedImage(null);
@@ -557,6 +600,20 @@ export function RichTextEditor({
       openCaptionFormForCaption(cap);
       return;
     }
+    // D44 Teil 2, Weg (a) (ENTSCHEIDUNGEN/JOB-1620.md): Ein Klick auf ein verankertes Bild meldet
+    // dessen Kennung an die Galerie DIESES Editors — sie zeigt es gross. Der Editor öffnet nichts
+    // selbst; er ruft, was gebaut und abgenommen ist (`BodyImageGallery`), statt einen zweiten
+    // Vergrösserungsweg anzulegen.
+    //
+    // WARUM EIN DOM-EREIGNIS UND KEINE PROP: Editor und Galerie sind in `Capture.tsx` und
+    // `CaptureFrontDoor.tsx` GESCHWISTER — sie kennen einander nicht, ihre einzige Verbindung ist
+    // der gemeinsame Elternteil. Das Ereignis steigt genau bis dorthin auf und wird von der
+    // Galerie an ihrem eigenen Elternknoten abgeholt: kein globaler Kanal, keine zweite Galerie
+    // im Baum, und keine Änderung an den Seiten.
+    //
+    // NUR MIT `data-image-id`: Nur verankerte Bilder stehen in der Galerie (`bodyImages.ts`).
+    // Ein Bild ohne Kennung meldet nichts — fail-closed statt einer leeren Grossansicht.
+    meldeBildklick(node);
     updateImageSelectionFromNode(node);
   };
 
