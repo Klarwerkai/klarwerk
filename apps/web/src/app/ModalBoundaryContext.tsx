@@ -84,6 +84,18 @@ export function useModalBoundary(): ModalBoundaryValue {
 }
 
 /**
+ * JOB 1900 (Chef-Entscheidung 22.08., Variante (b)): für Flächen, die die Grenze NUTZEN, ohne
+ * `aria-modal` zu behaupten — das gemeinsame `Modal`. Es ist dieselbe eine Mechanik wie oben, nur
+ * ohne den fail-closed Wurf: `Modal` wird auch ausserhalb der Shell gerendert (Anmeldeweg,
+ * Absturzfall, gemountete Tests ohne Provider), und dort ist „keine Grenze vorhanden" eine
+ * gueltige Antwort, kein Defekt. Der Wurf oben bleibt unveraendert für alles, was Modalität
+ * BEHAUPTET — es wird nichts gelockert, nur ein zweiter, ehrlicher Zugang danebengestellt.
+ */
+export function useModalBoundaryOptional(): ModalBoundaryValue | null {
+  return useContext(ModalBoundaryCtx);
+}
+
+/**
  * Für UMSTEHENDE, die nur wissen müssen, ob gerade eine modale Fläche offen ist (z. B. die
  * Command Palette, deren globales Tastenkürzel sonst durch die Grenze hindurchgriffe). Sie
  * behaupten keine Modalität, deshalb ist „keine Grenze vorhanden" hier eine gültige Antwort.
