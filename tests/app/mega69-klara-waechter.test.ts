@@ -648,7 +648,29 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // installiertes Add-in gilt wie bei G24/W6: bis der Office-Cache nachzieht, fehlt der Block
     // schlicht, das ist der Zustand von gestern und kein neues Risiko.
     // Der alte Wert (82a91f30…) beschreibt den Stand OHNE KA2 und waere ab jetzt blind.
-    const PIN = "41f30bf317a2fa6caf03d470bcd3421876e58218787fe7348be714fe0b42fdf5";
+    //
+    // PIN-NACHFUEHRUNG (PRO6, JOB 1963 · D2, 22.08.) — BEWUSST GEPRUEFT, NICHT ABGESCHRIEBEN.
+    // Neu sind DREI Stellen, alle im KA3-Block: der Wortlaut `klaraOfferDeviation` in de/en/nl
+    // (C3), das optionale vierte Feld `deviatesFrom` in `ka3Normalisieren` (C4) und der Zweig in
+    // `ka3Zeichnen`, der die Wertung zeichnet — WENN es sie gibt. Die drei Fragen, einzeln:
+    //   · KEIN zusaetzlicher Schreibweg, KEIN neuer Ausgang, KEINE neue Abrufstelle. Es wird
+    //     ausschliesslich GEZEICHNET, was ein Anbieter ohnehin geschickt hat; `BEKANNTE_ABRUFZIELE`
+    //     bleibt unveraendert und die beiden Schreibaufrufe des Fensters bleiben bei null. Der Text
+    //     geht als `textContent` in die Seite, nie als Markup — er wird angezeigt, nicht ausgefuehrt.
+    //   · OHNE WERTUNG AENDERT SICH NICHTS. Der Zweig haengt an `if (treffer.deviatesFrom)`; fehlt
+    //     das Feld, entsteht kein Element, kein leeres Feld, keine Platzhalterzeile — die Karte
+    //     sieht aus wie gestern. `ka3-fokusverhalten.test.ts` haelt genau das als eigenen Fall fest
+    //     (C4-1) und faellt, sobald der Zweig unbedingt wird.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER — in drei Richtungen. Das Feld ist OPTIONAL: KA2 bleibt
+    //     ein gueltiger Anbieter und schickt weiterhin genau drei Felder (`ka2-vertrag-
+    //     bestandsblick.test.ts`, unangetastet). Titel, Status und Weg bleiben, wo sie waren; die
+    //     Wertung kommt ZUSAETZLICH (C4-2). Und die S4-Moduszeile (`deviation`/`deviationKey`,
+    //     Anbieter/Modell/Adminvorgabe) ist NICHT beruehrt — deshalb heisst das neue Feld
+    //     `deviatesFrom` und nicht `deviation`.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
+    //     fehlt die Wertungszeile schlicht — der Zustand von gestern, kein neues Risiko.
+    // Der alte Wert (41f30bf3…) beschreibt den Stand VOR C3/C4 und waere ab jetzt blind.
+    const PIN = "db555534272e9ba388d6e8e4d2aa5fea0ba70c416e2cb33af77738d3cd622b90";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

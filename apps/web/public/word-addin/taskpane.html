@@ -5122,16 +5122,21 @@
         klaraOfferLabel: "Klaras Angebote",
         klaraOfferLead: "Dazu gibt es schon:",
         klaraOfferOpen: "Ansehen",
+        // C3 (JOB 1963 D2): der Wortlaut steht im Register und ist deshalb NICHT frei gewaehlt.
+        // Die Fuellstelle `{anweisung}` ist die validierte Anweisung, von der abgewichen wird.
+        klaraOfferDeviation: "Deine Formulierung weicht ab von: {anweisung}",
       },
       en: {
         klaraOfferLabel: "Klara's suggestions",
         klaraOfferLead: "There is already something on this:",
         klaraOfferOpen: "View",
+        klaraOfferDeviation: "Your wording deviates from: {anweisung}",
       },
       nl: {
         klaraOfferLabel: "Klara's suggesties",
         klaraOfferLead: "Hierover is al iets:",
         klaraOfferOpen: "Bekijken",
+        klaraOfferDeviation: "Je formulering wijkt af van: {anweisung}",
       },
     };
     for (var ka3Sprache in KA3_TEXTE) {
@@ -5256,7 +5261,28 @@
       return karte;
     }
 
-    /** Was KA2 geliefert hat — gelesen, nie erfunden. Ein Eintrag ohne Id ist kein Treffer. */
+    /**
+     * Was KA2 geliefert hat — gelesen, nie erfunden. Ein Eintrag ohne Id ist kein Treffer.
+     *
+     * C4 (JOB 1963 · D2) — DAS VIERTE FELD. Die Karte kannte bisher Titel, Status und Weg; eine
+     * WERTUNG hatte in ihr keinen Platz. `deviatesFrom` traegt sie: die validierte Anweisung, von
+     * der die Formulierung des Anwenders abweicht.
+     *
+     * ES IST EINE ERWEITERUNG, KEINE AENDERUNG DES VERTRAGS. Das Feld ist OPTIONAL — wer es nicht
+     * schickt, ist weiterhin ein gueltiger Anbieter. `ka2Bestandsblick` schickt es nicht und muss
+     * es nicht: `ka2-vertrag-bestandsblick.test.ts` haelt fuer KA2 „genau die drei Felder" fest,
+     * und diese Zusage bleibt wahr und unangetastet. Der Kommentar am Vertragsort im KA2-Block
+     * wurde BEWUSST NICHT umgeschrieben: er gehoert dort einer anderen Bahn, und das Feld ist
+     * optional, also stimmt er weiter.
+     *
+     * WARUM `deviatesFrom` UND NICHT `deviation`: `deviation`/`deviationKey` sind im selben
+     * Fenster schon vergeben — die S4-Moduszeile (Anbieter/Modell/Abweichung von der
+     * Adminvorgabe). Das ist EINE ANDERE SACHE MIT DEMSELBEN WORT; sie bleibt unberuehrt, und
+     * ihren Namen zweitzuvergeben waere die Verwechslung von morgen.
+     *
+     * FAIL-CLOSED WIE DER STATUS: alles, was kein nichtleerer Text ist, wird `null`. Eine
+     * Wertung, die niemand geschickt hat, wird nicht erfunden.
+     */
     function ka3Normalisieren(ergebnis) {
       var roh = ergebnis && Array.isArray(ergebnis.treffer) ? ergebnis.treffer : [];
       var raus = [];
@@ -5269,6 +5295,11 @@
             ? e.title
             : e.id,
           status: typeof e.status === "string" ? e.status : null,
+          deviatesFrom:
+            typeof e.deviatesFrom === "string" &&
+            e.deviatesFrom.replace(/^\s+|\s+$/g, "").length > 0
+              ? e.deviatesFrom
+              : null,
         });
       }
       return raus;
@@ -5314,6 +5345,18 @@
         weg.rel = "noopener noreferrer";
         weg.textContent = t("klaraOfferOpen");
         zeile.appendChild(weg);
+        // C3 (JOB 1963 D2) — DIE WERTUNG, und nur wenn es sie gibt. FEHLT SIE, SIEHT DIE KARTE
+        // AUS WIE HEUTE: kein leeres Feld, keine Platzhalterzeile, kein Gedankenstrich ins Nichts.
+        // Der Wortlaut ist der des Registers; eingesetzt wird die validierte Anweisung. Sie steht
+        // ZUSAETZLICH unter dem Weg, nie an seiner Stelle — Titel, Status und Weg bleiben, wo sie
+        // waren. Reiner Text (`textContent`), kein Markup: der Text kommt vom Server und wird
+        // angezeigt, nicht ausgefuehrt.
+        if (treffer.deviatesFrom) {
+          var wertung = document.createElement("div");
+          wertung.className = "muted";
+          wertung.textContent = t("klaraOfferDeviation", { anweisung: treffer.deviatesFrom });
+          zeile.appendChild(wertung);
+        }
         liste.appendChild(zeile);
       }
       karte.appendChild(liste);

@@ -407,4 +407,145 @@ describe("KA3 · Pedis Auflage am VERHALTEN: die Karte kommt und geht, der Curso
     // Den Beobachter wieder abbauen, damit er nicht in den naechsten Fall leckt.
     Reflect.deleteProperty(window, "klaraBestandsblick");
   });
+
+  // ==============================================================================================
+  // C3 und C4 (JOB 1963 · D2) — DIE WERTUNG WIRD SICHTBAR.
+  //
+  // WARUM DIESE FAELLE HIER STEHEN und nicht in einer neuen Datei: sie brauchen genau das, was
+  // dieser Pruefstand schon aufbaut — das GEMOUNTETE Fenster, den echten Anlass
+  // (`DocumentSelectionChanged`) und den echten Weg `ka3Planen -> ka3Ausfuehren -> ka3Zeichnen`.
+  // Ein Quelltext-Pin wuerde nur belegen, dass etwas dasteht; hier zeichnet der Renderer wirklich.
+  // (Und: der Inventar-Waechter zaehlt Dateien im Baum — eine neue Datei waere ein zweiter Preis
+  // fuer denselben Beleg.)
+  //
+  // DIE FUELLSTELLE IST HEUTE LEER: kein Anbieter im Produkt schickt `deviatesFrom`. Der Renderer
+  // ist gebaut und wird gerufen; was fehlt, ist die Wertung selbst. Die Attrappe stellt sie —
+  // genau wie sie den Vertrag stellt, den KA2 im Produkt haelt.
+  // ==============================================================================================
+
+  it("C3-1 · die Wertung erscheint im Wortlaut des Registers, mit der validierten Anweisung darin", async () => {
+    await ladeTaskpane();
+    stelleVertrag({
+      treffer: [
+        {
+          id: "ko-1",
+          title: "Wartungsplan Halle 2",
+          deviatesFrom: "Ventil vor jeder Wartung drucklos schalten.",
+        },
+      ],
+    });
+
+    cursorFeld().focus();
+    markierungGeaendert();
+    const karte = await warteAufKarte();
+
+    expect(karte, "die Karte ist nicht erschienen — der Fall waere leer").not.toBeNull();
+    const text = karte?.textContent ?? "";
+    // Der Wortlaut steht im Register und ist deshalb hier woertlich erwartet, nicht sinngemaess.
+    expect(text, "der Wortlaut des Registers steht nicht auf der Karte").toContain(
+      "Deine Formulierung weicht ab von: Ventil vor jeder Wartung drucklos schalten.",
+    );
+    // Und kein roher Schluessel — die Fuellstelle wurde wirklich ersetzt.
+    expect(text).not.toContain("{anweisung}");
+    expect(text).not.toMatch(/\bklaraOffer[A-Z]/);
+  });
+
+  it("C3-2 · sie folgt der Sprache — de, en und nl, ohne rohen Schluessel", async () => {
+    await ladeTaskpane();
+    stelleVertrag({
+      treffer: [{ id: "ko-1", title: "Wartungsplan Halle 2", deviatesFrom: "Anweisung A" }],
+    });
+    cursorFeld().focus();
+    markierungGeaendert();
+    expect(await warteAufKarte(), "Vorbedingung: die Karte war da").not.toBeNull();
+
+    const erwartet: Record<string, string> = {
+      de: "Deine Formulierung weicht ab von: Anweisung A",
+      en: "Your wording deviates from: Anweisung A",
+      nl: "Je formulering wijkt af van: Anweisung A",
+    };
+    for (const sprache of ["en", "nl", "de"]) {
+      (document.getElementById(`lang-${sprache}`) as HTMLElement).click();
+      for (let i = 0; i < 8; i += 1) {
+        await Promise.resolve();
+      }
+      const text = document.getElementById("ka3-karten")?.textContent ?? "";
+      expect(text, `${sprache}: die Wertung steht nicht in dieser Sprache da`).toContain(
+        erwartet[sprache],
+      );
+      expect(text, `${sprache}: ein roher Schluessel ist sichtbar`).not.toMatch(
+        /\bklaraOffer[A-Z]/,
+      );
+    }
+  });
+
+  it("C4-1 · OHNE Wertung sieht die Karte aus wie heute — kein leeres Feld, keine Platzhalterzeile", async () => {
+    // Der teuerste der vier Faelle: er haelt fest, dass der Bau NICHTS an der heutigen Karte
+    // aendert. Verglichen wird der vollstaendige Text, nicht ein Ausschnitt.
+    await ladeTaskpane();
+    stelleVertrag({ treffer: [{ id: "ko-1", title: "Wartungsplan Halle 2" }] });
+    cursorFeld().focus();
+    markierungGeaendert();
+    const karte = await warteAufKarte();
+
+    expect(karte).not.toBeNull();
+    const text = karte?.textContent ?? "";
+    expect(text, "ohne Wertung steht trotzdem eine Wertungszeile da").not.toContain("weicht ab");
+    expect(text, "ein roher Schluessel ist sichtbar").not.toMatch(/\bklaraOffer[A-Z]/);
+    // Und struktrell: die Zeile traegt keinen zusaetzlichen Block.
+    const zeile = karte?.querySelector("li");
+    expect(zeile?.querySelector("div"), "ohne Wertung ist ein leeres Feld entstanden").toBeNull();
+  });
+
+  it("C4-2 · die Wertung kommt ZUSAETZLICH — Titel, Status und Weg bleiben, wo sie waren", async () => {
+    await ladeTaskpane();
+    stelleVertrag({
+      treffer: [
+        {
+          id: "ko-1",
+          title: "Wartungsplan Halle 2",
+          // Das Vokabular ist das VORHANDENE der Quellen-Ampel (`ASK_STATUS_KEYS`,
+          // taskpane.html:3759-3764) — `validiert`, nicht `validated`.
+          status: "validiert",
+          deviatesFrom: "Anweisung A",
+        },
+      ],
+    });
+    cursorFeld().focus();
+    markierungGeaendert();
+    const karte = await warteAufKarte();
+
+    const zeile = karte?.querySelector("li");
+    expect(zeile, "die Trefferzeile fehlt").not.toBeNull();
+    // Der Titel steht weiterhin da …
+    expect(zeile?.textContent ?? "").toContain("Wartungsplan Halle 2");
+    // … die Statuspille auch …
+    expect(zeile?.querySelector(".src-badge"), "die Statuspille ist verschwunden").not.toBeNull();
+    // … und der Weg zum Objekt ebenso, mit unveraendertem Ziel und Schutz.
+    const weg = zeile?.querySelector("a");
+    expect(weg, "der Weg zum Objekt ist verschwunden").not.toBeNull();
+    expect(weg?.getAttribute("rel")).toBe("noopener noreferrer");
+    // Die Wertung steht darunter, nicht an ihrer Stelle.
+    expect(zeile?.textContent ?? "").toContain("Deine Formulierung weicht ab von: Anweisung A");
+  });
+
+  it("C4-3 · FAIL-CLOSED: was kein nichtleerer Text ist, wird keine Wertung", async () => {
+    // Leerzeichen, leerer String, Zahl, Objekt — keiner davon darf eine Zeile erzeugen. Eine
+    // Wertung, die niemand geschickt hat, waere eine Behauptung ueber den Bestand.
+    for (const wert of ["   ", "", 42, { text: "x" }, null]) {
+      document.body.innerHTML = "";
+      Reflect.deleteProperty(window, "klaraBestandsblick");
+      await ladeTaskpane();
+      stelleVertrag({
+        treffer: [{ id: "ko-1", title: "Wartungsplan Halle 2", deviatesFrom: wert }],
+      });
+      cursorFeld().focus();
+      markierungGeaendert();
+      const karte = await warteAufKarte();
+
+      const text = karte?.textContent ?? "";
+      expect(text, `aus ${JSON.stringify(wert)} wurde eine Wertung`).not.toContain("weicht ab");
+      expect(text, `${JSON.stringify(wert)}: der Rohwert steht auf der Karte`).not.toContain("42");
+    }
+  });
 });
