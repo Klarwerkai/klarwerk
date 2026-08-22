@@ -75,6 +75,13 @@ CREATE TABLE IF NOT EXISTS klara_session_consents (
   -- provider_class trägt nur die KLASSE (external/internal/deterministic), nicht den Anbieter
   -- selbst; ohne diese Spalte war die von §1 verlangte Bindung unvollständig.
   provider_reference text,
+  -- JOB 1943 · KA5: die Add-in-Instanz, FUER DIE die Zustimmung erteilt wurde.
+  -- Die Sitzung trägt sie seit je (\`klara_sessions.addin_instance_id\`), die Zustimmung bis hierher
+  -- nicht. Dieselbe Zustimmung deckte damit auch eine FREMDE Instanz derselben Sitzung — gedeckt
+  -- war die Instanz nur transitiv über \`laden\`, nie durch die Zustimmung selbst.
+  -- NULLABLE wie \`provider_reference\` und aus demselben Grund: eine Bestandszeile hat diese
+  -- Bindung nie getragen, und ein erfundener Vorgabewert wäre genau die falsche Auskunft.
+  addin_instance_id text,
   policy_version text NOT NULL,
   configuration_version text NOT NULL,
   granted_at text NOT NULL,
@@ -94,6 +101,13 @@ ALTER TABLE klara_session_consents
 -- NICHT gedeckt (KW-S4-23 §4), statt eine Zustimmung zu unterstellen, die niemand gegeben hat.
 ALTER TABLE klara_session_consents
   ADD COLUMN IF NOT EXISTS provider_reference text;
+-- JOB 1943 · KA5: additiv und wiederholbar wie provider_reference, und BEWUSST NULLABLE aus
+-- demselben Grund. \`CREATE TABLE IF NOT EXISTS\` ist an einer bestehenden Tabelle ein No-op; ohne
+-- diese Zeile bekäme eine Bestandsinstallation die Spalte nie. NULL heisst „Bindung unvollständig"
+-- — die Deckungsprüfung wertet das fail-closed als NICHT gedeckt, statt eine Zustimmung für eine
+-- Instanz zu unterstellen, die zum Zeitpunkt der Erteilung niemand festgehalten hat.
+ALTER TABLE klara_session_consents
+  ADD COLUMN IF NOT EXISTS addin_instance_id text;
 -- W1 S4 R2 (BEN ROT-3): HÖCHSTENS EIN WIRKSAMER CONSENT JE SITZUNG — datenbankseitig erzwungen.
 -- Der partielle Unique-Index greift nur auf 'granted'; entwertete Zeilen bleiben als Historie
 -- liegen. Bis R2 erlaubte der Vertrag zwei gleichzeitig erteilte Zustimmungen derselben Sitzung,
@@ -156,6 +170,14 @@ export interface KlaraConsent {
    * UNVOLLSTAENDIG, nie als erfuellt.
    */
   readonly providerReference: string | null;
+  /**
+   * JOB 1943 · KA5: die Add-in-Instanz, FUER DIE diese Zustimmung erteilt wurde.
+   *
+   * Ohne dieses Feld deckte eine Zustimmung jede Instanz derselben Sitzung mit — die Instanz war
+   * nur transitiv über `laden` geschützt, nicht durch die Zustimmung. `null` nur bei Altbestand
+   * ohne dieses Feld — und gilt der Deckungsprüfung als UNVOLLSTÄNDIG, nie als erfüllt.
+   */
+  readonly addinInstanceId: string | null;
   readonly policyVersion: string;
   readonly configurationVersion: string;
   readonly grantedAt: string;
@@ -509,6 +531,7 @@ interface ConsentRow {
   provider_binding_id: string;
   model_reference: string;
   provider_reference: string | null;
+  addin_instance_id: string | null;
   policy_version: string;
   configuration_version: string;
   granted_at: string;
@@ -552,6 +575,8 @@ function ausConsentZeile(row: ConsentRow): KlaraConsent {
     providerBindingId: row.provider_binding_id,
     modelReference: row.model_reference,
     providerReference: row.provider_reference ?? null,
+    // Altbestand ohne Spaltenwert bleibt ausdrücklich `null` — siehe Feldkommentar.
+    addinInstanceId: row.addin_instance_id ?? null,
     policyVersion: row.policy_version,
     configurationVersion: row.configuration_version,
     grantedAt: row.granted_at,
@@ -735,8 +760,8 @@ export class PgKlaraSessionRepo implements KlaraSessionRepo {
           `INSERT INTO klara_session_consents(consent_id,session_id,tenant_id,actor_id,document_context_id,
              consent_scope,allowed_payload_classes,provider_class,provider_binding_id,model_reference,
              policy_version,configuration_version,granted_at,expires_at,revoked_at,status,resolution_id,
-             provider_reference)
-           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`,
+             provider_reference,addin_instance_id)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19)`,
           [
             c.consentId,
             c.sessionId,
@@ -756,6 +781,7 @@ export class PgKlaraSessionRepo implements KlaraSessionRepo {
             c.status,
             c.resolutionId,
             c.providerReference,
+            c.addinInstanceId,
           ],
         );
       },

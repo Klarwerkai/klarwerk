@@ -1298,6 +1298,9 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
           providerBindingId: "b-veraltet",
           modelReference: "m-veraltet",
           providerReference: "p-veraltet",
+          // JOB 1943 · KA5: gehört zum „vollständigen Datensatz", den dieser Fall braucht — er
+          // soll am CAS scheitern, nicht an einer unvollständigen Bindung.
+          addinInstanceId: "i-veraltet",
           policyVersion: stand.policyVersion,
           configurationVersion: stand.configurationVersion,
           grantedAt: "2099-01-01T00:00:00.000Z",
@@ -1468,6 +1471,9 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
             providerBindingId: "b",
             modelReference: "m",
             providerReference: "p",
+            // JOB 1943 · KA5: siehe oben — der Fall prueft den veralteten Schreiber, nicht die
+            // Instanzbindung.
+            addinInstanceId: "i",
             policyVersion: alt.policyVersion,
             configurationVersion: alt.configurationVersion,
             grantedAt: "2026-08-02T12:00:00.000Z",

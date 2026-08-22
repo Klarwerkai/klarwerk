@@ -651,6 +651,9 @@ describe("W1 S4 R4 · KW-S4-21 §8 · Nebenlaeufigkeit gegen die In-Memory-Ablag
       providerBindingId: "b",
       modelReference: "m",
       providerReference: "p",
+      // JOB 1943 · KA5: aus der Sitzung abgeleitet wie `sessionId` und `documentContextId` —
+      // dieser Fall prueft den CAS-Konflikt, nicht die Instanzbindung.
+      addinInstanceId: start.addinInstanceId,
       policyVersion: alt.policyVersion,
       configurationVersion: alt.configurationVersion,
       grantedAt: "2026-08-02T09:00:00.000Z",
@@ -1248,6 +1251,9 @@ describe("W1 S4 R6B · Consent-Bindung an die verwendete Auflösung (KW-S4-23)",
         providerBindingId: "b",
         modelReference: "m",
         providerReference: "p",
+        // JOB 1943 · KA5: aus der Sitzung abgeleitet — dieser Fall prueft den veralteten
+        // Schreiber, nicht die Instanzbindung.
+        addinInstanceId: sicht.addinInstanceId,
         policyVersion: alt.policyVersion,
         configurationVersion: alt.configurationVersion,
         grantedAt: "2026-08-02T09:00:00.000Z",

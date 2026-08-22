@@ -236,6 +236,16 @@ export function pruefeConsentDeckung(
       abweichungen: ["providerReference"],
     };
   }
+  // JOB 1943 · KA5: dieselbe Lage wie eine Zeile höher, für die Add-in-Instanz. Altbestand ohne
+  // dieses Feld hat die Instanz nie gebunden; still zu decken hiesse, eine Zustimmung für eine
+  // Instanz zu unterstellen, die niemand festgehalten hat.
+  if (consent.addinInstanceId === null) {
+    return {
+      gedeckt: false,
+      grund: "bindung_unvollstaendig",
+      abweichungen: ["addinInstanceId"],
+    };
+  }
   if (jetzt >= Date.parse(consent.expiresAt)) {
     return { gedeckt: false, grund: "abgelaufen", abweichungen: ["expiresAt"] };
   }
@@ -250,6 +260,10 @@ export function pruefeConsentDeckung(
     ["providerClass", consent.providerClass, resolution.effectiveMode],
     ["documentContextId", consent.documentContextId, session.documentContextId],
     ["sessionId", consent.sessionId, session.sessionId],
+    // JOB 1943 · KA5 — DIE ZEHNTE BINDUNG. Bis hierher deckte eine Zustimmung jede Add-in-Instanz
+    // derselben Sitzung mit: die Instanz wurde ausschliesslich in `laden` (`:919`) verglichen, also
+    // nur solange, wie dieser Weg davorsteht. Die Zustimmung selbst trägt jetzt, wofür sie gilt.
+    ["addinInstanceId", consent.addinInstanceId, session.addinInstanceId],
     // BEN-35 Befund 1: der Sollwert kommt jetzt aus der TATSÄCHLICH VERWENDETEN Auflösung. Bis
     // hierher stand rechts eine hart codierte Klasse — die Prüfung verglich den Consent also mit
     // sich selbst und nicht mit dem, was gesendet würde.
@@ -784,6 +798,10 @@ export class KlaraSessionService {
       modelReference: resolution.model,
       // W1 S4 R6B (KW-S4-23 §1): der Anbieter selbst, nicht nur seine Klasse.
       providerReference: resolution.provider,
+      // JOB 1943 · KA5: die Instanz, FUER DIE zugestimmt wird — aus der GEBUNDENEN Sitzung, nicht
+      // aus der Bindung des Aufrufs. `laden` hat beide soeben abgeglichen (`:919`); die gebundene
+      // Sitzung ist die Quelle, die auch alle anderen Kontextfelder hier speisen.
+      addinInstanceId: gebunden.addinInstanceId,
       policyVersion: resolution.policyVersion,
       configurationVersion: resolution.configurationVersion,
       grantedAt: new Date(jetzt).toISOString(),
