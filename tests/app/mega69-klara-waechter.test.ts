@@ -638,7 +638,17 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // von einem anderen Startpin aus. Deshalb passte WEDER der Pin aus 1610 (2c3a56b0…) NOCH der
     // aus 1621 (870b08d6…) — beide beschreiben je nur eine der beiden Aenderungen. Der Wert unten
     // ist der gemessene Hash der zusammengefuehrten Datei, die beide Blocks traegt.
-    const PIN = "82a91f3095fc54e55ee640f4a44f438f45274179e933cc81787d5b8e06d722bc";
+    // PIN-NACHFUEHRUNG (PRO3, JOB 1571 · D5, 21.08. 19:05) — BEWUSST GEPRUEFT, NICHT ABGESCHRIEBEN:
+    // Neu in der Datei ist GENAU EIN Block, `KW-KA2-BESTAND-START/END` (141 Zeilen), und darin die
+    // unbedingte Zuweisung `window.klaraBestandsblick = ka2Bestandsblick;` (Regel A, Chef 21.08.
+    // 15:00). AUSLIEFERUNGSFOLGEN, einzeln geprueft: KEIN neuer Abrufweg — der Block benutzt die
+    // in `performAsk` laengst vorhandene `fetch`-Stelle und eroeffnet deshalb kein neues
+    // Egress-Ziel (`BEKANNTE_ABRUFZIELE` unveraendert); KEIN Schreibweg ins Dokument; NICHTS wird
+    // von sich aus sichtbar — KA3 entscheidet weiterhin allein, ob eine Karte steht. Fuer ein
+    // installiertes Add-in gilt wie bei G24/W6: bis der Office-Cache nachzieht, fehlt der Block
+    // schlicht, das ist der Zustand von gestern und kein neues Risiko.
+    // Der alte Wert (82a91f30…) beschreibt den Stand OHNE KA2 und waere ab jetzt blind.
+    const PIN = "41f30bf317a2fa6caf03d470bcd3421876e58218787fe7348be714fe0b42fdf5";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

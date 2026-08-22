@@ -208,8 +208,77 @@ function absage(status: number): Response {
   } as unknown as Response;
 }
 
+// ================================================================================================
+// JOB 1571 · D5 (KA2) — DIE FIXTURE UNTERHALB DES VOM PANEL BESESSENEN VERTRAGS.
+// ================================================================================================
+//
+// WARUM ES SIE GIBT. Seit Regel A (`ENTSCHEIDUNGEN/JOB-1571-KA2-EIGENTUEMERREGEL.md`) besitzt das
+// Panel den Namen `window.klaraBestandsblick` UNBEDINGT. Ein Testdouble auf diesem Namen ist
+// damit ausgeschlossen — vor dem Laden wird es ueberschrieben, nach dem Laden ist der
+// Oeffnen-Anlass schon gelaufen (`ka3Ausfuehren("oeffnen")` steht synchron am Ende desselben
+// Skripts). Das war der Grund, warum D3 fuenf Faelle nicht gruen bekam.
+//
+// BENs Auflage zu D3 nennt den Ausweg: „Bevorzugter Beleg ist eine Fixture UNTERHALB des vom
+// Panel besessenen Vertrags." Der echte `ka2Bestandsblick` haengt an `fetch` — `performAsk`
+// (`POST /api/ask`) und `resolveAskSources` (`GET /api/kos/<id>`). Regel A besitzt `fetch` NICHT.
+// Ein Double dort darf also vor dem Laden stehen und ueberlebt die Zuweisung; das Wettrennen
+// entsteht gar nicht erst, und der Hostfall bleibt unangetastet.
+//
+// GEMESSEN WIRD DAMIT DER ECHTE VERTRAG, nicht sein Ersatz. Die Faelle unten sind unveraendert
+// geblieben: sie sprechen weiter mit `ka2` — nur liegt dieses Objekt jetzt eine Ebene tiefer.
+interface Ka3Lage {
+  /** Wie oft der Bestandsblick wirklich losgelaufen ist — gezaehlt an `POST /api/ask`. */
+  aufrufe: string[];
+  /** Was er liefern soll. `"fehler"` laesst den Abruf scheitern (der echte Vertrag faengt ihn ab). */
+  treffer: Array<{ id: string; title: string; status?: string }> | "fehler";
+  /** Offene Versprechen, damit ein Fall einen LAUFENDEN Abruf stellen kann. */
+  offen: Array<(wert: unknown) => void>;
+  /** true = die Antwort wird nicht sofort erfuellt, sondern in `offen` geparkt. */
+  haengen: boolean;
+}
+
+/** Auf Modulebene, weil `bedienen` hier steht; gesetzt von `ka2Einbauen()`, geleert in afterEach. */
+let ka2Fixture: Ka3Lage | null = null;
+
+/** Die Antwort auf `POST /api/ask`, in der Form, die `performAsk` liest (`body.result`). */
+function ka2AskAntwort(): Response {
+  const f = ka2Fixture;
+  if (!f || f.treffer === "fehler") {
+    return absage(503);
+  }
+  // `performAsk` meldet `kind: "answered"` nur bei `answered === true`, nicht leerem `answer` UND
+  // mindestens einer Quell-Id (taskpane.html:1075-1078). Alle drei stehen hier bewusst — eine
+  // Fixture, die eine davon vergisst, laesst den Vertrag still leer zurueckkommen.
+  return antwort({
+    result: {
+      answered: true,
+      answer: "Bestandsblick",
+      sources: f.treffer.map((t) => t.id),
+    },
+  });
+}
+
+/** Die Aufloesung einer Quelle zu einem Wissensobjekt (`resolveAskSources`). */
+function ka2KoAntwort(id: string): Response {
+  const f = ka2Fixture;
+  if (!f || f.treffer === "fehler") {
+    return absage(503);
+  }
+  const t = f.treffer.find((x) => x.id === id);
+  return t ? antwort({ id: t.id, title: t.title, status: t.status ?? "offen" }) : absage(404);
+}
+
 /** Der Router: er beantwortet exakt die Pfade, die das Aufgabenfenster wirklich ruft. */
 function bedienen(url: string, methode: string): Response {
+  // JOB 1571 D5: der Weg des echten KA2-Vertrags. Nur aktiv, wenn ein Fall die Fixture gestellt
+  // hat — ohne sie bleibt das Verhalten aller uebrigen Faelle unveraendert.
+  if (ka2Fixture && url === "/api/ask" && methode === "POST") {
+    ka2Fixture.aufrufe.push("ask");
+    return ka2AskAntwort();
+  }
+  if (ka2Fixture && url.startsWith("/api/kos/")) {
+    return ka2KoAntwort(decodeURIComponent(url.slice("/api/kos/".length)));
+  }
   if (url === "/api/auth/me") {
     return stand.angemeldet
       ? antwort({ id: "u1", name: "Pruefer", email: "p@example.invalid" })
@@ -412,6 +481,14 @@ beforeEach(() => {
       body: typeof init?.body === "string" ? JSON.parse(init.body) : undefined,
       keepalive: init?.keepalive === true,
     });
+    // JOB 1571 D5: ein LAUFENDER Bestandsblick. Der Fall „waehrend ein Abruf laeuft, startet kein
+    // zweiter" braucht eine Antwort, die nicht ankommt — geparkt statt aufgeloest.
+    if (ka2Fixture?.haengen && url === "/api/ask" && methode === "POST") {
+      ka2Fixture.aufrufe.push("ask");
+      return new Promise((aufloesen) => {
+        ka2Fixture?.offen.push(aufloesen as (wert: unknown) => void);
+      });
+    }
     return Promise.resolve(bedienen(url, methode));
   });
 });
@@ -1271,35 +1348,41 @@ describe("JOB 1151 KA3: die Karte kommt auf Anlass — und nimmt nie den Cursor"
     return Number(treffer?.[1] ?? 30_000);
   }
 
-  interface Ka3Lage {
-    /** Wie oft der Bestandsblick gerufen wurde — die einzige Groesse, um die es beim Debounce geht. */
-    aufrufe: string[];
-    /** Was er liefern soll. `"fehler"` laesst das Versprechen scheitern. */
-    treffer: Array<{ id: string; title: string; status?: string }> | "fehler";
-    /** Offene Versprechen, damit ein Fall einen LAUFENDEN Abruf stellen kann. */
-    offen: Array<(wert: unknown) => void>;
-    /** true = das Versprechen wird nicht sofort erfuellt, sondern in `offen` geparkt. */
-    haengen: boolean;
-  }
-
   let ka2: Ka3Lage;
+
+  /**
+   * JOB 1571 D5 — DIE ZWEITE VORBEDINGUNG, die eine Ebene tiefer sichtbar wird.
+   *
+   * Der echte `ka2Bestandsblick` fragt nur, wenn es etwas zu fragen gibt: `ka2Frage()` liest
+   * `ka1Terms`, und die fuellt `ka1Aktualisieren()` ueber `readWholeDocument` — das wiederum
+   * verlangt ein `window.Word` mit `Word.run`. Der Pruefstand stellte Word bisher erst NACH dem
+   * Laden (`wordSpioneEinbauen`). Ohne Dokumenttext liefe der Vertrag in seinen eigenen
+   * Leerlaufzweig und gaebe `{treffer: []}` zurueck, OHNE je einen Abruf zu stellen — die
+   * Zaehlungen unten waeren dann alle still null und die Faelle gruen, ohne etwas zu belegen.
+   *
+   * Dieser Stub ist deshalb Teil der Fixture und steht VOR dem Laden. Er bildet genau die drei
+   * Zugriffe nach, die `readWholeDocument` tut (`body.load`, `body.getHtml`, `context.sync`).
+   */
+  function wordMitDokumenttext(): void {
+    (window as unknown as { Word?: unknown }).Word = {
+      run: (rueckruf: (kontext: unknown) => Promise<unknown>) => {
+        const body = {
+          text: "Homeoffice Anweisung Reisekosten Dienstreise Genehmigung Fahrtkosten",
+          load: () => undefined,
+          getHtml: () => ({ value: "<p>Homeoffice Anweisung Reisekosten</p>" }),
+        };
+        const kontext = { document: { body }, sync: () => Promise.resolve() };
+        return Promise.resolve(rueckruf(kontext));
+      },
+      InsertLocation: { replace: "replace" },
+    };
+  }
 
   function ka2Einbauen(): void {
     ka2 = { aufrufe: [], treffer: [], offen: [], haengen: false };
-    (
-      window as unknown as { klaraBestandsblick?: (grund: string) => Promise<unknown> }
-    ).klaraBestandsblick = (grund: string) => {
-      ka2.aufrufe.push(grund);
-      if (ka2.haengen) {
-        return new Promise((aufloesen) => {
-          ka2.offen.push(aufloesen as (wert: unknown) => void);
-        });
-      }
-      if (ka2.treffer === "fehler") {
-        return Promise.reject(new Error("KA2 nicht erreichbar"));
-      }
-      return Promise.resolve({ treffer: ka2.treffer });
-    };
+    // Die Fixture liegt unterhalb des Vertrags (s. Kopf der Datei) — nicht auf seinem Namen.
+    ka2Fixture = ka2;
+    wordMitDokumenttext();
   }
 
   /** Die Karte, falls sie gerade steht. `null` heisst: keine Karte im Fenster. */
@@ -1354,6 +1437,9 @@ describe("JOB 1151 KA3: die Karte kommt auf Anlass — und nimmt nie den Cursor"
 
   afterEach(() => {
     (window as unknown as { Word?: unknown }).Word = undefined;
+    // JOB 1571 D5: die Fixture darf nicht in den naechsten Fall lecken — dieselbe Sorgfalt, die
+    // das globale afterEach fuer `window.klaraBestandsblick` schon immer geuebt hat.
+    ka2Fixture = null;
   });
 
   // ---- Anlass 1: das Oeffnen -------------------------------------------------------------------

@@ -264,14 +264,36 @@ describe("KA3 · Pedis Auflage am VERHALTEN: die Karte kommt und geht, der Curso
     const feld = cursorFeld();
     feld.focus();
 
-    // KEIN AUTOSTART: ohne Markierungsereignis darf nie eine Karte entstehen — auch nicht, wenn
-    // die Zeit vergeht und der Vertrag laengst steht.
-    await warteAufKarte();
-    expect(document.getElementById("ka3-karten"), "die Karte startet von selbst").toBeNull();
+    // KEIN AUTOSTART — praezisiert in JOB 1571 D13 (Chefentscheidung 22.08. 05:15).
+    //
+    // Bis KA2 gebaut war, lief der zugesicherte Oeffnungsanlass (`taskpane.html`,
+    // `ka3Ausfuehren("oeffnen")`) ins Leere: `ka3Vertrag()` fand nichts, also entstand keine
+    // Karte, und „nach dem Laden ist nichts da" war zufaellig dasselbe wie „kein Autostart".
+    // Mit Regel A steht der Vertrag beim Laden IMMER — der Anlass feuert erfolgreich, und die
+    // Karte entsteht, bevor dieser Fall seine erste Zeile ausfuehrt. Ein `toBeNull()` haette
+    // damit den zugesicherten Anlass aus `JOB 1151` gemessen, nicht den Autostart.
+    //
+    // Gemessen wird deshalb ab HIER, nach dem Anlass: ohne ein weiteres Ereignis darf NICHTS
+    // NEUES entstehen. Das ist die Zusage, die dieser Fall meint — und sie ist schaerfer als
+    // vorher, weil sie zwei Groessen festhaelt statt einer.
+    const nachAnlass = document.getElementById("ka3-karten");
+    const aufrufeNachAnlass = vertragsAufrufe;
 
-    // Erst das Ereignis loest aus.
+    await warteAufKarte();
+    expect(
+      document.getElementById("ka3-karten"),
+      "ohne Ereignis ist eine NEUE Karte entstanden — Autostart",
+    ).toBe(nachAnlass);
+    expect(vertragsAufrufe, "ohne Ereignis wurde der Vertrag erneut gerufen — Autostart").toBe(
+      aufrufeNachAnlass,
+    );
+
+    // Erst das Ereignis loest aus — und dann genau einmal.
     markierungGeaendert();
     expect(await warteAufKarte(), "Vorbedingung: jetzt ist die Karte da").not.toBeNull();
+    expect(vertragsAufrufe, "das Ereignis hat den Vertrag nicht gerufen").toBe(
+      aufrufeNachAnlass + 1,
+    );
 
     expect(popup.open, "window.open gerufen").not.toHaveBeenCalled();
     expect(popup.alert, "alert gerufen").not.toHaveBeenCalled();
@@ -285,33 +307,104 @@ describe("KA3 · Pedis Auflage am VERHALTEN: die Karte kommt und geht, der Curso
     stelleVertrag({ treffer: [{ id: "ko-1", titel: "Wartungsplan Halle 2" }] });
     cursorFeld().focus();
 
+    // Praezisiert in JOB 1571 D13: Gemessen wird ab NACH dem zugesicherten Oeffnungsanlass.
+    // Die Frist zeigt sich am VERTRAGSAUFRUF, nicht am blossen Fehlen der Karte — seit Regel A
+    // steht nach dem Laden ohnehin eine, und ein `toBeNull()` haette den Anlass gemessen statt
+    // die Ruhefrist. Der Aufrufzaehler ist die schaerfere Groesse: er faellt auch dann auf,
+    // wenn die Karte zufaellig gleich aussieht.
+    const aufrufeNachAnlass = vertragsAufrufe;
+
     markierungGeaendert();
     // Kurz VOR Ablauf: noch nichts. Ohne diesen Fall waere „Debounce" nur ein Wort.
     await vi.advanceTimersByTimeAsync(TASTENRUHE_MS - 100);
-    expect(document.getElementById("ka3-karten"), "die Karte kam zu frueh").toBeNull();
+    expect(vertragsAufrufe, "die Frist lief zu frueh ab").toBe(aufrufeNachAnlass);
 
     // Neue Aktivitaet kurz vor Ablauf: die Frist beginnt von vorn — sonst flackerte die Karte
     // waehrend des Tippens, und genau das verbietet Pedis Auflage.
     markierungGeaendert();
     await vi.advanceTimersByTimeAsync(200);
-    expect(
-      document.getElementById("ka3-karten"),
-      "die Frist wurde nicht zurueckgesetzt",
-    ).toBeNull();
+    expect(vertragsAufrufe, "die Frist wurde nicht zurueckgesetzt").toBe(aufrufeNachAnlass);
 
-    // Und nach der vollen Ruhe erscheint sie.
+    // Und nach der vollen Ruhe erscheint sie — genau einmal, nicht zweimal.
     expect(await warteAufKarte(), "nach der Ruhe fehlt die Karte").not.toBeNull();
+    expect(vertragsAufrufe, "die Ruhe hat den Vertrag nicht genau einmal gerufen").toBe(
+      aufrufeNachAnlass + 1,
+    );
   });
 
   it("OHNE Vertrag bleibt es still — fail-closed, und auch dann kein Fokuswechsel", async () => {
     await ladeTaskpane();
-    // Kein `stelleVertrag(...)`: `ka3Vertrag()` liefert null.
+
+    // Praezisiert in JOB 1571 D13 (Auflage 2) — ein ECHTER vertragsfreier Zustand.
+    //
+    // „Kein `stelleVertrag(...)`" genuegt seit Regel A nicht mehr: Das Panel setzt
+    // `window.klaraBestandsblick` beim Laden unbedingt, `ka3Vertrag()` findet also IMMER etwas.
+    // Den Ort VOR dem Laden zu raeumen wirkt ebenfalls nicht — Regel A ueberschreibt es; in
+    // JOB 1571 D9 dreimal gemessen. Der einzige Zeitpunkt, an dem der Vertragsort wirklich leer
+    // ist, liegt NACH dem Laden. Genau hier wird er geraeumt, und ab hier prueft der Fall, was
+    // er behauptet: KA3 schweigt ohne Anbieter.
+    // JOB 1571 D14: Der Vertragsort wird geraeumt UND beobachtet.
+    //
+    // In D13 mass dieser Fall nur das ERGEBNIS: entsteht eine Karte? Ohne Anbieter entsteht
+    // keine — also blieb er gruen, obwohl der Autostart-VERSUCH stattgefunden hatte. Genau das
+    // hat KA2 sichtbar gemacht: Der Oeffnungsanlass lief jahrelang ins Leere, weil
+    // `ka3Vertrag()` nichts fand, und war die ganze Zeit da. **Ein Versuch, der ins Leere
+    // laeuft, ist trotzdem ein Versuch.**
+    //
+    // Deshalb ein Zaehler am Vertragsort selbst: `ka3Ausfuehren` liest ihn als ERSTES
+    // (`taskpane.html`, `var vertrag = ka3Vertrag();`) — noch VOR der Anbieterpruefung. Jeder
+    // Lesezugriff ist damit ein Ausfuehrungsversuch, unabhaengig davon, ob ein Anbieter da ist
+    // und ob eine Karte entsteht. Der Wert bleibt `undefined`: der Zustand ist weiterhin
+    // vertragsfrei, die fail-closed-Zusage unveraendert.
+    let hinterlegt: unknown;
+    let versuche = 0;
+    Object.defineProperty(window, "klaraBestandsblick", {
+      configurable: true,
+      get() {
+        versuche += 1;
+        return hinterlegt;
+      },
+      set(wert: unknown) {
+        hinterlegt = wert;
+      },
+    });
+    expect(
+      (window as unknown as { klaraBestandsblick?: unknown }).klaraBestandsblick,
+      "Vorbedingung: der Vertragsort ist wirklich leer",
+    ).toBeUndefined();
+    versuche = 0;
+
+    const nachAnlass = document.getElementById("ka3-karten");
+    // NICHT nur die Elementidentitaet festhalten, sondern den INHALT: `ka3KarteElement()`
+    // verwendet einen vorhandenen Kasten wieder (`taskpane.html`, „wird beim ersten Bedarf
+    // erzeugt"), also bliebe `toBe(nachAnlass)` auch dann wahr, wenn KA3 die Karte neu
+    // beschriebe. In D13 gemessen: mit einem erfundenen Ersatzanbieter blieb der Fall gruen,
+    // solange nur die Identitaet geprueft wurde — der Inhalt entlarvt ihn.
+    const inhaltNachAnlass = nachAnlass?.textContent ?? null;
+    const aufrufeNachAnlass = vertragsAufrufe;
+
     const feld = cursorFeld();
     feld.focus();
     markierungGeaendert();
-    const karte = await warteAufKarte();
+    await warteAufKarte();
 
-    expect(karte, "ohne Vertrag darf keine Karte entstehen").toBeNull();
+    // DER KERN: GENAU EIN Ausfuehrungsversuch — der des Markierungsereignisses. Jeder weitere
+    // waere ein Autostart, auch wenn er mangels Anbieter folgenlos bleibt.
+    expect(versuche, "es gab mehr Ausfuehrungsversuche als das eine Ereignis — Autostart").toBe(1);
+
+    // Fail-closed: kein Aufruf, kein neuer Kasten, kein neuer Inhalt — und der Cursor bleibt.
+    expect(vertragsAufrufe, "ohne Vertrag wurde trotzdem gerufen").toBe(aufrufeNachAnlass);
+    expect(
+      document.getElementById("ka3-karten"),
+      "ohne Vertrag ist eine neue Karte entstanden",
+    ).toBe(nachAnlass);
+    expect(
+      document.getElementById("ka3-karten")?.textContent ?? null,
+      "ohne Vertrag wurde die Karte neu beschrieben — fail-open",
+    ).toBe(inhaltNachAnlass);
     expect(document.activeElement).toBe(feld);
+
+    // Den Beobachter wieder abbauen, damit er nicht in den naechsten Fall leckt.
+    Reflect.deleteProperty(window, "klaraBestandsblick");
   });
 });

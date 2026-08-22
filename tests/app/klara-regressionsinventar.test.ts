@@ -137,9 +137,14 @@ const INVENTAR: readonly string[] = [
   // /health mit Version und Deploy-Commit gehört sachlich zum Versionsschritt.
   "tests/app/health-version-commit.test.ts",
   "tests/app/k1-word-addin-origin-panel.test.ts",
-  // JOB 1720 D1 (KA3): der erste Vertrag ueberhaupt fuer die Angebotskarten. Er laedt das
-  // ausgelieferte Aufgabenfenster und misst Pedis Auflage am Verhalten — Inhaltsachse `taskpane`,
-  // deshalb verlangt K2 diesen Eintrag.
+  // KA2 (JOB 1571 · D5): neu im Baum und von der Erhebung gefunden. Der Vertragswaechter gehoert
+  // sachlich in die Klara-Regression — er haelt Regel A fest (das Panel besitzt
+  // `window.klaraBestandsblick` unbedingt), und KA3 sowie W6 setzen auf genau diese Zusage auf.
+  // K2 hat ihn gemeldet, das Inventar hat ihn nicht stillschweigend aufgenommen.
+  "tests/app/ka2-vertrag-bestandsblick.test.ts",
+  // JOB 1720 D1 (KA3): der erste Vertrag fuer die Angebotskarten. Er laedt das ausgelieferte
+  // Aufgabenfenster und misst Pedis Auflage am VERHALTEN — Inhaltsachse `taskpane`, deshalb
+  // verlangt K2 diesen Eintrag. Nachgefuehrt in JOB 1571 D9, nachdem K2 ihn gemeldet hat.
   "tests/app/ka3-fokusverhalten.test.tsx",
   "tests/app/klara-ai-header.test.ts",
   "tests/app/klara-ai-session-consent.test.ts",
@@ -175,7 +180,7 @@ const INVENTAR: readonly string[] = [
   "tests/app/w1-klara-lifecycle-taskpane.test.tsx",
   "tests/app/w1-klara-vertrauenskopf.test.ts",
   // W5 (JOB 1591 D2): der Pruefstand zu „vorhanden, aber ungeprueft" — gemeldet, nie behauptet.
-  // K2 hat ihn gemeldet, statt ihn still aufzunehmen — genau dafuer ist der Fall gebaut.
+  // K2 hat ihn gemeldet, statt ihn still aufzunehmen; nachgefuehrt in JOB 1571 D9.
   "tests/app/w5-ungeprueft-gemeldet.test.ts",
   // W6 (JOB 1621): neu im Baum und von der Erhebung ueber die Achse `taskpane` gefunden. Der
   // Waechter des Dublettenwegs gehoert sachlich in die Klara-Regression — er haelt fest, dass der

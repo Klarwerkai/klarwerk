@@ -4933,6 +4933,148 @@
     }
     // KW-KA1-TERMS-END
 
+    // KW-KA2-BESTAND-START
+    // ============================================================================================
+    // JOB 1571 · D1 · KA2 — DER BESTANDSBLICK. „Gibt es dazu schon etwas?"
+    // ============================================================================================
+    //
+    // DER VERTRAG, woertlich aus dem Auftrag (Chef, 21.08. 00:47):
+    //
+    //     window.klaraBestandsblick(grund)  ->  Promise<{treffer:[{id,title,status}]}>
+    //
+    // KA3 ist seit JOB 1151 gebaut und wartet auf GENAU diesen Namen und GENAU diese Form
+    // (`ka3Vertrag`, `ka3Normalisieren` — Zeilen unter `KW-KA3-KARTEN-START`). Bis heute erzeugte
+    // ihn niemand im Baum; KA3 lief deshalb fail-closed ins Leere. Dieser Block ist die fehlende
+    // Haelfte der Naht — nicht eine neue Faehigkeit, sondern der Anschluss zweier gebauter.
+    //
+    // WAS DIESER BLOCK TUT: er nimmt die KA1-Begriffe des offenen Dokuments, stellt damit EINE
+    // Frage ueber den BESTEHENDEN Weg `performAsk` -> `POST /api/ask` und reicht die aufgeloesten
+    // Quellen als Treffer weiter. Das ist woertlich die Abnahme aus `OFFEN.md` (KA2): „Die
+    // KA1-Begriffe fragen den validierten Bestand ueber die bestehende Frage-/Suchmechanik ab".
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT — und das ist die Zusage, nicht eine Nebenbemerkung:
+    //   · KEIN neues Abrufziel. Er ruft `performAsk` und `resolveAskSources`, die beiden bereits
+    //     vorhandenen Abrufstellen. Die Menge der `fetch(...)`-Ziele bleibt unveraendert
+    //     (`BEKANNTE_ABRUFZIELE` in `tests/app/mega69-klara-merkmale.test.ts`).
+    //   · KEINE zweite Suche, KEINE eigene Tokenisierung, KEINE Dublettenbewertung. Die
+    //     Dubletten-Kette (`services/app/src/routes/check-text-routes.ts`, JOB 989/686/631) wird
+    //     nicht angefasst — `OFFEN.md` sagt das bei KA2 zweimal.
+    //   · KEIN zweiter Office-Schnappschuss. Die Begriffe werden GELESEN, wo KA1 sie haelt
+    //     (`ka1Terms`), nicht ein zweites Mal aus dem Dokument geholt.
+    //   · KEINE eigene Anzeige. Die Trefferanzeige mit Status ist KA3s Karte; ein zweites
+    //     Anzeigefeld waere der zweite Weg neben einem bestehenden (`ENTSCHEIDUNGEN/JOB-646.md`).
+    //   · KEIN Timer, kein Takt, kein Autostart. WANN nachgesehen wird, entscheidet allein KA3.
+    //
+    // WARUM OHNE BINDUNGSKOEPFE — die eine Entwurfsentscheidung, die Begruendung braucht:
+    // `performAsk` schickt immer `mode: "retrieval-only"`. Das ist eine BITTE um die Enge, nicht
+    // ihre Garantie: liegt fuer diese Sitzung UND dieses Dokument eine KA4-Einwilligung vor, hebt
+    // der Server die Zwangsflags auf und antwortet ueber den vollen Weg — mit Modellaufruf
+    // (`services/app/src/routes/ask-routes.ts`, Zweig `request.body.mode === "retrieval-only"`).
+    // Der Server findet diese Einwilligung ausschliesslich ueber die drei Bindungs-Kopfzeilen.
+    // KA2 schickt sie deshalb NICHT: dieser Blick laeuft UNGEFRAGT und WIEDERHOLT (Oeffnen,
+    // Tastenruhe). Was der Anwender fuer seine eigene Frage erlaubt hat, hat er nicht fuer einen
+    // Hintergrundvorgang erlaubt, der die Begriffe seines ganzen Dokuments traegt. Ohne die
+    // Koepfe faellt die Route zwingend in `validatedOnly` + `retrievalOnly` — der
+    // deterministische Pfad `answerRetrievalOnly` (`services/reasoner/src/service.ts:1119`),
+    // kein Modell- und kein Embedder-Aufruf erreichbar. Damit ist „kein Modellaufruf" aus §4 des
+    // Auftrags nicht beabsichtigt, sondern strukturell erzwungen. Das ist STRENGER als der
+    // Bestandsweg, nie lockerer; weggenommen wird keine Zusicherung.
+    //
+    // `grund` wird entgegengenommen und bewusst NICHT ausgewertet: der Bestand haengt davon ab,
+    // WORUEBER geschrieben wird, nicht davon, WARUM gerade nachgesehen wird. Der Parameter steht
+    // im Vertrag und wird deshalb gefuehrt, statt eine Form zu liefern, die KA3 nicht erwartet.
+    var KA2_MAX_BEGRIFFE = 12;
+    var KA2_MAX_TREFFER = 5;
+
+    /**
+     * Die Frage — aus dem gehaltenen Begriffsbild, nie aus dem Dokument selbst. Ist KA1 noch nicht
+     * fertig (der Ganzes-Dokument-Weg ist asynchron) oder gibt es kein offenes Dokument, ist die
+     * Frage leer und es wird GAR NICHT gefragt: ein Abruf ohne Begriffe waere ein Abruf ins Blaue.
+     */
+    function ka2Frage() {
+      if (!ka1Verfuegbar || !Array.isArray(ka1Terms) || ka1Terms.length === 0) { return ""; }
+      return ka1Terms.slice(0, KA2_MAX_BEGRIFFE).join(" ");
+    }
+
+    /** Aufgeloeste Quellen -> Treffer. Ein Eintrag ohne Id ist kein Treffer; nichts wird erfunden. */
+    function ka2Treffer(aufgeloest) {
+      var raus = [];
+      for (var i = 0; i < aufgeloest.length; i += 1) {
+        var q = aufgeloest[i];
+        if (!q || typeof q.id !== "string" || q.id.length === 0) { continue; }
+        raus.push({
+          id: q.id,
+          // Ohne ladbaren Titel steht ehrlich die Id da — dieselbe Regel wie in der Quellenliste.
+          title: typeof q.title === "string" && q.title.length > 0 ? q.title : q.id,
+          // Das Statusvokabular ist das VORHANDENE der Quellen-Ampel (`ASK_STATUS_KEYS`), damit
+          // KA3s Karte dieselbe Pille zeichnet wie die Quellenliste darunter.
+          status: typeof q.status === "string" ? q.status : null,
+        });
+      }
+      return raus;
+    }
+
+    /**
+     * Der Vertrag selbst. Er loest IMMER auf — nie zurueckgewiesen: ein Fehlschlag ist ein leerer
+     * Bestand, keine Ausnahme, die KA3 auffangen muesste. Jeder Zweig ausser einer belegten
+     * Antwort mit mindestens einer Quelle liefert `{ treffer: [] }`.
+     */
+    function ka2Bestandsblick(grund) {
+      var frage = ka2Frage();
+      if (frage.length === 0) { return Promise.resolve({ treffer: [] }); }
+      // Der eingebaute Abruf, an das Fenster gebunden. BEWUSST KEIN eigener Wrapper der Form
+      // `function (url, init) { return fetch(url, init); }`: der waere eine ELFTE Abrufstelle in
+      // einer Datei, deren Abrufstellen gezaehlt und bewacht werden (`BEKANNTE_ABRUFZIELE`,
+      // `tests/app/mega69-klara-merkmale.test.ts`). Dieser Block eroeffnet keine neue Abrufstelle
+      // — er benutzt die, die in `performAsk` laengst steht. Fehlt der Abruf ganz, wird nicht
+      // gefragt statt zu werfen.
+      if (typeof fetch !== "function") { return Promise.resolve({ treffer: [] }); }
+      return performAsk(
+        frage,
+        askLocale(lang),
+        fetch.bind(window),
+        WORD_ADDIN_ASK_TIMEOUT_MS,
+        // Siehe oben: KEINE Bindungskoepfe. Das erzwingt den deterministischen Pfad.
+        null
+      )
+        .then(function (ergebnis) {
+          if (!ergebnis || ergebnis.kind !== "answered" ||
+              !Array.isArray(ergebnis.sources) || ergebnis.sources.length === 0) {
+            return { treffer: [] };
+          }
+          return resolveAskSources(ergebnis.sources.slice(0, KA2_MAX_TREFFER))
+            .then(function (aufgeloest) { return { treffer: ka2Treffer(aufgeloest) }; });
+        })
+        .catch(function () { return { treffer: [] }; });
+    }
+
+    // ============================================================================================
+    // JOB 1571 · D3 — REGEL A: DAS PANEL BESITZT DEN NAMEN. UNBEDINGT.
+    // ============================================================================================
+    //
+    // Hier stand eine BEDINGTE Zuweisung: gestellt wurde nur, wenn niemand den Vertrag schon
+    // hielt. Die Begruendung war ehrlich und stand auch so da — der einzige andere Setzer war der
+    // KA3-Pruefstand, der sein Testdouble VOR dem Laden stellt.
+    //
+    // GENAU DAS WAR DER FEHLER, und der Chef hat ihn am 21.08. um 15:00 entschieden
+    // (`00_CONTROL/ENTSCHEIDUNGEN/JOB-1571-KA2-EIGENTUEMERREGEL.md`):
+    //
+    //   „Unbedingte Zuweisung. Der Vertrag gilt nach dem Laden IMMER, ohne Bedingung, ohne
+    //    Vorpruefung einer fremden Funktion."
+    //   „Ein Vertrag, der unter Umstaenden nicht gilt, ist kein Vertrag."
+    //
+    // Und der Satz, der die Bauform traegt:
+    //
+    //   „Eine Produktregel darf nicht aus einer Testharnisch-Not entstehen. Wenn der Pruefstand
+    //    der Grund ist, aendert man den Pruefstand."
+    //
+    // Der Preis ist bekannt und begrenzt: die acht Stellen in
+    // `tests/app/w1-klara-lifecycle-taskpane.test.tsx`, die ihr Double bisher VOR dem Laden
+    // setzten, setzen es jetzt DANACH. Sie sind in derselben Lease und mit diesem Durchgang
+    // umgestellt.
+    window.klaraBestandsblick = ka2Bestandsblick;
+    // KW-KA2-BESTAND-END
+
     // KW-KA3-KARTEN-START
     // ============================================================================================
     // JOB 1151 · KA3 — ANGEBOTSKARTEN STATT UNTERBRECHUNG.
