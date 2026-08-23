@@ -236,6 +236,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
 
   // --- KO (ko-routes.ts) ---
   "GET /api/kos": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // JOB 2009 D2 (H3): der Leser des Wissensnetz-Lesemodells (ko-routes.ts). Die Route selbst
+  // fuehrt KEIN Zeilenpraedikat — sie darf keines fuehren, der Einstieg nimmt keines entgegen
+  // (`h3-consumer-typvertrag.test.ts` C3). Gefiltert wird im Modul mit der zentralen Policy, die
+  // `build-app.ts` ueber `policyNahtSchliessen` hereinreicht; das Urteil dazu steht im
+  // Leseweg-Register (`mega74-lesewege-sammler.test.ts`, DIENST_FILTERT).
+  "GET /api/wissensnetz/luecken": { protection: "ko.read" },
   // Die Torwache heisst hier `sichtbaresKoOder404`; ihr RUMPF ruft `darfSehen` (ko-routes.ts:484).
   // Es steht das gemessene Prädikat, nicht der Name der Torwache — s. Kopfkommentar zu `zeilenrecht`.
   "GET /api/kos/:id": { protection: "ko.read", zeilenrecht: ["darfSehen"] },
@@ -410,8 +416,23 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Lifecycle / Learning paths (lifecycle-routes.ts) ---
   "POST /api/lifecycle/couple": { protection: "ko.create" },
   "POST /api/lifecycle/asset-changed": { protection: "ko.validate" },
-  "GET /api/lifecycle/pending": { protection: "ko.read" },
-  "GET /api/lifecycle/couplings/:koId": { protection: "ko.read" },
+  // AUFTRAG-JOB2020 (G7b): die Liste faellliger Kennungen faehrt seit heute ein Zeilenrecht —
+  // `sichtbareEintraege` ueber die Kennungen aus `pendingRevalidation()` (`lifecycle-routes.ts:98`).
+  // Davor gingen die Kennungen vertraulicher Objekte an jeden `ko.read`-Inhaber, obwohl
+  // `GET /api/kos` dieselben Objekte aus der Liste faellen laesst. Gemessenes Praedikat, nicht Torwache.
+  "GET /api/lifecycle/pending": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
+  // AUFTRAG-JOB2017 (G7): dieser Weg faehrt seit D1 ein Zeilenrecht — `sichtbareEintraege` gegen
+  // die angefragte Kennung, davor gab er die Kopplungen JEDES Objekts heraus
+  // (`lifecycle-routes.ts:47`). Der Eintrag ist die Pflicht aus JOB 1331 D1: eine Route mit
+  // Zeilenpraedikat, die hier nur ihr Routenrecht zeigt, ist von einer ungeschuetzten nicht zu
+  // unterscheiden. Er nennt das GEMESSENE Praedikat, nicht die Torwache.
+  "GET /api/lifecycle/couplings/:koId": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareEintraege"],
+  },
   "POST /api/learning-paths": { protection: "ko.create" },
   "GET /api/learning-paths/:role": { protection: "ko.read" },
   "POST /api/learning-paths/:pathId/complete": { protection: "ko.read" },

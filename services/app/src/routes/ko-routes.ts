@@ -32,6 +32,8 @@ import type { ObjectStore } from "../../../object-store";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 import type { ValidationService, Verdict } from "../../../validation";
+// JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
+import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
 import { type Guards, type SessionUser, sendError } from "../http";
@@ -447,6 +449,56 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   }
 
   return async (app) => {
+    // ============================================================================================
+    // JOB 2009 · D2 — H3 BEKOMMT SEINEN LESER. Datei und Zeile dieses Aufrufs sind der Beleg.
+    // ============================================================================================
+    //
+    // DER BEFUND, der hierher gefuehrt hat (JOB 2009 D1): `wissensnetzLuecken` — der einzige
+    // oeffentliche Weg des Wissensnetz-Moduls — wurde im Produkt von NIEMANDEM gerufen. Alle
+    // Treffer lagen in Tests. Das ist der KA2-Praezedenzfall: zwei sauber gebaute Haelften, die
+    // sich nicht beruehren.
+    //
+    // WAS SIE ZEIGT: die Zahlen ueber den Bestand, so wie DIESER Betrachter ihn sieht — wie viele
+    // Objekte, wie viele ohne Thema, wie viele Beitragende je Thema. „Erheben ist nicht Anzeigen"
+    // (Auftrag §3): die Erhebung bleibt unveraendert, sie bekommt hier nur einen Leser.
+    // `/api/graph` zeigt WAS zusammenhaengt; diese Route zeigt, WIE VIEL davon da ist.
+    //
+    // WARUM HIER UND NICHT IN `library-routes`: Dort liegt der `KoService` nur im OPTIONALEN
+    // `detection`-Objekt. Ein Aufrufer, der an einer optionalen Abhaengigkeit haengt, waere ein
+    // bedingter Aufrufer — und ein bedingter Aufrufer ist genau die halbe Sache, die H3
+    // vierzehn Durchgaenge gekostet hat. Hier ist `ko` Pflichtabhaengigkeit (`KoRoutesDeps`).
+    //
+    // DIE SICHTBARKEIT KOMMT NICHT VON HIER. Diese Route uebergibt KEIN Praedikat — sie kann es
+    // gar nicht, der Einstieg nimmt keines entgegen (`h3-consumer-typvertrag.test.ts` C3). Sie
+    // uebergibt den BETRACHTER; gefiltert wird mit der zentralen Policy, die die
+    // Kompositionswurzel in die Naht gereicht hat (`build-app.ts`, `policyNahtSchliessen`). Ist
+    // die Naht offen, wirft das Modul, BEVOR es das erste Objekt liest — dann steht hier ein
+    // Fehler und keine leere Liste, die wie ein Ergebnis aussieht.
+    //
+    // DER DECKEL kommt aus der Anfrage und wird vom Modul selbst begrenzt (`THEMEN_DECKEL`; ein
+    // unbrauchbarer Wert gilt als nicht angegeben, `lesemodell.ts:153-162`). Hier wird deshalb
+    // nichts nachgerechnet — eine zweite Deckelrechnung waere eine zweite Wahrheit.
+    app.get<{ Querystring: { deckel?: string } }>(
+      "/api/wissensnetz/luecken",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const roh = request.query.deckel;
+        try {
+          const metrik = await wissensnetzMetrikFuer(
+            { id: user.id, role: user.role },
+            { kos: { alle: () => ko.list({}) } },
+            roh !== undefined ? { deckel: Number(roh) } : {},
+          );
+          reply.code(200).send(metrik);
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
     app.get<{ Querystring: KoQuery }>("/api/kos", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
       if (!user) {

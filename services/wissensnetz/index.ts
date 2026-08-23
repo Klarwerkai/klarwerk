@@ -13,3 +13,32 @@
 export { wissensnetzLuecken } from "./src/luecken-einstieg";
 export type { Sichtmetrik, ThemenMetrik } from "./src/luecken";
 export type { Betrachter } from "./src/policy-naht";
+
+// ================================================================================================
+// JOB 2009 · D2 — DREI EINTRAEGE MEHR, UND WARUM KEINER DIE ENGE OBEN AUFHEBT.
+// ================================================================================================
+//
+// Bis D1 war der einzige oeffentliche Weg (`wissensnetzLuecken`) fuer jeden Aufrufer
+// UNERREICHBAR: er verlangt ein `LesemodellService`, das absichtlich nicht hier steht. H3 hatte
+// deshalb keinen Leser — nicht aus Nachlaessigkeit, sondern weil die Tuer keine Klinke hatte.
+//
+//   · `wissensnetzMetrikFuer`      — derselbe Weg, aber der Aufrufer bringt die PORTS statt des
+//                               Lesemodells mit. Das Lesemodell entsteht modulintern.
+//   · `policyNahtSchliessen`  — die Kompositionswurzel reicht die zentrale Policy herein (Weg D).
+//
+// UND AUSDRUECKLICH KEIN EINZIGER TYP MEHR. Ein erster Entwurf gab die Port-Typen
+// (`LesemodellDeps`, `WissensnetzKoLeser` …) mit heraus — bequem, aber **C2 wurde davon rot**:
+// ueber die Typkette war `WissensnetzSicht` wieder importierbar, also genau der Eingabetyp jeder
+// Auswertung. Der Waechter hat gearbeitet, ich habe ihn NICHT angepasst, sondern den Export
+// zurueckgenommen. Er wird auch nicht gebraucht: der Aufrufer uebergibt sein Portobjekt inline
+// (`{ kos: { alle: () => ko.list({}) } }`), und TypeScript prueft es STRUKTURELL gegen die
+// Signatur — ohne dass der Typ je einen Namen im Index braucht.
+//
+// WAS WEITERHIN NICHT HIER STEHT, unveraendert:
+//   · `LesemodellService`  — ein Consumer kann `sicht({ sichtbar: () => true })` nicht bauen
+//   · `WissensnetzSicht`   — der Eingabetyp jeder Auswertung
+//   · `sichtmetrik` und jede Huelle darum
+// Ein Consumer kann damit weder eine ungefilterte Sicht erzeugen noch eine vorhandene auswerten.
+// C1 und C2 bleiben woertlich gruen — nachgemessen in D2.
+export { wissensnetzMetrikFuer } from "./src/luecken-einstieg";
+export { policyNahtSchliessen } from "./src/policy-naht";

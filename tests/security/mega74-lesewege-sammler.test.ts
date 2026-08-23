@@ -127,6 +127,27 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/evidence": { urteil: "PRAEDIKAT", grund: "Block B — Index je Trägerobjekt aufgelöst." },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
   "GET /api/graph": { urteil: "PRAEDIKAT", grund: "Block B — Titel; Filter auf der Grundmenge." },
+  // JOB 2009 D2 (H3): der Leser des Wissensnetz-Lesemodells. Der Sammler hat ihn beim ersten Lauf
+  // gemeldet — genau dafuer ist er da.
+  //
+  // WARUM `DIENST_FILTERT` UND NICHT `PRAEDIKAT`: In der Route steht kein Praedikatname aus Block A,
+  // und das ist Absicht — der Einstieg NIMMT KEINES entgegen (`h3-consumer-typvertrag.test.ts` C3).
+  // Gefiltert wird im Modul, mit der zentralen Policy, die die Kompositionswurzel hereinreicht.
+  // Ein `PRAEDIKAT`-Urteil waere hier eine Behauptung, die die Nachpruefung nicht deckt.
+  //
+  // WAS HINAUSGEHT: Zaehler und THEMENNAMEN (`category`) — kein Titel, keine Kernaussage. Der
+  // Lesemodell-Port sagt es ausdruecklich (`lesemodell-ports.ts:43-46`): „Titel und Aussage stehen
+  // hier NICHT … was nicht mitreist, kann nicht auslaufen." Und die Themen entstehen NUR aus
+  // Objekten, die der Filter bereits durchgelassen hat — getrimmt wird vor dem Zaehlen
+  // (`lesemodell.ts:164`).
+  "GET /api/wissensnetz/luecken": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "Das Wissensnetz-Modul filtert vor dem Zaehlen: luecken-einstieg.ts:36 ruft policyFuer(betrachter), " +
+      "die zentrale Policy kommt aus build-app.ts (policyNahtSchliessen). Ist die Naht offen, wirft " +
+      "das Modul VOR dem ersten Lesen — es gibt dann keine leere Sicht, die sich fuer vollstaendig " +
+      "erklaert. Ausgegeben werden Zaehler und Themennamen, kein KO-Titel und keine Aussage.",
+  },
   // --- W2-A/148: die Laufdomäne des Imports -------------------------------------------------
   // Der Lauf selbst trägt AUSSCHLIESSLICH Kennungen, Status, Zeitstempel und Zähler — keine Zeile
   // Fachinhalt. `knowledgeObjectId` ist eine Id, kein Inhalt (import-run-routes.ts:88-99).

@@ -153,6 +153,8 @@ import {
   ValidationService,
   type ValidationSettingsRepo,
 } from "../../validation";
+// JOB 2009 D2 (H3, Weg D): die Wurzel reicht die zentrale Policy ins Wissensnetz herein.
+import { policyNahtSchliessen } from "../../wissensnetz";
 import {
   ADDON_ASK_PATH,
   ADDON_CHECK_TEXT_PATH,
@@ -472,6 +474,26 @@ export function assembleServices(
   // es das nicht mehr — zwei Instanzen wären zwei Orte, an denen jemand künftig einen Cache oder
   // eine Sperre einbaut, ohne die andere zu kennen. Ein Repo, ein Store.
   const objects = new ObjectStore({ repo: repos.objects });
+
+  // ==============================================================================================
+  // JOB 2009 · D2 — HIER WIRD DIE SICHTBARKEITSNAHT DES WISSENSNETZES GESCHLOSSEN (H3, Weg D).
+  // ==============================================================================================
+  //
+  // `services/wissensnetz` kennt die zentrale Policy nicht und darf sie nicht kennen: importierte
+  // es `darfSehen` aus `services/app`, entstuende ein Modulzyklus, sobald H3 einen Aufrufer
+  // bekommt — in D1 gemessen, `depcruise` EXIT 2 mit zwei `no-circular`-Fehlern. Deshalb reicht
+  // die Kompositionswurzel die Entscheidung HEREIN. Die Richtung bleibt einbahnig:
+  // app → wissensnetz.
+  //
+  // WARUM GENAU HIER: Das ist die Stelle, an der alle Dienste zusammenkommen — dieselbe Rolle,
+  // die `gatedPool` in `buildPgServices` spielt (JOB 596 D9). Wird sie vergessen, wirft das Modul
+  // `NAHT_OFFEN` statt still `true` oder `false` zu liefern; ein vergessener Aufruf faellt damit
+  // sofort auf und erzeugt keine leere Sicht, die sich fuer vollstaendig erklaert.
+  //
+  // `sichtbarkeitsfilterFuer` ist genau das Praedikat, das `/api/graph` und `/api/kos/:id/neighbors`
+  // schon benutzen (`library-routes.ts:412`, `:440`) — es gibt hier keine zweite Auslegung von
+  // SCRUM-506.
+  policyNahtSchliessen((betrachter) => sichtbarkeitsfilterFuer(betrachter as never) as never);
 
   return {
     audit,
@@ -1363,7 +1385,9 @@ export function buildApp(
       guards,
     ),
   );
-  app.register(lifecycleRoutes(services.lifecycle, guards));
+  // AUFTRAG-JOB2017 (G7): derselbe Zugang wie bei conflictRoutes/overlapRoutes/notificationsRoutes
+  // — eine Instanz, keine zweite Aufloesung. Pflichtparameter, s. lifecycle-routes.ts.
+  app.register(lifecycleRoutes(services.lifecycle, guards, koSichtbarkeit));
   app.register(
     notificationsRoutes(
       {

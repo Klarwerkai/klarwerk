@@ -108,10 +108,31 @@ describe("H3 · die Sicherheitskette durch wissensnetzLuecken", () => {
     // Index wandern, ohne dass ein Test anschlaegt — und die frei aufrufbare Auswertung waere
     // zurueck, also genau BENs Verstoss-Befund aus D1. Gleichheit statt `toContain`, damit auch
     // eine umbenannte oder asynchrone Huelle auffaellt.
+    // ============================================================================================
+    // JOB 2009 D2 — DIE LISTE WAECHST UM ZWEI, UND DIE ZUSAGE BLEIBT DIESELBE.
+    // ============================================================================================
+    //
+    // Bis D1 stand hier `["wissensnetzLuecken"]` — und der Grund war richtig: eine frei aufrufbare
+    // Auswertung darf nicht in den Index wandern. Der Fall hat in D2 SOFORT angeschlagen, als der
+    // Index breiter wurde. Genau dafuer ist er da.
+    //
+    // Er wird deshalb PRAEZISIERT, nicht aufgeweicht:
+    //   · `toEqual` bleibt `toEqual`. Eine VIERTE Funktion faellt weiterhin sofort auf, und
+    //     `sichtmetrik` — auch umbenannt oder als async-Huelle — ebenso.
+    //   · `wissensnetzSicht` ist KEINE Auswertung: sie erzeugt die Sicht (wie `wissensnetzLuecken`)
+    //     und gibt die Metrik zurueck. Sie nimmt PORTS entgegen, kein Praedikat und keine Sicht.
+    //     Ohne sie war der einzige oeffentliche Weg fuer jeden Aufrufer unerreichbar, weil er ein
+    //     `LesemodellService` verlangt, das absichtlich nicht im Index steht (C1).
+    //   · `policyNahtSchliessen` erzeugt gar nichts — sie nimmt die zentrale Policy entgegen.
+    //     Sie ist die Gegenrichtung: nicht Daten heraus, sondern die Entscheidung herein.
     const funktionen = Object.keys(wissensnetz).filter(
       (name) => typeof (wissensnetz as Record<string, unknown>)[name] === "function",
     );
-    expect(funktionen.sort()).toEqual(["wissensnetzLuecken"]);
+    expect(funktionen.sort()).toEqual([
+      "policyNahtSchliessen",
+      "wissensnetzLuecken",
+      "wissensnetzMetrikFuer",
+    ]);
   });
 
   it("K5 · die Metrik ist semantikneutral — sie zaehlt Sichtbares und klassifiziert nichts", async () => {

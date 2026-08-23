@@ -10,7 +10,7 @@
 //   · Das Praedikat ist KEIN Parameter — nicht als Argument, nicht im Optionsobjekt, nicht
 //     hinter einem Vorgabewert. Es kommt aus der Naht und ist von aussen nicht ersetzbar.
 //   · Ist die Naht offen, entsteht gar keine Sicht (fail-closed), und zwar VOR dem ersten Lesen.
-import type { LesemodellService } from "./lesemodell";
+import { type LesemodellDeps, LesemodellService } from "./lesemodell";
 import type { WissensnetzKo } from "./lesemodell-ports";
 import { type Sichtmetrik, sichtmetrik } from "./luecken";
 import { type Betrachter, policyFuer } from "./policy-naht";
@@ -40,4 +40,39 @@ export async function wissensnetzLuecken<K extends WissensnetzKo>(
     ...(opts.deckel !== undefined ? { deckel: opts.deckel } : {}),
   });
   return sichtmetrik(sicht);
+}
+
+// ================================================================================================
+// JOB 2009 · D2 — DER WEG, DEN EIN AUFRUFER GEHEN KANN.
+// ================================================================================================
+//
+// DAS PROBLEM, gemessen in D1: `wissensnetzLuecken` verlangt ein fertiges `LesemodellService` —
+// und genau das darf ein Consumer nicht bauen, weil es nicht im Paket-Index steht
+// (`h3-consumer-typvertrag.test.ts` C1 haelt das fest, und die Enge ist gewollt: sonst koennte
+// jemand `sicht({ sichtbar: () => true })` bauen). Ergebnis: Der einzige oeffentliche Weg des
+// Moduls war fuer jeden Aufrufer unerreichbar — H3 hatte nach vierzehn Durchgaengen keinen Leser.
+//
+// DIE AUFLOESUNG: Der Consumer bringt die PORTS mit, nicht das Lesemodell. Er kann damit
+//   · keine ungefilterte Sicht erzeugen — das Lesemodell entsteht hier drinnen, und die Sicht
+//     wird weiterhin ausschliesslich von `wissensnetzLuecken` erzeugt;
+//   · keine vorhandene Sicht auswerten — `sichtmetrik` und `WissensnetzSicht` bleiben modulintern.
+// Die beiden Zusagen aus `index.ts:10-12` gelten unveraendert. Was sich oeffnet, ist genau ein
+// Loch in der Groesse eines Aufrufs.
+//
+// C1 UND C2 BLEIBEN WOERTLICH GRUEN: `LesemodellService` und `WissensnetzSicht` stehen weiterhin
+// NICHT im Index. Was hinzukommt, sind die PORT-Typen — Leseschnittstellen auf den Bestand, keine
+// Sicht und keine Auswertung.
+/**
+ * Erhebt die Sichtmetrik fuer genau diesen Betrachter — aus den PORTS des Aufrufers.
+ *
+ * Der Aufrufer liefert, woher gelesen wird (`deps.kos`, optional `deps.kanten`); das Lesemodell
+ * entsteht hier und verlaesst diese Funktion nicht. Die Sichtbarkeit kommt weiterhin
+ * ausschliesslich aus der Naht.
+ */
+export async function wissensnetzMetrikFuer<K extends WissensnetzKo>(
+  betrachter: Betrachter,
+  deps: LesemodellDeps<K>,
+  opts: { readonly deckel?: number } = {},
+): Promise<Sichtmetrik> {
+  return wissensnetzLuecken(betrachter, new LesemodellService<K>(deps), opts);
 }
