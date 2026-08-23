@@ -225,6 +225,45 @@ function liesQuelle(datei: string, roh: string): Quelle {
     return false;
   };
 
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // AUFTRAG-JOB-2062 D3 (I44, erstens) — DIE GRUNDMENGE KENNT JETZT BEIDE SCHREIBWEISEN.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // DER BEFUND (ben, sammel85, `OFFEN.md:384` = I44, erstens): Die Erhebung nahm nur
+  // `FunctionDeclaration`-Knoten auf — „ein Anbieter als `export const Editor = () => …` bleibt
+  // außerhalb der Grundmenge". Er wäre weder als Bauteil (Stufe 1) noch als Träger (Stufe 2)
+  // sichtbar gewesen: kein Fund, kein Rot, keine Meldung. Eine Erhebung, die den Anbieter nicht
+  // kennt, kann über ihn auch nichts Falsches sagen — sie sagt gar nichts, und das ist schlimmer.
+  //
+  // DIE ASYMMETRIE WAR IM CODE SICHTBAR: `huelleVon` oben erkennt genau diese Form seit jeher
+  // (`isArrowFunction`/`isFunctionExpression` an einer `VariableDeclaration`), die
+  // Komponentenerhebung nicht. Zwei Stellen, dieselbe Frage, zwei verschiedene Antworten.
+  //
+  // GEMESSEN AM 23.08.2026 ÜBER ALLE 399 QUELLDATEIEN in `apps/web/src`, damit niemand mehr
+  // Wirkung annimmt, als da ist:
+  //   246 Komponenten als `function Name()`   ·   0 als `const Name = () => …`
+  //   0 anonyme default-exportierte Funktionen · 0 Anbieter außerhalb der Grundmenge
+  // DIESE HÄRTUNG BEHEBT HEUTE ALSO KEINEN EINZIGEN FALL. Sie ist ausdrücklich VORSORGE, und
+  // genau dafür steht bens Bedingung an I44: „solange vor der Umsetzung keine neue
+  // Bildbeschreibungsfläche hinzukommt". Käme sie in der heute im React-Umfeld üblichsten Form,
+  // hätte die Erhebung sie nicht gesehen.
+  type Komponentenknoten = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
+  const alsKomponente = (knoten: ts.Node): { name: string; fn: Komponentenknoten } | null => {
+    if (ts.isFunctionDeclaration(knoten) && knoten.name && /^[A-Z]/.test(knoten.name.text)) {
+      return { name: knoten.name.text, fn: knoten };
+    }
+    if (
+      ts.isVariableDeclaration(knoten) &&
+      ts.isIdentifier(knoten.name) &&
+      /^[A-Z]/.test(knoten.name.text) &&
+      knoten.initializer &&
+      (ts.isArrowFunction(knoten.initializer) || ts.isFunctionExpression(knoten.initializer))
+    ) {
+      return { name: knoten.name.text, fn: knoten.initializer };
+    }
+    return null;
+  };
+
   const besuche = (knoten: ts.Node): void => {
     if (ts.isJsxOpeningElement(knoten) || ts.isJsxSelfClosingElement(knoten)) {
       const name = tagName(knoten);
@@ -269,11 +308,14 @@ function liesQuelle(datei: string, roh: string): Quelle {
         zeile: zeileVon(knoten),
       });
     }
-    if (ts.isFunctionDeclaration(knoten) && knoten.name && /^[A-Z]/.test(knoten.name.text)) {
+    const kandidat = alsKomponente(knoten);
+    if (kandidat) {
       komponenten.push({
-        name: knoten.name.text,
-        eigenerTitel: eigenerTitel(knoten),
-        bietetAn: ANGEBOT_MUSTER.test(knoten.getText(baum)),
+        name: kandidat.name,
+        eigenerTitel: eigenerTitel(kandidat.fn),
+        // Bei `const Name = () => …` ist der Rumpf der INITIALIZER, nicht die Deklaration — sonst
+        // zählte bei `const A = () => …, B = …` fremder Text zum Angebot.
+        bietetAn: ANGEBOT_MUSTER.test(kandidat.fn.getText(baum)),
       });
     }
     ts.forEachChild(knoten, besuche);
@@ -540,6 +582,89 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     expect(editoren[1]?.attribute).toContain("documentTitle");
     // Und die Hülle wird richtig zugeordnet — das konnte der Textansatz nicht.
     expect(editoren[0]?.huelle).toBe("Probe");
+  });
+
+  // ── AUFTRAG-JOB-2062 D3 (I44, erstens): beide Schreibweisen in der Grundmenge ─────────────────
+  //
+  // Heute steht im Web-Quellbaum keine einzige Komponente als `const Name = () => …` (gemessen:
+  // 246 zu 0). Belegt wird deshalb die FÄHIGKEIT an Sonden — genau wie beim `createElement`-Fall
+  // oben, und aus demselben Grund: sonst stünde hier eine Zusage, die niemand geprüft hat.
+
+  it("ein Anbieter als `const Editor = () => …` landet in der Grundmenge", () => {
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "export const Editor = ({ documentTitle }: Props) => {\n" +
+        "  return <p>{CAPTION_AI_TEXT.hinweis}</p>;\n" +
+        "};\n",
+    );
+    const k = sonde.komponenten.find((x) => x.name === "Editor");
+    expect(
+      k,
+      "Der Pfeil-Anbieter fehlt in der Grundmenge — genau die Blindstelle aus I44.",
+    ).toBeDefined();
+    expect(
+      k?.bietetAn,
+      "Er bietet an (CAPTION_AI_TEXT), wird aber nicht als Anbieter geführt.",
+    ).toBe(true);
+    expect(k?.eigenerTitel, "Sein eigener documentTitle-Prop wird nicht erkannt.").toBe(true);
+  });
+
+  it("auch `const Editor = function () { … }` zählt — dieselbe Sache, andere Schreibweise", () => {
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "const Editor = function ({ documentTitle }: Props) {\n" +
+        "  return <p>{CAPTION_AI_TEXT.hinweis}</p>;\n" +
+        "};\n",
+    );
+    const k = sonde.komponenten.find((x) => x.name === "Editor");
+    expect(k?.bietetAn).toBe(true);
+    expect(k?.eigenerTitel).toBe(true);
+  });
+
+  it("die alte Form bleibt unverändert erfasst — die Erweiterung nimmt nichts weg", () => {
+    // Ohne diesen Fall wäre nicht gezeigt, dass die Umstellung von `isFunctionDeclaration` auf
+    // `alsKomponente` die bisherige Hälfte wirklich mitträgt.
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "export function Editor({ documentTitle }: Props) {\n" +
+        "  return <p>{CAPTION_AI_TEXT.hinweis}</p>;\n" +
+        "}\n",
+    );
+    const k = sonde.komponenten.find((x) => x.name === "Editor");
+    expect(k?.bietetAn).toBe(true);
+    expect(k?.eigenerTitel).toBe(true);
+  });
+
+  it("kleingeschriebene Konstanten und Nicht-Funktionen bleiben draußen", () => {
+    // Die Gegenrichtung. Ohne sie könnte die Erweiterung jede Konstante einsammeln und die
+    // Grundmenge mit Daten füllen, die keine Komponenten sind — die Fundzahlen wären dann wertlos.
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "const editor = () => <p>{CAPTION_AI_TEXT.hinweis}</p>;\n" +
+        "const EDITOR_TEXT = CAPTION_AI_TEXT.hinweis;\n" +
+        "const Grenze = 5;\n",
+    );
+    expect(sonde.komponenten.map((k) => k.name)).toEqual([]);
+  });
+
+  it("ein Pfeil-Träger schließt die transitive Hülle — Stufe 2 trägt die neue Form mit", () => {
+    // Der eigentliche Zweck: nicht dass der Knoten in einer Liste steht, sondern dass die
+    // Hüllenrunde ihn als Träger anerkennt. `huelleVon` kannte Pfeilfunktionen schon; erst jetzt
+    // findet die Runde in `komponenten` auch den passenden Eintrag dazu.
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "export const Wrapper = ({ documentTitle }: Props) => {\n" +
+        "  return <RichTextEditor value={v} documentTitle={documentTitle} />;\n" +
+        "};\n",
+    );
+    const einbindung = sonde.einbindungen.find((e) => e.komponente === "RichTextEditor");
+    expect(einbindung?.huelle, "huelleVon sieht den Pfeil nicht — dann trägt Stufe 2 nicht.").toBe(
+      "Wrapper",
+    );
+    expect(
+      sonde.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel,
+      "Die Hülle ist da, aber ohne Eintrag in `komponenten` bricht die Kette in Stufe 2 ab.",
+    ).toBe(true);
   });
 
   it("DIE VERBLEIBENDE GRENZE, benannt statt verschwiegen: Alias und Indirektion", () => {
