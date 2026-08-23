@@ -10,8 +10,10 @@
 // WAS DIESE DATEI PRUEFT — und was sie ausdruecklich NICHT prueft:
 // Sie prueft die VERDRAHTUNG: dass keine Erhebung mehr direkt an der Dateiausnahme haengt. Das
 // VERHALTEN prueft der Sammler selbst mit gebauten Erhebungen
-// (`tests/app/mega47-modale-flaechen-sammler.test.tsx`, Block „B52/E · GELB-1"), weil die Helfer
-// dort wohnen und ein Import der Sammlerdatei ihre gesamte Suite ein zweites Mal fahren wuerde.
+// (`tests/app/mega47-modale-flaechen-sammler.test.tsx`, Block „B52/E · GELB-1") — ein Import der
+// Sammlerdatei wuerde ihre gesamte Suite ein zweites Mal fahren.
+// (Seit JOB 2008 D2 wohnen die Helfer nicht mehr dort, sondern in `tools/modalgrenze.ts`; die
+// Verhaltensfaelle rufen sie von dort. Dieser Waechter liest deshalb beide Orte — s. `ORTE`.)
 //
 // ZWEI WAECHTER, ZWEI FEHLERBILDER — und das ist Absicht: eine Mutation an einer Benutzungsstelle
 // laesst die Verhaltensfaelle GRUEN (sie rufen den Helfer direkt) und faellt nur hier auf. Genau
@@ -20,15 +22,30 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
-const SAMMLER = "tests/app/mega47-modale-flaechen-sammler.test.tsx";
-const QUELLE = readFileSync(resolve(process.cwd(), SAMMLER), "utf8");
+// JOB 2008 D2 (Register A17): die Erhebung ist aus der Testdatei ins PRODUKT gezogen
+// (`tools/modalgrenze.ts`) — ein Test war kein Aufrufer. Die Helfer, die dieser Waechter prueft,
+// wohnen deshalb jetzt dort; die Bauteil-/Verweis-Erhebung ist im Sammler geblieben.
+// **Dieser Waechter liest jetzt BEIDE Orte** und wird dadurch strenger, nicht schwaecher: ein
+// direkter Mengenzugriff faellt an JEDER der beiden Stellen auf, nicht nur in einer.
+const ORTE = ["tools/modalgrenze.ts", "tests/app/mega47-modale-flaechen-sammler.test.tsx"] as const;
 
-/** Zeilen mit einem DIREKTEN Mengenzugriff auf die Ausnahme — je Zeilennummer und Wortlaut. */
+const QUELLEN = ORTE.map((ort) => ({
+  ort,
+  text: readFileSync(resolve(process.cwd(), ort), "utf8"),
+}));
+
+/** Beide Orte hintereinander — fuer Suchen, die nur wissen muessen OB etwas dasteht. */
+const QUELLE = QUELLEN.map((q) => q.text).join("\n");
+
+/** Zeilen mit einem DIREKTEN Mengenzugriff auf die Ausnahme — je Datei, Zeilennummer und Wortlaut. */
 function direkteZugriffe(): string[] {
-  return QUELLE.split("\n")
-    .map((z, i) => ({ nr: i + 1, text: z }))
-    .filter((z) => /NATIV_MODAL_AUSNAHMEN\.has\s*\(/.test(z.text))
-    .map((z) => `${SAMMLER}:${z.nr} — ${z.text.trim()}`);
+  return QUELLEN.flatMap((q) =>
+    q.text
+      .split("\n")
+      .map((z, i) => ({ nr: i + 1, text: z }))
+      .filter((z) => /NATIV_MODAL_AUSNAHMEN\.has\s*\(/.test(z.text))
+      .map((z) => `${q.ort}:${z.nr} — ${z.text.trim()}`),
+  );
 }
 
 describe("B52/E · GELB-1: die Ausnahme haengt am Kandidaten", () => {

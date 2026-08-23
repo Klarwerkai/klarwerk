@@ -9,6 +9,9 @@ echo "▶ cwd-vertrag";  node tools/check-cwd-contract.mjs || { echo "✖ cwd-Ve
 echo "▶ build";        ./tools/build
 echo "▶ lint";         ./tools/lint
 echo "▶ architecture"; npx depcruise --config .dependency-cruiser.cjs services || { echo "✖ Architekturregeln verletzt"; exit 1; }
+# JOB 2008 D2 (Register A17): die Modalgrenzen-Erhebung lief bis hierher NUR im Test.
+# Sie steht jetzt in tools/modalgrenze.ts und wird HIER gerufen — ein Aufrufer im Produkt.
+echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verletzt"; exit 1; }
 echo "▶ test";         ./tools/test "$@"
 
 # AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
