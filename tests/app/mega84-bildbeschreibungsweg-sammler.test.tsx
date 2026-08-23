@@ -132,6 +132,10 @@ function posix(pfad: string): string {
 interface Einbindung {
   datei: string;
   komponente: string;
+  // JOB 2080 D1: der Deklarationsort der eingebundenen Komponente. `null`, wenn nicht auflösbar.
+  kennung: string | null;
+  // Dasselbe für die Hülle — Stufe 2 vergleicht darüber statt über den Namen.
+  huelleKennung: string | null;
   // Die exportierte Komponente, IN DEREN Rumpf die Einbindung steht. Der Textansatz kannte das
   // nicht und ordnete jede Einbindung allen exportierten Funktionen der Datei zu.
   huelle: string | null;
@@ -143,6 +147,8 @@ interface Einbindung {
 
 interface Bauteilkandidat {
   name: string;
+  // JOB 2080 D1: der Deklarationsort dieser Komponente — ihre Identität über Dateigrenzen hinweg.
+  kennung: string | null;
   eigenerTitel: boolean;
   bietetAn: boolean;
 }
@@ -161,22 +167,153 @@ function tagName(n: ts.JsxOpeningElement | ts.JsxSelfClosingElement): string {
 const ANGEBOT_MUSTER = /CAPTION_AI_TEXT\s*\./;
 const AUSNAHME_MUSTER = /KEINE-BILDBESCHREIBUNG:/;
 
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// AUFTRAG-JOB-2080 D1 (I44, drittens · STUFE 1) — DIE ERHEBUNG STEHT AUF EINEM PROGRAMM.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// DER BEFUND (ben, sammel85, `OFFEN.md:384` = I44, drittens): „JSX-Memberzugriffe und lokale
+// Aliase treffen den einfachen Trägernamen nicht … Belastbar wird es erst über Symbolauflösung im
+// TypeChecker oder über stabile Flächen-Kennungen."
+//
+// DIE ENTSCHEIDUNG (`00_CONTROL/ENTSCHEIDUNGEN/JOB-2062-I44-SAMMLERGRUNDLAGE.md`): Weg A, in zwei
+// Stufen. STUFE 1 ist NUR dieser Sammler; `mega47`, `mega88` und `mega89` folgen einzeln und nur,
+// wenn Stufe 1 trägt.
+//
+// WAS SICH ÄNDERT: Bis hierher verglich die Erhebung NAMEN. Zwei gleichnamige Komponenten in zwei
+// Dateien waren ununterscheidbar, `<Foo.Bar />` traf den Trägernamen nie, und `const E = Editor`
+// war eine benannte Grenze. Jetzt trägt jede Komponente und jede Einbindung eine KENNUNG — den
+// Ort ihrer Deklaration, aufgelöst über `checker.getSymbolAtLocation` samt Alias-Auflösung. Der
+// Vergleich in Stufe 2 läuft über die Kennung; der NAME bleibt erhalten, weil er in Meldungen und
+// Fundidentitäten lesbar sein muss.
+//
+// DIE INVARIANZ-AUFLAGE, wörtlich aus der Entscheidung: `246 Komponenten · 1 Anbieter · 2 Träger`
+// vorher wie nachher. Sie steht unten als eigener Fall (`STUFE-1-INVARIANZ`) und ist damit nicht
+// bloß eine Zusage in dieser Rückgabe, sondern eine Zusicherung im Tor.
+const COMPILER_OPTIONEN: ts.CompilerOptions = {
+  target: ts.ScriptTarget.ES2022,
+  jsx: ts.JsxEmit.ReactJSX,
+  module: ts.ModuleKind.ESNext,
+  moduleResolution: ts.ModuleResolutionKind.Bundler,
+  noEmit: true,
+  skipLibCheck: true,
+  allowImportingTsExtensions: true,
+  baseUrl: join(WURZEL, "apps", "web"),
+  paths: { "@/*": ["src/*"] },
+};
+
+const WEB_DATEIEN: string[] = quelldateien(WEB_SRC).map(posix);
+const PROGRAMM = ts.createProgram(
+  WEB_DATEIEN.map((d) => join(WURZEL, d)),
+  COMPILER_OPTIONEN,
+);
+const CHECKER = PROGRAMM.getTypeChecker();
+
 function lies(datei: string): Quelle {
-  return liesQuelle(datei, readFileSync(join(WURZEL, datei), "utf8"));
+  const baum = PROGRAMM.getSourceFile(join(WURZEL, datei));
+  if (!baum) {
+    throw new Error(
+      `${datei} liegt nicht im Programm — die Grundmenge und das Programm sind auseinandergelaufen.`,
+    );
+  }
+  return erhebe(datei, baum, CHECKER);
 }
 
 // Dieselbe Erhebung über eine Quelle IM SPEICHER — damit die Sonden unten die Erhebung wirklich
 // fahren können, statt ihr Verhalten zu behaupten.
+//
+// JOB 2080 D1: auch die Sonde bekommt jetzt ein Programm, sonst hätte sie keinen Checker und damit
+// keine Kennung — sie würde eine andere Erhebung fahren als der echte Baum. Es ist ein
+// EIN-DATEI-Programm: die Sonde soll lokale Deklarationen auflösen, nicht den halben Quellbaum
+// laden. Genau EINE Erhebung mit zwei Quellen, kein zweiter Weg.
 function liesQuelle(datei: string, roh: string): Quelle {
-  const baum = ts.createSourceFile(datei, roh, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const host = ts.createCompilerHost(COMPILER_OPTIONEN, true);
+  const originalGetSourceFile = host.getSourceFile.bind(host);
+  host.getSourceFile = (name, ziel, beiFehler, erneut) =>
+    name === datei
+      ? ts.createSourceFile(name, roh, ziel, true, ts.ScriptKind.TSX)
+      : originalGetSourceFile(name, ziel, beiFehler, erneut);
+  const originalFileExists = host.fileExists.bind(host);
+  host.fileExists = (name) => name === datei || originalFileExists(name);
+  const originalReadFile = host.readFile.bind(host);
+  host.readFile = (name) => (name === datei ? roh : originalReadFile(name));
+
+  const programm = ts.createProgram([datei], COMPILER_OPTIONEN, host);
+  const baum = programm.getSourceFile(datei);
+  if (!baum) {
+    throw new Error(`Sondenquelle ${datei} konnte nicht geparst werden.`);
+  }
+  return erhebe(datei, baum, programm.getTypeChecker());
+}
+
+// Die KENNUNG einer Komponente: der Ort ihrer DEKLARATION, `datei:zeile`. Ein Alias und ein
+// JSX-Memberzugriff laufen darauf zusammen, weil beide dasselbe Symbol meinen — das ist der ganze
+// Gewinn dieser Umstellung. Ist ein Symbol nicht auflösbar (in einer Sonde ohne Importe der
+// Normalfall), bleibt die Kennung `null`; Stufe 2 fällt dann auf den Namen zurück, statt die
+// Einbindung STILL zu verlieren. Ein Rückfall, der gemeldet wird, ist etwas anderes als eine Lücke.
+function kennungVon(knoten: ts.Node, checker: ts.TypeChecker): string | null {
+  let symbol = checker.getSymbolAtLocation(knoten);
+  if (!symbol) {
+    return null;
+  }
+  // GEMESSEN, nicht angenommen — und meine erste Fassung war zu kurz: `getAliasedSymbol` allein
+  // löst NUR Import-Aliase. Für `const E = Editor` blieb sie an der `VariableDeclaration` stehen,
+  // für `<Umschlag.Editor />` am `ShorthandPropertyAssignment`. Beide Formen sind aber genau das,
+  // was I44 drittens nennt. Deshalb werden hier drei Sprünge gefahren, bis kein weiterer greift:
+  //   Import-Alias · Kurzschreibweise im Objektliteral · Zuweisung eines blossen Bezeichners.
+  // Die Schleife ist gedeckelt: eine zyklische Zuweisung darf den Sammler nicht aufhängen.
+  for (let sprung = 0; sprung < 5; sprung += 1) {
+    if (symbol.flags & ts.SymbolFlags.Alias) {
+      try {
+        const aufgeloest = checker.getAliasedSymbol(symbol);
+        if (aufgeloest && aufgeloest !== symbol) {
+          symbol = aufgeloest;
+          continue;
+        }
+      } catch {
+        // Kein auflösbarer Alias — dann gilt das bisherige Symbol.
+      }
+    }
+    const erste = symbol.declarations?.[0];
+    if (erste && ts.isShorthandPropertyAssignment(erste)) {
+      const ziel = checker.getShorthandAssignmentValueSymbol(erste);
+      if (ziel && ziel !== symbol) {
+        symbol = ziel;
+        continue;
+      }
+    }
+    if (erste && ts.isVariableDeclaration(erste) && erste.initializer) {
+      // NUR ein blosser Bezeichner. `const A = memo(B)` ist eine andere Komponente als `B`, und
+      // sie hier gleichzusetzen wäre eine Behauptung über Laufzeitverhalten, die der Sammler
+      // nicht belegen kann.
+      if (ts.isIdentifier(erste.initializer)) {
+        const ziel = checker.getSymbolAtLocation(erste.initializer);
+        if (ziel && ziel !== symbol) {
+          symbol = ziel;
+          continue;
+        }
+      }
+    }
+    break;
+  }
+  const deklaration = symbol.declarations?.[0];
+  if (!deklaration) {
+    return null;
+  }
+  const quelle = deklaration.getSourceFile();
+  const zeile = quelle.getLineAndCharacterOfPosition(deklaration.getStart(quelle)).line + 1;
+  return `${posix(quelle.fileName.replace(`${WURZEL}${sep}`, ""))}:${zeile}`;
+}
+
+function erhebe(datei: string, baum: ts.SourceFile, checker: ts.TypeChecker): Quelle {
+  const roh = baum.getFullText();
   const einbindungen: Einbindung[] = [];
   const komponenten: Bauteilkandidat[] = [];
 
-  const huelleVon = (knoten: ts.Node): string | null => {
+  const huelleVon = (knoten: ts.Node): { name: string; kennung: string | null } | null => {
     let p: ts.Node | undefined = knoten.parent;
     while (p) {
       if (ts.isFunctionDeclaration(p) && p.name && /^[A-Z]/.test(p.name.text)) {
-        return p.name.text;
+        return { name: p.name.text, kennung: kennungVon(p.name, checker) };
       }
       if (
         (ts.isArrowFunction(p) || ts.isFunctionExpression(p)) &&
@@ -185,7 +322,7 @@ function liesQuelle(datei: string, roh: string): Quelle {
         ts.isIdentifier(p.parent.name) &&
         /^[A-Z]/.test(p.parent.name.text)
       ) {
-        return p.parent.name.text;
+        return { name: p.parent.name.text, kennung: kennungVon(p.parent.name, checker) };
       }
       p = p.parent;
     }
@@ -312,9 +449,12 @@ function liesQuelle(datei: string, roh: string): Quelle {
   // Bildbeschreibungsfläche hinzukommt". Käme sie in der heute im React-Umfeld üblichsten Form,
   // hätte die Erhebung sie nicht gesehen.
   type Komponentenknoten = ts.FunctionDeclaration | ts.ArrowFunction | ts.FunctionExpression;
-  const alsKomponente = (knoten: ts.Node): { name: string; fn: Komponentenknoten } | null => {
+  // JOB 2080 D1: `id` ist der NAMENSKNOTEN — an ihm hängt das Symbol und damit die Kennung.
+  const alsKomponente = (
+    knoten: ts.Node,
+  ): { name: string; fn: Komponentenknoten; id: ts.Identifier } | null => {
     if (ts.isFunctionDeclaration(knoten) && knoten.name && /^[A-Z]/.test(knoten.name.text)) {
-      return { name: knoten.name.text, fn: knoten };
+      return { name: knoten.name.text, fn: knoten, id: knoten.name };
     }
     if (
       ts.isVariableDeclaration(knoten) &&
@@ -323,7 +463,7 @@ function liesQuelle(datei: string, roh: string): Quelle {
       knoten.initializer &&
       (ts.isArrowFunction(knoten.initializer) || ts.isFunctionExpression(knoten.initializer))
     ) {
-      return { name: knoten.name.text, fn: knoten.initializer };
+      return { name: knoten.name.text, fn: knoten.initializer, id: knoten.name };
     }
     return null;
   };
@@ -332,10 +472,18 @@ function liesQuelle(datei: string, roh: string): Quelle {
     if (ts.isJsxOpeningElement(knoten) || ts.isJsxSelfClosingElement(knoten)) {
       const name = tagName(knoten);
       if (/^[A-Z]/.test(name)) {
+        // JOB 2080 D1: Bei `<Foo.Bar />` meint der RECHTE Teil die Komponente — der Checker löst
+        // ihn auf, der Text `"Foo.Bar"` konnte den Trägernamen nie treffen. Das war I44, drittens.
+        const ziel = ts.isPropertyAccessExpression(knoten.tagName)
+          ? knoten.tagName.name
+          : knoten.tagName;
+        const huelle = huelleVon(knoten);
         einbindungen.push({
           datei,
           komponente: name,
-          huelle: huelleVon(knoten),
+          kennung: kennungVon(ziel, checker),
+          huelle: huelle?.name ?? null,
+          huelleKennung: huelle?.kennung ?? null,
           attribute: knoten.attributes.properties
             .filter(ts.isJsxAttribute)
             .map((a) => a.name.getText(baum)),
@@ -359,10 +507,13 @@ function liesQuelle(datei: string, roh: string): Quelle {
               .filter((p) => ts.isPropertyAssignment(p) || ts.isShorthandPropertyAssignment(p))
               .map((p) => p.name?.getText(baum) ?? "")
           : [];
+      const huelleCe = huelleVon(knoten);
       einbindungen.push({
         datei,
         komponente: (knoten.arguments[0] as ts.Identifier).text,
-        huelle: huelleVon(knoten),
+        kennung: kennungVon(knoten.arguments[0] as ts.Identifier, checker),
+        huelle: huelleCe?.name ?? null,
+        huelleKennung: huelleCe?.kennung ?? null,
         attribute: felder,
         spread:
           !!props &&
@@ -376,6 +527,7 @@ function liesQuelle(datei: string, roh: string): Quelle {
     if (kandidat) {
       komponenten.push({
         name: kandidat.name,
+        kennung: kennungVon(kandidat.id, checker),
         eigenerTitel: eigenerTitel(kandidat.fn),
         // Bei `const Name = () => …` ist der Rumpf der INITIALIZER, nicht die Deklaration — sonst
         // zählte bei `const A = () => …, B = …` fremder Text zum Angebot.
@@ -395,27 +547,63 @@ const WEG_MODUL = "apps/web/src/app/ImageDescribeContext.tsx";
 
 // Stufe (1): die ANBIETER — Komponenten, die die Bildbeschreibung selbst rendern. Ihr VERHALTEN
 // wird unten gefahren (Stufe 3). Geprüft wird jetzt der Rumpf DER KOMPONENTE, nicht die Datei.
-const BAUTEILE: { datei: string; komponente: string }[] = ALLE_QUELLEN.filter(
-  (f) => f.datei !== TEXT_MODUL && f.datei !== WEG_MODUL,
-).flatMap((f) =>
-  f.komponenten.filter((k) => k.bietetAn).map((k) => ({ datei: f.datei, komponente: k.name })),
-);
+const BAUTEILE: { datei: string; komponente: string; kennung: string | null }[] =
+  ALLE_QUELLEN.filter((f) => f.datei !== TEXT_MODUL && f.datei !== WEG_MODUL).flatMap((f) =>
+    f.komponenten
+      .filter((k) => k.bietetAn)
+      .map((k) => ({ datei: f.datei, komponente: k.name, kennung: k.kennung })),
+  );
 
 // Stufe (2): die TRÄGER — transitive Hülle mit derselben Abbruchregel wie bisher („durchreichen
 // oder besitzen"), aber am PARAMETER der Komponente abgelesen statt an einem Textmuster über die
 // ganze Datei. Eine unbeteiligte Prop-Deklaration lässt jetzt keine Datei mehr durch, und ein
 // Wrapper mit anders benanntem Prop wird nicht mehr falsch zugeordnet.
-const TRAEGER: string[] = (() => {
-  const menge = new Set(BAUTEILE.map((b) => b.komponente));
+//
+// JOB 2080 D1 · STUFE 1 DER SAMMLERGRUNDLAGE: Die Runde vergleicht jetzt KENNUNGEN, nicht Namen.
+// Der Unterschied ist keine Feinheit — er entscheidet über drei Dinge, die vorher nicht gingen:
+//   · `<Foo.Bar />` trifft den Träger, weil der Checker den rechten Teil auflöst.
+//   · `const E = Editor; <E />` trifft ihn, weil der Alias auf dieselbe Deklaration zeigt.
+//   · Zwei gleichnamige Komponenten in zwei Dateien sind nicht mehr dieselbe.
+// Wo eine Kennung fehlt (Sondenquellen ohne Importe), fällt der Vergleich auf den Namen zurück —
+// das ist der bisherige Weg und keine Verschlechterung, nur eben keine Verbesserung.
+const schluessel = (name: string | null, kennung: string | null): string | null => kennung ?? name;
+
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+// AUFTRAG-JOB-2083 D1 — DIE INVARIANZ WIRD GERECHNET, NICHT FESTGESCHRIEBEN.
+// ══════════════════════════════════════════════════════════════════════════════════════════════
+//
+// In JOB 2080 D1 stand die Auflage als DREI ZAHLEN im Test: `toEqual({ komponenten: 246,
+// anbieter: 1, traeger: 2 })`. Das war mein eigener Konstruktionsfehler, und ich habe ihn in
+// 2080 D2 §2.4 selbst gemeldet: **eine feste Zahl prüft einen Zeitpunkt, keine Invarianz.**
+// Kommt eine Komponente hinzu, wird der Fall rot, ohne dass an der Grundlage etwas falsch wäre —
+// und dann steht genau die Versuchung im Raum, vor der bens Auflage warnt: „Die Sollzahlen dürfen
+// nicht passend gemacht werden."
+//
+// DESHALB RECHNET STUFE 2 JETZT IN BEIDEN WÄHRUNGEN. `stufe2` bekommt den Vergleichsschlüssel als
+// Parameter: über NAMEN (der Weg vor der Umstellung) oder über KENNUNGEN (der Weg danach). Der
+// Produktivpfad benutzt die Kennungen; der Invarianzfall unten fährt beide über denselben Baum und
+// verlangt Gleichheit. **Dieser Vergleich wächst mit dem Quellbaum mit und lässt sich durch keine
+// angepasste Zahl grün machen** — er kann nur grün sein, wenn die Umstellung wirklich nichts
+// verschiebt.
+type Waehrung = "name" | "kennung";
+const nach = (w: Waehrung, name: string | null, kennung: string | null): string | null =>
+  w === "kennung" ? schluessel(name, kennung) : name;
+
+function stufe2(w: Waehrung): { traeger: string[]; namen: string[]; funde: string[] } {
+  const menge = new Set(
+    BAUTEILE.map((b) => nach(w, b.komponente, b.kennung)).filter((s): s is string => !!s),
+  );
   for (let runde = 0; runde < 5; runde += 1) {
     let neu = 0;
     for (const f of ALLE_QUELLEN) {
       for (const e of f.einbindungen) {
-        if (!menge.has(e.komponente) || !e.huelle || menge.has(e.huelle)) {
+        const eingebunden = nach(w, e.komponente, e.kennung);
+        const huelle = nach(w, e.huelle, e.huelleKennung);
+        if (!eingebunden || !menge.has(eingebunden) || !huelle || menge.has(huelle)) {
           continue;
         }
-        if (f.komponenten.find((k) => k.name === e.huelle)?.eigenerTitel) {
-          menge.add(e.huelle);
+        if (f.komponenten.find((k) => nach(w, k.name, k.kennung) === huelle)?.eigenerTitel) {
+          menge.add(huelle);
           neu += 1;
         }
       }
@@ -424,8 +612,61 @@ const TRAEGER: string[] = (() => {
       break;
     }
   }
-  return [...menge];
-})();
+  // Die Fundliste in DERSELBEN Währung — sonst verglichen wir Träger in der einen und Funde in
+  // der anderen, und der Vergleich unten wäre wertlos.
+  const funde: string[] = [];
+  for (const f of ALLE_QUELLEN) {
+    for (const e of f.einbindungen) {
+      const eingebunden = nach(w, e.komponente, e.kennung);
+      const huelle = nach(w, e.huelle, e.huelleKennung);
+      if (!eingebunden || !menge.has(eingebunden) || (huelle && huelle === eingebunden)) {
+        continue;
+      }
+      const signatur = [...e.attribute].sort().join("+") + (e.spread ? "+{…spread}" : "");
+      funde.push(
+        `${e.datei} › ${e.huelle ?? "(modulweit)"} › <${e.komponente}> [${signatur}] in [${e.ahnen}]`,
+      );
+    }
+  }
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+  // AUFTRAG-JOB-2087 D1 — DIE TRÄGER WERDEN AUCH UNTER IHREM NAMEN AUSGEWIESEN.
+  // ════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // Der eine rote Test aus JOB 2080/2083 stand genau hier — und er war mein Fehler, nicht der der
+  // Umstellung: Mit dem Wechsel auf Kennungen enthält `TRAEGER` seit JOB 2080 D1 Einträge der Form
+  // `apps/web/src/components/KnowledgeInputStudio.tsx:48` statt `KnowledgeInputStudio`. Zwei
+  // Zusicherungen weiter unten lesen aber weiterhin NAMEN:
+  //
+  //   `expect(TRAEGER).toContain("KnowledgeInputStudio")`   -> wurde ROT
+  //   `expect(TRAEGER).not.toContain("AppRoutes")`          -> blieb grün und war STILL WERTLOS
+  //
+  // Die zweite ist der unangenehmere Teil des Befundes: Eine Zusicherung, die nach dem Umbau nichts
+  // mehr prüfen kann, faellt nicht auf. Sie haette weiter „grün" gemeldet, waehrend die Grenze, die
+  // sie bewacht, unbewacht war.
+  //
+  // DESHALB LIEFERT `stufe2` BEIDE SICHTEN AUF DIESELBE MENGE: `traeger` sind die Schlüssel für den
+  // internen Vergleich, `namen` dieselben Träger unter ihrem lesbaren Namen. Die Zusicherungen
+  // lesen `namen` und sind damit wieder scharf — auch die zweite.
+  const namen = [...menge]
+    .map((schl) => {
+      for (const f of ALLE_QUELLEN) {
+        const treffer = f.komponenten.find((k) => nach(w, k.name, k.kennung) === schl);
+        if (treffer) {
+          return treffer.name;
+        }
+      }
+      return null;
+    })
+    .filter((n): n is string => !!n);
+
+  return { traeger: [...menge], namen, funde };
+}
+
+const STUFE2 = stufe2("kennung");
+const TRAEGER: string[] = STUFE2.traeger;
+// JOB 2087 D1: dieselbe Menge, unter dem lesbaren Namen — für Zusicherungen, die einen Namen
+// nennen wollen. Sie ist eine ANSICHT, keine zweite Erhebung: beide kommen aus demselben Lauf.
+const TRAEGER_NAMEN: string[] = STUFE2.namen;
 
 interface Fund extends Einbindung {
   signatur: string;
@@ -438,7 +679,11 @@ const FUNDE: Fund[] = (() => {
   for (const f of ALLE_QUELLEN) {
     for (const e of f.einbindungen) {
       // Die Komponente in ihrer eigenen Definition zu erwähnen ist keine Einbindung von außen.
-      if (!TRAEGER.includes(e.komponente) || e.huelle === e.komponente) {
+      // JOB 2080 D1: beide Prüfungen laufen über die Kennung — sonst gälte eine gleichnamige
+      // Komponente aus einer anderen Datei als Selbsterwähnung und fiele still heraus.
+      const eingebunden = schluessel(e.komponente, e.kennung);
+      const huelle = schluessel(e.huelle, e.huelleKennung);
+      if (!eingebunden || !TRAEGER.includes(eingebunden) || (huelle && huelle === eingebunden)) {
         continue;
       }
       const signatur = [...e.attribute].sort().join("+") + (e.spread ? "+{…spread}" : "");
@@ -545,7 +790,10 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
   it("die transitive Ebene ist erhoben und klettert NICHT bis zum Anwendungsrahmen", () => {
     // Das Studio bietet die Beschreibung nicht an, TRÄGT sie aber. Fiele es aus der Hülle, verlöre
     // der Wächter drei Funde unbemerkt.
-    expect(TRAEGER).toContain("KnowledgeInputStudio");
+    // JOB 2087 D1: `TRAEGER_NAMEN` statt `TRAEGER` — seit der Kennungs-Umstellung enthält
+    // `TRAEGER` Deklarationsorte, keine Namen. Die Zusicherung ist dieselbe, sie liest nur die
+    // Sicht, die Namen führt.
+    expect(TRAEGER_NAMEN).toContain("KnowledgeInputStudio");
     // …und die Grenze hält: eine Route reicht keinen Dokument-Titel durch, sie führt zu der Seite,
     // die ihn erzeugt. Ohne diese Grenze wären `routes.tsx` und der Rahmen Fundstellen geworden.
     //
@@ -558,7 +806,10 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     const fundDateien = [...new Set(FUNDE.map((f) => f.datei))];
     expect(fundDateien).not.toContain("apps/web/src/routes.tsx");
     expect(fundDateien).not.toContain("apps/web/src/App.tsx");
-    expect(TRAEGER).not.toContain("AppRoutes");
+    // JOB 2087 D1: Diese Zeile stand seit der Umstellung auf `TRAEGER` und konnte NICHTS mehr
+    // finden — ein Name kommt in einer Kennungsliste nie vor. Sie war grün und wertlos. Auf
+    // `TRAEGER_NAMEN` umgestellt ist sie wieder scharf; das ist eine Verschärfung, keine Lockerung.
+    expect(TRAEGER_NAMEN).not.toContain("AppRoutes");
   });
 
   it("das VERHALTEN wird für JEDES erhobene Bauteil gefahren — sonst ist dieser Wächter unvollständig", () => {
@@ -803,21 +1054,177 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     expect(ohne.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel).toBe(false);
   });
 
-  it("DIE VERBLEIBENDE GRENZE, benannt statt verschwiegen: Alias und Indirektion", () => {
-    // `const E = RichTextEditor; <E />` und eine über eine Variable gereichte Komponente entgehen
-    // dieser Erhebung weiterhin — dafür bräuchte es den Typprüfer, nicht nur den Syntaxbaum. Die
-    // Grenze steht hier als FALL, damit sie nicht bloß Kommentar ist: die Sonde belegt, dass die
-    // Erhebung den Alias wirklich nicht sieht. Zwei Dinge entschärfen sie: der Titel ist seit
-    // mega85 PFLICHT-Parameter (ein Alias ohne ihn compiliert nicht), und ein Editor ohne Provider
-    // wirft zur Laufzeit.
+  // ── AUFTRAG-JOB-2080 D1 · STUFE 1: die Invarianz-Auflage als Fall, nicht als Zusage ──────────
+  //
+  // Die Entscheidung (`ENTSCHEIDUNGEN/JOB-2062-I44-SAMMLERGRUNDLAGE.md`) macht die Umstellung von
+  // drei Zahlen abhängig: „246 Komponenten · 1 Anbieter · 2 Träger, vorher wie nachher. Weicht EINE
+  // Zahl ab, ist die Umstellung GESCHEITERT, nicht fast richtig." Sie steht deshalb hier und nicht
+  // nur in einer Rückgabe — wer die Grundlage künftig anfasst, sieht sofort, ob er sie verschoben
+  // hat.
+  // JOB 2083 D1: Dieser Fall hiess in 2080 D1 dasselbe, prüfte aber drei feste Zahlen. Er steht
+  // jetzt in zwei Teilen da — der eine hält die Auflage des Chefs fest, der andere prüft, was die
+  // Auflage eigentlich MEINT. Und beide sagen bei Rot, WAS sie gemessen haben; eine nackte
+  // Erwartung `expected 246 to be 247` schickt den Nächsten auf dieselbe Suche, die mich einen
+  // ganzen Durchgang gekostet hat.
+  // AUFTRAG-JOB-2087 D1: der Wächter über die Namenssicht selbst.
+  //
+  // `TRAEGER_NAMEN` existiert, damit Zusicherungen einen Namen nennen können. Genau daran hängt
+  // jetzt aber auch ihre Schärfe: liefe die Liste je leer oder unvollständig, würde jedes
+  // `not.toContain(...)` wieder grün und wertlos — dieselbe stille Entwertung, die diesen Job
+  // zwei Durchgänge gekostet hat, nur eine Ebene höher.
+  it("DIE NAMENSSICHT LÄUFT NICHT LEER · gleich viele Namen wie Träger", () => {
+    // Laeuft die Namenssicht leer, sind alle Zusicherungen ueber Namen still wertlos.
+    expect(
+      TRAEGER_NAMEN.length,
+      `Namenssicht unvollstaendig: ${TRAEGER.length} Traeger, ${TRAEGER_NAMEN.length} Namen.`,
+    ).toBe(TRAEGER.length);
+    expect(
+      TRAEGER_NAMEN.length,
+      "Es gibt keine Traeger — dann prueft Stufe 2 nichts.",
+    ).toBeGreaterThan(0);
+    // Und die Sichten gehoeren zusammen: jeder Name muss in seiner eigenen Kennung vorkommen.
+    const unpassend = TRAEGER_NAMEN.filter(
+      (n, i) => !(TRAEGER[i] ?? "").includes(n) && !(TRAEGER[i] ?? "").includes("/"),
+    );
+    expect(unpassend, "Name und Kennung gehoeren nicht zusammen.").toEqual([]);
+  });
+
+  it("STUFE-1-INVARIANZ · die drei Zahlen der Auflage", () => {
+    const komponenten = ALLE_QUELLEN.reduce((n, f) => n + f.komponenten.length, 0);
+    const anbieter = ALLE_QUELLEN.flatMap((f) => f.komponenten.filter((k) => k.bietetAn)).length;
+    const traeger = ALLE_QUELLEN.flatMap((f) => f.komponenten.filter((k) => k.eigenerTitel)).length;
+    // Die Diagnose steht IM Fall, nicht in einer Rückgabe: wer hier rot wird, sieht sofort, ob die
+    // Erhebung verschoben ist (dann Rollback) oder ob der Sammler aus dem falschen Verzeichnis
+    // gelesen hat (dann ist nicht die Grundlage schuld, sondern der Lauf).
+    const diagnose =
+      `gemessen: ${komponenten} Komponenten · ${anbieter} Anbieter · ${traeger} Traeger` +
+      ` · Grundmenge ${ALLE_QUELLEN.length} Quelldateien · cwd ${WURZEL}`;
+    expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
+      komponenten: 246,
+      anbieter: 1,
+      traeger: 2,
+    });
+  });
+
+  it("STUFE-1-INVARIANZ · Name gegen Kennung: die Umstellung verschiebt Stufe 2 nicht", () => {
+    // DAS ist die Auflage in ihrer eigentlichen Form. Beide Währungen über DENSELBEN Baum, im
+    // SELBEN Lauf. Der Fall wächst mit dem Quellbaum mit; er lässt sich durch keine angepasste
+    // Zahl grün machen, sondern nur dadurch, dass die Umstellung wirklich nichts verschiebt.
+    const alt = stufe2("name");
+    const neu = stufe2("kennung");
+    expect(
+      neu.traeger.length,
+      `Traegerzahl verschoben: ueber Namen ${alt.traeger.length}, ueber Kennungen ${neu.traeger.length}.`,
+    ).toBe(alt.traeger.length);
+    const verloren = alt.funde.filter((f) => !neu.funde.includes(f));
+    const hinzu = neu.funde.filter((f) => !alt.funde.includes(f));
+    // Ein VERSCHWUNDENER Fund ist der Abbruchgrund: er waere still aus der Aufsicht gefallen.
+    expect(
+      { verloren, hinzu },
+      `Fundmenge verschoben — alt ${alt.funde.length}, neu ${neu.funde.length}.`,
+    ).toEqual({ verloren: [], hinzu: [] });
+  });
+
+  // JOB 2083 D1 · SCHRITT 3 meiner eigenen Spezifikation aus 2080 D2 §3. In D1 war ein Fall dieser
+  // Datei rot, und ich konnte ihn nicht lokalisieren: alles, was sich ausserhalb des Testlaufs
+  // nachrechnen liess, war grün. Drei Ursachen blieben übrig, die alle NICHT in der Logik liegen,
+  // sondern im Laufkontext — Arbeitsverzeichnis, Umgebung, Ladezeitpunkt. Der Fall unten macht
+  // genau diese drei sichtbar, statt sie als Zahlendrift zu tarnen.
+  it("DIE GRUNDLAGE STEHT · Arbeitsverzeichnis, Grundmenge und Programm sind da", () => {
+    expect(
+      ALLE_QUELLEN.length,
+      `Die Grundmenge ist zu klein — liest der Sammler aus dem falschen Verzeichnis? cwd ist ${WURZEL}.`,
+    ).toBeGreaterThan(300);
+    expect(
+      PROGRAMM.getSourceFiles().length,
+      `Das Programm ist leer oder winzig — dann löst der Checker nichts auf. cwd ist ${WURZEL}.`,
+    ).toBeGreaterThan(ALLE_QUELLEN.length);
+    // Und die Gegenprobe zur Grundmenge: die eine Datei, an der alles hängt, muss drin sein.
+    expect(
+      ALLE_QUELLEN.some((f) => f.datei === "apps/web/src/components/RichTextEditor.tsx"),
+      `RichTextEditor.tsx fehlt in der Grundmenge — cwd ist ${WURZEL}.`,
+    ).toBe(true);
+  });
+
+  it("STUFE-1-INVARIANZ · jede Komponente und jede Einbindung ist über den Checker auflösbar", () => {
+    // Der Gegenfall zur Zahl oben: die drei Werte könnten auch stimmen, wenn der Checker gar nichts
+    // auflöst und alles auf den Namensvergleich zurückfällt. Dann wäre die Umstellung eine leere
+    // Hülle. Gemessen am 23.08.2026: 246/246 Komponenten und 1524/1524 Einbindungen auflösbar.
+    const ohneKennung = ALLE_QUELLEN.flatMap((f) => f.komponenten.filter((k) => !k.kennung));
+    expect(
+      ohneKennung.map((k) => k.name),
+      "Komponenten ohne Kennung — der Checker löst sie nicht auf, Stufe 2 fällt auf Namen zurück.",
+    ).toEqual([]);
+    const einbOhne = ALLE_QUELLEN.flatMap((f) => f.einbindungen.filter((e) => !e.kennung));
+    expect(
+      einbOhne.map((e) => `${e.datei}:${e.zeile} <${e.komponente}>`),
+      "Einbindungen ohne Kennung — dort greift die neue Grundlage nicht.",
+    ).toEqual([]);
+  });
+
+  it("STUFE 1 löst auf, was der Name nicht traf: JSX-Member und Alias", () => {
+    // Der eigentliche Gewinn, an einer Sonde gefahren. `<Umschlag.Editor />` und `<E />` zeigen
+    // beide auf dieselbe Deklaration wie `<Editor />` — über den Namen war das nie erreichbar.
     const sonde = liesQuelle(
+      "sonde.tsx",
+      "export function Editor({ documentTitle }: Props) {\n" +
+        "  return <p>{documentTitle}</p>;\n" +
+        "}\n" +
+        "const Umschlag = { Editor };\n" +
+        "const E = Editor;\n" +
+        "export function Probe() {\n" +
+        "  return (\n" +
+        "    <div>\n" +
+        "      <Editor documentTitle={t} />\n" +
+        "      <Umschlag.Editor documentTitle={t} />\n" +
+        "      <E documentTitle={t} />\n" +
+        "    </div>\n" +
+        "  );\n" +
+        "}\n",
+    );
+    const deklaration = sonde.komponenten.find((k) => k.name === "Editor")?.kennung;
+    expect(
+      deklaration,
+      "Ohne Kennung der Deklaration ist der Vergleich unten wertlos.",
+    ).toBeTruthy();
+    const treffer = sonde.einbindungen.filter((e) => e.kennung === deklaration);
+    expect(
+      treffer.map((e) => e.komponente),
+      "Alle drei Schreibweisen meinen dieselbe Komponente — genau das war I44, drittens.",
+    ).toEqual(["Editor", "Umschlag.Editor", "E"]);
+  });
+
+  it("DIE GRENZE IST GEWANDERT: der Alias wird aufgelöst, sobald sein ZIEL im Programm liegt", () => {
+    // JOB 2080 D1 · STUFE 1: Bis hierher stand hier „DIE VERBLEIBENDE GRENZE … die Sonde belegt,
+    // dass die Erhebung den Alias wirklich nicht sieht". DAS GILT NICHT MEHR, und ein Kommentar,
+    // der es weiter behauptet, wäre eine Falle für den Nächsten. Der Fall bleibt trotzdem stehen,
+    // weil er jetzt etwas ANDERES festhält — und das ist die neue, engere Grenze:
+    //
+    //   Die Auflösung braucht ein ZIEL im Programm. Steht der Alias auf einem Namen, den dieses
+    //   Programm nicht kennt, bleibt die Kennung bei der Zuweisung stehen. In einer Sondenquelle
+    //   ohne Importe ist das der Normalfall; im echten Quellbaum ist es die Ausnahme, denn dort
+    //   sind 1524 von 1524 Einbindungen auflösbar (Fall STUFE-1-INVARIANZ oben).
+    //
+    // Der NAME bleibt in beiden Fällen `E` — er wird für Meldungen und Fundidentitäten gebraucht
+    // und ist nicht das, worüber Stufe 2 vergleicht.
+    const ohneZiel = liesQuelle(
       "sonde.tsx",
       "const E = RichTextEditor;\nexport function Probe() {\n  return <E value={v} />;\n}\n",
     );
+    expect(ohneZiel.einbindungen.map((e) => e.komponente)).toEqual(["E"]);
     expect(
-      sonde.einbindungen.map((e) => e.komponente),
-      "Die Erhebung sieht den Alias jetzt doch — dann ist diese Grenze weg und der Kommentar falsch.",
-    ).toEqual(["E"]);
+      ohneZiel.einbindungen[0]?.kennung,
+      "Ohne bekanntes Ziel darf die Erhebung keine Auflösung BEHAUPTEN — sie kennt sie nicht.",
+    ).toBe("sonde.tsx:1");
+
+    // Und die Gegenrichtung: liegt das Ziel im selben Programm, zeigt der Alias darauf.
+    const mitZiel = liesQuelle(
+      "sonde.tsx",
+      "export function Editor({ documentTitle }: Props) {\n  return <p>{documentTitle}</p>;\n}\n" +
+        "const E = Editor;\nexport function Probe() {\n  return <E documentTitle={t} />;\n}\n",
+    );
+    const deklaration = mitZiel.komponenten.find((k) => k.name === "Editor")?.kennung;
+    expect(mitZiel.einbindungen.find((e) => e.komponente === "E")?.kennung).toBe(deklaration);
   });
 });
 // ── Stufe 3: das ANTWORTVERHALTEN ───────────────────────────────────────────────────────────────
