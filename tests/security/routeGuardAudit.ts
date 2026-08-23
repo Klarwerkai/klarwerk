@@ -503,7 +503,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
 
   // --- media (media-routes.ts, SCRUM-382) ---
   "GET /api/media/status": { protection: "auth" },
-  "POST /api/media/analyze": { protection: "ko.read" },
+  // JOB 2021 (G8): dritte Tür in DENSELBEN Objektspeicher wie die beiden Routen darüber
+  // (media/src/service.ts:92). Sie trägt deshalb dasselbe Zeilenrecht — ohne es war sie ein
+  // Existenzorakel: 404/400/200 unterschieden für einen Unbefugten, ob ein Anhang existiert.
+  "POST /api/media/analyze": { protection: "ko.read", zeilenrecht: ["beurteileAnhang"] },
 
   // --- i18n (i18n-routes.ts) ---
   "GET /api/i18n/locales": {

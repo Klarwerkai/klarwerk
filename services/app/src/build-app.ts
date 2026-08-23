@@ -228,7 +228,7 @@ import { AnswerExplanationService } from "./services/answer-explanation";
 // Policyentscheidung liegt im Reasoner-Modul, die Orchestrierung im Sitzungsdienst.
 import { ImportAccessService } from "./services/import-access-service";
 import { KlaraSessionService } from "./services/klara-session-service";
-import { sichtbarkeitsfilterFuer } from "./sichtbarkeit";
+import { type AnhangQuellen, sichtbarkeitsfilterFuer } from "./sichtbarkeit";
 // WP-D11: PPTX-Folien → PNG (Route + injizierbarer Konverter).
 import { type SlideConverter, createSofficeSlideConverter } from "./slide-converter";
 
@@ -1420,29 +1420,32 @@ export function buildApp(
   // AUFTRAG-mega76 BLOCK B: dazu kommen die drei Herkünfte, die bis mega76 durchfielen —
   // Versions-Schnappschüsse, Belegketten und Entwürfe. Dieselbe Aufzählung wie in
   // object-references.ts, dort gegen Datenverlust, hier gegen Auskunft.
-  app.register(
-    objectRoutes(services.objects, guards, {
-      kos: () => services.ko.list(),
-      // AUFTRAG-mega78 BLOCK A: die Fassung reist MIT IHREM URHEBER. `v.author` ist die Person,
-      // die diese Fassung geschrieben hat (serverseitig aus der Anmeldung) — `v.snapshot.author`
-      // wäre der über Revisionen unveränderte Autor des Wissensobjekts und damit kein Nachweis.
-      versionen: async (koId) =>
-        (await services.ko.versionsOf(koId)).map((v) => ({ author: v.author, stand: v.snapshot })),
-      // `EvidenceRecord.createdBy` reist mit — der Urheber-Nachweis der Belegkette.
-      belege: (koId) => services.ko.evidenceOf(koId),
-      entwuerfe: async () =>
-        (await services.capture.listDrafts()).map((draft) => ({
-          originalAuthor: draft.originalAuthor,
-          lastEditor: draft.lastEditor,
-          bodyHtml: draft.payload.bodyHtml,
-          objectIds: [
-            ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
-            ...(draft.payload.anchorDocuments ?? []).map((doc) => doc.objectId),
-          ],
-        })),
-    }),
-  );
-  app.register(mediaRoutes(services.media, guards));
+  //
+  // JOB 2021 (G8): EINE Aufzählung für BEIDE Wege in den Objektspeicher. `POST /api/media/analyze`
+  // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
+  // deshalb dieselben Herkünfte, nicht eine zweite, die auseinanderlaufen kann.
+  const anhangQuellen: AnhangQuellen = {
+    kos: () => services.ko.list(),
+    // AUFTRAG-mega78 BLOCK A: die Fassung reist MIT IHREM URHEBER. `v.author` ist die Person,
+    // die diese Fassung geschrieben hat (serverseitig aus der Anmeldung) — `v.snapshot.author`
+    // wäre der über Revisionen unveränderte Autor des Wissensobjekts und damit kein Nachweis.
+    versionen: async (koId) =>
+      (await services.ko.versionsOf(koId)).map((v) => ({ author: v.author, stand: v.snapshot })),
+    // `EvidenceRecord.createdBy` reist mit — der Urheber-Nachweis der Belegkette.
+    belege: (koId) => services.ko.evidenceOf(koId),
+    entwuerfe: async () =>
+      (await services.capture.listDrafts()).map((draft) => ({
+        originalAuthor: draft.originalAuthor,
+        lastEditor: draft.lastEditor,
+        bodyHtml: draft.payload.bodyHtml,
+        objectIds: [
+          ...(draft.payload.pendingSources ?? []).map((src) => src.objectId),
+          ...(draft.payload.anchorDocuments ?? []).map((doc) => doc.objectId),
+        ],
+      })),
+  };
+  app.register(objectRoutes(services.objects, guards, anhangQuellen));
+  app.register(mediaRoutes(services.media, guards, services.objects, anhangQuellen));
   app.register(i18nRoutes(services.i18n));
   // AUFTRAG-mega46 Block F: die EINE Auskunft „welche Schalter stehen" — Ja/Nein je Schalter, sonst
   // nichts. Sie ist selbst NICHT geschaltet: Eine Auskunft, die man erst freischalten muss, könnte

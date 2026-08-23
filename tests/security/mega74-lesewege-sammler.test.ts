@@ -400,10 +400,12 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "KEIN_KO_INHALT",
     grund: "Hilfe-Schnipsel (help-routes:11).",
   },
-  "POST /api/media/analyze": {
-    urteil: "DIENST_FILTERT",
-    grund: "media/src/service.ts:110 — unklar → kein externer Egress.",
-  },
+  // JOB 2021 (G8): war bis 23.08. `DIENST_FILTERT` mit der Fundstelle „service.ts:110 — unklar →
+  // kein externer Egress". Die Fundstelle stimmt, das Urteil trug sie nicht: sie belegt, dass der
+  // INHALT nicht nach draussen geht — nicht, dass der LESER geprüft wird. `analyze()` nimmt gar
+  // keinen Betrachter entgegen (service.ts:87). Die Route liest denselben Bestand wie
+  // `GET /api/objects/:id` und steht seit G8 unter demselben Prädikat, also unter Messung.
+  "POST /api/media/analyze": { urteil: "PRAEDIKAT", grund: "Block C — G8, 404 statt Auskunft." },
   "POST /api/notifications/seen": { urteil: "KEIN_KO_INHALT", grund: "eigener Gelesen-Stand." },
   "POST /api/capture/slides": { urteil: "KEIN_KO_INHALT", grund: "PNGs aus eingesandtem PPTX." },
   // --- Schreibwege: die Antwort trägt, was der Aufrufer selbst eingereicht/bewirkt hat -------
