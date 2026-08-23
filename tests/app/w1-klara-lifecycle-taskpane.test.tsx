@@ -1466,7 +1466,27 @@ describe("JOB 1151 KA3: die Karte kommt auf Anlass — und nimmt nie den Cursor"
     schreibanlass(); // 10 s
     await vi.advanceTimersByTimeAsync(19_000);
     schreibanlass(); // 29 s
-    await vi.advanceTimersByTimeAsync(ruhe() - 1);
+    // JOB 2051 (D1) — WARUM HIER SYNCHRON VORGERUECKT WIRD.
+    //
+    // `useFakeTimers({ shouldAdvanceTime: true })` (oben, beforeEach) haengt an die gestellte Uhr
+    // ein ECHTES `setInterval`, das sie alle 20 ms um 20 ms weiterschiebt — `advanceTimeDelta`,
+    // Voreinstellung 20 (`vitest/dist/chunks/vi.*.js`: „config.advanceTimeDelta =
+    // config.advanceTimeDelta || 20"). Dieser Vorlauf feuert nur, wenn der Fall zur Timerphase
+    // zurueckkehrt, und `advanceTimersByTimeAsync` tut genau das: es wartet zwischen den Timern
+    // ueber das echte `setImmediate`.
+    //
+    // Gegen die Marge von EINER Millisekunde genuegt EIN solcher Schritt: die Uhr steht dann
+    // hinter der Tastenruhe, der Abruf laeuft los, und der Fall faellt — ohne dass am
+    // Aufgabenfenster irgendetwas falsch waere. Gemessen in D1: derselbe Fall, dieselbe Summe,
+    // nur mit Rechenzeit an einem Wartepunkt → „expected 2 to be 1".
+    //
+    // `advanceTimersByTime` rueckt SYNCHRON vor: kein Wartepunkt, kein Vorlauf. `leerlauf()`
+    // danach ist ebenso sicher, denn es wartet ausschliesslich auf Mikrotasks und
+    // `process.nextTick` — beide werden abgearbeitet, BEVOR die Ereignisschleife wieder Timer
+    // laufen laesst (`nextTick` wird von der Uhr bewusst nicht gestellt). Es bleibt also bei
+    // genau `ruhe() - 1`: die Zusicherung ist unveraendert scharf, nur ihre Abhaengigkeit von der
+    // Maschine ist weg.
+    vi.advanceTimersByTime(ruhe() - 1);
     await leerlauf();
 
     expect(ka2.aufrufe.length, "Vor Ablauf der Tastenruhe wurde bereits nachgesehen").toBe(
