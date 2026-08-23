@@ -212,15 +212,79 @@ function liesQuelle(datei: string, roh: string): Quelle {
 
   // „Führt den Titel als EIGENEN Prop" — am Parameter der Komponente abgelesen, nicht an einer
   // Zeichenfolge irgendwo in der Datei. Das war bens Blindstelle „DURCHREICH_MUSTER prüft dateiweit".
-  const eigenerTitel = (fn: ts.SignatureDeclarationBase): boolean => {
+  //
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  // AUFTRAG-JOB-2062 D4 (I44, erstens — zweite Haelfte) — DREI SCHREIBWEISEN STATT EINER.
+  // ══════════════════════════════════════════════════════════════════════════════════════════════
+  //
+  // DER BEFUND (ben, sammel85, `OFFEN.md:384`): „`eigenerTitel` erkennt nur einen direkt
+  // destrukturierten Parameter, sodass `function Wrapper(props: Props)` oder
+  // `{ documentTitle: titel }` die transitive Hülle stoppt."
+  //
+  // WAS DAS HEISST: Beide Formen führen den Titel als eigenen Prop — nur anders geschrieben. Wurde
+  // die Hülle hier fälschlich beendet, endete die transitive Kette in Stufe 2 EINEN Schritt zu
+  // früh: der Träger darüber fiel aus der Menge, und mit ihm alle Einbindungen in seinem Rumpf.
+  // Kein Fund, kein Rot — die Kette hörte einfach auf.
+  //
+  // DIE UMBENANNTE DESTRUKTURIERUNG IST DER HEIKLERE DER BEIDEN, weil sie fast richtig aussieht:
+  //   { documentTitle }          -> e.name = documentTitle · e.propertyName = undefined
+  //   { documentTitle: titel }   -> e.name = titel         · e.propertyName = documentTitle
+  // Wer nur `e.name` liest, sieht im zweiten Fall den ZIELnamen der Umbenennung und nicht den
+  // Prop. Der Prop steht in `propertyName`, und nur wenn umbenannt wurde.
+  //
+  // GEMESSEN AM 23.08.2026 über alle 399 Quelldateien in `apps/web/src`, alte gegen neue Fassung:
+  //   Träger mit eigenem documentTitle — vorher 2 · nachher 2 · neu erkannt 0 · verloren 0
+  // AUCH DIESE HÄRTUNG BEHEBT HEUTE KEINEN FALL. Sie ist Vorsorge, wie D3 — und sie steht hier,
+  // weil die Kette sonst an der nächsten neuen Fläche still abbricht statt zu melden.
+  const TITEL_PROP = "documentTitle";
+  // Der Typ ist enger als `SignatureDeclarationBase`, weil Fall (3) den RUMPF braucht — und den
+  // hat nur eine Funktion mit Körper. Genau die drei Formen kommen aus `alsKomponente`.
+  const eigenerTitel = (fn: Komponentenknoten): boolean => {
     const erster = fn.parameters[0];
     if (!erster) {
       return false;
     }
+    // (1) und (2): `{ documentTitle }` und `{ documentTitle: titel }`
     if (ts.isObjectBindingPattern(erster.name)) {
-      return erster.name.elements.some(
-        (e) => ts.isIdentifier(e.name) && e.name.text === "documentTitle",
-      );
+      return erster.name.elements.some((e) => {
+        const quelle = e.propertyName ?? e.name;
+        return ts.isIdentifier(quelle) && quelle.text === TITEL_PROP;
+      });
+    }
+    // (3): `function Wrapper(props: Props)` — der Titel wird über das Objekt gelesen. Erhoben wird
+    // das am BAUM, nicht an einer Zeichenfolge: entweder `props.documentTitle` irgendwo im Rumpf
+    // oder eine Destrukturierung `const { documentTitle } = props`. An den Parameternamen gebunden,
+    // damit ein gleichnamiger Zugriff auf ein FREMDES Objekt nicht mitzählt.
+    if (ts.isIdentifier(erster.name) && fn.body) {
+      const param = erster.name.text;
+      let gefunden = false;
+      const tief = (n: ts.Node): void => {
+        if (
+          ts.isPropertyAccessExpression(n) &&
+          ts.isIdentifier(n.expression) &&
+          n.expression.text === param &&
+          n.name.text === TITEL_PROP
+        ) {
+          gefunden = true;
+        }
+        if (
+          ts.isVariableDeclaration(n) &&
+          ts.isObjectBindingPattern(n.name) &&
+          n.initializer &&
+          ts.isIdentifier(n.initializer) &&
+          n.initializer.text === param
+        ) {
+          for (const el of n.name.elements) {
+            const quelle = el.propertyName ?? el.name;
+            if (ts.isIdentifier(quelle) && quelle.text === TITEL_PROP) {
+              gefunden = true;
+            }
+          }
+        }
+        ts.forEachChild(n, tief);
+      };
+      tief(fn.body);
+      return gefunden;
     }
     return false;
   };
@@ -665,6 +729,78 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
       sonde.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel,
       "Die Hülle ist da, aber ohne Eintrag in `komponenten` bricht die Kette in Stufe 2 ab.",
     ).toBe(true);
+  });
+
+  // ── AUFTRAG-JOB-2062 D4 (I44, erstens — zweite Hälfte): drei Schreibweisen des Titel-Props ────
+  //
+  // Auch hier gilt, was für D3 galt: im Web-Quellbaum steht heute keine dieser Formen (gemessen
+  // 2 zu 2, null neu). Die Fähigkeit wird an Sonden belegt, nicht an Fundzahlen behauptet.
+
+  it("umbenannte Destrukturierung `{ documentTitle: titel }` zählt als eigener Titel", () => {
+    // Der heiklere der beiden Fälle: `e.name` ist hier `titel`, der Prop steht in `propertyName`.
+    // Wer nur `e.name` liest, sieht den Zielnamen der Umbenennung und hält die Hülle für titellos.
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "export function Wrapper({ documentTitle: titel }: Props) {\n" +
+        "  return <RichTextEditor value={v} documentTitle={titel} />;\n" +
+        "}\n",
+    );
+    expect(sonde.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel).toBe(true);
+  });
+
+  it("`function Wrapper(props: Props)` zählt, wenn der Titel über das Objekt gelesen wird", () => {
+    const zugriff = liesQuelle(
+      "sonde.tsx",
+      "export function Wrapper(props: Props) {\n" +
+        "  return <RichTextEditor value={v} documentTitle={props.documentTitle} />;\n" +
+        "}\n",
+    );
+    expect(zugriff.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel).toBe(true);
+
+    const destrukturiert = liesQuelle(
+      "sonde.tsx",
+      "export function Wrapper(props: Props) {\n" +
+        "  const { documentTitle } = props;\n" +
+        "  return <RichTextEditor value={v} documentTitle={documentTitle} />;\n" +
+        "}\n",
+    );
+    expect(destrukturiert.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel).toBe(true);
+  });
+
+  it("die direkte Destrukturierung bleibt unverändert erkannt", () => {
+    // Ohne diesen Fall wäre nicht gezeigt, dass die Erweiterung die bisherige Form mitträgt.
+    const sonde = liesQuelle(
+      "sonde.tsx",
+      "export function Wrapper({ documentTitle }: Props) {\n" +
+        "  return <RichTextEditor value={v} documentTitle={documentTitle} />;\n" +
+        "}\n",
+    );
+    expect(sonde.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel).toBe(true);
+  });
+
+  it("DIE GEGENRICHTUNG: ein fremdes Objekt mit gleichem Feldnamen zählt NICHT", () => {
+    // Der Preis einer zu weiten Erhebung wäre eine Hülle, die den Titel gar nicht führt — die
+    // transitive Menge würde wachsen und die Fundzahlen wären wertlos. Deshalb ist der Zugriff an
+    // den PARAMETERNAMEN gebunden, und dieser Fall belegt es.
+    const fremd = liesQuelle(
+      "sonde.tsx",
+      "export function Wrapper(props: Props) {\n" +
+        "  const daten = ladeDaten();\n" +
+        "  return <RichTextEditor value={v} documentTitle={daten.documentTitle} />;\n" +
+        "}\n",
+    );
+    expect(
+      fremd.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel,
+      "`daten.documentTitle` ist nicht der Prop dieser Komponente — die Hülle führt ihn nicht.",
+    ).toBe(false);
+
+    const ohne = liesQuelle(
+      "sonde.tsx",
+      "export function Wrapper(props: Props) {\n" +
+        "  return <RichTextEditor value={props.value} />;\n" +
+        "}\n",
+    );
+    expect(ohne.komponenten.find((k) => k.name === "Wrapper")?.eigenerTitel).toBe(false);
   });
 
   it("DIE VERBLEIBENDE GRENZE, benannt statt verschwiegen: Alias und Indirektion", () => {
