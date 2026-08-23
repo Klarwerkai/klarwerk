@@ -702,14 +702,27 @@ export function KnowledgeDetail(): JSX.Element {
   // AUFTRAG-mega69 Block A: Bitte der Bildergalerie, das Bildbeschreibungs-Formular des Editors für
   // ein bestimmtes Bild zu öffnen. In der Leseansicht heißt das: Edit-Modus starten UND die Bitte
   // stellen — der Editor löst sie nach dem Mount ein (RichTextEditor, captionFormRequest).
-  const [captionRequest, setCaptionRequest] = useState<{ imageId: string; nonce: number } | null>(
-    null,
-  );
-  const editCaptionFromGallery = (ko: KnowledgeObject, imageId: string): void => {
+  // JOB 2084 (I50-3): die Bitte trägt `src` und `index` der geöffneten Galerie-Occurrence mit.
+  // Diese Seite ist der Fall, den keine spätere Synchronisierung heilen kann: die Bitte entsteht in
+  // der LESEANSICHT, also bevor der Editor überhaupt montiert ist. Eine Bitte, die zu diesem
+  // Zeitpunkt nur eine (womöglich doppelte) Kennung trägt, ist bereits mehrdeutig — der Editor kann
+  // sie danach nicht mehr eindeutig machen.
+  const [captionRequest, setCaptionRequest] = useState<{
+    imageId: string;
+    src: string;
+    index: number;
+    nonce: number;
+  } | null>(null);
+  const editCaptionFromGallery = (
+    ko: KnowledgeObject,
+    imageId: string,
+    src: string,
+    index: number,
+  ): void => {
     if (!edit) {
       startEdit(ko);
     }
-    setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }));
+    setCaptionRequest((prev) => ({ imageId, src, index, nonce: (prev?.nonce ?? 0) + 1 }));
   };
 
   const startEdit = (ko: KnowledgeObject): void => {
@@ -1392,7 +1405,10 @@ export function KnowledgeDetail(): JSX.Element {
                           ko={ko}
                           responsibleName={nameOf(ko.author)}
                           onEditCaption={
-                            canEdit ? (imageId) => editCaptionFromGallery(ko, imageId) : undefined
+                            canEdit
+                              ? (imageId, src, index) =>
+                                  editCaptionFromGallery(ko, imageId, src, index)
+                              : undefined
                           }
                         />
 

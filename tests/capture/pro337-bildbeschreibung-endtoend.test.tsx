@@ -78,10 +78,15 @@ const describeMock = vi.fn(async (): Promise<DescribeImageResult> => VORSCHLAG);
 // es direkt und fährt damit denselben Eingang, ohne die Seiten anzufassen.
 function Host(): JSX.Element {
   const [value, setValue] = useState(BODY);
-  const [request, setRequest] = useState<{ imageId: string; nonce: number } | undefined>(undefined);
+  // JOB 2084 (I50-3): die Bitte traegt seit dieser Aenderung die Occurrence der Galerie mit
+  // (`src` und `index` des geoeffneten Eintrags). Dieser Stand hat GENAU EIN Bild — die Werte sind
+  // deshalb `PNG` und `0`, und die Aussage des Falls bleibt unveraendert.
+  const [request, setRequest] = useState<
+    { imageId: string; src: string; index: number; nonce: number } | undefined
+  >(undefined);
   lastHtml = value;
-  galerieBitte = (imageId: string) =>
-    setRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }));
+  galerieBitte = (imageId: string, src: string, index: number) =>
+    setRequest((prev) => ({ imageId, src, index, nonce: (prev?.nonce ?? 0) + 1 }));
   return mitBildbeschreibung(
     createElement(RichTextEditor, {
       value,
@@ -96,7 +101,7 @@ function Host(): JSX.Element {
   );
 }
 
-let galerieBitte: (imageId: string) => void = () => {
+let galerieBitte: (imageId: string, src: string, index: number) => void = () => {
   throw new Error("Host nicht montiert");
 };
 
@@ -152,7 +157,7 @@ async function oeffneUeberBeschreibung(): Promise<void> {
 /** Der zweite Weg: aus der Bildergalerie heraus, über die Kennung des betrachteten Bildes. */
 async function oeffneUeberGalerie(): Promise<void> {
   await act(async () => {
-    galerieBitte("kw-337");
+    galerieBitte("kw-337", PNG, 0);
     await flush();
   });
 }

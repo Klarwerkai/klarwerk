@@ -11,6 +11,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useImageDescribe } from "../app/ImageDescribeContext";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
+// JOB 2084 (I50-3): die KANONISCHE Galerie-Ableitung. Der Editor löst die Bitte über dieselbe
+// Funktion auf, aus der die Galerie ihre Liste bildet — kein zweiter Filter, keine Nachbildung.
+import { extractBodyImages } from "../lib/bodyImages";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
@@ -306,7 +309,11 @@ export function RichTextEditor({
   // das Bildbeschreibungs-Formular für ein bestimmtes verankertes Bild zu öffnen. Es ist DASSELBE
   // Formular, derselbe describe-Weg — nur der Einstieg kommt von dort, wo das Bild betrachtet wird.
   // `nonce` macht jede Bitte zu einem neuen Ereignis (zweimal dasselbe Bild öffnet zweimal).
-  captionFormRequest?: { imageId: string; nonce: number } | undefined;
+  // JOB 2084 (I50-3): die Bitte trägt die OCCURRENCE der Galerie — `src` und `index` des Eintrags,
+  // den der Nutzer wirklich geöffnet hat. Eine Bitte, die nur eine (womöglich doppelte) Kennung
+  // trägt, ist bereits mehrdeutig, wenn sie entsteht; keine spätere Synchronisierung kann sie
+  // eindeutig machen. Auflösung: siehe der Effekt weiter unten.
+  captionFormRequest?: { imageId: string; src: string; index: number; nonce: number } | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung (WP-BILD-1c/1f, mega9 Block F) wird HIER
@@ -852,11 +859,53 @@ export function RichTextEditor({
     if (!el) {
       return;
     }
-    const image = Array.from(el.querySelectorAll("img[data-image-id]")).find(
-      (img) => img.getAttribute("data-image-id") === captionFormRequest.imageId,
-    );
-    if (image instanceof HTMLImageElement) {
-      openCaptionFormFor(image);
+    // JOB 2084 (I50-3) — DIE OCCURRENCE AUF DIE KONKRETE FIGURE ABBILDEN.
+    //
+    // Bis hierher stand hier ein reiner Kennungsvergleich mit `find(...)`. `Array.prototype.find`
+    // nimmt den ERSTEN Treffer: bei doppelter `data-image-id` entschied die Dokumentreihenfolge,
+    // welches Bild das Formular bekam — wer den zweiten Galerie-Eintrag wählte, beschrieb das erste
+    // Bild. Genau das ist der dritte Punkt aus bens Register I50.
+    //
+    // DIE AUFLÖSUNG LÄUFT ÜBER `extractBodyImages` — DIESELBE Funktion, aus der die Galerie ihre
+    // Liste ableitet. Der Editor baut ihren Filter NICHT nach (nur Bilder in einer figure, mit
+    // gültiger Kennung und sicherer Quelle); er ruft ihn auf. Damit gibt es weiterhin genau eine
+    // Antwort auf die Frage „welche Bilder zählen".
+    //
+    // Und jede Stufe verlangt GENAU EINEN Treffer. Wo nicht eindeutig entschieden werden kann,
+    // öffnet sich nichts — ein still geöffnetes falsches Bild bereitet eine Beschreibung am
+    // falschen Objekt vor, und das ist schlimmer als eine Bitte, die nichts tut.
+    const eindeutig = (id: string): HTMLImageElement | null => {
+      const treffer = Array.from(el.querySelectorAll("img[data-image-id]")).filter(
+        (img) => img.getAttribute("data-image-id") === id,
+      );
+      // Genau eines: nach der Entdublettierung in `ensureImageAnchors` ist jede Kennung im
+      // Editor-DOM eindeutig. Sind es zwei, ist der Stand nicht der erwartete — dann nicht raten.
+      const einziges = treffer.length === 1 ? treffer[0] : null;
+      return einziges instanceof HTMLImageElement ? einziges : null;
+    };
+
+    const aktuell = extractBodyImages(sanitizeHtml(el.innerHTML));
+
+    // Stufe 1: die Position aus der Galerie, bestätigt durch die Quelle. Das ist der Normalfall —
+    // und der EINZIGE Weg, der auch dann trägt, wenn zwei Bilder dieselbe Kennung UND dieselbe
+    // Quelle haben.
+    const anPosition = aktuell[captionFormRequest.index];
+    let bild = anPosition?.src === captionFormRequest.src ? eindeutig(anPosition.id) : null;
+
+    // Stufe 2: die Zählung ist verrutscht (ein nacktes <img> zählt für die Galerie nicht, wird hier
+    // aber eingehüllt) — dann trägt die Quelle, sofern sie EINDEUTIG ist.
+    if (bild === null) {
+      const nachQuelle = aktuell.filter((b) => b.src === captionFormRequest.src);
+      bild = nachQuelle.length === 1 && nachQuelle[0] ? eindeutig(nachQuelle[0].id) : null;
+    }
+
+    // Stufe 3: der Bestandsweg — die Kennung, aber nur bei genau einem Treffer.
+    if (bild === null) {
+      bild = eindeutig(captionFormRequest.imageId);
+    }
+
+    if (bild !== null) {
+      openCaptionFormFor(bild);
     }
   }, [captionFormRequest]);
 

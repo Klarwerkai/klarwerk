@@ -949,6 +949,66 @@ export function ensureImageAnchors(root: EditableFigureRoot): number {
   }
 
   // ==============================================================================================
+  // JOB 2084 (Register I50, DRITTENS) — EINE KENNUNG GEHÖRT GENAU EINEM BILD.
+  // ==============================================================================================
+  //
+  // DER BEFUND (ben in sammel92): „doppelte `data-image-id` sind nicht ausgeschlossen — die Paarung
+  // verbraucht jede Fußnote nur einmal, aber spätere globale Kennungssuchen liefern bei Dubletten
+  // den ersten Treffer."
+  //
+  // DIE ANTWORT STEHT SCHON IM PROJEKT, und sie steht im Sanitizer. `anchorFigures`
+  // (`services/structure/src/sanitize.ts`) führt eine Menge `claimed` und lässt eine bereits
+  // beanspruchte Kennung kein zweites Mal führen. Dort steht auch, WER die Doppelung weiterträgt —
+  // wörtlich: „Der Editor macht die Hülle flach (`editorFigures.ts`), respektiert dabei vorhandene
+  // Kennungen — zu Recht, denn Überschreiben hat früher Zuordnungen zerstört — und trug die
+  // Doppelung weiter. Im Browser standen dann zwei Bilder mit derselben Identität: Wer beide
+  // beschreibt, beschreibt am Ende dasselbe oder verliert eine Beschreibung beim Wiederöffnen."
+  //
+  // Diese Schleife ist die benannte Stelle. Sie bekommt DIESELBE Antwort wie der Sanitizer, nicht
+  // eine zweite: das ERSTE Bild in Dokumentreihenfolge behält seine Kennung (Stabilität), jedes
+  // weitere mit derselben bekommt eine frische, die im ganzen Inhalt noch nicht vorkommt.
+  //
+  // WARUM DER EDITOR UND NICHT DER CLIENT-SANITIZER, gemessen an genau diesem Körper (zwei figures,
+  // dieselbe Kennung):
+  //     services/structure    →  ["kw-img-dup-1", "kw-cap-zweite"]   entdublettiert
+  //     apps/web/lib/richText →  ["kw-img-dup-1", "kw-img-dup-1"]    unverändert
+  // Der Client-Sanitizer trägt bewusst KEIN `anchorFigures`; er ist der Spiegel der Allowlist, und
+  // autoritativ ist der Server. Bis zum nächsten Serverdurchlauf ist der Editor deshalb die einzige
+  // Stelle, an der die Doppelung überhaupt auffallen kann — und `emit()` speichert client-seitig.
+  //
+  // WORAUF SICH DAS STÜTZT: Die Editor-Auflösung der Galerie-Bitte (`RichTextEditor.tsx`) findet
+  // das gewählte Bild über die Kennung seines Galerie-Eintrags. Diese Kennung MUSS im Editor-DOM
+  // eindeutig sein, sonst trifft die Suche wieder mehrere. Entdublettierung und Occurrence-Kette
+  // sind deshalb zwei Hälften eines Vertrags, nicht zwei Bauten nebeneinander.
+  //
+  // DIE FUSSNOTE FOLGT NUR, WENN SIE WIRKLICH DIESE KENNUNG TRUG. Trägt sie eine ANDERE, wird an
+  // keiner Seite geschrieben: zwei verschiedene, nicht leere Kennungen werden in diesem Modul
+  // nirgends gegeneinander verrechnet (`gemeinsameKennung`), und eine überschriebene Zuordnung ist
+  // nicht reparierbar — eine danebenstehende schon.
+  //
+  // `verankert` wird NICHT hochgezählt: die Zahl sagt „so viele Bilder wurden verankert", und ein
+  // Bild, das schon verankert war, wird hier nur umbenannt.
+  const beansprucht = new Set<string>();
+  for (const img of root.querySelectorAll("img")) {
+    const alte = kennungVon(img);
+    if (alte === "") {
+      continue;
+    }
+    if (!beansprucht.has(alte)) {
+      beansprucht.add(alte);
+      continue;
+    }
+    const frische = neueKennung();
+    img.setAttribute("data-image-id", frische);
+    beansprucht.add(frische);
+    const figure = img.closest("figure");
+    const fussnote = figure === null ? null : figure.querySelector(":scope > figcaption");
+    if (fussnote !== null && kennungVon(fussnote) === alte) {
+      fussnote.setAttribute("data-image-id", frische);
+    }
+  }
+
+  // ==============================================================================================
   // JOB 509 / D5 (nachgezogen 10.08.2026) — DER CONTAINER TRAEGT DEN ANKER MIT.
   // ==============================================================================================
   //

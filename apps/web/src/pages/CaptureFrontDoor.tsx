@@ -100,9 +100,13 @@ export function CaptureFrontDoor(): JSX.Element {
   // AUFTRAG-mega69 Block A: Bitte der Galerie, das Bildbeschreibungs-Formular des Editors für ein
   // bestimmtes Bild zu öffnen (Pedis Weg: importiertes Bild → Großansicht → Beschreibung). Der
   // nonce macht jede Bitte zu einem neuen Ereignis — dasselbe Bild kann erneut geöffnet werden.
-  const [captionRequest, setCaptionRequest] = useState<{ imageId: string; nonce: number } | null>(
-    null,
-  );
+  // JOB 2084 (I50-3): die Bitte trägt die Occurrence (Begründung bei `BodyImageGallery`).
+  const [captionRequest, setCaptionRequest] = useState<{
+    imageId: string;
+    src: string;
+    index: number;
+    nonce: number;
+  } | null>(null);
   // SCRUM-502 Schicht 2 (Round 3): Vertraulichkeit auch im Front-Door erfassen — steuert den
   // Reasoner-Egress (source:"draft") UND fließt in den Entwurf/das spätere KO. Standard „intern".
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
@@ -911,8 +915,14 @@ export function CaptureFrontDoor(): JSX.Element {
                   in das EINE Formular des Editors (kein zweites Formular, kein zweiter Egress). */}
               <DraftBodyGallery
                 bodyHtml={bodyHtml}
-                onEditCaption={(imageId) =>
-                  setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }))
+                /* JOB 2084 (I50-3): `src` und `index` der geöffneten Occurrence reisen mit. */
+                onEditCaption={(imageId, src, index) =>
+                  setCaptionRequest((prev) => ({
+                    imageId,
+                    src,
+                    index,
+                    nonce: (prev?.nonce ?? 0) + 1,
+                  }))
                 }
                 /* JOB 512 (R5): der Vergleichswert für den Bildverlust — aus der Nutzlast des
                    geladenen Entwurfs. Ohne ihn kann die Galerie einen Verlust nicht erkennen. */

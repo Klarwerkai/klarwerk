@@ -465,11 +465,17 @@ export function Capture(): JSX.Element {
   // "refine"`) — es ist immer höchstens einer montiert, und nur der montierte kann die Bitte
   // einlösen. Die `nonce` macht zwei Klicks auf dasselbe Bild unterscheidbar, sonst bliebe der
   // zweite wirkungslos (der Effekt im Editor hängt an der Objektidentität der Bitte).
-  const [captionRequest, setCaptionRequest] = useState<{ imageId: string; nonce: number } | null>(
-    null,
-  );
-  const bildbeschreibungAusGalerie = (imageId: string): void => {
-    setCaptionRequest((prev) => ({ imageId, nonce: (prev?.nonce ?? 0) + 1 }));
+  // JOB 2084 (I50-3): die Bitte trägt `src` und `index` der geöffneten Galerie-Occurrence mit.
+  // Beide Galerien dieser Seite teilen sich diesen EINEN Zustand — dieselbe Begründung wie oben:
+  // es ist immer höchstens ein Editor montiert.
+  const [captionRequest, setCaptionRequest] = useState<{
+    imageId: string;
+    src: string;
+    index: number;
+    nonce: number;
+  } | null>(null);
+  const bildbeschreibungAusGalerie = (imageId: string, src: string, index: number): void => {
+    setCaptionRequest((prev) => ({ imageId, src, index, nonce: (prev?.nonce ?? 0) + 1 }));
   };
   // SCRUM-375 / AG-12: erweiterte/technische Felder (Metadaten, Dokumente, Bilder) sind Progressive
   // Disclosure — standardmäßig eingeklappt, damit „Wissen erzählen → im Studio strukturieren" führt.

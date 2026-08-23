@@ -43,7 +43,13 @@ export function BodyImageGallery({
   onEditCaption,
 }: {
   bodyHtml: string;
-  onEditCaption?: ((imageId: string) => void) | undefined;
+  // JOB 2084 (I50-3): die Bitte trägt die OCCURRENCE, nicht nur die Kennung. `src` und `index`
+  // stammen aus genau dem Eintrag, den der Nutzer geöffnet hat — beide liegen hier ohnehin vor, es
+  // wird nichts neu abgeleitet. Warum beide: `index` allein bricht, sobald das Verankern die Zahl
+  // der zählbaren Bilder ändert (ein nacktes <img> zählt für die Galerie nicht und wird im Editor
+  // eingehüllt); `src` allein bricht, wenn dasselbe Bild zweimal im Körper steht. Zusammen tragen
+  // sie: `index` wählt, `src` bestätigt (die Auflösung steht in RichTextEditor.tsx).
+  onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
 }): JSX.Element | null {
   const { t } = useTranslation();
   const images: BodyImage[] = extractBodyImages(bodyHtml);
@@ -287,7 +293,12 @@ export function BodyImageGallery({
       <div className="mt-1.5 grid grid-cols-4 gap-2 sm:grid-cols-6">
         {images.map((img, i) => (
           <button
-            key={img.id}
+            // JOB 2084 (I50-3): der Key trägt die POSITION mit. Bei doppelter `data-image-id`
+            // bekämen sonst zwei Kacheln denselben React-Key; React darf solche Elemente
+            // zusammenlegen, wiederverwenden und beim Neuordnen vertauschen — und meldet das nur
+            // als Warnung. Die Occurrence-Treue von `setOpenIndex(i)` stünde dann auf einem Key,
+            // der sie nicht trägt.
+            key={`${img.id}#${i}`}
             type="button"
             aria-label={t("ko.galleryOpen", { n: i + 1 })}
             title={img.caption || t("ko.galleryOpen", { n: i + 1 })}
@@ -376,9 +387,16 @@ export function BodyImageGallery({
                       type="button"
                       data-testid="gallery-caption-edit"
                       onClick={() => {
+                        // JOB 2084 (I50-3): ALLE DREI Werte VOR `requestClose()` lesen — danach ist
+                        // `openIndex` null und `shownIndex` damit hinfällig. `shownIndex` ist die
+                        // Position, die der Nutzer wirklich geöffnet hat (`setOpenIndex(i)` an der
+                        // Kachel bzw. der occurrence-treue Weg des Körperklicks); sie ist die
+                        // Identität, die eine doppelte Kennung nicht mehr hergibt.
                         const imageId = open.id;
+                        const src = open.src;
+                        const index = shownIndex;
                         requestClose();
-                        onEditCaption(imageId);
+                        onEditCaption(imageId, src, index);
                       }}
                       className="inline-flex items-center gap-1 rounded-btn border border-white/40 px-2 py-1 text-[12px] font-semibold text-white hover:bg-white/10"
                     >

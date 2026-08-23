@@ -60,11 +60,14 @@ const DUBLETTE =
   '<figure><img src="/api/objects/zweites/raw" data-image-id="kw-img-dup-1">' +
   '<figcaption data-image-id="kw-cap-zweite">Zweite</figcaption></figure>';
 
-function DublettenHost({
-  anfrage,
-}: {
-  anfrage?: { imageId: string; nonce: number } | undefined;
-}) {
+interface Bitte {
+  imageId: string;
+  src: string;
+  index: number;
+  nonce: number;
+}
+
+function DublettenHost({ anfrage }: { anfrage?: Bitte | undefined }) {
   const [wert, setWert] = useState(DUBLETTE);
   return mitBildbeschreibung(
     createElement(RichTextEditor, {
@@ -79,10 +82,26 @@ function DublettenHost({
 let behaelter: HTMLDivElement | null = null;
 let wurzel: ReturnType<typeof createRoot> | null = null;
 
-function montiere(anfrage?: { imageId: string; nonce: number }): void {
+function montiere(anfrage?: Bitte): void {
   behaelter = document.createElement("div");
   document.body.appendChild(behaelter);
   wurzel = createRoot(behaelter);
+  act(() => {
+    wurzel?.render(createElement(DublettenHost, { anfrage }));
+  });
+}
+
+/**
+ * Die Bitte NACHTRAEGLICH stellen, in DERSELBEN Montage.
+ *
+ * GEMESSEN, und deshalb steht es hier: die frische Kennung, die die Entdublettierung vergibt, wird
+ * je Verankerungslauf neu gezogen (`newImageRunToken`). Wer sie in einem Mount abliest und in einem
+ * ZWEITEN verwendet, erbittet eine Kennung, die es dort nicht mehr gibt — das Formular bliebe zu,
+ * und der Fall waere rot, ohne dass am Produkt etwas falsch ist. Dieselbe Wurzel neu zu rendern
+ * haelt Zustand und Editor-DOM: `wert` aendert sich nicht, der Ladeeffekt haengt an
+ * `[value, mode]` und laeuft nicht erneut — nur die Bitte ist neu.
+ */
+function bitteStellen(anfrage: Bitte): void {
   act(() => {
     wurzel?.render(createElement(DublettenHost, { anfrage }));
   });
@@ -108,7 +127,41 @@ function formularBild(): HTMLImageElement | null {
   return null;
 }
 
-describe("JOB 1186 / I50-3: die GLOBALE Kennungssuche liefert den ersten Treffer", () => {
+/** Die Bilder der Editorflaeche in Dokumentreihenfolge. */
+function bilder(): HTMLImageElement[] {
+  return [...(editorFlaeche()?.querySelectorAll("img") ?? [])] as HTMLImageElement[];
+}
+
+// ================================================================================================
+// JOB 2084 · D1 (23.08.2026) — DIE ZUSAGE DIESER DATEI IST ABGELOEST. HIER STEHT WARUM.
+// ================================================================================================
+//
+// BIS HIERHER STAND ALS ZUSAGE, im Titel des describe und im Namen des zweiten Falls:
+//
+//     „JOB 1186 / I50-3: die GLOBALE Kennungssuche liefert den ersten Treffer"
+//     „BELEG AN DER ECHTEN STELLE: die Bitte adressiert das ERSTE Bild, nicht das zweite"
+//     expect(bilder).toHaveLength(2);                                  // beide teilen die Kennung
+//     expect(formularBild()?.getAttribute("src")).toBe("/api/objects/erstes/raw");
+//
+// DAS WAR KEINE GEWOLLTE EIGENSCHAFT, SONDERN DIE GEMESSENE FOLGE EINER LUECKE. Die Datei sagt es
+// im eigenen Kopf: „`Array.prototype.find` nimmt den ERSTEN Treffer. Bei doppelter
+// `data-image-id` entscheidet damit die Dokumentreihenfolge, welches Bild das Formular bekommt."
+// Genau das ist der dritte Punkt aus bens Register I50 — der Nutzer beschreibt das falsche Bild.
+//
+// EIN PIN, DER EINE LUECKE FESTHAELT, IST MIT DEM SCHLIESSEN DER LUECKE ERFUELLT, NICHT VERLETZT.
+// Er wird deshalb nicht geloescht, sondern umgeschrieben: dieselbe Datei, derselbe Aufbau,
+// dieselbe Dublette, dieselbe gemessene Stelle — neue Zusage.
+//
+// GESCHLOSSEN WURDE SIE IN ZWEI HAELFTEN, und beide werden hier gemessen:
+//   1. `ensureImageAnchors` laesst eine bereits beanspruchte Kennung kein zweites Mal fuehren —
+//      dieselbe Regel, die `anchorFigures` im Sanitizer seit SHIP 12 fuehrt.
+//   2. Die Bitte der Galerie traegt die OCCURRENCE (`src` und `index` des geoeffneten Eintrags),
+//      und der Editor loest sie ueber `extractBodyImages` auf — dieselbe Ableitung, aus der die
+//      Galerie ihre Liste bildet.
+//
+// Ohne (1) waere (2) wirkungslos: die Suche nach der Kennung des gewaehlten Eintrags traefe wieder
+// zwei Bilder. Die beiden sind zwei Haelften EINES Vertrags.
+describe("JOB 2084 / I50-3: die Bitte trifft das Bild, das der Nutzer gewaehlt hat", () => {
   afterEach(() => {
     act(() => {
       wurzel?.unmount();
@@ -120,32 +173,102 @@ describe("JOB 1186 / I50-3: die GLOBALE Kennungssuche liefert den ersten Treffer
 
   it("KALIBRIERUNG: ohne captionFormRequest oeffnet der Editor kein Formular", () => {
     montiere(undefined);
-    // Ohne diese Gegenprobe waere ein Formular, das sich aus irgendeinem anderen Grund oeffnet, im
-    // Fall darunter ununterscheidbar von einem Treffer der globalen Suche.
+    // Ohne diese Gegenprobe waere ein Formular, das sich aus irgendeinem anderen Grund oeffnet, in
+    // den Faellen darunter ununterscheidbar von einem Treffer der Aufloesung.
     expect(beschreibungsfeldOffen()).toBe(false);
     expect(formularBild()).toBeNull();
   });
 
-  it("BELEG AN DER ECHTEN STELLE: die Bitte adressiert das ERSTE Bild, nicht das zweite", () => {
-    montiere({ imageId: "kw-img-dup-1", nonce: 1 });
+  it("HAELFTE 1: die Dublette ueberlebt das Verankern NICHT — jedes Bild traegt eine eigene Kennung", () => {
+    montiere(undefined);
+    const beide = bilder();
 
-    // Vorbedingung: beide Bilder stehen im Editor UND teilen sich die Kennung.
-    const bilder = Array.from(
-      editorFlaeche()?.querySelectorAll('img[data-image-id="kw-img-dup-1"]') ?? [],
+    // Vorbedingung: der Stand stellt wirklich diese zwei Bilder.
+    expect(beide).toHaveLength(2);
+    expect(beide[0]?.getAttribute("src")).toBe("/api/objects/erstes/raw");
+    expect(beide[1]?.getAttribute("src")).toBe("/api/objects/zweites/raw");
+
+    const erste = beide[0]?.getAttribute("data-image-id") ?? "";
+    const zweite = beide[1]?.getAttribute("data-image-id") ?? "";
+    expect(erste.length, "Das erste Bild hat gar keine Kennung").toBeGreaterThan(0);
+    expect(zweite.length, "Das zweite Bild hat gar keine Kennung").toBeGreaterThan(0);
+    expect(zweite, "Beide Bilder tragen weiterhin dieselbe Kennung").not.toBe(erste);
+
+    // STABILITAET: das ERSTE behaelt seine — umbenannt wird nur, was die Kennung ein zweites Mal
+    // beansprucht. Sonst waere die Reparatur selbst eine Quelle wechselnder Identitaeten.
+    expect(erste, "Das erste Bild wurde umbenannt, obwohl es die Kennung zuerst hatte").toBe(
+      "kw-img-dup-1",
     );
-    expect(bilder).toHaveLength(2);
-    expect(bilder[0]?.getAttribute("src")).toBe("/api/objects/erstes/raw");
-    expect(bilder[1]?.getAttribute("src")).toBe("/api/objects/zweites/raw");
+  });
 
-    // Die Bitte ist durch RichTextEditor.tsx:764-766 gelaufen — das Formular steht offen.
+  it("die Fussnoten bleiben bei IHREN Bildern — die Reparatur erzeugt keinen Zuordnungsschaden", () => {
+    montiere(undefined);
+    const fussnoten = [...(editorFlaeche()?.querySelectorAll("figcaption") ?? [])];
+    expect(fussnoten).toHaveLength(2);
+    expect(fussnoten[0]?.textContent).toBe("Erste");
+    expect(fussnoten[1]?.textContent).toBe("Zweite");
+    // Unangetastet: keine der beiden trug die alte Bildkennung, also wird an keiner geschrieben.
+    expect(fussnoten[0]?.getAttribute("data-image-id")).toBe("kw-cap-erste");
+    expect(fussnoten[1]?.getAttribute("data-image-id")).toBe("kw-cap-zweite");
+  });
+
+  it("HAELFTE 2, DIE KERNAUSSAGE: die Bitte fuer den ZWEITEN Eintrag oeffnet das ZWEITE Bild", () => {
+    // Das ist der Fall, um den es in I50-3 geht. Vor diesem Bau oeffnete er das ERSTE Bild —
+    // der Nutzer schrieb eine Beschreibung an ein Bild, das er nicht gewaehlt hatte.
+    montiere(undefined);
+    const zweiteKennung = bilder()[1]?.getAttribute("data-image-id") ?? "";
+
+    // Die Galerie leitet aus dem UNVERANKERTEN Koerper ab: dort tragen beide noch `kw-img-dup-1`.
+    // Genau diese (mehrdeutige) Kennung reist mit — zusammen mit der Occurrence, die sie eindeutig
+    // macht: zweiter Eintrag, Quelle des zweiten Bildes.
+    bitteStellen({
+      imageId: "kw-img-dup-1",
+      src: "/api/objects/zweites/raw",
+      index: 1,
+      nonce: 1,
+    });
+
     expect(beschreibungsfeldOffen()).toBe(true);
+    expect(
+      formularBild()?.getAttribute("src"),
+      "Die Bitte um das zweite Bild hat das erste geoeffnet",
+    ).toBe("/api/objects/zweites/raw");
+    expect(beschreibungsText(), "Das Formular zeigt die Beschreibung des falschen Bildes").toBe(
+      "Zweite",
+    );
+    // Und es ist wirklich das zweite Bild des Editors, nicht ein zufaellig passendes.
+    expect(zweiteKennung.length).toBeGreaterThan(0);
+    expect(zweiteKennung).not.toBe("kw-img-dup-1");
+  });
 
-    // DIE AUSSAGE: adressiert wurde das ERSTE Bild in Dokumentreihenfolge.
+  it("und der ERSTE Eintrag bleibt erreichbar — der Bau darf ihn nicht verlieren", () => {
+    montiere(undefined);
+    bitteStellen({
+      imageId: "kw-img-dup-1",
+      src: "/api/objects/erstes/raw",
+      index: 0,
+      nonce: 2,
+    });
+
+    expect(beschreibungsfeldOffen()).toBe(true);
     expect(formularBild()?.getAttribute("src")).toBe("/api/objects/erstes/raw");
-    expect(formularBild()?.getAttribute("src")).not.toBe("/api/objects/zweites/raw");
-
-    // Und die zugehoerige Fussnote ist die des ERSTEN figure.
     expect(beschreibungsText()).toBe("Erste");
-    expect(beschreibungsText()).not.toBe("Zweite");
+  });
+
+  it("KEIN RATEN: eine Bitte, deren Occurrence und Quelle niemanden treffen, oeffnet NICHTS", () => {
+    // Der Bestandsweg (Stufe 3) traegt nur bei GENAU EINEM Kennungstreffer. Hier gibt es die
+    // Kennung `kw-img-dup-1` im DOM zwar noch (das erste Bild), aber die Bitte nennt eine Quelle,
+    // die es nicht gibt, und eine Position ausserhalb der Liste. Ein stilles Oeffnen des ersten
+    // Bildes waere genau der Schaden, den dieser Bau beendet.
+    montiere(undefined);
+    bitteStellen({
+      imageId: "kw-img-nicht-vorhanden",
+      src: "/api/objects/gibtsnicht/raw",
+      index: 99,
+      nonce: 3,
+    });
+
+    expect(beschreibungsfeldOffen(), "Es wurde auf Verdacht ein Formular geoeffnet").toBe(false);
+    expect(formularBild()).toBeNull();
   });
 });

@@ -34,7 +34,9 @@ export function KoReadView({
   actions?: ReactNode;
   // AUFTRAG-mega69 Block A: Weg von der Bildergalerie zum Bildbeschreibungs-Formular (nur wenn die
   // Seite Editieren erlaubt — sonst bleibt die Galerie reine Leseansicht).
-  onEditCaption?: ((imageId: string) => void) | undefined;
+  // JOB 2084 (I50-3): reicht die Occurrence der Galerie unverändert durch (Begründung bei
+  // `BodyImageGallery`).
+  onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   // G-2-EHRLICHKEIT (SCRUM-527): das Quelldatum der Belegzeile ist NUR das Datum einer ECHTEN Quelle.

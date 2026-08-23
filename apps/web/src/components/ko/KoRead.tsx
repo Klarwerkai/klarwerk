@@ -45,7 +45,9 @@ export function KoReadStatement({
   onEditCaption,
 }: {
   ko: KnowledgeObject;
-  onEditCaption?: ((imageId: string) => void) | undefined;
+  // JOB 2084 (I50-3): reicht die Occurrence der Galerie unverändert durch (Begründung bei
+  // `BodyImageGallery`).
+  onEditCaption?: ((imageId: string, src: string, index: number) => void) | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   return (
