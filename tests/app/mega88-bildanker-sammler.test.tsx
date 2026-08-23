@@ -44,8 +44,9 @@
 //     Ein nacktes Bild aus einer fremden Quelle bekommt seinen Anker beim ersten Laden.
 //   · Alias und Indirektion entgehen der Erhebung (wie in mega86) — dafür bräuchte es den
 //     Typprüfer, nicht den Syntaxbaum.
-import { readFileSync, readdirSync } from "node:fs";
-import { join, sep } from "node:path";
+// JOB 2085 D1: `existsSync`/`dirname`/`resolve` für die einstufige Modulauflösung (I47, zweitens).
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join, resolve, sep } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { enhanceFiguresForEditing } from "../../apps/web/src/lib/editorFigures";
@@ -455,8 +456,164 @@ interface Schreibstelle {
 
 const SCHREIB_AUFRUFE = /^(document\.execCommand|.*\.insertAdjacentHTML|fuegeAmCursorEin)$/;
 
-function erhebeSchreibstellen(): Schreibstelle[] {
-  const { baum } = baumVon(EDITOR);
+// ── JOB 2085 D1 (I47, zweitens): DIE ERHEBUNG SIEHT JETZT AUCH INDIREKTE WEGE ─────────────────
+//
+// DER BEFUND (`OFFEN.md`, I47, zweitens): „der Sammler erkennt nur `innerHTML`-Zuweisungen und
+// eine begrenzte Regex-Menge; Alias und Indirektion sind im Testkopf selbst als blind benannt."
+//
+// VIER FORMEN WERDEN GESCHLOSSEN:
+//   (1) weitere Schreib-Eigenschaften als `innerHTML` — `outerHTML`, `textContent`, `nodeValue`.
+//   (2) SCHLÜSSEL-INDIREKTION: `ziel["innerHTML"] = html`. Die alte Erhebung verlangte
+//       `isPropertyAccessExpression`; das ist eine ElementAccessExpression.
+//   (3) KNOTENEINFÜGENDE Methoden — darunter `appendChild`, `replaceChildren` und `insertNode`,
+//       also genau die drei Wege, vor denen I47 (erstens) warnt. Sie standen in KEINER Liste:
+//       der Sammler konnte einen Weg nicht sehen, vor dem sein Schwesterwächter warnt.
+//   (4) ALIAS und IMPORTIERTER HELFER — die beiden Formen, die den Punkt definieren.
+//
+// UND EINE BESTANDSAUSSAGE IST DAMIT WIDERLEGT: der Kopf dieser Datei sagte, für Alias und
+// Indirektion „bräuchte es den Typprüfer, nicht den Syntaxbaum". Für die zwei hier gebauten
+// Formen trifft das nicht zu — beide sind ohne Programm und ohne Checker erreichbar. Der
+// Kopfkommentar ist entsprechend korrigiert.
+//
+// ABGRENZUNG: `setAttribute` ist NICHT aufgenommen. Es setzt Attribute an vorhandenen Knoten und
+// kann kein Bild in den Körper bringen; seine Aufnahme brächte Dutzende Stellen ohne Bildbezug.
+// Diese Listen fragen: „kann hier ein KNOTEN hereinkommen?"
+const SCHREIB_EIGENSCHAFTEN_ERHEBUNG = new Set([
+  "innerHTML",
+  "outerHTML",
+  "textContent",
+  "nodeValue",
+]);
+const KNOTEN_METHODEN = new Set([
+  "appendChild",
+  "replaceChildren",
+  "replaceWith",
+  "append",
+  "prepend",
+  "insertBefore",
+  "insertNode",
+  "insertAdjacentHTML",
+]);
+
+/** Quelltexte für eingespeiste Proben: Modulspezifizierer → Quelltext. */
+type Moduldeck = Readonly<Record<string, string>>;
+
+/** Zeigt dieser Initialisierer auf eine bekannte Schreibmethode? (`bind` oder blosse Referenz) */
+function zeigtAufSchreibmethode(n: ts.Node | undefined): boolean {
+  if (n === undefined) {
+    return false;
+  }
+  if (
+    ts.isCallExpression(n) &&
+    ts.isPropertyAccessExpression(n.expression) &&
+    n.expression.name.text === "bind" &&
+    ts.isPropertyAccessExpression(n.expression.expression) &&
+    KNOTEN_METHODEN.has(n.expression.expression.name.text)
+  ) {
+    return true;
+  }
+  return ts.isPropertyAccessExpression(n) && KNOTEN_METHODEN.has(n.name.text);
+}
+
+/** Enthält die benannte Export-Funktion dieses Moduls selbst eine Schreibform? */
+function exportSchreibt(quelle: string, datei: string, exportName: string): boolean {
+  const { baum } = baumAus(datei, quelle);
+  let gefunden = false;
+  const imRumpf = (k: ts.Node): void => {
+    if (
+      ts.isCallExpression(k) &&
+      ts.isPropertyAccessExpression(k.expression) &&
+      KNOTEN_METHODEN.has(k.expression.name.text)
+    ) {
+      gefunden = true;
+    }
+    if (
+      ts.isBinaryExpression(k) &&
+      k.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+      ts.isPropertyAccessExpression(k.left) &&
+      SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(k.left.name.text)
+    ) {
+      gefunden = true;
+    }
+    ts.forEachChild(k, imRumpf);
+  };
+  const suche = (k: ts.Node): void => {
+    if (
+      (ts.isFunctionDeclaration(k) && k.name?.text === exportName) ||
+      (ts.isVariableDeclaration(k) && ts.isIdentifier(k.name) && k.name.text === exportName)
+    ) {
+      imRumpf(k);
+    }
+    ts.forEachChild(k, suche);
+  };
+  suche(baum);
+  return gefunden;
+}
+
+/**
+ * Ein projektinternes Modul auflösen. NUR relative Pfade — ein Paket unter `node_modules` wird
+ * bewusst NICHT verfolgt (`OF-2060-2`, siehe der Fall `DIE GRENZE` unten).
+ */
+function loeseModul(vonDatei: string, spez: string, deck?: Moduldeck): string | null {
+  if (deck !== undefined) {
+    return deck[spez] ?? null;
+  }
+  if (!spez.startsWith(".")) {
+    return null;
+  }
+  const basis = resolve(dirname(join(WURZEL, vonDatei)), spez);
+  for (const endung of [".ts", ".tsx", "/index.ts", "/index.tsx"]) {
+    const pfad = basis + endung;
+    if (existsSync(pfad)) {
+      return readFileSync(pfad, "utf8");
+    }
+  }
+  return null;
+}
+
+function erhebeSchreibstellen(vorgabe?: {
+  datei: string;
+  quelltext: string;
+  deck?: Moduldeck;
+}): Schreibstelle[] {
+  // JOB 2085 D1: die Erhebung ist einspeisbar. OHNE das lässt sich nicht belegen, dass sie eine
+  // Form ERKENNT — man sähe nur, dass sie im heutigen Editor nichts findet, und das ist von
+  // „sie ist blind" nicht zu unterscheiden. Ohne Vorgabe misst sie unverändert den Editor.
+  const datei = vorgabe?.datei ?? EDITOR;
+  const { baum } = vorgabe ? baumAus(vorgabe.datei, vorgabe.quelltext) : baumVon(EDITOR);
+
+  // (4a) ALIAS: lokale Bindungen, deren Initialisierer auf eine Schreibmethode zeigt.
+  // (4b) IMPORT: benannte Importe, deren Export im Zielmodul selbst schreibt.
+  const indirekt = new Set<string>();
+  const sammleIndirekte = (k: ts.Node): void => {
+    if (
+      ts.isVariableDeclaration(k) &&
+      ts.isIdentifier(k.name) &&
+      zeigtAufSchreibmethode(k.initializer)
+    ) {
+      indirekt.add(k.name.text);
+    }
+    if (
+      ts.isImportDeclaration(k) &&
+      k.importClause?.namedBindings !== undefined &&
+      ts.isNamedImports(k.importClause.namedBindings) &&
+      ts.isStringLiteral(k.moduleSpecifier)
+    ) {
+      const spez = k.moduleSpecifier.text;
+      const quelle = loeseModul(datei, spez, vorgabe?.deck);
+      if (quelle !== null) {
+        for (const el of k.importClause.namedBindings.elements) {
+          const exportName = (el.propertyName ?? el.name).text;
+          if (exportSchreibt(quelle, spez, exportName)) {
+            indirekt.add(el.name.text);
+          }
+        }
+      }
+    }
+    ts.forEachChild(k, sammleIndirekte);
+  };
+  sammleIndirekte(baum);
+
   const gefunden = new Map<string, boolean>();
   const merke = (k: ts.Node): void => {
     const id = huelleVon(k, baum);
@@ -468,17 +625,54 @@ function erhebeSchreibstellen(): Schreibstelle[] {
     // nicht verankernd, die verankert — ein Fehlalarm, der die richtige Bauform bestraft hätte.
     gefunden.set(
       id,
-      (gefunden.get(id) ?? false) || /\b(verankereFiguren|ensureImageAnchors)\s*\(/.test(rumpf),
+      // JOB 2085 D1: `enhanceFiguresForEditing` zählt ebenso — es ist die dritte Gestalt derselben
+      // Invariante (der Wrapper `verankereFiguren` ruft genau sie). Ohne diese Ergänzung gälte die
+      // eine Verankerungsstelle des Editors selbst als nicht verankernd.
+      (gefunden.get(id) ?? false) ||
+        /\b(verankereFiguren|ensureImageAnchors|enhanceFiguresForEditing)\s*\(/.test(rumpf),
     );
   };
   const gehe = (k: ts.Node): void => {
-    if (
-      ts.isBinaryExpression(k) &&
-      k.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-      ts.isPropertyAccessExpression(k.left) &&
-      k.left.name.text === "innerHTML"
-    ) {
-      merke(k);
+    if (ts.isBinaryExpression(k) && k.operatorToken.kind === ts.SyntaxKind.EqualsToken) {
+      // (1) Eigenschaft über den Punkt — jetzt alle Schreib-Eigenschaften.
+      if (
+        ts.isPropertyAccessExpression(k.left) &&
+        SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(k.left.name.text)
+      ) {
+        merke(k);
+      }
+      // (2) Eigenschaft über einen Zeichenkettenschlüssel.
+      if (
+        ts.isElementAccessExpression(k.left) &&
+        k.left.argumentExpression !== undefined &&
+        ts.isStringLiteral(k.left.argumentExpression) &&
+        SCHREIB_EIGENSCHAFTEN_ERHEBUNG.has(k.left.argumentExpression.text)
+      ) {
+        merke(k);
+      }
+    }
+    if (ts.isCallExpression(k)) {
+      // (3) knoteneinfügende Methoden über den Punkt.
+      if (
+        ts.isPropertyAccessExpression(k.expression) &&
+        KNOTEN_METHODEN.has(k.expression.name.text)
+      ) {
+        merke(k);
+      }
+      // (4) Aufruf eines Alias- oder importierten Schreibnamens — direkt `f(…)` ODER über
+      // `f.call(…)` / `f.apply(…)`. Die zweite Form hat dieser Wächter beim Bauen selbst
+      // aufgedeckt: sie ist eine PropertyAccessExpression und wäre der Identifier-Prüfung entgangen.
+      if (ts.isIdentifier(k.expression) && indirekt.has(k.expression.text)) {
+        merke(k);
+      }
+      if (
+        ts.isPropertyAccessExpression(k.expression) &&
+        (k.expression.name.text === "call" || k.expression.name.text === "apply") &&
+        ts.isIdentifier(k.expression.expression) &&
+        indirekt.has(k.expression.expression.text)
+      ) {
+        merke(k);
+      }
     }
     if (ts.isCallExpression(k) && SCHREIB_AUFRUFE.test(k.expression.getText(baum))) {
       merke(k);
@@ -513,6 +707,21 @@ const SCHREIB_DISPOSITION: Readonly<Record<string, SchreibDisposition>> = {
   captionFormat: "formularfeld", // fett/kursiv/Umbruch im Beschreibungsfeld
   "useEffect[captionFieldEpoch]": "formularfeld", // Befüllen des Feldes beim Öffnen
   emit: "emissionspuffer", // JOB 2060 D4: abgekoppelte Kopie, verankert, berührt den Editor nicht
+  // ── JOB 2085 D1: DREI STELLEN, DIE DIE ERWEITERTE ERHEBUNG ERSTMALS SIEHT ────────────────────
+  // Alle drei waren immer da. Der Sammler sah sie nicht, weil `appendChild`/`insertNode` in keiner
+  // Liste standen und importierte Helfer gar nicht verfolgt wurden.
+  //
+  // Fügt ausschließlich `<strong>`/`<em>` um eine bestehende Auswahl ein
+  // (`RichTextEditor.tsx`, `tag: "strong" | "em"`) — kann kein Bild in den Körper bringen.
+  // `generisch` wie `fuegeAmCursorEin`: in welches Element geschrieben wird, bestimmt der Aufrufer.
+  umschliesseAuswahlMit: "generisch",
+  // Ruft den importierten `applyCaptionHtml` — er schreibt in das Feld des
+  // Bildbeschreibungs-Formulars, nicht in den Beitragskörper.
+  saveCaptionForm: "formularfeld",
+  // Das ist `verankereFiguren` (useCallback mit `[t]`) — die EINE Aufrufstelle der Invariante.
+  // Sie schreibt über `enhanceFiguresForEditing` in das Element, das der Aufrufer übergibt; ihre
+  // fünf Aufrufer sind einzeln disponiert. Sie IST die Verankerung, nicht ein Weg an ihr vorbei.
+  "useCallback[t]": "generisch",
 };
 
 // ── Stufe 3: OB ES WIRKT ───────────────────────────────────────────────────────────────────────
@@ -777,6 +986,90 @@ describe("AUFTRAG-mega88 Block E, Stufe 2: jede Schreibstelle im Körper veranke
         `${id} ist die Emissionsgrenze, verankert aber nicht. Dann verlässt unverankerte Struktur den Editor — I47 (erstens) ist wieder offen.`,
       ).toBe(true);
     }
+  });
+
+  // ── JOB 2085 D1 (I47, zweitens): WAS DIE ERHEBUNG SIEHT — eingespeist, nicht behauptet ───────
+  //
+  // Ohne Einspeisung liesse sich nicht belegen, dass eine Form ERKANNT wird: ein Lauf gegen den
+  // heutigen Editor kann „findet nichts, weil nichts da ist" nicht von „findet nichts, weil blind"
+  // unterscheiden. Genau daran ist D5 gescheitert.
+  const eingespeist = (
+    rumpf: string,
+    kopf = "",
+    deck?: Readonly<Record<string, string>>,
+  ): string[] =>
+    erhebeSchreibstellen({
+      datei: "apps/web/src/components/probe.tsx",
+      quelltext: `${kopf}function probe(ziel: HTMLElement, knoten: Node, html: string) {\n${rumpf}\n}\n`,
+      ...(deck ? { deck } : {}),
+    }).map((s) => s.id);
+
+  it("JOB 2085 · P-1/P-2: der gebundene METHODENALIAS wird erhoben", () => {
+    expect(
+      eingespeist("const anhaengen = ziel.appendChild.bind(ziel); anhaengen(knoten);"),
+      "der über `.bind()` gebundene Alias entgeht der Erhebung — I47 (zweitens) ist offen",
+    ).toContain("probe");
+
+    expect(
+      eingespeist("const f = ziel.appendChild; f.call(ziel, knoten);"),
+      "die blosse Methodenreferenz entgeht der Erhebung",
+    ).toContain("probe");
+  });
+
+  it("JOB 2085 · P-3: der IMPORTIERTE schreibende Helfer wird erhoben", () => {
+    // Der Zwei-Dateien-Fall aus Prüflücke 2 des D5-Urteils: ein importierter Helfer fügt über
+    // `appendChild` ein Bild in das übergebene Ziel ein.
+    const deck = {
+      "./schreiber":
+        "export function schreibeIrgendwohin(z: HTMLElement) { z.appendChild(document.createElement('img')); }",
+      "./leser": "export function lieseNur(z: HTMLElement) { return z.childNodes.length; }",
+    };
+    expect(
+      eingespeist(
+        "schreibeIrgendwohin(ziel);",
+        'import { schreibeIrgendwohin } from "./schreiber";\n',
+        deck,
+      ),
+      "ein importierter schreibender Helfer passiert die Erhebung ungesehen — genau die Lücke aus I47 (zweitens)",
+    ).toContain("probe");
+
+    // N-2: derselbe Weg, aber der Helfer LIEST nur.
+    expect(
+      eingespeist("lieseNur(ziel);", 'import { lieseNur } from "./leser";\n', deck),
+      "ein rein lesender Import wird als Schreibstelle gemeldet — Fehlalarm",
+    ).not.toContain("probe");
+  });
+
+  it("JOB 2085 · N-1/N-3 · KALIBRIERUNG: die Erhebung meldet nicht einfach alles", () => {
+    // Ohne diesen Fall wären die Positivfälle auch dann grün, wenn `eingespeist` jede Eingabe als
+    // Treffer meldete — dann bewiesen sie nichts.
+    expect(
+      eingespeist("const laenge = ziel.childNodes.length; void laenge;"),
+      "eine reine Lesebindung wird als Schreibstelle erhoben",
+    ).not.toContain("probe");
+
+    expect(
+      eingespeist('const s = ziel.setAttribute.bind(ziel); s("data-x", "1");'),
+      "`setAttribute` wird erhoben — es setzt Attribute an vorhandenen Knoten und kann kein Bild " +
+        "in den Körper bringen (Abgrenzung im Kopf der Erhebung)",
+    ).not.toContain("probe");
+  });
+
+  it("JOB 2085 · DIE GRENZE: ein Paketimport wird NICHT verfolgt — benannt statt verschwiegen", () => {
+    // Die Modulauflösung folgt ausschliesslich RELATIVEN Pfaden. Ein Import aus einem Paket unter
+    // `node_modules` wird nicht geparst; ein schreibender Helfer von dort bliebe unerhoben.
+    //
+    // OB DAS SO BLEIBT, IST EINE ENTSCHEIDUNG UND KEIN MESSERGEBNIS — `OF-2060-2` liegt beim Chef:
+    // rot (wie die I50-Erhebung, die zur sicheren Seite irrt) oder still (wie hier). Dieser Fall
+    // hält den heutigen Zustand fest, damit die Lücke nicht im Kopfkommentar verschwindet.
+    //
+    // WIRD ER ROT, ist die Entscheidung gefallen oder die Auflösung erweitert — dann gehört er
+    // ersetzt, nicht angepasst.
+    expect(
+      eingespeist("fremdSchreiber(ziel);", 'import { fremdSchreiber } from "ein-paket";\n'),
+      "ein Paketimport wird inzwischen verfolgt — dann ist OF-2060-2 entschieden und dieser Fall " +
+        "gehört ersetzt, nicht angepasst",
+    ).not.toContain("probe");
   });
 
   it("die generische Hilfsfunktion wird nur von erhobenen, disponierten Stellen gerufen", () => {
