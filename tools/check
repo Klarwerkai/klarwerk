@@ -12,6 +12,21 @@ echo "▶ architecture"; npx depcruise --config .dependency-cruiser.cjs services
 # JOB 2008 D2 (Register A17): die Modalgrenzen-Erhebung lief bis hierher NUR im Test.
 # Sie steht jetzt in tools/modalgrenze.ts und wird HIER gerufen — ein Aufrufer im Produkt.
 echo "▶ modalgrenze";  ./tools/modalgrenze.sh || { echo "✖ Modalgrenze verletzt"; exit 1; }
+# JOB 2065 D4/D5 (Register I39): der Zentralen-Waechter hat HIER seinen Aufrufer. Bis D3 gab es ein
+# lauffaehiges Werkzeug, das niemand rief — derselbe Fall wie `wissensnetzLuecken` und
+# `erhebeVerweise`: gebaut, richtig, und wirkungslos.
+#
+# ER MELDET, ER SPERRT NUR DORT, WO JEMAND BEHEBEN DARF. D4 hat mit vier echten Funden das Tor rot
+# gemacht und musste zurueckgerollt werden: die Fundstelle war `_relay/board/klarwerk-board.html`,
+# ein Kontrollwerkzeug, das niemand anfassen darf. Ein rotes Tor haelt zwoelf Bahnen an, und ein
+# Waechter, dessen Befund niemand beheben darf, wird abgeschaltet — dann meldet gar nichts mehr.
+#
+# DIE ZWEI KLASSEN UNTERSCHEIDET DER FUNDORT, nicht die Art des Fundes (tools/zentrale-drift.ts,
+# `istUnantastbar`): was unter `_relay/` liegt, wird GEMELDET (Code 0, mit Adresse „Board — bei
+# Pedi"); ein Fund an einer aenderbaren Stelle SPERRT (Code 1). Code 2 heisst „Lesefläche nicht
+# da, nichts gemessen" — der Normalfall in jedem Clone, denn `_relay/` steht in `.gitignore:25`.
+echo "▶ zentrale-drift"; zentrale_rc=0; ./tools/zentrale-drift.sh || zentrale_rc=$?
+if [ "$zentrale_rc" = "1" ]; then echo "✖ Drift an einer aenderbaren Lesefläche"; exit 1; fi
 echo "▶ test";         ./tools/test "$@"
 
 # AUFTRAG-mega24 Block A: der UI-Smoke gehört INS TOR — und zwar Chromium-only.
