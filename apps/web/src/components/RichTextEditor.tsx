@@ -38,7 +38,14 @@ import {
 // AUFTRAG-mega89 Block B: die Paarung Bild↔Fußnote kommt aus EINER Stelle. Sie liegt in
 // `editorFigures.ts` neben der Invariante, die die Struktur herstellt — und ist dort DOM-lib-frei
 // und ohne Editor prüfbar, auch an Markup, das nie durch die Verankerung gelaufen ist.
-import { captionForImage, enhanceFiguresForEditing, imageForCaption } from "../lib/editorFigures";
+import {
+  captionForImage,
+  enhanceFiguresForEditing,
+  // I47 Punkt 1 (JOB 2060 D4): die Invariante selbst — sie wird an der Emissionsgrenze erzwungen,
+  // siehe die Begründung an `emit()`.
+  ensureImageAnchors,
+  imageForCaption,
+} from "../lib/editorFigures";
 import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
@@ -448,8 +455,35 @@ export function RichTextEditor({
     }
   }, [value, mode]);
 
+  // ── I47 PUNKT 1 (JOB 2060 D4): DIE INVARIANTE AN DER EMISSIONSGRENZE ─────────────────────────
+  //
+  // DER BEFUND, den ben in `sammel88` als Nicht-Blocker eingeordnet hat (`OFFEN.md`, I47, erstens):
+  // „die Invariante wird heute an allen bekannten Editor-Wegen gerufen, aber nicht an der
+  // Emissionsgrenze erzwungen — `emit()` ruft sie nicht; ein künftiger Weg über `appendChild`,
+  // `replaceChildren` oder `Range.insertNode` könnte an ihr vorbei schreiben. Der Sammler ist
+  // Diagnose, nicht Garantie."
+  //
+  // `JOB 1183 D1` hat den Befund für alle drei Wege einzeln belegt und den Verschluss ausdrücklich
+  // NICHT gebaut (`tests/capture/mega88-bildstruktur-invariante.test.ts:383-405`), mit zwei
+  // Gründen: `emit()` war nicht geleast, und es sei „womöglich eine Architekturfrage, weil `emit()`
+  // heute bewusst nur liest". Der zweite Grund ist der eigentliche, und er ist hier aufgelöst.
+  //
+  // WARUM NICHT `verankereFiguren(el)` VOR DEM LESEN — das wäre die naheliegende Zeile, und sie
+  // wäre falsch: `emit()` hängt an `onEditorInput` (`:530`), also an JEDEM Tastendruck. Eine
+  // Strukturänderung am lebenden Editor-DOM nähme dem Nutzer mitten im Tippen Auswahl und
+  // Einfügemarke und machte die Lauf-Nummern für Fußnotenformular und Bildbeschreibung ungültig —
+  // genau die Begründung, mit der schon der Sprachwechsel-Effekt (`:512`) keinen Inhalt schreibt.
+  //
+  // WAS STATTDESSEN GESCHIEHT: Die Invariante läuft auf einer ABGEKOPPELTEN Kopie des Inhalts.
+  // `emit()` liest den Editor damit weiterhin nur — es schreibt allein in seinen eigenen Puffer.
+  // Der Editor-DOM, der Fokus und die Einfügemarke bleiben unberührt; was den Editor VERLÄSST,
+  // erfüllt ab hier die Invariante. Damit ist sie nicht mehr an die fünf bekannten Aufrufer
+  // gebunden, sondern an die eine Stelle, die kein Weg umgehen kann.
   const emit = (): void => {
-    const next = sanitizeHtml(ref.current?.innerHTML ?? "");
+    const puffer = document.createElement("div");
+    puffer.innerHTML = ref.current?.innerHTML ?? "";
+    ensureImageAnchors(puffer);
+    const next = sanitizeHtml(puffer.innerHTML);
     lastEmittedRef.current = next;
     // U8: ein No-op-Blur (nichts geändert) löst keinen Parent-Renderzyklus mehr aus.
     if (next !== value) {

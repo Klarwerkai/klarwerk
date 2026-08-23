@@ -461,7 +461,15 @@ function erhebeSchreibstellen(): Schreibstelle[] {
   const merke = (k: ts.Node): void => {
     const id = huelleVon(k, baum);
     const rumpf = rumpfText(k, baum);
-    gefunden.set(id, (gefunden.get(id) ?? false) || /\bverankereFiguren\s*\(/.test(rumpf));
+    // JOB 2060 D4: `ensureImageAnchors` zählt ebenso. Bis hierher erkannte die Erhebung allein
+    // `verankereFiguren` — den Wrapper, der die Invariante ruft UND die Übersetzungstexte setzt.
+    // Die Emissionsgrenze braucht die Texte nicht (sie schreibt nichts, was der Nutzer sieht) und
+    // ruft deshalb die Invariante direkt. Ohne diese Zeile hielte der Sammler eine Stelle für
+    // nicht verankernd, die verankert — ein Fehlalarm, der die richtige Bauform bestraft hätte.
+    gefunden.set(
+      id,
+      (gefunden.get(id) ?? false) || /\b(verankereFiguren|ensureImageAnchors)\s*\(/.test(rumpf),
+    );
   };
   const gehe = (k: ts.Node): void => {
     if (
@@ -490,7 +498,12 @@ function erhebeSchreibstellen(): Schreibstelle[] {
 // „generisch" = eine Hilfsfunktion, die in das ihr GEREICHTE Element schreibt. Sie kann die Pflicht
 //     nicht tragen, weil sie das Ziel nicht kennt; die Auflage ist, dass jeder ihrer Aufrufer selbst
 //     erhoben und disponiert ist. Genau das wird unten geprüft.
-type SchreibDisposition = "koerper" | "formularfeld" | "generisch";
+// JOB 2060 D4 (I47, erstens): `emissionspuffer` ist neu. Er wird gebraucht, weil die
+// Emissionsgrenze seit diesem Durchgang HTML schreibt — aber in ein Element, das NIE im Dokument
+// hängt. `koerper` wäre bequem gewesen (die Prüfung „verankert" bestünde sie), stünde aber als
+// falsche Auskunft im Register: `emit()` schreibt nicht in den Beitragskörper. Eine Kategorie, die
+// lügt, ist schlechter als eine Kategorie mehr.
+type SchreibDisposition = "koerper" | "formularfeld" | "generisch" | "emissionspuffer";
 
 const SCHREIB_DISPOSITION: Readonly<Record<string, SchreibDisposition>> = {
   fuegeAmCursorEin: "generisch",
@@ -499,6 +512,7 @@ const SCHREIB_DISPOSITION: Readonly<Record<string, SchreibDisposition>> = {
   insertHtmlReliable: "koerper", // lokale Dateiauswahl, Drop, Einfügen
   captionFormat: "formularfeld", // fett/kursiv/Umbruch im Beschreibungsfeld
   "useEffect[captionFieldEpoch]": "formularfeld", // Befüllen des Feldes beim Öffnen
+  emit: "emissionspuffer", // JOB 2060 D4: abgekoppelte Kopie, verankert, berührt den Editor nicht
 };
 
 // ── Stufe 3: OB ES WIRKT ───────────────────────────────────────────────────────────────────────
@@ -742,6 +756,26 @@ describe("AUFTRAG-mega88 Block E, Stufe 2: jede Schreibstelle im Körper veranke
           `${id} schreibt HTML in den Beitragskörper, verankert aber nicht. Ein Bild, das auf diesem Weg hereinkommt, hätte keine Fußnote — genau der Auslieferungsblocker aus mega88.`,
         ).toBe(true);
       }
+    }
+  });
+
+  it("JOB 2060 D4: die Emissionsgrenze verankert — sonst wäre ihre Kategorie nur ein Etikett", () => {
+    // `emissionspuffer` nimmt die Stelle von der Körper-Pflicht aus, weil sie nicht in den Körper
+    // schreibt. Ohne diese Prüfung wäre die Ausnahme ein Freibrief: eine Stelle, die HTML schreibt
+    // und NICHT verankert, könnte sich dahinter verstecken. Genau das ist der Weg, den I47
+    // (erstens) schließen sollte.
+    const emissionsstellen = stellen.filter(
+      ({ id }) => SCHREIB_DISPOSITION[id] === "emissionspuffer",
+    );
+    expect(
+      emissionsstellen.length,
+      "keine Stelle ist als `emissionspuffer` erhoben — dann ist der Verschluss aus JOB 2060 D4 verschwunden",
+    ).toBeGreaterThan(0);
+    for (const { id, verankert } of emissionsstellen) {
+      expect(
+        verankert,
+        `${id} ist die Emissionsgrenze, verankert aber nicht. Dann verlässt unverankerte Struktur den Editor — I47 (erstens) ist wieder offen.`,
+      ).toBe(true);
     }
   });
 
