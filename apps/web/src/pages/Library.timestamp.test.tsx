@@ -25,7 +25,13 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../api/types";
 
-function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
+// JOB 1988: Die Fälle F3, F6 und F7 setzen `createdAt` AUSDRÜCKLICH auf `undefined` — sie prüfen
+// den Altbestand ohne Datum, und das Weglassen wäre nicht dasselbe (der Vorgabewert bliebe stehen).
+// Unter `exactOptionalPropertyTypes` verlangt genau das ein `| undefined` im Parametertyp;
+// `Partial<…>` erlaubt nur das Fehlen. Am Verhalten des Helfers ändert sich nichts.
+function ko(
+  overrides: { [K in keyof KnowledgeObject]?: KnowledgeObject[K] | undefined },
+): KnowledgeObject {
   return {
     id: "ko",
     title: "Titel",

@@ -78,7 +78,14 @@ function tokenSimilarity(left: string, right: string): number {
 
 // SCRUM-513/487 (WP5-i18n): DOM-freie Übersetzerfunktion (dieselbe Signatur wie i18next-t). So kann die
 // Lib die angezeigten Werte lokalisieren, ohne selbst react-i18next zu importieren; der Aufrufer reicht t.
-type Translate = (key: string, opts?: Record<string, unknown>) => string;
+// JOB 1988: als Überladung statt als ein Aufruf mit optionalem Zweitwert. Unter
+// `exactOptionalPropertyTypes` heißt `opts?: …` auch „darf ausdrücklich `undefined` sein", und das
+// sagt i18nexts `t` nicht zu — die Zusage hier war weiter als nötig. Beide Aufrufformen bleiben
+// erlaubt, die Aufrufstellen ändern sich nicht.
+type Translate = {
+  (key: string): string;
+  (key: string, opts: Record<string, unknown>): string;
+};
 
 function compareText(
   leftValue: string,

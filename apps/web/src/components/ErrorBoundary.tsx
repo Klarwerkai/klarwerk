@@ -14,18 +14,18 @@ interface State {
 }
 
 export class ErrorBoundary extends Component<Props, State> {
-  state: State = { error: null };
+  override state: State = { error: null };
 
   static getDerivedStateFromError(error: Error): State {
     return { error };
   }
 
-  componentDidCatch(error: Error, info: ErrorInfo): void {
+  override componentDidCatch(error: Error, info: ErrorInfo): void {
     // Für die Diagnose sichtbar in der Konsole — kein stiller Absturz.
     console.error("[KLARWERK] UI-Fehler abgefangen:", error, info.componentStack);
   }
 
-  render(): ReactNode {
+  override render(): ReactNode {
     if (this.state.error) {
       return <ErrorCard error={this.state.error} />;
     }

@@ -35,8 +35,14 @@ export function dedupeResults(results: readonly ExternalResult[]): ExternalResul
 export interface ExternalSearchInput {
   pending: boolean;
   hasSearched: boolean;
-  error?: { status?: number; code?: string; message: string } | null;
-  results?: readonly ExternalResult[];
+  // JOB 1988: `status` und `code` werden vom Aufrufer AUSDRÜCKLICH auf `undefined` gesetzt, wenn
+  // der Fehler kein ApiError ist (pages/ExternalKnowledge.tsx:30-31). Unter
+  // `exactOptionalPropertyTypes` ist „darf fehlen" nicht dasselbe wie „darf undefined sein" —
+  // deshalb steht `| undefined` hier ausdrücklich. Am Wert ändert das nichts.
+  error?: { status?: number | undefined; code?: string | undefined; message: string } | null;
+  // JOB 1988: derselbe Grund wie oben — `search.data` ist `… | undefined`, solange nichts geladen
+  // ist, und wird ausdrücklich durchgereicht (pages/ExternalKnowledge.tsx:35).
+  results?: readonly ExternalResult[] | undefined;
 }
 
 export function buildExternalSearchView(input: ExternalSearchInput): ExternalSearchView {
