@@ -61,11 +61,11 @@
 //     AUSDRÜCKLICH GEMELDET (`unaufgeloesteAufrufe`) statt still übergangen — „keine Aussage" ist
 //     nicht dasselbe wie „kein Import".
 //
-// WAS AUSDRÜCKLICH OFFEN BLEIBT, weil I44 es als zweite, VORBESTEHENDE Blindstelle nennt und
-// dieser Auftrag sie nicht deckt: Die Erhebung durchsucht nur `.tsx` (`dateien("tests", ".tsx")`),
-// während die Meldung von „allen Tests unter tests/**" spricht. Gemessen liegen dort heute
-// 181 `.tsx` und 616 `.ts`. Ein `tests/**/*.ts`, das den Rahmen importiert, sieht dieser Wächter
-// nicht — das ist gemeldet, nicht behoben.
+// WAS HIER BIS ZUM 23.08.2026 OFFEN BLIEB — und seither BEHOBEN ist (AUFTRAG-JOB-2062 D1):
+// Die Erhebung durchsuchte nur `.tsx` (`dateien("tests", ".tsx")`), während die Meldung von „allen
+// Tests unter tests/**" sprach; am 20.08. lagen dort 181 `.tsx` und 616 `.ts`. Ein `tests/**/*.ts`,
+// das den Rahmen importierte, sah dieser Wächter nicht. Seit JOB 2062 D1 liest er beide Endungen —
+// siehe `testDateien()` und `artVon()` unten samt ihren Sonden.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
@@ -89,6 +89,63 @@ function dateien(verzeichnis: string, endung: string): string[] {
   return gefunden;
 }
 
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+// AUFTRAG-JOB-2062 D1 (I44, zweitens — die VORBESTEHENDE Blindstelle) — `.ts` WIRD MITGELESEN.
+// ════════════════════════════════════════════════════════════════════════════════════════════════
+//
+// Bis hierher stand an beiden Erhebungsstellen `dateien("tests", ".tsx")`, während die Meldung des
+// Wächters von „allen Tests unter tests/**" sprach. Ein `tests/**/*.ts`, das den Anwendungsrahmen
+// importiert, fiel damit durch — nicht weil jemand es erlaubt hätte, sondern weil niemand hinsah.
+//
+// GEMESSEN, zwei Zeitpunkte, damit die Richtung belegt ist und nicht behauptet:
+//   20.08.2026 (im Kopf dieser Datei festgehalten):  181 `.tsx`  ·  616 `.ts`
+//   23.08.2026 (dieser Durchgang):                   201 `.tsx`  ·  664 `.ts`
+// Die blinde Menge ist um 48 Dateien gewachsen, die gesehene um 20. Die Lücke schließt sich nicht
+// von selbst — sie wird größer.
+//
+// ZWEI DINGE, DIE DABEI NICHT ÜBERSEHEN WERDEN DÜRFEN:
+//   · `"x.tsx".endsWith(".ts")` ist FALSE. Die beiden Endungen überschneiden sich also nicht, und
+//     keine Datei wird doppelt erhoben. Das ist unten eine eigene Sonde und keine Fußnote.
+//   · Eine `.ts`-Datei darf NICHT als TSX geparst werden. `const f = <T,>(x: T) => x` ist gültiges
+//     TypeScript, wird im TSX-Modus aber als JSX-Element gelesen — der Baum wäre still falsch.
+//     Deshalb entscheidet `artVon` die Sprache an der Endung, und eine Sonde fährt genau diesen
+//     Fall. Ohne sie hätte die Erweiterung eine neue stille Lücke gebaut, statt eine zu schließen.
+const TEST_ENDUNGEN = [".ts", ".tsx"] as const;
+
+function testDateien(): string[] {
+  return TEST_ENDUNGEN.flatMap((endung) => dateien("tests", endung));
+}
+
+function artVon(dateiname: string): ts.ScriptKind {
+  return dateiname.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS;
+}
+
+// AUFTRAG-JOB-2062 D1/D2: die Ladestellen, die mit der Erweiterung auf `.ts` sichtbar werden.
+// Sie sind nicht neu — sie waren nur außerhalb der Grundmenge. Alle drei laden mit ABSICHT
+// dynamisch, alle drei liegen auf fremder Fläche, und bei allen dreien wäre ein statisch
+// geschriebener Pfad sachlich falsch, nicht bloß unbequem:
+//
+//   · `write-fence-race.test.ts:71` lädt ein Modul, das FEHLEN DARF, und meldet sonst den Grund.
+//   · `job642-testpfade-cwd-unabhaengig.test.ts:104` hängt einen Frischezähler an den Pfad, um den
+//     Modul-Cache zu umgehen — das ist der Zweck genau dieses Tests.
+//   · `wissensraum-ort-vertrag.ts:90` lädt ein Artefakt über `pathToFileURL(absolut).href`, das
+//     VOR der Umsetzungswelle noch nicht existiert; die Datei sagt es in ihrer eigenen Meldung
+//     (`:87`): „Kein Test darf dafür künstlich grün gemacht werden."
+//
+// EINE AUSNAHME MIT ORT UND GRUND IST ETWAS ANDERES ALS EINE BLINDSTELLE: sie steht hier, sie wird
+// unten in BEIDE Richtungen gefahren, und eine VIERTE Stelle macht den Wächter sofort rot.
+//
+// D2, zur Herkunft dieser Liste: In D1 stand sie mit ZWEI Einträgen hier und der Wächter wurde
+// rot. Der Grund war nicht die Erweiterung, sondern wie ich die Liste gefüllt hatte — mit einer
+// abgeschnittenen Textsuche statt mit der Erhebung selbst. Die dritte Stelle lag außerhalb der
+// ersten 25 Treffer. Jetzt ist die Liste GEMESSEN: dieselbe Erhebung über alle 865 Dateien, und
+// sie meldet genau diese drei.
+const BEKANNT_UNAUFLOESBAR = new Set<string>([
+  "tests/app/write-fence-race.test.ts:71",
+  "tests/app/job642-testpfade-cwd-unabhaengig.test.ts:104",
+  "tests/library/support/wissensraum-ort-vertrag.ts:90",
+]);
+
 // AUFTRAG-mega86 Block D: die Modulpfade, die eine Datei WIRKLICH lädt — erhoben aus dem
 // TypeScript-Baum. Erfasst sind alle Formen, die den Typprüfer das Modul öffnen lassen: statischer
 // Import (auch reiner Typ-Import und Seiteneffekt-Import), Re-Export, `import … = require(…)`,
@@ -100,7 +157,7 @@ function importierteModule(quelle: string, dateiname: string): string[] {
     quelle,
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.TSX,
+    artVon(dateiname),
   );
   const module: string[] = [];
   const besuche = (knoten: ts.Node): void => {
@@ -153,7 +210,7 @@ function unaufgeloesteAufrufe(quelle: string, dateiname: string): string[] {
     quelle,
     ts.ScriptTarget.Latest,
     true,
-    ts.ScriptKind.TSX,
+    artVon(dateiname),
   );
   const offen: string[] = [];
   const besuche = (knoten: ts.Node): void => {
@@ -213,8 +270,12 @@ describe("mega61 A · die gemounteten Torwächter-Tests liegen im Web-Typprüfpf
     // AUFTRAG-mega86 Block D: KEINE Selbstausnahme mehr. Diese Datei nennt den Rahmenpfad in
     // Kommentar und Zeichenkette mehrfach — und wird davon nicht mehr rot, weil jetzt der
     // Importgraf zählt und nicht der Dateitext.
+    //
+    // AUFTRAG-JOB-2062 D1: `testDateien()` statt `dateien("tests", ".tsx")` — seit diesem Durchgang
+    // deckt die Erhebung `.ts` UND `.tsx`, also wirklich „alle Tests unter tests/**", wie die
+    // Meldung es seit jeher behauptet hat.
     const verstoesse: string[] = [];
-    for (const datei of dateien("tests", ".tsx")) {
+    for (const datei of testDateien()) {
       const inhalt = readFileSync(join(WURZEL, datei), "utf8");
       if (importiertRahmen(inhalt, datei)) {
         verstoesse.push(
@@ -231,12 +292,36 @@ describe("mega61 A · die gemounteten Torwächter-Tests liegen im Web-Typprüfpf
   // einführt, bekommt hier den Ort und die Entscheidung, statt eine stille Lücke zu erben.
   it("kein Test unter tests/** verbirgt seinen Modulpfad hinter einem Platzhalter", () => {
     const offen: string[] = [];
-    for (const datei of dateien("tests", ".tsx")) {
+    for (const datei of testDateien()) {
       offen.push(...unaufgeloesteAufrufe(readFileSync(join(WURZEL, datei), "utf8"), datei));
     }
+    // AUFTRAG-JOB-2062 D1/D2: Mit der Erweiterung auf `.ts` werden drei VORBESTEHENDE Ladestellen
+    // sichtbar, die es vorher auch schon gab — sie lagen nur außerhalb der Grundmenge. Alle drei
+    // laden absichtlich dynamisch und dürfen NICHT statisch geschrieben werden; Ort und Grund
+    // stehen bei `BEKANNT_UNAUFLOESBAR`. Sie liegen auf fremder Fläche; dieser Durchgang fasst sie
+    // nicht an, er BENENNT sie. Damit sind es benannte Grenzen und keine unbenannten — genau die
+    // Unterscheidung, auf der I44 steht.
+    const unbekannt = offen.filter((ort) => !BEKANNT_UNAUFLOESBAR.has(ort));
     expect(
-      offen,
-      `Diese Aufrufe sind statisch nicht auflösbar — der Wächter kann über sie NICHTS sagen. Entweder den Pfad statisch schreiben oder hier ausdrücklich entscheiden, was gelten soll:\n${offen.join("\n")}`,
+      unbekannt,
+      `Diese Aufrufe sind statisch nicht auflösbar — der Wächter kann über sie NICHTS sagen. Entweder den Pfad statisch schreiben oder in BEKANNT_UNAUFLOESBAR mit Grund eintragen:\n${unbekannt.join("\n")}`,
+    ).toEqual([]);
+  });
+
+  // AUFTRAG-JOB-2062 D1: die Gegenrichtung, ohne die jede Ausnahmeliste verwahrlost. Eine Ausnahme,
+  // deren Stelle es nicht mehr gibt, ist eine Karteileiche — und die nächste Zeile, die zufällig auf
+  // dieselbe Nummer rutscht, wäre stillschweigend gedeckt.
+  it("jede benannte Ausnahme zeigt noch auf eine wirklich unauflösbare Stelle", () => {
+    const offen = new Set<string>();
+    for (const datei of testDateien()) {
+      for (const ort of unaufgeloesteAufrufe(readFileSync(join(WURZEL, datei), "utf8"), datei)) {
+        offen.add(ort);
+      }
+    }
+    const verwaist = [...BEKANNT_UNAUFLOESBAR].filter((ort) => !offen.has(ort));
+    expect(
+      verwaist,
+      `Diese Ausnahmen decken nichts mehr — sie gehören aus der Liste entfernt:\n${verwaist.join("\n")}`,
     ).toEqual([]);
   });
 });
@@ -349,6 +434,51 @@ describe("mega86 D · der Rahmen-Erkenner liest Importe, nicht Zeichenfolgen", (
       unaufgeloesteAufrufe("const m = await import(`../../apps/web/src/App`);", "sonde.tsx"),
       "ein Template-Literal OHNE Platzhalter ist ebenfalls auflösbar",
     ).toEqual([]);
+  });
+
+  // ── AUFTRAG-JOB-2062 D1: die Erweiterung auf `.ts` wird gefahren, nicht behauptet ─────────────
+  //
+  // Drei Fragen, drei Sonden: Sieht der Wächter eine `.ts`-Datei überhaupt? Liest er sie in der
+  // richtigen Sprache? Und zählt er dabei keine Datei doppelt?
+
+  it("ein `.ts`-Test, der den Rahmen importiert, wird erkannt — das war die Blindstelle", () => {
+    // Bis JOB 2062 D1 kam diese Datei in der Grundmenge nicht vor. Der Import ist derselbe, den der
+    // Wächter in einer `.tsx` seit jeher findet; allein die Endung entschied über Sehen und Nicht-
+    // sehen. Genau das ist die Klasse, gegen die dieser Wächter gerichtet ist.
+    expect(importiertRahmen('import App from "../../apps/web/src/App";', "tests/sonde.ts")).toBe(
+      true,
+    );
+  });
+
+  it("eine `.ts`-Datei wird als TypeScript geparst, nicht als TSX", () => {
+    // `const f = <T,>(x: T) => x` ist gültiges TypeScript. Im TSX-Modus liest der Parser `<T,>` als
+    // JSX-Element, der Baum wird still falsch — und ein Import dahinter könnte verlorengehen.
+    // Die Sonde prüft deshalb nicht die Sprache selbst, sondern ihre FOLGE: der Import wird trotz
+    // vorangehender Generic-Pfeilfunktion gefunden.
+    const quelle = 'const f = <T,>(x: T) => x;\nimport App from "../../apps/web/src/App";';
+    expect(
+      importiertRahmen(quelle, "tests/sonde.ts"),
+      "Mit TSX-Parsing verschluckt der Baum die Generic-Pfeilfunktion und alles dahinter.",
+    ).toBe(true);
+    expect(artVon("tests/sonde.ts")).toBe(ts.ScriptKind.TS);
+    expect(artVon("tests/sonde.tsx")).toBe(ts.ScriptKind.TSX);
+  });
+
+  it("die Grundmenge enthält jede Datei genau einmal und ist echt gewachsen", () => {
+    const alle = testDateien();
+    expect(new Set(alle).size, "`.tsx` endet nicht auf `.ts` — es darf keine Dublette geben").toBe(
+      alle.length,
+    );
+    const tsx = alle.filter((d) => d.endsWith(".tsx"));
+    const nurTs = alle.filter((d) => d.endsWith(".ts"));
+    expect(tsx.length + nurTs.length).toBe(alle.length);
+    // Die Erweiterung soll die Grundmenge VERGRÖSSERN. Fiele `nurTs` je auf 0, wäre der Wächter
+    // klammheimlich wieder da, wo er vorher war — ohne dass ein einziger Fall rot würde.
+    expect(
+      nurTs.length,
+      "kein einziger `.ts`-Test in der Grundmenge — ist die Erhebung zurückgebaut?",
+    ).toBeGreaterThan(0);
+    expect(alle.length).toBeGreaterThan(tsx.length);
   });
 
   it("diese Datei nennt den Rahmenpfad — und importiert ihn nicht", () => {
