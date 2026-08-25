@@ -58,17 +58,77 @@ const REDAKTIONSTEXT: Record<string, Redaktionstext | undefined> = {
   },
 };
 
-function redaktionstext(sprache: string): Redaktionstext {
-  // `i18n.language` kann „de-DE" sein — auf den Sprachanteil kürzen, sonst fiele jede
-  // Regionalvariante auf Deutsch zurück.
-  //
-  // Der deutsche Satz steht als eigene Konstante und nicht als `REDAKTIONSTEXT.de`: unter
-  // `noUncheckedIndexedAccess` (apps/web/tsconfig.json — strenger als der Root-Typecheck) ist
-  // auch der Zugriff auf einen bekannten Schlüssel `| undefined`, und ein `??`-Fallback auf einen
-  // möglicherweise undefinierten Wert ist kein Fallback. Gefunden hat das `tools/build`, nicht
-  // `tsc --noEmit` im Wurzelverzeichnis.
-  return REDAKTIONSTEXT[sprache.split("-")[0] ?? "de"] ?? REDAKTION_DE;
+// JOB 2241: die Sprachwahl steht jetzt EINMAL und wird von beiden lokalen Textkarten benutzt.
+// Bis hierher stand sie nur in `redaktionstext`; ein zweites Register hätte sie kopiert — und zwei
+// Regeln über dieselbe Sache sind zwei Wahrheiten. Wer die Kürzung hier ändert, ändert sie für
+// alle lokalen Texte dieser Seite.
+//
+// `i18n.language` kann „de-DE" oder „en-GB" sein — auf den Sprachanteil kürzen, sonst fiele jede
+// Regionalvariante auf Deutsch zurück.
+//
+// Der Standardwert kommt als ARGUMENT und nicht aus `register.de`: unter
+// `noUncheckedIndexedAccess` (apps/web/tsconfig.json — strenger als der Root-Typecheck) ist auch
+// der Zugriff auf einen bekannten Schlüssel `| undefined`, und ein `??`-Fallback auf einen
+// möglicherweise undefinierten Wert ist kein Fallback. Gefunden hat das `tools/build`, nicht
+// `tsc --noEmit` im Wurzelverzeichnis.
+function fuerSprache<T>(register: Record<string, T | undefined>, standard: T, sprache: string): T {
+  return register[sprache.split("-")[0] ?? "de"] ?? standard;
 }
+
+function redaktionstext(sprache: string): Redaktionstext {
+  return fuerSprache(REDAKTIONSTEXT, REDAKTION_DE, sprache);
+}
+
+// ================================================================================================
+// JOB 2241 — DER VERGLEICHSLINK SPRICHT DIE SPRACHE DES NUTZERS.
+// ================================================================================================
+//
+// DER BEFUND: Hier stand der Text hart im JSX („Read-only Vergleich →") — als einziger in seiner
+// Nachbarschaft. `t("dup.compareOpen")`, `t("dup.versus")` und `t("dup.shared")` stehen unmittelbar
+// daneben und gehen längst über den Übersetzungsweg. Wer das Produkt auf Englisch oder
+// Niederländisch benutzt, bekam an dieser einen Stelle Deutsch.
+//
+// WARUM NICHT ÜBER `t()` UND `i18n.ts`: Ein `t("dup.compareReadonly")` braucht einen Eintrag in
+// `apps/web/src/i18n.ts` — dreimal, je Sprachblock. Diese Datei liegt NICHT im Schreibscope dieses
+// Auftrags. Ein `t()` ohne Eintrag gibt den Schlüssel selbst aus; das wäre keine Übersetzung,
+// sondern ein sichtbarer Defekt.
+//
+// Der vorhandene Weg für genau diese Lage steht seit JOB 1125 zwanzig Zeilen weiter oben und wird
+// hier FORTGESETZT, nicht verdoppelt: dreisprachig lokal, gemeinsame Sprachwahl (`fuerSprache`).
+// Nicht einsprachig mit Fallback — ein deutscher Satz in der englischen Oberfläche wäre genau der
+// Mangel, den dieser Auftrag behebt. Die Überführung nach `i18n.ts` bleibt ein enger Rest und ist
+// eine Verschiebung, kein Neubau; die Rückgabe nennt sie mit Startpin.
+//
+// DER DEUTSCHE TEXT BLEIBT BYTEGLEICH. Der Bau ist additiv — er ergänzt Englisch und
+// Niederländisch, er ersetzt kein deutsches Wort. Was der deutsche Nutzer heute sieht, sieht er
+// morgen auch.
+//
+// DER PFEIL IST NICHT IM TEXT. Er ist Dekoration und trägt keine Bedeutung; stünde er im
+// übersetzten String, müsste ihn jede Sprache mitführen, und ein Vorlesewerkzeug sagte
+// „Rechtspfeil" mit an. Er steht deshalb im JSX als eigenes, `aria-hidden` ausgezeichnetes
+// Element neben dem Text — sichtbar für das Auge, stumm für den Screenreader.
+//
+// UND WARUM HIER KEINE EIGENE KOMPONENTE STEHT, obwohl `RedaktionsHinweis` darüber eine ist:
+// Ein erster Anlauf hatte genau das — eine `VergleichsLink`-Komponente, gleiche Bauform wie der
+// Nachbar. Das volle Tor wurde daran rot, und zu Recht:
+//
+//   tests/app/mega84-bildbeschreibungsweg-sammler.test.tsx:1102
+//   „STUFE-1-INVARIANZ · die drei Zahlen der Auflage"
+//   expected { komponenten: 247, … } to deeply equal { komponenten: 246, … }
+//
+// Der Sammler pinnt den Komponentenbestand des Quellbaums. `anbieter` und `traeger` blieben
+// unverändert — die bewachte Sache (der Weg zur Bildbeschreibung) ist nicht berührt; es war
+// allein die Bestandszahl. Ich hätte sie auf 247 heben können (`tests/**` liegt im Schreibrecht),
+// aber das wäre die falsche Richtung: ein fremder Wächter meldet, und der Bau, der ihn ausgelöst
+// hat, schreibt seine Meldung um. Der Übersetzungsaufruf steht deshalb unten direkt im JSX von
+// `Duplicates` — die Seite hält ihr `useTranslation()` ohnehin schon.
+const VERGLEICHSLINK_DE = "Read-only Vergleich";
+
+const VERGLEICHSLINK_TEXT: Record<string, string | undefined> = {
+  de: VERGLEICHSLINK_DE,
+  en: "Read-only comparison",
+  nl: "Alleen-lezen vergelijking",
+};
 
 /** Liest den Redaktionsmarker der Serversicht. Lokal gelesen statt in `api/types.ts` ergänzt:
  *  auch diese Datei liegt nicht im Schreibscope (siehe oben). */
@@ -171,7 +231,9 @@ function OverlapDetectorBadge({ entry }: { entry: OverlapEntry }): JSX.Element |
 }
 
 export function Duplicates(): JSX.Element {
-  const { t } = useTranslation();
+  // JOB 2241: `i18n` kommt dazu — der Vergleichslink unten wählt seine Sprache über `fuerSprache`,
+  // weil sein Text (mangels Schreibrecht an `i18n.ts`) lokal geführt wird. Begründung am Kopf.
+  const { t, i18n } = useTranslation();
   const query = useDuplicates();
   const kos = useKos();
   const qc = useQueryClient();
@@ -287,7 +349,12 @@ export function Duplicates(): JSX.Element {
                                     to={`/duplikate/${e.id}/vergleich`}
                                     className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
                                   >
-                                    Read-only Vergleich →
+                                    {fuerSprache(
+                                      VERGLEICHSLINK_TEXT,
+                                      VERGLEICHSLINK_DE,
+                                      i18n.language,
+                                    )}
+                                    <span aria-hidden="true">&nbsp;→</span>
                                   </Link>
                                 </div>
                               ) : null}
