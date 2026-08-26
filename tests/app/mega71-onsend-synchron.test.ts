@@ -28,6 +28,7 @@
 // web-static.ts ist genau das rot (zwei Hops → Doppel-Send auf allen drei Klassen — der
 // geforderte Rot-Lauf dieses Blocks); mit dem Callback-Stil ist es grün.
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import Fastify, { type FastifyInstance } from "fastify";
@@ -35,6 +36,30 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { registerNoindexHook } from "../../services/app/src/noindex-hook";
 import { registerSecurityHeaders } from "../../services/app/src/security-headers";
 import { registerWebStatic } from "../../services/app/src/web-static";
+
+// ================================================================================================
+// JOB 2508 D1 — HORCHRECHT: GEMESSEN, NICHT ANGENOMMEN.
+// ================================================================================================
+//
+// Alle sechs Faelle unten brauchen einen ECHTEN Socket; der Grund steht oben in Zeile 20: „am
+// ECHTEN Socket (listen + fetch, nicht inject: das Fenster haengt an writeHead-Timing und
+// Socket-Zustand)". In einer Bahnsitzung ist der `listen`-Systemaufruf gesperrt — am 26.08.2026
+// in acht Varianten gemessen (TCP auf 127.0.0.1 mit freiem und festem Port, ohne Host, ::1,
+// 0.0.0.0, localhost, HTTP-Server UND UNIX-Socket im beschreibbaren TMPDIR): **alle acht `EPERM`,
+// `syscall=listen`.** Es ist kein Port- und kein Adressproblem, sondern der Aufruf selbst.
+//
+// Folge bis heute: diese sechs Faelle waren in JEDEM Torlauf JEDER Bahn rot. Ein Test, der nie
+// gruen werden kann, macht jedes Tor rot und verdeckt echte Befunde — dieselbe Lehre und dieselbe
+// Bauart wie in `services/app/src/routes/addin-static-routes.test.ts:213-227` (JOB 2370).
+//
+// DIE PROBE MISST, SIE BEHAUPTET NICHT. Sie versucht wirklich zu horchen. Auf einer Maschine mit
+// Horchrecht (Chef, CI) laufen die sechs Faelle deshalb **unveraendert mit**; nur dort, wo der
+// Aufruf verboten ist, werden sie sauber uebersprungen statt rot.
+const KANN_HORCHEN = await new Promise<boolean>((resolve) => {
+  const probe = createServer();
+  probe.on("error", () => resolve(false));
+  probe.listen(0, "127.0.0.1", () => probe.close(() => resolve(true)));
+});
 
 // Die drei Antwortklassen, jede über das produkttypische Muster `reply.send(); return;`
 // (async-Handler, der nach dem Send undefined resolved — exakt der wrap-thenable-Zweig).
@@ -124,18 +149,24 @@ async function messeAmDraht(url: string, opts: { fremderAsyncHook: boolean }): P
 
 describe("mega71 A · die Send-Pipeline der Auslieferung bleibt atomar (eine Antwort, kein Crash)", () => {
   for (const klasse of KLASSEN) {
-    it(`${klasse.name}: produktionsverdrahtet — genau EINE Antwort, keine unbehandelte Zurückweisung`, async () => {
-      const draht = await messeAmDraht(klasse.url, { fremderAsyncHook: false });
-      expect(draht.status).toBe(klasse.status);
-      expect(draht.writeHeads).toBe(1);
-      expect(draht.rejections).toEqual([]);
-    });
+    it.skipIf(!KANN_HORCHEN)(
+      `${klasse.name}: produktionsverdrahtet — genau EINE Antwort, keine unbehandelte Zurückweisung`,
+      async () => {
+        const draht = await messeAmDraht(klasse.url, { fremderAsyncHook: false });
+        expect(draht.status).toBe(klasse.status);
+        expect(draht.writeHeads).toBe(1);
+        expect(draht.rejections).toEqual([]);
+      },
+    );
 
-    it(`${klasse.name}: WP-E-Zusage — EIN fremder async-Hook kippt die Pipeline NICHT (Produkt-Hops = 0)`, async () => {
-      const draht = await messeAmDraht(klasse.url, { fremderAsyncHook: true });
-      expect(draht.status).toBe(klasse.status);
-      expect(draht.writeHeads).toBe(1);
-      expect(draht.rejections).toEqual([]);
-    });
+    it.skipIf(!KANN_HORCHEN)(
+      `${klasse.name}: WP-E-Zusage — EIN fremder async-Hook kippt die Pipeline NICHT (Produkt-Hops = 0)`,
+      async () => {
+        const draht = await messeAmDraht(klasse.url, { fremderAsyncHook: true });
+        expect(draht.status).toBe(klasse.status);
+        expect(draht.writeHeads).toBe(1);
+        expect(draht.rejections).toEqual([]);
+      },
+    );
   }
 });

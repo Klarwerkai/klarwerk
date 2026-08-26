@@ -6,11 +6,36 @@
 // Ablauf einen ECHTEN Abbruch aus (AbortSignal an den Konverter) und gibt den Slot ERST frei,
 // nachdem das Job-Promise wirklich gesettelt ist — vorher bewies der Test die (falsche)
 // Sofort-Freigabe, unter der ZWEI Konverter parallel laufen konnten.
-import { connect } from "node:net";
+import { connect, createServer } from "node:net";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { SLIDES_SLOT_LEASE_MS } from "../../services/app/src/routes/slides-routes";
 import type { SlideConvertResult, SlideConverter } from "../../services/app/src/slide-converter";
+
+// ================================================================================================
+// JOB 2508 D1 — HORCHRECHT: GEMESSEN, NICHT ANGENOMMEN.
+// ================================================================================================
+//
+// Drei der vier Faelle unten brauchen einen ECHTEN Socket (`app.listen` + roher Abbruch); der
+// Grund steht bei `abortingRequest`: „genau der Fall, den inject() nicht abbilden kann." In einer
+// Bahnsitzung ist der `listen`-Systemaufruf gesperrt — am 26.08.2026 in acht Varianten gemessen
+// (TCP auf 127.0.0.1 mit freiem und festem Port, ohne Host, ::1, 0.0.0.0, localhost, HTTP-Server
+// UND UNIX-Socket im beschreibbaren TMPDIR): **alle acht `EPERM`, `syscall=listen`.** Es ist also
+// kein Port- und kein Adressproblem, sondern der Aufruf selbst.
+//
+// Folge bis heute: dieselben drei Faelle waren in JEDEM Torlauf JEDER Bahn rot. Ein Test, der
+// nie gruen werden kann, macht jedes Tor rot und verdeckt echte Befunde — dieselbe Lehre und
+// dieselbe Bauart wie in `services/app/src/routes/addin-static-routes.test.ts:213-227` (JOB 2370).
+//
+// DIE PROBE MISST, SIE BEHAUPTET NICHT. Sie versucht wirklich zu horchen. Auf einer Maschine mit
+// Horchrecht (Chef, CI) laufen die drei Faelle deshalb **unveraendert mit**; nur dort, wo der
+// Aufruf verboten ist, werden sie sauber uebersprungen statt rot. Fall (c) braucht keinen Socket
+// und laeuft immer.
+const KANN_HORCHEN = await new Promise<boolean>((resolve) => {
+  const probe = createServer();
+  probe.on("error", () => resolve(false));
+  probe.listen(0, "127.0.0.1", () => probe.close(() => resolve(true)));
+});
 
 beforeEach(() => {
   process.env.KLARWERK_SLIDES_ENABLED = "1";
@@ -87,138 +112,147 @@ function abortingRequest(
 }
 
 describe("WP-REST18 Fix 3: Socket-Abbrüche geben den Folien-Slot frei", () => {
-  it("(a) Abbruch MITTEN IM BODY nach dem Claim → onRequestAbort gibt frei, der Folge-Request konvertiert", async () => {
-    const { app, token, headers } = await appWithLogin(fakeConverter());
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    try {
-      const { port } = app.server.address() as { port: number };
-      // Headers komplett (Claim passiert), Body nur angefangen (Parser wartet) → dann Abbruch.
-      await abortingRequest(port, token, {
-        contentLength: 1_000_000,
-        bodyChunk: `{"data":"${"A".repeat(500)}`,
-        destroyAfterMs: 150,
-      });
-      // Ohne die onRequestAbort-Freigabe bliebe running=true → hier käme 429 CONVERSION_BUSY.
-      const follow = await app.inject({
-        method: "POST",
-        url: "/api/capture/slides",
-        headers,
-        payload: { data: SMALL_PPTX },
-      });
-      expect(follow.statusCode).toBe(200);
-    } finally {
-      await app.close();
-    }
-  });
-
-  it("(b) Abbruch WÄHREND des Auth-Await → KEIN nachträglicher Claim, der Folge-Request kommt durch", async () => {
-    const { app, services, token, headers } = await appWithLogin(fakeConverter());
-    // Den NÄCHSTEN Auth-Check künstlich verzögern — der Abbruch passiert genau in diesem Fenster.
-    const realAuthenticate = services.auth.authenticate.bind(services.auth);
-    let delayNext = true;
-    services.auth.authenticate = async (sessionToken: string) => {
-      if (delayNext) {
-        delayNext = false;
-        await new Promise((r) => setTimeout(r, 300));
+  it.skipIf(!KANN_HORCHEN)(
+    "(a) Abbruch MITTEN IM BODY nach dem Claim → onRequestAbort gibt frei, der Folge-Request konvertiert",
+    async () => {
+      const { app, token, headers } = await appWithLogin(fakeConverter());
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      try {
+        const { port } = app.server.address() as { port: number };
+        // Headers komplett (Claim passiert), Body nur angefangen (Parser wartet) → dann Abbruch.
+        await abortingRequest(port, token, {
+          contentLength: 1_000_000,
+          bodyChunk: `{"data":"${"A".repeat(500)}`,
+          destroyAfterMs: 150,
+        });
+        // Ohne die onRequestAbort-Freigabe bliebe running=true → hier käme 429 CONVERSION_BUSY.
+        const follow = await app.inject({
+          method: "POST",
+          url: "/api/capture/slides",
+          headers,
+          payload: { data: SMALL_PPTX },
+        });
+        expect(follow.statusCode).toBe(200);
+      } finally {
+        await app.close();
       }
-      return realAuthenticate(sessionToken);
-    };
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    try {
-      const { port } = app.server.address() as { port: number };
-      // Voller kleiner Body, Abbruch nach 50 ms — mitten im 300-ms-Auth-Await, VOR jedem Claim.
-      const body = JSON.stringify({ data: SMALL_PPTX });
-      await abortingRequest(port, token, {
-        contentLength: Buffer.byteLength(body),
-        bodyChunk: body,
-        destroyAfterMs: 50,
-      });
-      // Auth-Await zu Ende laufen lassen — der tote Request darf danach NICHT geclaimt haben.
-      await new Promise((r) => setTimeout(r, 400));
-      const follow = await app.inject({
-        method: "POST",
-        url: "/api/capture/slides",
-        headers,
-        payload: { data: SMALL_PPTX },
-      });
-      expect(follow.statusCode).toBe(200);
-    } finally {
-      await app.close();
-    }
-  });
+    },
+  );
+
+  it.skipIf(!KANN_HORCHEN)(
+    "(b) Abbruch WÄHREND des Auth-Await → KEIN nachträglicher Claim, der Folge-Request kommt durch",
+    async () => {
+      const { app, services, token, headers } = await appWithLogin(fakeConverter());
+      // Den NÄCHSTEN Auth-Check künstlich verzögern — der Abbruch passiert genau in diesem Fenster.
+      const realAuthenticate = services.auth.authenticate.bind(services.auth);
+      let delayNext = true;
+      services.auth.authenticate = async (sessionToken: string) => {
+        if (delayNext) {
+          delayNext = false;
+          await new Promise((r) => setTimeout(r, 300));
+        }
+        return realAuthenticate(sessionToken);
+      };
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      try {
+        const { port } = app.server.address() as { port: number };
+        // Voller kleiner Body, Abbruch nach 50 ms — mitten im 300-ms-Auth-Await, VOR jedem Claim.
+        const body = JSON.stringify({ data: SMALL_PPTX });
+        await abortingRequest(port, token, {
+          contentLength: Buffer.byteLength(body),
+          bodyChunk: body,
+          destroyAfterMs: 50,
+        });
+        // Auth-Await zu Ende laufen lassen — der tote Request darf danach NICHT geclaimt haben.
+        await new Promise((r) => setTimeout(r, 400));
+        const follow = await app.inject({
+          method: "POST",
+          url: "/api/capture/slides",
+          headers,
+          payload: { data: SMALL_PPTX },
+        });
+        expect(follow.statusCode).toBe(200);
+      } finally {
+        await app.close();
+      }
+    },
+  );
 
   // WP-SAMMEL21-FIX (bens Fix 2, ROT): der Client-90-s-Abort feuert onRequestAbort — vorher gab
   // der den Slot SOFORT frei, während LibreOffice weiterlief (zwei Konverter parallel möglich).
   // Jetzt läuft JEDER Freigabepfad durch die gemeinsame Release-Routine: erst Abbruch (Signal),
   // dann Settlement abwarten, DANN frei.
-  it("(d) Socket-Abbruch WÄHREND eines aktiven convert() → Slot bleibt bis zum Settlement belegt (429), danach frei (200)", async () => {
-    let calls = 0;
-    let firstSignal: AbortSignal | undefined;
-    let settleFirst: ((err: Error) => void) | null = null;
-    const { app, token, headers } = await appWithLogin(
-      fakeConverter({
-        convert: (_pptx, opts) => {
-          calls += 1;
-          if (calls === 1) {
-            firstSignal = opts?.signal;
-            // Bleibt aktiv, bis der TEST das Settlement auslöst (simuliert den laufenden Konverter).
-            return new Promise<SlideConvertResult>((_resolve, reject) => {
-              settleFirst = reject;
-            });
-          }
-          return Promise.resolve(convertResult());
-        },
-      }),
-    );
-    await app.listen({ port: 0, host: "127.0.0.1" });
-    try {
-      const { port } = app.server.address() as { port: number };
-      // Vollständigen Request über einen ECHTEN Socket senden; zerstört wird er ERST, wenn der
-      // Konverter nachweislich läuft (genau bens Fenster: Abort mitten im convert()).
-      const body = JSON.stringify({ data: SMALL_PPTX });
-      const socket = connect(port, "127.0.0.1", () => {
-        const head = [
-          "POST /api/capture/slides HTTP/1.1",
-          "Host: 127.0.0.1",
-          `Authorization: Bearer ${token}`,
-          "Content-Type: application/json",
-          `Content-Length: ${Buffer.byteLength(body)}`,
-          "",
-          "",
-        ].join("\r\n");
-        socket.write(`${head}${body}`);
-      });
-      for (let i = 0; i < 200 && calls === 0; i++) {
-        await new Promise((r) => setTimeout(r, 10));
+  it.skipIf(!KANN_HORCHEN)(
+    "(d) Socket-Abbruch WÄHREND eines aktiven convert() → Slot bleibt bis zum Settlement belegt (429), danach frei (200)",
+    async () => {
+      let calls = 0;
+      let firstSignal: AbortSignal | undefined;
+      let settleFirst: ((err: Error) => void) | null = null;
+      const { app, token, headers } = await appWithLogin(
+        fakeConverter({
+          convert: (_pptx, opts) => {
+            calls += 1;
+            if (calls === 1) {
+              firstSignal = opts?.signal;
+              // Bleibt aktiv, bis der TEST das Settlement auslöst (simuliert den laufenden Konverter).
+              return new Promise<SlideConvertResult>((_resolve, reject) => {
+                settleFirst = reject;
+              });
+            }
+            return Promise.resolve(convertResult());
+          },
+        }),
+      );
+      await app.listen({ port: 0, host: "127.0.0.1" });
+      try {
+        const { port } = app.server.address() as { port: number };
+        // Vollständigen Request über einen ECHTEN Socket senden; zerstört wird er ERST, wenn der
+        // Konverter nachweislich läuft (genau bens Fenster: Abort mitten im convert()).
+        const body = JSON.stringify({ data: SMALL_PPTX });
+        const socket = connect(port, "127.0.0.1", () => {
+          const head = [
+            "POST /api/capture/slides HTTP/1.1",
+            "Host: 127.0.0.1",
+            `Authorization: Bearer ${token}`,
+            "Content-Type: application/json",
+            `Content-Length: ${Buffer.byteLength(body)}`,
+            "",
+            "",
+          ].join("\r\n");
+          socket.write(`${head}${body}`);
+        });
+        for (let i = 0; i < 200 && calls === 0; i++) {
+          await new Promise((r) => setTimeout(r, 10));
+        }
+        expect(calls).toBe(1);
+        socket.destroy();
+        await new Promise((r) => setTimeout(r, 200));
+        // Der Socket-Close-Wächter (Fastifys onRequestAbort feuert bei komplettem Body nachweislich
+        // NICHT) hat über die gemeinsame Release-Routine den ABBRUCH ausgelöst …
+        expect(firstSignal?.aborted).toBe(true);
+        // … gibt den Slot aber NICHT frei, solange der Konverter-Job nicht gesettelt ist.
+        const blocked = await app.inject({
+          method: "POST",
+          url: "/api/capture/slides",
+          headers,
+          payload: { data: SMALL_PPTX },
+        });
+        expect(blocked.statusCode).toBe(429);
+        // Settlement (der Kill wirkt) → ERST JETZT wird der Slot frei.
+        (settleFirst as unknown as (err: Error) => void)(new Error("Prozessgruppe beendet"));
+        await new Promise((r) => setTimeout(r, 100));
+        const after = await app.inject({
+          method: "POST",
+          url: "/api/capture/slides",
+          headers,
+          payload: { data: SMALL_PPTX },
+        });
+        expect(after.statusCode).toBe(200);
+      } finally {
+        await app.close();
       }
-      expect(calls).toBe(1);
-      socket.destroy();
-      await new Promise((r) => setTimeout(r, 200));
-      // Der Socket-Close-Wächter (Fastifys onRequestAbort feuert bei komplettem Body nachweislich
-      // NICHT) hat über die gemeinsame Release-Routine den ABBRUCH ausgelöst …
-      expect(firstSignal?.aborted).toBe(true);
-      // … gibt den Slot aber NICHT frei, solange der Konverter-Job nicht gesettelt ist.
-      const blocked = await app.inject({
-        method: "POST",
-        url: "/api/capture/slides",
-        headers,
-        payload: { data: SMALL_PPTX },
-      });
-      expect(blocked.statusCode).toBe(429);
-      // Settlement (der Kill wirkt) → ERST JETZT wird der Slot frei.
-      (settleFirst as unknown as (err: Error) => void)(new Error("Prozessgruppe beendet"));
-      await new Promise((r) => setTimeout(r, 100));
-      const after = await app.inject({
-        method: "POST",
-        url: "/api/capture/slides",
-        headers,
-        payload: { data: SMALL_PPTX },
-      });
-      expect(after.statusCode).toBe(200);
-    } finally {
-      await app.close();
-    }
-  });
+    },
+  );
 
   it("(c) Lease mit ECHTER Cancellation: WEITER 429 solange der Job nicht abgebrochen/gesettelt ist — erst danach 200", async () => {
     const warnSpy = vi.spyOn(process.stderr, "write").mockImplementation(() => true);
