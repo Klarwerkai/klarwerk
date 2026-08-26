@@ -203,6 +203,10 @@ const INVENTAR: readonly string[] = [
   // `klara_sessions` geht. Sachlich Klara-Regression: eine Vertauschung von
   // `document_context_id` und `resolution_id` schreibt Klaras Sitzungsbindung still falsch.
   "tests/db/i10-klara-rebind-nutzlast.test.ts",
+  // JOB 2376 D1: die Transaktionsklammer, die eine Fassung des Klara-Regelwerks schreibt
+  // (`klara-policy-store.ts:667`). Sachlich Klara-Regression: bricht der Schreibweg auf halbem
+  // Weg ab, sieht ein Leser eine Sitzung, deren Regelwerk und Zustimmung nicht zusammenpassen.
+  "tests/db/i10-klara-regelwerk-klammer.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   "tests/legal/mega61-ki-satz.test.ts",
@@ -343,7 +347,12 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Dateinamenssuche verfehlt weiterhin den groesseren Teil der Menge.
     // 23 -> 24 am 26.08.2026 (JOB 2384 D1): `tests/db/i10-klara-rebind-nutzlast.test.ts` traegt
     // "klara" im Namen und wird deshalb von der Namensachse selbst gefunden.
-    expect(nurName.length).toBe(24);
+    // 24 -> 25 am 26.08.2026 (JOB 2376 D1, zugestellt in JOB 2435):
+    // `tests/db/i10-klara-regelwerk-klammer.test.ts` traegt "klara" ebenfalls im Namen.
+    // ZUR ZAHL: In JOB 2376 D1 selbst lautete die Nachfuehrung 23 -> 24, weil JOB 2384 damals
+    // noch nicht im Baum war. Es ist dieselbe Nachfuehrung auf einem inzwischen weitergezogenen
+    // Stand, keine zweite Aenderung.
+    expect(nurName.length).toBe(25);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
