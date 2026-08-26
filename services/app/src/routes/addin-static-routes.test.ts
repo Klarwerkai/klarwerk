@@ -208,8 +208,60 @@ describe("SCRUM-490 H: /addin/* Bundle-Serving", () => {
 // SCRUM-490 H3 (bens Punkt 5): ROHSOCKET-Tests — inject() normalisiert URLs clientseitig zu früh; nur
 // ein echter Socket transportiert die unveränderten Trick-Pfade (Malformed, doppelt-encoded, Backslash,
 // Semikolon) bis zum Server. Der Server lauscht auf 127.0.0.1:0 (ephemeral).
+//
+// JOB 2370 D1: Die Aussage oben ist nachgemessen worden — sie trifft zu, aber nur auf ZWEI der sieben
+// Trick-Pfade. Für `/addin/%c0%ae%c0%ae/x` und `/addin/%E0%A4%A` weist Fastify die Anfrage unter
+// inject() vorab mit `400 FST_ERR_BAD_URL` ab; der statische 404 der /addin-Fläche wird nie erreicht,
+// die Zusicherung kippte dort also ins Gegenteil. Die übrigen fünf Pfade tragen unter inject() alle
+// sechs Zusicherungen zeichengleich (gemessen: Status, nosniff, Rumpf, drei Echo-Verbote).
+//
+// Bahnsitzungen dürfen keinen TCP-Horchpunkt auf 127.0.0.1 öffnen — `listen EPERM: operation not
+// permitted`. Fünf Pfade laufen deshalb über inject() und damit überall; die zwei, die den echten
+// Socket brauchen, werden ohne Horchrecht SAUBER ÜBERSPRUNGEN statt rot. Ein Test, der nie grün
+// werden kann, macht jedes Tor rot und verdeckt echte Befunde. Auf einer Maschine mit Horchrecht
+// (Chef, CI) läuft er unverändert mit.
+const KANN_HORCHEN = await new Promise<boolean>((resolve) => {
+  const probe = net.createServer();
+  probe.on("error", () => resolve(false));
+  probe.listen(0, "127.0.0.1", () => probe.close(() => resolve(true)));
+});
+
 describe("SCRUM-490 H3: Rohsocket — negative /addin-Antwortfläche vollständig statisch", () => {
   const STATIC_404 = JSON.stringify({ error: "NOT_FOUND", message: "Nicht gefunden." });
+
+  // Die sieben Trick-Pfade, getrennt nach dem, was JOB 2370 D1 je Pfad gemessen hat.
+  const TRICKPFADE_INJECT = [
+    "/%2561ddin/taskpane.html", // doppelt encoded "a"
+    "/%2541DDIN/x", // doppelt encoded "A" + Case
+    "/addin%252Ftaskpane.html", // doppelt encodeter Slash
+    "/addin\\foo", // Backslash-Variante
+    "/addin;v=1/taskpane.html", // Semikolon-Segment-Parameter
+  ];
+  const TRICKPFADE_ROHSOCKET = [
+    "/addin/%c0%ae%c0%ae/x", // overlong-encoded dots → FST_ERR_BAD_URL-Kandidat
+    "/addin/%E0%A4%A", // truncated UTF-8-Sequenz → nicht dekodierbar
+  ];
+
+  // EINE Zusicherung, zwei Transporte: der Inject-Fall und der Rohsocket-Fall rufen dieselbe
+  // Funktion mit denselben sechs Prüfungen. Damit ist belegt, dass der Umbau die geprüfte Aussage
+  // nicht entschärft, sondern nur den Weg wechselt, auf dem die Anfrage ankommt.
+  function erwarteStatischen404(statusZeile: string, kopfBlockKlein: string, body: string): void {
+    expect(statusZeile).toContain("404"); // konsistent 404 (dokumentierter Entscheid, auch für Malformed)
+    expect(kopfBlockKlein).toContain("x-content-type-options: nosniff");
+    expect(body).toBe(STATIC_404); // exakt statisch …
+    expect(body).not.toContain("Route "); // … nie der globale Fastify-Body
+    expect(body).not.toContain("Bad Request"); // … nie das FST_ERR_BAD_URL-Echo
+    expect(body).not.toContain("taskpane"); // … kein Pfad-Echo
+  }
+
+  // Die Kopfzeilen einer inject()-Antwort in dieselbe Form bringen, in der der Rohsocket sie
+  // liefert — aus gemessenen Werten, nichts nachgebaut.
+  function kopfBlock(headers: Record<string, unknown>): string {
+    return Object.entries(headers)
+      .map(([k, v]) => `${k}: ${String(v)}`)
+      .join("\r\n")
+      .toLowerCase();
+  }
 
   async function withListeningApp(
     fn: (rawGet: (pathLine: string, method?: string) => Promise<string>) => Promise<void>,
@@ -238,47 +290,60 @@ describe("SCRUM-490 H3: Rohsocket — negative /addin-Antwortfläche vollständi
     }
   }
 
-  it("Malformed/encoded/Backslash/Semikolon → nosniff + statischer Body, kein Echo, nie global (7 Pfade)", async () => {
-    await withListeningApp(async (rawGet) => {
-      const cases = [
-        "/addin/%c0%ae%c0%ae/x", // overlong-encoded dots → FST_ERR_BAD_URL-Kandidat
-        "/addin/%E0%A4%A", // truncated UTF-8-Sequenz → nicht dekodierbar
-        "/%2561ddin/taskpane.html", // doppelt encoded "a"
-        "/%2541DDIN/x", // doppelt encoded "A" + Case
-        "/addin%252Ftaskpane.html", // doppelt encodeter Slash
-        "/addin\\foo", // Backslash-Variante
-        "/addin;v=1/taskpane.html", // Semikolon-Segment-Parameter
-      ];
-      for (const p of cases) {
-        const res = await rawGet(p);
-        const statusLine = res.split("\r\n")[0] ?? "";
-        const body = res.split("\r\n\r\n")[1] ?? "";
-        expect(statusLine).toContain("404"); // konsistent 404 (dokumentierter Entscheid, auch für Malformed)
-        expect(res.toLowerCase()).toContain("x-content-type-options: nosniff");
-        expect(body).toBe(STATIC_404); // exakt statisch …
-        expect(body).not.toContain("Route "); // … nie der globale Fastify-Body
-        expect(body).not.toContain("Bad Request"); // … nie das FST_ERR_BAD_URL-Echo
-        expect(body).not.toContain("taskpane"); // … kein Pfad-Echo
-      }
-    });
+  it("Malformed/encoded/Backslash/Semikolon → nosniff + statischer Body, kein Echo, nie global (5 Pfade)", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    const app = buildApp(buildServices());
+    for (const p of TRICKPFADE_INJECT) {
+      const res = await app.inject({ method: "GET", url: p });
+      erwarteStatischen404(String(res.statusCode), kopfBlock(res.headers), res.body);
+    }
   });
 
-  it("Rohsocket-Gegenprobe: GET Map-Treffer → 200 + nosniff (200-Pfad unverändert)", async () => {
-    await withListeningApp(async (rawGet) => {
-      const res = await rawGet("/addin/taskpane.html");
-      expect(res.split("\r\n")[0]).toContain("200");
-      expect(res.toLowerCase()).toContain("x-content-type-options: nosniff");
-      expect(res).toContain("taskpane.js"); // echtes Bundle-HTML
-    });
+  // JOB 2370 D1: Diese beiden Pfade brauchen den echten Socket — unter inject() antwortet Fastify
+  // mit `400 FST_ERR_BAD_URL`, bevor die /addin-Fläche überhaupt gefragt wird. Ein Umbau hätte die
+  // Zusicherung nicht nachgezogen, sondern in ihr Gegenteil verkehrt.
+  it.skipIf(!KANN_HORCHEN)(
+    "Malformed overlong/abgeschnitten → nosniff + statischer Body (2 Pfade, Rohsocket zwingend)",
+    async () => {
+      await withListeningApp(async (rawGet) => {
+        for (const p of TRICKPFADE_ROHSOCKET) {
+          const res = await rawGet(p);
+          erwarteStatischen404(
+            res.split("\r\n")[0] ?? "",
+            res.toLowerCase(),
+            res.split("\r\n\r\n")[1] ?? "",
+          );
+        }
+      });
+    },
+  );
+
+  it("Gegenprobe: GET Map-Treffer → 200 + nosniff (200-Pfad unverändert)", async () => {
+    process.env.KLARWERK_ADDON_API = "1";
+    const app = buildApp(buildServices());
+    const res = await app.inject({ method: "GET", url: "/addin/taskpane.html" });
+    expect(String(res.statusCode)).toContain("200");
+    expect(kopfBlock(res.headers)).toContain("x-content-type-options: nosniff");
+    expect(res.body).toContain("taskpane.js"); // echtes Bundle-HTML
   });
 
-  it("Rohsocket: Nicht-Namensraum-Malformed (/%E0%A4%A ohne /addin) bleibt globale Fläche (unberührt)", async () => {
-    await withListeningApp(async (rawGet) => {
-      const res = await rawGet("/%E0%A4%A");
-      // Kein /addin-Namensraum → NICHT unsere Fläche; Fastifys globales Verhalten bleibt bit-identisch.
-      expect(res.split("\r\n")[0]).toContain("400");
-    });
-  });
+  // JOB 2370 D1: Dieser Fall bewacht Schicht 3 (`onListen`-Hook, addin-static-routes.ts:161-179) —
+  // die Zusicherung, dass die Malformed-Umschreibung NICHT über den /addin-Namensraum hinausgreift.
+  // Schicht 3 existiert laut ihrem eigenen Kommentar (:164) „nur bei echtem listen()". Unter
+  // inject() liefert der Pfad zwar denselben 400, aber aus einem anderen Grund — gemessen mit einer
+  // Gegenmutation (`isAddinNamespacePath` gibt für ALLES `true` zurück): die inject-Fassung bleibt
+  // dabei grün, die Rohsocket-Fassung ist die einzige, die den Übergriff sehen kann. Ein Umbau hätte
+  // den Fall also entschärft; er bleibt am Socket.
+  it.skipIf(!KANN_HORCHEN)(
+    "Rohsocket: Nicht-Namensraum-Malformed (/%E0%A4%A ohne /addin) bleibt globale Fläche (unberührt)",
+    async () => {
+      await withListeningApp(async (rawGet) => {
+        const res = await rawGet("/%E0%A4%A");
+        // Kein /addin-Namensraum → NICHT unsere Fläche; Fastifys globales Verhalten bleibt bit-identisch.
+        expect(res.split("\r\n")[0]).toContain("400");
+      });
+    },
+  );
 });
 
 describe("SCRUM-490 H3: Methoden + Auth auf der /addin-Fläche", () => {
