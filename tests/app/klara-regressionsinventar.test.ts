@@ -136,6 +136,10 @@ const INVENTAR: readonly string[] = [
   // JOB 1113: neu und von der Achse `version` gefunden (Muster `version\.ts`) — der Wächter für
   // /health mit Version und Deploy-Commit gehört sachlich zum Versionsschritt.
   "tests/app/health-version-commit.test.ts",
+  // JOB 2244 D1 (A19b): der Plattformvertrag des Command-Palette-Kuerzels. Von der Achse
+  // `palette` gefunden (Muster `palette`, Zeile 103) — die Datei mountet `CommandPalette` und
+  // nennt sie durchgaengig. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/app/job2244-a19b-kuerzel-plattformvertrag-mounted.test.tsx",
   "tests/app/k1-word-addin-origin-panel.test.ts",
   // KA2 (JOB 1571 · D5): neu im Baum und von der Erhebung gefunden. Der Vertragswaechter gehoert
   // sachlich in die Klara-Regression — er haelt Regel A fest (das Panel besitzt
