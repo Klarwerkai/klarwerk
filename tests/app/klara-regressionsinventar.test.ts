@@ -199,6 +199,10 @@ const INVENTAR: readonly string[] = [
   "tests/ask/g27-klara-volltext.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
+  // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —
+  // Sitzungs- UND Zustimmungsseite. Sachlich Klara-Regression: dreht sich in der Zustimmungs-
+  // Anweisung `$2` gegen `$3`, zaehlt am Ende ein Widerruf als Zustimmung.
+  "tests/db/i10-klara-nutzlast-drei-einstiege.test.ts",
   // JOB 2384 D1: die Nutzlast von `rebindSession` — welcher Wert in welche Spalte von
   // `klara_sessions` geht. Sachlich Klara-Regression: eine Vertauschung von
   // `document_context_id` und `resolution_id` schreibt Klaras Sitzungsbindung still falsch.
@@ -352,7 +356,14 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // ZUR ZAHL: In JOB 2376 D1 selbst lautete die Nachfuehrung 23 -> 24, weil JOB 2384 damals
     // noch nicht im Baum war. Es ist dieselbe Nachfuehrung auf einem inzwischen weitergezogenen
     // Stand, keine zweite Aenderung.
-    expect(nurName.length).toBe(25);
+    // 25 -> 26 am 27.08.2026 (JOB 2507 D2): `tests/db/i10-klara-nutzlast-drei-einstiege.test.ts`
+    // traegt "klara" im Namen. ZUR ZAHL: Die Bahn hat aus ihrem Klon (Startpin 51dbc9a) 24 -> 26
+    // nachgefuehrt, weil dort BEIDE neuen Dateien fehlten. Im Baum lag `i10-klara-regelwerk-
+    // klammer.test.ts` durch JOB 2435 schon; hier ist es deshalb 25 -> 26. Dieselbe Zielzahl auf
+    // einem weitergezogenen Stand. GEMESSEN, nicht gesetzt: der Test lief zuerst gegen 25 und
+    // meldete `expected 26 to be 25`. Die Inventardatei wurde NICHT aus dem Klon kopiert — das
+    // haette die zehn Zeilen von JOB 2435 geloescht; nur der neue Eintrag wurde uebertragen.
+    expect(nurName.length).toBe(26);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
