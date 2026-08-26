@@ -199,6 +199,10 @@ const INVENTAR: readonly string[] = [
   "tests/ask/g27-klara-volltext.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
+  // JOB 2384 D1: die Nutzlast von `rebindSession` — welcher Wert in welche Spalte von
+  // `klara_sessions` geht. Sachlich Klara-Regression: eine Vertauschung von
+  // `document_context_id` und `resolution_id` schreibt Klaras Sitzungsbindung still falsch.
+  "tests/db/i10-klara-rebind-nutzlast.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   "tests/legal/mega61-ki-satz.test.ts",
@@ -337,7 +341,9 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Integration der Nachtstaende dazu und traegt "klara" nicht im Namen, wohl aber im Inhalt.
     // Die Zahl ist der Ist-Stand; der methodische Kern ist die Zeile darunter -- die
     // Dateinamenssuche verfehlt weiterhin den groesseren Teil der Menge.
-    expect(nurName.length).toBe(23);
+    // 23 -> 24 am 26.08.2026 (JOB 2384 D1): `tests/db/i10-klara-rebind-nutzlast.test.ts` traegt
+    // "klara" im Namen und wird deshalb von der Namensachse selbst gefunden.
+    expect(nurName.length).toBe(24);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
