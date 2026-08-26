@@ -7,7 +7,7 @@ Runtime-Integration** — rein manuell bzw. per Cron/Coolify-Scheduled-Task ausz
 
 ```bash
 # DB-URL aus der Umgebung (bevorzugt KLARWERK_DATABASE_URL, sonst DATABASE_URL).
-DATABASE_URL='postgres://user:pass@host:5432/klarwerk' ./scripts/backup/backup.sh
+DATABASE_URL='postgres://user:pass@host:5432/klarwerk_prod' ./scripts/backup/backup.sh
 # → schreibt ./backups/klarwerk-<ZEITSTEMPEL>.dump (Custom-Format, komprimiert)
 # Zielverzeichnis überschreibbar: ./scripts/backup/backup.sh /pfad/zu/backups   (oder BACKUP_DIR=…)
 ```

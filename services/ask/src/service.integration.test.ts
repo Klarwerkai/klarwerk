@@ -52,12 +52,12 @@ describe("FUNKE-FIX2 P0 (bens ROT-1): Danke atomar gegen echtes Postgres (Audit 
     }
     try {
       container = await new GenericContainer("postgres:16-alpine")
-        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
       pool = new Pool({
-        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`,
+        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
       });
       available = true;
     } catch {

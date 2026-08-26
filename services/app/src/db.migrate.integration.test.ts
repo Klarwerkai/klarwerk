@@ -31,7 +31,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
 
   beforeAll(async () => {
     container = await new GenericContainer("postgres:16-alpine")
-      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
+      .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
       .withExposedPorts(5432)
       .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
       .start();
@@ -42,7 +42,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
   });
 
   it("migrate() legt alle Modul-Tabellen ohne Syntaxfehler an (idempotent)", async () => {
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     const pool = createPool(url);
     try {
       // Der eigentliche Test: würde ein Modul-DDL ungültige Syntax tragen (z. B. ein reservierter
@@ -65,7 +65,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
   // gegen ECHTES Postgres, dass parallele Claims genau EINEN Gewinner haben (die COUNT+INSERT-Race ist
   // geschlossen) und dass ein zweiter bootstrap_admin=true strukturell unmöglich ist.
   it("SCRUM-504: partieller Unique-Index → genau ein Bootstrap-Admin trotz paralleler Claims", async () => {
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     const pool = createPool(url);
     try {
       await migrate(pool);
@@ -121,7 +121,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
   // PG-Repo, kopierter Fachinhalt beim INSERT) bleiben ausdrücklich offen und werden hier weder
   // berührt noch geheilt.
   it("W2-A: migrate() legt die Import-Lauf-Tabellen mit Spalten, Constraints und Indizes an", async () => {
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     const pool = createPool(url);
     try {
       await migrate(pool);
@@ -286,7 +286,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
   // Ausgangslage in einem Wegwerf-Container her. Die Migration selbst enthält kein DROP — das ist
   // im schnellen Tor gepinnt.
   it("Abschnitt J: bestehende V1-Tabelle → additive Migration → V2-Insert → deterministischer Nachzug", async () => {
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     const pool = createPool(url);
     try {
       await migrate(pool);
@@ -512,7 +512,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
   // Er steht in `klara-session-service.test.ts`; hier wird belegt, dass die SPALTEN existieren und
   // tragen. Diese Trennung ist die ehrliche Aufteilung, nicht eine Lücke.
   it("W1 S4 R2: Auflösung überlebt, und die DB erzwingt höchstens eine gültige Zustimmung", async () => {
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     const pool = createPool(url);
     try {
       await migrate(pool);
@@ -626,7 +626,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
   // Die Uhr ist gestellt, aber das prüft hier NICHTS: sie macht den Lauf nur unabhängig von der
   // Wanduhr des Containers. Die Fristenprüfung bleibt wie gehabt im Dienst-Test.
   it("W1 S4 R3: der Dokument-Rebind wird in PostgreSQL wirklich persistiert (BEN ROT-1)", async () => {
-    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+    const url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     const pool = createPool(url);
     // Der zweite Pool ist der eigentliche Beweisträger von Kriterium 6: eigene Verbindungen, eigenes
     // Repo, eigener Dienst — nichts kann aus dem Prozessgedächtnis des ersten Wegs stammen.
@@ -870,7 +870,7 @@ describe("SCRUM-496: migrate() ist gültiges SQL gegen echtes Postgres", () => {
     }
 
     function url(): string {
-      return `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+      return `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
 
     /** Sitzung auf temporaerem Kontext, wahlweise mit erteilter Zustimmung. */

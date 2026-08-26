@@ -129,11 +129,11 @@ describe("mega21 Block D / mega22 Block G: kos_create_operation_owner_uq gegen e
     }
     try {
       container = await new GenericContainer("postgres:16-alpine")
-        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
-      verbindung = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+      verbindung = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
       pool = new Pool({ connectionString: verbindung });
       available = true;
     } catch {

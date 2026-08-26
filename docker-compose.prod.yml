@@ -15,7 +15,22 @@ services:
     environment:
       POSTGRES_USER: klarwerk
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD setzen}
-      POSTGRES_DB: klarwerk
+      # JOB 2354 (E7): DREI UMGEBUNGEN, DREI NAMEN — `klarwerk_prod`, `klarwerk_dev`,
+      # `klarwerk_test`. Bis hierher trug diese Datenbank denselben Namen wie die
+      # Entwicklungsdatenbank (`klarwerk`), und eine Verbindungszeichenkette verriet nicht,
+      # welche der beiden sie meinte.
+      #
+      # ACHTUNG, MIGRATION: Postgres legt `POSTGRES_DB` NUR bei der Erstinitialisierung eines
+      # LEEREN Datenverzeichnisses an. Auf einem bestehenden `pgdata`-Volume entsteht durch
+      # diese Zeile KEINE neue Datenbank — die App liefe dann gegen einen Namen, den der Server
+      # nicht kennt. Der Umstieg auf einem laufenden Bestand braucht deshalb einen ausdruecklichen
+      # Schritt (ALTER DATABASE klarwerk RENAME TO klarwerk_prod, oder Dump und Wiederherstellung
+      # unter neuem Namen). Dieser Durchgang fuehrt ihn NICHT aus; er ist gemeldet.
+      #
+      # `POSTGRES_USER` bleibt bewusst `klarwerk`: Der Erfuellungssatz betrifft den DATENBANK-Namen,
+      # und eine Kennungsaenderung waere ein Eingriff in bestehende Zugangsdaten und in den
+      # Healthcheck unten. Gehuetet von tests/app/job2354-drei-datenbanknamen.test.ts.
+      POSTGRES_DB: klarwerk_prod
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -32,7 +47,7 @@ services:
         condition: service_healthy
     environment:
       PORT: 3000
-      DATABASE_URL: postgresql://klarwerk:${POSTGRES_PASSWORD}@db:5432/klarwerk
+      DATABASE_URL: postgresql://klarwerk:${POSTGRES_PASSWORD}@db:5432/klarwerk_prod
       COOKIE_SECURE: "true"
       APP_BASE_URL: ${APP_BASE_URL:-https://app.klarwerk.ai}
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}

@@ -64,12 +64,12 @@ describe("W3-B/67: findBySeq gegen echtes PostgreSQL, paritaetisch zu InMemory",
     }
     try {
       container = await new GenericContainer("postgres:16-alpine")
-        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
       pool = new Pool({
-        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`,
+        connectionString: `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`,
       });
       await pool.query(AUDIT_SCHEMA);
       await pool.query(AUDIT_EVENT_ID_SCHEMA);

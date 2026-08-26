@@ -38,11 +38,11 @@ describe("Auftrag 80: buildPgServices schreibt den Answer-Beleg wirklich in Post
     let url = localUrl;
     if (!url) {
       container = await new GenericContainer("postgres:16-alpine")
-        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk" })
+        .withEnvironment({ POSTGRES_PASSWORD: "test", POSTGRES_DB: "klarwerk_test" })
         .withExposedPorts(5432)
         .withWaitStrategy(Wait.forLogMessage(/database system is ready to accept connections/, 2))
         .start();
-      url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk`;
+      url = `postgresql://postgres:test@${container.getHost()}:${container.getMappedPort(5432)}/klarwerk_test`;
     }
 
     adminPool = new Pool({ connectionString: url });
