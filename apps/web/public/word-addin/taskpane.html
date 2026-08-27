@@ -318,6 +318,11 @@
       <button type="button" id="lang-en">EN</button>
       <button type="button" id="lang-nl">NL</button>
     </div>
+    <!-- SANIERUNG-20260827: Auslieferungsstand oben rechts GESPIEGELT (Befund Pedi,
+         BEFUNDE_KLARA_PANEL_20260826 §1). #kw-stand unten bleibt bestehen — der Augenschein
+         braucht die alte Stelle samt Tests unberuehrt. Vollbreiten-Flex-Kind wie der
+         Vertrauenskopf, damit Marke und Sprachwahl nicht verrutschen. -->
+    <span id="kw-stand-kopf" style="flex: 0 0 100%; text-align: right; font-size: 10px; color: #9aa3ad; margin: -4px 0 0;"></span>
     <!-- ==========================================================================================
          AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER PERMANENTE VERTRAUENSKOPF (BASIC-0).
          ==========================================================================================
@@ -4453,6 +4458,9 @@
     // einmal umbenannt wird, ohne dass diese Zeile mitzieht.
     var KLARA_STAND = "__KLARA_STAND__";
     document.getElementById("kw-stand").textContent =
+      KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
+    // SANIERUNG-20260827: derselbe Wert zusaetzlich im Kopfband (Spiegel, keine zweite Quelle).
+    document.getElementById("kw-stand-kopf").textContent =
       KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
 
     // ---- JOB 1077: die Fassungszeile ----------------------------------------------------------
