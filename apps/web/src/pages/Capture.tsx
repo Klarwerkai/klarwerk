@@ -5426,6 +5426,12 @@ export function Capture(): JSX.Element {
                         onAttachFiles={attachFiles}
                         documentTitle={draft.title}
                         captionFormRequest={captionRequest ?? undefined}
+                        /* JOB 2419 D1 (TV1, letzte Luecke): der Titelvorschlag aus der
+                           Bildbeschreibung geht in DASSELBE Feld, das der Nutzer daneben tippt
+                           (`capture.fTitle`, oben in diesem Block). Bewusst wortgleich mit dessen
+                           `onChange` — eine Uebernahme muss sich verhalten wie eine Eingabe, sonst
+                           entstuende ein zweiter, stillerer Weg zum selben Feld. */
+                        onTitelVorschlag={(titel) => setDraft({ ...draft, title: titel })}
                       />
                       {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
                         AUFTRAG-PRO-337: aus der Großansicht führt „Bildbeschreibung bearbeiten" in
@@ -5651,6 +5657,11 @@ export function Capture(): JSX.Element {
                     onAttachFiles={attachFiles}
                     documentTitle={draft.title}
                     captionFormRequest={captionRequest ?? undefined}
+                    /* JOB 2419 D1 (TV1, letzte Luecke): dasselbe wie in der Expertenansicht oben —
+                       der Vorschlag landet in dem Titelfeld, das direkt darueber steht
+                       (`CAPTURE_WIZARD_TEXT.titleLabel`), und zwar ueber denselben Ausdruck wie
+                       dessen `onChange`. */
+                    onTitelVorschlag={(titel) => setDraft({ ...draft, title: titel })}
                     aiPanel={
                       <AiAssistBox
                         text={bodyTextForAssist(bodyHtml)}

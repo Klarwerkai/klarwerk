@@ -3818,7 +3818,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 // BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — 399 Quelldateien, D3s 397 plus die zwei aus D44", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — 400 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
     // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
@@ -3831,12 +3831,18 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //     + apps/web/src/components/D44Gliederung.tsx
     //     + apps/web/src/components/d44Struktur.ts
     //
+    // JOB 2489 D1 (TV1 Rang 1): von 399 auf 400 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine
+    // Quelldatei dazugekommen, und sie traegt die Rangfolge der Titelquellen aus der
+    // Chef-Entscheidung vom 19.08.:
+    //
+    //     + apps/web/src/lib/titelRangfolge.ts
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 399: D3s 397 + D44Gliederung.tsx + d44Struktur.ts",
-    ).toBe(399);
+      "erwartet 400: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts",
+    ).toBe(400);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

@@ -25,6 +25,7 @@ import {
   captionFormTargetIntact,
   captionSuggestOutcome,
   checkCaptionImageDataUrl,
+  titelVorschlagAusErgebnis,
 } from "../lib/captionAiSuggest";
 import { collectImageContext } from "../lib/captionContext";
 import {
@@ -63,6 +64,9 @@ import {
   sanitizeCaptionHtml,
   sanitizeHtml,
 } from "../lib/richText";
+// JOB 2489 D1 (TV1 Rang 1): die Rangfolge der Titelquellen. Sie liegt hier und nicht im Dienst,
+// weil nur diese Flaeche BEIDE Quellen kennt — den Rumpf im Editor und die Antwort vom Dienst.
+import { objekttextAusRumpf, titelNachRangfolge } from "../lib/titelRangfolge";
 import { AiCostHint } from "./AiCostHint";
 import { AiGeneratedNotice } from "./AiGeneratedNotice";
 import { AiUnavailableHint } from "./AiUnavailableHint";
@@ -99,7 +103,10 @@ type CaptionAiState =
   | { status: "loading" }
   | { status: "fallback"; messageKey: string }
   // WP-BILD-1f: withContext = der Vorschlag wurde mit umgebendem Dokument-Kontext erzeugt.
-  | { status: "suggestion"; text: string; withContext: boolean };
+  // JOB 2402 D1 (TV1 Scheibe b): `titelVorschlag` reist im SELBEN Zustand mit — er stammt aus
+  // demselben describe-Lauf. `null` heisst „nicht ableitbar" und wird als solches ANGEZEIGT; es
+  // gibt keinen dritten Fall, weil der Server das Feld nur im Erfolgsfall setzt.
+  | { status: "suggestion"; text: string; withContext: boolean; titelVorschlag: string | null };
 
 const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "25", label: "Klein" },
@@ -271,6 +278,7 @@ export function RichTextEditor({
   placeholder,
   documentTitle,
   captionFormRequest,
+  onTitelVorschlag,
 }: {
   value: string;
   onChange: (html: string) => void;
@@ -305,6 +313,17 @@ export function RichTextEditor({
   // ENTSCHEIDUNG, kein Vergessen. Dass die Produktflächen wirklich einen führen, prüft je Instanz
   // `tests/app/mega84-bildbeschreibungsweg-sammler.test.tsx` (Stufe 1+2, seit mega85 fundgenau).
   documentTitle: string;
+  // JOB 2402 D1 (TV1 Scheibe b): der Titelvorschlag geht an die Fläche zurück, die den Titel
+  // WIRKLICH führt — der Editor kennt ihn nur lesend (`documentTitle`) und darf ihn nicht selbst
+  // setzen. Übernommen wird ausschliesslich auf Klick.
+  //
+  // BEWUSST OPTIONAL, anders als `documentTitle` daneben. Der Pflicht-Prop dort ist richtig, weil
+  // JEDE Fläche mit Bildern einen Dokumentkontext hat. Hier ist es umgekehrt: eine Fläche ohne
+  // eigenes Titelfeld — die Detailansicht im Lesemodus etwa — hätte kein Ziel für die Übernahme.
+  // Ein Pflicht-Prop zwänge sie zu einem leeren Callback, und ein Knopf, der nichts tut, ist genau
+  // die Scheinfläche, gegen die dieser Auftrag gebaut ist. Fehlt der Callback, erscheint KEIN
+  // Übernehmen-Knopf; der Vorschlag bleibt trotzdem lesbar.
+  onTitelVorschlag?: ((titel: string) => void) | undefined;
   // AUFTRAG-mega69 Block A: eine Fläche AUSSERHALB des Editors (die Bildergalerie) bittet darum,
   // das Bildbeschreibungs-Formular für ein bestimmtes verankertes Bild zu öffnen. Es ist DASSELBE
   // Formular, derselbe describe-Weg — nur der Einstieg kommt von dort, wo das Bild betrachtet wird.
@@ -400,6 +419,14 @@ export function RichTextEditor({
   // Der Vorschlags-Zustand des Formulars. Bis mega82 stand daneben ein zweiter für das Inline-Panel;
   // seit mega84 gibt es das Inline-Panel nicht mehr und damit auch nur noch diesen einen.
   const [captionFormAi, setCaptionFormAi] = useState<CaptionAiState>(null);
+  // JOB 2489 D1 (TV1 Rang 1): WELCHE Quelle den Titel stellt, wird genau hier entschieden — an der
+  // einzigen Stelle, die BEIDE kennt. Bewusst NICHT im Zustand abgelegt, sondern bei jedem Rendern
+  // aus dem aktuellen Rumpf gerechnet: Schreibt der Nutzer nach dem Anfordern noch einen Satz, ist
+  // das ab sofort SEIN Titel — ein eingefrorener Bildtitel wäre dann bereits überholt.
+  const titelWahl =
+    captionFormAi?.status === "suggestion"
+      ? titelNachRangfolge(objekttextAusRumpf(value), captionFormAi.titelVorschlag)
+      : null;
   // Spiegel des Formular-Zustands für die Gültigkeitsprüfung einer späten Antwort (kein Re-Render
   // nötig, und der Callback sieht immer den aktuellen Stand statt eines eingefrorenen).
   const captionFormRef = useRef<typeof captionForm>(null);
@@ -751,7 +778,13 @@ export function RichTextEditor({
       const outcome = captionSuggestOutcome(result);
       report(
         outcome.kind === "suggestion"
-          ? { status: "suggestion", text: outcome.text, withContext: result.withContext === true }
+          ? {
+              status: "suggestion",
+              text: outcome.text,
+              withContext: result.withContext === true,
+              // JOB 2402 D1: aus DEMSELBEN Ergebnis gelesen, nicht neu abgeleitet.
+              titelVorschlag: titelVorschlagAusErgebnis(result),
+            }
           : { status: "fallback", messageKey: outcome.messageKey },
       );
     } catch {
@@ -1876,6 +1909,77 @@ export function RichTextEditor({
                     >
                       {t(CAPTION_AI_TEXT.discard)}
                     </button>
+                  </div>
+
+                  {/* JOB 2402 D1 (TV1 Scheibe b) — DER TITELVORSCHLAG, SICHTBAR UND EHRLICH.
+                      Er stammt aus DEMSELBEN describe-Lauf wie die Beschreibung darüber; es gibt
+                      keinen zweiten Knopf und keinen zweiten Egress. Zwei Ausgänge, beide gesagt:
+                      ein abgeleiteter Titel als VORSCHLAG (übernommen erst auf Klick, KA6 Stufe 1),
+                      oder der wahre Satz, dass sich keiner ableiten liess. Ein leeres Kästchen wäre
+                      hier das Schlimmste von beidem — es sähe nach Fehler aus und sagte nichts. */}
+                  {/* JOB 2489 D1 (TV1 Rang 1) — DIE RANGFOLGE, HIER ENTSCHIEDEN.
+                      Bis hierher stand an dieser Stelle `captionFormAi.titelVorschlag`, also der
+                      Bildtitel, BEDINGUNGSLOS. Die Chef-Entscheidung vom 19.08. gibt aber dem
+                      Objekttext den ersten Rang. Entschieden werden kann das nur hier: der Dienst
+                      kennt nur das Bild, diese Fläche kennt beides — den Rumpf im Editor und die
+                      Antwort. Und es spart einen Egress, weil der Rumpf den Rechner nicht
+                      verlässt. */}
+                  <div className="mt-2 border-t border-hairline pt-2">
+                    {titelWahl === null ? (
+                      <p
+                        data-testid="caption-form-title-none"
+                        className="text-[11.5px] leading-relaxed text-muted-2"
+                      >
+                        {t(CAPTION_AI_TEXT.titleNone)}
+                      </p>
+                    ) : (
+                      <div data-testid="caption-form-title-suggestion">
+                        <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                          {t(CAPTION_AI_TEXT.titleLabel)}
+                        </p>
+                        {/* JOB 2440 D1: eigener Anker für den VORGESCHLAGENEN TITEL allein. Der
+                            Block darüber trägt auch die Knopfbeschriftung; wer „nur den Titel"
+                            prüfen will, mass ihn vorher mit — genau daran ist der Vergleichsfall
+                            in `tv1-ohne-uebernahmeweg-mounted` beim ersten Lauf zu Recht rot
+                            geworden. Kein neues Verhalten, nur eine Stelle zum Festmachen. */}
+                        <p
+                          data-testid="caption-form-title-text"
+                          className="mt-1 text-[12.5px] font-semibold leading-relaxed text-text"
+                        >
+                          {titelWahl.titel}
+                        </p>
+                        {/* JOB 2489 D1: DIE HERKUNFT, SICHTBAR. „Eine Quelle je Objekt" ist eine
+                            Zusage über das, was der Mensch sieht — steht da nur ein Titel, kann
+                            niemand unterscheiden, ob die Rangfolge gegriffen hat oder ob beide
+                            Quellen zufällig dasselbe ergaben. Derselbe Grund, aus dem schon der
+                            GRUND des Bildwegs mitreist: ein Vorschlag ohne Herkunft ist von einem
+                            Zufall nicht zu unterscheiden. */}
+                        <p
+                          data-testid="caption-form-title-quelle"
+                          data-quelle={titelWahl.quelle}
+                          className="mt-0.5 text-[11px] leading-relaxed text-muted-2"
+                        >
+                          {t(
+                            titelWahl.quelle === "objekttext"
+                              ? CAPTION_AI_TEXT.titleSourceText
+                              : CAPTION_AI_TEXT.titleSourceImage,
+                          )}
+                        </p>
+                        {/* Ohne Ziel kein Knopf: eine Fläche ohne eigenes Titelfeld reicht den
+                            Callback nicht herein, und ein Knopf, der nichts bewirkt, wäre eine
+                            Scheinwahl. Der Vorschlag bleibt dort trotzdem lesbar. */}
+                        {onTitelVorschlag ? (
+                          <button
+                            type="button"
+                            data-testid="caption-form-title-adopt"
+                            onClick={() => onTitelVorschlag(titelWahl.titel)}
+                            className="mt-2 inline-flex h-7 items-center rounded-btn border border-ai/50 bg-surface px-2 text-[11.5px] font-semibold text-ai"
+                          >
+                            {t(CAPTION_AI_TEXT.titleApply)}
+                          </button>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
                 </div>
               ) : null}

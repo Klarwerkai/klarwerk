@@ -123,6 +123,32 @@ function schlusszeichenEntfernen(text: string): string {
 }
 
 /**
+ * DIE REGELN, unter einem Namen — die Benennung zu einem beliebigen Text.
+ *
+ * JOB 2489 D1. Bis hierher lagen diese vier Schritte nur INNERHALB von `titelVorschlag()` und waren
+ * damit untrennbar an die Bildbeschreibung gebunden. Die Chef-Entscheidung vom 19.08. gibt dem
+ * OBJEKTTEXT den ersten Rang (`ENTSCHEIDUNGEN/JOB-508.md`, Nachtrag Punkt 2) — und ein Titel aus dem
+ * Objekttext muss nach DENSELBEN Regeln entstehen wie einer aus der Bildbeschreibung. Zwei
+ * Ableitungen, die sich in der Kürzung unterscheiden, wären zwei verschiedene Titel für dieselbe
+ * Sache, je nachdem welcher Rang gewonnen hat.
+ *
+ * Sie KÜRZT nur; sie fügt nie etwas hinzu. `null` heisst: aus diesem Text lässt sich keine
+ * Benennung gewinnen — leer, oder nur Satzzeichen. Die vier EHRLICHKEITSGRÜNDE des Bildwegs bleiben
+ * ausdrücklich dort, wo sie hingehören: sie sind Aussagen über das MODELLERGEBNIS (vertraulich,
+ * demo, kein Text), nicht über einen Text. Ein Objekttext kennt sie nicht und darf sie nicht erben.
+ */
+export function titelAusText(text: string): string | null {
+  const bereinigt = leerraumVereinheitlichen(text);
+  if (bereinigt === "") {
+    return null;
+  }
+  const titel = schlusszeichenEntfernen(aufGrenzeKuerzen(ersterSatz(bereinigt)));
+  // Ein Text, der nur aus Satzzeichen besteht, trägt keine Benennung. Ehrlich leer statt eines
+  // Titels aus Interpunktion.
+  return titel === "" ? null : titel;
+}
+
+/**
  * Der Titelvorschlag zu einem Bildbeschreibungs-Ergebnis.
  *
  * REIHENFOLGE DER PRÜFUNGEN, und sie ist Absicht:
@@ -145,14 +171,11 @@ export function titelVorschlag(ergebnis: DescribeImageResult): TitelVorschlagErg
   if (ergebnis.demo) {
     return { titel: null, grund: "demo" };
   }
-  const bereinigt = leerraumVereinheitlichen(ergebnis.text);
-  if (bereinigt === "") {
-    return { titel: null, grund: "leer" };
-  }
-  const titel = schlusszeichenEntfernen(aufGrenzeKuerzen(ersterSatz(bereinigt)));
-  if (titel === "") {
-    // Ein Text, der nur aus Satzzeichen besteht, trägt keine Benennung. Ehrlich leer statt eines
-    // Titels aus Interpunktion.
+  // JOB 2489 D1: dieselben vier Schritte wie zuvor, jetzt unter ihrem Namen. `null` deckt beide
+  // Fälle ab, die vorher getrennt dastanden — leerer Text und ein Text aus reinen Satzzeichen; für
+  // den Bildweg heisst beides unverändert `leer`.
+  const titel = titelAusText(ergebnis.text);
+  if (titel === null) {
     return { titel: null, grund: "leer" };
   }
   return { titel, grund: "abgeleitet" };

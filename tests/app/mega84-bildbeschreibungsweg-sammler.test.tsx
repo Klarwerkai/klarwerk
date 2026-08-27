@@ -722,11 +722,16 @@ const DISPOSITIONEN: Record<string, string> = {
   // Bildergalerie ohne `onEditCaption` ein — der Galerieeinstieg fiel dort lautlos aus (der Prop ist
   // optional). Die Identität hat sich damit geändert, und genau das hat dieser Sammler gemeldet:
   // die Zeile ist ANGEPASST, nachdem hingesehen wurde — das Muster bleibt unverbogen.
-  "apps/web/src/pages/Capture.tsx › Capture › <RichTextEditor> [captionFormRequest+documentTitle+images+onAttachFiles+onChange+value] in [Field<div<ReasonerDraft<div] #1":
-    "Erfassung, direkter Editor im Reasoner-Entwurf. Seit PRO 337 nimmt er die Bitte der Bildergalerie derselben Flaeche entgegen.",
+  // 26.08.2026, JOB 2419 D1 (TV1, letzte Luecke): beide Signaturen tragen jetzt zusaetzlich
+  // `onTitelVorschlag`. Die Flaechen sind dieselben geblieben; sie bekommen den Weg, einen aus der
+  // Bildbeschreibung abgeleiteten Titelvorschlag in ihr eigenes Entwurfs-Titelfeld zu uebernehmen —
+  // auf Klick, nie von selbst. Der Sammler hat beide alten Identitaeten als verschwunden UND beide
+  // neuen als undisponiert gemeldet, WEIL er das soll. Hier ist hingesehen worden.
+  "apps/web/src/pages/Capture.tsx › Capture › <RichTextEditor> [captionFormRequest+documentTitle+images+onAttachFiles+onChange+onTitelVorschlag+value] in [Field<div<ReasonerDraft<div] #1":
+    "Erfassung, direkter Editor im Reasoner-Entwurf. Seit PRO 337 nimmt er die Bitte der Bildergalerie derselben Flaeche entgegen; seit JOB 2419 D1 fuehrt er den Uebernahme-Weg fuer den Titelvorschlag.",
   // AUFTRAG-PRO-337: dieselbe Erweiterung an der zweiten Instanz derselben Datei.
-  "apps/web/src/pages/Capture.tsx › Capture › <RichTextEditor> [aiPanel+captionFormRequest+documentTitle+images+onAttachFiles+onChange+value] in [div<div<Card<div] #1":
-    "Erfassung, direkter Editor im Hauptformular (mit KI-Palette). Die zweite Instanz derselben Datei — genau die, die mega85 datei-genau nicht sehen konnte. Seit PRO 337 ebenfalls mit dem Galerieeinstieg verbunden.",
+  "apps/web/src/pages/Capture.tsx › Capture › <RichTextEditor> [aiPanel+captionFormRequest+documentTitle+images+onAttachFiles+onChange+onTitelVorschlag+value] in [div<div<Card<div] #1":
+    "Erfassung, direkter Editor im Hauptformular (mit KI-Palette). Die zweite Instanz derselben Datei — genau die, die mega85 datei-genau nicht sehen konnte. Seit PRO 337 ebenfalls mit dem Galerieeinstieg verbunden, seit JOB 2419 D1 mit dem Uebernahme-Weg.",
   "apps/web/src/pages/Capture.tsx › Capture › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+enrichLocale+externalStage+images+onApply+onAttachFiles+onClose+open+runAssist] in [div<Card<div<div] #1":
     "Erfassung, Studio-Weg aus dem Hauptformular. Prop-gleich zur Reasoner-Instanz und nur ueber die JSX-Nachbarschaft von ihr unterscheidbar — deshalb gehoert sie zur Identitaet.",
   // 10.08.2026, Zusammenfuehrung der GitHub-Linie: der Ahnenpfad hat sich von
@@ -735,12 +740,24 @@ const DISPOSITIONEN: Record<string, string> = {
   // („inherit document confidentiality"), der die Vertraulichkeit des Entwurfs an den Weg zur
   // Bildbeschreibung weiterreicht. Der Sammler hat das gemeldet, WEIL er es melden soll: eine
   // umgehaengte Einbindung ist ein Befund, bis jemand hingesehen hat. Hier ist hingesehen worden.
-  "apps/web/src/pages/CaptureFrontDoor.tsx › CaptureFrontDoor › <RichTextEditor> [captionFormRequest+documentTitle+onChange+placeholder+value] in [ImageDescribeProvider<div<form<Card] #1":
-    "Eingangstuer der Erfassung — die Flaeche, auf der Pedis Befund vom 31.07. entstand. Seit PR #1 unter dem ImageDescribeProvider, der die Vertraulichkeit des Entwurfs mitfuehrt.",
+  // 26.08.2026, JOB 2402 D1 (TV1 Scheibe b): die Signatur hat sich um `onTitelVorschlag` erweitert.
+  // Die Flaeche ist dieselbe geblieben; sie bekommt den Weg, einen abgeleiteten Titelvorschlag in
+  // ihr eigenes Titelfeld zu uebernehmen — auf Klick, nie von selbst. Der Sammler hat die alte
+  // Identitaet als verschwunden UND die neue als undisponiert gemeldet, WEIL er das soll: eine
+  // Einbindung mit anderer Propmenge ist ein Befund, bis jemand hingesehen hat. Hier ist hingesehen
+  // worden. Der Prop ist bewusst optional (Begruendung an seiner Deklaration in RichTextEditor.tsx);
+  // die vier anderen Einbindungen tragen ihn nicht und bleiben deshalb unveraendert.
+  "apps/web/src/pages/CaptureFrontDoor.tsx › CaptureFrontDoor › <RichTextEditor> [captionFormRequest+documentTitle+onChange+onTitelVorschlag+placeholder+value] in [ImageDescribeProvider<div<form<Card] #1":
+    "Eingangstuer der Erfassung — die Flaeche, auf der Pedis Befund vom 31.07. entstand. Seit PR #1 unter dem ImageDescribeProvider, der die Vertraulichkeit des Entwurfs mitfuehrt. Seit JOB 2402 D1 zusaetzlich die einzige Flaeche mit Uebernehmen-Weg fuer den Titelvorschlag.",
   "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+files+images+onApply+onClose+open+runAssist] in [Field<div<Card<div] #1":
     "Wissensobjekt bearbeiten, Studio-Weg.",
-  "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+value] in [Field<div<Card<div] #1":
-    "Wissensobjekt bearbeiten, direkter Editor.",
+  // 26.08.2026, JOB 2426 D1 (TV1, letzte Einbindung): die Signatur traegt jetzt zusaetzlich
+  // `onTitelVorschlag`. Die Flaeche ist dieselbe geblieben. Sie ist die einzige der fuenf, auf der
+  // ein Uebernehmen einen bereits vergebenen Titel ERSETZT — deshalb steht die Begruendung dafuer
+  // ausfuehrlich an der Einbindung selbst (KnowledgeDetail.tsx:1265 ff.): drei bewusste Handlungen
+  // davor, und `edit` ist reiner Formularzustand ohne Autosave.
+  "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+onTitelVorschlag+value] in [Field<div<Card<div] #1":
+    "Wissensobjekt bearbeiten, direkter Editor. Seit JOB 2426 D1 mit dem Uebernahme-Weg fuer den Titelvorschlag.",
 };
 
 const identitaet = (f: Fund): string =>

@@ -1644,6 +1644,19 @@ const de = {
   "editor.captionAi.fallbackConfidential":
     "Das Bild ist als vertraulich eingestuft — die Cloud-KI ist dafür ausgeschlossen und kein lokales Vision-Modell ist verdrahtet. Es gibt daher keinen Vorschlag (nichts verlässt den Server).",
   // AUFTRAG-mega9 Block F (Pedi): Texte des ECHTEN Eingabeformulars für die Bildbeschreibung.
+  // JOB 2402 D1 (TV1 Scheibe b): der Titelvorschlag aus demselben describe-Lauf. „Vorschlag" steht
+  // im Wortlaut, damit die Fläche nie wie ein gesetzter Titel aussieht — übernommen wird erst auf
+  // Klick. Der Negativsatz sagt, dass NICHTS ableitbar war, und tut nicht so, als sei etwas
+  // schiefgegangen: ein unscharfes Bild ohne erkennbaren Gegenstand ist kein Fehler.
+  "editor.titleSuggest.label": "Titelvorschlag",
+  "editor.titleSuggest.apply": "Als Titel übernehmen",
+  "editor.titleSuggest.none":
+    "Aus diesem Bild ließ sich kein Titel ableiten — dein Titel bleibt, wie er ist.",
+  // JOB 2489 D1 (TV1 Rang 1): die Herkunft des Vorschlags. Beide Sätze sagen, WORAUS der Titel
+  // entstanden ist — ohne sie wäre „eine Quelle je Objekt" für den Menschen nicht erkennbar.
+  "editor.titleSuggest.sourceText": "Aus dem Text dieses Beitrags.",
+  "editor.titleSuggest.sourceImage":
+    "Aus der Bildbeschreibung — dein Beitrag hat noch keinen Text.",
   "editor.captionForm.open": "Bildbeschreibung bearbeiten",
   "editor.captionForm.title": "Bildbeschreibung",
   "editor.captionForm.label": "Beschreibung des Bildes",
@@ -6251,6 +6264,15 @@ const en: typeof de = {
     "The cloud AI is currently unreachable or reports an error — so there is no suggestion. Please try again later.",
   "editor.captionAi.fallbackConfidential":
     "This image is classified as confidential — the cloud AI is excluded for it and no local vision model is wired. So there is no suggestion (nothing leaves the server).",
+  // JOB 2402 D1 (TV1 Scheibe b) — see the German entry for the reasoning.
+  "editor.titleSuggest.label": "Title suggestion",
+  "editor.titleSuggest.apply": "Use as title",
+  "editor.titleSuggest.none":
+    "No title could be derived from this image — your title stays as it is.",
+  // JOB 2489 D1 (TV1 rank 1) — see the German entry for the reasoning.
+  "editor.titleSuggest.sourceText": "From the text of this contribution.",
+  "editor.titleSuggest.sourceImage":
+    "From the image description — your contribution has no text yet.",
   "editor.captionForm.open": "Edit image description",
   "editor.captionForm.title": "Image description",
   "editor.captionForm.label": "Description of the image",
@@ -10408,6 +10430,15 @@ const nl: typeof de = {
     "De cloud-AI is momenteel niet bereikbaar of meldt een fout — er is daarom geen voorstel. Probeer het later opnieuw.",
   "editor.captionAi.fallbackConfidential":
     "Deze afbeelding is als vertrouwelijk aangemerkt — de cloud-AI is daarvoor uitgesloten en er is geen lokaal vision-model aangesloten. Er is daarom geen voorstel (er verlaat niets de server).",
+  // JOB 2402 D1 (TV1 Scheibe b) — zie de Duitse regel voor de bevinding.
+  "editor.titleSuggest.label": "Titelvoorstel",
+  "editor.titleSuggest.apply": "Als titel overnemen",
+  "editor.titleSuggest.none":
+    "Uit deze afbeelding kon geen titel worden afgeleid — je titel blijft zoals hij is.",
+  // JOB 2489 D1 (TV1 rang 1) — zie de Duitse regel voor de bevinding.
+  "editor.titleSuggest.sourceText": "Uit de tekst van deze bijdrage.",
+  "editor.titleSuggest.sourceImage":
+    "Uit de afbeeldingsbeschrijving — je bijdrage heeft nog geen tekst.",
   "editor.captionForm.open": "Afbeeldingsbeschrijving bewerken",
   "editor.captionForm.title": "Afbeeldingsbeschrijving",
   "editor.captionForm.label": "Beschrijving van de afbeelding",

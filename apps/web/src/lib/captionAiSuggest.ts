@@ -30,6 +30,18 @@ export const CAPTION_AI_TEXT = {
   // AUFTRAG-mega9 Block F (Pedi: „immer noch kein richtiges Eingabeformular"): Texte des ECHTEN
   // Eingabeformulars für die Bildbeschreibung. Die Vorschlags-Logik darüber bleibt unverändert die
   // eine Quelle — das Formular ist die Oberfläche DAVOR, kein zweiter Weg zum Ergebnis.
+  // JOB 2402 D1 (TV1 Scheibe b): der Titelvorschlag im selben Formular. Er entsteht aus DEMSELBEN
+  // describe-Lauf wie die Bildbeschreibung — kein zweiter Egress, kein zweiter Knopf davor.
+  titleLabel: "editor.titleSuggest.label",
+  titleApply: "editor.titleSuggest.apply",
+  // JOB 2489 D1 (TV1 Rang 1): die HERKUNFT des Vorschlags. Zwei Schluessel, weil die Rangfolge zwei
+  // Ausgaenge hat und beide gesagt werden muessen — „eine Quelle je Objekt" ist sonst nicht
+  // nachpruefbar, sondern nur beabsichtigt.
+  titleSourceText: "editor.titleSuggest.sourceText",
+  titleSourceImage: "editor.titleSuggest.sourceImage",
+  // Der ehrliche Negativfall: ein Satz, der SAGT, dass nichts ableitbar war. Kein Platzhalter,
+  // kein Bindestrich, keine gekürzte Bildbeschreibung.
+  titleNone: "editor.titleSuggest.none",
   formOpen: "editor.captionForm.open",
   formTitle: "editor.captionForm.title",
   formLabel: "editor.captionForm.label",
@@ -186,6 +198,30 @@ export function captionFormResponseApplicable(
 export type CaptionSuggestOutcome =
   | { kind: "suggestion"; text: string }
   | { kind: "fallback"; messageKey: string };
+
+// JOB 2402 D1 (TV1 Scheibe b) — DER TITELVORSCHLAG AUS DEMSELBEN ERGEBNIS.
+//
+// Die Ableitung selbst läuft serverseitig (`services/reasoner/src/titel-vorschlag.ts`); hier wird
+// NICHTS abgeleitet, sondern nur gelesen. Das ist Absicht: gäbe es hier eine zweite Ableitung,
+// hätte das Produkt zwei Wahrheiten über denselben Titel.
+//
+// „KEIN VORSCHLAG" IST EINE ABWESENHEIT, KEIN LEERER WERT. Der Server hängt das Feld ausschliesslich
+// an, wenn ein Titel wirklich entstand (`service.ts`, `mitTitelVorschlag`: nur bei
+// `grund === "abgeleitet"`). Die vier anderen Gründe — `kein_text`, `demo`, `vertraulich`, `leer` —
+// erreichen den Client nie. Diese Funktion gibt deshalb `null` zurück und NICHT etwa den
+// Beschreibungstext gekürzt: eine erfundene Überschrift wäre schlimmer als keine.
+//
+// Die Prüfung auf `grund` bleibt trotzdem stehen, obwohl der Server heute nur die Positivform
+// sendet. Sie kostet nichts und hält die Fläche ehrlich, falls die Negativform je mitkäme
+// (Ownerfrage O-2395-1) — dann erschiene sie hier als `null` und nicht als Titel `null`.
+export function titelVorschlagAusErgebnis(result: DescribeImageResult): string | null {
+  const vorschlag = result.titelVorschlag;
+  if (!vorschlag || vorschlag.grund !== "abgeleitet") {
+    return null;
+  }
+  const titel = vorschlag.titel.trim();
+  return titel.length > 0 ? titel : null;
+}
 
 export function captionSuggestOutcome(result: DescribeImageResult): CaptionSuggestOutcome {
   if (!result.demo && result.text !== null && result.text.trim().length > 0) {

@@ -1271,6 +1271,22 @@ export function KnowledgeDetail(): JSX.Element {
                             files={editorFilesFromAttachments(ko.attachments ?? [])}
                             documentTitle={edit.title}
                             captionFormRequest={captionRequest ?? undefined}
+                            /* JOB 2426 D1 (TV1, letzte Einbindung): der Titelvorschlag aus der
+                               Bildbeschreibung geht in DASSELBE Feld, das der Nutzer oben tippt
+                               (`capture.fTitle`, :1193-1197) — wortgleich mit dessen `onChange`.
+                               Eine Uebernahme muss sich verhalten wie eine Eingabe.
+
+                               WARUM DAS HIER ANDERS WIEGT ALS BEIM ERFASSEN, und warum es trotzdem
+                               richtig ist: Auf dieser Flaeche steht schon ein Titel, den ein Mensch
+                               vergeben hat — ein Uebernehmen ERSETZT ihn. Drei bewusste Handlungen
+                               liegen davor: die Bildbeschreibung anfordern, den Vorschlag lesen,
+                               ihn anklicken. Und geschrieben wird nichts: `edit` ist reiner
+                               Formularzustand, der Server sieht den Titel erst ueber die
+                               ausdrueckliche `save`-Mutation (`action: "revise"`, :671-700). Es
+                               gibt keinen Autosave. Damit ist die Uebernahme genau so sicher wie
+                               das Ueberschreiben des Feldes von Hand, das dieses Formular ohnehin
+                               erlaubt. */
+                            onTitelVorschlag={(titel) => setEdit({ ...edit, title: titel })}
                           />
                           {/* SCRUM-315: KI-Nachbearbeitung des ausführlichen Inhalts im Edit-Modus —
                             Textbasis aus edit.bodyHtml, Übernahme als sicheres Body-HTML. ko.editNote

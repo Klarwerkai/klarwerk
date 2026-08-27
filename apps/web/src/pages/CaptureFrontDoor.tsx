@@ -908,6 +908,12 @@ export function CaptureFrontDoor(): JSX.Element {
                      rohe Feld: die Vordertür leitet den Titel ab, solange der Nutzer keinen tippt,
                      und genau der abgeleitete ist der, unter dem der Beitrag später steht. */
                   documentTitle={derivedTitle}
+                  /* JOB 2402 D1 (TV1 Scheibe b): Die Vordertür führt das Titelfeld — deshalb
+                     bekommt sie den Übernehmen-Weg. `changeTitle` und nicht `setTitle`: die
+                     Übernahme ist eine Titeländerung wie jede getippte und muss dieselben Folgen
+                     haben (Entwurfszustand, Struktur- und Assist-Zustand zurücksetzen). Wäre es
+                     `setTitle`, entstünde ein zweiter, stillerer Weg zum selben Feld. */
+                  onTitelVorschlag={changeTitle}
                 />
               </ImageDescribeProvider>
               {/* Teil B (Pedis Befund): Galerie schon im Entwurf — live aus dem Editor-HTML.
