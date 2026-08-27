@@ -75,17 +75,52 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 import { WURZEL, istExportiert, posix, quelldateien, quelleAus } from "../../tools/modalgrenze";
 
-/** Die überwachte Fläche. */
-const UEBERWACHT = "services";
+/**
+ * Die überwachten Flächen.
+ *
+ * JOB 2611 D1 · `apps/web/src` kommt dazu. Bis hierher stand hier `"services"` allein, während
+ * `apps/web/src` schon als SUCHBAUM diente — die Fläche wurde also nach Aufrufern durchsucht, aber
+ * nie selbst überwacht. Ein Export dort, den niemand ruft, fiel dem Wächter nicht auf.
+ *
+ * Das ist genau die Fläche, auf der gearbeitet wird, und von den vier belegten Altfällen liegt
+ * einer dort: TV1 — `api/types.ts` kannte den Typ, kein `.tsx` rief ihn auf. Er blieb wochenlang
+ * unsichtbar und war deshalb der teuerste.
+ *
+ * `tools` und `scripts` bleiben ausdrücklich draußen: eine Fläche nach der anderen (Auftrag §4).
+ */
+const UEBERWACHT = ["services", "apps/web/src"] as const;
 
 /** Wo nach Aufrufern gesucht wird — der ganze Nicht-Test-Baum. */
 const SUCHBAEUME = ["services", "apps/web/src", "tools", "scripts"] as const;
 
 interface Fund {
   readonly datei: string;
+  /** Der Bezeichner in der Datei — so steht er in der Meldung, so sucht man ihn im Quelltext. */
   readonly name: string;
+  /**
+   * Der Name, unter dem das MODUL ihn herausgibt: `"default"` beim Standardexport, sonst `name`.
+   *
+   * JOB 2611 D1. Auf `services/**` fielen beide zusammen, denn dort gibt es kaum Standardexporte.
+   * Auf `apps/web/src` ist der Standardexport die Regel — und dort trennt sich beides:
+   *
+   *     App.tsx:87      export default function App() { … }        Fund.name = "App"
+   *     main.tsx:5      import App from "./App"                    Importkante.exportname = "default"
+   *
+   * Verglichen wurde bis hierher `Importkante.exportname` gegen `Fund.name`. Fuer `App` heisst
+   * das `"default" !== "App"` — kein Treffer, und der Waechter meldete die WURZELKOMPONENTE DER
+   * ANWENDUNG als ohne Aufrufer, obwohl `main.tsx:33` sie als `<App />` rendert.
+   *
+   * Das ist ein FALSCH-ROT, und genau die Sorte Fehler, die einen Waechter abschaltet. Auf der
+   * alten Flaeche war er unsichtbar; er kommt mit der neuen Flaeche, nicht durch sie.
+   */
+  readonly exportname: string;
   readonly zeile: number;
   readonly art: string;
+}
+
+/** Traegt diese Deklaration das Schluesselwort `default`? */
+function istStandardexport(n: ts.Declaration): boolean {
+  return (ts.getCombinedModifierFlags(n) & ts.ModifierFlags.Default) !== 0;
 }
 
 /** Die exportierten WERTE einer Datei. `interface`/`type` sind keine Werte und stehen nicht drin. */
@@ -94,9 +129,21 @@ function exporteAus(datei: string, sf: ts.SourceFile): Fund[] {
   const zeile = (n: ts.Node): number => sf.getLineAndCharacterOfPosition(n.getStart(sf)).line + 1;
   for (const s of sf.statements) {
     if (ts.isFunctionDeclaration(s) && s.name && istExportiert(s)) {
-      raus.push({ datei, name: s.name.text, zeile: zeile(s), art: "function" });
+      raus.push({
+        datei,
+        name: s.name.text,
+        exportname: istStandardexport(s) ? "default" : s.name.text,
+        zeile: zeile(s),
+        art: "function",
+      });
     } else if (ts.isClassDeclaration(s) && s.name && istExportiert(s)) {
-      raus.push({ datei, name: s.name.text, zeile: zeile(s), art: "class" });
+      raus.push({
+        datei,
+        name: s.name.text,
+        exportname: istStandardexport(s) ? "default" : s.name.text,
+        zeile: zeile(s),
+        art: "class",
+      });
     } else if (
       ts.isVariableStatement(s) &&
       s.declarationList.declarations[0] !== undefined &&
@@ -104,7 +151,15 @@ function exporteAus(datei: string, sf: ts.SourceFile): Fund[] {
     ) {
       for (const d of s.declarationList.declarations) {
         if (ts.isIdentifier(d.name)) {
-          raus.push({ datei, name: d.name.text, zeile: zeile(d), art: "const" });
+          // Eine Variablendeklaration kann kein `export default` tragen — Name und Exportname
+          // fallen hier immer zusammen.
+          raus.push({
+            datei,
+            name: d.name.text,
+            exportname: d.name.text,
+            zeile: zeile(d),
+            art: "const",
+          });
         }
       }
     }
@@ -445,7 +500,7 @@ interface Erhebung {
  */
 function erhebe(
   wurzel: string = WURZEL,
-  ueberwacht: string = UEBERWACHT,
+  ueberwacht: readonly string[] = UEBERWACHT,
   suchbaeume: readonly string[] = SUCHBAEUME,
 ): Erhebung {
   const dateien = suchbaeume.flatMap((b) => quelldateien(b, wurzel)).map(posix);
@@ -464,8 +519,10 @@ function erhebe(
     importe.set(d, importeAus(sf));
     reexporte.set(d, reexporteAus(sf));
     const eigene = exporteAus(d, sf);
-    eigeneExporte.set(d, new Set(eigene.map((e) => e.name)));
-    if (d.startsWith(`${ueberwacht}/`)) {
+    // Nach EXPORTNAME, nicht nach Bezeichner: `herkunft()` folgt Modulkanten, und die tragen
+    // `default`, wo die Datei einen Standardexport hat.
+    eigeneExporte.set(d, new Set(eigene.map((e) => e.exportname)));
+    if (ueberwacht.some((u) => d.startsWith(`${u}/`))) {
       exporte.push(...eigene);
     }
   }
@@ -530,14 +587,17 @@ function erhebe(
           const sf = baeume.get(d);
           if (
             sf &&
-            namensraumZugriffe(sf, k.lokal).has(f.name) &&
-            herkunft(modul, f.name) === f.datei
+            namensraumZugriffe(sf, k.lokal).has(f.exportname) &&
+            herkunft(modul, f.exportname) === f.datei
           ) {
             return true;
           }
           continue;
         }
-        if (k.exportname !== f.name || !genutzt.has(k.lokal)) {
+        // Verglichen wird EXPORTNAME gegen EXPORTNAME. Vorher stand hier `f.name`, und damit fand
+        // `import App from "./App"` (Kante: `default`) den Standardexport `App` nie — siehe den
+        // Kommentar an `Fund.exportname`.
+        if (k.exportname !== f.exportname || !genutzt.has(k.lokal)) {
           continue;
         }
         if (herkunft(modul, k.exportname) === f.datei) {
@@ -726,11 +786,189 @@ const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [
   },
 ];
 
+// ------------------------------------------------------------------------------------------------
+// REGISTER 5 · BEWUSST OHNE AUFRUFER AUF `apps/web/src` (JOB 2611 D1)
+// ------------------------------------------------------------------------------------------------
+// Dieselbe Regel wie bei `BEWUSST`: nur Eintraege, deren Grund am Code geprueft ist.
+const BEWUSST_WEB: readonly Ausnahme[] = [
+  {
+    schluessel: "apps/web/src/app/navHistory.ts::clearPopAuthorityForTests",
+    grund:
+      "Ausdruecklich fuer Tests gebaut — der Name sagt es. Ein Produktaufrufer waere hier der " +
+      "Fehler: er wuerde die Pop-Autoritaet der Navigation im Betrieb zuruecksetzen.",
+  },
+  {
+    schluessel: "apps/web/src/test/render.tsx::renderMarkup",
+    grund:
+      "Testhilfe im Verzeichnis `src/test` — dort steht das Ruestzeug der Oberflaechentests. " +
+      "Ein Produktaufrufer waere sinnwidrig; Produktionscode rendert nicht ueber Testhelfer.",
+  },
+  {
+    schluessel: "apps/web/src/test/render.tsx::setLanguage",
+    grund: "Dieselbe Bauart und derselbe Grund wie `renderMarkup` — Ruestzeug der Tests.",
+  },
+  {
+    schluessel: "apps/web/src/test/render.tsx::makeKo",
+    grund: "Testdatenbauer im selben Ruestzeug. Ein Produktaufrufer waere ein Befund, kein Ziel.",
+  },
+  {
+    schluessel: "apps/web/src/test/render.tsx::makeSource",
+    grund: "Dieselbe Bauart und derselbe Grund wie `makeKo`.",
+  },
+];
+
+// ------------------------------------------------------------------------------------------------
+// REGISTER 6 · DER ALTBESTAND AUF `apps/web/src`, EINGEFROREN AM 27.08.2026 (JOB 2611 D1)
+// ------------------------------------------------------------------------------------------------
+// 117 Eintraege. Sie sind NICHT freigesprochen — sie sind der gemessene Ist-Zustand der
+// Flaeche an dem Tag, an dem sie in die Ueberwachung kam.
+//
+// WARUM EINGEFROREN UND NICHT BEHOBEN — die Entscheidung aus Auftrag §3.2, hier begruendet:
+// Die Probe VOR jeder Aenderung ergab 122 Exporte ohne Aufrufer (Protokoll
+// `arbeit/protokoll_messen2.txt`). Das ist keine Handvoll, sondern ein Arbeitsvorrat von Tagen.
+// Wer sie in EINEM Durchgang beheben wollte, muesste in 60 Dateien eingreifen — quer durch
+// Bibliothek, Erfassung, Ask und Verwaltung, in Flaechen, an denen gerade drei andere Bahnen
+// arbeiten. Der Auftrag benennt die Gefahr wortgleich: „Ein Waechter, der das Haus blockiert,
+// wird abgeschaltet — und dann ist er nichts mehr wert."
+//
+// Deshalb dasselbe Verfahren wie bei `ALTBESTAND` fuer `services`: Die Flaeche kommt SOFORT in
+// die Ueberwachung, der Bestand wird eingefroren, und ab jetzt macht **jeder weitere** Export
+// ohne Aufrufer auf `apps/web/src` das Tor rot. Der Neuzugang ist gesperrt, der Altbestand ist
+// Arbeitsvorrat — und A3 verlangt die Streichung jedes Eintrags, sobald er nicht mehr zutrifft.
+// Eine Liste, die nur waechst, waere der Anfang vom Ende dieses Waechters.
+//
+// ZWEI BEOBACHTUNGEN, die den Vorrat sortieren:
+//   · 110 der 122 Funde liegen in `apps/web/src/lib` — dem Verzeichnis der reinen Hilfsfunktionen.
+//     Dort sammelt sich, was einmal fuer einen Weg gebaut und beim naechsten Umbau umgangen wurde.
+//   · KEIN einziger Fund liegt in einer der sieben Dateien, die die Lease gesperrt hat. Es war
+//     also nichts zu unterlassen — die Trennung zu den drei anderen Bahnen haelt von selbst.
+const ALTBESTAND_WEB: readonly string[] = [
+  "apps/web/src/app/ImageDescribeContext.tsx::ImageDescribeValueProvider",
+  "apps/web/src/app/navigation.ts::TopbarIcons",
+  "apps/web/src/components/LibraryScopeBar.tsx::LibraryScopeBar",
+  "apps/web/src/components/confluence-import/ImportResultView.tsx::ImportResultView",
+  "apps/web/src/components/d44Struktur.ts::D44_GLIEDERUNG_GRENZE",
+  "apps/web/src/components/ko/KoRead.tsx::KoReadBody",
+  "apps/web/src/components/trust/KoHomeLine.tsx::KoHomeLine",
+  "apps/web/src/lib/adminForms.ts::isNewUserValid",
+  "apps/web/src/lib/adminSections.ts::isAdminSectionId",
+  "apps/web/src/lib/answerMarkdown.ts::stripAnswerMarkdown",
+  "apps/web/src/lib/askGapRescue.ts::gapRescueStepLabelKey",
+  "apps/web/src/lib/askGapRescue.ts::gapRescueSteps",
+  "apps/web/src/lib/askResponse.ts::selectGap",
+  "apps/web/src/lib/attachment.ts::attachmentPreview",
+  "apps/web/src/lib/attachment.ts::isObjectAttachment",
+  "apps/web/src/lib/boardCard.ts::BOARD_REMOVED_LABEL_KEY",
+  "apps/web/src/lib/boardCard.ts::conflictLead",
+  "apps/web/src/lib/boardCard.ts::duplicateLead",
+  "apps/web/src/lib/bodyFileLink.ts::applyBodyFileLink",
+  "apps/web/src/lib/captureAiAssist.ts::ASSIST_APPLY_MODES",
+  "apps/web/src/lib/captureAttachments.ts::uploadAttachments",
+  "apps/web/src/lib/captureFlowGuide.ts::captureFlowStepLabelKey",
+  "apps/web/src/lib/captureFlowGuide.ts::captureFlowSteps",
+  "apps/web/src/lib/captureFlowGuide.ts::recommendedFlowStep",
+  "apps/web/src/lib/captureFromFile.ts::createWholeDocumentDraft",
+  "apps/web/src/lib/captureFromFile.ts::imagesOnlyNoticeKey",
+  "apps/web/src/lib/captureFromFile.ts::importImageNotice",
+  "apps/web/src/lib/conflictCollision.ts::conflictDisplayMode",
+  "apps/web/src/lib/conflictImpact.ts::effectiveUsability",
+  "apps/web/src/lib/demoKnowledge.ts::demoKnowledgeBadge",
+  "apps/web/src/lib/demoKnowledge.ts::filterByDemoKnowledge",
+  "apps/web/src/lib/demoPilotPath.ts::demoPilotPath",
+  "apps/web/src/lib/draftForm.ts::KNOWLEDGE_TYPES_DRAFT",
+  "apps/web/src/lib/draftForm.ts::isPromotable",
+  "apps/web/src/lib/draftListView.ts::isDraftSortKey",
+  "apps/web/src/lib/duplicateCompare.ts::DUPLICATE_COMPARE_SAFETY",
+  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_FILES_KEY",
+  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_FILE_HINT_KEY",
+  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_IMAGES_KEY",
+  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_IMAGE_HINT_KEY",
+  "apps/web/src/lib/editorAttachmentContext.ts::ATTACH_TITLE_KEY",
+  "apps/web/src/lib/editorGuidance.ts::editorGuidance",
+  "apps/web/src/lib/examplePackages.ts::EXAMPLE_PACKAGES_ALL_KEYS",
+  "apps/web/src/lib/externalAttachGate.ts::externalAttachBlockedKey",
+  "apps/web/src/lib/externalSearch.ts::isAttachable",
+  "apps/web/src/lib/facetRail.ts::FACET_SEARCH_THRESHOLD",
+  "apps/web/src/lib/facets.ts::combinableFacetCounts",
+  "apps/web/src/lib/fileMultiPoint.ts::mergedDraftFromPoints",
+  "apps/web/src/lib/files.ts::isOcrCandidate",
+  "apps/web/src/lib/files.ts::isPptxDocument",
+  "apps/web/src/lib/funke.ts::openGapsView",
+  "apps/web/src/lib/importSelectView.ts::folderTreeSegmentKey",
+  "apps/web/src/lib/importSelectView.ts::ordnerOhneEigeneZeile",
+  "apps/web/src/lib/intakeSimilarity.ts::classifyIntake",
+  "apps/web/src/lib/interviewFlow.ts::answeredTurns",
+  "apps/web/src/lib/knowledgeRescue.ts::knowledgeRescueImpact",
+  "apps/web/src/lib/knowledgeRescue.ts::knowledgeRescueSteps",
+  "apps/web/src/lib/knowledgeRescue.ts::rescueStepLabelKey",
+  "apps/web/src/lib/knowledgeStory.ts::KNOWLEDGE_STORY_SURFACES",
+  "apps/web/src/lib/knowledgeStudioGuide.ts::studioGuideActiveStep",
+  "apps/web/src/lib/knowledgeStudioGuide.ts::studioGuideSteps",
+  "apps/web/src/lib/knowledgeStudioLayout.ts::knowledgeStudioSections",
+  "apps/web/src/lib/knowledgeStudioTips.ts::knowledgeStudioTips",
+  "apps/web/src/lib/koEvidence.ts::evidenceKindLabel",
+  "apps/web/src/lib/koLabel.ts::hatTitel",
+  "apps/web/src/lib/learningPath.ts::nextOpenStep",
+  "apps/web/src/lib/libraryExport.ts::exportFormatMeta",
+  "apps/web/src/lib/libraryMaturity.ts::MATURITY_FILTERS",
+  "apps/web/src/lib/libraryMaturity.ts::countByMaturity",
+  "apps/web/src/lib/libraryMaturity.ts::filterByMaturity",
+  "apps/web/src/lib/libraryMaturity.ts::maturityFilterLabelKey",
+  "apps/web/src/lib/librarySort.ts::isLibrarySortKey",
+  "apps/web/src/lib/librarySpace.ts::koHomePath",
+  "apps/web/src/lib/librarySpace.ts::serializeSpace",
+  "apps/web/src/lib/librarySpace.ts::spaceFromParams",
+  "apps/web/src/lib/loadingState.ts::isGroupLoaded",
+  "apps/web/src/lib/mobileConfirm.ts::confirmsDelete",
+  "apps/web/src/lib/mobileConfirm.ts::needsConfirmation",
+  "apps/web/src/lib/offlineQueue.ts::replacePayload",
+  "apps/web/src/lib/oidcCallback.ts::isCompleteCallback",
+  "apps/web/src/lib/outputDoc.ts::orderedSelection",
+  "apps/web/src/lib/pdf.ts::extractPdfText",
+  "apps/web/src/lib/pilotChecklist.ts::pilotChecklist",
+  "apps/web/src/lib/pilotNextSteps.ts::pilotNextSteps",
+  "apps/web/src/lib/pilotObservationGuide.ts::pilotObservationGuide",
+  "apps/web/src/lib/proofChain.ts::proofChain",
+  "apps/web/src/lib/reasonerStatus.ts::reasonerStatusSummary",
+  "apps/web/src/lib/reviewerMinimum.ts::isNeededValidationsValid",
+  "apps/web/src/lib/richText.ts::RICH_TEXT_ALLOWED_TAGS",
+  "apps/web/src/lib/startHelp.ts::START_HELP_TOPICS",
+  "apps/web/src/lib/validationStatus.ts::deriveDisplayStatus",
+  "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_ASK_TIMEOUT_MS",
+  "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS",
+  "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_LOGIN_POLL_INTERVAL_MS",
+  "apps/web/src/lib/wordAddin.ts::answerIsLong",
+  "apps/web/src/lib/wordAddin.ts::answerSelectionIsWhole",
+  "apps/web/src/lib/wordAddin.ts::askAiNoticeVisible",
+  "apps/web/src/lib/wordAddin.ts::askEvidenceDetail",
+  "apps/web/src/lib/wordAddin.ts::askLocale",
+  "apps/web/src/lib/wordAddin.ts::askSnippetWorthShowing",
+  "apps/web/src/lib/wordAddin.ts::askSourceRole",
+  "apps/web/src/lib/wordAddin.ts::askSourceStatus",
+  "apps/web/src/lib/wordAddin.ts::canInsertAnswer",
+  "apps/web/src/lib/wordAddin.ts::classifyDraftResponse",
+  "apps/web/src/lib/wordAddin.ts::composeAnswerOutput",
+  "apps/web/src/lib/wordAddin.ts::draftWasCreated",
+  "apps/web/src/lib/wordAddin.ts::fillWordImages",
+  "apps/web/src/lib/wordAddin.ts::klaraTrustHead",
+  "apps/web/src/lib/wordAddin.ts::koDetailUrl",
+  "apps/web/src/lib/wordAddin.ts::loginPollStep",
+  "apps/web/src/lib/wordAddin.ts::openQuestionDraftTitle",
+  "apps/web/src/lib/wordAddin.ts::performAsk",
+  "apps/web/src/lib/wordAddin.ts::performCopy",
+  "apps/web/src/lib/wordAddin.ts::performInsert",
+  "apps/web/src/lib/wordAddin.ts::prepareAskQuestion",
+  "apps/web/src/lib/wordAddin.ts::prepareWordDraftRequest",
+  "apps/web/src/lib/wordAddin.ts::wordHtmlToPlainText",
+];
+
 const GEDULDET = new Set<string>([
   ...BEWUSST.map((a) => a.schluessel),
   ...DURCH_VERSCHAERFUNG_SICHTBAR.map((a) => a.schluessel),
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
   ...ALTBESTAND,
+  ...BEWUSST_WEB.map((a) => a.schluessel),
+  ...ALTBESTAND_WEB,
 ]);
 
 describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
@@ -748,7 +986,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
 
     const neu = ohneAufrufer.filter((f) => !GEDULDET.has(schluessel(f)));
     const meldung = [
-      `${neu.length} Export(e) unter \`${UEBERWACHT}/\` haben keinen Aufrufer ausserhalb der Tests:`,
+      `${neu.length} Export(e) unter ${UEBERWACHT.map((u) => `\`${u}/\``).join(" bzw. ")} haben keinen Aufrufer ausserhalb der Tests:`,
       "",
       ...neu.map((f) => `  ${f.datei}:${f.zeile}  ${f.name}  (${f.art})`),
       "",
@@ -776,28 +1014,29 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       // Nicht in der Fundliste heisst: er hat einen Aufrufer. Fuer die Probe brauchen wir ihn trotzdem.
       const alle = erhebe();
       const roh = alle.ohneAufrufer.find((f) => f.name === name);
-      return roh ?? { datei: "", name, zeile: 0, art: "" };
+      return roh ?? { datei: "", name, exportname: name, zeile: 0, art: "" };
     };
+
+    /** Ein Prueffund fuer einen BENANNTEN Export — dort fallen Bezeichner und Exportname zusammen. */
+    const benannt = (datei: string, name: string): Fund => ({
+      datei,
+      name,
+      exportname: name,
+      zeile: 0,
+      art: "",
+    });
 
     // POSITIV: ein bekannter echter Aufruf wird gefunden.
     // `gatedPool` wird in `build-app.ts:691` gerufen (`const pool = gatedPool(rohPool);`).
     expect(
-      fremdGenutzt({
-        datei: "services/db-tx/src/gated-pool.ts",
-        name: "gatedPool",
-        zeile: 0,
-        art: "",
-      }),
+      fremdGenutzt(benannt("services/db-tx/src/gated-pool.ts", "gatedPool")),
       "`gatedPool` wird in build-app.ts gerufen — der Sammler muss das sehen",
     ).toBe(true);
     // `expandSearchTerms` wird in beiden Suchadaptern gerufen (search-projection-repo{,-pg}.ts).
     expect(
-      fremdGenutzt({
-        datei: "services/knowledge-object/src/search-projection.ts",
-        name: "expandSearchTerms",
-        zeile: 0,
-        art: "",
-      }),
+      fremdGenutzt(
+        benannt("services/knowledge-object/src/search-projection.ts", "expandSearchTerms"),
+      ),
       "`expandSearchTerms` wird in den Suchadaptern gerufen — der Sammler muss das sehen",
     ).toBe(true);
 
@@ -805,12 +1044,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     // `fuehreBestandsresetAus` steht in `build-app.ts:684` in einem KOMMENTAR und in
     // `db-tx/index.ts:26` als Barrel-Re-Export — beides darf nicht zaehlen.
     expect(
-      fremdGenutzt({
-        datei: "services/db-tx/src/bestandsreset.ts",
-        name: "fuehreBestandsresetAus",
-        zeile: 0,
-        art: "",
-      }),
+      fremdGenutzt(benannt("services/db-tx/src/bestandsreset.ts", "fuehreBestandsresetAus")),
       "Kommentar und Barrel-Re-Export duerfen NICHT als Aufrufer zaehlen",
     ).toBe(false);
     expect(finde("fuehreBestandsresetAus").datei).toBe("services/db-tx/src/bestandsreset.ts");
@@ -839,7 +1073,12 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
     // Und jede benannte Ausnahme traegt wirklich einen Grund — in ALLEN drei begruendeten
     // Registern, nicht nur im ersten. Ein Register ohne diese Zeile waere die Hintertuer, durch
     // die unbegruendete Eintraege hereinkommen.
-    for (const a of [...BEWUSST, ...DURCH_VERSCHAERFUNG_SICHTBAR, ...NEUZUGANG_GEMELDET]) {
+    for (const a of [
+      ...BEWUSST,
+      ...DURCH_VERSCHAERFUNG_SICHTBAR,
+      ...NEUZUGANG_GEMELDET,
+      ...BEWUSST_WEB,
+    ]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);
     }
   });
@@ -857,7 +1096,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       const schreib = (name: string, text: string): void =>
         writeFileSync(join(src, name), text, "utf8");
       const namen = (): string[] =>
-        erhebe(baum, "services", ["services"]).ohneAufrufer.map((f) => f.name);
+        erhebe(baum, ["services"], ["services"]).ohneAufrufer.map((f) => f.name);
 
       // (a) DER FANG — ein Export, den niemand ruft.
       schreib("haenger.ts", "export function haengtInDerLuft(): number {\n  return 1;\n}\n");
@@ -893,6 +1132,104 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       );
       expect(namen(), "Kommentar und Barrel-Re-Export duerfen einen Export NICHT decken").toContain(
         "nurVomTestGerufen",
+      );
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // JOB 2611 D1 — DIESELBEN NACHWEISE AUF DER NEUEN FLAECHE
+  // ----------------------------------------------------------------------------------------------
+  // Auftrag §3.3, woertlich: „Der Nachweis bleibt derselbe wie in 2605 D3: ein Fangtest (Export
+  // ohne Aufrufer ⇒ rot), eine Gegenprobe (mit Aufrufer ⇒ gruen), und der Falsch-Gruen-Fall R4 —
+  // Import vorhanden, benutzt wird eine unabhaengige gleichnamige Nennung. Der ist in `services`
+  // schon belegt; er muss auch auf der neuen Flaeche greifen."
+  //
+  // Warum das nicht schon durch A4 erledigt ist: A4 misst mit `ueberwacht = ["services"]`. Dass
+  // der Sammler auf `services` traegt, sagt nichts darueber, ob er es auf `apps/web/src` tut —
+  // dort liegen `.tsx`-Dateien, Standardexporte und JSX-Verwendungen, und genau daran ist der
+  // Standardexport-Fall (`Fund.exportname`) aufgefallen. Ein Nachweis auf der alten Flaeche waere
+  // fuer die neue eine Behauptung.
+  it("A5 · NEUE FLAECHE: Fang, Gegenprobe und der Falsch-Gruen-Fall R4 auf `apps/web/src`", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw2611-web-"));
+    try {
+      const src = join(baum, "apps", "web", "src", "lib");
+      mkdirSync(src, { recursive: true });
+      const schreib = (name: string, text: string): void =>
+        writeFileSync(join(src, name), text, "utf8");
+      const namen = (): string[] =>
+        erhebe(baum, ["apps/web/src"], ["apps/web/src"]).ohneAufrufer.map((f) => f.name);
+
+      // (a) DER FANG — ein Export auf der neuen Flaeche, den niemand ruft.
+      schreib("haenger.ts", "export function webHaengtInDerLuft(): number {\n  return 1;\n}\n");
+      expect(
+        namen(),
+        "ein Export unter apps/web/src ohne jeden Aufrufer muss gefangen werden",
+      ).toContain("webHaengtInDerLuft");
+
+      // (b) R4 · DER FALSCH-GRUEN-FALL, auf der neuen Flaeche.
+      // Die Datei IMPORTIERT `webVerdeckt` — und benutzt im Rumpf eine eigene, unabhaengige
+      // Deklaration desselben Namens. Der Import ist damit unbenutzt, der Export tot. Wer nur
+      // fragt „kommt der Name in einer anderen Datei vor?", meldet hier faelschlich Entwarnung.
+      schreib("verdeckt.ts", "export function webVerdeckt(): number {\n  return 2;\n}\n");
+      schreib(
+        "verdecker.ts",
+        'import { webVerdeckt } from "./verdeckt";\n\n' +
+          "export function ruftEigenes(): number {\n" +
+          "  const webVerdeckt = 42;\n" +
+          "  return webVerdeckt;\n" +
+          "}\n",
+      );
+      expect(
+        namen(),
+        "R4: eine unabhaengige gleichnamige Nennung darf den Export NICHT decken",
+      ).toContain("webVerdeckt");
+
+      // (c) DIE GEGENPROBE — derselbe Export, jetzt mit echtem Aufrufer, faellt heraus.
+      // Ohne diesen Fall waere der Waechter immer rot, und ein immer roter Waechter wird
+      // abgeschaltet. Das ist die Haelfte, die genauso zaehlt wie der Fang.
+      schreib(
+        "nutzer.ts",
+        'import { webHaengtInDerLuft } from "./haenger";\n\n' +
+          "export function webNutzeIhn(): number {\n  return webHaengtInDerLuft() + 1;\n}\n",
+      );
+      expect(
+        namen(),
+        "ein Export MIT echtem Aufrufer darf auf der neuen Flaeche NICHT gefangen werden",
+      ).not.toContain("webHaengtInDerLuft");
+
+      // (d) DER STANDARDEXPORT — der Fall, der diese Flaeche mitgebracht hat.
+      // `export default function X` wird als `default` exportiert, aber als `X` importiert.
+      // Vor JOB 2611 D1 verglich der Waechter Exportname gegen BEZEICHNER und meldete deshalb
+      // `App.tsx::App` als ohne Aufrufer — die Wurzelkomponente der Anwendung, die `main.tsx`
+      // als `<App />` rendert. Ein Falsch-Rot auf dem sichtbarsten Stueck Code, das es gibt.
+      const seiten = join(baum, "apps", "web", "src", "pages");
+      mkdirSync(seiten, { recursive: true });
+      writeFileSync(
+        join(seiten, "Wurzel.tsx"),
+        "export default function Wurzel(): number {\n  return 3;\n}\n",
+        "utf8",
+      );
+      writeFileSync(
+        join(seiten, "einstieg.tsx"),
+        'import Wurzel from "./Wurzel";\n\nexport function starte(): number {\n  return Wurzel();\n}\n',
+        "utf8",
+      );
+      expect(
+        namen(),
+        "ein Standardexport MIT Aufrufer darf nicht gefangen werden (Falsch-Rot vor JOB 2611 D1)",
+      ).not.toContain("Wurzel");
+
+      // (e) UND DIE GEGENPROBE DAZU: ein Standardexport OHNE Aufrufer wird weiterhin gefangen.
+      // Sonst waere (d) mit einem Freibrief fuer alle Standardexporte erkauft.
+      writeFileSync(
+        join(seiten, "Waise.tsx"),
+        "export default function Waise(): number {\n  return 4;\n}\n",
+        "utf8",
+      );
+      expect(namen(), "ein Standardexport OHNE Aufrufer muss weiterhin gefangen werden").toContain(
+        "Waise",
       );
     } finally {
       rmSync(baum, { recursive: true, force: true });
