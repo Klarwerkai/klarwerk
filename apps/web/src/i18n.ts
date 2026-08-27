@@ -1736,6 +1736,7 @@ const de = {
   "capture.fTags": "Schlagwörter",
   "capture.fAsset": "Anlage / Asset",
   "conf.field": "Vertraulichkeit",
+  "conf.confirmPending": "— Vertraulichkeit bestätigen —",
   "conf.help":
     "Wie vertraulich ist dieses Wissen? Öffentlich-intern ist der Standard (keine Einschränkung). Vertraulich und Streng vertraulich markieren sensibles Wissen: solche Objekte werden nie in externe Kontexte gegeben (Output Factory/Export). Die Stufe ist ab dem Erfassen setzbar und später jederzeit änderbar — jede Änderung wird im Audit-Log festgehalten. Hinweis: Diese Kennzeichnung schränkt (noch) nicht ein, WER das Objekt sieht.",
   "conf.level.intern": "Öffentlich-intern",
@@ -6345,6 +6346,7 @@ const en: typeof de = {
   "capture.fTags": "Tags",
   "capture.fAsset": "Asset / equipment",
   "conf.field": "Confidentiality",
+  "conf.confirmPending": "— confirm confidentiality —",
   "conf.help":
     "How confidential is this knowledge? “Public-internal” is the default (no restriction). “Confidential” and “Strictly confidential” mark sensitive knowledge: such objects are never sent into external contexts (output factory/export). The level can be set while capturing and changed anytime afterwards — every change is recorded in the audit log. Note: this label does not (yet) restrict WHO can see the object.",
   "conf.level.intern": "Public-internal",
@@ -10512,6 +10514,7 @@ const nl: typeof de = {
   "capture.fTags": "Trefwoorden",
   "capture.fAsset": "Installatie / asset",
   "conf.field": "Vertrouwelijkheid",
+  "conf.confirmPending": "— vertrouwelijkheid bevestigen —",
   "conf.help":
     "Hoe vertrouwelijk is deze kennis? Openbaar-intern is de standaard (geen beperking). Vertrouwelijk en Streng vertrouwelijk markeren gevoelige kennis: zulke objecten worden nooit in externe contexten gegeven (Output Factory/export). Het niveau kun je vanaf het vastleggen instellen en later altijd wijzigen — elke wijziging wordt in het audit-log vastgelegd. Let op: deze markering beperkt (nog) niet WIE het object ziet.",
   "conf.level.intern": "Openbaar-intern",

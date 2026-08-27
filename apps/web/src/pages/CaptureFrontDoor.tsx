@@ -863,7 +863,7 @@ export function CaptureFrontDoor(): JSX.Element {
                 <HelpTip title={t("conf.field")} body={t("conf.help")} />
               </div>
               <select
-                value={confidentiality}
+                value={declaredConfidentiality ?? ""}
                 onChange={(event) => {
                   const gewaehlt = event.target.value as Confidentiality;
                   setConfidentiality(gewaehlt);
@@ -873,6 +873,16 @@ export function CaptureFrontDoor(): JSX.Element {
                 aria-label={t("conf.field")}
                 className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
               >
+                {/* SANIERUNG-20260827 (Pedi-Befund): Die Anzeige darf nie eine Stufe behaupten, die
+                    fuer den Egress nicht gilt. Ein fortgesetzter Entwurf OHNE gespeicherte Stufe
+                    (declared=undefined, Egress fail-safe „vertraulich") zeigte hier bisher
+                    „Oeffentlich-intern" — der Nutzer sah oeffentlich, die KI verweigerte vertraulich.
+                    Jetzt: Pflicht-Platzhalter, bis EINMAL bewusst gewaehlt wurde. */}
+                {declaredConfidentiality === undefined && (
+                  <option value="" disabled>
+                    {t("conf.confirmPending")}
+                  </option>
+                )}
                 {CONFIDENTIALITY_LEVELS.map((lvl) => (
                   <option key={lvl} value={lvl}>
                     {t(`conf.level.${lvl}`)}

@@ -4811,7 +4811,7 @@ export function Capture(): JSX.Element {
                       }
                     >
                       <select
-                        value={confidentiality}
+                        value={declaredConfidentiality ?? ""}
                         onChange={(e) => {
                           const gewaehlt = e.target.value as Confidentiality;
                           setConfidentiality(gewaehlt);
@@ -4821,6 +4821,14 @@ export function Capture(): JSX.Element {
                         aria-label={t("conf.field")}
                         className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
                       >
+                        {/* SANIERUNG-20260827: Anzeige nie strenger/lascher als der Egress —
+                            fehlende Stufe zeigt den Pflicht-Platzhalter, nicht „intern"
+                            (Begruendung: CaptureFrontDoor.tsx, gleiche Stelle). */}
+                        {declaredConfidentiality === undefined && (
+                          <option value="" disabled>
+                            {t("conf.confirmPending")}
+                          </option>
+                        )}
                         {CONFIDENTIALITY_LEVELS.map((lvl) => (
                           <option key={lvl} value={lvl}>
                             {t(`conf.level.${lvl}`)}
