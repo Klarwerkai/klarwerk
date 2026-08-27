@@ -669,16 +669,14 @@ const ALTBESTAND: readonly string[] = [
 // Diese lagen schon vorher ohne Aufrufer da — der jeweils frühere Wächter sah sie nur nicht, weil
 // ein gleichnamiger, unabhängiger Bezeichner sie „deckte". Genau der Befund, den BEN gerügt hat,
 // hier an echtem Code statt an einer Attrappe:
+//
+// ERLEDIGT, JOB 2609 D1 (27.08.2026): `duplicate-detect.ts::titleSimilarity` stand hier als erster
+// Eintrag und ist der erste Fund dieses Waechters, der wirklich erlegt wurde — die Funktion ist
+// entfernt, weil sie ueberholt war (sie belieferte allein `overlapCandidacy`, und seit „jeder gegen
+// jeden" gibt es die Stufe nicht mehr). A3 hat ihre Streichung aus diesem Register verlangt, sobald
+// es den Export nicht mehr gibt; genau das ist hier geschehen. Die Liste ist geschrumpft, nicht
+// gewachsen.
 const DURCH_VERSCHAERFUNG_SICHTBAR: readonly Ausnahme[] = [
-  {
-    schluessel: "services/conflicts/src/duplicate-detect.ts::titleSimilarity",
-    grund:
-      "NEU IN D3, und der Musterfall der Bindungspruefung: In DERSELBEN Datei fuehrt eine andere " +
-      "Funktion einen PARAMETER gleichen Namens (`:91 titleSimilarity: number`) und benutzt ihn " +
-      "(`:99`). Bis D2 galt das als Verwendung in der eigenen Datei, und der Export fiel aus der " +
-      "Fundliste. Die Verwendung bezeichnet aber den Parameter, nicht den Export — der Export " +
-      "`:268` wird nirgends gerufen. NICHT behoben (Auftrag §4): das ist eigene Arbeit.",
-  },
   {
     schluessel: "services/rbac/src/guard.ts::requirePermission",
     grund:

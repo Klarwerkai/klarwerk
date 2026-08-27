@@ -264,7 +264,10 @@ export function overlapScorePercent(lexicalScore: number): number {
   return Math.round(Math.min(1, Math.max(0, lexicalScore)) * 100);
 }
 
-// Nur der Titel-Ähnlichkeitswert (für die Kandidatenstufe „gleicher Titel, anderer Text").
-export function titleSimilarity(a: DetectSubject, b: DetectSubject): number {
-  return trigramSimilarity(a.title, b.title);
-}
+// JOB 2609 (27.08.2026): `titleSimilarity` — der reine Titel-Ähnlichkeitswert — ist hier entfernt
+// worden. Sie belieferte allein den zweiten Parameter von `overlapCandidacy`, also die Kandidaten-
+// stufe „gleicher Titel, anderer Text". Seit „jeder gegen jeden" (siehe `exhaustiveOverlapCandidacy`
+// oben) gibt es die Stufe „none" nicht mehr, die ein ähnlicher Titel hätte anheben können: Alles
+// unterhalb der deterministischen Schwelle geht ohnehin ans Modell. Der Titel wirkt unverändert
+// weiter — mit Gewicht 0,30 in `lexicalOverlapScore`, über dieselbe Trigramm-Ähnlichkeit.
+// Wer den reinen Titelwert wieder braucht, braucht zuerst wieder eine Stufe, die ihn liest.

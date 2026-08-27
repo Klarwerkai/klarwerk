@@ -11,7 +11,6 @@ import {
   overlapPairKey,
   overlapScorePercent,
   relationCreatesEntry,
-  titleSimilarity,
   verifiedAspects,
 } from "./duplicate-detect";
 
@@ -162,8 +161,7 @@ describe("Berater-Konzept Duplikate 04.07. (Stufe D1): Erkennungskern", () => {
     expect(overlapPairKey("ko-a", "ko-b")).toContain("dup|");
   });
 
-  it("overlapScorePercent + titleSimilarity liefern ehrliche Anzeigewerte", () => {
+  it("overlapScorePercent liefert einen ehrlichen Anzeigewert", () => {
     expect(overlapScorePercent(0.723)).toBe(72);
-    expect(titleSimilarity(a, bNearIdentical)).toBe(1);
   });
 });
