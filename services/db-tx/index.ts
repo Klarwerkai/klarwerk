@@ -25,6 +25,20 @@ export {
   BestandsresetGesperrtError,
   fuehreBestandsresetAus,
 } from "./src/bestandsreset";
+// JOB 2363: I10 Punkt 2 — der Entscheidungshelfer nach einem Konsolenabbruch. Er gehoert hierher
+// und nicht in ein Werkzeugskript, weil er dieselbe Frage beantwortet, die dieses Modul stellt:
+// haelt gerade jemand eine Transaktion offen? Er oeffnet keine Verbindung und beendet nichts —
+// er formuliert den Pruefbefehl und beurteilt sein Ergebnis (s. src/idle-in-transaction.ts).
+export {
+  type Abbruchbefund,
+  type Handlung,
+  type PgAktivitaetszeile,
+  ZUSTAND_ARBEITET,
+  ZUSTAND_HAENGT,
+  beendigungsbefehl,
+  bewerte,
+  pruefbefehl,
+} from "./src/idle-in-transaction";
 export {
   type BestandsresetBefund,
   type BestandsresetLauf,
