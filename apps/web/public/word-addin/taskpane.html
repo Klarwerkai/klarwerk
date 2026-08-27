@@ -830,6 +830,30 @@
       return JSON.stringify({ title: title, statement: statement, bodyHtml: bodyHtml, origin: "word_addin" });
     }
 
+    // JOB 2613 D1 — Spiegel von wordAddin.ts#trimWordImagesToBudget. Groesstes Bild zuerst
+    // weglassen, bis der Rest ins Budget passt; das GANZE img-Tag faellt, nicht nur seine Quelle
+    // (ein img ohne src waere ein kaputtes Bildsymbol). Nur eingebettete data:-Bilder werden
+    // angefasst. Ausfuehrliche Begruendung im Modul.
+    function trimWordImagesToBudget(html, passt) {
+      if (passt(html)) { return { html: html, dropped: 0, passt: true }; }
+      var muster = /<img\b[^>]*src\s*=\s*(?:"data:image\/[^"]*"|'data:image\/[^']*')[^>]*>/gi;
+      var aktuell = html;
+      var dropped = 0;
+      var obergrenze = (html.match(muster) || []).length;
+      for (var runde = 0; runde < obergrenze; runde += 1) {
+        var tags = aktuell.match(muster) || [];
+        if (tags.length === 0) { break; }
+        var groesstes = tags[0];
+        for (var i = 0; i < tags.length; i += 1) {
+          if (tags[i].length > groesstes.length) { groesstes = tags[i]; }
+        }
+        aktuell = aktuell.replace(groesstes, "");
+        dropped += 1;
+        if (passt(aktuell)) { return { html: aktuell, dropped: dropped, passt: true }; }
+      }
+      return { html: aktuell, dropped: dropped, passt: false };
+    }
+
     function prepareWordDraftRequest(html, text) {
       var title = deriveDraftTitleFromSelection(text);
       var statement = text.trim().slice(0, 500);
@@ -840,13 +864,21 @@
       // "alles gut", obwohl Formatierung und Bilder verschwanden — die stille Null. Keine
       // geratene Bildzahl: wo kein HTML ankam, ist jede Zahl erfunden.
       if (inner.length === 0) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true };
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: false, undeliveredImages: 0, plainTextFallback: true, droppedImages: 0 };
       }
+      var passt = function (kandidat) {
+        return wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
+      };
       var htmlPayload = draftPostPayload(title, statement, inner);
       if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
-        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false };
+        // JOB 2613 D1: erst Bilder weglassen, dann erst den ganzen Rumpf aufgeben.
+        var getrimmt = trimWordImagesToBudget(inner, passt);
+        if (getrimmt.passt && getrimmt.dropped > 0) {
+          return { payload: draftPostPayload(title, statement, getrimmt.html), title: title, usedHtml: true, overBudget: false, undeliveredImages: countUndeliveredWordImages(getrimmt.html), plainTextFallback: false, droppedImages: getrimmt.dropped };
+        }
+        return { payload: draftPostPayload(title, statement, selectionToBodyHtml(text)), title: title, usedHtml: false, overBudget: true, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
       }
-      return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false };
+      return { payload: htmlPayload, title: title, usedHtml: true, overBudget: false, undeliveredImages: undeliveredImages, plainTextFallback: false, droppedImages: 0 };
     }
 
     // WP-KLARA-ASK: Klara fragen — Frage-Vorbereitung (Auswahl vor Eingabefeld, Deckel 2000),
@@ -1824,6 +1856,7 @@
         sendOverBudget: "Die Formatierung war zu groß für die Übertragung — der Entwurf enthält den reinen Text (nichts ging still verloren).",
         sendPlainFallback: "Word hat kein übernehmbares HTML geliefert — Formatierung und etwaige Bilder fehlen im Entwurf.",
         sendImagesMissing: "{n} Bilder konnte Word nicht übergeben — sie fehlen im Entwurf.",
+        sendImagesDropped: "{n} Bilder waren zu groß für die Übertragung und wurden weggelassen — Text, Formatierung und die übrigen Bilder sind im Entwurf.",
         sendBusy: "Sende Auswahl ...",
         sendOk: "Entwurf angelegt: {title}",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
@@ -2051,6 +2084,7 @@
         sendOverBudget: "The formatting was too large to transfer — the draft contains the plain text (nothing was lost silently).",
         sendPlainFallback: "Word did not provide any usable HTML — formatting and any images are missing from the draft.",
         sendImagesMissing: "{n} images could not be provided by Word — they are missing from the draft.",
+        sendImagesDropped: "{n} images were too large to transfer and were left out — text, formatting and the remaining images are in the draft.",
         sendBusy: "Sending selection ...",
         sendOk: "Draft created: {title}",
         sendAuth: "Not signed in — please sign in to KLARWERK first.",
@@ -2241,6 +2275,7 @@
         sendOverBudget: "De opmaak was te groot voor de overdracht — het concept bevat de platte tekst (er is niets stilletjes verloren gegaan).",
         sendPlainFallback: "Word heeft geen bruikbare HTML geleverd — opmaak en eventuele afbeeldingen ontbreken in het concept.",
         sendImagesMissing: "{n} afbeeldingen kon Word niet leveren — ze ontbreken in het concept.",
+        sendImagesDropped: "{n} afbeeldingen waren te groot voor de overdracht en zijn weggelaten — tekst, opmaak en de overige afbeeldingen staan in het concept.",
         sendBusy: "Selectie versturen ...",
         sendOk: "Concept aangemaakt: {title}",
         sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
@@ -3437,6 +3472,12 @@
             // es keine zaehlbare Bildmenge — gemeldet wird deshalb OHNE Anzahl, dass Formatierung
             // und etwaige Bilder nicht uebernommen wurden.
             if (prepared.plainTextFallback) { notes.push(t("sendPlainFallback")); }
+            // JOB 2613 D1: Bilder wurden weggelassen, damit der Rest ankommt. MIT Anzahl — hier
+            // ist sie echt gezaehlt und nicht geraten, und ohne sie waere „einige Bilder fehlen"
+            // dieselbe stille Null wie vor mega45.
+            if (prepared.droppedImages > 0) {
+              notes.push(t("sendImagesDropped", { n: String(prepared.droppedImages) }));
+            }
             if (prepared.usedHtml && prepared.undeliveredImages > 0) {
               notes.push(t("sendImagesMissing", { n: String(prepared.undeliveredImages) }));
             }

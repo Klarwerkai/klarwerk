@@ -268,6 +268,66 @@ export function wordHtmlUtf8Bytes(value: string): number {
   return new TextEncoder().encode(value).length;
 }
 
+export interface WordImageTrimResult {
+  html: string;
+  /** Wie viele Bilder weggelassen wurden, damit der Rest ins Budget passt. */
+  dropped: number;
+  /** Passt es danach? `false` = auch ohne jedes Bild zu groß → der Klartext-Rückfall bleibt. */
+  passt: boolean;
+}
+
+/**
+ * Lässt so lange Bilder weg, bis der Rest ins Budget passt — GRÖSSTES ZUERST.
+ *
+ * WARUM DAS GRÖSSTE ZUERST: Jedes weggelassene Bild kostet den Menschen gleich viel (eines fehlt),
+ * bringt aber unterschiedlich viel Platz. Das größte zuerst zu nehmen lässt die meisten Bilder
+ * übrig — bei vier Bildern mit 2 MB, 300 kB, 300 kB und 300 kB bleiben drei statt eines.
+ *
+ * WEGGELASSEN WIRD DAS GANZE `<img>`-TAG, nicht nur seine Quelle. Ein `<img>` ohne brauchbares
+ * `src` wäre ein kaputtes Bildsymbol im Entwurf — sichtbarer Müll statt einer ehrlichen Lücke, und
+ * es zählte danach als „unzustellbar" mit, obwohl Word es sehr wohl geliefert hatte.
+ *
+ * ANGEFASST WERDEN NUR EINGEBETTETE BILDER (`src="data:image/…"`). Ein `<img>`, das Word gar nicht
+ * geliefert hat, kostet ohnehin fast nichts und ist bereits über `undeliveredImages` gemeldet;
+ * es wegzuwerfen brächte kein Byte und nähme dem Menschen die Stelle, an der etwas fehlt.
+ *
+ * `passt` wird vom Aufrufer gestellt und misst den FINALEN Payload — nicht den Rumpf. Nur so wird
+ * gegen dieselbe Zahl gemessen, an der die Kante hängt (Envelope und Escaping zählen mit).
+ */
+export function trimWordImagesToBudget(
+  html: string,
+  passt: (kandidat: string) => boolean,
+): WordImageTrimResult {
+  if (passt(html)) {
+    return { html, dropped: 0, passt: true };
+  }
+  const eingebettet = /<img\b[^>]*src\s*=\s*(?:"data:image\/[^"]*"|'data:image\/[^']*')[^>]*>/gi;
+  let aktuell = html;
+  let dropped = 0;
+  // Höchstens so viele Runden wie es Bilder gibt — die Schleife kann nicht unbegrenzt laufen.
+  const obergrenze = (html.match(eingebettet) ?? []).length;
+  for (let runde = 0; runde < obergrenze; runde += 1) {
+    const tags = aktuell.match(eingebettet) ?? [];
+    if (tags.length === 0) {
+      break;
+    }
+    let groesstes = tags[0] as string;
+    for (const tag of tags) {
+      if (tag.length > groesstes.length) {
+        groesstes = tag;
+      }
+    }
+    aktuell = aktuell.replace(groesstes, "");
+    dropped += 1;
+    if (passt(aktuell)) {
+      return { html: aktuell, dropped, passt: true };
+    }
+  }
+  // Auch ohne jedes eingebettete Bild zu groß: der Aufrufer nimmt den Klartext-Rückfall, und
+  // dieser Rückgabewert sagt ihm das ausdrücklich.
+  return { html: aktuell, dropped, passt: false };
+}
+
 // ---- WP-KLARA-ASK (Pedis Entscheid 22.07., bens Option B: das Klara-Funktionsversprechen) ----
 // Aussage in Word markieren → Klara fragen → quellengebundene Antwort aus dem VALIDIERTEN
 // Werkswissen. Der Kanal ist der BESTEHENDE Konsolen-Vertrag POST /api/ask (Session-Pfad,
@@ -1213,6 +1273,22 @@ export interface WordDraftRequest {
   // schlimmer als keine. Die Oberfläche meldet deshalb ohne Anzahl, dass Formatierung und
   // etwaige Bilder nicht übernommen wurden.
   plainTextFallback: boolean;
+  // JOB 2613 D1: WIE VIELE BILDER WEGGELASSEN WURDEN, DAMIT DER REST ANKOMMT.
+  //
+  // Bis hierher war das Budget eine Alles-oder-nichts-Kante: Lag der Payload darüber, fiel der
+  // GANZE HTML-Rumpf weg und der Entwurf bekam den reinen Text — mit ihm verschwanden Formatierung,
+  // Tabellen UND jedes einzelne Bild, auch die, die längst hineingepasst hätten. Gemessen (JOB 2613
+  // D1, Sonde V1/V2): Bei vier Bildern zu je 1 MB Base64 liefert Word alle vier aus
+  // (`undeliveredImages === 0`) — und im Entwurf kommt KEIN einziges an. Die Kante liegt bei rund
+  // drei Fotos.
+  //
+  // Jetzt wird zuerst das TEURSTE Bild weggelassen und erneut gemessen, so lange, bis der Rest
+  // passt. Der Mensch behält Formatierung, Fußnoten und so viele Bilder wie möglich; nur der
+  // Klartext-Rückfall bleibt für den Fall, dass es auch ohne Bilder nicht reicht.
+  //
+  // `0` heißt „nichts weggelassen" — es ist die Ruhelage und keine Entwarnung: Ob überhaupt etwas
+  // fehlt, sagen weiterhin `undeliveredImages`, `overBudget` und `plainTextFallback`.
+  droppedImages: number;
 }
 
 // EINE Entscheidungsstelle für den Draft-Request: Word-HTML wenn vorhanden UND der finale
@@ -1233,10 +1309,31 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
       overBudget: false,
       undeliveredImages: 0,
       plainTextFallback: true,
+      droppedImages: 0,
     };
   }
+  const passt = (kandidat: string): boolean =>
+    wordHtmlUtf8Bytes(draftPostPayload(title, statement, kandidat)) <= WORD_ADDIN_BODY_BUDGET_BYTES;
   const htmlPayload = draftPostPayload(title, statement, inner);
   if (wordHtmlUtf8Bytes(htmlPayload) > WORD_ADDIN_BODY_BUDGET_BYTES) {
+    // JOB 2613 D1: ERST BILDER WEGLASSEN, DANN ERST DEN GANZEN RUMPF AUFGEBEN.
+    // Bis hierher ging beides zusammen verloren — Formatierung UND alle Bilder, auch die, die
+    // längst hineingepasst hätten (gemessen, Sonde V1: vier Bilder, null kamen an).
+    const getrimmt = trimWordImagesToBudget(inner, passt);
+    if (getrimmt.passt && getrimmt.dropped > 0) {
+      return {
+        payload: draftPostPayload(title, statement, getrimmt.html),
+        title,
+        usedHtml: true,
+        // Der finale Payload liegt jetzt IM Budget — `overBudget` beschreibt genau das und wäre
+        // hier falsch. Was fehlt, sagt `droppedImages`; die Oberfläche meldet es mit Anzahl.
+        overBudget: false,
+        undeliveredImages: countUndeliveredWordImages(getrimmt.html),
+        plainTextFallback: false,
+        droppedImages: getrimmt.dropped,
+      };
+    }
+    // Auch ohne jedes Bild zu groß (oder es gab gar keine): der bisherige Rückfall, unverändert.
     return {
       payload: draftPostPayload(title, statement, selectionToBodyHtml(text)),
       title,
@@ -1246,6 +1343,7 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
       // Hier ist der Verlust bereits durch `overBudget` benannt UND die Bildzahl ist echt gezählt
       // (es lag ja HTML vor) — kein zweites, gleichlautendes Signal.
       plainTextFallback: false,
+      droppedImages: 0,
     };
   }
   return {
@@ -1255,6 +1353,7 @@ export function prepareWordDraftRequest(html: string, text: string): WordDraftRe
     overBudget: false,
     undeliveredImages,
     plainTextFallback: false,
+    droppedImages: 0,
   };
 }
 

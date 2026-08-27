@@ -140,6 +140,12 @@ const INVENTAR: readonly string[] = [
   // `palette` gefunden (Muster `palette`, Zeile 103) — die Datei mountet `CommandPalette` und
   // nennt sie durchgaengig. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/app/job2244-a19b-kuerzel-plattformvertrag-mounted.test.tsx",
+  // JOB 2613 D1: das Byte-Budget des Word-Entwurfs nimmt ab jetzt BILDER statt des ganzen
+  // Dokuments. Von der Inhaltsachse `taskpane` gefunden — die Datei liest `taskpane.html` und
+  // prueft dessen ES5-Spiegel (Fall B6). Sachlich gehoert sie in die Klara-Regression: sie haelt
+  // fest, dass ein zu grosses Word-Dokument seine Formatierung und moeglichst viele Bilder behaelt,
+  // statt auf reinen Text zu fallen. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/app/job2613-word-bilder-budget.test.ts",
   "tests/app/k1-word-addin-origin-panel.test.ts",
   // KA2 (JOB 1571 · D5): neu im Baum und von der Erhebung gefunden. Der Vertragswaechter gehoert
   // sachlich in die Klara-Regression — er haelt Regel A fest (das Panel besitzt

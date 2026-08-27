@@ -692,7 +692,39 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
     //     bleibt die Wertung leer — der Zustand von gestern, kein neues Risiko.
     // Der alte Wert (db555534…) beschreibt den Stand VOR dem Erzeuger und waere ab jetzt blind.
-    const PIN = "e6ca187e8831bf2e32c7facf1a3020f23e2ebe61e23af32fccdd72db7e87694d";
+    //
+    // PIN-NACHFUEHRUNG (BASIC, JOB 2613 · D1, 27.08.) — BEWUSST GEPRUEFT, NICHT ABGESCHRIEBEN.
+    // Neu ist `trimWordImagesToBudget` und sein Aufruf in `prepareWordDraftRequest`: Sprengt der
+    // Entwurfs-Payload das Byte-Budget, faellt ab jetzt das GROESSTE Bild und wird erneut gemessen,
+    // statt den ganzen HTML-Rumpf gegen reinen Text zu tauschen. Dazu ein Meldungsschluessel in
+    // DE/EN/NL und die Zeile, die ihn zeigt. Die drei Fragen:
+    //   · KEIN zusaetzlicher Schreibweg, KEIN neuer Ausgang, KEINE neue Abrufstelle. Es kommt kein
+    //     `fetch` hinzu; es bleibt bei DEM einen POST auf /api/drafts, nur mit einem kleineren
+    //     Rumpf. `BEKANNTE_ABRUFZIELE` unveraendert, die Schreibaufrufe des Fensters unveraendert.
+    //     Der Trimmer ist eine reine Zeichenkettenfunktion ohne Office- und ohne Netzzugriff.
+    //   · WAS SICHTBAR WIRD, und wann NICHT. Die neue Meldung erscheint AUSSCHLIESSLICH, wenn
+    //     wirklich Bilder weggelassen wurden (`droppedImages > 0`) — also nur bei einem Dokument
+    //     ueber dem Budget, das durch das Weglassen hineinpasst. Passt alles (der Normalfall), ist
+    //     `droppedImages` 0 und das Panel sieht aus wie gestern. Belegt in
+    //     `job2613-word-bilder-budget.test.ts`, Faelle B1 bis B4.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER, in drei Richtungen. Der Klartext-Rueckfall bleibt
+    //     unveraendert fuer den Fall, dass es auch OHNE jedes Bild nicht reicht (B4) — genau die
+    //     Kalibrierung von `mega45-word-textrueckfall.test.ts`, die unangetastet gruen laeuft. Der
+    //     Bildweg aus mega74 (`holeWordBilder`/`fillWordImages`) ist NICHT beruehrt
+    //     (`mega74-klara-bilder.test.ts`, 16 Faelle gruen). Und die ES5-Kopie im Panel ist
+    //     mitgezogen, der Aequivalenztest in `word-addin.test.ts` (52 Faelle) bleibt gruen.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
+    //     gilt das bisherige Alles-oder-nichts — der Zustand von gestern, kein neues Risiko.
+    // Der alte Wert (e6ca187e…) beschreibt den Stand VOR dem Trimmer und waere ab jetzt blind.
+    //
+    // PIN-NACHFUEHRUNG BEIM EINBAU (CHEF, 28.08. 02:05). Der Klon von JOB 2613 D1 stand auf
+    // 081f60f; dazwischen hat der Sanierungs-Commit 1ac6979 (Auslieferungsstand im Panel-Kopf
+    // gespiegelt) taskpane.html geaendert, OHNE diesen Pin nachzufuehren — der Waechter war am
+    // Produkt-HEAD 6f629a2 bereits rot (Pin e6ca187e… gegen Ist c392acf0…). Der Einbau fuehrt beide
+    // Aenderungen per 3-Wege-Merge zusammen (0 Konfliktmarker); der Wert unten ist der Hash der
+    // zusammengefuehrten Datei: Trimmer aus 2613 D1 plus Versionsspiegel aus 1ac6979, sonst nichts.
+    // Der Wert 9a886961… aus der Rueckgabe beschreibt den Klonstand ohne den Versionsspiegel.
+    const PIN = "991c3633e1b90de5af2f8b1d00d05e033f23ea8837afa3dd73aa9bfc850ba966";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
