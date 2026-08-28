@@ -80,6 +80,13 @@ function pgAehnlicherKoService(bestand: readonly KnowledgeObject[]): {
     list(): Promise<KnowledgeObject[]> {
       throw new Error("ask darf den Gesamtbestand nicht laden (koService.list)");
     },
+    // JOB 2614 D3 (Weiterführung): der Refs-Bau liest seither je Kandidat die Suchprojektion
+    // (`bodyText` in den Vergleichstext, ask/service.ts). Diese Attrappe misst die QUELLABFRAGEN
+    // der Kandidatensuche — der Projektionsread bleibt hier bewusst leer (Refs ohne `bodyText`,
+    // wie ein nicht nachgezogener Altbestand) und geht NICHT in die `aufrufe`-Zählung ein.
+    searchProjectionOf(): Promise<undefined> {
+      return Promise.resolve(undefined);
+    },
   } as unknown as KoService;
   return { koService, aufrufe, geladeneZeilen: () => geladen };
 }

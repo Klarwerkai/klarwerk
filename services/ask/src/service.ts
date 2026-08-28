@@ -412,17 +412,31 @@ export class AskService {
             .map((ko) => ({ id: ko.id, title: ko.title, status: ko.status })),
         }
       : {};
-    const refs: KnowledgeRef[] = prefiltered.map((ko) => ({
-      id: ko.id,
-      title: ko.title,
-      statement: ko.statement,
-      status: ko.status,
-      trust: ko.trust,
-      // WP-RETEST7 R5 (Pedis Befund): die persistierten Bild-Fußnoten reisen in den Match-/
-      // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
-      // Sichtbarkeitsregeln unverändert: dropConfidential/validatedOnly liefen bereits davor.
-      ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
-    }));
+    const refs: KnowledgeRef[] = await Promise.all(
+      prefiltered.map(async (ko) => {
+        // JOB 2614 D3 (G27-Anschluss, JOB 1565 Weg A): der DOKUMENTTEXT reist in die Refs — aus der
+        // Suchprojektion, die ihn kanonisch extrahiert und geschnitten hat (`bodyText`,
+        // search-projection.ts:637). Kein zweiter Scanner, kein bodyHtml-Vollload, KEINE neue
+        // Grenze am Aufrufer (1565 §11: „B ohne Messung wäre der Fehler von G27 zum zweiten Mal").
+        // Ohne dieses Feld überlebte ein Nur-Fliesstext-Treffer zwar den Kandidatenweg, fiel aber
+        // am Relevanztor (`refMatchText`) — Pedis „Keine belastbare Grundlage" trotz gefülltem
+        // `body_text`. Sichtbarkeitsregeln unverändert: dropConfidential/validatedOnly liefen
+        // bereits davor, und die Projektion einer hier noch enthaltenen Quelle ist dieselbe
+        // Wahrheit, die auch der Kandidatenweg (`findCandidates`) gelesen hat.
+        const projektion = await this.koService.searchProjectionOf(ko.id);
+        return {
+          id: ko.id,
+          title: ko.title,
+          statement: ko.statement,
+          status: ko.status,
+          trust: ko.trust,
+          // WP-RETEST7 R5 (Pedis Befund): die persistierten Bild-Fußnoten reisen in den Match-/
+          // Kontextpfad mit (captionTexts-Suchfeld — kein bodyHtml-Vollload, kein neuer Scanner).
+          ...(ko.captionTexts?.length ? { captionTexts: ko.captionTexts } : {}),
+          ...(projektion?.bodyText.trim() ? { bodyText: projektion.bodyText } : {}),
+        };
+      }),
+    );
     // SCRUM-360: präzise, status-/trust-bewusste Top-K-Auswahl auf der vorgefilterten Menge (Relevanz-
     // Gate dominiert, validierte/ready bevorzugt). Idempotent zur Vorauswahl: Top-K der vorgefilterten
     // Menge = Top-K, da jeder relevante KO (Token-Überschneidung) bereits im Prefilter enthalten ist.

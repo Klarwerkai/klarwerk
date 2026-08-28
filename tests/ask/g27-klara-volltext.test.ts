@@ -169,11 +169,14 @@ describe("G27 · Klara: der neue Suchraum leakt nichts", () => {
 });
 
 describe("G27 · die benannte Grenze dieser Scheibe", () => {
-  it("das Relevanzmass des Reasoners sieht den Dokumenttext NOCH NICHT — die Antwort bleibt ehrlich leer", async () => {
-    // Dieser Test nagelt den RESTBEFUND fest, statt ihn zu verschweigen. Er ist bewusst so
-    // geschrieben, dass er nach der additiven Reasoner-Ergänzung (Feld an `KnowledgeRef` +
-    // `refMatchText`) ROT wird und zur Anpassung zwingt — eine Grenze, die sich still auflöst,
-    // wäre keine Grenze, sondern eine vergessene Zusage.
+  it("das Relevanzmass des Reasoners sieht den Dokumenttext — die Antwort belegt den Nur-Fliesstext-Treffer", async () => {
+    // PLANMÄSSIGE WEITERFÜHRUNG (JOB 2614 D3): Dieser Fall war als Reissleine gebaut — er nagelte
+    // fest, dass `refMatchText` den Dokumenttext NOCH NICHT sah, und sollte nach der additiven
+    // Reasoner-Ergänzung ROT werden und zur Anpassung zwingen. Genau das ist eingetreten: der
+    // Ask-Dienst gibt `bodyText` aus der Suchprojektion in die Refs (ask/service.ts, refs-Bau;
+    // 1565 Weg A — voller Projektionstext, keine neue Grenze), `refMatchText` zählt ihn mit.
+    // Ab hier pinnt der Fall die NEUE Zusage: ein Treffer, der AUSSCHLIESSLICH im Fliesstext
+    // steht, wird beantwortet und mit der Quelle belegt — nicht mehr als Wissenslücke abgetan.
     const { app, services, admin } = await aufbauen();
     const ko = await services.ko.create({
       title: "Flanschmontage an der Presse",
@@ -193,8 +196,8 @@ describe("G27 · die benannte Grenze dieser Scheibe", () => {
     });
     expect(res.statusCode, res.body).toBe(200);
     const body = res.json();
-    expect(body.result.answered).toBe(false);
-    expect(body.result.sources).toEqual([]);
-    expect(body.gap).not.toBeNull();
+    expect(body.result.answered).toBe(true);
+    expect(body.result.sources).toContain(ko.id);
+    expect(body.gap).toBeNull();
   });
 });
