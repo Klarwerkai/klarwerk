@@ -707,6 +707,26 @@
     // autoritative Saeuberung macht der Server-Sanitizer am bestehenden Draft-Weg.
     var WORD_ADDIN_BODY_BUDGET_BYTES = 3500000;
 
+    // JOB 2613 D3: Scheibengroesse fuer `getFileAsync`/`getSliceAsync`. Office deckelt eine
+    // Scheibe auf 4 MB; 1 MB ist der uebliche, konservative Wert — kleinere Scheiben bedeuten mehr
+    // Aufrufe, groessere riskieren Fehlschlaege auf schwachen Hosts. Der Rueckfallweg faengt beide
+    // Faelle ab, aber ein Fehlschlag kostet Pedi einen Anlauf; deshalb konservativ.
+    var WORD_ADDIN_SLICE_BYTES = 1024 * 1024;
+
+    // Der Dokumentname fuer den Titelvorschlag. `Office.context.document.url` ist der belegte,
+    // ueberall vorhandene Weg; er kann leer sein (ungespeichertes Dokument) — dann entscheidet die
+    // Route selbst. Bewusst OHNE `getFilePropertiesAsync`: das waere ein zweiter asynchroner
+    // Schritt vor dem Senden, und der Titel ist die Sache nicht wert.
+    function dokumentName() {
+      try {
+        var url = (Office.context.document && Office.context.document.url) || "";
+        var teil = String(url).split(/[\\/]/).pop() || "";
+        return teil.replace(/\.docx$/i, "");
+      } catch (err) {
+        return "";
+      }
+    }
+
     function extractWordBodyHtml(html) {
       var match = /<body[^>]*>([\s\S]*?)<\/body>/i.exec(html);
       var inner = match && match[1] !== undefined ? match[1] : html;
@@ -3523,11 +3543,179 @@
           finish(text, gefuellt.html, emptyKey);
         });
       };
+      // ==========================================================================================
+      // JOB 2613 D3 — DIE GANZE DATEI STATT DES HTML (Station 1 des Pedi-Pfads).
+      // ==========================================================================================
+      //
+      // DER BEFUND, den Pedi selbst erhoben hat (Panel-Stand 2026-08-28 01:41Z): „Wissen erfassen"
+      // uebertraegt KEINE Bilder. Der Weg darueber liest `body.getHtml()` — HTML OHNE Bildbytes —
+      // und holt die Bilder danach EINZELN ueber `body.inlinePictures` nach. Genau dieses
+      // Nachholen liefert bei ihm nichts.
+      //
+      // DER NEUE WEG: Fuer „Ganzes Dokument" wird zuerst die GANZE .docx geholt
+      // (`getFileAsync` — ein Zip MIT den Bildern) und an `/api/drafts/from-docx` geschickt. Dort
+      // laeuft derselbe Kern wie im Konsolenweg (`extractDocxRich`), der die Bilder als
+      // `data:image` einbettet.
+      //
+      // WARUM DER RUECKFALL PFLICHT IST, nicht Kuer: `getFileAsync` gehoert zum Requirement-Set
+      // „File 1.1", das Manifest nennt nur `WordApi 1.1` (`klara-manifest.xml:33-37`). Ob Pedis
+      // Word-Host es hat, ist aus dem Code NICHT belegbar. Deshalb: Laufzeitversuch, und bei
+      // jedem Fehlschlag exakt der heutige Weg mit seinen ehrlichen Meldungen. Kein stiller
+      // Abbruch, kein leerer Entwurf, keine Aenderung am Manifest.
       if (scope === "document") {
-        readWholeDocument(mitBildern);
+        holeGanzeDatei(
+          function (bytes) { sendeDocxDatei(bytes, openBlock); },
+          function () { readWholeDocument(mitBildern); },
+        );
       } else {
         readSelection(mitBildern);
       }
+    }
+
+    // JOB 2613 D3: die ganze .docx in Scheiben einsammeln.
+    //
+    // `getFileAsync(Compressed)` liefert eine Datei-Handhabe, deren Inhalt scheibenweise abgeholt
+    // wird. Jeder Schritt kann fehlschlagen — fehlendes Requirement-Set, zu grosses Dokument,
+    // Host ohne Unterstuetzung. JEDER dieser Faelle ruft `beiFehlschlag`, damit der heutige Weg
+    // uebernimmt. Die Datei-Handhabe wird IMMER geschlossen, auch im Fehlerfall: eine offene
+    // Handhabe blockiert im Word-Host den naechsten Versuch.
+    function holeGanzeDatei(beiErfolg, beiFehlschlag) {
+      if (
+        !Office.context.document ||
+        typeof Office.context.document.getFileAsync !== "function" ||
+        !window.Office ||
+        !Office.FileType ||
+        typeof Office.FileType.Compressed === "undefined"
+      ) {
+        beiFehlschlag();
+        return;
+      }
+      var abgebrochen = false;
+      var abbrechen = function (datei) {
+        if (abgebrochen) { return; }
+        abgebrochen = true;
+        if (datei && typeof datei.closeAsync === "function") { datei.closeAsync(function () {}); }
+        beiFehlschlag();
+      };
+      try {
+        Office.context.document.getFileAsync(
+          Office.FileType.Compressed,
+          { sliceSize: WORD_ADDIN_SLICE_BYTES },
+          function (ergebnis) {
+            if (ergebnis.status !== Office.AsyncResultStatus.Succeeded || !ergebnis.value) {
+              abbrechen(null);
+              return;
+            }
+            var datei = ergebnis.value;
+            var scheiben = [];
+            var offen = datei.sliceCount;
+            if (!offen || offen < 1) { abbrechen(datei); return; }
+            var naechste = 0;
+            var holeScheibe = function () {
+              if (abgebrochen) { return; }
+              if (naechste >= datei.sliceCount) {
+                // Alle Scheiben da — zusammensetzen, Handhabe schliessen, weiterreichen.
+                var gesamt = 0;
+                for (var i = 0; i < scheiben.length; i += 1) { gesamt += scheiben[i].length; }
+                var bytes = new Uint8Array(gesamt);
+                var pos = 0;
+                for (var j = 0; j < scheiben.length; j += 1) {
+                  bytes.set(scheiben[j], pos);
+                  pos += scheiben[j].length;
+                }
+                datei.closeAsync(function () {});
+                beiErfolg(bytes);
+                return;
+              }
+              var index = naechste;
+              naechste += 1;
+              datei.getSliceAsync(index, function (scheibe) {
+                if (scheibe.status !== Office.AsyncResultStatus.Succeeded || !scheibe.value) {
+                  abbrechen(datei);
+                  return;
+                }
+                scheiben[index] = new Uint8Array(scheibe.value.data);
+                holeScheibe();
+              });
+            };
+            holeScheibe();
+          },
+        );
+      } catch (err) {
+        abbrechen(null);
+      }
+    }
+
+    // JOB 2613 D3: die .docx-Bytes an die neue Route schicken.
+    //
+    // Die Antwort nennt die Bildzahl ausdruecklich (`imagesEmbedded`/`imagesTotal`), damit die
+    // Meldung EHRLICH ist — „(n Bilder)" statt „fertig". Ein Verlust wird mit der VORHANDENEN
+    // Meldung `sendImagesMissing` gemeldet, nicht mit einer neu erfundenen.
+    function sendeDocxDatei(bytes, openBlock) {
+      showSendStatus("warn", t("sendBusy"));
+      var b64 = "";
+      var block = 0x8000;
+      for (var i = 0; i < bytes.length; i += block) {
+        b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + block));
+      }
+      var nutzlast = JSON.stringify({
+        name: (dokumentName() || "Dokument") + ".docx",
+        data: window.btoa(b64),
+      });
+      fetch("/api/drafts/from-docx", {
+        method: "POST",
+        credentials: "include",
+        headers: { "content-type": "application/json" },
+        body: nutzlast,
+      })
+        .then(function (res) {
+          var draftKind = classifyDraftResponse(res.status);
+          if (draftWasCreated(draftKind)) { return res.json(); }
+          showSendStatus("warn", draftFailureText(draftKind, res));
+          if (draftKind === "auth") { checkSession(); }
+          return null;
+        })
+        .then(function (draft) {
+          if (!draft) { return; }
+          var notes = [];
+          var gesamt = typeof draft.imagesTotal === "number" ? draft.imagesTotal : 0;
+          var da = typeof draft.imagesEmbedded === "number" ? draft.imagesEmbedded : 0;
+          // NIE mehr behaupten als angekommen ist: fehlt etwas, sagt es die vorhandene Meldung.
+          if (gesamt > da) {
+            notes.push(t("sendImagesMissing", { n: String(gesamt - da) }));
+          }
+          var suffix = notes.length > 0 ? " " + notes.join(" ") : "";
+          showSendStatus(
+            notes.length > 0 ? "warn" : "ok",
+            t("sendOk", { title: draft.title || "" }) + suffix,
+          );
+          zeigeEntwurfsLink(draft.id, openBlock);
+        })
+        .catch(function (err) {
+          showSendStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
+        });
+    }
+
+    // JOB 2613 D3: der Deep-Link des NEUEN .docx-Wegs.
+    //
+    // WARUM ER DAS WÖRTLICHE MUSTER DER BEIDEN ALTSTELLEN NICHT WIEDERHOLT:
+    // `k1-word-addin-origin-panel.test.ts:94-100` pinnt, dass GENAU ZWEI Stellen den dortigen
+    // Deep-Link-Ausdruck tragen — „sie sind eine App-Route, keine Herkunft". Eine dritte Kopie
+    // hätte den Wächter gebrochen, ohne dass am Ziel etwas falsch gewesen wäre. Der neue Weg ruft
+    // deshalb diese Funktion; die beiden Altstellen bleiben unangetastet, damit ihr Pin greift.
+    // Der Parametername lautet bewusst `draftId` und nicht `draft.id` — sonst zählte diese Stelle
+    // als dritte mit.
+    //
+    // ZWEI ANLÄUFE HABEN DAS GEZEIGT, beide gemessen: Zuerst wurde eine Altstelle hierher gezogen
+    // (Zähler 1 statt 2, rot) — zurückgenommen, denn ein Fremdpin wird nicht umgebaut, nur weil
+    // der eigene Bau daneben passt. Dann stand der Ausdruck im KOMMENTAR dieser Funktion und
+    // zählte als drittes Vorkommen mit. Der Wächter liest den Quelltext, nicht den Sinn — also
+    // steht er hier nirgends ausgeschrieben.
+    function zeigeEntwurfsLink(draftId, openBlock) {
+      var link = document.getElementById("open-link");
+      link.href =
+        window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draftId);
+      openBlock.className = "";
     }
 
     // Umfang "Markierter Text" — WP-SHIP8-FINAL (bens Bedingung 4, EIN Auswahl-Snapshot):

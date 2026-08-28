@@ -1,4 +1,14 @@
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+// JOB 2613 D3: DER DOM-FREIE DOCX-KERN, serverseitig genutzt. Der Pfad zeigt bewusst in
+// `apps/web/src/lib` und nicht auf eine Kopie: `docx.ts` ist ausdrücklich DOM-frei gebaut
+// (`docx.ts:1-4`), und `mammoth` löst NUR von dort aus auf (`apps/web/package.json:23`; im
+// Wurzelpaket fehlt es — gemessen in JOB 2613 D3). Eine Kopie hier wäre ein zweiter
+// Extraktionsweg und damit genau der Ablösefall, den Weg B vermeidet.
+import {
+  MAX_INLINE_BODY_HTML_BYTES,
+  extractDocxRich,
+  isDocxDocumentLike,
+} from "../../../../apps/web/src/lib/docx";
 import {
   type CaptureService,
   type Draft,
@@ -56,6 +66,78 @@ async function requireVisibleDraft(
 // requireAuthedBeforeParse) — ein anonymer Request wird mit 401 abgewiesen, BEVOR bis zu 5 MiB Body
 // gelesen/geparst werden. 5 MiB ist ohnehin eine kleine Fläche; die Abwägung ist bewusst konservativ.
 export const DRAFTS_BODY_LIMIT = 5 * 1024 * 1024; // 5 MiB
+
+// ================================================================================================
+// JOB 2613 D3 — DIE GANZE DATEI STATT DES HTML (Station 1 des Pedi-Pfads).
+// ================================================================================================
+//
+// DER BEFUND, der diese Route nötig macht (Pedi hat es selbst geprüft, Panel-Stand 2026-08-28
+// 01:41Z): „Wissen erfassen" überträgt KEINE Bilder. Der heutige Panelweg liest `body.getHtml()`
+// — HTML OHNE Bildbytes — und holt die Bilder danach EINZELN über `body.inlinePictures` nach
+// (`taskpane.html:3601-3619`). Genau dieses Nachholen liefert bei Pedi nichts.
+//
+// DER WEG: Das Panel holt stattdessen die GANZE `.docx` (`getFileAsync`, ein Zip MIT den Bildern)
+// und schickt sie hierher. Diese Route verwandelt sie mit DEMSELBEN Kern, den der Konsolenweg
+// nutzt (`extractDocxRich`), in `bodyHtml` — mammoth bettet die Bilder als `data:image` ein.
+//
+// WARUM DERSELBE KERN, und nicht ein zweiter: `docx.ts` ist ausdrücklich DOM-frei gebaut
+// (`apps/web/src/lib/docx.ts:1-4`: „damit dieses Modul auch im Node-/Root-Typecheck und in Tests
+// ohne DOM-lib geprüft werden kann"). Ein zweiter Extraktionsweg wäre ein Ablösefall — hier gibt
+// es keinen: Konsole und Panel laufen ab jetzt durch dieselbe Funktion.
+//
+// DIE MODULAUFLÖSUNG IST DER GRUND FÜR DEN IMPORTPFAD, und sie ist gemessen (JOB 2613 D3,
+// `machbarkeit.mjs`): `mammoth` steht in `apps/web/package.json`, NICHT im Wurzelpaket.
+//     resolve("mammoth") von `apps/web/src/lib/docx.ts` aus  → gefunden
+//     resolve("mammoth") von `services/app/src/routes/…` aus → MODULE_NOT_FOUND
+// Node löst `import` relativ zur importierenden Datei auf. Deshalb MUSS der Aufruf über `docx.ts`
+// laufen; ein `import("mammoth")` hier im Serverpaket schlüge fehl. Wer diesen Import „aufräumt",
+// bricht die Bildübernahme.
+export const DOCX_DRAFT_BODY_LIMIT = 30 * 1024 * 1024; // 30 MiB
+
+// Die Grenze ist an `/api/objects` angelehnt (`object-routes.ts:59`, ebenfalls 30 MiB) und NICHT
+// an `/api/drafts` (5 MiB): Eine `.docx` mit vielen Bildern ist das Original samt Bildbytes und
+// sprengt die kleinere Grenze. Der Auth-Guard läuft wie dort VOR dem Body-Parsing.
+export const DOCX_DRAFT_TOO_LARGE = "DOCX_DRAFT_TOO_LARGE";
+
+const DOCX_DRAFT_TOO_LARGE_MESSAGE =
+  "Das Dokument ist zu gross fuer die Uebernahme. Es wurde kein Entwurf angelegt und keine Bilder wurden uebernommen. Bitte das Dokument verkleinern oder in Teilen uebernehmen.";
+
+// Derselbe enge Zuschnitt wie bei `/api/drafts`: NUR der Cap-Bruch wird übersetzt, jeder andere
+// Fehler geht unverändert an Fastify zurück.
+function docxDraftTooLargeErrorHandler(
+  error: FastifyError,
+  _request: FastifyRequest,
+  reply: FastifyReply,
+): void {
+  if (error.code !== "FST_ERR_CTP_BODY_TOO_LARGE") {
+    reply.send(error);
+    return;
+  }
+  reply.code(413).send({
+    error: DOCX_DRAFT_TOO_LARGE,
+    message: DOCX_DRAFT_TOO_LARGE_MESSAGE,
+    draftCreated: false,
+    imageTransfer: "not_completed",
+  });
+}
+
+/** Was das Panel schickt: die `.docx` als Base64 plus die Angaben, die es ohnehin kennt. */
+export interface DocxDraftRequest {
+  /** Dateiname, für Titel und Formatprüfung. */
+  name?: string;
+  /** Die `.docx`-Bytes, Base64-kodiert. */
+  data: string;
+  /** Titelvorschlag des Panels; ohne ihn wird der Dateiname genommen. */
+  title?: string;
+}
+
+// Der Bildzähler zählt EINZELNE eingebettete Bilder — `data:image/…;base64,` je `<img>`. Er zählt
+// nicht `<img>`-Tags: ein `<img src="https://…">` wäre kein übernommenes Bild.
+const EINGEBETTETES_BILD = /<img[^>]+src="data:image\/[a-zA-Z0-9.+-]+;base64,/g;
+
+export function zaehleEingebetteteBilder(html: string): number {
+  return html.match(EINGEBETTETES_BILD)?.length ?? 0;
+}
 
 // JOB 511 (schliesst den SERVERANTEIL von R5 aus JOB 506) — DIE ABLEHNUNG SAGT, WAS VERLOREN GING.
 //
@@ -171,6 +253,90 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         }
         try {
           reply.code(201).send(await capture.createDraft(request.body, user.id));
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
+
+    // ==========================================================================================
+    // JOB 2613 D3 · POST /api/drafts/from-docx — die ganze Datei statt des HTML.
+    // ==========================================================================================
+    //
+    // Nimmt die `.docx`-Bytes, verwandelt sie mit `extractDocxRich` (DERSELBE Kern wie der
+    // Konsolenweg) in `bodyHtml` mit eingebetteten Bildern und legt darüber den Entwurf an.
+    //
+    // Die Antwort nennt die Bildzahl AUSDRÜCKLICH (`imagesEmbedded`), damit das Panel eine
+    // ehrliche Meldung zeigen kann und nicht raten muss — „(n Bilder)" statt „fertig".
+    app.post<{ Body: DocxDraftRequest }>(
+      "/api/drafts/from-docx",
+      {
+        bodyLimit: DOCX_DRAFT_BODY_LIMIT,
+        onRequest: requireAuthedBeforeParse,
+        errorHandler: docxDraftTooLargeErrorHandler,
+      },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        const { name, data, title } = request.body ?? ({} as DocxDraftRequest);
+        if (typeof data !== "string" || data.length === 0) {
+          reply
+            .code(400)
+            .send({ error: "BAD_REQUEST", message: "Es wurden keine Dokumentbytes uebergeben." });
+          return;
+        }
+        // Nur `.docx`. Das alte Binärformat `.doc` liest mammoth nicht — eine ehrliche Absage ist
+        // besser als ein leerer Entwurf.
+        if (typeof name === "string" && name.length > 0 && !isDocxDocumentLike({ name })) {
+          reply.code(415).send({
+            error: "UNSUPPORTED_MEDIA_TYPE",
+            message: "Nur .docx wird uebernommen. Es wurde kein Entwurf angelegt.",
+          });
+          return;
+        }
+        try {
+          const bytes = Buffer.from(data, "base64");
+          const puffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+          // Das Budget ist dasselbe wie im Konsolenweg (`docx.ts:379`): Bilder, die nicht mehr
+          // hineinpassen, werden EHRLICH gezählt statt still verschluckt.
+          const reich = await extractDocxRich(puffer as ArrayBuffer, {
+            imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
+          });
+          const bodyHtml = reich.html;
+          const eingebettet = zaehleEingebetteteBilder(bodyHtml);
+          // WELCHE ZAHL DIE QUELLBILDER NENNT — und warum NICHT `reich.totalImages`:
+          // Jenes Feld ist „aus Rueckwaertskompatibilitaet an den Budgetlauf gebunden"
+          // (`docx.ts:657-658`) und bleibt 0, wenn ohne `mapImage` extrahiert wird. Der Vertrag
+          // `imageTransfer` dagegen „zaehlt IMMER ehrlich" (ebenda).
+          //
+          // GEMESSEN, nicht gelesen (JOB 2613 D3, erster Testlauf): Bei einer .docx mit ZWEI
+          // Bildern meldete `reich.totalImages` **0**, `reich.imageTransfer.totalImages` **2**.
+          // Wer hier das falsche Feld nimmt, meldet dem Nutzer einen Bildverlust, den es nicht
+          // gibt — oder verschweigt einen echten. Der Test W1 pinnt genau diese Wahl.
+          const quellbilder = reich.imageTransfer.totalImages;
+          // `exactOptionalPropertyTypes`: ein Feld fehlt entweder ganz oder trägt einen Wert —
+          // ein ausdrückliches `undefined` ist hier ein Typfehler.
+          const titelVorschlag = title ?? name?.replace(/\.docx$/i, "");
+          const payload: DraftPayload = {
+            ...(titelVorschlag ? { title: titelVorschlag } : {}),
+            statement: reich.text,
+            bodyHtml,
+            origin: "word_addin",
+            // JOB 512 (R5): die Zahl der Bilder in der QUELLDATEI, vor jedem Budgetabzug. Der
+            // Client entscheidet damit fail-closed, ob etwas verloren ging.
+            sourceImageCount: quellbilder,
+          };
+          const draft = await capture.createDraft(payload, user.id);
+          reply.code(201).send({
+            ...draft,
+            // Die Bildbilanz reist mit der Antwort, nicht nur im Entwurf: das Panel meldet damit
+            // „(n Bilder)", und ein Verlust ist an Ort und Stelle sichtbar.
+            imagesEmbedded: eingebettet,
+            imagesTotal: quellbilder,
+            imagesDropped: reich.imageTransfer.droppedImageBudget,
+          });
         } catch (error) {
           sendError(reply, error);
         }

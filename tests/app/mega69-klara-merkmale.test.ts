@@ -150,7 +150,36 @@ function m6FremdeZiele(src: string): string[] {
 //
 // AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Antwortet ein älterer
 // Server den Kopf nicht, bleibt die Zeile ehrlich bei „Abgleich nicht möglich" — nie bei „aktuell".
-const BEKANNTE_ABRUFZIELE = 10;
+// ================================================================================================
+// JOB 2613 D3 — DIE BEWUSSTE ANTWORT ZUM ELFTEN ABRUFZIEL (10 → 11).
+// ================================================================================================
+//
+// Auch diese Zahl wird nicht „nachgezogen", weil ein Test rot war. M7 stellt die Frage, für die er
+// gebaut ist — „CSP? Recht? Manifest?" —, und hier steht die Antwort, bevor die Zahl steigt.
+//
+// DAS NEUE ZIEL: `POST /api/drafts/from-docx` (`sendeDocxDatei`). Es schickt die GANZE `.docx` an
+// den eigenen Server, statt Bilder einzeln über `inlinePictures` nachzuholen. Der Grund ist Pedis
+// eigener Befund (Panel-Stand 2026-08-28 01:41Z): Auf dem alten Weg kam bei ihm KEIN Bild an.
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt die eigene Adresse; es kommt kein Ursprung
+//               hinzu — dieselbe Herkunft, die das Panel ohnehin für `/api/drafts` nutzt.
+//   · Recht:    keines zusätzlich. Die Route verlangt `ko.create` wie `POST /api/drafts` und prüft
+//               die Anmeldung VOR dem Body-Parsing (`capture-routes.ts`, `requireAuthedBeforeParse`).
+//               Eingetragen in der RBAC-Matrix (`tests/security/routeGuardAudit.ts`) und im
+//               Lesewege-Register (`tests/security/mega74-lesewege-sammler.test.ts`).
+//   · Manifest: UNVERÄNDERT — und das ist der heikelste Punkt. `getFileAsync` gehört zum
+//               Requirement-Set „File 1.1", das Manifest nennt nur `WordApi 1.1`
+//               (`klara-manifest.xml:33-37`). Es wird NICHT erweitert: das erzwänge eine
+//               Neuinstallation durch Pedi, und das ist seine Entscheidung. Stattdessen
+//               Laufzeitversuch mit Rückfall auf den heutigen Weg.
+//   · Nutzlast: die `.docx` als Base64. Deutlich grösser als die bisherigen Aufrufe — deshalb hat
+//               die Route ein eigenes Limit von 30 MiB (wie `/api/objects`), nicht die 5 MiB von
+//               `/api/drafts`.
+//   · Frequenz: einmal je Sendevorgang mit Umfang „Ganzes Dokument". Kein Intervall.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload nötig, um den ALTEN Weg
+// weiter zu nutzen. Fehlt „File 1.1" auf dem Host, greift der Rückfall und alles bleibt wie heute.
+const BEKANNTE_ABRUFZIELE = 11;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }
@@ -207,12 +236,22 @@ describe("JOB 537 D4 · Merkmalsvertrag: die tragenden Eigenschaften von taskpan
     );
   });
 
-  it("M5: die zwei Deep-Link-Routen sind unversehrt geblieben", () => {
+  it("M5: die Deep-Link-Routen sind unversehrt geblieben", () => {
+    // JOB 2613 D3: von zwei auf DREI Stellen — und die Sache dahinter ist unverändert.
+    // Was M5 schützt, ist die ROUTE: dass `/capture/frontdoor?draft=` eine App-Route bleibt und
+    // nicht von einem Suchen-und-Ersetzen auf „frontdoor" zur Herkunft umgeschrieben wird
+    // (JOB 660 D3). Die dritte Stelle ist `zeigeEntwurfsLink` — der Deep-Link des neuen
+    // `.docx`-Sendewegs, der auf DASSELBE Ziel zeigt wie die beiden anderen.
+    //
+    // WARUM NICHT AUF EINE STELLE ZUSAMMENGEFÜHRT: Die beiden Altstellen tragen zusätzlich den
+    // Ausdruck mit `draft.id`, den `k1-word-addin-origin-panel.test.ts:94-100` mit GENAU ZWEI
+    // pinnt. Ein Zusammenführen hätte jenen Wächter gebrochen — gemessen, nicht vermutet
+    // (JOB 2613 D3, erster Anlauf: dort stand 1 statt 2, und der Test war rot).
     expect(
       m5DeepLinks(quelle()),
       "Die Entwurf-fortsetzen-Routen fehlen. Genau sie hätte ein Suchen-und-Ersetzen auf " +
         "„frontdoor“ mit erwischt (JOB 660 D3).",
-    ).toBe(2);
+    ).toBe(3);
   });
 
   it("M6: KEIN Abrufziel verlässt den eigenen Ursprung", () => {
@@ -270,9 +309,12 @@ describe("JOB 537 D4 · Kalibrierung: jedes Merkmal wird an seiner eigenen Verf�
   });
 
   it("K5: zerstört ein Suchen-und-Ersetzen eine Deep-Link-Route, schlägt M5 an", () => {
+    // `String.replace` mit einem Textmuster trifft das ERSTE Vorkommen. Von den drei Stellen
+    // (JOB 2613 D3) bleiben danach zwei — M5 erwartet drei und schlägt an. Genau das ist die
+    // Kalibrierung: der Wächter merkt es, wenn EINE Route zur Herkunft umgeschrieben wird.
     expect(
       m5DeepLinks(src.replace('"/capture/frontdoor?draft="', '"/capture/word_addin?draft="')),
-    ).toBe(1);
+    ).toBe(2);
   });
 
   it("K6: ein fremder Ursprung im Abruf schlägt M6 an", () => {

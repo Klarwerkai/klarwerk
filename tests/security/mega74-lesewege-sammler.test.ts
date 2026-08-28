@@ -419,6 +419,10 @@ const REGISTER: Record<string, Eintrag> = {
     "DELETE /api/kos/trash/:id": "users.manage.",
     "PUT /api/upload-limits": "users.manage.",
     "POST /api/drafts": "eigener Entwurf.",
+    // JOB 2613 D3: die .docx-Uebernahme legt einen EIGENEN Entwurf an (`user.id` aus der Anmeldung)
+    // und liest nichts aus dem Bestand — die Bytes kommen vom Aufrufer selbst. Sie traegt damit
+    // keinen fremden Wissensinhalt hinaus.
+    "POST /api/drafts/from-docx": "eigener Entwurf.",
     "PUT /api/drafts/:id": "eigener Entwurf.",
     "DELETE /api/drafts/:id": "eigener Entwurf.",
     "POST /api/drafts/:id/promote": "eigener Entwurf → eigenes KO.",

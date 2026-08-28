@@ -322,6 +322,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   // --- Capture/Drafts (capture-routes.ts) ---
   "GET /api/drafts": { protection: "ko.create" },
   "POST /api/drafts": { protection: "ko.create" },
+  // JOB 2613 D3 (Station 1 des Pedi-Pfads): die .docx-Uebernahme. Dasselbe Recht wie die uebrigen
+  // Entwurfsrouten — sie legt einen Entwurf an, nur aus anderen Bytes. Der Auth-Guard laeuft wie
+  // bei `POST /api/drafts` VOR dem Body-Parsing (`onRequest: requireAuthedBeforeParse`), was hier
+  // schwerer wiegt: die Parser-Flaeche ist mit 30 MiB groesser als die 5 MiB der Nachbarroute.
+  "POST /api/drafts/from-docx": { protection: "ko.create" },
   "GET /api/drafts/:id": { protection: "ko.create" },
   // JOB 1171 D1: die ableitende Auskunft. Dasselbe Recht und derselbe Torwaechter wie die
   // uebrigen Entwurfsrouten (`requireVisibleDraft`) — sie liest denselben Entwurf.

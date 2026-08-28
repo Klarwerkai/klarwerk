@@ -724,7 +724,35 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Aenderungen per 3-Wege-Merge zusammen (0 Konfliktmarker); der Wert unten ist der Hash der
     // zusammengefuehrten Datei: Trimmer aus 2613 D1 plus Versionsspiegel aus 1ac6979, sonst nichts.
     // Der Wert 9a886961… aus der Rueckgabe beschreibt den Klonstand ohne den Versionsspiegel.
-    const PIN = "991c3633e1b90de5af2f8b1d00d05e033f23ea8837afa3dd73aa9bfc850ba966";
+    //
+    // ==========================================================================================
+    // JOB 2613 D3 — NACHGEZOGEN. Die Auslieferungsfolgen, bewusst geprueft:
+    // ==========================================================================================
+    //   · WAS DAZUKAM: der `.docx`-Sendeweg fuer den Umfang „Ganzes Dokument". `getFileAsync` holt
+    //     die ganze Datei in Scheiben, `POST /api/drafts/from-docx` verwandelt sie serverseitig.
+    //     Grund: Der bisherige Weg holt Bilder EINZELN ueber `inlinePictures` nach — bei Pedi kam
+    //     dabei kein einziges an (sein eigener Test, Panel-Stand 2026-08-28 01:41Z).
+    //   · WAS SICH FUER EIN INSTALLIERTES ADD-IN AENDERT: nichts ohne erneutes Ausliefern. Und
+    //     wenn ausgeliefert wird, greift zuerst der LAUFZEITVERSUCH — `getFileAsync` gehoert zum
+    //     Requirement-Set „File 1.1", das Manifest nennt nur `WordApi 1.1`. Fehlt die Faehigkeit,
+    //     laeuft exakt der heutige Weg weiter, mit seinen ehrlichen Meldungen. Kein stiller
+    //     Abbruch, kein leerer Entwurf, KEINE Manifestaenderung.
+    //   · WAS UNBERUEHRT BLEIBT: der Weg „Markierter Text" (unveraendert `readSelection`), beide
+    //     Deep-Link-Altstellen (`k1-word-addin-origin-panel.test.ts` zaehlt weiterhin genau zwei),
+    //     die Herkunft `word_addin`, alle vorhandenen Meldungstexte. Der neue Weg ERFINDET keine
+    //     Meldung, sondern nutzt `sendImagesMissing`, wenn weniger Bilder ankommen als in der
+    //     Quelle standen.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: der Server prueft wie zuvor Anmeldung VOR dem
+    //     Body-Parsing und `ko.create` im Handler; die neue Route ist in der RBAC-Matrix
+    //     (`routeGuardAudit.ts`) und im Lesewege-Register (`mega74-lesewege-sammler.test.ts`)
+    //     eingetragen, nicht ausgenommen.
+    //
+    // PIN-NACHFUEHRUNG BEIM EINBAU (CHEF, 28.08. 15:20, JOB 2613 D3-D5). Der Klon stand auf 081f60f;
+    // das Produkt trug taskpane.html bereits mit Trimmer (2613 D1) und Versionsspiegel (1ac6979),
+    // Pin 991c3633…. Der Einbau fuehrt den .docx-Sendeweg aus D3 per 3-Wege-Merge dazu (0 Marker);
+    // der Wert unten ist der Hash der zusammengefuehrten Datei. dc01023a… aus der Rueckgabe
+    // beschreibt den Klonstand ohne Trimmer und Versionsspiegel.
+    const PIN = "4b10d1e143ed88226d484d5c6557c6129db6768339a3dc5f9106a5bd62222931";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
