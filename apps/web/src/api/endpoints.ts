@@ -71,6 +71,7 @@ import type {
   ReasonerStatus,
   ReviewAction,
   Role,
+  Sichtmetrik,
   SlideConvertResponse,
   StructureResult,
   TrashedKo,
@@ -593,6 +594,12 @@ export const endpoints = {
     progress: (pathId: string) => api.get<string[]>(`/learning-paths/${pathId}/progress`),
     complete: (pathId: string, stepId: string) =>
       api.post<string[]>(`/learning-paths/${pathId}/complete`, { stepId }),
+  },
+  // JOB 2600 D1: die Themenkarte reist auf der BESTEHENDEN Wissensnetz-Route mit — sie ist Teil
+  // der Sichtmetrik (`services/wissensnetz`). Kein neuer Endpunkt und keine zweite Lesequelle:
+  // dieselbe Route, dieselbe Rechte-Naht, derselbe getrimmte Bestand.
+  wissensnetz: {
+    luecken: () => api.get<Sichtmetrik>("/wissensnetz/luecken"),
   },
   library: {
     graph: () => api.get<Graph>("/graph"),

@@ -29,6 +29,7 @@ import { Start } from "./pages/Start";
 import { Capital, GraphView, ImportReview, Output } from "./pages/Stufe2";
 import { UiKit } from "./pages/UiKit";
 import { Validation } from "./pages/Validation";
+import { Wissensnetz } from "./pages/Wissensnetz";
 
 function DuplicateComparePage(): JSX.Element {
   return <DuplicateCompare kind="duplicate" />;
@@ -61,6 +62,8 @@ const PAGES: Record<string, ComponentType> = {
   output: Output,
   import: ImportReview,
   graph: GraphView,
+  // JOB 2600 D1: die Themenkarte auf der bestehenden Oberflaeche.
+  wissensnetz: Wissensnetz,
   kapital: Capital,
   hilfe: Help,
   profil: Profile,

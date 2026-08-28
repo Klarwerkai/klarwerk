@@ -1116,8 +1116,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     const diagnose =
       `gemessen: ${komponenten} Komponenten · ${anbieter} Anbieter · ${traeger} Traeger` +
       ` · Grundmenge ${ALLE_QUELLEN.length} Quelldateien · cwd ${WURZEL}`;
+    // JOB 2600 D1: `komponenten` von 246 auf 249 NACHGEZOGEN. Die neue Seite
+    // `apps/web/src/pages/Wissensnetz.tsx` bringt GENAU DREI Komponenten mit — `Karte`,
+    // `AlleThemen` und `Wissensnetz` selbst.
+    //
+    // WARUM DAS DIE AUFLAGE NICHT VERLETZT: Die Entscheidung bindet die Umstellung an „vorher wie
+    // nachher" — sie verbietet, dass eine UMSTELLUNG die Erhebung verschiebt, nicht, dass der
+    // Quellbaum waechst. Die beiden Zahlen, an denen Stufe 2 wirklich haengt, sind unveraendert:
+    // `anbieter` 1 und `traeger` 2. Die Themenkarte bietet keine Bildbeschreibung an und traegt
+    // keinen eigenen Titel — sie erscheint nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 246,
+      komponenten: 249,
       anbieter: 1,
       traeger: 2,
     });

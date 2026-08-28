@@ -42,3 +42,23 @@ export type { Betrachter } from "./src/policy-naht";
 // C1 und C2 bleiben woertlich gruen — nachgemessen in D2.
 export { wissensnetzMetrikFuer } from "./src/luecken-einstieg";
 export { policyNahtSchliessen } from "./src/policy-naht";
+
+// ================================================================================================
+// JOB 2600 · D1 — DIE ERGEBNISTYPEN DER THEMENKARTE, UND KEINE FUNKTION.
+// ================================================================================================
+//
+// Hier stehen ausschliesslich TYPEN, und zwar Ergebnistypen. Die Enge oben bleibt woertlich
+// unberuehrt: `themenkarte()` selbst steht NICHT im Index — wer eine getrimmte Menge besitzt, soll
+// sie nicht selbst auswerten koennen, genau wie bei `sichtmetrik`. Aus einem `Themenknoten` laesst
+// sich keine Sicht rekonstruieren; er traegt einen Namen, eine Zahl sichtbarer Traeger und eine
+// Farbe.
+//
+// Warum ueberhaupt exportiert: Der Client braucht die Form, um sie zu zeichnen. Ohne sie muesste
+// `apps/web` die Felder nachbauen — die zweite Wahrheit, diesmal an der Anzeigegrenze.
+export type { Themenfarbe, Themenkante, Themenkarte, Themenknoten } from "./src/themenkarte";
+export {
+  KANTEN_JE_KNOTEN,
+  THEMEN_KNOTEN_DECKEL,
+  UBIQUITY_MAX_SHARE,
+  UBIQUITY_MIN_COUNT,
+} from "./src/themenkarte";

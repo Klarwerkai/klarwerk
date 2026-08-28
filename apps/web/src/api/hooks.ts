@@ -147,6 +147,9 @@ export const useImportAccessConfluence = (enabled = true) =>
     retry: false,
   });
 export const useAudit = () => useQuery({ queryKey: ["audit"], queryFn: endpoints.audit.list });
+// JOB 2600 D1: die Themenkarte kommt als Teil der Sichtmetrik — eine Route, eine Rechte-Naht.
+export const useWissensnetz = () =>
+  useQuery({ queryKey: ["wissensnetz", "luecken"], queryFn: endpoints.wissensnetz.luecken });
 export const useLifecyclePending = () =>
   useQuery({ queryKey: ["lifecycle", "pending"], queryFn: endpoints.lifecycle.pending });
 export const useLearningPath = (role: string) =>

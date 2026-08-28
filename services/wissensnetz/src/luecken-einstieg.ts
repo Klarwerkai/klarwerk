@@ -37,6 +37,12 @@ export async function wissensnetzLuecken<K extends WissensnetzKo>(
   const sicht = await lesemodell.sicht({
     sichtbar,
     mitVerknuepfung: true,
+    // JOB 2600 D1: Die Themenkarte reist auf DIESEM Weg — durch dieselbe Naht, dieselbe Policy,
+    // dieselbe getrimmte Menge. Sie bekommt bewusst KEINEN eigenen Einstieg und KEINE eigene
+    // Route: eine zweite Lesequelle waere genau das, was Codex' Auflage verbietet, und ein
+    // zweiter Weg an dieser Naht vorbei waere die zweite Wahrheit, gegen die dieses Modul gebaut
+    // ist. Wer die Metrik lesen darf, sieht die Karte desselben Bestands.
+    mitThemenkarte: true,
     ...(opts.deckel !== undefined ? { deckel: opts.deckel } : {}),
   });
   return sichtmetrik(sicht);

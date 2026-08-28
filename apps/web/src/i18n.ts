@@ -29,6 +29,39 @@ const de = {
   "nav.capture": "Wissen erfassen",
   "nav.ask": "Fragen",
   "nav.library": "Bibliothek",
+  // JOB 2600 D1 — die Themenkarte.
+  "nav.wissensnetz": "Themenkarte",
+  "wissensnetz.kicker": "Wissensnetz",
+  "wissensnetz.title": "Themenkarte",
+  "wissensnetz.karte.label": "Themen und ihre Überschneidungen",
+  "wissensnetz.karte.alt": "Themenkarte mit {{count}} Themen",
+  "wissensnetz.knoten.alt": "{{thema}} — {{count}} Wissensobjekte anzeigen",
+  "wissensnetz.farbe.belegt": "freigegeben und belegt",
+  "wissensnetz.farbe.freigegeben": "freigegeben, ohne Quelle",
+  "wissensnetz.farbe.offen": "noch nicht freigegeben",
+  // JOB 2600 D4 · BENs Auflage zu D3: „Fassung A ist nicht für alle Zustände wahr." Der alte Satz
+  // lautete „kommt fast überall vor und verbindet deshalb nichts" und stand IMMER da — auch wenn
+  // kein einziger Knoten gestrichelt war, und auch bei einem Anteil von 51 %, wo „fast überall"
+  // schlicht falsch ist. Jetzt gilt: je Zustand ein eigener Satz, und jeder ist für seinen Zustand
+  // wahr. Die Regel selbst (>50 % des sichtbaren Bestands, mindestens 5 Träger) steht in
+  // `themenkarte.ts:72-73`; „Mehrheit" ist ihre wortgetreue Wiedergabe — keine Prozentanzeige (§4).
+  "wissensnetz.legende.ubiquitaer":
+    "Gestrichelt umrandet: kommt in der Mehrheit des sichtbaren Bestands vor und bekommt deshalb keine Kanten.",
+  // Der Zustand, in dem die Karte ÜBERHAUPT keine Kante trägt. Ohne diesen Satz läse ein Mensch
+  // die Strichelung als Grund — dabei verbindet hier nichts irgendetwas.
+  "wissensnetz.legende.keineKanten":
+    "In diesem Bestand teilt kein freigegebenes Wissensobjekt zwei dieser Themen — deshalb sind keine Linien zu sehen.",
+  // JOB 2600 D7 · Der ZWEITE Grund für eine leere Kantenliste, und der Satz, der ihn wahr sagt.
+  // Bis D5 stand hier nur der Satz darüber — auch dann, wenn es den gemeinsamen Träger sehr wohl
+  // gab und nur die Ubiquitätsregel die Linie verhindert hat. In diesem Zustand log er, und ein
+  // Mensch schloss auf „hier hängt nichts zusammen". Dieser Satz behauptet ausschließlich, was
+  // `unterdruecktDurchUbiquitaet > 0` belegt: dass es den Träger gibt und was die Linie verhindert.
+  // „Mehrheit" ist die wortgetreue Wiedergabe von `UBIQUITY_MAX_SHARE` — keine Prozentanzeige (§4).
+  "wissensnetz.legende.kantenUnterdrueckt":
+    "Ein freigegebenes Wissensobjekt verbindet hier zwei Themen — aber mindestens eines davon kommt in der Mehrheit des sichtbaren Bestands vor und bekommt deshalb keine Linien.",
+  "wissensnetz.alle.schalter": "Alle Themen ({{count}} weitere)",
+  "wissensnetz.alle.abgeschnitten": "Die Liste ist gekürzt.",
+  "wissensnetz.leer": "Zu diesem Bestand sind keine Schlagwörter vergeben.",
   "nav.external": "Externes Wissen",
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
@@ -4795,6 +4828,24 @@ const en: typeof de = {
   "nav.capture": "Capture Knowledge",
   "nav.ask": "Ask",
   "nav.library": "Library",
+  "nav.wissensnetz": "Topic map",
+  "wissensnetz.kicker": "Knowledge network",
+  "wissensnetz.title": "Topic map",
+  "wissensnetz.karte.label": "Topics and where they overlap",
+  "wissensnetz.karte.alt": "Topic map with {{count}} topics",
+  "wissensnetz.knoten.alt": "{{thema}} — show {{count}} knowledge objects",
+  "wissensnetz.farbe.belegt": "released and sourced",
+  "wissensnetz.farbe.freigegeben": "released, no source",
+  "wissensnetz.farbe.offen": "not released yet",
+  "wissensnetz.legende.ubiquitaer":
+    "Dashed outline: appears in the majority of the visible stock and therefore gets no edges.",
+  "wissensnetz.legende.keineKanten":
+    "In this stock no released knowledge object shares two of these topics — that is why no lines are shown.",
+  "wissensnetz.legende.kantenUnterdrueckt":
+    "A released knowledge object does link two topics here — but at least one of them appears in the majority of the visible stock and therefore gets no lines.",
+  "wissensnetz.alle.schalter": "All topics ({{count}} more)",
+  "wissensnetz.alle.abgeschnitten": "This list is shortened.",
+  "wissensnetz.leer": "No keywords are assigned in this stock.",
   "nav.external": "External knowledge",
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
@@ -8976,6 +9027,24 @@ const nl: typeof de = {
   "nav.capture": "Kennis vastleggen",
   "nav.ask": "Vragen",
   "nav.library": "Bibliotheek",
+  "nav.wissensnetz": "Themakaart",
+  "wissensnetz.kicker": "Kennisnetwerk",
+  "wissensnetz.title": "Themakaart",
+  "wissensnetz.karte.label": "Thema's en hun overlap",
+  "wissensnetz.karte.alt": "Themakaart met {{count}} thema's",
+  "wissensnetz.knoten.alt": "{{thema}} — {{count}} kennisobjecten tonen",
+  "wissensnetz.farbe.belegt": "vrijgegeven en onderbouwd",
+  "wissensnetz.farbe.freigegeben": "vrijgegeven, zonder bron",
+  "wissensnetz.farbe.offen": "nog niet vrijgegeven",
+  "wissensnetz.legende.ubiquitaer":
+    "Gestippelde rand: komt voor in de meerderheid van de zichtbare verzameling en krijgt daarom geen verbindingen.",
+  "wissensnetz.legende.keineKanten":
+    "In deze verzameling deelt geen enkel vrijgegeven kennisobject twee van deze thema's — daarom zijn er geen lijnen te zien.",
+  "wissensnetz.legende.kantenUnterdrueckt":
+    "Een vrijgegeven kennisobject verbindt hier wel twee thema's — maar minstens één daarvan komt voor in de meerderheid van de zichtbare verzameling en krijgt daarom geen lijnen.",
+  "wissensnetz.alle.schalter": "Alle thema's ({{count}} meer)",
+  "wissensnetz.alle.abgeschnitten": "Deze lijst is ingekort.",
+  "wissensnetz.leer": "In deze verzameling zijn geen trefwoorden toegekend.",
   "nav.external": "Externe kennis",
   "nav.validation": "Validatie",
   "nav.conflicts": "Conflicten",

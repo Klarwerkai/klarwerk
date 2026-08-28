@@ -3818,7 +3818,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 // BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — 400 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — 401 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
     // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
@@ -3837,12 +3837,17 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/lib/titelRangfolge.ts
     //
+    // JOB 2600 D1: von 400 auf 401 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
+    // dazugekommen, und sie traegt die Themenkarte aus der Abnahme vom 27.08.:
+    //
+    //     + apps/web/src/pages/Wissensnetz.tsx
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 400: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts",
-    ).toBe(400);
+      "erwartet 401: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx",
+    ).toBe(401);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

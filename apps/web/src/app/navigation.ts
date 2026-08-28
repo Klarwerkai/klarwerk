@@ -145,6 +145,19 @@ export const NAV_GROUPS: NavGroup[] = [
         shot: "07",
       },
       {
+        // JOB 2600 D1: die Themenkarte. Sie steht neben der Bibliothek, weil sie derselbe Bestand
+        // aus der Vogelperspektive ist — und der Klick auf einen Knoten fuehrt genau dorthin
+        // zurueck (`/bibliothek?tag=…`). `viewer` wie die Bibliothek: die Route dahinter verlangt
+        // `ko.read`, und der Bestand ist bereits fuer diesen Betrachter getrimmt.
+        id: "wissensnetz",
+        path: "/wissensnetz",
+        labelKey: "nav.wissensnetz",
+        icon: Share2,
+        minRole: "viewer",
+        section: "7.10",
+        shot: "07",
+      },
+      {
         id: "extern",
         path: "/extern",
         labelKey: "nav.external",

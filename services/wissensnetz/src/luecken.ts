@@ -19,6 +19,7 @@
 // beschreiben, was sichtbar war — und kein Wort darueber, was das bedeutet. Jedes Feld sagt im
 // Namen, dass es sich auf das SICHTBARE bezieht.
 import type { WissensnetzSicht } from "./lesemodell-ports";
+import type { Themenkarte } from "./themenkarte";
 
 /** Was von einem Thema sichtbar war. Keine Bewertung — nur Ablesung. */
 export interface ThemenMetrik {
@@ -51,6 +52,15 @@ export interface Sichtmetrik {
   /** Verschiedene sichtbare Beitragende insgesamt. */
   readonly sichtbareBeitragendeGesamt: number;
   readonly themen: readonly ThemenMetrik[];
+  /**
+   * JOB 2600 D1 — die Themenkarte dieses Betrachters. Sie ist eine ABLESUNG wie alles andere hier:
+   * Knoten mit Groesse und Farbe, Kanten mit Gewicht — kein Urteil darueber, was das bedeutet.
+   *
+   * Der Schluessel fehlt, wenn die Karte nicht erhoben wurde. Sie enthaelt ausdruecklich KEINE
+   * globalen Mengen: keine Gesamtzahl, keine vollstaendige Schlagwortliste, keine Traegerzahl
+   * ausserhalb der gezeichneten Knoten.
+   */
+  readonly themenkarte?: Themenkarte;
 }
 
 /**
@@ -70,5 +80,8 @@ export function sichtmetrik(sicht: WissensnetzSicht): Sichtmetrik {
       sichtbareBeitragende: t.beitragende.length,
       beitragendeAbgeschnitten: t.beitragendeAbgeschnitten,
     })),
+    // Durchgereicht, nicht neu gerechnet: die Karte entsteht in `themenkarte.ts` aus derselben
+    // getrimmten Menge. Der Schluessel fehlt, wenn sie nicht erhoben wurde.
+    ...(sicht.themenkarte !== undefined ? { themenkarte: sicht.themenkarte } : {}),
   };
 }

@@ -60,6 +60,7 @@ import type {
   WissensnetzSichtbar,
   WissensnetzThema,
 } from "./lesemodell-ports";
+import { themenkarte } from "./themenkarte";
 
 /**
  * Höchstzahl ausgelieferter Themen. Eine Seite, die tausend Themen zeichnet, ist keine Sicht mehr;
@@ -122,6 +123,14 @@ export interface SichtOptionen<K> {
    * damit der angewandte und der gemeldete Deckel dieselbe Zahl sind.
    */
   deckel?: number;
+  /**
+   * JOB 2600 D1: zusätzlich die Themenkarte erheben (`themenkarte.ts`).
+   *
+   * Sie kostet KEINE weitere Abfrage — sie rechnet über dieselbe getrimmte Grundmenge, die für die
+   * Themenzähler ohnehin schon im Speicher liegt. Trotzdem opt-in: ohne Anforderung fehlt der
+   * Schlüssel in der Antwort, statt dass eine leere Karte wie ein Ergebnis aussieht.
+   */
+  mitThemenkarte?: boolean;
 }
 
 /** Zwischenstand je Thema während des einen Durchlaufs. */
@@ -279,6 +288,10 @@ export class LesemodellService<K extends WissensnetzKo = WissensnetzKo> {
         .length,
       verknuepfungAusgelassen,
       abgeschnitten: sortiert.length > deckel,
+      // JOB 2600 D1: RECHTE ZUERST ist hier bereits geschehen — `sichtbare` ist die getrimmte
+      // Menge aus der Schleife oben, und `themenkarte` trimmt nicht und darf es nicht. Der
+      // Schlüssel fehlt ohne Anforderung; siehe `SichtOptionen.mitThemenkarte`.
+      ...(opts.mitThemenkarte === true ? { themenkarte: themenkarte(sichtbare) } : {}),
     };
   }
 }

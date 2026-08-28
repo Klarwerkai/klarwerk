@@ -50,6 +50,35 @@ export interface WissensnetzKo {
   author?: string | null | undefined;
 }
 
+// ================================================================================================
+// JOB 2600 · D1 — DREI FELDER MEHR, UND WARUM ALLE DREI OPTIONAL SIND.
+// ================================================================================================
+//
+// Die Themenkarte (`themenkarte.ts`) braucht neben dem Thema die SCHLAGWORTE (Knoten), den
+// FREIGABESTATUS (Kanten und Farbe) und die QUELLEN (Farbe). Der einzige Aufrufer im Produkt
+// reicht schon heute vollstaendige `KnowledgeObject`s herein
+// (`services/app/src/routes/ko-routes.ts:492`, `{ kos: { alle: () => ko.list({}) } }`) — die
+// Felder sind also DA; dieses Modul hat sie bisher nur nicht angesehen.
+//
+// OPTIONAL, und das ist keine Bequemlichkeit:
+//   · Der Bestandsvertrag `WissensnetzKo` wird von Tests und Ports strukturell erfuellt, die diese
+//     Felder nicht fuehren. Pflichtfelder haetten jeden dieser Aufrufer zu einem Typfehler gemacht
+//     — eine Aenderung an fremden Dateien fuer eine additive Faehigkeit.
+//   · `sources` ist bewusst `readonly unknown[]`: Dieses Modul liest davon NUR die Laenge. Den
+//     echten `KoSource`-Typ nachzubauen waere die zweite Wahrheit, gegen die diese Datei an drei
+//     Stellen ausdruecklich gebaut ist; ihn zu importieren verbietet die Modulgrenze.
+//   · Fehlt ein Feld, faellt das Objekt still auf den vorsichtigen Wert: keine Schlagworte
+//     (kein Knoten), nicht freigegeben (keine Kante, Farbe `offen`), keine Quelle. Eine fehlende
+//     Angabe erzeugt damit NIE eine staerkere Aussage als eine vorhandene.
+export interface ThemenkarteKo extends WissensnetzKo {
+  /** Die Schlagworte. Sie sind die KNOTEN der Themenkarte — siehe Kopf von `themenkarte.ts`. */
+  tags?: readonly string[] | null | undefined;
+  /** `KoStatus`; als Freigabe zaehlt ausschliesslich `"validiert"`. */
+  status?: string | null | undefined;
+  /** Nur die LAENGE wird gelesen: hat dieses Objekt Belege oder nicht. */
+  sources?: readonly unknown[] | null | undefined;
+}
+
 /**
  * WARUM DIESE PORTS GENERISCH SIND — gemessen, nicht Stilfrage.
  *
@@ -98,6 +127,12 @@ export interface WissensnetzKantenLeser<K> {
     opts: { sichtbar?: WissensnetzSichtbar<K> },
   ): Promise<WissensnetzKantenAuskunft>;
 }
+
+// JOB 2600 D7 · Der Ergebnistyp kommt aus `themenkarte-typen.ts`, nicht mehr aus `themenkarte.ts`.
+// Vorher zeigten beide Module aufeinander — diese Datei auf die Ausgabe, `themenkarte.ts` auf die
+// Eingabe `ThemenkarteKo` —, und `./tools/check` brach bei `architecture` mit `no-circular` ab.
+// Die Typendatei haengt an nichts, deshalb zeigen jetzt beide dorthin. Begruendung in ihrem Kopf.
+import type { Themenkarte } from "./themenkarte-typen";
 
 // ================================================================================================
 // DIE ANTWORT.
@@ -238,4 +273,13 @@ export interface WissensnetzSicht {
    * Fehlertyp, den `kanten-service.ts:27-30` als Schnittzähler ausdrücklich verbietet.
    */
   abgeschnitten: boolean;
+  /**
+   * JOB 2600 D1 — die Themenkarte. **Der Schlüssel fehlt, solange `mitThemenkarte` nicht
+   * angefordert wurde** (dieselbe Entscheidung wie bei `verknuepft`: eine leere Karte wäre eine
+   * Aussage, und zwar eine falsche).
+   *
+   * Sie entsteht aus DERSELBEN getrimmten Grundmenge wie alles andere in dieser Antwort — es gibt
+   * keinen zweiten Lesevorgang und keine zweite Sichtbarkeitsentscheidung.
+   */
+  themenkarte?: Themenkarte;
 }

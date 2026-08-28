@@ -590,6 +590,72 @@ export interface Graph {
   edges: GraphEdge[];
 }
 
+// ================================================================================================
+// JOB 2600 · D1 — DIE THEMENKARTE (GET /api/wissensnetz/luecken).
+// ================================================================================================
+//
+// Die Form ist die des Servers (`services/wissensnetz/src/themenkarte.ts`) und wird hier NICHT neu
+// erfunden — sie ist nachgezeichnet, damit `apps/web` sie ohne Cross-Modul-Import typisieren kann.
+//
+// WAS HIER BEWUSST FEHLT: jede globale Menge. Kein Gesamtbestand, keine vollstaendige
+// Schlagwortliste, keine Traegerzahl ausserhalb der gezeichneten Knoten. `weitere` traegt NAMEN,
+// keine Zaehler. Das ist Codex' Auflage, und sie ist an dieser Grenze pruefbar.
+export type Themenfarbe = "belegt" | "freigegeben" | "offen";
+
+export interface Themenknoten {
+  thema: string;
+  /** Sichtbare Traeger — die Knotengroesse haengt hieran. */
+  objekte: number;
+  farbe: Themenfarbe;
+  /** Zu haeufiges Schlagwort: bleibt Knoten, bekommt aber keine Kanten. */
+  ohneKanten: boolean;
+}
+
+export interface Themenkante {
+  a: string;
+  b: string;
+  gewicht: number;
+}
+
+export interface Themenkarte {
+  themen: Themenknoten[];
+  kanten: Themenkante[];
+  weitere: string[];
+  weitereAbgeschnitten: boolean;
+  mindesthaeufigkeit: number;
+  /**
+   * JOB 2600 D7 · Wieviele Paare GEZEICHNETER Themen ein freigegebenes Objekt gemeinsam traegt,
+   * ohne dass daraus eine Kante wird, weil mindestens eines der beiden ubiquitaer ist.
+   *
+   * DAS IST KEINE GLOBALE MENGE, und der Kommentar oben bleibt gueltig: Der Wert zaehlt Paare
+   * unter den hoechstens 40 GEZEICHNETEN Knoten. Er nennt keine Objektzahl, kein Thema ausserhalb
+   * der Karte und keine Traegerzahl, und er waechst nicht mit unsichtbarem Bestand — die
+   * Grundmenge ist beim Erreichen der Rechnung bereits getrimmt.
+   *
+   * Er wird gebraucht, damit die Legende bei einer leeren Kantenliste die richtige der beiden
+   * Ursachen nennen kann. Ohne ihn muesste die Oberflaeche raten, und genau das war der Rotgrund
+   * in D5: „kein freigegebenes Wissensobjekt teilt zwei dieser Themen" ist falsch, wenn die Kante
+   * nur der Ubiquitaetsregel zum Opfer gefallen ist.
+   */
+  unterdruecktDurchUbiquitaet: number;
+}
+
+export interface ThemenMetrik {
+  thema: string;
+  objekte: number;
+  sichtbareBeitragende: number;
+  beitragendeAbgeschnitten: boolean;
+}
+
+/** Die Antwort von `GET /api/wissensnetz/luecken`. Die Karte fehlt, wenn sie nicht erhoben wurde. */
+export interface Sichtmetrik {
+  objekteGesamt: number;
+  ohneThema: number;
+  sichtbareBeitragendeGesamt: number;
+  themen: ThemenMetrik[];
+  themenkarte?: Themenkarte;
+}
+
 // AUFTRAG-mega68: Nachbarschaft EINES Wissensobjekts (GET /api/kos/:id/neighbors) — begrenzt,
 // mit dem WARUM je Kante (`via` = geteilte, nicht-ubiquitäre Schlagwörter). `total`/`truncated`
 // zählen serverseitig NACH dem Vertraulichkeits-Filter; `excludedTags` weist ehrlich aus, welche
