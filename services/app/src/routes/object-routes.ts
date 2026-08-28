@@ -56,6 +56,11 @@ function safeAttachmentName(name: unknown): string {
 // globale Default deckelte reale Dateien auf ~700 KB und ließ jedes normale Nutzer-PDF/DOCX mit 413
 // scheitern, BEVOR MAX_OBJECT_BYTES überhaupt greifen konnte. 30 MiB umhüllt die 30-MB-Data-URL-
 // Obergrenze des Object-Store plus JSON-Envelope; darüber → kontrolliertes 413.
+//
+// JOB 2657 D1 (Review-Befund 12, HOCH): Diese 30 MiB standen ANONYM offen. Der Auth-Guard lief erst
+// im Handler — Fastify hatte den Body da längst gelesen und geparst. Die Parser-Fläche dieser Route
+// ist SECHSMAL so groß wie die 5 MiB der Nachbarroute `POST /api/drafts`, die den Guard seit
+// WP-D1d VOR dem Parsing führt. Zwei Türen desselben Servers, zwei Reihenfolgen — jetzt eine.
 export const OBJECTS_BODY_LIMIT = 30 * 1024 * 1024; // 30 MiB
 
 // ================================================================================================
@@ -183,6 +188,17 @@ export function objectRoutes(
     return beurteileAnhang(user, objectId, eigen, quellen);
   }
 
+  // JOB 2657 D1: AUTH VOR BODY-PARSING — dasselbe Muster, das `capture-routes.ts:211-218` seit
+  // WP-D1d fährt. Kein zweiter Weg: `guards.requireUser` sendet bei fehlender/ungültiger Session
+  // 401, Fastify stoppt den Lifecycle daraufhin anhand `reply.sent` VOR dem Body-Parsing. Der
+  // Handler prüft danach zusätzlich die konkrete Berechtigung (`ko.create`) — Defense-in-Depth.
+  const requireAuthedBeforeParse = async (
+    request: Parameters<Guards["requireUser"]>[0],
+    reply: Parameters<Guards["requireUser"]>[1],
+  ): Promise<void> => {
+    await guards.requireUser(request, reply);
+  };
+
   return async (app) => {
     app.post<{
       Body: {
@@ -195,43 +211,47 @@ export function objectRoutes(
         purpose?: string;
         draftId?: string;
       };
-    }>("/api/objects", { bodyLimit: OBJECTS_BODY_LIMIT }, async (request, reply) => {
-      const user = await guards.requirePermission("ko.create", request, reply);
-      if (!user) {
-        return;
-      }
-      try {
-        const { name, mime, data, kind, confidentiality, purpose, draftId } = request.body;
-        // AUFTRAG-mega20 Block C: der Zweck wird gegen die bekannte Liste geprüft und NIE geraten.
-        // Ein unbekannter Wert wird zu „unknown" — also zur KONSERVATIVSTEN Einstufung, nicht zu
-        // der, die der Client vielleicht gemeint hat. `owner` kommt aus der ANMELDUNG, nie aus dem
-        // Body: er ist eine Herkunftsangabe, und eine erfundene Herkunft wäre schlechter als keine.
-        const purposeField =
-          typeof purpose === "string" && isObjectPurpose(purpose) ? { purpose } : {};
-        // SCRUM-521 (WP1): Vertraulichkeit beim Upload persistieren — nur wenn es ein bekannter Level
-        // ist. Ungültig/fehlend → nicht setzen; der Medien-Egress behandelt das Objekt dann fail-safe
-        // als vertraulich (kein externer Transkriptions-Egress). Der Client kann so nur beim Upload
-        // eine Einstufung setzen, nie nachträglich beim Analyse-Request herabstufen.
-        const confidentialityField =
-          typeof confidentiality === "string" && isValidConfidentiality(confidentiality)
-            ? { confidentiality }
-            : {};
-        reply.code(201).send(
-          await store.put({
-            name,
-            mime,
-            data,
-            ...(kind ? { kind } : {}),
-            ...confidentialityField,
-            ...purposeField,
-            owner: user.id,
-            ...(typeof draftId === "string" && draftId.trim() ? { draftId: draftId.trim() } : {}),
-          }),
-        );
-      } catch (error) {
-        sendError(reply, error);
-      }
-    });
+    }>(
+      "/api/objects",
+      { bodyLimit: OBJECTS_BODY_LIMIT, onRequest: requireAuthedBeforeParse },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
+        try {
+          const { name, mime, data, kind, confidentiality, purpose, draftId } = request.body;
+          // AUFTRAG-mega20 Block C: der Zweck wird gegen die bekannte Liste geprüft und NIE geraten.
+          // Ein unbekannter Wert wird zu „unknown" — also zur KONSERVATIVSTEN Einstufung, nicht zu
+          // der, die der Client vielleicht gemeint hat. `owner` kommt aus der ANMELDUNG, nie aus dem
+          // Body: er ist eine Herkunftsangabe, und eine erfundene Herkunft wäre schlechter als keine.
+          const purposeField =
+            typeof purpose === "string" && isObjectPurpose(purpose) ? { purpose } : {};
+          // SCRUM-521 (WP1): Vertraulichkeit beim Upload persistieren — nur wenn es ein bekannter Level
+          // ist. Ungültig/fehlend → nicht setzen; der Medien-Egress behandelt das Objekt dann fail-safe
+          // als vertraulich (kein externer Transkriptions-Egress). Der Client kann so nur beim Upload
+          // eine Einstufung setzen, nie nachträglich beim Analyse-Request herabstufen.
+          const confidentialityField =
+            typeof confidentiality === "string" && isValidConfidentiality(confidentiality)
+              ? { confidentiality }
+              : {};
+          reply.code(201).send(
+            await store.put({
+              name,
+              mime,
+              data,
+              ...(kind ? { kind } : {}),
+              ...confidentialityField,
+              ...purposeField,
+              owner: user.id,
+              ...(typeof draftId === "string" && draftId.trim() ? { draftId: draftId.trim() } : {}),
+            }),
+          );
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
 
     app.get<{ Params: { id: string } }>("/api/objects/:id", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
