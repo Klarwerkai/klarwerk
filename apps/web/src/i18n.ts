@@ -2902,6 +2902,12 @@ const de = {
   "imp.explore.noTheme": "(ohne Thema)",
   "imp.explore.empty": "In dieser Quelle wurde nichts gefunden.",
   "imp.explore.truncated": "Nur die ersten {{n}} Seiten gezählt — die Quelle ist größer.",
+  "imp.explore.abbruch.timeout":
+    "Ergebnis unvollständig: Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung). {{n}} Seiten wurden bis dahin gelesen.",
+  "imp.explore.abbruch.zu_gross":
+    "Ergebnis unvollständig: Eine Antwort von Confluence war zu groß und wurde verworfen. {{n}} Seiten wurden bis dahin gelesen.",
+  "imp.explore.abbruch.zeitbudget":
+    "Ergebnis unvollständig: Die Lesezeit für den Space war erschöpft. {{n}} Seiten wurden bis dahin gelesen.",
   "imp.explore.failedPages": "{{n}} Seiten konnten nicht gelesen werden.",
   "imp.explore.topOf": "Top {{n}} von {{total}}",
   // WP-IC-PAKET-1 (Teil 2): Herkunfts-Kennzeichnung abgeleiteter Themen (deterministisch aus Titeln).
@@ -7358,6 +7364,12 @@ const en: typeof de = {
   "imp.explore.noTheme": "(no theme)",
   "imp.explore.empty": "Nothing was found in this source.",
   "imp.explore.truncated": "Only the first {{n}} pages were counted — the source is larger.",
+  "imp.explore.abbruch.timeout":
+    "Result incomplete: Confluence did not respond in time (timeout). {{n}} pages had been read by then.",
+  "imp.explore.abbruch.zu_gross":
+    "Result incomplete: A response from Confluence was too large and was discarded. {{n}} pages had been read by then.",
+  "imp.explore.abbruch.zeitbudget":
+    "Result incomplete: The reading time for the space was exhausted. {{n}} pages had been read by then.",
   "imp.explore.failedPages": "{{n}} pages could not be read.",
   "imp.explore.topOf": "top {{n}} of {{total}}",
   "imp.explore.derivedTag": "derived",
@@ -11529,6 +11541,12 @@ const nl: typeof de = {
   "imp.explore.noTheme": "(zonder thema)",
   "imp.explore.empty": "In deze bron is niets gevonden.",
   "imp.explore.truncated": "Alleen de eerste {{n}} pagina's geteld — de bron is groter.",
+  "imp.explore.abbruch.timeout":
+    "Resultaat onvolledig: Confluence heeft niet op tijd geantwoord (time-out). {{n}} pagina's waren tot dan gelezen.",
+  "imp.explore.abbruch.zu_gross":
+    "Resultaat onvolledig: Een antwoord van Confluence was te groot en is verworpen. {{n}} pagina's waren tot dan gelezen.",
+  "imp.explore.abbruch.zeitbudget":
+    "Resultaat onvolledig: De leestijd voor de space was op. {{n}} pagina's waren tot dan gelezen.",
   "imp.explore.failedPages": "{{n}} pagina's konden niet worden gelezen.",
   "imp.explore.topOf": "top {{n}} van {{total}}",
   "imp.explore.derivedTag": "afgeleid",

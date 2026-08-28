@@ -13,7 +13,7 @@ import {
   confluenceAncestorIds,
   mapConfluencePageToImportItem,
 } from "./mapper";
-import type { ConfluencePage } from "./rest-client";
+import type { ConfluenceAbbruch, ConfluencePage } from "./rest-client";
 import {
   ConfluenceRestClient,
   type ConfluenceRestConfig,
@@ -34,6 +34,10 @@ export interface CollectResult {
   // JOB 1042 D3: der Hierarchie-Befund über die EINGESAMMELTEN Seiten. Additiv und rein
   // diagnostisch — er verändert weder `items` noch `failed` (s. hierarchieBefund).
   hierarchie?: ConfluenceHierarchieBefund;
+  // JOB 2683 D2: WARUM der Lauf vor dem letzten Cursor endete (Frist, Größe, Zeitbudget) — nur
+  // gesetzt, wenn `truncated` aus einem Abbruch stammt. Reist bis zur Erkundungs-Fläche, damit
+  // „unvollständig" dort einen Grund hat. Additiv; der Seiten-Cap trägt keinen Abbruch.
+  abbruch?: ConfluenceAbbruch;
 }
 
 // ================================================================================================
@@ -144,7 +148,8 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
   // SCRUM-510 WP2: liest den GESAMTEN Space (Cursor-Pagination) und mappt jede Seite EINZELN. Scheitert
   // das Mapping einer Seite, wird sie als `failed` verbucht und der Lauf läuft weiter (never block).
   async collectAll(): Promise<CollectResult> {
-    const { pages, truncated } = await this.client.listAllPages();
+    // JOB 2683 D2: der Abbruchgrund reist mit — bis hierher blieb er im Client hängen.
+    const { pages, truncated, abbruch } = await this.client.listAllPages();
     const items: ImportItem[] = [];
     const failed: CollectResult["failed"] = [];
     for (const page of pages) {
@@ -161,7 +166,13 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
     // JOB 1042 D3: der Befund wird über die GELIEFERTEN Seiten gebildet, nicht über die erfolgreich
     // gemappten. Eine Seite, deren Mapping scheitert, hat trotzdem eine Ahnenkette — und gerade sie
     // will man im Befund sehen.
-    return { items, failed, truncated, hierarchie: hierarchieBefund(pages) };
+    return {
+      items,
+      failed,
+      truncated,
+      hierarchie: hierarchieBefund(pages),
+      ...(abbruch ? { abbruch } : {}),
+    };
   }
 }
 

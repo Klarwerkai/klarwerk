@@ -19,6 +19,88 @@ export interface ConfluenceRestConfig {
   spaceKey: string; // gescoped auf EINEN Space (Space K)
   fetchFn?: typeof fetch;
   pageLimit?: number;
+  // JOB 2683 D1 (Review R2-1): Betriebsparameter der Netzgrenzen — Frist je Request, Zeitbudget für den
+  // ganzen Space-Lauf, Obergrenze je Antwort. Ohne Angabe gelten die Konstanten darunter.
+  timeoutMs?: number;
+  totalBudgetMs?: number;
+  maxResponseBytes?: number;
+}
+
+// ================================================================================================
+// JOB 2683 D1 (Review EXT1-20260828, Befund R2-1) — DER KNOPF, DER NIE AUFHÖRT ZU DREHEN.
+// ================================================================================================
+//
+// DER BEFUND: `fetchFn(url, …)` lief ohne `signal`, ohne Frist, ohne Größenkante; `res.json()` las den
+// Body unbegrenzt. Node/undici bricht erst nach 300 s Stille ab, `listAllPages` macht bis zu 500 solcher
+// Aufrufe nacheinander — eine hängende Confluence-Instanz hielt „Erkunden" bis zu 500 × 5 Minuten fest,
+// und weil die Route den Scan als geteilte Promise cached, warteten alle Admins an derselben Zusage.
+//
+// DREI GRENZEN, jede als benannter Betriebsparameter:
+//   1. FRIST JE REQUEST (`CONFLUENCE_REQUEST_TIMEOUT_MS`): Verbindung UND Body. Sie gilt auch dann, wenn
+//      ein fetch das Abort-Signal ignoriert — die Frist wird gegen den Aufruf GERACET, nicht nur gesetzt.
+//   2. ZEITBUDGET JE LAUF (`CONFLUENCE_TOTAL_BUDGET_MS`): `listAllPages` liest keinen weiteren Cursor mehr,
+//      wenn das Budget verbraucht ist, und meldet `truncated` mit Grund.
+//   3. GRÖSSE JE ANTWORT (`CONFLUENCE_MAX_RESPONSE_BYTES`): `content-length` vorab, gelesene Bytes beim
+//      Streamen — wird die Kante gerissen, wird die Antwort verworfen, nicht der Prozessspeicher.
+//
+// EINE LANGSAME ERGEBNISSEITE TÖTET DEN LAUF NICHT: scheitert ein Folge-Request an Frist oder Größe,
+// behält `listAllPages` die bereits gelesenen Seiten und meldet `truncated: true` samt `abbruch` — der
+// Aufrufer macht daraus ehrlich „unvollständig", nie „fertig". Nur wenn schon der ERSTE Request
+// scheitert, gibt es nichts zu behalten; dann wirft der Client (die Route antwortet dann in Sekunden
+// mit einem klaren Fehler statt nie).
+//
+// KEIN HOST, KEINE URL IN DEN MELDUNGEN: die Fehlertexte dieser Klasse nennen nur Grund und Grenze;
+// die Redaction für fremde Fehlertexte (`redactSecrets`) bleibt davon unberührt.
+export const CONFLUENCE_REQUEST_TIMEOUT_MS = 15_000;
+export const CONFLUENCE_TOTAL_BUDGET_MS = 180_000;
+export const CONFLUENCE_MAX_RESPONSE_BYTES = 5 * 1024 * 1024;
+
+export type ConfluenceAbbruchGrund = "timeout" | "zu_gross" | "zeitbudget";
+
+function dauerText(ms: number): string {
+  return ms >= 1000 ? `${Math.round(ms / 1000)} s` : `${ms} ms`;
+}
+
+function abbruchMeldung(grund: ConfluenceAbbruchGrund, wert: number): string {
+  switch (grund) {
+    case "timeout":
+      return `Confluence antwortet nicht — Zeitüberschreitung nach ${dauerText(wert)}.`;
+    case "zu_gross":
+      return `Confluence-Antwort zu groß (über ${Math.max(1, Math.round(wert / (1024 * 1024)))} MB) — nicht gelesen.`;
+    default:
+      return `Confluence-Lesezeit erschöpft nach ${dauerText(wert)} — der Space wurde nicht vollständig gelesen.`;
+  }
+}
+
+export class ConfluenceRequestError extends Error {
+  readonly code: "CONFLUENCE_TIMEOUT" | "CONFLUENCE_RESPONSE_TOO_LARGE" | "CONFLUENCE_BUDGET";
+  readonly grund: ConfluenceAbbruchGrund;
+
+  constructor(grund: ConfluenceAbbruchGrund, wert: number) {
+    super(abbruchMeldung(grund, wert));
+    this.name = "ConfluenceRequestError";
+    this.grund = grund;
+    this.code =
+      grund === "timeout"
+        ? "CONFLUENCE_TIMEOUT"
+        : grund === "zu_gross"
+          ? "CONFLUENCE_RESPONSE_TOO_LARGE"
+          : "CONFLUENCE_BUDGET";
+  }
+}
+
+/** Warum ein Space-Lauf vor dem letzten Cursor endete — reist mit `truncated: true`. */
+export interface ConfluenceAbbruch {
+  readonly grund: ConfluenceAbbruchGrund;
+  /** Wie viele Seiten bis zum Abbruch gelesen wurden (und behalten werden). */
+  readonly nachSeiten: number;
+  readonly meldung: string;
+}
+
+export interface ConfluenceListAllResult {
+  pages: ConfluencePage[];
+  truncated: boolean;
+  abbruch?: ConfluenceAbbruch;
 }
 
 export interface ConfluenceUser {
@@ -145,31 +227,70 @@ export class ConfluenceRestClient {
   ): Promise<{ results: ConfluencePage[]; next: string | null }> {
     assertAllowedConfluenceUrl(url, allowedOrigin); // vor JEDEM Netzcall
     const fetchFn = this.config.fetchFn ?? fetch;
-    // SCRUM-510-R3 (WP4): fetch-Reject/Timeout redigiert propagieren — der rohe Fetch-Fehler (dessen
-    // Message/Stack die URL/Credentials tragen könnte) verlässt den Request-Bauer NIE unredigiert.
-    let res: Response;
+    const timeoutMs = this.config.timeoutMs ?? CONFLUENCE_REQUEST_TIMEOUT_MS;
+    const maxBytes = this.config.maxResponseBytes ?? CONFLUENCE_MAX_RESPONSE_BYTES;
+    // JOB 2683 D1: EINE Frist für Verbindung und Body. Der Controller geht als `signal` an fetch (undici
+    // bricht dann sauber ab); zusätzlich wird der Aufruf gegen die Frist GERACET — ein fetch, das das
+    // Signal nicht kennt (Fixture, fremde Implementierung), kann den Aufrufer trotzdem nicht festhalten.
+    const controller = new AbortController();
+    let abgelaufen = false;
+    const timer = setTimeout(() => {
+      abgelaufen = true;
+      controller.abort();
+    }, timeoutMs);
+    const frist = new Promise<never>((_, reject) => {
+      controller.signal.addEventListener(
+        "abort",
+        () => reject(new ConfluenceRequestError("timeout", timeoutMs)),
+        { once: true },
+      );
+    });
     try {
-      res = await fetchFn(url, {
-        method: "GET",
-        headers: { authorization: this.authHeader(), accept: "application/json" },
-        redirect: "error", // kein Folgen auf fremde Hosts
-      });
-    } catch (err) {
-      throw this.redactedError("Confluence-Request fehlgeschlagen", err);
+      // SCRUM-510-R3 (WP4): fetch-Reject/Timeout redigiert propagieren — der rohe Fetch-Fehler (dessen
+      // Message/Stack die URL/Credentials tragen könnte) verlässt den Request-Bauer NIE unredigiert.
+      let res: Response;
+      try {
+        res = await Promise.race([
+          fetchFn(url, {
+            method: "GET",
+            headers: { authorization: this.authHeader(), accept: "application/json" },
+            redirect: "error", // kein Folgen auf fremde Hosts
+            signal: controller.signal,
+          }),
+          frist,
+        ]);
+      } catch (err) {
+        if (err instanceof ConfluenceRequestError || abgelaufen) {
+          throw new ConfluenceRequestError("timeout", timeoutMs);
+        }
+        throw this.redactedError("Confluence-Request fehlgeschlagen", err);
+      }
+      if (!res.ok) {
+        // Nur der Status (eine Zahl) — strukturell token-frei.
+        throw new Error(`Confluence-API antwortete mit ${res.status}`);
+      }
+      // SCRUM-510-R3 (WP4): auch ein Parse-Fehler wird redigiert (der JSON-Body/Fehlertext könnte Reste
+      // tragen). EIN Ausgang, EIN Redaction-Kontrakt für alle Fehlerklassen dieses Bauers.
+      // JOB 2683 D1: der Body wird begrenzt gelesen und steht unter derselben Frist.
+      let data: { results?: ConfluencePage[]; _links?: { next?: string } };
+      try {
+        data = (await Promise.race([leseBegrenzt(res, maxBytes), frist])) as {
+          results?: ConfluencePage[];
+          _links?: { next?: string };
+        };
+      } catch (err) {
+        if (err instanceof ConfluenceRequestError) {
+          throw err;
+        }
+        if (abgelaufen) {
+          throw new ConfluenceRequestError("timeout", timeoutMs);
+        }
+        throw this.redactedError("Confluence-Antwort nicht lesbar", err);
+      }
+      return { results: data.results ?? [], next: data._links?.next ?? null };
+    } finally {
+      clearTimeout(timer);
     }
-    if (!res.ok) {
-      // Nur der Status (eine Zahl) — strukturell token-frei.
-      throw new Error(`Confluence-API antwortete mit ${res.status}`);
-    }
-    // SCRUM-510-R3 (WP4): auch ein Parse-Fehler wird redigiert (der JSON-Body/Fehlertext könnte Reste
-    // tragen). EIN Ausgang, EIN Redaction-Kontrakt für alle Fehlerklassen dieses Bauers.
-    let data: { results?: ConfluencePage[]; _links?: { next?: string } };
-    try {
-      data = (await res.json()) as { results?: ConfluencePage[]; _links?: { next?: string } };
-    } catch (err) {
-      throw this.redactedError("Confluence-Antwort nicht lesbar", err);
-    }
-    return { results: data.results ?? [], next: data._links?.next ?? null };
   }
 
   private firstUrl(): string {
@@ -195,14 +316,38 @@ export class ConfluenceRestClient {
   // SCRUM-510 (WP3): der Cap ist ein Sicherheitsnetz — er darf aber nicht STILL enden. Bricht die Schleife
   // ab, obwohl noch ein `next`-Cursor offen ist, wird `truncated: true` gemeldet (der Space wurde NICHT
   // vollständig gelesen). Der Aufrufer macht daraus einen ehrlichen „unvollständig"-Status, nie ein „fertig".
-  async listAllPages(maxPages = 500): Promise<{ pages: ConfluencePage[]; truncated: boolean }> {
+  // JOB 2683 D1 (R2-1): dazu ein ZEITBUDGET für den ganzen Lauf und die Regel „eine langsame
+  // Ergebnisseite tötet den Lauf nicht": scheitert ein FOLGE-Request an Frist oder Größe, bleiben die
+  // gelesenen Seiten erhalten und `truncated` trägt den Grund (`abbruch`). Scheitert der ERSTE Request,
+  // wird geworfen — es gibt nichts zu behalten, und ein leeres „unvollständig" wäre eine Lüge.
+  async listAllPages(maxPages = 500): Promise<ConfluenceListAllResult> {
     const allowedOrigin = this.allowedOrigin();
+    const budgetMs = this.config.totalBudgetMs ?? CONFLUENCE_TOTAL_BUDGET_MS;
+    const start = Date.now();
     const out: ConfluencePage[] = [];
     let url: string | null = this.firstUrl();
     let i = 0;
+    let abbruch: ConfluenceAbbruch | undefined;
     for (; url && i < maxPages; i++) {
-      const { results, next }: { results: ConfluencePage[]; next: string | null } =
-        await this.getContent(url, allowedOrigin);
+      if (i > 0 && Date.now() - start >= budgetMs) {
+        abbruch = {
+          grund: "zeitbudget",
+          nachSeiten: out.length,
+          meldung: abbruchMeldung("zeitbudget", budgetMs),
+        };
+        break;
+      }
+      let results: ConfluencePage[];
+      let next: string | null;
+      try {
+        ({ results, next } = await this.getContent(url, allowedOrigin));
+      } catch (err) {
+        if (i > 0 && err instanceof ConfluenceRequestError) {
+          abbruch = { grund: err.grund, nachSeiten: out.length, meldung: err.message };
+          break;
+        }
+        throw err;
+      }
       out.push(...results);
       // WP-E (19.07.2026): Atlassian Cloud liefert next RELATIV ZUM KONTEXTPFAD (z. B.
       // /rest/api/content?...&start=25 — der /wiki-Anteil steckt in _links.base, nicht in next). Nur mit
@@ -211,8 +356,10 @@ export class ConfluenceRestClient {
       // assert-prüft die gepinnte Origin unverändert vor jedem Hop.
       url = next ? this.nextUrl(next, allowedOrigin) : null;
     }
-    // Cap erreicht UND es gäbe noch einen Folge-Cursor → abgeschnitten (unvollständig).
-    return { pages: out, truncated: i >= maxPages && url !== null };
+    // Cap erreicht UND es gäbe noch einen Folge-Cursor → abgeschnitten (unvollständig). Ebenso jeder
+    // Abbruch durch Frist, Größe oder Budget.
+    const truncated = (i >= maxPages && url !== null) || abbruch !== undefined;
+    return { pages: out, truncated, ...(abbruch ? { abbruch } : {}) };
   }
 
   // Setzt den next-Cursor zu einer absoluten URL auf der gepinnten Origin zusammen. Trägt next den
@@ -252,11 +399,50 @@ export function confluenceClientFromEnv(
     return undefined;
   }
   const limit = Number(env.KLARWERK_CONFLUENCE_PAGE_LIMIT);
+  // JOB 2683 D1: die Netzgrenzen sind Betriebsparameter — überschreibbar, nie abschaltbar (nur positive
+  // ganze Zahlen zählen; alles andere fällt auf die Konstanten zurück).
+  const timeoutMs = Number(env.KLARWERK_CONFLUENCE_TIMEOUT_MS);
+  const budgetMs = Number(env.KLARWERK_CONFLUENCE_BUDGET_MS);
   return new ConfluenceRestClient({
     baseUrl,
     email,
     apiToken,
     spaceKey,
     ...(Number.isInteger(limit) && limit > 0 ? { pageLimit: limit } : {}),
+    ...(Number.isInteger(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
+    ...(Number.isInteger(budgetMs) && budgetMs > 0 ? { totalBudgetMs: budgetMs } : {}),
   });
+}
+
+// JOB 2683 D1: Body begrenzt lesen. Drei Stufen, je nachdem, was die Antwort hergibt: `content-length`
+// vorab (kein einziges Byte, wenn die Zahl schon zu groß ist), dann der Stream mit laufender Zählung
+// (undici/native fetch), sonst — Fixtures ohne Body-Stream — der gewöhnliche `json()`-Weg.
+async function leseBegrenzt(res: Response, maxBytes: number): Promise<unknown> {
+  const kopf = (res as { headers?: { get?: (name: string) => string | null } }).headers;
+  const angekuendigt = Number(kopf?.get?.("content-length"));
+  if (Number.isFinite(angekuendigt) && angekuendigt > maxBytes) {
+    throw new ConfluenceRequestError("zu_gross", maxBytes);
+  }
+  const body = (res as { body?: ReadableStream<Uint8Array> | null }).body;
+  if (body && typeof body.getReader === "function") {
+    const reader = body.getReader();
+    const chunks: Buffer[] = [];
+    let gelesen = 0;
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+      if (value) {
+        gelesen += value.byteLength;
+        if (gelesen > maxBytes) {
+          await reader.cancel().catch(() => undefined);
+          throw new ConfluenceRequestError("zu_gross", maxBytes);
+        }
+        chunks.push(Buffer.from(value));
+      }
+    }
+    return JSON.parse(Buffer.concat(chunks).toString("utf8"));
+  }
+  return res.json();
 }

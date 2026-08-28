@@ -811,6 +811,14 @@ export interface ImportExploreResponse {
   mappedPages?: number;
   failedPages?: number;
   failedClasses?: string[];
+  // JOB 2683 D2: warum die Erkundung vor dem letzten Cursor endete (Frist, zu große Antwort,
+  // Zeitbudget) — nur gesetzt, wenn `truncated` aus einem Abbruch stammt. `nachSeiten` = Seiten,
+  // die bis dahin gelesen wurden und in der Landkarte stehen.
+  abbruch?: {
+    grund: "timeout" | "zu_gross" | "zeitbudget";
+    nachSeiten: number;
+    meldung: string;
+  };
 }
 
 // IC-3 (Import-Cockpit): Auswahl-Kriterien (Klick/KI) + READ-ONLY Vorschau. Nichts wird importiert.

@@ -64,6 +64,46 @@ export interface ConfluenceImportRouteDeps {
 // deckungsgleich mit der Gruppierungs-Kappung (MAX_GROUP_CANDIDATES = 200). Drüber: ehrlicher 400.
 export const MAX_APPLY_IDS = 200;
 
+// ================================================================================================
+// JOB 2683 D2 (Review R2-1, BEN-Korrekturpflicht 1) — DIE MELDUNG GEHÖRT AN DIE ROUTE, NICHT INS LOG.
+// ================================================================================================
+//
+// D1 hat das Hängen beendet: der Confluence-Client wirft nach der Frist einen `ConfluenceRequestError`
+// mit hostfreiem Text („Confluence antwortet nicht — Zeitüberschreitung nach 15 s."). Die Routen
+// antworteten trotzdem mit ihrem pauschalen Alttext — der Mensch sah „fehlgeschlagen", der Grund
+// stand nur im Server-Log. Hier wird der Text an die Antwort gereicht.
+//
+// ERKANNT WIRD ÜBER DEN CODE, nicht über `instanceof`: der Fehlertyp ist modul-intern im
+// Confluence-Paket (Encapsulation R2a, nicht über die index exportiert), und ein Duck-Type auf die
+// drei Codes ist genau die Auskunft, die diese Route braucht. Die Texte selbst kommen aus dem Client
+// und nennen nie Host, URL oder Token (rest-client.ts, `abbruchMeldung`).
+//
+// STATUS: 504 für Frist und Zeitbudget (die Gegenstelle hat nicht rechtzeitig geantwortet), 502 für
+// eine zu große Antwort (die Gegenstelle hat geantwortet, aber unbrauchbar). Jeder andere Fehler
+// bleibt beim bisherigen 502 mit dem pauschalen Text — dort ist der Grund nicht sicher hostfrei.
+const CONFLUENCE_GRENZ_CODES = new Set([
+  "CONFLUENCE_TIMEOUT",
+  "CONFLUENCE_BUDGET",
+  "CONFLUENCE_RESPONSE_TOO_LARGE",
+]);
+
+export function confluenceGrenze(
+  err: unknown,
+): { status: 502 | 504; error: string; message: string } | null {
+  if (!err || typeof err !== "object" || !("code" in err)) {
+    return null;
+  }
+  const code = String((err as { code: unknown }).code);
+  if (!CONFLUENCE_GRENZ_CODES.has(code)) {
+    return null;
+  }
+  const message =
+    err instanceof Error && err.message.trim().length > 0
+      ? err.message
+      : "Confluence hat nicht rechtzeitig geantwortet (Zeitüberschreitung).";
+  return { status: code === "CONFLUENCE_RESPONSE_TOO_LARGE" ? 502 : 504, error: code, message };
+}
+
 // WP-SAMMEL20-FIX (bens Fix 3): Route-Schema der Auswahl — der Freitext-Satz ist gedeckelt (er
 // geht als Prompt an ein Modell; ein Roman ist nie ein Auswahl-Satz) und locale ist auf die
 // unterstützten Reasoner-Sprachen festgelegt. Verstoß → ehrlicher 400, kein stilles Kappen.
@@ -197,10 +237,13 @@ async function starteMitLaufdomaene(
       "[confluence-import] Lauf fehlgeschlagen:",
       sanitizeLogText(err instanceof Error ? err.message : String(err)),
     );
+    // JOB 2683 D2: eine Netzgrenze bekommt ihren eigenen Fehlercode am Lauf — lesbar über
+    // `GET /api/admin/import/runs/:importId`, nicht nur als pauschales IMPORT_FAILED.
+    const grenze = confluenceGrenze(err);
     return beende({
       status: "FAILED",
       completedAt: new Date().toISOString(),
-      failureCode: "IMPORT_FAILED",
+      failureCode: grenze ? grenze.error : "IMPORT_FAILED",
       // Die Message ist bereits quellseitig redigiert; `sanitizeImportFailureReason` ist die
       // zweite Linie und deckelt zusaetzlich die Laenge.
       failureReason: sanitizeImportFailureReason(
@@ -351,6 +394,12 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             "[confluence-import] fehlgeschlagen:",
             sanitizeLogText(err instanceof Error ? err.message : String(err)),
           );
+          // JOB 2683 D2: Frist/Größe/Zeitbudget sagen dem Menschen, was los ist — hostfrei.
+          const grenze = confluenceGrenze(err);
+          if (grenze) {
+            reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
+            return reply;
+          }
           // Never block: ehrlicher Fehlerstatus, KEINE Interna/Token im Body.
           reply
             .code(502)
@@ -380,7 +429,9 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
       }
       try {
         // READ-ONLY: nur lesen + aggregieren (WP-IC-PAKET-1b ROT-3: über den 60-s-Snapshot).
-        const { items, truncated, failed } = await collectSnapshot(adapter);
+        // JOB 2683 D2: `abbruch` (Frist/Größe/Zeitbudget) reist bis zur Fläche — „unvollständig"
+        // bekommt dort einen Grund und die Zahl der bis dahin gelesenen Seiten.
+        const { items, truncated, failed, abbruch } = await collectSnapshot(adapter);
         // WP-IC-PAKET-1 (Teil 4, IC-6a): ehrlicher Import-Abgleich über die Quell-Referenzen
         // (KoSource-Anker + offene Kandidaten, provider-scoped) — „X Seiten, davon Y bereits importiert".
         // WP-SHIP9-S1b (bens GELB): GETRENNT gezählt — „bereits importiert" (lebender KO-Anker)
@@ -408,6 +459,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             topThemes: TOP_TOPICS,
           }),
           truncated,
+          ...(abbruch ? { abbruch } : {}),
           alreadyImported,
           alreadyQueued,
           // WP-SAMMEL20-FIX (bens Fix 6a): partielle Mappingfehler NICHT mehr verschweigen —
@@ -423,6 +475,13 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           "[confluence-explore] fehlgeschlagen:",
           sanitizeLogText(err instanceof Error ? err.message : String(err)),
         );
+        // JOB 2683 D2: bei einer Netzgrenze steht der Grund im Wiretext (hostfrei) — das ist,
+        // was `ImportExplore.tsx` als `ApiError.message` zeigt.
+        const grenze = confluenceGrenze(err);
+        if (grenze) {
+          reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
+          return reply;
+        }
         reply
           .code(502)
           .send({ error: "EXPLORE_FAILED", message: "Confluence-Erkundung fehlgeschlagen." });
@@ -575,6 +634,11 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           "[confluence-select] fehlgeschlagen:",
           sanitizeLogText(err instanceof Error ? err.message : String(err)),
         );
+        const grenze = confluenceGrenze(err); // JOB 2683 D2
+        if (grenze) {
+          reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
+          return reply;
+        }
         reply
           .code(502)
           .send({ error: "SELECT_FAILED", message: "Confluence-Auswahl fehlgeschlagen." });
@@ -701,6 +765,11 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             "[confluence-group] fehlgeschlagen:",
             sanitizeLogText(err instanceof Error ? err.message : String(err)),
           );
+          const grenze = confluenceGrenze(err); // JOB 2683 D2
+          if (grenze) {
+            reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
+            return reply;
+          }
           reply
             .code(502)
             .send({ error: "GROUP_FAILED", message: "Confluence-Gruppierung fehlgeschlagen." });
@@ -825,6 +894,11 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
             "[confluence-apply] fehlgeschlagen:",
             sanitizeLogText(err instanceof Error ? err.message : String(err)),
           );
+          const grenze = confluenceGrenze(err); // JOB 2683 D2
+          if (grenze) {
+            reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
+            return reply;
+          }
           reply
             .code(502)
             .send({ error: "APPLY_FAILED", message: "Confluence-Übernahme fehlgeschlagen." });

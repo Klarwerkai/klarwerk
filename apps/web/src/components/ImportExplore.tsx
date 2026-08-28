@@ -95,6 +95,7 @@ function ExploreMap({
   alreadyImported,
   alreadyQueued,
   failedPages,
+  abbruch,
 }: {
   view: ExploreView;
   truncated: boolean;
@@ -103,6 +104,9 @@ function ExploreMap({
   alreadyQueued: number;
   // WP-SAMMEL20-FIX (bens Fix 6a): Seiten, die beim Lesen/Mappen der Quelle scheiterten.
   failedPages: number;
+  // JOB 2683 D2: der Grund, warum die Erkundung vor dem Ende abbrach — damit „unvollständig"
+  // nicht nur ein Wort ist, sondern sagt, was passiert ist und wie viel schon da ist.
+  abbruch: ImportExploreResponse["abbruch"] | undefined;
 }): JSX.Element {
   const { t } = useTranslation();
   // WP-IC-PAKET-1 (Teil 3): Klick-Filter der Landkarte — Roh-Werte (Server-Vertrag), Anzeige dekodiert.
@@ -113,8 +117,17 @@ function ExploreMap({
   return (
     <div className="mt-4 border-t border-hairline pt-4">
       {truncated ? (
-        <p className="mb-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text">
+        <p
+          data-testid="explore-truncated"
+          className="mb-3 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text"
+        >
           {t("imp.explore.truncated", { n: view.totalCount })}
+          {/* JOB 2683 D2: der Abbruchgrund steht direkt dabei — gelesene Seiten bleiben sichtbar. */}
+          {abbruch ? (
+            <span data-testid="explore-abbruch" className="mt-1 block">
+              {t(`imp.explore.abbruch.${abbruch.grund}`, { n: abbruch.nachSeiten })}
+            </span>
+          ) : null}
         </p>
       ) : null}
       {/* WP-SAMMEL20-FIX (bens Fix 6a): partielle Lesefehler nüchtern ausweisen statt verschweigen. */}
@@ -365,7 +378,10 @@ export function ImportExplore(): JSX.Element {
           </div>
 
           {explore.isError ? (
-            <p className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+            <p
+              data-testid="explore-error"
+              className="mt-3 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text"
+            >
               {errorMessage}
             </p>
           ) : null}
@@ -378,6 +394,7 @@ export function ImportExplore(): JSX.Element {
                 alreadyImported={explore.data?.alreadyImported ?? 0}
                 alreadyQueued={explore.data?.alreadyQueued ?? 0}
                 failedPages={explore.data?.failedPages ?? 0}
+                abbruch={explore.data?.abbruch}
               />
             </div>
           ) : null}
