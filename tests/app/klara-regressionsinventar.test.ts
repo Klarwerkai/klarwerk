@@ -196,6 +196,15 @@ const INVENTAR: readonly string[] = [
   // Waechter des Dublettenwegs gehoert sachlich in die Klara-Regression — er haelt fest, dass der
   // Aufruf von `POST /api/check-text` fail-closed bleibt und nichts ueber den Bestand erfindet.
   // K2 hat ihn gemeldet, das Inventar hat ihn nicht stillschweigend aufgenommen.
+  // JOB 2621 D1: die drei Panel-Wahrheiten aus Pedis Bildschirmfotos (Ursache statt Folge bei
+  // fehlender Sitzung, Trotzdem-gesperrt mit Bezug, Stand-Spiegel im Kopfband). Sachlich
+  // Klara-Regression: alle drei Stellen liegen im ausgelieferten Aufgabenfenster. K2 hat die
+  // Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
+  "tests/app/job2621-panel-wahrheiten.test.ts",
+  // JOB 2622 D1: `job2622-sandbox-skips.test.ts` steht BEWUSST NICHT hier — die Ableitung (K2/K6)
+  // fuehrt die Datei nicht (sie misst die Vollsuiten-Skip-Landschaft, keine Klara-Flaeche), und
+  // ein Eintrag ohne Achsendeckung macht K2 UND K6 rot (gemessen in diesem Durchgang; dieselbe
+  // Lage wie bei zielbild-validierung in 2618 D3).
   "tests/app/w6-dublettenweg-checktext.test.ts",
   "tests/app/word-addin-ask.test.ts",
   "tests/app/word-addin-csp.test.ts",

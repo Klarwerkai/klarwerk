@@ -752,7 +752,27 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Pin 991c3633…. Der Einbau fuehrt den .docx-Sendeweg aus D3 per 3-Wege-Merge dazu (0 Marker);
     // der Wert unten ist der Hash der zusammengefuehrten Datei. dc01023a… aus der Rueckgabe
     // beschreibt den Klonstand ohne Trimmer und Versionsspiegel.
-    const PIN = "4b10d1e143ed88226d484d5c6557c6129db6768339a3dc5f9106a5bd62222931";
+    //
+    // ============================================================================================
+    // JOB 2621 D1 — PIN BEWUSST AKTUALISIERT (e6ca187e… -> 59000047…), Auslieferungsfolgen:
+    //   · DREI ANZEIGE-WAHRHEITEN, keine Verhaltensaenderung: (1) ohne Sitzung sagt die
+    //     Zustimmungszeile die URSACHE (s4SitzungNichtAngemeldet) statt „kein Stand vor";
+    //     (2) Zustimmungszeile steht VOR der Sperrzeile, und bei erteilter Zustimmung heisst es
+    //     „Trotzdem gesperrt: …" (s4BlockiertTrotzZustimmung); (3) der Auslieferungsstand ist
+    //     zusaetzlich ins Kopfband gespiegelt (#kw-stand-kopf, aus DERSELBEN KLARA_STAND-Quelle —
+    //     #kw-stand unten bleibt samt Tests unberuehrt).
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: ids, Wege und Vertraege unveraendert; zwei neue
+    //     i18n-Schluessel je dreisprachig (mega35 gruen), Kopfband-Farbe aus der AA-belegten
+    //     Palette (mega43 gruen). Gemessen in tests/app/job2621-panel-wahrheiten.test.ts.
+    //   · Fuer ein installiertes Add-in: kein erneutes Sideload noetig; bis der Office-Cache
+    //     nachzieht, zeigt das Panel die alten Saetze — kein neues Risiko.
+    // ============================================================================================
+    //
+    // PIN-NACHFUEHRUNG BEIM EINBAU (CHEF, 28.08. 15:55, JOB 2621 D1). Klon auf 081f60f; das Produkt trug
+    // taskpane.html bereits mit Trimmer (2613 D1), Versionsspiegel (1ac6979) und .docx-Sendeweg (2613 D3).
+    // 3-Wege-Merge, ein Konflikt am Stand-Spiegel zugunsten der 2621-Fassung (eine Zuweisung, zwei
+    // Stellen) aufgeloest. Der Wert unten ist der Hash der zusammengefuehrten Datei.
+    const PIN = "5d08c403b3757cc1db872e9b8244298b517aa2e9b323db422d5f7c5be9d7fe6e";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

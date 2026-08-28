@@ -1,6 +1,19 @@
 import { configDefaults, defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // ==============================================================================================
+  // JOB 2622 D1 — DER EPERM, DER JEDE MESSUNG VERFAELSCHT (56 Rueckgaben nannten ihn).
+  // ==============================================================================================
+  // Vitest schreibt seinen Ergebniscache standardmaessig nach `${cacheDir}/vitest/results.json`,
+  // und der Vite-Default fuer cacheDir ist `node_modules/.vite`. In den Bahn-Klonen ist
+  // `node_modules` ein SYMLINK auf den geteilten Bestand unter `dev_Klarwerk/` — dort verbietet
+  // die Bahn-Sandbox jeden Write (gemessen 28.08.: Schreibprobe im Klon OK, Schreibprobe durch den
+  // Symlink EPERM). Folge: JEDER Vollsuitenlauf einer Bahn endete mit `VITEST-EXIT=1` bei null
+  // roten Faellen, und „EXIT=1 ist normal" haette eines Tages einen echten Fehler verdeckt.
+  // Der Cache zieht deshalb in einen REPO-LOKALEN, bereits git-ignorierten Ort (`.local/run/` ist
+  // seit SCRUM-387 ignoriert): im Klon real beschreibbar, beim Chef/CI identisch, kein
+  // git-Rauschen. Beim Chef aendert sich nichts Messbares — nur der Ablageort des Caches.
+  cacheDir: ".local/run/vite-cache",
   test: {
     // WP-D8b: .test.tsx erlaubt GEMOUNTETE React-Komponenten-Tests (jsdom). Diese Dateien laufen über
     // die esbuild-Transformation von Vitest; der Root-tsc (tools/build, ohne jsx/DOM-lib) schließt sie

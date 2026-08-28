@@ -170,6 +170,10 @@
       border-radius: 999px;
       cursor: pointer;
     }
+    /* JOB 2621 §3: der Stand-Spiegel im Kopfband — dieselbe unauffaellige Groesse wie #kw-stand
+       unten (10px), Farbe aus der AA-belegten Kopfband-Palette (--shell-muted auf --ink; die
+       Werkbank-Farbe --muted waere hier unlesbar, s. die klara-kopf-Begruendung derselben Wahl). */
+    #kw-stand-kopf { font-size: 10px; color: var(--shell-muted); }
     .lang button.active {
       color: var(--surface);
       background: var(--brand-deep);
@@ -313,10 +317,18 @@
 <body>
   <header>
     <div class="brand">Klara<small>KLARWERK</small></div>
-    <div class="lang" role="group" aria-label="Sprache">
-      <button type="button" id="lang-de" class="active">DE</button>
-      <button type="button" id="lang-en">EN</button>
-      <button type="button" id="lang-nl">NL</button>
+    <!-- JOB 2621 §3 (Befund 1, 26.08.): der Auslieferungsstand GESPIEGELT nach oben rechts, neben
+         die Sprachwahl — dort, wo Pedi ihn gesucht hat. NICHT verschoben: #kw-stand unten bleibt
+         samt seinen Tests unberuehrt; beide Stellen schreibt dieselbe eine Quelle (KLARA_STAND aus
+         dem Build — nie von Hand gepflegt). Der Wrapper haelt die header-Flexstruktur bei zwei
+         Kindern plus Vertrauenskopf; Farbe ist die AA-belegte Kopfband-Palette (--shell-muted). -->
+    <div style="display: flex; align-items: baseline; gap: 8px;">
+      <div class="lang" role="group" aria-label="Sprache">
+        <button type="button" id="lang-de" class="active">DE</button>
+        <button type="button" id="lang-en">EN</button>
+        <button type="button" id="lang-nl">NL</button>
+      </div>
+      <span id="kw-stand-kopf"></span>
     </div>
     <!-- SANIERUNG-20260827: Auslieferungsstand oben rechts GESPIEGELT (Befund Pedi,
          BEFUNDE_KLARA_PANEL_20260826 §1). #kw-stand unten bleibt bestehen — der Augenschein
@@ -358,8 +370,12 @@
         <span class="s4-label" id="klara-s4-label"></span>
         <span id="klara-s4-mode" class="trust-pill"></span>
         <p id="klara-s4-provider" class="s4-line"></p>
-        <p id="klara-s4-deviation" class="s4-line s4-line-muted hidden"></p>
+        <!-- JOB 2621 §2: Sitzungs-/Zustimmungszeile VOR der Sperr-/Abweichungszeile. „Gesperrt"
+             UEBER „Zustimmung: erteilt" las sich wie ein Widerruf der Zustimmung (Befund 3,
+             26.08.); erst die Zustimmung, dann das andere Tor mit benanntem Bezug
+             (s4BlockiertTrotzZustimmung im Renderer). Ids und Verhalten unveraendert. -->
         <p id="klara-s4-session" class="s4-line s4-line-muted"></p>
+        <p id="klara-s4-deviation" class="s4-line s4-line-muted hidden"></p>
       </div>
     </div>
   </header>
@@ -1960,6 +1976,10 @@
         s4Veraltet: "Dieser Stand ist abgelaufen und wird neu abgerufen.",
         s4Sitzung: "Zustimmung: {stand}",
         s4SitzungKeine: "Zur Zustimmung liegt kein Stand vor.",
+        // JOB 2621 §1: die URSACHE statt der Folge, wenn die Sitzung fehlt (Befund 2, 26.08.).
+        s4SitzungNichtAngemeldet: "Nicht angemeldet — dein Zustimmungsstand wird erst nach der Anmeldung sichtbar (er geht dabei nicht verloren).",
+        // JOB 2621 §2: das zweite Tor mit benanntem Bezug zur bereits erteilten Zustimmung.
+        s4BlockiertTrotzZustimmung: "Trotzdem gesperrt: {grund} Das entscheidet nicht dein Fenster.",
         s4Unbekannt: "unbekannt",
         s4ReasonExternalNotConfigured: "Es ist kein externer Anbieter eingerichtet.",
         s4ReasonInternalNotConfigured: "Es ist keine On-Premise Enterprise AI eingerichtet.",
@@ -2171,6 +2191,8 @@
         s4Veraltet: "This status has expired and is being retrieved again.",
         s4Sitzung: "Consent: {stand}",
         s4SitzungKeine: "No consent status is available.",
+        s4SitzungNichtAngemeldet: "Not signed in — your consent status becomes visible after signing in (it is not lost).",
+        s4BlockiertTrotzZustimmung: "Still blocked: {grund} This is not decided by your pane.",
         s4Unbekannt: "unknown",
         s4ReasonExternalNotConfigured: "No external provider is configured.",
         s4ReasonInternalNotConfigured: "No On-Premise Enterprise AI is configured.",
@@ -2362,6 +2384,8 @@
         s4Veraltet: "Deze stand is verlopen en wordt opnieuw opgehaald.",
         s4Sitzung: "Toestemming: {stand}",
         s4SitzungKeine: "Er is geen stand over de toestemming.",
+        s4SitzungNichtAngemeldet: "Niet aangemeld — je toestemmingsstand wordt pas na het aanmelden zichtbaar (hij gaat daarbij niet verloren).",
+        s4BlockiertTrotzZustimmung: "Toch geblokkeerd: {grund} Dat beslist niet jouw venster.",
         s4Unbekannt: "onbekend",
         s4ReasonExternalNotConfigured: "Er is geen externe aanbieder ingericht.",
         s4ReasonInternalNotConfigured: "Er is geen On-Premise Enterprise AI ingericht.",
@@ -3142,8 +3166,15 @@
       anbieter.textContent = anbieterText;
       anbieter.className = anbieterText ? "s4-line" : "s4-line hidden";
       var abw = document.getElementById("klara-s4-deviation");
+      // JOB 2621 §2 (Befund 3, 26.08.): ZWEI getrennte Tore, EIN Bezug. Liegt die Zustimmung vor
+      // und sperrt trotzdem die projektseitige Freischaltung, sagt die Zeile genau das —
+      // „Trotzdem gesperrt" statt eines nackten „Gesperrt", das ueber der Zustimmungszeile wie
+      // deren Widerruf las. (Die Reihenfolge der beiden Zeilen ist im Markup gedreht:
+      // #klara-s4-session steht seitdem VOR #klara-s4-deviation.)
       var abwText = a.blockedKey
-        ? t("s4Blockiert", { grund: t(a.blockedKey) })
+        ? (a.consentKey === "s4ConsentGranted"
+            ? t("s4BlockiertTrotzZustimmung", { grund: t(a.blockedKey) })
+            : t("s4Blockiert", { grund: t(a.blockedKey) }))
         : a.deviationKey
           ? t("s4Abweichung", { soll: t(a.adminModeKey), grund: t(a.deviationKey) })
           : a.veraltet
@@ -3151,8 +3182,17 @@
             : "";
       abw.textContent = abwText;
       abw.className = abwText ? "s4-line s4-line-muted" : "s4-line s4-line-muted hidden";
+      // JOB 2621 §1 (Befund 2, 26.08. — Pedi: „keine zustimmung obwohl ich zugestimmt hatte"):
+      // Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie; „Zur Zustimmung liegt kein
+      // Stand vor" erscheint in diesem Fall gar nicht mehr (R3: Stoerung sieht niemals aus wie
+      // Leere — und Folge sieht niemals aus wie Verlust). In den uebrigen Faellen ohne
+      // Zustimmungsstand (laedt/unerreichbar) bleibt der bisherige ehrliche Satz.
       document.getElementById("klara-s4-session").textContent =
-        a.consentKey ? t("s4Sitzung", { stand: t(a.consentKey) }) : t("s4SitzungKeine");
+        a.consentKey
+          ? t("s4Sitzung", { stand: t(a.consentKey) })
+          : a.stateKey === "s4StateKeineSitzung"
+            ? t("s4SitzungNichtAngemeldet")
+            : t("s4SitzungKeine");
 
       // Der Zustimmungskasten: sichtbar GENAU dann, wenn der Server ihn verlangt.
       var karte = document.getElementById("klara-consent-card");
@@ -4686,11 +4726,11 @@
     // der Praefix-Vergleich (statt Gleichheit) haelt auch dann, wenn der Platzhalter-Name selbst
     // einmal umbenannt wird, ohne dass diese Zeile mitzieht.
     var KLARA_STAND = "__KLARA_STAND__";
-    document.getElementById("kw-stand").textContent =
-      KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
-    // SANIERUNG-20260827: derselbe Wert zusaetzlich im Kopfband (Spiegel, keine zweite Quelle).
-    document.getElementById("kw-stand-kopf").textContent =
-      KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
+    // JOB 2621 §3: EIN Wert, ZWEI Stellen — unten (Bestand, mit seinen Tests) und der Spiegel im
+    // Kopfband. Beide aus derselben Zuweisung; keine zweite Quelle, kein Handstand.
+    var kwStandText = KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
+    document.getElementById("kw-stand").textContent = kwStandText;
+    document.getElementById("kw-stand-kopf").textContent = kwStandText;
 
     // ---- JOB 1077: die Fassungszeile ----------------------------------------------------------
     // Der Zustand wird GEHALTEN, damit ein Sprachwechsel ihn nicht verliert (dieselbe Falle, die
