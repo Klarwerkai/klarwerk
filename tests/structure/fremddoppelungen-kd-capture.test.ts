@@ -166,11 +166,32 @@ const FREMDE: readonly Fremdrelation[] = [
   },
   {
     dritt: "apps/web/src/pages/CaptureFrontDoor.tsx",
-    groessen: [83, 41, 29, 27, 27, 25, 25],
+    // JOB 2624 D1 (28.08.): 83 -> 114. NACHGEZOGEN, WEIL DIE DOPPELUNG RICHTIG GEPFLEGT WURDE —
+    // nicht, um einen roten Test gruen zu bekommen. Die Messung dahinter:
+    //
+    //   Genau EIN Wert im ganzen Register weicht ab, und genau EIN Commit hat die beiden
+    //   beteiligten Dateien angefasst: `6f629a2` (SANIERUNG 27.08., „Vertraulichkeits-Anzeige
+    //   luegt nicht mehr", Pedi-Befund Bild-KI). Er aendert `Capture.tsx:4813` UND
+    //   `CaptureFrontDoor.tsx:865` — zeichengleich in der Sache:
+    //     `value={confidentiality}` -> `value={declaredConfidentiality ?? ""}`
+    //     und in beiden ein Pflicht-Platzhalter, solange keine Stufe bewusst gewaehlt wurde.
+    //
+    // WAS DIESER EINTRAG BEWACHT, IST GENAU DAS NICHT EINGETRETEN: „Eine einseitige Aenderung
+    // hier waere egress-relevant." Die Sanierung hat BEIDE Seiten gleich gezogen; der gedoppelte
+    // Bereich ist dadurch laenger geworden, nicht auseinandergelaufen. Der Waechter hat also
+    // funktioniert und gemeldet — er hat nur keinen Fehler gefunden, sondern eine gepflegte
+    // Doppelung, deren Groesse sich geaendert hat.
+    //
+    // DIE DOPPELUNG WIRD NICHT AUFGELOEST. Sie ist keine versehentliche Kopie, sondern die
+    // bewusst gefuehrte Parallelitaet zweier Erfassungsflaechen; sie zusammenzulegen waere ein
+    // Umbau des Erfassungswegs und beruehrte den Egress — nicht Gegenstand dieses Durchgangs.
+    groessen: [114, 41, 29, 27, 27, 25, 25],
     was:
       "GELESEN: die Vertraulichkeits-Auswahl samt Nebenwirkung — die bewusste Wahl setzt " +
       "`setDeclaredConfidentiality` und gilt damit fuer den Egress. Eine einseitige Aenderung " +
-      "hier waere egress-relevant. Dazu der Zustand der Bildbeschreibungs-Bitte und ihr Ausloeser.",
+      "hier waere egress-relevant. Dazu der Zustand der Bildbeschreibungs-Bitte und ihr Ausloeser. " +
+      "Seit der SANIERUNG vom 27.08. (6f629a2) traegt der Block zusaetzlich den Pflicht-Platzhalter " +
+      "fuer die noch nicht bestaetigte Stufe — beidseitig, deshalb 114 statt 83 Knoten.",
   },
   {
     dritt: "apps/web/src/pages/Ask.tsx",
