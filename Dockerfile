@@ -36,6 +36,10 @@ RUN npm ci --omit=dev
 # (services/app/src → ../../../apps/web/dist).
 COPY services services
 COPY --from=webbuild /build/apps/web/dist apps/web/dist
+# SANIERUNG 28.08.: capture-routes importiert apps/web/src/lib/docx (Station 1);
+# ohne diesen Ordner stirbt der Container beim Start (ERR_MODULE_NOT_FOUND,
+# Coolify-Deploys seit 13:19 UTC rot). mammoth liegt dafuer im Wurzel-package.json.
+COPY apps/web/src apps/web/src
 EXPOSE 3001
 USER node
 # Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
