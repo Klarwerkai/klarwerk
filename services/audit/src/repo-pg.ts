@@ -1,9 +1,18 @@
 import type { Pool } from "pg";
 import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { AuditRepo } from "./repo";
-import type { AuditEntry } from "./types";
+import type { AuditEntry, AuditFilter } from "./types";
 
 // Postgres-Adapter für audit. Nur Anhängen (FR-AUD-02): kein UPDATE/DELETE.
+//
+// JOB 2698 D1 (Review-Befund R2-32): der Index `(action, target)` steht IN dieser Stufe, additiv und
+// wiederholbar (`IF NOT EXISTS`) — dieselbe Bauform wie die Trägersuche-Indizes in JOB 2685. Er trägt
+// die gefilterten Lesewege (`findBy`/`existsBy`): Glocke, Wirkung, Live-Wall lesen `action`, die
+// KO-Stelle `action + target`. Ein Filter nur nach `actor` (Admin-Protokoll) bleibt ein Scan — er ist
+// selten und gehört nicht zu den Befunden.
+export const AUDIT_ACTION_TARGET_INDEX_DDL = `CREATE INDEX IF NOT EXISTS audit_action_target_idx
+  ON audit (action, target);`;
+
 export const AUDIT_SCHEMA = `
 CREATE TABLE IF NOT EXISTS audit (
   seq integer PRIMARY KEY,
@@ -15,7 +24,31 @@ CREATE TABLE IF NOT EXISTS audit (
   prev_hash text NOT NULL,
   hash text NOT NULL
 );
+${AUDIT_ACTION_TARGET_INDEX_DDL}
 `;
+
+// JOB 2698 D1: die gefilterte Abfrage — dieselbe Regel wie `auditFilterTrifft` (repo.ts), in SQL:
+// ein NULL-Parameter heißt „kein Filter", ein gesetzter heißt exakte Gleichheit (`=` auf `text`, also
+// Groß-/Kleinschreibung zählt wie `===` in Node); `ORDER BY seq` wie `all()`. Ein leerer String im
+// Filter wird VOR der Abfrage zu NULL — in Node war `""` schon immer „kein Filter" (`!filter.x`).
+export const AUDIT_FIND_BY_SQL = `SELECT * FROM audit
+  WHERE ($1::text IS NULL OR actor = $1)
+    AND ($2::text IS NULL OR action = $2)
+    AND ($3::text IS NULL OR target = $3)
+  ORDER BY seq`;
+export const AUDIT_EXISTS_BY_SQL = `SELECT EXISTS(
+  SELECT 1 FROM audit
+  WHERE ($1::text IS NULL OR actor = $1)
+    AND ($2::text IS NULL OR action = $2)
+    AND ($3::text IS NULL OR target = $3)
+) AS vorhanden`;
+
+/** `""`/undefined → NULL (kein Filter); sonst der Wert — die Übersetzung von `!filter.x` nach SQL. */
+export function auditFilterParams(
+  filter: AuditFilter,
+): [string | null, string | null, string | null] {
+  return [filter.actor || null, filter.action || null, filter.target || null];
+}
 
 // WP-SHIP8-CLOSE-6 (bens ROT-1): ADDITIVE Migrationsstufe NACH AUDIT_SCHEMA — stabile Event-Id
 // für exactly-once-Belege (recordOnce). Der partielle UNIQUE-Index gilt NUR für Einträge MIT
@@ -139,6 +172,23 @@ export class PgAuditRepo implements AuditRepo {
   async all(): Promise<AuditEntry[]> {
     const res = await this.pool.query<AuditRow>("SELECT * FROM audit ORDER BY seq");
     return res.rows.map(toEntry);
+  }
+
+  // JOB 2698 D1 (R2-32): der gefilterte Leseweg — WHERE statt Vollscan plus Node-Filter. Liefert
+  // dieselbe Menge in derselben Reihenfolge wie `all()` + `auditFilterTrifft` (Gleichheit gemessen in
+  // tests/audit/job2698-*). Ohne `tx`, wie `all()`: ein Leseweg der Flächen, kein Schreibpfad.
+  async findBy(filter: AuditFilter): Promise<AuditEntry[]> {
+    const res = await this.pool.query<AuditRow>(AUDIT_FIND_BY_SQL, auditFilterParams(filter));
+    return res.rows.map(toEntry);
+  }
+
+  // JOB 2698 D1: „gibt es einen?" — EXISTS über den Index; es wird keine Zeile geladen.
+  async existsBy(filter: AuditFilter): Promise<boolean> {
+    const res = await this.pool.query<{ vorhanden: boolean }>(
+      AUDIT_EXISTS_BY_SQL,
+      auditFilterParams(filter),
+    );
+    return res.rows[0]?.vorhanden === true;
   }
 
   async last(tx?: TxContext): Promise<AuditEntry | undefined> {

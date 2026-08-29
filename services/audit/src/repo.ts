@@ -1,6 +1,19 @@
 import type { TxContext } from "../../db-tx";
 import { hashEntryFuerVersion, verifyChain } from "./chain";
-import type { AuditEntry } from "./types";
+import type { AuditEntry, AuditFilter } from "./types";
+
+// JOB 2698 D1 (Review-Befund R2-32): DIE EINE FILTERREGEL des Protokolls — leer/fehlend heißt „kein
+// Filter", gesetzt heißt exakte Gleichheit (Groß-/Kleinschreibung zählt). Sie stand bis 2698 nur in
+// `AuditService.list` (nach dem Vollscan, in Node). Jetzt steht sie HIER, damit die Speicherablage,
+// der Rückfall im Dienst und die SQL-Fassung (`repo-pg.ts`, `AUDIT_FIND_BY_SQL`) dieselbe Menge
+// meinen — die Gleichheit beider Wege ist in tests/audit/job2698-*.test.ts gemessen, nicht angenommen.
+export function auditFilterTrifft(entry: AuditEntry, filter: AuditFilter): boolean {
+  return (
+    (!filter.actor || entry.actor === filter.actor) &&
+    (!filter.action || entry.action === filter.action) &&
+    (!filter.target || entry.target === filter.target)
+  );
+}
 
 // SCRUM-523 P.3 (WP-A2): append/last nehmen einen OPTIONALEN, opaken TxContext (services/db-tx) an —
 // additiv, abwärtskompatibel (bestehende Aufrufer ohne tx unverändert). Zweck: der Purge-Chokepoint in
@@ -17,6 +30,19 @@ export interface AuditRepo {
   appendOnce(entry: AuditEntry, tx?: TxContext): Promise<boolean>;
   all(): Promise<AuditEntry[]>;
   last(tx?: TxContext): Promise<AuditEntry | undefined>;
+  /**
+   * JOB 2698 D1 (R2-32): DER GEFILTERTE LESEWEG — liefert genau die Einträge, die `all()` plus
+   * `auditFilterTrifft` liefern würde, in derselben Reihenfolge (aufsteigend nach `seq`), ohne das
+   * ganze Protokoll zu laden. Auf PostgreSQL ein `WHERE` über den Index `(action, target)`.
+   *
+   * OPTIONAL aus demselben Grund wie `findBySeq`: handgeschriebene Test-Doubles in `tests/**`
+   * implementieren dieses Interface; eine Pflichtmethode bräche sie. Beide produktiven Ablagen
+   * bieten die Methode an; fehlt sie, fällt `AuditService.list` auf den alten Vollscan zurück —
+   * derselbe Vertrag, nur teurer.
+   */
+  findBy?(filter: AuditFilter): Promise<AuditEntry[]>;
+  /** JOB 2698 D1: „gibt es mindestens einen Eintrag?" — ein EXISTS, kein Laden. */
+  existsBy?(filter: AuditFilter): Promise<boolean>;
   /**
    * W3-B (KW-W3-19): DER PUNKTZUGRIFF ueber die Sequenz — der EINZIGE zugelassene Leseweg fuer
    * eine `validationDecisionRef`.
@@ -202,6 +228,16 @@ export class InMemoryAuditRepo implements AuditRepo {
 
   all(): Promise<AuditEntry[]> {
     return Promise.resolve([...this.entries]);
+  }
+
+  // JOB 2698 D1: dieselbe Regel wie der Dienst-Rückfall und die SQL-Fassung — `entries` liegt in
+  // Anhängereihenfolge, also aufsteigend nach `seq`, genau wie `ORDER BY seq`.
+  findBy(filter: AuditFilter): Promise<AuditEntry[]> {
+    return Promise.resolve(this.entries.filter((e) => auditFilterTrifft(e, filter)));
+  }
+
+  existsBy(filter: AuditFilter): Promise<boolean> {
+    return Promise.resolve(this.entries.some((e) => auditFilterTrifft(e, filter)));
   }
 
   last(_tx?: TxContext): Promise<AuditEntry | undefined> {

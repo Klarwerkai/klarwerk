@@ -7,7 +7,7 @@ import {
   inspectChain,
   verifyChain,
 } from "./chain";
-import type { AuditRepo } from "./repo";
+import { type AuditRepo, auditFilterTrifft } from "./repo";
 import type { AuditEntry, AuditFilter, AuditInput } from "./types";
 
 export interface AuditServiceDeps {
@@ -80,14 +80,33 @@ export class AuditService {
     return this.repo.appendOnce({ ...partial, hash: hashEntryV2(partial) }, tx);
   }
 
+  // JOB 2698 D1 (Review-Befund R2-32): NUR DIESE LESEFUNKTION ist angefasst — die Sequenzlogik
+  // (`record`/`recordOnce`, PROs 2677er Kette) bleibt Zeile für Zeile, wie sie war.
+  //
+  // Bis 2698 lud `list()` bei JEDEM Aufruf das ganze Protokoll (`repo.all()`) und filterte danach in
+  // Node. Aufrufer sind die Glocke, die Startseite (Wirkung), die Live-Wall, das Admin-Protokoll —
+  // und je Wissensobjekt eine Abfrage. Das Protokoll wächst mit jeder Frage; es ist die einzige
+  // Tabelle, die nie kleiner wird, und wurde bei jedem Seitenaufruf vollständig gelesen.
+  //
+  // Jetzt: die Ablage filtert selbst (`findBy`, auf PostgreSQL ein WHERE über den Index
+  // `(action, target)`). Die Regel ist dieselbe — `auditFilterTrifft` in repo.ts ist ihre eine
+  // Fassung; der Rückfall unten benutzt sie, damit ein Test-Double ohne `findBy` dieselbe Menge
+  // sieht wie die produktiven Ablagen.
   async list(filter: AuditFilter = {}): Promise<AuditEntry[]> {
+    if (this.repo.findBy) {
+      return this.repo.findBy(filter);
+    }
     const all = await this.repo.all();
-    return all.filter(
-      (e) =>
-        (!filter.actor || e.actor === filter.actor) &&
-        (!filter.action || e.action === filter.action) &&
-        (!filter.target || e.target === filter.target),
-    );
+    return all.filter((e) => auditFilterTrifft(e, filter));
+  }
+
+  // JOB 2698 D1: „gibt es mindestens einen Eintrag?" — für Aufrufer, die nur das wissen wollen
+  // (KoService, ko.created-Nachzug). Kein Laden, auf PostgreSQL ein EXISTS.
+  async exists(filter: AuditFilter): Promise<boolean> {
+    if (this.repo.existsBy) {
+      return this.repo.existsBy(filter);
+    }
+    return (await this.list(filter)).length > 0;
   }
 
   // FR-AUD-02: Integrität der Kette prüfbar.

@@ -575,14 +575,17 @@ describe("WP-SHIP8-CLOSE-6 ROT-1: ko.created atomar GENAU EINMAL (paralleler Nac
     expect(await ctx.audit.list({ action: "ko.created", target: ko.id })).toHaveLength(0);
     // BARRIERE hinter dem Vorab-Read: BEIDE Nachzüge sehen den leeren Bestand, bevor einer
     // schreibt — genau das Query-then-Write-Race, das früher doppelte Belege erzeugte.
-    const origList = ctx.audit.list.bind(ctx.audit);
+    // JOB 2698 D1: der Vorab-Read des Nachzugs ist seitdem ein `exists` (EXISTS über den Index
+    // statt `list` über das ganze Protokoll) — die Barriere hängt deshalb an `exists`. Die Aussage
+    // des Falls ist unverändert: beide sehen „nichts da", beide schreiben, genau EIN Beleg bleibt.
+    const origExists = ctx.audit.exists.bind(ctx.audit);
     let reads = 0;
     let releaseBoth: () => void = () => {};
     const bothRead = new Promise<void>((r) => {
       releaseBoth = r;
     });
-    (ctx.audit as { list: AuditService["list"] }).list = async (filter = {}) => {
-      const result = await origList(filter);
+    (ctx.audit as { exists: AuditService["exists"] }).exists = async (filter) => {
+      const result = await origExists(filter);
       if (filter.action === "ko.created" && reads < 2) {
         reads += 1;
         if (reads === 2) {

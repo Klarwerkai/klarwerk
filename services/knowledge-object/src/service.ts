@@ -2451,8 +2451,11 @@ export class KoService {
       // Vorab-Read nur als ABKÜRZUNG (spart den Chain-Aufbau); die Exactly-once-Garantie kommt
       // aus recordOnce (WP-SHIP8-CLOSE-6, bens ROT-1: persistenzgestützter Idempotenzvertrag —
       // zwei parallele Nachzüge nach leerem Read erzeugen exakt EINEN ko.created-Eintrag).
-      const created = await this.audit.list({ action: "ko.created", target: ko.id });
-      if (created.length === 0) {
+      // JOB 2698 D1 (R2-32): hier wird nur gefragt, OB es einen Eintrag gibt — nicht welchen. Bis
+      // 2698 lud `list()` dafür das ganze Protokoll und filterte in Node; jetzt ein EXISTS über den
+      // Index (action, target). Die Aussage ist dieselbe: „mindestens ein ko.created für dieses KO".
+      const created = await this.audit.exists({ action: "ko.created", target: ko.id });
+      if (!created) {
         await this.audit.recordOnce(`ko.created:${ko.id}`, {
           actor: ko.author,
           action: "ko.created",
