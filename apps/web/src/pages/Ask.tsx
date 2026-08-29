@@ -91,6 +91,43 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
+// ================================================================================================
+// JOB 2694 D1 (Review-Befund R2-20) — EINE ANTWORT OHNE TEXT IST EINE WISSENSLÜCKE.
+// ================================================================================================
+//
+// DER BEFUND, gemessen an 71d3c2b: `answered: true` mit leerem `answer` rendert unten eine LEERE
+// Antwortkarte — samt Einordnung „Quellengebundene Antwort", Quellenliste, Kopieren/Download/Druck
+// und Danke-Knopf. „Gesichert" über nichts. Nebenan prüft `KlaraAssistant.tsx` `answered && answer`,
+// das Word-Add-in (`taskpane.html`, Ergebnisvertrag) sogar `answer.trim().length > 0`; diese Seite
+// prüfte gar nicht. Zuschlagen kann das bei einem Provider-Fehler, der `""` liefert.
+//
+// DIE ENTSCHEIDUNG: ALS LÜCKE BEHANDELN, nicht als eigene Meldung. Eine Antwort ohne Text IST
+// keine Antwort; der Mensch sieht dann exakt das, was er bei „keine Antwort gefunden" sieht —
+// denselben Kasten, denselben Wortlaut (`ask.contract.gap.*`), keinen Stempel, keine Werkzeuge.
+// Eine Meldung „Antwort ohne Inhalt geliefert" klänge nach einem Fehler des Fragenden und wäre ein
+// zweiter Text für denselben Zustand. Die Lücke ist die Wahrheit, und das Produkt führt sie schon.
+//
+// WARUM AM EINGANG UND NICHT AN DER RENDER-BEDINGUNG: Einordnung (`effectiveAnswer`, `contract`),
+// Quellenbilanz, Export (`buildExport`) und Danke-Knopf hängen ALLE an `result.answered`. Ein Guard
+// nur an der Karte ließe den Rest weiter „gesichert" rechnen. Wird das Ergebnis hier normalisiert,
+// gibt es nur EINE Lesart im ganzen Bauteil — und Kopieren/Export sind zwangsläufig gesperrt, weil
+// die Werkzeuge nur mit `answered` überhaupt entstehen und `buildExport` ohne `answered` `null`
+// liefert. Die Regel selbst: `answered && answer` (Klara) mit dem Trim des Word-Add-ins — das
+// Strengere von beiden; nur Leerraum ist genauso nichts wie ein Leerstring.
+//
+// NICHT ANGEFASST: `AnswerMarkdown` (rendert nur Textknoten, sicher — R2-20 selbst belegt).
+// `knowledgeClass` wird mit auf „unbekannt" gesetzt, damit kein späterer Leser dieses Zustands
+// eine Klasse für eine Antwort findet, die es nicht gibt.
+function leereAntwortAlsLuecke(result: AnswerResult): AnswerResult {
+  if (!result.answered) {
+    return result;
+  }
+  if ((result.answer ?? "").trim().length > 0) {
+    return result;
+  }
+  return { ...result, answered: false, answer: null, knowledgeClass: "unbekannt" };
+}
+
 export function Ask(): JSX.Element {
   const { t, i18n } = useTranslation();
   // SCRUM-272: optionale Startfrage aus der URL (/fragen?q=…) — nur vorbefüllen, kein Auto-Ask.
@@ -199,7 +236,8 @@ export function Ask(): JSX.Element {
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r) => {
-      setResult(selectAnswer(r));
+      // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
+      setResult(leereAntwortAlsLuecke(selectAnswer(r)));
       setReceipt(r.receipt);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller

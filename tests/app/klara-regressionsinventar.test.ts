@@ -216,6 +216,13 @@ const INVENTAR: readonly string[] = [
   "tests/app/word-addin-taskpane-version-contract.test.ts",
   "tests/app/word-addin.test.ts",
   "tests/ask/g27-klara-volltext.test.ts",
+  // JOB 2694 D1: neu im Baum, von der Erhebung ueber die Achsen `komponente` und `taskpane`
+  // gefunden — der Kopfkommentar der Datei nennt die zwei Nachbarflaechen (Klara-Panel, Word-
+  // Add-in), deren Guard die Fragen-Seite bis 2694 nicht hatte. Sachlich prueft die Datei die
+  // Fragen-Seite (/fragen): eine Antwort ohne Text darf dort nicht als „gesichert" stehen.
+  // K2 hat sie gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen; die Woerter aus
+  // dem Kommentar zu streichen, um dem Sensor auszuweichen, waere die schlechtere Antwort.
+  "tests/ask/job2694-leere-antwort-mit-stempel-gesichert-mounted.test.tsx",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
   // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —
