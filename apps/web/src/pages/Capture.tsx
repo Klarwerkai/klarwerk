@@ -222,8 +222,10 @@ import {
   isImage,
   readDocxFile,
   readDocxRich,
+  PdfTooLargeError,
   readFileAsDataUrl,
   readPdfFile,
+  readPdfFileWithOriginal,
   readPptxRich,
   readTextFile,
   runImageOcr,
@@ -246,6 +248,10 @@ import {
 } from "../lib/koSource";
 // WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
 import { PptxTooLargeError } from "../lib/pptx";
+// JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
+// Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
+import { PdfTimeoutError } from "../lib/pdf";
+import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
 import {
@@ -527,6 +533,27 @@ export function Capture(): JSX.Element {
   const uploadLimitsData = uploadLimitsQ.data ?? {
     maxAttachments: 8,
     maxAttachmentBytes: 20_000_000,
+  };
+  // JOB 2700 D1 (Befund R2-28): die Groessenkante des PDF-Weges VOR dem Parser — dieselbe
+  // Ableitung wie 2676 fuer PPTX: die groesste Rohdatei, die als Original-Anhang durchgeht
+  // (Uebertragungsgrenze des Servers minus Daten-URL-Aufschlag; bei 20 MB sind das 14.999.928 B).
+  // Was nicht als Original angehaengt werden kann, wird auch nicht geparst.
+  const pdfLimitBytes = maxRawAttachmentBytes(uploadLimitsData.maxAttachmentBytes);
+  /** Die ehrliche Meldung zu einer PDF, die zu gross ist oder zu lange braucht — sonst null. */
+  const pdfFehlerText = (error: unknown, name: string): string | null => {
+    if (error instanceof PdfTooLargeError) {
+      // Die Grenze ABGERUNDET (14,9 statt 15,0): was angezeigt wird, muss real durchgehen — dieselbe
+      // Regel wie maxRawAttachmentMb in uploadLimits.ts.
+      return t("capture.file.pdfTooLarge", {
+        name,
+        mb: (error.size / 1_000_000).toFixed(1),
+        limitMb: (Math.floor(error.limit / 100_000) / 10).toFixed(1),
+      });
+    }
+    if (error instanceof PdfTimeoutError) {
+      return t("capture.file.pdfTimeout", { name, s: Math.round(error.timeoutMs / 1000) });
+    }
+    return null;
   };
   const reviewerChoices = (directory.data ?? []).filter((p) => p.id !== user?.id);
   // AUFTRAG-mega6 Block D (bens Ehrlichkeitskante): die Persistenzgrenze speichert höchstens
@@ -2682,7 +2709,8 @@ export function Capture(): JSX.Element {
         setNotice(t("capture.docExtracting", { name: f.name }));
         try {
           // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap ehrlich.
-          const { text, truncated, pageCount } = await readPdfFile(f);
+          // JOB 2700 D1: mit Groessenkante — zu gross wird nicht gelesen, sondern gesagt.
+          const { text, truncated, pageCount } = await readPdfFile(f, { maxBytes: pdfLimitBytes });
           if (text.length === 0) {
             setErr(t("capture.docEmpty", { name: f.name }));
             continue;
@@ -2695,12 +2723,17 @@ export function Capture(): JSX.Element {
           setNotice(`${t("capture.docAdded", { name: f.name })}${truncatedNote}`);
         } catch (error) {
           // WP-RETEST7 R1a/c: gleiche ehrliche Unterscheidung auch am PDF-Lazy-Import-Pfad.
+          // JOB 2700 D1: zu gross und zu lange sind eigene Meldungen, kein „konnte nicht gelesen werden".
+          // UND: „wird gelesen …" blieb an diesem Weg neben dem Fehler stehen (der Befund selbst) —
+          // die Notiz wird im Fehlerfall geloescht.
+          setNotice(null);
           setErr(
-            honestParseErrorText(
-              error,
-              t(STALE_BUNDLE_KEY),
-              t("capture.docParseError", { name: f.name }),
-            ),
+            pdfFehlerText(error, f.name) ??
+              honestParseErrorText(
+                error,
+                t(STALE_BUNDLE_KEY),
+                t("capture.docParseError", { name: f.name }),
+              ),
           );
         }
       } else if (f.type.startsWith("video/") || f.type.startsWith("audio/")) {
@@ -2799,6 +2832,9 @@ export function Capture(): JSX.Element {
       // WP-D9c (bens ROT-Fix): hatte die QUELLE Bilder? Entscheidet die Importierbarkeit unabhängig davon,
       // was nach dem finalen Drop-to-fit übrig ist (All-dropped-Deck bleibt importierbar inkl. Original).
       let sourceHadImages = false;
+      // JOB 2700 D1: das Original aus DEMSELBEN Lesevorgang wie der Text (PDF) — sonst wuerde die
+      // Datei unten ein zweites Mal komplett gelesen.
+      let originalDataUrl: string | null = null;
       // WP-D5b (bens GELB-Fix 4): Format über die zentrale detectFileKind-Reihenfolge bestimmen
       // (image→pdf→docx→pptx→text). So gewinnt die Endung .pptx gegen einen irreführenden MIME text/plain
       // — sonst landete eine .pptx im Text-Pfad (Bug: isTextDocument stand VOR der PPTX-Erkennung).
@@ -2822,7 +2858,9 @@ export function Capture(): JSX.Element {
         sourceHadImages = docx.totalImages > 0;
       } else if (kind === "pdf") {
         // WP-D3: zeilen-/absatztreuer PDF-Text; truncated meldet den Seiten-Cap.
-        const pdf = await readPdfFile(f);
+        // JOB 2700 D1: Groessenkante vor dem Parser, Frist um das Parsen, Original aus demselben Puffer.
+        const { pdf, original } = await readPdfFileWithOriginal(f, { maxBytes: pdfLimitBytes });
+        originalDataUrl = original;
         text = pdf.text;
         rich = { html: null, kind: "pdf" };
         pdfTruncatedPages = pdf.truncated ? pdf.pageCount : null;
@@ -2944,7 +2982,8 @@ export function Capture(): JSX.Element {
       setFileOriginal({
         name: f.name,
         mime: f.type || "application/octet-stream",
-        data: await readFileAsDataUrl(f),
+        // JOB 2700 D1: fuer PDF bereits aus dem einen Lesevorgang da; die anderen Arten lesen wie bisher.
+        data: originalDataUrl ?? (await readFileAsDataUrl(f)),
       });
       // SCRUM-409: ehrliche Import-Quittung — Dateiname + Umfang (Zeichen; Seiten gibt der
       // Text-Extraktor nicht her, also wird auch keine Seitenzahl behauptet).
@@ -3000,7 +3039,11 @@ export function Capture(): JSX.Element {
       // WP-RETEST7 R1a (Pedis DOCX-Befund): davor die Stale-Bundle-Unterscheidung — ein nach dem
       // Deploy gescheiterter mammoth-/pdfjs-Chunk-Import ist KEIN kaputtes Dokument; echte
       // Parse-Fehler nennen die kurze Ursache (der lokale Dateiname steht ohnehin in der Meldung).
-      if (error instanceof PptxTooLargeError) {
+      // JOB 2700 D1: zu gross (Kante) und zu lange (Frist) sind eigene, ehrliche Meldungen.
+      const pdfText = pdfFehlerText(error, f.name);
+      if (pdfText !== null) {
+        setErr(pdfText);
+      } else if (error instanceof PptxTooLargeError) {
         setErr(t(CAPTURE_FILE_TEXT.pptxTooLarge, { name: f.name }));
       } else {
         setErr(

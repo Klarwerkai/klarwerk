@@ -1275,6 +1275,11 @@ const de = {
     "Die Präsentation konnte nicht als Folienbilder gelesen werden — die Datei ist beschädigt oder kein lesbares .pptx. Bitte eine andere Datei versuchen. Der Text-Import ist vollständig.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ ist zu groß oder zu stark komprimiert für den sicheren Import und wurde NICHT gelesen. Bitte die Präsentation verkleinern oder aufteilen.",
+  // JOB 2700 D1: die PDF-Kante vor dem Parser und die Frist des Parsers — beides gesagt, nicht gehangen.
+  "capture.file.pdfTooLarge":
+    "„{{name}}“ ist mit {{mb}} MB zu groß für den Import (Grenze {{limitMb}} MB) und wurde NICHT gelesen. Bitte das Dokument aufteilen — das Original bleibt unberührt.",
+  "capture.file.pdfTimeout":
+    "„{{name}}“ konnte in {{s}} Sekunden nicht gelesen werden — der Import wurde abgebrochen. Bitte das Dokument verkleinern oder aufteilen.",
   "capture.file.pptxImagesFormat":
     "{{count}} Bilder konnten nicht übernommen werden — Format nicht unterstützt.",
   "capture.file.pptxImagesBudget":
@@ -5954,6 +5959,11 @@ const en: typeof de = {
     "The presentation could not be read as slide images — the file is damaged or not a readable .pptx. Please try another file. The text import is complete.",
   "capture.file.pptxTooLarge":
     "“{{name}}” is too large or too heavily compressed for a safe import and was NOT read. Please shrink or split the presentation.",
+  // JOB 2700 D1: the PDF size limit before the parser and the parser's time limit — both said, not hung.
+  "capture.file.pdfTooLarge":
+    "“{{name}}” is {{mb}} MB and too large for import (limit {{limitMb}} MB); it was NOT read. Please split the document — the original stays untouched.",
+  "capture.file.pdfTimeout":
+    "“{{name}}” could not be read within {{s}} seconds — the import was cancelled. Please shrink or split the document.",
   "capture.file.pptxImagesFormat":
     "{{count}} images could not be carried over — format not supported.",
   "capture.file.pptxImagesBudget":
@@ -10150,6 +10160,11 @@ const nl: typeof de = {
     "De presentatie kon niet als dia-afbeeldingen worden gelezen — het bestand is beschadigd of geen leesbaar .pptx. Probeer een ander bestand. De tekstimport is volledig.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ is te groot of te sterk gecomprimeerd voor een veilige import en is NIET gelezen. Verklein of splits de presentatie.",
+  // JOB 2700 D1: de PDF-grens vóór de parser en de tijdslimiet van de parser — beide gezegd, niet blijven hangen.
+  "capture.file.pdfTooLarge":
+    "„{{name}}“ is met {{mb}} MB te groot voor de import (grens {{limitMb}} MB) en is NIET gelezen. Splits het document — het origineel blijft onaangeroerd.",
+  "capture.file.pdfTimeout":
+    "„{{name}}“ kon niet binnen {{s}} seconden worden gelezen — de import is afgebroken. Verklein of splits het document.",
   "capture.file.pptxImagesFormat":
     "{{count}} afbeeldingen konden niet worden overgenomen — formaat niet ondersteund.",
   "capture.file.pptxImagesBudget":

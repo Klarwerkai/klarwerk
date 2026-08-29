@@ -260,12 +260,83 @@ async function pdfEngine(): Promise<PdfEngine> {
   return pdfEnginePromise;
 }
 
+// ================================================================================================
+// JOB 2700 D1 (Befund R2-28) — DIE KANTE VOR DEM PARSER, UND DIE DATEI WIRD NUR EINMAL GELESEN.
+// ================================================================================================
+//
+// Bis 2700 hatte der PDF-Weg keine Groessenkante: `readPdfFile` las jede Datei komplett in den
+// Speicher und gab sie pdfjs — ein gescanntes Handbuch ueber 50 MB fror den Tab ein, und „wird
+// gelesen" blieb stehen. Der PPTX-Weg hat eine Kante (Z.217, WP-D5b, 50 MiB); JOB 2676 hat sie fuer
+// PPTX auf die Grenze des Original-Anhangs abgeleitet (`maxRawAttachmentBytes` der Uebertragungs-
+// grenze) — dieselbe Ableitung gilt hier: was nicht als Original angehaengt werden kann, wird auch
+// nicht geparst. Die Zahl kommt vom Aufrufer (Capture kennt die Live-Grenze des Servers); diese
+// Datei kennt keine eigene Konstante, damit es keine zweite Kante gibt.
+//
+// UND DAS ZWEITE LESEN: Capture las die Datei danach ein zweites Mal komplett als Daten-URL fuer
+// das Original. `readPdfFileWithOriginal` liest EINMAL und liefert beides aus demselben Puffer.
+export class PdfTooLargeError extends Error {
+  readonly size: number;
+  readonly limit: number;
+
+  constructor(size: number, limit: number) {
+    super("pdf-too-large");
+    this.name = "PdfTooLargeError";
+    this.size = size;
+    this.limit = limit;
+  }
+}
+
+export interface PdfReadOptions {
+  /** Groessenkante in Bytes — darueber wird NICHT gelesen (PdfTooLargeError). */
+  maxBytes?: number;
+  /** Frist fuer Parsen und Lesen (PdfTimeoutError aus pdf.ts); Voreinstellung 60 s. */
+  timeoutMs?: number;
+  /** Nur fuer Tests: eine injizierte Engine statt des lazy geladenen pdfjs. */
+  engine?: PdfEngine;
+}
+
+async function lesePdf(
+  file: File,
+  opts: PdfReadOptions,
+): Promise<{ buffer: ArrayBuffer; pdf: PdfDocumentText }> {
+  if (opts.maxBytes !== undefined && file.size > opts.maxBytes) {
+    throw new PdfTooLargeError(file.size, opts.maxBytes);
+  }
+  const engine = opts.engine ?? (await pdfEngine());
+  const buffer = await file.arrayBuffer();
+  const pdf = await extractPdfDocument(
+    buffer,
+    engine,
+    opts.timeoutMs !== undefined ? { timeoutMs: opts.timeoutMs } : {},
+  );
+  return { buffer, pdf };
+}
+
+/** Daten-URL aus einem bereits gelesenen Puffer — kein zweiter Lesevorgang der Datei. */
+export function dataUrlFromBuffer(buffer: ArrayBuffer, mime: string): string {
+  const bytes = new Uint8Array(buffer);
+  let binaer = "";
+  const schritt = 0x8000;
+  for (let i = 0; i < bytes.length; i += schritt) {
+    binaer += String.fromCharCode(...bytes.subarray(i, i + schritt));
+  }
+  return `data:${mime};base64,${btoa(binaer)}`;
+}
+
 // SCRUM-122 / WP-D3: PDF client-seitig zeilen-/absatztreu als Text-Kontext extrahieren (lazy, kein
 // Main-Bundle). Liefert zusätzlich `truncated`, wenn der Seiten-Cap (MAX_PDF_PAGES) griff — der
 // Aufrufer meldet das ehrlich statt still zu kürzen.
-export async function readPdfFile(file: File): Promise<PdfDocumentText> {
-  const engine = await pdfEngine();
-  return extractPdfDocument(await file.arrayBuffer(), engine);
+export async function readPdfFile(file: File, opts: PdfReadOptions = {}): Promise<PdfDocumentText> {
+  return (await lesePdf(file, opts)).pdf;
+}
+
+/** Text UND Original aus EINEM Lesevorgang — fuer den Hauptweg, der beides braucht. */
+export async function readPdfFileWithOriginal(
+  file: File,
+  opts: PdfReadOptions = {},
+): Promise<{ pdf: PdfDocumentText; original: string }> {
+  const { buffer, pdf } = await lesePdf(file, opts);
+  return { pdf, original: dataUrlFromBuffer(buffer, file.type || "application/octet-stream") };
 }
 
 // SCRUM-123: OCR-Kandidat = Bild. OCR wird NIE automatisch beim Upload gestartet.
