@@ -1268,6 +1268,11 @@ const de = {
     "Der Server arbeitet noch oder ist nicht erreichbar — die Folien-Konvertierung wurde clientseitig abgebrochen; der Text-Import bleibt vollständig erhalten.",
   "capture.slides.failed":
     "Die Folien konnten nicht in Bilder umgewandelt werden. Der Text-Import ist vollständig.",
+  // JOB 2687 D1: „zu lang" und „kaputt" sind zwei Meldungen — jede sagt, was der Mensch tun kann.
+  "capture.slides.serverTimeout":
+    "Die Konvertierung dauerte zu lange und wurde abgebrochen — bitte ein kleineres Deck versuchen (weniger Folien oder kleinere Bilder). Der Text-Import ist vollständig.",
+  "capture.slides.invalid":
+    "Die Präsentation konnte nicht als Folienbilder gelesen werden — die Datei ist beschädigt oder kein lesbares .pptx. Bitte eine andere Datei versuchen. Der Text-Import ist vollständig.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ ist zu groß oder zu stark komprimiert für den sicheren Import und wurde NICHT gelesen. Bitte die Präsentation verkleinern oder aufteilen.",
   "capture.file.pptxImagesFormat":
@@ -5942,6 +5947,11 @@ const en: typeof de = {
     "The server is still working or unreachable — the slide conversion was cancelled on the client side; the text import remains fully intact.",
   "capture.slides.failed":
     "The slides could not be converted to images. The text import is complete.",
+  // JOB 2687 D1: "too long" and "broken" are two messages — each says what to do next.
+  "capture.slides.serverTimeout":
+    "The conversion took too long and was stopped — please try a smaller deck (fewer slides or smaller images). The text import is complete.",
+  "capture.slides.invalid":
+    "The presentation could not be read as slide images — the file is damaged or not a readable .pptx. Please try another file. The text import is complete.",
   "capture.file.pptxTooLarge":
     "“{{name}}” is too large or too heavily compressed for a safe import and was NOT read. Please shrink or split the presentation.",
   "capture.file.pptxImagesFormat":
@@ -10133,6 +10143,11 @@ const nl: typeof de = {
     "De server is nog bezig of niet bereikbaar — het omzetten van de dia's is aan de clientzijde afgebroken; de tekstimport blijft volledig behouden.",
   "capture.slides.failed":
     "De dia's konden niet naar afbeeldingen worden omgezet. De tekstimport is volledig.",
+  // JOB 2687 D1: „te lang" en „kapot" zijn twee meldingen — elk zegt wat je kunt doen.
+  "capture.slides.serverTimeout":
+    "De omzetting duurde te lang en is afgebroken — probeer een kleinere presentatie (minder dia's of kleinere afbeeldingen). De tekstimport is volledig.",
+  "capture.slides.invalid":
+    "De presentatie kon niet als dia-afbeeldingen worden gelezen — het bestand is beschadigd of geen leesbaar .pptx. Probeer een ander bestand. De tekstimport is volledig.",
   "capture.file.pptxTooLarge":
     "„{{name}}“ is te groot of te sterk gecomprimeerd voor een veilige import en is NIET gelezen. Verklein of splits de presentatie.",
   "capture.file.pptxImagesFormat":

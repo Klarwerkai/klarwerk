@@ -15,7 +15,48 @@
 // Reply, Erfolg) — kein hängender Slot.
 import type { FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
 import type { Guards } from "../http";
-import { MAX_PPTX_BYTES, MAX_SLIDES, type SlideConverter } from "../slide-converter";
+import {
+  MAX_PPTX_BYTES,
+  MAX_SLIDES,
+  SlideConvertError,
+  type SlideConverter,
+} from "../slide-converter";
+
+// ==============================================================================================
+// JOB 2687 D1 — ZU LANG IST NICHT KAPUTT (Review EXT1 R2-26, Spiegel von Befund 14 / JOB 2671).
+// ==============================================================================================
+//
+// DER BEFUND: Jeder Konverterfehler — defektes Archiv, `soffice`-Abbruch, kein PDF, Zeitlimit,
+// Lease-Abbruch — wurde derselbe `500 SLIDES_FAILED`. Für den Menschen sahen „zu lang" und
+// „kaputt" gleich aus, und beide wie ein Fehler des Servers. Dieselbe Bauart wie 2671
+// (`capture-routes.ts`): die Ursache wird am Objekt erkannt und mit eigenem Code und einem Satz,
+// der sagt, was der Mensch tun kann, beantwortet.
+//
+// WORAN DIE ART ERKANNT WIRD — und warum am Text: `slide-converter.ts` (nicht in dieser Lease,
+// 2676 D2) wirft ohne Art-Feld: Zeitlimit als `SlideConvertError("Zeitlimit …")` (Gesamtfrist)
+// oder als `Error("Zeitlimit: … samt Prozessgruppe beendet")` (Einzelprozess), den Abbruch der
+// Route als `SlideConvertError("Abbruch …"/"… abgebrochen …")`, ein nicht-null-Exit als
+// `Error("… beendete mit Code …")`, fehlende Ausgabe als `SlideConvertError`. Die Regel liest
+// deshalb den Wortlaut — eng, jede Form benannt; alles andere bleibt ehrlich `500 SLIDES_FAILED`
+// (ein Infrastrukturfehler ist keine kaputte Datei). Ein `kind`-Feld an `SlideConvertError` wäre
+// die sauberere Kante — benannter Rest, sobald `slide-converter.ts` frei ist.
+export type SlidesFehlerArt = "timeout" | "invalid" | "unknown";
+
+export function slidesFehlerArt(error: unknown): SlidesFehlerArt {
+  const text = error instanceof Error ? error.message : String(error);
+  if (/Zeitlimit|Abbruch|abgebrochen/i.test(text)) {
+    return "timeout";
+  }
+  if (error instanceof SlideConvertError || /beendete mit Code/.test(text)) {
+    return "invalid";
+  }
+  return "unknown";
+}
+
+export const SLIDES_TIMEOUT_MESSAGE =
+  "Die Konvertierung dauerte zu lange und wurde abgebrochen — bitte ein kleineres Deck (weniger Folien oder kleinere Bilder) versuchen. Der Text-Import ist vollständig.";
+export const SLIDES_INVALID_MESSAGE =
+  "Die Präsentation konnte nicht als Folienbilder gelesen werden — die Datei ist beschädigt oder kein lesbares .pptx. Bitte eine andere Datei versuchen. Der Text-Import ist vollständig.";
 
 // 50 MB Nutzdaten → ~67 Mio. base64-Zeichen + JSON-Overhead.
 export const SLIDES_BODY_LIMIT = 72 * 1024 * 1024; // 72 MiB
@@ -391,19 +432,29 @@ export function slidesRoutes(converter: SlideConverter, guards: Guards): Fastify
             maxSlides: MAX_SLIDES,
           });
         } catch (error) {
+          // JOB 2687 D1: „zu lang" (422) und „kaputt" (415) auseinanderhalten — 500 nur noch für das,
+          // was wirklich ein Serverfehler ist. PII-frei: Art, Dauer, Bytes — nie Inhalt oder Name.
+          const art = slidesFehlerArt(error);
           request.log.warn(
             {
               durationMs: Date.now() - startedMs,
               inputBytes: bytes,
               reason: error instanceof Error ? error.name : "unknown",
+              art,
             },
             "slides-convert-failed",
           );
-          reply.code(500).send({
-            error: "SLIDES_FAILED",
-            message:
-              "Die Folien-Konvertierung ist fehlgeschlagen — der Text-Import bleibt davon unberührt.",
-          });
+          if (art === "timeout") {
+            reply.code(422).send({ error: "SLIDES_TIMEOUT", message: SLIDES_TIMEOUT_MESSAGE });
+          } else if (art === "invalid") {
+            reply.code(415).send({ error: "SLIDES_INVALID", message: SLIDES_INVALID_MESSAGE });
+          } else {
+            reply.code(500).send({
+              error: "SLIDES_FAILED",
+              message:
+                "Die Folien-Konvertierung ist fehlgeschlagen — der Text-Import bleibt davon unberührt.",
+            });
+          }
         } finally {
           // Nur den EIGENEN Job austragen (ein neuer Claim könnte bereits einen neuen registriert haben).
           if (activeJob === job) {

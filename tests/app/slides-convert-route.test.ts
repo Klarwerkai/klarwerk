@@ -184,7 +184,10 @@ describe("WP-D11: /api/capture/slides", () => {
     expect(third.statusCode).toBe(200);
   });
 
-  it("Konverter-Fehler (z. B. Timeout) → ehrlicher 500 SLIDES_FAILED; der Platz wird wieder frei", async () => {
+  // JOB 2687 D1 (Review EXT1 R2-26) — HIER STAND `500 SLIDES_FAILED` für einen TIMEOUT. Der Pin hielt
+  // den Befund fest: „zu lang" und „kaputt" waren derselbe Serverfehler. Ein Zeitlimit ist jetzt
+  // `422 SLIDES_TIMEOUT`; die Platz-Freigabe (der eigentliche Zweck dieses Falls) bleibt geprüft.
+  it("Konverter-Zeitlimit → 422 SLIDES_TIMEOUT (nicht 500); der Platz wird wieder frei", async () => {
     let fail = true;
     const app = appWith(
       fakeConverter({
@@ -203,8 +206,8 @@ describe("WP-D11: /api/capture/slides", () => {
       headers,
       payload: { data: SMALL_PPTX },
     });
-    expect(res.statusCode).toBe(500);
-    expect((res.json() as { error: string }).error).toBe("SLIDES_FAILED");
+    expect(res.statusCode).toBe(422);
+    expect((res.json() as { error: string }).error).toBe("SLIDES_TIMEOUT");
     fail = false;
     const retry = await app.inject({
       method: "POST",

@@ -22,6 +22,10 @@ export const SLIDE_IMAGES_TEXT = {
   failed: "capture.slides.failed",
   // WP-RETEST7 R8: harter Client-Timeout — ehrliche Meldung, der Text-Import bleibt.
   timeout: "capture.slides.timeout",
+  // JOB 2687 D1 (Review EXT1 R2-26): der SERVER sagt jetzt, ob die Umwandlung zu lange dauerte (422)
+  // oder die Datei nicht lesbar war (415) — zwei Meldungen, die sagen, was der Mensch tun kann.
+  serverTimeout: "capture.slides.serverTimeout",
+  invalid: "capture.slides.invalid",
 } as const;
 
 // ---- WP-RETEST7 R8 (Pedis Befund: endloser Spinner bei abgeschalteter Route) ----
@@ -41,6 +45,9 @@ export type SlidesConvertOutcome =
 
 // EINE Fehler-Klassifikation für alle Ausgänge: 503 → nicht verfügbar, 429 → belegt,
 // Timeout (408/TIMEOUT) → Zeitüberschreitung, alles andere (Netz/Abort/5xx) → generisch ehrlich.
+// JOB 2687 D1: dazu die zwei Antworten des Servers — 422 `SLIDES_TIMEOUT` (zu lang: kleineres
+// Deck) und 415 `SLIDES_INVALID` (kaputt: andere Datei). Bis hierher kannte der Client nur
+// 503/429/408; „zu lang" und „kaputt" fielen beide auf `failed` — ununterscheidbar.
 export function slidesErrorKey(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 503) {
@@ -51,6 +58,12 @@ export function slidesErrorKey(error: unknown): string {
     }
     if (error.status === 408 || error.code === "TIMEOUT") {
       return SLIDE_IMAGES_TEXT.timeout;
+    }
+    if (error.status === 422 || error.code === "SLIDES_TIMEOUT") {
+      return SLIDE_IMAGES_TEXT.serverTimeout;
+    }
+    if (error.status === 415 || error.code === "SLIDES_INVALID") {
+      return SLIDE_IMAGES_TEXT.invalid;
     }
   }
   return SLIDE_IMAGES_TEXT.failed;

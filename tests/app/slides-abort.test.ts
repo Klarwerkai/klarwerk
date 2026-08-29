@@ -314,7 +314,11 @@ describe("WP-REST18 Fix 3: Socket-Abbrüche geben den Folien-Slot frei", () => {
         new Error("Prozessgruppe nach Abbruch beendet"),
       );
       const stuckRes = await stuck;
-      expect(stuckRes.statusCode).toBe(500);
+      // JOB 2687 D1: HIER STAND 500. Der vom Lease-Watchdog abgebrochene Job ist ein Job, der ZU
+      // LANGE lief — die Route sagt es jetzt so (422 SLIDES_TIMEOUT) statt als Serverfehler. Der
+      // Kern dieses Falls (Abbruch → Settlement → erst dann frei) bleibt unveraendert geprueft.
+      expect(stuckRes.statusCode).toBe(422);
+      expect((stuckRes.json() as { error: string }).error).toBe("SLIDES_TIMEOUT");
       for (let i = 0; i < 10; i++) {
         await new Promise((r) => setImmediate(r));
       }
