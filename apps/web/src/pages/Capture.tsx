@@ -129,10 +129,12 @@ import {
   CAPTURE_FILE_TEXT,
   DraftPayloadTooLargeError,
   FILE_CAPTURE_ACCEPT,
+  FILE_TEXT_INSERT_ACCEPT,
   type FileDraftQueue,
   type FileImportMode,
   type SelectableExtractPoint,
   type WholeDocumentSourceKind,
+  isTextInsertSupported,
   advanceFileQueue,
   buildFileQueue,
   currentQueuePoint,
@@ -218,9 +220,6 @@ import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
   fileToThumbDataUrl,
   isImage,
-  isPdfDocument,
-  isTextDocument,
-  isWordDocument,
   readDocxFile,
   readDocxRich,
   readFileAsDataUrl,
@@ -2639,13 +2638,13 @@ export function Capture(): JSX.Element {
   // WP-D7e (bens GELB-Fix): welche Dateien onDocs überhaupt verarbeiten kann — Typ-Filter VOR dem Cap,
   // damit nicht unterstützte Dateien keine Anhang-Plätze verbrauchen (ein gültiges Element derselben
   // Mehrfachauswahl fiele sonst am Limit unnötig heraus).
+  // JOB 2699 D1 (Befund R2-27): „Text aus Datei einfuegen" prueft die Dateiart jetzt ueber die
+  // ZENTRALE Erkennung (detectFileKind, Reihenfolge image→pdf→docx→pptx→text) — dieselbe Regel und
+  // dieselbe Liste wie der Dateidialog dieses Weges (FILE_TEXT_INSERT_ACCEPT). Eine .pptx mit MIME
+  // text/plain landet damit nicht mehr im Textleser; sie ist „nicht unterstuetzt" — und der Dialog
+  // bietet sie an diesem Weg auch nicht mehr an.
   const isDocsSupported = (f: File): boolean =>
-    isImage(f) ||
-    isTextDocument(f) ||
-    isWordDocument(f) ||
-    isPdfDocument(f) ||
-    f.type.startsWith("video/") ||
-    f.type.startsWith("audio/");
+    isTextInsertSupported({ name: f.name, type: f.type });
 
   const onDocs = async (e: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const all = Array.from(e.target.files ?? []);
@@ -2656,11 +2655,13 @@ export function Capture(): JSX.Element {
     }
     const files = capIncomingFiles(all.filter(isDocsSupported));
     for (const f of files) {
-      if (isImage(f)) {
+      // JOB 2699 D1: die Verzweigung folgt der Erkennung — nicht mehr „Text ODER Word" nach Endung.
+      const kind = detectFileKind({ name: f.name, type: f.type });
+      if (kind === "image") {
         await addImage(f);
-      } else if (isTextDocument(f) || isWordDocument(f)) {
+      } else if (kind === "text" || kind === "docx") {
         try {
-          const text = isWordDocument(f) ? await readDocxFile(f) : await readTextFile(f);
+          const text = kind === "docx" ? await readDocxFile(f) : await readTextFile(f);
           setRaw((prev) => (prev ? `${prev}\n\n[${f.name}]\n${text}` : `[${f.name}]\n${text}`));
           await pushDoc(f);
           setNotice(t("capture.docAdded", { name: f.name }));
@@ -2675,7 +2676,7 @@ export function Capture(): JSX.Element {
             ),
           );
         }
-      } else if (isPdfDocument(f)) {
+      } else if (kind === "pdf") {
         // SCRUM-122: PDF lazy als Text-Kontext übernehmen; Status ehrlich anzeigen.
         setErr(null);
         setNotice(t("capture.docExtracting", { name: f.name }));
@@ -4118,7 +4119,7 @@ export function Capture(): JSX.Element {
                       <input
                         type="file"
                         multiple
-                        accept={FILE_CAPTURE_ACCEPT}
+                        accept={FILE_TEXT_INSERT_ACCEPT}
                         className="hidden"
                         onChange={(e) => void onDocs(e)}
                       />
@@ -4927,7 +4928,7 @@ export function Capture(): JSX.Element {
                       <input
                         type="file"
                         multiple
-                        accept={FILE_CAPTURE_ACCEPT}
+                        accept={FILE_TEXT_INSERT_ACCEPT}
                         className="hidden"
                         onChange={(e) => void onDocs(e)}
                       />

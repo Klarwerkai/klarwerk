@@ -9,6 +9,9 @@ import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types
 import { reservedObjectLinkHtml } from "./bodyFileLink";
 // WP-D9b: verankerte figures im sicheren HTML erkennen (gleiche Quelle wie die BILD-1d-Galerie).
 import { extractBodyImages } from "./bodyImages";
+// JOB 2699 D1: die zentrale Dateiart-Erkennung — Liste UND Pruefung des Text-Einfuege-Weges
+// haengen an ihr, nicht an Endungen.
+import { type FileKind, detectFileKind } from "./extract";
 // JOB 513/D2: der TYP des Bildtransfer-Vertrags. Dieses Modul trifft KEINE Budgetentscheidung und fuehrt
 // KEINE eigene Bytegrenze — die wirksame Grenze reist im Vertrag mit (autoritativ bleiben
 // MAX_INLINE_BODY_HTML_BYTES in docx.ts und PPTX_MAX_IMAGE_BYTES/PPTX_MAX_TOTAL_IMAGE_BYTES in pptx.ts).
@@ -65,6 +68,51 @@ export const FILE_IMPORT_ACCEPT =
 // (die per Transkription zu Text werden). Leitet sich aus FILE_IMPORT_ACCEPT ab → pptx bleibt automatisch
 // dabei, kein Drift.
 export const FILE_CAPTURE_ACCEPT = `${FILE_IMPORT_ACCEPT},video/*,audio/*`;
+
+// ================================================================================================
+// JOB 2699 D1 (Befund R2-27) — DER DIALOG BOT AN, WAS DER WEG DAHINTER ABLEHNTE.
+// ================================================================================================
+//
+// „Text aus Datei einfuegen" (Capture.tsx, onDocs) trug `accept={FILE_CAPTURE_ACCEPT}` — und die
+// enthaelt .pptx. Der Weg selbst kann aber Text/Word/PDF/Bild (und Video/Audio als Anhang), KEIN
+// PowerPoint: der Mensch waehlte eine .pptx und las „nicht unterstuetzt". Zwei Listen, die
+// auseinanderliefen: die des Dialogs und die der Pruefung.
+//
+// ENTSCHEIDUNG: STREICHEN, nicht aufnehmen. PPTX ueber `readPptxRich(...).text` hier hineinzuholen,
+// waere eine zweite Bauart desselben Imports ohne Bild- und Original-Vertrag; der Hauptweg
+// (CaptureFileImport, FILE_IMPORT_ACCEPT) beherrscht PPTX vollstaendig. FILE_CAPTURE_ACCEPT selbst
+// bleibt, wie es ist — es versorgt auch „Datei oder Bild beifuegen" (onAttach) und den Studio-Anhang,
+// die JEDE Datei als Anhang annehmen; dort ist .pptx richtig. Nur der Text-Einfuege-Weg bekommt
+// seine eigene Liste, und die ist aus DERSELBEN Tabelle abgeleitet wie seine Pruefung.
+export const TEXT_INSERT_KINDS = ["text", "docx", "pdf", "image"] as const satisfies readonly FileKind[];
+
+/** Eine Marke der Accept-Liste je unterstuetzter Art — EINE Tabelle fuer Liste und Pruefung. */
+const TEXT_INSERT_ACCEPT_JE_ART: Readonly<Record<(typeof TEXT_INSERT_KINDS)[number], string>> = {
+  text: ".txt,.md,.markdown,.csv,.log,.json",
+  docx: ".docx",
+  pdf: ".pdf,application/pdf",
+  image: "image/*",
+};
+
+/** Video/Audio werden an diesem Weg als Anhang mitgefuehrt (Transkription auf Klick) — kein Textleser. */
+const TEXT_INSERT_MEDIEN = "video/*,audio/*";
+
+export const FILE_TEXT_INSERT_ACCEPT = [
+  ...TEXT_INSERT_KINDS.map((art) => TEXT_INSERT_ACCEPT_JE_ART[art]),
+  TEXT_INSERT_MEDIEN,
+].join(",");
+
+/**
+ * Kann „Text aus Datei einfuegen" diese Datei? Entschieden ueber die zentrale Erkennung
+ * (detectFileKind: image→pdf→docx→pptx→text) — eine .pptx mit MIME text/plain ist damit PPTX,
+ * nicht Text. Video/Audio zaehlen als Anhang-Arten dieses Weges.
+ */
+export function isTextInsertSupported(input: { name: string; type: string }): boolean {
+  if ((TEXT_INSERT_KINDS as readonly FileKind[]).includes(detectFileKind(input))) {
+    return true;
+  }
+  return input.type.startsWith("video/") || input.type.startsWith("audio/");
+}
 
 // Punkte aus der Extraktion in auswählbare Listeneinträge heben (alle vorausgewählt —
 // der Experte wählt AB, was nicht gebraucht wird; übernommen wird erst auf Klick).
