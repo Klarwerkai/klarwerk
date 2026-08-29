@@ -135,6 +135,37 @@ function escapeText(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// ================================================================================================
+// JOB 2675 D1 (R2-15) — EIN ATTRIBUTWERT DARF DEN ATTRIBUTWERT NICHT VERLASSEN.
+// ================================================================================================
+//
+// DER BEFUND, ausgefuehrt und nicht gelesen: Der Tokenizer nimmt EINFACH gequotete Attribute an
+// (`'([^']*)'` in `parseAttrs`), deren Wert also ein `"` enthalten darf. `renderAttrs` gibt aber
+// DOPPELT gequotet aus — und `escapeText` escaped `&`, `<`, `>`, jedoch KEIN `"`. Gemessen an
+// dieser Datei, vor dem Fix:
+//
+//     Eingabe:     <img src="data:image/png;base64,AAAA" alt='x" onerror="alert(1)'>
+//     Gespeichert: <img src="data:image/png;base64,AAAA" alt="x" onerror="alert(1)">
+//
+// Aus EINEM harmlosen Attribut wurden ZWEI, das zweite aktiv. Das ist gespeichertes Markup, kein
+// Anzeigefehler: es steht so im Entwurf und im Wissensobjekt.
+//
+// WARUM `escapeText` DAFUER NICHT REICHT UND AUCH NICHT ERWEITERT WIRD: Es escaped TEXTinhalt,
+// und dort ist ein `"` voellig harmlos — `<p>Er sagte "hallo"</p>` soll genau so lesbar bleiben.
+// Ein `&quot;` im Fliesstext waere eine Verschlechterung ohne Sicherheitsgewinn. Die beiden Orte
+// haben verschiedene Gefahren, also brauchen sie zwei Funktionen.
+//
+// `'` WIRD MIT ESCAPED, obwohl die Ausgabe doppelt quotet: Es kostet nichts und macht die Funktion
+// unabhaengig davon, mit welchem Anfuehrungszeichen ein kuenftiger Aufrufer ausgibt. Eine
+// Sicherung, die nur unter der heutigen Ausgabeform haelt, ist eine halbe.
+//
+// DIE EIGENTLICHE ZUSICHERUNG IST DER FIXPUNKT: `sanitize(sanitize(x)) === sanitize(x)`. Ein
+// Sanitizer, dessen Ausgabe beim zweiten Durchlauf anders aussieht, hat beim ersten etwas erzeugt,
+// das er selbst fuer gefaehrlich haelt. Gepinnt in `sanitize.test.ts`.
+function escapeAttr(value: string): string {
+  return escapeText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function parseAttrs(raw: string): Map<string, string> {
   const attrs = new Map<string, string>();
   const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
@@ -178,7 +209,7 @@ function renderAttrs(tag: string, raw: string): string {
       if (!cls) {
         continue;
       }
-      out.push(`class="${escapeText(cls)}"`);
+      out.push(`class="${escapeAttr(cls)}"`);
       continue;
     }
     // WP-BILD-1a/1b: data-image-id (auf figcaption UND img) nur als sicheres Token (Wort-/Bindestrich-
@@ -197,7 +228,10 @@ function renderAttrs(tag: string, raw: string): string {
       }
       continue;
     }
-    out.push(`${name}="${escapeText(value)}"`);
+    // JOB 2675 D1 (R2-15): `escapeAttr` statt `escapeText` — HIER entstand die Luecke. Der Wert
+    // wird doppelt gequotet ausgegeben, also muss ein `"` im Wert unschaedlich gemacht werden,
+    // sonst schliesst er das Attribut und alles Folgende wird zu eigenen Attributen.
+    out.push(`${name}="${escapeAttr(value)}"`);
   }
   // Links immer mit Schutz öffnen.
   if (tag === "a") {

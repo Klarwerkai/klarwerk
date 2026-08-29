@@ -472,3 +472,123 @@ describe("KW-STR: htmlToPlainText", () => {
     expect(htmlToPlainText("")).toBe("");
   });
 });
+
+// ================================================================================================
+// JOB 2675 D1 (R2-15) — DER SANITIZER DARF SEIN EIGENES VERSPRECHEN NICHT BRECHEN.
+// ================================================================================================
+//
+// DER BEFUND: Der Tokenizer nimmt EINFACH gequotete Attribute an (`'([^']*)'`), also solche, deren
+// Wert ein `"` enthalten darf. `escapeText` escaped `&`, `<` und `>` — aber KEIN `"`. Und
+// `renderAttrs` gibt DOPPELT gequotet aus. Aus einem harmlosen Attributwert wird beim Speichern
+// ein zweites, aktives Attribut:
+//
+//     Eingabe:     alt='x" onerror="alert(1)'
+//     Gespeichert: alt="x" onerror="alert(1)"
+//
+// Das ist gespeichertes aktives Markup — Stored XSS fuer jeden Konsumenten, der den Text ohne
+// zweiten Sanitizer-Durchlauf ausgibt.
+//
+// WARUM HEUTE NICHTS PASSIERT: Der Web-Client sanitisiert vor dem Rendern ein ZWEITES Mal
+// (`SanitizedHtml.tsx`). Die Anlage wird also von einem Zufall gerettet, nicht von ihrer
+// Sicherung. Der Kopf des Sanitizers verspricht das Gegenteil: „Server ist die autoritative
+// Sanitizing-Instanz."
+//
+// DIE EIGENTLICHE ZUSICHERUNG IST DER FIXPUNKT. Ein Sanitizer, dessen Ausgabe bei erneutem
+// Durchlauf anders aussieht, hat beim ersten Mal etwas erzeugt, das er selbst fuer gefaehrlich
+// haelt. `sanitize(sanitize(x)) === sanitize(x)` prueft die EIGENSCHAFT, nicht einen Einzelfall.
+//
+// BIS ZU DIESEM DURCHGANG HATTE DIESE DATEI KEINEN EINZIGEN `='`-FALL — gezaehlt, nicht vermutet.
+describe("JOB 2675 D1 · R2-15: einfach gequotete Attribute erzeugen kein zweites Attribut", () => {
+  /** Die Faelle, an denen sich der Fehler zeigt — und eine Reihe harmloser zur Kalibrierung. */
+  const FAELLE: readonly { name: string; html: string }[] = [
+    {
+      name: "img/alt mit doppeltem Anfuehrungszeichen im Wert",
+      html: `<img src="data:image/png;base64,AAAA" alt='x" onerror="alert(1)'>`,
+    },
+    {
+      name: "a/title mit doppeltem Anfuehrungszeichen im Wert",
+      html: `<a href="https://example.invalid/x" title='y" onclick="alert(2)'>Text</a>`,
+    },
+    {
+      name: "a/href, das nur wie ein Anker aussieht",
+      html: `<a href='#" onclick="alert(3)'>Anker</a>`,
+    },
+    {
+      name: "einfach gequotet, aber harmlos",
+      html: `<img src="data:image/png;base64,AAAA" alt='ganz normal'>`,
+    },
+    { name: "doppelt gequotet, harmlos", html: "<p>Text</p><h2>Titel</h2>" },
+  ];
+
+  it("KALIBRIERUNG: die Pruefreihe enthaelt wirklich einfach gequotete Attribute", () => {
+    // Ohne diesen Fall koennte die ganze Reihe aus doppelt gequoteten Werten bestehen — dann
+    // waere „kein zweites Attribut" muehelos wahr und belegte nichts.
+    expect(FAELLE.filter((f) => f.html.includes("='")).length).toBeGreaterThanOrEqual(4);
+  });
+
+  // WAS HIER GEPRUEFT WIRD — und was ausdruecklich NICHT:
+  //
+  // Die gefaehrliche Sache ist ein ATTRIBUT `onerror=`, nicht die Zeichenfolge „onerror". Nach dem
+  // Fix steht sie weiterhin im gespeicherten Text — aber als harmloser TEXT innerhalb des
+  // `alt`-Werts: `alt="x&quot; onerror=&quot;alert(1)"`. Das ist genau richtig so: der Sanitizer
+  // wirft den Inhalt nicht weg, er entschaerft ihn.
+  //
+  // Ein Test auf `not.toContain("onerror")` waere deshalb der falsche Test — er wuerde einen
+  // korrekten Fix fuer falsch erklaeren. Geprueft wird stattdessen die ATTRIBUTFORM: ein
+  // Ereignisattribut entsteht nur, wenn ein echtes, nicht escaptes Anfuehrungszeichen den Wert
+  // vorher schliesst.
+  const ALS_ATTRIBUT = (name: string) => new RegExp(`\\s${name}\\s*=\\s*"`, "i");
+
+  it("aus `alt='x\" onerror=…'` entsteht KEIN onerror-ATTRIBUT", () => {
+    // Der Fall aus dem Review, woertlich. Geprueft wird, was GESPEICHERT wuerde.
+    const gespeichert = sanitizeHtml(
+      `<img src="data:image/png;base64,AAAA" alt='x" onerror="alert(1)'>`,
+    );
+    expect(gespeichert, `gespeichert: ${gespeichert}`).not.toMatch(ALS_ATTRIBUT("onerror"));
+    // Und der Inhalt ist nicht verschwunden, sondern entschaerft.
+    expect(gespeichert).toContain("&quot;");
+  });
+
+  it("aus `title='y\" onclick=…'` an einem Link entsteht KEIN onclick-ATTRIBUT", () => {
+    const gespeichert = sanitizeHtml(
+      `<a href="https://example.invalid/x" title='y" onclick="alert(2)'>Text</a>`,
+    );
+    expect(gespeichert, `gespeichert: ${gespeichert}`).not.toMatch(ALS_ATTRIBUT("onclick"));
+  });
+
+  it("aus `href='#\" onclick=…'` entsteht KEIN onclick-ATTRIBUT", () => {
+    // `isSafeHref` sieht nur das fuehrende `#` und laesst den Wert durch — der Rest entstuende
+    // erst bei der Ausgabe.
+    const gespeichert = sanitizeHtml(`<a href='#" onclick="alert(3)'>Anker</a>`);
+    expect(gespeichert, `gespeichert: ${gespeichert}`).not.toMatch(ALS_ATTRIBUT("onclick"));
+  });
+
+  it("KALIBRIERUNG: die Attributform wuerde ein echtes Ereignisattribut auch finden", () => {
+    // Ohne diesen Fall koennte `ALS_ATTRIBUT` an allem vorbeigehen und die drei Faelle darueber
+    // waeren muehelos gruen. Hier steht, dass das Muster zubeisst.
+    expect(`<img src="x" onerror="alert(1)">`).toMatch(ALS_ATTRIBUT("onerror"));
+    expect(`<a href="#" onclick="alert(2)">x</a>`).toMatch(ALS_ATTRIBUT("onclick"));
+  });
+
+  it("KEIN ausgegebener Attributwert enthaelt ein rohes Anfuehrungszeichen", () => {
+    // Die allgemeine Form: was zwischen den Anfuehrungszeichen steht, darf selbst keines sein.
+    for (const fall of FAELLE) {
+      const aus = sanitizeHtml(fall.html);
+      for (const [, wert] of aus.matchAll(/="([^"]*)"/g)) {
+        expect(wert, `${fall.name}: ${aus}`).not.toContain('"');
+      }
+    }
+  });
+
+  it("DER FIXPUNKT: zweimal sanitisieren aendert nichts mehr", () => {
+    // DIE EIGENTLICHE ZUSICHERUNG. Sie gilt fuer die ganze Reihe, nicht fuer einen Fall.
+    for (const fall of FAELLE) {
+      const einmal = sanitizeHtml(fall.html);
+      const zweimal = sanitizeHtml(einmal);
+      expect(
+        zweimal,
+        `${fall.name} ist kein Fixpunkt:\n  einmal:  ${einmal}\n  zweimal: ${zweimal}`,
+      ).toBe(einmal);
+    }
+  });
+});

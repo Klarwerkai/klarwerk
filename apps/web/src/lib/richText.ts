@@ -131,6 +131,21 @@ function escapeText(text: string): string {
     .replace(/>/g, "&gt;");
 }
 
+// JOB 2675 D1 (R2-15) — DIESELBE SICHERUNG WIE SERVERSEITIG, WORTGLEICH.
+//
+// Der Befund und die Begruendung stehen ausgeschrieben in `services/structure/src/sanitize.ts`
+// bei der dortigen `escapeAttr`. Kurz: der Tokenizer nimmt einfach gequotete Attribute an, die
+// Ausgabe quotet doppelt, und `escapeText` escaped kein `"` — aus einem Attribut werden zwei,
+// das zweite aktiv. Gemessen, nicht vermutet.
+//
+// WARUM AUCH HIER: Diese Datei ist der Spiegel des Server-Sanitizers. Waere nur eine Seite
+// gefixt, bliebe die halbe Luecke — und die beiden Fassungen liefen auseinander, was in Befund 10
+// desselben Reviews schon einmal Thema war. Der Paritaetstest aus JOB 2656 D3 deckt bisher nur
+// die BILD-Allowlist ab; fuer diese Funktion ist er in JOB 2675 D1 erweitert worden.
+function escapeAttr(value: string): string {
+  return escapeText(value).replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 function parseAttrs(raw: string): Map<string, string> {
   const attrs = new Map<string, string>();
   const re = /([a-zA-Z_:][-a-zA-Z0-9_:.]*)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+)))?/g;
@@ -174,7 +189,7 @@ function renderAttrs(tag: string, raw: string): string {
       if (!cls) {
         continue;
       }
-      out.push(`class="${escapeText(cls)}"`);
+      out.push(`class="${escapeAttr(cls)}"`);
       continue;
     }
     // WP-BILD-1a/1b: data-image-id (auf figcaption UND img) nur als sicheres Token (Wort-/Bindestrich-
@@ -193,7 +208,9 @@ function renderAttrs(tag: string, raw: string): string {
       }
       continue;
     }
-    out.push(`${name}="${escapeText(value)}"`);
+    // JOB 2675 D1 (R2-15): `escapeAttr` statt `escapeText` — hier entstand die Luecke, wortgleich
+    // zur Serverfassung.
+    out.push(`${name}="${escapeAttr(value)}"`);
   }
   if (tag === "a") {
     out.push('rel="noopener noreferrer nofollow"', 'target="_blank"');
