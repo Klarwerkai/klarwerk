@@ -50,6 +50,23 @@ process.env.EXTERNAL_SEARCH = "off";
 process.env.KLARWERK_DEMO_SEED = "1";
 
 // ================================================================================================
+// JOB 2661 — DER LOGGER IST AN, DIE SUITE IST TROTZDEM STILL.
+// ================================================================================================
+//
+// Seit 2661 baut `buildApp` einen echten Logger (Vorgabestufe `info`). Ohne diese Zeile schriebe
+// jede der rund 1100 Testdateien zwei Zeilen je Anfrage auf die Standardausgabe — der Torlauf wäre
+// nicht mehr lesbar, und Bestandstests, die Konsolenausgaben prüfen, bekämen fremdes Rauschen.
+//
+// Dieselbe Bauform und derselbe Grund wie bei den drei Schaltern darüber: ein stiller Default im
+// Produktcode wäre der Befund von neuem (dort ist die Vorgabe deshalb `info`, nicht `silent`); eine
+// ausdrückliche Zeile in der Testumgebung ist eine Aussage über die Testumgebung.
+//
+// Der Nachweis (`tests/security/log-keine-inhalte.test.ts`) ist davon NICHT verdeckt: er reicht
+// `buildApp` Senke und Stufe ausdrücklich mit. Wer eine einzelne Datei laut sehen will, setzt
+// `KLARWERK_LOG_LEVEL=info` — diese Zeile überschreibt eine bereits gesetzte Variable nicht.
+process.env.KLARWERK_LOG_LEVEL = process.env.KLARWERK_LOG_LEVEL ?? "silent";
+
+// ================================================================================================
 // ZEITSPRUNG — ZEITBOMBEN ZUENDEN, BEVOR SIE VON SELBST HOCHGEHEN.
 // ================================================================================================
 //

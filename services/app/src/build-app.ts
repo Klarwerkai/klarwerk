@@ -6,6 +6,7 @@ import Fastify, {
   type FastifyInstance,
   type FastifyReply,
   type FastifyRequest,
+  type FastifyServerOptions,
 } from "fastify";
 import type { Pool } from "pg";
 import {
@@ -182,6 +183,7 @@ import {
   tokenFromRequest,
 } from "./http";
 import { impactReport } from "./impact";
+import { sanitizeLogText } from "./log-sanitize";
 import { makeAssignmentNotifier } from "./notify";
 // AUFTRAG-mega20 Block C: die modulübergreifende Referenzprüfung lebt in services/app (s. Datei).
 import type { ObjectReferenceSources } from "./object-references";
@@ -875,16 +877,442 @@ export function buildVersion(): string {
   return versionGemerkt;
 }
 
+// ================================================================================================
+// JOB 2661 — WAS ENTSCHIEDEN WURDE, MUSS MAN NACHLESEN KÖNNEN. OHNE EINEN NAMEN IM PROTOKOLL.
+// ================================================================================================
+//
+// DER BEFUND (Code-Review 28.08., Befund 16): `Fastify({ trustProxy })` wurde ohne `logger` gebaut.
+// `request.log`/`app.log` waren wirkungslose Attrappen; achtzehn Logaufrufe im Produktcode fielen
+// ins Nichts — darunter die KA4-Einwilligungsentscheidung, der maskierte interne Betriebsfehler
+// (`http.ts:125`) und der Reset-Mail-Fehler (`../../auth/src/routes.ts:382`).
+//
+// ------------------------------------------------------------------------------------------------
+// ZWEI ROTE DURCHGÄNGE STECKEN IN DIESEM BLOCK. BEIDE BEFUNDE WAREN RICHTIG.
+// ------------------------------------------------------------------------------------------------
+//
+// D1 gab `message` und `stack` als freien Text aus, nur durch `sanitizeLogText` gereicht. Der
+// Sanitizer erkennt Secret-FORMEN, keine Namen — ein Mailer-Fehler trug die Adresse ins Protokoll.
+//
+// D2 schloss diese beiden Kanäle und öffnete einen dritten, subtileren. BEN wörtlich:
+//
+//   > „Der verlangte zwoelfstellige `abdruck` ist der deterministische SHA-256-Praefix GENAU
+//   > DERSELBEN Meldung. Die Rueckgabe beschreibt selbst, dass ein vermuteter Text lokal gehasht
+//   > und im Log bestaetigt werden kann. Die Behauptung, der Abdruck sei deshalb unschaedlich, ist
+//   > eine UNBEWIESENE HYPOTHESE."
+//
+// Das trifft zu, und es trifft mich doppelt: Ich hatte diese Bestätigungsmöglichkeit in D2 als
+// NUTZEN beschrieben („Bestätigung ohne Preisgabe"). Ein ungesalzener Hash über personenbezogenen
+// Text ist kein Datenschutz, sondern eine Prüfsumme dafür. Wer den Namen rät, bekommt ihn bestätigt
+// — und bei einer Meldung mit eingesetzter E-Mail-Adresse ist der Raum der Vermutungen klein.
+//
+// BENs zweiter Halbsatz wiegt genauso schwer: „Bei Meldungen mit eingesetzten Personenwerten
+// gruppiert er ausserdem NICHT die Fehlerursache, sondern verschiedene Meldungstexte." Der Abdruck
+// erfüllte also nicht einmal seinen eigenen Zweck.
+//
+// DESHALB IST ER GANZ WEG, und nicht gesalzen. Ein Salt hätte das Raten beendet, aber die falsche
+// Gruppierung geblieben: Zwei Ausfälle derselben Ursache mit verschiedenen Adressen im Text hätten
+// weiterhin verschiedene Abdrücke ergeben. Was gruppiert, ist die STELLE IM CODE, nicht der Text —
+// und die steht ohnehin schon da. Der Gruppierungsschlüssel ist `herkunft` + `code` + `type`;
+// er ist bei gleicher Ursache gleich, unabhängig davon, welcher Wert eingesetzt war. Das ist
+// besser als der Abdruck es je war.
+
+/** Die EINE Umgebungsvariable, aus der die Logstufe kommt. Der Name ist Teil des Vertrags. */
+export const LOG_LEVEL_ENV = "KLARWERK_LOG_LEVEL";
+
+/** Ohne gesetzte Variable wird geloggt — ein stiller Default wäre der Befund von neuem. */
+export const LOG_STANDARDSTUFE = "info";
+
+/** Die Stufen, die pino kennt. Alles andere ist ein Tippfehler und darf den Start nicht kosten. */
+const LOG_STUFEN = ["fatal", "error", "warn", "info", "debug", "trace", "silent"] as const;
+
+/** Wohin eine Logzeile geht. Genau die Teilmenge von `NodeJS.WritableStream`, die pino braucht. */
+export type LogSenke = { write(zeile: string): void };
+
+/**
+ * Was anstelle von Fehlertext und Stack im Protokoll steht.
+ *
+ * Ein sprechender Platzhalter statt eines leeren Feldes: Wer die Zeile liest, soll sehen, dass hier
+ * NICHTS FEHLT, sondern dass etwas ABSICHTLICH nicht dasteht — und wo die Ersatzauskunft liegt.
+ */
+export const ERR_TEXT_UNTERDRUECKT = "[unterdrueckt: code/herkunft/type tragen die Auskunft]";
+
+/** Der Ersatz für einen Wert, der nicht auf der Erlaubnisliste steht. */
+export const ERR_UNBEKANNT = "UNBEKANNT";
+
+/** Der Ersatz für einen Fehler, der gar keinen Code trägt — auch er bekommt einen stabilen. */
+export const ERR_OHNE_CODE = "OHNE_CODE";
+
+// ================================================================================================
+// JOB 2661 D3 — DIE ERLAUBNISLISTE IST JETZT WIRKLICH EINE.
+// ================================================================================================
+//
+// BEN wörtlich: „Der vorgelegte Serializer uebernimmt `fehler.name` DIREKT, uebernimmt jedes
+// stringfoermige `fehler.code` DIREKT … Damit haengt Log-Inhalt weiterhin von freien Fehlerwerten
+// ab." Auch das trifft zu: Wer einen Fehler mit `name = "Anna Meier"` oder
+// `code = "ANNA_MEIER_KRANK"` erzeugt, schrieb ihn ungeprüft ins Protokoll.
+//
+// Beide Felder werden deshalb gegen benannte Mengen geprüft. Was nicht daraufsteht, wird zu
+// `UNBEKANNT` — fail-closed, und die `herkunft` sagt trotzdem, WO es passiert ist.
+//
+// DIE LISTEN WACHSEN NICHT STILL: `build-app.test.ts` erhebt beide aus dem Quelltext und meldet,
+// was fehlt. Kommt eine neue Fehlerklasse in den Baum, wird der Test rot und jemand entscheidet,
+// ob sie ins Protokoll darf — dasselbe Muster wie das Klara-Regressionsinventar.
+
+/** Die Fehlerklassen des Hauses plus die JavaScript-Standardklassen. */
+export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
+  // JavaScript
+  "Error",
+  "TypeError",
+  "RangeError",
+  "SyntaxError",
+  "ReferenceError",
+  "AggregateError",
+  "EvalError",
+  "URIError",
+  // Haus (erhoben aus `class …Error extends` unter `services/`)
+  "AskError",
+  "AuthError",
+  "BestandsresetGesperrtError",
+  "BestandsresetLaeuftError",
+  "CaptureError",
+  "ConfidentialEgressError",
+  "ConflictError",
+  "DevPersistJournalReplayError",
+  "ExternalSearchError",
+  "FencingVeraltetError",
+  "KlaraError",
+  "KoError",
+  "LibraryError",
+  "LifecycleError",
+  "MediaAnalysisError",
+  "ModelCapacityError",
+  "ModelEmptyResponseError",
+  "ModelHttpError",
+  "ModelTimeoutError",
+  "ObjectError",
+  "OutputError",
+  "OverlapError",
+  "ReasonerPolicyLockedError",
+  "ReceiptSecretError",
+  "SlideConvertError",
+  "StoragePersistenceError",
+  "TranscriberConfidentialError",
+  "ValidationError",
+  "ZurufError",
+]);
+
+/**
+ * Die Fehlercodes, die im Protokoll erscheinen dürfen.
+ *
+ * ZWEI GRUPPEN, und die Trennung ist die Aussage:
+ *   · HAUSCODES sind die Domänencodes aus `services/**`. Sie sind ohnehin öffentlich — `http.ts`
+ *     sendet sie an Clients. Ein Test erhebt sie aus dem Quelltext und meldet, was hier fehlt.
+ *   · FREMDCODES kommen aus Bibliotheken (PostgreSQL, Fastify, Node) und sind nicht erhebbar.
+ *     Sie stehen deshalb NAMENTLICH hier — nur die, die im Betrieb wirklich Auskunft geben. Eine
+ *     Formregel („alles was aussieht wie ein pg-Code") wäre wieder ein offener Kanal.
+ */
+export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
+  // --- Hauscodes, erhoben aus `services/**` (der Wächter unten hält sie aktuell) ---
+  "ALREADY_CLOSED",
+  "ALREADY_RESOLVED",
+  "ALREADY_REVIEWED",
+  "BAD_REQUEST",
+  "BESTANDSRESET_GESPERRT",
+  "BESTANDSRESET_LAEUFT",
+  "CLEANUP_DRIFT",
+  "CONFIDENTIAL",
+  "CONFIRM_REQUIRED",
+  "CONFLICT",
+  "CONSENT_MISSING",
+  "CREATE_ANCHOR_TAKEN",
+  "CREATE_REPAIR_REQUIRED",
+  "CREATE_ROLLBACK_FAILED",
+  "DEV_PERSIST_JOURNAL_REPLAY_FAILED",
+  "DOWNGRADE_FORBIDDEN",
+  "EMAIL_TAKEN",
+  "EMPTY_DRAFT",
+  "ENGINE_FAILED",
+  "EXTERNAL_SEARCH_FAILED",
+  "FORBIDDEN",
+  "IDEMPOTENCY_PAYLOAD_MISMATCH",
+  "IMPORT_ANCHOR_TAKEN",
+  "INCOMPLETE",
+  "INVALID",
+  "INVALID_CONFIDENTIALITY",
+  "INVALID_CREDENTIALS",
+  "INVALID_DEFAULT",
+  "INVALID_NEEDED",
+  "INVALID_OPERATION_ID",
+  "INVALID_OWNERSHIP",
+  "INVALID_SETTINGS",
+  "INVALID_SOURCE",
+  "INVALID_TYPE",
+  "INVALID_UPLOAD_LIMITS",
+  "MISSING_DOCUMENT_ANCHOR",
+  "MISSING_DRAFT_ANCHOR",
+  "NOT_APPROVED",
+  "NOT_ESCALATABLE",
+  "NOT_FOUND",
+  "NOT_VALIDATED",
+  "NO_BASIS",
+  "NO_FORMULIERER",
+  "NO_INPUT",
+  "NO_SOURCES",
+  "SEARCH_PROJECTION_NOT_READY",
+  "STALE_WRITE",
+  "UNKNOWN_ART",
+  "UNKNOWN_KIND",
+  "UNKNOWN_KO",
+  "UNSUPPORTED_KIND",
+  "WEAK_PASSWORD",
+  // --- Fremdcodes, namentlich ---
+  // PostgreSQL: die beiden, an denen im Betrieb wirklich etwas hängt.
+  "23505", // unique_violation — die Sequenz-Kollision aus JOB 2677
+  "23503", // foreign_key_violation
+  // Fastify: die Fehler seiner Inhaltsverarbeitung.
+  "FST_ERR_CTP_INVALID_JSON",
+  "FST_ERR_CTP_BODY_TOO_LARGE",
+  "FST_ERR_CTP_EMPTY_JSON_BODY",
+  "FST_ERR_VALIDATION",
+  // Node: Netz und Dateisystem.
+  "ECONNREFUSED",
+  "ETIMEDOUT",
+  "ENOTFOUND",
+  "ENOENT",
+  "EPERM",
+  "EACCES",
+]);
+
+/**
+ * ÜBERNOMMEN AUS EXTS PARALLELBAU (`_worktrees/EXT-B16/services/app/src/app-logger.ts:55-61`).
+ *
+ * Meine erste Fassung reichte `process.env.KLARWERK_LOG_LEVEL` ungeprüft an pino durch. Ein
+ * Tippfehler in der Betriebsumgebung lässt pino beim Start werfen — eine falsch gesetzte Variable
+ * hätte den Server nicht laut, sondern tot gemacht. Fail-open ist hier richtig: Die sichere Antwort
+ * auf „diese Stufe kenne ich nicht" ist MEHR protokollieren, nicht weniger.
+ */
+export function loeseStufeAuf(roh: string | undefined): string {
+  const geputzt = roh?.trim().toLowerCase();
+  if (!geputzt) {
+    return LOG_STANDARDSTUFE;
+  }
+  return (LOG_STUFEN as readonly string[]).includes(geputzt) ? geputzt : LOG_STANDARDSTUFE;
+}
+
+/** Nur ein Wert von der Liste — sonst der stabile Ersatz. */
+export function erlaubterTyp(name: unknown): string {
+  return typeof name === "string" && ERLAUBTE_FEHLERTYPEN.has(name) ? name : ERR_UNBEKANNT;
+}
+
+/**
+ * Nur ein Wert von der Liste — sonst der stabile Ersatz.
+ *
+ * BEN: „Fuer einen Fehler ohne stringfoermigen Code wird gerade KEIN stabiler Fehlercode erzeugt."
+ * Jetzt schon: Ein Fehler ohne Code bekommt `OHNE_CODE`, einer mit unbekanntem Code `UNBEKANNT`.
+ * Das Feld ist damit IMMER vorhanden und immer aus einer geschlossenen Menge — eine Überwachung
+ * kann darauf filtern, ohne raten zu müssen, ob es da ist.
+ */
+export function erlaubterCode(code: unknown): string {
+  if (typeof code !== "string" || code.length === 0) {
+    return ERR_OHNE_CODE;
+  }
+  return ERLAUBTE_FEHLERCODES.has(code) ? code : ERR_UNBEKANNT;
+}
+
+/**
+ * Der Abfrageteil fällt weg — er ist der Ort, an dem Inhalte in einer Adresse reisen.
+ *
+ * `GET /api/library/search?q=…` führt die Frage eines Menschen im Klartext in der Adresse. Der Pfad
+ * allein sagt, WELCHE Route lief; mehr braucht eine Betriebsauswertung nicht.
+ */
+export function pfadOhneAbfrage(url: string): string {
+  const schnitt = url.indexOf("?");
+  return schnitt === -1 ? url : url.slice(0, schnitt);
+}
+
+/**
+ * JOB 2661 D2 — DER ORT IM CODE, AN DEM DER FEHLER ENTSTAND. OHNE SEINEN TEXT.
+ *
+ * Das ist die Antwort auf „ein Fehlercode ohne Text macht die Fehlersuche schwerer". Aus dem Stack
+ * wird ausschliesslich der OBERSTE Rahmen gelesen und daraus ausschliesslich `datei:zeile:spalte`.
+ * Ein Dateipfad mit Zeilennummer ist eine Aussage über den QUELLTEXT, nicht über den Menschen, der
+ * die Anfrage gestellt hat. Wer die Zeile hat, schlägt dort nach und liest die Meldung im Code —
+ * dort steht sie ohne eingesetzte Werte.
+ *
+ * SEIT D3 TRÄGT SIE MEHR: Sie ist zusammen mit `code` und `type` der GRUPPIERUNGSSCHLÜSSEL, der
+ * den gestrichenen `abdruck` ersetzt — und sie gruppiert richtig, wo er es nicht tat.
+ *
+ * FAIL-CLOSED: Nur ein Rahmen, der dem strengen Muster entspricht, wird übernommen; alles andere
+ * ergibt `unbekannt`. Ein Stack aus dynamisch erzeugtem Code kann beliebigen Text als „Dateinamen"
+ * tragen. Die erste Stackzeile ist die MELDUNG selbst und wird nie betrachtet.
+ */
+export function herkunftAusStack(stack: unknown): string {
+  if (typeof stack !== "string") {
+    return "unbekannt";
+  }
+  for (const zeile of stack.split("\n").slice(1)) {
+    const treffer = /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
+      zeile.trimEnd(),
+    );
+    if (!treffer?.[1]) {
+      continue;
+    }
+    const kurz = treffer[1].replace(/^.*?\/(services|apps|tools|tests|node_modules)\//, "$1/");
+    return `${kurz}:${treffer[2]}:${treffer[3]}`;
+  }
+  return "unbekannt";
+}
+
+/** Tiefer wird nicht abgestiegen — ein zyklisches Objekt darf den Logger nicht festfahren. */
+const SENKE_MAX_TIEFE = 6;
+
+/**
+ * Domänen-Fehlercodes sind GROSSBUCHSTABEN_MIT_UNTERSTRICH — dieselbe Form, über die `http.ts:136`
+ * sie als öffentliche Codes erkennt und an Clients sendet.
+ *
+ * ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:73`) samt dem Befund dahinter: Regel 4 von
+ * `sanitizeLogText` liest jedes Wort ab 24 Zeichen aus dem Base64-Alphabet als Token.
+ * `SEARCH_PROJECTION_NOT_READY` hat 27 — die Senke hätte ausgerechnet das Feld unkenntlich gemacht,
+ * auf das eine Überwachung filtern soll.
+ */
+const DOMAENEN_CODE = /^[A-Z_]+$/;
+
+function istEinfachesObjekt(wert: object): boolean {
+  const prototyp = Object.getPrototypeOf(wert);
+  return prototyp === Object.prototype || prototyp === null;
+}
+
+/**
+ * DIE ZWEITE LINIE — für die Kanäle, die die Erlaubnisliste nicht abdeckt.
+ *
+ * ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:89-111`). Die Serializer decken `req`, `res` und
+ * `err` ab; der Meldungstext einer Logzeile und ein selbst mitgegebenes Feldobjekt laufen an ihnen
+ * vorbei. `server.ts` baut vier solche Zeilen per Textbaustein.
+ *
+ * WAS SIE AUSDRÜCKLICH NICHT IST: ein Schutz für Inhalte. Sie ist eine SPERRLISTE und erkennt
+ * Secret-Formen — einen Namen erkennt sie nicht. Der Inhaltsschutz ruht auf der Erlaubnisliste der
+ * Serializer; diese Senke ergänzt sie und ersetzt sie nicht. Genau diese Verwechslung war der
+ * Fehler von D1.
+ */
+export function senkeUeberWert(
+  wert: unknown,
+  env: Record<string, string | undefined> = process.env,
+  tiefe = 0,
+): unknown {
+  if (typeof wert === "string") {
+    return DOMAENEN_CODE.test(wert) ? wert : sanitizeLogText(wert, env);
+  }
+  if (wert === null || typeof wert !== "object" || tiefe >= SENKE_MAX_TIEFE) {
+    return wert;
+  }
+  if (Array.isArray(wert)) {
+    return wert.map((eintrag) => senkeUeberWert(eintrag, env, tiefe + 1));
+  }
+  if (!istEinfachesObjekt(wert)) {
+    return wert;
+  }
+  const ergebnis: Record<string, unknown> = {};
+  for (const [schluessel, inhalt] of Object.entries(wert)) {
+    ergebnis[schluessel] = senkeUeberWert(inhalt, env, tiefe + 1);
+  }
+  return ergebnis;
+}
+
+/**
+ * Die Logkonfiguration — eine geschlossene Erlaubnisliste in drei Serializern.
+ *
+ * ERLAUBNISLISTE, KEINE SPERRLISTE: Eine Sperrliste müsste bei jeder neuen Route neu bewiesen
+ * werden. Eine Erlaubnisliste nimmt neue Felder schlicht nicht mit — Vergessen führt zu weniger im
+ * Log, nicht zu mehr.
+ */
+export function baueLoggerOptionen(vorgabe?: {
+  senke?: LogSenke;
+  stufe?: string;
+}): NonNullable<FastifyServerOptions["logger"]> {
+  const stufe = loeseStufeAuf(vorgabe?.stufe ?? process.env[LOG_LEVEL_ENV]);
+  return {
+    level: stufe,
+    ...(vorgabe?.senke ? { stream: vorgabe.senke } : {}),
+    serializers: {
+      // NICHT dabei und jeweils mit Grund: `url` mit Abfrageteil (trägt die Frage des Nutzers),
+      // `headers` (`authorization`, `cookie`), `remoteAddress`/`remotePort` (personenbezogen;
+      // entbehrlich, solange `reqId` die Zeilen verbindet), `body` und `params` (Inhalte).
+      //
+      // Die Parametertypen sind bewusst die schmalstmöglichen: der Serializer darf nur sehen, was
+      // er verarbeitet. Bei `FastifyRequest` läge der ganze Request offen.
+      req: (request: { method: string; url: string }) => ({
+        methode: request.method,
+        pfad: pfadOhneAbfrage(request.url),
+      }),
+      res: (reply: { statusCode: number }) => ({ status: reply.statusCode }),
+      // ==========================================================================================
+      // VIER FELDER, ALLE AUS GESCHLOSSENEN MENGEN. KEIN FREIER WERT.
+      // ==========================================================================================
+      //
+      //   `type`      der Fehlerklassenname — NUR wenn er auf `ERLAUBTE_FEHLERTYPEN` steht.
+      //   `code`      der Fehlercode — NUR wenn er auf `ERLAUBTE_FEHLERCODES` steht; fehlt er,
+      //               `OHNE_CODE`; ist er unbekannt, `UNBEKANNT`. Das Feld ist IMMER da.
+      //   `herkunft`  `datei:zeile:spalte` des obersten Stackrahmens — der Ort im Quelltext.
+      //   `message`/`stack`  Fastify-Pflichtfelder, sie tragen die Konstante.
+      //
+      // WIE MAN DAMIT ZUR URSACHE KOMMT: `herkunft` nennt die Zeile — dort steht die Meldung im
+      // Quelltext, ohne Nutzerdaten. `code` und `type` sagen, welcher Zweig lief. `reqId` bindet
+      // alle Zeilen eines Vorgangs zusammen. Und `herkunft`+`code`+`type` gruppieren gleiche
+      // Ursachen zuverlässig — auch dann, wenn in der Meldung verschiedene Werte standen.
+      err: (fehler: Error & { code?: unknown }) => ({
+        type: erlaubterTyp(fehler.name),
+        code: erlaubterCode(fehler.code),
+        herkunft: herkunftAusStack(fehler.stack),
+        message: ERR_TEXT_UNTERDRUECKT,
+        stack: ERR_TEXT_UNTERDRUECKT,
+      }),
+    },
+    // Dritte Linie. Mit den Serializern oben erreichen diese Felder den Logger gar nicht erst; die
+    // Liste steht für den Fall, dass eine künftige Logzeile sie selbst mitgibt. `remove` löscht das
+    // Feld, statt es durch einen Platzhalter zu ersetzen — ein `[redacted]` an einer Stelle, an der
+    // ein Passwort erwartet wird, ist immer noch die Auskunft, dass dort eines war.
+    redact: {
+      paths: [
+        "req.headers.authorization",
+        "req.headers.cookie",
+        "*.password",
+        "*.passwort",
+        "*.token",
+        "*.secret",
+        "*.email",
+      ],
+      remove: true,
+    },
+    // ÜBERNOMMEN AUS EXTS PARALLELBAU (`app-logger.ts:184-192`): jeder Logaufruf läuft hier durch,
+    // Meldungstext und Feldobjekt gleichermassen. Die einzige Stelle, an der ein selbstgebauter
+    // Freitext noch abgefangen werden kann — die Serializer sehen ihn nie.
+    hooks: {
+      logMethod(this: unknown, argumente: unknown[], methode: (...a: unknown[]) => void): void {
+        methode.apply(
+          this,
+          argumente.map((argument) => senkeUeberWert(argument)),
+        );
+      },
+    },
+  };
+}
+
 export function buildApp(
   services: AppServices = buildServices(),
   // Pedi 05.07. (Beta): optionale Werksreset-Fähigkeit. Standard = nicht verfügbar (Tests/Produktion);
   // nur der Desktop/Dev-Journal-Betrieb (server.ts) reicht eine echte Fähigkeit durch.
-  opts: { factoryReset?: FactoryReset } = {},
+  //
+  // JOB 2661: `log` ist der Prüfeinstieg für die Logsenke — ohne ihn ist der Logger derselbe,
+  // er schreibt nur auf die Standardausgabe statt in einen lesbaren Puffer.
+  opts: { factoryReset?: FactoryReset; log?: { senke?: LogSenke; stufe?: string } } = {},
 ): FastifyInstance {
   // SCRUM-490 R3 (B2, Fix 4): trustProxy gezielt aus env (KLARWERK_TRUST_PROXY) — request.ip = echte
   // Client-IP hinter dem bekannten Proxy-Hop; Default (unset) = false = Socket-Peer (heutiges Verhalten).
   // NIE blanket (spoofbar). Siehe resolveTrustProxy.
-  const app = Fastify({ trustProxy: resolveTrustProxy() });
+  const app = Fastify({
+    trustProxy: resolveTrustProxy(),
+    logger: baueLoggerOptionen(opts.log),
+  });
   // SCRUM-498 B2: einheitliche Backpressure-Antwort. Ein Modell-Cap-Überlauf (ModelCapacityError) wird
   // von der Reasoner-Kette bis hierher durchgereicht → 503 + Retry-After (kein 500/Crash). Jeder andere
   // Fehler wird formtreu an Fastifys Standard-Fehlerbehandlung weitergereicht (Validierungs-400 etc.

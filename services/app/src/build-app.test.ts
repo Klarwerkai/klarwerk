@@ -1,7 +1,24 @@
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { InMemoryKoSearchProjectionRepo } from "../../knowledge-object";
 import type { ConsoleMailer } from "../../notifications";
-import { assembleServices, buildApp, buildServices, inMemoryRepos } from "./build-app";
+import {
+  ERLAUBTE_FEHLERCODES,
+  ERLAUBTE_FEHLERTYPEN,
+  ERR_OHNE_CODE,
+  ERR_TEXT_UNTERDRUECKT,
+  ERR_UNBEKANNT,
+  assembleServices,
+  baueLoggerOptionen,
+  buildApp,
+  buildServices,
+  erlaubterCode,
+  erlaubterTyp,
+  inMemoryRepos,
+  loeseStufeAuf,
+  senkeUeberWert,
+} from "./build-app";
 
 describe("buildApp (Composition Root)", () => {
   it("Health + Reasoner-Status (deterministisch)", async () => {
@@ -483,5 +500,235 @@ describe("G27 R1 · App-Start · zustandsabhängige Betriebsfolge (06 §2)", () 
     // Eine NEUE Generation — der beschädigte Bestand wird nicht für geprüft erklärt.
     expect(control.activeGeneration).toBeGreaterThan(gesund.activeGeneration as number);
     await app.close();
+  });
+});
+
+// ================================================================================================
+// JOB 2661 D3 · DER err-SERIALIZER — EINE GESCHLOSSENE ERLAUBNISLISTE, KEIN FREIER WERT
+// ================================================================================================
+//
+// BEN hat D2 beanstandet, und in beiden Punkten zu Recht:
+//
+//   > „Der vorgelegte Serializer uebernimmt `fehler.name` DIREKT, uebernimmt jedes stringfoermige
+//   > `fehler.code` DIREKT und erzeugt `abdruck` DIREKT aus `fehler.message`. Fuer einen Fehler
+//   > ohne stringfoermigen Code wird gerade KEIN stabiler Fehlercode erzeugt."
+//
+//   > „Ein Test gegen vertrauliche Werte in `name` und `code` ist nicht belegt."
+//
+// Diese Fälle schliessen beides. Sie prüfen den Serializer DIREKT aus der echten Logkonfiguration
+// — ohne Route, ohne Server: hier geht es nicht um einen Vorgang, sondern um die Frage, was der
+// Serializer überhaupt herausgeben KANN.
+
+describe("JOB 2661 D3: der err-Serializer gibt nur Werte aus geschlossenen Mengen aus", () => {
+  type ErrSerializer = (fehler: Error & { code?: unknown }) => Record<string, unknown>;
+
+  function errSerializer(): ErrSerializer {
+    const optionen = baueLoggerOptionen({ stufe: "info" }) as unknown as {
+      serializers?: { err?: ErrSerializer };
+    };
+    const err = optionen.serializers?.err;
+    expect(typeof err, "kein err-Serializer in der Logkonfiguration").toBe("function");
+    return err as ErrSerializer;
+  }
+
+  it("die Feldmenge ist abgeschlossen — genau diese fünf, kein sechstes", () => {
+    const fehler = new Error("egal") as Error & { code?: string };
+    fehler.code = "NOT_FOUND";
+    const aus = errSerializer()(fehler);
+    // `abdruck` ist seit D3 WEG — er stand hier und war der Befund.
+    expect(Object.keys(aus).sort()).toEqual(["code", "herkunft", "message", "stack", "type"]);
+    expect(aus).not.toHaveProperty("abdruck");
+    expect(aus.message).toBe(ERR_TEXT_UNTERDRUECKT);
+    expect(aus.stack).toBe(ERR_TEXT_UNTERDRUECKT);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // BENS AUFLAGE 3 — vertrauliche Werte in `name` UND `code`, nicht nur in `message`.
+  // ----------------------------------------------------------------------------------------------
+  it("ein vertraulicher Wert im FEHLERNAMEN erscheint nicht", () => {
+    class Boshaft extends Error {
+      override name = "Fehler bei anna.meier@klinik-nord.de";
+    }
+    const aus = errSerializer()(new Boshaft("egal"));
+    expect(aus.type).toBe(ERR_UNBEKANNT);
+    expect(JSON.stringify(aus)).not.toContain("anna.meier");
+    expect(JSON.stringify(aus)).not.toContain("Meier");
+  });
+
+  it("ein vertraulicher Wert im FEHLERCODE erscheint nicht — auch in Domänenform nicht", () => {
+    // Der gemeine Fall: Der Wert sieht aus wie ein Hauscode (GROSSBUCHSTABEN_MIT_UNTERSTRICH) und
+    // wäre durch jede blosse FORMprüfung gekommen. Nur eine Werteliste fängt ihn.
+    const fehler = new Error("egal") as Error & { code?: string };
+    fehler.code = "ANNA_MEIER_KRANKGEMELDET";
+    const aus = errSerializer()(fehler);
+    expect(aus.code).toBe(ERR_UNBEKANNT);
+    expect(JSON.stringify(aus)).not.toContain("ANNA");
+    expect(JSON.stringify(aus)).not.toContain("MEIER");
+  });
+
+  it("ein Fehler OHNE Code bekommt trotzdem einen stabilen Code", () => {
+    // BEN: „Fuer einen Fehler ohne stringfoermigen Code wird gerade KEIN stabiler Fehlercode
+    // erzeugt." Jetzt schon — das Feld ist immer da und immer aus der geschlossenen Menge.
+    const aus = errSerializer()(new Error("egal"));
+    expect(aus.code).toBe(ERR_OHNE_CODE);
+    expect(Object.keys(aus)).toContain("code");
+    // Auch ein nicht-stringförmiger Code fällt darauf.
+    const mitZahl = new Error("egal") as Error & { code?: unknown };
+    mitZahl.code = 42;
+    expect(errSerializer()(mitZahl).code).toBe(ERR_OHNE_CODE);
+  });
+
+  it("bekannte Werte kommen unverändert durch — sonst wäre die Liste wertlos", () => {
+    // Die Kalibrierung: Eine Liste, die alles verwirft, ist von einer kaputten nicht zu
+    // unterscheiden.
+    const fehler = new Error("egal") as Error & { code?: string };
+    fehler.code = "SEARCH_PROJECTION_NOT_READY";
+    const aus = errSerializer()(fehler);
+    expect(aus.code).toBe("SEARCH_PROJECTION_NOT_READY");
+    expect(aus.type).toBe("Error");
+    expect(erlaubterCode("23505")).toBe("23505");
+    expect(erlaubterTyp("KoError")).toBe("KoError");
+  });
+
+  it("der Meldungstext erscheint nirgends — auch nicht als Prüfsumme", () => {
+    // DER KERN VON D3. In D2 stand hier ein `abdruck`: der SHA-256-Präfix genau dieser Meldung.
+    // Wer den Text riet, konnte ihn am Log bestätigen. Jetzt gibt es nichts mehr, womit sich eine
+    // Vermutung prüfen liesse — kein Wert und keine Prüfsumme.
+    const geheim = "anna.meier@klinik-nord.de / Anna Meier / Verdacht auf Borreliose";
+    const fehler = new Error(`Zustellung fehlgeschlagen: ${geheim}`);
+    expect(fehler.stack ?? "").toContain(geheim);
+
+    const aus = errSerializer()(fehler);
+    const alsText = JSON.stringify(aus);
+    expect(alsText).not.toContain(geheim);
+    expect(alsText).not.toContain("Meier");
+    expect(alsText).not.toContain("Borreliose");
+
+    // Und die Gegenprobe zur Bestätigungslücke, ausdrücklich: Der SHA-256-Präfix DIESER Meldung
+    // steht nirgends in der Ausgabe. In D2 stand er da.
+    const { createHash } = require("node:crypto") as typeof import("node:crypto");
+    const abdruckWieInD2 = createHash("sha256")
+      .update(fehler.message, "utf8")
+      .digest("hex")
+      .slice(0, 12);
+    expect(alsText).not.toContain(abdruckWieInD2);
+
+    // Die Ersatzauskunft ist trotzdem da.
+    expect(String(aus.herkunft)).toMatch(/^(tests|services|apps|node_modules)\/.+:\d+:\d+$/);
+  });
+
+  it("gleiche Ursache, verschiedene Werte im Text → GLEICHER Gruppierungsschlüssel", () => {
+    // BENs zweiter Halbsatz: „Bei Meldungen mit eingesetzten Personenwerten gruppiert er ausserdem
+    // NICHT die Fehlerursache, sondern verschiedene Meldungstexte." Genau das ist der Grund, warum
+    // ein Salt nicht gereicht hätte — es hätte das Raten beendet und die falsche Gruppierung
+    // behalten. Der Schlüssel ist jetzt `herkunft` + `code` + `type`.
+    function baueFehler(adresse: string): Error & { code?: string } {
+      const f = new Error(`SMTP-Zustellung an ${adresse} abgelehnt`) as Error & { code?: string };
+      f.code = "NOT_FOUND";
+      return f;
+    }
+    const s = errSerializer();
+    const a = s(baueFehler("anna.meier@klinik-nord.de"));
+    const b = s(baueFehler("bert.schulz@klinik-nord.de"));
+    const schluessel = (x: Record<string, unknown>) => `${x.herkunft}|${x.code}|${x.type}`;
+    expect(schluessel(a)).toBe(schluessel(b));
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // DIE LISTEN DÜRFEN NICHT STILL VERALTEN — sonst wäre die Erlaubnisliste in einem Jahr eine Lüge.
+  // ----------------------------------------------------------------------------------------------
+  function quellDateien(): string[] {
+    const wurzel = resolve(process.cwd(), "services");
+    const treffer: string[] = [];
+    const gehe = (ordner: string): void => {
+      for (const eintrag of readdirSync(ordner)) {
+        const pfad = join(ordner, eintrag);
+        if (statSync(pfad).isDirectory()) {
+          if (eintrag !== "node_modules") {
+            gehe(pfad);
+          }
+        } else if (pfad.endsWith(".ts") && !pfad.includes(".test.")) {
+          treffer.push(pfad);
+        }
+      }
+    };
+    gehe(wurzel);
+    return treffer;
+  }
+
+  it("jede Fehlerklasse aus `services/**` steht auf der Typenliste", () => {
+    const gefunden = new Set<string>();
+    for (const datei of quellDateien()) {
+      for (const m of readFileSync(datei, "utf8").matchAll(/class\s+(\w*Error)\s+extends\s/g)) {
+        if (m[1]) {
+          gefunden.add(m[1]);
+        }
+      }
+    }
+    expect(gefunden.size, "keine Fehlerklasse gefunden — der Sammler ist kaputt").toBeGreaterThan(10);
+    const fehlen = [...gefunden].filter((n) => !ERLAUBTE_FEHLERTYPEN.has(n)).sort();
+    expect(
+      fehlen,
+      "Neue Fehlerklasse im Baum, aber nicht auf der Logliste — sie erschiene als UNBEKANNT. " +
+        "Entscheide, ob ihr Name ins Protokoll darf, und trag sie in `ERLAUBTE_FEHLERTYPEN` ein.",
+    ).toEqual([]);
+  });
+
+  it("jeder Domänen-Fehlercode aus `services/**` steht auf der Codeliste", () => {
+    // DREI SETZFORMEN, und das ist gemessen, nicht geraten: Der Produktcode vergibt seine Codes
+    // fast immer als ERSTES KONSTRUKTORARGUMENT (`new KoError("NOT_FOUND", …)`). Der erste Anlauf
+    // dieses Wächters suchte nur nach `code: "…"` und fand NULL Treffer — diese Form steht
+    // überwiegend in Testdateien. Ein Sammler, der nichts findet, ist ein grüner Wächter ohne
+    // Aussage; deshalb steht die Untergrenze darunter.
+    const gefunden = new Set<string>();
+    const formen = [
+      /new\s+[A-Za-z]*Error\(\s*"([A-Z_]{2,})"/g,
+      /\bcode:\s*"([A-Z_]{2,})"/g,
+      /\bcode\s*=\s*"([A-Z_]{2,})"/g,
+    ];
+    for (const datei of quellDateien()) {
+      // KOMMENTARZEILEN RAUS — gemessen nötig: Der erste Anlauf sammelte `ANNA_MEIER_KRANK` ein,
+      // und der Wert stammte aus einem KOMMENTAR in `build-app.ts`, der genau diesen Angriffsfall
+      // beschreibt. Ein Sammler, der Beispiele aus Kommentaren für Code hält, pflegt Erfundenes in
+      // die Erlaubnisliste — das Gegenteil dessen, wofür er da ist.
+      const zeilen = readFileSync(datei, "utf8")
+        .split("\n")
+        .filter((z) => {
+          const roh = z.trimStart();
+          return !roh.startsWith("//") && !roh.startsWith("*") && !roh.startsWith("/*");
+        });
+      const inhalt = zeilen.join("\n");
+      for (const form of formen) {
+        for (const m of inhalt.matchAll(form)) {
+          if (m[1]) {
+            gefunden.add(m[1]);
+          }
+        }
+      }
+    }
+    expect(gefunden.size, "kein Fehlercode gefunden — der Sammler ist kaputt").toBeGreaterThan(10);
+    const fehlen = [...gefunden].filter((c) => !ERLAUBTE_FEHLERCODES.has(c)).sort();
+    expect(
+      fehlen,
+      "Neuer Domänencode im Baum, aber nicht auf der Logliste — er erschiene als UNBEKANNT. " +
+        "Entscheide und trag ihn in `ERLAUBTE_FEHLERCODES` ein.",
+    ).toEqual([]);
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // Aus D2 übernommen und unverändert gültig.
+  // ----------------------------------------------------------------------------------------------
+  it("eine unbekannte Logstufe kostet nicht den Start — sie fällt auf `info` zurück", () => {
+    expect(loeseStufeAuf("infoo")).toBe("info");
+    expect(loeseStufeAuf("  WARN ")).toBe("warn");
+    expect(loeseStufeAuf(undefined)).toBe("info");
+    expect((baueLoggerOptionen({ stufe: "infoo" }) as { level?: string }).level).toBe("info");
+  });
+
+  it("die Senke fängt Secret-Formen in Meldungstext und Feldern — und lässt Domänencodes stehen", () => {
+    expect(senkeUeberWert("Authorization: Bearer abcdefgh12345678", {})).toContain("[redacted]");
+    expect(senkeUeberWert("SEARCH_PROJECTION_NOT_READY", {})).toBe("SEARCH_PROJECTION_NOT_READY");
+    const fehler = new Error("Anna Meier");
+    expect(senkeUeberWert(fehler, {})).toBe(fehler);
   });
 });
