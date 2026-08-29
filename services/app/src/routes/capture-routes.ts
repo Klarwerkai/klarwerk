@@ -251,8 +251,24 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
+        // JOB 2690 D1 — DIE GESTALTPRUEFUNG STEHT AM RAND, NICHT IN DER TIEFE.
+        //
+        // Diese Route hatte ein `bodyLimit`, aber kein Schema: `request.body` ging ungesehen an
+        // `createDraft`. Ein Rumpf mit `bodyHtml: 5` kam damit bis in den Pool — `sanitizeDraftPayload`
+        // steigt bei `typeof payload.bodyHtml !== "string"` sofort aus (capture/src/service.ts:139-141),
+        // saeubert also nicht und meldet auch nichts. Gemessen vor dieser Zeile: `201` mit
+        // `"payload":{"title":"Kaputt","bodyHtml":5}` im Bestand.
+        //
+        // Es ist DIESELBE Pruefung, die der Promote-Zweig weiter unten schon fuehrt (:567) — keine
+        // zweite Auslegung, die auseinanderlaufen koennte. Sie wirft nicht, sondern liefert eine
+        // Meldung, die nach aussen darf.
+        const gestalt = validateDraftPayloadShape(request.body);
+        if (!gestalt.ok) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
+          return;
+        }
         try {
-          reply.code(201).send(await capture.createDraft(request.body, user.id));
+          reply.code(201).send(await capture.createDraft(gestalt.payload, user.id));
         } catch (error) {
           sendError(reply, error);
         }
@@ -418,13 +434,28 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
+        // JOB 2690 D1 — dieselbe Pruefung wie bei POST, und hier wiegt sie schwerer.
+        //
+        // `continueDraft` merged den Rumpf ueber `Object.entries(changes)`
+        // (capture/src/service.ts:381). Bei `null` wirft das einen TypeError, und der ging als
+        // `{"error":"INTERNAL","message":"Unerwarteter Fehler."}` nach aussen — ein SERVERFEHLER
+        // fuer eine Nutzereingabe. Genau diese Maskierung war der Befund; gemessen vor dieser Zeile.
+        //
+        // Die Pruefung laeuft VOR `requireVisibleDraft`: Ein formfehlerhafter Rumpf ist unabhaengig
+        // davon falsch, ob der Entwurf existiert, und die Antwort soll die Eingabe benennen statt
+        // nebenbei preiszugeben, welche Kennungen es gibt.
+        const gestalt = validateDraftPayloadShape(request.body);
+        if (!gestalt.ok) {
+          reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
+          return;
+        }
         try {
           if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
             return;
           }
           reply
             .code(200)
-            .send(await capture.continueDraft(request.params.id, request.body, user.id));
+            .send(await capture.continueDraft(request.params.id, gestalt.payload, user.id));
         } catch (error) {
           sendError(reply, error);
         }
