@@ -977,6 +977,9 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "CaptureError",
   "ConfidentialEgressError",
   "ConflictError",
+  // JOB 2702 D1: aus JOB 2683 (Confluence-Zeitgrenzen, services/confluence/src/rest-client.ts:75) —
+  // eingebaut nach 2661, vom Waechter unten als fehlend gemeldet, Entscheidung des Kopfs: Eintrag.
+  "ConfluenceRequestError",
   "DevPersistJournalReplayError",
   "ExternalSearchError",
   "FencingVeraltetError",
@@ -1023,6 +1026,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "CONFIDENTIAL",
   "CONFIRM_REQUIRED",
   "CONFLICT",
+  // JOB 2702 D1: der Code von ConfluenceRequestError bei Zeitgrenze (rest-client.ts:85; JOB 2683).
+  // Dieselbe Klasse traegt zwei weitere Codes (CONFLUENCE_RESPONSE_TOO_LARGE, CONFLUENCE_BUDGET,
+  // rest-client.ts:87–88), die der Waechter unten nicht erhebt (ternaer zugewiesen) — gemeldet in
+  // der Rueckgabe 2702, nicht eingetragen: Entscheidung beim Eigentuemer von 2661.
+  "CONFLUENCE_TIMEOUT",
   "CONSENT_MISSING",
   "CREATE_ANCHOR_TAKEN",
   "CREATE_REPAIR_REQUIRED",
