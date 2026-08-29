@@ -12,7 +12,9 @@
 // nur der Konverter-Endpunkt ist gemockt und wirft die ECHTE `ApiError`-Form des Clients.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const ablage = vi.hoisted(() => ({ fehler: null as null | { status: number; code: string; message: string } }));
+const ablage = vi.hoisted(() => ({
+  fehler: null as null | { status: number; code: string; message: string },
+}));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
@@ -40,7 +42,16 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
           if (f) {
             throw new ApiError(f.status, f.code, f.message);
           }
-          return { slides: [], slideCount: 0, converted: 0, droppedOversize: 0, droppedByBudget: 0, truncated: false, truncatedByBudget: false, maxSlides: 30 };
+          return {
+            slides: [],
+            slideCount: 0,
+            converted: 0,
+            droppedOversize: 0,
+            droppedByBudget: 0,
+            truncated: false,
+            truncatedByBudget: false,
+            maxSlides: 30,
+          };
         }),
       },
       reasoner: {
@@ -54,11 +65,11 @@ vi.mock("../../apps/web/src/api/endpoints", async () => {
   };
 });
 
-import { zipSync } from "../../apps/web/node_modules/fflate";
 import {
   QueryClient,
   QueryClientProvider,
 } from "../../apps/web/node_modules/@tanstack/react-query";
+import { zipSync } from "../../apps/web/node_modules/fflate";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
@@ -103,7 +114,9 @@ async function mount(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  const qc = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
+  const qc = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
   await act(async () => {
     root.render(
       createElement(
@@ -124,7 +137,11 @@ async function mount(): Promise<void> {
                 createElement(
                   MemoryRouter,
                   { initialEntries: ["/erfassen"] },
-                  createElement(Routes, null, createElement(Route, { path: "/erfassen", element: createElement(Capture) })),
+                  createElement(
+                    Routes,
+                    null,
+                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                  ),
                 ),
               ),
             ),
@@ -164,7 +181,9 @@ async function importieren(): Promise<void> {
   await mount();
   await click(buttonByText("Weitere Wege anzeigen"));
   await click(buttonByText(i18n.t("capture.mode.datei")));
-  const schalter = [...container.querySelectorAll<HTMLInputElement>("label input[type=checkbox]")].find((el) =>
+  const schalter = [
+    ...container.querySelectorAll<HTMLInputElement>("label input[type=checkbox]"),
+  ].find((el) =>
     (el.closest("label")?.textContent ?? "").includes(i18n.t(SLIDE_IMAGES_TEXT.toggle)),
   );
   expect(schalter, "Folien-Schalter nicht gefunden").toBeDefined();

@@ -1,3 +1,4 @@
+import { describe, expect, it } from "vitest";
 // @vitest-environment jsdom
 // ================================================================================================
 // JOB 2613 · D4 — DIE KETTE AM STÜCK: von der echten .docx bis zum GERENDERTEN Entwurf.
@@ -30,7 +31,6 @@
 // aufgelöst wird (gemessen: „Failed to load url @testing-library/react").
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { describe, expect, it } from "vitest";
 import { SanitizedHtml } from "../../apps/web/src/components/SanitizedHtml";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -213,9 +213,10 @@ describe("JOB 2613 · K · DIE KETTE AM STÜCK: .docx → Route → Entwurf → 
       createElement(SanitizedHtml, { html: geladen.json().payload.bodyHtml as string }),
     );
 
-    expect(bilderImDom(container), "Am Bildschirm steht ein Bild, das in der Quelle fehlt").toHaveLength(
-      0,
-    );
+    expect(
+      bilderImDom(container),
+      "Am Bildschirm steht ein Bild, das in der Quelle fehlt",
+    ).toHaveLength(0);
     // Der Text kommt trotzdem an — die Kette trägt, sie hat nur nichts zu tragen.
     expect(container.textContent ?? "").toContain("BAADER Sonde Station 1");
   });

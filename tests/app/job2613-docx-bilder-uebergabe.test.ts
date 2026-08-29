@@ -119,7 +119,9 @@ describe("JOB 2613 · W0 · Kalibrierung: die Prüfdatei trägt die Bilder wirkl
 
   it("die Gegenprobe-Datei trägt KEINE Bildteile", () => {
     const roh = Buffer.from(DOCX_OHNE_BILDER, "base64");
-    expect(roh.includes(Buffer.from("word/media/")), "Die Gegenprobe trägt doch Bilder").toBe(false);
+    expect(roh.includes(Buffer.from("word/media/")), "Die Gegenprobe trägt doch Bilder").toBe(
+      false,
+    );
     expect(roh.includes(Buffer.from("word/document.xml"))).toBe(true);
   });
 });

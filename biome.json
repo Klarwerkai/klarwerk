@@ -45,7 +45,8 @@
       "**/*.timestamp-*.mjs",
       "scripts",
       "services/app/addin-static",
-      "_relay/spikes"
+      "_relay/spikes",
+      ".local"
     ]
   }
 }

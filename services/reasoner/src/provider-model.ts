@@ -337,7 +337,10 @@ export function istAbsage(answerText: string): boolean {
  * ungedeckt und kippt die Antwort. Ein Segment mit ungültigen Marken (etwa „[7]" bei zwei Quellen)
  * gilt ebenso: Marke ohne Quelle ist keine Deckung.
  */
-export function pruefeDeckung(answerText: string, candidates: readonly KnowledgeRef[]): DeckungBefund {
+export function pruefeDeckung(
+  answerText: string,
+  candidates: readonly KnowledgeRef[],
+): DeckungBefund {
   const aussagen: DeckungAussage[] = [];
   const segmente: { text: string; nachlauf: boolean }[] = [];
   let start = 0;

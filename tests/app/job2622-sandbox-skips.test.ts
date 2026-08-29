@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 // ================================================================================================
 // JOB 2622 · D1 — DIE ELF, DIE IN DER BAHN RUHEN: benannt, begruendet, gepinnt
 // ================================================================================================
@@ -24,7 +25,6 @@
 // in Bahn UND Chef/CI gruen und faellt, sobald jemand die Skip-Landschaft veraendert, ohne diese
 // Liste nachzuziehen.
 import { createServer } from "node:net";
-import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -47,7 +47,8 @@ describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt"
     const slides = horchFaelle("tests/app/slides-abort.test.ts");
     // mega71 deklariert 2 skipIf-Vorlagen in einer Schleife ueber 3 Klassen (200/4xx/5xx).
     const mega71Vorlagen = horchFaelle("tests/app/mega71-onsend-synchron.test.ts");
-    const mega71Klassen = lies("tests/app/mega71-onsend-synchron.test.ts").split("{ name: \"").length - 1;
+    const mega71Klassen =
+      lies("tests/app/mega71-onsend-synchron.test.ts").split('{ name: "').length - 1;
     expect(addin).toBe(2);
     expect(slides).toBe(3);
     expect(mega71Vorlagen).toBe(2);
@@ -65,15 +66,22 @@ describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt"
     // jeweiligen Umgebung im Vollsuiten-Kopf stehen muss: Bahn `12 skipped`, Chef/CI `1 skipped`
     // (plus etwaige runIf-Gegenzweige spaeterer Test-Straenge). Weicht sie ab, ist etwas NEU.
     if (KANN_HORCHEN) {
-      expect(KANN_HORCHEN, "Horchrecht vorhanden: die elf laufen mit — erwartet 1 skipped").toBe(true);
+      expect(KANN_HORCHEN, "Horchrecht vorhanden: die elf laufen mit — erwartet 1 skipped").toBe(
+        true,
+      );
     } else {
-      expect(KANN_HORCHEN, "kein Horchrecht (Bahn-Sandbox): die elf ruhen — erwartet 12 skipped").toBe(false);
+      expect(
+        KANN_HORCHEN,
+        "kein Horchrecht (Bahn-Sandbox): die elf ruhen — erwartet 12 skipped",
+      ).toBe(false);
     }
   });
 
   it("S4 — GEGENPROBE der Zaehlung: ein Fantasie-Marker kommt in keiner der Dateien vor", () => {
     // Ohne diesen Fall waere S1 auch gruen, wenn `horchFaelle` schlicht immer die Sollzahl
     // lieferte — die Zaehlfunktion wird an einem Nicht-Vorkommen kalibriert.
-    expect(lies("tests/app/slides-abort.test.ts").split("it.skipIf(!QUARKWELTRAUM)(").length - 1).toBe(0);
+    expect(
+      lies("tests/app/slides-abort.test.ts").split("it.skipIf(!QUARKWELTRAUM)(").length - 1,
+    ).toBe(0);
   });
 });

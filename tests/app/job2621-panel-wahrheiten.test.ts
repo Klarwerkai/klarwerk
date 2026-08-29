@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 // @vitest-environment jsdom
 // ================================================================================================
 // JOB 2621 · D1 — DREI SAETZE, DIE PEDI IN DIE IRRE FUEHRTEN (Befunde 26.08., je einzeln gepinnt)
@@ -8,14 +10,7 @@
 // Inline-Skript laeuft; kein Zwilling, keine Kopie). Machart wie heute mehrfach getragen:
 // je Befund ein Fall, einzeln behauptet, mit Gegenprobe/Kalibrierung daneben.
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  createKlaraPanel,
-  type KlaraPanel,
-  reply,
-  splitTaskpane,
-} from "./klara-panel-fixture";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { type KlaraPanel, createKlaraPanel, reply, splitTaskpane } from "./klara-panel-fixture";
 
 let panel: KlaraPanel | null = null;
 afterEach(() => {
@@ -115,13 +110,18 @@ describe("JOB 2621 · Befund 3 — erst die Zustimmung, dann das andere Tor mit 
     expect(sperrzeile).toContain("entscheidet nicht dein Fenster");
     // (2) Die REIHENFOLGE im ausgelieferten Markup: Zustimmungszeile VOR Sperrzeile — gemessen an
     //     der Datei, nicht behauptet.
-    const html = readFileSync(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"), "utf8");
+    const html = readFileSync(
+      resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"),
+      "utf8",
+    );
     const { markup } = splitTaskpane(html);
     const posSession = markup.indexOf('id="klara-s4-session"');
     const posDeviation = markup.indexOf('id="klara-s4-deviation"');
     expect(posSession).toBeGreaterThan(0);
     expect(posDeviation).toBeGreaterThan(0);
-    expect(posSession, "Zustimmungszeile muss VOR der Sperrzeile stehen").toBeLessThan(posDeviation);
+    expect(posSession, "Zustimmungszeile muss VOR der Sperrzeile stehen").toBeLessThan(
+      posDeviation,
+    );
   });
 
   it("W2-GEGENPROBE — OHNE erteilte Zustimmung bleibt der bisherige Sperrsatz, ohne Trotzdem-Bezug", async () => {
@@ -156,14 +156,19 @@ describe("JOB 2621 · Befund 1 — der Stand steht dort, wo gesucht wird, aus EI
     // GESPIEGELT, NICHT VERSCHOBEN: die bestehende Stelle existiert weiter (ihre Tests bleiben).
     expect(panel.q("#kw-stand")).not.toBeNull();
     // Der Spiegel steht im Kopfband neben der Sprachwahl — an der Datei gemessen.
-    const html = readFileSync(resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"), "utf8");
+    const html = readFileSync(
+      resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"),
+      "utf8",
+    );
     const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
     expect(header).toContain('id="kw-stand-kopf"');
     expect(header.indexOf('id="lang-nl"')).toBeLessThan(header.indexOf('id="kw-stand-kopf"'));
     // EINE Quelle: der Spiegel wird aus derselben Zuweisung gespeist wie die bestehende Stelle
     // (kwStandText), und es gibt weiterhin genau EINE KLARA_STAND-Deklaration.
-    expect(panel.scriptSource).toContain('document.getElementById("kw-stand-kopf").textContent = kwStandText');
-    expect(panel.scriptSource.split('var KLARA_STAND =').length).toBe(2);
+    expect(panel.scriptSource).toContain(
+      'document.getElementById("kw-stand-kopf").textContent = kwStandText',
+    );
+    expect(panel.scriptSource.split("var KLARA_STAND =").length).toBe(2);
     // KEINE Handpflege: der Wert bleibt der Build-Platzhalter-Mechanismus (Befunde-Datei, Schluss).
     expect(panel.scriptSource).toContain('"__KLARA_STAND__"');
   });

@@ -665,7 +665,9 @@ describe("JOB 2661 D3: der err-Serializer gibt nur Werte aus geschlossenen Menge
         }
       }
     }
-    expect(gefunden.size, "keine Fehlerklasse gefunden — der Sammler ist kaputt").toBeGreaterThan(10);
+    expect(gefunden.size, "keine Fehlerklasse gefunden — der Sammler ist kaputt").toBeGreaterThan(
+      10,
+    );
     const fehlen = [...gefunden].filter((n) => !ERLAUBTE_FEHLERTYPEN.has(n)).sort();
     expect(
       fehlen,

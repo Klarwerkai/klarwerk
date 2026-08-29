@@ -26,15 +26,33 @@ import { SlideConvertError, type SlideConverter } from "../../services/app/src/s
 
 describe("JOB 2687 · A — die Art, am echten Wortlaut des Konverters", () => {
   it("A1 · beide Zeitlimit-Formen und der Routen-Abbruch sind „timeout“", () => {
-    expect(slidesFehlerArt(new SlideConvertError("Zeitlimit der Folien-Konvertierung überschritten."))).toBe("timeout");
-    expect(slidesFehlerArt(new Error("Zeitlimit: soffice wurde nach 60000 ms samt Prozessgruppe beendet."))).toBe("timeout");
-    expect(slidesFehlerArt(new SlideConvertError("Folien-Konvertierung abgebrochen (Anforderung der Route)."))).toBe("timeout");
-    expect(slidesFehlerArt(new SlideConvertError("Abbruch: soffice wurde auf Anforderung samt Prozessgruppe beendet."))).toBe("timeout");
+    expect(
+      slidesFehlerArt(new SlideConvertError("Zeitlimit der Folien-Konvertierung überschritten.")),
+    ).toBe("timeout");
+    expect(
+      slidesFehlerArt(
+        new Error("Zeitlimit: soffice wurde nach 60000 ms samt Prozessgruppe beendet."),
+      ),
+    ).toBe("timeout");
+    expect(
+      slidesFehlerArt(
+        new SlideConvertError("Folien-Konvertierung abgebrochen (Anforderung der Route)."),
+      ),
+    ).toBe("timeout");
+    expect(
+      slidesFehlerArt(
+        new SlideConvertError("Abbruch: soffice wurde auf Anforderung samt Prozessgruppe beendet."),
+      ),
+    ).toBe("timeout");
   });
 
   it("A2 · nicht-null-Exit, keine Folienbilder, kein PDF sind „invalid“", () => {
-    expect(slidesFehlerArt(new Error("soffice beendete mit Code 1 (Signal null)."))).toBe("invalid");
-    expect(slidesFehlerArt(new SlideConvertError("Die Konvertierung lieferte keine Folienbilder."))).toBe("invalid");
+    expect(slidesFehlerArt(new Error("soffice beendete mit Code 1 (Signal null)."))).toBe(
+      "invalid",
+    );
+    expect(
+      slidesFehlerArt(new SlideConvertError("Die Konvertierung lieferte keine Folienbilder.")),
+    ).toBe("invalid");
     expect(slidesFehlerArt(new SlideConvertError("soffice hat kein PDF erzeugt."))).toBe("invalid");
   });
 
@@ -123,9 +141,15 @@ describe("JOB 2687 · R — die Route unterscheidet", () => {
 
 describe("JOB 2687 · C — der Client kennt beide", () => {
   it("C1 · 422 → serverTimeout, 415 → invalid; die bisherigen Zuordnungen bleiben", () => {
-    expect(slidesErrorKey(new ApiError(422, "SLIDES_TIMEOUT", "…"))).toBe(SLIDE_IMAGES_TEXT.serverTimeout);
-    expect(slidesErrorKey(new ApiError(415, "SLIDES_INVALID", "…"))).toBe(SLIDE_IMAGES_TEXT.invalid);
-    expect(slidesErrorKey(new ApiError(503, "UNAVAILABLE", "…"))).toBe(SLIDE_IMAGES_TEXT.unavailable);
+    expect(slidesErrorKey(new ApiError(422, "SLIDES_TIMEOUT", "…"))).toBe(
+      SLIDE_IMAGES_TEXT.serverTimeout,
+    );
+    expect(slidesErrorKey(new ApiError(415, "SLIDES_INVALID", "…"))).toBe(
+      SLIDE_IMAGES_TEXT.invalid,
+    );
+    expect(slidesErrorKey(new ApiError(503, "UNAVAILABLE", "…"))).toBe(
+      SLIDE_IMAGES_TEXT.unavailable,
+    );
     expect(slidesErrorKey(new ApiError(429, "CONVERSION_BUSY", "…"))).toBe(SLIDE_IMAGES_TEXT.busy);
     expect(slidesErrorKey(new ApiError(408, "TIMEOUT", "…"))).toBe(SLIDE_IMAGES_TEXT.timeout);
     // VORHER: 500 und alles Unbekannte → failed. Das bleibt für den echten Serverfehler.

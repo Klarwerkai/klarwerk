@@ -5,7 +5,10 @@ import {
   PgKoSearchProjectionRepo,
   maskiereLikeMuster,
 } from "../../services/knowledge-object/src/search-projection-repo-pg";
-import { LIBRARY_SEARCH_HIT_LIMIT, LibraryService } from "../../services/library-analytics/src/service";
+import {
+  LIBRARY_SEARCH_HIT_LIMIT,
+  LibraryService,
+} from "../../services/library-analytics/src/service";
 import { type Suchzeile, ilikeMitEscape, likePool } from "./job2689-like-doppel";
 
 // ================================================================================================
@@ -136,7 +139,8 @@ describe("JOB 2689 D1 · C · die Bibliotheksabfrage hat einen Deckel", () => {
     const repo = new PgKoSearchProjectionRepo(pool);
     const koService = {
       listForSearch: async () => ZEILEN.map((z) => ({ id: z.ko_id, title: z.title_text })),
-      findSearchHits: (query: { terms: readonly string[]; limit?: number }) => repo.findActive(query),
+      findSearchHits: (query: { terms: readonly string[]; limit?: number }) =>
+        repo.findActive(query),
     } as unknown as KoService;
     const dienst = new LibraryService({ koService });
 

@@ -201,9 +201,10 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
     const karte = antwortkarte(container);
     expect(karte, "keine Antwortkarte").not.toBeNull();
     expect(karte?.textContent ?? "").toContain(QUELLENWORTLAUT);
-    expect(container.textContent ?? "", "der erfundene Nachsatz erreicht den Menschen").not.toContain(
-      "tauschen",
-    );
+    expect(
+      container.textContent ?? "",
+      "der erfundene Nachsatz erreicht den Menschen",
+    ).not.toContain("tauschen");
     unmount();
   });
 
@@ -246,9 +247,10 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
     const karte = antwortkarte(container);
     expect(karte, "keine Antwortkarte").not.toBeNull();
     expect(karte?.textContent ?? "").toContain(QUELLE_AB);
-    expect(container.textContent ?? "", "die falsch zugeordnete Handlung erreicht den Menschen").not.toContain(
-      "Ventil A schließen",
-    );
+    expect(
+      container.textContent ?? "",
+      "die falsch zugeordnete Handlung erreicht den Menschen",
+    ).not.toContain("Ventil A schließen");
     expect(luecke(container)).toBeNull();
     unmount();
   });
@@ -260,9 +262,10 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
     const karte = antwortkarte(container);
     expect(karte, "keine Antwortkarte").not.toBeNull();
     expect(karte?.textContent ?? "").toContain(QUELLE);
-    expect(container.textContent ?? "", "der Satz über die Satzgrenze erreicht den Menschen").not.toContain(
-      "Ventil A schliessen",
-    );
+    expect(
+      container.textContent ?? "",
+      "der Satz über die Satzgrenze erreicht den Menschen",
+    ).not.toContain("Ventil A schliessen");
     expect(luecke(container)).toBeNull();
     unmount();
   });
@@ -306,7 +309,10 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
   });
 
   it("U6b · GEGENPROBE: die richtige Zuordnung „Ventil B schließen [1].“ geht als Zitat durch", async () => {
-    const { container, unmount } = await seite(fake("Ventil B schließen [1]."), "Ventil A öffnen. Ventil B schließen.");
+    const { container, unmount } = await seite(
+      fake("Ventil B schließen [1]."),
+      "Ventil A öffnen. Ventil B schließen.",
+    );
     const karte = antwortkarte(container);
     expect(karte).not.toBeNull();
     expect(karte?.textContent ?? "").toContain("Ventil B schließen [1].");

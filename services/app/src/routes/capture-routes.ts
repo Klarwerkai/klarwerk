@@ -582,94 +582,94 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         if (!user) {
           return;
         }
-      try {
-        const body = request.body ?? {};
-        const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
-        // ------------------------------------------------------------------------------
-        // DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN — und das ist hier keine Feinheit,
-        // sondern der ganze Block: `requireVisibleDraft` unten antwortet nach einem gelungenen
-        // ersten Lauf mit 404, weil der Entwurf dann GELÖSCHT ist. Stünde der Nachschlag darunter,
-        // liefe die Adoptionsmechanik im echten Klickpfad ins Leere — genau der Fehler, den
-        // mega21 Block B auf dem Dokumentweg beseitigt hat.
-        // ------------------------------------------------------------------------------
-        let fingerprint = "";
-        if (operationId) {
-          fingerprint = createOperationFingerprint({
-            // AUFTRAG-mega22 Block C, hier ebenso: der Request VERBRAUCHT diesen Entwurf. Zwei
-            // Anfragen, die verschiedene Entwürfe verbrauchen, sind nicht derselbe Vorgang.
-            draftId: request.params.id,
-            // K8 (document-create.ts): die Schreibladung semantiktreu, `fehlt` ≠ `leer`.
-            inhalt: alsSchreibpatch(body.draftPayload ?? null),
-            reviewerIds: alsMenge(body.reviewerIds),
-            weg: "promote",
-          });
-          const replay = await ko.lookupDocumentCreate(operationId, {
-            actor: user.id,
-            fingerprint,
-          });
-          if (replay) {
-            // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Keine
-            // Folgeschritte — sie liefen beim ersten Mal.
-            reply.code(200).send(replay);
+        try {
+          const body = request.body ?? {};
+          const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
+          // ------------------------------------------------------------------------------
+          // DER NACHSCHLAG STEHT VOR ALLEM VERÄNDERLICHEN — und das ist hier keine Feinheit,
+          // sondern der ganze Block: `requireVisibleDraft` unten antwortet nach einem gelungenen
+          // ersten Lauf mit 404, weil der Entwurf dann GELÖSCHT ist. Stünde der Nachschlag darunter,
+          // liefe die Adoptionsmechanik im echten Klickpfad ins Leere — genau der Fehler, den
+          // mega21 Block B auf dem Dokumentweg beseitigt hat.
+          // ------------------------------------------------------------------------------
+          let fingerprint = "";
+          if (operationId) {
+            fingerprint = createOperationFingerprint({
+              // AUFTRAG-mega22 Block C, hier ebenso: der Request VERBRAUCHT diesen Entwurf. Zwei
+              // Anfragen, die verschiedene Entwürfe verbrauchen, sind nicht derselbe Vorgang.
+              draftId: request.params.id,
+              // K8 (document-create.ts): die Schreibladung semantiktreu, `fehlt` ≠ `leer`.
+              inhalt: alsSchreibpatch(body.draftPayload ?? null),
+              reviewerIds: alsMenge(body.reviewerIds),
+              weg: "promote",
+            });
+            const replay = await ko.lookupDocumentCreate(operationId, {
+              actor: user.id,
+              fingerprint,
+            });
+            if (replay) {
+              // 200 statt 201: derselbe Vorgang, aber das Objekt entsteht NICHT jetzt. Keine
+              // Folgeschritte — sie liefen beim ersten Mal.
+              reply.code(200).send(replay);
+              return;
+            }
+          }
+          if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
             return;
           }
-        }
-        if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
-          return;
-        }
-        // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
-        // Vorgang, hinter dem Nachschlag. Damit braucht die Oberfläche kein vorgeschaltetes
-        // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
-        // Die Gestaltprüfung läuft am RAND (mega22 Block D) — ein Formfehler wird hier 400 und
-        // entsteht nicht in der Tiefe von `continueDraft`.
-        if (body.draftPayload !== undefined) {
-          const gestalt = validateDraftPayloadShape(body.draftPayload);
-          if (!gestalt.ok) {
-            reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
-            return;
+          // AUFTRAG-mega22 Block H: liegt ein Stand bei, wird er HIER geschrieben — im selben
+          // Vorgang, hinter dem Nachschlag. Damit braucht die Oberfläche kein vorgeschaltetes
+          // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
+          // Die Gestaltprüfung läuft am RAND (mega22 Block D) — ein Formfehler wird hier 400 und
+          // entsteht nicht in der Tiefe von `continueDraft`.
+          if (body.draftPayload !== undefined) {
+            const gestalt = validateDraftPayloadShape(body.draftPayload);
+            if (!gestalt.ok) {
+              reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
+              return;
+            }
+            await capture.continueDraft(request.params.id, gestalt.payload, user.id);
           }
-          await capture.continueDraft(request.params.id, gestalt.payload, user.id);
-        }
-        const input = await capture.toKoInput(request.params.id);
-        // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
-        // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
-        // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
-        // (Pedis Befund: Validierungskarte ohne „von …").
-        //
-        // AUFTRAG-mega22 Block H: der VORGANG reist mit, wenn einer mitgeschickt wurde — und der
-        // Eigentümer ist der EINREICHENDE Nutzer, nicht `input.author`. Das ist genau die Trennung
-        // aus mega21 Block A: ein Admin darf einen fremden Entwurf einreichen; das Wissensobjekt
-        // trägt dann den Originalautor, der VORGANG aber gehört dem Admin, der ihn gestartet hat.
-        const created = await ko.create(
-          { ...input, author: input.author.trim() ? input.author : user.id },
-          ...(operationId
-            ? ([{ id: operationId, actor: user.id, fingerprint }] as const)
-            : ([] as const)),
-        );
-        await capture.deleteDraft(request.params.id);
-        const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
-        if (reviewers.length > 0) {
-          await validation.assign(created.id, reviewers, user.id);
-          await notifyAssignment?.(created.id, reviewers);
-        }
-        // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
-        // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
-        // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
-        // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
-        // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
-        let submitted = created;
-        if (aiCheckWorker) {
-          await ko.markAiCheckPending(created.id);
-          submitted = (await ko.get(created.id)) ?? created;
-          // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
-          // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
-          aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
-        }
-        reply.code(201).send(submitted);
-        // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
-        // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
-        // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
-        await indexKoForDuplicatePrefilter(created, semanticPrefilter);
+          const input = await capture.toKoInput(request.params.id);
+          // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
+          // Entwurfs (FR-CAP-07); trägt ein Altbestands-Entwurf KEINEN originalAuthor (leer),
+          // wird ehrlich der EINREICHENDE Session-Nutzer gesetzt statt eines leeren author-Felds
+          // (Pedis Befund: Validierungskarte ohne „von …").
+          //
+          // AUFTRAG-mega22 Block H: der VORGANG reist mit, wenn einer mitgeschickt wurde — und der
+          // Eigentümer ist der EINREICHENDE Nutzer, nicht `input.author`. Das ist genau die Trennung
+          // aus mega21 Block A: ein Admin darf einen fremden Entwurf einreichen; das Wissensobjekt
+          // trägt dann den Originalautor, der VORGANG aber gehört dem Admin, der ihn gestartet hat.
+          const created = await ko.create(
+            { ...input, author: input.author.trim() ? input.author : user.id },
+            ...(operationId
+              ? ([{ id: operationId, actor: user.id, fingerprint }] as const)
+              : ([] as const)),
+          );
+          await capture.deleteDraft(request.params.id);
+          const reviewers = [...new Set(body.reviewerIds ?? [])].filter((id) => id !== user.id);
+          if (reviewers.length > 0) {
+            await validation.assign(created.id, reviewers, user.id);
+            await notifyAssignment?.(created.id, reviewers);
+          }
+          // WP-SUBMIT-ASYNC (Pedis R3, 21.07.): wie beim direkten Einreichen — kein synchroner
+          // detect*-Lauf mehr vor der Antwort; nur der Prüf-Job wird vermerkt und der Worker
+          // arbeitet ihn danach ab (dieselben Erkennungs-Pfade, Status im Board sichtbar).
+          // Wie in ko-routes: die 201-Antwort trägt den Vermerk ehrlich mit (aiCheck pending);
+          // Nachlesen VOR dem enqueue → deterministischer Job-Start in der Antwort.
+          let submitted = created;
+          if (aiCheckWorker) {
+            await ko.markAiCheckPending(created.id);
+            submitted = (await ko.get(created.id)) ?? created;
+            // WP-SHIP8-CLOSE-2 (bens F3): Zielversion des frischen Vermerks synchron mitgeben —
+            // die Overflow-Eviction schließt hart versionsgebunden ab (kein unversionierter Write).
+            aiCheckWorker.enqueue(created.id, submitted.aiCheck?.koVersion);
+          }
+          reply.code(201).send(submitted);
+          // Weg 3 (B6): Einbettung + Ablage NACH der Antwort — der Nutzer wartet nie darauf. Flag aus
+          // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
+          // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
+          await indexKoForDuplicatePrefilter(created, semanticPrefilter);
         } catch (error) {
           sendError(reply, error);
         }

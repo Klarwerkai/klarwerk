@@ -46,8 +46,18 @@ function ref(
   return { id, title, statement, status, trust };
 }
 
-const QUELLE = ref("ventil", "Ventil X bei Überdruck schließen", "Bei Überdruck über 6 bar Ventil X schließen");
-const ZWEITE = ref("wartung", "Ventil X Wartung", "Ventil X bei Überdruck einmal jährlich prüfen", "offen", 40);
+const QUELLE = ref(
+  "ventil",
+  "Ventil X bei Überdruck schließen",
+  "Bei Überdruck über 6 bar Ventil X schließen",
+);
+const ZWEITE = ref(
+  "wartung",
+  "Ventil X Wartung",
+  "Ventil X bei Überdruck einmal jährlich prüfen",
+  "offen",
+  40,
+);
 const KANDIDATEN = [QUELLE, ZWEITE];
 const FRAGE = "Was tun bei Überdruck am Ventil X?";
 
@@ -58,7 +68,15 @@ function fake(text: string): ModelClient {
 describe("JOB 2659 · M — das Maß: Zitatdeckung, ein Ausschnitt EINER Quelle", () => {
   it("M0 · KALIBRIERUNG: die Normalisierung behält Stoppwörter, Zahlen und Reihenfolge", () => {
     expect(zitatWoerter("Ventil X bei Überdruck NICHT schließen, über 6 bar.")).toEqual([
-      "ventil", "x", "bei", "ueberdruck", "nicht", "schliessen", "ueber", "6", "bar",
+      "ventil",
+      "x",
+      "bei",
+      "ueberdruck",
+      "nicht",
+      "schliessen",
+      "ueber",
+      "6",
+      "bar",
     ]);
   });
 
@@ -74,7 +92,9 @@ describe("JOB 2659 · M — das Maß: Zitatdeckung, ein Ausschnitt EINER Quelle"
   });
 
   it("M2 · GEFANGEN: eine Zahl, die nicht in der Quelle steht", () => {
-    expect(pruefeDeckung("Bei Überdruck über 3 bar Ventil X schließen [1].", KANDIDATEN).gedeckt).toBe(false);
+    expect(
+      pruefeDeckung("Bei Überdruck über 3 bar Ventil X schließen [1].", KANDIDATEN).gedeckt,
+    ).toBe(false);
   });
 
   it("M3 · UMGEDREHT (BEN-Prüflücke 2): ein vertauschtes Verb bei hoher Überlappung wird GEFANGEN", () => {
@@ -86,16 +106,24 @@ describe("JOB 2659 · M — das Maß: Zitatdeckung, ein Ausschnitt EINER Quelle"
   });
 
   it("M3b · GEDECKT: der Quellsatz selbst, ein Teilsatz, eine gebeugte Form", () => {
-    expect(pruefeDeckung("Bei Überdruck über 6 bar Ventil X schließen [1].", KANDIDATEN).gedeckt).toBe(true);
-    expect(pruefeDeckung("über 6 bar Ventil X schließen [1]", KANDIDATEN).aussagen[0]?.zitatVon).toBe("ventil");
+    expect(
+      pruefeDeckung("Bei Überdruck über 6 bar Ventil X schließen [1].", KANDIDATEN).gedeckt,
+    ).toBe(true);
+    expect(
+      pruefeDeckung("über 6 bar Ventil X schließen [1]", KANDIDATEN).aussagen[0]?.zitatVon,
+    ).toBe("ventil");
     // Beugung: „schließt" für „schließen" — gemeinsamer Stamm, Rest höchstens drei Zeichen.
-    expect(pruefeDeckung("Bei Überdruck über 6 bar Ventil X schließt [1].", KANDIDATEN).gedeckt).toBe(true);
+    expect(
+      pruefeDeckung("Bei Überdruck über 6 bar Ventil X schließt [1].", KANDIDATEN).gedeckt,
+    ).toBe(true);
   });
 
   it("M3c · PARAPHRASE FÄLLT ZURÜCK — das ist das Versprechen, kein Verlust (EXT1)", () => {
     // Inhaltlich richtig, aber umformuliert: kein Ausschnitt der Quelle. Der Mensch liest dann den
     // Quellenwortlaut. „Der Modelltext darf auswählen und zusammenstellen, nicht umformulieren."
-    expect(pruefeDeckung("Bei Überdruck das Ventil schließen [1].", KANDIDATEN).gedeckt).toBe(false);
+    expect(pruefeDeckung("Bei Überdruck das Ventil schließen [1].", KANDIDATEN).gedeckt).toBe(
+      false,
+    );
   });
 
   it("M3d · UMSTELLUNG im Quellvokabular ist kein Zitat („X vor Y“ gegen „Y vor X“)", () => {
@@ -106,7 +134,10 @@ describe("JOB 2659 · M — das Maß: Zitatdeckung, ein Ausschnitt EINER Quelle"
 
   it("M4 · VERSCHRÄNKUNG zweier wahrer Quellen ist kein Zitat (EXT1, zweites Loch)", () => {
     // Jedes Wort steht in einer der beiden Quellen — der Satz in keiner.
-    const befund = pruefeDeckung("Bei Überdruck über 6 bar Ventil X einmal jährlich prüfen [1][2].", KANDIDATEN);
+    const befund = pruefeDeckung(
+      "Bei Überdruck über 6 bar Ventil X einmal jährlich prüfen [1][2].",
+      KANDIDATEN,
+    );
     expect(befund.aussagen[0]?.quellen).toEqual(["ventil", "wartung"]);
     expect(befund.aussagen[0]?.zitatVon).toBeNull();
     expect(befund.gedeckt).toBe(false);
@@ -156,7 +187,9 @@ describe("JOB 2659 · M — das Maß: Zitatdeckung, ein Ausschnitt EINER Quelle"
   });
 
   it("M8b · ein Nachlauf, der nichts sagt (Satzzeichen, Leerraum), kippt nichts", () => {
-    expect(pruefeDeckung("Bei Überdruck über 6 bar Ventil X schließen [1] .  ", KANDIDATEN).gedeckt).toBe(true);
+    expect(
+      pruefeDeckung("Bei Überdruck über 6 bar Ventil X schließen [1] .  ", KANDIDATEN).gedeckt,
+    ).toBe(true);
   });
 });
 
@@ -168,10 +201,9 @@ describe("JOB 2659 · P — EXT1s Pflichtfall: Negation", () => {
     // Ausschnitt der Quelle.
     const befund = pruefeDeckung("Ventil bei Überdruck nicht schließen [1]", Q);
     expect(befund.gedeckt).toBe(false);
-    const ergebnis = await new ModelProvider(fake("Ventil bei Überdruck nicht schließen [1]")).answer(
-      "Was tun bei Überdruck am Ventil?",
-      Q,
-    );
+    const ergebnis = await new ModelProvider(
+      fake("Ventil bei Überdruck nicht schließen [1]"),
+    ).answer("Was tun bei Überdruck am Ventil?", Q);
     expect(ergebnis.answered).toBe(true);
     expect(ergebnis.answer).toBe("Ventil bei Überdruck schließen.");
     expect(ergebnis.answer).not.toContain("nicht");
@@ -251,7 +283,9 @@ describe("JOB 2659 · R — Rollenwechsel aus denselben Wörtern", () => {
     expect(pruefeDeckung("Ventil bei Überdruck tauschen [1]", Q).gedeckt).toBe(false);
     expect(pruefeDeckung("Filter bei Überdruck tauschen [1]", Q).gedeckt).toBe(false);
     // GEGENPROBE: ein echtes Zitat aus dem Volltext ist gedeckt — der Volltext ist Quelle.
-    expect(pruefeDeckung("Den Filter nicht tauschen, solange der Druck steht [1]", Q).gedeckt).toBe(true);
+    expect(pruefeDeckung("Den Filter nicht tauschen, solange der Druck steht [1]", Q).gedeckt).toBe(
+      true,
+    );
     expect(pruefeDeckung("Der Prüfplan wird jährlich fortgeschrieben [1]", Q).gedeckt).toBe(true);
   });
 
@@ -327,10 +361,17 @@ describe("JOB 2659 · G — die Satzgrenze überlebt die Normalisierung", () => 
 
   it("G4 · ZWEI SÄTZE DERSELBEN QUELLE dürfen zitiert werden — jeder Satz für sich ein Segment", () => {
     // Die Aussage wird ebenso satzweise gelesen; beide Sätze sind je ein Ausschnitt EINER Quelle.
-    expect(pruefeDeckung("Pruefen Sie Ventil A. Schliessen Sie Ventil B. [1]", AB).gedeckt).toBe(true);
+    expect(pruefeDeckung("Pruefen Sie Ventil A. Schliessen Sie Ventil B. [1]", AB).gedeckt).toBe(
+      true,
+    );
     // Aber nicht aus zwei QUELLEN zusammengesetzt (M4 bleibt).
-    const zwei = [ref("a", "A", "Pruefen Sie Ventil A."), ref("b", "B", "Schliessen Sie Ventil B.")];
-    expect(pruefeDeckung("Pruefen Sie Ventil A. Schliessen Sie Ventil B. [1][2]", zwei).gedeckt).toBe(false);
+    const zwei = [
+      ref("a", "A", "Pruefen Sie Ventil A."),
+      ref("b", "B", "Schliessen Sie Ventil B."),
+    ];
+    expect(
+      pruefeDeckung("Pruefen Sie Ventil A. Schliessen Sie Ventil B. [1][2]", zwei).gedeckt,
+    ).toBe(false);
   });
 
   it("G5 · KALIBRIERUNG des Satzsplitters: Zahlen mit Punkt trennen nicht, Satzzeichen ohne Leerraum auch nicht", () => {
@@ -351,7 +392,7 @@ describe("JOB 2659 · G — die Satzgrenze überlebt die Normalisierung", () => 
 describe("JOB 2659 · H — schließende Zeichen zwischen Satzende und Leerraum", () => {
   const FAELLE: Array<[string, string]> = [
     ["typografisches Anführungszeichen “", "„Pruefen Sie Ventil A.“ Schliessen Sie Ventil B."],
-    ["gerades Anführungszeichen \"", '"Pruefen Sie Ventil A." Schliessen Sie Ventil B.'],
+    ['gerades Anführungszeichen "', '"Pruefen Sie Ventil A." Schliessen Sie Ventil B.'],
     ["Apostroph '", "'Pruefen Sie Ventil A.' Schliessen Sie Ventil B."],
     ["typografischer Apostroph ’", "‘Pruefen Sie Ventil A.’ Schliessen Sie Ventil B."],
     ["runde Klammer )", "(Pruefen Sie Ventil A.) Schliessen Sie Ventil B."],
@@ -461,10 +502,9 @@ describe("JOB 2659 · B6 — keine Marke, keine Antwort", () => {
   });
 
   it("eine Marke außerhalb des Kandidatenbereichs zählt nicht als Marke", async () => {
-    const ergebnis = await new ModelProvider(fake("Bei Überdruck das Ventil schließen [7].")).answer(
-      FRAGE,
-      KANDIDATEN,
-    );
+    const ergebnis = await new ModelProvider(
+      fake("Bei Überdruck das Ventil schließen [7]."),
+    ).answer(FRAGE, KANDIDATEN);
     expect(ergebnis.answered).toBe(false);
   });
 });
@@ -501,9 +541,10 @@ describe("JOB 2659 · B7 — eine Absage ist eine Absage", () => {
   });
 
   it("die alte Fließtext-Absage ohne Marke fällt jetzt über B6 — ebenfalls keine Antwort", async () => {
-    const ergebnis = await new ModelProvider(
-      fake("Die Wissensbasis deckt das nicht ab."),
-    ).answer(FRAGE, KANDIDATEN);
+    const ergebnis = await new ModelProvider(fake("Die Wissensbasis deckt das nicht ab.")).answer(
+      FRAGE,
+      KANDIDATEN,
+    );
     expect(ergebnis.answered).toBe(false);
   });
 });

@@ -111,5 +111,9 @@ export function likePool(zeilen: readonly Suchzeile[]) {
     query,
     connect: async () => ({ query, release: () => undefined }),
   } as unknown as Pool;
-  return { pool, abgesetzt, suchabfragen: () => abgesetzt.filter((a) => a.sql.includes("FROM ko_search_projections p")) };
+  return {
+    pool,
+    abgesetzt,
+    suchabfragen: () => abgesetzt.filter((a) => a.sql.includes("FROM ko_search_projections p")),
+  };
 }

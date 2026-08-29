@@ -120,7 +120,9 @@ function berichtAusgeben(bericht: NachziehBericht): void {
     `BETROFFENE KOs: ${z.betroffen} von ${z.kos} (ohne Zeile: ${z.ohneProjektionszeile} · Fassung alt: ${z.fassung1} · leer trotz bodyHtml: ${z.leerTrotzBodyHtml})`,
   ];
   if (!bericht.ausgefuehrt) {
-    zeilen.push("TROCKENLAUF — nichts geschrieben. Ausführen nur mit --ausfuehren (Live: nur auf Pedis Freigabe).");
+    zeilen.push(
+      "TROCKENLAUF — nichts geschrieben. Ausführen nur mit --ausfuehren (Live: nur auf Pedis Freigabe).",
+    );
   } else if (bericht.rebuildBilanz) {
     zeilen.push(`REBUILD: ${JSON.stringify(bericht.rebuildBilanz)}`);
   } else if (bericht.reconcile) {

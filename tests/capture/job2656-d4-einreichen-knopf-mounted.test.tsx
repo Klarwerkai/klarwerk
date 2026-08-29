@@ -337,10 +337,9 @@ describe("JOB 2656 · D4 — der Einreichen-Knopf wird gedrueckt", () => {
 
     // Und ausdruecklich: KEIN 413. Das ist der Befund, an dem der Weg seit vier Durchgaengen haengt.
     for (const antwort of bruecke.promoteAntworten) {
-      expect(
-        antwort.status,
-        `Promote mit ${antwort.status} abgewiesen: ${antwort.body}`,
-      ).not.toBe(413);
+      expect(antwort.status, `Promote mit ${antwort.status} abgewiesen: ${antwort.body}`).not.toBe(
+        413,
+      );
     }
 
     // KALIBRIERUNG DES TRANSPORTS: Der Rumpf, den die OBERFLAECHE gebaut hat, war wirklich gross.

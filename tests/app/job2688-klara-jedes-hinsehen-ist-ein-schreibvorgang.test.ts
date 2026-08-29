@@ -1,6 +1,5 @@
 import type { Pool } from "pg";
 import { describe, expect, it } from "vitest";
-import { InMemoryKlaraSessionRepo, PgKlaraSessionRepo } from "../../services/reasoner";
 import {
   KLARA_SESSION_AUFBEWAHRUNG_MS,
   KLARA_SESSION_INACTIVITY_MS,
@@ -9,6 +8,7 @@ import {
   type KlaraPolicyQuelle,
   KlaraSessionService,
 } from "../../services/app/src/services/klara-session-service";
+import { InMemoryKlaraSessionRepo, PgKlaraSessionRepo } from "../../services/reasoner";
 
 // ================================================================================================
 // JOB 2688 D1 — JEDES HINSEHEN IST EIN SCHREIBVORGANG (Befund R2-13)
@@ -266,9 +266,16 @@ describe("JOB 2688 D1 · Teil 3: PgKlaraSessionRepo.purgeExpiredSessions", () =>
 
     expect(await repo.purgeExpiredSessions(grenze)).toBe(3);
 
-    expect(abgesetzt.map((a) => a.sql.split(" ")[0])).toEqual(["BEGIN", "DELETE", "DELETE", "COMMIT"]);
+    expect(abgesetzt.map((a) => a.sql.split(" ")[0])).toEqual([
+      "BEGIN",
+      "DELETE",
+      "DELETE",
+      "COMMIT",
+    ]);
     expect(abgesetzt[1]?.sql).toContain("DELETE FROM klara_session_consents");
-    expect(abgesetzt[1]?.sql).toContain("WHERE session_id IN (SELECT session_id FROM klara_sessions WHERE expires_at < $1)");
+    expect(abgesetzt[1]?.sql).toContain(
+      "WHERE session_id IN (SELECT session_id FROM klara_sessions WHERE expires_at < $1)",
+    );
     expect(abgesetzt[1]?.params).toEqual([grenze]);
     expect(abgesetzt[2]?.sql).toBe("DELETE FROM klara_sessions WHERE expires_at < $1");
     expect(abgesetzt[2]?.params).toEqual([grenze]);
@@ -279,9 +286,16 @@ describe("JOB 2688 D1 · Teil 3: PgKlaraSessionRepo.purgeExpiredSessions", () =>
     const { pool, abgesetzt, freigegebenZaehler } = poolDoppel(0, "DELETE FROM klara_sessions");
     const repo = new PgKlaraSessionRepo(pool);
 
-    await expect(repo.purgeExpiredSessions("2026-07-30T09:00:00.000Z")).rejects.toThrow("Datenbank sagt nein");
+    await expect(repo.purgeExpiredSessions("2026-07-30T09:00:00.000Z")).rejects.toThrow(
+      "Datenbank sagt nein",
+    );
 
-    expect(abgesetzt.map((a) => a.sql.split(" ")[0])).toEqual(["BEGIN", "DELETE", "DELETE", "ROLLBACK"]);
+    expect(abgesetzt.map((a) => a.sql.split(" ")[0])).toEqual([
+      "BEGIN",
+      "DELETE",
+      "DELETE",
+      "ROLLBACK",
+    ]);
     expect(freigegebenZaehler()).toBe(1);
   });
 });

@@ -1,3 +1,4 @@
+import { afterEach, describe, expect, it } from "vitest";
 // @vitest-environment jsdom
 // ================================================================================================
 // JOB 2613 · D5 — DIE KETTE DURCH DIE ECHTE ENTWURFSANSICHT.
@@ -41,7 +42,6 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
-import { afterEach, describe, expect, it } from "vitest";
 import "../../apps/web/src/i18n";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";

@@ -132,7 +132,10 @@ async function main(): Promise<void> {
         `Projektions-Inventur: ${b.inventur.map((i) => `Fassung ${i.projectionVersion}: ${i.n}`).join(" · ") || "keine Zeilen"}`,
         "",
         JSON.stringify(b, null, 2),
-      ].join("\n") + "\n",
+        // JOB 2701 D1 (lint/style/useTemplate): der Zeilenumbruch am Ende als letztes Element statt
+        // per `+` angehaengt — dieselbe Ausgabe, Byte fuer Byte (join setzt vor "" ein "\n").
+        "",
+      ].join("\n"),
     );
   } finally {
     await pool.end();

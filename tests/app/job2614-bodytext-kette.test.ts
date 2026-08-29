@@ -81,7 +81,9 @@ describe("JOB 2614 · Suchtext-Kette: Import → bodyText → Suche → belegte 
       method: "POST",
       url: `/api/drafts/${draftId}/promote`,
       headers,
-      payload: { draftPayload: { type: "best_practice", category: "Wartung", neededValidations: 1 } },
+      payload: {
+        draftPayload: { type: "best_practice", category: "Wartung", neededValidations: 1 },
+      },
     });
     expect(promote.statusCode, promote.body).toBe(201);
     const koId = promote.json().id as string;
@@ -201,9 +203,8 @@ async function findetFliesstextwort(dienst: KoService, id: string): Promise<bool
   const doc = await dienst.effectiveSearchDocumentOf(id);
   expect(doc, "ohne Suchdokument prüft dieser Fall nichts").toBeDefined();
   return (
-    matchEffectiveSearchDocument(doc as NonNullable<typeof doc>, [
-      FLIESSTEXTWORT.toLowerCase(),
-    ]) !== undefined
+    matchEffectiveSearchDocument(doc as NonNullable<typeof doc>, [FLIESSTEXTWORT.toLowerCase()]) !==
+    undefined
   );
 }
 

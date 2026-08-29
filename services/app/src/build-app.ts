@@ -1151,9 +1151,10 @@ export function herkunftAusStack(stack: unknown): string {
     return "unbekannt";
   }
   for (const zeile of stack.split("\n").slice(1)) {
-    const treffer = /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
-      zeile.trimEnd(),
-    );
+    const treffer =
+      /(?:^|[( ])((?:\/|[A-Za-z]:\\|node:)[^():\s]{1,200}):(\d{1,6}):(\d{1,6})\)?$/.exec(
+        zeile.trimEnd(),
+      );
     if (!treffer?.[1]) {
       continue;
     }

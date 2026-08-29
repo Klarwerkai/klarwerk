@@ -1250,9 +1250,9 @@ export class LibraryService {
     // Treffern weniger machen (library-routes.ts, Kommentar zu BASIC-380) — der Deckel liegt vor
     // ihr. Das ist ausgesprochen, nicht versteckt.
     const treffer = new Map(
-      (
-        await this.koService.findSearchHits({ terms: [q], limit: LIBRARY_SEARCH_HIT_LIMIT })
-      ).map((hit) => [hit.koId, hit]),
+      (await this.koService.findSearchHits({ terms: [q], limit: LIBRARY_SEARCH_HIT_LIMIT })).map(
+        (hit) => [hit.koId, hit],
+      ),
     );
     const out: KnowledgeObject[] = [];
     for (const ko of list) {

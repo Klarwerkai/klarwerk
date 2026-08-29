@@ -287,7 +287,10 @@ describe("JOB 2690 · D1 — die Gestaltpruefung am Rand, nicht in der Tiefe", (
       method: "POST",
       url: "/api/drafts",
       ...roh(
-        JSON.stringify({ title: "Pumpe entlueften", bodyHtml: "<p>Erst absperren, dann pruefen.</p>" }),
+        JSON.stringify({
+          title: "Pumpe entlueften",
+          bodyHtml: "<p>Erst absperren, dann pruefen.</p>",
+        }),
       ),
     });
     const id = (JSON.parse(angelegt.body) as { id: string }).id;
@@ -296,8 +299,10 @@ describe("JOB 2690 · D1 — die Gestaltpruefung am Rand, nicht in der Tiefe", (
     const sichtbar = (container.textContent ?? "").replace(/\s+/g, " ");
 
     // (1) Der Entwurf ist wirklich geladen — sonst maesse die Abwesenheit des Fehlers nichts.
-    expect(sichtbar, `der Entwurf wurde nicht geoeffnet. Sichtbar: ${sichtbar.slice(0, 400)}`)
-      .toContain("Erst absperren");
+    expect(
+      sichtbar,
+      `der Entwurf wurde nicht geoeffnet. Sichtbar: ${sichtbar.slice(0, 400)}`,
+    ).toContain("Erst absperren");
 
     // (2) Und kein Fehlerkasten. `fd.errSaveFailed` ist der Text, den der Befund als das benennt,
     //     was der Mensch statt einer Begruendung zu sehen bekam.
@@ -306,7 +311,7 @@ describe("JOB 2690 · D1 — die Gestaltpruefung am Rand, nicht in der Tiefe", (
     );
   });
 
-  it("F5 — DER FEHLERFALL, gemountet: Speichern schlaegt fehl, und im roten Kasten steht die SERVERMELDUNG statt „Speichern fehlgeschlagen\"", async () => {
+  it('F5 — DER FEHLERFALL, gemountet: Speichern schlaegt fehl, und im roten Kasten steht die SERVERMELDUNG statt „Speichern fehlgeschlagen"', async () => {
     // ============================================================================================
     // DIE VIER STATIONEN DES AUFTRAGS, in dieser Reihenfolge und ohne Ersatz:
     //   1. Ein Mensch drueckt in der Vordertuer auf Speichern.

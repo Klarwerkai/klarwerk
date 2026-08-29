@@ -1,3 +1,4 @@
+import type { Pool } from "pg";
 // JOB 2614 · D4 — DIE ZÄHLUNG AUS §2 IST BELEGT READ-ONLY UND STELLT DIE RICHTIGEN FRAGEN.
 //
 // Das Werkzeug tools/bodytext-zaehlung.ts liest die Live-Datenbank (Auftrag §2: „gelesen, nicht
@@ -10,7 +11,6 @@
 //   R3  Fehlt die Projektionstabelle (älterer Bestand), gilt ehrlich: betroffen = alle mit
 //       bodyHtml — und KEIN projektionsabhängiges Statement wird abgesetzt.
 import { describe, expect, it } from "vitest";
-import type { Pool } from "pg";
 import { BODYTEXT_ZAEHLUNG_SQL, zaehlen } from "../../tools/bodytext-zaehlung";
 
 function fakePool(antworten: (sql: string) => { rows: unknown[] }) {
@@ -28,9 +28,10 @@ function fakePool(antworten: (sql: string) => { rows: unknown[] }) {
 describe("JOB 2614 · D4 · Zählung: read-only, richtige Fragen, ehrlicher Altbestands-Zweig", () => {
   it("R1 — ausschließlich SELECT: das Werkzeug kann nicht schreiben", () => {
     for (const [name, sql] of Object.entries(BODYTEXT_ZAEHLUNG_SQL)) {
-      expect(sql.trim().toUpperCase().startsWith("SELECT"), `${name} beginnt nicht mit SELECT`).toBe(
-        true,
-      );
+      expect(
+        sql.trim().toUpperCase().startsWith("SELECT"),
+        `${name} beginnt nicht mit SELECT`,
+      ).toBe(true);
       expect(sql).not.toMatch(/\b(INSERT|UPDATE|DELETE|ALTER|CREATE|DROP|TRUNCATE)\b/i);
     }
   });
@@ -56,7 +57,12 @@ describe("JOB 2614 · D4 · Zählung: read-only, richtige Fragen, ehrlicher Altb
         return { rows: [{ n: 2 }] };
       }
       if (sql === BODYTEXT_ZAEHLUNG_SQL.inventur) {
-        return { rows: [{ projection_version: 1, n: 2 }, { projection_version: 2, n: 7 }] };
+        return {
+          rows: [
+            { projection_version: 1, n: 2 },
+            { projection_version: 2, n: 7 },
+          ],
+        };
       }
       throw new Error(`unerwartetes Statement: ${sql}`);
     });

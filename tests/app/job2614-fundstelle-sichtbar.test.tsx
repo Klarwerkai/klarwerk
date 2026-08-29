@@ -173,7 +173,9 @@ async function absenden(text: string): Promise<void> {
   if (!knopf) {
     throw new Error("Absendeknopf nicht gefunden");
   }
-  expect(knopf.disabled, "ohne freigegebenen Knopf gäbe es nichts Sichtbares zu messen").toBe(false);
+  expect(knopf.disabled, "ohne freigegebenen Knopf gäbe es nichts Sichtbares zu messen").toBe(
+    false,
+  );
   await act(async () => {
     knopf.click();
     await durchlaufen();
@@ -241,7 +243,10 @@ describe("JOB 2614 · D5 — die Fundstelle IM WORTLAUT sichtbar (BENs Lücke au
     const auszugKnopf = [...container.querySelectorAll("button")].find((b) =>
       (b.textContent ?? "").includes("Auszug"),
     );
-    expect(auszugKnopf, "kein Auszug-Aufklapper an der Quelle — Fundstelle nicht erreichbar").toBeDefined();
+    expect(
+      auszugKnopf,
+      "kein Auszug-Aufklapper an der Quelle — Fundstelle nicht erreichbar",
+    ).toBeDefined();
     await act(async () => {
       (auszugKnopf as HTMLButtonElement).click();
       await durchlaufen();

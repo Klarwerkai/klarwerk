@@ -94,8 +94,7 @@ const FANTASIEWORT = "Zwirbelfugenkalibrat";
 // `{"answered":false,"knowledgeClass":"unbekannt"}`.
 const ZWEITWORT = "Plombierstufe";
 const FREMDTITEL = `${FANTASIEWORT} auf ${ZWEITWORT} bringen`;
-const FREMDTEXT =
-  `Das ${FANTASIEWORT} wird vor jedem Schichtbeginn auf ${ZWEITWORT} gedreht und dann verplombt.`;
+const FREMDTEXT = `Das ${FANTASIEWORT} wird vor jedem Schichtbeginn auf ${ZWEITWORT} gedreht und dann verplombt.`;
 const FRAGE = `Wie bringe ich das ${FANTASIEWORT} auf ${ZWEITWORT}?`;
 // Dieselbe Quelle, aber nur EIN gemeinsames Inhaltstoken: Der Client rankt den Fremdtext und
 // schickt ihn mit, der Reasoner verwirft ihn an seiner Mindestsubstanz. So entsteht die von BEN
@@ -178,9 +177,7 @@ function drahtAufbauen(): void {
       // Wege muessen bedient sein, sonst gilt eine beantwortete Kante still als tot (genau daran
       // scheiterte der zweite Lauf dieses Tests: Ping erreicht, `reachable` trotzdem
       // „unreachable", weil nur `text()` bereitstand).
-      const nutzlast = istGenerierung
-        ? {}
-        : { choices: [{ message: { content: "bereit" } }] };
+      const nutzlast = istGenerierung ? {} : { choices: [{ message: { content: "bereit" } }] };
       return {
         status: 200,
         statusText: "200",
@@ -325,8 +322,9 @@ async function erklaerenAusloesen(frage: string): Promise<void> {
     feld.dispatchEvent(new Event("input", { bubbles: true }));
     await durchlaufen();
   });
-  const knopf = [...container.querySelectorAll<HTMLButtonElement>("section[data-klara='1'] button")]
-    .find((b) => (b.textContent ?? "").includes(i18n.t("klara.aiSearch")));
+  const knopf = [
+    ...container.querySelectorAll<HTMLButtonElement>("section[data-klara='1'] button"),
+  ].find((b) => (b.textContent ?? "").includes(i18n.t("klara.aiSearch")));
   if (!knopf) {
     throw new Error("KI-Knopf im Klara-Panel nicht gefunden.");
   }
@@ -389,12 +387,14 @@ describe("JOB 2660 — die Hilfe an der Stelle, wo sie jemand benutzt", () => {
       .map((e) => `${e.title} ${e.body} ${e.route}`)
       .join(" ");
     for (const wort of [FANTASIEWORT, ZWEITWORT]) {
-      expect(echterBestand, `„${wort}" steht im echten Hilfe-Bestand — der Fall waere unsauber`)
-        .not.toContain(wort);
+      expect(
+        echterBestand,
+        `„${wort}" steht im echten Hilfe-Bestand — der Fall waere unsauber`,
+      ).not.toContain(wort);
     }
   });
 
-  it("F1 — DER TRAGENDE FREMDTEXTFALL: die Antwort steht auf selbst mitgebrachtem Text — und nirgends steht „gesichert\", „validiert\" oder Vertrauen 90", async () => {
+  it('F1 — DER TRAGENDE FREMDTEXTFALL: die Antwort steht auf selbst mitgebrachtem Text — und nirgends steht „gesichert", „validiert" oder Vertrauen 90', async () => {
     await vorrichtung();
     await erklaerenAusloesen(FRAGE);
 
@@ -509,7 +509,7 @@ describe("JOB 2660 — die Hilfe an der Stelle, wo sie jemand benutzt", () => {
     );
   });
 
-  it("F2 — DIE ZUSICHERUNG (BENs Wortlaut): traegt die Antwort keine geprueffte Quelle, steht auf der Flaeche weder „validiert/gesichert\" noch Vertrauen 90, sondern die ehrliche Lueckenwirkung", async () => {
+  it('F2 — DIE ZUSICHERUNG (BENs Wortlaut): traegt die Antwort keine geprueffte Quelle, steht auf der Flaeche weder „validiert/gesichert" noch Vertrauen 90, sondern die ehrliche Lueckenwirkung', async () => {
     await vorrichtung();
     // DIESELBE Einschleusung, ANDERE Frage: Sie teilt mit dem Fremdtext nur EIN Inhaltstoken.
     // Der Client rankt ihn und schickt ihn mit — der Reasoner verwirft ihn an seiner absoluten
