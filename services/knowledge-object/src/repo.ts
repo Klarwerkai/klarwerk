@@ -77,6 +77,39 @@ export interface KoCandidateQuery {
 }
 
 export interface KoRepo {
+  /**
+   * JOB 2706 D1 (Review R2-30, Neubau nach 2685 D5): der SCHREIBSTAND des Bestands — eine
+   * Zeichenkette, die sich bei jedem Schreiben aendert, das einen Anhang-Traeger erzeugen oder
+   * entfernen kann, und die JEDER Leser derselben Persistenz sieht (Pg: die eine Zeile in
+   * `ko_schreibstand`, in derselben Transaktion erhoeht wie das Schreiben; Speicher: das geteilte
+   * `Schreibstand`-Objekt). Der Kandidaten-Speicher der Anhang-Sichtbarkeit merkt ihn je Eintrag.
+   * Optional: ohne ihn arbeitet der Speicher nicht.
+   */
+  anhangSchreibstand?(): Promise<string>;
+  /**
+   * JOB 2706 D1: DIE TRAEGERSUCHE FUER EINEN ANHANG — an der Datenquelle.
+   *
+   * Frage: „Welche Wissensobjekte koennten diesen Anhang tragen?" Die Antwort ist eine OBERMENGE
+   * und darf es sein: der Aufrufer (`beurteileAnhang`, services/app/src/sichtbarkeit.ts) legt an
+   * jedes gelieferte Objekt exakt dieselben Praedikate an wie bisher an den ganzen Bestand — ein
+   * Objekt zu viel kostet nichts, ein Objekt zu wenig waere ein falsches Urteil. Deshalb der
+   * Vertrag: JEDES Objekt, das den Anhang in seinem AKTUELLEN Stand (`attachments`-Eintrag oder
+   * Kennung im `bodyHtml`), in EINEM Versions-Schnappschuss oder in EINEM Beleg nennt, MUSS
+   * enthalten sein. Getrashte Objekte sind enthalten (der Aufrufer trimmt sie wie `KoService.list`).
+   *
+   * OPTIONAL, und das ist kein Komfort: nur die Postgres-Fassung kann die Frage an der Datenquelle
+   * beantworten, weil nur dort `ko_versions` und `ko_evidence` neben `kos` liegen. Der
+   * Anwendungsspeicher haelt die drei Bestaende in drei Objekten, die einander nicht kennen — dort
+   * bleibt der bisherige Weg (ganzer Bestand, dann dieselben Praedikate), der im Speicher nichts
+   * kostet. Fehlt die Methode, liest die Kompositionswurzel wie bisher `ko.list()`.
+   */
+  listAnhangTraeger?(objectId: string): Promise<KnowledgeObject[]>;
+  /**
+   * JOB 2706 D1: dieselbe Frage fuer MEHRERE Kennungen in EINER Abfrage — die Antwort ist eine
+   * Obermenge fuer JEDE der Kennungen (derselbe Vertrag wie oben, je Kennung). Der
+   * Kandidaten-Speicher der Abrufstelle fragt so fuer alle Bilder einer Seite auf einmal.
+   */
+  listAnhangTraegerFuer?(objectIds: readonly string[]): Promise<KnowledgeObject[]>;
   insert(ko: KnowledgeObject): Promise<void>;
   findById(id: string): Promise<KnowledgeObject | undefined>;
   // AUFTRAG-mega20 Block A: GEZIELTER Nachschlag der Erzeugungs-Operationskennung. Bewusst eine
@@ -232,8 +265,50 @@ function matches(ko: KnowledgeObject, filter: KoFilter): boolean {
   return true;
 }
 
+// ================================================================================================
+// JOB 2706 D1 (Review R2-30) — DER SCHREIBSTAND EINES BESTANDS (Neubau nach der Vorlage 2685 D3–D5)
+// ================================================================================================
+//
+// Eine Zahl je BESTAND, die jede Ablage erhoeht, sobald sie etwas schreibt, das einen Anhang-TRAEGER
+// erzeugen oder entfernen kann: Wissensobjekt anlegen, aendern (Anhaenge, Fliesstext), loeschen;
+// Versions-Schnappschuss anhaengen/entfernen; Nachweis anhaengen. Der Kandidaten-Speicher der
+// Anhang-Sichtbarkeit (services/app/src/sichtbarkeit.ts) merkt sich je Eintrag den Stand, unter dem
+// er entstand — aendert er sich, ist der Eintrag wertlos und die Traegersuche laeuft neu. So bemerkt
+// der Speicher ein Bild, das WAEHREND seiner Frist angehaengt wird.
+//
+// Absichtlich EIN Zaehler fuer alles (nicht je Kennung): der Schreiber weiss nicht, welche Kennungen
+// ein Fliesstext vorher nannte, und ein zu grober Zaehler kostet nur eine Suche mehr — ein zu feiner
+// kostet Sichtbarkeit.
+//
+// DER STAND GEHOERT DER ABLAGE, NICHT DEM PROZESS (BEN an 2685 D3: „ein prozesslokaler Singleton ist
+// kein gemeinsamer Aenderungsstand der PostgreSQL-Persistenz"). In Postgres ist er die eine Zeile
+// der Tabelle `ko_schreibstand` (repo-pg.ts: in DERSELBEN Transaktion wie das fachliche Schreiben
+// erhoeht — mit dem Commit gemeinsam sichtbar; Startwert 0). Im Speicher ist er DIESES Objekt, das
+// die drei Ablagen EINES Bestands teilen (`inMemoryRepos()` reicht es an alle drei) — zwei
+// Dienst-Instanzen ueber denselben Ablagen sehen dann denselben Stand, wie zwei Prozesse ueber
+// einer Datenbank. Kein Modul-Singleton: der haette zwei Bestaende im selben Prozess verbunden und
+// zwei Prozesse ueber einem Bestand getrennt — beides falsch.
+export class Schreibstand {
+  private zaehler = 0;
+
+  stand(): string {
+    return String(this.zaehler);
+  }
+
+  geaendert(): void {
+    this.zaehler += 1;
+  }
+}
+
 export class InMemoryKoRepo implements KoRepo {
   private readonly items = new Map<string, KnowledgeObject>();
+
+  constructor(private readonly schreibstand: Schreibstand = new Schreibstand()) {}
+
+  /** JOB 2706 D1: der Schreibstand dieses Bestands — s. `Schreibstand`. */
+  anhangSchreibstand(): Promise<string> {
+    return Promise.resolve(this.schreibstand.stand());
+  }
 
   insert(ko: KnowledgeObject): Promise<void> {
     // WP-SHIP8-CLOSE-4 (bens ROT-1B): Spiegel des partiellen Pg-Unique-Index
@@ -278,6 +353,7 @@ export class InMemoryKoRepo implements KoRepo {
       }
     }
     this.items.set(ko.id, ko);
+    this.schreibstand.geaendert();
     return Promise.resolve();
   }
 
@@ -332,6 +408,7 @@ export class InMemoryKoRepo implements KoRepo {
       );
     }
     this.items.set(ko.id, { ...ko, rowVersion: expected + 1 });
+    this.schreibstand.geaendert();
     return Promise.resolve();
   }
 
@@ -341,6 +418,7 @@ export class InMemoryKoRepo implements KoRepo {
     if (!this.items.delete(id)) {
       return Promise.reject(new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden."));
     }
+    this.schreibstand.geaendert();
     return Promise.resolve();
   }
 
@@ -495,10 +573,14 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
   // koId → version → Snapshot. Map bewahrt Reihenfolge; vorhandene Version wird nicht ersetzt.
   private readonly items = new Map<string, Map<number, KoVersionSnapshot>>();
 
+  // JOB 2706 D1: derselbe Schreibstand wie die KO-Ablage desselben Bestands (s. `Schreibstand`).
+  constructor(private readonly schreibstand: Schreibstand = new Schreibstand()) {}
+
   append(snapshot: KoVersionSnapshot, _tx?: TxContext): Promise<void> {
     const byVersion = this.items.get(snapshot.koId) ?? new Map<number, KoVersionSnapshot>();
     if (!byVersion.has(snapshot.version)) {
       byVersion.set(snapshot.version, snapshot);
+      this.schreibstand.geaendert();
     }
     this.items.set(snapshot.koId, byVersion);
     return Promise.resolve();
@@ -512,7 +594,9 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
 
   // SCRUM-507 R3: Kompensation eines Rollback (s. Interface). No-op, wenn (koId, version) fehlt.
   remove(koId: string, version: number): Promise<void> {
-    this.items.get(koId)?.delete(version);
+    if (this.items.get(koId)?.delete(version)) {
+      this.schreibstand.geaendert();
+    }
     return Promise.resolve();
   }
 }
@@ -529,9 +613,13 @@ export interface EvidenceRepo {
 export class InMemoryEvidenceRepo implements EvidenceRepo {
   private readonly items = new Map<string, EvidenceRecord>();
 
+  // JOB 2706 D1: derselbe Schreibstand wie die KO-Ablage desselben Bestands (s. `Schreibstand`).
+  constructor(private readonly schreibstand: Schreibstand = new Schreibstand()) {}
+
   append(record: EvidenceRecord): Promise<void> {
     if (!this.items.has(record.id)) {
       this.items.set(record.id, record);
+      this.schreibstand.geaendert();
     }
     return Promise.resolve();
   }

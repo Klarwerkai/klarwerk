@@ -52,6 +52,8 @@ export {
   InMemoryEvidenceRepo,
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
+  // JOB 2706 D1: der Schreibstand eines Bestands — im Speicher geteilt zwischen seinen Ablagen.
+  Schreibstand,
   type EvidenceRepo,
   type KoRepo,
   type KoVersionRepo,

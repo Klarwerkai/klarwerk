@@ -664,8 +664,37 @@ export interface AnhangEntwurf {
  * Object-Store weiß, WAS er gespeichert hat, und darf nicht wissen, WER es benutzt.
  */
 export interface AnhangQuellen {
-  /** Die AKTUELLEN Wissensobjekte. Die billige Stufe. */
-  kos: () => Promise<readonly AnhangTraeger[]>;
+  /**
+   * Die AKTUELLEN Wissensobjekte, die diesen Anhang tragen KOENNTEN. Die billige Stufe.
+   *
+   * JOB 2706 D1 (Review R2-30, Neubau nach 2685 D5): die Quelle bekommt die Kennung des Anhangs
+   * und darf damit vorsortieren — eine OBERMENGE der Traeger, nie eine Teilmenge. `beurteileAnhang`
+   * legt an jedes gelieferte Objekt dieselben Praedikate an wie zuvor an den ganzen Bestand
+   * (`zuordnungAmObjekt`, Belegkette, Fassungen); ein Objekt zu viel aendert deshalb kein Urteil.
+   * Ein Objekt zu WENIG wuerde es — darum der Vertrag: jedes Objekt, das den Anhang in seinem
+   * aktuellen Stand, in einem Versions-Schnappschuss oder in einem Beleg nennt, muss enthalten
+   * sein. Eine Quelle, die die Kennung ignoriert und wie bisher alles liefert, erfuellt den Vertrag
+   * trivial — so bleiben der Anwendungsspeicher und jeder bestehende Test unveraendert.
+   */
+  kos: (objectId: string) => Promise<readonly AnhangTraeger[]>;
+  /**
+   * JOB 2706 D1: dieselbe Frage fuer MEHRERE Kennungen in EINER Abfrage — die Antwort ist eine
+   * Obermenge fuer JEDE der Kennungen. Optional: nur eine Quelle, die an der Datenquelle sucht, hat
+   * davon etwas; fehlt sie, arbeitet der Kandidaten-Speicher nicht und jeder Abruf sucht einzeln.
+   */
+  kosFuer?: (objectIds: readonly string[]) => Promise<readonly AnhangTraeger[]>;
+  /**
+   * JOB 2706 D1: EIN Wissensobjekt, FRISCH gelesen — `undefined`, wenn es fehlt oder im Papierkorb
+   * liegt. Der Kandidaten-Speicher merkt sich nur KENNUNGEN; der Zustand (Stufe, Anhaenge,
+   * Papierkorb) wird bei jedem Urteil neu gelesen — so greift ein Entzug beim naechsten Abruf.
+   */
+  ko?: (koId: string) => Promise<AnhangTraeger | undefined>;
+  /**
+   * JOB 2706 D1: der SCHREIBSTAND der Ablage — eine Zahl, die bei jedem Schreiben steigt, das einen
+   * Traeger erzeugen oder entfernen kann. Der Kandidaten-Speicher merkt sie je Eintrag und verwirft
+   * den Eintrag, sobald sie sich geaendert hat. Ohne `stand` arbeitet der Speicher nicht.
+   */
+  stand?: () => Promise<string>;
   /** Die Voll-Snapshots eines Wissensobjekts, je mit dem Urheber der Fassung. */
   versionen: (koId: string) => Promise<readonly AnhangFassung[]>;
   /** Die append-only Belegkette eines Wissensobjekts — `createdBy` ist der Urheber-Nachweis. */
@@ -903,7 +932,39 @@ function urteile(funde: readonly Traegerfund[], ruecklage: AnhangUrteil): Anhang
 // wird damit exakt so streng behandelt wie „vertraulich", nicht strenger und nicht milder.
 const STUFE_FUER_UNBEKANNT: Confidentiality = "vertraulich";
 
+/**
+ * DAS Praedikat fuer Anhaenge (Block C der Pruefliste; mega74/g10 messen diesen Namen im Routenaufruf).
+ *
+ * JOB 2706 D1: mit `speicher` kommt die Liste der aktuellen Traeger aus gemerkten Kennungen und wird
+ * FRISCH gelesen (`quellen.ko`) — dieselbe Regel, dieselben Praedikate, derselbe Weg durch die teure
+ * Stufe. Kann der Speicher nicht arbeiten (keine Frist, keine `kosFuer`/`ko`/`stand`-Quelle), laeuft
+ * der bisherige Weg unveraendert. Ohne `speicher` ist alles wie vor 2706.
+ */
 export async function beurteileAnhang(
+  user: SessionUser,
+  objectId: string,
+  objekt: SichtbarkeitsFakten,
+  quellen: AnhangQuellen,
+  speicher?: KandidatenSpeicher,
+): Promise<AnhangUrteil> {
+  if (speicher) {
+    const kandidaten = await speicher.kandidaten(objectId, quellen);
+    const lesen = quellen.ko;
+    if (kandidaten !== null && typeof lesen === "function") {
+      const frisch: AnhangQuellen = {
+        ...quellen,
+        kos: async () =>
+          (await Promise.all(kandidaten.map((id) => lesen(id)))).filter(
+            (k): k is AnhangTraeger => k !== undefined,
+          ),
+      };
+      return beurteileAnhangKern(user, objectId, objekt, frisch);
+    }
+  }
+  return beurteileAnhangKern(user, objectId, objekt, quellen);
+}
+
+async function beurteileAnhangKern(
   user: SessionUser,
   objectId: string,
   objekt: SichtbarkeitsFakten,
@@ -928,7 +989,9 @@ export async function beurteileAnhang(
     vertraulich: stufeUnbekannt || isConfidential(objekt.confidentiality),
   };
 
-  const aktuelle = await quellen.kos();
+  // JOB 2706 D1: die Kennung reist mit, damit die Quelle vorsortieren kann (Vertrag am Interface).
+  // Alles, was danach kommt, ist unveraendert — die Praedikate laufen ueber jedes gelieferte Objekt.
+  const aktuelle = await quellen.kos(objectId);
   const funde: Traegerfund[] = [];
   for (const ko of aktuelle) {
     const zuordnung = zuordnungAmObjekt(ko, objectId, hochladender);
@@ -1000,4 +1063,204 @@ export async function beurteileAnhang(
     }
   }
   return urteile(funde, ruecklage);
+}
+
+// ================================================================================================
+// JOB 2706 D1 (Review R2-30) — DER KANDIDATEN-SPEICHER: ZEHN BILDER, EINE TRAEGERSUCHE JE SEITE.
+// Neubau auf dem heutigen Stand nach der Vorlage 2685 D2–D5 (GRUEN).
+// ================================================================================================
+//
+// Ein Zwischenspeicher fuer das URTEIL braeche die gepinnte Zusage, dass Hochstufung und Loeschung
+// BEIM NAECHSTEN ABRUF greifen (JOB 579 D5, JOB 605 D5). Deshalb merkt sich dieser Speicher NICHT
+// das Urteil und NICHT den Zustand der Traeger, sondern nur ihre KENNUNGEN: welche Wissensobjekte
+// die Traegersuche fuer eine Anhang-Kennung geliefert hat. Das Urteil selbst liest jeden Kandidaten
+// FRISCH (`quellen.ko`) und legt dieselben Praedikate an wie immer. Ein hochgestufter Traeger wird
+// mit seiner neuen Stufe gelesen, ein getrashter faellt weg, ein geloester Anhang ist im frischen
+// Stand nicht mehr da — der Entzug greift sofort.
+//
+// DIE GESCHWISTER: eine Seite mit zehn Bildern fragt zehnmal, fast gleichzeitig. Findet die Suche
+// fuer das erste Bild seinen Traeger, nennt dessen aktueller Stand die anderen neun Bilder
+// (`attachments`, Fliesstext). Fuer diese Geschwister laeuft EINE weitere Abfrage (`kosFuer`), und
+// die Antwort ist eine Obermenge fuer jede von ihnen — also eine gueltige Kandidatenmenge fuer jede.
+// Eine Seite kostet damit zwei Traegersuchen (Bild 1, dann seine Geschwister), nicht zehn; ein
+// zweiter Aufruf derselben Seite innerhalb der Frist kostet keine.
+//
+// EIN NEUES BILD WAEHREND DER FRIST: Die Frist allein waere ein Fenster — wer in den fuenf Sekunden
+// ein Bild an ein weiteres Objekt haengt, dessen Traeger stuende nicht in der gemerkten Menge.
+// Deshalb traegt jeder Eintrag den SCHREIBSTAND mit, unter dem er entstand (`quellen.stand`): ein
+// Wert der ABLAGE, nicht des Prozesses (zwei App-Prozesse ueber einer Datenbank sehen denselben),
+// der sich bei jedem Schreiben aendert, das einen Traeger erzeugen oder entfernen kann — und der in
+// Postgres in DERSELBEN Transaktion steigt wie das fachliche Schreiben (repo-pg.ts). Stimmt der
+// Stand beim Abruf nicht mehr, ist der Eintrag wertlos und die Suche laeuft neu. Der Stand wird VOR
+// der Suche gelesen: ein Schreiben waehrend der laufenden Suche entwertet den Eintrag beim naechsten
+// Abruf ebenfalls. Ohne `stand`-Quelle arbeitet der Speicher NICHT (`null` → Urteil wie bisher).
+// Eine LEERE Kandidatenmenge wird nie gemerkt: der haeufigste Fall des Hinzukommens — hochladen,
+// anhaengen, ansehen — bleibt damit ohne jede Verzoegerung.
+//
+// Preis: eine O(1)-Abfrage des Schreibstands je Bildabruf — anstelle der Traegersuche, die sie
+// erspart; zehn Bilder einer Seite kosten damit zehn Kleinstabfragen und zwei Suchen statt zehn
+// Volllasten des Bestands.
+export const KANDIDATEN_FRIST_MS = 5_000;
+/** Deckel: bei Erreichen werden abgelaufene Eintraege geraeumt, danach — falls noetig — alles. */
+const KANDIDATEN_MAX = 5_000;
+/** Hoechstens so viele Geschwister werden je Traeger vorbefuellt — ein Objekt mit hundert Bildern ist
+ * keine Seite, sondern ein Archiv; der Rest holt sich seine Kandidaten wie bisher einzeln. */
+const GESCHWISTER_MAX = 50;
+
+/** Alle Anhang-Kennungen, die ein Traeger in seinem AKTUELLEN Stand nennt (Anhaenge und Fliesstext). */
+export function objektKennungenIn(traeger: AnhangTraeger): string[] {
+  const kennungen = new Set<string>();
+  for (const a of traeger.attachments ?? []) {
+    if (typeof a.objectId === "string" && a.objectId.length > 0) {
+      kennungen.add(a.objectId);
+    }
+  }
+  if (typeof traeger.bodyHtml === "string") {
+    for (const treffer of traeger.bodyHtml.matchAll(/\/api\/objects\/([A-Za-z0-9_.:-]+)\/raw/g)) {
+      const id = treffer[1];
+      if (id) {
+        kennungen.add(id);
+      }
+    }
+  }
+  return [...kennungen];
+}
+
+export interface KandidatenSpeicherOptionen {
+  /** Frist in Millisekunden; `0` schaltet den Speicher aus. */
+  fristMs?: number;
+  /** Uhr (Millisekunden) — injizierbar fuer Tests. */
+  jetzt?: () => number;
+}
+
+export class KandidatenSpeicher {
+  private readonly frist: number;
+  private readonly jetzt: () => number;
+  private readonly eintraege = new Map<
+    string,
+    { bis: number; stand: string; kandidaten: readonly string[] }
+  >();
+  /** Wie oft die Traegersuche an der Quelle wirklich lief — fuer Zaehler und Belege. */
+  traegersuchen = 0;
+  /** Wie oft ein gemerkter Eintrag wegen eines geaenderten Schreibstands verworfen wurde. */
+  verworfen = 0;
+  /** Die Reihe der Suchen: eine nach der anderen, s. `kandidaten`. */
+  private kette: Promise<unknown> = Promise.resolve();
+
+  constructor(optionen: KandidatenSpeicherOptionen = {}) {
+    this.frist = optionen.fristMs ?? KANDIDATEN_FRIST_MS;
+    this.jetzt = optionen.jetzt ?? (() => Date.now());
+  }
+
+  /**
+   * Die Kandidaten-Kennungen fuer einen Anhang — aus dem Speicher oder frisch gesucht. `null`, wenn
+   * der Speicher nicht arbeiten kann (Frist 0, oder die Quelle bietet keine Mehrfachsuche, keinen
+   * Einzelzugriff oder keinen Schreibstand): dann urteilt der Aufrufer wie bisher ueber `quellen.kos`.
+   */
+  async kandidaten(objectId: string, quellen: AnhangQuellen): Promise<readonly string[] | null> {
+    const kosFuer = quellen.kosFuer;
+    const stand = quellen.stand;
+    if (this.frist <= 0 || typeof kosFuer !== "function" || typeof quellen.ko !== "function") {
+      return null;
+    }
+    if (typeof stand !== "function") {
+      return null;
+    }
+    // Der Stand kommt aus der ABLAGE (eine O(1)-Abfrage je Abruf), nicht aus dem Prozess.
+    const sofort = this.ausSpeicher(objectId, await stand());
+    if (sofort) {
+      return sofort;
+    }
+    // SUCHEN LAUFEN NACHEINANDER. Ein Browser fordert die zehn Bilder einer Seite GLEICHZEITIG an.
+    // Ohne Reihung startete jede dieser Anfragen ihre eigene Suche, bevor die erste ihre Geschwister
+    // vorbefuellen konnte (gemessen in 2685 D3: zwanzig Suchen statt zwei). Wer wartet, sieht danach
+    // zuerst in den Speicher; eine gescheiterte Suche reisst die Reihe nicht ab. Treffer im Speicher
+    // warten nie.
+    const arbeit = this.kette.then(() => this.suchen(objectId, { ...quellen, kosFuer, stand }));
+    this.kette = arbeit.then(
+      () => undefined,
+      () => undefined,
+    );
+    return arbeit;
+  }
+
+  /** Ein gueltiger Eintrag — oder `undefined`; ein Eintrag mit fremdem Schreibstand wird verworfen. */
+  private ausSpeicher(objectId: string, stand: string): readonly string[] | undefined {
+    const t = this.jetzt();
+    const bekannt = this.eintraege.get(objectId);
+    if (bekannt && bekannt.bis > t) {
+      if (bekannt.stand === stand) {
+        return bekannt.kandidaten;
+      }
+      this.verworfen += 1;
+      this.eintraege.delete(objectId);
+    }
+    return undefined;
+  }
+
+  private async suchen(
+    objectId: string,
+    quellen: AnhangQuellen & {
+      kosFuer: NonNullable<AnhangQuellen["kosFuer"]>;
+      stand: () => Promise<string>;
+    },
+  ): Promise<readonly string[]> {
+    // Der Stand VOR der Suche — was danach geschrieben wird, entwertet diesen Eintrag.
+    const stand = await quellen.stand();
+    // Wer in der Reihe gewartet hat, findet seinen Eintrag oft schon vorbefuellt (Geschwister).
+    const inzwischen = this.ausSpeicher(objectId, stand);
+    if (inzwischen) {
+      return inzwischen;
+    }
+    const t = this.jetzt();
+    this.traegersuchen += 1;
+    const traeger = await quellen.kosFuer([objectId]);
+    if (traeger.length === 0) {
+      // Nicht merken (s. Kopf): der naechste Abruf sucht wieder — ein gerade erst angehaengter
+      // Anhang wird so ohne Verzoegerung gefunden.
+      return [];
+    }
+    const geschwister = new Set<string>();
+    for (const k of traeger) {
+      for (const kennung of objektKennungenIn(k)) {
+        if (kennung !== objectId && !this.frisch(kennung, t, stand)) {
+          geschwister.add(kennung);
+        }
+      }
+    }
+    const nachzufragen = [...geschwister].slice(0, GESCHWISTER_MAX);
+    if (nachzufragen.length === 0) {
+      const kandidaten = traeger.map((k) => k.id);
+      this.merken(objectId, kandidaten, t, stand);
+      return kandidaten;
+    }
+    // EINE Abfrage fuer den Anhang und seine Geschwister: die Antwort ist eine Obermenge fuer jede
+    // der Kennungen, also fuer jede eine gueltige Kandidatenmenge.
+    this.traegersuchen += 1;
+    const alle = await quellen.kosFuer([objectId, ...nachzufragen]);
+    const kandidaten = alle.map((k) => k.id);
+    for (const kennung of [objectId, ...nachzufragen]) {
+      this.merken(kennung, kandidaten, t, stand);
+    }
+    return kandidaten;
+  }
+
+  private frisch(kennung: string, t: number, stand: string): boolean {
+    const e = this.eintraege.get(kennung);
+    return e !== undefined && e.bis > t && e.stand === stand;
+  }
+
+  private merken(kennung: string, kandidaten: readonly string[], t: number, stand: string): void {
+    if (this.eintraege.size >= KANDIDATEN_MAX) {
+      for (const [k, e] of this.eintraege) {
+        if (e.bis <= t) {
+          this.eintraege.delete(k);
+        }
+      }
+      if (this.eintraege.size >= KANDIDATEN_MAX) {
+        this.eintraege.clear();
+      }
+    }
+    this.eintraege.set(kennung, { bis: t + this.frist, stand, kandidaten });
+  }
 }

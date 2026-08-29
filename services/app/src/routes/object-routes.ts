@@ -11,6 +11,8 @@ import { type Guards, type SessionUser, sendError } from "../http";
 import {
   type AnhangQuellen,
   type AnhangUrteil,
+  KANDIDATEN_FRIST_MS,
+  KandidatenSpeicher,
   type SichtbarkeitsFakten,
   beurteileAnhang,
 } from "../sichtbarkeit";
@@ -157,11 +159,36 @@ function mitVary(reply: FastifyReply): FastifyReply {
 // bedingungslosen Ja für JEDEN Anhang. Ein Schutz, den der Aufrufer weglassen kann, ist keiner.
 // Pflichtparameter ohne Umbau möglich: einziger Aufrufer ist die Kompositionswurzel
 // (build-app.ts:1045).
+// ================================================================================================
+// JOB 2706 D1 (Review R2-30) — ZEHN BILDER, EINE TRAEGERSUCHE JE SEITE, UND DER ENTZUG GREIFT SOFORT.
+// ================================================================================================
+//
+// Der Kandidaten-Speicher (sichtbarkeit.ts) merkt sich NICHT das Urteil (JOB 579 D5 und JOB 605 D5
+// pinnen, dass Hochstufung und Loeschung BEIM NAECHSTEN ABRUF greifen), sondern nur die KENNUNGEN
+// der Traeger, die die Suche geliefert hat — und liest jeden Kandidaten beim Urteil frisch. Was die
+// Frist verzoegert, ist allein das HINZUKOMMEN eines neuen Traegers, und auch das nur, solange der
+// Schreibstand der Ablage unveraendert ist (Begruendung am Kopf des Speichers). Die Frist ist EIN
+// Wert (`KANDIDATEN_FRIST_MS`), ueber die Optionen der Routen ersetzbar; `0` schaltet den Speicher
+// aus. Die Reihenfolge Auth-vor-Parsen (JOB 2657) bleibt unangetastet — der Speicher sitzt hinter
+// `guards.requirePermission`, im Urteil.
+export interface ObjectRoutesOptionen {
+  /** Uhr (Millisekunden) — injizierbar fuer Tests. */
+  jetzt?: () => number;
+  /** Frist des Kandidaten-Speichers in Millisekunden; `0` schaltet ihn aus. */
+  kandidatenFristMs?: number;
+}
+
 export function objectRoutes(
   store: ObjectStore,
   guards: Guards,
   quellen: AnhangQuellen,
+  optionen: ObjectRoutesOptionen = {},
 ): FastifyPluginAsync {
+  const speicher = new KandidatenSpeicher({
+    fristMs: optionen.kandidatenFristMs ?? KANDIDATEN_FRIST_MS,
+    ...(optionen.jetzt ? { jetzt: optionen.jetzt } : {}),
+  });
+
   // Die EINE Torwache dieser Datei. Sie beantwortet „darf dieser Mensch diesen Anhang sehen"
   // ausschliesslich über das Prädikat aus Block A — keine zweite Auslegung hier.
   async function urteile(
@@ -185,7 +212,8 @@ export function objectRoutes(
     if (typeof quellen?.kos !== "function") {
       return { sichtbar: false, vertraulich: true };
     }
-    return beurteileAnhang(user, objectId, eigen, quellen);
+    // JOB 2706 D1: dieselbe Regel, ueber den Kandidaten-Speicher (Begruendung am Kopf dieses Blocks).
+    return beurteileAnhang(user, objectId, eigen, quellen, speicher);
   }
 
   // JOB 2657 D1: AUTH VOR BODY-PARSING — dasselbe Muster, das `capture-routes.ts:211-218` seit

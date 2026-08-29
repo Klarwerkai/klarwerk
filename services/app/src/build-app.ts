@@ -74,6 +74,7 @@ import {
   InMemoryKoRepo,
   InMemoryKoVersionRepo,
   InMemoryUploadLimitsRepo,
+  type KnowledgeObject,
   type KoRepo,
   type KoSearchProjectionRepo,
   KoService,
@@ -83,6 +84,7 @@ import {
   PgKoSearchProjectionRepo,
   PgKoVersionRepo,
   PgUploadLimitsRepo,
+  Schreibstand,
   type UploadLimitsRepo,
   type WithTx,
 } from "../../knowledge-object";
@@ -297,6 +299,16 @@ export interface AppServices {
   // erstellt (braucht den dort gebauten semanticPrefilter); Tests können VOR buildApp einen
   // eigenen (Spy-)Worker setzen — wie beim slideConverter.
   aiCheckWorker?: AiCheckWorker;
+  // JOB 2706 D1 (Review R2-30): die Traegersuche eines Anhangs AN DER DATENQUELLE. Gesetzt, wenn
+  // das KO-Repo sie kann (Postgres: `PgKoRepo.listAnhangTraeger`); fehlt sie, liest der Anhang-
+  // Lesepfad wie bisher den ganzen Bestand ueber `ko.list()`. Liefert den ROHEN Bestand inklusive
+  // Papierkorb — der Aufrufer trimmt wie `KoService.list`.
+  anhangTraeger?: (objectId: string) => Promise<KnowledgeObject[]>;
+  // Dieselbe Suche fuer mehrere Kennungen in EINER Abfrage (Kandidaten-Speicher).
+  anhangTraegerFuer?: (objectIds: readonly string[]) => Promise<KnowledgeObject[]>;
+  // Der Schreibstand des Bestands aus der ABLAGE (Pg: Zeile `ko_schreibstand`; Speicher: geteiltes
+  // Objekt) — damit zwei App-Prozesse ueber einer Datenbank denselben Stand sehen.
+  anhangStand?: () => Promise<string>;
 }
 
 // Alle Repositories der App. Sie sind der einzige Unterschied zwischen In-Memory und
@@ -582,6 +594,18 @@ export function assembleServices(
       versions: (koId) => repos.koVersions.listByKo(koId),
       evidence: (koId) => repos.evidence.listByKo(koId),
     },
+    // JOB 2706 D1 (R2-30): nur, wenn das Repo die Traegersuche an der Datenquelle kann. Die
+    // Methoden sind am `KoRepo` optional (Begruendung dort); hier werden sie durchgereicht, nicht
+    // geraten. Ebenso der Schreibstand aus der Ablage.
+    ...(repos.koRepo.listAnhangTraeger
+      ? { anhangTraeger: repos.koRepo.listAnhangTraeger.bind(repos.koRepo) }
+      : {}),
+    ...(repos.koRepo.listAnhangTraegerFuer
+      ? { anhangTraegerFuer: repos.koRepo.listAnhangTraegerFuer.bind(repos.koRepo) }
+      : {}),
+    ...(repos.koRepo.anhangSchreibstand
+      ? { anhangStand: repos.koRepo.anhangSchreibstand.bind(repos.koRepo) }
+      : {}),
     media: new MediaAnalysisService({
       objects,
       // SCRUM-502 R7: der (Cloud-)Whisper-Transkriber durch den Egress-Chokepoint — verweigert
@@ -621,11 +645,15 @@ export function assembleServices(
 // In-Memory-Repos als benannter Satz — von buildServices (Tests/Dev) und der Dev-Persistenz
 // (SCRUM-387: Journal-Replay + Journalierung über dieselben Interfaces) gemeinsam genutzt.
 export function inMemoryRepos(): AppRepos {
+  // JOB 2706 D1: EIN Schreibstand je Bestand — die drei Ablagen teilen ihn, wie sie in Postgres
+  // dieselbe Zeile `ko_schreibstand` teilen. Zwei Dienst-Instanzen ueber DIESEM Satz sind zwei
+  // Prozesse ueber einer Datenbank; zwei Saetze sind zwei Datenbanken.
+  const schreibstand = new Schreibstand();
   return {
     auditRepo: new InMemoryAuditRepo(),
-    koRepo: new InMemoryKoRepo(),
-    koVersions: new InMemoryKoVersionRepo(),
-    evidence: new InMemoryEvidenceRepo(),
+    koRepo: new InMemoryKoRepo(schreibstand),
+    koVersions: new InMemoryKoVersionRepo(schreibstand),
+    evidence: new InMemoryEvidenceRepo(schreibstand),
     users: new InMemoryUserRepo(),
     sessions: new InMemorySessionRepo(),
     resetTokens: new InMemoryPasswordResetRepo(),
@@ -1900,7 +1928,28 @@ export function buildApp(
   // liest über media/src/service.ts:92 denselben Bestand wie `GET /api/objects/:id` — es bekommt
   // deshalb dieselben Herkünfte, nicht eine zweite, die auseinanderlaufen kann.
   const anhangQuellen: AnhangQuellen = {
-    kos: () => services.ko.list(),
+    // JOB 2706 D1 (Review R2-30): mit Traegersuche an der Datenquelle liest der Bildabruf nur noch
+    // die Objekte, die den Anhang nennen koennten — getrimmt um den Papierkorb, ZEICHENGLEICH wie
+    // `KoService.list` es tut (`!k.deletedAt`). Ohne sie (Anwendungsspeicher) der bisherige Weg.
+    kos: async (objectId) =>
+      services.anhangTraeger
+        ? (await services.anhangTraeger(objectId)).filter((k) => !k.deletedAt)
+        : services.ko.list(),
+    // Mehrere Kennungen auf einmal (Kandidaten-Speicher der Abrufstelle). Ohne Datenquellen-Suche
+    // liefert der Anwendungsspeicher den ganzen Bestand — der Vertrag „Obermenge fuer jede
+    // Kennung" ist damit trivial erfuellt, und nichts laeuft anders als bisher.
+    kosFuer: async (objectIds) =>
+      services.anhangTraegerFuer
+        ? (await services.anhangTraegerFuer(objectIds)).filter((k) => !k.deletedAt)
+        : services.ko.list(),
+    // Ein Traeger FRISCH — `KoService.get` liefert fuer den Papierkorb `undefined`, zeichengleich
+    // mit dem Trim in `list`.
+    ko: (koId) => services.ko.get(koId),
+    // Der Schreibstand aus der ABLAGE (Pg: Zeile `ko_schreibstand`; Speicher: geteiltes Objekt des
+    // Bestands) — der Kandidaten-Speicher verwirft damit jeden Eintrag, sobald irgendwo, auch in
+    // einem anderen Prozess, ein Traeger entstanden oder verschwunden sein kann. Ohne diese Quelle
+    // arbeitet der Speicher nicht.
+    ...(services.anhangStand ? { stand: services.anhangStand } : {}),
     // AUFTRAG-mega78 BLOCK A: die Fassung reist MIT IHREM URHEBER. `v.author` ist die Person,
     // die diese Fassung geschrieben hat (serverseitig aus der Anmeldung) — `v.snapshot.author`
     // wäre der über Revisionen unveränderte Autor des Wissensobjekts und damit kein Nachweis.

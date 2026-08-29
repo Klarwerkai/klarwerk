@@ -375,6 +375,19 @@ function fakeVersionPool() {
       }
       return { rows: [] };
     },
+    // JOB 2685 D5: `withPgTx` holt einen Client — hier derselbe Speicher. BEGIN/COMMIT/ROLLBACK und
+    // der Schreibstand (`UPDATE ko_schreibstand …`) werden angenommen, alles andere geht an `query`.
+    connect: async function (this: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) {
+      return {
+        query: async (sql: string, params: unknown[] = []) =>
+          /^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) || sql.startsWith("UPDATE ko_schreibstand")
+            ? { rows: [], rowCount: 1 }
+            : this.query(sql, params),
+        release: () => undefined,
+      };
+    },
   } as unknown as Pool;
 }
 
@@ -570,6 +583,19 @@ function fakeEvidencePool() {
         return { rows: out };
       }
       return { rows: [] };
+    },
+    // JOB 2685 D5: `withPgTx` holt einen Client — hier derselbe Speicher. BEGIN/COMMIT/ROLLBACK und
+    // der Schreibstand (`UPDATE ko_schreibstand …`) werden angenommen, alles andere geht an `query`.
+    connect: async function (this: {
+      query: (sql: string, params?: unknown[]) => Promise<unknown>;
+    }) {
+      return {
+        query: async (sql: string, params: unknown[] = []) =>
+          /^(BEGIN|COMMIT|ROLLBACK)$/.test(sql) || sql.startsWith("UPDATE ko_schreibstand")
+            ? { rows: [], rowCount: 1 }
+            : this.query(sql, params),
+        release: () => undefined,
+      };
     },
   } as unknown as Pool;
 }

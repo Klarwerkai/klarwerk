@@ -135,14 +135,24 @@ describe("JOB 2704 D1 · Pg · vier Schreiber auf EINEM Transaktionsclient", () 
     expect(a.freigegeben()).toBe(1);
   });
 
-  it("P3 · GEGENPROBE ohne tx: die Projektion oeffnet wie bisher ihre eigene Transaktion, kos-UPDATE geht ueber den Pool", async () => {
+  it("P3 · GEGENPROBE ohne tx: die Projektion oeffnet wie bisher ihre eigene Transaktion — und seit JOB 2706 auch der kos-UPDATE (Schreibstand in derselben Klammer), nichts geht ueber den Pool", async () => {
     const a = poolAttrappe();
     const projections = new PgKoSearchProjectionRepo(a.pool);
     await projections.insert(buildSearchProjection(KO, "2026-08-29T12:00:01.000Z"));
     expect(a.client[0]).toBe("BEGIN");
     expect(a.client[a.client.length - 1]).toBe("COMMIT");
     expect(zaehle(a.client, /FOR SHARE/)).toBe(1);
+    // JOB 2706 D2 (Nachzug dieses Pins): ohne tx laeuft der bedingte UPDATE nicht mehr als lose
+    // Pool-Query, sondern in einer EIGENEN Transaktion zusammen mit `UPDATE ko_schreibstand` —
+    // der Schreibstand der Anhang-Traegersuche muss mit den Daten gemeinsam sichtbar werden
+    // (2685 D5, Weg A). Mit tx (P1) bleibt es der Client des Aufrufers.
+    const vorher = a.client.length;
     await new PgKoRepo(a.pool).update(KO);
-    expect(zaehle(a.poolProtokoll, /^UPDATE kos SET/)).toBe(1);
+    const eigene = a.client.slice(vorher);
+    expect(eigene[0]).toBe("BEGIN");
+    expect(eigene[eigene.length - 1]).toBe("COMMIT");
+    expect(zaehle(eigene, /^UPDATE kos SET/)).toBe(1);
+    expect(zaehle(eigene, /^UPDATE ko_schreibstand SET stand = stand \+ 1/)).toBe(1);
+    expect(a.poolProtokoll).toEqual([]);
   });
 });

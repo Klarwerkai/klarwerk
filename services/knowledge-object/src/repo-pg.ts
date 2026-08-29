@@ -1,5 +1,5 @@
 import type { Pool } from "pg";
-import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable, withPgTx } from "../../db-tx";
 import type {
   EvidenceRepo,
   KoCandidateQuery,
@@ -41,6 +41,42 @@ const KO_CANDIDATE_SEARCH_INDEX_DDL = KO_CANDIDATE_SEARCH.map(
     `CREATE INDEX IF NOT EXISTS ${index} ON kos USING gin ((${expr}) gin_trgm_ops);`,
 ).join("\n");
 
+// ================================================================================================
+// JOB 2706 D1 (Review R2-30) — DER SCHNELLE BILDABRUF, NEU GEBAUT AUF DEM HEUTIGEN STAND.
+// Vorlage: 2685 D5 (GRUEN, EXT1) — die Loesung, nicht die Zeilen.
+// ================================================================================================
+//
+// DER INDEX DER TRAEGERSUCHE: ein GIN auf dem `attachments`-Feld (jsonb_path_ops: klein, und genau
+// fuer `@>` gebaut). Er traegt die Arme 1 und 4 von KO_ANHANG_TRAEGER_SQL (aktueller Stand und
+// Versions-Schnappschuesse), weil die Abfrage die Arme als UNION stellt statt als ODER — ein ODER mit
+// einem nicht indexierbaren Arm (LIKE ueber bodyHtml) liest Postgres als Ganzes sequenziell.
+// Additiv, idempotent, kein DROP, kein ALTER: derselbe Bauplatz wie die Trigramm-Indizes darueber.
+const KO_ANHANG_TRAEGER_INDEX_DDL = `CREATE INDEX IF NOT EXISTS idx_kos_anhang_traeger ON kos USING gin ((data->'attachments') jsonb_path_ops);`;
+
+// DER SCHREIBSTAND IN DERSELBEN TRANSAKTION WIE DAS FACHLICHE SCHREIBEN.
+//
+// Eine SEQUENZ taugt dafuer nicht (BEN an 2685 D4): Sequenzen sind nicht transaktional — ein
+// `nextval` nach dem Schreiben laesst ein Fenster „Daten sichtbar, alter Stand", eines VOR dem
+// Commit dreht es nur um („neuer Stand, Daten noch unsichtbar", sogar stabil cachebar); und
+// `last_value` ist vor dem ersten `nextval` schon 1. Deshalb eine EIN-ZEILEN-TABELLE, deren Zaehler
+// in DERSELBEN Transaktion erhoeht wird wie das fachliche Schreiben (`withPgTx`; bei uebergebener
+// `tx` auf dem Client des Aufrufers). Datenaenderung und Standaenderung werden mit EINEM Commit
+// gemeinsam sichtbar; vorher sieht jede andere Verbindung beides alt, danach beides neu — einen
+// Zwischenpunkt gibt es nicht. Startwert 0, erste Mutation → 1. Die Zeile ist eine
+// Serialisierungsstelle fuer Schreiber (Zeilensperre bis Commit) — Schreiben ist selten, Lesen ist
+// sperrfrei (READ COMMITTED). Additiv (`IF NOT EXISTS`, `ON CONFLICT DO NOTHING`), keine neue
+// Stufe: `klassifiziereStufe(KO_SCHEMA)` bleibt ADDITIV (der `UPDATE` steht NICHT im Schema,
+// sondern als Laufzeitanweisung hier).
+export const KO_SCHREIBSTAND_TABELLE_DDL = `CREATE TABLE IF NOT EXISTS ko_schreibstand (
+  id smallint PRIMARY KEY CHECK (id = 1),
+  stand bigint NOT NULL
+);
+INSERT INTO ko_schreibstand(id, stand) VALUES (1, 0) ON CONFLICT (id) DO NOTHING;`;
+export const KO_SCHREIBSTAND_ERHOEHEN_SQL =
+  "UPDATE ko_schreibstand SET stand = stand + 1 WHERE id = 1";
+export const KO_SCHREIBSTAND_LESEN_SQL =
+  "SELECT stand::text AS stand FROM ko_schreibstand WHERE id = 1";
+
 // Postgres-Adapter für knowledge-object. Vollobjekt als JSONB; Filterspalten indiziert.
 // SCRUM-362: pg_trgm + GIN-Trigramm-Indizes machen den Ask-Prefilter (ILIKE auf title/statement/
 // category/tags) indexierbar. Alle Statements sind idempotent (IF NOT EXISTS) und nicht destruktiv;
@@ -57,6 +93,8 @@ CREATE TABLE IF NOT EXISTS kos (
 CREATE INDEX IF NOT EXISTS idx_kos_type ON kos(type);
 CREATE INDEX IF NOT EXISTS idx_kos_status ON kos(status);
 ${KO_CANDIDATE_SEARCH_INDEX_DDL}
+${KO_ANHANG_TRAEGER_INDEX_DDL}
+${KO_SCHREIBSTAND_TABELLE_DDL}
 `;
 
 // WP-SHIP8-CLOSE-4 (bens ROT-1B): DB-erzwungener Idempotenzanker des Import-Accepts — als EIGENE,
@@ -189,6 +227,7 @@ CREATE TABLE IF NOT EXISTS ko_versions (
   note text NOT NULL,
   PRIMARY KEY (ko_id, version)
 );
+CREATE INDEX IF NOT EXISTS idx_ko_versions_anhang_traeger ON ko_versions USING gin ((snapshot->'attachments') jsonb_path_ops);
 `;
 
 // SCRUM-160: Evidence-Records für Quellen/Anhänge, separat vom KO-JSON.
@@ -203,10 +242,71 @@ CREATE TABLE IF NOT EXISTS ko_evidence (
 );
 CREATE INDEX IF NOT EXISTS idx_ko_evidence_ko_id ON ko_evidence(ko_id);
 CREATE INDEX IF NOT EXISTS idx_ko_evidence_kind ON ko_evidence(kind);
+CREATE INDEX IF NOT EXISTS idx_ko_evidence_object_id ON ko_evidence ((data->>'objectId'));
 `;
 
 interface DataRow {
   data: KnowledgeObject;
+}
+
+// ================================================================================================
+// JOB 2706 D1 (Review R2-30) — DIE TRAEGERSUCHE EINES ANHANGS, IN SQL.
+// ================================================================================================
+//
+// WAS `beurteileAnhang` (services/app/src/sichtbarkeit.ts) an JEDEM Wissensobjekt prueft — und was
+// deshalb hier, Arm fuer Arm, dieselbe Frage an die Datenbank ist:
+//
+//   1. `zuordnungAmObjekt`:  `attachments.some(a => a.objectId === objectId)`
+//                              → `data->'attachments' @> '[{"objectId": …}]'`
+//   2. `zuordnungAmObjekt`:  `bodyHtml.includes(objectId)`
+//                              → `data->>'bodyHtml' LIKE '%…%'` (Teilzeichenfolge, Gross/Klein exakt;
+//                              `%`, `_` und `\` in der Kennung sind entwertet, s. anhangTraegerParameter)
+//   3. Belegkette:            `beleg.objectId === objectId`   → `ko_evidence.data->>'objectId' = …`
+//   4. Fassungen:             `zuordnungInFassung` ist „keine", sobald `zuordnungAmObjekt` am
+//                              Schnappschuss „keine" ist — also dieselben Arme 1 und 2 auf
+//                              `ko_versions.snapshot`.
+//
+// OBERMENGE, NIE TEILMENGE. Jeder Arm ist mindestens so weit wie sein Praedikat in Node (Arm 2 ist
+// an einer Stelle weiter: ein `bodyHtml`, das kein String ist, faellt in Node durch und kann per
+// `->>` hier treffen — ein Objekt zu viel, das der Aufrufer sofort wieder aussortiert). In die
+// andere Richtung gibt es keinen Fall: was Node findet, findet auch dieser Ausdruck.
+//
+// DIE VIER ARME ALS UNION, FUER MEHRERE KENNUNGEN AUF EINMAL, MIT INDEX. Als UNION von
+// Kennungsmengen darf der Planer jeden Arm fuer sich loesen: Arm 1 und Arm 4a ueber die GIN-Indizes
+// `idx_kos_anhang_traeger` / `idx_ko_versions_anhang_traeger` (jsonb_path_ops, `@>`), Arm 3 ueber
+// `idx_ko_evidence_object_id`. Arm 2 und Arm 4b (`LIKE`) bleiben Scans — ein Trigramm-Index ueber
+// `bodyHtml` wuerde die Base64-Bilder trigrammieren und waere so gross wie der Bestand. Das ist die
+// ehrliche Restgroesse: die Fliesstext-Arme lesen weiterhin O(Bestand) je Abfrage, aber nur die
+// TREFFER verlassen die Datenbank — nicht mehr der ganze Bestand samt Bildern je Bild.
+//
+// MEHRERE KENNUNGEN: eine Wissensobjekt-Seite mit zehn Bildern fragt zehnmal an. Der
+// Kandidaten-Speicher (services/app/src/sichtbarkeit.ts) fragt deshalb fuer die Geschwister eines
+// Traegers in EINER Abfrage — `= ANY`, `LIKE ANY`, `@> ANY`. Die Antwort ist eine Obermenge fuer
+// JEDE der Kennungen; der Aufrufer legt je Kennung dieselben Praedikate an wie bisher.
+//
+// Der Beleg der Gleichheit des URTEILS an allen Faellen, die sichtbarkeit.ts unterscheidet, liegt in
+// tests/app/job2685-traegersuche-gleichheit.test.ts; der Beleg mit Mengengleichheit gegen ein
+// echtes Postgres in tests/ko/job2685-anhang-traeger.integration.test.ts (Docker).
+export const KO_ANHANG_TRAEGER_SQL = `SELECT data FROM kos WHERE id IN (
+  SELECT id FROM kos WHERE data->'attachments' @> ANY($1::jsonb[])
+  UNION SELECT id FROM kos WHERE data->>'bodyHtml' LIKE ANY($2::text[])
+  UNION SELECT ko_id FROM ko_evidence WHERE data->>'objectId' = ANY($3::text[])
+  UNION SELECT ko_id FROM ko_versions
+         WHERE snapshot->'attachments' @> ANY($1::jsonb[]) OR snapshot->>'bodyHtml' LIKE ANY($2::text[])
+)`;
+
+// Die drei Parameter zu KO_ANHANG_TRAEGER_SQL, je Kennung ein Element: das Enthaltenseins-Muster
+// fuer `attachments`, das LIKE-Muster (Kennung als Teilzeichenfolge, LIKE-Sonderzeichen mit `\`
+// entwertet — das Standard-Entwertungszeichen von Postgres) und die rohe Kennung fuer die Belegkette.
+export function anhangTraegerParameter(
+  objectIds: readonly string[],
+): [string[], string[], string[]] {
+  const eindeutig = [...new Set(objectIds)];
+  return [
+    eindeutig.map((objectId) => JSON.stringify([{ objectId }])),
+    eindeutig.map((objectId) => `%${objectId.replace(/[\\%_]/g, (zeichen) => `\\${zeichen}`)}%`),
+    eindeutig,
+  ];
 }
 
 // AUFTRAG-mega20 Block A: erkennt GENAU eine Unique-Verletzung an GENAU einem Constraint.
@@ -226,10 +326,19 @@ export class PgKoRepo implements KoRepo {
 
   async insert(ko: KnowledgeObject): Promise<void> {
     try {
-      await this.pool.query(
-        "INSERT INTO kos(id,type,status,category,data) VALUES($1,$2,$3,$4,$5)",
-        [ko.id, ko.type, ko.status, ko.category, JSON.stringify(ko)],
-      );
+      // JOB 2706 D1: Schreiben und Schreibstand in EINER Transaktion — gemeinsam sichtbar mit dem
+      // Commit (s. KO_SCHREIBSTAND_TABELLE_DDL).
+      await withPgTx(this.pool, async (tx) => {
+        const q = pgQueryable(tx);
+        await q.query("INSERT INTO kos(id,type,status,category,data) VALUES($1,$2,$3,$4,$5)", [
+          ko.id,
+          ko.type,
+          ko.status,
+          ko.category,
+          JSON.stringify(ko),
+        ]);
+        await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+      });
     } catch (err) {
       // AUFTRAG-mega20 Block A: die Unique-Kollision des ERZEUGUNGS-Ankers wird in einen
       // Domänenfehler übersetzt — und NUR sie. Ohne diese Übersetzung käme beim Aufrufer ein roher
@@ -296,17 +405,32 @@ export class PgKoRepo implements KoRepo {
   // der bedingte UPDATE ist selbst atomar.
   // JOB 2704 D1 (R2-35): MIT tx läuft der bedingte UPDATE auf demselben Client wie Snapshot,
   // Projektion und Audit (mutateKoTx in EINER withPgTx-Klammer) — ohne tx wie bisher über den Pool.
+  //
+  // JOB 2706 D2 (R2-30, auf 2704 gesetzt): bedingter UPDATE und Schreibstand laufen IMMER in einer
+  // Transaktion — mit uebergebener `tx` in der des Aufrufers (mutateKoTx: Commit dort), sonst in
+  // einer eigenen. STALE_WRITE rollt beides zurueck; ein Schreiben ohne Treffer erhoeht den Stand
+  // nicht. Nie ueber den Pool nebenher — das waere wieder ein Fenster (Muster `delete`).
   async update(ko: KnowledgeObject, tx?: TxContext): Promise<void> {
     const expected = ko.rowVersion ?? 0;
     const next = JSON.stringify({ ...ko, rowVersion: expected + 1 });
-    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
-    const res = await queryable.query(
-      "UPDATE kos SET type=$2,status=$3,category=$4,data=$5 WHERE id=$1 AND COALESCE((data->>'rowVersion')::int,0)=$6",
-      [ko.id, ko.type, ko.status, ko.category, next, expected],
-    );
-    if (res.rowCount === 0) {
-      throw new KoError("STALE_WRITE", "Nebenläufige Änderung — bitte erneut lesen und anwenden.");
+    const lauf = async (queryable: Queryable): Promise<void> => {
+      const res = await queryable.query(
+        "UPDATE kos SET type=$2,status=$3,category=$4,data=$5 WHERE id=$1 AND COALESCE((data->>'rowVersion')::int,0)=$6",
+        [ko.id, ko.type, ko.status, ko.category, next, expected],
+      );
+      if (res.rowCount === 0) {
+        throw new KoError(
+          "STALE_WRITE",
+          "Nebenläufige Änderung — bitte erneut lesen und anwenden.",
+        );
+      }
+      await queryable.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+    };
+    if (tx) {
+      await lauf(pgQueryable(tx));
+      return;
     }
+    await withPgTx(this.pool, (eigene) => lauf(pgQueryable(eigene)));
   }
 
   // SCRUM-523 P.3 (WP-A2): ohne tx die normale Pool-Query (heutiges Verhalten); MIT tx (vom Aufrufer
@@ -318,12 +442,23 @@ export class PgKoRepo implements KoRepo {
   // purgeKo (service.ts) einen ko.purged-Beleg, obwohl 0 Zeilen gelöscht wurden ("Audit ohne echtes
   // Delete"). Bei 0 gelöschten Zeilen wirft delete() NOT_FOUND; innerhalb der withTx-Klammer von
   // purgeKo führt das zum ROLLBACK, bevor audit.record läuft — kein Geister-Beleg.
+  //
+  // JOB 2706 D1: der Schreibstand steigt auf DEMSELBEN Client wie das Loeschen — mit uebergebener
+  // `tx` in der Transaktion des Aufrufers (Commit dort), sonst in einer eigenen. Nie ueber den Pool
+  // nebenher: das waere wieder ein Fenster.
   async delete(id: string, tx?: TxContext): Promise<void> {
-    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
-    const res = await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
-    if (res.rowCount === 0) {
-      throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+    const lauf = async (queryable: Queryable): Promise<void> => {
+      const res = await queryable.query("DELETE FROM kos WHERE id=$1", [id]);
+      if (res.rowCount === 0) {
+        throw new KoError("NOT_FOUND", "Wissensobjekt nicht gefunden.");
+      }
+      await queryable.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+    };
+    if (tx) {
+      await lauf(pgQueryable(tx));
+      return;
     }
+    await withPgTx(this.pool, (eigene) => lauf(pgQueryable(eigene)));
   }
 
   // FUNKE-FIX2 P0 (bens ROT-1, Blocker 1): ATOMARER Trust-Inkrement direkt in der DB — LEAST deckelt
@@ -401,6 +536,35 @@ export class PgKoRepo implements KoRepo {
   async list(filter: KoFilter, trim?: KoSichtbarkeitstrim): Promise<KnowledgeObject[]> {
     const { where, params } = this.buildListFilter(filter, trim);
     const res = await this.pool.query<DataRow>(`SELECT data FROM kos${where}`, params);
+    return res.rows.map((row) => row.data);
+  }
+
+  // JOB 2706 D1 (Review R2-30): der Schreibstand der Datenbank — die eine Zeile in
+  // `ko_schreibstand`, gelesen unter READ COMMITTED: sie zeigt genau den Stand, der mit den zuletzt
+  // committeten Daten zusammengehoert (s. KO_SCHREIBSTAND_TABELLE_DDL). O(1) je Bildabruf, sperrfrei.
+  async anhangSchreibstand(): Promise<string> {
+    const res = await this.pool.query<{ stand: string }>(KO_SCHREIBSTAND_LESEN_SQL);
+    return String(res.rows[0]?.stand ?? "");
+  }
+
+  // JOB 2706 D1: die Traegersuche eines Anhangs — EINE Abfrage, vier Fundorte, und nur die Treffer
+  // verlassen die Datenbank. Vertrag an `KoRepo.listAnhangTraeger` (repo.ts); die vier Arme in
+  // KO_ANHANG_TRAEGER_SQL. Vorher: `SELECT data FROM kos` ohne WHERE — der ganze Bestand samt
+  // Base64-Bildern je Bildabruf (`list()` darueber, ueber `KoService.list` aus build-app.ts).
+  async listAnhangTraeger(objectId: string): Promise<KnowledgeObject[]> {
+    return this.listAnhangTraegerFuer([objectId]);
+  }
+
+  // Dieselbe Frage fuer MEHRERE Kennungen in EINER Abfrage (Vertrag an
+  // `KoRepo.listAnhangTraegerFuer`). Leere Eingabe → leere Antwort, ohne Datenbankrunde.
+  async listAnhangTraegerFuer(objectIds: readonly string[]): Promise<KnowledgeObject[]> {
+    if (objectIds.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<DataRow>(
+      KO_ANHANG_TRAEGER_SQL,
+      anhangTraegerParameter(objectIds),
+    );
     return res.rows.map((row) => row.data);
   }
 
@@ -535,20 +699,29 @@ export class PgKoVersionRepo implements KoVersionRepo {
 
   // JOB 2704 D1 (R2-35): MIT tx auf dem Transaktionsclient von mutateKoTx — der Snapshot committet
   // oder verschwindet zusammen mit dem kos-UPDATE; es gibt keine Version n+1 ohne Snapshot mehr.
+  // JOB 2706 D2: Schreiben und Schreibstand in EINER Transaktion — mit `tx` in der des Aufrufers,
+  // sonst in einer eigenen (s. repo-pg.ts Kopf, Muster `PgKoRepo.update/delete`).
   async append(snapshot: KoVersionSnapshot, tx?: TxContext): Promise<void> {
-    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
-    await queryable.query(
-      `INSERT INTO ko_versions(ko_id,version,snapshot,at,author,note)
+    const lauf = async (queryable: Queryable): Promise<void> => {
+      await queryable.query(
+        `INSERT INTO ko_versions(ko_id,version,snapshot,at,author,note)
        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (ko_id, version) DO NOTHING`,
-      [
-        snapshot.koId,
-        snapshot.version,
-        JSON.stringify(snapshot.snapshot),
-        snapshot.at,
-        snapshot.author,
-        snapshot.note,
-      ],
-    );
+        [
+          snapshot.koId,
+          snapshot.version,
+          JSON.stringify(snapshot.snapshot),
+          snapshot.at,
+          snapshot.author,
+          snapshot.note,
+        ],
+      );
+      await queryable.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+    };
+    if (tx) {
+      await lauf(pgQueryable(tx));
+      return;
+    }
+    await withPgTx(this.pool, (eigene) => lauf(pgQueryable(eigene)));
   }
 
   async listByKo(koId: string): Promise<KoVersionSnapshot[]> {
@@ -568,7 +741,12 @@ export class PgKoVersionRepo implements KoVersionRepo {
 
   // SCRUM-507 R3: kompensierender Rollback eines noch nicht committeten Snapshots (s. KoVersionRepo).
   async remove(koId: string, version: number): Promise<void> {
-    await this.pool.query("DELETE FROM ko_versions WHERE ko_id=$1 AND version=$2", [koId, version]);
+    // JOB 2706 D1: auch die Ruecknahme aendert den Traegerbestand — Stand in derselben Transaktion.
+    await withPgTx(this.pool, async (tx) => {
+      const q = pgQueryable(tx);
+      await q.query("DELETE FROM ko_versions WHERE ko_id=$1 AND version=$2", [koId, version]);
+      await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+    });
   }
 }
 
@@ -581,18 +759,23 @@ export class PgEvidenceRepo implements EvidenceRepo {
   constructor(private readonly pool: Pool) {}
 
   async append(record: EvidenceRecord): Promise<void> {
-    await this.pool.query(
-      `INSERT INTO ko_evidence(id,ko_id,ko_version,kind,data,created_at)
+    // JOB 2706 D1: Schreiben und Schreibstand in EINER Transaktion (s. repo-pg.ts Kopf).
+    await withPgTx(this.pool, async (tx) => {
+      const q = pgQueryable(tx);
+      await q.query(
+        `INSERT INTO ko_evidence(id,ko_id,ko_version,kind,data,created_at)
        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (id) DO NOTHING`,
-      [
-        record.id,
-        record.koId,
-        record.koVersion,
-        record.kind,
-        JSON.stringify(record),
-        record.createdAt,
-      ],
-    );
+        [
+          record.id,
+          record.koId,
+          record.koVersion,
+          record.kind,
+          JSON.stringify(record),
+          record.createdAt,
+        ],
+      );
+      await q.query(KO_SCHREIBSTAND_ERHOEHEN_SQL);
+    });
   }
 
   async listByKo(koId: string): Promise<EvidenceRecord[]> {
