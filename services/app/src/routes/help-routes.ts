@@ -80,13 +80,40 @@ export function helpRoutes(deps: HelpRoutesDeps, guards: Guards): FastifyPluginA
           .send({ error: "BAD_REQUEST", message: "snippets fehlen oder sind ungültig." });
         return;
       }
-      // Hilfe-Schnipsel als Antwort-Quellen: kuratierte Produkt-Hilfe, daher als gesichert markiert.
+      // ==========================================================================================
+      // JOB 2660 D3 — WAS DER SERVER NICHT SELBST GELADEN HAT, BEKOMMT KEINE GUETEZUSICHERUNG.
+      // ==========================================================================================
+      //
+      // HIER STAND `status: "validiert", trust: 90` mit der Begruendung „kuratierte Produkt-Hilfe,
+      // daher als gesichert markiert". Die Begruendung setzt voraus, dass die Schnipsel WIRKLICH
+      // aus der kuratierten Hilfe stammen. Der Server kann das nicht wissen: Sie kommen aus der
+      // Registry im FRONTEND und reisen im Rumpf mit (der Kopfkommentar dieser Datei sagt es
+      // selbst, Z. 5-7). Ein veraenderter Client-Bestand liefert an derselben Stelle beliebigen
+      // Text — und bekam dafuer das Guetesiegel des Hauses.
+      //
+      // GEMESSEN AM BILDSCHIRM, vor dieser Aenderung (tests/web/job2660-hilfe-fremdtext-ui.test.tsx,
+      // Fall F1): Ein frei erfundener Satz wurde Antwortgrundlage, und daneben stand
+      //
+      //     {"answered":true,"knowledgeClass":"gesichert","trust":90,"sources":["page:start"]}
+      //
+      // im Panel sichtbar als Etikett „Gesichert". Genau das schliesst die Abnahme aus.
+      //
+      // `status: "offen"` und `trust: 0` sind keine Abwertung der Hilfe, sondern die ehrliche
+      // Aussage ueber die HERKUNFT dieser Refs: unbestaetigt. Die Wirkung entsteht nicht hier,
+      // sondern in `answerStanding` (services/reasoner/src/provider.ts): Es stuft nur dann auf
+      // „gesichert", wenn JEDE tragende Quelle `status === "validiert"` traegt — ab hier also nie,
+      // und der Vertrauenswert ist das Minimum ueber die Quellen, also 0.
+      //
+      // WAS SICH FUER DEN MENSCHEN AENDERT: Die Antwort bleibt dieselbe; sie heisst nur nicht mehr
+      // faelschlich „Gesichert", sondern „Ungeprüft" — das Wort, das der Katalog fuer diesen
+      // Zustand schon fuehrt (`ask.knowledgeClass.ungeprueft`). Kein neuer Begriff, keine zweite
+      // Wahrheit neben der Wissenssuche.
       const context: KnowledgeRef[] = snippets.map((s) => ({
         id: s.id,
         title: s.title,
         statement: s.body,
-        status: "validiert",
-        trust: 90,
+        status: "offen",
+        trust: 0,
       }));
       const result = await reasoner.helpAnswer(
         question,

@@ -20,6 +20,8 @@ import {
   resolveKlaraEntries,
   searchKlara,
 } from "../lib/klaraRegistry";
+// JOB 2660 D2: dieselbe Einstufungs-Beschriftung wie in der Wissenssuche (SCRUM-137).
+import { knowledgeClassMeta } from "../lib/knowledgeClass";
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { AiModelInfo } from "./AiModelInfo";
@@ -506,6 +508,30 @@ export function KlaraAssistant(): JSX.Element {
                       {/* Pedi 05.07.: jede KI-Antwort klar gekennzeichnet — generiert, nicht voll geprüft. */}
                       <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-trust-warn-text">
                         {t("klara.aiDisclaimer")}
+                      </span>
+                      {/* JOB 2660 D2 — DIE EINSTUFUNG DIESER ANTWORT, SICHTBAR.
+                        Pedis Frage lautete: „Sehe ich in der Hilfe, dass mein eigener Text nicht
+                        geprüft ist?" Bis hierher war sie mit NEIN zu beantworten. Der Server
+                        liefert zu jeder Hilfe-Antwort `knowledgeClass` (abgeleitet aus dem Stand
+                        der tragenden Quellen, `answerStanding` in services/reasoner/src/provider.ts)
+                        — das Panel zeigte davon nichts. Sichtbar war nur der Satz oben, und der
+                        steht IMMER da, gleich worauf die Antwort fußt. Damit war die Güte der
+                        Antwort für den Menschen nicht zu erkennen.
+                        Das Etikett ist NICHT neu erfunden: Beschriftung und Zuordnung kommen aus
+                        demselben Baustein wie in der Wissenssuche (`knowledgeClassMeta`,
+                        `ask.knowledgeClass.*`) — Hilfe und Ask sprechen dieselbe Sprache, statt in
+                        der Hilfe eine zweite Wahrheit aufzumachen. Es steht bewusst NEBEN dem
+                        Hinweis, nicht statt seiner: der eine sagt, WOHER die Antwort kommt, das
+                        andere, WORAUF sie steht.
+                        Keine Zahl: Der Vertrauenswert ist ein quellenbezogener Wert. Das Panel
+                        nennt seine Quellen erst darunter — eine Zahl an dieser Stelle behauptete
+                        Genauigkeit vor ihrer Grundlage. Dieselbe Zurückhaltung übt Ask.tsx an
+                        seinem Trust-Balken (dort ausführlich begründet, AUFTRAG-mega53 B2). */}
+                      <span
+                        data-testid="klara-ai-evidence"
+                        className="rounded-pill border border-hairline bg-surface px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted"
+                      >
+                        {t(knowledgeClassMeta(aiAsk.data.knowledgeClass).labelKey)}
                       </span>
                     </div>
                     {aiAsk.data.answered && aiAsk.data.answer ? (

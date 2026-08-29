@@ -236,6 +236,14 @@ const INVENTAR: readonly string[] = [
   "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
   "tests/library/mega59-nullzustand-mounted.test.tsx",
   "tests/security/mega74-anhang-vertraulich.test.ts",
+  // JOB 2660 D2: der Nachweis an der Stelle, wo der Mensch die Hilfe benutzt — ein
+  // client-gelieferter Fremdtext laeuft durch den echten Clientabruf, die echte Route und den
+  // echten Renderer, und die Flaeche muss zeigen, worauf die Antwort steht. Die Datei importiert
+  // `KlaraAssistant` und traegt damit die Inhaltsachse; K2 hat sie gemeldet, das Inventar hat sie
+  // nicht stillschweigend aufgenommen. Sachlich Klara-Regression: faellt die Einstufung von der
+  // Flaeche, sieht ein Anwender wieder nicht, ob die Hilfe seinen eigenen Text als geprueft
+  // ausgibt — genau Pedis Frage aus diesem Durchgang.
+  "tests/web/job2660-hilfe-fremdtext-ui.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
