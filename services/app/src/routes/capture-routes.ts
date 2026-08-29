@@ -518,11 +518,30 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         operationId?: string;
         draftPayload?: DraftPayload;
       } | null;
-    }>("/api/drafts/:id/promote", async (request, reply) => {
-      const user = await guards.requirePermission("ko.create", request, reply);
-      if (!user) {
-        return;
-      }
+    }>(
+      "/api/drafts/:id/promote",
+      // JOB 2656 D4 — HIER ENDETE PEDIS WEG, und zwar bevor eine einzige Fachzeile lief.
+      //
+      // `POST /api/drafts` (Z. 245) und `PUT /api/drafts/:id` (Z. 415) tragen den
+      // dokument-tauglichen Deckel seit WP-D1c/WP-D1d. Das Einreichen trug ihn NICHT — es blieb
+      // auf Fastifys Vorgabe von 1 MiB. Ein bildreicher Entwurf liess sich damit anlegen und
+      // speichern, aber nicht einreichen: Der Rumpf reist beim Promote MIT (der Stand geht hinter
+      // dem serverseitigen Nachschlag, siehe `promoteDraft` in CaptureFrontDoor), und genau dort
+      // wies ihn Fastify ab.
+      //
+      // GEMESSEN, nicht hergeleitet — am gedrueckten Knopf, vor diesem Fix:
+      //   {"statusCode":413,"code":"FST_ERR_CTP_BODY_TOO_LARGE","error":"Payload Too Large"}
+      // (tests/capture/job2656-d4-einreichen-knopf-mounted.test.tsx, Fall F1)
+      //
+      // `onRequest` steht aus demselben Grund hier wie an den beiden anderen Routen: AUTH VOR
+      // BODY-PARSING. Ohne ihn laedt ein Unangemeldeter erst megabyteweise Rumpf hoch, bevor er
+      // die Abweisung bekommt.
+      { bodyLimit: DRAFTS_BODY_LIMIT, onRequest: requireAuthedBeforeParse },
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.create", request, reply);
+        if (!user) {
+          return;
+        }
       try {
         const body = request.body ?? {};
         const operationId = typeof body.operationId === "string" ? body.operationId.trim() : "";
@@ -611,9 +630,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // = No-op; Fehler brechen den (bereits gesendeten) Submit nie. await nur zur deterministischen
         // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
         await indexKoForDuplicatePrefilter(created, semanticPrefilter);
-      } catch (error) {
-        sendError(reply, error);
-      }
-    });
+        } catch (error) {
+          sendError(reply, error);
+        }
+      },
+    );
   };
 }
