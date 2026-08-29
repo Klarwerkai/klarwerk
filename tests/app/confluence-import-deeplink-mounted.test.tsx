@@ -273,7 +273,10 @@ describe("JOB 1132 · B1-B5 · unbekannt, verboten, leere Quelle und leere Items
       headers,
       payload: {},
     });
-    expect(start.statusCode, "der Lauf muss startbar sein").toBe(200);
+    // JOB 2691 D1: der Start antwortet sofort 202 QUEUED; der Lauf laeuft im Hintergrund weiter.
+    // Die Aussage dieses Falls (`source: null` ist eine Aussage, kein fehlendes Feld) gilt in jedem
+    // Laufzustand — sie braucht kein Laufende.
+    expect(start.statusCode, "der Lauf muss startbar sein").toBe(202);
     const importId = (start.json() as { importId: string }).importId;
 
     const antwort = await app.inject({ method: "GET", url: ERGEBNIS(importId), headers });

@@ -225,6 +225,26 @@ export class ConfluenceRestClient {
     url: string,
     allowedOrigin: string,
   ): Promise<{ results: ConfluencePage[]; next: string | null }> {
+    const data = (await this.getJson(url, allowedOrigin)) as {
+      results?: ConfluencePage[];
+      _links?: { next?: string };
+    };
+    return { results: data?.results ?? [], next: data?._links?.next ?? null };
+  }
+
+  /**
+   * JOB 2691 D1: der EINE Netzweg dieses Clients — bisher lag er in `getContent`, jetzt liegt er
+   * hier, damit das Nachladen einer einzelnen Seite (`getPageById`) DENSELBEN Origin-Pin, dieselbe
+   * Frist und Groessengrenze (2683), `redirect:error` und dieselbe Redaction bekommt und nicht eine
+   * zweite, abweichende Kopie. `nichtGefundenIstLeer`: ein 404 ist beim Nachladen einer Seite eine
+   * Antwort („inzwischen geloescht"), kein Fehler — beim Space-Listing bleibt jeder Nicht-2xx ein
+   * Fehler.
+   */
+  private async getJson(
+    url: string,
+    allowedOrigin: string,
+    opts: { nichtGefundenIstLeer?: boolean } = {},
+  ): Promise<unknown> {
     assertAllowedConfluenceUrl(url, allowedOrigin); // vor JEDEM Netzcall
     const fetchFn = this.config.fetchFn ?? fetch;
     const timeoutMs = this.config.timeoutMs ?? CONFLUENCE_REQUEST_TIMEOUT_MS;
@@ -265,6 +285,9 @@ export class ConfluenceRestClient {
         }
         throw this.redactedError("Confluence-Request fehlgeschlagen", err);
       }
+      if (res.status === 404 && opts.nichtGefundenIstLeer) {
+        return undefined;
+      }
       if (!res.ok) {
         // Nur der Status (eine Zahl) — strukturell token-frei.
         throw new Error(`Confluence-API antwortete mit ${res.status}`);
@@ -272,12 +295,8 @@ export class ConfluenceRestClient {
       // SCRUM-510-R3 (WP4): auch ein Parse-Fehler wird redigiert (der JSON-Body/Fehlertext könnte Reste
       // tragen). EIN Ausgang, EIN Redaction-Kontrakt für alle Fehlerklassen dieses Bauers.
       // JOB 2683 D1: der Body wird begrenzt gelesen und steht unter derselben Frist.
-      let data: { results?: ConfluencePage[]; _links?: { next?: string } };
       try {
-        data = (await Promise.race([leseBegrenzt(res, maxBytes), frist])) as {
-          results?: ConfluencePage[];
-          _links?: { next?: string };
-        };
+        return await Promise.race([leseBegrenzt(res, maxBytes), frist]);
       } catch (err) {
         if (err instanceof ConfluenceRequestError) {
           throw err;
@@ -287,10 +306,23 @@ export class ConfluenceRestClient {
         }
         throw this.redactedError("Confluence-Antwort nicht lesbar", err);
       }
-      return { results: data.results ?? [], next: data._links?.next ?? null };
     } finally {
       clearTimeout(timer);
     }
+  }
+
+  /**
+   * JOB 2691 D1 (Befund R2-2): EINE Seite mit vollem Expand — der Volltext (`body.storage`) wird
+   * nicht mehr im Snapshot gehalten, sondern beim Anwenden je Id hier nachgeladen. `undefined`,
+   * wenn die Seite inzwischen nicht mehr existiert (404).
+   */
+  async getPageById(pageId: string): Promise<ConfluencePage | undefined> {
+    const url = `${this.baseUrl}/rest/api/content/${encodeURIComponent(pageId)}?expand=${encodeURIComponent(EXPAND)}`;
+    const data = await this.getJson(url, this.allowedOrigin(), { nichtGefundenIstLeer: true });
+    if (!data || typeof data !== "object" || typeof (data as { id?: unknown }).id !== "string") {
+      return undefined;
+    }
+    return data as ConfluencePage;
   }
 
   private firstUrl(): string {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { FastifyPluginAsync, FastifyReply } from "fastify";
+import type { FastifyBaseLogger, FastifyPluginAsync, FastifyReply } from "fastify";
 import { type ConfluenceSourceAdapter, createConfluenceAdapterFromEnv } from "../../../confluence";
 import type { KoService } from "../../../knowledge-object";
 import {
@@ -58,6 +58,24 @@ export interface ConfluenceImportRouteDeps {
   // nur den Import-Pfad prüfen — ohne sie bleibt es beim Verhalten vor 148. Die Kompositionswurzel
   // reicht sie IMMER durch; im Produkt ist der Zweig damit nie der alte.
   importRuns?: ImportRunRepo;
+}
+
+// ================================================================================================
+// JOB 2693 D1 (Befund R2-5) — SIEBEN WARNUNGEN LIEFEN AM LOGGER VORBEI.
+// ================================================================================================
+//
+// Bis 2693 standen an den Fehlerpfaden dieser Datei Konsolen-Warnungen — ohne Anfrage-Kennung,
+// ohne Level, ohne Format, unstrukturiert auf stderr. Jetzt gehen alle ueber den Logger der
+// Anfrage (`request.log`, traegt `reqId`); der Hintergrundlauf bekommt ihn als Parameter mit.
+// Der Fehlertext wird weiterhin VOR dem Loggen sanitisiert (`sanitizeLogText`) und als Feld
+// `fehler` gefuehrt — kein rohes `err`-Objekt: die Serializer-Disziplin aus 2661 liegt nicht in
+// diesem Basisstand (build-app.ts konfiguriert keinen Logger), und ein roher Fehler traegt Stack
+// und Ziel-URL. Die Wirkung im Produkt tritt erst mit dem Einbau des 2661-Loggers ein.
+function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
+  log.warn(
+    { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
+    `confluence-import: ${stelle} fehlgeschlagen`,
+  );
 }
 
 // WP-SHIP7-FIX (bens sammel17-Fix 3): harter Deckel der Apply-Ids je Aufruf (nach Dedupe) —
@@ -159,16 +177,59 @@ function abschlussStatus(summary: ImportRunSummary): ImportRunStatus {
   return summary.failed > 0 || summary.truncated ? "PARTIAL" : "COMPLETED";
 }
 
+// ================================================================================================
+// JOB 2691 D1 (Befund R2-2) — DER LAUF LAEUFT WEITER, UND DER MENSCH SIEHT KEINEN FEHLER MEHR.
+// ================================================================================================
+//
+// Bis 2691 lief der ganze Lauf — Space lesen, abgleichen, Kandidaten schreiben — SYNCHRON im
+// HTTP-Aufruf; geantwortet wurde erst am Ende. Brach der Client nach den ueblichen 60 s ab, lief
+// der Server weiter, der Aufrufer sah einen Fehler, ein zweiter Aufruf startete einen zweiten Lauf
+// daneben. Die Laufdomaene (`ImportRun`, QUEUED → … → COMPLETED/PARTIAL/FAILED) war gebaut, wurde
+// aber nur als Ergebnisbuch benutzt: der Status sprang in EINEM Aufruf von QUEUED ans Ende.
+//
+// Jetzt: die Route legt den Lauf an und antwortet SOFORT `202 {importId, status: "QUEUED"}`. Der
+// Lauf laeuft prozesslokal weiter und schreibt seinen Fortschritt ueber `advance` — FETCHING beim
+// Beginn, dann der Abschluss. Der Leseweg `GET /api/admin/import/runs/:importId` existiert seit
+// W2-A/148 und ist die Abfrage.
+//
+// DER ZWEITE KLICK: je Scope (Space) laeuft hoechstens EIN Lauf in diesem Prozess. Ein zweiter
+// Start waehrend eines laufenden bekommt 409 IMPORT_ALREADY_RUNNING mit der Kennung des laufenden —
+// kein zweiter Lauf, keine stille Wiederverwendung.
+//
+// DER BESITZER NACH EINEM NEUSTART: ein Lauf, der zwischen Anlage und Abschluss vom Prozessende
+// getroffen wird, bleibt in QUEUED/FETCHING stehen — sichtbar haengend statt spurlos (§133), aber
+// ohne Ende. Der Weg dazu (beim Start alle unabgeschlossenen Laeufe dieses Quellsystems auf FAILED
+// „IMPORT_INTERRUPTED" setzen) braucht eine Listenoperation an `ImportRunRepo`, die es nicht gibt,
+// und einen Aufruf in der Kompositionswurzel — beides ausserhalb der Lease von 2691 D1. Er ist
+// NICHT halb gebaut; er steht in der Rueckgabe als eigene Baustelle.
+
+/** Was gerade laeuft — je Laufablage und je Scope hoechstens ein Lauf. */
+type Laufregister = Map<string, { importId: string; fertig: Promise<void> }>;
+const laufendeJeAblage = new WeakMap<ImportRunRepo, Laufregister>();
+
+function laufregister(importRuns: ImportRunRepo): Laufregister {
+  let register = laufendeJeAblage.get(importRuns);
+  if (!register) {
+    register = new Map();
+    laufendeJeAblage.set(importRuns, register);
+  }
+  return register;
+}
+
+/** Nur fuer Tests: wartet, bis kein Lauf dieser Ablage mehr offen ist. */
+export async function warteAufOffeneImportLaeufe(importRuns: ImportRunRepo): Promise<void> {
+  await Promise.all([...laufregister(importRuns).values()].map((l) => l.fertig));
+}
+
 /**
- * Legt den Lauf an, fuehrt ihn aus und schreibt sein Ergebnis fort.
+ * Legt den Lauf an, antwortet sofort und fuehrt ihn im Hintergrund zu Ende.
  *
- * DIE REIHENFOLGE IST DER GANZE PUNKT: `insertIfAbsent` steht VOR der Adapterpruefung. Faellt der
- * Prozess zwischen Anlegen und Abschluss, bleibt ein Lauf in `QUEUED` zurueck — sichtbar haengend
- * statt spurlos verschwunden. Das ist der Zustand, den §133 will.
+ * DIE REIHENFOLGE BLEIBT DER GANZE PUNKT: `insertIfAbsent` steht VOR der Adapterpruefung und VOR
+ * der Antwort. Faellt der Prozess danach, bleibt ein Lauf in QUEUED zurueck — sichtbar haengend
+ * statt spurlos verschwunden (§133).
  *
- * Die Antwort ist IMMER 200 mit `{importId, status}`, auch im Fehlerfall: der Start ist gelungen,
- * der LAUF ist gescheitert. Ein 5xx wuerde beides vermengen und die Kennung verschlucken, unter
- * der das Scheitern nachlesbar ist.
+ * Die Antwort ist IMMER 202 mit `{importId, status: "QUEUED"}`, auch wenn der Lauf gleich darauf
+ * scheitert (kein Adapter): der Start ist gelungen, der LAUF entscheidet sich unter seiner Kennung.
  */
 async function starteMitLaufdomaene(
   deps: ConfluenceImportRouteDeps,
@@ -176,13 +237,26 @@ async function starteMitLaufdomaene(
   adapter: ConfluenceSourceAdapter | undefined,
   actor: string,
   reply: FastifyReply,
+  log: FastifyBaseLogger,
 ): Promise<FastifyReply> {
+  const scope = laufScope();
+  const laufendeLaeufe = laufregister(importRuns);
+  const laufend = laufendeLaeufe.get(scope);
+  if (laufend) {
+    reply.code(409).send({
+      error: "IMPORT_ALREADY_RUNNING",
+      message: "Fuer diesen Space laeuft bereits ein Import.",
+      importId: laufend.importId,
+    });
+    return reply;
+  }
+
   const importId = randomUUID();
   const lauf: ImportRun = {
     importId,
     sourceSystem: "confluence",
     externalId: null,
-    sourceScope: laufScope(),
+    sourceScope: scope,
     requestedSourceVersion: null,
     status: "QUEUED",
     sourceRecordId: null,
@@ -194,24 +268,50 @@ async function starteMitLaufdomaene(
   };
   await importRuns.insertIfAbsent(lauf);
 
-  /** Ein Ende schreiben und melden — ein Weg fuer alle drei Ausgaenge. */
+  const fertig = fuehreLaufAus(deps, importRuns, adapter, actor, importId, log).finally(() => {
+    if (laufendeLaeufe.get(scope)?.importId === importId) {
+      laufendeLaeufe.delete(scope);
+    }
+  });
+  laufendeLaeufe.set(scope, { importId, fertig });
+
+  reply.code(202).send({ importId, status: "QUEUED" });
+  return reply;
+}
+
+/** Der Hintergrundlauf. Jeder Ausgang wird ueber `advance` geschrieben; nichts wirft nach aussen. */
+async function fuehreLaufAus(
+  deps: ConfluenceImportRouteDeps,
+  importRuns: ImportRunRepo,
+  adapter: ConfluenceSourceAdapter | undefined,
+  actor: string,
+  importId: string,
+  log: FastifyBaseLogger,
+): Promise<void> {
   const beende = async (fortschritt: Parameters<ImportRunRepo["advance"]>[1]) => {
-    const beendet = await importRuns.advance(importId, fortschritt);
-    reply.code(200).send({ importId, status: beendet.status });
-    return reply;
+    try {
+      await importRuns.advance(importId, fortschritt);
+    } catch (err) {
+      warne(log, `Laufende schreiben (${importId})`, err);
+    }
   };
 
   if (!adapter) {
     // Frueher endete das hier mit 503 und ohne Spur. Jetzt ist es ein Lauf, der sichtbar scheitert.
-    return beende({
+    await beende({
       status: "FAILED",
       completedAt: new Date().toISOString(),
       failureCode: "IMPORT_UNAVAILABLE",
       failureReason: sanitizeImportFailureReason("Confluence-Import nicht konfiguriert."),
     });
+    return;
   }
 
   try {
+    // Der erste Fortschritt: der Lauf liest jetzt die Quelle. `runConfluenceImport` liest, gleicht ab
+    // und schreibt in einem Zug (confluence-import.ts, ausserhalb dieser Lease) — feinere Stufen
+    // als FETCHING → Abschluss gibt es deshalb hier noch nicht.
+    await beende({ status: "FETCHING" });
     const summary: ImportRunSummary = await runConfluenceImport({
       adapter,
       library: deps.library,
@@ -219,7 +319,7 @@ async function starteMitLaufdomaene(
       dryRun: false,
       actor,
     });
-    return await beende({
+    await beende({
       status: abschlussStatus(summary),
       completedAt: new Date().toISOString(),
       counters: {
@@ -233,14 +333,11 @@ async function starteMitLaufdomaene(
       },
     });
   } catch (err) {
-    console.warn(
-      "[confluence-import] Lauf fehlgeschlagen:",
-      sanitizeLogText(err instanceof Error ? err.message : String(err)),
-    );
+    warne(log, `Lauf (${importId})`, err);
     // JOB 2683 D2: eine Netzgrenze bekommt ihren eigenen Fehlercode am Lauf — lesbar über
     // `GET /api/admin/import/runs/:importId`, nicht nur als pauschales IMPORT_FAILED.
     const grenze = confluenceGrenze(err);
-    return beende({
+    await beende({
       status: "FAILED",
       completedAt: new Date().toISOString(),
       failureCode: grenze ? grenze.error : "IMPORT_FAILED",
@@ -251,6 +348,34 @@ async function starteMitLaufdomaene(
       ),
     });
   }
+}
+
+/**
+ * JOB 2691 D1: der Snapshot der Erkundung traegt KEINEN Volltext mehr. Metadaten und der
+ * Klartext (`statement`) reichen fuer Erkunden, Auswaehlen und Gruppieren; `bodyHtml` — das
+ * Storage-XHTML von bis zu 25.000 Seiten — wird beim Anwenden je Id nachgeladen (`fetchItem`).
+ */
+//
+// DER BILDAUSZUG: Erkunden und Vorschau leiten „mit Bildern" aus dem Volltext ab (`/<img\b/` in
+// explore.ts:75 und select.ts:291). Damit dieser Hinweis den Volltext ueberlebt, behaelt der
+// Snapshot NUR die Bild-Tags der Quelle — gelesen mit einem Suchmuster, nicht erzeugt. Kein Text,
+// kein Storage-XHTML. Beim Anwenden ohne Nachladen geht dieser Auszug nicht in die Queue.
+const BILD_TAGS = /<img\b[^>]*>/gi;
+const NUR_BILD_TAGS = /^(?:<img\b[^>]*>)+$/i;
+
+function ohneVolltext<T extends { bodyHtml?: string }>(item: T): T {
+  const { bodyHtml, ...rest } = item;
+  const bilder = typeof bodyHtml === "string" ? bodyHtml.match(BILD_TAGS) : null;
+  return (bilder ? { ...rest, bodyHtml: bilder.join("") } : rest) as T;
+}
+
+/** Der Snapshot-Stand ohne den Bildauszug — was ohne Nachladen in die Queue geht. */
+function ohneBildauszug<T extends { bodyHtml?: string }>(item: T): T {
+  if (typeof item.bodyHtml !== "string" || !NUR_BILD_TAGS.test(item.bodyHtml)) {
+    return item;
+  }
+  const { bodyHtml: _auszug, ...rest } = item;
+  return rest as T;
 }
 
 export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): FastifyPluginAsync {
@@ -295,7 +420,10 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
     if (snapshot !== null && (snapshot.at === null || Date.now() - snapshot.at < SNAPSHOT_TTL_MS)) {
       return { token: snapshot.token, promise: snapshot.promise };
     }
-    const promise = adapter.collectAll();
+    // JOB 2691 D1: gehalten wird der Scan OHNE Volltext (s. ohneVolltext).
+    const promise = adapter
+      .collectAll()
+      .then((result) => ({ ...result, items: result.items.map(ohneVolltext) }));
     snapshotTokenCounter += 1;
     const entry: { at: number | null; token: number; promise: Promise<CollectAllResult> } = {
       at: null,
@@ -366,7 +494,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         // `GET /api/admin/import/runs/:importId/result` lesbar — dieselbe Zahl, aber an einem Ort,
         // der sie ueberlebt.
         if (!dryRun && deps.importRuns) {
-          return starteMitLaufdomaene(deps, deps.importRuns, adapter, user.id, reply);
+          return starteMitLaufdomaene(deps, deps.importRuns, adapter, user.id, reply, request.log);
         }
 
         if (!adapter) {
@@ -390,10 +518,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           // WP-E: Ursache server-seitig sichtbar machen (analog importDetectionLog) — NUR die Message
           // (vom rest-client bereits via redactedError/redactSecrets redigiert), NIE Stack oder cause.
           // WP-E2: zusätzlich senkenseitig sanitisiert (zweite Verteidigungslinie, quellen-agnostisch).
-          console.warn(
-            "[confluence-import] fehlgeschlagen:",
-            sanitizeLogText(err instanceof Error ? err.message : String(err)),
-          );
+          warne(request.log, "Import", err);
           // JOB 2683 D2: Frist/Größe/Zeitbudget sagen dem Menschen, was los ist — hostfrei.
           const grenze = confluenceGrenze(err);
           if (grenze) {
@@ -471,10 +596,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         return reply;
       } catch (err) {
         // Gleiche Beobachtbarkeit/Redaction wie der Import-Pfad (WP-E/WP-E2).
-        console.warn(
-          "[confluence-explore] fehlgeschlagen:",
-          sanitizeLogText(err instanceof Error ? err.message : String(err)),
-        );
+        warne(request.log, "Erkundung", err);
         // JOB 2683 D2: bei einer Netzgrenze steht der Grund im Wiretext (hostfrei) — das ist,
         // was `ImportExplore.tsx` als `ApiError.message` zeigt.
         const grenze = confluenceGrenze(err);
@@ -630,10 +752,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
         });
         return reply;
       } catch (err) {
-        console.warn(
-          "[confluence-select] fehlgeschlagen:",
-          sanitizeLogText(err instanceof Error ? err.message : String(err)),
-        );
+        warne(request.log, "Auswahl", err);
         const grenze = confluenceGrenze(err); // JOB 2683 D2
         if (grenze) {
           reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
@@ -761,10 +880,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           });
           return reply;
         } catch (err) {
-          console.warn(
-            "[confluence-group] fehlgeschlagen:",
-            sanitizeLogText(err instanceof Error ? err.message : String(err)),
-          );
+          warne(request.log, "Gruppierung", err);
           const grenze = confluenceGrenze(err); // JOB 2683 D2
           if (grenze) {
             reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });
@@ -868,12 +984,26 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
               continue;
             }
             try {
+              // JOB 2691 D1: der Snapshot traegt keinen Volltext — hier wird die Seite je Id frisch
+              // aus der Quelle geladen (Volltext inklusive). Kann der Adapter das nicht (Fixture-
+              // Adapter ohne `fetchItem`), geht der Snapshot-Stand ohne bodyHtml in die Queue — das
+              // ist das Verhalten fuer Tests, nicht fuer das Produkt (der echte Adapter kann es).
+              // Ist die Seite inzwischen weg (`undefined`), wird sie ehrlich als notFound gefuehrt.
+              let zuSchreiben = ohneBildauszug(item);
+              if (item.externalId && typeof adapter.fetchItem === "function") {
+                const frisch = await adapter.fetchItem(item.externalId);
+                if (!frisch) {
+                  notFound.push(id);
+                  continue;
+                }
+                zuSchreiben = frisch;
+              }
               // BESTEHENDER Weg: Kandidat in die Review-Queue (stempelt textCodec, IC-6a-Dedupe-
               // Markierung läuft dort wie gehabt) — pro Item, damit Fehlschläge zuordenbar sind.
               // WP-SHIP7-FIX (Fix 3): die Rückgabe zählt EHRLICH — nur tatsächlich eingereihte
               // Kandidaten sind „importiert"; ein idempotenter No-op (bereits offener Kandidat
               // derselben externalId/Version, z. B. Retry/Parallel-Lauf) wird SEPARAT ausgewiesen.
-              const created = await deps.library.createImportCandidates([item], user.id);
+              const created = await deps.library.createImportCandidates([zuSchreiben], user.id);
               if (created.length > 0) {
                 imported += 1;
                 if (importStatusFor(item, applyAnchors, applyPending).sourceNewer) {
@@ -890,10 +1020,7 @@ export function confluenceImportRoutes(deps: ConfluenceImportRouteDeps): Fastify
           reply.code(200).send({ imported, updates, alreadyQueued, failed, notFound });
           return reply;
         } catch (err) {
-          console.warn(
-            "[confluence-apply] fehlgeschlagen:",
-            sanitizeLogText(err instanceof Error ? err.message : String(err)),
-          );
+          warne(request.log, "Uebernahme", err);
           const grenze = confluenceGrenze(err); // JOB 2683 D2
           if (grenze) {
             reply.code(grenze.status).send({ error: grenze.error, message: grenze.message });

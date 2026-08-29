@@ -112,7 +112,9 @@ function starte(app: App, headers: Kopf) {
 /** Ein Start, der eine Kennung liefern MUSS — für die Fälle, die darauf aufbauen. */
 async function starteMitKennung(app: App, headers: Kopf): Promise<string> {
   const antwort = await starte(app, headers);
-  expect(antwort.statusCode, "der Lauf muss startbar sein").toBe(200);
+  // JOB 2691 D1: der Start antwortet SOFORT mit 202 QUEUED; der Lauf laeuft im Hintergrund weiter
+  // und ist unter seiner Kennung lesbar. Bis 2691 stand hier 200 — die Antwort kam erst am Ende.
+  expect(antwort.statusCode, "der Lauf muss startbar sein").toBe(202);
   return (antwort.json() as { importId: string }).importId;
 }
 
@@ -129,7 +131,8 @@ describe("W2-A/148 · 1 · POST liefert kanonische importId und Status", () => {
     // und legt dabei NICHTS an. Genau das ändert der spätere Anschluss: KW-S4-26 §133 verlangt, den
     // `ImportRun` VOR dem ersten externen oder fachlichen Effekt persistent anzulegen. Ein Lauf ohne
     // erreichbare Quelle endet dann sichtbar auf FAILED, statt spurlos abgewiesen zu werden.
-    expect(antwort.statusCode, "der Start muss einen persistenten Lauf anlegen").toBe(200);
+    // JOB 2691 D1: 202 statt 200 — der Lauf ist angelegt und laeuft, die Antwort wartet nicht auf ihn.
+    expect(antwort.statusCode, "der Start muss einen persistenten Lauf anlegen").toBe(202);
 
     const koerper = antwort.json() as { importId?: unknown; status?: unknown };
     expect(typeof koerper.importId, "importId muss eine Zeichenkette sein").toBe("string");
@@ -244,7 +247,7 @@ describe("W2-A/148 · 3 · der Rechtepfad", () => {
     // Kennung. Beide Wege müssen für die fremde Identität IDENTISCH aussehen.
     const start = await starte(app, headers);
     const echt =
-      start.statusCode === 200 ? (start.json() as { importId: string }).importId : IRGENDEINE;
+      start.statusCode === 202 ? (start.json() as { importId: string }).importId : IRGENDEINE;
 
     const vorhanden = await app.inject({ method: "GET", url: LAUF(echt), headers: fremd });
     const erfunden = await app.inject({

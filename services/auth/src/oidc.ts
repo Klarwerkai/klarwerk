@@ -1,6 +1,66 @@
 import { createHash, randomBytes } from "node:crypto";
-import { type JWTVerifyGetKey, createRemoteJWKSet, jwtVerify } from "jose";
-import type { Role } from "./types";
+import { type JWTVerifyGetKey, createRemoteJWKSet, errors as joseErrors, jwtVerify } from "jose";
+import { AuthError, type Role } from "./types";
+
+// ================================================================================================
+// JOB 2693 D1 (Befund R2-9) — EIN ANMELDEDIENST, DER NICHT ANTWORTET, DARF NICHT EWIG HAENGEN.
+// ================================================================================================
+//
+// Bis 2693 hatte der Token-Tausch (`doFetch(config.tokenUrl, …)`) kein `signal`: ein haengender
+// Identitaetsanbieter hielt den Callback-Request offen, waehrend die Flow-Cookies (10 min)
+// verfielen — der Mensch sah eine haengende Seite und beim zweiten Versuch „SSO-Status ungueltig".
+// Ein Fehler, der aussah wie sein eigener. Das JWKS-Laden hatte durch jose bereits Grenzen
+// (Voreinstellung 5 s / 30 s, jose 5.10.0 jwks/remote.d.ts:56-64); sie stehen jetzt AUSDRUECKLICH
+// hier, damit die Zusage im Code lesbar ist und nicht in einer Bibliotheksvoreinstellung.
+//
+// DIE MELDUNG: `routes.ts` reicht einen `AuthError` mit Code und Text an den Client durch
+// (sendError), und `SsoCallback.tsx` zeigt `e.message`. `OIDC_INVALID` ist aber KEIN
+// `AuthErrorCode` (types.ts) — beide Dateien gehoeren gerade PRO (2686 D3). Deshalb traegt der
+// Fehler hier den bestehenden Code `INVALID_CREDENTIALS` (401) und den Text, der zaehlt.
+export const OIDC_TOKEN_TIMEOUT_MS = 10_000;
+export const OIDC_JWKS_TIMEOUT_MS = 5_000;
+export const OIDC_JWKS_COOLDOWN_MS = 30_000;
+export const OIDC_UNREACHABLE_MESSAGE = "Anmeldedienst antwortet nicht.";
+
+/** Der eine Fehler fuer „der Anmeldedienst antwortet nicht" — unterscheidbar per instanceof. */
+export class OidcUnreachableError extends AuthError {
+  constructor(message: string = OIDC_UNREACHABLE_MESSAGE) {
+    super("INVALID_CREDENTIALS", message);
+    this.name = "OidcUnreachableError";
+  }
+}
+
+/**
+ * Erkennt, ob ein Fehler „keine Antwort" bedeutet: Zeitueberschreitung (AbortSignal.timeout →
+ * TimeoutError; ein AbortError), joses JWKS-Timeout, oder ein fetch, das die Gegenstelle gar nicht
+ * erreicht (`TypeError: fetch failed`). Alles andere — falsche Signatur, falsches nonce, 4xx/5xx
+ * mit Antwort — bleibt, was es ist.
+ */
+export function istAnmeldedienstStumm(err: unknown): boolean {
+  if (err instanceof joseErrors.JWKSTimeout) {
+    return true;
+  }
+  // JOB 2693 D2: BEWUSST ueber `name`, nicht ueber `instanceof Error`. Der Abbruchgrund von
+  // `AbortSignal.timeout` ist eine DOMException — und die kann aus einer anderen Realm stammen
+  // (jsdom im Kettentest, ein Worker, eine fremde fetch-Implementierung); dort besteht sie den
+  // instanceof-Test nicht, obwohl sie genau „keine Antwort" bedeutet. Der erste Kettentest hat
+  // exakt so den generischen 401 statt der Meldung auf die Seite gebracht.
+  if (typeof err !== "object" || err === null || !("name" in err)) {
+    return false;
+  }
+  const name = String((err as { name?: unknown }).name);
+  if (name === "TimeoutError" || name === "AbortError") {
+    return true;
+  }
+  const message = String((err as { message?: unknown }).message ?? "");
+  return name === "TypeError" && /fetch failed/i.test(message);
+}
+
+export interface OidcZeitgrenzen {
+  tokenMs?: number;
+  jwksMs?: number;
+  jwksCooldownMs?: number;
+}
 
 // FR-AUTH-07: generisches OIDC mit Authorization-Code-Flow + PKCE (S256).
 // Anbieteragnostisch: Azure AD/Entra, Auth0, Keycloak, Google … Best Practice:
@@ -122,6 +182,9 @@ export function createOidcVerifier(
     requireEmailVerified?: boolean;
   },
   keyResolver?: JWTVerifyGetKey,
+  // JOB 2693 D1: Zeitgrenzen und die JWKS-Fabrik injizierbar — Tests belegen die Optionen, ohne
+  // ein Netz zu brauchen. Ohne Angabe gelten die Werte oben.
+  opts: { zeitgrenzen?: OidcZeitgrenzen; createRemoteJwks?: typeof createRemoteJWKSet } = {},
 ): OidcVerifier {
   const roleClaim = config.roleClaim ?? "roles";
   const requireEmailVerified = config.requireEmailVerified ?? true;
@@ -129,16 +192,29 @@ export function createOidcVerifier(
   // dass eine (evtl. noch nicht erreichbare) JWKS-URL sofort geparst werden muss.
   let keys = keyResolver;
   const resolveKeys = (): JWTVerifyGetKey => {
-    keys ??= createRemoteJWKSet(new URL(config.jwksUri));
+    keys ??= (opts.createRemoteJwks ?? createRemoteJWKSet)(new URL(config.jwksUri), {
+      timeoutDuration: opts.zeitgrenzen?.jwksMs ?? OIDC_JWKS_TIMEOUT_MS,
+      cooldownDuration: opts.zeitgrenzen?.jwksCooldownMs ?? OIDC_JWKS_COOLDOWN_MS,
+    });
     return keys;
   };
   return {
     autoProvision: config.autoProvision ?? false,
     async verify(idToken: string, expectedNonce?: string): Promise<OidcClaims> {
-      const { payload } = await jwtVerify(idToken, resolveKeys(), {
-        issuer: config.issuer,
-        audience: config.audience,
-      });
+      let payload: Awaited<ReturnType<typeof jwtVerify>>["payload"];
+      try {
+        payload = (
+          await jwtVerify(idToken, resolveKeys(), {
+            issuer: config.issuer,
+            audience: config.audience,
+          })
+        ).payload;
+      } catch (err) {
+        if (istAnmeldedienstStumm(err)) {
+          throw new OidcUnreachableError();
+        }
+        throw err;
+      }
       // Replay-Schutz: nonce muss exakt dem beim Start gesetzten Wert entsprechen.
       if (expectedNonce !== undefined && payload.nonce !== expectedNonce) {
         throw new Error("OIDC-nonce stimmt nicht überein.");
@@ -190,11 +266,16 @@ export type TokenExchanger = (input: { code: string; codeVerifier: string }) => 
 
 type FetchLike = (
   url: string,
-  init: { method: string; headers: Record<string, string>; body: string },
+  init: { method: string; headers: Record<string, string>; body: string; signal?: AbortSignal },
 ) => Promise<{ ok: boolean; status: number; json: () => Promise<unknown> }>;
 
-export function createTokenExchanger(config: OidcConfig, fetchImpl?: FetchLike): TokenExchanger {
+export function createTokenExchanger(
+  config: OidcConfig,
+  fetchImpl?: FetchLike,
+  zeitgrenzen: OidcZeitgrenzen = {},
+): TokenExchanger {
   const doFetch = (fetchImpl ?? (globalThis.fetch as unknown as FetchLike)) as FetchLike;
+  const tokenMs = zeitgrenzen.tokenMs ?? OIDC_TOKEN_TIMEOUT_MS;
   return async ({ code, codeVerifier }) => {
     const params = new URLSearchParams({
       grant_type: "authorization_code",
@@ -206,11 +287,23 @@ export function createTokenExchanger(config: OidcConfig, fetchImpl?: FetchLike):
     if (config.clientSecret) {
       params.set("client_secret", config.clientSecret);
     }
-    const res = await doFetch(config.tokenUrl, {
-      method: "POST",
-      headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
-      body: params.toString(),
-    });
+    // JOB 2693 D1: der Token-Tausch bekommt eine Zeitgrenze (10 s). Laeuft sie ab, ist die Antwort
+    // „Anmeldedienst antwortet nicht" — nach Sekunden, nicht nach zehn Minuten mit verfallenen
+    // Flow-Cookies.
+    let res: Awaited<ReturnType<FetchLike>>;
+    try {
+      res = await doFetch(config.tokenUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        body: params.toString(),
+        signal: AbortSignal.timeout(tokenMs),
+      });
+    } catch (err) {
+      if (istAnmeldedienstStumm(err)) {
+        throw new OidcUnreachableError();
+      }
+      throw err;
+    }
     if (!res.ok) {
       throw new Error(`Token-Endpoint antwortete mit ${res.status}.`);
     }
@@ -243,6 +336,9 @@ export interface OidcProviderDeps {
   keyResolver?: JWTVerifyGetKey;
   tokenExchanger?: TokenExchanger;
   fetchImpl?: FetchLike;
+  // JOB 2693 D1: Zeitgrenzen (Tests setzen sie klein; im Betrieb gelten die Konstanten oben).
+  zeitgrenzen?: OidcZeitgrenzen;
+  createRemoteJwks?: typeof createRemoteJWKSet;
 }
 
 export function createOidcProvider(config: OidcConfig, deps: OidcProviderDeps = {}): OidcProvider {
@@ -256,8 +352,13 @@ export function createOidcProvider(config: OidcConfig, deps: OidcProviderDeps = 
       requireEmailVerified: config.requireEmailVerified ?? true,
     },
     deps.keyResolver,
+    {
+      ...(deps.zeitgrenzen ? { zeitgrenzen: deps.zeitgrenzen } : {}),
+      ...(deps.createRemoteJwks ? { createRemoteJwks: deps.createRemoteJwks } : {}),
+    },
   );
-  const exchanger = deps.tokenExchanger ?? createTokenExchanger(config, deps.fetchImpl);
+  const exchanger =
+    deps.tokenExchanger ?? createTokenExchanger(config, deps.fetchImpl, deps.zeitgrenzen ?? {});
   return {
     autoProvision: config.autoProvision ?? false,
     config,

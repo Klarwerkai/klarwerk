@@ -86,9 +86,12 @@ async function erkundenApp(fetchFn: typeof fetch, timeoutMs: number) {
 
 describe("JOB 2683 · Knopf 1 · Erkunden bei hängender Confluence-Instanz", () => {
   it("D2: antwortet nach der Frist mit 504 CONFLUENCE_TIMEOUT und der hostfreien Zeitüberschreitungs-Meldung — statt nie und statt des Alttexts", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);
+    // JOB 2693 D1 (Befund R2-5): die Warnung der Erkundung geht ueber den Logger der Anfrage,
+    // nicht mehr an die Konsole. Ohne konfigurierten Logger ist `request.log` derselbe Logger wie
+    // `app.log` — der Spion sitzt deshalb dort; die Aussage (Diagnose im Log, hostfrei) bleibt.
+    const { app, headers } = await erkundenApp(nieAntwortend, 100);
+    const warn = vi.spyOn(app.log, "warn").mockImplementation(() => undefined);
     try {
-      const { app, headers } = await erkundenApp(nieAntwortend, 100);
       const start = Date.now();
       const res = await app.inject({
         method: "POST",
@@ -104,7 +107,7 @@ describe("JOB 2683 · Knopf 1 · Erkunden bei hängender Confluence-Instanz", ()
       expect(body.message).not.toContain("fehlgeschlagen"); // der Alttext ist weg
       keinHostKeinDns(res.body);
       // Das Server-Log trägt dieselbe Diagnose, ebenfalls ohne Host.
-      const geloggt = warn.mock.calls.map((c) => c.join(" ")).join("\n");
+      const geloggt = warn.mock.calls.map((c) => JSON.stringify(c)).join("\n");
       expect(geloggt).toContain("Zeitüberschreitung");
       keinHostKeinDns(geloggt);
       await app.close();

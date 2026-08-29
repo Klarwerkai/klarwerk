@@ -174,6 +174,17 @@ export class ConfluenceSourceAdapter implements SourceAdapter {
       ...(abbruch ? { abbruch } : {}),
     };
   }
+
+  /**
+   * JOB 2691 D1 (Befund R2-2): EIN Item frisch aus der Quelle, mit Volltext. Der Snapshot der
+   * Erkundung haelt seit 2691 keinen `bodyHtml` mehr (bis zu 25.000 Seiten Storage-XHTML im
+   * Prozessspeicher); wer anwendet, laedt die Seite hier je Id nach. `undefined` = die Seite gibt
+   * es nicht mehr — der Aufrufer weist das ehrlich aus, statt still den Auszug zu importieren.
+   */
+  async fetchItem(externalId: string): Promise<ImportItem | undefined> {
+    const page = await this.client.getPageById(externalId);
+    return page ? mapConfluencePageToImportItem(page, this.mapOpts) : undefined;
+  }
 }
 
 function isConfluenceImportEnabled(env: Record<string, string | undefined>): boolean {

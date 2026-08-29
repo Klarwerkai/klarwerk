@@ -644,6 +644,13 @@ const BEWUSST: readonly Ausnahme[] = [
       "Riegel für Integrationstests: er verhindert, dass ein Testlauf auf eine fremde Datenbank " +
       "zeigt. Ein Produktaufrufer wäre sinnwidrig.",
   },
+  {
+    schluessel: "services/app/src/routes/confluence-import-routes.ts::warteAufOffeneImportLaeufe",
+    grund:
+      "JOB 2691 D1: der Importlauf laeuft seit 2691 im Hintergrund (202 QUEUED). Tests warten " +
+      "hiermit auf sein Ende, statt zu schlafen. Ein Produktaufrufer waere der alte Fehler: " +
+      "eine Route, die auf den Lauf wartet, bevor sie antwortet.",
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------

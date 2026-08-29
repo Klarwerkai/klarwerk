@@ -242,9 +242,11 @@ describe("WP-E: kein Doppel-Send/Crash auf der Import-Route (KLARWERK_ADDON_API=
   });
 
   it("catch loggt die (redigierte) Ursache — Body bleibt ohne Interna", async () => {
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // JOB 2693 D1 (Befund R2-5): die Warnung geht ueber den Logger der Anfrage, nicht mehr an die
+    // Konsole. Ohne konfigurierten Logger ist `request.log` derselbe Logger wie `app.log`.
+    const { app, headers } = await wpEApp(new Error("Confluence-API antwortete mit 404"));
+    const warn = vi.spyOn(app.log, "warn").mockImplementation(() => {});
     try {
-      const { app, headers } = await wpEApp(new Error("Confluence-API antwortete mit 404"));
       const res = await app.inject({
         method: "POST",
         url: "/api/admin/import/confluence",
@@ -259,8 +261,8 @@ describe("WP-E: kein Doppel-Send/Crash auf der Import-Route (KLARWERK_ADDON_API=
       // NUR die Message (im echten Pfad bereits durch redactedError/redactSecrets redigiert) —
       // nie Stack oder cause. Genau ein Log-Aufruf pro fehlgeschlagenem Lauf.
       expect(warn).toHaveBeenCalledWith(
-        "[confluence-import] fehlgeschlagen:",
-        "Confluence-API antwortete mit 404",
+        { stelle: "Import", fehler: "Confluence-API antwortete mit 404" },
+        "confluence-import: Import fehlgeschlagen",
       );
     } finally {
       warn.mockRestore();
@@ -273,13 +275,15 @@ describe("WP-E: kein Doppel-Send/Crash auf der Import-Route (KLARWERK_ADDON_API=
   it("WP-E2: credentialhaltige Fehlermeldung erreicht den Log nie roh", async () => {
     const SECRET = "klarwerk-super-geheimes-token-ABCdef123456";
     const basicB64 = Buffer.from(`svc@acme.example:${SECRET}`, "utf8").toString("base64");
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { app, headers } = await wpEApp(
+      new Error(
+        `fetch failed: Basic ${basicB64} gegen https://svc:${SECRET}@acme.example/rest/api`,
+      ),
+    );
+    // JOB 2693 D1 (Befund R2-5): die Senke ist jetzt der Logger der Anfrage; sanitizeLogText sitzt
+    // unveraendert direkt davor (`warne`).
+    const warn = vi.spyOn(app.log, "warn").mockImplementation(() => {});
     try {
-      const { app, headers } = await wpEApp(
-        new Error(
-          `fetch failed: Basic ${basicB64} gegen https://svc:${SECRET}@acme.example/rest/api`,
-        ),
-      );
       const res = await app.inject({
         method: "POST",
         url: "/api/admin/import/confluence",
@@ -287,8 +291,8 @@ describe("WP-E: kein Doppel-Send/Crash auf der Import-Route (KLARWERK_ADDON_API=
         payload: { dryRun: true },
       });
       expect(res.statusCode).toBe(502);
-      const logged = warn.mock.calls.map((call) => call.join(" ")).join("\n");
-      expect(logged).toContain("[confluence-import] fehlgeschlagen:");
+      const logged = warn.mock.calls.map((call) => JSON.stringify(call)).join("\n");
+      expect(logged).toContain("confluence-import: Import fehlgeschlagen");
       expect(logged).not.toContain(SECRET);
       expect(logged).not.toContain(basicB64);
     } finally {

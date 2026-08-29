@@ -43,7 +43,10 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
-import { confluenceImportRoutes } from "../../services/app/src/routes/confluence-import-routes";
+import {
+  confluenceImportRoutes,
+  warteAufOffeneImportLaeufe,
+} from "../../services/app/src/routes/confluence-import-routes";
 import { importRunRoutes } from "../../services/app/src/routes/import-run-routes";
 import type { ConfluenceSourceAdapter } from "../../services/confluence";
 import type { ImportItem } from "../../services/library-analytics";
@@ -161,6 +164,44 @@ async function mitAdmin(app: ReturnType<typeof buildApp>) {
   });
   expect(login.statusCode, login.body).toBe(200);
   return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+}
+
+/**
+ * JOB 2691 D1: der Start antwortet SOFORT mit 202 QUEUED und der Lauf laeuft im Hintergrund weiter;
+ * sein Ende steht AM LAUF (runs/:id), nicht mehr in der Startantwort. Bis 2691 stand hier 200 mit
+ * dem Endstatus — die Antwort kam erst, wenn alles getan war.
+ */
+async function starteUndWarte(
+  app: ReturnType<typeof buildApp>,
+  headers: Record<string, string>,
+  services: ReturnType<typeof buildServices>,
+) {
+  const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
+  expect(start.statusCode, start.body).toBe(202);
+  const { importId, status } = start.json() as { importId: string; status: string };
+  expect(status).toBe("QUEUED");
+  expect(importId, "der Lauf braucht eine Kennung, unter der er nachlesbar ist").toBeTruthy();
+  await warteAufOffeneImportLaeufe(services.importRuns);
+  const gelesen = await app.inject({
+    method: "GET",
+    url: `/api/admin/import/runs/${importId}`,
+    headers,
+  });
+  expect(gelesen.statusCode, gelesen.body).toBe(200);
+  return {
+    importId,
+    lauf: gelesen.json() as {
+      status: string;
+      failureCode: string | null;
+      counters: {
+        itemsTotal: number;
+        itemsCreated: number;
+        itemsBound: number;
+        itemsSkipped: number;
+        itemsFailed: number;
+      };
+    },
+  };
 }
 
 type Seite = { ref: string; status: string; note?: string };
@@ -324,40 +365,37 @@ describe("JOB 588 D5 · N5 — Idempotenz innerhalb eines Laufs und über Läufe
 // ================================================================================================
 describe("JOB 588 D5 · ImportRun- und Teilfehlerwirkung", () => {
   it("IRW-1: ein Lauf ohne Fehler und ohne Abschnitt endet COMPLETED", async () => {
-    const { app, headers } = await appMitLaufdomaene(
+    const { app, headers, services } = await appMitLaufdomaene(
       fixtureAdapter([quellSeite("H-1", 1), quellSeite("H-2", 1)]),
     );
 
-    const res = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(res.statusCode, res.body).toBe(200);
-    expect((res.json() as { status: string }).status).toBe("COMPLETED");
+    const { lauf } = await starteUndWarte(app, headers, services);
+    expect(lauf.status).toBe("COMPLETED");
   });
 
   it("IRW-2: EINE fehlerhafte Seite macht den Lauf PARTIAL, nicht COMPLETED", async () => {
-    const { app, headers } = await appMitLaufdomaene(
+    const { app, headers, services } = await appMitLaufdomaene(
       fixtureAdapter(
         [quellSeite("I-1", 1)],
         [{ ref: "I-KAPUTT", error: "nicht lesbar", errorClass: "MappingError" }],
       ),
     );
 
-    const res = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(res.statusCode, res.body).toBe(200);
+    const { lauf } = await starteUndWarte(app, headers, services);
     expect(
-      (res.json() as { status: string }).status,
+      lauf.status,
       "ein Lauf, der eine Seite verloren hat, hat seinen Auftrag nicht erfüllt",
     ).toBe("PARTIAL");
   });
 
   it("IRW-3: ein ABGESCHNITTENER Lauf ist PARTIAL — auch wenn keine einzige Seite scheiterte", async () => {
-    const { app, headers } = await appMitLaufdomaene(
+    const { app, headers, services } = await appMitLaufdomaene(
       fixtureAdapter([quellSeite("J-1", 1)], [], true),
     );
 
-    const res = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(res.statusCode, res.body).toBe(200);
+    const { lauf } = await starteUndWarte(app, headers, services);
     expect(
-      (res.json() as { status: string }).status,
+      lauf.status,
       "truncated heisst: es gibt ungelesene Seiten. COMPLETED waere hier die teuerste Sorte Luege.",
     ).toBe("PARTIAL");
   });
@@ -365,37 +403,16 @@ describe("JOB 588 D5 · ImportRun- und Teilfehlerwirkung", () => {
   it("IRW-4: die fünf Zähler stehen AM LAUF und sind über seine Kennung lesbar", async () => {
     // Zwei lesbare Seiten, davon eine Dublette (→ ein Skip), plus eine Fehlerzeile.
     const doppelt = quellSeite("K-1", 1);
-    const { app, headers } = await appMitLaufdomaene(
+    const { app, headers, services } = await appMitLaufdomaene(
       fixtureAdapter(
         [doppelt, { ...doppelt }, quellSeite("K-2", 1)],
         [{ ref: "K-KAPUTT", error: "nicht lesbar", errorClass: "MappingError" }],
       ),
     );
 
-    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(start.statusCode, start.body).toBe(200);
-    const { importId, status } = start.json() as { importId: string; status: string };
-    expect(status).toBe("PARTIAL");
-    expect(importId, "der Lauf braucht eine Kennung, unter der er nachlesbar ist").toBeTruthy();
+    const { lauf } = await starteUndWarte(app, headers, services);
 
-    const gelesen = await app.inject({
-      method: "GET",
-      url: `/api/admin/import/runs/${importId}`,
-      headers,
-    });
-    expect(gelesen.statusCode, gelesen.body).toBe(200);
-    const lauf = gelesen.json() as {
-      status: string;
-      counters: {
-        itemsTotal: number;
-        itemsCreated: number;
-        itemsBound: number;
-        itemsSkipped: number;
-        itemsFailed: number;
-      };
-    };
-
-    expect(lauf.status, "der persistierte Status ist derselbe wie der gemeldete").toBe("PARTIAL");
+    expect(lauf.status, "der persistierte Status ist das Ende des Laufs").toBe("PARTIAL");
     expect(lauf.counters.itemsTotal, "drei gelesene Quellzeilen").toBe(3);
     expect(lauf.counters.itemsCreated, "zwei davon wurden wirklich eingereiht").toBe(2);
     expect(lauf.counters.itemsSkipped, "die Dublette").toBe(1);
@@ -429,18 +446,11 @@ describe("JOB 588 D5 · ImportRun- und Teilfehlerwirkung", () => {
     );
     const { headers } = await mitAdmin(app);
 
-    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(start.statusCode, "der START ist gelungen — gescheitert ist der LAUF").toBe(200);
-    const { importId, status } = start.json() as { importId: string; status: string };
-    expect(status).toBe("FAILED");
-
-    const gelesen = await app.inject({
-      method: "GET",
-      url: `/api/admin/import/runs/${importId}`,
-      headers,
-    });
-    expect(gelesen.statusCode, "und er ist unter seiner Kennung nachlesbar").toBe(200);
-    expect((gelesen.json() as { failureCode: string }).failureCode).toBe("IMPORT_UNAVAILABLE");
+    // JOB 2691 D1: der START ist gelungen (202 QUEUED) — gescheitert ist der LAUF, nachlesbar unter
+    // seiner Kennung.
+    const { lauf } = await starteUndWarte(app, headers, services);
+    expect(lauf.status).toBe("FAILED");
+    expect(lauf.failureCode).toBe("IMPORT_UNAVAILABLE");
   });
 });
 
@@ -519,12 +529,11 @@ async function appMitSpion(adapter: ConfluenceSourceAdapter) {
 
 describe("JOB 588 D6 · MF — Modellfreiheit im zugesagten Abschnitt", () => {
   it("MF-1: der IMPORTSTART laeuft ohne einen einzigen Modellaufruf", async () => {
-    const { app, headers, rufe } = await appMitSpion(
+    const { app, headers, rufe, services } = await appMitSpion(
       fixtureAdapter([quellSeite("mf-1-a", 1), quellSeite("mf-1-b", 1)]),
     );
 
-    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(start.statusCode, start.body).toBe(200);
+    await starteUndWarte(app, headers, services);
 
     expect(rufe, "der Importstart hat das Modell gerufen").toEqual([]);
   });
@@ -550,8 +559,7 @@ describe("JOB 588 D6 · MF — Modellfreiheit im zugesagten Abschnitt", () => {
       fixtureAdapter([quellSeite("mf-3-a", 1), quellSeite("mf-3-b", 1)]),
     );
 
-    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(start.statusCode, start.body).toBe(200);
+    await starteUndWarte(app, headers, services);
 
     // Erst LESEN, dann urteilen: ohne diesen Abruf pruefte der Fall nur den Start, nicht die
     // Persistenz. Gelesen wird ueber DENSELBEN Weg wie die zwoelf D5-Faelle
@@ -573,8 +581,7 @@ describe("JOB 588 D6 · MF — Modellfreiheit im zugesagten Abschnitt", () => {
     const seite = { ...quellSeite("mf-4-roman", 1), statement: roman } as ImportItem;
     const { app, headers, rufe, services } = await appMitSpion(fixtureAdapter([seite]));
 
-    const start = await app.inject({ method: "POST", url: START, headers, payload: {} });
-    expect(start.statusCode, start.body).toBe(200);
+    await starteUndWarte(app, headers, services);
 
     // Zwei Vorbedingungen, sonst prueft der Fall nichts: der Text ist wirklich lang, UND der
     // Import hat ihn wirklich verarbeitet.
