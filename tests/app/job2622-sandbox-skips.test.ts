@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 // ================================================================================================
-// JOB 2622 · D1 — DIE ELF, DIE IN DER BAHN RUHEN: benannt, begruendet, gepinnt
+// JOB 2622 · D1 — DIE, DIE IN DER BAHN RUHEN: benannt, begruendet, gepinnt
+// (seit JOB 2707 D1 sind es vierzehn Horch-Faelle, nicht mehr elf — s. unten)
 // ================================================================================================
 //
 // DER BEFUND (BEN zu 2621 D1; viermal am 28.08. im Urteil): Bahn-Vollsuiten meldeten
@@ -17,6 +18,12 @@ import { readFileSync } from "node:fs";
 //   Grund, gemessen statt behauptet: der `listen`-Systemaufruf ist in Bahn-Sitzungen gesperrt
 //   (26.08. in acht Varianten belegt, s. Kopfkommentar in slides-abort.test.ts) — jede der drei
 //   Dateien fuehrt deshalb eine ECHTE Horchprobe und ueberspringt nur, wo der Aufruf verboten ist.
+//
+//   NACHGETRAGEN IN JOB 2707 D1 — DIE DREI AUS DER 2686er KETTE:
+//     apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx   3 Faelle (K1/K2/K3)
+//   Sie starten einen echten Fastify-Prozess auf einem eigenen Port und standen im Tor rot mit
+//   „listen EPERM 127.0.0.1" (PRO4 in 2701 D1) — derselbe Grund wie bei den elf, aber bis dahin
+//   ohne Schalter. Damit sind es VIERZEHN Horch-Faelle, nicht mehr elf.
 //
 //   DER EINE, der UEBERALL ruht: services/app/src/routes/ka4-endzustand.test.ts (1 Fall) — er
 //   haengt am Produktflag `KLARA_EXTERNAL_EXECUTION_MIGRATED` (heute false), nicht an der Umgebung.
@@ -42,18 +49,31 @@ function horchFaelle(pfad: string): number {
 }
 
 describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt", () => {
-  it("S1 — die elf Horch-Faelle: 2 + 3 + (2 Vorlagen x 3 Klassen) = 11, an den Dateien gezaehlt", () => {
+  it("S1 — die vierzehn Horch-Faelle: 2 + 3 + (2 Vorlagen x 3 Klassen) + 3 = 14, an den Dateien gezaehlt", () => {
     const addin = horchFaelle("services/app/src/routes/addin-static-routes.test.ts");
     const slides = horchFaelle("tests/app/slides-abort.test.ts");
     // mega71 deklariert 2 skipIf-Vorlagen in einer Schleife ueber 3 Klassen (200/4xx/5xx).
     const mega71Vorlagen = horchFaelle("tests/app/mega71-onsend-synchron.test.ts");
     const mega71Klassen =
       lies("tests/app/mega71-onsend-synchron.test.ts").split('{ name: "').length - 1;
+    // JOB 2707 D1: die drei aus der 2686er Kette, mit demselben Schalter aus demselben Grund.
+    const sso = horchFaelle("apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx");
     expect(addin).toBe(2);
     expect(slides).toBe(3);
     expect(mega71Vorlagen).toBe(2);
     expect(mega71Klassen).toBe(3);
-    expect(addin + slides + mega71Vorlagen * mega71Klassen).toBe(11);
+    expect(sso).toBe(3);
+    expect(addin + slides + mega71Vorlagen * mega71Klassen + sso).toBe(14);
+  });
+
+  it("S1b — JOB 2707: die drei SSO-Faelle nennen ihren Grund IM SCHALTERTEXT, nicht daneben", () => {
+    // Der Auftrag verlangt das ausdruecklich: wer die Ausgabe liest, muss sehen, WARUM
+    // uebersprungen wurde. Ein Kommentar im Quelltext steht nicht in der Testausgabe.
+    const quelle = lies("apps/web/src/auth/job2686-klick-bis-sitzung.test.tsx");
+    const mitGrund = quelle.split("(ruht ohne Horchrecht:").length - 1;
+    expect(mitGrund, "jeder der drei uebersprungenen Faelle traegt seinen Grund im Titel").toBe(3);
+    // Und die Probe ist dieselbe wie hier — ein echter listen-Versuch, kein Umgebungsraten.
+    expect(quelle).toContain('probe.listen(0, "127.0.0.1"');
   });
 
   it("S2 — der eine umgebungsunabhaengige Skip haengt am Produktflag, nicht an der Sandbox", () => {
@@ -61,18 +81,23 @@ describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt"
     expect(quelle).toContain("KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip");
   });
 
-  it("S3 — die Erwartung zur Umgebung: ohne Horchrecht ruhen 11+1, mit Horchrecht nur der eine", () => {
-    // Dieselbe Probe wie in den drei Dateien — dieser Fall DOKUMENTIERT die Zahl, die in der
-    // jeweiligen Umgebung im Vollsuiten-Kopf stehen muss: Bahn `12 skipped`, Chef/CI `1 skipped`
+  it("S3 — die Erwartung zur Umgebung: ohne Horchrecht ruhen 14+1, mit Horchrecht nur der eine", () => {
+    // Dieselbe Probe wie in den vier Dateien — dieser Fall DOKUMENTIERT die Zahl, die in der
+    // jeweiligen Umgebung im Vollsuiten-Kopf stehen muss: Bahn `15 skipped`, Chef/CI `1 skipped`
     // (plus etwaige runIf-Gegenzweige spaeterer Test-Straenge). Weicht sie ab, ist etwas NEU.
+    //
+    // JOB 2707 D1 hat die Zahl von 12 auf 15 gehoben: die drei SSO-Faelle aus der 2686er Kette
+    // haben denselben Schalter bekommen. Die SUMME bleibt gleich — sie wechseln von rot nach
+    // uebersprungen, nicht aus der Suite heraus.
     if (KANN_HORCHEN) {
-      expect(KANN_HORCHEN, "Horchrecht vorhanden: die elf laufen mit — erwartet 1 skipped").toBe(
-        true,
-      );
+      expect(
+        KANN_HORCHEN,
+        "Horchrecht vorhanden: die vierzehn laufen mit — erwartet 1 skipped",
+      ).toBe(true);
     } else {
       expect(
         KANN_HORCHEN,
-        "kein Horchrecht (Bahn-Sandbox): die elf ruhen — erwartet 12 skipped",
+        "kein Horchrecht (Bahn-Sandbox): die vierzehn ruhen — erwartet 15 skipped",
       ).toBe(false);
     }
   });

@@ -41,7 +41,30 @@
 //   K3  Im Anbieter herabgestuft → BETRACHTER-Sitzung sichtbar, Admin-Nutzung verweigert.
 
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+
+// ================================================================================================
+// JOB 2707 D1 — DIE HORCHPROBE: dieselbe wie in JOB 2622, aus demselben Grund
+// ================================================================================================
+//
+// DER BEFUND (PRO4 in 2701 D1): Diese drei Faelle standen im Tor rot mit
+// „Serverstart gescheitert: listen EPERM 127.0.0.1" — sie starten einen ECHTEN Server, und in
+// Bahn-Sitzungen ohne Horchrecht gibt es dafuer keinen Port. Elf andere Faelle im Haus haben
+// denselben Grund und seit JOB 2622 einen Schalter; diese drei hatten keinen.
+//
+// WARUM KEIN PAUSCHALES `skip`: Diese Faelle pruefen die Kette vom SSO-Klick bis zur sichtbaren
+// Sitzung — die Auflage, an der 2686 zweimal gescheitert ist. Sie sollen laufen, sobald ein Port
+// da ist. `skipIf` sagt WARUM sie ruhen und laesst sie anderswo wieder anlaufen; `skip` wuerde sie
+// still fuer immer stilllegen.
+//
+// Die Probe ist dieselbe wie in `tests/app/job2622-sandbox-skips.test.ts`: ein echter
+// `listen`-Versuch auf einem freien Port, kein Raten an Umgebungsvariablen.
+const KANN_HORCHEN = await new Promise<boolean>((fertig) => {
+  const probe = createServer();
+  probe.on("error", () => fertig(false));
+  probe.listen(0, "127.0.0.1", () => probe.close(() => fertig(true)));
+});
 
 const KLON = "/Users/peterkohnert/klarwerk_arbeit/kw-pro-job2686-d3";
 const SPUR = "/Users/peterkohnert/klarwerk_arbeit/kw-pro-job2686-d3-arbeit";
@@ -296,62 +319,76 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
     return { statusCallback: 0 };
   }
 
-  it("K1 · ein Bestandskonto kommt herein — und sieht seine Rolle", async () => {
-    await starteServer("bestandskonto");
-    await klickeUndFolge();
+  it.skipIf(!KANN_HORCHEN)(
+    "K1 · ein Bestandskonto kommt herein — und sieht seine Rolle (ruht ohne Horchrecht: der Fall startet einen echten Server)",
+    async () => {
+      await starteServer("bestandskonto");
+      await klickeUndFolge();
 
-    // Der Callback ist durch: die Anwendung geht in die Schale.
-    expect(zugewiesen, "keine Weiterleitung in die Anwendung").toContain("/");
-    abbauen();
+      // Der Callback ist durch: die Anwendung geht in die Schale.
+      expect(zugewiesen, "keine Weiterleitung in die Anwendung").toContain("/");
+      abbauen();
 
-    // 4 · Die Schale: die Sitzung kommt vom echten Server.
-    setzeAdresse("/");
-    await montiere();
-    await warteAufText("Die Chefin");
+      // 4 · Die Schale: die Sitzung kommt vom echten Server.
+      setzeAdresse("/");
+      await montiere();
+      await warteAufText("Die Chefin");
 
-    // KALIBRIERUNG DER ANZEIGE: Das Konto ist `controller`. Steht hier „Controller" und NICHT
-    // „Betrachter", dann haengt die Anzeige wirklich an der Rolle aus der Sitzung — und K3 unten,
-    // wo „Betrachter" erwartet wird, ist keine zufaellige Uebereinstimmung.
-    const sichtbar = container.textContent ?? "";
-    expect(sichtbar).toContain("Controller");
-    expect(sichtbar).not.toContain("Betrachter");
+      // KALIBRIERUNG DER ANZEIGE: Das Konto ist `controller`. Steht hier „Controller" und NICHT
+      // „Betrachter", dann haengt die Anzeige wirklich an der Rolle aus der Sitzung — und K3 unten,
+      // wo „Betrachter" erwartet wird, ist keine zufaellige Uebereinstimmung.
+      const sichtbar = container.textContent ?? "";
+      expect(sichtbar).toContain("Controller");
+      expect(sichtbar).not.toContain("Betrachter");
 
-    // Und die Verknuepfung ohne bestaetigte Adresse hat eine Spur hinterlassen.
-    const protokoll = await globalThis.fetch("/pruefprotokoll");
-    const { aktionen } = (await protokoll.json()) as { aktionen: string[] };
-    expect(aktionen).toContain("user.oidc-linked-unverified");
-    expect(aktionen).not.toContain("user.oidc-linked");
-  }, 60000);
+      // Und die Verknuepfung ohne bestaetigte Adresse hat eine Spur hinterlassen.
+      const protokoll = await globalThis.fetch("/pruefprotokoll");
+      const { aktionen } = (await protokoll.json()) as { aktionen: string[] };
+      expect(aktionen).toContain("user.oidc-linked-unverified");
+      expect(aktionen).not.toContain("user.oidc-linked");
+    },
+    60000,
+  );
 
-  it("K2 · ein Angreifer bleibt draussen — und das Admin-Konto bleibt unberuehrt", async () => {
-    await starteServer("angreifer");
-    await klickeUndFolge();
+  it.skipIf(!KANN_HORCHEN)(
+    "K2 · ein Angreifer bleibt draussen — und das Admin-Konto bleibt unberuehrt (ruht ohne Horchrecht: der Fall startet einen echten Server)",
+    async () => {
+      await starteServer("angreifer");
+      await klickeUndFolge();
 
-    // KEINE Weiterleitung in die Anwendung; die Fehlerflaeche sagt, was ist.
-    await warteAufText("SSO-Anmeldung fehlgeschlagen");
-    expect(zugewiesen).not.toContain("/");
+      // KEINE Weiterleitung in die Anwendung; die Fehlerflaeche sagt, was ist.
+      await warteAufText("SSO-Anmeldung fehlgeschlagen");
+      expect(zugewiesen).not.toContain("/");
 
-    // Und ohne Sitzung bleibt die Anwendung zu.
-    const me = await globalThis.fetch("/api/auth/me");
-    expect(me.status).toBe(401);
-  }, 60000);
+      // Und ohne Sitzung bleibt die Anwendung zu.
+      const me = await globalThis.fetch("/api/auth/me");
+      expect(me.status).toBe(401);
+    },
+    60000,
+  );
 
-  it("K3 · wer herabgestuft wurde, sieht eine Betrachter-Sitzung und keine Admin-Nutzung", async () => {
-    await starteServer("herabgestuft");
-    await klickeUndFolge();
-    expect(zugewiesen).toContain("/");
-    abbauen();
+  it.skipIf(!KANN_HORCHEN)(
+    "K3 · wer herabgestuft wurde, sieht eine Betrachter-Sitzung und keine Admin-Nutzung (ruht ohne Horchrecht: der Fall startet einen echten Server)",
+    async () => {
+      await starteServer("herabgestuft");
+      await klickeUndFolge();
+      expect(zugewiesen).toContain("/");
+      abbauen();
 
-    // 4 · Die Schale rendert die Rolle, die der Server vergeben hat.
-    setzeAdresse("/");
-    await montiere();
+      // 4 · Die Schale rendert die Rolle, die der Server vergeben hat.
+      setzeAdresse("/");
+      await montiere();
 
-    // DAS IST DIE STELLE, AN DER DIE KETTE IHREN ZWECK HAT.
-    await warteAufText("Betrachter");
-    expect(container.textContent ?? "").not.toContain("Administrator");
+      // DAS IST DIE STELLE, AN DER DIE KETTE IHREN ZWECK HAT.
+      await warteAufText("Betrachter");
+      expect(container.textContent ?? "").not.toContain("Administrator");
 
-    // Und der Server verweigert die Admin-Nutzung wirklich — nicht nur die Oberflaeche.
-    const verweigert = await globalThis.fetch("/api/auth/users/u-erst/approve", { method: "POST" });
-    expect(verweigert.status).toBe(403);
-  }, 60000);
+      // Und der Server verweigert die Admin-Nutzung wirklich — nicht nur die Oberflaeche.
+      const verweigert = await globalThis.fetch("/api/auth/users/u-erst/approve", {
+        method: "POST",
+      });
+      expect(verweigert.status).toBe(403);
+    },
+    60000,
+  );
 });
