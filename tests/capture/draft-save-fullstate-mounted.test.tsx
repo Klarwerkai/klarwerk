@@ -388,7 +388,13 @@ describe("JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs", () => {
     seedDraft({ title: "Altentwurf", statement: "Text aus Alt-/Klara-Entwurf", origin: "tell" });
     await mount();
     await resumeSavedDraft();
-    expect(describeProvenance.last).toEqual({ source: "draft", confidentiality: "vertraulich" });
+    // JOB 2692 D2: der fortgesetzte Entwurf reist jetzt MIT seiner Kennung (`draftId`) — der
+    // Server laedt daraus die gespeicherte Stufe. Der Provenance-Wert traegt deshalb drei Felder.
+    expect(describeProvenance.last).toEqual({
+      source: "draft",
+      confidentiality: "vertraulich",
+      draftId: "d-seed",
+    });
     expect((describeProvenance.last as { confidentiality?: string }).confidentiality).not.toBe(
       "intern",
     );
@@ -403,7 +409,11 @@ describe("JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs", () => {
     });
     await mount();
     await resumeSavedDraft();
-    expect(describeProvenance.last).toEqual({ source: "draft", confidentiality: "intern" });
+    expect(describeProvenance.last).toEqual({
+      source: "draft",
+      confidentiality: "intern",
+      draftId: "d-seed",
+    });
   });
 
   it("GESPEICHERTES „vertraulich“ bleibt „vertraulich“ — kein Downgrade", async () => {
@@ -415,6 +425,10 @@ describe("JOB 504 D2: Bild-Provenienz des fortgesetzten Entwurfs", () => {
     });
     await mount();
     await resumeSavedDraft();
-    expect(describeProvenance.last).toEqual({ source: "draft", confidentiality: "vertraulich" });
+    expect(describeProvenance.last).toEqual({
+      source: "draft",
+      confidentiality: "vertraulich",
+      draftId: "d-seed",
+    });
   });
 });

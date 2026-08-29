@@ -132,11 +132,15 @@ function klaraKopf(headers: Record<string, unknown>, name: string): string {
  * ein Dokumentinhalt, nie eine Kopfzeile. Die Kennungen sind zwar opak, aber ein Protokoll, das
  * sie mitschreibt, wäre eine Verknüpfungsspur über Dokumente hinweg; sie bleibt deshalb draußen.
  */
-async function ka4Freigabe(
+// JOB 2692 D1: exportiert, weil der Reasoner-Weg (`reasoner-routes.ts`) DENSELBEN Riegel braucht —
+// eine zweite Auslegung dort wäre genau der Fehler, den der Kommentar oben benennt. `ereignis` ist
+// nur der Protokollname; ohne Angabe bleibt der Ask-Weg byteweise wie vor 2692.
+export async function ka4Freigabe(
   pruefer: Ka4Freigabepruefer | undefined,
   headers: Record<string, unknown>,
   actorId: string,
   log: { info: (obj: unknown, msg: string) => void },
+  ereignis = "ask.ka4.dokument-consent",
 ): Promise<boolean> {
   if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
     return false;
@@ -158,18 +162,30 @@ async function ka4Freigabe(
     const erlaubt = freigabe?.erlaubt === true;
     log.info(
       { ka4: { entscheidung: erlaubt ? "freigegeben" : "blockiert", grund: freigabe?.grund } },
-      "ask.ka4.dokument-consent",
+      ereignis,
     );
     return erlaubt;
   } catch (err) {
     // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
     // kein Serverfehler — der Ask läuft in der unveränderten Enge weiter.
-    log.info(
-      { ka4: { entscheidung: "blockiert", grund: "bindung_ungueltig" } },
-      "ask.ka4.dokument-consent",
-    );
+    log.info({ ka4: { entscheidung: "blockiert", grund: "bindung_ungueltig" } }, ereignis);
     return false;
   }
+}
+
+/**
+ * JOB 2692 D1: Trägt die Anfrage überhaupt eine Klara-Bindung (mindestens eine der drei Kopfzeilen)?
+ * Der Reasoner-Weg braucht diese Unterscheidung, weil dort — anders als beim Ask — eine Anfrage
+ * OHNE Bindung der Konsolen-Normalfall ist und unverändert bleibt, während eine Anfrage MIT
+ * (auch unvollständiger) Bindung ohne bestätigte Einwilligung die Cloud nicht erreichen darf.
+ * Dieselben drei Kopfzeilen wie `ka4Freigabe` — eine Schreibweise, kein zweiter Transportvertrag.
+ */
+export function klaraBindungVorhanden(headers: Record<string, unknown>): boolean {
+  return (
+    klaraKopf(headers, KLARA_SESSION_HEADER).length > 0 ||
+    klaraKopf(headers, KLARA_INSTANCE_HEADER).length > 0 ||
+    klaraKopf(headers, KLARA_DOCUMENT_HEADER).length > 0
+  );
 }
 // KW-KA4-DOKUMENT-CONSENT-END
 

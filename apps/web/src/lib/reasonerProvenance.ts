@@ -18,14 +18,19 @@ export function failSafeConfidentiality(
 
 // Getippter/bearbeiteter Text (Capture, Studio, KnowledgeDetail-Editor). Optionale koId = NUR
 // hebender Backstop (Downgrade-Schutz), nie Freigabe-Anker.
+// JOB 2692 D2: optionale draftId = die Kennung des GESPEICHERTEN Entwurfs — derselbe hebende Backstop
+// wie die koId, nur fuer Entwuerfe. Eine Flaeche, die einen gespeicherten Entwurf bearbeitet, MUSS sie
+// mitgeben; ohne aufloesbaren Anker behandelt der Server `source:"draft"` als vertraulich.
 export function draftProvenance(
   declared: Confidentiality | undefined | null,
   koId?: string,
+  draftId?: string,
 ): ReasonerProvenance {
   return {
     source: "draft",
     confidentiality: failSafeConfidentiality(declared),
     ...(koId ? { koId } : {}),
+    ...(draftId ? { draftId } : {}),
   };
 }
 

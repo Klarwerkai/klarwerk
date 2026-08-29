@@ -1410,7 +1410,10 @@ export function buildApp(
   // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler aus eigenen KOs + Audits.
   app.register(impactRoutes({ ko: services.ko, audit: services.audit }, guards));
   app.register(auditRoutes(services.audit, guards));
-  app.register(reasonerRoutes(services, guards));
+  // JOB 2692 D1: der KA4-Riegel gilt auch auf /api/reasoner und /describe — DIESELBE Instanz des
+  // Ausführungstors wie bei askRoutes oben, kein zweiter Dienst. `capture` kommt aus `services`
+  // (Entwurfs-Backstop: die gespeicherte Stufe eines Entwurfs hebt, senkt nie).
+  app.register(reasonerRoutes({ ...services, ka4: klaraSessions }, guards));
   // Klara Stufe 2 (Pedi 05.07.): KI-gestuetzte Hilfe-Antwort aus Hilfe-Schnipseln (help-routes).
   app.register(helpRoutes({ reasoner: services.reasoner }, guards));
   // AUFTRAG-mega74 BLOCK C (G2): der Anhang-Lesepfad erfährt hier — und nur hier —, welche

@@ -100,10 +100,15 @@ export type KoFilter = { type?: string; status?: string; category?: string; tag?
 //  - source "transient-document": hochgeladener Dokumenttext (BodyExtractPanel/„Aus Datei").
 // `confidentiality` ist Pflicht (inkl. "intern"). Optionale `koId` ist NUR ein hebender Backstop
 // (Downgrade-Schutz eines gespeichert-vertraulichen KOs), NIE ein Freigabe-Anker.
+// JOB 2692 D2 (Review-Befund 17): `draftId` — die Kennung des GESPEICHERTEN Entwurfs, aus dem der
+// Text oder das Bild stammt. Der Server laedt dazu die gespeicherte Stufe als zweiten hebenden
+// Backstop (sie hebt, sie senkt nie). Ohne aufloesbaren Anker (weder `draftId` noch `koId`) gilt
+// `source:"draft"` serverseitig als vertraulich — die Deklaration allein reicht nicht mehr.
 export type ReasonerProvenance = {
   source: "draft" | "transient-document";
   confidentiality: Confidentiality;
   koId?: string;
+  draftId?: string;
 };
 
 function provenanceFields(p: ReasonerProvenance): Record<string, string> {
@@ -111,6 +116,7 @@ function provenanceFields(p: ReasonerProvenance): Record<string, string> {
     source: p.source,
     confidentiality: p.confidentiality,
     ...(p.koId ? { koId: p.koId } : {}),
+    ...(p.draftId ? { draftId: p.draftId } : {}),
   };
 }
 

@@ -787,7 +787,12 @@ export function Capture(): JSX.Element {
 
   const structure = useMutation({
     // SCRUM-502 Schicht 2: die Draft-Vertraulichkeit mitsenden → vertrauliche Drafts nutzen nie die Cloud.
-    mutationFn: () => endpoints.reasoner.structure(raw, locale, draftProvenance(confidentiality)),
+    mutationFn: () =>
+      endpoints.reasoner.structure(
+        raw,
+        locale,
+        draftProvenance(confidentiality, undefined, draftId ?? undefined),
+      ),
     onSuccess: (r) => {
       setDraft(r);
       setTags((prev) => (prev.length > 0 ? prev : r.tags));
@@ -807,7 +812,11 @@ export function Capture(): JSX.Element {
   // Erfolgs- UND im Fehlerpfad verworfen, statt den inzwischen gültigen Zustand zu überschreiben.
   const interview = useMutation({
     mutationFn: (v: { answers: string[]; run: number }) =>
-      endpoints.reasoner.interview(v.answers, locale, draftProvenance(confidentiality)),
+      endpoints.reasoner.interview(
+        v.answers,
+        locale,
+        draftProvenance(confidentiality, undefined, draftId ?? undefined),
+      ),
     onSuccess: (res, v) => {
       if (v.run !== ivRunRef.current) {
         return; // späte Antwort eines vor Save/Verwerfen gestarteten Turns — nichts zurückschreiben
@@ -846,7 +855,12 @@ export function Capture(): JSX.Element {
   // die frühere stille Direkt-Mutation (setRaw/setDraft) wurde durch den Vorschau-Flow ersetzt.
   const runAssist = (input: string, instruction?: string): Promise<string> =>
     endpoints.reasoner
-      .assist(input, locale, instruction, draftProvenance(confidentiality))
+      .assist(
+        input,
+        locale,
+        instruction,
+        draftProvenance(confidentiality, undefined, draftId ?? undefined),
+      )
       .then((r) => r.text);
 
   // PMO-FEA-0006: Wissenssuche im Dokument — Ergebnis ist die Punkteliste ODER (ohne Modell)
@@ -3313,7 +3327,13 @@ export function Capture(): JSX.Element {
     // die Herkunft ihres Inhalts. Der Weg selbst (describe-Aufruf, Sprache, Verfügbarkeit) kommt aus
     // der App. Vorher stand hier ZWEIMAL derselbe sechszeilige Block, einmal je Editor-Einbindung;
     // zwei Kopien sind zwei Wahrheiten, und die dritte und vierte Fläche hatten gar keine.
-    <ImageDescribeProvider provenance={draftProvenance(declaredConfidentiality)}>
+    // JOB 2692 D2: die Kennung des gespeicherten Entwurfs reist mit (`draftId`, gesetzt nach
+    // „Entwurf speichern"/„Fortsetzen") — der Server laedt daraus die gespeicherte Stufe als
+    // hebenden Backstop. Ein noch nie gespeicherter Entwurf hat keine Kennung; ohne Anker gilt
+    // der Aufruf serverseitig als vertraulich (2692 D2, reasoner-routes.ts).
+    <ImageDescribeProvider
+      provenance={draftProvenance(declaredConfidentiality, undefined, draftId ?? undefined)}
+    >
       <div className="mx-auto max-w-5xl">
         <PageHeader
           kicker={t("capture.kicker")}

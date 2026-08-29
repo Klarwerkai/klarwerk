@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AskService } from "../../../ask";
+import type { CaptureService } from "../../../capture";
 import {
   DEFAULT_EXTERNAL_KNOWLEDGE_STAGE,
   type ExternalKnowledgePolicyRepo,
@@ -17,6 +18,7 @@ import {
 import { runConflictSelfTest } from "../conflict-self-test";
 import { runDuplicateSelfTest } from "../duplicate-self-test";
 import type { Guards } from "../http";
+import { type Ka4Freigabepruefer, ka4Freigabe, klaraBindungVorhanden } from "./ask-routes";
 
 // FR-I18N-01: nur DE/EN; alles andere/ungültige normalisiert sauber auf "de" (keine 400).
 function normalizeLocale(value: unknown): ReasonerLocale {
@@ -66,6 +68,37 @@ export interface ReasonerRoutesDeps {
   externalKnowledge: ExternalKnowledgePolicyRepo;
   // SCRUM-502 Schicht 2: für den autoritativen koId-Load der gespeicherten Vertraulichkeitsstufe.
   ko: KoService;
+  // JOB 2692 D1 (Review-Befund 17): der autoritative draftId-Load — die im ENTWURF gespeicherte
+  // Stufe ist der zweite hebende Backstop neben der koId. Nur `getDraft`, kein Schreibrecht.
+  capture: Pick<CaptureService, "getDraft">;
+  // JOB 2692 D1: der KA4-Riegel (Einwilligung je Dokument) aus `ask-routes.ts` — dieselbe
+  // Dienstinstanz wie dort. OPTIONAL: fehlt er, verhält sich eine Klara-gebundene Anfrage
+  // fail-closed (keine Cloud); eine Anfrage ohne Bindung bleibt unverändert.
+  ka4?: Ka4Freigabepruefer | undefined;
+}
+
+// JOB 2692 D1: was die Route über den Aufruf weiß, das der reinen Regel fehlt — Entwurfskennung,
+// handelnder Nutzer, Kopfzeilen (Klara-Bindung) und das Protokoll. Kein Inhalt reist hier mit.
+type Aufrufbindung = {
+  draftId: unknown;
+  actorId: string;
+  headers: Record<string, unknown>;
+  log: { info: (obj: unknown, msg: string) => void };
+};
+
+// JOB 2692 D1: zwei Backstops, EINE Stufe — die höhere gewinnt. Nur „vertraulich"/„streng_vertraulich"
+// hebt; ein internes oder unbekanntes Ziel senkt nie (unveränderte Regel aus Round 4).
+function hoehereStufe(
+  a: Confidentiality | null | undefined,
+  b: Confidentiality | null | undefined,
+): Confidentiality | null {
+  if (a === "streng_vertraulich" || b === "streng_vertraulich") {
+    return "streng_vertraulich";
+  }
+  if (isConfidential(a ?? null)) {
+    return a ?? null;
+  }
+  return b ?? a ?? null;
 }
 
 // WP-BILD-1f (bens P2): Body-Deckel NUR für die Bild-Route /api/reasoner/describe. 8 MiB deckt den
@@ -75,7 +108,7 @@ export interface ReasonerRoutesDeps {
 export const DESCRIBE_BODY_LIMIT = 8 * 1024 * 1024; // 8 MiB
 
 export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): FastifyPluginAsync {
-  const { reasoner, ask, externalKnowledge, ko } = deps;
+  const { reasoner, ask, externalKnowledge, ko, capture, ka4 } = deps;
 
   // SCRUM-502 Round 4: die Stufe kommt aus der AKTUELLEN Text-Deklaration (draft/transient-document).
   // Eine koId wird — falls mitgeliefert — NUR als hebender Backstop geladen (Downgrade-Schutz), nie
@@ -89,37 +122,114 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
   // dem Bestand (`stored.id`), NIE die vom Client gelieferte Zeichenkette. Eine unbekannte oder
   // frei erfundene koId erzeugt damit KEINEN Subjektbezug — sie kann weder einen falschen Bezug
   // vortäuschen noch beliebigen Text ins Protokoll tragen.
+  //
+  // ==============================================================================================
+  // JOB 2692 D1 (Review-Befund 17) — DIE GESPEICHERTE STUFE HEBT. SIE SENKT NIE.
+  // ==============================================================================================
+  //
+  // BIS 2692 zählte bei `source:"draft"` allein die Client-Deklaration: Der Entwurf, aus dem der
+  // Text stammt, wurde nie geladen — ein Aufruf, der „intern" behauptete, bekam die Cloud, auch
+  // wenn der Entwurf als „vertraulich" gespeichert war. Dasselbe galt für die Bildbeschreibung,
+  // die über die Bestandsfassade `resolveConfidential` DIESELBE Stelle durchläuft (die Fassade ist
+  // nur ein Rumpf um `resolveProvenance`; sie hat keine eigene Regel, deshalb ist sie erweiterbar,
+  // ohne einen Aufrufer zu ändern — beide Punkte des Auftrags landen an EINER Stelle).
+  //
+  // JETZT: eine mitgelieferte `draftId` wird — wie die `koId` — geladen, und die im Entwurf
+  // gespeicherte Stufe ist ein zweiter HEBENDER Backstop. Regeln, unverändert aus Round 4:
+  //   * hebt nur: gespeichert „vertraulich"/„streng_vertraulich" macht auch „intern" deklarierten
+  //     Text vertraulich; ein interner, unbekannter oder stufenloser Entwurf senkt NIE;
+  //   * keine Sichtbarkeitsprüfung, wie bei der koId: die Stufe wird nur zum HEBEN gelesen und
+  //     verlässt den Server nicht — ein Entwurf, den der Aufrufer nicht sehen dürfte, kann ihm
+  //     dadurch nur die Cloud nehmen, nie etwas geben;
+  //   * was eine FEHLENDE Stufe bedeutet, entscheidet diese Stelle NICHT (offene Frage bei Pedi,
+  //     E-VERTRAULICHKEIT-OHNE-STUFE-20260828): `confidentiality` undefined im Entwurf → kein
+  //     Backstop, die Deklaration des Clients gilt wie bisher.
+  //
+  // UND DER KA4-RIEGEL (Pedis Weiche vom 18.08.2026: „Externe KI mit Dokumenttext: JA, aber nie
+  // still. Je Dokument eine ausdrückliche Einwilligung"): Trägt die Anfrage eine Klara-Bindung
+  // (mindestens eine der drei Kopfzeilen), entscheidet ALLEIN das bestehende Ausführungstor
+  // (`ka4Freigabe`, dieselbe Funktion wie auf /api/ask), ob die Cloud erreicht werden darf. Ohne
+  // bestätigte Einwilligung — fehlender Dienst, unvollständige Bindung, fremde Sitzung, Fehler,
+  // `erlaubt:false` — gilt der Aufruf als vertraulich: kein Egress. Fail-closed in jeder Richtung.
+  // Eine Anfrage OHNE Bindung ist der Konsolen-Normalfall (Capture, Studio, Detail) und bleibt
+  // byteweise wie vor 2692: Dort gibt es kein Dokument im Sinne von KA4, über das eingewilligt
+  // werden könnte; der Vertraulichkeitsfilter darüber trägt unverändert.
   const resolveProvenance = async (
     source: unknown,
     koId: unknown,
     declared: unknown,
+    bindung: Aufrufbindung,
   ): Promise<{ confidential: boolean; subject?: ModelRunSubject }> => {
     let backstop: StoredLookup = { found: false };
     let subject: ModelRunSubject | undefined;
-    if (
-      typeof source === "string" &&
-      CLIENT_TEXT_SOURCES.has(source) &&
-      typeof koId === "string" &&
-      koId.length > 0
-    ) {
+    const clientText = typeof source === "string" && CLIENT_TEXT_SOURCES.has(source);
+    if (clientText && typeof koId === "string" && koId.length > 0) {
       const stored = await ko.get(koId);
       backstop = { found: stored !== undefined, level: stored?.confidentiality ?? null };
       if (stored !== undefined) {
         subject = { kind: "ko", id: stored.id };
       }
     }
+    // JOB 2692 D1: der Entwurfs-Backstop. Nur `source:"draft"` trägt eine Entwurfskennung; ein
+    // Upload (`transient-document`) ist neuer Inhalt und hat keinen gespeicherten Entwurf.
+    if (source === "draft" && typeof bindung.draftId === "string" && bindung.draftId.length > 0) {
+      const entwurf = await capture.getDraft(bindung.draftId);
+      if (entwurf !== undefined) {
+        backstop = {
+          found: true,
+          level: hoehereStufe(backstop.level, entwurf.payload.confidentiality ?? null),
+        };
+      }
+    }
+    let confidential = classifyProvenanceConfidential(source, declared, backstop);
+    // ==========================================================================================
+    // JOB 2692 D2 — OHNE AUFLÖSBAREN ANKER GILT „draft" ALS VERTRAULICH.
+    // ==========================================================================================
+    // BEN an D1: „Der tatsächliche Weg ohne Kennung wird weiterhin durchgelassen" — ein Backstop,
+    // den man umgeht, indem man ein Feld nicht schickt, ist keiner. Deshalb: `source:"draft"`
+    // braucht einen Anker, der sich im Bestand AUFLÖST — die `draftId` eines gespeicherten
+    // Entwurfs oder die `koId` eines Objekts (KnowledgeDetail-Editor). Fehlt beides, oder löst
+    // keins auf, entscheidet nicht mehr die Client-Deklaration: der Aufruf ist vertraulich.
+    //
+    // FAIL-CLOSED STATT ABWEISEN, und warum: Ein 4xx bräche Aufrufer, die legitim keinen Anker
+    // haben — eine Erfassung, die noch nie gespeichert wurde (Capture ohne Entwurfskennung,
+    // Vordertür), hat keinen. Sie verliert damit die Cloud, nicht die Funktion: structure/assist/
+    // interview/describe laufen lokal bzw. deterministisch weiter. Der Preis ist benannt; ob eine
+    // ungespeicherte Erfassung die Cloud bekommen soll (dann braucht sie vorher eine Kennung,
+    // etwa durch Sichern des Entwurfs vor der ersten KI-Aktion), ist eine Ownerfrage — hier nicht
+    // entschieden, in der Rückgabe gemeldet.
+    //
+    // Was eine FEHLENDE Stufe bedeutet, bleibt unberührt: ein aufgelöster Entwurf ohne Stufe hebt
+    // nicht — dann gilt wie bisher die Deklaration (D1, Fall A5).
+    const ankerAufgeloest = backstop.found;
+    if (source === "draft" && !ankerAufgeloest) {
+      confidential = true;
+    }
+    // JOB 2692 D1: der KA4-Riegel — nur bei Klara-Bindung, dort ohne Ausnahme.
+    if (!confidential && klaraBindungVorhanden(bindung.headers)) {
+      const erlaubt = await ka4Freigabe(
+        ka4,
+        bindung.headers,
+        bindung.actorId,
+        bindung.log,
+        "reasoner.ka4.dokument-consent",
+      );
+      confidential = !erlaubt;
+    }
     return {
-      confidential: classifyProvenanceConfidential(source, declared, backstop),
+      confidential,
       ...(subject ? { subject } : {}),
     };
   };
 
-  // Bestandsfassade für alle NICHT gebundenen Zweige — Verhalten unverändert.
+  // Bestandsfassade für alle NICHT gebundenen Zweige — seit JOB 2692 D1 mit derselben Bindung wie
+  // der gebundene Zweig; sie hat keine eigene Regel und braucht deshalb keine eigene Erweiterung.
   const resolveConfidential = async (
     source: unknown,
     koId: unknown,
     declared: unknown,
-  ): Promise<boolean> => (await resolveProvenance(source, koId, declared)).confidential;
+    bindung: Aufrufbindung,
+  ): Promise<boolean> => (await resolveProvenance(source, koId, declared, bindung)).confidential;
 
   return async (app) => {
     // WP-BILD-1f (bens P2): der Text-Dispatcher behält die KLEINE Parsergrenze (globaler
@@ -146,6 +256,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         source?: "draft" | "transient-document";
         koId?: string;
         confidentiality?: Confidentiality;
+        // JOB 2692 D1: Kennung des gespeicherten Entwurfs, aus dem der Text/das Bild stammt — nur
+        // ein hebender Backstop (die gespeicherte Stufe hebt, senkt nie), nie ein Freigabe-Anker.
+        draftId?: string;
       };
     }>("/api/reasoner", async (request, reply) => {
       const user = await guards.requirePermission("ko.read", request, reply);
@@ -161,6 +274,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
+          {
+            draftId: request.body.draftId,
+            actorId: user.id,
+            headers: request.headers,
+            log: request.log,
+          },
         );
         reply.code(200).send(await reasoner.structure(text ?? "", locale, confidential));
         return;
@@ -177,6 +296,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
+          {
+            draftId: request.body.draftId,
+            actorId: user.id,
+            headers: request.headers,
+            log: request.log,
+          },
         );
         reply
           .code(200)
@@ -191,6 +316,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
+          {
+            draftId: request.body.draftId,
+            actorId: user.id,
+            headers: request.headers,
+            log: request.log,
+          },
         );
         reply
           .code(200)
@@ -229,6 +360,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
+          {
+            draftId: request.body.draftId,
+            actorId: user.id,
+            headers: request.headers,
+            log: request.log,
+          },
         );
         reply.code(200).send(
           await reasoner.extract(
@@ -273,6 +410,9 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
         source?: "draft" | "transient-document";
         koId?: string;
         confidentiality?: Confidentiality;
+        // JOB 2692 D1: Kennung des gespeicherten Entwurfs, aus dem der Text/das Bild stammt — nur
+        // ein hebender Backstop (die gespeicherte Stufe hebt, senkt nie), nie ein Freigabe-Anker.
+        draftId?: string;
         // WP-BILD-1f (Pedi 22.07.): optionaler umgebender Dokument-Kontext (Klartext). Er läuft durch
         // DIESELBE resolveConfidential-/providerChain-Stelle wie das Bild — bei vertraulichem Beitrag
         // erreicht weder Bild noch Kontext die Cloud. Der Reasoner kappt den Kontext autoritativ.
@@ -315,6 +455,12 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
           request.body.source,
           request.body.koId,
           request.body.confidentiality,
+          {
+            draftId: request.body.draftId,
+            actorId: user.id,
+            headers: request.headers,
+            log: request.log,
+          },
         );
         // WP-BILD-1f: Kontext nur weiterreichen, wenn String; der Reasoner kappt ihn autoritativ auf
         // MAX_IMAGE_CONTEXT_LENGTH und schickt ihn NUR über den (vertraulichkeitsgefilterten) Vision-Weg.

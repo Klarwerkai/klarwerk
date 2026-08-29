@@ -102,7 +102,9 @@ export function ImageDescribeProvider({
   // AUFTRAG-mega67 Block G: dieselbe Quelle, andere Frage — nutzbar ist nicht dasselbe wie teuer.
   const describeBillable = useAiBillable("describe");
   const locale = toReasonerLocale(i18n.language);
-  const { source, confidentiality, koId } = provenance ?? VORGABE_PROVENIENZ;
+  // JOB 2692 D2: `draftId` reist mit — die Kennung des gespeicherten Entwurfs, damit der Server
+  // die gespeicherte Stufe als Backstop laden kann. Primitives Feld wie die anderen (Memo unten).
+  const { source, confidentiality, koId, draftId } = provenance ?? VORGABE_PROVENIENZ;
 
   // Auf den PRIMITIVEN Feldern gemerkt, nicht auf der Objektidentität: `draftProvenance(...)` baut
   // bei jedem Render ein neues Objekt, sonst wechselte der Wert grundlos bei jedem Tastendruck.
@@ -114,11 +116,16 @@ export function ImageDescribeProvider({
         endpoints.reasoner.describeImage(
           dataUrl,
           locale,
-          { source, confidentiality, ...(koId ? { koId } : {}) },
+          {
+            source,
+            confidentiality,
+            ...(koId ? { koId } : {}),
+            ...(draftId ? { draftId } : {}),
+          },
           context,
         ),
     }),
-    [describeAi.available, describeBillable, locale, source, confidentiality, koId],
+    [describeAi.available, describeBillable, locale, source, confidentiality, koId, draftId],
   );
 
   return <ImageDescribeCtx.Provider value={value}>{children}</ImageDescribeCtx.Provider>;

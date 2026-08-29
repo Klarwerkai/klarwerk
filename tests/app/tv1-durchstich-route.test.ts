@@ -96,11 +96,19 @@ async function describeUeberRoute(
   }
   const app = buildApp(services);
   const headers = await loginHeaders(app);
+  // JOB 2692 D2: `source:"draft"` braucht einen aufgelösten Anker — ohne `draftId`/`koId` gilt der
+  // Aufruf serverseitig als vertraulich (kein Cloud-Vision, kein Titel). Dieser Test misst die
+  // Serialisierung des Titelvorschlags, nicht den Anker; er bekommt deshalb den Entwurf, aus dem
+  // das Bild stammt — mit derselben Stufe, die der Aufruf deklariert.
+  const entwurf = await services.capture.createDraft(
+    { title: "TV1", statement: "Bild aus dem Entwurf.", confidentiality },
+    "u1",
+  );
   const res = await app.inject({
     method: "POST",
     url: "/api/reasoner/describe",
     headers,
-    payload: { dataUrl: PNG_URL, source: "draft", confidentiality },
+    payload: { dataUrl: PNG_URL, source: "draft", confidentiality, draftId: entwurf.id },
   });
   return {
     status: res.statusCode,
