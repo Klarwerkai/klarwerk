@@ -149,6 +149,23 @@ describe("OIDC-Provider Code-Flow (FR-AUTH-07)", () => {
   });
 });
 
+// JOB 2686 (R2-7/R2-8): `iss` und `rolesClaimPresent` gehören seither zum Claim-Vertrag.
+// `rolesClaimPresent` steht hier auf `true`, wo die Fälle eine Gruppenauskunft nachstellen, und
+// auf `false`, wo der Anbieter schweigt — die beiden bedeuten seit R2-8 Verschiedenes.
+function claimsAus(over: {
+  sub: string;
+  email: string;
+  name: string;
+  roles: string[];
+  rolesClaimPresent?: boolean;
+}) {
+  return {
+    ...over,
+    iss: ISSUER,
+    rolesClaimPresent: over.rolesClaimPresent ?? over.roles.length > 0,
+  };
+}
+
 describe("loginWithOidc (FR-AUTH-07)", () => {
   it("ohne Auto-Provisionierung kein Konto; mit erzeugt erstes Konto als Admin (Bootstrap)", async () => {
     const service = new AuthService({
@@ -156,11 +173,14 @@ describe("loginWithOidc (FR-AUTH-07)", () => {
       sessions: new InMemorySessionRepo(),
     });
     await expect(
-      service.loginWithOidc({ sub: "u1", email: "neu@x.de", name: "Neu", roles: [] }, false),
+      service.loginWithOidc(
+        claimsAus({ sub: "u1", email: "neu@x.de", name: "Neu", roles: [] }),
+        false,
+      ),
     ).rejects.toMatchObject({ code: "NOT_APPROVED" });
 
     const { token, user } = await service.loginWithOidc(
-      { sub: "u1", email: "neu@x.de", name: "Neu", roles: [] },
+      claimsAus({ sub: "u1", email: "neu@x.de", name: "Neu", roles: [] }),
       true,
       "viewer",
     );
@@ -172,34 +192,65 @@ describe("loginWithOidc (FR-AUTH-07)", () => {
     const users = new InMemoryUserRepo();
     const service = new AuthService({ users, sessions: new InMemorySessionRepo() });
     await service.loginWithOidc(
-      { sub: "a", email: "admin@x.de", name: "A", roles: [] },
+      claimsAus({ sub: "a", email: "admin@x.de", name: "A", roles: [] }),
       true,
       "admin",
     );
 
     const { user } = await service.loginWithOidc(
-      { sub: "b", email: "ctrl@x.de", name: "B", roles: ["kw-ctrl"] },
+      claimsAus({ sub: "b", email: "ctrl@x.de", name: "B", roles: ["kw-ctrl"] }),
       true,
       "controller",
     );
     expect(user.role).toBe("controller");
   });
 
-  it("bestehender Nutzer behält die Admin-vergebene Rolle (Claims überschreiben nicht still)", async () => {
+  // JOB 2686 (R2-8) — DIESER FALL HAT SEINE AUSSAGE GEWECHSELT, und zwar absichtlich.
+  //
+  // Vorher stand hier: „bestehender Nutzer behält die Admin-vergebene Rolle (Claims überschreiben
+  // nicht still)" — ein „viewer"-Claim durfte einen Admin NICHT herabstufen. Der Review-Befund R2-8
+  // nennt genau diese Entscheidung und dreht ihre eine Hälfte um: *„Die Entscheidung ‚Claims
+  // überschreiben nie' schützt vor Privilege-Injection nach oben, lässt aber die Richtung nach
+  // unten ebenso liegen."* Wer im Anbieter aus der Admin-Gruppe fliegt, blieb hier Admin.
+  //
+  // Die schützende Hälfte bleibt unangetastet und steht im zweiten Fall darunter: NIE ANHEBEN.
+  it("ein niedrigerer Claim stuft ein SSO-Konto HERAB (R2-8)", async () => {
     const users = new InMemoryUserRepo();
     const service = new AuthService({ users, sessions: new InMemorySessionRepo() });
-    // Erstes Konto = Admin (Bootstrap).
+    // Erstes Konto = Admin (Bootstrap). Bei der Erstanlage wird NICHT abgeglichen.
     await service.loginWithOidc(
-      { sub: "a", email: "admin@x.de", name: "A", roles: [] },
+      claimsAus({ sub: "a", email: "admin@x.de", name: "A", roles: ["kw-admin"] }),
       true,
       "admin",
     );
-    // Erneuter SSO-Login mit "viewer"-Claim darf den Admin NICHT herabstufen.
+    // Zweite Anmeldung, im Anbieter aus der Admin-Gruppe entfernt.
     const { user } = await service.loginWithOidc(
-      { sub: "a", email: "admin@x.de", name: "A", roles: ["irrelevant"] },
+      claimsAus({ sub: "a", email: "admin@x.de", name: "A", roles: ["irgendwas"] }),
       true,
       "viewer",
     );
-    expect(user.role).toBe("admin");
+    expect(user.role).toBe("viewer");
+  });
+
+  it("ein höherer Claim hebt ein SSO-Konto NICHT an (R2-8, die schützende Hälfte)", async () => {
+    const users = new InMemoryUserRepo();
+    const service = new AuthService({ users, sessions: new InMemorySessionRepo() });
+    // Ein erstes Konto, damit das folgende NICHT der Bootstrap-Admin wird.
+    await service.loginWithOidc(
+      claimsAus({ sub: "erst", email: "erst@x.de", name: "E", roles: [] }),
+      true,
+      "viewer",
+    );
+    await service.loginWithOidc(
+      claimsAus({ sub: "b", email: "klein@x.de", name: "B", roles: ["kw-viewer"] }),
+      true,
+      "viewer",
+    );
+    const { user } = await service.loginWithOidc(
+      claimsAus({ sub: "b", email: "klein@x.de", name: "B", roles: ["kw-admin"] }),
+      true,
+      "admin",
+    );
+    expect(user.role).toBe("viewer");
   });
 });

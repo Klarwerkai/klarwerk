@@ -27,6 +27,22 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS bootstrap_admin boolean NOT NULL DEFA
 -- nie gegeben hat.
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notice_ack_at text;
 ALTER TABLE users ADD COLUMN IF NOT EXISTS notice_ack_version text;
+-- JOB 2686 (Review-Befund R2-7): die Identitaet aus dem Anbieter am Konto.
+-- ADDITIV und NULL-bar, und das ist der Uebergangsweg: Bestandskonten haben noch kein Subjekt, und
+-- „kein Subjekt" muss ein gueltiger Zustand bleiben — sonst sperrt die Migration genau die
+-- Menschen aus, die sie schuetzen soll. Verknuepft wird beim naechsten Anmelden, und nur mit
+-- verifizierter Adresse (AuthService.loginWithOidc).
+-- KEIN Vorgabewert: ein solcher wuerde jedem Bestandskonto eine Identitaet andichten, die nie
+-- geprueft wurde — und da alle denselben Wert traegen, waeren sie untereinander verwechselbar.
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_issuer text;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS oidc_subject text;
+-- Ein Subjekt gehoert zu genau EINEM Konto. Ohne diese Zusage koennte ein zweites Konto dieselbe
+-- Identitaet tragen, und welches der beiden die Anmeldung bekommt, entschiede die Zeilenreihenfolge.
+-- PARTIELL, weil unverknuepfte Bestandskonten (beide Spalten NULL) sich nicht gegenseitig
+-- ausschliessen duerfen — es gibt viele davon, und NULL ist hier ein echter Zustand, kein Platzhalter.
+CREATE UNIQUE INDEX IF NOT EXISTS users_oidc_identity_uq
+  ON users (oidc_issuer, oidc_subject)
+  WHERE oidc_issuer IS NOT NULL AND oidc_subject IS NOT NULL;
 CREATE UNIQUE INDEX IF NOT EXISTS ko_users_one_bootstrap ON users (bootstrap_admin) WHERE bootstrap_admin;
 CREATE TABLE IF NOT EXISTS sessions (
   token text PRIMARY KEY,
@@ -116,6 +132,10 @@ interface UserRow {
   created_at: string;
   notice_ack_at: string | null;
   notice_ack_version: string | null;
+  // JOB 2686 (R2-7). Optional getypt, weil eine Bestandsinstanz VOR der Migration die Spalten nicht
+  // hat — `toUser` faellt dann auf „nicht verknuepft" zurueck, was fuer sie richtig ist.
+  oidc_issuer?: string | null;
+  oidc_subject?: string | null;
 }
 
 function toUser(row: UserRow): User {
@@ -132,6 +152,10 @@ function toUser(row: UserRow): User {
     // ein drittes „ausdrücklich leer" gäbe es sonst nur in der Datenbank und nirgends sonst.
     ...(row.notice_ack_at ? { noticeAckAt: row.notice_ack_at } : {}),
     ...(row.notice_ack_version ? { noticeAckVersion: row.notice_ack_version } : {}),
+    // JOB 2686 (R2-7): dieselbe Regel wie oben — NULL heisst „Feld fehlt", nicht `null`. „Nicht
+    // verknuepft" ist ein Zustand des Kontos, kein leerer Wert an ihm.
+    ...(row.oidc_issuer ? { oidcIssuer: row.oidc_issuer } : {}),
+    ...(row.oidc_subject ? { oidcSubject: row.oidc_subject } : {}),
   };
 }
 
@@ -164,7 +188,7 @@ export class PgUserRepo implements UserRepo {
 
   async insert(user: User): Promise<void> {
     await this.pool.query(
-      "INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8)",
+      "INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,oidc_issuer,oidc_subject) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)",
       [
         user.id,
         user.name,
@@ -174,8 +198,26 @@ export class PgUserRepo implements UserRepo {
         user.role,
         user.approved,
         user.createdAt,
+        // JOB 2686 (R2-7): ein SSO-Konto bringt seine Identitaet schon bei der Erstanlage mit —
+        // sie erst beim zweiten Anmelden zu setzen hiesse, das erste Anmelden ungeschuetzt zu
+        // lassen. `null` statt `undefined`, weil der Treiber sonst nichts einzusetzen hat.
+        user.oidcIssuer ?? null,
+        user.oidcSubject ?? null,
       ],
     );
+  }
+
+  // JOB 2686 (R2-7): Auflösung über (Aussteller, Subjekt). Beide Bedingungen stehen ausdrücklich
+  // auf NOT NULL — ohne sie träfe ein leeres Suchargument die erste unverknüpfte Zeile.
+  async findByOidcSubject(issuer: string, subject: string): Promise<User | undefined> {
+    if (!issuer || !subject) {
+      return undefined;
+    }
+    const res = await this.pool.query<UserRow>(
+      "SELECT * FROM users WHERE oidc_issuer=$1 AND oidc_subject=$2",
+      [issuer, subject],
+    );
+    return res.rows[0] ? toUser(res.rows[0]) : undefined;
   }
 
   // SCRUM-504: EIN INSERT, das den Claim UND die Admin-Zeile atomar zusammenfasst (kein Split-Brain).
@@ -185,8 +227,8 @@ export class PgUserRepo implements UserRepo {
   // (nicht etwa die E-Mail-Unique) den DO-NOTHING-Pfad auslöst.
   async tryClaimBootstrapAdmin(user: User): Promise<boolean> {
     const res = await this.pool.query(
-      `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin)
-       VALUES($1,$2,$3,$4,$5,$6,$7,$8,true)
+      `INSERT INTO users(id,name,email,password_salt,password_hash,role,approved,created_at,bootstrap_admin,oidc_issuer,oidc_subject)
+       VALUES($1,$2,$3,$4,$5,$6,$7,$8,true,$9,$10)
        ON CONFLICT (bootstrap_admin) WHERE bootstrap_admin DO NOTHING
        RETURNING id`,
       [
@@ -198,6 +240,10 @@ export class PgUserRepo implements UserRepo {
         user.role,
         user.approved,
         user.createdAt,
+        // JOB 2686 (R2-7): auch der Bootstrap-Admin kann ein SSO-Konto sein. Ohne diese beiden
+        // Spalten wäre ausgerechnet das erste und mächtigste Konto das einzige unverknüpfte.
+        user.oidcIssuer ?? null,
+        user.oidcSubject ?? null,
       ],
     );
     return (res.rowCount ?? 0) > 0;
@@ -210,7 +256,7 @@ export class PgUserRepo implements UserRepo {
   async update(user: User, tx?: TxContext): Promise<void> {
     const ziel = tx ? pgQueryable(tx) : poolQueryable(this.pool);
     await ziel.query(
-      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10 WHERE id=$1",
+      "UPDATE users SET name=$2,email=$3,password_salt=$4,password_hash=$5,role=$6,approved=$7,created_at=$8,notice_ack_at=$9,notice_ack_version=$10,oidc_issuer=$11,oidc_subject=$12 WHERE id=$1",
       [
         user.id,
         user.name,
@@ -224,6 +270,11 @@ export class PgUserRepo implements UserRepo {
         // ohne die beiden Felder gelesen hat, einen bestehenden Vermerk nicht mehr überschreiben.
         user.noticeAckAt ?? null,
         user.noticeAckVersion ?? null,
+        // JOB 2686 (R2-7): dieselbe Begründung — der Übergangsweg SCHREIBT die Verknüpfung über
+        // genau diesen Weg. Würden die Spalten hier fehlen, bliebe das Konto für immer unverknüpft
+        // und liefe bei jedem Anmelden erneut über den E-Mail-Zweig.
+        user.oidcIssuer ?? null,
+        user.oidcSubject ?? null,
       ],
     );
   }

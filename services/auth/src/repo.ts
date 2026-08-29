@@ -8,6 +8,16 @@ export interface UserRepo {
   list(): Promise<User[]>;
   findByEmail(email: string): Promise<User | undefined>;
   findById(id: string): Promise<User | undefined>;
+  /**
+   * JOB 2686 (R2-7): Auflösung über die Identität aus dem Anbieter statt über die Mailadresse.
+   *
+   * BEIDE Teile sind Teil des Schlüssels. `sub` ist nur innerhalb eines Ausstellers eindeutig —
+   * wer nur danach sucht, lässt einen zweiten (etwa versehentlich mitkonfigurierten) Anbieter
+   * fremde Konten treffen. Ein Konto ohne gespeicherte Verknüpfung wird von dieser Methode NIE
+   * geliefert; für das erste Verknüpfen ist ausdrücklich `findByEmail` zuständig, und nur unter
+   * der Bedingung `email_verified` (s. AuthService.loginWithOidc).
+   */
+  findByOidcSubject(issuer: string, subject: string): Promise<User | undefined>;
   insert(user: User): Promise<void>;
   /**
    * AUFTRAG-mega62 Block B: `tx` ist ein OPTIONALER, opaker Transaktionskontext (services/db-tx) —
@@ -85,6 +95,21 @@ export class InMemoryUserRepo implements UserRepo {
 
   findById(id: string): Promise<User | undefined> {
     return Promise.resolve(this.users.get(id));
+  }
+
+  // JOB 2686 (R2-7): Spiegel des partiellen Unique-Index aus AUTH_SCHEMA. Konten OHNE Verknüpfung
+  // sind hier unsichtbar — ein leeres oder fehlendes Feld darf niemals auf ein leeres Suchargument
+  // passen, sonst träfe die erste unverknüpfte Zeile jede Anfrage.
+  findByOidcSubject(issuer: string, subject: string): Promise<User | undefined> {
+    if (!issuer || !subject) {
+      return Promise.resolve(undefined);
+    }
+    for (const user of this.users.values()) {
+      if (user.oidcIssuer === issuer && user.oidcSubject === subject) {
+        return Promise.resolve(user);
+      }
+    }
+    return Promise.resolve(undefined);
   }
 
   insert(user: User): Promise<void> {

@@ -409,8 +409,18 @@ describe("authRoutes — Setup, Status & Users (§2.1/2.2)", () => {
 // erzwingen „höchstens ein Bootstrap-Admin"; im Single-Thread-Modell von JS macht Promise.all die
 // Nebenläufigkeit sichtbar. Verlierer werden normale Nicht-Admins (kein Fehler).
 describe("SCRUM-504: Admin-Bootstrap ist atomar", () => {
+  // JOB 2686 (R2-7/R2-8): `iss` und `rolesClaimPresent` gehören seither zum Vertrag. `iss`, weil
+  // `sub` nur innerhalb eines Ausstellers eindeutig ist; `rolesClaimPresent`, weil ein FEHLENDER
+  // Rollen-Claim etwas anderes ist als eine leere Gruppenliste.
   function claims(i: number) {
-    return { sub: `s${i}`, email: `u${i}@x.de`, name: `U${i}`, roles: [] };
+    return {
+      sub: `s${i}`,
+      email: `u${i}@x.de`,
+      name: `U${i}`,
+      roles: [],
+      iss: "https://idp.example.com",
+      rolesClaimPresent: false,
+    };
   }
 
   it("viele parallele register auf leerer Instanz → GENAU ein Admin, Rest Experte/gesperrt", async () => {
@@ -452,7 +462,14 @@ describe("SCRUM-504: Admin-Bootstrap ist atomar", () => {
       Promise.all(
         Array.from({ length: 6 }, (_, i) =>
           service.loginWithOidc(
-            { sub: `o${i}`, email: `o${i}@x.de`, name: `O${i}`, roles: [] },
+            {
+              sub: `o${i}`,
+              email: `o${i}@x.de`,
+              name: `O${i}`,
+              roles: [],
+              iss: "https://idp.example.com",
+              rolesClaimPresent: false,
+            },
             true,
           ),
         ),

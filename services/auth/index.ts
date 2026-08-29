@@ -3,6 +3,9 @@ export { AuthService } from "./src/service";
 export type { AuthServiceDeps, RegisterInput, LoginInput } from "./src/service";
 // WP-VIP2-GATE (bens P1, Token-at-Rest): Hash-Format + Einmal-Migration des Klartext-Bestands.
 export { TOKEN_HASH_PREFIX, hashTokenAtRest } from "./src/service";
+// JOB 2686 (R2-8): die Sitzungsdauer für SSO-Anmeldungen als eigener, prüfbarer Schalter.
+// Vorgabe ist das heutige Verhalten (14 Tage); die Zahl ist eine offene Frage bei Pedi.
+export { oidcSessionTtlMs } from "./src/service";
 export { migrateAuthTokensAtRest } from "./src/repo-pg";
 export { authRoutes } from "./src/routes";
 // WP-VIP2-GATE (bens P1): Registrierungs-Schalter + Cookie-Start-Wächter (testbar exportiert).

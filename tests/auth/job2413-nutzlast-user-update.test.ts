@@ -76,6 +76,10 @@ const NUTZER: NutzerWerte = {
   createdAt: "2026-01-01T00:00:00.000Z",
   noticeAckAt: "2026-02-02T00:00:00.000Z",
   noticeAckVersion: "WERT-ACK-VERSION",
+  // JOB 2686 (R2-7): zwei weitere Textspalten, und sie gehören genau zu der Klasse, um die es
+  // dieser Datei geht — beide optional, beide Zeichenketten, keine schließt die andere aus.
+  oidcIssuer: "WERT-AUSSTELLER",
+  oidcSubject: "WERT-SUBJEKT",
 } as NutzerWerte;
 
 /**
@@ -105,11 +109,12 @@ async function update(): Promise<Anweisung> {
 }
 
 describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
-  it("KALIBRIERUNG: die Anweisung geht raus und trägt zehn Parameter", async () => {
+  it("KALIBRIERUNG: die Anweisung geht raus und trägt zwölf Parameter", async () => {
     // Ohne diesen Fall wäre jede Zuordnung unten still erfüllt, wenn gar nichts gesendet würde.
+    // JOB 2686 (R2-7): waren zehn, sind zwölf — `oidc_issuer` und `oidc_subject` sind dazugekommen.
     const a = await update();
 
-    expect(a.params).toHaveLength(10);
+    expect(a.params).toHaveLength(12);
     expect(a.text, "das UPDATE bindet den Nutzer nicht über die Id").toMatch(/WHERE\s+id=\$1/i);
     expect(a.params[0], "an $1 steht nicht die Id").toBe("WERT-ID");
   });
@@ -157,6 +162,21 @@ describe("JOB 2413 · die Nutzlast von PgUserRepo.update", () => {
       wertFuerSpalte(a, "notice_ack_at"),
       "`notice_ack_at` trägt die Version statt des Zeitpunkts",
     ).not.toBe("WERT-ACK-VERSION");
+  });
+
+  it("GRUPPE 4 — oidc_issuer und oidc_subject stehen nicht über Kreuz (JOB 2686)", async () => {
+    // Der Dreher wäre hier besonders leise: Aussteller und Subjekt sind beides undurchsichtige
+    // Zeichenketten, und die Auflösung sucht nach dem PAAR. Stünden sie vertauscht in der
+    // Datenbank, fände `findByOidcSubject` das Konto nie wieder — der Mensch käme nicht mehr
+    // herein, und der Fehler sähe aus wie ein Problem des Anbieters.
+    const a = await update();
+
+    expect(wertFuerSpalte(a, "oidc_issuer"), "`oidc_issuer` trägt nicht den Aussteller").toBe(
+      "WERT-AUSSTELLER",
+    );
+    expect(wertFuerSpalte(a, "oidc_subject"), "`oidc_subject` trägt nicht das Subjekt").toBe(
+      "WERT-SUBJEKT",
+    );
   });
 
   it("die übrigen Spalten tragen ebenfalls ihren eigenen Wert", async () => {

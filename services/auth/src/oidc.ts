@@ -25,6 +25,8 @@ export interface OidcConfig {
   redirectUri: string;
   clientSecret?: string | undefined;
   autoProvision?: boolean;
+  // JOB 2686 (R2-7): siehe createOidcVerifier — Vorgabe `true`, fail-closed.
+  requireEmailVerified?: boolean;
   roles: OidcRoleConfig;
 }
 
@@ -33,6 +35,20 @@ export interface OidcClaims {
   email: string;
   name: string;
   roles: string[];
+  // JOB 2686 (R2-7): der Aussteller. `sub` ist nur INNERHALB eines Ausstellers eindeutig — erst
+  // das Paar (iss, sub) ist eine Identitaet. Kommt aus dem verifizierten Token, nicht aus der
+  // Konfiguration: `jwtVerify` hat ihn bereits gegen `config.issuer` geprueft, er kann also nicht
+  // abweichen — aber er steht damit auch belegt im Claim und nicht nur als Annahme daneben.
+  iss: string;
+  // JOB 2686 (R2-7): `undefined` heisst „der Anbieter hat den Claim nicht gesendet" — das ist NICHT
+  // dasselbe wie `false`. Manche Anbieter senden ihn gar nicht; die duerfen nicht ausgesperrt
+  // werden. `false` dagegen ist eine ausdrueckliche Aussage: diese Adresse ist ungeprueft.
+  emailVerified?: boolean | undefined;
+  // JOB 2686 (R2-8): hat der Anbieter den Rollen-Claim ueberhaupt gesendet? Ein fehlender Claim
+  // und eine leere Gruppenliste sehen nach dem Parsen beide wie `[]` aus, bedeuten aber
+  // Verschiedenes — „keine Auskunft" gegen „ausdruecklich keine Gruppen". Ohne diese Unterscheidung
+  // koennte ein Anbieter, der den Claim vergisst, jeden still zum Betrachter herabstufen.
+  rolesClaimPresent: boolean;
 }
 
 // --- PKCE / Zufallswerte ---------------------------------------------------
@@ -99,10 +115,16 @@ export function createOidcVerifier(
   config: Pick<OidcConfig, "issuer" | "audience" | "jwksUri"> & {
     autoProvision?: boolean;
     roleClaim?: string;
+    // JOB 2686 (R2-7): Vorgabe `true` — fail-closed. Wer den Schalter nicht kennt, bekommt die
+    // sichere Seite. Er ist nur fuer den Fall da, dass ein Anbieter `email_verified: false` sendet,
+    // obwohl seine Adressen aus anderer Quelle verlaesslich sind; dann ist es eine bewusste,
+    // dokumentierte Entscheidung des Betreibers und kein Versehen.
+    requireEmailVerified?: boolean;
   },
   keyResolver?: JWTVerifyGetKey,
 ): OidcVerifier {
   const roleClaim = config.roleClaim ?? "roles";
+  const requireEmailVerified = config.requireEmailVerified ?? true;
   // JWKS erst bei Bedarf auflösen (lazy) — so lässt sich ein Provider bauen, ohne
   // dass eine (evtl. noch nicht erreichbare) JWKS-URL sofort geparst werden muss.
   let keys = keyResolver;
@@ -125,12 +147,37 @@ export function createOidcVerifier(
       if (!email) {
         throw new Error("OIDC-Token enthält keine E-Mail.");
       }
+      // JOB 2686 (R2-7), PRUEFUNG 1: DAS SUBJEKT MUSS DA SEIN.
+      //
+      // Vorher stand hier `String(payload.sub ?? "")` — ein Token ohne `sub` ergab den leeren
+      // String, und der lief als gueltige Identitaet durch. `sub` ist im OIDC-Kern ein
+      // Pflichtclaim; fehlt er, ist das Token kaputt oder gebastelt, und beides ist kein Grund,
+      // jemanden anzumelden.
+      const sub = typeof payload.sub === "string" ? payload.sub.trim() : "";
+      if (!sub) {
+        throw new Error("OIDC-Token enthält kein Subjekt (sub).");
+      }
+      // JOB 2686 (R2-7), PRUEFUNG 2: EINE AUSDRUECKLICH UNGEPRUEFTE ADRESSE IST KEINE IDENTITAET.
+      //
+      // Die Unterscheidung ist der ganze Punkt: NICHT GESENDET laeuft durch (viele Anbieter
+      // fuehren den Claim nicht), AUSDRUECKLICH `false` nicht. Wer im eigenen Anbieter
+      // `admin@fremde-firma.de` eintraegt, ohne sie zu belegen, kommt damit nicht weiter.
+      const emailVerified =
+        typeof payload.email_verified === "boolean" ? payload.email_verified : undefined;
+      if (requireEmailVerified && emailVerified === false) {
+        throw new Error("OIDC-Token trägt eine nicht verifizierte E-Mail-Adresse.");
+      }
       const name = typeof payload.name === "string" ? payload.name : email;
       return {
-        sub: String(payload.sub ?? ""),
+        sub,
         email,
         name,
         roles: parseRolesClaim(payload[roleClaim]),
+        // `jwtVerify` hat den Aussteller bereits gegen `config.issuer` geprueft — beide Werte sind
+        // an dieser Stelle zwangslaeufig gleich. Der Rueckfall ist nur der Typenglaettung wegen da.
+        iss: typeof payload.iss === "string" ? payload.iss : config.issuer,
+        emailVerified,
+        rolesClaimPresent: payload[roleClaim] !== undefined,
       };
     },
   };
@@ -206,6 +253,7 @@ export function createOidcProvider(config: OidcConfig, deps: OidcProviderDeps = 
       jwksUri: config.jwksUri,
       autoProvision: config.autoProvision ?? false,
       roleClaim: config.roles.roleClaim,
+      requireEmailVerified: config.requireEmailVerified ?? true,
     },
     deps.keyResolver,
   );
@@ -261,6 +309,11 @@ export function createOidcProviderFromEnv(
       redirectUri: env.OIDC_REDIRECT_URI as string,
       clientSecret: env.OIDC_CLIENT_SECRET,
       autoProvision: env.OIDC_AUTOPROVISION === "true",
+      // JOB 2686 (R2-7): FAIL-CLOSED — nur ein ausdrueckliches "false" schaltet die Pruefung ab.
+      // Bewusst andersherum als `OIDC_AUTOPROVISION` (dort schaltet ein ausdrueckliches "true"
+      // EIN): ein Tippfehler, eine leere Variable oder eine vergessene Zeile landet hier auf der
+      // sicheren Seite, dort auf der zurueckhaltenden. Beide Male gewinnt nicht der Zufall.
+      requireEmailVerified: env.OIDC_REQUIRE_EMAIL_VERIFIED !== "false",
       roles: {
         roleClaim: env.OIDC_ROLE_CLAIM ?? "roles",
         adminGroup: env.OIDC_GROUP_ADMIN,

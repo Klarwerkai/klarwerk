@@ -185,10 +185,20 @@ const schluessel = (f: Fund): string =>
 // „ungedeckt" heisst: gemessen, dass es einen solchen Test nicht gibt.
 // ------------------------------------------------------------------------------------------------
 const REGISTER: readonly string[] = [
-  // UPDATE users — PgUserRepo.update, neun Parameter. UNGEDECKT: kein laufender Test loest diese
-  // SET-Liste auf. Die Praefix-Achse meldet hier `password_salt`/`password_hash` — ein Dreher
-  // zwischen diesen beiden waere still und schwer.
-  "services/auth/src/repo-pg.ts | name,email,password_salt,password_hash,role,approved,created_at,notice_ack_at,notice_ack_version | praefix:notice_ack: notice_ack_at=$9, notice_ack_version=$10 · praefix:password: password_salt=$4, password_hash=$5 · zeitstempel: created_at=$8, notice_ack_at=$9",
+  // UPDATE users — PgUserRepo.update. JOB 2686 D1: waren neun Spalten, sind elf — `oidc_issuer`
+  // und `oidc_subject` sind als vierte Praefix-Gruppe dazugekommen (Review-Befund R2-7).
+  //
+  // GEDECKT, und zwar vollstaendig: `tests/auth/job2413-nutzlast-user-update.test.ts` loest diese
+  // SET-Liste gegen die Parameterliste auf und wuerde jeden Dreher melden — GRUPPE 1 fuer
+  // `password_*`, GRUPPE 3 fuer `notice_ack_*`, GRUPPE 4 fuer das neue `oidc_*`-Paar. Der
+  // Vermerk „UNGEDECKT" von JOB 2408 stammt aus einem Baumstand vor jener Datei und stimmte
+  // damals; er stimmt seit JOB 2413 nicht mehr und wird hier nachgezogen.
+  //
+  // Das neue Paar gehoert zur selben Klasse wie `password_salt`/`password_hash`: zwei
+  // undurchsichtige Zeichenketten nebeneinander. Ein Dreher waere hier sogar leiser — die
+  // Auflösung sucht nach dem PAAR (Aussteller, Subjekt), fände das Konto nie wieder, und der
+  // Fehler saehe aus wie ein Problem des Identitaetsanbieters.
+  "services/auth/src/repo-pg.ts | name,email,password_salt,password_hash,role,approved,created_at,notice_ack_at,notice_ack_version,oidc_issuer,oidc_subject | praefix:notice_ack: notice_ack_at=$9, notice_ack_version=$10 · praefix:oidc: oidc_issuer=$11, oidc_subject=$12 · praefix:password: password_salt=$4, password_hash=$5 · zeitstempel: created_at=$8, notice_ack_at=$9",
   // touchSession — laeuft ueber `cas()`, nicht ueber `casMitConsent`. UNGEDECKT.
   "services/reasoner/src/klara-policy-store.ts | last_activity_at,expires_at | zeitstempel: last_activity_at=$3, expires_at=$4",
   // rebindSession — drei drehbare Gruppen auf einmal, die dichteste Stelle im Baum. Gedeckt durch
