@@ -661,6 +661,14 @@ export function Capture(): JSX.Element {
   const [videoBusy, setVideoBusy] = useState<string | null>(null);
   // SCRUM-113 / FE-CAP-07: aktuell fortgesetzter Entwurf (null = neuer Entwurf).
   const [draftId, setDraftId] = useState<string | null>(null);
+  // JOB 2684 D2 (R2-17): der Stand (`updatedAt`) des fortgesetzten Entwurfs, den DIESE Seite zuletzt
+  // gesehen hat. Er reist beim Speichern und beim Einreichen als `expectedUpdatedAt` mit — derselbe
+  // Weg, den die Vordertür seit D1 geht (CaptureFrontDoor.tsx). Ein Ref, kein State: er ändert die
+  // Anzeige nicht, er ist die Grundlage des Vergleichs auf dem Server.
+  const loadedUpdatedAtRef = useRef<string | null>(null);
+  // JOB 2684 D2: der Standkonflikt (409 `DRAFT_STALE`) — die Meldung ist DIESELBE wie in der
+  // Vordertür (`fd.draftStale`): ein Mensch, der beide Türen offen hat, liest an beiden denselben Satz.
+  const [staleConflict, setStaleConflict] = useState(false);
   // Bugfix (Pedi 04.07.): Inline-Bestätigung vor dem Löschen eines Entwurfs (null = keine offen).
   const [confirmDiscardDraftId, setConfirmDiscardDraftId] = useState<string | null>(null);
   const qc = useQueryClient();
@@ -1426,6 +1434,11 @@ export function Capture(): JSX.Element {
             draftPayload,
             documents: anchorDocuments,
             ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
+            // JOB 2684 D3 (R2-17): auch der Dokumentweg trägt den gesehenen Stand — ein veralteter
+            // Tab legt auch hier nichts an (409 DRAFT_STALE, derselbe Kasten wie beim Promote).
+            ...(loadedUpdatedAtRef.current
+              ? { expectedUpdatedAt: loadedUpdatedAtRef.current }
+              : {}),
           });
           ko = antwort;
           followUpsFailed = antwort.followUpsFailed ?? [];
@@ -1455,6 +1468,8 @@ export function Capture(): JSX.Element {
           operationId,
           draftPayload,
           ...(reviewerIds.length > 0 ? { reviewerIds } : {}),
+          // JOB 2684 D2: der gesehene Stand reist mit — ein veralteter Stand befördert nichts (409).
+          ...(loadedUpdatedAtRef.current ? { expectedUpdatedAt: loadedUpdatedAtRef.current } : {}),
         });
         setSubmittedFromDraft(true);
       } else {
@@ -1688,6 +1703,15 @@ export function Capture(): JSX.Element {
       if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
         submitOperationRef.current = null;
       }
+      // JOB 2684 D2 (R2-17): der Standkonflikt ist kein Fehler des Einreichens, sondern eine
+      // Nachricht — der Entwurf wurde an anderer Stelle geändert, nichts wurde befördert, nichts
+      // überschrieben. Kein „Speichern fehlgeschlagen", kein Neustart-Angebot: der Kasten mit
+      // „Neu laden" ist der Ausweg, und der eigene Text bleibt stehen.
+      if (e instanceof ApiError && e.code === "DRAFT_STALE") {
+        setStaleConflict(true);
+        setErr(null);
+        return;
+      }
       // ========================================================================================
       // AUFTRAG-mega22 Block E — DER 409 BEKOMMT EINEN RÜCKWEG, UND ZWAR NACH FEHLERCODE.
       // ========================================================================================
@@ -1772,7 +1796,16 @@ export function Capture(): JSX.Element {
         origin: originForSave({ expert: isExpertMode(mode), wizStep: wizStepRaw }),
       };
       // SCRUM-113 / FE-CAP-07: fortgesetzten Entwurf aktualisieren, sonst neu anlegen.
-      return draftId ? endpoints.drafts.update(draftId, payload) : endpoints.drafts.create(payload);
+      // JOB 2684 D2: beim Aktualisieren reist der gesehene Stand mit (s. `loadedUpdatedAtRef`).
+      return draftId
+        ? endpoints.drafts.update(
+            draftId,
+            payload,
+            loadedUpdatedAtRef.current
+              ? { expectedUpdatedAt: loadedUpdatedAtRef.current }
+              : undefined,
+          )
+        : endpoints.drafts.create(payload);
     },
     onSuccess: (_d) => {
       void qc.invalidateQueries({ queryKey: ["drafts"] });
@@ -1810,10 +1843,22 @@ export function Capture(): JSX.Element {
       setShowAdvanced(false);
       setWizStep("tell");
       setDraftId(null);
+      // JOB 2684 D2: der Entwurf ist gespeichert und die Eingabe leer — es gibt keinen gesehenen
+      // Stand mehr, gegen den geschrieben würde.
+      loadedUpdatedAtRef.current = null;
+      setStaleConflict(false);
       setNotice(msg);
       push("success", msg);
     },
     onError: (e) => {
+      // JOB 2684 D2 (R2-17): 409 `DRAFT_STALE` — der Entwurf wurde inzwischen an anderer Stelle
+      // geändert (zweiter Tab, Vordertür). Nichts wurde gespeichert, nichts überschrieben; der Text
+      // bleibt im Editor, der Kasten sagt, was zu tun ist. Kein Toast „Fehler" — es ist keiner.
+      if (e instanceof ApiError && e.code === "DRAFT_STALE") {
+        setStaleConflict(true);
+        setErr(null);
+        return;
+      }
       fail(e);
       push("error", t("state.error"));
     },
@@ -1896,6 +1941,10 @@ export function Capture(): JSX.Element {
     setExtResults([]);
     setExtListDropped(Boolean(p.extQuery?.trim()));
     setDraftId(d.id);
+    // JOB 2684 D2: DAS ist der Stand, den diese Seite gesehen hat — er reist ab jetzt beim Speichern
+    // und Einreichen mit. Ein früherer Konflikt ist mit dem Neuladen erledigt.
+    loadedUpdatedAtRef.current = d.updatedAt ?? null;
+    setStaleConflict(false);
     // SCRUM-375: geladener Entwurf bringt erweiterte Felder mit → aufklappen, nichts verstecken.
     setShowAdvanced(true);
     const structuredDraft = {
@@ -1942,6 +1991,23 @@ export function Capture(): JSX.Element {
     window.setTimeout(() => {
       workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 0);
+  };
+
+  // JOB 2684 D2: „Neu laden" nach einem Standkonflikt — holt die andere Fassung AUSDRÜCKLICH und
+  // ersetzt damit den eigenen Text (der Satz im Kasten sagt das vorher). Derselbe Ausweg wie in der
+  // Vordertür; dort lädt ein Effekt neu, hier lädt `loadDraft` den frischen Entwurf in das Studio.
+  const reloadStaleDraft = async (): Promise<void> => {
+    if (!draftId) {
+      setStaleConflict(false);
+      return;
+    }
+    try {
+      const frisch = await endpoints.drafts.get(draftId);
+      setStaleConflict(false);
+      loadDraft(frisch);
+    } catch (e) {
+      fail(e);
+    }
   };
 
   const discardDraft = useMutation({
@@ -5315,6 +5381,21 @@ export function Capture(): JSX.Element {
                 </>
               ) : null}
 
+              {/* JOB 2684 D2: der Standkonflikt — derselbe Satz wie in der Vordertür, mit Ausweg. */}
+              {staleConflict ? (
+                <div
+                  data-testid="capture-draft-stale"
+                  role="alert"
+                  className="rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text"
+                >
+                  <p>{t("fd.draftStale")}</p>
+                  <div className="mt-2">
+                    <Button type="button" variant="ghost" onClick={() => void reloadStaleDraft()}>
+                      {t("fd.draftStaleReload")}
+                    </Button>
+                  </div>
+                </div>
+              ) : null}
               {err ? (
                 <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
                   {err}
@@ -5928,6 +6009,21 @@ export function Capture(): JSX.Element {
                   </div>
                 ) : null}
 
+                {/* JOB 2684 D2: der Standkonflikt — derselbe Satz wie in der Vordertür, mit Ausweg. */}
+                {staleConflict ? (
+                  <div
+                    data-testid="capture-draft-stale"
+                    role="alert"
+                    className="rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text"
+                  >
+                    <p>{t("fd.draftStale")}</p>
+                    <div className="mt-2">
+                      <Button type="button" variant="ghost" onClick={() => void reloadStaleDraft()}>
+                        {t("fd.draftStaleReload")}
+                      </Button>
+                    </div>
+                  </div>
+                ) : null}
                 {err ? (
                   <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
                     {err}

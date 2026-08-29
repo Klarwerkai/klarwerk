@@ -200,6 +200,39 @@ export interface CaptureRoutesDeps {
   aiCheckWorker?: AiCheckWorker | undefined;
 }
 
+// ================================================================================================
+// JOB 2684 D1 (Review R2-17) — ZWEI TABS, UND EIN ENTWURF IST WEG: der Stand reist mit.
+// ================================================================================================
+//
+// `expectedUpdatedAt` ist der `updatedAt`-Wert, den der Client beim Laden gesehen hat. Nur ein
+// nicht-leerer String zählt; alles andere heißt „kein Stand mitgeschickt" — dann gilt für diesen
+// Aufrufer der alte Weg (Mobil, Offline-Warteschlange senden keinen). Ein Konflikt wird NICHT über
+// `sendError` abgebildet: `DRAFT_STALE` steht nicht in `STATUS_BY_CODE` (http.ts, außerhalb dieser
+// Lease) und fiele dort auf 400 — ein Eingabefehler ist es aber nicht. Die Antwort trägt
+// `currentUpdatedAt`, damit der Client nach dem Neuladen weiß, wogegen er jetzt schreibt.
+function erwarteterStand(wert: unknown): string | undefined {
+  return typeof wert === "string" && wert.trim().length > 0 ? wert.trim() : undefined;
+}
+
+function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean {
+  if (!error || typeof error !== "object" || !("code" in error)) {
+    return false;
+  }
+  if ((error as { code: unknown }).code !== "DRAFT_STALE") {
+    return false;
+  }
+  const current = (error as { currentUpdatedAt?: unknown }).currentUpdatedAt;
+  reply.code(409).send({
+    error: "DRAFT_STALE",
+    message:
+      error instanceof Error && error.message
+        ? error.message
+        : "Der Entwurf wurde inzwischen an anderer Stelle geändert. Bitte neu laden.",
+    ...(typeof current === "string" ? { currentUpdatedAt: current } : {}),
+  });
+  return true;
+}
+
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
 
@@ -433,7 +466,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       },
     );
 
-    app.put<{ Params: { id: string }; Body: DraftPayload }>(
+    app.put<{ Params: { id: string }; Body: DraftPayload & { expectedUpdatedAt?: unknown } }>(
       "/api/drafts/:id",
       // WP-D1c/WP-D1d: derselbe dokument-taugliche Cap + Auth-vor-Parsing wie POST — ein bildreicher
       // Entwurf wird auch beim Weiterbearbeiten/Speichern gesendet.
@@ -462,10 +495,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           if (!(await requireVisibleDraft(capture, request.params.id, user, reply))) {
             return;
           }
-          reply
-            .code(200)
-            .send(await capture.continueDraft(request.params.id, gestalt.payload, user.id));
+          // JOB 2684 D1 (Review R2-17): `expectedUpdatedAt` ist KEIN Entwurfsfeld — es wird vor dem
+          // Merge abgetrennt, sonst landete es als Nutzlast im Entwurf. Fehlt es, gilt der alte Weg.
+          // (2684 D6: HINTER der Gestaltprüfung aus 2690, die Zusatzschlüssel unverändert durchreicht —
+          // die Prüfung bleibt so, wie das Produkt sie hat; der Stand wird erst danach abgetrennt.)
+          const { expectedUpdatedAt, ...payload } = gestalt.payload as DraftPayload & {
+            expectedUpdatedAt?: unknown;
+          };
+          reply.code(200).send(
+            await capture.continueDraft(request.params.id, payload as DraftPayload, user.id, {
+              expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
+            }),
+          );
         } catch (error) {
+          if (antwortBeiVeraltetemStand(reply, error)) {
+            return;
+          }
           sendError(reply, error);
         }
       },
@@ -557,6 +602,10 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         reviewerIds?: string[];
         operationId?: string;
         draftPayload?: DraftPayload;
+        // JOB 2684 D1: der Stand, den der Client beim Laden gesehen hat — der Promote ist die
+        // teuerste Stelle für einen stillen Überschreiber (das Wissensobjekt entstünde aus dem
+        // alten Text). Optional, damit Aufrufer ohne Stand weiter funktionieren.
+        expectedUpdatedAt?: unknown;
       } | null;
     }>(
       "/api/drafts/:id/promote",
@@ -622,13 +671,20 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // `PUT /api/drafts/:id` mehr, das nach einem gelungenen ersten Lauf mit 404 abfinge.
           // Die Gestaltprüfung läuft am RAND (mega22 Block D) — ein Formfehler wird hier 400 und
           // entsteht nicht in der Tiefe von `continueDraft`.
+          // JOB 2684 D1: derselbe Standvergleich wie beim Speichern — VOR jedem Schreiben und vor
+          // dem Wissensobjekt. Ein veralteter Tab bekommt 409 und legt nichts an.
+          const expectedUpdatedAt = erwarteterStand(body.expectedUpdatedAt);
           if (body.draftPayload !== undefined) {
             const gestalt = validateDraftPayloadShape(body.draftPayload);
             if (!gestalt.ok) {
               reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
               return;
             }
-            await capture.continueDraft(request.params.id, gestalt.payload, user.id);
+            await capture.continueDraft(request.params.id, gestalt.payload, user.id, {
+              expectedUpdatedAt,
+            });
+          } else if (expectedUpdatedAt !== undefined) {
+            await capture.requireFresh(request.params.id, expectedUpdatedAt);
           }
           const input = await capture.toKoInput(request.params.id);
           // WP-RETEST7 R6: author IMMER aus einem echten Nutzer — normal der Originalautor des
@@ -671,6 +727,11 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           // Fertigstellung der Ablage, nicht zur Client-Latenz (201 ist schon raus).
           await indexKoForDuplicatePrefilter(created, semanticPrefilter);
         } catch (error) {
+          // JOB 2684 D1: ein veralteter Stand ist ein Konflikt, kein Eingabefehler — 409, und es ist
+          // NICHTS entstanden (der Vergleich steht vor `continueDraft` und vor `ko.create`).
+          if (antwortBeiVeraltetemStand(reply, error)) {
+            return;
+          }
           sendError(reply, error);
         }
       },

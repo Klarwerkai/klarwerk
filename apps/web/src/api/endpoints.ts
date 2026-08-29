@@ -236,6 +236,11 @@ export interface CreateFromDocumentRequest {
    */
   operationId: string;
   draftId?: string;
+  /**
+   * JOB 2684 D3 (R2-17): der `updatedAt`-Stand des fortgesetzten Entwurfs, den der Client beim
+   * Laden gesehen hat. Ein veralteter Stand legt nichts an — 409 `DRAFT_STALE`, wie beim Promote.
+   */
+  expectedUpdatedAt?: string;
   create?: DraftPayload;
   /**
    * AUFTRAG-mega21 Block B: der AKTUELLE Entwurfsstand reist MIT der Erstanlage statt in einem
@@ -403,7 +408,14 @@ export const endpoints = {
     // Entwürfe verloren Titel & Inhalte bis zum ersten Update. Jetzt konsistent flach.
     create: (payload: DraftPayload) => api.post<Draft>("/drafts", payload),
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
-    update: (id: string, payload: DraftPayload) => api.put<Draft>(`/drafts/${id}`, payload),
+    // JOB 2684 D1: `expectedUpdatedAt` = der beim Laden gesehene Stand; der Server antwortet 409
+    // DRAFT_STALE, wenn inzwischen jemand anders (zweiter Tab, Studio) gespeichert hat. Ohne den
+    // Wert bleibt der alte Weg (Mobil, Offline-Warteschlange).
+    update: (id: string, payload: DraftPayload, opts?: { expectedUpdatedAt?: string }) =>
+      api.put<Draft>(`/drafts/${id}`, {
+        ...payload,
+        ...(opts?.expectedUpdatedAt ? { expectedUpdatedAt: opts.expectedUpdatedAt } : {}),
+      }),
     remove: (id: string) => api.del<void>(`/drafts/${id}`),
     // SCRUM-395: optionaler Prüfer-Vorschlag auch auf dem Entwurfs-Weg.
     // AUFTRAG-mega22 Block H: `operationId` macht den Promote WIEDERHOLBAR (derselbe Vertrag wie
@@ -412,7 +424,13 @@ export const endpoints = {
     // einem gelungenen ersten Lauf mit 404 abfinge, weil der Entwurf dann bereits gelöscht ist.
     promote: (
       id: string,
-      body?: { reviewerIds?: string[]; operationId?: string; draftPayload?: DraftPayload },
+      body?: {
+        reviewerIds?: string[];
+        operationId?: string;
+        draftPayload?: DraftPayload;
+        // JOB 2684 D1: derselbe Standvergleich wie beim Speichern — vor dem Wissensobjekt.
+        expectedUpdatedAt?: string;
+      },
     ) => api.post<KnowledgeObject>(`/drafts/${id}/promote`, body),
   },
   ask: {

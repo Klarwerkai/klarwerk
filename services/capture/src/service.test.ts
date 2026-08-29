@@ -292,6 +292,16 @@ class JsonRoundTripDraftRepo implements DraftRepo {
     return Promise.resolve();
   }
 
+  // JOB 2684 D3: dieselbe Bedingung wie in repo-pg.ts (`data->>'updatedAt' = $3`), am JSON gelesen.
+  updateWennStand(draft: Draft, erwarteterStand: string): Promise<boolean> {
+    const row = this.rows.get(draft.id);
+    if (!row || (JSON.parse(row) as Draft).updatedAt !== erwarteterStand) {
+      return Promise.resolve(false);
+    }
+    this.rows.set(draft.id, JSON.stringify(draft));
+    return Promise.resolve(true);
+  }
+
   delete(id: string): Promise<void> {
     this.rows.delete(id);
     return Promise.resolve();
@@ -404,11 +414,23 @@ class PoolDoppel {
   readonly abfragen: Abfrage[] = [];
   private readonly tabelle = new Map<string, string>();
 
-  query<T>(text: string, werte: unknown[] = []): Promise<{ rows: T[] }> {
+  query<T>(text: string, werte: unknown[] = []): Promise<{ rows: T[]; rowCount?: number }> {
     this.abfragen.push({ text, werte });
+    // JOB 2684 D3: die Schreibanweisung mit Standbedingung (`… AND data->>'updatedAt' = $3`) —
+    // das Doppel wertet sie aus wie Postgres: Treffer nur, wenn der gespeicherte Stand passt;
+    // `rowCount` sagt, ob geschrieben wurde. Ohne Bedingung: schreiben, rowCount 1.
+    if (text.startsWith("UPDATE") && text.includes("data->>'updatedAt' = $3")) {
+      const roh = this.tabelle.get(werte[0] as string);
+      const gespeichert = roh === undefined ? undefined : (JSON.parse(roh) as Draft).updatedAt;
+      if (gespeichert !== werte[2]) {
+        return Promise.resolve({ rows: [], rowCount: 0 });
+      }
+      this.tabelle.set(werte[0] as string, werte[1] as string);
+      return Promise.resolve({ rows: [], rowCount: 1 });
+    }
     if (text.startsWith("INSERT") || text.startsWith("UPDATE")) {
       this.tabelle.set(werte[0] as string, werte[1] as string);
-      return Promise.resolve({ rows: [] });
+      return Promise.resolve({ rows: [], rowCount: 1 });
     }
     if (text.startsWith("SELECT data FROM drafts WHERE")) {
       const roh = this.tabelle.get(werte[0] as string);

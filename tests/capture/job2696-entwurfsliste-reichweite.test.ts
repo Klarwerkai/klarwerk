@@ -50,6 +50,11 @@ class MessendeAblage implements DraftRepo {
   update(d: Draft) {
     return this.innen.update(d);
   }
+  // 2684 D6: `updateWennStand` kam mit 2684 D3 in die Schnittstelle — nur durchgereicht; diese
+  // Messung liest, sie schreibt nicht mit Stand.
+  updateWennStand(d: Draft, erwarteterStand: string) {
+    return this.innen.updateWennStand(d, erwarteterStand);
+  }
   delete(id: string) {
     return this.innen.delete(id);
   }

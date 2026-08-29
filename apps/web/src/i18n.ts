@@ -4381,6 +4381,9 @@ const de = {
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
   "fd.errSaveFailed": "Speichern fehlgeschlagen.",
   "fd.errLoadFailed": "Der Entwurf konnte nicht geladen werden. Es wurde nichts gespeichert.",
+  "fd.draftStale":
+    "Dieser Entwurf wurde inzwischen an anderer Stelle geändert — zum Beispiel in einem zweiten Tab. Dein Stand hier wurde NICHT gespeichert und nichts wurde überschrieben. „Neu laden“ holt die andere Fassung; was du hier getippt hast, geht dabei verloren — kopiere es vorher, wenn du es behalten willst.",
+  "fd.draftStaleReload": "Neu laden",
   "fd.errAssist": "Ich kann diese KI-Hilfe gerade nicht verlässlich ausführen.",
   "fd.errSpelling": "Rechtschreibprüfung kann Formatierung aktuell nicht sicher erhalten.",
   "dcmp.kicker": "Read-only Vergleich",
@@ -8741,6 +8744,9 @@ const en: typeof de = {
   "fd.confirmDiscard": "Discard input? Unsaved content will be lost.",
   "fd.errSaveFailed": "Saving failed.",
   "fd.errLoadFailed": "The draft could not be loaded. Nothing was saved.",
+  "fd.draftStale":
+    "This draft has since been changed elsewhere — for example in a second tab. Your version here was NOT saved and nothing was overwritten. “Reload” fetches the other version; what you typed here will be lost — copy it first if you want to keep it.",
+  "fd.draftStaleReload": "Reload",
   "fd.errAssist": "I cannot run this AI help reliably right now.",
   "fd.errSpelling": "The spell check cannot safely preserve formatting at the moment.",
   "dcmp.kicker": "Read-only comparison",
@@ -12935,6 +12941,9 @@ const nl: typeof de = {
   "fd.confirmDiscard": "Invoer verwerpen? Niet-opgeslagen inhoud gaat verloren.",
   "fd.errSaveFailed": "Opslaan mislukt.",
   "fd.errLoadFailed": "Het concept kon niet worden geladen. Er is niets opgeslagen.",
+  "fd.draftStale":
+    "Dit concept is intussen elders gewijzigd — bijvoorbeeld in een tweede tabblad. Jouw versie hier is NIET opgeslagen en er is niets overschreven. „Opnieuw laden“ haalt de andere versie op; wat je hier hebt getypt gaat daarbij verloren — kopieer het eerst als je het wilt bewaren.",
+  "fd.draftStaleReload": "Opnieuw laden",
   "fd.errAssist": "Ik kan deze KI-hulp op dit moment niet betrouwbaar uitvoeren.",
   "fd.errSpelling": "Spellingcontrole kan de opmaak op dit moment niet zeker behouden.",
   "dcmp.kicker": "Read-only vergelijking",

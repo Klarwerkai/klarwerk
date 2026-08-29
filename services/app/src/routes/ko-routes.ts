@@ -128,9 +128,18 @@ export interface DraftPromotionSource {
     draftId: string,
     payload: unknown,
     user: { id: string; role: string },
+    /**
+     * JOB 2684 D3 (R2-17): der `updatedAt`-Stand, den der Client beim Laden gesehen hat. Gesetzt,
+     * wird der Entwurf nur geschrieben und befördert, wenn er noch diesen Stand trägt — sonst
+     * `stale` mit dem jetzt gespeicherten Stand (Antwort 409 `DRAFT_STALE`, wie am Promote).
+     */
+    expectedUpdatedAt?: string,
   ): Promise<
     | { ok: true; input: CreateKoInput }
     | { ok: false; reason: "not-found" | "forbidden" | "invalid"; message?: string }
+    | { ok: false; reason: "stale"; message: string; currentUpdatedAt: string }
+    /** JOB 2684 D4: sichtbarer Entwurf, aber kein Stand mitgeschickt — weggelassen, nicht neu. */
+    | { ok: false; reason: "stand-fehlt" }
   >;
 }
 
@@ -162,6 +171,14 @@ interface FromDocumentBody {
    * Inhalt MIT der Anlage reisen muss, steht an `DraftPromotionSource.applyAndLoad`.
    */
   draftPayload?: unknown;
+  /**
+   * JOB 2684 D3 (R2-17): der Stand des fortgesetzten Entwurfs, den der Client beim Laden gesehen
+   * hat. Nur zusammen mit `draftId`. Nur ein nicht-leerer String zählt (wie an den Entwurfsrouten).
+   * JOB 2684 D4: zusammen mit `draftId` PFLICHT — fehlt er oder ist er leer, antwortet die Route
+   * 400 `DRAFT_STAND_FEHLT`, ohne Wirkung (kein Altweg mehr). Er geht NICHT in den Abdruck:
+   * eine Wiederholung desselben Vorgangs trifft weiter den Nachschlag, bevor der Stand geprüft wird.
+   */
+  expectedUpdatedAt?: unknown;
   documents?: FromDocumentEntry[];
   reviewerIds?: string[];
   /**
@@ -819,8 +836,49 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
           // lesen, wie er im Bestand steht) ist entfallen — sie war der Weg, auf dem der Abdruck
           // den Entwurfsinhalt nicht sah. `draftPromotion.load` bleibt am Vertrag, weil der
           // Promote-Weg es benutzt (Block H); erreichbar ist es von HIER nicht mehr.
-          const loaded = await draftPromotion.applyAndLoad(body.draftId, body.draftPayload, user);
+          // JOB 2684 D3 (R2-17): der gesehene Stand reist mit — dieselbe Lesart wie an den
+          // Entwurfsrouten (nur ein nicht-leerer String zählt).
+          const expectedUpdatedAt =
+            typeof body.expectedUpdatedAt === "string" && body.expectedUpdatedAt.trim().length > 0
+              ? body.expectedUpdatedAt.trim()
+              : undefined;
+          // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG OHNE
+          // STAND IST ZU. Wer einen Entwurf aus dem Dokumentweg befoerdert, hat ihn geladen und
+          // kennt seinen Stand — Capture.tsx setzt ihn beim „Fortsetzen" und sendet ihn seit D3.
+          // Einen legitimen Aufrufer ohne Stand gibt es hier nicht: die drei Stellen, an denen das
+          // Studio selbst Entwuerfe anlegt (Dateipunkte, Ganzdatei), halten den Entwurf nicht,
+          // sondern leeren das Formular — ein `draftId` im Dokumentweg entsteht nur ueber das
+          // Laden. Ein fehlender oder leerer Stand ist deshalb „weggelassen", nicht „neu": 400,
+          // ohne Entwurfs- oder Wissensobjektwirkung. Ein Schutz, den ein Aufrufer weglassen
+          // kann, ist keiner (Befund 3 des ersten Reviews, dieselbe Bauart).
+          // Die Pruefung selbst sitzt im Adapter (build-app.ts, `applyAndLoad`) HINTER der
+          // Sichtbarkeitsregel: ein fremder oder fehlender Entwurf bleibt 403/404, wie bisher —
+          // erst ein sichtbarer Entwurf ohne Stand ist „weggelassen".
+          const loaded = await draftPromotion.applyAndLoad(
+            body.draftId,
+            body.draftPayload,
+            user,
+            expectedUpdatedAt,
+          );
           if (!loaded.ok) {
+            if (loaded.reason === "stand-fehlt") {
+              reply.code(400).send({
+                error: "DRAFT_STAND_FEHLT",
+                message:
+                  "expectedUpdatedAt fehlt — beim Befoerdern eines gespeicherten Entwurfs muss der beim Laden gesehene Stand mitreisen. Ohne ihn kann der Server einen veralteten Stand nicht abweisen.",
+              });
+              return;
+            }
+            if (loaded.reason === "stale") {
+              // Kein Wissensobjekt, kein Schreiben: der Entwurf wurde inzwischen an anderer Stelle
+              // geändert. Antwortform wie `PUT /api/drafts/:id` und der Promote (capture-routes).
+              reply.code(409).send({
+                error: "DRAFT_STALE",
+                message: loaded.message,
+                currentUpdatedAt: loaded.currentUpdatedAt,
+              });
+              return;
+            }
             if (loaded.reason === "invalid") {
               return badRequest(loaded.message ?? "Entwurfsinhalt ungueltig.");
             }

@@ -151,6 +151,20 @@ export function CaptureFrontDoor(): JSX.Element {
   >("intern");
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  // ==============================================================================================
+  // JOB 2684 D1 (Review R2-17) — ZWEI TABS, UND EIN ENTWURF IST WEG.
+  // ==============================================================================================
+  // `loadedUpdatedAtRef` ist der Stand des Entwurfs, den DIESE Seite zuletzt gesehen hat (beim
+  // Laden und nach jedem eigenen Speichern). Er reist mit jedem Speichern und Einreichen zum
+  // Server; der antwortet 409 DRAFT_STALE, wenn inzwischen jemand anders — ein zweiter Tab, das
+  // Studio — gespeichert hat. Dann wird NICHTS überschrieben, und der Mensch entscheidet:
+  //   · Sein Text bleibt auf der Seite stehen (verwerfen wäre grausam, mischen gefährlich —
+  //     ein automatischer Merge zweier Fassungen desselben Absatzes ist Raten).
+  //   · „Neu laden" holt die andere Fassung und verwirft den eigenen Stand — ausdrücklich, per
+  //     Klick, mit dem Hinweis, vorher zu kopieren.
+  const [staleConflict, setStaleConflict] = useState(false);
+  const [reloadNonce, setReloadNonce] = useState(0);
+  const loadedUpdatedAtRef = useRef<string | null>(null);
   const [structureProposal, setStructureProposal] = useState<StructureResult | null>(null);
   const [structureErr, setStructureErr] = useState<string | null>(null);
   const [structureAccepted, setStructureAccepted] = useState(false);
@@ -346,6 +360,7 @@ export function CaptureFrontDoor(): JSX.Element {
     navigate("/erfassen");
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadNonce erzwingt das Neuladen nach einem Standkonflikt (JOB 2684 D1)
   useEffect(() => {
     if (!resumeDraftId) {
       setActiveDraftId(null);
@@ -390,6 +405,9 @@ export function CaptureFrontDoor(): JSX.Element {
         setActiveDraftId(draft.id);
         setTitle(loadedTitle);
         setBodyHtml(loadedBody);
+        // JOB 2684 D1: der gesehene Stand — gegen ihn prüft der Server jedes weitere Schreiben.
+        loadedUpdatedAtRef.current = draft.updatedAt ?? null;
+        setStaleConflict(false);
         // JOB 512 (R5): der Rohwert bleibt roh. Ob er brauchbar ist, entscheidet fail-closed
         // `bildverlust` — eine Altladung mit kaputtem Feld darf keine Meldung erzeugen.
         setQuellBildzahl(draft.payload.sourceImageCount ?? null);
@@ -428,7 +446,9 @@ export function CaptureFrontDoor(): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [resumeDraftId, clearStructureState, clearAssistState, t]);
+    // JOB 2684 D1: `reloadNonce` — „Neu laden" nach einem Standkonflikt lädt denselben Entwurf erneut.
+    // Der Wert wird im Effekt nicht gelesen; er ist der Auslöser, kein Datum (Unterdrückung am Hook).
+  }, [resumeDraftId, reloadNonce, clearStructureState, clearAssistState, t]);
 
   // WP-UX-WOW-1 U8 (Kopfs Freeze-Befund, gehärteter Verwerfen-Pfad): der Scroll läuft NUR beim
   // ERSCHEINEN eines Vorschlags (Übergang kein-Panel → Panel), nie bei Folge-Renders oder beim
@@ -527,7 +547,16 @@ export function CaptureFrontDoor(): JSX.Element {
         if (bodyNieGeliefertRef.current && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
           delete rumpf.bodyHtml;
         }
-        return withFrontDoorSaveTimeout(endpoints.drafts.update(activeDraftId, rumpf));
+        return withFrontDoorSaveTimeout(
+          endpoints.drafts.update(
+            activeDraftId,
+            rumpf,
+            // JOB 2684 D1: der gesehene Stand reist mit — der Server vergleicht ihn.
+            loadedUpdatedAtRef.current
+              ? { expectedUpdatedAt: loadedUpdatedAtRef.current }
+              : undefined,
+          ),
+        );
       }
       return createFrontDoorDraft({ title, bodyHtml, fallbackTitle, confidentiality }, (payload) =>
         endpoints.drafts.create(payload),
@@ -544,6 +573,9 @@ export function CaptureFrontDoor(): JSX.Element {
     onSuccess: (draft, _variablen, kontext) => {
       const savedTitle = draft.payload.title ?? derivedTitle;
       setActiveDraftId(draft.id);
+      // JOB 2684 D1: nach dem eigenen Speichern ist der neue Stand der Bezugspunkt.
+      loadedUpdatedAtRef.current = draft.updatedAt ?? null;
+      setStaleConflict(false);
       setErr(null);
       // AUFTRAG-mega9 Block B: der eben gespeicherte Stand ist der neue Bezugspunkt — die Seite ist
       // ab hier sauber und der Wächter fragt beim Wechsel nicht mehr nach.
@@ -607,6 +639,13 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onError: (e) => {
       saveRequestedRef.current = false;
+      // JOB 2684 D1: ein Standkonflikt ist kein „Speichern fehlgeschlagen" — er bekommt seine
+      // eigene, lesbare Meldung samt Ausweg (unten im Formular), und der Text bleibt stehen.
+      if (e instanceof ApiError && e.code === "DRAFT_STALE") {
+        setStaleConflict(true);
+        setErr(null);
+        return;
+      }
       setErr(errorMessage(e, t("fd.errSaveFailed")));
     },
   });
@@ -621,7 +660,15 @@ export function CaptureFrontDoor(): JSX.Element {
         submitOperationRef.current = newCreateOperationId();
       }
       return submitFrontDoorDraft(
-        { title, bodyHtml, activeDraftId, fallbackTitle, confidentiality },
+        {
+          title,
+          bodyHtml,
+          activeDraftId,
+          fallbackTitle,
+          confidentiality,
+          // JOB 2684 D1: auch der Promote prüft den gesehenen Stand — die teuerste Stelle.
+          expectedUpdatedAt: activeDraftId ? loadedUpdatedAtRef.current : null,
+        },
         {
           createDraft: (payload) => endpoints.drafts.create(payload),
           // Kein vorgeschaltetes `endpoints.drafts.update` mehr: der Stand reist IM Promote, also
@@ -646,6 +693,8 @@ export function CaptureFrontDoor(): JSX.Element {
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
+      loadedUpdatedAtRef.current = null;
+      setStaleConflict(false);
       // AUFTRAG-mega9 Block B: eingereicht = nichts Ungesichertes mehr. Bezugspunkt auf den
       // geleerten Zustand, damit die Erfolgsansicht ohne Warnung verlassen werden kann.
       savedStateRef.current = { title: "", bodyHtml: "", confidentiality };
@@ -678,6 +727,13 @@ export function CaptureFrontDoor(): JSX.Element {
       setRestartOffer(
         e instanceof ApiError && createConflictOffersRestart(e.status, e.code) ? e.message : null,
       );
+      // JOB 2684 D1: Standkonflikt beim Einreichen — dieselbe Meldung wie beim Speichern; es ist
+      // kein Wissensobjekt entstanden (der Server prüft vor `ko.create`).
+      if (e instanceof ApiError && e.code === "DRAFT_STALE") {
+        setStaleConflict(true);
+        setErr(null);
+        return;
+      }
       setErr(errorMessage(e, t("fd.errSaveFailed")));
     },
   });
@@ -1319,6 +1375,29 @@ export function CaptureFrontDoor(): JSX.Element {
                   </Button>
                   <Button type="button" variant="ghost" onClick={discardAssistProposal}>
                     {t("fd.discardProposal")}
+                  </Button>
+                </div>
+              </div>
+            ) : null}
+
+            {/* JOB 2684 D1: der Standkonflikt — lesbar, mit Ausweg; der eigene Text bleibt stehen. */}
+            {staleConflict ? (
+              <div
+                data-testid="fd-draft-stale"
+                role="alert"
+                className="rounded-card border border-trust-warn-fill/40 bg-trust-warn-bg p-3 text-sm text-trust-warn-text"
+              >
+                <p>{t("fd.draftStale")}</p>
+                <div className="mt-2">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    onClick={() => {
+                      setStaleConflict(false);
+                      setReloadNonce((n) => n + 1);
+                    }}
+                  >
+                    {t("fd.draftStaleReload")}
                   </Button>
                 </div>
               </div>

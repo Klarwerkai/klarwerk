@@ -144,7 +144,15 @@ export type CaptureErrorCode =
   // AUFTRAG-mega20 Block D: der Entwurf beruft sich auf ein gesichertes Original, das es nicht
   // (mehr) gibt. Fail-closed: lieber ein ehrlicher Abbruch als ein Wissensobjekt mit
   // Dokumentinhalt ohne Herkunft.
-  | "MISSING_DRAFT_ANCHOR";
+  | "MISSING_DRAFT_ANCHOR"
+  // JOB 2684 D1 (Review R2-17): der Aufrufer hat einen ÄLTEREN Stand des Entwurfs gelesen, als
+  // jetzt gespeichert ist — ein zweiter Tab, das Studio, die Vordertür. Sein Schreiben würde still
+  // überschreiben; deshalb Konflikt (409), nicht Merge.
+  | "DRAFT_STALE"
+  // JOB 2684 D3 (R2-17): ein Schreiben OHNE mitgeschickten Stand hat den Compare-and-Swap in der
+  // Ablage mehrfach hintereinander verloren (ein anderer Prozess schreibt fortlaufend denselben
+  // Entwurf). Kein Datenverlust — nichts wurde überschrieben; der Aufrufer versucht es erneut.
+  | "DRAFT_WRITE_CONTENDED";
 
 export class CaptureError extends Error {
   readonly code: CaptureErrorCode;

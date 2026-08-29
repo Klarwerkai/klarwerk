@@ -76,6 +76,12 @@ class ZaehlendesRepo implements DraftRepo {
     return this.inner.update(draft);
   }
 
+  // JOB 2684 D3: der bedingte Schreibweg ist ein Schreibzugriff wie `update`.
+  updateWennStand(draft: Draft, erwarteterStand: string): Promise<boolean> {
+    this.schreibzugriffe += 1;
+    return this.inner.updateWennStand(draft, erwarteterStand);
+  }
+
   delete(id: string): Promise<void> {
     this.schreibzugriffe += 1;
     return this.inner.delete(id);

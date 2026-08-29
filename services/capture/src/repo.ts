@@ -4,6 +4,15 @@ export interface DraftRepo {
   insert(draft: Draft): Promise<void>;
   findById(id: string): Promise<Draft | undefined>;
   update(draft: Draft): Promise<void>;
+  /**
+   * JOB 2684 D3 (R2-17, BEN: „repository- oder transaktionsatomarer Compare-and-Swap"): schreibt
+   * `draft` NUR, wenn der gespeicherte `updatedAt` noch `erwarteterStand` ist — die Bedingung liegt
+   * in der Ablage (Pg: im `WHERE` derselben Abfrage; Speicher: synchron, ohne `await` zwischen
+   * Prüfen und Setzen), nicht in einer Sperre im Prozess. Deshalb trägt sie auch bei zwei
+   * Serverprozessen gegen dieselbe Datenbank. `false` = nicht geschrieben, weil der Stand ein
+   * anderer war (oder der Entwurf fehlt); der Aufrufer liest dann neu und entscheidet.
+   */
+  updateWennStand(draft: Draft, erwarteterStand: string): Promise<boolean>;
   delete(id: string): Promise<void>;
   list(): Promise<Draft[]>; // FR-CAP-06: gemeinsamer Pool — alle Entwürfe.
   /**
@@ -36,6 +45,18 @@ export class InMemoryDraftRepo implements DraftRepo {
   update(draft: Draft): Promise<void> {
     this.drafts.set(draft.id, draft);
     return Promise.resolve();
+  }
+
+  // JOB 2684 D3: Spiegel der Pg-Bedingung `data->>'updatedAt' = $3` — SYNCHRON geprüft und gesetzt
+  // (kein await dazwischen), damit zwei Dienst-Instanzen an dieser Ablage genau das erleben, was
+  // sie an Postgres erleben würden: nur eine trifft den erwarteten Stand.
+  updateWennStand(draft: Draft, erwarteterStand: string): Promise<boolean> {
+    const gespeichert = this.drafts.get(draft.id);
+    if (!gespeichert || gespeichert.updatedAt !== erwarteterStand) {
+      return Promise.resolve(false);
+    }
+    this.drafts.set(draft.id, draft);
+    return Promise.resolve(true);
   }
 
   delete(id: string): Promise<void> {

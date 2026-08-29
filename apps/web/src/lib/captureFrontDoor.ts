@@ -357,7 +357,7 @@ export interface FrontDoorSubmitClient<TDraft extends FrontDoorDraftRef, TKo> {
   /** Derselbe Vertrag wie im Erfassen-Weg: Schlüssel und Stand reisen MIT dem Promote. */
   promoteDraft: (
     id: string,
-    vorgang: { operationId: string; draftPayload: DraftPayload },
+    vorgang: { operationId: string; draftPayload: DraftPayload; expectedUpdatedAt?: string },
   ) => Promise<TKo>;
 }
 
@@ -368,6 +368,9 @@ export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo
     activeDraftId?: string | null;
     fallbackTitle?: string;
     confidentiality?: Confidentiality;
+    // JOB 2684 D1: der beim Laden gesehene Stand eines FORTGESETZTEN Entwurfs — ein frisch
+    // angelegter hat keinen (er kann noch niemandem in einem zweiten Tab begegnet sein).
+    expectedUpdatedAt?: string | null;
   },
   client: FrontDoorSubmitClient<TDraft, TKo>,
   operation: FrontDoorSubmitOperation,
@@ -398,8 +401,15 @@ export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo
     draftId = draft.id;
     operation.draftRef.current = draft.id;
   }
+  // JOB 2684 D1: der Stand reist nur mit, wenn er zu DIESEM Entwurf gehört — bei einem soeben
+  // angelegten Entwurf gibt es keinen gesehenen Stand, also auch keinen Vergleich.
+  const expectedUpdatedAt =
+    input.activeDraftId && draftId === input.activeDraftId && input.expectedUpdatedAt
+      ? input.expectedUpdatedAt
+      : undefined;
   return client.promoteDraft(draftId, {
     operationId: operation.id,
     draftPayload: payload,
+    ...(expectedUpdatedAt ? { expectedUpdatedAt } : {}),
   });
 }

@@ -21,6 +21,10 @@ interface DraftRow {
   data: Draft;
 }
 
+/** JOB 2684 D3: die Schreibanweisung mit Standbedingung — exportiert, damit ein Test sie pinnt. */
+export const DRAFT_UPDATE_WENN_STAND_SQL =
+  "UPDATE drafts SET data=$2 WHERE id=$1 AND data->>'updatedAt' = $3";
+
 export class PgDraftRepo implements DraftRepo {
   constructor(private readonly pool: Pool) {}
 
@@ -41,6 +45,21 @@ export class PgDraftRepo implements DraftRepo {
       draft.id,
       JSON.stringify(draft),
     ]);
+  }
+
+  // JOB 2684 D3 (R2-17): DER COMPARE-AND-SWAP IN DER ABFRAGE. Die Bedingung steht im `WHERE`
+  // derselben Anweisung, die schreibt — Postgres prüft und schreibt in EINEM Schritt, es gibt kein
+  // Fenster zwischen Lesen und Schreiben, und es gibt keinen Prozess, der das umgehen könnte:
+  // zwei Serverprozesse mit demselben gelesenen Stand → genau einer trifft `rowCount 1`, der andere
+  // `0`. Der Vergleich läuft auf `data->>'updatedAt'` (Text, streng steigend seit D1) — keine
+  // eigene Spalte, keine Migration; die Tabelle bleibt wie sie ist.
+  async updateWennStand(draft: Draft, erwarteterStand: string): Promise<boolean> {
+    const res = await this.pool.query(DRAFT_UPDATE_WENN_STAND_SQL, [
+      draft.id,
+      JSON.stringify(draft),
+      erwarteterStand,
+    ]);
+    return res.rowCount === 1;
   }
 
   async delete(id: string): Promise<void> {

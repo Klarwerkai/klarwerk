@@ -400,6 +400,28 @@ function validateMetadata(payload: DraftPayload): void {
   }
 }
 
+/**
+ * JOB 2684 D1: der Konflikt trägt den GESPEICHERTEN Stand mit — die Route gibt ihn als
+ * `currentUpdatedAt` zurück, damit ein Client nach dem Neuladen weiß, wogegen er jetzt schreibt.
+ */
+export class DraftStaleError extends CaptureError {
+  readonly currentUpdatedAt: string;
+
+  constructor(currentUpdatedAt: string) {
+    super(
+      "DRAFT_STALE",
+      "Der Entwurf wurde inzwischen an anderer Stelle geändert. Dein Stand wurde nicht gespeichert — bitte neu laden.",
+    );
+    this.name = "DraftStaleError";
+    this.currentUpdatedAt = currentUpdatedAt;
+  }
+}
+
+/** JOB 2684 D3: wie oft ein Schreiben OHNE mitgeschickten Stand nach einem verlorenen Compare-and-Swap
+ * neu liest und neu mischt, bevor es aufgibt. Mit Sperre im Prozess kollidiert nur ein ANDERER
+ * Prozess — mehr als ein, zwei Anläufe sind dann nicht zu erwarten. */
+const CAS_VERSUCHE = 5;
+
 export class CaptureService {
   private readonly repo: DraftRepo;
   private readonly now: () => number;
@@ -408,11 +430,37 @@ export class CaptureService {
   // AUFTRAG-mega20 Block D: injizierte Existenzprüfung des Objektspeichers (s. Deps).
   private readonly objectExists: ((objectId: string) => Promise<boolean>) | undefined;
 
+  // JOB 2684 D2 (R2-17, BENs Korrekturpflicht 2): EIN Schreibweg je Entwurf IM PROZESS. D1 prüfte
+  // den Stand und schrieb danach — zwei Aufrufer, die sich zwischen Prüfung und Schreiben
+  // überlappen, kamen BEIDE durch, und der zweite überschrieb den ersten trotz richtigem Stand.
+  // Dieselbe Bauform wie `withKoLock` in knowledge-object/src/service.ts: eine Promise-Kette je
+  // Kennung; der zweite Aufrufer beginnt erst, wenn der erste GESCHRIEBEN hat, liest dann den
+  // neuen Stand und fällt an `pruefeStand`. Was das NICHT deckt, ausdrücklich: zwei PROZESSE
+  // (mehrere Instanzen gegen dieselbe Datenbank). Dafür braucht es ein Compare-and-Set im Repo
+  // (`update … WHERE updated_at = erwartet`), und `DraftRepo` liegt nicht in dieser Lease.
+  private readonly draftWriteLocks = new Map<string, Promise<unknown>>();
+
   constructor(deps: CaptureServiceDeps) {
     this.repo = deps.repo;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     this.objectExists = deps.objectExists;
+  }
+
+  // `protected`, nicht `private`: die Kalibrierung des Überlappungstests schaltet die Sperre in einer
+  // Test-Unterklasse aus und zeigt, dass ohne sie beide Schreiber durchkommen — sonst wäre nicht
+  // belegt, dass der Test die Überlappung überhaupt erreicht.
+  protected async withDraftLock<T>(id: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.draftWriteLocks.get(id) ?? Promise.resolve();
+    const run = prev.catch(() => undefined).then(fn);
+    this.draftWriteLocks.set(id, run);
+    try {
+      return await run;
+    } finally {
+      if (this.draftWriteLocks.get(id) === run) {
+        this.draftWriteLocks.delete(id);
+      }
+    }
   }
 
   async createDraft(rawPayload: DraftPayload, author: string): Promise<Draft> {
@@ -585,22 +633,100 @@ export class CaptureService {
     return leiteNaechstenSchrittAb(draft, await this.verifyDraftAnchors(draft));
   }
 
+  // ==============================================================================================
+  // JOB 2684 D1 (Review R2-17) — ZWEI TABS, UND EIN ENTWURF IST WEG.
+  // ==============================================================================================
+  //
+  // DER BEFUND: `continueDraft` mergte auf den frisch gelesenen Stand, ohne zu fragen, welchen Stand
+  // der Aufrufer gesehen hatte. Zwei Tabs (oder Studio und Vordertür) auf demselben Entwurf: der
+  // spätere Schreiber gewann still, und ein Promote aus dem alten Tab legte das Wissensobjekt aus
+  // dem alten Text an.
+  //
+  // DER VERTRAG: `expectedUpdatedAt` ist der `updatedAt`-Wert, den der Aufrufer beim Laden gesehen
+  // hat. Weicht er vom gespeicherten ab, wird NICHT gemischt und NICHT überschrieben — es gibt
+  // `DRAFT_STALE`, und der Aufrufer entscheidet mit dem Menschen, was mit seinem Stand geschieht.
+  // OHNE `expectedUpdatedAt` bleibt alles wie bisher (letzter Schreiber gewinnt): fünf von sieben
+  // Aufrufern (Mobil, Offline-Warteschlange) senden nur Teilfelder und kennen den Stand nicht —
+  // sie bekommen den Schutz, sobald sie den Wert mitschicken, nicht vorher und nicht als Bruch.
+  //
+  // `updatedAt` STEIGT STRENG: zwei Schreibvorgänge in derselben Millisekunde trügen sonst denselben
+  // Wert, und der zweite Tab käme mit dem alten Wert durch — genau die Lücke, die hier zugeht.
+  private pruefeStand(draft: Draft, expectedUpdatedAt: string | undefined): void {
+    if (expectedUpdatedAt === undefined) {
+      return;
+    }
+    if (expectedUpdatedAt !== draft.updatedAt) {
+      throw new DraftStaleError(draft.updatedAt);
+    }
+  }
+
+  /**
+   * Ist der Entwurf noch der, den der Aufrufer gesehen hat? Für Wege, die NICHT über
+   * `continueDraft` schreiben (Promote ohne mitgeschickten Stand), aber denselben Schutz brauchen.
+   */
+  async requireFresh(id: string, expectedUpdatedAt: string): Promise<void> {
+    this.pruefeStand(await this.require(id), expectedUpdatedAt);
+  }
+
   // FR-CAP-07: beim Fortsetzen bleibt der Originalautor erhalten.
-  async continueDraft(id: string, changes: DraftPayload, editor: string): Promise<Draft> {
-    const draft = await this.require(id);
-    // AUFTRAG-mega6 Block B: Merge mit eindeutiger Löschsemantik (s. mergeDraftPayload).
-    const merged: DraftPayload = mergeDraftPayload(draft.payload, changes);
-    validateMetadata(merged);
-    // SCRUM-524 P.1 (WP5) + mega5 Block B: auch beim Fortsetzen an der Persistenz-Grenze säubern und
-    // normalisieren — der Merge über den Bestand streift dabei auch Alt-Felder (extResults) ab.
-    const updated: Draft = {
-      ...draft,
-      payload: normalizeDraftPayload(sanitizeDraftPayload(merged)),
-      lastEditor: editor,
-      updatedAt: new Date(this.now()).toISOString(),
-    };
-    await this.repo.update(updated);
-    return updated;
+  async continueDraft(
+    id: string,
+    changes: DraftPayload,
+    editor: string,
+    opts: { expectedUpdatedAt?: string | undefined } = {},
+  ): Promise<Draft> {
+    // JOB 2684 D2: Lesen, Prüfen und Schreiben stehen unter EINER Sperre je Entwurf (s. Kopf) —
+    // sie hält die Überlappung IM PROZESS ab und spart der Ablage die Wiederholung.
+    // JOB 2684 D3 (R2-17, BEN: „die Sperre trägt nur im eigenen Prozess"): das Schreiben selbst ist
+    // ein Compare-and-Swap in der ABLAGE (`updateWennStand`, Bedingung in der Abfrage). Zwei
+    // Serverprozesse, die denselben Stand gelesen haben, treffen beide auf dieselbe Bedingung —
+    // genau einer schreibt. Der andere:
+    //   · MIT `expectedUpdatedAt` (Studio, Vordertür): DRAFT_STALE mit dem jetzt gespeicherten
+    //     Stand — nichts gemischt, nichts überschrieben, der Mensch entscheidet.
+    //   · OHNE `expectedUpdatedAt` (Mobil, Offline-Warteschlange — Teilfelder, kein Stand): der
+    //     Altweg „letzter Schreiber gewinnt" bleibt, aber ohne verlorene Felder: neu lesen, neu
+    //     mischen, neu versuchen (Deckel `CAS_VERSUCHE`). Bis D2 hätte ein zweiter Prozess hier den
+    //     fremden Stand still überschrieben — das war der Befund.
+    return this.withDraftLock(id, async () => {
+      for (let versuch = 1; ; versuch += 1) {
+        const draft = await this.require(id);
+        // JOB 2684 D1: erst der Stand, dann der Merge — ein veralteter Stand schreibt nichts.
+        this.pruefeStand(draft, opts.expectedUpdatedAt);
+        // AUFTRAG-mega6 Block B: Merge mit eindeutiger Löschsemantik (s. mergeDraftPayload).
+        const merged: DraftPayload = mergeDraftPayload(draft.payload, changes);
+        validateMetadata(merged);
+        // SCRUM-524 P.1 (WP5) + mega5 Block B: auch beim Fortsetzen an der Persistenz-Grenze säubern
+        // und normalisieren — der Merge über den Bestand streift dabei auch Alt-Felder ab.
+        const bisher = Date.parse(draft.updatedAt);
+        const jetzt = this.now();
+        const updated: Draft = {
+          ...draft,
+          payload: normalizeDraftPayload(sanitizeDraftPayload(merged)),
+          lastEditor: editor,
+          // JOB 2684 D1: streng steigend (s. Kopf) — nie derselbe Wert wie der Vorgänger.
+          updatedAt: new Date(
+            Number.isFinite(bisher) ? Math.max(jetzt, bisher + 1) : jetzt,
+          ).toISOString(),
+        };
+        // D3: schreiben NUR, wenn der gespeicherte Stand noch der gelesene ist.
+        if (await this.repo.updateWennStand(updated, draft.updatedAt)) {
+          return updated;
+        }
+        const inzwischen = await this.repo.findById(id);
+        if (!inzwischen) {
+          throw new CaptureError("NOT_FOUND", "Entwurf nicht gefunden.");
+        }
+        if (opts.expectedUpdatedAt !== undefined) {
+          throw new DraftStaleError(inzwischen.updatedAt);
+        }
+        if (versuch >= CAS_VERSUCHE) {
+          throw new CaptureError(
+            "DRAFT_WRITE_CONTENDED",
+            "Der Entwurf wird gerade an anderer Stelle geschrieben — bitte noch einmal versuchen.",
+          );
+        }
+      }
+    });
   }
 
   async deleteDraft(id: string): Promise<void> {

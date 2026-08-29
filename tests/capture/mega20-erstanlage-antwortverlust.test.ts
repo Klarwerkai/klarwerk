@@ -81,8 +81,23 @@ async function objektAnlegen(app: App, headers: Record<string, string>, name = "
   return obj.json().id as string;
 }
 
-function ausDokument(app: App, headers: Record<string, string>, payload: Record<string, unknown>) {
-  return app.inject({ method: "POST", url: "/api/kos/from-document", headers, payload });
+// JOB 2684 D4: der Dokumentweg mit `draftId` verlangt den beim Laden gesehenen Stand
+// (`expectedUpdatedAt`, sonst 400 DRAFT_STAND_FEHLT). Der Test holt ihn wie der Client — über
+// `GET /api/drafts/:id` — sofern der Aufruf keinen mitbringt und der Entwurf noch da ist. Ist er
+// schon verbraucht (Wiederholung nach Erfolg), reist kein Stand: der Nachschlag entscheidet zuerst.
+async function ausDokument(
+  app: App,
+  headers: Record<string, string>,
+  payload: Record<string, unknown>,
+) {
+  let body = payload;
+  if (typeof payload.draftId === "string" && payload.expectedUpdatedAt === undefined) {
+    const d = await app.inject({ method: "GET", url: `/api/drafts/${payload.draftId}`, headers });
+    if (d.statusCode === 200) {
+      body = { ...payload, expectedUpdatedAt: (d.json() as { updatedAt: string }).updatedAt };
+    }
+  }
+  return app.inject({ method: "POST", url: "/api/kos/from-document", headers, payload: body });
 }
 
 async function bestand(app: App, headers: Record<string, string>) {

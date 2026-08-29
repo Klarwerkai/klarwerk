@@ -981,6 +981,9 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   // eingebaut nach 2661, vom Waechter unten als fehlend gemeldet, Entscheidung des Kopfs: Eintrag.
   "ConfluenceRequestError",
   "DevPersistJournalReplayError",
+  // JOB 2684 D7: der Standkonflikt aus 2684 (capture/src/service.ts). Der Name sagt nur „veralteter
+  // Stand" — kein Nutzertext, keine Kennung; der Meldungstext bleibt wie bei allen unterdrückt.
+  "DraftStaleError",
   "ExternalSearchError",
   "FencingVeraltetError",
   "KlaraError",
@@ -1037,6 +1040,11 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "CREATE_ROLLBACK_FAILED",
   "DEV_PERSIST_JOURNAL_REPLAY_FAILED",
   "DOWNGRADE_FORBIDDEN",
+  "DRAFT_STALE", // JOB 2684 D7: 409 an PUT/Promote/Dokumentweg — geht ohnehin als Antwortcode an Clients.
+  // JOB 2684 D7: der zweite Code desselben Stands (2684 D3) — Compare-and-Swap nach CAS_VERSUCHE
+  // aufgegeben (capture/src/service.ts). Ihn hatte der Wächter unten gemeldet, nicht DRAFT_STALE:
+  // `super("DRAFT_STALE", …)` ist keine seiner drei Setzformen.
+  "DRAFT_WRITE_CONTENDED",
   "EMAIL_TAKEN",
   "EMPTY_DRAFT",
   "ENGINE_FAILED",
@@ -1658,13 +1666,25 @@ export function buildApp(
           // schreiben darf. `continueDraft` ist derselbe Aufruf, den auch die Entwurfsroute
           // benutzt, samt seiner Merge- und Löschsemantik (mergeDraftPayload) und seiner
           // Formprüfung; deren Fehler wird als `invalid` durchgereicht statt als 500 verschluckt.
-          applyAndLoad: async (draftId, payload, user) => {
+          applyAndLoad: async (draftId, payload, user, expectedUpdatedAt) => {
             const draft = await services.capture.getDraft(draftId);
             if (!draft) {
               return { ok: false, reason: "not-found" as const };
             }
             if (!canSeeDraft({ id: user.id, role: user.role as SessionUser["role"] }, draft)) {
               return { ok: false, reason: "forbidden" as const };
+            }
+            // JOB 2684 D4 (R2-17, BEN: „der Fall ohne Stand bleibt absichtlich gruen"): DER WEG
+            // OHNE STAND IST ZU. Wer einen sichtbaren Entwurf aus dem Dokumentweg befoerdert, hat
+            // ihn geladen und kennt seinen Stand — Capture.tsx setzt ihn beim „Fortsetzen" und
+            // sendet ihn seit D3. Einen legitimen Aufrufer ohne Stand gibt es nicht: die drei
+            // Stellen, an denen das Studio selbst Entwuerfe anlegt (Dateipunkte, Ganzdatei),
+            // halten den Entwurf nicht, sondern leeren das Formular; ein `draftId` im Dokumentweg
+            // entsteht nur ueber das Laden. Fehlender Stand ist „weggelassen", nicht „neu" — und
+            // hier, HINTER der Sichtbarkeitsregel, damit ein fremder Entwurf 403/404 bleibt.
+            // Nichts wird geschrieben.
+            if (expectedUpdatedAt === undefined) {
+              return { ok: false as const, reason: "stand-fehlt" as const };
             }
             // ==================================================================================
             // AUFTRAG-mega22 Block D — FORMFEHLER AM RAND, STÖRUNGEN DURCH DEN ZENTRALEN PFAD.
@@ -1678,8 +1698,23 @@ export function buildApp(
               return { ok: false as const, reason: "invalid" as const, message: gestalt.message };
             }
             try {
-              await services.capture.continueDraft(draftId, gestalt.payload, user.id);
+              // JOB 2684 D3 (R2-17): der gesehene Stand reist bis in `continueDraft` — dort ist er
+              // dieselbe Prüfung wie auf `PUT /api/drafts/:id` und beim Promote, und das Schreiben
+              // ist ein Compare-and-Swap in der Ablage (capture/src/repo-pg.ts).
+              await services.capture.continueDraft(draftId, gestalt.payload, user.id, {
+                expectedUpdatedAt,
+              });
             } catch (error) {
+              // JOB 2684 D3: der Standkonflikt ist kein Formfehler — er wird 409 (Route), nicht 400.
+              if (error instanceof CaptureError && error.code === "DRAFT_STALE") {
+                const current = (error as { currentUpdatedAt?: unknown }).currentUpdatedAt;
+                return {
+                  ok: false as const,
+                  reason: "stale" as const,
+                  message: error.message,
+                  currentUpdatedAt: typeof current === "string" ? current : "",
+                };
+              }
               // (2) NUR BEKANNTE FORMFEHLER WERDEN 400. `CaptureError` ist die benannte Klasse der
               //     Fachprüfungen dieses Moduls; ihre Meldungen sind für Menschen geschrieben und
               //     dürfen nach aussen. `NOT_FOUND` ist ausgenommen — der Entwurf war oben noch da,

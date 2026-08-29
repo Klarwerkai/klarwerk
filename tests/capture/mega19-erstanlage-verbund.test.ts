@@ -79,12 +79,27 @@ async function objektAnlegen(app: App, headers: Record<string, string>, name = "
 // die Zusicherungen darunter bleiben unverändert. Ein aufrufseitig gesetzter Schlüssel gewinnt
 // (mega20 nutzt das für den Wiederholungs-Beleg).
 let vorgangsZaehler = 0;
-function ausDokument(app: App, headers: Record<string, string>, payload: Record<string, unknown>) {
+// JOB 2684 D4: der Dokumentweg mit `draftId` verlangt den beim Laden gesehenen Stand
+// (`expectedUpdatedAt`, sonst 400 DRAFT_STAND_FEHLT). Der Test holt ihn wie der Client — über
+// `GET /api/drafts/:id` — sofern der Aufruf keinen mitbringt und der Entwurf sichtbar ist. Ist er
+// fremd (403/404), reist kein Stand: die Sichtbarkeitsregel entscheidet zuerst, wie bisher.
+async function ausDokument(
+  app: App,
+  headers: Record<string, string>,
+  payload: Record<string, unknown>,
+) {
+  let stand: Record<string, unknown> = {};
+  if (typeof payload.draftId === "string" && payload.expectedUpdatedAt === undefined) {
+    const d = await app.inject({ method: "GET", url: `/api/drafts/${payload.draftId}`, headers });
+    if (d.statusCode === 200) {
+      stand = { expectedUpdatedAt: (d.json() as { updatedAt: string }).updatedAt };
+    }
+  }
   return app.inject({
     method: "POST",
     url: "/api/kos/from-document",
     headers,
-    payload: { operationId: `mega19-vorgang-${++vorgangsZaehler}`, ...payload },
+    payload: { operationId: `mega19-vorgang-${++vorgangsZaehler}`, ...payload, ...stand },
   });
 }
 

@@ -245,6 +245,12 @@ describe("mega20 D: der Server prüft die Referenz beim Fortsetzen", () => {
       payload: {
         operationId: "entwurf-ohne-anker-1",
         draftId,
+        // JOB 2684 D4: der gesehene Stand ist Pflicht — geholt wie der Client beim Laden.
+        expectedUpdatedAt: (
+          (await app.inject({ method: "GET", url: `/api/drafts/${draftId}`, headers })).json() as {
+            updatedAt: string;
+          }
+        ).updatedAt,
         // AUFTRAG-mega22 Block C: `draftPayload` ist bei gesetztem `draftId` Pflicht.
         draftPayload: {},
         documents: [
@@ -291,6 +297,12 @@ describe("mega20 D: der Server prüft die Referenz beim Fortsetzen", () => {
       payload: {
         operationId: "entwurf-mit-anker-1",
         draftId,
+        // JOB 2684 D4: der gesehene Stand ist Pflicht — geholt wie der Client beim Laden.
+        expectedUpdatedAt: (
+          (await app.inject({ method: "GET", url: `/api/drafts/${draftId}`, headers })).json() as {
+            updatedAt: string;
+          }
+        ).updatedAt,
         draftPayload: {},
         documents: [
           {
