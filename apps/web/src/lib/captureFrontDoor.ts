@@ -115,21 +115,73 @@ export function buildFrontDoorPayload(input: {
   // mitreisen, sonst holt der partielle Server-Merge den alten Body zurück (und der Promote trägt
   // ihn ins Wissensobjekt). Ohne Entwurfs-Id ist es ein Neuanlegen: kein Altwert, kein Löschmarker.
   activeDraftId?: string | null;
+  // JOB 2695 (Review-Befund R2-19): der EINREICHEN-Weg fordert den vollständigen Rumpf an, auch
+  // über einen bestehenden Entwurf. Warum das nötig ist, steht im Block unter dieser Signatur.
+  vollstaendig?: boolean;
 }): DraftPayload {
   const bodyHtml = normalizePastedHtml(input.bodyHtml);
   const title = deriveFrontDoorTitle(input.title, bodyHtml, input.fallbackTitle);
-  return {
+
+  // ==============================================================================================
+  // JOB 2695 (Review-Befund R2-19) — WAS DIESE FLÄCHE NICHT FÜHRT, DARF SIE NICHT LÖSCHEN.
+  // ==============================================================================================
+  //
+  // DER SCHADEN: Die Vordertür lädt JEDE `?draft=<id>` aus der URL, nicht nur ihre eigenen. Sie
+  // sendete bisher für jeden geladenen Entwurf `tags: []`, `conditions: []`, `measures: []` mit —
+  // und der Merge des Entwurfsdienstes liest mitgeschickte Leerwerte als LÖSCHUNG. Er sagt das
+  // selbst (`services/capture/src/service.ts:371-372`):
+  //
+  //     Schlüssel NICHT mitgeschickt (oder Wert `undefined`) ⇒ Altwert bleibt.
+  //     Schlüssel mitgeschickt mit LEERWERT ([], "", …)      ⇒ Altwert geht.
+  //
+  // Ein Studio-Entwurf mit Maßnahmen verlor sie also beim ersten Speichern in der Vordertür —
+  // still, ohne Fehlermeldung. Und mit `origin: "frontdoor"` wurde er dauerhaft zu einem
+  // Vordertür-Entwurf: Das Studio schickte ihn beim Fortsetzen zurück in die Vordertür, der Mensch
+  // kam nie wieder an seine Felder.
+  //
+  // DIE REGEL BLEIBT RICHTIG, NICHT DER AUFRUFER. Ohne Löschsemantik könnte niemand ein Feld je
+  // wieder leeren; genau das war der Ship-Blocker aus mega7 Block A. Falsch war, dass die
+  // Vordertür Leerwerte schickte, die sie gar nicht meinte. Deshalb wird hier geschnitten und
+  // nicht im Dienst.
+  //
+  // ZWEI FRAGEN, DIE VORHER DIESELBE WAREN — und ihre Vermengung hat in D3 Pedis Einreichen-Weg
+  // gebrochen, der einen Tag zuvor grün geworden war:
+  //
+  //     ueberBestand · Reist dieser Payload über einen VORHANDENEN Entwurf? Davon hängt der
+  //                    Löschmarker für einen bewusst geleerten Body ab (mega7 Block A).
+  //     nurEigene    · Soll er auf die Felder schrumpfen, die DIESE Fläche führt? Nur beim
+  //                    SPEICHERN — nicht beim Einreichen.
+  //
+  // `submitFrontDoorDraft` baut seinen Rumpf mit DERSELBEN Funktion und schickt ihn als
+  // `draftPayload` ins Promote, wo daraus ein Wissensobjekt entsteht. Ohne `type` und `category`
+  // weist die Route ihn mit `400 INCOMPLETE` ab. Deshalb fordert der Einreichen-Weg
+  // `vollstaendig: true` an — und nur er.
+  //
+  // `origin` REIST BEIM ÄNDERN NICHT MEHR MIT: Ein Entwurf wechselt seine Herkunft nicht, weil ihn
+  // jemand einmal woanders geöffnet hat. Beim Neuanlegen wird sie gesetzt, denn dort gibt es keine.
+  const ueberBestand = Boolean(input.activeDraftId);
+  const nurEigene = ueberBestand && input.vollstaendig !== true;
+
+  const eigeneFelder: DraftPayload = {
     title,
     statement: frontDoorStatement(bodyHtml, title),
+    ...draftBodyPatch(bodyHtml, ueberBestand),
+    ...(input.confidentiality && input.confidentiality !== "intern"
+      ? { confidentiality: input.confidentiality }
+      : {}),
+  };
+
+  if (nurEigene) {
+    return eigeneFelder;
+  }
+
+  return {
+    ...eigeneFelder,
     type: "best_practice",
     category: "Allgemein",
     tags: [],
     conditions: [],
     measures: [],
-    ...draftBodyPatch(bodyHtml, Boolean(input.activeDraftId)),
-    ...(input.confidentiality && input.confidentiality !== "intern"
-      ? { confidentiality: input.confidentiality }
-      : {}),
     origin: "frontdoor",
   };
 }
@@ -329,7 +381,15 @@ export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo
   // Würde die Wiederholung ihn wegen des gemerkten Entwurfs anders bauen (Löschmarker), wäre der
   // Abdruck ein anderer — und der Server antwortete IDEMPOTENCY_PAYLOAD_MISMATCH auf eine
   // Wiederholung, die inhaltlich dieselbe ist.
-  const payload = buildFrontDoorPayload(input);
+  //
+  // JOB 2695 (Review-Befund R2-19): `vollstaendig: true` — und ohne dieses eine Wort wäre dieser
+  // Weg kaputt. Der Payload-Bauer schrumpft über einem bestehenden Entwurf auf die Felder, die die
+  // Vordertür selbst führt (der Fix gegen den stillen Datenverlust). Dieser Rumpf geht aber als
+  // `draftPayload` weiter ins Promote, und ein Wissensobjekt ohne `type`/`category` wird dort mit
+  // `400 INCOMPLETE` abgewiesen. Gemessen in D3 an
+  // `tests/capture/job2656-d4-einreichen-knopf-mounted.test.tsx`; hier zusätzlich am Vertrag
+  // gepinnt (F5 in `tests/capture/job2695-vordertuer-loescht-nicht.test.tsx`).
+  const payload = buildFrontDoorPayload({ ...input, vollstaendig: true });
   // Der Entwurf dieses Vorgangs: der bereits angelegte (Wiederholung), der fortgesetzte, oder ein
   // frisch anzulegender.
   let draftId = operation.draftRef.current ?? input.activeDraftId ?? null;
