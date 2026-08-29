@@ -9,7 +9,7 @@ import {
   openAiCompatibleClient,
   resolveCloudApiKey,
 } from "./model-client";
-import { type ModelClient, ModelProvider } from "./provider-model";
+import { ABSAGE_MARKE, type ModelClient, ModelProvider } from "./provider-model";
 import type { KnowledgeRef } from "./types";
 
 const KOS: KnowledgeRef[] = [
@@ -48,13 +48,18 @@ describe("ModelProvider", () => {
   // der, die das Modell wirklich markiert hat. Vorher genügte irgendein Modelltext, und die Werte
   // kamen vom bestgerankten Kandidaten; dieser Test hat damit unbemerkt den Fall gepinnt, in dem
   // eine unzitierte Quelle die Sicherheit der Antwort bestimmt.
+  // JOB 2659 D1 (Review EXT1, Befund 4) — HIER STAND `answer = "Antwort des Modells [1]."`, UND DAS
+  // WAR DER BEFUND SELBST: „Antwort des Modells" steht in keiner Quelle; die Marke allein machte
+  // den Satz „gesichert" mit Vertrauenswert 90. Jetzt fällt die Deckungsprüfung durch und hinaus
+  // geht der Wortlaut der zitierten Quelle — Klasse und Wert stammen weiterhin aus genau ihr.
   it("answer bleibt in den Quellen verankert; Trust/Klasse aus der ZITIERTEN Quelle", async () => {
     const res = await new ModelProvider(fakeClient("Antwort des Modells [1].")).answer(
       "Überdruck Ventil",
       KOS,
     );
     expect(res.answered).toBe(true);
-    expect(res.answer).toBe("Antwort des Modells [1].");
+    expect(res.answer).toBe(KOS[0]?.statement);
+    expect(res.answer).not.toContain("Antwort des Modells");
     expect(res.citedSources).toEqual(["ko1"]);
     expect(res.knowledgeClass).toBe("gesichert");
     expect(res.trust).toBe(90);
@@ -62,18 +67,22 @@ describe("ModelProvider", () => {
     expect(res.demo).toBe(false);
   });
 
-  // Die Gegenprobe zum selben Vertrag: ohne Marke wird kein quellenbezogener Wert behauptet.
-  it("mega53 B2: ohne Fußnotenmarke keine Klasse „gesichert“ und kein Vertrauenswert", async () => {
+  // JOB 2659 D1 (Befund 6) — HIER STAND `answered = true` mit `sources ⊇ ["ko1"]`: ein Text ohne
+  // jede Marke ging als Antwort hinaus. Nach dem Prompt ist die Marke PFLICHT für jede Quellaussage;
+  // ohne Marke gibt es keine Quellaussage, also keine Antwort. B3 („die herangezogene Quelle bleibt
+  // sichtbar") galt für eine Antwort — eine Nicht-Antwort trägt keine Grundlage, aus der ein
+  // Verbraucher etwas lesen könnte.
+  it("mega53 B2 / JOB 2659: ohne Fußnotenmarke keine Antwort", async () => {
     const res = await new ModelProvider(fakeClient("Antwort des Modells.")).answer(
       "Überdruck Ventil",
       KOS,
     );
-    expect(res.answered).toBe(true);
+    expect(res.answered).toBe(false);
+    expect(res.answer).toBeNull();
     expect(res.citedSources).toEqual([]);
-    expect(res.knowledgeClass).toBe("ungeprueft");
+    expect(res.knowledgeClass).toBe("unbekannt");
     expect(res.trust).toBe(0);
-    // B3: die herangezogene Quelle bleibt sichtbar — verschwiegen wird nichts.
-    expect(res.sources).toContain("ko1");
+    expect(res.sources).toEqual([]);
   });
 
   it("FR-RSN-03: ohne passende Quelle keine Modellanfrage, keine Rateantwort", async () => {
@@ -127,7 +136,9 @@ describe("ModelProvider locale-aware prompts", () => {
     expect(system).toContain("Ursachen oder Maßnahmen");
     expect(system).toContain("kein allgemeines Weltwissen");
     expect(system).toContain("Dehne keine Quelle");
-    expect(system).toContain("Wissensbasis das nicht abdeckt");
+    // JOB 2659 D1 (Befund 7): hier stand „Wissensbasis das nicht abdeckt" — eine Absage als
+    // Fließtext, die der Code nie von einer Antwort unterscheiden konnte. Jetzt ist sie ein Wort.
+    expect(system).toContain(`antworte AUSSCHLIESSLICH mit dem Wort ${ABSAGE_MARKE}`);
     // mega52 A1: der Satz „Du darfst auf die genutzten Quellen verweisen, aber erfinde keine
     // Zitate." ist zu „Erfinde keine Zitate." geworden — das Verweisen ist keine Erlaubnis mehr,
     // sondern PFLICHT (Fußnotenmarken). Die Leitplanke selbst ist unverändert scharf.
@@ -142,7 +153,8 @@ describe("ModelProvider locale-aware prompts", () => {
     expect(system).toContain("causes or measures");
     expect(system).toContain("general world knowledge");
     expect(system).toContain("stretch a source");
-    expect(system).toContain("knowledge base does not cover this");
+    // JOB 2659 D1 (Befund 7): s. DE — die Absage ist strukturiert.
+    expect(system).toContain(`reply ONLY with the word ${ABSAGE_MARKE}`);
     // mega52 A1: s. DE — aus dem Nebensatz ist ein eigener Satz geworden, die Marke ist Pflicht.
     expect(system).toContain("Never fabricate quotes");
     expect(system).toContain("footnote marker in square brackets");

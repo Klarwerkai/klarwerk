@@ -76,12 +76,14 @@ describe("SCRUM-368: Reasoner-Eval-Set (Modellmodus, Fake-Client)", () => {
       "Was tun bei Überdruck am Ventil?",
       EVAL_KOS,
     );
-    expect(res.answered).toBe(true);
-    // Die validierte Quelle mit Vertrauenswert 92 wurde herangezogen …
-    expect(res.sources).toContain(KO.ventil);
-    // … aber sie trägt die Antwort nicht nachweislich, also behauptet die Antwort auch nichts.
+    // JOB 2659 D1 (Review EXT1, Befund 6) — HIER STAND `answered = true` und `sources ∋ ventil`:
+    // ein Text ohne jede Marke ging als Antwort hinaus, mit bis zu acht Quellen im Gepäck. Die
+    // Marke ist nach dem Prompt Pflicht; ohne sie ist der Text keine Quellaussage — keine Antwort.
+    expect(res.answered).toBe(false);
+    expect(res.answer).toBeNull();
+    expect(res.sources).toEqual([]);
     expect(res.citedSources).toEqual([]);
-    expect(res.knowledgeClass).toBe("ungeprueft");
+    expect(res.knowledgeClass).toBe("unbekannt");
     expect(res.trust).toBe(0);
   });
 });
@@ -92,11 +94,14 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
       "Was tun bei Überdruck am Ventil?",
       EVAL_KOS,
     );
-    // Der Modell-Freitext geht durch (die Prosa zu policen ist Aufgabe des System-Prompts, nicht des
-    // Providers) …
-    expect(res.answer).toContain(HALLUCINATION_MARKERS.fakeNorm);
-    // … ABER der Provider übernimmt NICHTS Erfundenes als Quelle: sources = nur das echte KO.
-    expect(res.sources).toEqual([KO.ventil]);
+    // JOB 2659 D1 (Review EXT1, Befund 6) — HIER STAND „Der Modell-Freitext geht durch (die Prosa
+    // zu policen ist Aufgabe des System-Prompts, nicht des Providers)" mit `answer ∋ DIN 99999`.
+    // Genau das war der Befund: erfundene Norm, Zahl und Zitat gingen als Antwort hinaus. Ohne
+    // Marke ist der Text keine Quellaussage — keine Antwort, und der Freitext verlässt den
+    // Provider nicht.
+    expect(res.answered).toBe(false);
+    expect(res.answer).toBeNull();
+    expect(res.sources).toEqual([]);
     // Kein Step verweist auf eine erfundene Quelle — jede sourceId ist ein echtes Eval-KO.
     const realIds = new Set(EVAL_KOS.map((k) => k.id));
     expect(res.steps.every((s) => s.sourceId !== null && realIds.has(s.sourceId))).toBe(true);
@@ -109,7 +114,8 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
     // Antwort mit Vertrauenswert 92 und dem Grad „gesichert" tragen. Das Fake-Modell hier zitiert
     // nichts; die ehrliche Antwort ist deshalb, dass keine Einstufung behauptet wird.
     expect(res.citedSources).toEqual([]);
-    expect(res.knowledgeClass).toBe("ungeprueft");
+    // JOB 2659: eine Nicht-Antwort trägt die Klasse „unbekannt" — wie der Weg ohne Kandidaten.
+    expect(res.knowledgeClass).toBe("unbekannt");
     expect(res.trust).toBe(0);
   });
 
@@ -125,7 +131,16 @@ describe("SCRUM-368: Anti-Halluzination — erfundene Inhalte werden NICHT zu Qu
       "Was tun bei Überdruck am Ventil?",
       EVAL_KOS,
     );
-    expect(res.answer).toContain(HALLUCINATION_MARKERS.fakeNorm);
+    // JOB 2659 D1 (Review EXT1, Befund 4) — HIER STAND `answer ∋ DIN 99999`: „Die Prosa geht
+    // durch." Das ist die echte halluzinierte Aussage der Abnahme (§5): erfundene Norm, erfundene
+    // Zahl, erfundenes Zitat, mit Marke [1]. Vor dem Bau ging sie durch — gemessen an diesem Pin.
+    // Jetzt fällt sie an der Deckungsprüfung (0 von 8 Inhaltstoken in der Quelle, Zahlen 99999 und
+    // 1234 fehlen), und hinaus geht der Wortlaut der markierten Quelle. Klasse und Wert kommen
+    // weiterhin aus genau dieser Quelle.
+    expect(res.answered).toBe(true);
+    expect(res.answer).not.toContain(HALLUCINATION_MARKERS.fakeNorm);
+    expect(res.answer).not.toContain(HALLUCINATION_MARKERS.fakeNumber);
+    expect(res.answer).toBe(EVAL_KOS.find((k) => k.id === KO.ventil)?.statement);
     expect(res.citedSources).toEqual([KO.ventil]);
     expect(res.knowledgeClass).toBe("gesichert");
     expect(res.trust).toBe(92);

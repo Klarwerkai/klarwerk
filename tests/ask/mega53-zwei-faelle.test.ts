@@ -170,8 +170,13 @@ describe("mega53 B5 · keine Marke bei sonst makellosen Quellen", () => {
     });
     const ergebnis = await provider.answer("Was tun bei Überdruck am Ventil X?", MAKELLOS);
 
-    expect(ergebnis.answered).toBe(true);
-    expect(ergebnis.sources).toEqual(["a", "b"]);
+    // JOB 2659 D1 (Review EXT1, Befund 6) — HIER STAND `answered = true` mit `sources = ["a","b"]`.
+    // mega53 nahm der markenlosen Antwort Wert und Klasse; JOB 2659 nimmt ihr den Status
+    // „Antwort": ohne Marke keine Quellaussage, also Wissenslücke. Der Kern des Falls bleibt —
+    // nichts „gesichert", kein Wert — und wird strenger, nicht lockerer.
+    expect(ergebnis.answered).toBe(false);
+    expect(ergebnis.answer).toBeNull();
+    expect(ergebnis.sources).toEqual([]);
     expect(ergebnis.citedSources).toEqual([]);
     // Vor mega53: "gesichert" und 95.
     expect(ergebnis.knowledgeClass).not.toBe("gesichert");

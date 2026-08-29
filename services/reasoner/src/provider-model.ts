@@ -140,13 +140,286 @@ function structureSystem(locale: ReasonerLocale): string {
 // und dessen Ergebnis ohnehin niemand zurücklas. Ohne Pflichtmarke gibt es keine Zuordnung, und
 // ohne Zuordnung landet jedes bloß angesehene Objekt als gleichwertige Antwortquelle in der Liste.
 // mega52 D2: die Ausgabesprache steht jetzt ausdrücklich im Prompt (Vorbild interviewSystem).
+// JOB 2659 D1 (Review EXT1, Befund 7): die Absage ist STRUKTURIERT. Bisher verlangte der Prompt
+// „sage ehrlich, dass die Wissensbasis das nicht abdeckt" — Fließtext, den der Code nicht von einer
+// Antwort unterscheiden konnte; er ging als `answered:true` hinaus, ohne Wissenslücke. Jetzt ist die
+// Absage ein Wort (`ABSAGE_MARKE`), das `answer()` zurückliest und auf `answered:false` abbildet.
 function answerSystem(locale: ReasonerLocale): string {
   const base = taskInstruction(
     locale,
-    "Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, sage ehrlich, dass die Wissensbasis das nicht abdeckt — rate nicht. Erfinde keine Zitate. PFLICHT: Setze hinter JEDE Aussage, die auf eine Quelle zurückgeht, deren Nummer als Fußnotenmarke in eckigen Klammern, z. B. [1] oder [2][3]. Verwende AUSSCHLIESSLICH die vorgegebenen Quellennummern und markiere nur Quellen, die du wirklich benutzt hast.",
-    "Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, say honestly that the knowledge base does not cover this — do not guess. Never fabricate quotes. MANDATORY: after EVERY statement that comes from a source, put that source's number as a footnote marker in square brackets, e.g. [1] or [2][3]. Use ONLY the given source numbers and mark only sources you actually used.",
+    `Beantworte die Frage NUR auf Basis der nummerierten Quellen. Erfinde keine Fakten, Zahlen, Ursachen oder Maßnahmen und ergänze kein allgemeines Weltwissen. Dehne keine Quelle über ihre tatsächliche Aussage hinaus. Reichen die Quellen nicht, antworte AUSSCHLIESSLICH mit dem Wort ${ABSAGE_MARKE} — ohne weiteren Text, rate nicht. Erfinde keine Zitate. PFLICHT: Setze hinter JEDE Aussage, die auf eine Quelle zurückgeht, deren Nummer als Fußnotenmarke in eckigen Klammern, z. B. [1] oder [2][3]. Verwende AUSSCHLIESSLICH die vorgegebenen Quellennummern und markiere nur Quellen, die du wirklich benutzt hast.`,
+    `Answer ONLY based on the numbered sources. Do not invent facts, numbers, causes or measures, and do not add general world knowledge. Do not overstate or stretch a source beyond what it actually says. If the sources are not enough, reply ONLY with the word ${ABSAGE_MARKE} — no other text, do not guess. Never fabricate quotes. MANDATORY: after EVERY statement that comes from a source, put that source's number as a footnote marker in square brackets, e.g. [1] or [2][3]. Use ONLY the given source numbers and mark only sources you actually used.`,
   );
   return `${base} ${outputLanguageRule(locale)}`;
+}
+
+// ================================================================================================
+// JOB 2659 D1 — EINE MARKE IST KEIN BELEG (Review EXT1-20260828, Befunde 4, 6, 7).
+// ================================================================================================
+//
+// DER BEFUND: `citedSourceIds` prüfte nur, ob die Zahl in „[n]" im Kandidatenbereich liegt. Ein
+// halluzinierter Satz mit „[1]" galt damit als belegt und wurde über `answerStanding` sogar
+// „gesichert". Keine Codezeile prüfte, ob der Text aus der Quelle stammt.
+//
+// DER WEG ZUM MASS — vier Durchgänge, jeder hat eine Umgehung geschlossen (die Prosa unten ist
+// Geschichte, der Code darunter ist der Stand D4):
+//
+//  · D1 verglich INHALTSTOKEN in Grundform (`queryTokens`) gegen die VEREINIGUNG der markierten
+//    Quellen, mit einem ANTEIL von 60 % — UND DAS WAR FALSCH. BEN (2659 D1):
+//    „Ventil tauschen [1]" gegen „Ventil schließen" passierte mit 2 von 3 Token; die
+//    handlungsentscheidende Aussage kippte, die Tokenmehrheit legitimierte sie. Reine Tokenmasse
+//    KANN das nicht fangen: jeder Anteil unter 100 % lässt genau ein neues Wort zu, und das eine
+//    Wort ist bei einer Handlungsanweisung das Verb.
+//  · UND JEDES TOKENMASS IST AN DER SCHLIMMSTEN STELLE BLIND (EXT1, Behebungsprüfung 19:37,
+//    Entscheidung `00_CONTROL/ENTSCHEIDUNGEN/JOB-2659.md`): `tokenize` wirft Stoppwörter weg, und
+//    in STOPWORDS stehen `nicht`, `kein`, `nie`, `ohne`, `nur`, `muss`, `darf`, `soll`, `kann`,
+//    `immer`, `vor`, `nach`. „Ventil bei Überdruck NICHT schließen [1]" ist gegen „Ventil bei
+//    Überdruck schließen" damit zu 100 % gedeckt — bei JEDER Schwelle. Zweites Loch: die Vereinigung
+//    zweier markierter Quellen erlaubt, zwei wahre Sätze zu einem falschen zu verschränken. Drittes:
+//    „X vor Y" → „Y vor X" — `vor` ist Stoppwort, die Tokenmenge bleibt gleich.
+//
+// DIE GEWÄHLTE FORM — ZITATDECKUNG, nicht Tokendeckung (Entscheidung des Kopfes: Form frei, hier
+// begründet). Das Produktversprechen (`askRuleNote`) lautet: Klara „zitiert validiertes
+// KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren". Genau das wird geprüft:
+//  · EINHEIT: die markierte Aussage — der Text seit der vorigen Markengruppe. Der NACHLAUF hinter
+//    der letzten Marke ist eine Aussage ohne Marke; trägt er ein Wort, fällt die ganze Antwort.
+//  · REGEL (D3): Die Aussage muss nach Normalisierung (Kleinschreibung, Leerraum, Satzzeichen,
+//    ä/ö/ü/ß; Zahlen unverändert) ein ZUSAMMENHÄNGENDER AUSSCHNITT EINER EINZIGEN markierten
+//    Quelle sein. Alle Wörter zählen, auch Stoppwörter: „nicht" muss an derselben Stelle stehen,
+//    „vor"/„nach" ebenso. Kleine Toleranz für Beugung (`beugungsgleich`: gemeinsamer Wortstamm,
+//    Rest höchstens drei Zeichen), KEINE Toleranz für neue, fehlende oder vertauschte Wörter;
+//    Zahlen nur exakt.
+//  · SEGMENTE (D4, BEN 2659 D3): D3 verglich gegen den verketteten `refMatchText` und warf dabei
+//    den Punkt weg — aus „Prüfen Sie Ventil A. Schließen Sie Ventil B." wurde der Strom „prüfen
+//    sie ventil a schließen sie ventil b", und „Ventil A schließen [1]" war darin ein Ausschnitt
+//    ÜBER DIE SATZGRENZE. Zwei richtige Sätze wurden zu einem falschen. Jetzt wird die Quelle in
+//    SEGMENTE zerlegt (`quellSegmente`: je Feld — Titel, Aussage, jeder Bildtext, Volltext — und
+//    darin je Satz), die Aussage ebenfalls satzweise (`saetze`), und JEDER Satz der Aussage muss
+//    Ausschnitt EINES Segments DERSELBEN Quelle sein. Ein Ausschnitt verlässt nie ein Segment;
+//    das Ende eines Satzes und der Anfang des nächsten ergeben kein Zitat — ebenso wenig das Ende
+//    des Titels und der Anfang der Aussage. Warum satzweise und nicht nur eine Satzmarke im Strom:
+//    die Marke müsste in der Aussage ebenfalls erhalten bleiben, und ein Modell setzt Punkte, wo
+//    es will — die Segmentregel braucht vom Modell nichts, sie liest nur die Quelle.
+//  · Eine Aussage ohne Wort („[1]." allein) behauptet nichts und gilt als gedeckt.
+//
+//  GEFANGEN:  „Ventil bei Überdruck nicht schließen [1]" gegen „Ventil bei Überdruck schließen"
+//             — EXT1s Pflichtfall: „nicht" steht in keinem Ausschnitt der Quelle.
+//             „Bei Überdruck das Ventil tauschen [1]" — „tauschen" ist kein Quellwort.
+//             „Gedeckter Satz [1]. Ventil sofort tauschen." — der Nachlauf hat keine Marke.
+//             „Ventil X … alle 3 Monate [1][2]" aus zwei Quellen verschränkt — kein Ausschnitt EINER.
+//             „Y vor X" gegen „X vor Y" — die Reihenfolge ist Teil des Zitats.
+//             „Ventil A schließen [1]" gegen „Prüfen Sie Ventil A. Schließen Sie Ventil B." —
+//             BENs D3-Fall: der Ausschnitt überspränge die Satzgrenze.
+//             dasselbe gegen „Prüfen Sie Ventil A.“ Schließen Sie Ventil B. — BENs D4-Fall: das
+//             schließende Anführungszeichen (oder Apostroph, Klammer) hebt die Grenze nicht auf.
+//  GEDECKT:   der Quellsatz selbst, ein Teilsatz daraus, eine gebeugte Form („schließt" für
+//             „schließen"), mehrere Zitate je mit eigener Marke, zwei Sätze DERSELBEN Quelle
+//             hintereinander („Prüfen Sie Ventil A. Schließen Sie Ventil B. [1]").
+//
+//  WAS DIESE DECKUNGSPRÜFUNG NICHT FÄNGT (D5, ehrlich aufgeschrieben — jede Zeile ein Fall):
+//   1. BRUCHSTÜCKE MIT EIGENEM PUNKT (EXT1, Zweitinstanz D4): die Aussage wird ebenfalls satzweise
+//      gelesen, und jeder Aussage-Satz muss Ausschnitt IRGENDEINES Segments derselben Quelle sein.
+//      „Ventil A. Schließen. [1]" gegen „Prüfen Sie Ventil A. Schließen Sie Ventil B." → „ventil
+//      a" ist Ausschnitt von Satz 1, „schließen" von Satz 2 → gedeckt. Der Mensch liest „Ventil
+//      A. Schließen." — die falsche Anweisung mit einem Punkt dazwischen. Zwei Bruchstücke aus
+//      zwei Segmenten. Mögliche Regel (EXT1): ein Aussage-Satz, der kein ganzer Quellsatz ist,
+//      darf nur allein stehen, oder alle Bruchstücke müssen aus DEMSELBEM Segment kommen. Nicht
+//      gebaut — Entscheidung des Kopfes (D5 war auf die Zeichenklasse zugeschnitten).
+//   2. RICHTIG ZITIERT, FALSCHER KONTEXT: der Mensch fragt nach Ventil B, das Modell zitiert
+//      korrekt den Satz über Ventil A. Kein Deckungsfehler — Relevanz, liegt beim Ranking.
+//   3. WORTGLEICHER SATZ, ANDERE BEDEUTUNG DURCH AUSLASSUNG AM RAND: „Ventil A prüfen, bevor B
+//      schließt" → Zitat „Ventil A prüfen [1]" ist ein Ausschnitt und gedeckt, obwohl die
+//      Bedingung fehlt. Ein Teilsatz ist per Definition erlaubt (M3b) — der Preis dieser Freiheit.
+//   4. ZAHLEN- UND EINHEITENFORMATE: „6,5 bar" gegen „6.5 bar" — Komma und Punkt bleiben in der
+//      Normalisierung erhalten, die Formen gelten als verschiedene Wörter → Rückfall (sicher, aber
+//      streng). Tausenderpunkte („1.000") desgleichen.
+//   5. BEUGUNG: `beugungsgleich` erlaubt gemeinsamen Stamm ab 4 Zeichen mit Rest bis 3 —
+//      „schließen"/„schließt" ja, aber auch „Ventil"/„Ventile" (richtig) und theoretisch zwei
+//      verschiedene Wörter mit gleichem 4er-Stamm und kurzen Resten (z. B. „bremst"/„bremse").
+//   6. ZEICHENKLASSE: Unicode-Schließzeichen außerhalb der Klasse oben (etwa 」 oder ﴿) halten
+//      die Satzgrenze NICHT; das Produkt führt sie nicht, ein Import könnte sie liefern.
+//   7. ABKÜRZUNGEN: „z. B." trennt an „z." und „B." (Punkt + Leerraum) — zu früh, nie verschmolzen;
+//      ein Zitat über „z. B." hinweg fällt zurück. Dasselbe seit D4, durch D5 unverändert.
+//  WAS ES KOSTET (EXT1, wörtlich): „Paraphrasen des Modells fallen zurück auf den Quellentext. Das
+//             ist kein Verlust — es ist das Versprechen. Der Modelltext darf auswählen und
+//             zusammenstellen, nicht umformulieren."
+//
+// Fällt eine Aussage durch, fällt die ANTWORT durch (Befund 4: „Rückfall auf `best.statement`
+// oder `answered:false`", hier: die Aussage der bestgerankten zitierten Quelle im Wortlaut —
+// dieselbe Form wie der deterministische Weg). Der Modelltext geht dann NICHT hinaus.
+export const ABSAGE_MARKE = "KEINE_DECKUNG";
+
+/** Normalisierung für den Zitatvergleich — ALLE Wörter bleiben, auch Stoppwörter. */
+export function zitatWoerter(text: string): string[] {
+  return text
+    .toLowerCase()
+    .replace(/ä/g, "ae")
+    .replace(/ö/g, "oe")
+    .replace(/ü/g, "ue")
+    .replace(/ß/g, "ss")
+    .split(/[^a-z0-9.,]+/)
+    .map((w) => w.replace(/^[.,]+|[.,]+$/g, ""))
+    .filter((w) => w.length > 0);
+}
+
+/** Beugungstoleranz: gleiches Wort, oder gemeinsamer Stamm (ab 4 Zeichen) mit höchstens drei Zeichen Rest je Seite. Zahlen nur exakt. */
+function beugungsgleich(a: string, b: string): boolean {
+  if (a === b) return true;
+  if (/\d/.test(a) || /\d/.test(b)) return false;
+  let i = 0;
+  while (i < a.length && i < b.length && a[i] === b[i]) i++;
+  return i >= 4 && a.length - i <= 3 && b.length - i <= 3;
+}
+
+/** Ist `aussage` ein zusammenhängender Ausschnitt von `quelle` (Wort für Wort, in Reihenfolge)? */
+function istAusschnitt(aussage: readonly string[], quelle: readonly string[]): boolean {
+  if (aussage.length === 0) return true;
+  for (let start = 0; start + aussage.length <= quelle.length; start++) {
+    let ok = true;
+    for (let k = 0; k < aussage.length; k++) {
+      if (!beugungsgleich(aussage[k] as string, quelle[start + k] as string)) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return true;
+  }
+  return false;
+}
+
+export interface DeckungAussage {
+  text: string;
+  quellen: string[];
+  /** Die EINE Quelle, deren Text die Aussage als Ausschnitt enthält — oder null. */
+  zitatVon: string | null;
+  /** true für den Text nach der letzten Marke (kein `[n]`, keine Quelle — nie gedeckt). */
+  nachlauf: boolean;
+  gedeckt: boolean;
+}
+
+export interface DeckungBefund {
+  gedeckt: boolean;
+  aussagen: DeckungAussage[];
+}
+
+const MARKE = /\[([0-9\s,]+)\]/g;
+
+function markenIn(text: string, anzahl: number): number[] {
+  const marked = new Set<number>();
+  for (const match of text.matchAll(MARKE)) {
+    for (const part of (match[1] ?? "").split(",")) {
+      const n = Number.parseInt(part.trim(), 10);
+      if (Number.isInteger(n) && n >= 1 && n <= anzahl) {
+        marked.add(n);
+      }
+    }
+  }
+  return [...marked];
+}
+
+/** Ist der Text (in Gänze) die strukturierte Absage des Modells? */
+export function istAbsage(answerText: string): boolean {
+  return new RegExp(`(^|[^A-Z_])${ABSAGE_MARKE}([^A-Z_]|$)`).test(answerText);
+}
+
+/**
+ * Prüft jede markierte Aussage des Antworttexts gegen die Quellen, die sie markiert.
+ *
+ * EINE AUSSAGE ist der Text seit der vorigen Markengruppe bis zu dieser Markengruppe — nicht der
+ * Satz. Gemessen, warum: das Eval-Fake `hallucinatingModel` hängt „[1]" NACH dem letzten Satzpunkt
+ * an; ein Satzsplitter machte die Marke zu einem eigenen, leeren Segment, das nichts behauptet und
+ * als gedeckt galt, während die drei erfundenen Sätze davor unmarkiert und ungeprüft blieben.
+ * Wer eine Marke ans Ende eines Absatzes setzt, hat den ganzen Absatz markiert — und muss ihn decken.
+ *
+ * JOB 2659 D2 (BEN, Vollständigkeit „halb"): Text NACH der letzten Marke war in D1 eine „benannte
+ * Grenze" — und damit die Umgehung der ganzen Prüfung: gedeckte Marke voran, dahinter frei erfunden.
+ * Jetzt ist der Nachlauf eine eigene Aussage ohne Quelle; trägt er ein Inhaltstoken, ist er
+ * ungedeckt und kippt die Antwort. Ein Segment mit ungültigen Marken (etwa „[7]" bei zwei Quellen)
+ * gilt ebenso: Marke ohne Quelle ist keine Deckung.
+ */
+export function pruefeDeckung(answerText: string, candidates: readonly KnowledgeRef[]): DeckungBefund {
+  const aussagen: DeckungAussage[] = [];
+  const segmente: { text: string; nachlauf: boolean }[] = [];
+  let start = 0;
+  for (const gruppe of answerText.matchAll(/(?:\[[0-9\s,]+\]\s*)+/g)) {
+    const ende = (gruppe.index ?? 0) + gruppe[0].length;
+    segmente.push({ text: answerText.slice(start, ende).trim(), nachlauf: false });
+    start = ende;
+  }
+  // Der Nachlauf zählt, sobald er ein Wort trägt. Ein nackter Satzpunkt hinter der Marke ist keiner.
+  const rest = answerText.slice(start).trim();
+  if (rest.length > 0 && zitatWoerter(rest).length > 0) {
+    segmente.push({ text: rest, nachlauf: true });
+  }
+  for (const { text: satz, nachlauf } of segmente) {
+    const marken = nachlauf ? [] : markenIn(satz, candidates.length);
+    const quellen = marken.map((n) => candidates[n - 1] as KnowledgeRef);
+    // D4: die Aussage satzweise — jeder Satz muss Ausschnitt eines Segments DERSELBEN Quelle sein.
+    const aussageSaetze = saetze(satz.replace(MARKE, " "))
+      .map((s) => zitatWoerter(s))
+      .filter((w) => w.length > 0);
+    // Ein Segment ohne gültige Quelle (Nachlauf, ungültige Marke) ist gedeckt nur, wenn es nichts sagt.
+    const zitatVon =
+      aussageSaetze.length === 0
+        ? null
+        : (quellen.find((q) => {
+            const segmenteDerQuelle = quellSegmente(q);
+            return aussageSaetze.every((a) => segmenteDerQuelle.some((s) => istAusschnitt(a, s)));
+          })?.id ?? null);
+    const gedeckt = aussageSaetze.length === 0 || zitatVon !== null;
+    aussagen.push({ text: satz, quellen: quellen.map((q) => q.id), zitatVon, nachlauf, gedeckt });
+  }
+  return { gedeckt: aussagen.every((a) => a.gedeckt), aussagen };
+}
+
+/**
+ * D4: Satzweise Zerlegung. Ein Satz endet an `.`, `!`, `?`, `:` oder `;` NUR mit folgendem Leerraum
+ * (oder am Zeilenumbruch) — „6.5 bar" und „z.B." bleiben zusammen, „Ventil A. Schließen" trennt.
+ */
+/**
+ * D5 (BEN 2659 D4): DIE SCHLIESSENDE TYPOGRAFIE HEBT DIE SATZGRENZE NICHT AUF. Zwischen
+ * Satzendezeichen und Leerraum dürfen beliebig viele SCHLIESSENDE Zeichen stehen — die Grenze
+ * bleibt. Die Klasse ist die Zusicherung; sie steht hier vollständig:
+ *   Anführungszeichen  “  ”  "  »  «  ›  ‹      (deutsch „…“ schließt mit “; »…« und «…» beide
+ *                                                Richtungen; ›…‹ ebenso)
+ *   Apostrophe         '  ’  ‘
+ *   Klammern           )  ]  }
+ * NICHT in der Klasse (bewusst): „ (U+201E) und ‚ (U+201A) sind ÖFFNENDE Zeichen und stehen nie
+ * hinter einem Satzende. Ein Zeichen, das zwischen Satzende und Leerraum steht und KEINE
+ * Satzgrenze bedeutet, gibt es in dieser Klasse nicht — das schließende Zeichen gehört zum Satz
+ * davor. Was die Klasse VERSCHÄRFT: ein Satzzeichen INNERHALB eines Zitats („Er sagte „Stopp.“
+ * und ging.") trennt jetzt zu früh; ein Modellzitat über diese Stelle fällt zurück. Das ist ein zu
+ * früh getrennter Satz, kein verschmolzener — die sichere Richtung (H3 pinnt es).
+ */
+const SCHLIESSEND = "“”\"»«›‹'’‘)\\]}";
+const SATZGRENZE = new RegExp(`(?<=[.!?:;][${SCHLIESSEND}]*)\\s+|\\n+`);
+
+export function saetze(text: string): string[] {
+  return text
+    .split(SATZGRENZE)
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+}
+
+/**
+ * D4: die Segmente einer Quelle — je Feld (Titel, Aussage, jeder Bildtext, Volltext), darin je
+ * Satz, als normalisierte Wortfolgen. Ein Zitat verlässt nie ein Segment: weder eine Satzgrenze
+ * noch die Grenze zwischen zwei Feldern. Das ist die Bezugsgröße, die EXT1 in der Zweitinstanz D2
+ * verlangt hat („ein Satz einer Quelle, nicht der Text aller Quellen") und BEN in D3 mit dem
+ * Fall „Prüfen Sie Ventil A. Schließen Sie Ventil B." erzwungen hat.
+ */
+export function quellSegmente(ref: KnowledgeRef): string[][] {
+  const felder = [ref.title, ref.statement, ...(ref.captionTexts ?? []), ref.bodyText ?? ""];
+  const segmente: string[][] = [];
+  for (const feld of felder) {
+    for (const s of saetze(feld)) {
+      const woerter = zitatWoerter(s);
+      if (woerter.length > 0) {
+        segmente.push(woerter);
+      }
+    }
+  }
+  return segmente;
 }
 
 // AUFTRAG-mega52 A2 — DIE MARKEN ZURÜCKLESEN.
@@ -1174,15 +1447,71 @@ export class ModelProvider implements ReasonerProvider {
         confidential,
       )
     ).trim();
+    // JOB 2659 D1 (Befund 7): EINE ABSAGE IST EINE ABSAGE. Das Modell sagt strukturiert, dass die
+    // Quellen nicht reichen — das ist keine Antwort, sondern eine Wissenslücke (`answered:false`,
+    // der Ask-Dienst legt daraus den Gap an). Bisher ging derselbe Satz als Fließtext-Antwort hinaus.
+    if (istAbsage(answerText)) {
+      return {
+        answered: false,
+        answer: null,
+        knowledgeClass: "unbekannt",
+        trust: 0,
+        sources: [],
+        citedSources: [],
+        steps: [],
+        demo: false,
+      };
+    }
     // mega52 A2/A3: die Marken werden jetzt WIRKLICH zurückgelesen. Leer, wenn das Modell keine
-    // oder nur unbrauchbare Marken lieferte (A5) — die Oberfläche sagt das dann, statt zu raten.
+    // oder nur unbrauchbare Marken lieferte (A5).
     const cited = citedSourceIds(answerText, relevant);
+    // JOB 2659 D1 (Befund 6): KEINE MARKE, KEINE ANTWORT. Bis heute ging ein Text ohne jede Marke
+    // mit `answered:true` und bis zu acht `sources` hinaus; die Reißleine im Ask-Dienst griff nur
+    // bei `sources.length === 0`, was hier nie eintrat. Der Prompt macht die Marke zur PFLICHT für
+    // jede Quellaussage — ein Text ohne Marke ist nach diesem Vertrag keine Quellaussage. Er wird
+    // herabgestuft auf „nicht beantwortet": derselbe Zustand wie ohne Kandidaten, damit kein
+    // Verbraucher aus `sources` eine Grundlage liest, die niemand belegt hat. Der Pin in
+    // `tests/ask/mega52-tragende-quellen.test.ts` (A5) ist entsprechend geändert und begründet.
+    if (cited.length === 0) {
+      return {
+        answered: false,
+        answer: null,
+        knowledgeClass: "unbekannt",
+        trust: 0,
+        sources: [],
+        citedSources: [],
+        steps: [],
+        demo: false,
+      };
+    }
     // AUFTRAG-mega53 B1: die TRAGENDE Teilmenge — genau die Kandidaten, deren Marke im Antworttext
     // stand. Bis mega53 kamen Klasse und Vertrauenswert von `best`, also vom BESTGERANKTEN
     // Kandidaten, unabhängig davon, ob das Modell ihn überhaupt benutzt hat. `best` entscheidet ab
     // hier nur noch, OB gefragt wird (ohne Kandidaten kein Modellaufruf), nicht mehr, WIE sicher
     // die Antwort ist.
     const carrying = relevant.filter((r) => cited.includes(r.id));
+    // JOB 2659 D1/D2 (Befund 4): EINE MARKE IST KEIN BELEG. Jede markierte Aussage wird gegen die
+    // Quelle geprüft, die sie markiert (Maß und Grenze bei `pruefeDeckung`). Hält eine nicht,
+    // geht NICHT der Modelltext hinaus, sondern der Wortlaut der bestgerankten zitierten Quelle;
+    // `citedSources` ist dann genau diese eine. `sources` bleibt die vollständige Transparenzliste
+    // der herangezogenen Kandidaten (B3, mega52: was `sources` bedeutet, ändert dieser Auftrag nicht).
+    const deckung = pruefeDeckung(answerText, relevant);
+    if (!deckung.gedeckt) {
+      const rueckfall = carrying[0] as KnowledgeRef;
+      return {
+        answered: true,
+        answer: rueckfall.statement,
+        ...answerStanding([rueckfall]),
+        sources: relevant.map((r) => r.id),
+        citedSources: [rueckfall.id],
+        steps: relevant.map((r) => ({
+          description: sourceLabel(r.title, locale),
+          sourceId: r.id,
+          snippet: r.statement,
+        })),
+        demo: false,
+      };
+    }
     return {
       answered: true,
       answer: answerText,

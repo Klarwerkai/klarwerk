@@ -174,7 +174,23 @@ describe("mega52 A3: der Modellmodus meldet die tragenden Quellen", () => {
     expect(ergebnis.citedSources).toEqual(["ventil"]);
   });
 
-  it("A5: liefert das Modell keine Marken, bleibt citedSources leer", async () => {
+  // ==============================================================================================
+  // JOB 2659 D1 (Review EXT1-20260828, Befund 6) — DIESER PIN HIELT DEN BEFUND FEST, NICHT DEN
+  // SCHUTZ. ER WIRD GEÄNDERT, NICHT UMGANGEN.
+  // ==============================================================================================
+  //
+  // ER STAND HIER SO (mega52 A5): „liefert das Modell keine Marken, bleibt citedSources leer" —
+  // mit `answered = true` und `sources = ["ventil"]`. Das Review nennt genau diese Zeilen: „Liefert
+  // das Modell keine Marken, geht die Antwort trotzdem mit answered:true und bis zu 8 sources
+  // hinaus; die Reissleine greift nur bei sources.length===0, was im Modellweg nie eintritt."
+  //
+  // WAS DER PIN RICHTIG HIELT und was bleibt: ohne Marke wird NICHTS geraten — `citedSources` ist
+  // leer, nie stillschweigend auf alle zurückgefallen.
+  // WAS ER FALSCH HIELT: dass der Text trotzdem eine Antwort ist. Der Prompt macht die Marke seit
+  // mega52 A1 zur PFLICHT für jede Quellaussage. Ein Text ohne Marke ist nach diesem Vertrag keine
+  // Quellaussage — also keine Antwort, sondern eine Wissenslücke. `sources` ist dann leer: eine
+  // Nicht-Antwort trägt keine Grundlage, die ein Verbraucher als Deckung lesen könnte.
+  it("A5 / JOB 2659: liefert das Modell keine Marken, gibt es keine Antwort — nichts wird geraten", async () => {
     const provider = new ModelProvider({
       name: "fake",
       complete: async () => "Bei Ueberdruck das Ventil schliessen.",
@@ -182,8 +198,9 @@ describe("mega52 A3: der Modellmodus meldet die tragenden Quellen", () => {
     const kandidaten = [ref("ventil", "Ventil X", "Bei Ueberdruck Ventil X schliessen")];
     const ergebnis = await provider.answer("Was tun bei Ueberdruck am Ventil X?", kandidaten);
 
-    expect(ergebnis.answered).toBe(true);
-    expect(ergebnis.sources).toEqual(["ventil"]);
+    expect(ergebnis.answered).toBe(false);
+    expect(ergebnis.answer).toBeNull();
+    expect(ergebnis.sources).toEqual([]);
     expect(ergebnis.citedSources).toEqual([]);
   });
 });

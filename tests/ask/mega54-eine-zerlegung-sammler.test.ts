@@ -150,8 +150,22 @@ describe("AUFTRAG-mega54 D2 — Sammler: eine Zerlegung, eine Grundform", () => 
     expect(relativ.length).toBeGreaterThan(20);
   });
 
-  it("es gibt GENAU EINE Zerlegung im Antwortweg", () => {
-    expect(erheben(weg, istZerlegung)).toEqual([`${DIE_EINE_STELLE}:tokenize`]);
+  // JOB 2659 D2 — DIESER PIN WIRD GEÄNDERT, NICHT UMGANGEN. HIER STAND: genau `provider.ts:tokenize`.
+  //
+  // Die Zitatdeckung (Entscheidung `00_CONTROL/ENTSCHEIDUNGEN/JOB-2659.md`, EXT1) prüft, ob eine
+  // markierte Modellaussage ein zusammenhängender Ausschnitt EINER Quelle ist. Dafür darf sie
+  // `tokenize` NICHT benutzen — und genau das ist der Befund, der sie nötig macht: `tokenize` wirft
+  // `nicht`, `kein`, `muss`, `vor` als Stoppwörter weg; „Ventil NICHT schließen" wäre gegen „Ventil
+  // schließen" tokengleich. `zitatWoerter` (provider-model.ts) behält deshalb ALLE Wörter, faltet
+  // keine Grundform und bewahrt die Reihenfolge. Sie ist eine zweite Zerlegung, aber keine zweite
+  // WAHRHEIT im Sinn von mega54: sie speist weder Prefilter noch Ranking — die Zusage „Vorauswahl und
+  // Ranking nutzen EXAKT dieselben Terme" bleibt an `tokenize` allein hängen. Der Sammler zählt sie
+  // namentlich, damit eine DRITTE sichtbar wird, statt still durchzugehen.
+  it("es gibt GENAU EINE Zerlegung für Terme im Antwortweg — und die eine, benannte für Zitate", () => {
+    expect(erheben(weg, istZerlegung)).toEqual([
+      "services/reasoner/src/provider-model.ts:zitatWoerter",
+      `${DIE_EINE_STELLE}:tokenize`,
+    ]);
   });
 
   it("es gibt GENAU EINEN Endungs-Abtrag im Antwortweg, und er liegt in DER EINEN Datei", () => {
