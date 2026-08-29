@@ -53,6 +53,10 @@ import {
   withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
+// JOB 2705 (R2-23 a): DIESELBE Konstante, die `draftBodyPatch` als Löschmarker setzt — nicht ein
+// zweites `""` an dieser Stelle. Ändert sich die Leerwert-Semantik je, ändert sie sich an einer
+// Stelle, und dieser Vergleich geht nicht still ins Leere.
+import { CLEARED_DRAFT_BODY_HTML } from "../lib/draftBody";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentiality";
 // AUFTRAG-mega23 Block A: DIESELBE Quelle wie der Erfassen-Weg — Erzeugung des Schlüssels, wann er
 // fällt, und welcher 409 einen neuen Vorgang rechtfertigt. Kein zweiter Mechanismus, keine eigene
@@ -72,6 +76,33 @@ function errorMessage(err: unknown, fallback: string): string {
     return err.message;
   }
   return err instanceof Error ? err.message : fallback;
+}
+
+// ================================================================================================
+// JOB 2705 (Review-Befund R2-23 b) — EIN LADEFEHLER SAGT, DASS NICHT GELADEN WERDEN KONNTE.
+// ================================================================================================
+//
+// Der Ladepfad meldete bisher `fd.errSaveFailed` — „Speichern fehlgeschlagen." Es wurde aber
+// nichts gespeichert; es konnte nur nichts geladen werden. Der Mensch sucht den Fehler an der
+// falschen Stelle: an seinem Text statt an der Verbindung.
+//
+// BEIM BAUEN HAT SICH DER BEFUND PRAEZISIERT, und das gehoert hierher, weil es die Wahl dieser
+// Funktion erklaert: Der falsche Rueckfall war praktisch UNERREICHBAR. `errorMessage` oben nimmt
+// bei JEDEM `Error` dessen eigene Meldung und faellt nur bei einem geworfenen Nicht-Error zurueck.
+// Der Mensch las deshalb nicht „Speichern fehlgeschlagen", sondern:
+//
+//   · bei einem Serverfehler  → die fachliche Servermeldung   (gut, praeziser als jeder Rueckfall)
+//   · bei einem NETZFEHLER    → „Failed to fetch"             (technisch, englisch, nutzlos)
+//
+// Der zweite Fall ist der eigentliche Schaden, und beide Haelften loest dieselbe Regel: Eine
+// fachliche Meldung des Servers gewinnt; alles Technische bekommt den ehrlichen Satz. Deshalb
+// prueft diese Funktion auf `ApiError` und faellt bei allem anderen zurueck — anders als
+// `errorMessage`, das den Rohtext durchreicht.
+function ladeFehlerMeldung(err: unknown, fallback: string): string {
+  if (err instanceof ApiError) {
+    return err.message;
+  }
+  return fallback;
 }
 
 export function CaptureFrontDoor(): JSX.Element {
@@ -155,6 +186,12 @@ export function CaptureFrontDoor(): JSX.Element {
     bodyHtml: string;
     confidentiality: Confidentiality;
   }>({ title: "", bodyHtml: "", confidentiality: "intern" });
+  // JOB 2705 (R2-23 a): Hat der Server den Body zu diesem Entwurf gar nicht geliefert
+  // (`bodyHtml: null`, weil ein Ankerdokument fehlt)? Dann steht im Feld `""` — aber das ist
+  // KEINE Loeschung durch den Menschen, und die Vordertuer darf daraus keinen Loeschmarker machen.
+  // Sobald der Mensch den Body selbst anfasst, ist der Unterschied hinfaellig: dann meint leer
+  // wirklich leer.
+  const bodyNieGeliefertRef = useRef(false);
   const saveRequestedRef = useRef(false);
   const submitRequestedRef = useRef(false);
   // AUFTRAG-mega9 Block B: true, während der Wächter-Dialog das Speichern angestoßen hat — dann
@@ -258,6 +295,9 @@ export function CaptureFrontDoor(): JSX.Element {
       return;
     }
     setBodyHtml(next);
+    // JOB 2705 (R2-23 a): Ab hier hat der Mensch den Body selbst in der Hand. Leert er ihn jetzt,
+    // ist das eine echte Loeschung und muss als Loeschmarker reisen (mega7 Block A).
+    bodyNieGeliefertRef.current = false;
     setSubmittedKo(null);
     // AUFTRAG-mega9 Block A: der Nutzer hat auf die Begründung reagiert — die Validierungsmeldung
     // gehört weg, sobald wieder am Inhalt gearbeitet wird (kein stehender roter Rest).
@@ -276,6 +316,8 @@ export function CaptureFrontDoor(): JSX.Element {
     setQuellBildzahl(null);
     // AUFTRAG-mega9 Block B: bewusst geleertes Formular = neuer, sauberer Bezugspunkt.
     savedStateRef.current = { title: "", bodyHtml: "", confidentiality };
+    // JOB 2705 (R2-23 a): ein neuer Vorgang erbt die Ausduennung des vorigen Entwurfs nicht.
+    bodyNieGeliefertRef.current = false;
     setSubmittedKo(null);
     setActiveDraftId(null);
     setSubmitValidation(false);
@@ -323,6 +365,24 @@ export function CaptureFrontDoor(): JSX.Element {
         }
         const loadedTitle = draft.payload.title ?? "";
         const loadedBody = frontDoorBodyFromDraft(draft.payload);
+        // ==========================================================================================
+        // JOB 2705 (Review-Befund R2-23 a) — WAS DER SERVER NICHT GESCHICKT HAT, SCHICKT DIE
+        // VORDERTUER NICHT ZURUECK.
+        // ==========================================================================================
+        //
+        // `withAnchorCheck` (services/capture/src/service.ts:545-567) DUENNT die Auskunft aus, wenn
+        // ein Ankerdokument fehlt: `bodyHtml: null`. Der ECHTE Body bleibt dabei in der Ablage —
+        // ausgeduennt ist die AUSKUNFT, nicht der Bestand.
+        //
+        // `frontDoorBodyFromDraft` macht daraus `""`, und beim Speichern wird daraus ueber
+        // `draftBodyPatch` ein LOESCHMARKER (`bodyHtml: ""`), den der Merge als Loeschung liest.
+        // Ergebnis: Ein Mensch oeffnet einen Entwurf, dessen Anhang geloescht wurde, korrigiert den
+        // Titel — und verliert einen Text, den er nie gesehen und nie angefasst hat.
+        //
+        // `null` IST NICHT `""`. Diese Ref haelt genau diesen Unterschied fest, den der String
+        // nicht mehr traegt. Sie gilt nur, bis der Mensch den Body selbst anfasst: Ab dann meint
+        // ein leeres Feld wirklich „leer", und der Loeschmarker ist richtig (mega7 Block A).
+        bodyNieGeliefertRef.current = draft.payload.bodyHtml === null;
         // JOB 504 D2: der Rohwert bleibt roh (kann fehlen); die Formularanzeige normalisiert wie
         // bisher auf "intern" — jetzt ueber den geteilten Helfer statt eines eigenen `??`-Vorschalters.
         const declared = draft.payload.confidentiality;
@@ -354,7 +414,10 @@ export function CaptureFrontDoor(): JSX.Element {
           return;
         }
         setActiveDraftId(null);
-        setErr(errorMessage(e, t("fd.errSaveFailed")));
+        // JOB 2705 (R2-23 b): der LADEPFAD meldet einen LADEFEHLER. Vorher stand hier
+        // `fd.errSaveFailed` — „Speichern fehlgeschlagen." fuer einen Vorgang, der nichts
+        // gespeichert hat.
+        setErr(ladeFehlerMeldung(e, t("fd.errLoadFailed")));
       })
       .finally(() => {
         if (!cancelled) {
@@ -439,21 +502,32 @@ export function CaptureFrontDoor(): JSX.Element {
   const save = useMutation({
     mutationFn: () => {
       if (activeDraftId) {
-        return withFrontDoorSaveTimeout(
-          endpoints.drafts.update(
-            activeDraftId,
-            // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
-            // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Body als Löschmarker
-            // reist statt vom partiellen Merge durch den Altwert ersetzt zu werden.
-            buildFrontDoorPayload({
-              title,
-              bodyHtml,
-              fallbackTitle,
-              confidentiality,
-              activeDraftId,
-            }),
-          ),
-        );
+        // AUFTRAG-mega7 Block A: Speichern auf einen BESTEHENDEN Entwurf ist ein PUT über den
+        // Bestand — die Entwurfs-Id mitgeben, damit ein bewusst geleerter Body als Löschmarker
+        // reist statt vom partiellen Merge durch den Altwert ersetzt zu werden.
+        const rumpf = buildFrontDoorPayload({
+          title,
+          bodyHtml,
+          fallbackTitle,
+          confidentiality,
+          activeDraftId,
+        });
+        // JOB 2705 (R2-23 a): DER LÖSCHMARKER AUS DEM NICHTS. Hat der Server den Body nie
+        // geliefert (Ausdünnung bei fehlendem Ankerdokument) und hat der Mensch ihn seither nicht
+        // angefasst, dann ist das leere Feld keine Löschung — es ist eine Lücke in der Auskunft.
+        // Der Schlüssel geht deshalb GAR NICHT mit, und der partielle Merge lässt den Altwert
+        // stehen. Genau der Vertrag, den `services/capture/src/service.ts:371-372` beschreibt:
+        //
+        //     Schlüssel NICHT mitgeschickt ⇒ Altwert bleibt.
+        //     Schlüssel mitgeschickt mit LEERWERT ⇒ Altwert geht.
+        //
+        // Alles andere bleibt, wie es war: Ein Body, den der Mensch selbst geleert hat, reist
+        // weiterhin als Löschmarker (mega7 Block A) — `bodyNieGeliefertRef` fällt beim ersten
+        // Tastendruck.
+        if (bodyNieGeliefertRef.current && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
+          delete rumpf.bodyHtml;
+        }
+        return withFrontDoorSaveTimeout(endpoints.drafts.update(activeDraftId, rumpf));
       }
       return createFrontDoorDraft({ title, bodyHtml, fallbackTitle, confidentiality }, (payload) =>
         endpoints.drafts.create(payload),
@@ -462,14 +536,31 @@ export function CaptureFrontDoor(): JSX.Element {
     onMutate: () => {
       setErr(null);
       setSubmittedKo(null);
+      // JOB 2705 (R2-23 c): DER STAND, DER WIRKLICH ABGESENDET WIRD — festgehalten VOR dem
+      // Aufruf, nicht nach seinem Erfolg. Er ist der einzig ehrliche Bezugspunkt für
+      // `savedStateRef`: Was danach getippt wird, hat den Server nie gesehen.
+      return { abgesendet: { title, bodyHtml, confidentiality } };
     },
-    onSuccess: (draft) => {
+    onSuccess: (draft, _variablen, kontext) => {
       const savedTitle = draft.payload.title ?? derivedTitle;
       setActiveDraftId(draft.id);
       setErr(null);
       // AUFTRAG-mega9 Block B: der eben gespeicherte Stand ist der neue Bezugspunkt — die Seite ist
       // ab hier sauber und der Wächter fragt beim Wechsel nicht mehr nach.
-      savedStateRef.current = { title, bodyHtml, confidentiality };
+      //
+      // JOB 2705 (Review-Befund R2-23 c) — UND ZWAR DER ABGESENDETE STAND, NICHT DER AKTUELLE.
+      //
+      // Hier stand `{ title, bodyHtml, confidentiality }`: die Render-Werte ZUM ERFOLGSZEITPUNKT.
+      // Der Editor ist während `save.isPending` nicht gesperrt, also konnte der Mensch in der
+      // Zwischenzeit weitertippen — und dieser neue Text wurde damit als „gesichert" verbucht,
+      // obwohl ihn niemand gespeichert hatte. Die Seite galt als sauber, der Wächter schwieg, und
+      // die Navigation weiter unten trug den Text fort. Ohne Meldung, ohne Rückfrage.
+      //
+      // Der abgesendete Stand kommt aus `onMutate` und ist das, was der Server wirklich bekommen
+      // hat. Weicht das Formular davon ab, ist es ehrlich „ungespeichert" — genau der Zustand, den
+      // `isFrontDoorDirty` und der Wächter dafür vorsehen.
+      const abgesendet = kontext?.abgesendet ?? { title, bodyHtml, confidentiality };
+      savedStateRef.current = abgesendet;
       setSubmitValidation(false);
       push("success", t("fd.toastSaved"));
       void qc.invalidateQueries({ queryKey: ["drafts"] });
@@ -479,6 +570,26 @@ export function CaptureFrontDoor(): JSX.Element {
       // eigentliche Ziel überschrieben.
       if (guardSaveRef.current) {
         guardSaveRef.current = false;
+        return;
+      }
+      // JOB 2705 (Review-Befund R2-23 c) — DIE NAVIGATION TRÄGT KEINEN UNGESPEICHERTEN TEXT FORT.
+      //
+      // Der Kommentar darunter stimmt für den Normalfall und bleibt deshalb stehen: Wer speichert
+      // und nichts weiter tut, soll ohne Rückfrage weiterkommen. Seine Begründung — „der Entwurf
+      // ist persistiert, es kann nichts verloren gehen" — gilt aber NUR, solange das Formular dem
+      // abgesendeten Stand entspricht. Hat der Mensch während des Speicherns weitergetippt, trägt
+      // dieser Sprung genau den Text fort, den der Server nie bekommen hat.
+      //
+      // Dann bleibt die Seite stehen. Der Mensch sieht seinen Text, die Erfolgsmeldung ist
+      // trotzdem erschienen (es WURDE ja gespeichert), und der neue Text ist über
+      // `isFrontDoorDirty` als ungespeichert erkennbar — er kann ihn mit einem zweiten Klick
+      // sichern. Das ist der freundliche der beiden Wege aus dem Auftrag: nicht den Editor
+      // sperren, sondern den Stand ehrlich führen.
+      const nochUngespeichert =
+        title !== abgesendet.title ||
+        bodyHtml !== abgesendet.bodyHtml ||
+        confidentiality !== abgesendet.confidentiality;
+      if (nochUngespeichert) {
         return;
       }
       // AUFTRAG-mega12 Block A: bleibt BEWUSST roh. Das läuft im `onSuccess` eines ERFOLGREICHEN
