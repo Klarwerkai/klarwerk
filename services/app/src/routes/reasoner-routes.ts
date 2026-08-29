@@ -287,7 +287,30 @@ export function reasonerRoutes(deps: ReasonerRoutesDeps, guards: Guards): Fastif
       if (task === "ask") {
         // Kartierung SCRUM-502 Schicht 2: 'ask' trägt eine reine Nutzerfrage (kein gespeicherter
         // KO-Text); der Antwort-Kontext ist bereits Schicht-1-gefiltert. Keine Sensitivitäts-Route.
-        reply.code(200).send(await ask.ask(text ?? "", user.id, locale));
+        //
+        // JOB 2666 D2 (BEN, Korrekturpflicht 3: „Nachweis … der `task:"ask"`-Enge"): Trägt der
+        // Aufruf eine Klara-Bindung und ist keine Einwilligung bestätigt, läuft die Frage in
+        // DERSELBEN Enge wie `/api/ask` im Modus `retrieval-only` (ask-routes.ts: `validatedOnly` +
+        // `retrievalOnly`) — sonst wäre dieser Task die Tür um das KA4-Tor herum, das die Text- und
+        // Bildwege seit 2692 schließt. Dasselbe Tor, derselbe Aufruf (`ka4Freigabe`), derselbe
+        // Protokollname wie die übrigen Reasoner-Wege. Ohne Bindung (Konsole) byteweise wie zuvor.
+        const gebundenOhneFreigabe =
+          klaraBindungVorhanden(request.headers) &&
+          !(await ka4Freigabe(
+            ka4,
+            request.headers,
+            user.id,
+            request.log,
+            "reasoner.ka4.dokument-consent",
+          ));
+        reply.code(200).send(
+          gebundenOhneFreigabe
+            ? await ask.ask(text ?? "", user.id, locale, {
+                validatedOnly: true,
+                retrievalOnly: true,
+              })
+            : await ask.ask(text ?? "", user.id, locale),
+        );
         return;
       }
       if (task === "assist") {
