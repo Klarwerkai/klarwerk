@@ -88,6 +88,13 @@ class ZaehlendesRepo implements DraftRepo {
   list(): Promise<Draft[]> {
     return this.inner.list();
   }
+
+  // JOB 2696 (R2-33): eine LESENDE Methode — sie zaehlt hier bewusst nicht mit, denn dieses Doppel
+  // misst Schreibzugriffe. Sie muss aber da sein: `DraftRepo` verlangt sie seither von jeder
+  // Ablage, damit die Entwurfsliste nicht wieder den ganzen Bestand laedt.
+  listByAuthor(authorId: string): Promise<Draft[]> {
+    return this.inner.listByAuthor(authorId);
+  }
 }
 
 // `objectExists` ist die injizierte Existenzpruefung des Objektspeichers (service.ts:23). Wird sie

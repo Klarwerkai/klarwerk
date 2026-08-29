@@ -249,6 +249,8 @@ describe("G27 · Altbestand: sicher und idempotent", () => {
       update: (k) => inner.update(k),
       delete: (id, tx) => inner.delete(id, tx),
       bumpTrust: (id, s, m, tx) => inner.bumpTrust(id, s, m, tx),
+      // JOB 2696 (R2-34): neue Vertragsmethode — reines Durchreichen.
+      findByImportCandidateId: (candidateId) => inner.findByImportCandidateId(candidateId),
       list: (f) => inner.list(f),
       listForSearch: (f) => inner.listForSearch(f),
       listByIds: (ids) => inner.listByIds(ids),

@@ -227,7 +227,16 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       // onResume arbeitet mit dem Objekt aus dieser Antwort, nicht mit einem zweiten GET). Sie
       // läuft deshalb durch DIESELBE Ankerprüfung wie die Einzelroute — sonst stünde „kein
       // Body-Resume ohne Anker" im Code und griffe in der Anwendung nie.
-      const geprueft = await capture.listDraftsForResume();
+      // JOB 2696 (R2-33): Die Eingrenzung geschieht jetzt IN DER ABLAGE, nicht erst hier. Ein
+      // Nicht-Admin bekommt nur noch seine eigenen Entwuerfe geladen; ein Admin unveraendert alle.
+      //
+      // `visibleDraftsFor` BLEIBT STEHEN, und das ist Absicht: Es ist und bleibt die Stelle, die
+      // entscheidet, wer welchen Entwurf sieht. Die Vorfilterung ist eine Ersparnis, keine zweite
+      // Regel — liefe sie je auseinander, faengt der Aufruf unten es ab. Eine Sichtbarkeitsregel
+      // zu ersetzen, um Bytes zu sparen, waere der falsche Handel.
+      const geprueft = await capture.listDraftsForResume(
+        user.role === "admin" ? undefined : user.id,
+      );
       reply.code(200).send(
         visibleDraftsFor(
           user,

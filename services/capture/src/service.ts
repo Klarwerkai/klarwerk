@@ -513,8 +513,27 @@ export class CaptureService {
    * Anker" genau auf dem Weg umgehbar, den jeder Nutzer tatsächlich geht — die Regel stünde im
    * Code und griffe in der Anwendung nie.
    */
-  async listDraftsForResume(): Promise<{ draft: Draft; anchorsMissing: string[] }[]> {
-    const drafts = await this.repo.list();
+  // ============================================================================================
+  // JOB 2696 (Review-Befund R2-33) — ZUERST EINGRENZEN, DANN PRUEFEN.
+  // ============================================================================================
+  //
+  // Vorher lud diese Methode IMMER den ganzen Bestand — alle Nutzer, volles `bodyHtml` bis 5 MiB je
+  // Entwurf — pruefte je Entwurf die Anker, und erst die Route filterte danach auf den, der fragt.
+  // EXT1s Satz dazu: *„wird fuer alle langsam, sobald irgendjemand grosse Entwuerfe haelt."*
+  //
+  // `fuerAutor` kehrt die Reihenfolge um. Zwei Dinge werden dadurch billiger, und das zweite ist
+  // das teurere: die geladenen Bytes UND die Ankerpruefung, die je Entwurf Objekte nachschlaegt.
+  // Anna bezahlte bisher die Ankerpruefung von Bodos Bildern mit.
+  //
+  // OHNE `fuerAutor` bleibt alles wie bisher — das ist der Admin-Weg, und er MUSS alles sehen.
+  // Die Entscheidung, wer wen sieht, faellt weiterhin in `visibleDraftsFor` (capture-routes.ts);
+  // diese Vorfilterung nimmt ihr nichts ab, sie erspart ihr nur die Arbeit an Zeilen, die sie
+  // ohnehin verworfen haette. Deshalb ist das Praedikat hier dasselbe und kein zweites.
+  async listDraftsForResume(
+    fuerAutor?: string,
+  ): Promise<{ draft: Draft; anchorsMissing: string[] }[]> {
+    const drafts =
+      fuerAutor === undefined ? await this.repo.list() : await this.repo.listByAuthor(fuerAutor);
     const result: { draft: Draft; anchorsMissing: string[] }[] = [];
     for (const draft of drafts) {
       result.push(await this.withAnchorCheck(draft));

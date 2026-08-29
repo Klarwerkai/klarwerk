@@ -274,6 +274,21 @@ export class PgKoRepo implements KoRepo {
     return res.rows[0]?.data;
   }
 
+  // JOB 2696 (R2-34): EINE Zeile über den partiellen Unique-Index `kos_import_candidate_uq` statt
+  // eines Bestandsdurchlaufs mit `bodyHtml`. Dieselbe Bauform wie `findByCreateOperation` darüber.
+  //
+  // KEIN `deletedAt`-Ausschluss — bewusst, und aus demselben Grund, aus dem der Index ihn nicht hat:
+  // Auch ein getrashtes Objekt hält seinen Import-Anker. Fände die Suche es nicht, legte der
+  // Wiederholversuch ein zweites an. `LIMIT 1` ist keine Auswahl unter mehreren, sondern die
+  // Aussage des Index: zu einer Kennung gibt es höchstens ein Objekt.
+  async findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined> {
+    const res = await this.pool.query<DataRow>(
+      "SELECT data FROM kos WHERE import_candidate_id=$1 LIMIT 1",
+      [candidateId],
+    );
+    return res.rows[0]?.data;
+  }
+
   // SCRUM-509 R3: optimistische Concurrency auf DB-Ebene (Compare-and-Set auf der gespeicherten
   // rowVersion in `data`). Der Write greift NUR, wenn die gespeicherte rowVersion der vom Aufrufer
   // gelesenen entspricht; sonst rowCount 0 → STALE_WRITE (kein Überschreiben eines fremden Writes).

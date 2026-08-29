@@ -297,6 +297,18 @@ class JsonRoundTripDraftRepo implements DraftRepo {
     return Promise.resolve();
   }
 
+  // JOB 2696 (R2-33): auch dieses Doppel muss die Autorenfrage beantworten koennen — der Vertrag
+  // `DraftRepo` verlangt es jetzt von JEDER Ablage. Waere die Methode optional, koennte eine
+  // Ablage sie stillschweigend auslassen, und die Entwurfsliste laedt wieder alles, ohne dass es
+  // jemandem auffaellt. Der Rundlauf ueber JSON bleibt, damit dieses Doppel misst, was es soll.
+  listByAuthor(authorId: string): Promise<Draft[]> {
+    return Promise.resolve(
+      [...this.rows.values()]
+        .map((row) => JSON.parse(row) as Draft)
+        .filter((draft) => draft.originalAuthor === authorId),
+    );
+  }
+
   list(): Promise<Draft[]> {
     return Promise.resolve([...this.rows.values()].map((row) => JSON.parse(row) as Draft));
   }

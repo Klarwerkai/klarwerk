@@ -524,6 +524,9 @@ describe("SCRUM-523 P.3 (WP-A2): repo.delete + audit.record committen/rollbacken
       listForSearch: (filter) => inner.listForSearch(filter),
       // G27: neue Vertragsmethode (gezielter Mehrfach-Nachschlag) — reines Durchreichen.
       listByIds: (ids) => inner.listByIds(ids),
+      // JOB 2696 (R2-34): neue Vertragsmethode — reines Durchreichen. Papierkorb eingeschlossen,
+      // was in DIESER Datei besonders zaehlt: der Import-Anker muss ein getrashtes Objekt finden.
+      findByImportCandidateId: (candidateId) => inner.findByImportCandidateId(candidateId),
       setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
       // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen.
       setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),

@@ -2773,8 +2773,17 @@ export class KoService {
   // Papierkorb (einzige Trash-durchlässige Lesefläche neben den Trash-Views): die Claim-Recovery
   // und der Insert-or-Adopt-Pfad müssen ein bereits erzeugtes KO auch dann finden, wenn der
   // D-CLEAN es zwischenzeitlich getrasht hat — sonst entstünde beim Retry ein Doppel-KO.
+  //
+  // JOB 2696 (R2-34): Vorher stand hier `(await this.repo.list({})).find(…)` — der GANZE Bestand,
+  // mit `bodyHtml`, im Speicher durchsucht, und das bis zu viermal je Import-Annahme. Die Spalte
+  // `import_candidate_id` mit ihrem partiellen Unique-Index gibt es seit WP-SHIP8-CLOSE-4; der
+  // schnelle Weg war vorhanden und wurde nicht benutzt.
+  //
+  // Die Zusage darüber bleibt unverändert: Auch ein getrashtes Objekt wird gefunden. `list({})`
+  // lief ohne WHERE, die neue Abfrage filtert nur auf die Kennung — Papierkorb inklusive, wie es
+  // der Recovery-Vertrag verlangt.
   async findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined> {
-    return (await this.repo.list({})).find((k) => k.importCandidateId === candidateId);
+    return this.repo.findByImportCandidateId(candidateId);
   }
 
   // WP-BILD-1g (bens sammel14-ROT): Suchpfad-Sicht OHNE bodyHtml — die Bibliotheks-Suche arbeitet

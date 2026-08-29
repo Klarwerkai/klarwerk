@@ -99,6 +99,20 @@ export interface KoRepo {
   // für Altzeilen exakt das von mega21 — und es kann kein zweites Objekt zu ihrem Vorgang entstehen.
   // Eine EXAKTE Eigentümer-Übereinstimmung hat Vorrang vor der Altzeile.
   findByCreateOperation(operationId: string, actor: string): Promise<KnowledgeObject | undefined>;
+  /**
+   * JOB 2696 (Review-Befund R2-34): das Objekt zu einer Import-Kennung, über die vorhandene Spalte.
+   *
+   * WARUM ES DIESE METHODE BRAUCHT: Der Dienst hat bisher `list({})` geladen und im Speicher
+   * gesucht — den GANZEN Bestand, mit `bodyHtml`, und das bis zu viermal je Import-Annahme.
+   * Die Spalte `import_candidate_id` samt partiellem Unique-Index existiert seit
+   * WP-SHIP8-CLOSE-4 (`KO_IMPORT_ANCHOR_SCHEMA`); der schnelle Weg war da und wurde nicht benutzt.
+   *
+   * PAPIERKORB EINGESCHLOSSEN, und das ist keine Nachlässigkeit, sondern der bestehende Vertrag:
+   * Die Anker-Suche des Import-Accepts muss ein bereits erzeugtes Objekt auch dann finden, wenn es
+   * zwischenzeitlich getrasht wurde — sonst entstünde beim Wiederholen ein Doppel-Objekt. `list({})`
+   * war ohne WHERE und damit ebenfalls durchlässig; die Semantik bleibt Zeichen für Zeichen dieselbe.
+   */
+  findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined>;
   update(ko: KnowledgeObject): Promise<void>;
   // SCRUM-523 P.3 (WP-A2): optionaler, opaker TxContext (services/db-tx) — additiv, abwärtskompatibel.
   // Zweck: der Purge-Chokepoint (KoService.purgeKo) kann delete() UND audit.record() in DERSELBEN
@@ -272,6 +286,19 @@ export class InMemoryKoRepo implements KoRepo {
   // AUFTRAG-mega22 Block G: actor-gebunden, mit Vorrang für die EXAKTE Übereinstimmung. Die
   // Altzeile (Eigentümer unbekannt) ist der Rückfall — sie darf einen neuen, eigenen Vorgang
   // desselben Anfragenden nicht verdecken.
+  // JOB 2696 (R2-34): Spiegel des partiellen Unique-Index `kos_import_candidate_uq`. Im Speicher
+  // kostet der Durchlauf nichts; die ZUSAGE ist dieselbe wie in PostgreSQL — Papierkorb
+  // eingeschlossen, hoechstens ein Treffer. Ohne diese Methode koennte eine Speicherablage die
+  // Frage gar nicht beantworten, und der Dienst muesste wieder den Bestand laden.
+  findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined> {
+    for (const ko of this.items.values()) {
+      if (ko.importCandidateId === candidateId) {
+        return Promise.resolve(ko);
+      }
+    }
+    return Promise.resolve(undefined);
+  }
+
   findByCreateOperation(operationId: string, actor: string): Promise<KnowledgeObject | undefined> {
     let altbestand: KnowledgeObject | undefined;
     for (const ko of this.items.values()) {

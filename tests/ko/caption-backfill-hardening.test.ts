@@ -63,6 +63,8 @@ function countingRepo(inner: InMemoryKoRepo) {
     listForSearch: (filter) => inner.listForSearch(filter),
     // G27: neue Vertragsmethode (gezielter Mehrfach-Nachschlag) — reines Durchreichen.
     listByIds: (ids) => inner.listByIds(ids),
+    // JOB 2696 (R2-34): neue Vertragsmethode — reines Durchreichen, hier nicht instrumentiert.
+    findByImportCandidateId: (candidateId) => inner.findByImportCandidateId(candidateId),
     setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
     // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen (hier nicht instrumentiert).
     setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
@@ -264,6 +266,8 @@ describe("WP-D11b patches53-GELB: Race der laufenden Suchantwort (No-op-Fall lä
       listForSearch: (filter) => inner.listForSearch(filter),
       // G27: neue Vertragsmethode (gezielter Mehrfach-Nachschlag) — reines Durchreichen.
       listByIds: (ids) => inner.listByIds(ids),
+      // JOB 2696 (R2-34): neue Vertragsmethode — reines Durchreichen.
+      findByImportCandidateId: (candidateId) => inner.findByImportCandidateId(candidateId),
       findById: (id) => inner.findById(id),
       findCandidates: (query) => inner.findCandidates(query),
       // AUFTRAG-mega20 Block A: neue Vertragsmethode (Erzeugungs-Anker) — reines Durchreichen.
