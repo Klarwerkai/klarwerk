@@ -85,6 +85,23 @@ const flush = async (): Promise<void> => {
 };
 const warte = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+// JOB 2706 D3 (BENs Prüflücke 1 zu 2706 D2): ZUSTANDSBEZOGEN WARTEN STATT FESTER FRIST. Bis D3
+// wartete der Fehlerpfad `warte(300)` auf einen 100-ms-Timer und las danach den Knopf — unter Last
+// (Prüfer-Suite, 2706 D1) kam der Timer plus Rendern später dran als 300 ms real, und der Test kippte
+// ohne jede Fachaussage. Jetzt wird bis zum ZUSTAND gewartet (Knopf entsperrt), mit einer Obergrenze,
+// die nur noch ein Hängen abfängt. Die Zusicherungen dahinter sind unverändert.
+async function warteAufZustand(zustand: () => boolean, obergrenzeMs = 5_000): Promise<void> {
+  const start = Date.now();
+  for (;;) {
+    await act(flush);
+    if (zustand()) return;
+    if (Date.now() - start > obergrenzeMs) {
+      throw new Error(`Zustand nicht innerhalb von ${obergrenzeMs} ms erreicht`);
+    }
+    await warte(10);
+  }
+}
+
 async function mount(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -222,8 +239,7 @@ describe("JOB 2683 D2 · Externe Suche im Erfassen, gemountet", () => {
     await suchfeldOeffnen();
     await suchen("Ventil");
     expect(suchKnopf().disabled).toBe(true); // erst dreht es …
-    await warte(300);
-    await act(flush);
+    await warteAufZustand(() => !suchKnopf().disabled);
     expect(suchKnopf().disabled).toBe(false); // … dann endet es
     const text = pageText();
     expect(text).toContain(EXTERNAL_SEARCH_MELDUNG.timeout);
@@ -245,8 +261,7 @@ describe("JOB 2683 D2 · Externe Suche im Erfassen, gemountet", () => {
     await mount();
     await suchfeldOeffnen();
     await suchen("Ventil");
-    await warte(200);
-    await act(flush);
+    await warteAufZustand(() => !suchKnopf().disabled);
     expect(suchKnopf().disabled).toBe(false);
     const text = pageText();
     expect(text).toContain(EXTERNAL_SEARCH_MELDUNG.unreachable);
