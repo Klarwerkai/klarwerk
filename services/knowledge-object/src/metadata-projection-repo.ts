@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import {
   type KoMetadataProjection,
   METADATA_REVISION_NONE,
@@ -43,8 +44,10 @@ export interface KoMetadataProjectionRepo {
    * genau so gespeichert, bleibt die Zeile unangetastet, `metadata_revision` klettert NICHT und
    * `changed` ist false. Andernfalls klettert die Revision GENAU EINMAL.
    */
-  upsert(input: KoMetadataProjectionUpsert): Promise<KoMetadataProjectionResult>;
-  find(koId: string): Promise<KoMetadataProjection | undefined>;
+  // JOB 2704 D1 (R2-35): optionaler, opaker TxContext (Muster `KoRepo.delete(id, tx)`) — der
+  // Pg-Adapter schreibt dann auf dem Transaktionsclient von mutateKoTx; InMemory ignoriert ihn.
+  upsert(input: KoMetadataProjectionUpsert, tx?: TxContext): Promise<KoMetadataProjectionResult>;
+  find(koId: string, tx?: TxContext): Promise<KoMetadataProjection | undefined>;
   /** Mehrfach-Nachschlag für die Zusammensetzung des Effective Search Document (kein N+1). */
   findMany(koIds: readonly string[]): Promise<KoMetadataProjection[]>;
   /** Entfernt die Zeile eines Objekts — ausschliesslich fuer die harte Endloeschung/Ruecknahme. */

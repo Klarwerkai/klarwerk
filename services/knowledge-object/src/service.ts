@@ -583,23 +583,71 @@ export class KoService {
 
   // SCRUM-507 R3: transaktionaler MEHRSCHRITT-Mutationspfad (persist + Snapshot + Audit + Status als EINE
   // Einheit). Anders als mutateKo (Single-Step, Audit-vor-Write) braucht die Revision einen Versions-
-  // Snapshot NACH der Persistenz — schlägt danach ein Schritt (Snapshot/Audit) fehl, wird die KO-
-  // Persistenz KOMPENSIEREND zurückgerollt und ein bereits geschriebener Snapshot entfernt: kein
-  // Teilzustand, keine unauditierte Änderung (ben-ROT 507). Per-KO serialisiert (withKoLock) +
-  // rowVersion-CAS (repo.update). Für den Single-Instance-/Journal-Betrieb ist das die vollständige
-  // Transaktion; die Kompensation deckt die in 509 R3 als Folgearbeit markierte cross-Modul-TX ab.
+  // Snapshot NACH der Persistenz. Per-KO serialisiert (withKoLock) + rowVersion-CAS (repo.update).
+  //
+  // ==============================================================================================
+  // JOB 2704 D1 (Review R2-35) — DIE VIER SCHRITTE IN EINER TRANSAKTION, NICHT IN VIER.
+  // ==============================================================================================
+  //
+  // Bis 2704 liefen kos-UPDATE, ko_versions-INSERT, Suchprojektion und Audit in VIER getrennten
+  // Pg-Transaktionen; zusammengehalten hat sie nur die Kompensation im `catch` (unten). Die deckt
+  // einen FEHLER ab, aber keinen ABBRUCH: stirbt der Prozess (oder die Verbindung, DB-Failover)
+  // zwischen Schritt 1 und 2, läuft kein `catch` mehr — Version n+1 steht im Bestand, ohne
+  // Snapshot und ohne Projektion, und nichts meldet es je. Das Werkzeug dafür gab es schon:
+  // `withTx` (services/db-tx, withPgTx) — bisher nur in `purgeKo` benutzt.
+  //
+  // JETZT, MIT `withTx` (Pg, von build-app.ts injiziert): EINE echte Transaktion um alle vier
+  // Schritte auf EINEM Client — `repo.update(…, tx)`, `versions.append(…, tx)`, Projektion (Inhalt
+  // UND Metadaten, `…insert/upsert(…, tx)`) und `audit.record(…, tx)`. Entweder committen alle
+  // vier oder keiner; ein Abbruch an jeder Stelle hinterlässt NICHTS (die Datenbank rollt eine
+  // nicht committete Transaktion beim Verbindungsende selbst zurück). Die Kompensation läuft in
+  // diesem Pfad NICHT — zwei Sicherungen für denselben Fall könnten einander widersprechen (ein
+  // kompensierender `rollbackKo` NACH einem DB-Rollback schriebe den Vorzustand ein zweites Mal,
+  // mit einer rowVersion, die es nie gab).
+  //
+  // DAS AUDIT GEHÖRT IN DIE TRANSAKTION — dieselbe Entscheidung wie in `purgeKo` (B), aus
+  // demselben Grund in beide Richtungen: ein `ko.revised`-Beleg, der stehen bliebe, obwohl die
+  // Revision zurückgerollt wurde, belegte etwas, das nie geschah; ein Beleg, der mit dem
+  // Rollback verschwindet, ist kein verlorener Beleg, denn es gab nichts zu belegen. Der
+  // Preis: `audit.record` liest `last()` und schreibt `append()` auf demselben Client, die
+  // Sequenzlücke bleibt bis zum Commit der ganzen Revision offen — die Sequenzfrage selbst
+  // (JOB 2677, PRO) wird hier NICHT entschieden, nur nicht verschlechtert: derselbe Weg, den
+  // `purgeKo` seit WP-A2 geht.
+  //
+  // OHNE `withTx` (InMemory, Dev-Journal — keine echte Datenbank verdrahtet) bleibt der bisherige
+  // Weg mit Kompensation. Dort ist er angemessen: zwei synchrone In-Process-Schritte haben kein
+  // I/O-Fenster, in dem der eine committet und der andere nicht (dieselbe Begründung wie am
+  // sequentiellen Fallback von `purgeKo`). Die Kompensation bleibt also — aber NUR dort, wo es
+  // keine Transaktionsgrenze gibt, und behauptet dort auch keine.
   private async mutateKoTx<T>(
     id: string,
     build: (ko: KnowledgeObject) => {
       updated: KnowledgeObject;
       value: T;
       snapshot?: { author: string; note: string };
-      audit?: () => Promise<void>;
+      // JOB 2704 D1: der Audit-Schritt bekommt den Transaktionskontext, damit `audit.record(…, tx)`
+      // auf demselben Client läuft wie die drei Schreiber davor. Ohne withTx ist er undefined.
+      audit?: (tx?: TxContext) => Promise<void>;
     },
   ): Promise<T> {
     return this.withKoLock(id, async () => {
       const before = await this.require(id);
       const { updated, value, snapshot, audit } = build(before);
+      if (this.withTx) {
+        // JOB 2704 D1: die vier Schritte in EINER Transaktion — Reihenfolge wie im Fallback unten,
+        // ohne Kompensation (s. o.). Jeder Fehler verlässt den Transaktionskörper; withPgTx rollt
+        // zurück und reicht ihn weiter. Ergebnis: nichts geschrieben — kein KO-Stand, kein
+        // Snapshot, keine Projektion, kein Beleg.
+        return this.withTx(async (tx) => {
+          await this.repo.update(updated, tx);
+          if (snapshot) {
+            await this.snapshot(updated, snapshot.author, snapshot.note, tx);
+            await this.persistSearchProjection(updated, undefined, tx);
+          }
+          await audit?.(tx);
+          return value;
+        });
+      }
       // 1) KO persistieren (Compare-and-Set auf rowVersion).
       await this.repo.update(updated);
       let snapshotWritten = false;
@@ -649,19 +697,28 @@ export class KoService {
 
   // SCRUM-159: vollständigen, unveränderlichen Voll-Snapshot ablegen (JSON-Deep-Copy, damit
   // spätere Änderungen am Live-KO frühere Versionen nicht berühren). No-op ohne Versions-Repo.
-  private async snapshot(ko: KnowledgeObject, author: string, note: string): Promise<void> {
+  // JOB 2704 D1: optionaler TxContext — aus mutateKoTx auf dem Transaktionsclient; sonst wie bisher.
+  private async snapshot(
+    ko: KnowledgeObject,
+    author: string,
+    note: string,
+    tx?: TxContext,
+  ): Promise<void> {
     if (!this.versions) {
       return;
     }
     const at = new Date(this.now()).toISOString();
-    await this.versions.append({
-      koId: ko.id,
-      version: ko.version,
-      snapshot: JSON.parse(JSON.stringify(ko)) as KnowledgeObject,
-      at,
-      author,
-      note,
-    });
+    await this.versions.append(
+      {
+        koId: ko.id,
+        version: ko.version,
+        snapshot: JSON.parse(JSON.stringify(ko)) as KnowledgeObject,
+        at,
+        author,
+        note,
+      },
+      tx,
+    );
   }
 
   // ==============================================================================================
@@ -710,14 +767,19 @@ export class KoService {
   // Restes (`rollbackCreatedKo`) an derselben Entscheidung. Wer keine Klammer hat, meldet auch
   // nicht — s. die benannte Ausnahme `finishCreated`: dort BLEIBT das Wissensobjekt im Bestand,
   // seine Inhaltszeile ist also keine Karteileiche, und zuständig ist der idempotente Nachzug.
+  //
+  // JOB 2704 D1: optionaler TxContext — aus mutateKoTx laufen BEIDE Hälften (Inhaltszeile und
+  // Metadatenzeile) auf dem Transaktionsclient; dann braucht es keine Meldung, weil es keine
+  // Kompensation gibt. Die übrigen Aufrufer (Erstanlage, Dokumentwege) rufen ohne tx wie bisher.
   private async persistSearchProjection(
     ko: KnowledgeObject,
     meldeGeschrieben?: (geschrieben: boolean) => void,
+    tx?: TxContext,
   ): Promise<void> {
     const at = new Date(this.now()).toISOString();
-    const geschrieben = await this.searchProjections.insert(buildSearchProjection(ko, at));
+    const geschrieben = await this.searchProjections.insert(buildSearchProjection(ko, at), tx);
     meldeGeschrieben?.(geschrieben);
-    await this.projectMetadata(ko, at);
+    await this.projectMetadata(ko, at, tx);
   }
 
   /**
@@ -731,9 +793,10 @@ export class KoService {
   private async projectMetadata(
     ko: KnowledgeObject,
     at: string,
+    tx?: TxContext,
   ): Promise<KoMetadataProjectionResult> {
     const { categoryText, tagText } = metadataTextsOf(ko);
-    return this.searchProjections.metadata.upsert({ koId: ko.id, categoryText, tagText, at });
+    return this.searchProjections.metadata.upsert({ koId: ko.id, categoryText, tagText, at }, tx);
   }
 
   /**
@@ -3248,13 +3311,18 @@ export class KoService {
         value: revised,
         // SCRUM-159: neuen Versions-Snapshot persistieren; frühere Versionen bleiben unverändert.
         snapshot: { author, note: "überarbeitet" },
-        audit: async () => {
-          await this.audit?.record({
-            actor: author,
-            action: "ko.revised",
-            target: id,
-            payload: { version },
-          });
+        // JOB 2704 D1: der Beleg läuft auf dem Transaktionsclient der Revision (tx aus mutateKoTx,
+        // undefined ohne withTx) — er committet und verschwindet mit ihr.
+        audit: async (tx) => {
+          await this.audit?.record(
+            {
+              actor: author,
+              action: "ko.revised",
+              target: id,
+              payload: { version },
+            },
+            tx,
+          );
         },
       };
     });

@@ -1,4 +1,5 @@
-import type { Pool, PoolClient } from "pg";
+import type { Pool } from "pg";
+import { type Queryable, type TxContext, pgQueryable } from "../../db-tx";
 import type { KoMetadataProjectionRepo } from "./metadata-projection-repo";
 import { PgKoMetadataProjectionRepo } from "./metadata-projection-repo-pg";
 import {
@@ -407,18 +408,24 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
   //   · aber KEINE Mutation kann committen, solange das Gate prüft und aktiviert (Share wartet auf
   //     Update), und keine Freigabe kann committen, solange eine Mutation läuft.
   // Ohne diese Sperre bliebe genau das Fenster offen, das BEN als ROT-4 reproduziert hat.
+  //
+  // JOB 2704 D1 (R2-35): MIT `tx` gehört die Transaktion dem AUFRUFER (mutateKoTx über withPgTx).
+  // Dann läuft dieselbe Mutation — Steuerzeile FOR SHARE, Schreiben, Marker — auf dessen Client,
+  // ohne eigenes BEGIN/COMMIT: die Sperre hält bis zum Commit der äußeren Klammer, und die
+  // Projektionszeile committet oder verschwindet zusammen mit kos-UPDATE und Snapshot. Ohne `tx`
+  // unverändert die eigene Transaktion.
   private async mutiere<T>(
-    fn: (client: PoolClient, control: ProjectionControlState) => Promise<T>,
+    fn: (client: Queryable, control: ProjectionControlState) => Promise<T>,
+    tx?: TxContext,
   ): Promise<T> {
+    if (tx) {
+      const client = pgQueryable(tx);
+      return this.mutiereAuf(client, fn);
+    }
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
-      const res = await client.query<ControlRow>(
-        `SELECT ${CONTROL_SPALTEN} FROM ko_projection_control WHERE key=$1 FOR SHARE`,
-        [CONTROL_KEY],
-      );
-      const row = res.rows[0];
-      const ergebnis = await fn(client, row ? ausControlZeile(row) : UNINITIALIZED_CONTROL_STATE);
+      const ergebnis = await this.mutiereAuf(client, fn);
       await client.query("COMMIT");
       return ergebnis;
     } catch (err) {
@@ -429,10 +436,22 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     }
   }
 
+  private async mutiereAuf<T>(
+    client: Queryable,
+    fn: (client: Queryable, control: ProjectionControlState) => Promise<T>,
+  ): Promise<T> {
+    const res = await client.query<ControlRow>(
+      `SELECT ${CONTROL_SPALTEN} FROM ko_projection_control WHERE key=$1 FOR SHARE`,
+      [CONTROL_KEY],
+    );
+    const row = res.rows[0];
+    return fn(client, row ? ausControlZeile(row) : UNINITIALIZED_CONTROL_STATE);
+  }
+
   // Den Marker fällen — IN DERSELBEN Transaktion wie die Mutation, die ihn ungültig gemacht hat.
   // Getrennt geschrieben gäbe es einen Moment, in dem die beschädigte Zeile schon steht und die
   // Suche sie noch für geprüft hält.
-  private async faelleMarker(client: PoolClient): Promise<void> {
+  private async faelleMarker(client: Queryable): Promise<void> {
     await client.query("UPDATE ko_projection_control SET integrity_marker=NULL WHERE key=$1", [
       CONTROL_KEY,
     ]);
@@ -440,7 +459,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
 
   // Append-only auf DB-Ebene: der Primärschlüssel entscheidet, nicht der Anwendungscode.
   // rowCount 0 heißt ehrlich „war schon da" — der Aufrufer weiß damit, ob ER geschrieben hat.
-  async insert(projection: KoSearchProjection): Promise<boolean> {
+  async insert(projection: KoSearchProjection, tx?: TxContext): Promise<boolean> {
     return this.mutiere(async (client, control) => {
       const stempel = schreibStempel(control, projection.projectionVersion);
       const spalten = werte(projection, stempel.generation);
@@ -455,7 +474,7 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
         await this.faelleMarker(client);
       }
       return geschrieben;
-    });
+    }, tx);
   }
 
   // NUR der ausdrückliche Rebuild bzw. die Nachführung auf Projektionsfassung 2. `created_at` der

@@ -294,10 +294,13 @@ export class PgKoRepo implements KoRepo {
   // gelesenen entspricht; sonst rowCount 0 → STALE_WRITE (kein Überschreiben eines fremden Writes).
   // Alt-Zeilen ohne Feld → COALESCE 0. Bei Erfolg wird rowVersion monoton erhöht. Kein Row-Lock nötig:
   // der bedingte UPDATE ist selbst atomar.
-  async update(ko: KnowledgeObject): Promise<void> {
+  // JOB 2704 D1 (R2-35): MIT tx läuft der bedingte UPDATE auf demselben Client wie Snapshot,
+  // Projektion und Audit (mutateKoTx in EINER withPgTx-Klammer) — ohne tx wie bisher über den Pool.
+  async update(ko: KnowledgeObject, tx?: TxContext): Promise<void> {
     const expected = ko.rowVersion ?? 0;
     const next = JSON.stringify({ ...ko, rowVersion: expected + 1 });
-    const res = await this.pool.query(
+    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const res = await queryable.query(
       "UPDATE kos SET type=$2,status=$3,category=$4,data=$5 WHERE id=$1 AND COALESCE((data->>'rowVersion')::int,0)=$6",
       [ko.id, ko.type, ko.status, ko.category, next, expected],
     );
@@ -530,8 +533,11 @@ interface SnapshotRow {
 export class PgKoVersionRepo implements KoVersionRepo {
   constructor(private readonly pool: Pool) {}
 
-  async append(snapshot: KoVersionSnapshot): Promise<void> {
-    await this.pool.query(
+  // JOB 2704 D1 (R2-35): MIT tx auf dem Transaktionsclient von mutateKoTx — der Snapshot committet
+  // oder verschwindet zusammen mit dem kos-UPDATE; es gibt keine Version n+1 ohne Snapshot mehr.
+  async append(snapshot: KoVersionSnapshot, tx?: TxContext): Promise<void> {
+    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    await queryable.query(
       `INSERT INTO ko_versions(ko_id,version,snapshot,at,author,note)
        VALUES($1,$2,$3,$4,$5,$6) ON CONFLICT (ko_id, version) DO NOTHING`,
       [

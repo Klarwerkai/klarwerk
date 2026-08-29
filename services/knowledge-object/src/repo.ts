@@ -113,7 +113,10 @@ export interface KoRepo {
    * war ohne WHERE und damit ebenfalls durchlässig; die Semantik bleibt Zeichen für Zeichen dieselbe.
    */
   findByImportCandidateId(candidateId: string): Promise<KnowledgeObject | undefined>;
-  update(ko: KnowledgeObject): Promise<void>;
+  // JOB 2704 D1 (R2-35): optionaler, opaker TxContext — dasselbe additive Muster wie `delete(id, tx)`
+  // darunter. MIT tx schreibt der Pg-Adapter auf dem Transaktionsclient des Aufrufers (mutateKoTx:
+  // kos-UPDATE, ko_versions-INSERT, Projektion und Audit in EINER Transaktion). InMemory ignoriert ihn.
+  update(ko: KnowledgeObject, tx?: TxContext): Promise<void>;
   // SCRUM-523 P.3 (WP-A2): optionaler, opaker TxContext (services/db-tx) — additiv, abwärtskompatibel.
   // Zweck: der Purge-Chokepoint (KoService.purgeKo) kann delete() UND audit.record() in DERSELBEN
   // echten DB-Transaktion laufen lassen (beide committen oder beide rollbacken). InMemoryKoRepo
@@ -320,7 +323,7 @@ export class InMemoryKoRepo implements KoRepo {
   // KO, das er GELESEN hat (rowVersion = gelesener Stand); hat ein anderer Write zwischenzeitlich
   // geschrieben (gespeicherte rowVersion ≠ gelesene), scheitert der Write (STALE_WRITE) — kein
   // Überschreiben. Bei Erfolg wird rowVersion monoton erhöht.
-  update(ko: KnowledgeObject): Promise<void> {
+  update(ko: KnowledgeObject, _tx?: TxContext): Promise<void> {
     const cur = this.items.get(ko.id);
     const expected = ko.rowVersion ?? 0;
     if (cur && (cur.rowVersion ?? 0) !== expected) {
@@ -478,7 +481,9 @@ export class InMemoryKoRepo implements KoRepo {
 // SCRUM-159: Persistenz der KO-Version-Snapshots. Append-only; ein bereits gespeicherter
 // (koId, version) wird NIE überschrieben (frühere Versionen bleiben unveränderlich).
 export interface KoVersionRepo {
-  append(snapshot: KoVersionSnapshot): Promise<void>;
+  // JOB 2704 D1 (R2-35): optionaler TxContext wie bei `KoRepo.update/delete` — der Snapshot entsteht
+  // im Pg-Adapter auf dem Transaktionsclient von mutateKoTx. InMemory ignoriert ihn.
+  append(snapshot: KoVersionSnapshot, tx?: TxContext): Promise<void>;
   listByKo(koId: string): Promise<KoVersionSnapshot[]>;
   // SCRUM-507 R3: entfernt einen (koId, version)-Snapshot — AUSSCHLIESSLICH für den kompensierenden
   // Rollback eines noch nicht committeten Mehrschritt-Mutations (mutateKoTx). Im Normalbetrieb bleibt
@@ -490,7 +495,7 @@ export class InMemoryKoVersionRepo implements KoVersionRepo {
   // koId → version → Snapshot. Map bewahrt Reihenfolge; vorhandene Version wird nicht ersetzt.
   private readonly items = new Map<string, Map<number, KoVersionSnapshot>>();
 
-  append(snapshot: KoVersionSnapshot): Promise<void> {
+  append(snapshot: KoVersionSnapshot, _tx?: TxContext): Promise<void> {
     const byVersion = this.items.get(snapshot.koId) ?? new Map<number, KoVersionSnapshot>();
     if (!byVersion.has(snapshot.version)) {
       byVersion.set(snapshot.version, snapshot);

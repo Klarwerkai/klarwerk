@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import {
   composeEffectiveSearchDocument,
   matchEffectiveSearchDocument,
@@ -380,8 +381,13 @@ export interface ProjectionAudit {
 export interface KoSearchProjectionRepo {
   /** Die zweite Hälfte des Effective Search Document — derselbe Datenraum, dieselbe Wurzel. */
   readonly metadata: KoMetadataProjectionRepo;
-  /** Append-only. true = DIESER Aufruf hat geschrieben; false = (koId, koVersion) war belegt. */
-  insert(projection: KoSearchProjection): Promise<boolean>;
+  /**
+   * Append-only. true = DIESER Aufruf hat geschrieben; false = (koId, koVersion) war belegt.
+   * JOB 2704 D1 (R2-35): optionaler, opaker TxContext (Muster `KoRepo.delete(id, tx)`) — der
+   * Pg-Adapter schreibt dann auf dem Transaktionsclient von mutateKoTx statt in einer eigenen
+   * Transaktion; die Steuerzeilensperre (09 §2) hält er trotzdem. InMemory ignoriert ihn.
+   */
+  insert(projection: KoSearchProjection, tx?: TxContext): Promise<boolean>;
   /** Ausschliesslich fuer Rebuild und Fassungsnachfuehrung (ueberschreibt bewusst). */
   replace(projection: KoSearchProjection): Promise<void>;
   find(koId: string, koVersion: number): Promise<KoSearchProjection | undefined>;

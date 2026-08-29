@@ -1,4 +1,5 @@
 import type { Pool } from "pg";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { KoMetadataProjection } from "./metadata-projection";
 import type {
   KoMetadataProjectionRepo,
@@ -79,9 +80,16 @@ export class PgKoMetadataProjectionRepo implements KoMetadataProjectionRepo {
    * Entscheidungsgrundlage des Schreibens (das entscheidet das Statement selbst); im Prozess ist der
    * Ablauf zusätzlich per KO-Lock serialisiert.
    */
-  async upsert(input: KoMetadataProjectionUpsert): Promise<KoMetadataProjectionResult> {
-    const previous = await this.find(input.koId);
-    const res = await this.pool.query<MetadataRow>(
+  // JOB 2704 D1 (R2-35): MIT tx (mutateKoTx) laufen „vorher"-Lesung und Upsert auf dem
+  // Transaktionsclient — die Metadatenzeile ist die zweite Hälfte der Suchprojektion und gehört in
+  // dieselbe Klammer wie die Inhaltszeile. Ohne tx wie bisher über den Pool.
+  async upsert(
+    input: KoMetadataProjectionUpsert,
+    tx?: TxContext,
+  ): Promise<KoMetadataProjectionResult> {
+    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const previous = await this.find(input.koId, tx);
+    const res = await queryable.query<MetadataRow>(
       `INSERT INTO ko_metadata_projections(${SPALTEN}) VALUES($1,$2,$3,1,$4)
        ON CONFLICT (ko_id) DO UPDATE SET
          category_text = EXCLUDED.category_text,
@@ -97,7 +105,7 @@ export class PgKoMetadataProjectionRepo implements KoMetadataProjectionRepo {
     if (!row) {
       // Keine Zeile zurück = die Bedingung griff nicht = fachlich identischer Stand. Der Speicher
       // hat also NICHTS getan, und genau das wird ehrlich gemeldet.
-      const unveraendert = previous ?? (await this.find(input.koId));
+      const unveraendert = previous ?? (await this.find(input.koId, tx));
       return {
         projection: unveraendert ?? {
           koId: input.koId,
@@ -113,8 +121,9 @@ export class PgKoMetadataProjectionRepo implements KoMetadataProjectionRepo {
     return { projection: ausZeile(row), previous, changed: true };
   }
 
-  async find(koId: string): Promise<KoMetadataProjection | undefined> {
-    const res = await this.pool.query<MetadataRow>(
+  async find(koId: string, tx?: TxContext): Promise<KoMetadataProjection | undefined> {
+    const queryable: Queryable = tx ? pgQueryable(tx) : poolQueryable(this.pool);
+    const res = await queryable.query<MetadataRow>(
       `SELECT ${SPALTEN} FROM ko_metadata_projections WHERE ko_id=$1`,
       [koId],
     );
