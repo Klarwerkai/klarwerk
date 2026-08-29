@@ -146,6 +146,10 @@ const INVENTAR: readonly string[] = [
   // fest, dass ein zu grosses Word-Dokument seine Formatierung und moeglichst viele Bilder behaelt,
   // statt auf reinen Text zu fallen. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/app/job2613-word-bilder-budget.test.ts",
+  // JOB 2688 D1 (Befund R2-13): Touch nur bei Bedarf (60 s Mindestabstand) und Aufraeumen seit
+  // 30 Tagen abgelaufener Sitzungen. Traegt "klara" im Namen und wird von der Namensachse gefunden;
+  // sachlich Klara-Regression: der Statusabruf des Panels darf kein Schreibvorgang mehr sein.
+  "tests/app/job2688-klara-jedes-hinsehen-ist-ein-schreibvorgang.test.ts",
   "tests/app/k1-word-addin-origin-panel.test.ts",
   // KA2 (JOB 1571 · D5): neu im Baum und von der Erhebung gefunden. Der Vertragswaechter gehoert
   // sachlich in die Klara-Regression — er haelt Regel A fest (das Panel besitzt
@@ -378,7 +382,9 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // einem weitergezogenen Stand. GEMESSEN, nicht gesetzt: der Test lief zuerst gegen 25 und
     // meldete `expected 26 to be 25`. Die Inventardatei wurde NICHT aus dem Klon kopiert — das
     // haette die zehn Zeilen von JOB 2435 geloescht; nur der neue Eintrag wurde uebertragen.
-    expect(nurName.length).toBe(26);
+    // 26 -> 27 am 29.08.2026 (JOB 2688 D1): `tests/app/job2688-klara-jedes-hinsehen-ist-ein-
+    // schreibvorgang.test.ts` traegt "klara" im Namen. Klon-Startpin 71d3c2b, dort stand 26.
+    expect(nurName.length).toBe(27);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

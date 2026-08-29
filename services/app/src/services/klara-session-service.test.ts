@@ -5,6 +5,7 @@ import {
   KLARA_SESSION_CONFLICT_MESSAGE,
   KLARA_SESSION_INACTIVITY_MS,
   KLARA_SINGLE_TENANT_ID,
+  KLARA_TOUCH_MINDESTABSTAND_MS,
   type KlaraDocumentDescriptor,
   type KlaraPolicyQuelle,
   KlaraSessionService,
@@ -912,11 +913,14 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
   }
 
   it("Status gegen Revoke: Response und Persistenz zeigen beide `revoked` (BENs Befund)", async () => {
-    const { dienst, repo, erreicht, freigeben } = statusTakt();
+    const { dienst, repo, erreicht, freigeben, vorspulen } = statusTakt();
     const { sicht, bindung } = await sitzung(dienst);
     await dienst.grantConsent(sicht.sessionId, bindung);
 
     // Der Statusabruf laeuft bis unmittelbar vor seinen Touch und haelt dort seinen Stand fest.
+    // JOB 2688 D1: ein Touch binnen 60 s nach dem letzten Zugriff findet nicht mehr statt — der
+    // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
+    vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
     const statusP = dienst.getSession(sicht.sessionId, bindung);
     await erreicht();
@@ -935,9 +939,12 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
   });
 
   it("Status gegen Grant: die Antwort benutzt keinen vor dem CAS-Verlust gelesenen Consentstand", async () => {
-    const { dienst, repo, erreicht, freigeben } = statusTakt();
+    const { dienst, repo, erreicht, freigeben, vorspulen } = statusTakt();
     const { sicht, bindung } = await sitzung(dienst);
     // Ausgangslage BEWUSST ohne Zustimmung — der veraltete Stand waere „keine Zustimmung".
+    // JOB 2688 D1: ein Touch binnen 60 s nach dem letzten Zugriff findet nicht mehr statt — der
+    // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
+    vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
     const statusP = dienst.getSession(sicht.sessionId, bindung);
     await erreicht();
@@ -953,10 +960,13 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
   });
 
   it("Status gegen Schliessen: keine gemischte Sitzungs-/Consent-Auskunft", async () => {
-    const { dienst, repo, erreicht, freigeben } = statusTakt();
+    const { dienst, repo, erreicht, freigeben, vorspulen } = statusTakt();
     const { sicht, bindung } = await sitzung(dienst);
     await dienst.grantConsent(sicht.sessionId, bindung);
 
+    // JOB 2688 D1: ein Touch binnen 60 s nach dem letzten Zugriff findet nicht mehr statt — der
+    // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
+    vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
     const statusP = dienst.getSession(sicht.sessionId, bindung);
     await erreicht();
@@ -971,7 +981,7 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
   });
 
   it("Status gegen Rebind: die alte Bindung traegt nicht mehr, keine Mischauskunft", async () => {
-    const { dienst, repo, erreicht, freigeben } = statusTakt();
+    const { dienst, repo, erreicht, freigeben, vorspulen } = statusTakt();
     const start = await dienst.createSession("anna", "instanz-1", {
       kind: "unsaved",
       clientDocumentNonce: "r5-rebind",
@@ -983,6 +993,9 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
     };
     await dienst.grantConsent(start.sessionId, alteBindung);
 
+    // JOB 2688 D1: ein Touch binnen 60 s nach dem letzten Zugriff findet nicht mehr statt — der
+    // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
+    vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
     const statusP = dienst.getSession(start.sessionId, alteBindung);
     await erreicht();
@@ -999,10 +1012,13 @@ describe("W1 S4 R5 · frische Statusaufloesung nach CAS-Verlust (In-Memory)", ()
   });
 
   it("Status gegen Policywechsel: Sitzung, Consent und Resolution stammen aus EINEM Stand", async () => {
-    const { dienst, repo, umkonfigurieren, erreicht, freigeben } = statusTakt();
+    const { dienst, repo, umkonfigurieren, erreicht, freigeben, vorspulen } = statusTakt();
     const { sicht, bindung } = await sitzung(dienst);
     await dienst.grantConsent(sicht.sessionId, bindung);
 
+    // JOB 2688 D1: ein Touch binnen 60 s nach dem letzten Zugriff findet nicht mehr statt — der
+    // Rennfall braucht deshalb erst einen Abstand, sonst wartet `erreicht()` auf nichts.
+    vorspulen(KLARA_TOUCH_MINDESTABSTAND_MS + 1000);
     repo.halteNaechstenTouchAn();
     const statusP = dienst.getSession(sicht.sessionId, bindung);
     await erreicht();

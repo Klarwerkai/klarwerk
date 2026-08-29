@@ -59,6 +59,26 @@ export const KLARA_SINGLE_TENANT_ID = "klarwerk-single-tenant";
 export const KLARA_SESSION_INACTIVITY_MS = 15 * 60 * 1000;
 export const KLARA_SESSION_ABSOLUTE_MS = 8 * 60 * 60 * 1000;
 
+/**
+ * JOB 2688 D1 (Befund R2-13): JEDES HINSEHEN WAR EIN SCHREIBVORGANG. Jeder Statusabruf des Panels
+ * schrieb `last_activity_at`/`expires_at` per UPDATE fort — auch wenn der letzte Abruf Sekunden
+ * her war. Der Touch wird jetzt nur ausgeführt, wenn `lastActivityAt` älter als diese Spanne ist.
+ *
+ * WARUM 60 s TRAGEN: die Gleitfrist beträgt 15 min. Ein unterlassener Touch lässt `expiresAt`
+ * höchstens 60 s hinter dem tatsächlichen letzten Zugriff zurück; eine Sitzung läuft dadurch
+ * frühestens 14 min nach der letzten Benutzung ab statt 15 min — nie vorzeitig im Sinne eines
+ * Abbruchs unter aktiver Nutzung, denn aktive Nutzung berührt spätestens alle 60 s wieder. Die
+ * absolute Frist (8 h) ist vom Touch unabhängig. Betriebsparameter, keine Produktentscheidung.
+ */
+export const KLARA_TOUCH_MINDESTABSTAND_MS = 60 * 1000;
+
+/**
+ * JOB 2688 D1: Aufbewahrung abgelaufener Sitzungen, bevor `raeumeAbgelaufeneAuf` sie samt
+ * Zustimmungszeilen entfernt. 30 Tage nach `expiresAt` — nicht nach dem Ablauf allein, damit ein
+ * Ablauf, der noch erklärt werden muss (Prüfung, Support), belegbar bleibt.
+ */
+export const KLARA_SESSION_AUFBEWAHRUNG_MS = 30 * 24 * 60 * 60 * 1000;
+
 // BEN-35 Befund 1: hier stand `KLARA_DEFAULT_PAYLOAD_CLASS` — die Payload-Klasse als Konstante des
 // SITZUNGSDIENSTES. Genau das war der Fehler: der Dienst kannte die Nutzlastsemantik selbst und
 // verglich den Consent gegen seine eigene Annahme statt gegen die verwendete Auflösung. Die Klasse
@@ -1052,6 +1072,12 @@ export class KlaraSessionService {
     // „Still verwerfen" heisst NICHT „mit dem alten Stand weiterarbeiten": ab dem Neulesen trägt
     // der frische Stand. Ein verlorener Touch darf beim Client kein Konflikt sein — aber eine
     // fachliche Antwort aus einem veralteten Snapshot darf es erst recht nicht geben.
+    // JOB 2688 D1 — TOUCH NUR BEI BEDARF. Liegt der letzte Zugriff keine 60 s zurück, bleibt der
+    // Bestand unberührt: kein UPDATE, keine Revision, kein Neulesen. Der zurückgegebene Stand ist
+    // der geladene — er ist per `laden` bereits als aktiv und nicht abgelaufen geprüft.
+    if (this.now() - Date.parse(session.lastActivityAt) < KLARA_TOUCH_MINDESTABSTAND_MS) {
+      return session;
+    }
     const versuch = async (s: KlaraSession): Promise<KlaraSession | undefined> => {
       const jetzt = this.now();
       const lastActivityAt = new Date(jetzt).toISOString();
@@ -1092,6 +1118,18 @@ export class KlaraSessionService {
     // (2) identische aktive Bindung → GENAU EIN Wiederholversuch. Scheitert auch der, wird der
     // Touch still verworfen und der frische Stand getragen — kein Konflikt für den Client.
     return (await versuch(frisch)) ?? frisch;
+  }
+
+  /**
+   * JOB 2688 D1 — AUFRÄUMEN. Entfernt Sitzungen, deren `expiresAt` länger als die Aufbewahrung
+   * (30 Tage) zurückliegt, samt Zustimmungszeilen; gibt die Anzahl zurück. Idempotent, kein Lesen
+   * schreibt. AUSLÖSER: dieser Dienst hat keinen Zeitplan; das Haus besitzt einen in
+   * `services/app/src/trash-sweep-scheduler.ts`, verdrahtet in `server.ts` für den Papierkorb.
+   * Die Verdrahtung dieser Methode dort lag ausserhalb der Lease von 2688 D1 und ist offen.
+   */
+  async raeumeAbgelaufeneAuf(): Promise<number> {
+    const grenze = new Date(this.now() - KLARA_SESSION_AUFBEWAHRUNG_MS).toISOString();
+    return this.repo.purgeExpiredSessions(grenze);
   }
 
   /** `min(lastActivity + inactivityTimeout, createdAt + absoluteLifetime)` — KW-S4-03 §1.2. */

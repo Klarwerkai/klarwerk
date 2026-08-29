@@ -311,6 +311,16 @@ export interface KlaraSessionRepo {
    * nicht verschwunden, sondern entwertet sind.
    */
   alleConsents(sessionId: string): Promise<readonly KlaraConsent[]>;
+
+  /**
+   * AUFRÄUMEN (JOB 2688 D1, Befund R2-13). Vor diesem Durchgang gab es KEINEN Weg, abgelaufene
+   * Sitzungen je wieder aus dem Bestand zu entfernen — weder hier noch im Dienst noch in einem
+   * Zeitplan (`bestandsreset.ts` leert die Tabelle nur beim Vollreset). Löscht alle Sitzungen,
+   * deren `expiresAt` VOR `vor` liegt, samt ihren Zustimmungszeilen, und gibt die Anzahl der
+   * entfernten Sitzungen zurück. Der Aufrufer bestimmt die Aufbewahrungsfrist; das Repo kennt
+   * keine.
+   */
+  purgeExpiredSessions(vor: string): Promise<number>;
 }
 
 export class InMemoryKlaraSessionRepo implements KlaraSessionRepo {
@@ -496,6 +506,24 @@ export class InMemoryKlaraSessionRepo implements KlaraSessionRepo {
         .filter((c) => c.sessionId === sessionId)
         .sort((a, b) => a.consentId.localeCompare(b.consentId)),
     );
+  }
+
+  /** JOB 2688 D1 — dieselbe Bedingung wie das `expires_at < $1` im SQL, Zustimmungen mit. */
+  purgeExpiredSessions(vor: string): Promise<number> {
+    const grenze = Date.parse(vor);
+    let entfernt = 0;
+    for (const [id, s] of this.sessions) {
+      if (Date.parse(s.expiresAt) < grenze) {
+        this.sessions.delete(id);
+        entfernt++;
+        for (const [consentId, c] of this.consents) {
+          if (c.sessionId === id) {
+            this.consents.delete(consentId);
+          }
+        }
+      }
+    }
+    return Promise.resolve(entfernt);
   }
 }
 
@@ -895,5 +923,30 @@ export class PgKlaraSessionRepo implements KlaraSessionRepo {
       [sessionId],
     );
     return res.rows.map(ausConsentZeile);
+  }
+
+  /**
+   * JOB 2688 D1 — Zustimmungen und Sitzungen in EINER Transaktion, damit nie eine Zustimmungszeile
+   * ohne Sitzung zurückbleibt. Keine Revisionsprüfung: eine Sitzung, deren Frist vor der Grenze
+   * liegt, kann kein Dienstweg mehr berühren (jeder prüft `expiresAt` vor dem Schreiben).
+   */
+  async purgeExpiredSessions(vor: string): Promise<number> {
+    const client: PoolClient = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query(
+        `DELETE FROM klara_session_consents
+          WHERE session_id IN (SELECT session_id FROM klara_sessions WHERE expires_at < $1)`,
+        [vor],
+      );
+      const res = await client.query("DELETE FROM klara_sessions WHERE expires_at < $1", [vor]);
+      await client.query("COMMIT");
+      return res.rowCount ?? 0;
+    } catch (err) {
+      await client.query("ROLLBACK").catch(() => undefined);
+      throw err;
+    } finally {
+      client.release();
+    }
   }
 }
