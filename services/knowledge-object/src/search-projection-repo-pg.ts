@@ -358,6 +358,32 @@ function ausZeile(row: ProjectionRow): KoSearchProjection {
 const AKTIVE_VERSION =
   "k.id = p.ko_id AND COALESCE((k.data->>'version')::int, 1) = p.ko_version AND NOT (k.data ? 'deletedAt')";
 
+// ================================================================================================
+// JOB 2689 D1 (Befund R2-37) — EIN PROZENTZEICHEN HOLT DEN GANZEN BESTAND.
+// ================================================================================================
+//
+// Bis hierher wanderte der Suchbegriff unmaskiert in `ILIKE '%begriff%'`. `%` und `_` sind dort
+// aber keine Zeichen, sondern Platzhalter: `q="%"` traf JEDE Zeile, Join und Sortierung liefen
+// über den ganzen Bestand — und für die Bibliothek ist die ganze Eingabe EIN Begriff ohne LIMIT.
+// Das ist kein Angriff, sondern ein Tippfehler.
+//
+// Maskieren heißt nicht wegwerfen: „80 % Auslastung" muss ein Objekt mit genau diesem Text FINDEN.
+// Deshalb wird jedes der drei Sonderzeichen mit dem Rückstrich versehen und die ILIKE-Klausel
+// trägt ausdrücklich `ESCAPE '\'` — nicht die Voreinstellung, sondern die Zusage im SQL selbst.
+// Der In-Memory-Adapter vergleicht mit `includes` und war nie betroffen; nach diesem Umbau sagen
+// beide Speicher bei `%` dasselbe.
+const LIKE_SONDERZEICHEN = /[\\%_]/g;
+
+/** Macht aus einem Suchbegriff ein LIKE-Muster, das ihn WÖRTLICH meint. */
+export function maskiereLikeMuster(term: string): string {
+  return term.replace(LIKE_SONDERZEICHEN, (zeichen) => `\\${zeichen}`);
+}
+
+/** Die ILIKE-Klausel mit der Maskierungszusage — an jeder Stelle dieselbe. */
+function ilike(ausdruck: string, parameter: string): string {
+  return `${ausdruck} ILIKE ${parameter} ESCAPE '\\'`;
+}
+
 export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
   readonly metadata: KoMetadataProjectionRepo;
 
@@ -566,15 +592,16 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
       tag_text: [],
     };
     for (const term of terms) {
-      params.push(`%${term}%`);
+      // JOB 2689 D1: der Begriff ist Inhalt, kein Muster — `%`, `_` und `\` werden maskiert.
+      params.push(`%${maskiereLikeMuster(term)}%`);
       const p = `$${params.length}`;
-      orsSearch.push(`p.search_text ILIKE ${p}`);
+      orsSearch.push(ilike("p.search_text", p));
       for (const feld of Object.keys(feldOrs)) {
-        feldOrs[feld]?.push(`p.${feld} ILIKE ${p}`);
+        feldOrs[feld]?.push(ilike(`p.${feld}`, p));
       }
       for (const feld of Object.keys(metaOrs)) {
-        metaOrs[feld]?.push(`COALESCE(md.${feld}, '') ILIKE ${p}`);
-        orsSearch.push(`COALESCE(md.${feld}, '') ILIKE ${p}`);
+        metaOrs[feld]?.push(ilike(`COALESCE(md.${feld}, '')`, p));
+        orsSearch.push(ilike(`COALESCE(md.${feld}, '')`, p));
       }
     }
     let limitKlausel = "";

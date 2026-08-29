@@ -119,6 +119,13 @@ export function cleanupDigest(candidateIds: readonly string[], koIds: readonly s
   return hash.digest("hex");
 }
 
+/**
+ * JOB 2689 D1: Deckel der Bibliotheks-Trefferabfrage. Gleich der Fensterzahl der Bibliotheksseite
+ * (`apps/web/src/lib/libraryDisplay.ts`, LIBRARY_RESULT_LIMIT = 200); der Test
+ * `tests/app/job2689-ein-prozentzeichen-holt-den-ganzen-bestand.test.ts` hält beide Zahlen zusammen.
+ */
+export const LIBRARY_SEARCH_HIT_LIMIT = 200;
+
 export interface LibraryServiceDeps {
   koService: KoService;
   audit?: AuditService;
@@ -1234,10 +1241,18 @@ export class LibraryService {
     if (list.length === 0) {
       return [];
     }
-    // BEWUSST OHNE `limit`: die Bibliotheks-Trefferliste war nie gedeckelt, und ein stiller Deckel
-    // würde bei einer breiten Anfrage Treffer verschwinden lassen, ohne es zu sagen.
+    // JOB 2689 D1 (Befund R2-37): hier stand „BEWUSST OHNE limit". Ohne Deckel lief eine breite
+    // Anfrage — und `%` war bis 2689 die breiteste, sie traf jede Zeile — über den ganzen Bestand.
+    // Der Deckel ist die Zahl, die die Fläche ohnehin zeigt (LIBRARY_RESULT_LIMIT der Bibliothek,
+    // 200); mehr Treffer hat die Seite nie auf einmal dargestellt. Die Datenquelle sortiert
+    // validierte und vertrauenswürdige Objekte nach vorn, also bleiben die wichtigsten unter dem
+    // Deckel. Was der Deckel NICHT löst: die Sichtbarkeitsnachfilterung unten kann aus 200
+    // Treffern weniger machen (library-routes.ts, Kommentar zu BASIC-380) — der Deckel liegt vor
+    // ihr. Das ist ausgesprochen, nicht versteckt.
     const treffer = new Map(
-      (await this.koService.findSearchHits({ terms: [q] })).map((hit) => [hit.koId, hit]),
+      (
+        await this.koService.findSearchHits({ terms: [q], limit: LIBRARY_SEARCH_HIT_LIMIT })
+      ).map((hit) => [hit.koId, hit]),
     );
     const out: KnowledgeObject[] = [];
     for (const ko of list) {
