@@ -134,7 +134,6 @@ import {
   type FileImportMode,
   type SelectableExtractPoint,
   type WholeDocumentSourceKind,
-  isTextInsertSupported,
   advanceFileQueue,
   buildFileQueue,
   currentQueuePoint,
@@ -147,6 +146,7 @@ import {
   // Defekt-, Format- und Ausserhalb-Verluste nicht auseinanderhalten konnte.
   imageTransferCauseNotices,
   imageTransferSummary,
+  isTextInsertSupported,
   mergeSelectedIntoOne,
   mergeSlideImageTransfer,
   queueProgress,
@@ -218,11 +218,11 @@ import { detectFileKind } from "../lib/extract";
 // SCRUM-409 (PMO-FEA-0008-Delta): Mehrpunkt-Entwürfe + Zusammenführen im „Aus Datei"-Weg.
 import { createPointDrafts } from "../lib/fileMultiPoint";
 import {
+  PdfTooLargeError,
   fileToThumbDataUrl,
   isImage,
   readDocxFile,
   readDocxRich,
-  PdfTooLargeError,
   readFileAsDataUrl,
   readPdfFile,
   readPdfFileWithOriginal,
@@ -246,12 +246,11 @@ import {
   toAddSourceRequest,
   unsavableSourceUrls,
 } from "../lib/koSource";
-// WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
-import { PptxTooLargeError } from "../lib/pptx";
 // JOB 2700 D1: die Groessenkante des PDF-Weges ist die Grenze des Original-Anhangs (dieselbe
 // Ableitung wie 2676 fuer PPTX) — und die Frist des Parsers hat einen eigenen Fehler.
 import { PdfTimeoutError } from "../lib/pdf";
-import { maxRawAttachmentBytes } from "../lib/uploadLimits";
+// WP-D5b (bens GELB-Fix 3): ehrlicher Importfehler bei Überschreitung des Archiv-/Dekompressionsbudgets.
+import { PptxTooLargeError } from "../lib/pptx";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { documentProvenance, draftProvenance } from "../lib/reasonerProvenance";
 import {
@@ -271,6 +270,7 @@ import {
   buildSubmitTimingEntries,
   submitPhaseSpans,
 } from "../lib/submitTiming";
+import { maxRawAttachmentBytes } from "../lib/uploadLimits";
 import { useAiAvailable } from "../lib/useAiAvailable";
 
 type Mode = CaptureMode;

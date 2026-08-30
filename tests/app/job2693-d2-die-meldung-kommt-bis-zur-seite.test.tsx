@@ -44,7 +44,10 @@ const haengendesFetch = (_url: string, init: { signal?: AbortSignal }) =>
 
 /** Die echte Auth-App mit dem haengenden Provider; die Zeitgrenze ist klein, damit der Test kurz ist. */
 async function server(tokenMs: number) {
-  const service = new AuthService({ users: new InMemoryUserRepo(), sessions: new InMemorySessionRepo() });
+  const service = new AuthService({
+    users: new InMemoryUserRepo(),
+    sessions: new InMemorySessionRepo(),
+  });
   const provider = createOidcProvider(config(), {
     fetchImpl: haengendesFetch,
     zeitgrenzen: { tokenMs },
@@ -61,7 +64,11 @@ async function server(tokenMs: number) {
   const anfragen: Array<{ method: string; url: string; body: string | undefined }> = [];
   const fetchShim = async (url: string | URL | Request, init?: RequestInit) => {
     const pfad = String(url);
-    anfragen.push({ method: init?.method ?? "GET", url: pfad, body: init?.body as string | undefined });
+    anfragen.push({
+      method: init?.method ?? "GET",
+      url: pfad,
+      body: init?.body as string | undefined,
+    });
     const res = await app.inject({
       method: (init?.method ?? "GET") as "GET" | "POST",
       url: pfad,
@@ -139,7 +146,10 @@ describe("JOB 2693 D2 · vom echten Serverfehler ueber den echten Clientabruf bi
     expect(s.anfragen).toHaveLength(1);
     expect(s.anfragen[0]?.method).toBe("POST");
     expect(s.anfragen[0]?.url).toBe("/api/auth/oidc");
-    expect(JSON.parse(s.anfragen[0]?.body ?? "{}")).toEqual({ code: "code-vom-idp", state: s.state });
+    expect(JSON.parse(s.anfragen[0]?.body ?? "{}")).toEqual({
+      code: "code-vom-idp",
+      state: s.state,
+    });
   }, 15_000);
 
   it("K2 · Gegenprobe ueber dieselbe Kette: passt der state nicht zu den Cookies, liest der Mensch „SSO-Status ungültig.“ — ein anderer Fehler", async () => {

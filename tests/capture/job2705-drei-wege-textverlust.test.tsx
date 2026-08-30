@@ -137,7 +137,9 @@ async function bestand(): Promise<DraftAusBestand[]> {
 }
 
 /** Der ROHE Entwurf aus der Ablage, ohne Ankerpruefung und ohne Ausduennung. */
-async function roherEntwurf(id: string): Promise<{ payload: { title?: string; bodyHtml?: string | null } }> {
+async function roherEntwurf(
+  id: string,
+): Promise<{ payload: { title?: string; bodyHtml?: string | null } }> {
   const draft = await services.capture.getDraft(id);
   if (!draft) {
     throw new Error(`Entwurf ${id} liegt nicht in der Ablage`);
@@ -250,7 +252,9 @@ function titelfeld(): HTMLInputElement {
     (i) => i.value === ENTWURF_MIT_TOTEM_ANKER.title,
   );
   if (!feld) {
-    throw new Error(`kein Titelfeld mit dem geladenen Titel. Sichtbar: ${seitentext().slice(0, 400)}`);
+    throw new Error(
+      `kein Titelfeld mit dem geladenen Titel. Sichtbar: ${seitentext().slice(0, 400)}`,
+    );
   }
   return feld;
 }

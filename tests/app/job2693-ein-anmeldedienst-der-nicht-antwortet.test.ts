@@ -2,9 +2,9 @@ import Fastify from "fastify";
 import {
   SignJWT,
   type createRemoteJWKSet,
-  errors as joseErrors,
   exportJWK,
   generateKeyPair,
+  errors as joseErrors,
 } from "jose";
 import { describe, expect, it } from "vitest";
 import {

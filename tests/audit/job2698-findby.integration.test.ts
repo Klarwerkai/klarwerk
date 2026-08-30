@@ -9,7 +9,6 @@
 import { Pool } from "pg";
 import { GenericContainer, type StartedTestContainer, Wait } from "testcontainers";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { guardedLocalPgTestUrl } from "../../services/db-tx";
 import {
   AUDIT_EVENT_ID_SCHEMA,
   AUDIT_HASH_VERSION_SCHEMA,
@@ -18,6 +17,7 @@ import {
 } from "../../services/audit/src/repo-pg";
 import { AuditService } from "../../services/audit/src/service";
 import type { AuditFilter } from "../../services/audit/src/types";
+import { guardedLocalPgTestUrl } from "../../services/db-tx";
 
 describe("JOB 2698 · findBy gegen echtes PostgreSQL", () => {
   let container: StartedTestContainer | undefined;

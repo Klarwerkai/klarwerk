@@ -569,6 +569,10 @@ export function CaptureFrontDoor(): JSX.Element {
         // weiterhin als Löschmarker (mega7 Block A) — `bodyNieGeliefertRef` fällt beim ersten
         // Tastendruck.
         if (bodyNieGeliefertRef.current && rumpf.bodyHtml === CLEARED_DRAFT_BODY_HTML) {
+          // Der Vertrag oben verlangt, dass der SCHLUESSEL fehlt, nicht dass er einen Leerwert
+          // traegt: `= undefined` legt ihn an und kehrt die Bedeutung um (Altwert geht statt
+          // bleibt). Biome markiert seinen eigenen Fix hier folgerichtig als unsafe.
+          // biome-ignore lint/performance/noDelete: Schluessel muss fehlen, nicht leer sein
           delete rumpf.bodyHtml;
         }
         return withFrontDoorSaveTimeout(

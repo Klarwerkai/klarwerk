@@ -51,8 +51,18 @@ function seite(over: Partial<ImportItem>): ImportItem {
 }
 
 const SEITEN: ImportItem[] = [
-  seite({ title: "Wartung Pumpe", externalId: "p1", sourceVersion: 1, bodyHtml: "<p>Pumpe voll</p>" }),
-  seite({ title: "Wartung Ventil", externalId: "p2", sourceVersion: 1, bodyHtml: "<p>Ventil voll</p>" }),
+  seite({
+    title: "Wartung Pumpe",
+    externalId: "p1",
+    sourceVersion: 1,
+    bodyHtml: "<p>Pumpe voll</p>",
+  }),
+  seite({
+    title: "Wartung Ventil",
+    externalId: "p2",
+    sourceVersion: 1,
+    bodyHtml: "<p>Ventil voll</p>",
+  }),
   seite({
     title: "Wartung Filter",
     externalId: "p3",
@@ -133,55 +143,65 @@ async function appMit(opts: AdapterOptionen = {}) {
   const starte = () =>
     app.inject({ method: "POST", url: "/api/admin/import/confluence", headers, payload: {} });
   const lauf = async (id: string) =>
-    (
-      await app.inject({ method: "GET", url: `/api/admin/import/runs/${id}`, headers })
-    ).json() as { importId: string; status: string; counters?: Record<string, number> };
+    (await app.inject({ method: "GET", url: `/api/admin/import/runs/${id}`, headers })).json() as {
+      importId: string;
+      status: string;
+      counters?: Record<string, number>;
+    };
   return { app, services, headers, zaehler, starte, lauf };
 }
 
 describe("JOB 2691 D1 · A · sofort QUEUED, spaeter COMPLETED", () => {
-  it("A1 · collectAll braucht 2 s: die Route antwortet SOFORT mit 202 QUEUED, nicht nach 2 s mit COMPLETED", async () => {
-    const { services, starte, lauf } = await appMit({ dauerMs: LANGSAM_MS });
-    const t0 = Date.now();
-    const antwort = await starte();
-    const dauer = Date.now() - t0;
+  it(
+    "A1 · collectAll braucht 2 s: die Route antwortet SOFORT mit 202 QUEUED, nicht nach 2 s mit COMPLETED",
+    async () => {
+      const { services, starte, lauf } = await appMit({ dauerMs: LANGSAM_MS });
+      const t0 = Date.now();
+      const antwort = await starte();
+      const dauer = Date.now() - t0;
 
-    expect(antwort.statusCode).toBe(202);
-    const koerper = antwort.json() as { importId: string; status: string };
-    expect(koerper.status).toBe("QUEUED");
-    expect(koerper.importId).toMatch(/[0-9a-f-]{36}/);
-    // „Sofort": deutlich unter der Dauer des Scans — bis 2691 lag dieser Wert bei rund 2000 ms.
-    expect(dauer).toBeLessThan(LANGSAM_MS / 2);
+      expect(antwort.statusCode).toBe(202);
+      const koerper = antwort.json() as { importId: string; status: string };
+      expect(koerper.status).toBe("QUEUED");
+      expect(koerper.importId).toMatch(/[0-9a-f-]{36}/);
+      // „Sofort": deutlich unter der Dauer des Scans — bis 2691 lag dieser Wert bei rund 2000 ms.
+      expect(dauer).toBeLessThan(LANGSAM_MS / 2);
 
-    // Waehrend des Scans: der Lauf ist lesbar und laeuft (FETCHING, bereits nach QUEUED).
-    const unterwegs = await lauf(koerper.importId);
-    expect(["QUEUED", "FETCHING"]).toContain(unterwegs.status);
+      // Waehrend des Scans: der Lauf ist lesbar und laeuft (FETCHING, bereits nach QUEUED).
+      const unterwegs = await lauf(koerper.importId);
+      expect(["QUEUED", "FETCHING"]).toContain(unterwegs.status);
 
-    await warteAufOffeneImportLaeufe(services.importRuns);
-    const ende = await lauf(koerper.importId);
-    expect(ende.status).toBe("COMPLETED");
-    expect(ende.counters?.itemsTotal).toBe(3);
-    expect(ende.counters?.itemsCreated).toBe(3);
-  }, 15 * SEK);
+      await warteAufOffeneImportLaeufe(services.importRuns);
+      const ende = await lauf(koerper.importId);
+      expect(ende.status).toBe("COMPLETED");
+      expect(ende.counters?.itemsTotal).toBe(3);
+      expect(ende.counters?.itemsCreated).toBe(3);
+    },
+    15 * SEK,
+  );
 
-  it("A2 · runs/:id zeigt nach etwa 2 s COMPLETED — gemessen mit der Uhr, nicht mit dem Warte-Helfer", async () => {
-    const { starte, lauf } = await appMit({ dauerMs: LANGSAM_MS });
-    const t0 = Date.now();
-    const { importId } = (await starte()).json() as { importId: string };
-    let status = "";
-    let beiMs = 0;
-    for (let i = 0; i < 100; i++) {
-      await new Promise((r) => setTimeout(r, 100));
-      status = (await lauf(importId)).status;
-      if (status === "COMPLETED") {
-        beiMs = Date.now() - t0;
-        break;
+  it(
+    "A2 · runs/:id zeigt nach etwa 2 s COMPLETED — gemessen mit der Uhr, nicht mit dem Warte-Helfer",
+    async () => {
+      const { starte, lauf } = await appMit({ dauerMs: LANGSAM_MS });
+      const t0 = Date.now();
+      const { importId } = (await starte()).json() as { importId: string };
+      let status = "";
+      let beiMs = 0;
+      for (let i = 0; i < 100; i++) {
+        await new Promise((r) => setTimeout(r, 100));
+        status = (await lauf(importId)).status;
+        if (status === "COMPLETED") {
+          beiMs = Date.now() - t0;
+          break;
+        }
       }
-    }
-    expect(status).toBe("COMPLETED");
-    expect(beiMs).toBeGreaterThanOrEqual(LANGSAM_MS);
-    expect(beiMs).toBeLessThan(LANGSAM_MS + 3 * SEK);
-  }, 15 * SEK);
+      expect(status).toBe("COMPLETED");
+      expect(beiMs).toBeGreaterThanOrEqual(LANGSAM_MS);
+      expect(beiMs).toBeLessThan(LANGSAM_MS + 3 * SEK);
+    },
+    15 * SEK,
+  );
 
   it("A3 · ohne Adapter: 202 QUEUED, und der Lauf endet sichtbar auf FAILED IMPORT_UNAVAILABLE", async () => {
     const { app, services, headers, lauf } = await appMit();
@@ -215,18 +235,22 @@ describe("JOB 2691 D1 · A · sofort QUEUED, spaeter COMPLETED", () => {
 });
 
 describe("JOB 2691 D1 · B · der zweite Klick", () => {
-  it("B1 · waehrend ein Lauf laeuft, bekommt der zweite Start 409 mit der Kennung des laufenden — kein zweiter Scan", async () => {
-    const { services, starte, zaehler } = await appMit({ dauerMs: LANGSAM_MS });
-    const erster = (await starte()).json() as { importId: string };
-    const zweiter = await starte();
-    expect(zweiter.statusCode).toBe(409);
-    const koerper = zweiter.json() as { error: string; importId: string };
-    expect(koerper.error).toBe("IMPORT_ALREADY_RUNNING");
-    expect(koerper.importId).toBe(erster.importId);
-    await warteAufOffeneImportLaeufe(services.importRuns);
-    // Bis 2691: kein Tor — der zweite Aufruf startete einen zweiten Lauf mit eigenem Scan.
-    expect(zaehler.collectAll).toBe(1);
-  }, 15 * SEK);
+  it(
+    "B1 · waehrend ein Lauf laeuft, bekommt der zweite Start 409 mit der Kennung des laufenden — kein zweiter Scan",
+    async () => {
+      const { services, starte, zaehler } = await appMit({ dauerMs: LANGSAM_MS });
+      const erster = (await starte()).json() as { importId: string };
+      const zweiter = await starte();
+      expect(zweiter.statusCode).toBe(409);
+      const koerper = zweiter.json() as { error: string; importId: string };
+      expect(koerper.error).toBe("IMPORT_ALREADY_RUNNING");
+      expect(koerper.importId).toBe(erster.importId);
+      await warteAufOffeneImportLaeufe(services.importRuns);
+      // Bis 2691: kein Tor — der zweite Aufruf startete einen zweiten Lauf mit eigenem Scan.
+      expect(zaehler.collectAll).toBe(1);
+    },
+    15 * SEK,
+  );
 
   it("B2 · nach dem Ende ist ein neuer Start wieder moeglich — die Sperre ist kein Dauerzustand", async () => {
     const { services, starte, lauf } = await appMit();
@@ -246,7 +270,10 @@ describe("JOB 2691 D1 · B · der zweite Klick", () => {
 });
 
 describe("JOB 2691 D1 · C · der Snapshot haelt keinen Volltext, das Anwenden laedt je Id nach", () => {
-  async function kandidaten(app: Awaited<ReturnType<typeof appMit>>["app"], headers: Record<string, string>) {
+  async function kandidaten(
+    app: Awaited<ReturnType<typeof appMit>>["app"],
+    headers: Record<string, string>,
+  ) {
     const res = await app.inject({ method: "GET", url: "/api/library/import/candidates", headers });
     expect(res.statusCode).toBe(200);
     return res.json() as Array<{ item: ImportItem }>;
@@ -297,7 +324,9 @@ describe("JOB 2691 D1 · C · der Snapshot haelt keinen Volltext, das Anwenden l
       payload: {},
     });
     expect(erkundung.statusCode).toBe(200);
-    expect((erkundung.json() as { summary: { withImagesHint: number } }).summary.withImagesHint).toBe(1);
+    expect(
+      (erkundung.json() as { summary: { withImagesHint: number } }).summary.withImagesHint,
+    ).toBe(1);
     const { bilanz } = await anwenden(ctx);
     expect(bilanz.imported).toBe(3);
     const liste = await kandidaten(ctx.app, ctx.headers);
@@ -321,8 +350,16 @@ describe("JOB 2691 D1 · C · der Snapshot haelt keinen Volltext, das Anwenden l
   it("C4 · Messung zum Erkunden: zwei gleichzeitige Erkundungen teilen EINEN Scan (das Tor gab es schon)", async () => {
     const ctx = await appMit({ dauerMs: 300 });
     const [a, b] = await Promise.all([
-      ctx.app.inject({ method: "POST", url: "/api/admin/import/confluence/explore", headers: ctx.headers }),
-      ctx.app.inject({ method: "POST", url: "/api/admin/import/confluence/explore", headers: ctx.headers }),
+      ctx.app.inject({
+        method: "POST",
+        url: "/api/admin/import/confluence/explore",
+        headers: ctx.headers,
+      }),
+      ctx.app.inject({
+        method: "POST",
+        url: "/api/admin/import/confluence/explore",
+        headers: ctx.headers,
+      }),
     ]);
     expect(a.statusCode).toBe(200);
     expect(b.statusCode).toBe(200);

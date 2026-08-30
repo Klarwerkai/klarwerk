@@ -49,7 +49,10 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { FILE_CAPTURE_ACCEPT, FILE_TEXT_INSERT_ACCEPT } from "../../apps/web/src/lib/captureFromFile";
+import {
+  FILE_CAPTURE_ACCEPT,
+  FILE_TEXT_INSERT_ACCEPT,
+} from "../../apps/web/src/lib/captureFromFile";
 import { Capture } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -158,7 +161,12 @@ describe("JOB 2699 D1 · am Dateidialog der Erfassung", () => {
 
   it("D2 · die Art, die durchgeht: eine .txt wird gelesen und steht als Kontext im Freitext", async () => {
     const einfuegen = eingang(i18n.t("capture.wizard.upload"));
-    await waehle(einfuegen, new File(["Das Ventil DP-4 klemmt nach dem Wochenende."], "notiz.txt", { type: "text/plain" }));
+    await waehle(
+      einfuegen,
+      new File(["Das Ventil DP-4 klemmt nach dem Wochenende."], "notiz.txt", {
+        type: "text/plain",
+      }),
+    );
     expect(text()).toContain(i18n.t("capture.docAdded", { name: "notiz.txt" }));
     const felder = [...container.querySelectorAll("textarea")].map((t) => t.value);
     expect(felder.some((v) => v.includes("[notiz.txt]") && v.includes("Ventil DP-4"))).toBe(true);

@@ -294,7 +294,10 @@ export function createTokenExchanger(
     try {
       res = await doFetch(config.tokenUrl, {
         method: "POST",
-        headers: { "Content-Type": "application/x-www-form-urlencoded", Accept: "application/json" },
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded",
+          Accept: "application/json",
+        },
         body: params.toString(),
         signal: AbortSignal.timeout(tokenMs),
       });

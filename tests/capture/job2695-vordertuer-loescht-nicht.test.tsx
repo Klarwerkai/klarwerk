@@ -320,7 +320,10 @@ describe("JOB 2695 · D5 — was eine Flaeche nicht fuehrt, darf sie nicht loesc
       "die Massnahmen sind beim Speichern in der Vordertuer verschwunden",
     ).toEqual(MASSNAHMEN);
     expect(nachher?.payload.conditions, "die Bedingungen sind verschwunden").toEqual(BEDINGUNGEN);
-    expect(nachher?.payload.tags, "die Schlagworte sind verschwunden").toEqual(["pumpe", "wartung"]);
+    expect(nachher?.payload.tags, "die Schlagworte sind verschwunden").toEqual([
+      "pumpe",
+      "wartung",
+    ]);
     expect(nachher?.payload.type, "der Typ wurde ueberschrieben").toBe("sop");
     expect(nachher?.payload.category, "die Kategorie wurde ueberschrieben").toBe("Instandhaltung");
     expect(nachher?.payload.origin, "der Entwurf hat die Herkunft gewechselt").toBe("studio");
@@ -473,7 +476,9 @@ describe("JOB 2695 · D5 — was eine Flaeche nicht fuehrt, darf sie nicht loesc
     expect(nachher?.payload.title, "der geaenderte Titel kam nicht an").toBe(
       "In der Vordertuer umbenannt",
     );
-    expect(nachher?.payload.measures, "und die Massnahmen stehen trotzdem noch").toEqual(MASSNAHMEN);
+    expect(nachher?.payload.measures, "und die Massnahmen stehen trotzdem noch").toEqual(
+      MASSNAHMEN,
+    );
   });
 
   it("F4 — DER NEUANLAGE-WEG BLEIBT VOLLSTAENDIG, am Vertrag gemessen", () => {

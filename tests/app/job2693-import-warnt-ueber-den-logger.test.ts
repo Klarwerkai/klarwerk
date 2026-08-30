@@ -58,7 +58,9 @@ const kaputt = {
   source: "Confluence",
   collect: async () => [],
   collectAll: async () => {
-    throw new Error("Confluence-Request fehlgeschlagen: https://svc:GEHEIM@acme.atlassian.net kaputt");
+    throw new Error(
+      "Confluence-Request fehlgeschlagen: https://svc:GEHEIM@acme.atlassian.net kaputt",
+    );
   },
 } as unknown as ConfluenceSourceAdapter;
 

@@ -35,12 +35,17 @@ function probe(marke: string): { name: string; type: string } {
 }
 
 function marken(liste: string): string[] {
-  return liste.split(",").map((m) => m.trim()).filter((m) => m.length > 0);
+  return liste
+    .split(",")
+    .map((m) => m.trim())
+    .filter((m) => m.length > 0);
 }
 
 describe("JOB 2699 D1 · A · die Liste des Text-Einfuege-Weges und seine Pruefung sind EINE Tabelle", () => {
   it("A1 · JEDE Marke, die der Dialog anbietet, traegt die Pruefung — 0 Ausreisser", () => {
-    const ausreisser = marken(FILE_TEXT_INSERT_ACCEPT).filter((m) => !isTextInsertSupported(probe(m)));
+    const ausreisser = marken(FILE_TEXT_INSERT_ACCEPT).filter(
+      (m) => !isTextInsertSupported(probe(m)),
+    );
     expect(ausreisser).toEqual([]);
   });
 
@@ -105,7 +110,10 @@ describe("JOB 2699 D1 · B · die Eingaenge tragen die richtige Liste (Quelle ge
   });
 
   it("B3 · onDocs verzweigt ueber detectFileKind, nicht mehr ueber Endungspraedikate", () => {
-    const onDocs = capture.slice(capture.indexOf("const onDocs = async"), capture.indexOf("const onDocs = async") + 4000);
+    const onDocs = capture.slice(
+      capture.indexOf("const onDocs = async"),
+      capture.indexOf("const onDocs = async") + 4000,
+    );
     expect(onDocs).toContain("const kind = detectFileKind({ name: f.name, type: f.type })");
     expect(onDocs).toContain('kind === "docx" ? await readDocxFile(f) : await readTextFile(f)');
     expect(onDocs).not.toContain("isTextDocument(f) || isWordDocument(f)");

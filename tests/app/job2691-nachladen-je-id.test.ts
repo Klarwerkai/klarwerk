@@ -33,7 +33,11 @@ describe("JOB 2691 D1 · Nachladen je Id", () => {
     const rufe: Array<{ url: string; init: RequestInit | undefined }> = [];
     const fetchFn = (async (url: string | URL | Request, init?: RequestInit) => {
       rufe.push({ url: String(url), init });
-      return antwort(200, { id: "p1", title: "Wartung Pumpe", body: { storage: { value: "<p>voll</p>" } } });
+      return antwort(200, {
+        id: "p1",
+        title: "Wartung Pumpe",
+        body: { storage: { value: "<p>voll</p>" } },
+      });
     }) as unknown as typeof fetch;
     const seite = await clientMit(fetchFn).getPageById("p1");
     expect(seite?.id).toBe("p1");
@@ -43,7 +47,9 @@ describe("JOB 2691 D1 · Nachladen je Id", () => {
     expect(u.pathname).toBe("/wiki/rest/api/content/p1");
     expect(u.searchParams.get("expand")).toContain("body.storage");
     expect(rufe[0]?.init?.redirect).toBe("error");
-    expect(String((rufe[0]?.init?.headers as Record<string, string>).authorization)).toMatch(/^Basic /);
+    expect(String((rufe[0]?.init?.headers as Record<string, string>).authorization)).toMatch(
+      /^Basic /,
+    );
   });
 
   it("N2 · 404 heisst „gibt es nicht mehr“ — undefined, kein Fehler", async () => {
@@ -62,7 +68,9 @@ describe("JOB 2691 D1 · Nachladen je Id", () => {
       gerufen += 1;
       return antwort(200, { id: "p1" });
     }) as unknown as typeof fetch;
-    await expect(clientMit(fetchFn, "http://acme.atlassian.net/wiki").getPageById("p1")).rejects.toThrow();
+    await expect(
+      clientMit(fetchFn, "http://acme.atlassian.net/wiki").getPageById("p1"),
+    ).rejects.toThrow();
     expect(gerufen).toBe(0);
   });
 
