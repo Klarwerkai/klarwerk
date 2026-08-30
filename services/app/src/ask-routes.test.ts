@@ -547,6 +547,8 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
       validatedOnly: true,
       retrievalOnly: true,
       ungeprueftSichtbarFuer: expect.any(Function),
+      // JOB 2626 D3: das vierte Glied (Torlage-Betrachter); ein FUENFTES faellt weiterhin auf.
+      verschlossenSichtbarFuer: expect.any(Function),
     });
   });
 
@@ -567,6 +569,8 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
       validatedOnly: true,
       retrievalOnly: true,
       ungeprueftSichtbarFuer: expect.any(Function),
+      // JOB 2626 D3: das vierte Glied (Torlage-Betrachter); ein FUENFTES faellt weiterhin auf.
+      verschlossenSichtbarFuer: expect.any(Function),
     });
   });
 
@@ -691,6 +695,8 @@ describe("KW-KA4 · Nur eine gebundene, serverbestätigte Einwilligung lockert",
     validatedOnly: true,
     retrievalOnly: true,
     ungeprueftSichtbarFuer: expect.any(Function),
+    // JOB 2626 D3: viertes Glied — der Betrachterfilter der Torlage (`AskResult.verschlossen`).
+    verschlossenSichtbarFuer: expect.any(Function),
   };
 
   it("KA4-P1: `erlaubt: true` für exakt diese Bindung → die Enge entfällt", async () => {

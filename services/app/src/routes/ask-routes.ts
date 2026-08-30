@@ -373,10 +373,17 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
             validatedOnly: true,
             retrievalOnly: true,
             ungeprueftSichtbarFuer: sichtbarkeitsfilterFuer(user),
+            // JOB 2626 D1: derselbe Betrachter, zweite Meldung — die Torlage der Kandidaten, wenn
+            // es keine Antwort gab (Vertrag am Feld `AskResult.verschlossen`).
+            verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user),
           });
           return;
         }
-        await answer(user.id);
+        // JOB 2626 D1: Auch die Konsole (Ask-Seite) erfaehrt bei einer Nicht-Antwort die Torlage —
+        // hier gibt es einen SessionUser und damit den Sichtbarkeitsvertrag, den mega77 fuer jede
+        // Meldung verlangt. Der Add-on-Zweig oben bekommt den Filter weiterhin NICHT (kein
+        // SessionUser, kein Vertrag — dort bleibt alles, wie mega77 es hinterlassen hat).
+        await answer(user.id, { verschlossenSichtbarFuer: sichtbarkeitsfilterFuer(user) });
       },
     );
 

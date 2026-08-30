@@ -65,6 +65,7 @@ import { act, createElement, useEffect } from "../../apps/web/node_modules/react
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { DESIGN_THEME_STORAGE_KEY } from "../../apps/web/src/lib/designTheme";
 import { Topbar } from "../../apps/web/src/shell/Topbar";
@@ -104,15 +105,22 @@ async function mountTopbar(): Promise<{ container: HTMLElement; unmount: () => v
       createElement(
         QueryClientProvider,
         { client },
+        // JOB 2709 D4 (Huelle mitgezogen): Die Glocke in der Topbar meldet einen fehlgeschlagenen
+        // Gelesen-Status jetzt sichtbar und braucht dafuer `useToast`. In der echten App ist der
+        // Provider IMMER da (`AppShell.tsx`). Was dieser Test misst, bleibt unveraendert.
         createElement(
-          MemoryRouter,
-          { initialEntries: ["/erfassen"] },
+          ToastProvider,
+          null,
           createElement(
-            NavGuardProvider,
-            null,
-            createElement(SchmutzigeSeite),
-            createElement(OrtsAnzeige),
-            createElement(Topbar),
+            MemoryRouter,
+            { initialEntries: ["/erfassen"] },
+            createElement(
+              NavGuardProvider,
+              null,
+              createElement(SchmutzigeSeite),
+              createElement(OrtsAnzeige),
+              createElement(Topbar),
+            ),
           ),
         ),
       ),

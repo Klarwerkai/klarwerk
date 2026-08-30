@@ -2,7 +2,7 @@ import { Pool } from "pg";
 import { ANSWER_SNAPSHOT_SCHEMA, ASK_SCHEMA } from "../../ask";
 import { AUDIT_EVENT_ID_SCHEMA, AUDIT_HASH_VERSION_SCHEMA, AUDIT_SCHEMA } from "../../audit";
 import { AUTH_SCHEMA } from "../../auth";
-import { CAPTURE_SCHEMA } from "../../capture";
+import { CAPTURE_CREATE_OPERATION_SCHEMA, CAPTURE_SCHEMA } from "../../capture";
 import { CONFLICTS_SCHEMA, OVERLAP_SCHEMA, OVERLAP_SETTINGS_SCHEMA } from "../../conflicts";
 import { EXTERNAL_KNOWLEDGE_SCHEMA } from "../../external-search";
 import {
@@ -87,6 +87,12 @@ export async function migrate(pool: Pool): Promise<void> {
     // AUDIT_EVENT_ID_SCHEMA ist Ordnung, der Vorrang von AUDIT_SCHEMA ist Zwang.
     AUDIT_HASH_VERSION_SCHEMA,
     CAPTURE_SCHEMA,
+    // JOB 2697: der Vorgangs-Anker der Entwürfe. Er steht DIREKT nach `CAPTURE_SCHEMA`, und das ist
+    // hier ZWANG, nicht Ordnung: die Stufe ALTERt `drafts` und legt einen Index darauf an — ohne
+    // die Tabelle davor scheitert sie. Additiv und wiederholbar (`ADD COLUMN IF NOT EXISTS`,
+    // `CREATE UNIQUE INDEX IF NOT EXISTS`), und die Datenmigration ist leer: kein Bestandsentwurf
+    // trägt `createOperation`, jede vorhandene Zeile fällt durch das partielle `WHERE`.
+    CAPTURE_CREATE_OPERATION_SCHEMA,
     ASK_SCHEMA,
     // W3-A (KW-W3-18): Antwortidentitaet und unveraenderliche Belegrevisionen. Sie stehen DIREKT
     // nach ASK_SCHEMA, weil sie demselben Modul gehoeren; auch hier gibt es keinen technischen

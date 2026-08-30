@@ -26,7 +26,6 @@ export class FrontDoorSaveTimeoutError extends Error {
 }
 
 const MAX_TITLE_LENGTH = 90;
-const MAX_STATEMENT_LENGTH = 500;
 const HTML_ESCAPE: Record<string, string> = {
   "&": "&amp;",
   "<": "&lt;",
@@ -68,8 +67,15 @@ export function deriveFrontDoorTitle(
   return derived || fallbackTitle;
 }
 
+// JOB 2703 D2 — DIE CLIENT-KUERZUNG IST STILLGELEGT. Bis hierher schnitt diese Funktion die Aussage
+// selbst (`slice(0, 500)`, mitten im Wort) — eine zweite Kuerzungsregel neben der des Servers, und
+// eine dritte lag in `captureFromFile.ts`. Seit 2703 gibt es EINE Regel: `kernaussageAusKlartext`
+// in `services/structure`, angewandt vom Server beim Anlegen und Speichern eines Entwurfs
+// (capture-routes.ts) und im Confluence-Mapper. Der Client liefert die ROHAUSSAGE (den Klartext,
+// ungekuerzt) und kuerzt nicht mehr; der Server kuerzt kanonisch — an einer Satzgrenze, nie im Wort.
+// Der Name bleibt, weil die Aufrufer (Anlegen, Speichern, Einreichen) ihn fuehren.
 export function frontDoorStatement(bodyHtml: string, title: string): string {
-  const text = htmlToPlainText(bodyHtml).slice(0, MAX_STATEMENT_LENGTH).trim();
+  const text = htmlToPlainText(bodyHtml).replace(/\s+/g, " ").trim();
   return text || title;
 }
 
@@ -286,6 +292,14 @@ export function withFrontDoorSaveTimeout<T>(
   });
 }
 
+/**
+ * JOB 2697 — `operationId` reicht durch, sie entsteht hier NICHT.
+ *
+ * Der Schlüssel muss über die WIEDERHOLUNG hinweg derselbe bleiben; würde er in dieser Funktion
+ * erzeugt, bekäme jeder Klick einen neuen, und der Server sähe zwei Vorgänge, wo der Mensch einen
+ * wiederholt hat. Genau davor warnt `apps/web/src/lib/createOperation.ts:7-11`. Gehalten wird er
+ * deshalb im Ref der Seite; hier reist er nur mit.
+ */
 export function createFrontDoorDraft<TDraft>(
   input: {
     title: string;
@@ -293,10 +307,14 @@ export function createFrontDoorDraft<TDraft>(
     fallbackTitle?: string;
     confidentiality?: Confidentiality;
   },
-  createDraft: (payload: DraftPayload) => Promise<TDraft>,
+  createDraft: (payload: DraftPayload, operationId?: string) => Promise<TDraft>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
+  operationId?: string,
 ): Promise<TDraft> {
-  return withFrontDoorSaveTimeout(createDraft(buildFrontDoorPayload(input)), timeoutMs);
+  return withFrontDoorSaveTimeout(
+    createDraft(buildFrontDoorPayload(input), operationId),
+    timeoutMs,
+  );
 }
 
 export interface FrontDoorDraftRef {

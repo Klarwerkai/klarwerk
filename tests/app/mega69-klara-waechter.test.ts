@@ -772,7 +772,34 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // taskpane.html bereits mit Trimmer (2613 D1), Versionsspiegel (1ac6979) und .docx-Sendeweg (2613 D3).
     // 3-Wege-Merge, ein Konflikt am Stand-Spiegel zugunsten der 2621-Fassung (eine Zuweisung, zwei
     // Stellen) aufgeloest. Der Wert unten ist der Hash der zusammengefuehrten Datei.
-    const PIN = "5d08c403b3757cc1db872e9b8244298b517aa2e9b323db422d5f7c5be9d7fe6e";
+    //
+    // ============================================================================================
+    // JOB 2620 D4 — PIN BEWUSST AKTUALISIERT (5d08c403… -> 77b5d05e…), Auslieferungsfolgen:
+    //   · NUR DARSTELLUNG in Tab 2 (Wissen erfassen) nach Vorlage WissenErfassen.dc.html: die
+    //     Karte traegt id `capture-karte` und den Titel `captureCardTitle`, darin der gemessene
+    //     Bilder-Kasten `capture-bilder-hinweis` (warn-Token inline) und unter dem Senden-Knopf der
+    //     Pruefungs-Hinweis `send-review-note`; Reiterleiste 13px / 11px 0 9px / weisser Grund.
+    //     Gemessen in tests/design/zielbild-wissen-erfassen.test.ts (25 Werte, an DIESER Datei).
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: Umfangs-Wahl, `send-btn`, `send-status`, `open-link`,
+    //     der .docx-Sendeweg (Station 1, JOB 2613) und alle ids/Wege unveraendert (job2613-*,
+    //     word-addin*, job2621 gruen); vier neue i18n-Schluessel je dreisprachig (mega35 gruen);
+    //     `sendTitle`/`sendHint` bleiben im Woerterbuch, `sendHint` weiter sichtbar.
+    //   · Fuer ein installiertes Add-in: kein erneutes Sideload noetig; bis der Office-Cache
+    //     nachzieht, zeigt Tab 2 die alte Karte — kein neues Risiko.
+    // ============================================================================================
+    //
+    // ============================================================================================
+    // JOB 2620 D5 — PIN BEWUSST AKTUALISIERT (77b5d05e… -> bbc06097…), Auslieferungsfolgen:
+    //   · NUR WORTLAUT, dreisprachig: der Bilder-Halbsatz ist aus `sendHint` und `helpCan1`
+    //     entfernt — der gemessene Kasten `#capture-bilder-hinweis` traegt die Bilder-Aussage in
+    //     Tab 2 genau einmal (tests/design/zielbild-wissen-erfassen-einmal.test.ts, je Sprache).
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: keine id, kein Weg, kein Schluessel geaendert;
+    //     die Laufzeit-Meldung `sendImagesMissing` bleibt unberuehrt.
+    //   · Fuer ein installiertes Add-in: kein erneutes Sideload noetig.
+    // ============================================================================================
+    // JOB 2703 D3: taskpane.html geaendert — die harten 500-Zeichen-Kuerzungen im Client
+    // (prepareWordDraftRequest, „offene Frage senden") sind stillgelegt; der Server kuerzt kanonisch.
+    const PIN = "c470e28f20f274373eb497ff02b2be9c425affd03279c76f9ebafbf083c2750e";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -187,6 +187,9 @@ export const MIGRATIONS_SOLLLISTE: ReadonlyArray<{
   // legt an und schreibt nichts um — kein Marker aus RISIKOMARKER trifft.
   { stufe: "AUDIT_HASH_VERSION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "CAPTURE_SCHEMA", risiko: "ADDITIV" },
+  // JOB 2697: zwei generierte Spalten und ein partieller Unique-Index auf `drafts`. Kein DROP,
+  // kein DELETE, kein UPDATE an Bestandsdaten — kein Marker aus RISIKOMARKER trifft.
+  { stufe: "CAPTURE_CREATE_OPERATION_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ASK_SCHEMA", risiko: "ADDITIV" },
   { stufe: "ANSWER_SNAPSHOT_SCHEMA", risiko: "ADDITIV" },
   { stufe: "VALIDATION_SCHEMA", risiko: "ADDITIV" },

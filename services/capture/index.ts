@@ -2,7 +2,11 @@
 export { CaptureService } from "./src/service";
 export type { CaptureServiceDeps } from "./src/service";
 export { InMemoryDraftRepo, type DraftRepo } from "./src/repo";
-export { PgDraftRepo, CAPTURE_SCHEMA } from "./src/repo-pg";
+// JOB 2697: `CAPTURE_CREATE_OPERATION_SCHEMA` gehört zur öffentlichen Fläche, weil `db.ts` die
+// Migrationsliste aus den Modul-Exporten zieht (`services/app/src/db.ts:5`). Ohne diesen Export
+// wäre die Stufe gebaut und würde nie laufen — der Index entstünde nie, und die ganze Zusage hinge
+// an einer DDL, die niemand absetzt. Genau davor warnt `tests/capture/aufrufer-waechter.test.ts`.
+export { PgDraftRepo, CAPTURE_SCHEMA, CAPTURE_CREATE_OPERATION_SCHEMA } from "./src/repo-pg";
 export { InterviewSession } from "./src/interview";
 export { CaptureError } from "./src/types";
 // AUFTRAG-mega22 Block D: die Gestaltprüfung der Entwurfsladung gehört zum öffentlichen

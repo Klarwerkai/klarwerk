@@ -129,14 +129,23 @@ function payloadMitGenauerGroesse(bytes: number): string {
 
 async function adminAppMitCreateZaehler() {
   const services = buildServices();
-  const echterCreate = services.capture.createDraft.bind(services.capture);
+  // JOB 2697 (Pin mitgezogen, siehe Rückgabe D7): Der Zähler hing an `createDraft`. Seit JOB 2697
+  // ruft `POST /api/drafts` den Anlageweg über `createDraftVorgang` — dieselbe Anlage, ein
+  // Parameter mehr (die optionale Vorgangskennung) und ein Feld mehr in der Antwort (`angelegt`,
+  // aus dem die Route 201 oder 200 macht). `createDraft` DELEGIERT jetzt dorthin; ein Zähler am
+  // alten Namen sähe deshalb null Aufrufe, obwohl genau einer stattfand.
+  //
+  // WAS DIESER PIN MISST, IST UNVERÄNDERT: dass ein gültiger kleiner Rumpf GENAU EINEN
+  // Anlagevorgang auslöst — und ein zu grosser keinen.
+  const echterCreate = services.capture.createDraftVorgang.bind(services.capture);
   let createAufrufe = 0;
-  services.capture.createDraft = async (
+  services.capture.createDraftVorgang = async (
     payload: Parameters<typeof echterCreate>[0],
     author: Parameters<typeof echterCreate>[1],
+    vorgangsId?: Parameters<typeof echterCreate>[2],
   ) => {
     createAufrufe += 1;
-    return echterCreate(payload, author);
+    return echterCreate(payload, author, vorgangsId);
   };
   const app = buildApp(services);
   await app.inject({

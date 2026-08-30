@@ -1298,7 +1298,10 @@ export interface WordDraftRequest {
 // kann über dem Budget liegen, obwohl seine rohen Bytes darunter lägen).
 export function prepareWordDraftRequest(html: string, text: string): WordDraftRequest {
   const title = deriveDraftTitleFromSelection(text);
-  const statement = text.trim().slice(0, 500);
+  // JOB 2703 D3: KEINE Kuerzung mehr im Client (Zwilling von taskpane.html, prepareWordDraftRequest).
+  // Was der Client abschneidet, sieht der Server nie; gekuerzt wird an EINEM Ort — kanonisch am
+  // Server (kernaussageAusKlartext in capture-routes.ts).
+  const statement = text.trim();
   const inner = extractWordBodyHtml(html || "");
   const undeliveredImages = countUndeliveredWordImages(inner);
   if (inner.length === 0) {

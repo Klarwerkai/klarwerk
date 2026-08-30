@@ -9,9 +9,6 @@ import type { DraftPayload, ExtractedPoint, StructureResult } from "../api/types
 import { reservedObjectLinkHtml } from "./bodyFileLink";
 // WP-D9b: verankerte figures im sicheren HTML erkennen (gleiche Quelle wie die BILD-1d-Galerie).
 import { extractBodyImages } from "./bodyImages";
-// JOB 2699 D1: die zentrale Dateiart-Erkennung — Liste UND Pruefung des Text-Einfuege-Weges
-// haengen an ihr, nicht an Endungen.
-import { type FileKind, detectFileKind } from "./extract";
 // JOB 513/D2: der TYP des Bildtransfer-Vertrags. Dieses Modul trifft KEINE Budgetentscheidung und fuehrt
 // KEINE eigene Bytegrenze — die wirksame Grenze reist im Vertrag mit (autoritativ bleiben
 // MAX_INLINE_BODY_HTML_BYTES in docx.ts und PPTX_MAX_IMAGE_BYTES/PPTX_MAX_TOTAL_IMAGE_BYTES in pptx.ts).
@@ -26,6 +23,9 @@ import {
   addImageBudgetDrop,
   imageTransferBalanced,
 } from "./docx";
+// JOB 2699 D1: die zentrale Dateiart-Erkennung — Liste UND Pruefung des Text-Einfuege-Weges
+// haengen an ihr, nicht an Endungen.
+import { type FileKind, detectFileKind } from "./extract";
 
 // Auswählbarer Punkt in der Liste (Checkbox-Zustand; Default: ausgewählt).
 export interface SelectableExtractPoint extends ExtractedPoint {
@@ -84,7 +84,12 @@ export const FILE_CAPTURE_ACCEPT = `${FILE_IMPORT_ACCEPT},video/*,audio/*`;
 // bleibt, wie es ist — es versorgt auch „Datei oder Bild beifuegen" (onAttach) und den Studio-Anhang,
 // die JEDE Datei als Anhang annehmen; dort ist .pptx richtig. Nur der Text-Einfuege-Weg bekommt
 // seine eigene Liste, und die ist aus DERSELBEN Tabelle abgeleitet wie seine Pruefung.
-export const TEXT_INSERT_KINDS = ["text", "docx", "pdf", "image"] as const satisfies readonly FileKind[];
+export const TEXT_INSERT_KINDS = [
+  "text",
+  "docx",
+  "pdf",
+  "image",
+] as const satisfies readonly FileKind[];
 
 /** Eine Marke der Accept-Liste je unterstuetzter Art — EINE Tabelle fuer Liste und Pruefung. */
 const TEXT_INSERT_ACCEPT_JE_ART: Readonly<Record<(typeof TEXT_INSERT_KINDS)[number], string>> = {
@@ -243,7 +248,9 @@ export function fileSourcePayload(
   };
 }
 
-const MAX_WHOLE_DOCUMENT_STATEMENT = 500;
+// JOB 2703 D2: `MAX_WHOLE_DOCUMENT_STATEMENT = 500` und die Client-Kuerzung der Aussage sind
+// STILLGELEGT — die EINE Kuerzungsregel (`kernaussageAusKlartext`, services/structure) wendet der
+// Server beim Anlegen/Speichern an. `compactText` bleibt allein fuer TITEL (90 Zeichen) in Gebrauch.
 
 // WP-D4: ehrlicher, formatabhängiger Import-Hinweis — er wird Teil des persistierten Quelle-
 // Blockquotes, damit der Entwurf NIE wie eine verlustfreie Übernahme aussieht.
@@ -452,7 +459,8 @@ export function wholeDocumentDraftPayload(input: {
 }): DraftPayload {
   const title = wholeDocumentTitle(input);
   const bodyHtml = wholeDocumentBodyHtml(input);
-  const statement = compactText(input.text, MAX_WHOLE_DOCUMENT_STATEMENT) || title;
+  // JOB 2703 D2: Rohaussage ungekuerzt (Leerraum gefaltet) — der Server kuerzt kanonisch.
+  const statement = input.text.replace(/\s+/g, " ").trim() || title;
   return {
     title,
     statement,

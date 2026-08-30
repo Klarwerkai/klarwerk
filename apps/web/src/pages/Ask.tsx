@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos, useReasonerStatus } from "../api/hooks";
-import type { AnswerResult } from "../api/types";
+import type { AnswerResult, VerschlossenHinweis } from "../api/types";
 import { useToast } from "../app/ToastContext";
 // AUFTRAG-mega69 B1 (bens sammel65-Auflage 1): der Kostenhinweis der Beispiel-Chips läuft über
 // DASSELBE zentrale Bauteil und DIESELBE Ableitung wie alle anderen Auslösestellen — bedingt an
@@ -138,6 +138,11 @@ export function Ask(): JSX.Element {
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
   const [emptyAttempted, setEmptyAttempted] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(null);
+  // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
+  // konnten und welches Tor bei ihnen zu ist (Freigabe/Stufe/Volltext). „Keine belastbare
+  // Grundlage" war ehrlich und unbrauchbar; R3 des Design-Leads gilt auch hier: Störung sieht
+  // niemals aus wie Leere. Kommt vom Server nur bei Nicht-Antwort und nur mit Betrachterfilter.
+  const [verschlossen, setVerschlossen] = useState<VerschlossenHinweis[]>([]);
   // FUNKE-FIX P0 (bens ROT-1): der Answer-Receipt DIESES Antwortvorgangs — das „Danke" je Quelle
   // reicht ihn zurück, damit der Server die Quellen-Bindung serverseitig belegen kann.
   const [receipt, setReceipt] = useState("");
@@ -233,12 +238,18 @@ export function Ask(): JSX.Element {
       setReceipt("");
       setGapId(null);
       setThankedSources(new Set());
+      // JOB 2626 D1: dieselbe Bindung wie für Antwort/Receipt/Lücke — die Torlage gehört zu genau
+      // einer Frage und darf nie neben dem Ergebnis einer anderen stehen.
+      setVerschlossen([]);
     },
     // SCRUM-138: Backend liefert { result, gap, receipt } — Antwort + Answer-Receipt entpacken.
     onSuccess: (r) => {
       // JOB 2694 D1: eine Antwort ohne Text kommt hier als Lücke an — Begründung am Helfer oben.
       setResult(leereAntwortAlsLuecke(selectAnswer(r)));
       setReceipt(r.receipt);
+      // JOB 2626 D1: abwesend heißt „nicht gefragt oder nichts zu melden" — beides fällt ehrlich
+      // auf die leere Liste und damit auf die generische Leermeldung zurück.
+      setVerschlossen(r.verschlossen ?? []);
       // FUNKE-FIX2 P0: die neue Lücke merken (ID für den Capture-Einstieg) und die Gap-Liste
       // invalidieren, damit Capture die frisch erzeugte Lücke über ihre ID auflösen kann (der Ersteller
       // ist berechtigt → Volltext). Kein Fragetext in der URL.
@@ -749,6 +760,58 @@ export function Ask(): JSX.Element {
                   </p>
                 ) : null}
                 <p className="mt-2 text-[12px] font-medium text-text">{t(contract.nextStepKey)}</p>
+                {/* JOB 2626 D1 — WELCHES TOR IST ZU? Pedis Frage vom 27.08. bekam „Keine
+                    belastbare Grundlage": ehrlich, aber ohne den Grund — drei Tore seines
+                    Dokuments waren gleichzeitig zu, und der Satz nannte keines. Hier stehen die
+                    gefundenen, aber verschlossenen Dokumente MIT ihren zuen Toren — ALLE, die zu
+                    sind (eines zu nennen und zwei zu verschweigen, schickt in die falsche
+                    Richtung). Die Kurztexte sind die Station-3-Torbegriffe (JOB 2623: „Freigabe
+                    fehlt", „Stufe fehlt"), damit ein Mensch in beiden Flächen dasselbe liest; der
+                    volle Satz steht je Pille im title. Ist die Liste leer, bleibt der Kasten wie
+                    er war — für ein Dokument, dessen Tore offen sind und das trotzdem nicht trug,
+                    wird KEIN Grund erfunden (§4 des Auftrags). */}
+                {verschlossen.length > 0 ? (
+                  <div className="mt-3" data-testid="ask-verschlossen">
+                    <p className="text-[11.5px] font-medium text-muted-2">
+                      {t("ask.verschlossen.label")}
+                    </p>
+                    <ul className="mt-1 space-y-1">
+                      {verschlossen.map((h) => (
+                        <li
+                          key={h.id}
+                          className="flex flex-wrap items-center gap-1.5 text-[12px]"
+                          data-testid="ask-verschlossen-eintrag"
+                        >
+                          <span className="font-medium text-text">{h.title}</span>
+                          {h.freigabeFehlt ? (
+                            <span
+                              title={t("ask.verschlossen.freigabeHint")}
+                              className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                            >
+                              {t("ask.verschlossen.freigabe")}
+                            </span>
+                          ) : null}
+                          {h.stufeFehlt ? (
+                            <span
+                              title={t("ask.verschlossen.stufeHint")}
+                              className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                            >
+                              {t("ask.verschlossen.stufe")}
+                            </span>
+                          ) : null}
+                          {h.volltextFehlt ? (
+                            <span
+                              title={t("ask.verschlossen.volltextHint")}
+                              className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold text-trust-warn-text"
+                            >
+                              {t("ask.verschlossen.volltext")}
+                            </span>
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : null}
               </Card>
             ) : null}
             {result.answered ? (

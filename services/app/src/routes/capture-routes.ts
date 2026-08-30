@@ -1,4 +1,9 @@
 import type { FastifyError, FastifyPluginAsync, FastifyReply, FastifyRequest } from "fastify";
+// JOB 2671 D2: die erprobte Zip-Bibliothek statt eines eigenen Formatlesers (Begruendung bei
+// `pruefeDocxZip`). `jszip` lag bisher nur transitiv unter `mammoth` im Baum — dieser Durchgang
+// macht die Abhaengigkeit ausdruecklich (`package.json`), denn eine Bibliothek, gegen die
+// Sicherheitscode steht, darf nicht davon abhaengen, dass ein anderes Paket sie mitbringt.
+import JSZip from "jszip";
 // JOB 2613 D3: DER DOM-FREIE DOCX-KERN, serverseitig genutzt. Der Pfad zeigt bewusst in
 // `apps/web/src/lib` und nicht auf eine Kopie: `docx.ts` ist ausdrücklich DOM-frei gebaut
 // (`docx.ts:1-4`), und `mammoth` löst NUR von dort aus auf (`apps/web/package.json:23`; im
@@ -21,6 +26,9 @@ import {
   alsSchreibpatch,
   createOperationFingerprint,
 } from "../../../knowledge-object";
+// JOB 2703 D2: DIE EINE Kuerzungsregel fuer die Kernaussage — dieselbe Funktion wie im
+// Confluence-Mapper (services/confluence/src/mapper.ts). Der Server kuerzt; der Client nicht mehr.
+import { kernaussageAusHtml, kernaussageAusKlartext } from "../../../structure";
 import type { ValidationService } from "../../../validation";
 import type { AiCheckWorker } from "../ai-check-worker";
 import { type SemanticPrefilter, indexKoForDuplicatePrefilter } from "../duplicate-detection";
@@ -32,6 +40,32 @@ import type { AssignmentNotifier } from "../notify";
 // Auffassungen davon, wer einen Entwurf sehen darf, wären eine zu viel.
 export function canSeeDraft(user: SessionUser, draft: Draft): boolean {
   return user.role === "admin" || draft.originalAuthor === user.id;
+}
+
+// ================================================================================================
+// JOB 2703 D2 — EINE KUERZUNGSREGEL FUER BEIDE WEGE (BEN zu 2703 D1: „Confluence-Mapper und
+// Word-Serverroute muessen dieselbe kanonische Kuerzungsfunktion aufrufen; bestehende
+// Client-Kuerzungen sind zu entfernen oder ausdruecklich stillzulegen").
+// ================================================================================================
+// Bis hierher schnitt der Client die Aussage (`captureFrontDoor.ts` slice 500, `captureFromFile.ts`
+// compactText 500, mitten im Wort), der Word-Serverweg (`/api/drafts/from-docx`) schnitt gar nicht,
+// und der Confluence-Mapper schnitt seit 2703 D1 an der Satzgrenze — drei Fassungen derselben
+// Regel. Jetzt gilt an JEDEM Serverweg, der eine Aussage annimmt, dieselbe Funktion:
+//   · eine mitgelieferte Aussage wird kanonisch gekuerzt (bis KERNAUSSAGE_MAX, Satzgrenze, nie im
+//     Wort — fuer kurze Aussagen ein Durchlauf ohne Aenderung);
+//   · fehlt sie, entsteht sie aus dem ersten Block des Bodys (wie im Mapper), sonst aus dem Titel.
+// Die Client-Kuerzungen sind stillgelegt (sie liefern die Rohaussage); der Word-Docx-Weg ruft die
+// Funktion direkt (unten). Ein Paritaetstest (tests/capture/job2703-paritaet-beide-wege.test.ts)
+// haelt Mapper und Serverroute zeichengenau gleich.
+function mitKanonischerAussage<T extends Partial<DraftPayload>>(payload: T): T {
+  if (typeof payload.statement !== "string") {
+    return payload;
+  }
+  const gekuerzt =
+    kernaussageAusKlartext(payload.statement) ||
+    (typeof payload.bodyHtml === "string" ? kernaussageAusHtml(payload.bodyHtml) : "") ||
+    (typeof payload.title === "string" ? payload.title : "");
+  return gekuerzt === payload.statement ? payload : { ...payload, statement: gekuerzt };
 }
 
 function visibleDraftsFor(user: SessionUser, drafts: Draft[]): Draft[] {
@@ -139,6 +173,391 @@ export function zaehleEingebetteteBilder(html: string): number {
   return html.match(EINGEBETTETES_BILD)?.length ?? 0;
 }
 
+// ================================================================================================
+// JOB 2671 D2 — DIE VORPRUEFUNG DER .docx, MIT EINER ERPROBTEN BIBLIOTHEK STATT EIGENEM PARSER.
+// ================================================================================================
+//
+// D1 hat diese Pruefung gebaut, aber mit einem selbstgeschriebenen Leser des Zip-Zentral-
+// verzeichnisses: rueckwaerts nach der EOCD-Signatur suchen, Offsets von Hand addieren, Felder aus
+// Rohbytes ziehen. BENs Einwand dagegen ist der Grund fuer diesen Durchgang, und er ist richtig:
+// Ein handgeschriebener Formatleser am Rand des Systems ist die schlechteste Stelle fuer eigenen
+// Code. Er trifft ungeprueft jede fremde Datei, seine Randfaelle (Zip64, ein Kommentar am Ende,
+// mehrteilige Archive, ein Data-Descriptor statt Header-Groessen) sind genau die, die ein
+// Angreifer sucht — und keiner davon steht in einem Test, weil man an einen Randfall, den man
+// nicht kennt, auch keinen Test schreibt. `jszip` liest dasselbe Format seit Jahren gegen die
+// Dateien der Welt.
+//
+// WAS GEMESSEN WURDE, BEVOR DIESER CODE ENTSTAND (D1 hielt das fuer unmoeglich):
+// `JSZip.loadAsync` liest das Zentralverzeichnis und legt je Eintrag ein `CompressedObject` an,
+// das `uncompressedSize` und `compressedSize` bereits traegt — OHNE dass ein Eintrag entpackt
+// waere. Entpackt wird erst bei `file.async(...)`, und das ruft diese Vorpruefung nie. Sonde:
+// ein Archiv mit 200.000 Byte Inhalt kam auf 430 Byte gepackt und meldete danach
+// `_data.uncompressedSize = 200000`, `_data.compressedSize = 212` — die Bombe faellt also an
+// ihren eigenen Angaben, so wie D1 es wollte, nur ohne D1s Parser.
+//
+// DIE EINE EINSCHRAENKUNG, EHRLICH BENANNT: `uncompressedSize` steht in `_data` und damit an
+// einem Feld ohne oeffentliche Zusage — jszip veroeffentlicht keinen Groessen-Zugang. Das ist der
+// wahre Kern von D1s Einwand, und er verschwindet nicht dadurch, dass man ihn nicht erwaehnt.
+// Der Unterschied zu D1 ist trotzdem entscheidend: Das FORMAT liest die erprobte Bibliothek, mein
+// Code liest nur noch eine Zahl, die sie schon ermittelt hat. Faellt das Feld bei einem Upgrade
+// weg, greift `groesseVon` fail-closed (siehe dort) — die Pruefung wird dann streng, nicht blind.
+export const DOCX_ENTPACKT_MAX_BYTES = 200 * 1024 * 1024;
+export const DOCX_MAX_ENTPACKVERHAELTNIS = 100;
+export const DOCX_UMWANDLUNG_TIMEOUT_MS = 30_000;
+export const DOCX_UNLESBAR_MESSAGE = "Die Datei ist kein lesbares Word-Dokument (.docx).";
+export const DOCX_BUSY_MESSAGE = "Die Umwandlung dauert zu lange — bitte spaeter erneut.";
+
+/**
+ * JOB 2671 — DIE ABLEHNUNG NENNT DIE ZAHL, an der sie sich entschieden hat.
+ *
+ * „Zu gross" ohne Mass laesst den Menschen raten, ob er ein Bild entfernen muss oder das halbe
+ * Dokument. Die genannte Groesse ist KEINE Innensicht des Servers: sie steht in der Datei, die der
+ * Nutzer selbst geschickt hat. Die Grenze mitzunennen ist derselbe Gedanke wie bei
+ * `DRAFT_BODY_TOO_LARGE_MESSAGE` — sagen, was gilt, statt nur abzulehnen.
+ */
+function alsMib(bytes: number): string {
+  return `${Math.round((bytes / (1024 * 1024)) * 10) / 10} MiB`;
+}
+
+// JOB 2671 D3: Die Meldung nennt die Grenze, die WIRKLICH galt. Fest verdrahtet stuende in einem
+// Lauf mit injizierter Testgrenze „erlaubt sind 200 MiB", waehrend bei 256 KiB abgebrochen wurde —
+// eine Meldung, die den Leser in die Irre fuehrt, und sei es nur im Testprotokoll.
+function docxZuGrossMessage(entpackt: number, grenze: number): string {
+  return `Die Datei ist entpackt zu gross fuer die Uebernahme (${alsMib(entpackt)}, erlaubt sind ${alsMib(grenze)}). Es wurde kein Entwurf angelegt und keine Bilder wurden uebernommen.`;
+}
+
+// Der Verhaeltnisfall bleibt unter der Summengrenze und braucht deshalb seinen EIGENEN Satz: die
+// Summenmeldung („erlaubt sind 200 MiB") waere hier schlicht falsch — sie nennt eine Grenze, die
+// gar nicht gerissen wurde, und der Mensch verkleinert dann vergeblich.
+function docxVerhaeltnisMessage(entpackt: number, gepackt: number, faktor: number): string {
+  return `Die Datei ist entpackt zu gross fuer die Uebernahme: ${alsMib(entpackt)} aus ${alsMib(gepackt)} gepackt — mehr als das ${faktor}-fache. Es wurde kein Entwurf angelegt und keine Bilder wurden uebernommen.`;
+}
+
+export type DocxZipBefund =
+  | { ok: true; entpackt: number; gepackt: number; eintraege: number }
+  | {
+      ok: false;
+      status: 413 | 415;
+      error: "PAYLOAD_TOO_LARGE" | "UNSUPPORTED_MEDIA_TYPE";
+      message: string;
+      /**
+       * JOB 2671 D3 — WIE VIELE BYTES TATSAECHLICH DURCH DEN DEKOMPRIMIERER GELAUFEN SIND, bevor
+       * abgebrochen wurde. Das ist keine Statistik, sondern die pruefbare Haelfte der Zusage
+       * „ohne den Datenstrom unbeschraenkt zu materialisieren": Ohne diese Zahl kann ein Test nur
+       * belegen, DASS abgewiesen wurde, nicht dass es rechtzeitig geschah. `0` heisst, dass gar
+       * nichts entpackt wurde — der Fall, in dem schon die deklarierten Angaben ausreichten.
+       */
+      gemessen: number;
+    };
+
+/**
+ * JOB 2671 D3 — DIE GRENZEN ALS PARAMETER, damit der adversariale Fall pruefbar wird.
+ *
+ * BEN verlangt ausdruecklich eine „niedrige injizierte Testgrenze". Der Grund ist praktisch: Um
+ * eine echte Expansion ueber 200 MiB zu belegen, muesste ein Test 200 MiB durch den
+ * Dekomprimierer schicken — das dauert und belastet den Rechner, gegen den dieses Projekt schon
+ * zweimal verloren hat. Mit einer Grenze von 256 KiB ist derselbe Beweis in Millisekunden zu
+ * fuehren.
+ *
+ * KEINE ZWEITE CODEBAHN: Es ist ein vorbelegter Parameter, kein Schalter. Der Betrieb laeuft
+ * durch dieselbe Funktion mit denselben Zeilen, nur mit der Vorgabe.
+ */
+export interface DocxGrenzen {
+  entpacktMax: number;
+  verhaeltnisMax: number;
+}
+
+export const DOCX_GRENZEN_VORGABE: DocxGrenzen = {
+  entpacktMax: DOCX_ENTPACKT_MAX_BYTES,
+  verhaeltnisMax: DOCX_MAX_ENTPACKVERHAELTNIS,
+};
+
+/**
+ * JOB 2671 D2 — die entpackte Groesse EINES Eintrags, fail-closed.
+ *
+ * `_data` ist jszip-intern (siehe Block oben). Deshalb wird hier nicht darauf vertraut, dass es da
+ * ist: Fehlt die Zahl bei einem Eintrag, der kein Verzeichnis ist, liefert diese Funktion
+ * `undefined` — und der Aufrufer LEHNT AB, statt die Datei ungeprueft durchzulassen. Eine
+ * Vorpruefung, die bei fehlender Messung stillschweigend „passt schon" sagt, waere schlimmer als
+ * keine: sie stuende im Code, im Test und im Bericht, und wuerde im Ernstfall nichts halten.
+ */
+function groesseVon(eintrag: unknown): number | undefined {
+  const daten = (eintrag as { _data?: { uncompressedSize?: unknown } })._data;
+  const roh = daten?.uncompressedSize;
+  return typeof roh === "number" && Number.isFinite(roh) && roh >= 0 ? roh : undefined;
+}
+
+// ================================================================================================
+// JOB 2671 D3 — DEN ANGABEN DER DATEI NICHT GLAUBEN.
+// ================================================================================================
+//
+// DER BEFUND, der diesen Durchgang ausgeloest hat (BEN zu D2, PRODUKT ROT): Die Vorpruefung las
+// die unkomprimierten Groessen aus dem Zentralverzeichnis — also aus DER DATEI, die sie pruefen
+// soll. Wer eine Bombe baut, schreibt dort hin, was er will. Der Schutz fragte den Angreifer, ob
+// der Angriff gefaehrlich sei.
+//
+// GEMESSEN, nicht argumentiert (D3-Sonden, in der Rueckgabe mit Ausgabe belegt):
+//
+//   Ein gueltiges Archiv mit 4 MiB Inhalt, dessen Groessenfelder auf 1.000 gefaelscht sind:
+//     `loadAsync` nimmt es an; `_data.uncompressedSize` meldet 1000;
+//     die D2-Pruefung haette 2.000 Byte summiert und die Datei durchgelassen.
+//     Tatsaechlich entpackt: 4.194.304 Byte.
+//
+// WARUM JSZips EIGENE PRUEFUNG NICHT GENUEGT: jszip erkennt die Faelschung und wirft
+// `uncompressed data size mismatch` — aber ERST NACH 4.194.304 Byte in 256 Chunks. Bis dahin ist
+// alles durch den Dekomprimierer gelaufen. Fuer den Angreifer ist das kein Hindernis, sondern der
+// Erfolg: Er wollte Rechenzeit binden, nicht ein gueltiges Ergebnis. Die Datei wird am Ende
+// abgelehnt, der Aufwand ist trotzdem bezahlt.
+//
+// ============================ DIE STELLE, AN DER ABGEBROCHEN WIRD ==============================
+//
+// `strom.destroy()` in `zaehleEchteExpansion` — nicht am Ende einer Schleife, sondern im
+// `data`-Ereignis, sobald die laufende Summe die Grenze reisst.
+//
+// WARUM `nodeStream(...)` UND NICHT `internalStream(...)`, und warum `destroy()` und nicht
+// `pause()`: Das ist KEINE Stilfrage, sondern der Unterschied zwischen Schutz und Schein.
+// GEMESSEN, beide im selben Lauf:
+//
+//     internalStream + pause()   ->  507 weitere Chunks NACH dem Abbruch  (8 MiB liefen durch)
+//     nodeStream    + destroy()  ->    0 weitere Chunks NACH dem Abbruch
+//
+// `pause()` stoppt nur die ZUSTELLUNG, nicht das Entpacken. Ein Test auf die gezaehlte Summe waere
+// damit gruen gewesen — die Zaehlung stoppt ja —, und der Schutz waere trotzdem keiner. Wer diese
+// Zeilen „vereinfacht", muss zuerst diese Messung widerlegen.
+//
+// GEZAEHLT, NICHT GESAMMELT: Jeder Chunk wird nach dem Addieren verworfen. Der Speicherbedarf
+// bleibt bei der Chunkgroesse (gemessen 16.384 Byte), unabhaengig davon, wie gross das Archiv
+// entpackt waere.
+type ExpansionsErgebnis =
+  | { art: "gemessen"; summe: number }
+  | { art: "ueber_grenze"; summe: number }
+  | { art: "strom_kaputt"; summe: number };
+
+async function zaehleEchteExpansion(archiv: JSZip, grenze: number): Promise<ExpansionsErgebnis> {
+  const pfade: string[] = [];
+  archiv.forEach((pfad, eintrag) => {
+    if (!eintrag.dir) {
+      pfade.push(pfad);
+    }
+  });
+
+  // Die Summe laeuft ueber ALLE Eintraege: Eine Bombe, die sich auf zwanzig Dateien verteilt, ist
+  // dieselbe Bombe. Je Eintrag zu pruefen liesse zwanzigmal die Grenze zu.
+  let summe = 0;
+  let kaputt = false;
+  for (const pfad of pfade) {
+    const eintrag = archiv.file(pfad);
+    if (!eintrag) {
+      continue;
+    }
+    const ausgang = await new Promise<"ende" | "grenze" | "fehler">((fertig) => {
+      // jszip deklariert `NodeJS.ReadableStream`, das `destroy` nicht kennt; zur Laufzeit ist es
+      // ein echter `Readable` (gemessen: 0 weitere Chunks nach `destroy()`). Statt das per Cast zu
+      // BEHAUPTEN, wird es unten geprueft — ein Cast waere genau die Sorte Annahme, die diesen
+      // Durchgang ausgeloest hat.
+      const strom = eintrag.nodeStream("nodebuffer") as NodeJS.ReadableStream & {
+        destroy?: () => void;
+      };
+      let beendet = false;
+      const schliesse = (wie: "ende" | "grenze" | "fehler"): void => {
+        if (beendet) {
+          return;
+        }
+        beendet = true;
+        fertig(wie);
+      };
+      if (typeof strom.destroy !== "function") {
+        // FAIL-CLOSED: Ohne echten Abbruch laesst sich die Grenze nicht durchsetzen — die Datei
+        // liefe sonst vollstaendig durch, waehrend die Zaehlung Schutz vortaeuschte. Dann lieber
+        // ablehnen. Erreichbar nur, wenn ein jszip-Upgrade die Stromform aendert.
+        schliesse("fehler");
+        return;
+      }
+      strom.on("data", (chunk: Buffer) => {
+        if (beendet) {
+          return;
+        }
+        summe += chunk.length;
+        if (summe > grenze) {
+          // HIER wird abgebrochen — waehrend des Entpackens, nicht danach.
+          strom.destroy?.();
+          schliesse("grenze");
+        }
+      });
+      // Der `error`-Handler ist Pflicht, nicht Hoeflichkeit: Ein Stromfehler ohne Handler beendet
+      // den Node-Prozess. `destroy()` selbst kann einen nachziehen — er faellt dann auf `beendet`.
+      strom.on("error", () => schliesse("fehler"));
+      strom.on("end", () => schliesse("ende"));
+    });
+    if (ausgang === "grenze") {
+      return { art: "ueber_grenze", summe };
+    }
+    if (ausgang === "fehler") {
+      // Hierher faellt unter anderem jszips `uncompressed data size mismatch` — ein Archiv, das
+      // ueber sich selbst luegt. Das ist eine kaputte Datei (415), keine Serverstoerung.
+      //
+      // ABER NICHT SOFORT ABBRECHEN, und das ist gemessen, nicht vorsichtshalber: Eine luegende
+      // Datei laesst schon ihren ERSTEN, winzigen Eintrag scheitern (`[Content_Types].xml`, acht
+      // Byte echt, tausend deklariert). Wer hier zurueckkehrt, beantwortet die Bombe im zweiten
+      // Eintrag mit 415 statt mit 413 — im ersten Lauf dieses Durchgangs sind daran fuenf Faelle
+      // gefallen, darunter zwei von BEN anerkannte.
+      //
+      // DIE GROESSENFRAGE HAT VORRANG vor der Konsistenzfrage: „zu gross" ist die schaerfere und
+      // fuer den Menschen brauchbarere Auskunft. Deshalb wird weitergezaehlt und erst am Ende
+      // entschieden.
+      kaputt = true;
+    }
+  }
+  return kaputt ? { art: "strom_kaputt", summe } : { art: "gemessen", summe };
+}
+
+/**
+ * JOB 2671 D2 — VOR mammoth, ohne zu entpacken.
+ *
+ * Drei Fragen, in dieser Reihenfolge: Ist es ueberhaupt ein Zip? Sprengt es beim Entpacken die
+ * Summengrenze oder das Verhaeltnis? Enthaelt es das eine Teil, ohne das keine .docx eine .docx
+ * ist (`word/document.xml`)? Erst danach darf mammoth die Datei sehen.
+ *
+ * WARUM DIE SUMME UND DAS VERHAELTNIS: Die Summe allein hielte ein Archiv nicht auf, das knapp
+ * unter 200 MiB bleibt, aber aus 2 KiB entsteht; das Verhaeltnis allein liesse ein sehr grosses,
+ * schlecht gepacktes Archiv durch. Eine echte .docx reisst keine der beiden Grenzen: Text packt
+ * gut, aber nicht 100:1, und Bilder (jpg/png) sind bereits komprimiert und druecken das
+ * Verhaeltnis. Der Fall „gueltige, stark gepackte .docx geht durch" ist deshalb ein eigener Test.
+ *
+ * ASYNCHRON, und das ist keine Kosmetik: `loadAsync` ist der einzige Weg, auf dem jszip das
+ * Zentralverzeichnis liest. Der synchrone Vorgaenger aus D1 war genau der Parser, der hier
+ * verschwindet.
+ */
+export async function pruefeDocxZip(
+  bytes: Buffer,
+  grenzen: DocxGrenzen = DOCX_GRENZEN_VORGABE,
+): Promise<DocxZipBefund> {
+  const gepackt = bytes.byteLength;
+  let archiv: JSZip;
+  try {
+    archiv = await JSZip.loadAsync(bytes);
+  } catch {
+    // Kein Zip, abgeschnitten, verschluesselt: das ist eine unlesbare Datei (415), keine
+    // Serverstoerung (500). Der Grund wandert bewusst NICHT nach aussen — er saehe fuer den
+    // Nutzer wie eine Innensicht aus und naehme einem Angreifer das Raten ab.
+    return {
+      ok: false,
+      status: 415,
+      error: "UNSUPPORTED_MEDIA_TYPE",
+      message: DOCX_UNLESBAR_MESSAGE,
+      gemessen: 0,
+    };
+  }
+
+  // ---- SCHRITT 1 · DIE DEKLARIERTEN ANGABEN, als BILLIGE Vorabweisung ---------------------------
+  //
+  // Sie entscheiden nichts mehr allein — aber sie bleiben, und zwar aus einem sachlichen Grund:
+  // Eine plumpe Bombe, die ihre 300 MiB ehrlich deklariert, faellt hier ohne ein einziges
+  // entpacktes Byte. `gemessen: 0` sagt in der Antwort genau das. Wer diesen Schritt streicht,
+  // schickt jede solche Datei erst durch den Dekomprimierer.
+  //
+  // WAS SIE NICHT MEHR IST: der Beweis. Der steht in Schritt 3.
+  let deklariert = 0;
+  let eintraege = 0;
+  let ungemessen = false;
+  archiv.forEach((_pfad, eintrag) => {
+    if (eintrag.dir) {
+      return; // Verzeichniseintraege tragen keinen Inhalt; sie zaehlen nicht mit.
+    }
+    eintraege += 1;
+    const groesse = groesseVon(eintrag);
+    if (groesse === undefined) {
+      ungemessen = true;
+      return;
+    }
+    deklariert += groesse;
+  });
+
+  // JOB 2671 D3 — HIER WURDE EINE ABLEHNUNG ZURUECKGENOMMEN, und das ist Absicht: In D2 fuehrte
+  // eine fehlende Groessenangabe zu 415 („ohne Mass keine Freigabe"). Das war richtig, solange es
+  // kein anderes Mass gab. Jetzt gibt es eines — Schritt 3 misst selbst. Eine Datei abzulehnen,
+  // weil ein internes jszip-Feld fehlt, waere ab jetzt eine Strenge ohne Zweck.
+  if (!ungemessen && deklariert > grenzen.entpacktMax) {
+    return {
+      ok: false,
+      status: 413,
+      error: "PAYLOAD_TOO_LARGE",
+      message: docxZuGrossMessage(deklariert, grenzen.entpacktMax),
+      gemessen: 0,
+    };
+  }
+
+  // AUCH DAS VERHAELTNIS BLEIBT ALS VORFILTER, und das ist kein Rueckfall in D2: Wer ein Archiv
+  // schickt, das SELBST 150 MiB aus 1 KiB behauptet, ist schon mit seiner Behauptung abzuweisen —
+  // ob er dabei luegt oder nicht, aendert daran nichts, und geprueft wird es ohne ein einziges
+  // entpacktes Byte. Die Wahrheitsprobe unten prueft dieselbe Grenze noch einmal an der
+  // gemessenen Summe; erst sie macht den Schutz vollstaendig.
+  if (!ungemessen && gepackt > 0 && deklariert / gepackt > grenzen.verhaeltnisMax) {
+    return {
+      ok: false,
+      status: 413,
+      error: "PAYLOAD_TOO_LARGE",
+      message: docxVerhaeltnisMessage(deklariert, gepackt, grenzen.verhaeltnisMax),
+      gemessen: 0,
+    };
+  }
+
+  // ---- SCHRITT 2 · IST ES UEBERHAUPT EINE .docx -----------------------------------------------
+  // Steht VOR der Messung, weil er nichts kostet: Ein Archiv ohne `word/document.xml` muss gar
+  // nicht erst entpackt werden.
+  if (archiv.file("word/document.xml") === null) {
+    return {
+      ok: false,
+      status: 415,
+      error: "UNSUPPORTED_MEDIA_TYPE",
+      message: DOCX_UNLESBAR_MESSAGE,
+      gemessen: 0,
+    };
+  }
+
+  // ---- SCHRITT 3 · DIE TATSAECHLICHE EXPANSION, gezaehlt und abgebrochen -----------------------
+  const expansion = await zaehleEchteExpansion(archiv, grenzen.entpacktMax);
+
+  if (expansion.art === "ueber_grenze") {
+    return {
+      ok: false,
+      status: 413,
+      error: "PAYLOAD_TOO_LARGE",
+      message: docxZuGrossMessage(expansion.summe, grenzen.entpacktMax),
+      gemessen: expansion.summe,
+    };
+  }
+
+  if (expansion.art === "strom_kaputt") {
+    return {
+      ok: false,
+      status: 415,
+      error: "UNSUPPORTED_MEDIA_TYPE",
+      message: DOCX_UNLESBAR_MESSAGE,
+      gemessen: expansion.summe,
+    };
+  }
+
+  const entpackt = expansion.summe;
+
+  // DAS VERHAELTNIS AN DER GEMESSENEN SUMME, nicht mehr an der deklarierten — sonst bliebe die
+  // Haelfte des Befunds offen: Ein Archiv, das seine Groessen kleinredet, haette weiterhin ein
+  // unauffaelliges Verhaeltnis vorgetaeuscht.
+  //
+  // Nur bei nicht-leerem Archiv, sonst waere es eine Division durch null.
+  if (gepackt > 0 && entpackt / gepackt > grenzen.verhaeltnisMax) {
+    return {
+      ok: false,
+      status: 413,
+      error: "PAYLOAD_TOO_LARGE",
+      message: docxVerhaeltnisMessage(entpackt, gepackt, grenzen.verhaeltnisMax),
+      gemessen: entpackt,
+    };
+  }
+
+  return { ok: true, entpackt, gepackt, eintraege };
+}
+
 // JOB 511 (schliesst den SERVERANTEIL von R5 aus JOB 506) — DIE ABLEHNUNG SAGT, WAS VERLOREN GING.
 //
 // Fastifys Standardantwort oberhalb des Caps lautet "Payload Too Large". Sie ist wahr und zugleich
@@ -156,6 +575,19 @@ export const DRAFT_BODY_TOO_LARGE = "DRAFT_BODY_TOO_LARGE";
 
 const DRAFT_BODY_TOO_LARGE_MESSAGE =
   "Das Dokument ist zu gross fuer die Uebernahme. Es wurde kein Entwurf angelegt und keine Bilder wurden uebernommen. Bitte das Dokument verkleinern oder in Teilen uebernehmen.";
+
+// ================================================================================================
+// JOB 2697 — DER RUMPFTYP VON POST /api/drafts.
+// ================================================================================================
+//
+// Er steht HIER und nicht in `DraftPayload`. Der Unterschied ist der ganze Punkt: `DraftPayload`
+// ist der DOKUMENTINHALT — was darin steht, trägt `capture.toKoInput` beim Einreichen ins
+// Wissensobjekt. Die Vorgangskennung ist dagegen TRANSPORT: sie sagt, WELCHER Klick das hier ist,
+// und hat im Dokument nichts zu suchen. D1 ist genau daran gescheitert.
+//
+// `operationId` ist OPTIONAL. Ein Aufruf ohne sie verhält sich exakt wie bisher — die anderen
+// Aufrufer der Route (Mobil, Offline-Queue, das Panel) hängen daran.
+export type DraftCreateRequest = DraftPayload & { operationId?: string };
 
 // Der routen-eigene Fehlerweg von POST /api/drafts — und er ist mit Absicht ENG: er greift
 // AUSSCHLIESSLICH den Cap-Bruch ab (`FST_ERR_CTP_BODY_TOO_LARGE`, den Fastify wirft, wenn der Body
@@ -198,6 +630,26 @@ export interface CaptureRoutesDeps {
   // ist aus dem Promote-Pfad heraus in den Hintergrund-Worker gewandert — der Worker kapselt
   // diese Abhängigkeiten jetzt selbst.
   aiCheckWorker?: AiCheckWorker | undefined;
+  /**
+   * JOB 2671 D2 — die Umwandlung als EINSETZBARE Abhaengigkeit, damit der Timeout pruefbar wird.
+   *
+   * Ohne sie gibt es keinen ehrlichen Test der 30-Sekunden-Grenze: `extractDocxRich` fest
+   * verdrahtet hiesse, entweder 30 Sekunden echt zu warten (kein Test, eine Wartezeit) oder das
+   * Modul global zu ersetzen (dann prueft der Test die Attrappe, nicht die Route). Eingesetzt wird
+   * eine Umwandlung, die der Test steuert; im Betrieb bleibt es `extractDocxRich` — die Vorgabe
+   * unten ist genau der Betriebsfall, sie kann nicht auseinanderlaufen.
+   *
+   * Die Form folgt `semanticPrefilter` und `aiCheckWorker` weiter oben: optional, mit Vorgabe im
+   * Aufbau, kein zweiter Weg durch das Programm.
+   */
+  docxUmwandlung?: typeof extractDocxRich | undefined;
+  /**
+   * JOB 2671 D3 — die Grenzen der Vorpruefung, einsetzbar aus demselben Grund wie
+   * `docxUmwandlung`: Der adversariale Nachweis braucht eine niedrige Schranke, sonst muesste er
+   * 200 MiB durch den Dekomprimierer schicken, um zu zeigen, dass bei 200 MiB abgebrochen wird.
+   * Im Betrieb bleibt es `DOCX_GRENZEN_VORGABE`.
+   */
+  docxGrenzen?: DocxGrenzen | undefined;
 }
 
 // ================================================================================================
@@ -235,6 +687,9 @@ function antwortBeiVeraltetemStand(reply: FastifyReply, error: unknown): boolean
 
 export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyPluginAsync {
   const { capture, ko, validation, notifyAssignment, semanticPrefilter, aiCheckWorker } = deps;
+  // JOB 2671 D2: EINE Entscheidung, beim Aufbau getroffen — nicht bei jeder Anfrage neu.
+  const docxUmwandeln = deps.docxUmwandlung ?? extractDocxRich;
+  const docxGrenzen = deps.docxGrenzen ?? DOCX_GRENZEN_VORGABE;
 
   // WP-D1d (bens ROT-Fix 3): AUTH VOR BODY-PARSING. Fastify parst den Body (bis DRAFTS_BODY_LIMIT) in
   // der preValidation/-Handler-Phase — VOR guards.requirePermission im Handler. Dieser onRequest-Hook
@@ -250,7 +705,71 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
     await guards.requireUser(request, reply);
   };
 
+  // ==============================================================================================
+  // JOB 2671 D1 (uebernommen aus PRO4s Klon, siehe UEBERNOMMENER FREMDSTAND in der Rueckgabe)
+  // NEBENLAEUFIGKEIT 1 FUER DIE .docx-UMWANDLUNG.
+  // ==============================================================================================
+  //
+  // Dasselbe Slot-MUSTER wie in `slides-routes.ts`: Claim ATOMAR im onRequest, VOR dem
+  // Body-Parsing; Freigabe auf allen Pfaden ueber onResponse/onError/onRequestAbort, nur durch den
+  // Halter; Settle-Pflicht — der Slot wird nie freigegeben, solange die Umwandlung noch laeuft.
+  // Ein Timeout gibt dem Nutzer 503 BUSY, haelt den Slot aber bis mammoth fertig ist: mammoth
+  // kennt kein Abort-Signal, ein zweiter Lauf daneben waere genau die Doppelbelastung, die der
+  // Slot verhindert.
+  let docxLaeuft = false;
+  const docxHalter = new WeakSet<FastifyRequest>();
+  let docxJob: Promise<unknown> | null = null;
+
+  const docxFreigeben = async (request: FastifyRequest): Promise<void> => {
+    if (!docxHalter.has(request)) {
+      return;
+    }
+    const job = docxJob;
+    if (job !== null) {
+      try {
+        await job;
+      } catch {
+        // Der Fehler der Umwandlung ist im Handler beantwortet; hier zaehlt nur das Settlement.
+      }
+    }
+    if (!docxHalter.has(request)) {
+      return; // ein konkurrierender Freigabepfad war schneller — kein Doppel-Release
+    }
+    docxHalter.delete(request);
+    if (docxJob === job) {
+      docxJob = null;
+    }
+    docxLaeuft = false;
+  };
+
+  const docxOnRequest = async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    const user = await guards.requireUser(request, reply);
+    if (!user) {
+      return;
+    }
+    if (request.raw.aborted || request.raw.destroyed) {
+      reply.code(408).send({ error: "CLIENT_ABORTED", message: "Verbindung abgebrochen." });
+      return;
+    }
+    // ATOMAR: Pruefung und Claim ohne await dazwischen — zwei Requests nehmen den Slot nie beide.
+    if (docxLaeuft) {
+      reply.code(503).header("retry-after", "30").send({
+        error: "BUSY",
+        message: DOCX_BUSY_MESSAGE,
+      });
+      return;
+    }
+    docxLaeuft = true;
+    docxHalter.add(request);
+  };
+
   return async (app) => {
+    // JOB 2671 D1: Client-Abbruch ohne Antwort — der Slot faellt an den Halter zurueck
+    // (Plugin-Scope; fuer alle anderen Requests dieses Plugins ist der Hook ein No-op, sie sind
+    // nie Halter).
+    app.addHook("onRequestAbort", async (request) => {
+      await docxFreigeben(request);
+    });
     app.get("/api/drafts", async (request, reply) => {
       const user = await guards.requirePermission("ko.create", request, reply);
       if (!user) {
@@ -281,7 +800,7 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       );
     });
 
-    app.post<{ Body: DraftPayload }>(
+    app.post<{ Body: DraftCreateRequest }>(
       "/api/drafts",
       {
         bodyLimit: DRAFTS_BODY_LIMIT,
@@ -304,13 +823,42 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         // Es ist DIESELBE Pruefung, die der Promote-Zweig weiter unten schon fuehrt (:567) — keine
         // zweite Auslegung, die auseinanderlaufen koennte. Sie wirft nicht, sondern liefert eine
         // Meldung, die nach aussen darf.
-        const gestalt = validateDraftPayloadShape(request.body);
+        // ==========================================================================================
+        // JOB 2697 — DER SCHLÜSSEL WIRD VOM RUMPF GETRENNT, BEVOR IRGENDETWAS ANGELEGT WIRD.
+        // ==========================================================================================
+        //
+        // `operationId` ist TRANSPORT, kein Dokumentinhalt. Ginge sie mit in den Payload, trüge
+        // `capture.toKoInput` sie beim Einreichen ins Wissensobjekt — der Fehler, an dem D1
+        // gescheitert ist. Die Trennung steht deshalb VOR `validateDraftPayloadShape`: was danach
+        // geprüft und gespeichert wird, hat den Schlüssel nie gesehen.
+        const { operationId: rohSchluessel, ...nutzlast } = request.body ?? {};
+        const gestalt = validateDraftPayloadShape(nutzlast);
         if (!gestalt.ok) {
           reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
           return;
         }
+        // Ein Schlüssel, der kein nichtleerer Text ist, ist kein Schlüssel — dann läuft der
+        // unveränderte Bestandspfad. Fail-closed in die harmlose Richtung: lieber keine
+        // Wiederholungssicherheit als eine, die an einem Fantasiewert hängt.
+        const vorgangsId =
+          typeof rohSchluessel === "string" && rohSchluessel.trim().length > 0
+            ? rohSchluessel
+            : undefined;
         try {
-          reply.code(201).send(await capture.createDraft(gestalt.payload, user.id));
+          // JOB 2697: DIE ROUTE ÜBERSETZT NUR. Sie trifft keine eigene Entscheidung über
+          // Wiederholung oder Konflikt und führt kein eigenes Register — der Dienst hat
+          // entschieden, die Ablage hat serialisiert. `201` für den neu angelegten Entwurf, `200`
+          // für denselben Vorgang noch einmal; der Abdruckkonflikt kommt als
+          // `IDEMPOTENCY_PAYLOAD_MISMATCH` aus dem Dienst und wird von `sendError` auf 409
+          // abgebildet (`http.ts:65`). Ohne Kennung ist `angelegt` immer `true` — der
+          // Bestandspfad antwortet unverändert mit 201.
+          const { draft, angelegt } = await capture.createDraftVorgang(
+            // JOB 2703 D2: die Aussage geht kanonisch gekuerzt in die Ablage — eine Regel, ein Ort.
+            mitKanonischerAussage(gestalt.payload),
+            user.id,
+            vorgangsId,
+          );
+          reply.code(angelegt ? 201 : 200).send(draft);
         } catch (error) {
           sendError(reply, error);
         }
@@ -330,7 +878,17 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
       "/api/drafts/from-docx",
       {
         bodyLimit: DOCX_DRAFT_BODY_LIMIT,
-        onRequest: requireAuthedBeforeParse,
+        // JOB 2671 D1: der Slot-Claim ERSETZT `requireAuthedBeforeParse` nicht, er enthaelt ihn —
+        // `docxOnRequest` ruft dieselbe `guards.requireUser` und weist anonym mit 401 ab, bevor
+        // der Slot ueberhaupt beansprucht wird. Sonst koennte eine anonyme Flut den einen Platz
+        // belegen, ohne je berechtigt zu sein.
+        onRequest: docxOnRequest,
+        onResponse: async (request: FastifyRequest): Promise<void> => {
+          await docxFreigeben(request);
+        },
+        onError: async (request: FastifyRequest): Promise<void> => {
+          await docxFreigeben(request);
+        },
         errorHandler: docxDraftTooLargeErrorHandler,
       },
       async (request, reply) => {
@@ -354,14 +912,59 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           });
           return;
         }
+        const bytes = Buffer.from(data, "base64");
+        // JOB 2671 — DIE VORPRUEFUNG STEHT VOR mammoth, NICHT DANEBEN.
+        //
+        // Eine Zip-Bombe (300 MiB aus 1 KiB) faellt hier an ihren eigenen Groessenangaben, bevor
+        // irgendetwas entpackt wird; ein Archiv ohne `word/document.xml` ist keine Serverstoerung,
+        // sondern eine unlesbare Datei (415). Waere die Pruefung erst nach mammoth, haette der
+        // Schaden bereits stattgefunden — dann pruefte sie nur noch das Ergebnis der Ueberlastung.
+        const zip = await pruefeDocxZip(bytes, docxGrenzen);
+        if (!zip.ok) {
+          reply.code(zip.status).send({ error: zip.error, message: zip.message });
+          return;
+        }
+        const puffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+        // JOB 2671 D1: die Umwandlung laeuft im Slot mit Timeout; ein mammoth-Fehler ist eine
+        // kaputte Datei (415), kein 500. Nur der Entwurfs-Anlage-Fehler darunter bleibt bei
+        // `sendError` — der ist wirklich ein Serverfehler.
+        let reich: Awaited<ReturnType<typeof extractDocxRich>>;
+        // Das Budget ist dasselbe wie im Konsolenweg (`docx.ts:379`): Bilder, die nicht mehr
+        // hineinpassen, werden EHRLICH gezählt statt still verschluckt.
+        const job = docxUmwandeln(puffer as ArrayBuffer, {
+          imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
+        });
+        docxJob = job;
+        let timer: NodeJS.Timeout | null = null;
+        const timeout = new Promise<"timeout">((resolve) => {
+          timer = setTimeout(() => resolve("timeout"), DOCX_UMWANDLUNG_TIMEOUT_MS);
+          timer.unref?.();
+        });
         try {
-          const bytes = Buffer.from(data, "base64");
-          const puffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
-          // Das Budget ist dasselbe wie im Konsolenweg (`docx.ts:379`): Bilder, die nicht mehr
-          // hineinpassen, werden EHRLICH gezählt statt still verschluckt.
-          const reich = await extractDocxRich(puffer as ArrayBuffer, {
-            imageBudgetBytes: MAX_INLINE_BODY_HTML_BYTES,
-          });
+          const ausgang = await Promise.race([job.then((r) => ({ reich: r })), timeout]);
+          if (ausgang === "timeout") {
+            // Der Slot bleibt belegt, bis mammoth fertig ist (Settle-Pflicht in `docxFreigeben`);
+            // der Nutzer wartet nicht darauf.
+            reply.code(503).header("retry-after", "30").send({
+              error: "BUSY",
+              message: DOCX_BUSY_MESSAGE,
+            });
+            return;
+          }
+          reich = ausgang.reich;
+        } catch (error) {
+          request.log.warn(
+            { reason: error instanceof Error ? error.name : "unknown" },
+            "docx-convert-failed",
+          );
+          reply.code(415).send({ error: "UNSUPPORTED_MEDIA_TYPE", message: DOCX_UNLESBAR_MESSAGE });
+          return;
+        } finally {
+          if (timer !== null) {
+            clearTimeout(timer);
+          }
+        }
+        try {
           const bodyHtml = reich.html;
           const eingebettet = zaehleEingebetteteBilder(bodyHtml);
           // WELCHE ZAHL DIE QUELLBILDER NENNT — und warum NICHT `reich.totalImages`:
@@ -379,7 +982,9 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
           const titelVorschlag = title ?? name?.replace(/\.docx$/i, "");
           const payload: DraftPayload = {
             ...(titelVorschlag ? { title: titelVorschlag } : {}),
-            statement: reich.text,
+            // JOB 2703 D2: der Word-Serverweg kuerzt mit DERSELBEN Funktion wie der Confluence-
+            // Mapper — bis hierher ging `reich.text` ungekuerzt (30 KB) als Aussage in den Entwurf.
+            statement: kernaussageAusKlartext(reich.text) || titelVorschlag || "",
             bodyHtml,
             origin: "word_addin",
             // JOB 512 (R5): die Zahl der Bilder in der QUELLDATEI, vor jedem Budgetabzug. Der
@@ -503,9 +1108,16 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             expectedUpdatedAt?: unknown;
           };
           reply.code(200).send(
-            await capture.continueDraft(request.params.id, payload as DraftPayload, user.id, {
-              expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
-            }),
+            await capture.continueDraft(
+              request.params.id,
+              // JOB 2703 D2: auch beim Speichern — sonst holte der Speicherweg die ungekuerzte
+              // Rohaussage des Clients an der Anlage vorbei in die Ablage.
+              mitKanonischerAussage(payload as DraftPayload),
+              user.id,
+              {
+                expectedUpdatedAt: erwarteterStand(expectedUpdatedAt),
+              },
+            ),
           );
         } catch (error) {
           if (antwortBeiVeraltetemStand(reply, error)) {
@@ -680,9 +1292,16 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
               reply.code(400).send({ error: "BAD_REQUEST", message: gestalt.message });
               return;
             }
-            await capture.continueDraft(request.params.id, gestalt.payload, user.id, {
-              expectedUpdatedAt,
-            });
+            // JOB 2703 D2: der Einreichen-Weg schreibt den Stand mit — auch hier kanonisch gekuerzt,
+            // sonst kaeme die Rohaussage der Vordertuer beim Einreichen ins Wissensobjekt.
+            await capture.continueDraft(
+              request.params.id,
+              mitKanonischerAussage(gestalt.payload),
+              user.id,
+              {
+                expectedUpdatedAt,
+              },
+            );
           } else if (expectedUpdatedAt !== undefined) {
             await capture.requireFresh(request.params.id, expectedUpdatedAt);
           }

@@ -178,6 +178,18 @@ const de = {
   "topbar.notificationsEmpty": "Keine Benachrichtigungen.",
   "topbar.notifMarkAll": "Alle gelesen",
   "topbar.notifMarkRead": "Als gelesen markieren",
+  // JOB 2709 D4 — die beiden Sätze für einen fehlgeschlagenen Gelesen-Status.
+  //
+  // `notifSeenFailed` ist die AUFFANGSTELLE: Sie erscheint nur, wenn es gar keine Serverantwort
+  // gab (Netzabbruch, Zeitüberschreitung). Antwortet der Server, hat SEIN Satz Vorrang — er nennt
+  // den Grund und die Zahlen, und ihn hier nachzubauen hiesse, zwei Wahrheiten über dieselbe
+  // Grenze zu führen.
+  //
+  // `notifSeenReverted` ist der Teil, den der Server NICHT sagen kann: was die Glocke daraufhin
+  // getan hat. Sie hat die Markierung zurückgenommen — ohne diesen Satz bliebe offen, ob die
+  // Meldungen nun gelesen sind oder nicht, und genau diese Ungewissheit war der Fehler.
+  "topbar.notifSeenFailed": "Die Meldungen konnten nicht als gelesen gespeichert werden.",
+  "topbar.notifSeenReverted": "Sie bleiben ungelesen.",
   "topbar.notifOpen": "Öffnen",
   "topbar.notifAssignment": "Review für dich",
   "topbar.notifImpact": "Dein Wissen hat geholfen",
@@ -1992,6 +2004,17 @@ const de = {
   "ask.gap.step.review.hint": "Erst nach Validierung gilt es als gesichert.",
   // SCRUM-366 / FR-ASK-02 / PI-K2: Antwortvertrag — quellengebunden, ehrlich, kein generischer Chatbot.
   "ask.contract.label": "Antwortbasis",
+  // JOB 2626 D1: die Torlage einer Nicht-Antwort. Kurztexte = Station-3-Torbegriffe (JOB 2623),
+  // volle Sätze als title-Hinweis — §2 des Auftrags wörtlich.
+  // Bewusst eine ZUSTANDSAUSSAGE, keine Kausalbehauptung: gemeldet wird, welche Tore zu sind —
+  // nicht, welcher Mechanismus die Antwort verworfen hat (§4: kein falsch benanntes Tor).
+  "ask.verschlossen.label": "Gefunden — aber diese Tore sind zu:",
+  "ask.verschlossen.freigabe": "Freigabe fehlt",
+  "ask.verschlossen.freigabeHint": "Das Dokument ist noch nicht freigegeben.",
+  "ask.verschlossen.stufe": "Stufe fehlt",
+  "ask.verschlossen.stufeHint": "Für das Dokument ist keine Vertraulichkeitsstufe gesetzt.",
+  "ask.verschlossen.volltext": "Kein durchsuchbarer Text",
+  "ask.verschlossen.volltextHint": "Von diesem Dokument liegt noch kein durchsuchbarer Text vor.",
   "ask.contract.verified.title": "Quellengebundene Antwort",
   "ask.contract.verified.body":
     "Diese Antwort stützt sich auf validiertes Wissen aus deiner Wissensbasis — keine generische Chatbot-Antwort.",
@@ -4966,6 +4989,9 @@ const en: typeof de = {
   "topbar.notificationsEmpty": "No notifications.",
   "topbar.notifMarkAll": "Mark all read",
   "topbar.notifMarkRead": "Mark as read",
+  // JOB 2709 D4: siehe die deutschen Fassungen oben — Auffangsatz und Handlungsauskunft.
+  "topbar.notifSeenFailed": "The notifications could not be saved as read.",
+  "topbar.notifSeenReverted": "They remain unread.",
   "topbar.notifOpen": "Open",
   "topbar.notifAssignment": "Review for you",
   "topbar.notifImpact": "Your knowledge helped someone",
@@ -6608,6 +6634,14 @@ const en: typeof de = {
   "ask.gap.step.review.hint": "Only after validation it counts as secured.",
   // SCRUM-366 / FR-ASK-02 / PI-K2: answer contract — source-bound, honest, not a generic chatbot.
   "ask.contract.label": "Answer basis",
+  // JOB 2626 D1: why there was no answer — the closed gates, per document.
+  "ask.verschlossen.label": "Found — but these gates are closed:",
+  "ask.verschlossen.freigabe": "Approval missing",
+  "ask.verschlossen.freigabeHint": "The document has not been approved yet.",
+  "ask.verschlossen.stufe": "Level missing",
+  "ask.verschlossen.stufeHint": "No confidentiality level is set for the document.",
+  "ask.verschlossen.volltext": "No searchable text",
+  "ask.verschlossen.volltextHint": "No searchable text of this document is available yet.",
   "ask.contract.verified.title": "Source-bound answer",
   "ask.contract.verified.body":
     "This answer draws on validated knowledge from your knowledge base — not a generic chatbot answer.",
@@ -9182,6 +9216,9 @@ const nl: typeof de = {
   "topbar.notificationsEmpty": "Geen meldingen.",
   "topbar.notifMarkAll": "Alles gelezen",
   "topbar.notifMarkRead": "Als gelezen markeren",
+  // JOB 2709 D4: zie de Duitse versies hierboven — opvangzin en handelingsinformatie.
+  "topbar.notifSeenFailed": "De meldingen konden niet als gelezen worden opgeslagen.",
+  "topbar.notifSeenReverted": "Ze blijven ongelezen.",
   "topbar.notifOpen": "Openen",
   "topbar.notifAssignment": "Beoordeling voor jou",
   "topbar.notifImpact": "Jouw kennis heeft geholpen",
@@ -10811,6 +10848,14 @@ const nl: typeof de = {
   "ask.gap.step.review.label": "Laten controleren",
   "ask.gap.step.review.hint": "Pas na validatie geldt het als geborgd.",
   "ask.contract.label": "Antwoordbasis",
+  // JOB 2626 D1: waarom er geen antwoord was — de gesloten poorten, per document.
+  "ask.verschlossen.label": "Gevonden — maar deze poorten zijn gesloten:",
+  "ask.verschlossen.freigabe": "Vrijgave ontbreekt",
+  "ask.verschlossen.freigabeHint": "Het document is nog niet vrijgegeven.",
+  "ask.verschlossen.stufe": "Niveau ontbreekt",
+  "ask.verschlossen.stufeHint": "Voor het document is geen vertrouwelijkheidsniveau ingesteld.",
+  "ask.verschlossen.volltext": "Geen doorzoekbare tekst",
+  "ask.verschlossen.volltextHint": "Van dit document is nog geen doorzoekbare tekst beschikbaar.",
   "ask.contract.verified.title": "Brongebonden antwoord",
   "ask.contract.verified.body":
     "Dit antwoord steunt op gevalideerde kennis uit jouw kennisbasis — geen generiek chatbot-antwoord.",

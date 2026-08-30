@@ -1,8 +1,9 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { Bell, HelpCircle, Menu, Search, Smartphone } from "lucide-react";
-import { type FormEvent, type Ref, useEffect, useState } from "react";
+import { type FormEvent, type Ref, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
+import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import {
   useExternalPolicy,
@@ -21,6 +22,7 @@ import {
 // tests/app/shell-links-guarded.test.ts fest (nicht mehr nur das Logo, wie bis mega38).
 import { GuardedLink, useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
+import { useToast } from "../app/ToastContext";
 import {
   DESIGN_THEMES,
   DESIGN_THEME_STORAGE_KEY,
@@ -88,24 +90,148 @@ function DesignTogglePill(): JSX.Element {
   );
 }
 
+/**
+ * JOB 2709 D4 — DER SATZ, DEN DER MENSCH ZU LESEN BEKOMMT.
+ *
+ * DER SERVER HAT VORRANG. Bei einem `ApiError` liefert er bereits einen vollständigen deutschen
+ * Satz mit beiden Zahlen („Zu viele Meldungen auf einmal: 5001. Höchstens 5000 pro Vorgang."). Ihn
+ * hier nachzubauen hiesse, zwei Wahrheiten über dieselbe Grenze zu führen — die zweite veraltet
+ * beim ersten Mal, wenn jemand die Zahl am Server ändert.
+ *
+ * DER EIGENE SATZ IST NUR DIE AUFFANGSTELLE: Netzabbruch, Zeitüberschreitung, abgebrochene
+ * Anfrage — dort gibt es keine Serverantwort und damit keine Meldung. Ein leerer Toast wäre
+ * schlimmer als keiner.
+ */
+function meldungZumFehlschlag(fehler: unknown, t: (key: string) => string): string {
+  const grund =
+    fehler instanceof ApiError && fehler.message.trim().length > 0
+      ? fehler.message
+      : t("topbar.notifSeenFailed");
+  // Der zweite Satz ist die HANDLUNGSAUSKUNFT, und nur der Client kann sie geben: der Server weiss
+  // nichts von der Optik in der Glocke. Ohne ihn bliebe für den Menschen offen, ob die Meldungen
+  // nun gelesen sind — genau die Ungewissheit, die dieser Job beseitigt.
+  return `${grund} ${t("topbar.notifSeenReverted")}`;
+}
+
 function NotificationBell(): JSX.Element {
   const { t } = useTranslation();
   const navigate = useGuardedNavigate();
   const queryClient = useQueryClient();
+  // JOB 2709 D4: das vorhandene Anzeigemittel des Hauses, in der Shell bereits gerendert
+  // (`AppShell.tsx`). Die Glocke hat es bis heute nicht benutzt — deshalb blieb jeder
+  // Fehlschlag beim Speichern des Gelesen-Status stumm.
+  const { push } = useToast();
   const [open, setOpen] = useState(false);
   // SCRUM-220 → Audit-P3 (SCRUM-397): Gelesen-Status jetzt serverseitig (POST
   // /api/notifications/seen, pro Nutzer, überlebt Neustart). Der lokale Satz bleibt
   // als sofortige UI-Rückmeldung, bis der nächste Fetch das seen-Feld liefert.
   const [readIds, setReadIds] = useState<Set<string>>(new Set());
+  // JOB 2709 D5: welche Kennungen der Server BESTÄTIGT hat. Sie überleben den Fehlschlag eines
+  // anderen, überlappenden Aufrufs — ohne diese Menge nähme dessen Rücknahme sie mit.
+  const bestaetigt = useRef<Set<string>>(new Set());
+  // JOB 2709 D7: wie viele Aufrufe eine Kennung GERADE beanspruchen. Das ist eine Zahl und kein
+  // Ja/Nein, und genau daran hängt der Fall, den D5 offen liess — Begründung im Block unten.
+  const ansprueche = useRef<Map<string, number>>(new Map());
   const { data } = useNotifications();
   const items = data ?? [];
   const isRead = (n: (typeof items)[number]): boolean => n.seen === true || readIds.has(n.id);
   const unreadCount = items.filter((n) => !isRead(n)).length;
 
-  // Bewusstes Als-gesehen: erst der Server-Erfolg zählt; lokal nur als Sofort-Optik.
+  // ==============================================================================================
+  // JOB 2709 D4 — DIE GLOCKE NIMMT ZURÜCK, WENN DER SERVER NEIN SAGT.
+  // ==============================================================================================
+  //
+  // WAS HIER VORHER STAND, UND WARUM ES FALSCH WAR: Die Zeile darüber versprach „erst der
+  // Server-Erfolg zählt; lokal nur als Sofort-Optik". Der Code hielt das nicht. Er setzte die
+  // Optik, rief `markSeen` mit `void` und OHNE `catch` — lehnte der Server ab oder brach die
+  // Verbindung, blieb die Markierung stehen. `unreadCount` fiel auf 0, der Knopf „Alle gelesen"
+  // verschwand (er hängt an `unreadCount > 0`), und gespeichert war nichts. Beim nächsten Laden
+  // waren alle Meldungen wieder da. Kein Fehler, keine Meldung, keine Rücknahme.
+  //
+  // DAS TRAF JEDEN FEHLERFALL, nicht nur die 5.000er-Grenze aus D2: Netzabbruch, abgelaufene
+  // Sitzung, 500. Und es traf DREI Auslöser, nicht einen — `markAll`, `markRead` je Eintrag und
+  // das blosse ÖFFNEN des Panels (`toggleOpen` unten), das alles Sichtbare markiert, ohne dass
+  // jemand etwas anklickt.
+  //
+  // DIE OPTIMISTISCHE MARKIERUNG BLEIBT — sie ist richtig, sie macht die Glocke schnell. Neu ist
+  // nur, dass sie ZURÜCKGENOMMEN wird, wenn der Server sie nicht bestätigt.
+  //
+  // DAS ANZEIGEMITTEL IST DAS VORHANDENE: `useToast` aus `app/ToastContext`, in der Shell bereits
+  // gerendert (`AppShell.tsx`). Ein zweiter Anzeigeweg daneben wäre der Parallelweg, den es hier
+  // nicht geben soll.
+  //
+  // ==============================================================================================
+  // JOB 2709 D5 — DIE RÜCKNAHME NIMMT NUR DAS EIGENE ZURÜCK, UND NUR DAS UNBESTÄTIGTE.
+  // ==============================================================================================
+  //
+  // D4 merkte sich den GANZEN `readIds`-Stand vor dem Aufruf und schrieb ihn bei Fehlschlag
+  // zurück. Das ist zu grob, und der Fall ist real:
+  //
+  //     A startet   (markiert Einträge, Aufruf läuft)
+  //     B startet   (markiert einen weiteren)  → Server BESTÄTIGT B
+  //     A scheitert → Vollsnapshot von VOR A zurück → Bs bestätigte Markierung ist gelöscht
+  //
+  // Der Mensch sieht eine Meldung wieder auftauchen, die der Server längst als gelesen führt.
+  // Beim nächsten Laden verschwindet sie erneut — dasselbe Verwirrungsmuster wie vor D4, nur
+  // andersherum. Der Kommentar an dieser Stelle warnte in D4 sogar vor der umgekehrten Falle und
+  // baute dann diese.
+  //
+  // GEWÄHLT IST WEG (b) DES AUFTRAGS — optimistisch bleiben, mengen- und requestbezogen
+  // zurücknehmen. Grund in einem Satz: Die Sofort-Optik ist seit SCRUM-397 der Grund, warum die
+  // Glocke sich schnell anfühlt, und sie war nie der Fehler; zu grob war allein die Rücknahme.
+  //
+  // ZURÜCKGENOMMEN WERDEN GENAU DIE EIGENEN KENNUNGEN DIESES AUFRUFS — kein Snapshot, keine
+  // fremden. Und davon nur die, die NICHT inzwischen bestätigt wurden: `bestaetigt` sammelt jede
+  // Kennung, die ein Aufruf erfolgreich gespeichert hat. Ohne dieses Sieb nähme ein `delete` je Id
+  // dem parallelen Erfolg seine Wirkung weg — genau der Fehler, nur eine Ebene tiefer.
+  //
+  // WARUM EIN REF UND KEIN STATE: Die Menge wird nie gerendert, sie steuert nur die Rücknahme.
+  // Als State löste jede Bestätigung ein überflüssiges Neuzeichnen der ganzen Leiste aus.
+  //
+  // ==============================================================================================
+  // JOB 2709 D7 — DER OFFENE ANSPRUCH IST GENAUSO SCHUTZWÜRDIG WIE DIE BESTÄTIGUNG.
+  // ==============================================================================================
+  //
+  // D5 schützte die BESTÄTIGTE Kennung vor der Rücknahme eines fremden Aufrufs. Ungeschützt blieb
+  // der umgekehrte Fall, und er ist derselbe Nutzerweg:
+  //
+  //     A startet   (markiert x, Aufruf läuft NOCH)
+  //     B startet   (markiert x ebenfalls)  → B SCHEITERT
+  //     Bs Catch löscht x                   → obwohl A es weiterhin beansprucht
+  //
+  // `bestaetigt` half hier nicht: A hatte noch nichts bestätigt, x stand nicht darin, Bs `delete`
+  // griff durch. Der Mensch sah eine gerade gelesene Meldung wieder aufspringen — und wenn A
+  // gleich darauf gelang, sprang sie ein zweites Mal um. Zwei Sprünge für einen Fehlschlag.
+  //
+  // WARUM EINE ZAHL UND KEIN ZWEITES SET: Ein Set kennt nur „drin" oder „draussen". Die Frage ist
+  // aber, WIE VIELE Aufrufe eine Kennung gerade beanspruchen — gelöscht werden darf sie erst,
+  // wenn der letzte davon gescheitert ist. `ansprueche` zählt genau das.
+  //
+  // BEIDE SIEBE BLEIBEN, und keines ist überflüssig:
+  //   · der Zähler schützt den noch OFFENEN fremden Anspruch   (dieser Durchgang)
+  //   · `bestaetigt` schützt die bereits ERFOLGTE Bestätigung  (D5, von BEN anerkannt)
+  // Der Zähler allein liesse eine bestätigte Kennung fallen, sobald ein späterer Aufruf für
+  // dieselbe Kennung scheitert und sein Zähler auf null geht — genau der D5-Fall, der nicht
+  // zurückkommen darf.
+  //
+  // AUFGERÄUMT WIRD SOFORT: Ein Zähler, der null erreicht, verlässt die Map. Sonst wüchse sie mit
+  // jeder je markierten Kennung weiter, ohne je etwas zu tragen.
+  const anspruchAufloesen = (id: string): number => {
+    const offen = (ansprueche.current.get(id) ?? 1) - 1;
+    if (offen <= 0) {
+      ansprueche.current.delete(id);
+      return 0;
+    }
+    ansprueche.current.set(id, offen);
+    return offen;
+  };
+
   const persistSeen = (ids: string[]): void => {
     if (ids.length === 0) {
       return;
+    }
+    for (const id of ids) {
+      ansprueche.current.set(id, (ansprueche.current.get(id) ?? 0) + 1);
     }
     setReadIds((prev) => {
       const next = new Set(prev);
@@ -116,7 +242,31 @@ function NotificationBell(): JSX.Element {
     });
     void endpoints.notifications
       .markSeen(ids)
-      .then(() => queryClient.invalidateQueries({ queryKey: ["notifications"] }));
+      .then(() => {
+        for (const id of ids) {
+          anspruchAufloesen(id);
+          bestaetigt.current.add(id);
+        }
+        return queryClient.invalidateQueries({ queryKey: ["notifications"] });
+      })
+      .catch((e: unknown) => {
+        // WICHTIG: Erst ALLE Ansprüche dieses Aufrufs auflösen, dann entscheiden. Beides in einer
+        // Schleife zu vermischen wäre dasselbe Ergebnis, aber die Trennung sagt, was gemeint ist:
+        // die Auflösung geschieht immer, die Rücknahme nur unter Bedingung.
+        const zurueckzunehmen = ids.filter(
+          (id) => anspruchAufloesen(id) === 0 && !bestaetigt.current.has(id),
+        );
+        if (zurueckzunehmen.length > 0) {
+          setReadIds((prev) => {
+            const next = new Set(prev);
+            for (const id of zurueckzunehmen) {
+              next.delete(id);
+            }
+            return next;
+          });
+        }
+        push("error", meldungZumFehlschlag(e, t));
+      });
   };
   const markRead = (id: string): void => persistSeen([id]);
   const markAll = (): void => persistSeen(items.filter((n) => !isRead(n)).map((n) => n.id));

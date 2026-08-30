@@ -73,6 +73,10 @@ const ENGE = {
   validatedOnly: true,
   retrievalOnly: true,
   ungeprueftSichtbarFuer: expect.any(Function),
+  // JOB 2626 D3: das vierte Glied des Satzes — derselbe Betrachter fuer die Torlage einer
+  // Nicht-Antwort (`AskResult.verschlossen`). Die `toEqual`-Schaerfe bleibt: ein FUENFTES Feld
+  // faellt weiterhin auf. Dass der Filter wirklich filtert, prueft E7 fuer BEIDE Felder.
+  verschlossenSichtbarFuer: expect.any(Function),
 };
 
 /**
@@ -292,6 +296,14 @@ describe("KA4 · D3 · der ownerfreigegebene Endzustand", () => {
     expect(filter?.({ confidentiality: "vertraulich", author: "jemand-anderes" })).toBe(false);
     // und ohne Autorangabe ebenfalls: leere Autorschaft ist keine Autorschaft
     expect(filter?.({ confidentiality: "streng_vertraulich", author: "" })).toBe(false);
+
+    // (c) JOB 2626 D3: die ZWEITE Meldung (Torlage) traegt denselben Betrachter — kein zweiter,
+    // weiterer Filter, sondern dieselben Antworten auf dieselben drei Objekte.
+    const torlage = a.gesehen[0]?.verschlossenSichtbarFuer as typeof filter;
+    expect(typeof torlage).toBe("function");
+    expect(torlage?.({ confidentiality: "intern", author: "irgendwer" })).toBe(true);
+    expect(torlage?.({ confidentiality: "vertraulich", author: "nutzer-1" })).toBe(true);
+    expect(torlage?.({ confidentiality: "vertraulich", author: "jemand-anderes" })).toBe(false);
 
     await a.app.close();
   });

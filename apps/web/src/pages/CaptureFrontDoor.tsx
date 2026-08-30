@@ -53,10 +53,6 @@ import {
   withFrontDoorSaveTimeout,
 } from "../lib/captureFrontDoor";
 import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
-// JOB 2705 (R2-23 a): DIESELBE Konstante, die `draftBodyPatch` als Löschmarker setzt — nicht ein
-// zweites `""` an dieser Stelle. Ändert sich die Leerwert-Semantik je, ändert sie sich an einer
-// Stelle, und dieser Vergleich geht nicht still ins Leere.
-import { CLEARED_DRAFT_BODY_HTML } from "../lib/draftBody";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentiality";
 // AUFTRAG-mega23 Block A: DIESELBE Quelle wie der Erfassen-Weg — Erzeugung des Schlüssels, wann er
 // fällt, und welcher 409 einen neuen Vorgang rechtfertigt. Kein zweiter Mechanismus, keine eigene
@@ -66,6 +62,10 @@ import {
   createOperationIsSettled,
   newCreateOperationId,
 } from "../lib/createOperation";
+// JOB 2705 (R2-23 a): DIESELBE Konstante, die `draftBodyPatch` als Löschmarker setzt — nicht ein
+// zweites `""` an dieser Stelle. Ändert sich die Leerwert-Semantik je, ändert sie sich an einer
+// Stelle, und dieser Vergleich geht nicht still ins Leere.
+import { CLEARED_DRAFT_BODY_HTML } from "../lib/draftBody";
 import { toReasonerLocale } from "../lib/reasonerLocale";
 import { draftProvenance } from "../lib/reasonerProvenance";
 import { isEmptyHtml } from "../lib/richText";
@@ -220,6 +220,30 @@ export function CaptureFrontDoor(): JSX.Element {
   // hinweg gleich bleibt. Die Begründung im Ganzen steht in lib/captureFrontDoor.ts.
   const submitOperationRef = useRef<string | null>(null);
   const submitDraftRef = useRef<string | null>(null);
+  // ============================================================================================
+  // JOB 2697 — DER VORGANG DES SPEICHERNS, getrennt vom Vorgang des Einreichens.
+  // ============================================================================================
+  //
+  // WARUM EIN EIGENER REF und nicht `submitOperationRef` mitbenutzt: Speichern und Einreichen sind
+  // verschiedene fachliche Vorgänge. Ein geteilter Schlüssel liesse einen Abdruckkonflikt beim
+  // Einreichen das Speichern blockieren — und umgekehrt —, obwohl die beiden nichts miteinander zu
+  // tun haben.
+  //
+  // ER LEBT AUSSERHALB DER MUTATIONSFUNKTION, und das ist der ganze Punkt: Der Schlüssel ist nur
+  // dann etwas wert, wenn er über die WIEDERHOLUNG HINWEG DERSELBE bleibt. Würde er im
+  // `mutationFn` erzeugt, bekäme jeder Klick einen neuen — und der Server sähe zwei Vorgänge, wo
+  // der Mensch einen wiederholt hat. Dann entstünden wieder zwei Entwürfe, und die ganze
+  // serverseitige Mechanik liefe ins Leere (`lib/createOperation.ts:7-11`).
+  //
+  // DIE REGELN, WANN ER BLEIBT UND WANN ER FÄLLT, sind NICHT neu geschrieben: sie stehen in
+  // `lib/createOperation.ts` und sind für die Wissensobjekt-Anlage abgenommen. Hier werden sie nur
+  // benutzt — `createOperationIsSettled` unten in `onError`, `newCreateOperationId` beim ersten
+  // Klick, und bei Erfolg fällt er in `onSuccess`.
+  //
+  // NUR FÜR DIE ANLAGE. Das Speichern eines BESTEHENDEN Entwurfs geht über
+  // `endpoints.drafts.update` und adressiert ihn über seine Id — dieser Weg ist von Haus aus
+  // wiederholbar und braucht keinen Schlüssel.
+  const saveOperationRef = useRef<string | null>(null);
   // Steht hier eine Meldung, hat der Server einen 409 mit einem Code geliefert, für den ein NEUER
   // Vorgang der richtige Ausweg ist. Die Oberfläche BIETET die Handlung sichtbar an — sie führt sie
   // nicht hinter dem Rücken des Nutzers aus (mega22 Block E, dieselbe Regel).
@@ -558,8 +582,20 @@ export function CaptureFrontDoor(): JSX.Element {
           ),
         );
       }
-      return createFrontDoorDraft({ title, bodyHtml, fallbackTitle, confidentiality }, (payload) =>
-        endpoints.drafts.create(payload),
+      // JOB 2697 — DER SCHLÜSSEL ENTSTEHT BEIM ERSTEN KLICK UND ÜBERLEBT DIE WIEDERHOLUNG.
+      //
+      // Er wird hier nur GELESEN oder einmalig angelegt, nie bei jedem Aufruf neu erzeugt: genau
+      // das ist der Unterschied zwischen „derselbe Vorgang" und „zwei Vorgänge". Dieselbe Bauform
+      // wie im Einreichen-Zweig unten (`:620-621`) und im Erfassen-Bereich
+      // (`Capture.tsx:1308-1311`).
+      if (!saveOperationRef.current) {
+        saveOperationRef.current = newCreateOperationId();
+      }
+      return createFrontDoorDraft(
+        { title, bodyHtml, fallbackTitle, confidentiality },
+        (payload, operationId) => endpoints.drafts.create(payload, operationId),
+        undefined,
+        saveOperationRef.current,
       );
     },
     onMutate: () => {
@@ -573,6 +609,11 @@ export function CaptureFrontDoor(): JSX.Element {
     onSuccess: (draft, _variablen, kontext) => {
       const savedTitle = draft.payload.title ?? derivedTitle;
       setActiveDraftId(draft.id);
+      // JOB 2697: DER VORGANG IST ABGESCHLOSSEN — der Schlüssel fällt. Das nächste Anlegen ist ein
+      // anderer Vorgang und bekommt eine neue Kennung (`lib/createOperation.ts:36`). Das gilt für
+      // beide Erfolgsfälle gleich: 201 (dieser Klick hat angelegt) und 200 (derselbe Vorgang
+      // wurde wiederholt) — in beiden ist die Sache erledigt.
+      saveOperationRef.current = null;
       // JOB 2684 D1: nach dem eigenen Speichern ist der neue Stand der Bezugspunkt.
       loadedUpdatedAtRef.current = draft.updatedAt ?? null;
       setStaleConflict(false);
@@ -639,6 +680,25 @@ export function CaptureFrontDoor(): JSX.Element {
     },
     onError: (e) => {
       saveRequestedRef.current = false;
+      // ==========================================================================================
+      // JOB 2697 — DEN SCHLÜSSEL NUR FALLEN LASSEN, WENN DER SERVER EINDEUTIG GEANTWORTET HAT.
+      // ==========================================================================================
+      //
+      // Bei Netzabbruch, Zeitüberschreitung oder 5xx bleibt er stehen: der Ausgang ist UNBEKANNT,
+      // der Server kann den Entwurf angelegt haben oder nicht. Genau dann ist der nächste Klick
+      // eine WIEDERHOLUNG und keine zweite Anlage — das ist der Fall, für den dieser Job existiert.
+      //
+      // Die Regel wird nicht hier ausgelegt, sondern aus `lib/createOperation.ts:89` geholt.
+      // Dieselbe Quelle wie im Einreichen-Weg unten und im Erfassen-Bereich; eine zweite Auslegung
+      // wäre der nächste Befund.
+      //
+      // 409 ist bewusst ausgenommen (`createOperation.ts:93-95`): der Schlüssel gehört bereits zu
+      // einem Vorgang. Ihn still zu ersetzen verwandelte einen erkannten Konflikt in eine zweite
+      // Anlage, ohne dass jemand zugestimmt hätte — die Oberfläche BIETET den neuen Vorgang an
+      // (`restartOffer` unten), der Mensch löst ihn aus.
+      if (createOperationIsSettled(e instanceof ApiError ? e.status : undefined)) {
+        saveOperationRef.current = null;
+      }
       // JOB 2684 D1: ein Standkonflikt ist kein „Speichern fehlgeschlagen" — er bekommt seine
       // eigene, lesbare Meldung samt Ausweg (unten im Formular), und der Text bleibt stehen.
       if (e instanceof ApiError && e.code === "DRAFT_STALE") {
@@ -646,6 +706,13 @@ export function CaptureFrontDoor(): JSX.Element {
         setErr(null);
         return;
       }
+      // JOB 2697: derselbe Rückweg aus dem 409 wie im Einreichen-Zweig — nach einem
+      // Abdruckkonflikt (`IDEMPOTENCY_PAYLOAD_MISMATCH`) darf der Mensch einen neuen Vorgang
+      // beginnen. `CREATE_REPAIR_REQUIRED` ist dort fail-closed ausgenommen; die Unterscheidung
+      // trifft `createConflictOffersRestart`, nicht diese Stelle.
+      setRestartOffer(
+        e instanceof ApiError && createConflictOffersRestart(e.status, e.code) ? e.message : null,
+      );
       setErr(errorMessage(e, t("fd.errSaveFailed")));
     },
   });
@@ -1444,6 +1511,11 @@ export function CaptureFrontDoor(): JSX.Element {
                       // Entwurf, den es nicht mehr gibt, statt in die gewollte zweite Anlage.
                       submitOperationRef.current = null;
                       submitDraftRef.current = null;
+                      // JOB 2697: auch der SPEICHERN-Vorgang wird gelöst. Der Konflikt kann aus
+                      // beiden Wegen stammen, und der Knopf verspricht dem Menschen einen neuen
+                      // Vorgang — bliebe der Speichern-Schlüssel stehen, liefe sein nächster Klick
+                      // auf „Entwurf speichern" in denselben 409 zurück.
+                      saveOperationRef.current = null;
                       setActiveDraftId(null);
                       setSearchParams({}, { replace: true });
                       setRestartOffer(null);

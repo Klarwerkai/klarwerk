@@ -150,6 +150,15 @@ const INVENTAR: readonly string[] = [
   // 30 Tagen abgelaufener Sitzungen. Traegt "klara" im Namen und wird von der Namensachse gefunden;
   // sachlich Klara-Regression: der Statusabruf des Panels darf kein Schreibvorgang mehr sein.
   "tests/app/job2688-klara-jedes-hinsehen-ist-ein-schreibvorgang.test.ts",
+  // JOB 2703 D2: das ausgelieferte Aufgabenfenster zeigt im Antwortfeld die KANONISCH gekuerzte
+  // Kernaussage (eine Regel fuer Confluence- und Word-Weg). Die Datei laeuft das Panel ueber die
+  // Fixture `createKlaraPanel` — Inhaltsachse `taskpane`. K2 hat sie gemeldet, das Inventar nimmt
+  // sie nicht still auf.
+  "tests/app/job2703-ask-trefferliste-und-panel.test.tsx",
+  // JOB 2703 D3: der dritte Kuerzungsweg — das Add-in schnitt im Client auf 500 Zeichen. Die Datei
+  // fuehrt einen ueberlangen Text durch das AUSGELIEFERTE Aufgabenfenster bis zur Persistenz der
+  // echten App und misst den Servereingang. Inhaltsachse `taskpane`; K2 hat sie gemeldet.
+  "tests/app/job2703-d3-addin-paritaet.test.ts",
   "tests/app/k1-word-addin-origin-panel.test.ts",
   // KA2 (JOB 1571 · D5): neu im Baum und von der Erhebung gefunden. Der Vertragswaechter gehoert
   // sachlich in die Klara-Regression — er haelt Regel A fest (das Panel besitzt
@@ -205,6 +214,12 @@ const INVENTAR: readonly string[] = [
   // Klara-Regression: alle drei Stellen liegen im ausgelieferten Aufgabenfenster. K2 hat die
   // Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
   "tests/app/job2621-panel-wahrheiten.test.ts",
+  // JOB 2626 D1: wenn Klara nicht antworten kann, sagt sie warum — der Servicevertrag der Torlage
+  // (`AskResult.verschlossen`, mega77-Form: nur mit Betrachter, nie ueber Vertrauliches) und die
+  // Messung an der echten Ask-Seite (alle zuen Tore lesbar, keines erfunden). Beide tragen „klara"
+  // im Namen und werden von der Achse `name` gefunden; hier aufgenommen, nicht still gewachsen.
+  "tests/app/job2626-klara-torlage-sichtbar-mounted.test.tsx",
+  "tests/app/job2626-klara-torlage-vertrag.test.ts",
   // JOB 2622 D1: `job2622-sandbox-skips.test.ts` steht BEWUSST NICHT hier — die Ableitung (K2/K6)
   // fuehrt die Datei nicht (sie misst die Vollsuiten-Skip-Landschaft, keine Klara-Flaeche), und
   // ein Eintrag ohne Achsendeckung macht K2 UND K6 rot (gemessen in diesem Durchgang; dieselbe
@@ -223,6 +238,13 @@ const INVENTAR: readonly string[] = [
   // K2 hat sie gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen; die Woerter aus
   // dem Kommentar zu streichen, um dem Sensor auszuweichen, waere die schlechtere Antwort.
   "tests/ask/job2694-leere-antwort-mit-stempel-gesichert-mounted.test.tsx",
+  // JOB 2620 D4: der Wertevergleich der Erfassungsflaeche (Tab 2 des Aufgabenfensters) gegen ihr
+  // Zielbild — an der ECHTEN taskpane.html, nicht an einer Kopie. Von der Achse `taskpane`
+  // gefunden. K2 hat die Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
+  "tests/design/zielbild-wissen-erfassen.test.ts",
+  // JOB 2620 D5: die Bilder-Aussage steht in Tab 2 des Aufgabenfensters genau einmal — gemessen am
+  // ausgelieferten taskpane.html ueber die Panel-Fixture, je Sprache. Achse `taskpane`.
+  "tests/design/zielbild-wissen-erfassen-einmal.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
   // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —
@@ -237,6 +259,13 @@ const INVENTAR: readonly string[] = [
   // (`klara-policy-store.ts:667`). Sachlich Klara-Regression: bricht der Schreibweg auf halbem
   // Weg ab, sieht ein Leser eine Sitzung, deren Regelwerk und Zustimmung nicht zusammenpassen.
   "tests/db/i10-klara-regelwerk-klammer.test.ts",
+  // JOB 2618 D4: der Zielbild-Abgleich der Validierungskonsole (Fussband bis zum wirksamen
+  // CSS-Wert, Token je Theme, Renderer-Gegenlesung). K2 hat die Datei gemeldet, das Inventar hat
+  // sie nicht still aufgenommen. Sachlich Klara-Regression im weiteren Sinn: die Konsole ist die
+  // Flaeche, auf der Wissen freigegeben wird, bevor Klara daraus zitiert; das Band traegt die
+  // Entscheidungsknoepfe. (D3 hatte den Eintrag entfernt, weil die damalige Fassung keine Achse
+  // traf — die D4-Fassung trifft sie, der Eintrag folgt der Messung, nicht der Meinung.)
+  "tests/design/zielbild-validierung.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   "tests/legal/mega61-ki-satz.test.ts",
@@ -399,7 +428,11 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // haette die zehn Zeilen von JOB 2435 geloescht; nur der neue Eintrag wurde uebertragen.
     // 26 -> 27 am 29.08.2026 (JOB 2688 D1): `tests/app/job2688-klara-jedes-hinsehen-ist-ein-
     // schreibvorgang.test.ts` traegt "klara" im Namen. Klon-Startpin 71d3c2b, dort stand 26.
-    expect(nurName.length).toBe(27);
+    // 27 -> 29 (JOB 2626 D1, im Messklon 2626 D2 auf b885492 nachgezogen): `tests/app/job2626-
+    // klara-torlage-vertrag.test.ts` und `tests/app/job2626-klara-torlage-sichtbar-mounted.test.tsx`
+    // tragen "klara" im Namen und treffen nur die Namensachse (D1 hatte 26 -> 28 auf 71d3c2b
+    // gemessen; hier liegt 2688 schon im Baum, deshalb 27 -> 29).
+    expect(nurName.length).toBe(29);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

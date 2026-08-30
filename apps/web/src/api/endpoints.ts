@@ -406,7 +406,12 @@ export const endpoints = {
     // SCRUM-395-Beifang (BUG): Body war fälschlich als { payload } verschachtelt — der Server
     // erwartet die DraftPayload-Felder FLACH (wie update/promote). Folge: frisch gespeicherte
     // Entwürfe verloren Titel & Inhalte bis zum ersten Update. Jetzt konsistent flach.
-    create: (payload: DraftPayload) => api.post<Draft>("/drafts", payload),
+    // JOB 2697: `operationId` ist der WIEDERHOLSCHLÜSSEL der Entwurfsanlage — derselbe Vertrag wie
+    // beim Wissensobjekt oben (`:190`, `:204`, `:237`). Derselbe Aufruf mit derselben Kennung führt
+    // zu EINEM Entwurf, nicht zu zweien; ohne Kennung bleibt alles wie bisher. Sie reist NEBEN der
+    // Nutzlast, nicht in ihr — der Server trennt sie ab, bevor er den Entwurf anlegt.
+    create: (payload: DraftPayload, operationId?: string) =>
+      api.post<Draft>("/drafts", operationId ? { ...payload, operationId } : payload),
     // SCRUM-113 / FE-CAP-07: Entwurf fortsetzen (continueDraft, Originalautor bleibt).
     // JOB 2684 D1: `expectedUpdatedAt` = der beim Laden gesehene Stand; der Server antwortet 409
     // DRAFT_STALE, wenn inzwischen jemand anders (zweiter Tab, Studio) gespeichert hat. Ohne den

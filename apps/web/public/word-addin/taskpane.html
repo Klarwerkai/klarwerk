@@ -225,20 +225,46 @@
     a { color: var(--brand-text); }
     /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework.
        mega43: Unterstreichung statt gefuellter Knoepfe. */
-    .tabs { display: flex; gap: 6px; margin-top: 12px; border-bottom: 1px solid var(--hairline); }
+    /* JOB 2620 D4: die Reiterleiste traegt die Werte der Vorlage WissenErfassen.dc.html Z.22-24
+       (weisse Leiste, 13px, 11px 0 9px) — dieselben Werte nennt SchlankesPanel.dc.html fuer den
+       Fragen-Reiter; die Leiste ist eine geteilte Flaeche. Werte uebernommen, nicht erfunden. */
+    .tabs { display: flex; gap: 0; margin-top: 12px; border-bottom: 1px solid var(--hairline); background: var(--surface); }
     .tabs button {
       flex: 1;
       border: 0;
       border-bottom: 2px solid transparent;
       background: transparent;
       color: var(--muted);
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 600;
-      padding: 8px 0 6px;
+      padding: 11px 0 9px;
       border-radius: 0;
       cursor: pointer;
     }
     .tabs button.active { color: var(--brand-text); border-bottom-color: var(--brand); }
+    /* JOB 2620 · WissenErfassen: der GEMESSENE Bilder-Hinweis als Vorlagen-Kasten
+       (WissenErfassen.dc.html Z.31-34): warn-Flaeche, Info-Icon, 12px/1.5, Link fett im selben
+       Ton. Farben sind die bestehenden AA-belegten Trust-warn-Token und stehen INLINE am Markup
+       (Token-Werte, keine zweite Wahrheit): der mega43-Sammler misst Inline-Stile als Farbquelle,
+       waehrend eine id-Regel auf einer `.hidden`-Flaeche bei ihm als tote Regel gilt. */
+    #capture-bilder-hinweis {
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+      padding: 9px 10px;
+      border-radius: 8px;
+      font-size: 12px;
+      line-height: 1.5;
+      margin: 8px 0 4px;
+    }
+    /* JOB 2620 D2 (Wertevergleich): SIEBEN belegte Abweichungen zur Vorlage nachgebessert — die
+       Uebernahme-Karte lief auf der generischen .card (10px Radius, 12px Innenabstand), Titel und
+       Entwurfs-Knopf auf den Defaults (h2 bzw. .primary 8px/9px 14px). Werte aus
+       WissenErfassen.dc.html Z.28-29 und Z.52 uebernommen, nicht erfunden; gemessen in
+       tests/design/zielbild-wissen-erfassen.test.ts (Fall A) — JOB 2620 D4: an DIESER Datei. */
+    #capture-karte { border-radius: 12px; padding: 16px 14px; }
+    #capture-karte h2 { font-size: 13.5px; font-weight: 650; }
+    #capture-karte #send-btn { border-radius: 10px; font-size: 14px; width: 100%; padding: 12px 0; }
     textarea {
       width: 100%;
       border: 1px solid var(--hairline);
@@ -618,9 +644,30 @@
   </div>
 
   <div id="section-capture" class="hidden">
-  <div class="card">
-    <h2 data-t="sendTitle"></h2>
+  <!-- ==============================================================================================
+       JOB 2620 D1/D4 — TAB 2 NACH VORLAGE (WissenErfassen.dc.html), eingebaut in die ECHTE Datei.
+       ==============================================================================================
+       Die Karte „Dieses Dokument uebernehmen" traegt den Erfassungsweg; der BILDER-HINWEIS darin
+       ist GEMESSEN statt pauschal: Station 1 (JOB 2613, im Produkt seit 3870df3) bringt
+       EINGEBETTETE Bilder durch — Wirkbereich und Rest woertlich aus
+       RUECKGABE-BASIC-JOB-2613-D2-KORREKTUR §1.1: „NICHT BELEGT, offen: UMFLOSSENE Bilder …
+       EIN umflossenes Bild kostet damit weiterhin ALLE Bilder des Dokuments." Die LAUFZEIT-Meldung
+       sendImagesMissing (JOB 2551 D2) ist davon getrennt und UNBERUEHRT.
+       Titel-Feld und Vertraulichkeits-Wahl der Vorlage sind BEWUSST NICHT gebaut: der Sendeweg
+       traegt kein confidentiality-Feld und der Titel entsteht erst beim Senden
+       (wordAddin.ts draftPostPayload) — Bedienelemente ohne Wirkung waeren dieselbe Unwahrheit in
+       Knopfform. Ownerfrage in der D1-Rueckgabe. Ids, Umfangs-Wahl, Senden-Weg (Station 1) und
+       `sendHint` sind UNVERAENDERT; der Schluessel `sendTitle` bleibt im Woerterbuch. -->
+  <div class="card" id="capture-karte">
+    <h2 data-t="captureCardTitle"></h2>
     <p class="muted" data-t="sendHint"></p>
+    <div id="capture-bilder-hinweis" style="background: var(--warn-bg); color: var(--warn-text);">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
+      <div>
+        <span data-t="sendImagesNote"></span>
+        <a id="capture-bilder-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="sendImagesNoteLink" style="color: var(--warn-text); font-weight: 600;"></a>
+      </div>
+    </div>
     <!-- WP-KLARA-2 (Pedis Befund 3): Umfangs-Wahl. Seiten-Optionen sind EHRLICH deaktiviert —
          Word-JS bietet im Taskpane-Kontext kein verlaessliches Seiten-API (Begruendung im Test/
          Bericht); der Tooltip erklaert es, der Hinweis nennt den Ausweg (Bereich markieren). -->
@@ -631,6 +678,9 @@
     </div>
     <p class="muted" id="scope-pages-hint" data-t="scopePagesHint" style="margin-top:0;"></p>
     <button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button>
+    <!-- JOB 2620, Vorlage Z.53: der Satz unter dem Knopf — wahr, weil Entwuerfe nie automatisch
+         validiert werden (dieselbe Zusage traegt sendHint seit jeher). -->
+    <p class="muted" id="send-review-note" data-t="sendReviewNote" style="text-align: center; font-size: 11.5px; margin-top: 6px;"></p>
     <!-- WP-KLARA-1b (K5): ehrlicher Zustand, wenn Office.js fehlt/nicht bereit wird (Seite im normalen
          Browser geoeffnet) — statt eines toten oder crashenden Senden-Knopfs. -->
     <div id="office-hint" class="hidden"></div>
@@ -892,7 +942,10 @@
 
     function prepareWordDraftRequest(html, text) {
       var title = deriveDraftTitleFromSelection(text);
-      var statement = text.trim().slice(0, 500);
+      // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
+      // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
+      // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
+      var statement = text.trim();
       var inner = extractWordBodyHtml(html || "");
       var undeliveredImages = countUndeliveredWordImages(inner);
       // AUFTRAG-mega45 Block F: plainTextFallback = Word lieferte gar kein verwertbares HTML.
@@ -1880,8 +1933,15 @@
         loginPopupBlocked: "Das Anmelde-Fenster wurde blockiert (Popup-Blocker). Bitte Popups für diese Seite erlauben und erneut versuchen.",
         loginOtherContext: "Hinweis: Das Anmelde-Fenster kann in einem anderen Browser-Kontext laufen. Wird die Anmeldung hier nicht erkannt, bitte erneut versuchen.",
         sendTitle: "An KLARWERK senden",
-        sendHint: "Sende den gewählten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Überschriften, Listen, Tabellen, Bilder soweit Word sie hergibt). Nichts wird automatisch veröffentlicht — du prüfst alles in KLARWERK.",
+        // JOB 2620 D5: der Bilder-Halbsatz ist in den gemessenen Kasten (sendImagesNote) umgezogen —
+        // EINE Bilder-Aussage in Tab 2, nicht zwei.
+        sendHint: "Sende den gewählten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Überschriften, Listen, Tabellen). Nichts wird automatisch veröffentlicht — du prüfst alles in KLARWERK.",
         sendCta: "Als Entwurf senden",
+        // JOB 2620: Tab 2 nach Vorlage — Kartentitel, gemessener Bilder-Kasten, Pruefungs-Hinweis.
+        captureCardTitle: "Dieses Dokument übernehmen",
+        sendImagesNote: "Eingebettete Bilder kommen mit dem Entwurf an. Von Text umflossene Bilder gibt Word hier nicht heraus — schon eines davon kostet derzeit alle Bilder des Dokuments.",
+        sendImagesNoteLink: "Mit allen Bildern: Upload in der Konsole.",
+        sendReviewNote: "Zur Prüfung geht er erst, wenn du einreichst — nichts wird automatisch validiert.",
         sendEmpty: "Bitte erst Text im Dokument markieren.",
         sendEmptyDoc: "Das Dokument enthält keinen Text.",
         scopeSelection: "Markierter Text",
@@ -2090,7 +2150,9 @@
         fassungUnbekannt: "Stand {geladen} · Abgleich nicht möglich",
         fassungCta: "Neu laden",
         helpTitle: "Was kann Klara hier?",
-        helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung, Tabellen und Bildern, soweit Word sie übergibt (nur Entwurf, kein fertiges Wissensobjekt).",
+        // JOB 2620 D5: vierte Stelle der Bilder-Aussage (Hilfe-Karte, in beiden Reitern sichtbar) —
+        // der Bilder-Halbsatz gehoert allein dem gemessenen Kasten in Tab 2.
+        helpCan1: "Auswahl oder ganzes Dokument als KLARWERK-Entwurf anlegen — mit Formatierung und Tabellen (nur Entwurf, kein fertiges Wissensobjekt).",
         helpCan2: "Ehrlich sagen, ob du angemeldet bist, ob das Senden geklappt hat und was Word NICHT übergeben konnte.",
         helpCan3: "Fragen quellengebunden aus dem VALIDIERTEN Werkswissen beantworten — und die Antwort mit Quellenangabe ins Dokument einfügen.",
         helpNot1: "Klara ist kein Chatbot: ohne belastbare Grundlage wird NICHTS erfunden — die Frage bleibt ehrlich offen (Wissenslücke).",
@@ -2112,8 +2174,14 @@
         loginPopupBlocked: "The sign-in window was blocked (popup blocker). Please allow popups for this page and try again.",
         loginOtherContext: "Note: the sign-in window may run in a different browser context. If the sign-in is not detected here, please try again.",
         sendTitle: "Send to KLARWERK",
-        sendHint: "Send the chosen scope as a new knowledge DRAFT — with formatting (headings, lists, tables, images as far as Word provides them). Nothing is published automatically — you review everything in KLARWERK.",
+        // JOB 2620 D5: the image clause moved into the measured note box (sendImagesNote) — one statement, not two.
+        sendHint: "Send the chosen scope as a new knowledge DRAFT — with formatting (headings, lists, tables). Nothing is published automatically — you review everything in KLARWERK.",
         sendCta: "Send as draft",
+        // JOB 2620: tab 2 per template — card title, measured image note, review hint.
+        captureCardTitle: "Take over this document",
+        sendImagesNote: "Embedded images arrive with the draft. Images with text wrapping are not provided by Word here — a single one currently costs all images of the document.",
+        sendImagesNoteLink: "With all images: upload in the console.",
+        sendReviewNote: "It only goes to review once you submit it — nothing is validated automatically.",
         sendEmpty: "Please select text in the document first.",
         sendEmptyDoc: "The document contains no text.",
         scopeSelection: "Selected text",
@@ -2283,7 +2351,8 @@
         fassungUnbekannt: "Build {geladen} · comparison not possible",
         fassungCta: "Reload",
         helpTitle: "What can Klara do here?",
-        helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting, tables and images as far as Word provides them (draft only, not a finished knowledge object).",
+        // JOB 2620 D5: fourth place of the image statement (help card) — it belongs to the note box in tab 2 alone.
+        helpCan1: "Create a KLARWERK draft from your selection or the whole document — with formatting and tables (draft only, not a finished knowledge object).",
         helpCan2: "Tell you honestly whether you are signed in, whether sending worked and what Word could NOT provide.",
         helpCan3: "Answer questions source-bound from the VALIDATED knowledge base — and insert the answer with source attribution into the document.",
         helpNot1: "Klara is not a chatbot: without a reliable basis NOTHING is invented — the question honestly stays open (knowledge gap).",
@@ -2305,8 +2374,14 @@
         loginPopupBlocked: "Het aanmeldvenster is geblokkeerd (pop-upblokkering). Sta pop-ups voor deze pagina toe en probeer het opnieuw.",
         loginOtherContext: "Let op: het aanmeldvenster kan in een andere browsercontext draaien. Wordt de aanmelding hier niet herkend, probeer het dan opnieuw.",
         sendTitle: "Naar KLARWERK sturen",
-        sendHint: "Stuur de gekozen omvang als nieuw kennis-CONCEPT — met opmaak (koppen, lijsten, tabellen, afbeeldingen voor zover Word ze levert). Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
+        // JOB 2620 D5: de afbeeldingenclausule is verhuisd naar het gemeten kader (sendImagesNote) — één uitspraak, niet twee.
+        sendHint: "Stuur de gekozen omvang als nieuw kennis-CONCEPT — met opmaak (koppen, lijsten, tabellen). Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
         sendCta: "Als concept sturen",
+        // JOB 2620: tab 2 volgens sjabloon — kaarttitel, gemeten afbeeldingenkader, controlehint.
+        captureCardTitle: "Dit document overnemen",
+        sendImagesNote: "Ingesloten afbeeldingen komen mee met het concept. Afbeeldingen met tekstomloop geeft Word hier niet vrij — één daarvan kost momenteel alle afbeeldingen van het document.",
+        sendImagesNoteLink: "Met alle afbeeldingen: upload in de console.",
+        sendReviewNote: "Het gaat pas ter controle wanneer je het indient — er wordt niets automatisch gevalideerd.",
         sendEmpty: "Selecteer eerst tekst in het document.",
         sendEmptyDoc: "Het document bevat geen tekst.",
         scopeSelection: "Geselecteerde tekst",
@@ -2476,7 +2551,8 @@
         fassungUnbekannt: "Stand {geladen} · vergelijken niet mogelijk",
         fassungCta: "Opnieuw laden",
         helpTitle: "Wat kan Klara hier?",
-        helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak, tabellen en afbeeldingen voor zover Word ze levert (alleen concept, geen afgerond kennisobject).",
+        // JOB 2620 D5: vierde plek van de afbeeldingenuitspraak (hulpkaart) — die hoort alleen bij het gemeten kader in tab 2.
+        helpCan1: "Je selectie of het hele document als KLARWERK-concept aanmaken — met opmaak en tabellen (alleen concept, geen afgerond kennisobject).",
         helpCan2: "Eerlijk zeggen of je bent aangemeld, of het versturen is gelukt en wat Word NIET kon leveren.",
         helpCan3: "Vragen bronvast beantwoorden uit de GEVALIDEERDE kennisbasis — en het antwoord met bronvermelding in het document invoegen.",
         helpNot1: "Klara is geen chatbot: zonder betrouwbare basis wordt er NIETS verzonnen — de vraag blijft eerlijk open (kennishiaat).",
@@ -4623,10 +4699,11 @@
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           title: title,
-          statement: currentAskQuestion.slice(0, 500),
-          // WP-KLARA-ASK-FIX (bens Fix 4): der VOLLE Fragetext reist im Draft-Body mit (escaped,
-          // der Server-Sanitizer bleibt autoritativ) — die 500-Zeichen-Kappung des statements
-          // verliert damit nichts.
+          // JOB 2703 D3: der VOLLE Fragetext als Aussage — die 500-Zeichen-Kappung im Client ist
+          // stillgelegt; der Server kuerzt kanonisch (kernaussageAusKlartext).
+          statement: currentAskQuestion,
+          // WP-KLARA-ASK-FIX (bens Fix 4): der VOLLE Fragetext reist auch im Draft-Body mit
+          // (escaped, der Server-Sanitizer bleibt autoritativ).
           bodyHtml: selectionToBodyHtml(currentAskQuestion),
           origin: "word_addin",
         }),

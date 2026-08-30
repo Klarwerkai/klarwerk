@@ -913,6 +913,18 @@ export interface AnswerResult {
   citedSources?: string[];
 }
 
+// JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
+// die zu sind (Zustand des Objekts, keine Mechanismus-Behauptung; Vertrag und Grenzen am
+// Serverfeld `AskResult.verschlossen`, services/ask/src/service.ts).
+export interface VerschlossenHinweis {
+  id: string;
+  title: string;
+  status: string;
+  freigabeFehlt: boolean;
+  stufeFehlt: boolean;
+  volltextFehlt: boolean;
+}
+
 // Realer Backend-Shape von POST /api/ask: Antwort + ggf. erzeugte Wissenslücke + Answer-Receipt.
 export interface AskResponse {
   result: AnswerResult;
@@ -920,6 +932,9 @@ export interface AskResponse {
   // FUNKE-FIX P0 (bens ROT-1): opaker Beleg über die ausgelieferten Quell-KOs. Beim „Danke"
   // (/api/ask/helpful) zurückgereicht — der Server verifiziert die Quellen-Bindung serverseitig.
   receipt: string;
+  // JOB 2626 D1: nur bei Nicht-Antwort UND nur auf Wegen mit Betrachterfilter vorhanden; ein
+  // älterer Server sendet das Feld nicht — die Fläche fällt dann auf die generische Leermeldung.
+  verschlossen?: VerschlossenHinweis[];
 }
 
 // FR-EXT-03 / FE-OUT: Output Factory (SCRUM-117/109).

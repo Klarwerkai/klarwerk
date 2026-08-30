@@ -5,9 +5,11 @@
 
 import type { Confidentiality, KnowledgeType } from "../../knowledge-object";
 import type { ImportItem } from "../../library-analytics";
+// JOB 2703 D2: die EINE Kuerzungsregel liegt in `structure` (D1: library-analytics, umgelegt).
+import { kernaussageAusHtml } from "../../structure";
 // WP-IC-PAKET-1b (bens ROT-1): decodeHtmlEntities auch für die NICHT-Body-Felder — Confluence liefert
 // Entities nicht nur im Storage-HTML, sondern auch in Titel/Autor/Labels.
-import { decodeHtmlEntities, htmlToPlainText } from "../../structure";
+import { decodeHtmlEntities } from "../../structure";
 import type { ConfluencePage } from "./rest-client";
 import { confluenceStorageToHtml } from "./storage";
 
@@ -136,7 +138,11 @@ export function mapConfluencePageToImportItem(
   opts: ConfluenceMapOptions,
 ): ImportItem {
   const bodyHtml = confluenceStorageToHtml(page.body?.storage?.value ?? "");
-  const plain = htmlToPlainText(bodyHtml).trim();
+  // JOB 2703 D1 (Review R2-3): hier stand `htmlToPlainText(bodyHtml)` — der GESAMTE Klartext der
+  // Seite wurde zur Kernaussage, während der Volltext ohnehin als `bodyHtml` mitreist. Jetzt: der
+  // erste Absatz, höchstens 500 Zeichen, an einer Satzgrenze (die eine Hilfsfunktion in
+  // library-analytics, Begründung dort). `bodyHtml` bleibt unverändert der Volltext.
+  const plain = kernaussageAusHtml(bodyHtml);
   // WP-IC-PAKET-1b (bens ROT-1): ALLE textuellen Quellfelder EINMAL an der Quelle dekodieren — nicht
   // nur das Body-Statement (htmlToPlainText). Titel (auch als Statement-Fallback), Autor und Labels
   // tragen sonst rohe Entities in Kandidaten, Themen-Ableitung (explore/select) und angenommene KOs.

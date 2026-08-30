@@ -183,6 +183,29 @@ export interface AskResult {
   // jetzt traegt er es nicht mehr. Die Semantik bleibt dieselbe — abwesend heisst „nicht
   // gefragt", eine leere Liste heisst „nachgesehen und in dieser Vorauswahl nichts gefunden".
   ungeprueft?: UngeprueftHinweis[];
+  // JOB 2626 D1 — WENN KLARA NICHT ANTWORTEN KANN, SAGT SIE WARUM.
+  //
+  // Pedis Frage vom 27.08. bekam „Keine belastbare Grundlage" — ehrlich und unbrauchbar: drei
+  // Tore seines Dokuments waren gleichzeitig zu (nicht validiert, keine Stufe, kein Volltext),
+  // und der Satz nannte keines. Dieses Feld traegt die TORLAGE der Kandidaten, die die Frage
+  // getroffen haben, aber nicht Antwortgrundlage wurden — damit die Flaeche den Grund nennen
+  // kann statt nur die Leere. Dieselben drei Vertraege wie bei `ungeprueft` gelten woertlich:
+  //   · NUR mit Betrachter (`verschlossenSichtbarFuer`) — ohne Filter fehlt das Feld VOLLSTAENDIG
+  //     (mega77: schon der Feldname im Koerper waere ein Ansatzpunkt; der Add-on-Pfad hat keinen
+  //     Sichtbarkeitsvertrag und bekommt deshalb nichts).
+  //   · NIE ueber Vertrauliches — die Menge entsteht hinter `dropConfidential`, derselben Linie,
+  //     die auch die Antwort selbst schuetzt. Ein vertrauliches Dokument als „verschlossen" zu
+  //     nennen, waere selbst der Egress, den die Sperre verhindert.
+  //   · KEINE Behauptung ueber den Bestand — gemeldet wird aus derselben gedeckelten Vorauswahl,
+  //     die auch die Antwort speist; eine leere Liste heisst „in dieser Vorauswahl nichts", nie
+  //     „es gibt nichts".
+  // Und die Grenze aus §4 des Auftrags: NUR bei `answered=false`, und je Dokument NUR die Tore,
+  // die WIRKLICH zu sind (am Objekt gemessen, nicht am Sperrmechanismus geraten). Ein Kandidat,
+  // dessen drei Tore offen sind und der trotzdem nicht trug (Relevanz, Modellentscheid), erscheint
+  // NICHT — ein falsch benanntes Tor schickt in die falsche Richtung, die generische Leermeldung
+  // bleibt fuer ihn die ehrliche Auskunft. Die Sperrlogik selbst ist unberuehrt
+  // (E-VERTRAULICHKEIT-OHNE-STUFE-20260828: erklaeren ja, sperren oder entsperren nein).
+  verschlossen?: VerschlossenHinweis[];
 }
 
 /**
@@ -197,6 +220,28 @@ export interface UngeprueftHinweis {
   id: string;
   title: string;
   status: string;
+}
+
+/**
+ * JOB 2626 D1: ein Dokument, das die Frage traf, aber nicht antworten konnte — mit den Toren,
+ * die zu sind. Basisfelder wie `UngeprueftHinweis` (KA2-Vertrag, kein `statement`); die drei
+ * Tor-Flags sind ZUSTAENDE DES OBJEKTS (Station-1-3-Begriffe des Pedi-Pfads), keine Aussage
+ * darueber, WELCHER Mechanismus den Kandidaten verworfen hat.
+ */
+export interface VerschlossenHinweis {
+  id: string;
+  title: string;
+  status: string;
+  /** Station 3: das Dokument ist nicht validiert („Freigabe fehlt"). */
+  freigabeFehlt: boolean;
+  /**
+   * Station 3: keine Vertraulichkeitsstufe gesetzt („Stufe fehlt"). Die NULL=intern-Semantik
+   * bleibt gepinnt und unangetastet (confidentiality.ts:39-41) — hier wird sie SICHTBAR gemacht,
+   * nicht verlangt und nicht gesperrt.
+   */
+  stufeFehlt: boolean;
+  /** Station 2: die Suchprojektion traegt keinen Dokumenttext („kein durchsuchbarer Text"). */
+  volltextFehlt: boolean;
 }
 
 /**
@@ -361,6 +406,11 @@ export class AskService {
       // eingeengt: eine engere Signatur wuerde `Sichtbarkeitsfilter` ausschliessen und die Route
       // zwingen, die Regel doch wieder selbst auszulegen.
       ungeprueftSichtbarFuer?: (ko: KnowledgeObject) => boolean;
+      // JOB 2626 D1: die FERTIGE Sichtbarkeitsentscheidung fuer die Torlage-Meldung `verschlossen`
+      // — gleiche Bauform, gleiche Begruendung wie `ungeprueftSichtbarFuer` (Zeilen darueber);
+      // eigenes Feld, weil die beiden Meldungen unabhaengig angefragt werden (das Panel traegt
+      // heute W5, die Konsole die Torlage) und ein geteilter Schalter beide aneinander kettete.
+      verschlossenSichtbarFuer?: (ko: KnowledgeObject) => boolean;
     },
   ): Promise<AskResult> {
     // JOB 541 D4: Die Absicht wird EINMAL aufgeloest, gleich hier — und danach getrennt gefuehrt:
@@ -485,6 +535,34 @@ export class AskService {
       return terms.some((term) => captions.includes(term)) && !terms.some((t) => core.includes(t));
     });
     const result = { ...resultCore, captionSources };
+    // JOB 2626 D1 — DIE TORLAGE, wenn es keine Antwort gab (Vertrag und Grenzen am Feld
+    // `AskResult.verschlossen`). Gerechnet wird auf `dropConfidential(prefilteredRaw)` — derselbe
+    // Schnitt wie bei `ungeprueft` eine Seite weiter oben: NIE ueber Vertrauliches, NUR was der
+    // Betrachter sehen darf. Der Volltext-Blick nutzt DIESELBE Suchprojektion, die auch der
+    // Refs-Bau liest (JOB 2614 D3) — kein zweiter Scanner, keine zweite Wahrheit.
+    const verschlossenSicht = opts?.verschlossenSichtbarFuer;
+    const verschlossenFeld: { verschlossen?: VerschlossenHinweis[] } =
+      verschlossenSicht && !result.answered
+        ? {
+            verschlossen: (
+              await Promise.all(
+                dropConfidential(prefilteredRaw)
+                  .filter((ko) => verschlossenSicht(ko))
+                  .map(async (ko) => {
+                    const projektion = await this.koService.searchProjectionOf(ko.id);
+                    return {
+                      id: ko.id,
+                      title: ko.title,
+                      status: ko.status,
+                      freigabeFehlt: ko.status !== "validiert",
+                      stufeFehlt: ko.confidentiality === null || ko.confidentiality === undefined,
+                      volltextFehlt: !projektion?.bodyText.trim(),
+                    };
+                  }),
+              )
+            ).filter((h) => h.freigabeFehlt || h.stufeFehlt || h.volltextFehlt),
+          }
+        : {};
     // FUNKE-FIX P0 (bens ROT-1): opaker Answer-Receipt über (Nutzer + ausgelieferte Quell-KOs) —
     // die serverseitige Grundlage für ein NICHT fälschbares „Danke".
     //
@@ -533,15 +611,15 @@ export class AskService {
       // liefert das oben emittierte metadata-only ask.query-Audit (trägt Actor + answered=false, keinen
       // Text). Ohne die Option bleibt der Pfad byte-identisch: Gap anlegen.
       if (opts?.gapPolicy === "count_only") {
-        return { result, answerId, gap: null, receipt, ...ungeprueftFeld };
+        return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
       }
       // GAP-SPRACHHERKUNFT: `locale` steuert schon die Antwortsprache des Reasoners und liegt hier
       // ohnehin vor — es ging bisher nur verloren. Mitgegeben, damit die Oberfläche einen
       // fremdsprachigen Lückentitel erklären kann, statt ihn wie einen Fehler aussehen zu lassen.
       const gap = await this.createGap(question, actorId, opts?.demoSeed, locale);
-      return { result, answerId, gap, receipt, ...ungeprueftFeld };
+      return { result, answerId, gap, receipt, ...ungeprueftFeld, ...verschlossenFeld };
     }
-    return { result, answerId, gap: null, receipt, ...ungeprueftFeld };
+    return { result, answerId, gap: null, receipt, ...ungeprueftFeld, ...verschlossenFeld };
   }
 
   /**

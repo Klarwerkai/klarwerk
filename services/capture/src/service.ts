@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { CreateKoInput } from "../../knowledge-object";
+import { type CreateKoInput, createOperationFingerprint } from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
 import { DRAFT_LIMITS } from "./draft-limits";
 import type { DraftRepo } from "./repo";
@@ -463,7 +463,34 @@ export class CaptureService {
     }
   }
 
+  /**
+   * Der unveränderte Bestandsweg: legt an und liefert den Entwurf. Alle bisherigen Aufrufer
+   * (`POST /api/drafts/from-docx`, Mobil, Offline-Queue) benutzen ihn weiter, ohne etwas zu
+   * merken. Er DELEGIERT an `createDraftVorgang` — es gibt keinen zweiten Anlageweg daneben.
+   */
   async createDraft(rawPayload: DraftPayload, author: string): Promise<Draft> {
+    const { draft } = await this.createDraftVorgang(rawPayload, author);
+    return draft;
+  }
+
+  /**
+   * JOB 2697 — `vorgangsId` ist OPTIONAL und der EINZIGE Weg zur Wiederholungssicherheit.
+   *
+   * `angelegt` sagt der Route, ob dieser Aufruf den Entwurf erzeugt hat (`201`) oder ob es
+   * derselbe Vorgang noch einmal war (`200`). **Die Route rät das nicht** — sie kann es auch
+   * nicht: an einem zurückgegebenen Entwurf ist nicht zu sehen, wer ihn angelegt hat. Ohne dieses
+   * Feld wäre ein `201` für eine Wiederholung eine kleine Unwahrheit („created" für etwas, das
+   * nicht erschaffen wurde).
+   *
+   * Die Route trifft selbst KEINE Entscheidung über Wiederholung oder Konflikt; sie übersetzt nur.
+   * Damit ist die Kette Route → Service → `insertIfOperationAbsent` verbindlich, und es gibt
+   * keinen zweiten Idempotenzort daneben.
+   */
+  async createDraftVorgang(
+    rawPayload: DraftPayload,
+    author: string,
+    vorgangsId?: string,
+  ): Promise<{ draft: Draft; angelegt: boolean }> {
     validateMetadata(rawPayload);
     // E2E-004: leere/Whitespace-only Entwürfe ablehnen — ein Entwurf braucht mindestens Titel ODER
     // Aussage. Client sperrt den Knopf zusätzlich; das hier ist die harte Serverkante (auch für API).
@@ -488,8 +515,49 @@ export class CaptureService {
       createdAt: at,
       updatedAt: at,
     };
-    await this.repo.insert(draft);
-    return draft;
+    // ============================================================================================
+    // JOB 2697 — HIER ENTSCHEIDET SICH: NEUER ENTWURF ODER DERSELBE VORGANG NOCH EINMAL.
+    // ============================================================================================
+    //
+    // OHNE Vorgangskennung bleibt alles, wie es war: ein gewöhnliches `insert`. Die anderen
+    // Aufrufer der Route (Mobil, Offline-Queue, `from-docx` über `:405`) hängen daran, und ein
+    // stiller Wechsel ihres Verhaltens wäre der teurere Fehler.
+    //
+    // MIT Kennung geht es über den bedingten Weg der ABLAGE. Die Unteilbarkeit liegt dort und
+    // nicht hier — ein Suchen im Dienst mit anschliessendem Einfügen verlöre jedes Rennen zweier
+    // gleichzeitiger Klicks. Dieselbe Lehre wie bei `GapRepo.insertOrIncrement`.
+    //
+    // DER EIGENTÜMER IST `author`, also die authentifizierte Person aus der Route — nie ein Wert
+    // aus dem Rumpf. Der ABDRUCK entsteht aus dem NORMALISIERTEN Payload: zwei Klicks auf
+    // denselben Text ergeben denselben Abdruck, auch wenn der Rohtext sich in Whitespace
+    // unterscheidet.
+    // Ohne Kennung — oder gegen eine Ablage, die den bedingten Weg nicht führt — bleibt es beim
+    // gewöhnlichen `insert`. Der zweite Fall betrifft ausschliesslich speicherlose Testattrappen
+    // (Begründung am Vertrag in `repo.ts`); beide Betriebsablagen führen ihn. Ehrlich benannt:
+    // eine Attrappe ohne Bestand könnte ohnehin nie eine Wiederholung finden.
+    if (!vorgangsId || !this.repo.insertIfOperationAbsent) {
+      await this.repo.insert(draft);
+      return { draft, angelegt: true };
+    }
+    const fingerprint = createOperationFingerprint({ weg: "draft-create", inhalt: payload });
+    const mitVorgang: Draft = {
+      ...draft,
+      createOperation: { id: vorgangsId, actor: author, fingerprint },
+    };
+    const ergebnis = await this.repo.insertIfOperationAbsent(mitVorgang);
+    if (ergebnis.angelegt) {
+      return { draft: ergebnis.draft, angelegt: true };
+    }
+    // DER ABDRUCKVERGLEICH LÄUFT HIER, nicht in der Ablage und nicht in der Route — eine Stelle
+    // für eine Frage. Und er läuft NUR auf dem gefundenen EIGENEN Datensatz: ein fremder wird nie
+    // geladen (der Schlüssel ist eigentümergebunden), also auch nie verglichen.
+    if (ergebnis.bestehend.createOperation?.fingerprint !== fingerprint) {
+      throw new CaptureError(
+        "IDEMPOTENCY_PAYLOAD_MISMATCH",
+        "Unter diesem Vorgang wurde bereits ein anderer Entwurf gespeichert.",
+      );
+    }
+    return { draft: ergebnis.bestehend, angelegt: false };
   }
 
   // FR-CAP-06: jeder Schreibberechtigte sieht und nutzt den gemeinsamen Pool.

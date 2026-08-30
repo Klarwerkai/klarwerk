@@ -91,6 +91,26 @@ export interface DraftPayload {
   };
 }
 
+/**
+ * JOB 2697 — DER VORGANG, ZU DEM DIESER ENTWURF GEHÖRT.
+ *
+ * Dieselbe Dreiheit wie beim Wissensobjekt (`services/knowledge-object`): Kennung, Eigentümer,
+ * Abdruck der Nutzlast.
+ *
+ * `actor` wird SERVERSEITIG abgeleitet (`user.id` aus der authentifizierten Anfrage), nie aus dem
+ * Rumpf gelesen. Er ist Teil des Schlüssels, damit zwei Menschen dieselbe Kennung benutzen können,
+ * ohne sich gegenseitig den Entwurf wegzunehmen.
+ *
+ * `fingerprint` erkennt den Fall, in dem unter derselben Kennung ein ANDERER Inhalt ankommt —
+ * dann ist es kein Wiederholungsversuch, sondern ein neuer Vorgang, und die Route antwortet 409
+ * statt still den alten Entwurf zu liefern.
+ */
+export interface DraftCreateOperation {
+  id: string;
+  actor: string;
+  fingerprint: string;
+}
+
 export interface Draft {
   id: string;
   payload: DraftPayload;
@@ -98,6 +118,17 @@ export interface Draft {
   lastEditor: string;
   createdAt: string;
   updatedAt: string;
+  /**
+   * JOB 2697 — OPTIONAL UND AM `Draft`, NICHT IM `DraftPayload`.
+   *
+   * Der Unterschied ist der, an dem D1 gescheitert ist: `capture.toKoInput` liest den PAYLOAD und
+   * trägt ihn beim Einreichen ins Wissensobjekt. Ein Feld am Draft wandert dort nicht mit — die
+   * Vorgangskennung bleibt Transport und wird nie Teil des Dokumentinhalts.
+   *
+   * OPTIONAL, weil der Bestandspfad bleibt: Ein `POST /api/drafts` ohne Kennung verhält sich exakt
+   * wie bisher. Die anderen Aufrufer (Mobil, Offline-Queue, `from-docx`) hängen daran.
+   */
+  createOperation?: DraftCreateOperation;
 }
 
 // ================================================================================================
@@ -152,7 +183,13 @@ export type CaptureErrorCode =
   // JOB 2684 D3 (R2-17): ein Schreiben OHNE mitgeschickten Stand hat den Compare-and-Swap in der
   // Ablage mehrfach hintereinander verloren (ein anderer Prozess schreibt fortlaufend denselben
   // Entwurf). Kein Datenverlust — nichts wurde überschrieben; der Aufrufer versucht es erneut.
-  | "DRAFT_WRITE_CONTENDED";
+  | "DRAFT_WRITE_CONTENDED"
+  // JOB 2697: derselbe Vorgangsschlüssel, ABWEICHENDER Inhalt. Der Mensch hat nach einem
+  // Antwortverlust seinen Text geändert; sein neuer Inhalt ist ein NEUER Vorgang. 409 und nicht
+  // 400: die Anfrage ist wohlgeformt, der Aufrufer hat nichts falsch gemacht. Der Code steht in
+  // `services/app/src/http.ts:65` bereits auf 409 — dort war nichts zu ändern, und die Oberfläche
+  // kennt ihn schon (`createConflictOffersRestart` bietet danach einen neuen Vorgang an).
+  | "IDEMPOTENCY_PAYLOAD_MISMATCH";
 
 export class CaptureError extends Error {
   readonly code: CaptureErrorCode;
