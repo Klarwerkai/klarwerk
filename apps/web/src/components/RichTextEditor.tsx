@@ -348,6 +348,10 @@ export function RichTextEditor({
   const imgInputRef = useRef<HTMLInputElement>(null);
   // Pedi 06.07.: verstecktes Feld für „Datei vom Rechner anhängen …" (Anhang/Evidence, kein Body-Einfügen).
   const attachFileInputRef = useRef<HTMLInputElement>(null);
+  // JOB 2610 D3: DIE EINE Frage „hat diese Flaeche ueberhaupt einen Dateiweg?" — einmal
+  // beantwortet, von Knopf UND Hinweissatz gelesen. Vorher stellte nur der Knopf sie; der Satz
+  // behauptete unbedingt, Dateien wuerden Beleg bleiben. Ein Versprechen ohne Deckung.
+  const dateiwegDa = editorFileButtonVisible(onAttachFiles !== undefined, files.length);
   const [mode, setMode] = useState<"edit" | "preview">("edit");
   // SCRUM-384: KI-Palette geschlossen bis zum bewussten Klick (ARGUS-Muster, keine Info-Wand).
   const [showAi, setShowAi] = useState(false);
@@ -1528,7 +1532,7 @@ export function RichTextEditor({
             {/* SCRUM-355 / SCRUM-488: „Datei"-Button nur zeigen, wenn er etwas kann — Datei-Upload
                 (onAttachFiles) ODER einfügbare Object-Store-Dateien. Ohne beides wäre es ein toter
                 Klick (Nullschulungs-Killer): kein Upload möglich, nichts zum Einfügen. */}
-            {editorFileButtonVisible(onAttachFiles !== undefined, files.length) ? (
+            {dateiwegDa ? (
               <div className="relative">
                 <button
                   type="button"
@@ -2099,7 +2103,15 @@ export function RichTextEditor({
           wurden (kein Fake-Link). Nur im Bearbeiten-Modus. */}
       {mode === "edit" ? (
         <div className="border-t border-hairline px-3 py-1.5">
-          <p className="text-[11px] leading-relaxed text-muted-2">{t(EDITOR_DROP_KEYS.hint)}</p>
+          {/* JOB 2610 D3: DERSELBEN Bedingung wie der Datei-Knopf 571 Zeilen darueber. Der Knopf
+              war seit jeher bedingt („Fehlt der Callback, bleibt der Knopf aus", Prop-Kommentar
+              oben) — der SATZ war es nicht. Auf der Fronttuer, die keinen Dateiweg hat, stand
+              deshalb „Dateien bleiben Beleg/Evidence" ueber einer Flaeche, die keine Datei
+              annimmt. Beide haengen jetzt an EINEM Ausdruck; sie koennen nicht mehr
+              auseinanderlaufen. */}
+          <p className="text-[11px] leading-relaxed text-muted-2">
+            {t(dateiwegDa ? EDITOR_DROP_KEYS.hint : EDITOR_DROP_KEYS.hintImagesOnly)}
+          </p>
           {/* AUFTRAG-mega88 Block C: kein stiller Ausfall mehr. Wenn zu einem Bild kein Anker
               herstellbar ist, sagt der Editor das an derselben Stelle, an der er auch den
               Datei-Hinweis sagt — lokalisiert (DE/EN/NL), als `status` angekündigt, wegklickbar. */}

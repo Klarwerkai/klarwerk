@@ -1743,6 +1743,9 @@ const de = {
   // SCRUM-372: ruhige Drag&Drop/Einfügen-Führung (nur Bilder inline; Dateien bleiben Evidence).
   "editor.drop.hint":
     "Bilder hierher ziehen oder einfügen (Strg/⌘+V). Dateien bleiben Beleg/Evidence.",
+  // JOB 2610 D3: derselbe Satz OHNE die Dateizusage — für Flächen, die keinen Dateiweg haben.
+  // Wortgleich die erste Hälfte; kein neuer Wortlaut für dieselbe Sache.
+  "editor.drop.hintImagesOnly": "Bilder hierher ziehen oder einfügen (Strg/⌘+V).",
   "editor.drop.imageActive": "Medien loslassen — Bilder werden eingefügt, Dateien bleiben Evidence",
   "editor.drop.fileNotice":
     "Nur Bilder werden inline eingefügt. Dateien bleiben Anhang/Evidence — ein sicherer Body-Link entsteht erst mit gespeicherter Objekt-Referenz (kein Fake-Link). Die Validierung entscheidet.",
@@ -6408,6 +6411,7 @@ const en: typeof de = {
     "No linkable files yet — uploaded files become linkable only after saving (with an object reference). Until then they stay as attachments/evidence; no makeshift link.",
   // SCRUM-372: calm drag&drop/paste guidance (only images inline; files stay evidence).
   "editor.drop.hint": "Drag images here or paste them (Ctrl/⌘+V). Files stay as evidence.",
+  "editor.drop.hintImagesOnly": "Drag images here or paste them (Ctrl/⌘+V).",
   "editor.drop.imageActive": "Drop media — images are inserted, files stay as evidence",
   "editor.drop.fileNotice":
     "Only images are inserted inline. Files stay as attachments/evidence — a safe body link is only possible with a saved object reference (no fake link). The review decides.",
@@ -10624,6 +10628,7 @@ const nl: typeof de = {
     "Nog geen koppelbare bestanden — geüploade bestanden worden pas na het opslaan koppelbaar (met objectreferentie). Tot dan blijven ze als bijlage/bewijs bewaard; geen tijdelijke link.",
   "editor.drop.hint":
     "Afbeeldingen hierheen slepen of plakken (Ctrl/⌘+V). Bestanden blijven bewijs/onderbouwing.",
+  "editor.drop.hintImagesOnly": "Afbeeldingen hierheen slepen of plakken (Ctrl/⌘+V).",
   "editor.drop.imageActive":
     "Media loslaten — afbeeldingen worden ingevoegd, bestanden blijven bewijs",
   "editor.drop.fileNotice":

@@ -56,8 +56,13 @@ export function partitionDropMedia<T extends DropMediaItem>(items: readonly T[])
 // - hint:       Dauerhinweis unter der Toolbar (Bild ablegen/einfügen; Dateien bleiben Beleg).
 // - imageActive: Overlay beim Drüberziehen eines Elements (Bild loslassen).
 // - fileNotice: ehrliche transiente Meldung, wenn Nicht-Bilder gedroppt/eingefügt werden (kein Fake-Link).
+// JOB 2610 D3: `hint` traegt ZWEI Aussagen — eine ueber Bilder und eine ueber Dateien. Auf einer
+// Flaeche OHNE Dateiweg ist die zweite falsch, die erste bleibt wahr. Deshalb ein zweiter
+// Schluessel mit NUR der Bildzeile, statt den ganzen Satz auszublenden: Ehrlichkeit durch
+// Weglassen haette der Fronttuer ihre einzige Bildfuehrung genommen.
 export const EDITOR_DROP_KEYS = {
   hint: "editor.drop.hint",
+  hintImagesOnly: "editor.drop.hintImagesOnly",
   imageActive: "editor.drop.imageActive",
   fileNotice: "editor.drop.fileNotice",
 } as const;
