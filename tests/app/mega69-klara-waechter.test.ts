@@ -799,7 +799,25 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // ============================================================================================
     // JOB 2703 D3: taskpane.html geaendert — die harten 500-Zeichen-Kuerzungen im Client
     // (prepareWordDraftRequest, „offene Frage senden") sind stillgelegt; der Server kuerzt kanonisch.
-    const PIN = "c470e28f20f274373eb497ff02b2be9c425affd03279c76f9ebafbf083c2750e";
+    //
+    // ============================================================================================
+    // JOB 2551 D3 — PIN BEWUSST AKTUALISIERT (c470e28f… -> 25babab0…), Auslieferungsfolgen:
+    //   · NUR WORTLAUT: geaendert sind ausschliesslich die drei Woerterbuchwerte
+    //     `sendImagesMissing` (de/en/nl). Kein neuer Ausgang, kein neuer Schreibweg, keine neue
+    //     Abrufstelle; `t()`, `showSendStatus()` und beide Ausloesestellen sind unberuehrt.
+    //   · WAS SICHTBAR WIRD: derselbe Anlass, anderer Satz. Der alte nannte nur den Verlust und
+    //     erzwang bei genau EINEM fehlenden Bild Mehrzahl („1 Bilder"); der neue benennt Word als
+    //     Ursache, sichert die Vollstaendigkeit des Textes zu, gibt einen Weg und kommt kollektiv
+    //     ohne Mehrzahlform aus. Gemessen am GERENDERTEN Text, nicht am Quelltext:
+    //     `tests/app/job2551-bildverlust-satz-mounted.test.ts`.
+    //   · BEIDE WEGE: derselbe Schluessel traegt den HTML-Weg und den .docx-Weg
+    //     (`sendeDocxDatei`). Der Text gilt fuer beide — das ist Absicht und war schon vorher so.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: `sendPlainFallback` und `sendOverBudget` sind nicht
+    //     angefasst; ihre Trennung haelt der Fall B4.
+    //   · Fuer ein installiertes Add-in: kein erneutes Sideload noetig. Bis der Office-Cache
+    //     nachzieht, steht der alte Satz — der Zustand von gestern, kein neues Risiko.
+    // ============================================================================================
+    const PIN = "25babab007c45dae79a3abb973200e14bcc2fb7cf0a7337e9a47b360c6144a5e";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

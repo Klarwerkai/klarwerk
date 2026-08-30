@@ -140,6 +140,13 @@ const INVENTAR: readonly string[] = [
   // `palette` gefunden (Muster `palette`, Zeile 103) — die Datei mountet `CommandPalette` und
   // nennt sie durchgaengig. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
   "tests/app/job2244-a19b-kuerzel-plattformvertrag-mounted.test.tsx",
+  // JOB 2551 D3: der Bildverlust-Satz des Aufgabenfensters, gemessen am GERENDERTEN Text (Panel im
+  // jsdom, Sprache geklickt, `t()` -> `showSendStatus()` -> `#send-status`). Von der Inhaltsachse
+  // `taskpane` gefunden — die Datei liest `taskpane.html` und laesst sie laufen. Sachlich gehoert
+  // sie in die Klara-Regression: sie haelt fest, dass die Meldung Word als Ursache benennt, die
+  // Vollstaendigkeit des Textes zusichert, einen Weg gibt und bei GENAU EINEM fehlenden Bild ohne
+  // Mehrzahlform auskommt. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/app/job2551-bildverlust-satz-mounted.test.ts",
   // JOB 2613 D1: das Byte-Budget des Word-Entwurfs nimmt ab jetzt BILDER statt des ganzen
   // Dokuments. Von der Inhaltsachse `taskpane` gefunden — die Datei liest `taskpane.html` und
   // prueft dessen ES5-Spiegel (Fall B6). Sachlich gehoert sie in die Klara-Regression: sie haelt
