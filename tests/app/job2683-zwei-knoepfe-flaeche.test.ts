@@ -53,7 +53,14 @@ afterEach(() => {
 
 async function erkundenApp(fetchFn: typeof fetch, timeoutMs: number) {
   const services = buildServices();
-  const app = buildApp(services);
+  // JOB 2933 D1: die Logzeilen werden hier ABGEFANGEN, nicht bespitzelt. `opts.log.senke` ist der
+  // von JOB 2661 vorgesehene Prüfeinstieg; damit liest der Test die Zeile, die der Server wirklich
+  // schreibt — samt `reqId` und samt der Senken-/Serializer-Disziplin aus 2661. Nebenwirkung, die
+  // erwünscht ist: der Testlauf schreibt seine Warnungen nicht mehr auf die Standardausgabe.
+  const logzeilen: string[] = [];
+  const app = buildApp(services, {
+    log: { senke: { write: (zeile: string) => void logzeilen.push(zeile) }, stufe: "warn" },
+  });
   app.register(
     confluenceImportRoutes({
       library: services.library,
@@ -81,39 +88,44 @@ async function erkundenApp(fetchFn: typeof fetch, timeoutMs: number) {
     url: "/api/auth/login",
     payload: { email: "a@x.de", password: "secret123" },
   });
-  return { app, headers: { authorization: `Bearer ${login.json().token}` } };
+  return { app, headers: { authorization: `Bearer ${login.json().token}` }, logzeilen };
 }
 
 describe("JOB 2683 · Knopf 1 · Erkunden bei hängender Confluence-Instanz", () => {
   it("D2: antwortet nach der Frist mit 504 CONFLUENCE_TIMEOUT und der hostfreien Zeitüberschreitungs-Meldung — statt nie und statt des Alttexts", async () => {
     // JOB 2693 D1 (Befund R2-5): die Warnung der Erkundung geht ueber den Logger der Anfrage,
-    // nicht mehr an die Konsole. Ohne konfigurierten Logger ist `request.log` derselbe Logger wie
-    // `app.log` — der Spion sitzt deshalb dort; die Aussage (Diagnose im Log, hostfrei) bleibt.
-    const { app, headers } = await erkundenApp(nieAntwortend, 100);
-    const warn = vi.spyOn(app.log, "warn").mockImplementation(() => undefined);
-    try {
-      const start = Date.now();
-      const res = await app.inject({
-        method: "POST",
-        url: "/api/admin/import/confluence/explore",
-        headers,
-        payload: {},
-      });
-      expect(Date.now() - start).toBeLessThan(2_000); // Sekundenbruchteile, nicht Minuten
-      expect(res.statusCode).toBe(504);
-      const body = res.json();
-      expect(body.error).toBe("CONFLUENCE_TIMEOUT");
-      expect(body.message).toContain("Zeitüberschreitung");
-      expect(body.message).not.toContain("fehlgeschlagen"); // der Alttext ist weg
-      keinHostKeinDns(res.body);
-      // Das Server-Log trägt dieselbe Diagnose, ebenfalls ohne Host.
-      const geloggt = warn.mock.calls.map((c) => JSON.stringify(c)).join("\n");
-      expect(geloggt).toContain("Zeitüberschreitung");
-      keinHostKeinDns(geloggt);
-      await app.close();
-    } finally {
-      warn.mockRestore();
-    }
+    // nicht mehr an die Konsole.
+    //
+    // JOB 2933 D1 — WARUM HIER KEIN SPION MEHR SITZT. Bis hierher stand `vi.spyOn(app.log, "warn")`
+    // mit der Begründung: „Ohne konfigurierten Logger ist `request.log` derselbe Logger wie
+    // `app.log`." Diese Voraussetzung ist mit dem Einbau von JOB 2661 entfallen —
+    // `build-app.ts` baut Fastify jetzt MIT `logger:`, und damit ist `request.log` ein
+    // Kind-Logger (er trägt die `reqId`). Ein Spion auf `app.log.warn` sieht dessen Zeilen nie:
+    // der Fall war rot mit `expected '' to contain 'Zeitüberschreitung'`, obwohl das Produkt
+    // korrekt loggte. Gemessen wird deshalb an der Logsenke — das ist dieselbe Aussage
+    // (Diagnose im Log, hostfrei), nur an der Stelle, an der sie wirklich ankommt.
+    const { app, headers, logzeilen } = await erkundenApp(nieAntwortend, 100);
+    const start = Date.now();
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/explore",
+      headers,
+      payload: {},
+    });
+    expect(Date.now() - start).toBeLessThan(2_000); // Sekundenbruchteile, nicht Minuten
+    expect(res.statusCode).toBe(504);
+    const body = res.json();
+    expect(body.error).toBe("CONFLUENCE_TIMEOUT");
+    expect(body.message).toContain("Zeitüberschreitung");
+    expect(body.message).not.toContain("fehlgeschlagen"); // der Alttext ist weg
+    keinHostKeinDns(res.body);
+    // Das Server-Log trägt dieselbe Diagnose, ebenfalls ohne Host — und die Zeile trägt die
+    // `reqId`, an der sie mit den übrigen Zeilen dieser Anfrage zusammenhängt (JOB 2661).
+    const geloggt = logzeilen.join("\n");
+    expect(geloggt).toContain("Zeitüberschreitung");
+    expect(geloggt).toContain("reqId");
+    keinHostKeinDns(geloggt);
+    await app.close();
   });
 
   it("D2: hängt erst die zweite Ergebnisseite, kommen die gelesenen Seiten MIT dem Abbruchgrund an", async () => {

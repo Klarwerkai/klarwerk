@@ -1,6 +1,6 @@
 import Fastify from "fastify";
 import { describe, expect, it } from "vitest";
-import { buildServices } from "../../services/app/src/build-app";
+import { buildApp, buildServices } from "../../services/app/src/build-app";
 import { makeGuards } from "../../services/app/src/http";
 import {
   confluenceImportRoutes,
@@ -125,12 +125,57 @@ describe("JOB 2693 D1 · der Import warnt ueber den Logger der Anfrage", () => {
       "utf8",
     );
     expect(quelle.includes("console.warn(")).toBe(false);
-    // Und die Voraussetzung, ehrlich: build-app.ts konfiguriert keinen Logger — ohne 2661 sind
-    // diese Zeilen im Produkt still. Der Fall haelt den Ist-Stand fest, damit er auffaellt.
+    // JOB 2933 D1 — DIESE ZUSICHERUNG IST UMGEDREHT, UND ZWAR ABSICHTLICH.
+    //
+    // Hier stand `expect(buildApp.includes("logger:")).toBe(false)` mit der Begruendung:
+    // „build-app.ts konfiguriert keinen Logger — ohne 2661 sind diese Zeilen im Produkt still.
+    // Der Fall haelt den Ist-Stand fest, damit er auffaellt." Er ist aufgefallen: JOB 2661 ist
+    // eingebaut, `build-app.ts` baut Fastify jetzt mit `logger: baueLoggerOptionen(...)`. Der
+    // Fall war also rot, WEIL das Produkt die Bedingung erfuellt hat, auf die er gewartet hat.
+    // Deshalb steht hier jetzt `true`: die Voraussetzung ist eingeloest, die sieben Warnungen
+    // sind im Produkt nicht mehr still.
     const buildApp = readFileSync(
       new URL("../../services/app/src/build-app.ts", import.meta.url),
       "utf8",
     );
-    expect(buildApp.includes("logger:")).toBe(false);
+    expect(buildApp.includes("logger:")).toBe(true);
+  });
+
+  it("L5 · und die Zeilen kommen im Produkt wirklich an — nicht nur im Test-Logger", async () => {
+    // JOB 2933 D1: L1–L4 messen an einem Fastify, das der TEST mit einem Logger baut. Damit steht
+    // und faellt die Aussage von L4 („nichts geht mehr an die Konsole vorbei") am Quelltext allein.
+    // Dieser Fall schliesst die Luecke am gebauten Produkt: `buildApp` mit der 2661-Logsenke, eine
+    // scheiternde Erkundung — und die Warnung muss durch die Serializer-/Senken-Disziplin von 2661
+    // hindurch in der Senke landen, mit `reqId` und ohne das Geheimnis aus der Quell-URL.
+    const zeilen: string[] = [];
+    process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
+    const services = buildServices();
+    delete process.env.KLARWERK_CONFLUENCE_IMPORT;
+    const app = buildApp(services, {
+      log: { senke: { write: (z: string) => void zeilen.push(z) }, stufe: "warn" },
+    });
+    app.register(
+      confluenceImportRoutes({
+        library: services.library,
+        koService: services.ko,
+        guards: makeGuards(services.auth),
+        makeAdapter: () => kaputt,
+        importRuns: services.importRuns,
+      }),
+    );
+    await services.auth.register({ name: "Admin", email: "a@x.de", password: "secret123" });
+    const login = await services.auth.login({ email: "a@x.de", password: "secret123" });
+    const antwort = await app.inject({
+      method: "POST",
+      url: "/api/admin/import/confluence/explore",
+      headers: { authorization: `Bearer ${login.token}` },
+      payload: {},
+    });
+    expect(antwort.statusCode).toBe(502);
+    const geloggt = zeilen.join("\n");
+    expect(geloggt).toContain("confluence-import: Erkundung fehlgeschlagen");
+    expect(geloggt).toContain("reqId");
+    expect(geloggt).not.toContain("GEHEIM");
+    await app.close();
   });
 });
