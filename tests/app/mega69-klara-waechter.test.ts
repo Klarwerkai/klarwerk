@@ -817,7 +817,37 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //   · Fuer ein installiertes Add-in: kein erneutes Sideload noetig. Bis der Office-Cache
     //     nachzieht, steht der alte Satz — der Zustand von gestern, kein neues Risiko.
     // ============================================================================================
-    const PIN = "25babab007c45dae79a3abb973200e14bcc2fb7cf0a7337e9a47b360c6144a5e";
+    // ============================================================================================
+    // JOB 2929 D1 — PIN BEWUSST AKTUALISIERT, Auslieferungsfolgen:
+    // ============================================================================================
+    //   · WAS SICH AENDERT: EIN Farbwert, sonst nichts. Der Inline-Stil des gespiegelten
+    //     Stand-Feldes (`span#kw-stand-kopf`) trug `color: #9aa3ad` als LITERAL. Dieser Wert steht
+    //     in keiner Palette — er war das einzige Vorkommen im ganzen Baum. Jetzt steht dort
+    //     `var(--shell-muted)`, derselbe Token, den die Regel `#kw-stand-kopf` seit JOB 2621
+    //     fuehrt und den der Kommentar ueber dem Element bereits VERSPRACH („Farbe ist die
+    //     AA-belegte Kopfband-Palette (--shell-muted)").
+    //   · KEINE STRUKTURAENDERUNG: kein Element, kein `id`, kein Attribut, kein Skriptweg, keine
+    //     Zeichenkette angefasst. `document.getElementById("kw-stand-kopf")` trifft unveraendert
+    //     dasselbe Element wie zuvor.
+    //   · WAS SICHTBAR WIRD: nichts. Das Element ist ein zweites `kw-stand-kopf` neben dem
+    //     darueber; `getElementById` liefert das ERSTE, also bekommt dieses hier nie Text und
+    //     rendert nichts. Selbst wenn es Text truege, bliebe die Farbe AA-belegt:
+    //     --shell-muted auf --ink = 5,01:1 (mega43/mega44 misst es, gruen). Der alte Wert
+    //     #9AA3AD lag bei 7,07:1 — auch AA, aber eben nicht aus der Palette; die Zusicherung
+    //     „keine zweite Wahrheit" wiegt hier schwerer als der hoehere Einzelwert.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: mega43 zaehlt nach der Aenderung 13 statt 14
+    //     Kontrastpaare. Das ist kein verlorener Fall, sondern ein entfallener Sonderweg: das
+    //     14. Paar existierte NUR, weil das Literal existierte. Seine Quelle steht jetzt beim
+    //     Paar `--shell-muted auf --ink`. Die Untergrenze des Berichts (>= 11 Paare) ist gewahrt.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig.
+    //
+    // EINBAU-VERMERK (Chef, 01.09.): Der Klon von JOB 2929 D1 steht auf der Basis b4b0c12 und
+    // nennt dort den Pin edb9dbc2…. `taskpane.html` hat sich auf main seither in 51543c5 und
+    // 12ef99b geaendert (main-Pin vor diesem Einbau: 25babab0…). Uebernommen wurde deshalb die
+    // AENDERUNG, nicht der Pin-Wert des Klons; der Wert unten ist der neu gerechnete Hash der
+    // zusammengefuehrten main-Datei. Ein blindes Uebernehmen von edb9dbc2… haette den Waechter
+    // gegen einen Stand gepinnt, den es auf main nie gab.
+    const PIN = "6f8425a957c6a7b64203121e3413979c6a37c3501d819ff2334ea9fb7dad8f61";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

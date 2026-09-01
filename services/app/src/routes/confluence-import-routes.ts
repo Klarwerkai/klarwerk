@@ -71,8 +71,37 @@ export interface ConfluenceImportRouteDeps {
 // `fehler` gefuehrt — kein rohes `err`-Objekt: die Serializer-Disziplin aus 2661 liegt nicht in
 // diesem Basisstand (build-app.ts konfiguriert keinen Logger), und ein roher Fehler traegt Stack
 // und Ziel-URL. Die Wirkung im Produkt tritt erst mit dem Einbau des 2661-Loggers ein.
+//
+// JOB 2932 D1 (Befund CHEF-NACHPRUEFUNG Abschnitt 3): Fastify vergibt `request.log` je Anfrage als
+// Pino-Kindlogger (`app.log.child(...)`). Pino haengt die Stufenmethoden (u. a. `warn`) dabei als
+// EIGENE Instanz-Eigenschaft an das Kind an — nicht nur ererbt von `app.log`. Seit JOB 2661 einen
+// echten Pino-Logger baut (vorher: keiner), sieht ein Test, der `app.log.warn` beobachtet, einen
+// direkten `request.log.warn(...)`-Aufruf deshalb NIE, obwohl die reale Log-Zeile (inkl. `reqId`
+// aus den Chindings des Kindloggers) unveraendert korrekt erscheint. `wurzelWarn` findet die
+// warn-Methode des WURZEL-Loggers ueber die Prototypkette (bei Fastify immer genau ein Schritt,
+// die Schleife bleibt trotzdem robust gegen weitere Verschachtelung) und ruft sie MIT `this` auf
+// den Anfrage-Logger gebunden auf (`.call(log, …)`): die reqId-Bindung kommt aus `this`, nicht aus
+// der Methode selbst, bleibt also erhalten — derselbe Aufruf ist jetzt zusaetzlich am Wurzel-
+// Logger sichtbar.
+function wurzelWarn(
+  log: FastifyBaseLogger,
+): (fields: Record<string, unknown>, msg: string) => void {
+  let wurzel: object = log;
+  for (;;) {
+    const eltern = Object.getPrototypeOf(wurzel) as { warn?: unknown } | null;
+    if (!eltern || typeof eltern.warn !== "function") {
+      return (wurzel as FastifyBaseLogger).warn as unknown as (
+        fields: Record<string, unknown>,
+        msg: string,
+      ) => void;
+    }
+    wurzel = eltern;
+  }
+}
+
 function warne(log: FastifyBaseLogger, stelle: string, err: unknown): void {
-  log.warn(
+  wurzelWarn(log).call(
+    log,
     { stelle, fehler: sanitizeLogText(err instanceof Error ? err.message : String(err)) },
     `confluence-import: ${stelle} fehlgeschlagen`,
   );

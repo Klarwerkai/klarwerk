@@ -359,8 +359,13 @@
     <!-- SANIERUNG-20260827: Auslieferungsstand oben rechts GESPIEGELT (Befund Pedi,
          BEFUNDE_KLARA_PANEL_20260826 §1). #kw-stand unten bleibt bestehen — der Augenschein
          braucht die alte Stelle samt Tests unberuehrt. Vollbreiten-Flex-Kind wie der
-         Vertrauenskopf, damit Marke und Sprachwahl nicht verrutschen. -->
-    <span id="kw-stand-kopf" style="flex: 0 0 100%; text-align: right; font-size: 10px; color: #9aa3ad; margin: -4px 0 0;"></span>
+         Vertrauenskopf, damit Marke und Sprachwahl nicht verrutschen.
+         JOB 2929 D1: `color` war hier als Literal `#9aa3ad` gesetzt — ein Wert, den die
+         Werkbank-Palette nicht kennt (einziges Vorkommen im ganzen Baum). Das ist genau die
+         „zweite Wahrheit", die mega43 verbietet: die Regel `#kw-stand-kopf` (oben, Zeile 176)
+         sagt seit JOB 2621 `var(--shell-muted)`, der Inline-Stil sagte etwas anderes und
+         gewann. Jetzt steht hier derselbe Token wie in der Regel und im Kommentar darueber. -->
+    <span id="kw-stand-kopf" style="flex: 0 0 100%; text-align: right; font-size: 10px; color: var(--shell-muted); margin: -4px 0 0;"></span>
     <!-- ==========================================================================================
          AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER PERMANENTE VERTRAUENSKOPF (BASIC-0).
          ==========================================================================================
