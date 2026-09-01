@@ -157,6 +157,13 @@ const INVENTAR: readonly string[] = [
   // 30 Tagen abgelaufener Sitzungen. Traegt "klara" im Namen und wird von der Namensachse gefunden;
   // sachlich Klara-Regression: der Statusabruf des Panels darf kein Schreibvorgang mehr sein.
   "tests/app/job2688-klara-jedes-hinsehen-ist-ein-schreibvorgang.test.ts",
+  // JOB 2923 D1: der Ist-Stand-Beweislauf zu Station 1 (Word-Import mit Bildern). Von zwei
+  // Inhaltsachsen gefunden — `taskpane` (die Datei fuehrt das ausgelieferte `taskpane.html` ueber
+  // die Panel-Vorrichtung wirklich aus und nennt es) und `komponente` (sie fuehrt `KlaraPanel`).
+  // Sachlich gehoert sie in die Klara-Regression: sie haelt fest, was beim Erfassen aus Word
+  // WIRKLICH im Entwurf ankommt und dass ein Bildverlust dem Menschen gemeldet wird statt still
+  // zu geschehen. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/app/job2923-station1-beweislauf.test.tsx",
   // JOB 2703 D2: das ausgelieferte Aufgabenfenster zeigt im Antwortfeld die KANONISCH gekuerzte
   // Kernaussage (eine Regel fuer Confluence- und Word-Weg). Die Datei laeuft das Panel ueber die
   // Fixture `createKlaraPanel` — Inhaltsachse `taskpane`. K2 hat sie gemeldet, das Inventar nimmt

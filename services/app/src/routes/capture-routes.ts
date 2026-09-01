@@ -966,7 +966,6 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
         }
         try {
           const bodyHtml = reich.html;
-          const eingebettet = zaehleEingebetteteBilder(bodyHtml);
           // WELCHE ZAHL DIE QUELLBILDER NENNT — und warum NICHT `reich.totalImages`:
           // Jenes Feld ist „aus Rueckwaertskompatibilitaet an den Budgetlauf gebunden"
           // (`docx.ts:657-658`) und bleibt 0, wenn ohne `mapImage` extrahiert wird. Der Vertrag
@@ -992,6 +991,22 @@ export function captureRoutes(deps: CaptureRoutesDeps, guards: Guards): FastifyP
             sourceImageCount: quellbilder,
           };
           const draft = await capture.createDraft(payload, user.id);
+          // JOB 2912 D1 — DIE BILANZ WIRD AUF DEM STAND GEZOGEN, DER WIRKLICH GESPEICHERT WURDE.
+          //
+          // GEMESSEN, nicht gelesen: `createDraft` säubert `bodyHtml` mit dem Allowlist-Sanitizer
+          // (`capture/src/service.ts:143` → `structure/src/sanitize.ts:106`). Der lässt als
+          // `data:image` NUR png/jpeg/gif/webp durch. Ein Word-Bild im EMF/WMF-Format — der
+          // Normalfall bei aus PDF/Excel/PowerPoint eingefügten Grafiken — wird dort STILL
+          // verworfen; steht es in einer `figure`, bleibt allein die `figcaption` zurück.
+          //
+          // Wer wie bisher auf `reich.html` VOR dem Sanitizer zählt, meldet dem Panel „alles da",
+          // während im Entwurf nichts mehr steht: `imagesEmbedded == imagesTotal`, also KEINE
+          // Verlustmeldung. Genau daran ging Pedis Befund „nur Fußnoten kommen an" unbemerkt
+          // vorbei. Gezählt wird deshalb auf `draft.payload.bodyHtml`.
+          //
+          // DAS BEHEBT DEN VERLUST NICHT — es macht ihn sichtbar. Die Rettung der EMF/WMF-Bilder
+          // ist ein eigener Durchgang (JOB 2912 D2).
+          const eingebettet = zaehleEingebetteteBilder(draft.payload.bodyHtml ?? "");
           reply.code(201).send({
             ...draft,
             // Die Bildbilanz reist mit der Antwort, nicht nur im Entwurf: das Panel meldet damit
