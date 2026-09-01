@@ -221,6 +221,14 @@ const INVENTAR: readonly string[] = [
   // Klara-Regression: alle drei Stellen liegen im ausgelieferten Aufgabenfenster. K2 hat die
   // Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
   "tests/app/job2621-panel-wahrheiten.test.ts",
+  // JOB 2916 D2: Station 6 des Pedi-Pfads am frisch angelegten Objekt — die Frage laeuft in dem
+  // Modus, den das Aufgabenfenster fuehrt (`mode: "retrieval-only"`), und der Fall trennt den
+  // ANTWORTERFOLG (beantwortet, tragende Quelle, woertliche Fundstelle) vom VERTRAUENSSTEMPEL
+  // (Evidenzgrad, angezeigte Klasse), indem er beide aiCheck-Zustaende deterministisch herstellt.
+  // Von der Achse `taskpane` gefunden (der Fall benennt die Flaeche, die er nachstellt), sachlich
+  // Klara-Regression. K2 hat die Datei gemeldet, das Inventar hat sie nicht stillschweigend
+  // aufgenommen.
+  "tests/app/job2916-d1-station6-belegte-antwort.test.ts",
   // JOB 2626 D1: wenn Klara nicht antworten kann, sagt sie warum — der Servicevertrag der Torlage
   // (`AskResult.verschlossen`, mega77-Form: nur mit Betrachter, nie ueber Vertrauliches) und die
   // Messung an der echten Ask-Seite (alle zuen Tore lesbar, keines erfunden). Beide tragen „klara"
