@@ -116,10 +116,16 @@ describe("JOB 2693 D1 · A · die Zeitgrenzen", () => {
     const jwk = await exportJWK(publicKey);
     jwk.kid = "k";
     jwk.alg = "RS256";
+    // JOB 2931 D1: `.setSubject` nachgetragen. Dieser Fall prueft die JWKS-FABRIK, kommt dafuer aber
+    // durch die volle `verify` — und JOB 2686 (R2-7, Pruefung 1) verlangt seit 2693 ein `sub`
+    // (oidc.ts:233f). Ohne Subjekt endete der Lauf vor der Behauptung mit „OIDC-Token enthaelt kein
+    // Subjekt (sub)."; geprueft wurde also nichts mehr. Das Subjekt ist Beiwerk des Falls, nicht sein
+    // Gegenstand — die Behauptung unten ist unveraendert.
     const token = await new SignJWT({ email: "a@b.de" })
       .setProtectedHeader({ alg: "RS256", kid: "k" })
       .setIssuer(ISSUER)
       .setAudience(AUDIENCE)
+      .setSubject("sub-a6")
       .setExpirationTime("1h")
       .sign(privateKey);
     const verifier = createOidcVerifier(

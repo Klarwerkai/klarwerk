@@ -1024,6 +1024,11 @@ export const ERLAUBTE_FEHLERTYPEN: ReadonlySet<string> = new Set([
   "ModelHttpError",
   "ModelTimeoutError",
   "ObjectError",
+  // JOB 2931 D1: aus JOB 2693 (der Anmeldedienst, der nicht antwortet,
+  // services/auth/src/oidc.ts:26) — eingebaut nach 2661, vom Waechter unten als fehlend gemeldet.
+  // Der Name sagt nur „der Anmeldedienst war stumm": kein Nutzertext, keine Kennung, kein Host;
+  // der Meldungstext bleibt wie bei allen unterdrueckt.
+  "OidcUnreachableError",
   "OutputError",
   "OverlapError",
   "ReasonerPolicyLockedError",
