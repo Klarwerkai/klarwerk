@@ -1192,7 +1192,7 @@ describe("mega43 B1/B2 · Klara führt die Werkbank-Palette (keine zweite Wahrhe
     expect(MODELL.inline.length).toBeGreaterThan(0);
     const mitFarbe = MODELL.inline.filter((q) => /(^|;)\s*color\s*:/.test(q.text));
     expect(mitFarbe.map((q) => q.ort)).toContain(
-      "body > div#section-capture.hidden > div.card > div.scope > label#scope-pages-label [style]",
+      "body > div#section-capture.hidden > div#capture-karte.card > div.scope > label#scope-pages-label [style]",
     );
     // Der heutige Inline-Stil führt kein Literal, sondern var(--muted) — er ist sauber.
     expect(farbfunde(MODELL).filter((f) => f.ort.includes("[style]"))).toEqual([]);
