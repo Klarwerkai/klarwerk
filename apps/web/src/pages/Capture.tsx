@@ -365,6 +365,91 @@ function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState 
   };
 }
 
+// ==================================================================================================
+// F-0007 (JOB 2942 D1) — EIN GELADENES BEISPIEL WIRD NICHT UNBEMERKT ECHTES WISSEN
+// ==================================================================================================
+//
+// Gemessen am Stand `6d574fce`: `loadExample()` fuellte raw/category/asset/tags und war damit
+// fertig. Danach trug das Formular einen Demo-Datensatz, der von echtem Wissen nicht mehr zu
+// unterscheiden war — weder fuer den Nutzer noch fuer den Code (keine der Markierungen `isExample`,
+// `exampleLoaded`, `fromExample`, `demoData` existierte). Wer den Knopf zum gefahrlosen
+// Ausprobieren druckte und weiterklickte, legte Beispieldaten in den Bestand.
+//
+// Der Schaden war doppelt: verunreinigter Bestand, den jemand von Hand suchen und loeschen muss —
+// und, schwerer wiegend, ein Nutzer, der lernt, dass Ausprobieren eben NICHT gefahrlos ist. Damit
+// verliert der Knopf genau den Zweck, mit dem F-0007 ihn begruendet.
+//
+// Die Logik steht bewusst auf MODULEBENE und ist DOM-frei: sie ist damit ohne Mount pruefbar
+// (tests/capture/f0007-beispiel-nur-bewusst.test.ts) — die Entscheidung, ob etwas in den Bestand
+// darf, wird nicht in einem Klick-Handler versteckt.
+
+/** Die vier Felder, die `loadExample()` mit Beispielinhalt fuellt. */
+export interface BeispielFelder {
+  raw: string;
+  category: string;
+  asset: string;
+  tags: string[];
+}
+
+/**
+ * Traegt das Formular noch Inhalt des geladenen Beispiels?
+ *
+ * Bewusst feldweise und mit ODER verknuepft: teilweise ueberschrieben ist NICHT ueberschrieben.
+ * Wer nur den Rohtext ersetzt, traegt Kategorie, Anlage und Schlagworte des Demo-Datensatzes noch
+ * mit sich — genau die wuerden sonst still in den Bestand wandern.
+ */
+export function beispielRestVorhanden(felder: BeispielFelder): boolean {
+  const gleich = (a: string, b: string): boolean => a.trim() === b.trim();
+  return (
+    gleich(felder.raw, CAPTURE_EXAMPLE.raw) ||
+    gleich(felder.category, CAPTURE_EXAMPLE.category) ||
+    gleich(felder.asset, CAPTURE_EXAMPLE.asset) ||
+    felder.tags.some((tag) => CAPTURE_EXAMPLE.tags.some((beispielTag) => gleich(tag, beispielTag)))
+  );
+}
+
+/**
+ * Der gefuehrte Zustand: geladen UND noch vorhanden.
+ *
+ * Beide Haelften sind noetig. Ohne `geladen` wuerde jemand, der denselben Satz zufaellig selbst
+ * tippt, eine Rueckfrage bekommen, die ihn nichts angeht — das Merkmal ist die HERKUNFT. Ohne den
+ * Rest-Teil bliebe die Markierung an einem Formular kleben, in dem vom Beispiel nichts mehr steht.
+ */
+export function beispielImFormular(geladen: boolean, felder: BeispielFelder): boolean {
+  return geladen && beispielRestVorhanden(felder);
+}
+
+export type EinreichSchritt = "einreichen" | "rueckfrage";
+
+/**
+ * Der Torschritt des Einreichens.
+ *
+ * Ohne Beispiel im Formular bleibt der Weg exakt so einschrittig wie bisher — der normale
+ * Erfassungsweg bekommt KEINEN zusaetzlichen Klick. Mit Beispiel ist der erste Griff eine
+ * Ruecksprache und der zweite die Einreichung: eine Sperre waere ein Verbot, und verboten ist
+ * das Einreichen eines Beispiels nicht — es soll nur bewusst geschehen.
+ */
+export function beispielEinreichSchritt(args: {
+  beispielImFormular: boolean;
+  bestaetigt: boolean;
+}): EinreichSchritt {
+  if (!args.beispielImFormular) {
+    return "einreichen";
+  }
+  return args.bestaetigt ? "einreichen" : "rueckfrage";
+}
+
+// Die drei Texte der Rueckfrage. Sie stehen hier als Klartext und NICHT in `i18n.ts`, weil diese
+// Datei in diesem Zug JOB 2945 gehoert und fuer diesen Durchgang gesperrt ist. Wo der vorhandene
+// Schluesselbestand traegt, wird er benutzt (`demo.badge.label` fuer die Markierung,
+// `capture.file.cancel` fuer den Abbruch — beide dreisprachig vorhanden); fuer Frage und
+// Bestaetigung gibt es keinen passenden Schluessel. Das ist eine Ownerfrage der Rueckgabe, kein
+// stiller Dauerzustand: die drei Werte gehoeren nach `i18n.ts`, sobald die Datei wieder frei ist.
+const BEISPIEL_TOR_TEXT = {
+  frage: "Das sind Beispieldaten. Wirklich als echtes Wissen einreichen?",
+  bestaetigen: "Ja, Beispiel einreichen",
+} as const;
+
 export function Capture(): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
@@ -594,6 +679,13 @@ export function Capture(): JSX.Element {
   // persistiert. Nach dem Fortsetzen ist sie deshalb bewusst leer — dieser Zustand zeigt den ehrlichen
   // Hinweis dazu an (Suchanfrage ist wieder da, Treffer per Klick neu laden), bis eine Suche läuft.
   const [extListDropped, setExtListDropped] = useState(false);
+
+  // F-0007: Herkunftsmerkmal des Formularinhalts — hat der Nutzer „Beispiel laden" gedrückt?
+  // Reines Herkunftsflag; ob vom Beispiel noch etwas DRINSTEHT, entscheidet `exampleInForm`.
+  const [exampleLoaded, setExampleLoaded] = useState(false);
+  // F-0007: der zweite, ausdrückliche Griff. Steht er auf `true`, hat der Nutzer die Rückfrage
+  // gesehen und beantwortet — nur dann reicht das Beispiel ein.
+  const [confirmExampleSubmit, setConfirmExampleSubmit] = useState(false);
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -2112,6 +2204,12 @@ export function Capture(): JSX.Element {
     setWizStep("tell");
     clearInterviewState();
     clearFileImportState();
+    // F-0007: der Leerzustand trägt keine Herkunft. Ohne diese zwei Zeilen hinge die Rückfrage am
+    // nächsten, völlig frischen Wissensobjekt — die abgeleitete Prüfung würde sie zwar sofort
+    // wieder still legen, aber der Reset ist die eine Quelle für den Leerzustand: was er nicht
+    // räumt, erbt das nächste Objekt.
+    setExampleLoaded(false);
+    setConfirmExampleSubmit(false);
   };
 
   const switchMode = (m: Mode): void => {
@@ -3293,7 +3391,72 @@ export function Capture(): JSX.Element {
     // SCRUM-375: das Beispiel füllt erweiterte Felder → aufklappen, damit der Nutzer sie sieht.
     setShowAdvanced(true);
     setNotice(t(CAPTURE_EXAMPLE.noticeKey));
+    // F-0007: die Herkunft wird MIT den Feldern gesetzt, nicht nachgereicht. Genau das fehlte —
+    // die Felder waren gefüllt, woher sie kamen, wusste danach niemand mehr.
+    setExampleLoaded(true);
+    // Ein neu geladenes Beispiel ist noch von niemandem bestätigt worden.
+    setConfirmExampleSubmit(false);
   };
+
+  // F-0007: der geführte Zustand, wie ihn Oberfläche UND Einreichweg sehen. Er fällt von selbst,
+  // sobald der Mensch das Beispiel vollständig durch eigenes Wissen ersetzt hat — dann ist es
+  // keines mehr, und weder Markierung noch Rückfrage haben eine Berechtigung.
+  const exampleInForm = beispielImFormular(exampleLoaded, { raw, category, asset, tags });
+
+  // F-0007: EIN Tor für beide Einreich-Knöpfe. Ohne Beispiel im Formular ist das exakt der bisherige
+  // Weg — ein Klick, kein Zwischenschritt. Mit Beispiel fragt der erste Griff zurück.
+  //
+  // JOB 2942 D2: `bestaetigt` kommt aus dem KLICKWEG, nicht mehr aus dem Anzeigezustand
+  // `confirmExampleSubmit`. Der gemountete UI-Test hat gezeigt, warum das der Unterschied zwischen
+  // Ruecksprache und Schein-Ruecksprache ist: solange das offene Fragefenster selbst als
+  // „bestaetigt" zaehlte, reichte ein ZWEITER Klick auf denselben Einreichknopf das Beispiel ein —
+  // ohne dass der Mensch die Frage je beantwortet hatte. Ein Doppelklick hätte genügt. Bestätigen
+  // kann jetzt nur, wer den Bestätigungsknopf drückt.
+  const requestSubmit = (bestaetigt = false): void => {
+    const schritt = beispielEinreichSchritt({
+      beispielImFormular: exampleInForm,
+      bestaetigt,
+    });
+    if (schritt === "rueckfrage") {
+      setConfirmExampleSubmit(true);
+      return;
+    }
+    setConfirmExampleSubmit(false);
+    submit.mutate();
+  };
+
+  // F-0007: die sichtbare Hälfte. Der Zustand darf nicht nur intern geführt werden — wer ein
+  // Beispiel geladen hat, sieht das bis zum Schluss. Herkunfts-Kennzeichnung im Muster von
+  // SCRUM-308 (KnowledgeDetail): neutral, kein Statussignal, dieselbe Optik wie am Wissensobjekt.
+  const beispielMarkierung = (): JSX.Element | null =>
+    exampleInForm ? (
+      <span className="rounded-pill bg-hairline-soft px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted-2">
+        {t("demo.badge.label")}
+      </span>
+    ) : null;
+
+  // F-0007: die Rücksprache vor dem Bestand. Sie steht an BEIDEN Einreich-Stellen — ein zweiter
+  // Knopf, an dem sie fehlte, wäre kein Schutz, sondern ein Schlupfloch. Der Bestätigungsknopf
+  // ruft dasselbe `requestSubmit`: mit gesetztem `confirmExampleSubmit` gibt das Tor „einreichen"
+  // zurück. So gibt es genau EINEN Weg in den Bestand, nicht zwei nebeneinanderliegende.
+  const beispielRueckfrage = (): JSX.Element | null =>
+    exampleInForm && confirmExampleSubmit ? (
+      <div className="rounded-card border border-hairline bg-page px-3 py-2.5">
+        <p className="text-[12.5px] font-semibold text-text">{BEISPIEL_TOR_TEXT.frage}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button variant="primary" disabled={submit.isPending} onClick={() => requestSubmit(true)}>
+            {BEISPIEL_TOR_TEXT.bestaetigen}
+          </Button>
+          <button
+            type="button"
+            className="rounded-btn px-3 py-2 text-[12.5px] font-semibold text-muted hover:text-text"
+            onClick={() => setConfirmExampleSubmit(false)}
+          >
+            {t("capture.file.cancel")}
+          </button>
+        </div>
+      </div>
+    ) : null;
 
   const busy = structure.isPending || saveDraft.isPending;
   // E2E-004: „Als Entwurf speichern" verlangt mind. Aussage ODER Titel — leere/Whitespace-only
@@ -5421,6 +5584,9 @@ export function Capture(): JSX.Element {
                   {t("capture.loadExample")}
                 </Button>
                 <HelpTip {...chelp("loadExample")} />
+                {/* F-0007: die Markierung beginnt dort, wo das Beispiel entsteht — der Nutzer sieht
+                  sie vom Laden bis zum Einreichen, nicht erst am Ende. */}
+                {beispielMarkierung()}
                 {/* Pedi 02.07.: Verwerfen auch im Erzähl-Schritt — leert Text + Anhänge. */}
                 {/* SCRUM-412 (CI): Bestätigung = neutrale Fläche; Ampel-Farben bleiben Reife/Status
                   vorbehalten — Rot nur am destruktiven Aktions-Element selbst. */}
@@ -5694,12 +5860,17 @@ export function Capture(): JSX.Element {
                     <p className="text-[11.5px] leading-relaxed text-muted">
                       {t(CAPTURE_FLOW_TEXT.submitValue)}
                     </p>
+                    {/* F-0007: Herkunft und Rücksprache stehen unmittelbar an der Entscheidung. */}
+                    {beispielRueckfrage()}
                     <div className="flex items-center gap-1.5">
+                      {beispielMarkierung()}
                       <Button
                         variant="primary"
                         className="flex-1"
                         disabled={submit.isPending || !readiness?.canSave}
-                        onClick={() => submit.mutate()}
+                        // F-0007/D2: ohne Argument — sonst reichte React das Klick-Ereignis als
+                        // `bestaetigt` herein, und jeder erste Griff waere eine Bestaetigung.
+                        onClick={() => requestSubmit()}
                       >
                         {/* WP-D7/D7b (Befund 4/Rot-Fix 1): ehrliches, mehrstufiges Ladefeedback — Einreichen
                           kettet mehrere Netz-Aufrufe; der Text zeigt die aktuelle Phase (inkl. Upload-Größe). */}
@@ -6067,7 +6238,10 @@ export function Capture(): JSX.Element {
                     </Button>
                   </div>
                 ) : null}
+                {/* F-0007: Herkunft und Rücksprache stehen unmittelbar an der Entscheidung. */}
+                {beispielRueckfrage()}
                 <div className="flex flex-wrap items-center gap-2">
+                  {beispielMarkierung()}
                   <Button
                     variant="ghost"
                     disabled={busy || !canSaveDraft}
@@ -6089,7 +6263,9 @@ export function Capture(): JSX.Element {
                     variant="primary"
                     className="flex-1"
                     disabled={submit.isPending || !readiness?.canSave}
-                    onClick={() => submit.mutate()}
+                    // F-0007/D2: ohne Argument — sonst reichte React das Klick-Ereignis als
+                    // `bestaetigt` herein, und jeder erste Griff waere eine Bestaetigung.
+                    onClick={() => requestSubmit()}
                   >
                     {/* WP-D7/D7b (Befund 4/Rot-Fix 1): mehrstufiges Ladefeedback beim Einreichen. */}
                     {submit.isPending ? (
