@@ -290,6 +290,16 @@ const INVENTAR: readonly string[] = [
   "tests/design/zielbild-validierung.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
+  // JOB 3008 D1 (02.09.2026): der Zustandsweg der Office-Erkennung, am laufenden Aufgabenfenster
+  // gemessen (kein office.js · Office ohne `onReady` · `onReady` bleibt aus · spaetes `onReady` ·
+  // die Spanne VOR der Erkennung). Sie traegt „klara" im Pfad (`tests/klara-panel/`), nennt
+  // `taskpane.html` und `createKlaraPanel` im Belegtext — Achsen `name`, `taskpane`, `komponente`
+  // (K6-Bericht). Der Pfad war im Auftrag JOB 3008 abschliessend vorgegeben, der Zusammenstoss mit
+  // dieser Nachfuehrpflicht also unvermeidbar.
+  // K2 hat die Datei gemeldet, das Inventar hat sie nicht still aufgenommen. Sachlich
+  // Klara-Regression: sie haelt fest, was ein Mensch im Panel SIEHT, wenn Word sich nicht,
+  // spaet oder gar nicht meldet — bisher war genau das nur ueber Quelltext-Pins gesichert.
+  "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
   "tests/legal/mega61-ki-satz.test.ts",
   "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
   "tests/library/mega59-nullzustand-mounted.test.tsx",
@@ -496,7 +506,15 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // GEMESSEN, NICHT GESETZT: mit dem neuen Eintrag und noch unveraendertem Zaehler meldete der
     // Lauf in diesem Klon `expected 31 to be 30` (Arbeitsspur `messung-zaehler.txt`); erst danach
     // wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(31);
+    // 31 -> 32 am 02.09.2026 (JOB 3008 D1): `tests/klara-panel/p7-office-erkennung-am-fenster.
+    // test.tsx` traegt „klara" im PFAD (nicht im Dateinamen) — die Namensachse liest den ganzen
+    // Pfad (`wo: "pfad"`, Zeile 58), also faellt sie in die Namensmenge. Der Verzeichnisname war im
+    // Auftrag abschliessend vorgegeben. GEMESSEN, NICHT GESETZT: der Tor-Lauf der Runde 1 meldete
+    // mit unveraendertem Zaehler `expected 32 to be 31`; erst danach wurde diese Zeile angefasst.
+    // Wie bei den 2948/2959-Zeilen darueber zaehlt die Datei hier mit, obwohl sie zusaetzlich die
+    // Inhaltsachsen `taskpane` und `komponente` traegt — `nurName` ist die Menge, die eine Suche
+    // NUR ueber den Namen faende, nicht die Menge der ausschliesslich so gefundenen Dateien.
+    expect(nurName.length).toBe(32);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
