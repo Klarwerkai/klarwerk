@@ -20,6 +20,45 @@ export function cappedTranscriber(
   };
 }
 
+// F-0121 (JOB 2955 D1): DIE FORMATANGABE DES UPLOADS.
+//
+// Die Transkriptions-API bestimmt das Format der Aufnahme über die DATEIENDUNG des hochgeladenen
+// Feldes; ihre Fehlermeldung zählt ausschließlich Endungen auf (flac, mp3, mp4, mpeg, mpga, m4a,
+// ogg, wav, webm). Bis hierher hing `transcribe` die Aufnahme unter dem extensionslosen Namen
+// "media" an und warf damit bei JEDEM Aufruf die einzige Formatangabe weg, die vorliegt — obwohl
+// der MIME-Typ als Parameter hereinkommt.
+//
+// Abgebildet sind genau die von der API unterstützten Formate. Ein unbekannter Typ bekommt
+// BEWUSST KEINE Endung: eine geratene Endung wäre eine Falschangabe über den Inhalt, und die
+// ehrliche Ablehnung durch die API ist besser als ein falsch deklarierter Upload.
+const MEDIA_DATEIENDUNGEN: Readonly<Record<string, string>> = {
+  "audio/flac": "flac",
+  "audio/mp3": "mp3",
+  "audio/mpeg": "mp3",
+  "audio/mpga": "mpga",
+  "audio/m4a": "m4a",
+  "audio/x-m4a": "m4a",
+  "audio/mp4": "m4a",
+  "audio/ogg": "ogg",
+  "audio/oga": "oga",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/wave": "wav",
+  "audio/webm": "webm",
+  "video/mp4": "mp4",
+  "video/mpeg": "mpeg",
+  "video/webm": "webm",
+};
+
+// Der Browser-Rekorder liefert den Typ mit Parametern ("audio/webm;codecs=opus"); genau solche
+// Aufnahmen entstehen im Produkt. Deshalb wird vor dem Nachschlagen am Semikolon abgeschnitten
+// und normalisiert.
+function uploadDateiname(mime: string): string {
+  const typ = (mime.split(";")[0] ?? "").trim().toLowerCase();
+  const endung = MEDIA_DATEIENDUNGEN[typ];
+  return endung ? `media.${endung}` : "media";
+}
+
 // Anbieter-Client für Sprache→Text. Der Schlüssel bleibt ausschließlich serverseitig
 // (G-7) und wird nie geloggt oder an den Client gegeben. `fetchFn` injizierbar → testbar ohne Netz.
 export interface WhisperConfig {
@@ -47,7 +86,7 @@ export function whisperClient(config: WhisperConfig): Transcriber {
       const form = new FormData();
       form.append("model", model);
       form.append("language", locale);
-      form.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), "media");
+      form.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), uploadDateiname(mime));
       const res = await fetchFn(`${baseUrl}/v1/audio/transcriptions`, {
         method: "POST",
         headers: { authorization: `Bearer ${config.apiKey}` },
