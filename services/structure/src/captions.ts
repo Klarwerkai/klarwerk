@@ -112,6 +112,28 @@ export function imageCaptionEntries(bodyHtml: string | null | undefined): ImageC
       // „V2, sichtbar" hätte die formatierte Fußnote nicht mehr gefunden. Ein Umbruch IST eine
       // Wortgrenze und bleibt ein Leerzeichen; Auszeichnung ist keine und verschwindet spurlos.
       .replace(/<br\s*\/?>/gi, " ")
+      // JOB 2961 D1 (F-0435): die ANDERE Hälfte derselben Regel. mega84 hat das Zuviel an der
+      // Inline-Grenze beseitigt und das Zuwenig an der BLOCKGRENZE stehen lassen — gemessen am
+      // Stand `6d574fce`: aus „<p>Ventil V2</p><p>gerissen</p>" wurde „Ventil V2gerissen". Zwei
+      // Wörter werden eins, und wer „Ventil V2" sucht, findet die Fußnote nicht mehr; das ist
+      // derselbe Schaden, den F-0435 beheben soll, nur an der anderen Kante.
+      //
+      // Dass Blockelemente hier ankommen, ist keine Annahme: `ALLOWED_TAGS` (sanitize.ts) kennt
+      // p/div/h2/h3/ul/ol/li/blockquote und die Tabellen-Tags, und der Sanitizer prüft KEINE
+      // Verschachtelung — eine aus Word in die editierbare Fußnote eingefügte Absatzfolge
+      // passiert ihn unverändert.
+      //
+      // Die Liste ist bewusst dieselbe, die `sanitize.ts` für den Body-Klartext längst als
+      // Wortgrenze führt (dort `</(p|h2|h3|li|blockquote|div|caption|figcaption|th|td|tr)>`).
+      // Zwei Leser derselben Wahrheit gaben bisher zwei verschiedene Antworten; hier endet das.
+      // Anders als dort zählt die ÖFFNENDE Marke mit: in einer Fußnote steht Text auch VOR dem
+      // ersten Block („A<div>B</div>"), und nur das Schlusstag zu nehmen ließe „AB" stehen. Ein
+      // doppeltes Leerzeichen entsteht dadurch nie — der Kollaps eine Zeile weiter unten fängt es,
+      // und der Absatzwechsel bleibt GENAU EIN Leerzeichen (Ausnahme (2) des Suchvertrags).
+      .replace(
+        /<\/?(?:p|div|h2|h3|ul|ol|li|blockquote|table|thead|tbody|tfoot|tr|th|td|caption|figure|figcaption)\b[^>]*>/gi,
+        " ",
+      )
       .replace(/<[^>]*>/g, "")
       .replace(/\s+/g, " ")
       .trim();

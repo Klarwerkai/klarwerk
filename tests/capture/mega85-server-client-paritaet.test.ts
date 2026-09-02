@@ -53,6 +53,30 @@ const KORPUS: readonly { name: string; html: string }[] = [
   },
   { name: "kaputtes Markup (unfertige Fußnote)", html: "<figure><figcaption>ohne Ende" },
   { name: "gar keine Figur", html: "<p>Nur Text, <em>ausgezeichnet</em>, sonst nichts.</p>" },
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+  // JOB 2961 D2 — DIE LÜCKE, DIE DIESEN WÄCHTER GRÜN LIESS, WÄHREND DIE DRIFT SCHON DA WAR
+  // ────────────────────────────────────────────────────────────────────────────────────────────
+  // D1 hat die Blockgrenze serverseitig zur Wortgrenze gemacht und den Client-Spiegel stehen
+  // lassen. Server las „Ventil V2 gerissen", Client „Ventil V2gerissen" — und dieser Test blieb
+  // trotzdem grün, weil sein Korpus Blockelemente NUR UM die Figur herum kannte, nie INNERHALB
+  // der Fußnote. Die Drift war real und unsichtbar; genau davor sollte dieser Wächter schützen.
+  //
+  // Deshalb stehen die drei von ben benannten Fälle jetzt einzeln drin. Sie sind keine Deko: an
+  // ihnen ist der Unterschied zwischen beiden Kopien messbar, und nur an ihnen wäre er es gewesen.
+  { name: "Blockabsätze IN der Fußnote", html: figur("<p>Ventil V2</p><p>gerissen</p>") },
+  {
+    name: "Listenpunkte IN der Fußnote",
+    html: figur("<ul><li>Ventil V2</li><li>gerissen</li></ul>"),
+  },
+  {
+    name: "Tabellenzellen IN der Fußnote",
+    html: figur("<table><tr><td>Ventil V2</td><td>gerissen</td></tr></table>"),
+  },
+  {
+    name: "Block und Auszeichnung gemischt",
+    html: figur("<p>Der <em>Ventil V2</em>,</p><p>gerissen</p>"),
+  },
+  { name: "Text vor dem ersten Block", html: figur("Ventil V2<div>gerissen</div>") },
 ];
 
 describe("mega85 Block B: Server- und Client-Extraktion liefern für DASSELBE bodyHtml DASSELBE", () => {
@@ -72,6 +96,29 @@ describe("mega85 Block B: Server- und Client-Extraktion liefern für DASSELBE bo
         `„${fall.name}“: htmlToPlainText liefert auf Server und Client verschiedene Texte.`,
       ).toBe(clientPlainText(fall.html));
     }
+  });
+
+  // JOB 2961 D2: Gleichheit allein genügt hier nicht. Zwei Kopien, die BEIDE „Ventil V2gerissen"
+  // liefern, wären auch paritätisch — und genau das war der Zustand vor D1. Deshalb steht neben
+  // der Parität die inhaltliche Zusage: an der Blockgrenze GENAU EINE Wortgrenze, auf beiden Seiten.
+  it("Blockelemente in der Fußnote ergeben auf beiden Seiten genau eine Wortgrenze", () => {
+    const faelle: [string, string][] = [
+      ["<p>Ventil V2</p><p>gerissen</p>", "Ventil V2 gerissen"],
+      ["<ul><li>Ventil V2</li><li>gerissen</li></ul>", "Ventil V2 gerissen"],
+      ["<table><tr><td>Ventil V2</td><td>gerissen</td></tr></table>", "Ventil V2 gerissen"],
+      ["Ventil V2<div>gerissen</div>", "Ventil V2 gerissen"],
+    ];
+    for (const [inhalt, erwartet] of faelle) {
+      const html = figur(inhalt);
+      expect(serverCaptionTexts(html), `Server, ${inhalt}`).toEqual([erwartet]);
+      expect(clientCaptionTexts(html), `Client, ${inhalt}`).toEqual([erwartet]);
+    }
+  });
+
+  it("die Auszeichnung bleibt auf beiden Seiten spurlos — kein „V2 ,“ kehrt zurück", () => {
+    const html = figur("Der <em>Ventil V2</em>, gerissen.");
+    expect(serverCaptionTexts(html)).toEqual(["Der Ventil V2, gerissen."]);
+    expect(clientCaptionTexts(html)).toEqual(["Der Ventil V2, gerissen."]);
   });
 
   it("der Vergleich ist echt: er würde einen Unterschied auch sehen", () => {

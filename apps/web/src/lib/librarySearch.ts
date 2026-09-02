@@ -58,6 +58,20 @@ export function imageCaptionTexts(bodyHtml: string | null | undefined): string[]
       // „V2, sichtbar" hätte die formatierte Fußnote nicht mehr gefunden. Ein Umbruch IST eine
       // Wortgrenze und bleibt ein Leerzeichen; Auszeichnung ist keine und verschwindet spurlos.
       .replace(/<br\s*\/?>/gi, " ")
+      // JOB 2961 D2 (F-0435): die BLOCKGRENZE ist ebenfalls eine Wortgrenze. Diese Zeile ist die
+      // wortgleiche Kopie aus `services/structure/src/captions.ts` — D1 hat sie dort eingeführt
+      // und diesen Spiegel stehen lassen, sodass der Server „Ventil V2 gerissen" las und der
+      // Client weiter „Ventil V2gerissen". Genau diese Drift beseitigt dieser Durchgang.
+      //
+      // Die Kopie MUSS eine Kopie bleiben: der webbuild-Stage im Dockerfile kopiert nur
+      // `apps/web`, ein Import aus `services/` bräche den Produktions-Build (begründet in
+      // tests/capture/mega85-server-client-paritaet.test.ts). Was den Import ersetzt, ist der
+      // Paritätstest dort — er führt beide Seiten mit denselben Fußnoten und vergleicht Zeichen
+      // für Zeichen, seit D2 auch für p, li und td.
+      .replace(
+        /<\/?(?:p|div|h2|h3|ul|ol|li|blockquote|table|thead|tbody|tfoot|tr|th|td|caption|figure|figcaption)\b[^>]*>/gi,
+        " ",
+      )
       .replace(/<[^>]*>/g, "")
       .replace(/\s+/g, " ")
       .trim();
