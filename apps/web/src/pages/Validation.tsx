@@ -878,9 +878,20 @@ export function Validation(): JSX.Element {
                               {/* SCRUM-425 (Pedi 03.07.): Titel-Typografie, -Hover und Pill-Abstand
                               an die Bibliothek angeglichen (dort text-[15px], nur Unterstreichung
                               beim Hover, gap-1.5) — eine ruhige, konsistente Board-/Listen-Optik. */}
+                              {/* JOB 2935 D2 — DER KLEINSTE STRUKTURFIX, den die neue Messung
+                              verlangt hat. `truncate` galt bisher auf JEDER Breite. Auf der
+                              Kartenbreite von D1 reicht der Platz, gemessen im Classic-Standard bei
+                              1280 px: Überlauf 0. In einem Word-nahen schmalen Fenster (360 px; das
+                              Aufgabenfenster ist im Produkt 340 px breit, KlaraAssistant.tsx:355)
+                              reicht er nicht — dort wurde der Titel wieder abgeschnitten, gemessener
+                              Überlauf 2 px. Und der Titel ist auf einem Prüfboard die einzige
+                              Angabe, an der man die Karten auseinanderhält; genau darum ging es in
+                              D1. `sm:truncate` statt `truncate`: schmal darf der Titel UMBRECHEN,
+                              ab der ersten Tailwind-Stufe bleibt die ruhige einzeilige Optik
+                              unverändert. Eine Zeile, keine Farbe, kein Token, kein Wortlaut. */}
                               <Link
                                 to={`/wissen/${k.id}`}
-                                className="block truncate text-[15px] font-semibold leading-snug text-text underline-offset-4 hover:underline"
+                                className="block text-[15px] font-semibold leading-snug text-text underline-offset-4 hover:underline sm:truncate"
                               >
                                 {k.title}
                               </Link>
