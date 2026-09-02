@@ -302,6 +302,17 @@ const INVENTAR: readonly string[] = [
   // Flaeche, sieht ein Anwender wieder nicht, ob die Hilfe seinen eigenen Text als geprueft
   // ausgibt — genau Pedis Frage aus diesem Durchgang.
   "tests/web/job2660-hilfe-fremdtext-ui.test.tsx",
+  // JOB 2948 D2 (02.09.2026): der Abnahmetest zum UX-Designartefakt F-0295 — wie der gesperrte
+  // externe Antwortweg aussehen muss (Zustaende `external_not_migrated`, `external_consent_missing`
+  // und „laeuft extern"). Er traegt „klara" im Namen und nennt `taskpane.html` im Belegtext, trifft
+  // also Namens- UND Inhaltsachse (K6-Bericht: `name,taskpane`); der Pfad war
+  // in JOB 2948 D1 fest vorgegeben, der Zusammenstoss mit dieser Nachfuehrpflicht also unvermeidbar.
+  // K2 hat die Datei gemeldet, das Inventar hat sie nicht still aufgenommen — D1 hat den Fund
+  // ausserhalb seines Zwei-Pfad-Scopes als Blocker zurueckgegeben, D2 fuehrt ihn mit ausdruecklich
+  // erweitertem Zielpfad nach (BEN-PRUEFUNG-JOB-2948-D1, Korrekturpflicht 1). Sachlich
+  // Klara-Regression: der Test haelt fest, dass die Oberflaeche einen nie gebauten Weg nicht als
+  // Verweigerung ausgibt und den Datenabfluss beim Namen nennt.
+  "tests/design/f0295-klara-externer-antwortweg.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -454,7 +465,17 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // klara-torlage-vertrag.test.ts` und `tests/app/job2626-klara-torlage-sichtbar-mounted.test.tsx`
     // tragen "klara" im Namen und treffen nur die Namensachse (D1 hatte 26 -> 28 auf 71d3c2b
     // gemessen; hier liegt 2688 schon im Baum, deshalb 27 -> 29).
-    expect(nurName.length).toBe(29);
+    // 29 -> 30 am 02.09.2026 (JOB 2948 D2): `tests/design/f0295-klara-externer-antwortweg.test.ts`
+    // traegt "klara" im Namen und faellt damit in die Namensmenge. Klon-Startpin 6d574fce, dort
+    // stand 29. GEMESSEN, nicht gesetzt: der Lauf von JOB 2948 D1 meldete `expected 30 to be 29`,
+    // bevor diese Zeile angefasst wurde. Der Testpfad war in D1 fest vorgegeben — die Nachfuehrung
+    // ist die Folge des Namens, nicht einer Wahl.
+    // GENAUER ALS DIE ZEILEN DARUEBER, weil es hier messbar ist: `nurName` ist die Menge, die eine
+    // Suche NUR ueber den Dateinamen faende — nicht die Menge der Dateien, die ausschliesslich
+    // diese eine Achse treffen. Der K6-Bericht weist fuer diese Datei `name,taskpane` aus: sie
+    // nennt `taskpane.html` im Belegtext und traegt damit auch die Inhaltsachse. Sie zaehlt
+    // trotzdem hier mit, und genau das ist der Punkt dieses Falls.
+    expect(nurName.length).toBe(30);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

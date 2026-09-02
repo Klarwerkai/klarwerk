@@ -1,0 +1,644 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>F-0295 · Der gesperrte externe Antwortweg — Entwurf</title>
+<!--
+  ================================================================================================
+  JOB 2948 · D1 · EXT1 — UX-DESIGNARTEFAKT zu F-0295, Stand 02.09.2026.
+  ================================================================================================
+
+  WAS DAS HIER IST: ein Entwurf zum Anklicken. Kein Produktcode, kein Import aus `apps/` oder
+  `services/`, kein Netzaufruf, keine Verbindung zum echten Server. Alle Zahlen und Texte in
+  dieser Datei sind Beispieldaten; jede Behauptung ueber das Produkt nennt ihre Codestelle.
+
+  WOFUER: Pedi hat am 27.08. in Word Text markiert, eine Frage getippt, „Klara fragen" gedrueckt —
+  und es passierte nichts. Was er daraus las, steht im Funktionsregister F-0295:
+  „ich als admin gebe es frei und eine ki verweigert mir das?"
+
+  Das ist die eigentliche Wirkung eines stillen Fehlschlags: Der Nutzer erfindet eine Erklaerung,
+  und sie ist fast immer schlimmer als die Wahrheit. Die Wahrheit ist harmloser und unangenehmer
+  zugleich — der Weg wurde nie fertig gebaut.
+
+  WAS DER ENTWURF NICHT TUT: Er entscheidet die Freischaltung nicht. `KLARA_EXTERNAL_EXECUTION_-
+  MIGRATED` (klara-policy.ts:161) bleibt unberuehrt; kein Bedienelement hier legt sie um oder gibt
+  vor, es zu tun. Der Entwurf macht die Entscheidung entscheidbar, indem er zeigt, worueber
+  entschieden wird.
+-->
+<style>
+  /* Die Werkbank-Palette aus apps/web/src/styles/themes.css (Theme „modern"). */
+  :root {
+    --papier: #faf8f5;
+    --flaeche: #ffffff;
+    --tinte: #1a2233;
+    --gedaempft: #525b6b;
+    --linie: #e9e5de;
+    --linie-weich: #f2efea;
+    --gut: #116b3c;
+    --gut-flaeche: #e6f2ec;
+    --warn: #8a5a00;
+    --warn-flaeche: #fdf1d7;
+    --krit: #b3372b;
+    --krit-flaeche: #fbeceb;
+    --nacht: #0e1626;
+    --nacht-schrift: #7e879a;
+    --extern: #6b3fa0;
+    --extern-flaeche: #f1ebf9;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--papier);
+    color: var(--tinte);
+    font: 14px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  }
+  a { color: #9c5009; }
+
+  .kopf {
+    background: var(--nacht); color: var(--papier);
+    padding: 14px 28px; display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap;
+  }
+  .kopf b { font-size: 16px; font-weight: 650; letter-spacing: -0.1px; }
+  .kopf .reg { font-size: 10.5px; letter-spacing: 1.4px; color: var(--nacht-schrift); }
+  .kopf .warnung {
+    margin-left: auto; font-size: 11.5px; color: var(--warn-flaeche);
+    border: 1px solid #4a3a12; background: #241d0c; border-radius: 999px; padding: 3px 12px;
+  }
+
+  .huelle { max-width: 1180px; margin: 0 auto; padding: 22px 28px 56px; }
+
+  /* ---- Die Zustandswahl: sie gehoert dem ENTWURF, nicht dem Panel. -------------------------- */
+  #zustandswahl {
+    border: 1px dashed #cfc7ba; border-radius: 12px; background: #fffdfa;
+    padding: 12px 16px; margin-bottom: 22px;
+  }
+  #zustandswahl .zeile { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  #zustandswahl .lupe { font-size: 11.5px; color: var(--gedaempft); margin: 8px 0 0; }
+  .wahl {
+    font: inherit; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: 1px solid var(--linie); background: var(--flaeche); color: var(--tinte);
+    border-radius: 9px; padding: 8px 14px; text-align: left;
+  }
+  .wahl small { display: block; font-weight: 500; font-size: 11px; color: var(--gedaempft); }
+  .wahl[aria-pressed="true"] { border-color: var(--tinte); box-shadow: inset 0 0 0 1px var(--tinte); }
+
+  /* ---- Zwei Spalten: links das Fenster, rechts die Begruendung. ----------------------------- */
+  .buehne { display: flex; gap: 26px; align-items: flex-start; flex-wrap: wrap; }
+  .buehne > .links { width: 372px; flex: 0 0 372px; }
+  .buehne > .rechts { flex: 1 1 380px; min-width: 340px; }
+  .rahmenwort { font-size: 11px; letter-spacing: 0.6px; color: var(--gedaempft); margin: 0 0 8px; }
+
+  /* Der Word-Aufgabenbereich. Bewusst schmal — so steht er wirklich neben dem Dokument. */
+  #panel {
+    background: var(--flaeche); border: 1px solid var(--linie); border-radius: 14px;
+    box-shadow: 0 1px 2px rgba(14,22,38,.05), 0 10px 28px -14px rgba(14,22,38,.16);
+    overflow: hidden;
+  }
+  #panel .p-kopf {
+    background: var(--papier); border-bottom: 1px solid var(--linie);
+    padding: 10px 14px; display: flex; align-items: center; gap: 8px;
+  }
+  #panel .p-kopf b { font-size: 13px; }
+  .pille {
+    font-size: 10.5px; font-weight: 700; letter-spacing: .3px; border-radius: 999px; padding: 3px 9px;
+  }
+  .pille.det { background: var(--gut-flaeche); color: var(--gut); }
+  .pille.ext { background: var(--extern-flaeche); color: var(--extern); }
+  .pille.aus { background: var(--linie-weich); color: var(--gedaempft); }
+  #panel .p-codeleiste {
+    background: var(--nacht); color: var(--nacht-schrift);
+    padding: 4px 14px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10.5px;
+  }
+  #panel .p-leib { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+
+  .markierung {
+    border-left: 3px solid var(--warn); background: #fffdf6; border-radius: 0 8px 8px 0;
+    padding: 8px 10px; font-size: 12.5px; color: var(--tinte);
+  }
+  .markierung .etikett {
+    display: block; font-size: 10.5px; letter-spacing: .4px; color: var(--warn);
+    font-weight: 700; margin-bottom: 3px;
+  }
+  .feld {
+    border: 1px solid var(--linie); border-radius: 9px; padding: 8px 10px;
+    font-size: 12.5px; color: var(--gedaempft); background: var(--papier);
+  }
+
+  .kasten { border-radius: 11px; padding: 11px 12px; font-size: 12.5px; }
+  .kasten h3 { margin: 0 0 5px; font-size: 13px; font-weight: 650; }
+  .kasten p { margin: 0 0 7px; }
+  .kasten p:last-child { margin-bottom: 0; }
+  .kasten.nichtgebaut { background: var(--linie-weich); border: 1px solid var(--linie); }
+  .kasten.einwilligung { background: var(--extern-flaeche); border: 1px solid #ddd0ee; }
+  .kasten.laeuft { background: var(--extern-flaeche); border: 1px solid #ddd0ee; }
+  .kasten.weg-det { background: var(--gut-flaeche); border: 1px solid #cbe4d7; }
+
+  .knopf {
+    font: inherit; font-size: 12.5px; font-weight: 600; cursor: pointer;
+    border-radius: 9px; padding: 8px 13px; border: 1px solid var(--linie);
+    background: var(--flaeche); color: var(--tinte);
+  }
+  .knopf.haupt { background: var(--gut); border-color: var(--gut); color: #fff; }
+  .knopf.extern { background: var(--extern); border-color: var(--extern); color: #fff; }
+  .knopf:disabled { opacity: .5; cursor: not-allowed; }
+  .knopfreihe { display: flex; gap: 7px; flex-wrap: wrap; }
+
+  .umfang { background: var(--flaeche); border: 1px solid #ddd0ee; border-radius: 9px; padding: 9px 10px; }
+  .umfang dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; font-size: 12px; }
+  .umfang dt { color: var(--gedaempft); }
+  .umfang dd { margin: 0; }
+  #panel-umfang-probe {
+    margin-top: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; line-height: 1.5; color: var(--tinte);
+    background: var(--papier); border: 1px dashed #ddd0ee; border-radius: 7px; padding: 7px 8px;
+    white-space: pre-wrap;
+  }
+
+  .antwort { border: 1px solid var(--linie); border-radius: 9px; padding: 10px; font-size: 12.5px; }
+  #panel-antwort-herkunft {
+    margin-top: 7px; padding-top: 6px; border-top: 1px solid var(--linie);
+    font-size: 11px; color: var(--extern); font-weight: 600;
+  }
+  .balken { height: 3px; border-radius: 2px; background: var(--linie-weich); overflow: hidden; margin-top: 7px; }
+  .balken i { display: block; height: 100%; width: 42%; background: var(--extern); }
+
+  .fussnote { font-size: 11px; color: var(--gedaempft); }
+
+  /* ---- Die rechte Spalte: warum das so aussieht. -------------------------------------------- */
+  .beleg { background: var(--flaeche); border: 1px solid var(--linie); border-radius: 12px; padding: 16px 18px; }
+  .beleg h2 { margin: 0 0 4px; font-size: 15px; font-weight: 650; }
+  .beleg .unter { margin: 0 0 14px; font-size: 12.5px; color: var(--gedaempft); }
+  .beleg h4 { margin: 14px 0 4px; font-size: 12px; letter-spacing: .4px; color: var(--gedaempft); }
+  .beleg p { margin: 0 0 8px; font-size: 13px; }
+  .beleg ul { margin: 0 0 8px; padding-left: 18px; font-size: 13px; }
+  .beleg li { margin-bottom: 4px; }
+  code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px;
+    background: var(--papier); border: 1px solid var(--linie); border-radius: 5px; padding: 1px 5px;
+  }
+  .vorher {
+    border-left: 3px solid var(--krit); background: var(--krit-flaeche);
+    padding: 7px 10px; border-radius: 0 8px 8px 0; font-size: 12.5px; margin-bottom: 8px;
+  }
+  .nachher {
+    border-left: 3px solid var(--gut); background: var(--gut-flaeche);
+    padding: 7px 10px; border-radius: 0 8px 8px 0; font-size: 12.5px;
+  }
+  .vorher b, .nachher b { display: block; font-size: 10.5px; letter-spacing: .4px; margin-bottom: 2px; }
+  .vorher b { color: var(--krit); }
+  .nachher b { color: var(--gut); }
+
+  .fragen { margin-top: 26px; background: var(--flaeche); border: 1px solid var(--linie); border-radius: 12px; padding: 18px 20px; }
+  .fragen h2 { margin: 0 0 4px; font-size: 15px; font-weight: 650; }
+  .fragen > p { margin: 0 0 14px; font-size: 12.5px; color: var(--gedaempft); }
+  .frage { border-top: 1px solid var(--linie); padding-top: 11px; margin-top: 11px; }
+  .frage:first-of-type { border-top: 0; padding-top: 0; margin-top: 0; }
+  .frage .nr { font-size: 10.5px; letter-spacing: .5px; color: var(--gedaempft); }
+  .frage .satz { font-size: 13.5px; font-weight: 600; margin: 2px 0 5px; }
+  .frage .warum { font-size: 12.5px; color: var(--gedaempft); margin: 0; }
+
+  .weg, [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+
+<div class="kopf">
+  <b>Klara in Word — der externe Antwortweg</b>
+  <span class="reg">F-0295 · ENTWURF · EXT1 · 02.09.2026</span>
+  <span class="warnung">Entwurf zum Anklicken — kein Produktcode, keine Verbindung nach außen</span>
+</div>
+
+<div class="huelle">
+
+  <!-- ============================================================================================
+       DIE ZUSTANDSWAHL. Sie steht ABSICHTLICH außerhalb des Fensters und ist als Werkzeug des
+       Entwurfs beschriftet. Ein Umschalter im Panel selbst wäre genau die Vortäuschung, die dieser
+       Durchgang ausschließt: er sähe aus, als könne der Anwender den Weg freischalten.
+       ========================================================================================= -->
+  <div id="zustandswahl">
+    <div class="zeile">
+      <span class="rahmenwort" style="margin:0">ANSICHT DES ENTWURFS</span>
+      <button type="button" class="wahl" id="wahl-a" aria-pressed="true">
+        A · Der Weg ist nicht gebaut
+        <small>Das ist der Zustand von heute</small>
+      </button>
+      <button type="button" class="wahl" id="wahl-b" aria-pressed="false">
+        B · Die Erlaubnis fehlt
+        <small>Behebbar — du entscheidest</small>
+      </button>
+      <button type="button" class="wahl" id="wahl-c" aria-pressed="false">
+        C · Der Weg läuft
+        <small>Sichtbar extern, nie still</small>
+      </button>
+    </div>
+    <p class="lupe">
+      Diese drei Knöpfe wechseln nur die <b>Ansicht dieses Entwurfs</b>. Sie schaltet nichts frei
+      und rührt <code>KLARA_EXTERNAL_EXECUTION_MIGRATED</code> nicht an — die Freischaltung ist
+      eine eigene, benannte Entscheidung und bleibt es.
+    </p>
+  </div>
+
+  <div class="buehne">
+
+    <!-- ---- LINKS: das Word-Fenster --------------------------------------------------------- -->
+    <div class="links">
+      <p class="rahmenwort">SO SÄHE DAS FENSTER IN WORD AUS</p>
+      <div id="panel">
+        <div class="p-kopf">
+          <b>KLARWERK · Klara</b>
+          <span class="pille" id="panel-modus">—</span>
+        </div>
+        <!-- Der Grundcode gehört nicht ins Fenster eines Anwenders — er steht hier, damit dieser
+             ENTWURF prüfbar ist: jede Ansicht nennt den Zustand, den sie zeigt. Deshalb eine eigene,
+             ruhige Leiste in Maschinenschrift und nicht in der Kopfzeile: dort drängte er sich in
+             372 px neben Namen und Modus. -->
+        <div class="p-codeleiste"><span id="panel-code">—</span></div>
+        <div class="p-leib">
+
+          <!-- Beispieldaten: der markierte Abschnitt aus dem Dokument. -->
+          <div class="markierung">
+            <span class="etikett">DEINE MARKIERUNG IM DOKUMENT · 412 Zeichen</span>
+            <span id="markierung-text">Halterungen und Profile sind ohne waagerechte Oberseiten
+            auszuführen; offene, ablaufende Profile sind zu bevorzugen. Vollverschweißte
+            Hohlprofile in Lebensmittel- und Spritzzonen sind zu vermeiden, weil sie bei
+            Beschädigung Reinigungswasser aufnehmen und nicht kontrollierbar abtrocknen.</span>
+          </div>
+          <div class="feld">Deine Frage: „Gilt das auch für die Zone 2 der Filetierlinie?"</div>
+
+          <!-- ================================================================================
+               ZUSTAND A — DER WEG IST NICHT GEBAUT.
+               Der heutige Wortlaut lautet „Gesperrt. Grund: Der externe Weg ist noch nicht
+               freigeschaltet." (taskpane.html:2040 s4Blockiert + :2051 s4ReasonExternalNotMigrated).
+               „Gesperrt" ist ein Wort für etwas, das jemand zugesperrt hat — deshalb las Pedi ein
+               Veto. Der Entwurf sagt stattdessen, was wirklich der Fall ist.
+               ============================================================================= -->
+          <div class="kasten nichtgebaut" id="panel-nichtgebaut" hidden>
+            <h3>Diesen Weg gibt es noch nicht</h3>
+            <p>
+              Die Antwort über eine externe KI ist <b>nicht gebaut</b> — sie wurde begonnen und nie
+              fertiggestellt. Das ist <b>keine Verweigerung</b>: hier sagt dir niemand Nein, und es
+              liegt auch nicht an deinen Rechten. Es ist ebenso wenig ein Fehler, den ein
+              Neuversuch behebt.
+            </p>
+            <p>
+              Was fehlt, ist eine Freischaltung — eine Entscheidung, die im Haus getroffen und dann
+              gebaut wird. Sie steht als eigener Punkt auf der Liste.
+            </p>
+          </div>
+
+          <!-- ================================================================================
+               ZUSTAND B — DIE ERLAUBNIS FEHLT.
+               Sichtbar anders als A, weil er behebbar ist: hier hängt es an dir. Der Kasten zeigt
+               den ECHTEN Umfang statt einer Klassenbezeichnung — heute steht dort die rohe
+               Nutzlastklasse (`s4ConsentUmfang` … „Betroffene Daten: {klassen}", taskpane.html:2085,
+               gefüllt mit `question` aus klara-policy.ts:175).
+               ============================================================================= -->
+          <div class="kasten einwilligung" id="panel-einwilligung" hidden>
+            <h3>Darf dieser Abschnitt an die externe KI?</h3>
+            <p>
+              Für diese Frage würde Klara eine KI außerhalb des Hauses benutzen. Ohne deine
+              Erlaubnis geht nichts dorthin — <b>du entscheidest das, und nur du.</b>
+            </p>
+
+            <div class="umfang" id="panel-umfang">
+              <dl>
+                <dt>Es geht hinaus</dt>
+                <dd><b>dein markierter Text</b> und deine Frage — sonst nichts</dd>
+                <dt>Umfang</dt>
+                <dd>412 Zeichen; ab 2000 Zeichen wird gekappt und das steht dann dabei</dd>
+                <dt>Empfänger</dt>
+                <dd>Anbieter <b>Beispiel-KI GmbH</b> · Modell <b>beispiel-gross-1</b></dd>
+                <dt>Es bleibt hier</dt>
+                <dd>das übrige Dokument, deine Dateien, alles als vertraulich Markierte</dd>
+                <dt>Gültig für</dt>
+                <dd>dieses Dokument und diese Sitzung</dd>
+              </dl>
+              <div id="panel-umfang-probe">Halterungen und Profile sind ohne waagerechte Oberseiten auszuführen; offene, ablaufende Profile sind zu bevorzugen. Vollverschweißte Hohlprofile in Lebensmittel- und Spritzzonen sind zu vermeiden, weil sie bei Beschädigung Reinigungswasser aufnehmen und nicht kontrollierbar abtrocknen.
+— und die Frage: „Gilt das auch für die Zone 2 der Filetierlinie?"</div>
+            </div>
+
+            <p class="fussnote" style="margin:8px 0 7px">
+              Das oben ist <b>der ganze Text</b>, der das Haus verlassen würde — nicht ein Beispiel
+              dafür. Du kannst deine Erlaubnis jederzeit <b>widerrufen</b>; danach geht nichts mehr
+              hinaus, und der Widerruf gilt sofort.
+            </p>
+            <div class="knopfreihe" id="panel-einwilligung-knoepfe">
+              <button type="button" class="knopf extern" id="panel-consent-ja">Ja, diesen Abschnitt senden</button>
+              <button type="button" class="knopf" id="panel-consent-nein">Nein, ohne externe KI</button>
+            </div>
+            <p class="fussnote weg" id="panel-consent-erteilt" style="margin-top:8px">
+              <b>Erlaubnis erteilt</b> — für dieses Dokument und diese Sitzung.
+              <button type="button" class="knopf" id="panel-consent-widerruf" style="margin-left:6px">Widerrufen</button>
+              <br />So sähe der Kasten nach deinem Ja aus. Ob danach wirklich eine externe Antwort
+              entsteht, entscheidet der Schalter im Server — das zeigt Ansicht C.
+            </p>
+            <p class="fussnote weg" id="panel-consent-abgelehnt" style="margin-top:8px">
+              Für dieses Dokument bleibt die externe KI aus. Du kannst das oben jederzeit ändern.
+            </p>
+          </div>
+
+          <!-- ================================================================================
+               ZUSTAND C — DER WEG LÄUFT.
+               Pedis Maßstab vom 18.08.: „ja, aber nie still". Eine externe Antwort, die aussieht
+               wie eine hausgemachte, IST das Stille. Deshalb zweimal sichtbar: während sie
+               entsteht, und an der fertigen Antwort selbst.
+               ============================================================================= -->
+          <div class="kasten laeuft" id="panel-lauf" hidden>
+            <h3>Klara fragt gerade die externe KI</h3>
+            <p style="margin-bottom:4px">
+              Dein markierter Abschnitt ist unterwegs zu <b>Beispiel-KI GmbH</b>. Das dauert einen
+              Moment.
+            </p>
+            <div class="balken"><i></i></div>
+            <div class="knopfreihe" style="margin-top:9px">
+              <button type="button" class="knopf" id="panel-lauf-abbrechen">Abbrechen</button>
+            </div>
+          </div>
+          <div class="antwort weg" id="panel-antwort">
+            <b style="font-size:12.5px">Antwort</b>
+            <p style="margin:4px 0 0">
+              Ja — die Anforderung gilt zonenunabhängig für alle Spritzzonen; für Zone 2 der
+              Filetierlinie ist zusätzlich die tägliche Sichtprüfung der Profilenden vorgesehen.
+            </p>
+            <p id="panel-antwort-herkunft">
+              Extern erzeugt · Beispiel-KI GmbH, Modell beispiel-gross-1 · dein markierter Text war
+              dort · vor Verwendung fachlich prüfen
+            </p>
+          </div>
+
+          <!-- ================================================================================
+               DER WEG, DER HEUTE WIRKLICH FUNKTIONIERT.
+               Er steht in ALLEN drei Zuständen da und trägt kein Trostwort. Er ist nicht die
+               zweite Wahl, sondern der einzige, der heute eine belegte Antwort liefert —
+               `executionAllowed` ist im deterministischen Modus true (klara-policy.ts:250-258).
+               ============================================================================= -->
+          <div class="kasten weg-det" id="panel-det">
+            <h3>Im KLARWERK-Wissen suchen</h3>
+            <p>
+              Klara zitiert eure geprüften Wissensobjekte wörtlich — mit Quelle, ohne zu
+              formulieren. Dein Text bleibt dabei im Haus.
+            </p>
+            <div class="knopfreihe">
+              <button type="button" class="knopf haupt" id="panel-det-knopf">Klara fragen</button>
+            </div>
+            <div class="antwort weg" id="panel-det-antwort" style="margin-top:9px">
+              <p style="margin:0 0 5px">
+                „Halterungen und Profile ohne waagerechte Oberseiten ausführen; offene, ablaufende
+                Profile bevorzugen."
+              </p>
+              <p class="fussnote" style="margin:0">
+                Quelle: Project equipment design guide Rev. 0.91 · validiert · 3 von 3 grün
+              </p>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- ---- RECHTS: warum das so aussieht --------------------------------------------------- -->
+    <div class="rechts">
+      <p class="rahmenwort">WARUM DAS SO AUSSIEHT</p>
+      <div class="beleg">
+        <h2 id="beleg-titel">—</h2>
+        <p class="unter" id="beleg-unter">—</p>
+        <div id="beleg-koerper"></div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ============================================================================================
+       DIE OFFENEN FRAGEN. Der Auftrag verlangt: beantworten oder als exakte Ownerfrage stellen.
+       Beantwortet ist im Entwurf, was Gestaltung ist. Was hier steht, ist Gestaltung NICHT.
+       ========================================================================================= -->
+  <div class="fragen">
+    <h2>Was dieser Entwurf nicht entscheiden kann</h2>
+    <p>
+      Vier Fragen bleiben offen. Sie sind hier nicht geraten, sondern so gestellt, dass ein Ja oder
+      Nein genügt.
+    </p>
+
+    <div class="frage">
+      <div class="nr">O1 · AN PEDI</div>
+      <p class="satz">
+        Soll die Einwilligung überhaupt erfragt werden, solange der externe Weg nicht gebaut ist?
+      </p>
+      <p class="warum">
+        Heute erscheint der Zustimmungskasten, sobald der Server auf „cloud" gebunden ist
+        (<code>externalConsentRequired = effectiveMode === "external"</code>,
+        klara-policy.ts:246) — die Ausführung bleibt danach trotzdem gesperrt, weil
+        <code>external_not_migrated</code> zuerst greift (:250-252). Der Anwender kann also
+        zustimmen und es passiert weiter nichts. Das Panel hat dafür sogar einen eigenen Satz:
+        „Trotzdem gesperrt … Das entscheidet nicht dein Fenster." <b>Um eine Erlaubnis bitten, die
+        nichts bewirkt, ist schlimmer als gar nicht zu fragen</b> — deshalb zeigt dieser Entwurf in
+        Zustand A keinen Zustimmungskasten. Ob das so bleibt, ist deine Entscheidung.
+      </p>
+    </div>
+
+    <div class="frage">
+      <div class="nr">O2 · AN PEDI · WORTLAUT</div>
+      <p class="satz">
+        Darf die Einwilligung sagen „dein markierter Text", statt „dieses Dokument"?
+      </p>
+      <p class="warum">
+        Der heutige Satz lautet „Dafür brauche ich die externe KI — darf ich <b>dieses Dokument</b>
+        senden?" (<code>ka4FrageText</code>, taskpane.html:2076). Hinausgehen würde aber nur die
+        Frage, und die ist bei einer Markierung genau der markierte Abschnitt, gekappt bei 2000
+        Zeichen (<code>prepareAskQuestion</code> :984-993, <code>WORD_ADDIN_ASK_MAX_CHARS</code>
+        :981; Nutzlastklasse <code>question</code>, klara-policy.ts:175/292). <b>Der heutige Text
+        verspricht mehr Abfluss, als stattfindet</b> — das ist die sichere Seite, kostet aber
+        Zustimmung. Der Entwurf nennt den echten Umfang und zeigt den Text im Wortlaut.
+      </p>
+    </div>
+
+    <div class="frage">
+      <div class="nr">O3 · AN SANIERER / CHEF</div>
+      <p class="satz">
+        Braucht Zustand C eine dauerhafte Kennzeichnung an der eingefügten Antwort — auch im
+        Word-Dokument selbst?
+      </p>
+      <p class="warum">
+        Im Panel trägt die Antwort hier eine Herkunftszeile. Für eingefügte Vorschläge gibt es
+        bereits eine (<code>klara.write.provenance</code>: „KI-formuliert — kein zitiertes
+        KLARWERK-Wissen"). Ob eine <b>extern</b> erzeugte Antwort im Dokument anders gekennzeichnet
+        werden muss als eine intern formulierte, ist eine Frage der Nachvollziehbarkeit, nicht der
+        Gestaltung.
+      </p>
+    </div>
+
+    <div class="frage">
+      <div class="nr">O4 · NICHT GESTELLT, SONDERN BEANTWORTET</div>
+      <p class="satz">
+        Darf Klara im Add-in je die externe KI benutzen? — <b>Ja, aber nie still.</b>
+      </p>
+      <p class="warum">
+        Die Grundsatzfrage S4 hat Pedi am 18.08. beantwortet; sie ist der Maßstab dieses Entwurfs
+        und wird hier nicht neu gestellt. Getrennt davon bleibt die <b>technische Freischaltung</b>
+        offen — sie ist ein eigener Bauauftrag, und dieser Entwurf legt ihr nicht vor.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  /* ==============================================================================================
+     Der ganze Zustandswechsel des Entwurfs. Er kennt drei Bilder und sonst nichts: kein Netz,
+     kein Speicher, keine Ableitung. Was hier „Grund" heisst, ist der Wortlaut aus
+     `KlaraDeviationReason` (klara-policy.ts:43-45) — als Beleg zitiert, nicht als Logik nachgebaut.
+     ============================================================================================ */
+  var BILDER = {
+    a: {
+      code: "blockedReason = external_not_migrated",
+      modus: "extern gewünscht · aus",
+      modusKlasse: "pille aus",
+      zeigen: ["panel-nichtgebaut"],
+      titel: "Zustand A — der Weg ist nicht gebaut",
+      unter: "Das ist der Zustand von heute. Er ist nicht behebbar durch den Anwender.",
+      koerper:
+        '<div class="vorher"><b>HEUTE IM PANEL</b>„Gesperrt. Grund: Der externe Weg ist noch nicht freigeschaltet."<br />' +
+        '<code>s4Blockiert</code> + <code>s4ReasonExternalNotMigrated</code>, taskpane.html:2040/:2051</div>' +
+        '<div class="nachher"><b>IM ENTWURF</b>„Diesen Weg gibt es noch nicht … hier verweigert dir niemand etwas."</div>' +
+        "<h4>WAS DER UNTERSCHIED IST</h4>" +
+        "<p>„Gesperrt“ ist ein Wort für etwas, das jemand zugesperrt hat. Genau das hat Pedi gelesen: " +
+        "<i>„ich als admin gebe es frei und eine ki verweigert mir das?“</i> Die Wahrheit ist eine andere — " +
+        "der Weg wurde nie fertig gebaut. Der Entwurf sagt das, schließt den Fehlschluss ausdrücklich aus " +
+        "und nennt den Weg, der offensteht.</p>" +
+        "<h4>WAS IM CODE STEHT</h4>" +
+        "<ul>" +
+        "<li><code>KLARA_EXTERNAL_EXECUTION_MIGRATED = false</code> — klara-policy.ts:161</li>" +
+        "<li><code>blockedReason = \"external_not_migrated\"</code> — :252</li>" +
+        "<li><code>executionAllowed = blockedReason === null</code> — :258</li>" +
+        "</ul>" +
+        "<h4>WAS DER ENTWURF NICHT TUT</h4>" +
+        "<p>Er zeigt hier <b>keinen</b> Zustimmungskasten. Um eine Erlaubnis zu bitten, die nichts " +
+        "bewirkt, wäre schlimmer als gar nicht zu fragen — siehe Ownerfrage O1 unten.</p>",
+    },
+    b: {
+      code: "blockedReason = external_consent_missing",
+      modus: "extern · wartet auf dich",
+      modusKlasse: "pille ext",
+      zeigen: ["panel-einwilligung"],
+      titel: "Zustand B — die Erlaubnis fehlt",
+      unter: "Sichtbar anders als A, weil hier etwas an dir hängt.",
+      koerper:
+        '<div class="vorher"><b>HEUTE IM PANEL</b>„Anbieter … · Modell … · Sitzung … · Betroffene Daten: <b>question</b>“<br />' +
+        '<code>s4ConsentUmfang</code>, taskpane.html:2085 — gefüllt mit der rohen Nutzlastklasse aus klara-policy.ts:175</div>' +
+        '<div class="nachher"><b>IM ENTWURF</b>Der Abschnitt, der hinausginge, steht im Wortlaut da — mit Zeichenzahl, Empfänger und dem, was bleibt.</div>' +
+        "<h4>WARUM DAS DER KERN IST</h4>" +
+        "<p>Eine Einwilligung ist nur so viel wert wie das, was sie benennt. „Betroffene Daten: " +
+        "question“ ist eine Klassenbezeichnung aus dem Quelltext — sie sagt einem Menschen nichts. " +
+        "Wer zustimmen soll, muss sehen, <b>was</b> er hergibt, <b>an wen</b>, und <b>wie er es " +
+        "zurücknimmt</b>. Alle drei stehen hier.</p>" +
+        "<h4>DER UNTERSCHIED ZU A — UND WARUM ER SICHTBAR SEIN MUSS</h4>" +
+        "<p>A kann der Anwender nicht ändern, B schon. Ein gemeinsamer Satz für beides nähme ihm " +
+        "genau diesen Unterschied — dieselbe Trennung hält der Bestand bereits fest " +
+        "(i18n.ts:3654: die beiden Blockgründe bleiben getrennt).</p>" +
+        "<h4>WAS HINAUSGINGE</h4>" +
+        "<ul>" +
+        "<li>die Frage — und bei Markierung <b>ist</b> die Markierung die Frage: <code>prepareAskQuestion</code>, taskpane.html:984-993</li>" +
+        "<li>gekappt bei <code>WORD_ADDIN_ASK_MAX_CHARS = 2000</code> — :981</li>" +
+        "<li>Nutzlastklasse <code>question</code>, einelementig — klara-policy.ts:175/292</li>" +
+        "</ul>",
+    },
+    c: {
+      code: "executionAllowed = true · Modus extern",
+      modus: "extern · läuft",
+      modusKlasse: "pille ext",
+      zeigen: ["panel-lauf", "panel-antwort"],
+      titel: "Zustand C — der Weg läuft",
+      unter: "Pedis Maßstab vom 18.08.: „ja, aber nie still.“",
+      koerper:
+        '<div class="vorher"><b>HEUTE</b>Es gibt diesen Zustand nicht. Ein externer Ausführungsendpunkt existiert im Bestand nicht — klara-session-service.ts:650.</div>' +
+        '<div class="nachher"><b>IM ENTWURF</b>Zweimal sichtbar: während die Antwort entsteht, und an der fertigen Antwort selbst.</div>' +
+        "<h4>WARUM ZWEIMAL</h4>" +
+        "<p>Eine externe Antwort, die aussieht wie eine hausgemachte, <b>ist</b> das Stille, das " +
+        "ausgeschlossen wurde. Der Laufhinweis verschwindet, sobald die Antwort da ist — die " +
+        "Herkunftszeile bleibt. Sie nennt den Anbieter, das Modell und die unangenehme Tatsache: " +
+        "dein markierter Text war dort.</p>" +
+        "<h4>WAS HIER BEWUSST FEHLT</h4>" +
+        "<p>Kein Haken „nicht mehr fragen“, kein Merken über die Sitzung hinaus. Die Erlaubnis " +
+        "hängt am Dokument und wird bei einem Dokumentwechsel verworfen — das ist heute schon so " +
+        "(<code>documentContextId</code>, klara-session-service.ts:251), und ein Entwurf, der es " +
+        "bequemer machte, würde eine Zusage brechen.</p>" +
+        "<h4>UND DER DETERMINISTISCHE WEG</h4>" +
+        "<p>Er steht auch hier — nicht als Rückfalltür, sondern weil eine zitierte Quelle etwas " +
+        "kann, was eine externe Antwort nicht kann: sie ist belegt.</p>",
+    },
+  };
+
+  var ALLE_BILDTEILE = ["panel-nichtgebaut", "panel-einwilligung", "panel-lauf", "panel-antwort"];
+  var WAHLEN = ["a", "b", "c"];
+
+  function zeigen(id, ja) {
+    var el = document.getElementById(id);
+    if (!el) { return; }
+    if (ja) { el.removeAttribute("hidden"); el.classList.remove("weg"); }
+    else { el.setAttribute("hidden", "hidden"); }
+  }
+
+  function einwilligungZuruecksetzen() {
+    document.getElementById("panel-consent-erteilt").classList.add("weg");
+    document.getElementById("panel-consent-abgelehnt").classList.add("weg");
+    document.getElementById("panel-einwilligung-knoepfe").classList.remove("weg");
+  }
+
+  function setzen(taste) {
+    var bild = BILDER[taste];
+    if (!bild) { return; }
+    for (var i = 0; i < WAHLEN.length; i += 1) {
+      var k = document.getElementById("wahl-" + WAHLEN[i]);
+      if (k) { k.setAttribute("aria-pressed", WAHLEN[i] === taste ? "true" : "false"); }
+    }
+    for (var j = 0; j < ALLE_BILDTEILE.length; j += 1) {
+      zeigen(ALLE_BILDTEILE[j], bild.zeigen.indexOf(ALLE_BILDTEILE[j]) !== -1);
+    }
+    // Die Antwort ist in C zwar vorhanden, aber `weg` bis der Laufhinweis „fertig" ist — im
+    // Entwurf zeigen wir beide Stufen nacheinander, sobald jemand hinsieht.
+    document.getElementById("panel-code").textContent = bild.code;
+    var modus = document.getElementById("panel-modus");
+    modus.className = bild.modusKlasse;
+    modus.textContent = bild.modus;
+    document.getElementById("beleg-titel").textContent = bild.titel;
+    document.getElementById("beleg-unter").textContent = bild.unter;
+    document.getElementById("beleg-koerper").innerHTML = bild.koerper;
+    einwilligungZuruecksetzen();
+    document.getElementById("panel-det-antwort").classList.add("weg");
+  }
+
+  for (var w = 0; w < WAHLEN.length; w += 1) {
+    (function (taste) {
+      var knopf = document.getElementById("wahl-" + taste);
+      if (knopf) { knopf.addEventListener("click", function () { setzen(taste); }); }
+    })(WAHLEN[w]);
+  }
+
+  /* Die Bedienelemente IM Panel. Keines von ihnen ändert den Zustand — sie zeigen, wie sich das
+     Fenster INNERHALB seines Zustands verhält. Der Sperrgrund oben bleibt, was er ist. */
+  document.getElementById("panel-consent-ja").addEventListener("click", function () {
+    document.getElementById("panel-einwilligung-knoepfe").classList.add("weg");
+    document.getElementById("panel-consent-abgelehnt").classList.add("weg");
+    document.getElementById("panel-consent-erteilt").classList.remove("weg");
+  });
+  document.getElementById("panel-consent-nein").addEventListener("click", function () {
+    document.getElementById("panel-einwilligung-knoepfe").classList.add("weg");
+    document.getElementById("panel-consent-erteilt").classList.add("weg");
+    document.getElementById("panel-consent-abgelehnt").classList.remove("weg");
+  });
+  document.getElementById("panel-consent-widerruf").addEventListener("click", function () {
+    einwilligungZuruecksetzen();
+  });
+  document.getElementById("panel-lauf-abbrechen").addEventListener("click", function () {
+    document.getElementById("panel-lauf").setAttribute("hidden", "hidden");
+  });
+  document.getElementById("panel-det-knopf").addEventListener("click", function () {
+    document.getElementById("panel-det-antwort").classList.remove("weg");
+  });
+
+  setzen("a");
+</script>
+
+</body>
+</html>
