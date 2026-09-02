@@ -392,6 +392,10 @@ export function CaptureFrontDoor(): JSX.Element {
       return;
     }
 
+    // JOB 2974 D3 (F-0040, Ownerentscheidung Variante A): die Kennung, die VOR diesem Ladeversuch
+    // aktiv war. Sie wird hier gelesen, weil sie im Fehlerzweig unten gebraucht wird — dort ist
+    // `activeDraftId` bereits geraeumt, wenn man sie erst dann holt.
+    const vorherigeKennung = activeDraftId;
     let cancelled = false;
     setLoadingDraft(true);
     setErr(null);
@@ -453,6 +457,39 @@ export function CaptureFrontDoor(): JSX.Element {
       })
       .catch((e: unknown) => {
         if (cancelled) {
+          return;
+        }
+        // ==========================================================================================
+        // JOB 2974 D3 (F-0040, Ownerentscheidung Variante A) — EINE ABGELEHNTE FREMDE KENNUNG DARF
+        // DEN EIGENEN ENTWURF NICHT MITNEHMEN.
+        // ==========================================================================================
+        //
+        // DER BEFUND (JOB 2974 D2, in D3 red-first belegt): Bis hierher raeumte dieser Zweig die
+        // aktive Kennung — aber NICHT das Formular. Wer seinen eigenen Entwurf offen hatte und dann
+        // eine fremde Kennung oeffnete (verschickter Link, umgetippte Adresse), sah danach weiter
+        // SEINEN Text; nichts deutete auf einen Verlust hin. `save` verzweigt jedoch an genau
+        // dieser Kennung (unten, `if (activeDraftId)`): ein Klick auf „Entwurf speichern" lief in
+        // `drafts.create` und legte einen ZWEITEN Entwurf an, waehrend der eigene auf dem alten
+        // Stand zurueckblieb. Sichtbarer Inhalt war da — die Zugehoerigkeit war weg.
+        //
+        // DIE ENTSCHEIDUNG (Pedi-Kanal, Variante A): Die fremde Kennung wurde nie gueltig, also
+        // bleibt die eigene aktiv. Zusaetzlich wird die sichtbare Adresse zurueckgesetzt — sonst
+        // fragt ein Neuladen der Seite genau die abgelehnte Kennung erneut an.
+        //
+        // WARUM DAS ZUGLEICH DEN ZUSTAND HEILT: `resumeDraftId` haengt an `searchParams`, und
+        // dieser Effekt haengt an `resumeDraftId`. Die Adresskorrektur laesst ihn also EIN ZWEITES
+        // MAL laufen — diesmal mit der eigenen Kennung, die sauber neu geladen wird (`activeDraftId`,
+        // `loadedUpdatedAtRef`, `savedStateRef`). Es braucht keinen zweiten Reparaturweg.
+        //
+        // KEINE SCHLEIFE: Beim zweiten Lauf ist `vorherigeKennung === resumeDraftId`; scheitert
+        // auch die eigene Kennung, greift der gewoehnliche Zweig darunter.
+        //
+        // DIE MELDUNG REIST ALS TOAST, NICHT ALS `setErr`: Der zweite Lauf ruft `setErr(null)`
+        // (oben) und wuerde eine gesetzte Meldung sofort wieder loeschen — der Mensch bekaeme eine
+        // stille Adresskorrektur ohne Grund. Der Toast ueberlebt das Nachladen.
+        if (vorherigeKennung && vorherigeKennung !== resumeDraftId) {
+          push("error", ladeFehlerMeldung(e, t("fd.errLoadFailed")));
+          setSearchParams({ draft: vorherigeKennung }, { replace: true });
           return;
         }
         setActiveDraftId(null);
