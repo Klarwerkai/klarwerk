@@ -181,13 +181,26 @@ export function buildFrontDoorPayload(input: {
     return eigeneFelder;
   }
 
+  // JOB 2966 D1 (F-0018/F-0044) — DER ZWEITE WEG TRUG DENSELBEN SCHADEN WEITER.
+  //
+  // D5 hat oben den SPEICHERN-Weg geschlossen. Der EINREICHEN-Weg kommt aber mit
+  // `vollstaendig: true` hier vorbei, und die Leerwerte standen fest verdrahtet auch in diesem
+  // Zweig. Der Rumpf reist als `draftPayload` ins Promote (capture-routes.ts), läuft dort durch
+  // `capture.continueDraft` → `mergeDraftPayload` — und dessen Vertrag (service.ts:371-372) macht
+  // aus einem mitgeschickten `[]` eine LÖSCHUNG. Ein Studio-Entwurf mit drei Maßnahmen verlor sie
+  // deshalb beim Einreichen über die Vordertür, und diesmal nicht nur im Entwurf: `toKoInput` liest
+  // den bereits geleerten Stand, das Wissensobjekt entstand ohne sie.
+  //
+  // Über einem BESTAND werden diese drei Felder daher weggelassen — der Merge lässt den Altwert
+  // dann stehen (derselbe Vertrag, andere Hälfte). Beim NEUANLEGEN bleiben sie gesetzt: dort gibt
+  // es keinen Altwert, den ein Leerwert löschen könnte, und ein neuer Entwurf braucht seine
+  // Einordnung. `type`, `category` und `origin` reisen weiter mit, denn ohne sie weist die
+  // Promote-Route den Rumpf mit `400 INCOMPLETE` ab (JOB 2695 D3, dort gemessen).
   return {
     ...eigeneFelder,
     type: "best_practice",
     category: "Allgemein",
-    tags: [],
-    conditions: [],
-    measures: [],
+    ...(ueberBestand ? {} : { tags: [], conditions: [], measures: [] }),
     origin: "frontdoor",
   };
 }
