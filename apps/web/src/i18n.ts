@@ -2273,6 +2273,11 @@ const de = {
   "ko.sourceRemove": "Quelle entfernen",
   "ko.sourceUnvalidated": "extern · nicht peer-validiert",
   "ko.sourceValidated": "peer-validiert",
+  // F-0205 (SCRUM-438): der Herkunfts-Hinweis an extern stammenden Quellen. Bewusst ein EIGENER
+  // Schlüssel neben `ko.sourceUnvalidated`: Jener ist die Hälfte eines Badge-PAARES
+  // (`sourceBadgeKey`, koSource.ts:118) und beschreibt einen Prüfstand. Dieser hier ist ein
+  // Herkunfts-Hinweis und steht allein — die geprüfte Quelle bekommt kein Gegenstück.
+  "ko.sourceExternUnchecked": "Extern · ungeprüft",
   "ko.lineageTitle": "Herkunft & Verlauf",
   "ko.lineageOrigin": "Ursprung",
   "ko.lineageTransferred": "(übergeben)",
@@ -6855,6 +6860,7 @@ const en: typeof de = {
   "ko.sourceRemove": "Remove source",
   "ko.sourceUnvalidated": "external · not peer-validated",
   "ko.sourceValidated": "peer-validated",
+  "ko.sourceExternUnchecked": "External · unchecked",
   "ko.lineageTitle": "Origin & history",
   "ko.lineageOrigin": "Origin",
   "ko.lineageTransferred": "(transferred)",
@@ -11068,6 +11074,7 @@ const nl: typeof de = {
   "ko.sourceRemove": "Bron verwijderen",
   "ko.sourceUnvalidated": "extern · niet peer-gevalideerd",
   "ko.sourceValidated": "peer-gevalideerd",
+  "ko.sourceExternUnchecked": "Extern · ongecontroleerd",
   "ko.lineageTitle": "Herkomst & verloop",
   "ko.lineageOrigin": "Oorsprong",
   "ko.lineageTransferred": "(overgedragen)",
