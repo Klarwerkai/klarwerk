@@ -33,8 +33,18 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
   // typgerecht (openCaptureFileDialog); bald/geplant lösen ihn nie aus. Kein neuer Upload-Pfad.
   const fileImportInputRef = useRef<HTMLInputElement | null>(null);
   const [dragOver, setDragOver] = useState(false);
-  // Ehrlicher Ablehnungshinweis (nicht unterstützter Dateityp); wird über aria-live angesagt.
-  const [dropReject, setDropReject] = useState<string | null>(null);
+  // F-0120 / K-27 (JOB 2969 D1): EINE Meldung für ALLE Ablehnungsursachen dieser Fläche.
+  //
+  // Bis hierher hielt dieser Zustand nur die Drop-Ablehnung, und die Kachel-Galerie sagte ihren
+  // eigenen Hinweis in ihrer EIGENEN Live-Region an. Gemessen am gemounteten Baum: nach einer
+  // abgelehnten Datei UND einem Tipp auf eine nicht-importierende Kachel trugen ZWEI Regionen
+  // gleichzeitig Text — in beiden Reihenfolgen. Für eine Vorlesehilfe sind das zwei Ansagen für
+  // einen Vorgang, und genau das schliesst K-27 aus.
+  //
+  // Die jüngste Ursache gewinnt: Wer eine neue Ablehnung auslöst, hört DIESE — und nicht noch
+  // einmal die vorige. Das ist derselbe Griff, mit dem AUFTRAG-1840 die erste Doppelung
+  // aufgelöst hat (ein Träger statt zweier), nur eine Ebene höher.
+  const [meldung, setMeldung] = useState<string | null>(null);
 
   // Block A: eine per Drop abgelegte Datei durch DENSELBEN onExtractFile-Seam speisen — kein zweiter
   // Pfad. Nicht unterstützte Typen (detectFileKind === "unsupported") werden ehrlich abgelehnt.
@@ -47,10 +57,10 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
       return;
     }
     if (detectFileKind({ name: file.name, type: file.type }) === "unsupported") {
-      setDropReject(t(CAPTURE_FILE_TEXT.dropReject, { name: file.name }));
+      setMeldung(t(CAPTURE_FILE_TEXT.dropReject, { name: file.name }));
       return;
     }
-    setDropReject(null);
+    setMeldung(null);
     // Genau der bestehende Extraktionsweg: ein synthetisches Change-Event auf demselben Seam. onExtractFile
     // liest nur `target.files[0]` und setzt `target.value` — kein neuer Egress, kein neuer Fetch.
     onExtractFile({
@@ -146,13 +156,16 @@ export function CaptureFileImport({ onExtractFile }: CaptureFileImportProps): JS
         aria-atomic="true"
         className="block text-[12px] text-trust-crit-text"
       >
-        {dropReject ?? ""}
+        {meldung ?? ""}
       </output>
       <FileTypePicker
         sources={fileSourcesForSurface("capture")}
         onActivate={(id) => {
           openCaptureFileDialog(id, fileImportInputRef.current);
         }}
+        // F-0120 / K-27: Der ehrliche Kachel-Hinweis läuft in DIESE eine Region, statt sich
+        // daneben eine zweite zu nehmen. Die Galerie rendert dann keine eigene Ansage mehr.
+        onHintChange={(hintKey) => setMeldung(hintKey ? t(hintKey) : null)}
       />
     </>
   );

@@ -104,6 +104,20 @@ export interface FileTypePickerProps {
   // Wird AUSSCHLIESSLICH für aktive Kacheln aufgerufen (echter, bestehender Fluss). Für bald/geplant
   // bleibt dieser Callback bewusst unberührt — kein Import, kein Dialog, kein Konnektor-Call.
   onActivate: (id: string) => void;
+  /**
+   * F-0120 / K-27 (JOB 2969 D1): Meldet den ehrlichen Kachel-Hinweis nach OBEN, statt ihn selbst
+   * anzusagen — `null` heisst „kein Hinweis mehr".
+   *
+   * WOZU: Die Erfassen-Flaeche hat ZWEI Ablehnungsursachen (nicht unterstuetzte Datei,
+   * nicht-importierende Kachel). Traegt jede ihre eigene Live-Region, sagt eine Vorlesehilfe
+   * ZWEI Meldungen fuer EINEN Vorgang an — gemessen: beide Regionen trugen gleichzeitig Text,
+   * in beiden Reihenfolgen. AUFTRAG-1840 hat dieselbe Doppelung schon einmal aufgeloest, damals
+   * innerhalb von `CaptureFileImport`; das hier ist derselbe Griff eine Ebene hoeher.
+   *
+   * OPTIONAL, und das ist Absicht: Ohne diesen Prop bleibt alles wie bisher — die Import-Flaeche
+   * (Stufe 2) hat keine zweite Ursache und behaelt ihre eigene Region unveraendert.
+   */
+  onHintChange?: (hintKey: string | null) => void;
   // Optionaler Icon-Wähler; Default: Datei-Icon je Typ. Systeme reichen z. B. Boxes herein.
   iconFor?: (source: GallerySource) => ReactNode;
   // Optionale Gruppen-Überschrift (i18n-Text).
@@ -130,6 +144,7 @@ export interface FileTypePickerProps {
 export function FileTypePicker({
   sources,
   onActivate,
+  onHintChange,
   iconFor = defaultIconFor,
   title,
   collapsePlanned = true,
@@ -160,10 +175,15 @@ export function FileTypePicker({
   const clickTile = (source: GallerySource): void => {
     if (source.state === "active") {
       setHint(null);
+      onHintChange?.(null);
       onActivate(source.id);
       return;
     }
-    setHint((prev) => (prev?.id === source.id ? null : source));
+    // Der naechste Zustand wird VOR dem Setzen bestimmt, nicht im Updater: ein Seiteneffekt in
+    // `setHint((prev) => …)` liefe im StrictMode zweimal und meldete den Hinweis doppelt nach oben.
+    const naechster = hint?.id === source.id ? null : source;
+    setHint(naechster);
+    onHintChange?.(naechster ? hintKeyFor(naechster.state) : null);
   };
 
   const hintKey = hint ? hintKeyFor(hint.state) : null;
@@ -210,7 +230,10 @@ export function FileTypePicker({
       ) : null}
       {/* Ehrlicher, nicht-modaler Hinweis — nur für bald/geplant, nie ein Import. <output> trägt
           implizit role="status" (aria-live ergänzt es explizit), also kein blockierender Dialog. */}
-      {hintKey ? (
+      {/* F-0120 / K-27: Meldet die Galerie nach oben (`onHintChange`), traegt der ELTERNTEIL die
+          eine Ansage — dann darf hier keine zweite Region stehen, sonst ist die Doppelung nur
+          verschoben. Ohne den Prop bleibt die eigene Region wie bisher. */}
+      {hintKey && !onHintChange ? (
         <output
           aria-live="polite"
           className="mt-2 block rounded-btn bg-trust-warn-bg px-3 py-2 text-[12px] text-trust-warn-text"
