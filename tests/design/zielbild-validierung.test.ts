@@ -295,10 +295,17 @@ describe("JOB 2618 · D5 · das Fussband der Validierung — die echte Seite, ge
     }
   }, 120_000);
 
+  // JOB 2935 D1 — EIN HOOK-TIMEOUT, KEINE MESSUNG. Diese Suite lief einzeln gruen, im GESAMTTOR aber
+  // rot: „Hook timed out in 10000ms". Der Abbruch traf das Aufraeumen, nicht einen Vergleich —
+  // `browser.close()` und `app.close()` brauchen unter der Last von rund 1190 gleichzeitigen
+  // Testdateien laenger als die zehn Sekunden, die vitest einem Hook ohne eigene Angabe gibt.
+  // Nachgemessen am Startpin 6d574fce, also OHNE die Aenderungen dieses Durchgangs: derselbe
+  // Fehlschlag (Arbeitsspur `vollauf-ohne-neuen-test.txt`). Die Zeit hier hebt nur diese Grenze an;
+  // an Sollwerten, Selektoren und Vergleichen aendert sie nichts.
   afterAll(async () => {
     await browser?.close();
     await app?.close();
-  });
+  }, 60_000);
 
   const ziel = existsSync(ZIELBILD) ? readFileSync(ZIELBILD, "utf8") : "";
 

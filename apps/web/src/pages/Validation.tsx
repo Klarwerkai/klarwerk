@@ -857,7 +857,17 @@ export function Validation(): JSX.Element {
                                 navigate(`/wissen/${k.id}`);
                               }
                             }}
-                            className={`flex cursor-pointer flex-col gap-3 transition-colors hover:border-ink/30 sm:flex-row sm:items-center ${
+                            // JOB 2935 D1 (Pedis Wort zum Ist-Stand: „peinlich"): die Karte war bis
+                            // hierher zweispaltig — links der Inhalt, rechts eine schmale Säule, in
+                            // der Entscheidung, Zuweisung und Verwaltung übereinander klebten. Das
+                            // Zielbild (DESIGN_ZIELBILD_20260827/Validierung.dc.html, Z. 56–63) zeigt
+                            // stattdessen ein FUSSBAND über die volle Kartenbreite: die Entscheidung
+                            // links, der Begründungshinweis rechts an der Kante, darüber eine
+                            // Trennlinie. Deshalb bleibt die Karte hier auch auf breiten Schirmen
+                            // eine Spalte (Inhalt oben, Fußband unten) — genau der Wechsel, den die
+                            // sechs Messfälle V1/V2/V3/V4/V7/V9 in tests/design/zielbild-validierung
+                            // seit JOB 2618 D5 als offene Bauaufgabe rot festhalten.
+                            className={`flex cursor-pointer flex-col gap-3 transition-colors hover:border-ink/30 ${
                               gate.locked ? "opacity-60" : ""
                             }`}
                           >
@@ -969,10 +979,19 @@ export function Validation(): JSX.Element {
                                 {/* WP-D10 (Fix 4) + WP-BILD-1f (Pedi): dezentes Erstellungsdatum plus
                                 Ersteller (Erstellt am … von …) — unterscheidet gleichnamige
                                 Beiträge; fehlende Felder (Altdaten) bleiben ehrlich weg. */}
+                                {/* JOB 2935 D1: Solange die Karte zweispaltig war, brach diese Zeile
+                                fast immer um, und Kategorie und Erstellungsangabe standen
+                                untereinander. Auf der vollen Breite stehen sie nebeneinander — und
+                                liefen dann ohne Trenner ineinander („… Allgemein Erstellt am …").
+                                Das Zielbild trennt genau diese Angaben mit einem Mittelpunkt
+                                (Validierung.dc.html:54). Der Trenner steht bewusst als CSS-Inhalt
+                                (`before:`) und nicht als eigenes Element: die Etikettenzeile
+                                darüber wird GEZÄHLT (D-033, `validation-card-labels`), ein
+                                zusätzliches Kind hätte diese Zählung verfälscht. */}
                                 {createdLabel || createdByName ? (
                                   <span
                                     title={t("ko.createdAt")}
-                                    className="font-mono text-[10.5px] text-muted-2"
+                                    className="font-mono text-[10.5px] text-muted-2 before:mr-1.5 before:content-['·']"
                                   >
                                     {[
                                       createdLabel ? `${t("ko.createdAt")} ${createdLabel}` : null,
@@ -1108,200 +1127,226 @@ export function Validation(): JSX.Element {
                                 {t("val.openDetails")} <span aria-hidden="true">→</span>
                               </Link>
                             </div>
-                            <div className="flex shrink-0 flex-col items-stretch gap-1.5 sm:items-end">
+                            {/* JOB 2935 D1 · DAS FUSSBAND. Vier der Sollwerte stehen hier an einer
+                            Stelle, damit sie nicht wieder auseinanderlaufen — jeder ist im Zielbild
+                            (Validierung.dc.html:56) belegt und wird von einem eigenen Fall gemessen:
+                              gap-2.5      = 10px Knopfabstand   → V1
+                              pt-3.5       = 14px Oberabstand    → V2
+                              border-t     = 1px Trennlinie      → V3
+                              border-hairline → --kw-hairline    → V4 (#E9E5DE im Theme „modern")
+                            Die Knöpfe sind ABSICHTLICH direkte Kinder des Bandes: so ist der
+                            gemessene `gap` wirklich der Abstand zwischen ihnen und nicht der einer
+                            Zwischenhülle. Nicht übernommen und weiterhin offen: die eigene Fläche
+                            des Bandes (#FAF8F5) — sie erbt die Karte, das wäre ein Produktumbau. */}
+                            <div className="flex w-full flex-wrap items-center gap-2.5 border-t border-hairline pt-3.5">
                               {/* WP-SHIP9-B3FIX (Pedi 23.07.): ehrlicher Sperr-Hinweis, solange die
-                              KI-Prüfung läuft — die Aktionen darunter sind bis zum Ergebnis deaktiviert. */}
+                              KI-Prüfung läuft — die Aktionen darunter sind bis zum Ergebnis deaktiviert.
+                              JOB 2935 D1: eigene volle Zeile ÜBER den Knöpfen statt einer schmalen
+                              Spalte daneben — er begründet die Sperre, die man direkt darunter sieht. */}
                               {gate.locked ? (
-                                <p className="max-w-[16rem] text-[11px] font-semibold text-muted sm:text-right">
+                                <p className="w-full basis-full text-[11px] font-semibold text-muted">
                                   {t(gate.noteKey)}
                                 </p>
                               ) : null}
                               {/* SCRUM-258: Review-Entscheidung textlich geführt — gleiche Mutationen
                               (up/warn/down), Rückfrage/Ablehnen öffnen weiterhin das Pflicht-Feedback. */}
-                              <div className="flex flex-wrap gap-1.5 sm:justify-end">
-                                {REVIEW_DECISIONS.map((d) => {
-                                  const active =
-                                    feedback?.id === k.id && feedback.verdict === d.verdict;
-                                  return (
-                                    <span
-                                      key={d.verdict}
-                                      className="inline-flex items-center gap-0.5"
+                              {REVIEW_DECISIONS.map((d) => {
+                                const active =
+                                  feedback?.id === k.id && feedback.verdict === d.verdict;
+                                return (
+                                  <span
+                                    key={d.verdict}
+                                    className="inline-flex items-center gap-0.5"
+                                  >
+                                    <button
+                                      type="button"
+                                      // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
+                                      title={t(decisionImpact(d.verdict).bodyKey)}
+                                      disabled={
+                                        // WP-SHIP9-B3FIX: gesperrt, solange die KI-Prüfung noch läuft.
+                                        gate.locked ||
+                                        (d.verdict === "up"
+                                          ? rate.isPending || reviewWithFeedback.isPending
+                                          : reviewWithFeedback.isPending)
+                                      }
+                                      onClick={() =>
+                                        d.verdict === "up"
+                                          ? rate.mutate({
+                                              id: k.id,
+                                              title: k.title,
+                                              verdict: "up",
+                                            })
+                                          : openFeedback(k.id, d.verdict)
+                                      }
+                                      className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
+                                        active ? "ring-2 ring-current" : ""
+                                      }`}
                                     >
-                                      <button
-                                        type="button"
-                                        // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
-                                        title={t(decisionImpact(d.verdict).bodyKey)}
-                                        disabled={
-                                          // WP-SHIP9-B3FIX: gesperrt, solange die KI-Prüfung noch läuft.
-                                          gate.locked ||
-                                          (d.verdict === "up"
-                                            ? rate.isPending || reviewWithFeedback.isPending
-                                            : reviewWithFeedback.isPending)
-                                        }
-                                        onClick={() =>
-                                          d.verdict === "up"
-                                            ? rate.mutate({
-                                                id: k.id,
-                                                title: k.title,
-                                                verdict: "up",
-                                              })
-                                            : openFeedback(k.id, d.verdict)
-                                        }
-                                        className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
-                                          active ? "ring-2 ring-current" : ""
-                                        }`}
-                                      >
-                                        {/* PAKET 3.2 (Pedi 23.07.): im gesperrten Zustand trägt „Freigeben"
+                                      {/* PAKET 3.2 (Pedi 23.07.): im gesperrten Zustand trägt „Freigeben"
                                         KEIN ✓-Häkchen (das las sich wie „schon freigegeben") — statt
                                         dessen ein neutrales Schloss. „0 von 3 grün" bleibt die Wahrheit. */}
-                                        {d.verdict === "up" ? (
-                                          gate.locked ? (
-                                            <Lock size={15} />
-                                          ) : (
-                                            <Check size={15} />
-                                          )
-                                        ) : d.verdict === "warn" ? (
-                                          <Minus size={15} />
+                                      {d.verdict === "up" ? (
+                                        gate.locked ? (
+                                          <Lock size={15} />
                                         ) : (
-                                          <X size={15} />
-                                        )}
-                                        <span>{t(d.labelKey)}</span>
-                                        {d.requiresFeedback ? (
-                                          <sup className="-mr-0.5">*</sup>
-                                        ) : null}
-                                      </button>
-                                      {vhelp(DECISION_HELP[d.verdict])}
-                                    </span>
-                                  );
-                                })}
-                              </div>
-                              {/* SCRUM-258: Pflicht-Feedback sichtbar machen (Rückfrage/Ablehnen). */}
-                              <p className="text-[10.5px] text-muted-2 sm:text-right">
+                                          <Check size={15} />
+                                        )
+                                      ) : d.verdict === "warn" ? (
+                                        <Minus size={15} />
+                                      ) : (
+                                        <X size={15} />
+                                      )}
+                                      <span>{t(d.labelKey)}</span>
+                                      {d.requiresFeedback ? <sup className="-mr-0.5">*</sup> : null}
+                                    </button>
+                                    {vhelp(DECISION_HELP[d.verdict])}
+                                  </span>
+                                );
+                              })}
+                              {/* SCRUM-258: Pflicht-Feedback sichtbar machen (Rückfrage/Ablehnen).
+                              JOB 2935 D1: der Hinweis stand als eigene Zeile unter den Knöpfen und
+                              war mit 10.5px der kleinste Text der Seite. Jetzt steht er da, wo das
+                              Zielbild ihn zeigt — `ml-auto` schiebt ihn an die rechte Bandkante,
+                              auf Augenhöhe mit dem Sternchen, das er erklärt (→ V9), und er trägt
+                              den Schriftgrad der Vorlage (11.5px → V7). Der WORTLAUT bleibt
+                              unverändert: das Sternchen ist der Bezug zum `<sup>*</sup>` an
+                              Rückfrage und Ablehnen; das Zielbild schreibt ihn ohne Stern und ohne
+                              Punkt, doch dort gibt es auch kein Sternchen am Knopf. Diese eine
+                              Abweichung ist damit eine offene Entscheidung, kein Versäumnis. */}
+                              <p className="ml-auto text-[11.5px] text-muted-2">
                                 {t("val.feedbackRequiredHint")}
                               </p>
-                              {/* Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die
+                              {/* JOB 2935 D1: die NEBENAKTIONEN — Zuweisen, „als wahr", Bearbeiten,
+                              Löschen. Sie stehen im Zielbild nicht, gehören aber zum Produkt. Sie
+                              bekommen deshalb eine eigene, ruhige zweite Zeile des Bandes
+                              (`basis-full`), rechts ausgerichtet: links die Entscheidung, rechts die
+                              Verwaltung. Vorher konkurrierten sie in derselben schmalen Säule mit
+                              den drei Entscheidungsknöpfen um Platz. */}
+                              <div className="flex w-full basis-full flex-wrap items-center justify-end gap-2">
+                                {/* Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die
                               Validierung in einem Schritt ab. Zwei-Klick-Bestätigung; nur Admin. */}
-                              {role === "admin" ? (
-                                confirmTrueId === k.id ? (
-                                  <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-btn border border-trust-pos-fill/40 bg-trust-pos-bg px-2.5 py-1.5">
-                                    <span className="text-[11.5px] font-semibold text-trust-pos-text">
-                                      {t("val.markTrueConfirm")}
+                                {role === "admin" ? (
+                                  confirmTrueId === k.id ? (
+                                    <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-btn border border-trust-pos-fill/40 bg-trust-pos-bg px-2.5 py-1.5">
+                                      <span className="text-[11.5px] font-semibold text-trust-pos-text">
+                                        {t("val.markTrueConfirm")}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        className="text-[11.5px] font-semibold text-muted hover:text-text"
+                                        onClick={() => setConfirmTrueId(null)}
+                                      >
+                                        {t("val.markTrueCancel")}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        // WP-SHIP9-B3FIX2 (bens F1): auch die BEREITS GEÖFFNETE Admin-
+                                        // Bestätigung sperren, sobald die KI-Prüfung (wieder) läuft —
+                                        // sonst überlebt der Ja-Knopf den Lock (failed/done → Retry →
+                                        // pending, confirmTrueId bleibt) und könnte weiter mutieren.
+                                        disabled={gate.locked || adminValidate.isPending}
+                                        className="text-[11.5px] font-semibold text-trust-pos-text disabled:opacity-50"
+                                        onClick={() => adminValidate.mutate(k.id)}
+                                      >
+                                        {t("val.markTrueYes")}
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1 sm:justify-end">
+                                      <button
+                                        type="button"
+                                        // WP-SHIP9-B3FIX: kein „als wahr" vor Abschluss der KI-Prüfung.
+                                        disabled={gate.locked}
+                                        onClick={() => setConfirmTrueId(k.id)}
+                                        className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[11.5px] font-semibold text-trust-pos-text hover:bg-trust-pos-bg disabled:opacity-50 disabled:hover:bg-transparent"
+                                      >
+                                        <Check size={13} />
+                                        {t("val.markTrue")}
+                                      </button>
+                                      {vhelp("markTrue")}
                                     </span>
-                                    <button
-                                      type="button"
-                                      className="text-[11.5px] font-semibold text-muted hover:text-text"
-                                      onClick={() => setConfirmTrueId(null)}
-                                    >
-                                      {t("val.markTrueCancel")}
-                                    </button>
-                                    <button
-                                      type="button"
-                                      // WP-SHIP9-B3FIX2 (bens F1): auch die BEREITS GEÖFFNETE Admin-
-                                      // Bestätigung sperren, sobald die KI-Prüfung (wieder) läuft —
-                                      // sonst überlebt der Ja-Knopf den Lock (failed/done → Retry →
-                                      // pending, confirmTrueId bleibt) und könnte weiter mutieren.
-                                      disabled={gate.locked || adminValidate.isPending}
-                                      className="text-[11.5px] font-semibold text-trust-pos-text disabled:opacity-50"
-                                      onClick={() => adminValidate.mutate(k.id)}
-                                    >
-                                      {t("val.markTrueYes")}
-                                    </button>
-                                  </div>
-                                ) : (
-                                  <span className="inline-flex items-center gap-1 sm:justify-end">
-                                    <button
-                                      type="button"
-                                      // WP-SHIP9-B3FIX: kein „als wahr" vor Abschluss der KI-Prüfung.
-                                      disabled={gate.locked}
-                                      onClick={() => setConfirmTrueId(k.id)}
-                                      className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[11.5px] font-semibold text-trust-pos-text hover:bg-trust-pos-bg disabled:opacity-50 disabled:hover:bg-transparent"
-                                    >
-                                      <Check size={13} />
-                                      {t("val.markTrue")}
-                                    </button>
-                                    {vhelp("markTrue")}
-                                  </span>
-                                )
-                              ) : null}
-                              <div className="flex items-center gap-1">
-                                <select
-                                  value=""
-                                  // WP-SHIP9-B3FIX: kein Zuweisen, solange die KI-Prüfung noch läuft.
-                                  disabled={gate.locked || assign.isPending}
-                                  onChange={(e) => {
-                                    if (e.target.value) {
-                                      assign.mutate({ id: k.id, userId: e.target.value });
-                                    }
-                                  }}
-                                  className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted disabled:opacity-50"
-                                  aria-label={t("val.assign")}
-                                >
-                                  <option value="">{t("val.assign")}</option>
-                                  {(users.data ?? []).map((u) => (
-                                    <option key={u.id} value={u.id}>
-                                      {u.name || u.id}
-                                    </option>
-                                  ))}
-                                </select>
-                                {vhelp("assign")}
-                              </div>
-                              {/* SCRUM-417: Bearbeiten/Löschen vom Board — optisch nachrangig unter
+                                  )
+                                ) : null}
+                                <div className="flex items-center gap-1">
+                                  <select
+                                    value=""
+                                    // WP-SHIP9-B3FIX: kein Zuweisen, solange die KI-Prüfung noch läuft.
+                                    disabled={gate.locked || assign.isPending}
+                                    onChange={(e) => {
+                                      if (e.target.value) {
+                                        assign.mutate({ id: k.id, userId: e.target.value });
+                                      }
+                                    }}
+                                    className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted disabled:opacity-50"
+                                    aria-label={t("val.assign")}
+                                  >
+                                    <option value="">{t("val.assign")}</option>
+                                    {(users.data ?? []).map((u) => (
+                                      <option key={u.id} value={u.id}>
+                                        {u.name || u.id}
+                                      </option>
+                                    ))}
+                                  </select>
+                                  {vhelp("assign")}
+                                </div>
+                                {/* SCRUM-417: Bearbeiten/Löschen vom Board — optisch nachrangig unter
                               den Entscheidungs-Knöpfen; Bestätigung auf eigener Zeile (SCRUM-419). */}
-                              {role === "admin" ||
-                              role === "controller" ||
-                              k.author === user?.id ? (
-                                confirmDeleteId === k.id ? (
-                                  // AUFTRAG-mega45 Block E (Pedis Befund 28.07.): DIESELBE Form wie in
-                                  // der Bibliothek — eigene volle Zeile mit Trennlinie statt eines
-                                  // gerahmten Kastens mit Breitendeckel. Begründung an der
-                                  // Bedienbarkeit: der Deckel begrenzte den Schaden, die eigene Zeile
-                                  // beseitigt seine Ursache — auf einer vollen Zeile konkurriert die
-                                  // Rückfrage gar nicht mehr mit dem Karteninhalt um Platz. Die eine
-                                  // Zutat der alten Fassung, die den Bruch vom 04.07. wirklich behob,
-                                  // bleibt erhalten: der Fragetext ist umbruchfähig (min-w-0 flex-1).
-                                  // Kein Funktionsverlust — dieselben Schlüssel, dieselbe Mutation.
-                                  <span className="flex w-full basis-full flex-wrap items-center justify-end gap-1.5 border-t border-hairline pt-2">
-                                    <span className="min-w-0 flex-1 text-[12px] font-semibold text-text">
-                                      {t("ko.deleteQ")}
-                                    </span>
-                                    <Button
-                                      variant="ghost"
-                                      onClick={() => setConfirmDeleteId(null)}
-                                    >
-                                      {t("ko.deleteKeep")}
-                                    </Button>
-                                    {/* SCRUM-412 / mega14 Block F galt bisher NUR in der Bibliothek —
+                                {role === "admin" ||
+                                role === "controller" ||
+                                k.author === user?.id ? (
+                                  confirmDeleteId === k.id ? (
+                                    // AUFTRAG-mega45 Block E (Pedis Befund 28.07.): DIESELBE Form wie in
+                                    // der Bibliothek — eigene volle Zeile mit Trennlinie statt eines
+                                    // gerahmten Kastens mit Breitendeckel. Begründung an der
+                                    // Bedienbarkeit: der Deckel begrenzte den Schaden, die eigene Zeile
+                                    // beseitigt seine Ursache — auf einer vollen Zeile konkurriert die
+                                    // Rückfrage gar nicht mehr mit dem Karteninhalt um Platz. Die eine
+                                    // Zutat der alten Fassung, die den Bruch vom 04.07. wirklich behob,
+                                    // bleibt erhalten: der Fragetext ist umbruchfähig (min-w-0 flex-1).
+                                    // Kein Funktionsverlust — dieselben Schlüssel, dieselbe Mutation.
+                                    <span className="flex w-full basis-full flex-wrap items-center justify-end gap-1.5 border-t border-hairline pt-2">
+                                      <span className="min-w-0 flex-1 text-[12px] font-semibold text-text">
+                                        {t("ko.deleteQ")}
+                                      </span>
+                                      <Button
+                                        variant="ghost"
+                                        onClick={() => setConfirmDeleteId(null)}
+                                      >
+                                        {t("ko.deleteKeep")}
+                                      </Button>
+                                      {/* SCRUM-412 / mega14 Block F galt bisher NUR in der Bibliothek —
                                     hier stand die neutrale Vorgabe „outline" am zerstörenden
                                     Knopf. Jetzt Warnfarbe, gehalten vom Sammler in
                                     tests/app/mega45-loeschbestaetigung-sammler.test.ts. */}
-                                    <Button
-                                      variant="danger"
-                                      disabled={removeKo.isPending}
-                                      onClick={() => removeKo.mutate(k.id)}
-                                    >
-                                      {t("ko.deleteYes")}
-                                    </Button>
-                                  </span>
-                                ) : (
-                                  <div className="flex items-center gap-2 sm:justify-end">
-                                    <Link
-                                      to={`/wissen/${k.id}?edit=1`}
-                                      className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                                    >
-                                      <Pencil size={13} />
-                                      {t("val.editKo")}
-                                    </Link>
-                                    <button
-                                      type="button"
-                                      onClick={() => setConfirmDeleteId(k.id)}
-                                      className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                                    >
-                                      <Trash2 size={13} />
-                                      {t("ko.deleteButton")}
-                                    </button>
-                                  </div>
-                                )
-                              ) : null}
+                                      <Button
+                                        variant="danger"
+                                        disabled={removeKo.isPending}
+                                        onClick={() => removeKo.mutate(k.id)}
+                                      >
+                                        {t("ko.deleteYes")}
+                                      </Button>
+                                    </span>
+                                  ) : (
+                                    <div className="flex items-center gap-2 sm:justify-end">
+                                      <Link
+                                        to={`/wissen/${k.id}?edit=1`}
+                                        className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:text-text"
+                                      >
+                                        <Pencil size={13} />
+                                        {t("val.editKo")}
+                                      </Link>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteId(k.id)}
+                                        className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
+                                      >
+                                        <Trash2 size={13} />
+                                        {t("ko.deleteButton")}
+                                      </button>
+                                    </div>
+                                  )
+                                ) : null}
+                              </div>
                             </div>
                           </Card>
                           {feedback?.id === k.id ? (
