@@ -40,6 +40,21 @@ COPY --from=webbuild /build/apps/web/dist apps/web/dist
 # ohne diesen Ordner stirbt der Container beim Start (ERR_MODULE_NOT_FOUND,
 # Coolify-Deploys seit 13:19 UTC rot). mammoth liegt dafuer im Wurzel-package.json.
 COPY apps/web/src apps/web/src
+# JOB 3001 (Deploy-Commit an /health): Die Auslieferung kann den ausgelieferten Git-Commit beim
+# Bauen als Build-Argument hineinreichen; die Laufzeit liest ihn dann über KLARWERK_BUILD_COMMIT
+# (services/app/src/build-app.ts, `BUILD_COMMIT_ENV`) und /health meldet ihn.
+#
+# DER NAME `SOURCE_COMMIT` IST EINE ANNAHME ÜBER DIE AUSLIEFERUNG, KEINE MESSUNG. Im Repo ist
+# nirgends belegt, ob und unter welchem Namen die Auslieferung (Coolify, Build-Pack Dockerfile) ein
+# solches Argument reicht; `SOURCE_COMMIT` ist der übliche Name und deshalb hier gewählt. Trifft die
+# Annahme nicht zu, ist nichts kaputt: ein FEHLENDER ODER UNBRAUCHBARER WERT (leer, ein Branchname,
+# ein uneingesetztes `$SOURCE_COMMIT`) wird von `buildCommit()` verworfen und /health meldet ehrlich
+# `unbekannt` — nie einen erfundenen Hash. Bestätigt sich ein anderer Name, wird HIER umgestellt.
+#
+# Die Zeilen stehen bewusst spät: jede Änderung am Commit-Wert entwertet nur noch die Ebenen
+# darunter, nicht den teuren apt-/npm-Teil weiter oben.
+ARG SOURCE_COMMIT=""
+ENV KLARWERK_BUILD_COMMIT=$SOURCE_COMMIT
 EXPOSE 3001
 USER node
 # Ehrlicher Selbsttest: /health muss {"status":"ok"} liefern, sonst gilt der Container als krank.
