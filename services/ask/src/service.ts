@@ -66,6 +66,76 @@ const ASK_CANDIDATE_PREFILTER_LIMIT = 200;
 const ASK_PREFILTER_TERM_LIMIT = 50;
 const ASK_PREFILTER_MAX_TERMS = 8;
 
+// ================================================================================================
+// JOB 3006 (KA5) — DIE MARKIERTE STELLE SCHÄRFT DIE SUCHE, UND SONST NICHTS.
+// ================================================================================================
+//
+// WAS HIER GESCHIEHT: Die im Word-Panel markierte Passage wird in Inhaltstoken zerlegt und ERGÄNZT
+// die Suchbegriffe der Frage. Das Ergebnis geht an GENAU EINEN Verbraucher — `prefilterCandidates`.
+//
+// ================================================================================================
+// ZWEI TERMMENGEN, UND WARUM ES ZWEI SEIN MÜSSEN (BEN, Runde 2, Befund 1).
+// ================================================================================================
+//
+// Runde 2 hatte nur EINE Menge und reichte sie an alles weiter, was hinter der Vorauswahl auf
+// Termen rechnet. Das war ein Fehler, und er war sichtbar: `captionSources` (unten in `ask`)
+// entscheidet, ob eine Quelle NUR über ihre Bild-Fußnoten getroffen wurde, und die Oberfläche macht
+// daraus das Herkunfts-Etikett „Bildbeschreibung" (`Ask.tsx`). Traf ein Wort der MARKIERUNG die
+// Fußnote eines Objekts, das die FRAGE über seinen Fließtext gefunden hatte, behauptete die Antwort
+// eine Fundstelle, die es nicht gab — dieselbe Antwort, dieselbe Quelle, aber ein falsches Etikett.
+// Das ist genau die Sorte stiller Unwahrheit, die „Ehrlichkeit vor Optik" verbietet.
+//
+// DIE TRENNUNG IST DESHALB KEINE VORSICHTSMASSNAHME, SONDERN DIE REGEL:
+//   · `frageterme`  — wonach der FRAGENDE gesucht hat. Jede Aussage ÜBER die Antwort (Herkunft,
+//     Fundstelle, Einstufung) rechnet auf dieser Menge und nur auf ihr.
+//   · `suchterme`   — womit der Bestand DURCHSUCHT wurde. Sie darf breiter sein, denn sie behauptet
+//     nichts; sie holt nur Kandidaten heran, über die danach unverändert die Frage entscheidet.
+// Wer künftig eine weitere Ableitung hinter der Vorauswahl baut, muss sich fragen, welche der
+// beiden er meint. Das ist der ganze Zweck der zwei Namen.
+//
+// DIE DREI EIGENSCHAFTEN, die diese Funktion zu einer Grenze und nicht zu einer Abkürzung machen:
+//
+//   1. DIE FRAGE BEHÄLT DEN VORRANG. Die Frageterme stehen unverändert vorn, in ihrer Reihenfolge.
+//      Die Passagenterme hängen sich hinten an. `prefilterCandidates` schneidet die Liste auf
+//      `ASK_PREFILTER_MAX_TERMS` — eine Passage kann der Frage deshalb keinen Suchbegriff wegnehmen.
+//      GEMESSENE KEHRSEITE, benannt statt verschwiegen: Trägt die Frage selbst schon acht oder mehr
+//      Inhaltstoken, ist das Fenster der Vorauswahl voll, und es wird KEIN Passagenterm mehr
+//      abgefragt — die Markierung bleibt dann wirkungslos. Das ist der Preis des Vorrangs und die
+//      bestehende Lastgrenze, nicht ein Fehler dieser Funktion (Beleg: KA5-R8b).
+//   2. DER DECKEL IST `ASK_PREFILTER_MAX_TERMS` (8), und zwar aus einem gemessenen Grund und nicht
+//      aus Geschmack: mehr als acht Terme fragt die Vorauswahl konstruktiv NIE ab. Ein höherer
+//      Deckel wäre wirkungslos, ein niedrigerer würde die Passage stärker beschneiden als die
+//      bestehende Lastgrenze es ohnehin tut. Die Lastgrenze je Frage (Abfragezahl × Abfragelimit)
+//      bleibt damit unverändert die alte.
+//   3. DOPPELTE TERME FALLEN WEG. Ein Wort, das in Frage UND Passage steht, ist bereits Suchbegriff;
+//      ein zweites Mal abgefragt verdoppelte es nur seine Stimme in der Relevanzordnung von
+//      `prefilterCandidates` (`termTreffer`) und verschöbe die Rangfolge ohne neuen Erkenntniswert.
+//
+// UND WAS HIER AUSDRÜCKLICH NICHT GESCHIEHT: Die Passage wird nicht in die Frage gemischt. Sie
+// erreicht weder `reasoner.answer` noch `answerRetrievalOnly`, keinen Embedder, keinen
+// Antwortkörper, keinen Auditeintrag, keine Wissenslücke und keine Ablage. Der Beleg dafür ist
+// kein Kommentar, sondern `tests/ka5/markierung-kein-egress.test.ts`.
+const SELECTION_TERM_LIMIT = ASK_PREFILTER_MAX_TERMS;
+
+function erweiterteSuchterme(frageterme: readonly string[], selection?: string): string[] {
+  if (!selection) {
+    return [...frageterme];
+  }
+  const bekannt = new Set(frageterme);
+  const zusatz: string[] = [];
+  for (const term of queryTokens(selection)) {
+    if (bekannt.has(term)) {
+      continue;
+    }
+    bekannt.add(term);
+    zusatz.push(term);
+    if (zusatz.length >= SELECTION_TERM_LIMIT) {
+      break;
+    }
+  }
+  return [...frageterme, ...zusatz];
+}
+
 // SCRUM-115: Lücken ohne gespeicherte Priorität (Altdaten) erhalten beim Lesen
 // den sicheren Default "mittel" — keine stille undefined-Priorität nach außen.
 function withPriority(gap: Gap): Gap {
@@ -411,6 +481,14 @@ export class AskService {
       // eigenes Feld, weil die beiden Meldungen unabhaengig angefragt werden (das Panel traegt
       // heute W5, die Konsole die Torlage) und ein geteilter Schalter beide aneinander kettete.
       verschlossenSichtbarFuer?: (ko: KnowledgeObject) => boolean;
+      /**
+       * JOB 3006 (KA5): die im Panel MARKIERTE PASSAGE — roh vom Aufrufer, ungedeutet.
+       *
+       * Sie ist ausdrücklich KEIN zweiter Fragetext und wird nirgends mit `question` vermischt.
+       * Ihre einzige Wirkung steht in `sucheterme` (oben): sie ergänzt die Suchbegriffe der
+       * Vorauswahl. Ohne das Feld ist der Ablauf Zeile für Zeile der bisherige.
+       */
+      selection?: string;
     },
   ): Promise<AskResult> {
     // JOB 541 D4: Die Absicht wird EINMAL aufgeloest, gleich hier — und danach getrennt gefuehrt:
@@ -427,8 +505,14 @@ export class AskService {
     // Limit und mit validiert-/Trust-Bias, damit relevante validierte Treffer unter dem Limit bleiben.
     // JOB 531: die Vorauswahl läuft term-weise und relevanzbewusst (s. prefilterCandidates) —
     // gedeckelt wie bisher, aber unabhängig davon, wonach die Datenquelle ihre Treffer ordnet.
-    const terms = queryTokens(question);
-    const prefilteredRaw = await this.prefilterCandidates(terms);
+    // JOB 3006 (KA5): ZWEI MENGEN, ZWEI AUFGABEN — die Begründung steht an `erweiterteSuchterme`.
+    //   `frageterme` ist unverändert das, was es vor KA5 war: wonach der Fragende gesucht hat.
+    //               Jede Aussage ÜBER die Antwort rechnet weiter auf DIESER Menge.
+    //   `suchterme`  ist dieselbe Menge, um die Terme der Markierung ergänzt — und sie hat GENAU
+    //               EINEN Verbraucher, die Zeile darunter. Weiter reicht sie nicht.
+    const frageterme = queryTokens(question);
+    const suchterme = erweiterteSuchterme(frageterme, opts?.selection);
+    const prefilteredRaw = await this.prefilterCandidates(suchterme);
     // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
     // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.
     // SCRUM-502: vertrauliche KOs gehen NIE in einen externen Kontext — hier upstream entfernt, damit sie
@@ -525,6 +609,13 @@ export class AskService {
     // WP-RETEST7 R5: Fundstellen-Kennzeichnung — eine Quelle, deren Frage-Treffer AUSSCHLIESSLICH
     // aus den Bild-Fußnoten stammt (kein Term in Titel/Aussage), wird als Caption-Fund markiert;
     // die UI zeigt dazu das Bibliotheks-Badge „Bildbeschreibung".
+    //
+    // JOB 3006 (KA5): GERECHNET WIRD AUF `frageterme`, NIE AUF `suchterme`. Das ist eine Aussage
+    // über die HERKUNFT des Frage-Treffers — der Satz oben sagt es selbst: „deren FRAGE-Treffer".
+    // Nähme man hier die um die Markierung erweiterte Menge, bekäme ein Objekt, das die Frage über
+    // seinen Fließtext gefunden hat, das Etikett „Bildbeschreibung", nur weil ein Wort der
+    // markierten Passage zufällig in seiner Fußnote steht. Dieselbe Antwort, dieselbe Quelle, eine
+    // erfundene Fundstelle. Der Wächter dagegen ist `tests/ka5/markierung-fundstelle-bleibt.test.ts`.
     const captionSources = resultCore.sources.filter((id) => {
       const ko = prefiltered.find((k) => k.id === id);
       if (!ko || !ko.captionTexts?.length) {
@@ -532,7 +623,10 @@ export class AskService {
       }
       const core = `${ko.title} ${ko.statement}`.toLowerCase();
       const captions = ko.captionTexts.join(" ").toLowerCase();
-      return terms.some((term) => captions.includes(term)) && !terms.some((t) => core.includes(t));
+      return (
+        frageterme.some((term) => captions.includes(term)) &&
+        !frageterme.some((t) => core.includes(t))
+      );
     });
     const result = { ...resultCore, captionSources };
     // JOB 2626 D1 — DIE TORLAGE, wenn es keine Antwort gab (Vertrag und Grenzen am Feld
@@ -597,7 +691,14 @@ export class AskService {
         topK: DEFAULT_TOP_K,
         // JOB 531: die Vorauswahl ist term-weise gedeckelt — beide Grenzen sind auditierbar, damit
         // die Last je Frage (Abfragezahl × Abfragelimit) belegt ist und nicht geschätzt werden muss.
-        prefilterQueries: Math.min(terms.length, ASK_PREFILTER_MAX_TERMS),
+        // JOB 3006 (KA5): HIER steht bewusst `suchterme` und nicht `frageterme` — und das ist keine
+        // Ausnahme von der Trennungsregel, sondern ihre Anwendung. Dieses Feld ist keine Aussage
+        // über die Antwort, sondern die LASTZAHL der Vorauswahl: wie viele Quellabfragen wirklich
+        // gelaufen sind. Stünde hier die Frage-Menge, meldete das Protokoll bei jeder Markierung
+        // WENIGER Abfragen, als der Server ausgeführt hat — eine Untertreibung genau der Zahl,
+        // wegen der JOB 531 dieses Feld eingeführt hat. Es ist eine Anzahl, kein Inhalt: die
+        // Passage steht damit weiterhin in keinem Auditeintrag (Beleg KA5-R3 (d)).
+        prefilterQueries: Math.min(suchterme.length, ASK_PREFILTER_MAX_TERMS),
         prefilterTermLimit: ASK_PREFILTER_TERM_LIMIT,
       },
     });

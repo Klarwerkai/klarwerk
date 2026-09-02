@@ -30,6 +30,21 @@ const askBodySchema = {
     // Aufrufe (rein deterministisches Retrieval, Antwort = woertliche validierte Aussage +
     // Quellen, keine Synthese). Anderer Wert → Schema-400. Ohne Feld: Konsolen-Bestandsverhalten.
     mode: { type: "string", enum: ["retrieval-only"] },
+    // ============================================================================================
+    // JOB 3006 (KA5) — DIE MARKIERTE PASSAGE. EIN EIGENES FELD, KEIN ZWEITER FRAGETEXT.
+    // ============================================================================================
+    //
+    // Dasselbe Maß wie `question` (string, ≤ 8.000 Codepoints): ein längerer Wert ergibt 400 AUS DEM
+    // SCHEMA, bevor der Handler ihn je sieht. Der Name ist bewusst englisch wie `question`, `locale`
+    // und `mode` — ein Transportvertrag, eine Schreibweise.
+    //
+    // WAS DIESES FELD BEWIRKT UND WAS NICHT: Es schärft ausschließlich die lokale, lexikalische
+    // Kandidatensuche (`AskService.ask` → `sucheterme`). Der markierte Dokumenttext erreicht KEIN
+    // Modell, KEINEN Embedder, KEINEN Antwortkörper, KEINEN Auditeintrag, KEIN Protokoll und KEINE
+    // Ablage — auch nicht mit gültiger KA4-Einwilligung. Der externe Zweig von KA5 (die dokument-
+    // bezogene Antwort einer externen KI) ist ausdrücklich NICHT gebaut; er braucht eine eigene
+    // Egress-Abnahme.
+    selection: { type: "string", maxLength: 8_000 },
   },
 } as const;
 
@@ -243,7 +258,9 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
   const ask = deps.ask;
   return async (app) => {
     app.decorateRequest("askSessionUser", null);
-    app.post<{ Body: { question?: string; locale?: string; mode?: string } }>(
+    app.post<{
+      Body: { question?: string; locale?: string; mode?: string; selection?: string };
+    }>(
       "/api/ask",
       {
         // SCRUM-490 D3: Drossel NUR für den addon-Pfad. Bei Flag AUS ist das @fastify/rate-limit-Plugin
@@ -287,14 +304,39 @@ export function askRoutes(deps: AskRouteDeps, guards: Guards): FastifyPluginAsyn
         // Unbekannte Werte fallen weiterhin auf den sicheren Default "de".
         const locale: "de" | "en" | "nl" =
           request.body.locale === "en" ? "en" : request.body.locale === "nl" ? "nl" : "de";
+        // JOB 3006 (KA5): die markierte Passage — EINMAL gelesen, EINMAL normalisiert. Sie wird
+        // NICHT in `question` gemischt und NICHT protokolliert (`request.log` sieht sie nirgends).
+        // Eine leere oder rein weiße Markierung ist keine Markierung: dann bleibt `markierung`
+        // `undefined`, und jeder Zweig übergibt byteweise denselben Optionssatz wie vor KA5.
+        const markiert = (request.body.selection ?? "").trim();
+        const markierung: { selection?: string } | undefined =
+          markiert.length > 0 ? { selection: markiert } : undefined;
         // AUFTRAG-mega34 B1: EIN Ausgang für alle drei Zweige — der Evidenzzustand hängt additiv am
         // bestehenden Antwortkörper. Wer ihn nicht liest, sieht die Antwort wie bisher; wer ihn
         // liest (Word/Klara), bekommt dieselbe Einstufung wie Desktop und Mobil.
+        //
+        // JOB 3006 (KA5): UND GENAU DESHALB HÄNGT DIE MARKIERUNG HIER UND NICHT AN DEN ZWEIGEN.
+        // Der Auftrag verlangt sie in ALLEN Zweigen. Fünfmal dasselbe Streuen wäre fünfmal die
+        // Gelegenheit, sie beim nächsten Zweig zu vergessen — und ein Zweig ohne Markierung sähe
+        // aus wie ein Zweig, in dem der Anwender nichts markiert hat. An diesem einen Ausgang ist
+        // die Weitergabe eine Eigenschaft der Route, keine Wiederholung.
+        //
+        // DIE ZWEIGE BLEIBEN DADURCH WÖRTLICH, WAS SIE WAREN. Das ist kein Nebeneffekt, sondern
+        // Absicht: `tests/app/mega52-validiert-zusicherung-sammler.test.ts` liest den Session-
+        // Abschluss `answer(user.id)` AUS DIESEM QUELLTEXT, um zu entscheiden, ob die Anzeigetexte
+        // „Antworten kommen ausschließlich aus validiertem Wissen" versprechen dürfen. Ein zweites
+        // Argument dort hätte den Wächter nicht nur rot gemacht — hätte man ihn „beruhigt", hätte
+        // er ab da geschwiegen und der Text hätte mehr versprechen dürfen als der Weg hält.
+        //
+        // OHNE MARKIERUNG BLEIBT `opts` UNANGETASTET, auch als `undefined`. Ein Zweig, der heute
+        // gar keine Optionen übergibt, übergibt weiterhin gar keine (kein leeres Objekt) — daran
+        // hängt der Vertrag von `KA4-E1`.
         const answer = async (
           actorId: string,
           opts?: Parameters<AskService["ask"]>[3],
         ): Promise<void> => {
-          const out = await ask.ask(question, actorId, locale, opts);
+          const mitMarkierung = markierung ? { ...opts, ...markierung } : opts;
+          const out = await ask.ask(question, actorId, locale, mitMarkierung);
           const evidence = await evidenceFor(deps, out.result, request.log);
           reply.code(200).send({ ...out, result: { ...out.result, evidence } });
         };
