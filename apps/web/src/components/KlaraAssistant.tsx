@@ -534,6 +534,28 @@ export function KlaraAssistant(): JSX.Element {
                         {t(knowledgeClassMeta(aiAsk.data.knowledgeClass).labelKey)}
                       </span>
                     </div>
+                    {/* JOB 2959 D1 — DIE FRAGE, ZU DER DIESE ANTWORT GEHÖRT.
+                      Sie wurde bis hierher gemerkt (`setAskedFor`, oben) und ausschließlich als
+                      Schalter benutzt — auf den Bildschirm kam sie nie. Das ist mehr als eine
+                      fehlende Beschriftung: Die Antwort bleibt stehen, während der Nutzer im Feld
+                      weitertippt. Die Trefferliste darunter zieht mit (`klara.resultsFor` nennt die
+                      aktuelle Eingabe), die KI-Antwort daneben tut es nicht — nebeneinander liest
+                      sich die alte Antwort dann wie die Antwort auf die neu getippte Frage. Genau
+                      das schließt Klaras eigener Grundsatz aus: nichts behaupten, was nicht belegt
+                      ist (Dateikopf: „rät nie", „sagt offen, wenn ihr ein Eintrag fehlt").
+                      KEIN NEUER TEXTSCHLÜSSEL. Die Zeile trägt die Frage des Nutzers in dessen
+                      eigener Sprache; ein Label davor wäre ein neuer i18n-Eintrag, und `i18n.ts`
+                      gehört in diesem Durchgang einer anderen Bahn. Das Zitat unter der
+                      Überschrift „KI-Antwort aus der Hilfe" ist ohne Label eindeutig. Ob zusätzlich
+                      ein Satz nötig ist, wenn die Eingabe inzwischen abweicht („diese Antwort
+                      gehört zu deiner vorigen Frage"), ist eine Ownerfrage — sie bräuchte genau
+                      diesen neuen Schlüssel. */}
+                    <p
+                      data-testid="klara-ai-question"
+                      className="mb-1.5 text-[11.5px] italic leading-relaxed text-muted-2"
+                    >
+                      „{askedFor}"
+                    </p>
                     {aiAsk.data.answered && aiAsk.data.answer ? (
                       <>
                         {/* WP-UX-WOW-1 U1: Antwort-Markdown sicher rendern (React-Subset). */}

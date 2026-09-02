@@ -313,6 +313,16 @@ const INVENTAR: readonly string[] = [
   // Klara-Regression: der Test haelt fest, dass die Oberflaeche einen nie gebauten Weg nicht als
   // Verweigerung ausgibt und den Datenabfluss beim Namen nennt.
   "tests/design/f0295-klara-externer-antwortweg.test.ts",
+  // JOB 2959 D3 (02.09.2026): der Abnahmetest zu F-0304 — die KI-Antwort im Klara-Panel nennt die
+  // Frage, zu der sie gehoert (sie blieb beim Weitertippen stehen und war dann von einer Antwort
+  // auf die neue Frage nicht zu unterscheiden). Er traegt „klara" im Namen; der Pfad war in
+  // JOB 2959 D1 fest vorgegeben, der Zusammenstoss mit dieser Nachfuehrpflicht also unvermeidbar.
+  // K2 hat die Datei gemeldet, das Inventar hat sie nicht still aufgenommen — D1 hat den Fund
+  // ausserhalb seines Zwei-Pfad-Scopes als Blocker zurueckgegeben, D2 hat ihn auf dem damaligen
+  // Klonstand nachgefuehrt, und D3 fuehrt ihn hier auf dem Hauptstand mit dem 2948-Eintrag
+  // ZUSAMMEN (Leitungsdirektive: beide Pfade, Zaehler 31). Sachlich Klara-Regression: der Test
+  // haelt fest, dass die Assistenzflaeche ihre Antwort nicht der falschen Frage zuschreibt.
+  "tests/app/f0304-klara-assistenzflaeche.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -475,7 +485,18 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // diese eine Achse treffen. Der K6-Bericht weist fuer diese Datei `name,taskpane` aus: sie
     // nennt `taskpane.html` im Belegtext und traegt damit auch die Inhaltsachse. Sie zaehlt
     // trotzdem hier mit, und genau das ist der Punkt dieses Falls.
-    expect(nurName.length).toBe(30);
+    // 30 -> 31 am 02.09.2026 (JOB 2959 D3): `tests/app/f0304-klara-assistenzflaeche.test.tsx`
+    // traegt "klara" im Namen und faellt damit in die Namensmenge. HIER ist der Stand ein anderer
+    // als bei den Zeilen darueber, und das ist der ganze Grund fuer diesen Durchgang: JOB 2959 D2
+    // hat dieselbe Nachfuehrung auf einem Klon mit Startpin `6d574fce` gemessen und dort korrekt
+    // 29 -> 30 gesetzt, weil der 2948-Eintrag in jenem Baum noch fehlte. Dieser Klon steht auf
+    // `217dd97`, wo der 2948-Eintrag bereits liegt — deshalb tragen jetzt BEIDE Pfade im INVENTAR
+    // und der Zaehler ist 31. Es sind nicht zwei Aenderungen, sondern dieselbe auf einem
+    // weitergezogenen Stand; dieselbe Lage wie bei JOB 2376/2507 weiter oben.
+    // GEMESSEN, NICHT GESETZT: mit dem neuen Eintrag und noch unveraendertem Zaehler meldete der
+    // Lauf in diesem Klon `expected 31 to be 30` (Arbeitsspur `messung-zaehler.txt`); erst danach
+    // wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(31);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
