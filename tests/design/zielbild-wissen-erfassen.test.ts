@@ -24,7 +24,7 @@
 // Die Werte (25, WERTE_WISSEN_ERFASSEN in tools/design-vergleich/werte.ts) und ihre Begruendung
 // (bewusst Weggelassenes) sind unveraendert aus D2.
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { WERTE_WISSEN_ERFASSEN, vergleiche } from "../../tools/design-vergleich/werte";
 
@@ -64,6 +64,11 @@ describe.runIf(zielbildDa)(
       const ANKER = "padding: 9px 10px";
       const original = lies(PRODUKT);
       const hashVorher = sha256(original);
+      // Auch die ZEITEN kommen zurueck: das Tor (tools/check) baut das Buendel VOR den Tests und
+      // laesst den UI-Smoke danach nur laufen, wenn keine Quelle juenger ist als das Buendel. Ein
+      // byteweise restaurierter, aber neu gestempelter Produktstand liess den Smoke sonst mit
+      // „dist ist AELTER als der Quellstand" abbrechen — rot ohne Fehler.
+      const zeitenVorher = statSync(PRODUKT);
       expect(original.split(ANKER).length, "Anker in der Produktdatei nicht eindeutig").toBe(2);
       const rotVorher = vergleiche(lies(ZIELBILD), original, WERTE_WISSEN_ERFASSEN)
         .filter((b) => !b.gleich)
@@ -78,6 +83,7 @@ describe.runIf(zielbildDa)(
           .filter((n) => !rotVorher.includes(n));
       } finally {
         writeFileSync(PRODUKT, original, "utf8");
+        utimesSync(PRODUKT, zeitenVorher.atime, zeitenVorher.mtime);
       }
       expect(gefallen).toEqual(["kasten-innenabstand 9px 10px"]);
       expect(sha256(lies(PRODUKT)), "die Produktdatei kam nicht byteweise zurueck").toBe(
