@@ -333,6 +333,12 @@ const INVENTAR: readonly string[] = [
   // ZUSAMMEN (Leitungsdirektive: beide Pfade, Zaehler 31). Sachlich Klara-Regression: der Test
   // haelt fest, dass die Assistenzflaeche ihre Antwort nicht der falschen Frage zuschreibt.
   "tests/app/f0304-klara-assistenzflaeche.test.tsx",
+  // JOB 3012 D3 (03.09.2026): der Wartezustand „Pruefung laeuft" am laufenden taskpane.html
+  // (Panel-Fixture, Ask-Fetch offen gehalten) gegen das Zielbild PruefungLaeuft.dc.html. Achse
+  // `taskpane`; „klara" steht nicht im Dateinamen, K5 bleibt deshalb bei 31 (gemessen: K2 rot,
+  // K5 gruen, bevor diese Zeile eingetragen wurde). Sachlich Klara-Regression: der Test haelt
+  // fest, was der Mensch waehrend der Suche sieht und was gesperrt ist.
+  "tests/design/zielbild-pruefunglaeuft-messung.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
