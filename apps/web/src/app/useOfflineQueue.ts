@@ -16,6 +16,7 @@ import {
   markPending,
   markSynced,
   pendingCount,
+  reviveInterrupted,
   syncableOps,
 } from "../lib/offlineQueue";
 
@@ -39,7 +40,9 @@ export interface OfflineQueueApi {
 function load(): QueuedOp[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as QueuedOp[]) : [];
+    // Was beim letzten Mal mitten im Senden abbrach, liegt hier als `pending`. Beim Neustart läuft
+    // kein Send mehr — der Rest wird wieder aufgenommen, statt für immer liegenzubleiben (F-0027).
+    return raw ? reviveInterrupted(JSON.parse(raw) as QueuedOp[]) : [];
   } catch {
     return [];
   }
@@ -115,6 +118,37 @@ export function useOfflineQueue(onSync?: (r: SyncResult) => void): OfflineQueueA
     setSyncing(false);
     return { synced, failed };
   }, [qc]);
+
+  // F-0027 (JOB 2951 D2): EIN Anlauf beim Aufbau.
+  //
+  // Wer im Büro die Anwendung öffnet, hat die Verbindung SCHON. `online` markiert nur den Übergang
+  // und feuert deshalb nicht; `focus` feuert beim ersten Aufbau eines bereits fokussierten Fensters
+  // ebenfalls nicht. Ohne diesen Anlauf blieb die aus dem localStorage wiederhergestellte
+  // Warteschlange liegen, bis der Mensch zufällig das Fenster wechselte und zurückkam — genau der
+  // Weg, den F-0027 verspricht („unterwegs an der Anlage erfassen, im Büro fertigmachen").
+  //
+  // GENAU EINMAL, über den Ref-Riegel: Startet die Anwendung offline und kommt die Verbindung kurz
+  // darauf, darf dieser Anlauf nicht zusätzlich zum `online`-Ereignis feuern — sonst legt derselbe
+  // Entwurf zwei Server-Einträge an. Kein neuer Synchronisationsweg: es ist dieselbe `syncNow`,
+  // die die Ereignisse unten schon benutzen.
+  const startAnlaufRef = useRef(false);
+  useEffect(() => {
+    if (startAnlaufRef.current) {
+      return;
+    }
+    startAnlaufRef.current = true;
+    if (typeof navigator === "undefined" || !navigator.onLine) {
+      return;
+    }
+    if (syncableOps(queueRef.current).length === 0) {
+      return;
+    }
+    void syncNow().then((r) => {
+      if (r.synced > 0 || r.failed > 0) {
+        onSyncRef.current?.(r);
+      }
+    });
+  }, [syncNow]);
 
   useEffect(() => {
     const goOnline = (): void => {

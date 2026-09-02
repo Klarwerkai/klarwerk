@@ -92,6 +92,20 @@ export function syncableOps(queue: readonly QueuedOp[]): QueuedOp[] {
   return queue.filter((q) => q.status === "queued" || q.status === "failed");
 }
 
+// F-0027 (JOB 2951 D2): Reste eines abgebrochenen Laufs beim NEUSTART wieder aufnehmen.
+//
+// `syncNow` setzt jeden Op vor dem Senden auf `pending`. Bricht der Lauf ab (Fenster zu, Absturz),
+// steht `pending` im localStorage — und `syncableOps` nimmt bewusst nur `queued` und `failed`.
+// Diese Enge ist RICHTIG, solange ein Send läuft: sie verhindert, dass derselbe Op ein zweites Mal
+// gegriffen wird. Beim Neustart läuft aber kein Send mehr; ein dort vorgefundenes `pending` ist
+// kein Zustand, sondern ein Rest. Ohne diese Wiederaufnahme war er DAUERHAFT unsynchronisierbar
+// und wurde von `pendingCount` trotzdem weiter als offen gezählt — der Entwurf ging nie raus, und
+// die Anzeige behauptete das Gegenteil. Deshalb hier und nicht in `syncableOps`: die Grenze
+// verläuft am Neustart, nicht am Sync.
+export function reviveInterrupted(queue: readonly QueuedOp[]): QueuedOp[] {
+  return queue.map((q) => (q.status === "pending" ? { ...q, status: "queued", error: null } : q));
+}
+
 export function pendingCount(queue: readonly QueuedOp[]): number {
   return queue.filter((q) => q.status !== "synced").length;
 }
