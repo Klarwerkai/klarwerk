@@ -1,6 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
 import type { AiCheck, KoService } from "../../../knowledge-object";
-import type { BoardFilter, ValidationService } from "../../../validation";
+import { type BoardFilter, type ValidationService, mitHerkunft } from "../../../validation";
 import { type AiCheckWorker, shouldReEnqueueAiCheck } from "../ai-check-worker";
 import { type Guards, sendError } from "../http";
 import { sichtbareFuer, sichtbarkeitsfilterFuer } from "../sichtbarkeit";
@@ -45,7 +45,30 @@ export function validationRoutes(
           }
         }
       }
-      reply.code(200).send(board);
+      // ==========================================================================================
+      // JOB 3003 · STATION 4 — STUFE UND HERKUNFT, UND EIN FEHLEN HEISST FEHLEN.
+      // ==========================================================================================
+      //
+      // Bis hierher trug diese Route keinen einzigen Bezug auf Vertraulichkeit oder Herkunft. Wer
+      // validiert, sah Titel, Kernaussage, Stimmen und Zuweisungen — aber nicht, wie vertraulich das
+      // Objekt ist und woher es kommt. Beide Felder stehen am Wissensobjekt schon; sie sind dort nur
+      // OPTIONAL, und ein nicht gesetztes optionales Feld fehlt im JSON vollstaendig.
+      //
+      // WARUM `null` MIT `confidentialityProvenance: "unknown"` UND NICHT DAS WEGGELASSENE FELD: ein
+      // fehlender Schluessel ist fuer den, der davorsitzt, nicht unterscheidbar von „die Route
+      // liefert das nicht" — er muesste raten. Derselbe Grundsatz steht im Produkt schon
+      // ausgeschrieben, nur nicht auf diesem Lesepfad: `search-projection.ts:691-698` — „Weggelassen
+      // heisst AUSDRUECKLICH unbestaetigt … nie eine stillschweigend als `verified` gehashte
+      // Aussage." Die vollstaendige Begruendung samt Grenzen steht in
+      // `services/validation/src/board-herkunft.ts`.
+      //
+      // DIE REIHENFOLGE IST DER SCHUTZ: `sichtbareFuer` steht OBEN, VOR dieser Zeile. Die
+      // Anreicherung erweitert vorhandene Zeilen und legt keine an; ein unsichtbares Objekt bleibt
+      // damit vollstaendig weg statt als Zeile mit `null`-Feldern zu erscheinen — schon die Zeile
+      // waere eine Existenzauskunft (JOB 1510 / G1). Es ist eine reine Lese-Sicht: kein neues
+      // Datenmodell, keine Persistenz, kein Backfill, und `/api/validation/overview` bleibt
+      // unberuehrt.
+      reply.code(200).send(board.map((ko) => mitHerkunft(ko)));
     });
 
     app.get("/api/validation/overview", async (request, reply) => {

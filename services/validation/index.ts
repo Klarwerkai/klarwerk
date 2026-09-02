@@ -26,5 +26,14 @@ export {
   VALIDATION_SETTINGS_SCHEMA,
   type ValidationSettingsRepo,
 } from "./src/settings";
+// JOB 3003: Stufe und Herkunft als Board-Auskunft (reine Lese-Sicht). Die Route wendet sie NACH
+// dem Sichtbarkeitsfilter an — die Begruendung steht ausgeschrieben in board-herkunft.ts.
+export { mitHerkunft } from "./src/board-herkunft";
+export type {
+  BoardHerkunft,
+  BoardQuellenhinweis,
+  ConfidentialityProvenance,
+  HerkunftsFakten,
+} from "./src/board-herkunft";
 export { ValidationError } from "./src/types";
 export type { Verdict, Rating, Assignment, ValidationErrorCode } from "./src/types";
