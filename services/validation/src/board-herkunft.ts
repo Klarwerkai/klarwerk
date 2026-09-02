@@ -49,27 +49,34 @@
 // des bestehenden Board-Vertrags waere eine andere Entscheidung mit anderen Betroffenen (die
 // Pruefseite in `apps/web/src`, die dieser Auftrag ausdruecklich nicht anfasst) und ist hier
 // bewusst NICHT getroffen.
-import type {
-  Confidentiality,
-  KnowledgeObject,
-  KoSource,
-  KoSourceKind,
+//
+// ================================================================================================
+// JOB 3009 — DIE STUFENREGEL WOHNT NICHT MEHR HIER, SONDERN AN IHRER EINEN STELLE.
+// ================================================================================================
+//
+// Der Ausdruck „gueltige Stufe oder ausdruecklich `null`, mit Beleglage `ko` | `unknown`" stand
+// nach JOB 3003 dreimal woertlich im Code (media-routes.ts:30, object-routes.ts:203 und hier), und
+// der Detailabruf `GET /api/kos/:id` haette die vierte Kopie gebraucht. Er ist deshalb in
+// `services/knowledge-object/src/confidentiality.ts` gehoben (`discloseConfidentiality`) — dort
+// wohnt die Stufengrenze `isValidConfidentiality` ohnehin schon. Board und Detailabruf sagen
+// seither buchstaeblich dasselbe, weil sie dieselbe Funktion rufen.
+//
+// DIESER DATEIKOPF BLEIBT, weil er die BEGRUENDUNG traegt und nicht die Regel; die Kurzfassung
+// steht am neuen Ort, die ausfuehrliche hier. Was hier bleibt, ist die Board-eigene Haelfte:
+// `origin` und die schlanke Quellenliste (s. „WARUM DIE QUELLENLISTE NUR DREI FELDER TRAEGT").
+import {
+  type Confidentiality,
+  type ConfidentialityDisclosure,
+  type ConfidentialityProvenance,
+  type KnowledgeObject,
+  type KoSource,
+  type KoSourceKind,
+  discloseConfidentiality,
 } from "../../knowledge-object";
-import { isValidConfidentiality } from "../../knowledge-object";
 
-/**
- * WOHER die ausgegebene Stufe stammt.
- *
- * · `ko`      — sie steht am Wissensobjekt selbst und ist ein gueltiger Wert.
- * · `unknown` — der Bestand traegt keine (oder keine gueltige) Stufe. Ausdruecklich KEINE Aussage
- *               „intern": niemand hat hier je eingestuft.
- *
- * Bewusst dieselbe Wortwahl wie `ClassificationConfidence` in der Suchprojektion
- * (search-projection.ts:132-133) — ein zweites Vokabular fuer denselben Gedanken waere eine zweite
- * Wahrheit. Bewusst NICHT dieselbe Aufzaehlung: dort geht es um die HISTORISCHE Belastbarkeit einer
- * Versionsaussage, hier um die Frage, ob der heutige Bestand ueberhaupt eine Stufe traegt.
- */
-export type ConfidentialityProvenance = "ko" | "unknown";
+// Die Beleglage der Stufe reist unveraendert weiter durch den oeffentlichen Vertrag dieses Moduls
+// (`services/validation/index.ts`) — bestehende Aufrufer merken von der Hebung nichts.
+export type { ConfidentialityProvenance };
 
 /** Eine Quelle in der Uebersichtsform: Kennung, Bezeichnung, Art — mehr nicht (s. Dateikopf). */
 export interface BoardQuellenhinweis {
@@ -78,10 +85,15 @@ export interface BoardQuellenhinweis {
   kind: KoSourceKind;
 }
 
-/** Die zwei Auskuenfte, die dieser Auftrag an jede Board-Zeile haengt. */
-export interface BoardHerkunft {
-  confidentiality: Confidentiality | null;
-  confidentialityProvenance: ConfidentialityProvenance;
+/**
+ * Die zwei Auskuenfte, die dieser Auftrag an jede Board-Zeile haengt.
+ *
+ * Die Stufenhaelfte ist seit JOB 3009 der geteilte Lesevertrag `ConfidentialityDisclosure` und
+ * keine eigene Feldliste mehr — sonst koennten Board und Detailabruf auseinanderlaufen, ohne dass
+ * der Compiler es merkt. Die Felder heissen unveraendert `confidentiality` und
+ * `confidentialityProvenance`.
+ */
+export interface BoardHerkunft extends ConfidentialityDisclosure {
   origin: NonNullable<KnowledgeObject["origin"]> | null;
   originSources: BoardQuellenhinweis[];
 }
@@ -101,16 +113,16 @@ export interface HerkunftsFakten {
  * Reine Lese-Sicht auf Felder, die am Wissensobjekt bereits stehen: kein neues Datenmodell, keine
  * Persistenz, kein Backfill. Sie erweitert die Zeile und ueberschreibt kein bestehendes Feld.
  *
- * `isValidConfidentiality` und nicht `normalizeConfidentiality`: ein unbekannter Wert (Altbestand,
- * fremd geschriebene Zeile) ist eine UNBEKANNTE Stufe, keine interne. Das ist dieselbe fail-safe
- * Richtung wie in `parseClassificationSnapshot` (search-projection.ts:306-322).
+ * Die Stufe kommt aus `discloseConfidentiality` — derselben Funktion, die auch `GET /api/kos/:id`
+ * ruft (JOB 3009). Warum dort `isValidConfidentiality` und nicht `normalizeConfidentiality` steht,
+ * ist an ihr ausgeschrieben: ein unbekannter Wert (Altbestand, fremd geschriebene Zeile) ist eine
+ * UNBEKANNTE Stufe, keine interne — dieselbe fail-safe Richtung wie in
+ * `parseClassificationSnapshot` (search-projection.ts:306-322).
  */
 export function mitHerkunft<T extends HerkunftsFakten>(ko: T): T & BoardHerkunft {
-  const stufe = isValidConfidentiality(ko.confidentiality) ? ko.confidentiality : null;
   return {
     ...ko,
-    confidentiality: stufe,
-    confidentialityProvenance: stufe ? "ko" : "unknown",
+    ...discloseConfidentiality(ko.confidentiality),
     // Fehlende Herkunft heisst „unbekannt" und ausdruecklich nicht „ueber die Vordertuer erfasst" —
     // derselbe Satz steht am Modell (knowledge-object/src/types.ts:242-243).
     origin: ko.origin ?? null,

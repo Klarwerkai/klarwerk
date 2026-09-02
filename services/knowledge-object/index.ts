@@ -215,6 +215,14 @@ export {
   isValidConfidentiality,
   confidentialityRank,
   isConfidentialityDowngrade,
+  // JOB 3009: die Stufe als ausdrückliche AUSKUNFT (gültiger Wert oder `null` + Beleglage). Die
+  // EINE Stelle für die Regel, die vorher an drei Lesewegen einzeln hingeschrieben stand; sie ist
+  // ein Lesevertrag und kein Tor (die Begründung steht ausgeschrieben in src/confidentiality.ts).
+  discloseConfidentiality,
+} from "./src/confidentiality";
+export type {
+  ConfidentialityDisclosure,
+  ConfidentialityProvenance,
 } from "./src/confidentiality";
 export type {
   EvidenceKind,

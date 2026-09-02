@@ -28,6 +28,10 @@ export {
 } from "./src/settings";
 // JOB 3003: Stufe und Herkunft als Board-Auskunft (reine Lese-Sicht). Die Route wendet sie NACH
 // dem Sichtbarkeitsfilter an — die Begruendung steht ausgeschrieben in board-herkunft.ts.
+// JOB 3009: die STUFENhaelfte wohnt seit dieser Runde in `knowledge-object`
+// (`discloseConfidentiality`), damit Board und Detailabruf dieselbe Regel rufen. Dieser Vertrag
+// bleibt fuer bestehende Aufrufer unveraendert benutzbar — `ConfidentialityProvenance` reist
+// weiter durch diese Fassade.
 export { mitHerkunft } from "./src/board-herkunft";
 export type {
   BoardHerkunft,

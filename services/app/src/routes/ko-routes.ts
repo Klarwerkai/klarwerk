@@ -25,6 +25,9 @@ import {
   alsMenge,
   alsSchreibpatch,
   createOperationFingerprint,
+  // JOB 3009: die Stufe als ausdrueckliche Auskunft am Detailabruf — dieselbe Funktion, die das
+  // Pruef-Board ueber `mitHerkunft` ruft (die Begruendung steht an der Route).
+  discloseConfidentiality,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
@@ -559,7 +562,40 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       if (!item) {
         return;
       }
-      reply.code(200).send(item);
+      // ==========================================================================================
+      // JOB 3009 · STATION 4, ZWEITE SERVERHAELFTE — AUCH HIER HEISST FEHLEN FEHLEN.
+      // ==========================================================================================
+      //
+      // Das Pruef-Board sagt seit JOB 3003 ausdruecklich `confidentiality: null` mit
+      // `confidentialityProvenance: "unknown"`, wenn der Bestand keine Stufe traegt. Diese Route
+      // sagte an derselben Stelle GAR NICHTS: die Stufe wird am Modell nur gespeichert, wenn sie
+      // tatsaechlich vertraulich ist (service.ts:1650-1654), und ein nicht gesetztes optionales
+      // Feld fehlt im JSON vollstaendig. Wer vom Board aus das Objekt oeffnete, konnte „dieses
+      // Objekt ist nicht eingestuft" und „diese Route liefert die Einstufung nicht" wieder nicht
+      // unterscheiden — die Verwechslung kippte eine Klickebene tiefer zurueck.
+      //
+      // DIESELBE REGEL, NICHT DIESELBE SCHREIBWEISE: `discloseConfidentiality` ist die EINE Stelle
+      // (knowledge-object/src/confidentiality.ts); das Board ruft ueber `mitHerkunft` dieselbe
+      // Funktion. Eine hier hingeschriebene Kopie waere die vierte Auslegung derselben Entscheidung.
+      // Ein vorhandener gueltiger Wert bleibt unveraendert; ein ungueltiger Altwert wird `null` +
+      // `"unknown"` und ausdruecklich NICHT „intern".
+      //
+      // DIE REIHENFOLGE IST DER SCHUTZ: `sichtbaresKoOder404` steht OBEN, VOR dieser Zeile —
+      // dieselbe Reihenfolge wie am Board (validation-routes.ts, Filter vor Anreicherung). Ein
+      // unsichtbares Objekt bleibt ein 404; schon eine 200er-Antwort mit `null`-Feldern waere eine
+      // Existenzauskunft.
+      //
+      // DIE GRENZE, UND SIE IST BEWUSST: `origin` wird NICHT angefasst und es entsteht KEINE
+      // zweite, schlanke Quellenliste neben `sources`. Der Detailabruf gibt das volle Objekt samt
+      // `sources` heraus (mit `excerpt`); ein zweiter, schlankerer Quellenschnitt auf DEMSELBEN
+      // Lesepfad waere eine zweite Wahrheit ueber dieselben Daten. `originSources` ist die
+      // UEBERSICHTSform des Boards und gehoert dorthin (board-herkunft.ts, „WARUM DIE QUELLENLISTE
+      // NUR DREI FELDER TRAEGT").
+      //
+      // Es ist eine reine Lese-Sicht: kein Backfill, keine Migration, kein Schreiben einer Stufe,
+      // wo keine steht. Der Schreibweg (`PUT /api/kos/:id {action:"confidentiality"}`) bleibt
+      // unberuehrt.
+      reply.code(200).send({ ...item, ...discloseConfidentiality(item.confidentiality) });
     });
 
     app.get<{ Params: { id: string } }>("/api/kos/:id/versions", async (request, reply) => {

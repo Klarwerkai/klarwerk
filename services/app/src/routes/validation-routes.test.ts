@@ -274,10 +274,18 @@ describe("JOB 3003 · Station 4 — Stufe und Herkunft am Pruef-Board", () => {
     expect(schreiben.body).toBe(JSON.stringify({ defaultNeededValidations: 4 }));
   });
 
-  it("F6 · BEFUND: kaeme die Pruefende heute ueber den Detailabruf an Stufe und Herkunft?", async () => {
-    // Der Auftrag verlangt diese MESSUNG ausdruecklich (§2, „Was NICHT belegt ist"): sie aendert
-    // nichts am Bau, gehoert aber in den Befund. Sie wird hier festgehalten, damit die Antwort
-    // nicht Meinung bleibt.
+  it("F6 · EINE REGEL: Board und Detailabruf geben dieselbe Auskunft", async () => {
+    // HERKUNFT DIESES FALLS: JOB 3003 verlangte hier eine MESSUNG (§2, „Was NICHT belegt ist") —
+    // kaeme die Pruefende ueber den Detailabruf an Stufe und Herkunft? Die Antwort war damals
+    // „`origin` ja, Stufe nein": `GET /api/kos/:id` gab das Objekt roh heraus, und ein nicht
+    // gesetztes optionales Feld fehlt im JSON vollstaendig. Der Fall hielt das als
+    // `Object.hasOwn(voll, "confidentiality") === false` fest.
+    //
+    // JOB 3009 hat genau diese Luecke geschlossen: der Detailabruf ruft dieselbe Regel wie das
+    // Board (`discloseConfidentiality`, knowledge-object/src/confidentiality.ts). Der Fall wird
+    // deshalb NICHT gestrichen, sondern nachgezogen — er misst ab jetzt, dass beide Lesewege
+    // dasselbe sagen. Die eigenen Faelle des Detailabrufs stehen in
+    // `ko-routes-stufenauskunft.test.ts`.
     const { app, services, pruefer } = await setup();
     const ko = await services.ko.create({
       title: "Objekt fuer den Detailabruf",
@@ -294,8 +302,21 @@ describe("JOB 3003 · Station 4 — Stufe und Herkunft am Pruef-Board", () => {
     const voll = detail.json() as Record<string, unknown>;
     // Der Detailabruf gibt das VOLLE Objekt heraus: `origin` steht darin ...
     expect(voll.origin).toBe("word_addin");
-    // ... und die Stufe FEHLT dort als Schluessel, wenn sie nicht gesetzt ist — genau die
-    // Verwechslung, die dieser Auftrag am Board schliesst.
-    expect(Object.hasOwn(voll, "confidentiality")).toBe(false);
+    // ... und die fehlende Stufe ist jetzt eine AUSSAGE statt eines fehlenden Schluessels.
+    expect(voll).toHaveProperty("confidentiality", null);
+    expect(voll.confidentialityProvenance).toBe("unknown");
+
+    // Und das ist der Punkt: dieselbe Auskunft wie auf dem Board, weil es dieselbe Regel ist.
+    const z = zeile(await board(app, pruefer), ko.id);
+    expect(voll.confidentiality).toBe(z.confidentiality);
+    expect(voll.confidentialityProvenance).toBe(z.confidentialityProvenance);
+
+    // DIE GRENZE BLEIBT BENANNT: die schlanke Quellenliste ist die UEBERSICHTSform des Boards. Der
+    // Detailabruf traegt `sources` bereits vollstaendig; eine zweite Liste daneben waere eine
+    // zweite Wahrheit auf demselben Lesepfad (JOB 3009, Lieferung 4).
+    expect(Object.hasOwn(voll, "originSources")).toBe(false);
+    expect(z.originSources).toEqual([
+      { id: "q-1", label: "Handbuch Anlagenbetrieb, Kapitel 4", kind: "external" },
+    ]);
   });
 });
