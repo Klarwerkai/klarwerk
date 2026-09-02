@@ -427,10 +427,22 @@ export function RichTextEditor({
   // einzigen Stelle, die BEIDE kennt. Bewusst NICHT im Zustand abgelegt, sondern bei jedem Rendern
   // aus dem aktuellen Rumpf gerechnet: Schreibt der Nutzer nach dem Anfordern noch einen Satz, ist
   // das ab sofort SEIN Titel — ein eingefrorener Bildtitel wäre dann bereits überholt.
-  const titelWahl =
-    captionFormAi?.status === "suggestion"
-      ? titelNachRangfolge(objekttextAusRumpf(value), captionFormAi.titelVorschlag)
-      : null;
+  //
+  // JOB 2954 D3 (F-0071): OHNE BEDINGUNG. Hier stand `captionFormAi?.status === "suggestion" ? …
+  // : null` — die Rangfolge wurde also nur befragt, solange das Bild-Beschreibungsformular mit
+  // einem Vorschlag offen war. Rang 1 ist aber der OBJEKTTEXT, und der liegt immer vor: `value`
+  // ist der Rumpf im Editor, er braucht kein Bild und keinen Dienstaufruf. Wer ein Wissensobjekt
+  // ohne Bild schrieb, sah deshalb nie einen Titelvorschlag — gemessen in JOB 2954 D1, und genau
+  // das ist die Lücke, die der Registereintrag mit „über dem Schreibfeld … immer sichtbar" meint.
+  //
+  // Die Bildbeschreibung bleibt, was sie war: RANG 2. Sie wird nur eingereicht, wenn gerade eine
+  // Antwort vorliegt; sonst steht dort `null` und die Rangfolge entscheidet allein aus dem Text.
+  // Die Rangfolge selbst ist unangetastet (`lib/titelRangfolge.ts`) — „eine Quelle je Objekt, nie
+  // eine Mischung" wird dort entschieden, nicht hier.
+  const titelWahl = titelNachRangfolge(
+    objekttextAusRumpf(value),
+    captionFormAi?.status === "suggestion" ? captionFormAi.titelVorschlag : null,
+  );
   // Spiegel des Formular-Zustands für die Gültigkeitsprüfung einer späten Antwort (kein Re-Render
   // nötig, und der Callback sieht immer den aktuellen Stand statt eines eingefrorenen).
   const captionFormRef = useRef<typeof captionForm>(null);
@@ -1915,76 +1927,11 @@ export function RichTextEditor({
                     </button>
                   </div>
 
-                  {/* JOB 2402 D1 (TV1 Scheibe b) — DER TITELVORSCHLAG, SICHTBAR UND EHRLICH.
-                      Er stammt aus DEMSELBEN describe-Lauf wie die Beschreibung darüber; es gibt
-                      keinen zweiten Knopf und keinen zweiten Egress. Zwei Ausgänge, beide gesagt:
-                      ein abgeleiteter Titel als VORSCHLAG (übernommen erst auf Klick, KA6 Stufe 1),
-                      oder der wahre Satz, dass sich keiner ableiten liess. Ein leeres Kästchen wäre
-                      hier das Schlimmste von beidem — es sähe nach Fehler aus und sagte nichts. */}
-                  {/* JOB 2489 D1 (TV1 Rang 1) — DIE RANGFOLGE, HIER ENTSCHIEDEN.
-                      Bis hierher stand an dieser Stelle `captionFormAi.titelVorschlag`, also der
-                      Bildtitel, BEDINGUNGSLOS. Die Chef-Entscheidung vom 19.08. gibt aber dem
-                      Objekttext den ersten Rang. Entschieden werden kann das nur hier: der Dienst
-                      kennt nur das Bild, diese Fläche kennt beides — den Rumpf im Editor und die
-                      Antwort. Und es spart einen Egress, weil der Rumpf den Rechner nicht
-                      verlässt. */}
-                  <div className="mt-2 border-t border-hairline pt-2">
-                    {titelWahl === null ? (
-                      <p
-                        data-testid="caption-form-title-none"
-                        className="text-[11.5px] leading-relaxed text-muted-2"
-                      >
-                        {t(CAPTION_AI_TEXT.titleNone)}
-                      </p>
-                    ) : (
-                      <div data-testid="caption-form-title-suggestion">
-                        <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
-                          {t(CAPTION_AI_TEXT.titleLabel)}
-                        </p>
-                        {/* JOB 2440 D1: eigener Anker für den VORGESCHLAGENEN TITEL allein. Der
-                            Block darüber trägt auch die Knopfbeschriftung; wer „nur den Titel"
-                            prüfen will, mass ihn vorher mit — genau daran ist der Vergleichsfall
-                            in `tv1-ohne-uebernahmeweg-mounted` beim ersten Lauf zu Recht rot
-                            geworden. Kein neues Verhalten, nur eine Stelle zum Festmachen. */}
-                        <p
-                          data-testid="caption-form-title-text"
-                          className="mt-1 text-[12.5px] font-semibold leading-relaxed text-text"
-                        >
-                          {titelWahl.titel}
-                        </p>
-                        {/* JOB 2489 D1: DIE HERKUNFT, SICHTBAR. „Eine Quelle je Objekt" ist eine
-                            Zusage über das, was der Mensch sieht — steht da nur ein Titel, kann
-                            niemand unterscheiden, ob die Rangfolge gegriffen hat oder ob beide
-                            Quellen zufällig dasselbe ergaben. Derselbe Grund, aus dem schon der
-                            GRUND des Bildwegs mitreist: ein Vorschlag ohne Herkunft ist von einem
-                            Zufall nicht zu unterscheiden. */}
-                        <p
-                          data-testid="caption-form-title-quelle"
-                          data-quelle={titelWahl.quelle}
-                          className="mt-0.5 text-[11px] leading-relaxed text-muted-2"
-                        >
-                          {t(
-                            titelWahl.quelle === "objekttext"
-                              ? CAPTION_AI_TEXT.titleSourceText
-                              : CAPTION_AI_TEXT.titleSourceImage,
-                          )}
-                        </p>
-                        {/* Ohne Ziel kein Knopf: eine Fläche ohne eigenes Titelfeld reicht den
-                            Callback nicht herein, und ein Knopf, der nichts bewirkt, wäre eine
-                            Scheinwahl. Der Vorschlag bleibt dort trotzdem lesbar. */}
-                        {onTitelVorschlag ? (
-                          <button
-                            type="button"
-                            data-testid="caption-form-title-adopt"
-                            onClick={() => onTitelVorschlag(titelWahl.titel)}
-                            className="mt-2 inline-flex h-7 items-center rounded-btn border border-ai/50 bg-surface px-2 text-[11.5px] font-semibold text-ai"
-                          >
-                            {t(CAPTION_AI_TEXT.titleApply)}
-                          </button>
-                        ) : null}
-                      </div>
-                    )}
-                  </div>
+                  {/* JOB 2954 D3 (F-0071): HIER STAND DER TITELVORSCHLAG — er ist jetzt über dem
+                      Schreibfeld, nicht mehr in diesem Formular. Der Block ist VERSCHOBEN, nicht
+                      kopiert: Es gibt ihn genau einmal, sonst wären es zwei Wahrheiten, sobald
+                      eine Seite je anders rechnete. Die Begründungen von JOB 2402 D1 und
+                      JOB 2489 D1 stehen unverändert an seinem neuen Ort. */}
                 </div>
               ) : null}
 
@@ -2046,6 +1993,90 @@ export function RichTextEditor({
           kein Editing-Host mehr — es gibt keinen Cursor in ihr, die Bedingung konnte nie mehr wahr
           werden. Ein KI-Weg, den niemand mehr erreichen kann, ist keine Bequemlichkeit, sondern
           eine zweite Wahrheit neben dem Formular. Der Vorschlag lebt jetzt ausschließlich dort. */}
+
+      {/* ============================================================================================
+          JOB 2954 · D3 · F-0071 — DIE TITELZEILE, ÜBER DEM SCHREIBFELD UND IMMER SICHTBAR.
+          ============================================================================================
+
+          HIERHER VERSCHOBEN aus dem Bild-Beschreibungsformular (dort stand er seit JOB 2402 D1).
+          Der Registereintrag verlangt „über dem Schreibfeld … eine Titelzeile, die IMMER sichtbar
+          bleibt"; im Formular war sie nur zu sehen, solange dieses mit einem Vorschlag offen stand.
+          Wer ohne Bild erfasste — der Normalfall —, sah nie einen Vorschlag, obwohl Rang 1 aus dem
+          Objekttext ohne jedes Bild berechenbar ist (gemessen: JOB 2954 D1).
+
+          DIE BEGRÜNDUNGEN DER BEIDEN VORDURCHGÄNGE GELTEN UNVERÄNDERT WEITER:
+
+          JOB 2402 D1 (TV1 Scheibe b) — SICHTBAR UND EHRLICH. Zwei Ausgänge, beide gesagt: ein
+          abgeleiteter Titel als VORSCHLAG (übernommen erst auf Klick, KA6 Stufe 1), oder der wahre
+          Satz, dass sich keiner ableiten liess. Ein leeres Kästchen wäre das Schlimmste von beidem
+          — es sähe nach Fehler aus und sagte nichts.
+
+          JOB 2489 D1 (TV1 Rang 1) — DIE RANGFOLGE, HIER ENTSCHIEDEN. Der Dienst kennt nur das
+          Bild; diese Fläche kennt beides — den Rumpf im Editor und die Antwort. Und es spart einen
+          Egress, weil der Rumpf den Rechner nicht verlässt.
+
+          WARUM AN `mode === "edit"` GEBUNDEN und nicht davor: Die Zusage lautet „über dem
+          SCHREIBFELD". In der Vorschau gibt es keines — eine Titelzeile ohne Feld darüber wäre
+          eine Aussage über etwas, das dort niemand bearbeitet. */}
+      {mode === "edit" ? (
+        <div className="mb-2 rounded-card border border-hairline bg-surface px-3 py-2">
+          {titelWahl === null ? (
+            <p
+              data-testid="caption-form-title-none"
+              className="text-[11.5px] leading-relaxed text-muted-2"
+            >
+              {t(CAPTION_AI_TEXT.titleNone)}
+            </p>
+          ) : (
+            <div data-testid="caption-form-title-suggestion">
+              <p className="font-mono text-[9.5px] font-semibold uppercase tracking-wider text-ai">
+                {t(CAPTION_AI_TEXT.titleLabel)}
+              </p>
+              {/* JOB 2440 D1: eigener Anker für den VORGESCHLAGENEN TITEL allein. Der Block darüber
+                  trägt auch die Knopfbeschriftung; wer „nur den Titel" prüfen will, mass ihn vorher
+                  mit — genau daran ist der Vergleichsfall in `tv1-ohne-uebernahmeweg-mounted` beim
+                  ersten Lauf zu Recht rot geworden. */}
+              <p
+                data-testid="caption-form-title-text"
+                className="mt-1 text-[12.5px] font-semibold leading-relaxed text-text"
+              >
+                {titelWahl.titel}
+              </p>
+              {/* JOB 2489 D1: DIE HERKUNFT, SICHTBAR. „Eine Quelle je Objekt" ist eine Zusage über
+                  das, was der Mensch sieht — steht da nur ein Titel, kann niemand unterscheiden, ob
+                  die Rangfolge gegriffen hat oder ob beide Quellen zufällig dasselbe ergaben. */}
+              <p
+                data-testid="caption-form-title-quelle"
+                data-quelle={titelWahl.quelle}
+                className="mt-0.5 text-[11px] leading-relaxed text-muted-2"
+              >
+                {t(
+                  titelWahl.quelle === "objekttext"
+                    ? CAPTION_AI_TEXT.titleSourceText
+                    : CAPTION_AI_TEXT.titleSourceImage,
+                )}
+              </p>
+              {/* Ohne Ziel kein Knopf: eine Fläche ohne eigenes Titelfeld reicht den Callback nicht
+                  herein, und ein Knopf, der nichts bewirkt, wäre eine Scheinwahl. Der Vorschlag
+                  bleibt dort trotzdem lesbar.
+
+                  UND ER IST DER EINZIGE WEG: Der Editor kennt `documentTitle` nur lesend und setzt
+                  ihn nie selbst (s. Prop-Kommentar oben). Ein selbst geschriebener Titel kann
+                  deshalb gar nicht automatisch verdrängt werden — nur dieser Klick übernimmt. */}
+              {onTitelVorschlag ? (
+                <button
+                  type="button"
+                  data-testid="caption-form-title-adopt"
+                  onClick={() => onTitelVorschlag(titelWahl.titel)}
+                  className="mt-2 inline-flex h-7 items-center rounded-btn border border-ai/50 bg-surface px-2 text-[11.5px] font-semibold text-ai"
+                >
+                  {t(CAPTION_AI_TEXT.titleApply)}
+                </button>
+              ) : null}
+            </div>
+          )}
+        </div>
+      ) : null}
 
       {mode === "edit" ? (
         <div className="relative">
