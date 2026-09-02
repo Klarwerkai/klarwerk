@@ -1125,8 +1125,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Quellbaum waechst. Die beiden Zahlen, an denen Stufe 2 wirklich haengt, sind unveraendert:
     // `anbieter` 1 und `traeger` 2. Die Themenkarte bietet keine Bildbeschreibung an und traegt
     // keinen eigenen Titel — sie erscheint nur in der Grundmenge.
+    //
+    // JOB 2970 D1 (F-0140 / K-20): `komponenten` von 249 auf 250 NACHGEZOGEN. Die Import-Seite
+    // `apps/web/src/pages/Stufe2.tsx` bringt GENAU EINE Komponente mit — `ImportRunPanel`, die
+    // Fläche, auf der der Verwalter den Zustand eines laufenden Imports liest.
+    //
+    // Dieselbe Begründung wie oben bei JOB 2600 D1, und sie trägt hier genauso: Die Auflage
+    // verbietet, dass eine UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst.
+    // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und
+    // `traeger` 2. Die Lauf-Fläche bietet keine Bildbeschreibung an und trägt keinen eigenen
+    // Titel; sie erscheint nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 249,
+      komponenten: 250,
       anbieter: 1,
       traeger: 2,
     });

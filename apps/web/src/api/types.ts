@@ -1071,6 +1071,52 @@ export interface ImportGroupResponse {
 // WP-IC-4 (Schritt 5): Teil-Bilanz eines Übernahme-Batches (der Client aggregiert ehrlich).
 // WP-SHIP7-FIX (Fix 3): alreadyQueued = idempotenter No-op (Kandidat war schon eingereiht) —
 // zählt EHRLICH getrennt vom Import.
+// F-0140 / K-20 (JOB 2970 D1): der ASYNCHRONE Importlauf auf der Leitung.
+//
+// Nicht zu verwechseln mit `ImportApplyResponse` darunter: das ist die SYNCHRONE Übernahme in die
+// Prüfliste und liefert Zähler. Ein Lauf dagegen wird gestartet (202) und danach unter seiner
+// Kennung gelesen — `services/app/src/routes/import-run-routes.ts:54-69` legt Feld für Feld fest,
+// was nach aussen geht. Diese Typen bilden genau das ab, nichts darüber hinaus.
+export interface ImportRunStartResponse {
+  importId: string;
+  status: string;
+  /**
+   * JOB 2970 D2: `true`, wenn der Server mit `409 IMPORT_ALREADY_RUNNING` geantwortet hat — dann
+   * ist `importId` die Kennung des BEREITS laufenden Imports, nicht die eines neu gestarteten.
+   * „Es läuft schon" ist keine Störung, sondern eine Auskunft; die Fläche zeigt daraufhin den
+   * bestehenden Lauf, statt einen zweiten Start anzubieten.
+   */
+  alreadyRunning: boolean;
+}
+
+export interface ImportRunCounters {
+  itemsTotal: number;
+  itemsCreated: number;
+  itemsBound: number;
+  itemsSkipped: number;
+  itemsFailed: number;
+}
+
+export interface ImportRunRecord {
+  importId: string;
+  sourceSystem: string;
+  externalId: string | null;
+  sourceScope: string | null;
+  requestedSourceVersion: string | null;
+  /**
+   * BEWUSST `string`, nicht die Neunerliste. Der Zustand wird GELESEN, nie hergeleitet; ein Wert,
+   * den diese Fassung nicht kennt, muss durchkommen können, damit `importRunStateView` ihn
+   * sichtbar als unbekannt benennen kann statt ihn wegzutypisieren.
+   */
+  status: string;
+  sourceRecordId: string | null;
+  startedAt: string;
+  completedAt: string | null;
+  failureCode: string | null;
+  failureReason: string | null;
+  counters: ImportRunCounters;
+}
+
 export interface ImportApplyResponse {
   imported: number;
   // WP-IC-6b: davon Aktualisierungen (Quelle war neuer als der Import — wird im Review als neue

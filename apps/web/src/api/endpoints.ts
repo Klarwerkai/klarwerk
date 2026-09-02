@@ -1,7 +1,7 @@
 import type { ReasonerLocale } from "../lib/reasonerLocale";
 // WP-RETEST7 R8: Timeout-Konstante der Folien-Konvertierung (eine Quelle, lib/slideImages).
 import { SLIDES_CONVERT_TIMEOUT_MS } from "../lib/slideImages";
-import { api } from "./client";
+import { ApiError, api } from "./client";
 import type {
   AiCheckCoverageSummary,
   Analytics,
@@ -44,6 +44,8 @@ import type {
   ImportExploreResponse,
   ImportGroupResponse,
   ImportItemInput,
+  ImportRunRecord,
+  ImportRunStartResponse,
   ImportSelectCriteria,
   ImportSelectResponse,
   InterviewResult,
@@ -701,6 +703,62 @@ export const endpoints = {
     // IC-2 (Import-Cockpit): READ-ONLY Erkundung „was ist da" VOR jedem Import. Schreibt nichts —
     // liefert nur die aggregierte Landkarte (Mengen/Autoren/Themen/Zeitraum) + truncated.
     import: {
+      // F-0140 / K-20 (JOB 2970 D1): der asynchrone Lauf. Beide Routen existieren serverseitig
+      // seit JOB 2691 D2 und waren vom Client bis hierher UNERREICHBAR — die Import-Seite konnte
+      // deshalb nichts über einen laufenden Import sagen.
+      //
+      // `startRun` antwortet 202 `{importId, status:"QUEUED"}`. Läuft für denselben Space schon
+      // einer, antwortet der Server 409 `IMPORT_ALREADY_RUNNING` und legt KEINEN zweiten an
+      // (confluence-import-routes.ts:274-281) — die Sperre liegt am Server, die Fläche hält den
+      // Knopf zusätzlich gesperrt, solange sie einen laufenden Lauf kennt.
+      // JOB 2970 D2: Der 409-Körper trägt die Kennung des BEREITS laufenden Imports
+      // (`confluence-import-routes.ts:274-280`) — und genau die ging bisher verloren.
+      //
+      // WARUM NICHT ÜBER `api.post`: `apiFetch` wirft bei `!res.ok` einen `ApiError`, der nur
+      // `status`, `code` und `message` trägt (`api/client.ts:33-40`). Das `importId`-Feld des
+      // Körpers fällt dabei weg. Für 409 ist das aber die einzige nützliche Information: „es
+      // läuft schon" ist kein Fehler, sondern eine Auskunft — mit der Kennung, unter der der
+      // laufende Import lesbar ist. Deshalb wird HIER, an genau dieser einen Stelle, die Antwort
+      // selbst gelesen. `api/client.ts` bleibt unangetastet; Basis (`/api`), Anmeldung
+      // (`credentials: "include"`) und Kopfzeile sind Zeichen für Zeichen dieselben.
+      //
+      // Jede ANDERE Fehlerantwort bleibt ein Fehler und fliegt als `ApiError` weiter — kein
+      // stiller Schlucker.
+      startRun: async (): Promise<ImportRunStartResponse> => {
+        const res = await fetch("/api/admin/import/confluence", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        });
+        const roh = await res.text();
+        const daten = (roh ? JSON.parse(roh) : {}) as {
+          importId?: unknown;
+          status?: unknown;
+          error?: unknown;
+          message?: unknown;
+        };
+        if (res.status === 409 && daten.error === "IMPORT_ALREADY_RUNNING") {
+          return {
+            importId: String(daten.importId ?? ""),
+            status: String(daten.status ?? "RUNNING"),
+            alreadyRunning: true,
+          };
+        }
+        if (!res.ok) {
+          throw new ApiError(
+            res.status,
+            daten.error ? String(daten.error) : "ERROR",
+            daten.message ? String(daten.message) : res.statusText,
+          );
+        }
+        return {
+          importId: String(daten.importId ?? ""),
+          status: String(daten.status ?? ""),
+          alreadyRunning: false,
+        };
+      },
+      run: (importId: string) => api.get<ImportRunRecord>(`/admin/import/runs/${importId}`),
       explore: () => api.post<ImportExploreResponse>("/admin/import/confluence/explore", {}),
       // IC-3: READ-ONLY Auswahl-Vorschau (Prompt und/oder Klick-Kriterien). Schreibt nichts.
       // WP-SAMMEL20-FIX (bens Fix 3): locale reist explizit mit (Route-Schema: de/en).

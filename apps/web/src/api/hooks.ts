@@ -3,8 +3,12 @@ import { useQuery } from "@tanstack/react-query";
 // Datenzustand `null`. Sie steht in einer eigenen Datei, weil sie ein VERTRAG ist und keine
 // Hilfszeile — die Begründung, warum 403 und 5xx ausdrücklich NICHT dazugehören, gehört an genau
 // eine Stelle und nicht in drei Hook-Kommentare (s. api/abwesenheit.ts).
+import { importRunStateView } from "../lib/importResultView";
 import { alsAbwesenheit } from "./abwesenheit";
 import { type KoFilter, endpoints } from "./endpoints";
+
+/** Nachfragetakt für einen laufenden Import — ruhig genug fürs Netz, schnell genug fürs Auge. */
+const IMPORT_RUN_TAKT_MS = 2000;
 
 // Lese-Hooks (TanStack Query) gegen die Modul-Endpunkte. Mutationen werden je
 // Screen mit useMutation gebaut (mit Invalidierung der passenden Keys).
@@ -22,6 +26,21 @@ export const useImportCandidates = () =>
   useQuery({
     queryKey: ["import-candidates"],
     queryFn: () => endpoints.library.importCandidates.list(),
+  });
+// F-0140 / K-20 (JOB 2970 D1): der laufende Importlauf, so lange er läuft.
+//
+// Ob nachgefragt wird, entscheidet NICHT dieser Hook, sondern `importRunStateView` — dieselbe reine
+// Ableitung, die auch die Anzeige speist. Ein zweiter Lauf-Begriff („welche Zustände sind laufend?")
+// wäre genau die zweite Wahrheit, die auseinanderläuft: Der View-Kern nennt `QUEUED … ANALYZING`
+// laufend, und wer hier eine eigene Liste pflegte, würde bei der nächsten Erweiterung entweder
+// ewig nachfragen oder zu früh aufhören.
+export const useImportRun = (importId: string | null) =>
+  useQuery({
+    queryKey: ["import-run", importId],
+    queryFn: () => endpoints.admin.import.run(importId ?? ""),
+    enabled: importId !== null,
+    refetchInterval: (q) =>
+      importRunStateView(q.state.data?.status).running ? IMPORT_RUN_TAKT_MS : false,
   });
 // FR-EXT-03 / SCRUM-117: nur validierte KOs als Output-Quellen.
 export const useOutputSources = () =>

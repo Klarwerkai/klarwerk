@@ -12,6 +12,7 @@ import {
   useGaps,
   useGraph,
   useImportCandidates,
+  useImportRun,
   useKos,
   useLifecyclePending,
   // SCRUM-171 nutzt useKos + useEvidenceIndex (beide bereits vorhanden).
@@ -41,6 +42,8 @@ import { ImportJsonUpload } from "../components/ImportJsonUpload";
 import { ImportCockpitProvider, ImportStepperBar } from "../components/ImportStepper";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
+// F-0140 / K-20: derselbe Zustandsbanner, den der Ergebnis-View schon benutzt — kein zweiter.
+import { RunStateBanner } from "../components/confluence-import/RunStateBanner";
 import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 import { CAPITAL_SECTIONS, sectionAnchor, sectionHref } from "../lib/capitalSections";
 import { deriveStatus } from "../lib/displayStatus";
@@ -60,6 +63,7 @@ import {
   importCandidateStatusTone,
   isOpenImportCandidate,
 } from "../lib/importCandidateStatus";
+import { importRunStateView } from "../lib/importResultView";
 import { ImportParseError, parseImportItems } from "../lib/importReview";
 // AUFTRAG-ic7-import-vision: geteilte ID des JSON-Dialogs (aktive JSON-Kachel der Quellen-Galerie).
 import { knowledgeHealth } from "../lib/knowledgeHealth";
@@ -342,6 +346,100 @@ export function Output(): JSX.Element {
 // AUFTRAG-mega9 Block E-1 (KW-E2E-005): Statustext UND Farbton kommen jetzt aus der einen Quelle
 // lib/importCandidateStatus — die lokale Ton-Map und der inline gebaute i18n-Schlüssel sind entfallen.
 
+// ================================================================================================
+// F-0140 / K-20 (JOB 2970 D1) — DER VERWALTER SIEHT DEN FORTSCHRITT EINES LAUFENDEN IMPORTS.
+// ================================================================================================
+//
+// WAS HIER VORHER FEHLTE — und zwar nur hier: Die Laufdomäne ist serverseitig seit JOB 2691 D2
+// vollständig (`POST /api/admin/import/confluence` → 202, `GET /api/admin/import/runs/:id`), und
+// `lib/importResultView.ts` übersetzt sie seit AUFTRAG-BASIC-W2-RESULTAT-VIEW-KERN-23 in
+// Anzeigeschlüssel. Gerufen hat beides niemand. Die Import-Seite schwieg, während der Server
+// arbeitete — der Verwalter sah nicht, ob etwas lief, wie weit es war oder woran es scheiterte.
+//
+// KEIN NEUER WEG: Diese Fläche baut nichts nach. Sie ruft den vorhandenen Lesehook, reicht den
+// gelesenen Zustand durch die vorhandene reine Ableitung und zeigt ihn im vorhandenen
+// `RunStateBanner` — derselbe, den der Ergebnis-View schon benutzt.
+//
+// DER DOPPELSTART IST ZWEIFACH GESPERRT, und das ist Absicht: Der Server lehnt einen zweiten Lauf
+// je Space mit 409 `IMPORT_ALREADY_RUNNING` ab (confluence-import-routes.ts:274-281) — das ist die
+// verbindliche Sperre. Der gesperrte Knopf hier ist die SICHTBARE: Wer nichts anklicken kann,
+// braucht keine Fehlermeldung zu lesen. Beide zusammen, weil eine Fläche, die den Klick zulässt
+// und danach einen Fehler zeigt, den Verwalter im Unklaren lässt, ob nun zwei Läufe laufen.
+export function ImportRunPanel(): JSX.Element {
+  const { t } = useTranslation();
+  const { push } = useToast();
+  const [importId, setImportId] = useState<string | null>(null);
+  const lauf = useImportRun(importId);
+  // GELESEN, nie hergeleitet: der Zustand kommt vom Server, die Bedeutung aus dem View-Kern.
+  const zustand = importRunStateView(lauf.data?.status);
+  // JOB 2970 D2: Ein Startversuch waehrend eines laufenden Imports ist KEIN Fehlschlag.
+  //
+  // Der Server antwortet dann `409 IMPORT_ALREADY_RUNNING` und nennt im selben Koerper die
+  // Kennung des laufenden Imports (`confluence-import-routes.ts:274-280`). Genau der Fall tritt
+  // ein, wenn jemand die Seite waehrend eines Laufs neu oeffnet: die Flaeche kennt noch keine
+  // Kennung, der Mensch tippt auf „Start" — und bekommt bisher eine Fehlermeldung, obwohl alles
+  // in Ordnung ist. Jetzt UEBERNIMMT die Flaeche die gemeldete Kennung und zeigt den bestehenden
+  // Lauf. Kein zweiter Start, keine Fehlermeldung, kein verlorener Import.
+  const starten = useMutation({
+    mutationFn: () => endpoints.admin.import.startRun(),
+    onSuccess: (r) => setImportId(r.importId),
+    onError: () => push("error", t("state.error")),
+  });
+  // Gesperrt, solange gestartet wird ODER ein bekannter Lauf noch unterwegs ist. `lauf.isPending`
+  // gehört dazu: zwischen Start und erster Antwort ist der Zustand unbekannt, und „unbekannt" ist
+  // kein Freibrief für einen zweiten Start.
+  const laeuft = starten.isPending || (importId !== null && (lauf.isPending || zustand.running));
+
+  return (
+    <Card className="mb-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <SectionLabel>{t("w2.run.heading")}</SectionLabel>
+        <Button
+          variant="primary"
+          data-testid="f0140-start"
+          disabled={laeuft}
+          onClick={() => starten.mutate()}
+        >
+          {t("w2.run.start")}
+        </Button>
+      </div>
+      <div className="mt-2">
+        {importId === null ? (
+          <p data-testid="f0140-idle" className="text-[12.5px] text-muted">
+            {t("w2.run.idle")}
+          </p>
+        ) : (
+          <>
+            <RunStateBanner
+              state={zustand}
+              failureCode={lauf.data?.failureCode ?? null}
+              failureReason={lauf.data?.failureReason ?? null}
+            />
+            {/* JOB 2970 D2: FORTSCHRITT ALS ZAHL, nicht als Zustandswort.
+                Der Server fuehrt die Zaehler bereits und liefert sie unveraendert mit
+                (`repo.ts:677-682` → `import-run-routes.ts:67`). „Verarbeitet" ist die Summe der
+                vier Ausgaenge — angelegt, gebunden, uebersprungen, gescheitert; zusammen sind sie
+                genau die Elemente, die der Lauf hinter sich hat. `itemsTotal` ist das Ziel.
+                Gezaehlt wird NICHT hier: die Zahlen kommen fertig vom Server. */}
+            {lauf.data ? (
+              <p data-testid="f0140-fortschritt" className="mt-2 text-[12.5px] text-muted">
+                {t("w2.run.progress", {
+                  verarbeitet:
+                    lauf.data.counters.itemsCreated +
+                    lauf.data.counters.itemsBound +
+                    lauf.data.counters.itemsSkipped +
+                    lauf.data.counters.itemsFailed,
+                  gesamt: lauf.data.counters.itemsTotal,
+                })}
+              </p>
+            ) : null}
+          </>
+        )}
+      </div>
+    </Card>
+  );
+}
+
 // SCRUM-108/116/FE-LIB-04: JSON-Re-Import mit echter Source-Review-Queue.
 export function ImportReview(): JSX.Element {
   const { t } = useTranslation();
@@ -429,6 +527,10 @@ export function ImportReview(): JSX.Element {
           bewusst an keiner gewählten Quelle (er ist keine Stufe des Flusses) und rendert für alle,
           die das Recht nicht tragen, gar nichts. */}
       <ImportAccessPanel />
+
+      {/* F-0140 / K-20: der laufende Import steht ueber dem Fluss — er beantwortet „laeuft gerade
+          etwas?", und die Frage stellt sich, BEVOR man einen neuen Schritt anfaengt. */}
+      <ImportRunPanel />
 
       <ImportCockpitProvider>
         <ImportStepperBar />

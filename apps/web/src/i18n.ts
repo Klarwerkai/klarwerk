@@ -4788,6 +4788,11 @@ const de = {
   // „teilweise" und „fehlgeschlagen" dürfen nie wie ein Erfolg klingen (`KW-W2-17`).
   "w2.result.heading": "Importergebnis",
   "w2.run.heading": "Lauf",
+  // F-0140 / K-20 (JOB 2970 D1): die zwei Texte der Lauf-Fläche auf der Import-Seite.
+  "w2.run.start": "Import starten",
+  "w2.run.idle": "Kein Lauf gestartet. Der Startknopf legt einen an; sein Zustand steht dann hier.",
+  // JOB 2970 D2: Fortschritt als Zahl — die Zähler kommen fertig vom Server.
+  "w2.run.progress": "{{verarbeitet}} von {{gesamt}} Elementen verarbeitet",
   "w2.run.status.QUEUED": "In der Warteschlange",
   "w2.run.status.FETCHING": "Quelle wird abgerufen",
   "w2.run.status.PERSISTING_SOURCE": "Original wird gesichert",
@@ -9031,6 +9036,9 @@ const en: typeof de = {
 
   "w2.result.heading": "Import result",
   "w2.run.heading": "Run",
+  "w2.run.start": "Start import",
+  "w2.run.idle": "No run started. The start button creates one; its state then appears here.",
+  "w2.run.progress": "{{verarbeitet}} of {{gesamt}} items processed",
   "w2.run.status.QUEUED": "Queued",
   "w2.run.status.FETCHING": "Fetching the source",
   "w2.run.status.PERSISTING_SOURCE": "Storing the original",
@@ -13245,6 +13253,10 @@ const nl: typeof de = {
 
   "w2.result.heading": "Importresultaat",
   "w2.run.heading": "Uitvoering",
+  "w2.run.start": "Import starten",
+  "w2.run.idle":
+    "Geen uitvoering gestart. De startknop maakt er een aan; de status verschijnt dan hier.",
+  "w2.run.progress": "{{verarbeitet}} van {{gesamt}} elementen verwerkt",
   "w2.run.status.QUEUED": "In de wachtrij",
   "w2.run.status.FETCHING": "Bron wordt opgehaald",
   "w2.run.status.PERSISTING_SOURCE": "Origineel wordt vastgelegd",
