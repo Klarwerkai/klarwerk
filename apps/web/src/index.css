@@ -187,6 +187,21 @@
   content: attr(data-kw-placeholder);
   @apply not-italic text-muted-2;
 }
+/* JOB 3041 (Register I50, VIERTENS): eine Bildbeschreibung, die zu KEINEM Bild gehört (Stufe 3 in
+   editorFigures.ts), sagt es selbst. Der Text steht im Attribut data-kw-nicht-zugeordnet, das die
+   Verankerung NUR editorseitig setzt und beide Sanitizer beim Speichern strippen (figcaption erlaubt
+   ausschließlich data-image-id) — dieselbe Bauform wie der Platzhalter, aus demselben Grund.
+   ::after und nicht ::before: ::before ist vom Platzhalter belegt und bleibt es. Deshalb erscheint
+   die Kennzeichnung bei LEERER wie bei GEFÜLLTER Fußnote — eine Fußnote ohne Bild ist in beiden
+   Fällen dasselbe Problem. Warn-Tönung aus den vorhandenen Tokens (mega40 H2: keine neuen
+   Farbwerte), damit sie sich von einer normalen Beschreibung erkennbar abhebt. */
+.prose-kw figcaption[data-kw-nicht-zugeordnet] {
+  @apply border-l-2 border-l-trust-warn-fill bg-trust-warn-bg;
+}
+.prose-kw figcaption[data-kw-nicht-zugeordnet]::after {
+  content: attr(data-kw-nicht-zugeordnet);
+  @apply mt-0.5 block not-italic text-[11px] font-semibold text-trust-warn-text;
+}
 /* AUFTRAG-mega84 Block B: das Formularfeld der Bildbeschreibung ist ein contentEditable (es trägt
    fett/kursiv/Umbruch) und hat deshalb kein natives `placeholder`. Derselbe rein visuelle
    ::before-Behelf wie bei der Fußnote — der Text ist nie Inhalt und wird nie gespeichert. */

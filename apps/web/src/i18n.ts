@@ -1706,6 +1706,13 @@ const de = {
   // WP-D10: rein VISUELLER Platzhalter der leeren Bild-Fußnote (data-kw-placeholder + CSS ::before) —
   // wird nie als Inhalt gespeichert. Kein Emoji, nur das Stift-Zeichen ✎.
   "editor.captionPlaceholder": "✎ Bildbeschreibung hinzufügen …",
+  // JOB 3041 (Register I50, VIERTENS): eine Bildbeschreibung, die zu keinem Bild gehört, sagt es
+  // selbst. Der erste Satz ist die SICHTBARE Kennzeichnung (CSS ::after), der zweite die
+  // angekündigte Beschriftung. Beide sagen NUR, was der Klick tut — er öffnet das Formular; er
+  // stellt KEINE Zuordnung her (die ist nicht gebaut).
+  "editor.captionUnassigned": "noch keinem Bild zugeordnet",
+  "editor.captionUnassignedLabel":
+    "Bildbeschreibung, noch keinem Bild zugeordnet — öffnet das Beschreibungsformular",
   // AUFTRAG-mega88 Block C: der ehrliche Restfall — zu diesem Bild lässt sich keine Fußnote
   // herstellen. Seit der Bildstruktur-Invariante ist er nicht mehr erreichbar; er schweigt trotzdem
   // nicht mehr, falls er es doch einmal wird.
@@ -6460,6 +6467,9 @@ const en: typeof de = {
   "editor.fileFromDisk": "Attach file from computer …",
   "editor.imageFromAttachment": "From attachments",
   "editor.captionPlaceholder": "✎ Add image description …",
+  "editor.captionUnassigned": "not linked to an image yet",
+  "editor.captionUnassignedLabel":
+    "Image description, not linked to an image yet — opens the description form",
   "editor.captionNoAnchor":
     "No image description can be added for this image right now. Please insert the image again.",
   "editor.captionAi.suggest": "Suggest AI description",
@@ -10736,6 +10746,9 @@ const nl: typeof de = {
   "editor.fileFromDisk": "Bestand van je computer toevoegen …",
   "editor.imageFromAttachment": "Uit bijlagen",
   "editor.captionPlaceholder": "✎ Afbeeldingsbeschrijving toevoegen …",
+  "editor.captionUnassigned": "nog niet aan een afbeelding gekoppeld",
+  "editor.captionUnassignedLabel":
+    "Afbeeldingsbeschrijving, nog niet aan een afbeelding gekoppeld — opent het beschrijvingsformulier",
   "editor.captionNoAnchor":
     "Voor deze afbeelding kan nu geen afbeeldingsbeschrijving worden aangemaakt. Voeg de afbeelding opnieuw in.",
   "editor.captionAi.suggest": "AI-beschrijving voorstellen",

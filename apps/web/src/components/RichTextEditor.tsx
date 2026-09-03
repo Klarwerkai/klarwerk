@@ -550,10 +550,16 @@ export function RichTextEditor({
   // der ehrliche Auslöser des Auffrischungseffekts unten: kein Auslöser, den der Rumpf nicht liest.
   const verankereFiguren = useCallback(
     (el: HTMLElement): void => {
+      // JOB 3041: die zwei Texte der nicht zugeordneten Fußnote gehen durch DIESELBE Stelle. Damit
+      // nimmt der Sprachwechsel-Effekt unten sie ohne eigene Verdrahtung mit — ein zweiter Aufruf
+      // von `enhanceFiguresForEditing` wäre genau die Vergesslichkeit, gegen die es diese eine
+      // Stelle gibt (gezählt in `tests/capture/editor-figure-caption.test.ts`).
       enhanceFiguresForEditing(
         el,
         t("editor.captionPlaceholder"),
         t(CAPTION_AI_TEXT.captionOpenLabel),
+        t("editor.captionUnassigned"),
+        t("editor.captionUnassignedLabel"),
       );
     },
     [t],

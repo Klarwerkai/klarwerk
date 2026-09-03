@@ -75,6 +75,11 @@ export interface EditableElement extends EditableFigureRoot, EditableChildNode {
   outerHTML: string;
   getAttribute(name: string): string | null;
   setAttribute(name: string, value: string): void;
+  // JOB 3041: das Gegenstück zu `setAttribute`. Eine Kennzeichnung, die einen Zustand behauptet,
+  // muss auch wieder verschwinden können, wenn der Zustand nicht mehr gilt — sonst stünde beim
+  // nächsten Verankerungslauf eine veraltete Aussage am Knoten. Bleibt DOM-lib-frei: ein echtes
+  // `Element` erfüllt auch diese Methode strukturell.
+  removeAttribute(name: string): void;
   closest(selectors: string): EditableElement | null;
   querySelector(selectors: string): EditableElement | null;
   insertAdjacentHTML(position: string, text: string): void;
@@ -86,6 +91,20 @@ export interface EditableElement extends EditableFigureRoot, EditableChildNode {
 // Formular"), statt es aus einer Editier-Eigenschaft zu erraten. Es steht NICHT in der
 // Sanitizer-Allowlist (figcaption erlaubt nur data-image-id) → es kann nie gespeichert werden.
 export const CAPTION_OPEN_ATTR = "data-kw-caption-open";
+
+// JOB 3041 (Register I50, VIERTENS) — EINE BILDBESCHREIBUNG OHNE BILD SAGT ES SELBST.
+//
+// Stufe 3 (`flacheFigurenHtml`) lässt eine Fußnote, die zu keinem Bild gehört, sichtbar stehen
+// statt sie zu raten — richtig, aber bis hierher STUMM: sie stand AUSSERHALB jeder figure, sah aus
+// wie eine ganz normale Bildbeschreibung und war für die Tastatur unerreichbar. Wer sie las, hielt
+// sie für die Beschreibung des danebenstehenden Bildes.
+//
+// Dieses Attribut trägt den lokalisierten Kennzeichnungstext als WERT; das CSS rendert ihn als
+// `::after` (`index.css`) — dieselbe Bauform wie `data-kw-placeholder`, aus demselben Grund: der
+// Text ist eine ANSICHT auf einen Zustand, nie Inhalt. Er kann nicht gespeichert werden, weil die
+// Sanitizer-Allowlist für `figcaption` genau ein Attribut kennt (`data-image-id`, richText.ts und
+// services/structure) — das gilt ohne jede Änderung dort und wird nicht erkauft.
+export const CAPTION_UNASSIGNED_ATTR = "data-kw-nicht-zugeordnet";
 
 // ==================================================================================================
 // AUFTRAG-mega88 Block B — DIE BILDSTRUKTUR-INVARIANTE. EINE STELLE, DIE ALLE WEGE DURCHLAUFEN.
@@ -1120,7 +1139,57 @@ export function captionForImage(
   return img.closest("figure")?.querySelector(":scope > figcaption") ?? null;
 }
 
-/** Das Bild, das zu dieser Fußnote gehört — über die Kennung, sonst über das direkte Kind. */
+// ==================================================================================================
+// JOB 3041 / RUNDE 3 (bens Korrekturpflicht 1) — EINE PAARUNG GILT NUR, WENN BEIDE RICHTUNGEN
+// DENSELBEN KNOTEN NENNEN. UND ZWAR HIER, NICHT DANEBEN.
+// ==================================================================================================
+//
+// DER BEFUND, gemessen am Körper, den JOB 3035 als FALL C2 führt: eine verwaiste Fußnote mit der
+// Kennung `X` steht VOR einer vollständigen Einheit, deren Bild und deren eigene Fußnote ebenfalls
+// `X` tragen.
+//
+//   <figcaption data-image-id="X">Verwaist</figcaption>
+//   <figure data-image-id="X"><img data-image-id="X"><figcaption data-image-id="X">Echte</figcaption></figure>
+//
+// Die beiden Suchen antworteten hier VERSCHIEDEN, und zwar nicht aus Willkür, sondern weil nur eine
+// von ihnen die Mehrdeutigkeit überhaupt SAH:
+//   · `captionForImage(bild)` findet ZWEI Fußnoten mit `X`, verweigert deshalb die Auskunft über die
+//     Kennung („mehr als eine Auskunft heißt KEINE Auskunft", JOB 3035) und fällt auf das direkte
+//     Kind zurück → „Echte".
+//   · `imageForCaption("Verwaist")` findet GENAU EIN Bild mit `X` — die Mehrdeutigkeit liegt auf der
+//     ANDEREN Seite und war von hier aus unsichtbar. Es lieferte das Bild.
+//
+// Runde 2 hat daraus eine zweite Funktion gemacht (`istZugeordnet`), die nur die KENNZEICHNUNG
+// steuerte. Genau das war der nächste Befund, und er ist berechtigt: Formular, Geltungsprüfung und
+// KI-Vorschlag fragen alle `imageForCaption` — sie bekamen weiter das fremde Bild, während die
+// Fußnote daneben „noch keinem Bild zugeordnet" behauptete. Zwei Wahrheiten über dieselbe Zuordnung
+// sind genau das, wogegen dieses Modul gebaut ist. Die Sonderwahrheit ist deshalb ENTFERNT und ihre
+// Regel steht jetzt in der einen Funktion, die alle Wege benutzen.
+//
+// DIE REGEL: Ein Kandidat zählt nur, wenn er ZURÜCKZEIGT. Nennt `captionForImage` an diesem Bild
+// eine ANDERE Fußnote, war die Gemeinsamkeit keine Paarung — bei der Kennung eine Namensgleichheit,
+// bei der Struktur eine bloße Nachbarschaft in derselben figure.
+//
+// RUNDE 4 (bens Korrekturpflicht 1): DIE REGEL GILT FÜR BEIDE ZWEIGE, nicht nur für den ersten.
+// Runde 3 prüfte allein den Kennungstreffer und ließ danach den ALTEN Direktzweig unbesehen
+// antworten — der die abgelehnte Auskunft an einer figure mit mehreren direkten Fußnoten prompt
+// wiederherstellte. Gemessen an der Mengenlage, die `huelle4` schon führt:
+//
+//   <figure><img data-image-id="I"><figcaption></figcaption><figcaption data-image-id="Z">…</figcaption></figure>
+//
+// `ensureImageAnchors` schreibt hier bewusst NICHTS (zwei direkte Fußnoten, eine mit
+// widersprechender Kennung — „es gibt keine Antwort auf die Frage, welche zum Bild gehört").
+// `captionForImage(img)` nennt die erste. Die ZWEITE bekam über `:scope > img` trotzdem das Bild
+// und öffnete ein Formular, das es zeigte — genau die Fehlklasse, gegen die dieser Auftrag steht,
+// nur eine Kante weiter. Der Zweig steht deshalb nicht mehr ungeprüft da; abgelöst ist die
+// bedingungslose Rückgabe, nicht der Zweig selbst.
+//
+// KEINE GEGENSEITIGE REKURSION: `captionForImage` ruft nur `knotenMitKennung` und `:scope >`, nie
+// diese Funktion. Die Prüfung kostet je Kandidat einen Lauf über die Fußnoten der Wurzel.
+/**
+ * Das Bild, das zu dieser Fußnote gehört — über die Kennung, sonst über das direkte Kind, und in
+ * beiden Fällen nur, wenn dasselbe Bild diese Fußnote zurücknennt. Sonst `null`.
+ */
 export function imageForCaption(
   caption: EditableElement,
   root?: EditableFigureRoot | null,
@@ -1130,10 +1199,14 @@ export function imageForCaption(
     "img[data-image-id]",
     caption.getAttribute("data-image-id"),
   );
-  if (ueberKennung !== null) {
+  if (ueberKennung !== null && captionForImage(ueberKennung, root) === caption) {
     return ueberKennung;
   }
-  return caption.closest("figure")?.querySelector(":scope > img") ?? null;
+  const direktesKind = caption.closest("figure")?.querySelector(":scope > img") ?? null;
+  if (direktesKind !== null && captionForImage(direktesKind, root) === caption) {
+    return direktesKind;
+  }
+  return null;
 }
 
 // AUFTRAG-mega84 Block A — DIE BESCHREIBUNG IST DER EINSTIEG, NICHT DAS TIPPFELD.
@@ -1149,10 +1222,16 @@ export function imageForCaption(
 // den ersten Tastendruck einer Schreibtaste das vorhandene Formular (mega9 Block F) — dasselbe,
 // in das auch der Knopf der Bild-Werkzeugleiste und die Galerie (mega69) führen. Zwei Wege zum
 // selben Formular sind erlaubt, zwei Formulare nicht.
+//
+// JOB 3041: und seit heute sieht diese eine Verankerung ALLE Fußnoten, nicht nur die in einer
+// figure. Die Fußnote aus Stufe 3 gehört keinem Bild — sie bekommt dieselbe Bedienbarkeit wie jede
+// andere UND die Kennzeichnung, die sagt, was sie ist. Zwei Zweige, EINE Schleife.
 export function enhanceFiguresForEditing(
   root: EditableFigureRoot,
   captionPlaceholder?: string,
   captionLabel?: string,
+  captionUnassigned?: string,
+  captionUnassignedLabel?: string,
 ): void {
   // AUFTRAG-mega88 Block B/C: ZUERST die Invariante. Sie läuft INNERHALB dieser Funktion und nicht
   // neben ihr, damit kein Aufrufer sie vergessen kann — und weil der Editor sie an genau einer
@@ -1162,7 +1241,10 @@ export function enhanceFiguresForEditing(
   for (const img of root.querySelectorAll("figure img")) {
     img.setAttribute("contenteditable", "false");
   }
-  for (const caption of root.querySelectorAll("figure figcaption")) {
+  // JOB 3041: `figcaption` statt `figure figcaption`. Der alte Selektor war die Ursache dafür, dass
+  // die Stufe-3-Fußnote gar nicht erst gesehen wurde — sie steht AUSSERHALB jeder figure. Es gibt
+  // ab jetzt genau EINE Schleife über Fußnoten; der alte Selektor ist abgelöst, nicht ergänzt.
+  for (const caption of root.querySelectorAll("figcaption")) {
     // Kein Editing-Host mehr: was der Nutzer hier tippt, soll ins Formular führen und nicht
     // ungefragt in den Dokumentinhalt laufen.
     caption.setAttribute("contenteditable", "false");
@@ -1171,8 +1253,27 @@ export function enhanceFiguresForEditing(
     // Platzhalter allein trüge nichts davon — und bei GEFÜLLTER Fußnote gibt es ihn gar nicht.
     caption.setAttribute("role", "button");
     caption.setAttribute("tabindex", "0");
-    if (captionLabel !== undefined) {
-      caption.setAttribute("aria-label", captionLabel);
+    // JOB 3041 — DIE EINE REGEL, KEINE ZWEITE. „Ohne Bild" wird nicht über einen eigenen Selektor
+    // („liegt in keiner figure") entschieden und auch nicht über eine eigene Paarungsfunktion,
+    // sondern über GENAU DIE Auskunft, die auch das Formular, die Geltungsprüfung und der
+    // KI-Vorschlag benutzen: `imageForCaption`. Seit Runde 3 trägt sie die Symmetriebedingung
+    // selbst (Begründung dort) — deshalb sagt die Kennzeichnung dasselbe wie das Formular, das sie
+    // öffnet. Gemessen NACH `ensureImageAnchors` oben, also am fertig verankerten Baum. Eine figure
+    // MIT Fußnote, aber OHNE Bild fällt ebenfalls hierher: sie hat kein Bild, also gehört die
+    // Fußnote keinem.
+    const ohneBild = imageForCaption(caption, root) === null;
+    // Die eigene Beschriftung, nicht `captionLabel`: angekündigt wird, was der Nutzer vorfindet.
+    // Fehlt sie (Aufrufer ohne die neuen Texte), bleibt die allgemeine — sie ist nicht falsch, nur
+    // weniger genau. Was NIE stehen bleibt, ist eine Kennzeichnung, die nicht mehr gilt: bei
+    // zugeordneter Fußnote wird sie entfernt, statt sich auf ihr Nichtvorhandensein zu verlassen.
+    const label = ohneBild ? (captionUnassignedLabel ?? captionLabel) : captionLabel;
+    if (label !== undefined) {
+      caption.setAttribute("aria-label", label);
+    }
+    if (ohneBild && captionUnassigned !== undefined) {
+      caption.setAttribute(CAPTION_UNASSIGNED_ATTR, captionUnassigned);
+    } else {
+      caption.removeAttribute(CAPTION_UNASSIGNED_ATTR);
     }
     // WP-D10 Altlast-Migration: exakt einer der drei alten Platzhaltertexte → leeren. Der Nutzer sieht
     // stattdessen den visuellen Platzhalter; gespeichert wird die Leere beim nächsten emit().
