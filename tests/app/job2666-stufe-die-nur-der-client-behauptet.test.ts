@@ -30,13 +30,22 @@
 //     `reasoner.ka4.dokument-consent` mit SEINEM Grund in die Logsenke. Ein nicht verdrahtetes Tor
 //     schriebe nichts, ein Doppel einen anderen Grund.
 //
-// DER POSITIVE ZWEIG (bestätigte Einwilligung hebt den Riegel) ist im Produkt heute NICHT erreichbar:
-// `KLARA_EXTERNAL_EXECUTION_MIGRATED` steht als Ownerkonstante auf `false`
-// (`services/reasoner/src/klara-policy.ts:161`), die Einwilligungsroute antwortet 409 „nur für
-// externe KI möglich", und `pruefeExterneAusfuehrung` kann kein `erlaubt:true` liefern. Der Fall
-// steht hier fertig und springt an, sobald die Konstante kippt — dieselbe Bauform wie
-// `services/app/src/routes/ka4-endzustand.test.ts` (`nurWennFreigegeben`). Bis dahin ist er
-// ausdrücklich NICHT MESSBAR, und V0 protokolliert das in jedem Lauf.
+// DER POSITIVE ZWEIG (bestätigte Einwilligung hebt den Riegel) ist im Produkt heute NICHT
+// erreichbar: `KLARA_EXTERNAL_EXECUTION_MIGRATED` steht als Ownerkonstante auf `false`
+// (`services/reasoner/src/klara-policy.ts`), und `pruefeExterneAusfuehrung` kann kein
+// `erlaubt:true` liefern. Der Fall steht hier fertig und springt an, sobald die Konstante kippt —
+// dieselbe Bauform wie `services/app/src/routes/ka4-endzustand.test.ts` (`nurWennFreigegeben`).
+// Bis dahin ist er ausdrücklich NICHT MESSBAR, und V0 protokolliert das in jedem Lauf.
+//
+// JOB 3033 (03.09.2026) HAT EINE ZWEITE BEDINGUNG SICHTBAR GEMACHT, die dieser Test bis dahin
+// nicht kannte: Die Konstante allein macht die Einwilligung NICHT erteilbar. `grantConsent`
+// verlangt den effektiven Modus `external` (`klara-session-service.ts:798`), und der entsteht nur
+// mit einem verdrahteten Cloud-Anbieter. `buildServices()` hat in dieser hermetischen Suite keinen
+// — die Einwilligungsroute antwortete hier also aus ZWEI Gründen mit 409, und der Test hätte auch
+// bei umgelegter Konstante nicht getragen. V0 zieht die beiden jetzt auseinander, und V2 stellt
+// die Lage eines Betriebs MIT verdrahteter Cloud her: nicht gefälscht, sondern über
+// `configStatus()`, die einzige Quelle, aus der `build-app.ts:1574-1592` die Klara-Policy speist.
+// Alles danach — Sitzung, Einwilligung, Tor, Routen — bleibt echt.
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
@@ -55,6 +64,38 @@ const PNG_MAGIC = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const PNG_URL = `data:image/png;base64,${Buffer.concat([PNG_MAGIC, Buffer.alloc(8)]).toString("base64")}`;
 const INSTANZ = "instanz-2666";
 const nurWennFreigegeben = KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip;
+
+/**
+ * JOB 3033 — DIE LAGE EINES BETRIEBS MIT VERDRAHTETER CLOUD.
+ *
+ * Sie wird an DER Stelle gesetzt, an der die echte Kompositionswurzel sie liest: `configStatus()`
+ * des Reasoners (`build-app.ts:1574-1592`). Das ist keine Fälschung des Tors, sondern der Zustand
+ * einer Instanz, bei der ein Admin einen Cloud-Anbieter verdrahtet hat — genau so, wie
+ * `ka4-endzustand.test.ts` ihn über `policy: () => CLOUD_LAGE` herstellt. Die Antwort des echten
+ * Status bleibt Grundlage; überschrieben werden nur die vier Felder, die die Verdrahtung ausmachen.
+ *
+ * KEIN MODELLAUFRUF, KEIN EGRESS: `structure`, `describeImage` und `ask` sind Spione (s. unten),
+ * und der Reasoner selbst wird für diese Aufgaben gar nicht mehr gefragt.
+ */
+function cloudVerdrahten(services: Dienste): void {
+  const r = services.reasoner as unknown as { configStatus: () => Record<string, unknown> };
+  const echt = r.configStatus.bind(services.reasoner);
+  r.configStatus = () => {
+    const status = echt();
+    const taskConfig = status.taskConfig as { global: string; perTask: Record<string, string> };
+    return {
+      ...status,
+      provider: "anthropic",
+      model: "claude",
+      cloudConfigured: true,
+      taskConfig: { ...taskConfig, perTask: { ...taskConfig.perTask, answer: "cloud" } },
+      effectiveProvider: {
+        ...(status.effectiveProvider as Record<string, string>),
+        answer: "cloud",
+      },
+    };
+  };
+}
 
 // ------------------------------------------------------------------------------------------------
 // Bausteine — alle echt bis auf den Reasoner-Dienst hinter der Route (Spion am `confidential`-Bit).
@@ -259,22 +300,36 @@ function brueckeAufbauen(app: App, auth: Record<string, string>): void {
 
 // ================================================================================================
 describe("JOB 2666 D2 · V — die Verdrahtung: das EINE KA4-Tor an /api/reasoner und /describe, über buildApp", () => {
-  it("V0 · DIE VORBEDINGUNG, protokolliert: der positive Zweig ist heute per Ownerkonstante gesperrt — die echte Einwilligungsroute sagt es selbst", async () => {
+  it("V0 · DIE VORBEDINGUNGEN, protokolliert: zwei Sperren, und sie liegen an VERSCHIEDENEN Stellen", async () => {
     expect(typeof KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe("boolean");
-    const { app } = appBauen();
-    const gebunden = await klaraBindung(app, await anmelden(app));
-    const versuch = await einwilligen(app, gebunden);
-    if (KLARA_EXTERNAL_EXECUTION_MIGRATED) {
-      expect(versuch.status).toBe(200);
-    } else {
-      expect(versuch.status).toBe(409);
-      expect(versuch.message).toContain("nur für externe KI möglich");
-    }
+
+    // (a) OHNE verdrahtete Cloud — der Bestand dieser hermetischen Suite. Der effektive Modus ist
+    //     `deterministic`, und dann ist eine externe Zustimmung gar nicht VORGESEHEN: die Route
+    //     lehnt sie ab. Das gilt UNABHAENGIG von der Ownerkonstante.
+    const ohne = appBauen();
+    const gebundenOhne = await klaraBindung(ohne.app, await anmelden(ohne.app));
+    const versuchOhne = await einwilligen(ohne.app, gebundenOhne);
+    expect(versuchOhne.status).toBe(409);
+    expect(versuchOhne.message).toContain("nur für externe KI möglich");
+    await ohne.app.close();
+
+    // (b) MIT verdrahteter Cloud wird die Einwilligung ANGENOMMEN — auch bei gesperrter Konstante.
+    //     GEMESSEN IN JOB 3033, und es widerlegt die naheliegende Annahme: die Ownerkonstante
+    //     sperrt die AUSFUEHRUNG (`resolveKlaraPolicy` → `external_not_migrated`), nicht die
+    //     Zustimmung. `grantConsent` verlangt nur den effektiven Modus `external`
+    //     (`klara-session-service.ts:798`), und der liegt vor, obwohl blockiert wird. Der Mensch
+    //     kann also einwilligen, und der Server speichert das — wirksam wird es erst danach.
+    const mit = appBauen();
+    cloudVerdrahten(mit.services);
+    const gebundenMit = await klaraBindung(mit.app, await anmelden(mit.app, "pedi2@job2666.test"));
+    const versuchMit = await einwilligen(mit.app, gebundenMit);
+    expect(versuchMit.status).toBe(200);
     console.info(
       `JOB 2666 D2 · V0 · KLARA_EXTERNAL_EXECUTION_MIGRATED = ${KLARA_EXTERNAL_EXECUTION_MIGRATED} → ` +
-        `Einwilligung ${versuch.status}; der positive Zweig V2 ist ${KLARA_EXTERNAL_EXECUTION_MIGRATED ? "WIRKSAM" : "NICHT MESSBAR (gesperrt)"}`,
+        `Einwilligung ohne Cloud ${versuchOhne.status}, mit Cloud ${versuchMit.status}; ` +
+        `der positive Zweig V2 ist ${KLARA_EXTERNAL_EXECUTION_MIGRATED ? "WIRKSAM" : "NICHT MESSBAR (gesperrt)"}`,
     );
-    await app.close();
+    await mit.app.close();
   });
 
   it("V1 · NEGATIV, echt: Klara-gebunden ohne bestätigte Einwilligung, ‹intern› behauptet → structure UND describe laufen vertraulich — und das ECHTE Tor hat entschieden (Protokollgrund)", async () => {
@@ -299,13 +354,16 @@ describe("JOB 2666 D2 · V — die Verdrahtung: das EINE KA4-Tor an /api/reasone
     const entscheidungen = ka4Zeilen(zeilen);
     expect(entscheidungen).toHaveLength(2);
     // Der Grund ist der des ECHTEN `KlaraSessionService` (gemessen 29.08.: eine frische Sitzung ohne
-    // Einwilligung meldet `CONSENT_RECONFIRMATION_REQUIRED`; bei gekippter Ownerkonstante wäre es
-    // `kein_consent`/`external_not_migrated`). Ein Doppel oder ein fehlendes Tor kann diesen Wert nicht
-    // liefern — `ka4Freigabe` schreibt ohne Tor gar nicht, und ein Doppel kennt die Policy nicht.
+    // Einwilligung meldet `CONSENT_RECONFIRMATION_REQUIRED`). Ein Doppel oder ein fehlendes Tor kann
+    // diesen Wert nicht liefern — `ka4Freigabe` schreibt ohne Tor gar nicht, und ein Doppel kennt
+    // die Policy nicht.
+    // JOB 3033: `external_not_migrated` ist aus der Liste genommen. Er war seit dem 03.09.2026
+    // unerreichbar (die Konstante steht auf `true`), und eine Alternative, die nie eintreten kann,
+    // macht die Zusicherung weicher, ohne etwas zu decken.
     for (const e of entscheidungen) {
       expect(e.entscheidung).toBe("blockiert");
       expect(e.grund, "der Grund des echten Tors").toMatch(
-        /^(CONSENT_RECONFIRMATION_REQUIRED|external_not_migrated|kein_consent)$/,
+        /^(CONSENT_RECONFIRMATION_REQUIRED|kein_consent)$/,
       );
     }
     await app.close();
@@ -315,6 +373,9 @@ describe("JOB 2666 D2 · V — die Verdrahtung: das EINE KA4-Tor an /api/reasone
     "V2 · POSITIV, echt: bestätigte Einwilligung über die Route → der Riegel fällt, die Deklaration gilt (structure nicht erzwungen vertraulich)",
     async () => {
       const { services, s, app, zeilen } = appBauen();
+      // JOB 3033: die zweite Bedingung, ohne die auch die freigeschaltete Konstante nichts bewirkt
+      // (s. V0) — ein Betrieb MIT verdrahtetem Cloud-Anbieter.
+      cloudVerdrahten(services);
       const auth = await anmelden(app);
       const gebunden = await klaraBindung(app, auth);
       expect((await einwilligen(app, gebunden)).status).toBe(200);

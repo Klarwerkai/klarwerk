@@ -148,15 +148,52 @@ export const KLARA_DETERMINISTIC_MODEL = "ohne generatives Modell";
 export const KLARA_RESOLUTION_TTL_MS = 5 * 60 * 1000;
 
 /**
- * DER SCHALTER FÜR DEN EXTERNEN ANTWORTWEG — und er steht in dieser Welle auf AUS.
+ * DER SCHALTER FÜR DEN EXTERNEN ANTWORTWEG — und er steht weiterhin auf AUS.
  *
- * Der Auftrag ist ausdrücklich: „Noch wird kein neuer externer Antwortweg freigeschaltet" (§16-17)
- * und „Kein neuer Modellaufruf und kein neuer externer Egress" (No-Go 3). Eine Admin-Auswahl
- * `external` darf deshalb NIE zu `executionAllowed = true` führen — sie wird ehrlich blockiert
- * (§145: „Eine externe Auswahl ohne vollständig migrierten Einsatz wird ehrlich `blocked`").
+ * WIE ER ENTSTAND. In der Welle W1 S4 stand er auf AUS, und das war richtig so: der damalige
+ * Auftrag war ausdrücklich „Noch wird kein neuer externer Antwortweg freigeschaltet" (§16-17) und
+ * „Kein neuer Modellaufruf und kein neuer externer Egress" (No-Go 3). Eine Admin-Auswahl
+ * `external` führt deshalb nie zu `executionAllowed = true`, sondern zu einer ehrlichen Blockade
+ * mit dem Grund `external_not_migrated` (§145). Die Konstante steht hier sichtbar und nicht als
+ * verstreute Bedingung, damit die Freischaltung EINE benannte Entscheidung ist und kein Suchen.
  *
- * Die Konstante steht hier sichtbar und nicht als verstreute Bedingung, damit die spätere
- * Freischaltung EINE benannte Entscheidung ist und kein Suchen.
+ * ============================================================================================
+ * DIE OWNERENTSCHEIDUNG IST GEFALLEN — DIE FREISCHALTUNG NICHT (JOB 3033, 03.09.2026).
+ * ============================================================================================
+ *
+ * Der Eigentümer (Pedi) hat am 03.09.2026 entschieden, den externen Antwortweg freizugeben
+ * (Herkunft `PRIORITAETEN.md` Zeile V2). Die Annahme des Auftrags war: „Der Grund für die Sperre
+ * ist keine fehlende Funktion, sondern eine benannte Owner-Entscheidung." DIESE ANNAHME TRÄGT
+ * NICHT. Runde 1 hat die Konstante umgelegt und dabei vier Stellen freigelegt, an denen der
+ * Bestand etwas anderes tut oder sagt, als die Einwilligung verspricht. Solange sie stehen, wäre
+ * ein `true` hier kein freigeschalteter Weg, sondern ein unehrlicher:
+ *
+ *   S1 · DIE FRIST WIRD SERVERSEITIG NICHT ERZWUNGEN. `KLARA_RESOLUTION_TTL_MS` (oben) begrenzt
+ *        die Anzeige — das Add-in markiert die Auflösung danach als veraltet und holt sie neu
+ *        (`taskpane.html:1876-1878`, `:3222-3232`). Die AUSFÜHRUNG kennt diese Frist nicht:
+ *        `pruefeExterneAusfuehrung` prüft nur die Sitzungsfrist (15 min Inaktivität). Gemessen:
+ *        `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`, Fall S1.
+ *   S2 · DIE ZUSTIMMUNG NENNT DEN FALSCHEN EMPFÄNGER. `grantConsent` bildet sie aus der Auflösung
+ *        OHNE Zustimmung; die ist blockiert, und dann melden `provider`/`model` die
+ *        deterministischen Ersatzwerte (`:278-288`). In `providerReference`/`modelReference`
+ *        landet deshalb „Klarwerk (deterministisch)" — während bei erteilter Zustimmung der
+ *        Cloud-Anbieter ausführen würde. Fall S2 ebenda.
+ *   S3 · DER ZUSTIMMUNGSUMFANG IST ZU SCHMAL BESCHRIEBEN. `KLARA_PAYLOAD_CLASS_QUESTION` (unten)
+ *        weist genau eine Klasse aus, „die Frage". Der normale Antwortweg übergibt dem Modell
+ *        zusätzlich Titel, Aussage und Dokumenttext der Kandidaten
+ *        (`services/ask/src/service.ts:549-566`). Fall S3 ebenda.
+ *   S4 · DIE FLÄCHE SAGT DAS GEGENTEIL. Alle vier Lagetexte des Add-ins behaupten, Klaras Antwort
+ *        entstehe „immer ohne KI-Modell" (`taskpane.html:2113-2117`) — auch der Text für den Fall,
+ *        dass in KLARWERK eine externe KI arbeitet. Fall S4 ebenda.
+ *
+ * DIE VIER SIND NICHT BEHAUPTET, SONDERN GEBUNDEN: die genannten Fälle sind so geschrieben, dass
+ * sie HEUTE grün sind und in dem Augenblick rot werden, in dem jemand diesen Wert auf `true` legt,
+ * ohne sie zu beheben. Der Schalter ist damit kein Wort mehr, sondern eine Bedingung.
+ *
+ * WAS AUSSERDEM UNABHÄNGIG WEITER GILT, auch nach der Behebung: die Admin-Auswahl muss `external`
+ * ergeben, ein Cloud-Anbieter MIT Bezeichnung muss verdrahtet sein (sonst fällt die Auflösung auf
+ * `deterministic` zurück, `:239-244`), und es muss eine deckende Einwilligung für genau diese
+ * Sitzung und genau dieses Dokument vorliegen (`external_consent_missing`, `:253-255`).
  */
 export const KLARA_EXTERNAL_EXECUTION_MIGRATED = false;
 

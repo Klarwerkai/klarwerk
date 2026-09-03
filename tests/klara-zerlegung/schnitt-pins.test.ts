@@ -158,6 +158,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts": "pfad,fixture",
   "tests/design/zielbild-wissen-erfassen.test.ts": "pfad",
   "tests/i18n/mega35-word-wortliste.test.ts": "pfad",
+  // JOB 3033 D2 (03.09.2026): der Vertrag der KA4-Freischaltung. Sein Fall S4 liest
+  // `taskpane.html` als Pfadliteral und haelt fest, dass dessen Satz „immer ohne KI-Modell" und
+  // ein freigeschalteter externer Antwortweg nicht gleichzeitig bestehen koennen. Ein Schnitt
+  // trifft ihn: wandert der Satz in eine Geschwisterdatei, liest S4 ins Leere. Griff `pfad`.
+  "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": "pfad",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",
   // Die Messgeräte dieses Auftrags. Sie hängen genauso an der Datei wie alle anderen — nur messen
   // sie ausdrücklich ihre Struktur und nicht ihr Fachverhalten.

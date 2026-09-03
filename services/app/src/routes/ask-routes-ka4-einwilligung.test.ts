@@ -12,6 +12,13 @@
 // steht. Beides zusammen geht nicht. Was hier steht, ist die Messung, die ich damals schuldig
 // geblieben bin.
 //
+// STAND 03.09.2026 (JOB 3033): `OF-1540-2` ist NICHT erledigt. Die Ownerentscheidung, freizugeben,
+// ist gefallen (`PRIORITAETEN.md` Zeile V2) — die Freischaltung nicht: der Versuch hat vier
+// Sperrgruende freigelegt (Frist, Empfaenger, Nutzlastumfang, Panelvertrag), die im Kopf von
+// `klara-policy.ts` einzeln benannt und in `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`
+// an den Schalter gebunden sind. Die Konstante steht weiter auf `false`, und I0 bis I6 messen
+// unveraendert.
+//
 // ------------------------------------------------------------------------------------------------
 // KEIN EINGESETZTER PRUEFER. Die App entsteht ueber `buildApp(buildServices())`; `klaraSessions`
 // ist der ECHTE `KlaraSessionService` (build-app.ts:1044-1046, 1258-1262). Sitzung, Dokument-
@@ -195,7 +202,7 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
     expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(false);
 
     // Die Feldnamen stammen aus `KlaraPolicyInput` (klara-policy.ts), nicht aus dem Gedaechtnis.
-    const aufloesung = resolveKlaraPolicy({
+    const eingabe = {
       resolutionId: "res-1",
       choice: "cloud",
       source: "db",
@@ -204,13 +211,22 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
       localConfigured: false,
       providerLabel: "anthropic",
       modelLabel: "claude",
-      externalConsentGranted: true, // die Einwilligung liegt VOR — und traegt trotzdem nicht
       now: 1_700_000_000_000,
-    } as never);
+    };
 
-    expect(aufloesung.effectiveMode).toBe("external");
-    expect(aufloesung.blockedReason).toBe("external_not_migrated");
-    expect(aufloesung.executionAllowed).toBe(false);
+    // OHNE Einwilligung: der Modus ist ehrlich `external`, ausgefuehrt wird trotzdem nicht.
+    const ohne = resolveKlaraPolicy({ ...eingabe, externalConsentGranted: false } as never);
+    expect(ohne.effectiveMode).toBe("external");
+    expect(ohne.executionAllowed).toBe(false);
+
+    // UND MIT ERTEILTER EINWILLIGUNG EBENSO — das ist der Kern: die Zustimmung liegt VOR und
+    // traegt trotzdem nicht, weil die Migration fehlt. JOB 3033 hat den Unterschied der beiden
+    // Sperrgruende sichtbar gemacht: mit umgelegter Konstante hiesse er hier
+    // `external_consent_missing`, ohne sie `external_not_migrated`.
+    const mit = resolveKlaraPolicy({ ...eingabe, externalConsentGranted: true } as never);
+    expect(mit.effectiveMode).toBe("external");
+    expect(mit.blockedReason).toBe("external_not_migrated");
+    expect(mit.executionAllowed).toBe(false);
   });
 
   it("KA4-I3 · GEGENFALL fremde Sitzung: die Enge bleibt", async () => {

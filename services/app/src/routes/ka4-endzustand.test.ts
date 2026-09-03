@@ -19,9 +19,15 @@
 //
 // Zwei Dinge trennen diesen Zustand vom Auslieferungsstand, beide benannt:
 //   (1) `KLARA_EXTERNAL_EXECUTION_MIGRATED` muss `true` sein — die Ownerentscheidung aus
-//       OF-1540-4 (`services/reasoner/src/klara-policy.ts:161`). Solange sie aussteht, ist
+//       OF-1540-4 (`services/reasoner/src/klara-policy.ts`). Solange sie aussteht, ist
 //       `KA4-E1` ROT. Das ist kein Mangel des Vertrags, sondern seine Aussage; `KA4-E0`
 //       protokolliert den Wert, damit niemand ihn uebersieht.
+//       STAND 03.09.2026 (JOB 3033): Die ENTSCHEIDUNG ist gefallen (`PRIORITAETEN.md` V2), die
+//       FREISCHALTUNG nicht. Der Versuch hat vier Sperrgruende freigelegt — Frist, Empfaenger,
+//       Nutzlastumfang, Panelvertrag —, die im Kopf von `klara-policy.ts` einzeln benannt und in
+//       `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` an den Schalter gebunden sind.
+//       Dieser Fall hier bleibt deshalb vorerst uebersprungen; er wacht mit derselben Zeile auf,
+//       sobald die vier behoben sind und der Wert umgelegt wird.
 //   (2) Die Reasoner-Lage meldet eine verdrahtete Cloud. Keine Faelschung, sondern der Zustand
 //       eines Betriebs mit konfiguriertem Anbieter: `KlaraSessionService` nimmt die Lage als
 //       `policy()`-Funktion entgegen (klara-session-service.ts:106) — genau so, wie die
@@ -80,16 +86,18 @@ const ENGE = {
 };
 
 /**
- * DER POSITIVE FALL SCHLAEFT, BIS DIE OWNERENTSCHEIDUNG FAELLT — und weckt sich dann selbst.
+ * DER POSITIVE FALL SCHLAEFT, BIS DIE FREISCHALTUNG WIRKLICH FAELLT — und weckt sich dann selbst.
  *
  * Waere `KA4-E1` unbedingt, staende er heute dauerhaft ROT im Tor: die Policy blockiert mit
  * `external_not_migrated`, solange `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf `false` steht. Ein rot
  * hinterlassener Fall widerspricht E-05 und wuerde nach zwei Tagen als „bekannt rot" abgehakt.
  *
  * Er wird deshalb uebersprungen, solange die Sperre steht — und laeuft ohne jede weitere Aenderung
- * mit, sobald jemand die Konstante umlegt. Dass er dann traegt, ist nicht behauptet, sondern
- * gemessen: im simulierten Endzustand 7/7 gruen, und die vier Gegenmutationen R1 bis R4 machen ihn
- * beziehungsweise die Gegenfaelle punktgenau rot (JOB 1540 D3, §2.3/§2.4).
+ * mit, sobald jemand die Konstante umlegt. Dass er dann traegt, ist gemessen und nicht behauptet:
+ * JOB 3033 Runde 1 hat die Konstante versuchsweise umgelegt, und dieser Fall lief auf Anhieb gruen
+ * (8/8 in derselben Datei). Umgelegt BLEIBEN konnte sie nicht — vier Sperrgruende (Frist,
+ * Empfaenger, Nutzlastumfang, Panelvertrag) stehen im Kopf von `klara-policy.ts` und sind in
+ * `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` an den Schalter gebunden.
  */
 const nurWennFreigegeben = KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip;
 

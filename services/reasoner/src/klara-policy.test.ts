@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   KLARA_DETERMINISTIC_MODEL,
@@ -104,10 +106,55 @@ describe("W1 S4 · der Resolver bildet die Admin-Wahl auf die drei kanonischen M
   });
 });
 
-describe("W1 S4 · in dieser Welle wird kein externer Weg freigeschaltet", () => {
+describe("W1 S4 / JOB 3033 · der externe Weg hängt an EINER benannten Entscheidung", () => {
+  // ==============================================================================================
+  // DER PIN IST AB JETZT EIN STRUKTURPIN, KEIN WERTPIN — und das ist die Verschärfung, nicht die
+  // Aufweichung.
+  // ==============================================================================================
+  //
+  // Hier stand `expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(false)` — und der Wertpin bleibt
+  // unten stehen, weil der Wert HEUTE eine Aussage ist. Daneben tritt ab JOB 3033 (03.09.2026) ein
+  // STRUKTURPIN, und der ist die eigentliche Verschärfung: der Wertpin allein hätte auch eine
+  // Bauform durchgelassen, in der die Sperre an fünf verstreuten Stellen hängt.
+  //
+  // WAS DIE BAUFORM LEISTEN MUSS: genau eine benannte Konstante, genau eine Stelle, die sie liest,
+  // keine Umgebungsvariable und kein vom Client gesetzter Wert. Nur so ist die Freischaltung EINE
+  // Entscheidung an EINER Stelle — und nur so können die vier Sperrgründe aus JOB 3033
+  // (`tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`) an genau diesen einen Wert gebunden
+  // werden. Wer die Bedingung streut, eine zweite Fassung anlegt oder sie über `process.env`
+  // steuerbar macht, wird hier rot.
+  const QUELLE = readFileSync(
+    resolve(process.cwd(), "services/reasoner/src/klara-policy.ts"),
+    "utf8",
+  );
+
+  it("GENAU EINE benannte Konstante an GENAU EINER Stelle — kein verstreutes `if`, kein Client-Bool", () => {
+    // (1) Eine einzige Deklaration.
+    expect(QUELLE.match(/export const KLARA_EXTERNAL_EXECUTION_MIGRATED\s*=/g) ?? []).toHaveLength(
+      1,
+    );
+    // (2) Eine einzige lesende Stelle (die Deklaration mitgezählt: zwei Vorkommen im Code).
+    const vorkommenImCode = QUELLE.split("\n")
+      .filter((z) => !z.trimStart().startsWith("*") && !z.trimStart().startsWith("//"))
+      .join("\n")
+      .match(/KLARA_EXTERNAL_EXECUTION_MIGRATED/g);
+    expect(vorkommenImCode ?? []).toHaveLength(2);
+    expect(QUELLE).toContain("if (!KLARA_EXTERNAL_EXECUTION_MIGRATED)");
+    // (3) Kein zweiter Schalter: keine Umgebungsvariable, kein Argument, kein Eingabefeld.
+    expect(QUELLE).not.toMatch(/process\.env/);
+    expect(QUELLE).not.toMatch(/externalExecutionMigrated|allowExternal|migrated\s*[?:]/i);
+    // (4) Und der Resolver bleibt rein: die Entscheidung fällt hier, nicht im HTTP-Layer.
+    expect(QUELLE).not.toMatch(/\bfetch\(|require\(/);
+  });
+
   it("die Migrationsschranke steht ausdrücklich auf AUS", () => {
-    // Der Auftrag ist eindeutig (§16-17, No-Go 3). Diese Zusicherung ist der Wächter: wer sie
-    // umlegt, muss diesen Test bewusst ändern — sie kann nicht versehentlich kippen.
+    // JOB 3033 (03.09.2026): Die OWNERENTSCHEIDUNG, freizuschalten, ist gefallen — die
+    // FREISCHALTUNG nicht. Runde 1 hat den Wert umgelegt und dabei vier Stellen freigelegt, an
+    // denen der Bestand etwas anderes tut oder sagt, als die Einwilligung verspricht (Frist,
+    // Empfänger, Nutzlastumfang, Panelvertrag; im Kopf von `klara-policy.ts` einzeln benannt).
+    // Der Wert steht deshalb weiter auf `false`, und die vier Sperrgründe sind in
+    // `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` an genau diesen Wert gebunden:
+    // sie werden rot, sobald jemand ihn umlegt, ohne sie zu beheben.
     expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(false);
   });
 
@@ -140,6 +187,23 @@ describe("W1 S4 · in dieser Welle wird kein externer Weg freigeschaltet", () =>
     // Zustimmung allein erzeugt keinen Egress — die Migration fehlt weiterhin.
     expect(r.executionAllowed).toBe(false);
     expect(r.blockedReason).toBe("external_not_migrated");
+  });
+
+  it("ohne benennbaren Anbieter bleibt es deterministisch — die Konstante ändert daran nichts", () => {
+    // JOB 3033: die Bedingung, die UNABHÄNGIG von der Konstante gilt und nach einer Freischaltung
+    // die wichtigste bleibt — die Konstante darf keine Bindung erfinden, die es nicht gibt.
+    const r = resolveKlaraPolicy(
+      eingabe({
+        choice: "cloud",
+        cloudConfigured: true,
+        effectiveAnswerProvider: "cloud",
+        externalConsentGranted: true,
+        providerLabel: "",
+      }),
+    );
+    expect(r.effectiveMode).toBe("deterministic");
+    expect(r.deviationReason).toBe("policy_incomplete");
+    expect(r.provider).toBe(KLARA_DETERMINISTIC_PROVIDER);
   });
 
   it("Admin-Auswahl allein erzeugt nie eine Cloud-Freigabe (KW-S4-04 §212)", () => {

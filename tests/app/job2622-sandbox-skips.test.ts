@@ -25,8 +25,15 @@ import { readFileSync } from "node:fs";
 //   „listen EPERM 127.0.0.1" (PRO4 in 2701 D1) — derselbe Grund wie bei den elf, aber bis dahin
 //   ohne Schalter. Damit sind es VIERZEHN Horch-Faelle, nicht mehr elf.
 //
-//   DER EINE, der UEBERALL ruht: services/app/src/routes/ka4-endzustand.test.ts (1 Fall) — er
-//   haengt am Produktflag `KLARA_EXTERNAL_EXECUTION_MIGRATED` (heute false), nicht an der Umgebung.
+//   DIE ZWEI, die UEBERALL ruhen — sie haengen am Produktflag `KLARA_EXTERNAL_EXECUTION_MIGRATED`
+//   (heute false), nicht an der Umgebung:
+//     services/app/src/routes/ka4-endzustand.test.ts (KA4-E1) und, mit derselben Bauform,
+//     tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts (V2).
+//   ZUR EHRLICHKEIT DER ALTEN ZEILE (JOB 3033, 03.09.2026): sie sprach von „dem EINEN". Der 2666er
+//   Fall trug denselben Schalter seit dem 29.08.2026 und war nie mitgezaehlt — S2 pinnt jetzt
+//   beide. Die Ownerentscheidung, freizuschalten, ist am 03.09.2026 gefallen
+//   (`PRIORITAETEN.md` V2); umgelegt ist der Schalter noch nicht, weil vier Sperrgruende offen
+//   sind (Kopf von `klara-policy.ts`). Faellt er, laufen beide Faelle ohne weitere Aenderung mit.
 //
 // Dieser Test fuehrt DIESELBE Horchprobe und prueft die zur Umgebung passende Erwartung — er ist
 // in Bahn UND Chef/CI gruen und faellt, sobald jemand die Skip-Landschaft veraendert, ohne diese
@@ -76,28 +83,43 @@ describe("JOB 2622 · die Skip-Landschaft der Vollsuite ist benannt und gepinnt"
     expect(quelle).toContain('probe.listen(0, "127.0.0.1"');
   });
 
-  it("S2 — der eine umgebungsunabhaengige Skip haengt am Produktflag, nicht an der Sandbox", () => {
-    const quelle = lies("services/app/src/routes/ka4-endzustand.test.ts");
-    expect(quelle).toContain("KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip");
+  it("S2 — die umgebungsunabhaengigen Schalter haengen am Produktflag, nicht an der Sandbox", () => {
+    // NACHGEFUEHRT AM 03.09.2026 (JOB 3033): Der zweite Traeger fehlte in dieser Liste seit dem
+    // 29.08.2026 — `job2666` benutzt dieselbe Bauform und wurde nie mitgezaehlt. Beide sind jetzt
+    // gepinnt. Die Bauform selbst ist der Gegenstand: eine Fallunterscheidung am Produktflag statt
+    // an der Umgebung, damit die Faelle beim Umlegen mitlaufen und beim Zurueckdrehen ruhen,
+    // statt rot zu stehen.
+    for (const datei of [
+      "services/app/src/routes/ka4-endzustand.test.ts",
+      "tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts",
+    ]) {
+      expect(lies(datei), datei).toContain("KLARA_EXTERNAL_EXECUTION_MIGRATED ? it : it.skip");
+    }
   });
 
-  it("S3 — die Erwartung zur Umgebung: ohne Horchrecht ruhen 14+1, mit Horchrecht nur der eine", () => {
+  it("S3 — die Erwartung zur Umgebung: ohne Horchrecht ruhen 14+2, mit Horchrecht nur die zwei", () => {
     // Dieselbe Probe wie in den vier Dateien — dieser Fall DOKUMENTIERT die Zahl, die in der
-    // jeweiligen Umgebung im Vollsuiten-Kopf stehen muss: Bahn `15 skipped`, Chef/CI `1 skipped`
+    // jeweiligen Umgebung im Vollsuiten-Kopf stehen muss: Bahn `16 skipped`, Chef/CI `2 skipped`
     // (plus etwaige runIf-Gegenzweige spaeterer Test-Straenge). Weicht sie ab, ist etwas NEU.
     //
     // JOB 2707 D1 hat die Zahl von 12 auf 15 gehoben: die drei SSO-Faelle aus der 2686er Kette
     // haben denselben Schalter bekommen. Die SUMME bleibt gleich — sie wechseln von rot nach
     // uebersprungen, nicht aus der Suite heraus.
+    //
+    // JOB 3033 (03.09.2026) hat sie von 15 auf 16 bzw. von 1 auf 2 berichtigt — nicht, weil etwas
+    // neu waere, sondern weil `job2666` V2 denselben Schalter seit dem 29.08.2026 traegt und nie
+    // mitgezaehlt wurde. GEMESSEN, NICHT GESETZT: der Vollsuitenlauf dieser Bahn (mit Horchrecht)
+    // meldet `7 skipped` — zwei aus dieser Liste, fuenf runIf-Gegenzweige der fuenf
+    // Zielbild-Messungen unter `tests/design/`.
     if (KANN_HORCHEN) {
       expect(
         KANN_HORCHEN,
-        "Horchrecht vorhanden: die vierzehn laufen mit — erwartet 1 skipped",
+        "Horchrecht vorhanden: die vierzehn laufen mit — erwartet 2 skipped",
       ).toBe(true);
     } else {
       expect(
         KANN_HORCHEN,
-        "kein Horchrecht (Bahn-Sandbox): die vierzehn ruhen — erwartet 15 skipped",
+        "kein Horchrecht (Bahn-Sandbox): die vierzehn ruhen — erwartet 16 skipped",
       ).toBe(false);
     }
   });

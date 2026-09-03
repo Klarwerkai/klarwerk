@@ -575,12 +575,17 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
   });
 
   it("KA4-S3: ein Consent-Versuch ohne externe Auflösung wird abgelehnt — der Bestand kennt keinen externen Modus", async () => {
-    // Der Grund steht in `services/reasoner/src/klara-policy.ts:161`
-    // (`KLARA_EXTERNAL_EXECUTION_MIGRATED = false`) und in `klara-session-service.ts:764-768`:
-    // ohne verdrahteten Cloud-Anbieter ist der effektive Modus nicht `external`, und dann ist eine
-    // Zustimmung gar nicht erteilbar. Dieser Fall hält den Ist-Zustand fest — er ist die
-    // Voraussetzung dafür, dass KA4-S1/S2 überhaupt etwas beweisen: ohne ihn wäre „bytegleich"
-    // auch dann grün, wenn die Freigabe schlicht nie erreichbar ist, ohne dass jemand es merkt.
+    // Zwei Gründe, und beide tragen für sich: `KLARA_EXTERNAL_EXECUTION_MIGRATED` steht in
+    // `services/reasoner/src/klara-policy.ts` auf `false`, UND diese App hat keinen verdrahteten
+    // Cloud-Anbieter — ohne ihn ist der effektive Modus nicht `external`, und dann ist eine
+    // Zustimmung gar nicht erteilbar (`klara-session-service.ts:798`).
+    //
+    // JOB 3033 (03.09.2026) hat die beiden auseinandergezogen, weil sie hier zusammenfielen:
+    // `tests/app/job2666-stufe-die-nur-der-client-behauptet.test.ts` (V0) misst denselben Versuch
+    // einmal ohne und einmal MIT verdrahteter Cloud und zeigt, dass auch dann 409 kommt, solange
+    // die Konstante steht. Dieser Fall hier hält den Ist-Zustand fest — er ist die Voraussetzung
+    // dafür, dass KA4-S1/S2 überhaupt etwas beweisen: ohne ihn wäre „bytegleich" auch dann grün,
+    // wenn die Freigabe schlicht nie erreichbar ist, ohne dass jemand es merkt.
     const { app } = mitSpion();
     const auth = await adminHeaders(app);
     const sitzung = await klaraSitzung(app, auth);
@@ -600,9 +605,14 @@ describe("KW-KA4 · Ohne Einwilligung bleibt der Server bytegleich", () => {
 //
 // WARUM HIER EIN INJIZIERTES TOR STEHT — und warum das kein Nachbau ist. Die Fälle oben fahren die
 // vollständige App; sie können den POSITIVEN Pfad aber strukturell nicht erreichen, weil
-// `KLARA_EXTERNAL_EXECUTION_MIGRATED` (`services/reasoner/src/klara-policy.ts:161`) auf `false`
-// steht und jede externe Auflösung mit `external_not_migrated` blockiert. Fall KA4-S3 belegt das
-// am Draht: der Consent-Versuch endet mit 409.
+// `KLARA_EXTERNAL_EXECUTION_MIGRATED` (`services/reasoner/src/klara-policy.ts`) auf `false` steht
+// und jede externe Auflösung mit `external_not_migrated` blockiert. Fall KA4-S3 belegt das am
+// Draht: der Consent-Versuch endet mit 409.
+//
+// JOB 3033 (03.09.2026): Die Strecke MIT verdrahteter Cloud — echte Sitzung, echte Einwilligung,
+// echtes Tor, gemessen am Optionssatz — steht seither in
+// `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`. Sie sagt für BEIDE Zustände des
+// Schalters, was gelten muss; die Fälle hier bleiben, was sie waren.
 //
 // Geprüft wird deshalb genau das, was diese Route selbst verantwortet: WIE sie auf die Antwort des
 // Tors reagiert. Das Tor selbst ist Null-Diff-Pfad und in `klara-session-service.test.ts` eigens

@@ -8,7 +8,7 @@
 // „ich als admin gebe es frei und eine ki verweigert mir das?" Der Sanierer musste richtigstellen,
 // dass der Schalter „einen NIE FERTIG GEBAUTEN Weg" markiert und „kein Veto gegen den Admin" ist.
 //
-// Der Dienst kennt den Grund seit langem (`services/reasoner/src/klara-policy.ts:252`
+// Der Dienst kennt den Grund seit langem (`services/reasoner/src/klara-policy.ts`,
 // `blockedReason = "external_not_migrated"`). Was fehlte, war ein ENTWURF, wie die Oberflaeche
 // diesen Grund so zeigt, dass niemand mehr eine Verweigerung hineinliest — und wie eine
 // Einwilligung aussieht, die Pedis Massstab vom 18.08. erfuellt: „ja, aber nie still".
@@ -231,19 +231,37 @@ describe("JOB 2948 · D1 · F-0295 · das Designartefakt zum gesperrten externen
   });
 
   // ---- Die harte Grenze: nichts hier legt den Schalter um -----------------------------------------
+  // ============================================================================================
+  // K1 · NACHGEFUEHRT AM 03.09.2026 (JOB 3033) — VOM WERTPIN ZUM STRUKTURPIN.
+  // ============================================================================================
+  //
+  // Bis hierher verlangte dieser Fall, dass jede Fundstelle mit Gleichheitszeichen den Wert
+  // `false` traegt. Das war ein Pin auf den BESTANDSWERT — und ein Wertpin faellt in dem Moment
+  // um, in dem der Eigentuemer den Wert aendert, ohne dass am Artefakt etwas falsch waere.
+  //
+  // WAS DER FALL WIRKLICH SCHUETZEN MUSS, gilt unabhaengig vom Wert: Das Artefakt ist ein ENTWURF
+  // und darf den Schalter nicht anfassen. Deshalb wird jetzt die BAUFORM geprueft — jede
+  // Fundstelle steht in einem `<code>`-Element, ist also ANGEZEIGTER Text und keine ausfuehrbare
+  // Zuweisung; eine Deklaration gibt es nirgends. Das ist schaerfer als der alte Pin: er haette
+  // eine echte Zuweisung `= false` im Skript durchgelassen.
+  //
+  // EHRLICH ZUM ARTEFAKT: der dort zitierte Wert ist der Entwurfsstand vom 27.08.2026. Er stimmt
+  // heute noch, weil die Konstante weiter auf `false` steht; er ist aber ein DATIERTES Zitat und
+  // keine Quelle der Wahrheit ueber den Code. Faellt die Freischaltung, muss das Artefakt
+  // nachgefuehrt werden — es liegt ausserhalb der Zielpfade von JOB 3033.
   it("K1 · die Freischaltkonstante wird zitiert, aber nirgends gesetzt", () => {
     expect(DA).toBe(true);
-    // Als Beleg genannt zu werden ist erwuenscht — zugewiesen zu werden nicht. Jede Fundstelle mit
-    // einem Gleichheitszeichen muss den ZITIERTEN Bestandswert tragen: `= false`.
+    // Als Beleg genannt zu werden ist erwuenscht — ausgefuehrt zu werden nicht.
     expect(HTML).toContain("KLARA_EXTERNAL_EXECUTION_MIGRATED");
-    const zuweisungen = [
-      ...HTML.matchAll(/KLARA_EXTERNAL_EXECUTION_MIGRATED\s*=\s*([A-Za-z0-9_]+)/g),
-    ].map((m) => m[1]);
+    // Jede Fundstelle steht in einem `<code>`-Element: nimmt man die Anzeigetexte heraus, kommt der
+    // Name im Artefakt gar nicht mehr vor.
+    const ohneAnzeigetexte = HTML.replace(/<code>[\s\S]*?<\/code>/g, "");
     expect(
-      zuweisungen.filter((v) => v !== "false"),
-      "die Konstante wird umgesetzt",
-    ).toHaveLength(0);
-    expect(HTML).not.toMatch(/(const|let|var)\s+KLARA_EXTERNAL_EXECUTION_MIGRATED/);
+      ohneAnzeigetexte,
+      "die Konstante steht ausserhalb eines Anzeigetextes — also moeglicherweise als Code",
+    ).not.toContain("KLARA_EXTERNAL_EXECUTION_MIGRATED");
+    // Und keine Deklaration, unter keinem Schluesselwort.
+    expect(HTML).not.toMatch(/(const|let|var|function)\s+KLARA_EXTERNAL_EXECUTION_MIGRATED/);
   });
 
   it("K2 · kein Bedienelement IM PANEL bringt den Zustand A zum Verschwinden — der Entwurf schaltet nichts frei", () => {

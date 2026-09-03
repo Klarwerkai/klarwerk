@@ -376,6 +376,16 @@ const INVENTAR: readonly string[] = [
   // Verzeichnisname war im Auftrag abschliessend vorgegeben. K2 hat die vier Dateien gemeldet,
   // das Inventar hat sie nicht still aufgenommen. Sachlich Klara-Regression: sie halten fest,
   // woran „ohne Verhalten zu aendern" bei einer Zerlegung des Aufgabenfensters gemessen wird.
+  // JOB 3033 D2 (03.09.2026): der Vertrag der KA4-Freischaltung — was gelten muss, solange
+  // `KLARA_EXTERNAL_EXECUTION_MIGRATED` auf `false` steht, und was in dem Augenblick gelten muss,
+  // in dem jemand ihn umlegt (Frist, Empfaenger der Zustimmung, Nutzlastumfang, Panelvertrag).
+  // Von der Inhaltsachse `taskpane` gefunden: Fall S4 liest das ausgelieferte Aufgabenfenster und
+  // haelt fest, dass dessen Satz „immer ohne KI-Modell" und ein freigeschalteter externer Weg
+  // nicht gleichzeitig bestehen koennen. „klara" steht nicht im Pfad — der Verzeichnisname war im
+  // Auftrag abschliessend vorgegeben —, K5 bleibt deshalb bei 37. K2 hat die Datei gemeldet, das
+  // Inventar nimmt sie nicht still auf. Sachlich Klara-Regression: sie bewacht die Grenze, an der
+  // Klaras Panelweg zum ersten Mal ein externes Modell erreichen wuerde.
+  "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts",
   "tests/klara-zerlegung/marken-skelett.test.ts",
   "tests/klara-zerlegung/probeschnitt.test.ts",
   "tests/klara-zerlegung/schnitt-pins.test.ts",

@@ -116,10 +116,25 @@ export interface AskRouteDeps {
 //      KA4 die Vertraulichkeit nicht eigens erzwingen muss.
 //
 // WAS DIE FREIGABE HEUTE BEWIRKT: nichts, und das ist richtig so. `KLARA_EXTERNAL_EXECUTION_MIGRATED`
-// steht in `services/reasoner/src/klara-policy.ts:161` auf `false`; jede externe Auflösung wird
-// deshalb mit `external_not_migrated` blockiert, und `pruefeExterneAusfuehrung` kann gar kein
+// steht in `services/reasoner/src/klara-policy.ts` auf `false`; jede externe Auflösung wird deshalb
+// mit `external_not_migrated` blockiert, und `pruefeExterneAusfuehrung` kann gar kein
 // `erlaubt: true` liefern. Der Weg ist gebaut, geprüft und wartet auf genau eine benannte
 // Entscheidung an genau einer Stelle — er schaltet sich nicht selbst frei.
+//
+// JOB 3033 (03.09.2026) — WARUM ER TROTZ GEFALLENER OWNERENTSCHEIDUNG NOCH WARTET. Der Eigentümer
+// hat die Freischaltung entschieden (`PRIORITAETEN.md` Zeile V2). Der Versuch, sie umzusetzen, hat
+// vier Stellen freigelegt, an denen der Bestand etwas anderes tut oder sagt, als die Einwilligung
+// verspricht: die Auflösungsfrist wird serverseitig nicht erzwungen, die Zustimmung nennt den
+// falschen Empfänger, der ausgewiesene Nutzlastumfang ist zu schmal, und die Panelfläche behauptet
+// weiterhin „immer ohne KI-Modell". Alle vier stehen einzeln benannt im Kopf von `klara-policy.ts`
+// und sind in `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` AN DEN SCHALTER GEBUNDEN:
+// wer ihn umlegt, ohne sie zu beheben, bekommt von den Fällen S1 bis S4 ein Rot mit Namen.
+//
+// DIE ZWEI ZWEIGE UNTEN BLEIBEN, WIE SIE SIND. Sie sind richtig und geprüft; ihnen fehlt nur die
+// Freigabe, die sie öffnet. Drei Bedingungen gelten auch nach einer Freischaltung unverändert
+// weiter, und jede für sich schliesst den Weg: eine Admin-Auswahl, die `external` ergibt; ein
+// verdrahteter Cloud-Anbieter MIT Bezeichnung (sonst fällt die Auflösung auf `deterministic`
+// zurück); und eine Einwilligung für GENAU diese Sitzung und GENAU dieses Dokument.
 
 /** Die schmale Sicht auf das bestehende Tor — mehr braucht diese Route nicht zu kennen. */
 export interface Ka4Freigabepruefer {
