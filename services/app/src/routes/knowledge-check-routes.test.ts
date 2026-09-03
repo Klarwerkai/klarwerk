@@ -26,6 +26,9 @@ function mkKo(over: Partial<KnowledgeObject> = {}): KnowledgeObject {
     conditions: [],
     measures: [],
     category: "Anlage",
+    // JOB 3031: der Zustand gehört zum Kandidaten und reist ab jetzt mit dem Treffer nach außen.
+    // „offen" ist hier der aussagekräftigere Fall: genau ihn konnte die Antwort bisher nicht nennen.
+    status: "offen",
     tags: [],
     asset: null,
     ...over,
@@ -102,6 +105,22 @@ describe("POST /api/knowledge/check — Provenienz-Vertrag (WP3)", () => {
     const body = res.json();
     expect(body.status).toBe("done");
     expect(body.conflicts.map((c: { id: string }) => c.id)).toContain("kc");
+  });
+
+  // JOB 3031 (Nutzenkette): nicht nur der Kern, sondern der ANTWORTKÖRPER der echten Route trägt den
+  // Fundort — in similar UND conflicts, in derselben Form wie /api/check-text. Die Route reicht das
+  // Kernergebnis unverändert durch; dieser Fall hält fest, dass dabei nichts verloren geht.
+  it("der Antwortkörper trägt koStatus/koCategory in similar UND conflicts", async () => {
+    const { app } = await appWith({ active: true, verdict: conflictVerdict });
+    const res = await post(app, { text: DRAFT, source: "draft", confidentiality: "intern" });
+    expect(res.statusCode).toBe(200);
+    const body = res.json();
+    const treffer = body.similar.find((s: { id: string }) => s.id === "kc");
+    expect(treffer.koStatus).toBe("offen");
+    expect(treffer.koCategory).toBe("Anlage");
+    const konflikt = body.conflicts.find((c: { id: string }) => c.id === "kc");
+    expect(konflikt.koStatus).toBe("offen");
+    expect(konflikt.koCategory).toBe("Anlage");
   });
 
   it("Draft intern, aber KEIN Modell verfügbar → Spy=0, pending (kein Fake-'done')", async () => {

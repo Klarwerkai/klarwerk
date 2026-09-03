@@ -15,18 +15,32 @@
 //    mit Freitext: conflicts = [] und Gesamtstatus "pending" (ehrlich „nicht geprüft"). similar bleibt.
 import type { ConflictService, ConflictVerdict, DetectSubject } from "../../conflicts";
 import { trigramSimilarity } from "../../conflicts";
-import type { KnowledgeObject, KoService } from "../../knowledge-object";
+import type { KnowledgeObject, KoService, KoStatus } from "../../knowledge-object";
 import { dropConfidential } from "../../knowledge-object";
 
+// JOB 3031 — DER FUNDORT REIST AUCH AUF DIESEM WEG MIT DEM TREFFER.
+// `koStatus`/`koCategory` sind wörtlich die Felder aus check-text-detection.ts:80-83 (JOB 3020):
+// derselbe Name, dieselbe Bedeutung, dieselbe null-Regel — dies ist die Spiegelung jenes Vertrags,
+// KEINE zweite Wahrheit und keine eigene Statusableitung (der rohe KoStatus reist, nichts wird
+// hergeleitet oder umbenannt).
+// Beide Werte stammen aus dem bei checkKnowledge bereits geladenen Kandidaten; es wird nichts
+// nachgeladen und nichts geraten.
+// `null` heißt „der Bestand sagt dazu nichts": eine fehlende Kategorie, oder ein Befund ohne
+// passenden Kandidaten. Es heißt NICHT „offen" und NICHT „keine Kategorie vorhanden" — kein
+// Platzhalter, kein Standardwert.
 export interface KnowledgeCheckSimilar {
   id: string;
   title: string;
   score: number; // 0..1, lexikalisch
+  koStatus: KoStatus | null;
+  koCategory: string | null;
 }
 export interface KnowledgeCheckConflict {
   id: string;
   title: string;
   reason: string;
+  koStatus: KoStatus | null;
+  koCategory: string | null;
 }
 export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
@@ -74,6 +88,15 @@ function koToSubject(ko: KnowledgeObject): DetectSubject {
   };
 }
 
+// Der Fundort eines Kandidaten, gelesen BEVOR `koToSubject` das Wissensobjekt auf den Erkennungs-
+// Gegenstand verengt (der kennt den Zustand nicht). Die Regel ist wortgleich die des Add-in-Wegs
+// (check-text-detection.ts:143-146): der Zustand roh, die Kategorie nur, wenn der Bestand wirklich
+// eine trägt.
+function koToOrigin(ko: KnowledgeObject): { koStatus: KoStatus | null; koCategory: string | null } {
+  const category = typeof ko.category === "string" ? ko.category.trim() : "";
+  return { koStatus: ko.status, koCategory: category.length > 0 ? category : null };
+}
+
 // Schwellen: Performance-Deckel (525 P.1) — lexikalischer Vorfilter, begrenzte Kandidaten.
 const SIMILAR_MIN_SCORE = 0.18;
 const SIMILAR_LIMIT = 5;
@@ -118,6 +141,7 @@ export async function checkKnowledge(
         id: k.id,
         title: k.title,
         score: trigramSimilarity(subjectCore, `${k.title} ${k.statement}`),
+        ...koToOrigin(k),
       }))
       .filter((s) => s.score >= SIMILAR_MIN_SCORE)
       .sort((a, b) => b.score - a.score)
@@ -131,10 +155,17 @@ export async function checkKnowledge(
     }
     const pool = candidates.map(koToSubject);
     const dry = await deps.conflicts.assessAgainstPool(subjectFromText(clean), pool, deps.judge);
+    // JOB 3031: der Fundort je Konflikt-Treffer kommt aus DEMSELBEN Kandidaten, der eine Zeile
+    // höher in den Pool ging — kein zweiter Zugriff, kein ko.get. Was `dropConfidential` verworfen
+    // hat, ist weder im Pool noch hier: die neuen Felder öffnen keinen Kanal an der Vertraulichkeit
+    // vorbei. Findet sich zu einer koId kein Kandidat, sagt der Fundort ehrlich nichts (null/null),
+    // statt den Wert eines anderen Treffers zu leihen.
+    const origins = new Map(candidates.map((k) => [k.id, koToOrigin(k)] as const));
     const conflicts: KnowledgeCheckConflict[] = dry.map((d) => ({
       id: d.koId,
       title: d.koTitle,
       reason: d.rationale ?? "",
+      ...(origins.get(d.koId) ?? { koStatus: null, koCategory: null }),
     }));
     return { status: "done", similar, conflicts };
   } catch {
