@@ -182,15 +182,34 @@ export interface GraphEdge {
   via: string;
 }
 
+// JOB 3022: der Graph nennt seine Grenzen. `nodes`/`edges` behalten Namen und Form — die vier
+// neuen Felder kommen additiv dazu, damit ein Leser eine gedeckelte Antwort von einer
+// vollständigen unterscheiden kann. Vorher konnte er das nicht: 5.000 Kanten sahen aus wie
+// „alle Kanten", und ein wegen Allgegenwart übergangenes Schlagwort verschwand spurlos.
 export interface Graph {
+  // Alle sichtbaren Objekte, nach Id sortiert. NICHT gedeckelt — der Deckel liegt auf den Kanten.
   nodes: GraphNode[];
+  // Höchstens `edgeLimit` Kanten, deterministisch sortiert (a, dann b).
   edges: GraphEdge[];
+  // Kanten NACH Sichtbarkeits- UND Ubiquitätsfilter, VOR dem Deckel — die Zahl verrät nie ein
+  // Objekt, das der Aufrufer nicht sehen darf, und zählt keine verworfene Kante mit.
+  totalEdges: number;
+  truncated: boolean;
+  // Der WIRKSAME Deckel als Zahl in der Antwort. Bewusst hier und nicht als Modul-Export: der
+  // Wert gehört zu DIESER Antwort, und ein Export ohne Aufrufer wäre toter Code (Aufrufer-Wächter).
+  edgeLimit: number;
+  // Schlagwörter, die wegen Allgegenwart KEINE Kante erzeugen (z. B. `pilot-demo`), sortiert —
+  // dieselbe Regel und dieselbe Ehrlichkeit wie in `Neighborhood.excludedTags`.
+  excludedTags: string[];
 }
 
 // AUFTRAG-mega68: die Nachbarschaft EINES Wissensobjekts — die Anwendersicht des Wissensnetzes.
-// BEWUSST ein eigener Vertrag neben `Graph` (FR-LIB-04): der globale Graph rechnet über den ganzen
-// Bestand (O(n²)) und bleibt unangetastet (Register H5); die Nachbarschaft hängt an EINEM Objekt,
-// ist gedeckelt und nennt an jeder Kante das WARUM (die geteilten Schlagwörter).
+// BEWUSST ein eigener Vertrag neben `Graph` (FR-LIB-04): die Nachbarschaft hängt an EINEM Objekt
+// und nennt an jeder Kante das WARUM (alle geteilten Schlagwörter), der globale Graph zeigt den
+// ganzen sichtbaren Bestand mit je einem Schlagwort pro Kante.
+// JOB 3022: bis dahin stand hier, der globale Graph rechne „über den ganzen Bestand (O(n²)) und
+// bleibt unangetastet (Register H5)". Das ist nicht mehr wahr — `graph()` baut denselben
+// Schlagwort-Index wie diese Auskunft, wendet dieselbe Ubiquitätsregel an und ist gedeckelt.
 export interface NeighborKo {
   id: string;
   title: string;

@@ -409,6 +409,12 @@ export function libraryRoutes(
       }
       // AUFTRAG-mega74 BLOCK B: der Graph trug Titel aller Objekte. Die Entscheidung fällt hier
       // (Kompositionswurzel) und reist als Datum in den Dienst; er wendet sie auf die Grundmenge an.
+      //
+      // JOB 3022: die Antwort trägt seit dem Schlagwort-Index ihre eigenen Grenzen mit
+      // (`totalEdges`, `truncated`, `edgeLimit`, `excludedTags`). Sie geht UNVERÄNDERT hinaus —
+      // die Route rechnet nichts nach, kürzt nichts weg und kennt bewusst KEINEN Anfrageparameter:
+      // ein client-setzbarer Deckel wäre kein Schutz. Wer die Grenzen anzeigen will, liest die
+      // Felder; wer sie ignoriert, liest wie bisher `nodes`/`edges`.
       reply.code(200).send(await library.graph({ sichtbar: sichtbarkeitsfilterFuer(user) }));
     });
 

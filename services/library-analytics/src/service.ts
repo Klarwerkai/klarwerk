@@ -61,6 +61,15 @@ export const NEIGHBOR_LIMIT = 12;
 export const UBIQUITY_MAX_SHARE = 0.5;
 export const UBIQUITY_MIN_COUNT = 5;
 
+// JOB 3022: Kantendeckel des GLOBALEN Graphen. 5.000 Kanten sind rund ein halbes Megabyte Nutzlast
+// und weit mehr, als eine Darstellung je zeigt (die Wissensnetz-Ansicht legt selbst schon bei 60
+// Knoten ab) — der Deckel schützt Leitung und Browser, nicht die Rechnung: gezählt wird ungedeckelt
+// (`totalEdges`), und die Antwort sagt mit `truncated`/`edgeLimit`, dass sie gedeckelt ist.
+// BEWUSST KEIN MODUL-EXPORT und kein Anfrageparameter: der Wert reist als FELD in der Antwort
+// (dort hat er einen Leser), ein Export hätte keinen Aufrufer, und ein Client-setzbarer Deckel
+// wäre kein Schutz, sondern eine Bitte.
+const GRAPH_EDGE_LIMIT = 5_000;
+
 // ================================================================================================
 // AUFTRAG-mega77 BLOCK D — DIE ZWEITE LINIE UNTER DEM COMPILER, FÜR DIESES MODUL.
 // ================================================================================================
@@ -1487,9 +1496,14 @@ export class LibraryService {
   // AUFTRAG-mega68 — DIE NACHBARSCHAFT EINES OBJEKTS (Anwendersicht des Wissensnetzes).
   // ==============================================================================================
   //
-  // WARUM NICHT graph(): der globale Graph lädt den ganzen Bestand und vergleicht jedes Paar —
-  // O(n²) Vergleiche, bei 12.000 Objekten ~72 Mio. in EINER Antwort, begrenzt erst im Browser.
-  // Diese Auskunft geht stattdessen von EINEM Objekt aus: EIN linearer Pass über die
+  // WARUM NICHT graph(): der globale Graph beantwortet eine ANDERE Frage — er zeigt den ganzen
+  // sichtbaren Bestand, diese Auskunft die Umgebung EINES Objekts (und nennt an jeder Kante ALLE
+  // geteilten Schlagwörter, nicht eines).
+  // JOB 3022: bis dahin stand hier der Grund „der globale Graph vergleicht jedes Paar — O(n²),
+  // ~72 Mio. Vergleiche bei 12.000 Objekten, begrenzt erst im Browser". Das ist überholt: `graph()`
+  // rechnet seit JOB 3022 über denselben Schlagwort-Index, wendet dieselbe Ubiquitätsregel an und
+  // ist serverseitig gedeckelt. Der Unterschied ist seitdem der Zuschnitt, nicht die Bauart.
+  // Diese Auskunft geht von EINEM Objekt aus: EIN linearer Pass über die
   // Such-Projektion (listForSearch, ohne bodyHtml), je Objekt ein Set-Lookup gegen die
   // Zentrums-Schlagwörter — O(n·t) Zeit mit t = Schlagwörter je Objekt (klein), Antwortgröße
   // O(NEIGHBOR_LIMIT). Der Bestand wird gelesen, aber nie paarweise verrechnet und nie
@@ -1609,24 +1623,124 @@ export class LibraryService {
   // AUFTRAG-mega77 BLOCK D: `sichtbar` ist PFLICHT. Bis mega77 stand hier `= {}` und „ohne Filter
   // bleibt das Verhalten wie bisher" — also der VOLLE Bestand mit allen Titeln. Das ist dieselbe
   // Fail-open-Klasse wie mega76 Block A, nur an einer Dienstmethode statt an einer Route.
+  //
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3022 — KANTEN ÜBER DEN SCHLAGWORT-INDEX, NICHT ÜBER PAARE.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // WAS HIER STAND UND WARUM ES WEG IST: zwei ineinandergelegte Schleifen über den ganzen Bestand,
+  // je Paar ein `a.tags.find(tag => b.tags.includes(tag))`. Bei 12.000 Objekten sind das ~72 Mio.
+  // Paare in EINER Antwort; gemessen 10.817 ms, und der volle Bestand (`list()`, inklusive
+  // `bodyHtml`) wurde dafür durch den Speicher gezogen. Jetzt baut EIN linearer Pass den Index
+  // `Schlagwort → Träger`, und Kanten entstehen nur INNERHALB einer Gruppe — der Aufwand hängt an
+  // der Zahl der WIRKLICH geteilten Paare, nicht mehr an allen Paaren des Bestands.
+  //
+  // DIESELBE UBIQUITÄTSREGEL WIE `neighbors`, nicht eine zweite: UBIQUITY_MIN_COUNT/
+  // UBIQUITY_MAX_SHARE, Begründung am Kopf von `neighbors()`. Ein Schlagwort über der Schwelle
+  // erzeugt KEINE Kante (der Demobestands-Marker `pilot-demo` machte den Graphen sonst vollständig)
+  // und erscheint stattdessen in `excludedTags`.
+  //
+  // `via` IST AB JETZT DAS LEXIKOGRAFISCH KLEINSTE geteilte, nicht-ubiquitäre Schlagwort. Vorher
+  // war es das erste in `a.tags` — also von der Einfügereihenfolge des Objekts abhängig: derselbe
+  // Bestand konnte zweimal verschiedene Etiketten tragen. Die PAARE sind dieselben wie vorher
+  // (Gleichstandsnachweis: tests/netz-skalierung/graph-gleichstand.test.ts), nur das Etikett ist
+  // jetzt stabil. Ebenso deterministisch: Knoten nach Id, Kanten nach (a, b), `a` ist die kleinere
+  // der beiden Ids — ohne feste Reihenfolge wäre der Deckel unten eine Zufallsauswahl.
+  //
+  // DIE EHRLICHE RESTGRENZE, und WORAUF SICH DAS LEISTUNGSVERSPRECHEN BEZIEHT (JOB 3022 R3):
+  // quadratisch bleibt es INNERHALB einer Gruppe. Ein Schlagwort knapp unter der Ubiquitätsschwelle
+  // (bis zur Hälfte des Bestands) erzeugt weiter sehr viele Paare, und `totalEdges` zählt sie exakt,
+  // also müssen sie auch entstehen. Gemessen: 999 Träger EINES Schlagworts ergeben 498.501 Kanten
+  // (tests/netz-skalierung/graph-deckel-und-gruppengrenze.test.ts, Fall 2) — die Kantenzahl wächst
+  // mit dem QUADRAT der Gruppengröße, nicht mit dem Bestand. Die Zusage „12.000 Objekte unter
+  // 5 Sekunden" gilt deshalb ausdrücklich für die dort dokumentierte realistische Verteilung
+  // (wenige Schlagwörter je Objekt, Gruppen von einigen Dutzend Trägern) und NICHT für einen
+  // Bestand, in dem ein einzelnes Schlagwort knapp unter der Hälfte aller Objekte trägt. Der
+  // nächste Schritt wäre derselbe wie bei `neighbors`: ein persistenter Index — heute neue
+  // Infrastruktur ohne Not.
   async graph(opts: { sichtbar: KoSichtbar }): Promise<Graph> {
-    const list = (await this.koService.list()).filter(erzwingeSichtbar(opts?.sichtbar));
-    const nodes = list.map((ko) => ({ id: ko.id, title: ko.title }));
-    const edges: GraphEdge[] = [];
-    for (let i = 0; i < list.length; i += 1) {
-      for (let j = i + 1; j < list.length; j += 1) {
-        const a = list[i];
-        const b = list[j];
-        if (!a || !b) {
-          continue;
-        }
-        const shared = a.tags.find((tag) => b.tags.includes(tag));
-        if (shared) {
-          edges.push({ a: a.id, b: b.id, via: shared });
+    // Schlanke Grundmenge (ohne bodyHtml) wie in `neighbors`: der Graph braucht nur id/title/tags.
+    // Der Sichtbarkeitsfilter wirkt auf der GRUNDMENGE, bevor gerechnet wird — Träger-Zählung,
+    // Ubiquitätsanteil und Zähler sehen ausschließlich den sichtbaren Bestand.
+    const list = (await this.koService.listForSearch()).filter(erzwingeSichtbar(opts?.sichtbar));
+    const nodes = list
+      .map((ko) => ({ id: ko.id, title: ko.title }))
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    // EIN linearer Pass: Schlagwort → Träger.
+    const carriers = new Map<string, KnowledgeObject[]>();
+    for (const ko of list) {
+      for (const tag of new Set(ko.tags)) {
+        const gruppe = carriers.get(tag);
+        if (gruppe) {
+          gruppe.push(ko);
+        } else {
+          carriers.set(tag, [ko]);
         }
       }
     }
-    return { nodes, edges };
+    const excludedTags = [...carriers.entries()]
+      .filter(
+        ([, gruppe]) =>
+          gruppe.length >= UBIQUITY_MIN_COUNT &&
+          gruppe.length / Math.max(list.length, 1) > UBIQUITY_MAX_SHARE,
+      )
+      .map(([tag]) => tag)
+      .sort((a, b) => a.localeCompare(b));
+    const excluded = new Set(excludedTags);
+
+    // Je Objekt einmal: die kantenfähigen Schlagwörter aufsteigend sortiert (für „das kleinste
+    // geteilte") und als Menge (für den Test „teilt b dieses Schlagwort?").
+    const kantenTags = new Map<string, { sortiert: string[]; menge: Set<string> }>();
+    for (const ko of list) {
+      const sortiert = [...new Set(ko.tags)]
+        .filter((tag) => !excluded.has(tag))
+        .sort((a, b) => a.localeCompare(b));
+      kantenTags.set(ko.id, { sortiert, menge: new Set(sortiert) });
+    }
+
+    // Die Gruppen durchgehen und ein Paar GENAU DANN an diesem Schlagwort ausgeben, wenn es das
+    // kleinste ist, das beide teilen. Das ist die Entdopplung und die `via`-Regel in einem Schritt:
+    // ein Paar, das zwei Schlagwörter teilt, wird zweimal besucht und nur einmal ausgegeben — ohne
+    // Merkliste gesehener Paare. Die ausgegebenen Kanten stehen bis zur Sortierung vollständig im
+    // Speicher, denn `totalEdges` ist eine EXAKTE Zahl und der Deckel greift erst NACH der
+    // deterministischen Reihenfolge; eine früher abbrechende Auswahl wäre eine zufällige.
+    const kantenTagsSortiert = [...carriers.keys()]
+      .filter((tag) => !excluded.has(tag))
+      .sort((a, b) => a.localeCompare(b));
+    const edges: GraphEdge[] = [];
+    for (const tag of kantenTagsSortiert) {
+      const gruppe = carriers.get(tag) ?? [];
+      for (let i = 0; i < gruppe.length; i += 1) {
+        for (let j = i + 1; j < gruppe.length; j += 1) {
+          const links = gruppe[i];
+          const rechts = gruppe[j];
+          if (!links || !rechts) {
+            continue;
+          }
+          const vorne = links.id.localeCompare(rechts.id) <= 0;
+          const a = vorne ? links : rechts;
+          const b = vorne ? rechts : links;
+          const bTags = kantenTags.get(b.id);
+          const kleinstes = kantenTags
+            .get(a.id)
+            ?.sortiert.find((kandidat) => bTags?.menge.has(kandidat));
+          if (kleinstes === tag) {
+            edges.push({ a: a.id, b: b.id, via: tag });
+          }
+        }
+      }
+    }
+    edges.sort((x, y) => x.a.localeCompare(y.a) || x.b.localeCompare(y.b));
+
+    return {
+      nodes,
+      edges: edges.slice(0, GRAPH_EDGE_LIMIT),
+      totalEdges: edges.length,
+      truncated: edges.length > GRAPH_EDGE_LIMIT,
+      edgeLimit: GRAPH_EDGE_LIMIT,
+      excludedTags,
+    };
   }
 
   // FR-ANA-01: Bestände nach Status / Art / Kategorie.

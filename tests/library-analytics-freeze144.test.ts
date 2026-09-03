@@ -91,6 +91,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // Der konstante Sammelmarker aus D4. BEN5: er verhindert das blosse Nachziehen eines Hashes
   // nicht, weil er bei der Änderung gar nicht angefasst werden muss.
   "FREEZE-144",
+  // JOB 3022: verbraucht. Diese Freigabe autorisierte den `types.ts`-Stand VOR der additiven
+  // Erweiterung von `Graph` (totalEdges/truncated/edgeLimit/excludedTags) — sie darf den neuen
+  // Inhalt nicht nachträglich decken. Ihre Nachfolgerin steht am Eintrag.
+  "FREEZE-144/D5-20260817/types",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -113,12 +117,18 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
       autorisiertHash: "5c35903ba89d41670a43ff853e906b58b74ceb6322355065ab88b2cc271fdd17",
     },
   },
+  // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
+  // `graph()` seine Grenzen mit: `totalEdges`, `truncated`, `edgeLimit`, `excludedTags` — additiv,
+  // `nodes`/`edges` unverändert. Zusätzlich ist der Kommentar über `Neighborhood` nachgeführt, der
+  // den globalen Graphen noch als „O(n²), bleibt unangetastet (Register H5)" beschrieb; genau das
+  // ist er nicht mehr. Sollhash UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte
+  // Freigabe steht in WIDERRUFENE_FREIGABEN.
   {
     pfad: "services/library-analytics/src/types.ts",
-    hash: "a5e5455fe25121029486dffc10c8d6659b81cd335f81226f687711ffd5afa782",
+    hash: "b13142f389501acf74dc577542edbddd5cfe3077d0ed79cfff7d61106692746a",
     freigabe: {
-      id: "FREEZE-144/D5-20260817/types",
-      autorisiertHash: "a5e5455fe25121029486dffc10c8d6659b81cd335f81226f687711ffd5afa782",
+      id: "FREEZE-144/JOB3022-20260903/types",
+      autorisiertHash: "b13142f389501acf74dc577542edbddd5cfe3077d0ed79cfff7d61106692746a",
     },
   },
   {
