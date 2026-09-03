@@ -37,6 +37,15 @@
 // zurueck. Zusaetzlich kippt Fall K die Sensoren im Speicher (ohne Datei) und belegt, dass sie
 // mitgehen.
 //
+// NACHZUG JOB 3004 (Antwortkarte nach Zielbild „Main“, 03.09.2026): seit dem Umbau steht die
+// Frage-Pille `#ask-frage-zeile-btn` IMMER im DOM — als Kind von `#ask-answer-block`, der ausserhalb
+// des Antwortzustands `hidden` traegt. „Pille vorhanden“ heisst hier deshalb SICHTBAR (weder sie
+// noch ein Vorfahre traegt `hidden`); ein verborgener Knoten ist im Wartezustand kein Pillen-Ersatz.
+// Ausserdem verbirgt der Antwortzustand die Frage-Karte `#ask-karte`; beginnt aus ihm heraus ein
+// neuer Ask, holt resetAskResult() die Karte zurueck — im Wartezustand ist sie also wie vor 3004
+// sichtbar, und die Vorher/Nachher-Differenz nennt sie als neu sichtbar (U1). Die Urteile der
+// Abweichungstabelle (1/6/17) sind davon unberuehrt: der Wartezustand selbst hat sich nicht geaendert.
+//
 // WAS DIE FIXTURE NICHT KANN (ABWEICHUNG, in der Rueckgabe benannt): `createKlaraPanel` antwortet
 // je Route SOFORT — ein offen gehaltenes Versprechen kennt sie nicht. Geloest hier, wie in
 // `job2703-d3-addin-paritaet.test.ts`: der Fake-Fetch der Fixture wird NACH dem Start durch einen
@@ -195,6 +204,8 @@ function sollwerte(z: string): Record<SollKennung, string | null> {
 interface DomKnoten {
   id: string;
   getAttribute(name: string): string | null;
+  /** Naechster Vorfahre (einschliesslich selbst), der `selector` trifft — jsdom liefert ihn. */
+  closest(selector: string): DomKnoten | null;
 }
 interface DomSicht {
   querySelectorAll(selector: string): ArrayLike<DomKnoten>;
@@ -212,6 +223,15 @@ function dom(): DomSicht {
 
 function versteckt(k: Pick<DomKnoten, "getAttribute">): boolean {
   return (k.getAttribute("class") ?? "").split(/\s+/).includes("hidden");
+}
+
+/** Ist die erste Stelle zu `selector` sichtbar — d. h. traegt weder sie noch ein Vorfahre `hidden`? */
+function sichtbarImDom(selector: string): boolean {
+  const k = dom().querySelectorAll(selector)[0];
+  if (k === undefined) {
+    return false;
+  }
+  return k.closest(".hidden") === null;
 }
 
 /** Welche `[id]`-Elemente tragen gerade die Klasse `hidden`? Grundlage der Vorher/Nachher-Differenz. */
@@ -235,8 +255,9 @@ interface Wartebild {
   knopfGesperrt: boolean;
   eingabeGesperrt: boolean;
   eingabeWert: string;
+  /** Die Pille ist SICHTBAR (JOB 3004: im DOM steht sie immer, verborgen bis zur Antwort). */
   pilleVorhanden: boolean;
-  /** Text der Pille, wenn es sie gibt — sonst null. NICHT der Wert des Eingabefelds. */
+  /** Text der sichtbaren Pille — sonst null. NICHT der Wert des Eingabefelds. */
   pilleText: string | null;
   ladebalken: number;
   antwortBlockVersteckt: boolean;
@@ -270,7 +291,11 @@ function wartebild(panel: KlaraPanel, vorher: Map<string, boolean>): Wartebild {
     }
   }
   const status = pflicht(panel, "#ask-status");
-  const pille = panel.q("#ask-frage-zeile-btn") ?? panel.q("#ask-frage-zeile");
+  // JOB 3004: die Pille existiert im DOM immer — gemessen wird, ob sie SICHTBAR ist (s. Kopf).
+  const pilleSichtbar = sichtbarImDom("#ask-frage-zeile-btn") || sichtbarImDom("#ask-frage-zeile");
+  const pille = pilleSichtbar
+    ? (panel.q("#ask-frage-zeile-btn") ?? panel.q("#ask-frage-zeile"))
+    : null;
   return {
     pilleText: pille === null ? null : (pille.textContent ?? "").trim(),
     statusText: status.textContent ?? "",
@@ -279,8 +304,7 @@ function wartebild(panel: KlaraPanel, vorher: Map<string, boolean>): Wartebild {
     knopfGesperrt: pflicht(panel, "#ask-btn").disabled,
     eingabeGesperrt: pflicht(panel, "#ask-input").disabled,
     eingabeWert: pflicht(panel, "#ask-input").value,
-    pilleVorhanden:
-      panel.q("#ask-frage-zeile-btn") !== null || panel.q("#ask-frage-zeile") !== null,
+    pilleVorhanden: pilleSichtbar,
     ladebalken: dom().querySelectorAll(".ladebalken").length,
     antwortBlockVersteckt: versteckt(pflicht(panel, "#ask-answer-block")),
     lueckeBlockVersteckt: versteckt(pflicht(panel, "#ask-gap-block")),
@@ -694,13 +718,16 @@ describe.runIf(zielbildDa)(
       expect(offener.offen(), "der Fetch ist waehrend des Tippens noch offen").toBe(true);
     });
 
-    it("W5 — die Frage-Pille #ask-frage-zeile-btn existiert im Wartezustand nicht; die Frage bleibt nur im Eingabefeld", async () => {
+    it("W5 — die Frage-Pille #ask-frage-zeile-btn ist im Wartezustand nicht sichtbar (seit JOB 3004 im DOM, verborgen bis zur Antwort); die Frage bleibt nur im Eingabefeld", async () => {
       offener = panelMitOffenemAsk();
       await offener.panel.flush();
       offener.halten();
       const bild = offener.absenden(FRAGE_IM_ZIELBILD);
       imWartezustand(offener, bild);
       expect(bild.pilleVorhanden).toBe(false);
+      // Der Knoten selbst ist da (JOB 3004) — aber verborgen: kein Pillen-Ersatz im Wartezustand.
+      expect(dom().querySelectorAll("#ask-frage-zeile-btn").length).toBe(1);
+      expect(sichtbarImDom("#ask-frage-zeile-btn")).toBe(false);
       expect(bild.eingabeWert).toBe(FRAGE_IM_ZIELBILD);
     });
 
@@ -820,7 +847,10 @@ describe.runIf(zielbildDa)(
       imWartezustand(offener, bild);
       expect(bild.antwortBlockVersteckt).toBe(true);
       expect(bild.neuVersteckt).toContain("ask-answer-block");
-      expect(bild.neuSichtbar).toEqual(["ask-status"]);
+      // JOB 3004: der Antwortzustand verbirgt die Frage-Karte #ask-karte (Zielbild „Main“: Pille
+      // statt Eingabefeld). Der neue Ask holt sie ueber resetAskResult() zurueck — sie wird hier
+      // neben #ask-status neu sichtbar. Vor 3004 war sie nie verborgen, die Liste war [ask-status].
+      expect(bild.neuSichtbar).toEqual(["ask-karte", "ask-status"]);
     });
 
     it("U2 — Übergang vorige WISSENSLÜCKE → offener neuer Ask: #ask-gap-block war sichtbar und ist im Wartezustand versteckt", async () => {

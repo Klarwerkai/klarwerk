@@ -275,33 +275,132 @@
       margin: 6px 0 8px;
     }
     .answer-text { white-space: pre-wrap; }
-    /* Die Quellen-/Belegzeile traegt den linken Funke-Balken (Beleg-Motiv des Webs). Die weiche
-       Markenflaeche #FDEADD blieb hier bis mega61 ABSICHTLICH weg: der Marken-Textton mass auf ihr
-       nur 4,497:1 und fiel damit unter AA — die Quellen sind Links. AUFTRAG-mega62 Block D hat
-       genau das behoben (#9C5009 misst auf #FDEADD 5,046:1); der Balken bleibt trotzdem, weil er
-       das Beleg-Motiv des Webs spiegelt — die Flaeche waere jetzt nur ERLAUBT, nicht noetig.
-       KEIN display hier: #ask-sources-block wird per .hidden geschaltet (id schlaege die Klasse). */
-    #ask-sources-block {
-      margin-top: 10px;
-      padding: 2px 0 2px 10px;
-      border-left: 3px solid var(--brand);
-    }
-    /* K3: Status-Badge je Antwort-Quelle — gleiche Ampel-Semantik wie die Bibliothek
-       (validiert=gruen, in Pruefung=warn, offen/unbekannt=neutral). */
-    .src-badge {
-      display: inline-block;
-      margin-left: 6px;
-      padding: 1px 7px;
-      border-radius: 999px;
-      font-size: 10.5px;
-      font-weight: 600;
-      border: 1px solid var(--hairline);
+    /* ============================================================================================
+       JOB 3004 D1 — DIE ANTWORTFLAECHE NACH ZIELBILD Main.dc.html (Pedi, 27.08.), Z.22-57.
+       ============================================================================================
+       Frage-Pille, Antwortkarte, Herkunftszeile mit Quellen-Chips, Aktionsleiste, Fusszeile. Jeder
+       Wert ist aus der Vorlage uebernommen, nicht erfunden, und wird in
+       tests/design/zielbild-klara-main.test.ts an der in Chromium geladenen dist-Fassung DIESER
+       Datei per getComputedStyle nachgemessen — ein Vergleich je Wert. Farben sind ausschliesslich
+       die Werkbank-Token oben (mega43).
+       ERSETZT, nicht daneben belassen: der Quellen-Balken (#ask-sources-block mit Funke-Linie) und
+       die Status-Pillen (.src-badge-validiert/-pruefung mit eigener Flaeche). Die Quelle ist jetzt
+       der Chip; der Status steht darin als Wort (Inhalt, nicht Farbe — die Vorlage kennt keine
+       Ampel am Chip). Die Klasse `src-badge` bleibt als Marke des Status-Worts, ohne eigene Regel.
+       KEIN display auf Flaechen, die per .hidden geschaltet werden (#ask-answer-block,
+       #ask-sources-block, #ask-copy-fallback, #ask-karte): eine id-Regel schluege die Klasse.
+       AUSSENMASSE WIE IM ARTBOARD (360 breit): die Antwortflaeche hebt die 14px Koerper-Polsterung
+       auf (dieselbe Bauform wie das Kopfband) und traegt die Seitenraender der Vorlage selbst —
+       Pille und Aktionen `12px 16px 0`, Karte `14px 16px 0`, Fusszeile `12px 16px`. Gemessen als
+       vollstaendige Kurzschreibweise UND als Kante im 360px-Fenster. */
+    #ask-answer-block { margin: 0 -14px; }
+    #ask-frage-zeile-btn {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      /* Ein <button> passt sich sonst dem Inhalt an; die Pille spannt wie in der Vorlage die
+         Breite zwischen den 16px-Raendern. */
+      width: calc(100% - 32px);
+      margin: 12px 16px 0;
+      padding: 9px 12px;
       background: var(--surface);
       color: var(--muted);
-      vertical-align: middle;
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      font: inherit;
+      font-size: 13px;
+      line-height: 1.5;
+      text-align: left;
+      cursor: pointer;
     }
-    .src-badge-validiert { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
-    .src-badge-pruefung { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+    #ask-frage-zeile { flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    #ask-frage-zeile-btn svg { flex-shrink: 0; }
+    #antwortkarte {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      margin: 14px 16px 0;
+      padding: 18px 16px 16px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      box-shadow: var(--shadow-tile);
+    }
+    /* Die Vorlese-Ueberschrift der Karte: fuer Hilfstechnik da, nicht im Bild (die Vorlage zeigt
+       keinen Kartentitel). Absolut positioniert, also kein Flex-Kind und keine Luecke im Raster. */
+    .nur-vorlesen { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+    /* Der Antworttext IST das bearbeitbare Feld (mega35/36: ein Feld, alle Ausgaenge). Es traegt
+       die Textoptik der Vorlage statt eines Formularrahmens; seine Hoehe folgt dem Inhalt
+       (passeAntwortfeldAn). Die Farbe steht hier ausdruecklich: Formularfelder erben sie nicht. */
+    #ask-answer-edit {
+      display: block;
+      margin: 0;
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background: transparent;
+      color: var(--text);
+      font-size: 16px;
+      line-height: 1.55;
+      resize: none;
+      overflow: hidden;
+    }
+    /* Der Bearbeitungshinweis erscheint, sobald das Feld den Fokus hat — im Augenblick des
+       Bearbeitens, fuer den er geschrieben ist; aria-describedby bindet ihn immer an das Feld. */
+    #ask-answer-edit-hint { display: none; margin: 0; font-size: 11.5px; }
+    #ask-answer-edit:focus ~ #ask-answer-edit-hint { display: block; }
+    /* Einstufung, Vorbehalt, Konflikt und Ausschnitt sind Kinder des Kartenrasters (gap 14px):
+       keine eigenen Aussenabstaende mehr, der Detail-Rahmen loest sich in seine Zeilen auf. */
+    #antwortkarte .status { margin: 0; }
+    #ask-sources-block {
+      flex-direction: column;
+      gap: 8px;
+      border-top: 1px solid var(--hairline);
+      padding-top: 12px;
+    }
+    #ask-sources-block:not(.hidden) { display: flex; }
+    #antwortkarte-herkunft-zeile { margin: 0; font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
+    #ask-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    /* KEIN display an `#ask-sources li`: die id-Regel schluege die Klassenregel `.quelle-chip`
+       (display: flex) und liesse gap und align-items wirkungslos (ben, Runde 4). Der Listenpunkt
+       selbst ist ohne Marke (list-style am ul); die Chip-Darstellung traegt allein die Klasse. */
+    #ask-sources li { max-width: 100%; }
+    /* Der Chip (Vorlage Z.34-44): eigene Flaeche Papier, Tinte-2 fuer Symbol und Fassung. */
+    .quelle-chip {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 6px;
+      max-width: 100%;
+      margin: 0;
+      padding: 5px 9px;
+      background: var(--page);
+      color: var(--muted);
+      border: 1px solid var(--hairline);
+      border-radius: 8px;
+      font: inherit;
+      font-size: 11.5px;
+      line-height: 1.4;
+      text-align: left;
+    }
+    .quelle-chip svg { flex-shrink: 0; stroke: var(--muted); }
+    /* Titel und Titel-Link tragen Tinte statt Tinte-2 bzw. des Marken-Tons. Ihre Flaeche ist die
+       des Chips (Papier) — ausdruecklich gesetzt, damit der Kontrastwaechter das Paar an dieser zur
+       LAUFZEIT erzeugten Stelle (kein Markup-Fundort) messen kann, statt es gegen jede Flaeche zu
+       raten. */
+    .quelle-chip-titel { font-size: 11.5px; font-weight: 600; color: var(--text); background: var(--page); }
+    .quelle-chip-titel a { color: var(--text); background: var(--page); text-decoration: none; }
+    .quelle-chip-fassung { font-size: 10.5px; }
+    button.quelle-chip { cursor: pointer; }
+    /* Aktionsleiste (Vorlage Z.49-52): die bestehenden Knoepfe in der Optik der Vorlage — gleich
+       breit, 10px 0, Radius 10, 13.5px, ohne das Leuchten des Hauptknopfs. */
+    #antwortkarte-aktionen { display: flex; gap: 8px; margin: 12px 16px 0; }
+    #antwortkarte-aktionen button { flex: 1 1 50%; min-width: 0; width: auto; padding: 10px 0; border-radius: 10px; font-size: 13.5px; text-align: center; box-shadow: none; }
+    /* Fusszeile (Vorlage Z.54-57) und darunter der Leitsatz (Auftrag §5.7). */
+    #antwortkarte-fuss { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
+    #antwortkarte-fuss-hinweis { margin: 0; font-size: 11px; color: var(--muted); }
+    #ask-neue-frage-btn { margin: 0; padding: 0; border: 0; background: transparent; font: inherit; font-size: 11px; color: var(--muted); cursor: pointer; }
+    #klara-leitsatz { margin: 0; padding: 0 16px 12px; font-size: 11px; color: var(--muted); text-align: center; }
     /* AUFTRAG-W1-VERTRAUENSKOPF-08 Block B: die Rolle einer Quelle IN DER ANTWORT — tragend oder
        nur herangezogen — traegt BEWUSST KEINE eigene Regel. Sie wird als reiner Text an den
        Listeneintrag gehaengt, genau wie der Trust-Wert daneben, und erbt dessen Farbe.
@@ -322,9 +421,11 @@
        Kontrastwaechter eindeutig messbar, waehrend eine Regel, die nur `color` setzt und deren
        Klasse erst zur Laufzeit vergeben wird, im Markup keine Fundstelle haette; (2) drei
        gleichartige Zeilen untereinander sind ruhiger als drei erfundene Formen. */
-    #ask-evidence-detail { margin: 0; }
+    /* JOB 3004 D1: `display: contents` — die beiden Zeilen sind unmittelbare Kinder des
+       Kartenrasters; ein leerer Rahmen wuerde sonst eine Luecke im 14px-Raster lassen. */
+    #ask-evidence-detail { display: contents; }
     /* Der real gelieferte Ausschnitt — nur lesbar, klar als Zitat markiert, NIE eine Herleitung. */
-    #ask-snippet-block { margin: 8px 0 0; }
+    #ask-snippet-block { margin: 0; }
     .snippet-label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); }
     .snippet-text {
       display: block;
@@ -498,7 +599,7 @@
       <p class="muted" id="ka1-empty"></p>
     </div>
     <!-- KW-KA1-TERMS-END (Markup) -->
-    <div class="card">
+    <div class="card" id="ask-karte">
       <h2 data-t="askTitle"></h2>
       <p class="muted" data-t="askHint"></p>
       <!-- AUFTRAG-mega74 TEIL 2b: WAS wirklich gefragt wird — sichtbar VOR dem Fragen. Bis mega74
@@ -522,8 +623,8 @@
              2. die KI-Kennzeichnung — an das serverseitige `aiGenerated`-Signal GEBUNDEN, also
                 heute nie sichtbar und morgen von selbst sichtbar, wenn diese Flaeche einmal einen
                 echten Modellweg zeigt. Abgeschaltet ist sie NICHT. -->
-      <p class="muted" id="ask-review-notice" data-t="askReviewNotice"></p>
-      <p class="muted hidden" id="ask-ai-notice" data-t="aiGeneratedNotice"></p>
+      <!-- JOB 3004 D1: #ask-review-notice steht jetzt UNTER der Antwortflaeche, #ask-ai-notice IN der
+           Antwortkarte (s. dort) — dieselben Schluessel, dieselben Rueckrufe. -->
       <!-- AUFTRAG-mega75 Block A: WOMIT gearbeitet wird — dieselbe Auskunft, die AiModelInfo in der
            Anwendung gibt, aus demselben oeffentlichen Status. Drei ehrliche Zustaende (extern /
            hausintern / keine) plus die beiden Nicht-Aussagen „wird geprueft" und „nicht abrufbar".
@@ -562,70 +663,8 @@
            geht — es beweist NICHT, wo der KLARWERK-Server steht. Der Text geht per HTTP an ihn.
            Eine Aussage ueber Serverstandort oder Organisationsgrenze ist eine BETRIEBSZUSAGE, die
            dieser Code nicht erzwingt; belegt ist nur, dass keine EXTERNE KI ihn bekommt. -->
-      <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
+      <!-- JOB 3004 D1: #ask-rule-note steht jetzt UNTER der Antwortflaeche (s. dort) — sichtbar in beiden Zustaenden. -->
       <button type="button" class="primary" id="ask-btn" data-t="askCta" disabled></button>
-      <div id="ask-status" class="status hidden"></div>
-      <div id="ask-answer-block" class="hidden">
-        <h2 data-t="askAnswerTitle" style="margin-top: 12px;"></h2>
-        <!-- AUFTRAG-mega34 B2: die Einstufung, sichtbar VOR dem Antworttext. Bis mega33 stand hier
-             nur eine unbedingte Zusage („geprueftes Wissen"), die auch bei gedeckelter Abdeckung
-             galt. Der Text kommt aus derselben Auswahl wie der ausgegebene Hinweis.
-             AUFTRAG-mega35 B: die Ueberschrift ist neutral („Quellengebundene Antwort") — die
-             Worte „gesichert"/„geprueft" stehen NUR noch in dieser Einstufungszeile. -->
-        <p id="ask-evidence-note" class="status hidden" style="margin: 0 0 8px;"></p>
-        <!-- AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ENTFALTUNG der bereits gelieferten Evidenz.
-             Bis hierher fasste die Zeile darueber fuenf unterscheidbare Pruefvorbehalte und die
-             gesamte Konfliktlage zu ZWEI Texten zusammen — die Nutzerin erfuhr, DASS etwas nicht
-             belegt ist, nie WAS. Hier stehen jetzt Vorbehalt und Konflikt GETRENNT, mit eigenem
-             Ton und eigener Zeile. Beide Werte kommen unveraendert aus `result.evidence`; es wird
-             nichts berechnet (KW-W1-13). -->
-        <div id="ask-evidence-detail">
-          <p id="ask-caveat-line" class="status warn hidden" style="margin: 0 0 8px;"></p>
-          <p id="ask-conflict-line" class="status warn hidden" style="margin: 0 0 8px;"></p>
-        </div>
-        <!-- klara1b Teil B: editierbares, kompaktes Feld VOR dem Eintragen. AUFTRAG-mega35 A1: das
-             Feld traegt NUR den Antwortkoerper — Einstufung und Quellen-Zeile gehoeren nicht dazu
-             und werden erst im Moment des Kopierens/Einfuegens angesetzt (composeOutputText); sie
-             koennen also weder gekuerzt noch verloren werden. Ist die Antwort lang, klappt
-             „mehr anzeigen" das Feld auf. -->
-        <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint" style="margin-bottom: 4px;"></p>
-        <textarea id="ask-answer-edit" class="answer-text" rows="4"></textarea>
-        <button type="button" class="ghost hidden" id="ask-answer-toggle" style="margin: 0 0 8px;"></button>
-        <div style="display: flex; gap: 6px;">
-          <!-- Teil 2 (Gating): NUR bei echter quellengebundener Antwort UND bereitem Office aktiv. -->
-          <button type="button" class="primary" id="ask-insert-btn" data-t="askInsertCta"></button>
-          <!-- klara1b Teil B: Ausweg „Kopieren" — braucht kein Office, greift auch bei Rechte-Fehler. -->
-          <button type="button" class="ghost" id="ask-copy-btn" data-t="askCopyCta"></button>
-        </div>
-        <!-- AUFTRAG-mega36 B3: der Fehler-Rueckfall der Zwischenablage. Bis mega35 forderte er die
-             Nutzerin auf, „den Text im Feld zu markieren und manuell zu kopieren" — also genau den
-             ROHEN Antwortkoerper ohne Einstufung und Quellen-Zeile. Stattdessen steht hier der
-             VOLLSTAENDIGE abgeleitete Text als nur lesbares Feld bereit (vorausgewaehlt); nur der
-             wird zum Kopieren angeboten. -->
-        <div id="ask-copy-fallback" class="hidden" style="margin-top: 8px;">
-          <p class="muted" id="ask-copy-fallback-hint" data-t="askCopyFallbackHint" style="margin-bottom: 4px;"></p>
-          <textarea id="ask-copy-fallback-text" class="answer-text" rows="8" readonly></textarea>
-        </div>
-        <!-- klara1b Teil B: die Quellenliste bleibt (Titel-Link, Status/Trust-Badge) — aber
-             GETRENNT vom einzufuegenden Antworttext (nur Anzeige, wandert nie ins Dokument). -->
-        <!-- AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: HOECHSTENS der erste real gelieferte
-             `steps[0].snippet`, ehrlich als „Verwendeter Ausschnitt" bezeichnet.
-             AUSDRUECKLICH KEINE Begruendungskette und KEIN W3-Versprechen (KW-W1-13): es ist ein
-             Zitat, das der Server mitgeschickt hat, kein Herleitungsprotokoll — ein solches
-             existiert nirgends im System.
-             Er erscheint NUR, wenn er sich vom angezeigten Antworttext unterscheidet. Auf dem
-             heutigen retrieval-only-Weg IST die Antwort die woertliche Aussage der tragenden
-             Quelle; derselbe Text zweimal unter zwei Namen waere genau die Vortaeuschung, die
-             mega39 D2 in der Konsole bereits entfernt hat. -->
-        <div id="ask-snippet-block" class="hidden">
-          <span class="snippet-label" id="ask-snippet-label"></span>
-          <span class="snippet-text" id="ask-snippet-text"></span>
-        </div>
-        <div id="ask-sources-block" class="hidden">
-          <h2 data-t="askSourcesTitle"></h2>
-          <ul class="muted" id="ask-sources"></ul>
-        </div>
-      </div>
       <div id="ask-gap-block" class="hidden">
         <div class="status warn">
           <strong data-t="askGapTitle"></strong>
@@ -646,6 +685,92 @@
         </p>
       </div>
     </div>
+    <!-- ==========================================================================================
+         JOB 3004 D1 — DIE ANTWORTFLAECHE NACH ZIELBILD Main.dc.html (Pedi, 27.08.).
+         ==========================================================================================
+         Sie steht NEBEN der Frage-Karte, nicht mehr in ihr: im Antwortzustand ist die Frage-Karte
+         (#ask-karte) VERBORGEN und die gestellte Frage steht als Pille darueber — EINE Flaeche,
+         kein zweiter Bearbeitungsweg daneben. Ein Klick auf die Pille fuehrt zurueck zum
+         Bearbeiten, „Neue Frage" leert. Nichts ist verschwunden —
+         jede Kennung des frueheren Antwortblocks lebt hier weiter, mit denselben Rueckrufen:
+           Frage-Pille (Vorlage Z.22-25)   #ask-frage-zeile-btn / #ask-frage-zeile
+           #antwortkarte (Z.27)            #ask-answer-edit IST der Antworttext (bearbeitbar wie
+                                           bisher; der Hinweis dazu erscheint beim Fokus und ist
+                                           per aria-describedby immer gebunden), darin Einstufung
+                                           (#ask-evidence-note), Vorbehalt/Konflikt
+                                           (#ask-evidence-detail), KI-Kennzeichnung (#ask-ai-notice,
+                                           hierher umgezogen — sie gehoert zur Antwort, nicht zum
+                                           Eingabefeld), Ausschnitt (#ask-snippet-block), Herkunft
+                                           und Quellen-Chips (#ask-sources-block / #ask-sources)
+           Aktionsleiste (Z.49-52)         dieselben Knoepfe #ask-insert-btn / #ask-copy-btn
+           #ask-copy-fallback              der Zwischenablage-Rueckfall (mega36 B3), unveraendert
+           Fusszeile (Z.54-57)             „Wörtlich zitiert · fachlich prüfen" / „Neue Frage"
+           #klara-leitsatz                 der Leitsatz (Auftrag §5.7) UNTER der Fusszeile
+         Die Ueberschrift „Quellengebundene Antwort" bleibt als Vorlese-Ueberschrift der Karte
+         (Vorlage zeigt keinen Titel; die Struktur fuer Hilfstechnik bleibt).
+         Werte gemessen in tests/design/zielbild-klara-main.test.ts (Chromium, dist-Fassung). -->
+    <div id="ask-answer-block" class="hidden">
+      <button type="button" id="ask-frage-zeile-btn">
+        <span id="ask-frage-zeile"></span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>
+      </button>
+      <div id="antwortkarte">
+        <h2 data-t="askAnswerTitle" class="nur-vorlesen"></h2>
+        <!-- klara1b Teil B / mega35 A1: das Feld traegt NUR den Antwortkoerper — Einstufung und
+             Quellen-Zeile entstehen erst beim Kopieren/Einfuegen (composeOutputText). Ist die
+             Antwort lang, klappt „mehr anzeigen" das Feld auf. -->
+        <textarea id="ask-answer-edit" class="answer-text" rows="4" aria-describedby="ask-answer-edit-hint"></textarea>
+        <button type="button" class="ghost hidden" id="ask-answer-toggle"></button>
+        <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint"></p>
+        <!-- mega81 BLOCK A: die KI-Kennzeichnung ist an das serverseitige `aiGenerated`-Signal
+             GEBUNDEN — auf dem retrieval-only-Weg nie sichtbar, auf einem Modellweg von selbst. -->
+        <p class="muted hidden" id="ask-ai-notice" data-t="aiGeneratedNotice"></p>
+        <!-- mega34 B2: die Einstufung, sichtbar bei der Antwort — derselbe Text wie im eingefuegten
+             Absatz. W1-VERTRAUENSKOPF-08 B: Vorbehalt und Konfliktlage GETRENNT, eigene Zeilen. -->
+        <p id="ask-evidence-note" class="status hidden"></p>
+        <div id="ask-evidence-detail">
+          <p id="ask-caveat-line" class="status warn hidden"></p>
+          <p id="ask-conflict-line" class="status warn hidden"></p>
+        </div>
+        <!-- W1-VERTRAUENSKOPF-08 B: hoechstens der erste real gelieferte Ausschnitt, nur wenn er
+             sich vom Antworttext unterscheidet — ein Zitat, keine Herleitung. -->
+        <div id="ask-snippet-block" class="hidden">
+          <span class="snippet-label" id="ask-snippet-label"></span>
+          <span class="snippet-text" id="ask-snippet-text"></span>
+        </div>
+        <!-- Herkunft (Vorlage Z.31-45): Trennlinie, „Aus freigegebenem Firmenwissen", dann je Quelle
+             ein Chip — Titel-Link auf das ECHTE Wissensobjekt, Status, Rolle, Vertrauen, Stand. -->
+        <div id="ask-sources-block" class="hidden">
+          <p id="antwortkarte-herkunft-zeile" data-t="askHerkunft"></p>
+          <ul id="ask-sources"></ul>
+        </div>
+      </div>
+      <div id="antwortkarte-aktionen">
+        <!-- Teil 2 (Gating): NUR bei echter quellengebundener Antwort UND bereitem Office aktiv. -->
+        <button type="button" class="primary" id="ask-insert-btn" data-t="askInsertCta"></button>
+        <!-- klara1b Teil B: Ausweg „Kopieren" — braucht kein Office, greift auch bei Rechte-Fehler. -->
+        <button type="button" class="ghost" id="ask-copy-btn" data-t="askCopyCta"></button>
+      </div>
+      <!-- mega36 B3: der Fehler-Rueckfall der Zwischenablage — der VOLLSTAENDIGE abgeleitete Text
+           als nur lesbares, vorausgewaehltes Feld. -->
+      <div id="ask-copy-fallback" class="hidden" style="margin: 8px 16px 0;">
+        <p class="muted" id="ask-copy-fallback-hint" data-t="askCopyFallbackHint" style="margin-bottom: 4px;"></p>
+        <textarea id="ask-copy-fallback-text" class="answer-text" rows="8" readonly></textarea>
+      </div>
+      <div id="antwortkarte-fuss">
+        <p id="antwortkarte-fuss-hinweis" data-t="askFussHinweis"></p>
+        <button type="button" id="ask-neue-frage-btn" data-t="askNeueFrage"></button>
+      </div>
+      <p id="klara-leitsatz" data-t="klaraLeitsatz"></p>
+    </div>
+    <!-- Die Statuszeile steht AUSSERHALB von Frage-Karte und Antwortflaeche: sie muss in beiden
+         Zustaenden sichtbar sein (Suche laeuft, Antwort eingefuegt, Zwischenablage kopiert). -->
+    <div id="ask-status" class="status hidden"></div>
+    <!-- mega81 A (Pruefhinweis, DAUERHAFT) und mega75 C (die Regel, „bei JEDER Antwort und JEDER
+         Absage" sichtbar): beide standen in der Frage-Karte und waeren im Antwortzustand mit ihr
+         verschwunden. Sie stehen jetzt unter beiden Flaechen — Schluessel und Wortlaut unveraendert. -->
+    <p class="muted" id="ask-review-notice" data-t="askReviewNotice"></p>
+    <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
   </div>
 
   <div id="section-capture" class="hidden">
@@ -2126,6 +2251,14 @@
         askInsertEmpty: "Das Antwortfeld ist leer — bitte Text eingeben oder die Frage erneut stellen.",
         askAnswerEditHint: "Du kannst die Antwort vor dem Einfügen kürzen oder anpassen. Einstufung und Quellen-Zeile kommen automatisch dazu — beim Einfügen, beim Kopieren und auch bei Strg+C bzw. Cmd+C. Nur eine Teilauswahl bleibt roh: ein Bruchstück ist keine Antwort.",
         askCopyCta: "Kopieren",
+        // JOB 3004 D1: die Antwortflaeche nach Zielbild Main.dc.html — Herkunftszeile, Fassung im
+        // Quellen-Chip, Fusszeile, Pillen-Tooltip und der Leitsatz (Auftrag §5.7).
+        askHerkunft: "Aus freigegebenem Firmenwissen",
+        askChipStand: "Stand {date}",
+        askFussHinweis: "Wörtlich zitiert · fachlich prüfen",
+        askNeueFrage: "Neue Frage",
+        askFrageBearbeiten: "Frage bearbeiten",
+        klaraLeitsatz: "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich",
         askCopyOk: "In die Zwischenablage kopiert.",
         askCopyFail: "Die Zwischenablage des Browsers ist nicht verfügbar. Der vollständige Text steht unten bereit und ist bereits markiert — bitte von dort kopieren.",
         askCopyFallbackHint: "Vollständiger Text mit Einstufung und Quellen-Zeile — dieser Text ist zum Kopieren gedacht:",
@@ -2332,6 +2465,12 @@
         askInsertEmpty: "The answer field is empty — please enter text or ask again.",
         askAnswerEditHint: "You can shorten or adjust the answer before inserting. Classification and source line are added automatically — on insert, on copy, and on Ctrl+C or Cmd+C as well. Only a partial selection stays raw: a fragment is not an answer.",
         askCopyCta: "Copy",
+        askHerkunft: "From approved company knowledge",
+        askChipStand: "as of {date}",
+        askFussHinweis: "Quoted verbatim · review professionally",
+        askNeueFrage: "New question",
+        askFrageBearbeiten: "Edit question",
+        klaraLeitsatz: "No AI answer without evidence · Confidential stays confidential",
         askCopyOk: "Copied to the clipboard.",
         askCopyFail: "The browser clipboard is not available. The full text is ready below and already selected — please copy it from there.",
         askCopyFallbackHint: "Full text with classification and source line — this is the text meant for copying:",
@@ -2532,6 +2671,12 @@
         askInsertEmpty: "Het antwoordveld is leeg — voer tekst in of stel de vraag opnieuw.",
         askAnswerEditHint: "Je kunt het antwoord vóór het invoegen inkorten of aanpassen. Classificatie en bronregel worden automatisch toegevoegd — bij invoegen, bij kopiëren en ook bij Ctrl+C of Cmd+C. Alleen een deelselectie blijft onbewerkt: een fragment is geen antwoord.",
         askCopyCta: "Kopiëren",
+        askHerkunft: "Uit vrijgegeven bedrijfskennis",
+        askChipStand: "per {date}",
+        askFussHinweis: "Woordelijk geciteerd · vakinhoudelijk toetsen",
+        askNeueFrage: "Nieuwe vraag",
+        askFrageBearbeiten: "Vraag bewerken",
+        klaraLeitsatz: "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk",
         askCopyOk: "Naar het klembord gekopieerd.",
         askCopyFail: "Het klembord van de browser is niet beschikbaar. De volledige tekst staat hieronder klaar en is al geselecteerd — kopieer deze daarvandaan.",
         askCopyFallbackHint: "Volledige tekst met classificatie en bronregel — deze tekst is bedoeld om te kopiëren:",
@@ -2618,6 +2763,8 @@
       document.getElementById("scope-pages-label").title = t("scopePagesOff");
       // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
       document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
+      // JOB 3004 D1: der Tooltip der Frage-Pille („Frage bearbeiten") in der aktuellen Sprache.
+      document.getElementById("ask-frage-zeile-btn").title = t("askFrageBearbeiten");
       document.documentElement.lang = lang;
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: der Vertrauenskopf wird MIT den statischen Texten
       // gefuellt, nicht erst durch den Statusabruf. Damit ist er ab dem ersten Bildaufbau da —
@@ -3995,7 +4142,7 @@
       // klara1b Teil B: editierbares Feld statt statischem Absatz.
       var edit = document.getElementById("ask-answer-edit");
       edit.value = "";
-      edit.rows = 4;
+      passeAntwortfeldAn();
       document.getElementById("ask-answer-toggle").className = "ghost hidden";
       // AUFTRAG-mega81 BLOCK A: die Kennzeichnung einer FRUEHEREN Antwort darf nie stehen bleiben —
       // sie gehoert zu der Antwort, ueber die der Server sie gesagt hat, und zu keiner anderen.
@@ -4007,6 +4154,11 @@
       renderAskEvidence();
       // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
       hideCopyFallback();
+      // JOB 3004 D1: die Chip-Reihe faengt von vorn an, und ohne Antwort steht die Frage-Karte
+      // wieder oben — die Pille gehoert allein zum Antwortzustand.
+      askQuellenAufgeloest = [];
+      askQuellenAlleSichtbar = false;
+      askFrageKarteZeigen(true);
     }
 
     // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
@@ -4041,8 +4193,7 @@
     // bei langer Antwort (answerIsLong) — sonst zeigt das Feld die kompakte Antwort direkt.
     function applyAnswerCompaction(text) {
       askAnswerExpanded = false;
-      var edit = document.getElementById("ask-answer-edit");
-      edit.rows = 4;
+      passeAntwortfeldAn();
       var toggle = document.getElementById("ask-answer-toggle");
       if (answerIsLong(text)) {
         toggle.className = "ghost";
@@ -4054,10 +4205,60 @@
 
     function toggleAnswerExpanded() {
       askAnswerExpanded = !askAnswerExpanded;
-      document.getElementById("ask-answer-edit").rows = askAnswerExpanded ? 16 : 4;
+      passeAntwortfeldAn();
       document.getElementById("ask-answer-toggle").textContent = askAnswerExpanded
         ? t("askShowLess")
         : t("askShowMore");
+    }
+
+    // JOB 3004 D1: das Antwortfeld traegt die Textoptik der Vorlage (16px/1.55, kein Rahmen) — seine
+    // Hoehe folgt deshalb dem Inhalt statt einer festen Zeilenzahl. „Kompakt" heisst weiterhin
+    // hoechstens vier Zeilen bei langer Antwort (answerIsLong), „aufgeklappt" der ganze Text; eine
+    // kurze Antwort steht immer ganz da. Liefert die Umgebung keine Zeilenhoehe (jsdom), bleiben die
+    // bisherigen festen Zeilen 4/16 — das Verhalten der Tests aendert sich nicht.
+    var ASK_ANTWORT_KOMPAKT_ZEILEN = 4;
+    var ASK_ANTWORT_OFFEN_ZEILEN = 16;
+    function passeAntwortfeldAn() {
+      var edit = document.getElementById("ask-answer-edit");
+      var kompakt = !askAnswerExpanded && answerIsLong(edit.value);
+      edit.rows = 1;
+      var zeilenhoehe = parseFloat(window.getComputedStyle(edit).lineHeight);
+      if (!(zeilenhoehe > 0) || !(edit.scrollHeight > 0)) {
+        edit.rows = askAnswerExpanded ? ASK_ANTWORT_OFFEN_ZEILEN : ASK_ANTWORT_KOMPAKT_ZEILEN;
+        return;
+      }
+      var noetig = Math.max(1, Math.round(edit.scrollHeight / zeilenhoehe));
+      edit.rows = kompakt ? Math.min(noetig, ASK_ANTWORT_KOMPAKT_ZEILEN) : noetig;
+    }
+
+    // JOB 3004 D1: im Antwortzustand steht die gestellte Frage als Pille ueber der Antwortkarte
+    // (Vorlage Z.22-25) und die Frage-Karte (#ask-karte mit #ask-input) ist VERBORGEN — es gibt
+    // EINE Flaeche, keinen zweiten Bearbeitungsweg daneben (Pedi, 27.08.). Sichtbar bearbeiten
+    // kann man erst wieder nach Klick auf die Pille (die Frage steht dann im Eingabefeld, die
+    // Antwortflaeche tritt zurueck) oder auf „Neue Frage" (leert). Die naechste Frage raeumt den
+    // alten Stand ohnehin ab (resetAskResult). Kein Produktfeld ist Testhilfe: der Zwischenablage-
+    // Smoke (tests-smoke/word-taskpane-kopieren.spec.ts) bringt seinen eigenen Einfuege-Empfaenger mit.
+    function askFrageKarteZeigen(zeigen) {
+      document.getElementById("ask-karte").className = zeigen ? "card" : "card hidden";
+    }
+
+    function askFrageBearbeiten() {
+      var input = document.getElementById("ask-input");
+      input.value = currentAskQuestion;
+      document.getElementById("ask-answer-block").className = "hidden";
+      askFrageKarteZeigen(true);
+      try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+      updateAskSourceNote();
+    }
+
+    function askNeueFrage() {
+      currentAskQuestion = "";
+      resetAskResult();
+      hideAskStatus();
+      var input = document.getElementById("ask-input");
+      input.value = "";
+      try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+      updateAskSourceNote();
     }
 
     // Sprachwechsel bei sichtbarer Antwort: den (data-t-losen) Umschalter-Text neu setzen.
@@ -4118,45 +4319,117 @@
       unknown: "askStatusUnknown",
     };
 
+    // JOB 3004 D1: die Quelle ist der CHIP (Vorlage Main.dc.html Z.34-44) — Dokumentsymbol,
+    // „n · Titel" als Deep-Link auf das ECHTE Wissensobjekt, daneben die Fassung: Bearbeitungs-
+    // status, Rolle in der Antwort, Vertrauen und belegtes Stand-Datum. Nichts davon ist erfunden;
+    // jede Angabe kommt wie bisher aus dem geladenen Objekt (resolveAskSources) bzw. aus
+    // `citedSources`. Mehr Quellen als Platz (zwei, wie in der Vorlage) → der „+n"-Chip; ein Klick
+    // darauf zeigt alle. Aufbau ueber DOM-APIs, kein HTML-Sink: Titel bleiben escaped.
+    var ASK_QUELLEN_CHIPS_SICHTBAR = 2;
+    var askQuellenAufgeloest = [];
+    var askQuellenAlleSichtbar = false;
+
+    function askChipSymbol() {
+      var NS = "http://www.w3.org/2000/svg";
+      var svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", "13");
+      svg.setAttribute("height", "13");
+      svg.setAttribute("viewBox", "0 0 24 24");
+      svg.setAttribute("fill", "none");
+      svg.setAttribute("stroke", "currentColor");
+      svg.setAttribute("stroke-width", "1.8");
+      svg.setAttribute("stroke-linecap", "round");
+      svg.setAttribute("stroke-linejoin", "round");
+      svg.setAttribute("aria-hidden", "true");
+      var blatt = document.createElementNS(NS, "path");
+      blatt.setAttribute("d", "M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z");
+      var ecke = document.createElementNS(NS, "path");
+      ecke.setAttribute("d", "M14 2v6h6");
+      svg.appendChild(blatt);
+      svg.appendChild(ecke);
+      return svg;
+    }
+
+    function askQuellenMehrChip(rest) {
+      var item = document.createElement("li");
+      item.className = "quelle-chip-mehr";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ask-quellen-mehr-btn";
+      knopf.className = "quelle-chip";
+      knopf.textContent = "+" + String(rest);
+      knopf.addEventListener("click", function () {
+        askQuellenAlleSichtbar = true;
+        renderAskSources(askQuellenAufgeloest);
+      });
+      item.appendChild(knopf);
+      return item;
+    }
+
     function renderAskSources(resolved) {
+      askQuellenAufgeloest = resolved;
       var list = document.getElementById("ask-sources");
       list.textContent = "";
-      for (var i = 0; i < resolved.length; i += 1) {
+      var sichtbar = askQuellenAlleSichtbar
+        ? resolved.length
+        : Math.min(resolved.length, ASK_QUELLEN_CHIPS_SICHTBAR);
+      for (var i = 0; i < sichtbar; i += 1) {
         var item = document.createElement("li");
+        item.className = "quelle-chip";
+        item.appendChild(askChipSymbol());
+        var titel = document.createElement("span");
+        titel.className = "quelle-chip-titel";
+        titel.appendChild(document.createTextNode(String(i + 1) + " · "));
         var link = document.createElement("a");
         link.href = koDetailUrl(window.location.origin, resolved[i].id);
         link.target = "_blank";
         link.rel = "noopener noreferrer";
         link.textContent = resolved[i].title;
-        item.appendChild(link);
+        titel.appendChild(link);
+        item.appendChild(titel);
+        var fassung = document.createElement("span");
+        fassung.className = "quelle-chip-fassung";
         var badge = document.createElement("span");
         badge.className = "src-badge src-badge-" + resolved[i].status;
         badge.textContent = t(ASK_STATUS_KEYS[resolved[i].status] || "askStatusUnknown");
-        item.appendChild(badge);
+        fassung.appendChild(badge);
         // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
-        // oder nur herangezogen. Zwei verschiedene Aussagen stehen hier nebeneinander: die Pille
-        // links sagt, wie REIF die Quelle ist; dieser Zusatz sagt, ob die Antwort auf ihr STEHT.
+        // oder nur herangezogen. Zwei verschiedene Aussagen stehen hier nebeneinander: der Status
+        // sagt, wie REIF die Quelle ist; dieser Zusatz sagt, ob die Antwort auf ihr STEHT.
         // Ohne `citedSources` (alter Server) wird keine Rolle behauptet und nichts angezeigt.
         var rolle = askSourceRole(
           resolved[i].id,
           currentAskOutcome ? currentAskOutcome.citedSources : undefined
         );
         if (rolle !== "unknown") {
-          // Reiner Text wie der Trust-Wert darunter — keine eigene Regel, keine eigene Farbe.
+          // Reiner Text wie der Trust-Wert daneben — keine eigene Regel, keine eigene Farbe.
           // Die Unterscheidung traegt das WORT; das ist zugleich die Loesung des Kontrastwaechters
           // (s. Stilblock) und die zugaenglichere Darstellung.
-          item.appendChild(
+          fassung.appendChild(
             document.createTextNode(
-              " — " + t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted")
+              " · " + t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted")
             )
           );
         }
         if (resolved[i].trust !== null) {
-          item.appendChild(
-            document.createTextNode(" — " + t("askTrust", { n: String(resolved[i].trust) }))
+          fassung.appendChild(
+            document.createTextNode(" · " + t("askTrust", { n: String(resolved[i].trust) }))
           );
         }
+        // Das belegte Stand-Datum (WP-KLARA-ASK-FIX Fix 3) — nur, wenn das Objekt eines traegt.
+        var stand = resolved[i].standDate ? new Date(resolved[i].standDate) : null;
+        if (stand !== null && !isNaN(stand.getTime())) {
+          fassung.appendChild(
+            document.createTextNode(
+              " · " + t("askChipStand", { date: formatAskDateLabel(stand) })
+            )
+          );
+        }
+        item.appendChild(fassung);
         list.appendChild(item);
+      }
+      if (resolved.length > sichtbar) {
+        list.appendChild(askQuellenMehrChip(resolved.length - sichtbar));
       }
       document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
     }
@@ -4266,6 +4539,10 @@
       if (outcome.kind === "answered") {
         currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
+        // JOB 3004 D1: die gestellte Frage steht als Pille, die Frage-Karte ist verborgen
+        // (s. askFrageKarteZeigen).
+        document.getElementById("ask-frage-zeile").textContent = currentAskQuestion;
+        askFrageKarteZeigen(false);
         // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
         // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
         // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
@@ -4776,6 +5053,10 @@
     document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
     document.getElementById("ask-copy-btn").addEventListener("click", copyAnswer);
     document.getElementById("ask-answer-toggle").addEventListener("click", toggleAnswerExpanded);
+    // JOB 3004 D1: Pille (zurueck zum Bearbeiten), „Neue Frage", und das Feld waechst beim Tippen.
+    document.getElementById("ask-frage-zeile-btn").addEventListener("click", askFrageBearbeiten);
+    document.getElementById("ask-neue-frage-btn").addEventListener("click", askNeueFrage);
+    document.getElementById("ask-answer-edit").addEventListener("input", passeAntwortfeldAn);
     // AUFTRAG-mega36 B1: Tastatur UND Kontextmenue loesen dasselbe `copy`-Ereignis aus — ein
     // Rueckruf deckt beide. `cut` gehoert dazu, `dragstart` schliesst den Zieh-Ausgang.
     document.getElementById("ask-answer-edit").addEventListener("copy", function (ev) {

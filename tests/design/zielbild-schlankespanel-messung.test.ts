@@ -740,7 +740,7 @@ const ZUSAGEN: readonly Zusage[] = [
     quelle: { struktur: () => (stilWert(38, 0, "border-radius") !== null ? "vorhanden" : "fehlt") },
     soll: "vorhanden",
     beleg:
-      "div.card ohne Kennung, die #ask-input umschliesst (#ask-karte aus werte.ts trifft nicht)",
+      "die .card, die #ask-input umschliesst — seit JOB 3004 mit Kennung #ask-karte (werte.ts trifft sie jetzt)",
     ist: (r) => (r.sichtbar(r.frageKarte()) ? "vorhanden" : NICHT_VORHANDEN),
     heute: "erfuellt",
   },
@@ -1360,7 +1360,9 @@ const FLAECHEN: readonly Flaeche[] = [
   { kennung: "#tab-capture", finden: (r) => r.q("#tab-capture") },
   { kennung: "#section-ask", finden: (r) => r.q("#section-ask") },
   { kennung: "#ka1-block", finden: (r) => r.q("#ka1-block") },
-  { kennung: "Frage-Karte (div.card ohne Kennung)", finden: (r) => r.frageKarte() },
+  // JOB 3004 D1: die Frage-Karte traegt seit dem Umbau der Antwortflaeche die Kennung #ask-karte
+  // (sie wird im Antwortzustand verborgen); im Ruhezustand ist sie sichtbar wie zuvor.
+  { kennung: "Frage-Karte #ask-karte", finden: (r) => r.frageKarte() },
   { kennung: "[data-t=askTitle]", finden: (r) => r.q("[data-t=askTitle]") },
   { kennung: "[data-t=askHint]", finden: (r) => r.q("[data-t=askHint]") },
   { kennung: "#ask-source-note", finden: (r) => r.q("#ask-source-note") },
@@ -1380,7 +1382,13 @@ const FLAECHEN: readonly Flaeche[] = [
   { kennung: "#kw-fassung-btn", finden: (r) => r.q("#kw-fassung-btn") },
 ];
 
-/** GEMESSEN am 03.09.2026: die sichtbaren Flaechen des Ruhezustands in Dokumentordnung. */
+/**
+ * GEMESSEN am 03.09.2026: die sichtbaren Flaechen des Ruhezustands in Dokumentordnung.
+ * NACHZUG JOB 3004 (Antwortkarte nach Zielbild „Main“): #ask-review-notice und #ask-rule-note
+ * stehen seit dem Umbau UNTER der Antwortflaeche (ausserhalb der Frage-Karte, damit sie auch im
+ * Antwortzustand sichtbar bleiben — mega81/mega75); #ask-btn folgt deshalb direkt auf #ask-input.
+ * Die Frage-Karte traegt jetzt die Kennung #ask-karte. Der Ruhezustand selbst ist unveraendert.
+ */
 const SICHTBAR_IN_REIHENFOLGE: readonly string[] = [
   "header",
   ".brand",
@@ -1395,14 +1403,14 @@ const SICHTBAR_IN_REIHENFOLGE: readonly string[] = [
   "#tab-capture",
   "#section-ask",
   "#ka1-block",
-  "Frage-Karte (div.card ohne Kennung)",
+  "Frage-Karte #ask-karte",
   "[data-t=askTitle]",
   "[data-t=askHint]",
   "#ask-source-note",
   "#ask-input",
+  "#ask-btn",
   "#ask-review-notice",
   "#ask-rule-note",
-  "#ask-btn",
   "#ka6-block",
   "Hilfe-Karte (div.card ohne Kennung)",
   "#kw-stand",
@@ -1469,12 +1477,14 @@ const TEXTTRAEGER_SICHTBAR: readonly [kennung: string, text: string][] = [
   ],
   // Attributtext: der Platzhalter des leeren Eingabefelds ist fuer den Menschen sichtbarer Text.
   ["#ask-input[placeholder]", "Frage eingeben, wenn nichts markiert ist ..."],
+  // JOB 3004 D1: der Knopf folgt direkt auf das Feld; Pruef- und Regelsatz stehen unter der
+  // Antwortflaeche (s. SICHTBAR_IN_REIHENFOLGE). Wortlaute unveraendert.
+  ["#ask-btn", "Klara fragen"],
   ["#ask-review-notice", "Bitte vor Verwendung fachlich prüfen."],
   [
     "#ask-rule-note",
     "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.",
   ],
-  ["#ask-btn", "Klara fragen"],
   ["#ka6-titel", "Schreiben auf Zuruf"],
   [
     "#ka6-lead",
@@ -1584,7 +1594,8 @@ function textKennung(e: El): string {
 const WERTE_TREFFER: Readonly<Record<string, number>> = {
   ".tabs": 1,
   ".tabs button": 2,
-  "#ask-karte": 0,
+  // JOB 3004 D1: die Frage-Karte traegt jetzt die Kennung #ask-karte — der Selektor trifft.
+  "#ask-karte": 1,
   ".card": 8,
   "#ask-input": 1,
   "#ask-btn": 1,
@@ -1870,11 +1881,12 @@ describe("JOB 3013 · D4 · W — WERTE_SCHLANKES_PANEL ehrlich eingeordnet", ()
     console.info(
       `JOB 3013 D4 · W2 · Selektoren von WERTE_SCHLANKES_PANEL (${selektoren.length}):\n  ${zeilen.join("\n  ")}`,
     );
-    // Vier Nulltreffer: `#ask-karte`, `.ask-hinweise p`, `#kw-fuss p`, `#kw-fuss` — die Tabelle
-    // misst Flaechen, die das Produkt nicht hat; `.card` trifft acht Karten, nicht die eine
-    // Frage-Karte. Dazu misst `cssProp` Quelltext, nicht die gebaute Flaeche.
+    // Drei Nulltreffer: `.ask-hinweise p`, `#kw-fuss p`, `#kw-fuss` — die Tabelle misst Flaechen,
+    // die das Produkt nicht hat; `.card` trifft acht Karten, nicht die eine Frage-Karte. (Bis JOB
+    // 3004 war auch `#ask-karte` ein Nulltreffer; seither traegt die Frage-Karte diese Kennung.)
+    // Dazu misst `cssProp` Quelltext, nicht die gebaute Flaeche.
     expect(selektoren.filter((s) => r.alle(s).length === 0).sort()).toEqual(
-      ["#ask-karte", "#kw-fuss", "#kw-fuss p", ".ask-hinweise p"].sort(),
+      ["#kw-fuss", "#kw-fuss p", ".ask-hinweise p"].sort(),
     );
   });
 });

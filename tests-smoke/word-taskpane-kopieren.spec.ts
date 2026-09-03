@@ -27,13 +27,28 @@
 // (kein Egress im Tor-Lauf) — ohne Office faellt das Panel in seinen ehrlichen „kein Office"-Zustand,
 // der Kopierweg braucht Office ohnehin nicht. Alle drei API-Wege sind gestubbt; die Sonde spricht
 // mit keinem Dritten.
-import { expect, test } from "@playwright/test";
+import { type Page, expect, test } from "@playwright/test";
 
 const TASKPANE = "/word-addin/taskpane.html";
 const ANTWORT = "Ventil V4 wird jaehrlich geprueft und vor der Wartung entlastet.";
 
 // macOS bedient Markieren/Kopieren mit der Befehlstaste, Linux/Windows mit Strg.
 const MOD = process.platform === "darwin" ? "Meta" : "Control";
+
+// JOB 3004 D1: der Einfuege-Empfaenger ist TESTSEITIG erzeugt — ein nacktes Feld ohne Rueckrufe, das
+// die Sonde selbst in die Seite haengt. Bis 3004 diente `#ask-input` als Empfaenger; im Antwortzustand
+// des Zielbilds (Main.dc.html) ist die Frage-Karte aber verborgen, und ein Testbedarf darf die
+// Produktgestaltung nicht bestimmen (ben, Runde 3). Was hier ankommt, lag wirklich in der
+// Zwischenablage der Engine; das Feld selbst faengt nichts ab.
+const EMPFAENGER = "#smoke-einfuege-empfaenger";
+async function einfuegeEmpfaengerAnlegen(page: Page): Promise<void> {
+  await page.evaluate((id) => {
+    const feld = document.createElement("textarea");
+    feld.id = id;
+    feld.setAttribute("aria-label", "Einfuege-Empfaenger der Sonde");
+    document.body.appendChild(feld);
+  }, EMPFAENGER.slice(1));
+}
 
 test("mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeile", async ({
   page,
@@ -93,6 +108,7 @@ test("mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeil
   await page.fill("#ask-input", "Wie oft wird Ventil V4 geprueft?");
   await page.click("#ask-btn");
   await expect(page.locator("#ask-answer-edit")).toHaveValue(ANTWORT);
+  await einfuegeEmpfaengerAnlegen(page);
   await expect(page.locator("#ask-copy-btn")).toBeEnabled();
 
   // ECHTE Tastenanschlaege: alles markieren, kopieren.
@@ -100,12 +116,13 @@ test("mega36 E · echtes Cmd+C am Antwortfeld traegt Einstufung und Quellen-Zeil
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+c`);
 
-  // ECHTES Einfuegen in ein ANDERES Feld — was hier ankommt, lag wirklich in der Zwischenablage.
-  await page.click("#ask-input");
+  // ECHTES Einfuegen in ein ANDERES Feld (den Empfaenger der Sonde) — was hier ankommt, lag
+  // wirklich in der Zwischenablage.
+  await page.click(EMPFAENGER);
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+v`);
 
-  const eingefuegt = await page.inputValue("#ask-input");
+  const eingefuegt = await page.inputValue(EMPFAENGER);
   expect(eingefuegt).toContain(ANTWORT);
   // mega69 Block C: die sichtbaren deutschen Texte tragen echte Umlaute.
   expect(eingefuegt).toContain("Einstufung: ungeprüft");
@@ -159,6 +176,7 @@ test("mega36 E · Kalibrierung: eine TEILAUSWAHL kommt roh aus der echten Zwisch
   await page.fill("#ask-input", "Wie oft wird Ventil V4 geprueft?");
   await page.click("#ask-btn");
   await expect(page.locator("#ask-answer-edit")).toHaveValue(ANTWORT);
+  await einfuegeEmpfaengerAnlegen(page);
   await expect(page.locator("#ask-copy-btn")).toBeEnabled();
 
   // Nur die ersten zehn Zeichen markieren — ein Bruchstueck.
@@ -168,11 +186,11 @@ test("mega36 E · Kalibrierung: eine TEILAUSWAHL kommt roh aus der echten Zwisch
   });
   await page.keyboard.press(`${MOD}+c`);
 
-  await page.click("#ask-input");
+  await page.click(EMPFAENGER);
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+v`);
 
-  const eingefuegt = await page.inputValue("#ask-input");
+  const eingefuegt = await page.inputValue(EMPFAENGER);
   expect(eingefuegt).toBe(ANTWORT.slice(0, 10));
   expect(eingefuegt).not.toContain("Einstufung");
   // Und die Oberflaeche schweigt dazu nicht.
@@ -244,13 +262,14 @@ test("mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echt
   await page.fill("#ask-input", "Wie oft wird Ventil V4 geprueft?");
   await page.click("#ask-btn");
   await expect(page.locator("#ask-answer-edit")).toHaveValue(ANTWORT);
+  await einfuegeEmpfaengerAnlegen(page);
   // Das Fenster ist offen: die Antwort steht, die Schaltflaeche ist noch gesperrt.
   await expect(page.locator("#ask-copy-btn")).toBeDisabled();
 
-  // Kennsatz in die echte Zwischenablage legen — das Fragefeld wird bewusst NICHT abgefangen.
+  // Kennsatz in die echte Zwischenablage legen — der Empfaenger der Sonde faengt nichts ab.
   const KENNSATZ = "KENNSATZ-VOR-DEM-KOPIEREN";
-  await page.fill("#ask-input", KENNSATZ);
-  await page.click("#ask-input");
+  await page.fill(EMPFAENGER, KENNSATZ);
+  await page.click(EMPFAENGER);
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+c`);
 
@@ -261,10 +280,10 @@ test("mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echt
   await expect(page.locator("#ask-status")).toContainText("NOCH NICHT ausgegeben");
 
   // Was liegt jetzt wirklich in der Zwischenablage? Der Kennsatz — sonst nichts.
-  await page.click("#ask-input");
+  await page.click(EMPFAENGER);
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+v`);
-  expect(await page.inputValue("#ask-input")).toBe(KENNSATZ);
+  expect(await page.inputValue(EMPFAENGER)).toBe(KENNSATZ);
 
   // Tor auf — und derselbe Weg traegt jetzt den echten Beleg.
   quellenFreigeben();
@@ -273,10 +292,10 @@ test("mega37 C2 · waehrend die Quellen laden, geht bei Cmd+C NICHTS in die echt
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+c`);
 
-  await page.click("#ask-input");
+  await page.click(EMPFAENGER);
   await page.keyboard.press(`${MOD}+a`);
   await page.keyboard.press(`${MOD}+v`);
-  const eingefuegt = await page.inputValue("#ask-input");
+  const eingefuegt = await page.inputValue(EMPFAENGER);
   expect(eingefuegt).toContain(ANTWORT);
   expect(eingefuegt).toContain("Wartungsplan Ventil V4");
   expect(eingefuegt).not.toContain("Quelle: KLARWERK");

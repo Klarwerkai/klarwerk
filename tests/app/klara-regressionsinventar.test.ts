@@ -289,6 +289,12 @@ const INVENTAR: readonly string[] = [
   // Entscheidungsknoepfe. (D3 hatte den Eintrag entfernt, weil die damalige Fassung keine Achse
   // traf — die D4-Fassung trifft sie, der Eintrag folgt der Messung, nicht der Meinung.)
   "tests/design/zielbild-validierung.test.ts",
+  // JOB 3004 D1: der Wertevergleich der Klara-Antwortkarte (Antwortzustand des Aufgabenfensters)
+  // gegen sein Zielbild Main.dc.html — die ECHTE taskpane.html aus apps/web/dist, in Chromium
+  // geladen, echte App hinter /api/*, echte Frage ueber die Route. Traegt „klara" im Namen
+  // (Namensachse; der Pfad war im Auftrag fest vorgegeben) und nennt `taskpane.html` (Achse
+  // `taskpane`). K2 hat die Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
+  "tests/design/zielbild-klara-main.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   // JOB 3008 D1 (02.09.2026): der Zustandsweg der Office-Erkennung, am laufenden Aufgabenfenster
@@ -538,7 +544,16 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Verzeichnisname war im Auftrag abschliessend vorgegeben. GEMESSEN, NICHT GESETZT: mit den
     // vier neuen Inventareintraegen und noch unveraendertem Zaehler meldete der Lauf
     // `expected 36 to be 32`; erst danach wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(36);
+    // 36 -> 37 am 03.09.2026 (JOB 3004 Konfliktrunde 3, Zusammenfuehrung mit JOB 3014): der Rebase
+    // bringt zusaetzlich `tests/design/zielbild-klara-main.test.ts` in denselben Baum wie die vier
+    // klara-zerlegung-Eintraege oben. Die Datei traegt „klara" im Namen und faellt damit ebenfalls
+    // in die Namensmenge; der Pfad war im Auftrag (§5.8) fest vorgegeben — die Nachfuehrung ist die
+    // Folge des Namens, nicht einer Wahl. In Konfliktrunde 2 lag dieselbe Datei zusammen mit dem
+    // p7-office-erkennung-Eintrag bereits bei 31 -> 33 (auf einem Stand ohne die 3014-Zerlegung);
+    // hier kommt sie zusammen mit den vier zerlegung-Dateien auf denselben gemeinsamen Stand,
+    // deshalb 36 -> 37 — dieselbe Lage wie bei den 2948/2959-Zeilen weiter oben, nicht zwei
+    // unabhaengige Aenderungen, sondern eine Zusammenfuehrung auf einem gemeinsamen Stand.
+    expect(nurName.length).toBe(37);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

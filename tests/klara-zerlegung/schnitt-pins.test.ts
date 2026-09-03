@@ -141,6 +141,11 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/app/word-addin-taskpane-cache.test.ts": "pfad",
   "tests/app/word-addin-taskpane-version-contract.test.ts": "zusammengesetzt,marken",
   "tests/app/word-addin.test.ts": "pfad,marken,fixture",
+  // JOB 3004 (Nachzug): der Chromium-Vergleich der Antwortkarte gegen das Zielbild „Main“ liest
+  // die AUSGELIEFERTE Datei aus `apps/web/dist/word-addin/taskpane.html` (Pfadliteral) und laedt
+  // sie in Chromium — nach einem Schnitt muesste dist die Geschwisterdateien mitfuehren, sonst
+  // misst er eine Seite, die es so nicht mehr gibt. Griff `pfad`.
+  "tests/design/zielbild-klara-main.test.ts": "pfad",
   "tests/design/zielbild-pruefunglaeuft-messung.test.ts": "fixture",
   "tests/design/zielbild-schlankespanel-messung.test.ts": "marken,fixture",
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts": "pfad,fixture",

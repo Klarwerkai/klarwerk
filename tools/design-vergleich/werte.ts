@@ -386,103 +386,19 @@ export const WERTE_WISSEN_ERFASSEN: readonly WertDefinition[] = [
 ] as const;
 
 // ================================================================================================
-// DIE TRAGENDEN WERTE DER DREI FRAGEWEG-ZUSTAENDE (JOB 2619 D2; Vorlagen Main.dc.html,
-// KeinWissen.dc.html, PruefungLaeuft.dc.html — je Zustand eine Tabelle).
+// DIE TRAGENDEN WERTE ZWEIER FRAGEWEG-ZUSTAENDE (JOB 2619 D2; Vorlagen KeinWissen.dc.html und
+// PruefungLaeuft.dc.html — je Zustand eine Tabelle).
 // ================================================================================================
-// BEWUSST WEGGELASSEN (Begruendung in der D2-Rueckgabe): die QUELLEN-CHIP-INNENOPTIK und die
-// Marken-Sups (entstehen im Bau zur LAUFZEIT als Inline-Stile — der Baukommentar im Stand nennt
-// den Grund: der Kontrastwaechter mega43/44 kann Regeln ohne Markup-Fundstelle keiner Flaeche
-// zuordnen; statisch gibt es kein Markup zu messen) · der SPERR-HINWEIS von PruefungLaeuft (im
+// JOB 3004 D1: die dritte Tabelle dieses Blocks, WERTE_FRAGEWEG_MAIN (Antwortzustand, Main.dc.html),
+// ist ENTFERNT. Sie hatte keinen Aufrufer und keinen Vergleichsstand mehr (staende/ ist nicht im
+// Repo) und mass die falsche Sache — Quelltext statt gebauter Flaeche. Die eine Wahrheit ueber
+// dieses Zielbild ist jetzt tests/design/zielbild-klara-main.test.ts: die echte taskpane.html aus
+// apps/web/dist, in Chromium geladen, im echten Antwortzustand, ein getComputedStyle-Vergleich je
+// Wert. Zwei Wahrheiten ueber dasselbe Zielbild stehen nicht nebeneinander.
+// BEWUSST WEGGELASSEN (Begruendung in der D2-Rueckgabe): der SPERR-HINWEIS von PruefungLaeuft (im
 // Bau die bestehende Statuszeile `askBusy` mit eigenem Wortlaut-Pin, bewusst Statusflaeche statt
-// Vorlagen-Absatz) · die Aktionsleiste „In Word einfuegen/Kopieren" von Main (Laufzeit-Buttons
-// desselben 2603-Zustandsbaus) · Wortlaute, Kopfband, ::placeholder und browserberechnete
-// Layout-Ergebnisse (wie bei den beiden Tabellen darueber).
-
-export const WERTE_FRAGEWEG_MAIN: readonly WertDefinition[] = [
-  // — Frage-Pille (Main Z.22-24) —
-  {
-    name: "fragepille-grund weiss",
-    ziel: (z) => prop(inlineStyle(z, "padding: 9px 12px"), "background"),
-    gebaut: (g) => cssProp(g, "#ask-frage-zeile-btn", "background"),
-  },
-  {
-    name: "fragepille-rand hairline",
-    ziel: (z) => prop(inlineStyle(z, "padding: 9px 12px"), "border"),
-    gebaut: (g) => cssProp(g, "#ask-frage-zeile-btn", "border"),
-  },
-  {
-    name: "fragepille-radius 10px",
-    ziel: (z) => prop(inlineStyle(z, "padding: 9px 12px"), "border-radius"),
-    gebaut: (g) => cssProp(g, "#ask-frage-zeile-btn", "border-radius"),
-  },
-  {
-    name: "fragepille-innenabstand 9px 12px",
-    ziel: (z) => prop(inlineStyle(z, "padding: 9px 12px"), "padding"),
-    gebaut: (g) => cssProp(g, "#ask-frage-zeile-btn", "padding"),
-  },
-  {
-    name: "fragepille-schriftgrad 13px",
-    ziel: (z) => prop(inlineStyle(z, "text-overflow: ellipsis"), "font-size"),
-    gebaut: (g) => cssProp(g, "#ask-frage-zeile", "font-size"),
-  },
-  {
-    name: "fragepille-stift (SVG M17 3a2.8…) in der Pille",
-    ziel: (z) => enthaeltPfad(z, "M17 3a2.8"),
-    gebaut: (g) => {
-      const m = /id="ask-frage-zeile-btn"[\s\S]{0,700}?d="(M17 3a2\.8)/.exec(g);
-      return m ? "M17 3a2.8" : null;
-    },
-  },
-  // — Antwortkarte (Main Z.27) —
-  {
-    name: "antwortkarte-radius 12px",
-    ziel: (z) => prop(inlineStyle(z, "border-radius: 12px; box-shadow"), "border-radius"),
-    gebaut: (g) => cssProp(g, "#antwortkarte", "border-radius"),
-  },
-  {
-    name: "antwortkarte-schatten (shadow-tile)",
-    ziel: (z) => prop(inlineStyle(z, "border-radius: 12px; box-shadow"), "box-shadow"),
-    gebaut: (g) => cssProp(g, "#antwortkarte", "box-shadow"),
-  },
-  {
-    name: "antwortkarte-innenabstand 18px 16px 16px",
-    ziel: (z) => prop(inlineStyle(z, "border-radius: 12px; box-shadow"), "padding"),
-    gebaut: (g) => cssProp(g, "#antwortkarte", "padding"),
-  },
-  // — Antworttext (Main Z.28-29) —
-  {
-    name: "antworttext-schriftgrad 16px",
-    ziel: (z) => prop(inlineStyle(z, "font-size: 16px; line-height: 1.55"), "font-size"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-text", "font-size"),
-  },
-  {
-    name: "antworttext-zeilenhoehe 1.55",
-    ziel: (z) => prop(inlineStyle(z, "font-size: 16px; line-height: 1.55"), "line-height"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-text", "line-height"),
-  },
-  // — Herkunftszeile + Chips (Main Z.31-33) —
-  {
-    name: "herkunft-schriftgrad 11px",
-    ziel: (z) => prop(inlineStyle(z, "letter-spacing: 0.4px"), "font-size"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-herkunft", "font-size"),
-  },
-  {
-    name: "herkunft-lauf 0.4px",
-    ziel: (z) => prop(inlineStyle(z, "letter-spacing: 0.4px"), "letter-spacing"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-herkunft", "letter-spacing"),
-  },
-  {
-    name: "herkunft-trennlinie hairline",
-    ziel: (z) =>
-      prop(inlineStyle(z, "border-top: 1px solid #E9E5DE; padding-top: 12px"), "border-top"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-herkunft", "border-top"),
-  },
-  {
-    name: "chips-abstand gap 6px",
-    ziel: (z) => prop(inlineStyle(z, "flex-wrap: wrap; gap: 6px"), "gap"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-chips", "gap"),
-  },
-] as const;
+// Vorlagen-Absatz) · Wortlaute, Kopfband, ::placeholder und browserberechnete Layout-Ergebnisse
+// (wie bei den beiden Tabellen darueber).
 
 export const WERTE_FRAGEWEG_KEIN_WISSEN: readonly WertDefinition[] = [
   {

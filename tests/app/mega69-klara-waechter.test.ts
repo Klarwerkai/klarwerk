@@ -847,7 +847,44 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // AENDERUNG, nicht der Pin-Wert des Klons; der Wert unten ist der neu gerechnete Hash der
     // zusammengefuehrten main-Datei. Ein blindes Uebernehmen von edb9dbc2… haette den Waechter
     // gegen einen Stand gepinnt, den es auf main nie gab.
-    const PIN = "6f8425a957c6a7b64203121e3413979c6a37c3501d819ff2334ea9fb7dad8f61";
+    //
+    // ============================================================================================
+    // JOB 3004 D1 — PIN BEWUSST AKTUALISIERT (6f8425a9… -> a175b9bd…), Auslieferungsfolgen:
+    // ============================================================================================
+    //   · WAS SICH AENDERT: der Antwortbereich des Fragen-Reiters traegt jetzt die Flaeche des
+    //     Zielbilds Main.dc.html (27.08.): Frage-Pille, EINE Antwortkarte (Text, Einstufung,
+    //     Herkunftszeile, Quellen-Chips), Aktionsleiste, Fusszeile und der Leitsatz. Die
+    //     Frage-Karte (#ask-karte) tritt im Antwortzustand zurueck; Pille und „Neue Frage" fuehren
+    //     zurueck. Sechs neue Woerterbuchschluessel (de/en/nl): askHerkunft, askChipStand,
+    //     askFussHinweis, askNeueFrage, askFrageBearbeiten, klaraLeitsatz.
+    //   · KEIN NEUER AUSGANG, KEINE NEUE ABRUFSTELLE: `#ask-answer-edit` bleibt das eine Feld,
+    //     alle Ausgaenge laufen weiter durch composeOutputText; die Zahl der fetch-Ziele bleibt 11
+    //     (mega69-klara-merkmale M7); keine Inline-Handler, kein zweites externes Skript.
+    //   · UMGEZOGEN, NICHT ENTFALLEN: #ask-ai-notice (KI-Kennzeichnung) in die Antwortkarte,
+    //     #ask-review-notice/#ask-rule-note/#ask-status unter die Antwortflaeche — dieselben
+    //     Kennungen, Schluessel und Rueckrufe; mega61/mega75/mega81 messen sie unveraendert gruen.
+    //   · ENTFERNT MIT GRUND: der Funke-Balken links am Quellenblock und die Status-Farbpillen
+    //     (.src-badge-validiert/-pruefung) — die Quelle ist jetzt der Chip, der Status steht als
+    //     Wort darin. Die Palette bleibt die Werkbank-Palette (mega43/mega44 gruen, alle Paare AA).
+    //   · GEMESSEN: tests/design/zielbild-klara-main.test.ts — die dist-Fassung dieser Datei in
+    //     Chromium, ein getComputedStyle-Vergleich je Zielbildwert (67 Faelle), Gegenprobe belegt.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig (kein Manifest-, kein
+    //     Berechtigungs-, kein Ursprungswechsel). Bis der Office-Cache nachzieht, steht die alte
+    //     Flaeche — der Zustand von gestern, kein neues Risiko.
+    //   · RUNDE 4 (a175b9bd… -> 509fc831…; die Zwischenfassung d18d498a… der Runde 3 ist
+    //     ZURUECKGENOMMEN): die Frage-Karte (#ask-karte mit #ask-input) ist im Antwortzustand
+    //     VERBORGEN — EINE Flaeche, kein zweiter Bearbeitungsweg (ben, Runde 3). Runde 3 hatte sie
+    //     per `order` unter die Antwortflaeche gerueckt, weil tests-smoke/word-taskpane-kopieren
+    //     .spec.ts `#ask-input` als Einfuege-Empfaenger benutzte; die Sonde bringt jetzt ihren
+    //     eigenen Empfaenger mit, kein Produktfeld ist mehr Testhilfe. Dazu tragen Pille, Karte,
+    //     Aktionen und Fusszeile die Seitenraender der Vorlage selbst (`margin: 12px 16px 0` usw.;
+    //     `#ask-answer-block` hebt die 14px Koerper-Polsterung auf wie das Kopfband). Ids,
+    //     Reihenfolge im Quelltext und Rueckrufe unveraendert.
+    //   · RUNDE 5 (509fc831… -> 0e5b3c19…): `#ask-sources li` setzt kein `display` mehr — die
+    //     id-Regel (display: block) schlug die Klassenregel `.quelle-chip` (display: flex) und liess
+    //     gap/align-items am Quellen-Chip wirkungslos (ben, Runde 4). Nur Stilblock, kein Markup,
+    //     kein Skript.
+    const PIN = "0e5b3c19f6e97e50851e98edf01cdd04966aad049369a270ce06d8d8243369ce";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
