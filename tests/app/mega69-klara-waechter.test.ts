@@ -952,7 +952,61 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     dauerhaften Hinweise `#ask-review-notice`/`#ask-rule-note`); Skript und Stil der Ladekarte
     //     waren bereits unveraendert gegen main mischbar. Der Pin unten ist der frisch aus der
     //     zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
-    const PIN = "49ca67573c9c81b37a8a973bc03604921ef95fa67123d2956b2eae6a3c82b791";
+    //
+    // ============================================================================================
+    // JOB 3046 D2 (03.09.2026) — PIN BEWUSST AKTUALISIERT (0e5b3c19… -> 9235fa79…), Basis 9ae6c22.
+    // Auslieferungsfolgen, einzeln geprueft:
+    // ============================================================================================
+    //   · WAS SICH AENDERT — die LUECKE einer Frage, nach Zielbild KeinWissen.dc.html Z.27-35:
+    //     statt des gelben Warnkastens (`div.status.warn` mit askGapTitle, askGapBody, einer
+    //     Zweitkopie von askRuleNote und `button.primary#ask-gap-send-btn`) zeigt `#ask-gap-block`
+    //     die ruhige Flaeche `#ask-luecke` (Markenblock KW-D2-LUECKE-START/END): Lupe (inline-SVG,
+    //     currentColor), der EINE Satz `#ask-luecke-satz` (derselbe Schluessel askGapTitle, neuer
+    //     Wortlaut), die Hauptaktion `#ask-luecke-frage-aendern`, der Textlink `a#ask-gap-send-btn`
+    //     (dieselbe Kennung, derselbe Handler sendOpenQuestion) und die Fusszeile `#ask-luecke-fuss`.
+    //     Neu im Stil sind die Regeln des Blocks KW-D2-LUECKE (Farben ausschliesslich als Werkbank-
+    //     Token --text/--muted/--surface/--hairline; mega43 gruen). Neu im Skript: `askFrageAendern`
+    //     (resetAskResult + hideAskStatus + Fokus ans Ende von #ask-input — kein Abruf) und die
+    //     Doppel-POST-Sperre des Textlinks ueber `aria-disabled` (ein <a> kennt kein `disabled`).
+    //   · WORTLAUT (DE/EN/NL): askGapTitle neu (Z.29), askGapSendCta „… geben" (Z.31), neue
+    //     Schluessel askGapFrageAendern (Z.30) und askGapFuss (Z.35); askGapBody in allen drei
+    //     Sprachen ENTFERNT (kein toter Schluessel). mega35-Wortliste gruen; mega69-Umlaute gruen.
+    //   · ENTFERNT, nicht daneben belassen: der Warnkasten der Luecke (`.status.warn` bleibt den
+    //     echten Warnungen in #ask-status: askEmpty, askAuth, askForbiddenRead, askError,
+    //     askTimeout, s4FragenGesperrt, truncated), askGapBody, die Zweitkopie der Regel (die Regel
+    //     steht an ihrer EINEN Stelle #ask-rule-note unter der Antwortflaeche, JOB 3004; mega75
+    //     misst sie dort). Die Konsole behaelt „Keine belastbare Grundlage." — Zielbild vor
+    //     Paritaet (word-addin-ask pinnt beide Saetze bewusst).
+    //   · KEIN neues Abrufziel, KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE
+    //     geaenderte Nutzlast: performAsk, sendOpenQuestion (POST /api/drafts, origin word_addin,
+    //     voller Fragetext) und resetAskResult sind unberuehrt bzw. rufen dieselben Wege; der
+    //     Textlink traegt href="#" und unterbindet die Sprungnavigation (preventDefault).
+    //   · GEMESSEN: tests/design/zielbild-keinwissen.test.ts (Chromium, 32 Werte je Vergleich,
+    //     ein primary panelweit, „Frage ändern" per echtem Klick, Sendeweg des Textlinks) und
+    //     tests/design/zielbild-keinwissen-messung.test.ts (jsdom: Struktur, Wortlaut, Verlustliste,
+    //     Uebergaenge Luecke/Antwort/Warnungen/truncated).
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
+    //     steht der alte Warnkasten — der Zustand von gestern, kein neues Risiko.
+    //   · (3cc42ea2… war der Zwischenstand mit `opacity: 0.5` am gesperrten Textlink; mega43
+    //     meldete die Abschwaechung ohne Ausnahme — entfernt, nur pointer-events/cursor bleiben.)
+    //   · RUNDE 2 (BEN; 9235fa79… -> c952e6dc…): (1) der Lueckenblock steht NEBEN der Frage-Karte
+    //     (#ask-karte), nicht mehr in ihr — kein Kasten-Ahne; er ist die Buehne der Vorlage
+    //     (Flex-Spalte, `margin: 12px -14px 0`, Mindesthoehe = Rest des Fensters unter der Karte,
+    //     vom Panel gemessen und als `--kw-luecke-buehne` gesetzt — lueckeBuehneAnpassen, dazu ein
+    //     `resize`-Rueckruf), beim Erscheinen rollt das Panel die Frage-Karte an den oberen
+    //     Fensterrand (scrollIntoView, mit Fallback). (2) Der Entwurfsversand traegt eine
+    //     GENERATION (askErgebnisGeneration): resetAskResult() zaehlt hoch, loest die Sperre des
+    //     Textlinks und das Buehnenmass; ein Ruecklauf einer aelteren Generation (Erfolg wie Fehler)
+    //     veraendert weder Status noch Entwurfs-Link noch Sperre. KEIN neues Abrufziel, KEIN
+    //     Manifest, KEINE geaenderte CSP, KEINE geaenderte Nutzlast — es wird WENIGER angezeigt,
+    //     nie mehr. Gemessen: zielbild-keinwissen.test.ts (G Geometrie, K Ahnen, iv/v Ueberlappung)
+    //     und zielbild-keinwissen-messung.test.ts (M25 Ahnen, F2 Ueberlappung).
+    //   · KONFLIKTRUNDE 1 (04.09.2026, JOB 3046): der Rebase auf main traf dasselbe Dateiende wie
+    //     JOB 3016 D3 (Ladekarte „Pruefung laeuft") — beide Markup-, Stil- und Skriptbloecke stehen
+    //     unveraendert nebeneinander in der taskpane.html (Ladekarte fuer den Wartezustand, Luecke
+    //     fuer die Antwortluecke; keiner beruehrt den anderen). Der Pin unten ist der frisch aus der
+    //     zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    const PIN = "d2fe611ce253ee2bc599cb85671ead7ddd59bfdbf46498e6615a5c6e21135d47";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

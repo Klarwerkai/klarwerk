@@ -59,11 +59,17 @@ describe("AUFTRAG-mega77 BLOCK A: der Ungeprüft-Zähler ist auch aus dem Aufgab
     );
   });
 
-  it("die Absage-Karte selbst bleibt — entfernt wurde die ZAHL, nicht die Ehrlichkeit", () => {
+  it("die Absage selbst bleibt — entfernt wurde die ZAHL, nicht die Ehrlichkeit", () => {
     expect(HTML).toContain('id="ask-gap-block"');
     for (const sprache of SPRACHEN) {
       expect(text(sprache, "askGapTitle").length).toBeGreaterThan(0);
-      expect(text(sprache, "askGapBody").length).toBeGreaterThan(0);
+      // JOB 3046 D2: die Luecke ist die Auskunft des Zielbilds KeinWissen.dc.html — EIN Satz
+      // (askGapTitle) und die Fusszeile (askGapFuss); der Erklaertext askGapBody ist in allen drei
+      // Sprachen ENTFERNT, kein toter Schluessel bleibt stehen.
+      expect(text(sprache, "askGapFuss").length).toBeGreaterThan(0);
+      expect(woerterbuch(sprache), `${sprache}: askGapBody darf es nicht mehr geben`).not.toContain(
+        "askGapBody:",
+      );
     }
   });
 });

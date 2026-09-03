@@ -1599,7 +1599,10 @@ const WERTE_TREFFER: Readonly<Record<string, number>> = {
   ".card": 8,
   "#ask-input": 1,
   "#ask-btn": 1,
-  "button.primary": 8,
+  // JOB 3046 D2: die Luecke traegt keinen `button.primary` mehr — der Weg „offene Frage" ist ein
+  // Textlink (a#ask-gap-send-btn, Zielbild KeinWissen Z.31). Gemessen: 8 -> 7 (R4/W2 meldeten
+  // `expected 7 to be 8`, bevor diese Zeile angefasst wurde).
+  "button.primary": 7,
   ".ask-hinweise p": 0,
   "#kw-fuss p": 0,
   "#kw-fuss": 0,
@@ -1757,7 +1760,9 @@ describe("JOB 3013 · D4 · R — der Ruhezustand am laufenden Fenster (vor jede
     );
     // Zuerst die Hauptaktion selbst — eine Verfaelschung meldet sich HIER, nicht an der Zaehlung.
     expect(sichtbare, "sichtbare Knoepfe mit `primary`").toEqual(["#ask-btn"]);
-    expect(alle.length).toBe(8);
+    // JOB 3046 D2: 8 -> 7 — der Weg „offene Frage" der Luecke ist ein Textlink, kein
+    // `button.primary` mehr (Zielbild KeinWissen Z.31); gemessen `expected 7 to be 8`.
+    expect(alle.length).toBe(7);
     expect(r.text("#ask-btn")).toBe(r.t("askCta"));
     // Kein Pfeil, kein Symbol — ein Textknopf.
     expect(r.q("#ask-btn svg")).toBeNull();

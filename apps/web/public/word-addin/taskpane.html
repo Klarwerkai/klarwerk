@@ -244,6 +244,75 @@
     #ask-ladekarte-satz { margin: 12px 16px 0; font-size: 12px; color: var(--muted); text-align: center; }
     ul { margin: 6px 0; padding-left: 18px; }
     a { color: var(--brand-text); }
+    /* ============================================================================================
+       KW-D2-LUECKE (JOB 3046) — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (Pedi, 27.08.).
+       ============================================================================================
+       Eine Luecke ist kein Fehler, sie ist eine Auskunft. Deshalb KEIN `.status.warn` mehr um sie
+       herum (der bleibt den echten Warnungen in #ask-status), sondern die ruhige, mittige Flaeche
+       der Vorlage Z.27: kein Hintergrund, kein Rand, Flex-Spalte, 20px Abstand, 0 32px Polster.
+       Jeder Wert steht hier woertlich wie in der Vorlage; die Farben sind die Werkbank-Token
+       (--text = #1A2233, --muted = #525B6B, --surface = #FFFFFF, --hairline = #E9E5DE — dieselben
+       Ziffern wie die Vorlage, mega43). Gemessen in Chromium, ein Vergleich je Wert:
+       tests/design/zielbild-keinwissen.test.ts ueber WERTE_FRAGEWEG_LUECKE (werte.ts).
+       RUNDE 2 (BEN): DIE BUEHNE. Die Vorlage ist ein Flex-Spaltenrahmen von Fensterhoehe (Z.15,
+       min-height 720px), in dem die Flaeche mit flex-grow 1 den freien Raum nimmt und der Inhalt
+       darin zentriert steht. Im Panel steht die Luecke NEBEN der Frage-Karte (nicht mehr in ihr —
+       kein Kasten-Ahne) und bekommt denselben Rahmen: #ask-gap-block ist eine Flex-Spalte, deren
+       Mindesthoehe der Rest des Fensters unter der Frage-Karte ist (`--kw-luecke-buehne`, vom
+       Panel gemessen, s. lueckeBuehneAnpassen; CSS allein kennt die Hoehe des Kopfes darueber
+       nicht). Die Seitenraender heben die 14px Koerperpolsterung auf wie die Antwortflaeche
+       (JOB 3004) — Z.27 misst ihre 32px damit von der Fensterkante. */
+    #ask-gap-block {
+      margin: 12px -14px 0;
+      display: flex;
+      flex-direction: column;
+      min-height: var(--kw-luecke-buehne, auto);
+    }
+    /* Die id-Regel schlaegt `.hidden` — die Verbergung braucht deshalb ihre eigene Zeile. */
+    #ask-gap-block.hidden { display: none; }
+    #ask-luecke {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 20px;
+      padding: 0 32px;
+      text-align: center;
+    }
+    /* Z.28: die Lupe zeichnet mit currentColor — die Strichfarbe ist das Token, kein zweites Literal. */
+    #ask-luecke svg { color: var(--muted); display: block; }
+    /* Z.29: der EINE Satz. */
+    #ask-luecke-satz { font-size: 16px; line-height: 1.55; color: var(--text); }
+    /* Z.30: die Hauptaktion „Frage aendern" — weisser Knopf mit Haarlinie, kein `primary`. */
+    #ask-luecke-frage-aendern {
+      padding: 10px 22px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 10px;
+      font-size: 13.5px;
+      font-weight: 600;
+      color: var(--text);
+      cursor: pointer;
+    }
+    /* Z.31: die Nebenaktion — der Weg „offene Frage" bleibt, als Textlink 12px. Waehrend des
+       Sendens traegt er aria-disabled (ein <a> kennt kein disabled) und nimmt keinen Klick an;
+       KEINE Abschwaechung der Farbe (mega43: Kontrast bleibt AA) — dass gesendet wird, sagt
+       #ask-status (sendBusy). */
+    #ask-gap-send-btn { font-size: 12px; }
+    #ask-gap-send-btn[aria-disabled="true"] { pointer-events: none; cursor: default; }
+    /* Der Rueckweg zum Entwurf nach dem Senden (kein Zielbild-Element, bleibt erhalten) —
+       zentriert unter der Flaeche, ohne den Absatz-Aussenabstand. */
+    #ask-gap-open-block { margin: 12px 0 0; padding: 0 32px; text-align: center; font-size: 12px; }
+    /* Z.34/35: die Fusszeile — Rahmen und Satz in einem Element, sichtbar nur in der Luecke. */
+    #ask-luecke-fuss {
+      padding: 12px 16px;
+      display: flex;
+      justify-content: center;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    /* KW-D2-LUECKE (Stil) — Ende */
     /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework.
        mega43: Unterstreichung statt gefuellter Knoepfe. */
     /* JOB 2620 D4: die Reiterleiste traegt die Werte der Vorlage WissenErfassen.dc.html Z.22-24
@@ -686,26 +755,64 @@
            dieser Code nicht erzwingt; belegt ist nur, dass keine EXTERNE KI ihn bekommt. -->
       <!-- JOB 3004 D1: #ask-rule-note steht jetzt UNTER der Antwortflaeche (s. dort) — sichtbar in beiden Zustaenden. -->
       <button type="button" class="primary" id="ask-btn" data-t="askCta" disabled></button>
-      <div id="ask-gap-block" class="hidden">
-        <div class="status warn">
-          <strong data-t="askGapTitle"></strong>
-          <p class="muted" data-t="askGapBody" style="margin-bottom: 0;"></p>
-          <!-- AUFTRAG-mega77 Block A: hier stand der Satz aus mega74 Teil 2b mit der Zahl der
-               unterdrueckten ungeprueften Treffer. Er ist ENTFERNT — die Zahl entstand ohne
-               Betrachterfilter (Leck ab n = 1) und zaehlte die gedeckelte Vorauswahl statt des
-               Bestands. Was bleibt, ist die ehrliche Wissensluecke ohne Auskunft ueber fremden
-               Bestand. -->
-          <!-- AUFTRAG-mega75 Block C: die Absage ist der Moment, in dem der Mensch „warum nicht?"
-               fragt — hier steht die Regel deshalb ein zweites Mal, im selben Wortlaut aus dem
-               selben Schluessel (eine Quelle, kein zweiter Text). -->
-          <p class="muted" data-t="askRuleNote" style="margin: 6px 0 0 0;"></p>
-        </div>
-        <button type="button" class="primary" id="ask-gap-send-btn" data-t="askGapSendCta" style="margin-top: 8px;"></button>
-        <p id="ask-gap-open-block" class="hidden">
-          <a id="ask-gap-open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="askGapOpenLink"></a>
-        </p>
-      </div>
+      <!-- AUFTRAG-mega77 Block A: in der Luecke stand einmal der Satz aus mega74 Teil 2b mit der
+           Zahl der unterdrueckten ungeprueften Treffer. Er ist ENTFERNT — die Zahl entstand ohne
+           Betrachterfilter (Leck ab n = 1) und zaehlte die gedeckelte Vorauswahl statt des
+           Bestands. Was bleibt, ist die ehrliche Wissensluecke ohne Auskunft ueber fremden
+           Bestand. -->
     </div>
+    <!-- ========================================================================================
+         KW-D2-LUECKE-START — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (JOB 3046).
+         ========================================================================================
+         Bis JOB 3046 war die Luecke ein gelber Warnkasten (`div.status.warn`) mit drei Absaetzen
+         (askGapTitle, askGapBody, ein zweites askRuleNote) und einem `button.primary`. Der Kasten
+         sagte „hier stimmt etwas nicht" — eine Luecke ist aber eine Auskunft, kein Fehler. Jetzt
+         steht hier, was Pedi gezeichnet hat (Z.27-35):
+           · die ruhige, mittige Flaeche #ask-luecke (kein Kasten),
+           · die Lupe (Z.28: 36x36, Kreis 11/11/7, Griff M21 21l-4.35-4.35, Strich 1.5, keine
+             Fuellung; Farbe ueber currentColor = --muted),
+           · der EINE Satz #ask-luecke-satz — derselbe Schluessel askGapTitle, der Wortlaut ist
+             jetzt der des Zielbilds („Dazu liegt kein freigegebenes Firmenwissen vor."),
+           · die Hauptaktion #ask-luecke-frage-aendern („Frage ändern"): Klick schliesst die
+             Flaeche ueber resetAskResult() und setzt den Cursor ans Ende von #ask-input — die
+             Frage bleibt stehen, kein Serveraufruf (askFrageAendern),
+           · die Nebenaktion: der Weg „offene Frage" BLEIBT, als Textlink a#ask-gap-send-btn
+             (Z.31) mit demselben Handler sendOpenQuestion, derselben Kennung, askGapSentOk und
+             #ask-gap-open-block wie bisher — er verliert nur `primary` und die Knopfform,
+           · die Fusszeile #ask-luecke-fuss (Z.34/35, askGapFuss), sichtbar nur in der Luecke.
+         RUNDE 2 (BEN): der Block steht NEBEN der Frage-Karte #ask-karte, nicht mehr in ihr — kein
+         umschliessender Kasten (Hintergrund, Rand, Schatten) zwischen der Flaeche und dem Panel.
+         Er ist die Buehne der Vorlage (Flex-Spalte, Mindesthoehe = Rest des Fensters unter der
+         Karte, gemessen in lueckeBuehneAnpassen): die Flaeche waechst hinein, der Inhalt steht
+         zentriert, die Fusszeile am unteren Rand; beim Erscheinen rollt das Panel die Frage-Karte
+         an den oberen Fensterrand, damit Frage und Auskunft zusammen im Bild stehen.
+         Der Entwurfsversand traegt eine GENERATION (askErgebnisGeneration): resetAskResult() zaehlt
+         sie hoch und loest die Sperre des Textlinks; ein Ruecklauf einer aelteren Generation
+         (Erfolg wie Fehler) veraendert weder Status noch Link noch Sperre der NEUEN Frage.
+         ENTFERNT, nicht daneben belassen: der Warnkasten der Luecke (der `.status.warn` bleibt den
+         echten Warnungen in #ask-status: askAuth, askTimeout, askError, askEmpty, s4FragenGesperrt
+         und der truncated-Hinweis), askGapBody in allen drei Sprachen (sein Satz „eine
+         Wissensluecke wurde vermerkt" bleibt wahr — /api/ask vermerkt sie — wird aber an der
+         Auskunft nicht mehr gesagt; die Fusszeile traegt die Haltung) und die ZWEITKOPIE von
+         askRuleNote (mega75 Block C): die Regel steht seit JOB 3004 dauerhaft unter der
+         Antwortflaeche (#ask-rule-note), sichtbar in beiden Zustaenden — sie faellt nicht, nur ihr
+         Duplikat. Die Konsole behaelt ihren Satz „Keine belastbare Grundlage." — Zielbild vor
+         Paritaet (Pedi 27.08./03.09.).
+         Gemessen: tests/design/zielbild-keinwissen.test.ts (Chromium, je Wert) und
+         tests/design/zielbild-keinwissen-messung.test.ts (jsdom, Struktur/Wortlaut/Uebergaenge). -->
+    <div id="ask-gap-block" class="hidden">
+      <div id="ask-luecke">
+        <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
+        <div id="ask-luecke-satz" data-t="askGapTitle"></div>
+        <button type="button" id="ask-luecke-frage-aendern" data-t="askGapFrageAendern"></button>
+        <a href="#" id="ask-gap-send-btn" data-t="askGapSendCta"></a>
+      </div>
+      <p id="ask-gap-open-block" class="hidden">
+        <a id="ask-gap-open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="askGapOpenLink"></a>
+      </p>
+      <div id="ask-luecke-fuss" data-t="askGapFuss"></div>
+    </div>
+    <!-- KW-D2-LUECKE-END -->
     <!-- ==========================================================================================
          JOB 3004 D1 — DIE ANTWORTFLAECHE NACH ZIELBILD Main.dc.html (Pedi, 27.08.).
          ==========================================================================================
@@ -2275,9 +2382,14 @@
         askEvidenceUnverified: "Einstufung: ungeprüft — nicht als konfliktfrei belegt. Vor Verwendung prüfen.",
         askSourcesTitle: "Quellen",
         askTrust: "Vertrauen {n}",
-        askGapTitle: "Keine belastbare Grundlage.",
-        askGapBody: "Es gibt kein validiertes Wissen zu dieser Frage. Statt einer erfundenen Antwort wurde eine Wissenslücke vermerkt — du kannst sie zusätzlich als offene Frage nach KLARWERK geben.",
-        askGapSendCta: "Als offene Frage an KLARWERK senden",
+        // JOB 3046 D2: die Luecke ist eine Auskunft (Zielbild KeinWissen.dc.html Z.29-35). Der
+        // Schluessel askGapTitle bleibt, sein Wortlaut ist der des Zielbilds; askGapBody ist
+        // ENTFERNT (in allen drei Sprachen); neu sind askGapFrageAendern (Z.30) und askGapFuss
+        // (Z.35). Die Konsole behaelt „Keine belastbare Grundlage." — Zielbild vor Paritaet.
+        askGapTitle: "Dazu liegt kein freigegebenes Firmenwissen vor.",
+        askGapFrageAendern: "Frage ändern",
+        askGapSendCta: "Als offene Frage an KLARWERK geben",
+        askGapFuss: "Klara erfindet keine Antworten — eine Lücke ist eine ehrliche Auskunft.",
         askGapSentOk: "Offene Frage gesendet: {title}",
         askGapOpenLink: "Offene Frage in KLARWERK öffnen",
         askInsertCta: "In Word einfügen",
@@ -2490,9 +2602,10 @@
         askEvidenceUnverified: "Classification: unverified — not evidenced as free of conflicts. Check before use.",
         askSourcesTitle: "Sources",
         askTrust: "Trust {n}",
-        askGapTitle: "No reliable basis.",
-        askGapBody: "There is no validated knowledge for this question. Instead of a made-up answer a knowledge gap was recorded — you can additionally send it to KLARWERK as an open question.",
-        askGapSendCta: "Send as an open question to KLARWERK",
+        askGapTitle: "There is no released company knowledge on this.",
+        askGapFrageAendern: "Change question",
+        askGapSendCta: "Hand it to KLARWERK as an open question",
+        askGapFuss: "Klara does not invent answers — a gap is an honest answer.",
         askGapSentOk: "Open question sent: {title}",
         askGapOpenLink: "Open the question in KLARWERK",
         askInsertCta: "Insert into Word",
@@ -2697,9 +2810,10 @@
         askEvidenceUnverified: "Classificatie: ongecontroleerd — niet aangetoond als conflictvrij. Controleer voor gebruik.",
         askSourcesTitle: "Bronnen",
         askTrust: "Vertrouwen {n}",
-        askGapTitle: "Geen betrouwbare basis.",
-        askGapBody: "Er is geen gevalideerde kennis over deze vraag. In plaats van een verzonnen antwoord is er een kennishiaat vastgelegd — je kunt de vraag ook als open vraag naar KLARWERK sturen.",
-        askGapSendCta: "Als open vraag naar KLARWERK sturen",
+        askGapTitle: "Hierover is geen vrijgegeven bedrijfskennis.",
+        askGapFrageAendern: "Vraag aanpassen",
+        askGapSendCta: "Als open vraag aan KLARWERK doorgeven",
+        askGapFuss: "Klara verzint geen antwoorden — een hiaat is een eerlijk antwoord.",
         askGapSentOk: "Open vraag verstuurd: {title}",
         askGapOpenLink: "Vraag in KLARWERK openen",
         askInsertCta: "In Word invoegen",
@@ -4153,6 +4267,11 @@
     // Ausgabewege gingen aber trotzdem auf. Es wird nichts mehr nachgetragen, also gibt es nichts
     // mehr zu vergleichen. Geblieben ist der Auf-/Zuklapp-Zustand von „mehr anzeigen".
     var askAnswerExpanded = false;
+    // JOB 3046 D2 (Runde 2): die Generation des Ergebniszustands. resetAskResult() zaehlt sie hoch;
+    // der Entwurfsversand (sendOpenQuestion) merkt sich seine Generation und laesst einen Ruecklauf,
+    // der eine aeltere traegt, die Oberflaeche NICHT mehr anfassen — ein verspaeteter Erfolg oder
+    // Fehler der alten Frage darf nie im Zustand der neuen erscheinen.
+    var askErgebnisGeneration = 0;
 
     function showAskStatus(kind, text) {
       var el = document.getElementById("ask-status");
@@ -4217,6 +4336,12 @@
       askQuellenAufgeloest = [];
       askQuellenAlleSichtbar = false;
       askFrageKarteZeigen(true);
+      // JOB 3046 D2 (Runde 2): jede Rueckstellung ist eine neue Generation — laufende Entwurfs-
+      // Versendungen der alten sind damit abgemeldet; die Sperre des Textlinks und das Buehnenmass
+      // der Luecke werden hier geloest, nicht erst von einem Ruecklauf, der vielleicht nie kommt.
+      askErgebnisGeneration += 1;
+      document.getElementById("ask-gap-send-btn").removeAttribute("aria-disabled");
+      document.getElementById("ask-gap-block").style.removeProperty("--kw-luecke-buehne");
     }
 
     // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
@@ -4321,6 +4446,41 @@
       input.value = "";
       try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
       updateAskSourceNote();
+    }
+
+    // JOB 3046 D2 (KW-D2-LUECKE): „Frage ändern" ist ein FOKUS, kein neuer Weg. Die Lueckenflaeche
+    // geht ueber den vorhandenen Aufraeumweg zu (resetAskResult raeumt #ask-gap-block und
+    // #ask-gap-open-block ab; hideAskStatus nimmt einen etwaigen truncated-Hinweis mit), die Frage
+    // bleibt im Feld stehen, der Cursor steht an ihrem Ende. Kein Serveraufruf, kein neuer Zustand.
+    // JOB 3046 D2 (Runde 2, KW-D2-LUECKE): DIE BUEHNE. Die Vorlage (KeinWissen.dc.html Z.15/27) ist
+    // ein fensterhoher Flex-Rahmen, in dem die Flaeche den freien Raum nimmt. CSS kann im Panel
+    // nicht wissen, wie hoch Kopf, Sitzungskarte, Reiter und Begriffsbild ueber der Frage-Karte
+    // sind — deshalb misst das Panel: die Mindesthoehe des Lueckenblocks ist der Rest des Fensters
+    // unter der Frage-Karte (Karte am oberen Fensterrand gedacht), abzueglich der Koerperpolsterung.
+    // Nur ein Mass (`--kw-luecke-buehne`), nur solange die Luecke steht; alle Werte der Flaeche
+    // selbst stehen im Stilblock. Bei Fenstergroessenwechsel wird neu gemessen.
+    function lueckeBuehneAnpassen() {
+      var block = document.getElementById("ask-gap-block");
+      var karte = document.getElementById("ask-karte");
+      if (!block || !karte || block.className.indexOf("hidden") !== -1) { return; }
+      var fenster = window.innerHeight;
+      if (!(fenster > 0) || typeof block.getBoundingClientRect !== "function") { return; }
+      var oben = block.getBoundingClientRect().top - karte.getBoundingClientRect().top;
+      var polster = parseFloat(window.getComputedStyle(document.body).paddingBottom) || 0;
+      var buehne = Math.max(0, Math.floor(fenster - oben - polster));
+      block.style.setProperty("--kw-luecke-buehne", buehne + "px");
+    }
+    window.addEventListener("resize", lueckeBuehneAnpassen);
+
+    function askFrageAendern() {
+      resetAskResult();
+      hideAskStatus();
+      var input = document.getElementById("ask-input");
+      var ende = input.value.length;
+      try {
+        input.focus();
+        input.setSelectionRange(ende, ende);
+      } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
     }
 
     // Sprachwechsel bei sichtbarer Antwort: den (data-t-losen) Umschalter-Text neu setzen.
@@ -4636,6 +4796,12 @@
         // Die ehrliche Wissensluecken-Karte: KEINE erfundene Antwort; /api/ask hat die Luecke
         // serverseitig bereits vermerkt — zusaetzlich kann sie als offene Frage (Draft) reisen.
         document.getElementById("ask-gap-block").className = "";
+        // JOB 3046 D2 (Runde 2): die Buehne bemessen und Frage plus Auskunft ins Bild holen.
+        lueckeBuehneAnpassen();
+        var karte = document.getElementById("ask-karte");
+        if (typeof karte.scrollIntoView === "function") {
+          try { karte.scrollIntoView({ block: "start" }); } catch (err) { /* Scrollen ist Komfort, kein Vertrag */ }
+        }
         // AUFTRAG-mega77 BLOCK A: hier wurde der Satz mit der Zahl der unterdrueckten ungeprueften
         // Treffer gesetzt. Entfernt — Begruendung an der Absage-Karte oben.
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
@@ -5097,8 +5263,15 @@
       if (!currentAskOutcome || currentAskOutcome.kind !== "gap") { return; }
       if (currentAskQuestion.trim().length === 0) { return; }
       var gapBtn = document.getElementById("ask-gap-send-btn");
-      if (gapBtn.disabled) { return; } // laeuft bereits — kein Doppel-POST
-      gapBtn.disabled = true;
+      // JOB 3046 D2: der Weg ist ein Textlink (<a>, Zielbild Z.31) — ein <a> kennt kein `disabled`,
+      // die Sperre gegen den Doppel-POST traegt deshalb `aria-disabled` (Stil: KW-D2-LUECKE).
+      if (gapBtn.getAttribute("aria-disabled") === "true") { return; } // laeuft bereits — kein Doppel-POST
+      gapBtn.setAttribute("aria-disabled", "true");
+      // JOB 3046 D2 (Runde 2): die Generation DIESES Versands. Hat resetAskResult() inzwischen eine
+      // neue Frage begonnen, gehoert jeder Ruecklauf hier der alten und veraendert NICHTS mehr —
+      // weder Status noch Entwurfs-Link noch die Sperre der neuen Luecke.
+      var generation = askErgebnisGeneration;
+      var veraltet = function () { return generation !== askErgebnisGeneration; };
       var title = openQuestionDraftTitle(
         currentAskQuestion,
         t("askOpenQuestionPrefix"),
@@ -5121,7 +5294,8 @@
         }),
       })
         .then(function (res) {
-          gapBtn.disabled = false;
+          if (veraltet()) { return null; }
+          gapBtn.removeAttribute("aria-disabled");
           // AUFTRAG-JOB507-D4: derselbe Draft-Weg, dieselbe Klassifikation. 403 behaelt hier seinen
           // EIGENEN Text (es geht um das Recht, offene Fragen zu senden — nicht um Entwuerfe
           // allgemein); 413 und 429 bekommen erstmals ueberhaupt einen ehrlichen Zustand.
@@ -5141,7 +5315,7 @@
           return null;
         })
         .then(function (draft) {
-          if (!draft) { return; }
+          if (!draft || veraltet()) { return; }
           showAskStatus("ok", t("askGapSentOk", { title: title }));
           var link = document.getElementById("ask-gap-open-link");
           link.href =
@@ -5149,7 +5323,8 @@
           document.getElementById("ask-gap-open-block").className = "";
         })
         .catch(function (err) {
-          gapBtn.disabled = false;
+          if (veraltet()) { return; }
+          gapBtn.removeAttribute("aria-disabled");
           // NIE Erfolg vortaeuschen — dieselbe ehrliche Fehlerlinie wie der Entwurf-Sender.
           showAskStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
         });
@@ -5196,7 +5371,14 @@
       handleAnswerClipboard(ev, true);
     });
     document.getElementById("ask-answer-edit").addEventListener("dragstart", handleAnswerDragStart);
-    document.getElementById("ask-gap-send-btn").addEventListener("click", sendOpenQuestion);
+    // JOB 3046 D2 (KW-D2-LUECKE): derselbe Handler wie bisher (sendOpenQuestion) — der Traeger ist
+    // jetzt ein Textlink mit href="#", deshalb wird die Sprungnavigation unterbunden; und die
+    // Hauptaktion „Frage ändern" (askFrageAendern).
+    document.getElementById("ask-gap-send-btn").addEventListener("click", function (ev) {
+      ev.preventDefault();
+      sendOpenQuestion();
+    });
+    document.getElementById("ask-luecke-frage-aendern").addEventListener("click", askFrageAendern);
 
     document.getElementById("lang-de").addEventListener("click", function () { setLang("de"); });
     document.getElementById("lang-en").addEventListener("click", function () { setLang("en"); });

@@ -372,6 +372,13 @@ const INVENTAR: readonly string[] = [
   // taskpane.html (ein Vergleich je Wert der Werte-Tabelle in werte.ts, getComputedStyle). Achse
   // `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 36. K2 hat die Datei gemeldet.
   "tests/design/zielbild-pruefunglaeuft.test.ts",
+  // JOB 3046 D2 (03.09.2026): der Chromium-Vergleich der Lueckenflaeche „KeinWissen" am echten
+  // taskpane.html (ein Vergleich je Wert der Tabelle WERTE_FRAGEWEG_LUECKE in werte.ts,
+  // getComputedStyle; dazu „Frage ändern" per echtem Klick und der Sendeweg des Textlinks). Achse
+  // `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 38. K2 hat die Datei gemeldet, das
+  // Inventar hat sie nicht still aufgenommen. Sachlich Klara-Regression: der Test haelt fest, was
+  // der Mensch bei einer Luecke sieht und wohin ihn „Frage ändern" bringt.
+  "tests/design/zielbild-keinwissen.test.ts",
   // JOB 3014 D1 (03.09.2026): die vier Messgeraete des Schnittplans fuer `taskpane.html` (P11).
   // Sie liegen unter `tests/klara-zerlegung/` und tragen „klara" im PFAD — die Namensachse liest
   // den ganzen Pfad (`wo: "pfad"`), also fallen alle vier in die Namensmenge; alle vier tragen

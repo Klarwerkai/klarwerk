@@ -20,9 +20,10 @@ export interface WertDefinition {
   ziel: (zielHtml: string) => string | null;
   gebaut: (gebautHtml: string) => string | null;
   /**
-   * JOB 3016 D3: der Messpunkt am LAUFENDEN Panel — Selektor des realen Elements und die
-   * BERECHNETE Eigenschaft, die `getComputedStyle` dafuer liefert (Chromium-Vergleich in
-   * tests/design/zielbild-pruefunglaeuft.test.ts). `gebaut` liest denselben Wert statisch aus dem
+   * JOB 3016 D3, weiterverwendet in JOB 3046 D2: der Messpunkt am LAUFENDEN Panel — Selektor des
+   * realen Elements und die BERECHNETE Eigenschaft, die `getComputedStyle` dafuer liefert
+   * (Chromium-Vergleich in tests/design/zielbild-pruefunglaeuft.test.ts bzw.
+   * tests/design/zielbild-keinwissen.test.ts). `gebaut` liest denselben Wert statisch aus dem
    * Stilblock; der Messpunkt ist derselbe Wert, wirksam gerendert. Fehlt er, ist die Zeile nur
    * statisch vergleichbar.
    */
@@ -414,69 +415,290 @@ export const WERTE_WISSEN_ERFASSEN: readonly WertDefinition[] = [
 // ist jetzt die Ladekarte `#ask-ladekarte` mit dem Absatz `#ask-ladekarte-satz` (Schluessel
 // `askBusy`, Wortlaut des Zielbilds Z.32), und seine Darstellungswerte stehen in
 // WERTE_FRAGEWEG_PRUEFUNG. Der Warnkasten `.status.warn` bleibt den echten Warnungen.
+// JOB 3046 D2: aus demselben Grund ist die Tabelle WERTE_FRAGEWEG_KEIN_WISSEN (JOB 2619) ERSETZT
+// durch WERTE_FRAGEWEG_LUECKE. Sie hatte keinen Leser und mass Selektoren, die im Produkt nie
+// gebaut wurden (`#antwortkarte-ohne-wissen`, `#antwortkarte-frage-aendern`, …). Die neue Tabelle
+// misst die gebaute Lueckenflaeche (`#ask-luecke`, Markenblock KW-D2-LUECKE in taskpane.html) —
+// statisch am Stilblock UND je Zeile mit Messpunkt in Chromium (tests/design/zielbild-keinwissen.
+// test.ts). Kein Wert steht zweimal.
 
-export const WERTE_FRAGEWEG_KEIN_WISSEN: readonly WertDefinition[] = [
+// ---- KeinWissen.dc.html: die Anker der Vorlagenzeilen (Z.27-35), an denen `inlineStyle` liest ----
+const KW_FLAECHE = "flex-grow: 1; display: flex; flex-direction: column";
+const KW_SATZ = "font-size: 16px; line-height: 1.55";
+const KW_KNOPF = "padding: 10px 22px";
+const KW_LINK = "font-size: 12px";
+const KW_FUSS_RAHMEN = "padding: 12px 16px; display: flex; justify-content: center";
+const KW_FUSS_SATZ = "font-size: 11px; color: #525B6B";
+
+/**
+ * Der Attributrumpf des `<svg …>`, in dessen Naehe der Griffpfad der Lupe (Z.28, `M21 21l-4.35-4.35`)
+ * steht — die Vorlage traegt genau eine solche Lupe; im Bau wird ab `vorlauf` gesucht.
+ */
+function lupeSvg(html: string, vorlauf: string): string | null {
+  const start = vorlauf.length > 0 ? html.indexOf(vorlauf) : 0;
+  if (start < 0) {
+    return null;
+  }
+  const re = /<svg\s([^>]*)>[\s\S]{0,300}?M21 21l-4\.35-4\.35/g;
+  re.lastIndex = start;
+  const m = re.exec(html);
+  return m?.[1] ?? null;
+}
+function svgAttribut(rumpf: string | null, name: string): string | null {
+  if (rumpf === null) {
+    return null;
+  }
+  return new RegExp(`(?:^|\\s)${name}="([^"]*)"`).exec(rumpf)?.[1] ?? null;
+}
+/** Die Lupe im GEBAUTEN Stand steht in `#ask-luecke`, nicht irgendwo im Dokument. */
+const KW_LUPE_GEBAUT = 'id="ask-luecke"';
+
+/**
+ * Der Wert „kein Kasten": Z.27 setzt weder `background` noch `border`. So serialisiert
+ * getComputedStyle eine Flaeche ohne Hintergrund und ohne Rand — und so lesen es beide Seiten:
+ * fehlt die Deklaration, ist der Wert der transparente bzw. der leere Rand; steht sie da, ist es
+ * ihr Wert (und dann eine Abweichung, weil das Zielbild keinen Kasten kennt).
+ */
+const OHNE_HINTERGRUND = "rgba(0, 0, 0, 0)";
+function hintergrundOderKeiner(stil: string | null): string | null {
+  if (stil === null) {
+    return null;
+  }
+  return prop(stil, "background") ?? prop(stil, "background-color") ?? OHNE_HINTERGRUND;
+}
+function randOderKeiner(stil: string | null, teil: "style" | "width"): string | null {
+  if (stil === null) {
+    return null;
+  }
+  const rand = prop(stil, "border");
+  if (rand === null) {
+    return teil === "style" ? "none" : "0px";
+  }
+  const teile = rand.split(/\s+/);
+  return teil === "width" ? (teile[0] ?? null) : (teile[1] ?? null);
+}
+
+export const WERTE_FRAGEWEG_LUECKE: readonly WertDefinition[] = [
+  // — die Flaeche (KeinWissen Z.27): ruhig, mittig, KEIN Kasten —
   {
-    name: "ohne-wissen-schriftgrad 16px",
-    ziel: (z) => prop(inlineStyle(z, "font-size: 16px; line-height: 1.55"), "font-size"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-ohne-wissen", "font-size"),
+    name: "flaeche-anzeige flex",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "display"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "display"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "display" },
   },
   {
-    name: "ohne-wissen-zeilenhoehe 1.55",
-    ziel: (z) => prop(inlineStyle(z, "font-size: 16px; line-height: 1.55"), "line-height"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-ohne-wissen", "line-height"),
+    name: "flaeche-wachstum flex-grow 1",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "flex-grow"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "flex-grow"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "flex-grow" },
   },
   {
-    name: "ohne-wissen-zentriert",
-    ziel: () => "center", // die Vorlage zentriert die ganze Flaeche (Z.27, text-align: center)
-    gebaut: (g) => cssProp(g, "#antwortkarte-ohne-wissen", "text-align"),
+    name: "flaeche-richtung column",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "flex-direction"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "flex-direction"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "flex-direction" },
   },
   {
-    name: "lupe (SVG M21 21l…) 36px, ruhiges Grau",
+    name: "flaeche-querachse align-items center",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "align-items"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "align-items"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "align-items" },
+  },
+  {
+    name: "flaeche-hauptachse justify-content center",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "justify-content"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "justify-content"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "justify-content" },
+  },
+  {
+    name: "flaeche-abstand gap 20px",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "gap"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "gap"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "gap" },
+  },
+  {
+    name: "flaeche-innenabstand 0 32px",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "padding"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "padding"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "padding" },
+  },
+  {
+    name: "flaeche-textausrichtung center",
+    ziel: (z) => prop(inlineStyle(z, KW_FLAECHE), "text-align"),
+    gebaut: (g) => cssProp(g, "#ask-luecke", "text-align"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "text-align" },
+  },
+  {
+    name: "flaeche-ohne-hintergrund (kein Kasten)",
+    ziel: (z) => hintergrundOderKeiner(inlineStyle(z, KW_FLAECHE)),
+    gebaut: (g) => hintergrundOderKeiner(cssRegel(g, "#ask-luecke")),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "background-color" },
+  },
+  {
+    name: "flaeche-ohne-rand (kein Kasten): Randart none",
+    ziel: (z) => randOderKeiner(inlineStyle(z, KW_FLAECHE), "style"),
+    gebaut: (g) => randOderKeiner(cssRegel(g, "#ask-luecke"), "style"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "border-style" },
+  },
+  {
+    name: "flaeche-ohne-rand (kein Kasten): Randbreite 0px",
+    ziel: (z) => randOderKeiner(inlineStyle(z, KW_FLAECHE), "width"),
+    gebaut: (g) => randOderKeiner(cssRegel(g, "#ask-luecke"), "width"),
+    messpunkt: { selektor: "#ask-luecke", eigenschaft: "border-width" },
+  },
+  // — die Lupe (Z.28): 36x36, Strich ruhiges Grau 1.5, keine Fuellung —
+  {
+    name: "lupe-breite 36px",
     ziel: (z) => {
-      const m =
-        /<svg width="36" height="36"[^>]*stroke="#525B6B"[\s\S]{0,300}?d="M21 21l-4\.35-4\.35"/.exec(
-          z,
-        );
-      return m ? "36/#525B6B/M21 21l-4.35-4.35" : null;
+      const w = svgAttribut(lupeSvg(z, ""), "width");
+      return w === null ? null : `${w}px`;
     },
     gebaut: (g) => {
-      const m =
-        /id="antwortkarte-lupe"[^>]*>\s*<svg width="36" height="36"[^>]*stroke="#525B6B"[\s\S]{0,300}?d="M21 21l-4\.35-4\.35"/.exec(
-          g,
-        );
-      return m ? "36/#525B6B/M21 21l-4.35-4.35" : null;
+      const w = svgAttribut(lupeSvg(g, KW_LUPE_GEBAUT), "width");
+      return w === null ? null : `${w}px`;
     },
+    messpunkt: { selektor: "#ask-luecke svg", eigenschaft: "width" },
   },
   {
-    name: "frage-aendern-innenabstand 10px 22px",
-    ziel: (z) => prop(inlineStyle(z, "padding: 10px 22px"), "padding"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-frage-aendern, #antwortkarte-erneut", "padding"),
+    name: "lupe-hoehe 36px",
+    ziel: (z) => {
+      const h = svgAttribut(lupeSvg(z, ""), "height");
+      return h === null ? null : `${h}px`;
+    },
+    gebaut: (g) => {
+      const h = svgAttribut(lupeSvg(g, KW_LUPE_GEBAUT), "height");
+      return h === null ? null : `${h}px`;
+    },
+    messpunkt: { selektor: "#ask-luecke svg", eigenschaft: "height" },
   },
   {
-    name: "frage-aendern-radius 10px",
-    ziel: (z) => prop(inlineStyle(z, "padding: 10px 22px"), "border-radius"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-frage-aendern, #antwortkarte-erneut", "border-radius"),
+    name: "lupe-strichfarbe muted #525B6B",
+    ziel: (z) => svgAttribut(lupeSvg(z, ""), "stroke"),
+    // Im Bau zeichnet die Lupe mit `currentColor`; die Farbe kommt als Werkbank-Token vom
+    // Element (`#ask-luecke svg { color: var(--muted) }`) — kein zweites Farbliteral (mega43).
+    gebaut: (g) =>
+      svgAttribut(lupeSvg(g, KW_LUPE_GEBAUT), "stroke") === "currentColor"
+        ? cssProp(g, "#ask-luecke svg", "color")
+        : svgAttribut(lupeSvg(g, KW_LUPE_GEBAUT), "stroke"),
+    messpunkt: { selektor: "#ask-luecke svg", eigenschaft: "stroke" },
   },
   {
-    name: "frage-aendern-schriftgrad 13.5px",
-    ziel: (z) => prop(inlineStyle(z, "padding: 10px 22px"), "font-size"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-frage-aendern, #antwortkarte-erneut", "font-size"),
+    name: "lupe-strichstaerke 1.5",
+    ziel: (z) => {
+      const s = svgAttribut(lupeSvg(z, ""), "stroke-width");
+      return s === null ? null : `${s}px`;
+    },
+    gebaut: (g) => {
+      const s = svgAttribut(lupeSvg(g, KW_LUPE_GEBAUT), "stroke-width");
+      return s === null ? null : `${s}px`;
+    },
+    messpunkt: { selektor: "#ask-luecke svg", eigenschaft: "stroke-width" },
   },
   {
-    name: "frage-aendern-schnitt 600",
-    ziel: (z) => prop(inlineStyle(z, "padding: 10px 22px"), "font-weight"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-frage-aendern, #antwortkarte-erneut", "font-weight"),
+    name: "lupe-fuellung none",
+    ziel: (z) => svgAttribut(lupeSvg(z, ""), "fill"),
+    gebaut: (g) => svgAttribut(lupeSvg(g, KW_LUPE_GEBAUT), "fill"),
+    messpunkt: { selektor: "#ask-luecke svg", eigenschaft: "fill" },
+  },
+  // — der eine Satz (Z.29) —
+  {
+    name: "satz-schriftgrad 16px",
+    ziel: (z) => prop(inlineStyle(z, KW_SATZ), "font-size"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-satz", "font-size"),
+    messpunkt: { selektor: "#ask-luecke-satz", eigenschaft: "font-size" },
   },
   {
-    name: "gap-link-schriftgrad 12px",
-    ziel: (z) => prop(inlineStyle(z, "font-size: 12px"), "font-size"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-gap-link", "font-size"),
+    name: "satz-zeilenhoehe 1.55",
+    ziel: (z) => prop(inlineStyle(z, KW_SATZ), "line-height"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-satz", "line-height"),
+    messpunkt: { selektor: "#ask-luecke-satz", eigenschaft: "line-height" },
+  },
+  {
+    name: "satz-farbe text #1A2233",
+    ziel: (z) => prop(inlineStyle(z, KW_SATZ), "color"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-satz", "color"),
+    messpunkt: { selektor: "#ask-luecke-satz", eigenschaft: "color" },
+  },
+  // — die Hauptaktion „Frage aendern" (Z.30): weisser Knopf mit Haarlinie —
+  {
+    name: "knopf-innenabstand 10px 22px",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "padding"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "padding"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "padding" },
+  },
+  {
+    name: "knopf-grund weiss #FFFFFF",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "background"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "background"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "background-color" },
+  },
+  {
+    name: "knopf-rand hairline 1px solid #E9E5DE",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "border"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "border"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "border" },
+  },
+  {
+    name: "knopf-radius 10px",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "border-radius"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "border-radius"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "border-radius" },
+  },
+  {
+    name: "knopf-schriftgrad 13.5px",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "font-size"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "font-size"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "font-size" },
+  },
+  {
+    name: "knopf-schnitt 600",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "font-weight"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "font-weight"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "font-weight" },
+  },
+  {
+    name: "knopf-farbe text #1A2233",
+    ziel: (z) => prop(inlineStyle(z, KW_KNOPF), "color"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-frage-aendern", "color"),
+    messpunkt: { selektor: "#ask-luecke-frage-aendern", eigenschaft: "color" },
+  },
+  // — die Nebenaktion „Als offene Frage an KLARWERK geben" (Z.31): Textlink 12px —
+  {
+    name: "link-schriftgrad 12px",
+    ziel: (z) => prop(inlineStyle(z, KW_LINK), "font-size"),
+    gebaut: (g) => cssProp(g, "#ask-gap-send-btn", "font-size"),
+    messpunkt: { selektor: "#ask-gap-send-btn", eigenschaft: "font-size" },
+  },
+  // — die Fusszeile (Z.34 Rahmen, Z.35 Satz) —
+  {
+    name: "fuss-innenabstand 12px 16px",
+    ziel: (z) => prop(inlineStyle(z, KW_FUSS_RAHMEN), "padding"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-fuss", "padding"),
+    messpunkt: { selektor: "#ask-luecke-fuss", eigenschaft: "padding" },
+  },
+  {
+    name: "fuss-anzeige flex",
+    ziel: (z) => prop(inlineStyle(z, KW_FUSS_RAHMEN), "display"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-fuss", "display"),
+    messpunkt: { selektor: "#ask-luecke-fuss", eigenschaft: "display" },
+  },
+  {
+    name: "fuss-hauptachse justify-content center",
+    ziel: (z) => prop(inlineStyle(z, KW_FUSS_RAHMEN), "justify-content"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-fuss", "justify-content"),
+    messpunkt: { selektor: "#ask-luecke-fuss", eigenschaft: "justify-content" },
   },
   {
     name: "fuss-schriftgrad 11px",
-    ziel: (z) => prop(inlineStyle(z, "font-size: 11px; color: #525B6B"), "font-size"),
-    gebaut: (g) => cssProp(g, "#antwortkarte-ohne-wissen-fuss", "font-size"),
+    ziel: (z) => prop(inlineStyle(z, KW_FUSS_SATZ), "font-size"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-fuss", "font-size"),
+    messpunkt: { selektor: "#ask-luecke-fuss", eigenschaft: "font-size" },
+  },
+  {
+    name: "fuss-farbe muted #525B6B",
+    ziel: (z) => prop(inlineStyle(z, KW_FUSS_SATZ), "color"),
+    gebaut: (g) => cssProp(g, "#ask-luecke-fuss", "color"),
+    messpunkt: { selektor: "#ask-luecke-fuss", eigenschaft: "color" },
   },
 ] as const;
 

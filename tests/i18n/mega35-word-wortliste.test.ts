@@ -70,6 +70,16 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
         key,
       ).toHaveLength(3);
     }
+    // JOB 3046 D2: die Wortlaute der Luecke (Zielbild KeinWissen.dc.html) sind in der Ernte —
+    // der eine Satz, die Hauptaktion, der Textlink, die Fusszeile — je Sprache genau einmal; der
+    // entfernte Erklaertext askGapBody ist in keiner Sprache mehr da.
+    for (const key of ["askGapTitle", "askGapFrageAendern", "askGapSendCta", "askGapFuss"]) {
+      expect(
+        eintraege.filter((e) => e.key === key),
+        key,
+      ).toHaveLength(3);
+    }
+    expect(eintraege.filter((e) => e.key === "askGapBody")).toHaveLength(0);
   });
 
   it("„gesichert“ und „geprüft“ stehen NUR im Einstufungshinweis — DE, EN und NL", () => {

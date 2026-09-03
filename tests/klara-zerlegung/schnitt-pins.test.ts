@@ -152,6 +152,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // bricht ihre Basismessung mit. A2 hat die Datei gemeldet (`+ "tests/design/zielbild-keinwissen-
   // messung.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
   "tests/design/zielbild-keinwissen-messung.test.ts": "fixture",
+  // JOB 3046 D2: der Chromium-Vergleich der Lueckenflaeche laedt die Datei ueber ihr Pfadliteral in
+  // einen echten Browser (Playwright-Route, dieselbe Strecke wie JOB 3016) — Griff `pfad`; die
+  // Fixture importiert er nicht. A2 hat die Datei gemeldet.
+  "tests/design/zielbild-keinwissen.test.ts": "pfad",
   "tests/design/zielbild-klara-main.test.ts": "pfad",
   "tests/design/zielbild-pruefunglaeuft-messung.test.ts": "fixture",
   // JOB 3016 D3: der Chromium-Vergleich der Ladekarte laedt die Datei ueber ihr Pfadliteral in

@@ -386,15 +386,27 @@ describe("AUFTRAG-mega75 BLOCK C: Klara sagt, unter welcher Regel sie steht", ()
     }
   });
 
-  it("die Regel ist bei JEDER Antwort UND jeder Absage sichtbar", () => {
+  it("die Regel ist bei JEDER Antwort UND jeder Absage sichtbar — an EINER Stelle unter der Antwortflaeche, nicht mehr als Zweitkopie in der Luecke", () => {
     const html = read(TASKPANE);
-    // Dauerhaft sichtbar in der Frage-Karte (gilt damit vor, während und nach jeder Antwort) …
+    // JOB 3004 D1: #ask-rule-note steht UNTER der Antwortflaeche, ausserhalb von Frage-Karte,
+    // Antwortblock und Lueckenblock — damit ist sie vor, waehrend und nach jeder Antwort UND bei
+    // jeder Absage sichtbar (in der Luecke bleibt die Frage-Karte stehen, der Absatz darunter auch).
     expect(html).toContain('id="ask-rule-note"');
-    // … und ausdrücklich in der Absage-Karte, wo der Mensch fragt „warum nicht?".
-    const gap = html.slice(
-      html.indexOf('id="ask-gap-block"'),
-      html.indexOf('id="ask-gap-send-btn"'),
+    const regel = html.indexOf('<p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>');
+    expect(regel, "#ask-rule-note traegt den Schluessel askRuleNote").toBeGreaterThan(0);
+    // JOB 3046 D2 (Zielbild KeinWissen.dc.html): die Luecke ist eine Auskunft, kein Warnkasten —
+    // die ZWEITKOPIE der Regel in der Absage (mega75 Block C) ist ENTFERNT, nicht daneben belassen.
+    // Was blieb, ist die eine Regel unter der Antwortflaeche; sie steht NACH dem Lueckenblock im
+    // Quelltext und ausserhalb von ihm.
+    const gapStart = html.indexOf('id="ask-gap-block"');
+    const gapEnde = html.indexOf("KW-D2-LUECKE-END", gapStart);
+    expect(gapStart).toBeGreaterThan(0);
+    expect(gapEnde).toBeGreaterThan(gapStart);
+    const gap = html.slice(gapStart, gapEnde);
+    expect(gap, "Die Luecke traegt keine Zweitkopie der Regel mehr").not.toContain(
+      'data-t="askRuleNote"',
     );
-    expect(gap, "Die Absage-Karte muss die Regel nennen").toContain('data-t="askRuleNote"');
+    expect(gap, "Die Luecke ist kein Warnkasten mehr").not.toContain("status warn");
+    expect(regel).toBeGreaterThan(gapEnde);
   });
 });

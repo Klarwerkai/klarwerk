@@ -611,7 +611,11 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     // WP-KLARA-ASK: das Funktionsversprechen ist da — die Ehrlichkeit verschiebt sich von „keine KI"
     // zu „NUR validiertes Wissen, kein Chatbot, nichts erfunden" (DE-Texte, Hilfe + Gap-Karte).
     expect(html).toContain("kein Chatbot");
-    expect(html).toContain("Statt einer erfundenen Antwort");
+    // JOB 3046 D2: die Luecke ist die Auskunft des Zielbilds KeinWissen.dc.html — der Erklaertext
+    // askGapBody („Statt einer erfundenen Antwort …") ist entfernt; die Haltung „nichts erfunden"
+    // traegt jetzt die Fusszeile der Luecke (askGapFuss) und der eine Satz (askGapTitle).
+    expect(html).toContain("Klara erfindet keine Antworten");
+    expect(html).toContain("Dazu liegt kein freigegebenes Firmenwissen vor.");
     // AUFTRAG-mega35 B1: die Quellenbindung bleibt die Zusage — aber ohne das Wort „geprueft".
     // Es meinte den validierten Bestand, stand aber neben der Einstufung „ungeprueft"; eine
     // Testerin ohne Vorwissen kann diese zwei Ebenen nicht auseinanderhalten.

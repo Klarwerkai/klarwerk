@@ -176,11 +176,15 @@ describe("JOB 2703 · D3 · der ausgelieferte Add-in-Weg kuerzt nicht mehr — d
       throw new Error("Panel ohne Fragefeld");
     }
     eingabe.value = TEXT;
-    panel.askKlara(); // echte App ohne Wissen → Wissensluecke → Knopf „offene Frage senden"
+    panel.askKlara(); // echte App ohne Wissen → Wissensluecke → Textlink „offene Frage geben"
+    // JOB 3046 D2: der Weg ist ein Textlink (<a>, Zielbild KeinWissen Z.31) — ein <a> kennt kein
+    // `disabled`; frei ist er, sobald die Lueckenflaeche steht und er nicht `aria-disabled` traegt.
     await abwarten(
       panel,
-      () => (panel?.q("#ask-gap-send-btn")?.disabled ?? true) === false,
-      "der Knopf ›offene Frage senden‹ wird frei",
+      () =>
+        panel?.q("#ask-gap-block")?.className === "" &&
+        panel.q("#ask-gap-send-btn")?.getAttribute("aria-disabled") !== "true",
+      "der Textlink ›offene Frage geben‹ wird frei",
     );
     (panel.q("#ask-gap-send-btn") as unknown as { click(): void }).click();
     await abwarten(panel, () => eingaenge.length > 0, "das Panel schickt die offene Frage");

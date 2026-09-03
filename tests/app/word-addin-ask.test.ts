@@ -836,9 +836,17 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     // Deep-Link. WP-KLARA-ASK-FIX (bens Fix 4): gap-only-Gate, Knopf-Sperre, 403 als fehlendes
     // Recht, voller Fragetext im Draft-Body (kein Verlust durch die 500-Zeichen-Statement-Kappung).
     const gapSend = html.indexOf("function sendOpenQuestion()");
-    const gapBlock = html.slice(gapSend, gapSend + 2600);
+    // JOB 3046 D2 (Runde 2): der Ausschnitt reicht bis zum Ende der Funktion — sie traegt jetzt
+    // die Generation des Versands (Kommentar und zwei Zeilen), die den alten 2600er-Rahmen sprengte.
+    const gapEnde = html.indexOf("// Teil 3: Segment-Umschaltung", gapSend);
+    expect(gapEnde, "das Ende von sendOpenQuestion ist nicht auffindbar").toBeGreaterThan(gapSend);
+    const gapBlock = html.slice(gapSend, gapEnde);
     expect(gapBlock).toContain('currentAskOutcome.kind !== "gap"');
-    expect(gapBlock).toContain("gapBtn.disabled = true");
+    // JOB 3046 D2: der Weg ist ein Textlink (<a>, Zielbild KeinWissen Z.31) — ein <a> kennt kein
+    // `disabled`, die Knopf-Sperre gegen den Doppel-POST traegt deshalb `aria-disabled`.
+    expect(gapBlock).toContain('if (gapBtn.getAttribute("aria-disabled") === "true") { return; }');
+    expect(gapBlock).toContain('gapBtn.setAttribute("aria-disabled", "true")');
+    expect(gapBlock).not.toContain("gapBtn.disabled");
     expect(gapBlock).toContain('showAskStatus("warn", t("askForbidden"))');
     expect(gapBlock).toContain("bodyHtml: selectionToBodyHtml(currentAskQuestion)");
     expect(gapBlock).toContain('t("askOpenQuestionPrefix")');
@@ -885,7 +893,10 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'askSourcesTitle: "',
       'askTrust: "',
       'askGapTitle: "',
-      'askGapBody: "',
+      // JOB 3046 D2: askGapBody ist ENTFERNT (die Luecke ist eine Auskunft, kein Erklaertext);
+      // neu sind die Hauptaktion „Frage ändern" und die Fusszeile des Zielbilds.
+      'askGapFrageAendern: "',
+      'askGapFuss: "',
       'askGapSendCta: "',
       'askGapSentOk: "',
       'askGapOpenLink: "',
@@ -910,10 +921,20 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     ]) {
       expect(html.split(key).length - 1, key).toBe(3);
     }
-    // Die Gap-Karte traegt dieselbe ehrliche Kernaussage wie die Konsole (Keine belastbare Grundlage).
-    expect(html).toContain('askGapTitle: "Keine belastbare Grundlage."');
-    expect(html).toContain('askGapTitle: "No reliable basis."');
-    expect(html).toContain('askGapTitle: "Geen betrouwbare basis."');
+    // JOB 3046 D2 — BEWUSSTE ENTSCHEIDUNG, KEINE ABRAEUMUNG: bis hierher trug die Luecke im Panel
+    // dieselbe Kernaussage wie die Konsole („Keine belastbare Grundlage." / ask.noBasisTitle).
+    // Das Zielbild KeinWissen.dc.html (Pedi, 27.08.; „D2 ja", 03.09.) gibt dem Panel EINEN anderen
+    // Satz: „Dazu liegt kein freigegebenes Firmenwissen vor." Zielbild vor Paritaet — die Konsole
+    // behaelt ihren Satz (apps/web/src/i18n.ts ask.noBasisTitle, hier nicht angefasst), das Panel
+    // traegt den des Zielbilds. Der Schluessel bleibt derselbe (askGapTitle), EN/NL sagen dasselbe.
+    expect(html).toContain('askGapTitle: "Dazu liegt kein freigegebenes Firmenwissen vor."');
+    expect(html).toContain('askGapTitle: "There is no released company knowledge on this."');
+    expect(html).toContain('askGapTitle: "Hierover is geen vrijgegeven bedrijfskennis."');
+    expect(html).not.toContain('askGapTitle: "Keine belastbare Grundlage."');
+    // Der alte Erklaertext ist in keiner Sprache mehr da — kein toter Schluessel (der Name steht
+    // nur noch in den Kommentaren, die seine Entfernung begruenden).
+    expect(html).not.toContain("askGapBody:");
+    expect(html).not.toContain('data-t="askGapBody"');
   });
 
   // klara1b Teil B (Pedis Wunsch 24.07.): editierbare, kompaktere Antwort VOR dem Eintragen.
