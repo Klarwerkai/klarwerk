@@ -535,7 +535,9 @@ describe("Ask 7/8 · Skalierungsgegenprobe zum Retrieval-Grenzfall", () => {
       expect(typeof b.knowledgeClass, "1000 Störer: eine Klasse wird geliefert").toBe("string");
 
       // JOB 3042: die neue, relative Zusage. Keine Sekundenzahl steht in dieser Erwartung — nur
-      // das Verhältnis der beiden Ask-Dauern gegen das gemessene Budget.
+      // das Verhältnis der beiden Ask-Dauern gegen das gemessene Budget. Die Notbremse (NOTBREMSE_MS,
+      // siehe dort) trägt bereits die Lehre aus JOB 3016 Runde 3: sie ist auf mehr als das Dreifache
+      // der langsamsten je auf dieser Bahn gemessenen Laufzeit bemessen, auch unter Last.
       // DIESELBE `VORGABE` wie in der SELBSTPROBE — es gibt nur eine Kalibrierung im Haus.
       const urteil = beurteileSkalierung({
         ...VORGABE,

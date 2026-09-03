@@ -884,7 +884,75 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     id-Regel (display: block) schlug die Klassenregel `.quelle-chip` (display: flex) und liess
     //     gap/align-items am Quellen-Chip wirkungslos (ben, Runde 4). Nur Stilblock, kein Markup,
     //     kein Skript.
-    const PIN = "0e5b3c19f6e97e50851e98edf01cdd04966aad049369a270ce06d8d8243369ce";
+    //
+    // ============================================================================================
+    // JOB 3016 D3 (03.09.2026) — PIN BEWUSST AKTUALISIERT (0e5b3c19… -> 6a8ea273…), Basis e8a35bf,
+    // gegenueber der JOB-3004-Kette oben ZUSAETZLICH zum bestehenden Antwortbereich eingebaut:
+    // ============================================================================================
+    //   · WAS SICH AENDERT — der WARTEZUSTAND einer Frage, nach Zielbild PruefungLaeuft.dc.html
+    //     Z.26-32: statt des gelben Warnkastens (#ask-status, `status warn`, Text askBusy) zeigt
+    //     das Panel eine weisse Ladekarte `#ask-ladekarte` mit drei `.ladebalken` und darunter den
+    //     Satz `#ask-ladekarte-satz` (derselbe Schluessel askBusy ueber data-t). Neu im Markup ist
+    //     genau dieser Block (Marken KW-D3-LADEKARTE-START/END), neu im Stil sind sieben Regeln
+    //     dafuer (Farben ausschliesslich als Werkbank-Token --surface/--hairline/--muted; mega43
+    //     gruen), neu im Skript sind `askLaeuft` und `askWartezustand()`, gelesen in
+    //     updateAskState().
+    //   · VERHALTEN, das sich aendert — und zwar in Richtung MEHR Sperre, nicht weniger: waehrend
+    //     der Suche ist ab jetzt auch `#ask-input` gesperrt (die Zusage des Satzes „die Eingabe ist
+    //     so lange gesperrt" war bis dahin unwahr, JOB 3012 Fall W4). Freigegeben wird ueber JEDEN
+    //     Ausgang an EINER Stelle (Antwort, Luecke, Frist, Fehler, 401) — fail-open, gemessen in
+    //     tests/design/zielbild-pruefunglaeuft-messung.test.ts (F1-F4) und in Chromium
+    //     (tests/design/zielbild-pruefunglaeuft.test.ts). #ask-status traegt unveraendert askEmpty,
+    //     askAuth, askTimeout, askError, s4FragenGesperrt.
+    //   · WORTLAUT: `askBusy` in DE/EN/NL traegt jetzt beide Haelften des Zielbildsatzes
+    //     (Wissen freigegeben UND Eingabe gesperrt); mega35-Wortliste gruen (kein „geprueft",
+    //     kein „gesichert").
+    //   · KEIN neues Abrufziel, KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht, KEINE
+    //     geaenderte Nutzlast: performAsk und sein Aufruf sind unberuehrt; die Frist bleibt
+    //     WORD_ADDIN_ASK_TIMEOUT_MS = 15000; resetAskResult() ist nicht angefasst.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload. Bis der Office-Cache nachzieht,
+    //     steht der alte Warnkasten — der Zustand von gestern, kein neues Risiko.
+    //   · RUNDE 2 (BEN, Korrekturpflicht 1; 6a8ea273… -> 170bbe00…): NUR zwei Stilwerte. Die
+    //     Aussenabstaende von Karte und Satz tragen jetzt woertlich das Zielbild (`14px 16px 0`,
+    //     `12px 16px 0`) statt `0` seitlich; kein Element, kein Text, kein Skriptweg angefasst.
+    //     In Chromium hart gemessen (karte-/satz-aussenabstand, display flex; 50px-Gegenprobe rot).
+    //   · RUNDE 4 (BEN; 170bbe00… -> 057f08bf…): SINGLE FLIGHT in askKlara. Das Tor `askLaeuft`
+    //     faellt jetzt SYNCHRON vor dem asynchronen Word-Auswahlrueckruf; ein zweiter Klick in
+    //     dieser Luecke startet weder einen zweiten Rueckruf noch einen zweiten Ask, und kein
+    //     frueher Ausgang hebt Karte oder Sperre auf, solange ein Ask offen ist. Das Tor faellt bei
+    //     leerer Frage, nach jedem Ergebnis und fail-open bei einem synchronen Fehler vor dem Fetch.
+    //     KEIN neues Abrufziel, KEINE geaenderte Nutzlast — es gehen WENIGER Abrufe ab, nie mehr.
+    //     Gemessen: zielbild-pruefunglaeuft-messung (G1/G2) und in Chromium (Fall D).
+    //   · RUNDE 5 (BEN; 057f08bf… -> 0e0d26b9…): die AUSWAHLPHASE (Klick → Word-Rueckruf) ist ein
+    //     begrenzter, fail-open Lauf mit eigenem Ticket: eine Auswahlfrist (WORD_ADDIN_ASK_TIMEOUT_MS)
+    //     gibt frei, wenn Word den Rueckruf schuldig bleibt (neuer Schluessel `askSelectionTimeout`
+    //     in DE/EN/NL); ein synchroner Fehler aus getSelectedDataAsync oder vor dem Fetch wird
+    //     gefangen und als askError gezeigt (kein Wurf mehr aus dem Klick); verspaetete oder
+    //     doppelte Rueckrufe eines beendeten Laufs werden ignoriert und loesen KEINEN Ask aus.
+    //     KEIN neues Abrufziel, KEINE geaenderte Nutzlast; eine zusaetzliche Frist (setTimeout) je
+    //     Klick, kein Intervall. Gemessen: zielbild-pruefunglaeuft-messung (G2/G3/G4) und in
+    //     Chromium in echter Zeit (Faelle K1/K2).
+    //   · RUNDE 6 (BEN; 0e0d26b9… -> 8c413f3b…): EINE ABSOLUTE GESAMTFRIST ab Klick. performAsk
+    //     erhaelt nach dem Word-Rueckruf nur die vom Klick an verbleibende Zeit (mindestens 1 ms)
+    //     statt erneut WORD_ADDIN_ASK_TIMEOUT_MS; die Konstante selbst ist unveraendert 15000. Zwei
+    //     Zeilen im Skript (`klick`, `restfrist`), sonst nichts: kein Text, kein Element, kein
+    //     Abrufziel. Gemessen: zielbild-pruefunglaeuft-messung (G5, Rueckruf bei 14 999 ms →
+    //     Restfrist 1 ms) und Chromium in echter Zeit (K3: Rueckruf kurz vor 15 s, frei bei 15 s).
+    //   · RUNDE 7 (BEN; 8c413f3b… -> ad497ff8…): der Word-Rueckruf liest die Uhr SELBST. Ist die
+    //     Gesamtfrist beim Eintreffen des Rueckrufs aufgebraucht (`restfrist <= 0`, exakt bei oder
+    //     nach 15 000 ms), endet der Lauf ueber denselben Auswahlfrist-Ausgang wie beim
+    //     ausgebliebenen Rueckruf — OHNE POST; `Math.max(1, …)` ist entfallen. Der Ausgang ist in
+    //     `auswahlAbgelaufen()` gebuendelt (Timer und Rueckruf rufen dieselbe Funktion). Kein Text,
+    //     kein Element, kein Abrufziel. Gemessen: zielbild-pruefunglaeuft-messung (G6 exakt 15 000,
+    //     G7 danach: 0 POST; G5 bei 14 999: ein POST mit 1 ms Rest).
+    //   · JOB 3016 D7 (RUNDE 1 der Konfliktloesung, 03.09.2026): der Rebase auf main (das JOB-3004-
+    //     D1-Zielbild „Main“ oben) traf dasselbe Ende der Datei wie die Ladekarte — beide Markup-
+    //     Bloecke sind jetzt Geschwister im DOM (`#ask-answer-block` mit der Antwortkarte, dann
+    //     `#ask-status`, dann die Ladekarte `#ask-ladekarte`/`#ask-ladekarte-satz`, dann die
+    //     dauerhaften Hinweise `#ask-review-notice`/`#ask-rule-note`); Skript und Stil der Ladekarte
+    //     waren bereits unveraendert gegen main mischbar. Der Pin unten ist der frisch aus der
+    //     zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    const PIN = "49ca67573c9c81b37a8a973bc03604921ef95fa67123d2956b2eae6a3c82b791";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

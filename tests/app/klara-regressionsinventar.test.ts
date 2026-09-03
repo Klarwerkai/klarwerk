@@ -368,6 +368,10 @@ const INVENTAR: readonly string[] = [
   // K5 gruen, bevor diese Zeile eingetragen wurde). Sachlich Klara-Regression: der Test haelt
   // fest, was der Mensch waehrend der Suche sieht und was gesperrt ist.
   "tests/design/zielbild-pruefunglaeuft-messung.test.ts",
+  // JOB 3016 D3 (03.09.2026): der Chromium-Vergleich der Ladekarte „Pruefung laeuft" am echten
+  // taskpane.html (ein Vergleich je Wert der Werte-Tabelle in werte.ts, getComputedStyle). Achse
+  // `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 36. K2 hat die Datei gemeldet.
+  "tests/design/zielbild-pruefunglaeuft.test.ts",
   // JOB 3014 D1 (03.09.2026): die vier Messgeraete des Schnittplans fuer `taskpane.html` (P11).
   // Sie liegen unter `tests/klara-zerlegung/` und tragen „klara" im PFAD — die Namensachse liest
   // den ganzen Pfad (`wo: "pfad"`), also fallen alle vier in die Namensmenge; alle vier tragen

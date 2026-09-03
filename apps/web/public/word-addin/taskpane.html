@@ -221,6 +221,27 @@
     .status.ok { background: var(--pos-bg); color: var(--pos-text); }
     .status.warn { background: var(--warn-bg); color: var(--warn-text); }
     .hidden { display: none; }
+    /* JOB 3016 D3 „PruefungLaeuft": die ruhige Ladekarte der Wartezeit — JEDER Wert aus dem
+       Zielbild PruefungLaeuft.dc.html Z.26-32 uebernommen, nicht erfunden, auch die Aussenabstaende
+       (14px 16px 0 / 12px 16px 0; sie sind verbindliche D3-Werte und werden in Chromium gemessen).
+       Farben als Werkbank-Token: #FFFFFF = --surface, #E9E5DE = --hairline, #525B6B = --muted.
+       Der Warnkasten .status.warn bleibt den echten Warnungen. */
+    #ask-ladekarte {
+      margin: 14px 16px 0;
+      padding: 18px 16px;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    #ask-ladekarte.hidden { display: none; }
+    .ladebalken { height: 14px; border-radius: 7px; background: var(--hairline); }
+    .ladebalken:nth-child(1) { width: 92%; }
+    .ladebalken:nth-child(2) { width: 100%; }
+    .ladebalken:nth-child(3) { width: 64%; }
+    #ask-ladekarte-satz { margin: 12px 16px 0; font-size: 12px; color: var(--muted); text-align: center; }
     ul { margin: 6px 0; padding-left: 18px; }
     a { color: var(--brand-text); }
     /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework.
@@ -766,6 +787,20 @@
     <!-- Die Statuszeile steht AUSSERHALB von Frage-Karte und Antwortflaeche: sie muss in beiden
          Zustaenden sichtbar sein (Suche laeuft, Antwort eingefuegt, Zwischenablage kopiert). -->
     <div id="ask-status" class="status hidden"></div>
+    <!-- KW-D3-LADEKARTE-START -->
+    <!-- JOB 3016 D3 „PruefungLaeuft": die Wartezeit einer Frage ist eine ruhige weisse Karte mit
+         drei Balken und EINEM Satz darunter (Zielbild PruefungLaeuft.dc.html Z.26-32) — nicht mehr
+         der gelbe Warnkasten #ask-status, der den echten Warnungen bleibt (askEmpty, askAuth,
+         askTimeout, askError, s4FragenGesperrt). Der Satz (Schluessel askBusy, dreisprachig) sagt
+         nur zu, was askWartezustand() wirklich tut: Eingabefeld UND Knopf sind gesperrt, bis der
+         Ask-Lauf endet — ueber jeden Ausgang. Verborgen bis zum Absenden. -->
+    <div id="ask-ladekarte" class="hidden">
+      <div class="ladebalken"></div>
+      <div class="ladebalken"></div>
+      <div class="ladebalken"></div>
+    </div>
+    <p id="ask-ladekarte-satz" class="hidden" data-t="askBusy"></p>
+    <!-- KW-D3-LADEKARTE-END -->
     <!-- mega81 A (Pruefhinweis, DAUERHAFT) und mega75 C (die Regel, „bei JEDER Antwort und JEDER
          Absage" sichtbar): beide standen in der Frage-Karte und waeren im Antwortzustand mit ihr
          verschwunden. Sie stehen jetzt unter beiden Flaechen — Schluessel und Wortlaut unveraendert. -->
@@ -2220,10 +2255,11 @@
         askRoleConsulted: "herangezogen",
         askRuleNote: "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
-        askBusy: "Klara sucht im KLARWERK-Wissen ...",
+        askBusy: "Klara sucht im freigegebenen Wissen — die Eingabe ist so lange gesperrt.",
         askTruncated: "Die Markierung war länger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
         askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         askTimeout: "Keine Antwort vom Server (Zeitüberschreitung). Bitte erneut versuchen.",
+        askSelectionTimeout: "Word hat die Markierung nicht geliefert (Zeitüberschreitung). Bitte erneut versuchen.",
         askError: "Fragen fehlgeschlagen ({detail}).",
         // AUFTRAG-JOB507-D4: 403 am Fragen-Weg heisst FEHLENDES RECHT (ko.read) — nicht „melde dich
         // an". Der bestehende Schluessel askForbidden gehoert zum Offene-Frage-Weg und bleibt dort.
@@ -2438,10 +2474,11 @@
         askRoleConsulted: "consulted",
         askRuleNote: "How Klara works: validated KLARWERK knowledge is quoted word for word instead of being composed into a new answer. Your selected text is not sent to an external AI.",
         askEmpty: "Please select a statement in the document first or type a question below.",
-        askBusy: "Klara is searching KLARWERK knowledge ...",
+        askBusy: "Klara is searching the approved knowledge — input is locked until then.",
         askTruncated: "The selection was longer than {max} characters — the question was honestly truncated.",
         askAuth: "Not signed in — please sign in to KLARWERK first.",
         askTimeout: "No answer from the server (timeout). Please try again.",
+        askSelectionTimeout: "Word did not deliver the selection (timeout). Please try again.",
         askError: "Asking failed ({detail}).",
         askForbiddenRead:
           "Missing permission: your account may not read the KLARWERK knowledge base. Please contact your KLARWERK administrator.",
@@ -2644,10 +2681,11 @@
         askRoleConsulted: "geraadpleegd",
         askRuleNote: "Zo werkt Klara: gevalideerde KLARWERK-kennis wordt woordelijk geciteerd in plaats van zelf geformuleerd. Je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
-        askBusy: "Klara zoekt in KLARWERK-kennis ...",
+        askBusy: "Klara zoekt in de vrijgegeven kennis — de invoer is zolang vergrendeld.",
         askTruncated: "De selectie was langer dan {max} tekens — de vraag is eerlijk ingekort.",
         askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
+        askSelectionTimeout: "Word heeft de selectie niet geleverd (time-out). Probeer het opnieuw.",
         askError: "Vragen mislukt ({detail}).",
         askForbiddenRead:
           "Ontbrekend recht: je account mag de KLARWERK-kennis niet lezen. Neem contact op met de KLARWERK-beheerder.",
@@ -4128,6 +4166,26 @@
       el.textContent = "";
     }
 
+    // JOB 3016 D3 „PruefungLaeuft": der Wartezustand als EIN Zustand. `askLaeuft` ist die einzige
+    // Quelle fuer die Sperre von Eingabefeld und Knopf waehrend der Suche; updateAskState() liest
+    // sie, damit ein zwischenzeitlicher Statusabruf (checkSession, S4) die Sperre weder aufhebt
+    // noch stehen laesst. Die Ladekarte (#ask-ladekarte, Zielbild Z.26-30) und ihr Satz
+    // (#ask-ladekarte-satz, Z.32, Schluessel askBusy) erscheinen und verschwinden NUR hier —
+    // der Ausgang aus dem Wartezustand hat genau eine Stelle (askKlara, nach performAsk), nicht
+    // fuenf Zweige. Beim Eintritt wird #ask-status verborgen: der Warnkasten gehoert den echten
+    // Warnungen, nicht dem normalen Warten. Fail-open: der Ausgang gibt das Feld IMMER frei, auch
+    // nach Frist, Fehler oder fehlender Anmeldung — ein gesperrtes Feld ohne Suche waere ein
+    // unbenutzbares Fenster.
+    var askLaeuft = false;
+
+    function askWartezustand(an) {
+      askLaeuft = an === true;
+      hideAskStatus();
+      document.getElementById("ask-ladekarte").className = askLaeuft ? "" : "hidden";
+      document.getElementById("ask-ladekarte-satz").className = askLaeuft ? "" : "hidden";
+      updateAskState();
+    }
+
     function resetAskResult() {
       currentAskOutcome = null;
       currentAskSourceTitles = [];
@@ -4170,8 +4228,12 @@
     function updateAskState() {
       var gesperrt = klaraS4FragenGesperrt();
       var btn = document.getElementById("ask-btn");
-      btn.disabled = !signedIn || gesperrt;
+      btn.disabled = !signedIn || gesperrt || askLaeuft;
       btn.title = gesperrt ? t("s4FragenGesperrt") : "";
+      // JOB 3016 D3: das Eingabefeld ist genau waehrend der Suche gesperrt — und nur dann. Das ist
+      // die Zusage des Satzes unter der Ladekarte („die Eingabe ist so lange gesperrt"), gemessen
+      // in tests/design/zielbild-pruefunglaeuft.test.ts und zielbild-pruefunglaeuft-messung.test.ts.
+      document.getElementById("ask-input").disabled = askLaeuft;
       updateInsertState();
     }
 
@@ -4648,31 +4710,99 @@
         showAskStatus("warn", t("s4FragenGesperrt"));
         return;
       }
-      readAskSelection(function (selectionText) {
+      // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — das Tor faellt SYNCHRON, VOR dem asynchronen
+      // Auswahlrueckruf von Word. Bis Runde 3 lag zwischen Klick und Wartezustand die Zeit von
+      // `getSelectedDataAsync`; ein zweiter Klick in dieser Luecke startete einen zweiten Lauf,
+      // und der erste Ausgang gab Karte und Feld frei, waehrend der zweite Fetch noch lief.
+      // `askLaeuft` ist deshalb kein Anzeigeschalter mehr, sondern das Tor: solange es steht, geht
+      // KEIN zweiter Auswahlrueckruf und KEIN zweiter Ask ab. Es faellt bei leerer Frage, nach
+      // jedem Ergebnis und — fail-open — bei jedem Fehler vor dem Fetch.
+      //
+      // Runde 5 (BEN): DIE AUSWAHLPHASE IST EIN BEGRENZTER LAUF. Zwischen Klick und Rueckruf haengt
+      // das Fenster an Word — und Word kann den Rueckruf schuldig bleiben, synchron werfen oder
+      // ihn erst liefern, wenn niemand mehr wartet. Jeder Lauf traegt deshalb sein eigenes Ticket
+      // (`lauf`): eine Frist (WORD_ADDIN_ASK_TIMEOUT_MS) beendet ihn fail-open mit einer ehrlichen
+      // Meldung (askSelectionTimeout), OHNE dass ein Ask abgegangen waere; ein synchroner Fehler
+      // beendet ihn mit askError; ein Rueckruf, dessen Lauf vorbei ist (verspaetet oder doppelt),
+      // wird ignoriert und loest KEINEN Ask mehr aus.
+      //
+      // Runde 6 (BEN): EINE ABSOLUTE GESAMTFRIST AB KLICK. Das Versprechen lautet „wartet bis zu
+      // 15 Sekunden" — fuer den ganzen Lauf, nicht je Teilstueck. Die Auswahlfrist und die Frist von
+      // performAsk teilen sich deshalb dieselbe Uhr: performAsk bekommt nach dem Rueckruf nur die
+      // vom Klick an VERBLEIBENDE Zeit (mindestens 1 ms), nicht erneut die volle Konstante. Spaetestens
+      // WORD_ADDIN_ASK_TIMEOUT_MS nach dem Klick sind Karte und Sperre weg — Word langsam oder Server
+      // langsam, es ist dieselbe Wartezeit des Menschen.
+      if (askLaeuft) { return; }
+      resetAskResult();
+      // Der Wartezustand ist die Ladekarte, nicht der Warnkasten — und die Sperre trifft
+      // Eingabefeld UND Knopf ab dem Klick (askWartezustand, updateAskState).
+      askWartezustand(true);
+      var klick = Date.now();
+      var lauf = { offen: true, timer: null };
+      var laufBeenden = function () {
+        lauf.offen = false;
+        if (lauf.timer !== null) { clearTimeout(lauf.timer); lauf.timer = null; }
+      };
+      // Der EINE Ausgang „Word war zu langsam": vom Timer gerufen — oder vom Rueckruf selbst, wenn
+      // er die Frist schon ueberschritten vorfindet (Runde 7, BEN: die Reihenfolge asynchroner
+      // Timer ist keine Garantie; die Uhr wird im Rueckruf selbst gelesen).
+      var auswahlAbgelaufen = function () {
+        laufBeenden();
+        askWartezustand(false);
+        showAskStatus("warn", t("askSelectionTimeout"));
+      };
+      lauf.timer = setTimeout(function () {
+        if (!lauf.offen) { return; }
+        auswahlAbgelaufen();
+      }, WORD_ADDIN_ASK_TIMEOUT_MS);
+      var absenden = function (selectionText) {
+        if (!lauf.offen) { return; } // verspaetet oder doppelt: dieser Lauf ist vorbei
+        laufBeenden();
+        // Die Restzeit der Gesamtfrist — was Word verbraucht hat, fehlt dem Server (Runde 6).
+        // Ist sie aufgebraucht (Rueckruf exakt bei oder nach 15 000 ms), geht KEIN Ask mehr ab:
+        // derselbe Ausgang wie beim ausgebliebenen Rueckruf, ohne POST (Runde 7).
+        var restfrist = WORD_ADDIN_ASK_TIMEOUT_MS - (Date.now() - klick);
+        if (restfrist <= 0) {
+          auswahlAbgelaufen();
+          return;
+        }
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
         if (prep.from === "empty") {
-          resetAskResult();
+          askWartezustand(false);
           showAskStatus("warn", t("askEmpty"));
           return;
         }
         currentAskQuestion = prep.question;
-        resetAskResult();
-        showAskStatus("warn", t("askBusy"));
-        document.getElementById("ask-btn").disabled = true;
         performAsk(
           prep.question,
           askLocale(lang),
           function (url, init) { return fetch(url, init); },
-          WORD_ADDIN_ASK_TIMEOUT_MS,
+          restfrist,
           // KW-KA4: die Bindung wird HIER geholt und hineingereicht — der Ask-Block selbst bleibt
           // damit isoliert ausfuehrbar (siehe Begruendung an `performAsk`).
           klaraS4Header()
         ).then(function (outcome) {
           currentAskOutcome = outcome;
-          updateAskState(); // Knopf wieder frei (sofern angemeldet)
+          // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
+          // Anmeldung: Karte weg, Sperre auf (Knopf sofern angemeldet), dann erst das Ergebnis.
+          askWartezustand(false);
           renderAskOutcome(outcome, prep.truncated);
         });
-      });
+      };
+      // Fail-open: ein synchroner Fehler — aus getSelectedDataAsync selbst oder aus dem Absenden
+      // vor dem Fetch — beendet den Lauf, gibt das Fenster frei und sagt, was war.
+      var fehlerVorDemFetch = function (err) {
+        laufBeenden();
+        askWartezustand(false);
+        showAskStatus("warn", t("askError", { detail: err && err.message ? err.message : "office" }));
+      };
+      try {
+        readAskSelection(function (selectionText) {
+          try { absenden(selectionText); } catch (err) { fehlerVorDemFetch(err); }
+        });
+      } catch (err) {
+        fehlerVorDemFetch(err);
+      }
     }
 
     // AUFTRAG-mega35 A1 / mega36 B+C: der auszugebende Text — GEBILDET IM MOMENT DER AUSGABE, aus

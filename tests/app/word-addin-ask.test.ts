@@ -783,15 +783,22 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     // Serverseitige Permission dokumentiert (ko.read — exakt die Fragen-Konsole).
     expect(html).toContain("ko.read");
     // Ehrliche Zustaende: leer / busy / auth / timeout / error.
+    // JOB 3016 D3: „busy" ist kein Warnkasten mehr. Der Wartezustand ist die Ladekarte
+    // (#ask-ladekarte) mit dem Satz #ask-ladekarte-satz, der den Schluessel askBusy ueber `data-t`
+    // traegt; ein- und ausgeblendet wird er an EINER Stelle (askWartezustand). Die vier echten
+    // Warnungen bleiben in #ask-status.
     for (const marker of [
       't("askEmpty")',
-      't("askBusy")',
+      'data-t="askBusy"',
+      "askWartezustand(true)",
+      "askWartezustand(false)",
       't("askAuth")',
       't("askTimeout")',
       't("askError"',
     ]) {
       expect(html).toContain(marker);
     }
+    expect(html).not.toContain('showAskStatus("warn", t("askBusy"))');
     // Kappung: die Konstante steht im Spiegel und die Meldung nennt sie.
     expect(html).toContain("WORD_ADDIN_ASK_MAX_CHARS = 2000");
     expect(html).toContain('t("askTruncated", { max: String(WORD_ADDIN_ASK_MAX_CHARS) })');
@@ -871,6 +878,8 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'askTruncated: "',
       'askAuth: "',
       'askTimeout: "',
+      // JOB 3016 Runde 5: die Auswahlfrist des Word-Wegs (Word bleibt den Rueckruf schuldig).
+      'askSelectionTimeout: "',
       'askError: "',
       'askAnswerTitle: "',
       'askSourcesTitle: "',
