@@ -267,6 +267,7 @@ const INVENTAR: readonly string[] = [
   // JOB 2620 D5: die Bilder-Aussage steht in Tab 2 des Aufgabenfensters genau einmal — gemessen am
   // ausgelieferten taskpane.html ueber die Panel-Fixture, je Sprache. Achse `taskpane`.
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts",
+  "tests/design/zielbild-schlankespanel-messung.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
   // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —
