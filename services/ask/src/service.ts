@@ -182,13 +182,57 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
 // Stemmer (der vorhandene wird benutzt, nicht erweitert), kein Modell, kein Embedder, kein Netz.
 // Der semantische Vorfilter bleibt unberührt und AUS.
 //
-// UND DIE GRENZE DIESER SCHEIBE, ausgesprochen statt verschwiegen: geschärft wird die KANDIDATEN-
-// VORAUSWAHL. Zwischen ihr und der Antwort steht `selectCandidates` (`reasoner/src/provider.ts`),
-// dessen Relevanzmaß unverändert auf dem GETIPPTEN Fragetext rechnet — ein Objekt, das nur über
-// eine Entsprechung hereinkam, fällt dort und erreicht den Reasoner nicht. Die Frage nach der
-// „Urlaubsregelung" endet deshalb heute noch bei einer ehrlichen Wissenslücke, obwohl das Objekt
-// in der Vorauswahl steht. Das ist gemessen (`tests/suche-zuordnung/…`, Fall F6) und der Gegenstand
-// einer eigenen Scheibe — nicht eine Zusage, die dieser Durchgang stillschweigend mitbehauptet.
+// ================================================================================================
+// UND DIE GRENZE DIESER SCHEIBE — VON JOB 3039 NACHGEMESSEN UND BERICHTIGT.
+// ================================================================================================
+//
+// JOB 3021 hat hier gestanden: „geschärft wird die KANDIDATENVORAUSWAHL. Zwischen ihr und der
+// Antwort steht `selectCandidates` (`reasoner/src/provider.ts`), dessen Relevanzmaß auf dem
+// GETIPPTEN Fragetext rechnet." Der Satz war RICHTIG, aber UNVOLLSTÄNDIG, und die fehlende Hälfte
+// ist der Grund, warum JOB 3039 die Zusage „Klara antwortet aus dem gefundenen Objekt" NICHT
+// eingelöst hat. Zwischen Vorauswahl und Antwort stehen ZWEI Tore, nicht eines:
+//
+//   TOR 1  `selectCandidates` im Fragedienst        (`ask/src/service.ts`, unten)
+//   TOR 2  DIESELBE Auswahl NOCH EINMAL im Reasoner:
+//            · `DeterministicProvider.select` → `selectCandidates(question, …)`
+//              (`reasoner/src/provider.ts:1683`; `Reasoner.answerRetrievalOnly`
+//              (`reasoner/src/service.ts:1150-1156`) führt genau dorthin)
+//            · `ModelProvider.answer` → `selectCandidates(question, context)`
+//              (`reasoner/src/provider-model.ts:1424`, ebenso `select` `:1147`)
+//
+// TOR 2 bekommt die ROHE Frage — und zwar zu Recht: der Reasoner ist der Ort, an dem die Antwort
+// entsteht, und er darf nur auf dem rechnen, wonach wirklich gefragt wurde. Ein Objekt, das nur
+// über eine Entsprechung hereinkam, fällt deshalb DORT, auch wenn Tor 1 es durchlässt.
+//
+// GEMESSEN, nicht geschlossen (JOB 3039 R2, alle Zahlen aus `tests/suche-zuordnung/…`):
+//   · Echtpfad `AskService` + echter `Reasoner`, Frage „Wo finde ich die Urlaubsregelungen im
+//     Handbuch?" → `answered:false`, `sources:[]` — auf BEIDEN Antwortwegen (Fall Z1).
+//   · Liegt das Objekt bereits im Kontext, verwerfen es beide Wege erneut; wird das deklarierte
+//     Gegenwort dagegen GETIPPT, antworten beide (Fall Z2). Die Wand ist also die Neuauswahl auf
+//     der Rohfrage und nichts anderes.
+//   · Tor 1 allein zu weiten, hilft nicht nur nichts, es SCHADET: acht Objekte, die allein über die
+//     Entsprechung hereinkommen, füllen den Deckel `DEFAULT_TOP_K` (8) und verdrängen den echten
+//     Treffer, der ohne die Weitung geantwortet hätte — `answered:true` wird zu `answered:false`
+//     (Fall W1). Deshalb steht am Toraufruf unten wieder die unveränderte Frage.
+//   · Und die Weitung von Tor 1 allein wäre fail-open: eine Quelle, die BEIDE Wörter eines Paares
+//     trägt, sammelt aus EINEM getippten Wort zwei Substanzpunkte (Fall W2) — genau der zweite
+//     Punkt, den es nicht geben darf.
+//
+// WAS ES BRÄUCHTE, als Vorschlag und nicht als Bau: einen sauber getrennten RELEVANZTEXT, der neben
+// der Frage durch `Reasoner.answer`/`answerRetrievalOnly` bis in beide Provider gereicht wird —
+// Fragetext, Modellprompt, Wissenslücke und Prüfprotokoll blieben dabei unangetastet. Das sind
+// Änderungen in `services/reasoner/**`, und dieser Pfad ist in JOB 3039 §10 ausdrücklich
+// ausgeschlossen. Solange er nicht freigegeben ist, endet die Zuordnung bei der VORAUSWAHL.
+//
+// DIE ZWEITE GRENZE, unabhängig von der ersten und ebenfalls gemessen: das Substanzmaß.
+// `MIN_ANSWER_SUBSTANCE` ist 2 (`reasoner/src/provider.ts:1392`) und verlangt ZWEI verschiedene
+// gemeinsame Inhaltstoken. Eine Frage mit nur EINEM Inhaltstoken — „Wie ist die Urlaubsregelung?"
+// zerfällt in `["urlaubsregel"]` — erreicht diese Zahl auch dann nicht, wenn das Gegenwort trifft;
+// sie fiele selbst dann, wenn der Fragende „Urlaubszeiten" wörtlich getippt hätte. AUSNAHME,
+// gemessen und deshalb hier genannt statt verschwiegen: trägt EINE Quelle beide Wörter des Paares,
+// kämen zwei Punkte aus einem getippten Wort zustande (Fall W2). Das ist keine Grenze, sondern ein
+// Fehler — und der Grund, warum ein künftiger Relevanztext jedes Paar höchstens EINMAL zählen muss.
+// Gemessen: `tests/suche-zuordnung/n2-klara-versteht-zusammensetzungen.test.ts`, Fälle F6, W1, W2, Z1, Z2.
 export function zugeordneteSuchterme(
   suchterme: readonly string[],
   /**
@@ -612,8 +656,12 @@ export class AskService {
     // nicht: die Markierung ist auf `SELECTION_TERM_LIMIT` gedeckelt, die Erweiterung ergänzt nur
     // und kürzt nie.
     // DIE GEMESSENE KEHRSEITE, benannt statt verschwiegen: füllen Frage und Markierung das Fenster
-    // von acht Termen bereits, wird KEIN ergänzter Term mehr abgefragt — dieselbe Lastgrenze und
-    // derselbe Preis, den KA5-R8b für die Markierung schon ausspricht.
+    // von acht Termen bereits, wird KEIN ergänzter Term mehr ABGEFRAGT — dieselbe Lastgrenze und
+    // derselbe Preis, den KA5-R8b für die Markierung schon ausspricht (JOB 3039 R2 hat den Fall
+    // nachgemessen: Fall D1).
+    // JOB 3039 (N2, Scheibe 2): `suchterme` hat weiterhin GENAU EINEN Verbraucher, die Zeile
+    // darunter — der Versuch, dieselbe Menge auch dem Relevanztor zu geben, ist gemessen
+    // zurückgenommen worden (Begründung im Grenzblock an `zugeordneteSuchterme`).
     const frageterme = queryTokens(question);
     const eingabeterme = erweiterteSuchterme(frageterme, opts?.selection);
     const suchterme = [...eingabeterme, ...zugeordneteSuchterme(eingabeterme)];
@@ -679,6 +727,14 @@ export class AskService {
     // SCRUM-360: präzise, status-/trust-bewusste Top-K-Auswahl auf der vorgefilterten Menge (Relevanz-
     // Gate dominiert, validierte/ready bevorzugt). Idempotent zur Vorauswahl: Top-K der vorgefilterten
     // Menge = Top-K, da jeder relevante KO (Token-Überschneidung) bereits im Prefilter enthalten ist.
+    // JOB 3039 (N2, Scheibe 2), GEMESSEN UND ZURÜCKGENOMMEN: Runde 1 hat hier die Frage UM die
+    // deklarierten Entsprechungen ERWEITERT übergeben. Das ist zurückgebaut, und zwar nicht aus
+    // Vorsicht, sondern aus zwei Messungen: der Reasoner wählt dahinter ein ZWEITES Mal auf der
+    // rohen Frage aus und verwirft das Objekt erneut (die Weitung hatte keinerlei Nutzerwirkung,
+    // `answered` blieb `false`), und sie SCHADET, weil Objekte, die allein über die Entsprechung
+    // hereinkommen, den Deckel `DEFAULT_TOP_K` füllen und den tragenden Treffer verdrängen können.
+    // Die vollständige Begründung mit beiden Fundstellen steht im Grenzblock an
+    // `zugeordneteSuchterme`; die Zahlen stehen in `tests/suche-zuordnung/…` (Z1, Z2, W1, W2).
     const candidates = selectCandidates(question, refs, DEFAULT_TOP_K);
     // SCRUM-490 R2 (B1): Add-on-Pfad → RETRIEVAL-ONLY (kein Modell-/Embedder-Egress des Dokumenttexts).
     // Sonst der übliche Reasoner-Weg (Session-Pfad unverändert).
