@@ -1,9 +1,16 @@
 // SCRUM-491 (Slice 4): side-effect-freier Dry-Run-Detection-Kern für transienten Freitext. Muster wie
 // duplicate-detection.ts (App-Root verdrahtet knowledge-object ↔ conflicts ↔ optional Prefilter/Modell),
 // ABER: KEIN Endpunkt, KEINE Persistenz. Der Kern ist erst ab Slice 5 erreichbar. Er prüft beliebigen
-// Text gegen den VALIDIERTEN Bestand und gibt Dry-Run-Ergebnisse zurück — nichts wird angelegt, nichts
+// Text gegen den erlaubten Bestand und gibt Dry-Run-Ergebnisse zurück — nichts wird angelegt, nichts
 // ins Board geschrieben, kein Inhalt auditiert. Der bestehende detect-Pfad (mit createAuto) bleibt
 // unberührt; dies ist ein reiner neuer Abzweig.
+//
+// JOB 3020 (Pedis Diktat vom 30.07.): WELCHER Bestand das ist, entscheidet der AUFRUFER, nicht mehr
+// diese Datei. Bis hierher galt hart „nur validiert" — wer denselben Sachverhalt einreichte, der
+// schon als noch nicht validiertes Objekt im Haus lag, bekam „nichts gefunden" und legte die
+// Dublette an. Der Verlust entstand in DIESEM Filter, nicht an der Quelle: `findCandidates` ist
+// statusneutral (belegt in knowledge-object/src/repo-candidates.test.ts:54-70). Der Schalter heißt
+// `includeUnvalidated` und ist standardmäßig AUS — ohne ihn verhält sich `checkText` wie zuvor.
 import {
   type ConflictService,
   type ConflictVerdict,
@@ -14,7 +21,12 @@ import {
   type OverlapVerdict,
   coreText,
 } from "../../conflicts";
-import { type KnowledgeObject, type KoService, isConfidential } from "../../knowledge-object";
+import {
+  type KnowledgeObject,
+  type KoService,
+  type KoStatus,
+  isConfidential,
+} from "../../knowledge-object";
 import { queryTokens } from "../../reasoner";
 import { DETECTION_CANDIDATE_CAP } from "./detection-cap";
 import type { SemanticPrefilter } from "./duplicate-detection";
@@ -49,10 +61,34 @@ export interface CheckTextInput {
   locale?: "de" | "en";
 }
 
+// ================================================================================================
+// JOB 3020 — DER FUNDORT REIST MIT DEM TREFFER.
+// ================================================================================================
+//
+// „Man sieht, ob es das schon gibt — und WO es liegt." Ein Treffer ohne Zustand ist unbrauchbar,
+// sobald der ungeprüfte Bestand mitzählt: der Mensch muss unterscheiden können, ob er gegen eine
+// beschlossene Regel läuft oder gegen den Entwurf eines Kollegen.
+//
+// DIE ANREICHERUNG WOHNT HIER und nicht in `DryRunOverlap`/`DryRunConflict`: `services/conflicts`
+// kennt `knowledge-object` nicht (Modulgrenze) — Zustand und Kategorie sind dort schlicht nicht
+// bekannt. Der Pool wird in DIESER Datei aus Wissensobjekten gebaut; hier liegen beide Werte
+// bereits vor, ohne eine einzige zusätzliche Abfrage.
+//
+// `null` IST EINE ECHTE ANTWORT: trägt der Bestand keine Kategorie, steht `null` — kein geratener
+// Wert. Dasselbe gilt für den (konstruktiv unmöglichen) Fall eines Treffers ohne Pool-Eintrag:
+// dann sagt der Fundort nichts, statt etwas zu behaupten.
+export interface CheckTextHitOrigin {
+  koStatus: KoStatus | null;
+  koCategory: string | null;
+}
+
+export type CheckTextDuplicate = DryRunOverlap & CheckTextHitOrigin;
+export type CheckTextConflict = DryRunConflict & CheckTextHitOrigin;
+
 // Ergebnis-Form: Duplikate (Pflichtpfad) + Konflikte (symmetrisch, optional — leer ohne conflictJudge).
 export interface CheckTextResult {
-  duplicates: DryRunOverlap[];
-  conflicts: DryRunConflict[];
+  duplicates: CheckTextDuplicate[];
+  conflicts: CheckTextConflict[];
 }
 
 export interface CheckTextDeps {
@@ -67,6 +103,12 @@ export interface CheckTextDeps {
   // Nur gesetzt, wenn KLARWERK_DUP_PREFILTER aktiv ist. Ohne → gedeckelter lexikalischer Fallback.
   semanticPrefilter?: SemanticPrefilter | undefined;
   minConfidence?: number;
+  // JOB 3020: nimmt den NOCH NICHT VALIDIERTEN Bestand in den Pool. Default AUS — wer das Feld
+  // nicht setzt, bekommt byteweise das bisherige Verhalten (nur validiert). Der Schalter gehört
+  // dem Aufrufer: die Route setzt ihn am AUTHENTIFIZIERTEN Weg (Mensch ja, Add-in nein), nie am
+  // Anfragerumpf. Die drei harten Ausschlüsse (Demo-Seed, das Subjekt selbst, Vertraulichkeit)
+  // hebt er NICHT auf.
+  includeUnvalidated?: boolean;
 }
 
 // K0-2: Erkennungs-Gegenstand ist der Kerntext (title+statement+conditions+measures), nicht bodyHtml.
@@ -95,7 +137,29 @@ function transientSubject(input: CheckTextInput): DetectSubject {
   };
 }
 
-// Pool = NUR validierte KOs. Der Orchestrator lädt NIE den Gesamtbestand: kein ko.list()-all, sondern
+// JOB 3020: der Fundort eines Pool-Eintrags, gemerkt BEVOR `toDetectSubject` das Wissensobjekt auf
+// den Erkennungs-Gegenstand verengt (dieser kennt den Status nicht). Kategorie nur, wenn der
+// Bestand wirklich eine trägt — eine leere Zeichenkette ist keine Kategorie, sondern ihr Fehlen.
+function toHitOrigin(ko: KnowledgeObject): CheckTextHitOrigin {
+  const category = typeof ko.category === "string" ? ko.category.trim() : "";
+  return { koStatus: ko.status, koCategory: category.length > 0 ? category : null };
+}
+
+// Der gebundene Pool samt Fundort je Kandidat — eine Ladung, zwei Auskünfte. Es wird NICHTS
+// nachgeladen: `origins` entsteht aus denselben Objekten, aus denen der Pool entsteht.
+interface SelectedPool {
+  pool: DetectSubject[];
+  origins: Map<string, CheckTextHitOrigin>;
+}
+
+function toSelectedPool(kos: KnowledgeObject[]): SelectedPool {
+  return {
+    pool: kos.map(toDetectSubject),
+    origins: new Map(kos.map((k) => [k.id, toHitOrigin(k)])),
+  };
+}
+
+// Pool = der ERLAUBTE Bestand. Der Orchestrator lädt NIE den Gesamtbestand: kein ko.list()-all, sondern
 // entweder die semantischen topK-Treffer per ID oder die gedeckelte lexikalische Source-Query. Ob die
 // QUELLE selbst hart auf topK deckelt, ist Sache des Repos: aktuell deckelt nur PgKoRepo quell-seitig
 // (SQL LIMIT); der In-Memory-Dev-Adapter scort seinen kleinen Bestand voll und schneidet erst danach
@@ -105,17 +169,22 @@ function transientSubject(input: CheckTextInput): DetectSubject {
 //    Embedder/Provider — der deterministische Modus nutzt ausschließlich die lexikalische Source-Query.
 //  - Fix 2 (Cap an der Quelle): Semantic-Pfad → store.nearest topK, dann NUR diese Treffer per ID
 //    laden (bounded fetch). Lexikalisch → ko.findCandidates({terms, limit: topK}) mit hartem Limit.
-// Der Validierungsfilter (status="validiert", keine Demo-Seeds, Subjekt ausgeschlossen) läuft auf der
-// bereits gedeckelten Menge.
-async function selectValidatedPool(
-  subject: DetectSubject,
-  deps: CheckTextDeps,
-): Promise<DetectSubject[]> {
-  // SCRUM-502: vertrauliche KOs sind KEINE Kandidaten — deckt BEIDE Stufen: Stufe 1 (lexikalischer Pool
-  // → kein Titel-/Existenz-Leak in der Antwort) und Stufe 2 (semantischer + lexikalischer Pool → kein
-  // coreText an Embedder/Judge; ein nearest-Treffer wird nach ko.get hier ebenfalls verworfen).
-  const isValidatedCandidate = (k: KnowledgeObject): boolean =>
-    k.status === "validiert" &&
+// Die Poolregel (Zustand je nach Schalter, keine Demo-Seeds, Subjekt ausgeschlossen, nichts
+// Vertrauliches) läuft auf der bereits gedeckelten Menge.
+async function selectPool(subject: DetectSubject, deps: CheckTextDeps): Promise<SelectedPool> {
+  // JOB 3020: EINE Poolregel, EIN Schalter. Weich ist nur der Zustand: ohne `includeUnvalidated`
+  // zählt wie bisher ausschließlich Validiertes; mit ihm zählt der ungeprüfte Bestand mit.
+  //
+  // HART BLEIBEN ALLE DREI ÜBRIGEN AUSSCHLÜSSE, und der Schalter erreicht sie nicht:
+  //  · `!k.demoSeed`            — Demobestand ist kein Wissen des Hauses.
+  //  · `k.id !== subject.refId` — nichts findet sich selbst.
+  //  · SCRUM-502: vertrauliche KOs sind KEINE Kandidaten — deckt BEIDE Stufen: Stufe 1
+  //    (lexikalischer Pool → kein Titel-/Existenz-Leak in der Antwort) und Stufe 2 (semantischer +
+  //    lexikalischer Pool → kein coreText an Embedder/Judge; ein nearest-Treffer wird nach ko.get
+  //    hier ebenfalls verworfen). Ein ungeprüftes VERTRAULICHES Objekt bleibt damit auf BEIDEN
+  //    Wegen unsichtbar — die neue Reichweite ist eine Reichweite über Zustände, nicht über Rechte.
+  const isPoolCandidate = (k: KnowledgeObject): boolean =>
+    (deps.includeUnvalidated === true || k.status === "validiert") &&
     !k.demoSeed &&
     k.id !== subject.refId &&
     !isConfidential(k.confidentiality);
@@ -135,11 +204,11 @@ async function selectValidatedPool(
         );
         // Fix 2: bounded fetch — nur die topK Treffer per ID laden, NIE der Gesamtbestand.
         const fetched = await Promise.all(hits.map((h) => deps.ko.get(h.id)));
-        const narrowed = fetched
-          .filter((k): k is KnowledgeObject => k !== undefined && isValidatedCandidate(k))
-          .map(toDetectSubject);
+        const narrowed = fetched.filter(
+          (k): k is KnowledgeObject => k !== undefined && isPoolCandidate(k),
+        );
         if (narrowed.length > 0) {
-          return narrowed;
+          return toSelectedPool(narrowed);
         }
       }
     } catch (err) {
@@ -158,20 +227,37 @@ async function selectValidatedPool(
   // Scoring) — kein ko.list()-all-then-filter. Ohne Inhaltstoken (nur Stoppwörter) kein Kandidat.
   const terms = queryTokens(coreText(subject));
   if (terms.length === 0) {
-    return [];
+    return { pool: [], origins: new Map() };
   }
   const candidates = await deps.ko.findCandidates({ terms, limit: RETRIEVAL_TOP_K });
-  return candidates.filter(isValidatedCandidate).map(toDetectSubject);
+  return toSelectedPool(candidates.filter(isPoolCandidate));
 }
 
-// Der Dry-Run: transienter Text → validierter, gebundener Pool → assessAgainstPool (kein Insert, kein
+// JOB 3020: den Fundort an den Treffer heften. Die Treffer stammen ausschließlich aus dem Pool —
+// ein `koId` ohne Eintrag in `origins` kann konstruktiv nicht entstehen. Träte er doch auf, wird
+// NICHTS geraten: dann sagt der Fundort schlicht nichts (null), statt einen Zustand zu behaupten.
+function withOrigin<T extends { koId: string }>(
+  hits: T[],
+  origins: ReadonlyMap<string, CheckTextHitOrigin>,
+): Array<T & CheckTextHitOrigin> {
+  return hits.map((hit) => {
+    const origin = origins.get(hit.koId);
+    return {
+      ...hit,
+      koStatus: origin?.koStatus ?? null,
+      koCategory: origin?.koCategory ?? null,
+    };
+  });
+}
+
+// Der Dry-Run: transienter Text → erlaubter, gebundener Pool → assessAgainstPool (kein Insert, kein
 // Board, kein Audit). Ohne Treffer/leeren Pool ein leeres Ergebnis. Wirft nicht für einen leeren Pool.
 export async function checkText(
   input: CheckTextInput,
   deps: CheckTextDeps,
 ): Promise<CheckTextResult> {
   const subject = transientSubject(input);
-  const pool = await selectValidatedPool(subject, deps);
+  const { pool, origins } = await selectPool(subject, deps);
   if (pool.length === 0) {
     return { duplicates: [], conflicts: [] };
   }
@@ -186,5 +272,9 @@ export async function checkText(
   const conflicts = deps.conflicts
     ? await deps.conflicts.assessAgainstPool(subject, pool, deps.conflictJudge, assessOptions)
     : [];
-  return { duplicates, conflicts };
+  // Der Fundort kommt aus dem bereits geladenen Pool — keine zweite Abfrage, kein Nachladen.
+  return {
+    duplicates: withOrigin(duplicates, origins),
+    conflicts: withOrigin(conflicts, origins),
+  };
 }

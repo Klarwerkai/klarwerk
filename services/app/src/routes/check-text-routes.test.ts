@@ -61,7 +61,12 @@ async function loggedInApp() {
   return { app, headers };
 }
 
-// Legt ein VALIDIERTES KO an (POST + rate up → status "validiert"), damit der validated-only-Pool trifft.
+// Legt ein VALIDIERTES KO an (POST + rate up → status "validiert").
+// JOB 3020: der Pool ist auf dem Session-Pfad nicht mehr validated-only — der ungeprüfte Bestand
+// zählt dort mit. Ein VALIDIERTES Seed bleibt trotzdem das richtige Mittel für diese Suite: es
+// trifft auf BEIDEN Wegen (Session UND Add-in) und hält die Aussagen dieser Datei unverändert.
+// Dass ein OFFENES Objekt jetzt ebenfalls trifft — und auf dem Add-in-Weg gerade nicht —, ist der
+// Gegenstand von tests/pruefung-gegen-alles/n1-ungeprueftes-wird-gefunden.test.ts.
 async function seedValidated(
   app: ReturnType<typeof buildApp>,
   headers: Record<string, string>,
@@ -375,6 +380,13 @@ const teilweiseVerdict: OverlapVerdict = {
   begruendung: "Teilweiser gemeinsamer Kern.",
 };
 
+// JOB 3020: `note` trägt seit dieser Runde bis zu ZWEI Aussagen — den Vertraulichkeits-Rückfall
+// (SCRUM-502) und den Satz über den mitgeprüften ungeprüften Bestand. Die Fälle unten prüften
+// bisher `note === null`, um zu sagen „der deep-Pfad lief, es gab KEINEN Rückfall". Genau das
+// sagen sie weiterhin — nur zielgenau auf die Aussage, um die es ihnen ging. Gelöscht wurde keine
+// Zusicherung: aus „gar kein Hinweis" wurde „kein Vertraulichkeits-Hinweis".
+const VERTRAULICH_HINWEIS = "nur deterministisch geprüft";
+
 // Fake-Guard: autorisiert den Session-Pfad (preValidation) ohne echte Sessions.
 const fakeGuards = {
   requireUser: async () => ({ id: "u1" }),
@@ -490,7 +502,7 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     expect(res.statusCode).toBe(200);
     expect(judgeDuplicate).toHaveBeenCalled();
     expect(embed).toHaveBeenCalled();
-    expect(res.json().note).toBeNull();
+    expect(res.json().note ?? "").not.toContain(VERTRAULICH_HINWEIS);
   });
 
   // SCRUM-502 Round 4 (Sicherheits-Kern): eine lose koId darf frei gelieferten Text NIE freigeben.
@@ -577,7 +589,7 @@ describe("SCRUM-491 Slice 6: Stufe 2 (want:'deep') mit injiziertem Fake-Judge", 
     expect(res.statusCode).toBe(200);
     expect(judgeDuplicate).toHaveBeenCalled();
     expect(embed).toHaveBeenCalled();
-    expect(res.json().note).toBeNull();
+    expect(res.json().note ?? "").not.toContain(VERTRAULICH_HINWEIS);
   });
 });
 

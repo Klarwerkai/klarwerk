@@ -189,16 +189,24 @@ describe("W6 · der gebaute Teil von Auflage 1 — Vertraulichkeit wird gemeldet
   });
 });
 
+// JOB 3020: `note` ist nicht mehr entweder-leer-oder-Vertraulichkeit. Auf dem Sitzungs-Pfad trägt
+// es seit dieser Runde den Satz, WOGEGEN geprüft wurde (auch gegen noch nicht validierte Einträge).
+// Der Fehlstand dieser Datei ist davon UNBERUEHRT: über die ABRUFTIEFE (semantischer Weg vs.
+// lexikalischer Rueckfall) sagt die Antwort weiterhin nichts. Die Zusicherungen unten sind deshalb
+// nicht gelöscht, sondern auf genau diese Aussage geschaerft — „`note` ist null" war nur der
+// damalige Traeger des Befundes, nie der Befund selbst.
+const REICHWEITEN_WOERTER = /semantisch|lexikalisch|Vektorspeicher|Rückfall|Reichweite|Abruftiefe/i;
+
 describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet", () => {
-  it("Speicher befuellt: der semantische Weg traegt, `note` bleibt zu Recht null", async () => {
+  it("Speicher befuellt: der semantische Weg traegt, `note` sagt nichts zur Abruftiefe", async () => {
     const { tiefenpruefung, embed, findCandidates } = await app2([{ id: "v2" }]);
     const res = await tiefenpruefung();
 
-    // Zustand 3: embed lief, kein lexikalischer Rueckfall. Hier IST die Tiefe gedeckt, `note`
-    // darf leer sein. Dieser Fall ist der Massstab fuer den naechsten.
+    // Zustand 3: embed lief, kein lexikalischer Rueckfall. Hier IST die Tiefe gedeckt — es gibt
+    // nichts zu melden. Dieser Fall ist der Massstab fuer den naechsten.
     expect(embed).toHaveBeenCalled();
     expect(findCandidates).not.toHaveBeenCalled();
-    expect(res.json().note).toBeNull();
+    expect(res.json().note ?? "").not.toMatch(REICHWEITEN_WOERTER);
   });
 
   it("Speicher LEER: lexikalischer Rueckfall — und der Aufrufer erfaehrt es nicht", async () => {
@@ -211,11 +219,11 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     // Gearbeitet wurde lexikalisch — dieselbe Deckelung wie ohne Prefilter.
     expect(findCandidates).toHaveBeenCalledTimes(1);
 
-    // FEHLSTANDSBELEG, KEINE ZUSAGE: `note` bleibt leer. Die Antwort ist damit von der des
-    // vorigen Falls nicht zu unterscheiden, obwohl die Reichweite eine voellig andere war.
+    // FEHLSTANDSBELEG, KEINE ZUSAGE: `note` schweigt zur Abruftiefe. Die Antwort ist damit von der
+    // des vorigen Falls nicht zu unterscheiden, obwohl die Reichweite eine voellig andere war.
     // Wer Auflage 1 baut, macht diese Zeile rot — das ist beabsichtigt und ist dann der Beleg,
     // dass der Mangel behoben wurde.
-    expect(res.json().note).toBeNull();
+    expect(res.json().note ?? "").not.toMatch(REICHWEITEN_WOERTER);
   });
 
   it("die Antwort fuehrt ueberhaupt kein Feld, das Reichweite ausdrueckt", async () => {
@@ -233,7 +241,11 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
       "note",
       "persisted",
     ]);
-    expect([voll.note, leer.note]).toEqual([null, null]);
+    // JOB 3020: der Traeger des Befundes ist die UNUNTERSCHEIDBARKEIT, nicht der Wert `null`. Beide
+    // Antworten tragen jetzt denselben Hinweis über den geprüften BESTAND — über die ABRUFTIEFE
+    // sagt keine von beiden etwas, obwohl die eine semantisch und die andere lexikalisch arbeitete.
+    expect(leer.note).toEqual(voll.note);
+    expect(voll.note ?? "").not.toMatch(REICHWEITEN_WOERTER);
 
     // NEBENBEFUND, ehrlich eingeordnet: die Trefferlisten sind NICHT gleich — der lexikalische
     // Rueckfall reicht mehr und schlechter vorgefilterte Kandidaten an den Judge weiter.

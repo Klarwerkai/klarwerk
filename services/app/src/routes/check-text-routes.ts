@@ -80,6 +80,10 @@ export interface CheckTextRouteDeps {
 // deterministischen Pfad regulär leer → als null geführt (stabile Form, kein erfundener Wert).
 // SCRUM-502 Schicht 2 (Round 3): `note` trägt den ehrlichen Hinweis, wenn eine want:"deep"-Prüfung
 // wegen vertraulichem Text auf den deterministischen Pfad zurückfällt (kein Embedder/Cloud-Judge).
+// JOB 3020: `koStatus`/`koCategory` reichen den FUNDORT additiv nach außen — in duplicates UND
+// conflicts, in derselben Form. Beide Werte stammen aus dem Kern (check-text-detection.ts) und damit
+// aus dem bereits geladenen Pool; die Route lädt nichts nach und rät nichts. `null` heißt „der
+// Bestand sagt dazu nichts" (fehlende Kategorie) — kein Platzhalter, kein Standardwert.
 function toResponse(result: CheckTextResult, note: string | null = null) {
   return {
     duplicates: result.duplicates.map((d) => ({
@@ -89,6 +93,8 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
       confidence: d.confidence ?? null,
       method: d.method,
       rationale: d.rationale ?? null,
+      koStatus: d.koStatus,
+      koCategory: d.koCategory,
       ...(d.snippet !== undefined ? { snippet: d.snippet } : {}),
     })),
     // JOB 1970 RIEGEL 2: bis hierher stand `conflicts: []` FEST — die Antwort behauptete „keine
@@ -103,6 +109,8 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
       confidence: c.confidence ?? null,
       method: c.method,
       rationale: c.rationale ?? null,
+      koStatus: c.koStatus,
+      koCategory: c.koCategory,
       ...(c.snippet !== undefined ? { snippet: c.snippet } : {}),
     })),
     answer: null,
@@ -185,9 +193,26 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           locale,
           ...(request.body.title !== undefined ? { title: request.body.title } : {}),
         };
+        // ==========================================================================================
+        // JOB 3020 — WER FRAGT, ENTSCHEIDET DIE REICHWEITE. NICHT DER RUMPF DER ANFRAGE.
+        // ==========================================================================================
+        //
+        // Der ANGEMELDETE MENSCH (Session-Pfad, `ko.read` in preValidation erzwungen) prüft gegen
+        // den ganzen Bestand — auch gegen noch nicht validierte Objekte. Genau das war Pedis
+        // Diktat vom 30.07.: eine Dublette entsteht sonst gegen einen Eintrag, den es längst gibt.
+        //
+        // Der ADD-IN-PFAD bleibt unverändert auf Validiertes beschränkt. Seine Capability heißt
+        // `checktext.validated` (addon-principal.ts) und dieselbe Linie zieht der Fragepfad
+        // (ask/src/service.ts): ein Add-on-Principal darf nie aus unvalidierten Inhalten antworten.
+        //
+        // ES GIBT BEWUSST KEIN RUMPF-FELD DAFÜR: käme die Reichweite aus dem Body, könnte sich der
+        // Add-in-Client sie selbst geben — der Riegel wäre eine Bitte. Sie hängt deshalb am
+        // authentifizierten Weg, den der Client nicht wählen kann.
+        const istAddon = request.authContext?.authKind === "addon";
+        const includeUnvalidated = !istAddon;
         // Stufe-1-Deps: OHNE Judge/Prefilter → rein deterministisch (kein Modell, kein embed). Für
         // want fehlend / != "deep" bleibt das byte-identisch zu Slice 5.
-        const stage1Deps = { ko: deps.ko, overlaps: deps.overlaps };
+        const stage1Deps = { ko: deps.ko, overlaps: deps.overlaps, includeUnvalidated };
         // SCRUM-502 R4/R5: Herkunft/Stufe des GEPRÜFTEN Textes bestimmen (fail-safe). Der Text ist
         // immer transient (Paste/Upload) → seine Stufe kommt aus der draft/transient-document-
         // Deklaration; eine koId ist nur hebender Backstop, nie Freigabe-Anker. Fehlt das Signal
@@ -217,12 +242,28 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           : stage1Deps;
         // Dry-Run in BEIDEN Stufen: kein Insert, keine Gap, kein Board, kein Inhalts-Audit.
         const result = await checkText(input, checkDeps);
-        const note =
-          wantDeep && confidential
-            ? locale === "en"
+        // Die Antwort sagt, WOGEGEN geprüft wurde. Beide Aussagen sind unabhängig voneinander wahr
+        // und schließen sich nicht aus — treffen beide zu, stehen auch beide da (JOB 3020: der
+        // Vertraulichkeits-Hinweis aus SCRUM-502 darf durch den neuen Satz nicht verloren gehen).
+        const hinweise: string[] = [];
+        if (wantDeep && confidential) {
+          hinweise.push(
+            locale === "en"
               ? "Confidential content is checked deterministically only — no cloud AI or embedder was used."
-              : "Vertrauliche Inhalte werden nur deterministisch geprüft — keine Cloud-KI, kein Embedder."
-            : null;
+              : "Vertrauliche Inhalte werden nur deterministisch geprüft — keine Cloud-KI, kein Embedder.",
+          );
+        }
+        if (includeUnvalidated) {
+          // KEIN „gegen den GESAMTEN Bestand": die Kandidatenwahl ist gedeckelt
+          // (DETECTION_CANDIDATE_CAP) — dieser Satz sagt deshalb nur, WELCHE ZUSTÄNDE mitzählen,
+          // und behauptet keine Vollständigkeit, die der Lauf nicht hergibt.
+          hinweise.push(
+            locale === "en"
+              ? "Entries that are not yet validated were included in this check."
+              : "Auch noch nicht validierte Einträge wurden mitgeprüft.",
+          );
+        }
+        const note = hinweise.length > 0 ? hinweise.join(" ") : null;
         reply.code(200).send(toResponse(result, note));
       },
     );
