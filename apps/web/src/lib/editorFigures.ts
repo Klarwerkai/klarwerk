@@ -1056,6 +1056,33 @@ export function ensureImageAnchors(root: EditableFigureRoot): number {
 //      Verankerung gelaufen ist.
 // Ein beliebiger Nachfahre ist in KEINEM der beiden Zweige erreichbar.
 
+// ==================================================================================================
+// JOB 3035 (Register I50, DRITTENS — die zweite Hälfte) — BEI MEHRDEUTIGKEIT WIRD NICHT GERATEN.
+// ==================================================================================================
+//
+// DER BEFUND: hier stand `return el` beim ERSTEN Knoten mit passendem Attributwert. Ob ein zweiter
+// mit demselben Wert existierte, wurde nicht erhoben. Die Begründung im Block darüber — die stabile
+// Kennung ist der robustere Weg und steht deshalb VOR dem direkten Kind — trägt aber nur so lange,
+// wie die Kennung eindeutig IST. Ist sie es nicht, liefert genau der robustere Weg das falsche
+// Ergebnis, und der schwächere, aber lokal richtige (`:scope >`) wird gar nicht erst erreicht.
+//
+// `ensureImageAnchors` macht die BILDKENNUNGEN eindeutig (die Schleife „EINE KENNUNG GEHÖRT GENAU
+// EINEM BILD"). Sie kann das aber nicht überall: eine Fußnote, die zu keinem Bild gehört, wird
+// nicht umbenannt (Stufe 3 — „nicht raten"), und Markup, das nie durch die Verankerung gelaufen
+// ist, sieht sie nie (der Fall, den der Block oben als „abgelöste Fußnote im offenen Formular, ein
+// Ausschnitt aus fremder Hand" benennt). Genau dort greift diese Schranke.
+//
+// DIE ANTWORT IST DIESELBE WIE ÜBERALL SONST IN DIESEM MODUL: mehr als eine Auskunft heißt KEINE
+// Auskunft (`gemeinsameKennung`, `offenerAnker`, Stufe 3). `captionForImage` und `imageForCaption`
+// fallen dann auf ihren bereits vorhandenen zweiten Zweig zurück — das direkte Kind derselben
+// figure ist bei Mehrdeutigkeit die einzige Auskunft, die noch belegt ist. Findet auch der nichts,
+// bleibt es bei `null`: keine Auskunft ist ehrlicher als eine falsche. Es entsteht KEINE zweite
+// Suchfunktion und kein Schalter — der Ersttreffer-Zweig ist entfernt, nicht danebengestellt.
+//
+// KEIN FRÜHER AUSSTIEG NACH ZWEI TREFFERN: die Menge wird ohnehin ganz durchlaufen, wenn es nur
+// einen gibt (der häufige Fall), und ein Abbruch bei zwei spart nichts, was messbar wäre. Die
+// vollständige Erhebung ist dieselbe Bauart-Korrektur wie in huelle3/H2-02: wer nur den ersten
+// Treffer ansieht, macht einen beliebigen Knoten zur alleinigen Wahrheit.
 function knotenMitKennung(
   root: EditableFigureRoot | null | undefined,
   selektor: string,
@@ -1064,12 +1091,17 @@ function knotenMitKennung(
   if (root === null || root === undefined || id === null || id === "") {
     return null;
   }
+  let treffer: EditableElement | null = null;
   for (const el of root.querySelectorAll(selektor)) {
-    if (el.getAttribute("data-image-id") === id) {
-      return el;
+    if (el.getAttribute("data-image-id") !== id) {
+      continue;
     }
+    if (treffer !== null) {
+      return null;
+    }
+    treffer = el;
   }
-  return null;
+  return treffer;
 }
 
 /** Die Fußnote, die zu diesem Bild gehört — über die Kennung, sonst über das direkte Kind. */
