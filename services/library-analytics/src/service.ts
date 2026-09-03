@@ -25,6 +25,8 @@ import {
 import {
   type Analytics,
   type BusFactorEntry,
+  type DublettenBefund,
+  type DublettenPruefung,
   type ExpertiseEntry,
   type Graph,
   type GraphEdge,
@@ -35,6 +37,7 @@ import {
   LibraryError,
   type Neighborhood,
   type ReviewAction,
+  type UebersprungenerImport,
 } from "./types";
 
 // WP-BILD-1h (bens sammel15-ROT 2): harter Backfill-Deckel PRO SUCHANFRAGE. Eine nicht-matchende
@@ -94,6 +97,75 @@ const GRAPH_EDGE_LIMIT = 5_000;
 // nichts; ein `TypeError` wäre zwar auch kein Leck, aber er beschreibt den Fall nicht.
 function erzwingeSichtbar(sichtbar: KoSichtbar | undefined): KoSichtbar {
   return typeof sichtbar === "function" ? sichtbar : () => false;
+}
+
+// JOB 3023 — DIESELBE ZWEITE LINIE FUER DIE DUBLETTENPRUEFUNG (types.ts, DublettenPruefung).
+//
+// Der Compiler verlangt sie; ein Aufrufer UNTERHALB des Compilers (JavaScript, ein `as never`, ein
+// aus JSON gebautes Deps-Objekt) kann sie trotzdem weglassen. Fail-closed heisst hier NICHT „dann
+// eben ohne Pruefung importieren" — das waere die unbemerkte Dublette — sondern: jeder Eintrag
+// gilt als NICHT PRUEFBAR und wird ehrlich als solcher uebersprungen. Der geworfene Fehler landet
+// im Ausfall-Zweig von `importJson` und erscheint in der Antwort als `pruefung_nicht_moeglich`.
+function erzwingeDublettenpruefung(pruefung: DublettenPruefung | undefined): DublettenPruefung {
+  if (typeof pruefung === "function") {
+    return pruefung;
+  }
+  return () => {
+    throw new LibraryError(
+      "BAD_REQUEST",
+      "Import ohne verdrahtete Dublettenpruefung — es wird nichts eingespielt.",
+    );
+  };
+}
+
+// Ein Befund aus fremder Hand ist untrusted wie jede andere Fremdangabe (Muster
+// `sanitizeImportConfidentiality`): nur ein VOLLSTAENDIGER Duplikatbefund darf einen Eintrag
+// zurueckhalten, und nur ein ausdrueckliches `dublette: false` darf ihn durchlassen. Alles andere
+// ist keine Entscheidung und faellt in den Ausfall-Zweig.
+//
+// ------------------------------------------------------------------------------------------------
+// RUNDE 3 (bens Befund) — EIN BEFUND WIRD MATERIALISIERT, NICHT NUR GEPRUEFT.
+// ------------------------------------------------------------------------------------------------
+//
+// Runde 2 hatte einen PRAEDIKAT-Pruefer (`istBrauchbarerBefund`). Der bestaetigte nur die Form; der
+// Aufrufer griff danach WEITER auf das fremde Objekt zu — und dieser Zugriff lag ausserhalb des
+// `try`. Ben hat es gemessen: ein `dublette`-Getter, der beim ERSTEN Lesen brav `false` liefert und
+// beim ZWEITEN wirft, kam durch die Pruefung und riss dann den GANZEN Import mit.
+//
+// Ein Praedikat ueber ein fremdes Objekt ist deshalb keine Sicherung: Es sagt etwas ueber den
+// Zustand von GESTERN. Zwischen Pruefung und Verwendung kann sich derselbe Zugriff anders
+// verhalten — er wirft, oder er liefert einen anderen Wert (`false` zum Pruefen, `true` zum
+// Benutzen). Beides ist mit Gettern trivial zu bauen.
+//
+// DIE ANTWORT: JEDE Eigenschaft wird GENAU EINMAL gelesen, sofort in eine lokale Variable, und aus
+// diesen Variablen entsteht ein EIGENES, frisches Objekt. Danach wird das fremde Objekt nie wieder
+// angefasst — es gibt keinen zweiten Zugriff, der werfen oder seine Meinung aendern koennte.
+// Der einzige Lesevorgang liegt im `try` des Aufrufers; wirft er, kostet er seinen eigenen Eintrag.
+//
+// Rueckgabe `null` heisst „keine brauchbare Entscheidung" und fuehrt zu `pruefung_nicht_moeglich`.
+function materialisiereBefund(roh: unknown): DublettenBefund | null {
+  if (typeof roh !== "object" || roh === null) {
+    return null;
+  }
+  const fremd = roh as { dublette?: unknown; koId?: unknown; aehnlichkeit?: unknown };
+  // DIE DREI EINZIGEN ZUGRIFFE AUF DAS FREMDE OBJEKT — ab hier nur noch eigene Werte.
+  const dublette: unknown = fremd.dublette;
+  const koId: unknown = fremd.koId;
+  const aehnlichkeit: unknown = fremd.aehnlichkeit;
+
+  if (dublette === false) {
+    return { dublette: false };
+  }
+  if (dublette !== true) {
+    return null;
+  }
+  if (typeof koId !== "string" || koId.trim().length === 0) {
+    return null;
+  }
+  if (typeof aehnlichkeit !== "number" || !Number.isFinite(aehnlichkeit)) {
+    return null;
+  }
+  return { dublette: true, koId, aehnlichkeit };
 }
 
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
@@ -1392,24 +1464,108 @@ export class LibraryService {
 
   // FR-LIB-02: Import per JSON ohne Duplikate.
   //
-  // AUFTRAG-mega82 Block A: `actor` ist der EINREICHENDE Nutzer (library-routes.ts:210 übergibt
+  // AUFTRAG-mega82 Block A: `actor` ist der EINREICHENDE Nutzer (library-routes.ts übergibt
   // `user.id`) und damit der Handelnde dieses Imports — nicht mehr bloß ein „Vorgabe-Autor", der
-  // einspringt, wenn das Item keinen nennt. Der Name ist deshalb mitgewandert; die Vorgabe
-  // `"import"` bleibt für Aufrufer ohne Sitzung (Tests, Werkzeuge) unverändert stehen.
-  async importJson(rawItems: readonly ImportItem[], actor = "import"): Promise<ImportResult> {
+  // einspringt, wenn das Item keinen nennt.
+  //
+  // JOB 3023: die Vorgabe `"import"` ist entfallen. Sie stand vor dem neuen Pflicht-Port und wäre
+  // damit eine Vorgabe, die kein Aufrufer mehr auslassen KANN (`useDefaultParameterLast`) — eine
+  // Vorgabe, die nie greift, ist eine Behauptung ohne Fall. Alle Aufrufer nennen ihren Handelnden
+  // ohnehin ausdrücklich.
+  //
+  // ==============================================================================================
+  // JOB 3023 — DER RE-IMPORT PRUEFT AUF DUBLETTEN, STATT ZEICHEN ZU VERGLEICHEN.
+  // ==============================================================================================
+  //
+  // WAS FALSCH WAR: der Dublettentest war ein `seen.has()` auf `` `${title}|${statement}` ``. Ein
+  // Satzpunkt am Satzende, ein anderes Leerzeichen oder eine geaenderte Gross-/Kleinschreibung
+  // genuegte, damit derselbe Eintrag ein zweites Mal angelegt wurde; `conditions`, `measures`,
+  // `tags` und `category` gingen gar nicht ein.
+  //
+  // WAS JETZT GILT — ZWEI PAESSE, EINE REGEL:
+  //   1. Der `title|statement`-Schluessel bleibt als BILLIGER erster Pass fuer die exakte
+  //      Zeichengleichheit (`identisch`). Er kostet einen Map-Zugriff und faengt den haeufigsten
+  //      Fall — dieselbe Sicherung noch einmal eingespielt — ohne jede Rechnung ab. Er traegt
+  //      jetzt die getroffene `koId` mit, damit die Antwort auch hier sagen kann, WORAUF.
+  //   2. Alles darueber entscheidet die injizierte `DublettenPruefung` — die Regel, die das
+  //      Produkt bereits besitzt (`coreText` + `trigramSimilarity`), verdrahtet in der
+  //      Kompositionswurzel. Dieses Modul legt sie NICHT aus.
+  //
+  // GEGEN DEN BESTAND *UND* GEGEN DEN EIGENEN LAUF: `bestand` waechst um jedes erzeugte Objekt.
+  // Eine Sicherung, die dieselbe Sache zweimal enthaelt, erzeugt sie darum nicht zweimal.
+  //
+  // EHRLICHE KOSTENGRENZE: der zweite Pass rechnet je NICHT exakt getroffenem Eintrag gegen den
+  // ganzen Bestand (O(neu × bestand) Textvergleiche). Ein Deckel waere eine EIGENE Regel darueber,
+  // welche Kandidaten wegfallen duerfen — genau das zweite Gehirn, das dieser Auftrag ausschliesst.
+  // Die Wiedereinspielung, der haeufige Fall, laeuft ohnehin ueber Pass 1.
+  async importJson(
+    rawItems: readonly ImportItem[],
+    actor: string,
+    // PFLICHT, nicht optional (types.ts, DublettenPruefung): sonst duerfte ein zweiter Aufbau den
+    // Schutz typgueltig weglassen.
+    pruefeDublette: DublettenPruefung,
+  ): Promise<ImportResult> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren (ungültig/unbekannt → vertraulich, nie intern).
     const items = rawItems.map((item) => this.withSanitizedConfidentiality(item));
+    const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
-    const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
+    // Pass 1: exakter Schluessel → getroffenes Objekt. Der ERSTE Träger eines Schluessels gewinnt,
+    // damit die genannte koId bei Altbestand-Dubletten deterministisch ist.
+    const exakt = new Map<string, string>();
+    for (const ko of existing) {
+      const key = `${ko.title}|${ko.statement}`;
+      if (!exakt.has(key)) {
+        exakt.set(key, ko.id);
+      }
+    }
+    const bestand: KnowledgeObject[] = [...existing];
+    const uebersprungen: UebersprungenerImport[] = [];
     let imported = 0;
-    let skipped = 0;
     for (const item of items) {
       const key = `${item.title}|${item.statement}`;
-      if (seen.has(key)) {
-        skipped += 1;
+      const exakterTreffer = exakt.get(key);
+      if (exakterTreffer !== undefined) {
+        uebersprungen.push({ titel: item.title, grund: "identisch", koId: exakterTreffer });
         continue;
       }
-      await this.koService.create({
+      // FAIL-CLOSED, ausgeschrieben: scheitert die Pruefung fuer EINEN Eintrag, wird er NICHT
+      // eingespielt, sondern als `pruefung_nicht_moeglich` uebersprungen. Eine unbemerkte Dublette
+      // im Bestand ist teurer als ein nicht eingespielter Eintrag, den der Einspielende in der
+      // Antwort sieht und erneut schicken kann. Und der Fehler bleibt LOKAL: er kippt nie den
+      // ganzen Import — die uebrigen Eintraege laufen weiter.
+      //
+      // RUNDE 2 (bens Befund 2): der AUFRUF allein im `try` genuegte nicht — eine Pruefung, die
+      // `null`/`undefined` zurueckgab, warf erst beim Auswerten und riss den ganzen Import mit
+      // (`TypeError: Cannot read properties of undefined (reading 'dublette')`).
+      //
+      // RUNDE 3 (bens Befund): auch das PRUEFEN im `try` genuegte nicht, solange danach WEITER auf
+      // das fremde Objekt zugegriffen wurde. Ein `dublette`-Getter, der beim ersten Lesen `false`
+      // liefert und beim zweiten wirft, kam durch die Pruefung und kippte dann doch den ganzen
+      // Import. Deshalb steht hier jetzt eine MATERIALISIERUNG: `materialisiereBefund` liest jede
+      // Eigenschaft genau einmal und gibt ein EIGENES Objekt zurueck. `befund` unten ist diese
+      // Kopie — das fremde Objekt wird nach dem `try` nie wieder angefasst.
+      let befund: DublettenBefund;
+      try {
+        const eigeneEntscheidung = materialisiereBefund(pruefung(item, bestand));
+        if (eigeneEntscheidung === null) {
+          uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
+          continue;
+        }
+        befund = eigeneEntscheidung;
+      } catch {
+        uebersprungen.push({ titel: item.title, grund: "pruefung_nicht_moeglich", koId: null });
+        continue;
+      }
+      if (befund.dublette) {
+        uebersprungen.push({
+          titel: item.title,
+          grund: "aehnlich",
+          koId: befund.koId,
+          aehnlichkeit: befund.aehnlichkeit,
+        });
+        continue;
+      }
+      const erzeugt = await this.koService.create({
         title: item.title,
         statement: item.statement,
         type: item.type,
@@ -1436,16 +1592,20 @@ export class LibraryService {
         // SCRUM-509 R3: JSON-Import ist ein Bulk-Pfad → konservativ „vertraulich" bei fehlendem Signal.
         confidentiality: item.confidentiality ?? "vertraulich",
       });
-      seen.add(key);
+      exakt.set(key, erzeugt.id);
+      bestand.push(erzeugt);
       imported += 1;
     }
+    // `skipped` behaelt Name und Bedeutung: nicht eingespielt. Es ist die Laenge der Liste — beide
+    // Zahlen koennen nicht auseinanderlaufen.
+    const skipped = uebersprungen.length;
     await this.audit?.record({
       actor,
       action: "library.import",
       target: "library",
       payload: { imported, skipped },
     });
-    return { imported, skipped };
+    return { imported, skipped, uebersprungen };
   }
 
   // FR-LIB-03: Bus-Faktor je Kategorie (Einzelquelle = nur ein Autor).

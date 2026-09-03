@@ -14,6 +14,7 @@ import {
 } from "./types";
 import type {
   ContentReferenceState,
+  DublettenPruefung,
   ImportCandidate,
   ImportItem,
   ImportRun,
@@ -22,6 +23,14 @@ import type {
   KnowledgeGapRelationState,
   SourceAdapter,
 } from "./types";
+
+// JOB 3023: `importJson` nimmt die Dublettenregel seit diesem Auftrag als PFLICHT-Port entgegen
+// (types.ts, DublettenPruefung) — der Dienst legt sie nicht mehr selbst aus. Die Fälle unten prüfen
+// den ERSTEN Pass (exakte Zeichengleichheit) und die Vertraulichkeits-Einstufung; die
+// Ähnlichkeitsregel selbst wird dort gemessen, wo sie gebaut wird: über die echte Route in
+// `tests/re-import-dubletten/`. Diese Prüfung sagt deshalb ehrlich „keine Ähnlichkeit gefunden"
+// und lässt damit genau den Bestandsvertrag dieser Fälle unverändert.
+const OHNE_AEHNLICHKEIT: DublettenPruefung = () => ({ dublette: false });
 
 function confItem(over: Partial<ImportItem> = {}): ImportItem {
   return {
@@ -221,17 +230,30 @@ describe("LibraryService", () => {
         category: "Anlage 3",
       },
     ];
-    const result = await ctx.library.importJson(items);
-    expect(result).toEqual({ imported: 1, skipped: 1 });
+    const result = await ctx.library.importJson(items, "import", OHNE_AEHNLICHKEIT);
+    expect(result).toEqual({
+      imported: 1,
+      skipped: 1,
+      // JOB 3023: die Antwort sagt jetzt WARUM und WORAUF — hier trifft der erste, exakte Pass.
+      uebersprungen: [
+        {
+          titel: "Ventil schließen",
+          grund: "identisch",
+          koId: (await ctx.koService.list()).find((k) => k.title === "Ventil schließen")?.id,
+        },
+      ],
+    });
     expect(await ctx.koService.list()).toHaveLength(3);
   });
 
   // SCRUM-509 R3: Import ist ein Bulk-Pfad → konservativ. Fehlt die Stufe, gilt „vertraulich"
   // (NICHT still intern) — importierter Fremdinhalt bleibt aus Cloud/Export heraus, bis freigegeben.
   it("SCRUM-509 R3: JSON-Import ohne Stufe → vertraulich (nicht intern)", async () => {
-    await ctx.library.importJson([
-      { title: "Fremd", statement: "Importiert.", type: "best_practice", category: "Anlage 9" },
-    ]);
+    await ctx.library.importJson(
+      [{ title: "Fremd", statement: "Importiert.", type: "best_practice", category: "Anlage 9" }],
+      "import",
+      OHNE_AEHNLICHKEIT,
+    );
     const imported = (await ctx.koService.list()).find((k) => k.title === "Fremd");
     expect(imported?.confidentiality).toBe("vertraulich");
   });
@@ -539,6 +561,7 @@ describe("LibraryService — Audit (FR-AUD-01)", () => {
     await library.importJson(
       [{ title: "X", statement: "Y", type: "lernkurve", category: "A" }],
       "importer",
+      OHNE_AEHNLICHKEIT,
     );
     const entries = await audit.list({ action: "library.import" });
     expect(entries).toHaveLength(1);
@@ -759,7 +782,7 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
       category: "X",
       confidentiality: 999,
     } as unknown as ImportItem;
-    const res = await library.importJson([poisoned], "importer");
+    const res = await library.importJson([poisoned], "importer", OHNE_AEHNLICHKEIT);
     expect(res.imported).toBe(1);
     const ko = (await koService.list()).find((k) => k.title === "Fremd B")!;
     expect(ko.confidentiality).toBe("vertraulich");

@@ -1,7 +1,15 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { ConflictService, OverlapService, OverlapSettingsRepo } from "../../../conflicts";
-import type { KoFilter, KoService } from "../../../knowledge-object";
+import {
+  type ConflictService,
+  type OverlapService,
+  type OverlapSettingsRepo,
+  coreText,
+  trigramSimilarity,
+} from "../../../conflicts";
+import type { KnowledgeObject, KoFilter, KoService } from "../../../knowledge-object";
 import type {
+  DublettenBefund,
+  DublettenPruefung,
   ImportCandidate,
   ImportItem,
   LibraryService,
@@ -126,6 +134,130 @@ async function recordImportAcceptAiCheck(
   }
 }
 
+// ================================================================================================
+// JOB 3023 — DIE DUBLETTENREGEL DES RE-IMPORTS, HIER GEBAUT UND VON HIER ÜBERGEBEN.
+// ================================================================================================
+//
+// WARUM HIER. `library-analytics` darf die Regel nicht selbst auslegen und `services/conflicts`
+// nicht importieren (das wäre eine zweite Auslegung derselben Frage an einem zweiten Ort und eine
+// neue Modulkante). Diese Datei ist die Kompositionswurzel des Bibliotheksbereichs — hier treffen
+// sich `conflicts` (die Kennzahl) und `library-analytics` (der Port), genau wie in
+// `duplicate-detection.ts` `conflicts`, `knowledge-object` und `reasoner` zusammenkommen.
+//
+// KEIN ZWEITES GEHIRN. Verglichen wird der KERNTEXT (`coreText`, conflicts/index.ts:25 — derselbe
+// String, den der Duplikat-Judge vergleicht). Verglichen wird MIT `trigramSimilarity`
+// (conflicts/index.ts:29 — deterministisch, DOM-frei, ohne Modell/Embedding-Egress). Keine eigene
+// Normalisierung, kein eigener Score, kein Stemmer.
+//
+// WARUM `trigramSimilarity` AUF DEM KERNTEXT UND NICHT `lexicalOverlapScore`. Der gewichtete Score
+// setzt Titel 0,30 / Aussage 0,40 / Bedingungen 0,15 / Maßnahmen 0,15 an — eine Gewichtung für die
+// Frage „behandeln zwei GEPFLEGTE Objekte dasselbe". Hier ist die Frage eine andere: „ist das der
+// Eintrag, den ich schon habe, nur anders abgetippt". Dafür zählt der ganze Vergleichstext gleich.
+//
+// ------------------------------------------------------------------------------------------------
+// RUNDE 2 (bens Befund 1) — BEIDE SEITEN AUF DERSELBEN FELDBASIS, SONST IST DER VERGLEICH BLIND.
+// ------------------------------------------------------------------------------------------------
+//
+// Runde 1 baute den Kerntext des IMPORT-EINTRAGS mit leeren `conditions`/`measures` (die trägt ein
+// `ImportItem` nicht), den des BESTANDSOBJEKTS aber mit dessen echten Bedingungen und Maßnahmen.
+// Das ist kein „ehrlicher leerer Rest", sondern ein ASYMMETRISCHER Vergleich: je gepflegter ein
+// Wissensobjekt, desto mehr Text steht nur auf einer Seite und desto kleiner wird die Ähnlichkeit.
+// Ben hat genau das gemessen — ein vollständiges Bestandsobjekt mit Bedingungen und Maßnahmen,
+// wieder eingespielt mit bloß geänderter Schreibweise, kam auf 0,12 und wurde ein zweites Mal
+// angelegt. Der Schutz griff also ausgerechnet dort nicht, wo am meisten zu verlieren ist.
+//
+// DIE FELDBASIS IST DAHER, WAS BEIDE SEITEN TRAGEN KÖNNEN: Titel und Aussage. Eine Sicherung
+// liefert nichts anderes; alles darüber hinaus stünde zwangsläufig nur auf der Bestandsseite.
+// Das ist keine neue Position des Produkts, sondern DIESELBE, die der exakte erste Pass seit jeher
+// einnimmt: er hält `title|statement` für die Identität eines Eintrags. Der zweite Pass macht aus
+// dieser Zeichengleichheit eine Ähnlichkeit — mehr nicht.
+//
+// WAS DAS KOSTET, ausgeschrieben: Zwei Wissensobjekte mit gleichem Titel und gleicher Aussage, die
+// sich NUR in Bedingungen oder Maßnahmen unterscheiden, gelten dem Re-Import als dieselbe Sache.
+// Der exakte erste Pass tat das schon vorher, also verschiebt sich hier nichts; und ein Eintrag,
+// der so zurückgehalten wird, verschwindet nicht still, sondern steht mit Grund, getroffener koId
+// und Wert in der Antwort.
+const RE_IMPORT_DUBLETTE_AB = 0.85;
+//
+// DIE SCHWELLE, AN GENAU EINER STELLE AUSGESCHRIEBEN UND BEGRÜNDET (0,85):
+// Es ist die Zahl, mit der das Produkt seit dem Berater-Konzept 04.07. „sehr hohe Textdeckung →
+// das ist dasselbe, dafür braucht es kein Modell" meint (`conflicts/src/duplicate-detect.ts:48`,
+// DUP_DETERMINISTIC_THRESHOLD). Genau diese Aussage wird hier gebraucht, und eine zweite,
+// abweichende Zahl für dieselbe Aussage wäre der Anfang zweier Wahrheiten. Die gemessene Lage:
+// derselbe Satz mit Satzpunkt und anderer Groß-/Kleinschreibung liegt nach der Normalisierung von
+// `trigramSimilarity` bei 1,0; ein fachlich anderer Eintrag derselben Kategorie liegt weit
+// darunter. Bewusst KEINE Admin-Einstellung und KEIN Anfrageparameter: wer die Schwelle mit der
+// Anfrage mitschicken könnte, könnte den Schutz mit der Anfrage abschalten.
+
+/**
+ * Der Vergleichstext EINER Seite — und es gibt nur diese eine Funktion.
+ *
+ * Sie ist bewusst die einzige Stelle, an der ein Vergleichstext entsteht: Zwei Aufrufer, die
+ * `coreText` je selbst zusammensetzen, können in ihrer Feldauswahl auseinanderlaufen, ohne dass
+ * der Compiler etwas merkt — genau das war der Defekt aus Runde 1. Import- und Bestandsseite
+ * gehen deshalb durch dieselbe Tür.
+ *
+ * `conditions`/`measures` sind hier leer, weil sie es auf der Importseite IMMER sind. Sie auf der
+ * Bestandsseite zu füllen hieße, gegen Text zu vergleichen, den die andere Seite gar nicht haben
+ * kann.
+ */
+const VERGLEICH_REF = "re-import-vergleich";
+
+function vergleichstext(titel: string, aussage: string): string {
+  return coreText({
+    refId: VERGLEICH_REF,
+    title: titel,
+    statement: aussage,
+    conditions: [],
+    measures: [],
+    tags: [],
+  });
+}
+
+/**
+ * Der Vergleichstext eines Bestandsobjekts, je Objekt einmal gerechnet.
+ *
+ * Der Zwischenspeicher hängt an der OBJEKTIDENTITÄT (`WeakMap`), nicht an der `koId`: ein
+ * überarbeitetes Wissensobjekt ist ein anderes Objekt und bekommt darum nie den alten Text — ein
+ * id-basierter Zwischenspeicher wäre eine veraltbare zweite Wahrheit.
+ */
+const kerntextJeObjekt = new WeakMap<KnowledgeObject, string>();
+
+function kerntextVon(ko: KnowledgeObject): string {
+  const bekannt = kerntextJeObjekt.get(ko);
+  if (bekannt !== undefined) {
+    return bekannt;
+  }
+  const text = vergleichstext(ko.title, ko.statement);
+  kerntextJeObjekt.set(ko, text);
+  return text;
+}
+
+const pruefeReImportDublette: DublettenPruefung = (item, bestand): DublettenBefund => {
+  const kerntext = vergleichstext(item.title, item.statement);
+  // Der BESTE Treffer, nicht der erste: die Antwort soll das Objekt nennen, dem der Eintrag am
+  // nächsten kommt. Bei Gleichstand entscheidet die aufsteigende koId — dieselbe Tiebreak-Regel
+  // wie in `selectOverlapCandidates`, damit die Auskunft nicht an der Zeilenreihenfolge der
+  // Datenbank hängt.
+  let treffer: { koId: string; wert: number } | null = null;
+  for (const ko of bestand) {
+    const wert = trigramSimilarity(kerntext, kerntextVon(ko));
+    if (wert < RE_IMPORT_DUBLETTE_AB) {
+      continue;
+    }
+    if (
+      treffer === null ||
+      wert > treffer.wert ||
+      (wert === treffer.wert && ko.id < treffer.koId)
+    ) {
+      treffer = { koId: ko.id, wert };
+    }
+  }
+  return treffer === null
+    ? { dublette: false }
+    : { dublette: true, koId: treffer.koId, aehnlichkeit: treffer.wert };
+};
+
 // SCRUM-470 (S6): Deps für die Erkennung nach einem akzeptierten Import-Kandidaten. Dieselben Bausteine,
 // die auch der Promote-Pfad (capture-routes) nutzt — hier gebündelt, damit der Route-Layer sie an
 // detect*ForKo reichen kann. Optional: fehlt das Bündel, unterbleibt die Erkennung (wie bisher).
@@ -234,7 +366,12 @@ export function libraryRoutes(
         return;
       }
       try {
-        reply.code(200).send(await library.importJson(request.body.items ?? [], user.id));
+        // JOB 3023: die Dublettenregel reist als Prädikat mit — der Dienst legt sie nicht aus.
+        reply
+          .code(200)
+          .send(
+            await library.importJson(request.body.items ?? [], user.id, pruefeReImportDublette),
+          );
       } catch (error) {
         sendError(reply, error);
       }

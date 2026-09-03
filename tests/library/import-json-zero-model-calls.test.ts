@@ -79,14 +79,103 @@ afterEach(() => {
   }
 });
 
-function importItems(n: number) {
-  return Array.from({ length: n }, (_, i) => ({
-    title: `Bulk-Objekt ${i}`,
-    statement: `Aussage Nummer ${i} mit eigenem Inhalt.`,
-    type: "best_practice" as const,
-    category: "Betrieb",
-    confidentiality: "intern" as const,
-  }));
+// ================================================================================================
+// JOB 3023 — DIE FUELLZEILEN MUSSTEN ECHT UNTERSCHEIDBAR WERDEN.
+// ================================================================================================
+//
+// Bis HEAD 7cf92ce hiessen die Objekte `Bulk-Objekt <i>` / `Aussage Nummer <i> mit eigenem Inhalt.`
+// Sie unterschieden sich in EINER ZIFFER. Das genuegte, solange `importJson` Dubletten ueber
+// Zeichengleichheit entschied — seit JOB 3023 entscheidet die Aehnlichkeitspruefung des Produkts
+// (`coreText` + `trigramSimilarity`, Schwelle 0,85), und zwei sonst wortgleiche Kurztexte liegen
+// darueber (gemessen in `tests/re-import-dubletten/schwelle-kalibrierung.test.ts`, Fall K3).
+//
+// DIE VORBEDINGUNG DIESES TESTS BLEIBT DAMIT DIESELBE, sie wird nur ehrlich hergestellt: mega29 D3
+// verlangt, dass die 25 Objekte WIRKLICH angelegt werden — sonst waeren die Null-Zaehler trivial
+// richtig, weil gar nichts geschah. Genau das leisten unterscheidbare Eintraege. Kein Zaehler, kein
+// Spion und keine Zusicherung dieses Tests wurde angefasst; ausschliesslich die Fuelldaten.
+const BULK_GERAETE = [
+  "Kesselspeisepumpe",
+  "Rueckschlagklappe",
+  "Sicherheitsventil",
+  "Waermetauscher",
+  "Foerderband",
+  "Ruehrwerk",
+  "Schraubenkompressor",
+  "Bandtrockner",
+  "Filterpresse",
+  "Dekanterzentrifuge",
+  "Schaltschrank",
+  "Frequenzumrichter",
+  "Getriebemotor",
+  "Klauenkupplung",
+  "Hydraulikaggregat",
+  "Vakuumpumpe",
+  "Dosierpumpe",
+  "Oelabscheider",
+  "Gasbrenner",
+  "Rauchgasgeblaese",
+  "Kuehlturm",
+  "Speisewasserbehaelter",
+  "Kondensatpumpe",
+  "Druckluftnetz",
+  "Gleitringdichtung",
+  "Rohrbuendelkuehler",
+  "Absperrschieber",
+  "Membranventil",
+  "Magnetventil",
+  "Stellantrieb",
+  "Durchflussmesser",
+  "Fuellstandsonde",
+  "Temperaturfuehler",
+  "Drucktransmitter",
+  "Analysenschrank",
+  "Probenehmer",
+  "Bandwaage",
+  "Schneckenfoerderer",
+  "Becherwerk",
+  "Siebmaschine",
+  "Walzenbrecher",
+  "Kugelmuehle",
+  "Statikmischer",
+  "Doppelschneckenextruder",
+  "Abfuellanlage",
+  "Etikettierer",
+  "Palettierroboter",
+  "Tauchpumpe",
+  "Notstromaggregat",
+  "Gaswarnmelder",
+] as const;
+
+const BULK_ARBEITEN = [
+  "entkalken",
+  "abschmieren",
+  "kalibrieren",
+  "ausrichten",
+  "entlueften",
+  "spuelen",
+  "nachziehen",
+  "tauschen",
+  "abgleichen",
+  "freibrennen",
+] as const;
+
+/**
+ * `versatz` waehlt einen DISJUNKTEN Ausschnitt aus dem Geraetevorrat. Die zweite Welle nutzt darum
+ * andere Gegenstaende als die erste — sonst waere sie die Dublette der ersten, und die
+ * Vorbedingung „auch in einen gefuellten Bestand hinein 25 Objekte" waere nicht herstellbar.
+ */
+function importItems(n: number, versatz = 0) {
+  return Array.from({ length: n }, (_, i) => {
+    const geraet = BULK_GERAETE[(versatz + i) % BULK_GERAETE.length];
+    const arbeit = BULK_ARBEITEN[(versatz + i) % BULK_ARBEITEN.length];
+    return {
+      title: `${geraet} ${arbeit}`,
+      statement: `${geraet} ${arbeit}, Befund vermerken.`,
+      type: "best_practice" as const,
+      category: "Betrieb",
+      confidentiality: "intern" as const,
+    };
+  });
 }
 
 async function setup() {
@@ -156,7 +245,9 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
 
     // Der Import hat wirklich stattgefunden — sonst wären die Nullen wertlos.
     expect(res.statusCode).toBe(200);
-    expect(res.json()).toEqual({ imported: 25, skipped: 0 });
+    // JOB 3023: `uebersprungen` ist additiv hinzugekommen. Die leere Liste wird hier MITGEPRUEFT —
+    // sie ist die zweite, unabhaengige Aussage derselben Vorbedingung: nichts wurde zurueckgehalten.
+    expect(res.json()).toEqual({ imported: 25, skipped: 0, uebersprungen: [] });
 
     // … und er hat NICHTS Teures angefasst.
     expect(model.calls).toBe(0);
@@ -180,9 +271,11 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
       method: "POST",
       url: "/api/library/import",
       headers,
-      payload: {
-        items: importItems(25).map((item, i) => ({ ...item, title: `Zweite Welle ${i}` })),
-      },
+      // JOB 3023: bis hierher trug die zweite Welle nur einen anderen TITEL bei gleicher Aussage.
+      // Gegen die Aehnlichkeitspruefung ist das die Dublette der ersten Welle — die Vorbedingung
+      // von mega29 D3 waere nicht mehr herstellbar. Sie nutzt darum jetzt den disjunkten zweiten
+      // Ausschnitt des Geraetevorrats: 25 andere Gegenstaende, 25 andere Aussagen.
+      payload: { items: importItems(25, 25) },
     });
 
     expect(second.statusCode).toBe(200);
@@ -190,7 +283,7 @@ describe("mega28 D: POST /api/library/import erzeugt NULL Modellaufrufe", () => 
     // hing die Aussage „auch in einen gefüllten Bestand hinein null Aufrufe" an geänderten Titeln:
     // wären die 25 Objekte als Duplikate abgewiesen worden, wäre die Null trivial richtig gewesen,
     // weil gar nichts angelegt wurde.
-    expect(second.json()).toEqual({ imported: 25, skipped: 0 });
+    expect(second.json()).toEqual({ imported: 25, skipped: 0, uebersprungen: [] });
     expect(model.calls).toBe(0);
     expect(embedSpy.calls).toBe(0);
     expect(detection.conflicts).toBe(0);

@@ -95,6 +95,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // Erweiterung von `Graph` (totalEdges/truncated/edgeLimit/excludedTags) — sie darf den neuen
   // Inhalt nicht nachträglich decken. Ihre Nachfolgerin steht am Eintrag.
   "FREEZE-144/D5-20260817/types",
+  // JOB 3022 (Zwischenstand): verbraucht. Autorisierte `types.ts` NUR mit der `Graph`-Erweiterung,
+  // noch ohne den JOB-3023-Port (`DublettenBefund`/`DublettenPruefung`, `ImportResult.uebersprungen`).
+  // Beide Änderungen liegen jetzt im selben Stand; die Nachfolgerin deckt ihn gemeinsam.
+  "FREEZE-144/JOB3022-20260903/types",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -111,10 +115,13 @@ const ERWARTETE_ANZAHL = 6;
 const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
   {
     pfad: "services/library-analytics/index.ts",
-    hash: "5c35903ba89d41670a43ff853e906b58b74ceb6322355065ab88b2cc271fdd17",
+    // JOB 3023: der Port der Dublettenregel (`DublettenPruefung`, `DublettenBefund`,
+    // `UebersprungenGrund`, `UebersprungenerImport`) wird hier heraus exportiert — ohne ihn koennte
+    // die Kompositionswurzel die Pruefung nicht typisiert uebergeben.
+    hash: "d11d916c9d9ecf14a825b76b04d695fdc8db0cf6d1bb91618829cbc8c17ca0d4",
     freigabe: {
-      id: "FREEZE-144/D5-20260817/index",
-      autorisiertHash: "5c35903ba89d41670a43ff853e906b58b74ceb6322355065ab88b2cc271fdd17",
+      id: "FREEZE-144/JOB3023-20260903/index",
+      autorisiertHash: "d11d916c9d9ecf14a825b76b04d695fdc8db0cf6d1bb91618829cbc8c17ca0d4",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -125,10 +132,14 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
   // Freigabe steht in WIDERRUFENE_FREIGABEN.
   {
     pfad: "services/library-analytics/src/types.ts",
-    hash: "b13142f389501acf74dc577542edbddd5cfe3077d0ed79cfff7d61106692746a",
+    // JOB 3023 (nach Rebase auf JOB 3022): der Stand trägt jetzt BEIDE Änderungen — die additive
+    // `Graph`-Erweiterung aus JOB 3022 UND den Port der Dublettenregel aus JOB 3023
+    // (`DublettenBefund`/`DublettenPruefung`, `ImportResult.uebersprungen`). Der Hash ist neu aus der
+    // zusammengeführten Datei gemessen, nicht aus einer der beiden Einzeländerungen übernommen.
+    hash: "36888b971625e6d03c41b890db9b4a2aa6450b7bf6fb5f6f5fae671772b017aa",
     freigabe: {
-      id: "FREEZE-144/JOB3022-20260903/types",
-      autorisiertHash: "b13142f389501acf74dc577542edbddd5cfe3077d0ed79cfff7d61106692746a",
+      id: "FREEZE-144/JOB3023-20260903/types",
+      autorisiertHash: "36888b971625e6d03c41b890db9b4a2aa6450b7bf6fb5f6f5fae671772b017aa",
     },
   },
   {
@@ -149,10 +160,12 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
   },
   {
     pfad: "services/library-analytics/src/service.test.ts",
-    hash: "fa03db0a26333616d4ebc362a74840701e04bae5f13b344ccefc5ccd98b438e3",
+    // JOB 3023: `importJson` nimmt den Port als PFLICHT entgegen; die drei Aufrufer dieser Datei
+    // uebergeben ihn ausdruecklich und der Bestandsfall prueft die neue `uebersprungen`-Liste.
+    hash: "b5af58ff2b839cbf650091f046e3662cb1364e6f1db56dc4a9ca703a0f702d62",
     freigabe: {
-      id: "FREEZE-144/D5-20260817/service-test",
-      autorisiertHash: "fa03db0a26333616d4ebc362a74840701e04bae5f13b344ccefc5ccd98b438e3",
+      id: "FREEZE-144/JOB3023-20260903/service-test",
+      autorisiertHash: "b5af58ff2b839cbf650091f046e3662cb1364e6f1db56dc4a9ca703a0f702d62",
     },
   },
   {

@@ -54,6 +54,12 @@ export type {
   KoSichtbar,
   Neighborhood,
   NeighborKo,
+  // JOB 3023: der Port der Dublettenregel. Er MUSS hier heraus, sonst kann die Kompositionswurzel
+  // die Pruefung nicht typisiert uebergeben — und dieses Modul muesste die Regel selbst auslegen.
+  DublettenPruefung,
+  DublettenBefund,
+  UebersprungenGrund,
+  UebersprungenerImport,
 } from "./src/types";
 export { LibraryError } from "./src/types";
 // IC-1 (Import-Cockpit): READ-ONLY Erkundungs-Aggregat (pure, deterministisch).

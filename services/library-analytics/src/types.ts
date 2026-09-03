@@ -49,9 +49,72 @@ export interface ImportItem {
   textCodec?: "decoded";
 }
 
+// ================================================================================================
+// JOB 3023 — DIE DUBLETTENREGEL REIST ALS DATUM IN DEN DIENST.
+// ================================================================================================
+//
+// Bis HEAD 7cf92ce entschied `importJson()` „Dublette" ueber ZEICHENGLEICHHEIT von
+// `` `${title}|${statement}` `` (service.ts:1394-1399). Ein Satzpunkt, ein anderes Leerzeichen oder
+// eine geaenderte Gross-/Kleinschreibung genuegte, damit derselbe Eintrag ein zweites Mal in den
+// Bestand ging — genau das, was eine aus einem anderen Werkzeug gezogene Sicherung mitbringt.
+//
+// WARUM EIN PORT UND KEIN IMPORT AUS `services/conflicts`. Das Produkt BESITZT die Regel bereits,
+// deterministisch und ohne Modell/Egress (`conflicts/index.ts:25` `coreText`, `:29`
+// `trigramSimilarity`). Wuerde dieses Modul sie selbst holen, gaebe es eine zweite Auslegung
+// derselben Frage an einem zweiten Ort — und eine neue Modulkante library-analytics → conflicts.
+// Stattdessen faellt die Entscheidung dort, wo sie hingehoert (Kompositionswurzel
+// `services/app/src/routes/library-routes.ts`) und reist von hier als PRAEDIKAT herein. Das Vorbild
+// steht eine Datei tiefer unten: `KoSichtbar` (mega76 Block D).
+//
+// BEWUSST NICHT OPTIONAL, wo dieser Typ verlangt wird — dieselbe Begruendung wie am Kopf von
+// `erzwingeSichtbar`: ein optionaler Schutz ist ein angebotener Schutz, und ein zweiter Aufbau
+// duerfte ihn dann typgueltig weglassen, ohne dass es jemand merkt.
+//
+// BEWUSST SYNCHRON. Eine synchrone Signatur ist die Zusicherung selbst: hinter ihr kann kein
+// Modellaufruf und kein Egress stecken. Die Regel ist eine Rechnung auf Text, nichts sonst.
+export type DublettenBefund =
+  | { readonly dublette: false }
+  | {
+      readonly dublette: true;
+      /** Das getroffene Wissensobjekt — die Antwort sagt, WORAUF der Eintrag getroffen ist. */
+      readonly koId: string;
+      /** Der Aehnlichkeitswert 0..1, mit dem die Pruefung entschieden hat. */
+      readonly aehnlichkeit: number;
+    };
+
+export type DublettenPruefung = (
+  item: ImportItem,
+  /**
+   * Der Vergleichsbestand. Er enthaelt auch die IM SELBEN LAUF erzeugten Objekte — eine Sicherung,
+   * die dieselbe Sache zweimal traegt, erzeugt sie darum nicht zweimal.
+   */
+  bestand: readonly KnowledgeObject[],
+) => DublettenBefund;
+
+/** Warum ein Eintrag der Sicherung nicht in den Bestand ging. */
+export type UebersprungenGrund = "identisch" | "aehnlich" | "pruefung_nicht_moeglich";
+
+export interface UebersprungenerImport {
+  titel: string;
+  grund: UebersprungenGrund;
+  /**
+   * Das getroffene Wissensobjekt. `null` heisst ehrlich „es wurde keins ermittelt" — bei
+   * `pruefung_nicht_moeglich` gab es gar keine Entscheidung, nicht etwa keinen Treffer.
+   */
+  koId: string | null;
+  /** Nur bei `aehnlich`: der Wert, mit dem die Pruefung entschieden hat. */
+  aehnlichkeit?: number;
+}
+
 export interface ImportResult {
   imported: number;
   skipped: number;
+  /**
+   * JOB 3023: die nackte Zahl konnte weder sagen, WARUM etwas uebersprungen wurde, noch worauf es
+   * getroffen ist. Rein ADDITIV — `imported`/`skipped` behalten Name und Bedeutung; `skipped` ist
+   * weiterhin „nicht eingespielt" und damit stets `uebersprungen.length`.
+   */
+  uebersprungen: UebersprungenerImport[];
 }
 
 // SCRUM-510: quell-agnostischer Import-Vertrag. Ein Adapter (Confluence = #1, Jira-TEST später = #2)
