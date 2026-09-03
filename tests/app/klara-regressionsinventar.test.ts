@@ -340,6 +340,18 @@ const INVENTAR: readonly string[] = [
   // K5 gruen, bevor diese Zeile eingetragen wurde). Sachlich Klara-Regression: der Test haelt
   // fest, was der Mensch waehrend der Suche sieht und was gesperrt ist.
   "tests/design/zielbild-pruefunglaeuft-messung.test.ts",
+  // JOB 3014 D1 (03.09.2026): die vier Messgeraete des Schnittplans fuer `taskpane.html` (P11).
+  // Sie liegen unter `tests/klara-zerlegung/` und tragen „klara" im PFAD — die Namensachse liest
+  // den ganzen Pfad (`wo: "pfad"`), also fallen alle vier in die Namensmenge; alle vier tragen
+  // laut K6-Bericht zusaetzlich die Inhaltsachse `taskpane`, `schnitt-pins` daneben `komponente`
+  // und `palette` (es nennt die Bestandstests dieser Achsen als Mitfahrer namentlich). Der
+  // Verzeichnisname war im Auftrag abschliessend vorgegeben. K2 hat die vier Dateien gemeldet,
+  // das Inventar hat sie nicht still aufgenommen. Sachlich Klara-Regression: sie halten fest,
+  // woran „ohne Verhalten zu aendern" bei einer Zerlegung des Aufgabenfensters gemessen wird.
+  "tests/klara-zerlegung/marken-skelett.test.ts",
+  "tests/klara-zerlegung/probeschnitt.test.ts",
+  "tests/klara-zerlegung/schnitt-pins.test.ts",
+  "tests/klara-zerlegung/schnittflaechen.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -521,7 +533,12 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Wie bei den 2948/2959-Zeilen darueber zaehlt die Datei hier mit, obwohl sie zusaetzlich die
     // Inhaltsachsen `taskpane` und `komponente` traegt — `nurName` ist die Menge, die eine Suche
     // NUR ueber den Namen faende, nicht die Menge der ausschliesslich so gefundenen Dateien.
-    expect(nurName.length).toBe(32);
+    // 32 -> 36 am 03.09.2026 (JOB 3014 D1): die vier Dateien unter `tests/klara-zerlegung/` tragen
+    // „klara" im PFAD (nicht im Dateinamen) — dieselbe Lage wie bei der 3008-Zeile darueber. Der
+    // Verzeichnisname war im Auftrag abschliessend vorgegeben. GEMESSEN, NICHT GESETZT: mit den
+    // vier neuen Inventareintraegen und noch unveraendertem Zaehler meldete der Lauf
+    // `expected 36 to be 32`; erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(36);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });
