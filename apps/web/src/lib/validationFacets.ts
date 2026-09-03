@@ -15,8 +15,7 @@
 // sie hier einzuziehen hiesse, dem Prüf-Board eine zweite Lade- und Fehlerquelle anzuhängen — für
 // eine Filterdimension. Das ist kein Einbau mehr, sondern ein Umbau, und der Auftrag sagt für
 // diesen Fall: anhalten und melden. Steht so im Bericht zu mega45.
-import type { KnowledgeObject } from "../api/types";
-import { confidentialityOf } from "./confidentiality";
+import type { PruefZeile } from "./boardAuskunft";
 import type { FacetGroupConfig } from "./facetFilter";
 import type { FacetValues } from "./facets";
 import { trustBucket } from "./libraryFacets";
@@ -52,13 +51,21 @@ export const VALIDATION_MORE_FILTERS_STORAGE_KEY = "klarwerk.validation.filters.
  * Die Facettenwerte EINES Prüf-Kandidaten — ausschliesslich aus Feldern, die die Karte ohnehin
  * rendert. `reviewWorkView` und `libraryMaturity` sind dieselben reinen Funktionen, mit denen das
  * Board seine Abzeichen zeichnet; hier entsteht also keine zweite Wahrheit über den Prüfstand.
+ *
+ * JOB 3027 · DIE SCHIENE RÄT NICHT MEHR. Bis hierher stand hier `confidentialityOf(ko.confidentiality)`
+ * — und die glättet JEDEN nicht ausdrücklich vertraulichen Wert auf „intern" (confidentiality.ts:12-15).
+ * Ein Objekt, das der Server ausdrücklich als „nicht eingestuft" ausweist, war damit unter „Intern"
+ * auffindbar, obwohl es dort nicht hingehört. Der Wert kommt jetzt aus derselben Ableitung, die auch
+ * die Karte beschriftet (`boardAuskunft`) — Schiene und Karte sagen über denselben Zustand dasselbe.
+ * Der alte Weg steht hier NICHT daneben: zwei Lesarten derselben Stufe auf einer Seite wären genau
+ * die zweite Wahrheit. `confidentialityOf` gilt für alle anderen Flächen unverändert weiter.
  */
-export function validationFacetValues(ko: KnowledgeObject): FacetValues {
+export function validationFacetValues(zeile: PruefZeile): FacetValues {
   return {
-    pruefstand: [reviewWorkView(ko).state],
-    maturity: [libraryMaturity(ko).usability],
-    trust: [trustBucket(ko.trust)],
-    confidentiality: [confidentialityOf(ko.confidentiality)],
-    author: ko.author ? [ko.author] : [],
+    pruefstand: [reviewWorkView(zeile).state],
+    maturity: [libraryMaturity(zeile).usability],
+    trust: [trustBucket(zeile.trust)],
+    confidentiality: [zeile.auskunft.stufe.facetWert],
+    author: zeile.author ? [zeile.author] : [],
   };
 }

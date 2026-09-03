@@ -3463,8 +3463,16 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Der Kern des Auftrags: „jede der vier Formen wird ERFASST oder als UNAUFGELÖST gemeldet —
     // kein stilles Durchfallen". Eine Meldung ohne Fundstelle wäre wieder ein stilles Durchfallen,
     // nur mit Zahl. Jede Meldung trägt deshalb den Ort.
+    // JOB 3027: von 207 auf 208 NACHGEZOGEN, nicht gelockert. Es ist GENAU eine Bindung
+    // dazugekommen, und sie hat dieselbe Bauform wie die beiden Plaketten neben ihr
+    // (`REVIEW_WORK_TONE[…]`, `TRUST_TONE[…]`), die seit jeher in dieser Menge stehen:
+    //
+    //     + apps/web/src/pages/Validation.tsx — `${STUFE_TONE[k.auskunft.stufe.tone]}`
+    //       (die Vertraulichkeitsstufe auf der Prüfkarte, Station 4)
+    //
+    // Keine Bindung ist weggefallen; die Zusage bleibt eine EXAKTE Bindung.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      207,
+      208,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -3818,7 +3826,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 // BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — 405 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — 406 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
     // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
@@ -3867,12 +3875,17 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/lib/speechDictation.ts
     //
+    // JOB 3027: von 405 auf 406 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
+    // dazugekommen, und sie trägt die Stufen-/Herkunftsauskunft des Prüfbretts (Station 4):
+    //
+    //     + apps/web/src/lib/boardAuskunft.ts
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 405: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts",
-    ).toBe(405);
+      "erwartet 406: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts",
+    ).toBe(406);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

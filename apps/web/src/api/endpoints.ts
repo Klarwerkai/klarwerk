@@ -78,6 +78,7 @@ import type {
   StructureResult,
   TrashedKo,
   UploadLimits,
+  ValidationBoardKo,
   ValidationSettings,
   Verdict,
 } from "./types";
@@ -333,7 +334,10 @@ export const endpoints = {
     purge: (id: string) => api.del<void>(`/kos/trash/${id}`),
   },
   validation: {
-    board: (f?: KoFilter) => api.get<KnowledgeObject[]>(`/validation/board${qs(f)}`),
+    // JOB 3027: die Board-Route liefert seit JOB 3003/3009 MEHR als ein Wissensobjekt — Stufe und
+    // Herkunft samt Beleglage (services/validation/src/board-herkunft.ts:122-135). Der Typ sagt das
+    // jetzt; vorher las die Oberfläche eine Auskunft, von der ihr Vertrag nichts wusste.
+    board: (f?: KoFilter) => api.get<ValidationBoardKo[]>(`/validation/board${qs(f)}`),
     overview: () => api.get<AssignmentSummary[]>("/validation/overview"),
     // SCRUM-395: Standard-Prüferanzahl (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<ValidationSettings>("/validation/settings"),

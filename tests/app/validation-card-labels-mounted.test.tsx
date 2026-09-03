@@ -308,15 +308,24 @@ describe("JOB 1100 · D-033 · A6: die Zeile ist kürzer geworden", () => {
   // Status-Pille UND Prüfstand fehlten sich nicht gegenseitig, aber Vertrauen und Stimmen standen
   // getrennt. Die Reduktion um genau eins ist die Zusammenlegung; der Plakettentausch verändert
   // die Zahl nicht (eines geht, eines kommt) — genau so gemessen.
-  it("schlichtes Objekt: fünf Etiketten statt vorher sechs", async () => {
+  //
+  // JOB 3027 (nachgeführt, mit Begründung): Es sind SECHS bzw. ACHT. Die Prüfkarte trägt seit JOB
+  // 3027 die Vertraulichkeitsstufe als eigene Plakette (`[data-testid="val-stufe"]`) — die einzige
+  // Angabe dieser Zeile, die nicht aus dem Prüfstand kommt, sondern aus der Auskunft der Route
+  // (`services/validation/src/board-herkunft.ts`). Sie ist UNBEDINGT: jede der drei Lagen
+  // (eingestuft · nicht eingestuft · Auskunft fehlt) ist eine Aussage, und ein Weglassen wäre die
+  // vierte, stumme. Genau EIN Element ist dazugekommen — dass es nicht zwei sind, hält
+  // `tests/pruefseite/stufe-und-herkunft-am-brett.test.tsx` fest (die Herkunft steht im Aufklapper).
+  // Die Aussage dieses Falls bleibt unverändert: die Zahl ist gepinnt und wandert nicht unbemerkt.
+  it("schlichtes Objekt: sechs Etiketten (fünf aus D-033 plus die Stufe aus JOB 3027)", async () => {
     await mountMit([schlichtesKo()]);
 
-    expect(etiketten()).toHaveLength(5);
+    expect(etiketten()).toHaveLength(6);
   });
 
-  it("mit beiden Warnabzeichen: sieben — die bedingten kommen obendrauf, nicht anstelle", async () => {
+  it("mit beiden Warnabzeichen: acht — die bedingten kommen obendrauf, nicht anstelle", async () => {
     await mountMit([schlichtesKo({ reviewVotes: { up: 0, warn: 0, down: 1 }, staleVotes: 2 })]);
 
-    expect(etiketten()).toHaveLength(7);
+    expect(etiketten()).toHaveLength(8);
   });
 });

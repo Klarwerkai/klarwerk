@@ -14,6 +14,13 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
+// JOB 3027: die Facettenwerte werden aus einer PRUEFBRETT-ZEILE gebildet — also aus dem Objekt UND
+// der Auskunft der Route (Stufe/Herkunft samt Beleglage), nicht mehr aus dem Objekt allein.
+import {
+  type AuskunftsFelder,
+  type PruefZeile,
+  pruefZeile,
+} from "../../apps/web/src/lib/boardAuskunft";
 import {
   VALIDATION_FACET_CONFIGS,
   validationFacetValues,
@@ -49,6 +56,23 @@ function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
     sources: [],
     ...overrides,
   } as KnowledgeObject;
+}
+
+/**
+ * Dieselbe Vorlage als PRUEFBRETT-ZEILE. Ohne weitere Angabe traegt sie KEINE Auskunftsfelder —
+ * das ist der Antwortstand von vor JOB 3003 und damit die Lage „Auskunft fehlt".
+ */
+function zeile(
+  over: Partial<Omit<KnowledgeObject, "confidentiality" | "origin">> & AuskunftsFelder = {},
+): PruefZeile {
+  const { confidentiality, confidentialityProvenance, origin, originSources, ...koFelder } = over;
+  return pruefZeile({
+    ...ko(koFelder),
+    ...(confidentiality === undefined ? {} : { confidentiality }),
+    ...(confidentialityProvenance === undefined ? {} : { confidentialityProvenance }),
+    ...(origin === undefined ? {} : { origin }),
+    ...(originSources === undefined ? {} : { originSources }),
+  });
 }
 
 describe("mega45 H · die Filterschiene der Validierung", () => {
@@ -98,19 +122,33 @@ describe("mega45 H · die Filterschiene der Validierung", () => {
   });
 
   it("H-3: die Facettenwerte kommen aus dem Objekt selbst — keine erfundene Dimension", () => {
-    const werte = validationFacetValues(ko());
+    const werte = validationFacetValues(zeile());
     expect(Object.keys(werte).sort()).toEqual(VALIDATION_FACET_CONFIGS.map((c) => c.key).sort());
     // Jede Facette liefert genau die Werte des Objekts, nichts Geratenes.
     expect(werte.pruefstand).toEqual(["validated"]);
     expect(werte.trust).toEqual(["t70"]);
-    expect(werte.confidentiality).toEqual(["intern"]);
+    // JOB 3027 (Ablösung, nachgeführt): Hier stand `["intern"]` — für ein Objekt, das gar keine
+    // Stufe trägt und dessen Antwort auch keine Beleglage mitbringt. Das war genau die Glättung
+    // durch `confidentialityOf`, die JOB 3027 abgelöst hat: die Schiene behauptete eine Einstufung,
+    // die nie jemand gesetzt hat. Der Wert kommt jetzt aus `boardAuskunft` und benennt die Lage.
+    expect(werte.confidentiality).toEqual(["auskunft_fehlt"]);
     expect(werte.author).toEqual(["u-anna"]);
 
+    // Die drei Lagen, jede mit ihrem eigenen Wert — und „nicht eingestuft" ist keine Stufe.
+    expect(
+      validationFacetValues(zeile({ confidentiality: null, confidentialityProvenance: "unknown" }))
+        .confidentiality,
+    ).toEqual(["nicht_eingestuft"]);
+    expect(
+      validationFacetValues(zeile({ confidentiality: "intern", confidentialityProvenance: "ko" }))
+        .confidentiality,
+    ).toEqual(["intern"]);
+
     // Und sie folgt dem Objekt, statt einen Zustand zu erfinden.
-    const offen = validationFacetValues(ko({ status: "offen", trust: 0, assignments: [] }));
+    const offen = validationFacetValues(zeile({ status: "offen", trust: 0, assignments: [] }));
     expect(offen.pruefstand).toEqual(["new"]);
     const zugewiesen = validationFacetValues(
-      ko({ status: "offen", trust: 10, assignments: ["u-bernd"] }),
+      zeile({ status: "offen", trust: 10, assignments: ["u-bernd"] }),
     );
     expect(zugewiesen.pruefstand).toEqual(["assigned"]);
   });

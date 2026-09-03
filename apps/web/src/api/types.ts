@@ -222,13 +222,25 @@ export interface KnowledgeObject {
   neededValidations: number;
   assignments: string[];
   // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
-  confidentiality?: Confidentiality;
+  //
+  // JOB 3027 R2 · WARUM AUCH `null`: seit JOB 3009 geben mehrere Leserouten die Stufe als
+  // ausdrückliche Auskunft aus (`discloseConfidentiality`, services/knowledge-object/src/
+  // confidentiality.ts:99-102) — dort steht bei fehlender Einstufung ein `null` IM JSON, nicht ein
+  // weggelassener Schlüssel. Der Typ bildet damit ab, was wirklich ankommt; er BEHAUPTET nichts
+  // Neues: „fehlt" und `null` heissen beide „am Objekt steht keine Stufe". WELCHE Route die
+  // Beleglage mitliefert, sagt allein der Routenvertrag (`ValidationBoardKo` weiter unten) — nur
+  // dort ist `null` von „diese Antwort trägt die Auskunft nicht" unterscheidbar.
+  confidentiality?: Confidentiality | null;
   // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg, aus dem dieses Objekt entstanden ist — Spiegel
   // von `services/knowledge-object/src/types.ts`. Bis JOB 679 endete die Herkunft am Entwurf; seit
   // Weg A reicht `toKoInput` sie durch, und die Oberfläche kann sie ehrlich anzeigen.
   // FEHLT das Feld, ist die Herkunft UNBEKANNT (Altbestand) — das heißt ausdrücklich nicht
   // „über die Vordertür erfasst". Der Herkunfts-Chip erscheint deshalb nur beim gesetzten Wert.
-  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin";
+  //
+  // JOB 3027 R2: `null` aus demselben Grund wie bei der Stufe darüber — die Board-Route sendet
+  // `origin: ko.origin ?? null` (services/validation/src/board-herkunft.ts:128). Fehlend und `null`
+  // heissen hier beide „unbekannt"; nur der Board-Vertrag trennt sie von „nicht in dieser Antwort".
+  origin?: "tell" | "studio" | "expert" | "frontdoor" | "word_addin" | null;
   // Pedi 05.07.: read-only Board-Anreicherung — Peer-Stimmen-Zähler (grün/gelb/rot) für „X von Y grün".
   reviewVotes?: { up: number; warn: number; down: number };
   // SCRUM-507 R2: Anzahl Bewertungen aus einer FRÜHEREN Revision — veraltet, zählen nicht mehr.
@@ -255,6 +267,64 @@ export interface KnowledgeObject {
     coverage?: AiCheckCoverage;
   };
 }
+
+// ================================================================================================
+// JOB 3027 · STATION 4 — DER LESEVERTRAG DER PRÜFBRETT-ZEILE.
+// ================================================================================================
+//
+// Spiegel von `services/validation/src/board-herkunft.ts:96-99` (`BoardHerkunft`) und
+// `services/knowledge-object/src/confidentiality.ts:87-93` (`ConfidentialityDisclosure`) — dieselbe
+// Denkweise wie bei `EigenerBefund` oben: die Oberfläche importiert keine Services, sie schreibt den
+// Vertrag ab und benennt seine Grenze.
+//
+// WARUM EIN EIGENER TYP UND NICHT VIER FELDER AM `KnowledgeObject`: die vier Felder stehen NUR an
+// dieser einen Route. `GET /kos`, die Suche und der Detailabruf liefern sie so nicht; ein
+// `KnowledgeObject`, das sie überall verspräche, wäre eine Unwahrheit, die der Compiler dann auch
+// noch bestätigt.
+//
+// WARUM `confidentiality: Confidentiality | null` UND NICHT `?: Confidentiality`: `null` ist hier
+// eine AUSSAGE („niemand hat hier je eingestuft") und kein fehlender Wert. Der Unterschied ist der
+// ganze Punkt dieser Route — die Begründung steht am Server ausgeschrieben (board-herkunft.ts:5-18).
+export type ConfidentialityProvenance = "ko" | "unknown";
+
+/** Der Erfassungsweg — dieselbe Wertemenge wie am Wissensobjekt, nur ohne das „fehlt". */
+export type KoOrigin = NonNullable<KnowledgeObject["origin"]>;
+
+/** Eine Quelle in der Übersichtsform: Kennung, Bezeichnung, Art — mehr nicht (board-herkunft.ts:82-86). */
+export interface BoardQuellenhinweis {
+  id: string;
+  label: string;
+  kind: KoSource["kind"];
+}
+
+/**
+ * DER DRAHTVERTRAG: die vier Felder genau so, wie `GET /api/validation/board` sie sendet — mit
+ * `null` als AUSSAGE und nicht als fehlendem Wert. Wer Stufe oder Herkunft dieser Route liest, liest
+ * sie über diese Form (`lib/boardAuskunft.ts`), und die trennt `null` und „Feld fehlt" ausdrücklich.
+ */
+export interface ValidationBoardAuskunft {
+  confidentiality: Confidentiality | null;
+  confidentialityProvenance: ConfidentialityProvenance;
+  origin: KoOrigin | null;
+  originSources: BoardQuellenhinweis[];
+}
+
+/**
+ * Eine Zeile des Prüfbretts: das volle Wissensobjekt, aber mit den VIER Feldern in genau der Form,
+ * in der die Route sie sendet. `Omit` und nicht `extends`, weil `confidentiality` und `origin` hier
+ * PFLICHT sind und `null` tragen dürfen — am Wissensobjekt sind sie optional.
+ *
+ * JOB 3027 R2 (BEN-Korrekturpflicht 2): In Runde 1 stand hier nur `Pick<…, "…Provenance" |
+ * "originSources">`, damit `Start.tsx:199` und `MyTasks.tsx:130` — beide lesen dieselbe Abfrage und
+ * reichen ihre Zeilen an `KnowledgeObject`-Parameter weiter — nicht rot werden. Damit log der Typ,
+ * der unmittelbar in `api.get<…>` steht, über die Wirklichkeit. Der Zielkonflikt ist jetzt an der
+ * RICHTIGEN Stelle aufgelöst: `KnowledgeObject.confidentiality`/`origin` erlauben `null` (Begründung
+ * dort), und diese Zeile ist damit weiterhin ein gültiges `KnowledgeObject` — ohne dass eine Datei
+ * ausserhalb der Zielpfade angefasst werden musste. Die Compile-Zeit-Gleichheit gegen den
+ * Serververtrag hält `tests/pruefseite/board-vertrag.test.tsx` fest.
+ */
+export type ValidationBoardKo = Omit<KnowledgeObject, "confidentiality" | "origin"> &
+  ValidationBoardAuskunft;
 
 // FUNKE F1 (nacht24 Paket 6): „Meine Wirkung" — persönliche Zähler (Spiegel von
 // services/app/src/impact.ts, nur Zahlen über EIGENE Beiträge; cited zählt ehrlich nur die

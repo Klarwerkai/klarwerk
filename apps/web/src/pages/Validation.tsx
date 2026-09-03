@@ -29,6 +29,14 @@ import { Button, Card, PageHeader, QueryState } from "../components/ui";
 // KI-Prüfung eines Eintrags noch läuft — die Liste bekommt den Übergang pending → done selbst mit.
 import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
+// JOB 3027 · Station 4: die zwei Auskünfte der Board-Zeile (Stufe und Herkunft) in drei
+// unterscheidbaren Lagen — abgeleitet, nicht geraten. Begründung im Kopf der Datei.
+import {
+  type PruefZeile,
+  type StufenAuskunft,
+  boardZeilen,
+  stufenFacetLabelKey,
+} from "../lib/boardAuskunft";
 import {
   DEMO_KNOWLEDGE_FILTERS,
   type DemoKnowledgeFilter,
@@ -151,6 +159,15 @@ const REVIEW_WORK_TONE: Record<ReviewWorkTone, string> = {
   warn: "bg-trust-warn-bg text-trust-warn-text",
   neutral: "bg-page text-muted",
   pos: "bg-trust-pos-bg text-trust-pos-text",
+};
+
+// JOB 3027: Tönung der Stufen-Plakette. Sie kommt AUS DER STUFE und nicht aus der Lage — „nicht
+// eingestuft" und „Auskunft fehlt" sind Feststellungen, keine Alarme, und werden deshalb ruhig
+// gezeichnet. Wer sie einfärbte, machte aus einer Auskunft eine Bewertung.
+const STUFE_TONE: Record<StufenAuskunft["tone"], string> = {
+  neutral: "bg-page text-muted",
+  warn: "bg-trust-warn-bg text-trust-warn-text",
+  crit: "bg-trust-crit-bg text-trust-crit-text",
 };
 
 // SCRUM-292: Success-/Outcome-Card passend zum Verdict tönen (up/warn/down).
@@ -394,7 +411,9 @@ export function Validation(): JSX.Element {
       case "trust":
         return t(`lib.facet.trustBucket.${value}`);
       case "confidentiality":
-        return t(`conf.level.${value}`);
+        // JOB 3027: die Beschriftung kommt aus derselben Zuordnung wie die Plakette auf der Karte —
+        // die zwei Fehlzustände tragen keinen Stufennamen und dürfen deshalb keinen bekommen.
+        return t(stufenFacetLabelKey(value));
       case "author":
         return nameOf(value);
       default:
@@ -411,7 +430,33 @@ export function Validation(): JSX.Element {
   // dasselbe Array, das `QueryState` unten durchreicht (`query.data`) — die Rechnung ist
   // identisch, sie steht nur früher.
   // ------------------------------------------------------------------------------------------
-  const items = query.data ?? [];
+  // JOB 3027 · DIE NAHT: dieselben Zeilen, die `QueryState` unten durchreicht (`query.data`) — nur
+  // EINMAL um die abgeleitete `auskunft` erweitert. Danach ist jede Zeile ein gewöhnliches
+  // Wissensobjekt, und Filter, Sortierung und Abzeichen bleiben unangetastet. Kein Bestand
+  // (laden/Fehler) = keine Zeile und damit auch keine Aussage über eine Einstufung.
+  const items = boardZeilen(query.data);
+  // JOB 3027 R2/R3 · NUR DER ERSTFEHLER OHNE JEDE ANTWORT ERSETZT DIE LISTE.
+  //
+  // Liegt eine Antwort im Cache, ist ein Fehler die Aussage „die AUFFRISCHUNG ist gescheitert" und
+  // nicht „es gibt nichts zu zeigen". `QueryState` kennt diesen Unterschied nicht (es fragt
+  // `isError` vor den Daten, ui.tsx:225-230) und liegt ausserhalb der Zielpfade dieses Auftrags —
+  // die Unterscheidung wird deshalb HIER getroffen, an der einzigen Stelle, die beides weiss.
+  //
+  // GEMESSEN WIRD DIE QUERY-LAGE, NICHT DIE ZEILENZAHL (R3, BEN-Korrekturpflicht). In R2 stand hier
+  // `items.length > 0`, und damit fiel eine erfolgreich geladene LEERE Antwort durch: sie ist
+  // genauso eine belegte Auskunft („hier ist gerade nichts offen") wie eine mit zehn Zeilen, wurde
+  // nach einem gescheiterten Refetch aber zur Erstfehlerfläche. `undefined` heisst „nie eine
+  // Antwort gehabt", `[]` heisst „eine Antwort gehabt, sie war leer" — nur das Erste ist ein
+  // Erstfehler. Dieselbe Lehre steht seit JOB 3002 R3/R4 im Haus (LEHREN.md: alter Leer-Cache plus
+  // abgelehnter Refetch).
+  //
+  // Der Zusicherung liegt kein Verschweigen zugrunde: `auffrischungGescheitert` schaltet oben in der
+  // Liste einen sichtbaren Hinweis, und die Fehlerfläche bleibt für den Fall OHNE Antwort
+  // unverändert erhalten (gemessen in tests/pruefseite/zustandsmodell-cache.test.tsx, Fälle C4/E1).
+  const auffrischungGescheitert = query.isError && query.data !== undefined;
+  const boardZustand = (
+    auffrischungGescheitert ? { ...query, status: "success", isError: false, error: null } : query
+  ) as typeof query;
   const cats = categoryOptions(items);
   const tags = tagOptions(items);
   const types = typeOptions(items);
@@ -443,9 +488,15 @@ export function Validation(): JSX.Element {
     railUi,
     facetValueLabel,
   );
+  // JOB 3027: `sortByReviewPriority` ist auf `KnowledgeObject` typisiert (reviewSignals.ts:111) und
+  // gibt die Zeilen deshalb ohne ihre `auskunft` zurück — sie SORTIERT nur, sie baut keine neuen
+  // Zeilen. Die Zusicherung steht hier, weil die Bibliotheksdatei ausserhalb der Zielpfade dieses
+  // Auftrags liegt; sie generisch zu machen ist die saubere Lösung und gehört in den Job, der sie
+  // besitzt. Falsch wird sie nicht stillschweigend: stünde auf der Karte danach keine Stufe, wäre
+  // der gemountete Fall R1 rot.
   const visible = sortByReviewPriority(
     applyFacetSelection(nachFokus, validationFacetValues, facetSel),
-  );
+  ) as PruefZeile[];
   // SCRUM-364 / AG-15: ehrlicher Leerzustand der persönlichen Linse (nur wenn „Mir zugewiesen"
   // aktiv ist und nichts für die Person offen ist) — hat Vorrang vor dem generischen Filter-Empty.
   //
@@ -558,8 +609,25 @@ export function Validation(): JSX.Element {
           labelForValue={facetValueLabel}
         />
         <div className="min-w-0">
+          {/* JOB 3027 R2 · CACHE SCHLÄGT FEHLER — aber der Fehlschlag wird BENANNT.
+              react-query setzt bei einer gescheiterten AUFFRISCHUNG `status: "error"` und behält
+              die Zeilen im Cache; `QueryState` fragt `isError` VOR den Daten (ui.tsx:225-230) und
+              ersetzte damit vorhandene Karten durch eine Fehlerfläche — mitsamt Stufe und
+              Herkunft. Wer gerade eine Freigabe erwog, verlor den Bestand, weil ein
+              Hintergrund-Abruf scheiterte. Der Auftrag verlangt das Gegenteil (§9: „Cache mit
+              gescheiterter Auffrischung — unverändert dasselbe").
+              STILL WEGGELASSEN WIRD DER FEHLER DESHALB NICHT: die Zeile hier sagt, dass der
+              angezeigte Stand nicht frisch ist. Ohne sie wäre die Reparatur eine Verschönerung. */}
+          {auffrischungGescheitert ? (
+            <p
+              data-testid="val-auffrischung-fehler"
+              className="mb-3 rounded-card border border-hairline bg-page px-3 py-2 text-[11.5px] text-muted"
+            >
+              {t("val.refreshFailed")}
+            </p>
+          ) : null}
           <QueryState
-            query={query}
+            query={boardZustand}
             emptyText={t("val.empty")}
             emptyExtra={<EmptyStateCtas context="validation" />}
           >
@@ -932,6 +1000,23 @@ export function Validation(): JSX.Element {
                                   // partner vertraulich war (Paar-Eigenschaft, s. aiCheckStatusCard).
                                   subjectConfidentiality={k.confidentiality}
                                 />
+                                {/* JOB 3027 · STATION 4 — WIE VERTRAULICH, IN DREI LAGEN.
+                                    Die Stufe stand auf dieser Karte bis hierher NIRGENDS; ihr
+                                    einziges Vorkommen war die Weitergabe an das KI-Abzeichen
+                                    darüber, die nur die Begründung eines anderen Zustands trägt.
+                                    GENAU EIN neues Element in dieser Zeile: sie wird gezählt
+                                    (D-033, `validation-card-labels`), eine zweite Ergänzung
+                                    verfälschte die Zählung. Die Herkunft steht deshalb unten im
+                                    Aufklapper. Der Text kommt aus `boardAuskunft` und ist bei
+                                    fehlender Stufe ausdrücklich NICHT „Intern". */}
+                                <span
+                                  data-testid="val-stufe"
+                                  data-lage={k.auskunft.stufe.lage}
+                                  title={t("lib.facet.confidentiality")}
+                                  className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${STUFE_TONE[k.auskunft.stufe.tone]}`}
+                                >
+                                  {t(k.auskunft.stufe.labelKey)}
+                                </span>
                                 {/* D-033 (b): VERTRAUEN UND GRÜNANTEIL SIND EIN ABZEICHEN.
                                     Bei null Bewertungen sagten die beiden getrennten Pillen
                                     buchstäblich dasselbe. Zusammengelegt statt gestrichen — und
@@ -1059,6 +1144,23 @@ export function Validation(): JSX.Element {
                                   <div className="mt-1">
                                     <KoAuthorLine {...koAuthorParts(k, nameOf)} />
                                   </div>
+                                  {/* JOB 3027 · STATION 4 — WOHER, neben dem WER.
+                                      Beschriftet mit `val.herkunft.label` („Erfassungsweg") und
+                                      ausdrücklich NICHT mit `lib.originLabel` („Herkunft"): dieses
+                                      Wort trägt auf derselben Seite schon der Demo-/Eigenes-Filter
+                                      (:602-604), und zweimal dasselbe Wort für zwei verschiedene
+                                      Sachen wäre wieder Raten. Für `word_addin` gilt der bereits
+                                      vorhandene Wortlaut des Chips aus Bibliothek und KO-Detail. */}
+                                  <p
+                                    data-testid="val-herkunft"
+                                    data-lage={k.auskunft.herkunft.lage}
+                                    className="mt-1 text-[11.5px] text-muted"
+                                  >
+                                    <span className="font-semibold text-text">
+                                      {t("val.herkunft.label")}:{" "}
+                                    </span>
+                                    {t(k.auskunft.herkunft.labelKey)}
+                                  </p>
                                   {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet).
                               SCRUM-396: auf EINE Zeile verdichtet — Volltext im ?-HelpTip, damit die
                               Karte keine Textwand wird (nichts entfernt, nur Dichte). */}

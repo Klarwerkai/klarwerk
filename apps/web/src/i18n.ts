@@ -428,6 +428,26 @@ const de = {
   "ko.originWordAddin.label": "Aus Word",
   "ko.originWordAddin.hint":
     "Dieser Beitrag wurde über das Word-Add-in erfasst. Nur Herkunft — ersetzt nicht Status, Vertrauen, Quelle oder Validierung.",
+  // JOB 3027 · Station 4: die übrigen vier Erfassungswege bekommen ihren Klartext — bis hierher
+  // hatte nur `word_addin` einen, und der bleibt unverändert (keine zweite Fassung desselben Satzes).
+  "ko.origin.tell": "Aus dem Erzählen",
+  "ko.origin.studio": "Aus dem Studio",
+  "ko.origin.expert": "Aus dem Expertenformular",
+  "ko.origin.frontdoor": "Aus der Erfassung",
+  // JOB 3027 · Station 4: die drei Lagen je Auskunft am Prüfbrett. „nicht eingestuft“ ist eine
+  // Aussage über das OBJEKT, „nicht in dieser Antwort“ eine über die ANTWORT — wer beide zusammen-
+  // wirft, muss raten (services/validation/src/board-herkunft.ts:10-18).
+  "val.stufe.nichtEingestuft": "nicht eingestuft",
+  "val.stufe.auskunftFehlt": "Einstufung nicht in dieser Antwort",
+  // Bewusst NICHT „Herkunft“: dieses Wort trägt auf derselben Seite schon der Demo-/Eigenes-Filter
+  // (`lib.originLabel`). Zwei Sachen, ein Wort — genau die Verwechslung wird hier vermieden.
+  "val.herkunft.label": "Erfassungsweg",
+  "val.herkunft.unbekannt": "Herkunft unbekannt",
+  "val.herkunft.auskunftFehlt": "Herkunft nicht in dieser Antwort",
+  // JOB 3027 R2: der Stand bleibt stehen, wenn eine Auffrischung scheitert — und sagt genau das.
+  // Keine Aktualitätsbehauptung, sondern ihr Gegenteil.
+  "val.refreshFailed":
+    "Die Auffrischung ist gescheitert. Angezeigt wird der zuletzt geladene Stand — er kann veraltet sein.",
   "demo.ask.label": "1 · Fragen",
   "demo.ask.desc":
     "Stell eine belegte Frage (Ventil X / Überdruck) — die Antwort kommt quellengebunden mit Vertrauen und Status, nicht frei erfunden.",
@@ -5283,6 +5303,21 @@ const en: typeof de = {
   "ko.originWordAddin.label": "From Word",
   "ko.originWordAddin.hint":
     "This entry was captured through the Word add-in. Provenance only — it is not a quality signal and does not replace status, source or validation.",
+  // JOB 3027 · Station 4: plain wording for the remaining four capture paths.
+  "ko.origin.tell": "From telling",
+  "ko.origin.studio": "From the studio",
+  "ko.origin.expert": "From the expert form",
+  "ko.origin.frontdoor": "From the capture form",
+  // JOB 3027 · Station 4: the three states per disclosure. „not classified" is a statement about the
+  // OBJECT, „not in this response" one about the RESPONSE — merging them forces the reader to guess.
+  "val.stufe.nichtEingestuft": "not classified",
+  "val.stufe.auskunftFehlt": "Classification not in this response",
+  "val.herkunft.label": "Capture path",
+  "val.herkunft.unbekannt": "Origin unknown",
+  "val.herkunft.auskunftFehlt": "Origin not in this response",
+  // JOB 3027 R2: the list stays when a refresh fails — and says so.
+  "val.refreshFailed":
+    "The refresh failed. You are seeing the last loaded state — it may be out of date.",
   "demo.ask.label": "1 · Ask",
   "demo.ask.desc":
     "Ask a backed question (valve X / overpressure) — the answer comes source-bound with trust and status, not made up.",
@@ -9544,6 +9579,21 @@ const nl: typeof de = {
   "ko.originWordAddin.label": "Uit Word",
   "ko.originWordAddin.hint":
     "Deze bijdrage is vastgelegd via de Word-invoegtoepassing. Alleen herkomst — vervangt geen status, vertrouwen, bron of validatie.",
+  // JOB 3027 · Station 4: klare tekst voor de overige vier vastlegroutes.
+  "ko.origin.tell": "Uit het vertellen",
+  "ko.origin.studio": "Uit de studio",
+  "ko.origin.expert": "Uit het expertformulier",
+  "ko.origin.frontdoor": "Uit de vastlegging",
+  // JOB 3027 · Station 4: de drie standen per opgave. „niet ingedeeld“ zegt iets over het OBJECT,
+  // „niet in dit antwoord“ iets over het ANTWOORD — wie ze samenvoegt, laat de lezer gokken.
+  "val.stufe.nichtEingestuft": "niet ingedeeld",
+  "val.stufe.auskunftFehlt": "Indeling niet in dit antwoord",
+  "val.herkunft.label": "Vastlegroute",
+  "val.herkunft.unbekannt": "Herkomst onbekend",
+  "val.herkunft.auskunftFehlt": "Herkomst niet in dit antwoord",
+  // JOB 3027 R2: de stand blijft staan als een verversing mislukt — en zegt dat ook.
+  "val.refreshFailed":
+    "De verversing is mislukt. Je ziet de laatst geladen stand — die kan verouderd zijn.",
   "demo.ask.label": "1 · Vragen",
   "demo.ask.desc":
     "Stel een onderbouwde vraag (ventiel X / overdruk) — het antwoord komt bronvast met vertrouwen en status, niet uit de lucht gegrepen.",
