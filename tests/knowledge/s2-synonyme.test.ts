@@ -29,8 +29,14 @@ describe("S2 · Z — jede Zuordnung ist belegt", () => {
       expect(zuordnung.quelle.trim().length, `${zuordnung.begriffe} ohne Quelle`).toBeGreaterThan(
         10,
       );
+      // JOB 3021 (N2): `PRIORITAETEN\.md` kommt dazu. Der dritte Eintrag (`firmenwagen`/
+      // `dienstwagen`) steht in Pedis Diktat vom 30.07., das im Werk als PRIORITAETEN.md N2 gefuehrt
+      // wird — eine benannte Fundstelle wie OFFEN.md, nur ein anderes Dokument. Eine Zeilennummer
+      // steht hier bewusst NICHT: die Datei liegt nicht in diesem Arbeitsbaum, und eine erfundene
+      // Zahl waere genau die unbelegte Setzung, gegen die dieser Fall steht. Die Alternation bleibt
+      // eng: sie zaehlt benannte Dokumente auf, sie laesst nicht „irgendeinen Text" durch.
       expect(zuordnung.quelle, `${zuordnung.begriffe}: Quelle nennt keine Kennung`).toMatch(
-        /OFFEN\.md|\.md:\d+|BEN-PRUEFUNG/,
+        /OFFEN\.md|PRIORITAETEN\.md|\.md:\d+|BEN-PRUEFUNG/,
       );
     }
   });

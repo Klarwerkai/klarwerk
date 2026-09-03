@@ -319,6 +319,20 @@ const INVENTAR: readonly string[] = [
   "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
   "tests/library/mega59-nullzustand-mounted.test.tsx",
   "tests/security/mega74-anhang-vertraulich.test.ts",
+  // JOB 3021 D1 (03.09.2026): die deklarierte Wortzuordnung schaerft jetzt auch Klaras
+  // KANDIDATENVORAUSWAHL (N2: die Frage nach „Urlaubsregelung" erreicht das Objekt mit
+  // „Urlaubszeiten", die Frage nach „Firmenwagen" das Objekt mit „Dienstwagenfarbe"). Die Datei
+  // traegt „klara" im DATEINAMEN — der Pfad war im Auftrag abschliessend vorgegeben, der
+  // Zusammenstoss mit dieser Nachfuehrpflicht also unvermeidbar. K2 hat sie gemeldet, das Inventar
+  // hat sie nicht still aufgenommen.
+  //
+  // WAS SIE FESTHAELT UND WAS NICHT — der Anspruch ist bewusst eng gefasst (JOB 3021 D2, BEN
+  // Korrekturpflicht 2): belegt ist die Gleichheit der VORAUSWAHL zwischen Bibliothek und Klara,
+  // NICHT die Gleichheit der Antwort. Zwischen Vorauswahl und Antwort steht das unveraenderte
+  // Relevanztor `selectCandidates` (`reasoner/src/provider.ts`), und der Fall F6 der Datei misst
+  // genau das: der so gefundene Kandidat erreicht den Reasoner heute nicht, die Antwort bleibt
+  // eine ehrliche Wissensluecke. Antwortparitaet ist Sache eines Folgeauftrags.
+  "tests/suche-zuordnung/n2-klara-versteht-zusammensetzungen.test.ts",
   // JOB 2660 D2: der Nachweis an der Stelle, wo der Mensch die Hilfe benutzt — ein
   // client-gelieferter Fremdtext laeuft durch den echten Clientabruf, die echte Route und den
   // echten Renderer, und die Flaeche muss zeigen, worauf die Antwort steht. Die Datei importiert
@@ -561,7 +575,13 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // hier kommt sie zusammen mit den vier zerlegung-Dateien auf denselben gemeinsamen Stand,
     // deshalb 36 -> 37 — dieselbe Lage wie bei den 2948/2959-Zeilen weiter oben, nicht zwei
     // unabhaengige Aenderungen, sondern eine Zusammenfuehrung auf einem gemeinsamen Stand.
-    expect(nurName.length).toBe(37);
+    // 37 -> 38 am 03.09.2026 (JOB 3021 D1): `tests/suche-zuordnung/n2-klara-versteht-
+    // zusammensetzungen.test.ts` traegt „klara" im Dateinamen und faellt damit in die Namensmenge.
+    // Der Testpfad war im Auftrag abschliessend vorgegeben — die Nachfuehrung ist die Folge des
+    // Namens, nicht einer Wahl. GEMESSEN, NICHT GESETZT: mit dem neuen Inventareintrag und noch
+    // unveraendertem Zaehler meldete der Waechterlauf `expected 38 to be 37`; erst danach wurde
+    // diese Zeile angefasst. Die Datei traegt KEINE der fuenf Inhaltsachsen (K6-Bericht: `name`).
+    expect(nurName.length).toBe(38);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

@@ -3,9 +3,13 @@ import type { AuditService } from "../../audit";
 import {
   type KnowledgeObject,
   type KoService,
+  SUCH_ZUORDNUNGEN,
+  type SuchZuordnung,
   type WithTx,
   dropConfidential,
+  expandSearchTerms,
   isConfidential,
+  normalizeSearchTerms,
 } from "../../knowledge-object";
 import {
   type AnswerResult,
@@ -134,6 +138,88 @@ function erweiterteSuchterme(frageterme: readonly string[], selection?: string):
     }
   }
   return [...frageterme, ...zusatz];
+}
+
+// ================================================================================================
+// JOB 3021 (N2) — DIE DEKLARIERTE WORTZUORDNUNG GILT AUCH, WENN KLARA ANTWORTET.
+// ================================================================================================
+//
+// DER BEFUND. Die Zuordnung aus JOB 1531 (`SUCH_ZUORDNUNGEN`/`expandSearchTerms`) wirkt in beiden
+// Suchadaptern der Bibliothek. Bei Klara wirkte sie NICHT — und der Grund ist ein anderer als der
+// naheliegende: der Adapter ruft sie sehr wohl (`search-projection-repo.ts:710`, dieselbe Zeile
+// steht in `…-repo-pg.ts:580`, und `findCandidates` läuft über genau diesen Weg). Was fehlte, ist
+// die FORM.
+//
+// GEMESSEN, nicht vermutet (die Zahlen sind mit `queryTokens` am Baumstand erhoben):
+//
+//     queryTokens("Urlaubsregelung")  ===  ["urlaubsregel"]
+//     queryTokens("Firmenwagen")      ===  ["firmenwag"]
+//     queryTokens("klep")             ===  ["klep"]
+//
+// `queryTokens` ist KEINE reine Zerlegung: es siebt Stoppwörter UND führt jedes Token auf seine
+// Grundform (`provider.ts:1161-1175`). Die Tabelle ist dagegen in der OBERFLÄCHENFORM deklariert —
+// so, wie Pedi die Wörter diktiert hat und wie die Bibliothek sie in ihre Suchzeile tippt. Der
+// Mengenvergleich in `expandSearchTerms` trifft „urlaubsregel" gegen „urlaubsregelung" deshalb
+// nie. Nur `klep` fiel nicht auf: es ist zufällig seine eigene Grundform.
+//
+// DIE UMRECHNUNG GEHÖRT HIERHER UND NICHT IN DIE TABELLE. Ein zweiter, gebeugter Eintrag je Wort
+// wäre eine erfundene Setzung ohne Fundstelle (genau der Fehler, gegen den `s2-synonyme.test.ts`
+// Fall Z1 steht), und `expandSearchTerms` darf nichts ableiten (`S2_ERWEITERUNG_GRENZE.leitetAb`).
+// Hier dagegen ist nichts abzuleiten: die Grundform der DEKLARIERTEN Wörter entsteht durch genau
+// dieselbe Zerlegung, durch die auch die Frage läuft. Es wird keine Regel erfunden, sondern die
+// vorhandene auf beide Seiten desselben Vergleichs angewandt.
+//
+// DREI SCHRITTE, und die Zuordnung selbst bleibt in `expandSearchTerms` — hier steht kein Nachbau:
+//   1. Welche deklarierten Wörter hat der Fragepfad wirklich getippt? Verglichen wird in SEINER
+//      Form: `queryTokens(begriff)` gegen die Suchterme.
+//   2. Die Erweiterung: `expandSearchTerms(normalizeSearchTerms(…))` — die kanonische Kette, die
+//      auch die beiden Adapter fahren, mit derselben Tabelle und derselben Reihenfolgezusage.
+//   3. Zurück in die Form des Fragepfads, und NUR das, was noch fehlt. Damit steht die ganze
+//      Termliste der Vorauswahl in EINER Form; ein Mischbetrieb wäre die zweite Wahrheit, die
+//      dieser Durchgang gerade abschafft.
+//
+// WAS HIER AUSDRÜCKLICH NICHT GESCHIEHT: keine Komposita-Zerlegung, kein Wörterbuch, kein
+// Stemmer (der vorhandene wird benutzt, nicht erweitert), kein Modell, kein Embedder, kein Netz.
+// Der semantische Vorfilter bleibt unberührt und AUS.
+//
+// UND DIE GRENZE DIESER SCHEIBE, ausgesprochen statt verschwiegen: geschärft wird die KANDIDATEN-
+// VORAUSWAHL. Zwischen ihr und der Antwort steht `selectCandidates` (`reasoner/src/provider.ts`),
+// dessen Relevanzmaß unverändert auf dem GETIPPTEN Fragetext rechnet — ein Objekt, das nur über
+// eine Entsprechung hereinkam, fällt dort und erreicht den Reasoner nicht. Die Frage nach der
+// „Urlaubsregelung" endet deshalb heute noch bei einer ehrlichen Wissenslücke, obwohl das Objekt
+// in der Vorauswahl steht. Das ist gemessen (`tests/suche-zuordnung/…`, Fall F6) und der Gegenstand
+// einer eigenen Scheibe — nicht eine Zusage, die dieser Durchgang stillschweigend mitbehauptet.
+export function zugeordneteSuchterme(
+  suchterme: readonly string[],
+  /**
+   * Die belegten WÖRTER, in denen dieser Pfad die Frage wiedererkennt — Parameter mit der
+   * Produktionsvorgabe, damit die Kalibrierung des Prüfstands führbar ist: eine Reihe grüner
+   * Zusicherungen ist von einem toten Prüfstand nur dann zu unterscheiden, wenn ein Lauf mit
+   * LEERER Tabelle wieder auf das alte Verhalten fällt.
+   *
+   * AUSDRÜCKLICH NICHT die Paarung: welches Wort welches bedeutet, entscheidet unverändert
+   * `expandSearchTerms` an seiner eigenen, deklarierten Tabelle. Wer hier ein Paar hereingibt, das
+   * dort nicht steht, bekommt KEINE Ergänzung — von dieser Seite ist keine Zuordnung zu erfinden.
+   */
+  zuordnungen: readonly SuchZuordnung[] = SUCH_ZUORDNUNGEN,
+): string[] {
+  const getippt = new Set(suchterme);
+  const getroffen = zuordnungen
+    .flatMap((z) => z.begriffe)
+    .filter((begriff) => queryTokens(begriff).some((t) => getippt.has(t)));
+  if (getroffen.length === 0) {
+    return [];
+  }
+  const raus: string[] = [];
+  for (const wort of expandSearchTerms(normalizeSearchTerms(getroffen))) {
+    for (const term of normalizeSearchTerms(queryTokens(wort))) {
+      if (!getippt.has(term)) {
+        getippt.add(term);
+        raus.push(term);
+      }
+    }
+  }
+  return raus;
 }
 
 // SCRUM-115: Lücken ohne gespeicherte Priorität (Altdaten) erhalten beim Lesen
@@ -508,10 +594,29 @@ export class AskService {
     // JOB 3006 (KA5): ZWEI MENGEN, ZWEI AUFGABEN — die Begründung steht an `erweiterteSuchterme`.
     //   `frageterme` ist unverändert das, was es vor KA5 war: wonach der Fragende gesucht hat.
     //               Jede Aussage ÜBER die Antwort rechnet weiter auf DIESER Menge.
-    //   `suchterme`  ist dieselbe Menge, um die Terme der Markierung ergänzt — und sie hat GENAU
-    //               EINEN Verbraucher, die Zeile darunter. Weiter reicht sie nicht.
+    //   `suchterme`  ist dieselbe Menge, um die Terme der Markierung (und seit JOB 3021 um die
+    //               deklarierten Entsprechungen) ergänzt — und sie hat GENAU EINEN Verbraucher,
+    //               die Zeile darunter. Weiter reicht sie nicht.
+    // JOB 3021 (N2): die deklarierte Wortzuordnung wirkt jetzt auch hier — und zwar GENAU auf
+    // `suchterme`. Die Trennung von JOB 3006 bleibt damit unangetastet: `frageterme` ist weiterhin
+    // nur das Getippte, und jede Aussage ÜBER die Antwort (Herkunft, Deckung, Wissenslücke, Beleg)
+    // rechnet unverändert auf DIESER Menge — ein ergänztes Wort wird nie als das ausgegeben,
+    // wonach gefragt wurde.
+    //
+    // DIE REIHENFOLGE IST ENTSCHIEDEN, nicht zufällig: erst die Frage, dann die Markierung, dann
+    // die ergänzten Terme. Der Grund ist derselbe, aus dem `expandSearchTerms` seine Zusätze
+    // hinten anhängt — `prefilterCandidates` schneidet auf `ASK_PREFILTER_MAX_TERMS`, und unter
+    // einem Deckel darf niemals eine ECHTE Eingabe zugunsten einer abgeleiteten fallen. Die
+    // markierte Passage IST echte Eingabe (ein Mensch hat sie markiert), die Entsprechung ist es
+    // nicht; deshalb steht die Markierung davor und nicht dahinter. Die beiden verdrängen einander
+    // nicht: die Markierung ist auf `SELECTION_TERM_LIMIT` gedeckelt, die Erweiterung ergänzt nur
+    // und kürzt nie.
+    // DIE GEMESSENE KEHRSEITE, benannt statt verschwiegen: füllen Frage und Markierung das Fenster
+    // von acht Termen bereits, wird KEIN ergänzter Term mehr abgefragt — dieselbe Lastgrenze und
+    // derselbe Preis, den KA5-R8b für die Markierung schon ausspricht.
     const frageterme = queryTokens(question);
-    const suchterme = erweiterteSuchterme(frageterme, opts?.selection);
+    const eingabeterme = erweiterteSuchterme(frageterme, opts?.selection);
+    const suchterme = [...eingabeterme, ...zugeordneteSuchterme(eingabeterme)];
     const prefilteredRaw = await this.prefilterCandidates(suchterme);
     // SCRUM-490 D2: Der Add-on-Principal (ask.validated) darf nie aus unvalidierten Inhalten antworten
     // — hier fallen alle nicht-„validiert"en Kandidaten weg, bevor der Reasoner sie sieht.

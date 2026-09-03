@@ -98,6 +98,16 @@ export {
   searchProjectionContentHash,
   normalizeSearchFragment,
   normalizeSearchTerms,
+  // JOB 1531 / JOB 3021 (N2): die DEKLARIERTE Wortzuordnung. Sie stand bis hierher nur den beiden
+  // Suchadaptern desselben Moduls zur Verfuegung; der Fragepfad (services/ask) konnte sie hinter
+  // der per dependency-cruiser erzwungenen Modulgrenze nicht erreichen und suchte deshalb nur nach
+  // dem woertlich Getippten — dieselbe Frage, zwei Ergebnisse. Die Tabelle und die Grenzzusage
+  // gehoeren mit heraus: wer erweitert, muss die belegten Paare LESEN koennen (der Fragepfad
+  // rechnet sie in seine Termform um) und seine Zusicherung pruefen koennen.
+  SUCH_ZUORDNUNGEN,
+  S2_ERWEITERUNG_GRENZE,
+  expandSearchTerms,
+  type SuchZuordnung,
   visibleTextFromBodyHtml,
   classificationValueOf,
   classificationAtVersion,

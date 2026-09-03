@@ -931,6 +931,15 @@ export const SUCH_ZUORDNUNGEN: readonly SuchZuordnung[] = [
     begriffe: ["urlaubsregelung", "urlaubszeiten"],
     quelle: "OFFEN.md S6 — zwei verschiedene Woerter fuer den literalen Vergleich",
   },
+  // JOB 3021 · N2 — Pedis ZWEITER Fall, wortgleich aus seinem Diktat. Die Zerlegung von
+  // „Dienstwagenfarbe" ist NICHT Gegenstand dieses Eintrags und war nie das Problem: der
+  // Treffer-Vertrag prueft per Teilzeichenkette (`effective-search-document.ts:120-123`,
+  // `lower.includes(term)`, in SQL als ILIKE gespiegelt), „dienstwagen" trifft „Dienstwagenfarbe"
+  // also schon heute. Was fehlte, ist allein die BRUECKE zwischen den beiden Woertern.
+  {
+    begriffe: ["firmenwagen", "dienstwagen"],
+    quelle: "Pedis Diktat 30.07. (PRIORITAETEN.md N2) — ‚Firmenwagen findet Dienstwagenfarbe'",
+  },
 ];
 
 /** Was diese Erweiterung zusichert — als Datum, damit ein Test es lesen kann. */
@@ -967,6 +976,14 @@ const ZUORDNUNGS_INDEX: ReadonlyMap<string, readonly string[]> = (() => {
  * Erweitert bereits bereinigte Suchterme um ihre deklarierten Entsprechungen.
  *
  * @param terme Das Ergebnis von `normalizeSearchTerms` — bereinigt, kleingeschrieben, entdoppelt.
+ *              **In der OBERFLAECHENFORM**, so wie die Tabelle oben deklariert ist. Der Abgleich
+ *              ist ein Mengenvergleich und kennt keine Beugung: wer Terme in einer ANDEREN Form
+ *              hereingibt, bekommt sie unveraendert zurueck. Das ist keine Nachlaessigkeit,
+ *              sondern die Grenze `leitetAb: false` — diese Funktion darf keine Wortform auf eine
+ *              andere abbilden. Der Fragepfad fuehrt seine Terme in der Grundform des Reasoners
+ *              (`queryTokens("Urlaubsregelung") === ["urlaubsregel"]`, gemessen) und rechnet die
+ *              beiden Formen deshalb bei sich aufeinander um, bevor er hier hereingeht
+ *              (`services/ask/src/service.ts`, `zugeordneteSuchterme`).
  *
  * @returns Dieselben Terme in derselben Reihenfolge, gefolgt von den ergaenzten. **Die Eingabe
  *          wird nie gekuerzt und nie umsortiert:** Ein Aufrufer, der die Erweiterung nicht will,
