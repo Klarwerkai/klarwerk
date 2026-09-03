@@ -1,6 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { ConflictService } from "../../../conflicts";
-import { type BefundPaar, eigeneBefunde } from "../duplicate-signal";
+import { type ConflictService, isCompleteRun } from "../../../conflicts";
+import type { AiCheck } from "../../../knowledge-object";
+import {
+  type BefundPaar,
+  type Deckung,
+  type DeckungsLage,
+  eigeneBefunde,
+} from "../duplicate-signal";
 import { type Guards, type SessionUser, sendError } from "../http";
 import {
   type KoSichtbarkeitsZugang,
@@ -24,6 +30,69 @@ export interface OverlapLesezugang {
 /** Ein Wissensobjekt, soweit A28 es braucht: Kennung + die Felder der Sichtbarkeitsregel. */
 export interface EigenesKoFaktum extends SichtbarkeitsFakten {
   id: string;
+  /**
+   * JOB 3032 (N5): der Prüf-Vermerk, soweit vorhanden — die EINZIGE Quelle der Deckungslage.
+   *
+   * Additiv und optional, genau wie am Objekt selbst (knowledge-object/src/types.ts:307): ein
+   * Altbestand ohne Feld sagt schlicht nichts über einen Lauf, und die Lage sagt dann genau das
+   * (`kein_lauf`). Die Route braucht dafür KEINEN zusätzlichen Lesezugriff: `list()` liefert das
+   * Feld heute schon mit, es wurde bis hierher nur weggeworfen.
+   */
+  aiCheck?: AiCheck;
+}
+
+/**
+ * JOB 3032 (N5) — DIE DECKUNGSLAGE EINES EIGENEN OBJEKTS, AN GENAU EINER STELLE ENTSCHIEDEN.
+ *
+ * Vier Zustände in einer festen Rangfolge; sie ist WÖRTLICH dieselbe wie in der Bestandsauswertung
+ * `aiCheckCoverageSummary` (knowledge-object/src/service.ts:2803-2833), und das ist Absicht: es
+ * darf nicht zwei Auslegungen davon geben, wann ein Objekt als geprüft gilt.
+ *
+ *   1. kein `aiCheck`        → `kein_lauf`      (dort: `unchecked`)
+ *   2. `status !== "done"`   → `unvollstaendig` (dort: `incomplete`; `pending`/`failed`)
+ *   3. `done` ohne coverage  → `ohne_protokoll` (dort: `noCoverage` — NICHT „gar kein Lauf")
+ *   4. `done` mit coverage   → die KANONISCHE Invariante entscheidet
+ *
+ * SCHRITT 4 SCHREIBT DIE REGEL NICHT AB. `isCompleteRun` (conflicts/src/coverage.ts:203) ist die
+ * kanonische Auslegung; sie hat bereits zwei dokumentierte Spiegel und einen Paritätswächter
+ * (tests/conflicts/coverage-invariant-parity.test.ts). Ein dritter Spiegel — fünf hier noch einmal
+ * hingeschriebene Bedingungen — wäre genau der Weg, auf dem die Auslegungen auseinanderlaufen; das
+ * ist die Geschichte, die mega31/mega32 zweimal reparieren mussten. Hier wird sie deshalb GERUFEN.
+ * `AiCheckCoverage` und `DetectionCoverage` sind strukturgleich und bewusst getrennt deklariert
+ * (types.ts:32-33) — der App-Root ist die Stelle, an der beide zusammenkommen dürfen.
+ */
+function lageAus(aiCheck: AiCheck | undefined): DeckungsLage {
+  if (!aiCheck) {
+    return "kein_lauf";
+  }
+  if (aiCheck.status !== "done") {
+    return "unvollstaendig";
+  }
+  if (!aiCheck.coverage) {
+    return "ohne_protokoll";
+  }
+  return isCompleteRun(aiCheck.coverage) ? "vollstaendig" : "unvollstaendig";
+}
+
+/**
+ * Die vollständige Lage EINES eigenen Objekts: Zustand plus die zwei rohen Zahlen.
+ *
+ * Die Zahlen hängen NICHT an der Lage, sondern allein am Protokoll — auch ein `failed` oder
+ * `pending` Lauf darf schon Zahlen geschrieben haben, und dann sind sie wahr. Liegt kein Protokoll
+ * vor, bleiben beide `null`: `0` wäre die Auskunft „gegen null geprüft", die hier niemand gemessen
+ * hat (s. `Deckung` in ../duplicate-signal).
+ *
+ * Exportiert, weil der Driftwächter sie gegen die Bestandsauswertung stellt
+ * (tests/eigenes-signal/n5-deckung-am-eigenen-objekt.test.ts, F8). Ihr Aufrufer im PRODUKT ist der
+ * Rumpf von `GET /api/duplicate-signal` weiter unten in dieser Datei — ein Test ist kein Aufrufer.
+ */
+export function deckungAus(ko: { aiCheck?: AiCheck }): Deckung {
+  const coverage = ko.aiCheck?.coverage;
+  return {
+    lage: lageAus(ko.aiCheck),
+    geprueft: coverage ? coverage.completed : null,
+    bestand: coverage ? coverage.available : null,
+  };
 }
 
 export interface EigeneKoQuelle {
@@ -105,8 +174,13 @@ export function conflictRoutes(
     // A28 · DAS DAUERHAFTE SIGNAL AM EIGENEN OBJEKT — die EINE Leseflaeche.
     // ------------------------------------------------------------------------------------------
     // Sie liefert `EigenerBefund[]`: je eigenem Objekt MIT offenem Befund die Kennung DIESES
-    // Objekts und die Art. Kein Eintrag ohne Befund (das Signal ist eine Meldung, keine
-    // Bestandsliste), und nichts ueber die Gegenseite — der Typ traegt kein Feld dafuer.
+    // Objekts, die Art und — seit JOB 3032 (N5) — die Deckungslage des Laufs, der DIESES Objekt
+    // angesehen hat. Kein Eintrag ohne Befund (das Signal ist eine Meldung, keine Bestandsliste),
+    // und nichts ueber die Gegenseite — der Typ traegt kein Feld dafuer.
+    //
+    // Die Deckung beantwortet die SCHWEIGENDE Frage ausdruecklich NICHT: „mein Objekt hat KEIN
+    // Signal — wurde es ueberhaupt geprueft?" bleibt bei `/api/ai-check/coverage-summary`. Hier
+    // haengt sie an einem Befund und erzeugt keinen.
     //
     // Die GESPERRTE Richtung („ein fremdes Objekt dupliziert meines") entsteht hier nicht, weil der
     // Kern sie nicht erzeugt: `duplicate-signal.ts:111-114`, Zweig `if (bIstMeins) return null;`.
@@ -118,11 +192,26 @@ export function conflictRoutes(
           return;
         }
         try {
-          const eigene = eigeneKoIds(user, await koQuelle.list());
+          const bestand = await koQuelle.list();
+          const eigene = eigeneKoIds(user, bestand);
+          // JOB 3032 (N5): die Lage entsteht aus dem Bestand, der oben ohnehin geladen wurde — kein
+          // zweiter Lesezugriff, nichts wird persistiert. Die Tabelle wird auf die EIGENEN Objekte
+          // beschnitten, bevor sie den Kern erreicht: der Kern schlägt zwar nur unter der eigenen
+          // Kennung nach, aber eine Tabelle, die fremde Lagen gar nicht erst enthält, kann auch
+          // durch einen künftigen Umbau keine fremde Zahl an ein Signal heften.
+          const meine = new Set(eigene);
+          const deckungJeKo = new Map<string, Deckung>(
+            bestand.filter((ko) => meine.has(ko.id)).map((ko) => [ko.id, deckungAus(ko)]),
+          );
           reply
             .code(200)
             .send(
-              eigeneBefunde(eigene, await overlapZugang.unresolved(), await conflicts.unresolved()),
+              eigeneBefunde(
+                eigene,
+                await overlapZugang.unresolved(),
+                await conflicts.unresolved(),
+                deckungJeKo,
+              ),
             );
         } catch (error) {
           sendError(reply, error);

@@ -58,6 +58,13 @@ const BESTAND = [
 
 const koQuelle = { list: async () => BESTAND };
 
+// JOB 3032 (N5): der Befund traegt seit diesem Auftrag ein viertes Feld — die Deckungslage des
+// Laufs, der DIESES eigene Objekt angesehen hat. Kein Objekt im BESTAND oben traegt einen
+// `aiCheck`-Vermerk, also sagt ueber sie kein Lauf etwas; die ehrliche Antwort ist `kein_lauf` mit
+// zwei `null` und NICHT eine stille Entwarnung. Die Lagen selbst prueft
+// `tests/eigenes-signal/n5-deckung-am-eigenen-objekt.test.ts`.
+const OHNE_AUSKUNFT = { lage: "kein_lauf", geprueft: null, bestand: null };
+
 function subjekt(id: string, titel: string, aussage: string): DetectSubject {
   return {
     refId: id,
@@ -141,7 +148,9 @@ describe("A28 · das Signal ueber die verdrahtete Route", () => {
     const antwort = await app.inject({ method: "GET", url: "/api/duplicate-signal" });
 
     expect(antwort.statusCode).toBe(200);
-    expect(antwort.json()).toEqual([{ koId: "ko-mein-1", dublette: true, konflikt: false }]);
+    expect(antwort.json()).toEqual([
+      { koId: "ko-mein-1", dublette: true, konflikt: false, deckung: OHNE_AUSKUNFT },
+    ]);
   });
 
   it("R-2 · die GESPERRTE Richtung entsteht auch am Ausgang nicht", async () => {
@@ -180,7 +189,14 @@ describe("A28 · das Signal ueber die verdrahtete Route", () => {
     expect(rumpf).not.toContain("ko-fremd-8");
     expect(rumpf).not.toContain("Pumpe entlueften");
     expect(rumpf).not.toContain("Widersprechende Angaben");
-    expect(Object.keys(JSON.parse(rumpf)[0]).sort()).toEqual(["dublette", "koId", "konflikt"]);
+    // JOB 3032 (N5): vier Felder statt drei. Das vierte ist die Deckung des EIGENEN Laufs — sie
+    // sagt nichts ueber die Gegenseite, und die vier Zusicherungen darueber gelten unveraendert.
+    expect(Object.keys(JSON.parse(rumpf)[0]).sort()).toEqual([
+      "deckung",
+      "dublette",
+      "koId",
+      "konflikt",
+    ]);
   });
 
   it("R-4 · derselbe Bestand, zwei Betrachter: jeder sieht nur sein eigenes Objekt", async () => {
@@ -191,7 +207,7 @@ describe("A28 · das Signal ueber die verdrahtete Route", () => {
     const seins = await routeApp(ANDERER, overlaps, conflicts);
 
     expect((await meins.inject({ method: "GET", url: "/api/duplicate-signal" })).json()).toEqual([
-      { koId: "ko-mein-1", dublette: true, konflikt: false },
+      { koId: "ko-mein-1", dublette: true, konflikt: false, deckung: OHNE_AUSKUNFT },
     ]);
     // Der Autor des vorgefundenen Kandidaten erfaehrt nichts — dieselbe Sperre wie R-2,
     // diesmal aus der anderen Blickrichtung.
@@ -214,7 +230,9 @@ describe("A28 · das Signal ueber die verdrahtete Route", () => {
     const app = await routeApp(AUTORIN, overlaps, conflicts);
     const antwort = await app.inject({ method: "GET", url: "/api/duplicate-signal" });
 
-    expect(antwort.json()).toEqual([{ koId: "ko-mein-2", dublette: false, konflikt: true }]);
+    expect(antwort.json()).toEqual([
+      { koId: "ko-mein-2", dublette: false, konflikt: true, deckung: OHNE_AUSKUNFT },
+    ]);
   });
 
   it("R-6 · ohne Anmeldung gibt es kein Signal", async () => {

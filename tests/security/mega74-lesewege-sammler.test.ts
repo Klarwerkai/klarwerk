@@ -174,11 +174,16 @@ const REGISTER: Record<string, Eintrag> = {
   // --- Die Nebenwege (Block D) -------------------------------------------------------------
   // JOB 1546 D2 (A28): das dauerhafte Signal am EIGENEN Objekt. Die Route ruft `sichtbareFuer`
   // über `eigeneKoIds` (conflicts-routes.ts) und filtert danach auf die Autorschaft selbst — sie
-  // gibt ausschließlich Kennungen EIGENER Objekte und zwei Wahrheitswerte aus, nie eine Zeile
-  // Fachinhalt und nie etwas über die Gegenseite (`EigenerBefund` hat kein Feld dafür).
+  // gibt ausschließlich Kennungen EIGENER Objekte aus, nie eine Zeile Fachinhalt und nie etwas
+  // über die Gegenseite (`EigenerBefund` hat kein Feld dafür).
+  // JOB 3032 (N5): dazu kommt die Deckungslage des Laufs, der das EIGENE Objekt angesehen hat —
+  // ein Zustandswort und zwei Zählwerte aus dem eigenen Abdeckungsprotokoll (`completed`,
+  // `available`). Sie stammen aus dem eigenen `aiCheck` und benennen kein fremdes Objekt.
   "GET /api/duplicate-signal": {
     urteil: "PRAEDIKAT",
-    grund: "A28 — sichtbareFuer, danach Autorschaft; nur eigene Kennungen und zwei Booleans.",
+    grund:
+      "A28 — sichtbareFuer, danach Autorschaft; nur eigene Kennungen, zwei Booleans und die " +
+      "Deckungslage des eigenen Prüflaufs.",
   },
   "GET /api/conflicts": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor, wörtliche Zitate." },
   "GET /api/conflicts/:id": { urteil: "PRAEDIKAT", grund: "Block D — Paar-Tor." },

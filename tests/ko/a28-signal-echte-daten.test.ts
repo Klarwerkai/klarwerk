@@ -31,7 +31,7 @@
 // Herkunft: gebaut in JOB 1500 (PRO6) gegen dieselbe Base, dort nie integriert; in JOB 1546 D1 an
 // die Namensmuster-Stelle der Lease uebernommen.
 import { describe, expect, it } from "vitest";
-import { eigeneBefunde } from "../../services/app/src/duplicate-signal";
+import { type Deckung, eigeneBefunde } from "../../services/app/src/duplicate-signal";
 import {
   ConflictService,
   type DetectSubject,
@@ -104,6 +104,15 @@ function konfliktDienst(): ConflictService {
   return new ConflictService({ repo: new InMemoryConflictRepo() });
 }
 
+// JOB 3032 (N5): der Kern nimmt seit diesem Auftrag die DECKUNGSLAGE je eigener Kennung entgegen —
+// wie weit der Pruef-Lauf reichte, der das Objekt angesehen hat. Diese Datei misst den Kern gegen
+// ECHTE Overlap-/Konfliktdaten und stellt deshalb KEINE Lage: die Dienste hier fuehren keinen
+// Pruef-Lauf, also gibt es ueber ihn auch nichts zu sagen. Genau das ist die erwartete Antwort —
+// `kein_lauf` mit zwei `null`, fail-honest statt Entwarnung. Wo die Lage ENTSTEHT und dass sie mit
+// der Bestandsauswertung uebereinstimmt, prueft `tests/eigenes-signal/`.
+const KEINE_LAGE = new Map<string, Deckung>();
+const OHNE_AUSKUNFT: Deckung = { lage: "kein_lauf", geprueft: null, bestand: null };
+
 // ------------------------------------------------------------------------------------------------
 
 describe("A28 · der Signalkern gegen ECHTE Overlap-Daten", () => {
@@ -120,8 +129,10 @@ describe("A28 · der Signalkern gegen ECHTE Overlap-Daten", () => {
     expect(offen[0]?.koA, "koA ist NICHT das eingereichte Subjekt").toBe("ko-mein-1");
     expect(offen[0]?.koB).toBe("ko-fremd-9");
 
-    const befunde = eigeneBefunde(MEINE_IDS, offen, []);
-    expect(befunde).toEqual([{ koId: "ko-mein-1", dublette: true, konflikt: false }]);
+    const befunde = eigeneBefunde(MEINE_IDS, offen, [], KEINE_LAGE);
+    expect(befunde).toEqual([
+      { koId: "ko-mein-1", dublette: true, konflikt: false, deckung: OHNE_AUSKUNFT },
+    ]);
   });
 
   it("E-2 · fremdes Einreichen gegen mein Objekt: echter Eintrag, aber KEIN Signal", async () => {
@@ -135,7 +146,7 @@ describe("A28 · der Signalkern gegen ECHTE Overlap-Daten", () => {
     expect(offen[0]?.koB).toBe("ko-mein-1");
 
     // Der Eintrag existiert und betrifft mein Objekt — trotzdem entsteht kein Signal.
-    expect(eigeneBefunde(MEINE_IDS, offen, [])).toEqual([]);
+    expect(eigeneBefunde(MEINE_IDS, offen, [], KEINE_LAGE)).toEqual([]);
   });
 
   it("E-3 · derselbe Bestand, zwei Betrachter: der Kern trennt sie an der Richtung", async () => {
@@ -144,11 +155,11 @@ describe("A28 · der Signalkern gegen ECHTE Overlap-Daten", () => {
     const offen = await overlaps.unresolved();
 
     // Der Autor des Subjekts sieht das Signal …
-    expect(eigeneBefunde(["ko-mein-1"], offen, [])).toEqual([
-      { koId: "ko-mein-1", dublette: true, konflikt: false },
+    expect(eigeneBefunde(["ko-mein-1"], offen, [], KEINE_LAGE)).toEqual([
+      { koId: "ko-mein-1", dublette: true, konflikt: false, deckung: OHNE_AUSKUNFT },
     ]);
     // … der Autor des vorgefundenen Kandidaten nicht.
-    expect(eigeneBefunde(["ko-fremd-9"], offen, [])).toEqual([]);
+    expect(eigeneBefunde(["ko-fremd-9"], offen, [], KEINE_LAGE)).toEqual([]);
   });
 });
 
@@ -166,8 +177,8 @@ describe("A28 · der Signalkern gegen ECHTE Konfliktdaten", () => {
     expect(offen.length).toBe(1);
     expect(offen[0]?.koA).toBe("ko-mein-1");
 
-    expect(eigeneBefunde(MEINE_IDS, [], offen)).toEqual([
-      { koId: "ko-mein-1", dublette: false, konflikt: true },
+    expect(eigeneBefunde(MEINE_IDS, [], offen, KEINE_LAGE)).toEqual([
+      { koId: "ko-mein-1", dublette: false, konflikt: true, deckung: OHNE_AUSKUNFT },
     ]);
   });
 
@@ -182,7 +193,7 @@ describe("A28 · der Signalkern gegen ECHTE Konfliktdaten", () => {
 
     const offen = await conflicts.unresolved();
     expect(offen.length).toBe(1);
-    expect(eigeneBefunde(MEINE_IDS, [], offen)).toEqual([]);
+    expect(eigeneBefunde(MEINE_IDS, [], offen, KEINE_LAGE)).toEqual([]);
   });
 
   it("E-6 · beide Arten am selben Objekt, beide aus echten Diensten", async () => {
@@ -200,8 +211,11 @@ describe("A28 · der Signalkern gegen ECHTE Konfliktdaten", () => {
       MEINE_IDS,
       await overlaps.unresolved(),
       await conflicts.unresolved(),
+      KEINE_LAGE,
     );
-    expect(befunde).toEqual([{ koId: "ko-mein-1", dublette: true, konflikt: true }]);
+    expect(befunde).toEqual([
+      { koId: "ko-mein-1", dublette: true, konflikt: true, deckung: OHNE_AUSKUNFT },
+    ]);
   });
 });
 
@@ -221,6 +235,7 @@ describe("A28 · die Grenze haelt auch gegen echte Eintraege", () => {
       MEINE_IDS,
       await overlaps.unresolved(),
       await conflicts.unresolved(),
+      KEINE_LAGE,
     );
     const verschriftet = JSON.stringify(befunde);
     expect(verschriftet).not.toContain("ko-fremd-9");
@@ -238,9 +253,12 @@ describe("A28 · die Grenze haelt auch gegen echte Eintraege", () => {
     // Kalibrierung: der echte Eintrag traegt den Inhalt tatsaechlich — sonst pruefte G-2 nichts.
     expect(JSON.stringify(offen)).toContain("Pumpe entlueften");
 
-    const verschriftet = JSON.stringify(eigeneBefunde(MEINE_IDS, offen, []));
+    const verschriftet = JSON.stringify(eigeneBefunde(MEINE_IDS, offen, [], KEINE_LAGE));
     expect(verschriftet).not.toContain("Pumpe entlueften");
+    // JOB 3032 (N5): aus drei Feldern sind vier geworden. `deckung` ist eine Aussage ueber den
+    // EIGENEN Pruef-Lauf und traegt hier mangels Lauf `kein_lauf` mit zwei `null`.
     expect(Object.keys(JSON.parse(verschriftet)[0]).sort()).toEqual([
+      "deckung",
       "dublette",
       "koId",
       "konflikt",
