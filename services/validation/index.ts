@@ -7,6 +7,9 @@ export type {
   AssignmentNotice,
   // JOB 3024: die Pruefstandslage genau eines Objekts. Ohne diesen Export waere der Rueckgabetyp
   // der Dienstmethode `pruefstandFuer` ueber die Modulgrenze nicht benennbar.
+  // JOB 3043: derselbe Typ traegt auch die MENGENform `pruefstaendeFuer(kos)`
+  // (`Map<string, KoPruefstand>`) — der Listen-Lesepfad greift ausschliesslich hierueber zu, keine
+  // Kante in `src/**`. Beide Methoden reisen mit der oben exportierten Dienstklasse.
   KoPruefstand,
 } from "./src/service";
 export { computeOutcome, TRUST_WEIGHTS, TRUST_MAX } from "./src/trust";

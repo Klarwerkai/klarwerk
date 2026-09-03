@@ -38,6 +38,24 @@ export class PgRatingRepo implements RatingRepo {
     const res = await this.pool.query<RatingRow>("SELECT data FROM ratings WHERE ko_id=$1", [koId]);
     return res.rows.map((row) => row.data);
   }
+
+  /**
+   * JOB 3043: EINE Anweisung fuer die ganze Menge — ausdruecklich keine Schleife ueber `listByKo`.
+   * Eine Schleife saehe hier wie eine Mengenabfrage aus und waere im Betrieb wieder das N+1, das
+   * dieser Weg abloest; die Zusage des Aufrufers („zwei Abfragen insgesamt") haengt an dieser Zeile.
+   *
+   * Die leere Kennungsliste geht GAR NICHT ans SQL: `= ANY('{}')` trifft nie eine Zeile, und eine
+   * Abfrage, deren Ergebnis feststeht, ist reine Last.
+   */
+  async listByKos(koIds: readonly string[]): Promise<Rating[]> {
+    if (koIds.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<RatingRow>("SELECT data FROM ratings WHERE ko_id = ANY($1)", [
+      [...koIds],
+    ]);
+    return res.rows.map((row) => row.data);
+  }
 }
 
 export class PgAssignmentRepo implements AssignmentRepo {

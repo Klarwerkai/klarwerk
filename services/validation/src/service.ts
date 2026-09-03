@@ -10,7 +10,7 @@ import {
   normalizeDefaultNeeded,
 } from "./settings";
 import { TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
-import type { Rating } from "./types";
+import type { Assignment, Rating } from "./types";
 import { ValidationError, type Verdict } from "./types";
 
 export type BoardFilter = Omit<KoFilter, "status">;
@@ -74,6 +74,59 @@ export interface KoPruefstand {
   readonly votes: { up: number; warn: number; down: number };
   /** Stimmen frueherer Fassungen: gezaehlt, aber nicht gewertet (SCRUM-507 R2). */
   readonly staleVotes: number;
+}
+
+/**
+ * Die OFFENEN Zuweisungen je Objekt aus der Vollmenge — die EINE Lesart von „offen" in diesem
+ * Modul. `board()`, `pruefstandFuer()` und `pruefstaendeFuer()` gruppieren alle hierueber; drei
+ * Kopien dieser Schleife waeren drei Gelegenheiten, sie auseinanderlaufen zu lassen. Erledigte
+ * (`done`) Zuweisungen erscheinen nirgends — dieselbe Zusage seit SCRUM-364.
+ */
+function offeneZuweisungenJeKo(alle: readonly Assignment[]): Map<string, string[]> {
+  const offen = new Map<string, string[]>();
+  for (const a of alle) {
+    if (a.status === "open") {
+      const bisher = offen.get(a.koId) ?? [];
+      bisher.push(a.userId);
+      offen.set(a.koId, bisher);
+    }
+  }
+  return offen;
+}
+
+/** Bewertungen je Objekt — dieselbe Gruppierung fuer die Einzel- wie fuer die Mengenabfrage. */
+function bewertungenJeKo(alle: readonly Rating[]): Map<string, Rating[]> {
+  const nachKo = new Map<string, Rating[]>();
+  for (const r of alle) {
+    const bisher = nachKo.get(r.koId) ?? [];
+    bisher.push(r);
+    nachKo.set(r.koId, bisher);
+  }
+  return nachKo;
+}
+
+/**
+ * JOB 3043 — DIE EINE ABLEITUNG der Pruefstandslage, aus bereits beschafften Zeilen.
+ *
+ * `pruefstandFuer` (ein Objekt, gezielte Bewertungsabfrage) und `pruefstaendeFuer` (eine Menge,
+ * EINE Mengenabfrage) unterscheiden sich ausschliesslich darin, WIE sie an die Zeilen kommen. Was
+ * daraus folgt — welche Zuweisungen als offen gelten, welche Stimmen zaehlen —, steht hier ein
+ * einziges Mal. Zwei Herleitungen waeren zwei Wahrheiten ueber dasselbe Objekt, und genau die
+ * sollen die beiden Lesepfade der Antwort ja gerade nicht mehr haben.
+ *
+ * Ein Objekt OHNE Zuweisung und OHNE Stimme bekommt eine vollstaendige, leere Lage — kein
+ * `undefined`. Ein fehlender Wert darf fuer den Aufrufer nie „nichts erhoben" bedeuten muessen.
+ */
+function pruefstandAus(
+  koId: string,
+  koVersion: number,
+  offeneJeKo: ReadonlyMap<string, readonly string[]>,
+  stimmenJeKo: ReadonlyMap<string, readonly Rating[]>,
+): KoPruefstand {
+  return {
+    assignments: [...(offeneJeKo.get(koId) ?? [])],
+    ...stimmenAus(stimmenJeKo.get(koId) ?? [], koVersion),
+  };
 }
 
 // SCRUM-363 / AG-15 / FR-VAL-05/06: eine offene, persönliche Review-Zuweisung als leichtgewichtiger
@@ -397,15 +450,10 @@ export class ValidationService {
   // Persistenz. KOs ohne offene Zuweisung bleiben unverändert (assignments wie vom KO-Service geliefert).
   async board(filter: BoardFilter = {}): Promise<KnowledgeObject[]> {
     const kos = await this.koService.list({ ...filter, status: "offen" });
-    const all = await this.assignments.all();
-    const openByKo = new Map<string, string[]>();
-    for (const a of all) {
-      if (a.status === "open") {
-        const list = openByKo.get(a.koId) ?? [];
-        list.push(a.userId);
-        openByKo.set(a.koId, list);
-      }
-    }
+    // JOB 3043: die Gruppierung steht in `offeneZuweisungenJeKo` — dieselbe, die beide
+    // Pruefstandswege lesen. Vorher stand sie hier als eigene Schleife; die Lesart war identisch,
+    // die Stelle war es nicht.
+    const openByKo = offeneZuweisungenJeKo(await this.assignments.all());
     // Pedi 05.07.: Board zeigt „X von Y grün" — dafür je KO die Peer-Stimmen (grün/gelb/rot) als
     // read-only Anreicherung mitgeben. Reine Lese-Sicht auf das Rating-Repo, kein neues Datenmodell.
     return Promise.all(
@@ -433,18 +481,63 @@ export class ValidationService {
    * GRENZE, ausdruecklich benannt: die offenen Zuweisungen kommen ueber `AssignmentRepo.all()` —
    * EIN Zugriff, kein N+1, aber kein Index je Objekt. Ein `listByKo` am `AssignmentRepo` waere die
    * gezieltere Form; es beruehrt `repo.ts`/`repo-pg.ts` und steht in der Rueckgabe als Rest.
+   *
+   * JOB 3043: die ABLEITUNG steht seither in `pruefstandAus` und wird mit `pruefstaendeFuer`
+   * geteilt. Die ZUSAGE dieser Methode ist unveraendert: GENAU EINE Bewertungsabfrage je Aufruf,
+   * gezielt auf dieses Objekt (`ko-routes-anzeigestatus.test.ts`, Fall K, `toBe(1)`).
    */
   async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {
     const [alle, bewertungen] = await Promise.all([
       this.assignments.all(),
       this.ratings.listByKo(koId),
     ]);
-    const { votes, staleVotes } = stimmenAus(bewertungen, koVersion);
-    return {
-      assignments: alle.filter((a) => a.koId === koId && a.status === "open").map((a) => a.userId),
-      votes,
-      staleVotes,
-    };
+    return pruefstandAus(
+      koId,
+      koVersion,
+      offeneZuweisungenJeKo(alle),
+      bewertungenJeKo(bewertungen),
+    );
+  }
+
+  /**
+   * JOB 3043 — DIE PRUEFSTANDSLAGE EINER MENGE, fuer ZWEI Abfragen insgesamt.
+   *
+   * WOFUER ES DIESEN WEG BRAUCHT. Der Listen-Lesepfad (`GET /api/kos`) braucht dieselbe Auskunft
+   * wie der Detailabruf, aber fuer JEDEN Eintrag. `pruefstandFuer` je Zeile kostete 2·N Abfragen,
+   * davon N Vollscans der Zuweisungstabelle — genau der Aufwand, wegen dessen `PRIORITAETEN.md` N4
+   * die Liste aus JOB 3024 ausgeklammert hat („N+1 ohne Deckel"). Diese Methode macht `2`, egal wie
+   * viele Objekte kommen: `assignments.all()` und `ratings.listByKos(ids)`, nebenlaeufig.
+   *
+   * EINE LEERE EINGABE MACHT NULL ABFRAGEN. Eine leere Liste ist ein Ergebnis, keine Frage.
+   *
+   * DIE ANTWORT IST VOLLSTAENDIG: jede uebergebene Kennung steht in der Karte, auch die ohne
+   * Zuweisung und ohne Stimme. Ein fehlender Eintrag muesste vom Aufrufer als „nichts erhoben"
+   * gedeutet werden — und genau diese stille Deutung ist das, was der Anzeigestatus abschafft.
+   * Doppelte Kennungen werden einmal abgefragt und einmal beantwortet.
+   *
+   * SCHREIBFREI wie `pruefstandFuer`, und mit derselben Zaehlung: `stimmenAus` entscheidet auch
+   * hier, dass nur Stimmen der uebergebenen Fassung werten (SCRUM-507 R2).
+   */
+  async pruefstaendeFuer(
+    kos: readonly { readonly id: string; readonly version: number }[],
+  ): Promise<Map<string, KoPruefstand>> {
+    const staende = new Map<string, KoPruefstand>();
+    const ids = [...new Set(kos.map((ko) => ko.id))];
+    if (ids.length === 0) {
+      return staende;
+    }
+    const [alle, bewertungen] = await Promise.all([
+      this.assignments.all(),
+      this.ratings.listByKos(ids),
+    ]);
+    const offeneJeKo = offeneZuweisungenJeKo(alle);
+    const stimmenJeKo = bewertungenJeKo(bewertungen);
+    for (const ko of kos) {
+      if (!staende.has(ko.id)) {
+        staende.set(ko.id, pruefstandAus(ko.id, ko.version, offeneJeKo, stimmenJeKo));
+      }
+    }
+    return staende;
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.

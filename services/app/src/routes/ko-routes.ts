@@ -40,7 +40,9 @@ import type { LifecycleService } from "../../../lifecycle";
 import type { ObjectStore } from "../../../object-store";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
-import type { ValidationService, Verdict } from "../../../validation";
+// JOB 3043: `KoPruefstand` kommt ueber DIESELBE Modulfassade wie der Dienst — die Liste greift
+// nirgends an `services/validation/src/**` vorbei.
+import type { KoPruefstand, ValidationService, Verdict } from "../../../validation";
 // JOB 2009 D2 (H3): der Einstieg, der die PORTS nimmt — nicht das Lesemodell (C1 bleibt gruen).
 import { wissensnetzMetrikFuer } from "../../../wissensnetz";
 import type { AiCheckWorker } from "../ai-check-worker";
@@ -491,6 +493,53 @@ const ANZEIGESTATUS_UNGEPRUEFT_GRUND = {
     "Wie dieses Objekt bewertet wurde, ist hier nicht erhoben: die Abfrage der Pruefstandslage ist fehlgeschlagen.",
 } as const;
 
+/**
+ * Die Eingangslage, in der NICHTS erhoben ist — jeder Eingang mit seinem benannten Grund.
+ *
+ * JOB 3043: BEIDE Lesepfade (Detail und Liste) starten hier und ueberschreiben, was sie wirklich
+ * beschafft haben. Eine zweite, neu formulierte Gruendetabelle fuer dieselben zwei Gruende waere
+ * eine zweite Wahrheit — und die Liste soll dem Detail ja gerade nicht mehr widersprechen.
+ */
+const ANZEIGESTATUS_NICHT_ERHOBEN: AnzeigestatusEingaenge = {
+  zuweisungen: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.zuweisungen },
+  bewertungen: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.bewertungen },
+  konflikt: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt },
+  revalidierung: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.revalidierung },
+};
+
+// ================================================================================================
+// JOB 3043 · DER DECKEL DER LISTENANREICHERUNG — AUSDRUECKLICH, BENANNT UND GANZ ODER GAR NICHT.
+// ================================================================================================
+//
+// WARUM ES IHN GEBEN MUSS. `KoQuery` (oben, vier Felder) kennt kein `limit` und keinen `cursor`:
+// `GET /api/kos` liefert die VOLLE sichtbare Menge. Die Anreicherung zieht dafuer die Bewertungen
+// aller dieser Objekte in den Speicher — bei einem gewachsenen Bestand also die halbe
+// Bewertungsablage, ohne dass der Aufrufer das Risiko sieht. Die Paginierung der Liste selbst ist
+// ein eigenes Thema (Zaehler, Cursor-Stabilitaet, SQL-Praedikat); gedeckelt wird hier NUR die
+// Anreicherung.
+//
+// DER WERT. 200, derselbe wie `THEMEN_DECKEL` (wissensnetz/src/lesemodell.ts:69) und aus demselben
+// Grund: es ist die Groessenordnung, in der eine Antwort noch eine Sicht ist. Gemessen ist die
+// Ausgangslage, nicht die Zukunft — der teure Weg waere `pruefstandFuer` je Zeile (2·N Abfragen,
+// davon N Vollscans, Fall K hat den Einzelfall bei 1 gepinnt); `pruefstaendeFuer` macht daraus
+// zwei Abfragen, und was dann noch waechst, ist allein die MENGE der geladenen Bewertungszeilen.
+// Genau die begrenzt diese Zahl.
+//
+// GANZ ODER GAR NICHT. Ueber dem Deckel wird NICHT gefragt — auch nicht fuer die ersten 200. Ein
+// Teilstand („die ersten 200 geprueft, der Rest nicht") waere eine Antwort, in der zwei Eintraege
+// dasselbe Wort mit verschiedener Deckung tragen; wer sie liest, kann den Unterschied nicht sehen,
+// ohne jede Herkunft einzeln zu pruefen. Stattdessen sagt die GANZE Antwort dasselbe ueber sich.
+export const ANZEIGESTATUS_LISTE_DECKEL = 200;
+
+/**
+ * Der Grund, der ueber dem Deckel mitreist — mit dem Deckel UND der tatsaechlichen Zahl darin.
+ * Ohne beide Zahlen waere es wieder ein Schweigen mit Etikett: der Leser koennte nicht einschaetzen,
+ * ob er knapp darueber liegt oder um das Zehnfache.
+ */
+function anzeigestatusDeckelGrund(sichtbare: number): string {
+  return `Diese Liste fuehrt ${sichtbare} sichtbare Eintraege und liegt damit ueber dem Deckel von ${ANZEIGESTATUS_LISTE_DECKEL}: fuer KEINEN Eintrag wurde die Pruefstandslage abgefragt. Der Anzeigestatus steht hier allein auf dem gespeicherten Status.`;
+}
+
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
   const {
     ko,
@@ -555,21 +604,65 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   async function anzeigestatusEingaengeFuer(
     item: KnowledgeObject,
   ): Promise<AnzeigestatusEingaenge> {
-    const nichtErhoben: AnzeigestatusEingaenge = {
-      zuweisungen: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.zuweisungen },
-      bewertungen: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.bewertungen },
-      konflikt: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt },
-      revalidierung: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.revalidierung },
-    };
     try {
-      const stand = await validation.pruefstandFuer(item.id, item.version);
-      return {
-        ...nichtErhoben,
-        zuweisungen: { wert: stand.assignments },
-        bewertungen: { wert: { rejected: stand.votes.down > 0 } },
+      return anzeigestatusEingaengeAus(await validation.pruefstandFuer(item.id, item.version));
+    } catch {
+      return ANZEIGESTATUS_NICHT_ERHOBEN;
+    }
+  }
+
+  /** Aus der Pruefstandslage werden die zwei Eingaenge, die dieser Lesepfad ueberhaupt erhebt. */
+  function anzeigestatusEingaengeAus(stand: KoPruefstand): AnzeigestatusEingaenge {
+    return {
+      ...ANZEIGESTATUS_NICHT_ERHOBEN,
+      zuweisungen: { wert: stand.assignments },
+      bewertungen: { wert: { rejected: stand.votes.down > 0 } },
+    };
+  }
+
+  // ============================================================================================
+  // JOB 3043 · DIESELBE AUSKUNFT FUER DIE GANZE LISTE — EIN AUFRUF, ZWEI ABFRAGEN.
+  // ============================================================================================
+  //
+  // WAS HIER NICHT PASSIERT: `anzeigestatusEingaengeFuer` in einer Schleife. Das waere richtig und
+  // unbezahlbar zugleich — je Eintrag eine Bewertungsabfrage UND ein Vollscan der
+  // Zuweisungstabelle, ohne Deckel. Genau dieser Aufwand hat die Liste aus JOB 3024
+  // herausgehalten (`PRIORITAETEN.md` N4: „N+1 ohne Deckel"). `validation.pruefstaendeFuer` macht
+  // stattdessen zwei Abfragen fuer die ganze Menge; gezaehlt in
+  // `tests/anzeigestatus-liste/kos-liste-anzeigestatus.test.ts` (L3).
+  //
+  // DIE RUECKGABE IST EINE FUNKTION, keine Karte: damit gibt es fuer JEDEN Eintrag eine Antwort,
+  // auch im Deckel- und im Fehlerfall, und kein Aufrufer muss aus einem fehlenden Karteneintrag
+  // etwas schliessen. Was nicht erhoben wurde, sagt es mit Grund.
+  async function anzeigestatusEingaengeJeEintrag(
+    sichtbare: readonly KnowledgeObject[],
+  ): Promise<(item: KnowledgeObject) => AnzeigestatusEingaenge> {
+    if (sichtbare.length > ANZEIGESTATUS_LISTE_DECKEL) {
+      const deckel = anzeigestatusDeckelGrund(sichtbare.length);
+      // Alle vier Eingaenge tragen den Deckel. Bei `konflikt` und `revalidierung` steht er NEBEN
+      // dem bestehenden Grund, nicht an seiner Stelle: die beiden werden hier auch unterhalb des
+      // Deckels nicht erhoben, und ein alleiniger Deckelgrund liesse das Gegenteil vermuten.
+      const ueberDeckel: AnzeigestatusEingaenge = {
+        zuweisungen: { ungeprueft: deckel },
+        bewertungen: { ungeprueft: deckel },
+        konflikt: { ungeprueft: `${ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt} ${deckel}` },
+        revalidierung: { ungeprueft: `${ANZEIGESTATUS_UNGEPRUEFT_GRUND.revalidierung} ${deckel}` },
+      };
+      return () => ueberDeckel;
+    }
+    try {
+      const staende = await validation.pruefstaendeFuer(
+        sichtbare.map((item) => ({ id: item.id, version: item.version })),
+      );
+      return (item) => {
+        const stand = staende.get(item.id);
+        // FAIL-CLOSED AUCH IM EINZELFALL: eine fehlende Lage wird nicht zu einer leeren
+        // Zuweisungsliste umgedeutet. `pruefstaendeFuer` sagt zu, jede Kennung zu beantworten;
+        // wenn diese Zusage je bricht, sagt die Antwort es, statt „offen" zu behaupten.
+        return stand ? anzeigestatusEingaengeAus(stand) : ANZEIGESTATUS_NICHT_ERHOBEN;
       };
     } catch {
-      return nichtErhoben;
+      return () => ANZEIGESTATUS_NICHT_ERHOBEN;
     }
   }
 
@@ -653,9 +746,33 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // newAllowed`). Eine neue Regel darf Sichtbarkeit nie erweitern; ein Aufbau ohne Trim findet
       // hier weiterhin das Tor vor, das seit mega74 steht. Die Zusage dieser Route ändert sich
       // damit nicht — sie wird nur zählbar und paginierbar.
-      reply
-        .code(200)
-        .send(sichtbareFuer(user, await ko.list(request.query, sqlSichtbarkeitFuer(user))));
+      const sichtbare = sichtbareFuer(
+        user,
+        await ko.list(request.query, sqlSichtbarkeitFuer(user)),
+      );
+      // ==========================================================================================
+      // JOB 3043 · DER ZWEITE LESEPFAD SAGT JETZT DASSELBE WIE DER ERSTE.
+      // ==========================================================================================
+      //
+      // Bis hierher sendete diese Zeile das ROHE Objekt: ein Eintrag, den `GET /api/kos/:id` seit
+      // JOB 3024 `abgelehnt` nennt, hiess in der Liste weiter `validiert`. Zwei Lesepfade, zwei
+      // Antworten ueber dasselbe Objekt — und die Liste war die, die man zuerst sieht.
+      //
+      // ES ENTSTEHT KEINE ZWEITE ABLEITUNG. `discloseDisplayStatus` ist dieselbe Funktion, die der
+      // Detailabruf ruft; die Gruende fuer nicht Erhobenes kommen aus derselben Tabelle. Diese
+      // Route beschafft nur — und wo sie nichts beschafft hat, sagt sie warum.
+      //
+      // DIE REIHENFOLGE IST DER SCHUTZ: `sichtbareFuer` steht in der Zeile DARUEBER. Angereichert
+      // wird ausschliesslich die sichtbare Menge, und nur ihre Kennungen gehen an die
+      // Pruefstandsabfrage. Ein Prueflauf ueber ein unsichtbares Objekt waere eine Existenzauskunft
+      // ueber den Umweg der Kosten (gepinnt in L6).
+      const eingaengeFuer = await anzeigestatusEingaengeJeEintrag(sichtbare);
+      reply.code(200).send(
+        sichtbare.map((item) => ({
+          ...item,
+          ...discloseDisplayStatus(item, eingaengeFuer(item)),
+        })),
+      );
     });
 
     app.get<{ Params: { id: string } }>("/api/kos/:id", async (request, reply) => {
