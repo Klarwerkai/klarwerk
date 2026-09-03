@@ -1889,6 +1889,14 @@ const de = {
   "ask.placeholder": "z. B. Wann muss Ventil X bei Überdruck geschlossen werden?",
   "ask.emptyHint": "Bitte gib zuerst eine Frage ein.",
   "ask.submit": "Fragen",
+  // JOB 3038: das Diktat am Fragefeld. Eigene `ask.`-Schlüssel, weil sie an DIESER Fläche hängen —
+  // die `capture.`-Schlüssel beschreiben das Erzählfeld und bleiben unberührt. Der
+  // Nicht-verfügbar-Satz sagt wörtlich „nicht verfügbar": dieselbe Zusage, die
+  // `tests/capture/interview-speech-i18n.test.ts` für das Erfassen hält.
+  "ask.diktatStart": "Frage sprechen",
+  "ask.diktatStop": "Aufnahme beenden",
+  "ask.diktatUnsupported":
+    "Spracheingabe ist in diesem Browser nicht verfügbar. Nutze Chrome/Edge oder tippe die Frage.",
   // AUFTRAG-mega38 BLOCK A: Warten und Fehlschlag stehen DORT, wo die Antwort erscheint.
   "ask.pending.title": "Die Frage läuft gegen das Werkswissen.",
   "ask.pending.body":
@@ -6619,6 +6627,11 @@ const en: typeof de = {
   "ask.expect.answer": "finds matching knowledge",
   "ask.expect.gap": "shows a knowledge gap",
   "ask.submit": "Ask",
+  // JOB 3038: dictation at the question field — see the note at the German keys.
+  "ask.diktatStart": "Speak question",
+  "ask.diktatStop": "Stop recording",
+  "ask.diktatUnsupported":
+    "Speech input is not available in this browser. Use Chrome/Edge or type your question.",
   "ask.reasoner.model": "Model mode",
   "ask.reasoner.deterministic": "Deterministic mode",
   "ask.reasoner.loading": "Checking mode …",
@@ -10858,6 +10871,11 @@ const nl: typeof de = {
   "ask.placeholder": "bijv. Wanneer moet klep X bij overdruk gesloten worden?",
   "ask.emptyHint": "Voer eerst een vraag in.",
   "ask.submit": "Vragen",
+  // JOB 3038: dicteren bij het vraagveld — zie de toelichting bij de DE-sleutels.
+  "ask.diktatStart": "Vraag inspreken",
+  "ask.diktatStop": "Opname stoppen",
+  "ask.diktatUnsupported":
+    "Spraakinvoer is in deze browser niet beschikbaar. Gebruik Chrome/Edge of typ je vraag.",
   // AUFTRAG-mega38 BLOCK A: wachten en mislukken staan DAAR waar het antwoord verschijnt.
   "ask.pending.title": "De vraag loopt tegen de fabriekskennis.",
   "ask.pending.body":

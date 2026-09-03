@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { ArrowRight, Copy, FileDown, Printer, ThumbsUp } from "lucide-react";
+import { ArrowRight, Copy, FileDown, Mic, Printer, ThumbsUp } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useSearchParams } from "react-router-dom";
@@ -58,6 +58,9 @@ import type { EvidenceTone } from "../lib/knowledgeClass";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { type ReasonerBadgeTone, reasonerBadge } from "../lib/reasonerBadge";
 import { toReasonerLocale } from "../lib/reasonerLocale";
+// JOB 3038: dieselbe Rekorder-Fabrik, die auch das Erfassen benutzt — eine Diktat-Wahrheit.
+import { type SpeechRec, diktatSprache, makeRec } from "../lib/speechDictation";
+import { hasSpeechRecognition } from "../lib/speechSupport";
 import { useAiAvailable } from "../lib/useAiAvailable";
 import { useAiBillable } from "../lib/useAiBillable";
 import { useAuthorName } from "../lib/useAuthorName";
@@ -137,6 +140,89 @@ export function Ask(): JSX.Element {
   // Leserin irgendetwas getan hatte — eine Zurechtweisung als Begrüssung. Der Satz ist richtig,
   // sein Zeitpunkt war es nicht. Er erscheint jetzt erst, wenn wirklich leer abgesendet wurde.
   const [emptyAttempted, setEmptyAttempted] = useState(false);
+  // ==============================================================================================
+  // JOB 3038 — DAS FRAGEFELD HÖRT ZU.
+  // ==============================================================================================
+  // Wer etwas wissen will, kann es ab hier sprechen statt tippen. Drei Eigenschaften machen das
+  // erst brauchbar, und alle drei sind gemessen (`tests/diktat-fragefeld/`):
+  //   · Erkanntes wird ANGEHÄNGT (gleiches Muster wie Capture) — der Bestand im Feld bleibt.
+  //   · Das Stoppen löst KEINE Modellanfrage aus. Eine versehentlich erkannte Silbe darf keinen
+  //     Lauf kosten; abgeschickt wird ausschliesslich über den bestehenden Weg unten.
+  //   · EINE laufende Aufnahme endet auf JEDEM Weg, und keiner der Wege beendet eine fremde:
+  //     `onend` und `onerror` (in `makeRec` verdrahtet) und der Abbau der Seite beenden GENAU DIE
+  //     Aufnahme, die gerade gilt — die Identitätsbindung des Abschlusses unten ist der Grund,
+  //     warum diese Aussage trägt und nicht nur den geraden Fall beschreibt. Gemessen an F7
+  //     (Abbau), F7-Kalibrierung (kein zweites Stoppen) und F8 (spätes Ende einer früheren
+  //     Aufnahme). Das bisher Erkannte bleibt stehen; es erscheint bewusst KEINE Meldung
+  //     „nichts verstanden": das wäre eine Aussage über den Fragenden, die die API nicht hergibt.
+  const [listening, setListening] = useState(false);
+  const recRef = useRef<SpeechRec | null>(null);
+  // Synchron und ohne Ladezustand: der Knopf ist ab dem ersten Rendern da oder gar nicht.
+  const speechSupported = hasSpeechRecognition(window);
+  const toggleDictation = (): void => {
+    if (listening) {
+      recRef.current?.stop();
+      return;
+    }
+    const rec = makeRec(
+      (text) => setQ((prev) => (prev ? `${prev} ${text}` : text)),
+      // Der Abschluss ist IDENTITÄTSGEBUNDEN (JOB 3038 Runde 3, BENs Befund): ein Rückruf darf
+      // Referenz und Zustand nur ändern, wenn er zu der Aufnahme gehört, die gerade GILT. Ein
+      // verspätetes `end` einer früheren, schon gescheiterten Aufnahme trifft hier auf `!==` und
+      // geht wirkungslos zurück — sonst räumte es die inzwischen laufende Aufnahme ab und nähme
+      // ihr den Stoppweg (F8).
+      //
+      // Und die Referenz wird beim Ende GERÄUMT, nicht nur das Flag gesetzt: sie soll
+      // ausschliesslich zeigen, solange wirklich etwas läuft. Sonst träte der Abbau unten auf
+      // eine längst beendete Erkennung ein (F7-Kalibrierung).
+      (beendet) => {
+        if (recRef.current !== beendet) {
+          return;
+        }
+        recRef.current = null;
+        setListening(false);
+      },
+      diktatSprache(i18n.language),
+    );
+    if (!rec) {
+      return;
+    }
+    recRef.current = rec;
+    rec.start();
+    setListening(true);
+  };
+  // ==============================================================================================
+  // JOB 3038 RUNDE 2 (BENs Befund) — DER STOPPKNOPF DARF NICHT VOR DEM MIKROFON GEHEN.
+  // ==============================================================================================
+  //
+  // In Runde 1 wurde `recRef` gesetzt und AUSSCHLIESSLICH vom zweiten Klick gestoppt. Wer die
+  // Frageseite verliess, während das Diktat lief, nahm damit den einzigen sichtbaren Stoppweg mit
+  // — die Erkennung lief weiter, und mit ihr der Mikrofonzugriff. Gemessen an einem gemounteten
+  // Gegenfall: gestartet 1, gestoppt 0 nach dem Abbau (`tests/diktat-fragefeld`, F7).
+  //
+  // `onend`/`onerror` decken das NICHT ab: sie melden das Ende der Erkennung, nicht das Ende der
+  // Seite. Die Zusage „kein stiller Dauer-Läuft-Zustand" war deshalb in Runde 1 zu weit gefasst;
+  // erst dieser Abbau macht sie wahr — und erst die Identitätsbindung des Abschlusses oben
+  // (Runde 3) macht sie auch im Mehrere-Rekorder-Fall wahr: ohne sie räumte ein verspätetes `end`
+  // die Referenz weg, und dieser Abbau fände die laufende Aufnahme nicht mehr (F8, Schritt 5).
+  //
+  // Die Rückmeldungen werden VOR dem Stoppen gelöst: gleich gibt es diese Komponente nicht mehr,
+  // und ihr Zustand ist dann niemandes Zustand. Ein leeres Abhängigkeitsfeld ist hier richtig —
+  // der Abbau soll genau einmal laufen, beim Verlassen; `recRef` wird erst im Abbau gelesen und
+  // trägt dort den aktuellen Stand.
+  useEffect(() => {
+    return () => {
+      const rec = recRef.current;
+      if (!rec) {
+        return;
+      }
+      recRef.current = null;
+      rec.onresult = null;
+      rec.onend = null;
+      rec.onerror = null;
+      rec.stop();
+    };
+  }, []);
   const [result, setResult] = useState<AnswerResult | null>(null);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
   // konnten und welches Tor bei ihnen zu ist (Freigabe/Stufe/Volltext). „Keine belastbare
@@ -554,6 +640,24 @@ export function Ask(): JSX.Element {
           aria-describedby="ask-empty-hint"
           className="h-11 flex-1 rounded-input border border-hairline bg-surface px-3.5 text-sm outline-none focus:border-ink/30"
         />
+        {/* JOB 3038: das Mikrofon steht DORT, wo gefragt wird — direkt neben dem Feld, vor dem
+            Absendeknopf. `type="button"` ist hier keine Formalie: ein Knopf ohne diesen Typ würde
+            im Formular absenden, und genau das darf das Diktat nicht. Kann der Browser keine
+            Spracherkennung, steht hier NICHTS und stattdessen unter dem Feld der Satz, der es
+            sagt — kein klickbarer Knopf, der nichts tut. */}
+        {speechSupported ? (
+          <Button
+            type="button"
+            variant={listening ? "primary" : "outline"}
+            className="h-11 shrink-0"
+            onClick={toggleDictation}
+            aria-pressed={listening}
+            aria-label={listening ? t("ask.diktatStop") : t("ask.diktatStart")}
+          >
+            <Mic size={15} />
+            {listening ? t("ask.diktatStop") : t("ask.diktatStart")}
+          </Button>
+        ) : null}
         <Button
           type="submit"
           variant="primary"
@@ -575,6 +679,17 @@ export function Ask(): JSX.Element {
       >
         {answerAi.available && emptyAttempted && q.trim().length === 0 ? t("ask.emptyHint") : ""}
       </output>
+      {/* JOB 3038 · „Ehrlichkeit vor Optik": statt eines toten Mikrofonknopfes steht hier der Satz,
+          der den Zustand nennt. Derselbe ehrliche Wortlaut wie im Erfassen — eigener `ask.`-Schlüssel,
+          weil er an dieser Fläche hängt. */}
+      {speechSupported ? null : (
+        <p
+          data-testid="ask-diktat-na"
+          className="mt-1.5 rounded-btn bg-trust-warn-bg px-2.5 py-2 text-[12px] text-trust-warn-text"
+        >
+          {t("ask.diktatUnsupported")}
+        </p>
+      )}
       <AiUnavailableHint show={!answerAi.available} />
       {/* AUFTRAG-mega61 Block E: die Fragenfläche trug bisher KEINEN dauerhaft sichtbaren
           KI-Hinweis — nur eine Pille mit `title`, also erst nach dem Zeigen mit der Maus. Der Satz

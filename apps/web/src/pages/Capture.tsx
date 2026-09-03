@@ -261,6 +261,9 @@ import {
   countKeptSlides,
   mergeSlideImageInfo,
 } from "../lib/slideImages";
+// JOB 3038: die EINE Diktat-Wahrheit — Typen und Rekorder-Fabrik lagen bis hierher inline in
+// dieser Datei und sind nach `lib/speechDictation.ts` verschoben (nicht kopiert).
+import { type SpeechRec, diktatSprache, makeRec } from "../lib/speechDictation";
 import { hasSpeechRecognition } from "../lib/speechSupport";
 // WP-RETEST7 R1: ehrliche Lese-Fehler — Stale-Bundle (Chunk-404 nach Deploy) vs. echter Parse-Fehler.
 import { STALE_BUNDLE_KEY, honestParseErrorText } from "../lib/staleChunk";
@@ -306,30 +309,6 @@ interface LocalImage {
   mime: string;
   dataUrl: string; // kleine Vorschau (Thumbnail)
   original: string; // Original-Daten-URL (→ Object-Store)
-}
-
-// Web-Speech-API (Diktat) — minimale Typen statt any.
-interface SpeechRec {
-  lang: string;
-  continuous: boolean;
-  interimResults: boolean;
-  start(): void;
-  stop(): void;
-  onresult: ((e: SpeechResultEvent) => void) | null;
-  onend: (() => void) | null;
-  onerror: (() => void) | null;
-}
-interface SpeechResultEvent {
-  resultIndex: number;
-  results: ArrayLike<ArrayLike<{ transcript: string }>>;
-}
-type SpeechCtor = new () => SpeechRec;
-function speechCtor(): SpeechCtor | undefined {
-  const w = window as unknown as {
-    SpeechRecognition?: SpeechCtor;
-    webkitSpeechRecognition?: SpeechCtor;
-  };
-  return w.SpeechRecognition ?? w.webkitSpeechRecognition;
 }
 
 const textareaCls =
@@ -2561,28 +2540,10 @@ export function Capture(): JSX.Element {
     speicherTor,
   ]);
 
-  // SCRUM-403: gemeinsame Rekorder-Fabrik für beide Diktat-Ziele (Freitext + Interview-Antwort).
-  const makeRec = (append: (text: string) => void, onDone: () => void): SpeechRec | null => {
-    const Ctor = speechCtor();
-    if (!Ctor) {
-      return null;
-    }
-    const rec = new Ctor();
-    rec.lang = "de-DE";
-    rec.continuous = true;
-    rec.interimResults = false;
-    rec.onresult = (e) => {
-      let text = "";
-      for (let i = e.resultIndex; i < e.results.length; i++) {
-        text += e.results[i]?.[0]?.transcript ?? "";
-      }
-      append(text);
-    };
-    rec.onend = onDone;
-    rec.onerror = onDone;
-    return rec;
-  };
-
+  // SCRUM-403 / JOB 3038: die Rekorder-Fabrik ist keine Sache dieser Seite mehr — sie steht als
+  // EINE Wahrheit in `lib/speechDictation.ts` und wird von Erfassen UND Fragefeld benutzt. Neu ist
+  // allein der Sprachparameter: die Erkennung folgt jetzt der Oberfläche, statt fest „de-DE" zu
+  // sein (siehe die Begründung an `diktatSprache`).
   const toggleDictation = (): void => {
     if (listening) {
       recRef.current?.stop();
@@ -2591,6 +2552,7 @@ export function Capture(): JSX.Element {
     const rec = makeRec(
       (text) => setRaw((prev) => (prev ? `${prev} ${text}` : text)),
       () => setListening(false),
+      diktatSprache(i18n.language),
     );
     if (!rec) {
       return;
@@ -2609,6 +2571,7 @@ export function Capture(): JSX.Element {
     const rec = makeRec(
       (text) => setIvAnswer((prev) => (prev ? `${prev} ${text}` : text)),
       () => setIvListening(false),
+      diktatSprache(i18n.language),
     );
     if (!rec) {
       return;
