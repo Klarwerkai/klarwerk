@@ -476,9 +476,13 @@ describe("SCRUM-164: ModelRun-Protokoll", () => {
       fallback: false,
       demo: false,
       provider: "anthropic:test-model",
-      model: "anthropic:test-model",
       locale: "de",
     });
+    // JOB 3036: `model` trug bis hierher ein zweites Mal `provider.name` — genau der abgelöste
+    // Ausdruck. Es kommt jetzt aus `provider.modelName?.()`; dieses Double nennt kein Modell, also
+    // FEHLT das Feld (kein Ersatzwert). Die Kette Client → Wrapper → Provider → Datensatz mit einem
+    // ECHTEN Modellnamen misst `tests/ki-lauf-modell/lauf-nennt-modell.test.ts`.
+    expect(Object.hasOwn(recent[0] as object, "model")).toBe(false);
   });
 
   it("Fallback-Pfad: primary scheitert → Record mit fallback:true, demo:true", async () => {

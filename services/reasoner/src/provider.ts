@@ -193,6 +193,12 @@ export interface ReasonerProvider {
   // Marke gelten als vertraulichkeits-tauglich (der Wächter im Client-Wrapper bleibt die harte
   // letzte Instanz am Chokepoint).
   rejectsConfidential?(): boolean;
+  // JOB 3036: der REINE Modellbezeichner des dahinterliegenden Clients (ohne Anbieter-Präfix), für
+  // das Laufprotokoll — `name` sagt WER (Anbieter/Client), das hier sagt WOMIT. Optional aus
+  // demselben Grund wie `rejectsConfidential` darüber: der deterministische Provider und die
+  // Test-Doubles haben kein Modell und sollen keines vortäuschen müssen. Fehlt die Methode oder
+  // liefert sie `undefined`, bleibt das Feld im Datensatz WEG (kein Ersatzwert).
+  modelName?(): string | undefined;
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf — beweist Schlüssel + Modellzugang.
   // Optional: der deterministische Fallback hat bewusst keinen (nichts zu testen).
   probe?(): Promise<string>;

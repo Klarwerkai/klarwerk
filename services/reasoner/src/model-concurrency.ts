@@ -6,6 +6,7 @@
 // läuft das Acquire in einen Timeout, wird ein ModelCapacityError geworfen (Backpressure) — kein Crash,
 // kein unbounded Warten. Nicht zu verwechseln mit dem Slice-1-Rate-Limit (Request-Rate, addon-only).
 
+import { AsyncLocalStorage } from "node:async_hooks";
 import type { ModelClient } from "./provider-model";
 
 // Backpressure-Signal: KEIN Provider-Fehler (nicht auf den nächsten Provider ausweichen / nicht still
@@ -153,6 +154,50 @@ export async function withModelSlot<T>(fn: () => Promise<T>): Promise<T> {
   }
 }
 
+// ================================================================================================
+// JOB 3036 RUNDE 2 — DIE PROVIDER-AUSWAHL IST KEIN BELEG FÜR EINEN MODELLAUFRUF.
+// ================================================================================================
+//
+// DER BEFUND (ben, Runde 1): Runde 1 schrieb den Modellnamen, sobald ein Modell-Provider den Lauf
+// erfolgreich beendet hatte. Der `ModelProvider` hat aber vier Wege, die VOR jedem Client-Aufruf
+// zurückkehren — `answer` ohne tragende Quelle (`provider-model.ts:1442`), das bereits
+// abgeschlossene `interview` (`:1323`), `extract` auf leerem Dokument (`:1351`) und `helpAnswer`
+// ohne Wissensbasis (`:1203`) —, und `select` ruft überhaupt nie ein Modell. In all diesen Fällen
+// nannte das Protokoll ein Modell, das nichts getan hat. Das ist genau die Sorte Behauptung, gegen
+// die dieser Auftrag angetreten ist.
+//
+// DIE ANTWORT IST EINE LAUF-SPUR, KEIN MERKER AM OBJEKT. Ein Feld am Provider oder am Client wäre
+// falsch: `model-concurrency` bedient GLEICHZEITIGE Läufe auf DERSELBEN Instanz (das ist der ganze
+// Zweck dieser Datei), ein solcher Merker liefe zwischen parallelen Läufen über. `AsyncLocalStorage`
+// trägt den Zustand entlang der ASYNCHRONEN AUFRUFKETTE genau eines Laufs — zwei parallele Läufe
+// sehen zwei verschiedene Spuren, auch wenn sie durch dieselbe Client-Instanz gehen.
+//
+// GESETZT WIRD SIE AM EINZIGEN ORT, AN DEM DER AUFRUF WIRKLICH GESCHIEHT: innerhalb des
+// Slot-Rahmens, nach dem Egress-Wächter. Ein am Wächter abgewiesener (ConfidentialEgressError) und
+// ein an der Auslastung gescheiterter Aufruf (ModelCapacityError, der Slot wird nie erteilt) haben
+// das Modell NICHT befragt und hinterlassen deshalb auch keine Spur.
+const modellAufrufSpur = new AsyncLocalStorage<ModellAufrufSpur>();
+
+/** Die Spur EINES Laufs: hat in ihm wirklich ein Modellaufruf stattgefunden? */
+export interface ModellAufrufSpur {
+  gerufen: boolean;
+}
+
+// Führt fn im Lauf-Kontext von `spur` aus. Alles, was innerhalb von fn (auch über beliebig viele
+// awaits hinweg) durch den Chokepoint geht, trägt sich in GENAU diese Spur ein.
+export function mitModellAufrufSpur<T>(spur: ModellAufrufSpur, fn: () => Promise<T>): Promise<T> {
+  return modellAufrufSpur.run(spur, fn);
+}
+
+// Der Vermerk am Chokepoint. Ohne laufenden Kontext (Probe, completeRaw, direkte Client-Nutzung)
+// ein No-op — dort entsteht ohnehin kein Protokolleintrag.
+function vermerkeModellAufruf(): void {
+  const spur = modellAufrufSpur.getStore();
+  if (spur) {
+    spur.gerufen = true;
+  }
+}
+
 // Umschließt einen ModelClient, sodass JEDER complete()-Aufruf durch den globalen Semaphore geht.
 // Der einzige Ort, an dem der Cap greift — kein Bypass, weil alle Provider-Methoden hierüber laufen.
 // SCRUM-502 Schicht 2/R8: `rejectsConfidential` ist PFLICHT (kein Default) — der Aufrufer MUSS die
@@ -171,11 +216,20 @@ export function cappedModelClient(
     // der Reasoner schließt darüber einen vertraulichkeits-untauglichen Provider (Cloud bzw. „lokal"
     // ohne bestätigte On-Prem-Origin) bei vertraulichen Paaren VOR jedem Aufruf aus der Kette aus.
     rejectsConfidential: opts.rejectsConfidential,
+    // JOB 3036: der Modellbezeichner des inneren Clients reist mit. Dieser Wrapper ist der EINZIGE
+    // Weg nach draußen (model-client.ts:411-425 und :465-482) — was er nicht kopiert, existiert für
+    // das Produkt nicht. Nur setzen, wenn der innere Client wirklich einen nennt: ein
+    // `model: undefined`-Feld wäre eine Angabe, die keine ist.
+    ...(inner.model ? { model: inner.model } : {}),
     complete: (system: string, user: string, confidential: boolean, maxTokens?: number) => {
       if (opts.rejectsConfidential && confidential) {
         return Promise.reject(new ConfidentialEgressError());
       }
-      return withModelSlot(() => inner.complete(system, user, confidential, maxTokens));
+      return withModelSlot(() => {
+        // JOB 3036 R2: HIER geschieht der Aufruf wirklich — Wächter passiert, Slot erteilt.
+        vermerkeModellAufruf();
+        return inner.complete(system, user, confidential, maxTokens);
+      });
     },
     // WP-BILD-1c: der Vision-Pfad läuft durch DENSELBEN Chokepoint (Egress-Wächter + In-Flight-Cap)
     // wie complete — kein Bypass über Bilder. Nur vorhanden, wenn der innere Client Vision kann.
@@ -191,9 +245,11 @@ export function cappedModelClient(
             if (opts.rejectsConfidential && confidential) {
               return Promise.reject(new ConfidentialEgressError());
             }
-            return withModelSlot(() =>
-              innerVision(system, imageDataUrl, user, confidential, maxTokens),
-            );
+            return withModelSlot(() => {
+              // JOB 3036 R2: der Bildweg zählt genauso als Modellaufruf wie der Textweg.
+              vermerkeModellAufruf();
+              return innerVision(system, imageDataUrl, user, confidential, maxTokens);
+            });
           },
         }
       : {}),

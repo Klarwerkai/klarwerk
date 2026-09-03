@@ -158,7 +158,25 @@ export interface ModelRunRecord {
   finishedAt: string;
   status: ModelRunStatus;
   error?: string; // generische Fehlermeldung (NIE Prompt-/Antwortinhalt)
-  model?: string; // Modellname, falls ein echtes Modell genutzt wurde
+  // JOB 3036: der Modellbezeichner OHNE Anbieter-Präfix (`claude-sonnet-4-6`, nicht
+  // `anthropic:claude-sonnet-4-6`). `provider` und `model` sind ZWEI VERSCHIEDENE Angaben und dürfen
+  // nicht denselben Wert tragen: `provider` sagt WER gerechnet hat (Client/Anbieter), `model` WOMIT.
+  // Bis JOB 3036 stand hier ein zweites Mal `provider.name` — die Zusage war da, die Auskunft nicht.
+  //
+  // DAS FEHLEN IST EINE AUSSAGE: es heißt „in diesem Lauf hat kein Modell wirklich gearbeitet ODER
+  // der Client nennt seines nicht". Es wird NIE durch einen Ersatzwert gefüllt (auch nicht durch
+  // `provider`).
+  //
+  // DIE HÜRDE IST DER AUFRUF, NICHT DIE PROVIDER-AUSWAHL (JOB 3036 R2): Der Modell-Provider kann
+  // einen Lauf beenden, ohne das Modell je zu befragen — `answer` ohne tragende Quelle, ein bereits
+  // abgeschlossenes `interview`, `extract` auf leerem Dokument, `helpAnswer` ohne Wissensbasis;
+  // `select` rechnet grundsätzlich ohne Modell. In all diesen Fällen steht hier NICHTS. Ein Wert
+  // hier heißt: `ModelClient.complete()` bzw. `completeVision()` ist in genau diesem Lauf gelaufen.
+  //
+  // ALTDATENSÄTZE aus der Zeit vor JOB 3036 tragen `model === provider`; sie werden NICHT umgerechnet.
+  // Der Lesepfad darf daraus nichts folgern — insbesondere entsteht daraus keine Anzeige
+  // „unbekanntes Modell" und keine Bereinigung.
+  model?: string;
   // mega26 Block A (additiv, optional): Laufkontext. Altdatensätze ohne diese Felder bleiben
   // uneingeschränkt gültig — der Lesepfad kennt keine Pflicht auf ihnen.
   actor?: string;

@@ -30,6 +30,13 @@ import type {
 // FR-RSN-02/06: anbieteragnostisch; der Schlüssel lebt nur im Client (serverseitig).
 export interface ModelClient {
   readonly name: string;
+  // JOB 3036: der REINE Modellbezeichner, ohne Anbieter-Präfix (`claude-sonnet-4-6`, nicht
+  // `anthropic:claude-sonnet-4-6`). `name` trägt den Anbieter weiterhin unverändert mit; dieses Feld
+  // ist die ZWEITE, eigenständige Auskunft, die das Laufprotokoll (ModelRunRecord.model) braucht —
+  // ohne sie stand dort ein zweites Mal derselbe Ausdruck. OPTIONAL, weil zahlreiche Test-Doubles
+  // diese Schnittstelle erfüllen: ein Client ohne Modellangabe nennt keines, und das FEHLEN wird
+  // nach oben durchgereicht, statt durch einen Ersatzwert gefüllt zu werden.
+  readonly model?: string;
   // D-AISTATE PAKET 1 (bens V1, aistate-fix3): sichtbare Egress-Politik des Clients. `true` = dieser
   // Client verweigert vertrauliche Inhalte per Konstruktion (Cloud ODER ein als „lokal" verdrahteter
   // Endpunkt, dessen Origin NICHT als On-Prem bestätigt ist — s. isConfirmedLocalOrigin). Der Reasoner
@@ -1131,6 +1138,14 @@ export class ModelProvider implements ReasonerProvider {
   // vertraulichen Paar VOR jedem Aufruf aus der Judge-Kette aus (kein Fetch, Ausgang "confidential").
   rejectsConfidential(): boolean {
     return this.client?.rejectsConfidential === true;
+  }
+
+  // JOB 3036: reicht den REINEN Modellbezeichner des Clients nach oben — die Auskunft, WELCHES
+  // Modell gearbeitet hat. Zwilling von `rejectsConfidential()` darüber, mit derselben Zusage:
+  // ohne Client oder ohne Modellangabe kommt `undefined` heraus, und `undefined` heißt „kein
+  // Modellname bekannt". Es wird NIE auf `this.name` ausgewichen — der trägt den Anbieter.
+  modelName(): string | undefined {
+    return this.client?.model;
   }
 
   // Key-Test (Pedi 02.07.): kleinstmöglicher Echtaufruf. Beweist Schlüssel + Modellzugang;

@@ -117,6 +117,9 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
   };
   return {
     name: `anthropic:${config.model}`,
+    // JOB 3036: derselbe Wert OHNE Anbieter-Präfix — das Laufprotokoll nennt damit das echte
+    // Modell, statt ein zweites Mal den Provider. `name` bleibt bytegleich.
+    model: config.model,
     // SCRUM-411: maxTokens pro Aufruf — kurze Tasks bleiben bei 1024; extract braucht mehr
     // (JSON mit bis zu 20 Punkten inkl. wörtlicher Belegstellen wurde bei 1024 abgeschnitten).
     // SCRUM-502 Schicht 2: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im
@@ -330,6 +333,8 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
   // der Reasoner behandelt fehlenden Bild-Eingang ehrlich als Fehlschlag (nie erfinden).
   return {
     name: `local:${config.model}`,
+    // JOB 3036: s. anthropicClient — der reine Modellbezeichner des eigenen lokalen Modells.
+    model: config.model,
     // SCRUM-502 Schicht 2: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im
     // Cloud-Wrapper (cappedModelClient), der rohe Client selbst reicht den Aufruf nur durch.
     async complete(

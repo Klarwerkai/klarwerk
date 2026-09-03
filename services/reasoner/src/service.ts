@@ -8,7 +8,11 @@ import {
   aiGeneratedMark,
   sanitizeModelRunContext,
 } from "../../model-runs";
-import { ModelCapacityError } from "./model-concurrency";
+import {
+  ModelCapacityError,
+  type ModellAufrufSpur,
+  mitModellAufrufSpur,
+} from "./model-concurrency";
 // WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
 // ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
 import { classifyModelFailure } from "./model-errors";
@@ -654,14 +658,31 @@ export class Reasoner {
     const startedAt = new Date().toISOString();
     const chain = this.providerChain(task, confidential);
     let lastError: unknown;
+    // JOB 3036: das zuletzt WIRKLICH GERUFENE Modell. Nur der Fehler-Datensatz unten liest es — ein
+    // gescheiterter Lauf soll sagen, an welchem Modell er gescheitert ist, statt von einem rein
+    // deterministischen Lauf ununterscheidbar zu sein. Bleibt `undefined`, wenn kein versuchter
+    // Provider ein Modell wirklich befragt hat (reine deterministische Kette, Kurzschlusswege).
+    let lastModel: string | undefined;
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       if (!provider) {
         continue;
       }
+      // JOB 3036 R2: die Spur GENAU DIESES Versuchs. Neu je Versuch, damit ein Lauf, der erst die
+      // Cloud befragt und dann lokal antwortet, im Datensatz das Modell trägt, das geantwortet hat.
+      const spur: ModellAufrufSpur = { gerufen: false };
       try {
-        const result = await run(provider);
-        const fromModel = provider !== this.fallback;
+        const result = await mitModellAufrufSpur(spur, () => run(provider));
+        // JOB 3036: `model` kommt aus dem Provider selbst, NICHT aus `provider.name` (das ist der
+        // Anbieter und steht bereits in `provider`).
+        //
+        // JOB 3036 R2 (bens Befund): UND nur, wenn in diesem Lauf wirklich ein Modellaufruf
+        // stattgefunden hat. „Ein Modell-Provider hat den Lauf beendet" ist KEIN Beleg dafür: der
+        // ModelProvider kehrt auf vier Wegen zurück, ohne den Client je zu rufen (answer ohne
+        // tragende Quelle, abgeschlossenes interview, extract auf leerem Dokument, helpAnswer ohne
+        // Wissensbasis), und `select` rechnet ohnehin ohne Modell. Nennt der Provider kein Modell
+        // oder hat keines gearbeitet, FEHLT das Feld — es wird kein Ersatz eingesetzt.
+        const model = spur.gerufen ? provider.modelName?.() : undefined;
         await this.recordRun(
           task,
           locale,
@@ -671,7 +692,7 @@ export class Reasoner {
             fallback: i > 0,
             demo: result.demo,
             provider: provider.name,
-            ...(fromModel ? { model: provider.name } : {}),
+            ...(model ? { model } : {}),
           },
           context,
         );
@@ -679,10 +700,14 @@ export class Reasoner {
       } catch (err) {
         // SCRUM-498 B2: Backpressure ist KEIN Provider-Fehler — nicht auf den deterministischen
         // Fallback ausweichen, sondern durchreichen (die HTTP-Schicht macht daraus 503 + Retry-After).
+        // Es wird auch nichts protokolliert, also bleibt `lastModel` hier bewusst unberührt.
         if (err instanceof ModelCapacityError) {
           throw err;
         }
         lastError = err;
+        // JOB 3036 R2: auch hier zählt nur der wirklich erfolgte Aufruf. Ein Provider, der vor dem
+        // Client-Aufruf an etwas anderem gescheitert ist, hat kein Modell versucht.
+        lastModel = (spur.gerufen ? provider.modelName?.() : undefined) ?? lastModel;
       }
     }
     // mega26 Block A: der FEHLGESCHLAGENE Lauf trägt denselben Kontext wie der erfolgreiche —
@@ -696,6 +721,10 @@ export class Reasoner {
         fallback: chain.length > 1,
         demo: true,
         provider: this.fallback.name,
+        // JOB 3036: das zuletzt WIRKLICH GERUFENE Modell. `provider` bleibt der Fallback-Name — der
+        // Datensatz behauptet also weiterhin NICHT, ein Modell habe geantwortet; er sagt nur,
+        // welches befragt wurde und dabei scheiterte. Hat kein Modell gearbeitet, fehlt das Feld.
+        ...(lastModel ? { model: lastModel } : {}),
         error: lastError instanceof Error ? lastError.message : "unknown",
       },
       context,
