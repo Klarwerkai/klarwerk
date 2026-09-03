@@ -5,6 +5,9 @@ export type {
   BoardFilter,
   AssignmentSummary,
   AssignmentNotice,
+  // JOB 3024: die Pruefstandslage genau eines Objekts. Ohne diesen Export waere der Rueckgabetyp
+  // der Dienstmethode `pruefstandFuer` ueber die Modulgrenze nicht benennbar.
+  KoPruefstand,
 } from "./src/service";
 export { computeOutcome, TRUST_WEIGHTS, TRUST_MAX } from "./src/trust";
 export type { ValidationOutcome } from "./src/trust";

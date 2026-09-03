@@ -15,8 +15,10 @@ import {
   externalAttachAllowed,
 } from "../../../external-search";
 import {
+  type AnzeigestatusEingaenge,
   type CreateKoInput,
   DEFAULT_UPLOAD_LIMITS,
+  type KnowledgeObject,
   type KnowledgeType,
   type KoService,
   type KoStatus,
@@ -28,6 +30,10 @@ import {
   // JOB 3009: die Stufe als ausdrueckliche Auskunft am Detailabruf — dieselbe Funktion, die das
   // Pruef-Board ueber `mitHerkunft` ruft (die Begruendung steht an der Route).
   discloseConfidentiality,
+  // JOB 3024: die EINE Ableitung der Anzeigestufe samt Herkunft. Bis zu diesem Auftrag hatte
+  // `displayStatus` keinen einzigen Aufrufer im Produkt (`git log -S displayStatus -- services/app`:
+  // kein Treffer); `discloseDisplayStatus` bildet beide Haelften der Auskunft an EINER Stelle.
+  discloseDisplayStatus,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
 import type { LifecycleService } from "../../../lifecycle";
@@ -434,6 +440,57 @@ interface PutBody {
   };
 }
 
+// ================================================================================================
+// JOB 3024 · DER ANZEIGESTATUS — UND DIE LISTE DESSEN, WAS FUER IHN NICHT NACHGESEHEN WURDE.
+// ================================================================================================
+//
+// DER BEFUND. `GET /api/kos/:id` reichte den Kern-Enum `offen|validiert` durch. Ein Objekt, das ein
+// Peer ROT bewertet hat, bleibt nach `trust.ts:46` auf „offen" — an dieser Route war es damit von
+// einem Objekt, das noch niemand angesehen hat, NICHT zu unterscheiden. Beide hiessen „offen".
+//
+// WEDER DIE REGEL NOCH DIE AUSKUNFTSFORM STEHEN HIER. `displayStatus` haelt die Reihenfolge der
+// Zweige seit Abstimmpunkt 1, `discloseDisplayStatus` macht daraus die Auskunft samt Herkunft;
+// beide in `knowledge-object/src/display-status.ts`. Diese Datei BESCHAFFT nur: sie holt die
+// Eingaenge, die sie holen kann, und nennt fuer jeden anderen den Grund. Den Befund „geprueft" kann
+// sie nicht setzen — der entsteht drueben allein daraus, ob ein WERT geliefert wurde.
+//
+// DIE ANTWORT BEHAUPTET NIE EINE ABWESENHEIT. Es gibt kein `konflikte: 0` und kein „nicht faellig" —
+// es gibt fuer jeden ungeprueften Eingang einen benannten Grund. Der Kern-Enum `status` bleibt
+// daneben unveraendert stehen; die Anzeigestufe tritt NEBEN ihn und wird nirgends gespeichert.
+
+/**
+ * Die Gruende, aus denen dieser Lesepfad einen Eingang nicht erhebt — gemessen am Bestand, nicht
+ * vermutet. Sie reisen als Text in der Antwort mit; wer sie liest, soll wissen, WARUM hier nichts
+ * steht, statt aus dem Schweigen etwas zu schliessen.
+ */
+const ANZEIGESTATUS_UNGEPRUEFT_GRUND = {
+  /**
+   * JOB 3002 baut den Konfliktweg gerade um (`services/conflicts/**`, `conflicts-routes.ts`), und
+   * `ConflictService` bietet ohnehin keine Abfrage je Objekt, sondern nur `unresolved()` ueber den
+   * ganzen Bestand.
+   */
+  konflikt:
+    "Der Konfliktweg wird derzeit umgebaut (JOB 3002); dieser Lesepfad fragt ihn nicht ab. Ob dieses Objekt in einem Konflikt steht, ist hier nicht erhoben.",
+  /**
+   * Ein Signal GIBT es — `LifecycleService.pendingRevalidation()`, und `lifecycle` liegt sogar an
+   * dieser Route an. Es wird trotzdem nicht erhoben, und der Grund ist der Aufruf selbst: er laedt
+   * die gesamte Merkerliste, prueft je Merker ein Objekt und ENTFERNT tote Merker
+   * (`lifecycle/src/service.ts:46-57`) — ein Schreibvorgang. Auf einem Detail-Lesepfad ist beides
+   * falsch. Die Zeile sagt deshalb nicht „es gibt kein Signal", sondern „hier wurde nicht
+   * nachgesehen".
+   */
+  revalidierung:
+    "Ob fuer dieses Objekt eine Re-Validierung ansteht, ist hier nicht erhoben. „validiert“ heisst an dieser Route ausdruecklich nicht „nicht faellig“.",
+  /**
+   * Zuweisungen und Bewertungen kommen aus DEMSELBEN Aufruf (`validation.pruefstandFuer`). Faellt
+   * er aus, fallen beide aus — und beide sagen es, statt still auf „offen" zu fallen (§9).
+   */
+  zuweisungen:
+    "Ob dieses Objekt jemandem zur Pruefung zugewiesen ist, ist hier nicht erhoben: die Abfrage der Pruefstandslage ist fehlgeschlagen.",
+  bewertungen:
+    "Wie dieses Objekt bewertet wurde, ist hier nicht erhoben: die Abfrage der Pruefstandslage ist fehlgeschlagen.",
+} as const;
+
 export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync {
   const {
     ko,
@@ -466,6 +523,54 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       return undefined;
     }
     return item;
+  }
+
+  // ============================================================================================
+  // JOB 3024 · DIE ZWEI ERHEBBAREN EINGAENGE — GEZIELT JE OBJEKT, OHNE STATUSVORBEHALT.
+  // ============================================================================================
+  //
+  // WORAN DIE NAHELIEGENDE FASSUNG SCHEITERT. `KnowledgeObject.assignments` sieht aus wie die
+  // Zuweisungsliste, ist es aber nicht: `service.ts:1644` setzt sie einmalig auf `[]`, und KEIN
+  // Schreibweg des Produkts aendert sie je. Die echten Zuweisungen liegen im `AssignmentRepo` des
+  // Validierungsmoduls, die Bewertungen im `RatingRepo`. Beides kommt hier nur ueber die
+  // MODULFASSADE `services/validation/index.ts` in Reichweite — keine Kante in die Innereien, keine
+  // neue Abhaengigkeit in `KoRoutesDeps`.
+  //
+  // ZWEI FASSUNGEN WURDEN VERWORFEN, und beide Gruende sind gemessen:
+  //   · `board()` fuehrt per Vertrag nur OFFENE Objekte. Die Bewertungslage eines validierten
+  //     Objekts blieb damit ungefragt, und eine aktuelle rote Stimme verschwand nach einem
+  //     Admin-Override hinter „validiert" — obwohl `displayStatus` `rejected` VOR `validiert`
+  //     prueft und `adminValidate` keine Bewertung loescht (Fall H).
+  //   · `board()` laedt ausserdem die Vollmenge des Filters samt einer Bewertungsabfrage je Zeile:
+  //     neun gleichartige Fremdobjekte kosteten neun zusaetzliche Abfragen (Fall K, gemessen).
+  //
+  // `validation.pruefstandFuer(id, version)` fragt stattdessen schreibfrei, je Objekt und fuer JEDEN
+  // Status. Dass nur Stimmen der AKTUELLEN Fassung zaehlen (SCRUM-507 R2), entscheidet weiterhin das
+  // Validierungsmodul: eine rote Stimme auf eine laengst revidierte Fassung darf das Objekt nicht
+  // weiter „abgelehnt" nennen (Fall I).
+  //
+  // FAIL-CLOSED, ABER NICHT STILL: scheitert die Abfrage, wird daraus KEIN „offen", sondern ein
+  // ausgewiesen ungeprueftes Feldpaar mit benanntem Grund (§9: kein Feld traegt eine Aussage ohne
+  // frische, erfolgreiche Datengrundlage). Gepinnt in Fall J.
+  async function anzeigestatusEingaengeFuer(
+    item: KnowledgeObject,
+  ): Promise<AnzeigestatusEingaenge> {
+    const nichtErhoben: AnzeigestatusEingaenge = {
+      zuweisungen: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.zuweisungen },
+      bewertungen: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.bewertungen },
+      konflikt: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt },
+      revalidierung: { ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.revalidierung },
+    };
+    try {
+      const stand = await validation.pruefstandFuer(item.id, item.version);
+      return {
+        ...nichtErhoben,
+        zuweisungen: { wert: stand.assignments },
+        bewertungen: { wert: { rejected: stand.votes.down > 0 } },
+      };
+    } catch {
+      return nichtErhoben;
+    }
   }
 
   return async (app) => {
@@ -595,7 +700,16 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
       // Es ist eine reine Lese-Sicht: kein Backfill, keine Migration, kein Schreiben einer Stufe,
       // wo keine steht. Der Schreibweg (`PUT /api/kos/:id {action:"confidentiality"}`) bleibt
       // unberuehrt.
-      reply.code(200).send({ ...item, ...discloseConfidentiality(item.confidentiality) });
+      //
+      // JOB 3024 reiht sich in DIESELBE Reihenfolge ein: das Tor oben, die Anreicherung hier. Die
+      // Anzeigestufe wird aus dem bereits geladenen Objekt und dem Pruefstand abgeleitet — sie
+      // fragt nichts, was der Betrachter nicht ohnehin sehen darf, und sie tritt NEBEN `status`,
+      // nicht an seine Stelle. Was fuer sie nicht erhoben wurde, steht in `anzeigestatusHerkunft`.
+      reply.code(200).send({
+        ...item,
+        ...discloseConfidentiality(item.confidentiality),
+        ...discloseDisplayStatus(item, await anzeigestatusEingaengeFuer(item)),
+      });
     });
 
     app.get<{ Params: { id: string } }>("/api/kos/:id/versions", async (request, reply) => {

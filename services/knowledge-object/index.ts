@@ -199,7 +199,20 @@ export {
   PgUploadLimitsRepo,
   UPLOAD_LIMITS_SCHEMA,
 } from "./src/upload-limits";
-export { displayStatus, type DisplayStatus } from "./src/display-status";
+// JOB 3024: die Auskunftsform wohnt bei der Ableitung, nicht an der Route — sonst schreibt sie
+// jeder Lesepfad neu. Die Route beschafft nur noch Eingaenge; die Begruendung steht ausgeschrieben
+// in `src/display-status.ts`.
+export {
+  displayStatus,
+  discloseDisplayStatus,
+  type DisplayStatus,
+  type AnzeigestatusAuskunft,
+  type AnzeigestatusEingaenge,
+  type AnzeigestatusHerkunft,
+  type Anzeigestatuseingang,
+  type Eingangsbefund,
+  type Erhoben,
+} from "./src/display-status";
 // JOB 557 (Pedi 13.08.2026): das kanonische Eigentümer-Aggregat. OHNE diesen Export bliebe es
 // unerreichbar — und damit genau die unverdrahtete Empfangsstelle, die D5 gerügt hat. Der
 // Validierungsdienst liest `responsibleOf`/`responsibleKindOf` über DIESE Fassade; eine Kante in

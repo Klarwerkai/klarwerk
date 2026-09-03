@@ -701,7 +701,11 @@ const ALTBESTAND: readonly string[] = [
   "services/db-tx/src/reset-lock.ts::SQL_SPERRE_WIRD_GEHALTEN",
   "services/db-tx/src/write-fence.ts::PgWriteFence",
   "services/db-tx/src/write-fence.ts::fenceKey",
-  "services/knowledge-object/src/display-status.ts::displayStatus",
+  // JOB 3024 · GESTRICHEN, WEIL BEHOBEN: `displayStatus` stand hier seit dem 27.08.2026 — die
+  // Ableitung war gebaut, exportiert und hatte im ganzen Produkt keinen einzigen Aufrufer
+  // (`git log -S "displayStatus" -- services/app`: kein Treffer ueber die gesamte Historie). Seit
+  // JOB 3024 ruft `services/app/src/routes/ko-routes.ts` sie am Detailabruf `GET /api/kos/:id`.
+  // Genau dafuer ist dieses Register da: es soll schrumpfen.
   "services/knowledge-object/src/effective-search-document.ts::EFFECTIVE_SEARCH_DOCUMENT_FIELDS",
   "services/knowledge-object/src/kanten-repo.ts::DeduplizierenderKantenBestand",
   "services/knowledge-object/src/kanten-service.ts::InMemoryKantenRepo",

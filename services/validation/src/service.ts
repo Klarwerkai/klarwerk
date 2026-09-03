@@ -10,6 +10,7 @@ import {
   normalizeDefaultNeeded,
 } from "./settings";
 import { TRUST_MAX, type ValidationOutcome, computeOutcome } from "./trust";
+import type { Rating } from "./types";
 import { ValidationError, type Verdict } from "./types";
 
 export type BoardFilter = Omit<KoFilter, "status">;
@@ -24,6 +25,55 @@ export interface AssignmentSummary {
   userId: string;
   open: number;
   done: number;
+}
+
+/** Die Stimmenlage EINER KO-Fassung, getrennt nach gewerteten und veralteten Stimmen. */
+interface Stimmenlage {
+  votes: { up: number; warn: number; down: number };
+  staleVotes: number;
+}
+
+/**
+ * SCRUM-507 R2, an EINER Stelle: nur Bewertungen der uebergebenen Fassung zaehlen; frueheren wird
+ * nicht widersprochen, sie werden getrennt gezaehlt. `board()` und `pruefstandFuer()` rufen beide
+ * hierher — zwei Zaehlungen waeren zwei Wahrheiten ueber dieselben Stimmen.
+ */
+function stimmenAus(ratings: readonly Rating[], koVersion: number): Stimmenlage {
+  const votes = { up: 0, warn: 0, down: 0 };
+  let staleVotes = 0;
+  for (const r of ratings) {
+    if (ratingVersion(r) === koVersion) {
+      votes[r.verdict] += 1;
+    } else {
+      staleVotes += 1;
+    }
+  }
+  return { votes, staleVotes };
+}
+
+// ================================================================================================
+// JOB 3024 — DIE PRUEFSTANDSLAGE GENAU EINES OBJEKTS.
+// ================================================================================================
+//
+// WARUM ES DIESEN WEG BRAUCHT. Vorher war `board()` der einzige oeffentliche Weg an Zuweisungen und
+// Bewertungen. Ein Detailabruf musste damit die VOLLMENGE der offenen Objekte laden und je Zeile die
+// Bewertungen abfragen (gemessen: neun gleichartige Fremdobjekte kosteten neun zusaetzliche
+// Abfragen) — und weil `board()` per Vertrag nur OFFENE Objekte fuehrt, blieb die Bewertungslage
+// eines validierten Objekts ungefragt. Daran hing der tragende Fehler: eine aktuelle rote Stimme
+// verschwand nach einem Admin-Override hinter „validiert", obwohl `displayStatus` `rejected`
+// ausdruecklich VOR `validiert` prueft (display-status.ts:38-43) und `adminValidate` keine
+// Peer-Bewertung loescht.
+//
+// DIESE ABFRAGE IST SCHREIBFREI und kennt keinen Statusvorbehalt: sie beantwortet die Frage fuer
+// JEDES Objekt, offen wie validiert. Sie laedt kein Wissensobjekt (die Fassung kommt vom Aufrufer,
+// der das Objekt ohnehin in der Hand hat) und keine fremde Zeile.
+export interface KoPruefstand {
+  /** Die OFFENEN Zuweisungen dieses Objekts. Erledigte zaehlen nicht — dieselbe Lesart wie `board()`. */
+  readonly assignments: string[];
+  /** Die Stimmen der uebergebenen Fassung. */
+  readonly votes: { up: number; warn: number; down: number };
+  /** Stimmen frueherer Fassungen: gezaehlt, aber nicht gewertet (SCRUM-507 R2). */
+  readonly staleVotes: number;
 }
 
 // SCRUM-363 / AG-15 / FR-VAL-05/06: eine offene, persönliche Review-Zuweisung als leichtgewichtiger
@@ -362,20 +412,39 @@ export class ValidationService {
       kos.map(async (ko) => {
         // SCRUM-507 R2: nur Bewertungen der AKTUELLEN Version zählen für die Anzeige; frühere werden
         // als „veraltet (vor Revision)" separat gezählt (staleVotes), nicht in up/warn/down gemischt.
-        const votes: { up: number; warn: number; down: number } = { up: 0, warn: 0, down: 0 };
-        let staleVotes = 0;
-        for (const r of await this.ratings.listByKo(ko.id)) {
-          if (ratingVersion(r) === ko.version) {
-            votes[r.verdict] += 1;
-          } else {
-            staleVotes += 1;
-          }
-        }
+        // JOB 3024: die Zählung selbst steht in `stimmenAus` — dieselbe, die `pruefstandFuer` ruft.
+        const { votes, staleVotes } = stimmenAus(await this.ratings.listByKo(ko.id), ko.version);
         const assigned = openByKo.get(ko.id);
         const base = assigned ? { ...ko, assignments: assigned } : ko;
         return { ...base, reviewVotes: votes, staleVotes };
       }),
     );
+  }
+
+  /**
+   * JOB 3024: Zuweisungs- und Bewertungslage GENAU eines Objekts — schreibfrei, ohne
+   * Statusvorbehalt, ohne die Vollmenge des Pruefbretts. Die Begruendung steht ausgeschrieben
+   * ueber `KoPruefstand`.
+   *
+   * `koVersion` kommt vom Aufrufer, weil der das Objekt bereits geladen hat; ein zweites
+   * `koService.get` waere ein Lesevorgang fuer eine Zahl, die schon in der Hand ist. WELCHE Stimmen
+   * damit zaehlen, entscheidet weiterhin dieses Modul (`stimmenAus`) und nicht der Aufrufer.
+   *
+   * GRENZE, ausdruecklich benannt: die offenen Zuweisungen kommen ueber `AssignmentRepo.all()` —
+   * EIN Zugriff, kein N+1, aber kein Index je Objekt. Ein `listByKo` am `AssignmentRepo` waere die
+   * gezieltere Form; es beruehrt `repo.ts`/`repo-pg.ts` und steht in der Rueckgabe als Rest.
+   */
+  async pruefstandFuer(koId: string, koVersion: number): Promise<KoPruefstand> {
+    const [alle, bewertungen] = await Promise.all([
+      this.assignments.all(),
+      this.ratings.listByKo(koId),
+    ]);
+    const { votes, staleVotes } = stimmenAus(bewertungen, koVersion);
+    return {
+      assignments: alle.filter((a) => a.koId === koId && a.status === "open").map((a) => a.userId),
+      votes,
+      staleVotes,
+    };
   }
 
   // FR-VAL-05: KO an ≥1 Person zuweisen.
