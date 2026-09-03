@@ -1,4 +1,5 @@
 import { LogOut } from "lucide-react";
+import { useId } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useSession } from "../app/AuthContext";
@@ -14,6 +15,7 @@ import {
   istAktiverEintrag,
 } from "../app/navigation";
 import { type NavBadge, navBadgeLabelKey, useNavBadges } from "../app/useNavBadges";
+import { navHilfeFor } from "../lib/navHilfe";
 import { Logo } from "./Logo";
 
 // SCRUM-486 E: Badge trägt neben der Zahl ihre Bedeutung — `label` wird zu title + aria-label, damit
@@ -154,6 +156,31 @@ function NavRow({ item, badge }: { item: NavItem; badge?: NavBadge | undefined }
   const badgeLabelKey = item.badgeKey ? navBadgeLabelKey(item.badgeKey) : undefined;
   const Icon = item.icon;
   const isActive = istAktiverEintrag(item, pathname);
+  // ============================================================================================
+  // JOB 3028 · U3 — DER PUNKT ERKLÄRT SICH VOR DEM KLICK.
+  // ============================================================================================
+  //
+  // Dieselbe Frage, die SCRUM-486 E für das Zähler-Abzeichen beantwortet hat („Maus-Hover und
+  // Screenreader sagen, WAS gezählt wird"), wurde für den Menüpunkt selbst nie gestellt: er trug
+  // ein Wort und sonst nichts. Der Satz dazu steht seit SCRUM-219 als Hilfekapitel im Produkt;
+  // `navHilfeFor` holt ihn von dort (kein neuer Text, keine zweite Tabelle) — oder liefert `null`,
+  // und dann bleibt der Punkt STUMM. Das Fehlen ist hier die ehrliche Auskunft.
+  //
+  // ZWEI TRÄGER, WEIL EIN TRÄGER NUR EINE HÄLFTE BEDIENT: `title` sieht die Maus, `aria-describedby`
+  // hört der Screenreader. Der zugängliche NAME des Links bleibt dabei die Beschriftung — deshalb
+  // ausdrücklich kein `aria-label`: eine Beschreibung ERGÄNZT den Namen, sie ersetzt ihn nicht.
+  //
+  // Der Träger liegt AUSSERHALB des Links. Läge er darin, flösse sein Text in den Namen des Links
+  // ein und aus „Meine Aufgaben" würde der ganze Absatz. Er ist ein `<span class="sr-only">` ohne
+  // `tabindex`: nicht fokussierbar (die Fokusfalle des Off-Canvas-Drawers bleibt unberührt) und
+  // ausser Fluss (`sr-only` ist absolut positioniert) — kein Maß der Seitenleiste ändert sich.
+  //
+  // Die Aussage hat KEINE Datenquelle zur Laufzeit: sie entsteht aus zwei Konstanten und der
+  // Übersetzung. Sie hängt insbesondere nicht am Zähler und ist in Lade-, Fehler- und Veraltet-Lage
+  // dieselbe — sie sagt, WAS hinter dem Punkt liegt, nicht ob dort gerade etwas zu tun ist.
+  const hilfe = navHilfeFor(item.path);
+  const hilfeId = useId();
+  const hilfeText = hilfe ? t(hilfe.bodyKey) : undefined;
   return (
     // AUFTRAG-mega11 Block B-2 (bens SB-2): die hier von Hand verdrahtete Wächter-Logik (Vorbild für
     // alles Übrige) steckt in den Guarded-Bauteilen — dieselbe Wirkung, aber als Bauteil, das eine
@@ -166,49 +193,60 @@ function NavRow({ item, badge }: { item: NavItem; badge?: NavBadge | undefined }
     // `/wissen/:id` aktiv — reicht das nicht. Die Aktivfrage wird deshalb EINMAL von
     // `istAktiverEintrag` beantwortet und hier angewandt: eine Regel, eine Stelle, kein zweiter
     // Aktivbegriff neben dem des Routers. Die bisherige Präfixwirkung ist in dieser Regel enthalten.
-    <GuardedLink
-      to={item.path}
-      aria-current={isActive ? "page" : undefined}
-      className={[
-        "group flex items-center gap-2.5 rounded-nav px-2.5 py-2 text-sm font-medium transition-colors",
-        isActive
-          ? "bg-brand text-white outline outline-2 outline-brand outline-offset-2"
-          : "text-text hover:bg-hairline-soft",
-      ].join(" ")}
-    >
-      <span
-        className={`grid h-[27px] w-[27px] shrink-0 place-items-center rounded-[8px] ${
-          isActive ? "bg-white/15 text-white" : "bg-[rgba(16,24,32,.05)] text-ink"
-        }`}
+    <>
+      <GuardedLink
+        to={item.path}
+        aria-current={isActive ? "page" : undefined}
+        // Kein Kapitel ⇒ WEDER `title` NOCH `aria-describedby` — kein leeres Attribut, kein leerer
+        // Träger. React lässt ein `undefined`-Attribut ganz weg.
+        title={hilfeText}
+        aria-describedby={hilfeText === undefined ? undefined : hilfeId}
+        className={[
+          "group flex items-center gap-2.5 rounded-nav px-2.5 py-2 text-sm font-medium transition-colors",
+          isActive
+            ? "bg-brand text-white outline outline-2 outline-brand outline-offset-2"
+            : "text-text hover:bg-hairline-soft",
+        ].join(" ")}
       >
-        <Icon size={16} strokeWidth={2} />
-      </span>
-      <span className="truncate">{t(item.labelKey)}</span>
-      {item.badgeKey && badge && badge.state === "error" ? (
-        // Dauerhaft gescheitert → sichtbarer Fehler-Marker mit Wiederholen (kein stilles Fehlen, keine 0).
-        <BadgeError active={isActive} label={t("nav.badge.error")} onRetry={badge.refetch} />
-      ) : item.badgeKey && badge && badge.state === "loading" ? (
-        // Noch nicht geladen → neutraler Ladepunkt statt einer erfundenen Zahl/0.
-        <BadgeLoading active={isActive} label={t("nav.badge.loading")} />
-      ) : item.badgeKey && badge && badge.stale ? (
-        // Refetch der vorhandenen Zahl scheiterte → alte Zahl WEITER zeigen + Störungshinweis/Retry.
-        <BadgeStale
-          count={badge.count}
-          tone={item.badgeTone}
-          active={isActive}
-          label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
-          staleLabel={t("nav.badge.stale")}
-          onRetry={badge.refetch}
-        />
-      ) : item.badgeKey && badge && badge.count > 0 ? (
-        <Badge
-          count={badge.count}
-          tone={item.badgeTone}
-          active={isActive}
-          label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
-        />
-      ) : null}
-    </GuardedLink>
+        <span
+          className={`grid h-[27px] w-[27px] shrink-0 place-items-center rounded-[8px] ${
+            isActive ? "bg-white/15 text-white" : "bg-[rgba(16,24,32,.05)] text-ink"
+          }`}
+        >
+          <Icon size={16} strokeWidth={2} />
+        </span>
+        <span className="truncate">{t(item.labelKey)}</span>
+        {item.badgeKey && badge && badge.state === "error" ? (
+          // Dauerhaft gescheitert → sichtbarer Fehler-Marker mit Wiederholen (kein stilles Fehlen, keine 0).
+          <BadgeError active={isActive} label={t("nav.badge.error")} onRetry={badge.refetch} />
+        ) : item.badgeKey && badge && badge.state === "loading" ? (
+          // Noch nicht geladen → neutraler Ladepunkt statt einer erfundenen Zahl/0.
+          <BadgeLoading active={isActive} label={t("nav.badge.loading")} />
+        ) : item.badgeKey && badge && badge.stale ? (
+          // Refetch der vorhandenen Zahl scheiterte → alte Zahl WEITER zeigen + Störungshinweis/Retry.
+          <BadgeStale
+            count={badge.count}
+            tone={item.badgeTone}
+            active={isActive}
+            label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
+            staleLabel={t("nav.badge.stale")}
+            onRetry={badge.refetch}
+          />
+        ) : item.badgeKey && badge && badge.count > 0 ? (
+          <Badge
+            count={badge.count}
+            tone={item.badgeTone}
+            active={isActive}
+            label={badgeLabelKey ? t(badgeLabelKey, { count: badge.count }) : undefined}
+          />
+        ) : null}
+      </GuardedLink>
+      {hilfeText === undefined ? null : (
+        <span id={hilfeId} className="sr-only">
+          {hilfeText}
+        </span>
+      )}
+    </>
   );
 }
 
