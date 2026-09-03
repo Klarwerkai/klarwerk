@@ -1,5 +1,5 @@
-import { ArrowRight, ChevronDown } from "lucide-react";
-import { useEffect, useState } from "react";
+import { ArrowRight, ChevronDown, Plus, Search, ShieldCheck } from "lucide-react";
+import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useConflicts,
@@ -11,7 +11,8 @@ import {
   useLiveWall,
   useValidationBoard,
 } from "../api/hooks";
-import { useSession } from "../app/AuthContext";
+// JOB 3015 D5: das Suchfeld der Konsole navigiert wie die Topbar-Suche — durch den Eingabe-Wächter.
+import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import { AdminFirstRunCard } from "../components/AdminFirstRunCard";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
@@ -25,14 +26,13 @@ import { LoadErrorState, StaleMarker } from "../components/LoadState";
 import { RoleLink } from "../components/RoleLink";
 // AUFTRAG-mega34 F: die vorhandene, übersetzte Status-Plakette — statt des rohen DB-Werts.
 import { StatusPill } from "../components/trust";
-import { Card, PageHeader } from "../components/ui";
+import { Card } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
 import { knowledgeCapital } from "../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
 import { isGroupError, isGroupLoading, isGroupStale } from "../lib/loadingState";
 import { PROOF_CHAIN } from "../lib/proofChain";
-import { startCta, startQueueCta } from "../lib/startCtas";
 import { type StartHelpId, startHelp } from "../lib/startHelp";
 import {
   START_ORIENTATION_TEXT,
@@ -63,8 +63,66 @@ const GUIDE_TONE: Record<KnowledgeGuidanceTone, string> = {
   neutral: "bg-page text-muted",
 };
 
-// AUFTRAG-mega38 BLOCK G3 / AUFTRAG-mega51 BLOCK A: die beiden CTA-Tabellen stehen jetzt DOM-frei
-// in lib/startCtas.ts (Begründung dort) — diese Seite rendert sie nur noch.
+// ================================================================================================
+// JOB 3015 D5 „KonsoleStart" (Zielbild KonsoleStart.dc.html, Z.25–56) — DIE STARTSEITE WIRD KONSOLE.
+// ================================================================================================
+// Oben steht nicht mehr Kicker, Gruß und Kachelwand, sondern die Frage des Zielbilds, darunter das
+// Suchfeld, darunter drei Karten. Alles, was die Seite vorher zeigte, rückt UNTER die Konsole
+// (Zwecksatz, Klara-Teaser, Erststart-Karte, Kreis, Orientierung, LiveWall, Wissenskapital, Lücken,
+// Stufe-2-Hinweis, Nächste Handlungen) — nichts davon ist gelöscht. Gegangen sind nur Kicker
+// „Übersicht" und Gruß (der Name steht in der Seitenleiste) sowie die beiden CTA-Knöpfe des
+// Kopfes: ihre Ziele sind jetzt die Karten — „Frage stellen" → Suchen (/fragen), „Wissen erfassen" →
+// Hinzufügen (/erfassen), „Validierung öffnen" → Prüfen (/validierung). Die Rollenfrage stellt wie
+// bisher RoleLink; was die Rolle nicht erreicht, ist eine Lage, kein Weg (mega51).
+//
+// DAS SUCHFELD FÜHRT WIRKLICH: Eingabe + Enter → `/bibliothek?q=…`, derselbe belegte Weg wie die
+// Topbar-Suche (shell/Topbar.tsx, submitSearch), den pages/Library.tsx über `params.get("q")`
+// liest — dort steht bei aktiver Suche auch der Weg zur belegten Antwort („Frage stellen"). KEIN
+// ⌘K-Chip (Zielbild Z.34): ⌘K öffnet im Produkt die Seitensprung-Palette (shell/CommandPalette.tsx),
+// nicht dieses Feld — eine angezeigte Taste, die etwas anderes tut, wäre eine Scheinfunktion.
+//
+// DIE PILLE „N offen" trägt die echte Zahl des Prüfboards (dieselbe Quelle wie „Nächste Handlungen",
+// workCenter.ts: validationOpen = board.length). Ist das Board nicht geladen, gibt es keine Pille —
+// keine erfundene Zahl, kein Platzhalter.
+//
+// Maße, Farben und Wortlaute sind aus dem Zielbild gelesen; gemessen an der in Chromium gemounteten
+// echten Seite in tests/design/zielbild-konsole-start.test.ts. Farben über Token (Werkbank-Palette:
+// text = #1A2233, muted-2 = #525B6B, hairline = #E9E5DE, funke-deep = #C2500A, warn = #8A5A00 auf
+// #FDF1D7); der Funke-dunkel-Token existiert nur im modernen Thema, deshalb trägt das Symbol den
+// klassischen Ersatzwert als var()-Rückfall.
+const KONSOLE_KARTE_KLASSEN =
+  "flex flex-col gap-3 rounded-[14px] border border-hairline bg-surface px-6 py-[26px] shadow-tile transition";
+const KONSOLE_SYMBOL_KLASSEN = "shrink-0 text-[rgb(var(--kw-funke-deep,194_80_10))]";
+
+function KonsoleKarte({
+  to,
+  symbol,
+  titleKey,
+  bodyKey,
+  pille,
+}: {
+  to: string;
+  symbol: ReactNode;
+  titleKey: string;
+  bodyKey: string;
+  pille?: ReactNode;
+}): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <RoleLink to={to} className={KONSOLE_KARTE_KLASSEN} hoverClassName="hover:border-ink/30">
+      {() => (
+        <>
+          <div className="flex items-center justify-between">
+            {symbol}
+            {pille ?? null}
+          </div>
+          <div className="text-[16px] font-[650] text-text">{t(titleKey)}</div>
+          <div className="text-[13px] leading-[1.5] text-muted-2">{t(bodyKey)}</div>
+        </>
+      )}
+    </RoleLink>
+  );
+}
 
 // Audit-P4 (SCRUM-398): Live-Wall als ruhige Start-Karte — „frisch gesichert" und
 // „hat geholfen" aus echten Ereignissen (KO-Bestand + Wirkungs-Audit). Keine Scores,
@@ -169,8 +227,15 @@ export function Start(): JSX.Element {
     return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
   };
   const { role, stufe2 } = useRole();
-  const { user } = useSession();
   const board = useValidationBoard();
+  // JOB 3015 D5: das Suchfeld der Konsole — derselbe Weg wie die Topbar-Suche (Topbar.tsx).
+  const navigate = useGuardedNavigate();
+  const [suche, setSuche] = useState("");
+  const submitSuche = (e: FormEvent): void => {
+    e.preventDefault();
+    const term = suche.trim();
+    navigate(term ? `/bibliothek?q=${encodeURIComponent(term)}` : "/bibliothek");
+  };
   // FUNKE-FIX2 P0 (bens Erforderlich 1): die Startseite lädt KEINE Gap-Volltexte mehr — nur die
   // aggregierten Zähler (offene gesamt + je Priorität). Kein Fragetext gelangt in den Browser.
   const gapsSummary = useGapsSummary();
@@ -183,8 +248,6 @@ export function Start(): JSX.Element {
   const pending = useLifecyclePending();
   const learningPath = useLearningPath(role);
   const learningProgress = useLearningProgress(learningPath.data?.id);
-  const cta = startCta(role);
-  const queueCta = startQueueCta(role);
   // SCRUM-235: ehrlicher Stufe-2-Auffindbarkeits-Hinweis — nur für Admins mit ausgeschaltetem Schalter.
   const showStufe2Hint = stufe2HintKind(role, stufe2) === "enable";
   const stufe2Features = stufe2FeatureLabelKeys()
@@ -256,240 +319,305 @@ export function Start(): JSX.Element {
   }, []);
 
   return (
-    <div className="mx-auto max-w-5xl">
-      <PageHeader
-        kicker={t("start.kicker")}
-        title={t("start.greeting", { name: user?.name ?? "" })}
-        pageKey="start"
-        actions={
-          <span className="flex flex-wrap items-center gap-x-3 gap-y-2">
-            <RoleLink
-              to={cta.to}
-              // mega40 D: `kw-cta-primary` ist ein reiner Stil-Anker — im modern-Thema wird DIESER
-              // eine Knopf der Funke der Seite (styles/modern.css); klassisch ändert sich nichts.
-              className="kw-cta-primary inline-flex items-center gap-2 rounded-btn bg-ink px-4 py-2.5 text-[13px] font-semibold text-white"
-              hoverClassName="hover:opacity-90"
-            >
-              {(erreichbar) => (
-                <>
-                  {t(cta.key)}
-                  {erreichbar ? <ArrowRight size={16} /> : null}
-                </>
-              )}
-            </RoleLink>
-            {/* BLOCK G3: die Prüf-Warteschlange bleibt einen Klick entfernt — nur nicht mehr als
-                das Lauteste auf der Seite. */}
-            {queueCta ? (
-              <RoleLink
-                to={queueCta.to}
-                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-text"
-              >
-                {() => t(queueCta.key)}
-              </RoleLink>
-            ) : null}
-          </span>
-        }
-      />
+    <>
       {/* ==========================================================================================
-          AUFTRAG-mega38 BLOCK G1 (Pedi 27.07.) — DER EINE SATZ, GANZ OBEN, OHNE EIN FACHWORT.
+          JOB 3015 D5 — DIE KONSOLE (Zielbild Z.25–56). `page-start` bleibt der Seitenanker des
+          UI-Smokes (tests-smoke/ui-smoke.spec.ts, KERNROUTEN); vorher trug ihn der PageHeader.
+          ==========================================================================================
+          DIE RAUMWIRKUNG (Runde 4, bens Korrekturpflicht): das Zielbild gibt der Konsole den ganzen
+          freien Bildschirm (Z.25 `flex-grow: 1; justify-content: center`) — Frage, Feld und Karten
+          stehen in der Mitte, nichts anderes ist auf dem ersten Bildschirm. Die Seite ist Inhalt
+          des scrollenden `<main>` der Hülle (shell/AppShell.tsx), das als Flex-Kind eine bestimmte
+          Höhe hat; die Modalregion dazwischen ist `display: contents`. Deshalb greift hier eine
+          Prozent-Mindesthöhe: der ERSTE Block der Seite ist `min-h-full` = der Inhaltskasten von
+          <main>, egal ob darunter ein Hinweisband steht oder nicht, und die Konsole wächst darin
+          mit `flex-1` und zentriert mit `justify-center` — das Gegenstück zu Z.25. Die Altinhalte
+          stehen im ZWEITEN Block darunter, erreichbar durch Scrollen. Gemessen bei 1280×800 in
+          tests/design/zielbild-konsole-start.test.ts (V28–V31): Konsole = Inhaltskasten von <main>,
+          Inhalt vertikal mittig, Frage der erste Textblock. */}
+      <div className="mx-auto flex min-h-full max-w-5xl flex-col">
+        <section
+          data-testid="page-start"
+          aria-labelledby="konsole-frage"
+          className="flex flex-1 flex-col items-center justify-center gap-11 pt-12 pb-[72px]"
+        >
+          <div className="flex flex-col items-center gap-2.5 text-center">
+            <h1 id="konsole-frage" className="text-[30px] font-[650] tracking-[-0.3px] text-text">
+              {t("start.konsole.frage")}
+            </h1>
+            <p className="text-[14px] text-muted-2">{t("start.konsole.untertitel")}</p>
+          </div>
+          <form
+            onSubmit={submitSuche}
+            className="flex w-[640px] max-w-full items-center gap-3 rounded-[14px] border border-hairline bg-surface px-5 py-4 shadow-tile"
+          >
+            <Search
+              size={20}
+              strokeWidth={1.8}
+              aria-hidden="true"
+              className="shrink-0 text-muted-2"
+            />
+            <input
+              type="text"
+              value={suche}
+              onChange={(e) => setSuche(e.target.value)}
+              aria-label={t("start.konsole.feld")}
+              placeholder={t("start.konsole.feld")}
+              className="min-w-0 flex-1 bg-transparent text-[16px] text-text outline-none placeholder:text-muted-2"
+            />
+          </form>
+          <div className="grid w-[840px] max-w-full grid-cols-3 gap-5">
+            <KonsoleKarte
+              to="/fragen"
+              symbol={
+                <Search
+                  size={24}
+                  strokeWidth={1.7}
+                  aria-hidden="true"
+                  className={KONSOLE_SYMBOL_KLASSEN}
+                />
+              }
+              titleKey="start.konsole.suchen.titel"
+              bodyKey="start.konsole.suchen.text"
+            />
+            <KonsoleKarte
+              to="/validierung"
+              symbol={
+                <ShieldCheck
+                  size={24}
+                  strokeWidth={1.7}
+                  aria-hidden="true"
+                  className={KONSOLE_SYMBOL_KLASSEN}
+                />
+              }
+              titleKey="start.konsole.pruefen.titel"
+              bodyKey="start.konsole.pruefen.text"
+              pille={
+                board.data ? (
+                  <span className="rounded-[999px] bg-trust-warn-bg px-2.5 py-[3px] text-[11.5px] font-bold text-trust-warn-text">
+                    {t("start.konsole.offen", { n: board.data.length })}
+                  </span>
+                ) : null
+              }
+            />
+            <KonsoleKarte
+              to="/erfassen"
+              symbol={
+                <Plus
+                  size={24}
+                  strokeWidth={1.7}
+                  aria-hidden="true"
+                  className={KONSOLE_SYMBOL_KLASSEN}
+                />
+              }
+              titleKey="start.konsole.hinzufuegen.titel"
+              bodyKey="start.konsole.hinzufuegen.text"
+            />
+          </div>
+        </section>
+      </div>
+      {/* Der zweite Block: alles, was die Startseite vor D5 zeigte — unter der Konsole, unverändert. */}
+      <div className="mx-auto max-w-5xl">
+        {/* ==========================================================================================
+          AUFTRAG-mega38 BLOCK G1 (Pedi 27.07.) — DER EINE SATZ, OHNE EIN FACHWORT.
           ==========================================================================================
           Aufgabe 1 der Testerin lautet wörtlich: „Notiere in einem Satz: Wofür, glaubst du, ist
           dieses System da?" Bis mega37 stand ganz oben „Control Room" und „Guten Tag, <Name>." —
           und die erste Erklärung überhaupt kam an dritter Stelle und definierte über eine
-          Verneinung („Kein Chatbot"). Hier steht jetzt vor allem anderen ein bejahender Satz in
-          ihrer Sprache. */}
-      {/* mega40 D: `kw-start-purpose` — Stil-Anker; das modern-Thema gibt dem Satz Bühne
+          Verneinung („Kein Chatbot"). Hier steht ein bejahender Satz in ihrer Sprache.
+          JOB 3015 D5: er eröffnet jetzt den Bereich UNTER der Konsole — ganz oben steht die Frage. */}
+        {/* mega40 D: `kw-start-purpose` — Stil-Anker; das modern-Thema gibt dem Satz Bühne
           (große ruhige Typo, Luft), der Text selbst bleibt wörtlich derselbe. */}
-      <p className="kw-start-purpose -mt-2 mb-5 max-w-2xl text-[14px] leading-relaxed text-text">
-        {t("start.purpose")}
-      </p>
-      <KlaraPathTeaser surface="start" />
-      {/* SCRUM-429: ruhige Erststart-Führung nur für den neuen Admin (erster Besuch, ausblendbar). */}
-      {role === "admin" ? <AdminFirstRunCard /> : null}
-      {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}
-      <div className="mb-5">
-        <div className="flex items-center gap-1.5">
-          <h2 className="text-[15px] font-semibold text-ink">{t("cycle.title")}</h2>
-          {shelp("cycle")}
-        </div>
-        <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("cycle.subtitle")}</p>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          {KNOWLEDGE_CYCLE.map((step, i) => (
-            <RoleLink
-              key={step.id}
-              to={step.to}
-              className="group rounded-card border border-hairline bg-surface p-4 transition"
-              hoverClassName="hover:border-ink/30"
-            >
-              {/* Der Kreis behält alle vier Schritte — auch den, den diese Rolle nicht selbst
+        <p className="kw-start-purpose mb-5 max-w-2xl text-[14px] leading-relaxed text-text">
+          {t("start.purpose")}
+        </p>
+        <KlaraPathTeaser surface="start" />
+        {/* SCRUM-429: ruhige Erststart-Führung nur für den neuen Admin (erster Besuch, ausblendbar). */}
+        {role === "admin" ? <AdminFirstRunCard /> : null}
+        {/* SCRUM-261: Knowledge-OS-Kreis als vorhandene Arbeitsführung (kein Chatbot). */}
+        <div className="mb-5">
+          <div className="flex items-center gap-1.5">
+            <h2 className="text-[15px] font-semibold text-ink">{t("cycle.title")}</h2>
+            {shelp("cycle")}
+          </div>
+          <p className="mb-3 mt-0.5 text-[12.5px] text-muted">{t("cycle.subtitle")}</p>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+            {KNOWLEDGE_CYCLE.map((step, i) => (
+              <RoleLink
+                key={step.id}
+                to={step.to}
+                className="group rounded-card border border-hairline bg-surface p-4 transition"
+                hoverClassName="hover:border-ink/30"
+              >
+                {/* Der Kreis behält alle vier Schritte — auch den, den diese Rolle nicht selbst
                   ausführt. Wegzulassen wäre nicht ehrlicher, sondern nur unvollständig. */}
-              {(erreichbar) => (
-                <>
-                  <div className="flex items-center gap-2">
-                    <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-semibold text-white">
-                      {i + 1}
-                    </span>
-                    <span className="text-[14px] font-semibold text-ink">{t(step.labelKey)}</span>
-                    {erreichbar && i < KNOWLEDGE_CYCLE.length - 1 ? (
-                      <ArrowRight
-                        size={15}
-                        className="ml-auto text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
-                      />
-                    ) : null}
-                  </div>
-                  <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-                    {t(step.descKey)}
-                  </p>
-                </>
-              )}
-            </RoleLink>
-          ))}
+                {(erreichbar) => (
+                  <>
+                    <div className="flex items-center gap-2">
+                      <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-ink font-mono text-[11px] font-semibold text-white">
+                        {i + 1}
+                      </span>
+                      <span className="text-[14px] font-semibold text-ink">{t(step.labelKey)}</span>
+                      {erreichbar && i < KNOWLEDGE_CYCLE.length - 1 ? (
+                        <ArrowRight
+                          size={15}
+                          className="ml-auto text-muted-2 transition group-hover:translate-x-0.5 group-hover:text-ink"
+                        />
+                      ) : null}
+                    </div>
+                    <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                      {t(step.descKey)}
+                    </p>
+                  </>
+                )}
+              </RoleLink>
+            ))}
+          </div>
         </div>
-      </div>
-      {/* Aufräum-Pass 02.07. (Pedi): „So liest du Klarwerk" (SCRUM-289) + Demo-/Pilotpfad
+        {/* Aufräum-Pass 02.07. (Pedi): „So liest du Klarwerk" (SCRUM-289) + Demo-/Pilotpfad
           (SCRUM-290/301) gebündelt in EINER einklappbaren Orientierungs-Karte — Erstbesuch
           offen, danach zu. Inhalte unverändert, nur Dichte reduziert. */}
-      <Card className="mb-5">
-        <button
-          type="button"
-          aria-expanded={showOrientation}
-          onClick={() => setShowOrientation((s) => !s)}
-          className="flex w-full items-center justify-between gap-2 text-left"
-        >
-          <span>
-            <span className="text-[15px] font-semibold text-ink">
-              {t(START_ORIENTATION_TEXT.title)}
+        <Card className="mb-5">
+          <button
+            type="button"
+            aria-expanded={showOrientation}
+            onClick={() => setShowOrientation((s) => !s)}
+            className="flex w-full items-center justify-between gap-2 text-left"
+          >
+            <span>
+              <span className="text-[15px] font-semibold text-ink">
+                {t(START_ORIENTATION_TEXT.title)}
+              </span>
+              <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
+                {t(START_ORIENTATION_TEXT.hint)}
+              </span>
             </span>
-            <span className="mt-0.5 block text-[12.5px] leading-relaxed text-muted">
-              {t(START_ORIENTATION_TEXT.hint)}
-            </span>
-          </span>
-          <ChevronDown
-            size={16}
-            className={`shrink-0 text-muted-2 transition-transform ${showOrientation ? "rotate-180" : ""}`}
-          />
-        </button>
-        {showOrientation ? (
-          <div className="mt-4 space-y-5">
-            {/* SCRUM-289: Pilot-Führung — gesichertes Wissen vs. Review-Arbeit vs. Ask erklären. */}
-            <div>
-              <div className="mb-3">
-                <h2 className="text-[15px] font-semibold text-ink">{t(guide.titleKey)}</h2>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-                  {t(guide.bodyKey)}
-                </p>
-              </div>
-              <div className="grid gap-2 sm:grid-cols-3">
-                {guide.items.map((item) => (
-                  <RoleLink
-                    key={item.id}
-                    to={item.to}
-                    className="rounded-card border border-hairline bg-surface p-3 transition"
-                    hoverClassName="hover:border-ink/30"
-                  >
-                    {() => (
-                      <>
-                        <span
-                          className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
-                        >
-                          {t(item.labelKey)}
-                        </span>
-                        <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-                          {t(item.bodyKey)}
-                        </p>
-                      </>
-                    )}
-                  </RoleLink>
-                ))}
-              </div>
-            </div>
-            {/* SCRUM-290: konkreter Stage-1 Demo-/Pilotpfad — Start → Ask → Library/KO-Detail → Validation,
-          nur vorhandene Routen, demo-sichere Frage. Zeigt: quellengebunden fragen → Quelle/Trust/
-          Status/Version sehen → ungeprüftes Wissen zur Validierung (kein Chatbot). */}
-            <div className="border-t border-hairline pt-4">
-              <div className="mb-3">
-                <h2 className="text-[15px] font-semibold text-ink">{t("demo.title")}</h2>
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
-                  {t("demo.subtitle")}
-                </p>
-                {/* SCRUM-301: sichtbare Pilot-Beweiskette — Start verspricht „finden → Nutzbarkeit erkennen →
-              Quelle/Trust/Version prüfen"; Library/KO-Detail lösen sie mit denselben Begriffen ein. */}
-                <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                  <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                    {t("demo.proof.label")}
-                  </span>
-                  {PROOF_CHAIN.map((beat) => (
-                    <span key={beat.id} className="flex items-center gap-1.5">
-                      {beat.n > 1 ? <span className="text-muted-2">→</span> : null}
-                      <span className="rounded-pill bg-page px-2 py-0.5 text-[11px] font-medium text-text">
-                        {t(beat.labelKey)}
-                      </span>
-                    </span>
-                  ))}
+            <ChevronDown
+              size={16}
+              className={`shrink-0 text-muted-2 transition-transform ${showOrientation ? "rotate-180" : ""}`}
+            />
+          </button>
+          {showOrientation ? (
+            <div className="mt-4 space-y-5">
+              {/* SCRUM-289: Pilot-Führung — gesichertes Wissen vs. Review-Arbeit vs. Ask erklären. */}
+              <div>
+                <div className="mb-3">
+                  <h2 className="text-[15px] font-semibold text-ink">{t(guide.titleKey)}</h2>
+                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                    {t(guide.bodyKey)}
+                  </p>
                 </div>
-              </div>
-              <ol className="grid gap-2 sm:grid-cols-3">
-                {DEMO_PILOT_PATH.map((step) => (
-                  <li key={step.id}>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {guide.items.map((item) => (
                     <RoleLink
-                      to={step.to}
-                      className="group block h-full rounded-card border border-hairline bg-surface p-3 transition"
+                      key={item.id}
+                      to={item.to}
+                      className="rounded-card border border-hairline bg-surface p-3 transition"
                       hoverClassName="hover:border-ink/30"
                     >
                       {() => (
                         <>
-                          <div className="flex items-center gap-2">
-                            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
-                              {step.n}
-                            </span>
-                            <span className="text-[13.5px] font-semibold text-ink">
-                              {t(step.labelKey)}
-                            </span>
-                          </div>
-                          <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
-                            {t(step.descKey)}
+                          <span
+                            className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${GUIDE_TONE[item.tone]}`}
+                          >
+                            {t(item.labelKey)}
+                          </span>
+                          <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
+                            {t(item.bodyKey)}
                           </p>
                         </>
                       )}
                     </RoleLink>
-                  </li>
-                ))}
-              </ol>
-              {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
-              <RoleLink
-                to={captureDemoHref()}
-                className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text"
-                hoverClassName="hover:underline"
-              >
-                {(erreichbar) => (
-                  <>
-                    {t("demo.captureEntry")} {erreichbar ? <ArrowRight size={13} /> : null}
-                  </>
-                )}
-              </RoleLink>
+                  ))}
+                </div>
+              </div>
+              {/* SCRUM-290: konkreter Stage-1 Demo-/Pilotpfad — Start → Ask → Library/KO-Detail → Validation,
+          nur vorhandene Routen, demo-sichere Frage. Zeigt: quellengebunden fragen → Quelle/Trust/
+          Status/Version sehen → ungeprüftes Wissen zur Validierung (kein Chatbot). */}
+              <div className="border-t border-hairline pt-4">
+                <div className="mb-3">
+                  <h2 className="text-[15px] font-semibold text-ink">{t("demo.title")}</h2>
+                  <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted">
+                    {t("demo.subtitle")}
+                  </p>
+                  {/* SCRUM-301: sichtbare Pilot-Beweiskette — Start verspricht „finden → Nutzbarkeit erkennen →
+              Quelle/Trust/Version prüfen"; Library/KO-Detail lösen sie mit denselben Begriffen ein. */}
+                  <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                    <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
+                      {t("demo.proof.label")}
+                    </span>
+                    {PROOF_CHAIN.map((beat) => (
+                      <span key={beat.id} className="flex items-center gap-1.5">
+                        {beat.n > 1 ? <span className="text-muted-2">→</span> : null}
+                        <span className="rounded-pill bg-page px-2 py-0.5 text-[11px] font-medium text-text">
+                          {t(beat.labelKey)}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+                <ol className="grid gap-2 sm:grid-cols-3">
+                  {DEMO_PILOT_PATH.map((step) => (
+                    <li key={step.id}>
+                      <RoleLink
+                        to={step.to}
+                        className="group block h-full rounded-card border border-hairline bg-surface p-3 transition"
+                        hoverClassName="hover:border-ink/30"
+                      >
+                        {() => (
+                          <>
+                            <div className="flex items-center gap-2">
+                              <span className="grid h-5 w-5 shrink-0 place-items-center rounded-full bg-ink font-mono text-[10px] font-semibold text-white">
+                                {step.n}
+                              </span>
+                              <span className="text-[13.5px] font-semibold text-ink">
+                                {t(step.labelKey)}
+                              </span>
+                            </div>
+                            <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted">
+                              {t(step.descKey)}
+                            </p>
+                          </>
+                        )}
+                      </RoleLink>
+                    </li>
+                  ))}
+                </ol>
+                {/* SCRUM-296: aktiver Erfassungsfluss als Einstieg — Capture → Validation → Use. */}
+                <RoleLink
+                  to={captureDemoHref()}
+                  className="mt-3 inline-flex items-center gap-1 text-[12.5px] font-semibold text-brand-text"
+                  hoverClassName="hover:underline"
+                >
+                  {(erreichbar) => (
+                    <>
+                      {t("demo.captureEntry")} {erreichbar ? <ArrowRight size={13} /> : null}
+                    </>
+                  )}
+                </RoleLink>
+              </div>
             </div>
-          </div>
-        ) : null}
-      </Card>
-      {/* Audit-P4 (SCRUM-398): Live-Wall — was gerade passiert (frisch gesichert / hat geholfen). */}
-      <LiveWallCard />
-      {/* FUNKE (nacht24 Paket 6): Wissenskapital-Kachel (F5, ehrliche Bestandssummen — auch für
+          ) : null}
+        </Card>
+        {/* Audit-P4 (SCRUM-398): Live-Wall — was gerade passiert (frisch gesichert / hat geholfen). */}
+        <LiveWallCard />
+        {/* FUNKE (nacht24 Paket 6): Wissenskapital-Kachel (F5, ehrliche Bestandssummen — auch für
           Begutachter) und offene Wissenslücken (F3, Direkteinstieg „in 2 Minuten beantworten"). */}
-      {(kos.data?.length ?? 0) > 0 ? (
-        <Card className="mb-5">
-          <KnowledgeCapitalNumbers
-            capital={{ ...knowledgeCapital(kos.data ?? [], []), openGaps: openGapsTotal }}
-          />
-        </Card>
-      ) : null}
-      {/* FUNKE-FIX P0 (bens Sammel-Nacht) + FUNKE-FIX2 P0 (bens Erforderlich 1): nur die anonyme
+        {(kos.data?.length ?? 0) > 0 ? (
+          <Card className="mb-5">
+            <KnowledgeCapitalNumbers
+              capital={{ ...knowledgeCapital(kos.data ?? [], []), openGaps: openGapsTotal }}
+            />
+          </Card>
+        ) : null}
+        {/* FUNKE-FIX P0 (bens Sammel-Nacht) + FUNKE-FIX2 P0 (bens Erforderlich 1): nur die anonyme
           offene Zahl (aus dem Summary-Endpunkt, KEIN Volltext-Fetch) + Weg in Risiko & Lücken. */}
-      {openGapsTotal > 0 ? (
-        <Card className="mb-5">
-          <OpenGapsSummary total={openGapsTotal} />
-        </Card>
-      ) : null}
-      {/* ==========================================================================================
+        {openGapsTotal > 0 ? (
+          <Card className="mb-5">
+            <OpenGapsSummary total={openGapsTotal} />
+          </Card>
+        ) : null}
+        {/* ==========================================================================================
           AUFTRAG-mega38 BLOCK G2 — „Nächste Schritte" (vier Kacheln) IST HIER ENTFERNT.
           ==========================================================================================
           Die Startseite trug vier konkurrierende Antworten auf dieselbe Frage „Was jetzt?":
@@ -506,128 +634,139 @@ export function Start(): JSX.Element {
           WAS OFFEN BLEIBT, benannt statt verschwiegen: die Erststart-Karte oben steht weiterhin
           daneben. Sie erscheint nur für Admins beim ERSTEN Besuch und ist eine Einrichtungs-
           Checkliste (Verwaltung öffnen), keine Wissensarbeit — s. Bericht mega38, Block G2. */}
-      {showStufe2Hint ? (
-        <Card className="mb-5 border-dashed">
-          <h2 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h2>
-          <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-            {t("start.stufe2.body", { features: stufe2Features, toggle: t("role.stage2") })}
-          </p>
-        </Card>
-      ) : null}
-      {/* AUFTRAG-mega38 BLOCK G2: hier stand rechts daneben ein zweiter Zahlenblock „Kennzahlen"
+        {showStufe2Hint ? (
+          <Card className="mb-5 border-dashed">
+            <h2 className="text-[14px] font-semibold text-ink">{t("start.stufe2.title")}</h2>
+            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
+              {t("start.stufe2.body", { features: stufe2Features, toggle: t("role.stage2") })}
+            </p>
+          </Card>
+        ) : null}
+        {/* AUFTRAG-mega38 BLOCK G2: hier stand rechts daneben ein zweiter Zahlenblock „Kennzahlen"
           (Wissensobjekte · Offen · Validiert · Wissenslücken). Drei seiner vier Zahlen sind
           dieselben Größen wie im Wissenskapital oben — die Wissenslücken standen sogar mit
           IDENTISCHEM Wert dreimal auf einer Seite. Der Block ist weg; seine einzige eigene Zahl
           („Offen") ist ins Wissenskapital gewandert, wo sie neben „davon validiert" gehört. */}
-      <div className="grid gap-5">
-        <Card>
-          <div className="mb-2 flex items-center justify-between">
-            <div className="flex items-center gap-1.5">
-              <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
-              {shelp("work")}
+        <div className="grid gap-5">
+          <Card>
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-1.5">
+                <h2 className="text-[15px] font-semibold text-ink">{t("start.workTitle")}</h2>
+                {shelp("work")}
+              </div>
+              <RoleLink
+                to="/aufgaben"
+                className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-text"
+              >
+                {() => t("start.allTasks")}
+              </RoleLink>
             </div>
-            <RoleLink
-              to="/aufgaben"
-              className="inline-flex items-center gap-1.5 text-[12.5px] font-semibold text-brand-text"
-            >
-              {() => t("start.allTasks")}
-            </RoleLink>
-          </div>
-          {/* SCRUM-488: Klartext-Legende für die Dringlichkeits-Punkte (rot=jetzt · gelb=heute · grau=später). */}
-          <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-2">
-            {(["critical", "today", "later"] as const).map((sev) => (
-              <span key={sev} className="flex items-center gap-1">
-                <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[sev]}`} />
-                {t(`start.severity.${sev}`)}
-              </span>
-            ))}
-            {shelp("severity")}
-          </div>
-          {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung).
+            {/* SCRUM-488: Klartext-Legende für die Dringlichkeits-Punkte (rot=jetzt · gelb=heute · grau=später). */}
+            <div className="mb-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10.5px] text-muted-2">
+              {(["critical", "today", "later"] as const).map((sev) => (
+                <span key={sev} className="flex items-center gap-1">
+                  <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[sev]}`} />
+                  {t(`start.severity.${sev}`)}
+                </span>
+              ))}
+              {shelp("severity")}
+            </div>
+            {/* SCRUM-271: bester nächster Einstieg hervorgehoben (kein Auto-Handeln, nur Führung).
               Block C: im Ladezustand NICHT anzeigen (kein erfundener „bester nächster Schritt"). */}
-          {!workLoading && !workError && focus ? (
-            <RoleLink
-              to={focus.to}
-              className="mb-3 flex items-center gap-3 rounded-card bg-page p-3"
-              hoverClassName="hover:opacity-90"
-            >
-              {(erreichbar) => (
-                <>
-                  <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[focus.severity]}`} />
-                  <span className="min-w-0 flex-1">
-                    <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                      {t("start.focusLabel")}
+            {!workLoading && !workError && focus ? (
+              <RoleLink
+                to={focus.to}
+                className="mb-3 flex items-center gap-3 rounded-card bg-page p-3"
+                hoverClassName="hover:opacity-90"
+              >
+                {(erreichbar) => (
+                  <>
+                    <span
+                      className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[focus.severity]}`}
+                    />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                        {t("start.focusLabel")}
+                      </span>
+                      <span className="block truncate text-[13.5px] font-semibold text-ink">
+                        {t(`work.${focus.key}`)}
+                      </span>
+                      {/* SCRUM-297: Knowledge-OS-Phase der nächsten Arbeit (Erfassen/Validieren/Aktuell halten). */}
+                      <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                        {t("task.phaseLabel")} {t(phaseLabelKey(knowledgeOsPhase(focus.key)))}
+                      </span>
                     </span>
-                    <span className="block truncate text-[13.5px] font-semibold text-ink">
-                      {t(`work.${focus.key}`)}
+                    <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
+                      {focus.count}
                     </span>
-                    {/* SCRUM-297: Knowledge-OS-Phase der nächsten Arbeit (Erfassen/Validieren/Aktuell halten). */}
-                    <span className="mt-0.5 block font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                      {t("task.phaseLabel")} {t(phaseLabelKey(knowledgeOsPhase(focus.key)))}
-                    </span>
-                  </span>
-                  <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
-                    {focus.count}
-                  </span>
-                  {erreichbar ? <ArrowRight size={15} className="shrink-0 text-muted-2" /> : null}
-                </>
+                    {erreichbar ? <ArrowRight size={15} className="shrink-0 text-muted-2" /> : null}
+                  </>
+                )}
+              </RoleLink>
+            ) : null}
+            {/* Block B: Stale-Fall — Daten sind da, ein Refetch scheiterte → sichtbar veraltet markiert. */}
+            {workStale ? (
+              <div className="mb-3">
+                <StaleMarker onRetry={retryWork} />
+              </div>
+            ) : null}
+            <div className="divide-y divide-hairline">
+              {workError ? (
+                // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
+                <div className="py-4">
+                  <LoadErrorState onRetry={retryWork} />
+                </div>
+              ) : workLoading ? (
+                // Block C: ehrlicher Ladezustand statt vorschnellem „nichts zu tun" (echte 0) aus
+                // noch fehlenden Daten.
+                <div className="py-4">
+                  <p className="text-sm text-muted">{t("start.todoLoading")}</p>
+                </div>
+              ) : overview.length === 0 ? (
+                <div className="py-4">
+                  <p className="text-sm text-muted">{t("start.todoEmpty")}</p>
+                  <EmptyStateCtas context="start" />
+                </div>
+              ) : (
+                overview.map((it) => (
+                  // AUFTRAG-mega51 BLOCK A: DIE Fundstelle des Erstnutzerlaufs. Diese Zeilen waren
+                  // uneingeschränkte Links auf vier Controller-Seiten; eine Expertin landete beim
+                  // Klick wieder auf /start. Die Zahl bleibt — sie ist wahr —, der Weg entfällt.
+                  <RoleLink
+                    key={it.key}
+                    to={it.to}
+                    className="flex items-center gap-3 py-2.5"
+                    hoverClassName="hover:opacity-80"
+                  >
+                    {(erreichbar) => (
+                      <>
+                        <span
+                          className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[it.severity]}`}
+                        />
+                        <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
+                          {t(`work.${it.key}`)}
+                        </span>
+                        <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
+                          {it.count}
+                        </span>
+                        {erreichbar ? (
+                          <ArrowRight size={15} className="shrink-0 text-muted-2" />
+                        ) : null}
+                      </>
+                    )}
+                  </RoleLink>
+                ))
               )}
-            </RoleLink>
-          ) : null}
-          {/* Block B: Stale-Fall — Daten sind da, ein Refetch scheiterte → sichtbar veraltet markiert. */}
-          {workStale ? (
-            <div className="mb-3">
-              <StaleMarker onRetry={retryWork} />
             </div>
-          ) : null}
-          <div className="divide-y divide-hairline">
-            {workError ? (
-              // Block B: dauerhaft gescheitert → ehrlicher Fehlerzustand mit Wiederholen (kein „lädt", keine 0).
-              <div className="py-4">
-                <LoadErrorState onRetry={retryWork} />
-              </div>
-            ) : workLoading ? (
-              // Block C: ehrlicher Ladezustand statt vorschnellem „nichts zu tun" (echte 0) aus
-              // noch fehlenden Daten.
-              <div className="py-4">
-                <p className="text-sm text-muted">{t("start.todoLoading")}</p>
-              </div>
-            ) : overview.length === 0 ? (
-              <div className="py-4">
-                <p className="text-sm text-muted">{t("start.todoEmpty")}</p>
-                <EmptyStateCtas context="start" />
-              </div>
-            ) : (
-              overview.map((it) => (
-                // AUFTRAG-mega51 BLOCK A: DIE Fundstelle des Erstnutzerlaufs. Diese Zeilen waren
-                // uneingeschränkte Links auf vier Controller-Seiten; eine Expertin landete beim
-                // Klick wieder auf /start. Die Zahl bleibt — sie ist wahr —, der Weg entfällt.
-                <RoleLink
-                  key={it.key}
-                  to={it.to}
-                  className="flex items-center gap-3 py-2.5"
-                  hoverClassName="hover:opacity-80"
-                >
-                  {(erreichbar) => (
-                    <>
-                      <span className={`h-2 w-2 shrink-0 rounded-full ${WORK_TONE[it.severity]}`} />
-                      <span className="min-w-0 flex-1 truncate text-[13.5px] text-text">
-                        {t(`work.${it.key}`)}
-                      </span>
-                      <span className="shrink-0 font-mono text-[13px] font-semibold text-ink">
-                        {it.count}
-                      </span>
-                      {erreichbar ? (
-                        <ArrowRight size={15} className="shrink-0 text-muted-2" />
-                      ) : null}
-                    </>
-                  )}
-                </RoleLink>
-              ))
-            )}
-          </div>
-        </Card>
+          </Card>
+        </div>
+        {/* JOB 3015 D5 — der Leitsatz (Zielbild Z.60) als LETZTE Zeile der Startseite. Die Fußleiste
+          der App-Hülle (Z.59–62) ist nicht Teil dieses Auftrags; der Satz gehört trotzdem auf diese
+          Fläche. Gemessen in tests/design/zielbild-konsole-start.test.ts (V26/V27). */}
+        <p className="mt-8 pb-4 text-center text-[11.5px] text-muted-2">
+          {t("start.konsole.leitsatz")}
+        </p>
       </div>
-    </div>
+    </>
   );
 }

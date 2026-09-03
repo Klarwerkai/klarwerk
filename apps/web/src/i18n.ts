@@ -486,10 +486,21 @@ const de = {
   "kg.sourceBound.label": "Quellengebunden",
   "kg.sourceBound.body":
     "Antworten entstehen aus Wissensobjekten — ohne Grundlage wird eine Lücke angelegt.",
-  // AUFTRAG-mega38 BLOCK I: „Control Room" war ein englischer Fachbegriff als allererstes
-  // Wort der Anwendung, auf einer deutschen Oberflaeche.
-  "start.kicker": "Übersicht",
-  "start.greeting": "Guten Tag, {{name}}.",
+  // JOB 3015 D5 „KonsoleStart": die Startseite beginnt mit der Frage des Zielbilds
+  // (KonsoleStart.dc.html Z.27–60). Kicker „Übersicht" und Gruß „Guten Tag, {{name}}." sind mit
+  // ihr entfallen — der Name steht in der Seitenleiste (shell/Sidebar.tsx). Wortlaute wörtlich
+  // aus dem Zielbild; die Pille trägt die echte Zahl des Prüfboards, kein Platzhalter.
+  "start.konsole.frage": "Was möchtest du wissen?",
+  "start.konsole.untertitel": "Erfahrungswissen, das im Unternehmen bleibt.",
+  "start.konsole.feld": "Wissen durchsuchen oder Frage stellen …",
+  "start.konsole.suchen.titel": "Suchen",
+  "start.konsole.suchen.text": "Eine Quelle finden, eine Antwort mit Beleg bekommen.",
+  "start.konsole.pruefen.titel": "Prüfen",
+  "start.konsole.pruefen.text": "Neues Wissen freigeben, zurückfragen oder ablehnen.",
+  "start.konsole.offen": "{{n}} offen",
+  "start.konsole.hinzufuegen.titel": "Hinzufügen",
+  "start.konsole.hinzufuegen.text": "Ein Dokument, ein Diktat oder ein Interview — mit Bildern.",
+  "start.konsole.leitsatz": "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich",
   // AUFTRAG-mega38 BLOCK G1: der eine Satz — ohne ein einziges Fachwort, bejahend.
   "start.purpose":
     "Klarwerk sammelt, was deine Kolleginnen und Kollegen im Betrieb gelernt haben, damit du danach fragen kannst und siehst, woher jede Antwort stammt.",
@@ -5288,8 +5299,18 @@ const en: typeof de = {
   "kg.review.body": "Open or in-review knowledge belongs in validation, not direct use.",
   "kg.sourceBound.label": "Source-bound",
   "kg.sourceBound.body": "Answers come from knowledge objects — without a basis, a gap is created.",
-  "start.kicker": "Overview",
-  "start.greeting": "Hello, {{name}}.",
+  // JOB 3015 D5 — see the DE block.
+  "start.konsole.frage": "What do you want to know?",
+  "start.konsole.untertitel": "Experience that stays in the company.",
+  "start.konsole.feld": "Search knowledge or ask a question …",
+  "start.konsole.suchen.titel": "Search",
+  "start.konsole.suchen.text": "Find a source, get an answer with evidence.",
+  "start.konsole.pruefen.titel": "Review",
+  "start.konsole.pruefen.text": "Approve new knowledge, ask back or reject it.",
+  "start.konsole.offen": "{{n}} open",
+  "start.konsole.hinzufuegen.titel": "Add",
+  "start.konsole.hinzufuegen.text": "A document, a dictation or an interview — with images.",
+  "start.konsole.leitsatz": "No AI answer without evidence · Confidential stays confidential",
   // AUFTRAG-mega38 BLOCK G1 — see the DE block.
   "start.purpose":
     "Klarwerk collects what your colleagues have learned on the job, so that you can ask about it and see where every answer comes from.",
@@ -9510,8 +9531,19 @@ const nl: typeof de = {
   "kg.sourceBound.label": "Bronvast",
   "kg.sourceBound.body":
     "Antwoorden ontstaan uit kennisobjecten — zonder grondslag wordt er een hiaat aangemaakt.",
-  "start.kicker": "Overzicht",
-  "start.greeting": "Goedendag, {{name}}.",
+  // JOB 3015 D5 — zie het DE-blok.
+  "start.konsole.frage": "Wat wil je weten?",
+  "start.konsole.untertitel": "Ervaringskennis die in het bedrijf blijft.",
+  "start.konsole.feld": "Kennis doorzoeken of een vraag stellen …",
+  "start.konsole.suchen.titel": "Zoeken",
+  "start.konsole.suchen.text": "Een bron vinden, een antwoord met bewijs krijgen.",
+  "start.konsole.pruefen.titel": "Controleren",
+  "start.konsole.pruefen.text": "Nieuwe kennis vrijgeven, terugvragen of afwijzen.",
+  "start.konsole.offen": "{{n}} open",
+  "start.konsole.hinzufuegen.titel": "Toevoegen",
+  "start.konsole.hinzufuegen.text":
+    "Een document, een dictaat of een interview — met afbeeldingen.",
+  "start.konsole.leitsatz": "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk",
   // AUFTRAG-mega38 BLOCK G1 — zie het DE-blok.
   "start.purpose":
     "Klarwerk verzamelt wat je collega's in het bedrijf hebben geleerd, zodat je ernaar kunt vragen en ziet waar elk antwoord vandaan komt.",

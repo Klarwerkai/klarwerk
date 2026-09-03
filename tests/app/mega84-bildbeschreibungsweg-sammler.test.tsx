@@ -1135,8 +1135,14 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und
     // `traeger` 2. Die Lauf-Fläche bietet keine Bildbeschreibung an und trägt keinen eigenen
     // Titel; sie erscheint nur in der Grundmenge.
+    //
+    // JOB 3015 D5 (KonsoleStart): `komponenten` von 250 auf 251 NACHGEZOGEN. Die Startseite
+    // `apps/web/src/pages/Start.tsx` bringt GENAU EINE Komponente hinzu — `KonsoleKarte`, die
+    // Karte der Konsole (Suchen/Prüfen/Hinzufügen). Dieselbe Begründung wie oben: der Quellbaum
+    // wächst, keine Umstellung verschiebt die Erhebung. `anbieter` 1 und `traeger` 2 sind
+    // unverändert — die Karte bietet keine Bildbeschreibung an und trägt keinen eigenen Titel.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 250,
+      komponenten: 251,
       anbieter: 1,
       traeger: 2,
     });

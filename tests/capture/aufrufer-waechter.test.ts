@@ -794,6 +794,38 @@ const NEUZUGANG_GEMELDET: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
+// REGISTER 4b · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3015 D5)
+// ------------------------------------------------------------------------------------------------
+// JOB 3015 D5 macht die Startseite zur Konsole (Zielbild KonsoleStart.dc.html): Die beiden
+// CTA-Knoepfe des Seitenkopfs („Frage stellen"/„Wissen erfassen" und „Validierung oeffnen") sind
+// durch die drei Karten Suchen/Pruefen/Hinzufuegen ersetzt, deren Ziele als Literale in
+// `pages/Start.tsx` stehen. Damit hat die Tabelle `lib/startCtas.ts` ihren einzigen Produkt-Leser
+// verloren. Die Datei liegt AUSSERHALB der Zielpfade des Auftrags (Start.tsx, i18n.ts, der neue
+// Design-Test) und darf von der Bahn nicht angefasst werden; ihr Abbau (Datei, die Schluessel
+// `start.ctaAsk/ctaCapture/ctaValidate`, die Regel `.kw-cta-primary` im modernen Thema (Block D
+// der Werkbank-Regeln) und der Import im mega51-Sammler) ist in der Rueckgabe zu JOB 3015 als
+// Folgeauftrag benannt. Gemeldet, nicht abgelegt — A3 streicht die Eintraege, sobald die Datei weg
+// ist. (Der Pfad des Stylesheets steht hier absichtlich nicht: das Deckungsregister der
+// Theme-Waechter, tests/app/theme-deckungsregister.test.ts, sammelt jeden Test, der ihn nennt,
+// und dieser Test deckt das Thema nicht.)
+const ERSETZT_JOB3015: readonly Ausnahme[] = [
+  {
+    schluessel: "apps/web/src/lib/startCtas.ts::startCta",
+    grund:
+      "Seit JOB 3015 D5 ohne Produktaufrufer: der Haupt-CTA der Startseite ist durch die Karten " +
+      "Suchen (/fragen) und Hinzufuegen (/erfassen) ersetzt. Abbau ausserhalb der Zielpfade, " +
+      "Folgeauftrag benannt (RUECKGABE JOB 3015).",
+  },
+  {
+    schluessel: "apps/web/src/lib/startCtas.ts::startQueueCta",
+    grund:
+      "Seit JOB 3015 D5 ohne Produktaufrufer: der Warteschlangen-Link der Startseite ist durch " +
+      "die Karte Pruefen (/validierung) mit der Pille „N offen“ ersetzt. Abbau ausserhalb der " +
+      "Zielpfade, Folgeauftrag benannt (RUECKGABE JOB 3015).",
+  },
+];
+
+// ------------------------------------------------------------------------------------------------
 // REGISTER 5 · BEWUSST OHNE AUFRUFER AUF `apps/web/src` (JOB 2611 D1)
 // ------------------------------------------------------------------------------------------------
 // Dieselbe Regel wie bei `BEWUSST`: nur Eintraege, deren Grund am Code geprueft ist.
@@ -973,6 +1005,7 @@ const GEDULDET = new Set<string>([
   ...BEWUSST.map((a) => a.schluessel),
   ...DURCH_VERSCHAERFUNG_SICHTBAR.map((a) => a.schluessel),
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
+  ...ERSETZT_JOB3015.map((a) => a.schluessel),
   ...ALTBESTAND,
   ...BEWUSST_WEB.map((a) => a.schluessel),
   ...ALTBESTAND_WEB,
@@ -1084,6 +1117,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       ...BEWUSST,
       ...DURCH_VERSCHAERFUNG_SICHTBAR,
       ...NEUZUGANG_GEMELDET,
+      ...ERSETZT_JOB3015,
       ...BEWUSST_WEB,
     ]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);

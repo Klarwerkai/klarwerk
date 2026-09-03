@@ -165,6 +165,9 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   { muster: /^it\.to$/, herkunft: "lib/workCenter.ts · buildWorkOverview" },
   { muster: /^focus\.to$/, herkunft: "lib/workCenter.ts · primaryWorkItem" },
   { muster: /^captureDemoHref\(\)$/, herkunft: "lib/demoPilotPath.ts · captureDemoHref" },
+  // JOB 3015 D5: die Konsolen-Karte reicht das LITERAL ihrer Aufrufstelle (`to="/fragen"` usw.,
+  // unten als Literal erhoben) unverändert an RoleLink durch — keine eigene Zieltabelle.
+  { muster: /^to$/, herkunft: "pages/Start.tsx · KonsoleKarte (Literal der Aufrufstelle)" },
 ];
 
 // Alle `to=`-Vorkommen: `to="…"` (Literal) und `to={…}` (Ausdruck).
