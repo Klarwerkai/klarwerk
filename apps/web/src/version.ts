@@ -17,4 +17,4 @@
 // diese Datei; läuft sie gegen `package.json` auseinander, meldet /health einen Stand, den die
 // Oberfläche nicht zeigt. Der Wächter `tests/app/health-version-commit.test.ts` macht genau das
 // rot — die Suite lässt die Abweichung nicht durch.
-export const APP_VERSION = "1.0.0-beta.1.39";
+export const APP_VERSION = "1.0.0-beta.1.40";
