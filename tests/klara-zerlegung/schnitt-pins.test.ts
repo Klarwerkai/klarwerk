@@ -145,6 +145,13 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // die AUSGELIEFERTE Datei aus `apps/web/dist/word-addin/taskpane.html` (Pfadliteral) und laedt
   // sie in Chromium — nach einem Schnitt muesste dist die Geschwisterdateien mitfuehren, sonst
   // misst er eine Seite, die es so nicht mehr gibt. Griff `pfad`.
+  // JOB 3010 (Nachzug, 03.09.2026): die Messung der Lückenfläche „KeinWissen" am LAUFENDEN Panel.
+  // Sie fährt das ausgelieferte Inline-Skript über `createKlaraPanel` (Import der Fixture) an die
+  // echte App und bringt es über `/api/ask` in den Lückenzustand — Griff `fixture`, kein
+  // Pfadliteral, keine Marken. Nach einem Schnitt hängt sie an der Fixture: bricht `splitTaskpane`,
+  // bricht ihre Basismessung mit. A2 hat die Datei gemeldet (`+ "tests/design/zielbild-keinwissen-
+  // messung.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
+  "tests/design/zielbild-keinwissen-messung.test.ts": "fixture",
   "tests/design/zielbild-klara-main.test.ts": "pfad",
   "tests/design/zielbild-pruefunglaeuft-messung.test.ts": "fixture",
   "tests/design/zielbild-schlankespanel-messung.test.ts": "marken,fixture",

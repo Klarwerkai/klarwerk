@@ -268,6 +268,14 @@ const INVENTAR: readonly string[] = [
   // ausgelieferten taskpane.html ueber die Panel-Fixture, je Sprache. Achse `taskpane`.
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts",
   "tests/design/zielbild-schlankespanel-messung.test.ts",
+  // JOB 3010 D2 (03.09.2026): die Lueckenflaeche „KeinWissen" am LAUFENDEN Aufgabenfenster gemessen
+  // (Fixture `createKlaraPanel`, echte App ueber die Transportbruecke, `/api/ask` -> gap) und Wert
+  // fuer Wert gegen `KeinWissen.dc.html` gestellt — Sollwerttabelle, Abweichungstabelle mit drei
+  // Urteilen, Verlustliste der heutigen Traeger, der tote href, Gegenprobe. Achsen `taskpane` und
+  // `komponente` (die Datei nennt taskpane.html und fuehrt `KlaraPanel`). GEMESSEN, nicht gesetzt:
+  // K2 meldete `expected [ Array(1) ] to deeply equal []`, bevor dieser Eintrag stand. Der Test baut
+  // nichts um — taskpane.html ist in JOB 3004 gesperrt — und pinnt die Urteile auf den heutigen Stand.
+  "tests/design/zielbild-keinwissen-messung.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
   // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —
