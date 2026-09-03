@@ -13,12 +13,22 @@
 // DER SPION IST DER KERN. `Formulierer` ist injiziert, deshalb ist hier beweisbar, ob ueberhaupt
 // etwas nach draussen ging — und WAS. Eine Zusage „ohne Einwilligung passiert nichts" ist ohne
 // diesen Zaehler eine Behauptung.
+//
+// JOB 3026 (KA6 Stufe 2) HAT DIESE DATEI MITGEFUEHRT, nicht ersetzt: Alle Faelle und alle Aussagen
+// der Bloecke A bis E stehen unveraendert. Was sich geaendert hat, ist die Art, wie die Einwilligung
+// in den Aufruf kommt — frueher als `einwilligung: true/false` in der Eingabe (also als BEHAUPTUNG
+// des Aufrufers), jetzt als Antwort eines injizierten Sitzungstors auf eine mitgegebene Bindung.
+// Die Bloecke B bis E messen weiterhin, was NACH einer bestaetigten Einwilligung geschieht; Block A
+// misst weiterhin, was OHNE sie geschieht. Der Riegel selbst wird in
+// `tests/ka6/job3026-riegel-am-erzeuger.test.ts` gemessen.
 
 import { describe, expect, it } from "vitest";
 import { InMemoryKoRepo, type KnowledgeObject, KoService } from "../../services/knowledge-object";
 import {
   type Formulierer,
+  type Ka6Einwilligungspruefer,
   type ZurufAuftrag,
+  type ZurufBindung,
   ZurufError,
   ZurufService,
 } from "../../services/output";
@@ -59,7 +69,28 @@ function spion(antwort = "Ein Vorschlag.") {
   return { formulierer: f, auftraege };
 }
 
-async function setup(kos: KnowledgeObject[], antwort?: string) {
+/** Die Bindung, unter der das Sitzungstor nachsieht. Vier opake Kennungen, keine Erlaubnis. */
+const BINDUNG: ZurufBindung = {
+  sessionId: "sess-1",
+  actorId: "anna",
+  addinInstanceId: "inst-1",
+  documentContextId: "doc-1",
+};
+
+/**
+ * Das Sitzungstor als Attrappe. JOB 3026: An dieser Stelle stand frueher nichts — die Einwilligung
+ * war ein Feld der Eingabe. Jetzt entscheidet ein befragbares Tor, und der Test sagt mit
+ * `erlaubt`, welche Lage er herstellt.
+ */
+function sitzungstor(erlaubt: boolean): Ka6Einwilligungspruefer {
+  return {
+    async pruefeExterneAusfuehrung() {
+      return { erlaubt };
+    },
+  };
+}
+
+async function setup(kos: KnowledgeObject[], antwort?: string, erlaubt = true) {
   const repo = new InMemoryKoRepo();
   for (const k of kos) {
     await repo.insert(k);
@@ -69,6 +100,7 @@ async function setup(kos: KnowledgeObject[], antwort?: string) {
   const zuruf = new ZurufService({
     koService,
     formulierer: s.formulierer,
+    einwilligungspruefer: sitzungstor(erlaubt),
     now: () => Date.parse("2026-08-20T23:45:00Z"),
   });
   return { zuruf, koService, ...s };
@@ -76,18 +108,18 @@ async function setup(kos: KnowledgeObject[], antwort?: string) {
 
 describe("KA6 Stufe 1 · A · ohne Einwilligung geht NICHTS nach draussen", () => {
   it("der Formulierer wird nicht ein einziges Mal gerufen", async () => {
-    const t = await setup([]);
+    const t = await setup([], undefined, false);
     await expect(
-      t.zuruf.schlageVor({ art: "erstellen", text: "Ein Thema", einwilligung: false }),
+      t.zuruf.schlageVor({ art: "erstellen", text: "Ein Thema", bindung: BINDUNG }),
     ).rejects.toThrow(ZurufError);
     // Das ist die eigentliche Zusicherung: nicht „ein Fehler kam", sondern „nichts ging hinaus".
     expect(t.auftraege).toHaveLength(0);
   });
 
   it("der Fehler nennt den Grund und nicht irgendeinen", async () => {
-    const t = await setup([]);
+    const t = await setup([], undefined, false);
     try {
-      await t.zuruf.schlageVor({ art: "erstellen", text: "Ein Thema", einwilligung: false });
+      await t.zuruf.schlageVor({ art: "erstellen", text: "Ein Thema", bindung: BINDUNG });
       throw new Error("haette werfen muessen");
     } catch (e) {
       expect(e).toBeInstanceOf(ZurufError);
@@ -96,12 +128,12 @@ describe("KA6 Stufe 1 · A · ohne Einwilligung geht NICHTS nach draussen", () =
   });
 
   it("auch mit ausgewaehlten Quellen bleibt es bei null Aufrufen", async () => {
-    const t = await setup([ko({ id: "K1" })]);
+    const t = await setup([ko({ id: "K1" })], undefined, false);
     await expect(
       t.zuruf.schlageVor({
         art: "umformulieren",
         text: "Alter Text",
-        einwilligung: false,
+        bindung: BINDUNG,
         koIds: ["K1"],
       }),
     ).rejects.toThrow(ZurufError);
@@ -115,7 +147,7 @@ describe("KA6 Stufe 1 · B · das Ergebnis ist ein Vorschlag, keine Schreibanwei
     const v = await t.zuruf.schlageVor({
       art: "erstellen",
       text: "Anschreiben zur Wartung",
-      einwilligung: true,
+      bindung: BINDUNG,
     });
 
     expect(v.vorschlag).toBe("Sehr geehrte Damen und Herren, ...");
@@ -127,7 +159,7 @@ describe("KA6 Stufe 1 · B · das Ergebnis ist ein Vorschlag, keine Schreibanwei
 
   it("es gibt kein Feld, das eine Schreibung ausdrueckt", async () => {
     const t = await setup([], "Text");
-    const v = await t.zuruf.schlageVor({ art: "erstellen", text: "Thema", einwilligung: true });
+    const v = await t.zuruf.schlageVor({ art: "erstellen", text: "Thema", bindung: BINDUNG });
 
     // Wer hier ein Ziel, eine Position oder einen Einfuegebefehl einbaut, roetet diesen Fall.
     // Das ist die strukturelle Fassung von „Klara schreibt NIE selbsttaetig ins Dokument".
@@ -142,7 +174,7 @@ describe("KA6 Stufe 1 · B · das Ergebnis ist ein Vorschlag, keine Schreibanwei
   it("alle drei Zurufe liefern einen Vorschlag und keiner eine Aktion", async () => {
     for (const art of ["erstellen", "vervollstaendigen", "umformulieren"] as const) {
       const t = await setup([], "Vorschlag");
-      const v = await t.zuruf.schlageVor({ art, text: "Ein Text", einwilligung: true });
+      const v = await t.zuruf.schlageVor({ art, text: "Ein Text", bindung: BINDUNG });
       expect(v.art).toBe(art);
       expect(v.vorschlag).toBe("Vorschlag");
       expect(t.auftraege).toHaveLength(1);
@@ -161,7 +193,7 @@ describe("KA6 Stufe 1 · C · Vertrauliches wird abgestreift, bevor es hinausgeh
     const v = await t.zuruf.schlageVor({
       art: "vervollstaendigen",
       text: "Anfang",
-      einwilligung: true,
+      bindung: BINDUNG,
       koIds: ["OFFEN1", "GEHEIM"],
     });
 
@@ -180,7 +212,7 @@ describe("KA6 Stufe 1 · C · Vertrauliches wird abgestreift, bevor es hinausgeh
     const v = await t.zuruf.schlageVor({
       art: "erstellen",
       text: "Thema",
-      einwilligung: true,
+      bindung: BINDUNG,
       koIds: ["STRENG"],
     });
     expect(t.auftraege[0]?.belege).toHaveLength(0);
@@ -198,7 +230,7 @@ describe("KA6 Stufe 1 · C · Vertrauliches wird abgestreift, bevor es hinausgeh
     const v = await t.zuruf.schlageVor({
       art: "erstellen",
       text: "Thema",
-      einwilligung: true,
+      bindung: BINDUNG,
       koIds: ["OFFENER", "GUT"],
     });
     expect(t.auftraege[0]?.belege.map((b) => b.koId)).toEqual(["GUT"]);
@@ -213,7 +245,7 @@ describe("KA6 Stufe 1 · D · Herkunft ist Pflicht", () => {
     const v = await t.zuruf.schlageVor({
       art: "umformulieren",
       text: "Alter Satz",
-      einwilligung: true,
+      bindung: BINDUNG,
       koIds: ["K1"],
     });
     expect(v.herkunft).toBe("bestand");
@@ -226,7 +258,7 @@ describe("KA6 Stufe 1 · D · Herkunft ist Pflicht", () => {
 
   it("ohne Quelle: herkunft = frei, und das wird nicht verschwiegen", async () => {
     const t = await setup([]);
-    const v = await t.zuruf.schlageVor({ art: "erstellen", text: "Thema", einwilligung: true });
+    const v = await t.zuruf.schlageVor({ art: "erstellen", text: "Thema", bindung: BINDUNG });
     expect(v.herkunft).toBe("frei");
     expect(v.provenance).toEqual([]);
     expect(v.aiGenerated).toBe(true);
@@ -237,7 +269,7 @@ describe("KA6 Stufe 1 · E · erfunden wird nichts", () => {
   it("ein leerer Formuliererlauf wird NICHT als Vorschlag ausgegeben", async () => {
     const t = await setup([], "   ");
     try {
-      await t.zuruf.schlageVor({ art: "erstellen", text: "Thema", einwilligung: true });
+      await t.zuruf.schlageVor({ art: "erstellen", text: "Thema", bindung: BINDUNG });
       throw new Error("haette werfen muessen");
     } catch (e) {
       expect((e as ZurufError).code).toBe("NO_BASIS");
@@ -247,7 +279,7 @@ describe("KA6 Stufe 1 · E · erfunden wird nichts", () => {
   it("ohne Text und ohne Markierung wird gar nicht erst gefragt", async () => {
     const t = await setup([]);
     try {
-      await t.zuruf.schlageVor({ art: "erstellen", text: "   ", einwilligung: true });
+      await t.zuruf.schlageVor({ art: "erstellen", text: "   ", bindung: BINDUNG });
       throw new Error("haette werfen muessen");
     } catch (e) {
       expect((e as ZurufError).code).toBe("NO_INPUT");
@@ -261,7 +293,7 @@ describe("KA6 Stufe 1 · E · erfunden wird nichts", () => {
       await t.zuruf.schlageVor({
         art: "loeschen" as never,
         text: "Thema",
-        einwilligung: true,
+        bindung: BINDUNG,
       });
       throw new Error("haette werfen muessen");
     } catch (e) {
@@ -272,9 +304,15 @@ describe("KA6 Stufe 1 · E · erfunden wird nichts", () => {
 
   it("ohne verdrahteten Formulierer entsteht kein halber Vorschlag", async () => {
     const repo = new InMemoryKoRepo();
-    const zuruf = new ZurufService({ koService: new KoService({ repo }) });
+    // Das Sitzungstor sagt JA — nur so misst dieser Fall wirklich den fehlenden Formulierer und
+    // nicht den Riegel davor. Die Reihenfolge Einwilligung -> Text -> Formulierer bleibt damit
+    // auch hier sichtbar.
+    const zuruf = new ZurufService({
+      koService: new KoService({ repo }),
+      einwilligungspruefer: sitzungstor(true),
+    });
     try {
-      await zuruf.schlageVor({ art: "erstellen", text: "Thema", einwilligung: true });
+      await zuruf.schlageVor({ art: "erstellen", text: "Thema", bindung: BINDUNG });
       throw new Error("haette werfen muessen");
     } catch (e) {
       expect((e as ZurufError).code).toBe("NO_FORMULIERER");

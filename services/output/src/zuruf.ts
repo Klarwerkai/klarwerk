@@ -18,10 +18,15 @@
 //
 // DREI WEITERE GRENZEN, alle aus dem Bestand uebernommen und nicht neu erfunden:
 //
-//   1. OHNE EINWILLIGUNG KEIN EXTERNER AUFRUF (KA4). Fehlt sie, wird `Formulierer.formuliere`
-//      NICHT gerufen — nicht „mit leerem Text", nicht „mit Platzhalter": gar nicht. Der Dienst
-//      verhaelt sich dann bytegleich wie vor diesem Bau, weil er denselben Weg nimmt wie ein
-//      Aufruf, den es nicht gibt.
+//   1. OHNE BESTAETIGTE EINWILLIGUNG KEIN EXTERNER AUFRUF (KA4). Fehlt sie, wird
+//      `Formulierer.formuliere` NICHT gerufen — nicht „mit leerem Text", nicht „mit Platzhalter":
+//      gar nicht. ENTSCHIEDEN WIRD DAS NICHT HIER (JOB 3026, KA6 Stufe 2): dieses Modul FRAGT
+//      ueber den Port `Ka6Einwilligungspruefer` das serverseitige Sitzungstor
+//      (`KlaraSessionService.pruefeExterneAusfuehrung`) und wertet allein dessen Antwort aus; eine
+//      zweite Auslegung der Regel an dieser Stelle waere genau der Fehler, den
+//      `ask-routes.ts:96-100` benennt. Ein Aufrufer kann die Einwilligung deshalb nicht mehr
+//      BEHAUPTEN: `ZurufEingabe` hat kein Feld dafuer, sondern nur die Bindung, mit der gefragt
+//      wird.
 //   2. VERTRAULICHES WIRD ABGESTREIFT, bevor irgendetwas nach draussen geht — mit `dropConfidential`
 //      (`knowledge-object/src/confidentiality.ts:49`), demselben Egress-Filter, den `ask` und der
 //      Output-Export benutzen. Kein zweites Praedikat.
@@ -101,11 +106,51 @@ export interface ZurufBeleg {
   text: string;
 }
 
+/**
+ * Die Bindung, an der die KA4-Einwilligung haengt — Sitzung, Mensch, Add-in-Instanz und Dokument.
+ *
+ * Sie ist der ERSATZ fuer das frueher hier stehende `einwilligung: boolean` (JOB 3026). Ein
+ * Aufrufer bringt damit keine Erlaubnis mehr mit, sondern nur die vier opaken Kennungen, unter
+ * denen das Sitzungstor nachsehen kann. Alle vier sind Pflicht und muessen Inhalt haben: eine
+ * unvollstaendige Bindung deckt nie eine Einwilligung, deshalb wird bei ihr gar nicht erst
+ * gefragt.
+ */
+export interface ZurufBindung {
+  sessionId: string;
+  actorId: string;
+  addinInstanceId: string;
+  documentContextId: string;
+}
+
+/**
+ * DER PORT ZUM SITZUNGSTOR — die Regel reist als Frage herein, nicht als Import.
+ *
+ * Strukturgleich zu `Ka4Freigabepruefer` (`services/app/src/routes/ask-routes.ts:124-129`) und
+ * ABSICHTLICH NICHT von dort importiert: `output` duerfte `app` nicht kennen. Modulgrenzen laufen
+ * in diesem Haus nur ueber `index.ts`, und eine Kante `output -> app` gaebe es nicht —
+ * `dependency-cruiser` verboete sie zu Recht. Dasselbe Muster hat JOB 3023 fuer
+ * `library-analytics -> conflicts` entschieden.
+ *
+ * WAS HIER AUSDRUECKLICH NICHT ENTSTEHT: eine zweite Auslegung der Einwilligungsregel. Dieser Port
+ * ENTSCHEIDET nichts, er FRAGT. Ob eine Zustimmung traegt, entscheidet allein
+ * `KlaraSessionService.pruefeExterneAusfuehrung` — dieselbe Pruefung, die die Bindungen einzeln
+ * vergleicht, frisch liest und nicht deckende Zustimmungen entwertet.
+ */
+export interface Ka6Einwilligungspruefer {
+  pruefeExterneAusfuehrung(
+    sessionId: string,
+    bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
+  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
+}
+
 export interface ZurufEingabe {
   art: ZurufArt;
   text: string;
-  /** KA4-Einwilligung fuer GENAU dieses Dokument. Fehlt sie, geht nichts nach draussen. */
-  einwilligung: boolean;
+  /**
+   * Wonach das Sitzungstor gefragt wird. **Kein Feld dieser Eingabe drueckt eine Einwilligung
+   * aus** — wer eine behaupten wollte, faende keinen Platz dafuer.
+   */
+  bindung: ZurufBindung;
   /** Optionale Auswahl validierter Quellen, auf die sich der Vorschlag stuetzen soll. */
   koIds?: readonly string[];
 }
@@ -141,17 +186,25 @@ export interface ZurufServiceDeps {
   koService: KoService;
   /** Fehlt er, gibt es keinen Weg nach draussen — der Dienst antwortet `NO_FORMULIERER`. */
   formulierer?: Formulierer;
+  /**
+   * Das Sitzungstor. Fehlt es, ist der Riegel ZU — nicht offen: ohne befragbares Tor gibt es keine
+   * bestaetigte Einwilligung. Injiziert wie `formulierer`, damit im Test messbar ist, OB und
+   * WOMIT gefragt wurde.
+   */
+  einwilligungspruefer?: Ka6Einwilligungspruefer;
   now?: () => number;
 }
 
 export class ZurufService {
   private readonly koService: KoService;
   private readonly formulierer: Formulierer | undefined;
+  private readonly einwilligungspruefer: Ka6Einwilligungspruefer | undefined;
   private readonly now: () => number;
 
   constructor(deps: ZurufServiceDeps) {
     this.koService = deps.koService;
     this.formulierer = deps.formulierer;
+    this.einwilligungspruefer = deps.einwilligungspruefer;
     this.now = deps.now ?? (() => Date.now());
   }
 
@@ -168,7 +221,11 @@ export class ZurufService {
     }
 
     // KA4 zuerst. Kein Bestandszugriff, kein externer Aufruf, kein Nebeneffekt ohne Einwilligung.
-    if (!eingabe.einwilligung) {
+    if (!(await this.einwilligungLiegtVor(eingabe.bindung))) {
+      // DERSELBE FESTE SATZ WIE BISHER, und kein Wort mehr: Der `grund` des Sitzungstors bleibt im
+      // Erzeuger. Dieselbe Metadata-only-Haltung wie `ask-routes.ts:145-149` — die Kennungen sind
+      // opak, und eine Meldung, die sie oder ihren Ablehnungsgrund weiterreichte, waere eine
+      // Verknuepfungsspur ueber Dokumente hinweg.
       throw new ZurufError(
         "CONSENT_MISSING",
         "Ohne Einwilligung fuer dieses Dokument wird nichts formuliert und nichts gesendet.",
@@ -219,6 +276,45 @@ export class ZurufService {
       provenance: quellen.map(toProvenance),
       generatedAt: new Date(this.now()).toISOString(),
     };
+  }
+
+  /**
+   * Liegt fuer GENAU dieses Dokument eine bestaetigte Einwilligung vor?
+   *
+   * FAIL-CLOSED IN JEDER RICHTUNG. Es gibt hier keinen Zweig, in dem ein unklarer Zustand zur
+   * Freigabe fuehrt: unvollstaendige Bindung, kein Tor, ein Tor ohne die Methode, ein geworfener
+   * Fehler, `erlaubt: false`, eine Antwort ohne `erlaubt` — jeder dieser Faelle endet geschlossen.
+   * Nur genau `erlaubt === true` oeffnet. Der geschlossene Zustand ist der Ruhezustand.
+   *
+   * Der bequeme Kurzschluss `if (!pruefer) return true` waere genau die Luecke, die dieser Bau
+   * schliesst — er stuende hier fuer „unbekannt, also durchlassen".
+   */
+  private async einwilligungLiegtVor(bindung: ZurufBindung | undefined): Promise<boolean> {
+    const sessionId = (bindung?.sessionId ?? "").trim();
+    const actorId = (bindung?.actorId ?? "").trim();
+    const addinInstanceId = (bindung?.addinInstanceId ?? "").trim();
+    const documentContextId = (bindung?.documentContextId ?? "").trim();
+    if (!sessionId || !actorId || !addinInstanceId || !documentContextId) {
+      // Gar nicht erst fragen: eine unvollstaendige Bindung kann keine Einwilligung decken, und
+      // eine halbe Frage an das Sitzungstor waere eine Anfrage nach einer fremden Sitzung.
+      return false;
+    }
+    const pruefer = this.einwilligungspruefer;
+    if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
+      return false;
+    }
+    try {
+      const freigabe = await pruefer.pruefeExterneAusfuehrung(sessionId, {
+        actorId,
+        addinInstanceId,
+        documentContextId,
+      });
+      return freigabe?.erlaubt === true;
+    } catch {
+      // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
+      // kein Serverfehler — genau wie bei `ka4Freigabe` (`ask-routes.ts:183-188`).
+      return false;
+    }
   }
 
   /**
