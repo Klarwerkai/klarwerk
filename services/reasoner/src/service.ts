@@ -61,6 +61,7 @@ import type {
   ReasonerTaskChoice,
   ReasonerTaskConfig,
   ReasonerTaskMap,
+  Relevanztext,
   StructureResult,
 } from "./types";
 
@@ -1156,11 +1157,23 @@ export class Reasoner {
     // dem, was er belegt, nicht zuordnen ließ. Der Gegenstand bleibt bewusst leer (bei einer
     // Antwort ist er eine Trefferliste, kein Objekt); der Handelnde nicht mehr.
     runContext?: ModelRunContext,
+    // ============================================================================================
+    // JOB 3049 (N2, Scheibe 3) — DER RELEVANZTEXT REIST NEBEN DER FRAGE, NICHT IN IHR.
+    // ============================================================================================
+    //
+    // Der Aufrufer, der die deklarierte Entsprechung gebildet hat (`services/ask/src/service.ts`),
+    // reicht sie hier herein; dieser Dienst gibt sie unverändert an den Provider weiter, der sie
+    // ausschließlich seiner Kandidatenauswahl vorlegt. `question` wird nirgends umgeschrieben —
+    // Prompt, Antworttext, Wissenslücke und Prüfprotokoll rechnen weiter auf dem Getippten.
+    //
+    // OHNE IHN ÄNDERT SICH NICHTS: jeder andere Aufrufer (Sitzungspfad, Hilfeweg, Routen) lässt
+    // ihn weg und bekommt Zeichen für Zeichen das bisherige Verhalten.
+    relevanz?: Relevanztext,
   ): Promise<AnswerResult> {
     const result = await this.runTask(
       "answer",
       locale,
-      (p) => p.answer(question, context, locale, confidential),
+      (p) => p.answer(question, context, locale, confidential, relevanz),
       confidential,
       runContext,
     );
@@ -1180,8 +1193,13 @@ export class Reasoner {
     question: string,
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
+    // JOB 3049: derselbe Relevanztext wie bei `answer` — beide Antwortwege des Fragedienstes
+    // müssen ihn kennen, sonst löst genau der Weg des Word-Add-ins die Zusage nicht ein. Er geht
+    // an die Auswahl des deterministischen Providers; ein Modell wird hier nach wie vor NICHT
+    // gerufen, und der Egress-Riegel dieses Wegs bleibt unberührt.
+    relevanz?: Relevanztext,
   ): Promise<AnswerResult> {
-    return this.fallback.answer(question, context, locale);
+    return this.fallback.answer(question, context, locale, false, relevanz);
   }
 
   // FR-RSN-03: Text präzisieren; Modellfehler → deterministischer Fallback.

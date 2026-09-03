@@ -13,6 +13,7 @@ import type {
   KnowledgeClass,
   KnowledgeRef,
   ReasonerLocale,
+  Relevanztext,
   StructureResult,
 } from "./types";
 
@@ -114,11 +115,16 @@ export interface ReasonerProvider {
   // Wächter, der genau dort vertraulichen Egress abbricht, sieht ausschließlich dieses Boolean —
   // er konnte auf dem Antwortweg also gar nicht auslösen. Der deterministische Fallback ignoriert
   // den Parameter, wie überall.
+  // JOB 3049 (N2, Scheibe 3): `relevanz` — der Relevanztext NEBEN der Frage (s. `types.ts`). Er
+  // wird ausschließlich an die Kandidatenauswahl weitergegeben; `question` bleibt unverändert die
+  // Frage, und kein Provider mischt ein ergänztes Wort in Prompt, Antworttext oder Quellenliste.
+  // Fehlt er, verhält sich jeder Provider Zeichen für Zeichen wie vorher.
   answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale?: ReasonerLocale,
     confidential?: boolean,
+    relevanz?: Relevanztext,
   ): Promise<AnswerResult>;
   // FR-RSN-03: Text sprachlich präzisieren (ohne Inhalt zu erfinden).
   // SCRUM-312: optionale, frei-/aktionsbasierte Anweisung (z. B. „klarer", „strukturieren").
@@ -149,7 +155,13 @@ export interface ReasonerProvider {
     confidential?: boolean,
   ): Promise<ExtractResult>;
   // select ist reines Ranking (synchron, kein Netzaufruf).
-  select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[];
+  // JOB 3049: derselbe Relevanztext wie bei `answer` — der deterministische Provider führt seine
+  // Antwort über genau diese Auswahl, sie muss ihn also kennen.
+  select(
+    question: string,
+    candidates: readonly KnowledgeRef[],
+    relevanz?: Relevanztext,
+  ): KnowledgeRef[];
   // Klara Stufe 2 (Pedi 05.07.): Hilfe-Antwort GENERIEREN — Wissensdatenbank (Hilfe-Eintraege)
   // plus eigene KI-Logik (folgern/kombinieren erlaubt). Das Frontend kennzeichnet das Ergebnis
   // IMMER als KI-generiert und nicht vollständig geprüft. NUR das echte Modell implementiert
@@ -1194,8 +1206,22 @@ function tokenize(text: string, ausNominalisierung?: Set<string>): string[] {
 // relative Regel. `substanz` ist derselbe Schnitt ohne die mehrdeutigen Funktionsformen — und NUR
 // er wird gegen `MIN_ANSWER_SUBSTANCE` gehalten. Beide entstehen aus DERSELBEN Tokenmenge; es gibt
 // weiterhin genau eine Zerlegung und genau einen Schnitt.
+//
+// JOB 3049 (N2, Scheibe 3) — DIE DRITTE ZAHL, UND WARUM SIE NEBEN `wert` STEHT UND NICHT DARIN.
+//
+// `entsprechung` zählt die deklarierten Paare, die diese Quelle NUR über ihr nicht getipptes Wort
+// trifft (Relevanztext, s. `types.ts`). Sie steht getrennt, weil sie zwei verschiedene Dinge tun
+// muss und `wert` nur eines davon könnte:
+//   · Die Quelle soll GEFUNDEN werden — dafür zählt `entsprechung` neben `wert` in die Reichweite
+//     (das Tor `> 0` und die relative Regel rechnen auf der Summe).
+//   · Sie soll den tragenden Treffer NICHT VERDRÄNGEN — dafür bleibt die RANGFOLGE allein auf
+//     `wert`. Ein Kandidat ohne direkte Überschneidung hat `rankScore < 1` und steht damit strikt
+//     hinter jedem Kandidaten mit direkter Überschneidung; der Deckel `DEFAULT_TOP_K` schneidet
+//     ihn zuerst weg, nie den tragenden Treffer (Fall W1).
+// Ohne Relevanztext ist `entsprechung` immer 0 und beide Zahlen sind die von mega57.
 interface Ueberschneidung {
   readonly wert: number; // alle gemeinsamen Inhaltstoken — Rangfolge und relative Schwelle.
+  readonly entsprechung: number; // die Paare, die NUR über die Entsprechung treffen — Reichweite.
   readonly substanz: number; // davon die substanztragenden — die absolute Mindestsubstanz.
 }
 
@@ -1293,6 +1319,8 @@ function ueberschneidung(
   b: readonly string[],
   nominalA?: ReadonlySet<string>,
   nominalB?: ReadonlySet<string>,
+  // JOB 3049: der Relevanztext. Fehlt er, ist diese Funktion Zeichen für Zeichen die von mega60.
+  relevanz: Relevanztext = [],
 ): Ueberschneidung {
   const ziel = new Set(b);
   const gemeinsam = new Set<string>();
@@ -1309,12 +1337,44 @@ function ueberschneidung(
     }
   }
   let substanz = 0;
+  // JOB 3049: WELCHE Token bereits getragen haben — die Sperre gegen den zweiten Punkt aus einem
+  // Wort (Fall W2). Sie steht hier und nicht in einer zweiten Funktion, weil sie DIESELBE Zählung
+  // betrifft: ein Wort trägt einmal, ein Paar trägt einmal.
+  const getragen = new Set<string>();
   for (const word of exakt) {
     if (traegtSubstanz(word, nominalA, nominalB)) {
       substanz += 1;
+      getragen.add(word);
     }
   }
-  return { wert: gemeinsam.size, substanz };
+  // JOB 3049 — JEDES PAAR HÖCHSTENS EINMAL, UND NUR STATT DES GETIPPTEN WORTES.
+  //
+  // Die Entsprechung tritt an die STELLE des getippten Wortes, sie legt kein zweites dazu. Drei
+  // Bedingungen, jede einzelne notwendig und jede fail-closed:
+  //  1. Kein Term desselben Paares hat schon getragen — sonst entstünden aus EINEM getippten Wort
+  //     zwei Substanzpunkte (Fall W2), und das Substanzmaß wäre für jedes deklarierte Wort auf eins
+  //     abgesenkt. Der Auftrag verbietet genau das.
+  //  2. Der ergänzte Term steht WÖRTLICH in der Quelle (`ziel.has`). Kein Kompositumtreffer und
+  //     keine Teilzeichenkette: die Entsprechung ist ohnehin schon eine Brücke, eine zweite
+  //     Unschärfe darauf wäre die fail-open-Kette, die mega60 A gerade abgeschafft hat.
+  //  3. Der Term trägt Substanz wie jedes andere Token auch (`traegtSubstanz`) — dieselbe Regel,
+  //     nicht eine mildere für die Entsprechung.
+  let entsprechung = 0;
+  for (const paar of relevanz) {
+    if (paar.getippt.some((term) => getragen.has(term))) {
+      continue;
+    }
+    const treffer = paar.ergaenzt.find((term) => ziel.has(term) && !getragen.has(term));
+    if (treffer === undefined) {
+      continue;
+    }
+    entsprechung += 1;
+    if (traegtSubstanz(treffer, nominalA, nominalB)) {
+      substanz += 1;
+      getragen.add(treffer);
+    }
+  }
+  return { wert: gemeinsam.size, entsprechung, substanz };
 }
 
 // SCRUM-361 / AG-03: öffentliche, stabile Tokenisierung der Frage in Inhaltstoken (Stoppwörter und
@@ -1395,6 +1455,20 @@ export function refMatchText(ref: KnowledgeRef): string {
 // Zweizeichen-Token herausfällt und „geprüft" das Wort „prüfen" nicht literal trifft — enden jetzt
 // in der Wissenslücke. Der Recall kommt über eine spätere Token-Scheibe zurück (Kennungen,
 // Flexionen), nicht über ein aufgeweichtes Maß.
+//
+// ------------------------------------------------------------------------------------------------
+// JOB 3049 (N2, Scheibe 3) — DIE ZAHL BLEIBT ZWEI, AUCH FÜR DIE DEKLARIERTE ENTSPRECHUNG.
+// ------------------------------------------------------------------------------------------------
+//
+// Seit JOB 3049 kann ein Paar aus dem Relevanztext einen Substanzpunkt liefern (s. `ueberschneidung`).
+// Das ist KEINE Absenkung dieser Schwelle, und zwei Regeln halten sie:
+//  · HÖCHSTENS EIN PUNKT JE PAAR, und nur, wenn kein Term desselben Paares schon getragen hat. Der
+//    fail-open-Fall, den JOB 3039 gemessen und hier als offenen Fehler geführt hat — eine Quelle
+//    trägt BEIDE Wörter eines Paares und sammelt aus EINEM getippten Wort zwei Punkte —, ist damit
+//    geschlossen und nicht mehr offen. Er steht als Fall W2 im Prüfstand.
+//  · DIE ENTSPRECHUNG TRITT AN DIE STELLE des getippten Wortes, sie legt keines dazu. Eine Frage
+//    mit nur EINEM Inhaltstoken erreicht die Zwei deshalb auch mit Entsprechung nicht (Fall F6) —
+//    sie fiele selbst dann, wenn der Fragende das Gegenwort wörtlich getippt hätte.
 export const MIN_ANSWER_SUBSTANCE = 2;
 
 // ==================================================================================================
@@ -1463,6 +1537,9 @@ export function meetsAnswerSubstance(substanz: number): boolean {
 export function keywordSelect(
   question: string,
   candidates: readonly KnowledgeRef[],
+  // JOB 3049: derselbe Relevanztext wie in `rankCandidates` — die Symmetriezusage von mega52 B1
+  // und mega59 B gilt für ihn genauso wie für die Zerlegung.
+  relevanz: Relevanztext = [],
 ): KnowledgeRef[] {
   // mega59 B: dieselbe Zerlegung, zusätzlich mit dem Herkunfts-Merkmal — die Frage EINMAL, jede
   // Quelle einmal. Beide Seiten laufen durch dieselbe Funktion (Symmetriezusage).
@@ -1475,12 +1552,24 @@ export function keywordSelect(
     .map((c) => {
       const nominalQuelle = new Set<string>();
       const zieltoken = tokenize(refMatchText(c), nominalQuelle);
-      return { c, ...ueberschneidung(words, zieltoken, nominalFrage, nominalQuelle) };
+      const { wert, entsprechung, substanz } = ueberschneidung(
+        words,
+        zieltoken,
+        nominalFrage,
+        nominalQuelle,
+        relevanz,
+      );
+      // JOB 3049: `reichweite` ist die Zahl, auf der das Tor und die relative Regel rechnen —
+      // Überschneidung PLUS Entsprechung. Ohne Relevanztext ist sie `wert`.
+      return { c, wert, reichweite: wert + entsprechung, substanz };
     })
-    .filter((x) => x.wert > 0 && meetsAnswerSubstance(x.substanz))
+    .filter((x) => x.reichweite > 0 && meetsAnswerSubstance(x.substanz))
     .sort((a, b) => b.wert - a.wert);
+  // JOB 3049: Der Bezugspunkt bleibt die DIREKTE Überschneidung des besten Treffers. Ein Kandidat,
+  // der nur über die Entsprechung trifft, kann die Latte damit nicht anheben und keinen tragenden
+  // Treffer aus der Liste drängen — das ist dieselbe Zusage wie in `rankCandidates`.
   const best = scored.reduce((max, x) => Math.max(max, x.wert), 0);
-  return scored.filter((x) => meetsRelevanceThreshold(x.wert, best)).map((x) => x.c);
+  return scored.filter((x) => meetsRelevanceThreshold(x.reichweite, best)).map((x) => x.c);
 }
 
 // SCRUM-360 / AG-03 / FR-ASK-02 / NFR-PERF-03: begrenzte, status-/trust-bewusste Top-K-Kandidaten-
@@ -1524,6 +1613,20 @@ export function rankCandidates(
   question: string,
   candidates: readonly KnowledgeRef[],
   topK: number = DEFAULT_TOP_K,
+  // ==============================================================================================
+  // JOB 3049 (N2, Scheibe 3) — DER RELEVANZTEXT, UND WAS ER AN DIESER RANGFOLGE ÄNDERT: NICHTS.
+  // ==============================================================================================
+  //
+  // `rankScore` bleibt `keywordScore + statusTrustBoost` — die DIREKTE Überschneidung plus der
+  // gedeckelte Bonus, Wort für Wort wie in mega52 B2. Die Entsprechung fließt NICHT ein, und das
+  // ist die ganze Abwehr gegen den Schaden, den JOB 3039 gemessen hat (Fall W1): weil der Bonus
+  // strikt < 1 ist, hat ein Kandidat ohne direkte Überschneidung `rankScore < 1` und steht damit
+  // STRIKT hinter jedem Kandidaten mit direkter Überschneidung. Der Deckel `topK` schneidet von
+  // hinten — er kann einem tragenden Treffer seinen Platz nicht mehr wegnehmen.
+  //
+  // Fehlt der Relevanztext, ist diese Funktion Zeichen für Zeichen die alte: `entsprechung` ist
+  // dann überall 0, `reichweite` gleich `keywordScore`, und keine Zeile rechnet anders.
+  relevanz: Relevanztext = [],
 ): RankedCandidate[] {
   // mega59 B: identisch zu `keywordSelect` — eine Zerlegung, ein Herkunfts-Merkmal, beide Seiten
   // durch dieselbe Funktion. Die Regel darf sich zwischen den zwei Auswahlwegen nicht unterscheiden.
@@ -1535,19 +1638,37 @@ export function rankCandidates(
       // WP-RETEST7 R5: gleiche Match-Basis wie keywordSelect — inkl. Bild-Fußnoten (captionTexts).
       const nominalQuelle = new Set<string>();
       const zieltoken = tokenize(refMatchText(ref), nominalQuelle);
-      const { wert, substanz } = ueberschneidung(words, zieltoken, nominalFrage, nominalQuelle);
-      return { ref, keywordScore: wert, substanz, rankScore: wert + statusTrustBoost(ref) };
+      const { wert, entsprechung, substanz } = ueberschneidung(
+        words,
+        zieltoken,
+        nominalFrage,
+        nominalQuelle,
+        relevanz,
+      );
+      return {
+        ref,
+        keywordScore: wert,
+        reichweite: wert + entsprechung,
+        substanz,
+        rankScore: wert + statusTrustBoost(ref),
+      };
     })
     // mega57 A2: dasselbe absolute Tor wie in `keywordSelect`, auf demselben Substanzwert — eine
     // Regel für beide Auswahlwege (mega52 B1), nur jetzt mit der richtigen Zahl davor.
     // mega58 A: und je Kandidat statt auf dem besten, vor der relativen Regel und vor dem Bestwert.
-    .filter((x) => x.keywordScore > 0 && meetsAnswerSubstance(x.substanz));
+    // JOB 3049: das Tor steht auf der REICHWEITE — eine Quelle, die allein über die Entsprechung
+    // trifft, wird überhaupt erst dadurch gefunden. Getragen hat sie damit noch nichts: die
+    // Mindestsubstanz daneben ist unverändert und entscheidet weiter allein.
+    .filter((x) => x.reichweite > 0 && meetsAnswerSubstance(x.substanz));
   // Der Bezugspunkt ist die REINE Relevanz des besten Treffers, nicht sein rankScore — der Status-/
   // Trust-Bonus (< 1) darf die Schwelle nicht anheben, sonst entschiede Trust doch über Relevanz.
+  // JOB 3049: und ausdrücklich `keywordScore` statt `reichweite` — sonst höbe ein Kandidat, der nur
+  // über die Entsprechung trifft, die Latte für alle anderen an und könnte einen direkten Treffer
+  // aus der Liste drängen. Die Weitung darf nur hinzufügen, nie wegnehmen.
   const best = scored.reduce((max, x) => Math.max(max, x.keywordScore), 0);
   return scored
+    .filter((x) => meetsRelevanceThreshold(x.reichweite, best))
     .map(({ ref, keywordScore, rankScore }) => ({ ref, keywordScore, rankScore }))
-    .filter((x) => meetsRelevanceThreshold(x.keywordScore, best))
     .sort((a, b) => b.rankScore - a.rankScore)
     .slice(0, limit);
 }
@@ -1559,8 +1680,12 @@ export function selectCandidates(
   question: string,
   candidates: readonly KnowledgeRef[],
   topK: number = DEFAULT_TOP_K,
+  // JOB 3049: der EINE Weg, auf dem die deklarierte Entsprechung in die Auswahl kommt. Es gibt
+  // keine zweite Fassung dieser Funktion und keinen parallelen Zweig — wer die Entsprechung
+  // berücksichtigen will, reicht sie hier herein; wer sie weglässt, bekommt das alte Verhalten.
+  relevanz: Relevanztext = [],
 ): KnowledgeRef[] {
-  return rankCandidates(question, candidates, topK).map((x) => x.ref);
+  return rankCandidates(question, candidates, topK, relevanz).map((x) => x.ref);
 }
 
 // FR-RSN-04: deterministischer Fallback ohne Modell. Immer verfügbar, Ergebnisse
@@ -1685,16 +1810,25 @@ export class DeterministicProvider implements ReasonerProvider {
   // SCRUM-360: status-/trust-bewusste, auf topK begrenzte Kandidatenauswahl statt unbegrenztem
   // reinem Keyword-Ranking. Relevanz bleibt dominanter Gate; validierte/ready Quellen werden bei
   // gleicher Relevanz bevorzugt.
-  select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    return selectCandidates(question, candidates);
+  select(
+    question: string,
+    candidates: readonly KnowledgeRef[],
+    relevanz: Relevanztext = [],
+  ): KnowledgeRef[] {
+    return selectCandidates(question, candidates, DEFAULT_TOP_K, relevanz);
   }
 
   async answer(
     question: string,
     context: readonly KnowledgeRef[],
     locale: ReasonerLocale = "de",
+    // Der deterministische Fallback ignoriert `confidential` wie überall — er ruft kein Modell.
+    _confidential = false,
+    // JOB 3049: der Relevanztext geht in die EINE Auswahl dieses Wegs und nirgends sonst hin. Die
+    // Antwort selbst bleibt `best.statement` — der Text der Quelle, nicht der der Frage.
+    relevanz: Relevanztext = [],
   ): Promise<AnswerResult> {
-    const relevant = this.select(question, context);
+    const relevant = this.select(question, context, relevanz);
     // FR-RSN-03: keine Rateantwort ohne belastbares Wissen.
     if (relevant.length === 0) {
       return {

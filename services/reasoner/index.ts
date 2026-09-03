@@ -128,6 +128,11 @@ export {
 export type {
   KnowledgeRef,
   KnowledgeClass,
+  // JOB 3049 (N2, Scheibe 3): der Relevanztext — die deklarierte Entsprechung, die NEBEN der Frage
+  // bis in beide Provider reist. Öffentlich, weil `services/ask` ihn bildet und `.dependency-
+  // cruiser.cjs` Cross-Modul-Importe ausschliesslich über diese Datei zulässt.
+  Relevanztext,
+  ZuordnungsPaar,
   ReasonerTaskChoice,
   ReasonerTaskConfig,
   ReasonerLocale,

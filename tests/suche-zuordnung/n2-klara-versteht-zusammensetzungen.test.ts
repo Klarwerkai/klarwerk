@@ -28,20 +28,27 @@
 // deterministische Weg), und um ihn liegt eine reine BEOBACHTUNGSHÜLLE: sie schreibt jeden Aufruf
 // mit und reicht ihn unverändert durch. Sie entscheidet nichts.
 //
+// ================================================================================================
+// JOB 3049 · N2, SCHEIBE 3 — DER RELEVANZTEXT REIST DURCH BEIDE TORE, UND KLARA ANTWORTET.
+// ================================================================================================
+//
+// DIE ZUSAGE IST EINGELÖST. Was JOB 3039 als Vorschlag hinterlassen hat, ist gebaut: ein eigener,
+// benannter Wert NEBEN der Frage (`Relevanztext`, `services/reasoner/src/types.ts`), der von
+// `AskService` über `Reasoner.answer`/`answerRetrievalOnly` bis in BEIDE Provider reist und dort
+// ausschließlich der Kandidatenauswahl vorgelegt wird. Die Frage selbst wird nirgends angefasst.
+//
 // WAS DIESE DATEI DAMIT MISST:
 //   F1–F5  die Vorauswahl (JOB 3021) — dort wirkt die Zuordnung, unverändert und belegt
-//   F6     die Ein-Wort-Grenze des Substanzmaßes, mit berichtigter Begründung
-//   Z      DAS ZWEITE TOR: der echte Reasoner wählt auf der ROHEN Frage noch einmal aus und
-//          verwirft das über die Entsprechung gefundene Objekt — der Grund, warum JOB 3039 die
-//          Zusage „Klara antwortet aus dem gefundenen Objekt" NICHT einlösen konnte
-//   W      warum es nicht genügt, nur das erste Tor zu weiten — und warum es sogar schadet
+//   F6     die Ein-Wort-Grenze des Substanzmaßes — sie steht, auch mit Relevanztext
+//   K      die Kalibrierung: leere/verfälschte Tabelle → altes Verhalten (K4 für den Relevanztext)
+//   Z      BEIDE TORE: Z1/Z1b lösen die Zusage ein (deterministischer Weg UND Modellweg), Z2 ist
+//          der Charakterisierungstest „ohne Relevanztext ändert sich nichts"
+//   W      die zwei Fallen der Weitung — W1/W2 als Nachweis der zurückgenommenen Bauform,
+//          W1b/W1c/W2b als Nachweis, dass der Relevanztext in keine von beiden läuft
 //   D      der Acht-Term-Deckel der Vorauswahl
-//   L      die Grundformen der Tabelle als Fixpunkte
+//   L      die Grundformen und die PAARFORM der Tabelle als Fixpunkte
 //   U      `ungeprueft`/`verschlossen` rechnen weiter auf der Vorauswahl
 //   P      die Stämme im PostgreSQL-Adapter
-//
-// Z und W sind zugleich der ROT-ZUERST-VERTRAG für die nächste Scheibe: sind sie eines Tages grün
-// beziehungsweise gegenstandslos, ist der Relevanztext durch beide Tore geführt.
 import type { Pool } from "pg";
 import { beforeEach, describe, expect, it } from "vitest";
 import { AskService, InMemoryGapRepo } from "../../services/ask";
@@ -63,9 +70,24 @@ import {
   type ModelClient,
   ModelProvider,
   Reasoner,
+  type Relevanztext,
   queryTokens,
   selectCandidates,
 } from "../../services/reasoner";
+
+/**
+ * DIE ERGÄNZTEN TERME als flache Liste — genau das, was der Fragedienst der VORAUSWAHL anhängt
+ * (`service.ts`: `relevanz.flatMap((paar) => [...paar.ergaenzt])`). Seit JOB 3049 gibt
+ * `zugeordneteSuchterme` die PAARE zurück; die Vorauswahl braucht davon nur die ergänzte Seite.
+ */
+function ergaenzteTerme(relevanz: Relevanztext): string[] {
+  return relevanz.flatMap((paar) => [...paar.ergaenzt]);
+}
+
+/** Der Relevanztext zu einer Frage — auf demselben Weg gebildet wie im Fragedienst. */
+function relevanztextZu(frage: string): Relevanztext {
+  return zugeordneteSuchterme(queryTokens(frage));
+}
 
 interface Abfrage {
   readonly terme: readonly string[];
@@ -282,7 +304,7 @@ describe("N2 · F4 — ohne passende Zuordnung ändert sich nichts", () => {
   it("F4b · die Erweiterung kürzt nie und sortiert nie um", async () => {
     // Die Zusage von `expandSearchTerms`, hier an der Termbildung des Fragepfads gemessen.
     const eingabe = ["urlaubsregel", "handbuch", "frist"];
-    expect([...eingabe, ...zugeordneteSuchterme(eingabe)]).toEqual([
+    expect([...eingabe, ...ergaenzteTerme(zugeordneteSuchterme(eingabe))]).toEqual([
       "urlaubsregel",
       "handbuch",
       "frist",
@@ -352,11 +374,16 @@ describe("N2 · F6 — die Ein-Wort-Frage: was auch die Zuordnung nicht leistet"
     //     Wortes, sie legt kein zweites dazu — diese Frage fiele auch dann, wenn der Fragende
     //     „Urlaubszeiten" wörtlich getippt hätte (unten als (c) gemessen, nicht behauptet).
     //
-    //     GRUND 2 — DAS ZWEITE TOR: Selbst eine Frage MIT zwei Inhaltstoken käme nicht durch,
-    //     solange nur das erste Tor die Entsprechung kennt; der echte Reasoner wählt auf der rohen
-    //     Frage noch einmal aus (Block Z). Das ist der Befund, der JOB 3039 aufgehalten hat.
+    //     GRUND 2 — HISTORISCH, UND SEIT JOB 3049 ERLEDIGT: das zweite Tor kannte die Entsprechung
+    //     nicht. Es kennt sie jetzt (Block Z, Fall Z1) — und F6 bleibt trotzdem eine Wissenslücke.
+    //     Genau das ist der Beleg, dass `MIN_ANSWER_SUBSTANCE` nicht gesenkt wurde: der
+    //     Relevanztext läuft hier durch BEIDE Tore und reicht dennoch nicht, weil die Entsprechung
+    //     an die STELLE des getippten Wortes tritt und kein zweites danebenlegt.
     expect(queryTokens(frage)).toEqual(["urlaubsregel"]);
     expect(MIN_ANSWER_SUBSTANCE).toBe(2);
+    expect(relevanztextZu(frage)).toEqual([
+      { getippt: ["urlaubsregel"], ergaenzt: ["urlaubszei"] },
+    ]);
     expect(m.reasonerSah.map((r) => r.ids)).toEqual([[]]);
     expect(out.result.answered).toBe(false);
 
@@ -407,7 +434,7 @@ describe("N2 · K — ohne die deklarierte Tabelle fällt F1 auf das alte Verhal
     ];
     expect(zugeordneteSuchterme(frageterme, verfaelscht)).toEqual([]);
     const treffer = await m.ko.findCandidates({
-      terms: [...frageterme, ...zugeordneteSuchterme(frageterme, verfaelscht)],
+      terms: [...frageterme, ...ergaenzteTerme(zugeordneteSuchterme(frageterme, verfaelscht))],
       limit: 50,
     });
     expect(treffer.map((t) => t.id)).toEqual([fremd]);
@@ -418,10 +445,37 @@ describe("N2 · K — ohne die deklarierte Tabelle fällt F1 auf das alte Verhal
     // Die Gegenprobe zu K1/K2 an derselben Stelle, damit der Unterschied an EINER Zeile hängt.
     const frageterme = queryTokens("Wie ist die Urlaubsregelung?");
     const treffer = await m.ko.findCandidates({
-      terms: [...frageterme, ...zugeordneteSuchterme(frageterme)],
+      terms: [...frageterme, ...ergaenzteTerme(zugeordneteSuchterme(frageterme))],
       limit: 50,
     });
     expect(treffer.map((t) => t.id)).toEqual([urlaub]);
+  });
+
+  it("K4 · KALIBRIERUNG DES RELEVANZTEXTS: leere Tabelle → Z1 fällt auf das alte Verhalten", () => {
+    // ============================================================================================
+    // JOB 3049 · OHNE DIESEN FALL WÄRE DER GANZE Z-BLOCK VON EINEM TOTEN PRÜFSTAND NICHT ZU
+    // UNTERSCHEIDEN.
+    // ============================================================================================
+    //
+    // Die Bauform steht schon an `zugeordneteSuchterme` (Parameter mit Produktionsvorgabe): mit
+    // LEERER Zuordnungstabelle entsteht kein Relevanztext, und dieselbe Auswahl verwirft dasselbe
+    // Objekt wieder — der Stand vor diesem Auftrag. Das ist zugleich die Gegenprobe (a) der
+    // Rückgabe: Z1 wird rot, wenn die Tabelle nichts hergibt.
+    const frageterme = queryTokens(PRUEFFRAGE);
+    const kontext = [ref(urlaub, "Abwesenheiten", "Die Urlaubszeiten stehen im Handbuch.", true)];
+
+    expect(zugeordneteSuchterme(frageterme, [])).toEqual([]);
+    expect(
+      selectCandidates(PRUEFFRAGE, kontext, DEFAULT_TOP_K, zugeordneteSuchterme(frageterme, [])),
+    ).toEqual([]);
+
+    // Die Gegenprobe zur Gegenprobe, damit der Unterschied an EINER Zeile hängt: mit der echten
+    // Tabelle trägt dieselbe Frage auf demselben Kontext.
+    expect(
+      selectCandidates(PRUEFFRAGE, kontext, DEFAULT_TOP_K, zugeordneteSuchterme(frageterme)).map(
+        (x) => x.id,
+      ),
+    ).toEqual([urlaub]);
   });
 });
 
@@ -451,7 +505,7 @@ const PRUEFFRAGE = "Wo finde ich die Urlaubsregelungen im Handbuch?";
  * (`zugeordneteSuchterme`), nicht aus einer abgeschriebenen Liste — sonst prüfte der Fall sich selbst.
  */
 function geweiteterTortext(frage: string): string {
-  const ergaenzt = zugeordneteSuchterme(queryTokens(frage));
+  const ergaenzt = ergaenzteTerme(relevanztextZu(frage));
   return ergaenzt.length === 0 ? frage : `${frage} ${ergaenzt.join(" ")}`;
 }
 
@@ -515,48 +569,107 @@ async function refsWieImDienst(mp: Messplatz, ids: readonly string[]): Promise<K
 // dagegen — und die Wissenslücke bleibt.
 
 describe("N2 · Z — das zweite Tor im echten Reasoner", () => {
-  it("Z1 · ECHTPFAD: das über die Entsprechung gefundene Objekt erreicht den Reasoner NICHT", async () => {
+  it("Z1 · ECHTPFAD: Klara antwortet aus dem Objekt, das sie über die Entsprechung gefunden hat", async () => {
+    // ============================================================================================
+    // JOB 3049 · DER TRAGENDE FALL. HIER STAND BIS ZU DIESEM AUFTRAG DAS GEGENTEIL.
+    // ============================================================================================
+    //
+    // Bis JOB 3039 lautete dieselbe Messung `answered:false` / `sources:[]` — auf BEIDEN
+    // Antwortwegen. Der Grund war die Neuauswahl auf der rohen Frage hinter Tor 1. Seit der
+    // Relevanztext neben der Frage bis in beide Provider reist, trägt genau dieses Objekt die
+    // Antwort. Die Gegenprobe steht in K4: mit LEERER Zuordnungstabelle fällt der Fall wieder auf
+    // `answered:false` zurück — ohne sie wäre diese Zeile von einem toten Prüfstand nicht zu
+    // unterscheiden.
     const out = await m.ask.ask(PRUEFFRAGE, "nutzer-1", "de", { retrievalOnly: true });
 
     // (a) DIE VORAUSWAHL bringt das Objekt herein — die Zusage von JOB 3021, unverändert gültig.
     expect(vorausgewaehlt(m)).toContain(urlaub);
 
-    // (b) UND DIE ANTWORT IST TROTZDEM EINE WISSENSLÜCKE. Kein Doppelgänger mildert das ab: hier
-    //     entscheidet der echte Reasoner. Beide Antwortwege des Dienstes enden gleich — der
+    // (b) UND DIE ANTWORT STEHT JETZT AUF DIESEM OBJEKT. Kein Doppelgänger schönt das: hier
+    //     entscheidet der echte Reasoner. BEIDE Antwortwege des Dienstes enden gleich — der
     //     Retrieval-Weg des Add-ins ebenso wie der übliche Weg der Frageseite.
-    expect(out.result.answered).toBe(false);
-    expect(out.result.sources).toEqual([]);
-    expect(out.gap).not.toBeNull();
+    expect(out.result.answered).toBe(true);
+    expect(out.result.sources).toEqual([urlaub]);
+    expect(out.gap).toBeNull();
+    // Und die FRAGE, die den Reasoner erreicht, ist unverändert die getippte (Lieferung 2).
     expect(m.reasonerSah.at(-1)?.frage).toBe(PRUEFFRAGE);
     const ueblich = await m.ask.ask(PRUEFFRAGE, "nutzer-1", "de", {});
     expect(m.reasonerAufrufe).toEqual(["answerRetrievalOnly", "answer"]);
-    expect(ueblich.result.answered).toBe(false);
-    expect(ueblich.result.sources).toEqual([]);
+    expect(ueblich.result.answered).toBe(true);
+    expect(ueblich.result.sources).toEqual([urlaub]);
 
-    // (c) DER ANKER für die Nachbildung: dieselbe rohe Frage auf den nachgebauten Refs liefert
-    //     genau das, was der Reasoner im Produktlauf gesehen hat. Damit sind die Refs unten
-    //     nachweislich die des Dienstes und keine bequeme Erfindung.
+    // (c) DER ANKER für die Nachbildung: dieselbe rohe Frage MIT dem Relevanztext auf den
+    //     nachgebauten Refs liefert genau das, was der Reasoner im Produktlauf gesehen hat. Damit
+    //     sind die Refs unten nachweislich die des Dienstes und keine bequeme Erfindung.
     const refs = await refsWieImDienst(m, vorausgewaehlt(m));
     expect(refs.length).toBeGreaterThan(1);
-    expect(selectCandidates(PRUEFFRAGE, refs, DEFAULT_TOP_K).map((r) => r.id)).toEqual(
-      m.reasonerSah.at(-1)?.ids,
-    );
-
-    // (d) UND DIE HALBE WAHRHEIT, die Runde 1 für die ganze gehalten hat: Tor 1 WÜRDE das Objekt
-    //     durchlassen, wenn es die Entsprechung kennte. Es nützt nur nichts — siehe Z2.
     expect(
-      selectCandidates(geweiteterTortext(PRUEFFRAGE), refs, DEFAULT_TOP_K).map((r) => r.id),
-    ).toContain(urlaub);
+      selectCandidates(PRUEFFRAGE, refs, DEFAULT_TOP_K, relevanztextZu(PRUEFFRAGE)).map(
+        (r) => r.id,
+      ),
+    ).toEqual(m.reasonerSah.at(-1)?.ids);
+
+    // (d) UND DER UNTERSCHIED HÄNGT AN GENAU EINEM ARGUMENT: dieselbe Frage, dieselben Refs, OHNE
+    //     Relevanztext — das ist der Stand vor diesem Auftrag, und er verwirft das Objekt.
+    expect(selectCandidates(PRUEFFRAGE, refs, DEFAULT_TOP_K).map((r) => r.id)).toEqual([]);
   });
 
-  it("Z2 · BEIDE Antwortwege verwerfen das Objekt, obwohl es fertig im Kontext liegt", async () => {
-    // Hier hängt nichts mehr an der Vorauswahl: Das Objekt wird dem Reasoner DIREKT gegeben, so
-    // wie ein durchlässiges Tor 1 es täte. Beide Wege verwerfen es erneut.
+  it("Z1b · MODELLWEG: derselbe Fall, mit einem echten ModelProvider gefahren", async () => {
+    // Ein Bau, der Z1 nur im deterministischen Weg löst, hat die Hälfte gebaut. Hier läuft der
+    // ZWEITE Provider — mit einem aufzeichnenden Modellclient statt eines echten Zugangs (kein
+    // Schlüssel, kein Netz). `ModelProvider.answer` wählt VOR jedem Modellaufruf selbst aus; ohne
+    // Relevanztext fällt das Objekt dort, und das Modell wird nicht einmal gefragt.
+    const prompts: string[] = [];
+    const client: ModelClient = {
+      name: "aufzeichnend",
+      complete: async (_system: string, user: string) => {
+        prompts.push(user);
+        return "Die Urlaubszeiten stehen im Handbuch. [1]";
+      },
+    };
+    const provider = new ModelProvider(client);
+    const kontext = [ref(urlaub, "Abwesenheiten", "Die Urlaubszeiten stehen im Handbuch.", true)];
+
+    const ohne = await provider.answer(PRUEFFRAGE, kontext, "de");
+    expect(ohne.answered).toBe(false);
+    expect(prompts).toEqual([]);
+
+    const mit = await provider.answer(PRUEFFRAGE, kontext, "de", false, relevanztextZu(PRUEFFRAGE));
+    expect(mit.answered).toBe(true);
+    expect(mit.sources).toEqual([urlaub]);
+
+    // LIEFERUNG 2, AM MODELLPROMPT GEPINNT: Das Modell hat GENAU EINEN Aufruf gesehen, und in
+    // seiner Eingabe steht kein ergänztes Wort AUS DER FRAGE. „Urlaubszeiten" kommt darin nur vor,
+    // weil die QUELLE so heißt — die Fragezeile selbst trägt es nicht.
+    expect(prompts).toHaveLength(1);
+    const fragezeile = (prompts[0] ?? "").split("\n")[0] ?? "";
+    expect(fragezeile).toContain(PRUEFFRAGE);
+    expect(fragezeile.toLowerCase()).not.toContain("urlaubszei");
+  });
+
+  it("Z2 · OHNE Relevanztext verwerfen beide Antwortwege das Objekt — unverändertes Altverhalten", async () => {
+    // ============================================================================================
+    // JOB 3049 · LIEFERUNG 8 — DER CHARAKTERISIERUNGSTEST: OHNE RELEVANZTEXT ÄNDERT SICH NICHTS.
+    // ============================================================================================
+    //
+    // Jeder Aufrufer von `Reasoner.answer`, der keinen Relevanztext übergibt (Sitzungspfad,
+    // Hilfeweg, alle Aufrufer außerhalb `services/ask`), bekommt Zeichen für Zeichen das Verhalten
+    // von vor diesem Auftrag. Genau das misst dieser Fall: dieselben Aufrufe mit denselben
+    // Argumenten wie in JOB 3039, dasselbe Ergebnis.
     const r = new Reasoner();
     const kontext = [ref(urlaub, "Abwesenheiten", "Die Urlaubszeiten stehen im Handbuch.", true)];
 
     expect((await r.answer(PRUEFFRAGE, kontext, "de")).answered).toBe(false);
     expect((await r.answerRetrievalOnly(PRUEFFRAGE, kontext, "de")).answered).toBe(false);
+
+    // UND DERSELBE AUFRUF MIT RELEVANZTEXT TRÄGT — das ist der Unterschied, den dieser Auftrag
+    // baut, an derselben Stelle gemessen, damit er an genau einem Argument hängt.
+    const relevanz = relevanztextZu(PRUEFFRAGE);
+    const mitNormal = await r.answer(PRUEFFRAGE, kontext, "de", false, undefined, relevanz);
+    const mitRetrieval = await r.answerRetrievalOnly(PRUEFFRAGE, kontext, "de", relevanz);
+    expect(mitNormal.answered).toBe(true);
+    expect(mitRetrieval.answered).toBe(true);
+    expect(mitRetrieval.sources).toEqual([urlaub]);
 
     // KALIBRIERUNG — ohne sie wäre das oben von einem toten Prüfstand nicht zu unterscheiden:
     // dasselbe Objekt, derselbe Satzbau, nur das deklarierte Gegenwort WÖRTLICH getippt. Jetzt
@@ -596,11 +709,17 @@ describe("N2 · Z — das zweite Tor im echten Reasoner", () => {
     expect(mit.answered).toBe(true);
   });
 
-  it("Z3 · das zweite Tor IST `selectCandidates` — dieselbe Funktion erklärt beide Beobachtungen", () => {
-    // Kein Ratespiel über die Ursache: die Funktion, die beide Provider aufrufen, verwirft die rohe
-    // Frage und trägt die getippte. Wer den Relevanztext eines Tages durchreicht, ändert genau hier.
+  it("Z3 · das zweite Tor IST `selectCandidates` — und der Relevanztext wirkt genau dort", () => {
+    // Kein Ratespiel über die Ursache: die EINE Funktion, die beide Provider aufrufen. Ohne
+    // Relevanztext verwirft sie die rohe Frage, mit ihm trägt dieselbe Frage — und das wörtlich
+    // getippte Gegenwort trägt wie eh und je.
     const kontext = [ref(urlaub, "Abwesenheiten", "Die Urlaubszeiten stehen im Handbuch.", true)];
     expect(selectCandidates(PRUEFFRAGE, kontext, DEFAULT_TOP_K)).toEqual([]);
+    expect(
+      selectCandidates(PRUEFFRAGE, kontext, DEFAULT_TOP_K, relevanztextZu(PRUEFFRAGE)).map(
+        (x) => x.id,
+      ),
+    ).toEqual([urlaub]);
     expect(
       selectCandidates("Wo finde ich die Urlaubszeiten im Handbuch?", kontext, DEFAULT_TOP_K).map(
         (x) => x.id,
@@ -624,7 +743,7 @@ describe("N2 · Z — das zweite Tor im echten Reasoner", () => {
     // Die Zuordnung erfindet nichts: dieselbe Fläche, dieselbe Kategorie, andere Sache.
     const frage = "Wo hängt der Speiseplan im Handbuch?";
     const out = await m.ask.ask(frage, "nutzer-1", "de", { retrievalOnly: true });
-    expect(zugeordneteSuchterme(queryTokens(frage))).toEqual([]);
+    expect(relevanztextZu(frage)).toEqual([]);
     expect(m.reasonerSah.at(-1)?.ids).not.toContain(urlaub);
     expect(out.result.sources).not.toContain(urlaub);
     // Nicht vakuos: die passende Quelle trägt sehr wohl — der echte Reasoner antwortet hier.
@@ -634,11 +753,12 @@ describe("N2 · Z — das zweite Tor im echten Reasoner", () => {
 });
 
 // ------------------------------------------------------------------------------------------------
-// W — WARUM ES NICHT GENÜGT, NUR TOR 1 ZU WEITEN (und warum es sogar schadet)
+// W — DIE ZWEI FALLEN DER WEITUNG, UND DASS DER RELEVANZTEXT IN KEINE VON BEIDEN LÄUFT
 // ------------------------------------------------------------------------------------------------
 //
-// Runde 1 hat genau das getan und daraus eine Antwort behauptet. Diese beiden Fälle halten fest,
-// warum der Bau zurückgenommen wurde — beides gemessen, nicht überlegt.
+// W1/W2 halten fest, warum die naheliegende Bauform (die geweitete FRAGE) zurückgenommen wurde —
+// beides gemessen, nicht überlegt. W1b/W1c/W2b messen dieselben Lagen am gebauten Relevanztext:
+// dieselbe Reichweite, ohne die beiden Folgen.
 
 describe("N2 · W — die zurückgenommene Bauform, mit ihren zwei gemessenen Folgen", () => {
   it("W1 · SCHADEN: acht Zuordnungstreffer füllen den Deckel und verdrängen den tragenden Treffer", async () => {
@@ -677,6 +797,78 @@ describe("N2 · W — die zurückgenommene Bauform, mit ihren zwei gemessenen Fo
     expect(mitMit.answered).toBe(false);
   });
 
+  it("W1b · KEIN VERDRÄNGEN: derselbe Bestand, aber mit Relevanztext trägt der direkte Treffer", async () => {
+    // ============================================================================================
+    // JOB 3049 · LIEFERUNG 4, an genau der Lage gemessen, an der die alte Bauform gescheitert ist.
+    // ============================================================================================
+    //
+    // DIESELBEN NEUN QUELLEN WIE IN W1. Der Unterschied ist allein die FORM, in der die
+    // Entsprechung an die Auswahl kommt: als Relevanztext statt als geweiteter Fragetext. Die acht
+    // Objekte werden weiterhin GEFUNDEN — sie stehen in der Liste —, aber sie können `gut` seinen
+    // Platz nicht wegnehmen, weil die Entsprechung nicht in die Rangfolge zählt.
+    //
+    // GEGENPROBE (Lieferung 4, wörtlich in der Rückgabe): Rechnet `rankCandidates` den `rankScore`
+    // aus `reichweite` statt aus `keywordScore`, steigen die acht (validiert, Trust 90) über `gut`
+    // (offen, Trust 0), füllen den Deckel und `gut` fällt heraus — genau dieser Fall wird rot.
+    const viele = Array.from({ length: DEFAULT_TOP_K }, (_, i) =>
+      ref(`mit-${i}`, `Abwesenheiten ${i}`, "Die Urlaubszeiten stehen im Handbuch.", true),
+    );
+    const gut = ref("gut", "Urlaubsregelung", "Die Urlaubsregelung steht im Handbuch.");
+    const refs = [...viele, gut];
+    const relevanz = relevanztextZu(PRUEFFRAGE);
+
+    const gewaehlt = selectCandidates(PRUEFFRAGE, refs, DEFAULT_TOP_K, relevanz).map((x) => x.id);
+    // Der tragende Treffer steht VORN, nicht irgendwo: der Deckel schneidet von hinten.
+    expect(gewaehlt[0]).toBe("gut");
+    expect(gewaehlt).toHaveLength(DEFAULT_TOP_K);
+
+    // UND AM ECHTEN REASONER ZU ENDE GEMESSEN: die Antwort steht auf `gut`, nicht auf einem der
+    // acht — und sie ist keine Wissenslücke, wie sie es unter der alten Bauform geworden wäre.
+    const r = new Reasoner();
+    const antwort = await r.answerRetrievalOnly(PRUEFFRAGE, refs, "de", relevanz);
+    expect(antwort.answered).toBe(true);
+    expect(antwort.sources).toEqual(["gut"]);
+  });
+
+  it("W1c · die Rangregel als Zusage: ohne direkte Überschneidung immer strikt hinten", () => {
+    // Die Regel aus Lieferung 4 einzeln, ohne den Deckel: ein Kandidat, der AUSSCHLIESSLICH über
+    // die Entsprechung trifft, steht hinter jedem Kandidaten mit direkter Überschneidung — auch
+    // wenn er validiert ist und hohen Trust hat und der andere weder das eine noch das andere.
+    //
+    // Die Frage trifft ZWEI deklarierte Paare; nur so erreicht eine Quelle ohne ein einziges
+    // getipptes Wort überhaupt die Mindestsubstanz von zwei. Das ist zugleich die Messung zu
+    // Lieferung 3: ein Objekt, das NUR über die Entsprechung trifft, überlebt die Auswahl.
+    const frage = "Wo finde ich Urlaubsregelung und Firmenwagen?";
+    const relevanz = relevanztextZu(frage);
+    expect(relevanz).toHaveLength(2);
+
+    // Kein Wort dieser beiden Quellen teilt mit der Frage einen Stamm — auch keinen an einer
+    // Kompositumgrenze. Sonst wäre „ausschließlich über die Entsprechung" nicht gemessen, sondern
+    // nur behauptet; (a) prüft die Abwesenheit jeder anderen Brücke ausdrücklich mit.
+    const nurEntsprechung = ref(
+      "nur-entsprechung",
+      "Abwesenheiten",
+      "Urlaubszeiten und Dienstwagen stehen im Anhang.",
+      true,
+    );
+    const direkt = ref("direkt", "Urlaubsregelung", "Der Firmenwagen ist hier beschrieben.");
+
+    // (a) ALLEIN überlebt die Nur-Entsprechung-Quelle — sie wird gefunden, nicht verworfen.
+    expect(selectCandidates(frage, [nurEntsprechung], DEFAULT_TOP_K, relevanz).map((x) => x.id)) //
+      .toEqual(["nur-entsprechung"]);
+    // NICHT VAKUOS: ohne Relevanztext ist dieselbe Quelle unerreichbar.
+    expect(selectCandidates(frage, [nurEntsprechung], DEFAULT_TOP_K)).toEqual([]);
+
+    // (b) UND GEGEN EINEN DIREKTEN TREFFER steht sie STRIKT hinten — die Eingabereihenfolge stellt
+    //     sie bewusst nach vorn, damit die Rangregel und nicht die Stabilität der Sortierung misst.
+    expect(
+      selectCandidates(frage, [nurEntsprechung, direkt], DEFAULT_TOP_K, relevanz).map((x) => x.id),
+    ).toEqual(["direkt", "nur-entsprechung"]);
+    // Und mit dem Deckel auf EINS bleibt genau der tragende Treffer übrig.
+    expect(selectCandidates(frage, [nurEntsprechung, direkt], 1, relevanz).map((x) => x.id)) //
+      .toEqual(["direkt"]);
+  });
+
   it("W2 · FAIL-OPEN: eine Quelle mit BEIDEN Wörtern des Paares sammelt zwei Punkte aus einem", () => {
     // Der Auftrag verlangt ausdrücklich: „genau den Substanzpunkt, den das getippte Wort verschafft
     // hätte — keinen zweiten". Ein weiter Tortext hält das NICHT: trägt eine Quelle beide Wörter des
@@ -693,6 +885,41 @@ describe("N2 · W — die zurückgenommene Bauform, mit ihren zwei gemessenen Fo
       selectCandidates(geweiteterTortext(einWort), beide, DEFAULT_TOP_K).map((x) => x.id),
     ).toEqual(["beide"]);
   });
+
+  it("W2b · GESCHLOSSEN: der Relevanztext holt aus EINEM getippten Wort keinen zweiten Punkt", async () => {
+    // ============================================================================================
+    // JOB 3049 · LIEFERUNG 5 — JEDES PAAR HÖCHSTENS EINMAL, UND NUR STATT DES GETIPPTEN WORTES.
+    // ============================================================================================
+    //
+    // Dieselbe Quelle und dieselbe Ein-Wort-Frage wie in W2: die Quelle trägt BEIDE Wörter des
+    // Paares, getippt ist nur eines. Unter der geweiteten Frage (W2) reichte das für zwei
+    // Substanzpunkte und damit für eine Antwort. Der Relevanztext gibt den Punkt nicht her, weil
+    // das getippte Wort desselben Paares bereits getragen hat.
+    //
+    // GEGENPROBE (Lieferung 5, wörtlich in der Rückgabe): Entfernt man in `ueberschneidung` die
+    // Zeile, die ein Paar mit bereits getragenem getipptem Term überspringt, wird genau dieser
+    // Fall rot — die Quelle käme mit `substanz = 2` durch.
+    const einWort = "Wie ist die Urlaubsregelung?";
+    const relevanz = relevanztextZu(einWort);
+    const beide = [ref("beide", "Urlaubsregelung", "Die Urlaubszeiten sind hier geregelt.")];
+
+    expect(selectCandidates(einWort, beide, DEFAULT_TOP_K, relevanz)).toEqual([]);
+
+    // Und am echten Reasoner zu Ende: es bleibt eine ehrliche Wissenslücke, auf beiden Wegen.
+    const r = new Reasoner();
+    expect((await r.answerRetrievalOnly(einWort, beide, "de", relevanz)).answered).toBe(false);
+    expect((await r.answer(einWort, beide, "de", false, undefined, relevanz)).answered).toBe(false);
+
+    // NICHT VAKUOS — die Sperre greift NUR beim getippten Wort desselben Paares: trägt die Quelle
+    // das Gegenwort und dazu ein ANDERES getipptes Wort der Frage, entsteht der Punkt sehr wohl.
+    const zweiWorte = "Wo finde ich die Urlaubsregelungen im Handbuch?";
+    const anders = [ref("anders", "Abwesenheiten", "Die Urlaubszeiten stehen im Handbuch.")];
+    expect(
+      selectCandidates(zweiWorte, anders, DEFAULT_TOP_K, relevanztextZu(zweiWorte)).map(
+        (x) => x.id,
+      ),
+    ).toEqual(["anders"]);
+  });
 });
 
 // ------------------------------------------------------------------------------------------------
@@ -706,7 +933,23 @@ describe("N2 · W — die zurückgenommene Bauform, mit ihren zwei gemessenen Fo
 
 describe("N2 · L — die Grundformen der Zuordnung sind stabil", () => {
   it("L1 · die Ergänzung dieser Prüffrage ist genau ein Term aus der deklarierten Tabelle", () => {
-    expect(zugeordneteSuchterme(queryTokens(PRUEFFRAGE))).toEqual(["urlaubszei"]);
+    // JOB 3049: die Form ist jetzt das PAAR — getippte Seite und ergänzte Seite getrennt. Der
+    // Inhalt ist unverändert der von JOB 3021; ohne die Trennung könnte die Auswahl „höchstens ein
+    // Punkt je Paar" nicht prüfen (Fall W2).
+    expect(relevanztextZu(PRUEFFRAGE)).toEqual([
+      { getippt: ["urlaubsregel"], ergaenzt: ["urlaubszei"] },
+    ]);
+    expect(ergaenzteTerme(relevanztextZu(PRUEFFRAGE))).toEqual(["urlaubszei"]);
+  });
+
+  it("L2 · zwei getroffene Zuordnungen bleiben ZWEI Paare — keine Vermischung", () => {
+    // Ohne die Trennung je Zuordnung könnte ein getipptes Wort des einen Paares den Punkt des
+    // anderen sperren. Der Fall hält fest, dass jede deklarierte Zuordnung ihr eigenes Paar bekommt.
+    const frage = "Wo finde ich Urlaubsregelung und Firmenwagen?";
+    expect(relevanztextZu(frage)).toEqual([
+      { getippt: ["urlaubsregel"], ergaenzt: ["urlaubszei"] },
+      { getippt: ["firmenwag"], ergaenzt: ["dienstwag"] },
+    ]);
   });
 
   it("L3 · jede deklarierte Entsprechung ist ihr eigener Fixpunkt", () => {
@@ -754,9 +997,13 @@ describe("N2 · D — was der Deckel der Vorauswahl mit der Entsprechung macht",
     expect(terme).toHaveLength(8);
     expect(terme).not.toContain("urlaubszei");
     expect(vorausgewaehlt(m)).toContain(urlaub);
-    // Und die Antwort bleibt dieselbe wie ohne Markierung: eine Wissenslücke — das zweite Tor
-    // entscheidet, nicht der Deckel (Block Z).
-    expect(out.result.answered).toBe(false);
+    // JOB 3049 · HIER STAND `answered:false`, UND DAS IST JETZT FALSCH — aus einem Grund, der
+    // genau dieser Fall ist: DER DECKEL SCHNEIDET DIE ABFRAGE, NICHT DEN RELEVANZTEXT. Die acht
+    // Terme sind die abgefragten; der Relevanztext entsteht daneben aus der vollen Termliste und
+    // erreicht beide Tore unverkürzt. Das Objekt ist über „handbuch" ohnehin in der Vorauswahl —
+    // und die Antwort ist deshalb dieselbe wie ohne Markierung, nämlich die von Z1.
+    expect(out.result.answered).toBe(true);
+    expect(out.result.sources).toEqual([urlaub]);
   });
 
   it("D2 · Fenster voll, Objekt NUR über die Entsprechung erreichbar: dieselbe Antwort wie ohne Zuordnung", async () => {
@@ -919,7 +1166,7 @@ describe("N2 · P — der Betriebsadapter und die Grundformen des Fragepfads", (
   it("P1 · jeder Term, den der Fragepfad bildet, erreicht die Abfrage unverändert", async () => {
     // Der Fragepfad fragt je Term EINE Abfrage ab (`prefilterCandidates`). Gemessen wird deshalb
     // Term für Term, mit genau der Liste, die JOB 3039 an dieser Frage bildet.
-    const terme = [...queryTokens(PRUEFFRAGE), ...zugeordneteSuchterme(queryTokens(PRUEFFRAGE))];
+    const terme = [...queryTokens(PRUEFFRAGE), ...ergaenzteTerme(relevanztextZu(PRUEFFRAGE))];
     expect(terme).toEqual(["find", "urlaubsregel", "handbuch", "urlaubszei"]);
     for (const term of terme) {
       const { pool, calls } = fakePool();

@@ -48,6 +48,48 @@ export interface KnowledgeRef {
   bodyText?: string;
 }
 
+// ================================================================================================
+// JOB 3049 (N2, Scheibe 3) — DER RELEVANZTEXT: DIE DEKLARIERTE ENTSPRECHUNG, NEBEN DER FRAGE.
+// ================================================================================================
+//
+// WOZU. Die deklarierte Wortzuordnung (`SUCH_ZUORDNUNGEN`, `expandSearchTerms` im Modul
+// knowledge-object) wirkte bis JOB 3039 nur bis zur KANDIDATENVORAUSWAHL. Dahinter wählen der
+// Fragedienst und danach BEIDE Provider noch einmal aus — auf der rohen Frage —, und ein Objekt,
+// das allein über die Entsprechung hereinkam, fiel dort wieder heraus. Der Relevanztext ist der
+// Weg, auf dem die Entsprechung diese zweite Auswahl erreicht, OHNE die Frage anzufassen.
+//
+// WARUM ES KEIN TEXT IST, obwohl der Name das nahelegt: Die naheliegende Bauform — die Frage um die
+// ergänzten Wörter VERLÄNGERN und diesen Text auswählen lassen — ist gemessen gescheitert und in
+// JOB 3039 zurückgebaut worden (`tests/suche-zuordnung/…`, Fälle W1 und W2):
+//   · W1 — ergänzte Wörter zählen dann wie getippte, füllen den Deckel `DEFAULT_TOP_K` und
+//     verdrängen den tragenden Treffer: aus einer belegten Antwort wird eine Wissenslücke.
+//   · W2 — trägt EINE Quelle beide Wörter eines Paares, sammelt sie aus EINEM getippten Wort zwei
+//     Substanzpunkte; `MIN_ANSWER_SUBSTANCE` wäre für jedes deklarierte Wort faktisch eins.
+// Beides ist nur zu verhindern, wenn die Auswahl weiß, WELCHE Wörter zusammengehören und welches
+// davon wirklich getippt wurde. Deshalb reist die PAARUNG mit und nicht eine flache Wortliste.
+//
+// WAS ER NICHT IST: keine zweite Zerlegung, keine zweite Zuordnungstabelle, keine Ableitung. Der
+// Inhalt entsteht an genau einer Stelle (`services/ask/src/service.ts`, `zugeordneteSuchterme`) aus
+// der vorhandenen deklarierten Tabelle. Er geht in KEINEN Modellprompt, erzeugt keinen Netzaufruf
+// und erscheint in keinem Antwortfeld — er entscheidet ausschließlich mit, welche Quellen die
+// Auswahl passieren.
+export interface ZuordnungsPaar {
+  /**
+   * Die Terme DIESES Paares, die der Fragende wirklich getippt hat — in der Form des Fragepfads
+   * (Grundform, dieselbe Zerlegung wie die Frage). Sie sind die Sperre gegen W2: hat einer von
+   * ihnen bereits Substanz getragen, darf das Paar keinen zweiten Punkt mehr liefern.
+   */
+  readonly getippt: readonly string[];
+  /**
+   * Die Terme desselben Paares, die der Fragende NICHT getippt hat — die Entsprechung. Aus ihnen
+   * entsteht höchstens EIN Substanzpunkt je Paar, und nur, wenn `getippt` leer ausgegangen ist.
+   */
+  readonly ergaenzt: readonly string[];
+}
+
+/** Der Relevanztext: die getroffenen deklarierten Paare, je Frage höchstens eines je Zuordnung. */
+export type Relevanztext = readonly ZuordnungsPaar[];
+
 // FR-RSN-03: Trennung gesichert / ungeprüft / Meinung / extern / Annahme / unbekannt.
 export type KnowledgeClass =
   | "gesichert"

@@ -1,4 +1,5 @@
 import {
+  DEFAULT_TOP_K,
   type ReasonerProvider,
   answerStanding,
   deterministicInterview,
@@ -23,6 +24,7 @@ import type {
   Kollision,
   KollisionSeite,
   ReasonerLocale,
+  Relevanztext,
   StructureResult,
 } from "./types";
 
@@ -1158,8 +1160,13 @@ export class ModelProvider implements ReasonerProvider {
 
   // SCRUM-360: begrenzte, status-/trust-bewusste Kandidatenauswahl (siehe selectCandidates) — das
   // Modell bekommt nur eine gedeckelte, relevant gerankte Quellenmenge statt aller KOs.
-  select(question: string, candidates: readonly KnowledgeRef[]): KnowledgeRef[] {
-    return selectCandidates(question, candidates);
+  select(
+    question: string,
+    candidates: readonly KnowledgeRef[],
+    // JOB 3049: derselbe Relevanztext, dieselbe eine Auswahlfunktion wie im deterministischen Weg.
+    relevanz: Relevanztext = [],
+  ): KnowledgeRef[] {
+    return selectCandidates(question, candidates, DEFAULT_TOP_K, relevanz);
   }
 
   // IC-3 (Import-Cockpit): schmaler Roh-Aufruf für eine JSON-liefernde Auswahl-Anweisung. Der Eingabe-
@@ -1433,10 +1440,16 @@ export class ModelProvider implements ReasonerProvider {
     locale: ReasonerLocale = "de",
     // AUFTRAG-mega61 Block G: kommt aus dem Kontext, den der Ask-Dienst wirklich übergibt.
     confidential = false,
+    // JOB 3049 (N2, Scheibe 3): der Relevanztext. Er wirkt AUSSCHLIESSLICH auf die Auswahl eine
+    // Zeile tiefer — der Prompt darunter baut unverändert auf `question` und den Quelltexten auf,
+    // und kein ergänztes Wort verlässt diesen Dienst (kein Egress, kein Netzaufruf).
+    relevanz: Relevanztext = [],
   ): Promise<AnswerResult> {
     // SCRUM-360: begrenzte, status-/trust-bewusste Top-K-Auswahl → das Modell bekommt nur eine
     // gedeckelte, relevant gerankte Quellenmenge (kein blindes Durchreichen aller KOs).
-    const relevant = selectCandidates(question, context);
+    // JOB 3049: dieselbe eine Auswahlfunktion wie im deterministischen Weg, jetzt mit demselben
+    // Relevanztext — sonst fiele hier wieder, was Tor 1 gerade durchgelassen hat.
+    const relevant = selectCandidates(question, context, DEFAULT_TOP_K, relevanz);
     // FR-RSN-03: ohne belastbares Wissen keine Rateantwort — Modell wird gar nicht erst befragt.
     const best = relevant[0];
     if (!best) {
