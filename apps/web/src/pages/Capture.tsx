@@ -62,6 +62,7 @@ import { ExternalUrlText } from "../components/ExternalUrlText";
 import { FileFormatInfo } from "../components/FileFormatInfo";
 import { HelpTip } from "../components/HelpTip";
 import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
+import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
 import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { Modal } from "../components/Modal";
@@ -5570,6 +5571,10 @@ export function Capture(): JSX.Element {
                 </div>
               ) : null}
 
+              {/* JOB 3029 (U1): der Unterschied der zwei Knöpfe steht offen an der Entscheidung.
+                Im Expertenweg trägt ihn die Entwurfskarte weiter unten (dieser Zweig läuft auch
+                dort) — sonst stünde derselbe Block auf einem Bildschirm zweimal. */}
+              {!expertView ? <KnopfUnterschied /> : null}
               <div className="flex flex-wrap items-center gap-2 border-t border-hairline pt-4">
                 <Button
                   variant="ghost"
@@ -5579,7 +5584,6 @@ export function Capture(): JSX.Element {
                   <Save size={15} />
                   {t("capture.saveDraft")}
                 </Button>
-                <HelpTip {...chelp("saveDraftHelp")} />
                 <Button variant="ghost" onClick={loadExample}>
                   {t("capture.loadExample")}
                 </Button>
@@ -5862,6 +5866,10 @@ export function Capture(): JSX.Element {
                     </p>
                     {/* F-0007: Herkunft und Rücksprache stehen unmittelbar an der Entscheidung. */}
                     {beispielRueckfrage()}
+                    {/* JOB 3029 (U1): der Unterschied der zwei Knöpfe, offen an der Entscheidung.
+                      Im Expertenweg ist dies die eine Stelle — der Erzähl-Zweig lässt seinen Block
+                      hier bewusst aus, damit er nicht zweimal auf demselben Bildschirm steht. */}
+                    <KnopfUnterschied />
                     <div className="flex items-center gap-1.5">
                       {beispielMarkierung()}
                       <Button
@@ -5883,7 +5891,6 @@ export function Capture(): JSX.Element {
                           t("capture.submit")
                         )}
                       </Button>
-                      <HelpTip {...chelp("submitReview")} />
                     </div>
                   </div>
                 </ReasonerDraft>
@@ -6240,6 +6247,10 @@ export function Capture(): JSX.Element {
                 ) : null}
                 {/* F-0007: Herkunft und Rücksprache stehen unmittelbar an der Entscheidung. */}
                 {beispielRueckfrage()}
+                {/* JOB 3029 (U1): der Unterschied der zwei Knöpfe steht offen über der Leiste —
+                  bewusst ÜBER und nicht IN ihr: die Leiste ist `flex flex-wrap`, ein Absatzpaar
+                  darin würde die Knopfreihe zerreißen. */}
+                <KnopfUnterschied />
                 <div className="flex flex-wrap items-center gap-2">
                   {beispielMarkierung()}
                   <Button
@@ -6250,7 +6261,6 @@ export function Capture(): JSX.Element {
                     <Save size={15} />
                     {t("capture.saveDraft")}
                   </Button>
-                  <HelpTip {...chelp("saveDraftHelp")} />
                   <button
                     type="button"
                     onClick={() => setConfirmDiscard(true)}
@@ -6277,7 +6287,6 @@ export function Capture(): JSX.Element {
                       <>{t("capture.submit")} →</>
                     )}
                   </Button>
-                  <HelpTip {...chelp("submitReview")} />
                 </div>
               </div>
             </Card>

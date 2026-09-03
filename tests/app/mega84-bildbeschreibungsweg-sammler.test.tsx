@@ -1141,8 +1141,17 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Karte der Konsole (Suchen/Prüfen/Hinzufügen). Dieselbe Begründung wie oben: der Quellbaum
     // wächst, keine Umstellung verschiebt die Erhebung. `anbieter` 1 und `traeger` 2 sind
     // unverändert — die Karte bietet keine Bildbeschreibung an und trägt keinen eigenen Titel.
+    //
+    // JOB 3029 (U1): `komponenten` von 251 auf 252 NACHGEZOGEN. Die neue Datei
+    // `apps/web/src/components/KnopfUnterschied.tsx` bringt GENAU EINE Komponente mit —
+    // `KnopfUnterschied`, den sichtbaren Unterschied der zwei Erfassen-Knöpfe.
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Der Block ist
+    // reine Auskunft: er bietet keine Bildbeschreibung an und trägt keinen eigenen Titel.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 251,
+      komponenten: 252,
       anbieter: 1,
       traeger: 2,
     });

@@ -3842,12 +3842,18 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/pages/Wissensnetz.tsx
     //
+    // JOB 3029 (U1): von 401 auf 402 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
+    // dazugekommen, und sie traegt den sichtbaren Unterschied der zwei Erfassen-Knoepfe, der
+    // bisher nur im Fragezeichen-Popover stand:
+    //
+    //     + apps/web/src/components/KnopfUnterschied.tsx
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 401: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx",
-    ).toBe(401);
+      "erwartet 402: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx",
+    ).toBe(402);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

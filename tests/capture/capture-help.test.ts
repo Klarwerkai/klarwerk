@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import {
@@ -50,5 +52,52 @@ describe("SCRUM-407: ?-Hilfen im Erfassen-Weg", () => {
     for (const id of stations) {
       expect(CAPTURE_HELP_IDS).toContain(id);
     }
+  });
+});
+
+// ================================================================================================
+// JOB 3029 (U1) — ZWEI THEMEN VERLASSEN DAS FRAGEZEICHEN UND STEHEN OFFEN AUF DER FLÄCHE.
+// ================================================================================================
+// `saveDraftHelp` und `submitReview` beantworten die Erstnutzer-Frage „warum zwei Knöpfe, und was
+// passiert danach?". Sie BLEIBEN in dieser Karte — der Text ist derselbe, von Pedi abgenommen —,
+// werden aber nicht mehr als Popover ausgegeben, sondern von `components/KnopfUnterschied` als
+// sichtbarer Text an der Entscheidung. Es darf keinen zweiten Weg zu derselben Auskunft geben.
+//
+// HIER STEHT NUR DIE KARTEN-HÄLFTE: dass die Themen leben und dass die Verdrahtung EINE ist.
+// Dass der Text auf der gerenderten Fläche wirklich zu SEHEN ist, misst
+// `tests/erstnutzer-u1/knopf-unterschied.test.tsx` an der gemounteten Seite — ein Quelltextblick
+// könnte das nicht belegen. Diese Datei bleibt Node-rein (kein JSX-Import), weil der
+// Root-Typecheck sie liest (`tsconfig.json:19`).
+describe("JOB 3029 · U1 — Entwurf und Einreichen erklären sich offen, nicht im Fragezeichen", () => {
+  const U1_THEMEN = ["saveDraftHelp", "submitReview"] as const;
+  const WURZEL = join(__dirname, "..", "..");
+  const capture = readFileSync(join(WURZEL, "apps/web/src/pages/Capture.tsx"), "utf8");
+  const block = readFileSync(join(WURZEL, "apps/web/src/components/KnopfUnterschied.tsx"), "utf8");
+
+  it("die zwei Themen bleiben in der Karte — die Auskunft geht nicht verloren", () => {
+    for (const id of U1_THEMEN) {
+      expect(CAPTURE_HELP_IDS).toContain(id);
+      expect(i18n.t(captureHelp(id).bodyKey).length).toBeGreaterThan(120);
+    }
+  });
+
+  it("die Erfassen-Seite gibt sie NICHT mehr als Popover aus", () => {
+    for (const id of U1_THEMEN) {
+      expect(
+        capture,
+        `chelp("${id}") hängt wieder an einem HelpTip — dann führen zwei Wege zu derselben Auskunft`,
+      ).not.toContain(`<HelpTip {...chelp("${id}")} />`);
+    }
+    // Gegenprobe im selben Fall: die übrigen Popover des Wegs sind unangetastet. Ohne sie wäre
+    // dieser Fall auch dann grün, wenn jemand SÄMTLICHE HelpTips entfernt hätte.
+    expect(capture).toContain('<HelpTip {...chelp("loadExample")} />');
+    expect(capture).toContain('<HelpTip {...chelp("discardHelp")} />');
+  });
+
+  it("stattdessen trägt sie der sichtbare Block, und die Seite baut ihn ein", () => {
+    for (const id of U1_THEMEN) {
+      expect(block, `KnopfUnterschied nennt „${id}" nicht`).toContain(`"${id}"`);
+    }
+    expect(capture).toContain("<KnopfUnterschied />");
   });
 });
