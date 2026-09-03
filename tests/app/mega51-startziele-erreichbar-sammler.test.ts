@@ -168,6 +168,12 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   // JOB 3015 D5: die Konsolen-Karte reicht das LITERAL ihrer Aufrufstelle (`to="/fragen"` usw.,
   // unten als Literal erhoben) unverändert an RoleLink durch — keine eigene Zieltabelle.
   { muster: /^to$/, herkunft: "pages/Start.tsx · KonsoleKarte (Literal der Aufrufstelle)" },
+  // JOB 3025 (A27, OFFEN.md:81) NACHGEZOGEN, nicht gelockert: die Startseite bietet einen neuen Weg
+  // an, und er hat eine benannte produktive Herkunft — `KollisionsWeg` aus `lib/eigeneKollision.ts`
+  // (`WEG_DUBLETTE` → `/duplikate`, `WEG_KONFLIKT` → `/konflikte`). Beide Ziele stehen bereits in
+  // `GUARDED_ITEMS` (`navigation.ts:187`, `:200`, je `minRole: "controller"`), und die Stufe-2-
+  // Prüfung unten misst sie über dieselbe Registry wie jedes andere Ziel der Seite.
+  { muster: /^kollisionsWeg\.to$/, herkunft: "lib/eigeneKollision.ts · KollisionsWeg" },
 ];
 
 // Alle `to=`-Vorkommen: `to="…"` (Literal) und `to={…}` (Ausdruck).

@@ -3,6 +3,7 @@ import { type FormEvent, type ReactNode, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useConflicts,
+  useEigeneBefunde,
   useGapsSummary,
   useKos,
   useLearningPath,
@@ -28,6 +29,10 @@ import { RoleLink } from "../components/RoleLink";
 import { StatusPill } from "../components/trust";
 import { Card } from "../components/ui";
 import { DEMO_PILOT_PATH, captureDemoHref } from "../lib/demoPilotPath";
+// A27 (OFFEN.md:81) · JOB 3025: DIESELBE Funktion wie auf der Detailseite. Ein zweiter
+// Ableitungsweg wäre genau die Drift, an der JOB 3002 Runde 4 fiel — dort las die Startseite noch
+// mit `?? []`, während die Detailseite schon Lagen unterschied.
+import { eigeneKollisionStart } from "../lib/eigeneKollision";
 import { knowledgeCapital } from "../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../lib/knowledgeGuidance";
@@ -309,6 +314,28 @@ export function Start(): JSX.Element {
   // AUFTRAG-mega38 BLOCK G3: rollenbewusst — kein Hinweis auf Arbeit, die diese Rolle auf der
   // Zielseite gar nicht ausführen darf.
   const focus = primaryWorkItem(overview, role);
+  // ================================================================================================
+  // A27 (OFFEN.md:81) · JOB 3025 — DIE AUSKUNFT ÜBER DIE EIGENEN OBJEKTE.
+  // ================================================================================================
+  // `primaryWorkItem(overview, role)` darüber bleibt UNANGETASTET: dort geht es um Arbeit, die die
+  // Rolle auf der Zielseite ausführen darf, und für eine Expertin ist das genau nichts. Hier geht es
+  // um etwas anderes — um Auskunft über das eigene Wissen, die jede Rolle bekommt, weil sie über
+  // ihre eigenen Objekte spricht und nicht über fremde Arbeit.
+  //
+  // Die drei Quellen gehen als LAGE hinein, nicht als „Daten oder leer". `kos` und `conflicts`
+  // wurden bis hierher mit `?? []` gelesen (`:200`, `:481`); für die Arbeitsübersicht bleibt das
+  // richtig, weil `isGroupLoading`/`isGroupError`/`isGroupStale` die Lage dort GETRENNT tragen. Für
+  // diese Auskunft trägt sie `eigeneKollisionStart` — dieselbe Regel wie am Detail.
+  const eigeneBefunde = useEigeneBefunde();
+  const kollision = eigeneKollisionStart({
+    befunde: eigeneBefunde,
+    konflikte: conflicts,
+    kos,
+  });
+  const kollisionsWeg = kollision.weg;
+  // Wie am Detail: alle Texte dieses Bereichs entstehen hier oben, die Kind-Funktion von `RoleLink`
+  // trägt nur noch den Pfeil.
+  const kollisionsWegText = kollisionsWeg === null ? null : t(kollisionsWeg.textKey);
   const guide = knowledgeGuidance("start");
   // Aufräum-Pass 02.07.: Erklär-Blöcke nur beim Erstbesuch offen — danach ruhige Startseite.
   const [showOrientation, setShowOrientation] = useState(() =>
@@ -647,6 +674,50 @@ export function Start(): JSX.Element {
           dieselben Größen wie im Wissenskapital oben — die Wissenslücken standen sogar mit
           IDENTISCHEM Wert dreimal auf einer Seite. Der Block ist weg; seine einzige eigene Zahl
           („Offen") ist ins Wissenskapital gewandert, wo sie neben „davon validiert" gehört. */}
+        {/* ==========================================================================================
+          A27 (OFFEN.md:81) · JOB 3025 — WAS AN DEN EIGENEN OBJEKTEN KOLLIDIERT.
+          ==========================================================================================
+          Eine eigene Karte und nicht eine Zeile in „Nächste Handlungen": das hier ist AUSKUNFT über
+          eigenes Wissen, keine Arbeit, die die Rolle ausführen darf. Die Expertin darf Konflikte
+          nicht auflösen (`conflict.resolve` bleibt `controller`, ENTSCHEIDUNGEN/JOB-1546.md) — sie
+          darf und soll aber wissen, dass etwas offen ist.
+
+          Kein Inhalt der Gegenseite (A28, OFFEN.md:165), und keine Zahl ohne Grundlage: steht
+          `datenlageKey`, ist die Lage nicht `frisch`, und dann steht hier ein Satz über die
+          Datenlage statt über den Bestand. */}
+        <Card className="mb-5" data-testid="job3025-kollision-start">
+          <h2 className="mb-1 text-[15px] font-semibold text-ink">{t("kollision.start.title")}</h2>
+          <p className="text-[12.5px] leading-relaxed text-text">
+            {t(kollision.satzKey, { n: kollision.anzahl })}
+          </p>
+          {kollision.art !== "keine" && kollision.datenlageKey ? (
+            <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
+              {t(kollision.datenlageKey)}
+            </p>
+          ) : null}
+          {kollisionsWeg ? (
+            <RoleLink
+              to={kollisionsWeg.to}
+              className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text"
+            >
+              {(erreichbar) => (
+                <>
+                  {kollisionsWegText}
+                  {erreichbar ? <ArrowRight size={14} className="shrink-0" /> : null}
+                </>
+              )}
+            </RoleLink>
+          ) : null}
+          {kollision.wiederholenMoeglich ? (
+            <button
+              type="button"
+              onClick={kollision.erneutPruefen}
+              className="mt-1 ml-3 inline-flex items-center text-[12px] font-semibold text-brand-text underline"
+            >
+              {t("kollision.wiederholen")}
+            </button>
+          ) : null}
+        </Card>
         <div className="grid gap-5">
           <Card>
             <div className="mb-2 flex items-center justify-between">

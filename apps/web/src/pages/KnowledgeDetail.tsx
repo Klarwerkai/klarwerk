@@ -85,6 +85,9 @@ import { demoHref, isDemoContext } from "../lib/demoPilotPath";
 import { deriveStatus } from "../lib/displayStatus";
 import { studioSaveConfidence } from "../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../lib/editorBlocks";
+// A27 (OFFEN.md:81) · JOB 3025: die EINE Regel, aus der Detailseite und Startseite dieselbe
+// Auskunft ziehen — und aus der sie ihr Schweigen ziehen, wenn die Datengrundlage nicht trägt.
+import { eigeneKollisionDetail } from "../lib/eigeneKollision";
 import { groupEvidenceByVersion } from "../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../lib/evidenceConsistency";
 import { analyzeEvidenceFreshness } from "../lib/evidenceFreshness";
@@ -774,12 +777,48 @@ export function KnowledgeDetail(): JSX.Element {
             const ov = koOverview(ko);
             // SCRUM-357 / AG-14: Konflikt-Wirkung — ein offener (v. a. Truth-)Konflikt begrenzt die
             // Nutzbarkeit ehrlich (ready → in-review). Gelöste Konflikte wirken nicht mehr.
-            const impact = conflictImpact(ko.id, conflicts.data ?? []);
+            // JOB 3025 (A27): `conflicts.data ?? []` stand hier und machte aus vier Abfragelagen
+            // eine einzige. Für die SCRUM-357-WIRKUNG ist das Weglassen fehlender Daten trotzdem
+            // richtig — sie erzeugt nur eine POSITIVE Aussage (Plakette „Konflikt offen"), und eine
+            // ausbleibende Plakette behauptet nichts. Deshalb steht der Fall jetzt ausgeschrieben
+            // statt als stiller Kurzschluss: keine Daten ⇒ keine Wirkung ⇒ keine Behauptung.
+            const impact =
+              conflicts.data === undefined
+                ? conflictImpact(ko.id, [])
+                : conflictImpact(ko.id, conflicts.data);
             const usability = conflictLimitedUsability(ov.usability, impact);
             const notice = conflictNotice(impact);
-            // A28: der Befund an DIESEM Objekt, falls es dem Betrachter gehört. Kein Eintrag
-            // bedeutet: kein offener Befund — das Signal ist eine Meldung, keine Bestandsliste.
-            const a28 = (eigeneBefunde.data ?? []).find((b) => b.koId === ko.id);
+            // A27 (OFFEN.md:81) · JOB 3025 — DIE AUSKUNFT AN DIE AUTORIN, samt ihrer Belastbarkeit.
+            //
+            // Hier stand `(eigeneBefunde.data ?? []).find(...)`. Genau dieses `?? []` ist der
+            // Fehler, an dem JOB 3002 fünfmal scheiterte: „lädt", „gescheitert", „alter Cache" und
+            // „erfolgreich leer" wurden ununterscheidbar, und aus allen vieren entstand derselbe
+            // beruhigende Satz. Jetzt gehen die drei Abfragen als LAGE hinein: `lib/eigeneKollision.ts`
+            // liest von ihnen nur die fünf Skalare (`Quellenzustand`) und `refetch` (`Quelle`) —
+            // strukturell typisiert, damit dort nichts Weiteres aus einem Query-Objekt gezogen wird.
+            // DIE FLÄCHE GEHÖRT DER VERFASSERIN — und nur ihr (Ben, JOB 3025 R2,
+            // Korrekturpflicht 1). Vorher stand sie an JEDEM geöffneten Objekt, und das war nicht
+            // bloß der falsche Ort, sondern eine unbelegte Aussage: an einem FREMDEN Objekt trägt
+            // `/api/duplicate-signal` nie einen Eintrag (der Server filtert auf den Betrachter) und
+            // `/api/conflicts` ist sichtbarkeitsgefiltert (api/types.ts:184-197). „Keine offene
+            // Kollision an diesem Objekt" hieß dort in Wahrheit „ich darf hier nichts sehen" —
+            // genau die Verwechslung von Wissenslücke und Verneinung, gegen die dieser Auftrag
+            // gebaut ist. Der SCRUM-357-Banner und die Plakette darüber bleiben davon unberührt:
+            // sie sprechen zum LESER über die Nutzbarkeit und gelten für jedes Objekt.
+            const eigenesObjekt = ko.author === user?.id;
+            const kollision = eigeneKollisionDetail({
+              koId: ko.id,
+              befunde: eigeneBefunde,
+              konflikte: conflicts,
+              kos: koList,
+            });
+            // Getrennt gehalten, damit TypeScript die Verengung in die Kind-Funktion von
+            // `RoleLink` trägt (`kollision.weg` würde dort wieder `null` sein können).
+            const kollisionsWeg = kollision.weg;
+            // Alle drei Texte dieses Bereichs entstehen hier oben nebeneinander: `kollision.satzKey`,
+            // `kollision.datenlageKey` und der Weg-Text. Die Kind-Funktion von `RoleLink` trägt
+            // danach nur noch den Pfeil — sie ist die einzige Stelle, die `erreichbar` braucht.
+            const kollisionsWegText = kollisionsWeg === null ? null : t(kollisionsWeg.textKey);
             return (
               <>
                 <Card className="mb-5">
@@ -798,30 +837,13 @@ export function KnowledgeDetail(): JSX.Element {
                         {t("conflict.impact.badge")}
                       </span>
                     ) : null}
-                    {/* A28: das dauerhafte Signal am eigenen Objekt. Es nennt Vorhandensein und
-                      Art — mehr trägt `EigenerBefund` nicht, und mehr darf hier nie stehen.
-                      Die Beschriftungen sind BESTEHENDE Katalogschlüssel (i18n.ts ist für diesen
-                      Durchgang gesperrt, BASIC/KA5). */}
-                    {a28?.dublette ? (
-                      <span
-                        data-testid="a28-signal-dublette"
-                        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
-                      >
-                        {t("dup.probable")}
-                      </span>
-                    ) : null}
-                    {/* Der Konflikt bekommt hier NUR dann ein Abzeichen, wenn das bestehende
-                      Konflikt-Signal darüber ausbleibt — sonst stünde dieselbe Aussage zweimal.
-                      Der Fall, in dem es ausbleibt, ist genau der A28-Fall: die Gegenseite ist
-                      für diesen Betrachter nicht sichtbar, das Paar fällt aus `/api/conflicts`. */}
-                    {a28?.konflikt && !notice ? (
-                      <span
-                        data-testid="a28-signal-konflikt"
-                        className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text"
-                      >
-                        {t("conflict.impact.badge")}
-                      </span>
-                    ) : null}
+                    {/* JOB 3025: HIER STANDEN DIE ZWEI A28-PILLEN (`a28-signal-dublette`,
+                      `a28-signal-konflikt`). Sie sind ENTFERNT, nicht danebengelassen
+                      (REGELN.md §7). Zwei Gründe: sie trugen zweckentfremdete Beschriftungen
+                      (`dup.probable`, `conflict.impact.badge`, damals weil i18n.ts gesperrt war),
+                      und sie sagten nur DASS — kein Satz, was es bedeutet, keine Angabe, wie
+                      belastbar die Auskunft überhaupt ist. Beides steht jetzt im Bereich
+                      `job3025-kollision` weiter unten, mit eigenen Schlüsseln. */}
                     <StatusPill status={ov.status} />
                     {/* SCRUM-308: Herkunfts-Kennzeichnung Demo-/Seed-Wissen (neutral, kein Statussignal). */}
                     {isDemoKnowledge(ko) ? (
@@ -900,12 +922,97 @@ export function KnowledgeDetail(): JSX.Element {
                       <p className="mt-0.5 text-[12px] leading-relaxed text-trust-warn-text">
                         {t(notice.hintKey)}
                       </p>
-                      <Link
+                      {/* JOB 3025 (Codex R1 aus JOB 3002, wörtlich): hier stand ein ROHER `Link`
+                        auf `/konflikte`. Die Route verlangt `controller` (navigation.ts:187-193);
+                        eine Expertin klickte und wurde nach `/start` zurückgeworfen — ein Weg, der
+                        keiner ist. `RoleLink` lässt den erklärenden Text stehen und nimmt der
+                        gesperrten Fassung Link, Pfeil und `href`. */}
+                      <RoleLink
                         to={notice.to}
                         className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-trust-warn-text underline"
                       >
-                        {t("conflict.impact.cta")}
-                      </Link>
+                        {(erreichbar) => (
+                          <>
+                            {t("conflict.impact.cta")}
+                            {erreichbar ? <span aria-hidden="true">→</span> : null}
+                          </>
+                        )}
+                      </RoleLink>
+                    </div>
+                  ) : null}
+                  {/* ============================================================================
+                    A27 (OFFEN.md:81) · JOB 3025 — DIE AUTORIN ERFÄHRT ES AN IHREM EIGENEN OBJEKT.
+                    ============================================================================
+                    Pedis Befund: „die Expertin erfährt nie, dass ihr Wissen mit etwas kollidiert …
+                    der Prüfer sieht die Kollisionen, der Autor nicht."
+
+                    ABGRENZUNG ZUR SCRUM-357-PLAKETTE UND ZUM BANNER DARÜBER — sie bleiben, weil
+                    sie eine ANDERE Aussage tragen: jene sprechen zum LESER über die Nutzbarkeit
+                    („offener Konflikt → vor Nutzung prüfen"). Dieser Bereich spricht zur
+                    VERFASSERIN über ihre Handlungsmöglichkeit, und er spricht auch dann, wenn die
+                    Gegenseite für sie unsichtbar ist und das Paar deshalb aus `/api/conflicts`
+                    fällt (api/types.ts:184-197) — genau der Fall, an dem A28 hing.
+
+                    KEIN INHALT DER GEGENSEITE: weder Kennung noch Titel noch Zitat (A28,
+                    OFFEN.md:165). Die Auskunft entsteht in `eigeneKollisionDetail`, das aus der
+                    Konfliktliste ausschließlich `affected` liest.
+
+                    UND: KEINE AUSSAGE OHNE GRUNDLAGE. Steht `datenlageKey`, dann ist die Lage
+                    nicht `frisch` — dann steht hier ein Satz über die Datenlage statt über den
+                    Bestand. „Keine offene Kollision" erscheint ausschließlich aus `frisch`. */}
+                  {eigenesObjekt ? (
+                    <div
+                      data-testid="job3025-kollision"
+                      className="mt-2 rounded-card border border-hairline bg-page px-3 py-2"
+                    >
+                      <p className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
+                        {t("kollision.detail.title")}
+                      </p>
+                      <p className="mt-0.5 text-[12.5px] leading-relaxed text-text">
+                        {t(kollision.satzKey)}
+                      </p>
+                      {kollision.art !== "keine" ? (
+                        <>
+                          {/* Die Grenze wird BENANNT statt verschwiegen: die Autorin soll wissen,
+                            dass hier bewusst nichts über das andere Objekt steht. */}
+                          <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
+                            {t("kollision.keineGegenseite")}
+                          </p>
+                          {/* Der Vorbehalt ordnet den Befund ein, statt ihn zu kassieren — ein
+                            verschwiegener Befund wäre wieder Pedis Ausgangslage. Bei `frisch` ist
+                            `datenlageKey` null und die Zeile fehlt ganz. */}
+                          {kollision.datenlageKey ? (
+                            <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
+                              {t(kollision.datenlageKey)}
+                            </p>
+                          ) : null}
+                        </>
+                      ) : null}
+                      {kollisionsWeg ? (
+                        <RoleLink
+                          to={kollisionsWeg.to}
+                          className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text"
+                        >
+                          {(erreichbar) => (
+                            <>
+                              {kollisionsWegText}
+                              {erreichbar ? <span aria-hidden="true">→</span> : null}
+                            </>
+                          )}
+                        </RoleLink>
+                      ) : null}
+                      {/* Wiederholen nur, wo ein neuer Versuch etwas ändern kann (nicht im Laufen,
+                        nicht offline) — ein Knopf ohne Wirkung wäre eine Scheinfunktion. Was der
+                        Versuch auffrischt, entscheidet `eigeneKollision.ts` und nicht diese Seite. */}
+                      {kollision.wiederholenMoeglich ? (
+                        <button
+                          type="button"
+                          onClick={kollision.erneutPruefen}
+                          className="mt-1 ml-3 inline-flex items-center text-[12px] font-semibold text-brand-text underline"
+                        >
+                          {t("kollision.wiederholen")}
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                   {/* ============================================================================

@@ -2609,6 +2609,37 @@ const de = {
     "Zu diesem Wissen ist ein Wahrheitskonflikt offen. Bis zur Klärung gilt es als zu prüfen, nicht als uneingeschränkt gesichert.",
   "conflict.impact.badge": "Konflikt offen",
   "conflict.impact.cta": "Konflikt ansehen",
+  // JOB 3025 / A27 (OFFEN.md:81): die Auskunft an die AUTORIN über ihr eigenes Objekt. Eigene
+  // Schlüssel statt der bis dahin zweckentfremdeten `dup.probable` / `conflict.impact.badge` —
+  // jene benennen die Nutzbarkeitswirkung für den Leser, diese die Handlungsmöglichkeit der
+  // Verfasserin. Die `kollision.lage.*`-Sätze sind KEINE Störungsmeldungen, sondern Auskunft über
+  // die Datengrundlage: sie stehen dort, wo sonst eine Aussage über den Bestand stünde.
+  "kollision.detail.title": "Kollision an diesem Objekt",
+  "kollision.detail.dublette":
+    "Dieses Objekt überschneidet sich mit vorhandenem Wissen. Du kannst deinen Eintrag schärfen oder abgrenzen; ob zusammengeführt wird, entscheidet die Prüfung.",
+  "kollision.detail.konflikt":
+    "Zu diesem Objekt steht ein Widerspruch offen. Du kannst deine Aussage präzisieren und belegen; die Klärung selbst liegt bei der Prüfung.",
+  "kollision.detail.beides":
+    "Dieses Objekt überschneidet sich mit vorhandenem Wissen, und es steht ein Widerspruch offen. Du kannst schärfen und belegen; Zusammenführen und Klären liegen bei der Prüfung.",
+  "kollision.detail.keine": "Keine offene Kollision an diesem Objekt.",
+  "kollision.start.title": "Kollisionen an deinen Objekten",
+  "kollision.start.dublette": "{{n}} deiner Wissensobjekte: Überschneidung mit vorhandenem Wissen.",
+  "kollision.start.konflikt": "{{n}} deiner Wissensobjekte: offener Widerspruch.",
+  "kollision.start.beides": "{{n}} deiner Wissensobjekte: Überschneidung oder offener Widerspruch.",
+  "kollision.start.keine": "Keine offene Kollision an deinen Wissensobjekten.",
+  "kollision.lage.laedt": "Wird geprüft — die Kollisionsprüfung lädt noch.",
+  "kollision.lage.erstfehler": "Nicht aktuell prüfbar: die Daten ließen sich nicht laden.",
+  "kollision.lage.auffrischungLaeuft":
+    "Stand von zuletzt — die Angaben werden gerade aufgefrischt.",
+  "kollision.lage.auffrischungGescheitert": "Stand von zuletzt — die Auffrischung ist gescheitert.",
+  "kollision.lage.pausiert": "Stand von zuletzt — ohne Netzverbindung nicht aktuell prüfbar.",
+  // Ohne jeden früheren Stand darf hier kein „Stand von zuletzt" stehen: der Satz verneint nichts
+  // und behauptet auch keinen Stand, den es nie gab (Ben, JOB 3025 R2, Korrekturpflicht 2).
+  "kollision.lage.pausiertOhneStand": "Ohne Netzverbindung nicht prüfbar.",
+  "kollision.wiederholen": "Erneut prüfen",
+  "kollision.wegKonflikte": "Konflikte ansehen",
+  "kollision.wegDuplikate": "Duplikate ansehen",
+  "kollision.keineGegenseite": "Das andere Objekt wird hier nicht genannt.",
   "con.type.truth": "Wahrheit",
   "con.type.experience": "Erfahrung",
   "con.type.context": "Kontext",
@@ -7164,6 +7195,30 @@ const en: typeof de = {
     "This knowledge has an open truth conflict. Until resolved it counts as to-review, not as unrestrictedly secured.",
   "conflict.impact.badge": "Conflict open",
   "conflict.impact.cta": "View conflict",
+  "kollision.detail.title": "Collision on this object",
+  "kollision.detail.dublette":
+    "This object overlaps with existing knowledge. You can sharpen or delimit your entry; whether it is merged is decided in review.",
+  "kollision.detail.konflikt":
+    "There is an open contradiction on this object. You can make your statement more precise and back it up; resolving it is up to review.",
+  "kollision.detail.beides":
+    "This object overlaps with existing knowledge, and there is an open contradiction. You can sharpen and back it up; merging and resolving are up to review.",
+  "kollision.detail.keine": "No open collision on this object.",
+  "kollision.start.title": "Collisions on your objects",
+  "kollision.start.dublette": "{{n}} of your knowledge objects: overlap with existing knowledge.",
+  "kollision.start.konflikt": "{{n}} of your knowledge objects: open contradiction.",
+  "kollision.start.beides": "{{n}} of your knowledge objects: overlap or open contradiction.",
+  "kollision.start.keine": "No open collision on your knowledge objects.",
+  "kollision.lage.laedt": "Being checked — the collision check is still loading.",
+  "kollision.lage.erstfehler": "Not currently checkable: the data could not be loaded.",
+  "kollision.lage.auffrischungLaeuft": "Last known state — the figures are being refreshed.",
+  "kollision.lage.auffrischungGescheitert": "Last known state — the refresh failed.",
+  "kollision.lage.pausiert":
+    "Last known state — not currently checkable without a network connection.",
+  "kollision.lage.pausiertOhneStand": "Not checkable without a network connection.",
+  "kollision.wiederholen": "Check again",
+  "kollision.wegKonflikte": "View conflicts",
+  "kollision.wegDuplikate": "View duplicates",
+  "kollision.keineGegenseite": "The other object is not named here.",
   "con.type.truth": "Truth",
   "con.type.experience": "Experience",
   "con.type.context": "Context",
@@ -11387,6 +11442,31 @@ const nl: typeof de = {
     "Bij deze kennis staat een waarheidsconflict open. Tot de opheldering geldt het als te controleren, niet als onbeperkt geborgd.",
   "conflict.impact.badge": "Conflict open",
   "conflict.impact.cta": "Conflict bekijken",
+  "kollision.detail.title": "Botsing bij dit object",
+  "kollision.detail.dublette":
+    "Dit object overlapt met bestaande kennis. Je kunt je bijdrage aanscherpen of afbakenen; of er wordt samengevoegd, beslist de controle.",
+  "kollision.detail.konflikt":
+    "Bij dit object staat een tegenspraak open. Je kunt je uitspraak preciezer maken en onderbouwen; de opheldering ligt bij de controle.",
+  "kollision.detail.beides":
+    "Dit object overlapt met bestaande kennis en er staat een tegenspraak open. Je kunt aanscherpen en onderbouwen; samenvoegen en ophelderen liggen bij de controle.",
+  "kollision.detail.keine": "Geen openstaande botsing bij dit object.",
+  "kollision.start.title": "Botsingen bij jouw objecten",
+  "kollision.start.dublette": "{{n}} van jouw kennisobjecten: overlap met bestaande kennis.",
+  "kollision.start.konflikt": "{{n}} van jouw kennisobjecten: openstaande tegenspraak.",
+  "kollision.start.beides": "{{n}} van jouw kennisobjecten: overlap of openstaande tegenspraak.",
+  "kollision.start.keine": "Geen openstaande botsing bij jouw kennisobjecten.",
+  "kollision.lage.laedt": "Wordt gecontroleerd — de botsingscontrole laadt nog.",
+  "kollision.lage.erstfehler": "Nu niet controleerbaar: de gegevens konden niet worden geladen.",
+  "kollision.lage.auffrischungLaeuft":
+    "Stand van de laatste keer — de gegevens worden nu ververst.",
+  "kollision.lage.auffrischungGescheitert": "Stand van de laatste keer — het verversen is mislukt.",
+  "kollision.lage.pausiert":
+    "Stand van de laatste keer — zonder netwerkverbinding niet actueel controleerbaar.",
+  "kollision.lage.pausiertOhneStand": "Zonder netwerkverbinding niet controleerbaar.",
+  "kollision.wiederholen": "Opnieuw controleren",
+  "kollision.wegKonflikte": "Conflicten bekijken",
+  "kollision.wegDuplikate": "Duplicaten bekijken",
+  "kollision.keineGegenseite": "Het andere object wordt hier niet genoemd.",
   "con.type.truth": "Waarheid",
   "con.type.experience": "Ervaring",
   "con.type.context": "Context",
