@@ -198,10 +198,30 @@ function sichtbareTitel(): string[] {
   return [...alle].filter((t) => text().includes(t));
 }
 
+/**
+ * Auf den ERSTEN Anstrich der Liste warten — begrenzt, nicht auf gut Glueck.
+ *
+ * WARUM (JOB 3061 R4, Tor-Befund M1 „expected [] to have a length of 16 but got +0"): M1 wartete
+ * nach `mount()` eine feste Frist von 50 ms. Der erste Abruf laeuft aber durch react-query, also
+ * ueber mindestens einen Microtask und einen weiteren Anstrich; auf einem ausgelasteten Rechner —
+ * im Tor laufen alle Dateien nebenher — reichen 50 ms dafuer nicht, und der Fall meldete null
+ * Titel. Einzeln laeuft dieselbe Datei gruen (5/5), was den Zeitverdacht bestaetigt.
+ *
+ * Gewartet wird deshalb auf das EREIGNIS (die Liste steht) statt auf eine geratene Frist — mit
+ * Deckel. Die Zaehne bleiben: kommt gar nichts, laeuft die Schleife aus und M1 faellt wie zuvor;
+ * kommen drei Titel statt sechzehn, faellt M1 an seiner Zusicherung. Dieselbe Bauform benutzt
+ * `tippe()` seit JOB 2689 fuer die Antwort nach dem Debounce.
+ */
+async function warteAufBestand(): Promise<void> {
+  for (let i = 0; i < 40 && sichtbareTitel().length === 0; i++) {
+    await warte(25);
+  }
+}
+
 describe("JOB 2689 D1 · die Bibliothekssuche am Suchfeld", () => {
   it("M1 · vor dem Tippen zeigt die Seite den Bestand (16 Titel) — die Ausgangslage", async () => {
     mount();
-    await warte(50);
+    await warteAufBestand();
     expect(sichtbareTitel()).toHaveLength(16);
   });
 

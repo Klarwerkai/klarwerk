@@ -47,6 +47,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       aiCheckRetry: vi.fn(async () => ({})),
       remove: vi.fn(async () => ({})),
     },
+    // JOB 3061 · H2: der gemeinsame Reiterkopf holt die Zähler der drei anderen Reiter aus echten
+    // Abrufen. Hier leer — gemessen wird der Reiter „Offen".
+    conflicts: { list: vi.fn(async () => []) },
+    duplicates: { list: vi.fn(async () => []) },
+    lifecycle: { pending: vi.fn(async () => []) },
   },
 }));
 
@@ -86,7 +91,6 @@ const de = (key: string): string => String(i18n.getResource("de", "translation",
 /** Die zwei Marken, an denen gemessen wird — kein Raten ueber CSS-Klassen oder Textfragmente. */
 const STUFE = '[data-testid="val-stufe"]';
 const HERKUNFT = '[data-testid="val-herkunft"]';
-const ETIKETTEN = '[data-testid="validation-card-labels"]';
 
 /**
  * Eine Board-Zeile, wie die Route sie seit JOB 3003 liefert: die vier Auskunftsfelder sind IMMER
@@ -251,16 +255,24 @@ describe("JOB 3027 · R1: eingestuft heißt eingestuft", () => {
     expect(stufenText()).not.toBe(de("val.stufe.nichtEingestuft"));
   });
 
-  it("die Stufe steht GENAU EINMAL in der gezählten Etikettenzeile (D-033)", async () => {
+  // JOB 3061 · H2 — DIE GEZÄHLTE ETIKETTENZEILE GIBT ES NICHT MEHR, DIE ZUSICHERUNG SCHON.
+  //
+  // D-033 zählte die Etiketten der Karte, weil dort acht Plaketten nebeneinander lagen und jede
+  // Ergänzung die Zeile weiter zuwachsen liess. Die Zeile ist mit dem Mockup entfallen: Stufe und
+  // Erfassungsweg wohnen jetzt als je EINE Zeile im „Mehr" der Karte. Die Frage, die D-033
+  // beantwortete — „steht die Auskunft genau einmal da, und liegt die Herkunft woanders?" — bleibt
+  // dieselbe und wird hier am neuen Ort gestellt.
+  it("die Stufe steht GENAU EINMAL auf der Karte, und der Erfassungsweg in einer EIGENEN Zeile", async () => {
     await mountMit([
       zeile({ confidentiality: "streng_vertraulich", confidentialityProvenance: "ko" }),
     ]);
+    await aufklappen();
 
-    const etiketten = container.querySelector(ETIKETTEN) as HTMLElement | null;
-    expect(etiketten?.querySelectorAll(STUFE)).toHaveLength(1);
-    // Die Herkunft gehört NICHT in diese Zeile — sonst wären es zwei Ergänzungen.
-    expect(etiketten?.querySelectorAll(HERKUNFT)).toHaveLength(0);
     expect(stufen()).toHaveLength(1);
+    expect(container.querySelectorAll(HERKUNFT)).toHaveLength(1);
+    // Zwei verschiedene Zeilen im „Mehr" — keine sitzt in der anderen.
+    const stufenZeile = stufen()[0]?.closest('[class*="justify-between"]');
+    expect(stufenZeile?.querySelectorAll(HERKUNFT) ?? []).toHaveLength(0);
   });
 });
 
@@ -299,13 +311,20 @@ describe("JOB 3027 · R2: „nicht eingestuft“ ist eine eigene Aussage", () =>
     expect(unterOhne.map((k) => k.id)).toEqual(["k1"]);
   });
 
-  it("die Schiene beschriftet den neuen Wert im Klartext (gemountet, „Weitere Filter“ offen)", async () => {
+  // JOB 3061 · H2: die Facettenschiene ist kein Dauerinventar der Seite mehr — sie wohnt im
+  // Filter-Menü neben dem Segment (Pages-Art). Der Test öffnet es deshalb wie ein Mensch.
+  it("die Schiene beschriftet den neuen Wert im Klartext (gemountet, Filter-Menü und „Weitere Filter“ offen)", async () => {
     window.localStorage.setItem("klarwerk.validation.filters.moreOpen", "1");
     await mountMit([
       zeile({ confidentiality: null, confidentialityProvenance: "unknown" }),
       zeile({ id: "k2", confidentiality: "vertraulich", confidentialityProvenance: "ko" }),
       zeileOhneAuskunft({ id: "k3" }),
     ]);
+    await act(async () => {
+      (
+        container.querySelector('[data-testid="pruefen-menue-filter"]') as HTMLElement | null
+      )?.click();
+    });
 
     const schiene = container.querySelector("aside") as HTMLElement | null;
     expect(schiene?.textContent).toContain(de("lib.facet.confidentiality"));

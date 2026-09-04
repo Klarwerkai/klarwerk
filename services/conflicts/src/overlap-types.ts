@@ -72,7 +72,33 @@ export interface OverlapInput {
   koBVersion?: number;
 }
 
-export type OverlapErrorCode = "NOT_FOUND" | "ALREADY_CLOSED" | "INVALID_SETTINGS";
+// JOB 3061 · H2 (bens Korrekturpflicht 1 aus Runde 5): die Abschlussgründe, die ein MENSCH wählen
+// darf. Bewusst eine ECHTE Teilmenge von `OverlapResolutionReason` — `merged` gehört dem Assistenten
+// (Stufe D5), `participant_deleted` und `superseded` den Integritäts-Routinen. Stünden sie zur Wahl,
+// schriebe die Fläche einen Vorgang ins Protokoll, der nie stattgefunden hat; das wäre genau die
+// Sorte Scheinaussage, die dieses Produkt nicht macht. Der Wächter dafür ist das `satisfies` — wer
+// hier einen systemischen Grund einträgt, bekommt keinen Kommentar, sondern einen Compilerfehler.
+export const HUMAN_OVERLAP_CLOSE_REASONS = [
+  "kept_separate",
+  "linked_related",
+  "dismissed",
+] as const satisfies readonly OverlapResolutionReason[];
+
+export type HumanOverlapCloseReason = (typeof HUMAN_OVERLAP_CLOSE_REASONS)[number];
+
+/** Trägt ein beliebiger Wert (Drahtfeld, Formularwert) einen menschlich wählbaren Abschlussgrund? */
+export function isHumanOverlapCloseReason(value: unknown): value is HumanOverlapCloseReason {
+  return (HUMAN_OVERLAP_CLOSE_REASONS as readonly string[]).includes(value as string);
+}
+
+export type OverlapErrorCode =
+  | "NOT_FOUND"
+  | "ALREADY_CLOSED"
+  | "INVALID_SETTINGS"
+  // JOB 3061 · H2: Zielzustand nicht setzbar bzw. Abschlussgrund fehlt/nicht wählbar. Ohne Eintrag
+  // in `STATUS_BY_CODE` (services/app/src/http.ts) fällt der Code auf 400 — und 400 ist hier die
+  // Wahrheit: die Anfrage selbst ist mangelhaft, nicht der Zustand des Eintrags.
+  | "INVALID_STATUS";
 
 export class OverlapError extends Error {
   readonly code: OverlapErrorCode;

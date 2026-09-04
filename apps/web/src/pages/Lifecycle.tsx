@@ -1,13 +1,44 @@
+// ================================================================================================
+// JOB 3061 · H2 — REITER „ERNEUT": DIESELBE FLÄCHE WIE „OFFEN", NUR MIT ANDERER FRAGE.
+// ================================================================================================
+//
+// Links die Liste der fälligen Objekte, rechts die Karte des gewählten — „Noch gültig" (grün) und
+// „Erneut prüfen". Der Banner „Stimmt das noch?", der Lernpfad und die Erklärtexte liegen im
+// „?"-Menü dieses Reiters; „Objekt ansehen", „Wissen nutzen" und „Zur Validierung" im „···".
+// Unter der Liste klappt EINE Zeile die Anlagenänderung auf.
+//
+// EHRLICHKEIT — die eine Stelle, an der dieser Reiter vom Auftragstext abweicht und warum:
+// Der Auftrag nennt zwei Knöpfe, „Noch gültig (→ neue Version)" und „Erneut prüfen (→ revalidate)".
+// Es gibt serverseitig genau EINEN Weg: `endpoints.ko.act(id, { action: "revalidate" })` — er
+// bestätigt die Gültigkeit und setzt die Frist neu. Einen Endpunkt „neue Version anlegen" gibt es
+// nicht. Deshalb trägt „Noch gültig" unverändert diesen einen Weg (das tat der bisherige Knopf
+// desselben Namens auch), und „Erneut prüfen" führt auf den bereits vorhandenen Weg in den
+// Prüffluss (`revalidationCta`). Zwei Knöpfe mit demselben Serveraufruf wären eine Scheinfunktion.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, X } from "lucide-react";
-import { useState } from "react";
+import { Check, HelpCircle } from "lucide-react";
+import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
 import { useKos, useLearningPath, useLearningProgress, useLifecyclePending } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
-import { StatusPill } from "../components/trust";
-import { Button, Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { PruefenKopf } from "../components/pruefen/PruefenKopf";
+import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
+import {
+  PruefenHilfeBlock,
+  PruefenMenue,
+  PruefenMenueLink,
+  PruefenMenueTrenner,
+} from "../components/pruefen/PruefenMenue";
+import { MenueSymbol, PruefenKnopf, PruefenPille } from "../components/pruefen/PruefenPaar";
+import {
+  PruefenErstfehler,
+  PruefenNichtFrisch,
+  PruefenPlatzhalter,
+  PruefenSatz,
+} from "../components/pruefen/PruefenZustand";
+import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
+import { Button, cx } from "../components/ui";
 import { completedCount, isStepDone, progressPercent } from "../lib/learningPath";
 import {
   revalidationCta,
@@ -17,9 +48,12 @@ import {
 } from "../lib/revalidation";
 import { phaseLabelKey } from "../lib/taskAction";
 
+const QUITTUNG_MS = 3000;
+
 export function Lifecycle(): JSX.Element {
   const { t } = useTranslation();
   const qc = useQueryClient();
+  const navigate = useNavigate();
   const { user } = useSession();
   const role = user?.role ?? "viewer";
 
@@ -30,14 +64,13 @@ export function Lifecycle(): JSX.Element {
   const progress = useLearningProgress(pathId);
   const done = progress.data ?? [];
 
-  // SCRUM-278: letzte erfolgreiche Revalidierung → Rückmeldung + nächster Schritt (KO ansehen/nutzen).
+  const [aktivId, setAktivId] = useState<string | null>(null);
   const [lastRevalidated, setLastRevalidated] = useState<{
     id: string;
     title: string;
     found: boolean;
   } | null>(null);
   const confirm = useMutation({
-    // SCRUM-278: KO-Kontext mitführen → Rückmeldung kann das betroffene KO benennen/verlinken.
     mutationFn: ({ id }: { id: string; title: string; found: boolean }) =>
       endpoints.ko.act(id, { action: "revalidate" }),
     onSuccess: (_data, vars) => {
@@ -49,6 +82,13 @@ export function Lifecycle(): JSX.Element {
   // SCRUM-146: Asset-Change-Auslöser → markiert gekoppelte KOs „prüfen".
   const [assetRef, setAssetRef] = useState("");
   const [note, setNote] = useState<string | null>(null);
+  useEffect(() => {
+    if (note === null) {
+      return;
+    }
+    const timer = window.setTimeout(() => setNote(null), QUITTUNG_MS);
+    return () => window.clearTimeout(timer);
+  }, [note]);
   const assetChanged = useMutation({
     mutationFn: (ref: string) => endpoints.lifecycle.assetChanged(ref),
     onSuccess: (ids) => {
@@ -65,148 +105,32 @@ export function Lifecycle(): JSX.Element {
     onSuccess: () => void qc.invalidateQueries({ queryKey: ["learning-progress", pathId] }),
   });
 
-  return (
-    <div className="mx-auto max-w-3xl space-y-8">
-      <PageHeader kicker={t("lcy.kicker")} title={t("nav.lifecycle")} pageKey="lebenszyklus" />
+  const ids = query.data ?? [];
+  // bens Korrekturpflicht 2 (Runde 4): Die Fälligkeitsliste liefert nur IDs — Titel, Anlage und
+  // Status stehen im Objektabruf (`revalidationView`). Ohne dessen Antwort stand hier die rohe UUID
+  // mit dem Vermerk „Objekt nicht auffindbar", obwohl das Objekt nur noch nicht geladen war.
+  const lage = flaechenZustand(query, abhaengigeQuelle(kos));
+  const bestand = lage.lage === "bestand";
+  const aktivIdEffektiv = bestand ? (ids.find((id) => id === aktivId) ?? ids[0] ?? null) : null;
 
-      {/* Pending-Revalidierung (bestehend, unverändert) */}
-      <div>
-        <SectionLabel>{t("lcy.pendingTitle")}</SectionLabel>
-        <div className="mb-3 rounded-card border border-trust-warn-fill/30 bg-trust-warn-bg p-3 text-[13px] text-trust-warn-text">
-          {t("lcy.banner")}
-        </div>
-        {/* SCRUM-278: Rückmeldung nach Revalidierung + nächster Schritt (KO ansehen / optional nutzen). */}
-        {lastRevalidated ? (
-          <Card className="mb-3 border-trust-pos-fill/40 bg-trust-pos-bg">
-            <div className="flex items-start justify-between gap-2">
-              <div className="min-w-0">
-                <div className="text-[13px] font-semibold text-trust-pos-text">
-                  {t("lcy.revalSaved")}
-                </div>
-                <p className="mt-0.5 truncate text-[12.5px] text-trust-pos-text/90">
-                  {lastRevalidated.title}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setLastRevalidated(null)}
-                className="shrink-0 text-trust-pos-text/70 hover:text-trust-pos-text"
-              >
-                <X size={16} />
-              </button>
-            </div>
-            <div className="mt-2 flex flex-wrap gap-2">
-              {revalidationNextSteps(lastRevalidated).map((s) => (
-                <Link
-                  key={s.to}
-                  to={s.to}
-                  className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-                >
-                  {t(s.labelKey)} <span aria-hidden="true">→</span>
-                </Link>
-              ))}
-            </div>
-          </Card>
-        ) : null}
-        <QueryState query={query} emptyText={t("lcy.empty")}>
-          {(ids) => (
-            <div className="space-y-3">
-              {ids.map((id) => {
-                // SCRUM-254: ID gegen geladenen Bestand auflösen → Titel, Anlagenbezug, Status, Schritt.
-                const view = revalidationView(id, kos.data ?? []);
-                // SCRUM-268: CTA in den bestehenden Validierungsfluss (null bei nicht auflösbarem KO).
-                const cta = revalidationCta(view);
-                return (
-                  <Card key={id} className="flex items-center gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex flex-wrap items-center gap-1.5">
-                        <StatusPill status="revalidierung" />
-                        {/* SCRUM-299: Knowledge-OS-Phase — fällige Revalidierung ist „Aktuell halten"-Arbeit
-                            (gleiche Kreis-Sprache wie Start/MyTasks); noch nicht freigegebenes KO → „Validieren". */}
-                        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9px] uppercase tracking-wider text-muted-2">
-                          {t("task.phaseLabel")} {t(phaseLabelKey(revalidationPhase(view)))}
-                        </span>
-                        {view.asset ? (
-                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                            {t("lcy.revalAsset")}: {view.asset}
-                          </span>
-                        ) : null}
-                      </div>
-                      <Link
-                        to={`/wissen/${id}`}
-                        className="block truncate text-[13.5px] font-medium text-text hover:text-ink"
-                      >
-                        {view.title}
-                      </Link>
-                      {/* SCRUM-254: ehrliche nächste Handlung + Hinweis, wenn Details fehlen. */}
-                      <div className="mt-0.5 text-[11.5px] text-muted">
-                        <span className="font-mono uppercase tracking-wider text-muted-2">
-                          {t("lcy.revalNextLabel")}:
-                        </span>{" "}
-                        {t(`lcy.revalNext.${view.nextStep}`)}
-                      </div>
-                      {!view.found ? (
-                        <div className="mt-0.5 text-[11px] text-trust-warn-text">
-                          {t("lcy.revalMissing")}
-                        </div>
-                      ) : null}
-                      {/* SCRUM-268: CTA in den bestehenden Validierungs-/Review-Fluss (kein Auto-Confirm). */}
-                      {cta ? (
-                        <Link
-                          to={cta.href}
-                          className="mt-1.5 inline-flex items-center gap-1 rounded-btn bg-ink px-2.5 py-1 text-[12px] font-semibold text-white hover:opacity-90"
-                        >
-                          {t(cta.labelKey)} <span aria-hidden="true">→</span>
-                        </Link>
-                      ) : null}
-                    </div>
-                    <Button
-                      variant="primary"
-                      disabled={confirm.isPending}
-                      onClick={() => confirm.mutate({ id, title: view.title, found: view.found })}
-                    >
-                      {t("lcy.stillValid")}
-                    </Button>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </QueryState>
-      </div>
-
-      {/* SCRUM-146: Anlagenänderung melden → Revalidierung anstoßen */}
-      <div>
-        <SectionLabel>{t("lcy.assetTitle")}</SectionLabel>
-        <Card className="space-y-2">
-          <p className="text-[13px] text-muted">{t("lcy.assetHint")}</p>
-          <div className="flex flex-wrap items-center gap-2">
-            <input
-              value={assetRef}
-              onChange={(e) => setAssetRef(e.target.value)}
-              placeholder={t("lcy.assetPlaceholder")}
-              className="h-9 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
-            />
-            <Button
-              variant="primary"
-              disabled={assetChanged.isPending || assetRef.trim().length === 0}
-              onClick={() => assetChanged.mutate(assetRef.trim())}
-            >
-              {t("lcy.assetTrigger")}
-            </Button>
-          </div>
-          {note ? <p className="text-[12.5px] text-trust-warn-text">{note}</p> : null}
-        </Card>
-      </div>
-
-      {/* SCRUM-145: Rollenspezifischer Lernpfad */}
-      <div>
-        <SectionLabel>{t("lcy.pathTitle", { role: t(`role.name.${role}`) })}</SectionLabel>
+  const hilfeMenue = (
+    <PruefenMenue
+      kennung="hilfe"
+      beschriftung={t("pruefen.menu.help")}
+      symbol={<HelpCircle size={16} aria-hidden="true" />}
+      ausrichtung="links"
+      breite="w-[22rem]"
+    >
+      <PruefenHilfeBlock titel={t("lcy.pendingTitle")}>
+        <p>{t("lcy.banner")}</p>
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
+      <PruefenHilfeBlock titel={t("lcy.pathTitle", { role: t(`role.name.${role}`) })}>
         {path.isLoading ? (
-          <Card className="text-center text-sm text-muted">{t("state.loading")}</Card>
+          <p>{t("state.loading")}</p>
         ) : path.data ? (
-          <Card className="space-y-3">
-            <div className="flex items-center gap-3">
+          <>
+            <div className="flex items-center gap-2">
               <div className="h-2 flex-1 overflow-hidden rounded-full bg-page">
                 <div
                   className="h-full rounded-full bg-brand"
@@ -217,44 +141,210 @@ export function Lifecycle(): JSX.Element {
                 {completedCount(path.data, done)}/{path.data.steps.length}
               </span>
             </div>
-            <ol className="space-y-2">
+            <ol className="mt-1 space-y-1.5">
               {path.data.steps.map((step, i) => {
                 const stepDone = isStepDone(done, step.id);
                 return (
-                  <li key={step.id} className="flex items-center gap-3">
+                  <li key={step.id} className="flex items-center gap-2">
                     <button
                       type="button"
                       disabled={stepDone || complete.isPending}
                       onClick={() => complete.mutate(step.id)}
-                      className={`grid h-6 w-6 shrink-0 place-items-center rounded-btn border ${
+                      title={stepDone ? t("lcy.stepDone") : t("lcy.stepComplete")}
+                      className={cx(
+                        "grid h-5 w-5 shrink-0 place-items-center rounded-btn border",
                         stepDone
                           ? "border-trust-pos-fill bg-trust-pos-bg text-trust-pos-text"
-                          : "border-hairline text-muted hover:bg-hairline-soft"
-                      }`}
-                      title={stepDone ? t("lcy.stepDone") : t("lcy.stepComplete")}
+                          : "border-hairline text-muted hover:bg-hairline-soft",
+                      )}
                     >
                       {stepDone ? (
-                        <Check size={14} />
+                        <Check size={12} aria-hidden="true" />
                       ) : (
-                        <span className="text-[11px]">{i + 1}</span>
+                        <span className="text-[10px]">{i + 1}</span>
                       )}
                     </button>
-                    <span
-                      className={`text-[13.5px] ${
-                        stepDone ? "text-muted line-through" : "text-text"
-                      }`}
-                    >
+                    <span className={stepDone ? "text-muted line-through" : "text-text"}>
                       {step.title}
                     </span>
                   </li>
                 );
               })}
             </ol>
-          </Card>
+          </>
         ) : (
-          <Card className="border-dashed text-center text-sm text-muted">{t("lcy.pathEmpty")}</Card>
+          <p>{t("lcy.pathEmpty")}</p>
         )}
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
+      <PruefenHilfeBlock titel={t("lcy.assetTitle")}>
+        <p>{t("lcy.assetHint")}</p>
+      </PruefenHilfeBlock>
+    </PruefenMenue>
+  );
+
+  return (
+    <div className="mx-auto max-w-[1040px]">
+      <PruefenKopf aktiv="erneut" hilfe={hilfeMenue} />
+      <div data-testid="pruefen-flaeche" className="flex flex-col items-start gap-6 lg:flex-row">
+        {/* ---- Die Liste, gleiche Bauform wie die Warteschlange in „Offen" ------------------- */}
+        <div className="w-full shrink-0 lg:w-[260px]">
+          {lage.auffrischungGescheitert ? <PruefenNichtFrisch /> : null}
+          {lage.lage === "laedt" ? <PruefenPlatzhalter /> : null}
+          {/* „Erneut laden" holt BEIDE Abrufe nach — die Liste steht auf beiden. */}
+          {lage.lage === "erstfehler" ? (
+            <PruefenErstfehler
+              onRetry={() => {
+                void qc.invalidateQueries({ queryKey: ["lifecycle", "pending"] });
+                void qc.invalidateQueries({ queryKey: ["kos"] });
+              }}
+            />
+          ) : null}
+          {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("lcy.empty")}</PruefenSatz> : null}
+          {bestand && ids.length > 0 ? (
+            <ul data-testid="pruefen-warteschlange" className="flex flex-col gap-1">
+              {ids.map((id) => {
+                const view = revalidationView(id, kos.data ?? []);
+                const ist = aktivIdEffektiv === id;
+                return (
+                  <li key={id} data-testid="lifecycle-row">
+                    <button
+                      type="button"
+                      data-testid="pruefen-warteschlange-eintrag"
+                      aria-current={ist ? "true" : undefined}
+                      onClick={() => setAktivId(id)}
+                      className={cx(
+                        "block w-full rounded-[9px] border px-[12px] py-[10px] text-left text-[13.5px] leading-[1.35]",
+                        ist
+                          ? "border-hairline bg-surface font-semibold text-text"
+                          : "border-transparent text-muted hover:bg-hairline-soft",
+                      )}
+                    >
+                      <span data-text="titel">{view.title}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+          {/* Auftrag §5b: EINE Zeile unter der Liste, die Feld + Auslöser aufklappt. */}
+          <details data-testid="pruefen-anlage" className="mt-3">
+            <summary className="cursor-pointer list-none text-[12.5px] font-semibold text-muted hover:text-text">
+              {t("lcy.assetToggle")}
+            </summary>
+            <div className="mt-2 space-y-2">
+              <input
+                value={assetRef}
+                onChange={(e) => setAssetRef(e.target.value)}
+                placeholder={t("lcy.assetPlaceholder")}
+                aria-label={t("lcy.assetPlaceholder")}
+                className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
+              />
+              <Button
+                variant="primary"
+                disabled={assetChanged.isPending || assetRef.trim().length === 0}
+                onClick={() => assetChanged.mutate(assetRef.trim())}
+              >
+                {t("lcy.assetTrigger")}
+              </Button>
+              {/* Die Quittung steht 3 s und verschwindet dann — sie ist kein Dauertext. */}
+              {note ? (
+                <p data-testid="pruefen-quittung" className="text-[12.5px] text-trust-warn-text">
+                  {note}
+                </p>
+              ) : null}
+            </div>
+          </details>
+        </div>
+
+        {/* ---- Die Karte des gewählten Objekts ----------------------------------------------- */}
+        <div className="min-w-0 flex-1">{aktivIdEffektiv ? karte(aktivIdEffektiv) : null}</div>
       </div>
     </div>
   );
+
+  // Zeichenfunktion, keine innere Komponente (Begründung: `Validation.tsx`).
+  function karte(id: string): JSX.Element {
+    const view = revalidationView(id, kos.data ?? []);
+    const cta = revalidationCta(view);
+    return (
+      <div
+        data-testid="pruefen-karte"
+        className="overflow-hidden rounded-[14px] border border-hairline bg-surface shadow-tile"
+      >
+        <div className="flex flex-col gap-[12px] px-[28px] pb-[20px] pt-[24px]">
+          <div className="flex items-center gap-2">
+            <PruefenPille ton="warn" kennung="art">
+              <span className="uppercase">{t("status.revalidierung")}</span>
+            </PruefenPille>
+            <span data-text="meta" className="text-[12.5px] text-muted">
+              {[t(phaseLabelKey(revalidationPhase(view))), view.asset].filter(Boolean).join(" · ")}
+            </span>
+            <span className="ml-auto">
+              <PruefenMenue
+                kennung="karte"
+                beschriftung={t("pruefen.menu.actions")}
+                symbol={<MenueSymbol />}
+              >
+                {/* „Objekt ansehen" und „Wissen nutzen" kommen aus dem VORHANDENEN Weg
+                    `revalidationNextSteps` — kein zweiter Weg zu denselben zwei Zielen. */}
+                {revalidationNextSteps({ id, title: view.title, found: view.found }).map((s) => (
+                  <PruefenMenueLink key={s.to} to={s.to}>
+                    {t(s.labelKey)}
+                  </PruefenMenueLink>
+                ))}
+                {cta ? <PruefenMenueLink to={cta.href}>{t(cta.labelKey)}</PruefenMenueLink> : null}
+              </PruefenMenue>
+            </span>
+          </div>
+          <Link
+            to={`/wissen/${id}`}
+            data-text="titel"
+            className="text-[20px] font-[650] leading-snug tracking-[-0.2px] text-text underline-offset-4 hover:underline"
+          >
+            {view.title}
+          </Link>
+          <PruefenMehr kennung="erneut">
+            <PruefenMehrZeile beschriftung={t("lcy.revalNextLabel")}>
+              {t(`lcy.revalNext.${view.nextStep}`)}
+            </PruefenMehrZeile>
+            {view.asset ? (
+              <PruefenMehrZeile beschriftung={t("lcy.revalAsset")}>{view.asset}</PruefenMehrZeile>
+            ) : null}
+            {!view.found ? (
+              <PruefenMehrBlock beschriftung={t("pruefen.mehr.zustand")}>
+                {t("lcy.revalMissing")}
+              </PruefenMehrBlock>
+            ) : null}
+            {lastRevalidated ? (
+              <PruefenMehrBlock beschriftung={t("pruefen.lastDecision")}>
+                <span data-testid="pruefen-zuletzt">
+                  {t("lcy.revalSaved")} — {lastRevalidated.title}
+                </span>
+              </PruefenMehrBlock>
+            ) : null}
+          </PruefenMehr>
+        </div>
+        <div
+          data-testid="pruefen-fussband"
+          className="flex flex-wrap items-center gap-[10px] border-t border-hairline bg-page px-[28px] py-[16px]"
+        >
+          <PruefenKnopf
+            ton="gut"
+            kennung="noch-gueltig"
+            disabled={confirm.isPending}
+            onClick={() => confirm.mutate({ id, title: view.title, found: view.found })}
+          >
+            <Check size={14} aria-hidden="true" />
+            {t("lcy.stillValid")}
+          </PruefenKnopf>
+          {cta ? (
+            <PruefenKnopf kennung="erneut-pruefen" onClick={() => navigate(cta.href)}>
+              {t(cta.labelKey)}
+            </PruefenKnopf>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 }

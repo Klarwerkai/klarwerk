@@ -1095,6 +1095,10 @@ export const ERLAUBTE_FEHLERCODES: ReadonlySet<string> = new Set([
   "INVALID_OWNERSHIP",
   "INVALID_SETTINGS",
   "INVALID_SOURCE",
+  // JOB 3061: der 400er der Duplikat-Statusaktion (`routes/overlap-routes.ts:223`, `:232`) —
+  // fehlender/nicht wählbarer Zielzustand, fehlender oder systemischer Abschlussgrund. Ein
+  // gewollter Domänenfehler, der ohnehin als Antwortcode an den Client geht; er darf ins Protokoll.
+  "INVALID_STATUS",
   "INVALID_TYPE",
   "INVALID_UPLOAD_LIMITS",
   "MISSING_DOCUMENT_ANCHOR",

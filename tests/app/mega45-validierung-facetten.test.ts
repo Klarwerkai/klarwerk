@@ -114,11 +114,18 @@ describe("mega45 H · die Filterschiene der Validierung", () => {
   it("H-2: die Schiene ueberlebt Lade- und Fehlerzustand (Ableitung ausserhalb QueryState)", () => {
     // Die Bibliothek hat diesen Rueckschritt bereits benannt und vermieden: laege die Ableitung im
     // children-Slot, verschwaende die Schiene bei jedem Lade- und Fehlerzustand.
+    //
+    // JOB 3061 · H2: `QueryState` gibt es auf dieser Seite nicht mehr — die vier Lagen (laden,
+    // leer, Erstfehler, Bestand) zeichnet die Fläche selbst (`flaechenZustand`). Die MESSUNG ist
+    // dieselbe geblieben: die Ableitung steht VOR der Fläche, die die Lagen unterscheidet, und die
+    // Schiene wird deshalb in keiner davon abgeräumt.
     const ableitung = VALIDATION.indexOf("const facetGroups = facetRailGroups(");
-    const queryState = VALIDATION.indexOf("<QueryState");
+    const flaeche = VALIDATION.indexOf('data-testid="pruefen-flaeche"');
     expect(ableitung).toBeGreaterThan(0);
-    expect(queryState).toBeGreaterThan(0);
-    expect(ableitung).toBeLessThan(queryState);
+    expect(flaeche).toBeGreaterThan(0);
+    expect(ableitung).toBeLessThan(flaeche);
+    // Und die Lagen-Unterscheidung selbst ist da — sonst wäre „vor der Fläche" trivial erfüllt.
+    expect(VALIDATION).toContain("flaechenZustand(query)");
   });
 
   it("H-3: die Facettenwerte kommen aus dem Objekt selbst — keine erfundene Dimension", () => {

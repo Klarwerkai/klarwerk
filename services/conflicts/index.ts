@@ -46,6 +46,13 @@ export {
   normalizeOverlapSettings,
 } from "./src/overlap-settings";
 export { OverlapError } from "./src/overlap-types";
+// JOB 3061 · H2 (bens Korrekturpflicht 1, Runde 5): der Menüweg „Status setzen" braucht an der
+// Modulgrenze zweierlei — die WÄHLBAREN Abschlussgründe (die Route bietet nichts Systemisches an)
+// und das Prädikat, mit dem der rohe Drahtwert geprüft wird, BEVOR er den Dienst erreicht.
+export {
+  HUMAN_OVERLAP_CLOSE_REASONS,
+  isHumanOverlapCloseReason,
+} from "./src/overlap-types";
 export type {
   OverlapEntry,
   OverlapInput,
@@ -53,6 +60,7 @@ export type {
   OverlapOrigin,
   OverlapResolution,
   OverlapResolutionReason,
+  HumanOverlapCloseReason,
   OverlapDetector,
   OverlapErrorCode,
 } from "./src/overlap-types";

@@ -200,26 +200,17 @@ const FREMDE: readonly Fremdrelation[] = [
       "GELESEN: die nummerierte Schrittliste `GAP_RESCUE_STEPS` — dieselbe `<ol>` mit " +
       "`labelKey`/`hintKey` je Schritt.",
   },
-  // Die drei folgenden teilen sich denselben Helfer und dieselbe Groesse 42; bei Gleichstand
-  // ordnet die Messung nach Pfad, deshalb stehen sie hier in dieser Reihenfolge.
-  {
-    dritt: "apps/web/src/pages/Conflicts.tsx",
-    groessen: [42],
-    was:
-      "GELESEN: der Helfer `vhelp` (`reviewHelp` -> `HelpTip`), zeichengleich mit " +
-      "`KnowledgeDetail:313`. Mit `Start` und `Validation` sind es VIER Kopien im Baum.",
-  },
+  // JOB 3061 (H2): DIE VIER `vhelp`-KOPIEN SIND ZWEI GEWORDEN — und das ist ein ECHTER Abbau,
+  // keine Verschiebung. Die Pruefflaeche fuehrt die ?-Hilfen nicht mehr als ein Dutzend einzelner
+  // Fragezeichen ueber die Karte verteilt, sondern EINMAL im „?"-Menue neben dem Titel (Pages-Art,
+  // design/klarwerk/Menues.dc.html). Damit brauchen `Conflicts.tsx` und `Validation.tsx` den
+  // Helfer nicht mehr: sie lesen dieselben Schluessel aus derselben Quelle (`lib/reviewHelp.ts`,
+  // `REVIEW_HELP_TOPICS`) und rendern sie als Bloecke des Menues. `Start.tsx` und
+  // `KnowledgeDetail.tsx` haben ihn unveraendert — dort ist die Fassung nicht angefasst worden.
   {
     dritt: "apps/web/src/pages/Start.tsx",
     groessen: [42],
-    was: "GELESEN: derselbe Helfer `vhelp`.",
-  },
-  {
-    dritt: "apps/web/src/pages/Validation.tsx",
-    groessen: [42, 35, 35, 29, 29],
-    was:
-      "GELESEN: derselbe Helfer `vhelp`. Dazu ein Block, die Abbrechen-Flaeche " +
-      "`val.feedback.cancel` und zwei Auswahllisten (`ktype.`).",
+    was: "GELESEN: derselbe Helfer `vhelp` wie in `KnowledgeDetail:313`.",
   },
   {
     dritt: "apps/web/src/lib/captureFromFile.ts",
@@ -228,6 +219,16 @@ const FREMDE: readonly Fremdrelation[] = [
       "GEMESSEN: zwei `FirstStatement`-Bloecke zu je 36 Knoten, die `Capture` an zwei Stellen " +
       "(1128 und 1174) mit dem Auslese-Helfer teilt — dieselben zwei, die auch in " +
       "`BodyExtractPanel` stehen.",
+  },
+  // Die Datei ist mit dem Wegfall von `vhelp` (42 Knoten) in der Reihenfolge nach hinten gerutscht:
+  // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35.
+  {
+    dritt: "apps/web/src/pages/Validation.tsx",
+    groessen: [35, 35, 29, 29],
+    was:
+      "GELESEN: ein Block, die Abbrechen-Flaeche `val.feedback.cancel` und zwei Auswahllisten " +
+      "(`ktype.`). Der Helfer `vhelp` steht hier seit JOB 3061 H2 NICHT mehr — die ?-Hilfen " +
+      "wohnen im „?“-Menue der Flaeche.",
   },
   {
     dritt: "apps/web/src/app/NavGuardContext.tsx",

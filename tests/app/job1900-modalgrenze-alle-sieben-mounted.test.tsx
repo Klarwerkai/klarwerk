@@ -332,26 +332,46 @@ describe("JOB 1900 · die Grenze gilt für alle sieben modalen Flächen — je F
     await grenzeGiltFuer(knopf);
   });
 
-  it("K1 · pages/Conflicts.tsx:642 — Fokus zurück UND Hintergrund gesperrt", async () => {
+  // ================================================================================================
+  // K1/K2 · ABGELÖST — die zwei Gegenüberstellungs-Modale gibt es nicht mehr (JOB 3061 · H2).
+  // ================================================================================================
+  //
+  // Die Fälle K1 und K2 maßen die Modalgrenze der Pop-ups „Beide gegenüberstellen" auf dem
+  // Konflikt- und dem Duplikatbrett. Beide Pop-ups zeigten DIESELBEN zwei Objekte, die die Karte
+  // darunter schon zeigte — eine dritte Darstellung derselben Sache. Mit JOB 3061 IST die Fläche
+  // die Gegenüberstellung (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html): zwei Karten
+  // nebeneinander, der Unterschied farbig markiert.
+  //
+  // Eine Grenze, die es nicht mehr zu prüfen gibt, wird nicht stillschweigend gestrichen: dieser
+  // Fall hält fest, dass die zwei Flächen WIRKLICH weg sind (kein `aria-modal` mehr auf den
+  // Brettern) und dass der Ersatz WIRKLICH da ist (das Kartenpaar). Verschöbe jemand die
+  // Gegenüberstellung zurück in ein Modal ohne Grenze, wäre dieser Fall rot — dieselbe Deckung
+  // wie vorher, an der Stelle, an der die Sache jetzt steht.
+  //
+  // Die übrigen fünf Fälle dieser Datei sind unverändert; die Grenze selbst ist unangetastet.
+  it("K1/K2 · Konflikt- und Duplikatbrett tragen KEINE modale Gegenüberstellung mehr — die Fläche ist sie", async () => {
+    for (const [seite, kennung] of [
+      [Conflicts, "con"],
+      [Duplicates, "dup"],
+    ] as const) {
+      await render(createElement(seite));
+      expect(
+        container.querySelectorAll('[aria-modal="true"]'),
+        `${kennung}: eine modale Fläche ist zurück, ohne Fall für ihre Grenze`,
+      ).toHaveLength(0);
+      // Und der Ersatz steht wirklich da — sonst wäre die Abwesenheit nur ein leeres Brett.
+      expect(
+        container.querySelectorAll('[data-testid="pruefen-paar-karte-a"]'),
+        `${kennung}: das Kartenpaar fehlt — dann ist die Gegenüberstellung wirklich verloren`,
+      ).toHaveLength(1);
+      expect(container.querySelectorAll('[data-testid="pruefen-paar-karte-b"]')).toHaveLength(1);
+      await act(async () => {
+        root.unmount();
+      });
+      container.remove();
+    }
+    // Der letzte Durchlauf hängt den Container ab; `afterEach` braucht wieder einen.
     await render(createElement(Conflicts));
-    const vergleich = [...container.querySelectorAll<HTMLElement>("button")].find(
-      (b) => (b.textContent ?? "").trim() === i18n.t("con.compareOpen"),
-    );
-    expect(vergleich, "der Vergleichsknopf aus Conflicts.tsx:465 ist da").toBeDefined();
-    (vergleich as HTMLElement).focus();
-    await klick(vergleich as HTMLElement);
-    await grenzeGiltFuer(vergleich as HTMLElement);
-  });
-
-  it("K2 · pages/Duplicates.tsx:383 — Fokus zurück UND Hintergrund gesperrt", async () => {
-    await render(createElement(Duplicates));
-    const vergleich = [...container.querySelectorAll<HTMLElement>("button")].find(
-      (b) => (b.textContent ?? "").trim() === i18n.t("dup.compareOpen"),
-    );
-    expect(vergleich, "der Vergleichsknopf aus Duplicates.tsx:283 ist da").toBeDefined();
-    (vergleich as HTMLElement).focus();
-    await klick(vergleich as HTMLElement);
-    await grenzeGiltFuer(vergleich as HTMLElement);
   });
 
   it("K5 · pages/Capture.tsx:5941 — Fokus zurück UND Hintergrund gesperrt", async () => {

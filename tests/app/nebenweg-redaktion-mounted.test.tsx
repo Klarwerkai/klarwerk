@@ -40,6 +40,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         settings: ok(() => ({ minConfidence: 0.5 })),
       },
       conflicts: { list: ok(() => daten.konflikte) },
+      // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus echten Abrufen.
+      validation: { board: ok(() => []), overview: ok(() => []) },
+      lifecycle: { pending: ok(() => []) },
       ko: { list: ok(() => KOS) },
       gaps: { list: ok(() => []), summary: ok(() => ({ total: 0, byPriority: {} })) },
       directory: { list: ok(() => []) },
@@ -231,9 +234,9 @@ describe("JOB 1125 · U-DUP — die Duplikate-Seite macht aus dem leeren Feld ei
   });
 
   it("U-4: der Hinweis ist übersetzt, nicht deutsch mit Fallback", async () => {
-    // Die Texte liegen (mangels Schreibrecht an `i18n.ts`) lokal in der Seite. Genau deshalb muss
-    // dieser Fall existieren: eine lokale Textkarte ist die Bauform, bei der Übersetzungen am
-    // leichtesten vergessen werden.
+    // JOB 3061: die Texte sind aus den lokalen Dreisprachen-Registern der beiden Seiten nach
+    // `i18n.ts` gewandert (der von JOB 1125/2241 benannte enge Rest) — WORTGLEICH und weiterhin
+    // getrennt je Seite. Dieser Fall bleibt: er misst die Übersetzung, nicht ihren Wohnort.
     daten.duplikate = [DUPLIKAT_REDIGIERT];
     await i18n.changeLanguage("en");
     await mount(Duplicates, "/duplikate");

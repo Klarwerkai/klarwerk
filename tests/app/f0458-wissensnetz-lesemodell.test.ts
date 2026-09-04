@@ -231,7 +231,8 @@ describe("F-0458 · M6: der Produktionsweg der Route", () => {
 //
 // Dieser Fall SICHERT deshalb nichts zu, was das Produkt nicht verspricht. Er hält den
 // gemessenen Zustand fest und schreibt ihn ins Protokoll — dieselbe Bauform, die
-// `tests/design/zielbild-validierung.test.ts:414-421` für offene Werte verwendet. Eine
+// `tests/design/zielbild-h2-pruefen.test.ts` für offene Werte verwendet (bis JOB 3061 H2 stand
+// hier `zielbild-validierung.test.ts:414-421`; jene Messung ist abgeloest). Eine
 // Zusicherung daraus zu machen wäre eine erfundene Anforderung.
 describe("F-0458 · M7: die Verknüpfungslage bei beschnittener Themenliste", () => {
   it("beschnitten heisst Untergrenze — und die Sicht sagt es an", async () => {

@@ -1,36 +1,30 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// JOB 1100 · D-033 — DIE PRÜFKARTE TRÄGT WENIGER ETIKETTEN, OHNE DASS EINE ANGABE VERSCHWINDET
+// JOB 1100 · D-033 → JOB 3061 · H2 — DIE ANGABEN DER PRÜFKARTE, AN IHREN NEUEN ORTEN.
 // ================================================================================================
 //
-// GEGENSTAND (Designkatalog Block 2, D-033). Die Etikettenzeile der Prüfkarte trägt drei belegte
-// Redundanzen:
+// WAS DIESER WÄCHTER URSPRÜNGLICH HIELT (D-033): Die Etikettenzeile der Prüfkarte trug acht
+// Plaketten nebeneinander, darunter drei belegte Redundanzen — die nichtssagende Status-Pille, das
+// doppelte Paar „Vertrauen N" / „X von Y grün" und eine unbeschriftete Kategorie. Er pinnte die
+// Verdichtung und dass dabei KEINE Angabe verschwindet.
 //
-//   (a) Die **Status-Pille** sagt auf dieser Seite fast nichts: Das Board holt ausschliesslich
-//       offene Objekte (`services/validation/src/service.ts:327`, `status: "offen"`). Dieselben
-//       Felder werden zugleich feiner ausgewertet — von `reviewWorkView`, dessen Plakette bis
-//       hierher im `<details>` versteckt lag. Die gröbere Aussage stand vorn, die feinere hinten.
-//   (b) **„Vertrauen N"** und **„X von Y grün"** standen als zwei Abzeichen nebeneinander. Bei
-//       null Bewertungen sagen sie buchstäblich dasselbe. Sie zusammenzulegen ist verlustfrei —
-//       ersatzloses Streichen wäre es NICHT: „Vertrauen" trägt zusätzlich Gelb-Stimmen,
-//       Ask-Rückmeldungen und den Konfliktabzug, die nirgends sonst auf der Karte erscheinen.
-//   (c) Die **Kategorie** stand ohne Beschriftungswort und las sich dadurch wie ein sechster
-//       Prüfzustand.
+// WAS SICH MIT JOB 3061 GEÄNDERT HAT — und warum dieser Wächter bleibt: Die Etikettenzeile selbst
+// ist entfallen (`data-testid="validation-card-labels"` gibt es nicht mehr). Das Mockup
+// `design/klarwerk/Pruefen.dc.html` zeigt auf der Karte Pille, Meta, Titel, Text, Quellen-Chips und
+// das Fußband — sonst nichts. Alle Prüfsignale wohnen im aufklappbaren „Mehr" darunter.
 //
-// WAS DIESER WÄCHTER FESTHÄLT — und was ausdrücklich NICHT. Er prüft die vier Aussagen von D-033
-// am GEMOUNTETEN Board und zusätzlich, dass **keine** Angabe dabei verlorengegangen ist. Er prüft
-// NICHT die Gesamtzahl „acht", die der Designer an einem Live-Eintrag gezählt hat: Diese Zahl
-// hängt an bedingten Abzeichen (rote Stimmen, veraltete Stimmen, KI-Prüfung, Erstellungsdatum),
-// die je Objekt kommen und gehen. Gepinnt wird stattdessen die belastbare Grösse — die
-// Etikettenzahl **je festem Fixture** und die Reduktion um genau eins durch die Zusammenlegung.
+// Die FRAGE von D-033 ist damit nicht beantwortet, sondern verschoben: „Ist eine Angabe beim
+// Aufräumen verlorengegangen?" Genau die stellt diese Datei weiter — nur am neuen Ort. Sie prüft
+// zusätzlich die Zusicherung, die H2 neu macht: GESCHLOSSEN steht keine dieser Angaben auf der
+// Fläche, AUFGEKLAPPT stehen sie alle da. Die drei Aussagen von D-033 (Prüfstand statt
+// Status-Pille · Vertrauen und Stimmen zusammen · Kategorie beschriftet) bleiben wörtlich erhalten.
 //
-// GEMESSEN WIRD AM ECHTEN BAUM, NICHT AM QUELLTEXT. Die Seite wird gemountet und über den echten
-// react-query-Cache mit Board-Daten versorgt. Ein Test, der `Validation.tsx` nach Zeichenketten
-// durchsucht, bewiese nur, dass ein Wort im Code steht.
+// GEMESSEN WIRD AM ECHTEN BAUM, NICHT AM QUELLTEXT.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Die Endpunkte, die das Board zieht — explizit gemockt, damit kein Netz und keine Kulisse
+// Die Endpunkte, die die Prüffläche zieht — explizit gemockt, damit kein Netz und keine Kulisse
 // aus einem globalen Setup den Ausgang bestimmt. `board` und `directory` werden je Fall gesetzt.
+// JOB 3061: die drei übrigen Reiter zählen aus echten Abrufen und brauchen deshalb ihren Mock.
 vi.mock("../../apps/web/src/api/endpoints", () => ({
   endpoints: {
     validation: { board: vi.fn(async () => []), overview: vi.fn(async () => []) },
@@ -48,6 +42,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       aiCheckRetry: vi.fn(async () => ({})),
       remove: vi.fn(async () => ({})),
     },
+    conflicts: { list: vi.fn(async () => []) },
+    duplicates: { list: vi.fn(async () => []) },
+    lifecycle: { pending: vi.fn(async () => []) },
   },
 }));
 
@@ -82,13 +79,12 @@ import { Validation } from "../../apps/web/src/pages/Validation";
 const de = (key: string, vars?: Record<string, unknown>): string =>
   vars ? String(i18n.t(key, vars)) : String(i18n.getResource("de", "translation", key));
 
-/** Die Marke an der Etikettenzeile — eine Zählung über Textfragmente wäre eine Scheinmessung. */
-const ZEILE = '[data-testid="validation-card-labels"]';
+/** Das „Mehr" der einen Karte — der neue Ort aller Prüfsignale. */
+const MEHR = '[data-testid="pruefen-mehr-karte"]';
 
 /**
  * Ein Board-Objekt mit EXAKT den Pflichtangaben: keine KI-Prüfung, keine roten Stimmen, keine
- * veralteten Stimmen, kein Erstellungsdatum. Damit ist die Etikettenzahl deterministisch — jedes
- * bedingte Abzeichen bliebe sonst eine wandernde Grösse.
+ * veralteten Stimmen, kein Erstellungsdatum.
  */
 function schlichtesKo(over: Partial<KnowledgeObject> = {}): KnowledgeObject {
   return {
@@ -141,7 +137,11 @@ async function mountMit(items: KnowledgeObject[]): Promise<void> {
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(MemoryRouter, { initialEntries: ["/pruefen"] }, createElement(Validation)),
+        createElement(
+          MemoryRouter,
+          { initialEntries: ["/validierung"] },
+          createElement(Validation),
+        ),
       ),
     );
   });
@@ -150,18 +150,28 @@ async function mountMit(items: KnowledgeObject[]): Promise<void> {
   }
 }
 
-/** Die Etikettenzeile der ersten Karte. */
-function zeile(): HTMLElement {
-  const el = container.querySelector(ZEILE);
+/** Das „Mehr" öffnen, wie ein Mensch es öffnet. */
+async function aufklappen(): Promise<void> {
+  await act(async () => {
+    for (const d of container.querySelectorAll("details")) {
+      d.open = true;
+    }
+  });
+}
+
+/** Der Inhalt des „Mehr" (leer, solange niemand aufgeklappt hat — dann steht er nur im DOM). */
+function mehr(): HTMLElement {
+  const el = container.querySelector(MEHR);
   if (!(el instanceof HTMLElement)) {
-    throw new Error("Etikettenzeile nicht gefunden — trägt die Karte ihre Marke?");
+    throw new Error("Mehr-Aufklapper nicht gefunden — trägt die Karte ihren Informationsort?");
   }
   return el;
 }
 
-/** Die Etiketten = die direkten Kinder der Zeile, die wirklich etwas rendern. */
-function etiketten(): HTMLElement[] {
-  return [...zeile().children].filter(
+/** Die Zeilen/Blöcke des „Mehr" — die Nachfolger der alten Etiketten. */
+function angaben(): HTMLElement[] {
+  const rumpf = mehr().querySelector(":scope > div");
+  return [...(rumpf?.children ?? [])].filter(
     (c): c is HTMLElement => c instanceof HTMLElement && (c.textContent ?? "").trim().length > 0,
   );
 }
@@ -179,35 +189,67 @@ afterEach(() => {
 // ================================================================================================
 // A1 · KALIBRIERUNG — die Karte rendert überhaupt
 // ================================================================================================
-describe("JOB 1100 · D-033 · A1: das Prüfboard rendert eine Karte", () => {
-  it("die Karte trägt Titel und eine markierte Etikettenzeile", async () => {
+describe("JOB 1100 · D-033 · A1: die Prüffläche rendert eine Karte", () => {
+  it("die Karte trägt Titel, Text und einen Informationsort „Mehr“", async () => {
     await mountMit([schlichtesKo()]);
 
     expect(container.textContent).toContain("PROBE-KO Ventilwartung");
     expect(container.querySelectorAll('[data-testid="validation-row"]')).toHaveLength(1);
-    expect(etiketten().length).toBeGreaterThan(0);
+    expect(container.querySelectorAll('[data-testid="pruefen-karte"]')).toHaveLength(1);
+    await aufklappen();
+    expect(angaben().length).toBeGreaterThan(0);
   });
 });
 
 // ================================================================================================
-// A2 · PFLICHT 1 — der feinere Prüfstand steht vorn, die grobe Status-Pille ist weg
+// H2 · DIE NEUE ZUSICHERUNG — geschlossen sagt die Karte nichts von alledem
+// ================================================================================================
+//
+// Das ist der Kern von JOB 3061: Der Prüfer sieht Titel, Text und die Entscheidung. Die Signale
+// stehen im DOM (ein `<details>` versteckt sie nicht per CSS, der Browser rendert sie schlicht
+// nicht) — sichtbar werden sie erst auf Klick. Gemessen wird hier die DOM-Lage, weil jsdom kein
+// Layout kennt; die SICHTBARKEIT misst der Textmesser in `tests/design/zielbild-h2-pruefen.test.ts`
+// am echten Chromium.
+describe("JOB 3061 · H2: die Signale liegen im geschlossenen „Mehr“, nicht auf der Fläche", () => {
+  it("das „Mehr“ ist im Auslieferungszustand ZU", async () => {
+    await mountMit([schlichtesKo()]);
+
+    expect((mehr() as HTMLDetailsElement).open).toBe(false);
+  });
+
+  it("Titel und Text der Karte stehen dagegen ohne jeden Klick da", async () => {
+    await mountMit([schlichtesKo({ statement: "Ventil vor der Wartung entlasten." })]);
+
+    expect(container.querySelector('[data-testid="pruefen-karte-text"]')?.textContent).toContain(
+      "Ventil vor der Wartung entlasten.",
+    );
+  });
+});
+
+// ================================================================================================
+// A2 · PFLICHT 1 — der feinere Prüfstand steht da, die grobe Status-Pille nicht
 // ================================================================================================
 describe("JOB 1100 · D-033 · A2: Prüfstand statt Status-Pille", () => {
-  it("die Etikettenzeile trägt den Prüfstand", async () => {
+  it("das „Mehr“ trägt den Prüfstand", async () => {
     await mountMit([schlichtesKo()]);
+    await aufklappen();
 
     // `trust: 0` und keine Zuweisung ⇒ `reviewWorkView` liefert den Zustand „neu erfasst".
-    expect(zeile().textContent).toContain(de("val.reviewState.new"));
+    expect(mehr().textContent).toContain(de("val.reviewState.new"));
   });
 
-  it("die Status-Pille steht NICHT mehr in der Etikettenzeile", async () => {
+  it("die Status-Pille steht nirgends auf der Karte", async () => {
     await mountMit([schlichtesKo()]);
+    await aufklappen();
 
-    expect(zeile().textContent).not.toContain(de("status.offen"));
+    expect(container.querySelector('[data-testid="pruefen-karte"]')?.textContent).not.toContain(
+      de("status.offen"),
+    );
   });
 
-  it("der Prüfstand steht auf der Karte genau EINMAL — nicht zusätzlich im Aufklapper", async () => {
+  it("der Prüfstand steht auf der Karte genau EINMAL", async () => {
     await mountMit([schlichtesKo()]);
+    await aufklappen();
 
     const treffer = (container.textContent ?? "").split(de("val.reviewState.new")).length - 1;
     expect(treffer).toBe(1);
@@ -215,39 +257,28 @@ describe("JOB 1100 · D-033 · A2: Prüfstand statt Status-Pille", () => {
 });
 
 // ================================================================================================
-// A3 · PFLICHT 2a — Vertrauen und Grünanteil in EINEM Abzeichen
+// A3 · PFLICHT 2a — Vertrauen und Grünanteil bleiben beide lesbar
 // ================================================================================================
-describe("JOB 1100 · D-033 · A3: ein Abzeichen für Vertrauen und Grünanteil", () => {
-  it("genau ein Etikett trägt beide Angaben", async () => {
-    await mountMit([schlichtesKo()]);
-
-    const votes = de("val.votes", { have: 0, need: 3 });
-    const beide = etiketten().filter(
-      (e) =>
-        (e.textContent ?? "").includes(de("val.trust")) && (e.textContent ?? "").includes(votes),
-    );
-    expect(beide).toHaveLength(1);
-  });
-
+describe("JOB 1100 · D-033 · A3: Vertrauen und Grünanteil", () => {
   it("beide Zahlen bleiben lesbar — Streichen wäre ein echter Verlust", async () => {
     await mountMit([schlichtesKo({ trust: 42, reviewVotes: { up: 2, warn: 0, down: 0 } })]);
+    await aufklappen();
 
-    const text = zeile().textContent ?? "";
-    expect(text).toContain(`${de("val.trust")} 42`);
+    const text = mehr().textContent ?? "";
+    expect(text).toContain(de("val.trust"));
+    expect(text).toContain("42");
     expect(text).toContain(de("val.votes", { have: 2, need: 3 }));
   });
 
-  it("der Grünanteil steht in KEINEM Etikett mehr für sich allein", async () => {
-    // Das ist die eigentliche Zusammenlegung: Bis D-033 trug ein eigenes Abzeichen „X von Y grün"
-    // ohne jeden Bezug zum Vertrauenswert daneben.
-    await mountMit([schlichtesKo()]);
+  it("der Grünanteil ist zusätzlich OHNE Aufklappen ablesbar — als die drei Punkte im Fuß", async () => {
+    // JOB 3061 · H2, Pruefen.dc.html:60: der Fortschritt ist die einzige Angabe, die das Mockup
+    // dauerhaft zeigt — als Punkte, nicht als Text. Sie sind damit NICHT verlorengegangen, sondern
+    // an die Stelle gerückt, an der die Entscheidung fällt.
+    await mountMit([schlichtesKo({ reviewVotes: { up: 2, warn: 0, down: 0 } })]);
 
-    const votes = de("val.votes", { have: 0, need: 3 });
-    const alleinstehend = etiketten().filter(
-      (e) =>
-        (e.textContent ?? "").includes(votes) && !(e.textContent ?? "").includes(de("val.trust")),
-    );
-    expect(alleinstehend).toHaveLength(0);
+    const punkte = container.querySelectorAll('[data-testid="pruefen-stimmenpunkte"] > span');
+    expect(punkte).toHaveLength(3);
+    expect([...punkte].filter((p) => p.getAttribute("data-punkt") === "gruen")).toHaveLength(2);
   });
 });
 
@@ -257,75 +288,73 @@ describe("JOB 1100 · D-033 · A3: ein Abzeichen für Vertrauen und Grünanteil"
 describe("JOB 1100 · D-033 · A4: die Kategorie ist beschriftet", () => {
   it("die Kategorie trägt ihr Beschriftungswort", async () => {
     await mountMit([schlichtesKo({ category: "Wartung" })]);
+    await aufklappen();
 
-    const kategorie = etiketten().find((e) => (e.textContent ?? "").includes("Wartung"));
+    const kategorie = angaben().find((e) => (e.textContent ?? "").includes("Wartung"));
     expect(kategorie?.textContent).toContain(de("lib.facet.category"));
   });
 
   it("der Kategoriewert selbst bleibt unverändert lesbar", async () => {
     await mountMit([schlichtesKo({ category: "Anlage 1" })]);
+    await aufklappen();
 
-    expect(zeile().textContent).toContain("Anlage 1");
+    expect(mehr().textContent).toContain("Anlage 1");
   });
 });
 
 // ================================================================================================
 // A5 · PFLICHT 3 — nichts ist verlorengegangen
 // ================================================================================================
-//
-// Die bedingten Warnabzeichen sind das Gegenstück zur Verdichtung: Sie dürfen dabei NICHT
-// mitverschwinden. Jeder Fall erzeugt seine Bedingung eigens.
-describe("JOB 1100 · D-033 · A5: die bedingten Abzeichen bleiben erreichbar", () => {
+describe("JOB 1100 · D-033 · A5: die bedingten Angaben bleiben erreichbar", () => {
   it("rote Stimmen erscheinen weiterhin", async () => {
     await mountMit([schlichtesKo({ reviewVotes: { up: 0, warn: 0, down: 2 } })]);
+    await aufklappen();
 
-    expect(zeile().textContent).toContain(de("val.votesBlocked", { count: 2 }));
+    expect(mehr().textContent).toContain(de("val.votesBlocked", { count: 2 }));
   });
 
   it("veraltete Stimmen erscheinen weiterhin", async () => {
     await mountMit([schlichtesKo({ staleVotes: 3 })]);
+    await aufklappen();
 
-    expect(zeile().textContent).toContain(de("val.staleVotes", { count: 3 }));
+    expect(mehr().textContent).toContain(de("val.staleVotes", { count: 3 }));
   });
 
-  it("die Wissensart bleibt das erste Etikett", async () => {
+  it("die Wissensart bleibt erreichbar", async () => {
     await mountMit([schlichtesKo()]);
+    await aufklappen();
 
-    expect(etiketten()[0]?.textContent).toContain(de("ktype.best_practice"));
+    expect(mehr().textContent).toContain(de("ktype.best_practice"));
   });
 });
 
 // ================================================================================================
-// A6 · DIE VERDICHTUNG IST MESSBAR — feste Fixtures, feste Zahlen
+// A6 · DIE VERDICHTUNG IST MESSBAR — festes Fixture, feste Zahl
 // ================================================================================================
 //
-// Gepinnt wird die Etikettenzahl je Fixture. Die Zusammenlegung aus A3 nimmt genau EIN Etikett
-// heraus; der Plakettentausch aus A2 verändert die Zahl nicht (eines geht, eines kommt).
-describe("JOB 1100 · D-033 · A6: die Zeile ist kürzer geworden", () => {
-  // Die fünf sind: Wissensart · Prüfstand · Vertrauen+Stimmen · Kategorie · Ersteller.
-  // Der Ersteller kommt aus dem Verzeichnis (`author: "u1"` → „Prüfer") und ist kein Prüfsignal,
-  // sondern Herkunft — er zählt mit, weil er in derselben Zeile steht. Vor D-033 waren es sechs:
-  // Status-Pille UND Prüfstand fehlten sich nicht gegenseitig, aber Vertrauen und Stimmen standen
-  // getrennt. Die Reduktion um genau eins ist die Zusammenlegung; der Plakettentausch verändert
-  // die Zahl nicht (eines geht, eines kommt) — genau so gemessen.
-  //
-  // JOB 3027 (nachgeführt, mit Begründung): Es sind SECHS bzw. ACHT. Die Prüfkarte trägt seit JOB
-  // 3027 die Vertraulichkeitsstufe als eigene Plakette (`[data-testid="val-stufe"]`) — die einzige
-  // Angabe dieser Zeile, die nicht aus dem Prüfstand kommt, sondern aus der Auskunft der Route
-  // (`services/validation/src/board-herkunft.ts`). Sie ist UNBEDINGT: jede der drei Lagen
-  // (eingestuft · nicht eingestuft · Auskunft fehlt) ist eine Aussage, und ein Weglassen wäre die
-  // vierte, stumme. Genau EIN Element ist dazugekommen — dass es nicht zwei sind, hält
-  // `tests/pruefseite/stufe-und-herkunft-am-brett.test.tsx` fest (die Herkunft steht im Aufklapper).
-  // Die Aussage dieses Falls bleibt unverändert: die Zahl ist gepinnt und wandert nicht unbemerkt.
-  it("schlichtes Objekt: sechs Etiketten (fünf aus D-033 plus die Stufe aus JOB 3027)", async () => {
+// Gepinnt wird jetzt die Zahl der ANGABEN im „Mehr" statt der Etiketten in der entfallenen Zeile.
+// Die Grösse bleibt dieselbe: sie wandert nicht unbemerkt. Die elf sind
+//   Vertrauen · Fortschritt · Prüfstand · KI-Prüfung · Vertraulichkeit · Erfassungsweg ·
+//   Kategorie/Art/Tags · Entscheidungswirkung · Prüfkontext · Autor · Erstellt (Datum + Ersteller).
+// Die letzte ist BEDINGT: sie erscheint nur, wenn Datum ODER Ersteller vorliegt. Im Fixture liegt
+// der Ersteller vor (`author: "u1"` → „Prüfer" aus dem Verzeichnis), das Datum nicht — genau der
+// Fall des ehrlichen Weglassens aus WP-D10 Fix 4.
+describe("JOB 1100 · D-033 · A6: die Zahl der Angaben ist gepinnt", () => {
+  it("schlichtes Objekt: elf Angaben im „Mehr“", async () => {
     await mountMit([schlichtesKo()]);
+    await aufklappen();
 
-    expect(etiketten()).toHaveLength(6);
+    expect(angaben()).toHaveLength(11);
   });
 
-  it("mit beiden Warnabzeichen: acht — die bedingten kommen obendrauf, nicht anstelle", async () => {
+  it("die bedingten Angaben kommen INNERHALB ihrer Zeile dazu, nicht als neue Zeile", async () => {
+    // Rote und veraltete Stimmen standen vor H2 als eigene Etiketten daneben; jetzt stehen sie in
+    // der Fortschrittszeile. Die Zahl der Zeilen bleibt deshalb elf — der Inhalt wächst.
     await mountMit([schlichtesKo({ reviewVotes: { up: 0, warn: 0, down: 1 }, staleVotes: 2 })]);
+    await aufklappen();
 
-    expect(etiketten()).toHaveLength(8);
+    expect(angaben()).toHaveLength(11);
+    expect(mehr().textContent).toContain(de("val.votesBlocked", { count: 1 }));
+    expect(mehr().textContent).toContain(de("val.staleVotes", { count: 2 }));
   });
 });

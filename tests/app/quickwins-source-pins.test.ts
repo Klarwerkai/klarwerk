@@ -50,8 +50,13 @@ describe("Block D6 (A11y): zugängliche Namen", () => {
     expect(src).toContain('aria-label={t("val.filterAllCategories")}');
     expect(src).toContain('aria-label={t("val.filterAllTags")}');
     expect(src).toContain('aria-label={t("val.assign")}');
-    // die klickbare KO-Karte ist Container (nicht selbst role="button").
-    expect(src).toContain("interactive={false}");
+    // E2E-012/013: die Prüfkarte darf keinen Sammel-Accessible-Name und keinen verschachtelten
+    // Knopf tragen. JOB 3061 · H2: sie ist gar keine `Card` mit Flächen-Klick mehr (`interactive`
+    // gibt es hier nicht mehr) — sie ist ein schlichter Container, und bedient wird über Titel-Link,
+    // Warteschlangen-Knöpfe und das Fußband. Dieselbe Zusage, ohne die Ausnahme zu brauchen.
+    expect(src).toContain('data-testid="pruefen-karte"');
+    expect(src).not.toContain('role="button"');
+    expect(src).not.toContain("interactive=");
   });
 });
 

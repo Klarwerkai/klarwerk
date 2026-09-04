@@ -442,6 +442,7 @@ const REGISTER: Record<string, Eintrag> = {
     "POST /api/duplicates/:id/dismiss": "ko.validate.",
     "POST /api/duplicates/:id/keep-separate": "ko.validate.",
     "POST /api/duplicates/:id/link-related": "ko.validate.",
+    "POST /api/duplicates/:id/status": "ko.validate.",
     "PUT /api/duplicates/settings": "users.manage.",
     "PUT /api/gaps/:id": "ko.assign.",
     "DELETE /api/gaps/:id": "ko.validate.",

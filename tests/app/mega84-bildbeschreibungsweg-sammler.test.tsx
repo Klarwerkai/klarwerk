@@ -1168,8 +1168,18 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Daten). Dieselbe Begründung wie oben: der Quellbaum wächst, keine Umstellung verschiebt die
     // Erhebung; `anbieter` 1 und `traeger` 2 bleiben — weder Leiste noch Renderer bieten eine
     // Bildbeschreibung an oder tragen einen eigenen Titel.
+    //
+    // JOB 3061 (H2 · Prüfen nach Pages-Maßstab): `komponenten` von 255 auf 264 NACHGEZOGEN,
+    // gemessen am eigenen Lauf. Die vier Prüfseiten sind auf die Mockups vom 04.09. umgebaut; die
+    // gemeinsamen Bauteile der Fläche liegen jetzt unter `apps/web/src/components/pruefen/` und
+    // ersetzen die bisher in den vier Seiten verstreuten Bauteile. Dieselbe Begründung wie oben,
+    // und sie trägt hier genauso: Die Auflage verbietet, dass eine UMSTELLUNG die Erhebung
+    // verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an denen Stufe 2 wirklich
+    // hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der neuen Bauteile bietet eine
+    // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
+    // `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 255,
+      komponenten: 264,
       anbieter: 1,
       traeger: 2,
     });

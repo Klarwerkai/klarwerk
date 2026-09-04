@@ -9,7 +9,8 @@
 //
 // DER BEFUND, DER DIESE DATEI TRÄGT: Die LESEWEGE beider Routen prüfen `paarSichtbar` und liefern
 // einheitlich `404` — `overlap-routes.ts:97-100` sagt es im Kommentar selbst: „nicht sichtbar sieht
-// aus wie nicht vorhanden". Die PAIR-AKTIONEN darunter (`dismiss`, `keep-separate`, `link-related`)
+// aus wie nicht vorhanden". Die PAIR-AKTIONEN darunter (`dismiss`, `keep-separate`, `link-related`
+// und seit JOB 3061 `status`)
 // prüfen ausschliesslich die Rolle und rufen den Dienst direkt. Ob dabei ein Unterschied zwischen
 // „gibt es nicht" und „darfst du nicht sehen" nach aussen dringt, ist genau die Frage.
 import { describe, expect, it } from "vitest";
@@ -52,7 +53,21 @@ async function setup() {
   return { app, admin };
 }
 
-const AKTIONEN = ["dismiss", "keep-separate", "link-related"] as const;
+// JOB 3061 · H2: `status` („Status setzen" im „···"-Menü) ist seit dieser Runde die VIERTE
+// Pair-Aktion und gehört damit unter dieselbe Zusage wie die drei anderen.
+const AKTIONEN = ["dismiss", "keep-separate", "link-related", "status"] as const;
+
+// Der Rumpf je Aktion. Die drei Abschlüsse tragen ihren Grund im PFAD und kommen mit `{}` aus;
+// `status` trägt den Zielzustand im RUMPF und würde mit `{}` schon an der Eingabeprüfung enden
+// (400 INVALID_STATUS) — dann hätte die Probe die Existenzfrage gar nicht erst gestellt. Sie
+// bekommt deshalb eine WOHLGEFORMTE Anfrage; nur so erreicht sie denselben Nachschlagepunkt wie
+// die anderen drei, und nur so misst diese Datei bei ihr wirklich, was sie zu messen vorgibt.
+const RUMPF: Record<(typeof AKTIONEN)[number], Record<string, unknown>> = {
+  dismiss: {},
+  "keep-separate": {},
+  "link-related": {},
+  status: { status: "in_bearbeitung" },
+};
 
 describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz", () => {
   it("P6: eine unbekannte Kennung wird abgewiesen, ohne dass die Antwort etwas über sie aussagt", async () => {
@@ -63,7 +78,7 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
         method: "POST",
         url: `/api/duplicates/gibt-es-nicht-0000/${aktion}`,
         headers: admin,
-        payload: {},
+        payload: RUMPF[aktion],
       });
       antworten.push({ aktion, status: res.statusCode, body: res.body });
     }
@@ -173,13 +188,13 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
         method: "POST",
         url: `/api/duplicates/${eintrag.id}/${aktion}`,
         headers: leser,
-        payload: {},
+        payload: RUMPF[aktion],
       });
       const erfunden = await app.inject({
         method: "POST",
         url: `/api/duplicates/gibt-es-nicht-0000/${aktion}`,
         headers: leser,
-        payload: {},
+        payload: RUMPF[aktion],
       });
       expect(
         `${vorhanden.statusCode}|${vorhanden.body}`,
@@ -189,7 +204,7 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
     await app.close();
   });
 
-  it("P6b: alle drei Pair-Aktionen antworten auf dieselbe unbekannte Kennung GLEICH", async () => {
+  it("P6b: alle Pair-Aktionen antworten auf dieselbe unbekannte Kennung GLEICH", async () => {
     const { app, admin } = await setup();
     const koerper: string[] = [];
     for (const aktion of AKTIONEN) {
@@ -197,7 +212,7 @@ describe("JOB972 D3 · Prüflücke 6 — die Pair-Aktion verrät keine Existenz"
         method: "POST",
         url: `/api/duplicates/gibt-es-nicht-0000/${aktion}`,
         headers: admin,
-        payload: {},
+        payload: RUMPF[aktion],
       });
       koerper.push(`${res.statusCode}|${res.body}`);
     }

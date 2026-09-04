@@ -377,6 +377,21 @@ export const endpoints = {
       api.post<OverlapEntry>(`/duplicates/${id}/keep-separate`, note ? { note } : {}),
     linkRelated: (id: string, note?: string) =>
       api.post<OverlapEntry>(`/duplicates/${id}/link-related`, note ? { note } : {}),
+    // JOB 3061 · H2 (bens Korrekturpflicht 1, Runde 5): „Status setzen" aus dem „···"-Menü der
+    // Duplikatkarte — der eigene Weg neben den Entscheidungsknöpfen. `in_bearbeitung` braucht
+    // keinen Grund (nichts ist entschieden), `geschlossen` verlangt ihn (der Server weist einen
+    // fehlenden oder systemischen Grund mit 400 ab). Der Typ nennt genau die drei wählbaren
+    // Gründe, damit ein systemischer hier gar nicht erst getippt werden kann.
+    setStatus: (
+      id: string,
+      eingabe:
+        | { status: "in_bearbeitung"; note?: string }
+        | {
+            status: "geschlossen";
+            reason: "kept_separate" | "linked_related" | "dismissed";
+            note?: string;
+          },
+    ) => api.post<OverlapEntry>(`/duplicates/${id}/status`, eingabe),
     // Pedi 04.07.: Anzeige-Schwelle (lesen: alle Leseberechtigten; setzen: Admin).
     settings: () => api.get<OverlapSettings>("/duplicates/settings"),
     saveSettings: (minConfidence: number) =>

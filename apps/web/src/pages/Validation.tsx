@@ -1,5 +1,45 @@
+// ================================================================================================
+// JOB 3061 · H2 — REITER „OFFEN": LINKS DIE WARTESCHLANGE, RECHTS EINE KARTE, SONST NICHTS.
+// ================================================================================================
+//
+// WAS HIER BIS 04.09.2026 STAND und warum es weg ist: 1537 Zeilen mit eigenem Seitenkopf
+// („Validation Board"), einem Einleitungssatz, einer Herkunfts-Pillenzeile, einer Fokus-Pillenzeile,
+// einer Zeile „aktive Fokusfilter", einer Filterleiste mit vier Feldern und zwei Kästchen, einer
+// Facettenschiene und darunter Karten mit acht Etiketten, zwei Aufklappern, einer Leitkarte und
+// einem zweizeiligen Fußband. Pedi 04.09. 06:50: „so irreführend und so unübersichtlich".
+//
+// WAS STATT DESSEN DA IST (design/klarwerk/Pruefen.dc.html): der gemeinsame Reiterkopf „Prüfen",
+// links die 260px-Warteschlange, rechts EINE Karte — Pille, Meta, Titel, Text, Quellen-Chips,
+// „Mehr" (zu) und ein Fußband mit Freigeben / Rückfrage / Ablehnen und den drei Stimmenpunkten.
+//
+// NICHTS GEHT VERLOREN (Pedi 04.09. 07:58, Auftrag §11). Jede Funktion, die aus dem Sichtfeld geht,
+// hat einen benannten Ort bekommen — die Tabelle steht in der RUECKGABE und wird in der GEBAUTEN
+// Fläche von `tests/design/h2-funktionsinventar.test.ts` Zeile für Zeile angeklickt:
+//
+//   Volltext, Wissensart, Kategorie, Tag, Review-Fokus, Herkunft, „Mir zugewiesen",
+//   „KI-Prüfung läuft", Zurücksetzen, Facettenschiene ......... Filter-Menü neben dem Segment
+//   Leitkarte, Entscheidungswirkung, alle ?-Hilfen ............ „?"-Menü neben dem Titel
+//   Als wahr kennzeichnen, Zuweisen, Bearbeiten, Löschen,
+//   Details ansehen, KI-Prüfung wiederholen .................. „···"-Menü an der Karte
+//   Vertrauen, Stimmen, veraltete Stimmen, KI-Prüfstatus,
+//   Stufe, Erfassungsweg, Kategorie/Art/Tags, Wirkung,
+//   Autorzeile, Review-Kontext, letzte Entscheidung .......... „Mehr" unter dem Text
+//
+// DIE ZUSTANDSREGELN (Auftrag §9, Regelwerk §7) SIND UNVERÄNDERT SCHARF:
+//   · Eine gescheiterte AUFFRISCHUNG löscht die Warteschlange nicht — sie bekommt eine Zeile.
+//   · Ein Erstfehler (nie eine Antwort) bleibt eine Fehlerfläche mit „Erneut laden".
+//   · Kein „Freigegeben" ohne 2xx: die Knöpfe sind bis zur Serverantwort gesperrt.
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Check, Lock, Minus, Pencil, Trash2, X } from "lucide-react";
+import {
+  Check,
+  FileText,
+  HelpCircle,
+  Image as ImageIcon,
+  Lock,
+  Minus,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
@@ -8,35 +48,34 @@ import { endpoints } from "../api/endpoints";
 import { useDirectory, useReasonerStatus, useValidationBoard } from "../api/hooks";
 import type { KnowledgeObject, Verdict } from "../api/types";
 import { useSession } from "../app/AuthContext";
-// SCRUM-417: Bearbeiten/Löschen vom Board — gleiche Rollenregel wie Bibliothek/KO-Detail.
 import { useRole } from "../app/RoleContext";
 import { useToast } from "../app/ToastContext";
-// WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Pruefung je Karte (pending/failed + Retry).
 import { AiCheckBadge } from "../components/AiCheckBadge";
 import { DemoBanner } from "../components/DemoBanner";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
-// AUFTRAG-mega45 Block H (SCRUM-425): DIESELBE Schiene wie die Bibliothek, keine zweite Fassung.
 import { FacetFilter } from "../components/FacetFilter";
-import { HelpTip } from "../components/HelpTip";
-import { KoSummaryDisclosure } from "../components/KoSummaryDisclosure";
 import { ValidationReviewContext } from "../components/ValidationReviewContext";
-// D-033: `StatusPill` ist hier nicht mehr importiert — die Prüfkarte trägt statt der groben
-// Status-Pille die feinere Prüfstands-Plakette. Die Komponente selbst bleibt unangetastet und
-// wird von Bibliothek und Mobilansicht weiterhin verwendet.
+import { PruefenKopf } from "../components/pruefen/PruefenKopf";
+import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
+import {
+  PruefenHilfeBlock,
+  PruefenMenue,
+  PruefenMenueEintrag,
+  PruefenMenueTrenner,
+} from "../components/pruefen/PruefenMenue";
+import { MenueSymbol, PruefenPille } from "../components/pruefen/PruefenPaar";
+import {
+  PruefenErstfehler,
+  PruefenNichtFrisch,
+  PruefenPlatzhalter,
+  PruefenSatz,
+} from "../components/pruefen/PruefenZustand";
+import { flaechenZustand } from "../components/pruefen/zaehler";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine } from "../components/trust";
-import { Button, Card, PageHeader, QueryState } from "../components/ui";
-// WP-SHIP9-B3FIX: Poll-Intervall (geteilt mit Capture) + ehrliches Ausgrauen/Sperren, solange die
-// KI-Prüfung eines Eintrags noch läuft — die Liste bekommt den Übergang pending → done selbst mit.
+import { Button, cx } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
 import { AI_CHECK_POLL_MS } from "../lib/aiCheckStatusCard";
-// JOB 3027 · Station 4: die zwei Auskünfte der Board-Zeile (Stufe und Herkunft) in drei
-// unterscheidbaren Lagen — abgeleitet, nicht geraten. Begründung im Kopf der Datei.
-import {
-  type PruefZeile,
-  type StufenAuskunft,
-  boardZeilen,
-  stufenFacetLabelKey,
-} from "../lib/boardAuskunft";
+import { type PruefZeile, boardZeilen, stufenFacetLabelKey } from "../lib/boardAuskunft";
 import {
   DEMO_KNOWLEDGE_FILTERS,
   type DemoKnowledgeFilter,
@@ -48,14 +87,16 @@ import {
 import { isDemoContext } from "../lib/demoPilotPath";
 import { clearFacetSelection } from "../lib/facetFilter";
 import { EMPTY_RAIL_UI, type FacetRailUiState, facetRailGroups } from "../lib/facetRail";
-import { type FacetSelection, applyFacetSelection, toggleFacetValue } from "../lib/facets";
+import {
+  type FacetSelection,
+  applyFacetSelection,
+  isFacetGroupActive,
+  toggleFacetValue,
+} from "../lib/facets";
 import { koAuthorParts } from "../lib/koAuthor";
-// WP-D10 (Fix 4): lokalisiertes Erstellungsdatum aus dem vorhandenen KO-Feld (keine neue Persistenz).
 import { formatKoTimestamp } from "../lib/koDates";
 import {
   REVIEW_DECISIONS,
-  type ReviewOutcomeTone,
-  type ReviewTone,
   type ReviewVerdict,
   reviewNextSteps,
   reviewOutcome,
@@ -67,17 +108,10 @@ import {
   decisionImpact,
   reviewGuidanceFocusKey,
 } from "../lib/reviewGuidance";
-import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
-import {
-  type ReviewWorkTone,
-  type TrustBand,
-  reviewSignals,
-  reviewWorkView,
-  sortByReviewPriority,
-} from "../lib/reviewSignals";
+import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
+import { reviewSignals, reviewWorkView, sortByReviewPriority } from "../lib/reviewSignals";
 import { useAuthorName } from "../lib/useAuthorName";
 import { useReadiness } from "../lib/useReadiness";
-// WP-SHIP9-B3FIX: pending-Gate (ausgrauen + Aktionen sperren) und Board-weites pending-Prädikat (Polling).
 import { boardHasPendingAiCheck, validationAiGate } from "../lib/validationAiGate";
 import {
   applyBoardFocusParams,
@@ -125,91 +159,35 @@ import {
   reviewFocusLabelKey,
   validationReviewContext,
 } from "../lib/validationReviewContext";
+import { NARROW_QUERY, useMediaQuery } from "../shell/useMediaQuery";
 
-// SCRUM-249: Trust-Band → Tönung der Trust-Plakette (kritisch/mittel/gut).
-const TRUST_TONE: Record<TrustBand, string> = {
-  low: "bg-trust-crit-bg text-trust-crit-text",
-  mid: "bg-trust-warn-bg text-trust-warn-text",
-  high: "bg-trust-pos-bg text-trust-pos-text",
-};
-
-// SCRUM-258: Tönung der drei Review-Entscheidungs-Schaltflächen (Freigeben/Rückfrage/Ablehnen).
-const DECISION_TONE: Record<ReviewTone, string> = {
-  pos: "bg-trust-pos-bg text-trust-pos-text",
-  warn: "bg-trust-warn-bg text-trust-warn-text",
-  crit: "bg-trust-crit-bg text-trust-crit-text",
-};
-
-// SCRUM-406: je Entscheidung der passende ?-Hilfe-Baustein aus der zentralen Hilfe-Karte.
-const DECISION_HELP: Record<ReviewVerdict, ReviewHelpId> = {
-  up: "approve",
-  warn: "query",
-  down: "reject",
-};
-
-// SCRUM-365: Textfarbe der Entscheidungswirkungen in der „Was prüfe ich?"-Führung (Grün/Gelb/Rot).
+// SCRUM-365: Textfarbe der Entscheidungswirkungen im „?"-Menü (Grün/Gelb/Rot).
 const IMPACT_TEXT_TONE: Record<"pos" | "warn" | "crit", string> = {
   pos: "text-trust-pos-text",
   warn: "text-trust-warn-text",
   crit: "text-trust-crit-text",
 };
 
-// SCRUM-287: Review-Arbeitszustand konsistent zu MyTasks (neu/offen, zugewiesen, in Prüfung).
-const REVIEW_WORK_TONE: Record<ReviewWorkTone, string> = {
-  warn: "bg-trust-warn-bg text-trust-warn-text",
-  neutral: "bg-page text-muted",
-  pos: "bg-trust-pos-bg text-trust-pos-text",
-};
-
-// JOB 3027: Tönung der Stufen-Plakette. Sie kommt AUS DER STUFE und nicht aus der Lage — „nicht
-// eingestuft" und „Auskunft fehlt" sind Feststellungen, keine Alarme, und werden deshalb ruhig
-// gezeichnet. Wer sie einfärbte, machte aus einer Auskunft eine Bewertung.
-const STUFE_TONE: Record<StufenAuskunft["tone"], string> = {
-  neutral: "bg-page text-muted",
-  warn: "bg-trust-warn-bg text-trust-warn-text",
-  crit: "bg-trust-crit-bg text-trust-crit-text",
-};
-
-// SCRUM-292: Success-/Outcome-Card passend zum Verdict tönen (up/warn/down).
-const OUTCOME_TONE: Record<
-  ReviewOutcomeTone,
-  { card: string; text: string; subtle: string; close: string }
-> = {
-  pos: {
-    card: "border-trust-pos-fill/40 bg-trust-pos-bg",
-    text: "text-trust-pos-text",
-    subtle: "text-trust-pos-text/90",
-    close: "text-trust-pos-text/70 hover:text-trust-pos-text",
-  },
-  warn: {
-    card: "border-trust-warn-fill/40 bg-trust-warn-bg",
-    text: "text-trust-warn-text",
-    subtle: "text-trust-warn-text/90",
-    close: "text-trust-warn-text/70 hover:text-trust-warn-text",
-  },
-  crit: {
-    card: "border-trust-crit-fill/40 bg-trust-crit-bg",
-    text: "text-trust-crit-text",
-    subtle: "text-trust-crit-text/90",
-    close: "text-trust-crit-text/70 hover:text-trust-crit-text",
-  },
-};
+// Wie lange die Quittung im Fußband steht (Auftrag §5.3: „eine Zeile ‚Freigegeben' 3 s im Fuß").
+const QUITTUNG_MS = 3000;
 
 export function Validation(): JSX.Element {
-  // WP-D10 (Fix 4): i18n.language für das lokalisierte Erstellungsdatum auf den Karten.
   const { t, i18n } = useTranslation();
   const [params, setSearchParams] = useSearchParams();
   const query = useValidationBoard();
   const users = useDirectory();
   const { user } = useSession();
-  // PAKET 1.4 + 3.4 (bens V4): ehrlicher Name des Sperr-Hinweises je Modellzustand — „mit KI" nur bei
-  // ECHT nutzbarem Modell (aktiv UND zuletzt erreichbar), nicht bloß konfiguriert. Sperr-Logik unverändert.
   const aiModelActive = aiModelUsable(useReasonerStatus().data);
   const qc = useQueryClient();
-  // WP-SHIP9-B3FIX (Pedi 23.07.): Solange mindestens ein Eintrag noch in KI-Prüfung ist (aiCheck
-  // pending), das Board im Hintergrund nachladen — ein ausgegrauter Eintrag wird ohne manuelles
-  // Neuladen frei, sobald das Ergebnis (done/failed) vorliegt. Kein pending mehr → Polling stoppt.
-  // Reine Anzeige-Aktualisierung (gleiches Muster wie die Live-Status-Karte auf /erfassen).
+  const navigate = useNavigate();
+  const { role } = useRole();
+  const { push } = useToast();
+  // AUFTRAG-mega47/48 (Rauchprobe): auf schmalen Geräten bleibt die Facettenschiene ihr eigener
+  // Auslöser MIT Vollbild-Filterblatt und liegt AUSSERHALB des Datenzweigs — genau die Bauform, die
+  // `tests-smoke/ui-smoke.spec.ts` als einziges datenunabhängiges Bedienelement dieser Seite
+  // benutzt. Auf breiten Geräten (der Fall des Mockups) wohnt dieselbe Schiene im Filter-Menü.
+  const schmal = useMediaQuery(NARROW_QUERY);
+
   const boardPending = boardHasPendingAiCheck(query.data);
   useEffect(() => {
     if (!boardPending) {
@@ -220,20 +198,17 @@ export function Validation(): JSX.Element {
     }, AI_CHECK_POLL_MS);
     return () => window.clearInterval(timer);
   }, [boardPending, qc]);
-  // SCRUM-416: Flächen-Klick der Board-Karte führt ins KO-Detail (Tastatur-Weg bleibt der Titel-Link).
-  const navigate = useNavigate();
-  // SCRUM-417: Bearbeiten/Löschen direkt vom Board (Autor/Controller/Admin) — der Server
-  // erzwingt dieselbe Regel (403 sonst); Löschen nur mit Inline-Bestätigung.
-  const { role } = useRole();
-  const { push } = useToast();
-  // AUFTRAG-mega45 Block H (SCRUM-425): Zustand der Facetten-Schiene. Rein Ansicht — er berührt
-  // weder `filter` (die fachliche Vorauswahl) noch den Review-Fokus noch eine Prüf-Aktion.
+
   const [facetSel, setFacetSel] = useState<FacetSelection>({});
   const [railUi, setRailUi] = useState<FacetRailUiState>(EMPTY_RAIL_UI);
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const [locallyDeletedKoIds, setLocallyDeletedKoIds] = useState<ReadonlySet<string>>(
     () => new Set(),
   );
+  // Der aktive Eintrag der Warteschlange. `null` heisst „noch keiner gewählt" — dann führt der
+  // erste sichtbare. Ein gewählter Eintrag, der aus der Liste fällt (entschieden, weggefiltert),
+  // fällt automatisch auf denselben Weg zurück.
+  const [aktivId, setAktivId] = useState<string | null>(null);
   const markDeletedKo = (id: string): void => {
     setLocallyDeletedKoIds((ids) => withDeletedKoId(ids, id));
   };
@@ -277,68 +252,64 @@ export function Validation(): JSX.Element {
       push("error", e instanceof ApiError ? e.message : t("state.error"));
     },
   });
-  // FR-LIF-04: Autor je KO-Karte (Namen via Directory, Fallback ID).
-  // AUFTRAG-mega62 Block H: die Auflösung kommt aus dem EINEN Haken (lib/useAuthorName.ts). Die
-  // abgeschriebene Zeile hier sagte „Unbekannte Person", sobald das Verzeichnis nur NICHT DA war —
-  // eine Aussage über die Person, wo gar keine feststand.
   const nameOf = useAuthorName();
-  // SCRUM-364 / AG-15 follow-up: „Mir zugewiesen"-Linse lazy aus ?mine=1 (Ziel der Assignment-
-  // Benachrichtigung) — die übrigen Filter starten leer. Aktiviert nur die vorhandene mineOnly-Filterung.
   const [filter, setFilter] = useState<ValidationFilterState>(() => ({
     ...EMPTY_VALIDATION_FILTER,
     mineOnly: readMineOnlyFilter(params),
   }));
-  // SCRUM-364: „Mir zugewiesen" umschalten + URL synchron halten (übrige Query bleibt erhalten).
   const setMineOnly = (mineOnly: boolean): void => {
     setFilter((f) => ({ ...f, mineOnly }));
     setSearchParams((prev) => applyMineOnlyParam(prev, mineOnly), { replace: true });
   };
-  // SCRUM-311: Herkunftsfilter (Demo/Eigenes) — ergänzend zur Review-Auswahl; lazy aus ?origin=…
-  // (z. B. Capture-Success → eigenes Wissen), fehlend/ungültig → „all". Nur Ansicht, kein Review-Status.
   const [demoFilter, setDemoFilter] = useState<DemoKnowledgeFilter>(() =>
     readDemoKnowledgeFilter(params),
   );
-  // SCRUM-327: Review-Fokus (Alle/Neu/Überarbeitet) — lazy aus ?review=…, fehlend/ungültig → „all".
-  // Nur Ansicht; nutzt dieselbe neu-vs.-revision-Logik (Version > 1) wie SCRUM-326.
   const [reviewFocus, setReviewFocus] = useState<ReviewFocusFilter>(() =>
     readReviewFocusFilter(params),
   );
-  // SCRUM-328: beide Fokusfilter auf Standard zurücksetzen (State + URL; übrige Query bleibt erhalten).
   const resetBoardFocus = (): void => {
     setDemoFilter("all");
     setReviewFocus("all");
     setSearchParams((prev) => resetBoardFocusParams(prev), { replace: true });
   };
-  // Offenes Feedback-Formular (FE-VAL-06): pro KO + gewählter Verdict.
   const [feedback, setFeedback] = useState<{ id: string; verdict: FeedbackVerdict } | null>(null);
   const [feedbackText, setFeedbackText] = useState("");
-  // SCRUM-277: letzte erfolgreiche Entscheidung → Rückmeldung + nächster Schritt (KO ansehen/nutzen).
+  // SCRUM-277 → JOB 3061: die Quittung ist keine Karte mehr, sondern eine Zeile im Fuß (3 s) und
+  // danach die Zeile „zuletzt: …" im „Mehr" des nächsten Eintrags. Beide Auskünfte stammen aus
+  // DERSELBEN Entscheidung; `bis` trennt nur, wie lange die laute Form steht.
   const [lastDecision, setLastDecision] = useState<{
     id: string;
     title: string;
     verdict: ReviewVerdict;
   } | null>(null);
+  const [quittungOffen, setQuittungOffen] = useState(false);
+  useEffect(() => {
+    if (!quittungOffen) {
+      return;
+    }
+    const timer = window.setTimeout(() => setQuittungOffen(false), QUITTUNG_MS);
+    return () => window.clearTimeout(timer);
+  }, [quittungOffen]);
   const selectCls =
-    "h-10 rounded-input border border-hairline bg-surface px-2 text-sm text-text outline-none focus:border-ink/30";
-  // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
-  const vhelp = (helpId: ReviewHelpId): JSX.Element => {
-    const topic = reviewHelp(helpId);
-    return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
-  };
+    "h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[12.5px] text-text outline-none focus:border-ink/30";
 
   const invalidate = (): void => void qc.invalidateQueries({ queryKey: ["validation"] });
 
+  const nachEntscheidung = (vars: { id: string; title: string; verdict: ReviewVerdict }): void => {
+    invalidate();
+    setLastDecision(vars);
+    setQuittungOffen(true);
+    // Auftrag §5.3: „Erfolg = nächster Eintrag wird aktiv". Der entschiedene Eintrag verlässt das
+    // Board mit der nächsten Antwort; bis dahin führt die Wahl schon weiter.
+    setAktivId(naechsteId(vars.id));
+  };
+
   const rate = useMutation({
-    // SCRUM-277: Titel mitführen → Rückmeldung/Next-Step benennt das betroffene KO.
     mutationFn: ({ id, verdict }: { id: string; title: string; verdict: Verdict }) =>
       endpoints.ko.act(id, { action: "rate", verdict }),
-    onSuccess: (_data, vars) => {
-      invalidate();
-      setLastDecision({ id: vars.id, title: vars.title, verdict: vars.verdict });
-    },
+    onSuccess: (_data, vars) => nachEntscheidung(vars),
   });
 
-  // Gelb/Rot: erst Pflicht-Kommentar, dann Bewertung (FE-VAL-06).
   const reviewWithFeedback = useMutation({
     mutationFn: async ({
       id,
@@ -352,10 +323,9 @@ export function Validation(): JSX.Element {
       await endpoints.ko.act(id, { action: "rate", verdict });
     },
     onSuccess: (_data, vars) => {
-      invalidate();
       setFeedback(null);
       setFeedbackText("");
-      setLastDecision({ id: vars.id, title: vars.title, verdict: vars.verdict });
+      nachEntscheidung(vars);
     },
   });
 
@@ -371,8 +341,6 @@ export function Validation(): JSX.Element {
     onSuccess: invalidate,
   });
 
-  // WP-SUBMIT-ASYNC: Retry am failed-Badge — reiht die Hintergrund-Pruefung serverseitig neu ein
-  // und laedt das Board nach, damit das Badge sofort auf „laeuft" wechselt.
   const aiCheckRetry = useMutation({
     mutationFn: (id: string) => endpoints.ko.aiCheckRetry(id),
     onSuccess: () => {
@@ -382,8 +350,6 @@ export function Validation(): JSX.Element {
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
-  // Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die Validierung komplett ab.
-  // Zwei-Klick-Bestätigung im UI; danach verlässt das Objekt das Board (Status validiert).
   const [confirmTrueId, setConfirmTrueId] = useState<string | null>(null);
   const adminValidate = useMutation({
     mutationFn: (id: string) => endpoints.ko.act(id, { action: "admin-validate" }),
@@ -397,11 +363,6 @@ export function Validation(): JSX.Element {
     onError: (e) => push("error", e instanceof ApiError ? e.message : t("state.error")),
   });
 
-  // Beschriftung eines Facettenwertes. Dieselbe Zuordnungsregel wie in der Bibliothek: der
-  // Schlüssel wählt den Namensraum, der Wert wird angehängt. `pruefstand` und `maturity` bilden
-  // die Ausnahme — sie führen ihren Beschriftungsschlüssel bereits in der Bauform mit
-  // (`reviewWorkView` bzw. `useReadiness`), und genau der wird hier benutzt, damit Schiene und
-  // Kartenabzeichen für denselben Zustand DASSELBE sagen.
   const facetValueLabel = (key: string, value: string): string => {
     switch (key) {
       case "pruefstand":
@@ -411,8 +372,6 @@ export function Validation(): JSX.Element {
       case "trust":
         return t(`lib.facet.trustBucket.${value}`);
       case "confidentiality":
-        // JOB 3027: die Beschriftung kommt aus derselben Zuordnung wie die Plakette auf der Karte —
-        // die zwei Fehlzustände tragen keinen Stufennamen und dürfen deshalb keinen bekommen.
         return t(stufenFacetLabelKey(value));
       case "author":
         return nameOf(value);
@@ -421,65 +380,25 @@ export function Validation(): JSX.Element {
     }
   };
 
-  // ------------------------------------------------------------------------------------------
-  // AUFTRAG-mega45 Block H (SCRUM-425): die Facetten-Ableitung liegt BEWUSST hier — VOR dem
-  // `return` und damit ausserhalb des children-Slots von `QueryState`.
-  //
-  // Läge sie im Slot, verschwände die Schiene bei jedem Lade- und Fehlerzustand; genau diesen
-  // Rückschritt hat die Bibliothek bereits benannt und vermieden (Library.tsx). `items` ist
-  // dasselbe Array, das `QueryState` unten durchreicht (`query.data`) — die Rechnung ist
-  // identisch, sie steht nur früher.
-  // ------------------------------------------------------------------------------------------
-  // JOB 3027 · DIE NAHT: dieselben Zeilen, die `QueryState` unten durchreicht (`query.data`) — nur
-  // EINMAL um die abgeleitete `auskunft` erweitert. Danach ist jede Zeile ein gewöhnliches
-  // Wissensobjekt, und Filter, Sortierung und Abzeichen bleiben unangetastet. Kein Bestand
-  // (laden/Fehler) = keine Zeile und damit auch keine Aussage über eine Einstufung.
+  // JOB 3027 · DIE NAHT: dieselben Zeilen wie bisher, einmal um die abgeleitete `auskunft` erweitert.
   const items = boardZeilen(query.data);
-  // JOB 3027 R2/R3 · NUR DER ERSTFEHLER OHNE JEDE ANTWORT ERSETZT DIE LISTE.
-  //
-  // Liegt eine Antwort im Cache, ist ein Fehler die Aussage „die AUFFRISCHUNG ist gescheitert" und
-  // nicht „es gibt nichts zu zeigen". `QueryState` kennt diesen Unterschied nicht (es fragt
-  // `isError` vor den Daten, ui.tsx:225-230) und liegt ausserhalb der Zielpfade dieses Auftrags —
-  // die Unterscheidung wird deshalb HIER getroffen, an der einzigen Stelle, die beides weiss.
-  //
-  // GEMESSEN WIRD DIE QUERY-LAGE, NICHT DIE ZEILENZAHL (R3, BEN-Korrekturpflicht). In R2 stand hier
-  // `items.length > 0`, und damit fiel eine erfolgreich geladene LEERE Antwort durch: sie ist
-  // genauso eine belegte Auskunft („hier ist gerade nichts offen") wie eine mit zehn Zeilen, wurde
-  // nach einem gescheiterten Refetch aber zur Erstfehlerfläche. `undefined` heisst „nie eine
-  // Antwort gehabt", `[]` heisst „eine Antwort gehabt, sie war leer" — nur das Erste ist ein
-  // Erstfehler. Dieselbe Lehre steht seit JOB 3002 R3/R4 im Haus (LEHREN.md: alter Leer-Cache plus
-  // abgelehnter Refetch).
-  //
-  // Der Zusicherung liegt kein Verschweigen zugrunde: `auffrischungGescheitert` schaltet oben in der
-  // Liste einen sichtbaren Hinweis, und die Fehlerfläche bleibt für den Fall OHNE Antwort
-  // unverändert erhalten (gemessen in tests/pruefseite/zustandsmodell-cache.test.tsx, Fälle C4/E1).
-  const auffrischungGescheitert = query.isError && query.data !== undefined;
-  const boardZustand = (
-    auffrischungGescheitert ? { ...query, status: "success", isError: false, error: null } : query
-  ) as typeof query;
+  const lage = flaechenZustand(query);
   const cats = categoryOptions(items);
   const tags = tagOptions(items);
   const types = typeOptions(items);
-  // SCRUM-249: handlungsnah priorisieren (Autor-Transfer/niedriger Trust zuerst) — Filter
-  // bleiben unverändert, es wird nichts verworfen, nur die Reihenfolge geschärft.
   const boardFiltered =
     withoutKoIds(
       items.filter((k) => matchesValidationFilter(k, filter, user?.id ?? null)),
       locallyDeletedKoIds,
     ) ?? [];
-  // SCRUM-311: Herkunfts-Zähler über die (review-)gefilterte Menge; dann ergänzend nach
-  // Herkunft filtern. Nur Ansicht — Status/Trust/Review-Entscheidung unberührt.
   const demoCounts: Record<DemoKnowledgeFilter, number> = {
     all: boardFiltered.length,
     demo: boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, "demo")).length,
     "non-demo": boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, "non-demo")).length,
   };
-  // SCRUM-327: Review-Fokus über die fachlich + herkunfts-gefilterte Menge zählen, dann anwenden.
   const focusBase = boardFiltered.filter((k) => matchesDemoKnowledgeFilter(k, demoFilter));
   const reviewFocusCounts = countByReviewFocus(focusBase);
   const nachFokus = focusBase.filter((k) => matchesReviewFocus(k, reviewFocus));
-  // Die Facetten-Schiene setzt GANZ ZULETZT an — sie ist reine Ansicht und lässt jede
-  // vorgelagerte Prüf-Logik unberührt.
   const facetItems = nachFokus.map(validationFacetValues);
   const facetGroups = facetRailGroups(
     facetItems,
@@ -488,30 +407,9 @@ export function Validation(): JSX.Element {
     railUi,
     facetValueLabel,
   );
-  // JOB 3027: `sortByReviewPriority` ist auf `KnowledgeObject` typisiert (reviewSignals.ts:111) und
-  // gibt die Zeilen deshalb ohne ihre `auskunft` zurück — sie SORTIERT nur, sie baut keine neuen
-  // Zeilen. Die Zusicherung steht hier, weil die Bibliotheksdatei ausserhalb der Zielpfade dieses
-  // Auftrags liegt; sie generisch zu machen ist die saubere Lösung und gehört in den Job, der sie
-  // besitzt. Falsch wird sie nicht stillschweigend: stünde auf der Karte danach keine Stufe, wäre
-  // der gemountete Fall R1 rot.
   const visible = sortByReviewPriority(
     applyFacetSelection(nachFokus, validationFacetValues, facetSel),
   ) as PruefZeile[];
-  // SCRUM-364 / AG-15: ehrlicher Leerzustand der persönlichen Linse (nur wenn „Mir zugewiesen"
-  // aktiv ist und nichts für die Person offen ist) — hat Vorrang vor dem generischen Filter-Empty.
-  //
-  // AUFTRAG-mega47 Block D → AUFTRAG-mega48 Block D (bens P2): gezählt wird jetzt die PERSÖNLICHE
-  // MENGE — der Bestand des Boards, auf den nur die persönliche Linse angewandt ist. Die persönliche
-  // Linse beantwortet eine ZUSTANDSFRAGE („ist mir überhaupt Arbeit zugewiesen?"), alles andere auf
-  // dieser Seite beantwortet eine SICHTFRAGE („was davon zeige ich gerade?"): Suche, Typ, Kategorie
-  // und Schlagwort (`matchesValidationFilter`), „in Prüfung", Herkunft, Review-Fokus und die
-  // Facetten. mega47 hat nur die Facetten vorgezogen; blendete einer der übrigen Sichtfilter die
-  // zugewiesene Arbeit aus, sagte die Seite weiterhin „keine dir zugewiesene Review-Arbeit" — und
-  // das ist schlicht falsch. Für die Sichtfrage steht direkt darunter der generische
-  // Filter-Leerzustand bereit; er greift dann, weil `mineEmpty` null ist, benennt die aktiven
-  // Fokusfilter und kann sie zurücksetzen. Kein neuer Text.
-  //
-  // `withoutKoIds` bleibt drin: eine gerade gelöschte Aufgabe ist keine Sicht, sondern weg.
   const persoenlicheMenge =
     withoutKoIds(
       items.filter((k) =>
@@ -527,1011 +425,835 @@ export function Validation(): JSX.Element {
     mineOnly: filter.mineOnly,
     visibleCount: persoenlicheMenge.length,
   });
+  const ownEmpty = ownKnowledgeEmptyHint({
+    filter: demoFilter,
+    count: demoCounts["non-demo"],
+  });
+
+  function naechsteId(nachId: string): string | null {
+    const i = visible.findIndex((k) => k.id === nachId);
+    if (i === -1) {
+      return null;
+    }
+    return visible[i + 1]?.id ?? visible[i - 1]?.id ?? null;
+  }
+
+  const aktiv = visible.find((k) => k.id === aktivId) ?? visible[0] ?? null;
+
+  // Wie viele Filter gerade greifen — der einzige Text, den das geschlossene Filter-Menü zeigt.
+  const filterAktiv =
+    (filter.search.trim() ? 1 : 0) +
+    (filter.type ? 1 : 0) +
+    (filter.category ? 1 : 0) +
+    (filter.tag ? 1 : 0) +
+    (filter.mineOnly ? 1 : 0) +
+    (filter.aiPending ? 1 : 0) +
+    (demoFilter !== "all" ? 1 : 0) +
+    (reviewFocus !== "all" ? 1 : 0) +
+    Object.values(facetSel).filter((v) => isFacetGroupActive(v)).length;
+
+  const facetSchiene = (
+    <FacetFilter
+      configs={VALIDATION_FACET_CONFIGS}
+      groups={facetGroups}
+      selection={facetSel}
+      secondaryKeys={VALIDATION_SECONDARY_FACET_KEYS}
+      moreStorageKey={VALIDATION_MORE_FILTERS_STORAGE_KEY}
+      pillKeys={VALIDATION_PILL_FACET_KEYS}
+      total={nachFokus.length}
+      shown={visible.length}
+      onQueryChange={(key, value) =>
+        setRailUi((prev) => ({ ...prev, query: { ...prev.query, [key]: value } }))
+      }
+      onShowAllToggle={(key) =>
+        setRailUi((prev) => ({
+          ...prev,
+          showAll: { ...prev.showAll, [key]: prev.showAll[key] !== true },
+        }))
+      }
+      onToggle={(key, value) => setFacetSel((prev) => toggleFacetValue(prev, key, value))}
+      onReset={() => {
+        setFacetSel(clearFacetSelection());
+        setRailUi(EMPTY_RAIL_UI);
+      }}
+      labelForValue={facetValueLabel}
+    />
+  );
+
+  // ---- Das Filter-Menü (Auftrag §5.2c) ---------------------------------------------------------
+  const filterMenue = (
+    <PruefenMenue
+      kennung="filter"
+      beschriftung={t("pruefen.menu.filter")}
+      symbol={<SlidersHorizontal size={16} aria-hidden="true" />}
+      zaehler={filterAktiv}
+      breite="w-80"
+    >
+      <div data-help="rev:filters" className="space-y-2.5 px-2.5 py-2">
+        <input
+          value={filter.search}
+          onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
+          placeholder={t("val.filter")}
+          className="h-9 w-full rounded-input border border-hairline bg-surface px-3 text-[12.5px] outline-none focus:border-ink/30"
+        />
+        <select
+          value={filter.type}
+          onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
+          className={selectCls}
+          aria-label={t("val.filterAllTypes")}
+        >
+          <option value="">{t("val.filterAllTypes")}</option>
+          {types.map((tp) => (
+            <option key={tp} value={tp}>
+              {t(`ktype.${tp}`)}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filter.category}
+          onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
+          className={selectCls}
+          aria-label={t("val.filterAllCategories")}
+        >
+          <option value="">{t("val.filterAllCategories")}</option>
+          {cats.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <select
+          value={filter.tag}
+          onChange={(e) => setFilter((f) => ({ ...f, tag: e.target.value }))}
+          className={selectCls}
+          aria-label={t("val.filterAllTags")}
+        >
+          <option value="">{t("val.filterAllTags")}</option>
+          {tags.map((tg) => (
+            <option key={tg} value={tg}>
+              {tg}
+            </option>
+          ))}
+        </select>
+        {/* SCRUM-327: Review-Fokus (Alle/Neu/Überarbeitet) — Zähler über die gefilterte Menge. */}
+        <div data-help="rev:reviewFocus">
+          <div className="mb-1 text-[11.5px] font-semibold text-muted">
+            {t("val.reviewFocus.label")}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {REVIEW_FOCUS_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => {
+                  setReviewFocus(f);
+                  setSearchParams(
+                    (prev) => applyBoardFocusParams(prev, { origin: demoFilter, review: f }),
+                    { replace: true },
+                  );
+                }}
+                className={cx(
+                  "rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold",
+                  reviewFocus === f
+                    ? "border-ink bg-ink text-white"
+                    : "border-hairline text-muted hover:text-text",
+                )}
+              >
+                {t(reviewFocusLabelKey(f))} · {reviewFocusCounts[f]}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* SCRUM-311: Herkunft (Demo/Eigenes) — nur Ansicht, kein Review-Status. */}
+        <div data-help="rev:originFilter">
+          <div className="mb-1 text-[11.5px] font-semibold text-muted">{t("lib.originLabel")}</div>
+          <div className="flex flex-wrap gap-1.5">
+            {DEMO_KNOWLEDGE_FILTERS.map((f) => (
+              <button
+                key={f}
+                type="button"
+                onClick={() => {
+                  setDemoFilter(f);
+                  setSearchParams(
+                    (prev) => applyBoardFocusParams(prev, { origin: f, review: reviewFocus }),
+                    { replace: true },
+                  );
+                }}
+                className={cx(
+                  "rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold",
+                  demoFilter === f
+                    ? "border-ink bg-ink text-white"
+                    : "border-hairline text-muted hover:text-text",
+                )}
+              >
+                {t(demoKnowledgeFilterLabelKey(f))} · {demoCounts[f]}
+              </button>
+            ))}
+          </div>
+        </div>
+        <label
+          data-help="rev:mineOnly"
+          className="flex items-center gap-1.5 text-[12.5px] text-muted"
+        >
+          <input
+            type="checkbox"
+            checked={filter.mineOnly}
+            onChange={(e) => setMineOnly(e.target.checked)}
+          />
+          {t("val.filterMine")}
+        </label>
+        <label className="flex items-center gap-1.5 text-[12.5px] text-muted">
+          <input
+            type="checkbox"
+            checked={filter.aiPending}
+            onChange={(e) => setFilter((f) => ({ ...f, aiPending: e.target.checked }))}
+          />
+          {t("val.filterAiPending")}
+        </label>
+        <button
+          type="button"
+          data-testid="pruefen-filter-reset"
+          onClick={() => {
+            setFilter({ ...EMPTY_VALIDATION_FILTER });
+            setFacetSel(clearFacetSelection());
+            setRailUi(EMPTY_RAIL_UI);
+            resetBoardFocus();
+            setSearchParams((prev) => applyMineOnlyParam(prev, false), { replace: true });
+          }}
+          className="text-[12px] font-semibold text-muted hover:text-text"
+        >
+          {t("val.focusReset")}
+        </button>
+      </div>
+      {/* Auf breiten Geräten wohnt die Facettenschiene HIER — im Menü, nicht als Dauerspalte. */}
+      {schmal ? null : <div className="border-t border-hairline pt-1.5">{facetSchiene}</div>}
+    </PruefenMenue>
+  );
+
+  // ---- Das „?"-Menü (Auftrag §5.2d) ------------------------------------------------------------
+  const guideFocusKey = aktiv
+    ? reviewGuidanceFocusKey({
+        kind: validationReviewContext(aktiv).kind,
+        authorTransferred: reviewSignals(aktiv).authorTransferred,
+      })
+    : null;
+  const hilfeMenue = (
+    <PruefenMenue
+      kennung="hilfe"
+      beschriftung={t("pruefen.menu.help")}
+      symbol={<HelpCircle size={16} aria-hidden="true" />}
+      ausrichtung="links"
+      breite="w-[22rem]"
+    >
+      <PruefenHilfeBlock titel={t("val.guide.title")}>
+        <ul className="space-y-1">
+          {REVIEW_CHECK_ITEMS.map((item) => (
+            <li key={item.id}>
+              <span className="font-semibold text-text">{t(item.labelKey)}</span> {t(item.hintKey)}
+            </li>
+          ))}
+        </ul>
+        {guideFocusKey ? <p className="text-trust-warn-text">{t(guideFocusKey)}</p> : null}
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
+      <PruefenHilfeBlock titel={t("val.guide.impactTitle")}>
+        <ul className="space-y-1">
+          {DECISION_IMPACTS.map((d) => (
+            <li key={d.verdict}>
+              <span className={cx("font-semibold", IMPACT_TEXT_TONE[d.tone])}>
+                {t(d.titleKey)}:
+              </span>{" "}
+              {t(d.bodyKey)}
+            </li>
+          ))}
+        </ul>
+        <p className="text-muted-2">{t(DECISION_TRUST_NOTE_KEY)}</p>
+        {/* SCRUM-258: Die Begründungspflicht bleibt WIRKSAM (Absenden ist ohne Text gesperrt,
+            `isFeedbackSubmittable`). Ihr ERKLÄRTEXT stand bis JOB 3061 als Dauerzeile im Fußband
+            jeder Karte — im Mockup steht dort nichts dergleichen. Er steht deshalb hier, wörtlich
+            unverändert; verloren ist er damit nicht. */}
+        <p className="text-muted-2">{t("val.feedbackRequiredHint")}</p>
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
+      {/* SCRUM-406: DIESELBE zentrale Hilfe-Karte wie bisher — gleiche Schlüssel, gleicher Wortlaut,
+          nur an EINEM Ort statt als sieben ?-Symbole quer über die Karte. */}
+      {REVIEW_HELP_TOPICS.filter((topic) =>
+        [
+          "originFilter",
+          "reviewFocus",
+          "filters",
+          "mineOnly",
+          "signals",
+          "approve",
+          "query",
+          "reject",
+          "feedbackForm",
+          "assign",
+          "markTrue",
+        ].includes(topic.id),
+      ).map((topic) => (
+        <PruefenHilfeBlock key={topic.id} titel={t(topic.titleKey)}>
+          <p>{t(topic.bodyKey)}</p>
+        </PruefenHilfeBlock>
+      ))}
+      <PruefenMenueTrenner />
+      <PruefenHilfeBlock titel={t("val.votesTitle")}>
+        <p>{t("val.votesHint", { need: aktiv?.neededValidations ?? 0 })}</p>
+      </PruefenHilfeBlock>
+    </PruefenMenue>
+  );
+
+  const kopf = <PruefenKopf aktiv="offen" filter={filterMenue} hilfe={hilfeMenue} />;
+
+  // ---- Der Leerzustand: EIN Satz, höchstens ein Weiterweg (Auftrag §9) -------------------------
+  function leerSatz(): JSX.Element {
+    if (mineEmpty) {
+      return (
+        <div className="space-y-2">
+          <PruefenSatz kennung="leer">{t(mineEmpty.titleKey)}</PruefenSatz>
+          <Button variant="ghost" onClick={() => setMineOnly(false)}>
+            {t(mineEmpty.ctaKey)}
+          </Button>
+        </div>
+      );
+    }
+    if (ownEmpty) {
+      return (
+        <div className="space-y-2">
+          <PruefenSatz kennung="leer">{t(ownEmpty.titleKey)}</PruefenSatz>
+          <Link
+            to={ownEmpty.to}
+            className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
+          >
+            {t(ownEmpty.ctaKey)} <span aria-hidden="true">→</span>
+          </Link>
+        </div>
+      );
+    }
+    if (boardEmptyKind({ totalItems: items.length, visibleCount: visible.length }) === "filtered") {
+      return (
+        <div className="space-y-2">
+          <PruefenSatz kennung="leer">{t("val.focusEmpty.filtered")}</PruefenSatz>
+          {boardFocusActive({ origin: demoFilter, review: reviewFocus }) ? (
+            <Button variant="ghost" onClick={resetBoardFocus}>
+              {t("val.focusReset")}
+            </Button>
+          ) : null}
+        </div>
+      );
+    }
+    return (
+      <div className="space-y-2">
+        {/* Der Wortlaut bleibt `val.empty` — die Rauchprobe misst genau diesen Satz. */}
+        <PruefenSatz kennung="leer">{t("val.empty")}</PruefenSatz>
+        <EmptyStateCtas context="validation" />
+      </div>
+    );
+  }
 
   return (
-    <div className="mx-auto max-w-6xl">
-      <PageHeader kicker={t("val.kicker")} title={t("nav.validation")} pageKey="validierung" />
-      {/* SCRUM-291: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
+    <div className="mx-auto max-w-[1040px]">
+      {kopf}
       {isDemoContext(params) ? <DemoBanner surface="validation" /> : null}
-      <p className="-mt-3 mb-4 text-sm text-muted">{t("val.intro")}</p>
-      {/* SCRUM-277: Rückmeldung nach der Entscheidung + nächster Schritt (KO ansehen / optional nutzen). */}
-      {lastDecision
-        ? (() => {
-            const outcome = reviewOutcome(lastDecision.verdict);
-            const tone = OUTCOME_TONE[outcome.tone];
-            return (
-              <Card className={`mb-4 ${tone.card}`}>
-                <div className="flex items-start justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className={`text-[13px] font-semibold ${tone.text}`}>
-                      {t("val.decisionSaved")}
+      {schmal ? facetSchiene : null}
+      <div data-testid="pruefen-flaeche" className="flex flex-col items-start gap-6 lg:flex-row">
+        {/* ---- Die Warteschlange (Pruefen.dc.html Z.43–50) ---------------------------------- */}
+        <div className="w-full shrink-0 lg:w-[260px]">
+          {lage.auffrischungGescheitert ? <PruefenNichtFrisch /> : null}
+          {lage.lage === "laedt" ? <PruefenPlatzhalter /> : null}
+          {lage.lage === "erstfehler" ? (
+            <PruefenErstfehler
+              onRetry={() => void qc.invalidateQueries({ queryKey: ["validation", "board"] })}
+            />
+          ) : null}
+          {lage.lage === "leer" || (lage.lage === "bestand" && visible.length === 0)
+            ? leerSatz()
+            : null}
+          {visible.length > 0 ? (
+            <ul data-testid="pruefen-warteschlange" className="flex flex-col gap-1">
+              {visible.map((k) => {
+                const ist = aktiv?.id === k.id;
+                return (
+                  <li key={k.id} data-testid="validation-row">
+                    <button
+                      type="button"
+                      data-testid="pruefen-warteschlange-eintrag"
+                      aria-current={ist ? "true" : undefined}
+                      onClick={() => setAktivId(k.id)}
+                      className={cx(
+                        "block w-full rounded-[9px] border px-[12px] py-[10px] text-left text-[13.5px] leading-[1.35]",
+                        ist
+                          ? "border-hairline bg-surface font-semibold text-text"
+                          : "border-transparent text-muted hover:bg-hairline-soft",
+                      )}
+                    >
+                      <span data-text="titel">{k.title}</span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          ) : null}
+        </div>
+
+        {/* ---- Die eine Karte (Pruefen.dc.html Z.51–62) -------------------------------------- */}
+        <div className="min-w-0 flex-1">{aktiv ? karte(aktiv) : null}</div>
+      </div>
+    </div>
+  );
+
+  // ================================================================================================
+  // DIE KARTE — eine ZEICHENFUNKTION, ausdrücklich KEINE innere Komponente.
+  // ================================================================================================
+  //
+  // Sie greift auf ein Dutzend Zustände und Mutationen der Seite zu (Feedback, Sperre, Rollen,
+  // Quittung); als eigene Komponente bräuchte sie ein Dutzend Props, die alle dasselbe sagen.
+  //
+  // ABER: eine INNERE Komponente wäre hier ein Fehler und kein Stilfrage. React vergleicht
+  // Elementtypen per Identität; eine bei jedem Rendern neu erzeugte Funktion ist ein NEUER Typ, und
+  // React hängt den ganzen Teilbaum ab und neu auf. Der aufgeklappte „Mehr"-Zustand, das offene
+  // „···"-Menü und der Cursor im Begründungsfeld gingen bei jedem Tastendruck verloren. Eine
+  // Zeichenfunktion liefert dagegen gewöhnliche Elemente in den Baum der Seite — kein neuer Typ,
+  // kein Neuaufbau. Deshalb wird sie gerufen (`karte(aktiv)`) und nicht gerendert (`<Karte …/>`).
+  function karte(k: PruefZeile): JSX.Element {
+    const sig = reviewSignals(k);
+    const reviewWork = reviewWorkView(k);
+    const kontext = validationReviewContext(k);
+    const gate = validationAiGate(k.aiCheck, aiModelActive);
+    const createdLabel = formatKoTimestamp(k.createdAt, i18n.language);
+    const vonId = k.originalAuthor?.trim() ? k.originalAuthor : k.author;
+    const createdByName = vonId ? nameOf(vonId).trim() : "";
+    const meta = [createdByName, k.category, createdLabel].filter(Boolean).join(" · ");
+    const quellen = k.sources ?? [];
+    const bilder = (k.attachments ?? []).filter((a) => a.mime.startsWith("image/"));
+    const darfLoeschen = role === "admin" || role === "controller" || k.author === user?.id;
+    const punkte = Array.from({ length: Math.max(sig.needed, 1) }, (_, i) => i);
+    const quittung = quittungOffen && lastDecision ? reviewOutcome(lastDecision.verdict) : null;
+
+    return (
+      // Der Flächen-Klick ist reiner MAUS-Komfort. Die Karte bekommt ausdrücklich KEINE
+      // Button-Rolle und keinen Tastatur-Handler: sie enthält Links, Knöpfe und Felder, und eine
+      // Rolle darüber gäbe ihr einen Sammel-Accessible-Name und verschachtelte Knöpfe (E2E-012/013).
+      // Ein Tastatur-Handler ohne Fokussierbarkeit wäre toter Code. Mit der Tastatur bedient man
+      // den Titel-Link und die Bedienelemente darin — der Weg ins Objekt ist also nicht nur mit
+      // der Maus erreichbar, er ist es an einer anderen Stelle.
+      // biome-ignore lint/a11y/useKeyWithClickEvents: Begründung siehe oben — Tastaturweg ist der Titel-Link.
+      <div
+        data-testid="pruefen-karte"
+        // SCRUM-416: Klick auf die freie Fläche öffnet das Wissensobjekt. `cardClickOpens`
+        // entscheidet, ob der Klick wirklich ins Leere ging — Links, Knöpfe, Felder, Aufklapper
+        // und Menüs bleiben unberührt.
+        onClick={(e) => {
+          if (cardClickOpens(e.target as Element)) {
+            navigate(`/wissen/${k.id}`);
+          }
+        }}
+        className={cx(
+          "overflow-hidden rounded-[14px] border border-hairline bg-surface shadow-tile",
+          gate.locked ? "opacity-60" : "",
+        )}
+      >
+        <div className="flex flex-col gap-[12px] px-[28px] pb-[20px] pt-[24px]">
+          <div className="flex items-center gap-2">
+            <PruefenPille ton="warn" kennung="art">
+              <span className="uppercase">{t(kontext.labelKey)}</span>
+            </PruefenPille>
+            <span data-text="meta" className="text-[12.5px] text-muted">
+              {meta}
+            </span>
+            {/* Das „···"-Menü der Karte (Auftrag §5.2a) — geschlossen nur das Symbol. */}
+            <span className="ml-auto">
+              <PruefenMenue
+                kennung="karte"
+                beschriftung={t("pruefen.menu.actions")}
+                symbol={<MenueSymbol />}
+              >
+                {role === "admin" ? (
+                  confirmTrueId === k.id ? (
+                    <div className="px-2.5 py-2">
+                      <div className="text-[12.5px] font-semibold text-trust-pos-text">
+                        {t("val.markTrueConfirm")}
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-2">
+                        <button
+                          type="button"
+                          className="text-[12px] font-semibold text-muted hover:text-text"
+                          onClick={() => setConfirmTrueId(null)}
+                        >
+                          {t("val.markTrueCancel")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={gate.locked || adminValidate.isPending}
+                          className="text-[12px] font-semibold text-trust-pos-text disabled:opacity-50"
+                          onClick={() => adminValidate.mutate(k.id)}
+                        >
+                          {t("val.markTrueYes")}
+                        </button>
+                      </div>
                     </div>
-                    <p className={`mt-0.5 truncate text-[12.5px] ${tone.subtle}`}>
-                      {lastDecision.title}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    title={t("val.feedback.cancel")}
-                    onClick={() => setLastDecision(null)}
-                    className={`shrink-0 ${tone.close}`}
+                  ) : (
+                    <PruefenMenueEintrag
+                      disabled={gate.locked}
+                      onClick={() => setConfirmTrueId(k.id)}
+                    >
+                      <Check size={13} aria-hidden="true" />
+                      {t("val.markTrue")}
+                    </PruefenMenueEintrag>
+                  )
+                ) : null}
+                <div className="px-2.5 py-1.5">
+                  <select
+                    value=""
+                    disabled={gate.locked || assign.isPending}
+                    onChange={(e) => {
+                      if (e.target.value) {
+                        assign.mutate({ id: k.id, userId: e.target.value });
+                      }
+                    }}
+                    className={selectCls}
+                    aria-label={t("val.assign")}
                   >
-                    <X size={16} />
-                  </button>
+                    <option value="">{t("val.assign")}</option>
+                    {(users.data ?? []).map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name || u.id}
+                      </option>
+                    ))}
+                  </select>
                 </div>
-                {/* SCRUM-292: ehrliche Folge-Aussage je Verdict — up nutzbar (wenn Status/Trust tragen),
-                    warn/down bleiben Review-/Feedback-Arbeit; keine automatische/Fake-Validierung. */}
-                <p className={`mt-2 text-[12px] leading-relaxed ${tone.subtle}`}>
-                  {t(outcome.statusKey)}
-                </p>
-                <div className="mt-2 flex flex-wrap gap-2">
+                <PruefenMenueEintrag onClick={() => navigate(`/wissen/${k.id}?edit=1`)}>
+                  {t("val.editKo")}
+                </PruefenMenueEintrag>
+                <PruefenMenueEintrag onClick={() => navigate(`/wissen/${k.id}`)}>
+                  {t("val.openDetails")}
+                </PruefenMenueEintrag>
+                <PruefenMenueEintrag
+                  disabled={aiCheckRetry.isPending}
+                  onClick={() => aiCheckRetry.mutate(k.id)}
+                >
+                  {t("val.aiCheck.retry")}
+                </PruefenMenueEintrag>
+                {darfLoeschen ? (
+                  <>
+                    <PruefenMenueTrenner />
+                    {confirmDeleteId === k.id ? (
+                      // AUFTRAG-mega45 Block E / SCRUM-412: der ZERSTÖRENDE Knopf trägt die
+                      // Warnfarbe, der bewahrende die zurückhaltende — dieselbe Bauform wie in der
+                      // Bibliothek, gehalten vom Sammler in
+                      // `tests/app/mega45-loeschbestaetigung-sammler.test.ts`. Der Fragetext ist
+                      // weiterhin umbruchfähig (`min-w-0 flex-1`); im Menüblatt konkurriert er
+                      // allerdings mit nichts mehr um Platz — das war Pedis Bruch vom 04.07.
+                      <div className="flex flex-wrap items-center gap-1.5 px-2.5 py-2">
+                        <span className="min-w-0 flex-1 text-[12px] font-semibold text-text">
+                          {t("ko.deleteQ")}
+                        </span>
+                        <Button variant="ghost" onClick={() => setConfirmDeleteId(null)}>
+                          {t("ko.deleteKeep")}
+                        </Button>
+                        <Button
+                          variant="danger"
+                          disabled={removeKo.isPending}
+                          onClick={() => removeKo.mutate(k.id)}
+                        >
+                          {t("ko.deleteYes")}
+                        </Button>
+                      </div>
+                    ) : (
+                      <PruefenMenueEintrag onClick={() => setConfirmDeleteId(k.id)}>
+                        {t("ko.deleteButton")}
+                      </PruefenMenueEintrag>
+                    )}
+                  </>
+                ) : null}
+              </PruefenMenue>
+            </span>
+          </div>
+          <Link
+            to={`/wissen/${k.id}`}
+            data-text="titel"
+            className="text-[20px] font-[650] leading-snug tracking-[-0.2px] text-text underline-offset-4 hover:underline"
+          >
+            {k.title}
+          </Link>
+          <p
+            data-testid="pruefen-karte-text"
+            data-text="text"
+            className="text-[15px] leading-[1.65] text-text"
+          >
+            {k.statement}
+          </p>
+          {quellen.length > 0 || bilder.length > 0 ? (
+            <div className="flex flex-wrap gap-[8px]">
+              {quellen.map((q) => (
+                <span
+                  key={q.id}
+                  data-text="chip"
+                  data-testid="pruefen-chip"
+                  className="inline-flex items-center gap-[6px] rounded-[8px] border border-hairline bg-page px-[10px] py-[5px]"
+                >
+                  <FileText size={13} aria-hidden="true" className="text-muted" />
+                  <span className="text-[12px] font-semibold text-text">{q.label}</span>
+                </span>
+              ))}
+              {bilder.length > 0 ? (
+                <span
+                  data-text="chip"
+                  data-testid="pruefen-chip"
+                  className="inline-flex items-center gap-[6px] rounded-[8px] border border-hairline bg-page px-[10px] py-[5px]"
+                >
+                  <ImageIcon size={13} aria-hidden="true" className="text-muted" />
+                  <span className="text-[12px] text-muted">
+                    {t("pruefen.images", { n: bilder.length })}
+                  </span>
+                </span>
+              ) : null}
+            </div>
+          ) : null}
+
+          {/* ---- „Mehr" (Auftrag §5.2b/§5.3) ------------------------------------------------- */}
+          <PruefenMehr kennung="karte">
+            <PruefenMehrZeile beschriftung={t("val.trust")}>
+              <span className="inline-flex items-center gap-2">
+                <ConfidenceBar value={k.confidence} showLabel={false} />
+                <span className="font-mono">{sig.trust}</span>
+              </span>
+            </PruefenMehrZeile>
+            <PruefenMehrZeile beschriftung={t("val.votesTitle")}>
+              {t("val.votes", { have: sig.greenVotes, need: sig.needed })}
+              {sig.redVotes > 0 ? ` · ${t("val.votesBlocked", { count: sig.redVotes })}` : ""}
+              {sig.staleVotes > 0 ? ` · ${t("val.staleVotes", { count: sig.staleVotes })}` : ""}
+            </PruefenMehrZeile>
+            <PruefenMehrZeile beschriftung={t("pruefen.mehr.status")}>
+              {t(reviewWork.labelKey)}
+              <span className="ml-1 font-mono text-muted-2">v{sig.version}</span>
+              <span className="ml-1 text-muted-2">{t("val.target", { n: sig.needed })}</span>
+              {sig.authorTransferred ? ` · ${t("val.transferred")}` : ""}
+              {sig.assigned ? ` · ${t("val.assigned")}` : ""}
+            </PruefenMehrZeile>
+            <PruefenMehrZeile beschriftung={t("pruefen.mehr.aiCheck")}>
+              <AiCheckBadge
+                aiCheck={k.aiCheck}
+                onRetry={() => aiCheckRetry.mutate(k.id)}
+                retryBusy={aiCheckRetry.isPending}
+                modelActive={aiModelActive}
+                subjectConfidentiality={k.confidentiality}
+              />
+            </PruefenMehrZeile>
+            <PruefenMehrZeile beschriftung={t("lib.facet.confidentiality")}>
+              <span data-testid="val-stufe" data-lage={k.auskunft.stufe.lage}>
+                {t(k.auskunft.stufe.labelKey)}
+              </span>
+            </PruefenMehrZeile>
+            {/* JOB 3027 · R4: Der Anker sitzt an der GANZEN Zeile — die Auskunft ist Beschriftung
+                („Erfassungsweg", ausdrücklich NICHT „Herkunft") plus Wert. */}
+            <PruefenMehrZeile
+              beschriftung={t("val.herkunft.label")}
+              kennung="val-herkunft"
+              lage={k.auskunft.herkunft.lage}
+            >
+              {t(k.auskunft.herkunft.labelKey)}
+            </PruefenMehrZeile>
+            <PruefenMehrZeile beschriftung={t("lib.facet.category")}>
+              <span className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                {k.category}
+                <KnowledgeTypeTag type={k.type} />
+                {k.tags.length > 0 ? (
+                  <span className="text-muted-2">{k.tags.join(", ")}</span>
+                ) : null}
+              </span>
+            </PruefenMehrZeile>
+            <PruefenMehrBlock beschriftung={t("val.decisionLabel")}>
+              {t(`val.decision.${sig.trustBand}`)} {t(reviewWork.hintKey)}
+            </PruefenMehrBlock>
+            <PruefenMehrBlock beschriftung={t("pruefen.mehr.reviewContext")}>
+              <ValidationReviewContext ko={k} />
+            </PruefenMehrBlock>
+            <PruefenMehrBlock beschriftung={t("ko.author")}>
+              <KoAuthorLine {...koAuthorParts(k, nameOf)} />
+            </PruefenMehrBlock>
+            {/* WP-D10 (Fix 4) + WP-BILD-1f: Erstellungsdatum und Ersteller BESCHRIFTET. In der
+                Meta-Zeile der Karte stehen sie nach dem Mockup nackt („Autor · Bereich · Datum");
+                wer wissen will, was die Zahl bedeutet, findet sie hier mit ihrem Wort. Fehlt beides
+                (Altdaten), erscheint die Zeile ehrlich gar nicht. */}
+            {createdLabel || createdByName ? (
+              <PruefenMehrZeile beschriftung={t("ko.createdAt")}>
+                {[
+                  createdLabel ? `${t("ko.createdAt")} ${createdLabel}` : null,
+                  createdByName ? t("ko.createdByName", { name: createdByName }) : null,
+                ]
+                  .filter(Boolean)
+                  .join(" ")}
+              </PruefenMehrZeile>
+            ) : null}
+            {/* Auftrag §5.3: „die Quittung wandert in ‚Mehr' des nächsten Eintrags („zuletzt: …")". */}
+            {lastDecision ? (
+              <PruefenMehrBlock beschriftung={t("pruefen.lastDecision")}>
+                <span data-testid="pruefen-zuletzt">
+                  {t(reviewOutcome(lastDecision.verdict).statusKey)} — {lastDecision.title}
+                </span>
+                <span className="mt-1 flex flex-wrap gap-2">
                   {reviewNextSteps(lastDecision).map((s) => (
                     <Link
                       key={s.to}
                       to={s.to}
-                      className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
+                      className="text-[12px] font-semibold text-ai hover:opacity-80"
                     >
-                      {t(s.labelKey)} <span aria-hidden="true">→</span>
+                      {t(s.labelKey)} →
                     </Link>
                   ))}
-                </div>
-              </Card>
-            );
-          })()
-        : null}
-      {/* AUFTRAG-mega45 Block H (SCRUM-425): Schiene links, Prüfliste rechts — dieselbe Aufteilung
-          und dieselbe Komponente wie in der Bibliothek. Auf schmalen Geräten fällt die Spalte weg;
-          FacetFilter zeigt dort von sich aus den Knopf „Filter (N)" und ein Vollbild-Filterblatt. */}
-      <div className="grid items-start gap-4 lg:grid-cols-[300px_minmax(0,1fr)]">
-        <FacetFilter
-          configs={VALIDATION_FACET_CONFIGS}
-          groups={facetGroups}
-          selection={facetSel}
-          secondaryKeys={VALIDATION_SECONDARY_FACET_KEYS}
-          moreStorageKey={VALIDATION_MORE_FILTERS_STORAGE_KEY}
-          pillKeys={VALIDATION_PILL_FACET_KEYS}
-          total={nachFokus.length}
-          shown={visible.length}
-          onQueryChange={(key, value) =>
-            setRailUi((prev) => ({ ...prev, query: { ...prev.query, [key]: value } }))
-          }
-          onShowAllToggle={(key) =>
-            setRailUi((prev) => ({
-              ...prev,
-              showAll: { ...prev.showAll, [key]: prev.showAll[key] !== true },
-            }))
-          }
-          onToggle={(key, value) => setFacetSel((prev) => toggleFacetValue(prev, key, value))}
-          onReset={() => {
-            setFacetSel(clearFacetSelection());
-            setRailUi(EMPTY_RAIL_UI);
-          }}
-          labelForValue={facetValueLabel}
-        />
-        <div className="min-w-0">
-          {/* JOB 3027 R2 · CACHE SCHLÄGT FEHLER — aber der Fehlschlag wird BENANNT.
-              react-query setzt bei einer gescheiterten AUFFRISCHUNG `status: "error"` und behält
-              die Zeilen im Cache; `QueryState` fragt `isError` VOR den Daten (ui.tsx:225-230) und
-              ersetzte damit vorhandene Karten durch eine Fehlerfläche — mitsamt Stufe und
-              Herkunft. Wer gerade eine Freigabe erwog, verlor den Bestand, weil ein
-              Hintergrund-Abruf scheiterte. Der Auftrag verlangt das Gegenteil (§9: „Cache mit
-              gescheiterter Auffrischung — unverändert dasselbe").
-              STILL WEGGELASSEN WIRD DER FEHLER DESHALB NICHT: die Zeile hier sagt, dass der
-              angezeigte Stand nicht frisch ist. Ohne sie wäre die Reparatur eine Verschönerung. */}
-          {auffrischungGescheitert ? (
-            <p
-              data-testid="val-auffrischung-fehler"
-              className="mb-3 rounded-card border border-hairline bg-page px-3 py-2 text-[11.5px] text-muted"
-            >
-              {t("val.refreshFailed")}
+                </span>
+              </PruefenMehrBlock>
+            ) : null}
+          </PruefenMehr>
+        </div>
+
+        {/* ---- Das Fußband (Pruefen.dc.html Z.58–61) ---------------------------------------- */}
+        <div
+          data-testid="pruefen-fussband"
+          className="flex flex-wrap items-center gap-[10px] border-t border-hairline bg-page px-[28px] py-[16px]"
+        >
+          {gate.locked ? (
+            <p data-text="text" className="w-full basis-full text-[11px] font-semibold text-muted">
+              {t(gate.noteKey)}
             </p>
           ) : null}
-          <QueryState
-            query={boardZustand}
-            emptyText={t("val.empty")}
-            emptyExtra={<EmptyStateCtas context="validation" />}
+          {REVIEW_DECISIONS.map((d) => {
+            const aktivesFeld = feedback?.id === k.id && feedback.verdict === d.verdict;
+            const gut = d.verdict === "up";
+            return (
+              <button
+                key={d.verdict}
+                type="button"
+                data-text="knopf"
+                data-testid={`pruefen-entscheidung-${d.verdict}`}
+                title={t(decisionImpact(d.verdict).bodyKey)}
+                disabled={
+                  gate.locked ||
+                  (gut
+                    ? rate.isPending || reviewWithFeedback.isPending
+                    : reviewWithFeedback.isPending)
+                }
+                onClick={() =>
+                  d.verdict === "up"
+                    ? rate.mutate({ id: k.id, title: k.title, verdict: "up" })
+                    : openFeedback(k.id, d.verdict)
+                }
+                className={cx(
+                  "inline-flex items-center gap-[7px] rounded-[10px] px-[20px] py-[10px] text-[14px] leading-tight transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+                  gut
+                    ? "bg-trust-pos-fill font-semibold text-white hover:opacity-90"
+                    : d.verdict === "down"
+                      ? "border border-hairline bg-surface text-trust-crit-text hover:bg-hairline-soft"
+                      : "border border-hairline bg-surface text-text hover:bg-hairline-soft",
+                  aktivesFeld ? "ring-2 ring-current" : "",
+                )}
+              >
+                {gut ? (
+                  gate.locked ? (
+                    <Lock size={14} aria-hidden="true" />
+                  ) : (
+                    <Check size={14} aria-hidden="true" />
+                  )
+                ) : d.verdict === "warn" ? (
+                  <Minus size={14} aria-hidden="true" />
+                ) : (
+                  <X size={14} aria-hidden="true" />
+                )}
+                {t(d.labelKey)}
+              </button>
+            );
+          })}
+          {/* Die drei Punkte: grün gefüllt je Stimme, rot je Gegenstimme (Pruefen.dc.html:60). */}
+          <span
+            data-testid="pruefen-stimmenpunkte"
+            title={t("val.votesHint", { need: sig.needed })}
+            className="ml-auto flex items-center gap-[5px]"
           >
-            {() => {
+            {punkte.map((i) => {
+              const rot = i < sig.redVotes;
+              const gruen = !rot && i < sig.greenVotes;
               return (
-                <>
-                  {/* SCRUM-364 / AG-15 follow-up: aktive „Mir zugewiesen"-Linse verständlich benennen —
-                  „Das ist deine persönliche Review-Liste" + Zähler + Rückweg zur allgemeinen Liste. */}
-                  {filter.mineOnly ? (
-                    <Card className="mb-3">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0">
-                          <div className="text-[13px] font-semibold text-ai">
-                            {t("val.mineFocus.title")}
-                          </div>
-                          <p className="mt-0.5 text-[12px] text-muted">{t("val.mineFocus.hint")}</p>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-2">
-                          <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[11px] font-semibold text-text">
-                            {t("val.mineFocus.count", { n: visible.length })}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => setMineOnly(false)}
-                            className="text-[11.5px] font-semibold text-muted hover:text-text"
-                          >
-                            {t("val.mineFocus.reset")}
-                          </button>
-                        </div>
-                      </div>
-                    </Card>
-                  ) : null}
-                  {/* SCRUM-311: Herkunftsfilter (Demo/Eigenes) — nur Ansicht/Auffinden, KEIN Review-Status;
-                  Labels konsistent mit der Library. Ersetzt nicht Status/Trust/Review-Entscheidung. */}
-                  {/* Klara v1: data-help-Anker — Fokus in diesem Bereich erklärt ihn im Klara-Panel. */}
-                  <div
-                    data-help="rev:originFilter"
-                    className="mb-3 flex flex-wrap items-center gap-1.5"
-                  >
-                    <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                      {t("lib.originLabel")}:
-                    </span>
-                    {vhelp("originFilter")}
-                    {DEMO_KNOWLEDGE_FILTERS.map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => {
-                          setDemoFilter(f);
-                          // SCRUM-328: URL-Sync — Herkunft setzen, übrige Query (z. B. demo=stage1) erhalten.
-                          setSearchParams(
-                            (prev) =>
-                              applyBoardFocusParams(prev, { origin: f, review: reviewFocus }),
-                            { replace: true },
-                          );
-                        }}
-                        className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
-                          demoFilter === f
-                            ? "border-ink bg-ink text-white"
-                            : "border-hairline text-muted hover:text-text"
-                        }`}
-                      >
-                        {t(demoKnowledgeFilterLabelKey(f))} · {demoCounts[f]}
-                      </button>
-                    ))}
-                  </div>
-                  {/* SCRUM-327: Review-Fokus (Alle/Neu/Überarbeitet) — nur Ansicht; Counts über die fachlich
-                  + herkunfts-gefilterte Menge. Ersetzt keinen Filter, ändert keinen Review-Status. */}
-                  <div
-                    data-help="rev:reviewFocus"
-                    className="mb-3 flex flex-wrap items-center gap-1.5"
-                  >
-                    <span className="mr-0.5 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                      {t("val.reviewFocus.label")}:
-                    </span>
-                    {vhelp("reviewFocus")}
-                    {REVIEW_FOCUS_FILTERS.map((f) => (
-                      <button
-                        key={f}
-                        type="button"
-                        onClick={() => {
-                          setReviewFocus(f);
-                          // SCRUM-328: URL-Sync — Review-Fokus setzen, übrige Query erhalten.
-                          setSearchParams(
-                            (prev) =>
-                              applyBoardFocusParams(prev, { origin: demoFilter, review: f }),
-                            { replace: true },
-                          );
-                        }}
-                        className={`rounded-pill border px-2.5 py-1 font-mono text-[11px] font-semibold ${
-                          reviewFocus === f
-                            ? "border-ink bg-ink text-white"
-                            : "border-hairline text-muted hover:text-text"
-                        }`}
-                      >
-                        {t(reviewFocusLabelKey(f))} · {reviewFocusCounts[f]}
-                      </button>
-                    ))}
-                  </div>
-                  {/* SCRUM-328: aktive Fokusfilter sichtbar benennen + zurücksetzbar. */}
-                  {boardFocusActive({ origin: demoFilter, review: reviewFocus }) ? (
-                    <div className="mb-3 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-page px-3 py-2">
-                      <span className="font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                        {t("val.focusActive.label")}:
-                      </span>
-                      {demoFilter !== "all" ? (
-                        <span className="rounded-pill bg-surface px-2 py-0.5 text-[11px] font-semibold text-text">
-                          {t("lib.originLabel")}: {t(demoKnowledgeFilterLabelKey(demoFilter))}
-                        </span>
-                      ) : null}
-                      {reviewFocus !== "all" ? (
-                        <span className="rounded-pill bg-surface px-2 py-0.5 text-[11px] font-semibold text-text">
-                          {t("val.reviewFocus.label")}: {t(reviewFocusLabelKey(reviewFocus))}
-                        </span>
-                      ) : null}
-                      <button
-                        type="button"
-                        onClick={resetBoardFocus}
-                        className="ml-auto text-[11.5px] font-semibold text-muted hover:text-text"
-                      >
-                        {t("val.focusReset")}
-                      </button>
-                    </div>
-                  ) : null}
-                  <div data-help="rev:filters" className="mb-4 flex flex-wrap items-center gap-2">
-                    <input
-                      value={filter.search}
-                      onChange={(e) => setFilter((f) => ({ ...f, search: e.target.value }))}
-                      placeholder={t("val.filter")}
-                      className="h-10 min-w-[12rem] flex-1 rounded-input border border-hairline bg-surface px-3 text-sm outline-none focus:border-ink/30"
-                    />
-                    <select
-                      value={filter.type}
-                      onChange={(e) => setFilter((f) => ({ ...f, type: e.target.value }))}
-                      className={selectCls}
-                      aria-label={t("val.filterAllTypes")}
-                    >
-                      <option value="">{t("val.filterAllTypes")}</option>
-                      {types.map((tp) => (
-                        <option key={tp} value={tp}>
-                          {t(`ktype.${tp}`)}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={filter.category}
-                      onChange={(e) => setFilter((f) => ({ ...f, category: e.target.value }))}
-                      className={selectCls}
-                      aria-label={t("val.filterAllCategories")}
-                    >
-                      <option value="">{t("val.filterAllCategories")}</option>
-                      {cats.map((c) => (
-                        <option key={c} value={c}>
-                          {c}
-                        </option>
-                      ))}
-                    </select>
-                    <select
-                      value={filter.tag}
-                      onChange={(e) => setFilter((f) => ({ ...f, tag: e.target.value }))}
-                      className={selectCls}
-                      aria-label={t("val.filterAllTags")}
-                    >
-                      <option value="">{t("val.filterAllTags")}</option>
-                      {tags.map((tg) => (
-                        <option key={tg} value={tg}>
-                          {tg}
-                        </option>
-                      ))}
-                    </select>
-                    <label
-                      data-help="rev:mineOnly"
-                      className="flex h-10 items-center gap-1.5 rounded-input border border-hairline bg-surface px-3 text-sm text-muted"
-                    >
-                      <input
-                        type="checkbox"
-                        checked={filter.mineOnly}
-                        onChange={(e) => setMineOnly(e.target.checked)}
-                      />
-                      {t("val.filterMine")}
-                      {vhelp("mineOnly")}
-                    </label>
-                    {/* WP-SUBMIT-ASYNC: „in Pruefung" — nur Beitraege, deren Hintergrund-KI-Pruefung
-                    noch laeuft (aiCheck pending); trivial im bestehenden Filter-Bereich. */}
-                    <label className="flex h-10 items-center gap-1.5 rounded-input border border-hairline bg-surface px-3 text-sm text-muted">
-                      <input
-                        type="checkbox"
-                        checked={filter.aiPending}
-                        onChange={(e) => setFilter((f) => ({ ...f, aiPending: e.target.checked }))}
-                      />
-                      {t("val.filterAiPending")}
-                    </label>
-                    {vhelp("filters")}
-                  </div>
-                  <div className="space-y-3">
-                    {/* SCRUM-364 / AG-15: spezifischer Leerzustand der persönlichen Linse — ruhig und
-                    motivierend, mit Rückweg zur allgemeinen Liste. Vorrang vor dem generischen Filter-Empty. */}
-                    {mineEmpty ? (
-                      <Card className="text-center">
-                        <p className="text-[13px] font-semibold text-text">
-                          {t(mineEmpty.titleKey)}
-                        </p>
-                        <p className="mt-0.5 text-[12px] text-muted">{t(mineEmpty.hintKey)}</p>
-                        <Button variant="ghost" className="mt-2" onClick={() => setMineOnly(false)}>
-                          {t(mineEmpty.ctaKey)}
-                        </Button>
-                      </Card>
-                    ) : null}
-                    {/* SCRUM-328: ehrlicher Filter-Empty-State — Daten vorhanden, aber Filter zu eng.
-                    QueryState behandelt den „gar keine Review-Arbeit"-Fall (items leer) separat. */}
-                    {!mineEmpty &&
-                    boardEmptyKind({ totalItems: items.length, visibleCount: visible.length }) ===
-                      "filtered" ? (
-                      <Card className="text-center">
-                        <p className="text-[13px] text-muted">{t("val.focusEmpty.filtered")}</p>
-                        {boardFocusActive({ origin: demoFilter, review: reviewFocus }) ? (
-                          <Button variant="ghost" className="mt-2" onClick={resetBoardFocus}>
-                            {t("val.focusReset")}
-                          </Button>
-                        ) : (
-                          <p className="mt-1 text-[11.5px] text-muted-2">
-                            {t("val.focusEmpty.otherFilters")}
-                          </p>
-                        )}
-                      </Card>
-                    ) : null}
-                    {/* Beta Own-Knowledge Work Queue v0: bei aktiver „Eigenes Wissen"-Linse ohne eigene KOs
-                    den Weg ins Erfassen zeigen — eigenes Wissen erscheint hier nach dem Speichern. */}
-                    {(() => {
-                      const ownEmpty = ownKnowledgeEmptyHint({
-                        filter: demoFilter,
-                        count: demoCounts["non-demo"],
-                      });
-                      if (!ownEmpty) {
-                        return null;
-                      }
-                      return (
-                        <Card>
-                          <p className="text-[13px] font-semibold text-text">
-                            {t(ownEmpty.titleKey)}
-                          </p>
-                          <p className="mt-0.5 text-[12px] text-muted">{t(ownEmpty.hintKey)}</p>
-                          <Link
-                            to={ownEmpty.to}
-                            className="mt-2 inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12px] font-semibold text-white hover:opacity-90"
-                          >
-                            {t(ownEmpty.ctaKey)} <span aria-hidden="true">→</span>
-                          </Link>
-                        </Card>
-                      );
-                    })()}
-                    {visible.map((k) => {
-                      const sig = reviewSignals(k);
-                      const reviewWork = reviewWorkView(k);
-                      // WP-D10 (Fix 4): Erstellungsdatum aus dem VORHANDENEN KO-Feld — gleichnamige
-                      // Beiträge werden unterscheidbar. Fehlt/unparsebar (Altdaten) → ehrlich weglassen.
-                      const createdLabel = formatKoTimestamp(k.createdAt, i18n.language);
-                      // WP-BILD-1f (Pedis Befund): der ERSTELLER aus dem vorhandenen KO-Vertrag —
-                      // dezent neben dem Datum. Fehlt das Feld bei Altdaten, erscheint ehrlich nichts.
-                      // WP-SAMMEL21-FIX (Pedis Autor-Entscheid, Fix 4): „von" zeigt den WISSENSTRÄGER
-                      // (originalAuthor — beim Import der Quell-Autor, sonst identisch mit author)
-                      // mit Vorrang vor dem System-Autor; nameOf fällt für Nicht-Nutzer (Quell-
-                      // Autoren sind keine KLARWERK-Nutzer) auf den Roh-Namen zurück.
-                      const vonId = k.originalAuthor?.trim() ? k.originalAuthor : k.author;
-                      const createdByName = vonId ? nameOf(vonId).trim() : "";
-                      // SCRUM-365 / AG-12: kontextbezogener Prüf-Fokus aus vorhandenen Signalen
-                      // (revidiert → gezielt die Änderung; Autor übertragen → extra Blick).
-                      const guideFocusKey = reviewGuidanceFocusKey({
-                        kind: validationReviewContext(k).kind,
-                        authorTransferred: sig.authorTransferred,
-                      });
-                      // WP-SHIP9-B3FIX (Pedi 23.07.): läuft die KI-Prüfung noch (aiCheck pending), ist die
-                      // Karte reine Anzeige — ausgegraut, Prüf-Aktionen gesperrt, ehrlicher Hinweis. Sie
-                      // bleibt sichtbar und zum KO-Detail (Lesen) klickbar; done/failed → normal bedienbar.
-                      const gate = validationAiGate(k.aiCheck, aiModelActive);
-                      return (
-                        // AUFTRAG-mega59 BLOCK H3: der Zeilen-Anker des Prüf-Boards. Die
-                        // Datenlage-Kalibrierung in tests-smoke/ui-smoke.spec.ts prüfte im
-                        // geseedeten Zweig eine ABWESENHEIT (kein Leer-Text) — die ist auch im Lade-
-                        // und im Fehlerzustand erfüllt, ein Lauf mit leerem oder fehlgeschlagenem
-                        // Board war damit grün und löste die Kalibrierung nicht ein. Für die
-                        // POSITIVE Zusicherung („mindestens ein Prüf-Eintrag ist sichtbar") gab es
-                        // auf /validierung keinen Anker; hier ist er.
-                        <div key={k.id} data-testid="validation-row" className="space-y-2">
-                          {/* SCRUM-416: ganze Karte klickbar (freie Fläche → KO-Detail, sichtbarer
-                          Hover); Entscheidungs-Knöpfe/Aufklapper/Links bleiben sauber getrennt. */}
-                          <Card
-                            // E2E-012/013: die Karte enthält Links, Buttons und ein Zuweisungs-Select —
-                            // daher NICHT selbst role="button" (kein verschachtelter Button, kein
-                            // Sammel-Accessible-Name). Container mit Maus-Komfortklick; Tastatur/AT nutzen
-                            // den Titel-Link und die inneren Steuerelemente.
-                            interactive={false}
-                            onClick={(e) => {
-                              if (cardClickOpens(e.target as Element)) {
-                                navigate(`/wissen/${k.id}`);
-                              }
-                            }}
-                            // JOB 2935 D1 (Pedis Wort zum Ist-Stand: „peinlich"): die Karte war bis
-                            // hierher zweispaltig — links der Inhalt, rechts eine schmale Säule, in
-                            // der Entscheidung, Zuweisung und Verwaltung übereinander klebten. Das
-                            // Zielbild (DESIGN_ZIELBILD_20260827/Validierung.dc.html, Z. 56–63) zeigt
-                            // stattdessen ein FUSSBAND über die volle Kartenbreite: die Entscheidung
-                            // links, der Begründungshinweis rechts an der Kante, darüber eine
-                            // Trennlinie. Deshalb bleibt die Karte hier auch auf breiten Schirmen
-                            // eine Spalte (Inhalt oben, Fußband unten) — genau der Wechsel, den die
-                            // sechs Messfälle V1/V2/V3/V4/V7/V9 in tests/design/zielbild-validierung
-                            // seit JOB 2618 D5 als offene Bauaufgabe rot festhalten.
-                            className={`flex cursor-pointer flex-col gap-3 transition-colors hover:border-ink/30 ${
-                              gate.locked ? "opacity-60" : ""
-                            }`}
-                          >
-                            <div className="min-w-0 flex-1">
-                              {/* SCRUM-396: Titel zuerst und deutlich — er ging zwischen Badges und
-                              Meta-Zeilen unter; klar als Link erkennbar (KO-Detail = Ort für
-                              Bearbeiten/Löschen). Badges rücken in eine ruhige Zeile darunter. */}
-                              {/* SCRUM-425 (Pedi 03.07.): Titel-Typografie, -Hover und Pill-Abstand
-                              an die Bibliothek angeglichen (dort text-[15px], nur Unterstreichung
-                              beim Hover, gap-1.5) — eine ruhige, konsistente Board-/Listen-Optik. */}
-                              {/* JOB 2935 D2 — DER KLEINSTE STRUKTURFIX, den die neue Messung
-                              verlangt hat. `truncate` galt bisher auf JEDER Breite. Auf der
-                              Kartenbreite von D1 reicht der Platz, gemessen im Classic-Standard bei
-                              1280 px: Überlauf 0. In einem Word-nahen schmalen Fenster (360 px; das
-                              Aufgabenfenster ist im Produkt 340 px breit, KlaraAssistant.tsx:355)
-                              reicht er nicht — dort wurde der Titel wieder abgeschnitten, gemessener
-                              Überlauf 2 px. Und der Titel ist auf einem Prüfboard die einzige
-                              Angabe, an der man die Karten auseinanderhält; genau darum ging es in
-                              D1. `sm:truncate` statt `truncate`: schmal darf der Titel UMBRECHEN,
-                              ab der ersten Tailwind-Stufe bleibt die ruhige einzeilige Optik
-                              unverändert. Eine Zeile, keine Farbe, kein Token, kein Wortlaut. */}
-                              <Link
-                                to={`/wissen/${k.id}`}
-                                className="block text-[15px] font-semibold leading-snug text-text underline-offset-4 hover:underline sm:truncate"
-                              >
-                                {k.title}
-                              </Link>
-                              {/* JOB 1100 / D-033: die Marke der Etikettenzeile. Sie ist die
-                                  einzige belastbare Art, die Etiketten zu ZÄHLEN — eine Zählung
-                                  über Textfragmente träfe auch den Titel und die Meta-Zeilen
-                                  darunter. Ausschliesslich Testadressierbarkeit: Reihenfolge,
-                                  Abstände und Tönung bleiben unverändert. */}
-                              <div
-                                data-testid="validation-card-labels"
-                                className="mt-1 flex flex-wrap items-center gap-1.5"
-                              >
-                                <KnowledgeTypeTag type={k.type} />
-                                {/* D-033 (a): HIER STAND DIE STATUS-PILLE — und sie sagte auf
-                                    diesem Board fast nichts. Das Prüfboard holt ausschliesslich
-                                    offene Objekte (`services/validation/src/service.ts:327`,
-                                    `status: "offen"`), also trug die Pille auf jeder Karte
-                                    praktisch denselben Wert. Dieselben Felder wertet
-                                    `reviewWorkView` feiner aus — neu erfasst, zugewiesen,
-                                    Bewertung begonnen, validiert. Diese Plakette lag bis hierher
-                                    im Aufklapper und ist jetzt an ihrer Stelle: Der Tausch ist
-                                    verlustfrei, weil die feinere Aussage die gröbere enthält. */}
-                                <span
-                                  className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase ${REVIEW_WORK_TONE[reviewWork.tone]}`}
-                                >
-                                  {t(reviewWork.labelKey)}
-                                </span>
-                                {/* WP-SUBMIT-ASYNC: Status der Hintergrund-KI-Pruefung — laeuft/
-                                fehlgeschlagen (Ursache im Tooltip, Retry reiht neu ein);
-                                done/Altbestand zeigt bewusst nichts. */}
-                                <AiCheckBadge
-                                  aiCheck={k.aiCheck}
-                                  onRetry={() => aiCheckRetry.mutate(k.id)}
-                                  retryBusy={aiCheckRetry.isPending}
-                                  modelActive={aiModelActive}
-                                  // AUFTRAG-mega9 Block E-3 (KW-E2E-007): die ECHTE Stufe dieses Objekts —
-                                  // sonst behauptet der Grund „Vertraulich", obwohl nur der VERGLEICHS-
-                                  // partner vertraulich war (Paar-Eigenschaft, s. aiCheckStatusCard).
-                                  subjectConfidentiality={k.confidentiality}
-                                />
-                                {/* JOB 3027 · STATION 4 — WIE VERTRAULICH, IN DREI LAGEN.
-                                    Die Stufe stand auf dieser Karte bis hierher NIRGENDS; ihr
-                                    einziges Vorkommen war die Weitergabe an das KI-Abzeichen
-                                    darüber, die nur die Begründung eines anderen Zustands trägt.
-                                    GENAU EIN neues Element in dieser Zeile: sie wird gezählt
-                                    (D-033, `validation-card-labels`), eine zweite Ergänzung
-                                    verfälschte die Zählung. Die Herkunft steht deshalb unten im
-                                    Aufklapper. Der Text kommt aus `boardAuskunft` und ist bei
-                                    fehlender Stufe ausdrücklich NICHT „Intern". */}
-                                <span
-                                  data-testid="val-stufe"
-                                  data-lage={k.auskunft.stufe.lage}
-                                  title={t("lib.facet.confidentiality")}
-                                  className={`rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${STUFE_TONE[k.auskunft.stufe.tone]}`}
-                                >
-                                  {t(k.auskunft.stufe.labelKey)}
-                                </span>
-                                {/* D-033 (b): VERTRAUEN UND GRÜNANTEIL SIND EIN ABZEICHEN.
-                                    Bei null Bewertungen sagten die beiden getrennten Pillen
-                                    buchstäblich dasselbe. Zusammengelegt statt gestrichen — und
-                                    zwar bewusst: „Vertrauen" trägt zusätzlich die Gelb-Stimmen,
-                                    die Ask-Rückmeldungen und den Konfliktabzug, die auf dieser
-                                    Karte sonst nirgends erscheinen. Wer es streicht, verliert sie.
-                                    BEIDE TÖNUNGEN BLEIBEN: der Rahmen trägt das Trust-Band, der
-                                    Stimmenteil behält seine eigene Erreicht-Färbung — auch das
-                                    ist Information, nicht Dekoration.
-                                    SCRUM-416 (Trust sichtbar) und Pedi 05.07. (Fortschritt + ?-Hilfe)
-                                    gelten unverändert weiter; nur die Form ist verdichtet. */}
-                                <span
-                                  className={`inline-flex items-center gap-1 rounded-pill px-1.5 py-0.5 font-mono text-[10px] font-semibold ${TRUST_TONE[sig.trustBand]}`}
-                                >
-                                  <span>
-                                    {t("val.trust")} {sig.trust}
-                                  </span>
-                                  <span aria-hidden="true">·</span>
-                                  <span
-                                    title={t("val.votesHint", { need: sig.needed })}
-                                    className={`rounded-pill px-1 ${
-                                      sig.greenVotes >= sig.needed
-                                        ? "bg-trust-pos-bg text-trust-pos-text"
-                                        : "bg-trust-warn-bg text-trust-warn-text"
-                                    }`}
-                                  >
-                                    {t("val.votes", { have: sig.greenVotes, need: sig.needed })}
-                                  </span>
-                                  <HelpTip
-                                    title={t("val.votesTitle")}
-                                    body={t("val.votesHint", { need: sig.needed })}
-                                  />
-                                </span>
-                                {sig.redVotes > 0 ? (
-                                  <span className="rounded-pill bg-trust-crit-bg px-1.5 py-0.5 font-mono text-[10px] font-semibold text-trust-crit-text">
-                                    {t("val.votesBlocked", { count: sig.redVotes })}
-                                  </span>
-                                ) : null}
-                                {/* SCRUM-507 R2: Bewertungen aus einer frueheren Revision sind veraltet und
-                                zaehlen nicht mehr — ehrlich sichtbar, damit „X von Y gruen" nicht taeuscht. */}
-                                {sig.staleVotes > 0 ? (
-                                  <span
-                                    title={t("val.staleVotesHint", { version: sig.version })}
-                                    className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted-2"
-                                  >
-                                    {t("val.staleVotes", { count: sig.staleVotes })}
-                                  </span>
-                                ) : null}
-                                {/* D-033 (c): Die Kategorie stand ohne Beschriftungswort zwischen
-                                    lauter Prüfzuständen und las sich dadurch wie ein weiterer.
-                                    Der Schlüssel ist der vorhandene, dreisprachige aus der
-                                    Bibliotheks-Facette — kein neuer Text. */}
-                                <span className="font-mono text-[11px] text-muted-2">
-                                  {t("lib.facet.category")}: {k.category}
-                                </span>
-                                {/* WP-D10 (Fix 4) + WP-BILD-1f (Pedi): dezentes Erstellungsdatum plus
-                                Ersteller (Erstellt am … von …) — unterscheidet gleichnamige
-                                Beiträge; fehlende Felder (Altdaten) bleiben ehrlich weg. */}
-                                {/* JOB 2935 D1: Solange die Karte zweispaltig war, brach diese Zeile
-                                fast immer um, und Kategorie und Erstellungsangabe standen
-                                untereinander. Auf der vollen Breite stehen sie nebeneinander — und
-                                liefen dann ohne Trenner ineinander („… Allgemein Erstellt am …").
-                                Das Zielbild trennt genau diese Angaben mit einem Mittelpunkt
-                                (Validierung.dc.html:54). Der Trenner steht bewusst als CSS-Inhalt
-                                (`before:`) und nicht als eigenes Element: die Etikettenzeile
-                                darüber wird GEZÄHLT (D-033, `validation-card-labels`), ein
-                                zusätzliches Kind hätte diese Zählung verfälscht. */}
-                                {createdLabel || createdByName ? (
-                                  <span
-                                    title={t("ko.createdAt")}
-                                    className="font-mono text-[10.5px] text-muted-2 before:mr-1.5 before:content-['·']"
-                                  >
-                                    {[
-                                      createdLabel ? `${t("ko.createdAt")} ${createdLabel}` : null,
-                                      createdByName
-                                        ? t("ko.createdByName", { name: createdByName })
-                                        : null,
-                                    ]
-                                      .filter(Boolean)
-                                      .join(" ")}
-                                  </span>
-                                ) : null}
-                              </div>
-                              {/* WP-SHIP9-S2 Paket 3 (E2): Kurzvorschau-Aufklapper — die vorhandene
-                              Kernaussage auf einen Blick, ohne das KO zu öffnen (kein Roundtrip). */}
-                              <KoSummaryDisclosure source={k} className="mt-2" />
-                              {/* SCRUM-416 (Pedi 03.07.): Karten-Dichte — Signale, Kontext, Autor,
-                              Entscheidungs-Hinweis und Prüf-Führung wandern hinter EINE ruhige
-                              Aufklappung. Nichts entfernt, nur verlagert; alles Weitere im KO-Detail. */}
-                              <details className="mt-2">
-                                <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-muted hover:text-text">
-                                  {t("val.more")}
-                                </summary>
-                                <div className="mt-2 space-y-2">
-                                  {/* SCRUM-249: Review-Signale kompakt — Trust, Version, Ziel, Provenance. */}
-                                  <div className="flex flex-wrap items-center gap-2">
-                                    <ConfidenceBar value={k.confidence} showLabel={false} />
-                                    <span className="font-mono text-[10px] text-muted-2">
-                                      v{sig.version}
-                                    </span>
-                                    <span className="font-mono text-[11px] text-muted-2">
-                                      {t("val.target", { n: sig.needed })}
-                                    </span>
-                                    {sig.authorTransferred ? (
-                                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                                        {t("val.transferred")}
-                                      </span>
-                                    ) : null}
-                                    {sig.assigned ? (
-                                      <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted">
-                                        {t("val.assigned")}
-                                      </span>
-                                    ) : null}
-                                    {/* D-033 (a): Die Prüfstands-Plakette stand bis hierher AN
-                                        DIESER STELLE — im Aufklapper, während die gröbere
-                                        Status-Pille vorn auf der Karte saß. Sie ist jetzt oben in
-                                        der Etikettenzeile und steht deshalb hier nicht mehr:
-                                        zweimal dieselbe Aussage wäre keine Verdichtung. Der
-                                        Hinweistext `reviewWork.hintKey` bleibt unverändert im
-                                        Entscheidungs-HelpTip weiter unten erreichbar. */}
-                                    {vhelp("signals")}
-                                  </div>
-                                  {/* SCRUM-326: Review-Kontext — neu/offen vs. revidiert (Version>1) + Hinweis. */}
-                                  <ValidationReviewContext ko={k} />
-                                  <div className="mt-1">
-                                    <KoAuthorLine {...koAuthorParts(k, nameOf)} />
-                                  </div>
-                                  {/* JOB 3027 · STATION 4 — WOHER, neben dem WER.
-                                      Beschriftet mit `val.herkunft.label` („Erfassungsweg") und
-                                      ausdrücklich NICHT mit `lib.originLabel` („Herkunft"): dieses
-                                      Wort trägt auf derselben Seite schon der Demo-/Eigenes-Filter
-                                      (:602-604), und zweimal dasselbe Wort für zwei verschiedene
-                                      Sachen wäre wieder Raten. Für `word_addin` gilt der bereits
-                                      vorhandene Wortlaut des Chips aus Bibliothek und KO-Detail. */}
-                                  <p
-                                    data-testid="val-herkunft"
-                                    data-lage={k.auskunft.herkunft.lage}
-                                    className="mt-1 text-[11.5px] text-muted"
-                                  >
-                                    <span className="font-semibold text-text">
-                                      {t("val.herkunft.label")}:{" "}
-                                    </span>
-                                    {t(k.auskunft.herkunft.labelKey)}
-                                  </p>
-                                  {/* SCRUM-249: ehrlicher Entscheidungs-Hinweis (aus Trust-Band abgeleitet).
-                              SCRUM-396: auf EINE Zeile verdichtet — Volltext im ?-HelpTip, damit die
-                              Karte keine Textwand wird (nichts entfernt, nur Dichte). */}
-                                  <p className="mt-1 flex min-w-0 items-center gap-1 text-[11.5px] text-muted">
-                                    <span className="min-w-0 truncate">
-                                      <span className="font-semibold text-text">
-                                        {t("val.decisionLabel")}{" "}
-                                      </span>
-                                      {t(`val.decision.${sig.trustBand}`)}
-                                    </span>
-                                    <HelpTip
-                                      title={t("val.decisionLabel")}
-                                      body={`${t(`val.decision.${sig.trustBand}`)} ${t(reviewWork.hintKey)}`}
-                                    />
-                                  </p>
-                                  {/* SCRUM-365 / AG-12 / PI-K2: ruhige, einklappbare Review-Führung —
-                              „Was prüfe ich?" (Checkliste + Kontext-Fokus) + „Was bewirkt die
-                              Entscheidung?" + ehrliche Trust-/Quorum-Notiz. Progressive disclosure,
-                              damit das Board nicht zur Formularwand wird. */}
-                                  <details className="mt-2">
-                                    <summary className="cursor-pointer list-none text-[11.5px] font-semibold text-ai hover:opacity-80">
-                                      {t("val.guide.title")}
-                                    </summary>
-                                    <div className="mt-2 space-y-2 rounded-card border border-hairline bg-page px-3 py-2.5">
-                                      <ul className="space-y-1">
-                                        {REVIEW_CHECK_ITEMS.map((item) => (
-                                          <li
-                                            key={item.id}
-                                            className="text-[11.5px] leading-relaxed text-muted"
-                                          >
-                                            <span className="font-semibold text-text">
-                                              {t(item.labelKey)}
-                                            </span>{" "}
-                                            {t(item.hintKey)}
-                                          </li>
-                                        ))}
-                                      </ul>
-                                      {guideFocusKey ? (
-                                        <p className="text-[11.5px] leading-relaxed text-trust-warn-text">
-                                          {t(guideFocusKey)}
-                                        </p>
-                                      ) : null}
-                                      <div className="border-t border-hairline pt-2">
-                                        <div className="mb-1 font-mono text-[9.5px] uppercase tracking-wider text-muted-2">
-                                          {t("val.guide.impactTitle")}
-                                        </div>
-                                        <ul className="space-y-1">
-                                          {DECISION_IMPACTS.map((d) => (
-                                            <li
-                                              key={d.verdict}
-                                              className="text-[11.5px] leading-relaxed text-muted"
-                                            >
-                                              <span
-                                                className={`font-semibold ${IMPACT_TEXT_TONE[d.tone]}`}
-                                              >
-                                                {t(d.titleKey)}:
-                                              </span>{" "}
-                                              {t(d.bodyKey)}
-                                            </li>
-                                          ))}
-                                        </ul>
-                                      </div>
-                                      <p className="border-t border-hairline pt-2 text-[11px] leading-relaxed text-muted-2">
-                                        {t(DECISION_TRUST_NOTE_KEY)}
-                                      </p>
-                                    </div>
-                                  </details>
-                                </div>
-                              </details>
-                              {/* SCRUM-396: expliziter Weg ins KO-Detail — dort liegen Bearbeiten und
-                              „Wissensobjekt löschen" (Autor/Controller/Admin). Kein Direkt-Löschen
-                              auf dem Board: die bewusste Hürde (Inline-Bestätigung im Detail) bleibt. */}
-                              <Link
-                                to={`/wissen/${k.id}`}
-                                className="mt-2 inline-flex items-center gap-1 text-[11.5px] font-semibold text-ai hover:opacity-80"
-                              >
-                                {t("val.openDetails")} <span aria-hidden="true">→</span>
-                              </Link>
-                            </div>
-                            {/* JOB 2935 D1 · DAS FUSSBAND. Vier der Sollwerte stehen hier an einer
-                            Stelle, damit sie nicht wieder auseinanderlaufen — jeder ist im Zielbild
-                            (Validierung.dc.html:56) belegt und wird von einem eigenen Fall gemessen:
-                              gap-2.5      = 10px Knopfabstand   → V1
-                              pt-3.5       = 14px Oberabstand    → V2
-                              border-t     = 1px Trennlinie      → V3
-                              border-hairline → --kw-hairline    → V4 (#E9E5DE im Theme „modern")
-                            Die Knöpfe sind ABSICHTLICH direkte Kinder des Bandes: so ist der
-                            gemessene `gap` wirklich der Abstand zwischen ihnen und nicht der einer
-                            Zwischenhülle. Nicht übernommen und weiterhin offen: die eigene Fläche
-                            des Bandes (#FAF8F5) — sie erbt die Karte, das wäre ein Produktumbau. */}
-                            <div className="flex w-full flex-wrap items-center gap-2.5 border-t border-hairline pt-3.5">
-                              {/* WP-SHIP9-B3FIX (Pedi 23.07.): ehrlicher Sperr-Hinweis, solange die
-                              KI-Prüfung läuft — die Aktionen darunter sind bis zum Ergebnis deaktiviert.
-                              JOB 2935 D1: eigene volle Zeile ÜBER den Knöpfen statt einer schmalen
-                              Spalte daneben — er begründet die Sperre, die man direkt darunter sieht. */}
-                              {gate.locked ? (
-                                <p className="w-full basis-full text-[11px] font-semibold text-muted">
-                                  {t(gate.noteKey)}
-                                </p>
-                              ) : null}
-                              {/* SCRUM-258: Review-Entscheidung textlich geführt — gleiche Mutationen
-                              (up/warn/down), Rückfrage/Ablehnen öffnen weiterhin das Pflicht-Feedback. */}
-                              {REVIEW_DECISIONS.map((d) => {
-                                const active =
-                                  feedback?.id === k.id && feedback.verdict === d.verdict;
-                                return (
-                                  <span
-                                    key={d.verdict}
-                                    className="inline-flex items-center gap-0.5"
-                                  >
-                                    <button
-                                      type="button"
-                                      // SCRUM-365: Hover/Touch zeigt direkt die ehrliche Wirkung der Entscheidung.
-                                      title={t(decisionImpact(d.verdict).bodyKey)}
-                                      disabled={
-                                        // WP-SHIP9-B3FIX: gesperrt, solange die KI-Prüfung noch läuft.
-                                        gate.locked ||
-                                        (d.verdict === "up"
-                                          ? rate.isPending || reviewWithFeedback.isPending
-                                          : reviewWithFeedback.isPending)
-                                      }
-                                      onClick={() =>
-                                        d.verdict === "up"
-                                          ? rate.mutate({
-                                              id: k.id,
-                                              title: k.title,
-                                              verdict: "up",
-                                            })
-                                          : openFeedback(k.id, d.verdict)
-                                      }
-                                      className={`flex h-9 items-center gap-1.5 rounded-btn px-2.5 text-[12.5px] font-semibold hover:opacity-80 disabled:opacity-50 ${DECISION_TONE[d.tone]} ${
-                                        active ? "ring-2 ring-current" : ""
-                                      }`}
-                                    >
-                                      {/* PAKET 3.2 (Pedi 23.07.): im gesperrten Zustand trägt „Freigeben"
-                                        KEIN ✓-Häkchen (das las sich wie „schon freigegeben") — statt
-                                        dessen ein neutrales Schloss. „0 von 3 grün" bleibt die Wahrheit. */}
-                                      {d.verdict === "up" ? (
-                                        gate.locked ? (
-                                          <Lock size={15} />
-                                        ) : (
-                                          <Check size={15} />
-                                        )
-                                      ) : d.verdict === "warn" ? (
-                                        <Minus size={15} />
-                                      ) : (
-                                        <X size={15} />
-                                      )}
-                                      <span>{t(d.labelKey)}</span>
-                                      {d.requiresFeedback ? <sup className="-mr-0.5">*</sup> : null}
-                                    </button>
-                                    {vhelp(DECISION_HELP[d.verdict])}
-                                  </span>
-                                );
-                              })}
-                              {/* SCRUM-258: Pflicht-Feedback sichtbar machen (Rückfrage/Ablehnen).
-                              JOB 2935 D1: der Hinweis stand als eigene Zeile unter den Knöpfen und
-                              war mit 10.5px der kleinste Text der Seite. Jetzt steht er da, wo das
-                              Zielbild ihn zeigt — `ml-auto` schiebt ihn an die rechte Bandkante,
-                              auf Augenhöhe mit dem Sternchen, das er erklärt (→ V9), und er trägt
-                              den Schriftgrad der Vorlage (11.5px → V7). Der WORTLAUT bleibt
-                              unverändert: das Sternchen ist der Bezug zum `<sup>*</sup>` an
-                              Rückfrage und Ablehnen; das Zielbild schreibt ihn ohne Stern und ohne
-                              Punkt, doch dort gibt es auch kein Sternchen am Knopf. Diese eine
-                              Abweichung ist damit eine offene Entscheidung, kein Versäumnis. */}
-                              <p className="ml-auto text-[11.5px] text-muted-2">
-                                {t("val.feedbackRequiredHint")}
-                              </p>
-                              {/* JOB 2935 D1: die NEBENAKTIONEN — Zuweisen, „als wahr", Bearbeiten,
-                              Löschen. Sie stehen im Zielbild nicht, gehören aber zum Produkt. Sie
-                              bekommen deshalb eine eigene, ruhige zweite Zeile des Bandes
-                              (`basis-full`), rechts ausgerichtet: links die Entscheidung, rechts die
-                              Verwaltung. Vorher konkurrierten sie in derselben schmalen Säule mit
-                              den drei Entscheidungsknöpfen um Platz. */}
-                              <div className="flex w-full basis-full flex-wrap items-center justify-end gap-2">
-                                {/* Pedi 05.07.: Admin-Override „als wahr kennzeichnen" — schließt die
-                              Validierung in einem Schritt ab. Zwei-Klick-Bestätigung; nur Admin. */}
-                                {role === "admin" ? (
-                                  confirmTrueId === k.id ? (
-                                    <div className="flex flex-wrap items-center justify-end gap-1.5 rounded-btn border border-trust-pos-fill/40 bg-trust-pos-bg px-2.5 py-1.5">
-                                      <span className="text-[11.5px] font-semibold text-trust-pos-text">
-                                        {t("val.markTrueConfirm")}
-                                      </span>
-                                      <button
-                                        type="button"
-                                        className="text-[11.5px] font-semibold text-muted hover:text-text"
-                                        onClick={() => setConfirmTrueId(null)}
-                                      >
-                                        {t("val.markTrueCancel")}
-                                      </button>
-                                      <button
-                                        type="button"
-                                        // WP-SHIP9-B3FIX2 (bens F1): auch die BEREITS GEÖFFNETE Admin-
-                                        // Bestätigung sperren, sobald die KI-Prüfung (wieder) läuft —
-                                        // sonst überlebt der Ja-Knopf den Lock (failed/done → Retry →
-                                        // pending, confirmTrueId bleibt) und könnte weiter mutieren.
-                                        disabled={gate.locked || adminValidate.isPending}
-                                        className="text-[11.5px] font-semibold text-trust-pos-text disabled:opacity-50"
-                                        onClick={() => adminValidate.mutate(k.id)}
-                                      >
-                                        {t("val.markTrueYes")}
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <span className="inline-flex items-center gap-1 sm:justify-end">
-                                      <button
-                                        type="button"
-                                        // WP-SHIP9-B3FIX: kein „als wahr" vor Abschluss der KI-Prüfung.
-                                        disabled={gate.locked}
-                                        onClick={() => setConfirmTrueId(k.id)}
-                                        className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[11.5px] font-semibold text-trust-pos-text hover:bg-trust-pos-bg disabled:opacity-50 disabled:hover:bg-transparent"
-                                      >
-                                        <Check size={13} />
-                                        {t("val.markTrue")}
-                                      </button>
-                                      {vhelp("markTrue")}
-                                    </span>
-                                  )
-                                ) : null}
-                                <div className="flex items-center gap-1">
-                                  <select
-                                    value=""
-                                    // WP-SHIP9-B3FIX: kein Zuweisen, solange die KI-Prüfung noch läuft.
-                                    disabled={gate.locked || assign.isPending}
-                                    onChange={(e) => {
-                                      if (e.target.value) {
-                                        assign.mutate({ id: k.id, userId: e.target.value });
-                                      }
-                                    }}
-                                    className="h-8 w-40 rounded-input border border-hairline bg-surface px-2 text-[12px] text-muted disabled:opacity-50"
-                                    aria-label={t("val.assign")}
-                                  >
-                                    <option value="">{t("val.assign")}</option>
-                                    {(users.data ?? []).map((u) => (
-                                      <option key={u.id} value={u.id}>
-                                        {u.name || u.id}
-                                      </option>
-                                    ))}
-                                  </select>
-                                  {vhelp("assign")}
-                                </div>
-                                {/* SCRUM-417: Bearbeiten/Löschen vom Board — optisch nachrangig unter
-                              den Entscheidungs-Knöpfen; Bestätigung auf eigener Zeile (SCRUM-419). */}
-                                {role === "admin" ||
-                                role === "controller" ||
-                                k.author === user?.id ? (
-                                  confirmDeleteId === k.id ? (
-                                    // AUFTRAG-mega45 Block E (Pedis Befund 28.07.): DIESELBE Form wie in
-                                    // der Bibliothek — eigene volle Zeile mit Trennlinie statt eines
-                                    // gerahmten Kastens mit Breitendeckel. Begründung an der
-                                    // Bedienbarkeit: der Deckel begrenzte den Schaden, die eigene Zeile
-                                    // beseitigt seine Ursache — auf einer vollen Zeile konkurriert die
-                                    // Rückfrage gar nicht mehr mit dem Karteninhalt um Platz. Die eine
-                                    // Zutat der alten Fassung, die den Bruch vom 04.07. wirklich behob,
-                                    // bleibt erhalten: der Fragetext ist umbruchfähig (min-w-0 flex-1).
-                                    // Kein Funktionsverlust — dieselben Schlüssel, dieselbe Mutation.
-                                    <span className="flex w-full basis-full flex-wrap items-center justify-end gap-1.5 border-t border-hairline pt-2">
-                                      <span className="min-w-0 flex-1 text-[12px] font-semibold text-text">
-                                        {t("ko.deleteQ")}
-                                      </span>
-                                      <Button
-                                        variant="ghost"
-                                        onClick={() => setConfirmDeleteId(null)}
-                                      >
-                                        {t("ko.deleteKeep")}
-                                      </Button>
-                                      {/* SCRUM-412 / mega14 Block F galt bisher NUR in der Bibliothek —
-                                    hier stand die neutrale Vorgabe „outline" am zerstörenden
-                                    Knopf. Jetzt Warnfarbe, gehalten vom Sammler in
-                                    tests/app/mega45-loeschbestaetigung-sammler.test.ts. */}
-                                      <Button
-                                        variant="danger"
-                                        disabled={removeKo.isPending}
-                                        onClick={() => removeKo.mutate(k.id)}
-                                      >
-                                        {t("ko.deleteYes")}
-                                      </Button>
-                                    </span>
-                                  ) : (
-                                    <div className="flex items-center gap-2 sm:justify-end">
-                                      <Link
-                                        to={`/wissen/${k.id}?edit=1`}
-                                        className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                                      >
-                                        <Pencil size={13} />
-                                        {t("val.editKo")}
-                                      </Link>
-                                      <button
-                                        type="button"
-                                        onClick={() => setConfirmDeleteId(k.id)}
-                                        className="inline-flex items-center gap-1 rounded-btn px-2 py-1 text-[12px] font-semibold text-muted hover:bg-trust-crit-bg hover:text-trust-crit-text"
-                                      >
-                                        <Trash2 size={13} />
-                                        {t("ko.deleteButton")}
-                                      </button>
-                                    </div>
-                                  )
-                                ) : null}
-                              </div>
-                            </div>
-                          </Card>
-                          {feedback?.id === k.id ? (
-                            <Card className="border-hairline/80">
-                              <div className="mb-1 flex items-center gap-1.5 text-[12.5px] font-semibold text-text">
-                                {feedback.verdict === "warn"
-                                  ? t("val.feedback.condTitle")
-                                  : t("val.feedback.rejTitle")}
-                                {vhelp("feedbackForm")}
-                              </div>
-                              {/* SCRUM-365 / AG-12: Feedback als Hilfe zur Nacharbeit rahmen, nicht technisch. */}
-                              <p className="mb-2 text-[11.5px] leading-relaxed text-muted">
-                                {t("val.feedback.helpHint")}
-                              </p>
-                              <textarea
-                                value={feedbackText}
-                                onChange={(e) => setFeedbackText(e.target.value)}
-                                placeholder={t("val.feedback.placeholder")}
-                                rows={3}
-                                className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
-                              />
-                              {reviewWithFeedback.isError ? (
-                                <div className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                                  {t("val.feedback.error")}
-                                </div>
-                              ) : null}
-                              <div className="mt-2 flex items-center justify-end gap-2">
-                                <Button
-                                  variant="ghost"
-                                  disabled={reviewWithFeedback.isPending}
-                                  onClick={() => {
-                                    setFeedback(null);
-                                    setFeedbackText("");
-                                  }}
-                                >
-                                  {t("val.feedback.cancel")}
-                                </Button>
-                                <Button
-                                  variant="primary"
-                                  disabled={
-                                    // WP-SHIP9-B3FIX2 (bens F1): auch das BEREITS GEÖFFNETE Feedback-
-                                    // Formular sperren, sobald die KI-Prüfung (wieder) läuft — sonst
-                                    // überlebt der Absenden-Knopf den Lock (failed → Retry → pending,
-                                    // feedback bleibt) und könnte weiter reviewWithFeedback auslösen.
-                                    gate.locked ||
-                                    reviewWithFeedback.isPending ||
-                                    !isFeedbackSubmittable(feedbackText)
-                                  }
-                                  onClick={() =>
-                                    reviewWithFeedback.mutate({
-                                      id: k.id,
-                                      title: k.title,
-                                      verdict: feedback.verdict,
-                                      text: feedbackText,
-                                    })
-                                  }
-                                >
-                                  {t("val.feedback.submit")}
-                                </Button>
-                              </div>
-                            </Card>
-                          ) : null}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </>
+                <span
+                  // Die Punkte sind PLÄTZE (0…needed-1), keine Objekte — ihre Nummer IST ihre Identität.
+                  key={`punkt-${i}`}
+                  data-punkt={rot ? "rot" : gruen ? "gruen" : "leer"}
+                  className={cx(
+                    "h-[9px] w-[9px] rounded-full",
+                    rot
+                      ? "bg-trust-crit-fill"
+                      : gruen
+                        ? "bg-trust-pos-fill"
+                        : "border-[1.5px] border-hairline",
+                  )}
+                />
               );
-            }}
-          </QueryState>
+            })}
+          </span>
+          {/* Auftrag §5.3: eine Zeile „Freigegeben" 3 s im Fuß — nie ohne Serverantwort. */}
+          {quittung ? (
+            <p
+              data-testid="pruefen-quittung"
+              data-text="text"
+              className="w-full basis-full text-[12px] font-semibold text-trust-pos-text"
+            >
+              {t("val.decisionSaved")} — {t(quittung.statusKey)}
+            </p>
+          ) : null}
+          {/* Begründungspflicht bleibt: Rückfrage/Ablehnen klappen das Feld hier auf. */}
+          {feedback?.id === k.id ? (
+            <div data-testid="pruefen-begruendung" className="w-full basis-full pt-2">
+              <textarea
+                value={feedbackText}
+                onChange={(e) => setFeedbackText(e.target.value)}
+                placeholder={t("val.feedback.placeholder")}
+                rows={3}
+                aria-label={
+                  feedback.verdict === "warn"
+                    ? t("val.feedback.condTitle")
+                    : t("val.feedback.rejTitle")
+                }
+                className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none placeholder:text-muted-2 focus:border-ink/30"
+              />
+              {reviewWithFeedback.isError ? (
+                <div className="mt-2 rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+                  {t("val.feedback.error")}
+                </div>
+              ) : null}
+              <div className="mt-2 flex items-center justify-end gap-2">
+                <Button
+                  variant="ghost"
+                  disabled={reviewWithFeedback.isPending}
+                  onClick={() => {
+                    setFeedback(null);
+                    setFeedbackText("");
+                  }}
+                >
+                  {t("val.feedback.cancel")}
+                </Button>
+                <Button
+                  variant="primary"
+                  disabled={
+                    gate.locked ||
+                    reviewWithFeedback.isPending ||
+                    !isFeedbackSubmittable(feedbackText)
+                  }
+                  onClick={() =>
+                    reviewWithFeedback.mutate({
+                      id: k.id,
+                      title: k.title,
+                      verdict: feedback.verdict,
+                      text: feedbackText,
+                    })
+                  }
+                >
+                  {t("val.feedback.submit")}
+                </Button>
+              </div>
+            </div>
+          ) : null}
         </div>
       </div>
-    </div>
-  );
+    );
+  }
 }

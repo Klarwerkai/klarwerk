@@ -153,8 +153,25 @@ function text(): string {
   return container.textContent ?? "";
 }
 
+// JOB 3061 · H2: Suche, Herkunft, Review-Fokus und die Facettenschiene wohnen im Filter-Menü neben
+// dem Segment (Pages-Art). Ein Mensch öffnet es mit einem Klick — der Test tut dasselbe. Zweimal
+// aufrufen schadet nicht: das Menü bleibt offen, weil der zweite Aufruf nichts findet, was zu
+// klicken wäre, sobald der Inhalt schon da ist.
+async function oeffneFilter(): Promise<void> {
+  if (container.querySelector('[data-testid="pruefen-menue-panel-filter"]')) {
+    return;
+  }
+  await act(async () => {
+    (
+      container.querySelector('[data-testid="pruefen-menue-filter"]') as HTMLElement | null
+    )?.click();
+    await flush();
+  });
+}
+
 // Eine Facetten-Option in der Schiene anhaken — über ihre sichtbare Beschriftung, so wie ein Mensch.
 async function haken(beschriftung: string): Promise<void> {
+  await oeffneFilter();
   const label = [...container.querySelectorAll("label")].find((l) =>
     (l.textContent ?? "").includes(beschriftung),
   );
@@ -272,6 +289,7 @@ describe("mega48 Block D: die persönliche Aussage steht VOR allen Sichtfiltern"
     expect(text()).toContain("PROBE-A");
 
     // Suche ist der ERSTE Filter in `boardFiltered` — vor Herkunft, Review-Fokus und Facetten.
+    await oeffneFilter();
     await tippe(feldMitPlatzhalter(de("val.filter")), "GIBTESHIERNICHT");
 
     expect(text()).not.toContain("PROBE-A");
@@ -287,6 +305,7 @@ describe("mega48 Block D: die persönliche Aussage steht VOR allen Sichtfiltern"
     await mount([A, B]);
 
     // „Demo" trifft keinen der beiden Beiträge (beide sind eigenes Wissen).
+    await oeffneFilter();
     await act(async () => {
       knopfMitText(de("lib.demoFilter.demo")).click();
       await flush();

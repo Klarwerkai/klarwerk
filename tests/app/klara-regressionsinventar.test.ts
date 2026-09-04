@@ -296,13 +296,24 @@ const INVENTAR: readonly string[] = [
   // (`klara-policy-store.ts:667`). Sachlich Klara-Regression: bricht der Schreibweg auf halbem
   // Weg ab, sieht ein Leser eine Sitzung, deren Regelwerk und Zustimmung nicht zusammenpassen.
   "tests/db/i10-klara-regelwerk-klammer.test.ts",
-  // JOB 2618 D4: der Zielbild-Abgleich der Validierungskonsole (Fussband bis zum wirksamen
-  // CSS-Wert, Token je Theme, Renderer-Gegenlesung). K2 hat die Datei gemeldet, das Inventar hat
-  // sie nicht still aufgenommen. Sachlich Klara-Regression im weiteren Sinn: die Konsole ist die
-  // Flaeche, auf der Wissen freigegeben wird, bevor Klara daraus zitiert; das Band traegt die
-  // Entscheidungsknoepfe. (D3 hatte den Eintrag entfernt, weil die damalige Fassung keine Achse
-  // traf — die D4-Fassung trifft sie, der Eintrag folgt der Messung, nicht der Meinung.)
-  "tests/design/zielbild-validierung.test.ts",
+  // JOB 2618 D4 hatte hier `tests/design/zielbild-validierung.test.ts` stehen: der Zielbild-
+  // Abgleich der Validierungskonsole (Fussband bis zum wirksamen CSS-Wert, Token je Theme,
+  // Renderer-Gegenlesung). Sachlich Klara-Regression im weiteren Sinn — die Konsole ist die
+  // Flaeche, auf der Wissen freigegeben wird, bevor Klara daraus zitiert.
+  //
+  // JOB 3061 H2 (04.09.2026): DER EINTRAG IST WIEDER RAUS. Der Auftrag loest jene Messung ab
+  // (§5.7); die Datei misst das Zielbild vom 27.08. nicht mehr, sondern haelt nur noch die
+  // Abloesung selbst fest (beide Nachfolger existieren und messen weiter). Damit trifft sie KEINE
+  // der sechs Achsen mehr — kein `themes.css`, kein `Cache-Control`, kein Klara-Bauteil, kein
+  // `taskpane`. Ein Eintrag ohne Achsendeckung macht K2 UND K6 rot; das ist genau dieselbe Lage
+  // wie in 2618 D3, wo der Eintrag aus demselben Grund schon einmal wich (der Kommentar zu
+  // `job2622-sandbox-skips` weiter oben nennt sie beim Namen).
+  // GEMESSEN, NICHT GESETZT: der Waechterlauf dieser Runde meldete mit noch stehendem Eintrag
+  // K2 `im Inventar gepinnt, aber im Baum nicht mehr gefunden: expected [ Array(1) ] to deeply
+  // equal []` und K6 `tests/design/zielbild-validierung.test.ts ist im Inventar, aber von keiner
+  // Achse gedeckt: expected 0 to be greater than 0`. Erst danach wurde diese Zeile angefasst.
+  // Der Eintrag folgt der Messung, nicht der Meinung — und wenn die Datei morgen wieder misst,
+  // meldet K2 sie als `neu` zurueck.
   // JOB 3004 D1: der Wertevergleich der Klara-Antwortkarte (Antwortzustand des Aufgabenfensters)
   // gegen sein Zielbild Main.dc.html — die ECHTE taskpane.html aus apps/web/dist, in Chromium
   // geladen, echte App hinter /api/*, echte Frage ueber die Route. Traegt „klara" im Namen

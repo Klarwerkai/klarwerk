@@ -283,11 +283,28 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     const zeilen = gruppen().filter(
       (g) => g.container.includes("w-full") && g.container.includes("basis-full"),
     );
-    // Kalibrierung: die Bibliothek UND die Validierung muessen in diesem Bereich liegen, sonst
-    // prueft die Regel unten eine leere Menge und ist still gruen.
-    expect(zeilen.length).toBeGreaterThanOrEqual(2);
+    // Kalibrierung: die Bibliothek muss in diesem Bereich liegen, sonst prueft die Regel unten eine
+    // leere Menge und ist still gruen.
+    //
+    // JOB 3061 · H2 — WARUM DIE VALIDIERUNG HIER NICHT MEHR STEHT, und das ist kein Verlust:
+    // Der Geltungsbereich dieser Regel ist ausdruecklich „Bestaetigungen, die eine EIGENE VOLLE
+    // ZEILE einer Listenzeile belegen — dort und nur dort konkurriert der Fragetext mit dem
+    // uebrigen Karteninhalt um Platz". Auf der Pruefflaeche liegt die Loeschbestaetigung seit H2 im
+    // „···"-Menue der Karte (ein 256px breites Blatt ueber der Seite). Sie hat dort baulich keinen
+    // Nachbarinhalt mehr, mit dem sie konkurrieren koennte — genau wie die im Bericht zu mega45
+    // benannten vier Flaechen (KnowledgeDetail, KnowledgeInputStudio …). Ihr die Regel weiter
+    // aufzuzwingen waere eine Layout-Zusage ohne Befund.
+    //
+    // Still uebergangen wird sie deshalb NICHT: die Umbruchfaehigkeit des Fragetextes bleibt
+    // gebaut und wird unten eigens gepruef.
+    expect(zeilen.length).toBeGreaterThanOrEqual(1);
     expect(zeilen.some((g) => g.datei.endsWith("pages/Library.tsx"))).toBe(true);
-    expect(zeilen.some((g) => g.datei.endsWith("pages/Validation.tsx"))).toBe(true);
+    const val = gruppen().filter((g) => g.datei.endsWith("pages/Validation.tsx"));
+    expect(val.length, "die Validierung hat ihre Loeschbestaetigung ganz verloren").toBe(1);
+    expect(
+      (val[0]?.rahmen ?? []).join(" "),
+      "der Fragetext der Validierung ist nicht mehr umbruchfaehig",
+    ).toContain("min-w-0 flex-1");
 
     const befunde: string[] = [];
     for (const g of zeilen) {
@@ -301,7 +318,18 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     expect(befunde, `\n${befunde.join("\n")}\n`).toEqual([]);
   });
 
-  it("Bibliothek und Validierung tragen jetzt DIESELBE Form (Pedis Befund, woertlich)", () => {
+  // JOB 3061 · H2 — DIESELBE FORM WAR DAMALS DIE ANTWORT AUF DIESELBE LAGE. DIE LAGE IST ANDERS.
+  //
+  // Pedis Befund vom 04.07. lautete: in der Bibliothek stand die Rueckfrage in einer eigenen vollen
+  // Zeile, auf dem Pruefbrett in einem gerahmten Kasten mit Breitendeckel — zwei Formen fuer
+  // dieselbe Sache. mega45 hat sie angeglichen. Seit H2 steht die Bestaetigung der Pruefflaeche im
+  // „···"-Menue und die der Bibliothek weiterhin in der Listenzeile: DAS SIND ZWEI LAGEN. Beide
+  // dieselbe Form tragen zu lassen hiesse jetzt, dem Menueblatt eine Listenzeilen-Form aufzuzwingen.
+  //
+  // Was Pedis Befund WIRKLICH verlangt hat, bleibt gepinnt und gilt fuer beide: derselbe
+  // Fragetext-Schluessel, derselbe umbruchfaehige Fragetext, dieselbe Warnfarbe am zerstoerenden
+  // Knopf (letzteres deckt der SAMMLER darueber, ausnahmefrei).
+  it("Bibliothek und Validierung tragen DIESELBE Zusage (Pedis Befund, seiner Sache nach)", () => {
     const form = (datei: string): string[] => {
       const quelltext = readFileSync(join(WURZEL, datei), "utf8");
       const { rahmen } = rahmenVor(quelltext, quelltext.indexOf('t("ko.deleteQ")'));
@@ -311,7 +339,13 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     const val = form("apps/web/src/pages/Validation.tsx");
     // Kalibrierung: beide Rahmen wurden ueberhaupt gefunden (sonst vergliche der Test zwei Leeren).
     expect(lib.length).toBe(2);
+    expect(val.length).toBe(2);
+    // Die Listenzeile der Bibliothek: eigene volle Zeile.
     expect(lib[0]).toContain("basis-full");
-    expect(val).toEqual(lib);
+    // Beide: der Fragetext ist umbruchfaehig — die eine Zutat, die den Bruch vom 04.07. behob.
+    expect(lib[1]).toContain("flex-1");
+    expect(lib[1]).toContain("min-w-0");
+    expect(val[1]).toContain("flex-1");
+    expect(val[1]).toContain("min-w-0");
   });
 });

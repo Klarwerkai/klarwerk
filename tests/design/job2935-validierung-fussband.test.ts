@@ -33,7 +33,26 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 const DIST = resolve(process.cwd(), "apps/web/dist");
 const ORIGIN = "http://klarwerk.test";
-const HINWEIS_TEXT = "* Rückfrage und Ablehnung brauchen eine Begründung.";
+// ================================================================================================
+// JOB 3061 · H2 — DIE ANKER SIND GEWANDERT, DIE FRAGEN NICHT.
+// ================================================================================================
+//
+// Bis hierher fand diese Datei die Karte über `[data-testid="validation-row"]` und das Fußband über
+// den Dauertext „* Rückfrage und Ablehnung brauchen eine Begründung." an seinem rechten Rand. Mit
+// den Mockups vom 04.09. trägt die Fläche links eine Warteschlange (das ist jetzt die `validation-
+// row`) und rechts EINE Karte; der Begründungshinweis steht im „?"-Menü, nicht mehr auf jeder Karte.
+//
+// GEMESSEN WIRD WEITERHIN DASSELBE, an den Produktankern der neuen Fläche:
+//   · die Karte              `[data-testid="pruefen-karte"]`
+//   · das Fußband            `[data-testid="pruefen-fussband"]`
+//   · der Titel              der Titel-Link der Karte
+//   · die Meta-Zeile         `[data-text="meta"]` — Autor · Bereich · Datum
+//
+// EINE ZUSICHERUNG HAT IHREN ORT GEWECHSELT und steht deshalb anders da: die Nebenaktionen
+// (Zuweisen, Bearbeiten, Löschen) wohnen im „···"-Menü der Karte. „Erreichbar" heisst für sie
+// jetzt: nach EINEM Klick auf das Menü — und dann dieselben vier Bedingungen wie vorher (Fläche,
+// im Fenster, unverdeckt, nicht gesperrt). Das ist genau die Frage von C4/W4, nur am neuen Ort.
+const KARTE_ANKER = '[data-testid="pruefen-karte"]';
 // Lang genug, dass er in der alten halben Kartenbreite sicher abgeschnitten wurde.
 const TITEL = "Project equipment design guide Rev. 0.91";
 
@@ -93,17 +112,13 @@ function distDatei(pfadname: string): { body: Buffer; typ: string } {
 }
 
 /** In der Seite: Karte, Titel-Link, Fussband (Elternteil des Hinweises) und Erstellungsangabe messen. */
-const MESSEN = `([hinweisText, titel]) => {
-  const karte = document.querySelector('[data-testid="validation-row"]');
+const MESSEN = `([kartenAnker, titel]) => {
+  const karte = document.querySelector(kartenAnker);
   if (!karte) return null;
-  const hinweis = [...karte.querySelectorAll('p')].find((p) => (p.textContent || '').trim() === hinweisText);
-  if (!hinweis) return null;
-  const band = hinweis.parentElement;
+  const band = karte.querySelector('[data-testid="pruefen-fussband"]');
+  if (!band) return null;
   const titelEl = [...karte.querySelectorAll('a')].find((a) => (a.textContent || '').trim() === titel);
-  const etiketten = karte.querySelector('[data-testid="validation-card-labels"]');
-  const erstellt = etiketten
-    ? [...etiketten.children].find((el) => /\\d{2}\\.\\d{2}\\.\\d{4}/.test(el.textContent || ''))
-    : null;
+  const erstellt = karte.querySelector('[data-text="meta"]');
   // Der Inhaltsblock ist das Geschwisterelement VOR dem Band — gegen ihn wird gemessen, nicht gegen
   // den Titel allein: die alte Saeule begann zwar unter der Titelzeile, stand aber neben dem Block.
   const inhalt = band.previousElementSibling;
@@ -116,8 +131,12 @@ const MESSEN = `([hinweisText, titel]) => {
     // F2: schneidet der Titel ab? scrollWidth > clientWidth heisst: Text laenger als sein Kasten.
     titelText: titelEl ? (titelEl.textContent || '').trim() : null,
     titelUeberlauf: titelEl ? titelEl.scrollWidth - titelEl.clientWidth : null,
-    // F3: der Mittelpunkt ist CSS-Inhalt (::before) — nicht im textContent, deshalb hier gelesen.
-    trenner: erstellt ? getComputedStyle(erstellt, '::before').content : null,
+    // F3: Der Trenner stand bis JOB 3061 als CSS-Inhalt (::before) an der Erstellungsangabe, weil
+    // die Etikettenzeile daneben GEZÄHLT wurde und kein zusätzliches Kind vertrug. Diese Zählung
+    // gibt es nicht mehr; das Mockup (Pruefen.dc.html:53) schreibt „Autor · Bereich · Datum" als
+    // EINE Meta-Zeile. Der Mittelpunkt steht deshalb jetzt im Text selbst — dieselbe Zusage,
+    // ohne den Umweg über eine Pseudoelement-Regel.
+    trenner: erstellt ? (erstellt.textContent || '') : null,
     erstelltText: erstellt ? (erstellt.textContent || '').trim() : null,
     knoepfeImBand: [...band.querySelectorAll('button')].map((b) => (b.textContent || '').replace(/\\*/g, '').trim()).filter(Boolean),
   };
@@ -220,13 +239,11 @@ describe("JOB 2935 · D1 · die Validierungskarte traegt ihr Fussband unter dem 
       });
       await seite.goto(`${ORIGIN}/validierung`, { waitUntil: "load", timeout: 60_000 });
       await seite.waitForFunction(
-        fn(
-          `(t) => [...document.querySelectorAll('p')].some((p) => (p.textContent || '').trim() === t)`,
-        ),
-        HINWEIS_TEXT,
+        fn("(sel) => document.querySelector(sel) !== null"),
+        KARTE_ANKER,
         { timeout: 30_000 },
       );
-      m = await seite.evaluate<Messung | null>(fn(MESSEN), [HINWEIS_TEXT, TITEL]);
+      m = await seite.evaluate<Messung | null>(fn(MESSEN), [KARTE_ANKER, TITEL]);
       console.info(`JOB 2935 D1 · Messung ${JSON.stringify(m)}`);
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 3).join(" | ");
@@ -318,23 +335,19 @@ describe("JOB 2935 · D1 · die Validierungskarte traegt ihr Fussband unter dem 
 const WORD_NAHE_BREITE = 360;
 
 /**
- * In der Seite: die Lage der Karte messen.
+ * Der gemeinsame Massstab beider Messgaenge: „erreichbar".
  *
  * „Erreichbar" ist hier kein Eindruck, sondern vier Bedingungen an einem realen Element: es hat
- * eine Flaeche, es ragt nicht aus dem Fenster, es ist nicht von etwas anderem verdeckt (gepruefte
+ * eine Flaeche, es ragt nicht aus dem Fenster, es ist nicht von etwas anderem verdeckt (geprueft
  * per `elementFromPoint` auf seiner Mitte) und es ist nicht gesperrt. Ein Knopf, den man sieht,
  * aber nicht treffen kann, ist nicht erreichbar — genau diesen Fall soll ein schmales Fenster
  * aufdecken.
+ *
+ * Der Massstab steht als EIN Textbaustein da und wird in beide Messfunktionen eingesetzt, damit
+ * das Fussband und das Menue nicht mit zwei verschiedenen Ellen gemessen werden.
  */
-const LAGE = `([hinweisText, titel]) => {
+const ERREICHBAR_HELFER = `
   const doc = document.documentElement;
-  const karte = document.querySelector('[data-testid="validation-row"]');
-  if (!karte) return null;
-  const hinweis = [...karte.querySelectorAll('p')].find((p) => (p.textContent || '').trim() === hinweisText);
-  if (!hinweis) return null;
-  const band = hinweis.parentElement;
-  const titelEl = [...karte.querySelectorAll('a')].find((a) => (a.textContent || '').trim() === titel);
-  const kastenVon = (el) => { const r = el.getBoundingClientRect(); return { links: r.left, rechts: r.right, oben: r.top, unten: r.bottom, breite: r.width }; };
   const erreichbar = (el, name) => {
     if (!el) return { name: name, da: false };
     el.scrollIntoView({ block: 'center' });
@@ -350,13 +363,39 @@ const LAGE = `([hinweisText, titel]) => {
       frei: !!treffer && (treffer === el || el.contains(treffer) || treffer.contains(el)),
       gesperrt: el.disabled === true,
     };
-  };
+  };`;
+
+/**
+ * ERSTER MESSGANG — die Karte, so wie sie DASTEHT: alle Menues zu.
+ *
+ * WARUM DAS DER ZUSTAND SEIN MUSS (JOB 3061 R4, Tor-Befund C3/W3 „Freigeben ist von etwas anderem
+ * verdeckt: expected false to be true"): Runde 3 hat das „···"-Menue VOR der einen Messung
+ * geoeffnet und danach alles gemessen — auch das Fussband. Ein offenes Menue legt aber nach der
+ * Bauform des Produkts eine Schliessflaeche ueber das ganze Fenster (`fixed inset-0 z-30`,
+ * `apps/web/src/components/pruefen/PruefenMenue.tsx:96`), damit ein Klick daneben es zumacht.
+ * `elementFromPoint` auf der Mitte von „Freigeben" traf folglich diese Flaeche, und der Fall meldete
+ * „verdeckt" — richtig gemessen, nur am falschen Zustand: WAEHREND ein Menue offen ist, ist der
+ * Knopf darunter absichtlich nicht zu treffen, und ein Mensch, der entscheiden will, hat kein Menue
+ * offen.
+ *
+ * Gemessen wird deshalb, was C3/W3 wirklich fragen: Sind die drei Entscheidungen erreichbar, wenn
+ * die Karte unberuehrt dasteht? Dass dieser Gang wirklich am zugeklappten Stand misst, ist keine
+ * Annahme, sondern ein eigener Messwert (`menueOffen`), den C0 auf `false` festnagelt.
+ */
+const LAGE = `([kartenAnker, titel]) => {
+  const karte = document.querySelector(kartenAnker);
+  if (!karte) return null;
+  const band = karte.querySelector('[data-testid="pruefen-fussband"]');
+  if (!band) return null;
+  const titelEl = [...karte.querySelectorAll('a')].find((a) => (a.textContent || '').trim() === titel);
+  const kastenVon = (el) => { const r = el.getBoundingClientRect(); return { links: r.left, rechts: r.right, oben: r.top, unten: r.bottom, breite: r.width }; };${ERREICHBAR_HELFER}
   const knopf = (t) => [...band.querySelectorAll('button')].find((b) => (b.textContent || '').replace(/\\*/g, '').trim() === t) || null;
-  const genau = (t) => [...karte.querySelectorAll('a,button')].find((e) => (e.textContent || '').replace(/\\s+/g, ' ').trim() === t) || null;
   return {
     theme: doc.getAttribute('data-theme') || '(kein Attribut — Classic)',
     fensterBreite: doc.clientWidth,
     seitenUeberlauf: doc.scrollWidth - doc.clientWidth,
+    // Der Beleg, dass dieser Gang am zugeklappten Stand misst — kein Blatt, keine Schliessflaeche.
+    menueOffen: document.querySelector('[data-testid^="pruefen-menue-panel-"]') !== null,
     karte: kastenVon(karte),
     karteRagtRaus: Math.round(kastenVon(karte).rechts - doc.clientWidth),
     band: kastenVon(band),
@@ -366,12 +405,55 @@ const LAGE = `([hinweisText, titel]) => {
       erreichbar(knopf('Freigeben'), 'Freigeben'),
       erreichbar(knopf('Rückfrage'), 'Rückfrage'),
       erreichbar(knopf('Ablehnen'), 'Ablehnen'),
-      erreichbar(karte.querySelector('select'), 'Zuweisen'),
-      erreichbar(genau('Bearbeiten'), 'Bearbeiten'),
-      erreichbar(genau('Wissensobjekt löschen'), 'Löschen'),
     ],
   };
 }`;
+
+/**
+ * ZWEITER MESSGANG — die Nebenaktionen, nachdem ein Mensch das „···"-Menue geoeffnet hat.
+ *
+ * Die Frage von C4/W4 ist unveraendert („was da ist, muss man treffen koennen"), nur ihr Ort hat
+ * gewechselt: Zuweisen, Bearbeiten und Loeschen wohnen seit JOB 3061 im Menueblatt der Karte. Der
+ * Massstab ist derselbe wie im ersten Gang; gemessen wird im offenen Zustand, weil das der Zustand
+ * ist, in dem ein Mensch diese Aktionen benutzt. Die Schliessflaeche stoert hier nicht: das Blatt
+ * liegt mit `z-40` darueber.
+ */
+const NEBENAKTIONEN = `() => {
+  const blatt = document.querySelector('[data-testid="pruefen-menue-panel-karte"]');
+  if (!blatt) return null;${ERREICHBAR_HELFER}
+  const imBlatt = (t) => [...blatt.querySelectorAll('a,button')].find((e) => (e.textContent || '').replace(/\\s+/g, ' ').trim() === t) || null;
+  return [
+    erreichbar(blatt.querySelector('select'), 'Zuweisen'),
+    erreichbar(imBlatt('Bearbeiten'), 'Bearbeiten'),
+    erreichbar(imBlatt('Wissensobjekt löschen'), 'Löschen'),
+  ];
+}`;
+
+/**
+ * Das „···"-Menü der Karte öffnen — genau so, wie ein Mensch es öffnet (ein Klick auf den Auslöser).
+ *
+ * WARUM DAS EIN EIGENER SCHRITT IST und nicht die erste Zeile von `NEBENAKTIONEN` (JOB 3061 R3,
+ * Tor-Befund C4/W4 „keine einzige Nebenaktion auf der Karte gefunden: expected 0 to be greater than
+ * 0"): `el.click()` löst in React ein `setState` aus, und React schreibt das Blatt ERST IM NÄCHSTEN
+ * Anstrich ins DOM. Steht das `querySelector` auf das Blatt in derselben synchronen Funktion,
+ * liest es den Stand VOR dem Anstrich — `blatt` war `null`, alle drei Nebenaktionen kamen als
+ * `da: false` zurück, und C4/W4 zählten null vorhandene. Der Klick war also nie das Problem; das
+ * fehlende Abwarten war es.
+ *
+ * Deshalb: klicken, dann mit `waitForFunction` auf das Blatt WARTEN (kein `setTimeout` — die
+ * Bedingung ist das Blatt selbst, nicht eine geratene Frist), dann erst messen. Dieselbe Bauform
+ * benutzt `h2-funktionsinventar.test.ts` (`OEFFNEN`), wo sie über 99 Zeilen trägt.
+ */
+const MENUE_OEFFNEN = `(kartenAnker) => {
+  const karte = document.querySelector(kartenAnker);
+  if (!karte) return false;
+  const menue = karte.querySelector('[data-testid="pruefen-menue-karte"]');
+  if (!menue) return false;
+  menue.click();
+  return true;
+}`;
+
+const BLATT_DA = `() => document.querySelector('[data-testid="pruefen-menue-panel-karte"]') !== null`;
 
 interface Teil {
   name: string;
@@ -387,6 +469,8 @@ interface Lage {
   theme: string;
   fensterBreite: number;
   seitenUeberlauf: number;
+  /** War beim ERSTEN Messgang ein Menueblatt offen? Muss `false` sein — C0 haelt es fest. */
+  menueOffen: boolean;
   karte: Kasten;
   karteRagtRaus: number;
   band: Kasten;
@@ -487,14 +571,31 @@ describe("JOB 2935 · D2 · dieselbe Karte im Classic-Standard und bei Word-nahe
           await route.fulfill({ status: 200, body: d.body, contentType: d.typ });
         });
         await s.goto(`${ORIGIN}/validierung`, { waitUntil: "load", timeout: 60_000 });
-        await s.waitForFunction(
-          fn(
-            `(t) => [...document.querySelectorAll('p')].some((p) => (p.textContent || '').trim() === t)`,
-          ),
-          HINWEIS_TEXT,
-          { timeout: 30_000 },
-        );
-        return s.evaluate<Lage | null>(fn(LAGE), [HINWEIS_TEXT, TITEL]);
+        await s.waitForFunction(fn("(sel) => document.querySelector(sel) !== null"), KARTE_ANKER, {
+          timeout: 30_000,
+        });
+        // ZWEI MESSGAENGE IN DIESER REIHENFOLGE, und die Reihenfolge ist der Befund aus R4:
+        //   1. die unberuehrte Karte — Fussband, Titel, die drei Entscheidungen (alle Menues zu),
+        //   2. das geoeffnete „···"-Menue — die drei Nebenaktionen.
+        // Umgekehrt oder in einem Gang gemessen, faellt die Schliessflaeche des offenen Menues ueber
+        // das Fussband und meldet „Freigeben verdeckt" (Begruendung an `LAGE`).
+        const gemessen = await s.evaluate<Lage | null>(fn(LAGE), [KARTE_ANKER, TITEL]);
+        if (!gemessen) {
+          return null;
+        }
+        // Erst öffnen, dann auf das Blatt WARTEN, dann messen — die drei Schritte müssen getrennt
+        // bleiben (Begründung an `MENUE_OEFFNEN`). Lässt sich das Menü nicht öffnen, ist das ein
+        // Befund und keine stille Null: `lageMessen` wirft, und C4/W4 melden ihn über `fehler2`.
+        const geoeffnet = await s.evaluate<boolean>(fn(MENUE_OEFFNEN), KARTE_ANKER);
+        if (!geoeffnet) {
+          throw new Error('das „···"-Menü der Karte war nicht zu finden');
+        }
+        await s.waitForFunction(fn(BLATT_DA), undefined, { timeout: 30_000 });
+        const neben = await s.evaluate<Teil[] | null>(fn(NEBENAKTIONEN));
+        if (!neben) {
+          throw new Error('das Blatt des „···"-Menüs war nach dem Öffnen nicht zu lesen');
+        }
+        return { ...gemessen, teile: [...gemessen.teile, ...neben] };
       };
 
       classic = await lageMessen(1280, 900);
@@ -519,6 +620,11 @@ describe("JOB 2935 · D2 · dieselbe Karte im Classic-Standard und bei Word-nahe
     expect(classic?.theme).toBe("(kein Attribut — Classic)");
     expect(schmal?.theme).toBe("(kein Attribut — Classic)");
     expect(schmal?.fensterBreite).toBeLessThanOrEqual(WORD_NAHE_BREITE);
+    // Und die zweite Zusicherung an den Messaufbau (JOB 3061 R4): Karte und Fussband sind an der
+    // UNBERUEHRTEN Flaeche gemessen. Ohne diese Zeile koennte C3/W3 unbemerkt wieder gegen ein
+    // offenes Menue messen — und dann sagt „Freigeben ist verdeckt" nichts ueber die Karte aus.
+    expect(classic?.menueOffen, "beim Messen der Karte war ein Menü offen").toBe(false);
+    expect(schmal?.menueOffen, "beim Messen der Karte war ein Menü offen").toBe(false);
   });
 
   for (const [kennung, lage] of [

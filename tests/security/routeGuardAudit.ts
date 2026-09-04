@@ -318,6 +318,10 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "POST /api/duplicates/:id/dismiss": { protection: "ko.validate" },
   "POST /api/duplicates/:id/keep-separate": { protection: "ko.validate" },
   "POST /api/duplicates/:id/link-related": { protection: "ko.validate" },
+  // JOB 3061 · H2: „Status setzen" (In Bearbeitung / Geschlossen mit Abschlussgrund). Dieselbe
+  // kuratorische Schutzart wie die drei Aktionen darüber — es ist derselbe Vorgang, nur mit
+  // ausdrücklich gewähltem Grund statt mit einem Grund je Knopf.
+  "POST /api/duplicates/:id/status": { protection: "ko.validate" },
 
   // --- Capture/Drafts (capture-routes.ts) ---
   "GET /api/drafts": { protection: "ko.create" },

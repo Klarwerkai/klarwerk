@@ -51,6 +51,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         settings: ok(() => ({ minConfidence: 0.5 })),
       },
       conflicts: { list: ok(() => []) },
+      // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus echten Abrufen.
+      validation: { board: ok(() => []), overview: ok(() => []) },
+      lifecycle: { pending: ok(() => []) },
       ko: { list: ok(() => KOS) },
       gaps: { list: ok(() => []), summary: ok(() => ({ total: 0, byPriority: {} })) },
       directory: { list: ok(() => []) },
@@ -157,8 +160,15 @@ async function mount(): Promise<void> {
     );
   });
   await act(flush);
-  // Der Link liegt im <details>-Block. Ohne Aufklappen steht er zwar im DOM, aber diese Faelle
-  // sollen den Zustand pruefen, den der Mensch wirklich sieht.
+  // JOB 3061 · H2: der Vergleichslink liegt jetzt im „···"-Menü der linken Karte (Pages-Art) und
+  // nicht mehr im <details>-Block. Ein GESCHLOSSENES Menü rendert seinen Inhalt gar nicht — die
+  // Faelle unten pruefen also weiterhin genau den Zustand, den ein Mensch wirklich sieht, nur
+  // hinter einem echten Klick statt hinter einem gesetzten `open`.
+  await act(async () => {
+    (
+      container.querySelector('[data-testid="pruefen-menue-duplikat-a"]') as HTMLElement | null
+    )?.click();
+  });
   for (const d of [...container.querySelectorAll("details")]) {
     (d as HTMLDetailsElement).open = true;
   }

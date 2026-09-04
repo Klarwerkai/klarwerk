@@ -38,6 +38,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
       aiCheckRetry: vi.fn(async () => ({})),
       remove: vi.fn(async () => ({})),
     },
+    // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus ECHTEN Abrufen. Diese
+    // drei kommen deshalb dazu; sie liefern hier bewusst leere Listen — gemessen wird der Reiter
+    // „Offen", die uebrigen duerfen den Lauf nur nicht zerreissen.
+    conflicts: { list: vi.fn(async () => []) },
+    duplicates: { list: vi.fn(async () => []) },
+    lifecycle: { pending: vi.fn(async () => []) },
   },
 }));
 
@@ -74,8 +80,10 @@ const de = (key: string): string => String(i18n.getResource("de", "translation",
 const STUFE = '[data-testid="val-stufe"]';
 const HERKUNFT = '[data-testid="val-herkunft"]';
 const ZEILE = '[data-testid="validation-row"]';
-/** Der ehrliche Hinweis: der Stand steht, aber die letzte Auffrischung ist gescheitert. */
-const AUFFRISCHUNG = '[data-testid="val-auffrischung-fehler"]';
+/** Der ehrliche Hinweis: der Stand steht, aber die letzte Auffrischung ist gescheitert.
+ *  JOB 3061 · H2: derselbe Hinweis, neuer Anker — er ist jetzt ein gemeinsames Bauteil der
+ *  Pruefflaeche (`components/pruefen/PruefenZustand.tsx`) und steht ueber der Warteschlange. */
+const AUFFRISCHUNG = '[data-testid="pruefen-nicht-frisch"]';
 
 const TITEL = "PROBE-KO Ventilwartung";
 
@@ -228,7 +236,7 @@ describe("JOB 3027 R2 · C2: eine gescheiterte Auffrischung ersetzt den Stand ni
     await auffrischen();
 
     const hinweis = container.querySelector(AUFFRISCHUNG);
-    expect(hinweis?.textContent).toBe(de("val.refreshFailed"));
+    expect(hinweis?.textContent).toBe(de("pruefen.refreshFailed"));
   });
 
   it("ohne Fehlschlag steht der Hinweis NICHT da — er ist kein Dauerinventar", async () => {
@@ -302,7 +310,7 @@ describe("JOB 3027 R3 · C4: eine erfolgreich geladene LEERE Antwort ist Bestand
     await mounten();
     // Kalibrierung VOR dem Uebergang.
     expect(container.textContent).toContain(de("val.empty"));
-    expect(container.textContent).not.toContain(de("state.error"));
+    expect(container.textContent).not.toContain(de("pruefen.loadError"));
   }
 
   it("nach einem abgelehnten Abruf bleibt der Leerzustand — und wird nicht zum Erstfehler", async () => {
@@ -312,7 +320,7 @@ describe("JOB 3027 R3 · C4: eine erfolgreich geladene LEERE Antwort ist Bestand
     await auffrischen();
 
     expect(container.textContent).toContain(de("val.empty"));
-    expect(container.textContent).not.toContain(de("state.error"));
+    expect(container.textContent).not.toContain(de("pruefen.loadError"));
   });
 
   it("und der Fehlschlag wird auch hier benannt", async () => {
@@ -321,7 +329,7 @@ describe("JOB 3027 R3 · C4: eine erfolgreich geladene LEERE Antwort ist Bestand
     board.mockRejectedValue(new Error("Netz weg") as never);
     await auffrischen();
 
-    expect(container.querySelector(AUFFRISCHUNG)?.textContent).toBe(de("val.refreshFailed"));
+    expect(container.querySelector(AUFFRISCHUNG)?.textContent).toBe(de("pruefen.refreshFailed"));
   });
 
   it("solange nichts scheitert, steht der Hinweis auch am leeren Brett nicht da", async () => {
@@ -344,6 +352,6 @@ describe("JOB 3027 R2 · E1: ohne je geladenen Bestand bleibt der Fehlerzustand 
     expect(container.querySelectorAll(STUFE)).toHaveLength(0);
     expect(container.querySelectorAll(HERKUNFT)).toHaveLength(0);
     expect(container.querySelectorAll(AUFFRISCHUNG)).toHaveLength(0);
-    expect(container.textContent).toContain(de("state.error"));
+    expect(container.textContent).toContain(de("pruefen.loadError"));
   });
 });

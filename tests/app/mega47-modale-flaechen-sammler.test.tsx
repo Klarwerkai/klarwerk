@@ -670,6 +670,15 @@ const NICHT_MODALE_VOLLFLAECHEN = new Map<string, string>([
     "apps/web/src/components/AiModelInfo.tsx",
     "Modellauskunft als Popover: dieselbe Bauform, reine Auskunft ohne Bedienfluss",
   ],
+  [
+    // JOB 3061 · H2: die vier Menüorte der Prüffläche („···", Filter, „?", Karte). Baugleich mit
+    // `HelpTip.tsx` — die Vollfläche ist der KLICKFÄNGER zum Schliessen und trägt keine Farbe; das
+    // Blatt selbst ist ein Popover neben seinem Auslöser, nicht über der Seite. Es sperrt den
+    // Hintergrund nicht und beansprucht keine Modalität; wer den Fänger einfärbt oder das Blatt
+    // zentriert, macht daraus eine modale Fläche und muss sie hier herausnehmen.
+    "apps/web/src/components/pruefen/PruefenMenue.tsx",
+    "Menü-Blatt der Prüffläche: die Vollfläche ist der farblose Klickfänger zum Schließen, der Inhalt bleibt ein Popover neben dem Auslöser",
+  ],
 ]);
 
 /**
@@ -1645,8 +1654,12 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       "apps/web/src/components/RichTextEditor.tsx → <Modal>",
       "apps/web/src/pages/Capture.tsx → <KnowledgeInputStudio>",
       "apps/web/src/pages/Capture.tsx → <Modal>",
-      "apps/web/src/pages/Conflicts.tsx → <Modal>",
-      "apps/web/src/pages/Duplicates.tsx → <Modal>",
+      // JOB 3061 · H2 (Ablösung, nachgeführt): `Conflicts.tsx → <Modal>` und
+      // `Duplicates.tsx → <Modal>` standen hier für die zwei Pop-ups „Beide gegenüberstellen".
+      // Sie zeigten dieselben zwei Objekte, die die Karte darunter schon zeigte; seit H2 IST die
+      // Fläche die Gegenüberstellung (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html), und
+      // die Modale sind ersatzlos entfallen. Dass sie wirklich weg sind und der Ersatz wirklich da
+      // ist, hält `tests/app/job1900-modalgrenze-alle-sieben-mounted.test.tsx` (Fall K1/K2) fest.
       "apps/web/src/pages/KnowledgeDetail.tsx → <KnowledgeInputStudio>",
       "apps/web/src/shell/AppShell.tsx → <CommandPalette>",
     ]);
@@ -1747,6 +1760,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     [
       "apps/web/src/components/AiModelInfo.tsx",
       "dieselbe Popover-Bauform wie HelpTip — reine Auskunft ohne Bedienfluss",
+    ],
+    [
+      // JOB 3061 · H2: die vier Menüorte der Prüffläche, baugleich mit HelpTip.
+      "apps/web/src/components/pruefen/PruefenMenue.tsx",
+      "dieselbe Popover-Bauform wie HelpTip: farbloser Klickfänger als Vollfläche, das Blatt sitzt neben seinem Auslöser — keine Fokusfalle, keine Sperre, kein Marker",
     ],
   ]);
 
@@ -3476,8 +3494,16 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Die Detailseite hatte diese Form schon (vorher `CONF_TONE[c.tone]`, jetzt
     // `CONF_TONE_CLASS[stufe.tone]`) und zählt unverändert eins. Keine Bindung ist weggefallen;
     // die Zusage bleibt eine EXAKTE Bindung.
+    //
+    // JOB 3061 · H2: von 209 auf 210 NACHGEZOGEN, gemessen am eigenen Lauf. Die vier Prüfseiten
+    // sind neu gebaut (Mockups vom 04.09.); dabei sind bedingte Klassen der alten Seiten
+    // WEGGEFALLEN und in den neuen Bauteilen unter `components/pruefen/` sind welche
+    // DAZUGEKOMMEN (u. a. `PILLE[ton]`, `MARKE[ton]`, `stil[ton]` in `PruefenPaar.tsx`). Netto
+    // bleibt eine Bindung mehr als vor dem Umbau. Die Bauform ist dieselbe wie bei den Plaketten,
+    // die seit jeher in dieser Menge stehen: ein Nachschlagen in einer Tönungstabelle. Die Zusage
+    // bleibt eine EXAKTE Bindung.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      209,
+      210,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -3831,7 +3857,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 // BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — 407 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft plus Splash", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — 414 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft plus Splash plus die sieben Prüf-Bauteile", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
     // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
@@ -3891,12 +3917,24 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/components/Splash.tsx
     //
+    // JOB 3061 (H2): von 407 auf 414 NACHGEZOGEN, aus demselben Grund. Es sind GENAU sieben
+    // Quelldateien dazugekommen — die gemeinsamen Bauteile der Prüffläche „Prüfen" (vier Reiter,
+    // vier Menüorte), die vorher in vier Seiten dupliziert gewesen wären:
+    //
+    //     + apps/web/src/components/pruefen/PruefenKopf.tsx     (Titel + Segment + Zähler)
+    //     + apps/web/src/components/pruefen/PruefenMenue.tsx    („···", Filter, „?")
+    //     + apps/web/src/components/pruefen/PruefenMehr.tsx     (der Informationsort)
+    //     + apps/web/src/components/pruefen/PruefenPaar.tsx     (zwei Karten, Pillen, Knöpfe)
+    //     + apps/web/src/components/pruefen/PruefenZustand.tsx  (laden/leer/Fehler/nicht frisch)
+    //     + apps/web/src/components/pruefen/markierung.ts       (der Unterschied im Text)
+    //     + apps/web/src/components/pruefen/zaehler.ts          (Reiterzähler und Flächenlage)
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 407: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts + Splash.tsx",
-    ).toBe(407);
+      "erwartet 414: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts + Splash.tsx + die sieben Bauteile unter apps/web/src/components/pruefen/",
+    ).toBe(414);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

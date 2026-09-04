@@ -2,8 +2,10 @@ import type { FastifyPluginAsync } from "fastify";
 import type { AuditService } from "../../../audit";
 import {
   DEFAULT_OVERLAP_SETTINGS,
+  OverlapError,
   type OverlapService,
   type OverlapSettingsRepo,
+  isHumanOverlapCloseReason,
   normalizeOverlapSettings,
 } from "../../../conflicts";
 import { type Guards, sendError } from "../http";
@@ -170,6 +172,68 @@ export function overlapRoutes(deps: OverlapRoutesDeps, guards: Guards): FastifyP
         }
       },
     );
+
+    // ==========================================================================================
+    // JOB 3061 · H2 (bens Korrekturpflicht 1, Runde 5) — „STATUS SETZEN" ALS EIGENER WEG.
+    // ==========================================================================================
+    //
+    // Die drei Routen darüber sind ENTSCHEIDUNGEN: sie sagen, wie das Paar zu lesen ist, und
+    // schliessen es als Nebenwirkung. Diese Route ist etwas anderes — sie setzt den ZUSTAND des
+    // Vorgangs, und zwar in beide Richtungen des Auftrags (§5.5): „In Bearbeitung" (jemand
+    // kümmert sich, nichts ist entschieden) und „Geschlossen" mit einem AUSDRÜCKLICH gewählten
+    // Abschlussgrund. Ein Abschluss über einen Fussband-Knopf ersetzt sie nicht: dort wählt der
+    // Knopf den Grund, hier wählt ihn der Mensch.
+    //
+    // EIN Endpunkt und nicht zwei, weil der Aufrufer EINE Frage stellt („welcher Zustand?") und
+    // die Antwort in beiden Fällen derselbe Eintrag ist. Der Zielzustand steht im Rumpf, nicht im
+    // Pfad — sonst wäre „welche Zustände gibt es?" auf mehrere Routen verstreut.
+    //
+    // WAS HIER NICHT GEHT, und warum das Absicht ist:
+    //  · „offen" ist kein Ziel. Ein Zurückdrehen wäre eine eigene Zusage (wer darf das? was wird
+    //    aus dem Audit?) und steht in keinem Auftrag — lieber gar nicht als halb.
+    //  · Systemische Abschlussgründe (`merged`, `participant_deleted`, `superseded`) sind nicht
+    //    wählbar; `isHumanOverlapCloseReason` prüft den ROHEN Drahtwert, bevor er den Dienst
+    //    erreicht. Sonst behauptete das Protokoll einen Vorgang, den es nicht gab.
+    //  · Ein fehlender/unbekannter Zielzustand ist ein 400 (INVALID_STATUS ist in `http.ts`
+    //    absichtlich nicht auf einen Sonderstatus abgebildet), kein stiller 200.
+    //
+    // Existenz-Leck (JOB 972 D3, Prüflücke 6): dieselbe Lage wie bei den drei Aktionen darüber —
+    // `ko.validate` ist zugleich einer der beiden Sichtwege der Paaransicht, ein Akteur, der
+    // handeln darf ohne sehen zu dürfen, existiert nicht. Darum wie dort ohne `paarSichtbar`.
+    app.post<{
+      Params: { id: string };
+      Body: { status?: string; reason?: string; note?: string } | null;
+    }>("/api/duplicates/:id/status", async (request, reply) => {
+      const user = await guards.requirePermission("ko.validate", request, reply);
+      if (!user) {
+        return;
+      }
+      try {
+        const { status, reason, note } = request.body ?? {};
+        // Leerer/nur-weisser Vermerk ist KEIN Vermerk — sonst stünde im Protokoll ein Grund,
+        // der aus einem versehentlich fokussierten Feld stammt.
+        const vermerk = typeof note === "string" && note.trim() !== "" ? note.trim() : undefined;
+        if (status === "in_bearbeitung") {
+          reply.code(200).send(await overlaps.takeInProgress(request.params.id, user.id, vermerk));
+          return;
+        }
+        if (status === "geschlossen") {
+          if (!isHumanOverlapCloseReason(reason)) {
+            throw new OverlapError(
+              "INVALID_STATUS",
+              "Abschlussgrund fehlt oder ist nicht wählbar.",
+            );
+          }
+          reply
+            .code(200)
+            .send(await overlaps.closeWithReason(request.params.id, user.id, reason, vermerk));
+          return;
+        }
+        throw new OverlapError("INVALID_STATUS", "Zielzustand nicht setzbar.");
+      } catch (error) {
+        sendError(reply, error);
+      }
+    });
 
     // „Als verwandt verlinken" — kein Duplikat, aber sachlich verbunden.
     app.post<{ Params: { id: string }; Body: { note?: string } | null }>(

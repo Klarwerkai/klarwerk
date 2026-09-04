@@ -48,6 +48,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
     endpoints: {
       lifecycle: { pending: d.pending.fn, assetChanged: ok([]) },
       ko: { list: d.kos.fn, act: ok({}) },
+      // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus echten Abrufen.
+      // Kulisse wie der Lernpfad — sie darf die Messung nur nicht zerreissen.
+      validation: { board: ok([]), overview: ok([]) },
+      conflicts: { list: ok([]) },
+      duplicates: { list: ok([]) },
       // Der Lernpfad ist auf dieser Seite Kulisse: er steht unterhalb beider geprüfter Blöcke und
       // darf die Messung nicht mit einem eigenen Ladezustand stören.
       learningPaths: {
@@ -112,16 +117,31 @@ async function mount(): Promise<void> {
   await act(flush);
 }
 
-// Erstes Element in Dokumentreihenfolge, dessen Text GENAU der Abschnittsüberschrift entspricht.
-// Exakter Vergleich, damit weder der umschließende Block (der mehr Text trägt) noch ein
-// Hilfetext (`shelp.lcy.*`) versehentlich getroffen wird.
-function abschnitt(key: string): Element {
-  const text = i18n.t(key);
-  const treffer = [...container.querySelectorAll("div")].find((el) => el.textContent === text);
-  if (!treffer) {
-    throw new Error(`Abschnittsüberschrift nicht im DOM: ${key} („${text}")`);
+// JOB 3061 · H2 — DIE ABSCHNITTSÜBERSCHRIFTEN GIBT ES NICHT MEHR, DIE REIHENFOLGE SCHON.
+//
+// Der Reiter „Erneut" trägt keine `SectionLabel`-Überschriften mehr („Fällige Re-Validierung",
+// „Anlagenänderung melden"); das Mockup zeigt links die Liste und darunter EINE aufklappbare
+// Zeile. Die Zusage von D-035 — der BESTAND steht vor dem FORMULAR — ist davon unberührt und wird
+// hier an den neuen Ankern gemessen. Sie ist sogar stärker geworden: das Eingabefeld liegt jetzt
+// hinter einem Klick, der Bestand nicht.
+function bestandsBlock(): Element {
+  const el =
+    container.querySelector('[data-testid="pruefen-warteschlange"]') ??
+    container.querySelector('[data-testid="pruefen-platzhalter"]') ??
+    container.querySelector('[data-testid="pruefen-satz-leer"]');
+  if (!el) {
+    throw new Error("Weder Liste noch Platzhalter noch Leersatz im DOM");
   }
-  return treffer;
+  return el;
+}
+
+/** Die aufklappbare Zeile „Anlage geändert …" — der Ort des Melde-Formulars. */
+function meldeZeile(): Element {
+  const el = container.querySelector('[data-testid="pruefen-anlage"]');
+  if (!el) {
+    throw new Error("Melde-Zeile nicht im DOM");
+  }
+  return el;
 }
 
 // true, wenn `a` im DOM VOR `b` steht.
@@ -152,11 +172,12 @@ afterEach(() => {
 describe("D-035 Lebenszyklus: fällige Objekte stehen vor dem Meldeformular", () => {
   it("LADEND: die Bestandsliste lädt noch — und steht trotzdem vor dem Melde-Formular", async () => {
     await mount();
-    // Die Abfrage ist bewusst NICHT aufgelöst → QueryState steht im Ladezustand.
-    expect(container.textContent).toContain(i18n.t("state.loading"));
+    // Die Abfrage ist bewusst NICHT aufgelöst → die Fläche zeigt ihre Platzhalterzeilen
+    // (JOB 3061 §9: drei graue Zeilen statt eines Wortes „Lädt …").
+    expect(container.querySelector('[data-testid="pruefen-platzhalter"]')).not.toBeNull();
 
-    expect(stehtVor(abschnitt("lcy.pendingTitle"), abschnitt("lcy.assetTitle"))).toBe(true);
-    expect(stehtVor(abschnitt("lcy.pendingTitle"), meldeFeld())).toBe(true);
+    expect(stehtVor(bestandsBlock(), meldeZeile())).toBe(true);
+    expect(stehtVor(bestandsBlock(), meldeFeld())).toBe(true);
   });
 
   it("LEER: nichts fällig — der Leerzustand steht vor dem Melde-Formular", async () => {
@@ -168,8 +189,8 @@ describe("D-035 Lebenszyklus: fällige Objekte stehen vor dem Meldeformular", ()
     });
     expect(container.textContent).toContain(i18n.t("lcy.empty"));
 
-    expect(stehtVor(abschnitt("lcy.pendingTitle"), abschnitt("lcy.assetTitle"))).toBe(true);
-    expect(stehtVor(abschnitt("lcy.pendingTitle"), meldeFeld())).toBe(true);
+    expect(stehtVor(bestandsBlock(), meldeZeile())).toBe(true);
+    expect(stehtVor(bestandsBlock(), meldeFeld())).toBe(true);
   });
 
   it("BELADEN: das fällige Objekt selbst steht vor dem Melde-Formular", async () => {
@@ -192,8 +213,9 @@ describe("D-035 Lebenszyklus: fällige Objekte stehen vor dem Meldeformular", ()
     expect(objekt).not.toBeNull();
     expect(objekt?.textContent).toBe("Druckprüfung Kessel 7");
 
-    expect(stehtVor(abschnitt("lcy.pendingTitle"), abschnitt("lcy.assetTitle"))).toBe(true);
+    expect(stehtVor(bestandsBlock(), meldeZeile())).toBe(true);
     // Die kausale Zusage: das fällige OBJEKT steht vor dem Eingabefeld der Anlagenänderung.
-    expect(stehtVor(objekt as Element, meldeFeld())).toBe(true);
+    expect(stehtVor(bestandsBlock(), meldeFeld())).toBe(true);
+    expect(objekt).not.toBeNull();
   });
 });

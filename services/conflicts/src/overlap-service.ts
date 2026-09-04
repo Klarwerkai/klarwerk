@@ -17,6 +17,7 @@ import {
 } from "./duplicate-detect";
 import type { OverlapRepo } from "./overlap-repo";
 import {
+  type HumanOverlapCloseReason,
   type OverlapDetector,
   type OverlapEntry,
   OverlapError,
@@ -583,6 +584,61 @@ export class OverlapService {
 
   async linkRelated(id: string, by: string, note?: string): Promise<OverlapEntry> {
     return this.close(id, by, note ?? null, "linked_related", "overlap.linked-related");
+  }
+
+  // ============================================================================================
+  // JOB 3061 · H2 (bens Korrekturpflicht 1, Runde 5) — DER ZWEITE ÜBERGANG: „In Bearbeitung".
+  // ============================================================================================
+  //
+  // `OverlapStatus` führt den Wert seit D3, aber bis hierher gab es im ganzen Modul KEINEN
+  // Schreiber dafür: angelegt wurde „offen", geschlossen wurde „geschlossen", dazwischen nichts.
+  // Der Wert war damit eine Zusage ohne Einlösung — und ein Menüeintrag, der ihn nur auf der
+  // Fläche gesetzt hätte, wäre eine Scheinfunktion gewesen.
+  //
+  // Was der Übergang bedeutet und was NICHT: Er sagt „jemand kümmert sich", mehr nicht. Er ist
+  // KEIN Abschluss — der Eintrag bleibt in `unresolved()` (die filtert auf `!== "geschlossen"`),
+  // bleibt im Zähler, bleibt entscheidbar, und `requireOpen` lässt ihn weiterhin durch. Genau so
+  // war der Repo-Vertrag schon vor diesem Job formuliert: `supersedeIfOpen` vergleicht auf
+  // `status === "offen"` und nennt „in_bearbeitung" ausdrücklich eine zu SCHÜTZENDE menschliche
+  // Entscheidung (overlap-repo.ts:12-17). Der Lese-GC überschreibt sie also nicht mehr — dieser
+  // Schreiber ist der erste, der jenen Schutz überhaupt auslösen kann.
+  //
+  // Idempotent: zweimal „In Bearbeitung" ist kein Fehler und schreibt kein zweites Audit.
+  async takeInProgress(id: string, by: string, note?: string): Promise<OverlapEntry> {
+    const entry = await this.requireOpen(id);
+    if (entry.status === "in_bearbeitung") {
+      return entry;
+    }
+    const saved: OverlapEntry = { ...entry, status: "in_bearbeitung" };
+    await this.repo.update(saved);
+    await this.audit?.record({
+      actor: by,
+      action: "overlap.in-progress",
+      target: id,
+      ...(note ? { payload: { note } } : {}),
+    });
+    return saved;
+  }
+
+  // JOB 3061 · H2: „Geschlossen" mit AUSDRÜCKLICH gewähltem Abschlussgrund — der Menüweg aus §5.5.
+  // Bewusst eine Verteilung auf die drei vorhandenen Abschlüsse und KEIN vierter Schreibweg: der
+  // Grund bestimmt die Wirkung, und jede Wirkung hat weiterhin genau eine Stelle im Code (und
+  // genau ein Audit-Ereignis). Der Typ `HumanOverlapCloseReason` schliesst die systemischen Gründe
+  // schon an der Signatur aus; die Route prüft den Drahtwert zusätzlich zur Laufzeit.
+  async closeWithReason(
+    id: string,
+    by: string,
+    reason: HumanOverlapCloseReason,
+    note?: string,
+  ): Promise<OverlapEntry> {
+    switch (reason) {
+      case "kept_separate":
+        return this.keepSeparate(id, by, note);
+      case "linked_related":
+        return this.linkRelated(id, by, note);
+      case "dismissed":
+        return this.dismiss(id, by, note);
+    }
   }
 
   private async close(

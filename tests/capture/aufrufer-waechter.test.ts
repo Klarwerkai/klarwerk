@@ -963,6 +963,55 @@ const ERSETZT_JOB3015: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
+// REGISTER 4c · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3061 H2)
+// ------------------------------------------------------------------------------------------------
+// JOB 3061 baut die vier Pruefseiten auf die Mockups vom 04.09. um (Pruefen/Konflikte/Duplikate
+// unter einem gemeinsamen Reiterkopf). Zwei Praesentations-Bauteile haben dabei ihren einzigen
+// Produkt-Aufrufer verloren, weil die FLAECHE ihre Aufgabe uebernommen hat:
+//
+//   FindingCard / FindingGroupHeader — die Befundkarte mit Gruppen-Ueberschrift. Ihre INHALTE sind
+//     nicht entfallen: die ehrliche Benennung von WAS und ERKENNUNGSWEG kommt weiterhin aus
+//     `lib/findingGroups.ts` (`conflictFinding` / `overlapFinding`) und steht im „Mehr" beider
+//     Karten; die Ordnung „je Beitrag, neueste zuerst" kommt weiterhin aus
+//     `groupFindingsByBeitrag`, der Gruppentitel aus `resolveKo`. Nur die KARTE ist ersetzt.
+//   ConflictKoSide — die Belegkachel je Konfliktseite. Ihr Beleg (klickbare Quelle, Quelldatum,
+//     KO-Konfidenz) steht jetzt im „Mehr" der jeweiligen Karte, aus DERSELBEN geteilten Komponente
+//     `components/ko/SourceEvidence` mit denselben Feldern.
+//
+// Die zwei Dateien liegen AUSSERHALB der Zielpfade des Auftrags (`pages/Validation*.tsx`,
+// `pages/Conflicts*.tsx`, `pages/Duplicate*.tsx`, `pages/Lifecycle*.tsx`,
+// `components/pruefen/**`, `i18n.ts`, `tests/**`) und duerfen von der Bahn nicht geloescht werden;
+// ihr Abbau (die zwei Dateien samt der mitgehenden Schluessel `finding.*` und
+// `con.evidenceSideLabel`, soweit dann ungenutzt) ist in der RUECKGABE zu JOB 3061 als
+// Folgeauftrag benannt. Gemeldet, nicht abgelegt — A3 streicht die Eintraege, sobald sie weg sind.
+const ERSETZT_JOB3061: readonly Ausnahme[] = [
+  {
+    schluessel: "apps/web/src/components/FindingCard.tsx::FindingCard",
+    grund:
+      "Seit JOB 3061 H2 ohne Produktaufrufer: die Befundkarte ist durch das Kartenpaar der " +
+      "Pruefflaeche ersetzt (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html). Ihre Inhalte " +
+      "leben ueber `lib/findingGroups.ts` im Mehr-Aufklapper weiter. Abbau ausserhalb der Zielpfade, " +
+      "Folgeauftrag benannt (RUECKGABE JOB 3061).",
+  },
+  {
+    schluessel: "apps/web/src/components/FindingCard.tsx::FindingGroupHeader",
+    grund:
+      "Seit JOB 3061 H2 ohne Produktaufrufer: die Gruppen-Ueberschrift ist entfallen (es steht " +
+      "genau ein Befund da, mit der Pille k von n); die Gruppierung selbst wirkt weiter als " +
+      "REIHENFOLGE ueber `groupFindingsByBeitrag`. Abbau ausserhalb der Zielpfade " +
+      "(RUECKGABE JOB 3061).",
+  },
+  {
+    schluessel: "apps/web/src/components/conflicts/ConflictKoSide.tsx::ConflictKoSide",
+    grund:
+      "Seit JOB 3061 H2 ohne Produktaufrufer: der Beleg je Konfliktseite steht jetzt im " +
+      "Mehr-Aufklapper der jeweiligen Karte, aus derselben geteilten Komponente " +
+      "`components/ko/SourceEvidence`. " +
+      "Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE JOB 3061).",
+  },
+];
+
+// ------------------------------------------------------------------------------------------------
 // REGISTER 5 · BEWUSST OHNE AUFRUFER AUF `apps/web/src` (JOB 2611 D1)
 // ------------------------------------------------------------------------------------------------
 // Dieselbe Regel wie bei `BEWUSST`: nur Eintraege, deren Grund am Code geprueft ist.
@@ -1143,6 +1192,7 @@ const GEDULDET = new Set<string>([
   ...DURCH_VERSCHAERFUNG_SICHTBAR.map((a) => a.schluessel),
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
   ...ERSETZT_JOB3015.map((a) => a.schluessel),
+  ...ERSETZT_JOB3061.map((a) => a.schluessel),
   ...ALTBESTAND,
   ...BEWUSST_WEB.map((a) => a.schluessel),
   ...ALTBESTAND_WEB,
@@ -1264,6 +1314,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       ...DURCH_VERSCHAERFUNG_SICHTBAR,
       ...NEUZUGANG_GEMELDET,
       ...ERSETZT_JOB3015,
+      ...ERSETZT_JOB3061,
       ...BEWUSST_WEB,
     ]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);

@@ -98,7 +98,19 @@ describe("Paket 3 · KoSummaryDisclosure (gemountet)", () => {
 describe("Paket 3 · Verdrahtung an den drei Flächen", () => {
   it("Bibliothek, Validierung und Import-Review binden den Aufklapper ein", () => {
     expect(read("apps/web/src/pages/Library.tsx")).toContain("<KoSummaryDisclosure source={k}");
-    expect(read("apps/web/src/pages/Validation.tsx")).toContain("<KoSummaryDisclosure source={k}");
+    // JOB 3061 · H2 — DIE PRÜFFLÄCHE BRAUCHT DEN AUFKLAPPER NICHT MEHR, WEIL SIE MEHR ZEIGT.
+    //
+    // Der Aufklapper beantwortete die Frage „was steht drin, ohne das Objekt zu öffnen?" mit einer
+    // Kurzvorschau. Auf der neuen Prüffläche (design/klarwerk/Pruefen.dc.html:55) steht die
+    // Kernaussage in VOLLER Länge auf der einen Karte — dieselbe Frage, vollständiger beantwortet,
+    // ohne Klick. Die Funktion ist damit nicht entfallen, sondern aufgegangen; ein Aufklapper über
+    // einem bereits vollständig sichtbaren Text wäre eine Attrappe.
+    //
+    // Gepinnt wird deshalb der ERSATZ, nicht seine Abwesenheit: die Karte trägt den Volltext.
+    const validation = read("apps/web/src/pages/Validation.tsx");
+    expect(validation).not.toContain("<KoSummaryDisclosure");
+    expect(validation).toContain('data-testid="pruefen-karte-text"');
+    expect(validation).toContain("{k.statement}");
     const stufe2 = read("apps/web/src/pages/Stufe2.tsx");
     expect(stufe2).toContain("<KoSummaryDisclosure");
     // AUFTRAG-mega9 Block E-1: derselbe Sachverhalt, jetzt aus der zentralen Statusquelle.

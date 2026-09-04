@@ -31,6 +31,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     aiCheck: { coverageSummary: vi.fn(async () => data.summary) },
     conflicts: { list: vi.fn(async () => []) },
     duplicates: { list: vi.fn(async () => []) },
+    // JOB 3061 · H2: der gemeinsame Reiterkopf zaehlt alle vier Reiter aus echten Abrufen.
+    validation: { board: vi.fn(async () => []), overview: vi.fn(async () => []) },
     ko: {
       list: vi.fn(async () => []),
       get: vi.fn(async () => data.ko),
@@ -189,11 +191,33 @@ function makeKo(coverage: AiCheckCoverage | undefined): KnowledgeObject {
   };
 }
 
+// JOB 3061 · H2 — DER VORBEHALT IST GEBLIEBEN, SEIN ORT HAT SICH GEÄNDERT.
+//
+// Der Auftrag verlangt für den Leerzustand EINEN Satz auf der Fläche („Keine offenen Konflikte.")
+// und verlagert jeden Erklärtext ins „?"-Menü der Seite (§5.4, §8.5). Der Deckel-Vorbehalt steht
+// dort — WÖRTLICH derselbe Satz aus derselben Komponente (`AiCheckBoardCaveat`), mit denselben
+// Zahlen aus demselben Abruf. Die Zusicherung von mega29 C2 bleibt damit unverändert wahr; sie
+// wird hier nur nach einem echten Klick gemessen statt ohne. Die KALIBRIERUNG unten ist die
+// Gegenprobe, die sie trägt: ein vollständig geprüfter Bestand bekommt auch im geöffneten Menü
+// KEINEN Warnsatz.
+/** Das „?"-Menü der Prüffläche öffnen — dort wohnt alles Erklärende.
+ *  Zwei zusätzliche Runden, weil `AiCheckBoardCaveat` seinen Abruf ERST beim Öffnen startet: ein
+ *  geschlossenes Menü rendert seinen Inhalt gar nicht, und damit läuft auch kein Hook. */
+async function oeffneHilfe(): Promise<void> {
+  await act(async () => {
+    (container.querySelector('[data-testid="pruefen-menue-hilfe"]') as HTMLElement | null)?.click();
+    await flush();
+  });
+  await act(flush);
+  await act(flush);
+}
+
 describe("mega29 C2 · das LEERE Board sagt, was sein leeres Ergebnis nicht heißt", () => {
   it("Konflikt-Board: die Fußnote nennt die Zahlen des Bestands", async () => {
     await mount(createElement(Conflicts));
     expect(pageText()).toContain(i18n.t("con.empty"));
     // Vor mega29 endete die Seite hier — und „keine offenen Konflikte" war alles, was ein Mensch las.
+    await oeffneHilfe();
     expect(pageText()).toContain("12470");
     expect(pageText()).toContain("12479");
     expect(pageText()).toContain("begrenzte Kandidatenmenge");
@@ -202,6 +226,7 @@ describe("mega29 C2 · das LEERE Board sagt, was sein leeres Ergebnis nicht hei�
   it("Duplikat-Board: dieselbe Fußnote (dort gab es bisher gar keinen Zusatz)", async () => {
     await mount(createElement(Duplicates));
     expect(pageText()).toContain(i18n.t("dup.empty"));
+    await oeffneHilfe();
     expect(pageText()).toContain("12470");
     expect(pageText()).toContain("begrenzte Kandidatenmenge");
   });
@@ -210,6 +235,7 @@ describe("mega29 C2 · das LEERE Board sagt, was sein leeres Ergebnis nicht hei�
     data.summary = { total: 12, incomplete: 0, unchecked: 0 };
     await mount(createElement(Conflicts));
     expect(pageText()).toContain(i18n.t("con.empty"));
+    await oeffneHilfe();
     expect(pageText()).not.toContain("begrenzte Kandidatenmenge");
   });
 });

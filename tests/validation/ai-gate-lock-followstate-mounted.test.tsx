@@ -201,6 +201,16 @@ describe("WP-SHIP9-B3FIX2: offene Folgezustände überleben den pending-Lock NIC
     await mountWith(AI_DONE);
     const actSpy = endpoints.ko.act as unknown as ReturnType<typeof vi.fn>;
 
+    // JOB 3061 · H2: „Als wahr kennzeichnen" ist eine NEBENAKTION und wohnt im „···"-Menü der
+    // Karte (Pages-Art), nicht mehr im Fußband. Der Weg dorthin ist ein echter Klick — die
+    // gemessene Sache (der pending-Lock überlebt den offenen Folgezustand) bleibt dieselbe.
+    act(() => {
+      (
+        container.querySelector('[data-testid="pruefen-menue-karte"]') as HTMLElement | null
+      )?.click();
+    });
+    await flush();
+
     // 1) Folgezustand öffnen: „Als wahr kennzeichnen" → Zwei-Klick-Bestätigung erscheint.
     act(() => {
       buttonByText(de("val.markTrue")).click();

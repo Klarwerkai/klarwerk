@@ -177,8 +177,14 @@ describe("KW-DUP-02: read-only duplicate comparison", () => {
     expect(page).not.toContain("KW-DUP-02");
     expect(page).not.toContain("Read-only MVP");
     expect(page).not.toContain("Wissensobjekt nicht gefunden");
-    // SCRUM-487 (i18n): Kind-abhängiger Titel + neutraler „entfernt"-Hinweis jetzt über t()-Keys.
-    expect(page).toContain("dcmp.titleConflict");
+    // SCRUM-487 (i18n): Kind-abhängiger Titel + neutraler „entfernt"-Hinweis über t()-Keys.
+    // JOB 3061 · H2: Die Seite trägt keinen EIGENEN Seitentitel mehr — sie steht unter dem
+    // gemeinsamen Reiterkopf „Prüfen". Die kind-abhängige Aussage ist damit nicht entfallen,
+    // sondern in die Pille über den zwei Karten gewandert (`dcmp.sourceConflict` /
+    // `dcmp.sourceDuplicate`); genau die pinnt dieser Fall jetzt. Ein Vergleich, der Konflikt und
+    // Duplikat gleich beschriftet, wird weiterhin rot.
+    expect(page).toContain("dcmp.sourceConflict");
+    expect(page).toContain("dcmp.sourceDuplicate");
     expect(page).toContain("dcmp.objectRemoved");
   });
 

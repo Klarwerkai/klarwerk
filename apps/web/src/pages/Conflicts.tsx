@@ -1,4 +1,30 @@
+// ================================================================================================
+// JOB 3061 · H2 — REITER „KONFLIKTE": ZWEI KARTEN, DER WIDERSPRUCH FARBIG, VIER KNÖPFE.
+// ================================================================================================
+//
+// Pedi 04.09. 06:50: „Sie vergleichen Duplikat und in Konflikte sind so irreführend und so
+// unübersichtlich." Bis hierher stand hier je Konflikt: eine Gruppenüberschrift, eine FindingCard,
+// eine Typ-Pille, ein Beschreibungstext, zwei Kollisionskacheln mit einem ↯-Zeichen dazwischen,
+// eine Beweislagenzeile, zwei ConflictKoSide-Kacheln, eine Datumszeile, ein Aufklapper mit
+// Herkunfts-Badge, zwei KoPanels, zwei Vergleichswegen und einem Eskalationspfad, darunter vier
+// Knöpfe, zwei Textfelder — und ein Modal mit denselben zwei Objekten ein drittes Mal.
+//
+// JETZT (design/klarwerk/Konflikte.dc.html): eine Zeile (worum es geht · k von n · Art), zwei
+// Karten nebeneinander mit der widersprechenden Aussage in BEIDEN rot hinterlegt, darunter
+// „Links gilt / Rechts gilt / Beide gelten, je nach Kontext / Kein Widerspruch" und rechts der
+// Textlink „Zweitmeinung anfragen".
+//
+// NICHTS GEHT VERLOREN (Auftrag §11): Eskalieren, Eskalationspfad, Vergleichsseite und Details
+// liegen im „···" jeder Karte; Herkunft, Sicherheit, Begründung, Zitate, Bedingungen, Maßnahmen,
+// Quellen, Status, nächster Schritt, Beweislage und der Wirkungssatz liegen im „Mehr" jeder Karte;
+// Leerzustands-Erklärung, Beispielpakete und der KI-Deckel-Vorbehalt liegen im „?"-Menü.
+//
+// EHRLICHKEIT VOR OPTIK: „Links gilt" LÖSCHT NICHTS. Es schreibt dieselbe dokumentierende
+// Auflösung wie bisher (`resolve-conflict`) mit einer vorbelegten, EDITIERBAREN Begründung — der
+// Wirkungssatz `con.resolveEffect` steht unverändert daneben. Und markiert wird im Text nur, was
+// wörtlich belegt ist (siehe `components/pruefen/markierung.ts`).
 import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, HelpCircle } from "lucide-react";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
@@ -6,20 +32,40 @@ import { ApiError } from "../api/client";
 import { endpoints } from "../api/endpoints";
 import { useConflicts, useKos } from "../api/hooks";
 import type { Conflict, ConflictStatus, KnowledgeObject } from "../api/types";
-// WP-UX-WOW-1 U6: der Leerzustand erklärt Konflikte; Admins sehen den Beispielpaket-Einstieg.
 import { useRole } from "../app/RoleContext";
 import { AiCheckBoardCaveat } from "../components/AiCheckCoverageHint";
-import { FindingCard, FindingGroupHeader } from "../components/FindingCard";
-import { HelpTip } from "../components/HelpTip";
-import { KoView } from "../components/KoView";
-import { Modal } from "../components/Modal";
-import { ConflictKoSide } from "../components/conflicts/ConflictKoSide";
-import { Button, Card, PageHeader, QueryState } from "../components/ui";
+import { SourceEvidence } from "../components/ko/SourceEvidence";
+import { PruefenKopf } from "../components/pruefen/PruefenKopf";
+import { PruefenMehr, PruefenMehrBlock, PruefenMehrZeile } from "../components/pruefen/PruefenMehr";
+import {
+  PruefenHilfeBlock,
+  PruefenMenue,
+  PruefenMenueEintrag,
+  PruefenMenueLink,
+  PruefenMenueTrenner,
+} from "../components/pruefen/PruefenMenue";
+import {
+  MenueSymbol,
+  PruefenAktionsband,
+  PruefenBandLink,
+  PruefenKnopf,
+  PruefenPaar,
+  PruefenPaarKarte,
+  PruefenPaarZeile,
+  PruefenPille,
+} from "../components/pruefen/PruefenPaar";
+import {
+  PruefenErstfehler,
+  PruefenNichtFrisch,
+  PruefenPlatzhalter,
+  PruefenSatz,
+} from "../components/pruefen/PruefenZustand";
+import { markiereTeile } from "../components/pruefen/markierung";
+import { abhaengigeQuelle, flaechenZustand } from "../components/pruefen/zaehler";
+import { Button, cx } from "../components/ui";
 import { CONFLICT_BOARD_TEXT, canDismiss, conflictOriginInfo } from "../lib/conflictBoard";
 import {
   CONFLICT_COLLISION_TEXT,
-  type CollisionSide,
-  type ResolvedCollision,
   hasStreitpunkt,
   resolveCollision,
 } from "../lib/conflictCollision";
@@ -30,239 +76,43 @@ import {
   resolutionEffect,
 } from "../lib/conflictView";
 import { conflictFinding, groupFindingsByBeitrag, resolveKo } from "../lib/findingGroups";
-import { type ReviewHelpId, reviewHelp } from "../lib/reviewHelp";
+import { REVIEW_HELP_TOPICS } from "../lib/reviewHelp";
 
 const PATH: ConflictStatus[] = ["eskaliert", "zweitmeinung", "geloest"];
 
-// SCRUM-127: echte KO-Daten gegenüberstellen (Titel, Aussage, Bedingungen/Maßnahmen, Quellen).
-function KoPanel({
-  ko,
-  fallbackId,
-}: {
-  ko: KnowledgeObject | null;
-  fallbackId: string;
-}): JSX.Element {
-  const { t } = useTranslation();
-  if (!ko) {
-    return (
-      <div className="rounded-card border border-dashed border-hairline bg-page p-3 text-[12px] text-muted">
-        {t("con.koMissing", { id: fallbackId })}
-      </div>
-    );
-  }
-  return (
-    <div className="space-y-2 rounded-card bg-page p-3">
-      <KoView ko={ko} />
-      <Link
-        to={`/wissen/${ko.id}`}
-        className="inline-block text-[11.5px] font-semibold text-ai hover:underline"
-      >
-        {t("con.openKo")} →
-      </Link>
-    </div>
-  );
-}
-
-// Berater-Konzept 04.07. (Stufe 4b): eine wörtliche Belegstelle (Zitat) im Board.
-function ConflictQuote({ labelKey, quote }: { labelKey: string; quote: string }): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <p className="rounded-input bg-surface px-2 py-1.5 text-[11.5px] leading-relaxed text-muted">
-      <span className="font-mono text-[9px] font-semibold uppercase tracking-wider text-muted-2">
-        {t(labelKey)}
-      </span>
-      <span className="mt-0.5 block italic">„{quote}“</span>
-    </p>
-  );
-}
-
-// SCRUM-492: eine Kachel der Kollisions-Gegenüberstellung — Titel (aus KO), knappe Kernaussage,
-// hervorgehobener Streitwert. Ist der Streitwert wörtlich belegt, wird der Chip dezent als belegt
-// gekennzeichnet (Häkchen + title/aria) — der eigentliche Beweis bleibt das Zitat im <details>.
-function CollisionSideTile({ side }: { side: CollisionSide }): JSX.Element {
-  const { t } = useTranslation();
-  const title = side.title.removed ? t("board.koRemoved") : side.title.title;
-  const belegt = side.streitwertWoertlich;
-  return (
-    <div className="rounded-card border border-trust-crit-fill/30 bg-page p-3">
-      <div className="font-mono text-[10px] uppercase tracking-wider text-muted-2">{title}</div>
-      <p className="mt-1 text-[12.5px] leading-relaxed text-text">{side.kernaussage}</p>
-      <div className="mt-2">
-        <span
-          className="inline-flex items-center gap-1 rounded-pill bg-trust-crit-bg px-2.5 py-1 text-[13px] font-semibold text-trust-crit-text"
-          title={belegt ? t(CONFLICT_COLLISION_TEXT.verbatim) : undefined}
-          aria-label={
-            belegt ? `${side.streitwert} — ${t(CONFLICT_COLLISION_TEXT.verbatim)}` : side.streitwert
-          }
-        >
-          {side.streitwert}
-          {belegt ? (
-            <span aria-hidden="true" className="text-[10px] text-trust-pos-text">
-              ✓
-            </span>
-          ) : null}
-        </span>
-      </div>
-    </div>
-  );
-}
-
-// SCRUM-492: die zwei gegenübergestellten Kacheln + der sichtbare Kollisionspunkt (Marker) +
-// „Kollision bei: {streitpunkt}". Oberhalb des <details> als ruhiger Kern der Karte.
-function CollisionTiles({ collision }: { collision: ResolvedCollision }): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <div className="mt-3">
-      <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-[1fr_auto_1fr]">
-        <CollisionSideTile side={collision.a} />
-        <div
-          className="flex items-center justify-center"
-          aria-label={t(CONFLICT_COLLISION_TEXT.point)}
-        >
-          <span
-            className="grid h-7 w-7 place-items-center rounded-full bg-trust-crit-fill/20 font-mono text-[14px] font-bold text-trust-crit-text"
-            aria-hidden="true"
-          >
-            ↯
-          </span>
-        </div>
-        <CollisionSideTile side={collision.b} />
-      </div>
-      {hasStreitpunkt(collision) ? (
-        <p className="mt-1.5 text-center text-[12px] text-muted">
-          {t(CONFLICT_COLLISION_TEXT.at)}:{" "}
-          <span className="font-semibold text-text">{collision.streitpunkt}</span>
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-// ================================================================================================
-// JOB 1125 — DER NEUTRALE ERSATZ, gleiche Bauart wie auf der Duplikate-Seite.
-// ================================================================================================
-//
-// Ohne ihn verschwinden `origin.quoteA && origin.quoteB ? … : null` und `origin.rationale ? … :
-// null` bei Redaktion lautlos: der Betrachter sähe eine Karte ohne Beleg und hielte sie für einen
-// Fund ohne Zitate. Der Marker macht aus dem leeren Feld eine Aussage.
-//
-// Die Texte stehen aus demselben Grund lokal wie in `Duplicates.tsx`: `apps/web/src/i18n.ts` ist
-// nicht im Schreibscope dieses Auftrags. Dreisprachig, nicht einsprachig mit Fallback.
-interface Redaktionstext {
-  titel: string;
-  grund: string;
-}
-
-const REDAKTION_DE: Redaktionstext = {
-  titel: "Belege zurückgehalten",
-  grund: "Mindestens eine der beiden Aussagen darfst du nicht lesen.",
-};
-
-const REDAKTIONSTEXT: Record<string, Redaktionstext | undefined> = {
-  de: REDAKTION_DE,
-  en: {
-    titel: "Evidence withheld",
-    grund: "You may not read at least one of the two statements.",
-  },
-  nl: {
-    titel: "Bewijs achtergehouden",
-    grund: "Je mag ten minste één van beide uitspraken niet lezen.",
-  },
-};
-
-// Eigene Konstante als Fallback statt `REDAKTIONSTEXT.de` — Begründung siehe gleichnamige Stelle
-// in `Duplicates.tsx` (`noUncheckedIndexedAccess`, von `tools/build` gefunden).
-function redaktionstext(sprache: string): Redaktionstext {
-  return REDAKTIONSTEXT[sprache.split("-")[0] ?? "de"] ?? REDAKTION_DE;
-}
-
+// JOB 1125: der Redaktionsmarker der Serversicht. Ohne ihn verschwänden zurückgehaltene Belege
+// LAUTLOS, und ein Betrachter hielte einen Fund ohne Zitate für einen Fund ohne Belege.
 function istRedigiert(eintrag: unknown): boolean {
   return (eintrag as { redacted?: boolean } | null)?.redacted === true;
 }
 
-function RedaktionsHinweis(): JSX.Element {
-  const { i18n } = useTranslation();
-  const text = redaktionstext(i18n.language);
-  return (
-    <div className="mt-2 rounded-card border border-hairline bg-page p-2.5">
-      <div className="font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-        {text.titel}
-      </div>
-      <p className="mt-1 text-[12px] leading-relaxed text-muted">{text.grund}</p>
-    </div>
-  );
-}
-
-// Herkunfts-Badge: „Automatisch erkannt · Sicherheit % · Begründung + zwei Zitate" bzw. „Manuell".
-function ConflictOriginBadge({ conflict }: { conflict: Conflict }): JSX.Element {
-  const { t } = useTranslation();
-  const origin = conflictOriginInfo(conflict);
-  // JOB 1125: der Hinweis gehört an den Ort der fehlenden Belege — also in dieselbe Karte, in der
-  // sonst Begründung und Zitate stünden.
-  const redigiert = istRedigiert(conflict);
-  if (!origin.isAuto) {
-    return (
-      <div className="mt-1.5">
-        <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-muted-2">
-          {t(origin.labelKey)}
-        </span>
-        {/* Auch ein manuell angelegter Konflikt trägt `description` — die Redaktion gilt hier
-            genauso, sonst hätte der manuelle Weg keinen Hinweis. */}
-        {redigiert ? <RedaktionsHinweis /> : null}
-      </div>
-    );
+/** Die Meta-Zeile einer Karte: Status · Bereich · Jahr (Konflikte.dc.html:47). */
+function metaVon(ko: KnowledgeObject | null, t: (k: string) => string): string {
+  if (!ko) {
+    return t("board.koRemoved");
   }
-  return (
-    <div className="mt-2 rounded-card border border-ai/20 bg-ai/5 p-2.5">
-      <div className="flex flex-wrap items-center gap-1.5">
-        <span className="rounded-pill bg-ai/10 px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
-          {t(origin.labelKey)}
-        </span>
-        {origin.confidencePercent !== undefined ? (
-          <span className="font-mono text-[10.5px] text-muted">
-            {t(CONFLICT_BOARD_TEXT.confidence, { percent: origin.confidencePercent })}
-          </span>
-        ) : null}
-      </div>
-      {/* SCRUM-486 B: der KI-Prozent ist Erkennungs-Sicherheit, kein Beweis des Widerspruchs. */}
-      {origin.confidencePercent !== undefined ? (
-        <div className="mt-1 text-[11px] text-muted-2">{t("con.autoConfidenceCaption")}</div>
-      ) : null}
-      {origin.rationale ? (
-        <p className="mt-1.5 text-[12.5px] leading-relaxed text-text">
-          <span className="font-semibold">{t(CONFLICT_BOARD_TEXT.why)}:</span> {origin.rationale}
-        </p>
-      ) : null}
-      {origin.quoteA && origin.quoteB ? (
-        <div className="mt-1.5 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
-          <ConflictQuote labelKey={CONFLICT_BOARD_TEXT.quoteA} quote={origin.quoteA} />
-          <ConflictQuote labelKey={CONFLICT_BOARD_TEXT.quoteB} quote={origin.quoteB} />
-        </div>
-      ) : null}
-      {redigiert ? <RedaktionsHinweis /> : null}
-    </div>
-  );
+  const jahr = new Date(ko.createdAt);
+  return [
+    t(`status.${ko.status}`),
+    ko.category,
+    Number.isNaN(jahr.getTime()) ? null : String(jahr.getFullYear()),
+  ]
+    .filter(Boolean)
+    .join(" · ");
 }
 
 export function Conflicts(): JSX.Element {
   const { t, i18n } = useTranslation();
-  // WP-UX-WOW-1 U6: Rolle nur für den Admin-Hinweis im Leerzustand (Beispielpaket laden).
   const { role } = useRole();
-  // SCRUM-406: einheitlicher ?-HelpTip aus der zentralen Hilfe-Karte des Prüfbereichs.
-  const vhelp = (helpId: ReviewHelpId): JSX.Element => {
-    const topic = reviewHelp(helpId);
-    return <HelpTip title={t(topic.titleKey)} body={t(topic.bodyKey)} />;
-  };
   const query = useConflicts();
   const kos = useKos();
   const qc = useQueryClient();
-  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [decision, setDecision] = useState("");
+  const [resolvingId, setResolvingId] = useState<string | null>(null);
   const [opinionId, setOpinionId] = useState<string | null>(null);
   const [opinion, setOpinion] = useState("");
   const [err, setErr] = useState<string | null>(null);
-  // Pedi 04.07.: welcher Konflikt gerade in der Gegenüberstellung (Pop-up) offen ist.
-  const [compareId, setCompareId] = useState<string | null>(null);
+  const [index, setIndex] = useState(0);
 
   const invalidate = (): void => {
     void qc.invalidateQueries({ queryKey: ["conflicts"] });
@@ -302,7 +152,6 @@ export function Conflicts(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
-  // Berater-Konzept 04.07. (Stufe 4b): „Fehlalarm" schließt einen automatisch erkannten Konflikt.
   const dismiss = useMutation({
     mutationFn: (id: string) => endpoints.conflicts.dismiss(id),
     onSuccess: () => {
@@ -312,371 +161,428 @@ export function Conflicts(): JSX.Element {
     onError: (e) => setErr(e instanceof ApiError ? e.message : t("state.error")),
   });
 
+  // SCRUM-486 (nacht24 Paket 3) hat die Befunde je Beitrag gruppiert und NEUESTE ZUERST gezeigt.
+  // Die Gruppen-ÜBERSCHRIFT ist mit dem Kartenpaar entfallen (es steht immer genau ein Konflikt da,
+  // mit „k von n"); die REIHENFOLGE bleibt und kommt weiterhin aus derselben Quelle: Befunde
+  // desselben Beitrags stehen beieinander, neueste Gruppe zuerst. Kein zweiter Sortierbegriff.
+  const items = groupFindingsByBeitrag(query.data ?? []).flatMap((g) => g.items);
+  // bens Korrekturpflicht 2 (Runde 4): Ein Konflikt IST das Paar seiner beiden Wissensobjekte —
+  // ohne den zweiten Abruf gibt es keine Karte, sondern nur zwei IDs. Solange er läuft, ist die
+  // Fläche am Laden; sie sagt nicht „Objekt entfernt" und bietet keine Entscheidung an.
+  const lage = flaechenZustand(query, abhaengigeQuelle(kos));
+  const aktiv: Conflict | null =
+    lage.lage === "bestand"
+      ? (items[Math.min(index, Math.max(items.length - 1, 0))] ?? null)
+      : null;
+
+  // ---- Das „?"-Menü: alles Erklärende dieser Fläche an EINEM Ort ------------------------------
+  const hilfeMenue = (
+    <PruefenMenue
+      kennung="hilfe"
+      beschriftung={t("pruefen.menu.help")}
+      symbol={<HelpCircle size={16} aria-hidden="true" />}
+      ausrichtung="links"
+      breite="w-[22rem]"
+    >
+      <PruefenHilfeBlock titel={t("con.title")}>
+        <p>{t("con.emptyWhat")}</p>
+        <p>{t("con.emptyHow")}</p>
+        {/* AUFTRAG-mega29 C2: „Keine offenen Konflikte" ist wörtlich richtig — und liest sich ohne
+            diesen Satz als „der Bestand ist geprüft und frei". Der Vorbehalt bleibt WAHR. */}
+        <AiCheckBoardCaveat className="text-[12px] leading-relaxed text-trust-warn-text" />
+        {role === "admin" ? (
+          <p>
+            {t("con.emptyExamplesHint")}{" "}
+            <Link to="/import#beispielpakete" className="font-semibold text-brand-text underline">
+              {t("con.emptyExamplesCta")}
+            </Link>
+          </p>
+        ) : null}
+      </PruefenHilfeBlock>
+      <PruefenMenueTrenner />
+      {REVIEW_HELP_TOPICS.filter((topic) =>
+        ["conflictEscalate", "conflictSecondOpinion", "conflictResolve"].includes(topic.id),
+      ).map((topic) => (
+        <PruefenHilfeBlock key={topic.id} titel={t(topic.titleKey)}>
+          <p>{t(topic.bodyKey)}</p>
+        </PruefenHilfeBlock>
+      ))}
+    </PruefenMenue>
+  );
+
   return (
-    <div className="mx-auto max-w-3xl">
-      <PageHeader kicker={t("con.kicker")} title={t("con.title")} pageKey="konflikte" />
-      <p className="-mt-3 mb-4 text-sm text-muted">{t("con.intro")}</p>
-      <QueryState
-        query={query}
-        emptyText={t("con.empty")}
-        emptyExtra={
-          // WP-UX-WOW-1 U6: hilfreicher Leerzustand — was ein Konflikt ist, wie er entsteht,
-          // und für Admins der direkte Weg zum Beispielpaket „Widersprüchliche Aussagen".
-          <div className="mx-auto mt-2 max-w-md text-left">
-            {/* AUFTRAG-mega29 C2: „Keine offenen Konflikte" ist wörtlich richtig — und liest sich
-                ohne diesen Satz als „der Bestand ist geprüft und frei". */}
-            <AiCheckBoardCaveat />
-            <p className="text-[12.5px] leading-relaxed text-muted">{t("con.emptyWhat")}</p>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-muted">{t("con.emptyHow")}</p>
-            {role === "admin" ? (
-              <p className="mt-2 text-[12.5px] leading-relaxed text-muted">
-                {t("con.emptyExamplesHint")}{" "}
-                <Link
-                  to="/import#beispielpakete"
-                  className="font-semibold text-brand-text hover:underline"
-                >
-                  {t("con.emptyExamplesCta")}
-                </Link>
-              </p>
-            ) : null}
+    <div className="mx-auto max-w-[1040px]">
+      <PruefenKopf aktiv="konflikte" hilfe={hilfeMenue} />
+      <div data-testid="pruefen-flaeche" className="space-y-[22px]">
+        {lage.auffrischungGescheitert ? <PruefenNichtFrisch /> : null}
+        {err ? (
+          <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
+            {err}
           </div>
-        }
-      >
-        {(items) => (
-          <div className="space-y-6">
-            {/* SCRUM-486 (nacht24 Paket 3): gruppiert je Beitrag, neueste zuerst — Kern-Darstellung
-                je Befund (WAS · Erkennungsweg ehrlich · beide Seiten verlinkt · Aktion) aus der
-                geteilten FindingCard; Kollision, Belege und Aktionen bleiben darunter. */}
-            {groupFindingsByBeitrag(items).map((group) => (
-              <section key={group.koId} aria-label={t("finding.groupKicker")}>
-                <FindingGroupHeader
-                  ko={resolveKo(group.koId, kos.data ?? [])}
-                  count={group.items.length}
-                />
-                <div className="space-y-4">
-                  {group.items.map((c) => (
-                    <Card key={c.id}>
-                      <FindingCard
-                        view={conflictFinding(c)}
-                        a={conflictKoPair(c, kos.data ?? []).a}
-                        b={conflictKoPair(c, kos.data ?? []).b}
-                        statusLabel={t(`con.status.${c.status}`)}
-                      >
-                        {/* Konflikt-Art (z. B. Wahrheitskonflikt) bleibt ehrlich sichtbar. */}
-                        <div className="mt-1.5">
-                          <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
-                            {t(`con.type.${c.type}`)}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-[13px] leading-relaxed text-muted">
-                          {c.description}
-                        </p>
-
-                        {/* SCRUM-492: strukturierte Kollisions-Gegenüberstellung — zwei Kacheln + sichtbarer
-                    Kollisionspunkt, wenn die Erkennung die Felder geliefert hat. Sonst greift die
-                    bestehende Zitat-/Text-Darstellung im <details> (Fallback-Kaskade). */}
-                        {(() => {
-                          const collision = resolveCollision(c, kos.data ?? []);
-                          return collision ? <CollisionTiles collision={collision} /> : null;
-                        })()}
-
-                        {/* SCRUM-486 (WP4): der KERN-BELEG je Seite SICHTBAR auf der Karte — klickbare Quelle +
-                    Quelldatum + KO-Konfidenz. Nicht mehr im zugeklappten details. Plus Konfliktdatum +
-                    Erkennungssicherheit. A/B-Zuordnung strikt über conflictKoPair (koA→a, koB→b). */}
-                        {(() => {
-                          const pair = conflictKoPair(c, kos.data ?? []);
-                          const origin = conflictOriginInfo(c);
-                          // AUFTRAG-mega32 BLOCK K: die Beweislage der beiden Seiten, rein aus den
-                          // bereits geladenen Objekten. Schweigt, sobald beide belegt sind.
-                          const evidence = conflictEvidenceBalance(pair);
-                          const detected = new Date(c.createdAt);
-                          const detectedText = Number.isNaN(detected.getTime())
-                            ? null
-                            : detected.toLocaleDateString(i18n.language);
-                          return (
-                            <div className="mt-3">
-                              {/* AUFTRAG-mega32 BLOCK K — EIN ruhiger Satz ÜBER den Karten. Er
-                                  benennt die BEWEISLAGE, nicht den Gewinner: eine belegte Aussage
-                                  kann falsch sein, sie ist nur belegt. */}
-                              {evidence ? (
-                                <p
-                                  data-testid="conflict-evidence-balance"
-                                  className="mb-2 rounded-card bg-page px-3 py-2 text-[12.5px] leading-relaxed text-muted"
-                                >
-                                  {evidence.kind === "neither"
-                                    ? t("con.evidenceBalance.neither")
-                                    : t("con.evidenceBalance.oneSided", {
-                                        title:
-                                          (evidence.side === "a" ? pair.a?.title : pair.b?.title) ??
-                                          "",
-                                      })}
-                                </p>
-                              ) : null}
-                              <div className="grid grid-cols-1 items-stretch gap-2 sm:grid-cols-2">
-                                <ConflictKoSide ko={pair.a} fallbackId={c.koA} />
-                                <ConflictKoSide ko={pair.b} fallbackId={c.koB} />
-                              </div>
-                              <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 font-mono text-[10.5px] text-muted-2">
-                                {detectedText ? (
-                                  <span>{t("con.detectedOn", { date: detectedText })}</span>
-                                ) : null}
-                                {origin.confidencePercent !== undefined ? (
-                                  <>
-                                    <span aria-hidden="true">·</span>
-                                    <span>
-                                      {t(CONFLICT_BOARD_TEXT.confidence, {
-                                        percent: origin.confidencePercent,
-                                      })}
-                                    </span>
-                                  </>
-                                ) : null}
-                              </div>
-                            </div>
-                          );
-                        })()}
-
-                        {/* SCRUM-486: Herkunft/Belege, KO-Panels und Eskalationspfad hinter einer ruhigen
-                    Aufklappung (Progressive Disclosure wie SCRUM-416). Nichts entfernt, nur verlagert. */}
-                        <details className="mt-3">
-                          <summary className="cursor-pointer list-none text-[12px] font-semibold text-ai hover:opacity-80">
-                            {t("board.detailsShow")}
-                          </summary>
-                          <div className="mt-2">
-                            {/* Stufe 4b: Herkunft + Begründung + wörtliche Belege bei automatisch erkannten Konflikten. */}
-                            <ConflictOriginBadge conflict={c} />
-                            {(() => {
-                              const pair = conflictKoPair(c, kos.data ?? []);
-                              return (
-                                <div className="mt-3 grid grid-cols-1 items-start gap-3 sm:grid-cols-[1fr_auto_1fr]">
-                                  <KoPanel ko={pair.a} fallbackId={c.koA} />
-                                  <span className="self-center text-center font-mono text-[11px] text-muted-2">
-                                    {t("con.versus")}
-                                  </span>
-                                  <KoPanel ko={pair.b} fallbackId={c.koB} />
-                                </div>
-                              );
-                            })()}
-                            {/* Pedi 04.07.: beide Objekte komplett nebeneinander im Pop-up öffnen — direkt
-                        vergleichen, ohne die Seite zu verlassen. Nur wenn beide Objekte vorhanden sind. */}
-                            {(() => {
-                              const pair = conflictKoPair(c, kos.data ?? []);
-                              return pair.a && pair.b ? (
-                                <div className="mt-2 flex flex-wrap items-center gap-2">
-                                  <Button variant="ghost" onClick={() => setCompareId(c.id)}>
-                                    {t("con.compareOpen")}
-                                  </Button>
-                                  <Link
-                                    to={`/konflikte/${c.id}/vergleich`}
-                                    className="inline-flex items-center justify-center rounded-btn border border-hairline px-3.5 py-2 text-[13px] font-semibold text-text hover:bg-hairline-soft"
-                                  >
-                                    {t("con.readonlyCompare")} <span aria-hidden="true">→</span>
-                                  </Link>
-                                </div>
-                              ) : null;
-                            })()}
-
-                            {c.type === "truth" ? (
-                              <div className="mt-4">
-                                <div className="mb-2 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
-                                  {t("con.escPath")}
-                                </div>
-                                <div className="flex flex-wrap items-center gap-1.5">
-                                  {PATH.map((step, i) => {
-                                    const reached =
-                                      PATH.indexOf(c.status) >= i || c.status === "geloest";
-                                    return (
-                                      <span
-                                        key={step}
-                                        className={`rounded-pill px-2 py-1 font-mono text-[11px] ${
-                                          reached
-                                            ? "bg-ink text-white"
-                                            : "border border-hairline text-muted-2"
-                                        }`}
-                                      >
-                                        {i + 1} {t(`con.status.${step}`)}
-                                      </span>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ) : null}
-                          </div>
-                        </details>
-
-                        {c.secondOpinion ? (
-                          <div className="mt-4 rounded-card bg-page p-3 text-[13px] text-text">
-                            <span className="font-semibold">{t("con.secondOpinion")}:</span>{" "}
-                            {c.secondOpinion}
-                          </div>
-                        ) : null}
-
-                        {c.status !== "geloest" ? (
-                          <div className="mt-4 border-t border-hairline pt-3">
-                            {/* SCRUM-252: genau eine empfohlene nächste Handlung, abgeleitet aus Art+Status. */}
-                            <p className="mb-2 text-[12.5px] text-muted">
-                              <span className="font-mono text-[10px] uppercase tracking-wider text-muted-2">
-                                {t("con.nextLabel")}:
-                              </span>{" "}
-                              <span className="font-medium text-text">
-                                {t(`con.next.${conflictNextStep(c)}`)}
-                              </span>
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              {c.type === "truth" && c.status === "offen" ? (
-                                <span className="inline-flex items-center gap-0.5">
-                                  <Button
-                                    disabled={escalate.isPending}
-                                    onClick={() => escalate.mutate(c.id)}
-                                  >
-                                    {t("con.escalate")}
-                                  </Button>
-                                  {vhelp("conflictEscalate")}
-                                </span>
-                              ) : null}
-                              {c.status !== "zweitmeinung" ? (
-                                <span className="inline-flex items-center gap-0.5">
-                                  <Button
-                                    onClick={() => {
-                                      setErr(null);
-                                      setOpinion("");
-                                      setOpinionId(opinionId === c.id ? null : c.id);
-                                    }}
-                                  >
-                                    {t("con.secondOpinionAdd")}
-                                  </Button>
-                                  {vhelp("conflictSecondOpinion")}
-                                </span>
-                              ) : null}
-                              <span className="inline-flex items-center gap-0.5">
-                                <Button
-                                  variant="primary"
-                                  onClick={() => {
-                                    setErr(null);
-                                    setDecision("");
-                                    setResolvingId(resolvingId === c.id ? null : c.id);
-                                  }}
-                                >
-                                  {t("con.resolve")}
-                                </Button>
-                                {vhelp("conflictResolve")}
-                              </span>
-                              {/* Stufe 4b: Ein-Klick-„Fehlalarm" nur bei automatisch erkannten Konflikten. */}
-                              {canDismiss(c) ? (
-                                <Button
-                                  variant="ghost"
-                                  disabled={dismiss.isPending}
-                                  onClick={() => dismiss.mutate(c.id)}
-                                >
-                                  {t(CONFLICT_BOARD_TEXT.dismiss)}
-                                </Button>
-                              ) : null}
-                            </div>
-                          </div>
-                        ) : c.decision ? (
-                          <div className="mt-4 rounded-card bg-trust-pos-bg p-3 text-[13px] text-trust-pos-text">
-                            <span className="font-semibold">{t("con.decision")}:</span> {c.decision}
-                          </div>
-                        ) : null}
-
-                        {opinionId === c.id ? (
-                          <div className="mt-3 space-y-2">
-                            <textarea
-                              value={opinion}
-                              onChange={(e) => setOpinion(e.target.value)}
-                              rows={2}
-                              placeholder={t("con.secondOpinionPlaceholder")}
-                              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
-                            />
-                            {err ? (
-                              <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                                {err}
-                              </div>
-                            ) : null}
-                            <Button
-                              variant="primary"
-                              disabled={secondOpinion.isPending || opinion.trim().length === 0}
-                              onClick={() => secondOpinion.mutate(c.id)}
-                            >
-                              {t("con.secondOpinionConfirm")}
-                            </Button>
-                          </div>
-                        ) : null}
-
-                        {resolvingId === c.id ? (
-                          <div className="mt-3 space-y-2">
-                            {/* SCRUM-128: Auflösung wirkt dokumentierend, nicht mutierend */}
-                            <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
-                              {t("con.resolveEffect")}
-                              {resolutionEffect(c).revalidationRecommended ? (
-                                <span> {t("con.resolveRevalidate")}</span>
-                              ) : null}
-                            </div>
-                            <textarea
-                              value={decision}
-                              onChange={(e) => setDecision(e.target.value)}
-                              rows={2}
-                              placeholder={t("con.decisionPlaceholder")}
-                              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
-                            />
-                            {err ? (
-                              <div className="rounded-btn bg-trust-crit-bg px-3 py-2 text-[12.5px] text-trust-crit-text">
-                                {err}
-                              </div>
-                            ) : null}
-                            <Button
-                              variant="primary"
-                              disabled={resolve.isPending || decision.trim().length === 0}
-                              onClick={() => resolve.mutate({ id: c.id, koA: c.koA })}
-                            >
-                              {t("con.resolveConfirm")}
-                            </Button>
-                          </div>
-                        ) : null}
-
-                        {(() => {
-                          const pair = conflictKoPair(c, kos.data ?? []);
-                          if (!pair.a || !pair.b) {
-                            return null;
-                          }
-                          return (
-                            <Modal
-                              open={compareId === c.id}
-                              onClose={() => setCompareId(null)}
-                              title={t("con.compareTitle")}
-                              wide
-                            >
-                              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                                <div className="rounded-card border border-hairline bg-page p-3">
-                                  <KoView ko={pair.a} />
-                                  <Link
-                                    to={`/wissen/${pair.a.id}`}
-                                    className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
-                                  >
-                                    {t("con.openKo")} →
-                                  </Link>
-                                </div>
-                                <div className="rounded-card border border-hairline bg-page p-3">
-                                  <KoView ko={pair.b} />
-                                  <Link
-                                    to={`/wissen/${pair.b.id}`}
-                                    className="mt-2 inline-block text-[11.5px] font-semibold text-ai hover:underline"
-                                  >
-                                    {t("con.openKo")} →
-                                  </Link>
-                                </div>
-                              </div>
-                            </Modal>
-                          );
-                        })()}
-                      </FindingCard>
-                    </Card>
-                  ))}
-                </div>
-              </section>
-            ))}
-          </div>
-        )}
-      </QueryState>
+        ) : null}
+        {lage.lage === "laedt" ? <PruefenPlatzhalter zeilen={2} /> : null}
+        {/* „Erneut laden" holt BEIDE Abrufe nach — die Fläche steht auf beiden. */}
+        {lage.lage === "erstfehler" ? <PruefenErstfehler onRetry={invalidate} /> : null}
+        {lage.lage === "leer" ? <PruefenSatz kennung="leer">{t("con.empty")}</PruefenSatz> : null}
+        {aktiv ? konfliktFlaeche(aktiv) : null}
+      </div>
     </div>
   );
+
+  // ================================================================================================
+  // Zeichenfunktion, keine innere Komponente — Begründung wie in `Validation.tsx`: eine bei jedem
+  // Rendern neu erzeugte Komponente ist ein neuer Typ und reisst den Teilbaum samt offenem Menü und
+  // Cursor im Textfeld ab.
+  // ================================================================================================
+  function konfliktFlaeche(c: Conflict): JSX.Element {
+    const pair = conflictKoPair(c, kos.data ?? []);
+    const origin = conflictOriginInfo(c);
+    const collision = resolveCollision(c, kos.data ?? []);
+    const evidence = conflictEvidenceBalance(pair);
+    const wirkung = resolutionEffect(c);
+    const detected = new Date(c.createdAt);
+    const detectedText = Number.isNaN(detected.getTime())
+      ? null
+      : detected.toLocaleDateString(i18n.language);
+    const redigiert = istRedigiert(c);
+    // Der Streitpunkt ist die Überschrift der Fläche — er sagt, WORUM gestritten wird. Fehlt er,
+    // steht der Titel der linken Seite da; nie eine erfundene Zusammenfassung.
+    // SCRUM-486: die ehrliche Benennung von WAS und ERKENNUNGSWEG — dieselbe Ableitung, die die
+    // Kopfzeile der alten Befundkarte trug. Sie ist nicht entfallen, sie steht jetzt im „Mehr".
+    const befund = conflictFinding(c);
+    // Die Überschrift der Fläche sagt, WORUM gestritten wird: der Streitpunkt, sonst der geprüfte
+    // Beitrag (koA — derselbe, der bis hierher die Gruppenüberschrift trug). Nie eine erfundene
+    // Zusammenfassung, nie eine Roh-UUID.
+    const titel =
+      (collision && hasStreitpunkt(collision) ? collision.streitpunkt.trim() : "") ||
+      resolveKo(c.koA, kos.data ?? [])?.title ||
+      pair.b?.title ||
+      t(`con.type.${c.type}`);
+    // SCRUM-492: Steht der Streitwert WÖRTLICH im Beleg, sagt die Markierung das — dieselbe
+    // Auskunft wie das frühere Häkchen an der Kollisionskachel, jetzt am markierten Text selbst.
+    const belegHinweis = (seite: "a" | "b"): string | undefined =>
+      collision?.[seite].streitwertWoertlich ? t(CONFLICT_COLLISION_TEXT.verbatim) : undefined;
+    // Markiert wird NUR, was wörtlich im Text steht (Streitwert bzw. Belegzitat dieser Seite).
+    const teileA = markiereTeile(pair.a?.statement ?? "", [
+      collision?.a.streitwert ?? "",
+      origin.quoteA ?? "",
+    ]);
+    const teileB = markiereTeile(pair.b?.statement ?? "", [
+      collision?.b.streitwert ?? "",
+      origin.quoteB ?? "",
+    ]);
+    const offen = c.status !== "geloest";
+
+    const mehr = (seite: "a" | "b"): JSX.Element => {
+      const ko = seite === "a" ? pair.a : pair.b;
+      const zitat = seite === "a" ? origin.quoteA : origin.quoteB;
+      return (
+        <PruefenMehr kennung={`konflikt-${seite}`}>
+          <PruefenMehrZeile beschriftung={t("lib.originLabel")}>
+            {t(befund.kindLabelKey)} · {t(befund.wayLabelKey)} · {t(origin.labelKey)}
+            {origin.confidencePercent !== undefined
+              ? ` · ${t(CONFLICT_BOARD_TEXT.confidence, { percent: origin.confidencePercent })}`
+              : ""}
+          </PruefenMehrZeile>
+          {origin.confidencePercent !== undefined ? (
+            <PruefenMehrBlock beschriftung={t("con.autoConfidenceCaption")}>
+              {t(`con.status.${c.status}`)} · {t(`con.type.${c.type}`)}
+              {detectedText ? ` · ${t("con.detectedOn", { date: detectedText })}` : ""}
+            </PruefenMehrBlock>
+          ) : (
+            <PruefenMehrZeile beschriftung={t("pruefen.mehr.zustand")}>
+              {t(`con.status.${c.status}`)} · {t(`con.type.${c.type}`)}
+              {detectedText ? ` · ${t("con.detectedOn", { date: detectedText })}` : ""}
+            </PruefenMehrZeile>
+          )}
+          {origin.rationale ? (
+            <PruefenMehrBlock beschriftung={t(CONFLICT_BOARD_TEXT.why)}>
+              {origin.rationale}
+            </PruefenMehrBlock>
+          ) : null}
+          {zitat ? (
+            <PruefenMehrBlock
+              beschriftung={t(
+                seite === "a" ? CONFLICT_BOARD_TEXT.quoteA : CONFLICT_BOARD_TEXT.quoteB,
+              )}
+            >
+              <span className="italic">„{zitat}“</span>
+            </PruefenMehrBlock>
+          ) : null}
+          {redigiert ? (
+            <PruefenMehrBlock beschriftung={t("con.redacted.title")}>
+              {t("con.redacted.body")}
+            </PruefenMehrBlock>
+          ) : null}
+          {ko && ko.conditions.length > 0 ? (
+            <PruefenMehrBlock beschriftung={t("ko.conditions")}>
+              {ko.conditions.join(" · ")}
+            </PruefenMehrBlock>
+          ) : null}
+          {ko && ko.measures.length > 0 ? (
+            <PruefenMehrBlock beschriftung={t("ko.measures")}>
+              {ko.measures.join(" · ")}
+            </PruefenMehrBlock>
+          ) : null}
+          {/* SCRUM-486 (WP4): der KERN-BELEG dieser Seite — klickbare Quelle, Quelldatum,
+              KO-Konfidenz. Er kam bis hierher aus `ConflictKoSide`; diese Kachel ist mit dem
+              Kartenpaar entfallen, der Beleg selbst NICHT: er steht jetzt hier, aus derselben
+              geteilten Komponente (`ko/SourceEvidence`) mit denselben Feldern.
+              G-2-EHRLICHKEIT (SCRUM-527): Quelldatum nur aus einer ECHTEN Quelle — kein
+              `createdAt`-Ersatz; ohne Quelle sagt `SourceEvidence` „kein Quelldatum". */}
+          {ko ? (
+            <PruefenMehrBlock beschriftung={t("con.evidenceSideLabel")}>
+              <SourceEvidence
+                sources={ko.sources ?? []}
+                confidence={ko.confidence}
+                date={ko.sources?.[0]?.at ?? null}
+                variant="compact"
+              />
+            </PruefenMehrBlock>
+          ) : null}
+          {evidence ? (
+            <PruefenMehrBlock beschriftung={t("pruefen.mehr.evidence")}>
+              <span data-testid="conflict-evidence-balance">
+                {evidence.kind === "neither"
+                  ? t("con.evidenceBalance.neither")
+                  : t("con.evidenceBalance.oneSided", {
+                      title: (evidence.side === "a" ? pair.a?.title : pair.b?.title) ?? "",
+                    })}
+              </span>
+            </PruefenMehrBlock>
+          ) : null}
+          <PruefenMehrBlock beschriftung={t("con.nextLabel")}>
+            {t(`con.next.${conflictNextStep(c)}`)}
+          </PruefenMehrBlock>
+          <PruefenMehrBlock beschriftung={t("pruefen.mehr.effect")}>
+            {t("con.resolveEffect")}
+            {wirkung.revalidationRecommended ? ` ${t("con.resolveRevalidate")}` : ""}
+          </PruefenMehrBlock>
+          {c.secondOpinion ? (
+            <PruefenMehrBlock beschriftung={t("con.secondOpinion")}>
+              {c.secondOpinion}
+            </PruefenMehrBlock>
+          ) : null}
+          {c.decision ? (
+            <PruefenMehrBlock beschriftung={t("con.decision")}>{c.decision}</PruefenMehrBlock>
+          ) : null}
+        </PruefenMehr>
+      );
+    };
+
+    const aktionen = (seite: "a" | "b"): JSX.Element => {
+      const ko = seite === "a" ? pair.a : pair.b;
+      return (
+        <PruefenMenue
+          kennung={`konflikt-${seite}`}
+          beschriftung={t("pruefen.menu.actions")}
+          symbol={<MenueSymbol />}
+        >
+          {c.type === "truth" && c.status === "offen" ? (
+            <PruefenMenueEintrag
+              disabled={escalate.isPending}
+              onClick={() => escalate.mutate(c.id)}
+            >
+              {t("con.escalate")}
+            </PruefenMenueEintrag>
+          ) : null}
+          <PruefenMenueLink to={`/konflikte/${c.id}/vergleich`}>
+            {t("con.readonlyCompare")}
+          </PruefenMenueLink>
+          {ko ? (
+            <PruefenMenueLink to={`/wissen/${ko.id}`}>{t("con.openKo")}</PruefenMenueLink>
+          ) : null}
+          {/* Der Eskalationspfad ist eine Auskunft, keine Handlung — er steht deshalb hier unten. */}
+          {c.type === "truth" ? (
+            <>
+              <PruefenMenueTrenner />
+              <div className="px-2.5 py-2">
+                <div className="mb-1 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
+                  {t("con.escPath")}
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {PATH.map((step, i) => {
+                    const reached = PATH.indexOf(c.status) >= i || c.status === "geloest";
+                    return (
+                      <span
+                        key={step}
+                        className={cx(
+                          "rounded-pill px-2 py-1 font-mono text-[11px]",
+                          reached ? "bg-ink text-white" : "border border-hairline text-muted-2",
+                        )}
+                      >
+                        {i + 1} {t(`con.status.${step}`)}
+                      </span>
+                    );
+                  })}
+                </div>
+              </div>
+            </>
+          ) : null}
+        </PruefenMenue>
+      );
+    };
+
+    /** „Links gilt" / „Rechts gilt" / „Beide gelten": derselbe dokumentierende Weg, andere Vorbelegung. */
+    const oeffneAufloesung = (vorbelegung: string): void => {
+      setErr(null);
+      setDecision(vorbelegung);
+      setResolvingId(c.id);
+    };
+
+    return (
+      <>
+        <PruefenPaarZeile titel={titel}>
+          <PruefenPille kennung="lauf">
+            {t("pruefen.kVonN", { k: index + 1, n: items.length })}
+          </PruefenPille>
+          <PruefenPille ton="crit" kennung="art">
+            {t(`con.type.${c.type}`)}
+          </PruefenPille>
+          {items.length > 1 ? (
+            <span className="flex items-center gap-1">
+              <button
+                type="button"
+                data-text="knopf"
+                data-testid="pruefen-zurueck"
+                aria-label={t("pruefen.prev")}
+                disabled={index === 0}
+                onClick={() => setIndex((i) => Math.max(0, i - 1))}
+                className="rounded-[8px] border border-hairline p-1 text-muted disabled:opacity-40"
+              >
+                <ChevronLeft size={14} aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                data-text="knopf"
+                data-testid="pruefen-vor"
+                aria-label={t("pruefen.next")}
+                disabled={index >= items.length - 1}
+                onClick={() => setIndex((i) => Math.min(items.length - 1, i + 1))}
+                className="rounded-[8px] border border-hairline p-1 text-muted disabled:opacity-40"
+              >
+                <ChevronRight size={14} aria-hidden="true" />
+              </button>
+            </span>
+          ) : null}
+        </PruefenPaarZeile>
+
+        <PruefenPaar>
+          <PruefenPaarKarte
+            seite="a"
+            ton="konflikt"
+            titel={pair.a?.title ?? t("board.koRemoved")}
+            meta={metaVon(pair.a, t)}
+            teile={teileA}
+            markeTitel={belegHinweis("a")}
+            aktionen={aktionen("a")}
+            mehr={mehr("a")}
+          />
+          <PruefenPaarKarte
+            seite="b"
+            ton="konflikt"
+            titel={pair.b?.title ?? t("board.koRemoved")}
+            meta={metaVon(pair.b, t)}
+            teile={teileB}
+            markeTitel={belegHinweis("b")}
+            aktionen={aktionen("b")}
+            mehr={mehr("b")}
+          />
+        </PruefenPaar>
+
+        {offen ? (
+          <PruefenAktionsband>
+            <PruefenKnopf
+              ton="primaer"
+              kennung="links-gilt"
+              onClick={() =>
+                oeffneAufloesung(t("con.prefill.side", { title: pair.a?.title ?? "" }))
+              }
+            >
+              {t("con.side.left")}
+            </PruefenKnopf>
+            <PruefenKnopf
+              ton="primaer"
+              kennung="rechts-gilt"
+              onClick={() =>
+                oeffneAufloesung(t("con.prefill.side", { title: pair.b?.title ?? "" }))
+              }
+            >
+              {t("con.side.right")}
+            </PruefenKnopf>
+            <PruefenKnopf
+              kennung="beide-gelten"
+              onClick={() => oeffneAufloesung(t("con.prefill.both"))}
+            >
+              {t("con.side.both")}
+            </PruefenKnopf>
+            {canDismiss(c) ? (
+              <PruefenKnopf
+                kennung="kein-widerspruch"
+                disabled={dismiss.isPending}
+                onClick={() => dismiss.mutate(c.id)}
+              >
+                {t("con.side.none")}
+              </PruefenKnopf>
+            ) : null}
+            <PruefenBandLink
+              kennung="zweitmeinung"
+              onClick={() => {
+                setErr(null);
+                setOpinion("");
+                setOpinionId(opinionId === c.id ? null : c.id);
+              }}
+            >
+              {t("con.secondOpinionAdd")}
+            </PruefenBandLink>
+          </PruefenAktionsband>
+        ) : null}
+
+        {/* Die Begründung ist vorbelegt und EDITIERBAR — die Entscheidung bleibt beim Menschen. */}
+        {resolvingId === c.id ? (
+          <div data-testid="pruefen-aufloesung" className="space-y-2">
+            <div className="rounded-input bg-trust-warn-bg p-2.5 text-[12px] text-trust-warn-text">
+              {t("con.resolveEffect")}
+              {wirkung.revalidationRecommended ? <span> {t("con.resolveRevalidate")}</span> : null}
+            </div>
+            <textarea
+              value={decision}
+              onChange={(e) => setDecision(e.target.value)}
+              rows={2}
+              aria-label={t("con.resolve")}
+              placeholder={t("con.decisionPlaceholder")}
+              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+            />
+            <Button
+              variant="primary"
+              disabled={resolve.isPending || decision.trim().length === 0}
+              onClick={() => resolve.mutate({ id: c.id, koA: c.koA })}
+            >
+              {t("con.resolveConfirm")}
+            </Button>
+          </div>
+        ) : null}
+
+        {opinionId === c.id ? (
+          <div data-testid="pruefen-zweitmeinung" className="space-y-2">
+            <textarea
+              value={opinion}
+              onChange={(e) => setOpinion(e.target.value)}
+              rows={2}
+              aria-label={t("con.secondOpinionAdd")}
+              placeholder={t("con.secondOpinionPlaceholder")}
+              className="w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30"
+            />
+            <Button
+              variant="primary"
+              disabled={secondOpinion.isPending || opinion.trim().length === 0}
+              onClick={() => secondOpinion.mutate(c.id)}
+            >
+              {t("con.secondOpinionConfirm")}
+            </Button>
+          </div>
+        ) : null}
+      </>
+    );
+  }
 }

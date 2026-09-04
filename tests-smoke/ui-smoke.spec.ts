@@ -553,9 +553,12 @@ test("mega49: die Datenlage dieses Laufs ist die zugesagte", async ({ page }) =>
   await ensureLoggedIn(page);
   await page.goto("/validierung");
   // Erst auf die Seite warten, sonst misst man den Ladezustand statt der Datenlage.
-  await expect(page.getByRole("heading", { name: "Validierung" }).first()).toBeVisible({
-    timeout: 10_000,
-  });
+  //
+  // JOB 3061 · H2: Die vier Prüfseiten stehen unter EINEM Reiterkopf; die Überschrift heisst jetzt
+  // „Prüfen", der Reiter „Offen". Gewartet wird deshalb auf den ROUTENANKER dieser Seite — er ist
+  // ohnehin die härtere Zusage (die Fehlerkarte und der Platzhalter tragen ihn nicht, eine
+  // Überschrift schon; genau darum prüft ihn auch der Fall „Alle Kernrouten rendern").
+  await expect(page.getByTestId("page-validierung")).toBeVisible({ timeout: 10_000 });
 
   const leerText = page.getByText("Keine offenen Objekte.");
   const geseedet = process.env.KLARWERK_SMOKE_SEED === "1";

@@ -81,6 +81,11 @@ vi.mock("../api/hooks", () => {
     useValidationBoard: () => ok(lage.kos),
     useDirectory: () => ok([]),
     useReasonerStatus: () => ok({ active: false, mode: "deterministic" }),
+    // JOB 3061 · H2: der gemeinsame Reiterkopf zählt alle vier Reiter aus echten Abrufen. Sie sind
+    // hier Kulisse — gemessen wird der Freigeben-Weg der Karte.
+    useConflicts: () => ok([]),
+    useDuplicates: () => ok([]),
+    useLifecyclePending: () => ok([]),
   };
 });
 
@@ -256,6 +261,9 @@ describe("K · Kalibrierung der Toast-Sonde", () => {
   it("K1 · der vorhandene Admin-Weg löst einen Erfolgstoast aus — die Sonde funktioniert", async () => {
     rolle.wert = "admin";
     mount();
+    // JOB 3061 · H2: „Als wahr kennzeichnen" ist eine Nebenaktion und wohnt im „···"-Menü der
+    // Karte. Die Sonde misst unverändert denselben Serverweg — nur hinter einem Klick mehr.
+    await klick(document.querySelector('[data-testid="pruefen-menue-karte"]') as HTMLButtonElement);
     await klick(knopf(de("val.markTrue")));
     await klick(knopf(de("val.markTrueYes")));
     expect(toasts.list).toEqual([{ ton: "success", text: de("val.markTrueDone") }]);
