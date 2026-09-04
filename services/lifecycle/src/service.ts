@@ -9,7 +9,19 @@ export interface LifecycleServiceDeps {
   genId?: () => string;
 }
 
-export class LifecycleService {
+/**
+ * JOB 3054: die Merkergrenze, wie ein LESEPFAD sie sehen darf — genau eine schreibfreie Frage.
+ *
+ * Der Anzeigestatus-Lesepfad braucht vom Lebenszyklusmodul nichts weiter. Nimmt er die Grenze in
+ * dieser Form entgegen, kann er `pendingRevalidation()`, `confirmStillValid()` oder `assetChanged()`
+ * dort gar nicht erst erreichen — die Zusage „ein Lesepfad schreibt nicht" hält damit der Compiler
+ * und nicht eine Sichtprüfung.
+ */
+export interface RevalidierungMerkerLeser {
+  revalidierungAnstehtFuer(koIds: readonly string[]): Promise<ReadonlySet<string>>;
+}
+
+export class LifecycleService implements RevalidierungMerkerLeser {
   private readonly koService: KoService;
   private readonly repo: LifecycleRepo;
   private readonly genId: () => string;
@@ -54,6 +66,37 @@ export class LifecycleService {
       }
     }
     return alive;
+  }
+
+  // ============================================================================================
+  // JOB 3054 · DIE MERKERLAGE FÜR EINEN LESEPFAD — SCHREIBFREI, MENGENWEISE, OHNE OBJEKTPRÜFUNG.
+  // ============================================================================================
+  //
+  // WOFÜR ES DIESEN WEG BRAUCHT. Die zwei Leserouten (`GET /api/kos/:id`, `GET /api/kos`) leiten
+  // den Anzeigestatus ab und brauchen dafür genau eine Auskunft: steht für DIESES Objekt ein
+  // „Stimmt das noch?" an? Das vorhandene `pendingRevalidation()` beantwortet eine andere Frage —
+  // es lädt den GANZEN Merkerbestand, prüft je Merker ein Objekt (N+1) und ENTFERNT tote Merker.
+  // Auf einem Lesepfad ist jedes der drei falsch, und der Schreibvorgang ist der Grund, aus dem
+  // `revalidierung` bis hierher ausdrücklich als „nicht erhoben" ausgewiesen wurde.
+  //
+  // WARUM DIESE ABFRAGE KEINE GEISTERKARTEN ERZEUGEN KANN — der Grund, aus dem die Selbstheilung
+  // hier fehlen DARF und nicht bloß fehlt: Sie beantwortet ausschließlich Kennungen, die der
+  // Aufrufer übergibt, und der Aufrufer übergibt nur Objekte, die er ohnehin schon geladen hat.
+  // Ein Merker ohne Objekt kann in ihrer Antwort gar nicht vorkommen; es gibt hier also nichts,
+  // was als nackte UUID im Arbeitsbereich erscheinen könnte (SCRUM-420 wirkt auf die Frage „welche
+  // Objekte stehen an?", nicht auf „steht dieses an?").
+  //
+  // ES ENTSTEHT KEIN ZWEITER WEG ZUR MERKERLAGE: `pendingRevalidation()` bleibt unverändert der
+  // einzige selbstheilende Arbeitsbereichsweg, `revalidierungAnstehtFuer` der einzige Leseweg.
+  // EINE LEERE EINGABE MACHT NULL ABFRAGEN — hier und nicht erst in der Ablage. Eine leere Liste
+  // ist ein Ergebnis, keine Frage; ohne diese Zeile zöge eine leere Antwort der Liste einen
+  // Ablagenzugriff nach sich. Dieselbe Aufteilung wie bei `ValidationService.pruefstaendeFuer`:
+  // der Dienst hält den Aufruf zurück, der Adapter hält zusätzlich das SQL zurück (R-8).
+  async revalidierungAnstehtFuer(koIds: readonly string[]): Promise<ReadonlySet<string>> {
+    if (koIds.length === 0) {
+      return new Set<string>();
+    }
+    return new Set(await this.repo.pendingFor(koIds));
   }
 
   // FR-LIF-01: Bestätigung erzeugt eine neue Version.

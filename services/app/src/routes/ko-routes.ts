@@ -18,6 +18,9 @@ import {
   type AnzeigestatusEingaenge,
   type CreateKoInput,
   DEFAULT_UPLOAD_LIMITS,
+  // JOB 3054: die Entweder-oder-Form eines Eingangs — ein WERT oder ein benannter Grund. Ein
+  // fehlender Wert ohne Grund ist damit nicht ausdrueckbar (`display-status.ts`).
+  type Erhoben,
   type KnowledgeObject,
   type KnowledgeType,
   type KoService,
@@ -36,7 +39,9 @@ import {
   discloseDisplayStatus,
   normalizeUploadLimits,
 } from "../../../knowledge-object";
-import type { LifecycleService } from "../../../lifecycle";
+// JOB 3054: `RevalidierungMerkerLeser` ist die SCHREIBFREIE Haelfte desselben Dienstes — sie kommt
+// ueber DIESELBE Modulfassade, keine Kante in `services/lifecycle/src/**`.
+import type { LifecycleService, RevalidierungMerkerLeser } from "../../../lifecycle";
 import type { ObjectStore } from "../../../object-store";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
@@ -474,15 +479,19 @@ const ANZEIGESTATUS_UNGEPRUEFT_GRUND = {
   konflikt:
     "Der Konfliktweg wird derzeit umgebaut (JOB 3002); dieser Lesepfad fragt ihn nicht ab. Ob dieses Objekt in einem Konflikt steht, ist hier nicht erhoben.",
   /**
-   * Ein Signal GIBT es — `LifecycleService.pendingRevalidation()`, und `lifecycle` liegt sogar an
-   * dieser Route an. Es wird trotzdem nicht erhoben, und der Grund ist der Aufruf selbst: er laedt
-   * die gesamte Merkerliste, prueft je Merker ein Objekt und ENTFERNT tote Merker
-   * (`lifecycle/src/service.ts:46-57`) — ein Schreibvorgang. Auf einem Detail-Lesepfad ist beides
-   * falsch. Die Zeile sagt deshalb nicht „es gibt kein Signal", sondern „hier wurde nicht
-   * nachgesehen".
+   * JOB 3054: DIESER GRUND IST SEITHER EIN FEHLERGRUND, KEIN NORMALFALL.
+   *
+   * Bis JOB 3054 stand hier die Enthaltung: der einzige Weg zur Merkerlage war
+   * `LifecycleService.pendingRevalidation()`, und der laedt die gesamte Merkerliste, prueft je
+   * Merker ein Objekt und ENTFERNT tote Merker (`lifecycle/src/service.ts`) — ein Schreibvorgang
+   * auf einem Lesepfad. Nicht das Nachsehen war falsch, sondern dieser eine Weg dorthin.
+   *
+   * BEIDE LESEROUTEN ERHEBEN JETZT, ueber die schreibfreie Mengengrenze
+   * `LifecycleService.revalidierungAnstehtFuer` (`RevalidierungMerkerLeser`). Diese Zeile steht
+   * deshalb nur noch da, wenn GENAU DIESE Abfrage fehlgeschlagen ist — und dann sagt sie das.
    */
   revalidierung:
-    "Ob fuer dieses Objekt eine Re-Validierung ansteht, ist hier nicht erhoben. „validiert“ heisst an dieser Route ausdruecklich nicht „nicht faellig“.",
+    "Ob fuer dieses Objekt eine Re-Validierung ansteht, ist hier nicht erhoben: die Abfrage der Re-Validierungsmerker ist fehlgeschlagen.",
   /**
    * Zuweisungen und Bewertungen kommen aus DEMSELBEN Aufruf (`validation.pruefstandFuer`). Faellt
    * er aus, fallen beide aus — und beide sagen es, statt still auf „offen" zu fallen (§9).
@@ -601,9 +610,57 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   // FAIL-CLOSED, ABER NICHT STILL: scheitert die Abfrage, wird daraus KEIN „offen", sondern ein
   // ausgewiesen ungeprueftes Feldpaar mit benanntem Grund (§9: kein Feld traegt eine Aussage ohne
   // frische, erfolgreiche Datengrundlage). Gepinnt in Fall J.
+  // ============================================================================================
+  // JOB 3054 · DER DRITTE EINGANG WIRD ERHOBEN — UND ZWAR GETRENNT VON DEN ERSTEN ZWEIEN.
+  // ============================================================================================
+  //
+  // DER LESEPFAD BRAUCHT VOM LEBENSZYKLUS GENAU EINE FRAGE, und er nimmt sie in der Form entgegen,
+  // in der er sie stellen darf. `RevalidierungMerkerLeser` traegt nur `revalidierungAnstehtFuer`;
+  // `pendingRevalidation()` — der selbstheilende, SCHREIBENDE Arbeitsbereichsweg (SCRUM-420) — ist
+  // von hier aus nicht erreichbar. Die Zusage „ein Lesepfad schreibt nicht" haelt damit der
+  // Compiler und nicht eine Sichtpruefung; gemessen wird sie zusaetzlich in R-4.
+  const merkerLeser: RevalidierungMerkerLeser = lifecycle;
+
+  /**
+   * Die Merkerlage fuer eine bekannte Menge — EINE Abfrage, egal wie viele Kennungen kommen.
+   *
+   * DIE RUECKGABE IST EINE FUNKTION, keine Karte: damit gibt es fuer JEDE Kennung eine Antwort,
+   * auch im Fehlerfall, und kein Aufrufer muss aus einem fehlenden Karteneintrag etwas schliessen.
+   *
+   * FAIL-CLOSED, ABER NICHT STILL: scheitert die Abfrage, wird daraus KEIN `false`. `false` hiesse
+   * „nachgesehen und nicht faellig"; hier steht stattdessen der benannte Grund (§9).
+   */
+  async function revalidierungJeEintrag(
+    koIds: readonly string[],
+  ): Promise<(koId: string) => Erhoben<boolean>> {
+    try {
+      const anstehend = await merkerLeser.revalidierungAnstehtFuer(koIds);
+      return (koId) => ({ wert: anstehend.has(koId) });
+    } catch {
+      return () => ({ ungeprueft: ANZEIGESTATUS_UNGEPRUEFT_GRUND.revalidierung });
+    }
+  }
+
+  /**
+   * JOB 3054: DIE ZWEI ERHEBUNGEN LAUFEN NEBENEINANDER UND FALLEN EINZELN.
+   *
+   * Pruefstandslage und Merkerlage kommen aus verschiedenen Modulen und koennen unabhaengig
+   * ausfallen. Ein gemeinsames `try` haette sie aneinandergekettet: ein Ausfall der Merkerablage
+   * haette `zuweisungen` und `bewertungen` mit in die Enthaltung gerissen, obwohl sie erhoben
+   * waren — eine Antwort, die weniger weiss, als der Server nachgesehen hat. Gepinnt in R-6a/R-6b.
+   */
   async function anzeigestatusEingaengeFuer(
     item: KnowledgeObject,
   ): Promise<AnzeigestatusEingaenge> {
+    const [ausPruefstand, revalidierungFuer] = await Promise.all([
+      pruefstandEingaengeFuer(item),
+      revalidierungJeEintrag([item.id]),
+    ]);
+    return { ...ausPruefstand, revalidierung: revalidierungFuer(item.id) };
+  }
+
+  /** Die zwei Eingaenge aus der Pruefstandslage — fail-closed mit ihrem eigenen Grund (Fall J). */
+  async function pruefstandEingaengeFuer(item: KnowledgeObject): Promise<AnzeigestatusEingaenge> {
     try {
       return anzeigestatusEingaengeAus(await validation.pruefstandFuer(item.id, item.version));
     } catch {
@@ -639,17 +696,34 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
   ): Promise<(item: KnowledgeObject) => AnzeigestatusEingaenge> {
     if (sichtbare.length > ANZEIGESTATUS_LISTE_DECKEL) {
       const deckel = anzeigestatusDeckelGrund(sichtbare.length);
-      // Alle vier Eingaenge tragen den Deckel. Bei `konflikt` und `revalidierung` steht er NEBEN
-      // dem bestehenden Grund, nicht an seiner Stelle: die beiden werden hier auch unterhalb des
-      // Deckels nicht erhoben, und ein alleiniger Deckelgrund liesse das Gegenteil vermuten.
+      // Alle vier Eingaenge tragen den Deckel. Bei `konflikt` steht er NEBEN dem bestehenden Grund,
+      // nicht an seiner Stelle: dieser Eingang wird auch unterhalb des Deckels nicht erhoben, und
+      // ein alleiniger Deckelgrund liesse das Gegenteil vermuten.
+      //
+      // JOB 3054: `revalidierung` traegt seither den Deckelgrund ALLEIN — wie `zuweisungen` und
+      // `bewertungen`. Unterhalb des Deckels wird er erhoben; der Deckel ist der einzige Grund,
+      // aus dem er hier fehlt, und ein danebenstehender Fehlergrund waere schlicht unwahr.
       const ueberDeckel: AnzeigestatusEingaenge = {
         zuweisungen: { ungeprueft: deckel },
         bewertungen: { ungeprueft: deckel },
         konflikt: { ungeprueft: `${ANZEIGESTATUS_UNGEPRUEFT_GRUND.konflikt} ${deckel}` },
-        revalidierung: { ungeprueft: `${ANZEIGESTATUS_UNGEPRUEFT_GRUND.revalidierung} ${deckel}` },
+        revalidierung: { ungeprueft: deckel },
       };
       return () => ueberDeckel;
     }
+    // JOB 3054: zwei Erhebungen, nebenlaeufig und einzeln fallend — dieselbe Trennung wie am
+    // Detailpfad. Die Merkerabfrage kommt fuer die GANZE sichtbare Menge, nicht je Eintrag (R-5).
+    const [ausPruefstand, revalidierungFuer] = await Promise.all([
+      pruefstaendeJeEintrag(sichtbare),
+      revalidierungJeEintrag(sichtbare.map((item) => item.id)),
+    ]);
+    return (item) => ({ ...ausPruefstand(item), revalidierung: revalidierungFuer(item.id) });
+  }
+
+  /** Die zwei Eingaenge aus der Pruefstandslage, fuer die ganze Menge in zwei Abfragen (L3). */
+  async function pruefstaendeJeEintrag(
+    sichtbare: readonly KnowledgeObject[],
+  ): Promise<(item: KnowledgeObject) => AnzeigestatusEingaenge> {
     try {
       const staende = await validation.pruefstaendeFuer(
         sichtbare.map((item) => ({ id: item.id, version: item.version })),

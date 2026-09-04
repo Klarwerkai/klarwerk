@@ -66,6 +66,28 @@ export class PgLifecycleRepo implements LifecycleRepo {
     return res.rows.map((row) => row.ko_id);
   }
 
+  /**
+   * JOB 3054: EINE Anweisung fuer die ganze Menge — ausdruecklich keine Schleife und ausdruecklich
+   * kein Filtern eines vollen `pending()` im Anwendungsspeicher. Beides saehe von aussen wie eine
+   * Mengenabfrage aus und waere im Betrieb genau die Last, die dieser Weg vermeidet; die Zusage der
+   * beiden Leserouten („eine zusaetzliche Abfrage") haengt an dieser Zeile.
+   *
+   * SCHREIBFREI: hier steht ein `SELECT` und sonst nichts. Der aufraeumende Weg (`clearPending`)
+   * bleibt, wo er ist — im Arbeitsbereich (SCRUM-420), nicht auf einem Lesepfad.
+   *
+   * Die leere Kennungsliste geht GAR NICHT ans SQL; doppelte Kennungen gehen einmal hinein.
+   */
+  async pendingFor(koIds: readonly string[]): Promise<string[]> {
+    if (koIds.length === 0) {
+      return [];
+    }
+    const res = await this.pool.query<{ ko_id: string }>(
+      "SELECT ko_id FROM lifecycle_pending WHERE ko_id = ANY($1)",
+      [[...new Set(koIds)]],
+    );
+    return res.rows.map((row) => row.ko_id);
+  }
+
   async savePath(path: LearningPath): Promise<void> {
     await this.pool.query(
       "INSERT INTO lifecycle_paths(id,role,data) VALUES($1,$2,$3) ON CONFLICT (id) DO UPDATE SET role=excluded.role, data=excluded.data",

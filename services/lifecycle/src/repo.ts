@@ -9,6 +9,23 @@ export interface LifecycleRepo {
   markPending(koId: string): Promise<void>;
   clearPending(koId: string): Promise<void>;
   pending(): Promise<string[]>;
+  /**
+   * JOB 3054: die Merkerlage EINER BEKANNTEN MENGE von Objekten — schreibfrei und in EINER Abfrage.
+   *
+   * WARUM NEBEN `pending()` UND NICHT AN SEINER STELLE. Beide Formen haben einen echten Aufrufer,
+   * und keiner ist der billigere Fall des anderen: der Arbeitsbereich fragt „welche Objekte stehen
+   * ueberhaupt an?" und braucht dafuer den ganzen Bestand (`LifecycleService.pendingRevalidation`,
+   * samt Selbstheilung nach SCRUM-420); die zwei Leserouten fragen „steht DIESES Objekt an?" fuer
+   * Kennungen, die sie schon in der Hand haben. Ueber `pending()` gefuehrt hiesse das, fuer eine
+   * Teilmenge den ganzen Bestand zu laden — im Betrieb genau die Last, die der Deckel der Liste
+   * begrenzen soll.
+   *
+   * EINE LEERE KENNUNGSLISTE MACHT KEINE ABFRAGE und gibt `[]` zurueck: `= ANY('{}')` ist eine
+   * Anweisung, die nie eine Zeile treffen kann (dieselbe Zusage wie `RatingRepo.listByKos`).
+   *
+   * Die Antwort ist die TEILMENGE der uebergebenen Kennungen mit gesetztem Merker — nie mehr.
+   */
+  pendingFor(koIds: readonly string[]): Promise<string[]>;
   savePath(path: LearningPath): Promise<void>;
   getPathByRole(role: string): Promise<LearningPath | undefined>;
   setProgress(pathId: string, userId: string, completed: string[]): Promise<void>;
@@ -54,6 +71,13 @@ export class InMemoryLifecycleRepo implements LifecycleRepo {
 
   pending(): Promise<string[]> {
     return Promise.resolve([...this.pendingSet]);
+  }
+
+  pendingFor(koIds: readonly string[]): Promise<string[]> {
+    if (koIds.length === 0) {
+      return Promise.resolve([]);
+    }
+    return Promise.resolve([...new Set(koIds)].filter((koId) => this.pendingSet.has(koId)));
   }
 
   savePath(path: LearningPath): Promise<void> {

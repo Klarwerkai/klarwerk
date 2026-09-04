@@ -277,13 +277,18 @@ describe("JOB 3043 · der Anzeigestatus an der Liste, mit gezaehltem Aufwand", (
     expect(ohne.anzeigestatus).toBe("offen");
     expect(herkunftVon(mit).zuweisungen).toBe("geprueft");
     expect(herkunftVon(mit).status).toBe("geprueft");
-    // Die zwei Eingaenge, die dieser Lesepfad ueberhaupt nicht erhebt, sagen es — mit Grund.
+    // Der EINE Eingang, den dieser Lesepfad ueberhaupt nicht erhebt, sagt es — mit Grund.
+    //
+    // JOB 3054: `revalidierung` gehoerte bis dahin hierher und wird seither erhoben (schreibfrei,
+    // eine Abfrage fuer die ganze Liste). Beide Objekte sind ungemerkt — die Antwort sagt das jetzt,
+    // statt zu schweigen. Der volle Zustandssatz steht in
+    // `tests/anzeigestatus-revalidierung/revalidierung-wird-erhoben.test.ts` (R-1 bis R-8).
     for (const e of [mit, ohne]) {
       const h = herkunftVon(e);
       expect(h.konflikt).toBe("ungeprueft");
-      expect(h.revalidierung).toBe("ungeprueft");
       expect(String(h.ungeprueft.konflikt).length).toBeGreaterThan(20);
-      expect(String(h.ungeprueft.revalidierung).length).toBeGreaterThan(20);
+      expect(h.revalidierung).toBe("geprueft");
+      expect(Object.keys(h.ungeprueft)).not.toContain("revalidierung");
     }
   });
 

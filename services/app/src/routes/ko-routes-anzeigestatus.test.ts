@@ -12,10 +12,10 @@
 // eines rot bewertet, eines unberuehrt, und verlangt, dass sich die Antworten UNTERSCHEIDEN. Ein
 // Feld, das pauschal einen Wert liefert, faellt daran durch — anders als bei einer Einzelzusage.
 //
-// A/C/D pinnen die drei anderen Zusagen: die offene Zuweisung (`pruefung`), die Re-Validierung als
-// ausdruecklich UNGEPRUEFTEN Eingang am validierten Objekt und den Konflikt als ebensolchen. E
-// haelt fest, dass `entwurf` an dieser Route nicht entstehen KANN, F das Tor vor der Anreicherung,
-// G die Lese-Sicht ohne Schreibweg.
+// A/C/D pinnen die drei anderen Zusagen: die offene Zuweisung (`pruefung`), das validierte Objekt
+// ohne anstehende Re-Validierung (seit JOB 3054 ein ERHOBENER Eingang, s. Fall C) und den Konflikt
+// als ausdruecklich UNGEPRUEFTEN. E haelt fest, dass `entwurf` an dieser Route nicht entstehen
+// KANN, F das Tor vor der Anreicherung, G die Lese-Sicht ohne Schreibweg.
 //
 // H, I, J UND K KAMEN NACH DER PRUEFUNG DAZU, jeder gegen einen benannten roten Befund:
 //   H  Der ECHTE Nutzerweg `rate:down → admin-validate → GET`, ueber die Routen gefahren. Die
@@ -191,7 +191,7 @@ describe("JOB 3024 · der Anzeigestatus am Detailabruf, mit ausgewiesener Herkun
     expect(herkunftVon(ohne).bewertungen).toBe("geprueft");
   });
 
-  it("C · VALIDIERT: die Antwort sagt `validiert` UND weist die Re-Validierung als ungeprueft aus", async () => {
+  it("C · VALIDIERT: die Antwort sagt `validiert`, NACHDEM sie nach der Re-Validierung gesehen hat", async () => {
     const { app, services, pruefer } = await setup();
     const fertig = await anlegen(services, "Objekt, das durch ist");
     await services.validation.adminValidate(fertig.id, "u-admin");
@@ -200,13 +200,21 @@ describe("JOB 3024 · der Anzeigestatus am Detailabruf, mit ausgewiesener Herkun
     const voll = await detail(app, pruefer, fertig.id);
     expect(voll.anzeigestatus).toBe("validiert");
 
-    // „validiert" heisst hier NICHT „garantiert nicht faellig". Der Eingang, der `revalidierung`
-    // entscheiden wuerde, wird an diesem Lesepfad nicht erhoben — und das steht in der Antwort.
+    // ============================================================================================
+    // JOB 3054 HAT DIESEN FALL UMGEDREHT — und das ist die Ablösung, nicht ein gelockerter Test.
+    // ============================================================================================
+    //
+    // Bis JOB 3054 stand hier `revalidierung: "ungeprueft"` mit einem benannten Grund: der einzige
+    // Weg zur Merkerlage war `pendingRevalidation()`, ein SCHREIBweg (SCRUM-420). „validiert" hiess
+    // deshalb ausdruecklich nicht „nicht faellig". Seit der schreibfreien Mengenabfrage
+    // (`LifecycleService.revalidierungAnstehtFuer`) wird nachgesehen — und erst DANACH darf die
+    // Abwesenheit behauptet werden. Der volle Zustandssatz steht in
+    // `tests/anzeigestatus-revalidierung/revalidierung-wird-erhoben.test.ts` (R-1 bis R-8).
     const h = herkunftVon(voll);
-    expect(h.revalidierung).toBe("ungeprueft");
-    expect(typeof h.ungeprueft.revalidierung).toBe("string");
-    // Ein benannter Grund, kein leeres Feld: „ungeprueft" ohne Begruendung waere wieder Schweigen.
-    expect(String(h.ungeprueft.revalidierung).length).toBeGreaterThan(20);
+    expect(h.revalidierung).toBe("geprueft");
+    // KEIN RESTGRUND: „geprueft" und ein Enthaltungsgrund im selben Atemzug waeren zwei Aussagen
+    // ueber denselben Eingang.
+    expect(Object.keys(h.ungeprueft)).not.toContain("revalidierung");
     expect(voll.anzeigestatus).not.toBe("revalidierung");
 
     // ABER: die Stimmenlage IST erhoben, auch an einem nicht offenen Objekt. Genau daran hing der
