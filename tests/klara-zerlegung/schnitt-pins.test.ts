@@ -172,6 +172,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // ein freigeschalteter externer Antwortweg nicht gleichzeitig bestehen koennen. Ein Schnitt
   // trifft ihn: wandert der Satz in eine Geschwisterdatei, liest S4 ins Leere. Griff `pfad`.
   "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": "pfad",
+  // JOB 3019 D1 (KA5): neuer Mitfahrer. Sie nennt das Pfadliteral und laedt Rumpf und Skript ueber
+  // `splitTaskpane` der Panel-Fixture — dieselben zwei Griffe wie die P7-Datei darueber. Wer
+  // `taskpane.html` zerlegt, bricht sie mit.
+  "tests/klara-panel/ka5-markierung-reist-mit.test.tsx": "pfad,fixture",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",
   // Die Messgeräte dieses Auftrags. Sie hängen genauso an der Datei wie alle anderen — nur messen
   // sie ausdrücklich ihre Struktur und nicht ihr Fachverhalten.

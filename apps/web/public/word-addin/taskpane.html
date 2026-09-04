@@ -1312,16 +1312,43 @@
     var WORD_ADDIN_ASK_MAX_CHARS = 2000;
     var WORD_ADDIN_ASK_TIMEOUT_MS = 15000;
 
+    // ============================================================================================
+    // JOB 3019 (KA5) — DIE MARKIERUNG SCHAERFT DIE SUCHE, SIE VERDRAENGT DIE FRAGE NICHT MEHR.
+    // ============================================================================================
+    //
+    // BIS HIERHER GEWANN DIE MARKIERUNG. Wer eine Stelle markierte UND eine Frage tippte, bekam
+    // eine Antwort auf die Markierung; der getippte Text war danach nirgends mehr — nicht im
+    // Koerper, nicht im Zustand, nirgends. Der Serververtrag von KA5 (JOB 3006) kann die
+    // Markierung seit Langem als EIGENES Feld verwerten (`services/app/src/routes/ask-routes.ts`
+    // liest `selection`, `services/ask/src/service.ts:513-515` ergaenzt damit AUSSCHLIESSLICH die
+    // Suchterme der Vorauswahl) — nur schickte der einzige Client, der eine Markierung hat, es nie.
+    //
+    // DIE DREI LAGEN, abschliessend:
+    //   getippter Text da        → `from: "manual"`,    Frage = getippter Text,
+    //                              `selection` = getrimmte Markierung (leer, wenn keine da).
+    //   nur Markierung           → `from: "selection"`, Frage = Markierung, `selection` = "".
+    //                              Die Markierung IST hier schon die Frage; sie ein zweites Mal zu
+    //                              senden verdoppelte dieselben Terme in `erweiterteSuchterme`.
+    //   keins von beidem         → `from: "empty"` wie bisher.
+    //
+    // ZWEI DECKEL, ZWEI MELDUNGEN. `truncated` gehoert der FRAGE und wird von `renderAskOutcome`
+    // und `askInsertTruncatedNote` gelesen; die gekappte Markierung meldet ihr eigenes Feld
+    // `selectionTruncated`. Eine gemeinsame Meldung haette in der Lage „lange Markierung, kurze
+    // Frage" behauptet, die Frage sei gekappt worden — sie war es nicht.
     function prepareAskQuestion(selectionText, manualText) {
       var selection = (selectionText || "").trim();
       var manual = (manualText || "").trim();
-      var from = selection.length > 0 ? "selection" : manual.length > 0 ? "manual" : "empty";
-      var raw = from === "selection" ? selection : from === "manual" ? manual : "";
-      if (raw.length === 0) { return { question: "", from: "empty", truncated: false }; }
+      var from = manual.length > 0 ? "manual" : selection.length > 0 ? "selection" : "empty";
+      var raw = from === "manual" ? manual : from === "selection" ? selection : "";
+      // Nur im manual-Zweig reist die Markierung als eigenes Feld; sonst waere sie die Frage doppelt.
+      var mit = from === "manual" ? selection : "";
+      var mitGekappt = mit.length > WORD_ADDIN_ASK_MAX_CHARS;
+      if (mitGekappt) { mit = mit.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(); }
+      if (raw.length === 0) { return { question: "", from: "empty", selection: "", truncated: false, selectionTruncated: false }; }
       if (raw.length > WORD_ADDIN_ASK_MAX_CHARS) {
-        return { question: raw.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(), from: from, truncated: true };
+        return { question: raw.slice(0, WORD_ADDIN_ASK_MAX_CHARS).trim(), from: from, selection: mit, truncated: true, selectionTruncated: mitGekappt };
       }
-      return { question: raw, from: from, truncated: false };
+      return { question: raw, from: from, selection: mit, truncated: false, selectionTruncated: mitGekappt };
     }
 
     // AUFTRAG-mega52 D1: der Server-Vertrag kennt jetzt drei Sprachen — die niederlaendische
@@ -1458,7 +1485,11 @@
     // ausgefuehrt (tests/app/word-addin-ask.test.ts) — er darf deshalb nur kennen, was er selbst
     // mitbringt oder uebergeben bekommt. Ein Aufruf von `klaraS4Header()` von hier aus machte den
     // Block unausfuehrbar; gemessen als `ReferenceError: klaraS4Header is not defined`.
-    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf) {
+    //
+    // JOB 3019 (KA5): `selection` ist der SECHSTE und letzte Parameter — aus demselben Grund wie
+    // `bindungsKopf`: er kommt herein, er wird nicht hier drinnen geholt. Er steht ANS ENDE, damit
+    // jeder bestehende Aufruf mit fuenf Argumenten unveraendert denselben Koerper absetzt.
+    function performAsk(question, locale, fetchFn, timeoutMs, bindungsKopf, selection) {
       var controller = new AbortController();
       var timedOut = false;
       var timer = setTimeout(function () {
@@ -1475,6 +1506,14 @@
       // exakt diese Sitzung UND dieses Dokument anwenden kann. Sie sind opak und autorisieren
       // fuer sich genommen nichts; ohne registrierte Sitzung sind sie leer und der Server
       // behandelt die Anfrage wie bisher.
+      //
+      // JOB 3019 (KA5): die markierte Passage reist als EIGENES Feld `selection` — und nur, wenn es
+      // sie gibt. `undefined` faellt bei `JSON.stringify` heraus; ohne Markierung ist der Koerper
+      // deshalb Zeichen fuer Zeichen der bisherige (in tests/klara-panel/ka5-markierung-reist-mit
+      // Faelle C/D durch Ausfuehrung erhoben). Der Modus bleibt unangetastet: die Markierung geht
+      // an DIESELBE Route und in DENSELBEN retrieval-only-Weg, der serverseitig kein Modell
+      // erreicht — sie ergaenzt dort ausschliesslich die Suchterme der Vorauswahl.
+      var markierung = typeof selection === "string" ? selection.trim() : "";
       var askKopf = { "content-type": "application/json" };
       var bindung = bindungsKopf || {};
       for (var kopfName in bindung) {
@@ -1486,7 +1525,7 @@
         method: "POST",
         credentials: "include",
         headers: askKopf,
-        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only" }),
+        body: JSON.stringify({ question: question, locale: locale, mode: "retrieval-only", selection: markierung.length > 0 ? markierung : undefined }),
         signal: controller.signal,
       })
         .then(function (res) {
@@ -2309,15 +2348,32 @@
         tabAsk: "Fragen",
         tabCapture: "Wissen erfassen",
         askTitle: "Klara fragen",
-        askInputPlaceholder: "Frage eingeben, wenn nichts markiert ist ...",
+        // JOB 3019 (KA5): der alte Platzhalter behauptete, frei fragen gehe nur ohne Markierung.
+        // Das stimmt nicht mehr — die getippte Frage wird IMMER gestellt.
+        askInputPlaceholder: "Frage eingeben ...",
         askCta: "Klara fragen",
         askSourceSelection: "Gefragt wird: deine Markierung im Dokument.",
-        askSourceSelectionOverride: "Gefragt wird: deine Markierung im Dokument — der Text unten wird dabei NICHT gesendet. Hebe die Markierung auf, um frei zu fragen.",
+        // JOB 3019 (KA5): DER SCHLÜSSELNAME IST GEBLIEBEN, DER SATZ IST DAS GEGENTEIL VON VORHER.
+        // Hier stand: „Gefragt wird: deine Markierung im Dokument — der Text unten wird dabei NICHT
+        // gesendet. Hebe die Markierung auf, um frei zu fragen." Beides ist seit KA5 falsch: gefragt
+        // wird die Eingabe, und die Markierung wird mitgesendet. Der Name „…Override" beschreibt
+        // seither nur noch die LAGE (Markierung UND Eingabe), nicht mehr eine Verdrängung; er bleibt
+        // stehen, weil `tests/app/mega74-klara-bilder.test.ts` ihn dreisprachig als Schlüssel führt.
+        askSourceSelectionOverride: "Gefragt wird: deine Eingabe unten. Deine Markierung im Dokument wird mitgesendet und schärft die Suche.",
         askSourceManual: "Gefragt wird: deine Eingabe unten.",
+        // JOB 3019 (KA5) R2 — DIE ZWEI DECKEL SIND ZWEI AUSSAGEN, UND ES GIBT DREI LAGEN.
+        // `askSelectionTruncated` darf „deine Frage bleibt vollständig" nur sagen, WENN sie das
+        // ist; sind beide Felder gekappt, steht `askBothTruncated` da. Welcher Satz wann gilt,
+        // entscheidet `updateAskSourceNote` aus `truncated` × `selectionTruncated` — alle vier
+        // Kombinationen sind in tests/klara-panel/ka5-markierung-reist-mit.test.tsx gemessen.
+        askSelectionTruncated: "Von der Markierung reisen nur die ersten {max} Zeichen mit — deine Frage bleibt vollständig.",
+        askBothTruncated: "Frage und Markierung sind länger als {max} Zeichen — von beiden reist nur der Anfang mit.",
         // JOB 3017 D4: der EINE Satz unter der Fragen-Karte (Zielbild Z.44) — er trägt seit diesem
         // Auftrag auch die Auskunft des früheren askHint (Antwort wörtlich aus validiertem Wissen mit
-        // Quellen; eine Markierung in Word wird gefragt) und weiter den dauerhaften Prüfauftrag.
-        askReviewNotice: "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Markierst du Text in Word, wird die Markierung gefragt. Bitte vor Verwendung fachlich prüfen.",
+        // Quellen) und den dauerhaften Prüfauftrag. JOB 3019 (KA5): der Halbsatz „Markierst du Text
+        // in Word, wird die Markierung gefragt" war ab jetzt falsch (gefragt wird die Eingabe) — er
+        // nennt die Markierung jetzt als Suchschärfung, nicht als Ersatz der Frage.
+        askReviewNotice: "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Eine Markierung in Word schärft die Suche. Bitte vor Verwendung fachlich prüfen.",
         aiGeneratedNotice: "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
         aiLageLaedt: "Der KI-Stand von KLARWERK wird abgefragt ... Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         aiLageUnerreichbar: "Der KI-Stand von KLARWERK ist gerade nicht abrufbar. Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
@@ -2432,8 +2488,14 @@
         // über den Serverstandort (Z.48) bleibt draußen: Betriebszusage, die dieser Code nicht erzwingt.
         askRuleNote: "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
+        // JOB 3016 D3: beide Haelften des Zielbildsatzes (Wissen freigegeben UND Eingabe gesperrt).
         askBusy: "Klara sucht im freigegebenen Wissen — die Eingabe ist so lange gesperrt.",
-        askTruncated: "Die Markierung war länger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
+        // JOB 3019 (KA5) R2: Hier stand „Die Markierung war länger als {max} Zeichen — die Frage
+        // wurde ehrlich gekappt." Das war seit KA5 falsch: gekappt wird das Feld `question`, und
+        // das ist in der Lage „beides" der GETIPPTE Text, nicht die Markierung. Der Satz spricht
+        // jetzt ausschließlich über die Frage — und zeitneutral, weil ihn zwei Stellen zeigen:
+        // die Zeile über dem Eingabefeld VOR dem Absenden und die Statuszeile NACH der Antwort.
+        askTruncated: "Die Frage ist länger als {max} Zeichen — nur ihr Anfang reist mit.",
         askAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
         askTimeout: "Keine Antwort vom Server (Zeitüberschreitung). Bitte erneut versuchen.",
         askSelectionTimeout: "Word hat die Markierung nicht geliefert (Zeitüberschreitung). Bitte erneut versuchen.",
@@ -2567,12 +2629,19 @@
         tabAsk: "Ask",
         tabCapture: "Capture knowledge",
         askTitle: "Ask Klara",
-        askInputPlaceholder: "Type a question if nothing is selected ...",
+        // JOB 3019 (KA5): see the German block — the old placeholder claimed asking freely only
+        // worked without a selection. That is no longer true.
+        askInputPlaceholder: "Type a question ...",
         askCta: "Ask Klara",
         askSourceSelection: "Asking about: your selection in the document.",
-        askSourceSelectionOverride: "Asking about: your selection in the document — the text below is NOT sent. Clear the selection to ask freely.",
+        // JOB 3019 (KA5): Schlüsselname unverändert, Aussage umgedreht — Begründung im DE-Block.
+        askSourceSelectionOverride: "Asking about: your input below. Your selection in the document is sent along and sharpens the search.",
         askSourceManual: "Asking about: your input below.",
-        askReviewNotice: "Answers are quoted word for word from validated KLARWERK knowledge — with sources. If you select text in Word, the selection is what gets asked. Please review professionally before use.",
+        askSelectionTruncated: "Only the first {max} characters of the selection are sent along — your question stays complete.",
+        askBothTruncated: "Question and selection are both longer than {max} characters — only the beginning of each is sent.",
+        // JOB 3019 (KA5): the middle sentence claimed the selection is what gets asked — false now
+        // that a typed question always wins. It now names the selection as a search sharpener.
+        askReviewNotice: "Answers are quoted word for word from validated KLARWERK knowledge — with sources. Selecting text in Word sharpens the search. Please review professionally before use.",
         aiGeneratedNotice: "Generated by artificial intelligence — please review professionally.",
         aiLageLaedt: "Retrieving KLARWERK's AI status ... Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
         aiLageUnerreichbar: "KLARWERK's AI status is unavailable right now. Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
@@ -2657,7 +2726,8 @@
         askRuleNote: "No AI answer without evidence · Confidential stays confidential. Klara quotes validated KLARWERK knowledge word for word; your selected text is not sent to an external AI.",
         askEmpty: "Please select a statement in the document first or type a question below.",
         askBusy: "Klara is searching the approved knowledge — input is locked until then.",
-        askTruncated: "The selection was longer than {max} characters — the question was honestly truncated.",
+        // JOB 3019 (KA5) R2: sprach über die Markierung, gekappt wird aber die Frage — s. DE-Block.
+        askTruncated: "The question is longer than {max} characters — only its beginning is sent.",
         askAuth: "Not signed in — please sign in to KLARWERK first.",
         askTimeout: "No answer from the server (timeout). Please try again.",
         askSelectionTimeout: "Word did not deliver the selection (timeout). Please try again.",
@@ -2775,12 +2845,19 @@
         tabAsk: "Vragen",
         tabCapture: "Kennis vastleggen",
         askTitle: "Klara vragen",
-        askInputPlaceholder: "Typ een vraag als er niets is geselecteerd ...",
+        // JOB 3019 (KA5): zie het Duitse blok — de oude placeholder beweerde dat vrij vragen alleen
+        // zonder selectie werkte. Dat klopt niet meer.
+        askInputPlaceholder: "Typ een vraag ...",
         askCta: "Klara vragen",
         askSourceSelection: "Gevraagd wordt: je selectie in het document.",
-        askSourceSelectionOverride: "Gevraagd wordt: je selectie in het document — de tekst hieronder wordt NIET verzonden. Hef de selectie op om vrij te vragen.",
+        // JOB 3019 (KA5): Schlüsselname unverändert, Aussage umgedreht — Begründung im DE-Block.
+        askSourceSelectionOverride: "Gevraagd wordt: je invoer hieronder. Je selectie in het document wordt meegestuurd en scherpt de zoekopdracht aan.",
         askSourceManual: "Gevraagd wordt: je invoer hieronder.",
-        askReviewNotice: "Antwoorden komen woordelijk uit gevalideerde KLARWERK-kennis — met bronnen. Selecteer je tekst in Word, dan wordt de selectie gevraagd. Controleer dit vakinhoudelijk voordat je het gebruikt.",
+        askSelectionTruncated: "Van de selectie gaan alleen de eerste {max} tekens mee — je vraag blijft volledig.",
+        askBothTruncated: "Vraag en selectie zijn beide langer dan {max} tekens — van allebei gaat alleen het begin mee.",
+        // JOB 3019 (KA5): de middelste zin beweerde dat de selectie wordt gevraagd — sinds de
+        // getypte vraag altijd wint, noemt hij de selectie nu als zoekverscherping.
+        askReviewNotice: "Antwoorden komen woordelijk uit gevalideerde KLARWERK-kennis — met bronnen. Een selectie in Word scherpt de zoekopdracht aan. Controleer dit vakinhoudelijk voordat je het gebruikt.",
         aiGeneratedNotice: "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
         aiLageLaedt: "De AI-stand van KLARWERK wordt opgehaald ... Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         aiLageUnerreichbar: "De AI-stand van KLARWERK is nu niet op te halen. Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
@@ -2865,7 +2942,8 @@
         askRuleNote: "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk. Klara citeert gevalideerde KLARWERK-kennis woordelijk; je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
         askBusy: "Klara zoekt in de vrijgegeven kennis — de invoer is zolang vergrendeld.",
-        askTruncated: "De selectie was langer dan {max} tekens — de vraag is eerlijk ingekort.",
+        // JOB 3019 (KA5) R2: sprak over de selectie, gekapt wordt echter de vraag — zie DE-blok.
+        askTruncated: "De vraag is langer dan {max} tekens — alleen het begin gaat mee.",
         askAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
         askTimeout: "Geen antwoord van de server (time-out). Probeer het opnieuw.",
         askSelectionTimeout: "Word heeft de selectie niet geleverd (time-out). Probeer het opnieuw.",
@@ -4967,6 +5045,32 @@
       });
     }
 
+    // ============================================================================================
+    // JOB 3019 (KA5) R2 — DIE WAHRHEITSTABELLE DER ZWEI DECKEL. EINE STELLE, VIER LAGEN.
+    // ============================================================================================
+    //
+    // Es gibt zwei Felder mit demselben Deckel und ZWEI unabhaengige Merker: `truncated` (die
+    // Frage) und `selectionTruncated` (die Markierung). Aus zwei Merkern folgen vier Lagen, und
+    // BEN hat in Runde 1 genau die vierte gefunden: `askSelectionTruncated` sagte
+    // „deine Frage bleibt vollstaendig" auch dann, wenn die Frage selbst gekappt war.
+    //
+    //   truncated | selectionTruncated | Satz
+    //   ----------+--------------------+---------------------------------------------------------
+    //   nein      | nein               | keiner
+    //   nein      | ja                 | askSelectionTruncated (die Frage IST vollstaendig)
+    //   ja        | nein               | askTruncated          (spricht nur ueber die Frage)
+    //   ja        | ja                 | askBothTruncated      (nennt beide, verspricht nichts)
+    //
+    // Die Tabelle steht HIER und nur hier. Die Statuszeile nach der Antwort zeigt weiterhin
+    // `askTruncated` (renderAskOutcome) — derselbe Satz, deshalb kann er dort nicht abweichen.
+    function askDeckelHinweis(prep) {
+      var max = { max: String(WORD_ADDIN_ASK_MAX_CHARS) };
+      if (prep.truncated && prep.selectionTruncated) { return " " + t("askBothTruncated", max); }
+      if (prep.selectionTruncated) { return " " + t("askSelectionTruncated", max); }
+      if (prep.truncated) { return " " + t("askTruncated", max); }
+      return "";
+    }
+
     // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Eingabefeld sagt, WORAUS die Frage entsteht.
     // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
     // zweite, die morgen anders ausfaellt. Sie behauptet nichts, wenn sie nichts weiss: ohne
@@ -4984,13 +5088,15 @@
       if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
-        if (prep.from === "selection") {
-          var auchGetippt = document.getElementById("ask-input").value.trim().length > 0;
-          setzeAskSourceNote(note, auchGetippt
+        if (prep.from === "manual") {
+          // JOB 3019 (KA5): die dritte Lage heisst jetzt „beides" statt „die Markierung schlaegt die
+          // Eingabe". Sie liest `prep.selection` — genau das Feld, das auch wirklich abgeht.
+          var zeile = prep.selection.length > 0
             ? t("askSourceSelectionOverride")
-            : t("askSourceSelection"));
-        } else if (prep.from === "manual") {
-          setzeAskSourceNote(note, t("askSourceManual"));
+            : t("askSourceManual");
+          setzeAskSourceNote(note, zeile + askDeckelHinweis(prep));
+        } else if (prep.from === "selection") {
+          setzeAskSourceNote(note, t("askSourceSelection") + askDeckelHinweis(prep));
         } else {
           setzeAskSourceNote(note, "");
         }
@@ -5076,7 +5182,11 @@
           restfrist,
           // KW-KA4: die Bindung wird HIER geholt und hineingereicht — der Ask-Block selbst bleibt
           // damit isoliert ausfuehrbar (siehe Begruendung an `performAsk`).
-          klaraS4Header()
+          klaraS4Header(),
+          // JOB 3019 (KA5): die Markierung aus DERSELBEN Vorbereitung. Kein zweites
+          // `readAskSelection`, kein zweiter Zustand — sonst koennte die Zeile ueber dem Feld eine
+          // andere Markierung meinen als die, die wirklich abgeht.
+          prep.selection
         ).then(function (outcome) {
           currentAskOutcome = outcome;
           // Der EINE Ausgang aus dem Wartezustand — Antwort, Luecke, Frist, Fehler, fehlende
@@ -6971,11 +7081,36 @@
      * Server daraus eine Formulierung macht, entscheidet die Einwilligungsprüfung an der Route
      * (`ask-routes.ts`, KW-KA4); dieses Fenster bittet nur und liest, was zurueckkommt.
      */
+    /**
+     * WORAUS EIN ZURUF ENTSTEHT — und warum das NICHT dieselbe Frage ist wie „was wird gefragt".
+     *
+     * JOB 3019 (KA5) R2, BENs Befund: Der Ask-Weg hat seine Vorrangregel umgedreht (der getippte
+     * Text IST die Frage, die Markierung schaerft nur die Suche). KA6 hat diese Umkehrung
+     * ungefragt mitbekommen, weil beide denselben Helfer riefen — und damit still das Verhalten
+     * geaendert, das der Auftrag ausdruecklich nicht anfassen sollte.
+     *
+     * FUER EINEN ZURUF IST DIE MARKIERUNG DAS MATERIAL, nicht der Suchbegriff: „Umformulieren"
+     * meint die markierte Passage. Ein liegengebliebener Text im Fragefeld darf sie nicht
+     * verdraengen. Deshalb entscheidet DIESE Funktion die Vorrangfrage fuer KA6 — und nur sie.
+     *
+     * ES BLEIBT BEI EINER KAPP- UND TRIMMREGEL: gerechnet wird weiter mit `prepareAskQuestion`,
+     * nur mit der Lage, die KA6 meint. Steht eine Markierung da, wird sie als „nur Markierung"
+     * vorbereitet; sonst als „nur Eingabe". Der Rueckgabewert hat dieselbe Form wie dort, und
+     * `selection` ist in beiden Faellen leer — ein Zuruf sendet keine Markierung als Suchfeld mit
+     * (der Koerper ist byte-gleich dem vor KA5, gemessen in tests/app/word-addin-ask.test.ts).
+     */
+    function ka6Zurufgrundlage(selectionText, manualText) {
+      var markierung = (selectionText || "").trim();
+      return markierung.length > 0
+        ? prepareAskQuestion(markierung, "")
+        : prepareAskQuestion("", manualText);
+    }
+
     function ka6Absenden(art) {
       if (ka6Laeuft) { return; }
       if (!ka6Lage().erlaubt) { ka6Zeichnen(); return; }
       readAskSelection(function (selectionText) {
-        var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
+        var prep = ka6Zurufgrundlage(selectionText, document.getElementById("ask-input").value);
         if (prep.from === "empty") {
           ka6Meldung("warn", t("ka6Empty"));
           return;

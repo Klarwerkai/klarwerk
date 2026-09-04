@@ -29,6 +29,7 @@ import {
   type AskFetchInit,
   type AskFetchResponseLike,
   type AskOutcome,
+  type PreparedAskQuestion,
   WORD_ADDIN_ASK_MAX_CHARS,
   WORD_ADDIN_ASK_TIMEOUT_MS,
   WORD_ADDIN_RETRY_AFTER_MAX_SECONDS,
@@ -98,8 +99,16 @@ const GAP_BODY = {
   gap: { id: "gap-1" },
 };
 
-describe("WP-KLARA-ASK Teil 1: Frage-Vorbereitung (Auswahl vor Eingabefeld, ehrliche Kappung)", () => {
-  it("Word-Auswahl hat Vorrang; leere Auswahl → Eingabefeld; beides leer → empty", () => {
+// JOB 3019 (KA5): DIESER BLOCK PRUEFT DEN TYPESCRIPT-ZWILLING, NICHT DAS AUSGELIEFERTE FENSTER.
+// Der Zwilling `apps/web/src/lib/wordAddin.ts` traegt weiterhin „Auswahl vor Eingabefeld"; das
+// Panel tut das seit KA5 NICHT mehr (es stellt die getippte Frage und schickt die Markierung als
+// eigenes Feld mit). Der Zwilling liegt AUSSERHALB der Zielpfade von JOB 3019 — Runde 2 hatte ihn
+// nachgezogen, die Vorpruefung des Tors hat das als Zielpfad-Verstoss zurueckgewiesen. Wo die
+// beiden auseinanderlaufen, steht in Teil 3 NAMENTLICH und auf beiden Seiten woertlich gepinnt;
+// was das Panel wirklich absendet, misst `tests/klara-panel/ka5-markierung-reist-mit.test.tsx`
+// am Koerper. Der Zwilling hat keinen Aufrufer in der Anwendung (nur Tests importieren ihn).
+describe("WP-KLARA-ASK Teil 1: Frage-Vorbereitung des Zwillings (Auswahl vor Eingabefeld, ehrliche Kappung)", () => {
+  it("Zwilling: Word-Auswahl hat Vorrang; leere Auswahl → Eingabefeld; beides leer → empty", () => {
     expect(prepareAskQuestion("  Aussage aus Word  ", "getippt")).toEqual({
       question: "Aussage aus Word",
       from: "selection",
@@ -113,7 +122,7 @@ describe("WP-KLARA-ASK Teil 1: Frage-Vorbereitung (Auswahl vor Eingabefeld, ehrl
     expect(prepareAskQuestion("", "  ")).toEqual({ question: "", from: "empty", truncated: false });
   });
 
-  it("kappt riesige Word-Auswahlen bei der Konstante (2000) und meldet es ehrlich", () => {
+  it("Zwilling: kappt riesige Word-Auswahlen bei der Konstante (2000) und meldet es ehrlich", () => {
     expect(WORD_ADDIN_ASK_MAX_CHARS).toBe(2000);
     const huge = "x".repeat(WORD_ADDIN_ASK_MAX_CHARS + 500);
     const prep = prepareAskQuestion(huge, "");
@@ -460,7 +469,13 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
       `${block}; return { prepareAskQuestion: prepareAskQuestion, askLocale: askLocale, performAsk: performAsk, canInsertAnswer: canInsertAnswer, buildAskSourceLine: buildAskSourceLine, buildAnswerInsertText: buildAnswerInsertText, askGradeOf: askGradeOf, answerInsertEvidenceNote: answerInsertEvidenceNote, composeAnswerOutput: composeAnswerOutput, stripComposedMetaLines: stripComposedMetaLines, answerSelectionIsWhole: answerSelectionIsWhole, formatAskDateLabel: formatAskDateLabel, newestSourceDateLabel: newestSourceDateLabel, openQuestionDraftTitle: openQuestionDraftTitle, stripAskAnswerMarkdown: stripAskAnswerMarkdown, parseRetryAfterSeconds: parseRetryAfterSeconds, WORD_ADDIN_ASK_MAX_CHARS: WORD_ADDIN_ASK_MAX_CHARS, WORD_ADDIN_ASK_TIMEOUT_MS: WORD_ADDIN_ASK_TIMEOUT_MS, WORD_ADDIN_RETRY_AFTER_MAX_SECONDS: WORD_ADDIN_RETRY_AFTER_MAX_SECONDS };`,
     );
     const inline = factory() as {
-      prepareAskQuestion: typeof prepareAskQuestion;
+      // JOB 3019 (KA5): die AUSGELIEFERTE Fassung traegt zwei Felder mehr als der Zwilling —
+      // `selection` (die Markierung als eigenes Suchfeld) und `selectionTruncated` (ihr eigener
+      // Deckel-Merker). Der Typ sagt das hier ausdruecklich, statt sie ueber `unknown` zu greifen.
+      prepareAskQuestion: (
+        selectionText: string,
+        manualText: string,
+      ) => PreparedAskQuestion & { selection: string; selectionTruncated: boolean };
       askLocale: typeof askLocale;
       performAsk: typeof performAsk;
       canInsertAnswer: typeof canInsertAnswer;
@@ -514,18 +529,79 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
     // Kalibrierung: der Vergleich ist nicht vakuoes — die Klassen unterscheiden sich wirklich.
     expect(inline.parseRetryAfterSeconds("120", retryNow)).toBe(120);
     expect(inline.parseRetryAfterSeconds("bald", retryNow)).toBeNull();
-    const questionFixtures: [string, string][] = [
-      ["Auswahl", "Manuell"],
+    // ------------------------------------------------------------------------------------------
+    // JOB 3019 (KA5) — HIER LAUFEN DIE BEIDEN FASSUNGEN AUSEINANDER, UND ZWAR BENANNT.
+    //
+    // Das ausgelieferte Fenster stellt seit KA5 die GETIPPTE Frage und schickt die Markierung als
+    // eigenes Feld `selection` mit (`taskpane.html#prepareAskQuestion`). Der TypeScript-Zwilling
+    // `apps/web/src/lib/wordAddin.ts` traegt weiterhin die alte Regel „Markierung schlaegt
+    // Eingabefeld". Er liegt AUSSERHALB der Zielpfade von JOB 3019: Runde 2 hat ihn nachgezogen,
+    // und die Vorpruefung des Tors hat genau das als Zielpfad-Verstoss zurueckgewiesen (ein Diff
+    // ausserhalb der Zielpfade ist ungeprueft). Er hat KEINEN Aufrufer in der Anwendung — nur
+    // Tests importieren ihn. Ein blindes `toEqual` liesse hier zwei Moeglichkeiten, und beide
+    // waeren falsch: die Zusicherung streichen (dann schwiege der Spiegel ueber alles) oder den
+    // Zwilling mitaendern (Zielpfad-Verstoss). Stattdessen steht die Grenze NAMENTLICH:
+    //
+    //   · In den Lagen, in denen NICHT gleichzeitig markiert und getippt wird, muss der Spiegel
+    //     weiter Zeichen fuer Zeichen dasselbe liefern wie der Zwilling — verglichen wird dessen
+    //     vollstaendige Rueckgabe gegen die gleichnamigen Felder des Spiegels, und der Spiegel
+    //     schickt dort nichts mit, was der Zwilling nicht kennt.
+    //   · Die Lage „beides" ist die Aenderung selbst. Sie wird auf BEIDEN Seiten woertlich
+    //     gepinnt: dreht der Spiegel zurueck oder zieht der Zwilling nach, wird dieser Fall rot —
+    //     und wer den Zwilling nachzieht (eigener Auftrag mit freigegebenem Zielpfad), ersetzt
+    //     diesen Block wieder durch ein volles `toEqual`.
+    //   · Die zwei Deckel des Spiegels (`truncated` × `selectionTruncated`) haben im Zwilling
+    //     kein Gegenstueck; ihr Kreuzprodukt ist deshalb hier am SPIEGEL gepinnt.
+    // ------------------------------------------------------------------------------------------
+    const lang = "x".repeat(WORD_ADDIN_ASK_MAX_CHARS + 99);
+    const gleichLaufend: [string, string][] = [
       ["   ", "Freie Frage?"],
       ["", ""],
-      ["x".repeat(WORD_ADDIN_ASK_MAX_CHARS + 99), ""],
+      [lang, ""], // nur Markierung, ueber dem Deckel → `truncated` in BEIDEN
       ["\n  Mehrzeilige\nAuswahl  ", ""],
+      ["  ", lang], // nur die Frage, ueber dem Deckel → `truncated` in BEIDEN
     ];
-    for (const [sel, manual] of questionFixtures) {
-      expect(inline.prepareAskQuestion(sel, manual), `prep:${sel.slice(0, 12)}`).toEqual(
-        prepareAskQuestion(sel, manual),
-      );
+    for (const [sel, manual] of gleichLaufend) {
+      const ausSpiegel = inline.prepareAskQuestion(sel, manual);
+      const ausModul = prepareAskQuestion(sel, manual);
+      const kennung = `prep:${sel.slice(0, 12)}|${manual.slice(0, 12)}`;
+      expect(ausSpiegel, kennung).toMatchObject(ausModul);
+      // Und der Spiegel schickt in diesen Lagen nichts mit, was der Zwilling nicht kennt.
+      expect(ausSpiegel.selection, `${kennung}/selection`).toBe("");
+      expect(ausSpiegel.selectionTruncated, `${kennung}/selectionTruncated`).toBe(false);
     }
+    // Die eine Lage, in der sie sich unterscheiden — beide Seiten woertlich.
+    expect(inline.prepareAskQuestion("Auswahl", "Manuell")).toEqual({
+      question: "Manuell",
+      from: "manual",
+      selection: "Auswahl",
+      truncated: false,
+      selectionTruncated: false,
+    });
+    expect(prepareAskQuestion("Auswahl", "Manuell")).toEqual({
+      question: "Auswahl",
+      from: "selection",
+      truncated: false,
+    });
+    // Die vier Kombinationen der zwei Deckel — BENs Befund aus Runde 1, am Spiegel als Vertrag.
+    expect(inline.prepareAskQuestion("kurz", "kurz")).toMatchObject({
+      truncated: false,
+      selectionTruncated: false,
+    });
+    expect(inline.prepareAskQuestion("kurz", lang)).toMatchObject({
+      truncated: true,
+      selectionTruncated: false,
+    });
+    expect(inline.prepareAskQuestion(lang, "kurz")).toMatchObject({
+      truncated: false,
+      selectionTruncated: true,
+    });
+    expect(inline.prepareAskQuestion(lang, lang)).toMatchObject({
+      truncated: true,
+      selectionTruncated: true,
+    });
+    // Und die gekappte Markierung ist wirklich gekappt, nicht nur gemeldet.
+    expect(inline.prepareAskQuestion(lang, "kurz").selection.length).toBe(WORD_ADDIN_ASK_MAX_CHARS);
     for (const lng of ["de", "en", "nl", "fr"]) {
       expect(inline.askLocale(lng)).toBe(askLocale(lng));
     }
@@ -771,15 +847,29 @@ describe("WP-KLARA-ASK Teil 3: Inline-Spiegel im buildlosen Taskpane ist VERHALT
 describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => {
   const html = read(TASKPANE);
 
-  it("Teil 1: Ask-Bereich nutzt den BESTEHENDEN Vertrag — /api/ask via performAsk, Auswahl als Frage, Eingabefeld-Fallback", () => {
+  it("Teil 1: Ask-Bereich nutzt den BESTEHENDEN Vertrag — /api/ask via performAsk, EINE Markierungslesung, Eingabefeld-Fallback", () => {
     // Der Fetch laeuft ausschliesslich durch performAsk (Spiegel-Helfer) — Same-Origin-Session.
     expect(html).toContain("performAsk(");
     expect(html).toContain('"/api/ask"');
-    // Auswahl (nur Text) vor Eingabefeld; ohne Office ehrlich leer → freies Fragen.
+    // Die Markierung (nur Text) wird GENAU EINMAL gelesen; ohne Office ehrlich leer → freies Fragen.
     expect(html).toContain("readAskSelection(function (selectionText)");
     expect(html).toContain(
       'prepareAskQuestion(selectionText, document.getElementById("ask-input").value)',
     );
+    // JOB 3019 (KA5): in `askKlara` wird die Markierung GENAU EINMAL gelesen, und dieselbe
+    // Vorbereitung liefert Frage UND Markierung. Ein zweiter Lesevorgang waere ein zweiter
+    // Zustand — die Zeile ueber dem Feld koennte dann eine andere Markierung meinen als die,
+    // die wirklich abgeht. (Die anderen beiden Vorkommen im Fenster gehoeren `updateAskSourceNote`
+    // und dem KA6-Zuruf; jedes von ihnen liest fuer sich selbst genau einmal.)
+    const askKlaraRumpf = html.slice(
+      html.indexOf("function askKlara()"),
+      html.indexOf("function composeOutputText"),
+    );
+    expect(askKlaraRumpf.length).toBeGreaterThan(200);
+    expect(askKlaraRumpf.split("readAskSelection(").length - 1).toBe(1);
+    expect(askKlaraRumpf).toContain("prep.selection");
+    // Und der Ask-Block selbst normalisiert die Markierung, statt sie irgendwo zu holen.
+    expect(html).toContain('var markierung = typeof selection === "string"');
     // Serverseitige Permission dokumentiert (ko.read — exakt die Fragen-Konsole).
     expect(html).toContain("ko.read");
     // Ehrliche Zustaende: leer / busy / auth / timeout / error.
@@ -885,6 +975,9 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'askEmpty: "',
       'askBusy: "',
       'askTruncated: "',
+      // JOB 3019 (KA5): die zwei weiteren Deckel-Saetze — je Sprache genau einmal.
+      'askSelectionTruncated: "',
+      'askBothTruncated: "',
       'askAuth: "',
       'askTimeout: "',
       // JOB 3016 Runde 5: die Auswahlfrist des Word-Wegs (Word bleibt den Rueckruf schuldig).
@@ -1091,6 +1184,13 @@ let ka6SetSelected = 0;
 let ka6Eingefuegt: string[] = [];
 let ka6Zuhoerer: Array<{ typ: string; fn: unknown }> = [];
 
+// JOB 3019 (KA5) R2, BENs Korrekturpflicht 2: KA6 muss die Markierung weiter bevorzugen. Gemessen
+// wird das am ABGESETZTEN Koerper, nicht am Quelltext — deshalb schreibt der Router jeden
+// `POST /api/ask` mit, und die Office-Attrappe hat eine STELLBARE Textmarkierung (sie lieferte
+// bisher unbedingt "" und konnte die Lage „Markierung UND Eingabe" gar nicht herstellen).
+let ka6Markierung = "";
+let ka6AskAbgesetzt: Array<Record<string, unknown>> = [];
+
 /** Die Summe der echten SCHREIBAUFRUFE — die eine Zahl, an der die Kernzusage haengt. */
 function ka6Schreibaufrufe(): number {
   return ka6InsertText + ka6SetSelected;
@@ -1175,8 +1275,11 @@ function ka6Antwort(koerper: unknown, ok = true, status = 200): unknown {
 }
 
 function ka6Router(lage: Ka6Lage) {
-  return (url: string, init?: { method?: string }) => {
+  return (url: string, init?: { method?: string; body?: string }) => {
     const methode = (init?.method ?? "GET").toUpperCase();
+    if (url === "/api/ask" && methode === "POST" && typeof init?.body === "string") {
+      ka6AskAbgesetzt.push(JSON.parse(init.body) as Record<string, unknown>);
+    }
     if (url === "/api/auth/me") {
       return Promise.resolve(ka6Antwort({ id: "u1", name: "Pruefer" }));
     }
@@ -1246,8 +1349,10 @@ async function ladeKa6Fenster(lage: Ka6Lage): Promise<void> {
         /* Der Pruefstand loest keinen Markierungswechsel aus. */
       },
       getSelectedDataAsync(_typ: string, fn: (r: { status: string; value: string }) => void) {
-        // Leere Auswahl: dieser Pruefstand stellt kein markiertes Dokument und behauptet keines.
-        fn({ status: ASYNC_STATUS.Succeeded, value: "" });
+        // Standard ist die LEERE Auswahl: dieser Pruefstand stellt kein markiertes Dokument und
+        // behauptet keines. JOB 3019 R2 macht sie stellbar (`ka6Markierung`), damit die Lage
+        // „Markierung UND Eingabe" ueberhaupt erreichbar ist — sie ist der Kern von BENs Befund.
+        fn({ status: ASYNC_STATUS.Succeeded, value: ka6Markierung });
       },
       // DER SPION AUF WEG 2 (`buildInsertAttempts`, Rueckfall).
       setSelectedDataAsync(
@@ -1344,6 +1449,8 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     ka6SetSelected = 0;
     ka6Eingefuegt = [];
     ka6Zuhoerer = [];
+    ka6Markierung = "";
+    ka6AskAbgesetzt = [];
   });
 
   afterEach(() => {
@@ -1555,6 +1662,74 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
     expect(ka6El("ka6-status").textContent ?? "").toContain(ka6Wortlaut("ka6Empty"));
     expect(ka6El("ask-answer-edit").value, "Ohne Eingabe entstand ein Vorschlag").toBe("");
     expect(ka6Schreibaufrufe(), "Ohne Eingabe wurde geschrieben").toBe(0);
+  });
+
+  // ==============================================================================================
+  // JOB 3019 (KA5) R2 · BENs KORREKTURPFLICHT 2 — KA6 BLEIBT BEI DER MARKIERUNG.
+  // ==============================================================================================
+  //
+  // In Runde 1 hat KA6 die neue Ask-Vorrangregel ungefragt mitbekommen, weil beide Wege denselben
+  // Helfer riefen: bei Markierung PLUS liegen gebliebenem Eingabetext reiste ploetzlich der
+  // Eingabetext als Zuruf, und die markierte Passage ging dort ganz verloren. Fuer einen Zuruf ist
+  // die Markierung aber das MATERIAL („Umformulieren" meint die markierte Stelle), nicht ein
+  // Suchbegriff. Seit R2 entscheidet `ka6Zurufgrundlage` die Vorrangfrage fuer KA6 allein.
+  //
+  // GEMESSEN WIRD DER ABGESETZTE KOERPER, nicht der Quelltext — und fuer ALLE DREI Zurufe, damit
+  // nicht einer von ihnen still an der Regel vorbeilaeuft.
+  for (const zuruf of [
+    { id: "ka6-zuruf-erstellen", auftrag: "ka6AuftragErstellen" },
+    { id: "ka6-zuruf-vervollstaendigen", auftrag: "ka6AuftragVervollstaendigen" },
+    { id: "ka6-zuruf-umformulieren", auftrag: "ka6AuftragUmformulieren" },
+  ]) {
+    it(`KA6-VORRANG (${zuruf.id}): Markierung UND Eingabe → der Zuruf traegt die MARKIERUNG`, async () => {
+      ka6Markierung = "Die Spannrolle wird halbjaehrlich nachgestellt.";
+      await ladeKa6Fenster(ka6Erlaubt());
+      // Der liegen gebliebene Text im Fragefeld — genau die Lage aus BENs Befund.
+      ka6El("ask-input").value = "Wie oft wird die Spannrolle geprueft?";
+
+      ka6El(zuruf.id).click();
+      await ka6Leerlauf(20);
+
+      expect(ka6AskAbgesetzt, "Der Zuruf hat gar nichts abgesetzt").toHaveLength(1);
+      const koerper = ka6AskAbgesetzt[0] as Record<string, unknown>;
+      // Der Auftragssatz des Zurufs plus die MARKIERUNG — nicht der getippte Text.
+      expect(koerper.question).toBe(`${ka6Wortlaut(zuruf.auftrag)} ${ka6Markierung}`);
+      expect(String(koerper.question)).not.toContain("Wie oft wird die Spannrolle geprueft?");
+      // Und byte-gleich zum Stand vor KA5: der Zuruf schickt KEIN `selection`-Feld mit.
+      expect(Object.keys(koerper).sort()).toEqual(["locale", "mode", "question"]);
+      expect(koerper.mode, "Der server-garantierte Modus fehlt").toBe("retrieval-only");
+    });
+  }
+
+  it("KA6-VORRANG: ohne Markierung traegt der Zuruf weiterhin die Eingabe (kein toter Zweig)", async () => {
+    // Ohne diesen Fall waere die Regel oben auch dann gruen, wenn KA6 die Eingabe NIE benutzte.
+    ka6Markierung = "";
+    await ladeKa6Fenster(ka6Erlaubt());
+    ka6El("ask-input").value = "Anschreiben zur Wartung";
+
+    ka6El("ka6-zuruf-erstellen").click();
+    await ka6Leerlauf(20);
+
+    expect(ka6AskAbgesetzt).toHaveLength(1);
+    expect((ka6AskAbgesetzt[0] as Record<string, unknown>).question).toBe(
+      `${ka6Wortlaut("ka6AuftragErstellen")} Anschreiben zur Wartung`,
+    );
+  });
+
+  it("KA6-VORRANG: der FRAGEN-Weg im selben Fenster entscheidet weiter andersherum", async () => {
+    // Die Trennung ist der Kern: dieselbe Lage, zwei Wege, zwei Antworten. Liefe KA6 wieder ueber
+    // `prepareAskQuestion`, waeren beide Koerper gleich und dieser Fall rot.
+    ka6Markierung = "Die Spannrolle wird halbjaehrlich nachgestellt.";
+    await ladeKa6Fenster(ka6Erlaubt());
+    ka6El("ask-input").value = "Wie oft wird die Spannrolle geprueft?";
+
+    ka6El("ask-btn").click();
+    await ka6Leerlauf(20);
+
+    expect(ka6AskAbgesetzt).toHaveLength(1);
+    const koerper = ka6AskAbgesetzt[0] as Record<string, unknown>;
+    expect(koerper.question).toBe("Wie oft wird die Spannrolle geprueft?");
+    expect(koerper.selection).toBe(ka6Markierung);
   });
 
   it("EHRLICHKEIT 5: Serverfehler — ehrliche Meldung, kein halber Vorschlag, kein Schreibaufruf", async () => {

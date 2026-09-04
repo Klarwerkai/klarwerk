@@ -321,6 +321,16 @@ const INVENTAR: readonly string[] = [
   // Klara-Regression: sie haelt fest, was ein Mensch im Panel SIEHT, wenn Word sich nicht,
   // spaet oder gar nicht meldet — bisher war genau das nur ueber Quelltext-Pins gesichert.
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
+  // JOB 3019 D1 (03.09.2026): der abgesendete Ask-Koerper am laufenden Aufgabenfenster — die
+  // markierte Passage reist seit KA5 als eigenes Feld `selection`, statt die getippte Frage zu
+  // ersetzen. Sie traegt „klara" im PFAD (`tests/klara-panel/`); die Namensachse liest den ganzen
+  // Pfad (`wo: "pfad"`), also faellt sie in die Namensmenge — dieselbe Lage wie bei der
+  // 3008-Zeile darueber. Der Verzeichnisname war im Auftrag abschliessend vorgegeben, der
+  // Zusammenstoss mit dieser Nachfuehrpflicht also unvermeidbar. Zusaetzlich traegt sie die
+  // Inhaltsachse `taskpane` (sie liest und laedt `taskpane.html`). K2 hat die Datei gemeldet, das
+  // Inventar hat sie nicht still aufgenommen. Sachlich Klara-Regression: sie haelt fest, WAS das
+  // Panel wirklich absendet — gemessen am Koerper, nicht am Quelltext.
+  "tests/klara-panel/ka5-markierung-reist-mit.test.tsx",
   "tests/legal/mega61-ki-satz.test.ts",
   "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
   "tests/library/mega59-nullzustand-mounted.test.tsx",
@@ -608,7 +618,13 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Namens, nicht einer Wahl. GEMESSEN, NICHT GESETZT: mit dem neuen Inventareintrag und noch
     // unveraendertem Zaehler meldete der Waechterlauf `expected 38 to be 37`; erst danach wurde
     // diese Zeile angefasst. Die Datei traegt KEINE der fuenf Inhaltsachsen (K6-Bericht: `name`).
-    expect(nurName.length).toBe(38);
+    // 38 -> 39 am 04.09.2026 (JOB 3019 KONFLIKTRUNDE 1, Rebase auf diese Kette):
+    // `tests/klara-panel/ka5-markierung-reist-mit.test.tsx` traegt „klara" im PFAD (nicht im
+    // Dateinamen) — dieselbe Lage wie bei den 3008/3014-Zeilen weiter oben. Der Verzeichnispfad war
+    // im Auftrag abschliessend vorgegeben. GEMESSEN, NICHT GESETZT: mit dem neuen Inventareintrag
+    // und noch unveraendertem Zaehler meldete der Lauf `expected 39 to be 38`; erst danach wurde
+    // diese Zeile angefasst.
+    expect(nurName.length).toBe(39);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

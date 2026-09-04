@@ -1291,9 +1291,9 @@ const TRAEGER: readonly Traeger[] = [
     sichtbar: true,
     platzImZielbild: "Z.44 — genau dieser Satz (Wortlaut abweichend, s. A1)",
     verlust:
-      "JOB 3017: askHint ist hier aufgegangen; der Halbsatz „Ohne Markierung kannst du unten frei fragen“ ist entfallen (das Feld und sein Platzhalter sagen es).",
+      "JOB 3017: askHint ist hier aufgegangen. JOB 3019 (KA5): der Halbsatz „Markierst du Text in Word, wird die Markierung gefragt“ ist entfallen (seit KA5 gewinnt die getippte Frage; die Markierung schärft nur die Suche).",
     begruendetIn:
-      "taskpane.html #section-ask (mega61 Block E, mega81 BLOCK A, JOB 3017 D4); tests/legal/mega61-ki-satz.test.ts",
+      "taskpane.html #section-ask (mega61 Block E, mega81 BLOCK A, JOB 3017 D4, JOB 3019 KA5); tests/legal/mega61-ki-satz.test.ts",
   },
   {
     kennung:
@@ -1493,10 +1493,11 @@ const TEXTTRAEGER_SICHTBAR: readonly [kennung: string, text: string][] = [
   ["#tab-ask", "Fragen"],
   ["#tab-capture", "Wissen erfassen"],
   // Attributtext: der Platzhalter des leeren Eingabefelds ist fuer den Menschen sichtbarer Text.
-  ["#ask-input[placeholder]", "Frage eingeben, wenn nichts markiert ist ..."],
+  // JOB 3019 (KA5): der alte Platzhalter behauptete, frei fragen gehe nur ohne Markierung.
+  ["#ask-input[placeholder]", "Frage eingeben ..."],
   [
     "#ask-review-notice",
-    "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Markierst du Text in Word, wird die Markierung gefragt. Bitte vor Verwendung fachlich prüfen.",
+    "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Eine Markierung in Word schärft die Suche. Bitte vor Verwendung fachlich prüfen.",
   ],
   ["[data-t=ka1Title]", "Worum es hier geht"],
   [

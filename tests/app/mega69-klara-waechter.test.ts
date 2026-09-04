@@ -1077,7 +1077,129 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     3004/3016/3046/3017-Kette oben UND JOB 3018 P7) stehen unveraendert nebeneinander in der
     //     zusammengefuehrten Datei; der Pin unten ist der frisch daraus gerechnete Hash, kein
     //     uebernommener Wert einer Seite.
-    const PIN = "f8dc1c9368a3016622265c7f71077554a5abc8ca82c88988ff44f02bf175e2cc";
+    //
+    // ============================================================================================
+    // JOB 3019 D1 (03.09.2026) — DER PIN WANDERT, WEIL DIE MARKIERUNG JETZT MITREIST (KA5).
+    // ============================================================================================
+    // VORHERHASH taskpane.html: `6f8425a957c6a7b64203121e3413979c6a37c3501d819ff2334ea9fb7dad8f61`.
+    //
+    // ES IST DIESMAL MEHR ALS INHALT, und das wird hier ausdruecklich gesagt: DIE ABGESETZTE
+    // NUTZLAST AENDERT SICH — zum ersten Mal, seit dieser Kommentar bei jedem Wandern „KEINE
+    // geaenderte Nutzlast" verspricht. Der Ask-Koerper kann jetzt ein VIERTES Feld tragen:
+    //   `body: JSON.stringify({ question, locale, mode: "retrieval-only", selection })`
+    //
+    // WAS GEAENDERT WURDE:
+    //   · `prepareAskQuestion` kehrt die Vorrangregel um: der GETIPPTE Text ist die Frage, die
+    //     Markierung reist als eigenes Feld mit (`selection`, eigener Deckel-Merker
+    //     `selectionTruncated`). Bisher gewann die Markierung und der getippte Text wurde verworfen.
+    //   · `performAsk` bekommt einen SECHSTEN Parameter `selection` (ans Ende, damit jeder Aufruf
+    //     mit fuenf Argumenten byte-gleich bleibt) und setzt das Feld NUR, wenn es nicht leer ist.
+    //   · `askKlara` reicht `prep.selection` durch — aus derselben, EINEN Markierungslesung.
+    //   · `updateAskSourceNote` kennt drei Lagen statt zwei Ausgaenge.
+    //   · Woerterbuch je Sprache: `askSourceSelectionOverride` sagt das Gegenteil von vorher (sein
+    //     Kernsatz „der Text unten wird dabei NICHT gesendet" ist seit dieser Aenderung falsch),
+    //     `askHint` und `askInputPlaceholder` behaupten nicht mehr, freies Fragen gehe nur ohne
+    //     Markierung, und `askSelectionTruncated` kommt als neuer Schluessel dazu.
+    //
+    // DIE AUSLIEFERUNGSFOLGE, vor dem Wandern des Pins geprueft:
+    //   · KEIN neues Abrufziel — die Menge der `fetch(...)`-Ziele ist gegen HEAD unveraendert
+    //     (`mega69-klara-merkmale.test.ts` M6/M7 gruen). Es ist DIESELBE Route `POST /api/ask`.
+    //   · KEIN neues Recht, KEINE geaenderte CSP, KEIN Manifest, kein neuer Fremd-Ursprung.
+    //   · DER MODUS BLEIBT UNANGETASTET: `mode: "retrieval-only"` steht unveraendert im Koerper
+    //     (M1 gruen, K1 kalibriert). Die Markierung geht damit an denselben Weg, der serverseitig
+    //     KEIN Modell erreicht; ihr einziger Verbraucher ist `erweiterteSuchterme`
+    //     (`services/ask/src/service.ts:513-515`), belegt durch `tests/ka5/`.
+    //   · OHNE MARKIERUNG IST DER KOERPER BYTE-GLEICH DER BISHERIGE: `undefined` faellt bei
+    //     `JSON.stringify` heraus. Durch AUSFUEHRUNG erhoben, nicht behauptet —
+    //     `tests/klara-panel/ka5-markierung-reist-mit.test.tsx`, Faelle C und D.
+    //   · EIN AELTERER SERVER ohne KA5 ignoriert das unbekannte Feld: `ask-routes.ts` liest den
+    //     Rumpf ueber ein JSON-Schema; vor KA5 war `selection` dort schlicht nicht vorgesehen und
+    //     wurde verworfen. Es geht dabei nichts verloren — die Frage ist vollstaendig im
+    //     `question`-Feld, die Markierung war immer nur eine Suchschaerfung.
+    //   · KEIN erneutes Sideload. Ein installiertes Add-in holt die Datei beim naechsten Oeffnen
+    //     frisch; zeigt der Office-Cache kurz den alten Stand, gilt dort die alte Vorrangregel —
+    //     der Zustand von gestern, kein neues Risiko.
+    // ============================================================================================
+    // JOB 3019 D2 (04.09.2026) — DER PIN WANDERT ZUM ZWEITEN MAL: BENs DREI KORREKTURPFLICHTEN.
+    // ============================================================================================
+    // VORHERHASH taskpane.html: `98672d01165e28d8bb4661a7bba6d0c83a93dba8d280a04d510a3f0be458e4b8`
+    // (der Stand aus D1, integriert als `daa3b27`).
+    //
+    // GEAENDERT WURDE — dreierlei, alles Panelinhalt und Entscheidungslogik, KEIN neuer Ausgang:
+    //   · DIE ZWEI DECKEL SPRECHEN JETZT GETRENNT UND VOLLSTAENDIG. `askTruncated` sagte in allen
+    //     drei Sprachen „Die Markierung war laenger als {max} Zeichen"; seit KA5 wird aber das Feld
+    //     `question` gekappt, und das ist in der Lage „beides" der GETIPPTE Text. Der Satz spricht
+    //     jetzt ausschliesslich ueber die Frage. Neuer Schluessel `askBothTruncated` je Sprache
+    //     fuer die vierte Lage, in der `askSelectionTruncated` faelschlich „deine Frage bleibt
+    //     vollstaendig" versprach. Die Auswahl trifft die neue Funktion `askDeckelHinweis` an EINER
+    //     Stelle; alle vier Kombinationen sind in
+    //     `tests/klara-panel/ka5-markierung-reist-mit.test.tsx` (Faelle T0–T6, auch EN/NL) gemessen.
+    //   · KA6 IST WIEDER ISOLIERT. `ka6Absenden` ruft nicht mehr `prepareAskQuestion`, sondern die
+    //     neue `ka6Zurufgrundlage`: fuer einen Zuruf ist die Markierung das MATERIAL, nicht ein
+    //     Suchbegriff. In D1 hatte KA6 die umgedrehte Ask-Vorrangregel still mitbekommen. Es bleibt
+    //     bei EINER Kapp- und Trimmregel — `ka6Zurufgrundlage` rechnet weiter mit
+    //     `prepareAskQuestion`, nur mit der Lage, die KA6 meint. Der KA6-Koerper ist damit wieder
+    //     byte-gleich dem Stand vor KA5 (kein `selection`-Feld), durch Ausfuehrung erhoben in
+    //     `tests/app/word-addin-ask.test.ts` (drei Zurufe, Koerper mitgeschrieben).
+    //   · ZWEI SAETZE NANNTEN `{max}` ZWEIMAL. `t()` (taskpane.html:2683) ersetzt mit
+    //     `String.replace` und damit nur das ERSTE Vorkommen — auf der Flaeche stand woertlich
+    //     „nur die ersten {max} Zeichen". Beide Saetze nennen den Deckel jetzt genau einmal; der
+    //     Fall T0 haelt die Regel fuer alle drei Deckel-Schluessel fest.
+    //
+    // AUSLIEFERUNGSFOLGEN, vor dem Wandern des Pins geprueft: KEIN neues Abrufziel (die Menge der
+    // `fetch(...)`-Ziele ist gegen D1 unveraendert, `mega69-klara-merkmale.test.ts` M6/M7 gruen),
+    // KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht. DIE NUTZLAST WIRD GEGENUEBER D1 NICHT
+    // GROESSER, sondern in einem Fall wieder KLEINER: der KA6-Zuruf schickt kein `selection` mehr.
+    // Der Ask-Koerper ist unveraendert gegenueber D1. `mode: "retrieval-only"` unangetastet (M1/K1
+    // gruen). KEIN erneutes Sideload; die Datei wird beim naechsten Oeffnen frisch geholt.
+    //
+    // ============================================================================================
+    // JOB 3019 KONFLIKTRUNDE 1 (04.09.2026) — PIN NEU GERECHNET NACH REBASE AUF DIE JOB-3018-KETTE.
+    // ============================================================================================
+    // `git rebase main` traf mit a0916ed (D1-D3 oben) auf die inzwischen auf main gelandete Kette
+    // JOB 3004/3016/3046/3017/3018 (Antwortkarte, Ladekarte, Luecke, SchlankesPanel, Office-
+    // Erkennung). a0916ed war auf einem AELTEREN main-Stand gebaut (vor JOB 3017): sein Diff fuegte
+    // die alte, unstrukturierte Fragen-Karte (`div.card` mit `askTitle`/`askHint`/`askRuleNote`
+    // direkt im Markup) ein zweites Mal ein — als Duplikat DERSELBEN Ids (#ask-status,
+    // #ask-answer-block, #ask-rule-note, #ask-gap-block, ...), die JOB 3017 bereits in die neue
+    // Struktur (#ask-karte, #antwortkarte, #ask-ladekarte, #ask-luecke, #kw-fuss) verschoben hatte.
+    //
+    // AUFLOESUNG — beide Seiten bleiben erhalten, aber nicht wortgleich uebernommen:
+    //   · DAS DUPLIKAT-MARKUP IST ENTFERNT, nicht das Verhalten. Die alte Fragen-Karte (die a0916ed
+    //     zwischen `KW-KA1-TERMS-END` und dem Schluss von `#section-ask` einfuegte) ist geloescht —
+    //     sie war bereits durch JOB 3017 ersetzt; ihr Fortbestehen haette doppelte Ids erzeugt.
+    //   · DAS KA5-VERHALTEN STEHT VOLLSTAENDIG: `prepareAskQuestion` (Vorrangregel getippt >
+    //     Markierung), `performAsk` (sechster Parameter `selection`), `askKlara` (reicht
+    //     `prep.selection` durch), `updateAskSourceNote`/`askDeckelHinweis` (drei Lagen, vier
+    //     Deckel-Kombinationen) sind UNVERAENDERT aus a0916ed uebernommen — git hat sie sauber in
+    //     die JOB-3017-Struktur gemischt, weil sie an anderen Zeilen standen als die HEAD-Aenderung.
+    //     NUR die Verzweigung in `updateAskSourceNote` war doppelt geaendert (HEAD: `setzeAskSource-
+    //     Note`-Hilfsfunktion fuer den Sichtbarkeits-Zustand; a0916ed: die KA5-Vorrangregel) — beide
+    //     sind jetzt vereint: die KA5-Logik schreibt weiterhin ueber `setzeAskSourceNote`.
+    //   · DIE WOERTERBUCH-KONFLIKTE SIND EINZELN ENTSCHIEDEN, JE NACH WAHRHEITSGEHALT:
+    //     `askInputPlaceholder`/`askSourceSelectionOverride`/`askTruncated`/`askSelectionTruncated`/
+    //     `askBothTruncated` tragen a0916eds KA5-Wortlaut (er macht eine seit KA5 falsche Zusage
+    //     richtig). `askHint` ist NICHT zurueckgekehrt (JOB 3017 hat den Schluessel entfernt,
+    //     `tests/app/word-addin.test.ts` pinnt seine Abwesenheit); sein KA5-Anliegen — die Karte
+    //     behauptet nicht mehr, freies Fragen gehe nur ohne Markierung — steckt jetzt in
+    //     `askReviewNotice`. `askBusy` bleibt HEADs JOB-3016-Wortlaut (er nennt BEIDE Haelften:
+    //     freigegebenes Wissen UND gesperrte Eingabe — `askHint`s kuerzerer Text haette das
+    //     verloren; `tests/design/zielbild-pruefunglaeuft-messung.test.ts` V3 verlangt beide).
+    //     `askReviewNotice` behaelt HEADs EINEN-Satz-Form (Zielbild SchlankesPanel Z.44,
+    //     `tests/design/zielbild-schlankes-panel.test.ts` L4 verlangt wörtlich/Quellen/Markier/
+    //     prüfen in einem Satz) — der Halbsatz ueber die Markierung ist auf die KA5-Wahrheit
+    //     nachgefuehrt („schärft die Suche" statt „wird gefragt").
+    //   · KEIN neues Abrufziel, KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht: die JOB-3018-
+    //     Kette (Antwortkarte/Ladekarte/Luecke/SchlankesPanel/Office-Erkennung) ist unveraendert
+    //     erhalten, die KA5-Nutzlast (`selection`-Feld) ist unveraendert gegenueber a0916ed D2.
+    //   · GEPRUEFT: `tests/klara-panel/ka5-markierung-reist-mit.test.tsx` (20/20 gruen),
+    //     `tests/app/word-addin-ask.test.ts`, `tests/app/word-addin.test.ts`,
+    //     `tests/i18n/mega35-word-wortliste.test.ts`, `tests/legal/mega61-ki-satz.test.ts`,
+    //     `tests/app/mega81-ki-kennzeichnung-am-verhalten.test.ts`,
+    //     `tests/design/zielbild-schlankes-panel.test.ts` (Chromium, 62/63, 1 bewusst uebersprungen)
+    //     — alle gruen gegen die zusammengefuehrte Datei. Der Pin unten ist der frisch aus dieser
+    //     Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    const PIN = "5af55de51ab7f278b98b3ce4fc8b8218f0fb1be968e245ed560b6e577c58b770";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,
