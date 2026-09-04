@@ -265,6 +265,30 @@ async function warteAufText(text: string, runden = 80): Promise<void> {
   );
 }
 
+/**
+ * JOB 3044 · NACHZUG — DIESELBE BEGRUENDUNG WIE OBEN, NUR FUER DIE WEITERLEITUNG.
+ *
+ * `warteAufText` sagt es schon: „Eine feste Rundenzahl waere hier eine Wette." Fuer die
+ * WEITERLEITUNG stand diese Wette trotzdem im Test. Nach `montiere()` auf `/sso/callback` laeuft
+ * `SsoCallback` den Austausch mit einem EIGENEN Serverprozess und weist erst danach `/` zu
+ * (`SsoCallback.tsx:32`). `montiere()` wartet dafuer feste 25 Nullticks — auf einer unbelasteten
+ * Maschine reicht das, im vollen Tor nicht. Gemessen am 04.09. um 23:56 im Gesamtlauf (1243
+ * Dateien, `tests 1773s`): K3 fiel mit `expected [ '/api/auth/oidc/start' ] to include '/'`,
+ * waehrend dieselbe Datei einzeln und unter mittlerer Last gruen durchlief.
+ *
+ * DIESE HILFE WIRFT ABSICHTLICH NICHT. Sie wartet nur gebunden; das URTEIL faellt weiter das
+ * unveraenderte `expect` an der Aufrufstelle. So ist belegbar, dass hier eine Wartezeit gebunden
+ * und KEINE Zusage aufgeweicht wurde: bleibt die Weiterleitung aus, ist der Fall so rot wie zuvor.
+ */
+async function warteAufZuweisung(ziel: string, runden = 80): Promise<void> {
+  for (let i = 0; i < runden; i += 1) {
+    if (zugewiesen.includes(ziel)) {
+      return;
+    }
+    await ruhen(5);
+  }
+}
+
 // ================================================================================================
 describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
   beforeAll(async () => {
@@ -326,6 +350,7 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
       await klickeUndFolge();
 
       // Der Callback ist durch: die Anwendung geht in die Schale.
+      await warteAufZuweisung("/");
       expect(zugewiesen, "keine Weiterleitung in die Anwendung").toContain("/");
       abbauen();
 
@@ -372,6 +397,7 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
     async () => {
       await starteServer("herabgestuft");
       await klickeUndFolge();
+      await warteAufZuweisung("/");
       expect(zugewiesen).toContain("/");
       abbauen();
 

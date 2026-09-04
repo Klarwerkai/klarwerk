@@ -1,6 +1,6 @@
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { onlineManager, useMutation, useQueryClient } from "@tanstack/react-query";
 import { ArrowDown, ArrowUp, Building2, Copy, Download, FileText, Printer, X } from "lucide-react";
-import { type ChangeEvent, type DragEvent, useState } from "react";
+import { type ChangeEvent, type DragEvent, useState, useSyncExternalStore } from "react";
 import { useTranslation } from "react-i18next";
 import { Link, useNavigate } from "react-router-dom";
 import { endpoints } from "../api/endpoints";
@@ -76,7 +76,13 @@ import {
   formatEur,
 } from "../lib/knowledgeValuation";
 import { koLabel } from "../lib/koLabel";
-import { limitModelRuns, modelRunStatusTone, summarizeModelRuns } from "../lib/modelRuns";
+import {
+  formatiereDauer,
+  limitModelRuns,
+  modelRunDauerMs,
+  modelRunStatusTone,
+  summarizeModelRuns,
+} from "../lib/modelRuns";
 import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
 import { OUTPUT_KIND_OPTIONS, downloadFilename } from "../lib/outputDoc";
 import { buildProvenanceIndex } from "../lib/provenanceIndex";
@@ -1008,66 +1014,163 @@ function WindowNote({
   );
 }
 
+// JOB 3044 R3: der Netzzustand als abonnierte Größe. Beide Funktionen stehen ausserhalb der
+// Komponente, damit ihre Identität stabil bleibt und `useSyncExternalStore` nicht bei jedem Render
+// neu abonniert. Der dritte Parameter ist der Serverwert: ohne Browser ist kein Netzzustand
+// messbar, also wird auch keine Offline-Behauptung aufgestellt.
+const abonniereOnline = (aendert: () => void): (() => void) => onlineManager.subscribe(aendert);
+const leseOnline = (): boolean => onlineManager.isOnline();
+
+function useIstOnline(): boolean {
+  return useSyncExternalStore(abonniereOnline, leseOnline, () => true);
+}
+
 // SCRUM-165: kompakte, read-only Sicht auf die jüngsten Reasoner-/ModelRuns (nur Metadaten).
+//
+// ══ JOB 3044 · DER ZUSTANDS-KURZSCHLUSS IST HIER RAUS ═══════════════════════════════════════════
+// Bis hierher stand `runs.isLoading ? … : runs.isError ? … : …` — die Fehlerprüfung VOR jeder
+// Datenprüfung. Folge: Sobald eine HINTERGRUND-Auffrischung scheiterte, verschwanden alle bereits
+// geladenen Läufe und wurden durch `state.error` ersetzt. Genau das hat Codex am 03.09. für die
+// Prüfseite verboten (JOB 3027 R1, Korrekturpflicht 1): „nur der Erstfehler ohne Daten darf die
+// Karten ersetzen". Es gibt jetzt genau EINEN Weg: Was hängt an `runs.data`, nicht an `isError`.
+// Ein Fehler auf vorhandenem Bestand ist ein ZUSÄTZLICHER Hinweis — und der Bestand behauptet
+// dabei nichts über seine Frische, die Summenzeile nennt ausdrücklich ihre Grundmenge.
+//
+// ══ JOB 3044 R2/R3 · OFFLINE IST KEIN LADEN, UND ES IST KEIN NEBENEFFEKT EINER ABFRAGE ══════════
+// `isLoading`/`isError` allein bilden die Lage NICHT ab. Ohne Netz startet React Query die Abfrage
+// gar nicht: `fetchStatus` wird `"paused"`, `status` bleibt `"pending"` — also `isError === false`
+// UND `isLoading === true`. Runde 1 zeigte deshalb offline und ohne Cache dauerhaft „Lädt …" und
+// behauptete einen Fortschritt, den es nicht gab.
+//
+// Runde 2 las dafür `runs.isPaused` — und traf damit nur die Fälle, in denen eine Abfrage LAUFEN
+// WILL. Der Alltagsfall ist ein anderer (Ben, R2): die Seite steht, die Abfrage RUHT
+// (`fetchStatus: "idle"`), dann fällt die Verbindung weg. `idle` wird nicht zu `paused`, also blieb
+// `isPaused` false und die Karte sagte kein Wort — sie zeigte einen nicht mehr überprüfbaren
+// Bestand, als wäre nichts geschehen. `isPaused` ist eben eine Aussage über die ABFRAGE, nicht über
+// das NETZ. Gebraucht wird das Netz, also wird es abonniert (`useIstOnline`) — und `isPaused`
+// entfällt ersatzlos, denn ohne Netz ist es nur eine Folge desselben Umstands.
 function ReasonerRunsCard(): JSX.Element {
   const { t } = useTranslation();
   const runs = useModelRuns(50);
-  const records = limitModelRuns(runs.data ?? [], 12);
-  const summary = summarizeModelRuns(runs.data ?? []);
+  const online = useIstOnline();
+  const stoerung: "keine" | "offline" | "fehler" = !online
+    ? "offline"
+    : runs.isError
+      ? "fehler"
+      : "keine";
+  const geladen = runs.data;
+  const records = limitModelRuns(geladen ?? [], 12);
+  const summary = summarizeModelRuns(geladen ?? []);
+  // Die Dauer je Zeile kommt aus derselben einen Ableitung wie die Summe in `summary` — es gibt
+  // keine zweite Stelle im Produkt, die aus `startedAt`/`finishedAt` rechnet.
+  const zeilen = records.map((r) => ({ r, dauerMs: modelRunDauerMs(r) }));
   return (
-    <Card className="mt-4">
+    <Card className="mt-4" data-testid="mrun-card">
       <SectionLabel>{t("mrun.title")}</SectionLabel>
-      <WindowNote loaded={runs.data?.length ?? 0} limit={50} source="modelRuns" />
-      {runs.isLoading ? (
-        <p className="text-[13px] text-muted">{t("state.loading")}</p>
-      ) : runs.isError ? (
-        <p className="text-[13px] text-danger">{t("state.error")}</p>
-      ) : records.length === 0 ? (
-        <p className="text-[13px] text-muted">{t("mrun.empty")}</p>
+      <WindowNote loaded={geladen?.length ?? 0} limit={50} source="modelRuns" />
+      {geladen === undefined ? (
+        // Noch nie Daten gesehen: nur hier darf ein Zustandstext die Karte ersetzen. Offline zählt
+        // dabei wie ein Fehler — es steht nichts an, worauf zu warten wäre.
+        stoerung !== "keine" ? (
+          <p className="text-[13px] text-danger">{t("state.error")}</p>
+        ) : (
+          <p className="text-[13px] text-muted">{t("state.loading")}</p>
+        )
       ) : (
         <>
-          <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
-            <span>{t("mrun.total", { n: summary.total })}</span>
-            <span className={summary.errors > 0 ? "text-trust-crit-text" : undefined}>
-              {t("mrun.errors", { n: summary.errors })}
-            </span>
-            <span>{t("mrun.fallbacks", { n: summary.fallbacks })}</span>
-            <span>{t("mrun.demo", { n: summary.demo })}</span>
-          </div>
-          <ul className="divide-y divide-hairline">
-            {records.map((r) => (
-              <li key={r.id} className="flex flex-wrap items-center gap-2 py-2">
-                <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
-                  {t(`mrun.task.${r.task}`)}
+          {/* Eine erfolgreiche Antwort liegt vor: die Störung ersetzt nichts, sie sagt nur, warum
+              der Stand nicht aktuell sein muss. Sie steht ÜBER beiden Fällen — auch das leere
+              „Noch keine Reasoner-Läufe protokolliert." wäre offline sonst eine Tatsachenaussage
+              über einen Bestand, der gerade gar nicht abgefragt werden kann. Offline und
+              gescheiterte Auffrischung sind zwei Auskünfte und werden nicht zu einer verschmolzen. */}
+          {stoerung === "offline" ? (
+            <p className="mb-2 text-[12px] text-muted" data-testid="mrun-offline">
+              {t("mrun.offline")}
+            </p>
+          ) : stoerung === "fehler" ? (
+            <p className="mb-2 text-[12px] text-danger" data-testid="mrun-refresh-error">
+              {t("mrun.refreshFailed")}
+            </p>
+          ) : null}
+          {records.length === 0 ? (
+            <p className="text-[13px] text-muted">{t("mrun.empty")}</p>
+          ) : (
+            <>
+              <div className="mb-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-2">
+                <span>{t("mrun.total", { n: summary.total })}</span>
+                <span className={summary.errors > 0 ? "text-trust-crit-text" : undefined}>
+                  {t("mrun.errors", { n: summary.errors })}
                 </span>
-                <span
-                  className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
-                    modelRunStatusTone(r) === "crit"
-                      ? "bg-trust-crit-bg text-trust-crit-text"
-                      : "bg-trust-pos-bg text-trust-pos-text"
-                  }`}
-                >
-                  {t(`mrun.status.${r.status}`)}
+                <span>{t("mrun.fallbacks", { n: summary.fallbacks })}</span>
+                <span>{t("mrun.demo", { n: summary.demo })}</span>
+                <span data-testid="mrun-laufzeit">
+                  {t("mrun.runtimeTotal", {
+                    d: formatiereDauer(summary.dauerSummeMs),
+                    n: summary.dauerGezaehlt,
+                    total: summary.total,
+                  })}
                 </span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-muted-2">
-                  {r.provider} · {r.locale ?? "—"}
-                </span>
-                {r.fallback ? (
-                  <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
-                    {t("mrun.fallback")}
-                  </span>
-                ) : null}
-                {r.demo ? (
-                  <span className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
-                    {t("mrun.demoTag")}
-                  </span>
-                ) : null}
-                <span className="font-mono text-[10px] text-muted-2">
-                  {new Date(r.startedAt).toLocaleString()}
-                </span>
-              </li>
-            ))}
-          </ul>
+              </div>
+              <ul className="divide-y divide-hairline">
+                {zeilen.map(({ r, dauerMs }) => (
+                  <li
+                    key={r.id}
+                    className="flex flex-wrap items-center gap-2 py-2"
+                    data-testid="mrun-row"
+                    data-run-id={r.id}
+                  >
+                    <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                      {t(`mrun.task.${r.task}`)}
+                    </span>
+                    <span
+                      className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
+                        modelRunStatusTone(r) === "crit"
+                          ? "bg-trust-crit-bg text-trust-crit-text"
+                          : "bg-trust-pos-bg text-trust-pos-text"
+                      }`}
+                    >
+                      {t(`mrun.status.${r.status}`)}
+                    </span>
+                    <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 font-mono text-[11px] text-muted-2">
+                      <span className="truncate">
+                        {r.provider} · {r.locale ?? "—"}
+                      </span>
+                      {/* JOB 3044: WER gerechnet hat, steht links; WOMIT daneben — aber nur, wenn es
+                      wirklich eine zweite Auskunft ist. Fehlt `model` (kein Modellaufruf in diesem
+                      Lauf) oder trägt es denselben Wert wie `provider` (Altdatensatz vor JOB 3036),
+                      steht hier NICHTS: kein Platzhalter, kein „unbekanntes Modell", keine
+                      Ableitung aus provider/demo/fallback (services/model-runs/src/types.ts:166-178). */}
+                      {r.model !== undefined && r.model !== r.provider ? (
+                        <span className="truncate" data-testid="mrun-model">
+                          {t("mrun.model", { m: r.model })}
+                        </span>
+                      ) : null}
+                    </span>
+                    {r.fallback ? (
+                      <span className="rounded-pill bg-trust-warn-bg px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-trust-warn-text">
+                        {t("mrun.fallback")}
+                      </span>
+                    ) : null}
+                    {r.demo ? (
+                      <span className="rounded-pill bg-ai-surface-1 px-1.5 py-0.5 font-mono text-[9.5px] font-semibold uppercase text-ai">
+                        {t("mrun.demoTag")}
+                      </span>
+                    ) : null}
+                    {/* JOB 3044: die Dauer nur, wenn sie sich aus den zwei Zeitstempeln ableiten
+                    lässt. `null` heißt: hier steht nichts — kein „—", kein „0 ms". */}
+                    {dauerMs !== null ? (
+                      <span className="font-mono text-[10px] text-muted-2" data-testid="mrun-dauer">
+                        {t("mrun.duration", { d: formatiereDauer(dauerMs) })}
+                      </span>
+                    ) : null}
+                    <span className="font-mono text-[10px] text-muted-2">
+                      {new Date(r.startedAt).toLocaleString()}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
         </>
       )}
     </Card>

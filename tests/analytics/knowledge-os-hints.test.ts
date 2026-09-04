@@ -15,6 +15,10 @@ function modelRuns(overrides: Partial<ModelRunSummary>): ModelRunSummary {
     fallbacks: 0,
     demo: 0,
     byTask: { structure: 0, assist: 0, interview: 0, answer: 0, select: 0 },
+    // JOB 3044: `ModelRunSummary` trägt zusätzlich die Laufzeit. Die Hinweise hier lesen sie
+    // nicht (nur `errors`/`fallbacks`), aber die Attrappe muss den vollständigen Typ erfüllen.
+    dauerSummeMs: 0,
+    dauerGezaehlt: 0,
     ...overrides,
   };
 }
