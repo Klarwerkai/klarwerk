@@ -1,4 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+// JOB 3050: die beiden Kennzahlen, an denen der Überschneidungsfall unten hängt — hier NUR gemessen
+// (die Schwellen selbst liegen unverändert in `conflicts` bzw. der Kompositionswurzel).
+import { coreText, lexicalOverlapScore, trigramSimilarity } from "../../conflicts";
 import { buildApp, buildServices } from "./build-app";
 
 // SCRUM-470 (S6, HTTP end-to-end): Ein akzeptierter Import-Kandidat, der einem bestehenden KO
@@ -153,19 +156,58 @@ describe("SCRUM-470 (S6): Erkennung am Import-Accept-Pfad (HTTP end-to-end)", ()
   });
 
   // Analog für Duplikate: der Import-Accept-Pfad reicht auch die (deterministische, modellfreie)
-  // Überschneidungs-Erkennung durch. Kandidat mit inhaltsgleicher Aussage (anderer Titel → NICHT als
-  // Kandidat-Dublette markiert, es entsteht also ein echtes KO) → Überschneidung unter /api/duplicates.
-  it("Flag AN: akzeptierter, inhaltsgleicher Import-Kandidat erzeugt eine Überschneidung", async () => {
+  // Überschneidungs-Erkennung durch → Überschneidung unter /api/duplicates.
+  //
+  // ==============================================================================================
+  // JOB 3050 · NACHGEFÜHRT — DIE VORBEDINGUNG DIESES FALLS WAR EIN PRODUKTFEHLER.
+  // ==============================================================================================
+  //
+  // Bis JOB 3050 lautete sie: „Kandidat mit INHALTSGLEICHER Aussage (anderer Titel → NICHT als
+  // Kandidat-Dublette markiert, es entsteht also ein echtes KO)". Genau das ist der Defekt, gegen
+  // den JOB 3050 steht: `createImportCandidates` entschied „Dublette" über Zeichengleichheit von
+  // `title|statement`, also ging derselbe Text unter umgestelltem Titel als NEU durch und der
+  // `accept` legte die zweite Karteikarte an. Seither prüft der Kandidatenweg mit derselben Regel
+  // wie der direkte Import (`coreText` + `trigramSimilarity`, Schwelle 0,85) — ein wortgleicher
+  // Text mit umgestelltem Titel IST eine Dublette und erzeugt kein KO mehr.
+  //
+  // DER FALL BLEIBT DERSELBE, nur mit einer Vorbedingung, die das Produkt hergibt: gleicher Titel,
+  // ERWEITERTE Aussage. Das klassische Überschneidungsmuster — dieselbe Sache, ein Satzteil mehr —
+  // liegt ÜBER der Überschneidungsschwelle (lexicalOverlapScore 0,865 ≥ 0,85 → deterministischer
+  // Eintrag ohne Modell) und UNTER der Re-Import-Schwelle (0,766 < 0,85 → keine Dublette, der
+  // Kandidat trägt echten Zusatzinhalt). Beide Werte sind unten gepinnt: verschiebt jemand eine
+  // der zwei Schwellen, wird HIER mit Namen rot, statt dass der Fall still nichts mehr prüft.
+  it("Flag AN: akzeptierter, ueberschneidender Import-Kandidat erzeugt eine Überschneidung", async () => {
     process.env.KLARWERK_CONFLUENCE_IMPORT = "1";
     const { app, headers } = await setup();
 
-    const text = "Nach dem Anfahren zehn Sekunden warten, danach die Pumpe entlueften.";
-    const base = { statement: text, type: "best_practice" as const, category: "Wartung" };
+    const TITEL = "Pumpe entlueften";
+    const BESTAND = "Nach dem Anfahren zehn Sekunden warten, danach die Pumpe entlueften.";
+    const KANDIDAT =
+      "Nach dem Anfahren zehn Sekunden warten, danach die Pumpe entlueften und den Befund vermerken.";
+    const alsSubjekt = (statement: string) => ({
+      refId: "job3050-messung",
+      title: TITEL,
+      statement,
+      conditions: [] as string[],
+      measures: [] as string[],
+      tags: [] as string[],
+    });
+    // DIE ZWEI SCHWELLEN, an denen dieser Fall hängt — gemessen, nicht geglaubt.
+    expect(
+      lexicalOverlapScore(alsSubjekt(BESTAND), alsSubjekt(KANDIDAT)),
+      "Über der Überschneidungsschwelle (DUP_DETERMINISTIC_THRESHOLD) — sonst entsteht kein Eintrag.",
+    ).toBeGreaterThanOrEqual(0.85);
+    expect(
+      trigramSimilarity(coreText(alsSubjekt(BESTAND)), coreText(alsSubjekt(KANDIDAT))),
+      "Unter der Re-Import-Schwelle (RE_IMPORT_DUBLETTE_AB) — sonst wäre der Kandidat eine Dublette.",
+    ).toBeLessThan(0.85);
+
+    const base = { type: "best_practice" as const, category: "Wartung" };
     const createdKo = await app.inject({
       method: "POST",
       url: "/api/kos",
       headers,
-      payload: { ...base, title: "Pumpe entlueften" },
+      payload: { ...base, title: TITEL, statement: BESTAND },
     });
     expect(createdKo.statusCode).toBe(201);
 
@@ -174,10 +216,15 @@ describe("SCRUM-470 (S6): Erkennung am Import-Accept-Pfad (HTTP end-to-end)", ()
       url: "/api/library/import/candidates",
       headers,
       // SCRUM-509 R3: bewusst „intern", damit die Duplikat-Erkennung läuft (vertraulich → übersprungen).
-      payload: { items: [{ ...base, title: "Entlueften der Pumpe", confidentiality: "intern" }] },
+      payload: {
+        items: [{ ...base, title: TITEL, statement: KANDIDAT, confidentiality: "intern" }],
+      },
     });
     expect(cand.statusCode).toBe(201);
-    expect(cand.json()[0].duplicate).toBe(false);
+    expect(
+      cand.json()[0].duplicate,
+      "Der Kandidat trägt echten Zusatzinhalt — er ist keine Dublette und wird ein KO.",
+    ).toBe(false);
     const accepted = await app.inject({
       method: "PUT",
       url: `/api/library/import/candidates/${cand.json()[0].id}`,

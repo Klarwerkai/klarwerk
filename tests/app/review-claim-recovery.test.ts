@@ -42,6 +42,15 @@ import {
 
 const T0 = Date.parse("2026-07-22T06:00:00.000Z");
 
+// JOB 3050: `createImportCandidates` nimmt die Dublettenregel als Port entgegen. FEHLT er, gilt
+// jeder Eintrag, dessen Textfrage gestellt wird, fail-closed als NICHT PRÜFBAR — ein `accept` legt
+// dann kein Wissensobjekt an. Die Fälle dieser Datei messen das Lease-/Claim-/Recovery-Protokoll und
+// brauchen dafür echte Wissensobjekte, nicht die Dublettenfrage. Sie übergeben deshalb ausdrücklich
+// eine Prüfung, die NIE trifft: damit messen sie unverändert ihren Bestandsvertrag (nur Pass 1,
+// exakte Zeichengleichheit von title|statement). Die Dublettenregel selbst wird dort gemessen, wo
+// sie gebaut wird — `tests/re-import-dubletten/`.
+const OHNE_TEXTDUBLETTE = () => ({ dublette: false as const });
+
 function anchorItem(over: Partial<ImportItem> = {}): ImportItem {
   return {
     title: "Pumpe entlüften",
@@ -88,6 +97,7 @@ describe("WP-SHIP8-CLOSE-3 ROT-1: Crash-Snapshots des Review-Claims", () => {
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Pumpe", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     // RELEASABLE Gate VOR der KO-Anlage: Lauf A hängt IN acceptToKo (nach Claim, vor Insert) —
@@ -156,6 +166,7 @@ describe("WP-SHIP8-CLOSE-3 ROT-1: Crash-Snapshots des Review-Claims", () => {
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Ventil", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     // Gate: der Endstatus-Write (resolveClaim) hängt für immer — die KO-Anlage ist da bereits
@@ -205,7 +216,11 @@ describe("WP-SHIP8-CLOSE-3 ROT-1: Crash-Snapshots des Review-Claims", () => {
 
   it("(c) Abbruch VOR Endstatus MIT Anker (externalId) → Recovery vollendet; genau EIN KO mit dem Anker", async () => {
     const ctx = harness();
-    const [cand] = await ctx.library.createImportCandidates([anchorItem()], "tester");
+    const [cand] = await ctx.library.createImportCandidates(
+      [anchorItem()],
+      "tester",
+      OHNE_TEXTDUBLETTE,
+    );
     const id = (cand as { id: string }).id;
     const origResolve = ctx.candidates.resolveClaim.bind(ctx.candidates);
     let intercepted = false;
@@ -282,7 +297,11 @@ describe("WP-SHIP8-CLOSE-3 ROT-2: 'in_bearbeitung' bleibt im offenen Idempotenzr
   // Flackern während des Claims bleibt identisch, nur die Semantik ist getrennt.
   it("Import-Status bleibt WÄHREND des Claims 'alreadyQueued' (Statuskarte lügt nicht)", async () => {
     const ctx = harness();
-    const [cand] = await ctx.library.createImportCandidates([anchorItem()], "tester");
+    const [cand] = await ctx.library.createImportCandidates(
+      [anchorItem()],
+      "tester",
+      OHNE_TEXTDUBLETTE,
+    );
     const id = (cand as { id: string }).id;
     // Vor dem Claim: offener Kandidat → bereits zur Prüfung vorgemerkt (NICHT „importiert").
     const before = importStatusFor(
@@ -415,6 +434,7 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Filter", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     ctx.faults.snapshotFailOnce = true; // create: Insert ok → Snapshot wirft → Audit läuft nie
@@ -439,6 +459,7 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Ventil", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     ctx.faults.auditFailOnceActions.add("ko.created"); // create: Insert + Snapshot ok → Audit wirft
@@ -461,6 +482,7 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Pumpe", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     ctx.faults.auditFailAlwaysActions.add("*");
@@ -499,6 +521,7 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
       const [cand] = await ctx.library.createImportCandidates(
         [{ title: "Dichtung", statement: "s", type: "best_practice", category: "K" }],
         "tester",
+        OHNE_TEXTDUBLETTE,
       );
       const id = (cand as { id: string }).id;
       ctx.faults.auditFailAlwaysActions.add("import.candidate-accept");
@@ -529,6 +552,7 @@ describe("WP-SHIP8-CLOSE-5 ROT-1A: kein halber KO-Zustand — Belege werden fail
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Sensor", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     let lookupCalls = 0;
@@ -615,7 +639,11 @@ describe("WP-SHIP8-CLOSE-6 ROT-2: der Re-Sync ist eine Vollendungsstelle", () =>
       const ctx = sideEffectHarness();
       // A: Snapshot-Store dauerhaft kaputt → create-Teilpersistenz (KO da, v1/ko.created fehlen),
       // der Accept bleibt fail-closed stehen (Claim in_bearbeitung).
-      const [candA] = await ctx.library.createImportCandidates([anchorItem()], "tester");
+      const [candA] = await ctx.library.createImportCandidates(
+        [anchorItem()],
+        "tester",
+        OHNE_TEXTDUBLETTE,
+      );
       const idA = (candA as { id: string }).id;
       ctx.faults.snapshotFailAlways = true;
       await expect(ctx.library.reviewImportCandidate(idA, "accept", "rev-A")).rejects.toBeDefined();
@@ -632,6 +660,7 @@ describe("WP-SHIP8-CLOSE-6 ROT-2: der Re-Sync ist eine Vollendungsstelle", () =>
       const [candB] = await ctx.library.createImportCandidates(
         [anchorItem({ sourceVersion: 4, statement: "Pumpe alle 100h entlüften (überarbeitet)." })],
         "tester",
+        OHNE_TEXTDUBLETTE,
       );
       const idB = (candB as { id: string }).id;
       // Solange die Belege NICHT herstellbar sind, schließt B NICHT ab — und weil der Nachzug
@@ -676,6 +705,7 @@ describe("WP-SHIP8-CLOSE-6 ROT-3: Review-Aktionsbeleg darf nicht dauerhaft fehle
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Dichtung", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     ctx.faults.auditFailAlwaysActions.add("import.candidate-accept");
@@ -763,6 +793,7 @@ describe("WP-SHIP8-CLOSE-7 ROT-1: auditPending reist VORBEUGEND im selben resolv
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Riemen", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     // „Prozessabbruch": das Abschluss-Audit dieses Laufs kehrt NIE zurück — der Lauf stirbt
@@ -818,6 +849,7 @@ describe("WP-SHIP8-CLOSE-7 ROT-1: auditPending reist VORBEUGEND im selben resolv
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Lager", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     // Crash-Punkt diesmal HINTER recordOnce: das bedingte Räumen kehrt nie zurück.
@@ -852,6 +884,7 @@ describe("WP-SHIP8-CLOSE-7 ROT-2: der Claim kennt Akteur + Aktion — die Recove
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Kupplung", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     // Crash NACH KO-Erzeugung, VOR Endstatus: resolveClaim hängt einmalig (Muster CLOSE-4).
@@ -907,6 +940,7 @@ describe("WP-SHIP8-CLOSE-7 ROT-2: der Claim kennt Akteur + Aktion — die Recove
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Welle", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     // Altclaim (vor CLOSE-7) direkt am Repo: NUR opId + claimedAt (3-Argumente-Form).
@@ -945,6 +979,7 @@ describe("WP-SHIP8-CLOSE-7 ROT-2: der Claim kennt Akteur + Aktion — die Recove
       const [cand] = await ctx.library.createImportCandidates(
         [{ title: "Bolzen", statement: "s", type: "best_practice", category: "K" }],
         "tester",
+        OHNE_TEXTDUBLETTE,
       );
       const id = (cand as { id: string }).id;
       await ctx.candidates.claim(
@@ -984,6 +1019,7 @@ describe("WP-SHIP8-CLOSE-8 GELB-1: die Recovery-Kennzeichnung überlebt den Bele
       const [cand] = await ctx.library.createImportCandidates(
         [{ title: "Zahnrad", statement: "s", type: "best_practice", category: "K" }],
         "tester",
+        OHNE_TEXTDUBLETTE,
       );
       const id = (cand as { id: string }).id;
       // Accept von xenia crasht nach KO-Erzeugung (resolveClaim hängt einmalig).
@@ -1044,6 +1080,7 @@ describe("WP-SHIP8-CLOSE-7 GELB: reviewedAction wird WIRKLICH persistiert", () =
     const [cand] = await ctx.library.createImportCandidates(
       [{ title: "Feder", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const id = (cand as { id: string }).id;
     const reviewed = await ctx.library.reviewImportCandidate(id, "reject", "rev-r");
@@ -1063,7 +1100,11 @@ describe("WP-SHIP8-CLOSE-4 ROT-1B/1C: DB-Unique-Anker + Cleanup-Schutz + Trash-V
   // Accept bis VOR den Endstatus treiben (resolveClaim hängt einmalig) — KO existiert mit
   // Kandidaten-Anker, der Claim bleibt offen. Liefert die Kandidaten-Id.
   async function claimWithStampedKo(ctx: ReturnType<typeof harness>): Promise<string> {
-    const [cand] = await ctx.library.createImportCandidates([anchorItem()], "tester");
+    const [cand] = await ctx.library.createImportCandidates(
+      [anchorItem()],
+      "tester",
+      OHNE_TEXTDUBLETTE,
+    );
     const id = (cand as { id: string }).id;
     const origResolve = ctx.candidates.resolveClaim.bind(ctx.candidates);
     let intercepted = false;

@@ -12,6 +12,7 @@ import type {
   DublettenPruefung,
   ImportCandidate,
   ImportItem,
+  KandidatDublettenbefund,
   LibraryService,
   ReviewAction,
 } from "../../../library-analytics";
@@ -62,6 +63,11 @@ interface ImportCandidateDto {
   note: string | null;
   koId: string | null;
   createdAt: string;
+  // JOB 3050: WORAUF der Kandidat getroffen ist und WOMIT entschieden wurde — reine Produktdaten
+  // (getroffene Id + Ähnlichkeitswert), dieselbe Auskunft, die der direkte Importweg seit JOB 3023
+  // in `uebersprungen` gibt. Rein additiv; `duplicate` behält Name und Bedeutung. FEHLT das Feld,
+  // ist der Kandidat echter Altbestand (eingereiht vor JOB 3050).
+  dublettenbefund?: KandidatDublettenbefund;
   reviewedBy?: string;
   reviewedAt?: string;
   reviewedAction?: ReviewAction;
@@ -78,6 +84,9 @@ function toImportCandidateDto(candidate: ImportCandidate): ImportCandidateDto {
     note: candidate.note,
     koId: candidate.koId,
     createdAt: candidate.createdAt,
+    ...(candidate.dublettenbefund !== undefined
+      ? { dublettenbefund: candidate.dublettenbefund }
+      : {}),
     ...(candidate.reviewedBy !== undefined ? { reviewedBy: candidate.reviewedBy } : {}),
     ...(candidate.reviewedAt !== undefined ? { reviewedAt: candidate.reviewedAt } : {}),
     ...(candidate.reviewedAction !== undefined ? { reviewedAction: candidate.reviewedAction } : {}),
@@ -233,6 +242,11 @@ function kerntextVon(ko: KnowledgeObject): string {
   return text;
 }
 
+// JOB 3050: DIESELBE Instanz bedient jetzt BEIDE Importwege der Bibliothek — `POST /api/library/import`
+// (importJson) und `POST /api/library/import/candidates` (createImportCandidates). Sie bleibt
+// dateiintern: ein Export hätte nur Sinn, wenn ein Aufrufer außerhalb dieser Datei sie bräuchte, und
+// die beiden Anker-/Re-Sync-Wege des Confluence-Imports stellen die Textfrage per Entscheid nicht
+// (SCRUM-510 R2b, Lieferung 9). Es gibt weiterhin GENAU EINE Auslegung dieser Frage im Produkt.
 const pruefeReImportDublette: DublettenPruefung = (item, bestand): DublettenBefund => {
   const kerntext = vergleichstext(item.title, item.statement);
   // Der BESTE Treffer, nicht der erste: die Antwort soll das Objekt nennen, dem der Eintrag am
@@ -387,7 +401,13 @@ export function libraryRoutes(
         }
         try {
           // WP-SHIP8-CLOSE-8 (bens GELB-2): auch frisch eingereihte Kandidaten laufen durchs DTO.
-          const created = await library.createImportCandidates(request.body.items ?? [], user.id);
+          // JOB 3050: DIESELBE Instanz der Dublettenregel wie `POST /api/library/import` oben —
+          // beide Importwege beantworten die Frage ab hier gleich.
+          const created = await library.createImportCandidates(
+            request.body.items ?? [],
+            user.id,
+            pruefeReImportDublette,
+          );
           reply.code(201).send(created.map(toImportCandidateDto));
         } catch (error) {
           sendError(reply, error);

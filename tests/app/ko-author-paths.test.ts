@@ -9,6 +9,12 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
+// JOB 3050: der Kandidatenweg nimmt die Dublettenregel als Port entgegen; fehlt er, gilt jeder
+// Eintrag fail-closed als nicht prüfbar und der `accept` legt kein Wissensobjekt an. Die Fälle
+// dieser Datei messen die AUTORSCHAFT des angenommenen Wissensobjekts, brauchen also das Anlegen —
+// die übergebene Prüfung trifft bewusst nie und lässt ihren Bestandsvertrag unverändert.
+const OHNE_TEXTDUBLETTE = () => ({ dublette: false as const });
+
 async function appWithUser() {
   const services = buildServices();
   const app = buildApp(services);
@@ -93,6 +99,7 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
         },
       ],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const [candidate] = await services.library.listImportCandidates();
     await services.library.reviewImportCandidate(
@@ -121,6 +128,7 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
         },
       ],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const [candidate] = await services.library.listImportCandidates();
     await services.library.reviewImportCandidate(
@@ -138,6 +146,7 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
     await services.library.createImportCandidates(
       [{ title: "Ohne Quell-Autor", statement: "s", type: "best_practice", category: "K" }],
       "tester",
+      OHNE_TEXTDUBLETTE,
     );
     const [candidate] = await services.library.listImportCandidates();
     await services.library.reviewImportCandidate(

@@ -106,6 +106,54 @@ export interface UebersprungenerImport {
   aehnlichkeit?: number;
 }
 
+// ================================================================================================
+// JOB 3050 — DIESELBE FRAGE AM REVIEW-KANDIDATEN, UND DIE ANTWORT SAGT, WORAUF.
+// ================================================================================================
+//
+// `createImportCandidates` war von JOB 3023 ausdruecklich ausgenommen und verglich weiter Zeichen
+// (`seen.has(`${title}|${statement}`)`). Das war keine Kosmetik: `duplicate` ist eine ENTSCHEIDUNG —
+// bei `true` legt der `accept`-Zweig KEIN Wissensobjekt an. Ein falsches `false` erzeugte also
+// wirklich die zweite Karteikarte, nur eine Reviewrunde spaeter als beim direkten Weg.
+//
+// WARUM EIN EIGENER TYP UND NICHT ZWEI FLACHE FELDER: jede Aussage haengt an ihrer Voraussetzung.
+// Eine `koId` gibt es nur, wenn wirklich getroffen wurde; einen Aehnlichkeitswert nur, wenn die
+// Pruefung gerechnet hat. Zwei optionale Felder neben einem `boolean` liessen die Kombination
+// „Dublette ohne Treffer" typgueltig — genau die Behauptung ohne Voraussetzung, die das Produkt
+// nicht ausgibt.
+//
+// WORAUF getroffen wurde, hat ZWEI Arten. Der Bestand traegt Wissensobjekte; eine Sicherung, die
+// dieselbe Sache zweimal enthaelt, trifft aber auf einen KANDIDATEN desselben Laufs, der noch kein
+// Wissensobjekt ist. Eine `koId` waere dort ein Verweis auf etwas, das es nicht gibt.
+export type Dublettentreffer =
+  | { readonly art: "wissensobjekt"; readonly koId: string }
+  | { readonly art: "kandidat"; readonly kandidatId: string };
+
+/**
+ * Der Befund der Dublettenfrage an EINEM Kandidaten — vier Ausgaenge, nicht zwei.
+ *
+ * - `keine` — geprueft, kein Treffer. Der `accept` legt ein Wissensobjekt an.
+ * - `identisch` — Pass 1, exakte Zeichengleichheit von `title|statement`.
+ * - `aehnlich` — Pass 2, die injizierte `DublettenPruefung` hat entschieden.
+ * - `pruefung_nicht_moeglich` — es gab GAR KEINE Entscheidung. Weder „Dublette" noch „keine
+ *   Dublette" darf hier behauptet werden; der `accept` legt fail-closed kein Wissensobjekt an.
+ * - `nicht_gestellt` — der externalId-Upsert-/Re-Sync-Strang (SCRUM-510 R2b): dort ist eine
+ *   Bestandskollision per Entscheid ein Re-Sync und keine Dublette, die Textfrage wird also nicht
+ *   gestellt. `duplicate` heisst dort ausschliesslich „dasselbe Quellobjekt zweimal in DIESEM Lauf".
+ *
+ * Die Woerter sind bewusst die von `UebersprungenGrund` (plus die beiden Faelle, die es dort nicht
+ * geben kann): dieselbe Frage, dieselbe Sprache auf beiden Importwegen.
+ */
+export type KandidatDublettenbefund =
+  | { readonly ergebnis: "keine" }
+  | { readonly ergebnis: "identisch"; readonly treffer: Dublettentreffer }
+  | {
+      readonly ergebnis: "aehnlich";
+      readonly treffer: Dublettentreffer;
+      readonly aehnlichkeit: number;
+    }
+  | { readonly ergebnis: "pruefung_nicht_moeglich" }
+  | { readonly ergebnis: "nicht_gestellt" };
+
 export interface ImportResult {
   imported: number;
   skipped: number;
@@ -138,8 +186,20 @@ export interface ImportCandidate {
   id: string;
   item: ImportItem;
   status: ReviewStatus;
-  // Gleiche title|statement existiert bereits → wird beim Annehmen NICHT überschrieben.
+  // JOB 3050: als Dublette ERKANNT — der `accept` legt dann kein Wissensobjekt an, überschreibt
+  // aber auch nichts. Der überholte Wortlaut von SCRUM-116 („Gleiche title|statement existiert
+  // bereits") stand hier bis JOB 3050 und war falsch: seither entscheidet nicht mehr allein die
+  // Zeichengleichheit, sondern zusätzlich die injizierte `DublettenPruefung` (Pass 2).
+  //
+  // `false` heisst „NICHT als Dublette erkannt" — und ausdrücklich nicht „geprüft und sauber":
+  // konnte die Prüfung nicht entscheiden, steht `false` hier und `pruefung_nicht_moeglich` in
+  // `dublettenbefund`. Ob der `accept` ein Wissensobjekt anlegen darf, entscheidet deshalb NIE
+  // dieses Feld allein, sondern `kandidatErzeugtWissensobjekt` (service.ts) — die eine Stelle.
   duplicate: boolean;
+  // JOB 3050: WORAUF getroffen wurde und WOMIT entschieden wurde — additiv, JSON-persistiert
+  // (JSONB-Spalte `data`, keine Migration). FEHLT das Feld, ist es ECHTER Altbestand (eingereiht
+  // VOR JOB 3050); dann gilt allein `duplicate`, wie bisher.
+  dublettenbefund?: KandidatDublettenbefund | undefined;
   note: string | null;
   // Bei „angenommen" und nicht-Dublette: das erzeugte Wissensobjekt.
   koId: string | null;

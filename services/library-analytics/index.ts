@@ -60,6 +60,10 @@ export type {
   DublettenBefund,
   UebersprungenGrund,
   UebersprungenerImport,
+  // JOB 3050: der Befund derselben Frage am REVIEW-KANDIDATEN. Er MUSS heraus, weil das
+  // Antwort-DTO der Route (`services/app/src/routes/library-routes.ts`) ihn ausweist — ohne die
+  // Ausleitung könnte die Kompositionswurzel die Auskunft nicht typisiert weitergeben.
+  KandidatDublettenbefund,
 } from "./src/types";
 export { LibraryError } from "./src/types";
 // IC-1 (Import-Cockpit): READ-ONLY Erkundungs-Aggregat (pure, deterministisch).

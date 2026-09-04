@@ -25,7 +25,13 @@ import type {
 } from "./types";
 
 // JOB 3023: `importJson` nimmt die Dublettenregel seit diesem Auftrag als PFLICHT-Port entgegen
-// (types.ts, DublettenPruefung) — der Dienst legt sie nicht mehr selbst aus. Die Fälle unten prüfen
+// (types.ts, DublettenPruefung) — der Dienst legt sie nicht mehr selbst aus.
+//
+// JOB 3050: DIESELBE Prüfung dient jetzt auch `createImportCandidates`. Fehlt dort der Port, gilt
+// jeder Eintrag fail-closed als NICHT PRÜFBAR und ein `accept` legt kein Wissensobjekt an — die
+// Fälle unten wollen aber gerade das Anlegen messen. Sie übergeben ihn deshalb ausdrücklich, und
+// zwar diese eine, nie treffende Prüfung: damit messen sie unverändert ihren Bestandsvertrag.
+// Die Fälle unten prüfen
 // den ERSTEN Pass (exakte Zeichengleichheit) und die Vertraulichkeits-Einstufung; die
 // Ähnlichkeitsregel selbst wird dort gemessen, wo sie gebaut wird: über die echte Route in
 // `tests/re-import-dubletten/`. Diese Prüfung sagt deshalb ehrlich „keine Ähnlichkeit gefunden"
@@ -166,15 +172,19 @@ describe("LibraryService", () => {
 
   it("SCRUM-116: annehmen erzeugt KO (Nicht-Dublette), Dublette wird nicht überschrieben", async () => {
     const before = (await ctx.koService.list()).length;
-    const [fresh, dup] = await ctx.library.createImportCandidates([
-      { title: "Neu B", statement: "Inhalt B.", type: "technik", category: "X" },
-      {
-        title: "Pumpe schmieren",
-        statement: "Pumpe alle 200h schmieren.",
-        type: "technik",
-        category: "Anlage 2",
-      },
-    ]);
+    const [fresh, dup] = await ctx.library.createImportCandidates(
+      [
+        { title: "Neu B", statement: "Inhalt B.", type: "technik", category: "X" },
+        {
+          title: "Pumpe schmieren",
+          statement: "Pumpe alle 200h schmieren.",
+          type: "technik",
+          category: "Anlage 2",
+        },
+      ],
+      "system",
+      OHNE_AEHNLICHKEIT,
+    );
     if (!fresh || !dup) {
       throw new Error("Kandidaten fehlen.");
     }
@@ -461,10 +471,14 @@ describe("LibraryService", () => {
 
     // Zwei Items mit GLEICHER pageId, aber unterschiedlichem title|statement. Bei Flag AN wäre das
     // zweite eine (intra-Batch) pageId-Dublette — bei Flag AUS greift NUR title|statement (→ keine Dublette).
-    const cands = await library.createImportCandidates([
-      confItem({ externalId: "PX", title: "A", statement: "Aussage A." }),
-      confItem({ externalId: "PX", title: "B", statement: "Aussage B." }),
-    ]);
+    const cands = await library.createImportCandidates(
+      [
+        confItem({ externalId: "PX", title: "A", statement: "Aussage A." }),
+        confItem({ externalId: "PX", title: "B", statement: "Aussage B." }),
+      ],
+      "system",
+      OHNE_AEHNLICHKEIT,
+    );
     expect(cands.map((c) => c.duplicate)).toEqual([false, false]); // pageId-Dedup greift NICHT
 
     // Accept legt ein KO OHNE Herkunfts-Anker an (kein pageId-Upsert).
@@ -473,9 +487,11 @@ describe("LibraryService", () => {
     expect(ko.sources).toEqual([]);
 
     // Re-Accept desselben pageId-Items → NEUES KO (kein Upsert/Re-Sync), da pageId ignoriert wird.
-    const [again] = await library.createImportCandidates([
-      confItem({ externalId: "PX", title: "C", statement: "Aussage C." }),
-    ]);
+    const [again] = await library.createImportCandidates(
+      [confItem({ externalId: "PX", title: "C", statement: "Aussage C." })],
+      "system",
+      OHNE_AEHNLICHKEIT,
+    );
     const r2 = await library.reviewImportCandidate(again!.id, "accept");
     expect(r2.koId).not.toBe(r.koId);
   });
@@ -694,11 +710,15 @@ describe("SCRUM-157: Import-Kandidaten persistent (CandidateRepo)", () => {
     const koService = await koCtx();
     const repo = new InMemoryCandidateRepo();
     const lib1 = new LibraryService({ koService, candidates: repo });
-    const [fresh, dup, info] = await lib1.createImportCandidates([
-      { title: "Frisch", statement: "Inhalt A.", type: "lernkurve", category: "B" },
-      { title: "Bestehend", statement: "Schon da.", type: "best_practice", category: "A" }, // Dublette
-      { title: "Unklar", statement: "Inhalt C.", type: "technik", category: "C" },
-    ]);
+    const [fresh, dup, info] = await lib1.createImportCandidates(
+      [
+        { title: "Frisch", statement: "Inhalt A.", type: "lernkurve", category: "B" },
+        { title: "Bestehend", statement: "Schon da.", type: "best_practice", category: "A" }, // Dublette
+        { title: "Unklar", statement: "Inhalt C.", type: "technik", category: "C" },
+      ],
+      "system",
+      OHNE_AEHNLICHKEIT,
+    );
     await lib1.reviewImportCandidate(fresh?.id ?? "", "accept", "controller");
     await lib1.reviewImportCandidate(dup?.id ?? "", "accept", "controller");
     await lib1.reviewImportCandidate(info?.id ?? "", "info", "controller", "Quelle?");
@@ -765,7 +785,7 @@ describe("SCRUM-515: Import-Vertraulichkeit runtime-validiert (nie intern aus Fr
       category: "X",
       confidentiality: "public",
     } as unknown as ImportItem;
-    const [c] = await library.createImportCandidates([poisoned], "importer");
+    const [c] = await library.createImportCandidates([poisoned], "importer", OHNE_AEHNLICHKEIT);
     const r = await library.reviewImportCandidate(c!.id, "accept", "importer");
     const ko = (await koService.list()).find((k) => k.id === r.koId)!;
     expect(ko.confidentiality).toBe("vertraulich"); // restriktiv gezogen, NIE intern

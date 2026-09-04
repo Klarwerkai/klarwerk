@@ -99,6 +99,13 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // noch ohne den JOB-3023-Port (`DublettenBefund`/`DublettenPruefung`, `ImportResult.uebersprungen`).
   // Beide Änderungen liegen jetzt im selben Stand; die Nachfolgerin deckt ihn gemeinsam.
   "FREEZE-144/JOB3022-20260903/types",
+  // JOB 3050: verbraucht. Diese drei Freigaben autorisierten den Stand VOR der Dublettenprüfung am
+  // KANDIDATENWEG (`KandidatDublettenbefund`/`Dublettentreffer` in types.ts, deren Ausleitung in
+  // index.ts, und der Pflicht-Port an `createImportCandidates`, den service.test.ts nun übergibt).
+  // Sie dürfen den neuen Inhalt nicht nachträglich decken; ihre Nachfolgerinnen stehen am Eintrag.
+  "FREEZE-144/JOB3023-20260903/index",
+  "FREEZE-144/JOB3023-20260903/types",
+  "FREEZE-144/JOB3023-20260903/service-test",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -118,10 +125,12 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // JOB 3023: der Port der Dublettenregel (`DublettenPruefung`, `DublettenBefund`,
     // `UebersprungenGrund`, `UebersprungenerImport`) wird hier heraus exportiert — ohne ihn koennte
     // die Kompositionswurzel die Pruefung nicht typisiert uebergeben.
-    hash: "d11d916c9d9ecf14a825b76b04d695fdc8db0cf6d1bb91618829cbc8c17ca0d4",
+    // JOB 3050 · AUSGEWIESENE ÄNDERUNG: zusätzlich ist `KandidatDublettenbefund` ausgeleitet — der
+    // Befund derselben Frage am Review-Kandidaten, den das Antwort-DTO der Route ausweist.
+    hash: "e56fc11f9e6e6af4c8ed26d89d0c5b3649e9762bbe3fe286d0808cbb82509f24",
     freigabe: {
-      id: "FREEZE-144/JOB3023-20260903/index",
-      autorisiertHash: "d11d916c9d9ecf14a825b76b04d695fdc8db0cf6d1bb91618829cbc8c17ca0d4",
+      id: "FREEZE-144/JOB3050-20260904/index",
+      autorisiertHash: "e56fc11f9e6e6af4c8ed26d89d0c5b3649e9762bbe3fe286d0808cbb82509f24",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -136,10 +145,14 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // `Graph`-Erweiterung aus JOB 3022 UND den Port der Dublettenregel aus JOB 3023
     // (`DublettenBefund`/`DublettenPruefung`, `ImportResult.uebersprungen`). Der Hash ist neu aus der
     // zusammengeführten Datei gemessen, nicht aus einer der beiden Einzeländerungen übernommen.
-    hash: "36888b971625e6d03c41b890db9b4a2aa6450b7bf6fb5f6f5fae671772b017aa",
+    // JOB 3050 · AUSGEWIESENE ÄNDERUNG: `Dublettentreffer` und `KandidatDublettenbefund` sind neu
+    // (der Befund derselben Frage am Review-Kandidaten, vier Ausgänge statt zwei), `ImportCandidate`
+    // trägt das additive Feld `dublettenbefund`, und der überholte Kommentar am Feld `duplicate`
+    // („Gleiche title|statement existiert bereits") ist berichtigt.
+    hash: "ad83892b0c9f43c0f1d4ccae6315a9a4c2fa1a55dac25dac042447dc02227960",
     freigabe: {
-      id: "FREEZE-144/JOB3023-20260903/types",
-      autorisiertHash: "36888b971625e6d03c41b890db9b4a2aa6450b7bf6fb5f6f5fae671772b017aa",
+      id: "FREEZE-144/JOB3050-20260904/types",
+      autorisiertHash: "ad83892b0c9f43c0f1d4ccae6315a9a4c2fa1a55dac25dac042447dc02227960",
     },
   },
   {
@@ -162,10 +175,16 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     pfad: "services/library-analytics/src/service.test.ts",
     // JOB 3023: `importJson` nimmt den Port als PFLICHT entgegen; die drei Aufrufer dieser Datei
     // uebergeben ihn ausdruecklich und der Bestandsfall prueft die neue `uebersprungen`-Liste.
-    hash: "b5af58ff2b839cbf650091f046e3662cb1364e6f1db56dc4a9ca703a0f702d62",
+    // JOB 3050 · AUSGEWIESENE ÄNDERUNG: `createImportCandidates` nimmt den Port jetzt ebenfalls
+    // entgegen, und OHNE ihn gilt jeder Eintrag fail-closed als nicht prüfbar (kein `accept` legt
+    // dann an). FÜNF Fälle dieser Datei messen genau das Anlegen; sie übergeben den Port darum
+    // ausdrücklich — die schon vorhandene, nie treffende `OHNE_AEHNLICHKEIT` aus JOB 3023, damit
+    // ihre Zusicherungen unverändert das messen, was sie vorher gemessen haben (Pass 1, exakte
+    // Zeichengleichheit). Kein weiterer Aufrufer dieser Datei ist angefasst.
+    hash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
     freigabe: {
-      id: "FREEZE-144/JOB3023-20260903/service-test",
-      autorisiertHash: "b5af58ff2b839cbf650091f046e3662cb1364e6f1db56dc4a9ca703a0f702d62",
+      id: "FREEZE-144/JOB3050-20260904/service-test",
+      autorisiertHash: "1b0779a403ddede006ff78a6289d94016fdb50b4bc40c3fd246a644ed94d49f9",
     },
   },
   {

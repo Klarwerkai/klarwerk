@@ -27,12 +27,14 @@ import {
   type BusFactorEntry,
   type DublettenBefund,
   type DublettenPruefung,
+  type Dublettentreffer,
   type ExpertiseEntry,
   type Graph,
   type GraphEdge,
   type ImportCandidate,
   type ImportItem,
   type ImportResult,
+  type KandidatDublettenbefund,
   type KoSichtbar,
   LibraryError,
   type Neighborhood,
@@ -168,6 +170,101 @@ function materialisiereBefund(roh: unknown): DublettenBefund | null {
   return { dublette: true, koId, aehnlichkeit };
 }
 
+// ================================================================================================
+// JOB 3050 — DER TREFFER IM EIGENEN LAUF REIST ALS PLATZHALTER IN DEN VERGLEICH.
+// ================================================================================================
+//
+// Die injizierte `DublettenPruefung` vergleicht gegen `KnowledgeObject`e — sie muss es, denn sie
+// ist dieselbe Regel, die `importJson` benutzt, und dort SIND die Vergleichspartner Objekte. Ein
+// Kandidat DESSELBEN Laufs ist aber noch kein Wissensobjekt: `createImportCandidates` legt nichts
+// an, das entscheidet erst der Review. Damit „dieselbe Sache zweimal in einer Sicherung" trotzdem
+// nur EINE Karteikarte wird, reist jeder aufnahmefähige Kandidat als PLATZHALTER in den
+// Vergleichsbestand.
+//
+// DER PLATZHALTER LÜGT NICHT NACH DRAUSSEN: er wird nie persistiert, nie ausgegeben und nie
+// angenommen. Er trägt genau die zwei Felder, die die Regel liest (Titel, Aussage), eine
+// PRÄFIXIERTE Vergleichs-Id und sonst leere Pflichtfelder. Und die Antwort nennt ihn als
+// `{ art: "kandidat", kandidatId }` — nicht als `koId`, die es nicht gibt.
+const KANDIDAT_VERGLEICHS_PREFIX = "kandidat-im-lauf:";
+
+function vergleichsPlatzhalter(kandidatId: string, item: ImportItem): KnowledgeObject {
+  return {
+    id: `${KANDIDAT_VERGLEICHS_PREFIX}${kandidatId}`,
+    title: item.title,
+    statement: item.statement,
+    conditions: [],
+    measures: [],
+    type: item.type,
+    category: item.category,
+    tags: item.tags ?? [],
+    confidence: 0,
+    trust: 0,
+    status: "offen",
+    version: 0,
+    originalAuthor: "",
+    author: "",
+    neededValidations: 0,
+    assignments: [],
+    asset: null,
+    createdAt: new Date(0).toISOString(),
+    history: [],
+    comments: [],
+    attachments: [],
+    sources: [],
+  };
+}
+
+// JOB 3050 — DIE EINE STELLE, DIE ENTSCHEIDET, OB EIN `accept` EIN WISSENSOBJEKT ANLEGEN DARF.
+//
+// Bis JOB 3050 stand dafür `!candidate.duplicate` an zwei Orten im Review-Pfad. Das genügt nicht
+// mehr, seit es einen DRITTEN Ausgang gibt: konnte die Dublettenfrage gar nicht entschieden werden,
+// ist `duplicate` ehrlich `false` — aber ein Wissensobjekt anzulegen wäre genau die unbemerkte
+// Dublette, gegen die der Auftrag steht. Fail-closed: ohne Entscheidung entsteht nichts, und der
+// Reviewer sieht in `dublettenbefund`, warum.
+//
+// ALTBESTAND: fehlt `dublettenbefund` ganz (eingereiht vor JOB 3050), gilt allein `duplicate` —
+// das ist genau das Verhalten, unter dem der Kandidat eingereiht wurde.
+function kandidatErzeugtWissensobjekt(candidate: ImportCandidate): boolean {
+  return !candidate.duplicate && candidate.dublettenbefund?.ergebnis !== "pruefung_nicht_moeglich";
+}
+
+// JOB 3050 — DER BEFUND EINES EINZELNEN KANDIDATEN. ZWEI PÄSSE, DIESELBE REIHENFOLGE WIE
+// `importJson`: erst der billige exakte Schlüssel (fängt die häufige Wiedereinspielung ohne jede
+// Rechnung ab und trägt den Treffer mit), dann für alles Übrige der injizierte Port.
+//
+// Der fremde Befund wird GENAU EINMAL gelesen und in eine eigene Entscheidung materialisiert
+// (`materialisiereBefund`, JOB 3023 R3) — danach kein Zugriff mehr auf das fremde Objekt. Jeder
+// Ausfall bleibt LOKAL bei diesem einen Eintrag; der Lauf bricht nie ab.
+function kandidatDublettenbefund(
+  item: ImportItem,
+  pruefung: DublettenPruefung,
+  exakt: ReadonlyMap<string, string>,
+  bestand: readonly KnowledgeObject[],
+  trefferVon: (vergleichsId: string) => Dublettentreffer,
+): KandidatDublettenbefund {
+  const exakterTreffer = exakt.get(`${item.title}|${item.statement}`);
+  if (exakterTreffer !== undefined) {
+    return { ergebnis: "identisch", treffer: trefferVon(exakterTreffer) };
+  }
+  let befund: DublettenBefund;
+  try {
+    const eigeneEntscheidung = materialisiereBefund(pruefung(item, bestand));
+    if (eigeneEntscheidung === null) {
+      return { ergebnis: "pruefung_nicht_moeglich" };
+    }
+    befund = eigeneEntscheidung;
+  } catch {
+    return { ergebnis: "pruefung_nicht_moeglich" };
+  }
+  return befund.dublette
+    ? {
+        ergebnis: "aehnlich",
+        treffer: trefferVon(befund.koId),
+        aehnlichkeit: befund.aehnlichkeit,
+      }
+    : { ergebnis: "keine" };
+}
+
 // WP-D-CLEAN (Pedis Testdaten-Aufräumen): Provider, deren Import-Provenienz zum Aufräum-Umfang
 // gehört (kleingeschrieben verglichen — Adapter schreiben "Confluence"/"Jira").
 export const IMPORT_CLEANUP_PROVIDERS = ["confluence", "jira"] as const;
@@ -265,9 +362,59 @@ export class LibraryService {
   }
 
   // SCRUM-116: JSON-Re-Import erzeugt Review-Kandidaten (keine stille Bulk-Anlage).
+  //
+  // ==============================================================================================
+  // JOB 3050 — AUCH DIE REVIEW-WARTESCHLANGE PRÜFT AUF DUBLETTEN, STATT ZEICHEN ZU VERGLEICHEN.
+  // ==============================================================================================
+  //
+  // WAS FALSCH WAR: `duplicate` entstand hier aus `seen.has(`${title}|${statement}`)`. Ein
+  // Satzpunkt, ein anderes Leerzeichen oder eine andere Groß-/Kleinschreibung genügte für ein
+  // `false` — und `duplicate` ist keine Anzeige, sondern eine ENTSCHEIDUNG: bei `false` legt
+  // `reviewImportCandidate('accept')` ein Wissensobjekt an. Der Weg über die Warteschlange erzeugte
+  // damit genau die zweite Karteikarte, die JOB 3023 auf dem direkten Weg abgestellt hat.
+  //
+  // WAS JETZT GILT — DIESELBE REGEL, DERSELBE PORT, ZWEI PÄSSE (Reihenfolge und Begründung wie in
+  // `importJson`): erst der exakte `title|statement`-Schlüssel, der jetzt den getroffenen Partner
+  // MITTRÄGT, dann für alles Übrige die injizierte `DublettenPruefung`. Dieses Modul legt die Regel
+  // nicht aus und kennt ihre Schwelle nicht; sie wird in der Kompositionswurzel verdrahtet
+  // (`services/app/src/routes/library-routes.ts`, dieselbe Instanz wie für `importJson`).
+  //
+  // ----------------------------------------------------------------------------------------------
+  // WARUM DER PORT HIER ADDITIV IST UND NICHT WIE BEI `importJson` EIN PFLICHT-PARAMETER
+  // ----------------------------------------------------------------------------------------------
+  //
+  // `importJson` hatte GENAU EINEN Aufrufer, also konnte JOB 3023 dort den Compiler als erste Linie
+  // nehmen. Diese Methode hat DREI Produktions-Aufrufer: die Bibliotheksroute (unten verdrahtet)
+  // und die beiden Anker-/Re-Sync-Wege des Confluence-Imports (`confluence-import.ts:251`,
+  // `routes/confluence-import-routes.ts:1035`). Ein Pflicht-Parameter hätte deren Dateien
+  // mitgeändert — Dateien, die der Auftrag ausdrücklich nicht freigibt (JOB 3050 R1 wurde genau
+  // dafür rot). Ein Schutz, der nur um den Preis fremder Dateien PFLICHT werden kann, wird darum
+  // hier auf zwei anderen Linien erzwungen, und beide sind schärfer als eine Signatur:
+  //
+  //   1. LAUFZEIT, FAIL-CLOSED (`erzwingeDublettenpruefung`, dieselbe zweite Linie wie bei
+  //      `importJson`): fehlt der Port, gilt JEDER Eintrag, dessen Textfrage gestellt wird, als
+  //      NICHT PRÜFBAR (`pruefung_nicht_moeglich`). Ohne Port entsteht also NIE eine unbemerkte
+  //      Dublette — es entsteht ein Kandidat, der ehrlich sagt, dass nicht geprüft wurde, und aus
+  //      dem der `accept` kein Wissensobjekt macht. „Dann eben ohne Prüfung einreihen" gibt es
+  //      nicht.
+  //   2. WÄCHTER (`tests/re-import-dubletten/port-aufrufer-waechter.test.ts`): er liest den
+  //      Nicht-Test-Baum über den Syntaxbaum und macht JEDEN Aufruf ohne Port rot. Die zwei
+  //      Anker-Aufrufer stehen dort namentlich mit Begründung; ein NEUER Aufrufer ohne Port wird
+  //      rot, und genau das war der Zweck des Pflicht-Parameters („ein zweiter Aufbau dürfte ihn
+  //      typgültig weglassen, ohne dass es jemand merkt").
+  //
+  // Die Vorgabe `actor = "system"` bleibt deshalb ebenfalls stehen (kein
+  // `useDefaultParameterLast`-Konflikt mehr) — kein Aufrufer wird angefasst.
+  //
+  // EHRLICHE KOSTENGRENZE, wörtlich dieselbe wie bei `importJson`: der zweite Pass rechnet je NICHT
+  // exakt getroffenem Eintrag gegen den ganzen Bestand (O(neu × bestand) Textvergleiche). Ein
+  // Deckel wäre eine EIGENE Regel darüber, welche Kandidaten wegfallen dürfen — ein zweites Gehirn
+  // neben dem Port. Die Wiedereinspielung, der häufige Fall, läuft ohnehin über Pass 1; der
+  // externalId-/Re-Sync-Strang (Confluence/Jira) fragt die Textregel gar nicht.
   async createImportCandidates(
     rawItems: readonly ImportItem[],
     actor = "system",
+    pruefeDublette?: DublettenPruefung,
   ): Promise<ImportCandidate[]> {
     // SCRUM-515: an der Ingest-Grenze runtime-validieren, BEVOR das Item in die Queue/den Bestand geht.
     // WP-IC-PAKET-1d (bens sammel9-ROT): ZENTRALE Codec-Erzeugungsregel. Dies ist DIE eine Stelle,
@@ -280,48 +427,117 @@ export class LibraryService {
       ...this.withSanitizedConfidentiality(item),
       textCodec: "decoded",
     }));
+    const pruefung = erzwingeDublettenpruefung(pruefeDublette);
     const existing = await this.koService.list();
-    const seen = new Set(existing.map((ko) => `${ko.title}|${ko.statement}`));
+    // Pass 1: exakter Schlüssel → getroffener Partner. Der ERSTE Träger eines Schlüssels gewinnt,
+    // damit die genannte Id bei Altbestand-Dubletten deterministisch ist (wie in `importJson`).
+    const exakt = new Map<string, string>();
+    for (const ko of existing) {
+      const key = `${ko.title}|${ko.statement}`;
+      if (!exakt.has(key)) {
+        exakt.set(key, ko.id);
+      }
+    }
+    // Der Vergleichsbestand für Pass 2 — er WÄCHST um jeden aufnahmefähigen Kandidaten dieses
+    // Laufs (Platzhalter, s. `vergleichsPlatzhalter`), damit dieselbe Sache zweimal in EINER
+    // Sicherung nur eine Karteikarte wird.
+    const bestand: KnowledgeObject[] = [...existing];
+    // Rückauflösung: Vergleichs-Id → Kandidat. Steht die Id nicht drin, ist der Treffer ein echtes
+    // Wissensobjekt des Bestands (auch dann, wenn ein fremder Port eine unbekannte Id nennt — die
+    // Auskunft gibt wieder, was die Prüfung gesagt hat, und erfindet nichts).
+    const kandidatJeVergleichsId = new Map<string, string>();
+    const trefferVon = (vergleichsId: string): Dublettentreffer => {
+      const kandidatId = kandidatJeVergleichsId.get(vergleichsId);
+      return kandidatId === undefined
+        ? { art: "wissensobjekt", koId: vergleichsId }
+        : { art: "kandidat", kandidatId };
+    };
     const at = new Date(this.now()).toISOString();
     // SCRUM-510 R2b: Items mit externalId werden per externalId dedupliziert — aber NUR innerhalb dieses
     // Imports (mehrfach dasselbe Quell-Objekt in einer Scheibe). Eine Kollision mit dem BESTAND ist keine
     // zu überspringende Dublette, sondern ein Re-Sync/Update (wird beim Annehmen als Upsert behandelt).
     // WP-SHIP8-FIX (bens F3): der Dedup-Schlüssel ist provider+externalId — gleiche externalId aus
     // ZWEI Quellen (Confluence-pageId vs. Jira-Key) ist KEINE Dublette.
+    // JOB 3050: dieser Strang bleibt Zeichen für Zeichen, wie er ist — die Textfrage wird hier
+    // ausdrücklich NICHT gestellt (`nicht_gestellt`), sonst würde ein Re-Sync zur Dublette.
     const batchExternalIds = new Set<string>();
-    const created = items.map<ImportCandidate>((item) => {
-      let duplicate: boolean;
-      // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → title|statement-Dedup für ALLE Items.
-      if (this.externalUpsert && item.externalId) {
-        const batchKey = `${importProviderKey(item.provider)}@${item.externalId}`;
-        duplicate = batchExternalIds.has(batchKey);
-        batchExternalIds.add(batchKey);
-      } else {
-        duplicate = seen.has(`${item.title}|${item.statement}`);
-      }
-      return {
-        id: this.genId(),
-        item,
-        status: "neu",
-        duplicate,
-        note: null,
-        koId: null,
-        createdAt: at,
-      };
-    });
     // SCRUM-510 (WP3): externalId-Kandidaten ATOMAR idempotent einreihen (partieller UNIQUE-Index / ON
     // CONFLICT DO NOTHING) — ein bereits offener Kandidat derselben (externalId, sourceVersion) wird NICHT
     // erneut angelegt, auch bei nebenläufigen Läufen/Retries. Nur der externalId-Upsert-Strang nutzt das;
     // der JSON-Re-Import (externalUpsert aus) fügt unverändert per plain insert ein. `persisted` zählt/
     // liefert NUR die tatsächlich eingereihten Kandidaten (ehrliche Zählung, keine Phantom-Kandidaten).
+    //
+    // ============================================================================================
+    // JOB 3050 RUNDE 3 (bens Befund) — EIN NICHT EINGEREIHTER KANDIDAT DARF KEIN TREFFER SEIN.
+    // ============================================================================================
+    //
+    // Runde 2 hatte ZWEI Schleifen: erst alle Kandidaten bauen und dabei den Vergleichsbestand
+    // wachsen lassen, DANACH einreihen. Zwischen beiden lag die Persistenzgrenze — und
+    // `insertIfAbsent` darf `false` liefern. Ben hat es über die echte Route gemessen: ein
+    // Anker-Kandidat, der wegen eines bereits offenen Kandidaten NICHT eingereiht wurde, stand
+    // trotzdem im Vergleichsbestand, und ein späterer Eintrag desselben Laufs bekam als Treffer
+    // seine `kandidatId` — eine Id, die das anschließende `GET /api/library/import/candidates`
+    // nicht mehr kennt. Eine erfundene Auskunft, genau das, was dieser Auftrag ausschließt.
+    //
+    // DIE ANTWORT: EINE Schleife. Der Platzhalter kommt erst in `bestand`/`exakt`/
+    // `kandidatJeVergleichsId`, NACHDEM die Einreihung bestätigt ist. Ein abgelehnter Kandidat
+    // existiert für die folgenden Einträge nicht — er kann darum auch nicht genannt werden.
+    // Ausgegeben wird weiterhin nur `persisted`; die genannte `kandidatId` ist damit immer die
+    // eines Kandidaten, der wirklich in der Warteschlange steht.
     const persisted: ImportCandidate[] = [];
-    for (const candidate of created) {
+    for (const item of items) {
+      const id = this.genId();
+      let duplicate: boolean;
+      let dublettenbefund: KandidatDublettenbefund;
+      // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → Dublettenprüfung für ALLE Items.
+      if (this.externalUpsert && item.externalId) {
+        const batchKey = `${importProviderKey(item.provider)}@${item.externalId}`;
+        duplicate = batchExternalIds.has(batchKey);
+        batchExternalIds.add(batchKey);
+        dublettenbefund = { ergebnis: "nicht_gestellt" };
+      } else {
+        dublettenbefund = kandidatDublettenbefund(item, pruefung, exakt, bestand, trefferVon);
+        duplicate =
+          dublettenbefund.ergebnis === "identisch" || dublettenbefund.ergebnis === "aehnlich";
+      }
+      const candidate: ImportCandidate = {
+        id,
+        item,
+        status: "neu",
+        duplicate,
+        dublettenbefund,
+        note: null,
+        koId: null,
+        createdAt: at,
+      };
       const inserted =
-        this.externalUpsert && candidate.item.externalId
+        this.externalUpsert && item.externalId
           ? await this.candidates.insertIfAbsent(candidate)
           : await this.candidates.insert(candidate).then(() => true);
-      if (inserted) {
-        persisted.push(candidate);
+      if (!inserted) {
+        // Nicht eingereiht (idempotenter No-op): dieser Kandidat existiert nicht. Er geht weder in
+        // die Antwort noch in den Vergleich der folgenden Einträge — sonst wäre seine Id ein
+        // Verweis auf etwas, das die Warteschlange nie gesehen hat.
+        continue;
+      }
+      persisted.push(candidate);
+      // NUR ein Kandidat, aus dem ein `accept` wirklich Bestand machen KANN, wird Teil des
+      // Vergleichs für die FOLGENDEN Einträge. Ein als Dublette erkannter oder nicht prüfbarer
+      // Kandidat legt nichts an — er darf darum auch nichts blockieren.
+      //
+      // Ein Kandidat des externalId-/Re-Sync-Strangs steht hier MIT drin, obwohl seine eigene
+      // Textfrage nicht gestellt wurde: sein Inhalt landet im Bestand (Erstanlage oder Upsert),
+      // also soll ein SPÄTERER Eintrag desselben Laufs, der dieselbe Sache ohne Herkunftsanker
+      // mitbringt, ihn treffen. Das ist die Richtung, die Dubletten VERHINDERT; die Gegenrichtung
+      // (eine Bestandskollision als Dublette zu lesen) bleibt ausgeschlossen.
+      if (kandidatErzeugtWissensobjekt(candidate)) {
+        const platzhalter = vergleichsPlatzhalter(id, item);
+        bestand.push(platzhalter);
+        kandidatJeVergleichsId.set(platzhalter.id, id);
+        const key = `${item.title}|${item.statement}`;
+        if (!exakt.has(key)) {
+          exakt.set(key, platzhalter.id);
+        }
       }
     }
     await this.audit?.record({
@@ -728,7 +944,13 @@ export class LibraryService {
           note: note?.trim() ? note.trim() : null,
           ...reviewedStamp,
         };
-      } else if (candidate.duplicate) {
+      } else if (!kandidatErzeugtWissensobjekt(candidate)) {
+        // JOB 3050: hier landen ZWEI Fälle, und der Kandidat sagt selbst, welcher es war —
+        // `dublettenbefund` reist unverändert mit in die Antwort. (a) als Dublette erkannt: es
+        // wird nichts angelegt und nichts überschrieben (Verhalten wie vor JOB 3050). (b) die
+        // Dublettenfrage war nicht entscheidbar: fail-closed wird ebenfalls nichts angelegt —
+        // eine unbemerkte Dublette im Bestand ist teurer als ein Eintrag, der nicht anlegt und
+        // dessen Grund am Kandidaten steht.
         resolution = { status: "angenommen", ...reviewedStamp };
       } else {
         // SCRUM-515-Vervollständigung: ein PERSISTIERTER Alt-Kandidat (vor 515 eingereiht; PgCandidateRepo
@@ -759,7 +981,9 @@ export class LibraryService {
       // nie ein „angenommen" ohne vollständige Belege.
       let stampedId = createdKoId;
       let ankerUnsettled = false;
-      if (stampedId === null && action === "accept" && !candidate.duplicate) {
+      // JOB 3050: dieselbe EINE Stelle wie oben — die Anker-Suche gilt genau für die Kandidaten,
+      // für die überhaupt ein Wissensobjekt entstanden sein KANN.
+      if (stampedId === null && action === "accept" && kandidatErzeugtWissensobjekt(candidate)) {
         try {
           const stamped = await this.koService.findByImportCandidateId(id);
           if (stamped) {

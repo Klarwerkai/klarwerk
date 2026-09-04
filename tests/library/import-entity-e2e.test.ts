@@ -67,7 +67,14 @@ describe("WP-IC-PAKET-1b ROT-1: Entities werden an der QUELLE dekodiert (E2E)", 
     const services = buildServices();
     buildApp(services); // Vertragskonform aufbauen; wir nutzen die Services direkt (read-only Routenfrei)
     const items = PAGES.map((p) => mapConfluencePageToImportItem(p as ConfluencePage, OPTS));
-    const candidates = await services.library.createImportCandidates(items, "tester");
+    // JOB 3050: `createImportCandidates` nimmt die Dublettenregel als Port entgegen; fehlt er, gilt
+    // jeder Eintrag fail-closed als nicht prüfbar und der `accept` legt kein Wissensobjekt an.
+    // Dieser Fall messt den DEKODIERTEN Titel bis ins angenommene KO, braucht also das Anlegen —
+    // die übergebene Prüfung trifft bewusst nie (Dubletten messen die Fälle in
+    // `tests/re-import-dubletten/`).
+    const candidates = await services.library.createImportCandidates(items, "tester", () => ({
+      dublette: false as const,
+    }));
     expect(candidates.length).toBe(2);
     expect(candidates[0]?.item.title).toBe("Wartung für Pumpen");
     expect(candidates[0]?.item.title).not.toContain("&uuml;");
@@ -106,7 +113,11 @@ describe("WP-IC-PAKET-1c ROT-2: Decode-Marker verhindert Doppel-Dekodieren (E2E)
     // Kandidat + angenommenes KO tragen den kanonischen Literal-Wert.
     const services = buildServices();
     buildApp(services);
-    const candidates = await services.library.createImportCandidates([item], "tester");
+    // JOB 3050: Port ausdrücklich übergeben (s. Begründung oben) — dieser Fall braucht das
+    // angenommene KO, um das Literal bis dorthin zu belegen.
+    const candidates = await services.library.createImportCandidates([item], "tester", () => ({
+      dublette: false as const,
+    }));
     const first = candidates[0];
     if (!first) {
       throw new Error("Kandidat fehlt");

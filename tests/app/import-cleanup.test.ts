@@ -11,6 +11,12 @@ import type { KoSource } from "../../services/knowledge-object";
 import { InMemoryCandidateRepo } from "../../services/library-analytics";
 import { PgCandidateRepo } from "../../services/library-analytics";
 
+// JOB 3050: der Kandidatenweg nimmt die Dublettenregel als Port entgegen; fehlt er, gilt jeder
+// Eintrag fail-closed als nicht prüfbar. Die Fälle dieser Datei messen das Aufräumen (Zielmenge,
+// Digest, Papierkorb), nicht die Dublettenfrage — die übergebene Prüfung trifft darum bewusst nie
+// und lässt ihren Bestandsvertrag unverändert.
+const OHNE_TEXTDUBLETTE = () => ({ dublette: false as const });
+
 function importSource(provider: string, externalId: string): KoSource {
   return {
     id: `src-${provider}-${externalId}`,
@@ -72,6 +78,7 @@ async function cleanupApp() {
       { title: "Kandidat 2", statement: "s", type: "best_practice", category: "K" },
     ],
     "tester",
+    OHNE_TEXTDUBLETTE,
   );
   return { app, services, headers, ownKoId: own.id };
 }
@@ -380,6 +387,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
         await services.library.createImportCandidates(
           [{ title: "Parallel eingereiht", statement: "s", type: "best_practice", category: "K" }],
           "parallel",
+          OHNE_TEXTDUBLETTE,
         );
       }
       return realDelete(id, actor, opts);
@@ -794,6 +802,7 @@ describe("WP-D-CLEAN: POST /api/admin/import/cleanup", () => {
       await services.library.createImportCandidates(
         [{ title: "Nachzügler", statement: "s", type: "best_practice", category: "K" }],
         "tester",
+        OHNE_TEXTDUBLETTE,
       );
       const outdated = await app.inject({
         method: "POST",
