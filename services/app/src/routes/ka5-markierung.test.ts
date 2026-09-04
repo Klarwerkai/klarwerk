@@ -9,17 +9,29 @@
 // Bestand wirklich aussieht: 50 gleich gute, validierte Treffer zum Thema und EIN Objekt, das
 // genauer passt, aber im gedeckelten Vorfilter untergeht.
 //
-//   · Die 50 Füller tragen „Montage" und „Bremsleitung" im Text und „Kaltstart" als SCHLAGWORT.
+//   · Die 50 Füller tragen „Montage" und „Bremsleitung" im TITEL und „Kaltstart" als SCHLAGWORT.
 //     Damit werden sie von JEDEM Frageterm gefunden (die Suche liest Schlagwörter mit), zählen aber
-//     nur mit zwei Termen auf die Relevanz (das Relevanzmaß liest Titel/Aussage/Fußnoten/Fließtext,
-//     KEINE Schlagwörter — `refMatchText`). Sie sind die Menge, die den Vorfilter füllt.
-//   · Objekt B trägt alle drei Frageterme im TEXT und ist deshalb das relevantere Objekt. Sein Trust
-//     ist niedriger (40 gegen 99), und weil die Quellabfrage je Term auf 50 Treffer deckelt und nach
-//     Trust ordnet (`ASK_PREFILTER_TERM_LIMIT`), fällt B über jeden Frageterm auf Platz 51 — es
-//     erreicht die Antwortkette gar nicht erst. Das ist der Befund aus JOB 531, nur diesmal von der
-//     anderen Seite: ein seltener, spezifischer Begriff rettet den passenden Treffer.
+//     nur mit zwei Termen auf die Relevanz (das Relevanzmaß `refMatchText` liest Titel, Aussage,
+//     Bild-Fußnoten und Fließtext — KEINE Schlagwörter). Sie füllen den Vorfilter.
+//   · Objekt B trägt alle drei Frageterme im TEXT und ist deshalb das relevantere Objekt: vier
+//     Fragetoken gegen zwei. Sein Trust ist niedriger (40 gegen 99), und über JEDEN der drei
+//     Frageterme fällt es aus der je Term auf 50 Treffer gedeckelten Quellabfrage
+//     (`ASK_PREFILTER_TERM_LIMIT`) auf Platz 51 — es erreicht die Antwortkette gar nicht erst. Das
+//     ist der Befund aus JOB 531, nur diesmal von der anderen Seite: ein seltener, spezifischer
+//     Begriff rettet den passenden Treffer.
 //   · Genau diesen seltenen Begriff bringt die MARKIERUNG mit („Ölwannenschraube"). Er steht in
 //     keiner Frage und in keinem Füller — nur in B und in der markierten Passage.
+//
+// WARUM „KALTSTART" BEI B IM FLIESSTEXT STEHT UND NICHT IM TITEL (JOB 3053, NACHGEFÜHRT). Bis dahin
+// stand der Begriff in B's Titel, und das genügte, weil der Deckel seine 50 Plätze allein nach
+// TRUST füllte. Seit `KoService.findCandidates` `deckelauswahl: "trefferguete"` anfordert,
+// entscheidet im Deckel zuerst die FUNDSTELLE: ein Titeltreffer (Güte 4) schlägt ein Schlagwort
+// (Güte 2). B überlebte den Deckel damit schon über den blossen Frageterm „Kaltstart" — die
+// Markierung hätte nichts mehr zu entscheiden gehabt, und dieser Fall hätte eine Wirkung
+// vorgeführt, die von der Markierung gar nicht kam. Der Fließtext ist die Fundstelle, die BEIDE
+// Bedingungen erfüllt: Güte 0 (der Deckel wirft B weiter über jeden Frageterm hinaus), aber im
+// Relevanztext enthalten (G27, `refMatchText`) — B bleibt also das relevantere Objekt, genau wie
+// vorher. Am Fall selbst und an seinen Erwartungen ist nichts geändert.
 //
 // Ohne Markierung antwortet Klara also aus einem beliebigen der 50 gleich guten Füller; mit
 // Markierung nennt sie B. Beide Antworten sind quellenbelegt — es entsteht keine Antwort aus dem
@@ -62,7 +74,7 @@ async function aufbauen(): Promise<Aufbau> {
   const anlegen = async (
     title: string,
     statement: string,
-    tags: string[] = [],
+    weiter: { tags?: string[]; bodyHtml?: string } = {},
   ): Promise<string> => {
     const res = await app.inject({
       method: "POST",
@@ -73,7 +85,8 @@ async function aufbauen(): Promise<Aufbau> {
         statement,
         type: "best_practice",
         category: "KA5",
-        tags,
+        tags: weiter.tags ?? [],
+        ...(weiter.bodyHtml ? { bodyHtml: weiter.bodyHtml } : {}),
         neededValidations: 1,
       },
     });
@@ -93,13 +106,14 @@ async function aufbauen(): Promise<Aufbau> {
       await anlegen(
         `Bremsleitung Montage Hinweis ${i}`,
         "Die Montage der Bremsleitung erfolgt nach Plan.",
-        ["Kaltstart"],
+        { tags: ["Kaltstart"] },
       ),
     );
   }
   const b = await anlegen(
-    "Bremsleitung Montage im Kaltstart",
-    "Bei der Montage der Bremsleitung im Kaltstart zuerst die Ölwannenschraube lösen.",
+    "Bremsleitung Montage",
+    "Bei der Montage der Bremsleitung zuerst die Ölwannenschraube lösen.",
+    { bodyHtml: "<p>Das gilt auch beim Kaltstart.</p>" },
   );
   // Der ECHTE Schreibweg der Bewertungslage (`KoService.setValidationState`) — kein Repo-Zugriff an
   // der Fachschicht vorbei. B bleibt validiert und sinkt nur im Trust unter die Füller.

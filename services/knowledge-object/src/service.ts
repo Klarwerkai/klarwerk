@@ -3014,6 +3014,47 @@ export class KoService {
   // (kein Textinhalt über den Draht), erst danach werden GENAU diese Objekte body-frei geladen.
   // Die Reihenfolge der Trefferliste (validiert zuerst, dann Trust) bleibt erhalten; die feine
   // Relevanz-/Top-K-Auswahl macht weiterhin der Reasoner (`selectCandidates`).
+  //
+  // ==============================================================================================
+  // JOB 3053 — WER IM DECKEL ÜBERLEBT: HIER IST DIE FUNDSTELLE DAS MASS, NICHT DIE VERLÄSSLICHKEIT.
+  // ==============================================================================================
+  //
+  // DIE ANGABE, DIE DIESE METHODE MACHT: `deckelauswahl: "trefferguete"` (JOB 3048,
+  // `search-projection.ts:945`). Sie wirkt AUSSCHLIESSLICH zusammen mit `limit` und entscheidet
+  // allein darüber, WER bei überfülltem Deckel überhaupt in der Menge steht.
+  //
+  // WARUM. Eine gedeckelte Suche kann zwei verschiedene Fragen meinen. Die Bibliothek fragt „gib
+  // mir die 200 Treffer, die ich einer Liste zeigen will" — dort ist die Verlässlichkeit das
+  // richtige Maß, und sie fragt deshalb ohne diese Angabe: `LIBRARY_SEARCH_HIT_LIMIT = 200` steht
+  // in `services/library-analytics/src/service.ts:208` und wird ebendort in :1334 gesetzt. Ihre
+  // Trefferliste bleibt damit Zeichen für Zeichen dieselbe; sie ist neben dieser Methode der
+  // einzige Aufrufer von `findSearchHits` (per Grep erhoben, s. unten).
+  //
+  // Dieser Weg dagegen fragt „gib mir die Objekte, aus denen etwas werden soll". Was hier
+  // nicht in der Vorauswahl steht, kann gar nicht erst Antwort, Dublette oder Widerspruch werden —
+  // ein hoher Vertrauenswert nützt nichts, wenn das Objekt gar nicht vom Fragebegriff HANDELT.
+  // Deshalb überlebt zuerst die stärkere Fundstelle (Titel vor Aussage vor Einordnung vor Fußnote
+  // vor Körper), und erst bei Gleichstand wieder validiert ↓, Trust ↓, koId.
+  //
+  // DIE DREI VERBRAUCHER, vollständig erhoben mit
+  // `grep -rn "findCandidates(" --include='*.ts' . | grep -v node_modules | grep -v test` —
+  // für alle drei ist die Fundstelle das richtige Maß, und alle drei erben die Angabe, weil sie
+  // durch DIESE eine Methode gehen:
+  //   · KLARA (`services/ask/src/service.ts:560`, Deckel 50 je Fragebegriff): das Objekt, das den
+  //     Fragebegriff im Titel trägt, ist die Quelle, nach der Pedi fragt. Fällt es im Deckel weg,
+  //     meldet Klara eine Wissenslücke, obwohl das Wissen im Haus liegt.
+  //   · TEXTPRÜFUNG (`services/app/src/check-text-detection.ts:232`, Deckel
+  //     `DETECTION_CANDIDATE_CAP` = 20): eine Dublette ist ein Objekt zum SELBEN Thema. Ein
+  //     Titeltreffer ist dafür das stärkere Signal als ein hoher Trust; was der Deckel wegwirft,
+  //     kann keine Überschneidung mehr melden.
+  //   · WISSENSPRÜFUNG (`services/app/src/knowledge-check.ts:134`, Deckel 40): derselbe Grund. Ein
+  //     Widerspruch, der nie in den Kandidatenpool kam, wird stillschweigend zu „kein Widerspruch".
+  //
+  // WAS SICH NICHT ÄNDERT: die AUSGABEREIHENFOLGE. Sie bleibt `validiert ↓, Trust ↓, koId` — das
+  // Titel-Objekt kommt HEREIN, es rückt nicht nach vorn. Kein Objekt wird dadurch
+  // vertrauenswürdiger dargestellt, als es ist. `findSearchHits` behält seinen Vertrag: ohne
+  // Angabe gilt weiter `vertrauen`, ein Aufrufer, der nichts sagt, bekommt nichts Neues. Und ohne
+  // greifendes `limit` ist die Angabe wirkungslos — dann deckelt der Aufrufer selbst.
   async findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]> {
     // G27 R1 (04 §5): HIER STAND DER GEDECKELTE NACHZUG — er ist ersatzlos entfallen.
     //
@@ -3025,7 +3066,11 @@ export class KoService {
     // Vollständigkeit ist jetzt Sache des Gates: eine Instanz, die sucht, ist freigegeben, und eine
     // freigegebene Instanz ist vollständig projiziert. Ist sie es nicht, wirft die Suche — sie
     // liefert keine von der Reihenfolge abhängige Teilmenge.
-    const hits = await this.findSearchHits({ terms: query.terms, limit: query.limit });
+    const hits = await this.findSearchHits({
+      terms: query.terms,
+      limit: query.limit,
+      deckelauswahl: "trefferguete",
+    });
     if (hits.length === 0) {
       return [];
     }
