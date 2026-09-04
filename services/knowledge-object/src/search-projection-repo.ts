@@ -10,14 +10,24 @@ import {
 } from "./metadata-projection-repo";
 import type { KoRepo } from "./repo";
 import {
+  DECKELAUSWAHL_VORGABE,
   type KoSearchHit,
   type KoSearchProjection,
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
   expandSearchTerms,
   normalizeSearchTerms,
+  suchTrefferguete,
 } from "./search-projection";
 import { KoError } from "./types";
+
+// Ein Treffer samt der beiden Werte, die über seine Reihenfolge entscheiden — die Zeile, auf der
+// `findActive` seine Auswahl (Deckel) und seine Ausgabe ordnet.
+interface Gefunden {
+  hit: KoSearchHit;
+  validiert: boolean;
+  trust: number;
+}
 
 // ================================================================================================
 // G27 — DIE PERSISTENZ DER SUCHPROJEKTION (Vertrag + In-Memory-Adapter)
@@ -711,8 +721,9 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     if (terms.length === 0) {
       return [];
     }
-    // Ohne `limit` bleibt die Treffermenge ungedeckelt (s. KoSearchQuery) — die Bibliothek
-    // verliert dadurch keinen Treffer still.
+    // Ohne `limit` bleibt die Treffermenge ungedeckelt (s. KoSearchQuery) — wer keinen Deckel
+    // setzt, verliert keinen Treffer still. (JOB 3048: das ist NICHT dasselbe wie „die Bibliothek";
+    // die deckelt seit JOB 2689 auf 200. Wer deckelt, sagt mit `deckelauswahl`, wer überleben soll.)
     const limit = query.limit === undefined ? undefined : Math.max(0, Math.floor(query.limit));
     if (limit === 0) {
       return [];
@@ -746,7 +757,7 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
     const metadaten = new Map<string, KoMetadataProjection>(
       (await this.metadata.findMany(aktiv.map((p) => p.koId))).map((m) => [m.koId, m]),
     );
-    const gefunden: Array<{ hit: KoSearchHit; validiert: boolean; trust: number }> = [];
+    const gefunden: Gefunden[] = [];
     for (const projection of aktiv) {
       const ko = kos.get(projection.koId);
       if (!ko) {
@@ -760,13 +771,39 @@ export class InMemoryKoSearchProjectionRepo implements KoSearchProjectionRepo {
         gefunden.push({ hit, validiert: ko.status === "validiert", trust: ko.trust ?? 0 });
       }
     }
-    const sortiert = gefunden.sort(
-      (a, b) =>
-        Number(b.validiert) - Number(a.validiert) ||
-        b.trust - a.trust ||
-        a.hit.koId.localeCompare(b.hit.koId),
-    );
-    return (limit === undefined ? sortiert : sortiert.slice(0, limit)).map((x) => x.hit);
+    // JOB 3048: ZWEI ORDNUNGEN MIT ZWEI AUFGABEN — und sie stehen nicht nebeneinander, sondern
+    // ineinander.
+    //
+    //   `ausgabeordnung`  ist Zeichen für Zeichen die bisherige Regel und bleibt die EINZIGE
+    //                     Aussage darüber, in welcher Reihenfolge Treffer den Adapter verlassen.
+    //   `auswahlordnung`  entscheidet AUSSCHLIESSLICH über das Überleben im Deckel. Sie stellt der
+    //                     Ausgabeordnung die Treffergüte VORAN — aber NUR, wenn der Aufrufer sie
+    //                     angefordert hat (`deckelauswahl: "trefferguete"`). Bei gleicher Güte und
+    //                     im Vorgabefall `vertrauen` fällt sie auf dieselbe Ausgabeordnung zurück.
+    //                     Das ist kein zweiter Sortierpfad: es ist DIESELBE Regel mit einem
+    //                     vorangestellten Schlüssel, der im Vorgabefall neutral ist (0).
+    //
+    // WARUM DER SCHLÜSSEL BEDINGT IST (BEN, Runde 1): weil `limit` nicht nur der Kandidatenweg
+    // setzt. Die Bibliothek deckelt seit JOB 2689 auf 200; ein unbedingter Gütevorrang hätte ihre
+    // Trefferliste still verschoben. Im Vorgabefall ist der Ausdruck `0 || ausgabeordnung(a, b)`
+    // — also buchstäblich die alte Auswahl, und das anschließende zweite Sortieren einer bereits
+    // total geordneten Liste ist die Identität.
+    const guetevorrang = (query.deckelauswahl ?? DECKELAUSWAHL_VORGABE) === "trefferguete";
+    const ausgabeordnung = (a: Gefunden, b: Gefunden) =>
+      Number(b.validiert) - Number(a.validiert) ||
+      b.trust - a.trust ||
+      a.hit.koId.localeCompare(b.hit.koId);
+    const auswahlordnung = (a: Gefunden, b: Gefunden) =>
+      (guetevorrang ? suchTrefferguete(b.hit.matched) - suchTrefferguete(a.hit.matched) : 0) ||
+      ausgabeordnung(a, b);
+    if (limit === undefined) {
+      return gefunden.sort(ausgabeordnung).map((x) => x.hit);
+    }
+    return gefunden
+      .sort(auswahlordnung)
+      .slice(0, limit)
+      .sort(ausgabeordnung)
+      .map((x) => x.hit);
   }
 
   async missingActive(limit: number): Promise<string[]> {

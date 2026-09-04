@@ -3,10 +3,12 @@ import { type Queryable, type TxContext, pgQueryable } from "../../db-tx";
 import type { KoMetadataProjectionRepo } from "./metadata-projection-repo";
 import { PgKoMetadataProjectionRepo } from "./metadata-projection-repo-pg";
 import {
+  DECKELAUSWAHL_VORGABE,
   type KoSearchHit,
   type KoSearchProjection,
   type KoSearchQuery,
   SEARCH_PROJECTION_VERSION,
+  SUCH_TREFFERGUETE,
   type SearchProjectionStatus,
   expandSearchTerms,
   normalizeSearchTerms,
@@ -385,6 +387,24 @@ function ilike(ausdruck: string, parameter: string): string {
   return `${ausdruck} ILIKE ${parameter} ESCAPE '\\'`;
 }
 
+// JOB 3048: die Spalten, die `findActive` WIRKLICH ausliefert — genau die, aus denen `leseTreffer`
+// einen `KoSearchHit` baut. Die gedeckelte Form wählt in einer Unterabfrage aus und muss danach
+// sagen können, was aus ihr herauskommt; die Hilfsspalten der Auswahl (Güte, Validiert-Merkmal,
+// Trust) bleiben ausdrücklich drinnen und verlassen den Adapter nicht.
+const AUSGABESPALTEN = [
+  "ko_id",
+  "ko_version",
+  "projection_version",
+  "content_hash",
+  "status",
+  "language",
+  "m_title_text",
+  "m_statement_text",
+  "m_category_text",
+  "m_tag_text",
+  "m_caption_text",
+] as const;
+
 export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
   readonly metadata: KoMetadataProjectionRepo;
 
@@ -578,8 +598,8 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
     // Beide Speicher muessen dieselbe Kandidatenmenge sehen — sonst faende „klep" das „Ventil" je
     // nach Betriebsart einmal und einmal nicht.
     const terms = expandSearchTerms(normalizeSearchTerms(query.terms));
-    // Ohne `limit` entfällt die LIMIT-Klausel (s. KoSearchQuery) — die Bibliothek verliert
-    // dadurch keinen Treffer still.
+    // Ohne `limit` entfällt die LIMIT-Klausel (s. KoSearchQuery) — wer keinen Deckel setzt,
+    // verliert keinen Treffer still. (JOB 3048: die Bibliothek SETZT einen, seit JOB 2689 auf 200.)
     const limit = query.limit === undefined ? undefined : Math.max(0, Math.floor(query.limit));
     if (terms.length === 0 || limit === 0) {
       return [];
@@ -623,22 +643,94 @@ export class PgKoSearchProjectionRepo implements KoSearchProjectionRepo {
         orsSearch.push(ilike(`COALESCE(md.${feld}, '')`, p));
       }
     }
-    let limitKlausel = "";
-    if (limit !== undefined) {
-      params.push(limit);
-      limitKlausel = ` LIMIT $${params.length}`;
-    }
-    const flag = (feld: string) => `(${feldOrs[feld]?.join(" OR ")}) AS m_${feld}`;
-    const metaFlag = (feld: string) => `(${metaOrs[feld]?.join(" OR ")}) AS m_${feld}`;
-    const sql = `
-      SELECT p.ko_id, p.ko_version, p.projection_version, p.content_hash, p.status, p.language,
+    // Der Fundstellen-Ausdruck je Feld — GENAU EINER, und er wird zweimal gelesen: als `m_*`-Flag
+    // (daraus baut der Adapter unten `matched`) und in der Güteleiter der Auswahl. Damit gibt es
+    // im Statement keinen zweiten Güte-Ausdruck, der von `matched` abweichen könnte.
+    const feldTreffer = (feld: string) => `(${feldOrs[feld]?.join(" OR ")})`;
+    const metaTreffer = (feld: string) => `(${metaOrs[feld]?.join(" OR ")})`;
+    const flag = (feld: string) => `${feldTreffer(feld)} AS m_${feld}`;
+    const metaFlag = (feld: string) => `${metaTreffer(feld)} AS m_${feld}`;
+    const spalten = `p.ko_id, p.ko_version, p.projection_version, p.content_hash, p.status, p.language,
              ${flag("title_text")}, ${flag("statement_text")}, ${metaFlag("category_text")},
-             ${metaFlag("tag_text")}, ${flag("caption_text")}
-        FROM ko_search_projections p
+             ${metaFlag("tag_text")}, ${flag("caption_text")}`;
+    const rumpf = `FROM ko_search_projections p
         JOIN kos k ON ${AKTIVE_VERSION}
         LEFT JOIN ko_metadata_projections md ON md.ko_id = p.ko_id
-       WHERE ${fassungsBedingung} AND (${orsSearch.join(" OR ")})
-       ORDER BY (k.status='validiert') DESC, (k.data->>'trust')::int DESC NULLS LAST, p.ko_id${limitKlausel}`;
+       WHERE ${fassungsBedingung} AND (${orsSearch.join(" OR ")})`;
+    // Die AUSGABEORDNUNG — unverändert seit G27 und die einzige Aussage darüber, in welcher
+    // Reihenfolge Treffer diesen Adapter verlassen.
+    const ausgabeordnung = `(k.status='validiert') DESC, (k.data->>'trust')::int DESC NULLS LAST, p.ko_id`;
+    // ============================================================================================
+    // JOB 3048 — DER VORGABEFALL: DIE ANWEISUNG DES BASISSTANDS, ZEICHEN FÜR ZEICHEN.
+    // ============================================================================================
+    //
+    // Sie gilt für JEDE Abfrage, die die Güteauswahl nicht ausdrücklich anfordert — ohne `limit`
+    // (dann gibt es nichts auszuwählen) UND mit `limit`. Der zweite Fall ist die Berichtigung aus
+    // Runde 1: die BIBLIOTHEK deckelt seit JOB 2689 auf 200
+    // (`library-analytics/src/service.ts:1334`), und eine unbedingte Güteauswahl hätte ihre
+    // Trefferliste still verschoben. Weil hier keine Unterabfrage entsteht, ist die Gleichheit
+    // mit dem Basisstand nicht behauptet, sondern durch die Bauform gesichert.
+    const auswahl = query.deckelauswahl ?? DECKELAUSWAHL_VORGABE;
+    if (limit === undefined || auswahl !== "trefferguete") {
+      let limitKlausel = "";
+      if (limit !== undefined) {
+        params.push(limit);
+        limitKlausel = ` LIMIT $${params.length}`;
+      }
+      const sqlVertrauen = `
+      SELECT ${spalten}
+        ${rumpf}
+       ORDER BY ${ausgabeordnung}${limitKlausel}`;
+      return this.leseTreffer(sqlVertrauen, params);
+    }
+    params.push(limit);
+    const limitParameter = `$${params.length}`;
+    // ============================================================================================
+    // DER KANDIDATENWEG: DIE AUSWAHL FOLGT DER GÜTE, DIE AUSGABE BLEIBT DIE ALTE.
+    // ============================================================================================
+    //
+    // DER BEFUND (Auftrag JOB 3048 §2.2): hier stand für ALLE Deckel `ORDER BY
+    // (k.status='validiert') DESC, trust DESC NULLS LAST, p.ko_id LIMIT n` — eine Auswahl OHNE
+    // Relevanzmaß. Sobald mehr als `n` validierte Objekte einen Fragebegriff im Fließtext tragen,
+    // füllten sie das Limit, und das Objekt mit dem Begriff im TITEL fiel heraus, wenn sein Trust
+    // niedriger war. Diese Form entsteht deshalb nur noch für `deckelauswahl: "trefferguete"`.
+    //
+    // DIE ZWEI EBENEN, und warum es zwei sein müssen:
+    //   INNEN  entscheidet die Treffergüte über das ÜBERLEBEN — dieselbe Leiter wie im
+    //          Speicher-Adapter (`suchTrefferguete`, search-projection.ts), hier als `CASE` über
+    //          exakt dieselben Fundstellen-Ausdrücke, aus denen auch `matched` entsteht. Bei
+    //          gleicher Güte entscheidet unverändert validiert/Trust/ko_id — sonst wäre die
+    //          Auswahl bei Gleichstand nicht deterministisch und die beiden Speicher könnten
+    //          verschiedene Überlebende liefern.
+    //   AUSSEN steht die UNVERÄNDERTE Ausgabeordnung. Sie wirkt auf der bereits gedeckelten
+    //          Menge; die Güte kommt in ihr nicht vor.
+    //
+    // `ORDER BY treffer_guete …` bezieht sich auf die Ausgabespalten der Unterabfrage (in
+    // PostgreSQL zulässig) — deshalb steht der `CASE` GENAU EINMAL im Statement.
+    const guete = `CASE
+               WHEN ${feldTreffer("title_text")} THEN ${SUCH_TREFFERGUETE.titel}
+               WHEN ${feldTreffer("statement_text")} THEN ${SUCH_TREFFERGUETE.aussage}
+               WHEN ${metaTreffer("category_text")} OR ${metaTreffer("tag_text")} THEN ${SUCH_TREFFERGUETE.einordnung}
+               WHEN ${feldTreffer("caption_text")} THEN ${SUCH_TREFFERGUETE.fussnote}
+               ELSE ${SUCH_TREFFERGUETE.koerper}
+             END`;
+    const sql = `
+      SELECT ${AUSGABESPALTEN.map((spalte) => `auswahl.${spalte}`).join(", ")}
+        FROM (
+      SELECT ${spalten},
+             ${guete} AS treffer_guete,
+             (k.status='validiert') AS ist_validiert,
+             (k.data->>'trust')::int AS trust_wert
+        ${rumpf}
+       ORDER BY treffer_guete DESC, ${ausgabeordnung}
+       LIMIT ${limitParameter}
+      ) auswahl
+       ORDER BY auswahl.ist_validiert DESC, auswahl.trust_wert DESC NULLS LAST, auswahl.ko_id`;
+    return this.leseTreffer(sql, params);
+  }
+
+  /** Der gemeinsame Lesevorgang beider Formen — EINE Abbildung Zeile → Treffer, kein zweiter Weg. */
+  private async leseTreffer(sql: string, params: unknown[]): Promise<KoSearchHit[]> {
     const res = await this.pool.query<
       Pick<
         ProjectionRow,

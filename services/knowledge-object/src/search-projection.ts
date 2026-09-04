@@ -834,17 +834,131 @@ export interface KoSearchHit {
   };
 }
 
+// ================================================================================================
+// JOB 3048 — DIE TREFFERGÜTE: WER IM DECKEL ÜBERLEBT, ENTSCHEIDET DIE FUNDSTELLE.
+// ================================================================================================
+//
+// DER BEFUND. Die gedeckelte KANDIDATENABFRAGE (`KoService.findCandidates`) füllte ihre Plätze nach
+// `validiert ↓, trust ↓, koId`. Das ist eine Rangfolge über die VERLÄSSLICHKEIT eines Objekts und
+// sagt nichts darüber, wie gut es zur Frage passt. Sobald mehr als `limit` validierte Objekte einen
+// Fragebegriff irgendwo im Fließtext tragen, fällt ausgerechnet das Objekt heraus, das ihn im
+// TITEL trägt, wenn sein Trust niedriger ist — und die Antwort lautet „keine belastbare
+// Grundlage", obwohl das Wissen im Haus liegt.
+//
+// WAS DIESE FUNKTION IST: eine reine Abbildung `matched` → Rang. Sie erfindet KEINE Zahl und KEINE
+// neue Messung; sie liest ausschließlich die Fundstellen, die beide Adapter ohnehin schon
+// berechnen und ausliefern (das Feld `matched` oben). Es gibt deshalb im ganzen Haus genau EINE
+// Aussage darüber, welcher Treffer der bessere ist.
+//
+// WARUM EINE LEITER UND KEIN PUNKTEKONTO — die Entscheidung, die eine Gewichtung erspart:
+// Der Rang ist die STÄRKSTE Fundstelle des Treffers, nicht die Summe seiner Fundstellen. Ein
+// Punktekonto müsste beantworten, wie viele Fußnotentreffer einen Titeltreffer aufwiegen — dafür
+// gibt es in diesem Haus keine Messung, und eine erfundene Zahl behauptete etwas, das niemand
+// belegen kann. Die Leiter behauptet nur, was ihre Reihenfolge sagt, und ist deshalb auch in SQL
+// als ein `CASE` ohne Arithmetik abbildbar (`search-projection-repo-pg.ts`).
+//
+// DIE REIHENFOLGE, Stufe für Stufe begründet:
+//
+//   titel (4)      Der Titel ist die erklärte Sache des Objekts. Steht der Begriff dort, HANDELT
+//                  das Objekt von ihm — die stärkste Aussage, die dieser Datenbestand über
+//                  Einschlägigkeit machen kann.
+//   aussage (3)    Die Aussage ist der verdichtete Kern. Sie handelt ebenfalls vom Begriff, ist
+//                  aber länger als der Titel und streift deshalb häufiger Nachbarthemen.
+//   einordnung (2) Kategorie UND Schlagwort teilen sich EINE Stufe: beides ist von einem Menschen
+//                  erklärte Zuordnung, und für eine Ordnung ZWISCHEN den beiden gibt es keinen
+//                  Beleg — eine erfundene wäre genau die Zahl, die diese Leiter vermeidet. Sie
+//                  stehen unter Titel und Aussage, weil sie grob sind: eine Kategorie trifft jedes
+//                  Objekt ihres Regals und unterscheidet innerhalb davon nichts.
+//   fussnote (1)   Die Bildunterschrift ist ein kurzer, bewusst geschriebener Text — aber zu EINEM
+//                  Bild, nicht zum Objekt. Sie steht über dem Körper, weil dort jedes Wort gewählt
+//                  ist, und unter der Einordnung, weil sie nur einen Ausschnitt beschreibt.
+//   koerper (0)    Der Fließtext. `matched.body` heißt seit G27 unverändert „getroffen, und in
+//                  KEINEM der Kurzfelder" — also der beiläufige Fund. Er bleibt ein Treffer; er
+//                  verliert nur, wenn der Platz knapp wird.
+//
+// WAS SIE AUSDRÜCKLICH NICHT TUT — zwei Grenzen, beide aus der Prüfung von Runde 1:
+//
+//  1 SIE ÄNDERT DIE AUSGABEREIHENFOLGE NICHT. Beide Adapter geben ihre Treffer weiter in
+//    `validiert ↓, trust ↓, koId` aus; die Güte entscheidet allein darüber, WER bei gesetztem
+//    `limit` überhaupt in der Ausgabe steht.
+//  2 SIE GILT NICHT FÜR JEDEN DECKEL, SONDERN NUR FÜR DEN, DER SIE ANFORDERT. Das ist die
+//    Berichtigung eines Fehlers aus Runde 1: dort wirkte sie auf JEDE gedeckelte Abfrage, und der
+//    Auftrag hatte behauptet, die Bibliothek setze kein `limit`. Sie tut es — seit JOB 2689 fragt
+//    `LibraryService.search` mit `LIBRARY_SEARCH_HIT_LIMIT = 200`
+//    (`services/library-analytics/src/service.ts:1334`). Die Güte hätte dort also still die
+//    Trefferliste verschoben. Wer die Güteauswahl will, sagt es jetzt: `deckelauswahl`.
+//
+// STAND HEUTE, ausgesprochen statt verschwiegen: NIEMAND fordert sie an. Die eine Stelle, die es
+// tun müsste, ist `KoService.findCandidates` (`service.ts:3028`) — der gemeinsame Kandidatenweg von
+// Klara, Textprüfung und Wissensprüfung. Diese Datei liegt nicht in den Zielpfaden von JOB 3048;
+// die Vorprüfung des Taktgebers weist einen Diff dort ab. Die Regel ist damit gebaut, geprüft und
+// WIRKUNGSLOS, bis die Zielpfade um `service.ts` erweitert werden. Der Nachweis, dass sich diese
+// Unterscheidung nicht im Adapter treffen lässt, steht als Fall K1 in
+// `tests/suchraum-deckel/deckel-waehlt-nach-treffergute.test.ts`.
+export const SUCH_TREFFERGUETE = {
+  titel: 4,
+  aussage: 3,
+  einordnung: 2,
+  fussnote: 1,
+  koerper: 0,
+} as const;
+
+export function suchTrefferguete(matched: KoSearchHit["matched"]): number {
+  if (matched.title) {
+    return SUCH_TREFFERGUETE.titel;
+  }
+  if (matched.statement) {
+    return SUCH_TREFFERGUETE.aussage;
+  }
+  if (matched.category || matched.tag) {
+    return SUCH_TREFFERGUETE.einordnung;
+  }
+  if (matched.caption) {
+    return SUCH_TREFFERGUETE.fussnote;
+  }
+  return SUCH_TREFFERGUETE.koerper;
+}
+
+// ================================================================================================
+// JOB 3048 — WER IM DECKEL ÜBERLEBT, IST EINE ANGABE DES AUFRUFERS, KEINE ANNAHME DER SUCHE.
+// ================================================================================================
+//
+// DER FEHLER, DEN DIESER TYP JETZT VERHINDERT (BEN, Runde 1, Korrekturpflicht 1): eine gedeckelte
+// Suche kann ZWEI VERSCHIEDENE FRAGEN meinen, und bis hierher konnte der Adapter sie nicht
+// unterscheiden —
+//
+//   „gib mir die 200 Treffer, die ich einer Liste zeigen will"   → die Bibliothek. Sie will die
+//       verlässlichsten zuerst; ihre Menge ist seit JOB 2689 gedeckelt
+//       (`LIBRARY_SEARCH_HIT_LIMIT = 200`, library-analytics/src/service.ts:1334) und darf sich
+//       durch diesen Job NICHT verschieben.
+//   „gib mir die 50 Objekte, aus denen eine Antwort werden soll"  → der Kandidatenweg
+//       (`KoService.findCandidates` für Ask, Textprüfung und Wissensprüfung). Hier ist die
+//       Verlässlichkeit das falsche Maß: was nicht in der Vorauswahl steht, kann gar nicht erst
+//       Antwort werden.
+//
+// EINE VORGABE, DIE NICHTS ÄNDERT. Ohne Angabe gilt `vertrauen` — Zeichen für Zeichen das
+// Verhalten des Basisstands. Ein Aufrufer, der nichts sagt, bekommt nichts Neues; das ist die
+// Absicherung dagegen, dass ein künftiger dritter Deckel wieder still die Regel wechselt.
+//
+// `limit` deckelt QUELLSEITIG und bleibt OPTIONAL. Weggelassen heißt „der Aufrufer deckelt selbst"
+// — nicht „unbemerkt abgeschnitten"; dann ist auch `deckelauswahl` ohne jede Wirkung.
+export const DECKELAUSWAHL = ["vertrauen", "trefferguete"] as const;
+export type Deckelauswahl = (typeof DECKELAUSWAHL)[number];
+export const DECKELAUSWAHL_VORGABE: Deckelauswahl = "vertrauen";
+
 // Die Abfrage des gemeinsamen Suchvertrags. `terms` sind bereits zerlegte Inhaltsbegriffe
 // (Bibliothek: die eine Suchzeile; Ask: die Fragetoken) — ODER-verknüpft, wie der bestehende
 // Ask-Prefilter.
-//
-// `limit` deckelt QUELLSEITIG und ist bewusst OPTIONAL. Ask setzt ihn (die Kandidatenmenge einer
-// Frage ist ohnehin gedeckelt — ASK_CANDIDATE_PREFILTER_LIMIT). Die Bibliothek setzt ihn NICHT:
-// ihre Trefferliste war vor G27 unbegrenzt, und ein stiller Deckel würde bei einer breiten Anfrage
-// Treffer verschwinden lassen, ohne es zu sagen. Weggelassen heißt „der Aufrufer deckelt selbst" —
-// nicht „unbemerkt abgeschnitten".
 export interface KoSearchQuery {
   terms: readonly string[];
+  /**
+   * WER IM DECKEL ÜBERLEBT (JOB 3048). Wirkt ausschließlich zusammen mit `limit`.
+   *   `vertrauen`     — validiert ↓, Trust ↓, koId. Die Vorgabe und das alte Verhalten.
+   *   `trefferguete`  — zuerst die Fundstelle (`suchTrefferguete`), bei Gleichstand unverändert
+   *                     validiert ↓, Trust ↓, koId.
+   * Die AUSGABEREIHENFOLGE ist in beiden Fällen dieselbe und bleibt `validiert ↓, Trust ↓, koId`.
+   */
+  deckelauswahl?: Deckelauswahl;
   limit?: number;
 }
 
