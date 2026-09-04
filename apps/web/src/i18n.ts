@@ -251,6 +251,9 @@ const de = {
   "intake.live.similarLead": "Ähnliches existiert schon:",
   "intake.live.similarAsk": "Ergänzen oder neu?",
   "intake.live.conflictLead": "Achtung — könnte widersprechen:",
+  // JOB 3045: Label der Fundortzeile. Behauptet nichts über den Inhalt, nennt nur den Ort — was
+  // dahinter steht, kommt roh aus dem Bestand (Kategorie) bzw. aus der StatusPill (Zustand).
+  "intake.live.fundort": "Liegt in:",
   "intake.live.openKo": "Ansehen",
   "intake.live.pending": "Ähnliches gefunden? Nein. Auf Widerspruch noch nicht geprüft.",
   "intake.live.unavailable": "Prüfung derzeit nicht verfügbar.",
@@ -5161,6 +5164,7 @@ const en: typeof de = {
   "intake.live.similarLead": "Something similar already exists:",
   "intake.live.similarAsk": "Add to it or start fresh?",
   "intake.live.conflictLead": "Careful — this may contradict:",
+  "intake.live.fundort": "Sits in:",
   "intake.live.openKo": "View",
   "intake.live.pending": "Nothing similar found. Conflict check not yet run.",
   "intake.live.unavailable": "Check currently unavailable.",
@@ -9460,6 +9464,7 @@ const nl: typeof de = {
   "intake.live.similarLead": "Iets soortgelijks bestaat al:",
   "intake.live.similarAsk": "Aanvullen of nieuw?",
   "intake.live.conflictLead": "Let op — dit kan in tegenspraak zijn met:",
+  "intake.live.fundort": "Staat in:",
   "intake.live.openKo": "Bekijken",
   "intake.live.pending":
     "Niets soortgelijks gevonden. Nog niet op tegenstrijdigheid gecontroleerd.",

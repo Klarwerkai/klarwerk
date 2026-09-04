@@ -70,10 +70,29 @@ export interface KoAttachment {
 // SCRUM-382: Ergebnis der Video-/Audio-Analyse (Transkript) — ehrlicher Engine-Status.
 // SCRUM-527: Ergebnis des Live-Checks (POST /api/knowledge/check). status ist ehrlich: „pending" =
 // die Widerspruchsprüfung konnte (mangels Modell) nicht laufen; similar bleibt dennoch gefüllt.
+//
+// JOB 3045 — DER FUNDORT KOMMT AM DRAHT AN UND WIRD HIER NICHT MEHR WEGGEWORFEN.
+// `koStatus`/`koCategory` bilden 1:1 den Serververtrag ab (services/app/src/knowledge-check.ts:31-44,
+// selbst die Spiegelung von check-text-detection.ts:80-83): derselbe Name, dieselbe Bedeutung,
+// dieselbe null-Regel. Ausdrücklich `| null` und NICHT optional (`?`): der Server sendet beide Felder
+// immer, ihr WERT ist die Aussage. `null` heißt „der Bestand sagt dazu nichts" — es heißt weder
+// „offen" noch „keine Kategorie vorhanden"; kein Platzhalter, kein Standardwert.
 export interface KnowledgeCheckResult {
   status: "done" | "pending" | "failed";
-  similar: { id: string; title: string; score: number }[];
-  conflicts: { id: string; title: string; reason: string }[];
+  similar: {
+    id: string;
+    title: string;
+    score: number;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  }[];
+  conflicts: {
+    id: string;
+    title: string;
+    reason: string;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  }[];
 }
 
 export interface MediaAnalysis {

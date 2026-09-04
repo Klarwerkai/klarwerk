@@ -8,14 +8,35 @@ import { INTAKE_MIN_LENGTH, type LiveVerdict } from "../../../lib/intakeSimilari
 // und nichts existiert. status "pending" (Widerspruch mangels Klassifikation/Modell NICHT geprüft) wird
 // als eigener, sichtbarer Zustand gezeigt — NIE als „neu, du bist die erste Person". status "failed" →
 // „Prüfung nicht verfügbar". Reihenfolge: Widerspruch > Ähnlich > (done→neu | pending | failed).
+//
+// JOB 3045: `koStatus`/`koCategory` werden REIN DURCHGEREICHT — kein `?? "offen"`, kein `?? ""`,
+// keine Ableitung, keine Umbenennung. Was der Server sagt (auch sein `null`), steht so im Verdict.
 export function mapKnowledgeCheck(r: KnowledgeCheckResult): LiveVerdict {
   const c = r.conflicts[0];
   if (c) {
-    return { status: "conflict", match: { koId: c.id, title: c.title, score: 1 } };
+    return {
+      status: "conflict",
+      match: {
+        koId: c.id,
+        title: c.title,
+        score: 1,
+        koStatus: c.koStatus,
+        koCategory: c.koCategory,
+      },
+    };
   }
   const s = r.similar[0];
   if (s) {
-    return { status: "similar", match: { koId: s.id, title: s.title, score: s.score } };
+    return {
+      status: "similar",
+      match: {
+        koId: s.id,
+        title: s.title,
+        score: s.score,
+        koStatus: s.koStatus,
+        koCategory: s.koCategory,
+      },
+    };
   }
   if (r.status === "done") {
     return { status: "new" }; // ehrlich geprüft, nichts gefunden

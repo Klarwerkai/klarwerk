@@ -1150,8 +1150,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
     // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Der Block ist
     // reine Auskunft: er bietet keine Bildbeschreibung an und trägt keinen eigenen Titel.
+    //
+    // JOB 3045 (Fundort im Live-Check): `komponenten` von 252 auf 253 NACHGEZOGEN. Die Datei
+    // `apps/web/src/components/capture/intake/LiveReactionZone.tsx` bringt GENAU EINE Komponente
+    // hinzu — `Fundort`, die Zeile unter dem Treffer, die Kategorie und Zustand des getroffenen
+    // Wissensobjekts nennt (und bei fehlender Aussage schweigt).
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Die
+    // Fundortzeile bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
+    // eigenen Titel (kein `documentTitle`-Prop) — sie erscheint nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 252,
+      komponenten: 253,
       anbieter: 1,
       traeger: 2,
     });

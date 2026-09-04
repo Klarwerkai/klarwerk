@@ -29,9 +29,18 @@ describe("LiveReactionZone", () => {
   });
 
   it("similar: Titel + Link zum bestehenden KO + Ergänzen-oder-neu", () => {
+    // JOB 3045: Fundort bewusst beidseitig `null` — dieser Fall prüft weiterhin genau den Titel-
+    // und Linkvertrag. Dass bei `null` KEINE Fundortzeile entsteht, prüft Fall C in
+    // tests/fundort-live-check/fundort-in-der-live-zone.test.tsx.
     const verdict: LiveVerdict = {
       status: "similar",
-      match: { koId: "k1", title: "Not-Aus vor Wartung", score: 0.6 },
+      match: {
+        koId: "k1",
+        title: "Not-Aus vor Wartung",
+        score: 0.6,
+        koStatus: null,
+        koCategory: null,
+      },
     };
     const html = render(<LiveReactionZone verdict={verdict} />);
     expect(html).toContain("Ähnliches existiert schon");
@@ -46,7 +55,7 @@ describe("LiveReactionZone", () => {
   it("conflict: Warnung + Link (andockbereit; vom Hook nicht erfunden)", () => {
     const verdict: LiveVerdict = {
       status: "conflict",
-      match: { koId: "k9", title: "Alte Regel", score: 0.5 },
+      match: { koId: "k9", title: "Alte Regel", score: 0.5, koStatus: null, koCategory: null },
     };
     const html = render(<LiveReactionZone verdict={verdict} />);
     expect(html).toContain("könnte widersprechen");

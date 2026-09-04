@@ -1,4 +1,4 @@
-import type { KnowledgeObject } from "../api/types";
+import type { KnowledgeObject, KoStatus } from "../api/types";
 
 // SCRUM-527 (WP2-Design): die Live-Reaktion braucht eine ehrliche Einschätzung „neu vs. ähnlich" schon
 // WÄHREND des Tippens. Es gibt (Stand 0b-Kartierung) KEINEN dedizierten Pro-Text-Ähnlichkeits-/
@@ -16,8 +16,29 @@ export type LiveVerdict =
   | { status: "pending" }
   // Die Prüfung ist fehlgeschlagen/nicht erreichbar — ehrlich sichtbar, nie als „neu" getarnt.
   | { status: "unavailable" }
-  | { status: "similar"; match: { koId: string; title: string; score: number } }
-  | { status: "conflict"; match: { koId: string; title: string; score: number } };
+  // JOB 3045: der Treffer trägt seinen FUNDORT mit — Kategorie und Zustand des getroffenen Objekts,
+  // wörtlich in Name, Bedeutung und Nullbarkeit wie am Draht (api/types.ts KnowledgeCheckResult).
+  // `null` heißt „dazu liegt keine Aussage vor"; die Fläche schweigt dann, statt zu raten.
+  | {
+      status: "similar";
+      match: {
+        koId: string;
+        title: string;
+        score: number;
+        koStatus: KoStatus | null;
+        koCategory: string | null;
+      };
+    }
+  | {
+      status: "conflict";
+      match: {
+        koId: string;
+        title: string;
+        score: number;
+        koStatus: KoStatus | null;
+        koCategory: string | null;
+      };
+    };
 
 // Ab hier lohnt die Prüfung (zu kurzer Text → idle, kein Rauschen).
 export const INTAKE_MIN_LENGTH = 15;
@@ -60,11 +81,21 @@ export function classifyIntake(
   if (text.trim().length < INTAKE_MIN_LENGTH) {
     return { status: "idle" };
   }
-  let best: { koId: string; title: string; score: number } | null = null;
+  let best: {
+    koId: string;
+    title: string;
+    score: number;
+    koStatus: KoStatus | null;
+    koCategory: string | null;
+  } | null = null;
   for (const ko of kos ?? []) {
     const score = textSimilarity(text, `${ko.title} ${ko.statement}`);
     if (!best || score > best.score) {
-      best = { koId: ko.id, title: ko.title, score };
+      // JOB 3045: dieser lokale Heuristikweg macht KEINE Fundortaussage. Der Fundort hat genau eine
+      // Herkunft — den Serververtrag aus /api/knowledge/check; hier daneben eine zweite aus dem
+      // geladenen Bestand abzuleiten, wäre exakt die zweite Wahrheit, die der Vertrag verbietet.
+      // `null` heißt deshalb hier: „dieser Weg sagt zum Fundort nichts" — und die Fläche schweigt.
+      best = { koId: ko.id, title: ko.title, score, koStatus: null, koCategory: null };
     }
   }
   if (best && best.score >= INTAKE_SIMILAR_THRESHOLD) {
