@@ -3831,7 +3831,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 // BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
 // ------------------------------------------------------------------------------------------------
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — 406 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft", () => {
+  it("die Grundgesamtheit ist nicht geschrumpft — 407 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft plus Splash", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
     // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
@@ -3885,12 +3885,18 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/lib/boardAuskunft.ts
     //
+    // JOB 3030 D4: von 406 auf 407 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
+    // dazugekommen, und sie traegt die Ladeflaeche, die seit der Umstellung auf nachgeladene Seiten
+    // an zwei Stellen gebraucht wird (App-Torwaechter und Suspense-Rueckfall in routes.tsx):
+    //
+    //     + apps/web/src/components/Splash.tsx
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 406: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts",
-    ).toBe(406);
+      "erwartet 407: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts + Splash.tsx",
+    ).toBe(407);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

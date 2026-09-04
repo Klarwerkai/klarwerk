@@ -442,6 +442,117 @@ function namensraumZugriffe(sf: ts.SourceFile, lokal: string): Set<string> {
   return raus;
 }
 
+// ------------------------------------------------------------------------------------------------
+// JOB 3030 — DER DYNAMISCHE IMPORT WAR EIN BLINDER FLECK, UND ER IST JETZT EINE KANTE.
+// ------------------------------------------------------------------------------------------------
+//
+// DER BEFUND, gemessen und nicht vermutet: Seit JOB 3030 lädt `apps/web/src/routes.tsx` jede Seite
+// über `lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })))` nach. Damit wurden
+// 27 Seiten-Exporte SCHLAGARTIG „ohne Aufrufer" gemeldet — obwohl sie unverändert auf denselben
+// Routen hängen und der echte Browser sie lädt. Der Grund liegt allein in diesem Wächter:
+//   · `importeAus` liest NUR `ImportDeclaration`-Knoten; ein `import(…)` ist eine CallExpression.
+//   · `verwendungen` zählt `m.Admin` zu Recht NICHT — `istEigenschaftsname` schliesst
+//     Eigenschaftsnamen aus, weil `o.x` normalerweise kein Modulsymbol liest.
+// Beim NAMENSRAUMIMPORT (`import * as m from "x"`) macht dieser Wächter genau die Ausnahme, die
+// hier fehlte: `namensraumZugriffe` liest dort `m.X` als Zugriff auf den Export `X`. Ein dynamischer
+// Import liefert DASSELBE Ding — ein Modul-Namensraumobjekt —, nur eben als Versprechen.
+//
+// DIE ERWEITERUNG IST BEWUSST ENG. Gezählt wird ein Zugriff nur, wenn BEIDES zusammenkommt: ein
+// dynamischer Import mit statisch lesbarem Pfad (`ts.isStringLiteralLike`, dieselbe Regel wie in
+// `tests/legal/mega61-rechtsseiten.test.tsx` — ein Template-Literal ohne Platzhalter ist ein
+// gültiger Pfad), UND ein Abgriff genau des Exportnamens am Namensraum dieses Imports. Ein `m.Admin` ohne
+// zugehörigen `import("./pages/Admin")` deckt nichts; das ist unten der Negativfall in A6. Damit
+// wird der Wächter GENAUER und nicht weicher: keine einzige Ausnahme kommt ins Register.
+/** Ein Zugriff auf einen Export über einen DYNAMISCHEN Import: `import("./x").then((m) => m.Y)`. */
+interface DynamischerZugriff {
+  /** Der Name im Zielmodul. */
+  readonly exportname: string;
+  /** Der Modulspezifikator, wie er dasteht. */
+  readonly spezifikator: string;
+}
+
+function dynamischeZugriffeAus(sf: ts.SourceFile): DynamischerZugriff[] {
+  const raus: DynamischerZugriff[] = [];
+
+  /**
+   * Was aus einer Bindung folgt, die einen Modul-Namensraum aufnimmt:
+   *   `(m) => … m.Y …`   → jeder Abgriff `m.<Name>` im Teilbaum
+   *   `({ Y }) => …`      → das Feld selbst (die Destrukturierung IST der Abgriff)
+   */
+  const ausNamensraum = (name: ts.BindingName, wo: ts.Node, spezifikator: string): void => {
+    if (ts.isIdentifier(name)) {
+      const lokal = name.text;
+      const gehe = (n: ts.Node): void => {
+        if (
+          ts.isPropertyAccessExpression(n) &&
+          ts.isIdentifier(n.expression) &&
+          n.expression.text === lokal
+        ) {
+          raus.push({ exportname: n.name.text, spezifikator });
+        }
+        ts.forEachChild(n, gehe);
+      };
+      gehe(wo);
+      return;
+    }
+    if (ts.isObjectBindingPattern(name)) {
+      for (const e of name.elements) {
+        const quelle = e.propertyName ?? e.name;
+        if (ts.isIdentifier(quelle)) {
+          raus.push({ exportname: quelle.text, spezifikator });
+        }
+      }
+    }
+  };
+
+  const gehe = (n: ts.Node): void => {
+    const erstes = ts.isCallExpression(n) ? n.arguments[0] : undefined;
+    if (
+      ts.isCallExpression(n) &&
+      n.expression.kind === ts.SyntaxKind.ImportKeyword &&
+      erstes &&
+      ts.isStringLiteralLike(erstes)
+    ) {
+      const spezifikator = erstes.text;
+      // Form 1: `import("./x").then((m) => …)` — die Form, die `lazy()` verlangt.
+      const zugriff = n.parent;
+      if (
+        zugriff &&
+        ts.isPropertyAccessExpression(zugriff) &&
+        zugriff.expression === n &&
+        zugriff.name.text === "then" &&
+        zugriff.parent &&
+        ts.isCallExpression(zugriff.parent)
+      ) {
+        const fn = zugriff.parent.arguments[0];
+        const erster =
+          fn && (ts.isArrowFunction(fn) || ts.isFunctionExpression(fn))
+            ? fn.parameters[0]
+            : undefined;
+        if (fn && erster) {
+          ausNamensraum(
+            erster.name,
+            (fn as ts.ArrowFunction | ts.FunctionExpression).body,
+            spezifikator,
+          );
+        }
+      }
+      // Form 2: `const m = await import("./x")` bzw. `const m = import("./x")`.
+      // Der Teilbaum ist hier die ganze Datei — dieselbe Ungenauigkeit, die `namensraumZugriffe`
+      // beim statischen Namensraumimport seit jeher hat, und aus demselben Grund tragbar: der
+      // SPEZIFIKATOR ist mitgebunden, ein zufällig gleichnamiges Objekt deckt also nichts, dessen
+      // Modulpfad nicht ohnehin dasteht.
+      const roh = zugriff && ts.isAwaitExpression(zugriff) ? zugriff.parent : zugriff;
+      if (roh && ts.isVariableDeclaration(roh) && roh.initializer) {
+        ausNamensraum(roh.name, sf, spezifikator);
+      }
+    }
+    ts.forEachChild(n, gehe);
+  };
+  ts.forEachChild(sf, gehe);
+  return raus;
+}
+
 /**
  * Löst einen Modulspezifikator zu einer Datei der Erhebung auf.
  *
@@ -507,6 +618,10 @@ function erhebe(
   const bekannt = new Set(dateien);
   const nutzung = new Map<string, Set<string>>();
   const importe = new Map<string, Importkante[]>();
+  // JOB 3030: die Kanten, die ein `import(…)` zieht — getrennt geführt, weil sie keinen lokalen
+  // Bezeichner im Modulscope haben (der Namensraum ist ein Lambda-Parameter) und deshalb nicht
+  // durch die `genutzt.has(k.lokal)`-Bedingung der statischen Kanten passen.
+  const dynamisch = new Map<string, DynamischerZugriff[]>();
   const reexporte = new Map<string, Reexport[]>();
   const eigeneExporte = new Map<string, Set<string>>();
   const baeume = new Map<string, ts.SourceFile>();
@@ -517,6 +632,7 @@ function erhebe(
     baeume.set(d, sf);
     nutzung.set(d, verwendungen(sf));
     importe.set(d, importeAus(sf));
+    dynamisch.set(d, dynamischeZugriffeAus(sf));
     reexporte.set(d, reexporteAus(sf));
     const eigene = exporteAus(d, sf);
     // Nach EXPORTNAME, nicht nach Bezeichner: `herkunft()` folgt Modulkanten, und die tragen
@@ -601,6 +717,23 @@ function erhebe(
           continue;
         }
         if (herkunft(modul, k.exportname) === f.datei) {
+          return true;
+        }
+      }
+    }
+    // JOB 3030: dieselbe Frage für den dynamischen Import. Der Vertrag bleibt derselbe und wird an
+    // KEINER Stelle lockerer: der Pfad muss auf genau die Datei auflösen, in der der Export
+    // definiert ist, und der abgegriffene Name muss der Exportname sein.
+    for (const [d, zugriffe] of dynamisch) {
+      if (d === f.datei) {
+        continue;
+      }
+      for (const z of zugriffe) {
+        if (z.exportname !== f.exportname) {
+          continue;
+        }
+        const modul = loeseModul(d, z.spezifikator, bekannt);
+        if (modul && herkunft(modul, z.exportname) === f.datei) {
           return true;
         }
       }
@@ -1084,6 +1217,15 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       "`expandSearchTerms` wird in den Suchadaptern gerufen — der Sammler muss das sehen",
     ).toBe(true);
 
+    // POSITIV, JOB 3030: eine NACHGELADENE Seite ist gerufen. `routes.tsx` holt `Admin` seit
+    // JOB 3030 über `lazy(() => import("./pages/Admin").then((m) => ({ default: m.Admin })))`;
+    // vor der Erweiterung von `dynamischeZugriffeAus` meldete der Waechter genau diese 27 Seiten
+    // als „ohne Aufrufer", obwohl sie unveraendert auf ihren Routen haengen.
+    expect(
+      fremdGenutzt(benannt("apps/web/src/pages/Admin.tsx", "Admin")),
+      "`Admin` wird in routes.tsx dynamisch nachgeladen — der Sammler muss das sehen",
+    ).toBe(true);
+
     // NEGATIV: eine blosse NENNUNG ist kein Aufruf.
     // `fuehreBestandsresetAus` steht in `build-app.ts:684` in einem KOMMENTAR und in
     // `db-tx/index.ts:26` als Barrel-Re-Export — beides darf nicht zaehlen.
@@ -1276,6 +1418,87 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       expect(namen(), "ein Standardexport OHNE Aufrufer muss weiterhin gefangen werden").toContain(
         "Waise",
       );
+    } finally {
+      rmSync(baum, { recursive: true, force: true });
+    }
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3030 — DER DYNAMISCHE IMPORT, IN BEIDE RICHTUNGEN GEFAHREN
+  // ----------------------------------------------------------------------------------------------
+  // Eine Erweiterung, die nur den einen Fall grün macht, den sie grün machen soll, ist keine
+  // Erweiterung, sondern eine Ausnahme mit anderem Namen. Deshalb hier vier Fälle: der Fang bleibt,
+  // die drei Schreibweisen des Nachladens zählen, und ein Abgriff OHNE zugehörigen dynamischen
+  // Import zählt weiterhin nicht.
+  it("A6 · NACHGELADEN IST GERUFEN: `import(…).then((m) => m.X)` deckt, eine blosse Nennung nicht", () => {
+    const baum = mkdtempSync(join(tmpdir(), "kw3030-lazy-"));
+    try {
+      const src = join(baum, "apps", "web", "src", "lib");
+      mkdirSync(src, { recursive: true });
+      const schreib = (name: string, text: string): void =>
+        writeFileSync(join(src, name), text, "utf8");
+      const namen = (): string[] =>
+        erhebe(baum, ["apps/web/src"], ["apps/web/src"]).ohneAufrufer.map((f) => f.name);
+
+      // (a) DER FANG BLEIBT: drei Exporte, die niemand nachlädt.
+      schreib("seite-a.ts", "export function LazySeiteA(): number {\n  return 1;\n}\n");
+      schreib("seite-b.ts", "export function LazySeiteB(): number {\n  return 2;\n}\n");
+      schreib("seite-c.ts", "export function LazySeiteC(): number {\n  return 3;\n}\n");
+      const gefangen = namen();
+      expect(gefangen, "ohne Nachladen bleibt der Export ohne Aufrufer").toContain("LazySeiteA");
+      expect(gefangen).toContain("LazySeiteB");
+      expect(gefangen).toContain("LazySeiteC");
+
+      // (b) DIE FORM AUS `routes.tsx`: `.then((m) => ({ default: m.X }))`.
+      schreib(
+        "router.ts",
+        'export const A = lazy(() => import("./seite-a").then((m) => ({ default: m.LazySeiteA })));\n' +
+          "declare function lazy(f: () => Promise<unknown>): unknown;\n",
+      );
+      // (c) DIE DESTRUKTURIERENDE FORM: `.then(({ X }) => …)`.
+      schreib(
+        "router-destrukturiert.ts",
+        'export const B = import("./seite-b").then(({ LazySeiteB }) => LazySeiteB);\n',
+      );
+      // (d) DIE AWAIT-FORM: `const m = await import("./x"); m.X`.
+      schreib(
+        "router-await.ts",
+        "export async function holeC(): Promise<unknown> {\n" +
+          '  const m = await import("./seite-c");\n' +
+          "  return m.LazySeiteC;\n" +
+          "}\n",
+      );
+      const nachGeladen = namen();
+      expect(
+        nachGeladen,
+        "`import(…).then((m) => m.X)` IST ein Aufrufer — genau die Form, mit der routes.tsx seine Seiten lädt",
+      ).not.toContain("LazySeiteA");
+      expect(nachGeladen, "die destrukturierende Form zählt genauso").not.toContain("LazySeiteB");
+      expect(nachGeladen, "die await-Form zählt genauso").not.toContain("LazySeiteC");
+
+      // (e) DIE GEGENRICHTUNG — ohne sie wäre die Erweiterung ein Freibrief.
+      // Hier steht `m.LazyWaise` ohne jeden dynamischen Import dieses Moduls: ein gewöhnlicher
+      // Eigenschaftszugriff auf ein beliebiges Objekt. Er darf nichts decken.
+      schreib("waise.ts", "export function LazyWaise(): number {\n  return 4;\n}\n");
+      schreib(
+        "falscher-abgriff.ts",
+        "export function greifeAb(m: { LazyWaise: number }): number {\n  return m.LazyWaise;\n}\n",
+      );
+      expect(
+        namen(),
+        "ein Eigenschaftszugriff OHNE dynamischen Import dieses Moduls darf NICHTS decken",
+      ).toContain("LazyWaise");
+
+      // (f) UND EIN DYNAMISCHER IMPORT AUF EIN ANDERES MODUL DECKT IHN AUCH NICHT.
+      // Der Pfad ist mitgebunden: `import("./seite-a")` sagt nichts über `waise.ts`.
+      schreib(
+        "falscher-pfad.ts",
+        'export const C = import("./seite-a").then((m) => m.LazyWaise);\n',
+      );
+      expect(
+        namen(),
+        "der Spezifikator ist Teil des Vertrags — ein Abgriff am FALSCHEN Modul deckt nichts",
+      ).toContain("LazyWaise");
     } finally {
       rmSync(baum, { recursive: true, force: true });
     }

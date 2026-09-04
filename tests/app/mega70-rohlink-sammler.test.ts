@@ -85,15 +85,27 @@ const FLAECHEN = ["Library", "Capture", "Ask"] as const;
 
 const routesQuelle = ohneKommentare(lies(join(WEB_SRC, "routes.tsx")));
 
-// Welche Nav-Ids rendert eine Seiten-Datei? `import { X } from "./pages/<Datei>"` + `id: X` in PAGES.
+// Welche Nav-Ids rendert eine Seiten-Datei? Komponente aus der Seitenbindung in routes.tsx +
+// `id: Komponente` in PAGES.
+//
+// JOB 3030: Bis zur Umstellung stand die Bindung als statische Importzeile
+// (`import { Library } from "./pages/Library"`); seit die Seiten nachgeladen werden, steht sie als
+// `const Library = lazy(() => import("./pages/Library").then((m) => ({ default: m.Library })));`.
+// Die ERHEBUNG bleibt dieselbe und bleibt an routes.tsx gebunden — nur die Form der Bindung ist eine
+// andere. `[^;]*?` begrenzt den Treffer auf GENAU eine Deklaration: ohne diese Grenze könnte der
+// Ausdruck über das nächste Semikolon hinauslaufen und einer Seite eine fremde Komponente zuordnen.
 function navIdsVonSeite(datei: string): string[] {
-  const importZeile = routesQuelle.match(
-    new RegExp(`import \\{([^}]+)\\} from "\\./pages/${datei}"`),
-  );
-  if (!importZeile?.[1]) {
+  const komponenten = [
+    ...routesQuelle.matchAll(
+      new RegExp(
+        `const\\s+([A-Za-z0-9]+)\\s*=\\s*lazy\\([^;]*?import\\("\\./pages/${datei}"\\)`,
+        "g",
+      ),
+    ),
+  ].map((m) => m[1] as string);
+  if (komponenten.length === 0) {
     return [];
   }
-  const komponenten = importZeile[1].split(",").map((k) => k.trim());
   return [...routesQuelle.matchAll(/^\s*([A-Za-z0-9]+):\s*([A-Za-z0-9]+),\s*$/gm)]
     .filter((m) => komponenten.includes(m[2] as string))
     .map((m) => m[1] as string);

@@ -1,4 +1,12 @@
-import { useTranslation } from "react-i18next";
+// JOB 3030: DIE ÜBERSETZUNGEN WERDEN HIER AUSDRÜCKLICH GEHOLT, NICHT MEHR NEBENBEI.
+// Bis zur Umstellung auf nachgeladene Seiten zog `routes.tsx` alle 24 Seitenmodule statisch mit, und
+// eines davon holte `./i18n` — die Anwendung bekam ihre Sprache also über eine Nebenwirkung der
+// Seitenimporte. Werden die Seiten nachgeladen, entfällt diese Kette: `useTranslation` fand keine
+// i18next-Instanz mehr (`NO_I18NEXT_INSTANCE`), und `LangPill` (`shell/Topbar.tsx:42`) fiel über
+// `i18n.language` — gemessen an mega63/64/65. In der ausgelieferten Anwendung war das nie sichtbar,
+// weil `main.tsx:6` `./i18n` selbst holt; wer aber `App` OHNE `main.tsx` montiert, stand ohne
+// Sprache da. Die Abhängigkeit ist real und gehört an die Wurzel der Anwendung, nicht an eine Seite.
+import "./i18n";
 import { AuthProvider, useSession } from "./app/AuthContext";
 // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung für die ganze App. Er steht hier und nicht in
 // der AppShell, weil er — anders als die Modalgrenze — keinen DOM-Anker braucht: `AppShell` hat drei
@@ -12,6 +20,9 @@ import { AuthScreens } from "./auth/AuthScreens";
 import { ResetScreen } from "./auth/ResetScreen";
 import { SsoCallback } from "./auth/SsoCallback";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+// JOB 3030: die Ladefläche wohnt seit dem Nachladen der Seiten in components/Splash.tsx — dieselbe
+// Fläche für den Anmeldeweg hier und für den Suspense-Rückfall in routes.tsx.
+import { Splash } from "./components/Splash";
 // AUFTRAG-mega61 Block A: die beiden Rechtsseiten liegen VOR dem Anmeldetor, wie /reset und
 // /sso/callback — deshalb hier und nicht in routes.tsx (das läuft erst innerhalb der Shell).
 import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/LegalPages";
@@ -19,13 +30,6 @@ import { LegalScreen, legalPageForPath, useRechtsseitenTor } from "./legal/Legal
 import { SignOutBlocked } from "./legal/SignOutBlocked";
 import { AppRoutes } from "./routes";
 import { AppShell } from "./shell/AppShell";
-
-function Splash(): JSX.Element {
-  const { t } = useTranslation();
-  return (
-    <div className="grid h-full place-items-center text-sm text-muted">{t("state.loading")}</div>
-  );
-}
 
 // Login-Gate: Ersteinrichtung → Login → Shell. Im Dev wird bei nicht
 // erreichbarem Backend die Shell direkt gezeigt (Vorschau ohne Login).

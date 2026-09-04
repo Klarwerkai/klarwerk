@@ -151,6 +151,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Pfadliteral, keine Marken. Nach einem Schnitt hängt sie an der Fixture: bricht `splitTaskpane`,
   // bricht ihre Basismessung mit. A2 hat die Datei gemeldet (`+ "tests/design/zielbild-keinwissen-
   // messung.test.ts"`), das Verzeichnis hat sie nicht still aufgenommen.
+  // JOB 3030 R5 (04.09.2026): DIESE ZEILE STAND KURZZEITIG ZWEIMAL. JOB 3030 D4 wurde auf `5409a62`
+  // gebaut und auf `9e1e573` eingebaut; dazwischen hatte JOB 3010 denselben Eintrag hier ergänzt.
+  // Beide Fassungen überlebten den Einbau, und `An object literal cannot have multiple properties
+  // with the same name` (TS1117) hielt `tools/build` rot. Es bleibt genau EIN Eintrag, dieser.
   "tests/design/zielbild-keinwissen-messung.test.ts": "fixture",
   // JOB 3046 D2: der Chromium-Vergleich der Lueckenflaeche laedt die Datei ueber ihr Pfadliteral in
   // einen echten Browser (Playwright-Route, dieselbe Strecke wie JOB 3016) — Griff `pfad`; die
