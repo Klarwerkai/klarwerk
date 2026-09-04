@@ -22,6 +22,15 @@ import { FacetActiveBar } from "../components/facets/FacetActiveBar";
 import { ConfidenceBar, KnowledgeTypeTag, KoAuthorLine, StatusPill } from "../components/trust";
 import { Button, Card, PageHeader, QueryState, cx } from "../components/ui";
 import { askAnswerHref } from "../lib/askQuestion";
+import {
+  AUFFRISCHUNG_HINWEIS_KLASSE,
+  AUFFRISCHUNG_HINWEIS_MARKE,
+  CONF_TONE_CLASS,
+  abfrageMitBestand,
+  auffrischungGescheitert,
+  auffrischungHinweisText,
+  vertraulichkeitsAuskunft,
+} from "../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability } from "../lib/conflictImpact";
 import { countByDemoKnowledge, isDemoKnowledge, ownKnowledgeEmptyHint } from "../lib/demoKnowledge";
 import { demoHref, isDemoContext } from "../lib/demoPilotPath";
@@ -962,8 +971,23 @@ export function Library(): JSX.Element {
             }}
             rangeLabelKey="lib.facet.rangeLabel"
           />
+          {/* JOB 3034 R2 · Zustandsmodell: scheitert die Auffrischung einer bereits geholten
+            Trefferliste (auch offline), bleiben die Zeilen samt Stufenkennzeichen stehen; der
+            Fehler steht als Hinweis darüber. Bis Runde 1 leerte `QueryState` bei `isError` die
+            ganze Liste (Begründung: lib/confidentiality.ts, `abfrageMitBestand`). */}
+          {auffrischungGescheitert(query) ? (
+            // Klassensatz, Marke und Text kommen aus `lib/confidentiality.ts` — dieselbe Aussage
+            // wie auf der Detailseite, aus derselben Quelle (JOB 3034 R3).
+            <output
+              aria-live="polite"
+              data-testid={AUFFRISCHUNG_HINWEIS_MARKE}
+              className={AUFFRISCHUNG_HINWEIS_KLASSE}
+            >
+              {auffrischungHinweisText(query, t, i18n.language)}
+            </output>
+          ) : null}
           <QueryState
-            query={query}
+            query={abfrageMitBestand(query)}
             emptyText={trimmedQ ? t("lib.emptyQuery", { q: trimmedQ }) : t("lib.empty")}
             // WP-SHIP9-S2 Paket 4 (W3): der generische Erststart-Block erscheint NUR bei wirklich
             // leerem Bestand (kein einziges KO). Bei 0 Treffern mit aktiver Suche/Filtern bleibt es
@@ -1130,6 +1154,28 @@ export function Library(): JSX.Element {
                                   {t(effReadiness.labelKey)}
                                 </span>
                                 <StatusPill status={deriveStatus(k)} />
+                                {/* JOB 3034: die Vertraulichkeitsstufe im Klartext — in der
+                                  Trefferzeile stand sie bisher GAR NICHT; wer eine Zeile ansah,
+                                  erfuhr über die Vertraulichkeit nichts. Derselbe Chip aus
+                                  derselben Funktion wie im Detail (`vertraulichkeitsAuskunft`),
+                                  dieselbe `rounded-pill`-Bauform und Größe wie die Nachbarpillen.
+                                  Die Listenroute schickt `confidentialityProvenance` (noch) nicht
+                                  mit — die Funktion wendet dann dieselbe Serverregel selbst an, ein
+                                  Altbestandstreffer ohne Stufe sagt also „Nicht eingestuft" und
+                                  gibt sich nicht als intern aus. */}
+                                {(() => {
+                                  const stufe = vertraulichkeitsAuskunft(k);
+                                  return (
+                                    <span
+                                      data-testid="ko-vertraulichkeitsstufe"
+                                      title={t("conf.field")}
+                                      aria-label={`${t("conf.field")}: ${t(stufe.labelKey)}`}
+                                      className={`shrink-0 rounded-pill px-2 py-0.5 font-mono text-[9.5px] font-semibold uppercase ${CONF_TONE_CLASS[stufe.tone]}`}
+                                    >
+                                      {t(stufe.labelKey)}
+                                    </span>
+                                  );
+                                })()}
                                 {/* SCRUM-357: sichtbares Konflikt-Signal direkt in der Trefferzeile. */}
                                 {impact.limited ? (
                                   <span

@@ -15,6 +15,13 @@ export type KoStatus = "offen" | "validiert";
 // „vertraulich"/„streng_vertraulich" gehen nie in externe Kontexte (Output Factory/Export).
 export type Confidentiality = "intern" | "vertraulich" | "streng_vertraulich";
 
+// JOB 3034: WOHER die Stufe stammt — zeichengleicher Spiegel von `ConfidentialityProvenance` in
+// `services/knowledge-object/src/confidentiality.ts:87`. Dort steht die Begründung ausgeschrieben:
+// „`unknown` — der Bestand trägt keine (oder keine gültige) Stufe. Ausdrücklich KEINE Aussage
+// ‚intern': niemand hat hier je eingestuft." Das Vokabular wird HIER nicht neu erfunden, sondern
+// übernommen; ein zweites Wort für denselben Gedanken wäre eine zweite Wahrheit.
+export type ConfidentialityProvenance = "ko" | "unknown";
+
 export interface HistoryEntry {
   version: number;
   at: string;
@@ -240,7 +247,9 @@ export interface KnowledgeObject {
   author: string;
   neededValidations: number;
   assignments: string[];
-  // SCRUM-415: Vertraulichkeitsstufe (fehlt = „intern"). Vertrauliche KOs gehen nie in externe Kontexte.
+  // SCRUM-415: Vertraulichkeitsstufe. Für den ZUGRIFF gilt „fehlt = intern" (sichtbarkeit.ts:39-43);
+  // für die ANZEIGE gilt das ausdrücklich NICHT — dort entscheidet `confidentialityProvenance`
+  // darunter. Vertrauliche KOs gehen nie in externe Kontexte.
   //
   // JOB 3027 R2 · WARUM AUCH `null`: seit JOB 3009 geben mehrere Leserouten die Stufe als
   // ausdrückliche Auskunft aus (`discloseConfidentiality`, services/knowledge-object/src/
@@ -250,6 +259,11 @@ export interface KnowledgeObject {
   // Beleglage mitliefert, sagt allein der Routenvertrag (`ValidationBoardKo` weiter unten) — nur
   // dort ist `null` von „diese Antwort trägt die Auskunft nicht" unterscheidbar.
   confidentiality?: Confidentiality | null;
+  // JOB 3034: WOHER die Stufe stammt — der Detailabruf schickt sie mit
+  // (`services/app/src/routes/ko-routes.ts:598` → `discloseConfidentiality`), die Listenroute
+  // (noch) nicht. Deshalb OPTIONAL: fehlt das Feld, wendet die Oberfläche dieselbe Regel selbst an
+  // (`lib/confidentiality.ts`). Vokabular: `services/knowledge-object/src/confidentiality.ts:87`.
+  confidentialityProvenance?: ConfidentialityProvenance;
   // JOB 679 / D2 (K1.2, Weg A): der Erfassungsweg, aus dem dieses Objekt entstanden ist — Spiegel
   // von `services/knowledge-object/src/types.ts`. Bis JOB 679 endete die Herkunft am Entwurf; seit
   // Weg A reicht `toKoInput` sie durch, und die Oberfläche kann sie ehrlich anzeigen.
@@ -304,7 +318,8 @@ export interface KnowledgeObject {
 // WARUM `confidentiality: Confidentiality | null` UND NICHT `?: Confidentiality`: `null` ist hier
 // eine AUSSAGE („niemand hat hier je eingestuft") und kein fehlender Wert. Der Unterschied ist der
 // ganze Punkt dieser Route — die Begründung steht am Server ausgeschrieben (board-herkunft.ts:5-18).
-export type ConfidentialityProvenance = "ko" | "unknown";
+// `ConfidentialityProvenance` selbst steht oben bei `Confidentiality` (JOB 3034) — ein Wort, eine
+// Definition, hier nur verwendet.
 
 /** Der Erfassungsweg — dieselbe Wertemenge wie am Wissensobjekt, nur ohne das „fehlt". */
 export type KoOrigin = NonNullable<KnowledgeObject["origin"]>;
@@ -569,6 +584,11 @@ export interface DraftPayload {
   bodyHtml?: string | null; // KW-STR: WYSIWYG-Body
   // SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern").
   confidentiality?: Confidentiality;
+  // JOB 3034: dieselbe Herkunftsangabe wie am Wissensobjekt, damit ein Entwurf mit DERSELBEN
+  // Auskunftsfunktion gelesen werden kann statt mit einer zweiten Regel. EHRLICH GESAGT: heute
+  // schickt KEIN Lesepfad sie für Entwürfe mit — solange sie fehlt, wendet
+  // `vertraulichkeitsAuskunft` die gespiegelte Serverregel an, und genau das ist der Normalfall.
+  confidentialityProvenance?: ConfidentialityProvenance;
   // SCRUM-457 (Pedi 06.07.): wo der Entwurf gespeichert wurde, damit „Fortsetzen" GENAU dort
   // wieder öffnet — statt den Ort aus dem Inhalt zu raten. Alt-Entwürfe ohne Marker: Heuristik.
   // JOB 679 / D2 (K1.2, Weg A): `word_addin` ergänzt — der Wert existiert serverseitig seit

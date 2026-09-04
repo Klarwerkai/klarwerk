@@ -75,9 +75,15 @@ import { editorFilesFromAttachments, objectRawHref } from "../lib/bodyFileLink";
 import type { OriginalDocument, OriginalRefCache } from "../lib/captureAttachments";
 import { fileSourcePayload } from "../lib/captureFromFile";
 import {
+  AUFFRISCHUNG_HINWEIS_KLASSE,
+  AUFFRISCHUNG_HINWEIS_MARKE,
   CONFIDENTIALITY_LEVELS,
-  confidentialityChip,
+  CONF_TONE_CLASS,
+  abfrageMitBestand,
+  auffrischungGescheitert,
+  auffrischungHinweisText,
   confidentialityOf,
+  vertraulichkeitsAuskunft,
 } from "../lib/confidentiality";
 import { conflictImpact, conflictLimitedUsability, conflictNotice } from "../lib/conflictImpact";
 import { isDemoKnowledge } from "../lib/demoKnowledge";
@@ -156,12 +162,10 @@ interface EditState {
 const textareaCls =
   "w-full resize-y rounded-input border border-hairline bg-surface p-2.5 text-sm text-text outline-none focus:border-ink/30";
 
-// SCRUM-415: Tönung des Vertraulichkeits-Chips je Stufe.
-const CONF_TONE: Record<"neutral" | "warn" | "crit", string> = {
-  neutral: "bg-page text-muted",
-  warn: "bg-trust-warn-bg text-trust-warn-text",
-  crit: "bg-trust-crit-bg text-trust-crit-text",
-};
+// SCRUM-415 / JOB 3034: die Tönung des Vertraulichkeits-Chips stand hier als lokale Tabelle
+// `CONF_TONE`. Sie ist nach `lib/confidentiality.ts` (`CONF_TONE_CLASS`) gezogen, weil die
+// Bibliothek denselben Chip zeigt und sonst einen zweiten Klassensatz für dieselbe Aussage
+// bekäme — dort steht jetzt auch der vierte Ton „nicht eingestuft".
 
 const CONFLICT_TYPES: readonly ConflictType[] = [
   "truth",
@@ -771,7 +775,25 @@ export function KnowledgeDetail(): JSX.Element {
         <PageHeader kicker={t("ko.kicker")} title={t("ko.title")} />
         {/* SCRUM-294: Demo-/Pilotpfad auf der Zielseite wiedererkennbar (nur bei ?demo=stage1). */}
         {isDemoContext(params) ? <DemoBanner surface="detail" /> : null}
-        <QueryState query={query}>
+        {/* JOB 3034 R2 · Zustandsmodell: scheitert die Auffrischung eines bereits geholten
+          Eintrags, bleibt der Eintrag samt Stufenkennzeichen stehen — der Fehler wird als Hinweis
+          über der Karte gesagt, nicht als Verlust des Bestands. Bis Runde 1 warf `QueryState` bei
+          `isError` die vorhandenen Daten weg (Begründung: lib/confidentiality.ts,
+          `abfrageMitBestand`). */}
+        {auffrischungGescheitert(query) ? (
+          // `<output>` statt `<div role="status">`: die Bauform dieses Hauses
+          // (`components/LoadState.tsx:33`) — sie trägt die Statusrolle nativ. Klassensatz und
+          // Text kommen aus `lib/confidentiality.ts`, damit die Bibliothek keine zweite Auslegung
+          // derselben Fläche bekommt (JOB 3034 R3, Fremddoppelungs-Wächter).
+          <output
+            aria-live="polite"
+            data-testid={AUFFRISCHUNG_HINWEIS_MARKE}
+            className={AUFFRISCHUNG_HINWEIS_KLASSE}
+          >
+            {auffrischungHinweisText(query, t, i18n.language)}
+          </output>
+        ) : null}
+        <QueryState query={abfrageMitBestand(query)}>
           {(ko) => {
             // SCRUM-251: kompakte Handlungs-/Statusübersicht aus bereits geladenen Feldern.
             const ov = koOverview(ko);
@@ -1188,17 +1210,25 @@ export function KnowledgeDetail(): JSX.Element {
                     <div className="flex flex-wrap items-center gap-2">
                       <StatusPill status={deriveStatus(ko)} />
                       <KnowledgeTypeTag type={ko.type} />
-                      {/* SCRUM-415: Vertraulichkeits-Chip (nur wenn vertraulich). Vertrauliche KOs
-                        gehen nie in externe Kontexte (Output/Export). */}
+                      {/* SCRUM-415 / JOB 3034: die Vertraulichkeitsstufe im Klartext — JEDE Stufe,
+                        und die fehlende sagt, dass sie fehlt. Hier stand „nur wenn vertraulich":
+                        „Öffentlich-intern" trug gar kein Kennzeichen, und ein nie eingestufter
+                        Eintrag war von einem ausdrücklich internen nicht zu unterscheiden. Dieser
+                        Block hängt am geladenen `ko` (QueryState darüber) — im Lade- und
+                        Fehlerzustand entsteht daher KEINE Aussage über die Stufe. Vertrauliche KOs
+                        gehen weiterhin nie in externe Kontexte (Output/Export). */}
                       {(() => {
-                        const c = confidentialityChip(ko.confidentiality);
-                        return c.showChip ? (
+                        const stufe = vertraulichkeitsAuskunft(ko);
+                        return (
                           <span
-                            className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${CONF_TONE[c.tone]}`}
+                            data-testid="ko-vertraulichkeitsstufe"
+                            title={t("conf.field")}
+                            aria-label={`${t("conf.field")}: ${t(stufe.labelKey)}`}
+                            className={`rounded-pill px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase ${CONF_TONE_CLASS[stufe.tone]}`}
                           >
-                            {t(c.labelKey)}
+                            {t(stufe.labelKey)}
                           </span>
-                        ) : null;
+                        );
                       })()}
                       <span className="font-mono text-[11px] text-muted-2">
                         v{ko.version}

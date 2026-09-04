@@ -247,6 +247,33 @@ const FREMDE: readonly Fremdrelation[] = [
       "mit `KnowledgeDetail:1750`.",
   },
   {
+    dritt: "apps/web/src/pages/Library.tsx",
+    groessen: [27],
+    // JOB 3034 D3 (04.09.): NEU. Eingetragen, bevor sie lebt — nicht, um einen roten Test gruen zu
+    // bekommen. Was dahintersteht, offen gesagt:
+    //
+    //   Der Auftrag verlangt dieselbe Aussage auf BEIDEN Flaechen (Bibliothekszeile und
+    //   Detailseite): scheitert die Auffrischung eines schon geholten Standes, bleiben die Werte
+    //   stehen und der gescheiterte Abruf wird als Hinweis daneben gesagt. Zwei Flaechen, eine
+    //   Aussage — die Doppelung ist damit gewollt sichtbar und nicht versehentlich.
+    //
+    //   ALLES TEILBARE IST SCHON GETEILT. Klassensatz (`AUFFRISCHUNG_HINWEIS_KLASSE`), Marke
+    //   (`AUFFRISCHUNG_HINWEIS_MARKE`) und der Text samt Zeitregel (`auffrischungHinweisText`)
+    //   wohnen einmal in `apps/web/src/lib/confidentiality.ts`. Das hat den Block von 40 auf 27
+    //   Knoten gebracht; gemessen, nicht geschaetzt.
+    //
+    //   WAS UEBRIG BLEIBT, ist das `<output>`-Element selbst mit seinen drei Attributen. Das
+    //   liesse sich nur durch eine gemeinsame .tsx-Komponente aufloesen — deren Ort waere
+    //   `apps/web/src/components/ui.tsx` (`QueryState`), und der liegt ausserhalb der ZIELPFADE
+    //   von JOB 3034. Die Zusammenlegung ist als Folgeauftrag benannt (BEN, Runde 1); dieser
+    //   Waechter legt ohnehin nicht zusammen, er erhebt und sichert.
+    was:
+      "GELESEN: der Hinweis `state.staleRefetchFailed` ueber der Flaeche — ein `<output>` mit " +
+      "`aria-live`, gemeinsamer Marke und gemeinsamem Klassensatz, geteilt mit " +
+      "`KnowledgeDetail:785`. Faellt der Hinweis auf einer der beiden Seiten weg, faellt diese " +
+      "Groesse aus der Liste.",
+  },
+  {
     dritt: "apps/web/src/auth/AuthScreens.tsx",
     groessen: [25],
     was: "GEMESSEN: ein `FirstStatement` um `state.error`, geteilt mit `Capture:783`.",

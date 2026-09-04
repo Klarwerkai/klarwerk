@@ -3470,9 +3470,14 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     //     + apps/web/src/pages/Validation.tsx — `${STUFE_TONE[k.auskunft.stufe.tone]}`
     //       (die Vertraulichkeitsstufe auf der Prüfkarte, Station 4)
     //
-    // Keine Bindung ist weggefallen; die Zusage bleibt eine EXAKTE Bindung.
+    // JOB 3034 R2 (Rebase auf JOB 3027): von 208 auf 209 NACHGEZOGEN. Die Bibliothek zeigt seither
+    // die Vertraulichkeitsstufe in der Trefferzeile; ihre Tönung ist eine weitere Nachschlagebindung
+    // (`CONF_TONE_CLASS[stufe.tone]`, Library.tsx) — zusätzlich zur Validation.tsx-Bindung oben.
+    // Die Detailseite hatte diese Form schon (vorher `CONF_TONE[c.tone]`, jetzt
+    // `CONF_TONE_CLASS[stufe.tone]`) und zählt unverändert eins. Keine Bindung ist weggefallen;
+    // die Zusage bleibt eine EXAKTE Bindung.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      208,
+      209,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

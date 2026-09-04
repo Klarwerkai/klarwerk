@@ -335,6 +335,9 @@ const de = {
   "uikit.sampleStatement": "Druckabfall an Presse P2 sitzt meist an Ventil V4, nicht an der Pumpe.",
   "state.loading": "Lädt …",
   "state.error": "Etwas ist schiefgelaufen.",
+  // JOB 3034 R2: der Hinweis NEBEN den weiterhin sichtbaren Werten, wenn eine Auffrischung des
+  // vorhandenen Standes scheiterte (REGELN Punkt 7). Er ersetzt die Werte nicht.
+  "state.staleRefetchFailed": "Stand von {{zeit}} · Auffrischung fehlgeschlagen",
   "modal.close": "Schließen",
   "nav.guard.title": "Ungespeicherte Eingabe",
   "nav.guard.body": "Du hast beim Erfassen noch nicht gespeicherten Inhalt. Was möchtest du tun?",
@@ -1850,6 +1853,10 @@ const de = {
   "conf.level.intern": "Öffentlich-intern",
   "conf.level.vertraulich": "Vertraulich",
   "conf.level.streng_vertraulich": "Streng vertraulich",
+  // JOB 3034: die VIERTE Auskunft — kein vierter Stufenwert, sondern die ehrliche Aussage über
+  // einen Bestand, den nie jemand eingestuft hat (Server: `confidentialityProvenance: "unknown"`).
+  // „Öffentlich-intern“ an dieser Stelle wäre eine erfundene Einstufung.
+  "conf.level.nichtEingestuft": "Nicht eingestuft",
   "capture.fRevalidation": "Re-Validierung nach (Anzahl)",
   "capture.listAdd": "Eintrag hinzufügen",
   "capture.listRemove": "Entfernen",
@@ -5237,6 +5244,7 @@ const en: typeof de = {
   "uikit.sampleStatement": "Pressure loss on press P2 usually sits at valve V4, not at the pump.",
   "state.loading": "Loading …",
   "state.error": "Something went wrong.",
+  "state.staleRefetchFailed": "As of {{zeit}} · refresh failed",
   "modal.close": "Close",
   "nav.guard.title": "Unsaved entry",
   "nav.guard.body": "You have unsaved content in the capture area. What would you like to do?",
@@ -6606,6 +6614,7 @@ const en: typeof de = {
   "conf.level.intern": "Public-internal",
   "conf.level.vertraulich": "Confidential",
   "conf.level.streng_vertraulich": "Strictly confidential",
+  "conf.level.nichtEingestuft": "Not classified",
   "capture.fRevalidation": "Re-validate after (count)",
   "capture.listAdd": "Add item",
   "capture.listRemove": "Remove",
@@ -9538,6 +9547,7 @@ const nl: typeof de = {
   "uikit.sampleStatement": "Drukverlies bij pers P2 zit meestal aan ventiel V4, niet aan de pomp.",
   "state.loading": "Laden …",
   "state.error": "Er is iets misgegaan.",
+  "state.staleRefetchFailed": "Stand van {{zeit}} · verversen mislukt",
   "modal.close": "Sluiten",
   "nav.guard.title": "Niet-opgeslagen invoer",
   "nav.guard.body": "Je hebt bij het vastleggen nog niet-opgeslagen inhoud. Wat wil je doen?",
@@ -10897,6 +10907,7 @@ const nl: typeof de = {
   "conf.level.intern": "Openbaar-intern",
   "conf.level.vertraulich": "Vertrouwelijk",
   "conf.level.streng_vertraulich": "Streng vertrouwelijk",
+  "conf.level.nichtEingestuft": "Niet geclassificeerd",
   "capture.fRevalidation": "Hervalidatie na (aantal)",
   "capture.listAdd": "Item toevoegen",
   "capture.listRemove": "Verwijderen",
