@@ -1718,6 +1718,15 @@ const de = {
   // nicht mehr, falls er es doch einmal wird.
   "editor.captionNoAnchor":
     "Zu diesem Bild lässt sich gerade keine Bildbeschreibung anlegen. Bitte fügen Sie das Bild erneut ein.",
+  // JOB 3051 (PRIORITAETEN.md V8): der Editor hat eine doppelt vergebene Bildkennung getrennt und
+  // sagt es. Der Satz behauptet NICHT, welches Bild „das richtige" war — er sagt, was geschehen ist,
+  // und bittet um eine Sichtprüfung. Kein Alarm: die Trennung ist eine Reparatur, kein Fehler des
+  // Autors. Die Zahl ist die Länge der Trennungsliste aus `editorFigures.ts`, nichts sonst.
+  "editor.kennungGetrennt_one":
+    "Mehrere Bilder trugen dieselbe Kennung. {{count}} Zuordnung wurde getrennt — bitte prüfen Sie die betroffenen Bildbeschreibungen.",
+  "editor.kennungGetrennt_other":
+    "Mehrere Bilder trugen dieselbe Kennung. {{count}} Zuordnungen wurden getrennt — bitte prüfen Sie die betroffenen Bildbeschreibungen.",
+  "editor.kennungGetrenntClose": "Hinweis zu getrennten Bildkennungen schließen",
   "editor.captionAi.suggest": "KI-Beschreibung vorschlagen",
   "editor.captionAi.loading": "KI-Beschreibung wird erstellt …",
   "editor.captionAi.panelTitle": "Vorschlag",
@@ -6472,6 +6481,11 @@ const en: typeof de = {
     "Image description, not linked to an image yet — opens the description form",
   "editor.captionNoAnchor":
     "No image description can be added for this image right now. Please insert the image again.",
+  "editor.kennungGetrennt_one":
+    "Several images carried the same identifier. {{count}} link was separated — please check the image descriptions concerned.",
+  "editor.kennungGetrennt_other":
+    "Several images carried the same identifier. {{count}} links were separated — please check the image descriptions concerned.",
+  "editor.kennungGetrenntClose": "Close the notice about separated image identifiers",
   "editor.captionAi.suggest": "Suggest AI description",
   "editor.captionAi.loading": "Creating AI description …",
   "editor.captionAi.panelTitle": "Suggestion",
@@ -10751,6 +10765,11 @@ const nl: typeof de = {
     "Afbeeldingsbeschrijving, nog niet aan een afbeelding gekoppeld — opent het beschrijvingsformulier",
   "editor.captionNoAnchor":
     "Voor deze afbeelding kan nu geen afbeeldingsbeschrijving worden aangemaakt. Voeg de afbeelding opnieuw in.",
+  "editor.kennungGetrennt_one":
+    "Meerdere afbeeldingen droegen dezelfde kenmerkcode. {{count}} koppeling is losgemaakt — controleer de betrokken afbeeldingsbeschrijvingen.",
+  "editor.kennungGetrennt_other":
+    "Meerdere afbeeldingen droegen dezelfde kenmerkcode. {{count}} koppelingen zijn losgemaakt — controleer de betrokken afbeeldingsbeschrijvingen.",
+  "editor.kennungGetrenntClose": "Melding over losgemaakte afbeeldingskenmerken sluiten",
   "editor.captionAi.suggest": "AI-beschrijving voorstellen",
   "editor.captionAi.loading": "AI-beschrijving wordt gemaakt …",
   "editor.captionAi.panelTitle": "Voorstel",

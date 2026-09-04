@@ -43,6 +43,7 @@ import {
 // `editorFigures.ts` neben der Invariante, die die Struktur herstellt — und ist dort DOM-lib-frei
 // und ohne Editor prüfbar, auch an Markup, das nie durch die Verankerung gelaufen ist.
 import {
+  type KennungsTrennung,
   captionForImage,
   enhanceFiguresForEditing,
   // I47 Punkt 1 (JOB 2060 D4): die Invariante selbst — sie wird an der Emissionsgrenze erzwungen,
@@ -420,6 +421,17 @@ export function RichTextEditor({
   // Invariante (editorFigures.ts) ist dieser Fall nicht mehr erreichbar; dass er trotzdem einen
   // Text hat, ist genau der Unterschied zwischen fail-closed und Vertrauen.
   const [ankerNotice, setAnkerNotice] = useState(false);
+  // ── JOB 3051 (PRIORITAETEN.md V8): DIE GETRENNTE BILDKENNUNG WIRD GEMELDET ───────────────────
+  //
+  // Zwei Zustände, weil es zwei verschiedene Fragen sind, und beide zusammen sind das Modell:
+  //   · WIE VIELE Zuordnungen hat dieser Editor seit dem Laden dieses Textes getrennt. `0` heißt
+  //     „nichts getrennt" und ist KEINE Aussage („keine Duplikate" wird nirgends behauptet) — es
+  //     heißt nur, dass es nichts zu sagen gibt.
+  //   · Ob der Autor den Hinweis WEGGEKLICKT hat. Das ist seine Entscheidung und überlebt alles,
+  //     was den Befund nicht verändert — insbesondere den Sprachwechsel.
+  // Die Zahl steht bewusst NICHT in einem Ref: sie wird gerendert, also gehört sie in den Zustand.
+  const [getrennteZuordnungen, setGetrennteZuordnungen] = useState(0);
+  const [trennungsHinweisZu, setTrennungsHinweisZu] = useState(false);
   // Der Vorschlags-Zustand des Formulars. Bis mega82 stand daneben ein zweiter für das Inline-Panel;
   // seit mega84 gibt es das Inline-Panel nicht mehr und damit auch nur noch diesen einen.
   const [captionFormAi, setCaptionFormAi] = useState<CaptionAiState>(null);
@@ -497,11 +509,18 @@ export function RichTextEditor({
       // ein abgelöster Knoten. Die Lauf-Nummer macht beides ungültig.
       captionFormRunRef.current += 1;
       captionGenerationRef.current += 1;
+      // JOB 3051: DIESELBE GRENZE GILT FÜR DEN TRENNUNGSBEFUND. Ein Befund aus Dokument A darf an
+      // Dokument B nicht stehen bleiben — er sagt etwas über Bilder aus, die gerade eben ersetzt
+      // wurden (die Lehre aus JOB 3046 R1, hier sinngemäß). Zurückgesetzt wird VOR dem Verankern,
+      // damit der neue Befund auf einen leeren Stand fällt; React wendet beide Setzungen in dieser
+      // Reihenfolge an, die Zahl unten zählt also von 0 an.
+      setGetrennteZuordnungen(0);
+      setTrennungsHinweisZu(false);
       // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen verankern.
       // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
       // CSS :empty::before) — wird vom Sanitizer beim Speichern gestrippt, nie echter Inhalt.
       // AUFTRAG-mega84 Block A: dazu die angekündigte Beschriftung des Bedienelements.
-      verankereFiguren(el);
+      uebernimmTrennungen(verankereFiguren(el));
     }
   }, [value, mode]);
 
@@ -532,6 +551,11 @@ export function RichTextEditor({
   const emit = (): void => {
     const puffer = document.createElement("div");
     puffer.innerHTML = ref.current?.innerHTML ?? "";
+    // JOB 3051: DIESER WEG MELDET NICHT, und das ist keine Vergesslichkeit. Die Fläche meldet nur,
+    // was sie auch wirklich getrennt hat — hier arbeitet die Invariante auf einer ABGEKOPPELTEN
+    // Kopie, die den sichtbaren Baum nie verändert hat, und sie hängt an JEDEM Tastendruck
+    // (`onEditorInput`). Ein Hinweis von hier behauptete eine Reparatur am Text des Autors, die
+    // dort gar nicht stattgefunden hat, und er erschiene beim Tippen immer wieder neu.
     ensureImageAnchors(puffer);
     const next = sanitizeHtml(puffer.innerHTML);
     lastEmittedRef.current = next;
@@ -548,13 +572,16 @@ export function RichTextEditor({
   // Aufrufstelle (mega84 Block A, gepinnt in `tests/capture/editor-figure-caption.test.ts`), und
   // ihre Identität wechselt genau dann, wenn sich die Übersetzung ändert. Damit ist sie zugleich
   // der ehrliche Auslöser des Auffrischungseffekts unten: kein Auslöser, den der Rumpf nicht liest.
+  // JOB 3051: die Rückgabe ist die Liste der Kennungen, die DIESER Lauf getrennt hat (leer, wenn
+  // nichts getrennt wurde). Sie kommt aus der einen Stelle, an der die Trennung geschieht; hier
+  // wird nichts nachgezählt.
   const verankereFiguren = useCallback(
-    (el: HTMLElement): void => {
+    (el: HTMLElement): KennungsTrennung[] => {
       // JOB 3041: die zwei Texte der nicht zugeordneten Fußnote gehen durch DIESELBE Stelle. Damit
       // nimmt der Sprachwechsel-Effekt unten sie ohne eigene Verdrahtung mit — ein zweiter Aufruf
       // von `enhanceFiguresForEditing` wäre genau die Vergesslichkeit, gegen die es diese eine
       // Stelle gibt (gezählt in `tests/capture/editor-figure-caption.test.ts`).
-      enhanceFiguresForEditing(
+      return enhanceFiguresForEditing(
         el,
         t("editor.captionPlaceholder"),
         t(CAPTION_AI_TEXT.captionOpenLabel),
@@ -564,6 +591,31 @@ export function RichTextEditor({
     },
     [t],
   );
+
+  // JOB 3051 — WAS EINE TRENNUNG FÜR DIE FLÄCHE BEDEUTET, STEHT AN GENAU EINER STELLE.
+  //
+  // Alle Verankerungswege reichen ihre Liste hierher: der Ladeweg, der Sprachwechsel, die beiden
+  // Einfügewege und der zweite Anlauf im Bildbeschreibungs-Formular. Vier Auswertungen wären vier
+  // Gelegenheiten, die Regel unterschiedlich auszulegen — dieselbe Vergesslichkeit, gegen die es
+  // `verankereFiguren` schon gibt.
+  //
+  // EINE LEERE LISTE VERÄNDERT NICHTS, und das ist der tragende Satz: „nichts getrennt" ist keine
+  // Entwarnung. Sie löscht deshalb einen stehenden Hinweis NICHT — sonst nähme der Sprachwechsel
+  // (der stets null Trennungen liefert, weil der Baum längst eindeutig ist) dem Autor den Befund
+  // weg, den er noch gar nicht gelesen hat.
+  //
+  // EINE NEUE TRENNUNG ÖFFNET DEN HINWEIS WIEDER: Weggeklickt heißt „diesen Befund kenne ich",
+  // nicht „sag mir nie wieder etwas".
+  // `useCallback` mit leerer Abhängigkeitsliste, weil im Rumpf ausschließlich Zustandssetzer stehen
+  // — und die sind von React her stabil. Damit ist diese Funktion ein ehrlicher Auslöser für den
+  // Sprachwechsel-Effekt unten, statt ihn bei jedem Rendern neu zu starten.
+  const uebernimmTrennungen = useCallback((trennungen: KennungsTrennung[]): void => {
+    if (trennungen.length === 0) {
+      return;
+    }
+    setGetrennteZuordnungen((n) => n + trennungen.length);
+    setTrennungsHinweisZu(false);
+  }, []);
 
   // I47 PUNKT 5 (JOB 994 D1) — DER SPRACHWECHSEL AM OFFENEN EDITOR.
   //
@@ -591,15 +643,20 @@ export function RichTextEditor({
   // GENAU EINE Stelle — der Wächter in `tests/capture/editor-figure-caption.test.ts` zählt sie. Ein
   // zweiter direkter Aufruf wäre exakt die Vergesslichkeit, gegen die diese eine Stelle gebaut
   // wurde; dieser Durchgang hat sie zwischenzeitlich eingebaut und ist daran rot geworden.
-  // Beide Abhängigkeiten werden im Rumpf gelesen: es gibt hier keinen Auslöser, der nur behauptet
+  // Alle Abhängigkeiten werden im Rumpf gelesen: es gibt hier keinen Auslöser, der nur behauptet
   // wird.
+  //
+  // JOB 3051: die Liste geht auch hier durch die EINE Auswertung, obwohl sie in der Praxis leer
+  // ist — der Baum ist längst entdubliziert, und dieser Effekt schreibt keinen Inhalt. Genau
+  // deshalb bleibt ein stehender Hinweis stehen, statt gelöscht oder verdoppelt zu werden. Ein
+  // eigener Zweig „hier nicht auswerten" wäre eine zweite Regel für denselben Sachverhalt.
   useEffect(() => {
     const el = ref.current;
     if (mode !== "edit" || !el) {
       return;
     }
-    verankereFiguren(el);
-  }, [verankereFiguren, mode]);
+    uebernimmTrennungen(verankereFiguren(el));
+  }, [verankereFiguren, uebernimmTrennungen, mode]);
 
   // AUFTRAG-mega84 Block A: die figcaption unter einem Ereignis finden (oder null).
   const captionAtNode = (node: Node | null): HTMLElement | null => {
@@ -885,7 +942,7 @@ export function RichTextEditor({
     if (caption === null && ref.current) {
       // Zweiter Versuch — die Invariante an genau diesem Bild einlösen (z. B. wenn der Inhalt seit
       // dem letzten Verankern von einer fremden Quelle verändert wurde).
-      verankereFiguren(ref.current);
+      uebernimmTrennungen(verankereFiguren(ref.current));
       caption = finde();
     }
     if (caption === null) {
@@ -1234,7 +1291,7 @@ export function RichTextEditor({
     // WP-D7b (Gelb-Fix 2): auch nach execCommand-Einfügungen (z. B. insertHTML) Bild-Fußnoten editierbar
     // verankern — der Editor ist hier fokussiert, die useEffect-Verankerung greift dann bewusst nicht.
     if (ref.current) {
-      verankereFiguren(ref.current);
+      uebernimmTrennungen(verankereFiguren(ref.current));
     }
     emit();
   };
@@ -1251,7 +1308,9 @@ export function RichTextEditor({
     }
     fuegeAmCursorEin(el, html);
     // WP-D7b (Gelb-Fix 2): frisch eingefügte Bild-Fußnoten sofort editierbar verankern (Editor fokussiert).
-    verankereFiguren(el);
+    // JOB 3051: bringt der eingefügte Ausschnitt eine schon vergebene Kennung mit, wird die Trennung
+    // über DIESELBE Anzeige gemeldet wie beim Laden — kein zweiter Kanal für denselben Sachverhalt.
+    uebernimmTrennungen(verankereFiguren(el));
     emit();
   };
 
@@ -2085,43 +2144,79 @@ export function RichTextEditor({
       ) : null}
 
       {mode === "edit" ? (
-        <div className="relative">
-          <div
-            ref={ref}
-            contentEditable
-            suppressContentEditableWarning
-            // E2E-012/013: das contenteditable braucht einen zugänglichen Namen + Textbox-Semantik,
-            // sonst kündigt der Screenreader nur „bearbeitbar" ohne Rolle/Mehrzeiligkeit an.
-            role="textbox"
-            aria-multiline="true"
-            aria-label={t("editor.bodyLabel")}
-            tabIndex={0}
-            onInput={onEditorInput}
-            onBlur={emit}
-            onClick={onEditorClick}
-            onKeyDown={onEditorKeyDown}
-            onKeyUp={updateImageSelectionFromCursor}
-            onMouseUp={updateImageSelectionFromCursor}
-            onDrop={onDrop}
-            onDragOver={onDragOver}
-            onDragLeave={onDragLeave}
-            onPaste={onPaste}
-            className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text outline-none md:p-6"
-          />
-          {/* SCRUM-474 P1: Placeholder als aktive Einladung im leeren Editor — pointer-events-none, damit
-              der Klick den Editor fokussiert; verschwindet, sobald Inhalt vorhanden ist. */}
-          {placeholder && !bodyReadMode(value).hasBody ? (
-            <div className="pointer-events-none absolute inset-0 p-4 text-[14.5px] leading-relaxed text-muted-2 md:p-6">
-              {placeholder}
+        <>
+          {/* JOB 3051 (PRIORITAETEN.md V8) — DIE GETRENNTE BILDKENNUNG WIRD DEM AUTOR GESAGT.
+
+              Der Editor trennt eine doppelt vergebene `data-image-id` seit JOB 3035; bis hierher
+              tat er es STILL. Wer einen Altbestand öffnete, bekam eine Reparatur, von der er nichts
+              wusste — und seine Bildbeschreibung konnte danach an einem anderen Bild hängen.
+
+              ES IST EIN HINWEIS, KEIN ALARM: keine Warnfarbe, kein Kasten mit Rand. Die Trennung
+              ist eine Reparatur, kein Fehler des Autors. Der Satz sagt, was geschehen ist, und
+              nennt die Zahl aus der Trennungsliste — er sagt NICHT, welches Bild „das richtige"
+              war, denn das weiß hier niemand.
+
+              `aria-live="polite"` nach dem Vorbild des Anker-Hinweises weiter unten: angekündigt,
+              ohne den Fokus zu stehlen. `data-anzahl` trägt dieselbe Zahl maschinenlesbar, damit
+              die Messung an der Zahl selbst hängt und nicht an einer übersetzten Zeichenkette. */}
+          {getrennteZuordnungen > 0 && !trennungsHinweisZu ? (
+            <div
+              aria-live="polite"
+              data-testid="editor-kennung-getrennt"
+              data-anzahl={getrennteZuordnungen}
+              className="flex items-start justify-between gap-2 border-b border-hairline bg-page px-3 py-1.5"
+            >
+              <p className="text-[11px] leading-relaxed text-muted">
+                {t("editor.kennungGetrennt", { count: getrennteZuordnungen })}
+              </p>
+              <button
+                type="button"
+                aria-label={t("editor.kennungGetrenntClose")}
+                onClick={() => setTrennungsHinweisZu(true)}
+                className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
             </div>
           ) : null}
-          {/* SCRUM-372: sichtbares Ziel beim Drüberziehen — nur Bilder werden eingebettet. */}
-          {dragActive ? (
-            <div className="pointer-events-none absolute inset-1 grid place-items-center rounded-input border-2 border-dashed border-ai/50 bg-ai/5 text-[12.5px] font-semibold text-ai">
-              {t(EDITOR_DROP_KEYS.imageActive)}
-            </div>
-          ) : null}
-        </div>
+          <div className="relative">
+            <div
+              ref={ref}
+              contentEditable
+              suppressContentEditableWarning
+              // E2E-012/013: das contenteditable braucht einen zugänglichen Namen + Textbox-Semantik,
+              // sonst kündigt der Screenreader nur „bearbeitbar" ohne Rolle/Mehrzeiligkeit an.
+              role="textbox"
+              aria-multiline="true"
+              aria-label={t("editor.bodyLabel")}
+              tabIndex={0}
+              onInput={onEditorInput}
+              onBlur={emit}
+              onClick={onEditorClick}
+              onKeyDown={onEditorKeyDown}
+              onKeyUp={updateImageSelectionFromCursor}
+              onMouseUp={updateImageSelectionFromCursor}
+              onDrop={onDrop}
+              onDragOver={onDragOver}
+              onDragLeave={onDragLeave}
+              onPaste={onPaste}
+              className="prose-kw min-h-[260px] p-4 text-[14.5px] leading-relaxed text-text outline-none md:p-6"
+            />
+            {/* SCRUM-474 P1: Placeholder als aktive Einladung im leeren Editor — pointer-events-none, damit
+                der Klick den Editor fokussiert; verschwindet, sobald Inhalt vorhanden ist. */}
+            {placeholder && !bodyReadMode(value).hasBody ? (
+              <div className="pointer-events-none absolute inset-0 p-4 text-[14.5px] leading-relaxed text-muted-2 md:p-6">
+                {placeholder}
+              </div>
+            ) : null}
+            {/* SCRUM-372: sichtbares Ziel beim Drüberziehen — nur Bilder werden eingebettet. */}
+            {dragActive ? (
+              <div className="pointer-events-none absolute inset-1 grid place-items-center rounded-input border-2 border-dashed border-ai/50 bg-ai/5 text-[12.5px] font-semibold text-ai">
+                {t(EDITOR_DROP_KEYS.imageActive)}
+              </div>
+            ) : null}
+          </div>
+        </>
       ) : // FR-STR-05: Vorschau aus demselben State (sanitisiert), kein Datenverlust.
       // SCRUM-404: leerer Inhalt → ehrlicher Hinweis statt stiller weißer Fläche.
       bodyReadMode(value).hasBody ? (

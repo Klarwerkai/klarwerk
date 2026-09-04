@@ -823,10 +823,45 @@ function flacheFigurenHtml(figure: EditableElement, neueKennung: () => string): 
   return aus.join("");
 }
 
+// ==================================================================================================
+// JOB 3051 (PRIORITAETEN.md V8) — WAS GETRENNT WURDE, IST EINE AUSKUNFT UND KEIN NEBENEFFEKT.
+// ==================================================================================================
+//
+// Die Trennung selbst (die Schleife „EINE KENNUNG GEHÖRT GENAU EINEM BILD", JOB 2084/3035) läuft
+// seit langem. Sie war bis hierher STUMM: der Rückgabewert dieser Funktion ist `verankert`, und der
+// zählt eine Umbenennung ausdrücklich NICHT mit (Begründung unten an der Schleife). Wer einen Text
+// mit doppelter Bildkennung öffnete, bekam eine stille Reparatur — und seine Bildbeschreibung hing
+// danach möglicherweise an einem anderen Bild, ohne dass es jemand sagte.
+//
+// DIESER TYP IST DIE AUSKUNFT, und er entsteht DORT, WO DIE TRENNUNG OHNEHIN GESCHIEHT: kein
+// zweiter Durchlauf über den Baum, keine zweite Erkennungslogik, keine Nachzählung an der Fläche.
+// Eine zweite Erhebung wäre eine zweite Wahrheit über denselben Sachverhalt — genau die Bauart, aus
+// der die Befunde huelle3/H2-02 und sammel89 entstanden sind.
+export interface KennungsTrennung {
+  /** Die Kennung, die dieses Bild trug — sie war schon von einem früheren Bild beansprucht. */
+  alte: string;
+  /** Die frische Kennung, die es stattdessen bekommt; sie kommt im ganzen Inhalt sonst nicht vor. */
+  frische: string;
+  /**
+   * Ob die Fußnote dieses Bildes mitgegangen ist. `false` heißt: sie trug eine ANDERE Kennung und
+   * wurde deshalb nicht angefasst (zwei verschiedene, nicht leere Kennungen werden in diesem Modul
+   * nirgends gegeneinander verrechnet) — oder es gab gar keine.
+   */
+  fussnoteFolgte: boolean;
+}
+
 // AUFTRAG-mega88 Block B: die Invariante selbst. Rückgabe ist die Zahl der Bilder, die BEI DIESEM
 // LAUF einen Anker bekommen haben — der Editor braucht sie nicht, die Wächter messen daran die
 // Wirkung statt der Namensanwesenheit (die Lehre aus mega86/mega87).
-export function ensureImageAnchors(root: EditableFigureRoot): number {
+//
+// JOB 3051: `melde` ist der Weg der Auskunft nach draußen, und er ist OPTIONAL. Die Signatur bleibt
+// sonst unverändert und der Rückgabewert bleibt `verankert: number` — elf Bestandstests messen an
+// dieser Zahl (u. a. `tests/bildkennung-eindeutig/doppelte-kennung.test.ts` FALL E). Ein Aufrufer,
+// der die Trennung nicht anzeigen kann, lässt den Melder weg und bekommt exakt das alte Verhalten.
+export function ensureImageAnchors(
+  root: EditableFigureRoot,
+  melde?: (trennung: KennungsTrennung) => void,
+): number {
   // Schon vergebene Kennungen im GANZEN Editor-Inhalt — damit eine neue nie eine alte trifft, auch
   // wenn der Zufalls-Token es einmal täte.
   const vergeben = new Set<string>();
@@ -1007,6 +1042,11 @@ export function ensureImageAnchors(root: EditableFigureRoot): number {
   //
   // `verankert` wird NICHT hochgezählt: die Zahl sagt „so viele Bilder wurden verankert", und ein
   // Bild, das schon verankert war, wird hier nur umbenannt.
+  //
+  // JOB 3051: UND GENAU DESHALB BRAUCHT DIE TRENNUNG IHREN EIGENEN WEG NACH DRAUSSEN. An der Zahl
+  // ist sie nicht einmal indirekt erkennbar; sie fiel bis hierher an und wurde verworfen. Gemeldet
+  // wird HIER, in derselben Schleife und aus denselben Werten — nicht in einem zweiten Lauf, der
+  // dieselbe Frage ein zweites Mal beantworten müsste und dabei anders antworten könnte.
   const beansprucht = new Set<string>();
   for (const img of root.querySelectorAll("img")) {
     const alte = kennungVon(img);
@@ -1022,9 +1062,12 @@ export function ensureImageAnchors(root: EditableFigureRoot): number {
     beansprucht.add(frische);
     const figure = img.closest("figure");
     const fussnote = figure === null ? null : figure.querySelector(":scope > figcaption");
+    let fussnoteFolgte = false;
     if (fussnote !== null && kennungVon(fussnote) === alte) {
       fussnote.setAttribute("data-image-id", frische);
+      fussnoteFolgte = true;
     }
+    melde?.({ alte, frische, fussnoteFolgte });
   }
 
   // ==============================================================================================
@@ -1226,18 +1269,24 @@ export function imageForCaption(
 // JOB 3041: und seit heute sieht diese eine Verankerung ALLE Fußnoten, nicht nur die in einer
 // figure. Die Fußnote aus Stufe 3 gehört keinem Bild — sie bekommt dieselbe Bedienbarkeit wie jede
 // andere UND die Kennzeichnung, die sagt, was sie ist. Zwei Zweige, EINE Schleife.
+//
+// JOB 3051: die Rückgabe war `void`, und damit endete die Auskunft über eine getrennte Kennung
+// endgültig — der Editor konnte sie gar nicht auffangen. Sie ist ab jetzt die Liste der Trennungen
+// dieses Laufs (leer, wenn nichts getrennt wurde). Diese Funktion bleibt der EINZIGE Aufrufer von
+// `ensureImageAnchors` in diesem Modul; ein zweiter Lauf wäre eine zweite Zählung derselben Sache.
 export function enhanceFiguresForEditing(
   root: EditableFigureRoot,
   captionPlaceholder?: string,
   captionLabel?: string,
   captionUnassigned?: string,
   captionUnassignedLabel?: string,
-): void {
+): KennungsTrennung[] {
   // AUFTRAG-mega88 Block B/C: ZUERST die Invariante. Sie läuft INNERHALB dieser Funktion und nicht
   // neben ihr, damit kein Aufrufer sie vergessen kann — und weil der Editor sie an genau einer
   // Stelle ruft, durchläuft JEDER Weg sie: das Laden von außen (Altbestand, Block C), jedes
   // `exec(...)` und jedes `insertHtmlReliable(...)` (alle Einfügewege, Block B).
-  ensureImageAnchors(root);
+  const trennungen: KennungsTrennung[] = [];
+  ensureImageAnchors(root, (trennung) => trennungen.push(trennung));
   for (const img of root.querySelectorAll("figure img")) {
     img.setAttribute("contenteditable", "false");
   }
@@ -1287,6 +1336,7 @@ export function enhanceFiguresForEditing(
       caption.setAttribute("data-kw-placeholder", captionPlaceholder);
     }
   }
+  return trennungen;
 }
 
 // WP-D10 (Leseansicht/Galerie): Alt-Platzhaltertexte in gespeichertem bodyHtml wie LEER behandeln —
