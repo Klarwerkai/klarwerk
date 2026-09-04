@@ -27,7 +27,15 @@ export interface WertDefinition {
    * Stilblock; der Messpunkt ist derselbe Wert, wirksam gerendert. Fehlt er, ist die Zeile nur
    * statisch vergleichbar.
    */
-  messpunkt?: { selektor: string; eigenschaft: string };
+  messpunkt?: {
+    selektor: string;
+    eigenschaft: string;
+    /**
+     * JOB 3052 D6: `"attribut"` liest ein DOM-Attribut (z. B. `viewBox` — kein CSS-Wert, den
+     * `getComputedStyle` kennt); fehlt die Art, ist der Messpunkt eine berechnete Eigenschaft.
+     */
+    art?: "stil" | "attribut";
+  };
 }
 
 export interface WertBefund {
@@ -920,5 +928,620 @@ export const WERTE_VALIDIERUNG: readonly WertDefinition[] = [
       const k = jsxKlassen(g, HINWEIS_ANKER);
       return k?.includes("ml-auto") ? "auto" : null;
     },
+  },
+] as const;
+
+// ================================================================================================
+// DIE TRAGENDEN WERTE DES WISSENSNETZES (JOB 3052 D6; Vorlage Wissensnetz.dc.html Z.24–91).
+// ================================================================================================
+// ANDERE BAU-SEITE, OFFEN BENANNT: die Themenkarte ist eine React-Seite (pages/Wissensnetz.tsx).
+// `gebaut` liest deshalb NICHT den Quelltext (das waere eine zweite Wahrheit ueber dieselbe
+// Flaeche — JOB 3004 D1), sondern das in Chromium GERENDERTE Dokument: `document.body.outerHTML`
+// nach dem Mount, gefolgt von den Token-Definitionen des modernen Themas (styles/themes.css, der
+// `[data-theme="modern"]`-Block vor dem `:root`-Block, damit `tokenAufloesen` den modernen Wert
+// zuerst findet). Die tragenden Werte stehen im Bau als INLINE-STIL bzw. SVG-ATTRIBUT am Element
+// (Farben als `rgb(var(--kw-…))` — Token, kein zweites Hex-Literal; mega40-token-disziplin), und
+// genau dort liest `gebaut` sie. Je Zeile gibt es zusaetzlich den MESSPUNKT: das reale Element
+// (ueber `data-testid`) und die berechnete Eigenschaft, die tests/design/zielbild-wissensnetz.test.ts
+// in Chromium misst — der wirksame Wert, nicht der geschriebene.
+//
+// BEWUSST WEGGELASSEN (Begruendung in der D6-Rueckgabe): das dunkle Kopfband (Z.17–20, App-Huelle),
+// die von Hand gesetzten Knotenpositionen und Radien der Vorlage (im Produkt Ergebnis der Daten:
+// Radius 22…46 nach Wurzelskala, Schriftgrad nach Radius — als VERHALTEN im Chromium-Test geprueft,
+// nicht als fester Wert), die Zeile „1 von 3 gruen" (Z.87, keine Datenquelle im Produkt) sowie
+// Wortlaute (Legende und Leiste sprechen die Produktwahrheit, dreisprachig — eigene Faelle).
+
+// ---- Wissensnetz.dc.html: die Anker der Vorlagenzeilen, an denen gelesen wird ----------------------
+const WN_ZEICHENFLAECHE = "flex-grow: 1; position: relative; padding: 16px";
+const WN_LEGENDE = "position: absolute; left: 32px; bottom: 24px";
+const WN_LEGENDE_EINTRAG = "gap: 6px; font-size: 11.5px; color: #525B6B";
+const WN_LEGENDE_PUNKT = "width: 10px; height: 10px; border-radius: 50%; background: #E0F1E7";
+const WN_LEISTE = "width: 340px; border-left: 1px solid #E9E5DE";
+const WN_LEISTE_KOPF = "display: flex; align-items: center; gap: 8px";
+const WN_LEISTE_PUNKT = "width: 12px; height: 12px; border-radius: 50%; background: #E8630A";
+const WN_LEISTE_TITEL = "font-size: 16px; font-weight: 650";
+const WN_LEISTE_ZAEHLUNG = "font-size: 12.5px; color: #525B6B";
+const WN_LEISTE_LISTE = "display: flex; flex-direction: column; gap: 8px";
+const WN_LEISTE_KARTE = "padding: 10px 12px; background: #FAF8F5";
+const WN_LEISTE_KARTE_TITEL = "font-size: 13px; font-weight: 600";
+const WN_LEISTE_KARTE_UNTER = "font-size: 11.5px; color: #525B6B";
+const WN_LEISTE_LINK = "font-size: 12.5px; font-weight: 600";
+
+/** Die drei Knotenzustaende der Vorlage plus der gewaehlte — erkannt an der Fuellfarbe (Z.34–59). */
+const WN_KNOTEN = {
+  belegt: { kreis: 'fill="#E0F1E7"', text: 'fill="#116B3C"' },
+  offen: { kreis: 'fill="#FDF1D7"', text: 'fill="#8A5A00"' },
+  freigegeben: { kreis: 'fill="#FFFFFF"', text: 'fill="#525B6B"' },
+  gewaehlt: { kreis: 'fill="#E8630A"', text: 'fill="#9C5009"' },
+} as const;
+type WnKnotenArt = keyof typeof WN_KNOTEN;
+
+/** Hex oder `rgb(r, g, b)` / `rgb(r g b)` → `#rrggbb` (klein); alles andere unveraendert. */
+export function farbeKanon(wert: string | null): string | null {
+  if (wert === null) {
+    return null;
+  }
+  const w = wert.trim();
+  const hex = /^#([0-9a-f]{6})$/i.exec(w);
+  if (hex) {
+    return `#${(hex[1] ?? "").toLowerCase()}`;
+  }
+  const rgb = /^rgb\(\s*(\d+)[\s,]+(\d+)[\s,]+(\d+)\s*\)$/i.exec(w);
+  if (rgb) {
+    return `#${[rgb[1], rgb[2], rgb[3]]
+      .map((n) => Number(n).toString(16).padStart(2, "0"))
+      .join("")}`;
+  }
+  return w;
+}
+
+/** Ein Teil einer `border`-Kurzform (`1px solid #E9E5DE`): Breite, Art oder Farbe (kanonisch). */
+function randTeil(rand: string | null, teil: "width" | "style" | "color"): string | null {
+  if (rand === null) {
+    return null;
+  }
+  const t = rand.trim().split(/\s+/);
+  if (teil === "width") {
+    return t[0] ?? null;
+  }
+  if (teil === "style") {
+    return t[1] ?? null;
+  }
+  return farbeKanon(t.slice(2).join(" ") || null);
+}
+
+/** Der Attributrumpf des ersten `<tag …>` AB `vorlauf`, dessen Rumpf `anker` enthaelt. */
+function tagRumpf(html: string, tag: string, anker: string, vorlauf = ""): string | null {
+  const start = vorlauf.length > 0 ? html.indexOf(vorlauf) : 0;
+  if (start < 0) {
+    return null;
+  }
+  const re = new RegExp(`<${tag}\\s([^>]*)>`, "g");
+  re.lastIndex = start;
+  for (let m = re.exec(html); m !== null; m = re.exec(html)) {
+    if ((m[1] ?? "").includes(anker)) {
+      return m[1] ?? null;
+    }
+  }
+  return null;
+}
+
+/** Wie `inlineStyle`, aber erst AB dem Vorlauf gesucht (dieselben Stilwerte kommen mehrfach vor). */
+function stilAb(html: string, vorlauf: string, anker: string): string | null {
+  const start = html.indexOf(vorlauf);
+  if (start < 0) {
+    return null;
+  }
+  return inlineStyle(html.slice(start), anker);
+}
+
+/** Vorlage: Kreis und Text eines Knotenzustands (Z.34–59), am Fuellwert erkannt. */
+function zielKnoten(z: string, art: WnKnotenArt): { kreis: string | null; text: string | null } {
+  return {
+    kreis: tagRumpf(z, "circle", WN_KNOTEN[art].kreis),
+    text: tagRumpf(z, "text", WN_KNOTEN[art].text),
+  };
+}
+
+// ---- Das gerenderte Dokument: Elemente ueber `data-testid`, Werte aus Inline-Stil und Attribut ----
+
+/** Der Rumpf (inkl. Tagname) des ersten Elements mit diesem `data-testid`. */
+function domTag(html: string, testid: string): string | null {
+  const i = html.indexOf(`data-testid="${testid}"`);
+  if (i < 0) {
+    return null;
+  }
+  const a = html.lastIndexOf("<", i);
+  const b = html.indexOf(">", i);
+  return a < 0 || b < 0 ? null : html.slice(a + 1, b);
+}
+/** Eine Eigenschaft aus dem Inline-Stil des Elements, tokenaufgeloest. */
+function domStil(html: string, testid: string, eigenschaft: string): string | null {
+  return tokenAufloesen(html, prop(svgAttribut(domTag(html, testid), "style"), eigenschaft));
+}
+function domAttr(html: string, testid: string, name: string): string | null {
+  return svgAttribut(domTag(html, testid), name);
+}
+/**
+ * Der erste Knoten `<g data-testid="themenknoten" …>` mit dieser Farbe und diesem Auswahlzustand;
+ * geliefert werden die Rumpfe seines Kreises und seines Textes (das naechste `<circle`/`<text`).
+ */
+function domKnoten(html: string, art: WnKnotenArt): { kreis: string | null; text: string | null } {
+  const gewaehlt = art === "gewaehlt";
+  const re = /<g\s([^>]*data-testid="themenknoten"[^>]*)>/g;
+  for (let m = re.exec(html); m !== null; m = re.exec(html)) {
+    const rumpf = m[1] ?? "";
+    const passt =
+      rumpf.includes(`aria-pressed="${gewaehlt}"`) &&
+      (gewaehlt || rumpf.includes(`data-farbe="${art}"`));
+    if (!passt) {
+      continue;
+    }
+    const ab = html.slice(m.index);
+    return { kreis: tagRumpf(ab, "circle", ""), text: tagRumpf(ab, "text", "") };
+  }
+  return { kreis: null, text: null };
+}
+/** Ein Stilwert am Kreis/Text eines Knotenrumpfs — tokenaufgeloest. */
+function knotenStil(html: string, rumpf: string | null, eigenschaft: string): string | null {
+  return tokenAufloesen(html, prop(svgAttribut(rumpf, "style"), eigenschaft));
+}
+/** Vorlage: SVG-Attribut mit `px` (die berechnete Eigenschaft liefert Pixel, das Attribut nicht). */
+function px(wert: string | null): string | null {
+  return wert === null ? null : /^[0-9.]+$/.test(wert) ? `${wert}px` : wert;
+}
+
+/** Die Knotenzeilen — je Zustand dieselben vier Kreis- und drei Textwerte, plus Zusatz beim Gewaehlten. */
+function knotenZeilen(art: WnKnotenArt, name: string): WertDefinition[] {
+  const g = `[data-testid="themenknoten"][aria-pressed="true"]`;
+  const u = `[data-testid="themenknoten"][data-farbe="${art}"][aria-pressed="false"]`;
+  const sel = art === "gewaehlt" ? g : u;
+  const zeilen: WertDefinition[] = [
+    {
+      name: `knoten ${name}: fuellung`,
+      ziel: (z) => farbeKanon(svgAttribut(zielKnoten(z, art).kreis, "fill")),
+      gebaut: (h) => farbeKanon(knotenStil(h, domKnoten(h, art).kreis, "fill")),
+      messpunkt: { selektor: `${sel} circle`, eigenschaft: "fill" },
+    },
+    {
+      name: `knoten ${name}: rand`,
+      ziel: (z) => farbeKanon(svgAttribut(zielKnoten(z, art).kreis, "stroke")),
+      gebaut: (h) => farbeKanon(knotenStil(h, domKnoten(h, art).kreis, "stroke")),
+      messpunkt: { selektor: `${sel} circle`, eigenschaft: "stroke" },
+    },
+    {
+      name: `knoten ${name}: randstaerke`,
+      ziel: (z) => px(svgAttribut(zielKnoten(z, art).kreis, "stroke-width")),
+      gebaut: (h) => px(svgAttribut(domKnoten(h, art).kreis, "stroke-width")),
+      messpunkt: { selektor: `${sel} circle`, eigenschaft: "stroke-width" },
+    },
+    {
+      name: `knoten ${name}: textfarbe`,
+      ziel: (z) => farbeKanon(svgAttribut(zielKnoten(z, art).text, "fill")),
+      gebaut: (h) => farbeKanon(knotenStil(h, domKnoten(h, art).text, "fill")),
+      messpunkt: { selektor: `${sel} text`, eigenschaft: "fill" },
+    },
+    {
+      name: `knoten ${name}: textschnitt`,
+      ziel: (z) => svgAttribut(zielKnoten(z, art).text, "font-weight"),
+      gebaut: (h) => knotenStil(h, domKnoten(h, art).text, "font-weight"),
+      messpunkt: { selektor: `${sel} text`, eigenschaft: "font-weight" },
+    },
+    {
+      name: `knoten ${name}: textanker mittig`,
+      ziel: (z) => svgAttribut(zielKnoten(z, art).text, "text-anchor"),
+      gebaut: (h) => svgAttribut(domKnoten(h, art).text, "text-anchor"),
+      messpunkt: { selektor: `${sel} text`, eigenschaft: "text-anchor" },
+    },
+  ];
+  if (art === "gewaehlt") {
+    zeilen.push(
+      {
+        name: `knoten ${name}: fuelldeckung 0.14`,
+        ziel: (z) => svgAttribut(zielKnoten(z, art).kreis, "fill-opacity"),
+        gebaut: (h) => svgAttribut(domKnoten(h, art).kreis, "fill-opacity"),
+        messpunkt: { selektor: `${sel} circle`, eigenschaft: "fill-opacity" },
+      },
+      {
+        name: `knoten ${name}: schriftgrad 13px`,
+        ziel: (z) => px(svgAttribut(zielKnoten(z, art).text, "font-size")),
+        gebaut: (h) => knotenStil(h, domKnoten(h, art).text, "font-size"),
+        messpunkt: { selektor: `${sel} text`, eigenschaft: "font-size" },
+      },
+    );
+  }
+  return zeilen;
+}
+
+export const WERTE_WISSENSNETZ: readonly WertDefinition[] = [
+  // — die Zeichenflaeche (Z.24): flexibel, relativ (traegt die Legende), 16px Polster —
+  {
+    name: "zeichenflaeche-wachstum flex-grow 1",
+    ziel: (z) => prop(inlineStyle(z, WN_ZEICHENFLAECHE), "flex-grow"),
+    gebaut: (h) => domStil(h, "netz-zeichenflaeche", "flex-grow"),
+    messpunkt: { selektor: '[data-testid="netz-zeichenflaeche"]', eigenschaft: "flex-grow" },
+  },
+  {
+    name: "zeichenflaeche-lage relative",
+    ziel: (z) => prop(inlineStyle(z, WN_ZEICHENFLAECHE), "position"),
+    gebaut: (h) => domStil(h, "netz-zeichenflaeche", "position"),
+    messpunkt: { selektor: '[data-testid="netz-zeichenflaeche"]', eigenschaft: "position" },
+  },
+  {
+    name: "zeichenflaeche-polster 16px",
+    ziel: (z) => prop(inlineStyle(z, WN_ZEICHENFLAECHE), "padding"),
+    gebaut: (h) => domStil(h, "netz-zeichenflaeche", "padding"),
+    messpunkt: { selektor: '[data-testid="netz-zeichenflaeche"]', eigenschaft: "padding" },
+  },
+  // Runde 6 (BEN): die Zeile „svg-koordinaten viewBox 0 0 880 660" ist ENTFERNT. Ein `viewBox`
+  // belegt keine sichtbare Groesse; das Bild traegt jetzt die sichtbare Groesse als `viewBox`
+  // (Skalierung 1). Die 880×660 des Zielbilds misst der Chromium-Test als getBoundingClientRect,
+  // sobald das Fenster den Platz hergibt (G5, 1600×900); bei 1280×800 nennt er die Breite, die die
+  // Huelle laesst (G).
+  {
+    name: "svg-anzeige block",
+    ziel: (z) => prop(svgAttribut(tagRumpf(z, "svg", "viewBox"), "style"), "display"),
+    gebaut: (h) => domStil(h, "themenkarte", "display"),
+    messpunkt: { selektor: '[data-testid="themenkarte"]', eigenschaft: "display" },
+  },
+  // — die Kanten (Z.25–32): eine ruhige helle Linie, eine Breite —
+  {
+    name: "kante-farbe hairline #E9E5DE",
+    ziel: (z) => farbeKanon(svgAttribut(tagRumpf(z, "line", "stroke"), "stroke")),
+    gebaut: (h) => farbeKanon(domStil(h, "themenkante", "stroke")),
+    messpunkt: { selektor: '[data-testid="themenkante"]', eigenschaft: "stroke" },
+  },
+  {
+    name: "kante-staerke 2",
+    ziel: (z) => px(svgAttribut(tagRumpf(z, "line", "stroke"), "stroke-width")),
+    gebaut: (h) => px(domAttr(h, "themenkante", "stroke-width")),
+    messpunkt: { selektor: '[data-testid="themenkante"]', eigenschaft: "stroke-width" },
+  },
+  // — die Knoten (Z.34–59): drei Zustaende und der gewaehlte —
+  ...knotenZeilen("belegt", "freigegeben+belegt (gruen)"),
+  ...knotenZeilen("offen", "in Pruefung (gelb)"),
+  ...knotenZeilen("freigegeben", "freigegeben ohne Quelle (weiss)"),
+  ...knotenZeilen("gewaehlt", "gewaehlt (orange)"),
+  // — die Legenden-Karte (Z.62–67) —
+  {
+    name: "legende-lage absolute",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "position"),
+    gebaut: (h) => domStil(h, "netz-legende", "position"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "position" },
+  },
+  {
+    name: "legende-links 32px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "left"),
+    gebaut: (h) => domStil(h, "netz-legende", "left"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "left" },
+  },
+  {
+    name: "legende-unten 24px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "bottom"),
+    gebaut: (h) => domStil(h, "netz-legende", "bottom"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "bottom" },
+  },
+  {
+    name: "legende-anzeige flex",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "display"),
+    gebaut: (h) => domStil(h, "netz-legende", "display"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "display" },
+  },
+  {
+    // Runde 2: die Vorlage kennt eine Zeile (`gap: 16px`); der Bau bricht in der schmaleren
+    // Produktflaeche um und traegt deshalb `column-gap 16 / row-gap 6`. Verglichen wird der
+    // Spaltenabstand — der Wert der Vorlage; der Zeilenabstand ist eine benannte Abweichung.
+    name: "legende-abstand gap 16px (Spaltenabstand)",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "gap"),
+    // Das gerenderte Dokument traegt die Kurzform `gap: <Zeile> <Spalte>` (so serialisiert Chromium
+    // gesetzte row-gap und column-gap); der Spaltenabstand ist der zweite Wert — oder der einzige.
+    gebaut: (h) => {
+      const einzeln = domStil(h, "netz-legende", "column-gap");
+      if (einzeln !== null) {
+        return einzeln;
+      }
+      const teile = domStil(h, "netz-legende", "gap")?.split(/\s+/) ?? [];
+      return teile[1] ?? teile[0] ?? null;
+    },
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "column-gap" },
+  },
+  {
+    name: "legende-polster 10px 14px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "padding"),
+    gebaut: (h) => domStil(h, "netz-legende", "padding"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "padding" },
+  },
+  {
+    name: "legende-grund weiss",
+    ziel: (z) => farbeKanon(prop(inlineStyle(z, WN_LEGENDE), "background")),
+    gebaut: (h) => farbeKanon(domStil(h, "netz-legende", "background")),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "background-color" },
+  },
+  {
+    name: "legende-rand hairline: Breite",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEGENDE), "border"), "width"),
+    gebaut: (h) => randTeil(domStil(h, "netz-legende", "border"), "width"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "border-top-width" },
+  },
+  {
+    name: "legende-rand hairline: Farbe",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEGENDE), "border"), "color"),
+    gebaut: (h) => randTeil(domStil(h, "netz-legende", "border"), "color"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "border-top-color" },
+  },
+  {
+    name: "legende-radius 10px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE), "border-radius"),
+    gebaut: (h) => domStil(h, "netz-legende", "border-radius"),
+    messpunkt: { selektor: '[data-testid="netz-legende"]', eigenschaft: "border-radius" },
+  },
+  {
+    name: "legendeneintrag-anzeige flex",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_EINTRAG), "display"),
+    gebaut: (h) => domStil(h, "netz-legende-eintrag", "display"),
+    messpunkt: { selektor: '[data-testid="netz-legende-eintrag"]', eigenschaft: "display" },
+  },
+  {
+    name: "legendeneintrag-querachse center",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_EINTRAG), "align-items"),
+    gebaut: (h) => domStil(h, "netz-legende-eintrag", "align-items"),
+    messpunkt: { selektor: '[data-testid="netz-legende-eintrag"]', eigenschaft: "align-items" },
+  },
+  {
+    name: "legendeneintrag-abstand gap 6px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_EINTRAG), "gap"),
+    gebaut: (h) => domStil(h, "netz-legende-eintrag", "gap"),
+    messpunkt: { selektor: '[data-testid="netz-legende-eintrag"]', eigenschaft: "gap" },
+  },
+  {
+    name: "legendeneintrag-schriftgrad 11.5px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_EINTRAG), "font-size"),
+    gebaut: (h) => domStil(h, "netz-legende-eintrag", "font-size"),
+    messpunkt: { selektor: '[data-testid="netz-legende-eintrag"]', eigenschaft: "font-size" },
+  },
+  {
+    name: "legendeneintrag-farbe muted #525B6B",
+    ziel: (z) => farbeKanon(prop(inlineStyle(z, WN_LEGENDE_EINTRAG), "color")),
+    gebaut: (h) => farbeKanon(domStil(h, "netz-legende-eintrag", "color")),
+    messpunkt: { selektor: '[data-testid="netz-legende-eintrag"]', eigenschaft: "color" },
+  },
+  {
+    name: "legendenpunkt-breite 10px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_PUNKT), "width"),
+    gebaut: (h) => domStil(h, "netz-legende-punkt", "width"),
+    messpunkt: { selektor: '[data-testid="netz-legende-punkt"]', eigenschaft: "width" },
+  },
+  {
+    name: "legendenpunkt-hoehe 10px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_PUNKT), "height"),
+    gebaut: (h) => domStil(h, "netz-legende-punkt", "height"),
+    messpunkt: { selektor: '[data-testid="netz-legende-punkt"]', eigenschaft: "height" },
+  },
+  {
+    name: "legendenpunkt-rund 50%",
+    ziel: (z) => prop(inlineStyle(z, WN_LEGENDE_PUNKT), "border-radius"),
+    gebaut: (h) => domStil(h, "netz-legende-punkt", "border-radius"),
+    messpunkt: { selektor: '[data-testid="netz-legende-punkt"]', eigenschaft: "border-radius" },
+  },
+  {
+    name: "legendenpunkt-rand 1.5px",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEGENDE_PUNKT), "border"), "width"),
+    gebaut: (h) => randTeil(domStil(h, "netz-legende-punkt", "border"), "width"),
+    messpunkt: { selektor: '[data-testid="netz-legende-punkt"]', eigenschaft: "border-top-width" },
+  },
+  // — die Seitenleiste (Z.70): 340 breit, Haarlinie links, weiss, 24px 20px, Spalte mit 14px —
+  {
+    name: "leiste-breite 340px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE), "width"),
+    gebaut: (h) => domStil(h, "netz-seitenleiste", "width"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "width" },
+  },
+  {
+    name: "leiste-rand links: Breite 1px",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEISTE), "border-left"), "width"),
+    gebaut: (h) => randTeil(domStil(h, "netz-seitenleiste", "border-left"), "width"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "border-left-width" },
+  },
+  {
+    name: "leiste-rand links: Art solid",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEISTE), "border-left"), "style"),
+    gebaut: (h) => randTeil(domStil(h, "netz-seitenleiste", "border-left"), "style"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "border-left-style" },
+  },
+  {
+    name: "leiste-rand links: Farbe hairline",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEISTE), "border-left"), "color"),
+    gebaut: (h) => randTeil(domStil(h, "netz-seitenleiste", "border-left"), "color"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "border-left-color" },
+  },
+  {
+    name: "leiste-grund weiss",
+    ziel: (z) => farbeKanon(prop(inlineStyle(z, WN_LEISTE), "background")),
+    gebaut: (h) => farbeKanon(domStil(h, "netz-seitenleiste", "background")),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "background-color" },
+  },
+  {
+    name: "leiste-polster 24px 20px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE), "padding"),
+    gebaut: (h) => domStil(h, "netz-seitenleiste", "padding"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "padding" },
+  },
+  {
+    name: "leiste-anzeige flex",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE), "display"),
+    gebaut: (h) => domStil(h, "netz-seitenleiste", "display"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "display" },
+  },
+  {
+    name: "leiste-richtung column",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE), "flex-direction"),
+    gebaut: (h) => domStil(h, "netz-seitenleiste", "flex-direction"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "flex-direction" },
+  },
+  {
+    name: "leiste-abstand gap 14px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE), "gap"),
+    gebaut: (h) => domStil(h, "netz-seitenleiste", "gap"),
+    messpunkt: { selektor: '[data-testid="netz-seitenleiste"]', eigenschaft: "gap" },
+  },
+  // — der Kopf der Leiste (Z.71–74): Farbpunkt 12px + Titel 16px/650 —
+  {
+    name: "leistenkopf-anzeige flex",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_KOPF), "display"),
+    gebaut: (h) => domStil(h, "leiste-kopf", "display"),
+    messpunkt: { selektor: '[data-testid="leiste-kopf"]', eigenschaft: "display" },
+  },
+  {
+    name: "leistenkopf-querachse center",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_KOPF), "align-items"),
+    gebaut: (h) => domStil(h, "leiste-kopf", "align-items"),
+    messpunkt: { selektor: '[data-testid="leiste-kopf"]', eigenschaft: "align-items" },
+  },
+  {
+    name: "leistenkopf-abstand gap 8px",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_KOPF), "gap"),
+    gebaut: (h) => domStil(h, "leiste-kopf", "gap"),
+    messpunkt: { selektor: '[data-testid="leiste-kopf"]', eigenschaft: "gap" },
+  },
+  {
+    name: "leistenpunkt-breite 12px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_PUNKT), "width"),
+    gebaut: (h) => domStil(h, "leiste-punkt", "width"),
+    messpunkt: { selektor: '[data-testid="leiste-punkt"]', eigenschaft: "width" },
+  },
+  {
+    name: "leistenpunkt-hoehe 12px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_PUNKT), "height"),
+    gebaut: (h) => domStil(h, "leiste-punkt", "height"),
+    messpunkt: { selektor: '[data-testid="leiste-punkt"]', eigenschaft: "height" },
+  },
+  {
+    name: "leistenpunkt-rund 50%",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_PUNKT), "border-radius"),
+    gebaut: (h) => domStil(h, "leiste-punkt", "border-radius"),
+    messpunkt: { selektor: '[data-testid="leiste-punkt"]', eigenschaft: "border-radius" },
+  },
+  {
+    name: "leistenpunkt-farbe brand #E8630A",
+    ziel: (z) => farbeKanon(prop(inlineStyle(z, WN_LEISTE_PUNKT), "background")),
+    gebaut: (h) => farbeKanon(domStil(h, "leiste-punkt", "background")),
+    messpunkt: { selektor: '[data-testid="leiste-punkt"]', eigenschaft: "background-color" },
+  },
+  {
+    name: "leistentitel-schriftgrad 16px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_TITEL), "font-size"),
+    gebaut: (h) => domStil(h, "leiste-titel", "font-size"),
+    messpunkt: { selektor: '[data-testid="leiste-titel"]', eigenschaft: "font-size" },
+  },
+  {
+    name: "leistentitel-schnitt 650",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_TITEL), "font-weight"),
+    gebaut: (h) => domStil(h, "leiste-titel", "font-weight"),
+    messpunkt: { selektor: '[data-testid="leiste-titel"]', eigenschaft: "font-weight" },
+  },
+  // — die Zaehlzeile (Z.75) —
+  {
+    name: "zaehlung-schriftgrad 12.5px",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_ZAEHLUNG), "font-size"),
+    gebaut: (h) => domStil(h, "leiste-zaehlung", "font-size"),
+    messpunkt: { selektor: '[data-testid="leiste-zaehlung"]', eigenschaft: "font-size" },
+  },
+  {
+    name: "zaehlung-farbe muted #525B6B",
+    ziel: (z) => farbeKanon(prop(stilAb(z, WN_LEISTE, WN_LEISTE_ZAEHLUNG), "color")),
+    gebaut: (h) => farbeKanon(domStil(h, "leiste-zaehlung", "color")),
+    messpunkt: { selektor: '[data-testid="leiste-zaehlung"]', eigenschaft: "color" },
+  },
+  // — die Objektliste (Z.76) und ihre Karten (Z.77–88) —
+  {
+    name: "objektliste-anzeige flex",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_LISTE), "display"),
+    gebaut: (h) => domStil(h, "leiste-objekte", "display"),
+    messpunkt: { selektor: '[data-testid="leiste-objekte"]', eigenschaft: "display" },
+  },
+  {
+    name: "objektliste-richtung column",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_LISTE), "flex-direction"),
+    gebaut: (h) => domStil(h, "leiste-objekte", "flex-direction"),
+    messpunkt: { selektor: '[data-testid="leiste-objekte"]', eigenschaft: "flex-direction" },
+  },
+  {
+    name: "objektliste-abstand gap 8px",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_LISTE), "gap"),
+    gebaut: (h) => domStil(h, "leiste-objekte", "gap"),
+    messpunkt: { selektor: '[data-testid="leiste-objekte"]', eigenschaft: "gap" },
+  },
+  {
+    name: "objektkarte-polster 10px 12px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_KARTE), "padding"),
+    gebaut: (h) => domStil(h, "leiste-objekt", "padding"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt"]', eigenschaft: "padding" },
+  },
+  {
+    name: "objektkarte-grund papier #FAF8F5",
+    ziel: (z) => farbeKanon(prop(inlineStyle(z, WN_LEISTE_KARTE), "background")),
+    gebaut: (h) => farbeKanon(domStil(h, "leiste-objekt", "background")),
+    messpunkt: { selektor: '[data-testid="leiste-objekt"]', eigenschaft: "background-color" },
+  },
+  {
+    name: "objektkarte-rand hairline: Breite",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEISTE_KARTE), "border"), "width"),
+    gebaut: (h) => randTeil(domStil(h, "leiste-objekt", "border"), "width"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt"]', eigenschaft: "border-top-width" },
+  },
+  {
+    name: "objektkarte-rand hairline: Farbe",
+    ziel: (z) => randTeil(prop(inlineStyle(z, WN_LEISTE_KARTE), "border"), "color"),
+    gebaut: (h) => randTeil(domStil(h, "leiste-objekt", "border"), "color"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt"]', eigenschaft: "border-top-color" },
+  },
+  {
+    name: "objektkarte-radius 9px",
+    ziel: (z) => prop(inlineStyle(z, WN_LEISTE_KARTE), "border-radius"),
+    gebaut: (h) => domStil(h, "leiste-objekt", "border-radius"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt"]', eigenschaft: "border-radius" },
+  },
+  {
+    name: "objekttitel-schriftgrad 13px",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE_KARTE, WN_LEISTE_KARTE_TITEL), "font-size"),
+    gebaut: (h) => domStil(h, "leiste-objekt-titel", "font-size"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt-titel"]', eigenschaft: "font-size" },
+  },
+  {
+    name: "objekttitel-schnitt 600",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE_KARTE, WN_LEISTE_KARTE_TITEL), "font-weight"),
+    gebaut: (h) => domStil(h, "leiste-objekt-titel", "font-weight"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt-titel"]', eigenschaft: "font-weight" },
+  },
+  {
+    name: "objektunterzeile-schriftgrad 11.5px",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE_KARTE, WN_LEISTE_KARTE_UNTER), "font-size"),
+    gebaut: (h) => domStil(h, "leiste-objekt-unterzeile", "font-size"),
+    messpunkt: { selektor: '[data-testid="leiste-objekt-unterzeile"]', eigenschaft: "font-size" },
+  },
+  {
+    name: "objektunterzeile-farbe muted #525B6B",
+    ziel: (z) => farbeKanon(prop(stilAb(z, WN_LEISTE_KARTE, WN_LEISTE_KARTE_UNTER), "color")),
+    gebaut: (h) => farbeKanon(domStil(h, "leiste-objekt-unterzeile", "color")),
+    messpunkt: { selektor: '[data-testid="leiste-objekt-unterzeile"]', eigenschaft: "color" },
+  },
+  // — der Link „Alle N Objekte oeffnen" (Z.90; Farbe aus dem Helmet-Stil `a { color: #9C5009 }`) —
+  {
+    name: "link-schriftgrad 12.5px",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_LINK), "font-size"),
+    gebaut: (h) => domStil(h, "leiste-alle", "font-size"),
+    messpunkt: { selektor: '[data-testid="leiste-alle"]', eigenschaft: "font-size" },
+  },
+  {
+    name: "link-schnitt 600",
+    ziel: (z) => prop(stilAb(z, WN_LEISTE, WN_LEISTE_LINK), "font-weight"),
+    gebaut: (h) => domStil(h, "leiste-alle", "font-weight"),
+    messpunkt: { selektor: '[data-testid="leiste-alle"]', eigenschaft: "font-weight" },
+  },
+  {
+    name: "link-farbe brand-text #9C5009",
+    ziel: (z) => farbeKanon(/a\s*\{\s*color:\s*(#[0-9A-Fa-f]{6})/.exec(z)?.[1] ?? null),
+    gebaut: (h) => farbeKanon(domStil(h, "leiste-alle", "color")),
+    messpunkt: { selektor: '[data-testid="leiste-alle"]', eigenschaft: "color" },
   },
 ] as const;

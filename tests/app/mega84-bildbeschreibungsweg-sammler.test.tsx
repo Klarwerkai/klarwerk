@@ -1161,8 +1161,15 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Die
     // Fundortzeile bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen
     // eigenen Titel (kein `documentTitle`-Prop) — sie erscheint nur in der Grundmenge.
+    //
+    // JOB 3052 (D6 Wissensnetz): `komponenten` von 253 auf 255 NACHGEZOGEN. `Wissensnetz.tsx`
+    // bringt GENAU ZWEI Komponenten hinzu — `Seitenleiste` (die Objektliste des gewählten Themas
+    // aus der Bibliothekssuche) und `Inhalt` (der gemeinsame Renderer für frische und gecachte
+    // Daten). Dieselbe Begründung wie oben: der Quellbaum wächst, keine Umstellung verschiebt die
+    // Erhebung; `anbieter` 1 und `traeger` 2 bleiben — weder Leiste noch Renderer bieten eine
+    // Bildbeschreibung an oder tragen einen eigenen Titel.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 253,
+      komponenten: 255,
       anbieter: 1,
       traeger: 2,
     });

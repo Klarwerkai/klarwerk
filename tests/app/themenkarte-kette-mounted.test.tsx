@@ -168,7 +168,8 @@ async function bestueckteApp(
 function fetchAufHandler(app: App, headers: Record<string, string>): void {
   vi.stubGlobal("fetch", async (eingabe: unknown, init?: RequestInit): Promise<Response> => {
     const roh = typeof eingabe === "string" ? eingabe : String(eingabe);
-    const pfad = roh.startsWith("http") ? new URL(roh).pathname : roh;
+    // JOB 3052 D6: die Suchanfrage der Seitenleiste traegt ihr Schlagwort als Query — sie reist mit.
+    const pfad = roh.startsWith("http") ? new URL(roh).pathname + new URL(roh).search : roh;
     const res = await app.inject({
       method: (init?.method ?? "GET") as "GET",
       url: pfad,

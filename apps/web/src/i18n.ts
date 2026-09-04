@@ -35,10 +35,15 @@ const de = {
   "wissensnetz.title": "Themenkarte",
   "wissensnetz.karte.label": "Themen und ihre Überschneidungen",
   "wissensnetz.karte.alt": "Themenkarte mit {{count}} Themen",
-  "wissensnetz.knoten.alt": "{{thema}} — {{count}} Wissensobjekte anzeigen",
+  // JOB 3052 D6: Klick/Enter WAEHLT das Thema (die Leiste zeigt seine Objekte); der Sprung in die
+  // Bibliothek ist der Link in der Leiste.
+  "wissensnetz.knoten.alt": "{{thema}} — {{count}} sichtbare Wissensobjekte, Thema auswählen",
   "wissensnetz.farbe.belegt": "freigegeben und belegt",
   "wissensnetz.farbe.freigegeben": "freigegeben, ohne Quelle",
-  "wissensnetz.farbe.offen": "noch nicht freigegeben",
+  // JOB 3052 D6: der Wortlaut des Zielbilds (Z.64) für den Zustand „kein validierter Träger" — die
+  // offenen Objekte liegen im Prüfboard. „freigegeben" (Z.63) allein wäre für Grün UND Weiß wahr
+  // und „wenig belegt" (Z.65) sagt weniger als der Zustand hergibt; dort bleibt die Produktwahrheit.
+  "wissensnetz.farbe.offen": "in Prüfung",
   // JOB 2600 D4 · BENs Auflage zu D3: „Fassung A ist nicht für alle Zustände wahr." Der alte Satz
   // lautete „kommt fast überall vor und verbindet deshalb nichts" und stand IMMER da — auch wenn
   // kein einziger Knoten gestrichelt war, und auch bei einem Anteil von 51 %, wo „fast überall"
@@ -62,6 +67,28 @@ const de = {
   "wissensnetz.alle.schalter": "Alle Themen ({{count}} weitere)",
   "wissensnetz.alle.abgeschnitten": "Die Liste ist gekürzt.",
   "wissensnetz.leer": "Zu diesem Bestand sind keine Schlagwörter vergeben.",
+  // JOB 3052 D6 — die Legenden-Karte und die Seitenleiste des Zielbilds (Wissensnetz.dc.html).
+  // „gemeinsam freigegeben" statt „gemeinsam belegt" (Z.66): eine Kante entsteht, wenn zwei Themen
+  // in demselben FREIGEGEBENEN Objekt vorkommen (themenkarte.ts) — „belegt" hieße „mit Quelle", und
+  // das verlangt die Kante nicht.
+  "wissensnetz.legende.groesse": "Größe = sichtbares Wissen · Kante = gemeinsam freigegeben",
+  "wissensnetz.leiste.alt": "Zum Thema {{thema}}",
+  // Die Zahlen stammen aus der Antwort der Bibliothekssuche für dieses Schlagwort — derselbe Weg
+  // wie die Facette in der Bibliothek, keine zweite Zählung.
+  "wissensnetz.leiste.zaehlung": "{{frei}} freigegebene Wissensobjekte · {{pruefung}} in Prüfung",
+  "wissensnetz.leiste.status.validiert": "freigegeben",
+  "wissensnetz.leiste.status.offen": "in Prüfung",
+  "wissensnetz.leiste.alle": "Alle {{count}} Objekte öffnen",
+  "wissensnetz.leiste.oeffnen": "In der Bibliothek öffnen",
+  // Leer heißt: die Suche hat für DICH nichts geliefert (Rechte-Naht) — kein Urteil über den Bestand.
+  "wissensnetz.leiste.leer": "Zu diesem Thema ist für dich nichts sichtbar.",
+  "wissensnetz.leiste.fehler": "Die Objekte zu diesem Thema konnten nicht geladen werden.",
+  // Zustandsmodell (REGELN §7, Lehre JOB 3037 R3): scheitert eine Auffrischung, bleibt das zuletzt
+  // Geholte sichtbar — mit Stand und dem Wort, dass die Auffrischung fehlschlug.
+  "wissensnetz.stand.fehlgeschlagen": "Stand von {{stand}} · Auffrischung fehlgeschlagen",
+  // Weder Daten noch Fehler noch Laden (etwa eine pausierte erste Anfrage): kein „Nichts vorhanden",
+  // kein Offline-Urteil (Lehre JOB 3037 R4/R5) — nur, was feststeht.
+  "wissensnetz.keineAntwort": "Noch keine Antwort vom Server.",
   "nav.external": "Externes Wissen",
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
@@ -4995,10 +5022,10 @@ const en: typeof de = {
   "wissensnetz.title": "Topic map",
   "wissensnetz.karte.label": "Topics and where they overlap",
   "wissensnetz.karte.alt": "Topic map with {{count}} topics",
-  "wissensnetz.knoten.alt": "{{thema}} — show {{count}} knowledge objects",
+  "wissensnetz.knoten.alt": "{{thema}} — {{count}} visible knowledge objects, select topic",
   "wissensnetz.farbe.belegt": "released and sourced",
   "wissensnetz.farbe.freigegeben": "released, no source",
-  "wissensnetz.farbe.offen": "not released yet",
+  "wissensnetz.farbe.offen": "under review",
   "wissensnetz.legende.ubiquitaer":
     "Dashed outline: appears in the majority of the visible stock and therefore gets no edges.",
   "wissensnetz.legende.keineKanten":
@@ -5008,6 +5035,18 @@ const en: typeof de = {
   "wissensnetz.alle.schalter": "All topics ({{count}} more)",
   "wissensnetz.alle.abgeschnitten": "This list is shortened.",
   "wissensnetz.leer": "No keywords are assigned in this stock.",
+  // JOB 3052 D6 — mirror of the DE keys, see the notes there.
+  "wissensnetz.legende.groesse": "Size = visible knowledge · edge = released together",
+  "wissensnetz.leiste.alt": "About the topic {{thema}}",
+  "wissensnetz.leiste.zaehlung": "{{frei}} released knowledge objects · {{pruefung}} under review",
+  "wissensnetz.leiste.status.validiert": "released",
+  "wissensnetz.leiste.status.offen": "under review",
+  "wissensnetz.leiste.alle": "Open all {{count}} objects",
+  "wissensnetz.leiste.oeffnen": "Open in the library",
+  "wissensnetz.leiste.leer": "Nothing on this topic is visible to you.",
+  "wissensnetz.leiste.fehler": "The objects for this topic could not be loaded.",
+  "wissensnetz.stand.fehlgeschlagen": "As of {{stand}} · refresh failed",
+  "wissensnetz.keineAntwort": "No answer from the server yet.",
   "nav.external": "External knowledge",
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
@@ -9300,10 +9339,10 @@ const nl: typeof de = {
   "wissensnetz.title": "Themakaart",
   "wissensnetz.karte.label": "Thema's en hun overlap",
   "wissensnetz.karte.alt": "Themakaart met {{count}} thema's",
-  "wissensnetz.knoten.alt": "{{thema}} — {{count}} kennisobjecten tonen",
+  "wissensnetz.knoten.alt": "{{thema}} — {{count}} zichtbare kennisobjecten, thema kiezen",
   "wissensnetz.farbe.belegt": "vrijgegeven en onderbouwd",
   "wissensnetz.farbe.freigegeben": "vrijgegeven, zonder bron",
-  "wissensnetz.farbe.offen": "nog niet vrijgegeven",
+  "wissensnetz.farbe.offen": "in beoordeling",
   "wissensnetz.legende.ubiquitaer":
     "Gestippelde rand: komt voor in de meerderheid van de zichtbare verzameling en krijgt daarom geen verbindingen.",
   "wissensnetz.legende.keineKanten":
@@ -9313,6 +9352,19 @@ const nl: typeof de = {
   "wissensnetz.alle.schalter": "Alle thema's ({{count}} meer)",
   "wissensnetz.alle.abgeschnitten": "Deze lijst is ingekort.",
   "wissensnetz.leer": "In deze verzameling zijn geen trefwoorden toegekend.",
+  // JOB 3052 D6 — spiegel van de DE-sleutels, zie de toelichting daar.
+  "wissensnetz.legende.groesse": "Grootte = zichtbare kennis · lijn = samen vrijgegeven",
+  "wissensnetz.leiste.alt": "Over het thema {{thema}}",
+  "wissensnetz.leiste.zaehlung":
+    "{{frei}} vrijgegeven kennisobjecten · {{pruefung}} in beoordeling",
+  "wissensnetz.leiste.status.validiert": "vrijgegeven",
+  "wissensnetz.leiste.status.offen": "in beoordeling",
+  "wissensnetz.leiste.alle": "Alle {{count}} objecten openen",
+  "wissensnetz.leiste.oeffnen": "In de bibliotheek openen",
+  "wissensnetz.leiste.leer": "Bij dit thema is voor jou niets zichtbaar.",
+  "wissensnetz.leiste.fehler": "De objecten bij dit thema konden niet worden geladen.",
+  "wissensnetz.stand.fehlgeschlagen": "Stand van {{stand}} · vernieuwen mislukt",
+  "wissensnetz.keineAntwort": "Nog geen antwoord van de server.",
   "nav.external": "Externe kennis",
   "nav.validation": "Validatie",
   "nav.conflicts": "Conflicten",

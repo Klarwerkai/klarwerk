@@ -42,8 +42,10 @@ const d = vi.hoisted(() => {
   return { fn, resolve: (v: unknown) => state.resolve(v) };
 });
 
+// JOB 3052 D6: die Seitenleiste fragt die Bibliothekssuche nach dem gewaehlten Thema; hier
+// antwortet sie leer — geprueft wird sie in tests/wissensnetz-flaeche/seitenleiste-mounted.test.tsx.
 vi.mock("../../apps/web/src/api/endpoints", () => ({
-  endpoints: { wissensnetz: { luecken: d.fn } },
+  endpoints: { wissensnetz: { luecken: d.fn }, library: { search: async () => [] } },
 }));
 
 import {

@@ -413,6 +413,14 @@ const INVENTAR: readonly string[] = [
   // Inventar nimmt sie nicht still auf. Sachlich Klara-Regression: sie bewacht die Grenze, an der
   // Klaras Panelweg zum ersten Mal ein externes Modell erreichen wuerde.
   "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts",
+  // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
+  // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
+  // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten
+  // Seite ueber `styles/themes.css` auf (modern-Block vor :root). Es ist eine SEITE DER WEB-APP,
+  // kein Klara-Panel — „klara" steht nicht im Pfad, K5 bleibt. K2 hat die Datei gemeldet, das
+  // Inventar nimmt sie nicht still auf: der Eintrag steht hier, damit die Palette-Achse weiterhin
+  // JEDEN Leser der Token-Datei sichtbar macht, auch wenn er nicht Klara ist.
+  "tests/design/zielbild-wissensnetz.test.ts",
   "tests/klara-zerlegung/marken-skelett.test.ts",
   "tests/klara-zerlegung/probeschnitt.test.ts",
   "tests/klara-zerlegung/schnitt-pins.test.ts",
