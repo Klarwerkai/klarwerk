@@ -1059,7 +1059,25 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     unveraendert direkt unter der Karte, im Antwortzustand unter der Antwortflaeche); drei
     //     Markup-Kommentare gekuerzt (Rest-Seite des Probeschnitts wieder unter 500 Zeilen). Kein
     //     Skript, kein Woerterbuch, keine Kennung geaendert; kein Manifest, kein Endpunkt, kein Abruf.
-    const PIN = "de691947fb41aac60f1f7cf3622f63f32e850288e87bc65030bc5d10882b2b7d";
+    //   · KONFLIKTRUNDE 1 (04.09.2026, JOB 3018) — PIN BEWUSST AKTUALISIERT (de691947… -> f8dc1c93…):
+    //     der Rebase auf main traf dasselbe Dateiende wie JOB 3018 D1 (P7, „kein toter Knopf ohne
+    //     Grund"). JOB 3018 aendert unabhaengig von der Fragen-Flaeche oben: (a) EIN neuer
+    //     i18n-Schluessel `officeDetecting` in DE/EN/NL; (b) ein dritter Zweig in `updateSendState`
+    //     fuer die Lage „Erkennung laeuft noch" (`!officeChecked`); (c) EIN zusaetzlicher Aufruf
+    //     `updateSendState()` im Startblock, vor der Office-Erkennung. WAS SICHTBAR WIRD: in der
+    //     Spanne zwischen Laden und Office-Erkennung (bis zu OFFICE_READY_TIMEOUT_MS = 4000 ms)
+    //     traegt der ohnehin gesperrte Senden-Knopf jetzt einen `title` mit dem Grund — vorher war
+    //     er in dieser Spanne stumm gesperrt; sichtbar ist das NUR im Zeiger-Tooltip. KEIN NEUES
+    //     ELEMENT, KEINE NEUE ID, KEIN NEUES ATTRIBUT AM MARKUP, kein neues Abrufziel, kein
+    //     Manifest, keine geaenderte CSP, kein neues Recht, keine geaenderte Nutzlast. KEINE
+    //     ZUSICHERUNG WIRD SCHWAECHER: `noOffice` behaelt Wortlaut UND Bedeutung, der Warnkasten
+    //     `#office-hint` bleibt in der neuen Lage still (Klasse `hidden`, leerer Text) — belegt
+    //     durch die Faelle A/B/C und den Fristfall in
+    //     `tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx`. Beide Aenderungen (JOB
+    //     3004/3016/3046/3017-Kette oben UND JOB 3018 P7) stehen unveraendert nebeneinander in der
+    //     zusammengefuehrten Datei; der Pin unten ist der frisch daraus gerechnete Hash, kein
+    //     uebernommener Wert einer Seite.
+    const PIN = "f8dc1c9368a3016622265c7f71077554a5abc8ca82c88988ff44f02bf175e2cc";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

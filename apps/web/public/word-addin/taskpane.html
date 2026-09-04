@@ -2304,6 +2304,7 @@
         sendRateLimitedUnknown:
           "Zu viele Anfragen — bitte später erneut versuchen. Es wurde KEIN Entwurf angelegt.",
         noOffice: "Diese Seite läuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
+        officeDetecting: "Die Word-Umgebung wird gerade erkannt — bis Word sich meldet, ist Senden gesperrt.",
         openLink: "Entwurf in KLARWERK öffnen",
         tabAsk: "Fragen",
         tabCapture: "Wissen erfassen",
@@ -2561,6 +2562,7 @@
         sendRateLimitedUnknown:
           "Too many requests — please try again later. NO draft was created.",
         noOffice: "This page runs as the Klara panel inside Microsoft Word. In a browser you can only see the sign-in status — sending is disabled here.",
+        officeDetecting: "Detecting the Word environment — sending stays disabled until Word responds.",
         openLink: "Open draft in KLARWERK",
         tabAsk: "Ask",
         tabCapture: "Capture knowledge",
@@ -2768,6 +2770,7 @@
         sendRateLimitedUnknown:
           "Te veel verzoeken — probeer het later opnieuw. Er is GEEN concept aangemaakt.",
         noOffice: "Deze pagina draait als Klara-paneel in Microsoft Word. In een browser zie je alleen de aanmeldstatus — versturen is hier uitgeschakeld.",
+        officeDetecting: "De Word-omgeving wordt nu herkend — versturen blijft uitgeschakeld tot Word zich meldt.",
         openLink: "Concept in KLARWERK openen",
         tabAsk: "Vragen",
         tabCapture: "Kennis vastleggen",
@@ -2934,8 +2937,20 @@
 
     // WP-KLARA-1b (K5): Office-Verfuegbarkeit ist ein EIGENER, ehrlicher Zustand. officeChecked wird
     // true, sobald die Erkennung abgeschlossen ist (Office.onReady ODER Frist abgelaufen); officeReady
-    // nur, wenn Office WIRKLICH bereit ist. Der Senden-Knopf ist NUR bei angemeldet UND Office-bereit
-    // aktiv — vorher/im Browser ist er mit ehrlichem Grund deaktiviert (kein toter/crashender Klick).
+    // nur, wenn Office WIRKLICH bereit ist.
+    //
+    // JOB 3018 (P7): Aus diesen ZWEI Merkern leitet `updateSendState` DREI Lagen ab — kein drittes
+    // Flag daneben, eine Zustandsquelle:
+    //   1. !officeChecked                 — die Erkennung LAEUFT. Senden gesperrt, der Grund
+    //                                       (`officeDetecting`) steht am Knopf; der Hinweiskasten
+    //                                       bleibt still, denn dass die Seite ausserhalb von Word
+    //                                       laeuft, ist zu diesem Zeitpunkt NICHT festgestellt.
+    //   2. officeChecked && !officeUsable — Erkennung fertig, kein Word. Hinweiskasten + `noOffice`
+    //                                       am Knopf.
+    //   3. officeChecked && officeUsable  — Erkennung fertig, Word da. Kein Grund am Knopf; gesperrt
+    //                                       ist er dann nur noch, solange niemand angemeldet ist.
+    // Der Senden-Knopf ist also NUR bei angemeldet UND Office-bereit aktiv — in jeder anderen Lage
+    // ist er mit ehrlichem Grund deaktiviert (kein toter/crashender Klick, und keiner ohne Grund).
     var officeChecked = false;
     var officeReady = false;
     var OFFICE_READY_TIMEOUT_MS = 4000;
@@ -2953,6 +2968,15 @@
         hint.textContent = t("noOffice");
         sendBtn.disabled = true;
         sendBtn.title = t("noOffice"); // ehrlicher Grund direkt am deaktivierten Knopf
+      } else if (!officeChecked) {
+        // JOB 3018 (P7): die Erkennung laeuft noch. Gesperrt ist der Knopf hier aus EINEM Grund —
+        // Word hat sich noch nicht gemeldet —, und der steht am Knopf. Der Hinweiskasten bleibt
+        // bewusst still: ein Warnkasten fuer die Wartezeit waere Laerm im Normalfall, und
+        // `noOffice` waere hier schlicht unwahr (nichts ist bisher festgestellt).
+        hint.className = "hidden";
+        hint.textContent = "";
+        sendBtn.disabled = true;
+        sendBtn.title = t("officeDetecting");
       } else {
         hint.className = "hidden";
         hint.textContent = "";
@@ -5557,6 +5581,14 @@
     });
 
     renderStatics();
+    // JOB 3018 (P7): der Grund am gesperrten Knopf steht ab dem ERSTEN Bildaufbau da. Im LADEWEG
+    // rief `updateSendState` bisher nur zweierlei: die Antwort auf `/api/auth/me` (`checkSession`)
+    // und die abgeschlossene Erkennung (`markOfficeChecked`); die dritte Aufrufstelle `setLang`
+    // haengt an einem Klick. Der Knopf des Markups ist von Anfang an `disabled` — ohne diese Zeile
+    // waeren also genau die Sekunden, in denen das Netz langsam ist, wieder ohne Grund. Derselbe
+    // Gedanke wie bei `ladeAiLage` weiter unten: erst der ehrliche Zwischenzustand, dann das
+    // Ergebnis.
+    updateSendState();
     // WP-KLARA-1b (K5): timeout-basierte Office-Erkennung. Office.onReady mit FRIST — laedt office.js
     // nicht (Blocker/Offline/normaler Browser) oder wird Office nie bereit, kippt der Zustand nach
     // OFFICE_READY_TIMEOUT_MS EHRLICH auf „kein Office" (Hinweis + deaktivierter Knopf mit Grund).

@@ -56,6 +56,15 @@ const KEIN_OFFICE_DE =
   "Diese Seite läuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den " +
   "Anmelde-Status sehen — Senden ist hier deaktiviert.";
 
+/**
+ * JOB 3018 (P7): der Grund, den der gesperrte Knopf WÄHREND der Erkennung trägt (DE). Ebenfalls
+ * wörtlich hier — aus demselben Grund wie `KEIN_OFFICE_DE`: gemessen wird, was ein Mensch liest.
+ * Er sagt ausdrücklich NICHT, die Seite laufe ausserhalb von Word; das ist zu diesem Zeitpunkt
+ * nicht festgestellt.
+ */
+const OFFICE_ERKENNUNG_DE =
+  "Die Word-Umgebung wird gerade erkannt — bis Word sich meldet, ist Senden gesperrt.";
+
 // ---- Der Serverstand ---------------------------------------------------------------------------
 
 let angemeldet = true;
@@ -278,6 +287,18 @@ const KEIN_OFFICE_SICHT: Sicht = {
   knopfGrund: KEIN_OFFICE_DE,
 };
 
+/**
+ * JOB 3018: die dritte Lage — die Erkennung LÄUFT NOCH. Der Knopf ist gesperrt und nennt seinen
+ * Grund; `#office-hint` bleibt still. Ein Warnkasten für vier Sekunden wäre Lärm für den
+ * Normalfall — der Grund steht am Knopf, wo er gebraucht wird.
+ */
+const ERKENNUNG_LAEUFT_SICHT: Sicht = {
+  hinweisKlasse: "hidden",
+  hinweisText: "",
+  knopfGesperrt: true,
+  knopfGrund: OFFICE_ERKENNUNG_DE,
+};
+
 beforeEach(() => {
   vi.useFakeTimers({ shouldAdvanceTime: true });
   angemeldet = true;
@@ -383,50 +404,99 @@ describe("JOB 3008 · Fall C — meldet Word sich verspaetet, erholt sich das Fe
 // FALL D — das Fenster VOR der Erkennung (der Kern dieses Auftrags)
 // ================================================================================================
 //
-// `taskpane.html:2573-2574` sagt zu: „Der Senden-Knopf ist NUR bei angemeldet UND Office-bereit
-// aktiv — VORHER/im Browser ist er mit ehrlichem Grund deaktiviert (kein toter/crashender Klick)."
-// Die Faelle A/B/C oben belegen das „im Browser". Hier steht das „vorher". Die Erwartungen unten
-// sind das GEMESSENE, nicht das Erhoffte — der Befund gehoert in die Rueckgabe, nicht in eine
-// Aenderung am Panel (JOB 3004 arbeitet an dieser Datei).
+// `taskpane.html` sagt beim Zustandsblock zu: „Der Senden-Knopf ist NUR bei angemeldet UND
+// Office-bereit aktiv — VORHER/im Browser ist er mit ehrlichem Grund deaktiviert (kein
+// toter/crashender Klick)." Die Faelle A/B/C oben belegen das „im Browser". Hier steht das „vorher".
+//
+// JOB 3018 (P7) — DIE SOLLWERTE DIESES ABSCHNITTS HABEN SICH GEAENDERT, UND ZWAR ABSICHTLICH.
+// JOB 3008 hat hier das GEMESSENE festgeschrieben: in der Spanne vor der Erkennung war der Knopf
+// gesperrt und `title` leer — ein toter Knopf ohne Grund, im Widerspruch zur Zusage oben. Genau
+// dieser Widerspruch war der Auftrag von JOB 3018. `updateSendState` unterscheidet seither DREI
+// Lagen (Erkennung laeuft · Erkennung fertig ohne Word · Erkennung fertig mit Word); die Faelle
+// unten messen dieselbe Stelle wie zuvor, nur steht dort jetzt der ehrliche Grund statt des
+// Schweigens. Geaendert wurden AUSSCHLIESSLICH die Sollwerte, nicht die Bauform der Faelle.
 describe("JOB 3008 · Fall D — die Zeitspanne zwischen Laden und Erkennung", () => {
-  it("unmittelbar nach dem Skriptlauf: Knopf gesperrt, Hinweis versteckt, KEIN Grund", async () => {
+  it("unmittelbar nach dem Skriptlauf: Knopf gesperrt, Hinweis versteckt, Grund am Knopf", async () => {
     fensterLaden({ hostlage: "zurueckgehalten" });
 
-    // Noch hat weder die Frist gegriffen noch `onReady` gefeuert noch `/api/auth/me` geantwortet.
-    expect(sicht()).toEqual({
-      hinweisKlasse: "hidden",
-      hinweisText: "",
-      knopfGesperrt: true,
-      knopfGrund: "",
-    });
+    // Noch hat weder die Frist gegriffen noch `onReady` gefeuert noch `/api/auth/me` geantwortet —
+    // und genau das ist der Punkt: der Grund haengt seit JOB 3018 an KEINER Antwort. Der Startblock
+    // ruft `updateSendState()` selbst, bevor er die Erkennung anstoesst. Vorher stand hier
+    // `knopfGrund: ""`, weil in diesem Augenblick noch gar kein `updateSendState` gelaufen war.
+    expect(sicht()).toEqual(ERKENNUNG_LAEUFT_SICHT);
     await leerlauf();
   });
 
-  it("angemeldet, vor der Frist: der Knopf ist tot und nennt keinen Grund", async () => {
+  it("angemeldet, vor der Frist: der gesperrte Knopf nennt seinen Grund", async () => {
     await fensterLadenUndWarten({ hostlage: "zurueckgehalten" });
     // Die Anmeldung IST belegt — die Sperre kann also nur an der offenen Office-Erkennung liegen.
     expect(el("session-status").className).toBe("status ok");
     expect(onReadyRueckruf, "Der Rueckruf wurde nicht festgehalten").not.toBeNull();
 
-    // DAS GEMESSENE, woertlich: `updateSendState` laeuft in dieser Spanne in den else-Zweig
-    // (`taskpane.html:2592-2596`), weil `officeChecked` noch false ist. Der Hinweis bleibt
-    // versteckt, `title` wird aktiv auf "" gesetzt — der Knopf ist gesperrt OHNE sichtbaren Grund.
+    // JOB 3018: der Zwischenzustand hat einen EIGENEN Text. Er behauptet nicht, die Seite laufe
+    // ausserhalb von Word (das ist hier nicht festgestellt), und er macht keinen Warnkasten auf.
+    expect(sicht()).toEqual(ERKENNUNG_LAEUFT_SICHT);
+    expect(sicht().knopfGrund).not.toBe(KEIN_OFFICE_DE);
+  });
+
+  it("nicht angemeldet, vor der Frist: derselbe Grund am Knopf", async () => {
+    // JOB 3018: die Anmeldung aendert an der OFFICE-Lage nichts. Waere der Grund an `signedIn`
+    // gehaengt, stuende hier ein anderer Text — die fehlende Anmeldung traegt ihren eigenen
+    // sichtbaren Weg (`#login-block`), nicht den Knopf-Grund.
+    angemeldet = false;
+    await fensterLadenUndWarten({ hostlage: "zurueckgehalten" });
+    expect(el("session-status").className).toBe("status warn");
+
+    expect(sicht()).toEqual(ERKENNUNG_LAEUFT_SICHT);
+    expect(el("login-block").className).not.toContain("hidden");
+  });
+
+  it("Word meldet sich vor der Frist: der Pruefgrund verschwindet restlos", async () => {
+    await fensterLadenUndWarten({ hostlage: "zurueckgehalten" });
+    expect(sicht()).toEqual(ERKENNUNG_LAEUFT_SICHT);
+
+    await officeMeldetSich();
+
+    // Angemeldet UND Office bereit: der Knopf ist frei und traegt keinen Grund mehr.
+    expect(sicht()).toEqual({
+      hinweisKlasse: "hidden",
+      hinweisText: "",
+      knopfGesperrt: false,
+      knopfGrund: "",
+    });
+    // Und der Pruefsatz steht nirgends mehr im Fenster — auch nicht als Attribut an einem anderen
+    // Knopf. `innerHTML` traegt `title`-Attribute mit; `textContent` taete das nicht.
+    expect(document.body.innerHTML).not.toContain(OFFICE_ERKENNUNG_DE);
+  });
+
+  it("Word meldet sich vor der Frist, aber niemand ist angemeldet: kein Office-Grund mehr", async () => {
+    angemeldet = false;
+    await fensterLadenUndWarten({ hostlage: "zurueckgehalten" });
+    expect(sicht()).toEqual(ERKENNUNG_LAEUFT_SICHT);
+
+    await officeMeldetSich();
+
+    // Gesperrt bleibt der Knopf — aber wegen der Anmeldung, und die traegt ihren eigenen Weg.
     expect(sicht()).toEqual({
       hinweisKlasse: "hidden",
       hinweisText: "",
       knopfGesperrt: true,
       knopfGrund: "",
     });
+    expect(document.body.innerHTML).not.toContain(OFFICE_ERKENNUNG_DE);
   });
 
-  it("die Spanne ist begrenzt: mit dem Ablauf der Frist kommt der Grund", async () => {
+  it("die Spanne ist begrenzt: aus dem Pruefgrund wird mit der Frist der Nicht-Word-Satz", async () => {
     await fensterLadenUndWarten({ hostlage: "zurueckgehalten" });
-    expect(sicht().knopfGrund, "Vor der Frist stand schon ein Grund am Knopf").toBe("");
+    expect(sicht(), "Vor der Frist muss der Pruefgrund stehen").toEqual(ERKENNUNG_LAEUFT_SICHT);
 
     await vi.advanceTimersByTimeAsync(OFFICE_FRIST + 1_000);
     await leerlauf();
 
-    expect(sicht().knopfGrund).toBe(KEIN_OFFICE_DE);
+    // Der Beweis, dass durch JOB 3018 nichts Bestehendes kippt: nach dem Fristablauf steht
+    // unveraendert der Zustand, den die Faelle A und B messen — Warnkasten UND Grund am Knopf.
+    expect(sicht()).toEqual(KEIN_OFFICE_SICHT);
+    expect(document.body.innerHTML).not.toContain(OFFICE_ERKENNUNG_DE);
   });
 });
 
@@ -455,20 +525,45 @@ describe("JOB 3008 · Kalibrierung — die Faelle haengen wirklich am ausgeliefe
 
     // Waere Fall B nur eine Behauptung ueber den Ablauf der Zeit, staende hier derselbe Zustand
     // wie dort. Er steht nicht — die Frist des Panels entscheidet.
+    // JOB 3018: NUR der Sollwert der zweiten Zeile ist nachgezogen. Mit der erhoehten Frist ist das
+    // Fenster weiterhin in der Lage „Erkennung laeuft" — dort stand vorher gar kein Grund am Knopf,
+    // jetzt steht der ehrliche. Die Aussage des Falls ist unveraendert: es ist NICHT der
+    // Nicht-Word-Zustand.
     expect(sicht()).not.toEqual(KEIN_OFFICE_SICHT);
-    expect(sicht().knopfGrund).toBe("");
+    expect(sicht()).toEqual(ERKENNUNG_LAEUFT_SICHT);
   });
 
-  it('Fall D haengt an der Zuweisung `sendBtn.title = ""`: ersetzt man sie, misst Fall D anders', async () => {
+  it('die Erholung haengt an der Zuweisung `sendBtn.title = ""`: ersetzt man sie, misst Fall C anders', async () => {
+    // JOB 3018 — WARUM DIESER FALL JETZT AUF FALL C ZEIGT UND NICHT MEHR AUF FALL D. Bis dahin
+    // lief auch die Spanne VOR der Erkennung durch den else-Zweig mit `sendBtn.title = "";`; die
+    // Gegenprobe hing dort. Seit JOB 3018 hat diese Spanne einen eigenen Zweig (die Gegenprobe
+    // dazu steht im Fall darunter), und `sendBtn.title = "";` gehoert nur noch der Lage NACH der
+    // Erkennung. Die Gegenprobe folgt der Zuweisung — verfaelscht wird dieselbe Stelle wie zuvor.
     await fensterLadenUndWarten({
       hostlage: "zurueckgehalten",
       mutieren: (skript) =>
         verfaelschen(skript, 'sendBtn.title = "";', 'sendBtn.title = t("noOffice");'),
     });
+    await officeMeldetSich();
 
-    // Dieselbe Spanne wie in Fall D — nur die verfaelschte Zuweisung ist anders. Steht hier ein
-    // Grund, dann liest Fall D wirklich diese Stelle und nicht einen Rest aus dem Markup.
+    // Ohne Verfaelschung steht hier der freie Knopf ohne Grund (Fall C). Steht stattdessen der
+    // Nicht-Word-Satz, liest Fall C wirklich diese Zuweisung und nicht einen Rest aus dem Markup.
     expect(sicht().knopfGrund).toBe(KEIN_OFFICE_DE);
+    expect(sicht().knopfGesperrt).toBe(false);
+  });
+
+  it("die Spanne VOR der Erkennung haengt am eigenen Zweig: nimmt man ihm den Text, schweigt der Knopf wieder", async () => {
+    // JOB 3018, Pflicht-Kalibrierung zu den neuen Faellen: verfaelscht wird die EINE Zuweisung, die
+    // den Pruefgrund setzt. Faellt sie weg, steht wieder der Zustand von JOB 3008 da — gesperrt,
+    // ohne Grund. Bleibt das Ergebnis gleich, misst der neue Fall den Pruefstand statt das Panel.
+    await fensterLadenUndWarten({
+      hostlage: "zurueckgehalten",
+      mutieren: (skript) =>
+        verfaelschen(skript, 'sendBtn.title = t("officeDetecting");', 'sendBtn.title = "x";'),
+    });
+
+    expect(sicht()).not.toEqual(ERKENNUNG_LAEUFT_SICHT);
+    expect(sicht().knopfGrund).toBe("x");
     expect(sicht().knopfGesperrt).toBe(true);
   });
 });
