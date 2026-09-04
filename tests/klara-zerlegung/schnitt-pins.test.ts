@@ -161,6 +161,8 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // JOB 3016 D3: der Chromium-Vergleich der Ladekarte laedt die Datei ueber ihr Pfadliteral in
   // einen echten Browser (Playwright-Route) — Griff `pfad`; A2 hat die Datei gemeldet.
   "tests/design/zielbild-pruefunglaeuft.test.ts": "pfad",
+  // JOB 3017 D4: laedt die Datei ueber ihren Pfad in Chromium und misst das gebaute Grundpanel.
+  "tests/design/zielbild-schlankes-panel.test.ts": "pfad",
   "tests/design/zielbild-schlankespanel-messung.test.ts": "marken,fixture",
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts": "pfad,fixture",
   "tests/design/zielbild-wissen-erfassen.test.ts": "pfad",

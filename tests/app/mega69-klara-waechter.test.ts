@@ -1006,7 +1006,60 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     unveraendert nebeneinander in der taskpane.html (Ladekarte fuer den Wartezustand, Luecke
     //     fuer die Antwortluecke; keiner beruehrt den anderen). Der Pin unten ist der frisch aus der
     //     zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
-    const PIN = "d2fe611ce253ee2bc599cb85671ead7ddd59bfdbf46498e6615a5c6e21135d47";
+    //
+    // ============================================================================================
+    // JOB 3017 D4 — PIN BEWUSST AKTUALISIERT (d2fe611c… -> 0b8ad771…), Auslieferungsfolgen:
+    // ============================================================================================
+    //   · WAS SICH AENDERT: Markup, Stilregeln, Woerterbuch und drei Skriptstellen des Panels —
+    //     das ruhige Grundpanel nach SchlankesPanel.dc.html. Im Kopfband ersetzt die zweite
+    //     Kopfzeile `#kw-kopf-zeile` (Anmeldezeile `#kw-anmeldung` links, Stand rechts) die ZWEI
+    //     Spans `#kw-stand-kopf`; die Kennung kommt jetzt genau einmal vor (JOB 2929 hatte den
+    //     Zwilling beschrieben, s. o.). Die Fragen-Karte heisst `#ask-karte` und traegt nur Feld
+    //     und runden Sende-Pfeil (`#ask-btn` mit SVG statt Text, askCta als aria-label, askTitle
+    //     als aria-label des Felds); unter der Karte steht GENAU EIN Satz (`#ask-review-notice`,
+    //     askHint darin aufgegangen — der Schluessel `askHint` ist entfallen); `#ask-source-note`
+    //     ist zustandsgebunden verborgen; Status-, Antwort- und Absage-Block stehen unter dem Satz
+    //     als eigene Flaechen; `#ka1-block` rutscht UNTER die Karte; `#ask-rule-note` steht in
+    //     der neuen Fusszeile `#kw-fuss` (askRuleNote traegt den Leitsatz „Keine KI-Antwort ohne
+    //     Beleg · Vertrauliches bleibt vertraulich" plus die belegten Halbsaetze). Neue Skript-
+    //     stellen: `renderKopfAnmeldung` (Spiegel von #session-status), `setzeAskSourceNote`,
+    //     zwei aria-label-Zeilen in `renderStatics`.
+    //   · KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein neuer Fremd-Ursprung, KEINE
+    //     geaenderte CSP, KEIN neuer Abruf und keine geaenderte Nutzlast: die Menge der
+    //     `fetch(...)`-Ziele ist unveraendert, `/api/auth/me` wird wie bisher gelesen und nur an
+    //     einer zweiten Stelle angezeigt. Kein Farbliteral kommt hinzu (SVG-Striche ueber
+    //     currentColor auf Token; mega43/44 gruen).
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: Pruefhinweis und KI-Kennzeichnung (mega61/mega81)
+    //     bleiben mit ihren Schluesseln; die Regel askRuleNote nennt weiter „woertlich" und „nicht
+    //     an eine externe KI" (mega75/mega77); der Vertrauenskopf bleibt im Kopfband (W1).
+    //   · Gemessen: tests/design/zielbild-schlankes-panel.test.ts (Chromium, 360 px) und die
+    //     nachgefuehrte Ruhezustands-Messung tests/design/zielbild-schlankespanel-messung.test.ts.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
+    //     naechsten Oeffnen frisch. Bis der Office-Cache nachzieht, steht das alte Panel.
+    //   · RUNDE 2: `checkSession` nimmt nur einen NICHTLEEREN Servernamen als Anmeldung
+    //     (`sessionName`); `user.email` und „?" als Ersatzname sind entfernt. Ein 200 ohne Namen
+    //     zeigt den ehrlichen Hinweis sessionOff und laesst den Anmeldeweg sichtbar. Kein neuer
+    //     Abruf, keine geaenderte Nutzlast.
+    //   · KONFLIKTRUNDE 1 (04.09.2026, JOB 3017): der Rebase traf dieselbe Fragen-Flaeche wie JOB
+    //     3004/3016/3046 auf main. Die JOB-3017-Umstellung (runder Sende-Pfeil, EIN Satz unter der
+    //     Karte, Fusszeile #kw-fuss, KA1 unter der Karte, Kopfband-Anmeldezeile) ist auf den
+    //     JOB-3004/3016/3046-Bestand aufgesetzt, nicht daneben: die Antwortkarte (Main.dc.html), die
+    //     Ladekarte (PruefungLaeuft.dc.html) und die Luecke (KeinWissen.dc.html) sind UNVERAENDERT
+    //     erhalten — nur die Fragen-Karte, die Fusszeile und das Kopfband tragen die Zielbild-Werte
+    //     dieses Auftrags. Die frueher angenommene Zweitkopie von askRuleNote in der Luecke ist NICHT
+    //     zurueckgekehrt: JOB 3046 hatte sie bereits entfernt (mega75-klara-ki-status.test.ts pinnt
+    //     das weiterhin); die 2c7f216-Fassung von zielbild-schlankes-panel.test.ts nahm sie noch an
+    //     (Basis vor JOB 3046) und ist entsprechend nachgefuehrt. Der Pin unten ist der frisch aus
+    //     der zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    //   · NACHZUG-RUNDE 1 (04.09.2026, JOB 3017; 0b8ad771… -> de691947…): die beiden JOB-3017-
+    //     Stilregeln fuer `#ask-answer-block` und `#ask-gap-block` (Karten-Rezept) sind ENTFERNT —
+    //     sie standen im Stilblock HINTER den Regeln von JOB 3004 (Antwortflaeche `margin: 0 -14px`)
+    //     und JOB 3046 (Lueckenbuehne) und schlugen beide Vorlagen um 13px in einen Kasten;
+    //     `#ask-review-notice` steht im Rumpf jetzt HINTER Antwort- und Lueckenblock (im Ruhezustand
+    //     unveraendert direkt unter der Karte, im Antwortzustand unter der Antwortflaeche); drei
+    //     Markup-Kommentare gekuerzt (Rest-Seite des Probeschnitts wieder unter 500 Zeilen). Kein
+    //     Skript, kein Woerterbuch, keine Kennung geaendert; kein Manifest, kein Endpunkt, kein Abruf.
+    const PIN = "de691947fb41aac60f1f7cf3622f63f32e850288e87bc65030bc5d10882b2b7d";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -878,7 +878,8 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'tabAsk: "',
       'tabCapture: "',
       'askTitle: "',
-      'askHint: "',
+      // JOB 3017 D4: `askHint` ist in `askReviewNotice` aufgegangen (der EINE Satz unter der
+      // Fragen-Karte des Zielbilds); der Schluessel existiert nicht mehr.
       'askInputPlaceholder: "',
       'askCta: "',
       'askEmpty: "',

@@ -776,7 +776,11 @@ describe.runIf(zielbildDa)(
       expect(l.askGapBodyImBlock, "askGapBody steht noch im Block").toBe(0);
       expect(l.regelImBlock, "die Zweitkopie von askRuleNote steht noch im Block").toBe(0);
       expect(l.regelUnterAntwort, "#ask-rule-note ist nicht sichtbar").toBe(true);
-      expect(l.regelText ?? "").toContain("So arbeitet Klara");
+      // JOB 3017 D4 (Nachzug): die EINE Stelle der Regel ist die Fusszeile #kw-fuss des Grundpanels;
+      // ihr Wortlaut traegt den Leitsatz vor den belegten Halbsaetzen (bis dahin „So arbeitet
+      // Klara: …"). Gemessen wird weiter der sichtbare Text der einen Stelle.
+      expect(l.regelText ?? "").toContain("Keine KI-Antwort ohne Beleg");
+      expect(l.regelText ?? "").toContain("nicht an eine externe KI");
     });
 
     it("O · Reihenfolge und Lupe (Z.28-31): Lupe, Satz, Hauptaktion, Textlink — Auskunft vor Aktion; die Lupe traegt Kreis und Griff des Zielbilds", () => {

@@ -1151,10 +1151,18 @@ const SATZ_NEU = "Dazu liegt kein freigegebenes Firmenwissen vor.";
 const KNOPF_NEU = "Frage ändern";
 const AKTION_NEU = "Als offene Frage an KLARWERK geben";
 const FUSS_NEU = "Klara erfindet keine Antworten — eine Lücke ist eine ehrliche Auskunft.";
-/** Die Klara-Regel — unveraendert, an ihrer EINEN Stelle unter der Antwortflaeche. */
+/**
+ * Die Klara-Regel an ihrer EINEN Stelle #ask-rule-note. NACHGEZOGEN in JOB 3017 D4 (Nachzug):
+ * die Stelle ist die Fusszeile #kw-fuss des Grundpanels (SchlankesPanel.dc.html Z.48), und der
+ * Wortlaut traegt seit JOB 3017 den Leitsatz „Keine KI-Antwort ohne Beleg · Vertrauliches bleibt
+ * vertraulich" vor den beiden belegten Halbsaetzen (woertlich / nicht an eine externe KI —
+ * mega75/mega77-Pins). Bis dahin: „So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen
+ * wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine
+ * externe KI gesendet." — sichtbar in der Luecke ist die Regel weiterhin (M20).
+ */
 const REGEL =
-  "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu " +
-  "formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.";
+  "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes " +
+  "KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.";
 
 interface Traeger {
   traeger: string;
@@ -1204,11 +1212,12 @@ const VERLUSTLISTE: readonly Traeger[] = [
     traeger: "askRuleNote im Lueckenblock (die Zweitkopie, mega75 Block C)",
     vorher: "im Moment des ›warum nicht?‹ stand die Regel noch einmal im Kasten",
     jetzt:
-      "Die Zweitkopie ist ENTFERNT; die Regel steht an ihrer EINEN Stelle #ask-rule-note unter der " +
-      "Antwortflaeche (JOB 3004), sichtbar auch in der Luecke — M20.",
+      "Die Zweitkopie ist ENTFERNT; die Regel steht an ihrer EINEN Stelle #ask-rule-note — seit " +
+      "JOB 3017 in der Fusszeile #kw-fuss des Panels (vorher unter der Antwortflaeche, JOB 3004), " +
+      "sichtbar auch in der Luecke — M20.",
     verlust:
-      "Keine Zusage faellt: derselbe Schluessel, derselbe Wortlaut, sichtbar bei jeder Antwort und " +
-      "jeder Absage — nur nicht mehr doppelt.",
+      "Keine Zusage faellt: derselbe Schluessel, die belegten Halbsaetze bleiben (JOB 3017 stellt " +
+      "den Leitsatz voran), sichtbar bei jeder Antwort und jeder Absage — nur nicht mehr doppelt.",
     belegt: (m) => m[M.regel] === "0 Traeger" && m[M.regelUnten] === REGEL,
   },
   {

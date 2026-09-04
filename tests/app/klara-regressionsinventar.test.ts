@@ -276,6 +276,12 @@ const INVENTAR: readonly string[] = [
   // K2 meldete `expected [ Array(1) ] to deeply equal []`, bevor dieser Eintrag stand. Der Test baut
   // nichts um — taskpane.html ist in JOB 3004 gesperrt — und pinnt die Urteile auf den heutigen Stand.
   "tests/design/zielbild-keinwissen-messung.test.ts",
+  // JOB 3017 D4 (04.09.2026): das ruhige Grundpanel — das ausgelieferte taskpane.html laeuft in
+  // Chromium bei 360 px, jeder Zielbildwert (SchlankesPanel.dc.html) wird per getComputedStyle am
+  // realen Element gemessen. Achse `taskpane`; „klara" steht nicht im Dateinamen (K5 bleibt bei 36).
+  // K2 hat die Datei gemeldet, das Inventar hat sie nicht still aufgenommen. Sachlich
+  // Klara-Regression: der Test haelt fest, wie das Panel VOR der ersten Frage aussieht.
+  "tests/design/zielbild-schlankes-panel.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
   // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —

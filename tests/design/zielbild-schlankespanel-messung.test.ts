@@ -20,6 +20,15 @@
 //     Diese Datei ist der Vertrag, gegen den ein spaeterer Umbau baut — und der Waechter, der
 //     meldet, wenn ein Traeger des heutigen Ruhezustands unbemerkt faellt.
 //
+// NACHGEFUEHRT IN JOB 3017 D4 (04.09.2026): der Umbau, gegen den dieser Vertrag gebaut wurde, ist
+// gebaut — das Grundpanel traegt jetzt die Fragen-Karte `#ask-karte` mit rundem Sende-Pfeil, die
+// Anmeldezeile `#kw-anmeldung` und GENAU EIN `#kw-stand-kopf` im Kopfband, den EINEN Satz
+// `#ask-review-notice` unter der Karte, `#ka1-block` UNTER der Karte und die Fusszeile `#kw-fuss`
+// mit dem Regelsatz `#ask-rule-note` und dem Schloss. Die Pins unten (Reihenfolge, Textinventar,
+// Verlustliste, Urteile) sind GEMESSEN am neuen Stand, nicht abgeschrieben; die Darstellungswerte
+// bleiben hier `nicht messbar` — die Chromium-Messung dafuer ist
+// tests/design/zielbild-schlankes-panel.test.ts (eine Strecke, keine zweite Wahrheit).
+//
 // SICHTBARKEIT — WIE SIE HIER GEMESSEN WIRD, UND WO DIE GRENZE LIEGT. Die Fixture baut nur den
 // Rumpf auf; das ausgelieferte `<style>` aus dem Kopf der Datei wird hier ZUSAETZLICH in den
 // jsdom-Kopf gelegt, damit der Schalter des Panels selbst (`.hidden { display: none; }`,
@@ -31,7 +40,7 @@
 //
 // RED-FIRST-ERSATZ: DIE GEGENPROBE. Ein Messauftrag hat keinen Ausgangsfehler. Stattdessen kann
 // die gemessene Stelle IM SPEICHER DER TESTSITZUNG verfaelscht werden — nie in einer Datei:
-//   KW_D4_VERFAELSCHUNG=reihenfolge  → #ka1-block wird hinter die Frage-Karte gehaengt      (R1)
+//   KW_D4_VERFAELSCHUNG=reihenfolge  → #ka1-block wird VOR die Frage-Karte gehaengt (JOB 3017) (R1)
 //   KW_D4_VERFAELSCHUNG=text-greet   → der sichtbare Text von [data-t=greetBody] wird ersetzt (R2)
 //   KW_D4_VERFAELSCHUNG=text-hilfe   → der sichtbare Text von [data-t=helpCan1] wird ersetzt  (R2)
 //   KW_D4_VERFAELSCHUNG=text-ka6     → der sichtbare Text von #ka6-lead wird ersetzt          (R2)
@@ -265,7 +274,7 @@ interface Ruhezustand {
   /** Reihenfolge im Dokument: Index in `body.querySelectorAll("*")`. */
   position(el: El): number;
   /** Zustand des Sendeknopfs VOR den Startabrufen (synchron nach dem Skriptlauf). */
-  knopfVorStart: { disabled: boolean; title: string; text: string };
+  knopfVorStart: { disabled: boolean; title: string; text: string; ariaLabel: string };
   abbauen(): void;
 }
 
@@ -305,6 +314,7 @@ async function ruhezustand(opt: RuhezustandOptionen = {}): Promise<Ruhezustand> 
     disabled: knopf.disabled === true,
     title: knopf.title,
     text: norm(knopf.textContent),
+    ariaLabel: norm(knopf.getAttribute("aria-label")),
   };
   // Die Startabrufe (Anmeldung, Status, Stand) abwarten — das ist der Ruhezustand, den ein Mensch
   // sieht, nachdem das Fenster „angekommen“ ist.
@@ -342,9 +352,10 @@ async function ruhezustand(opt: RuhezustandOptionen = {}): Promise<Ruhezustand> 
 
   if (opt.verfaelschbar?.includes(VERFAELSCHUNG) === true) {
     if (VERFAELSCHUNG === "reihenfolge") {
+      // JOB 3017: die Karte steht jetzt VOR dem Begriffsbild — die Verfaelschung dreht es zurueck.
       const ka1 = el("#ka1-block");
       const frage = karte("#ask-input");
-      el("#section-ask").insertBefore(ka1, frage.nextSibling);
+      el("#section-ask").insertBefore(ka1, frage);
     } else if (VERFAELSCHUNG === "reiter") {
       el("#tab-ask").setAttribute("class", "");
       el("#tab-capture").setAttribute("class", "active");
@@ -451,6 +462,7 @@ function svgZusage(
   soll: string,
   beleg: string,
   symbol: (r: Ruhezustand) => El | null,
+  heute: Heute = "erfuellt",
 ): Zusage {
   return {
     kennung,
@@ -465,14 +477,20 @@ function svgZusage(
       const wert = ziel === null ? null : kanon(ziel.getAttribute(attr));
       return wert ?? NICHT_VORHANDEN;
     },
-    heute: "abweichend (im Produkt nicht vorhanden)",
+    heute,
   };
 }
-/** Das Pfeil-Symbol im Senden-Knopf (Z.41) — heute keines. */
+/** Das Pfeil-Symbol im Senden-Knopf (Z.41) — seit JOB 3017 vorhanden. */
 const pfeilSvg = (r: Ruhezustand): El | null => r.q("#ask-btn svg");
-/** Das Schloss-Symbol der Fusszeile (Z.49) — heute keines. */
+/** Das Schloss-Symbol der Fusszeile (Z.49) — seit JOB 3017 vorhanden. */
 const schlossSvg = (r: Ruhezustand): El | null =>
   r.q('svg path[d^="M8 10V7a4"]')?.closest("svg") ?? null;
+/**
+ * Die Strichfarbe steht im Produkt NICHT als Literal am SVG (`stroke="currentColor"`, die Farbe
+ * kommt vom Token ueber `color`) — am Markup ist deshalb nur das Wort lesbar, der Farbwert selbst
+ * ist ein berechneter Stil (Chromium-Messung in tests/design/zielbild-schlankes-panel.test.ts).
+ */
+const STRICHFARBE_BELEG = "stroke=currentColor am Markup; Farbwert = berechneter Stil (Chromium)";
 
 /** Der Chip/Reiter, den die Vorlage durch eine eigene Eigenschaft als aktiv markiert. */
 function aktiverUnter(zeilen: number[], merkmal: string): string {
@@ -488,11 +506,6 @@ const FUSSZEILENSATZ_Z48 = "Nur freigegebenes Wissen · nichts verlässt den Ser
 function inhaltsFlaechen(r: Ruhezustand): El[] {
   return Array.from(r.el("#section-ask").children).filter((k) => r.sichtbar(k));
 }
-function sichtbarerTextVorhanden(r: Ruhezustand, satz: string): string {
-  const treffer = r.alle("*").filter((e) => r.sichtbar(e) && norm(e.textContent) === satz);
-  return treffer.length > 0 ? satz : NICHT_VORHANDEN;
-}
-
 const ZUSAGEN: readonly Zusage[] = [
   // — Z.15 Artboard —
   darstellung("Z.15 Artboard Breite", 15, 0, "width", "360px", "body"),
@@ -604,21 +617,28 @@ const ZUSAGEN: readonly Zusage[] = [
   {
     kennung: "Z.27 Anmeldezeile im Kopfband",
     zeile: 27,
-    art: "text",
-    quelle: { text: "ganz" },
+    art: "struktur",
     // Der Name ist Beispieldatum der Vorlage; die Zusage ist die Zeile „Angemeldet als …“ IM Kopfband.
-    soll: "Angemeldet als Peter Kohnert",
-    beleg: "header (kein Traeger) · sinngleich ausserhalb: #session-status in #session-card",
+    quelle: {
+      struktur: () =>
+        textDerZeile(27).startsWith("Angemeldet als")
+          ? "Zeile „Angemeldet als …“ im Kopfband"
+          : "fehlt",
+      deckt: ["Z.27:text"],
+    },
+    soll: "Zeile „Angemeldet als …“ im Kopfband",
+    beleg: "#kw-anmeldung im header (JOB 3017: Spiegel von #session-status, Schluessel sessionOk)",
     ist: (r) => {
+      const praefix = r.t("sessionOk", { name: "" }).replace(/[\s.]+$/, "");
       const imKopf = r
         .alle("header *")
-        .some((e) => r.sichtbar(e) && norm(e.textContent).startsWith("Angemeldet als"));
+        .some((e) => r.sichtbar(e) && norm(e.textContent).startsWith(praefix));
       if (imKopf) {
-        return "im Kopfband vorhanden";
+        return "Zeile „Angemeldet als …“ im Kopfband";
       }
       return `im Kopfband nicht vorhanden; sinngleich in #session-status: „${r.text("#session-status")}"`;
     },
-    heute: "abweichend",
+    heute: "erfuellt",
   },
   darstellung("Z.27 Anmeldezeile Schriftgrad", 27, 0, "font-size", "11px", "header"),
   darstellung("Z.27 Anmeldezeile Farbe", 27, 0, "color", rgb("#7E879A"), "header"),
@@ -740,7 +760,7 @@ const ZUSAGEN: readonly Zusage[] = [
     quelle: { struktur: () => (stilWert(38, 0, "border-radius") !== null ? "vorhanden" : "fehlt") },
     soll: "vorhanden",
     beleg:
-      "die .card, die #ask-input umschliesst — seit JOB 3004 mit Kennung #ask-karte (werte.ts trifft sie jetzt)",
+      "die .card, die #ask-input umschliesst — seit JOB 3004 mit Kennung #ask-karte (werte.ts trifft sie jetzt); JOB 3017 baut die Karte auf Feld + rundem Sende-Pfeil um",
     ist: (r) => (r.sichtbar(r.frageKarte()) ? "vorhanden" : NICHT_VORHANDEN),
     heute: "erfuellt",
   },
@@ -764,7 +784,7 @@ const ZUSAGEN: readonly Zusage[] = [
         .map((e) => `#${e.id}`)
         .join(", ")})`;
     },
-    heute: "abweichend",
+    heute: "erfuellt",
   },
   darstellung("Z.38 Frage-Karte Grund", 38, 0, "background", rgb("#FFFFFF"), ".card"),
   darstellung("Z.38 Frage-Karte Rahmen", 38, 0, "border", `1px solid ${rgb("#E9E5DE")}`, ".card"),
@@ -834,12 +854,12 @@ const ZUSAGEN: readonly Zusage[] = [
         [40, 41, 42].map(textDerZeile).join("") === "" ? "ohne Wortlaut" : "mit Wortlaut",
     },
     soll: "ohne Wortlaut",
-    beleg: "#ask-btn (data-t=askCta)",
+    beleg: "#ask-btn (JOB 3017: askCta ist das aria-label, kein Textknoten)",
     ist: (r) => {
       const wort = r.text("#ask-btn");
       return wort === "" ? "ohne Wortlaut" : `Wortlaut „${wort}" (askCta)`;
     },
-    heute: "abweichend",
+    heute: "erfuellt",
   },
   darstellung("Z.40 Senden-Knopf Lage rechts", 40, 0, "right", "10px", "#ask-btn"),
   darstellung("Z.40 Senden-Knopf Lage unten", 40, 0, "bottom", "10px", "#ask-btn"),
@@ -855,7 +875,7 @@ const ZUSAGEN: readonly Zusage[] = [
     soll: "M12 19V5",
     beleg: '#ask-btn svg path[d^="M12 19V5"]',
     ist: (r) => (r.q('#ask-btn svg path[d^="M12 19V5"]') !== null ? "M12 19V5" : NICHT_VORHANDEN),
-    heute: "abweichend (im Produkt nicht vorhanden)",
+    heute: "erfuellt",
   },
   {
     kennung: "Z.41 Pfeil-Spitze im Senden-Knopf",
@@ -866,7 +886,7 @@ const ZUSAGEN: readonly Zusage[] = [
     beleg: '#ask-btn svg path[d^="M5 12l7-7"]',
     ist: (r) =>
       r.q('#ask-btn svg path[d^="M5 12l7-7"]') !== null ? "M5 12l7-7 7 7" : NICHT_VORHANDEN,
-    heute: "abweichend (im Produkt nicht vorhanden)",
+    heute: "erfuellt",
   },
   svgZusage("Z.41 Pfeil Breite", 41, "svg", 0, "width", "18", "#ask-btn svg[width]", pfeilSvg),
   svgZusage("Z.41 Pfeil Hoehe", 41, "svg", 0, "height", "18", "#ask-btn svg[height]", pfeilSvg),
@@ -877,8 +897,9 @@ const ZUSAGEN: readonly Zusage[] = [
     0,
     "stroke",
     rgb("#FFFFFF"),
-    "#ask-btn svg[stroke]",
+    `#ask-btn svg[stroke] — ${STRICHFARBE_BELEG}`,
     pfeilSvg,
+    "abweichend",
   ),
   svgZusage(
     "Z.41 Pfeil Strichstaerke",
@@ -897,9 +918,12 @@ const ZUSAGEN: readonly Zusage[] = [
     quelle: { text: "ganz" },
     soll: HINWEISSATZ_Z44,
     beleg:
-      "kein Traeger unter der Karte · sinnverwandt IN der Karte: [data-t=askHint], #ask-rule-note",
-    ist: (r) => sichtbarerTextVorhanden(r, HINWEISSATZ_Z44),
-    heute: "abweichend (im Produkt nicht vorhanden)",
+      "#ask-review-notice (JOB 3017: der EINE Satz unter der Karte — askHint und Pruefhinweis zusammengefuehrt; „validiertes KLARWERK-Wissen“ statt „freigegebenes Firmenwissen“)",
+    ist: (r) => {
+      const satz = r.q("#ask-review-notice");
+      return satz !== null && r.sichtbar(satz) ? norm(satz.textContent) : NICHT_VORHANDEN;
+    },
+    heute: "abweichend",
   },
   darstellung("Z.44 Hinweissatz Schriftgrad", 44, 0, "font-size", "12px", "(kein Traeger)"),
   darstellung("Z.44 Hinweissatz Zeilenhoehe", 44, 0, "line-height", "1.5", "(kein Traeger)"),
@@ -912,14 +936,13 @@ const ZUSAGEN: readonly Zusage[] = [
     art: "struktur",
     quelle: { struktur: () => (stilWert(47, 0, "border-top") !== null ? "vorhanden" : "fehlt") },
     soll: "vorhanden",
-    beleg:
-      "letzte sichtbare Flaechen heute: #kw-stand, #kw-fassung (Textzeilen, kein Band, kein Schloss)",
+    beleg: "#kw-fuss (JOB 3017: Band mit #ask-rule-note und Schloss, letzte Flaeche des Rumpfs)",
     ist: (r) => {
-      const satz = sichtbarerTextVorhanden(r, FUSSZEILENSATZ_Z48) !== NICHT_VORHANDEN;
-      const schloss = r.q('svg path[d^="M8 10V7a4"]') !== null;
-      return satz || schloss ? "vorhanden" : NICHT_VORHANDEN;
+      const band = r.q("#kw-fuss");
+      const schloss = r.q('#kw-fuss svg path[d^="M8 10V7a4"]') !== null;
+      return band !== null && r.sichtbar(band) && schloss ? "vorhanden" : NICHT_VORHANDEN;
     },
-    heute: "abweichend (im Produkt nicht vorhanden)",
+    heute: "erfuellt",
   },
   darstellung("Z.47 Fusszeile Innenabstand", 47, 0, "padding", "12px 16px", "(kein Traeger)"),
   darstellung(
@@ -937,9 +960,12 @@ const ZUSAGEN: readonly Zusage[] = [
     quelle: { text: "ganz" },
     soll: FUSSZEILENSATZ_Z48,
     beleg:
-      "kein Traeger · die sinngleiche Zusage wurde laut taskpane.html:559-564 bewusst entfernt (Fall F1)",
-    ist: (r) => sichtbarerTextVorhanden(r, FUSSZEILENSATZ_Z48),
-    heute: "abweichend (im Produkt nicht vorhanden)",
+      "#kw-fuss #ask-rule-note (JOB 3017: der Leitsatz aus askRuleNote; der Halbsatz ueber den Serverstandort bleibt draussen — Betriebszusage, mega77 Block B, Fall F1)",
+    ist: (r) => {
+      const satz = r.q("#kw-fuss #ask-rule-note");
+      return satz !== null && r.sichtbar(satz) ? norm(satz.textContent) : NICHT_VORHANDEN;
+    },
+    heute: "abweichend",
   },
   darstellung("Z.48 Fusszeilensatz Schriftgrad", 48, 0, "font-size", "11px", "(kein Traeger)"),
   darstellung("Z.48 Fusszeilensatz Farbe", 48, 0, "color", rgb("#525B6B"), "(kein Traeger)"),
@@ -952,7 +978,7 @@ const ZUSAGEN: readonly Zusage[] = [
     beleg: 'svg path[d^="M8 10V7a4"]',
     ist: (r) =>
       r.q('svg path[d^="M8 10V7a4"]') !== null ? "M8 10V7a4 4 0 0 1 8 0v3" : NICHT_VORHANDEN,
-    heute: "abweichend (im Produkt nicht vorhanden)",
+    heute: "erfuellt",
   },
   svgZusage(
     "Z.49 Schloss Breite",
@@ -981,8 +1007,9 @@ const ZUSAGEN: readonly Zusage[] = [
     0,
     "stroke",
     rgb("#116B3C"),
-    "svg[stroke] am Schloss (werte.ts misst stattdessen #kw-fuss color)",
+    `svg[stroke] am Schloss — ${STRICHFARBE_BELEG} (werte.ts misst stattdessen #kw-fuss color)`,
     schlossSvg,
+    "abweichend",
   ),
   svgZusage(
     "Z.49 Schloss Strichstaerke",
@@ -1019,7 +1046,7 @@ const ZUSAGEN: readonly Zusage[] = [
         .map((k) => `${k}=${rect.getAttribute(k)}`)
         .join(" ");
     },
-    heute: "abweichend (im Produkt nicht vorhanden)",
+    heute: "erfuellt",
   },
 ];
 
@@ -1200,15 +1227,24 @@ const TRAEGER: readonly Traeger[] = [
       "taskpane.html:384-397 (AUFTRAG-W1-KLARA-KOPF-CONSENT-06), :402-406 (JOB 2621 §2); tests/app/job2621-panel-wahrheiten.test.ts W1/W2",
   },
   {
-    kennung: "#kw-stand-kopf (Auslieferungsstand im Kopfband, ZWEIMAL vorhanden — Fall D1)",
+    kennung:
+      "#kw-stand-kopf (Auslieferungsstand im Kopfband — seit JOB 3017 GENAU EINMAL, Fall D1)",
     finden: (r) => r.q("#kw-stand-kopf"),
     sichtbar: true,
     platzImZielbild:
-      "keinen ausdruecklichen; Z.28 traegt rechts im Kopfband einen Zeitstempel (Datum + Uhrzeit), der Auslieferungsstand ist Datum + Kuerzel",
+      "Z.28 rechts in der zweiten Kopfzeile: dort ein Zeitstempel (Datum + Uhrzeit), der Auslieferungsstand ist Datum + Kuerzel",
     verlust:
       "Pedi hat den Stand oben rechts gesucht (Befund 1, 26.08.); ohne Spiegel bleibt nur #kw-stand ganz unten.",
     begruendetIn:
-      "taskpane.html:346-350 (JOB 2621 §3), :359-367 (JOB 2929 D1); tests/app/job2621-panel-wahrheiten.test.ts W3",
+      "taskpane.html <header> (JOB 2621 §3, JOB 3017 D4 #kw-kopf-zeile); tests/app/job2621-panel-wahrheiten.test.ts W3",
+  },
+  {
+    kennung: "#kw-anmeldung (Anmeldezeile im Kopfband, Spiegel von #session-status)",
+    finden: (r) => r.q("#kw-anmeldung"),
+    sichtbar: true,
+    platzImZielbild: "Z.27 „Angemeldet als …“ — genau diese Zeile",
+    verlust: "keiner; die Zeile ist die Zielbild-Zeile (JOB 3017 D4).",
+    begruendetIn: "taskpane.html renderKopfAnmeldung (checkSession/setSessionWarn)",
   },
   {
     kennung: "#session-card (Begruessung greetTitle/greetBody, #session-status, #login-block)",
@@ -1230,41 +1266,34 @@ const TRAEGER: readonly Traeger[] = [
     begruendetIn: "taskpane.html:484-493 (KW-KA1-TERMS-START, JOB 1149, OFFEN.md KA1)",
   },
   {
-    kennung: "[data-t=askTitle] (Ueberschrift der Frage-Karte „Klara fragen“)",
-    finden: (r) => r.q("[data-t=askTitle]"),
+    kennung: "#ask-input[aria-label] (frueher [data-t=askTitle], Ueberschrift der Frage-Karte)",
+    finden: (r) => r.q("#ask-input"),
     sichtbar: true,
     platzImZielbild: null,
     verlust:
-      "die Karte verliert ihre Ueberschrift; der aktive Reiter „Fragen“ traegt die Funktion sinngleich weiter.",
-    begruendetIn: "taskpane.html:502",
+      "JOB 3017: die Ueberschrift ist vom Bild verschwunden; askTitle ist der zugaengliche Name des Felds (aria-label), der aktive Reiter „Fragen“ traegt die Funktion sichtbar.",
+    begruendetIn: "taskpane.html renderStatics (aria-label askTitle)",
   },
   {
-    kennung: "[data-t=askHint] (Hinweis in der Karte: Markieren, Quellen, frei fragen)",
-    finden: (r) => r.q("[data-t=askHint]"),
-    sichtbar: true,
-    platzImZielbild:
-      "Z.44 (EIN Satz unter der Karte) traegt den Kern sinngleich: Antworten aus freigegebenem Wissen mit Quellen, Markierung wird gefragt",
-    verlust: "der Halbsatz „Ohne Markierung kannst du unten frei fragen“ hat in Z.44 keinen Platz.",
-    begruendetIn: "taskpane.html:503",
-  },
-  {
-    kennung: "#ask-source-note (Herkunftszeile: „Gefragt wird: …“, im Ruhezustand leer)",
+    kennung:
+      "#ask-source-note (Herkunftszeile: „Gefragt wird: …“, im Ruhezustand leer UND verborgen)",
     finden: (r) => r.q("#ask-source-note"),
-    sichtbar: true,
+    sichtbar: false,
     platzImZielbild: null,
     verlust:
-      "wer markiert UND tippt, erfaehrt nicht mehr, dass die getippte Frage verworfen wird — genau der Befund, den mega74 Teil 2b geschlossen hat.",
-    begruendetIn:
-      "taskpane.html:504-507 (AUFTRAG-mega74 TEIL 2b), :4346-4362 (updateAskSourceNote)",
+      "keiner: die Zeile bleibt in der Karte und erscheint, sobald sie Inhalt hat (JOB 3017: zustandsgebunden statt leer sichtbar) — der Befund von mega74 Teil 2b bleibt geschlossen.",
+    begruendetIn: "taskpane.html #ask-karte (AUFTRAG-mega74 TEIL 2b), updateAskSourceNote",
   },
   {
-    kennung: "#ask-review-notice („Bitte vor Verwendung fachlich pruefen.“)",
+    kennung:
+      "#ask-review-notice (der EINE Satz unter der Karte: woertlich aus validiertem Wissen, Markierung, Pruefauftrag)",
     finden: (r) => r.q("#ask-review-notice"),
     sichtbar: true,
-    platzImZielbild: null,
-    verlust: "der dauerhafte fachliche Pruefhinweis vor der ersten Frage entfaellt.",
+    platzImZielbild: "Z.44 — genau dieser Satz (Wortlaut abweichend, s. A1)",
+    verlust:
+      "JOB 3017: askHint ist hier aufgegangen; der Halbsatz „Ohne Markierung kannst du unten frei fragen“ ist entfallen (das Feld und sein Platzhalter sagen es).",
     begruendetIn:
-      "taskpane.html:509-524 (mega61 Block E, mega81 BLOCK A); tests/legal/mega61-ki-satz.test.ts",
+      "taskpane.html #section-ask (mega61 Block E, mega81 BLOCK A, JOB 3017 D4); tests/legal/mega61-ki-satz.test.ts",
   },
   {
     kennung:
@@ -1278,23 +1307,23 @@ const TRAEGER: readonly Traeger[] = [
       "taskpane.html:509-524 (mega81 BLOCK A); tests/app/g24-ki-kennzeichnung-laufzeitpruefung.test.ts",
   },
   {
-    kennung: "#ask-rule-note (Klara-Regel: woertlich zitiert, nicht an externe KI gesendet)",
-    finden: (r) => r.q("#ask-rule-note"),
+    kennung: "#ask-rule-note (Klara-Regel — seit JOB 3017 in der Fusszeile #kw-fuss)",
+    finden: (r) => r.q("#kw-fuss #ask-rule-note"),
     sichtbar: true,
     platzImZielbild:
-      "Z.44 sagt den ersten Teil („Antworten kommen woertlich aus freigegebenem Firmenwissen“); Z.48 sagt etwas ANDERES als den zweiten Teil (Server statt externe KI)",
+      "Z.48 — der Fusszeilensatz (Wortlaut abweichend: Leitsatz statt Serverstandort)",
     verlust:
-      "die belegte Zusage „nicht an eine externe KI gesendet“ verliert ihren Wortlaut; an ihre Stelle traete eine unbelegte (Z.48).",
-    begruendetIn: "taskpane.html:545-564 (mega75 Block C, mega77 Block B)",
+      "keiner: die belegten Halbsaetze („woertlich“, „nicht an eine externe KI gesendet“) bleiben, der Leitsatz kommt dazu; die unbelegte Zusage aus Z.48 kommt NICHT (Fall F1).",
+    begruendetIn: "taskpane.html #kw-fuss (mega75 Block C, mega77 Block B, JOB 3017 D4)",
   },
   {
-    kennung: "#ask-btn Wortlaut askCta „Klara fragen“ und `title` als sichtbarer Sperrgrund",
+    kennung: "#ask-btn (runder Sende-Pfeil; askCta als aria-label, `title` als Sperrgrund)",
     finden: (r) => r.q("#ask-btn"),
     sichtbar: true,
-    platzImZielbild: "Z.40-42: runder Pfeilknopf ohne Wortlaut",
+    platzImZielbild: "Z.40-42: runder Pfeilknopf ohne Wortlaut — genau dieser",
     verlust:
-      "kein Wortlaut, kein Ort fuer den Sperrgrund (s4FragenGesperrt als title); ein gesperrter Pfeil ohne Grund ist die Sackgasse, die :4013-4023 ausschliesst.",
-    begruendetIn: "taskpane.html:566, :4013-4023 (updateAskState)",
+      "der sichtbare Wortlaut „Klara fragen“ ist vom Knopf verschwunden; er steht als aria-label (Screenreader), der Sperrgrund bleibt der title (updateAskState).",
+    begruendetIn: "taskpane.html #ask-karte, renderStatics, updateAskState",
   },
   {
     kennung: "#ka6-block („Schreiben auf Zuruf“: Erstellen, Vervollstaendigen, Umformulieren)",
@@ -1348,6 +1377,7 @@ const FLAECHEN: readonly Flaeche[] = [
   { kennung: "header", finden: (r) => r.q("header") },
   { kennung: ".brand", finden: (r) => r.q(".brand") },
   { kennung: ".lang", finden: (r) => r.q(".lang") },
+  { kennung: "#kw-anmeldung", finden: (r) => r.q("#kw-anmeldung") },
   { kennung: "#kw-stand-kopf", finden: (r) => r.q("#kw-stand-kopf") },
   { kennung: "#klara-trust-head", finden: (r) => r.q("#klara-trust-head") },
   { kennung: "#klara-s4", finden: (r) => r.q("#klara-s4") },
@@ -1359,40 +1389,41 @@ const FLAECHEN: readonly Flaeche[] = [
   { kennung: "#tab-ask", finden: (r) => r.q("#tab-ask") },
   { kennung: "#tab-capture", finden: (r) => r.q("#tab-capture") },
   { kennung: "#section-ask", finden: (r) => r.q("#section-ask") },
-  { kennung: "#ka1-block", finden: (r) => r.q("#ka1-block") },
-  // JOB 3004 D1: die Frage-Karte traegt seit dem Umbau der Antwortflaeche die Kennung #ask-karte
-  // (sie wird im Antwortzustand verborgen); im Ruhezustand ist sie sichtbar wie zuvor.
-  { kennung: "Frage-Karte #ask-karte", finden: (r) => r.frageKarte() },
-  { kennung: "[data-t=askTitle]", finden: (r) => r.q("[data-t=askTitle]") },
-  { kennung: "[data-t=askHint]", finden: (r) => r.q("[data-t=askHint]") },
+  { kennung: "#ask-karte", finden: (r) => r.frageKarte() },
   { kennung: "#ask-source-note", finden: (r) => r.q("#ask-source-note") },
   { kennung: "#ask-input", finden: (r) => r.q("#ask-input") },
+  { kennung: "#ask-btn", finden: (r) => r.q("#ask-btn") },
   { kennung: "#ask-review-notice", finden: (r) => r.q("#ask-review-notice") },
   { kennung: "#ask-ai-notice", finden: (r) => r.q("#ask-ai-notice") },
-  { kennung: "#ask-rule-note", finden: (r) => r.q("#ask-rule-note") },
-  { kennung: "#ask-btn", finden: (r) => r.q("#ask-btn") },
   { kennung: "#ask-status", finden: (r) => r.q("#ask-status") },
   { kennung: "#ask-answer-block", finden: (r) => r.q("#ask-answer-block") },
   { kennung: "#ask-gap-block", finden: (r) => r.q("#ask-gap-block") },
+  { kennung: "#ka1-block", finden: (r) => r.q("#ka1-block") },
   { kennung: "#ka6-block", finden: (r) => r.q("#ka6-block") },
   { kennung: "#section-capture", finden: (r) => r.q("#section-capture") },
   { kennung: "Hilfe-Karte (div.card ohne Kennung)", finden: (r) => r.hilfeKarte() },
   { kennung: "#kw-stand", finden: (r) => r.q("#kw-stand") },
   { kennung: "#kw-fassung", finden: (r) => r.q("#kw-fassung") },
   { kennung: "#kw-fassung-btn", finden: (r) => r.q("#kw-fassung-btn") },
+  { kennung: "#kw-fuss", finden: (r) => r.q("#kw-fuss") },
+  { kennung: "#ask-rule-note", finden: (r) => r.q("#ask-rule-note") },
 ];
 
 /**
- * GEMESSEN am 03.09.2026: die sichtbaren Flaechen des Ruhezustands in Dokumentordnung.
- * NACHZUG JOB 3004 (Antwortkarte nach Zielbild „Main“): #ask-review-notice und #ask-rule-note
- * stehen seit dem Umbau UNTER der Antwortflaeche (ausserhalb der Frage-Karte, damit sie auch im
- * Antwortzustand sichtbar bleiben — mega81/mega75); #ask-btn folgt deshalb direkt auf #ask-input.
- * Die Frage-Karte traegt jetzt die Kennung #ask-karte. Der Ruhezustand selbst ist unveraendert.
+ * GEMESSEN am 03.09.2026 (JOB 3004, Antwortkarte nach Zielbild „Main“): #ask-review-notice und
+ * #ask-rule-note standen seit dem Umbau UNTER der Antwortflaeche (ausserhalb der Frage-Karte,
+ * damit sie auch im Antwortzustand sichtbar bleiben — mega81/mega75); #ask-btn folgte deshalb
+ * direkt auf #ask-input. Die Frage-Karte trug bereits die Kennung #ask-karte.
+ * NACHZUG JOB 3017 D4 (04.09.2026, SchlankesPanel-Umbau): #ka1-block stand VOR der Frage-Karte,
+ * askTitle/askHint/#ask-source-note/#ask-rule-note standen IN der Karte, der Knopf war ein
+ * Textknopf, keine Anmeldezeile, keine Fusszeile. Seit dem Umbau: #ka1-block NACH der Karte,
+ * #ask-rule-note in #kw-fuss, der Knopf ein runder Sende-Pfeil, Anmeldezeile und Fusszeile gebaut.
  */
 const SICHTBAR_IN_REIHENFOLGE: readonly string[] = [
   "header",
   ".brand",
   ".lang",
+  "#kw-anmeldung",
   "#kw-stand-kopf",
   "#klara-trust-head",
   "#klara-s4",
@@ -1402,24 +1433,23 @@ const SICHTBAR_IN_REIHENFOLGE: readonly string[] = [
   "#tab-ask",
   "#tab-capture",
   "#section-ask",
-  "#ka1-block",
-  "Frage-Karte #ask-karte",
-  "[data-t=askTitle]",
-  "[data-t=askHint]",
-  "#ask-source-note",
+  "#ask-karte",
   "#ask-input",
   "#ask-btn",
   "#ask-review-notice",
-  "#ask-rule-note",
+  "#ka1-block",
   "#ka6-block",
   "Hilfe-Karte (div.card ohne Kennung)",
   "#kw-stand",
   "#kw-fassung",
+  "#kw-fuss",
+  "#ask-rule-note",
 ];
 /** GEMESSEN: vorhanden, aber im Ruhezustand verborgen. */
 const VERBORGEN: readonly string[] = [
   "#klara-consent-card",
   "#login-block",
+  "#ask-source-note",
   "#ask-ai-notice",
   "#ask-status",
   "#ask-answer-block",
@@ -1441,6 +1471,7 @@ const TEXTTRAEGER_SICHTBAR: readonly [kennung: string, text: string][] = [
   ["#lang-de", "DE"],
   ["#lang-en", "EN"],
   ["#lang-nl", "NL"],
+  ["#kw-anmeldung", "Angemeldet als Testnutzer."],
   ["#kw-stand-kopf", "dev"],
   ["#klara-trust-mode", "KLARWERK: keine KI"],
   [
@@ -1461,6 +1492,12 @@ const TEXTTRAEGER_SICHTBAR: readonly [kennung: string, text: string][] = [
   ["#session-status", "Angemeldet als Testnutzer."],
   ["#tab-ask", "Fragen"],
   ["#tab-capture", "Wissen erfassen"],
+  // Attributtext: der Platzhalter des leeren Eingabefelds ist fuer den Menschen sichtbarer Text.
+  ["#ask-input[placeholder]", "Frage eingeben, wenn nichts markiert ist ..."],
+  [
+    "#ask-review-notice",
+    "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Markierst du Text in Word, wird die Markierung gefragt. Bitte vor Verwendung fachlich prüfen.",
+  ],
   ["[data-t=ka1Title]", "Worum es hier geht"],
   [
     "[data-t=ka1Hint]",
@@ -1469,21 +1506,6 @@ const TEXTTRAEGER_SICHTBAR: readonly [kennung: string, text: string][] = [
   [
     "#ka1-empty",
     "Noch keine Begriffe: Diese Seite läuft ohne Word, es gibt kein offenes Dokument.",
-  ],
-  ["[data-t=askTitle]", "Klara fragen"],
-  [
-    "[data-t=askHint]",
-    "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
-  ],
-  // Attributtext: der Platzhalter des leeren Eingabefelds ist fuer den Menschen sichtbarer Text.
-  ["#ask-input[placeholder]", "Frage eingeben, wenn nichts markiert ist ..."],
-  // JOB 3004 D1: der Knopf folgt direkt auf das Feld; Pruef- und Regelsatz stehen unter der
-  // Antwortflaeche (s. SICHTBAR_IN_REIHENFOLGE). Wortlaute unveraendert.
-  ["#ask-btn", "Klara fragen"],
-  ["#ask-review-notice", "Bitte vor Verwendung fachlich prüfen."],
-  [
-    "#ask-rule-note",
-    "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.",
   ],
   ["#ka6-titel", "Schreiben auf Zuruf"],
   [
@@ -1520,23 +1542,27 @@ const TEXTTRAEGER_SICHTBAR: readonly [kennung: string, text: string][] = [
   ],
   ["#kw-stand", "dev"],
   ["#kw-fassung", "Stand dev · Abgleich nicht möglich"],
+  [
+    "#ask-rule-note",
+    "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.",
+  ],
 ];
 
 /**
  * Sichtbare Elemente OHNE eigenen Text (weder Textknoten noch angezeigter Attributtext) und OHNE
  * textfuehrende Nachfahren — je mit Begruendung. (Container wie header, .card, .tabs tragen ihren
- * Text in den Kindern und stehen deshalb nicht hier.)
+ * Text in den Kindern und stehen deshalb nicht hier.) Seit JOB 3017 sind das die beiden Zeichen
+ * des Zielbilds — Pfeil und Schloss samt ihren Pfaden — und der Knopf, der nur den Pfeil traegt.
  */
 const TEXTLOS: readonly [kennung: string, grund: string][] = [
-  [
-    "#kw-stand-kopf (zweites Element)",
-    "bleibt leer, weil getElementById das erste Element mit dieser Kennung beschreibt (Fall D1)",
-  ],
+  ["#ask-btn", "der runde Sende-Pfeil traegt kein Wort; askCta ist sein aria-label (Z.40)"],
+  ["svg", "das Pfeil-Zeichen im Sende-Knopf (Z.41)"],
+  ["path", "Pfeil-Schaft M12 19V5 (Z.41)"],
+  ["path", "Pfeil-Spitze M5 12l7-7 7 7 (Z.41)"],
   ["#ka1-terms", "leere Begriffsliste — ohne offenes Dokument gibt es keine Begriffe (KA1)"],
-  [
-    "#ask-source-note",
-    "leer bis zu einer Markierung oder Eingabe (updateAskSourceNote, mega74 Teil 2b)",
-  ],
+  ["#kw-fuss-schloss", "das Schloss-Zeichen der Fusszeile (Z.49)"],
+  ["rect", "Schloss-Koerper (Z.49)"],
+  ["path", "Schloss-Buegel M8 10V7a4 … (Z.49)"],
 ];
 
 /**
@@ -1591,6 +1617,8 @@ function textKennung(e: El): string {
 // Die Tabelle selbst wird NICHT importiert: kein Test liest sie, das ist der Befund (W1).
 // Gepinnt ist je Selektor die GEMESSENE Trefferzahl am laufenden Fenster.
 // ------------------------------------------------------------------------------------------------
+// JOB 3017 D4: `#ask-karte`, `#kw-fuss` und `#kw-fuss p` treffen jetzt (die Flaechen sind gebaut);
+// `.ask-hinweise p` bleibt der eine Selektor, den das Produkt nicht kennt.
 const WERTE_TREFFER: Readonly<Record<string, number>> = {
   ".tabs": 1,
   ".tabs button": 2,
@@ -1604,8 +1632,8 @@ const WERTE_TREFFER: Readonly<Record<string, number>> = {
   // `expected 7 to be 8`, bevor diese Zeile angefasst wurde).
   "button.primary": 7,
   ".ask-hinweise p": 0,
-  "#kw-fuss p": 0,
-  "#kw-fuss": 0,
+  "#kw-fuss p": 1,
+  "#kw-fuss": 1,
 };
 
 function selektorenAusWerteTs(): string[] {
@@ -1728,7 +1756,7 @@ describe("JOB 3013 · D4 · R — der Ruhezustand am laufenden Fenster (vor jede
     const textlos = sichtbare
       .filter((e) => sichtbareTexte(e).length === 0)
       .filter((e) => !Array.from(e.querySelectorAll("*")).some((k) => sichtbareTexte(k).length > 0))
-      .map((e) => (e.id === "kw-stand-kopf" ? "#kw-stand-kopf (zweites Element)" : textKennung(e)));
+      .map((e) => textKennung(e));
     expect(textlos).toEqual(TEXTLOS.map(([k]) => k));
     console.info(
       `JOB 3013 D4 · R2 · textlos (begruendet):\n  ${TEXTLOS.map(([k, gr]) => `${k} — ${gr}`).join("\n  ")}`,
@@ -1750,7 +1778,7 @@ describe("JOB 3013 · D4 · R — der Ruhezustand am laufenden Fenster (vor jede
     expect(r.sichtbar(r.el("#section-capture"))).toBe(false);
   });
 
-  it("R4 · Hauptaktion: genau EIN sichtbarer Knopf traegt `primary`, und es ist #ask-btn mit dem Wortlaut askCta", async () => {
+  it("R4 · Hauptaktion: genau EIN sichtbarer Knopf traegt `primary`, und es ist #ask-btn — der Pfeil, mit askCta als aria-label", async () => {
     offen = await ruhezustand({ verfaelschbar: ["hauptaktion"] });
     const r = offen;
     const alle = r.alle("button.primary");
@@ -1763,9 +1791,12 @@ describe("JOB 3013 · D4 · R — der Ruhezustand am laufenden Fenster (vor jede
     // JOB 3046 D2: 8 -> 7 — der Weg „offene Frage" der Luecke ist ein Textlink, kein
     // `button.primary` mehr (Zielbild KeinWissen Z.31); gemessen `expected 7 to be 8`.
     expect(alle.length).toBe(7);
-    expect(r.text("#ask-btn")).toBe(r.t("askCta"));
-    // Kein Pfeil, kein Symbol — ein Textknopf.
-    expect(r.q("#ask-btn svg")).toBeNull();
+    // JOB 3017: kein Wortlaut am Knopf (Z.40) — askCta ist der zugaengliche Name; das Pfeil-Zeichen
+    // traegt die beiden Pfade des Zielbilds (Z.41).
+    expect(r.text("#ask-btn")).toBe("");
+    expect(r.el("#ask-btn").getAttribute("aria-label")).toBe(r.t("askCta"));
+    expect(r.q('#ask-btn svg path[d^="M12 19V5"]')).not.toBeNull();
+    expect(r.q('#ask-btn svg path[d^="M5 12l7-7"]')).not.toBeNull();
   });
 
   it("R5 · #ask-btn: vor den Startabrufen gesperrt OHNE sichtbaren Grund, nach der Anmeldung frei", async () => {
@@ -1774,7 +1805,8 @@ describe("JOB 3013 · D4 · R — der Ruhezustand am laufenden Fenster (vor jede
     // Markup (`disabled`) — synchron nach dem Skriptlauf, bevor /api/auth/me geantwortet hat.
     expect(r.knopfVorStart.disabled).toBe(true);
     expect(r.knopfVorStart.title, "kein title = kein sichtbarer Grund am Knopf").toBe("");
-    expect(r.knopfVorStart.text).toBe(r.t("askCta"));
+    expect(r.knopfVorStart.text).toBe("");
+    expect(r.knopfVorStart.ariaLabel, "aria-label ab dem ersten renderStatics").toBe(r.t("askCta"));
     // Ruhezustand nach den Startabrufen (angemeldet als Testnutzer): frei.
     const knopf = r.el("#ask-btn");
     expect(knopf.disabled).toBe(false);
@@ -1821,35 +1853,33 @@ describe("JOB 3013 · D4 · V — die Verlustliste: Traeger, die das Zielbild ni
 });
 
 // ================================================================================================
-describe("JOB 3013 · D4 · D — der doppelte #kw-stand-kopf", () => {
-  it("D1 · zwei Elemente tragen dieselbe Kennung; getElementById liefert das erste (ohne Stil), das zweite (mit Stil, vom Kommentar beschrieben) bleibt leer", async () => {
+describe("JOB 3013 · D4 · D — der (bis JOB 3017 doppelte) #kw-stand-kopf", () => {
+  // Bis JOB 3017 trugen ZWEI Spans diese Kennung: getElementById traf den ersten (ohne Stil), der
+  // zweite (mit Inline-Stil) blieb leer. JOB 3017 D4 hat den Zwilling entfernt: GENAU EIN Element,
+  // gestylt durch die EINE Regel `#kw-stand-kopf` im Stilblock (kein Inline-Stil, keine zweite
+  // Wahrheit), in der zweiten Kopfzeile neben der Anmeldezeile.
+  it("D1 · genau EIN Element traegt die Kennung; getElementById liefert es, es traegt den Stand und keinen Inline-Stil", async () => {
     offen = await ruhezustand();
     const r = offen;
-    const beide = Array.from(g.document.querySelectorAll("#kw-stand-kopf"));
-    expect(beide.length, "zwei Elemente mit einer Kennung").toBe(2);
-    const erstes = beide[0];
-    const zweites = beide[1];
-    if (!erstes || !zweites) {
-      throw new Error("kw-stand-kopf: beide Elemente erwartet");
+    const alle = Array.from(g.document.querySelectorAll("#kw-stand-kopf"));
+    expect(alle.length, "genau ein Element mit dieser Kennung").toBe(1);
+    const eines = alle[0];
+    if (!eines) {
+      throw new Error("kw-stand-kopf: ein Element erwartet");
     }
-    expect(g.document.getElementById("kw-stand-kopf")).toBe(erstes);
-    expect(erstes.getAttribute("style")).toBeNull();
-    expect(zweites.getAttribute("style") ?? "").toContain("flex: 0 0 100%");
-    // Der Auslieferungsstand landet im ERSTEN (taskpane.html:4815 schreibt per getElementById);
-    // das zweite — das, dessen Kommentar :359-367 Farbe und Lage begruendet — bleibt leer.
-    expect(norm(erstes.textContent)).toBe("dev");
-    expect(norm(zweites.textContent)).toBe("");
-    expect(r.sichtbar(erstes)).toBe(true);
-    // Am Markup belegt: der Kommentar „JOB 2929 D1“ steht ZWISCHEN den beiden Spans, also vor dem
-    // zweiten — er beschreibt das Element, das den Text nie bekommt.
+    expect(g.document.getElementById("kw-stand-kopf")).toBe(eines);
+    expect(eines.getAttribute("style")).toBeNull();
+    expect(norm(eines.textContent)).toBe("dev");
+    expect(r.sichtbar(eines)).toBe(true);
+    // In derselben Zeile wie die Anmeldezeile (Z.26-29): beide Kinder von #kw-kopf-zeile.
+    expect(eines.parentElement?.id).toBe("kw-kopf-zeile");
+    expect(r.el("#kw-anmeldung").parentElement?.id).toBe("kw-kopf-zeile");
+    // Am Markup belegt: ein Span, und die Regel im Stilblock traegt Groesse und Farbe.
     const { markup } = splitTaskpane(PRODUKT_HTML);
-    const spans = [...markup.matchAll(/<span id="kw-stand-kopf"[^>]*>/g)].map((m) => m.index ?? -1);
-    const kommentar = markup.indexOf("JOB 2929 D1");
-    expect(spans).toHaveLength(2);
-    expect(kommentar).toBeGreaterThan(spans[0] ?? Number.NaN);
-    expect(kommentar).toBeLessThan(spans[1] ?? Number.NaN);
+    expect([...markup.matchAll(/<span id="kw-stand-kopf"[^>]*>/g)]).toHaveLength(1);
+    expect(PRODUKT_HTML).toMatch(/#kw-stand-kopf \{ font-size: 10px; color: var\(--shell-muted\)/);
     console.info(
-      `JOB 3013 D4 · D1 · #kw-stand-kopf ×2: erstes (ohne Stil) → „${norm(erstes.textContent)}", zweites (mit Stil) → „${norm(zweites.textContent)}"`,
+      `JOB 3013 D4 · D1 · #kw-stand-kopf ×1 (JOB 3017): → „${norm(eines.textContent)}", neben #kw-anmeldung „${r.text("#kw-anmeldung")}"`,
     );
   });
 });
@@ -1886,13 +1916,10 @@ describe("JOB 3013 · D4 · W — WERTE_SCHLANKES_PANEL ehrlich eingeordnet", ()
     console.info(
       `JOB 3013 D4 · W2 · Selektoren von WERTE_SCHLANKES_PANEL (${selektoren.length}):\n  ${zeilen.join("\n  ")}`,
     );
-    // Drei Nulltreffer: `.ask-hinweise p`, `#kw-fuss p`, `#kw-fuss` — die Tabelle misst Flaechen,
-    // die das Produkt nicht hat; `.card` trifft acht Karten, nicht die eine Frage-Karte. (Bis JOB
-    // 3004 war auch `#ask-karte` ein Nulltreffer; seither traegt die Frage-Karte diese Kennung.)
-    // Dazu misst `cssProp` Quelltext, nicht die gebaute Flaeche.
-    expect(selektoren.filter((s) => r.alle(s).length === 0).sort()).toEqual(
-      ["#kw-fuss", "#kw-fuss p", ".ask-hinweise p"].sort(),
-    );
+    // Ein Nulltreffer bleibt: `.ask-hinweise p` — die Tabelle misst eine Flaeche, die das Produkt
+    // nicht hat; `.card` trifft acht Karten, nicht die eine Frage-Karte. Dazu misst `cssProp`
+    // Quelltext, nicht die gebaute Flaeche (JOB 3017: die Chromium-Messung ist die Wahrheit).
+    expect(selektoren.filter((s) => r.alle(s).length === 0)).toEqual([".ask-hinweise p"]);
   });
 });
 
@@ -1965,11 +1992,16 @@ describe.runIf(zielbildDa)(
       console.info(
         `JOB 3013 D4 · A1 · Abweichungstabelle (${ZUSAGEN.length} Zusagen: ${zaehler.erfuellt} erfuellt, ${zaehler.abweichend} abweichend, ${zaehler.nichtMessbar} nicht messbar):\n  ${zeilen.join("\n  ")}`,
       );
-      // GEMESSEN am 03.09.2026 — die Zahlen sind Befund, nicht Ziel.
-      expect(zaehler).toEqual({ erfuellt: 12, abweichend: 21, nichtMessbar: 71 });
+      // GEMESSEN am 03.09.2026 (12 erfuellt, 21 abweichend, 71 nicht messbar) — und am 04.09.2026
+      // nach dem Umbau JOB 3017 D4: 14 Urteile sind von abweichend auf erfuellt gewandert (Z.27
+      // Anmeldezeile, Z.38 erste Flaeche, Z.40 ohne Wortlaut, Z.41 Pfeil ×5, Z.47 Fusszeile, Z.49
+      // Schloss ×5); abweichend bleiben Z.28 (Stand statt Zeitstempel), Z.37 (mehr Flaechen),
+      // Z.39 Platzhalter, Z.44/Z.48 Wortlaut und die beiden Strichfarben (currentColor am Markup).
+      // Die Zahlen sind Befund, nicht Ziel.
+      expect(zaehler).toEqual({ erfuellt: 26, abweichend: 7, nichtMessbar: 71 });
     });
 
-    it("F1 · der Fusszeilensatz: Z.48 neben der Begruendung taskpane.html:559-564, mit der die sinngleiche Zusage entfernt wurde — kein Urteil", async () => {
+    it("F1 · der Fusszeilensatz: Z.48 neben der Begruendung im Fusszeilen-Kommentar (mega77 Block B), mit der die sinngleiche Zusage entfernt wurde — kein Urteil", async () => {
       offen = await ruhezustand();
       const r = offen;
       const zielSatz = textDerZeile(48);
@@ -1996,7 +2028,7 @@ describe.runIf(zielbildDa)(
       expect(funde, "Sprachen, in denen der Satz im Panel steht").toEqual([]);
       expect(muster.test(r.panel.scriptSource)).toBe(false);
       console.info(
-        `JOB 3013 D4 · F1 · Zielbild Z.48: „${zielSatz}"\n  Produkt taskpane.html:559-564: „${begruendung.slice(0, 420)}…"\n  Vorkommen im Panel (de/en/nl, sichtbar oder im Skript): keines`,
+        `JOB 3013 D4 · F1 · Zielbild Z.48: „${zielSatz}"\n  Produkt (Fusszeilen-Kommentar #kw-fuss): „${begruendung.slice(0, 420)}…"\n  Vorkommen im Panel (de/en/nl, sichtbar oder im Skript): keines`,
       );
     });
   },

@@ -619,7 +619,11 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     // AUFTRAG-mega35 B1: die Quellenbindung bleibt die Zusage — aber ohne das Wort „geprueft".
     // Es meinte den validierten Bestand, stand aber neben der Einstufung „ungeprueft"; eine
     // Testerin ohne Vorwissen kann diese zwei Ebenen nicht auseinanderhalten.
-    expect(html).toContain("AUSSCHLIESSLICH aus KLARWERK-Wissen");
+    // JOB 3017 D4: der Satz „AUSSCHLIESSLICH aus KLARWERK-Wissen" (askHint) ist mit dem
+    // Pruefhinweis zu dem EINEN Satz unter der Fragen-Karte zusammengefuehrt (askReviewNotice);
+    // die Quellenbindung steht dort weiter — als „woertlich aus validiertem KLARWERK-Wissen".
+    expect(html).toContain("wörtlich aus validiertem KLARWERK-Wissen — mit Quellen");
+    expect(html).not.toContain("askHint:");
     expect(html).not.toContain("aus geprueftem KLARWERK-Wissen");
     // DE/EN/NL-Umschalter mit vollständigen Wörterbüchern.
     for (const lng of ["de:", "en:", "nl:"]) {

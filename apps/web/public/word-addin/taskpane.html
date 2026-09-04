@@ -173,7 +173,20 @@
     /* JOB 2621 §3: der Stand-Spiegel im Kopfband — dieselbe unauffaellige Groesse wie #kw-stand
        unten (10px), Farbe aus der AA-belegten Kopfband-Palette (--shell-muted auf --ink; die
        Werkbank-Farbe --muted waere hier unlesbar, s. die klara-kopf-Begruendung derselben Wahl). */
-    #kw-stand-kopf { font-size: 10px; color: var(--shell-muted); }
+    #kw-stand-kopf { font-size: 10px; color: var(--shell-muted); flex: 0 0 auto; }
+    /* JOB 3017 D4 (SchlankesPanel.dc.html Z.26-29): die zweite Kopfzeile — links „Angemeldet als …"
+       (Z.27: 11px, Kopfband-Mutedfarbe), rechts der Stand-Spiegel (Z.28: 10px, dieselbe Farbe).
+       Vollbreites Flex-Kind wie der Vertrauenskopf darunter; die Anmeldezeile spiegelt WOERTLICH
+       den Text von #session-status (checkSession) — keine zweite Sitzungsauskunft, kein Name, den
+       der Server nicht geliefert hat. */
+    #kw-kopf-zeile {
+      flex: 0 0 100%;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+    }
+    #kw-anmeldung { font-size: 11px; color: var(--shell-muted); min-width: 0; }
     .lang button.active {
       color: var(--surface);
       background: var(--brand-deep);
@@ -529,34 +542,94 @@
       white-space: pre-wrap;
       color: var(--text);
     }
+    /* ============================================================================================
+       JOB 3017 D4 — DAS RUHIGE GRUNDPANEL (SchlankesPanel.dc.html Z.37-49), in Chromium gemessen:
+       tests/design/zielbild-schlankes-panel.test.ts. Werte uebernommen, nicht erfunden; Farben
+       sind die vorhandenen Token (Z.38 #FFFFFF/#E9E5DE = --surface/--hairline, Z.40 #C2500A =
+       --brand-deep, Z.44/48 #525B6B = --muted, Z.49 #116B3C = --pos-text).
+       ============================================================================================ */
+    /* Z.38: die Fragen-Karte — Feld und runder Sende-Pfeil, sonst nichts. `position: relative`
+       traegt den absolut gesetzten Knopf; das Polster liegt im Feld (Z.39), nicht in der Karte. */
+    #ask-karte { position: relative; border-radius: 12px; padding: 0; }
+    /* Die Herkunftszeile (mega74 Teil 2b) bleibt IN der Karte ueber dem Feld — sichtbar nur mit
+       Inhalt (updateAskSourceNote schaltet `.hidden`). */
+    #ask-karte #ask-source-note { margin: 0; padding: 10px 14px 0; }
+    /* Z.39: das Feld fuellt die Karte; rechts 52px Platz fuer den Knopf, unten 40px. */
+    #ask-input {
+      display: block;
+      margin: 0;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      padding: 14px 52px 40px 14px;
+      font-size: 15px;
+      line-height: 1.45;
+      min-height: 96px;
+    }
+    /* Z.40-42: der runde Sende-Pfeil rechts unten IN der Karte. Er ERSETZT den vollbreiten
+       Textknopf: gleiche Kennung, gleiche Ereignisbindung, gleicher Sperrzustand (updateAskState);
+       der Wortlaut askCta steht als aria-label (renderStatics), das Pfeil-SVG erbt die Knopffarbe. */
+    #ask-btn {
+      position: absolute;
+      right: 10px;
+      bottom: 10px;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: none;
+    }
+    /* Z.44: GENAU EIN Satz unter der Karte (der fachliche Pruefhinweis); die KI-Kennzeichnung
+       traegt dieselbe Form, wenn das Signal sie einmal sichtbar macht. */
+    #ask-review-notice { margin: 14px 0 0; font-size: 12px; line-height: 1.5; padding: 0 2px; }
+    #ask-ai-notice { margin: 14px 0 0; font-size: 12px; line-height: 1.5; padding: 0 2px; }
+    /* Antwort- und Absage-Block wohnten in der Fragen-Karte; sie stehen jetzt daneben. IHRE Form
+       tragen JOB 3004 (#ask-answer-block, Antwortflaeche) und JOB 3046 (#ask-gap-block, Buehne der
+       Luecke) — die Regeln oben. JOB 3017 setzt hier BEWUSST KEINE zweite Regel fuer diese beiden
+       Kennungen (Nachzug: ein Karten-Rezept an dieser Stelle schlug beide Vorlagen um 13px). */
+    /* Z.47-49: die Fusszeile — Leitsatz links (Z.48: 11px, --muted), Schloss rechts (Z.49: 14×14,
+       --pos-text). Die negativen Aussenabstaende heben die 14px Koerper-Polsterung auf, wie beim
+       Kopfband; `clear` wegen des gefloateten Fassungs-Knopfs darueber. */
+    #kw-fuss {
+      clear: both;
+      margin: 14px -14px -14px;
+      padding: 12px 16px;
+      border-top: 1px solid var(--hairline);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+    #kw-fuss #ask-rule-note { margin: 0; font-size: 11px; }
+    #kw-fuss-schloss { color: var(--pos-text); flex: 0 0 auto; }
   </style>
 </head>
 <body>
   <header>
     <div class="brand">Klara<small>KLARWERK</small></div>
-    <!-- JOB 2621 §3 (Befund 1, 26.08.): der Auslieferungsstand GESPIEGELT nach oben rechts, neben
-         die Sprachwahl — dort, wo Pedi ihn gesucht hat. NICHT verschoben: #kw-stand unten bleibt
-         samt seinen Tests unberuehrt; beide Stellen schreibt dieselbe eine Quelle (KLARA_STAND aus
-         dem Build — nie von Hand gepflegt). Der Wrapper haelt die header-Flexstruktur bei zwei
-         Kindern plus Vertrauenskopf; Farbe ist die AA-belegte Kopfband-Palette (--shell-muted). -->
-    <div style="display: flex; align-items: baseline; gap: 8px;">
-      <div class="lang" role="group" aria-label="Sprache">
-        <button type="button" id="lang-de" class="active">DE</button>
-        <button type="button" id="lang-en">EN</button>
-        <button type="button" id="lang-nl">NL</button>
-      </div>
+    <div class="lang" role="group" aria-label="Sprache">
+      <button type="button" id="lang-de" class="active">DE</button>
+      <button type="button" id="lang-en">EN</button>
+      <button type="button" id="lang-nl">NL</button>
+    </div>
+    <!-- JOB 2621 §3 (Befund 1, 26.08.): der Auslieferungsstand GESPIEGELT nach oben rechts — dort,
+         wo Pedi ihn gesucht hat. NICHT verschoben: #kw-stand unten bleibt samt seinen Tests
+         unberuehrt; beide Stellen schreibt dieselbe eine Quelle (KLARA_STAND aus dem Build — nie
+         von Hand gepflegt). Farbe und Groesse traegt die EINE Regel `#kw-stand-kopf` im Stilblock.
+
+         JOB 3017 D4: bis hierher trug die Kennung kw-stand-kopf ZWEIMAL ein Element im Kopf — ein ungestylter
+         Span neben der Sprachwahl (JOB 2621) und ein gestylter Vollbreiten-Span (SANIERUNG-20260827,
+         JOB 2929 D1); `getElementById` traf den ersten, der gestylte blieb leer. Jetzt gibt es das
+         Element genau einmal, in der zweiten Kopfzeile des Zielbilds (SchlankesPanel.dc.html
+         Z.26-29): links „Angemeldet als …" (#kw-anmeldung, gespiegelt aus checkSession — derselbe
+         Text wie #session-status, keine zweite Sitzungsauskunft), rechts der Stand. -->
+    <div id="kw-kopf-zeile">
+      <span id="kw-anmeldung"></span>
       <span id="kw-stand-kopf"></span>
     </div>
-    <!-- SANIERUNG-20260827: Auslieferungsstand oben rechts GESPIEGELT (Befund Pedi,
-         BEFUNDE_KLARA_PANEL_20260826 §1). #kw-stand unten bleibt bestehen — der Augenschein
-         braucht die alte Stelle samt Tests unberuehrt. Vollbreiten-Flex-Kind wie der
-         Vertrauenskopf, damit Marke und Sprachwahl nicht verrutschen.
-         JOB 2929 D1: `color` war hier als Literal `#9aa3ad` gesetzt — ein Wert, den die
-         Werkbank-Palette nicht kennt (einziges Vorkommen im ganzen Baum). Das ist genau die
-         „zweite Wahrheit", die mega43 verbietet: die Regel `#kw-stand-kopf` (oben, Zeile 176)
-         sagt seit JOB 2621 `var(--shell-muted)`, der Inline-Stil sagte etwas anderes und
-         gewann. Jetzt steht hier derselbe Token wie in der Regel und im Kommentar darueber. -->
-    <span id="kw-stand-kopf" style="flex: 0 0 100%; text-align: right; font-size: 10px; color: var(--shell-muted); margin: -4px 0 0;"></span>
     <!-- ==========================================================================================
          AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER PERMANENTE VERTRAUENSKOPF (BASIC-0).
          ==========================================================================================
@@ -673,94 +746,43 @@
        Session; serverseitige Permission ko.read wie in der Fragen-Konsole — kein neuer Guard). -->
   <div id="section-ask">
     <!-- ==========================================================================================
-         KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149, OFFEN.md KA1).
+         JOB 3017 D4 — DIE FRAGEN-KARTE DES ZIELBILDS (SchlankesPanel.dc.html Z.38-42).
          ==========================================================================================
-         Worum es im offenen Dokument gerade geht — hausintern gewonnen, ohne KI, ohne Egress.
-         Die Flaeche steht VOR dem Fragen-Block, weil sie den Kontext beschreibt, in dem gefragt
-         wird; sie ist ein reines Anzeigefeld und traegt keine Schaltflaeche.
-
-         Bewusst KEINE Beispielbegriffe im Markup: eine vorgefuellte Liste saehe im Browser (ohne
-         Word) wie ein Ergebnis aus, das es nicht gibt. Leer ist hier die Wahrheit, und der Satz
-         darunter sagt sie. -->
-    <div class="card" id="ka1-block">
-      <h2 data-t="ka1Title"></h2>
-      <p class="muted" data-t="ka1Hint"></p>
-      <ul class="muted" id="ka1-terms"></ul>
-      <p class="muted" id="ka1-empty"></p>
-    </div>
-    <!-- KW-KA1-TERMS-END (Markup) -->
+         EINE ruhige Karte: das Feld und der runde Sende-Pfeil, sonst nichts. Bis hierher trug die
+         Karte (ohne Kennung) Ueberschrift, Hinweis, Herkunftszeile, Feld, zwei Hinweisabsaetze,
+         den Regelsatz, den vollbreiten Textknopf und darunter Status-, Antwort- und Absage-Block.
+           · Die Ueberschrift askTitle ist jetzt der zugaengliche Name des Felds (aria-label,
+             renderStatics); der Reiter „Fragen" traegt die Funktion sichtbar.
+           · Der Hinweis askHint ist mit dem Pruefhinweis zu dem EINEN Satz unter der Karte
+             zusammengefuehrt (Schluessel askReviewNotice — woertlich aus validiertem Wissen mit
+             Quellen, die Markierung wird gefragt, vor Verwendung fachlich pruefen).
+           · Die Herkunftszeile bleibt in der Karte, aber zustandsgebunden (nur mit Inhalt).
+           · Der Regelsatz askRuleNote steht in der Fusszeile (#kw-fuss, unten).
+           · Status-, Antwort- und Absage-Block stehen unter dem Satz als eigene Flaechen.
+           · Das Dokument-Begriffsbild (KA1, JOB 1149) stand hier VOR der Karte; JOB 3017 D4
+             verschiebt es nach UNTEN, ans Ende von #section-ask (s. dort) — die Frage ist das
+             Erste, was der Mensch sieht.
+         Gemessen in tests/design/zielbild-schlankes-panel.test.ts (Chromium, 360 px). -->
     <div class="card" id="ask-karte">
-      <h2 data-t="askTitle"></h2>
-      <p class="muted" data-t="askHint"></p>
+
       <!-- AUFTRAG-mega74 TEIL 2b: WAS wirklich gefragt wird — sichtbar VOR dem Fragen. Bis mega74
            schlug eine vorhandene Markierung das Eingabefeld stillschweigend (prepareAskQuestion),
-           und wer beides tat, erfuhr nie, dass seine getippte Frage verworfen wurde. -->
-      <p id="ask-source-note" class="muted" style="margin: 0 0 4px 0;"></p>
+           und wer beides tat, erfuhr nie, dass seine getippte Frage verworfen wurde.
+           JOB 3017: leer = verborgen (updateAskSourceNote setzt die Klasse). -->
+      <p id="ask-source-note" class="muted hidden"></p>
       <textarea id="ask-input" rows="3"></textarea>
-      <!-- AUFTRAG-mega61 Block E: der dauerhaft sichtbare Satz, ohne Aufklappen, VOR der ersten
-           Frage. Das Add-in hat kein React und kein gemeinsames i18n — der Wortlaut steht
-           deshalb sinngleich in seinem eigenen Woerterbuch (aiGeneratedNotice).
-
-           AUFTRAG-mega81 BLOCK A (bens ROT zu mega79): hier stand EIN Absatz, der dauerhaft und
-           zustandsunabhaengig „Von kuenstlicher Intelligenz erzeugt" behauptete — unmittelbar UEBER
-           der Zeile darunter, die sagt, Klaras Antwort entstehe IMMER ohne KI-Modell. Zwei
-           unvereinbare Saetze uebereinander, fuer denselben sichtbaren Antwortweg: der einzige
-           Antwortweg dieses Bereichs sendet `mode: "retrieval-only"`, und der Server laesst die
-           Kennzeichnung dort BEWUSST weg (answerRetrievalOnly, services/reasoner/src/service.ts).
-
-           Aus einem Absatz sind deshalb zwei geworden:
-             1. der fachliche Pruefhinweis — DAUERHAFT, denn er gilt auf diesem Weg unveraendert;
-             2. die KI-Kennzeichnung — an das serverseitige `aiGenerated`-Signal GEBUNDEN, also
-                heute nie sichtbar und morgen von selbst sichtbar, wenn diese Flaeche einmal einen
-                echten Modellweg zeigt. Abgeschaltet ist sie NICHT. -->
-      <!-- JOB 3004 D1: #ask-review-notice steht jetzt UNTER der Antwortflaeche, #ask-ai-notice IN der
-           Antwortkarte (s. dort) — dieselben Schluessel, dieselben Rueckrufe. -->
-      <!-- AUFTRAG-mega75 Block A: WOMIT gearbeitet wird — dieselbe Auskunft, die AiModelInfo in der
-           Anwendung gibt, aus demselben oeffentlichen Status. Drei ehrliche Zustaende (extern /
-           hausintern / keine) plus die beiden Nicht-Aussagen „wird geprueft" und „nicht abrufbar".
-           OHNE Modellname: der oeffentliche Status ist bewusst abstrahiert (WP-VIP2-GATE).
-
-           AUFTRAG-mega79 BLOCK A (bens ROT zu mega77): diese Zeile sagte bei „extern"/„intern",
-           fuer KLARAS ANTWORT arbeite eine KI. Das war FALSCH — und zwar in beide Richtungen
-           falsch, denn die Verengung von mega77 („ganz KLARWERK" -> „Klaras Antwort") drehte die
-           Aussage genau um. Die Ableitung beobachtet die KLARWERK-Aufgabe `answer`; Klaras Antwort
-           in diesem Fenster laeuft davon UNABHAENGIG und IMMER ohne Modell (retrieval-only,
-           erhoben in tests/app/mega79-klara-antwort-ohne-modell.test.ts).
-
-           WAS DIE ZEILE JETZT TRAGT: zwei unverwechselbar getrennte Aussagen in EINEM Schluessel
-           je Sprache — (1) der HAUSSTAND von KLARWERK (Pedis urspruengliches Anliegen: er sah in
-           KLARWERK eine KI arbeiten und hier eine Absage) und (2) die EIGENSCHAFT von Klaras
-           Antwort, die kein Mangel ist, sondern der Grund, ihr zu trauen. „laedt" und „nicht
-           erreichbar" beziehen sich AUSSCHLIESSLICH auf diesen Statusabruf — der Antwortweg ist
-           auch ohne jeden Abruf bekannt und steht deshalb in JEDEM der fuenf Zustaende da.
-
-           AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DIESE ZEILE IST UMGEZOGEN, NICHT ENTFALLEN.
-           Sie steht jetzt im `<header>` als `#klara-trust-detail` (Vertrauenskopf). Der Grund ist
-           nicht Optik: hier war sie an den Fragen-Reiter gebunden und im Erfassen-Reiter
-           unsichtbar, obwohl `KW-S4-01 §2` sie „immer ganz oben im Kopf" verlangt. Wortlaut,
-           Zustandsraum und Ableitung sind UNVERAENDERT — es ist derselbe Schluessel `aiLage*`,
-           dieselbe Funktion `klaraAiLage`, dieselben drei Woerterbuecher. Die Zusicherungen aus
-           mega75/mega77/mega79 gelten damit unveraendert weiter; sie pruefen den Text, nicht den
-           Ort. Der Ort wird ab jetzt von tests/app/w1-klara-vertrauenskopf.test.ts gepinnt. -->
-      <!-- AUFTRAG-mega75 Block C: unter WELCHER REGEL Klara steht. Das ist keine Entschuldigung,
-           sondern das Merkmal, das sie vertrauenswuerdig macht — und die Aufloesung von Pedis
-           Widerspruch: in KLARWERK arbeitet vielleicht eine KI, hier wird woertlich zitiert.
-           Dauerhaft sichtbar, also bei JEDER Antwort und JEDER Absage.
-
-           AUFTRAG-mega77 Block B: hier stand zusaetzlich „und der markierte Text verlaesst das
-           Haus nicht" (EN „never leaves your organisation", NL „verlaat het huis niet"). Das ist
-           ENTFERNT. Retrieval-only beweist, dass der markierte Text nicht an Modell oder Embedder
-           geht — es beweist NICHT, wo der KLARWERK-Server steht. Der Text geht per HTTP an ihn.
-           Eine Aussage ueber Serverstandort oder Organisationsgrenze ist eine BETRIEBSZUSAGE, die
-           dieser Code nicht erzwingt; belegt ist nur, dass keine EXTERNE KI ihn bekommt. -->
-      <!-- JOB 3004 D1: #ask-rule-note steht jetzt UNTER der Antwortflaeche (s. dort) — sichtbar in beiden Zustaenden. -->
-      <button type="button" class="primary" id="ask-btn" data-t="askCta" disabled></button>
-      <!-- AUFTRAG-mega77 Block A: in der Luecke stand einmal der Satz aus mega74 Teil 2b mit der
-           Zahl der unterdrueckten ungeprueften Treffer. Er ist ENTFERNT — die Zahl entstand ohne
-           Betrachterfilter (Leck ab n = 1) und zaehlte die gedeckelte Vorauswahl statt des
-           Bestands. Was bleibt, ist die ehrliche Wissensluecke ohne Auskunft ueber fremden
-           Bestand. -->
+      <!-- Z.40-42: der runde Sende-Pfeil. Kein data-t: der Wortlaut askCta ist das aria-label
+           (renderStatics), der Sperrgrund bleibt der `title` (updateAskState). Das SVG erbt die
+           Knopffarbe (currentColor = --surface) — kein Farbliteral neben der Palette. -->
+      <button type="button" class="primary" id="ask-btn" disabled>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
+      </button>
     </div>
+    <!-- UMGEZOGEN, NICHT ENTFALLEN: die KI-Lage (AUFTRAG-mega75 Block A, mega79 Block A) steht seit
+         AUFTRAG-W1-VERTRAUENSKOPF-08 im <header> als #klara-trust-detail (KW-S4-01 §2, gepinnt in
+         tests/app/w1-klara-vertrauenskopf.test.ts); der Regelsatz askRuleNote (mega75 Block C) seit
+         JOB 3017 in der Fusszeile #kw-fuss; der Pruefhinweis #ask-review-notice (mega61 Block E,
+         mega81 Block A) steht UNTER Antwort- und Lueckenblock, s. dort. -->
     <!-- ========================================================================================
          KW-D2-LUECKE-START — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (JOB 3046).
          ========================================================================================
@@ -908,11 +930,35 @@
     </div>
     <p id="ask-ladekarte-satz" class="hidden" data-t="askBusy"></p>
     <!-- KW-D3-LADEKARTE-END -->
-    <!-- mega81 A (Pruefhinweis, DAUERHAFT) und mega75 C (die Regel, „bei JEDER Antwort und JEDER
-         Absage" sichtbar): beide standen in der Frage-Karte und waeren im Antwortzustand mit ihr
-         verschwunden. Sie stehen jetzt unter beiden Flaechen — Schluessel und Wortlaut unveraendert. -->
+    <!-- AUFTRAG-mega61 Block E / mega81 BLOCK A: der fachliche Pruefhinweis — DAUERHAFT sichtbar,
+         ohne Aufklappen, vor, waehrend und nach jeder Frage (er gilt auf dem retrieval-only-Weg
+         unveraendert). Die KI-Kennzeichnung dagegen ist an das serverseitige `aiGenerated`-Signal
+         gebunden (#ask-ai-notice in #antwortkarte, JOB 3004) — heute nie sichtbar, abgeschaltet
+         ist sie NICHT. JOB 3017 D4: dieser Absatz ist der EINE Satz unter der Fragen-Karte
+         (SchlankesPanel.dc.html Z.44) und traegt seit dem auch die Auskunft des frueheren
+         askHint. Nachzug: er steht im Rumpf HINTER Antwort- und Lueckenblock, damit er im
+         Ruhezustand direkt unter der Karte, im Antwort- und Lueckenzustand aber UNTER deren
+         Flaeche steht (Zielbilder Main/KeinWissen zeigen ueber der Flaeche keinen Satz). -->
     <p class="muted" id="ask-review-notice" data-t="askReviewNotice"></p>
-    <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
+    <!-- ==========================================================================================
+         KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149, OFFEN.md KA1).
+         ==========================================================================================
+         Worum es im offenen Dokument gerade geht — hausintern gewonnen, ohne KI, ohne Egress.
+         Die Flaeche ist ein reines Anzeigefeld und traegt keine Schaltflaeche.
+         JOB 3017 D4: sie stand VOR der Fragen-Karte; jetzt steht sie DARUNTER — die Frage ist das
+         Erste, was der Mensch sieht (SchlankesPanel.dc.html), das Begriffsbild bleibt gebaut und
+         in Betrieb.
+
+         Bewusst KEINE Beispielbegriffe im Markup: eine vorgefuellte Liste saehe im Browser (ohne
+         Word) wie ein Ergebnis aus, das es nicht gibt. Leer ist hier die Wahrheit, und der Satz
+         darunter sagt sie. -->
+    <div class="card" id="ka1-block">
+      <h2 data-t="ka1Title"></h2>
+      <p class="muted" data-t="ka1Hint"></p>
+      <ul class="muted" id="ka1-terms"></ul>
+      <p class="muted" id="ka1-empty"></p>
+    </div>
+    <!-- KW-KA1-TERMS-END (Markup) -->
   </div>
 
   <div id="section-capture" class="hidden">
@@ -987,6 +1033,24 @@
        bekannt sind und sich unterscheiden — eine ausgebliebene Auskunft ist keine Bestaetigung. -->
   <p class="muted" id="kw-fassung" style="margin-top: 4px; margin-bottom: 0; font-size: 10px; text-align: right;"></p>
   <button type="button" class="ghost hidden" id="kw-fassung-btn" style="margin-top: 4px; float: right; font-size: 11px;"></button>
+
+  <!-- JOB 3017 D4 — DIE FUSSZEILE (SchlankesPanel.dc.html Z.47-49): Leitsatz links, Schloss rechts.
+       Der Satz ist der Regelsatz askRuleNote (AUFTRAG-mega75 Block C: unter WELCHER REGEL Klara
+       steht). Er traegt seit JOB 3017 den Leitsatz „Keine KI-Antwort ohne Beleg · Vertrauliches
+       bleibt vertraulich" und weiter die beiden BELEGTEN Halbsaetze (woertliches Zitat, kein
+       Versand an eine externe KI). Die EINE Stelle der Regel — dauerhaft sichtbar in beiden
+       Reitern, bei jeder Antwort und jeder Absage; die fruehere Zweitkopie in der Absage-Karte hat
+       JOB 3046 entfernt (mega75-Pin), sie kommt nicht zurueck.
+       AUFTRAG-mega77 Block B: hier stand frueher zusaetzlich „und der markierte Text verlaesst das
+       Haus nicht". Das ist ENTFERNT — retrieval-only beweist, dass keine EXTERNE KI den Text
+       bekommt, NICHT wo der KLARWERK-Server steht (der Text geht per HTTP an ihn). Eine Aussage
+       ueber Serverstandort oder Organisationsgrenze ist eine BETRIEBSZUSAGE, die dieser Code nicht
+       erzwingt; der Zielbild-Halbsatz ueber den Serverstandort (Z.48) kommt deshalb NICHT zurueck.
+       Das Schloss (Z.49) ist ein reines Zeichen; seine Farbe ist --pos-text ueber currentColor. -->
+  <div id="kw-fuss">
+    <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
+    <svg id="kw-fuss-schloss" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+  </div>
 
   <script>
     "use strict";
@@ -2244,13 +2308,15 @@
         tabAsk: "Fragen",
         tabCapture: "Wissen erfassen",
         askTitle: "Klara fragen",
-        askHint: "Markiere eine Aussage im Dokument und frage Klara. Die Antwort kommt AUSSCHLIESSLICH aus KLARWERK-Wissen — mit Quellen. Ohne Markierung kannst du unten frei fragen.",
         askInputPlaceholder: "Frage eingeben, wenn nichts markiert ist ...",
         askCta: "Klara fragen",
         askSourceSelection: "Gefragt wird: deine Markierung im Dokument.",
         askSourceSelectionOverride: "Gefragt wird: deine Markierung im Dokument — der Text unten wird dabei NICHT gesendet. Hebe die Markierung auf, um frei zu fragen.",
         askSourceManual: "Gefragt wird: deine Eingabe unten.",
-        askReviewNotice: "Bitte vor Verwendung fachlich prüfen.",
+        // JOB 3017 D4: der EINE Satz unter der Fragen-Karte (Zielbild Z.44) — er trägt seit diesem
+        // Auftrag auch die Auskunft des früheren askHint (Antwort wörtlich aus validiertem Wissen mit
+        // Quellen; eine Markierung in Word wird gefragt) und weiter den dauerhaften Prüfauftrag.
+        askReviewNotice: "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Markierst du Text in Word, wird die Markierung gefragt. Bitte vor Verwendung fachlich prüfen.",
         aiGeneratedNotice: "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
         aiLageLaedt: "Der KI-Stand von KLARWERK wird abgefragt ... Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         aiLageUnerreichbar: "Der KI-Stand von KLARWERK ist gerade nicht abrufbar. Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
@@ -2360,7 +2426,10 @@
         askSnippetLabel: "Verwendeter Ausschnitt",
         askRoleCarrying: "trägt die Antwort",
         askRoleConsulted: "herangezogen",
-        askRuleNote: "So arbeitet Klara: Sie zitiert validiertes KLARWERK-Wissen wörtlich, statt eine Antwort zu formulieren. Dein markierter Text wird dabei nicht an eine externe KI gesendet.",
+        // JOB 3017 D4: der Fußzeilensatz (Zielbild Z.48) — der Leitsatz jeder Design-Fläche, gefolgt
+        // von den beiden BELEGTEN Halbsätzen (mega75 Block C / mega77 Block B). Der Zielbild-Halbsatz
+        // über den Serverstandort (Z.48) bleibt draußen: Betriebszusage, die dieser Code nicht erzwingt.
+        askRuleNote: "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich. Klara zitiert validiertes KLARWERK-Wissen wörtlich; dein markierter Text wird nicht an eine externe KI gesendet.",
         askEmpty: "Bitte erst eine Aussage im Dokument markieren oder unten eine Frage eingeben.",
         askBusy: "Klara sucht im freigegebenen Wissen — die Eingabe ist so lange gesperrt.",
         askTruncated: "Die Markierung war länger als {max} Zeichen — die Frage wurde ehrlich gekappt.",
@@ -2496,13 +2565,12 @@
         tabAsk: "Ask",
         tabCapture: "Capture knowledge",
         askTitle: "Ask Klara",
-        askHint: "Select a statement in the document and ask Klara. The answer comes EXCLUSIVELY from KLARWERK knowledge — with sources. Without a selection you can ask freely below.",
         askInputPlaceholder: "Type a question if nothing is selected ...",
         askCta: "Ask Klara",
         askSourceSelection: "Asking about: your selection in the document.",
         askSourceSelectionOverride: "Asking about: your selection in the document — the text below is NOT sent. Clear the selection to ask freely.",
         askSourceManual: "Asking about: your input below.",
-        askReviewNotice: "Please review professionally before use.",
+        askReviewNotice: "Answers are quoted word for word from validated KLARWERK knowledge — with sources. If you select text in Word, the selection is what gets asked. Please review professionally before use.",
         aiGeneratedNotice: "Generated by artificial intelligence — please review professionally.",
         aiLageLaedt: "Retrieving KLARWERK's AI status ... Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
         aiLageUnerreichbar: "KLARWERK's AI status is unavailable right now. Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
@@ -2584,7 +2652,7 @@
         askSnippetLabel: "Excerpt used",
         askRoleCarrying: "carries the answer",
         askRoleConsulted: "consulted",
-        askRuleNote: "How Klara works: validated KLARWERK knowledge is quoted word for word instead of being composed into a new answer. Your selected text is not sent to an external AI.",
+        askRuleNote: "No AI answer without evidence · Confidential stays confidential. Klara quotes validated KLARWERK knowledge word for word; your selected text is not sent to an external AI.",
         askEmpty: "Please select a statement in the document first or type a question below.",
         askBusy: "Klara is searching the approved knowledge — input is locked until then.",
         askTruncated: "The selection was longer than {max} characters — the question was honestly truncated.",
@@ -2704,13 +2772,12 @@
         tabAsk: "Vragen",
         tabCapture: "Kennis vastleggen",
         askTitle: "Klara vragen",
-        askHint: "Selecteer een uitspraak in het document en vraag Klara. Het antwoord komt UITSLUITEND uit KLARWERK-kennis — met bronnen. Zonder selectie kun je hieronder vrij vragen.",
         askInputPlaceholder: "Typ een vraag als er niets is geselecteerd ...",
         askCta: "Klara vragen",
         askSourceSelection: "Gevraagd wordt: je selectie in het document.",
         askSourceSelectionOverride: "Gevraagd wordt: je selectie in het document — de tekst hieronder wordt NIET verzonden. Hef de selectie op om vrij te vragen.",
         askSourceManual: "Gevraagd wordt: je invoer hieronder.",
-        askReviewNotice: "Controleer dit vakinhoudelijk voordat je het gebruikt.",
+        askReviewNotice: "Antwoorden komen woordelijk uit gevalideerde KLARWERK-kennis — met bronnen. Selecteer je tekst in Word, dan wordt de selectie gevraagd. Controleer dit vakinhoudelijk voordat je het gebruikt.",
         aiGeneratedNotice: "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
         aiLageLaedt: "De AI-stand van KLARWERK wordt opgehaald ... Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         aiLageUnerreichbar: "De AI-stand van KLARWERK is nu niet op te halen. Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
@@ -2792,7 +2859,7 @@
         askSnippetLabel: "Gebruikt fragment",
         askRoleCarrying: "draagt het antwoord",
         askRoleConsulted: "geraadpleegd",
-        askRuleNote: "Zo werkt Klara: gevalideerde KLARWERK-kennis wordt woordelijk geciteerd in plaats van zelf geformuleerd. Je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
+        askRuleNote: "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk. Klara citeert gevalideerde KLARWERK-kennis woordelijk; je geselecteerde tekst wordt niet naar een externe AI gestuurd.",
         askEmpty: "Selecteer eerst een uitspraak in het document of typ hieronder een vraag.",
         askBusy: "Klara zoekt in de vrijgegeven kennis — de invoer is zolang vergrendeld.",
         askTruncated: "De selectie was langer dan {max} tekens — de vraag is eerlijk ingekort.",
@@ -2917,6 +2984,11 @@
       document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
       // JOB 3004 D1: der Tooltip der Frage-Pille („Frage bearbeiten") in der aktuellen Sprache.
       document.getElementById("ask-frage-zeile-btn").title = t("askFrageBearbeiten");
+      // JOB 3017 D4: die Fragen-Karte traegt keine Ueberschrift mehr — askTitle ist der
+      // zugaengliche Name des Felds; der runde Sende-Pfeil traegt seinen Wortlaut askCta als
+      // aria-label (kein data-t: das wuerde das SVG durch Text ersetzen).
+      document.getElementById("ask-input").setAttribute("aria-label", t("askTitle"));
+      document.getElementById("ask-btn").setAttribute("aria-label", t("askCta"));
       document.documentElement.lang = lang;
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: der Vertrauenskopf wird MIT den statischen Texten
       // gefuellt, nicht erst durch den Statusabruf. Damit ist er ab dem ersten Bildaufbau da —
@@ -3644,11 +3716,34 @@
 
     // (a) Ehrlicher Anmelde-Status: GET /api/auth/me (bestehender Session-Endpunkt der App) mit
     // credentials: "include" — same-origin, da das Taskpane AUF der App-Domain liegt.
+    // JOB 3017 D4 (SchlankesPanel.dc.html Z.27): die Anmeldezeile im Kopfband spiegelt WOERTLICH
+    // den Text der Sitzungsauskunft — angemeldet als <Name>, oder der ehrliche Anmelde-Hinweis.
+    // Keine zweite Ableitung, kein Platzhalter: jede Stelle, die #session-status beschreibt,
+    // ruft diese Zeile mit demselben Text.
+    function renderKopfAnmeldung(text) {
+      var zeile = document.getElementById("kw-anmeldung");
+      if (zeile) { zeile.textContent = text; }
+    }
+
+    // JOB 3017 D4 Runde 2 (Ben): „Angemeldet als …" nur mit einem NICHTLEEREN Servernamen. Bis
+    // hierher stand `user.name || user.email || "?"` — die E-Mail als Ersatzname und „?" als
+    // Platzhalter, beides vom Auftrag verboten. Liefert der Server ein Benutzerobjekt ohne Namen,
+    // kann das Panel die Sitzung niemandem zuordnen: dann gilt sie hier NICHT als belegte
+    // Anmeldung (fail-safe: der ehrliche Hinweis sessionOff, der Anmeldeweg bleibt sichtbar), statt
+    // eine Zuordnung zu erfinden. Der Servertyp liefert `name` heute immer; der Fall ist der
+    // Randfall aus dem Auftrag, nicht der Regelfall.
+    function sessionName(user) {
+      if (!user || typeof user.name !== "string") { return null; }
+      var name = user.name.trim();
+      return name === "" ? null : name;
+    }
+
     function checkSession() {
       var box = document.getElementById("session-status");
       var loginBlock = document.getElementById("login-block");
       box.className = "status warn";
       box.textContent = t("sessionChecking");
+      renderKopfAnmeldung(box.textContent);
       fetch("/api/auth/me", { credentials: "include" })
         .then(function (res) {
           if (res.ok) { return res.json(); }
@@ -3656,16 +3751,18 @@
           throw new Error("HTTP " + res.status);
         })
         .then(function (user) {
-          signedIn = Boolean(user);
-          if (user) {
+          var name = sessionName(user);
+          signedIn = name !== null;
+          if (signedIn) {
             box.className = "status ok";
-            box.textContent = t("sessionOk", { name: user.name || user.email || "?" });
+            box.textContent = t("sessionOk", { name: name });
             loginBlock.className = "hidden";
           } else {
             box.className = "status warn";
             box.textContent = t("sessionOff");
             loginBlock.className = "";
           }
+          renderKopfAnmeldung(box.textContent);
           // K5: der Knopf haengt an Anmeldung UND Office-Bereitschaft (eine Entscheidungsstelle).
           updateSendState();
           // AUFTRAG-37 (G3): der belegte Anmelde-Erfolg ist der Moment, in dem eine fehlende
@@ -3678,6 +3775,7 @@
           signedIn = false;
           box.className = "status warn";
           box.textContent = t("sessionError");
+          renderKopfAnmeldung(box.textContent);
           loginBlock.className = "";
           updateSendState();
         });
@@ -3733,6 +3831,7 @@
       var box = document.getElementById("session-status");
       box.className = "status warn";
       box.textContent = text;
+      renderKopfAnmeldung(text);
     }
 
     function closeDialogHandle(dialog) {
@@ -4848,21 +4947,28 @@
     // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
     // zweite, die morgen anders ausfaellt. Sie behauptet nichts, wenn sie nichts weiss: ohne
     // Office bleibt sie leer.
+    // JOB 3017 D4: die Zeile ist zustandsgebunden — ohne Inhalt verborgen, damit unter dem Feld
+    // genau EIN Satz steht (Zielbild Z.44) und kein leerer Absatz Platz haelt.
+    function setzeAskSourceNote(note, text) {
+      note.textContent = text;
+      note.className = text ? "muted" : "muted hidden";
+    }
+
     function updateAskSourceNote() {
       var note = document.getElementById("ask-source-note");
       if (!note) { return; }
-      if (!officeUsable()) { note.textContent = ""; return; }
+      if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
         if (prep.from === "selection") {
           var auchGetippt = document.getElementById("ask-input").value.trim().length > 0;
-          note.textContent = auchGetippt
+          setzeAskSourceNote(note, auchGetippt
             ? t("askSourceSelectionOverride")
-            : t("askSourceSelection");
+            : t("askSourceSelection"));
         } else if (prep.from === "manual") {
-          note.textContent = t("askSourceManual");
+          setzeAskSourceNote(note, t("askSourceManual"));
         } else {
-          note.textContent = "";
+          setzeAskSourceNote(note, "");
         }
       });
     }

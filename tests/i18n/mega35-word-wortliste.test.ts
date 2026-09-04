@@ -64,7 +64,9 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
       ).toHaveLength(3);
     }
     // Die vier Stellen aus bens Befund sind in der Ernte enthalten.
-    for (const key of ["askHint", "askBusy", "askAnswerTitle", "askSourceLine"]) {
+    // JOB 3017 D4: der Fragen-Hinweis heisst seit dem Umbau des Grundpanels nicht mehr `askHint`,
+    // sondern ist in `askReviewNotice` (der EINE Satz unter der Fragen-Karte) aufgegangen.
+    for (const key of ["askReviewNotice", "askBusy", "askAnswerTitle", "askSourceLine"]) {
       expect(
         eintraege.filter((e) => e.key === key),
         key,

@@ -873,14 +873,15 @@ describe("JOB 3004 · D1 · die Klara-Antwortkarte — die echte taskpane.html a
     ]);
     expect(lage.frageKarte, "die Frage-Karte ist im Antwortzustand sichtbar").toBe(false);
     expect(lage.frageFeld, "das Eingabefeld ist im Antwortzustand sichtbar").toBe(false);
-    // Um die Antwortflaeche herum: das Begriffsbild (KA1) darueber, Pruef-/Regelsatz (mega81/mega75)
-    // und die Zuruf-Karte (KA6) darunter — Flaechen anderer Auftraege, hier GEPINNT, damit kein
-    // weiteres Geschwister still hinzukommt.
+    // Um die Antwortflaeche herum: der Pruefsatz (mega81), das Begriffsbild (KA1) und die
+    // Zuruf-Karte (KA6) darunter — Flaechen anderer Auftraege, hier GEPINNT, damit kein weiteres
+    // Geschwister still hinzukommt. JOB 3017 D4 (Nachzug): das Grundpanel setzt die Frage an die
+    // erste Stelle — KA1 steht seitdem UNTER der Fragen-Flaeche, und der Regelsatz #ask-rule-note
+    // ist aus #section-ask in die Fusszeile #kw-fuss des Panels gezogen (sichtbar bleibt er, s. u.).
     expect(lage.bereich).toEqual([
-      "ka1-block",
       "ask-answer-block",
       "ask-review-notice",
-      "ask-rule-note",
+      "ka1-block",
       "ka6-block",
     ]);
   });
