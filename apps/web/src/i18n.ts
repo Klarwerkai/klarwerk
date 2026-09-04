@@ -1741,11 +1741,36 @@ const de = {
   "editor.captionPlaceholder": "✎ Bildbeschreibung hinzufügen …",
   // JOB 3041 (Register I50, VIERTENS): eine Bildbeschreibung, die zu keinem Bild gehört, sagt es
   // selbst. Der erste Satz ist die SICHTBARE Kennzeichnung (CSS ::after), der zweite die
-  // angekündigte Beschriftung. Beide sagen NUR, was der Klick tut — er öffnet das Formular; er
-  // stellt KEINE Zuordnung her (die ist nicht gebaut).
+  // angekündigte Beschriftung. Beide sagen NUR, was der Klick tut — er öffnet das Formular.
+  // JOB 3055: IM Formular kann der Autor die Zuordnung seit heute herstellen. Die zwei Sätze hier
+  // bleiben trotzdem wörtlich, wie sie sind: sie beschreiben den ZUSTAND der Fußnote, nicht das
+  // Angebot dahinter — und der Zustand ist unverändert „gehört noch keinem Bild".
   "editor.captionUnassigned": "noch keinem Bild zugeordnet",
   "editor.captionUnassignedLabel":
     "Bildbeschreibung, noch keinem Bild zugeordnet — öffnet das Beschreibungsformular",
+  // JOB 3055 (PRIORITAETEN.md V7): der Zuordnungs-Abschnitt im Beschreibungsformular. Er erscheint
+  // nur, wenn die Fußnote zu keinem Bild gehört, und er sagt in JEDER Lage etwas Wahres:
+  // entweder er nennt die Bilder, die noch keine Beschreibung haben, oder er nennt den Grund,
+  // warum es keines gibt — und die zwei Gründe sind zwei verschiedene Sätze, keine Sammelaussage.
+  "editor.assignHeading": "Zu welchem Bild gehört diese Beschreibung?",
+  "editor.assignImageName": "Bild {{n}}",
+  "editor.assignOptionLabel": "Diese Bildbeschreibung Bild {{n}} zuordnen",
+  "editor.assignNoImage": "In diesem Text gibt es kein Bild, dem sie zugeordnet werden könnte.",
+  "editor.assignAllDescribed": "Alle Bilder in diesem Text haben schon eine Bildbeschreibung.",
+  // RUNDE 2 (bens Korrekturpflicht 3): der DRITTE Grund. Ein Bild ohne belastbare Kennung oder mit
+  // unentscheidbarer Fußnotenlage ist NICHT „schon beschrieben" — diese Aussage wäre falsch. Der
+  // Satz sagt nur, was erhoben ist, und behauptet nichts über die übrigen Bilder.
+  "editor.assignUnclear_one":
+    "Bei {{count}} Bild in diesem Text ist nicht belegt, welche Beschreibung dazugehört — es wird deshalb nicht angeboten.",
+  "editor.assignUnclear_other":
+    "Bei {{count}} Bildern in diesem Text ist nicht belegt, welche Beschreibung dazugehört — sie werden deshalb nicht angeboten.",
+  // RUNDE 3 (bens Korrekturpflicht 1): ein Klick, der nichts bewirkt, muss den Grund nennen. Der
+  // Satz behauptet NICHT, woran es lag — er sagt, was gilt: die Auswahl darunter ist neu erhoben.
+  "editor.assignFailed":
+    "Diese Zuordnung ist nicht mehr möglich; der Text hat sich seit dem Öffnen geändert. Die Auswahl unten ist neu erhoben.",
+  // Eine Vorschau, die nicht lädt, ist KEIN fehlendes Bild — das Bild bleibt wählbar, nur sein
+  // Aussehen fehlt. Deshalb ein eigener Satz und keine der beiden Verneinungen oben.
+  "editor.assignPreviewMissing": "Vorschau nicht verfügbar",
   // AUFTRAG-mega88 Block C: der ehrliche Restfall — zu diesem Bild lässt sich keine Fußnote
   // herstellen. Seit der Bildstruktur-Invariante ist er nicht mehr erreichbar; er schweigt trotzdem
   // nicht mehr, falls er es doch einmal wird.
@@ -6603,6 +6628,18 @@ const en: typeof de = {
   "editor.captionUnassigned": "not linked to an image yet",
   "editor.captionUnassignedLabel":
     "Image description, not linked to an image yet — opens the description form",
+  "editor.assignHeading": "Which image does this description belong to?",
+  "editor.assignImageName": "Image {{n}}",
+  "editor.assignOptionLabel": "Link this image description to image {{n}}",
+  "editor.assignNoImage": "There is no image in this text it could be linked to.",
+  "editor.assignAllDescribed": "Every image in this text already has an image description.",
+  "editor.assignUnclear_one":
+    "For {{count}} image in this text it is not established which description belongs to it — it is therefore not offered.",
+  "editor.assignUnclear_other":
+    "For {{count}} images in this text it is not established which description belongs to them — they are therefore not offered.",
+  "editor.assignFailed":
+    "This link is no longer possible; the text has changed since you opened the form. The choice below has been collected afresh.",
+  "editor.assignPreviewMissing": "Preview unavailable",
   "editor.captionNoAnchor":
     "No image description can be added for this image right now. Please insert the image again.",
   "editor.kennungGetrennt_one":
@@ -10954,6 +10991,19 @@ const nl: typeof de = {
   "editor.captionUnassigned": "nog niet aan een afbeelding gekoppeld",
   "editor.captionUnassignedLabel":
     "Afbeeldingsbeschrijving, nog niet aan een afbeelding gekoppeld — opent het beschrijvingsformulier",
+  "editor.assignHeading": "Bij welke afbeelding hoort deze beschrijving?",
+  "editor.assignImageName": "Afbeelding {{n}}",
+  "editor.assignOptionLabel": "Deze afbeeldingsbeschrijving koppelen aan afbeelding {{n}}",
+  "editor.assignNoImage": "In deze tekst staat geen afbeelding waaraan zij gekoppeld kan worden.",
+  "editor.assignAllDescribed":
+    "Elke afbeelding in deze tekst heeft al een afbeeldingsbeschrijving.",
+  "editor.assignUnclear_one":
+    "Bij {{count}} afbeelding in deze tekst is niet vastgesteld welke beschrijving erbij hoort — zij wordt daarom niet aangeboden.",
+  "editor.assignUnclear_other":
+    "Bij {{count}} afbeeldingen in deze tekst is niet vastgesteld welke beschrijving erbij hoort — zij worden daarom niet aangeboden.",
+  "editor.assignFailed":
+    "Deze koppeling is niet meer mogelijk; de tekst is sinds het openen gewijzigd. De keuze hieronder is opnieuw verzameld.",
+  "editor.assignPreviewMissing": "Voorbeeld niet beschikbaar",
   "editor.captionNoAnchor":
     "Voor deze afbeelding kan nu geen afbeeldingsbeschrijving worden aangemaakt. Voeg de afbeelding opnieuw in.",
   "editor.kennungGetrennt_one":

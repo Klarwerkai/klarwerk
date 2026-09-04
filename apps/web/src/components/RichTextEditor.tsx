@@ -50,6 +50,12 @@ import {
   // siehe die Begründung an `emit()`.
   ensureImageAnchors,
   imageForCaption,
+  // JOB 3055 (PRIORITAETEN.md V7): die Gesichter EINER Antwort auf die Frage „darf diese
+  // Beschreibung an dieses Bild". Die Fläche baut sie nicht nach; sie ruft sie — die Liste für die
+  // Knöpfe, den Grund für den Satz, der bei null Kandidaten dasteht.
+  ordneFussnoteZu,
+  zuordenbareBilder,
+  zuordnungsgrund,
 } from "../lib/editorFigures";
 import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
@@ -108,6 +114,36 @@ type CaptionAiState =
   // demselben describe-Lauf. `null` heisst „nicht ableitbar" und wird als solches ANGEZEIGT; es
   // gibt keinen dritten Fall, weil der Server das Feld nur im Erfolgsfall setzt.
   | { status: "suggestion"; text: string; withContext: boolean; titelVorschlag: string | null };
+
+// JOB 3055 (PRIORITAETEN.md V7) — WAS DER ZUORDNUNGS-ABSCHNITT WEISS.
+//
+// Ein Kandidat ist ein Bild, an das diese Beschreibung wirklich gehen KANN (die Auskunft kommt aus
+// `zuordenbareBilder`, nicht aus einem eigenen Filter). `nummer` ist seine Stellung unter ALLEN
+// Bildern des Textes — dieselbe Zählweise, mit der die Galerie ihre Bilder benennt („Bild 3"), und
+// die einzige, die der Autor am Bildschirm nachzählen kann. `src` wird beim Erheben eingefroren,
+// damit die Vorschau nicht bei jedem Rendern erneut aus dem DOM gelesen wird.
+interface Zuordnungskandidat {
+  bild: HTMLImageElement;
+  nummer: number;
+  src: string;
+}
+
+// `bilderImText` ist NICHT die Länge von `kandidaten`, und darauf beruht die ehrliche Auskunft bei
+// null Kandidaten: „es gibt gar kein Bild" und „alle Bilder sind schon beschrieben" sind zwei
+// verschiedene Sachverhalte und bekommen zwei verschiedene Sätze. Eine Sammelformulierung („kein
+// Bild verfügbar") wäre in genau einem der beiden Fälle falsch.
+//
+// RUNDE 2 (bens Korrekturpflicht 3): `unklareBilder` ist der DRITTE Sachverhalt, und er war der
+// Befund. Ein Bild ohne Kennung oder mit unentscheidbarer Fußnotenlage fällt aus der Kandidatenliste
+// — und wurde dadurch stillschweigend als „hat schon eine Bildbeschreibung" ausgegeben. Das ist
+// eine Tatsachenaussage über einen Zustand, der gar nicht erhoben war. Gezählt wird deshalb, was
+// das Modul selbst als `unklar` meldet; ein einziges solches Bild verbietet den Satz „alle
+// beschrieben" und bekommt seinen eigenen.
+interface Zuordnungslage {
+  kandidaten: Zuordnungskandidat[];
+  bilderImText: number;
+  unklareBilder: number;
+}
 
 const IMAGE_SCALE_OPTIONS: Array<{ value: ImageScaleValue; label: string }> = [
   { value: "25", label: "Klein" },
@@ -386,12 +422,26 @@ export function RichTextEditor({
   // MIT eingefroren — nicht nur der Fußnoten-Knoten. Sie sind die Grundlage jeder Geltungsprüfung.
   // AUFTRAG-mega84 Block B: `draft` ist ab jetzt HTML, nicht Klartext — Pedis Formular kennt fett,
   // kursiv und Zeilenumbruch. Der Wert ist immer schon durch `sanitizeCaptionHtml` gelaufen.
+  //
+  // JOB 3055 (PRIORITAETEN.md V7): `zuordnung` reist im SELBEN Zustand mit, und das ist die
+  // tragende Entscheidung des Zustandsmodells. Die Quelle dieser Liste ist nicht der Server,
+  // sondern der lebende Editor-DOM — sie kann nicht „laden", nicht „fehlschlagen" und nicht
+  // „veralten", solange sie bei jedem Öffnen frisch erhoben wird. Genau deshalb hängt sie am
+  // Formularobjekt (das bei jedem Öffnen neu entsteht, zusammen mit `captionFormRunRef`) und nicht
+  // in einem eigenen, länger lebenden Zustand: ein zweiter Zustand könnte einen früheren Baum
+  // beschreiben, während das Formular schon einen anderen zeigt.
+  // `null` heißt: die Fußnote gehört einem Bild — dann gibt es nichts zuzuordnen.
   const [captionForm, setCaptionForm] = useState<{
     caption: HTMLElement;
     imageId: string | null;
     src: string;
     run: number;
     draft: string;
+    zuordnung: Zuordnungslage | null;
+    // RUNDE 3: Ein Klick auf einen Kandidaten wurde verweigert, obwohl das Formularziel noch stand.
+    // Der Satz dazu gehört an DIESES Objekt und nicht in einen eigenen Zustand: er gilt für genau
+    // diesen Formularlauf und verschwindet mit ihm, ohne dass ihn jemand zurücksetzen muss.
+    fehlschlag: boolean;
   } | null>(null);
   // Lauf-Nummer des Formulars: hoch bei Öffnen, Schließen, Speichern und bei jedem EXTERNEN
   // Wertwechsel (der den Editor-DOM neu aufbaut). Sie schließt den Fall, den Knoten-Identität und
@@ -432,6 +482,12 @@ export function RichTextEditor({
   // Die Zahl steht bewusst NICHT in einem Ref: sie wird gerendert, also gehört sie in den Zustand.
   const [getrennteZuordnungen, setGetrennteZuordnungen] = useState(0);
   const [trennungsHinweisZu, setTrennungsHinweisZu] = useState(false);
+  // JOB 3055: die Kennungen der Kandidaten, deren VORSCHAUBILD nicht geladen hat. Ein eigener
+  // Zustand und kein Feld der Lage oben, weil er nicht beim Erheben entsteht, sondern erst beim
+  // Rendern — und weil er ausdrücklich NICHTS über die Zuordenbarkeit aussagt: ein Bild, dessen
+  // Aussehen fehlt, bleibt wählbar. Er wird bei jedem Öffnen des Formulars geleert, damit kein
+  // Fehlschlag aus einem früheren Lauf an einem neuen Kandidaten hängen bleibt.
+  const [vorschauFehler, setVorschauFehler] = useState<string[]>([]);
   // Der Vorschlags-Zustand des Formulars. Bis mega82 stand daneben ein zweiter für das Inline-Panel;
   // seit mega84 gibt es das Inline-Panel nicht mehr und damit auch nur noch diesen einen.
   const [captionFormAi, setCaptionFormAi] = useState<CaptionAiState>(null);
@@ -509,6 +565,22 @@ export function RichTextEditor({
       // ein abgelöster Knoten. Die Lauf-Nummer macht beides ungültig.
       captionFormRunRef.current += 1;
       captionGenerationRef.current += 1;
+      // JOB 3055 / RUNDE 3 (bens Korrekturpflicht 1): DIE LAUF-NUMMER ALLEIN REICHTE NICHT.
+      //
+      // Sie ist ein REF — sie löst kein Rendern aus. Bis hierher merkte das offene Formular den
+      // Austausch deshalb erst beim Speichern. Für den Text war das verkraftbar (er wird ohnehin
+      // erst dort geschrieben); für den Zuordnungs-Abschnitt war es ein Befund: seine
+      // Kandidatenknöpfe halten KNOTENZEIGER auf Bilder, die es gerade eben nicht mehr gibt.
+      // Ein solcher Knopf verspricht eine Zuordnung und kann keine mehr herstellen — eine
+      // Scheinfunktion, und genau die verbietet dieses Projekt.
+      //
+      // `captionFormStale` ist die vorhandene Antwort auf genau diesen Sachverhalt („das Ziel ist
+      // unter dem offenen Formular weggezogen worden", mega11 Block D) — sie bekommt hier ihren
+      // ZWEITEN Auslöser, keinen zweiten Zustand. Sichtbar wird sie sofort, und der
+      // Zuordnungs-Abschnitt verschwindet damit, statt eine überholte Auswahl anzubieten.
+      if (captionFormRef.current !== null) {
+        setCaptionFormStale(true);
+      }
       // JOB 3051: DIESELBE GRENZE GILT FÜR DEN TRENNUNGSBEFUND. Ein Befund aus Dokument A darf an
       // Dokument B nicht stehen bleiben — er sagt etwas über Bilder aus, die gerade eben ersetzt
       // wurden (die Lehre aus JOB 3046 R1, hier sinngemäß). Zurückgesetzt wird VOR dem Verankern,
@@ -887,6 +959,47 @@ export function RichTextEditor({
   // `captionFormRequest`) DASSELBE Formular öffnen kann — kein zweites Formular.
   // AUFTRAG-mega84 Block A: und damit der Klick auf die Beschreibung selbst dorthin führt. Alle
   // Wege laufen durch DIESE Funktion; das ist der Grund, warum es weiterhin nur ein Formular gibt.
+  // ── JOB 3055 (PRIORITAETEN.md V7): DIE LAGE WIRD ERHOBEN, NICHT GEHALTEN ─────────────────────
+  //
+  // Alles hier kommt aus dem JETZIGEN Editor-DOM: die Bilder in Dokumentreihenfolge (für die
+  // Nummer, die der Autor nachzählen kann) und die Kandidaten aus der einen Auskunft des Moduls.
+  // Es gibt keinen Cache, den man auffrischen müsste, und nichts, was fehlschlagen könnte — die
+  // Erhebung liest einen Baum, der schon im Speicher steht.
+  const erhebeZuordnung = (caption: HTMLElement, wurzel: HTMLElement): Zuordnungslage => {
+    const alleBilder = Array.from(wurzel.querySelectorAll("img"));
+    // Als Menge, damit der Vergleich über die KNOTENIDENTITÄT läuft und nicht über eine Kennung,
+    // die im Zweifel doppelt vorkommt.
+    const zuordenbar = new Set<unknown>(zuordenbareBilder(caption, wurzel));
+    const kandidaten: Zuordnungskandidat[] = [];
+    let unklareBilder = 0;
+    alleBilder.forEach((bild, i) => {
+      if (zuordenbar.has(bild) && bild instanceof HTMLImageElement) {
+        kandidaten.push({ bild, nummer: i + 1, src: bild.getAttribute("src") ?? "" });
+        return;
+      }
+      // NUR die Nicht-Kandidaten werden nach ihrem Grund gefragt, und jedes Bild genau einmal:
+      // `zuordenbareBilder` ist die Filterung über eben diese Auskunft, eine zweite Frage wäre
+      // dieselbe Antwort ein zweites Mal. „Nicht beschrieben" heißt hier ausdrücklich nicht „frei",
+      // sondern „nicht belegbar" — und genau das darf die Fläche nicht verschweigen.
+      if (zuordnungsgrund(caption, bild, wurzel) !== "beschrieben") {
+        unklareBilder += 1;
+      }
+    });
+    return { kandidaten, bilderImText: alleBilder.length, unklareBilder };
+  };
+
+  // Das Bild zu einer Kennung — GENAU EINES, sonst keines. Dieselbe Bauform wie die Auflösung der
+  // Galerie-Bitte (`:1006`): Attributvergleich statt Selektor-Interpolation, und bei mehr als einem
+  // Treffer wird nicht geraten. Gebraucht wird sie NACH einer Strukturänderung, wenn die alten
+  // Knotenzeiger nicht mehr gelten.
+  const bildMitKennung = (wurzel: HTMLElement, id: string): HTMLImageElement | null => {
+    const treffer = Array.from(wurzel.querySelectorAll("img[data-image-id]")).filter(
+      (img) => img.getAttribute("data-image-id") === id,
+    );
+    const eines = treffer.length === 1 ? treffer[0] : null;
+    return eines instanceof HTMLImageElement ? eines : null;
+  };
+
   const openCaptionFormForCaption = (caption: HTMLElement): void => {
     if (!ref.current?.contains(caption)) {
       return;
@@ -903,11 +1016,21 @@ export function RichTextEditor({
     setCaptionFormStale(false);
     // Ein frisch geöffnetes Formular trägt keinen Hinweis aus dem vorigen.
     setCaptionFormatHint(null);
+    // JOB 3055: kein Fehlschlag aus einem früheren Formularlauf bleibt an einem neuen Kandidaten
+    // hängen — der Zustand gehört zu DIESEM Lauf.
+    setVorschauFehler([]);
     setCaptionForm({
       caption,
       imageId: caption.getAttribute("data-image-id"),
       src: image?.getAttribute("src") ?? "",
       run: captionFormRunRef.current,
+      // JOB 3055 — DIESELBE AUSKUNFT WIE DIE KENNZEICHNUNG, KEIN ZWEITES FLAG. Der Abschnitt
+      // erscheint genau dann, wenn `imageForCaption` oben kein Bild genannt hat; das ist wörtlich
+      // die Bedingung, unter der `enhanceFiguresForEditing` die Fußnote kennzeichnet
+      // (`editorFigures.ts`). Zwei Bedingungen für denselben Sachverhalt wären zwei Wahrheiten —
+      // genau der Befund, an dem JOB 3041 R3 rot geworden ist.
+      zuordnung: image === null && ref.current ? erhebeZuordnung(caption, ref.current) : null,
+      fehlschlag: false,
       // AUFTRAG-mega84 Block B: Ausgangswert ist der vorhandene Fußnoteninhalt EINSCHLIESSLICH
       // seiner Formatierung — deshalb innerHTML statt textContent. Der Platzhaltertext ist dabei
       // kein Inhalt: er lebt als CSS-::before am data-Attribut und steht nie im innerHTML.
@@ -1132,6 +1255,77 @@ export function RichTextEditor({
     setCaptionFormAi(null);
     setCaptionFormStale(false);
     setCaptionFormatHint(null);
+  };
+
+  // ── JOB 3055 (PRIORITAETEN.md V7): DIE ENTSCHEIDUNG DES AUTORS, AUF DEN VORHANDENEN WEGEN ────
+  //
+  // Der Klick tut GENAU DREI Dinge, und keines davon ist neu erfunden:
+  //   1. `ordneFussnoteZu` — die eine Stelle, die zuordnet.
+  //   2. `verankereFiguren` — die EINE Verankerung, dieselbe wie auf jedem anderen Weg, und ihre
+  //      Rückgabe geht durch die EINE Auswertung (`uebernimmTrennungen`). Hier fällt auch die
+  //      Kennzeichnung „noch keinem Bild zugeordnet", weil `imageForCaption` jetzt das Bild nennt —
+  //      sie wird NICHT von dieser Fläche entfernt. Ein `removeAttribute` hier wäre eine zweite
+  //      Wahrheit über denselben Zustand.
+  //   3. `emit()` — der vorhandene Speicherweg. Die Zuordnung ist eine Änderung am Dokumentkörper
+  //      des Autors und reist auf ihm; es gibt keinen neuen Endpunkt und keinen zweiten Egress.
+  //
+  // UND DANACH DAS FORMULAR AUF SEIN NEUES ZIEL. Das Modul verschiebt über `outerHTML` (es ist
+  // DOM-lib-frei typisiert, Begründung dort) — die Fußnote hat danach denselben INHALT, aber einen
+  // anderen Knoten, und `captionForm.caption` zeigte ins Leere. Statt ein abgelöstes Formular
+  // stehen zu lassen, wird es über DIESELBE eine Öffnungsfunktion neu auf die Fußnote gestellt,
+  // die jetzt zum Bild gehört. Der noch nicht gespeicherte Entwurf ist kein Teil der Zuordnung und
+  // bleibt deshalb erhalten — sonst kostete ein Klick auf „zuordnen" den getippten Text.
+  //
+  // RUNDE 3 (bens Korrekturpflicht 1) — DIESER KLICK ENDET NIE STILL. Zwei Ausgänge, und beide
+  // sagen etwas:
+  //   · Das Ziel ist nicht mehr das geöffnete (Inhalt von außen ersetzt, Bild getauscht, Block
+  //     entfernt) → dieselbe Geltungsprüfung wie beim Speichern (`captionFormTargetIntact`) und
+  //     derselbe sichtbare Satz. Eine zweite Prüfung für denselben Sachverhalt wäre eine zweite
+  //     Wahrheit; deshalb hier keine eigene.
+  //   · Das Ziel steht, die Zuordnung wird trotzdem verweigert (der Baum hat sich geändert, ohne
+  //     dass Kennung, Quelle oder Fußnotenknoten es anzeigen) → die Lage wird FRISCH erhoben und
+  //     der Grund steht am Abschnitt. Der Autor sieht danach den jetzigen Stand, nicht das
+  //     überholte Angebot.
+  const ordneFussnoteDemBildZu = (kandidat: Zuordnungskandidat): void => {
+    const el = ref.current;
+    const form = captionForm;
+    if (!el || !form) {
+      return;
+    }
+    const jetzt = captionFormCurrent();
+    if (
+      !captionFormTargetIntact(
+        { imageId: form.imageId, src: form.src, run: form.run },
+        { ...jetzt, sameCaption: jetzt.caption === form.caption },
+      )
+    ) {
+      setCaptionFormStale(true);
+      setCaptionFormAi(null);
+      return;
+    }
+    const kennung = kandidat.bild.getAttribute("data-image-id");
+    if (!ordneFussnoteZu(form.caption, kandidat.bild, el)) {
+      setCaptionForm((prev) =>
+        prev ? { ...prev, zuordnung: erhebeZuordnung(prev.caption, el), fehlschlag: true } : prev,
+      );
+      return;
+    }
+    uebernimmTrennungen(verankereFiguren(el));
+    emit();
+    // Über die Kennung zurück, nicht über den alten Zeiger: auch das Bild kann beim Verankern
+    // ersetzt worden sein. Bei mehr als einem Treffer wird nicht geraten (siehe `bildMitKennung`).
+    const bild = kennung === null ? null : bildMitKennung(el, kennung);
+    const neu = bild === null ? null : captionForImage(bild, el);
+    if (!(neu instanceof HTMLElement)) {
+      // Die Fußnote ist nicht wiederzufinden — dann sagt das Formular lieber nichts mehr, statt
+      // auf ein Ziel zu zeigen, das es nicht mehr gibt.
+      closeCaptionForm();
+      return;
+    }
+    const entwurf = form.draft;
+    openCaptionFormForCaption(neu);
+    setCaptionForm((prev) => (prev ? { ...prev, draft: entwurf } : prev));
+    setCaptionFieldEpoch((n) => n + 1);
   };
 
   // ── AUFTRAG-mega84 Block B: fett, kursiv, Zeilenumbruch IM FELD ───────────────────────────────
@@ -1809,6 +2003,111 @@ export function RichTextEditor({
                 alt={t(CAPTION_AI_TEXT.formImageAlt)}
                 className="max-h-64 w-full rounded-card border border-hairline bg-page object-contain"
               />
+            ) : null}
+
+            {/* JOB 3055 (PRIORITAETEN.md V7) — 1b. DIE BESCHREIBUNG OHNE BILD FINDET IHR BILD.
+                Der Abschnitt steht hier, wo sonst das Bild stünde: Wer die gekennzeichnete Fußnote
+                anklickt, sieht als Erstes, dass sie zu keinem Bild gehört — und gleich darunter,
+                was er dagegen tun kann. Er erscheint ausschließlich, wenn `imageForCaption` beim
+                Öffnen kein Bild genannt hat (dieselbe Auskunft, die auch die Kennzeichnung stellt);
+                die Bedingung steht in `openCaptionFormForCaption`, nicht hier, damit es nicht zwei
+                Stellen gibt, an denen „ohne Bild" entschieden wird.
+
+                RUNDE 3 (bens Korrekturpflicht 1): UND ER VERSCHWINDET, SOBALD DAS ZIEL WEGGEZOGEN
+                IST. Die Kandidatenknöpfe halten Knotenzeiger auf Bilder eines Baumes, den ein
+                externer Inhaltswechsel gerade ersetzt hat; sie könnten danach nichts mehr
+                zuordnen. Ein Knopf, der eine Fähigkeit verspricht und keine mehr hat, ist eine
+                Scheinfunktion. Der Grund steht unten im vorhandenen `caption-form-stale`-Satz —
+                eine zweite Erklärung für denselben Sachverhalt gibt es nicht. */}
+            {captionForm.zuordnung && !captionFormStale ? (
+              <section
+                data-testid="caption-form-assign"
+                className="rounded-card border border-hairline bg-page p-2.5"
+              >
+                <p className="mb-1.5 text-[12.5px] font-semibold text-text">
+                  {t("editor.assignHeading")}
+                </p>
+                {/* RUNDE 3: Ein verweigerter Klick sagt, dass er verweigert wurde — und die Liste
+                    darunter ist die frisch erhobene, nicht die überholte. */}
+                {captionForm.fehlschlag ? (
+                  <p
+                    data-testid="caption-form-assign-failed"
+                    aria-live="polite"
+                    className="mb-1.5 rounded-btn bg-trust-warn-bg px-2 py-1.5 text-[11.5px] leading-relaxed text-trust-warn-text"
+                  >
+                    {t("editor.assignFailed")}
+                  </p>
+                ) : null}
+                {captionForm.zuordnung.kandidaten.length > 0 ? (
+                  <div className="flex flex-wrap gap-2">
+                    {captionForm.zuordnung.kandidaten.map((kandidat) => {
+                      const name = t("editor.assignImageName", { n: kandidat.nummer });
+                      const kennung = kandidat.bild.getAttribute("data-image-id") ?? "";
+                      // „Vorschau fehlt" ist eine Aussage über das BILD, nicht über die
+                      // Zuordenbarkeit: eine leere Quelle und ein gescheiterter Ladeversuch führen
+                      // zum selben Platzhalter, und in beiden Fällen bleibt der Knopf bedienbar.
+                      const ohneVorschau = kandidat.src === "" || vorschauFehler.includes(kennung);
+                      return (
+                        <button
+                          key={kandidat.nummer}
+                          type="button"
+                          data-testid="caption-form-assign-option"
+                          aria-label={t("editor.assignOptionLabel", { n: kandidat.nummer })}
+                          onClick={() => ordneFussnoteDemBildZu(kandidat)}
+                          className="inline-flex w-28 flex-col items-center gap-1 rounded-card border border-hairline bg-surface p-1.5 text-[11.5px] font-semibold text-text hover:border-ai/50"
+                        >
+                          {ohneVorschau ? (
+                            <span
+                              data-testid="caption-form-assign-preview-missing"
+                              className="flex h-16 w-full items-center justify-center rounded-input border border-dashed border-hairline px-1 text-center text-[10.5px] font-normal leading-snug text-muted-2"
+                            >
+                              {t("editor.assignPreviewMissing")}
+                            </span>
+                          ) : (
+                            <img
+                              src={kandidat.src}
+                              alt=""
+                              aria-hidden="true"
+                              onError={() =>
+                                setVorschauFehler((bisher) =>
+                                  bisher.includes(kennung) ? bisher : [...bisher, kennung],
+                                )
+                              }
+                              className="h-16 w-full rounded-input border border-hairline bg-page object-contain"
+                            />
+                          )}
+                          <span>{name}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ) : captionForm.zuordnung.bilderImText === 0 ? (
+                  <p
+                    data-testid="caption-form-assign-no-image"
+                    className="text-[11.5px] leading-relaxed text-muted"
+                  >
+                    {t("editor.assignNoImage")}
+                  </p>
+                ) : captionForm.zuordnung.unklareBilder > 0 ? (
+                  /* RUNDE 2 (bens Korrekturpflicht 3): Der Satz steht VOR „alle beschrieben", weil
+                     ein einziges nicht belegbares Bild die stärkere Aussage bereits falsch macht.
+                     Er sagt nur, was erhoben ist — wie viele Bilder keine belegbare Zuordnung
+                     haben — und behauptet nichts über die übrigen. */
+                  <p
+                    data-testid="caption-form-assign-unclear"
+                    className="text-[11.5px] leading-relaxed text-muted"
+                  >
+                    {t("editor.assignUnclear", { count: captionForm.zuordnung.unklareBilder })}
+                  </p>
+                ) : (
+                  <p
+                    data-testid="caption-form-assign-all-described"
+                    className="text-[11.5px] leading-relaxed text-muted"
+                  >
+                    {t("editor.assignAllDescribed")}
+                  </p>
+                )}
+              </section>
             ) : null}
 
             {/* 2. Beschriftetes Feld mit SICHTBAREM Maximum.

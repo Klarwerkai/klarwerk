@@ -722,6 +722,18 @@ const SCHREIB_DISPOSITION: Readonly<Record<string, SchreibDisposition>> = {
   // Sie schreibt über `enhanceFiguresForEditing` in das Element, das der Aufrufer übergibt; ihre
   // fünf Aufrufer sind einzeln disponiert. Sie IST die Verankerung, nicht ein Weg an ihr vorbei.
   "useCallback[t]": "generisch",
+  // ── JOB 3055 (PRIORITAETEN.md V7): DER ZUORDNUNGS-KLICK ──────────────────────────────────────
+  //
+  // Die Erhebung sieht diese Stelle, weil sie `ordneFussnoteZu` ruft — einen benannten Import aus
+  // `editorFigures.ts`, dessen Export selbst schreibt (`caption.outerHTML`). Genau dafür ist der
+  // Import-Zweig (4b) gebaut, und er hat hier zum ersten Mal einen echten Neuzugang gefunden.
+  //
+  // `koerper` und nichts anderes: Die Zuordnung verschiebt eine Bildbeschreibung IM Fließtext des
+  // Beitrags — sie nimmt sie von ihrer Stelle und setzt sie als direktes Kind in die figure ihres
+  // Bildes. Das ist der Beitragskörper, nicht das Formularfeld und keine abgekoppelte Kopie. Mit
+  // dieser Disposition greift die Pflicht der nächsten Zusicherung („jede Körper-Schreibstelle
+  // ruft die Verankerung"), und sie ist erfüllt: der Rumpf ruft `verankereFiguren(el)`.
+  ordneFussnoteDemBildZu: "koerper",
 };
 
 // ── Stufe 3: OB ES WIRKT ───────────────────────────────────────────────────────────────────────

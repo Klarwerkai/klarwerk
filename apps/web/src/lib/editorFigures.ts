@@ -614,6 +614,25 @@ function vertraeglich(a: string, b: string): boolean {
  *
  * Was hier NICHT geprüft wird, und das ist Absicht: die Kennung der EINGEHENDEN Fußnote. Sie ist zu
  * diesem Zeitpunkt noch nicht bekannt; ihr Abgleich steht in `gemeinsameKennung` (H2-01).
+ *
+ * JOB 3055 RUNDE 6/7: „LEER" HEISST HIER DASSELBE WIE AM ANDEREN LÖSCHWEG DIESES MODULS, und zwar
+ * über DIESELBE FUNKTION — `istLeererPlatzhalter` (`:1401`). Der Unterschied ist kein Feinschliff:
+ * die hier als leer erklärte Fußnote wird von `verschiebeInAnker` (`:698`,
+ * `platz.ankerFussnote.outerHTML = fussnote.outerHTML`) mitsamt ihrem GANZEN Inhalt ÜBERSCHRIEBEN.
+ * Zwei Befunde, beide gemessen und beide ohne jedes Zutun des Autors, bei jedem Verankerungslauf
+ * des Editors:
+ *   · RUNDE 6, Fall U6 — mit `trim()` galt eine Fußnote aus einem geschützten Leerzeichen als leer
+ *     und war danach fort, obwohl `:231-233` seit mega90 festhält, dass ein gesetztes &nbsp; Inhalt
+ *     ist:  <figure><figure><img><figcaption>&nbsp;</figcaption></figure><figcaption>W</figcaption></figure>
+ *   · RUNDE 7, Fall V1 — mit `NUR_EINRUECKUNG` ALLEIN galt eine TEXTLEERE Fußnote mit eingebetteter
+ *     Bildeinheit als leer, und das innere Bild war nach dem Überschreiben fort:
+ *     <figure><figure><img><figcaption><figure><img></figure></figcaption></figure><figcaption>W</figcaption></figure>
+ *
+ * DER ZWEITE BEFUND IST DIE LEHRE AUS DEM ERSTEN, und sie ist teuer bezahlt: Runde 6 hat hier die
+ * Textgrenze angeglichen und die Elementgrenze derselben Schranke liegen lassen — die alte Regel
+ * lebte neben der strengeren weiter. Genau diese Zweitkopie ist die Bauart, gegen die dieses Modul
+ * steht. Deshalb steht hier kein nachgebauter Ausdruck mehr, sondern der AUFRUF: eine gemeinsame
+ * Funktion kann nicht halb angeglichen werden.
  */
 function offenerAnker(
   anker: EditableElement | null,
@@ -631,7 +650,7 @@ function offenerAnker(
   if (direkte.length > 1 || eine === undefined) {
     return zu;
   }
-  if ((eine.textContent ?? "").trim() !== "") {
+  if (!istLeererPlatzhalter(eine)) {
     return zu;
   }
   if (!vertraeglich(kennungVon(eine), kennungVon(bild))) {
@@ -1250,6 +1269,342 @@ export function imageForCaption(
     return direktesKind;
   }
   return null;
+}
+
+// ==================================================================================================
+// JOB 3055 (PRIORITAETEN.md V7) — DIE VERWAISTE BESCHREIBUNG FINDET IHR BILD, AUF EINE AUSDRÜCKLICHE
+// ENTSCHEIDUNG DES AUTORS HIN. UND SIE ÜBERSCHREIBT DABEI NIE EINE VORHANDENE.
+// ==================================================================================================
+//
+// Seit JOB 3041 SAGT eine Fußnote ohne Bild, dass sie zu keinem gehört. Ändern konnte der Autor
+// daran nichts: alle drei Stellen, die in diesem Modul eine Fußnotenkennung schreiben (`:766`,
+// `:813`, `:1067`), leiten sie automatisch aus dem Baum ab — es gab keinen Weg, auf dem ein MENSCH
+// eine Zuordnung herstellt.
+//
+// DIE FUNKTIONEN UNTEN SIND DIESER WEG, und sie sind bewusst nur GESICHTER EINER Antwort
+// (`zuordnungsgrund`): „welche Bilder kämen in Frage", „warum nicht" und „nimm dieses" dürfen nicht
+// getrennt entscheiden. Zwei Erhebungen über denselben Sachverhalt sind die Bauart, aus der
+// huelle3/H2-02, sammel89 und die Sonderwahrheit `istZugeordnet` (JOB 3041 R3) entstanden sind —
+// dort bot die Fläche an, was die Wirkfunktion dann ablehnte, oder umgekehrt.
+//
+// RUNDE 2 (bens Korrekturpflichten 1–3): Aus dem Ja/Nein ist ein GRUND geworden, und die Reihenfolge
+// im Baum ist eine Nachbedingung. Drei Befunde standen dahinter, alle drei am Verhalten gemessen:
+//   · Der geräumte Platzhalter wurde AN SEINER STELLE ersetzt. Stand er VOR dem Bild, stand die
+//     Beschreibung danach über dem Bild — bis ins gespeicherte HTML. Die Fußnote wird jetzt IMMER
+//     hinter das Bild gesetzt (`insertAdjacentHTML("afterend")` am Bild selbst).
+//   · Ein leerer Platzhalter TIEF in der figure (`<figure><img><div><figcaption>`) galt als „steht
+//     beim Bild", weil nur `closest("figure")` verglichen wurde. Geprüft wird jetzt die direkte
+//     Kindschaft — und zwar für BEIDE Seiten, Bild wie Fußnote.
+//   · Ein Bild, das aus einem anderen Grund als „hat schon eine Beschreibung" ausfällt, wurde an der
+//     Fläche als „schon beschrieben" ausgegeben. Das war eine falsche Tatsachenaussage; deshalb der
+//     dritte Grund `unklar`, den die Fläche eigens benennt.
+//
+// GELESEN WIRD DIE PAARUNG AUSSCHLIESSLICH ÜBER `captionForImage`/`imageForCaption`. Es entsteht
+// kein dritter Selektor und kein Begriff von „zugeordnet", den die Kennzeichnung nicht auch hätte —
+// genau das ist die Korrekturpflicht an JOB 3041 R3.
+//
+// DIE VERWEIGERUNG IST DER EIGENTLICHE INHALT. Die Hausregel dieses Moduls steht bei Stufe 3
+// (`:757-763`): „Sichtbar danebenstehender Text ist reparierbar; eine überschriebene Zuordnung ist
+// es nicht." Sie gilt auch, wenn der Autor die Zuordnung selbst auslöst — er sieht in diesem
+// Augenblick die fremde Beschreibung nicht, und sie wäre nach dem Speichern fort.
+//
+// WAS DIESE FUNKTION NICHT KANN, ausdrücklich: den Fußnoten-KNOTEN erhalten. Das Modul ist
+// DOM-lib-frei typisiert (Begründung ganz oben) und verschiebt deshalb über `outerHTML` — dieselbe
+// Bauform wie `verschiebeInAnker` (`:698`). Ein `appendChild`/`replaceWith`, das den lebenden Knoten
+// umhängte, verlangt den Typ `Node`, und den kann `EditableElement` strukturell nicht erfüllen. Der
+// Aufrufer bekommt also denselben INHALT an neuer Stelle, aber nicht denselben Knoten; der Editor
+// holt sich sein Ziel danach über die Kennung zurück (`RichTextEditor.tsx`).
+
+// RUNDE 3 (bens Korrekturpflicht 3): BEIDE Knoten müssen in der Wurzel HÄNGEN, nicht nur der eine.
+// Ein abgelöster Knoten ist der Normalfall, nicht die Ausnahme: jeder externe Inhaltswechsel im
+// Editor ersetzt den ganzen Baum, und ein Zeiger, den ein offenes Formular noch hält, zeigt danach
+// ins Leere. Ohne diese Prüfung setzte `ordneFussnoteZu` eine LÄNGST ENTFERNTE Fußnote wieder in
+// den Text ein — der Autor bekäme Text zurück, den er nicht mehr hat. Gefragt wird die Wurzel
+// selbst, nicht der Knoten: `closest`/`parentNode` an einem abgelösten Teilbaum antworten
+// weiterhin, nur eben über einen Baum, der nirgends hängt.
+
+/** Liegt dieses Bild wirklich in dieser Wurzel? */
+function istBildDerWurzel(root: EditableFigureRoot, bild: EditableElement): boolean {
+  for (const kandidat of root.querySelectorAll("img")) {
+    if (kandidat === bild) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/** Liegt diese Fußnote wirklich in dieser Wurzel? */
+function istFussnoteDerWurzel(root: EditableFigureRoot, caption: EditableElement): boolean {
+  for (const kandidat of root.querySelectorAll("figcaption")) {
+    if (kandidat === caption) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// RUNDE 5 (bens Korrekturpflicht 1) — DER GERÄUMTE PLATZ IST DIE ZWEITE SEITE DESSELBEN SCHADENS.
+//
+// Runde 4 hat den Teilbaum der WANDERNDEN Fußnote geschützt (`alle(caption, "img")`). Der Platz, der
+// für sie GERÄUMT wird, stand weiter ungeprüft da: `ordneFussnoteZu` entfernt die vorhandene Fußnote
+// des Zielbildes mit `platzhalter.outerHTML = ""`, weil eine figure genau eine Fußnote trägt — und
+// die Erlaubnis dazu hing allein am getrimmten TEXT. Eine Fußnote mit leerem Text, aber
+// eingebetteter Bildeinheit
+//
+//     <figure><img Ziel><figcaption><figure><img Innen><figcaption/></figure></figcaption></figure>
+//
+// galt damit als „leer", wurde angeboten und beim Klick mitsamt ihrem Bild gelöscht — am gemounteten
+// Editor gemessen bis in das `onChange`-HTML. Der Autor verlor durch einen angebotenen Knopf ein Bild.
+//
+// GEPRÜFT WIRD DESHALB NICHT „steht da ein img", sondern „ist da NACHWEISLICH NICHTS". Eine
+// Aufzählung dessen, was nicht gelöscht werden darf, ist immer unvollständig; die Umkehrung ist es
+// nicht. Der Preis ist eine Verweigerung bei Platzhaltern mit belanglosem Markup (etwa einem
+// stehengebliebenen `<br>`): die Fußnote bleibt dann verwaist, die Fläche sagt `unklar`, und der
+// Autor verliert nichts. Das ist die Richtung, in der dieses Modul irrt (`:757-763`).
+//
+// RUNDE 6 (bens Korrekturpflicht 1) — UND „NACHWEISLICH NICHTS" HIESS IMMER NOCH `trim()`.
+//
+// Der Befund steht seit mega90 Block B im selben Quelltext, 1100 Zeilen weiter oben (`:224-234`):
+// `trim()` und `\s` fassen AUCH das geschützte Leerzeichen (U+00A0) als Leerraum auf, „ein &nbsp;,
+// das jemand gesetzt hat, IST aber Inhalt … und darf nicht stillschweigend verschwinden". Genau
+// deshalb steht dort der ausgeschriebene Zeichenvorrat `NUR_EINRUECKUNG`. Diese Funktion fragte
+// trotzdem mit `trim()` — ein Platzhalter, in dem nur ein U+00A0 stand, erteilte die Löschfreigabe,
+// wurde angeboten und beim Klick samt seinem Zeichen entfernt, bis in das gespeicherte HTML.
+//
+// DIE LÖSCHFREIGABE HÄNGT AB JETZT AUSSCHLIESSLICH AN `NUR_EINRUECKUNG` — an derselben Grenze, die
+// dieses Modul für seine andere Verwerfungsentscheidung (`:294`) längst benutzt. Keine zweite
+// Leerraumdefinition daneben: eine driftende Zweitkopie derselben Frage ist die Bauart, gegen die
+// dieses Modul steht.
+//
+// ZWEI FRAGEN, ZWEI GRENZEN, und das ist Absicht:
+//   · „Steht da eine LESBARE Beschreibung?" → `trim()` beim Grund `beschrieben`. Ein Platzhalter aus
+//     einem einzelnen U+00A0 zeigt nichts zu lesen; ihn „schon beschrieben" zu nennen (die Fläche
+//     sagt dann wörtlich „Alle Bilder in diesem Text haben schon eine Bildbeschreibung") wäre eine
+//     falsche Tatsachenaussage — genau die Fehlklasse, für die es den Grund `unklar` überhaupt gibt.
+//   · „Darf dieser Platz GERÄUMT werden?" → allein `NUR_EINRUECKUNG`, hier.
+// `trim()` erteilt damit nirgends mehr eine Löschfreigabe; ein U+00A0 landet über diese Funktion im
+// dritten, schwächeren Grund `unklar` — es wird weder angeboten noch angefasst.
+//
+// RUNDE 7 (bens Korrekturpflicht 1) — DIESE FUNKTION IST DIE EINZIGE STELLE, DIE „LEER GENUG ZUM
+// ÜBERSCHREIBEN" BEANTWORTET, für BEIDE Wege dieses Moduls:
+//   · den angebotenen Klick — `zuordnungsgrund` (`:1500`), der Platzhalter wird geräumt;
+//   · den automatischen Verankerungslauf — `offenerAnker` (`:653`), die Ankerfußnote wird von
+//     `verschiebeInAnker` (`:698`) überschrieben.
+// Runde 6 hatte `offenerAnker` nur die TEXTGRENZE nachgezogen und die Elementgrenze hier gelassen.
+// Damit lebte die alte, schwächere Regel neben der strengeren weiter, und der automatische Weg
+// löschte weiter ungeprüften Elementinhalt: eine textleere Ankerfußnote MIT eingebetteter
+// Bildeinheit galt als frei, das innere Bild war nach dem Überschreiben fort — bis in das
+// gespeicherte HTML, ohne jedes Zutun des Autors (Fälle V1/V2, gemountet V4).
+// Eine halb angeglichene Zweitkopie ist schlimmer als eine offensichtliche: sie sieht angeglichen
+// aus. Deshalb steht dort jetzt der AUFRUF und kein nachgebauter Ausdruck.
+/** Trägt dieser Platzhalter nachweislich nichts, sodass sein Entfernen nichts vernichtet? */
+function istLeererPlatzhalter(platzhalter: EditableElement): boolean {
+  return (
+    NUR_EINRUECKUNG.test(platzhalter.textContent ?? "") && platzhalter.querySelector("*") === null
+  );
+}
+
+/**
+ * Warum ein Bild als Ziel dieser Fußnote in Frage kommt — oder eben nicht.
+ *
+ * DREI GRÜNDE UND NICHT ZWEI, und das ist bens Korrekturpflicht 3: Die Fläche sagte bei null
+ * Kandidaten „alle Bilder haben schon eine Bildbeschreibung". Das war für ein Bild ohne Kennung
+ * oder mit unentscheidbarer Fußnotenlage schlicht FALSCH — eine Tatsachenaussage über einen
+ * Zustand, der gar nicht erhoben war. `unklar` ist der ehrliche dritte Ausgang.
+ */
+export type Zuordnungsgrund =
+  /** `ordneFussnoteZu` würde `true` liefern. */
+  | "zuordenbar"
+  /** Beim Bild steht eine Fußnote MIT Text — sie wird nicht überschrieben. */
+  | "beschrieben"
+  /** Alles andere: keine Kennung, nicht direkt beieinander, mehrdeutige Fußnotenlage. */
+  | "unklar";
+
+/**
+ * DIE EINE ANTWORT, aus der Liste, Grundangabe und Wirkung entstehen.
+ *
+ * Die Verweigerungen, jede zum Schutz einer vorhandenen Wahrheit:
+ *   (c) Beim Bild steht schon eine Beschreibung mit Text → `beschrieben`. Sie würde ersetzt; das
+ *       ist der Schaden, den dieses Modul an keiner Stelle zulässt. Zuerst geprüft, weil er der
+ *       einzige Grund ist, den die Fläche als Tatsache aussprechen darf.
+ *   (a) Die Fußnote gehört schon einem Bild — dann ist sie keine verwaiste, und ein Umhängen
+ *       nähme dem alten Bild seine Beschreibung.
+ *   (b) Einer der beiden Knoten hängt nicht in dieser Wurzel, oder das Bild trägt keine Kennung.
+ *       Ohne Kennung gäbe es nichts, worüber die Paarung später wiedergefunden würde; und ein
+ *       abgelöster Knoten würde vom Einsetzen WIEDER SICHTBAR — Text, den der Autor nicht mehr hat
+ *       (RUNDE 3, bens Korrekturpflicht 3).
+ *   (d) Das Bild nennt genau DIESE Fußnote: dann gibt es nichts zuzuordnen, und ein Verschieben
+ *       auf sich selbst zerstörte den Knoten.
+ *   (d2) In der Fußnote steht ein Bild (RUNDE 4, bens Korrekturpflicht 1). Das ist der schwerste
+ *       der bisherigen Befunde: `ordneFussnoteZu` nimmt die Fußnote MITSAMT ihrem Teilbaum von
+ *       ihrer Stelle (`caption.outerHTML = ""`). Ist das ZIELBILD darin, hängt es danach nirgends
+ *       mehr, das Einsetzen greift ins Leere, und der Editor emittiert einen LEEREN
+ *       Dokumentkörper — ein angebotener Klick löscht Bild UND Beschreibung.
+ *
+ *       VERWEIGERT WIRD ABER JEDES BILD IN DER FUSSNOTE, nicht nur das Zielbild — und das ist
+ *       gemessen, nicht vorsichtig. Zielt der Klick auf ein GESCHWISTERBILD, geht zwar nichts
+ *       verloren; die Fußnote wandert aber mitsamt ihrer figure in die Ziel-figure, und der Baum
+ *       steht danach so da (am gemounteten Editor abgelesen, einschließlich `onChange`):
+ *
+ *           <figure><img><figcaption>Text<figure><img><figcaption/></figure></figcaption></figure>
+ *
+ *       Eine figure IN einer figcaption. Das Flachmachen des nächsten Laufs löst sie NICHT auf
+ *       (`einheitenVon` liest die Fußnote als erhaltene Hülle mit Bild und gibt sie unverändert
+ *       aus) — die Verschachtelung bleibt bis in den gespeicherten Rumpf stehen, gegen genau die
+ *       Zusage von mega89 Block A („eine figure je Bild, alle auf derselben Ebene"). Eine
+ *       `figcaption`, die eine Bildeinheit enthält, ist ohnehin keine Beschreibung, die dieses
+ *       Modul umhängen kann.
+ *   (d3) Der zu RÄUMENDE Platzhalter des Bildes trägt irgendetwas (RUNDE 5, bens Korrekturpflicht
+ *       1) — die andere Seite desselben Schadens. Er wird entfernt; gelöscht wird nur, was
+ *       nachweislich nichts trägt. Begründung und Preis dieser Umkehrung stehen bei
+ *       `istLeererPlatzhalter`.
+ *   (e) Bild und geräumter Platz stehen nicht DIREKT in derselben figure, oder die figure trägt
+ *       mehr als ein direktes Bild oder mehr als eine direkte Fußnote. Das ist die Lage, die
+ *       `offenerAnker` (huelle3) schon schließt: es ist nicht entscheidbar, was zu was gehört,
+ *       und eine weitere Fußnote danebenzustellen macht es schlimmer. Bei einer Mehrbild-figure
+ *       stünde die Fußnote außerdem zwischen zwei Bildern statt hinter ihrem — die Nachbedingung
+ *       unten wäre gebrochen. Bei Mehrdeutigkeit wird hier nicht geraten.
+ */
+export function zuordnungsgrund(
+  caption: EditableElement,
+  bild: EditableElement,
+  root: EditableFigureRoot,
+): Zuordnungsgrund {
+  const vorhandene = captionForImage(bild, root);
+  if (
+    vorhandene !== null &&
+    vorhandene !== caption &&
+    (vorhandene.textContent ?? "").trim() !== ""
+  ) {
+    return "beschrieben";
+  }
+  if (imageForCaption(caption, root) !== null) {
+    return "unklar";
+  }
+  if (!istFussnoteDerWurzel(root, caption)) {
+    return "unklar";
+  }
+  if (kennungVon(bild) === "" || !istBildDerWurzel(root, bild)) {
+    return "unklar";
+  }
+  if (vorhandene === caption) {
+    return "unklar";
+  }
+  // RUNDE 4: In der Fußnote darf ÜBERHAUPT KEIN Bild stehen — nicht nur nicht das Zielbild.
+  // Gefragt wird die Fußnote selbst als Wurzel (sie erfüllt `EditableFigureRoot`); eine eigene
+  // Erhebung wäre eine zweite Antwort auf dieselbe Frage.
+  if (alle(caption, "img").length > 0) {
+    return "unklar";
+  }
+  // RUNDE 5: und dasselbe für die ANDERE Seite — den Platzhalter, der GERÄUMT wird.
+  if (vorhandene !== null && !istLeererPlatzhalter(vorhandene)) {
+    return "unklar";
+  }
+  // RUNDE 5, zweiter Befund derselben Familie (an T2 gemessen): das ZIELBILD darf nicht IN einer
+  // Fußnote stehen. Es verliert dabei nichts, aber die wandernde Beschreibung käme in eine
+  // figcaption INNERHALB einer figcaption — dieselbe Verschachtelung, gegen die (d2) steht, nur von
+  // der anderen Seite. Ein Bild in einer Fußnote ist kein Bild, dem dieses Modul eine Beschreibung
+  // anhängen kann; das Flachmachen des nächsten Laufs löst die Lage nicht auf (siehe (d2)).
+  if (bild.closest("figcaption") !== null) {
+    return "unklar";
+  }
+  const figure = bild.closest("figure");
+  if (figure === null) {
+    // Gar keine figure: das Bild wird an Ort und Stelle umhüllt. Nennt es trotzdem eine Fußnote,
+    // steht die irgendwo anders — dann ist der Platz nicht der, den diese Funktion räumen kann.
+    return vorhandene === null ? "zuordenbar" : "unklar";
+  }
+  // `:scope >` steht bewusst als Zeichenkette AN der Abfrage: der Wächter über die Paarungsstellen
+  // (`tests/app/mega89-paarungsstellen-sammler.test.ts`) liest den Syntaxbaum und sieht nur so,
+  // dass hier über DIREKTE Kinder geurteilt wird und nicht über einen beliebigen Nachfahren.
+  const direkteBilder = Array.from(figure.querySelectorAll(":scope > img"));
+  if (direkteBilder.length > 1 || !direkteBilder.includes(bild)) {
+    return "unklar";
+  }
+  const direkteFussnoten = Array.from(figure.querySelectorAll(":scope > figcaption"));
+  if (direkteFussnoten.length > 1) {
+    return "unklar";
+  }
+  if (vorhandene !== null && !direkteFussnoten.includes(vorhandene)) {
+    return "unklar";
+  }
+  return "zuordenbar";
+}
+
+/**
+ * Genau die Bilder dieses Textes, für die `ordneFussnoteZu` erfolgreich wäre — nicht eine ähnliche
+ * Menge. Beide Auskünfte laufen durch dieselbe Prüfung, und deshalb kann die Fläche nichts
+ * anbieten, was die Wirkfunktion danach ablehnt.
+ */
+export function zuordenbareBilder(
+  caption: EditableElement,
+  root: EditableFigureRoot,
+): EditableElement[] {
+  const aus: EditableElement[] = [];
+  for (const bild of root.querySelectorAll("img")) {
+    if (zuordnungsgrund(caption, bild, root) === "zuordenbar") {
+      aus.push(bild);
+    }
+  }
+  return aus;
+}
+
+/**
+ * Die Fußnote an ihr Bild bringen — oder `false` und ein bytegleich unveränderter Baum.
+ *
+ * Geschrieben wird ERST, wenn die Prüfung durch ist: bis dahin ist nichts angefasst, und eine
+ * Verweigerung hinterlässt keine halbe Änderung. Danach in dieser Reihenfolge:
+ *   1. Die Fußnote übernimmt die Kennung des Bildes (die Kennung des BILDES ist die stabile, an ihr
+ *      hängen Galerie, Occurrence-Kette und der Serverlauf).
+ *   2. Sie verschwindet von ihrer alten Stelle — der Text steht danach nicht zweimal da; ebenso der
+ *      leere Platzhalter des Bildes, denn eine figure trägt genau eine Fußnote.
+ *   3. Sie steht DIREKT HINTER dem Bild. Nicht „an der Stelle des Platzhalters": stand der VOR dem
+ *      Bild, stünde die Beschreibung über ihm — bens Befund an Runde 1, bis ins gespeicherte HTML.
+ *      Gibt es gar keine figure, wird das Bild an Ort und Stelle umhüllt (dieselbe Bauform wie
+ *      `verschiebeInAnker`, aus demselben Grund).
+ *
+ * NACHBEDINGUNG BEI `true`, und sie gilt UNBEDINGT — nicht nur am fertig verankerten Editorbaum:
+ * die figure des Bildes hat genau ein direktes `<img>` und genau eine direkte `<figcaption>`, die
+ * Fußnote folgt dem Bild unmittelbar, und NICHTS geht verloren — kein Bild, kein Text.
+ *
+ * Damit das ohne Vorbedingung an den Aufrufer hält, verweigert `zuordnungsgrund` auch die Lagen,
+ * die nur AUSSERHALB des verankerten Baums vorkommen:
+ *   · eine figure mit MEHREREN direkten Bildern (die Fußnote stünde zwischen zwei Bildern),
+ *   · einen Knoten, der gar nicht mehr in `root` hängt (er würde vom Einsetzen wieder sichtbar),
+ *   · das Bild IM Teilbaum der Fußnote (die Verschiebung nähme es mit und löschte es —
+ *     RUNDE 4, bens Korrekturpflicht 1),
+ *   · und einen zu räumenden Platzhalter, der irgendetwas trägt (RUNDE 5, bens Korrekturpflicht 1;
+ *     `platzhalter.outerHTML = ""` löschte sonst mit, was darin steht).
+ * Alle vier ergeben `false` und einen bytegleichen Baum; es gibt keinen Fall, in dem diese Funktion
+ * `true` sagt und die Nachbedingung bricht.
+ */
+export function ordneFussnoteZu(
+  caption: EditableElement,
+  bild: EditableElement,
+  root: EditableFigureRoot,
+): boolean {
+  if (zuordnungsgrund(caption, bild, root) !== "zuordenbar") {
+    return false;
+  }
+  // Dieselbe Auskunft, die eben schon über (c)/(d3)/(e) entschieden hat — deshalb trägt diese
+  // Fußnote nachweislich nichts und ist ein direktes Kind der figure dieses Bildes. Erhoben VOR
+  // jeder Schreibung: die Kennung unten verändert die Kennungslage im Baum.
+  const platzhalter = captionForImage(bild, root);
+  const figure = bild.closest("figure");
+  caption.setAttribute("data-image-id", kennungVon(bild));
+  const wanderndes = caption.outerHTML;
+  // Eine Zuweisung von `""` ersetzt den Knoten durch nichts — die DOM-lib-freie Entsprechung von
+  // `remove()`, dieselbe Bauform wie jede andere Strukturänderung in dieser Datei.
+  caption.outerHTML = "";
+  if (platzhalter !== null) {
+    platzhalter.outerHTML = "";
+  }
+  if (figure === null) {
+    bild.outerHTML = `<figure>${bild.outerHTML}${wanderndes}</figure>`;
+    return true;
+  }
+  bild.insertAdjacentHTML("afterend", wanderndes);
+  return true;
 }
 
 // AUFTRAG-mega84 Block A — DIE BESCHREIBUNG IST DER EINSTIEG, NICHT DAS TIPPFELD.
