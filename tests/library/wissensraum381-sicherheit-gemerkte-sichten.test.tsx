@@ -62,6 +62,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -79,6 +84,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { menueOeffnen } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -177,7 +183,11 @@ describe("PRO 381 · R-13 — der Ort taucht in keiner gemerkten Sicht auf", () 
     expect(container.textContent).toContain("Alpha Ventil");
     expect(container.textContent).not.toContain("Beta Pumpe");
 
-    const nameFeld = container.querySelector("#library-view-name");
+    // JOB 3063 (H4): das Namensfeld und der Knopf „Diese Suche merken" liegen im Menü „…" der
+    // Liste, Untermenü „Sicht speichern" (AUFTRAG 3063 §5a). Die Zusage — was in den Speicher
+    // wandert — ist davon unberührt; nur der Weg dorthin führt jetzt über das Menü.
+    menueOeffnen(container, "bib-liste-menue");
+    const nameFeld = container.querySelector("#bib-sichtname");
     if (!(nameFeld instanceof HTMLInputElement)) {
       throw new Error(`Feld für den Sichtnamen fehlt; DOM: ${container.textContent}`);
     }
@@ -208,7 +218,11 @@ describe("PRO 381 · R-13 — der Ort taucht in keiner gemerkten Sicht auf", () 
     // sobald irgendjemand dem Sicht-Zustand ein fünftes Feld hinzufügt — gleich unter welchem Namen.
     // Ein späterer Auftrag, der den Zustand bewusst erweitert, muss sie ausdrücklich mitändern.
     mount(`/bibliothek?category=${encodeURIComponent("Anlage 1")}`);
-    const nameFeld = container.querySelector("#library-view-name");
+    // JOB 3063 (H4): das Namensfeld und der Knopf „Diese Suche merken" liegen im Menü „…" der
+    // Liste, Untermenü „Sicht speichern" (AUFTRAG 3063 §5a). Die Zusage — was in den Speicher
+    // wandert — ist davon unberührt; nur der Weg dorthin führt jetzt über das Menü.
+    menueOeffnen(container, "bib-liste-menue");
+    const nameFeld = container.querySelector("#bib-sichtname");
     if (!(nameFeld instanceof HTMLInputElement)) {
       throw new Error(`Feld für den Sichtnamen fehlt; DOM: ${container.textContent}`);
     }
@@ -242,6 +256,8 @@ describe("PRO 381 · R-13 — der Ort taucht in keiner gemerkten Sicht auf", () 
       ]),
     );
     mount("/bibliothek");
+    // JOB 3063 (H4): gemerkte Sichten stehen im Menü „…" der Liste, Untermenü „Sichten".
+    menueOeffnen(container, "bib-liste-menue");
     act(() => {
       buttonMitText("Fremdsicht").click();
     });

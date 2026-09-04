@@ -216,8 +216,12 @@ function setNativeValue(el: HTMLElement, value: string): void {
 
 /** Eine echte Nutzereingabe in das echte Suchfeld. */
 async function suchen(q: string): Promise<void> {
+  // JOB 3063 (H4): das Suchfeld der Bibliothek trägt seit dem Umbau den Platzhalter
+  // `lib.searchLabel` („Bibliothek durchsuchen") und die Id `bib-suche`
+  // (`components/bibliothek/BibliothekListe.tsx:122`). Der Schlüssel `lib.search` mit der
+  // Feldaufzählung ist entfallen.
   const feld = [...container.querySelectorAll("input")].find(
-    (i) => i.placeholder === i18n.t("lib.search"),
+    (i) => i.id === "bib-suche" && i.placeholder === i18n.t("lib.searchLabel"),
   );
   if (!feld) {
     throw new Error(`Suchfeld nicht gefunden. Sichtbar: ${seitenText().slice(0, 700)}`);

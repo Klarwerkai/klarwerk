@@ -48,6 +48,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -69,6 +74,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { menueOeffnen, tippe, zeilenTitel } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -122,19 +128,18 @@ function buttonWith(text: string): HTMLButtonElement | undefined {
   );
 }
 
-// Die Sicht über die ECHTE Bedienung speichern: Name tippen, „Diese Suche merken" klicken.
+// Die Sicht über die ECHTE Bedienung speichern: Menü „…" öffnen, Name tippen, „Diese Suche
+// merken" klicken. JOB 3063 (H4): das Namensfeld steht seither im Menü statt über der Trefferliste
+// — derselbe Weg (`saveLibraryView`), ein anderer Ort.
 function saveViewAs(name: string): void {
+  menueOeffnen(container, "bib-liste-menue");
   const input = [...container.querySelectorAll("input")].find(
     (i) => i.placeholder === res("lib.views.namePlaceholder"),
   );
   if (!input) {
     throw new Error("Namensfeld der gespeicherten Sicht fehlt");
   }
-  const setter = Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, "value")?.set;
-  act(() => {
-    setter?.call(input, name);
-    input.dispatchEvent(new Event("input", { bubbles: true }));
-  });
+  tippe(input, name);
   const save = buttonWith(res("lib.views.remember"));
   if (!save) {
     throw new Error("Knopf „Diese Suche merken“ fehlt");
@@ -170,9 +175,13 @@ describe("Block C: ein fremder URL-Wert wird kein echter Facettenwert", () => {
   it("gemischt: der bekannte Wert filtert, der unbekannte verschwindet", () => {
     mount(`/bibliothek?category=Anlage+1&category=${FOREIGN}`);
 
-    expect(container.textContent).toContain("Objekt Anlage Eins");
-    expect(container.textContent).not.toContain("Objekt Instandhaltung");
-    expect(container.textContent).toContain(res("facet.active"));
+    expect(zeilenTitel(container)).toContain("Objekt Anlage Eins");
+    expect(zeilenTitel(container)).not.toContain("Objekt Instandhaltung");
+    // Dass gefiltert wird, sagt die Fläche seit H4 als Zahl am Menü („Bereich · 1") statt über
+    // eine eigene Leiste „Aktive Filter".
+    expect(
+      container.querySelector(String.raw`[data-testid="bib-menue-bereich"]`)?.textContent,
+    ).toContain("· 1");
     expect(container.textContent).not.toContain(FOREIGN);
     expect(loc()).toContain("category=Anlage+1");
     expect(loc()).not.toContain(FOREIGN);

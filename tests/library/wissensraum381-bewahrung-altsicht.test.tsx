@@ -59,6 +59,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -76,6 +81,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { menueOeffnen } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -118,6 +124,15 @@ function buttonMitText(gesucht: string): HTMLButtonElement {
   return btn;
 }
 
+/**
+ * JOB 3063 (H4): gemerkte Sichten stehen im Menü „…" der Liste, Untermenü „Sichten"
+ * (AUFTRAG 3063 §5a). Die ZUSAGE dieser Datei — eine Altsicht stellt exakt ihre alte Menge her —
+ * ist davon unberührt; nur der Weg zur Schaltfläche führt jetzt über das Menü.
+ */
+function sichtenMenue(): void {
+  menueOeffnen(container, "bib-liste-menue");
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   window.localStorage.clear();
@@ -152,6 +167,7 @@ describe("PRO 381 · R-15 — eine vor der Welle gespeicherte Sicht bleibt heil"
     mount();
     expect(sichtbareTitel().sort()).toEqual(["Alpha Ventil", "Beta Pumpe", "Gamma Reifen"]);
 
+    sichtenMenue();
     act(() => {
       buttonMitText("Alt-Anlage-1").click();
     });
@@ -170,6 +186,7 @@ describe("PRO 381 · R-15 — eine vor der Welle gespeicherte Sicht bleibt heil"
       ]),
     );
     mount();
+    sichtenMenue();
     act(() => {
       buttonMitText("Alt-Alles").click();
     });
@@ -195,6 +212,7 @@ describe("PRO 381 · R-15 — eine vor der Welle gespeicherte Sicht bleibt heil"
       JSON.stringify([{ name: "Alt-Ohne-Ortsfeld", state: roh }]),
     );
     mount();
+    sichtenMenue();
     act(() => {
       buttonMitText("Alt-Ohne-Ortsfeld").click();
     });

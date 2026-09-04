@@ -61,13 +61,36 @@ const KO_KONFIDENZ_OHNE_TRUST = ko({
 });
 const KOS = [KO_TRUST_OHNE_KONFIDENZ, KO_KONFIDENZ_OHNE_TRUST];
 
-vi.mock("../../apps/web/src/api/hooks", () => {
+// Welches Wissensobjekt die Lesefläche gerade holt — der Test stellt es je Fall.
+const lage = vi.hoisted(() => ({ ko: null as KnowledgeObject | null }));
+
+// JOB 3063 (H4): die Zeile „Mehr" montiert dreizehn Abschnitte mit ihren eigenen Abfragen. Statt
+// jede einzeln nachzubauen (und bei jeder neuen still zu scheitern) bleiben die ECHTEN Haken stehen
+// und nur die vier, auf die es hier ankommt, werden gestellt. Was nicht gestellt ist, laeuft in
+// jsdom in seinen normalen Fehlerzustand — die Abschnitte zeigen dann ihre ehrliche Fehlerlage.
+vi.mock("../../apps/web/src/api/hooks", async (echt) => {
+  const original = await echt<Record<string, unknown>>();
   const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
   return {
+    ...original,
     useKos: () => ok(KOS),
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Sicherheitsanzeige steht seit dem Umbau im Abschnitt „Belege" hinter der
+    // Zeile „Mehr" der Lesefläche. Dieser Test misst sie also DORT — und braucht dafür die Abfragen,
+    // die dieser Abschnitt fährt. Sie liefern bewusst leere, erfolgreiche Antworten: der Balken
+    // hängt allein am Wissensobjekt.
+    useKo: () => ok(lage.ko),
+    useAudit: () => ok([]),
+    useKoEvidence: () => ok([]),
+    useKoVersions: () => ok([]),
+    useKoNeighbors: () => ok({ total: 0, neighbors: [] }),
+    useEigeneBefunde: () => ok([]),
+    useLifecyclePending: () => ok([]),
+    useExternalPolicy: () => ok({ stage: 1 }),
+    // Die Nachbarschaftskarte im letzten Abschnitt fragt den Modellzustand ab.
+    useReasonerStatus: () => ok({ ready: false }),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -85,6 +108,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { abschnittOeffnen } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -107,19 +131,21 @@ function mount(): void {
   });
 }
 
-// Die Zeile eines Treffers — über seinen Titel gefunden, nicht über eine Position in der Liste.
-function zeileVon(titel: string): HTMLElement {
-  const treffer = [...container.querySelectorAll("li, div")].find(
-    (e) => (e.textContent ?? "").includes(titel) && e.querySelectorAll("a").length <= 3,
-  );
-  if (!treffer) {
-    throw new Error(`Trefferzeile „${titel}" nicht gefunden`);
-  }
-  return treffer as HTMLElement;
+// JOB 3063 (H4) — DIE SICHERHEITSANZEIGE IST UMGEZOGEN, DIE ZWEI BEFUNDE BLEIBEN.
+//
+// Bis H4 hing der Balken an JEDER Trefferzeile. Die Trefferzeile gibt es nicht mehr: die Liste
+// trägt je Eintrag Punkt, Titel und „Bereich · Zustand" (Vorlage `Bibliothek.dc.html` Z.43-49).
+// Die Sicherheit steht seither im Abschnitt „Belege" hinter der Zeile „Mehr" der Lesefläche —
+// DERSELBE Balken, DIESELBE Sonderregel aus mega51 D2. Genau das misst dieser Fall jetzt.
+function oeffneMehrFuer(k: KnowledgeObject): HTMLElement {
+  lage.ko = k;
+  mount();
+  return abschnittOeffnen(container, "belege");
 }
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
+  lage.ko = null;
 });
 
 afterEach(() => {
@@ -127,10 +153,10 @@ afterEach(() => {
   container.remove();
 });
 
-describe("mega51 D · die Sicherheitsanzeige der Trefferzeile", () => {
+describe("mega51 D · die Sicherheitsanzeige des gelesenen Eintrags", () => {
   it("D1: der Balken trägt Rolle, Wert und eine Beschriftung, die sagt, WAS der Wert ist", () => {
-    mount();
-    const balken = container.querySelector('[role="progressbar"]');
+    const belege = oeffneMehrFuer(KO_KONFIDENZ_OHNE_TRUST);
+    const balken = belege.querySelector('[role="progressbar"]');
     expect(balken).not.toBeNull();
     expect(balken?.getAttribute("aria-valuemin")).toBe("0");
     expect(balken?.getAttribute("aria-valuemax")).toBe("100");
@@ -142,23 +168,21 @@ describe("mega51 D · die Sicherheitsanzeige der Trefferzeile", () => {
   });
 
   it("D2: trust > 0 UND confidence = 0 → der Hinweis erscheint, keine unerklärte Null", () => {
-    mount();
-    const zeile = zeileVon("Trust vorhanden, Sicherheit null");
-    // Der Sonderfall greift — VOR mega51 tat er das hier NICHT (er las trust, und trust ist 7).
-    expect(zeile.textContent).toContain(i18n.t("lib.confidenceNone"));
-    // Und die Leiste, die sonst die 0 zeigte, steht in dieser Zeile nicht.
-    expect(zeile.querySelector('[role="progressbar"]')).toBeNull();
+    const belege = oeffneMehrFuer(KO_TRUST_OHNE_KONFIDENZ);
+    // Der Sonderfall greift — VOR mega51 tat er das NICHT (er las trust, und trust ist 7).
+    expect(belege.textContent).toContain(i18n.t("lib.confidenceNone"));
+    // Und die Leiste, die sonst die 0 zeigte, steht hier nicht.
+    expect(belege.querySelector('[role="progressbar"]')).toBeNull();
   });
 
   it("D2 Gegenprobe: trust = 0 UND confidence > 0 → die Leiste zeigt ihren echten Wert", () => {
-    mount();
-    const zeile = zeileVon("Sicherheit vorhanden, Trust null");
-    expect(zeile.textContent).not.toContain(i18n.t("lib.confidenceNone"));
-    expect(zeile.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("72");
+    const belege = oeffneMehrFuer(KO_KONFIDENZ_OHNE_TRUST);
+    expect(belege.textContent).not.toContain(i18n.t("lib.confidenceNone"));
+    expect(belege.querySelector('[role="progressbar"]')?.getAttribute("aria-valuenow")).toBe("72");
   });
 
-  it("Bedingung und Anzeige lesen denselben Wert — genau ein Treffer trägt den Hinweis", () => {
-    mount();
+  it("Bedingung und Anzeige lesen denselben Wert — genau ein Hinweis auf der ganzen Fläche", () => {
+    oeffneMehrFuer(KO_TRUST_OHNE_KONFIDENZ);
     const mitHinweis = [...container.querySelectorAll("span")].filter(
       (e) => e.textContent === i18n.t("lib.confidenceNone"),
     );

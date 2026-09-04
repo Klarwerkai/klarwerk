@@ -52,7 +52,18 @@ import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
-const LINKS = "apps/web/src/pages/KnowledgeDetail.tsx";
+// JOB 3063 (H4) — DIE LINKE SEITE IST ZWEI DATEIEN GEWORDEN, DIE KLASSE IST DIESELBE.
+//
+// `pages/KnowledgeDetail.tsx` war bis H4 die Detailseite mit dreizehn Karten; sie ist jetzt der
+// Adress-Adapter auf die Fläche der Bibliothek (rund 40 Zeilen). Der Code, den dieser Wächter
+// bewacht — das Formular des Wissensobjekts und der Quellen-/Externbereich —, liegt seither in
+// `BibliothekLesen.tsx` (Formular) und `MehrAbschnitte.tsx` (Quellen, Externes, Stufe). Läse dieser
+// Fall weiter die Seitendatei, liefe er STILL LEER: die Doppelungen mit `Capture.tsx` bestehen
+// unverändert, nur ihr Ort hat gewechselt. Genau davor steht die Kalibrierung K1.
+const LINKS_DATEIEN = [
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
+  "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+] as const;
 const RECHTS = "apps/web/src/pages/Capture.tsx";
 
 /** Untergrenze in Knoten. Darunter ist ein Treffer Trivia — `<p>{x}</p>` hat rund zehn. */
@@ -137,6 +148,8 @@ const AUSNAHMEN: readonly Ausnahme[] = [
  * uebersehener einseitiger Eingriff kostet mehr als ein Nachtrag.
  */
 interface Blockpaar {
+  /** Die linke Datei (JOB 3063: die Fläche der Bibliothek besteht aus mehreren Bauteilen). */
+  readonly quelle: string;
   /** Knotenzahl der linken Seite — die Groesse, nach der sortiert wird. */
   readonly knoten: number;
   /** Die Knotenart. Aendert sich nur, wenn der Block ein anderer wird. */
@@ -163,65 +176,80 @@ interface Blockpaar {
  * Die Zeilen stehen in der Fehlermeldung, wo sie hingehoeren.
  */
 const PAARE: readonly Blockpaar[] = [
+  // JOB 3063 (H4) — NEU GEMESSEN, NICHT ANGEPASST. Der Umbau der Bibliothek hat die linke Seite
+  // dieses Waechters von einer Datei auf zwei verteilt (siehe LINKS_DATEIEN oben) und den Rahmen um
+  // das Formular geaendert (aus dreizehn Karten wurde eine Lesefläche). Die Doppelungen SELBST sind
+  // dieselben Bloecke wie zuvor — Titelfeld, Aussagefeld, die zwei Listeneditoren, die zwei
+  // Auswahllisten, der Bildbeschreibungs-Zustand, die externe Suche. Drei Eintraege des alten
+  // Registers fallen weg, und jeder Wegfall hat einen Grund, der HIER steht statt verschwiegen zu
+  // werden:
+  //   · 91 Knoten "Trefferzeile der externen Recherche": die Zeile hat auf der neuen Flaeche keine
+  //     Knopfspalte mehr (eine Spalte um EINEN Knopf war Rahmen ohne Inhalt) — dieselbe Funktion,
+  //     ein Element weniger, also kein Paar mehr in dieser Groesse. Der Suchknopf daneben
+  //     (35 Knoten) bleibt gepaart, ebenso das Absenden der Suche.
+  //   · 30 Knoten "Hinweis am Quellen-Tor": die Flaeche traegt bg-page statt bg-surface-2 — die
+  //     Lesefläche hat keine zweite Flaechenfarbe. Inhalt und Regel sind unveraendert.
+  //   · 26 Knoten "Anhang-Auswahl": der Knopf steht jetzt in einem Fragment neben dem
+  //     Grenzen-Hinweis statt in einer eigenen Karte.
   {
-    knoten: 91,
-    art: "JsxElement",
-    was: "Die Trefferzeile der externen Recherche: Titel der Quelle und die Knopfreihe daneben.",
-  },
-  {
+    quelle: "BibliothekLesen.tsx",
     knoten: 42,
     art: "JsxElement",
     was: "Das Titelfeld des Formulars — `Field` mit `capture.fTitle` und dem `TextInput` darin.",
   },
   {
+    quelle: "BibliothekLesen.tsx",
     knoten: 36,
     art: "JsxSelfClosingElement",
     was: "Das Aussagefeld: die mehrzeilige `textarea` an `statement`.",
   },
   {
-    knoten: 35,
-    art: "JsxElement",
-    was: "Der Suchknopf der externen Recherche (`ext.search`), gesperrt bei leerem Feld oder laufender Suche.",
-  },
-  {
-    knoten: 30,
-    art: "JsxElement",
-    was: "Der Hinweis am Quellen-Tor: `output` mit Grund und Weg aus `SOURCE_ATTACH_HINT_KEYS`.",
-  },
-  {
-    knoten: 29,
-    art: "ArrowFunction",
-    was: "Die Auswahlliste der Vertraulichkeitsstufen (`CONFIDENTIALITY_LEVELS` -> `conf.level.*`).",
-  },
-  {
+    quelle: "BibliothekLesen.tsx",
     knoten: 29,
     art: "JsxSelfClosingElement",
     was: "Der Listeneditor fuer Bedingungen (`capture.fConditions`).",
   },
   {
+    quelle: "BibliothekLesen.tsx",
     knoten: 29,
     art: "JsxSelfClosingElement",
     was: "Der Listeneditor fuer Massnahmen (`capture.fMeasures`).",
   },
   {
+    quelle: "BibliothekLesen.tsx",
     knoten: 29,
     art: "ArrowFunction",
     was: "Die Auswahlliste der Wissensarten (`KNOWLEDGE_TYPES` -> `ktype.*`).",
   },
   {
+    quelle: "BibliothekLesen.tsx",
     knoten: 27,
     art: "FirstStatement",
-    was: "Der Zustand der Bildbeschreibungs-Bitte: `captionRequest` mit Bild, Stelle und Zaehler.",
+    was: "Der Zustand der Bildbeschreibungs-Bitte aus der Galerie (`captionRequest`, JOB 2084 I50-3).",
   },
   {
+    quelle: "BibliothekLesen.tsx",
     knoten: 25,
     art: "ArrowFunction",
-    was: "Der Ausloeser derselben Bitte — setzt den Zustand und zaehlt den Zaehler hoch.",
+    was: "Das Stellen der Bitte selbst: `setCaptionRequest` mit Kennung, Quelle, Index und Nonce.",
   },
   {
+    quelle: "MehrAbschnitte.tsx",
+    knoten: 35,
+    art: "JsxElement",
+    was: "Der Suchknopf der externen Recherche (`ext.search`), gesperrt bei leerem Feld oder laufender Suche.",
+  },
+  {
+    quelle: "MehrAbschnitte.tsx",
+    knoten: 29,
+    art: "ArrowFunction",
+    was: "Die Auswahlliste der Vertraulichkeitsstufen (`CONFIDENTIALITY_LEVELS` -> `conf.level.*`).",
+  },
+  {
+    quelle: "MehrAbschnitte.tsx",
     knoten: 25,
     art: "ArrowFunction",
-    was: "Das Absenden der externen Suche: `onSubmit` prueft auf leer und ruft `extSearch.mutate`.",
+    was: "Das Absenden der externen Suche: `onSubmit` mit `preventDefault` und getrimmtem Suchwort.",
   },
 ];
 
@@ -396,10 +424,20 @@ function maximal(paare: Paar[], e: Erhebung): Paar[] {
   });
 }
 
-function messe(): { a: Erhebung; b: Erhebung; gleich: Paar[]; abweichend: Paar[] } {
-  const a = erhebe(LINKS);
+interface Teilmessung {
+  a: Erhebung;
+  b: Erhebung;
+  gleich: Paar[];
+  abweichend: Paar[];
+}
+
+/** Je linke Datei eine Messung gegen `Capture.tsx` — die Paarbildung selbst ist unverändert. */
+function messe(): Teilmessung[] {
   const b = erhebe(RECHTS);
-  return { a, b, ...paare(a, b) };
+  return LINKS_DATEIEN.map((datei) => {
+    const a = erhebe(datei);
+    return { a, b, ...paare(a, b) };
+  });
 }
 
 /** Die Paarbildung selbst — von `messe` (echte Dateien) und von K3 (gebaute Quellen) benutzt. */
@@ -486,19 +524,24 @@ function liste(a: Erhebung, b: Erhebung, gefunden: Paar[]): string {
   return gefunden
     .map(
       (p) =>
-        `${String(a.groesse.get(p.links)).padStart(4)} Knoten · KnowledgeDetail:${zeile(a, p.links)} · Capture:${zeile(b, p.rechts)} · ${ts.SyntaxKind[p.links.kind]}`,
+        `${String(a.groesse.get(p.links)).padStart(4)} Knoten · ${a.datei}:${zeile(a, p.links)} · Capture:${zeile(b, p.rechts)} · ${ts.SyntaxKind[p.links.kind]}`,
     )
     .join("\n");
 }
 
+/** Kurzname der linken Datei — für Register und Meldung lesbar. */
+function kurzname(datei: string): string {
+  return datei.split("/").pop() ?? datei;
+}
+
 describe("JOB 2445 · gedoppelte Bloecke in KnowledgeDetail und Capture", () => {
-  it("K1 · KALIBRIERUNG: die Erhebung liest beide Dateien wirklich", () => {
+  it("K1 · KALIBRIERUNG: die Erhebung liest alle Dateien wirklich", () => {
     // Ohne diesen Fall waeren G1 und G2 auch dann gruen, wenn die Erhebung nichts faende — dann
     // waeren beide Zahlen null und die Zusicherung eine Behauptung ueber ein leeres Blatt.
-    const a = erhebe(LINKS);
-    const b = erhebe(RECHTS);
-    expect(a.knoten.length, `${LINKS} wurde nicht gelesen`).toBeGreaterThan(5000);
-    expect(b.knoten.length, `${RECHTS} wurde nicht gelesen`).toBeGreaterThan(5000);
+    for (const datei of LINKS_DATEIEN) {
+      expect(erhebe(datei).knoten.length, `${datei} wurde nicht gelesen`).toBeGreaterThan(3000);
+    }
+    expect(erhebe(RECHTS).knoten.length, `${RECHTS} wurde nicht gelesen`).toBeGreaterThan(5000);
   });
 
   it("K2 · KALIBRIERUNG: die Fingerabdruecke unterscheiden Bau und Inhalt wirklich", () => {
@@ -562,21 +605,27 @@ describe("JOB 2445 · gedoppelte Bloecke in KnowledgeDetail und Capture", () => 
       `Ein Block unter ${MIN_KNOTEN} Knoten wird jetzt gefunden — die Untergrenze wirkt nicht mehr`,
     ).toBe(0);
 
-    // (3) NUR DIESE ZWEI DATEIEN. Eine Doppelung zwischen `Capture.tsx` und einer DRITTEN Datei
-    //     ist fuer diesen Waechter unsichtbar — er liest genau zwei Wege und sonst keinen.
-    expect([LINKS, RECHTS], "Die Grundmenge ist nicht mehr genau diese zwei Dateien").toEqual([
-      "apps/web/src/pages/KnowledgeDetail.tsx",
-      "apps/web/src/pages/Capture.tsx",
-    ]);
+    // (3) NUR DIESE DATEIEN. Eine Doppelung zwischen `Capture.tsx` und einer VIERTEN Datei ist
+    //     fuer diesen Waechter unsichtbar — er liest genau diese Wege und sonst keinen.
+    expect([...LINKS_DATEIEN, RECHTS], "Die Grundmenge ist nicht mehr genau diese Dateien").toEqual(
+      [
+        "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
+        "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
+        "apps/web/src/pages/Capture.tsx",
+      ],
+    );
   });
 
-  it("G1 · DIE KLASSE: die zwoelf gedoppelten Bloecke stehen unveraendert", () => {
-    const { a, b, gleich } = messe();
-    const gemessen = gleich.map((p) => ({
-      knoten: a.groesse.get(p.links) ?? 0,
-      art: ts.SyntaxKind[p.links.kind],
-    }));
-    const erwartet = PAARE.map((p) => ({ knoten: p.knoten, art: p.art }));
+  it("G1 · DIE KLASSE: die gedoppelten Bloecke stehen unveraendert", () => {
+    const teile = messe();
+    const gemessen = teile.flatMap(({ a, gleich }) =>
+      gleich.map((p) => ({
+        quelle: kurzname(a.datei),
+        knoten: a.groesse.get(p.links) ?? 0,
+        art: ts.SyntaxKind[p.links.kind],
+      })),
+    );
+    const erwartet = PAARE.map((p) => ({ quelle: p.quelle, knoten: p.knoten, art: p.art }));
 
     // Schrumpft ein Eintrag, wurde EINE Seite geaendert und die andere vergessen — dann traegt
     // nur noch ein kleinerer Teilblock die Doppelung. Faellt einer weg oder kommt einer dazu,
@@ -585,10 +634,13 @@ describe("JOB 2445 · gedoppelte Bloecke in KnowledgeDetail und Capture", () => 
       "Die gedoppelten Bloecke haben sich veraendert.",
       "",
       "ERWARTET (Register `PAARE` in dieser Datei):",
-      ...PAARE.map((p) => `  ${String(p.knoten).padStart(3)} ${p.art.padEnd(23)} ${p.was}`),
+      ...PAARE.map(
+        (p) =>
+          `  ${String(p.quelle ?? "?").padEnd(24)} ${String(p.knoten).padStart(3)} ${p.art.padEnd(23)} ${p.was}`,
+      ),
       "",
-      `GEMESSEN (${gleich.length} Paare):`,
-      liste(a, b, gleich),
+      `GEMESSEN (${gemessen.length} Paare):`,
+      ...teile.map(({ a, b, gleich }) => liste(a, b, gleich)),
       "",
       "Fehlt ein Paar, wurde eine Seite geaendert und die andere vergessen — nachziehen.",
       "Kam eines dazu, gehoert es mit einem Satz in `PAARE`, bevor es lebt.",
@@ -597,7 +649,8 @@ describe("JOB 2445 · gedoppelte Bloecke in KnowledgeDetail und Capture", () => 
   });
 
   it("G2 · DIE AUSNAHME: das abweichende Paar weicht GENAU so ab wie geprueft", () => {
-    const { a, b, abweichend } = messe();
+    const teile = messe();
+    const abweichend = teile.flatMap((t) => t.abweichend);
 
     // Nicht die ZAHL der abweichenden Paare, sondern der WORTLAUT ihrer Unterschiede (JOB 2454).
     //
@@ -623,12 +676,14 @@ describe("JOB 2445 · gedoppelte Bloecke in KnowledgeDetail und Capture", () => 
       ...AUSNAHMEN.map((x) => `  ${x.name}\n    Grund: ${x.grund}`),
       "",
       `GEMESSEN (${abweichend.length} abweichende Paare):`,
-      liste(a, b, abweichend),
-      ...abweichend.map(
-        (p) =>
-          `  KnowledgeDetail:${zeile(a, p.links)} · Capture:${zeile(b, p.rechts)}\n` +
-          `    nur links:  ${JSON.stringify(p.nurLinks)}\n` +
-          `    nur rechts: ${JSON.stringify(p.nurRechts)}`,
+      ...teile.map((t) => liste(t.a, t.b, t.abweichend)),
+      ...teile.flatMap((t) =>
+        t.abweichend.map(
+          (p) =>
+            `  ${t.a.datei}:${zeile(t.a, p.links)} · Capture:${zeile(t.b, p.rechts)}\n` +
+            `    nur links:  ${JSON.stringify(p.nurLinks)}\n` +
+            `    nur rechts: ${JSON.stringify(p.nurRechts)}`,
+        ),
       ),
       "",
       "Kam eine Abweichung DAZU: eine Seite wurde geaendert und die andere vergessen — nachziehen.",

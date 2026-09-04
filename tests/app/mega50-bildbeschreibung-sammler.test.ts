@@ -200,7 +200,10 @@ describe("mega50 Block B: die Erhebung greift", () => {
     // unten laufen über `AUFRUFER`, nicht über diese Namen.
     const einbinder = AUFRUFER.map((p) => p.einbinder.datei);
     expect(einbinder).toContain("apps/web/src/pages/Capture.tsx");
-    expect(einbinder).toContain("apps/web/src/pages/KnowledgeDetail.tsx");
+    // JOB 3063 (H4): der Editor des Wissensobjekts steht nicht mehr in `pages/KnowledgeDetail.tsx`
+    // (die Seite ist zum Adress-Adapter geworden), sondern in der Lesefläche der Bibliothek —
+    // dieselbe Fläche, die `/bibliothek` und `/wissen/:id` zeigen.
+    expect(einbinder).toContain("apps/web/src/components/bibliothek/BibliothekLesen.tsx");
     expect(einbinder).toContain("apps/web/src/pages/CaptureFrontDoor.tsx");
     expect(einbinder).toContain("apps/web/src/components/KnowledgeInputStudio.tsx");
     expect(AUFRUFER.length).toBeGreaterThanOrEqual(4);

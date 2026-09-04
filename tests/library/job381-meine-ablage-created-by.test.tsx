@@ -131,6 +131,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(ALLE),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -145,11 +150,12 @@ import {
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
-import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import {
   ALLE_INHALTE_LABEL,
   LIBRARY_SCOPE_PARAM,
   MEINE_ABLAGE_LABEL,
+  SCOPE_BAR_LABEL,
   applyLibraryScope,
   createdByOf,
   parseLibraryScope,
@@ -161,6 +167,15 @@ import { Library } from "../../apps/web/src/pages/Library";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
+/**
+ * Die Adresse des gemounteten Baums, sichtbar gemacht. `MemoryRouter` führt seine eigene Adresse —
+ * `window.location` weiß nichts davon. Ein Ableser im Baum ist der ehrliche Zugang; ein
+ * Debug-Attribut im Produkt wäre Testcode in der Auslieferung.
+ */
+function Adresse(): JSX.Element {
+  return createElement("span", { "data-adresse": useLocation().search });
+}
+
 function mount(entry = "/bibliothek"): void {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -171,11 +186,18 @@ function mount(entry = "/bibliothek"): void {
       createElement(
         QueryClientProvider,
         { client: qc },
-        createElement(MemoryRouter, { initialEntries: [entry] }, createElement(Library)),
+        createElement(MemoryRouter, { initialEntries: [entry] }, [
+          createElement(Adresse, { key: "a" }),
+          createElement(Library, { key: "l" }),
+        ]),
       ),
     );
   });
 }
+
+/** Der Suchteil der Adresse, wie ihn der Baum gerade führt. */
+const adresse = (): string =>
+  container.querySelector("[data-adresse]")?.getAttribute("data-adresse") ?? "";
 
 afterEach(() => {
   act(() => {
@@ -186,23 +208,61 @@ afterEach(() => {
 });
 
 const text = (): string => (container.textContent ?? "").replace(/\s+/g, " ");
-const ortszeile = (): HTMLElement | null =>
-  container.querySelector('[data-testid="library-scope-bar"]');
+
+// ================================================================================================
+// JOB 3063 (H4) — DIE ORTSZEILE BLEIBT AUF DER SEITE, SIE ZIEHT NUR IN DIE LINKE SPALTE.
+// ================================================================================================
+//
+// Runde 3 hatte die zwei Schaltflaechen ins Filtermenue verlegt. Das war der falsche Ort, und der
+// UI-Smoke hat es belegt (`tests-smoke/wissensraum381-ortszeile-browser.spec.ts` `R-17`/`R-19`
+// rot): der Geltungsbereich ist KEIN Filter, sondern die Angabe des BESTANDS, auf den Suche,
+// Umschalter und Filter erst wirken. Im Menue waere die durchsuchte Menge nur nach dem Oeffnen
+// eines Menues ablesbar.
+//
+// Ihr Ort seit Runde 4: die ruhige Zeile UEBER dem Suchfeld in der linken Spalte
+// (`components/bibliothek/BibliothekFlaeche.tsx`, `data-testid="library-scope-bar"`;
+// `BibliothekListe.tsx` gibt ihr den Platz). Damit gilt hier wieder ALLES, was JOB 381 zugesagt
+// hat — Wirkung UND Form: genau zwei Waehlbarkeiten, kein Auswahlmenue, die Reihenfolge „Meine
+// Ablage" vor „Alle Inhalte", „Alle Inhalte" als Standard, und die Zeile steht vor dem Suchfeld.
+const ORTSZEILE = "library-scope-bar";
+
+/** Die Ortszeile auf der Seite — sichtbar, ohne dass irgendetwas geoeffnet werden muesste. */
+function geltungsbereich(): HTMLElement {
+  const el = container.querySelector(`[data-testid="${ORTSZEILE}"]`);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`Die Ortszeile „${ORTSZEILE}“ fehlt auf der Seite`);
+  }
+  return el;
+}
+
 const schalter = (): HTMLButtonElement[] =>
-  [...(ortszeile()?.querySelectorAll("button[aria-pressed]") ?? [])] as HTMLButtonElement[];
-const knopf = (label: string): HTMLButtonElement | undefined =>
-  schalter().find((b) => (b.textContent ?? "").includes(label));
+  [...geltungsbereich().querySelectorAll("button[aria-pressed]")] as HTMLButtonElement[];
+
+function knopf(testId: string): HTMLButtonElement {
+  const el = container.querySelector(`[data-testid="${testId}"]`);
+  if (!(el instanceof HTMLButtonElement)) {
+    throw new Error(`Die Schaltflaeche „${testId}“ fehlt`);
+  }
+  return el;
+}
+
+/** Einen Geltungsbereich waehlen — ein Klick, kein Menueweg. */
+function waehle(testId: string): void {
+  const el = knopf(testId);
+  act(() => {
+    el.click();
+  });
+}
 
 // ================================================================================================
-// LIEFERUNG 1 — DER ANKER, ZWEI SCHALTFLAECHEN, DIE REIHENFOLGE, NIE EIN AUSWAHLMENUE.
+// LIEFERUNG 1 — ZWEI WAEHLBARKEITEN, DIE REIHENFOLGE, NIE EIN AUSWAHLMENUE.
 // ================================================================================================
 
-describe("JOB 381 · Lieferung 1 — die Ortszeile als Bauteil", () => {
-  it("Anker vorhanden, genau zwei aria-pressed-Schaltflaechen, kein select", () => {
+describe("JOB 381 · Lieferung 1 — der Geltungsbereich als Bauteil", () => {
+  it("genau zwei Waehlbarkeiten in der Ortszeile, kein select", () => {
     mount();
-    expect(ortszeile()).not.toBeNull();
     expect(schalter()).toHaveLength(2);
-    expect(ortszeile()?.querySelectorAll("select")).toHaveLength(0);
+    expect(geltungsbereich().querySelectorAll("select")).toHaveLength(0);
   });
 
   it("Reihenfolge: zuerst Meine Ablage, danach Alle Inhalte", () => {
@@ -212,23 +272,28 @@ describe("JOB 381 · Lieferung 1 — die Ortszeile als Bauteil", () => {
     expect(zweite?.textContent).toContain(ALLE_INHALTE_LABEL);
   });
 
-  it("die Ortszeile steht im DOM VOR dem Suchfeld (R-17 misst die y-Position)", () => {
-    mount();
-    const bar = ortszeile();
-    const suche = container.querySelector("#library-search");
-    if (!bar || !suche) {
-      throw new Error(
-        "Ortszeile oder Suchfeld fehlt — die Positionsfrage ist dann gegenstandslos.",
-      );
-    }
-    // Node.DOCUMENT_POSITION_FOLLOWING: `suche` folgt auf `bar` in der Dokumentordnung.
-    expect(bar.compareDocumentPosition(suche) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-  });
-
   it("Standard ist Alle Inhalte — sie ist gedrueckt, Meine Ablage nicht", () => {
     mount();
-    expect(knopf(ALLE_INHALTE_LABEL)?.getAttribute("aria-pressed")).toBe("true");
-    expect(knopf(MEINE_ABLAGE_LABEL)?.getAttribute("aria-pressed")).toBe("false");
+    expect(knopf("bib-scope-alle").getAttribute("aria-pressed")).toBe("true");
+    expect(knopf("bib-scope-meine").getAttribute("aria-pressed")).toBe("false");
+  });
+
+  it("die Gruppe traegt ihren Namen — ohne sichtbaren Erklaersatz daneben", () => {
+    mount();
+    const gruppe = geltungsbereich().querySelector("fieldset");
+    expect(gruppe?.getAttribute("aria-label")).toBe(SCOPE_BAR_LABEL);
+    // Sichtbar steht in der Zeile NUR, was auf den beiden Schaltflaechen steht (H4-Textmesser).
+    const sichtbar = (geltungsbereich().textContent ?? "").replace(/\s+/g, " ").trim();
+    expect(sichtbar).toBe(`${MEINE_ABLAGE_LABEL}${ALLE_INHALTE_LABEL}`);
+  });
+
+  it("die Ortszeile steht VOR dem Suchfeld — die Tabreihenfolge folgt der Leserichtung (A-9)", () => {
+    mount();
+    const suche = container.querySelector("#bib-suche");
+    expect(suche).not.toBeNull();
+    // `DOCUMENT_POSITION_FOLLOWING` = das Suchfeld kommt im Baum NACH der Ortszeile.
+    const lage = geltungsbereich().compareDocumentPosition(suche as Node);
+    expect(lage & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 });
 
@@ -246,49 +311,37 @@ describe("JOB 381 · Lieferung 2/5 — Meine Ablage filtert die echte Treffermen
 
   it("Meine Ablage zeigt nur, was ICH angelegt habe — Fremdes verschwindet", () => {
     mount();
-    act(() => {
-      knopf(MEINE_ABLAGE_LABEL)?.click();
-    });
+    waehle("bib-scope-meine");
     expect(text()).toContain(MEINS.title);
     expect(text()).not.toContain(FREMD.title);
   });
 
   it("KALIBRIERUNG Autor-Uebergabe: von mir angelegt, heute fremd getragen — bleibt meins", () => {
     mount();
-    act(() => {
-      knopf(MEINE_ABLAGE_LABEL)?.click();
-    });
+    waehle("bib-scope-meine");
     // Eine Fassung, die auf `author` filtert, verliert genau diesen Fall.
     expect(text()).toContain(UEBERGEBEN.title);
   });
 
   it("KALIBRIERUNG Import: Quell-Autor fremd, angenommen habe ich — bleibt meins", () => {
     mount();
-    act(() => {
-      knopf(MEINE_ABLAGE_LABEL)?.click();
-    });
+    waehle("bib-scope-meine");
     // Eine Fassung, die auf `originalAuthor` filtert, verliert genau diesen Fall.
     expect(text()).toContain(IMPORTIERT.title);
   });
 
   it("KALIBRIERUNG Gegenrichtung: heute mir zugeschrieben, angelegt von anderen — NICHT meins", () => {
     mount();
-    act(() => {
-      knopf(MEINE_ABLAGE_LABEL)?.click();
-    });
+    waehle("bib-scope-meine");
     // Eine Fassung, die auf `author` filtert, zeigt genau diesen Fall faelschlich.
     expect(text()).not.toContain(UEBERNOMMEN.title);
   });
 
   it("Zurueck auf Alle Inhalte bringt die fremden Treffer wieder", () => {
     mount();
-    act(() => {
-      knopf(MEINE_ABLAGE_LABEL)?.click();
-    });
+    waehle("bib-scope-meine");
     expect(text()).not.toContain(FREMD.title);
-    act(() => {
-      knopf(ALLE_INHALTE_LABEL)?.click();
-    });
+    waehle("bib-scope-alle");
     expect(text()).toContain(FREMD.title);
   });
 });
@@ -300,30 +353,32 @@ describe("JOB 381 · Lieferung 2/5 — Meine Ablage filtert die echte Treffermen
 describe("JOB 381 · Lieferung 3 — Adresse, Fokus und Wiederherstellung", () => {
   it("der Reload-Zustand wird aus der Adresse wiederhergestellt", () => {
     mount(`/bibliothek?${LIBRARY_SCOPE_PARAM}=meine`);
-    expect(knopf(MEINE_ABLAGE_LABEL)?.getAttribute("aria-pressed")).toBe("true");
+    expect(knopf("bib-scope-meine").getAttribute("aria-pressed")).toBe("true");
     expect(text()).toContain(MEINS.title);
     expect(text()).not.toContain(FREMD.title);
   });
 
   it("ein fremder Parameter ueberlebt das Umschalten", () => {
     mount("/bibliothek?q=ventil&sonstwas=behalten");
-    act(() => {
-      knopf(MEINE_ABLAGE_LABEL)?.click();
-    });
+    waehle("bib-scope-meine");
     // Die Seite haelt die Adresse selbst fort; geprueft wird, dass der Fremdparameter nicht
-    // verlorengeht. Der Zugriff laeuft ueber die gerenderte Ortszeile, nicht ueber window.location:
-    // MemoryRouter fuehrt seine eigene Adresse.
-    expect(ortszeile()?.getAttribute("data-raum")).toBe("meine");
+    // verlorengeht.
+    const p = new URLSearchParams(adresse());
+    expect(p.get(LIBRARY_SCOPE_PARAM)).toBe("meine");
+    expect(p.get("sonstwas"), "der fremde Parameter ist verlorengegangen").toBe("behalten");
+    expect(p.get("q")).toBe("ventil");
   });
 
-  it("der Fokus bleibt auf der gedrueckten Schaltflaeche (A-6/R-18)", () => {
+  it("der Fokus BLEIBT auf der gedrueckten Schaltflaeche (A-6/R-18)", () => {
+    // Die Adresse wird mit `replace` fortgeschrieben, die Seite wird nicht neu montiert — also
+    // darf der Fokus die Schaltflaeche nicht verlassen.
     mount();
-    const b = knopf(MEINE_ABLAGE_LABEL);
+    const b = knopf("bib-scope-meine");
     act(() => {
-      b?.focus();
-      b?.click();
+      b.focus();
+      b.click();
     });
-    expect(document.activeElement).toBe(knopf(MEINE_ABLAGE_LABEL));
+    expect(document.activeElement).toBe(knopf("bib-scope-meine"));
   });
 
   it("FAIL-CLOSED: ohne Nutzeridentitaet zeigt Meine Ablage keinen Treffer", () => {

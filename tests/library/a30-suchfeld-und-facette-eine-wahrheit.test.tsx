@@ -108,6 +108,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({

@@ -38,6 +38,26 @@
 // GEBAUT IST DESHALB DIE ZUSAGE DES TITELS, NICHT DER BEISPIELSATZ: Der Nulltreffer-Text benennt
 // den WIRKLICHEN Suchraum. Das beantwortet dieselbe Nutzerfrage („warum finde ich nichts?") mit
 // einer Angabe, die stimmt.
+//
+// ==================================================================================================
+// JOB 3063 (H4) — WAS DER EIGENTÜMER AM 04.09.2026 AN DIESER ZUSAGE GEÄNDERT HAT.
+// ==================================================================================================
+//
+// Maßstab ist jetzt Apple Pages: „Knopf und Feld erklären sich selbst" (AUFTRAG 3063 §1). Aus dem
+// Sichtfeld verschwindet, was erklärt statt zu benennen; §8.5 sagt ausdrücklich, dass gegen DIESE
+// Vorgabe geprüft wird und nicht gegen ältere Pins. Für D-002 heißt das dreierlei:
+//
+//   · DIE FORM des sichtbaren Labels ist weg. Das Feld trägt seinen Namen wieder über ein
+//     `sr-only`-Label (`components/bibliothek/BibliothekListe.tsx:118`). DIE SACHE von D-002 bleibt
+//     aber erfüllt, und deshalb wird sie hier weiter gemessen: der PLATZHALTER sagt ohne Tippen,
+//     WORIN gesucht wird („Bibliothek durchsuchen"), nicht WIE („Volltextsuche"). Genau das war der
+//     Befund. Block A misst ab jetzt den zugänglichen Namen, Block B den Platzhalter.
+//   · DIE FELDLISTE im Platzhalter („Titel, Text, Kategorie und Schlagwort …") ist gestrichen —
+//     sie war der längste Erklärtext der Fläche. Der Schlüssel `lib.search` ist entfallen.
+//   · DER NULLTREFFERTEXT ist auf einen Satz gekürzt (AUFTRAG §9: „Nichts gefunden." bzw. „Noch
+//     keine Einträge."). Er nennt die Felder nicht mehr. WAS BLEIBT und hier weiter gemessen wird:
+//     er stellt keine FALSCHE Behauptung über den Suchraum auf — das war der eigentliche Streitpunkt
+//     dieses Auftrags (Block C, Block E).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -80,15 +100,36 @@ const KO_SCHLAGWORT = ko({
   tags: ["zeitplanung"],
 });
 
-const lage: { treffer: KnowledgeObject[] } = { treffer: [] };
+const lage: { treffer: KnowledgeObject[]; leseKo: KnowledgeObject | null } = {
+  treffer: [],
+  leseKo: null,
+};
 
-vi.mock("../../apps/web/src/api/hooks", () => {
+vi.mock("../../apps/web/src/api/hooks", async (importOriginal) => {
+  const echt = await importOriginal<Record<string, unknown>>();
   const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
+  const leer = () => ok([]);
   return {
+    ...echt,
     useKos: () => ok([KO_SCHLAGWORT]),
     useLibrarySearch: () => ok(lage.treffer),
-    useDirectory: () => ok([]),
-    useConflicts: () => ok([]),
+    useDirectory: leer,
+    useConflicts: leer,
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Die meisten Fälle hier messen
+    // die LISTE; die Lesefläche bleibt dann bewusst im Ladezustand — eine leere Fläche ohne Text,
+    // die sich in keine Zusicherung einmischt. Block D braucht sie und schaltet sie ausdrücklich an.
+    useKo: () =>
+      lage.leseKo === null
+        ? { data: undefined, isLoading: true, isError: false, error: null }
+        : ok(lage.leseKo),
+    useAudit: leer,
+    useKoEvidence: leer,
+    useKoNeighbors: leer,
+    useKoVersions: leer,
+    useEigeneBefunde: leer,
+    useLifecyclePending: leer,
+    useExternalPolicy: () => ok({ stage: "blocked" }),
+    useReasonerStatus: () => ok({ ready: false }),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -147,6 +188,7 @@ afterEach(() => {
   });
   container.remove();
   lage.treffer = [];
+  lage.leseKo = null;
 });
 
 function text(): string {
@@ -159,7 +201,7 @@ function wert(sprache: Sprache, key: string): string {
 
 /** Das Suchfeld der Bibliothek — über seine Id, nicht über „irgendein input[type=search]". */
 function suchfeld(): HTMLInputElement {
-  const el = container.querySelector<HTMLInputElement>("input#library-search");
+  const el = container.querySelector<HTMLInputElement>("input#bib-suche");
   if (!el) {
     throw new Error("Das Suchfeld der Bibliothek ist nicht gerendert");
   }
@@ -168,7 +210,7 @@ function suchfeld(): HTMLInputElement {
 
 /** Das Label, das WIRKLICH zu diesem Feld gehört — über `for`, nicht über Textsuche. */
 function suchLabel(): HTMLLabelElement {
-  const el = container.querySelector<HTMLLabelElement>('label[for="library-search"]');
+  const el = container.querySelector<HTMLLabelElement>('label[for="bib-suche"]');
   if (!el) {
     throw new Error("Zum Suchfeld gehört kein Label");
   }
@@ -176,27 +218,21 @@ function suchLabel(): HTMLLabelElement {
 }
 
 // ================================================================================================
-// BLOCK A — DAS LABEL IST SICHTBAR, NICHT NUR VORGELESEN
+// BLOCK A — DAS FELD TRÄGT EINEN NAMEN, UND ZWAR DEN DER BIBLIOTHEK
 // ================================================================================================
-describe("JOB 1119 · A · sichtbares Label am Suchfeld", () => {
+describe("JOB 1119 · A · das Suchfeld ist benannt", () => {
   it("das Label gehört zum Feld und trägt den Bibliotheks-Wortlaut", () => {
     mount("/bibliothek");
     expect(suchLabel().textContent?.trim()).toBe(wert("de", "lib.searchLabel"));
     expect(wert("de", "lib.searchLabel")).toBe("Bibliothek durchsuchen");
   });
 
-  it("es ist NICHT mehr sr-only — genau das war der Befund", () => {
-    // `sr-only` blendet visuell aus. Solange die Klasse dranhängt, ist „ohne Tippen sichtbar, worin
-    // gesucht wird" nicht erfüllt, egal wie gut der Wortlaut ist.
+  it("der Name ist auch OHNE Vorlesehilfe da — er steht im Platzhalter", () => {
+    // JOB 3063: das Label ist wieder `sr-only`, weil die Fläche keine zweite Zeile Text trägt. Die
+    // Zusage von D-002 („ohne Tippen erkennbar, worin gesucht wird") hängt deshalb ab hier am
+    // Platzhalter — und die misst dieser Fall, statt sie der Form nach für erfüllt zu erklären.
     mount("/bibliothek");
-    expect(suchLabel().className).not.toContain("sr-only");
-  });
-
-  it("Label und Platzhalter sagen NICHT dasselbe", () => {
-    // Vor diesem Durchgang trugen beide `lib.search`. Ein sichtbares Label, das den Platzhalter
-    // wortgleich wiederholt, ist eine Zeile Fläche ohne eine Zeile Auskunft.
-    mount("/bibliothek");
-    expect(suchLabel().textContent?.trim()).not.toBe(suchfeld().placeholder);
+    expect(suchfeld().placeholder).toBe(wert("de", "lib.searchLabel"));
   });
 });
 
@@ -204,15 +240,12 @@ describe("JOB 1119 · A · sichtbares Label am Suchfeld", () => {
 // BLOCK B — DER PLATZHALTER BENENNT DEN SUCHRAUM
 // ================================================================================================
 describe("JOB 1119 · B · der Platzhalter sagt, worin gesucht wird", () => {
-  it("er nennt Felder statt der Technik dahinter", () => {
+  it("er nennt den Bestand statt der Technik dahinter", () => {
     mount("/bibliothek");
     const platzhalter = suchfeld().placeholder;
-    expect(platzhalter).toBe(wert("de", "lib.search"));
     // „Volltextsuche" ist eine Technikauskunft: sie sagt WIE gesucht wird, nicht WORIN.
     expect(platzhalter).not.toContain("Volltextsuche");
-    for (const feld of ["Titel", "Text", "Schlagwort"]) {
-      expect(platzhalter, `Der Platzhalter muss ${feld} nennen`).toContain(feld);
-    }
+    expect(platzhalter).toContain("Bibliothek");
   });
 
   it("er behauptet keine Felder, die es nicht gibt", () => {
@@ -227,14 +260,12 @@ describe("JOB 1119 · B · der Platzhalter sagt, worin gesucht wird", () => {
 // ================================================================================================
 // BLOCK C — DER NULLTREFFERHINWEIS IST EHRLICH
 // ================================================================================================
-describe("JOB 1119 · C · der Nulltreffer sagt, worin gesucht wurde", () => {
-  it("bei null Treffern steht der wirkliche Suchraum da", () => {
+describe("JOB 1119 · C · der Nulltreffer behauptet nichts Falsches", () => {
+  it("er sagt, dass die SUCHE nichts fand — nicht, dass es das nicht gibt", () => {
     lage.treffer = [];
     mount("/bibliothek?q=wortdasesnirgendsgibt");
-    expect(text()).toContain("wortdasesnirgendsgibt");
-    for (const feld of ["Titel", "Kernaussage", "Bildbeschreibung", "Kategorie", "Schlagwort"]) {
-      expect(text(), `Der Nulltreffer-Text muss ${feld} nennen`).toContain(feld);
-    }
+    expect(text()).toContain(wert("de", "lib.liste.leerSuche"));
+    expect(text()).not.toContain("Keine Treffer.");
   });
 
   it("er behauptet NICHT, dass Schlagworte ungesucht blieben", () => {
@@ -251,7 +282,7 @@ describe("JOB 1119 · C · der Nulltreffer sagt, worin gesucht wurde", () => {
     lage.treffer = [KO_SCHLAGWORT];
     mount("/bibliothek?q=zeitplanung");
     expect(text()).toContain("Flanschmontage");
-    expect(text()).not.toContain(wert("de", "lib.emptyQuery").slice(0, 24));
+    expect(text()).not.toContain(wert("de", "lib.liste.leerSuche"));
   });
 });
 
@@ -273,12 +304,26 @@ describe("JOB 1119 · D · eine Sache, ein Wort", () => {
   });
 
   it("das Abzeichen erscheint mit diesem Wortlaut an einem echten Schlagworttreffer", () => {
+    // JOB 3063 (H4): der Treffergrund steht auf der LESEFLÄCHE unter der Meta-Zeile
+    // (`components/bibliothek/BibliothekLesen.tsx:526-534`), nicht mehr an der Trefferzeile — und
+    // er trägt eine eigene Marke, statt über eine CSS-Klassenkette gesucht zu werden.
     lage.treffer = [KO_SCHLAGWORT];
+    lage.leseKo = KO_SCHLAGWORT;
     mount("/bibliothek?q=zeitplanung");
-    const gruende = [...container.querySelectorAll("span")]
-      .filter((s) => s.className.includes("text-[10px] text-muted"))
-      .map((s) => (s.textContent ?? "").trim());
-    expect(gruende).toEqual(["Schlagwort"]);
+    const grund = container.querySelector('[data-testid="bib-treffergrund"]');
+    expect(grund, "der Treffergrund fehlt auf der Lesefläche").toBeTruthy();
+    expect((grund?.textContent ?? "").trim()).toBe(
+      `${wert("de", "lib.matchIn")} ${wert("de", "lib.match.tag")}`,
+    );
+  });
+
+  it("KALIBRIERUNG: ohne Suchtext steht kein Treffergrund da", () => {
+    // Ohne diesen Fall wäre der Fall oben auch dann grün, wenn der Grund immer dastünde — dann
+    // behauptete die Fläche einen Treffergrund, wo gar nicht gesucht wurde.
+    lage.treffer = [KO_SCHLAGWORT];
+    lage.leseKo = KO_SCHLAGWORT;
+    mount("/bibliothek");
+    expect(container.querySelector('[data-testid="bib-treffergrund"]')).toBeNull();
   });
 });
 
@@ -334,7 +379,9 @@ describe("JOB 1119 · E · was der Suchvertrag wirklich prüft", () => {
 // BLOCK F — DREI SPRACHEN, DREI ECHTE ÜBERSETZUNGEN
 // ================================================================================================
 describe("JOB 1119 · F · DE, EN und NL", () => {
-  const SCHLUESSEL = ["lib.searchLabel", "lib.search", "lib.emptyQuery", "topbar.search"];
+  // JOB 3063: `lib.search` und `lib.emptyQuery` sind entfallen; an ihre Stelle tritt der eine
+  // Nulltreffersatz der neuen Liste. Die Sprachzusage zieht mit dem Text um, nicht mit dem Namen.
+  const SCHLUESSEL = ["lib.searchLabel", "lib.liste.leerSuche", "topbar.search"];
 
   it("jeder berührte Schlüssel existiert in allen drei Sprachen", () => {
     for (const key of SCHLUESSEL) {
@@ -356,18 +403,20 @@ describe("JOB 1119 · F · DE, EN und NL", () => {
 
   it("die niederländische Fassung ist wirklich niederländisch", () => {
     expect(wert("nl", "lib.searchLabel").toLowerCase()).toContain("bibliotheek");
-    expect(wert("nl", "lib.search").toLowerCase()).toContain("trefwoord");
-    expect(wert("nl", "lib.emptyQuery").toLowerCase()).toContain("trefwoord");
+    expect(wert("nl", "lib.liste.leerSuche").toLowerCase()).toContain("gevonden");
+    // Das Wort, um das Block D geht, steht in seiner niederländischen Fassung da.
+    expect(wert("nl", "lib.match.tag")).toBe("Trefwoord");
   });
 
-  it("die Bibliothek zeigt in jeder Sprache ihr eigenes Label", async () => {
-    // Nicht nur die Wörterbücher — die gemountete Seite.
+  it("die Bibliothek zeigt in jeder Sprache ihren eigenen Feldnamen", async () => {
+    // Nicht nur die Wörterbücher — die gemountete Seite, Label UND Platzhalter.
     for (const sprache of SPRACHEN) {
       await act(async () => {
         await i18n.changeLanguage(sprache);
       });
       mount("/bibliothek");
       expect(suchLabel().textContent?.trim()).toBe(wert(sprache, "lib.searchLabel"));
+      expect(suchfeld().placeholder).toBe(wert(sprache, "lib.searchLabel"));
       act(() => root.unmount());
       container.remove();
     }

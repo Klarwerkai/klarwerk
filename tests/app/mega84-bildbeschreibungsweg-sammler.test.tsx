@@ -749,15 +749,22 @@ const DISPOSITIONEN: Record<string, string> = {
   // die vier anderen Einbindungen tragen ihn nicht und bleiben deshalb unveraendert.
   "apps/web/src/pages/CaptureFrontDoor.tsx › CaptureFrontDoor › <RichTextEditor> [captionFormRequest+documentTitle+onChange+onTitelVorschlag+placeholder+value] in [ImageDescribeProvider<div<form<Card] #1":
     "Eingangstuer der Erfassung — die Flaeche, auf der Pedis Befund vom 31.07. entstand. Seit PR #1 unter dem ImageDescribeProvider, der die Vertraulichkeit des Entwurfs mitfuehrt. Seit JOB 2402 D1 zusaetzlich die einzige Flaeche mit Uebernehmen-Weg fuer den Titelvorschlag.",
-  "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+files+images+onApply+onClose+open+runAssist] in [Field<div<Card<div] #1":
-    "Wissensobjekt bearbeiten, Studio-Weg.",
-  // 26.08.2026, JOB 2426 D1 (TV1, letzte Einbindung): die Signatur traegt jetzt zusaetzlich
-  // `onTitelVorschlag`. Die Flaeche ist dieselbe geblieben. Sie ist die einzige der fuenf, auf der
-  // ein Uebernehmen einen bereits vergebenen Titel ERSETZT — deshalb steht die Begruendung dafuer
-  // ausfuehrlich an der Einbindung selbst (KnowledgeDetail.tsx:1265 ff.): drei bewusste Handlungen
-  // davor, und `edit` ist reiner Formularzustand ohne Autosave.
-  "apps/web/src/pages/KnowledgeDetail.tsx › KnowledgeDetail › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+onTitelVorschlag+value] in [Field<div<Card<div] #1":
-    "Wissensobjekt bearbeiten, direkter Editor. Seit JOB 2426 D1 mit dem Uebernahme-Weg fuer den Titelvorschlag.",
+  // 04.09.2026, JOB 3063 (H4): die beiden Einbindungen des Wissensobjekt-Bearbeitens sind mit dem
+  // Umbau der Bibliothek von `pages/KnowledgeDetail.tsx` nach
+  // `components/bibliothek/BibliothekLesen.tsx` gezogen — `/wissen/:id` ist seit dem Auftrag
+  // dieselbe Flaeche wie `/bibliothek`, mit dem Eintrag vorgewaehlt. Der Sammler hat beide alten
+  // Identitaeten als verschwunden UND beide neuen als undisponiert gemeldet, WEIL er das soll.
+  // Hier ist hingesehen worden: die PROPMENGE ist Zeichen fuer Zeichen dieselbe geblieben, nur die
+  // Datei, die Huelle und der Ahnenpfad haben gewechselt (statt `[Field<div<Card<div]` jetzt
+  // `[Field<div<div<ImageDescribeProvider]` — die Karte ist weg, der Provider steht darueber).
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx › BibliothekLesen › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+files+images+onApply+onClose+open+runAssist] in [Field<div<div<ImageDescribeProvider] #1":
+    "Wissensobjekt bearbeiten, Studio-Weg — seit JOB 3063 auf der Leseflaeche der Bibliothek.",
+  // 26.08.2026, JOB 2426 D1 (TV1, letzte Einbindung): die Signatur traegt zusaetzlich
+  // `onTitelVorschlag`. Sie ist die einzige der fuenf, auf der ein Uebernehmen einen bereits
+  // vergebenen Titel ERSETZT — die Begruendung dafuer steht an der Einbindung selbst: drei bewusste
+  // Handlungen davor, und `edit` ist reiner Formularzustand ohne Autosave.
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx › BibliothekLesen › <RichTextEditor> [captionFormRequest+documentTitle+files+images+onChange+onTitelVorschlag+value] in [Field<div<div<ImageDescribeProvider] #1":
+    "Wissensobjekt bearbeiten, direkter Editor — seit JOB 3063 auf der Leseflaeche der Bibliothek. Seit JOB 2426 D1 mit dem Uebernahme-Weg fuer den Titelvorschlag.",
 };
 
 const identitaet = (f: Fund): string =>
@@ -1178,8 +1185,26 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der neuen Bauteile bietet eine
     // Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein
     // `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
+    //
+    // JOB 3063 (H4 · KONFLIKTRUNDE 2): NACH DEM REBASE auf JOB 3061/3052 NEU GEMESSEN. Die sechs
+    // Bausteine unter `apps/web/src/components/bibliothek/` (Fläche, Liste, Lesefläche, „Mehr"-
+    // Abschnitte, Menü, Zustand) sind die Aufteilung der beiden abgelösten Riesen
+    // `pages/Library.tsx` und `pages/KnowledgeDetail.tsx`, nicht neue Funktionen. Dieselbe
+    // Begründung wie oben: die Auflage verbietet, dass eine UMSTELLUNG die Erhebung verschiebt —
+    // nicht, dass der Quellbaum wächst. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, sind
+    // UNVERÄNDERT: `anbieter` 1 und `traeger` 2. Der Weg zur Bildbeschreibung ist mit dem Umbau
+    // weder verdoppelt noch verlorengegangen — er ist mit dem Editor auf die Lesefläche gezogen
+    // (Dispositionstabelle oben). Der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an
+    // diesem Arbeitsbaum, nicht aus einer Kopfrechnung der beiden Deltas.
+    //
+    // JOB 3063 RUNDE 6: von 274 auf 275, am eigenen Lauf gemessen. GENAU eine Komponente ist
+    // dazugekommen: `components/bibliothek/AuffrischungHinweis.tsx` — die EINE Bauform des Satzes
+    // „Stand von <Zeit> · Auffrischung fehlgeschlagen", die nach dem Einbau der Runde 5 zweimal
+    // wörtlich im selben Ordner stand. Das ist eine ZUSAMMENFÜHRUNG, kein neuer Weg: sie bietet
+    // keine Bildbeschreibung an und trägt keinen eigenen Titel. Die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, sind unverändert — `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 264,
+      komponenten: 275,
       anbieter: 1,
       traeger: 2,
     });

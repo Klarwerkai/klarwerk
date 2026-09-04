@@ -249,7 +249,12 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     const gef = gruppen();
     expect(gef.length).toBeGreaterThanOrEqual(4);
     const dateien = new Set(gef.map((g) => g.datei));
-    expect([...dateien].some((d) => d.endsWith("pages/Library.tsx"))).toBe(true);
+    // JOB 3063 (H4): das Löschen eines Wissensobjekts hängt nicht mehr an der Trefferzeile der
+    // Bibliothek (die gibt es nicht mehr), sondern am Menü „…" des gelesenen Eintrags — die
+    // Rückfrage steht als Fläche unter dem Eintrag.
+    expect([...dateien].some((d) => d.endsWith("components/bibliothek/BibliothekLesen.tsx"))).toBe(
+      true,
+    );
     expect([...dateien].some((d) => d.endsWith("pages/Validation.tsx"))).toBe(true);
   });
 
@@ -272,7 +277,7 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     expect(befunde, `\n${befunde.join("\n")}\n`).toEqual([]);
   });
 
-  it("die ZEILEN-Bestaetigungen sind umbruchfaehig (Pedis Layout-Bruch vom 04.07.)", () => {
+  it("die LISTENZEILEN-Form der Bestaetigung ist abgeloest (Pedis Layout-Bruch vom 04.07. bleibt trotzdem behoben)", () => {
     // GELTUNGSBEREICH, ausdruecklich: nur die Bestaetigungen, die eine EIGENE VOLLE ZEILE einer
     // Listenzeile belegen (`w-full` + `basis-full`) — dort und nur dort konkurriert der Fragetext
     // mit dem uebrigen Karteninhalt um Platz, und genau dort ist er am 04.07. gebrochen. Eine
@@ -283,22 +288,25 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     const zeilen = gruppen().filter(
       (g) => g.container.includes("w-full") && g.container.includes("basis-full"),
     );
-    // Kalibrierung: die Bibliothek muss in diesem Bereich liegen, sonst prueft die Regel unten eine
-    // leere Menge und ist still gruen.
+    // JOB 3061 · H2 — WARUM DIE VALIDIERUNG NICHT MEHR HIER STEHT, und das ist kein Verlust: die
+    // Loeschbestaetigung liegt seit H2 im „···"-Menue der Karte statt in der Listenzeile.
     //
-    // JOB 3061 · H2 — WARUM DIE VALIDIERUNG HIER NICHT MEHR STEHT, und das ist kein Verlust:
-    // Der Geltungsbereich dieser Regel ist ausdruecklich „Bestaetigungen, die eine EIGENE VOLLE
-    // ZEILE einer Listenzeile belegen — dort und nur dort konkurriert der Fragetext mit dem
-    // uebrigen Karteninhalt um Platz". Auf der Pruefflaeche liegt die Loeschbestaetigung seit H2 im
-    // „···"-Menue der Karte (ein 256px breites Blatt ueber der Seite). Sie hat dort baulich keinen
-    // Nachbarinhalt mehr, mit dem sie konkurrieren koennte — genau wie die im Bericht zu mega45
-    // benannten vier Flaechen (KnowledgeDetail, KnowledgeInputStudio …). Ihr die Regel weiter
-    // aufzuzwingen waere eine Layout-Zusage ohne Befund.
+    // JOB 3063 (H4) — DIE BIBLIOTHEK IST EBENFALLS RAUS, und ebenso kein Nachlassen: ihre
+    // Trefferzeile mit Knoepfen gibt es nicht mehr; geloescht wird ueber das Menue „…" des
+    // GELESENEN Eintrags, und die Rueckfrage steht als eigene Flaeche darunter.
     //
-    // Still uebergangen wird sie deshalb NICHT: die Umbruchfaehigkeit des Fragetextes bleibt
-    // gebaut und wird unten eigens gepruef.
-    expect(zeilen.length).toBeGreaterThanOrEqual(1);
-    expect(zeilen.some((g) => g.datei.endsWith("pages/Library.tsx"))).toBe(true);
+    // Nach dem Rebase (KONFLIKTRUNDE 2) sind damit BEIDE frueheren Traeger der LISTENZEILEN-Form
+    // abgeloest — die Menge ist am gemessenen Bestand LEER, nicht bloss kalibriert. Waere sie es
+    // nicht (ein dritter Traeger tauchte auf oder einer der beiden waere zurueckgefallen), muesste
+    // die Umbruchfaehigkeit hier wieder geprueft werden; deshalb bleibt die Schleife darunter stehen.
+    expect(
+      zeilen.length,
+      "es gibt wieder eine Listenzeilen-Bestaetigung — ihre Umbruchfaehigkeit muss hier erneut geprueft werden",
+    ).toBe(0);
+
+    // Was Pedis Befund WIRKLICH verlangt hat, gilt trotzdem weiter: derselbe umbruchfaehige
+    // Fragetext, jetzt an der jeweiligen NACHFOLGE-Form gehalten. Die Bibliothek deckt der Fall
+    // "die Rueckfrage der Bibliothek quetscht nichts" darunter; die Validierung hier.
     const val = gruppen().filter((g) => g.datei.endsWith("pages/Validation.tsx"));
     expect(val.length, "die Validierung hat ihre Loeschbestaetigung ganz verloren").toBe(1);
     expect(
@@ -318,34 +326,26 @@ describe("mega45 E · zerstoerende Bestaetigungen tragen ueberall dieselbe Warnf
     expect(befunde, `\n${befunde.join("\n")}\n`).toEqual([]);
   });
 
-  // JOB 3061 · H2 — DIESELBE FORM WAR DAMALS DIE ANTWORT AUF DIESELBE LAGE. DIE LAGE IST ANDERS.
-  //
-  // Pedis Befund vom 04.07. lautete: in der Bibliothek stand die Rueckfrage in einer eigenen vollen
-  // Zeile, auf dem Pruefbrett in einem gerahmten Kasten mit Breitendeckel — zwei Formen fuer
-  // dieselbe Sache. mega45 hat sie angeglichen. Seit H2 steht die Bestaetigung der Pruefflaeche im
-  // „···"-Menue und die der Bibliothek weiterhin in der Listenzeile: DAS SIND ZWEI LAGEN. Beide
-  // dieselbe Form tragen zu lassen hiesse jetzt, dem Menueblatt eine Listenzeilen-Form aufzuzwingen.
-  //
-  // Was Pedis Befund WIRKLICH verlangt hat, bleibt gepinnt und gilt fuer beide: derselbe
-  // Fragetext-Schluessel, derselbe umbruchfaehige Fragetext, dieselbe Warnfarbe am zerstoerenden
-  // Knopf (letzteres deckt der SAMMLER darueber, ausnahmefrei).
-  it("Bibliothek und Validierung tragen DIESELBE Zusage (Pedis Befund, seiner Sache nach)", () => {
-    const form = (datei: string): string[] => {
-      const quelltext = readFileSync(join(WURZEL, datei), "utf8");
-      const { rahmen } = rahmenVor(quelltext, quelltext.indexOf('t("ko.deleteQ")'));
-      return rahmen.map((k) => k.split(/\s+/).filter(Boolean).sort().join(" "));
-    };
-    const lib = form("apps/web/src/pages/Library.tsx");
-    const val = form("apps/web/src/pages/Validation.tsx");
-    // Kalibrierung: beide Rahmen wurden ueberhaupt gefunden (sonst vergliche der Test zwei Leeren).
-    expect(lib.length).toBe(2);
-    expect(val.length).toBe(2);
-    // Die Listenzeile der Bibliothek: eigene volle Zeile.
-    expect(lib[0]).toContain("basis-full");
-    // Beide: der Fragetext ist umbruchfaehig — die eine Zutat, die den Bruch vom 04.07. behob.
-    expect(lib[1]).toContain("flex-1");
-    expect(lib[1]).toContain("min-w-0");
-    expect(val[1]).toContain("flex-1");
-    expect(val[1]).toContain("min-w-0");
+  it("die Rueckfrage der Bibliothek quetscht nichts — der Fragetext darf schrumpfen und fuellt den Rest", () => {
+    // JOB 3063 (H4) — WAS HIER FRUEHER STAND und warum es nicht mehr stehen kann: der Fall verglich
+    // die Klassenkette der Bibliotheks-Rueckfrage Zeichen fuer Zeichen mit der der Validierung
+    // („Bibliothek und Validierung tragen DIESELBE Form"). Diese Gleichheit war die Antwort auf
+    // Pedis Befund vom 04.07., dass zwei LISTENZEILEN dieselbe Sache verschieden zeigten. Die
+    // Bibliothek hat seit H4 keine Listenzeile mit Knoepfen mehr; ein Formvergleich mit einer
+    // Zeile, die es nicht gibt, waere ein Pin auf ein totes Vorbild.
+    //
+    // WAS BLEIBT — und das ist der eigentliche Inhalt jener Regel: der Fragetext muss schrumpfen
+    // duerfen (`min-w-0`) und den Rest fuellen (`flex-1`), sonst sprengt ein langer Text die Zeile.
+    const quelltext = readFileSync(
+      join(WURZEL, "apps/web/src/components/bibliothek/BibliothekLesen.tsx"),
+      "utf8",
+    );
+    const ab = quelltext.indexOf('t("ko.deleteQ")');
+    expect(ab, "die Rueckfrage der Bibliothek wurde nicht gefunden").toBeGreaterThan(0);
+    const { rahmen } = rahmenVor(quelltext, ab);
+    expect(rahmen.length).toBeGreaterThan(0);
+    const kopf = rahmen.join(" ");
+    expect(kopf).toContain("flex-1");
+    expect(kopf).toContain("min-w-0");
   });
 });

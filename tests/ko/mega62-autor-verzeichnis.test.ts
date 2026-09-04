@@ -189,16 +189,20 @@ describe("mega62 H · die sechs Flächen benutzen den EINEN Weg", () => {
   });
 
   it("die sechs Flächen hängen am Haken — namentlich, weil sie der Befund waren", () => {
-    const seiten = join(WURZEL, "apps", "web", "src", "pages");
+    const web = join(WURZEL, "apps", "web", "src");
+    // JOB 3063 (H4): Bibliothek und Wissensobjekt-Detail sind EINE Fläche geworden; ihre drei
+    // Bauteile lösen den Autorennamen jeweils über DENSELBEN Haken auf. Die Zahl „sechs" bezieht
+    // sich auf die FLÄCHEN des Befunds, nicht auf Dateinamen.
     for (const datei of [
-      "Library.tsx",
-      "KnowledgeDetail.tsx",
-      "MyTasks.tsx",
-      "Ask.tsx",
-      "Risk.tsx",
-      "Validation.tsx",
+      "components/bibliothek/BibliothekFlaeche.tsx",
+      "components/bibliothek/BibliothekLesen.tsx",
+      "components/bibliothek/MehrAbschnitte.tsx",
+      "pages/MyTasks.tsx",
+      "pages/Ask.tsx",
+      "pages/Risk.tsx",
+      "pages/Validation.tsx",
     ]) {
-      const inhalt = readFileSync(join(seiten, datei), "utf8");
+      const inhalt = readFileSync(join(web, datei), "utf8");
       expect(inhalt, `${datei} benutzt den Haken nicht`).toContain("useAuthorName()");
     }
   });

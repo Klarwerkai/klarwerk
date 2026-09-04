@@ -35,6 +35,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(bestand.kos),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -53,6 +58,7 @@ import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-rou
 import i18n from "../../apps/web/src/i18n";
 import { LIBRARY_RESULT_LIMIT } from "../../apps/web/src/lib/libraryDisplay";
 import { Library } from "../../apps/web/src/pages/Library";
+import { eintragText, menueOeffnen, menueSchliessen } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -199,31 +205,43 @@ function text(): string {
   return (container.textContent ?? "").replace(/\s+/g, " ");
 }
 
-function buttonMitText(gesucht: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").replace(/\s+/g, " ").includes(gesucht),
-  );
-  if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Schaltfläche „${gesucht}“ fehlt; DOM: ${text()}`);
-  }
-  return btn;
-}
+// JOB 3063 (H4): die Facettenschiene ist in das Menü „Filter ▾" gezogen (AUFTRAG 3063 §5a). Eine
+// Facetten-Option ist damit ein Menüeintrag mit `role="menuitemcheckbox"`, dessen Beschriftung
+// „<Wert> · <Anzahl>" lautet. Die FÄHIGKEIT ist dieselbe; nur der Ort und die Rolle sind neu.
+/** Beide Menüs der Liste — die Abteilung/Kategorie steht in „Bereich", alles Übrige in „Filter". */
+const FACETTEN_MENUES = ["bib-menue-bereich", "bib-menue-filter"] as const;
 
-/** Eine Facetten-Option der Schiene: echte Checkbox im <label> (erster <span> = Wert). */
-function optionRow(value: string): HTMLLabelElement | undefined {
-  return [...container.querySelectorAll("label")].find(
-    (l) => l.querySelectorAll("span")[0]?.textContent === value,
-  );
+function optionRow(value: string): HTMLElement | undefined {
+  for (const testId of FACETTEN_MENUES) {
+    const menue = menueOeffnen(container, testId);
+    const treffer = [...menue.querySelectorAll('[role="menuitemcheckbox"]')].find((e) => {
+      const t = eintragText(e);
+      return t === value || t.startsWith(`${value} · `);
+    });
+    if (treffer instanceof HTMLElement) {
+      return treffer;
+    }
+    menueSchliessen(container, testId);
+  }
+  return undefined;
 }
 
 function clickOption(value: string): void {
-  const box = optionRow(value)?.querySelector("input[type=checkbox]");
-  if (!(box instanceof HTMLInputElement)) {
+  const eintrag = optionRow(value);
+  if (!(eintrag instanceof HTMLButtonElement)) {
     throw new Error(`Option „${value}“ fehlt; DOM: ${text()}`);
   }
   act(() => {
-    box.click();
+    eintrag.click();
   });
+  for (const testId of FACETTEN_MENUES) {
+    menueSchliessen(container, testId);
+  }
+}
+
+/** Der sichtbare Text des offenen Filtermenüs — dort stehen seit H4 die Achsen. */
+function filterMenueText(): string {
+  return (menueOeffnen(container, "bib-menue-filter").textContent ?? "").replace(/\s+/g, " ");
 }
 
 function setDateInput(el: HTMLInputElement, value: string): void {
@@ -267,19 +285,30 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
+// ==================================================================================================
+// JOB 3063 (H4) — DER ANKER HÄLT DIE FÄHIGKEITEN, NICHT DIE SCHIENE.
+// ==================================================================================================
+//
+// Diese Datei sagt in ihrem eigenen Kopf, wie sie gelesen werden will: „NAMENTLICHES INVENTAR: jede
+// FÄHIGKEIT … einzeln nachgewiesen … Das ist strenger als ein Schnappschuss (es prüft Verhalten,
+// nicht Markup) und überlebt jede Umgestaltung, die nichts kaputt macht."
+//
+// JOB 3063 ist genau so eine Umgestaltung: die Facettenschiene, die Sortier-Auswahl, die
+// Gruppierungsreihe und der Knopf „Weitere laden" sind aus dem Sichtfeld in Menüs bzw. ins
+// Nachladen am Listenende gezogen (AUFTRAG 3063 §5a, Eigentümerentscheidung 04.09.2026). Die zehn
+// Achsen, die Abhängigkeit `category → tag`, der Bereichsfilter mit eigenen URL-Parametern,
+// Sortierung, Gruppierung, gemerkte Sichten, das aufziehbare Fenster und die Leerzustände sind
+// ALLE noch da — und werden hier weiter einzeln nachgewiesen, an ihrem neuen Ort.
+//
+// WAS DIESER ANKER NICHT MEHR BEHAUPTET: die AUFTEILUNG „fünf primär sichtbar, fünf hinter
+// ‚Weitere Filter'". Sie war eine Aussage über ein Bauteil, das es nicht mehr gibt. Im Menü stehen
+// alle zehn gleichrangig als Untermenüs.
 describe("PRO 381 · R-14 — bei inaktiver Ortsschicht ist die Bibliothek unverändert", () => {
-  it("R-14 (a) BEWAHRUNGSANKER: zehn Achsen — fünf primär sichtbar, fünf hinter „Weitere Filter“", () => {
+  it("R-14 (a) BEWAHRUNGSANKER: alle zehn Achsen stehen im Menü „Filter“", () => {
     mount();
-    // Fünf primäre stehen sofort (PLAN 378 §2.2 korrigiert hier PRO 359: fünf, nicht sechs).
-    for (const key of PRIMAER) {
-      expect(text(), `primäre Achse „${key}“ fehlt`).toContain(res(key));
-    }
-    // Die fünf sekundären liegen eingeklappt — der Standard ist zu, das ist Bestandsverhalten.
-    act(() => {
-      buttonMitText(res("facet.moreFilters")).click();
-    });
-    for (const key of SEKUNDAER) {
-      expect(text(), `sekundäre Achse „${key}“ fehlt`).toContain(res(key));
+    const menue = filterMenueText();
+    for (const key of [...PRIMAER, ...SEKUNDAER]) {
+      expect(menue, `Achse „${key}“ fehlt im Filtermenü`).toContain(res(key));
     }
     expect(PRIMAER.length + SEKUNDAER.length).toBe(10);
   });
@@ -298,7 +327,7 @@ describe("PRO 381 · R-14 — bei inaktiver Ortsschicht ist die Bibliothek unver
 
   it("R-14 (c) BEWAHRUNGSANKER: der Bereichsfilter läuft weiter über EIGENE URL-Parameter", () => {
     mount();
-    expect(text()).toContain(res("lib.facet.rangeLabel"));
+    expect(filterMenueText()).toContain(res("lib.facet.rangeLabel"));
     const felder = [...container.querySelectorAll('input[type="date"]')];
     expect(felder, "der Bereichsfilter hat keine zwei Datumsfelder mehr").toHaveLength(2);
 
@@ -316,18 +345,32 @@ describe("PRO 381 · R-14 — bei inaktiver Ortsschicht ist die Bibliothek unver
     expect(text()).toContain("Alpha Ventil");
   });
 
-  it("R-14 (d) BEWAHRUNGSANKER: Sortierung, Gruppierung und gemerkte Suchen stehen", () => {
+  it("R-14 (d) BEWAHRUNGSANKER: Sortierung, Gruppierung und gemerkte Sichten stehen", () => {
     mount();
-    expect(text()).toContain(res("lib.sort.label"));
-    expect(container.querySelector("select"), "die Sortier-Auswahl fehlt").toBeTruthy();
-    expect(text()).toContain(res("lib.groupBy.label"));
-    // Die Gruppierung ist eine Reihe aus `aria-pressed`-Schaltflächen — dasselbe Muster, dem der
-    // spätere Ortsumschalter folgt (`A-2`). Sie muss unverändert bleiben.
+    // Sortierung und Gruppierung: im Menü „Filter", je ein Untermenü mit den vollen Werten.
+    const filter = filterMenueText();
+    expect(filter).toContain(res("lib.sort.label"));
+    expect(filter).toContain(res("lib.groupBy.label"));
+    const eintraege = [
+      ...menueOeffnen(container, "bib-menue-filter").querySelectorAll(
+        '[role="menuitem"], [role="menuitemcheckbox"]',
+      ),
+    ].map((e) => eintragText(e));
+    // Vier Sortierungen und fünf Gruppierungen — die Werte, die vorher als Reihen dastanden.
+    for (const key of [
+      "lib.sort.relevance",
+      "lib.sort.title",
+      "lib.sort.trust",
+      "lib.sort.recent",
+    ]) {
+      expect(eintraege, `Sortierung „${key}“ fehlt`).toContain(res(key));
+    }
+    expect(eintraege, "die Gruppierung „keine“ fehlt").toContain(res("lib.groupBy.none"));
+    menueSchliessen(container, "bib-menue-filter");
+    // Gemerkte Sichten: im Menü „…" der Liste.
     expect(
-      [...container.querySelectorAll("button[aria-pressed]")].length,
-      "die Gruppierungs-Schaltflächen fehlen",
-    ).toBeGreaterThanOrEqual(5);
-    expect(text()).toContain(res("lib.views.savedLabel"));
+      (menueOeffnen(container, "bib-liste-menue").textContent ?? "").replace(/\s+/g, " "),
+    ).toContain(res("lib.menue.sichten"));
   });
 
   it("R-14 (e) BEWAHRUNGSANKER: das aufziehbare Fenster der Trefferliste bleibt aufziehbar", () => {
@@ -336,18 +379,28 @@ describe("PRO 381 · R-14 — bei inaktiver Ortsschicht ist die Bibliothek unver
     );
     mount();
     expect(LIBRARY_RESULT_LIMIT).toBe(200);
-    expect(text()).toContain(res("lib.showingFirst").replace("{{shown}}", "200").split("{{")[0]);
-    const mehr = buttonMitText(res("lib.loadMore").split("{{")[0] ?? "");
-    act(() => {
-      mehr.click();
-    });
+    // JOB 3063: das Fenster wächst am Listenende von selbst weiter, statt über einen Knopf
+    // „Weitere N laden" (AUFTRAG §5, Lieferung 2). Der Auslöser ist `amListenende`.
+    //
+    // WAS jsdom HIER TUT, ehrlich benannt: es kennt keine Layouthöhen — `scrollTop`,
+    // `clientHeight` und `scrollHeight` sind alle 0, `amListenende` ist damit dauerhaft wahr, und
+    // das Fenster wächst ohne Zutun bis zum Ende. Gemessen wird deshalb genau das WACHSTUM ÜBER DIE
+    // ERSTE SEITE HINAUS (220 > 200) — die Fähigkeit, um die es geht. Die Bindung an die
+    // Scrollposition selbst ist eine Layoutfrage und steht als reine Rechnung in
+    // `tests/design/h4-zustand.test.ts` (`amListenende`) sowie in Chromium in
+    // `tests/design/zielbild-h4-bibliothek.test.ts`.
+    const zeilen = container.querySelectorAll('[data-testid="bib-zeile"]').length;
+    expect(zeilen, "das Fenster ist auf der ersten Seite stehengeblieben").toBe(
+      LIBRARY_RESULT_LIMIT + 20,
+    );
+    expect(zeilen).toBeGreaterThan(LIBRARY_RESULT_LIMIT);
     expect(text()).toContain("Treffer 210");
   });
 
   it("R-14 (f) BEWAHRUNGSANKER: der ehrliche Leerzustand bleibt", () => {
     bestand.kos = [];
     mount();
-    expect(text()).toContain(res("lib.empty").slice(0, 30));
+    expect(text()).toContain(res("lib.liste.leer"));
   });
 
   it("R-14 (g) BEWAHRUNGSANKER: heute existiert KEINE Ortsschicht — kein Pfad, kein Umschalter", () => {

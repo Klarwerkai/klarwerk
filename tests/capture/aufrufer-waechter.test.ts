@@ -1012,6 +1012,46 @@ const ERSETZT_JOB3061: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
+// REGISTER 4d · SEIT JOB 3063 (H4) OHNE PRODUKTAUFRUFER — GEMELDET, NICHT ABGELEGT
+// ------------------------------------------------------------------------------------------------
+// JOB 3063 macht aus der Bibliothek eine Flaeche (Liste links, Lesefläche rechts) und aus der
+// Detailseite mit dreizehn Karten deren rechte Haelfte. Zwei Bausteine der ABGELOESTEN Flaechen
+// verlieren dabei ihren einzigen Produktleser. Beide Dateien liegen AUSSERHALB der Zielpfade des
+// Auftrags (`pages/Library*.tsx`, `pages/KnowledgeDetail*.tsx`, `components/bibliothek/**`,
+// `i18n.ts`, `tests/**`) und duerfen von der Bahn nicht angefasst werden; ihr Abbau ist in der
+// RUECKGABE zu JOB 3063 unter ABWEICHUNGEN als Folgeauftrag benannt. A3 streicht die Eintraege,
+// sobald die Dateien weg sind.
+const ERSETZT_JOB3063: readonly Ausnahme[] = [
+  {
+    schluessel: "apps/web/src/components/ko/KoReadView.tsx::KoReadView",
+    grund:
+      "Seit JOB 3063 ohne Produktaufrufer: die Zonen-Leseansicht (Rahmen „Was in diesem Beitrag " +
+      "steht“, Belegzone, Schlusshinweis) ist durch die Lesefläche der Bibliothek ersetzt — Titel, " +
+      "Text, Quellen-Chips, sonst nichts (Pedi 04.09.: Erklärtext gehört hinter Menüs). Abbau " +
+      "ausserhalb der Zielpfade, Folgeauftrag benannt.",
+  },
+  {
+    schluessel: "apps/web/src/lib/koCta.ts::koCta",
+    grund:
+      "Seit JOB 3063 ohne Produktaufrufer: die „nächste Handlung“ der alten Detailseite ist durch " +
+      "den Knopf „Fragen“ der Lesefläche ersetzt, der aus `components/bibliothek/fragen.ts::" +
+      "fragenHref` kommt. Zwei Wege nebeneinander waeren genau die zweite Wahrheit, die dieser " +
+      "Umbau abschafft. Abbau ausserhalb der Zielpfade.",
+  },
+  {
+    schluessel: "apps/web/src/lib/libraryMaturity.ts::libraryUseCta",
+    grund:
+      "Seit JOB 3063 Runde 5 ohne Produktaufrufer: diese Regel verzweigte die verbindliche Aktion " +
+      "ueber die REIFE — nur ein validierter Eintrag bekam „Fragen“, alles andere „Pruefen“ und " +
+      "das Ziel /validierung. Pedis Vorgabe vom 04.09. (Auftrag §5.3/§5a) verlangt fuer JEDEN " +
+      "gewaehlten Eintrag dieselbe Aktion „Fragen“ mit Bezug auf den Eintrag (`ko=<id>`); die " +
+      "Lesefläche zieht ihre Adresse deshalb aus `components/bibliothek/fragen.ts::fragenHref`. " +
+      "Die uebrigen Exporte der Datei (libraryMaturity, filterByMaturity, …) tragen weiter. Abbau " +
+      "ausserhalb der Zielpfade (`apps/web/src/lib/**`), Folgeauftrag benannt.",
+  },
+];
+
+// ------------------------------------------------------------------------------------------------
 // REGISTER 5 · BEWUSST OHNE AUFRUFER AUF `apps/web/src` (JOB 2611 D1)
 // ------------------------------------------------------------------------------------------------
 // Dieselbe Regel wie bei `BEWUSST`: nur Eintraege, deren Grund am Code geprueft ist.
@@ -1193,6 +1233,7 @@ const GEDULDET = new Set<string>([
   ...NEUZUGANG_GEMELDET.map((a) => a.schluessel),
   ...ERSETZT_JOB3015.map((a) => a.schluessel),
   ...ERSETZT_JOB3061.map((a) => a.schluessel),
+  ...ERSETZT_JOB3063.map((a) => a.schluessel),
   ...ALTBESTAND,
   ...BEWUSST_WEB.map((a) => a.schluessel),
   ...ALTBESTAND_WEB,

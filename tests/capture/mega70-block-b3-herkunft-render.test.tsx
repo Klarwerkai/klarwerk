@@ -167,6 +167,34 @@ function wege(): string[] {
   return Array.from(container.querySelectorAll("a")).map((a) => a.getAttribute("href") ?? "");
 }
 
+/**
+ * JOB 3063 (H4): `/wissen/:id` ist die Leseflaeche der Bibliothek. Der Herkunftsverweis steht im
+ * Abschnitt „Herkunftskette" hinter der Zeile „Mehr" (`MehrAbschnitte.tsx:847`), zugeklappt als
+ * Vorgabe. Die ZUSAGE dieses Auftrags — der Verweis ist fuer eine Betrachterin eine LAGE und kein
+ * Weg — ist davon unberuehrt; gemessen wird sie am aufgeklappten Abschnitt.
+ *
+ * `open = true` allein genuegt nicht: React zeichnet den Inhalt erst, wenn es das Aufklappen ueber
+ * `onToggle` mitbekommt, und jsdom stellt `toggle` nur in die Warteschlange.
+ */
+function abschnittOeffnen(schluessel: string): void {
+  const mehr = container.querySelector('[data-testid="bib-mehr"]');
+  if (mehr instanceof HTMLButtonElement && mehr.getAttribute("aria-expanded") !== "true") {
+    act(() => {
+      mehr.click();
+    });
+  }
+  const abschnitt = container.querySelector(`[data-bib-abschnitt="${schluessel}"]`);
+  if (!(abschnitt instanceof HTMLDetailsElement)) {
+    throw new Error(`Abschnitt „${schluessel}" fehlt; DOM: ${container.textContent}`);
+  }
+  if (!abschnitt.open) {
+    act(() => {
+      abschnitt.open = true;
+      abschnitt.dispatchEvent(new Event("toggle"));
+    });
+  }
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
 });
@@ -179,6 +207,7 @@ afterEach(() => {
 describe("mega70 Block B · B3: der Herkunftsverweis ist fuer eine Betrachterin eine Lage", () => {
   it("R1 · Rolle `viewer`: aria-disabled, Kein-Zugriff-Pille, und KEIN Weg auf /graph", async () => {
     await mount("viewer");
+    abschnittOeffnen("herkunftskette");
 
     // Vorbedingung: der Verweis ist ueberhaupt gerendert. Sonst pruefte der Fall ein leeres DOM.
     const text = container.textContent ?? "";
@@ -201,6 +230,7 @@ describe("mega70 Block B · B3: der Herkunftsverweis ist fuer eine Betrachterin 
 
   it("R2 · KALIBRIERUNG, Rolle `admin`: derselbe Verweis ist ein echter Weg", async () => {
     await mount("admin");
+    abschnittOeffnen("herkunftskette");
 
     const text = container.textContent ?? "";
     expect(text).toContain(i18n.t("ko.lineageGraphLink"));

@@ -19,8 +19,20 @@
 //
 // WARUM FALL 7 KEIN BEIWERK IST: Ohne Renderkalibrierung wären die Negativfälle 3 bis 5 auch dann
 // grün, wenn die Karte überhaupt nicht rendert — „keine Zeitzeile" ist an einer leeren Seite trivial
-// wahr. Fall 7 misst deshalb an den Kartentiteln, nicht an einer Marke, die erst ins Produkt
+// wahr. Fall 7 misst deshalb an den Listentiteln, nicht an einer Marke, die erst ins Produkt
 // gedrückt werden müsste.
+//
+// JOB 3063 (H4) — UMGEZOGEN. Die Bibliothek ist seit H4 Liste plus Lesefläche. Die Erstellzeit steht
+// nicht mehr an einer Trefferkarte mit eigener Marke `ko-zeitstempel`, sondern als DRITTES GLIED der
+// Meta-Zeile der Lesefläche („Stufe · Bereich · Autor · Datum",
+// `components/bibliothek/BibliothekLesen.tsx:394,416`) — genau die Zeile, die das Mockup vorgibt.
+// Gemessen wird deshalb an `[data-testid="bib-meta"]`.
+//
+// WAS DABEI WEGGEFALLEN IST, ehrlich benannt: die Beschriftung „Erstellt am" (`ko.createdAt`) als
+// sichtbarer Text und als `title`. Das Mockup gibt für diese Zeile drei Werte ohne Beschriftungen
+// vor; ein Erklärwort dort wäre genau der Textzuwachs, den JOB 3063 abschafft. Die OWNERENTSCHEIDUNG
+// von JOB 528 bindet den WERT `createdAt` — und der steht weiter da. Fall F2 vergleicht ihn deshalb
+// weiter gegen den HELFER `formatKoTimestamp`, nur ohne die Beschriftungszusage.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../api/types";
@@ -58,13 +70,28 @@ function ko(
 
 const lage = vi.hoisted(() => ({ kos: [] as unknown[] }));
 
-vi.mock("../api/hooks", () => {
+// TEILMOCK: die Lesefläche zieht über ihre Abschnitte weitere Haken, die mit der Zeitangabe nichts
+// zu tun haben. Überschrieben wird nur, was dieser Test wirklich steuert.
+vi.mock("../api/hooks", async (importOriginal) => {
+  const echt = await importOriginal<Record<string, unknown>>();
   const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
+  const leer = () => ok([]);
   return {
+    ...echt,
     useKos: () => ok(lage.kos),
     useLibrarySearch: () => ok(lage.kos),
-    useDirectory: () => ok([]),
-    useConflicts: () => ok([]),
+    useDirectory: leer,
+    useConflicts: leer,
+    useKo: (id: string) =>
+      ok((lage.kos as { id: string }[]).find((k) => k.id === id) ?? lage.kos[0] ?? null),
+    useAudit: leer,
+    useKoEvidence: leer,
+    useKoNeighbors: leer,
+    useKoVersions: leer,
+    useEigeneBefunde: leer,
+    useLifecyclePending: leer,
+    useExternalPolicy: () => ok({ stage: "blocked" }),
+    useReasonerStatus: () => ok({ ready: false }),
   };
 });
 vi.mock("../app/AuthContext", () => ({
@@ -82,9 +109,10 @@ import { formatKoTimestamp } from "../lib/koDates";
 import { Library } from "./Library";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+Element.prototype.scrollIntoView = () => {};
 
-/** Die eine Marke, an der die Zeitzeile gemessen wird — kein Raten an CSS-Klassen. */
-const ZEIT = '[data-testid="ko-zeitstempel"]';
+/** Die eine Marke, an der die Zeitangabe gemessen wird — kein Raten an CSS-Klassen. */
+const META = '[data-testid="bib-meta"]';
 
 const ISO = "2026-08-12T09:41:00.000Z";
 
@@ -116,74 +144,94 @@ afterEach(() => {
   lage.kos = [];
 });
 
-function zeitzeilen(): HTMLElement[] {
-  return [...container.querySelectorAll(ZEIT)] as HTMLElement[];
+/** Die Meta-Zeile der Lesefläche, als Text. Fehlt sie, ist das ein Fehler und keine „0 Treffer". */
+function metaZeile(): string {
+  const el = container.querySelector(META);
+  if (!(el instanceof HTMLElement)) {
+    throw new Error(`Meta-Zeile fehlt; DOM: ${container.textContent}`);
+  }
+  return (el.textContent ?? "").trim();
 }
 
-function de(key: string): string {
-  return String(i18n.getResource("de", "translation", key));
+/** Einen Eintrag in der linken Liste wählen — der Weg des Menschen. */
+function waehle(id: string): void {
+  const zeile = container.querySelector(`[data-testid="bib-zeile"][data-bib-id="${id}"]`);
+  if (!(zeile instanceof HTMLElement)) {
+    throw new Error(`Listenzeile „${id}“ fehlt`);
+  }
+  act(() => {
+    zeile.click();
+  });
 }
 
-describe("JOB 528 · Bibliothek — die Erstellzeit steht an der Karte", () => {
-  it("F1 · ein Treffer mit createdAt trägt die Zeitangabe", () => {
+describe("JOB 528 · Bibliothek — die Erstellzeit steht in der Meta-Zeile der Lesefläche", () => {
+  it("F1 · ein Eintrag mit createdAt trägt die Zeitangabe", () => {
     mount([ko({ id: "a", title: "Mit Datum", createdAt: ISO })]);
-    expect(zeitzeilen()).toHaveLength(1);
+    expect(metaZeile()).toContain(String(formatKoTimestamp(ISO, i18n.language)));
   });
 
-  it("F2 · sie ist lokalisiert und beschriftet — verglichen gegen den HELFER, nicht gegen eine abgeschriebene Zeichenkette", () => {
+  it("F2 · sie ist lokalisiert — verglichen gegen den HELFER, nicht gegen eine abgeschriebene Zeichenkette", () => {
     mount([ko({ id: "a", createdAt: ISO })]);
-    // Zuerst die Existenz: sonst meldet der Fall bei fehlender Zeile nur einen Typkonflikt und
-    // sagt nicht, WAS fehlt.
-    expect(zeitzeilen()).toHaveLength(1);
-    const zeile = zeitzeilen()[0];
     // Der erwartete Text entsteht aus derselben Quelle wie die Anzeige. Eine hier fest
     // hineingeschriebene Zeichenkette würde bei jedem Locale-Wechsel der Laufzeit falsch — und
     // wäre damit ein Test über meine Tastatur statt über das Produkt.
     const erwartet = formatKoTimestamp(ISO, i18n.language);
     expect(erwartet).not.toBeNull();
-    expect(zeile?.textContent).toContain(String(erwartet));
-    // Die Beschriftung kommt aus dem VORHANDENEN dreisprachigen Schlüssel — kein neuer Text.
-    expect(zeile?.getAttribute("title")).toBe(de("ko.createdAt"));
-    expect(zeile?.textContent).toContain(de("ko.createdAt"));
+    // Das Datum ist das LETZTE Glied der Zeile („Stufe · Bereich · Autor · Datum"). Das prüft
+    // zugleich, dass es nicht irgendwo mitten im Text auftaucht.
+    expect(metaZeile().endsWith(` · ${String(erwartet)}`)).toBe(true);
   });
 
   it("F3 · Altbestand OHNE createdAt trägt sie NICHT — kein Platzhalterdatum", () => {
     mount([ko({ id: "a", title: "Altbestand", createdAt: undefined })]);
-    expect(zeitzeilen()).toHaveLength(0);
+    const zeile = metaZeile();
+    expect(zeile).not.toContain(String(formatKoTimestamp(ISO, i18n.language)));
+    // Kein leerhängendes Trennzeichen am Ende — die Zeile darf nicht „… · " lauten.
+    expect(zeile.endsWith("·")).toBe(false);
   });
 
   it("F4 · ein unbrauchbarer Wert trägt sie ebenfalls nicht", () => {
     mount([ko({ id: "a", title: "Kaputt", createdAt: "kein-datum" })]);
-    expect(zeitzeilen()).toHaveLength(0);
+    expect(metaZeile()).not.toContain("kein-datum");
+    expect(metaZeile().endsWith("·")).toBe(false);
   });
 
   it("F5 · ein leerer Wert trägt sie nicht — und erzeugt KEINE 1970-Anzeige", () => {
     mount([ko({ id: "a", title: "Leer", createdAt: "" })]);
-    expect(zeitzeilen()).toHaveLength(0);
+    expect(metaZeile().endsWith("·")).toBe(false);
     // Der Fall, vor dem die Ownerentscheidung ausdrücklich warnt: Die Epoche darf nirgends
     // auftauchen — weder in der Zeile noch sonst im gerenderten Text.
     expect(container.textContent).not.toContain("1970");
     expect(container.textContent).not.toContain("01.01.1970");
   });
 
-  it("F6 · bei gemischtem Bestand trägt GENAU der datierte Treffer die Zeile", () => {
+  it("F6 · bei gemischtem Bestand trägt GENAU der datierte Eintrag die Zeitangabe", () => {
     mount([
       ko({ id: "a", title: "Mit Datum", createdAt: ISO }),
       ko({ id: "b", title: "Ohne Datum", createdAt: undefined }),
     ]);
-    expect(zeitzeilen()).toHaveLength(1);
+    const datiert = metaZeile();
+    const erwartet = String(formatKoTimestamp(ISO, i18n.language));
+    expect(datiert).toContain(erwartet);
+    waehle("b");
+    const undatiert = metaZeile();
+    expect(undatiert).not.toContain(erwartet);
+    // Der Unterschied zwischen beiden Zeilen ist GENAU das Datum — nicht mehr und nicht weniger.
+    expect(`${undatiert} · ${erwartet}`).toBe(datiert);
     expect(container.textContent).not.toContain("1970");
   });
 
-  it("F7 · KALIBRIERUNG — beide Zielkarten stehen wirklich im DOM", () => {
+  it("F7 · KALIBRIERUNG — beide Einträge stehen wirklich in der Liste", () => {
     // Ohne diesen Fall wären F3 bis F6 auch an einer leeren Seite grün. Gemessen wird an den
-    // Kartentiteln: sie stammen aus dem Bestand und nicht aus einer Marke, die dieser Test erst
+    // Listentiteln: sie stammen aus dem Bestand und nicht aus einer Marke, die dieser Test erst
     // ins Produkt drücken müsste.
     mount([
       ko({ id: "a", title: "Mit Datum", createdAt: ISO }),
       ko({ id: "b", title: "Ohne Datum", createdAt: undefined }),
     ]);
-    expect(container.textContent).toContain("Mit Datum");
-    expect(container.textContent).toContain("Ohne Datum");
+    const titel = [...container.querySelectorAll('[data-bib-text="zeile-titel"]')].map((e) =>
+      (e.textContent ?? "").trim(),
+    );
+    expect(titel).toEqual(["Mit Datum", "Ohne Datum"]);
   });
 });

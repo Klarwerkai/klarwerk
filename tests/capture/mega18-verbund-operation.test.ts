@@ -582,7 +582,8 @@ describe("mega18 A: Gegenprobe", () => {
     // Die drei Wege des Auftrags. Keiner darf noch den Griff „hochladen UND anhängen" fahren.
     for (const datei of [
       "apps/web/src/components/AppendToArticleModal.tsx",
-      "apps/web/src/pages/KnowledgeDetail.tsx",
+      // JOB 3063 (H4): der Editor des Wissensobjekts liegt in der Lesefläche der Bibliothek.
+      "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
       "apps/web/src/components/BodyExtractPanel.tsx",
       "apps/web/src/pages/Capture.tsx",
     ]) {
@@ -597,7 +598,7 @@ describe("mega18 A: Gegenprobe", () => {
     // Die Wege an einem BESTEHENDEN Wissensobjekt gehen durch DIE EINE Verbund-Operation.
     for (const datei of [
       "apps/web/src/components/AppendToArticleModal.tsx",
-      "apps/web/src/pages/KnowledgeDetail.tsx",
+      "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
     ]) {
       expect(codeOhneKommentare(datei), datei).toContain("appendDocument(");
     }

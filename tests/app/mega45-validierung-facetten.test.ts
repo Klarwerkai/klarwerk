@@ -28,7 +28,11 @@ import {
 
 const WURZEL = process.cwd();
 const VALIDATION = readFileSync(join(WURZEL, "apps/web/src/pages/Validation.tsx"), "utf8");
-const LIBRARY = readFileSync(join(WURZEL, "apps/web/src/pages/Library.tsx"), "utf8");
+// JOB 3063 (H4): die Filterlogik der Bibliothek wohnt in der Fläche, nicht mehr in der Seitendatei.
+const BIBLIOTHEK = readFileSync(
+  join(WURZEL, "apps/web/src/components/bibliothek/BibliothekFlaeche.tsx"),
+  "utf8",
+);
 
 function ko(overrides: Partial<KnowledgeObject> = {}): KnowledgeObject {
   return {
@@ -76,13 +80,24 @@ function zeile(
 }
 
 describe("mega45 H · die Filterschiene der Validierung", () => {
-  it("H-1: es ist DIESELBE Komponente wie in der Bibliothek", () => {
+  it("H-1: eine Fassung im Baum — und die Validierung nimmt sie, ohne eine eigene zu bauen", () => {
+    // JOB 3063 (H4) — WAS HIER FRÜHER STAND: „es ist DIESELBE Komponente wie in der Bibliothek",
+    // geprüft an derselben Importzeile in beiden Seiten. Die Bibliothek hat seit H4 KEINE
+    // Filterschiene mehr — ihre zehn Facetten liegen im Menü „Filter" (Pedis Entscheidung vom
+    // 04.09.: Erklärtext und Filterwände gehören hinter Menüs). Die Zusicherung „dieselbe
+    // Komponente" wäre damit ein Pin auf eine Fläche, die es nicht mehr gibt.
+    //
+    // WAS BLEIBT und was der Fall wirklich schützen sollte: die Validierung baut sich KEINE eigene
+    // zweite Schiene, sondern nimmt die eine vorhandene Komponente.
     const importZeile = /import\s*\{\s*FacetFilter\s*\}\s*from\s*"\.\.\/components\/FacetFilter"/;
     expect(VALIDATION).toMatch(importZeile);
-    expect(LIBRARY).toMatch(importZeile);
-    // Keine zweite Fassung im Baum.
     expect(VALIDATION).not.toMatch(/function\s+ValidationFacetFilter/);
     expect(VALIDATION).toContain("<FacetFilter");
+    // Die Bibliothek filtert weiter über DIESELBE Logik (`lib/facetRail.ts`), nur über Menüs —
+    // kein zweiter Filterweg, keine zweite Wertermittlung.
+    expect(BIBLIOTHEK).toMatch(/from\s*"\.\.\/\.\.\/lib\/facetRail"/);
+    expect(BIBLIOTHEK).toContain("facetRailGroups(");
+    expect(BIBLIOTHEK).not.toContain("<FacetFilter");
   });
 
   it("H-2: keine neue Datenabhaengigkeit — die Schiene bringt keine zweite Abfrage mit", () => {

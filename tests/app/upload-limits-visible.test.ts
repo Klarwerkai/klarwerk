@@ -21,7 +21,9 @@ function stripComments(source: string): string {
 // geraten: das sind genau die Dateien mit einem `type="file"`-Feld bzw. einer Ablegefläche.
 const AUSWAHLSTELLEN = [
   "pages/Capture.tsx",
-  "pages/KnowledgeDetail.tsx",
+  // JOB 3063 (H4): das Anhang-Feld des Wissensobjekts liegt jetzt im Abschnitt „Anhänge" hinter
+  // der Zeile „Mehr" der Lesefläche — dieselbe Auswahlstelle, derselbe Grenzen-Hinweis.
+  "components/bibliothek/MehrAbschnitte.tsx",
   "components/CaptureFileImport.tsx",
   "components/KnowledgeInputStudio.tsx",
   "components/BodyExtractPanel.tsx",

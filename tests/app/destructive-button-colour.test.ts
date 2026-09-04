@@ -42,8 +42,14 @@ const ZERSTOEREND: { ort: string; datei: string; labelKey: string }[] = [
     datei: "app/NavGuardContext.tsx",
     labelKey: "nav.guard.discard",
   },
-  { ort: "Bibliothek löschen", datei: "pages/Library.tsx", labelKey: "ko.deleteYes" },
-  { ort: "Wissensobjekt löschen", datei: "pages/KnowledgeDetail.tsx", labelKey: "ko.deleteYes" },
+  // JOB 3063 (H4): Bibliothek und Wissensobjekt-Detail sind EINE Fläche geworden — und damit ist
+  // auch aus zwei Löschbestätigungen EINE geworden (am gelesenen Eintrag). Zwei Einträge hier
+  // wären ab jetzt zwei Namen für dieselbe Stelle.
+  {
+    ort: "Wissensobjekt löschen (Lesefläche der Bibliothek)",
+    datei: "components/bibliothek/BibliothekLesen.tsx",
+    labelKey: "ko.deleteYes",
+  },
   {
     ort: "Erfassen — Entwurf verwerfen",
     datei: "pages/Capture.tsx",
@@ -124,8 +130,7 @@ describe("SCRUM-412: die Warnfarbe klebt am zerstörenden Knopf", () => {
     // Der Gegenrand: eine Warnfarbe an „Behalten"/„Hier bleiben" wäre derselbe Fehler rückwärts.
     const neutrale: { datei: string; labelKey: string }[] = [
       { datei: "app/NavGuardContext.tsx", labelKey: "nav.guard.stay" },
-      { datei: "pages/Library.tsx", labelKey: "ko.deleteKeep" },
-      { datei: "pages/KnowledgeDetail.tsx", labelKey: "ko.deleteKeep" },
+      { datei: "components/bibliothek/BibliothekLesen.tsx", labelKey: "ko.deleteKeep" },
       { datei: "components/KnowledgeInputStudio.tsx", labelKey: "studio.confirmDiscard.keep" },
       { datei: "pages/Capture.tsx", labelKey: "CAPTURE_WIZARD_TEXT.discardKeep" },
     ];

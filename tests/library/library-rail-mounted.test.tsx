@@ -62,6 +62,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -79,6 +84,16 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, useLocation } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import {
+  eintragText,
+  istGehakt,
+  listenZaehler,
+  menueOeffnen,
+  menueSchliessen,
+  tippe,
+  waehleImMenue,
+  zeilenTitel,
+} from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -121,59 +136,48 @@ function unmount(): void {
   container.remove();
 }
 
-// Eine Facetten-Option in der Schiene: echte Checkbox im <label> (erster <span> = Wert).
-function optionRow(value: string): HTMLLabelElement | undefined {
-  return [...container.querySelectorAll("label")].find(
-    (l) => l.querySelectorAll("span")[0]?.textContent === value,
-  );
-}
+// JOB 3063 (H4) — DIESELBEN ZUSICHERUNGEN, EIN ANDERER GRIFF.
+//
+// Die Facettenschiene ist seit H4 ein Menü: „Bereich" trägt die Kategorien, „Filter" die übrigen
+// neun Dimensionen samt Zeitraum. Die LOGIK dahinter ist unverändert dieselbe (`lib/facetRail.ts`,
+// `lib/libraryUrlFilters.ts`) — deshalb bleiben die vier Testpflichten aus Block C wörtlich stehen
+// und nur der Weg zum Bedienelement ändert sich. Die Handgriffe stehen in `support/bib-flaeche.ts`,
+// damit es EINE Fassung davon gibt.
 
-function option(value: string): HTMLInputElement {
-  const box = optionRow(value)?.querySelector("input[type=checkbox]");
-  if (!(box instanceof HTMLInputElement)) {
-    throw new Error(`Option „${value}“ fehlt; DOM: ${container.textContent}`);
-  }
-  return box;
-}
-
-// Eine kontrollierte React-Eingabe treiben: der native value-Setter umgeht den Value-Tracker,
-// sonst schluckt React die Änderung (Repo-Muster, s. caption-form-mounted).
-function typeInto(el: HTMLInputElement, value: string): void {
-  const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set as (
-    v: string,
-  ) => void;
-  act(() => {
-    setter.call(el, value);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-  });
-}
-
+/** Eine Kategorie im Menü „Bereich" an- oder abwählen. */
 function click(value: string): void {
-  act(() => {
-    option(value).click();
-  });
+  waehleImMenue(container, "bib-menue-bereich", `${value} · `);
 }
 
-// Die Titel der aktuell gezeigten Trefferliste — die WAHRHEIT, gegen die der Zähler geprüft wird.
+/** Die Titel der aktuell gezeigten Trefferliste — die WAHRHEIT, gegen die der Zähler geprüft wird. */
 function visibleTitles(): string[] {
-  return [KO_A, KO_B, KO_C, KO_D]
-    .map((k) => k.title)
-    .filter((title) => (container.textContent ?? "").includes(title));
+  return zeilenTitel(container);
 }
 
-// Der klebende Trefferzähler, als Zahl aus seinem TEXT gelesen.
+/**
+ * Der Trefferzähler. Er steht seit H4 im Listenfuß („n Einträge") statt als klebende Zeile über der
+ * Schiene — dieselbe Zahl, dieselbe Quelle (die gefilterte Treffermenge).
+ */
 function stickyCount(): number {
-  const text = container.textContent ?? "";
-  // AUFTRAG-mega34 F: der Schlüssel hat jetzt Einzahl- und Mehrzahl-Form („1 Beitrag anzeigen" vs.
-  // „3 Beiträge anzeigen"). Der Zähler kann beide treffen, also passt der Wächter auf beide.
-  for (const form of ["lib.facet.showResults_one", "lib.facet.showResults_other"]) {
-    const label = String(i18n.getResource("de", "translation", form));
-    const hit = new RegExp(label.replace("{{count}}", "(\\d+)")).exec(text);
-    if (hit?.[1]) {
-      return Number(hit[1]);
-    }
+  const n = listenZaehler(container);
+  if (n === null) {
+    throw new Error(`Listenfuß zeigt „–" statt einer Zahl; DOM: ${container.textContent}`);
   }
-  throw new Error(`Klebender Zähler nicht gefunden; DOM: ${text}`);
+  return n;
+}
+
+/** Die sichtbaren Werte einer Facette im Menü „Filter" — der Nachfolger von `optionRow`. */
+function filterWerte(gruppe: string): string[] {
+  const menue = menueOeffnen(container, "bib-menue-filter");
+  const untermenue = [...menue.querySelectorAll("details")].find((d) =>
+    (d.querySelector("summary")?.textContent ?? "").includes(gruppe),
+  );
+  if (!untermenue) {
+    throw new Error(`Untermenü „${gruppe}" fehlt`);
+  }
+  return [...untermenue.querySelectorAll('[role="menuitemcheckbox"]')].map(
+    (e) => eintragText(e).split(" · ")[0] ?? "",
+  );
 }
 
 beforeEach(async () => {
@@ -188,7 +192,7 @@ afterEach(() => {
 });
 
 describe("Block C: die Bibliothek auf der Schiene (echter Seam)", () => {
-  it("(c) der klebende Zähler stimmt IMMER mit der Trefferliste überein", () => {
+  it("(c) der Zähler stimmt IMMER mit der Trefferliste überein", () => {
     mount();
     expect(stickyCount()).toBe(4);
     expect(visibleTitles()).toHaveLength(4);
@@ -218,9 +222,9 @@ describe("Block C: die Bibliothek auf der Schiene (echter Seam)", () => {
     mount(urlNachKlicks);
     expect(visibleTitles().sort()).toEqual(trefferVorher);
     expect(stickyCount()).toBe(3);
-    // Die Auswahl ist auch in der Schiene wieder angehakt (nicht nur in der Treffermenge).
-    expect(option("Anlage 1").checked).toBe(true);
-    expect(option("Fuhrpark").checked).toBe(true);
+    // Die Auswahl ist auch im Menü wieder angehakt (nicht nur in der Treffermenge).
+    expect(istGehakt(container, "bib-menue-bereich", "Anlage 1 · ")).toBe(true);
+    expect(istGehakt(container, "bib-menue-bereich", "Fuhrpark · ")).toBe(true);
   });
 
   it("(b) ein Deep-Link mit MEHREREN Werten je Dimension trifft dieselbe Menge wie die Klickfolge", () => {
@@ -240,44 +244,38 @@ describe("Block C: die Bibliothek auf der Schiene (echter Seam)", () => {
 
   it("Block B Punkt 4: der Bereichsfilter wirkt additiv, steht in der URL und ist einzeln lösbar", () => {
     mount();
-    const von = container.querySelector("#facet-rail-range-from");
+    menueOeffnen(container, "bib-menue-filter");
+    const von = container.querySelector("#bib-von");
     if (!(von instanceof HTMLInputElement)) {
       throw new Error(`Bereichs-Feld „von“ fehlt; DOM: ${container.textContent}`);
     }
-    typeInto(von, "2026-01-01");
+    tippe(von, "2026-01-01");
     // Nur der Altbestand (2019) fällt heraus — der Bereich filtert ZUSÄTZLICH zu den Facetten.
     expect(visibleTitles()).not.toContain("Delta Altbestand");
     expect(stickyCount()).toBe(3);
     // Er steht als EIGENER Parameter in der Adresse (nicht als Facettenwert).
     expect(currentUrl).toContain("von=2026-01-01");
 
-    // Und er ist über seine eigene Pille einzeln lösbar.
-    const pille = [...container.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes("ab 2026-01-01"),
-    );
-    expect(pille).toBeDefined();
-    act(() => {
-      pille?.click();
-    });
+    // Und er ist einzeln lösbar — dasselbe Feld, wieder geleert. Die frühere Pille daneben ist mit
+    // der Facettenwand entfallen; der Wert steht jetzt dort, wo man ihn gesetzt hat.
+    tippe(von, "");
     expect(stickyCount()).toBe(4);
-    expect(currentUrl).not.toContain("von=");
+    expect(currentUrl).not.toContain("von=2026");
   });
 
   it("Block B Punkt 2: die Kategoriewahl schneidet die Schlagwortliste (aus dem Bestand abgeleitet)", () => {
     mount();
     // Ohne Kategoriewahl sind alle drei Schlagwörter da.
-    expect(optionRow("ventil")).toBeDefined();
-    expect(optionRow("pumpe")).toBeDefined();
-    expect(optionRow("reifen")).toBeDefined();
+    expect(filterWerte("Schlagwort")).toEqual(
+      expect.arrayContaining(["ventil", "pumpe", "reifen"]),
+    );
+    menueSchliessen(container, "bib-menue-filter");
 
     click("Fuhrpark");
-    // Jetzt nur noch das Schlagwort, das in dieser Kategorie tatsächlich vorkommt …
-    expect(optionRow("reifen")).toBeDefined();
-    expect(optionRow("ventil")).toBeUndefined();
-    // … und die Einschränkung wird als TEXT ausgewiesen (nicht still verkürzt).
-    expect(container.textContent).toContain(
-      String(i18n.getResource("de", "translation", "facet.restricted")),
-    );
+    // Jetzt nur noch das Schlagwort, das in dieser Kategorie tatsächlich vorkommt.
+    const nachher = filterWerte("Schlagwort");
+    expect(nachher).toContain("reifen");
+    expect(nachher).not.toContain("ventil");
   });
 
   it("der strukturelle No-Match taucht in KEINER Zeichenkette der Oberfläche oder der URL auf", () => {

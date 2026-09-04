@@ -106,6 +106,11 @@ vi.mock("../../apps/web/src/api/hooks", async () => {
       }),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -165,7 +170,7 @@ function text(): string {
 }
 
 function suchfeld(): HTMLInputElement {
-  const el = container.querySelector<HTMLInputElement>("input#library-search");
+  const el = container.querySelector<HTMLInputElement>('input[data-testid="bib-suche"]');
   if (!el) {
     throw new Error("Das Suchfeld der Bibliothek ist nicht gerendert");
   }
@@ -231,7 +236,10 @@ describe("JOB 2689 D1 · die Bibliothekssuche am Suchfeld", () => {
     expect(lage.abrufe).toContain("%");
     // Was der Mensch sieht: kein einziger Titel, und der Nulltreffer nennt seine Eingabe.
     expect(sichtbareTitel()).toHaveLength(0);
-    expect(text()).toContain("%");
+    // JOB 3063 (H4): der Nulltreffer nennt seine Eingabe nicht mehr im Satz („Nichts gefunden.",
+    // Auftrag §9) — sie steht dort, wo der Mensch sie getippt hat: im Suchfeld. Dass der SERVER
+    // genau dieses Zeichen bekommen und maskiert hat, prüfen die drei Zeilen darunter unverändert.
+    expect(suchfeld().value).toBe("%");
     // Was der Server tat: `%\%%` als Muster, ESCAPE an jeder Klausel, LIMIT 200.
     const [abfrage] = lage.abgesetzt;
     expect(abfrage?.params[2]).toBe("%\\%%");

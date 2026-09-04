@@ -220,11 +220,48 @@ async function mount(): Promise<void> {
     await flush();
   });
   await act(flush);
+  // JOB 3063 (H4): die Kollisions-Auskunft liegt im Abschnitt „Konflikt" hinter der Zeile „Mehr"
+  // und ist zugeklappt die Vorgabe. Aufgeklappt wird HIER, vor dem letzten Durchlauf — die Abfragen
+  // dieses Abschnitts laufen erst beim Aufklappen an und brauchen danach noch einen Takt.
+  mehrAufklappen("konflikt");
+  await act(flush);
   await act(flush);
 }
 
-/** Der gemessene Bereich — genau das Feld, um das dieser Auftrag geht. */
+/**
+ * Die Zeile „Mehr" der Lesefläche aufklappen und einen ihrer Abschnitte öffnen.
+ *
+ * `open = true` allein genügt nicht: React zeichnet den Inhalt erst, wenn es das Aufklappen über
+ * `onToggle` mitbekommt, und jsdom stellt `toggle` nur in die Warteschlange statt es zu liefern.
+ * Der Test schickt es deshalb selbst, direkt am Element (`toggle` steigt nicht auf).
+ */
+function mehrAufklappen(schluessel: string): void {
+  const mehr = container.querySelector('[data-testid="bib-mehr"]');
+  if (mehr instanceof HTMLButtonElement && mehr.getAttribute("aria-expanded") !== "true") {
+    act(() => {
+      mehr.click();
+    });
+  }
+  const abschnitt = container.querySelector(`[data-bib-abschnitt="${schluessel}"]`);
+  if (abschnitt instanceof HTMLDetailsElement && !abschnitt.open) {
+    act(() => {
+      abschnitt.open = true;
+      abschnitt.dispatchEvent(new Event("toggle"));
+    });
+  }
+}
+
+/**
+ * Der gemessene Bereich — genau das Feld, um das dieser Auftrag geht.
+ *
+ * JOB 3063 (H4): Die Detailseite ist die Lesefläche der Bibliothek geworden; die Kollisions-Auskunft
+ * steht im Abschnitt „Konflikt" hinter der Zeile „Mehr"
+ * (`components/bibliothek/MehrAbschnitte.tsx:386-388`), zugeklappt als Vorgabe. Die ZUSAGE von
+ * JOB 3025 ist davon unberührt — sie handelt vom WORTLAUT der Auskunft, nicht von ihrer Tiefe im
+ * Baum. Aufgeklappt wird in `mount()`; hier wird nur noch gemessen.
+ */
 function bereich(): HTMLElement {
+  mehrAufklappen("konflikt");
   const el = container.querySelector<HTMLElement>('[data-testid="job3025-kollision"]');
   if (!el) {
     throw new Error("Der Kollisionsbereich fehlt auf der Detailseite");
@@ -477,15 +514,23 @@ describe("JOB 3025 · (i) nur am EIGENEN Objekt", () => {
     expect(seite).not.toContain(i18n.t("kollision.detail.title"));
   });
 
+  // JOB 3063 (H4) — DER SCRUM-357-BANNER IST EIN SATZ GEWORDEN, KEIN KASTEN MEHR.
+  //
+  // Der Eigentümer hat am 04.09.2026 entschieden (AUFTRAG 3063 §5, Lieferung 5): der Konflikt-Hinweis
+  // erscheint nur im Fall, und dann als EIN Satz über dem Titel. Die Überschriftzeile
+  // `conflict.impact.truthTitle` steht deshalb nicht mehr auf der Fläche; die AUSSAGE des Banners
+  // steht weiter da — als `conflict.impact.truthHint` (`components/bibliothek/BibliothekLesen.tsx:537`).
+  // Gemessen wird ab hier der Satz, der die Nutzbarkeit einschränkt. Das ist die Zusage von
+  // SCRUM-357; die Überschrift war ihre Verpackung.
   it("R-i3 · fremdes Objekt mit SICHTBAREM Konflikt: SCRUM-357 bleibt, die A27-Fläche fehlt", async () => {
-    // Die Abgrenzung wird hier gemessen und nicht behauptet: der Banner spricht zum LESER über die
+    // Die Abgrenzung wird hier gemessen und nicht behauptet: der Satz spricht zum LESER über die
     // Nutzbarkeit und gilt für jedes Objekt; die A27-Fläche spricht zur Verfasserin.
     box.autor = "u2";
     box.kanal.conflicts = async () => [KONFLIKT_EINTRAG];
     await mount();
     const seite = (container.textContent ?? "").replace(/\s+/g, " ");
-    expect(seite, "der SCRUM-357-Banner muss am fremden Objekt stehen bleiben").toContain(
-      i18n.t("conflict.impact.truthTitle"),
+    expect(seite, "der SCRUM-357-Satz muss am fremden Objekt stehen bleiben").toContain(
+      i18n.t("conflict.impact.truthHint"),
     );
     expect(bereichVorhanden()).toBe(false);
   });
@@ -495,8 +540,19 @@ describe("JOB 3025 · (i) nur am EIGENEN Objekt", () => {
     box.kanal.conflicts = async () => [KONFLIKT_EINTRAG];
     await mount();
     const seite = (container.textContent ?? "").replace(/\s+/g, " ");
-    expect(seite).toContain(i18n.t("conflict.impact.truthTitle"));
+    expect(seite).toContain(i18n.t("conflict.impact.truthHint"));
     expect(text()).toContain(i18n.t("kollision.detail.konflikt"));
+  });
+
+  it("R-i5 · KALIBRIERUNG: ohne Konflikt steht der Satz NICHT da — er ist an den Fall gebunden", async () => {
+    // Ohne diesen Fall wären R-i3/R-i4 auch dann grün, wenn der Satz als Dauertext dastünde — und
+    // genau das ist die Sorte Beruhigung, die JOB 3025 und JOB 3063 beide verbieten.
+    box.autor = "u1";
+    box.kanal.conflicts = leerAntwort;
+    await mount();
+    const seite = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(seite).not.toContain(i18n.t("conflict.impact.truthHint"));
+    expect(seite).not.toContain(i18n.t("conflict.impact.hint"));
   });
 });
 

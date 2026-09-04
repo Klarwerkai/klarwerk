@@ -41,6 +41,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -62,6 +67,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { eintragText, menueOeffnen } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -95,16 +101,6 @@ function res(key: string): string {
   return String(i18n.getResource("de", "translation", key));
 }
 
-function guideToggle(): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").includes(res("kg.library.title")),
-  );
-  if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Erklärbox-Toggle fehlt; DOM: ${container.textContent}`);
-  }
-  return btn;
-}
-
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   window.localStorage.clear();
@@ -115,60 +111,43 @@ afterEach(() => {
   window.localStorage.clear();
 });
 
-describe("uxpol5: Reife-Erklärbox einklappbar (echter Library-Mount)", () => {
-  it("(a) erster Besuch: Erklärung offen; Toggle klappt sie ein (Titel bleibt)", () => {
+// ================================================================================================
+// JOB 3063 (H4) — DIE ERKLÄRBOX IST WEG, UND DAS IST DER GEGENSTAND DIESES FALLS GEWORDEN.
+// ================================================================================================
+//
+// WAS HIER FRÜHER STAND: drei Fälle über eine einklappbare Onboarding-Karte „Reife der Treffer“ mit
+// zwei erklärten Plaketten (uxpol5 Punkt 3, uxpol6 GELB 3.1 zur Disclosure-Semantik).
+//
+// WARUM SIE NICHT MEHR STEHEN KÖNNEN: Pedi am 04.09. über die heutige Web-App — „Text über Text
+// über Text. Die Anwendung selbst macht ungefähr 10 % des Ganzen aus.“ Die Karte war genau das:
+// 296 Zeichen Erklärtext über der Trefferliste, bei EINEM Wissensobjekt im Bestand. JOB 3063 hat
+// sie ersatzlos entfernt (Auftrag §5, Lieferung 6). Ein Fall, der ihr Verhalten prüft, prüfte ab
+// jetzt eine Fläche, die es nicht gibt.
+//
+// WAS BLEIBT UND HIER GEPRÜFT WIRD: die Reife-VOKABEL selbst ist nicht verschwunden — sie ist eine
+// echte Auskunft über den Bestand und steht weiter im Menü „Filter“ als Dimension. Verschwunden ist
+// nur ihre Erklärung im Sichtfeld. Genau diese zwei Sätze hält dieser Fall fest.
+describe("JOB 3063 · die Reife-Erklärbox ist abgelöst — die Reife selbst nicht", () => {
+  it("die Erklärkarte steht nicht mehr auf der Fläche (weder Titel noch Plaketten-Erklärung)", () => {
     mount();
-    // Beim ersten Besuch offen: Titel UND Erklärungstext (GESICHERT-Plakette) sichtbar.
-    expect(container.textContent).toContain(res("kg.library.title"));
-    expect(container.textContent).toContain(res("kg.secured.label"));
-    // aria-expanded spiegelt den offenen Zustand.
-    expect(guideToggle().getAttribute("aria-expanded")).toBe("true");
-    // Einklappen: der Titel bleibt, die Erklärungs-Plakette verschwindet.
-    act(() => {
-      guideToggle().click();
-    });
-    expect(container.textContent).toContain(res("kg.library.title"));
-    expect(container.textContent).not.toContain(res("kg.secured.label"));
-    expect(guideToggle().getAttribute("aria-expanded")).toBe("false");
+    const text = container.textContent ?? "";
+    expect(text).not.toContain(res("kg.library.title"));
+    expect(text).not.toContain(res("kg.secured.label"));
+    expect(text).not.toContain(res("kg.secured.body"));
   });
 
-  it("(b) „Reload“ nach dem ersten Besuch: standardmäßig eingeklappt (Zustand gemerkt)", () => {
-    mount(); // erster Besuch schreibt den Dauer-Standard (eingeklappt) fest
-    unmount();
-    // Frischer Mount über denselben localStorage → jetzt eingeklappt (Titel ja, Erklärung nein).
+  it("die Reife ist als FILTER erreichbar geblieben — mit ihren Werten und Zählern", () => {
     mount();
-    expect(container.textContent).toContain(res("kg.library.title"));
-    expect(container.textContent).not.toContain(res("kg.secured.label"));
-    expect(guideToggle().getAttribute("aria-expanded")).toBe("false");
-  });
-
-  // AUFTRAG-uxpol6 (bens GELB 3.1): gültige Disclosure-Semantik — die Überschrift ist ein echtes h2,
-  // der Button steckt IM h2 (kein block-Element mehr als Button-Kind) und ist über aria-controls mit
-  // dem kontrollierten Inhalt (stabile ID) verbunden.
-  it("(c) Semantik: h2-Überschrift mit innenliegendem Button, aria-expanded + aria-controls", () => {
-    mount();
-    // Überschrift ist ein per Überschriftennavigation erreichbares, lesbares h2.
-    const heading = [...container.querySelectorAll("h2")].find((h) =>
-      (h.textContent ?? "").includes(res("kg.library.title")),
+    const menue = menueOeffnen(container, "bib-menue-filter");
+    const reife = [...menue.querySelectorAll("details")].find((d) =>
+      (d.querySelector("summary")?.textContent ?? "").includes(res("lib.facet.maturity")),
     );
-    expect(heading).toBeTruthy();
-    // Der Toggle-Button liegt IM h2 (übliches Disclosure-Muster h2 > button) …
-    const btn = heading?.querySelector("button");
-    expect(btn instanceof HTMLButtonElement).toBe(true);
-    // … und enthält selbst KEIN block-Element mehr (Button erlaubt nur phrasing content).
-    expect(btn?.querySelector("h1,h2,h3,h4,h5,h6,div,p")).toBeNull();
-    // aria-expanded + aria-controls zeigen auf den kontrollierten Inhalt (stabile ID).
-    expect(btn?.getAttribute("aria-expanded")).toBe("true");
-    const panelId = btn?.getAttribute("aria-controls");
-    expect(panelId).toBeTruthy();
-    const panel = panelId ? document.getElementById(panelId) : null;
-    expect(panel).toBeTruthy();
-    expect(panel?.textContent).toContain(res("kg.secured.label"));
-    // Eingeklappt bleibt die Verknüpfung stabil (gleiche ID im aria-controls).
-    act(() => {
-      guideToggle().click();
-    });
-    expect(guideToggle().getAttribute("aria-controls")).toBe(panelId);
-    expect(guideToggle().getAttribute("aria-expanded")).toBe("false");
+    expect(reife, `Untermenü „Reife“ fehlt; DOM: ${menue.textContent}`).toBeTruthy();
+    const werte = [...(reife?.querySelectorAll("[role=menuitemcheckbox]") ?? [])].map((e) =>
+      eintragText(e),
+    );
+    expect(werte.length).toBeGreaterThan(0);
+    // Der Wert des einen offenen Wissensobjekts, mit seinem Kontext-Zähler.
+    expect(werte.join(" ")).toContain(" · 1");
   });
 });

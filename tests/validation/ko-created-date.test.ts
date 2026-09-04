@@ -41,7 +41,8 @@ describe("WP-D10 Fix 4: Verdrahtung Karte + Detail, i18n", () => {
 
   it("KO-Detail zeigt das Erstellungsdatum ebenfalls (Signale-/Kopfzeile)", () => {
     const src = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/KnowledgeDetail.tsx"),
+      // JOB 3063 (H4): das Erstellungsdatum steht in der Meta-Zeile der Lesefläche.
+      resolve(process.cwd(), "apps/web/src/components/bibliothek/BibliothekLesen.tsx"),
       "utf8",
     );
     expect(src).toContain("formatKoTimestamp(ko.createdAt, i18n.language)");

@@ -109,6 +109,17 @@ function brueckeAufbauen(): void {
         );
       }
     }
+    // JOB 3063 (H4): die Zeitangabe steht auf der Leseflaeche, und die holt ihren Eintrag EINZELN
+    // (`GET /api/kos/:id`). Der Transportverlust aus F4 muss deshalb auch auf diesem Weg gelten —
+    // sonst prueft der Fall eine Lage, die es so nicht gibt.
+    if (
+      bruecke.ohneZeitFuer &&
+      res.statusCode === 200 &&
+      url.includes(`/kos/${bruecke.ohneZeitFuer}`)
+    ) {
+      const einzeln = JSON.parse(body) as Record<string, unknown>;
+      body = JSON.stringify({ ...einzeln, createdAt: undefined });
+    }
     return {
       ok: res.statusCode < 400,
       status: res.statusCode,
@@ -209,24 +220,54 @@ async function mount(): Promise<void> {
   });
 }
 
-/**
- * Die Karte eines Datensatzes: das AEUSSERSTE Element, das SEINEN Titel traegt und den Titel
- * keines anderen Datensatzes. Diese Definition kommt ohne Klassennamen und ohne Reihenfolge aus —
- * sie ist genau die Zuordnung, um die es geht: gehoert die Zeile zu DIESEM Datensatz.
- */
-function karteMitTitel(titel: string, andere: string[]): HTMLElement | undefined {
-  return [...container.querySelectorAll<HTMLElement>("*")].find(
-    (el) =>
-      el.textContent?.includes(titel) === true &&
-      !andere.some((fremd) => el.textContent?.includes(fremd) === true),
+// ==================================================================================================
+// JOB 3063 (H4) — DIE ZEILE HAENGT NICHT MEHR AN EINER KARTE, SONDERN AN DER LESEFLAECHE.
+// ==================================================================================================
+//
+// Die Bibliothek ist seit dem Umbau Liste plus Lesefläche: links Punkt, Titel und „Bereich · Status",
+// rechts der GEWAEHLTE Eintrag mit seiner Meta-Zeile „Stufe · Bereich · Autor · Datum"
+// (`components/bibliothek/BibliothekLesen.tsx:394`). Die Frage dieses Auftrags — „gehoert der
+// angezeigte Wert zu DIESEM Datensatz?" — wird deshalb ab hier so gestellt, wie ein Mensch sie
+// stellt: Eintrag anklicken, Meta-Zeile lesen, naechsten Eintrag anklicken, wieder lesen. Das ist
+// dieselbe Zuordnungsfrage, nur an der Flaeche, die es heute gibt.
+
+/** Die Listenzeile eines Datensatzes — ueber ihren sichtbaren Titel, nicht ueber eine Klasse. */
+function listenZeile(titel: string): HTMLElement | undefined {
+  return [...container.querySelectorAll<HTMLElement>('[data-testid="bib-zeile"]')].find(
+    (z) => (z.querySelector('[data-bib-text="zeile-titel"]')?.textContent ?? "").trim() === titel,
   );
 }
 
-/** Die Zeitzeilen des gesamten Baums — Anzahl und Texte. */
-function zeitzeilen(): string[] {
-  return [...container.querySelectorAll('[data-testid="ko-zeitstempel"]')].map(
-    (el) => el.textContent ?? "",
-  );
+/**
+ * Einen Eintrag waehlen — der Weg des Menschen: ein Klick auf die Zeile. Die Leseflaeche holt ihren
+ * Eintrag danach EINZELN vom Server (`GET /api/kos/:id`), also wird hier auf die Antwort gewartet.
+ */
+async function waehle(titel: string): Promise<void> {
+  const zeile = listenZeile(titel);
+  if (zeile === undefined) {
+    throw new Error(`Listenzeile „${titel}" fehlt; DOM: ${container.textContent}`);
+  }
+  await act(async () => {
+    zeile.click();
+    await flush();
+  });
+  // Die Abfrage der Leseflaeche laeuft ueber die echte HTTP-Bruecke; sie braucht nach dem Klick
+  // noch Durchlaeufe, bis Antwort und Render durch sind.
+  for (let i = 0; i < 3 && container.querySelector('[data-testid="bib-titel"]') === null; i++) {
+    await act(async () => {
+      await flush();
+    });
+  }
+}
+
+/** Der Titel, der gerade auf der Leseflaeche steht. */
+function leseTitel(): string {
+  return (container.querySelector('[data-testid="bib-titel"]')?.textContent ?? "").trim();
+}
+
+/** Die Meta-Zeile der Leseflaeche — dort steht die Erstellzeit. */
+function metaZeile(): string {
+  return (container.querySelector('[data-testid="bib-meta"]')?.textContent ?? "").trim();
 }
 
 describe("JOB 528 · die Erstellzeit reist vom Datensatz bis in die Bibliothekszeile", () => {
@@ -265,71 +306,68 @@ describe("JOB 528 · die Erstellzeit reist vom Datensatz bis in die Bibliotheksz
     ).toBe(ANGELEGT_AM.toISOString());
   });
 
-  it("F2 · DOM: die Zeitzeile haengt an der Karte GENAU dieses Datensatzes und traegt den Wert", async () => {
+  it("F2 · DOM: die Zeitangabe steht in der Meta-Zeile GENAU dieses Datensatzes", async () => {
     await objektAnlegen("Ventilpruefung");
     await objektAnlegen("Druckpruefung");
     await mount();
 
-    const karte = karteMitTitel("Ventilpruefung", ["Druckpruefung"]);
-    expect(karte, "die Karte des Datensatzes steht im DOM").toBeDefined();
-    const zeile = karte?.querySelector('[data-testid="ko-zeitstempel"]');
-    expect(zeile, "die Zeitzeile haengt an SEINER Karte, nicht irgendwo im Baum").not.toBeNull();
-    expect(zeile?.textContent).toContain(formatKoTimestamp(ANGELEGT_AM.toISOString(), "de"));
+    await waehle("Ventilpruefung");
+    expect(leseTitel(), "die Leseflaeche zeigt den gewaehlten Datensatz").toBe("Ventilpruefung");
+    expect(metaZeile()).toContain(formatKoTimestamp(ANGELEGT_AM.toISOString(), "de"));
   });
 
-  it("F3 · zwei Datensaetze: jede Zeile steht an ihrer eigenen Karte", async () => {
+  it("F3 · zwei Datensaetze: jeder traegt seine Zeitangabe an SEINER Meta-Zeile", async () => {
     await objektAnlegen("Ventilpruefung");
     await objektAnlegen("Druckpruefung");
     await mount();
 
-    for (const [titel, fremd] of [
-      ["Ventilpruefung", "Druckpruefung"],
-      ["Druckpruefung", "Ventilpruefung"],
-    ]) {
-      const karte = karteMitTitel(titel as string, [fremd as string]);
-      expect(karte, `Karte ${titel} im DOM`).toBeDefined();
-      expect(
-        karte?.querySelector('[data-testid="ko-zeitstempel"]'),
-        `Zeitzeile an der Karte ${titel}`,
-      ).not.toBeNull();
+    for (const titel of ["Ventilpruefung", "Druckpruefung"]) {
+      await waehle(titel);
+      expect(leseTitel(), `die Leseflaeche zeigt ${titel}`).toBe(titel);
+      expect(metaZeile(), `Zeitangabe an der Meta-Zeile von ${titel}`).toContain(
+        formatKoTimestamp(ANGELEGT_AM.toISOString(), "de"),
+      );
     }
-    expect(zeitzeilen().length, "genau zwei Zeilen, keine verirrte dritte").toBe(2);
+    // Genau EINE Meta-Zeile, keine verirrte zweite: die Leseflaeche zeigt immer einen Eintrag.
+    expect(container.querySelectorAll('[data-testid="bib-meta"]').length).toBe(1);
   });
 
-  it("F4 · NULLFALL: verliert ein Datensatz `createdAt` auf dem Transport, faellt SEINE Zeile weg — und kein 1970 erscheint", async () => {
+  it("F4 · NULLFALL: verliert ein Datensatz `createdAt` auf dem Transport, faellt SEINE Angabe weg — und kein 1970 erscheint", async () => {
     const ohne = await objektAnlegen("Ohne Zeitangabe");
     await objektAnlegen("Mit Zeitangabe");
     bruecke.ohneZeitFuer = ohne;
     await mount();
 
-    const karteOhne = karteMitTitel("Ohne Zeitangabe", ["Mit Zeitangabe"]);
-    const karteMit = karteMitTitel("Mit Zeitangabe", ["Ohne Zeitangabe"]);
-    expect(karteOhne, "die wertlose Karte steht trotzdem im DOM").toBeDefined();
-    expect(
-      karteOhne?.querySelector('[data-testid="ko-zeitstempel"]'),
-      "ohne Wert KEINE Zeitzeile — kein Ersatzwert",
-    ).toBeNull();
-    expect(
-      karteMit?.querySelector('[data-testid="ko-zeitstempel"]'),
-      "der Nachbar mit Wert traegt seine Zeile unveraendert",
-    ).not.toBeNull();
+    const wert = formatKoTimestamp(ANGELEGT_AM.toISOString(), "de");
+    await waehle("Ohne Zeitangabe");
+    expect(leseTitel()).toBe("Ohne Zeitangabe");
+    const ohneZeile = metaZeile();
+    expect(ohneZeile, "ohne Wert KEINE Zeitangabe — kein Ersatzwert").not.toContain(wert);
+    expect(ohneZeile.endsWith("·"), "kein leerhaengendes Trennzeichen").toBe(false);
+
+    await waehle("Mit Zeitangabe");
+    expect(leseTitel()).toBe("Mit Zeitangabe");
+    const mitZeile = metaZeile();
+    expect(mitZeile, "der Nachbar mit Wert traegt seine Angabe unveraendert").toContain(wert);
+    // Der Unterschied zwischen beiden Zeilen ist GENAU das Datum.
+    expect(`${ohneZeile} · ${wert}`.replace("Ohne", "Mit")).toBe(mitZeile.replace("Ohne", "Mit"));
     expect(container.textContent, "nirgends ein 01.01.1970").not.toContain("1970");
-    expect(zeitzeilen().length, "genau eine Zeile, nicht zwei").toBe(1);
   });
 
-  it("F5 · SPRACHEN: DE und EN formatieren denselben Wert deterministisch und verschieden beschriftet", async () => {
+  it("F5 · SPRACHEN: DE und EN formatieren denselben Wert deterministisch", async () => {
     await objektAnlegen("Ventilpruefung");
     await mount();
-    const de = zeitzeilen()[0] ?? "";
+    await waehle("Ventilpruefung");
+    const de = metaZeile();
     expect(de).toContain(formatKoTimestamp(ANGELEGT_AM.toISOString(), "de"));
 
     await act(async () => {
       await i18n.changeLanguage("en");
       await flush();
     });
-    const en = zeitzeilen()[0] ?? "";
+    const en = metaZeile();
     expect(en).toContain(formatKoTimestamp(ANGELEGT_AM.toISOString(), "en"));
-    expect(en, "die Beschriftung wechselt mit der Sprache").not.toBe(de);
+    expect(en, "die Schreibweise wechselt mit der Sprache").not.toBe(de);
   });
 
   it("F6 · ZEITSTABILITAET: die Uhr steht VOR dem Render zehn Jahre weiter — angezeigt wird trotzdem T0", async () => {
@@ -361,7 +399,8 @@ describe("JOB 528 · die Erstellzeit reist vom Datensatz bis in die Bibliotheksz
     await neuAnmelden();
     await mount();
 
-    const zeile = zeitzeilen()[0] ?? "";
+    await waehle("Ventilpruefung");
+    const zeile = metaZeile();
     const erwartetT0 = formatKoTimestamp(T0.toISOString(), "de");
     const waereJetzt = formatKoTimestamp(T0_PLUS_10.toISOString(), "de");
 
@@ -380,13 +419,14 @@ describe("JOB 528 · die Erstellzeit reist vom Datensatz bis in die Bibliotheksz
     const T0_PLUS_10 = new Date(2036, 2, 14, 9, 47, 0);
     await objektAnlegen("Ventilpruefung");
     await mount();
+    await waehle("Ventilpruefung");
 
     vi.setSystemTime(T0_PLUS_10);
     await act(async () => {
       await i18n.changeLanguage("en");
       await flush();
     });
-    const nachRerender = zeitzeilen()[0] ?? "";
+    const nachRerender = metaZeile();
 
     expect(nachRerender, "der neue Renderdurchlauf zeigt weiterhin T0").toContain(
       formatKoTimestamp(ANGELEGT_AM.toISOString(), "en"),
@@ -396,9 +436,10 @@ describe("JOB 528 · die Erstellzeit reist vom Datensatz bis in die Bibliotheksz
     );
   });
 
-  it("F7 · KALIBRIERUNG: ohne angelegten Datensatz gibt es keine Zeitzeile — die Faelle oben messen wirklich etwas", async () => {
+  it("F7 · KALIBRIERUNG: ohne angelegten Datensatz gibt es keine Meta-Zeile — die Faelle oben messen wirklich etwas", async () => {
     // Die Sorte Fehler, die einen Waechter still macht: ein Selektor, der immer trifft.
     await mount();
-    expect(zeitzeilen().length).toBe(0);
+    expect(container.querySelectorAll('[data-testid="bib-zeile"]').length).toBe(0);
+    expect(container.querySelectorAll('[data-testid="bib-meta"]').length).toBe(0);
   });
 });

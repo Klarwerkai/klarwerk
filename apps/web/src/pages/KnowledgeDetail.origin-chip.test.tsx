@@ -9,6 +9,12 @@
 //
 // Die Seite haengt an vielen Haken; gemockt wird deshalb der EINE Zugang `../api/hooks` — nicht der
 // Renderer und nicht die Chip-Bedingung. Was hier geprueft wird, ist die echte Komponente.
+//
+// JOB 3063 (H4) — UMGEZOGEN, NICHT ABGESCHWÄCHT. `/wissen/:id` ist seit H4 dieselbe Fläche wie
+// `/bibliothek`, mit dem Eintrag der Adresse vorgewaehlt. Der Chip steht auf der Lesefläche hinter
+// der Zeile „Mehr" im Abschnitt „Provenienz" (`components/bibliothek/MehrAbschnitte.tsx:688`).
+// Dieser Test klappt den Abschnitt IN JEDEM FALL auf — auch in den Verneinungen. Sonst hiesse „kein
+// Chip" nur „der Abschnitt ist zu", und die Gegenrichtung bewiese nichts mehr.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../api/types";
@@ -122,7 +128,35 @@ afterEach(() => {
   lage.ko = null;
 });
 
+/**
+ * Die Zeile „Mehr" aufklappen und den Abschnitt „Provenienz" öffnen. `open = true` allein genügt
+ * nicht: der Abschnitt zeichnet seinen Inhalt erst, wenn React das Aufklappen über `onToggle`
+ * mitbekommt, und jsdom stellt `toggle` nur in die Warteschlange. Der Test schickt das Ereignis
+ * deshalb selbst am Element (es steigt nicht auf).
+ */
+function provenienzOeffnen(): void {
+  const mehr = container.querySelector('[data-testid="bib-mehr"]');
+  if (!(mehr instanceof HTMLButtonElement)) {
+    throw new Error(`Zeile „Mehr“ fehlt; DOM: ${container.textContent}`);
+  }
+  if (mehr.getAttribute("aria-expanded") !== "true") {
+    act(() => {
+      mehr.click();
+    });
+  }
+  const abschnitt = container.querySelector('[data-bib-abschnitt="provenienz"]');
+  if (!(abschnitt instanceof HTMLDetailsElement)) {
+    throw new Error("Abschnitt „Provenienz“ fehlt");
+  }
+  act(() => {
+    abschnitt.open = true;
+    abschnitt.dispatchEvent(new Event("toggle"));
+  });
+}
+
+/** Die Chips am OFFENEN Abschnitt — die Verneinung zählt nur, wenn der Abschnitt aufgeklappt ist. */
 function chips(): HTMLElement[] {
+  provenienzOeffnen();
   return [...container.querySelectorAll(CHIP)] as HTMLElement[];
 }
 

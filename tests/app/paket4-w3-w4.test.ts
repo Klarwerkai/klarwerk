@@ -34,15 +34,19 @@ function ko(over: Partial<KnowledgeObject> & { id: string; title: string }): Kno
   } as KnowledgeObject;
 }
 
-describe("W3 · Bibliothek-Erststart-Block nur bei leerem Bestand", () => {
-  it("Library.tsx macht den Erststart-Block (EmptyStateCtas) vom leeren Bestand abhängig", () => {
-    const src = read("apps/web/src/pages/Library.tsx");
-    // Der generische Block erscheint NUR bei all.data.length === 0 (kein KO), sonst undefined.
-    expect(src).toContain(
-      '(all.data?.length ?? -1) === 0 ? <EmptyStateCtas context="library" /> : undefined',
-    );
-    // Die ehrliche Treffer-Meldung bleibt (Suche vs. leer differenziert).
-    expect(src).toContain('trimmedQ ? t("lib.emptyQuery", { q: trimmedQ }) : t("lib.empty")');
+describe("W3 · der Leerzustand der Bibliothek unterscheidet „nichts gesucht“ von „nichts gefunden“", () => {
+  it("die Liste sagt bei aktiver Suche etwas anderes als bei leerem Bestand", () => {
+    // JOB 3063 (H4) — WAS HIER FRÜHER STAND: der Pin auf `<EmptyStateCtas context="library" />`
+    // hinter `(all.data?.length ?? -1) === 0` und auf die zwei langen Nulltreffer-Sätze
+    // (`lib.empty`/`lib.emptyQuery`). Beides gibt es nicht mehr: der Leerzustand der Liste ist
+    // Pedis Vorgabe vom 04.09. gefolgt — EIN Satz plus EIN Knopf, kein Erklärabsatz. Die
+    // Unterscheidung selbst, um die es W3 ging, ist geblieben.
+    const src = read("apps/web/src/components/bibliothek/BibliothekListe.tsx");
+    expect(src).toContain('q.trim() ? t("lib.liste.leerSuche") : t("lib.liste.leer")');
+    // Der Weg ins Erfassen bleibt im Leerzustand erreichbar (der frühere Erststart-Block).
+    const flaeche = read("apps/web/src/components/bibliothek/BibliothekFlaeche.tsx");
+    expect(flaeche).toContain("leerAktion=");
+    expect(flaeche).toContain('t("lib.liste.erfassen")');
   });
 });
 

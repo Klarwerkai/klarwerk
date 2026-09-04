@@ -53,6 +53,7 @@ import {
   roleAllows,
   routePathAllows,
 } from "../../apps/web/src/app/navigation";
+import { fragenHref } from "../../apps/web/src/components/bibliothek/fragen";
 import { askAnswerHref } from "../../apps/web/src/lib/askQuestion";
 // AUFTRAG-mega71 Block E: die benannten Herkünfte der Ask-Fläche — die Zielmengen werden aus den
 // PRODUKTIVEN Funktionen gelesen, nicht abgeschrieben (Stufe-2-Regel dieses Sammlers).
@@ -62,7 +63,7 @@ import { CAPTURE_FRONT_DOOR_ROUTE } from "../../apps/web/src/lib/captureFrontDoo
 import { captureNextSteps } from "../../apps/web/src/lib/captureSuccess";
 import { OWN_KNOWLEDGE_FILTER, ownKnowledgeEmptyHint } from "../../apps/web/src/lib/demoKnowledge";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
-import { libraryUseCta } from "../../apps/web/src/lib/libraryMaturity";
+import { reworkValidationHref } from "../../apps/web/src/lib/reviewReworkContext";
 
 const WEB_SRC = join(__dirname, "../../apps/web/src");
 const lies = (p: string): string => readFileSync(p, "utf8");
@@ -82,6 +83,26 @@ function zeileVon(src: string, index: number): number {
 
 // ── Stufe 0: die Flächen samt Rollenschwelle — aus routes.tsx erhoben, nicht abgeschrieben ──────
 const FLAECHEN = ["Library", "Capture", "Ask"] as const;
+
+// JOB 3063 (H4) — DER SAMMLER FOLGT DER FLÄCHE, NICHT DEM DATEINAMEN.
+//
+// Bis hierher galt „eine Fläche = eine Datei unter `pages/`". Seit H4 ist die Bibliothek aus
+// mehreren Bauteilen gebaut (Liste, Lesefläche, „Mehr", die Klammer darum), und `pages/Library.tsx`
+// ist nur noch der Adress-Adapter. Läse der Sammler weiterhin allein die Seitendatei, liefe er für
+// die Bibliothek STILL LEER — genau der Ausgang, gegen den die erste Zusicherung unten steht
+// (`vorkommen.length > 3`). Die Rollenschwelle bleibt unverändert die der SEITE: die Bauteile
+// werden nur von ihr gerendert.
+const DATEIEN: Record<(typeof FLAECHEN)[number], readonly string[]> = {
+  Library: [
+    "pages/Library.tsx",
+    "components/bibliothek/BibliothekFlaeche.tsx",
+    "components/bibliothek/BibliothekListe.tsx",
+    "components/bibliothek/BibliothekLesen.tsx",
+    "components/bibliothek/MehrAbschnitte.tsx",
+  ],
+  Capture: ["pages/Capture.tsx"],
+  Ask: ["pages/Ask.tsx"],
+};
 
 const routesQuelle = ohneKommentare(lies(join(WEB_SRC, "routes.tsx")));
 
@@ -122,15 +143,24 @@ function rollenDerFlaeche(datei: string): Role[] {
 }
 
 // ── Stufe 2 (Vorbereitung): benannte Herkunft je to=-Ausdruck, Ziele aus den Produkttabellen ────
-// Minimal-KOs nur so weit, wie libraryUseCta sie wirklich liest (Status → Reife-Abzweig).
-const OFFENES_KO = { status: "offen" } as unknown as KnowledgeObject;
-const VALIDIERTES_KO = { status: "validiert" } as unknown as KnowledgeObject;
+// Minimal-KOs nur so weit, wie `fragenHref` sie wirklich liest (Kennung und Vertraulichkeit).
+const OFFENES_KO = { id: "k-offen", status: "offen" } as unknown as KnowledgeObject;
+const VALIDIERTES_KO = { id: "k-validiert", status: "validiert" } as unknown as KnowledgeObject;
 
 interface Herkunft {
   muster: RegExp;
   herkunft: string;
   ziele: () => string[];
 }
+
+// A27 · JOB 3025: die zwei Wege, die `eigeneKollisionDetail` kennen kann. Sie werden aus der
+// PRODUKTDATEI gelesen und nicht abgeschrieben — `KollisionsWeg` ist dort nicht exportiert, und
+// eine hier gepflegte Zweitliste wäre genau die Drift, gegen die dieser Sammler steht.
+const KOLLISIONS_WEGE: string[] = [
+  ...lies(join(WEB_SRC, "lib/eigeneKollision.ts")).matchAll(
+    /const WEG_[A-Z]+: KollisionsWeg = \{ to: "([^"]+)"/g,
+  ),
+].map((m) => m[1] as string);
 
 const HERKUNFT: Record<(typeof FLAECHEN)[number], Herkunft[]> = {
   Library: [
@@ -145,21 +175,39 @@ const HERKUNFT: Record<(typeof FLAECHEN)[number], Herkunft[]> = {
       ziele: () => knowledgeGuidance("library").items.map((i) => i.to),
     },
     {
-      muster: /^ownEmpty\.to$/,
-      herkunft: "lib/demoKnowledge.ts · ownKnowledgeEmptyHint",
+      // JOB 3063 (H4): der Leerzustand ist EIN Satz plus EIN Knopf. Unter der Linse „Eigenes
+      // Wissen" führt der Knopf dorthin, wo eigenes Wissen entsteht — sonst nach /erfassen.
+      muster: /^ownEmpty \? ownEmpty\.to : "\/erfassen"$/,
+      herkunft: "lib/demoKnowledge.ts · ownKnowledgeEmptyHint (sonst /erfassen)",
       ziele: () => {
         const hint = ownKnowledgeEmptyHint({ filter: OWN_KNOWLEDGE_FILTER, count: 0 });
-        return hint ? [hint.to] : [];
+        return hint ? [hint.to, "/erfassen"] : ["/erfassen"];
       },
     },
     {
-      muster: /^demoHref\(useCta\.href, params\)$/,
-      herkunft: "lib/libraryMaturity.ts · libraryUseCta + Konflikt-Abzweig (/konflikte)",
+      // JOB 3063 (H4, Runde 5): der Knopf der Lesefläche heißt für JEDEN Eintrag „Fragen" und
+      // führt nach `/fragen?…&ko=<id>`. Der frühere Weg über `libraryUseCta` verzweigte über die
+      // Reife und schickte offene Einträge nach `/validierung` — das war die zweite Wahrheit, die
+      // dieser Umbau abschafft (Codex an Runde 4). Beide Ausgänge der EINEN verbliebenen
+      // Verzweigung (Vertraulichkeit) stehen hier, damit die Zieltabelle vollständig ist.
+      muster: /^fragen$/,
+      herkunft: "components/bibliothek/fragen.ts · fragenHref",
       ziele: () => [
-        libraryUseCta(OFFENES_KO).href,
-        libraryUseCta(VALIDIERTES_KO, "Was gilt?").href,
-        "/konflikte",
+        fragenHref(OFFENES_KO.id, "Was gilt?", OFFENES_KO.confidentiality),
+        fragenHref(VALIDIERTES_KO.id, "Was gilt?", "vertraulich"),
       ],
+    },
+    {
+      // JOB 3063 (H4): der Rückweg aus der Nacharbeit (SCRUM-331), jetzt auf der Lesefläche.
+      muster: /^reworkValidationHref\(\)$/,
+      herkunft: "lib/reviewReworkContext.ts · reworkValidationHref",
+      ziele: () => [reworkValidationHref()],
+    },
+    {
+      // A27 · JOB 3025: der Weg der Verfasserin zu ihrer Kollision, jetzt im Abschnitt „Konflikt".
+      muster: /^kollisionsWeg\.to$/,
+      herkunft: "lib/eigeneKollision.ts · eigeneKollisionDetail().weg",
+      ziele: () => KOLLISIONS_WEGE,
     },
   ],
   Capture: [
@@ -210,6 +258,8 @@ function loeseTemplate(roh: string): string {
 }
 
 interface Vorkommen {
+  /** Die Bauteildatei — seit H4 kann eine Fläche aus mehreren bestehen. */
+  quelle: string;
   zeile: number;
   tag: string;
   roh: string;
@@ -219,7 +269,11 @@ interface Vorkommen {
 
 // ── Stufe 1: jedes to= samt tragendem Tag ───────────────────────────────────────────────────────
 function erhebe(datei: (typeof FLAECHEN)[number]): Vorkommen[] {
-  const src = ohneKommentare(lies(join(WEB_SRC, "pages", `${datei}.tsx`)));
+  return DATEIEN[datei].flatMap((pfad) => erhebeDatei(datei, pfad));
+}
+
+function erhebeDatei(datei: (typeof FLAECHEN)[number], pfad: string): Vorkommen[] {
+  const src = ohneKommentare(lies(join(WEB_SRC, pfad)));
   const out: Vorkommen[] = [];
   for (const m of src.matchAll(/\bto=(?:"([^"]*)"|\{((?:[^{}]|\$\{[^{}]*\})*)\})/g)) {
     const index = m.index ?? 0;
@@ -250,7 +304,7 @@ function erhebe(datei: (typeof FLAECHEN)[number]): Vorkommen[] {
         unbekannt = ausdruck;
       }
     }
-    out.push({ zeile: zeileVon(src, index), tag, roh: m[0], ziele, unbekannt });
+    out.push({ quelle: pfad, zeile: zeileVon(src, index), tag, roh: m[0], ziele, unbekannt });
   }
   return out;
 }
@@ -265,14 +319,14 @@ describe("mega70 D · kein bewachtes Ziel wird auf Library/Capture über einen r
         .filter(
           (v) => !["Link", "NavLink", "GuardedLink", "GuardedNavLink", "RoleLink"].includes(v.tag),
         )
-        .map((v) => `${datei}.tsx:${v.zeile}  <${v.tag} … ${v.roh}`);
+        .map((v) => `${v.quelle}:${v.zeile}  <${v.tag} … ${v.roh}`);
       expect(fremd).toEqual([]);
     });
 
     it(`${datei}: kein to=-Ausdruck ohne benannte Herkunft`, () => {
       const offen = vorkommen
         .filter((v) => v.unbekannt !== null)
-        .map((v) => `${datei}.tsx:${v.zeile}  ${v.roh}`);
+        .map((v) => `${v.quelle}:${v.zeile}  ${v.roh}`);
       expect(offen).toEqual([]);
     });
 
@@ -284,7 +338,7 @@ describe("mega70 D · kein bewachtes Ziel wird auf Library/Capture über einen r
           v.ziele.flatMap((ziel) =>
             rollen
               .filter((rolle) => !routePathAllows(ziel, rolle))
-              .map((rolle) => `${datei}.tsx:${v.zeile}  <${v.tag} to=…> → ${ziel} (${rolle})`),
+              .map((rolle) => `${v.quelle}:${v.zeile}  <${v.tag} to=…> → ${ziel} (${rolle})`),
           ),
         );
       expect(verstoesse).toEqual([]);

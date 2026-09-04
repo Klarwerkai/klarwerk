@@ -70,7 +70,9 @@ const STUFEN: (ExternalKnowledgeStage | null | undefined)[] = [
 
 /** Die zwei Flaechen, die dieselbe Entscheidung treffen. */
 const FLAECHEN = [
-  { name: "Pruefbereich", datei: "apps/web/src/pages/KnowledgeDetail.tsx" },
+  // JOB 3063 (H4): der Pruefbereich des Wissensobjekts liegt jetzt im Abschnitt „Externes Wissen"
+  // hinter der Zeile „Mehr" — dieselbe Entscheidung, derselbe Banner, anderer Ort.
+  { name: "Pruefbereich", datei: "apps/web/src/components/bibliothek/MehrAbschnitte.tsx" },
   { name: "Erfassen", datei: "apps/web/src/pages/Capture.tsx" },
 ];
 

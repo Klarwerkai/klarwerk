@@ -94,6 +94,31 @@ const flush = async (): Promise<void> => {
 
 const pageText = (): string => (container.textContent ?? "").replace(/\s+/g, " ");
 
+/**
+ * JOB 3063 (H4): `/wissen/:id` ist die Leseflaeche der Bibliothek. Der Abschnitt „Konflikt" liegt
+ * hinter der Zeile „Mehr" und ist zugeklappt die Vorgabe. `open = true` allein genuegt nicht:
+ * React zeichnet den Inhalt erst mit dem `toggle`-Ereignis, und jsdom stellt es nur in die
+ * Warteschlange — der Test schickt es deshalb selbst.
+ */
+function konfliktAbschnittOeffnen(): void {
+  const mehr = container.querySelector('[data-testid="bib-mehr"]');
+  if (mehr instanceof HTMLButtonElement && mehr.getAttribute("aria-expanded") !== "true") {
+    act(() => {
+      mehr.click();
+    });
+  }
+  const abschnitt = container.querySelector('[data-bib-abschnitt="konflikt"]');
+  if (!(abschnitt instanceof HTMLDetailsElement)) {
+    throw new Error(`Abschnitt „Konflikt" fehlt; DOM: ${container.textContent}`);
+  }
+  if (!abschnitt.open) {
+    act(() => {
+      abschnitt.open = true;
+      abschnitt.dispatchEvent(new Event("toggle"));
+    });
+  }
+}
+
 async function mount(
   element: JSX.Element,
   opts: { path?: string; route?: string } = {},
@@ -245,6 +270,10 @@ describe("mega29 C1 · das KO-Detail zeigt die Abdeckung des Laufs, der über di
     data.ko = makeKo(CAPPED);
     await mount(createElement(KnowledgeDetail), { path: "/wissen/k1", route: "/wissen/:id" });
     expect(pageText()).toContain("Pumpe P2 Druckverlust");
+    // JOB 3063 (H4): die Deckungsnotiz steht weiterhin DIREKT bei der Konfliktaussage, die sie
+    // einschränkt — und die liegt seit dem Umbau im Abschnitt „Konflikt" hinter der Zeile „Mehr"
+    // (`components/bibliothek/MehrAbschnitte.tsx:428`). Aufgeklappt wird hier, gemessen wie bisher.
+    konfliktAbschnittOeffnen();
     // mega29 B3: die Zahl ist eine konservative Mindestabdeckung und heißt auch so.
     expect(pageText()).toContain("mindestens");
     expect(pageText()).toContain("12479");
@@ -264,6 +293,9 @@ describe("mega29 C1 · das KO-Detail zeigt die Abdeckung des Laufs, der über di
     });
     await mount(createElement(KnowledgeDetail), { path: "/wissen/k1", route: "/wissen/:id" });
     expect(pageText()).toContain("Pumpe P2 Druckverlust");
+    // Auch die Verneinung wird am OFFENEN Abschnitt gemessen — sonst hiesse „schweigt" nur
+    // „der Abschnitt ist zu", und die Kalibrierung bewiese nichts.
+    konfliktAbschnittOeffnen();
     expect(pageText()).not.toContain("Konflikten und Duplikaten");
   });
 
@@ -271,6 +303,9 @@ describe("mega29 C1 · das KO-Detail zeigt die Abdeckung des Laufs, der über di
     data.ko = makeKo(undefined);
     await mount(createElement(KnowledgeDetail), { path: "/wissen/k1", route: "/wissen/:id" });
     expect(pageText()).toContain("Pumpe P2 Druckverlust");
+    // Auch die Verneinung wird am OFFENEN Abschnitt gemessen — sonst hiesse „schweigt" nur
+    // „der Abschnitt ist zu", und die Kalibrierung bewiese nichts.
+    konfliktAbschnittOeffnen();
     expect(pageText()).not.toContain("Konflikten und Duplikaten");
   });
 });

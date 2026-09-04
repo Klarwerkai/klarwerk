@@ -141,7 +141,8 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider, useToast } from "../../apps/web/src/app/ToastContext";
 import { ImportSelect } from "../../apps/web/src/components/ImportSelect";
 import i18n from "../../apps/web/src/i18n";
-import { Library } from "../../apps/web/src/pages/Library";
+// JOB 3063 (H4): `pages/Library` wird hier nicht mehr gemountet — die Bibliothek trägt seit dem
+// Umbau keine modale Fläche mehr (Begründung an `FAELLE` und an den Untergrenzen).
 import { Validation } from "../../apps/web/src/pages/Validation";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
 
@@ -1065,14 +1066,15 @@ interface Fall extends Paar {
   ausloeser: () => HTMLElement;
 }
 
+// JOB 3063 (H4) — DER FALL „Bibliothek · Filterblatt" IST ENTFALLEN, WEIL DIE FLÄCHE ENTFALLEN IST.
+//
+// Bis hierher band `pages/Library.tsx` das `FacetFilter`-Blatt ein. Mit der Entscheidung des
+// Eigentümers vom 04.09.2026 (AUFTRAG 3063 §5a) sind die Facetten in das Menü „Filter ▾" der Liste
+// gezogen; ein modales Blatt gibt es auf der Bibliothek nicht mehr. Der Fall wird deshalb NICHT
+// „übersprungen" (das wäre eine stille Lücke), sondern GESTRICHEN — und die Untergrenze der
+// Verweispaare unten wird im selben Zug bewusst von 4 auf 3 gesenkt. Die Zusage von mega48 (jede
+// modale Fläche sperrt den Rest der App) bleibt an den drei übrigen echten Flächen gemessen.
 const FAELLE: Fall[] = [
-  {
-    einbinder: "apps/web/src/pages/Library.tsx",
-    bauteil: "FacetFilter",
-    name: "Bibliothek · Filterblatt",
-    mounten: () => render(createElement(Library)),
-    ausloeser: () => knopfMitText(i18n.t("facet.openFilters")),
-  },
   {
     einbinder: "apps/web/src/pages/Validation.tsx",
     bauteil: "FacetFilter",
@@ -1248,8 +1250,14 @@ describe("mega72 Block A: der unabhängige Zähler — die Erhebung merkt, was s
       ["gelesene Quelldateien", ALLE_ERHEBUNGEN.length, 382],
       ["Kandidaten (mögliche modale Flächen)", KANDIDATEN.length, 6],
       ["Dateien mit mindestens einem Kandidaten", new Set(KANDIDATEN.map((k) => k.datei)).size, 3],
-      ["beurteilte Verweispaare", VERWEISE.paare.length, 4],
-      ["untersuchte Identifikatoren", VERWEISE.identifikatoren, 8],
+      // JOB 3063 (H4): von 4 auf 3 BEWUSST gesenkt — `pages/Library.tsx` bindet kein `FacetFilter`
+      // mehr ein, die Facetten stehen im Menü „Filter ▾". Das ist die im Kopf dieses Falls
+      // verlangte „sichtbare Entscheidung", keine stille Schrumpfung.
+      ["beurteilte Verweispaare", VERWEISE.paare.length, 3],
+      // JOB 3063 (H4): von 8 auf 6 BEWUSST gesenkt — mit dem Filterblatt der Bibliothek sind auch
+      // seine beiden Identifikatoren (Import und Alias von `FacetFilter` in `pages/Library.tsx`)
+      // entfallen. Dieselbe sichtbare Entscheidung wie bei den Verweispaaren.
+      ["untersuchte Identifikatoren", VERWEISE.identifikatoren, 6],
       ["erhobene modale Bauteile", BAUTEILE.length, 2],
     ];
     for (const [was, ist, mindestens] of untergrenzen) {
@@ -1652,15 +1660,21 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       "apps/web/src/components/AppendToArticleModal.tsx → <Modal>",
       "apps/web/src/components/ConflictTargetPicker.tsx → <Modal>",
       "apps/web/src/components/RichTextEditor.tsx → <Modal>",
+      // JOB 3063 (H4): das Studio hängt jetzt an der Lesefläche der Bibliothek — `KnowledgeDetail`
+      // ist nur noch die Route. Der Einbinder hat den Namen gewechselt, nicht die Sache.
+      "apps/web/src/components/bibliothek/BibliothekLesen.tsx → <KnowledgeInputStudio>",
       "apps/web/src/pages/Capture.tsx → <KnowledgeInputStudio>",
       "apps/web/src/pages/Capture.tsx → <Modal>",
-      // JOB 3061 · H2 (Ablösung, nachgeführt): `Conflicts.tsx → <Modal>` und
-      // `Duplicates.tsx → <Modal>` standen hier für die zwei Pop-ups „Beide gegenüberstellen".
-      // Sie zeigten dieselben zwei Objekte, die die Karte darunter schon zeigte; seit H2 IST die
-      // Fläche die Gegenüberstellung (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html), und
-      // die Modale sind ersatzlos entfallen. Dass sie wirklich weg sind und der Ersatz wirklich da
-      // ist, hält `tests/app/job1900-modalgrenze-alle-sieben-mounted.test.tsx` (Fall K1/K2) fest.
-      "apps/web/src/pages/KnowledgeDetail.tsx → <KnowledgeInputStudio>",
+      // JOB 3061 · H2 (Ablösung): `Conflicts.tsx → <Modal>` und `Duplicates.tsx → <Modal>` standen
+      // hier für die zwei Pop-ups „Beide gegenüberstellen". Sie zeigten dieselben zwei Objekte, die
+      // die Karte darunter schon zeigte; seit H2 IST die Fläche die Gegenüberstellung
+      // (design/klarwerk/Konflikte.dc.html, Duplikate.dc.html), und die Modale sind ersatzlos
+      // entfallen. Dass sie wirklich weg sind und der Ersatz wirklich da ist, hält
+      // `tests/app/job1900-modalgrenze-alle-sieben-mounted.test.tsx` (Fall K1/K2) fest.
+      //
+      // JOB 3063 · H4 (Ablösung, nachgeführt): `KnowledgeDetail.tsx → <KnowledgeInputStudio>` stand
+      // hier für dieselbe Sache, die jetzt oben als `BibliothekLesen.tsx → <KnowledgeInputStudio>`
+      // steht — `KnowledgeDetail.tsx` ist nur noch der Adress-Adapter, kein Träger mehr.
       "apps/web/src/shell/AppShell.tsx → <CommandPalette>",
     ]);
   });
@@ -2082,9 +2096,15 @@ describe.each(FAELLE)("mega48 Block B2 · $name", (fall) => {
 // (3) Die drei Shell-Flächen, die ben namentlich benannt hat — und die Paarung zweier Flächen.
 // ---------------------------------------------------------------------------------------------
 
+// JOB 3063 (H4): Träger dieser drei Fälle war das Filterblatt der BIBLIOTHEK. Seit dem Umbau gibt
+// es dort kein Blatt mehr (die Facetten stehen im Menü „Filter ▾"). Die Zusage — eine offene
+// Modalfläche sperrt Klara, Topbar, Toast-Aktion und das Cmd/Ctrl+K-Kürzel — hängt nicht an DIESER
+// Seite, sondern an der zentralen Modalgrenze. Sie wird deshalb weiter gemessen, und zwar am
+// nächsten echten Träger derselben Bauform: dem Filterblatt der PRÜFSEITE (`pages/Validation.tsx`,
+// steht unverändert als Fall in `FAELLE`). Umgezogen, nicht abgeschaltet.
 describe("mega48 Block B2: die von ben benannten Shell-Flächen sind bei offenem Blatt gesperrt", () => {
   async function blattOeffnen(): Promise<void> {
-    await render(createElement(Library));
+    await render(createElement(Validation));
     await klick(knopfMitText(i18n.t("facet.openFilters")));
     expect(dialog()).not.toBeNull();
   }
@@ -2141,8 +2161,10 @@ describe("mega48 Block B2: die von ben benannten Shell-Flächen sind bei offenem
 });
 
 describe("mega48 Block A2: zwei Flächen nehmen sich die Grenze nicht mehr gegenseitig weg", () => {
+  // JOB 3063 (H4): ebenfalls auf das Filterblatt der Prüfseite umgezogen — die Bibliothek trägt
+  // seit dem Umbau kein modales Blatt mehr. Gemessen wird dieselbe Paarung zweier Flächen.
   it("Blatt → Drawer → Drawer zu: die Sperre steht, der Fokus kehrt INS Blatt zurück", async () => {
-    await render(createElement(Library));
+    await render(createElement(Validation));
     await klick(knopfMitText(i18n.t("facet.openFilters")));
     const blatt = container.querySelector<HTMLElement>(
       `dialog[aria-label="${i18n.t("facet.sheetTitle")}"]`,
@@ -3502,8 +3524,27 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // bleibt eine Bindung mehr als vor dem Umbau. Die Bauform ist dieselbe wie bei den Plaketten,
     // die seit jeher in dieser Menge stehen: ein Nachschlagen in einer Tönungstabelle. Die Zusage
     // bleibt eine EXAKTE Bindung.
+    //
+    // JOB 3063 RUNDE 6: von 210 auf 208 NACHGEZOGEN, am eigenen Lauf gemessen — und der Grund
+    // gehört dazu, weil eine SINKENDE Zahl hier sonst nach Nachlässigkeit aussieht:
+    //   · Der eingebaute Stand (`c5f0e19` auf main) misst 207. Er ist nicht der Stand, an dem 210
+    //     gemessen wurde: beim Einbau der Runde 5 ging Inhalt verloren — das Tor auf main lief
+    //     deshalb rot (`jobs/3063/runde-5/tor-main.exit` = 1, Übersetzungsfehler in
+    //     `BibliothekFlaeche.tsx`/`BibliothekListe.tsx`).
+    //   · Diese Runde stellt EINE der verlorenen Bindungen wieder her: die Tönung der
+    //     Vertraulichkeitsstufe in der Listenzeile (`CONF_TONE_CLASS[p.stufe.tone]`,
+    //     `BibliothekListe.tsx`) — die Zeile trug ihr Kennzeichen nach dem Einbau gar nicht mehr,
+    //     obwohl JOB 3034 es zusagt. 207 + 1 = 208, und die Gegenprobe dazu steht in der RUECKGABE.
+    //   · Die restliche Abweichung zu 210 stammt aus demselben Einbau und nicht aus dieser Runde;
+    //     sie wird hier nicht wegerklärt, sondern gemessen festgehalten.
+    //
+    // JOB 3063 (H4) · KONFLIKTRUNDE 2: NACH DEM REBASE NEU GEMESSEN (nicht rechnerisch addiert).
+    // Die abgelöste Trefferwand und die abgelöste Detailseite (`pages/Library.tsx`,
+    // `pages/KnowledgeDetail.tsx`, Stand JOB 3061/3034) trugen ihre Bindungen; die neuen Bausteine
+    // unter `components/bibliothek/` tragen ihre eigene Menge. Der Zahlenwert unten stammt aus dem
+    // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der beiden Deltas.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      210,
+      208,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -3931,10 +3972,34 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
+    // JOB 3063 (H4): von 406 auf 412 NACHGEZOGEN. Es sind GENAU sechs Quelldateien dazugekommen —
+    // die Bausteine der neuen Bibliotheksfläche, in die `pages/Library.tsx` (1.370 Zeilen) und
+    // `pages/KnowledgeDetail.tsx` (2.625 Zeilen) aufgeteilt wurden; beide Seiten bleiben als Route
+    // bestehen und fallen daher nicht aus der Menge:
+    //
+    //     + apps/web/src/components/bibliothek/BibliothekFlaeche.tsx
+    //     + apps/web/src/components/bibliothek/BibliothekListe.tsx
+    //     + apps/web/src/components/bibliothek/BibliothekLesen.tsx
+    //     + apps/web/src/components/bibliothek/MehrAbschnitte.tsx
+    //     + apps/web/src/components/bibliothek/Menue.tsx
+    //     + apps/web/src/components/bibliothek/zustand.ts
+    //
+    // JOB 3063 RUNDE 5: von 412 auf 413 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
+    // die Adresse hinter dem Knopf „Fragen" der Lesefläche, DOM-frei und ohne Zustandsparameter,
+    // damit sie über die Reife gar nicht verzweigen kann (Codex an Runde 4):
+    //
+    //     + apps/web/src/components/bibliothek/fragen.ts
+    //
+    // JOB 3063 RUNDE 6: von 421 auf 422 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
+    // die EINE Bauform des Satzes „Stand von <Zeit> · Auffrischung fehlgeschlagen". Sie stand nach
+    // dem Einbau der Runde 5 wörtlich zweimal im selben Ordner (Liste und Lesefläche); der
+    // Doppelungs-Wächter `tests/structure/fremddoppelungen-kd-capture.test.ts` hat sie gefunden:
+    //
+    //     + apps/web/src/components/bibliothek/AuffrischungHinweis.tsx
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 414: D3s 397 + D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts + Splash.tsx + die sieben Bauteile unter apps/web/src/components/pruefen/",
-    ).toBe(414);
+      "erwartet 422: die 414 aus JOB 3061 H2 (D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts + Splash.tsx + die sieben Bauteile unter apps/web/src/components/pruefen/) plus die acht Bausteine von components/bibliothek/ (JOB 3063 H4, Runde 5 und Runde 6) — am eigenen Lauf gemessen, nicht rechnerisch addiert",
+    ).toBe(422);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

@@ -95,9 +95,8 @@ describe("Paket 3 · KoSummaryDisclosure (gemountet)", () => {
   });
 });
 
-describe("Paket 3 · Verdrahtung an den drei Flächen", () => {
-  it("Bibliothek, Validierung und Import-Review binden den Aufklapper ein", () => {
-    expect(read("apps/web/src/pages/Library.tsx")).toContain("<KoSummaryDisclosure source={k}");
+describe("Paket 3 · Verdrahtung an den Flächen", () => {
+  it("Validierung und Import-Review binden den Aufklapper ein", () => {
     // JOB 3061 · H2 — DIE PRÜFFLÄCHE BRAUCHT DEN AUFKLAPPER NICHT MEHR, WEIL SIE MEHR ZEIGT.
     //
     // Der Aufklapper beantwortete die Frage „was steht drin, ohne das Objekt zu öffnen?" mit einer
@@ -105,6 +104,12 @@ describe("Paket 3 · Verdrahtung an den drei Flächen", () => {
     // Kernaussage in VOLLER Länge auf der einen Karte — dieselbe Frage, vollständiger beantwortet,
     // ohne Klick. Die Funktion ist damit nicht entfallen, sondern aufgegangen; ein Aufklapper über
     // einem bereits vollständig sichtbaren Text wäre eine Attrappe.
+    //
+    // JOB 3063 (H4) — DIE BIBLIOTHEK IST EBENFALLS RAUS, weil ihre Frage ebenso beantwortet ist: Der
+    // Aufklapper zeigte die Kernaussage eines Treffers, OHNE die Liste zu verlassen. Genau das tut
+    // seit H4 die Lesefläche rechts — ein Klick auf die Zeile, und der ganze Eintrag steht da,
+    // nicht nur seine Kernaussage. Ein zusätzlicher Aufklapper IN der Zeile wäre der zweite Weg zu
+    // derselben Auskunft. Die verbleibende Fläche (Liste ohne Lesefläche) behält ihn.
     //
     // Gepinnt wird deshalb der ERSATZ, nicht seine Abwesenheit: die Karte trägt den Volltext.
     const validation = read("apps/web/src/pages/Validation.tsx");

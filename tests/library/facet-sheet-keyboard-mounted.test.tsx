@@ -12,6 +12,18 @@
 // Tab" nach, sondern belegt die zwei in jsdom belegbaren Dinge: (1) die Filter-Bedienelemente sind
 // tatsächlich fokussierbare Elemente im Blatt und einzeln fokussierbar, (2) die Fokusfalle greift
 // nur an den Rändern und lässt die Mitte in Ruhe.
+//
+// ==================================================================================================
+// JOB 3063 (H4) — DER TRÄGER HAT GEWECHSELT: PRÜFSEITE STATT BIBLIOTHEK.
+// ==================================================================================================
+//
+// Bis hierher wurde am Filterblatt der BIBLIOTHEK gemessen. Mit der Entscheidung des Eigentümers vom
+// 04.09.2026 (AUFTRAG 3063 §5a) sind die Facetten der Bibliothek in das Menü „Filter ▾" der Liste
+// gezogen; ein modales Blatt gibt es dort nicht mehr. Die ZUSAGE dieses Auftrags gilt aber der
+// Komponente `components/FacetFilter.tsx` — und die steht unverändert auf der PRÜFSEITE
+// (`pages/Validation.tsx:586`, ausdrücklich „DIESELBE Schiene wie die Bibliothek, keine zweite
+// Fassung"). Gemessen wird deshalb ab hier dort: dasselbe Blatt, dieselbe Fokusfalle, dieselbe
+// Tastatur-Erreichbarkeit. Umgezogen, nicht abgeschaltet.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -59,10 +71,18 @@ const KOS = [
 vi.mock("../../apps/web/src/api/hooks", () => {
   const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
   return {
-    useKos: () => ok(KOS),
-    useLibrarySearch: () => ok(KOS),
+    // Die Prüfseite zieht ihre Liste aus dem Prüfbrett — derselbe Bestand, dieselbe Schiene.
+    useValidationBoard: () => ok(KOS),
     useDirectory: () => ok([]),
+    // JOB 3063 R6: seit JOB 3061 (H2) trägt der Kopf der Prüffläche die Zahlen ALLER vier Reiter
+    // und fragt sie einzeln ab (`components/pruefen/PruefenKopf.tsx:53-64`). Ohne diese drei
+    // Einträge bricht das Mounten mit „No use… export is defined on the mock" ab, bevor eine
+    // einzige Taste gedrückt ist. Leere Listen sind hier Requisit, nicht Aussage: dieser Fall
+    // misst die Tastaturführung des Filterblatts, keine Zahl im Kopf.
     useConflicts: () => ok([]),
+    useDuplicates: () => ok([]),
+    useLifecyclePending: () => ok([]),
+    useReasonerStatus: () => ok({ active: false, mode: "deterministic" }),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -80,7 +100,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { ModalBoundaryProvider, ModalRegion } from "../../apps/web/src/app/ModalBoundaryContext";
 import i18n from "../../apps/web/src/i18n";
-import { Library } from "../../apps/web/src/pages/Library";
+import { Validation } from "../../apps/web/src/pages/Validation";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -134,8 +154,8 @@ function mount(): void {
         { client: qc },
         createElement(
           MemoryRouter,
-          { initialEntries: ["/bibliothek"] },
-          createElement(Huelle, null, createElement(Library)),
+          { initialEntries: ["/pruefen"] },
+          createElement(Huelle, null, createElement(Validation)),
         ),
       ),
     );
@@ -145,6 +165,13 @@ function mount(): void {
 function res(key: string): string {
   return String(i18n.getResource("de", "translation", key));
 }
+
+/**
+ * Der klebende Zähler im Blatt. Die Prüfseite lässt `countLabelKey` auf dem Vorgabewert
+ * `facet.showResults` („N Treffer anzeigen"); die Bibliothek hatte ihn auf `lib.facet.showResults`
+ * gesetzt. Gelesen wird der Wortstamm aus i18n, nicht abgeschrieben.
+ */
+const ZAEHLER_TEXT = res("facet.showResults_other").replace("{{count}} ", "");
 
 function byAria(label: string): HTMLElement {
   const el = container.querySelector(`[aria-label="${label}"]`);
@@ -221,6 +248,15 @@ describe("Block B Punkt 6: Filterblatt auf schmalen Geräten", () => {
   it("ERREICHBARKEIT: die echten Filter-Bedienelemente liegen im Fokus-Ring des Blattes", () => {
     mount();
     openSheet();
+    // Die Autorenachse liegt auf der Prüfseite hinter „Weitere Filter" (uxpol5 Punkt 2). Sie wird
+    // IM BLATT aufgeklappt — auch dieser Knopf gehört zu den Bedienelementen, um die es hier geht.
+    const mehr = focusablesInSheet().find((el) =>
+      (el.textContent ?? "").includes(res("facet.moreFilters")),
+    );
+    expect(mehr, "der Knopf „Weitere Filter“ fehlt im Blatt").toBeDefined();
+    act(() => {
+      mehr?.click();
+    });
     const focusables = focusablesInSheet();
 
     // Mehr als nur der Schließen-Knopf — das ist der Kern der Gegenrichtung.
@@ -244,9 +280,7 @@ describe("Block B Punkt 6: Filterblatt auf schmalen Geräten", () => {
     expect(box.getAttribute("tabindex")).not.toBe("-1");
 
     // Der klebende Trefferzähler ist im Blatt die ABSCHLIESSENDE Aktion und ebenfalls erreichbar.
-    expect(focusables.some((el) => (el.textContent ?? "").includes("Beiträge anzeigen"))).toBe(
-      true,
-    );
+    expect(focusables.some((el) => (el.textContent ?? "").includes(ZAEHLER_TEXT))).toBe(true);
   });
 
   it("Fokus fährt beim Öffnen INS Blatt und der Hintergrund wird inert", () => {
@@ -304,9 +338,7 @@ describe("Block B Punkt 6: Filterblatt auf schmalen Geräten", () => {
   it("der Zähler im Blatt schließt es (im Blatt ist er die Aktion, nicht nur ein Anker)", () => {
     mount();
     openSheet();
-    const apply = focusablesInSheet().find((el) =>
-      (el.textContent ?? "").includes("Beiträge anzeigen"),
-    );
+    const apply = focusablesInSheet().find((el) => (el.textContent ?? "").includes(ZAEHLER_TEXT));
     expect(apply).toBeDefined();
     act(() => {
       apply?.click();

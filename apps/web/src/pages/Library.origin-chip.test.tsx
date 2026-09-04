@@ -15,6 +15,13 @@
 //
 // JEDER FALL PRUEFT BEIDE RICHTUNGEN: der Chip erscheint bei `word_addin` UND er erscheint bei
 // keiner anderen Herkunft. Ein Chip, der immer da ist, sagt nichts.
+//
+// JOB 3063 (H4) — UMGEZOGEN, NICHT ABGESCHWÄCHT. Die Bibliothek ist seit H4 Liste plus Lesefläche;
+// die Trefferzeile trägt nur noch Punkt, Titel und „Bereich · Status". Der Herkunfts-Chip steht
+// jetzt dort, wo das Funktionsinventar (AUFTRAG 5a) ihn hinschickt: auf der Lesefläche, hinter der
+// Zeile „Mehr" im Abschnitt „Provenienz" (`components/bibliothek/MehrAbschnitte.tsx:688`). Dieser
+// Test öffnet den Abschnitt IN JEDEM FALL — auch in den Verneinungen. Sonst wäre „kein Chip" nur
+// die Aussage „der Abschnitt ist zu", und die Gegenrichtung würde nichts mehr beweisen.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../api/types";
@@ -47,13 +54,29 @@ function ko(overrides: Partial<KnowledgeObject>): KnowledgeObject {
 // Der Bestand wird je Fall gesetzt — die Seite liest ihn ueber die gemockten Haken.
 const lage = vi.hoisted(() => ({ kos: [] as unknown[] }));
 
-vi.mock("../api/hooks", () => {
+// TEILMOCK statt Vollersatz: die Lesefläche zieht über ihre Abschnitte weitere Haken, die mit dem
+// Gegenstand nichts zu tun haben. Überschrieben wird nur, was dieser Test wirklich steuert.
+vi.mock("../api/hooks", async (importOriginal) => {
+  const echt = await importOriginal<Record<string, unknown>>();
   const ok = <T,>(data: T) => ({ data, isLoading: false, isError: false, error: null });
+  const leer = () => ok([]);
   return {
+    ...echt,
     useKos: () => ok(lage.kos),
     useLibrarySearch: () => ok(lage.kos),
-    useDirectory: () => ok([]),
-    useConflicts: () => ok([]),
+    useDirectory: leer,
+    useConflicts: leer,
+    // Die Lesefläche holt den gewählten Eintrag einzeln — hier aus demselben Bestand.
+    useKo: (id: string) =>
+      ok((lage.kos as { id: string }[]).find((k) => k.id === id) ?? lage.kos[0] ?? null),
+    useAudit: leer,
+    useKoEvidence: leer,
+    useKoNeighbors: leer,
+    useKoVersions: leer,
+    useEigeneBefunde: leer,
+    useLifecyclePending: leer,
+    useExternalPolicy: () => ok({ stage: "blocked" }),
+    useReasonerStatus: () => ok({ ready: false }),
   };
 });
 vi.mock("../app/AuthContext", () => ({
@@ -70,6 +93,7 @@ import i18n from "../i18n";
 import { Library } from "./Library";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+Element.prototype.scrollIntoView = () => {};
 
 /** Die eine Marke, an der die Anzeige gemessen wird — kein CSS-Klassenraten. */
 const CHIP = '[data-testid="ko-origin-word-addin"]';
@@ -102,7 +126,46 @@ afterEach(() => {
   lage.kos = [];
 });
 
+/** Einen Eintrag in der linken Liste wählen — der Weg des Menschen, ein Klick auf die Zeile. */
+function waehle(id: string): void {
+  const zeile = container.querySelector(`[data-testid="bib-zeile"][data-bib-id="${id}"]`);
+  if (!(zeile instanceof HTMLElement)) {
+    throw new Error(`Listenzeile „${id}" fehlt`);
+  }
+  act(() => {
+    zeile.click();
+  });
+}
+
+/**
+ * Die Zeile „Mehr" der Lesefläche aufklappen und den Abschnitt „Provenienz" öffnen — dort steht der
+ * Chip seit JOB 3063. `open = true` allein genügt nicht: der Abschnitt zeichnet seinen Inhalt erst,
+ * wenn React das Aufklappen über `onToggle` mitbekommt, und jsdom stellt `toggle` nur in die
+ * Warteschlange. Der Test schickt das Ereignis deshalb selbst (es steigt nicht auf).
+ */
+function provenienzOeffnen(): void {
+  const mehr = container.querySelector('[data-testid="bib-mehr"]');
+  if (!(mehr instanceof HTMLButtonElement)) {
+    throw new Error(`Zeile „Mehr" fehlt; DOM: ${container.textContent}`);
+  }
+  if (mehr.getAttribute("aria-expanded") !== "true") {
+    act(() => {
+      mehr.click();
+    });
+  }
+  const abschnitt = container.querySelector('[data-bib-abschnitt="provenienz"]');
+  if (!(abschnitt instanceof HTMLDetailsElement)) {
+    throw new Error("Abschnitt „Provenienz“ fehlt");
+  }
+  act(() => {
+    abschnitt.open = true;
+    abschnitt.dispatchEvent(new Event("toggle"));
+  });
+}
+
+/** Die Chips am OFFENEN Abschnitt — die Verneinung zählt nur, wenn der Abschnitt aufgeklappt ist. */
 function chips(): HTMLElement[] {
+  provenienzOeffnen();
   return [...container.querySelectorAll(CHIP)] as HTMLElement[];
 }
 
@@ -133,13 +196,22 @@ describe("JOB 679 D2 · Bibliothek — der Chip erscheint genau bei der Word-Her
     expect(chips()).toHaveLength(0);
   });
 
-  it("bei gemischtem Bestand traegt ihn genau der Word-Treffer", () => {
+  it("bei gemischtem Bestand traegt ihn GENAU der Word-Treffer — Zeile fuer Zeile durchgewaehlt", () => {
     mount([
       ko({ id: "a", title: "Aus Word", origin: "word_addin" }),
       ko({ id: "b", title: "Vordertuer", origin: "frontdoor" }),
       ko({ id: "c", title: "Altbestand" }),
     ]);
-    expect(chips()).toHaveLength(1);
+    // Jede der drei Zeilen wird angeklickt. So misst der Fall die Unterscheidung wirklich — auf der
+    // Lesefläche steht immer genau EIN Eintrag, und die Reihenfolge der Liste ist hier gleichgültig.
+    waehle("a");
+    expect(chips(), "der Word-Treffer traegt ihn").toHaveLength(1);
+    waehle("b");
+    expect(chips(), "der Vordertuer-Treffer traegt ihn nicht").toHaveLength(0);
+    waehle("c");
+    expect(chips(), "der Altbestand traegt ihn nicht").toHaveLength(0);
+    waehle("a");
+    expect(chips(), "zurueck beim Word-Treffer steht er wieder da").toHaveLength(1);
   });
 
   it("die uebrigen Herkuenfte loesen ihn ebenfalls nicht aus", () => {
@@ -148,6 +220,9 @@ describe("JOB 679 D2 · Bibliothek — der Chip erscheint genau bei der Word-Her
       ko({ id: "b", origin: "studio" }),
       ko({ id: "c", origin: "expert" }),
     ]);
-    expect(chips()).toHaveLength(0);
+    for (const id of ["a", "b", "c"]) {
+      waehle(id);
+      expect(chips(), `Herkunft am Eintrag ${id} zeigt faelschlich den Word-Chip`).toHaveLength(0);
+    }
   });
 });

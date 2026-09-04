@@ -4,8 +4,8 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
+import { fragenHref } from "../../apps/web/src/components/bibliothek/fragen";
 import i18n from "../../apps/web/src/i18n";
-import { libraryUseCta } from "../../apps/web/src/lib/libraryMaturity";
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
@@ -35,16 +35,22 @@ function ko(over: Partial<KnowledgeObject>): KnowledgeObject {
 }
 
 describe("WP-UX-WOW-1 U5: Fragen-Knopf stellt eine echte Frage und sendet direkt", () => {
-  it("libraryUseCta nutzt die formulierte Frage und den ?ask=1-Direktantwort-Weg", () => {
-    const cta = libraryUseCta(ko({}), "Was gilt zu: Ventil X bei Überdruck schließen?");
-    expect(cta.kind).toBe("ask");
-    expect(decodeURIComponent(cta.href)).toContain("Was gilt zu: Ventil X");
-    expect(cta.href).toContain("&ask=1"); // direkt beantworten — kein zweiter Klick
+  it("fragenHref nutzt die formulierte Frage, den ?ask=1-Weg und den Bezug auf den Eintrag", () => {
+    // JOB 3063 (H4, Runde 5): die Adresse kommt nicht mehr aus `libraryUseCta` (das über die Reife
+    // verzweigte und offene Einträge nach `/validierung` schickte), sondern aus `fragenHref` —
+    // ohne Zustandsparameter, dafür mit `ko=<id>`.
+    const href = fragenHref(ko({}).id, "Was gilt zu: Ventil X bei Überdruck schließen?", "intern");
+    expect(decodeURIComponent(href)).toContain("Was gilt zu: Ventil X");
+    expect(href).toContain("&ask=1"); // direkt beantworten — kein zweiter Klick
+    expect(new URLSearchParams(href.split("?")[1] ?? "").get("ko")).toBe("k1");
   });
 
-  it("die Bibliothek reicht das lokalisierte Frage-Muster herein; Enter sendet (Form-Submit)", () => {
-    const lib = read("apps/web/src/pages/Library.tsx");
-    expect(lib).toContain('libraryUseCta(k, t("ask.koQuestion", { title: k.title }))');
+  it("die Bibliothek reicht eine echte Startfrage herein; Enter sendet (Form-Submit)", () => {
+    // JOB 3063 (H4): der Knopf sitzt auf der Lesefläche des gewählten Eintrags, nicht mehr in der
+    // Trefferzeile — und die Startfrage ist jetzt der SUCHTEXT, wenn einer da ist (die abgelöste
+    // Karte „Antwort statt nur Treffer?" hat genau das getan). Ohne Suche bleibt es der Titel.
+    const lesen = read("apps/web/src/components/bibliothek/BibliothekLesen.tsx");
+    expect(lesen).toContain("fragenHref(ko.id, suchtext.trim() || ko.title, ko.confidentiality)");
     // Ask-Eingabe: einzeiliges input IN einem form mit type=submit → Enter sendet nativ.
     const ask = read("apps/web/src/pages/Ask.tsx");
     expect(ask).toContain("<form");
@@ -55,10 +61,16 @@ describe("WP-UX-WOW-1 U5: Fragen-Knopf stellt eine echte Frage und sendet direkt
 });
 
 describe("WP-UX-WOW-1 U4: Bibliothek-Karten lesbar", () => {
-  it("Titel zweizeilig per line-clamp (Volltext im title-Attribut) statt harter Kappung", () => {
-    const lib = read("apps/web/src/pages/Library.tsx");
-    expect(lib).toContain("line-clamp-2");
-    expect(lib).toContain("title={k.title}");
+  it("der Zeilentitel wird nicht hart gekappt — der Volltext steht im title-Attribut", () => {
+    // JOB 3063 (H4) — WAS SICH GEÄNDERT HAT und warum es keine Rücknahme ist: die Trefferzeile ist
+    // eine Postfach-Zeile geworden (Punkt · Titel · „Bereich · Zustand"), und die Vorlage kappt den
+    // Titel dort ausdrücklich EINZEILIG mit Auslassungspunkten (Bibliothek.dc.html Z.46:
+    // `white-space: nowrap; overflow: hidden; text-overflow: ellipsis`). Zwei Zeilen wären hier
+    // eine andere Fläche. Die Zusage von U4 — „der Volltext geht nicht verloren" — bleibt: er
+    // steht im `title`, und die volle Fassung steht rechts auf der Lesefläche.
+    const liste = read("apps/web/src/components/bibliothek/BibliothekListe.tsx");
+    expect(liste).toContain("truncate");
+    expect(liste).toContain("title={p.titel}");
   });
 
   it("Autor-Zeile trägt den Volltext im title-Attribut", () => {
@@ -72,12 +84,14 @@ describe("WP-UX-WOW-1 U4: Bibliothek-Karten lesbar", () => {
   // unerklärte Null damit stehen — und der grüne Test behauptete das Gegenteil. Die Zusage lautet
   // ab jetzt nicht mehr „liest trust", sondern „liest DENSELBEN Wert, den sie anzeigt".
   it("validiert + Sicherheit 0 → nüchterner Hinweis statt leerer Leiste (Bedingung liest den angezeigten Wert)", () => {
-    const lib = read("apps/web/src/pages/Library.tsx");
-    expect(lib).toContain('deriveStatus(k) === "validiert" && k.confidence === 0');
-    expect(lib).toContain('t("lib.confidenceNone")');
-    expect(lib).toContain('title={t("lib.confidenceNoneHint")}');
+    // JOB 3063 (H4): die Konfidenz steht jetzt im Abschnitt „Belege" hinter der Zeile „Mehr" —
+    // derselbe Balken, dieselbe Sonderregel, ein anderer Ort.
+    const mehr = read("apps/web/src/components/bibliothek/MehrAbschnitte.tsx");
+    expect(mehr).toContain('deriveStatus(ko) === "validiert" && ko.confidence === 0');
+    expect(mehr).toContain('t("lib.confidenceNone")');
+    expect(mehr).toContain('title={t("lib.confidenceNoneHint")}');
     // Der angezeigte Wert der Leiste ist derselbe, den die Bedingung prüft.
-    expect(lib).toContain("<ConfidenceBar value={k.confidence}");
+    expect(mehr).toContain("<ConfidenceBar value={ko.confidence}");
   });
 });
 

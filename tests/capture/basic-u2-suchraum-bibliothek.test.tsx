@@ -24,6 +24,23 @@
 // BENANNTE BLINDHEIT: geprüft wird die AUSKUNFT über den Suchraum. Dass die Zugriffsgrenze selbst
 // („für dich freigegeben“) wirklich gilt, entscheidet das Backend — hier weder verändert noch
 // geprüft.
+//
+// ==================================================================================================
+// JOB 3063 (H4) — WAS HIER ABGELÖST IST UND WAS BLEIBT.
+// ==================================================================================================
+//
+// Der Eigentümer hat am 04.09.2026 entschieden: die Bibliothek wird Liste plus Lesefläche nach dem
+// Maßstab von Apple Pages, Erklärtext verschwindet aus dem Sichtfeld (AUFTRAG 3063 §5, §8.5 —
+// „Codex prüft gegen DIESE Vorgabe, nicht gegen alte Pins"). Die DAUERZEILE unter dem Suchfeld
+// (`lib.scope.note`) und der Dauer-Gegenweg (`lib.scope.toDrafts`) sind damit entfallen; die
+// zugehörige Sprachprüfung ist in `basic-u2-suchraum.test.ts` als Ablösungsfall festgehalten.
+//
+// WAS DIESER TEST WEITER MISST — und was die Substanz des Befundes war:
+//   · AK6: das Suchfeld ist da, ist ein echtes Suchfeld, nimmt den Startwert aus der Adresse (`?q=`)
+//     und den Fokus. Neue Marke: `#bib-suche` (`components/bibliothek/BibliothekListe.tsx:122`).
+//   · AK4: der Nulltreffer ist KEINE Sackgasse — er sagt in EINEM Satz, was los ist, unterscheidet
+//     „nichts gefunden" von „noch keine Einträge", und daneben steht der Weg nach `/erfassen`.
+//     Das ist der Kern des Erstnutzerbefundes: nicht der Satz, sondern der fehlende Ausgang.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { KnowledgeObject } from "../../apps/web/src/api/types";
@@ -68,6 +85,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(lage.trefferlos ? [] : KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -126,82 +148,64 @@ function de(key: string): string {
 // Der Gegenweg wird über seinen ZUGÄNGLICHEN NAMEN gesucht, nicht über eine CSS-Klasse — damit
 // belegt der Fall zugleich, dass der Weg benannt ist.
 function gegenweg(): HTMLAnchorElement | undefined {
-  const label = de("lib.scope.toDrafts");
-  return [...container.querySelectorAll("a")].find((a) =>
-    (a.textContent ?? "").replace(/\s+/g, " ").includes(label),
+  const label = de("lib.liste.erfassen");
+  return [...container.querySelectorAll("a")].find(
+    (a) => (a.textContent ?? "").replace(/\s+/g, " ").trim() === label,
   ) as HTMLAnchorElement | undefined;
 }
 
-describe("BASIC-u2 · AK1 — die Bibliothek benennt sichtbar ihren Suchraum", () => {
-  it("die Angabe steht auf der gemounteten Seite", () => {
+describe("BASIC-u2 · AK6 — das Suchfeld der Bibliothek ist da und bedienbar", () => {
+  it("es ist ein echtes Suchfeld und trägt einen zugänglichen Namen", () => {
     mount("/bibliothek");
-    expect(text()).toContain(de("lib.scope.note"));
-  });
-
-  it("sie steht bei der Suche, nicht irgendwo auf der Seite", () => {
-    mount("/bibliothek");
-    const feld = container.querySelector("#library-search");
-    const notiz = [...container.querySelectorAll("*")].find(
-      (el) => (el.textContent ?? "").trim() === de("lib.scope.note"),
-    );
+    const feld = container.querySelector("#bib-suche") as HTMLInputElement | null;
     expect(feld, "das Suchfeld der Bibliothek fehlt").toBeTruthy();
-    expect(notiz, "die Suchraum-Angabe fehlt").toBeTruthy();
-    // Gemeinsamer Vorfahr in geringer Höhe: die Angabe gehört zur Suchfläche, nicht zur Seite.
-    let hoehe = 0;
-    let el: Element | null = notiz ?? null;
-    while (el && !el.contains(feld as Node)) {
-      el = el.parentElement;
-      hoehe += 1;
-    }
-    expect(el, "Suchfeld und Angabe stehen in getrennten Bäumen").toBeTruthy();
-    expect(hoehe).toBeLessThanOrEqual(4);
-  });
-});
-
-describe("BASIC-u2 · AK3 — der benannte Weg in die andere Suchwelt", () => {
-  it("die Bibliothek bietet einen echten Link auf die eigenen Entwürfe", () => {
-    mount("/bibliothek");
-    const a = gegenweg();
-    expect(a, "der Weg zu den eigenen Entwürfen fehlt oder trägt keinen Namen").toBeTruthy();
-    expect(a?.getAttribute("href")).toBe("/erfassen");
-  });
-
-  it("AK6 — er ist mit der Tastatur erreichbar und nimmt den Fokus", () => {
-    mount("/bibliothek");
-    const a = gegenweg();
-    expect(a?.tagName).toBe("A");
-    a?.focus();
-    expect(document.activeElement).toBe(a);
-  });
-
-  it("AK6 — das bestehende Suchfeld bleibt unverändert bedienbar", () => {
-    mount("/bibliothek?q=Ventil");
-    const feld = container.querySelector("#library-search") as HTMLInputElement | null;
     expect(feld?.tagName).toBe("INPUT");
     expect(feld?.getAttribute("type")).toBe("search");
-    // Der Startwert aus der URL steht weiter im Feld, und es nimmt den Fokus.
+    // Der Name kommt aus dem Beschriftungselement, nicht aus einer erratenen Klasse.
+    const label = container.querySelector('label[for="bib-suche"]');
+    expect((label?.textContent ?? "").trim()).toBe(de("lib.searchLabel"));
+  });
+
+  it("es nimmt den Startwert aus der Adresse und den Fokus", () => {
+    mount("/bibliothek?q=Ventil");
+    const feld = container.querySelector("#bib-suche") as HTMLInputElement | null;
     expect(feld?.value).toBe("Ventil");
     feld?.focus();
     expect(document.activeElement).toBe(feld);
   });
 });
 
-describe("BASIC-u2 · AK4 — der Nulltreffer nennt den Suchraum", () => {
-  it("ohne Treffer zur Suchanfrage steht der Suchraum in der Meldung", () => {
+describe("BASIC-u2 · AK4 — der Nulltreffer ist keine Sackgasse", () => {
+  it("mit Suchtext steht der Satz „nichts gefunden“ da — nicht „im System gibt es das nicht“", () => {
     lage.trefferlos = true;
     mount("/bibliothek?q=Ventilwechsel");
-    expect(text()).toContain(de("lib.emptyQuery").replace("{{q}}", "Ventilwechsel"));
+    expect(text()).toContain(de("lib.liste.leerSuche"));
+    expect(text()).not.toContain(de("lib.liste.leer"));
   });
 
-  it("auch der Leerfall ohne Suchanfrage nennt den Suchraum", () => {
+  it("ohne Suchtext steht der ANDERE Satz da — die zwei Lagen bleiben unterschieden", () => {
     lage.trefferlos = true;
     mount("/bibliothek");
-    expect(text()).toContain(de("lib.empty"));
+    expect(text()).toContain(de("lib.liste.leer"));
+    expect(text()).not.toContain(de("lib.liste.leerSuche"));
   });
 
-  it("der Gegenweg steht auch im Nullzustand — die Sackgasse ist geschlossen", () => {
+  it("der Gegenweg steht im Nullzustand — mit Namen, echtem Ziel und Tastaturfokus", () => {
     lage.trefferlos = true;
     mount("/bibliothek?q=Ventilwechsel");
-    expect(gegenweg()?.getAttribute("href")).toBe("/erfassen");
+    const a = gegenweg();
+    expect(a, "der Weg aus dem Nullzustand fehlt oder trägt keinen Namen").toBeTruthy();
+    expect(a?.getAttribute("href")).toBe("/erfassen");
+    expect(a?.tagName).toBe("A");
+    a?.focus();
+    expect(document.activeElement).toBe(a);
+  });
+
+  it("KALIBRIERUNG — mit Treffern steht weder ein Leersatz noch der Gegenweg da", () => {
+    // Ohne diesen Fall wären die drei Fälle oben auch dann grün, wenn Satz und Knopf IMMER dastünden.
+    mount("/bibliothek");
+    expect(text()).not.toContain(de("lib.liste.leer"));
+    expect(text()).not.toContain(de("lib.liste.leerSuche"));
+    expect(gegenweg()).toBeUndefined();
   });
 });

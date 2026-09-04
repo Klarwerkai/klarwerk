@@ -286,9 +286,28 @@ function editorHtml(): string {
   return el instanceof HTMLElement ? el.innerHTML : "";
 }
 
+/**
+ * JOB 3063 (H4): „Bearbeiten" steht im Menü „…" der Lesefläche (AUFTRAG 3063 §5a) und nicht mehr
+ * als Knopf auf der Fläche. Der Weg des Menschen ist damit: Menü auf, Eintrag klicken.
+ */
+async function bearbeitenOeffnen(): Promise<void> {
+  const auf = container.querySelector('[data-testid="bib-eintrag-menue"]');
+  if (!(auf instanceof HTMLButtonElement)) {
+    throw new Error(`Das Menü „…“ der Lesefläche fehlt; DOM: ${container.textContent}`);
+  }
+  if (auf.getAttribute("aria-expanded") !== "true") {
+    await click(auf);
+  }
+  const eintrag = container.querySelector('[data-testid="bib-menue-bearbeiten"]');
+  if (!(eintrag instanceof HTMLButtonElement)) {
+    throw new Error("Der Menüeintrag „Bearbeiten“ fehlt");
+  }
+  await click(eintrag);
+}
+
 /** Öffnet Bearbeiten, klappt „Aus Dokument ergänzen" auf, lädt ein Dokument und extrahiert. */
 async function bisZurPunkteliste(): Promise<void> {
-  await click(buttonByText(i18n.t("ko.edit")));
+  await bearbeitenOeffnen();
   await click(buttonByText(i18n.t("xtr.title")));
   // Der Datei-Input des Panels — er trägt die zentrale Dokument-accept-Liste (FILE_IMPORT_ACCEPT);
   // andere Inputs derselben Seite (Bild, Anhang) tun das nicht.

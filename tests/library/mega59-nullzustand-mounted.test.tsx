@@ -56,6 +56,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -73,6 +78,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { eintragText, listenZaehler, menueOeffnen, zeilenTitel } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -110,73 +116,100 @@ function de(key: string): string {
   return String(i18n.getResource("de", "translation", key));
 }
 
-// Der Reset-Knopf des Leerzustands, über seinen ZUGÄNGLICHEN NAMEN gefunden (nicht über eine
-// CSS-Klasse) — damit belegt der Fall zugleich, dass die Handlung einen Namen hat.
-function resetKnopf(): HTMLButtonElement | undefined {
-  const label = de("lib.facetEmpty.reset");
-  return [...container.querySelectorAll("button")].find(
-    (b) => (b.textContent ?? "").trim() === label,
-  ) as HTMLButtonElement | undefined;
+// ================================================================================================
+// JOB 3063 (H4) — DER STUMME NULLZUSTAND BLEIBT GESCHLOSSEN, MIT EINEM SATZ STATT EINER KARTE.
+// ================================================================================================
+//
+// WAS mega59 D GEFUNDEN HAT und was unverändert gilt: Liefert die Suche Treffer, zeigen die aktiven
+// Filter aber keinen davon, darf die Fläche nicht STUMM leer bleiben. Bis H4 stand dafür eine Karte
+// mit Titel, Grundsatz („Deine Suche hat N Treffer …") und einem eigenen Reset-Knopf.
+//
+// WAS SICH GEÄNDERT HAT: Pedis Vorgabe vom 04.09. für den Leerzustand lautet EIN Satz plus EIN
+// Knopf (Auftrag §9). Die Liste sagt jetzt „Nichts gefunden." (bei Suche) bzw. „Noch keine
+// Einträge."; das Zurücksetzen steht dort, wo auch gefiltert wird — im Menü „Filter".
+//
+// WAS NICHT VERLOREN GEHT, und darum geht es in diesem Fall: Der Zustand ist weiterhin NICHT stumm,
+// der Weg zurück ist weiterhin da, und er ist weiterhin DERSELBE Handler (`onResetFilters`) —
+// kein zweiter Reset-Weg.
+
+/** Der Reset-Eintrag im Menü „Filter" — der Nachfolger des Reset-Knopfs im Leerzustand. */
+function resetEintrag(): HTMLButtonElement | undefined {
+  const menue = menueOeffnen(container, "bib-menue-filter");
+  const label = de("facet.reset");
+  return [...menue.querySelectorAll('[role="menuitem"]')].find((b) => eintragText(b) === label) as
+    | HTMLButtonElement
+    | undefined;
+}
+
+/** Der Satz im leeren Listenbereich — `null`, wenn die Liste Einträge hat. */
+function leerSatz(): string | null {
+  const el = container.querySelector('[data-testid="bib-leer"] p');
+  return el?.textContent?.trim() ?? null;
 }
 
 describe("AUFTRAG-mega59 D — null sichtbare Einträge sagen, WARUM", () => {
-  it("Servertreffer + alles wegfilternde Facetten: Meldung UND Reset-Knopf sind da", () => {
+  it("Servertreffer + alles wegfilternde Facetten: EIN Satz UND der Weg zurück sind da", () => {
     // Zwei Dimensionen, die sich AUSSCHLIESSEN: „Anlage 1" trägt nur „ventil", „Anlage 2" nur
     // „pumpe". Beide Werte existieren wirklich im Bestand — die Kombination trifft keinen. Die
     // Suche liefert also weiter zwei Treffer, die Facetten zeigen keinen davon.
     mount("/bibliothek?category=Anlage+1&tag=pumpe");
-    expect(text()).toContain(de("lib.facetEmpty.title"));
-    // Der Grund steht wörtlich dabei, mit der echten Trefferzahl aus dem Bestand.
-    expect(text()).toContain(de("lib.facetEmpty.hint").replace("{{count}}", String(KOS.length)));
-    expect(resetKnopf(), "der Reset-Knopf fehlt oder trägt keinen zugänglichen Namen").toBeTruthy();
+    expect(leerSatz()).toBe(de("lib.liste.leer"));
+    // Der Zähler sagt ehrlich Null — die Fläche behauptet keine Treffer, die sie nicht zeigt.
+    expect(listenZaehler(container)).toBe(0);
+    expect(resetEintrag(), "der Weg zurück fehlt im Filter-Menü").toBeTruthy();
     // …und kein einziger Treffer steht in der Liste (der Nullzustand ist echt, nicht behauptet).
+    expect(zeilenTitel(container)).toEqual([]);
     expect(text()).not.toContain(KO_A.title);
     expect(text()).not.toContain(KO_B.title);
   });
 
   it("DER KLICKPFAD: nach dem Reset sind die Einträge wieder da", () => {
     mount("/bibliothek?category=Anlage+1&tag=pumpe");
-    expect(text()).toContain(de("lib.facetEmpty.title"));
-    const knopf = resetKnopf();
+    expect(zeilenTitel(container)).toEqual([]);
+    const knopf = resetEintrag();
     expect(knopf).toBeTruthy();
     act(() => {
       knopf?.click();
     });
-    // Der bestehende Handler (`onResetFilters`) räumt Facetten, Bereich und Schienenzustand — und
-    // damit ist die Meldung weg und die Liste zurück. Ein zweiter Reset-Weg wurde nicht gebaut.
-    expect(text()).not.toContain(de("lib.facetEmpty.title"));
-    expect(text()).toContain(KO_A.title);
-    expect(text()).toContain(KO_B.title);
+    // Der bestehende Handler (`onResetFilters`) räumt Facetten, Bereich, Umschalter und
+    // Menüzustand — und damit ist die Liste zurück. Ein zweiter Reset-Weg wurde nicht gebaut.
+    expect(leerSatz()).toBeNull();
+    expect(zeilenTitel(container).sort()).toEqual([KO_A.title, KO_B.title].sort());
   });
 
-  it("der Knopf ist mit der Tastatur erreichbar und hat einen zugänglichen Namen", () => {
+  it("der Weg zurück ist mit der Tastatur erreichbar und hat einen zugänglichen Namen", () => {
     mount("/bibliothek?category=Anlage+1&tag=pumpe");
-    const knopf = resetKnopf();
+    const knopf = resetEintrag();
     // Ein echtes <button> ist per Konstruktion fokussierbar und mit Enter/Leertaste bedienbar —
     // deshalb ist genau das die Zusicherung, und nicht ein `div` mit `onClick`.
     expect(knopf?.tagName).toBe("BUTTON");
     expect(knopf?.hasAttribute("disabled")).toBe(false);
-    expect((knopf?.textContent ?? "").trim().length).toBeGreaterThan(0);
+    expect(eintragText(knopf as Element).length).toBeGreaterThan(0);
     knopf?.focus();
     expect(document.activeElement).toBe(knopf);
   });
 
-  it("ohne Filter erscheint die Meldung NICHT — sie ist kein Dauerzustand", () => {
+  it("ohne Filter erscheint der Leersatz NICHT — er ist kein Dauerzustand", () => {
     mount("/bibliothek");
-    expect(text()).not.toContain(de("lib.facetEmpty.title"));
-    expect(text()).toContain(KO_A.title);
+    expect(leerSatz()).toBeNull();
+    expect(zeilenTitel(container)).toContain(KO_A.title);
   });
 
-  it("der bereits geschlossene Fall bleibt geschlossen: leere Serverantwort", () => {
-    // Wichtige Abgrenzung. Der neue Zustand darf den alten nicht überschreiben — bei WIRKLICH
-    // leerer Serverantwort gilt weiter `QueryState`/`lib.empty`, und die neue Meldung wäre dort
-    // sogar falsch (sie behauptete Treffer, die es nicht gibt).
-    expect(de("lib.empty").length).toBeGreaterThan(0);
-    expect(de("lib.facetEmpty.title")).not.toBe(de("lib.empty"));
+  it("die Fläche unterscheidet „nichts gesucht“ von „nichts gefunden“", () => {
+    // Wichtige Abgrenzung, die mega59 D geschaffen hat und die bleibt: der leere BESTAND und die
+    // leere TREFFERMENGE sagen nicht dasselbe. Sie tun es jetzt in je einem Satz.
+    expect(de("lib.liste.leer").length).toBeGreaterThan(0);
+    expect(de("lib.liste.leerSuche").length).toBeGreaterThan(0);
+    expect(de("lib.liste.leer")).not.toBe(de("lib.liste.leerSuche"));
   });
 
-  it("alle drei Sprachen tragen die neuen Schlüssel, mit echten Umlauten wo sie hingehören", () => {
-    for (const key of ["lib.facetEmpty.title", "lib.facetEmpty.hint", "lib.facetEmpty.reset"]) {
+  it("alle drei Sprachen tragen die Schlüssel des Leerzustands, mit echten Umlauten wo sie hingehören", () => {
+    for (const key of [
+      "lib.liste.leer",
+      "lib.liste.leerSuche",
+      "lib.liste.erneut",
+      "facet.reset",
+    ]) {
       for (const locale of ["de", "en", "nl"]) {
         const wert = String(i18n.getResource(locale, "translation", key));
         expect(wert, `${locale}/${key} fehlt`).toBeTruthy();
@@ -184,7 +217,8 @@ describe("AUFTRAG-mega59 D — null sichtbare Einträge sagen, WARUM", () => {
       }
     }
     // Umschrift wäre ein stiller Rückschritt: „zurücksetzen“ trägt ein echtes „ü“, kein „ue“.
-    expect(de("lib.facetEmpty.reset")).toContain("ü");
-    expect(de("lib.facetEmpty.reset")).not.toMatch(/ue|ae|oe|ss(?!e)/);
+    expect(de("facet.reset")).toContain("ü");
+    expect(de("facet.reset")).not.toMatch(/ue|ae|oe|ss(?!e)/);
+    expect(de("lib.liste.leer")).toContain("ä");
   });
 });

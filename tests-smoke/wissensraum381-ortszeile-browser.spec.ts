@@ -16,6 +16,18 @@
 //   · `R-17` braucht das GEBÜNDELTE Produkt, nicht die Quelldateien — genau die Fehlerklasse (weisse
 //     Seite, kaputtes Bündel), für die diese Suite überhaupt existiert.
 //
+// ── JOB 3063 (H4), 04.09.2026: DER ORT DER ZEILE, NICHT IHRE ZUSAGE, HAT SICH GEÄNDERT ──────────
+//
+// Die Bibliothek ist seit H4 zwei Flächen (Liste links, Lesefläche rechts). Die Ortszeile steht
+// nicht mehr über der ganzen Seite, sondern oben in der LINKEN SPALTE — weiter über dem Suchfeld,
+// weiter sichtbar ohne Klick, weiter mit zwei `button[aria-pressed]`. Nachgeführt wurden genau
+// zwei Dinge:
+//   · das Suchfeld heisst jetzt `#bib-suche` (vorher `#library-search`),
+//   · das mobile Filterblatt (`[aria-modal="true"]`) ist durch das Menü „Filter" (`role="menu"`)
+//     abgelöst; `R-19` prüft dort dasselbe wie vorher am Blatt: der Ort ist nicht drin.
+// Die drei Zusicherungen selbst (sichtbar, über dem Suchfeld, zwei Knöpfe, Tastaturweg, Adresse,
+// Neuladen, schmal auf der Seite) stehen unverändert.
+//
 // DER ANKER, DEN DIESE PRÜFFLÄCHE SETZT: `data-testid="library-scope-bar"` am Ortszeilen-Block.
 // Bewusst eine KENNUNG und keine Beschriftung — aus demselben Grund, den `components/ui.tsx` für
 // `page-<schlüssel>` protokolliert: ein Titel genügt nicht, weil ihn auch eine Fehlerkarte, ein
@@ -46,7 +58,7 @@ test.describe("PRO 381 · Wissensraum · Ortszeile im Browser", () => {
     // 3. Sie steht ÜBER dem Suchfeld (`A-9`: die Tabreihenfolge folgt der Leserichtung, und die
     //    Zeile benennt, WORIN gesucht wird — sie muss vor dem Suchfeld kommen, nicht danach).
     const ortY = (await page.locator(ORTSZEILE).boundingBox())?.y ?? Number.POSITIVE_INFINITY;
-    const sucheY = (await page.locator("#library-search").boundingBox())?.y ?? 0;
+    const sucheY = (await page.locator("#bib-suche").boundingBox())?.y ?? 0;
     expect(ortY, "die Ortszeile steht nicht über dem Suchfeld").toBeLessThan(sucheY);
   });
 
@@ -111,19 +123,19 @@ test.describe("PRO 381 · Wissensraum · Ortszeile im Browser", () => {
     await expect(page.locator(`${ORTSZEILE} button[aria-pressed]`)).toHaveCount(2);
     await expect(page.locator(`${ORTSZEILE} select`)).toHaveCount(0);
 
-    // Das Filterblatt öffnen — es ist unverändert das Bestandsbauteil (`FacetFilter.tsx` ist
-    // zugesicherte Null-Diff, s. `R-16`).
-    await page
-      .getByRole("button", { name: /Filter/i })
-      .first()
-      .click();
-    const blatt = page.locator('[aria-modal="true"]');
-    await expect(blatt).toBeVisible({ timeout: 10_000 });
+    // Das Filtermenü öffnen — seit H4 der Ort ALLER Facetten (JOB 3063 §5a).
+    await page.getByTestId("bib-menue-filter").click();
+    const filter = page.locator('[role="menu"]').first();
+    await expect(filter).toBeVisible({ timeout: 10_000 });
 
     // Und es enthält KEIN Ortsbedienelement. Der Geltungsbereich ist kein Filter — „Die Schiene
-    // filtert, die Kopfzeile sucht" (`Library.tsx:540-545`, mega51).
-    await expect(blatt.locator(ORTSZEILE)).toHaveCount(0);
-    await expect(blatt.locator("nav[aria-label]")).toHaveCount(0);
-    await expect(blatt.locator('[aria-current="page"]')).toHaveCount(0);
+    // filtert, die Kopfzeile sucht" (mega51). Genau diese Zusage war in Runde 3 gebrochen.
+    await expect(filter.locator(ORTSZEILE)).toHaveCount(0);
+    await expect(filter.locator("button[aria-pressed]")).toHaveCount(0);
+    await expect(filter.locator("nav[aria-label]")).toHaveCount(0);
+    await expect(filter.locator('[aria-current="page"]')).toHaveCount(0);
+
+    // Die Ortszeile bleibt dabei stehen, wo sie war — das Menü verdeckt sie nicht.
+    await expect(page.locator(ORTSZEILE)).toBeVisible();
   });
 });

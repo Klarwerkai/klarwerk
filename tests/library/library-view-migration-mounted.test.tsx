@@ -52,6 +52,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -73,6 +78,7 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import { waehleImMenue, zeilenTitel } from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -99,15 +105,19 @@ function res(key: string): string {
   return String(i18n.getResource("de", "translation", key));
 }
 
-// Ein Facetten-Chip (echtes <button> mit „ · N"), gefunden über seinen sichtbaren Text.
-function chip(text: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").replace(/\s+/g, " ").includes(text),
-  );
-  if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Chip „${text}" fehlt; DOM: ${container.textContent}`);
-  }
-  return btn;
+// JOB 3063 (H4): die gespeicherten Sichten und die Reife-Facette liegen in Menüs. Der GEPRÜFTE PFAD
+// ist unverändert derselbe (`applyView` → `migrateSavedFacetSelection` → `foldStatusIntoMaturity`
+// bzw. `toggleFacetValue`); nur der Griff ist ein anderer.
+function sichtAnwenden(name: string): void {
+  waehleImMenue(container, "bib-liste-menue", name);
+}
+
+function reifeWaehlen(label: string): void {
+  waehleImMenue(container, "bib-menue-filter", label);
+}
+
+function titel(): string[] {
+  return zeilenTitel(container);
 }
 
 beforeEach(async () => {
@@ -132,39 +142,33 @@ describe("uxpol2: gemountete Library — Sicht-Migration + ODER-Filter (echter S
     );
     mount();
     // Vor dem Anwenden sind beide KOs sichtbar (kein Filter aktiv).
-    expect(container.textContent).toContain("Offen Unzugewiesen");
-    expect(container.textContent).toContain("Offen Zugewiesen");
+    expect(titel()).toContain("Offen Unzugewiesen");
+    expect(titel()).toContain("Offen Zugewiesen");
 
-    // Die gespeicherte Sicht anwenden — AUFTRAG-mega10 Block B Punkt 5: die Sichten stehen jetzt
-    // als anklickbare Einträge ÜBER der Trefferliste (vorher ein Dropdown). Der geprüfte Pfad ist
-    // unverändert derselbe (applyView → migrateSavedFacetSelection → foldStatusIntoMaturity).
-    act(() => {
-      chip("Alt-Offen").click();
-    });
+    // Die gespeicherte Sicht anwenden — sie steht im Menü „…" der Liste unter „Sichten".
+    sichtAnwenden("Alt-Offen");
 
-    // Filter ist aktiv (Status-Facette), aber BEIDE offenen KOs bleiben sichtbar — semantiktreu.
-    expect(container.textContent).toContain(res("facet.filtered"));
-    expect(container.textContent).toContain("Offen Unzugewiesen");
-    expect(container.textContent).toContain("Offen Zugewiesen"); // würde bei naiver Migration fehlen
+    // Filter ist aktiv (am Menü als Zahl abzulesen), aber BEIDE offenen KOs bleiben sichtbar —
+    // semantiktreu.
+    expect(container.querySelector('[data-testid="bib-menue-filter"]')?.textContent).toContain(
+      "· 1",
+    );
+    expect(titel()).toContain("Offen Unzugewiesen");
+    expect(titel()).toContain("Offen Zugewiesen"); // würde bei naiver Migration fehlen
   });
 
   it("(b) ODER innerhalb der Reife-Gruppe: eine Reife abwählen blendet nur deren KOs aus", () => {
     // AUFTRAG-uxpol5 · Punkt 1: die redundante Status-Facette ist entfernt; dasselbe ODER-Verhalten
-    // wird jetzt über die primäre Reife-Facette gepinnt (der Kontext-Zähler „ · 1" macht die Chips
-    // eindeutig gegenüber der Reife-Plakette/Erklärbox, die dieselben Wörter tragen).
+    // wird über die Reife-Facette gepinnt (der Kontext-Zähler „ · 1" macht die Einträge eindeutig).
     mount();
     // Nur „Zu prüfen" (Reife · 1) wählen → das zugewiesene (In Prüfung) KO fällt raus.
-    act(() => {
-      chip(`${res("use.open.label")} · 1`).click();
-    });
-    expect(container.textContent).toContain("Offen Unzugewiesen");
-    expect(container.textContent).not.toContain("Offen Zugewiesen");
+    reifeWaehlen(`${res("use.open.label")} · 1`);
+    expect(titel()).toContain("Offen Unzugewiesen");
+    expect(titel()).not.toContain("Offen Zugewiesen");
     // Reife „In Prüfung" (Kontext-Zähler · 1) ergänzen → ODER-Vereinigung, beide wieder sichtbar.
-    act(() => {
-      chip(`${res("use.review.label")} · 1`).click();
-    });
-    expect(container.textContent).toContain("Offen Unzugewiesen");
-    expect(container.textContent).toContain("Offen Zugewiesen");
+    reifeWaehlen(`${res("use.review.label")} · 1`);
+    expect(titel()).toContain("Offen Unzugewiesen");
+    expect(titel()).toContain("Offen Zugewiesen");
   });
 });
 

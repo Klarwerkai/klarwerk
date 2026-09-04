@@ -50,9 +50,18 @@ import {
 
 const WURZEL = join(__dirname, "..", "..");
 
-/** Die zwei Seiten, deren Doppelungen die Gleichlauf-Reihe verfolgt. */
+/**
+ * Die Flaechen, deren Doppelungen die Gleichlauf-Reihe verfolgt.
+ *
+ * JOB 3063 (H4): `pages/KnowledgeDetail.tsx` ist zum Adress-Adapter auf die Flaeche der Bibliothek
+ * geworden (rund 40 Zeilen); der bewachte Code — Formular, Quellen, Externes — liegt seither in
+ * `BibliothekLesen.tsx` und `MehrAbschnitte.tsx`. Bliebe die alte Datei hier stehen, liefe der
+ * Waechter fuer diese Seite STILL LEER. Es sind jetzt drei Dateien; die Erhebung war schon immer
+ * eine Liste und kommt damit ohne Umbau aus.
+ */
 const BEWACHT = [
-  "apps/web/src/pages/KnowledgeDetail.tsx",
+  "apps/web/src/components/bibliothek/BibliothekLesen.tsx",
+  "apps/web/src/components/bibliothek/MehrAbschnitte.tsx",
   "apps/web/src/pages/Capture.tsx",
 ] as const;
 
@@ -200,18 +209,12 @@ const FREMDE: readonly Fremdrelation[] = [
       "GELESEN: die nummerierte Schrittliste `GAP_RESCUE_STEPS` — dieselbe `<ol>` mit " +
       "`labelKey`/`hintKey` je Schritt.",
   },
-  // JOB 3061 (H2): DIE VIER `vhelp`-KOPIEN SIND ZWEI GEWORDEN — und das ist ein ECHTER Abbau,
-  // keine Verschiebung. Die Pruefflaeche fuehrt die ?-Hilfen nicht mehr als ein Dutzend einzelner
-  // Fragezeichen ueber die Karte verteilt, sondern EINMAL im „?"-Menue neben dem Titel (Pages-Art,
-  // design/klarwerk/Menues.dc.html). Damit brauchen `Conflicts.tsx` und `Validation.tsx` den
-  // Helfer nicht mehr: sie lesen dieselben Schluessel aus derselben Quelle (`lib/reviewHelp.ts`,
-  // `REVIEW_HELP_TOPICS`) und rendern sie als Bloecke des Menues. `Start.tsx` und
-  // `KnowledgeDetail.tsx` haben ihn unveraendert — dort ist die Fassung nicht angefasst worden.
-  {
-    dritt: "apps/web/src/pages/Start.tsx",
-    groessen: [42],
-    was: "GELESEN: derselbe Helfer `vhelp` wie in `KnowledgeDetail:313`.",
-  },
+  // JOB 3061 (H2): DIE VIER `vhelp`-KOPIEN WAREN ZWEI GEWORDEN (Conflicts/Validation lesen seither
+  // `REVIEW_HELP_TOPICS` aus dem „?"-Menue). `Start.tsx` und `KnowledgeDetail.tsx` behielten den
+  // Helfer unveraendert — bis JOB 3063 (H4): `KnowledgeDetail.tsx` ist zum Adress-Adapter geworden,
+  // und `vhelp` steht nicht mehr in der bewachten Lesefläche (`BibliothekLesen.tsx`). Die
+  // Start/KnowledgeDetail-Doppelung faellt damit ERSATZLOS weg, nicht nur um — kein Auseinanderlaufen,
+  // ein Wegfall.
   {
     dritt: "apps/web/src/lib/captureFromFile.ts",
     groessen: [36, 36],
@@ -222,13 +225,20 @@ const FREMDE: readonly Fremdrelation[] = [
   },
   // Die Datei ist mit dem Wegfall von `vhelp` (42 Knoten) in der Reihenfolge nach hinten gerutscht:
   // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35.
+  //
+  // JOB 3063 (H4) · KONFLIKTRUNDE 2: nach dem Rebase EIN Eintrag statt zwei — beide Zeilen
+  // beschrieben schon vorher dieselbe dritte Datei und sind jetzt zur tatsaechlich gemessenen
+  // Menge zusammengefuehrt: der Block und die Abbrechen-Flaeche `val.feedback.cancel` teilt sich
+  // Validation.tsx zusaetzlich mit der neuen Lesefläche `BibliothekLesen.tsx` (35, 35, 29), dazu
+  // die Auswahlliste `ktype.` (29) und ein `FirstStatement` (25) — am eigenen Lauf gemessen.
   {
     dritt: "apps/web/src/pages/Validation.tsx",
-    groessen: [35, 35, 29, 29],
+    groessen: [35, 35, 29, 29, 25],
     was:
-      "GELESEN: ein Block, die Abbrechen-Flaeche `val.feedback.cancel` und zwei Auswahllisten " +
-      "(`ktype.`). Der Helfer `vhelp` steht hier seit JOB 3061 H2 NICHT mehr — die ?-Hilfen " +
-      "wohnen im „?“-Menue der Flaeche.",
+      "GEMESSEN: ein Block und die Abbrechen-Flaeche `val.feedback.cancel` (je 35 Knoten, geteilt " +
+      "mit der Lesefläche `BibliothekLesen.tsx`), zwei Auswahllisten (`ktype.`, 29 Knoten) sowie " +
+      "ein weiterer geteilter Block (25 Knoten). Der Helfer `vhelp` steht hier seit JOB 3061 H2 " +
+      "NICHT mehr — die ?-Hilfen wohnen im „?“-Menue der Flaeche.",
   },
   {
     dritt: "apps/web/src/app/NavGuardContext.tsx",
@@ -245,35 +255,23 @@ const FREMDE: readonly Fremdrelation[] = [
     groessen: [27],
     was:
       "GEMESSEN: ein selbstschliessendes Element mit 27 Knoten um `ext.placeholder`, geteilt " +
-      "mit `KnowledgeDetail:1750`.",
+      "mit dem Abschnitt „Externes Wissen“ der Lesefläche (`MehrAbschnitte`).",
   },
   {
-    dritt: "apps/web/src/pages/Library.tsx",
-    groessen: [27],
-    // JOB 3034 D3 (04.09.): NEU. Eingetragen, bevor sie lebt — nicht, um einen roten Test gruen zu
-    // bekommen. Was dahintersteht, offen gesagt:
-    //
-    //   Der Auftrag verlangt dieselbe Aussage auf BEIDEN Flaechen (Bibliothekszeile und
-    //   Detailseite): scheitert die Auffrischung eines schon geholten Standes, bleiben die Werte
-    //   stehen und der gescheiterte Abruf wird als Hinweis daneben gesagt. Zwei Flaechen, eine
-    //   Aussage — die Doppelung ist damit gewollt sichtbar und nicht versehentlich.
-    //
-    //   ALLES TEILBARE IST SCHON GETEILT. Klassensatz (`AUFFRISCHUNG_HINWEIS_KLASSE`), Marke
-    //   (`AUFFRISCHUNG_HINWEIS_MARKE`) und der Text samt Zeitregel (`auffrischungHinweisText`)
-    //   wohnen einmal in `apps/web/src/lib/confidentiality.ts`. Das hat den Block von 40 auf 27
-    //   Knoten gebracht; gemessen, nicht geschaetzt.
-    //
-    //   WAS UEBRIG BLEIBT, ist das `<output>`-Element selbst mit seinen drei Attributen. Das
-    //   liesse sich nur durch eine gemeinsame .tsx-Komponente aufloesen — deren Ort waere
-    //   `apps/web/src/components/ui.tsx` (`QueryState`), und der liegt ausserhalb der ZIELPFADE
-    //   von JOB 3034. Die Zusammenlegung ist als Folgeauftrag benannt (BEN, Runde 1); dieser
-    //   Waechter legt ohnehin nicht zusammen, er erhebt und sichert.
+    dritt: "apps/web/src/pages/Mobile.tsx",
+    // JOB 3063 (H4): 25,25 -> 26,25,25. Der Abschnitt „Externes Wissen“ der Lesefläche trägt
+    // seinen Fehler-Toast jetzt als eigenen Helfer (`fehlerToast`) — derselbe Block, den Mobile
+    // schon hatte. Eine gepflegte Doppelung mehr, kein Auseinanderlaufen.
+    groessen: [26, 25, 25],
     was:
-      "GELESEN: der Hinweis `state.staleRefetchFailed` ueber der Flaeche — ein `<output>` mit " +
-      "`aria-live`, gemeinsamer Marke und gemeinsamem Klassensatz, geteilt mit " +
-      "`KnowledgeDetail:785`. Faellt der Hinweis auf einer der beiden Seiten weg, faellt diese " +
-      "Groesse aus der Liste.",
+      "GEMESSEN: drei Bloecke — das Absenden der externen Suche (zweimal 25 Knoten, geteilt mit " +
+      "beiden bewachten Seiten) und ein `FirstStatement` mit 26 Knoten um die Fehlermeldung.",
   },
+  // JOB 3034 D3 hatte hier einen Eintrag `pages/Library.tsx` [27] fuer den Hinweis
+  // `state.staleRefetchFailed`, geteilt mit `KnowledgeDetail:785` — genau die Bedingung, die sein
+  // eigener Text nannte: „Faellt der Hinweis auf einer der beiden Seiten weg, faellt diese Groesse
+  // aus der Liste." JOB 3063 (H4) hat `pages/Library.tsx` zum reinen Adress-Adapter gemacht; der
+  // Hinweis steht dort nicht mehr, und mit ihm die Doppelung — ERSATZLOS weg, kein Auseinanderlaufen.
   {
     dritt: "apps/web/src/auth/AuthScreens.tsx",
     groessen: [25],
@@ -283,13 +281,6 @@ const FREMDE: readonly Fremdrelation[] = [
     dritt: "apps/web/src/pages/Duplicates.tsx",
     groessen: [25],
     was: "GEMESSEN: derselbe `state.error`-Block wie in `AuthScreens`.",
-  },
-  {
-    dritt: "apps/web/src/pages/Mobile.tsx",
-    groessen: [25, 25],
-    was:
-      "GEMESSEN: zwei `ArrowFunction`-Bloecke zu je 25 Knoten — das Absenden der externen Suche, " +
-      "geteilt mit beiden bewachten Seiten.",
   },
 ];
 
@@ -587,8 +578,11 @@ describe("JOB 2476 · W1 · gedoppelte Bloecke mit einer DRITTEN Datei", () => {
     // Behauptung ueber ein leeres Blatt.
     const { gelesen, parsefehler } = messe();
     for (const f of BEWACHT) {
+      // JOB 3063: die Schwelle folgt der kleinsten bewachten Flaeche (`MehrAbschnitte.tsx`), nicht
+      // mehr der einen grossen Seitendatei. Sie soll „gelesen" von „leer" trennen, nicht Groesse
+      // vorschreiben.
       expect(erhebeDatei(WURZEL, f).knoten.length, `${f} wurde nicht gelesen`).toBeGreaterThan(
-        5000,
+        3000,
       );
     }
     for (const baum of BAEUME) {
@@ -627,18 +621,21 @@ describe("JOB 2476 · W1 · gedoppelte Bloecke mit einer DRITTEN Datei", () => {
     // Genau dort greifen zwei Waechter auf denselben Gegenstand — nachweislich mit
     // verschiedenen Zusicherungen (siehe Begruendung an `DREIFACH`).
     const { bewacht, inDritten } = messe();
-    const [a, b] = bewacht as [Erhebung, Erhebung];
+    // JOB 3063 (H4): die Bibliothek-Seite besteht aus zwei Bauteilen, `Capture.tsx` steht als
+    // letztes im Register. Verglichen wird weiterhin jede Bibliothek-Datei GEGEN Capture — nicht
+    // die zwei Bibliothek-Dateien untereinander (das wäre eine andere Frage).
+    const capture = bewacht[bewacht.length - 1] as Erhebung;
+    const links = bewacht.slice(0, -1);
 
-    // KALIBRIERUNG: ohne Paare zwischen den zwei Seiten waere die Liste unten trivial leer.
-    const paar = gleichPaare(a, b);
-    expect(
-      paar.length,
-      "Zwischen den zwei bewachten Seiten wurde kein Paar gefunden",
-    ).toBeGreaterThan(5);
+    // KALIBRIERUNG: ohne Paare zwischen den bewachten Seiten waere die Liste unten trivial leer.
+    const paare = links.flatMap((a) => gleichPaare(a, capture).map((p) => ({ a, p })));
+    expect(paare.length, "Zwischen den bewachten Seiten wurde kein Paar gefunden").toBeGreaterThan(
+      5,
+    );
 
-    const gemessen = paar
-      .filter((p) => inDritten.has(a.inh.get(p.links) as string))
-      .map((p) => ({
+    const gemessen = paare
+      .filter(({ a, p }) => inDritten.has(a.inh.get(p.links) as string))
+      .map(({ a, p }) => ({
         knoten: a.groesse.get(p.links) ?? 0,
         art: ts.SyntaxKind[p.links.kind],
         dritte: [...new Set(inDritten.get(a.inh.get(p.links) as string))].sort(),

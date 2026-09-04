@@ -5,7 +5,6 @@ import {
   countByMaturity,
   filterByMaturity,
   libraryMaturity,
-  libraryUseCta,
   maturityFilterLabelKey,
 } from "../../apps/web/src/lib/libraryMaturity";
 
@@ -104,25 +103,24 @@ describe("SCRUM-267: filterByMaturity / countByMaturity", () => {
   });
 });
 
-// SCRUM-288: Bibliothek trennt Nutzung (Ask) von Review: nur validierte KOs direkt fragen.
-describe("SCRUM-288: libraryUseCta", () => {
-  it("validiertes/nutzbares KO führt in Ask mit KO-Titel als Startfrage", () => {
-    const cta = libraryUseCta(
-      ko({ title: "Ventil X bei Überdruck schließen", status: "validiert" }),
-    );
-    expect(cta.kind).toBe("ask");
-    expect(cta.labelKey).toBe("lib.ask");
-    expect(cta.href).toContain("/fragen?q=");
-    expect(decodeURIComponent(cta.href)).toContain("Ventil X");
-  });
-
-  it("offenes KO führt nicht in Ask, sondern zur Validierung", () => {
-    const cta = libraryUseCta(ko({ status: "offen", assignments: [] }));
-    expect(cta).toEqual({ labelKey: "lib.review", href: "/validierung", kind: "review" });
-  });
-
-  it("KO in Prüfung führt ebenfalls zur Validierung statt Ask", () => {
-    const cta = libraryUseCta(ko({ status: "offen", assignments: ["controller"] }));
-    expect(cta).toEqual({ labelKey: "lib.review", href: "/validierung", kind: "review" });
-  });
-});
+// ================================================================================================
+// SCRUM-288 IST ABGELÖST (JOB 3063 · H4, Runde 5) — HIER STAND DER ALTE FRAGEN-VERTRAG.
+// ================================================================================================
+//
+// An dieser Stelle prüften drei Fälle `libraryUseCta`: „nur validiertes Wissen führt in den
+// Ask-Weg; offen und in Prüfung führen unter der Beschriftung ‚Prüfen‘ nach /validierung."
+//
+// PEDIS VORGABE VOM 04.09. (Auftrag §5.3/§5a) kehrt das um: auf der Lesefläche trägt JEDER gewählte
+// Eintrag dieselbe verbindliche Aktion „Fragen", und sie führt nach `/fragen` MIT dem Bezug auf
+// genau diesen Eintrag (`ko=<id>`). Wer prüfen will, findet „Validieren" im Menü „…" am Eintrag.
+// Die drei Fälle wurden deshalb nicht umgeschrieben, sondern GESTRICHEN: sie pinnten eine Zusage,
+// die das Produkt nicht mehr gibt.
+//
+// WO DER HEUTIGE VERTRAG GEMESSEN WIRD: `tests/library/h4-fragen-vertrag-mounted.test.tsx` (alle
+// drei Anzeigezustände an der gemounteten Fläche) und F13 in
+// `tests/design/h4-funktionsinventar.test.ts` (die zwei über die echte Schnittstelle erreichbaren
+// Zustände, in Chromium am gebauten Stand).
+//
+// `libraryUseCta` selbst liegt in `apps/web/src/lib/libraryMaturity.ts` — AUSSERHALB der Zielpfade
+// dieses Auftrags. Die Funktion ist seither ohne Produktaufrufer und als solche im Register
+// `ERSETZT_JOB3063` des Aufrufer-Wächters geführt; ihr Abbau ist ein Folgeauftrag.

@@ -46,6 +46,11 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
+    // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
+    // Text und mischt sich in keine Zusicherung ein.
+    useKo: () => ({ data: undefined, isLoading: true, isError: false, error: null }),
+    useAudit: () => ok([]),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -67,6 +72,13 @@ import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import i18n from "../../apps/web/src/i18n";
 import { Library } from "../../apps/web/src/pages/Library";
+import {
+  istGehakt,
+  listenZaehler,
+  menueSchliessen,
+  waehleImMenue,
+  zeilenTitel,
+} from "./support/bib-flaeche";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -100,37 +112,27 @@ function res(key: string): string {
   return String(i18n.getResource("de", "translation", key));
 }
 
-function sortSelect(): HTMLSelectElement {
-  const el = container.querySelector("#library-sort");
-  if (!(el instanceof HTMLSelectElement)) {
-    throw new Error(`Sortier-Select fehlt; DOM: ${container.textContent}`);
-  }
-  return el;
+// JOB 3063 (H4): die Sortierung steht im Menü „Filter" → „Sortieren" statt in einem `<select>` über
+// der Trefferliste. Dieselben vier Ordnungen, dieselbe Persistenz (localStorage), derselbe Helfer
+// `lib/librarySort.ts` — nur der Griff ist ein anderer.
+function setSort(labelKey: string): void {
+  waehleImMenue(container, "bib-menue-filter", res(labelKey));
 }
 
-function setSort(value: string): void {
-  const select = sortSelect();
-  act(() => {
-    select.value = value;
-    select.dispatchEvent(new Event("change", { bubbles: true }));
-  });
+/** Ist eine Ordnung gerade gewählt? (Der Haken im Menü ersetzt `select.value`.) */
+function sortGewaehlt(labelKey: string): boolean {
+  const gehakt = istGehakt(container, "bib-menue-filter", res(labelKey));
+  menueSchliessen(container, "bib-menue-filter");
+  return gehakt;
 }
 
+/** Die Position eines Titels IN DER LISTE — die Reihenfolge, um die es hier geht. */
 function pos(title: string): number {
-  return (container.textContent ?? "").indexOf(title);
+  return zeilenTitel(container).indexOf(title);
 }
 
-// AUFTRAG-mega10 Block B: Facetten-Optionen sind in der Schiene echte Checkboxen im <label>
-// (erster <span> = Wert, zweiter = Kontext-Zähler) statt aria-pressed-Chips.
-function option(value: string): HTMLInputElement {
-  const row = [...container.querySelectorAll("label")].find(
-    (l) => l.querySelectorAll("span")[0]?.textContent === value,
-  );
-  const box = row?.querySelector("input[type=checkbox]");
-  if (!(box instanceof HTMLInputElement)) {
-    throw new Error(`Option „${value}“ fehlt; DOM: ${container.textContent}`);
-  }
-  return box;
+function option(value: string): void {
+  waehleImMenue(container, "bib-menue-bereich", `${value} · `);
 }
 
 beforeEach(async () => {
@@ -146,7 +148,7 @@ afterEach(() => {
 describe("AUFTRAG-sortfilter: gemountete Library-Sortierung (echter Seam)", () => {
   it("(a) Titel A→Z ordnet alphabetisch", () => {
     mount();
-    setSort("title");
+    setSort("lib.sort.title");
     expect(pos("Alpha Ventil")).toBeGreaterThanOrEqual(0);
     expect(pos("Alpha Ventil")).toBeLessThan(pos("Mittel Dichtung"));
     expect(pos("Mittel Dichtung")).toBeLessThan(pos("Zeta Pumpe"));
@@ -154,7 +156,7 @@ describe("AUFTRAG-sortfilter: gemountete Library-Sortierung (echter Seam)", () =
 
   it("(b) Trust hoch→niedrig ordnet absteigend", () => {
     mount();
-    setSort("trust");
+    setSort("lib.sort.trust");
     expect(pos("Zeta Pumpe")).toBeGreaterThanOrEqual(0);
     expect(pos("Zeta Pumpe")).toBeLessThan(pos("Mittel Dichtung"));
     expect(pos("Mittel Dichtung")).toBeLessThan(pos("Alpha Ventil"));
@@ -163,25 +165,28 @@ describe("AUFTRAG-sortfilter: gemountete Library-Sortierung (echter Seam)", () =
   it("(c) Sortierung komponiert mit einem aktiven Facetten-Filter", () => {
     mount();
     // Kategorie „Anlage 1" wählen (nur Alpha + Mittel) …
-    act(() => {
-      option("Anlage 1").click();
-    });
+    option("Anlage 1");
     // … dann Titel A→Z: nur die gefilterte Menge, in alphabetischer Ordnung.
-    setSort("title");
-    expect(container.textContent).not.toContain("Zeta Pumpe");
+    setSort("lib.sort.title");
+    expect(zeilenTitel(container)).not.toContain("Zeta Pumpe");
     expect(pos("Alpha Ventil")).toBeGreaterThanOrEqual(0);
     expect(pos("Alpha Ventil")).toBeLessThan(pos("Mittel Dichtung"));
-    expect(container.textContent).toContain(res("facet.filtered"));
+    // Dass gefiltert wird, sagt die Fläche jetzt über den Zähler am Menü („Filter · 1") und über
+    // den Listenfuß — nicht mehr über eine eigene Zeile „von N gefiltert".
+    expect(listenZaehler(container)).toBe(2);
+    expect(container.querySelector('[data-testid="bib-menue-filter"]')?.textContent).toContain(
+      "· 1",
+    );
   });
 
   it("(d) die Sortier-Wahl überlebt einen frischen Mount (Persistenz)", () => {
     mount();
-    setSort("title");
-    expect(sortSelect().value).toBe("title");
+    setSort("lib.sort.title");
+    expect(sortGewaehlt("lib.sort.title")).toBe(true);
     unmount();
     // „Reload": frischer Mount über denselben localStorage → Wahl bleibt „title" (ohne erneute Auswahl).
     mount();
-    expect(sortSelect().value).toBe("title");
+    expect(sortGewaehlt("lib.sort.title")).toBe(true);
     expect(pos("Alpha Ventil")).toBeLessThan(pos("Mittel Dichtung"));
     expect(pos("Mittel Dichtung")).toBeLessThan(pos("Zeta Pumpe"));
   });

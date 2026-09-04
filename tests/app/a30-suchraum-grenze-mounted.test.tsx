@@ -83,6 +83,19 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(lage.treffer),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3063 (H4): der Fundstellengrund steht auf der LESEFLÄCHE unter der Meta-Zeile
+    // (`components/bibliothek/BibliothekLesen.tsx:526-534`), nicht mehr an der Trefferzeile — die
+    // Zeile trägt seit dem Umbau nur Punkt, Titel und „Bereich · Status". Die Lesefläche zeigt den
+    // gewählten Eintrag; sie bekommt ihn hier aus derselben Treffermenge.
+    useKo: () => ok(lage.treffer[0] ?? null),
+    useAudit: () => ok([]),
+    useKoEvidence: () => ok([]),
+    useKoNeighbors: () => ok([]),
+    useKoVersions: () => ok([]),
+    useEigeneBefunde: () => ok([]),
+    useLifecyclePending: () => ok([]),
+    useExternalPolicy: () => ok({ stage: "blocked" }),
+    useReasonerStatus: () => ok({ active: false }),
   };
 });
 vi.mock("../../apps/web/src/app/AuthContext", () => ({
@@ -138,13 +151,26 @@ function de(key: string): string {
   return String(i18n.getResource("de", "translation", key));
 }
 
-// Die Fundstellengründe als MENGE, aus ihrer eigenen Auszeichnung gelesen (Library.tsx:1055-1062)
-// — nicht über eine Textsuche im ganzen Rumpf. Ein Wort wie „Titel" kommt auf der Seite auch
-// anderswo vor; eine Rumpfsuche danach wäre kein Nachweis, sondern ein Zufall.
+// Die Fundstellengründe als MENGE, aus ihrer eigenen Marke gelesen — nicht über eine Textsuche im
+// ganzen Rumpf. Ein Wort wie „Titel" kommt auf der Seite auch anderswo vor; eine Rumpfsuche danach
+// wäre kein Nachweis, sondern ein Zufall.
+//
+// JOB 3063 (H4): die Gründe stehen als EINE Zeile auf der Lesefläche
+// (`data-testid="bib-treffergrund"`, `BibliothekLesen.tsx:526-534`) in der Form
+// „Treffer in <Grund> · <Grund>". Gelesen wird der Teil nach der Beschriftung.
 function gruende(): string[] {
-  return [...container.querySelectorAll("span")]
-    .filter((s) => s.className.includes("text-[10px] text-muted"))
-    .map((s) => (s.textContent ?? "").trim());
+  const zeile = container.querySelector('[data-testid="bib-treffergrund"]');
+  if (zeile === null) {
+    return [];
+  }
+  const roh = (zeile.textContent ?? "").replace(/\s+/g, " ").trim();
+  const kopf = `${de("lib.matchIn")} `;
+  return roh.startsWith(kopf)
+    ? roh
+        .slice(kopf.length)
+        .split(" · ")
+        .map((s) => s.trim())
+    : [roh];
 }
 
 describe("A30 · Teil D · die Bibliothek zeigt, WARUM etwas in der Liste steht", () => {
@@ -178,18 +204,22 @@ describe("A30 · Teil D · die Bibliothek zeigt, WARUM etwas in der Liste steht"
 
     mount("/bibliothek?q=wortdasesnirgendsgibt");
 
-    // Der Wortlaut nennt die Anfrage und sagt nichts über den Zustand der Projektion. Ein Satz wie
-    // „möglicherweise noch nicht durchsuchbar" wäre nach Korrekturpflicht 4 nur zulässig, wenn ein
-    // sichtbarer, nicht projizierter Beitrag nachweislich existierte — er existiert nicht.
-    expect(text()).toContain("wortdasesnirgendsgibt");
+    // Der Wortlaut sagt nichts über den Zustand der Projektion. Ein Satz wie „möglicherweise noch
+    // nicht durchsuchbar" wäre nach Korrekturpflicht 4 nur zulässig, wenn ein sichtbarer, nicht
+    // projizierter Beitrag nachweislich existierte — er existiert nicht.
+    //
+    // JOB 3063 (H4): der Nulltreffer ist auf EINEN Satz gekürzt („Nichts gefunden.",
+    // AUFTRAG §9) und wiederholt die Anfrage nicht mehr. Der Suchtext steht weiter sichtbar im
+    // Feld — dort, wo er hingehört; die Wiederholung im Satz war Text über Text.
+    expect(text()).toContain(de("lib.liste.leerSuche"));
+    const feld = container.querySelector("#bib-suche");
+    expect((feld as HTMLInputElement | null)?.value).toBe("wortdasesnirgendsgibt");
     for (const verbotenerHinweis of ["Projektion", "projiziert", "noch nicht durchsuchbar"]) {
       expect(
         text(),
         `Die Bibliothek darf keinen Projektionsrückstand behaupten (${verbotenerHinweis})`,
       ).not.toContain(verbotenerHinweis);
     }
-    // KALIBRIERUNG: die Fläche ist nicht stumm — der Leerzustand hat wirklich einen Text.
-    expect(text().length).toBeGreaterThan(de("lib.kicker").length);
   });
 
   it("D4 — KALIBRIERUNG: bei Treffern erscheint der Nulltreffer-Text NICHT", () => {
@@ -198,6 +228,6 @@ describe("A30 · Teil D · die Bibliothek zeigt, WARUM etwas in der Liste steht"
     mount("/bibliothek?q=schlagwortalpha");
 
     // Ohne diesen Fall wäre D3 auch dann grün, wenn der Leerzustand IMMER stünde.
-    expect(text()).not.toContain(de("lib.facetEmpty.title"));
+    expect(text()).not.toContain(de("lib.liste.leerSuche"));
   });
 });

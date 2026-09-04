@@ -7,9 +7,6 @@ const de = {
   "ask.help.sources.title": "Warum nur belegte Antworten?",
   "ask.help.sources.body":
     "Klarwerk antwortet ausschließlich aus euren eigenen Wissensobjekten — nie aus allgemeinem Modellwissen. Zu jeder Antwort siehst du, welche Quellen sie getragen haben und in welchem Zustand sie sind. Fehlt die Grundlage, sagt es das ehrlich, statt zu raten. Prüfe die genannten Quellen, bevor du dich darauf verlässt.",
-  "lib.help.filters.title": "Filter ändern nur die Sicht",
-  "lib.help.filters.body":
-    "Reifegrad, Status und Domäne blenden Objekte nur ein oder aus — am Wissen selbst ändern sie nichts. „Validiert“ ist von Kolleg:innen bestätigt, „offen“ noch in Prüfung.",
   "dup.help.detection.title": "Wie Dubletten erkannt werden",
   "dup.help.detection.body":
     "„Textidentisch“ findet die Heuristik ohne KI; „wahrscheinlich“ beurteilt das Modell inhaltlich. Zusammenführen passiert nie automatisch — du entscheidest bewusst, was verschmolzen wird.",
@@ -2214,7 +2211,6 @@ const de = {
     "Die Frage wird als Wissenslücke gespeichert — keine Antwort und kein validiertes Wissen. Bitte keine sensiblen oder personenbezogenen Details erfassen; ergänze später geprüfte Erfahrung.",
   "ask.toGaps": "Zu den Wissenslücken",
   "ask.toCapture": "Wissen erfassen",
-  "ko.kicker": "Wissensobjekt",
   "ko.use.ready": "Produktionsnah nutzbar",
   "ko.use.in-review": "In Prüfung",
   "ko.use.needs-work": "Noch in Arbeit",
@@ -2253,7 +2249,6 @@ const de = {
   "ko.cta.review": "Bewertung abschließen",
   "ko.cta.addSource": "Zu Quellen & Belegen",
   "ko.cta.validate": "Zur Validierung",
-  "ko.title": "Detail",
   "ko.statement": "Aussage",
   // WP-D10 Fix 4: Erstellungsdatum sichtbar (Validierungs-Karten + Detail) — gleichnamige Beiträge
   // werden unterscheidbar. Nur vorhandene KO-Felder (createdAt), kein Platzhalter-Datum bei Altdaten.
@@ -2286,6 +2281,21 @@ const de = {
   "ko.conditional": "Bedingt",
   "ko.reject": "Ablehnen",
   "ko.edit": "Bearbeiten",
+  // JOB 3063 · H4 — die dreizehn Abschnitte hinter der Zeile „Mehr". Nur Titel: die Erklärsätze
+  // und Hilfe-Tipps der alten Detailseite sind entfallen, die Funktionen darin nicht.
+  "ko.mehr.konflikt": "Konflikt",
+  "ko.mehr.quellen": "Quellen und Belege",
+  "ko.mehr.extern": "Externes Wissen",
+  "ko.mehr.beitrag": "Quelle oder Beitrag melden",
+  "ko.mehr.provenienz": "Provenienz",
+  "ko.mehr.kopplung": "Kopplung und Anlagen",
+  "ko.mehr.herkunftskette": "Herkunftskette",
+  "ko.mehr.historie": "Historie",
+  "ko.mehr.belege": "Belege",
+  "ko.mehr.schnappschuesse": "Schnappschüsse",
+  "ko.mehr.kommentare": "Kommentare",
+  "ko.mehr.anhaenge": "Anhänge",
+  "ko.mehr.nachbarschaft": "Nachbarschaft",
   "ko.returnedBanner":
     "Dieses Wissensobjekt wurde aus der Prüfung zur Nacharbeit zurückgegeben. Bitte das Review-Feedback abarbeiten und eine Revision speichern.",
   "ko.rework.title": "Review-Nacharbeit",
@@ -2399,7 +2409,8 @@ const de = {
   "ko.lineageOrigin": "Ursprung",
   "ko.lineageTransferred": "(übergeben)",
   "ko.lineageVersions": "Version",
-  "ko.lineageChanges": "Änderungen",
+  "ko.lineageChanges_one": "{{count}} Änderung",
+  "ko.lineageChanges_other": "{{count}} Änderungen",
   "ko.lineageRelated": "Verwandt",
   "ko.lineageAudit": "Letzte Ereignisse",
   "ko.lineageGraphLink": "Im Wissensgraph ansehen",
@@ -2986,9 +2997,7 @@ const de = {
   "lib.facet.showResults_one": "{{count}} Beitrag anzeigen",
   "lib.facet.showResults_other": "{{count}} Beiträge anzeigen",
   "lib.facet.rangeLabel": "Zuletzt geändert",
-  "lib.loadMore": "Weitere {{n}} laden",
   "lib.views.remember": "Diese Suche merken",
-  "lib.views.savedLabel": "Gemerkte Suchen",
   // AUFTRAG-sortfilter · Punkt 1: Sortierung der Trefferliste.
   "lib.sort.label": "Sortieren",
   "lib.sort.relevance": "Relevanz",
@@ -3002,7 +3011,6 @@ const de = {
   "lib.views.namePlaceholder": "Name der Sicht",
   "lib.views.save": "Sicht speichern",
   "lib.views.remove": "Sicht löschen",
-  "lib.views.localHint": "lokal in diesem Browser gespeichert",
   "imp.select.deselectLang": "Alle {{lang}} abwählen · {{n}}",
   // SCRUM-486 (nacht24 Paket 3): EINE ruhige Befund-Darstellung — WAS, Erkennungsweg (ehrlich),
   // beide Seiten verlinkt, Gruppierung je Beitrag.
@@ -3041,9 +3049,7 @@ const de = {
   "funke.capital.authors": "aktive Wissensträger",
   "funke.capital.gaps": "offene Wissenslücken",
   "funke.capital.hint": "Nur echte Zahlen aus dem Bestand — keine Schätzungen.",
-  "lib.kicker": "Bibliothek",
   "lib.export": "Export",
-  "lib.exportFormat": "Exportformat",
   "lib.format.json": "JSON",
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
@@ -3069,7 +3075,29 @@ const de = {
   // `lib.scope.note` (unten, AUFTRAG-BASIC-u2) bleibt daneben stehen und sagt etwas anderes: WELCHER
   // BESTAND durchsucht wird. Feld und Bestand sind zwei Fragen; eine ersetzt die andere nicht.
   "lib.searchLabel": "Bibliothek durchsuchen",
-  "lib.search": "Suche in Titel, Text, Kategorie und Schlagwort …",
+  // JOB 3063 · H4 — die Fläche „Liste plus Lesefläche": Umschalter, Menüs, Listenzustände.
+  // Beschriftungen, keine Erklärsätze (Pedi 04.09.: Erklärtext gehört hinter Menüs, nicht ins
+  // Sichtfeld). Das Wort zum Zustand kommt unverändert aus `status.*` — keine zweite Vokabel.
+  "lib.segment.label": "Zustand",
+  "lib.segment.alle": "Alle",
+  "lib.menue.weitere": "Weitere Aktionen",
+  "lib.menue.bereich": "Bereich",
+  "lib.menue.filter": "Filter",
+  "lib.menue.sichten": "Sichten",
+  "lib.menue.sichtSpeichern": "Sicht speichern",
+  "lib.menue.geltungsbereich": "Geltungsbereich",
+  "lib.liste.eintraege_one": "{{count}} Eintrag",
+  "lib.liste.eintraege_other": "{{count}} Einträge",
+  "lib.liste.eintraegeUnbekannt": "–",
+  "lib.liste.leer": "Noch keine Einträge.",
+  "lib.liste.leerSuche": "Nichts gefunden.",
+  "lib.liste.fehler": "Die Liste ließ sich nicht laden.",
+  "lib.liste.erneut": "Erneut versuchen",
+  "lib.liste.erfassen": "Erfassen",
+  "lib.lesen.mehr": "Mehr",
+  "lib.lesen.bilder_one": "{{count}} Bild",
+  "lib.lesen.bilder_other": "{{count}} Bilder",
+  "lib.lesen.fehler": "Der Eintrag ließ sich nicht laden.",
   // ==============================================================================================
   // AUFTRAG-BASIC-u2 — DIE SUCHE SAGT, WORIN SIE SUCHT.
   // ==============================================================================================
@@ -3079,9 +3107,6 @@ const de = {
   // während der gesuchte Entwurf auf /erfassen liegt. Der Suchraum wird jetzt genannt, und die
   // andere Suchwelt bekommt einen Namen und einen Weg. An Query, Filterung und Ranking ändert das
   // nichts: es ist eine AUSKUNFT über den Bestand, keine neue Regel über ihn.
-  "lib.scope.note":
-    "Durchsucht wird das Klarwerk-Wissen, das für dich freigegeben ist — nicht deine eigenen, noch nicht eingereichten Entwürfe.",
-  "lib.scope.toDrafts": "Eigene Entwürfe durchsuchen",
   "lib.allStatus": "Alle Status",
   "lib.allTypes": "Alle Wissensarten",
   "lib.allCategories": "Alle Kategorien",
@@ -3094,25 +3119,13 @@ const de = {
   // AUFTRAG-BASIC-u2: der Nulltreffer nennt den SUCHRAUM. „Keine Treffer." behauptete durch
   // Weglassen, es gebe nichts — hier steht jetzt, worin nichts gefunden wurde und wo das Fehlende
   // sonst noch liegen kann.
-  "lib.empty":
-    "Keine Treffer im Klarwerk-Wissen, das für dich freigegeben ist. Deine eigenen, noch nicht eingereichten Entwürfe stehen unter „Entwürfe fortsetzen“.",
-  "lib.answerTitle": "Antwort statt nur Treffer?",
-  "lib.answerHint":
-    "Lass dir „{{q}}“ quellengebunden beantworten — mit klaren Quell-Links, nicht nur Artikel.",
-  "lib.answerButton": "Frage beantworten lassen",
   // JOB 1119 (D-002): der Nulltreffer nennt jetzt auch die FELDER. Der Nutzer, der nichts findet,
   // hat genau eine Frage — „wo hat es denn überhaupt gesucht?" —, und der Tipp „anders formulieren"
   // beantwortete sie nicht. Die Aufzählung ist der gemessene Suchraum (s. `lib.search` oben), nicht
   // eine Vermutung darüber.
-  "lib.emptyQuery":
-    "Keine Treffer für „{{q}}“ im Klarwerk-Wissen, das für dich freigegeben ist. Deine eigenen, noch nicht eingereichten Entwürfe sind hier nicht dabei. Gesucht wurde in Titel, Kernaussage, Text, Bildbeschreibung, Kategorie und Schlagwort. Tipp: anders formulieren, Filter zurücksetzen oder ein einzelnes Stichwort suchen.",
   // AUFTRAG-mega59 BLOCK D: der stumme Nullzustand. Die Suche hat Treffer, die aktiven Facetten
   // zeigen keinen davon — bis hierher rendert die Bibliothek dafür eine leere Karte ganz ohne Text
   // (bei aktiver Gruppierung ein leeres div). Der Text nennt den GRUND, nicht nur die Zahl.
-  "lib.facetEmpty.title": "Treffer vorhanden — aber keiner passt zu den aktiven Filtern.",
-  "lib.facetEmpty.hint":
-    "Deine Suche hat {{count}} Treffer im Bestand. Die gesetzten Filter blenden alle davon aus.",
-  "lib.facetEmpty.reset": "Alle Filter zurücksetzen",
   "lib.matchIn": "Treffer in",
   "lib.match.title": "Titel",
   // JOB 1119 (D-002): „Schlagwort", wie die Facette daneben (`lib.facet.tag`). Abzeichen und
@@ -3133,7 +3146,6 @@ const de = {
   "lib.maturity.review": "In Prüfung",
   "lib.maturity.open": "Zu prüfen",
   "lib.resultCount": "Treffer: {{n}}",
-  "lib.showingFirst": "zeige erste {{shown}} von {{total}}",
   "imp.explore.title": "Quelle erkunden",
   "imp.explore.hint":
     "Sieh dir zuerst an, was in der Quelle steckt — Mengen, Autoren, Themen und Zeitraum. Es wird nichts importiert.",
@@ -5083,9 +5095,6 @@ const en: typeof de = {
   "ask.help.sources.title": "Why only sourced answers?",
   "ask.help.sources.body":
     "Klarwerk answers only from your own knowledge objects — never from general model knowledge. For every answer you see which sources carried it and what state they are in. If the basis is missing, it says so honestly instead of guessing. Check the cited sources before relying on them.",
-  "lib.help.filters.title": "Filters only change the view",
-  "lib.help.filters.body":
-    "Maturity, status and domain merely show or hide objects — they change nothing about the knowledge itself. “Validated” is confirmed by colleagues, “open” is still under review.",
   "dup.help.detection.title": "How duplicates are detected",
   "dup.help.detection.body":
     "“Text-identical” is found by the heuristic without AI; “likely” is judged by the model on content. Merging never happens automatically — you deliberately decide what gets merged.",
@@ -6986,7 +6995,6 @@ const en: typeof de = {
     "The question is stored as a knowledge gap — not an answer and not validated knowledge. Please avoid sensitive or personal details; add reviewed experience later.",
   "ask.toGaps": "To the knowledge gaps",
   "ask.toCapture": "Capture knowledge",
-  "ko.kicker": "Knowledge object",
   "ko.use.ready": "Ready to use",
   "ko.use.in-review": "In review",
   "ko.use.needs-work": "Still in progress",
@@ -7023,7 +7031,6 @@ const en: typeof de = {
   "ko.cta.review": "Finish review",
   "ko.cta.addSource": "Go to sources & evidence",
   "ko.cta.validate": "Go to validation",
-  "ko.title": "Detail",
   "ko.statement": "Statement",
   "ko.createdAt": "Created on",
   // WP-SHIP9-S2 Paket 3 (E2): short-preview disclosure per knowledge object/candidate.
@@ -7050,6 +7057,19 @@ const en: typeof de = {
   "ko.conditional": "Conditional",
   "ko.reject": "Reject",
   "ko.edit": "Edit",
+  "ko.mehr.konflikt": "Conflict",
+  "ko.mehr.quellen": "Sources and evidence",
+  "ko.mehr.extern": "External knowledge",
+  "ko.mehr.beitrag": "Report source or contribution",
+  "ko.mehr.provenienz": "Provenance",
+  "ko.mehr.kopplung": "Asset coupling",
+  "ko.mehr.herkunftskette": "Origin chain",
+  "ko.mehr.historie": "History",
+  "ko.mehr.belege": "Evidence",
+  "ko.mehr.schnappschuesse": "Snapshots",
+  "ko.mehr.kommentare": "Comments",
+  "ko.mehr.anhaenge": "Attachments",
+  "ko.mehr.nachbarschaft": "Neighbourhood",
   "ko.returnedBanner":
     "This knowledge object was returned from review for rework. Please address the review feedback and save a revision.",
   "ko.rework.title": "Review rework",
@@ -7156,7 +7176,8 @@ const en: typeof de = {
   "ko.lineageOrigin": "Origin",
   "ko.lineageTransferred": "(transferred)",
   "ko.lineageVersions": "Version",
-  "ko.lineageChanges": "changes",
+  "ko.lineageChanges_one": "{{count}} change",
+  "ko.lineageChanges_other": "{{count}} changes",
   "ko.lineageRelated": "Related",
   "ko.lineageAudit": "Recent events",
   "ko.lineageGraphLink": "View in knowledge graph",
@@ -7668,9 +7689,7 @@ const en: typeof de = {
   "lib.facet.showResults_one": "Show {{count}} entry",
   "lib.facet.showResults_other": "Show {{count}} entries",
   "lib.facet.rangeLabel": "Last changed",
-  "lib.loadMore": "Load {{n}} more",
   "lib.views.remember": "Remember this search",
-  "lib.views.savedLabel": "Saved searches",
   // AUFTRAG-sortfilter · Punkt 1: hit list sorting.
   "lib.sort.label": "Sort",
   "lib.sort.relevance": "Relevance",
@@ -7684,7 +7703,6 @@ const en: typeof de = {
   "lib.views.namePlaceholder": "View name",
   "lib.views.save": "Save view",
   "lib.views.remove": "Delete view",
-  "lib.views.localHint": "stored locally in this browser",
   "imp.select.deselectLang": "Deselect all {{lang}} · {{n}}",
   // SCRUM-486 (nacht24 packet 3): one calm finding view — what, detection path (honest),
   // both sides linked, grouped per contribution.
@@ -7718,20 +7736,34 @@ const en: typeof de = {
   "funke.capital.authors": "active knowledge holders",
   "funke.capital.gaps": "open knowledge gaps",
   "funke.capital.hint": "Only real numbers from the actual stock — no estimates.",
-  "lib.kicker": "Library",
   "lib.export": "Export",
-  "lib.exportFormat": "Export format",
   "lib.format.json": "JSON",
   "lib.format.markdown": "Text (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (print/PDF)",
   // JOB 1119 (D-002) — see the German entry for the finding and the measured search space.
   "lib.searchLabel": "Search the library",
-  "lib.search": "Search title, text, category and tag …",
+  "lib.segment.label": "State",
+  "lib.segment.alle": "All",
+  "lib.menue.weitere": "More actions",
+  "lib.menue.bereich": "Area",
+  "lib.menue.filter": "Filter",
+  "lib.menue.sichten": "Views",
+  "lib.menue.sichtSpeichern": "Save view",
+  "lib.menue.geltungsbereich": "Scope",
+  "lib.liste.eintraege_one": "{{count}} entry",
+  "lib.liste.eintraege_other": "{{count}} entries",
+  "lib.liste.eintraegeUnbekannt": "–",
+  "lib.liste.leer": "No entries yet.",
+  "lib.liste.leerSuche": "Nothing found.",
+  "lib.liste.fehler": "The list could not be loaded.",
+  "lib.liste.erneut": "Try again",
+  "lib.liste.erfassen": "Capture",
+  "lib.lesen.mehr": "More",
+  "lib.lesen.bilder_one": "{{count}} image",
+  "lib.lesen.bilder_other": "{{count}} images",
+  "lib.lesen.fehler": "The entry could not be loaded.",
   // AUFTRAG-BASIC-u2 — see the German entry for the finding.
-  "lib.scope.note":
-    "This searches the Klarwerk knowledge released to you — not your own drafts that you have not submitted yet.",
-  "lib.scope.toDrafts": "Search your own drafts",
   "lib.allStatus": "All statuses",
   "lib.allTypes": "All knowledge types",
   "lib.allCategories": "All categories",
@@ -7742,20 +7774,8 @@ const en: typeof de = {
   "lib.revalidateDone": "Re-validation started.",
   "lib.reimport": "Re-import (JSON)",
   // AUFTRAG-BASIC-u2: the empty state names the SEARCH SPACE — see the German entry.
-  "lib.empty":
-    "No matches in the Klarwerk knowledge released to you. Your own drafts that you have not submitted yet live under “Resume drafts”.",
-  "lib.answerTitle": "An answer instead of just hits?",
-  "lib.answerHint":
-    "Get '{{q}}' answered source-bound — with clear source links, not just articles.",
-  "lib.answerButton": "Get the question answered",
   // JOB 1119 (D-002) — see the German entry.
-  "lib.emptyQuery":
-    "No matches for '{{q}}' in the Klarwerk knowledge released to you. Your own drafts that you have not submitted yet are not included here. The search covered title, key statement, text, image description, category and tag. Tip: rephrase, reset the filters, or search a single keyword.",
   // AUFTRAG-mega59 BLOCK D — see the German entry for the finding.
-  "lib.facetEmpty.title": "There are matches — but none of them fits the active filters.",
-  "lib.facetEmpty.hint":
-    "Your search has {{count}} matches in the knowledge base. The active filters hide all of them.",
-  "lib.facetEmpty.reset": "Reset all filters",
   "lib.matchIn": "Matched in",
   "lib.match.title": "Title",
   "lib.match.tag": "Tag",
@@ -7773,7 +7793,6 @@ const en: typeof de = {
   "lib.maturity.review": "In review",
   "lib.maturity.open": "To review",
   "lib.resultCount": "Matches: {{n}}",
-  "lib.showingFirst": "showing first {{shown}} of {{total}}",
   "imp.explore.title": "Explore the source",
   "imp.explore.hint":
     "First see what's in the source — volumes, authors, themes and time range. Nothing is imported.",
@@ -9458,9 +9477,6 @@ const nl: typeof de = {
   "ask.help.sources.title": "Waarom alleen onderbouwde antwoorden?",
   "ask.help.sources.body":
     "Klarwerk antwoordt uitsluitend uit jullie eigen kennisobjecten — nooit uit algemene modelkennis. Bij elk antwoord zie je welke bronnen het gedragen hebben en in welke staat ze zijn. Ontbreekt de basis, dan zegt het dat eerlijk in plaats van te gokken. Controleer de genoemde bronnen voordat je erop vertrouwt.",
-  "lib.help.filters.title": "Filters wijzigen alleen de weergave",
-  "lib.help.filters.body":
-    "Rijpheid, status en domein tonen of verbergen objecten alleen — aan de kennis zelf veranderen ze niets. „Gevalideerd“ is bevestigd door collega’s, „open“ nog in beoordeling.",
   "dup.help.detection.title": "Hoe duplicaten worden herkend",
   "dup.help.detection.body":
     "„Tekstidentiek“ vindt de heuristiek zonder AI; „waarschijnlijk“ beoordeelt het model inhoudelijk. Samenvoegen gebeurt nooit automatisch — jij beslist bewust wat wordt samengevoegd.",
@@ -11348,7 +11364,6 @@ const nl: typeof de = {
     "De vraag wordt als kennishiaat opgeslagen — geen antwoord en geen gevalideerde kennis. Leg alsjeblieft geen gevoelige of persoonsgebonden details vast; vul later gecontroleerde ervaring aan.",
   "ask.toGaps": "Naar de kennishiaten",
   "ask.toCapture": "Kennis vastleggen",
-  "ko.kicker": "Kennisobject",
   "ko.use.ready": "Bruikbaar in de praktijk",
   "ko.use.in-review": "In beoordeling",
   "ko.use.needs-work": "Nog in bewerking",
@@ -11383,7 +11398,6 @@ const nl: typeof de = {
   "ko.cta.review": "Beoordeling afronden",
   "ko.cta.addSource": "Naar bronnen & bewijs",
   "ko.cta.validate": "Naar de validatie",
-  "ko.title": "Detail",
   "ko.statement": "Uitspraak",
   "ko.createdAt": "Aangemaakt op",
   // WP-SHIP9-S2 Paket 3 (E2): korte-voorbeeld-uitklapper per kennisobject/kandidaat.
@@ -11410,6 +11424,19 @@ const nl: typeof de = {
   "ko.conditional": "Voorwaardelijk",
   "ko.reject": "Afwijzen",
   "ko.edit": "Bewerken",
+  "ko.mehr.konflikt": "Conflict",
+  "ko.mehr.quellen": "Bronnen en bewijs",
+  "ko.mehr.extern": "Externe kennis",
+  "ko.mehr.beitrag": "Bron of bijdrage melden",
+  "ko.mehr.provenienz": "Herkomst",
+  "ko.mehr.kopplung": "Koppeling en installaties",
+  "ko.mehr.herkunftskette": "Herkomstketen",
+  "ko.mehr.historie": "Historie",
+  "ko.mehr.belege": "Bewijs",
+  "ko.mehr.schnappschuesse": "Momentopnamen",
+  "ko.mehr.kommentare": "Opmerkingen",
+  "ko.mehr.anhaenge": "Bijlagen",
+  "ko.mehr.nachbarschaft": "Omgeving",
   "ko.returnedBanner":
     "Dit kennisobject is uit de beoordeling teruggegeven voor naschaving. Werk de reviewfeedback af en sla een revisie op.",
   "ko.rework.title": "Review-naschaving",
@@ -11516,7 +11543,8 @@ const nl: typeof de = {
   "ko.lineageOrigin": "Oorsprong",
   "ko.lineageTransferred": "(overgedragen)",
   "ko.lineageVersions": "Versie",
-  "ko.lineageChanges": "Wijzigingen",
+  "ko.lineageChanges_one": "{{count}} wijziging",
+  "ko.lineageChanges_other": "{{count}} wijzigingen",
   "ko.lineageRelated": "Verwant",
   "ko.lineageAudit": "Laatste gebeurtenissen",
   "ko.lineageGraphLink": "Bekijken in de kennisgraaf",
@@ -12019,9 +12047,7 @@ const nl: typeof de = {
   "lib.facet.showResults_one": "{{count}} bijdrage tonen",
   "lib.facet.showResults_other": "{{count}} bijdragen tonen",
   "lib.facet.rangeLabel": "Laatst gewijzigd",
-  "lib.loadMore": "Nog {{n}} laden",
   "lib.views.remember": "Deze zoekopdracht onthouden",
-  "lib.views.savedLabel": "Opgeslagen zoekopdrachten",
   // AUFTRAG-sortfilter · Punt 1: sortering van de resultatenlijst.
   "lib.sort.label": "Sorteren",
   "lib.sort.relevance": "Relevantie",
@@ -12035,7 +12061,6 @@ const nl: typeof de = {
   "lib.views.namePlaceholder": "Naam van de weergave",
   "lib.views.save": "Weergave opslaan",
   "lib.views.remove": "Weergave verwijderen",
-  "lib.views.localHint": "lokaal in deze browser opgeslagen",
   "imp.select.deselectLang": "Alle {{lang}} deselecteren · {{n}}",
   // SCRUM-486 (nacht24 pakket 3): één rustige bevindingsweergave — wat, detectiepad (eerlijk),
   // beide kanten gelinkt, gegroepeerd per bijdrage.
@@ -12069,20 +12094,34 @@ const nl: typeof de = {
   "funke.capital.authors": "actieve kennisdragers",
   "funke.capital.gaps": "open kennislacunes",
   "funke.capital.hint": "Alleen echte cijfers uit het bestand — geen schattingen.",
-  "lib.kicker": "Bibliotheek",
   "lib.export": "Export",
-  "lib.exportFormat": "Exportformaat",
   "lib.format.json": "JSON",
   "lib.format.markdown": "Tekst (Markdown)",
   "lib.format.mediawiki": "MediaWiki",
   "lib.format.html": "HTML (Print/PDF)",
   // JOB 1119 (D-002) — zie de Duitse regel voor de bevinding en de gemeten zoekruimte.
   "lib.searchLabel": "Bibliotheek doorzoeken",
-  "lib.search": "Zoek in titel, tekst, categorie en trefwoord …",
+  "lib.segment.label": "Status",
+  "lib.segment.alle": "Alle",
+  "lib.menue.weitere": "Meer acties",
+  "lib.menue.bereich": "Gebied",
+  "lib.menue.filter": "Filter",
+  "lib.menue.sichten": "Weergaven",
+  "lib.menue.sichtSpeichern": "Weergave opslaan",
+  "lib.menue.geltungsbereich": "Bereik",
+  "lib.liste.eintraege_one": "{{count}} item",
+  "lib.liste.eintraege_other": "{{count}} items",
+  "lib.liste.eintraegeUnbekannt": "–",
+  "lib.liste.leer": "Nog geen items.",
+  "lib.liste.leerSuche": "Niets gevonden.",
+  "lib.liste.fehler": "De lijst kon niet worden geladen.",
+  "lib.liste.erneut": "Opnieuw proberen",
+  "lib.liste.erfassen": "Vastleggen",
+  "lib.lesen.mehr": "Meer",
+  "lib.lesen.bilder_one": "{{count}} afbeelding",
+  "lib.lesen.bilder_other": "{{count}} afbeeldingen",
+  "lib.lesen.fehler": "Het item kon niet worden geladen.",
   // AUFTRAG-BASIC-u2 — zie de Duitse regel voor de bevinding.
-  "lib.scope.note":
-    "Doorzocht wordt de Klarwerk-kennis die voor jou is vrijgegeven — niet je eigen concepten die je nog niet hebt ingediend.",
-  "lib.scope.toDrafts": "Eigen concepten doorzoeken",
   "lib.allStatus": "Alle statussen",
   "lib.allTypes": "Alle kennissoorten",
   "lib.allCategories": "Alle categorieën",
@@ -12093,20 +12132,8 @@ const nl: typeof de = {
   "lib.revalidateDone": "Hervalidatie gestart.",
   "lib.reimport": "Opnieuw importeren (JSON)",
   // AUFTRAG-BASIC-u2: de nulstand noemt de ZOEKRUIMTE — zie de Duitse regel.
-  "lib.empty":
-    "Geen resultaten in de Klarwerk-kennis die voor jou is vrijgegeven. Je eigen concepten die je nog niet hebt ingediend staan onder „Concepten hervatten“.",
-  "lib.answerTitle": "Een antwoord in plaats van alleen resultaten?",
-  "lib.answerHint":
-    "Laat „{{q}}“ met bronvermelding beantwoorden — met duidelijke bronlinks, niet alleen artikelen.",
-  "lib.answerButton": "Vraag laten beantwoorden",
   // JOB 1119 (D-002) — zie de Duitse regel.
-  "lib.emptyQuery":
-    "Geen resultaten voor „{{q}}“ in de Klarwerk-kennis die voor jou is vrijgegeven. Je eigen concepten die je nog niet hebt ingediend horen hier niet bij. Er is gezocht in titel, kernuitspraak, tekst, afbeeldingsbeschrijving, categorie en trefwoord. Tip: anders formuleren, filters resetten of op één trefwoord zoeken.",
   // AUFTRAG-mega59 BLOCK D — zie de Duitse regel voor de bevinding.
-  "lib.facetEmpty.title": "Er zijn resultaten — maar geen enkele past bij de actieve filters.",
-  "lib.facetEmpty.hint":
-    "Je zoekopdracht heeft {{count}} resultaten in de kennisbank. De actieve filters verbergen ze allemaal.",
-  "lib.facetEmpty.reset": "Alle filters resetten",
   "lib.matchIn": "Resultaat in",
   "lib.match.title": "Titel",
   // JOB 1119 (D-002) — zie de Duitse regel: hetzelfde woord als de facet ernaast.
@@ -12124,7 +12151,6 @@ const nl: typeof de = {
   "lib.maturity.review": "In beoordeling",
   "lib.maturity.open": "Te controleren",
   "lib.resultCount": "Resultaten: {{n}}",
-  "lib.showingFirst": "eerste {{shown}} van {{total}} weergegeven",
   "imp.explore.title": "Bron verkennen",
   "imp.explore.hint":
     "Bekijk eerst wat er in de bron zit — aantallen, auteurs, thema's en periode. Er wordt niets geïmporteerd.",

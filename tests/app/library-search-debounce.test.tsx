@@ -73,8 +73,11 @@ describe("WP-BILD-1f P4: Debounce der Live-Suche", () => {
   });
 
   it("PIN: die Bibliothek sucht ueber den debounced Wert; latest-wins haengt am Query-Key", () => {
+    // JOB 3063 (H4): `pages/Library.tsx` ist nur noch die Route; die Suchfläche selbst — und mit ihr
+    // der Debounce-Weg — liegt in `components/bibliothek/BibliothekFlaeche.tsx:248`. Der Pin zeigt
+    // auf die Datei, die den Weg WIRKLICH fährt; sonst prüft er eine leere Hülle.
     const librarySrc = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/Library.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/bibliothek/BibliothekFlaeche.tsx"),
       "utf8",
     );
     // AUFTRAG-uxpol1: der Volltext-State heißt jetzt schlicht `q` (die Dimensionen sind Facetten) —
