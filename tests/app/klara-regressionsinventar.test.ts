@@ -320,6 +320,14 @@ const INVENTAR: readonly string[] = [
   // (Namensachse; der Pfad war im Auftrag fest vorgegeben) und nennt `taskpane.html` (Achse
   // `taskpane`). K2 hat die Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
   "tests/design/zielbild-klara-main.test.ts",
+  // JOB 3064 H5: die zwei Zielbild-Messungen der Web-Fläche (Startseite und Fragenfläche gegen
+  // `design/klarwerk/Main.dc.html` bzw. `Fragen.dc.html`). K2 hat beide gemeldet, das Inventar hat
+  // sie nicht stillschweigend aufgenommen. Sachlich Klara-Regression aus demselben Grund wie die
+  // Validierungskonsole: die Fragenfläche ist der Zwilling des Word-Panels — dieselbe Frage,
+  // dieselbe quellengebundene Antwort, dieselben Quellen-Chips. Wer hier die Antwortkarte
+  // verschiebt, verschiebt die Fläche, gegen die Klara verglichen wird.
+  "tests/design/zielbild-h5-fragen.test.ts",
+  "tests/design/zielbild-h5-start.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   // JOB 3008 D1 (02.09.2026): der Zustandsweg der Office-Erkennung, am laufenden Aufgabenfenster

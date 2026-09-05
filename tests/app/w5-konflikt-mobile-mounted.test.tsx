@@ -201,6 +201,23 @@ async function mountMobil(): Promise<{ container: HTMLElement; unmount: () => vo
     await flush();
   });
   await act(flush);
+  // ============================================================================================
+  // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert.
+  // ============================================================================================
+  // Die Einordnung einer Antwort — und damit der Konflikt-Vorbehalt — steht seit dem Umbau nach
+  // `design/klarwerk/Fragen.dc.html` hinter „…" → „Mehr" an der Antwortkarte (Auftrag §5). W5
+  // fragt „ist der Konfliktzustand MOBIL sichtbar?", und die Antwort bleibt ja: über einen Griff,
+  // der auf dem Telefon genauso zu bedienen ist wie am Schreibtisch. Die Zusagen unten sind
+  // unverändert — Karte da, Text lesbar (kein Maus-Tooltip), Ausweg rollenrichtig, nichts durch
+  // einen Breakpoint versteckt. Geöffnet wird über das ECHTE Menü, nicht über den Zustand.
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+    await flush();
+  });
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+    await flush();
+  });
   return {
     container,
     unmount: () => {
@@ -220,14 +237,19 @@ async function seite(
   return mountMobil();
 }
 
-function text(container: HTMLElement): string {
-  return (container.textContent ?? "").replace(/\s+/g, " ");
+// Beide Sonden lesen ab JOB 3064 an `document`/`document.body` statt am Mount-Knoten: das
+// Info-Blatt wird nach `document.body` portaliert, damit seine Geometrie nicht davon abhängt, an
+// welcher Stelle im Baum es gerufen wird (s. `Seitenblatt.tsx`). Der Mount-Knoten hängt selbst an
+// `document.body`, `document.body` ist also die Obermenge — es geht nichts aus der Messung
+// verloren, es kommt nur das Blatt hinzu.
+function text(_container: HTMLElement): string {
+  return (document.body.textContent ?? "").replace(/\s+/g, " ");
 }
 
 /** Die Warnkarte ueber ihren echten i18n-Text gefunden, nicht ueber eine testeigene Marke. */
-function warnkarte(container: HTMLElement): HTMLElement | null {
+function warnkarte(_container: HTMLElement): HTMLElement | null {
   const titel = i18n.t("conflict.impact.title");
-  const treffer = [...container.querySelectorAll("p")].find(
+  const treffer = [...document.querySelectorAll("p")].find(
     (p) => (p.textContent ?? "").trim() === titel,
   );
   return treffer?.parentElement ?? null;

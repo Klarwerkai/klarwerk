@@ -7,7 +7,15 @@
 // Namen im Kreis, Kanten, Legenden-Karte, und rechts die Leiste, die sagt, was zu einem Thema
 // gehoert? Gemessen an der echten Seite, nicht an einem Nachbau."
 //
-// WIE DIE ECHTE SEITE HIER LAEUFT (Muster: tests/design/zielbild-konsole-start.test.ts, JOB 3015 D5):
+// WIE DIE ECHTE SEITE HIER LAEUFT (Muster: tests/design/zielbild-h5-start.test.ts, JOB 3015 D5):
+//   NACHGEZOGEN, JOB 3064: bis dahin stand hier der abgeloeste `zielbild-konsole-start.test.ts`. Er
+//   ist mit dem Konsole-Zielbild ABGELOEST und geloescht (JOB 3064 Lieferung 7, das Zielbild
+//   `design/klarwerk/Main.dc.html` hat es ersetzt); der Verweis zeigte danach ins Leere und
+//   `tests/structure/testverweise-aufloesbar.test.ts` hat ihn gefangen. Der Name steht hier deshalb
+//   OHNE Pfadform — ein toter Pfad im Kommentar behauptet eine Deckung, die es nicht gibt. Das
+//   MESSMUSTER, um das es geht, ist unveraendert in den Nachfolger uebergegangen: Mount der echten
+//   Anwendung in Chromium, Sollwerte aus dem Zielbild, ein Vergleich je Wert, Selektor rueckwaerts
+//   aufloesbar.
 //   · Die ECHTE Anwendung (`apps/web/dist`, das Ergebnis von `./tools/build`) wird in Chromium unter
 //     `http://klarwerk.test/wissensnetz` geladen; Playwright bedient `/assets/*` aus `dist` und reicht
 //     JEDEN `/api/*`-Aufruf an die ECHTE Fastify-App (`buildApp`, echte Dienste, echter Bestand)

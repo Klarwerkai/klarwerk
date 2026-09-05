@@ -1,8 +1,28 @@
 // @vitest-environment jsdom
 // AUFTRAG-mega2 Block C (bens D9): die Startseite behauptet vor der Datenladung KEIN „nichts zu tun"
-// (echte 0) mehr. Gemountet an der ECHTEN Start-Seite:
-//   VOR Auflösung der tragenden Queries → ehrlicher Ladezustand (start.todoLoading), kein „todoEmpty"
-//   NACH Auflösung (leer)               → echter Leerzustand (start.todoEmpty), kein Ladezustand
+// (echte 0) mehr. Gemountet an der ECHTEN Start-Seite.
+//
+// ================================================================================================
+// JOB 3064 H5 — DIESELBE ZUSAGE, DIE NEUE FLÄCHE.
+// ================================================================================================
+// Aus „Nächste Handlungen" ist die Karte „FÜR DICH" geworden (Zielbild `design/klarwerk/Main.dc.html`,
+// Z.45–64), und §9 des Auftrags entscheidet die drei Lagen anders, als sie hier bisher gemessen
+// wurden. Die ZUSAGE ist wörtlich dieselbe geblieben — keine erfundene Zahl, keine 0 aus fehlenden
+// Daten, kein endloses „lädt", eine Störung sieht nicht wie Leere aus —, nur ihre SICHTBARE Form
+// hat sich geändert (Pedi 04.09.: kein Erklärtext im Sichtfeld):
+//
+//   vorher                                  jetzt
+//   ────────────────────────────────────────────────────────────────────────────────────────────
+//   „Arbeitsübersicht wird geladen …"       die Karte bleibt LEER — keine Zeile, keine Pille
+//   „Nichts offen. Gut gemacht."            EINE Zeile „Nichts offen."
+//   „Konnte nicht geladen werden." + Knopf  keine Zeile, keine Pille, aber der Knopf „Erneut
+//                                           versuchen" — die Störung bleibt sichtbar und
+//                                           bedienbar, und eine Knopfbeschriftung ist kein
+//                                           Erklärtext
+//   „Veraltet – Aktualisierung …"           unverändert derselbe Wortlaut, als Zeile in der Karte
+//
+// Alles, was dieser Test darüber hinaus misst (genau ein Neulauf je Quelle, kein Selbstheilen ohne
+// Klick, Abbau und isolierter Zweitlauf), ist unverändert geblieben.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // mega3 Block B: „channel"-Mock — jeder queryFn-Aufruf (auch Refetch) erhält ein frisches Promise;
@@ -23,7 +43,10 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  return { board: mk(), conflicts: mk(), pending: mk(), gaps: mk() };
+  // JOB 3064 H5: die Meldungen sind die dritte Quelle der Karte „FÜR DICH" (§5.2 des Auftrags) und
+  // werden deshalb genauso gesteuert und gezählt wie die vier bisherigen — sonst hinge die Karte
+  // an einer tragenden Quelle, über die dieser Test nichts aussagt.
+  return { board: mk(), conflicts: mk(), pending: mk(), gaps: mk(), meldungen: mk() };
 });
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -48,6 +71,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       ko: { list: ok([]) },
       learningPaths: { byRole: ok(null), progress: ok(null) },
       livewall: { get: ok({ saved: [], helped: [], helpedToday: 0 }) },
+      notifications: { list: d.meldungen.fn },
+      duplicateSignal: { list: ok([]) },
       reasoner: { config: ok(null), assistPresets: ok([]), status: ok(null) },
     },
   };
@@ -65,6 +90,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { markStartOrientationSeen } from "../../apps/web/src/lib/startOrientation";
 import { Start } from "../../apps/web/src/pages/Start";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -113,8 +139,60 @@ async function mount(): Promise<void> {
   await act(flush);
 }
 
+// ── Die vier Lagen der Karte „FÜR DICH", an der gerenderten Karte abgelesen ─────────────────────
+// Gemessen wird an der Karte SELBST (`h5-fuerdich`), nicht am ganzen Container: daneben steht die
+// Karte „ZULETZT", und ihr eigener Leerzustand („Noch nichts erfasst.") würde eine Messung über
+// den ganzen Text still verfälschen.
+function karte(): HTMLElement {
+  const el = container.querySelector<HTMLElement>('[data-testid="h5-fuerdich"]');
+  if (!el) {
+    throw new Error("die Karte „FÜR DICH“ steht gar nicht im DOM");
+  }
+  return el;
+}
+const zeilen = (): number => container.querySelectorAll('[data-testid="h5-fuerdich-zeile"]').length;
+const pille = (): Element | null => container.querySelector('[data-testid="h5-fuerdich-pille"]');
+const wiederholen = (): Element | null =>
+  container.querySelector('[data-testid="h5-fuerdich-wiederholen"]');
+const veraltet = (): Element | null =>
+  container.querySelector('[data-testid="h5-fuerdich-veraltet"]');
+
+/** §9: „lädt" zeigt NICHTS — keine Zeile, keine Pille, kein Satz, kein Knopf. */
+function erwarteLaedt(): void {
+  expect(karte().textContent, "die Karte behauptet im Ladezustand etwas").toBe("");
+  expect(zeilen()).toBe(0);
+  expect(pille()).toBeNull();
+  expect(wiederholen()).toBeNull();
+}
+/** §9: geladen und wirklich leer — EINE Zeile, keine Pille. */
+function erwarteLeer(): void {
+  expect(karte().textContent).toContain(i18n.t("task.none"));
+  expect(zeilen()).toBe(0);
+  expect(pille()).toBeNull();
+  expect(wiederholen()).toBeNull();
+}
+/** §9 + REGELN §7: gescheitert — keine erfundene Zahl, aber die Störung ist sichtbar UND bedienbar. */
+function erwarteGescheitert(): void {
+  expect(wiederholen(), "die Störung sieht aus wie Leere — kein Wiederholen-Knopf").not.toBeNull();
+  expect(karte().textContent).toContain(i18n.t("loadstate.error.retry"));
+  expect(karte().textContent).not.toContain(i18n.t("task.none"));
+  expect(zeilen()).toBe(0);
+  expect(pille()).toBeNull();
+}
+/** REGELN §7: veraltet — der zuletzt geholte Stand bleibt SICHTBAR und wird markiert. */
+function erwarteVeraltet(): void {
+  expect(veraltet(), "die gescheiterte Auffrischung ist nicht markiert").not.toBeNull();
+  expect(karte().textContent).toContain(i18n.t("loadstate.stale"));
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
+  // JOB 3064 H5: die Startseite setzt einer Administratorin beim ERSTEN Besuch eine Zeile
+  // „Ersteinrichtung" in „FÜR DICH" (§5a). Dieser Test misst die LADELAGEN der Arbeitsquellen —
+  // gemessen wird deshalb die wiederkehrende Nutzerin, sonst trüge die Karte immer einen Eintrag
+  // und der Leerzustand käme nie vor. Der Vermerk wird über die produktive Funktion gesetzt, nicht
+  // über einen abgeschriebenen Speicherschlüssel.
+  markStartOrientationSeen(window.localStorage);
 });
 
 afterEach(() => {
@@ -126,53 +204,40 @@ afterEach(() => {
 describe("Block C: Start-Arbeitsübersicht zeigt ehrlichen Ladezustand statt vorschneller 0", () => {
   it("VOR Auflösung Ladezustand, NACH Auflösung echter Leerzustand", async () => {
     await mount();
-    // VOR: Ladezustand, KEIN „nichts offen".
-    expect(container.textContent).toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).not.toContain(i18n.t("start.todoEmpty"));
+    // VOR: die Karte ist leer — kein „lädt", aber auch kein „nichts offen".
+    erwarteLaedt();
 
     // NACH: alle tragenden Quellen leer aufgelöst → echter Leerzustand.
     await act(async () => {
-      d.board.resolve([]);
-      d.conflicts.resolve([]);
-      d.pending.resolve([]);
-      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      loeseAlleAuf();
       await flush();
     });
 
-    expect(container.textContent).not.toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    erwarteLeer();
   });
 
-  it("mega3 Block B: initial gescheiterte tragende Quelle → Fehlerzustand mit Wiederholen, kein „lädt“, kein „nichts zu tun“", async () => {
+  it("mega3 Block B: initial gescheiterte tragende Quelle → Störung mit Wiederholen, kein „lädt“, kein „nichts zu tun“", async () => {
     await mount();
-    expect(container.textContent).toContain(i18n.t("start.todoLoading"));
+    erwarteLaedt();
 
     await act(async () => {
       d.board.reject(new Error("kaputt"));
-      d.conflicts.resolve([]);
-      d.pending.resolve([]);
-      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      loeseAlleAuf("board");
       await flush();
     });
 
-    // Ehrlicher Fehlerzustand statt endlosem „lädt" oder vorschnellem Leerzustand.
-    expect(container.textContent).toContain(i18n.t("loadstate.error.title"));
-    expect(container.textContent).toContain(i18n.t("loadstate.error.retry"));
-    expect(container.textContent).not.toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).not.toContain(i18n.t("start.todoEmpty"));
+    // Ehrliche Störung statt endlosem „lädt" oder vorschnellem Leerzustand.
+    erwarteGescheitert();
   });
 
   it("mega3 Block B: Stale — Daten da, Refetch scheitert → Übersicht bleibt, Störungsmarkierung sichtbar", async () => {
     await mount();
     await act(async () => {
-      d.board.resolve([]);
-      d.conflicts.resolve([]);
-      d.pending.resolve([]);
-      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
+      loeseAlleAuf();
       await flush();
     });
     // Echter Leerzustand geladen.
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    erwarteLeer();
 
     await act(async () => {
       void qc.invalidateQueries();
@@ -181,13 +246,14 @@ describe("Block C: Start-Arbeitsübersicht zeigt ehrlichen Ladezustand statt vor
       d.conflicts.reject(new Error("refetch kaputt"));
       d.pending.reject(new Error("refetch kaputt"));
       d.gaps.reject(new Error("refetch kaputt"));
+      d.meldungen.reject(new Error("refetch kaputt"));
       await flush();
     });
 
-    // Daten bleiben sichtbar (kein Initialfehler-Sturz) …
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    // Der zuletzt geholte Stand bleibt sichtbar (kein Initialfehler-Sturz) …
+    expect(karte().textContent).toContain(i18n.t("task.none"));
     // … aber als veraltet/gestört markiert.
-    expect(container.textContent).toContain(i18n.t("loadstate.stale"));
+    erwarteVeraltet();
   });
 });
 
@@ -228,6 +294,9 @@ function loeseAlleAuf(ausser?: string): void {
   if (ausser !== "gaps") {
     d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
   }
+  if (ausser !== "meldungen") {
+    d.meldungen.resolve([]);
+  }
 }
 
 // Sucht den echten „Wiederholen"-Knopf im gerenderten DOM. Bewusst über den sichtbaren,
@@ -252,6 +321,7 @@ interface Aufrufzaehler {
   conflicts: number;
   pending: number;
   gaps: number;
+  meldungen: number;
 }
 
 function aufrufe(): Aufrufzaehler {
@@ -260,8 +330,11 @@ function aufrufe(): Aufrufzaehler {
     conflicts: d.conflicts.fn.mock.calls.length,
     pending: d.pending.fn.mock.calls.length,
     gaps: d.gaps.fn.mock.calls.length,
+    meldungen: d.meldungen.fn.mock.calls.length,
   };
 }
+
+const QUELLEN = ["board", "conflicts", "pending", "gaps", "meldungen"] as const;
 
 describe("L1: der Wiederholen-Knopf loest einen ECHTEN Neulauf aus", () => {
   it("L1a: Klick im Fehlerzustand startet je Quelle GENAU EINEN neuen Abruf", async () => {
@@ -271,7 +344,7 @@ describe("L1: der Wiederholen-Knopf loest einen ECHTEN Neulauf aus", () => {
       loeseAlleAuf("board");
       await flush();
     });
-    expect(container.textContent).toContain(i18n.t("loadstate.error.title"));
+    erwarteGescheitert();
 
     const vorher = aufrufe();
     await act(async () => {
@@ -280,9 +353,10 @@ describe("L1: der Wiederholen-Knopf loest einen ECHTEN Neulauf aus", () => {
     });
     const nachher = aufrufe();
 
-    // Der Produktvertrag (`Start.tsx:218-223`) refetcht ALLE vier Quellen — auch die bereits
-    // erfolgreichen. Genau EIN zusaetzlicher Aufruf je Quelle, kein zweiter, keiner ausgelassen.
-    for (const name of ["board", "conflicts", "pending", "gaps"] as const) {
+    // Der Produktvertrag (`Start.tsx`, `wiederholen()`) refetcht ALLE tragenden Quellen — auch die
+    // bereits erfolgreichen. Genau EIN zusaetzlicher Aufruf je Quelle, kein zweiter, keiner
+    // ausgelassen.
+    for (const name of QUELLEN) {
       expect(nachher[name] - vorher[name]).toBe(1);
     }
   });
@@ -294,7 +368,7 @@ describe("L1: der Wiederholen-Knopf loest einen ECHTEN Neulauf aus", () => {
       loeseAlleAuf("board");
       await flush();
     });
-    expect(container.textContent).toContain(i18n.t("loadstate.error.title"));
+    erwarteGescheitert();
 
     await act(async () => {
       wiederholenKnopf().click();
@@ -304,9 +378,7 @@ describe("L1: der Wiederholen-Knopf loest einen ECHTEN Neulauf aus", () => {
       await flush();
     });
 
-    expect(container.textContent).not.toContain(i18n.t("loadstate.error.title"));
-    expect(container.textContent).not.toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    erwarteLeer();
   });
 
   it("L1c: ohne Klick passiert NICHTS — der Fehlerzustand loest sich nicht von selbst auf", async () => {
@@ -326,7 +398,7 @@ describe("L1: der Wiederholen-Knopf loest einen ECHTEN Neulauf aus", () => {
     });
 
     expect(aufrufe()).toEqual(vorher);
-    expect(container.textContent).toContain(i18n.t("loadstate.error.title"));
+    erwarteGescheitert();
   });
 });
 
@@ -337,7 +409,7 @@ describe("L2: jede tragende Quelle einzeln — beide Uebergaenge und genau ein N
   // Gemessen wird JEDE Quelle als ALLEINIGE Fehlerursache. Das ist der Unterschied zu einem
   // Sammelfall: Faellt nur `board` aus, bliebe unbemerkt, ob die Gruppenregel die uebrigen drei
   // ueberhaupt beruecksichtigt (`loadingState.ts:38` prueft `sources.some(...)`).
-  for (const quelle of ["conflicts", "pending", "gaps"] as const) {
+  for (const quelle of ["conflicts", "pending", "gaps", "meldungen"] as const) {
     it(`L2-${quelle}: Fehlerzustand → Wiederholen → echter Leerzustand, mit genau einem Neulauf je Quelle`, async () => {
       await mount();
 
@@ -347,9 +419,7 @@ describe("L2: jede tragende Quelle einzeln — beide Uebergaenge und genau ein N
         loeseAlleAuf(quelle);
         await flush();
       });
-      expect(container.textContent).toContain(i18n.t("loadstate.error.title"));
-      expect(container.textContent).not.toContain(i18n.t("start.todoEmpty"));
-      expect(container.textContent).not.toContain(i18n.t("start.todoLoading"));
+      erwarteGescheitert();
 
       // Genau ein Neulauf je Quelle.
       const vorher = aufrufe();
@@ -358,7 +428,7 @@ describe("L2: jede tragende Quelle einzeln — beide Uebergaenge und genau ein N
         await flush();
       });
       const nachher = aufrufe();
-      for (const name of ["board", "conflicts", "pending", "gaps"] as const) {
+      for (const name of QUELLEN) {
         expect(nachher[name] - vorher[name]).toBe(1);
       }
 
@@ -367,8 +437,7 @@ describe("L2: jede tragende Quelle einzeln — beide Uebergaenge und genau ein N
         loeseAlleAuf();
         await flush();
       });
-      expect(container.textContent).not.toContain(i18n.t("loadstate.error.title"));
-      expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+      erwarteLeer();
     });
   }
 });
@@ -442,7 +511,7 @@ describe("L3: Teardown und isolierter Zweitlauf", () => {
       loeseAlleAuf();
       await flush();
     });
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    erwarteLeer();
     const nachErstlauf = aufrufe();
     expect(nachErstlauf.board).toBeGreaterThan(0);
 
@@ -457,13 +526,12 @@ describe("L3: Teardown und isolierter Zweitlauf", () => {
     // Der Zaehler beginnt wirklich neu — nicht bei den Aufrufen des ersten Laufs.
     expect(aufrufe().board).toBe(1);
     // Und der Ladezustand erscheint ERNEUT: kein warmer Cache traegt das Ergebnis herueber.
-    expect(container.textContent).toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).not.toContain(i18n.t("start.todoEmpty"));
+    erwarteLaedt();
 
     await act(async () => {
       loeseAlleAuf();
       await flush();
     });
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    erwarteLeer();
   });
 });

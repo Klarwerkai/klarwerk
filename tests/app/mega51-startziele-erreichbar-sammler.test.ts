@@ -90,7 +90,6 @@ function zitiere(src: string, muster: RegExp): string[] {
 }
 
 const startQuelle = lies(START_TSX);
-const startOhneKommentare = ohneKommentare(startQuelle);
 
 // Der Kreis der Dateien wird ERHOBEN, nicht aufgezählt: die Seite selbst plus jedes Bauteil, das
 // sie direkt einbindet. Das Tor ist ausgenommen — es benutzt sich nicht, es IST der Weg.
@@ -174,6 +173,19 @@ const AUSDRUCK_HERKUNFT: { muster: RegExp; herkunft: string }[] = [
   // `GUARDED_ITEMS` (`navigation.ts:187`, `:200`, je `minRole: "controller"`), und die Stufe-2-
   // Prüfung unten misst sie über dieselbe Registry wie jedes andere Ziel der Seite.
   { muster: /^kollisionsWeg\.to$/, herkunft: "lib/eigeneKollision.ts · KollisionsWeg" },
+  // JOB 3064 H5 NACHGEZOGEN, nicht gelockert: die Startseite hält ihre Wege nicht mehr selbst,
+  // sondern in den zwei Karten und den Menü-Blättern (`components/start/**`). Beides sind Bauteile,
+  // die die Seite DIREKT einbindet — sie standen also längst in `ERFASSTE_DATEIEN` (Stufe 1) und
+  // sind ab hier auch Gegenstand von Stufe 2. Damit greift die Erhebung dort, wo die Ziele jetzt
+  // wirklich stehen, statt an einer Datei zu hängen, die keine mehr hat.
+  {
+    muster: /^to$/,
+    herkunft: "components/start/StartKarten.tsx · KartenKopf (Literal der Aufrufstelle)",
+  },
+  {
+    muster: /^zeile\.to$/,
+    herkunft: "components/start/forYou.ts · forYouZeilen (Arbeit, Meldung, Kollision)",
+  },
 ];
 
 // Alle `to=`-Vorkommen: `to="…"` (Literal) und `to={…}` (Ausdruck).
@@ -188,7 +200,11 @@ function toVorkommen(
   return out;
 }
 
-const vorkommen = toVorkommen(startOhneKommentare);
+// JOB 3064 H5: erhoben wird über ALLE erfassten Dateien — die Seite und ihre direkt eingebundenen
+// Bauteile. Vorher las Stufe 2 nur `Start.tsx`; seit die Zeilen der Startseite in
+// `components/start/**` liegen, hätte sie dort ins Leere gegriffen (der rote Lauf „expected 0 to be
+// greater than 5" hat genau das gezeigt). Die Grenze ist damit dieselbe wie in Stufe 1.
+const vorkommen = ERFASSTE_DATEIEN.flatMap((datei) => toVorkommen(ohneKommentare(lies(datei))));
 
 describe("mega51 A3 · Stufe 2 — jedes Ziel der Seite hat eine benannte, produktive Herkunft", () => {
   it("die Erhebung läuft nicht leer: die Seite bietet überhaupt Wege an", () => {

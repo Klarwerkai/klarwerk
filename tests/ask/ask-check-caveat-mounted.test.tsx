@@ -132,6 +132,24 @@ async function mountAsk(): Promise<{ container: HTMLElement; unmount: () => void
     await flush();
   });
   await act(flush);
+  // ============================================================================================
+  // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert.
+  // ============================================================================================
+  // Vertrag, Statusplakette, Evidenzplakette, Prüfvorbehalt und Quellenliste stehen seit dem Umbau
+  // nach `design/klarwerk/Fragen.dc.html` nicht mehr dauerhaft unter der Antwort, sondern hinter
+  // „…" → „Mehr" an der Antwortkarte (Auftrag §5). Jede Zusage dieser Datei bleibt wörtlich —
+  // besonders die VERNEINUNGEN („nirgends mehr Gesichert", „kein Vorbehalt"): die wären bei
+  // geschlossenem Blatt geschenkt. Deshalb wird hier für JEDEN Fall geöffnet, und ab da über
+  // `document.body` gemessen (das Blatt ist dorthin portaliert, s. `Seitenblatt.tsx`) — also über
+  // Fläche UND Blatt, die echte Obermenge dessen, was der Leser bekommt.
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+    await flush();
+  });
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+    await flush();
+  });
   return {
     container,
     unmount: () => {
@@ -176,11 +194,11 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
   it("gedeckelte Quelle: der Prüfvorbehalt steht da und benennt seinen Bezug", async () => {
     await i18n.changeLanguage("de");
     bestand.kos = [ko({ status: "done", coverage: CAPPED })];
-    const { container, unmount } = await mountAsk();
-    const text = container.textContent ?? "";
+    const { unmount } = await mountAsk();
+    const text = document.body.textContent ?? "";
 
     // Der Vorbehalt ist sichtbar …
-    expect(container.querySelector('[data-testid="ask-check-caveat"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="ask-check-caveat"]')).not.toBeNull();
     expect(text).toContain(i18n.t("ask.checkCaveat.title"));
     // … und benennt, worauf er sich bezieht: 1 von 1 herangezogenen Quellen.
     expect(text).toContain("1 von 1");
@@ -191,7 +209,7 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
     expect(text).not.toContain(i18n.t("ask.contract.verified.title"));
 
     // Und die betroffene Quelle trägt die Plakette, damit der Vorbehalt zuordenbar ist.
-    expect(container.querySelector('[data-testid="ask-source-unproven"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="ask-source-unproven"]')).not.toBeNull();
     unmount();
   });
 
@@ -199,7 +217,7 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
     await i18n.changeLanguage("de");
     bestand.kos = [ko({ status: "done", coverage: CAPPED })];
     const { container, unmount } = await mountAsk();
-    const text = container.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     // 1 Vertragskasten · 2 Statusplakette · 3 Evidenzplakette — alles, was der Leser SIEHT.
     expect(text).not.toContain(GESICHERT);
@@ -222,7 +240,7 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
     await i18n.changeLanguage("de");
     bestand.kos = [ko({ status: "done", coverage: PROVEN })];
     const { container, unmount } = await mountAsk();
-    const text = container.textContent ?? "";
+    const text = document.body.textContent ?? "";
 
     // Ohne diese Gegenprobe wäre die Zusage oben auch von einer Seite erfüllt, die das Wort
     // überhaupt nie zeigt — die Prüfung muss in beide Richtungen kalibriert sein.
@@ -234,10 +252,10 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
   it("gar kein Prüf-Lauf: eigener Satz, nicht derselbe", async () => {
     await i18n.changeLanguage("de");
     bestand.kos = [ko(undefined)];
-    const { container, unmount } = await mountAsk();
-    const text = container.textContent ?? "";
+    const { unmount } = await mountAsk();
+    const text = document.body.textContent ?? "";
 
-    expect(container.querySelector('[data-testid="ask-check-caveat"]')).not.toBeNull();
+    expect(document.querySelector('[data-testid="ask-check-caveat"]')).not.toBeNull();
     expect(text).toContain("gar kein Prüf-Lauf vermerkt");
     expect(text).not.toContain("nicht vollständig gelaufen");
     unmount();
@@ -246,12 +264,12 @@ describe("mega32 E / mega33 A · die Antwortansicht sagt nicht mehr „gesichert
   it("belegt vollständiger Lauf: kein Vorbehalt, und „gesichert“ darf stehen bleiben", async () => {
     await i18n.changeLanguage("de");
     bestand.kos = [ko({ status: "done", coverage: PROVEN })];
-    const { container, unmount } = await mountAsk();
-    const text = container.textContent ?? "";
+    const { unmount } = await mountAsk();
+    const text = document.body.textContent ?? "";
 
     // Kein Dauerrauschen.
-    expect(container.querySelector('[data-testid="ask-check-caveat"]')).toBeNull();
-    expect(container.querySelector('[data-testid="ask-source-unproven"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ask-check-caveat"]')).toBeNull();
+    expect(document.querySelector('[data-testid="ask-source-unproven"]')).toBeNull();
     // Und der Vertrag darf jetzt sagen, was er belegen kann.
     expect(text).toContain(i18n.t("ask.contract.verified.title"));
     unmount();

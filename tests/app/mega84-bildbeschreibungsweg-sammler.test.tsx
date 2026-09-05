@@ -1214,8 +1214,84 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `anbieter` 1 und `traeger` 2. Keine der drei bietet eine Bildbeschreibung an (kein
     // `ANGEBOT_MUSTER`) und keine trägt einen eigenen Titel (kein `documentTitle`-Prop) — sie
     // erscheinen nur in der Grundmenge.
+    //
+    // JOB 3064 (H5) · KONFLIKTRUNDE 1: die folgenden Einträge zählen den Zuwachs dieses Jobs
+    // EIGENSTÄNDIG, von der Basis 253 aus (dem Stand vor JOB 3052/3061/3063/3067) — nicht als
+    // Fortsetzung der Kette oben. Die Summe beider Zuwächse steht in der addierten Erwartung am
+    // Ende dieses Blocks, gemessen am eigenen Lauf dieses Arbeitsbaums.
+    //
+    // JOB 3064 (H5): `komponenten` von 253 auf 259 NACHGEZOGEN. Der neue Bereich
+    // `apps/web/src/components/start/` bringt SECHS Komponenten mit — `OverflowMenu` (das
+    // „…"-Menü), `Seitenblatt` (das Blatt eines Menüpunkts), `KartenKopf`, `FuerDichKarte`,
+    // `FuerDichZeile` und `ZuletztKarte` (die zwei Karten des Zielbilds und ihre Zeile);
+    // `StartPanelInhalt` ist die siebte Datei, aber `forYou.ts`, `zuletzt.ts` und `useDiktat.ts`
+    // bringen keine Komponenten mit.
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der
+    // neuen Bauteile bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt
+    // einen eigenen Titel (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
+    //
+    // JOB 3064 (H5, Runde 4): `komponenten` von 259 auf 260 NACHGEZOGEN. In `pages/Ask.tsx` kommt
+    // GENAU EINE Komponente hinzu — `MehrFlaechenInfo`, die Einordnung DER FLÄCHE (Kicker, Titel,
+    // Modus-Chip, KI-Kennzeichnung, Erklär-Fläche). Sie entsteht aus Bens Korrekturpflicht 2: das
+    // Info-Blatt hängt je nach Lage an zwei Stellen im Baum, und statt zweier Abschriften trägt
+    // beide Stellen EIN Bauteil. Der Zuwachs ist also eine Entdopplung, keine neue Fläche.
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Das Bauteil
+    // bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel
+    // (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge.
+    //
+    // JOB 3064 (H5, Runde 5): `komponenten` von 260 auf 262 NACHGEZOGEN. Die neue Datei
+    // `apps/web/src/components/start/AntwortText.tsx` bringt GENAU ZWEI Komponenten mit —
+    // `AntwortText` (der Textsatz der Fragenfläche) und ihr internes `Inline` (die Inline-Teile
+    // eines Segments). Dieselben zwei Namen trägt `components/AnswerMarkdown.tsx`, denn die
+    // Fussnotenmarke des Zielbilds entsteht zwangsläufig dort, wo der Antworttext zu React-Knoten
+    // wird, und `AnswerMarkdown` bedient daneben Mobile und Klara (§10 des Auftrags).
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der
+    // beiden Bauteile bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt
+    // einen eigenen Titel (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
+    //
+    // JOB 3064 (H5, Runde 6): `komponenten` von 262 auf 263 NACHGEZOGEN. In `pages/Ask.tsx` kommt
+    // GENAU EINE Komponente hinzu — `MehrLueckenInfo`, die Einordnung einer WISSENSLÜCKE (Vertrag,
+    // Quellenbilanz, geführter Rettungsweg, Datenschutzsatz, Weg zum Risiko-Board). Sie entsteht
+    // aus Bens Korrekturpflicht 1: diese Texte standen bis Runde 5 als ZWEITE Karte neben der
+    // Lückenkarte im Sichtfeld (gemessen: `{"ergebniskarten":2}`); jetzt stehen sie im Info-Blatt
+    // „…" → „Mehr". Der Zuwachs ist also ein Umzug mit Namen, keine neue Fläche.
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Das Bauteil
+    // bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel
+    // (kein `documentTitle`-Prop) — es erscheint nur in der Grundmenge.
+    //
+    // JOB 3064 (H5, Runde 7): `komponenten` von 263 auf 265 NACHGEZOGEN. In
+    // `components/start/AntwortText.tsx` kommen GENAU ZWEI Komponenten hinzu — `Marke` (die
+    // hochgestellte Quellenziffer) und `Teil` (ein Inline-Teil mit seinen Marken). Sie entstehen
+    // aus Bens Korrekturpflicht 1: die Marke muss auch INNERHALB von fett/kursiv gesetzt werden,
+    // und dafür braucht jeder Inline-Teil dieselbe Zerlegung statt nur die Text-Teile. Aus einem
+    // Zweig im Rendersatz sind damit zwei benannte Bauteile geworden — dieselbe Arbeit, ein Name
+    // dafür.
+    //
+    // Dieselbe Begründung wie oben, und sie trägt hier genauso: Die Auflage verbietet, dass eine
+    // UMSTELLUNG die Erhebung verschiebt — nicht, dass der Quellbaum wächst. Die zwei Zahlen, an
+    // denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2. Keines der
+    // beiden Bauteile bietet eine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und keines trägt
+    // einen eigenen Titel (kein `documentTitle`-Prop) — sie erscheinen nur in der Grundmenge.
+    //
+    // JOB 3064 (H5) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3052/3061/3063/3067 NEU GEMESSEN.
+    // Die 278 aus dem Stand vor diesem Job plus die zwölf eigenständigen Komponenten dieses Jobs
+    // (sechs aus `components/start/`, `MehrFlaechenInfo` und `MehrLueckenInfo` in `pages/Ask.tsx`,
+    // `AntwortText`/`Inline`/`Marke`/`Teil` in `components/start/AntwortText.tsx`) ergeben den Wert
+    // unten — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 278,
+      komponenten: 290,
       anbieter: 1,
       traeger: 2,
     });

@@ -183,6 +183,43 @@ async function beantwortet(): Promise<{
   return { container, karte: karte as HTMLElement, unmount };
 }
 
+// ================================================================================================
+// JOB 3064 · H5 NACHGEFÜHRT — DIE EINORDNUNG HAT EINEN ORT STATT EINER DAUERSTELLUNG.
+// ================================================================================================
+// D-047 hat den alten Antwortbasis-KASTEN abgelöst, der als zweite, konkurrierende Einordnung VOR
+// der Antwortkarte sass. Diese Zusage ist das Herz der Datei und bleibt wörtlich in Kraft.
+//
+// H5 nimmt die Einordnung zusätzlich aus dem Sichtfeld (Auftrag §5): sie liegt hinter dem „…" DER
+// ANTWORTKARTE, im Info-Blatt „Mehr". Das Blatt wird nach `document.body` portaliert (Geometrie,
+// s. `Seitenblatt.tsx`) und ist damit kein DOM-Nachfahre der Karte mehr — bedient wird es aber
+// ausschliesslich von ihr aus. Die Bindung „genau EINE Einordnung, und sie gehört zu DIESER
+// Antwort" ist also unverändert; sie wird nur an einem zweiten Anker gemessen.
+//
+// Was das für die Fälle unten heisst:
+//   · „genau einmal auf der Seite" wird über `document.body` gezählt (Fläche UND Blatt).
+//   · „in der Antwortkarte" heisst jetzt „in der Karte ODER in dem Blatt, das ihr „…" öffnet".
+//   · „nichts ausserhalb" heisst jetzt „weder neben der Karte noch neben dem Blatt".
+// Eine zweite Vertragsfläche fiele in jeder dieser drei Messungen weiterhin auf.
+
+/** Öffnet „…" → „Mehr" an der Antwortkarte und gibt das Blatt zurück. */
+async function mehrBlatt(container: HTMLElement): Promise<HTMLElement> {
+  const griff = container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]');
+  expect(griff, "die Antwortkarte trägt kein „…“ — die Einordnung hätte keinen Ort").not.toBeNull();
+  await act(async () => {
+    (griff as HTMLButtonElement).click();
+    await flush();
+  });
+  const punkt = container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]');
+  expect(punkt, "das „…“-Menü der Karte trägt keinen Punkt „Mehr“").not.toBeNull();
+  await act(async () => {
+    (punkt as HTMLButtonElement).click();
+    await flush();
+  });
+  const blatt = document.querySelector<HTMLElement>('[data-testid="ask-mehr"]');
+  expect(blatt, "„Mehr“ öffnet kein Blatt — der Menüpunkt wäre eine Scheinfunktion").not.toBeNull();
+  return blatt as HTMLElement;
+}
+
 /**
  * Das INHALTSELEMENT der Karte, in dem `el` steckt — also der direkte Kindknoten der Karte.
  * Genau diese Ebene meint D-047 mit „erstes Inhaltselement"; ein tiefer verschachtelter Treffer
@@ -278,13 +315,16 @@ describe("D-047 (2) · der KI-Hinweis folgt unmittelbar dahinter und bleibt druc
 });
 
 describe("D-047 (3) · der alte Antwortbasis-Kasten ist im beantworteten Zustand abgelöst", () => {
-  it("KEIN Vertragstext steht mehr ausserhalb der Antwortkarte", async () => {
+  it("KEIN Vertragstext steht mehr ausserhalb der Antwortkarte und ihres Blattes", async () => {
     const { container, karte, unmount } = await beantwortet();
+    const blatt = await mehrBlatt(container);
 
     // Der Kasten sass VOR der Antwortkarte und war damit die zweite, konkurrierende
     // Einordnungsstruktur. Gemessen wird nicht seine Bauform, sondern sein Inhalt: steht ein
-    // Vertragstext irgendwo ausserhalb der Karte, gibt es die Parallelstruktur noch.
-    const draussen = (container.textContent ?? "").replace(karte.textContent ?? "", "");
+    // Vertragstext irgendwo ausserhalb von Karte UND Blatt, gibt es die Parallelstruktur noch.
+    const draussen = (document.body.textContent ?? "")
+      .replace(karte.textContent ?? "", "")
+      .replace(blatt.textContent ?? "", "");
     const verstoesse = pflichttexte("verified")
       .filter((p) => draussen.includes(p.text))
       .map((p) => p.name);
@@ -293,31 +333,51 @@ describe("D-047 (3) · der alte Antwortbasis-Kasten ist im beantworteten Zustand
   });
 
   it("genau EINE aktive Einordnungskette — keine zweite Vertragsfläche", async () => {
-    const { container, karte, unmount } = await beantwortet();
+    const { container, unmount } = await beantwortet();
+    const blatt = await mehrBlatt(container);
 
     // Das Etikett ist der Kopf jeder Vertragsfläche. Zwei Etiketten heissen zwei Flächen.
-    expect(anzahl(container.textContent ?? "", i18n.t("ask.contract.label"))).toBe(1);
-    expect(anzahl(karte.textContent ?? "", i18n.t("ask.contract.label"))).toBe(1);
+    expect(anzahl(document.body.textContent ?? "", i18n.t("ask.contract.label"))).toBe(1);
+    expect(anzahl(blatt.textContent ?? "", i18n.t("ask.contract.label"))).toBe(1);
+    unmount();
+  });
+
+  it("VOR dem Griff steht das Etikett nirgends — die Einordnung drängt sich nicht auf", async () => {
+    // Die H5-Zusage, und zugleich die Gegenprobe zu den zwei Fällen oben: „genau einmal" ist erst
+    // dann eine Aussage über EINEN Ort, wenn es ohne den Griff KEINEN gibt. Bliebe die alte
+    // Dauerstellung zusätzlich stehen, stünde das Etikett hier schon und oben zweimal.
+    const { container, unmount } = await beantwortet();
+
+    expect(
+      anzahl(document.body.textContent ?? "", i18n.t("ask.contract.label")),
+      "das Vertrags-Etikett steht ungefragt auf der Fragenfläche",
+    ).toBe(0);
+    await mehrBlatt(container);
+    expect(anzahl(document.body.textContent ?? "", i18n.t("ask.contract.label"))).toBe(1);
     unmount();
   });
 });
 
 describe("D-047 (4) · Textmatrix — jeder Pflichttext erscheint GENAU EINMAL", () => {
   it("beantworteter Zustand: alle sechs Pflichttexte, keiner fehlt, keiner doppelt", async () => {
-    const { container, karte, unmount } = await beantwortet();
+    const { container, unmount } = await beantwortet();
+    const blatt = await mehrBlatt(container);
 
-    const gesamt = container.textContent ?? "";
-    const aufDerKarte = karte.textContent ?? "";
+    // `aufDerSeite` zählt über Fläche UND Blatt; `imBlattDerKarte` ist der Nachfolger von
+    // „in der Antwortkarte": derselbe Anspruch, dass jeder Pflichttext AN DIESER Antwort hängt und
+    // nicht irgendwo sonst auf der Seite steht.
+    const gesamt = document.body.textContent ?? "";
+    const imBlatt = blatt.textContent ?? "";
     const befund = pflichttexte("verified").map((p) => ({
       text: p.name,
       aufDerSeite: anzahl(gesamt, p.text),
-      inDerAntwortkarte: anzahl(aufDerKarte, p.text),
+      imBlattDerKarte: anzahl(imBlatt, p.text),
     }));
     expect(befund).toEqual(
       pflichttexte("verified").map((p) => ({
         text: p.name,
         aufDerSeite: 1,
-        inDerAntwortkarte: 1,
+        imBlattDerKarte: 1,
       })),
     );
     unmount();
@@ -327,7 +387,8 @@ describe("D-047 (4) · Textmatrix — jeder Pflichttext erscheint GENAU EINMAL",
     // Ohne diesen Fall wäre die Matrix auch von einer Seite erfüllt, auf der die Zählung
     // grundsätzlich nicht funktioniert.
     const { container, unmount } = await beantwortet();
-    expect(anzahl(container.textContent ?? "", "Diesen Satz gibt es hier nicht")).toBe(0);
+    await mehrBlatt(container);
+    expect(anzahl(document.body.textContent ?? "", "Diesen Satz gibt es hier nicht")).toBe(0);
     unmount();
   });
 });
@@ -344,7 +405,14 @@ describe("D-047 (5) · der unbeantwortete Zustand bleibt ehrlich und vollständi
     expect(container.querySelector('[data-testid="ask-gap"]')).not.toBeNull();
     expect(container.querySelector('[data-testid="ask-answer"]')).toBeNull();
 
-    const text = container.textContent ?? "";
+    // JOB 3064 H5 / KORREKTURPFLICHT 1 (Ben, Runde 5) NACHGEFÜHRT, nicht gelockert: im Lückenfall
+    // stand die Einordnung bis Runde 5 als ZWEITE Karte neben der Lückenkarte — Ben hat zwei
+    // Ergebniskarten gemessen, Auftrag §6 lässt EINE übrig. Die Texte sind nicht gestrichen,
+    // sondern liegen hinter „…" → „Mehr"; die Zusage von D-047(5) — jeder Pflichttext GENAU
+    // EINMAL, keiner fehlt, keiner doppelt — wird deshalb hier gemessen, nachdem der Griff
+    // betätigt wurde. Bliebe die alte Karte zusätzlich stehen, stünde jeder Text zweimal.
+    await mehrBlatt(container);
+    const text = document.body.textContent ?? "";
     const befund = pflichttexte("gap").map((p) => ({ text: p.name, anzahl: anzahl(text, p.text) }));
     expect(befund).toEqual(pflichttexte("gap").map((p) => ({ text: p.name, anzahl: 1 })));
     unmount();

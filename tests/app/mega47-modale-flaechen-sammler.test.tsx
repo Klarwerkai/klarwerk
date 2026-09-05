@@ -680,6 +680,18 @@ const NICHT_MODALE_VOLLFLAECHEN = new Map<string, string>([
     "apps/web/src/components/pruefen/PruefenMenue.tsx",
     "Menü-Blatt der Prüffläche: die Vollfläche ist der farblose Klickfänger zum Schließen, der Inhalt bleibt ein Popover neben dem Auslöser",
   ],
+  // JOB 3064 H5: die zwei Bauteile des „…"-Menüs auf Startseite und Fragenfläche. Beide spannen
+  // eine Vollfläche auf, und beide aus demselben Grund wie `HelpTip.tsx`: sie ist der Klickfänger
+  // zum Schliessen. Gemessen an der Quelle, nicht behauptet — keines von beiden trägt `aria-modal`,
+  // `showModal()` oder einen Fokusfang, und keines verlangt eine Entscheidung, bevor es weitergeht.
+  [
+    "apps/web/src/components/start/OverflowMenu.tsx",
+    "Überlauf-Menü: die Vollfläche ist der Klickfänger zum Schliessen, die Liste bleibt ein Popover neben dem Auslöser",
+  ],
+  [
+    "apps/web/src/components/start/Seitenblatt.tsx",
+    "Menü-Blatt: eine Auskunft am rechten Rand ohne Abdunklung und ohne Fokusfang — die Vollfläche ist allein der Klickfänger zum Schliessen",
+  ],
 ]);
 
 /**
@@ -1779,6 +1791,18 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       // JOB 3061 · H2: die vier Menüorte der Prüffläche, baugleich mit HelpTip.
       "apps/web/src/components/pruefen/PruefenMenue.tsx",
       "dieselbe Popover-Bauform wie HelpTip: farbloser Klickfänger als Vollfläche, das Blatt sitzt neben seinem Auslöser — keine Fokusfalle, keine Sperre, kein Marker",
+    ],
+    // JOB 3064 H5: die zwei Bauteile des Überlauf-Menüs. Beide spannen eine Vollfläche auf und
+    // beide haben KEINE modale Wirkung — gemessen an der Quelle: kein `aria-modal`, kein
+    // `showModal()`, keine Fokusfalle, keine Scrollsperre, kein `inert`. Die Vollfläche ist in
+    // beiden Fällen der farblose Klickfänger zum Schliessen, genau wie bei `HelpTip.tsx`.
+    [
+      "apps/web/src/components/start/OverflowMenu.tsx",
+      "Überlauf-Menü: farbloser Klickfänger, die Liste sitzt als Popover neben dem Auslöser — keine Wirkung, die in die Bedienung eingreift",
+    ],
+    [
+      "apps/web/src/components/start/Seitenblatt.tsx",
+      "Menü-Blatt: farbloser Klickfänger, das Blatt sitzt am rechten Rand ohne Abdunklung und ohne Fokusfalle — eine Auskunft, kein Dialog",
     ],
   ]);
 
@@ -3543,8 +3567,34 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // `pages/KnowledgeDetail.tsx`, Stand JOB 3061/3034) trugen ihre Bindungen; die neuen Bausteine
     // unter `components/bibliothek/` tragen ihre eigene Menge. Der Zahlenwert unten stammt aus dem
     // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der beiden Deltas.
+    //
+    // JOB 3064 (H5) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3063/3067 NEU GEMESSEN. Derselbe
+    // Grund wie oben, jetzt für den Umbau von Startseite, Aufgabenliste und Fragenfläche: der
+    // Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum.
+    //
+    // JOB 3064 (H5): von 208 auf 210 NACHGEZOGEN, nicht gelockert. Der Umbau von Startseite,
+    // Aufgabenliste und Fragenfläche hat Bindungen ABGEGEBEN (die Dringlichkeitspunkte der alten
+    // Arbeitsliste, der Kreis-Ton und der Pfeil der Orientierungskarte standen in `Start.tsx`) und
+    // neue MITGEBRACHT (Menü-Knopf und Menü-Ausrichtung in `components/start/OverflowMenu.tsx`,
+    // der Zustandspunkt der Zeile in `StartKarten.tsx`, der Führungs-Ton im Blatt in
+    // `StartPanel.tsx`, der Diktat-Ton an beiden Feldern, der Knopf „Beispiele", der Zustandspunkt
+    // am Quellen-Chip, das Info-Symbol und das Filter-Segment der Aufgabenliste).
+    // GEMESSEN, nicht geschätzt: in den vier berührten Dateien meldet die Erhebung heute 22
+    // unauflösbare Bindungen; die Gesamtzahl steigt damit netto um drei. Jede einzelne wird unten
+    // mit Datei, Zeile und Ausdruck ausgegeben — kein stilles Durchfallen.
+    // Keine Bindung ist weggefallen, ohne dass ihre Fläche weggefallen wäre; die Zusage bleibt
+    // eine EXAKTE Bindung.
+    //
+    // JOB 3064 (H5, Runde 5): von 211 auf 212 NACHGEZOGEN. GENAU EINE Bindung kommt dazu, und zwar
+    // die Durchreiche `className={className}` am Wurzel-`div` von
+    // `apps/web/src/components/start/AntwortText.tsx` — dem Textsatz der Fragenfläche, der die
+    // Fussnotenmarke des Zielbilds setzt. Es ist dieselbe Durchreiche, die `AnswerMarkdown.tsx`
+    // seit jeher hat (und die dort ebenfalls in dieser Zahl steckt): der Aufrufer bestimmt die
+    // Typografie der Fläche, das Bauteil den Satz.
+    // GEMESSEN, nicht geschätzt: mit einem literalen `className` an genau dieser Stelle meldet die
+    // Erhebung wieder 211 — die Differenz hängt an dieser einen Zeile und an keiner anderen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      208,
+      212,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -3970,6 +4020,37 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //     + apps/web/src/components/pruefen/markierung.ts       (der Unterschied im Text)
     //     + apps/web/src/components/pruefen/zaehler.ts          (Reiterzähler und Flächenlage)
     //
+    // JOB 3064 (H5, Startseite und Fragenfläche nach Zielbild) · KONFLIKTRUNDE 1: der Zuwachs
+    // unten ist EIGENSTÄNDIG gezählt (nicht von 406, sondern von der Zahl, die dieser
+    // Arbeitsbaum nach dem Rebase auf JOB 3061/3063/3067 tatsächlich misst — siehe die addierte
+    // Erwartung am Ende dieses Blocks).
+    //
+    // JOB 3064 (H5, Startseite und Fragenfläche nach Zielbild): von 406 auf 414 NACHGEZOGEN, aus
+    // demselben Grund. Es sind GENAU acht Quelldateien dazugekommen — der neue Bereich
+    // `components/start/`, in dem die Startseite ihre Zeilen, ihre Menü-Blätter und ihr
+    // Zustandsmodell hält (bis hierher lag alles inline in `pages/Start.tsx`):
+    //
+    //     + apps/web/src/components/start/forYou.ts        (Lage + Zeilen von „FÜR DICH")
+    //     + apps/web/src/components/start/zuletzt.ts       (heute/gestern/Wochentag)
+    //     + apps/web/src/components/start/OverflowMenu.tsx (das „…"-Menü)
+    //     + apps/web/src/components/start/Seitenblatt.tsx  (das Blatt eines Menüpunkts)
+    //     + apps/web/src/components/start/StartKarten.tsx  („FÜR DICH" und „ZULETZT")
+    //     + apps/web/src/components/start/StartPanel.tsx   (die umgezogenen Blöcke)
+    //     + apps/web/src/components/start/useDiktat.ts     (die EINE Diktat-Verdrahtung)
+    //     + apps/web/src/components/start/startPunkte.ts   (die Tabelle der Menüpunkte, DOM-frei)
+    //
+    // JOB 3064 (H5, Runde 5): von 414 auf 415 NACHGEZOGEN. GENAU EINE Datei kommt dazu — der neunte
+    // Baustein des Bereichs, der Textsatz der Fragenfläche:
+    //
+    //     + apps/web/src/components/start/AntwortText.tsx  (Antworttext mit Fussnotenmarke)
+    //
+    // WARUM ER EIGEN IST UND NICHT IN `components/AnswerMarkdown.tsx` STEHT: die Marke ist eine
+    // Zusage des H5-Zielbilds für die FRAGENFLÄCHE; `AnswerMarkdown` bedient daneben Mobile und
+    // Klara, für die dieser Auftrag nichts sagt (§10). Die REGELN sind nicht gedoppelt — zerlegt
+    // wird weiter mit dem einen Parser `lib/answerMarkdown.ts`, und
+    // `tests/app/job3064-fussnote-markiert.test.tsx` (G1) hält beide Renderstellen für
+    // markenfreien Text auf identischem `innerHTML`.
+    //
     // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     // JOB 3063 (H4): von 406 auf 412 NACHGEZOGEN. Es sind GENAU sechs Quelldateien dazugekommen —
@@ -3996,10 +4077,15 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // Doppelungs-Wächter `tests/structure/fremddoppelungen-kd-capture.test.ts` hat sie gefunden:
     //
     //     + apps/web/src/components/bibliothek/AuffrischungHinweis.tsx
+    //
+    // JOB 3064 (H5) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3061/3063/3067 NEU GEMESSEN. Die 422
+    // aus dem Stand vor diesem Job (Prüffläche + Bibliotheksfläche) plus die neun eigenständigen
+    // Dateien von `components/start/` (acht aus H5 + `AntwortText.tsx` aus Runde 5) ergeben den
+    // Wert unten — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 422: die 414 aus JOB 3061 H2 (D44Gliederung.tsx + d44Struktur.ts + titelRangfolge.ts + Wissensnetz.tsx + KnopfUnterschied.tsx + navHilfe.ts + eigeneKollision.ts + speechDictation.ts + boardAuskunft.ts + Splash.tsx + die sieben Bauteile unter apps/web/src/components/pruefen/) plus die acht Bausteine von components/bibliothek/ (JOB 3063 H4, Runde 5 und Runde 6) — am eigenen Lauf gemessen, nicht rechnerisch addiert",
-    ).toBe(422);
+      "erwartet 431: die 422 aus JOB 3061/3063 (Prüffläche + Bibliotheksfläche) plus die neun Dateien von components/start/ (JOB 3064 H5 + Runde 5 AntwortText.tsx) — am eigenen Lauf gemessen, nicht rechnerisch addiert",
+    ).toBe(431);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

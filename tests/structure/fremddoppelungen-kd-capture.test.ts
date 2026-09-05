@@ -215,6 +215,13 @@ const FREMDE: readonly Fremdrelation[] = [
   // und `vhelp` steht nicht mehr in der bewachten Lesefläche (`BibliothekLesen.tsx`). Die
   // Start/KnowledgeDetail-Doppelung faellt damit ERSATZLOS weg, nicht nur um — kein Auseinanderlaufen,
   // ein Wegfall.
+  //
+  // JOB 3064 (H5) · KONFLIKTRUNDE 1: die verbliebene Kopie in `pages/Start.tsx` (`shelp`) fällt
+  // mit dem Umbau nach Zielbild ebenfalls weg — die drei ?-Hilfen des Start-Screens werden jetzt
+  // als Liste aus `START_HELP_TOPICS` gerendert (`components/start/StartPanel.tsx`, Punkt
+  // `start.menu.hilfe`) und brauchen den Helfer nicht mehr. Sie stand hier ohnehin schon nicht
+  // als eigener Eintrag, weil sie seit JOB 3063 keinen Doppelungspartner mehr hatte — eine
+  // Doppelung weniger, nicht eine verschwiegene.
   {
     dritt: "apps/web/src/lib/captureFromFile.ts",
     groessen: [36, 36],

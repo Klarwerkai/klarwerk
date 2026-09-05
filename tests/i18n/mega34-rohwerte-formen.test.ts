@@ -71,9 +71,21 @@ describe("mega34 F · kein technischer Rohwert als primäre Nutzerbotschaft", ()
     // Enum-Wert, bei englischer und niederländischer Oberfläche sogar auf Deutsch. Überall sonst
     // im Produkt macht das `StatusPill` über `t("status.<wert>")`; hier wurde es als einzige
     // Stelle umgangen. Gepinnt am Quelltext, weil die Karte einen Netz-Abruf braucht.
-    const src = require("node:fs").readFileSync("apps/web/src/pages/Start.tsx", "utf8");
+    // JOB 3064 H5 UMGEZOGEN, nicht gelockert: die Live-Wand steht seit dem Umbau der Startseite
+    // nicht mehr auf der Fläche, sondern hinter „…" → „Gerade" — also in
+    // `components/start/StartPanel.tsx`. Die ZUSAGE ist unverändert dieselbe (kein roher DB-Wert,
+    // die übersetzte `StatusPill`); nur die Datei, die sie trägt, ist eine andere. Gemessen wird
+    // weiter am Quelltext, weil die Karte einen Netz-Abruf braucht.
+    const src = require("node:fs").readFileSync(
+      "apps/web/src/components/start/StartPanel.tsx",
+      "utf8",
+    );
     expect(src).not.toMatch(/>\s*\{s\.status\}\s*</);
     expect(src).toContain("StatusPill");
+    // Und die Startseite selbst rendert die Live-Wand wirklich nicht mehr — sonst stünde die
+    // alte Fassung daneben und dieser Pin bewiese nichts.
+    const start = require("node:fs").readFileSync("apps/web/src/pages/Start.tsx", "utf8");
+    expect(start).not.toContain("livewall");
   });
 
   it("die Status-Übersetzungen, die sie dafür braucht, gibt es in allen drei Sprachen", async () => {

@@ -62,6 +62,11 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
         progress: d.fortschritt.fn,
       },
       livewall: { get: ok({ saved: [], helped: [], helpedToday: 0 }) },
+      // JOB 3064 H5: „FÜR DICH" liest neben Aufgaben und Re-Validierung auch die Meldungen und
+      // den Befundstand der eigenen Objekte. Beide antworten hier sofort und leer — das Fenster,
+      // um das es in diesem Fall geht, bleibt allein das des Lernfortschritts.
+      notifications: { list: ok([]) },
+      duplicateSignal: { list: ok([]) },
       reasoner: { config: ok(null), assistPresets: ok([]), status: ok(null) },
     },
   };
@@ -149,8 +154,18 @@ describe("JOB 1217 · Startseite: das Fenster zwischen geladenem Lernpfad und fe
     // NICHT als offen melden — sie weiss nicht, wie viele davon erledigt sind.
     expect(container.textContent).not.toContain(i18n.t("work.learning"));
 
-    // Und sie sagt ehrlich, dass sie noch laedt, statt zu schweigen.
-    expect(container.textContent).toContain(i18n.t("start.todoLoading"));
+    // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: „Nächste Handlungen" ist die Karte „FÜR DICH"
+    // geworden, und §9 des Auftrags entscheidet den Ladefall anders — die Karte bleibt LEER, ohne
+    // Satz und ohne Pille. Der Satz „Arbeitsübersicht wird geladen …" ist damit entfallen (Pedis
+    // Vorgabe 04.09.: kein Erklärtext im Sichtfeld). Die ZUSAGE ist dieselbe und wird hier sogar
+    // vollständiger gemessen als vorher: im offenen Fenster steht WEDER eine Zahl NOCH ein
+    // Leerzustand — keine erfundene Auskunft in beide Richtungen.
+    const karte = container.querySelector('[data-testid="h5-fuerdich"]');
+    expect(karte, "die Karte „FÜR DICH“ fehlt ganz").not.toBeNull();
+    expect(container.querySelectorAll('[data-testid="h5-fuerdich-zeile"]').length).toBe(0);
+    expect(container.querySelector('[data-testid="h5-fuerdich-pille"]')).toBeNull();
+    expect(karte?.textContent ?? "").toBe("");
+    expect(container.textContent).not.toContain(i18n.t("task.none"));
   });
 });
 
@@ -174,8 +189,8 @@ describe("JOB 1217 · Gegenrichtung: ohne Lernpfad entsteht kein Fenster und kei
     // Der Fortschritt wurde GAR NICHT angefragt — ohne Id ist die Abfrage untaetig.
     expect(d.fortschritt.fn).not.toHaveBeenCalled();
 
-    // Und die Uebersicht haengt nicht: sie sagt ehrlich „nichts offen", statt ewig zu laden.
-    expect(container.textContent).not.toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).toContain(i18n.t("start.todoEmpty"));
+    // Und die Uebersicht haengt nicht: sie sagt ehrlich „Nichts offen.", statt ewig zu laden.
+    // JOB 3064 H5: derselbe Beleg an der Karte „FÜR DICH" — der Leerzustand ist EINE Zeile.
+    expect(container.textContent).toContain(i18n.t("task.none"));
   });
 });

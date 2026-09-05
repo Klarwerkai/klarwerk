@@ -25,8 +25,12 @@
 // (`Bash(rm *)` ist der Bahn erlaubt, der Arbeitsbaum ist beschreibbar); die Behauptung ist
 // deshalb gestrichen statt stehengelassen. Die Datei bleibt aus zwei nachprüfbaren Gründen:
 //   1. Sieben Messdateien nennen sie als das MUSTER, nach dem in diesem Haus gegen ein Zielbild
-//      gemessen wird (`zielbild-konsole-start`, `-schlankes-panel`, `-klara-main`,
+//      gemessen wird (`zielbild-h5-start`, `-schlankes-panel`, `-klara-main`,
 //      `-pruefunglaeuft`, `-keinwissen`, `job2935-validierung-fussband`, `zielbild-h2-pruefen`).
+//      NACHGEZOGEN, JOB 3064: an erster Stelle stand `zielbild-konsole-start`. Die Datei ist mit dem
+//      Konsole-Zielbild abgelöst und gelöscht (JOB 3064 Lieferung 7); an ihre Stelle ist
+//      `tests/design/zielbild-h5-start.test.ts` getreten, das dieselbe Datei als Muster nennt. Die
+//      Zahl bleibt also sieben — gezählt, nicht fortgeschrieben.
 //   2. Ohne sie sichert nichts zu, dass die Nachfolger weiter existieren und weiter MESSEN —
 //      verschwände einer, wäre die Deckung still weg. Genau das wird hier rot.
 // Der Auftrag verlangt in §5.7 die ABLÖSUNG der Messung („wird dadurch ERSETZT"), nicht die

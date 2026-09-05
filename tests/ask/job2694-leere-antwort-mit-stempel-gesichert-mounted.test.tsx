@@ -177,10 +177,25 @@ describe("JOB 2694 — eine Antwort ohne Text ist eine Wissenslücke, kein gesic
       ).toBeNull();
       expect(container.querySelector('[data-testid="ask-contract-line"]')).toBeNull();
 
-      // Stattdessen das, was der Mensch bei einer echten Wissenslücke sieht — derselbe Text.
-      expect(sichtbar).toContain(i18n.t("ask.contract.gap.title"));
-      expect(sichtbar).not.toContain(i18n.t("ask.contract.verified.title"));
-      expect(sichtbar, "die Fläche behauptet Sicherheit über nichts").not.toContain(GESICHERT);
+      // Stattdessen das, was der Mensch bei einer echten Wissenslücke sieht: die Lückenkarte mit
+      // ihrem Satz. JOB 3064 / KORREKTURPFLICHT 1 (Ben, Runde 5) NACHGEFÜHRT: die EINORDNUNG der
+      // Lücke („Wissenslücke, keine Chatbot-Antwort") stand bis Runde 5 als zweite Karte daneben
+      // und liegt jetzt hinter „…" → „Mehr". Die Zusage von JOB 2694 ist unberührt und wird
+      // strenger gemessen: über Fläche UND Blatt darf „Gesichert" NIRGENDS stehen, und der
+      // Lückentext muss vorhanden sein — nur eben an seinem benannten Ort.
+      expect(sichtbar, "der Lückensatz fehlt im Sichtfeld").toContain(i18n.t("ask.noBasisTitle"));
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+        await flush();
+      });
+      await act(async () => {
+        container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+        await flush();
+      });
+      const mitBlatt = document.body.textContent ?? "";
+      expect(mitBlatt).toContain(i18n.t("ask.contract.gap.title"));
+      expect(mitBlatt).not.toContain(i18n.t("ask.contract.verified.title"));
+      expect(mitBlatt, "die Fläche behauptet Sicherheit über nichts").not.toContain(GESICHERT);
 
       // Nichts Leeres zu kopieren, herunterzuladen oder zu drucken — die Werkzeuge fehlen.
       expect(werkzeugKnopf(container, "ask.export.copy")).toBeUndefined();
@@ -194,11 +209,25 @@ describe("JOB 2694 — eine Antwort ohne Text ist eine Wissenslücke, kein gesic
     await i18n.changeLanguage("de");
     antwort.text = "Ventil V4 wird jährlich geprüft.";
     const { container, unmount } = await mountAsk();
-    const sichtbar = container.textContent ?? "";
 
     const karte = container.querySelector('[data-testid="ask-answer"]');
     expect(karte, "die echte Antwortkarte fehlt").not.toBeNull();
     expect(karte?.textContent ?? "").toContain("Ventil V4 wird jährlich geprüft.");
+
+    // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: die Einordnung einer BEANTWORTETEN Frage liegt
+    // seit dem Zielbild-Umbau hinter „…" → „Mehr" an der Antwortkarte (Auftrag §5). Der Lückenfall
+    // oben ist davon unberührt — er hat keine Karte und trägt seinen Satz weiter im Sichtfeld,
+    // genau wie JOB 2694 es verlangt. Die Gegenprobe holt die Einordnung über das echte Menü und
+    // misst dann über Fläche UND Blatt (`document.body`; das Blatt ist dorthin portaliert).
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+      await flush();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+      await flush();
+    });
+    const sichtbar = document.body.textContent ?? "";
     expect(sichtbar).toContain(i18n.t("ask.contract.verified.title"));
     expect(sichtbar).not.toContain(i18n.t("ask.contract.gap.title"));
     expect(werkzeugKnopf(container, "ask.export.copy")).toBeDefined();

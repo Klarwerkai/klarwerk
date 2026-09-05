@@ -484,9 +484,29 @@ function sichtbareAntwort(): HTMLElement | null {
   return container.querySelector<HTMLElement>("[data-testid=ask-answer]");
 }
 
-/** Der gerenderte Vertrauenswert (ConfidenceBar, aria-valuenow) — oder null. */
-function sichtbarerVertrauenswert(): number | null {
-  const balken = sichtbareAntwort()?.querySelector("[role=progressbar]");
+/**
+ * Der gerenderte Vertrauenswert (ConfidenceBar, aria-valuenow) — oder null.
+ *
+ * JOB 3064 · H5 NACHGEFÜHRT: der Balken steht seit dem Umbau der Fragenfläche nicht mehr dauerhaft
+ * unter der Antwort, sondern hinter dem „…" DER ANTWORTKARTE im Info-Blatt „Mehr" (Auftrag §5,
+ * Zeile „Antwortbasis-Vertrag + Zählzeile"). Die Zusage von JOB 1044 ist unberührt: gemessen wird
+ * weiter der WIRKLICH GERENDERTE Wert am Ende der Kette, nicht ein Feld im Zustand — nur führt der
+ * Weg dorthin über einen echten Klick auf ein echtes Menü. Fehlte der Menüpunkt oder öffnete er
+ * nichts, käme hier `null` heraus und die Fälle unten würden rot.
+ */
+async function sichtbarerVertrauenswert(): Promise<number | null> {
+  if (!document.querySelector('[data-testid="ask-mehr"]')) {
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+      await durchlaufen();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+      await durchlaufen();
+    });
+  }
+  // `document`, weil das Blatt nach `document.body` portaliert wird (s. `Seitenblatt.tsx`).
+  const balken = document.querySelector('[data-testid="ask-mehr"] [role=progressbar]');
   const roh = balken?.getAttribute("aria-valuenow");
   return roh === null || roh === undefined ? null : Number(roh);
 }
@@ -618,7 +638,7 @@ describe("JOB 1044 D4: Korrektur → Persistenz → Validation → Status/Trust 
 
     // DIE EINE ZAHL AN DREI STATIONEN: persistiert = auf dem Draht = am Bildschirm.
     expect(wire.result.trust).toBe(nachFreigabe.trust);
-    expect(sichtbarerVertrauenswert()).toBe(nachFreigabe.trust);
+    expect(await sichtbarerVertrauenswert()).toBe(nachFreigabe.trust);
 
     // SICHTBAR: der korrigierte Satz ist angekommen.
     const karte = sichtbareAntwort();
@@ -650,7 +670,7 @@ describe("JOB 1044 D4: Korrektur → Persistenz → Validation → Status/Trust 
     expect(wire.result.trust).toBe(83);
 
     // Und die gesenkte Zahl steht wirklich am Bildschirm.
-    expect(sichtbarerVertrauenswert()).toBe(83);
+    expect(await sichtbarerVertrauenswert()).toBe(83);
     expect(sichtbareAntwort()?.textContent).toContain("null bar");
   });
 

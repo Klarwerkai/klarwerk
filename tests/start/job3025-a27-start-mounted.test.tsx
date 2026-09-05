@@ -52,6 +52,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: { hoch: 0 } })) },
       learningPaths: { byRole: vi.fn(async () => null), progress: leer },
       livewall: { get: vi.fn(async () => ({ saved: [], helped: [], helpedToday: 0 })) },
+      // JOB 3064 H5: die Karte „FÜR DICH" liest auch die Meldungen (§5.2). Sie antworten hier
+      // sofort und leer — der Gegenstand dieser Datei bleibt allein die Kollisionsauskunft.
+      notifications: { list: vi.fn(async () => []) },
       admin: { demoStatus: vi.fn(async () => ({ present: false, count: 0 })) },
       analytics: { overview: vi.fn(async () => ({ total: 0, byStatus: {} })) },
     },
@@ -173,12 +176,45 @@ async function mount(): Promise<void> {
   // — die Rollenfälle wären dann grün gewesen, ohne je eine Session-Rolle gesehen zu haben.
   await act(flush);
   await act(flush);
+  // ============================================================================================
+  // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: die Kollisionsauskunft steht nicht mehr dauerhaft
+  // auf der Startseite. Das Zielbild `design/klarwerk/Main.dc.html` lässt dort Frage, Feld und
+  // zwei Karten übrig; der FALL („an deinem Wissen kollidiert etwas") erscheint als Zeile in
+  // „FÜR DICH", die vollständige Auskunft mit ihren SECHS Datenlagen liegt hinter „…" → „Eigene
+  // Objekte".
+  //
+  // Jede Zusage dieser Datei bleibt damit wörtlich dieselbe — nur der Weg dorthin ist ein Klick
+  // länger. Genau dieser Klick wird hier ausgeführt: über das echte Menü, mit den echten
+  // Beschriftungen, nicht über eine Abkürzung in den Zustand.
+  await act(async () => {
+    container.querySelector<HTMLButtonElement>('[data-testid="h5-start-menu"]')?.click();
+    await flush();
+  });
+  await act(async () => {
+    container
+      .querySelector<HTMLButtonElement>('[data-testid="h5-start-menu-punkt-kollision"]')
+      ?.click();
+    await flush();
+  });
+  // Das Blatt abonniert die drei Abfragen beim Öffnen neu; react-query wiederholt einen zuvor
+  // gescheiterten Abruf beim Neu-Abonnieren (`retryOnMount`). Ohne diese zweite Runde misst der
+  // Fall den LAUFENDEN Wiederholungsversuch statt der Lage, um die es geht — gemessen: die drei
+  // Erstfehler-Fälle lasen sonst „Wird geprüft" statt des Fehlersatzes.
+  await act(flush);
+  await act(flush);
 }
 
 function bereich(): HTMLElement {
-  const el = container.querySelector<HTMLElement>('[data-testid="job3025-kollision-start"]');
+  // An `document` gebunden, nicht am Mount-Knoten: das Seitenblatt wird seit JOB 3064 Runde 4 nach
+  // `document.body` portaliert, damit seine Geometrie (fixed, rechte Kante, 360 px) nicht davon
+  // abhängt, an welcher Stelle im Baum es gerufen wird. Die Zusagen dieser Datei sind unberührt —
+  // gemessen wird derselbe Bereich mit demselben Anker, nur ist er kein Nachfahre des Containers
+  // mehr. Wäre das Blatt nicht offen, gäbe es ihn nach wie vor nirgends, und der Wurf unten greift.
+  const el = document.querySelector<HTMLElement>('[data-testid="job3025-kollision-start"]');
   if (!el) {
-    throw new Error("Der Kollisionsbereich fehlt auf der Startseite");
+    throw new Error(
+      "Der Kollisionsbereich fehlt — das Menüblatt „Eigene Objekte“ wurde nicht geöffnet oder trägt seinen Inhalt nicht",
+    );
   }
   return el;
 }

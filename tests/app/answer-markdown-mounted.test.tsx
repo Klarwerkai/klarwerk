@@ -59,20 +59,31 @@ describe("WP-UX-WOW-1 U1: AnswerMarkdown (Mounted)", () => {
   });
 
   it("die Komponente kennt keinen HTML-Sink (kein dangerouslySetInnerHTML)", () => {
-    const src = readFileSync(
-      resolve(process.cwd(), "apps/web/src/components/AnswerMarkdown.tsx"),
-      "utf8",
-    );
-    // Als PROP (Sink-Verwendung) — der Begriff darf im erklärenden Kommentar vorkommen.
-    expect(src).not.toContain("dangerouslySetInnerHTML=");
-    expect(src).not.toContain("dangerouslySetInnerHTML:");
+    // JOB 3064 NACHGEFÜHRT, und dabei BREITER geworden: seit dem H5-Umbau setzt die Fragenfläche
+    // ihren Antworttext mit `components/start/AntwortText.tsx` (derselbe Parser, zusätzlich die
+    // Fussnotenmarke des Zielbilds); `AnswerMarkdown` bedient weiter Mobile und Klara. Die
+    // Sink-Freiheit ist eine Zusage über den ANZEIGEWEG, nicht über eine Datei — deshalb werden
+    // ab hier BEIDE Renderstellen geprüft. Käme eine dritte dazu, gehört sie in diese Liste.
+    for (const rel of [
+      "apps/web/src/components/AnswerMarkdown.tsx",
+      "apps/web/src/components/start/AntwortText.tsx",
+    ]) {
+      const src = readFileSync(resolve(process.cwd(), rel), "utf8");
+      // Als PROP (Sink-Verwendung) — der Begriff darf im erklärenden Kommentar vorkommen.
+      expect(src, `${rel} nutzt einen HTML-Sink`).not.toContain("dangerouslySetInnerHTML=");
+      expect(src, `${rel} nutzt einen HTML-Sink`).not.toContain("dangerouslySetInnerHTML:");
+    }
   });
 
   it("Kopieren/Download in Ask nutzen weiter den ROHEN Antworttext (buildExport unverändert)", () => {
     const src = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Ask.tsx"), "utf8");
     // Export baut auf result.answer (roh) — nicht auf der gerenderten/gestrippten Fassung.
     expect(src).toContain('answer: result.answer ?? ""');
-    // Die Anzeige läuft über die sichere Markdown-Komponente.
-    expect(src).toContain("<AnswerMarkdown");
+    // Die Anzeige läuft über die sichere Markdown-Komponente. JOB 3064: auf der Fragenfläche ist
+    // das `AntwortText` — dieselbe Zusage, dieselbe Ableitung aus `lib/answerMarkdown`.
+    expect(src).toContain("<AntwortText");
+    // Und der ROHE Weg ist wirklich abgelöst, nicht danebengelassen: die Fragenfläche rendert
+    // nicht mehr über `AnswerMarkdown`. Ohne diese Zeile bliebe ein zweiter Anzeigeweg unbemerkt.
+    expect(src).not.toContain("<AnswerMarkdown");
   });
 });

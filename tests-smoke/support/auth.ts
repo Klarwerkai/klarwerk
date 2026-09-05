@@ -34,8 +34,27 @@ export const SMOKE_NAME = "Smoke Tester";
 export const SMOKE_MAIL = "smoke@klarwerk.test";
 export const SMOKE_PASS = "smoke-Passwort-1";
 
-/** Der Marker des Arbeitsbereichs: sichtbar genau dann, wenn die Anmeldung durch ist. */
-export const workspaceMarker = (page: Page) => page.getByText("Wissen erfassen").first();
+/**
+ * Der Marker des Arbeitsbereichs: sichtbar genau dann, wenn die Anmeldung durch ist.
+ *
+ * JOB 3064 (H5) NACHGEFÜHRT, nicht gelockert. Bis hierher war der Marker der Text „Wissen
+ * erfassen". Der stand auf zwei Wegen da, und BEIDE waren an Nebenbedingungen geknüpft:
+ *   · in der Seitenleiste als Navigationspunkt (`nav.capture`) — die ist unterhalb der
+ *     Desktop-Grenze aber in den Schubladen-Dialog eingeklappt und damit NICHT sichtbar;
+ *   · auf der Startseite über `EmptyStateCtas context="start"` (`empty.cta.capture`) — und die
+ *     erschien nur, WEIL die Arbeitsübersicht der Smoke-Umgebung leer ist.
+ * Auf schmalen Geräten trug also allein der Leerzustand die Anmeldeprobe. JOB 3064 hat diesen
+ * Block auftragsgemäß nach `/aufgaben` hinter den Knopf „Wie geht es weiter?" verlegt (§5a des
+ * Auftrags), und damit fiel der Marker bei 390 px und 768 px weg — fünf Sonden scheiterten in
+ * `ensureLoggedIn`, keine an ihrer eigenen Sache.
+ *
+ * Der neue Marker ist die Überschrift der Startseite. `/` wirft auf `HOME_ROUTE = "/start"`
+ * (`app/navigation.ts:89`, `routes.tsx:101`), und diese Überschrift ist statischer Text im
+ * angemeldeten Arbeitsbereich: unabhängig von der Fensterbreite, unabhängig vom Datenbestand und
+ * auf den Anmeldeflächen nicht vorhanden. Sie prüft damit strenger als vorher, nicht schwächer.
+ */
+export const workspaceMarker = (page: Page) =>
+  page.getByRole("heading", { name: "Was möchtest du wissen?" }).first();
 
 /**
  * Bringt die Seite in den angemeldeten Zustand — egal, in welchem der drei möglichen Zustände der

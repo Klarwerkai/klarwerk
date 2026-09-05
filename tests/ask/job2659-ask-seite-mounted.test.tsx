@@ -176,6 +176,28 @@ function luecke(container: HTMLElement): HTMLElement | null {
   return container.querySelector<HTMLElement>('[data-testid="ask-gap"]');
 }
 
+/**
+ * Der Kartentext, in dem die FUSSNOTENMARKE wieder als `[n]` steht.
+ *
+ * JOB 3064 · H5 setzt die Marke, die das Modell als „[1]" liefert, als Hochstellung (Zielbild
+ * `Fragen.dc.html` Z.40/41) — `textContent` liest danach „… Ventil B 1." statt „… Ventil B [1].".
+ * Die Zusage dieser Datei ist davon NICHT berührt: sie lautet „der Mensch liest den Wortlaut der
+ * Quelle, nicht Modellprosa", und der Wortlaut ist unverändert — nur die Marke ist gesetzt statt
+ * geklammert. Gemessen wird deshalb weiter der VOLLE Wortlaut mitsamt Marke, aus dem DOM
+ * zurückgelesen. Verschluckte die Fläche die Ziffer, stünde hier „Ventil B ." und der Fall wäre
+ * rot — die Messung ist also strenger als ein blosses `toContain` ohne Marke.
+ */
+function kartentextMitMarken(karte: HTMLElement | null): string {
+  if (!karte) {
+    return "";
+  }
+  const klon = karte.cloneNode(true) as HTMLElement;
+  for (const sup of klon.querySelectorAll<HTMLElement>("sup[data-fussnote]")) {
+    sup.textContent = `[${sup.getAttribute("data-fussnote") ?? ""}]`;
+  }
+  return klon.textContent ?? "";
+}
+
 afterEach(() => {
   vi.clearAllMocks();
   kette.ask = null;
@@ -275,7 +297,7 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
       fake("Schliessen Sie Ventil B [1]."),
       "Pruefen Sie Ventil A. Schliessen Sie Ventil B.",
     );
-    expect(antwortkarte(container)?.textContent ?? "").toContain("Schliessen Sie Ventil B [1].");
+    expect(kartentextMitMarken(antwortkarte(container))).toContain("Schliessen Sie Ventil B [1].");
     unmount();
   });
 
@@ -304,7 +326,7 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
       fake("Pruefen Sie Ventil A [1]"),
       "„Pruefen Sie Ventil A.“ Schliessen Sie Ventil B.",
     );
-    expect(antwortkarte(container)?.textContent ?? "").toContain("Pruefen Sie Ventil A [1]");
+    expect(kartentextMitMarken(antwortkarte(container))).toContain("Pruefen Sie Ventil A [1]");
     unmount();
   });
 
@@ -315,7 +337,7 @@ describe("JOB 2659 · U — die gemountete Ask-Seite zeigt Quellenwortlaut oder 
     );
     const karte = antwortkarte(container);
     expect(karte).not.toBeNull();
-    expect(karte?.textContent ?? "").toContain("Ventil B schließen [1].");
+    expect(kartentextMitMarken(karte)).toContain("Ventil B schließen [1].");
     unmount();
   });
 });

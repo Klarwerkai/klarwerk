@@ -23,6 +23,26 @@
 // auch Vorleseprogramme folgen — und `textContent` sieht bewusst KEINE `title`-Attribute; genau
 // darin liegt der Unterschied zwischen „erklärt" und „erklärt nur der Maus" (Kalibrierung unten).
 //
+// ================================================================================================
+// UMZUG DURCH JOB 3064 · H5 — DIESELBEN BEHAUPTUNGEN, EIN ANDERER ORT.
+// ================================================================================================
+//
+// H5 nimmt jeden Erklärtext aus dem Sichtfeld von `/fragen` (Auftrag §5, Lieferpunkt 8). Die
+// Erklär-Fläche, der Modus-Chip und sein Hilfe-Knopf stehen seither im Info-Blatt „…" → „Mehr"
+// (`MehrFlaechenInfo`, `pages/Ask.tsx`), das an `document.body` portaliert wird.
+//
+// Was das für diesen Wächter ändert — und was ausdrücklich NICHT:
+//   · NICHT geändert ist eine einzige Behauptung. Reihenfolge, „genau einmal", sichtbare
+//     Kopfzeile, Chip-Beschriftung, fokussierbarer Knopf, lesbarer Text statt Attribut, der
+//     Maus-Weg als Kalibrierung — alles wird weiter gemessen, mit denselben Ankern.
+//   · GEÄNDERT ist, WO gemessen wird: `document.body` statt nur `container` (das Blatt ist ein
+//     Portal), und die Fläche wird vorher über den Griff geöffnet. Ein Menüpunkt, der sein Blatt
+//     nicht öffnet, macht ab jetzt jeden Fall hier rot — das ist strenger als vorher, nicht milder.
+//   · NEU ist der Fall (2a): VOR dem Griff steht die Erklärung nirgends. Das ist die H5-Zusage
+//     selbst, und sie ist zugleich die Gegenprobe zu „verschoben, nicht gestrichen": beides
+//     zusammen kann nur erfüllen, wer wirklich umgezogen ist — wer streicht, scheitert an (2),
+//     wer stehen lässt, scheitert an (2a).
+//
 // NICHT GEMESSEN wird die Abnahme-Zusage (1) „ohne Scrollen sichtbar". jsdom rechnet kein Layout;
 // eine Bildschirmhöhe ist hier grundsätzlich nicht beweisbar. Belegt wird die Ursache dieser
 // Zusage — dass vor dem Eingabefeld keine Erklär-Fläche mehr steht. Die Umweltgrenze steht in der
@@ -169,6 +189,25 @@ async function seite(): Promise<{ container: HTMLElement; unmount: () => void }>
   return mountAsk();
 }
 
+/**
+ * JOB 3064 · H5: der Griff zur Einordnung — „…" öffnen, „Mehr" wählen. Beide Schritte sind echte
+ * Klicks auf echte Knöpfe; ein Menü ohne Wirkung fliegt hier auf, statt still durchzugehen.
+ */
+async function oeffneMehr(container: HTMLElement): Promise<void> {
+  const griff = container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]');
+  expect(griff, "es gibt keinen „…“-Griff — die Einordnung hat gar keinen Ort mehr").not.toBeNull();
+  await act(async () => {
+    (griff as HTMLButtonElement).click();
+    await flush();
+  });
+  const punkt = container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]');
+  expect(punkt, "das „…“-Menü trägt keinen Punkt „Mehr“").not.toBeNull();
+  await act(async () => {
+    (punkt as HTMLButtonElement).click();
+    await flush();
+  });
+}
+
 /** Steht `a` im Dokument VOR `b`? Genau die Reihenfolge, der Auge und Vorleseprogramm folgen. */
 function stehtVor(a: Element, b: Element): boolean {
   return (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0;
@@ -187,8 +226,13 @@ function eingabefeld(container: HTMLElement): HTMLInputElement {
   return feld as HTMLInputElement;
 }
 
-function erklaerung(container: HTMLElement): HTMLElement {
-  const el = container.querySelector<HTMLElement>('[data-testid="ask-guide"]');
+/**
+ * Die Erklär-Fläche — seit H5 im portalierten Info-Blatt, deshalb an `document` gebunden und nicht
+ * mehr am Mount-Knoten. Der Aufrufer hat `oeffneMehr` vorher gerufen; sonst ist sie zu Recht nicht
+ * da (siehe Fall 2a).
+ */
+function erklaerung(): HTMLElement {
+  const el = document.querySelector<HTMLElement>('[data-testid="ask-guide"]');
   expect(
     el,
     "die Erklär-Fläche ist gar nicht mehr da — verschieben heisst nicht streichen (D-034, Abnahme 2)",
@@ -232,9 +276,10 @@ afterEach(() => {
 describe("D-034 (1) · das Eingabefeld steht vor der Erklärung", () => {
   it("die Eingabe kommt zuerst — die Erklär-Fläche folgt dahinter", async () => {
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
     const feld = eingabefeld(container);
-    const erklaert = erklaerung(container);
+    const erklaert = erklaerung();
     expect(
       stehtVor(feld, erklaert),
       "die Erklär-Karte steht weiterhin VOR dem Eingabefeld — genau der Befund aus D-034",
@@ -246,11 +291,12 @@ describe("D-034 (1) · das Eingabefeld steht vor der Erklärung", () => {
     // Ohne diesen Fall wäre „hinter das Feld verschoben" schon erfüllt, wenn die Karte künftig
     // zwischen Eingabe und Antwort läge — dort wäre sie erneut ein Vorwort, nur an anderer Stelle.
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
     const anker = container.querySelector('[data-testid="ask-result-anchor"]');
     expect(anker, "die Ergebnisfläche ist verschwunden").not.toBeNull();
     expect(
-      stehtVor(anker as Element, erklaerung(container)),
+      stehtVor(anker as Element, erklaerung()),
       "die Erklärung liegt zwischen Eingabe und Ergebnisfläche",
     ).toBe(true);
     unmount();
@@ -259,9 +305,10 @@ describe("D-034 (1) · das Eingabefeld steht vor der Erklärung", () => {
   it("KALIBRIERUNG: die Reihenfolgemessung kann überhaupt scheitern", async () => {
     // Sonst wäre `stehtVor` womöglich für jedes Paar wahr und jede Aussage oben wertlos.
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
     const feld = eingabefeld(container);
-    const erklaert = erklaerung(container);
+    const erklaert = erklaerung();
     expect(stehtVor(erklaert, feld), "die Messung ist in beide Richtungen wahr").toBe(false);
     unmount();
   });
@@ -270,8 +317,11 @@ describe("D-034 (1) · das Eingabefeld steht vor der Erklärung", () => {
 describe("D-034 (2) · die Erklärung ist weiterhin erreichbar — verschoben, nicht gestrichen", () => {
   it("jeder Text der Erklärung steht genau einmal auf der Seite", async () => {
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
-    const text = container.textContent ?? "";
+    // `document.body` statt `container`: es umfasst BEIDES — die Fläche und das portalierte Blatt.
+    // Eine Abschrift, die im Blatt UND daneben stünde, ergäbe hier 2 und fiele auf.
+    const text = document.body.textContent ?? "";
     const befund = erklaertexte().map((p) => ({ text: p.name, anzahl: anzahl(text, p.text) }));
     expect(befund).toEqual(erklaertexte().map((p) => ({ text: p.name, anzahl: 1 })));
     unmount();
@@ -281,8 +331,9 @@ describe("D-034 (2) · die Erklärung ist weiterhin erreichbar — verschoben, n
     // D-034 lässt ausdrücklich „in ein `<details>` falten (Kopfzeile bleibt sichtbar)" zu. Eine
     // gefaltete Fläche OHNE sichtbare Kopfzeile wäre dagegen ein Verschwinden mit Zwischenschritt.
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
-    const erklaert = erklaerung(container);
+    const erklaert = erklaerung();
     const kopf = erklaert.querySelector("summary");
     expect(kopf, "die gefaltete Erklärung hat keine sichtbare Kopfzeile").not.toBeNull();
     expect(kopf?.textContent ?? "").toContain(i18n.t(knowledgeGuidance("ask").titleKey));
@@ -293,8 +344,9 @@ describe("D-034 (2) · die Erklärung ist weiterhin erreichbar — verschoben, n
     // Ohne diesen Fall wäre die Zählung oben auch dann erfüllt, wenn Titel und Kacheln an ihrem
     // alten Ort vor dem Eingabefeld stehengeblieben wären und nur eine leere Hülle umgezogen ist.
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
-    const innen = erklaerung(container).textContent ?? "";
+    const innen = erklaerung().textContent ?? "";
     for (const p of erklaertexte()) {
       expect(innen, `${p.name} steht nicht in der Erklär-Fläche`).toContain(p.text);
     }
@@ -302,11 +354,39 @@ describe("D-034 (2) · die Erklärung ist weiterhin erreichbar — verschoben, n
   });
 });
 
+describe("D-034 (2a) · JOB 3064 H5: vor dem Griff steht die Erklärung nirgends", () => {
+  it("ohne „…“ → „Mehr“ ist weder die Erklär-Fläche noch einer ihrer Texte auf der Seite", async () => {
+    // Die H5-Zusage (Auftrag §5, Lieferpunkt 8) — und zugleich die Gegenprobe zu (2): „verschoben"
+    // ist nur wahr, wenn es hier NICHT steht und dort SCHON. Wer den alten Ort bloss zusätzlich
+    // stehen liesse, wäre in (2) bei 2 und hier bei „nicht null".
+    const { unmount } = await seite();
+
+    expect(
+      document.querySelector('[data-testid="ask-guide"]'),
+      "die Erklär-Fläche steht ungefragt auf der Fragenfläche — genau das nimmt H5 heraus",
+    ).toBeNull();
+    const text = document.body.textContent ?? "";
+    for (const p of erklaertexte()) {
+      expect(anzahl(text, p.text), `${p.name} steht ungefragt im Sichtfeld`).toBe(0);
+    }
+    unmount();
+  });
+
+  it("KALIBRIERUNG: derselbe Griff macht sie da — die Abwesenheit oben ist kein Messfehler", async () => {
+    const { container, unmount } = await seite();
+    await oeffneMehr(container);
+
+    expect(document.querySelector('[data-testid="ask-guide"]')).not.toBeNull();
+    unmount();
+  });
+});
+
 describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich", () => {
   it("der Modus-Chip benennt den Modus weiterhin sichtbar", async () => {
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
-    const chip = container.querySelector('[data-testid="ask-reasoner-mode"]');
+    const chip = document.querySelector('[data-testid="ask-reasoner-mode"]');
     expect(
       chip,
       "der Modus-Chip ist verschwunden — erklären heisst nicht abschaffen",
@@ -317,8 +397,9 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
 
   it("neben dem Chip sitzt ein per Tastatur fokussierbares Bedienelement", async () => {
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
-    const knopf = container.querySelector<HTMLButtonElement>(
+    const knopf = document.querySelector<HTMLButtonElement>(
       '[data-testid="ask-reasoner-help"] button',
     );
     expect(
@@ -332,7 +413,7 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
       document.activeElement,
       "das Bedienelement lässt sich nicht fokussieren — die Tastatur kommt nicht hin",
     ).toBe(knopf);
-    const chip = container.querySelector('[data-testid="ask-reasoner-mode"]') as Element;
+    const chip = document.querySelector('[data-testid="ask-reasoner-mode"]') as Element;
     expect(
       stehtVor(chip, knopf as Element),
       "das Bedienelement steht nicht beim Chip — dann erklärt es sichtbar nichts Bestimmtes",
@@ -342,12 +423,13 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
 
   it("Aktivieren legt die Erklärung in den LESBAREN Seitentext — nicht in ein Attribut", async () => {
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
     expect(
-      anzahl(container.textContent ?? "", MODUS_HINWEIS()),
+      anzahl(document.body.textContent ?? "", MODUS_HINWEIS()),
       "der Hinweis steht schon vor jeder Bedienung im Text — dann misst der Fall nichts",
     ).toBe(0);
-    const knopf = container.querySelector<HTMLButtonElement>(
+    const knopf = document.querySelector<HTMLButtonElement>(
       '[data-testid="ask-reasoner-help"] button',
     );
     await act(async () => {
@@ -355,7 +437,7 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
       await flush();
     });
     expect(
-      anzahl(container.textContent ?? "", MODUS_HINWEIS()),
+      anzahl(document.body.textContent ?? "", MODUS_HINWEIS()),
       "nach dem Aktivieren steht die Erklärung immer noch nicht im Seitentext",
     ).toBe(1);
     unmount();
@@ -366,12 +448,13 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
     // er zählt nicht als Erklärung. Fiele diese Trennung, wäre der vorige Fall auch am alten,
     // beanstandeten Stand grün gewesen.
     const { container, unmount } = await seite();
+    await oeffneMehr(container);
 
-    const mitTooltip = [...container.querySelectorAll<HTMLElement>("[title]")].filter(
+    const mitTooltip = [...document.querySelectorAll<HTMLElement>("[title]")].filter(
       (el) => el.title === MODUS_HINWEIS(),
     );
     expect(mitTooltip.length, "der Maus-Tooltip ist ersatzlos entfallen").toBeGreaterThan(0);
-    expect(anzahl(container.textContent ?? "", MODUS_HINWEIS())).toBe(0);
+    expect(anzahl(document.body.textContent ?? "", MODUS_HINWEIS())).toBe(0);
     unmount();
   });
 });

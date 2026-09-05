@@ -4,8 +4,18 @@ import { describe, expect, it } from "vitest";
 import i18n from "../../apps/web/src/i18n";
 import { START_HELP_IDS, START_HELP_TOPICS, startHelp } from "../../apps/web/src/lib/startHelp";
 
-const startSource = readFileSync(
-  fileURLToPath(new URL("../../apps/web/src/pages/Start.tsx", import.meta.url)),
+// JOB 3064 H5 UMGEZOGEN, nicht gelockert: die drei ?-Hilfen des Start-Screens standen als drei
+// verstreute Fragezeichen auf der Fläche. Seit dem Umbau nach dem Zielbild `Main.dc.html` liegen
+// sie gebündelt hinter „…" → „Hilfe zu dieser Seite" — also in `components/start/StartPanel.tsx`.
+// Die ZUSAGE ist unverändert: keine tote Hilfe-Karte, jedes Thema wird wirklich gerendert. Nur die
+// Bauform hat sich geändert (eine Liste statt drei `shelp("<id>")`-Aufrufe), und deshalb misst der
+// Fall unten die Auflösung über `START_HELP_TOPICS` statt drei Aufrufstellen.
+const panelSource = readFileSync(
+  fileURLToPath(new URL("../../apps/web/src/components/start/StartPanel.tsx", import.meta.url)),
+  "utf8",
+);
+const kartenSource = readFileSync(
+  fileURLToPath(new URL("../../apps/web/src/components/start/StartKarten.tsx", import.meta.url)),
   "utf8",
 );
 
@@ -44,12 +54,20 @@ describe("SCRUM-488: ?-Hilfen auf dem Start-Screen", () => {
     }
   });
 
-  it("Start.tsx bindet die HelpTips an genau diese Elemente (keine tote Hilfe-Karte)", () => {
-    expect(startSource).toContain('import { type StartHelpId, startHelp } from "../lib/startHelp"');
-    for (const id of START_HELP_IDS) {
-      expect(startSource, `shelp("${id}") fehlt in Start.tsx`).toContain(`shelp("${id}")`);
+  it("das Menü-Blatt rendert JEDES Thema (keine tote Hilfe-Karte)", () => {
+    // Die Bindung läuft über die produktive Tabelle selbst — eine neue `START_HELP_ID` erscheint
+    // damit ohne Nacharbeit, und eine gestrichene kann nicht als toter Schlüssel zurückbleiben.
+    expect(panelSource).toContain('import { START_HELP_TOPICS } from "../../lib/startHelp"');
+    expect(panelSource).toContain("START_HELP_TOPICS.map");
+    expect(panelSource).toContain("topic.titleKey");
+    expect(panelSource).toContain("topic.bodyKey");
+    // Kalibrierung: die Tabelle ist nicht leer — sonst wäre die Zusage über eine leere Menge.
+    expect(START_HELP_IDS.length).toBeGreaterThan(2);
+    // Die Dringlichkeits-Legende in Worten ist mit der Arbeitsliste entfallen; die drei Stufen
+    // stehen jetzt als farbige Punkte an den Zeilen von „FÜR DICH" (Zielbild Z.48/54/60), und
+    // `shelp.severity.body` erklärt sie im Blatt. Gemessen wird deshalb der Punkt, nicht der Text.
+    for (const ton of ["trust-crit-fill", "trust-warn-fill", "trust-pos-fill"]) {
+      expect(kartenSource, `Zustandspunkt ${ton} fehlt`).toContain(ton);
     }
-    // Die Dringlichkeits-Legende (Klartext) rendert die Stufen-Labels (Template start.severity.<sev>).
-    expect(startSource).toContain("start.severity.");
   });
 });

@@ -196,8 +196,14 @@ describe("JOB 3038 · das Fragefeld hört zu", () => {
     expect(knopf, "kein Knopf mit dem Diktat-Label auf /fragen").toBeTruthy();
     // Er darf das Formular NICHT absenden — das ist keine Kosmetik, sondern Lieferung 5.
     expect(knopf?.getAttribute("type")).toBe("button");
-    // Der Zustand steht sichtbar am Knopf, nicht nur im Label.
-    expect(knopf?.textContent ?? "").toContain(i18n.t("ask.diktatStart"));
+    // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: das Zielbild `design/klarwerk/Fragen.dc.html`
+    // (Z.47) trägt im Frage-Feld ein SYMBOL, keine Wortschaltfläche — vorher stand der Wortlaut
+    // zusätzlich als Text im Knopf. Die ZUSAGE bleibt dieselbe und wird hier vollständig gemessen:
+    // der Zustand ist benannt (der Name wechselt „sprechen" → „stoppen"), er ist maschinell
+    // auslesbar (`aria-pressed`) und er steht auch für die Maus da (`title`).
+    expect(knopf?.getAttribute("aria-label")).toBe(i18n.t("ask.diktatStart"));
+    expect(knopf?.getAttribute("title")).toBe(i18n.t("ask.diktatStart"));
+    expect(knopf?.getAttribute("aria-pressed")).toBe("false");
     unmount();
   });
 
@@ -268,7 +274,29 @@ describe("JOB 3038 · das Fragefeld hört zu", () => {
       "ein Diktat-Knopf ohne Browser-Unterstützung wäre eine Scheinfunktion",
     ).toBeUndefined();
     expect(diktatKnopf(container, i18n.t("ask.diktatStop"))).toBeUndefined();
-    expect(container.textContent ?? "").toContain(i18n.t("ask.diktatUnsupported"));
+
+    // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: der Satz steht nicht mehr im Sichtfeld — §6 des
+    // Auftrags nimmt ihn heraus („ohne Spracherkennung fehlt das Mikrofon einfach, kein Satz"),
+    // das Funktionsinventar gibt ihm den benannten Ort „…" → „Mehr". Die Zusage von F4 bleibt
+    // wörtlich dieselbe: es gibt keinen toten Knopf UND es gibt den ehrlichen Satz. Nur ist er
+    // einen Klick entfernt, und dieser Klick wird hier über das echte Menü ausgeführt.
+    expect(
+      container.textContent ?? "",
+      "der Satz steht ungefragt im Sichtfeld — H5 nimmt Erklärtext dort heraus",
+    ).not.toContain(i18n.t("ask.diktatUnsupported"));
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+      await flush();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+      await flush();
+    });
+    // `document.body`, weil das Seitenblatt dorthin portaliert wird (Geometrie, s. Seitenblatt.tsx).
+    expect(
+      document.body.textContent ?? "",
+      "der Satz ist ersatzlos entfallen — verschieben heisst nicht streichen",
+    ).toContain(i18n.t("ask.diktatUnsupported"));
     unmount();
   });
 

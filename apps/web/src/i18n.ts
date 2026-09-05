@@ -567,17 +567,35 @@ const de = {
   // (KonsoleStart.dc.html Z.27–60). Kicker „Übersicht" und Gruß „Guten Tag, {{name}}." sind mit
   // ihr entfallen — der Name steht in der Seitenleiste (shell/Sidebar.tsx). Wortlaute wörtlich
   // aus dem Zielbild; die Pille trägt die echte Zahl des Prüfboards, kein Platzhalter.
+  // JOB 3064 H5: Untertitel, die drei Kartentexte und die Pille „N offen" sind mit den drei
+  // Konsolenkarten entfallen — ihre Ziele stehen in Navigation und Kopfband, die offene Zahl im
+  // Prüf-Badge der Leiste. Die drei verbliebenen Schlüssel tragen das Zielbild `Main.dc.html`:
+  // Überschrift (Z.37), Feldtext (Z.40) und der Leitsatz, der ins „…"-Menü umgezogen ist.
   "start.konsole.frage": "Was möchtest du wissen?",
-  "start.konsole.untertitel": "Erfahrungswissen, das im Unternehmen bleibt.",
-  "start.konsole.feld": "Wissen durchsuchen oder Frage stellen …",
-  "start.konsole.suchen.titel": "Suchen",
-  "start.konsole.suchen.text": "Eine Quelle finden, eine Antwort mit Beleg bekommen.",
-  "start.konsole.pruefen.titel": "Prüfen",
-  "start.konsole.pruefen.text": "Neues Wissen freigeben, zurückfragen oder ablehnen.",
-  "start.konsole.offen": "{{n}} offen",
-  "start.konsole.hinzufuegen.titel": "Hinzufügen",
-  "start.konsole.hinzufuegen.text": "Ein Dokument, ein Diktat oder ein Interview — mit Bildern.",
+  "start.konsole.feld": "Frage oder Suchbegriff",
   "start.konsole.leitsatz": "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich",
+  // JOB 3064 H5: die zwei Karten des Zielbilds und das „…"-Menü.
+  "start.fuerdich.kicker": "FÜR DICH",
+  "start.fuerdich.art.conflict": "Konflikt",
+  "start.fuerdich.art.duplicate": "Duplikat",
+  "start.fuerdich.art.gap": "Wissenslücke",
+  "start.fuerdich.art.assignment": "Zuweisung",
+  "start.fuerdich.art.impact": "Wirkung",
+  "start.zuletzt.kicker": "ZULETZT",
+  "start.zuletzt.heute": "heute",
+  "start.zuletzt.gestern": "gestern",
+  "start.zuletzt.leer": "Noch nichts erfasst.",
+  "start.menu.label": "Mehr zu dieser Seite",
+  "start.menu.ueber": "Über KLARWERK",
+  "start.menu.klara": "Klara in Word",
+  "start.menu.kreis": "Wissenskreis",
+  "start.menu.demo": "Demo-Pfad",
+  "start.menu.erst": "Ersteinrichtung",
+  "start.menu.gerade": "Gerade",
+  "start.menu.kapital": "Wissenskapital",
+  "start.menu.kollision": "Eigene Objekte",
+  "start.menu.stufe2": "Stufe 2",
+  "start.menu.hilfe": "Hilfe zu dieser Seite",
   // AUFTRAG-mega38 BLOCK G1: der eine Satz — ohne ein einziges Fachwort, bejahend.
   "start.purpose":
     "Klarwerk sammelt, was deine Kolleginnen und Kollegen im Betrieb gelernt haben, damit du danach fragen kannst und siehst, woher jede Antwort stammt.",
@@ -602,11 +620,6 @@ const de = {
   "klara.path.m365.summary": "Was Klara in Microsoft 365 tun wird",
   "klara.path.m365.body":
     "Klara ist als bidirektionales Add-in für Microsoft 365 geplant. Sie soll Wissen dort aufnehmen, wo du ohnehin arbeitest, es strukturiert für Klarwerk vorbereiten und geprüftes Unternehmenswissen aus Klarwerk direkt in Microsoft 365 bereitstellen — prüfen und entscheiden bleibt bei dir. Verfügbar ist das noch nicht.",
-  "start.todo": "Heute zu tun",
-  "start.workTitle": "Nächste Handlungen",
-  "start.severity.critical": "jetzt",
-  "start.severity.today": "heute",
-  "start.severity.later": "später",
   "shelp.cycle.title": "Der Knowledge-OS-Kreis",
   "shelp.cycle.body":
     "Die vier Kacheln sind der Kreislauf deines Wissens: Erfassen → Validieren → Nutzen → Aktuell halten. Jede Kachel bringt dich direkt in den passenden Bereich. Du musst nicht alles auf einmal machen — fang bei dem an, was gerade ansteht. Es startet von selbst nichts.",
@@ -616,23 +629,15 @@ const de = {
   "shelp.severity.title": "Die farbigen Punkte",
   "shelp.severity.body":
     "Der Punkt links zeigt die Dringlichkeit: Rot = jetzt dran (blockiert oder kritisch), Gelb = heute sinnvoll, Grau = kann warten. Das ist nur eine Orientierung, kein Zwang — du entscheidest die Reihenfolge, und es wird nichts automatisch abgearbeitet.",
-  // AUFTRAG-mega38 BLOCK G3: „Bester nächster Einstieg" behauptete eine auf DIESE Person
-  // zugeschnittene Empfehlung. `primaryWorkItem` waehlt aber schlicht den dringendsten Posten
-  // aus globalen Bestandszahlen (lib/workCenter.ts:61-93) — dieselbe Klasse von zu weitem
-  // Satz wie in Block D. Die Beschriftung sagt jetzt genau das, was die Auswahl tut.
-  "start.focusLabel": "Dringendste offene Arbeit",
   "work.conflicts": "Konflikte lösen",
   "work.criticalGaps": "Kritische Wissenslücken",
   "work.revalidation": "Revalidierungen fällig",
   "work.validation": "Offene Validierungen",
   "work.learning": "Offene Lernpfad-Schritte",
-  "start.allTasks": "Alle Aufgaben →",
   // AUFTRAG-mega51 BLOCK A: was die Rolle nicht öffnen kann, wird als Lage gezeigt — nicht als Weg.
   "roleLink.noReach": "Kein Zugriff",
   "roleLink.noReachHint":
     "Diese Fläche ist für deine Rolle nicht freigegeben. Die Angabe bleibt stehen, weil sie stimmt — nur der Weg dorthin ist für dich zu.",
-  "start.todoEmpty": "Nichts offen. Gut gemacht.",
-  "start.todoLoading": "Arbeitsübersicht wird geladen …",
   "start.stufe2.title": "Erweiterte Funktionen (Stufe 2)",
   "start.stufe2.body":
     "Stufe 2 sind zusätzliche Module über den Kernablauf hinaus. Als Admin stehen dir erweiterte Funktionen zur Verfügung: {{features}}. Schalte dazu „{{toggle}}' unten in der Seitenleiste ein.",
@@ -640,8 +645,12 @@ const de = {
   "task.critical": "Kritisch",
   "task.today": "Heute",
   "task.later": "Später",
-  "task.none": "Nichts hier.",
+  // JOB 3064 H5 §4: der Leerzustand ist EINE Zeile — „Nichts offen." — und der Weg dahinter steht
+  // hinter dem Knopf „Wie geht es weiter?", nicht als Textwand daneben.
+  "task.none": "Nichts offen.",
   "task.noneFiltered": "Kein Eintrag für diesen Filter.",
+  "task.weiter": "Wie geht es weiter?",
+  "task.erklaerung": "Was ist zu tun?",
   "task.filter.all": "Alle",
   "task.filter.validation": "Validierung",
   "task.filter.returned": "Nacharbeit",
@@ -2027,6 +2036,13 @@ const de = {
   "ask.error.body":
     "Die Anfrage ist unterwegs steckengeblieben. Das ist KEINE Aussage über das Wissen — es bedeutet nicht, dass es keine Antwort gibt. Bitte erneut versuchen.",
   "ask.error.retry": "Erneut versuchen",
+  // JOB 3064 §9: offline ist KEIN Fehlschlag, sondern ein Nicht-Versuch — die Frage ist nie
+  // losgegangen. Der Fehlersatz („steckengeblieben") wäre hier schlicht unwahr.
+  "ask.offline": "Keine Verbindung.",
+  // JOB 3064 §9: die Antwort steht noch, nur das Auffrischen hat nicht geklappt. Der Satz sagt
+  // BEIDES — was gilt und was nicht geklappt hat —, damit niemand die stehende Antwort für frisch
+  // hält. Der Fehlersatz oben („steckengeblieben") wäre hier falsch: es gibt ja ein Ergebnis.
+  "ask.refreshFailed": "Auffrischung fehlgeschlagen — die Antwort ist von der letzten Anfrage.",
   // SCRUM-295: Hinweis bei vorbefüllter Startfrage (aus KO-Detail „Wissen nutzen") im Demo-Kontext.
   "ask.demoPrefillHint":
     "Startfrage aus dem Wissensobjekt übernommen — auf „Fragen“ klicken. Die Antwort bleibt quellengebunden; Status und Vertrauen entscheiden, nichts wird automatisch gesichert.",
@@ -2074,6 +2090,9 @@ const de = {
   // Was der Code deckt, ist genau dies: das sind die Quellen, die HERANGEZOGEN wurden. Dass jede
   // davon zur Antwort beigetragen hat, deckt er nicht — deshalb steht es hier auch nicht mehr.
   "ask.sources": "Herangezogene Quellen",
+  // JOB 3064 H5: das „…"-Menü der Fragenfläche und sein Punkt „Mehr" (Info-Blatt).
+  "ask.menu.label": "Mehr zu dieser Antwort",
+  "ask.menu.mehr": "Mehr …",
   "ask.export.copy": "Kopieren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Drucken / PDF",
@@ -5621,16 +5640,30 @@ const en: typeof de = {
   "kg.sourceBound.body": "Answers come from knowledge objects — without a basis, a gap is created.",
   // JOB 3015 D5 — see the DE block.
   "start.konsole.frage": "What do you want to know?",
-  "start.konsole.untertitel": "Experience that stays in the company.",
-  "start.konsole.feld": "Search knowledge or ask a question …",
-  "start.konsole.suchen.titel": "Search",
-  "start.konsole.suchen.text": "Find a source, get an answer with evidence.",
-  "start.konsole.pruefen.titel": "Review",
-  "start.konsole.pruefen.text": "Approve new knowledge, ask back or reject it.",
-  "start.konsole.offen": "{{n}} open",
-  "start.konsole.hinzufuegen.titel": "Add",
-  "start.konsole.hinzufuegen.text": "A document, a dictation or an interview — with images.",
+  "start.konsole.feld": "Question or search term",
   "start.konsole.leitsatz": "No AI answer without evidence · Confidential stays confidential",
+  // JOB 3064 H5 — see the DE block.
+  "start.fuerdich.kicker": "FOR YOU",
+  "start.fuerdich.art.conflict": "Conflict",
+  "start.fuerdich.art.duplicate": "Duplicate",
+  "start.fuerdich.art.gap": "Knowledge gap",
+  "start.fuerdich.art.assignment": "Assignment",
+  "start.fuerdich.art.impact": "Impact",
+  "start.zuletzt.kicker": "RECENT",
+  "start.zuletzt.heute": "today",
+  "start.zuletzt.gestern": "yesterday",
+  "start.zuletzt.leer": "Nothing captured yet.",
+  "start.menu.label": "More about this page",
+  "start.menu.ueber": "About KLARWERK",
+  "start.menu.klara": "Klara in Word",
+  "start.menu.kreis": "Knowledge cycle",
+  "start.menu.demo": "Demo path",
+  "start.menu.erst": "First-time setup",
+  "start.menu.gerade": "Right now",
+  "start.menu.kapital": "Knowledge capital",
+  "start.menu.kollision": "My own objects",
+  "start.menu.stufe2": "Stage 2",
+  "start.menu.hilfe": "Help for this page",
   // AUFTRAG-mega38 BLOCK G1 — see the DE block.
   "start.purpose":
     "Klarwerk collects what your colleagues have learned on the job, so that you can ask about it and see where every answer comes from.",
@@ -5655,11 +5688,6 @@ const en: typeof de = {
   "klara.path.m365.summary": "What Klara will do in Microsoft 365",
   "klara.path.m365.body":
     "Klara is planned as a bidirectional add-in for Microsoft 365. She will pick up knowledge where you already work, prepare it in a structured way for Klarwerk and make reviewed company knowledge from Klarwerk available directly in Microsoft 365 — reviewing and deciding stays with you. This is not available yet.",
-  "start.todo": "To do today",
-  "start.workTitle": "Next actions",
-  "start.severity.critical": "now",
-  "start.severity.today": "today",
-  "start.severity.later": "later",
   "shelp.cycle.title": "The Knowledge-OS cycle",
   "shelp.cycle.body":
     "The four tiles are the life cycle of your knowledge: Capture → Validate → Use → Keep current. Each tile takes you straight to the matching area. You don't have to do everything at once — start with whatever is due now. Nothing kicks off on its own.",
@@ -5669,18 +5697,14 @@ const en: typeof de = {
   "shelp.severity.title": "The coloured dots",
   "shelp.severity.body":
     "The dot on the left shows urgency: Red = do now (blocking or critical), Yellow = worth doing today, Grey = can wait. It is guidance only, not a rule — you decide the order, and nothing is processed automatically.",
-  "start.focusLabel": "Most urgent open work",
   "work.conflicts": "Resolve conflicts",
   "work.criticalGaps": "Critical knowledge gaps",
   "work.revalidation": "Revalidations due",
   "work.validation": "Open validations",
   "work.learning": "Open learning-path steps",
-  "start.allTasks": "All tasks →",
   "roleLink.noReach": "No access",
   "roleLink.noReachHint":
     "This area is not enabled for your role. The figure stays because it is true — only the way there is closed to you.",
-  "start.todoEmpty": "Nothing open. Well done.",
-  "start.todoLoading": "Loading work overview …",
   "start.stufe2.title": "Advanced features (Stage 2)",
   "start.stufe2.body":
     "Stage 2 are additional modules beyond the core flow. As an admin you have advanced features available: {{features}}. Turn on '{{toggle}}' in the sidebar to show them.",
@@ -5688,7 +5712,9 @@ const en: typeof de = {
   "task.critical": "Critical",
   "task.today": "Today",
   "task.later": "Later",
-  "task.none": "Nothing here.",
+  "task.none": "Nothing open.",
+  "task.weiter": "What happens next?",
+  "task.erklaerung": "What needs to be done?",
   "task.noneFiltered": "No item for this filter.",
   "task.filter.all": "All",
   "task.filter.validation": "Validation",
@@ -6917,6 +6943,8 @@ const en: typeof de = {
   "ask.error.body":
     "The request got stuck on the way. This is NOT a statement about the knowledge — it does not mean there is no answer. Please try again.",
   "ask.error.retry": "Try again",
+  "ask.offline": "No connection.",
+  "ask.refreshFailed": "Refresh failed — this answer is from the previous request.",
   // SCRUM-295: hint for a prefilled start question (from KO detail “Use knowledge”) in demo context.
   "ask.demoPrefillHint":
     "Start question taken from the knowledge object — click “Ask”. The answer stays source-bound; status and trust decide, nothing is secured automatically.",
@@ -6952,6 +6980,9 @@ const en: typeof de = {
   // AUFTRAG-mega38 BLOCK F — see the DE block: the list is the full top-K retrieval set, not the
   // set of sources the answer actually used.
   "ask.sources": "Sources consulted",
+  // JOB 3064 H5 — see the DE block.
+  "ask.menu.label": "More about this answer",
+  "ask.menu.mehr": "More …",
   "ask.export.copy": "Copy",
   "ask.export.download": "As Markdown",
   "ask.export.print": "Print / PDF",
@@ -10023,17 +10054,30 @@ const nl: typeof de = {
     "Antwoorden ontstaan uit kennisobjecten — zonder grondslag wordt er een hiaat aangemaakt.",
   // JOB 3015 D5 — zie het DE-blok.
   "start.konsole.frage": "Wat wil je weten?",
-  "start.konsole.untertitel": "Ervaringskennis die in het bedrijf blijft.",
-  "start.konsole.feld": "Kennis doorzoeken of een vraag stellen …",
-  "start.konsole.suchen.titel": "Zoeken",
-  "start.konsole.suchen.text": "Een bron vinden, een antwoord met bewijs krijgen.",
-  "start.konsole.pruefen.titel": "Controleren",
-  "start.konsole.pruefen.text": "Nieuwe kennis vrijgeven, terugvragen of afwijzen.",
-  "start.konsole.offen": "{{n}} open",
-  "start.konsole.hinzufuegen.titel": "Toevoegen",
-  "start.konsole.hinzufuegen.text":
-    "Een document, een dictaat of een interview — met afbeeldingen.",
+  "start.konsole.feld": "Vraag of zoekterm",
   "start.konsole.leitsatz": "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk",
+  // JOB 3064 H5 — zie het DE-blok.
+  "start.fuerdich.kicker": "VOOR JOU",
+  "start.fuerdich.art.conflict": "Conflict",
+  "start.fuerdich.art.duplicate": "Duplicaat",
+  "start.fuerdich.art.gap": "Kennishiaat",
+  "start.fuerdich.art.assignment": "Toewijzing",
+  "start.fuerdich.art.impact": "Effect",
+  "start.zuletzt.kicker": "RECENT",
+  "start.zuletzt.heute": "vandaag",
+  "start.zuletzt.gestern": "gisteren",
+  "start.zuletzt.leer": "Nog niets vastgelegd.",
+  "start.menu.label": "Meer over deze pagina",
+  "start.menu.ueber": "Over KLARWERK",
+  "start.menu.klara": "Klara in Word",
+  "start.menu.kreis": "Kenniscyclus",
+  "start.menu.demo": "Demopad",
+  "start.menu.erst": "Eerste inrichting",
+  "start.menu.gerade": "Nu",
+  "start.menu.kapital": "Kenniskapitaal",
+  "start.menu.kollision": "Eigen objecten",
+  "start.menu.stufe2": "Stap 2",
+  "start.menu.hilfe": "Hulp bij deze pagina",
   // AUFTRAG-mega38 BLOCK G1 — zie het DE-blok.
   "start.purpose":
     "Klarwerk verzamelt wat je collega's in het bedrijf hebben geleerd, zodat je ernaar kunt vragen en ziet waar elk antwoord vandaan komt.",
@@ -10058,11 +10102,6 @@ const nl: typeof de = {
   "klara.path.m365.summary": "Wat Klara in Microsoft 365 gaat doen",
   "klara.path.m365.body":
     "Klara is gepland als bidirectionele add-in voor Microsoft 365. Zij neemt kennis op waar je toch al werkt, bereidt die gestructureerd voor Klarwerk voor en stelt gecontroleerde bedrijfskennis uit Klarwerk rechtstreeks in Microsoft 365 beschikbaar — controleren en beslissen blijft bij jou. Beschikbaar is dit nog niet.",
-  "start.todo": "Vandaag te doen",
-  "start.workTitle": "Volgende acties",
-  "start.severity.critical": "nu",
-  "start.severity.today": "vandaag",
-  "start.severity.later": "later",
   "shelp.cycle.title": "De Knowledge-OS-cyclus",
   "shelp.cycle.body":
     "De vier tegels vormen de cyclus van jouw kennis: Vastleggen → Valideren → Gebruiken → Actueel houden. Elke tegel brengt je direct naar het juiste onderdeel. Je hoeft niet alles tegelijk te doen — begin met wat er nu speelt. Er start niets vanzelf.",
@@ -10072,18 +10111,14 @@ const nl: typeof de = {
   "shelp.severity.title": "De gekleurde stippen",
   "shelp.severity.body":
     "De stip links geeft de urgentie aan: Rood = nu aan de beurt (geblokkeerd of kritiek), Geel = vandaag zinvol, Grijs = kan wachten. Dat is alleen een houvast, geen dwang — jij bepaalt de volgorde, en er wordt niets automatisch afgehandeld.",
-  "start.focusLabel": "Meest urgente openstaande werk",
   "work.conflicts": "Conflicten oplossen",
   "work.criticalGaps": "Kritieke kennishiaten",
   "work.revalidation": "Hervalidaties verschuldigd",
   "work.validation": "Open validaties",
   "work.learning": "Open leerpad-stappen",
-  "start.allTasks": "Alle taken →",
   "roleLink.noReach": "Geen toegang",
   "roleLink.noReachHint":
     "Dit gebied is niet vrijgegeven voor jouw rol. Het gegeven blijft staan omdat het klopt — alleen de weg ernaartoe is voor jou dicht.",
-  "start.todoEmpty": "Niets open. Goed gedaan.",
-  "start.todoLoading": "Werkoverzicht wordt geladen …",
   "start.stufe2.title": "Uitgebreide functies (Fase 2)",
   "start.stufe2.body":
     "Fase 2 zijn extra modules naast de kernstroom. Als admin heb je uitgebreide functies tot je beschikking: {{features}}. Zet daarvoor „{{toggle}}' onderaan in de zijbalk aan.",
@@ -10091,7 +10126,9 @@ const nl: typeof de = {
   "task.critical": "Kritiek",
   "task.today": "Vandaag",
   "task.later": "Later",
-  "task.none": "Niets hier.",
+  "task.none": "Niets open.",
+  "task.weiter": "Hoe gaat het verder?",
+  "task.erklaerung": "Wat moet er gebeuren?",
   "task.noneFiltered": "Geen item voor dit filter.",
   "task.filter.all": "Alle",
   "task.filter.validation": "Validatie",
@@ -11328,6 +11365,8 @@ const nl: typeof de = {
   "ask.error.body":
     "Het verzoek is onderweg blijven steken. Dit is GEEN uitspraak over de kennis — het betekent niet dat er geen antwoord is. Probeer het opnieuw.",
   "ask.error.retry": "Opnieuw proberen",
+  "ask.offline": "Geen verbinding.",
+  "ask.refreshFailed": "Vernieuwen mislukt — dit antwoord komt van het vorige verzoek.",
   "ask.demoPrefillHint":
     "Startvraag overgenomen uit het kennisobject — klik op „Vragen”. Het antwoord blijft brongebonden; status en vertrouwen beslissen, er wordt niets automatisch opgeslagen.",
   "ask.examplesLabel": "Voorbeelden:",
@@ -11355,6 +11394,9 @@ const nl: typeof de = {
   // AUFTRAG-mega38 BLOCK F — zie het DE-blok: de lijst is de volledige top-K-set, niet de set
   // bronnen die het antwoord daadwerkelijk heeft gebruikt.
   "ask.sources": "Geraadpleegde bronnen",
+  // JOB 3064 H5 — zie het DE-blok.
+  "ask.menu.label": "Meer over dit antwoord",
+  "ask.menu.mehr": "Meer …",
   "ask.export.copy": "Kopiëren",
   "ask.export.download": "Als Markdown",
   "ask.export.print": "Afdrukken / PDF",

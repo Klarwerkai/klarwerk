@@ -210,8 +210,21 @@ describe("JOB 2703 · D2 · Ask-Trefferliste und Aufgabenfenster zeigen die Kern
     expect(text).not.toContain(SATZ.repeat(8));
     expect(kernaussage.length).toBeLessThanOrEqual(KERNAUSSAGE_MAX);
     expect(b.aufrufe.some((c) => c.method === "POST" && c.url === "/api/ask")).toBe(true);
-    // Die TREFFERLISTE: die tragende Quelle steht mit ihrem Titel in der Karte.
-    const treffer = container.querySelector<HTMLElement>('[data-testid="ask-source-carrying"]');
+    // Die TREFFERLISTE: die tragende Quelle steht mit ihrem Titel bei der Antwort.
+    // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: die vollständige Quellenliste liegt seit dem
+    // Zielbild-Umbau hinter „…" → „Mehr" an der Antwortkarte (Auftrag §5). Die Zusage von A1 —
+    // „die tragende Quelle ist mit ihrem Titel benannt, die Karte trägt die Kernaussage statt
+    // 30 KB Seite" — ist unverändert; nur der Ort der Liste ist der benannte Menüpunkt.
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+      await flush();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+      await flush();
+    });
+    // `document`, weil das Blatt nach `document.body` portaliert wird (s. `Seitenblatt.tsx`).
+    const treffer = document.querySelector<HTMLElement>('[data-testid="ask-source-carrying"]');
     expect(treffer, "keine tragende Quelle in der Trefferliste").not.toBeNull();
     const zeile = treffer?.closest("li") ?? treffer?.parentElement ?? null;
     expect((zeile?.textContent ?? "").replace(/\s+/g, " ")).toContain("Pumpe P-12");

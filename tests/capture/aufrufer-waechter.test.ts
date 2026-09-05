@@ -1197,7 +1197,19 @@ const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/lib/reasonerStatus.ts::reasonerStatusSummary",
   "apps/web/src/lib/reviewerMinimum.ts::isNeededValidationsValid",
   "apps/web/src/lib/richText.ts::RICH_TEXT_ALLOWED_TAGS",
-  "apps/web/src/lib/startHelp.ts::START_HELP_TOPICS",
+  // JOB 3064 H5: `START_HELP_TOPICS` steht hier NICHT mehr — die drei ?-Hilfen des Start-Screens
+  // werden seit dem Umbau aus genau dieser Tabelle gerendert (`components/start/StartPanel.tsx`,
+  // Punkt „Hilfe zu dieser Seite"). Der Eintrag träfe nicht mehr zu, und A3 hat das gemeldet.
+  //
+  // JOB 3064 H5: `primaryWorkItem` ist neu OHNE Aufrufer. Der „beste nächste Einstieg" war eine
+  // hervorgehobene Zeile ÜBER der Arbeitsliste — das Zielbild `design/klarwerk/Main.dc.html` hat
+  // beides zu EINER Karte zusammengezogen: „FÜR DICH" reiht selbst nach Dringlichkeit (kritisch
+  // vor heute vor später, `components/start/forYou.ts`), und die dringendste Arbeit IST damit die
+  // erste Zeile. Eine zweite Hervorhebung derselben Sache wäre genau die Doppelung, die mega38
+  // Block G2 auf dieser Seite schon einmal beseitigt hat.
+  // Die Funktion selbst steht in `lib/workCenter.ts` und damit AUSSERHALB der Zielpfade dieses
+  // Auftrags; ihr Abbau (samt `canActOn`, das nur sie ruft) ist als Folgeschritt gemeldet.
+  "apps/web/src/lib/workCenter.ts::primaryWorkItem",
   "apps/web/src/lib/validationStatus.ts::deriveDisplayStatus",
   "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_ASK_TIMEOUT_MS",
   "apps/web/src/lib/wordAddin.ts::WORD_ADDIN_LOGIN_FETCH_TIMEOUT_MS",

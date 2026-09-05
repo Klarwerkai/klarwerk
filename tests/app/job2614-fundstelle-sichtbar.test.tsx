@@ -237,10 +237,44 @@ describe("JOB 2614 · D5 — die Fundstelle IM WORTLAUT sichtbar (BENs Lücke au
     expect((karte as HTMLElement).textContent ?? "").toContain(TITEL);
     // (3) KALIBRIERUNG DES AUFKLAPPWEGS: VOR dem Aufklappen steht der markierte Satz NICHT im
     //     DOM — sonst bewiese (4) nicht, dass die Fundstelle aus der QUELLE kommt.
-    expect(container.textContent ?? "").not.toContain(FLIESSTEXTWORT);
+    //     JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: die Fragenfläche zeigt seit dem Umbau nach
+    //     `design/klarwerk/Fragen.dc.html` (Z.38) die GESTELLTE FRAGE als gedämpfte Zeile über der
+    //     Antwort — und die Frage IST hier der markierte Satz. Der Satz steht also zwangsläufig im
+    //     Container, ohne dass die Quelle aufgeklappt wäre. Gemessen wird deshalb ab hier ohne die
+    //     Fragezeile: die Zusage („der Wortlaut kommt aus der QUELLE, nicht aus dem Formular")
+    //     bleibt wörtlich dieselbe und wird sogar schärfer, weil die eigene Eingabe ausdrücklich
+    //     abgezogen wird statt zufällig zu fehlen.
+    const ohneFragezeile = (): string => {
+      const fragezeile =
+        container.querySelector('[data-testid="ask-fragezeile"]')?.textContent ?? "";
+      const feld = container.querySelector("input");
+      return (container.textContent ?? "")
+        .replace(fragezeile, "")
+        .replace(feld instanceof HTMLInputElement ? feld.value : "", "");
+    };
+    // Kalibrierung der Kalibrierung: die Fragezeile trägt den Satz wirklich — sonst zöge die
+    // Messung nichts ab und wäre zufällig grün.
+    expect(container.querySelector('[data-testid="ask-fragezeile"]')?.textContent ?? "").toContain(
+      FLIESSTEXTWORT,
+    );
+    expect(ohneFragezeile()).not.toContain(FLIESSTEXTWORT);
     // (4) DIE FUNDSTELLE IM WORTLAUT: der Auszug der Quelle (SanitizedHtml des Dokumenttexts,
     //     Paket-4-Baustein AnswerSourceDetails) zeigt nach EINEM Klick GENAU den markierten Satz.
-    const auszugKnopf = [...container.querySelectorAll("button")].find((b) =>
+    //     JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: die vollständige Quellenliste mit ihren
+    //     Auszügen steht seit dem Zielbild-Umbau hinter „…" → „Mehr" an der Antwortkarte (Auftrag
+    //     §5, Zeile „Herangezogene Quellen"). Die Zusage bleibt wörtlich: die Fundstelle ist
+    //     erreichbar und zeigt den markierten Satz im Wortlaut. Der Weg ist ein Klick länger, und
+    //     dieser Klick geht über das echte Menü — ein Menüpunkt ohne Wirkung fiele hier auf.
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+      await durchlaufen();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+      await durchlaufen();
+    });
+    // Ab hier `document`: das Blatt wird nach `document.body` portaliert (s. `Seitenblatt.tsx`).
+    const auszugKnopf = [...document.querySelectorAll("button")].find((b) =>
       (b.textContent ?? "").includes("Auszug"),
     );
     expect(
@@ -252,14 +286,14 @@ describe("JOB 2614 · D5 — die Fundstelle IM WORTLAUT sichtbar (BENs Lücke au
       await durchlaufen();
     });
     expect(
-      container.textContent ?? "",
+      document.body.textContent ?? "",
       "der markierte Satz steht nach dem Aufklappen NICHT im Wortlaut im DOM",
     ).toContain(MARKIERTER_SATZ);
     // (5) Keine Wissenslücken-Anzeige — „Wissenslücke darf nicht genügen" gilt in beide
     //     Richtungen: hier gibt es die Antwort, und der Fehlerpfad ist leer.
     expect(container.querySelector("[data-testid=ask-error]")).toBeNull();
     // (6) BILLIGE SELBSTKONTROLLE gegen einen Alles-Container: ein Fantasiewort steht NICHT im DOM.
-    expect(container.textContent ?? "").not.toContain("Quarkweltraumventil");
+    expect(document.body.textContent ?? "").not.toContain("Quarkweltraumventil");
   });
 
   it("F2 — GEGENPROBE: fehlt der Satz im Dokument, gibt es KEINE Antwortkarte mit ihm (Wissenslücke statt Schein)", async () => {
@@ -269,7 +303,14 @@ describe("JOB 2614 · D5 — die Fundstelle IM WORTLAUT sichtbar (BENs Lücke au
     await vorrichtung("<p>Anderer Inhalt über Wartungsintervalle ohne besondere Begriffe.</p>");
     await absenden(MARKIERTER_SATZ);
 
-    expect(container.textContent ?? "").not.toContain(FLIESSTEXTWORT.substring(0, 20));
+    // JOB 3064 H5: wie in F1 wird die eigene Eingabe abgezogen — die Fragezeile über der Antwort
+    // zeigt seit dem Zielbild-Umbau die gestellte Frage, und die IST hier der markierte Satz.
+    const fragezeile = container.querySelector('[data-testid="ask-fragezeile"]')?.textContent ?? "";
+    const feld = container.querySelector("input");
+    const ohneEingabe = (container.textContent ?? "")
+      .replace(fragezeile, "")
+      .replace(feld instanceof HTMLInputElement ? feld.value : "", "");
+    expect(ohneEingabe).not.toContain(FLIESSTEXTWORT.substring(0, 20));
     const karte = container.querySelector<HTMLElement>("[data-testid=ask-answer]");
     // Entweder gar keine Antwortkarte (Wissenslücke) — oder jedenfalls keine, die den Satz oder
     // dieses Dokument als Fundstelle behauptet.

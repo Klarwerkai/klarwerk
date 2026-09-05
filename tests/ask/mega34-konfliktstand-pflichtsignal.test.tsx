@@ -148,7 +148,11 @@ function find(selector: string): Element | null {
   if (!container) {
     throw new Error("Kein gemounteter Baum — find() vor mount aufgerufen");
   }
-  return container.querySelector(selector);
+  // JOB 3064 H5: an `document` gebunden statt am Mount-Knoten. Das Info-Blatt „Mehr", in dem die
+  // Einordnung einer Antwort seit dem Zielbild-Umbau steht, wird nach `document.body` portaliert
+  // (Geometrie, s. `Seitenblatt.tsx`) und ist deshalb kein Nachfahre des Knotens mehr. Der Knoten
+  // selbst hängt an `document.body` — die Messung wird also breiter, nie enger.
+  return document.querySelector(selector);
 }
 
 function newClient(): QueryClient {
@@ -178,7 +182,20 @@ async function mountAsk(): Promise<string> {
     await flush();
   });
   await act(flush);
-  return el.textContent ?? "";
+  // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: Einstufung, Vertrag und Konflikt-Hinweis liegen seit
+  // dem Umbau nach `design/klarwerk/Fragen.dc.html` hinter „…" → „Mehr" an der Antwortkarte
+  // (Auftrag §5). Die Zusage von mega34 A3 bleibt wörtlich: bei UNBEKANNTEM Konfliktstand steht
+  // kein „Gesichert", sondern der benannte Hinweis. Damit auch die Verneinung etwas misst, wird
+  // das Blatt über das echte Menü geöffnet und danach über Fläche UND Blatt gelesen.
+  await act(async () => {
+    el.querySelector<HTMLButtonElement>('[data-testid="ask-menu"]')?.click();
+    await flush();
+  });
+  await act(async () => {
+    el.querySelector<HTMLButtonElement>('[data-testid="ask-menu-punkt-mehr"]')?.click();
+    await flush();
+  });
+  return document.body.textContent ?? "";
 }
 
 async function mountMobileAndAsk(): Promise<string> {

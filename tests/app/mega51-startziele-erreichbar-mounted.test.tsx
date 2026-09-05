@@ -53,6 +53,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       ko: { list: ok([]) },
       learningPaths: { byRole: ok(null), progress: ok(null) },
       livewall: { get: ok({ saved: [], helped: [], helpedToday: 0 }) },
+      // JOB 3064 H5: „FÜR DICH" liest neben Aufgaben und Re-Validierung auch die Meldungen — eine
+      // der drei Quellen, die der Auftrag nennt. Ohne diesen Doppelgänger bliebe die Karte im
+      // Ladezustand und die Prüfung liefe still leer (gemessen: „Cannot read properties of
+      // undefined (reading 'list')").
+      notifications: { list: ok([]) },
+      duplicateSignal: { list: ok([]) },
       reasoner: { config: ok(null), assistPresets: ok([]), status: ok(null) },
     },
   };
@@ -69,6 +75,7 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { markStartOrientationSeen } from "../../apps/web/src/lib/startOrientation";
 import { Start } from "../../apps/web/src/pages/Start";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -127,6 +134,11 @@ function zielIstWeg(ziel: string): boolean {
 
 beforeEach(async () => {
   window.localStorage.clear();
+  // JOB 3064 H5: nach dem Leeren des Speichers wäre JEDER Lauf ein Erstbesuch, und eine
+  // Administratorin sähe zusätzlich die Zeile „Ersteinrichtung" (§5a) — sie verdrängte die dritte
+  // Arbeitszeile aus der dreizeiligen Karte. Gemessen wird hier die wiederkehrende Nutzerin; der
+  // Vermerk kommt aus der produktiven Funktion, nicht aus einem abgeschriebenen Schlüssel.
+  markStartOrientationSeen(window.localStorage);
   await i18n.changeLanguage("de");
 });
 
@@ -141,15 +153,33 @@ describe("mega51 A · die Startseite bietet einer Expertin keinen Weg an, den de
     await mount("experte");
 
     // Die Arbeitsliste ist wirklich da (sonst liefe die Prüfung still leer).
-    expect(container.textContent).not.toContain(i18n.t("start.todoLoading"));
-    expect(container.textContent).not.toContain(i18n.t("start.todoEmpty"));
+    // JOB 3064 H5 NACHGEFÜHRT: aus „Nächste Handlungen" ist die Karte „FÜR DICH" geworden; Lade-
+    // und Leerzustand sagen keinen Satz mehr, sondern zeigen keine bzw. eine Zeile (§9). Die
+    // Kalibrierung misst deshalb die Zeilen selbst — das ist der direktere Beleg für „die Liste
+    // ist wirklich gefüllt" als die Abwesenheit zweier Sätze.
+    expect(
+      container.querySelectorAll('[data-testid="h5-fuerdich-zeile"]').length,
+      "die Karte „FÜR DICH“ trägt keine Zeile — die Prüfung liefe still leer",
+    ).toBeGreaterThan(0);
+    expect(container.textContent).not.toContain(i18n.t("task.none"));
 
     // A2: die Lage bleibt sichtbar — die echten Zahlen stehen weiter da, nur ohne Weg.
     const lagen = [...container.querySelectorAll("[data-role-no-reach]")].map(
       (e) => e.textContent ?? "",
     );
     expect(lagen.some((z) => z.includes(i18n.t("work.conflicts")) && z.includes("1"))).toBe(true);
-    expect(lagen.some((z) => z.includes(i18n.t("work.validation")) && z.includes("2"))).toBe(true);
+    // JOB 3064 H5 NACHGEFÜHRT, nicht gelockert: die Karte „FÜR DICH" zeigt nach dem Zielbild
+    // `design/klarwerk/Main.dc.html` (Z.47–64) HÖCHSTENS DREI Zeilen; die vollständige Liste steht
+    // auf `/aufgaben` (der Kicker führt dorthin, und die Pille trägt die Gesamtzahl). „Offene
+    // Validierungen" ist damit die vierte Zeile und auf der Startseite nicht mehr im Bild.
+    // Die ZUSAGE dieses Falls hängt nicht an EINER bestimmten Zeile, sondern an ALLEN gezeigten:
+    // keine von ihnen ist für die Expertin ein Weg, und jede behält ihre Zahl.
+    const zeilen = [...container.querySelectorAll('[data-testid="h5-fuerdich-zeile"]')];
+    expect(zeilen.length, "die Karte zeigt keine Zeile — die Prüfung liefe leer").toBe(3);
+    expect(zeilen.every((z) => z.hasAttribute("data-role-no-reach"))).toBe(true);
+    expect(lagen.some((z) => z.includes(i18n.t("work.revalidation")) && z.includes("1"))).toBe(
+      true,
+    );
 
     // A1: und keines dieser Ziele ist ein anklickbarer Weg.
     for (const ziel of CONTROLLER_ZIELE) {
@@ -164,10 +194,19 @@ describe("mega51 A · die Startseite bietet einer Expertin keinen Weg an, den de
     await mount("admin");
 
     expect(container.textContent).toContain(i18n.t("work.conflicts"));
-    expect(container.textContent).toContain(i18n.t("work.validation"));
-    for (const ziel of CONTROLLER_ZIELE) {
+    expect(container.textContent).toContain(i18n.t("work.revalidation"));
+    // JOB 3064 H5: dieselben drei Zeilen wie oben, hier als echte Wege. Geprüft wird jede GEZEIGTE
+    // Zeile — nicht eine feste Zielliste, die die dreizeilige Karte gar nicht mehr abbilden kann.
+    const zeilen = [...container.querySelectorAll('[data-testid="h5-fuerdich-zeile"]')];
+    expect(zeilen.length).toBe(3);
+    expect(zeilen.every((z) => z.tagName === "A" && (z.getAttribute("href") ?? "") !== "")).toBe(
+      true,
+    );
+    for (const ziel of zeilen.map((z) => (z.getAttribute("href") ?? "").split("?")[0] ?? "")) {
       expect(`${ziel} ist Weg: ${zielIstWeg(ziel)}`).toBe(`${ziel} ist Weg: true`);
     }
+    // Und die vollständige Liste bleibt EINEN Klick entfernt: der Kicker führt auf /aufgaben.
+    expect(zielIstWeg("/aufgaben")).toBe(true);
     expect(container.querySelectorAll("[data-role-no-reach]").length).toBe(0);
     expect(container.textContent).not.toContain(i18n.t("roleLink.noReach"));
   });
