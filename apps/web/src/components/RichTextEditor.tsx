@@ -9,11 +9,15 @@ import type {
 } from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+// JOB 3095 · M5: die Bildsuche des Servers (Bilder anhand ihrer Unterschrift, mit Herkunft).
+import { endpoints } from "../api/endpoints";
+import type { LibraryImageHit, LibraryImageSearchResponse } from "../api/types";
 import { useImageDescribe } from "../app/ImageDescribeContext";
 import { type EditorFile, fileLinkHtml } from "../lib/bodyFileLink";
 // JOB 2084 (I50-3): die KANONISCHE Galerie-Ableitung. Der Editor löst die Bitte über dieselbe
 // Funktion auf, aus der die Galerie ihre Liste bildet — kein zweiter Filter, keine Nachbildung.
-import { extractBodyImages } from "../lib/bodyImages";
+// JOB 3095: `bestandsbildFigureHtml` — die eine Fassung des übernommenen Bestandsbilds.
+import { bestandsbildFigureHtml, extractBodyImages } from "../lib/bodyImages";
 import { bodyReadMode } from "../lib/bodyReadMode";
 import {
   CAPTION_AI_TEXT,
@@ -60,6 +64,8 @@ import {
 import { editorFileButtonVisible } from "../lib/editorFiles";
 import { editorLinkHtml } from "../lib/editorLinks";
 import { fileToThumbDataUrl } from "../lib/files";
+// JOB 3095: die eine Quelle des Onlinezustands (JOB 3084) für den ehrlichen Offline-Satz der Bildsuche.
+import { useNetzOnline } from "../lib/netzzustand";
 import {
   type ImageScaleValue,
   capCaptionHtml,
@@ -371,7 +377,8 @@ export function RichTextEditor({
   // eindeutig machen. Auflösung: siehe der Effekt weiter unten.
   captionFormRequest?: { imageId: string; src: string; index: number; nonce: number } | undefined;
 }): JSX.Element {
-  const { t } = useTranslation();
+  // JOB 3095: `i18n` nur für die Sprache der Zeitangabe in der Bildsuche („geprüft 18:30").
+  const { t, i18n } = useTranslation();
   // AUFTRAG-mega50 Block A: der Weg zur Bildbeschreibung (WP-BILD-1c/1f, mega9 Block F) wird HIER
   // GEHOLT statt von jedem Aufrufer hereingereicht. Vorher waren das zwei optionale Props
   // (`onDescribeImage`, `describeAvailable`), die zwei der vier Flächen weggelassen haben — auf
@@ -393,6 +400,31 @@ export function RichTextEditor({
   // SCRUM-384: KI-Palette geschlossen bis zum bewussten Klick (ARGUS-Muster, keine Info-Wand).
   const [showAi, setShowAi] = useState(false);
   const [showImages, setShowImages] = useState(false);
+  // ── JOB 3095 · M5: BILD AUS DEM BESTAND ──────────────────────────────────────────────────────
+  //
+  // Der Zustand der Bildsuche kennt die Lagen aus §9 des Auftrags einzeln — und jede Aussage an
+  // der Fläche hängt an ihrer Datengrundlage:
+  //   · `leer`     — noch nichts gesucht: KEINE Aussage über den Bestand.
+  //   · `laedt`    — Anfrage unterwegs; ein früheres Ergebnis bleibt sichtbar („Auffrischung läuft").
+  //   · `ergebnis` — frisch geantwortet: Treffer ODER der ehrliche Nullsatz mit Prüfzeit.
+  //   · `fehler`   — die Anfrage scheiterte: „Suche nicht möglich"; ein früheres Ergebnis bleibt
+  //                  SICHTBAR mit „Stand von <Zeit> · Auffrischung fehlgeschlagen". Nie wird ein
+  //                  Nullsatz aus einem Fehler gemacht, nie ein Platzhalterbild gezeigt.
+  // `lauf` zählt die Anfragen: eine späte Antwort einer älteren Suche wird verworfen, statt ein
+  // neueres Ergebnis zu überschreiben.
+  type Bildsuche =
+    | { status: "leer" }
+    | { status: "laedt"; vorher: LibraryImageSearchResponse | null }
+    | { status: "ergebnis"; ergebnis: LibraryImageSearchResponse }
+    | { status: "fehler"; offline: boolean; vorher: LibraryImageSearchResponse | null };
+  const [bildsucheOffen, setBildsucheOffen] = useState(false);
+  const [bildsucheText, setBildsucheText] = useState("");
+  const [bildsuche, setBildsuche] = useState<Bildsuche>({ status: "leer" });
+  const bildsucheLauf = useRef(0);
+  const netzOnline = useNetzOnline();
+  // Der Cursor des Autors, gesichert BEVOR der Dialog den Fokus nimmt — die Übernahme setzt das
+  // Bild dorthin zurück (derselbe Range-Klon-Weg wie bei der Formatierung der Fußnote, mega87).
+  const bildsucheCursor = useRef<Range | null>(null);
   const [showFiles, setShowFiles] = useState(false);
   const [showLink, setShowLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -1508,6 +1540,89 @@ export function RichTextEditor({
     emit();
   };
 
+  // ── JOB 3095 · M5: die Bildsuche — öffnen, suchen, übernehmen ────────────────────────────────
+  const oeffneBildsuche = (): void => {
+    setShowImages(false);
+    const el = ref.current;
+    const sel = window.getSelection();
+    const bereich = sel && sel.rangeCount > 0 ? sel.getRangeAt(0) : null;
+    bildsucheCursor.current =
+      el && bereich && el.contains(bereich.commonAncestorContainer) ? bereich.cloneRange() : null;
+    setBildsucheOffen(true);
+  };
+  const schliesseBildsuche = (): void => {
+    setBildsucheOffen(false);
+    bildsucheCursor.current = null;
+  };
+  const letztesErgebnis = (): LibraryImageSearchResponse | null => {
+    if (bildsuche.status === "ergebnis") {
+      return bildsuche.ergebnis;
+    }
+    if (bildsuche.status === "laedt" || bildsuche.status === "fehler") {
+      return bildsuche.vorher;
+    }
+    return null;
+  };
+  const sucheBilder = async (): Promise<void> => {
+    const q = bildsucheText.trim();
+    if (q.length === 0) {
+      return;
+    }
+    const lauf = bildsucheLauf.current + 1;
+    bildsucheLauf.current = lauf;
+    const vorher = letztesErgebnis();
+    setBildsuche({ status: "laedt", vorher });
+    try {
+      const ergebnis = await endpoints.library.images(q);
+      if (bildsucheLauf.current !== lauf) {
+        return; // eine neuere Suche läuft — diese Antwort ist überholt
+      }
+      setBildsuche({ status: "ergebnis", ergebnis });
+    } catch {
+      if (bildsucheLauf.current !== lauf) {
+        return;
+      }
+      // Der Onlinezustand kommt aus der EINEN Quelle (`lib/netzzustand.ts`, JOB 3084) — kein
+      // eigener Blick auf den Browser; der Wächter `eine-quelle-waechter` zählt die Stellen.
+      setBildsuche({ status: "fehler", offline: !netzOnline, vorher });
+    }
+  };
+  const uebernimmBestandsbild = (hit: LibraryImageHit): void => {
+    const html = bestandsbildFigureHtml({
+      src: hit.thumbnailUrl,
+      caption: hit.caption,
+      herkunft: t("editor.imageSearch.herkunft", {
+        quelle: hit.koTitel,
+        version: hit.version,
+        pruefstand: t(`status.${hit.pruefstand}`),
+      }),
+      // Runde 2: der alt-Text trägt die Benennung weiter (so bleibt das Bild auch im neuen
+      // Eintrag über seinen Namen auffindbar); ohne Benennung die Beschreibung, sonst leer.
+      alt: hit.name ?? hit.caption,
+    });
+    if (!html) {
+      return;
+    }
+    const el = ref.current;
+    const cursor = bildsucheCursor.current;
+    schliesseBildsuche();
+    if (el && cursor && el.contains(cursor.commonAncestorContainer)) {
+      el.focus();
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(cursor.cloneRange());
+    }
+    // Derselbe Einfügeweg wie „Bild vom Rechner" (am Cursor, sonst am Ende) — inklusive der
+    // Verankerung, die Bild und Unterschrift ihre gemeinsame Kennung gibt, und `emit()`.
+    insertHtmlReliable(html);
+  };
+  const zeitVon = (iso: string): string => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime())
+      ? iso
+      : d.toLocaleTimeString(i18n.language, { hour: "2-digit", minute: "2-digit" });
+  };
+
   const openLinkPanel = (): void => {
     setShowImages(false);
     setShowLink((s) => !s);
@@ -1772,6 +1887,17 @@ export function RichTextEditor({
                     <ImageIcon size={13} />
                     {t("editor.imageFromDisk")}
                   </button>
+                  {/* JOB 3095 · M5: ein vorhandenes Bild des Bestands über seine Unterschrift
+                      finden und mit Unterschrift und Herkunft an den Cursor übernehmen. */}
+                  <button
+                    type="button"
+                    data-testid="bild-bestand-open"
+                    onClick={oeffneBildsuche}
+                    className="mb-1 flex w-full items-center gap-1.5 rounded-btn px-2 py-1 text-left text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+                  >
+                    <ImageIcon size={13} />
+                    {t("editor.imageSearch.open")}
+                  </button>
                   {/* AUFTRAG-mega14 Block E (SCRUM-421): geltende Grenzen an der Auswahlstelle, Serverquelle.
                         Der Editor ist zugleich Ablege- und Einfügefeld — die Grenze steht dort, wo
                         die Datei gewählt wird. */}
@@ -1983,6 +2109,179 @@ export function RichTextEditor({
           </button>
         </div>
       ) : null}
+
+      {/* JOB 3095 · M5: „Bild aus dem Bestand" — Suche über die Bildunterschrift, Trefferkarten mit
+          Bild, Unterschrift und Herkunft, Übernahme an den Cursor. Dieselbe Dialog-Vorrichtung wie
+          das Bildbeschreibungs-Formular darunter. Zustände nach §9: leer · laden · leer-geprüft ·
+          Fehler · Stand mit laufender/gescheiterter Auffrischung · offline. */}
+      <Modal
+        open={bildsucheOffen}
+        onClose={schliesseBildsuche}
+        title={t("editor.imageSearch.title")}
+      >
+        {bildsucheOffen ? (
+          <div className="space-y-3">
+            <form
+              className="flex flex-wrap items-end gap-2"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void sucheBilder();
+              }}
+            >
+              <label className="min-w-0 flex-1 text-[12px] font-semibold text-text">
+                {t("editor.imageSearch.label")}
+                <input
+                  id="bild-bestand-suche"
+                  data-testid="bild-bestand-suche"
+                  type="search"
+                  value={bildsucheText}
+                  onChange={(e) => setBildsucheText(e.target.value)}
+                  placeholder={t("editor.imageSearch.placeholder")}
+                  className="mt-1 w-full rounded-btn border border-hairline bg-surface px-2 py-1.5 text-[13px] font-normal text-text"
+                />
+              </label>
+              <button
+                type="submit"
+                data-testid="bild-bestand-suchen"
+                disabled={bildsucheText.trim().length === 0}
+                className="rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white disabled:opacity-50"
+              >
+                {t("editor.imageSearch.submit")}
+              </button>
+            </form>
+
+            {(() => {
+              const stand = letztesErgebnis();
+              // Die Zeile über der Liste: sie sagt, WORAUF sich das Gezeigte stützt.
+              let zeile: string | null = null;
+              let zeileTon: "muted" | "warn" = "muted";
+              if (bildsuche.status === "leer") {
+                zeile = t("editor.imageSearch.idle");
+              } else if (bildsuche.status === "laedt") {
+                zeile = stand
+                  ? t("editor.imageSearch.refreshing", { zeit: zeitVon(stand.geprueft) })
+                  : t("editor.imageSearch.loading");
+              } else if (bildsuche.status === "fehler") {
+                zeileTon = "warn";
+                zeile = stand
+                  ? t("editor.imageSearch.stale", { zeit: zeitVon(stand.geprueft) })
+                  : bildsuche.offline
+                    ? t("editor.imageSearch.offline")
+                    : t("editor.imageSearch.error");
+              } else if (bildsuche.ergebnis.treffer.length === 0) {
+                zeile = t("editor.imageSearch.empty", {
+                  zeit: zeitVon(bildsuche.ergebnis.geprueft),
+                });
+              } else {
+                zeile = t("editor.imageSearch.checked", {
+                  zeit: zeitVon(bildsuche.ergebnis.geprueft),
+                });
+              }
+              return (
+                <>
+                  <p
+                    data-testid="bild-bestand-stand"
+                    aria-live="polite"
+                    className={`text-[11.5px] leading-relaxed ${
+                      zeileTon === "warn" ? "font-semibold text-trust-warn-text" : "text-muted"
+                    }`}
+                  >
+                    {zeile}
+                  </p>
+                  {stand && stand.treffer.length > 0 ? (
+                    <ul className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                      {stand.treffer.map((hit) => (
+                        <li
+                          key={`${hit.koId}:${hit.imageId}`}
+                          data-testid="bild-bestand-treffer"
+                          className="flex flex-col gap-1.5 rounded-card border border-hairline bg-surface p-2"
+                        >
+                          <img
+                            src={hit.thumbnailUrl}
+                            alt={t("editor.imageSearch.thumbAlt", {
+                              caption: hit.caption || hit.name || "",
+                            })}
+                            className="max-h-40 w-full rounded-card border border-hairline bg-page object-contain"
+                          />
+                          {/* Runde 2: die Beschreibung — oder der ehrliche Satz, dass keine da ist. */}
+                          {hit.caption.length > 0 ? (
+                            <p
+                              data-testid="bild-bestand-caption"
+                              className="text-[12.5px] leading-snug text-text"
+                            >
+                              {hit.caption}
+                            </p>
+                          ) : (
+                            <p
+                              data-testid="bild-bestand-caption"
+                              className="text-[12.5px] italic leading-snug text-muted"
+                            >
+                              {t("editor.imageSearch.noCaption")}
+                            </p>
+                          )}
+                          {/* Die Benennung nur, wenn der Bestand eine hat — nichts wird erfunden. */}
+                          {hit.name !== null ? (
+                            <p
+                              data-testid="bild-bestand-name"
+                              className="text-[11px] leading-snug text-muted"
+                            >
+                              {t("editor.imageSearch.nameLabel", { name: hit.name })}
+                            </p>
+                          ) : null}
+                          <p
+                            data-testid="bild-bestand-gefunden"
+                            className="text-[11px] leading-snug text-muted"
+                          >
+                            {t("editor.imageSearch.foundVia", {
+                              felder: hit.gefundenUeber
+                                .map((f) => t(`editor.imageSearch.via.${f}`))
+                                .join(", "),
+                            })}
+                          </p>
+                          <p
+                            data-testid="bild-bestand-herkunft"
+                            className="text-[11px] leading-snug text-muted"
+                          >
+                            {t("editor.imageSearch.herkunft", {
+                              quelle: hit.koTitel,
+                              version: hit.version,
+                              pruefstand: t(`status.${hit.pruefstand}`),
+                            })}
+                          </p>
+                          <button
+                            type="button"
+                            data-testid="bild-bestand-uebernehmen"
+                            aria-label={t("editor.imageSearch.useLabel", {
+                              caption: hit.caption || hit.name || "",
+                            })}
+                            onClick={() => uebernimmBestandsbild(hit)}
+                            className="self-start rounded-btn border border-hairline bg-page px-2.5 py-1 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+                          >
+                            {t("editor.imageSearch.use")}
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
+                  {stand?.gedeckelt ? (
+                    <p className="text-[11px] text-muted">{t("editor.imageSearch.capped")}</p>
+                  ) : null}
+                </>
+              );
+            })()}
+
+            <div className="flex justify-end">
+              <button
+                type="button"
+                onClick={schliesseBildsuche}
+                className="rounded-btn border border-hairline bg-surface px-3 py-1.5 text-[12px] font-semibold text-text hover:bg-hairline-soft"
+              >
+                {t("editor.imageSearch.close")}
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
 
       {/* AUFTRAG-mega9 Block F: das ECHTE, benannte Eingabeformular für die Bildbeschreibung.
           Reihenfolge wie im Auftrag: Bild → beschriftetes Feld mit sichtbarem Maximum →

@@ -9,6 +9,56 @@ import { LEGACY_IMAGE_CAPTION_PLACEHOLDERS } from "./editorFigures";
 // WP-D9c (Galerie-Auflage 3): defensive src-Grenze — dieselbe ZENTRALE Policy wie der Sanitizer
 // (Object-Store-raw oder sichere Raster-data-URLs; kein javascript:, kein SVG, kein Remote-http).
 import { isSafeImgSrc } from "./richText";
+// JOB 3095: `insertImageSrcHtml`/`escapeCaptionText` — das Bild-Tag und das Escaping kommen aus
+// derselben Quelle wie beim Bild-Knopf des Editors, kein zweiter Aufbau. Eigene Import-Zeile,
+// weil `tests/ko/body-image-gallery.test.ts` die Policy-Zeile darüber wörtlich pinnt.
+import { escapeCaptionText, insertImageSrcHtml } from "./richText";
+
+// ================================================================================================
+// JOB 3095 · M5 — DAS ÜBERNOMMENE BILD AUS DEM BESTAND: BILD, ORIGINALE UNTERSCHRIFT, HERKUNFT.
+// ================================================================================================
+//
+// Die Fassung, die der Editor am Cursor einsetzt, wenn der Autor ein gefundenes Bild übernimmt:
+//
+//     <figure>
+//       <img src=… alt=… data-kw-scale="100">      ← dieselbe Quelle wie im Bestand
+//       <figcaption>ORIGINALE UNTERSCHRIFT</figcaption>  ← Zeichen für Zeichen, ohne Zusatz
+//       <p><em>aus „Quelle“, Version n, Prüfstand</em></p>  ← die Herkunftszeile
+//     </figure>
+//
+// WARUM DIE HERKUNFT NICHT IN DER UNTERSCHRIFT STEHT: die figcaption IST die Unterschrift — sie
+// wird beim Speichern zum durchsuchbaren `captionTexts`-Eintrag (WP-BILD-1g) und in der Galerie
+// gezeigt. Stünde die Herkunft darin, hieße die Beschreibung des Bildes ab jetzt „… aus Quelle,
+// Version 3, validiert", und die nächste Suche nach dem Quelltitel fände dieses Bild statt
+// derer, die es wirklich zeigen. Die Herkunft ist eine Aussage ÜBER das Bild, keine Beschreibung
+// DES Bildes; sie steht als eigener Absatz in der figure — Bild, Unterschrift und Quelle bleiben
+// so zusammen, ohne dass die Unterschrift verfälscht würde.
+//
+// KEINE KENNUNG VORAB: `data-image-id` vergibt der Editor beim Einfügen (`ensureImageAnchors`,
+// mega88) für Bild und Unterschrift GEMEINSAM und frisch — eine mitgebrachte Kennung aus dem
+// Quellobjekt könnte im Zieldokument schon vergeben sein (JOB 3035/3051) und würde als Trennung
+// gemeldet. Die Zuordnung Bild↔Unterschrift entsteht damit exakt so wie bei jedem anderen Bild.
+//
+// DOM-frei und reine Zeichenarbeit: im Node-Tor prüfbar. Eine Quelle, die die zentrale Policy
+// (`isSafeImgSrc`) nicht besteht, ergibt LEER — der Aufrufer fügt dann nichts ein, statt ein Bild
+// zu behaupten, das der Sanitizer beim Speichern ohnehin entfernte.
+export interface Bestandsbild {
+  src: string;
+  caption: string;
+  herkunft: string;
+  alt: string;
+}
+
+export function bestandsbildFigureHtml(bild: Bestandsbild): string {
+  if (!isSafeImgSrc(bild.src)) {
+    return "";
+  }
+  return (
+    `<figure>${insertImageSrcHtml(bild.src, bild.alt)}` +
+    `<figcaption>${escapeCaptionText(bild.caption)}</figcaption>` +
+    `<p><em>${escapeCaptionText(bild.herkunft)}</em></p></figure>`
+  );
+}
 
 export interface BodyImage {
   id: string;

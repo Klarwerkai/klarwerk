@@ -875,6 +875,34 @@ export interface ThemenMetrik {
 }
 
 /** Die Antwort von `GET /api/wissensnetz/luecken`. Die Karte fehlt, wenn sie nicht erhoben wurde. */
+// JOB 3095 · M5: ein Bild aus dem Bestand, gefunden über seine Unterschrift — mit Herkunft
+// (Quelle = Titel des Wissensobjekts, Version, Prüfstand). `thumbnailUrl` ist die Bildquelle selbst
+// (`/api/objects/<id>/raw` oder eingebettete data-URL); einen Vorschaudienst gibt es nicht, und
+// genau diese Quelle braucht der Editor, um das Bild wieder einzusetzen (Sanitizer-Allowlist).
+export interface LibraryImageHit {
+  imageId: string;
+  koId: string;
+  koTitel: string;
+  version: number;
+  pruefstand: KoStatus;
+  // Die Beschreibung (figcaption) — leer, wenn das Bild keine hat; die Karte sagt dann
+  // „ohne Beschreibung“, der Rumpf bekommt eine leere Unterschrift, keinen erfundenen Text.
+  caption: string;
+  // Runde 2: die Benennung (alt-Text bzw. Anhangsname) — `null`, wenn der Bestand keine hat.
+  name: string | null;
+  // Worüber das Bild gefunden wurde; nie leer.
+  gefundenUeber: ("beschreibung" | "name")[];
+  thumbnailUrl: string;
+}
+export interface LibraryImageSearchResponse {
+  treffer: LibraryImageHit[];
+  // Wann der Server den Bestand gelesen hat — die Datengrundlage jeder Aussage an der Fläche
+  // („geprüft <Zeit>“, „Stand von <Zeit>“).
+  geprueft: string;
+  // true, wenn mehr Treffer da waren als ausgeliefert (Deckel) — die Fläche sagt es.
+  gedeckelt: boolean;
+}
+
 export interface Sichtmetrik {
   objekteGesamt: number;
   ohneThema: number;

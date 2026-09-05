@@ -126,6 +126,13 @@ const REGISTER: Record<string, Eintrag> = {
   "GET /api/kos/:id/evidence": { urteil: "PRAEDIKAT", grund: "Block B — Belegzitate." },
   "GET /api/evidence": { urteil: "PRAEDIKAT", grund: "Block B — Index je Trägerobjekt aufgelöst." },
   "GET /api/library/search": { urteil: "PRAEDIKAT", grund: "Block B — Titel/Kernaussage." },
+  // JOB 3095 · M5: Bilder anhand Beschreibung/Benennung. Die Kandidaten laufen durch denselben
+  // SQL-Trim und `sichtbareFuer` wie die Bibliothekssuche; der Rumpf jedes Treffers wird zusätzlich
+  // am vollen Objekt gegen `darfSehen` gehalten (library-routes.ts, Route `/api/library/images`).
+  "GET /api/library/images": {
+    urteil: "PRAEDIKAT",
+    grund: "JOB 3095 — Bild, Unterschrift, Name, Titel; sichtbareFuer + darfSehen am Rumpf.",
+  },
   "GET /api/graph": { urteil: "PRAEDIKAT", grund: "Block B — Titel; Filter auf der Grundmenge." },
   // JOB 2009 D2 (H3): der Leser des Wissensnetz-Lesemodells. Der Sammler hat ihn beim ersten Lauf
   // gemeldet — genau dafuer ist er da.

@@ -53,6 +53,7 @@ import type {
   KnowledgeObject,
   KoVersionSnapshot,
   LearningPath,
+  LibraryImageSearchResponse,
   LiveWall,
   ManagementSnapshot,
   MediaAnalysis,
@@ -656,6 +657,11 @@ export const endpoints = {
     // FE-LIB-01: Server-Volltextsuche + strukturierte Filter (Art/Status/Kategorie/Tag).
     search: (params: KoFilter & { q?: string }) =>
       api.get<KnowledgeObject[]>(`/library/search${qs(params)}`),
+    // JOB 3095 · M5: Bilder anhand ihrer Unterschrift, mit Herkunft; dieselbe Rechte-Naht wie search.
+    images: (q: string, limit?: number) =>
+      api.get<LibraryImageSearchResponse>(
+        `/library/images${qs({ q, limit: limit === undefined ? undefined : String(limit) })}`,
+      ),
     // SCRUM-116/108: Import-/Source-Review (JSON-Re-Import mit Review-Queue).
     importCandidates: {
       create: (items: ImportItemInput[]) =>

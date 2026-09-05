@@ -400,6 +400,12 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },
+  // JOB 3095 · M5: Bildsuche — Kandidaten über `sichtbareFuer` (plus SQL-Trim), jeder geladene
+  // Rumpf zusätzlich über `darfSehen` am vollen Objekt (library-routes.ts, `/api/library/images`).
+  "GET /api/library/images": {
+    protection: "ko.read",
+    zeilenrecht: ["sichtbareFuer", "darfSehen"],
+  },
   "GET /api/library/export": { protection: "ko.read" },
   "POST /api/library/import": { protection: "ko.create" },
   "POST /api/library/import/candidates": { protection: "ko.create" },

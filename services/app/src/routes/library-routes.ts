@@ -18,6 +18,9 @@ import type {
 } from "../../../library-analytics";
 import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
+// JOB 3095: DER EINE Fußnoten-Scanner des Produkts (WP-BILD-1g) — hier für den Text je Fußnote,
+// damit die Bildsuche denselben Klartext liest, den die Persistenz in `captionTexts` schreibt.
+import { imageCaptionTexts } from "../../../structure";
 import {
   AI_CHECK_JOB_TIMEOUT_MS,
   type AiCheckRunOutcome,
@@ -27,7 +30,12 @@ import {
 import type { SemanticPrefilter } from "../duplicate-detection";
 import { schalterAn } from "../feature-flags";
 import { type Guards, sendError } from "../http";
-import { sichtbareFuer, sichtbarkeitsfilterFuer, sqlSichtbarkeitFuer } from "../sichtbarkeit";
+import {
+  darfSehen,
+  sichtbareFuer,
+  sichtbarkeitsfilterFuer,
+  sqlSichtbarkeitFuer,
+} from "../sichtbarkeit";
 
 // Consultant-System (Experten-Matching): Feature-Flag, Default AUS. Vor der BR/DSB-Freigabe bleibt das
 // Thema→Personen-Matching unsichtbar (Route antwortet 404, als gäbe es sie nicht). Erst
@@ -284,6 +292,238 @@ export interface ImportDetectionDeps {
   semanticPrefilter?: SemanticPrefilter | undefined;
 }
 
+// ================================================================================================
+// JOB 3095 · M5 — BILDER FINDEN: EIN VORHANDENES BILD ÜBER SEINE UNTERSCHRIFT, MIT HERKUNFT.
+// ================================================================================================
+//
+// DIE FRAGE, die diese Route beantwortet: „Gibt es im Bestand ein Bild zu <Stichwort>?" — und die
+// Antwort ist je Treffer das Bild SAMT seiner Beschreibung, seiner Benennung und seiner Herkunft
+// (Quelle, Version, Prüfstand) — und der Auskunft, WORÜBER es gefunden wurde.
+//
+// DIE ZWEI SUCHFELDER, und warum es genau zwei sind (Runde 2, Pedis Entscheidung 4: „Benennung,
+// Bildunterschrift UND Beschreibung"):
+//   · BESCHREIBUNG = die `figcaption`. Sie ist im Produkt die „Bildbeschreibung" (so heißt sie an
+//     jeder Fläche, `editor.captionPlaceholder`), und die KI schlägt ihren Vorschlag genau DORTHIN
+//     vor (WP-BILD-1c, nach Klick des Autors). Ein zweites, gesondert gespeichertes
+//     KI-Beschreibungsfeld gibt es im Bestand nicht — es wird deshalb auch nicht durchsucht und
+//     nicht behauptet. Unterschrift und Beschreibung sind hier EIN Feld.
+//   · BENENNUNG = der `alt`-Text des Bildes (der Editor schreibt beim Einfügen den Dateinamen
+//     hinein, `insertImageSrcHtml`/`insertImageHtml`), ersatzweise der Name des Anhangs, auf den
+//     ein `/api/objects/<id>/raw`-Bild zeigt. Ein DOCX-Import trägt keinen Namen — dann ist die
+//     Benennung ehrlich `null`, nicht erfunden.
+// Ein Bild ohne beides ist über diesen Weg nicht auffindbar: es gibt keinen Text, der passen könnte.
+//
+// WARUM HIER, in der Kompositionswurzel: die Sichtbarkeit fällt an der Route (mega74, BASIC-380),
+// der Bestand kommt aus dem Bibliotheksdienst, und der volle Rumpf eines Treffers aus dem
+// Wissensobjekt-Dienst. Nur diese Datei kennt alle drei — genau wie beim Re-Import oben.
+//
+// DER WEG IN DREI SCHRITTEN, jeder mit seiner Grenze:
+//   1. KANDIDATEN, BODY-FREI (WP-BILD-1g bleibt: die Suche lädt nie den ganzen Bestand mit Rumpf).
+//      Zwei Quellen, beide durch denselben SQL-Trim UND `sichtbareFuer` (G-SHADOW wie
+//      `GET /api/library/search`): (a) die body-freie Projektion aller sichtbaren Objekte, aus der
+//      die bleiben, deren persistierte `captionTexts` oder deren Anhangsnamen das Stichwort tragen
+//      (fehlt `captionTexts` — Altbestand —, bleibt das Objekt Kandidat); (b) die Treffer der
+//      Bibliothekssuche selbst (Titel, Kernaussage, Text, Schlagwörter) — ein Objekt, das vom
+//      Stichwort handelt, kann das gesuchte Bild tragen, dessen Name nur im `alt` steht.
+//   2. Erst für diese wenigen wird der Rumpf geladen (`ko.get`, Papierkorb ausgeblendet) und ein
+//      zweites Mal gegen `darfSehen` am vollen Objekt gehalten.
+//   3. Aus dem Rumpf kommen Bild, Beschreibung und Benennung je figure über den Scanner unten;
+//      je Bild entscheidet DIESELBE Substring-Regel wie die Bibliothekssuche (case-insensitiv), und
+//      die Antwort nennt je Treffer die getroffenen Felder. Höchstens `limit` Treffer verlassen die
+//      Route; `gedeckelt: true` sagt es NUR, wenn ein weiteres sichtbares, passendes Bild wirklich
+//      gefunden wurde (Runde 3) — ein reiner Textkandidat hinter dem Limit ist kein Deckel.
+//
+// DIE BENANNTE GRENZE: ein Name, der NUR im `alt` eines eingebetteten Bildes steht, in einem
+// Objekt, das über Unterschrift, Anhangsname oder Text nicht Kandidat wird, ist nicht auffindbar.
+// Ihn body-frei zu finden bräuchte ein persistiertes Namensfeld neben `captionTexts` (Schreibweg
+// in knowledge-object/service.ts, außerhalb dieses Auftrags). Das steht in der Rückgabe, nicht
+// zwischen den Zeilen.
+//
+// `thumbnailUrl` IST DIE BILDQUELLE SELBST (`/api/objects/<id>/raw` oder die eingebettete
+// data-URL des Imports) — es gibt im Produkt keinen Vorschaudienst, und die Fläche braucht genau
+// diese Quelle, um das Bild wieder einzusetzen (der Sanitizer lässt nur sie durch). Das ist ehrlich
+// benannt und nicht verkleinert: bei eingebetteten Bildern reist das Bild in voller Größe, deshalb
+// der Deckel (Standard 20, höchstens 50).
+interface Bestandsbild {
+  imageId: string;
+  src: string;
+  /** Die Beschreibung (figcaption-Klartext); leer, wenn das Bild keine hat. */
+  caption: string;
+  /** Die Benennung aus dem `alt`-Text; `null`, wenn keine da ist. */
+  name: string | null;
+}
+
+type Fundstelle = "beschreibung" | "name";
+
+// Die Drahtform eines Treffers — BEWUSST eine Allowlist (kein Spread des Objekts): Rumpf, Stufe,
+// Autor und alles weitere bleiben unter Verschluss, bis es hier ausdrücklich freigegeben wird.
+// Runde 2: `name` und `gefundenUeber` sind ADDITIV — der Vertrag `treffer/geprueft/gedeckelt`
+// (auch für JOB 3096) bleibt, `caption` bleibt ein String (leer = ohne Beschreibung).
+interface BildsucheTreffer {
+  imageId: string;
+  koId: string;
+  koTitel: string;
+  version: number;
+  pruefstand: KnowledgeObject["status"];
+  caption: string;
+  name: string | null;
+  gefundenUeber: Fundstelle[];
+  thumbnailUrl: string;
+}
+
+const OBJEKT_QUELLE_RE = /^\/api\/objects\/([\w-]+)\/raw$/;
+
+/** Der Anhangsname zu einem `/api/objects/<id>/raw`-Bild — oder `null`, wenn keiner passt. */
+function anhangsnameFuer(ko: KnowledgeObject, src: string): string | null {
+  const m = OBJEKT_QUELLE_RE.exec(src.trim());
+  if (!m) {
+    return null;
+  }
+  const treffer = (ko.attachments ?? []).find((a) => a.objectId === m[1]);
+  const name = treffer?.name.trim() ?? "";
+  return name.length > 0 ? name : null;
+}
+
+/** Trägt ein Objekt body-frei einen Anhang, dessen Name das Stichwort enthält? */
+function anhangsnameTrifft(ko: KnowledgeObject, q: string): boolean {
+  return (ko.attachments ?? []).some((a) => a.name.toLowerCase().includes(q));
+}
+
+const BILDSUCHE_LIMIT_STANDARD = 20;
+const BILDSUCHE_LIMIT_MAX = 50;
+
+function bildsucheLimit(raw: string | undefined): number {
+  const n = Number.parseInt(raw ?? "", 10);
+  if (!Number.isFinite(n) || n < 1) {
+    return BILDSUCHE_LIMIT_STANDARD;
+  }
+  return Math.min(n, BILDSUCHE_LIMIT_MAX);
+}
+
+// Attributwert in einem (kleinen) Öffnungs-Tag — dieselbe Lesart wie `attrOf` in
+// apps/web/src/lib/bodyImages.ts: Whitespace VOR dem Namen ist Pflicht (kein `data-src`-Treffer
+// für `src`), beliebiger Whitespace um `=`, doppelt/einfach/gar nicht gequotet.
+function attributIn(tag: string, name: string): string | null {
+  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
+  return m ? (m[1] ?? m[2] ?? m[3] ?? null) : null;
+}
+
+const BILD_KENNUNG_RE = /^[\w-]{1,64}$/;
+
+/**
+ * Bild und Unterschrift EINER (äußersten) figure als Paare.
+ *
+ * Gepaart wird über die gemeinsame `data-image-id` — die Identität, die der Server-Sanitizer beim
+ * Speichern als Dreifachanker setzt (JOB 509). Eine Fußnote OHNE Kennung geht der Reihe nach an
+ * das nächste noch unversorgte Bild (Altbestand vor WP-BILD-1b, dieselbe enge Regel wie in der
+ * Galerie `extractBodyImages`); eine fremd gekennzeichnete Fußnote wird NICHT geraten.
+ *
+ * Der Klartext einer Fußnote kommt aus `imageCaptionTexts` — dem einen Scanner, der auch
+ * `captionTexts` schreibt. Leere Fußnoten und Alt-Platzhalter fallen dort weg; ein Bild ohne
+ * verbleibende Fußnote hat hier die Beschreibung `""` (Runde 2: es bleibt ein Bild, das über
+ * seine Benennung gefunden werden kann).
+ */
+function bilderEinerFigur(figur: string): Bestandsbild[] {
+  const bilder: { id: string; src: string; name: string | null }[] = [];
+  const imgRe = /<img\b[^>]*>/gi;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = imgRe.exec(figur)) !== null) {
+    const id = attributIn(m[0], "data-image-id");
+    const src = attributIn(m[0], "src");
+    if (id && BILD_KENNUNG_RE.test(id) && src) {
+      // Die Benennung: der alt-Text, wie ihn der Editor beim Einfügen aus dem Dateinamen setzt.
+      // Der Sanitizer hat das Attribut bereits escaped abgelegt; die drei Entities, die er in
+      // Attributwerten erzeugt, werden zurückübersetzt — sonst hieße „A&B.png" im Treffer anders
+      // als im Bestand.
+      const alt = (attributIn(m[0], "alt") ?? "")
+        .replace(/&quot;/g, '"')
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&amp;/g, "&")
+        .replace(/\s+/g, " ")
+        .trim();
+      bilder.push({ id, src, name: alt.length > 0 ? alt : null });
+    }
+  }
+  if (bilder.length === 0) {
+    return [];
+  }
+  const fussnoten: { id: string | null; text: string }[] = [];
+  const capRe = /<figcaption\b[^>]*>[\s\S]*?<\/figcaption>/gi;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = capRe.exec(figur)) !== null) {
+    const [text] = imageCaptionTexts(m[0]);
+    if (text === undefined) {
+      continue;
+    }
+    const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
+    fussnoten.push({ id: attributIn(oeffner, "data-image-id"), text });
+  }
+  const belegt = fussnoten.map(() => false);
+  const texte: (string | null)[] = bilder.map(() => null);
+  bilder.forEach((bild, i) => {
+    const k = fussnoten.findIndex((f, j) => !belegt[j] && f.id === bild.id);
+    if (k >= 0) {
+      belegt[k] = true;
+      texte[i] = fussnoten[k]?.text ?? null;
+    }
+  });
+  bilder.forEach((_bild, i) => {
+    if (texte[i] !== null) {
+      return;
+    }
+    const k = fussnoten.findIndex((f, j) => !belegt[j] && (f.id === null || f.id === ""));
+    if (k >= 0) {
+      belegt[k] = true;
+      texte[i] = fussnoten[k]?.text ?? null;
+    }
+  });
+  return bilder.map((bild, i) => ({
+    imageId: bild.id,
+    src: bild.src,
+    caption: texte[i] ?? "",
+    name: bild.name,
+  }));
+}
+
+/**
+ * Alle Bild/Unterschrift-Paare eines Rumpfes, je ÄUSSERSTER figure (Tiefenzähler wie in der
+ * Galerie, mega89). Body-sparend im Sinne von WP-BILD-1f: die Marken werden per Regex über den
+ * Rumpf gesucht (base64 enthält kein `<`), nur die figure-Abschnitte werden ausgeschnitten.
+ */
+function bestandsbilderAusRumpf(bodyHtml: string | null | undefined): Bestandsbild[] {
+  if (!bodyHtml || bodyHtml.indexOf("<figure") < 0) {
+    return [];
+  }
+  const out: Bestandsbild[] = [];
+  const marken = /<figure\b|<\/figure\s*>/gi;
+  let tiefe = 0;
+  let start = -1;
+  let m: RegExpExecArray | null;
+  // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
+  while ((m = marken.exec(bodyHtml)) !== null) {
+    if (m[0].startsWith("</")) {
+      tiefe = Math.max(0, tiefe - 1);
+      if (tiefe === 0 && start >= 0) {
+        out.push(...bilderEinerFigur(bodyHtml.slice(start, marken.lastIndex)));
+        start = -1;
+      }
+      continue;
+    }
+    if (tiefe === 0) {
+      start = m.index;
+    }
+    tiefe += 1;
+  }
+  if (start >= 0) {
+    // Unbalanciertes Markup (ein `</figure>` fehlt): was noch offen ist, wird ausgeliefert statt
+    // still verworfen.
+    out.push(...bilderEinerFigur(bodyHtml.slice(start)));
+  }
+  return out;
+}
+
 // Bibliothek & Analytics (§2.3/§2.4 / FR-LIB, FR-ANA).
 export function libraryRoutes(
   library: LibraryService,
@@ -336,6 +576,112 @@ export function libraryRoutes(
               await library.search(q ?? "", filter, { trim: sqlSichtbarkeitFuer(user) }),
             ),
           );
+      },
+    );
+
+    // JOB 3095 · M5: Bilder anhand ihrer Unterschrift — Begründung und Weg oben bei `Bestandsbild`.
+    app.get<{ Querystring: { q?: string; limit?: string } }>(
+      "/api/library/images",
+      async (request, reply) => {
+        const user = await guards.requirePermission("ko.read", request, reply);
+        if (!user) {
+          return;
+        }
+        const q = (request.query.q ?? "").trim().toLowerCase();
+        if (q.length === 0) {
+          // Ohne Stichwort gibt es keine Frage — und damit keine Auslieferung des Bildbestands.
+          reply.code(400).send({
+            error: "BAD_REQUEST",
+            message: "Die Bildsuche braucht ein Suchwort (q).",
+          });
+          return;
+        }
+        if (!detection) {
+          // Der Rumpf eines Treffers kommt aus dem Wissensobjekt-Dienst, der über das vorhandene
+          // Deps-Bündel hereinkommt (build-app.ts reicht es immer). Ohne ihn ist die Suche
+          // ehrlich nicht möglich — kein Rückfall auf eine Antwort ohne Bild.
+          reply.code(503).send({
+            error: "SEARCH_UNAVAILABLE",
+            message: "Die Bildsuche ist auf dieser Instanz nicht verfügbar.",
+          });
+          return;
+        }
+        const limit = bildsucheLimit(request.query.limit);
+        try {
+          // Schritt 1: Kandidaten, body-frei, durch SQL-Trim UND `sichtbareFuer` (G-SHADOW).
+          const trim = sqlSichtbarkeitFuer(user);
+          const kandidaten = new Map<string, KnowledgeObject>();
+          // (a) alle sichtbaren Objekte in der body-freien Projektion — bleiben, wenn ihre
+          //     persistierten Fußnoten oder ihre Anhangsnamen das Stichwort tragen (Altbestand
+          //     ohne `captionTexts` bleibt Kandidat, statt still herauszufallen).
+          for (const ko of sichtbareFuer(user, await detection.ko.listForSearch({}, trim))) {
+            if (
+              ko.captionTexts === undefined ||
+              ko.captionTexts.some((caption) => caption.toLowerCase().includes(q)) ||
+              anhangsnameTrifft(ko, q)
+            ) {
+              kandidaten.set(ko.id, ko);
+            }
+          }
+          // (b) die Treffer der Bibliothekssuche — derselbe Weg wie /api/library/search.
+          for (const ko of sichtbareFuer(user, await library.search(q, {}, { trim }))) {
+            kandidaten.set(ko.id, ko);
+          }
+          const treffer: BildsucheTreffer[] = [];
+          // `gedeckelt` ist eine BESTANDSAUSSAGE („mehr passende Bilder als gezeigt") und wird
+          // erst wahr, wenn ein WEITERES sichtbares, passendes Bild NACHGEWIESEN ist (Runde 3,
+          // Bens Korrekturpflicht 1). Ein Kandidat, der das Stichwort nur im Text trägt, ist kein
+          // Nachweis — die Rümpfe werden deshalb über das Limit hinaus gelesen, bis das erste
+          // überzählige Bild gefunden ist; dann ist die Aussage belegt und die Suche endet.
+          let gedeckelt = false;
+          suche: for (const kandidat of kandidaten.values()) {
+            // Schritt 2: nur für die Kandidaten der volle Rumpf — Papierkorb ausgeblendet (`get`),
+            // Sichtbarkeit am VOLLEN Objekt ein zweites Mal geprüft (G-SHADOW).
+            const ko = await detection.ko.get(kandidat.id);
+            if (!ko || !darfSehen(user, ko)) {
+              continue;
+            }
+            // Schritt 3: je Bild beide Felder gegen das Stichwort — und die Antwort sagt, welche.
+            for (const bild of bestandsbilderAusRumpf(ko.bodyHtml)) {
+              const name = bild.name ?? anhangsnameFuer(ko, bild.src);
+              const gefundenUeber: Fundstelle[] = [];
+              if (bild.caption.toLowerCase().includes(q)) {
+                gefundenUeber.push("beschreibung");
+              }
+              if (name?.toLowerCase().includes(q)) {
+                gefundenUeber.push("name");
+              }
+              if (gefundenUeber.length === 0) {
+                continue;
+              }
+              if (treffer.length >= limit) {
+                // Das überzählige Bild ist da: sichtbar, passend, nicht mehr in der Liste.
+                gedeckelt = true;
+                break suche;
+              }
+              treffer.push({
+                imageId: bild.imageId,
+                koId: ko.id,
+                koTitel: ko.title,
+                version: ko.version,
+                pruefstand: ko.status,
+                caption: bild.caption,
+                name,
+                gefundenUeber,
+                thumbnailUrl: bild.src,
+              });
+            }
+          }
+          reply.code(200).send({
+            treffer,
+            // Die Prüfzeit der Antwort — Grundlage des Satzes „geprüft <Zeit>" an der Fläche. Sie
+            // steht hier, weil nur der Server weiß, WANN er den Bestand gelesen hat.
+            geprueft: new Date().toISOString(),
+            gedeckelt,
+          });
+        } catch (error) {
+          sendError(reply, error);
+        }
       },
     );
 
