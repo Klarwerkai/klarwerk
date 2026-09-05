@@ -1,3 +1,4 @@
+import { REASONER_TASKS } from "../api/types";
 import type { ModelRunRecord, ModelRunTask } from "../api/types";
 
 // SCRUM-165: DOM-freie Auswertung der ModelRun-Records (nur Metadaten). Keine Prompt-/
@@ -9,6 +10,11 @@ export interface ModelRunSummary {
   fallbacks: number;
   demo: number;
   byTask: Record<ModelRunTask, number>;
+  // JOB 3069: Läufe, deren Aufgabenart die Oberfläche NICHT kennt (älterer Bestand, neuerer
+  // Server). Sie stehen hier und in KEINEM Zähler von `byTask` — s. `summarizeModelRuns`.
+  // Ohne dieses Feld wäre `byTask` eine stille Teilmenge von `total`, und niemand könnte der
+  // Zusammenfassung ansehen, dass etwas fehlt.
+  unbekannteArten: number;
   // JOB 3044: Laufzeit über die GELADENEN Läufe. `dauerGezaehlt` ist die Grundmenge der Summe —
   // ohne sie wäre `dauerSummeMs` eine Zahl ohne Bezug, denn Läufe mit unbrauchbaren Zeitstempeln
   // tragen bewusst nichts bei. Beide Werte werden immer zusammen angezeigt.
@@ -41,18 +47,45 @@ export function formatiereDauer(ms: number): string {
   return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
 }
 
+// JOB 3069: DIE EINZIGE STELLE, DIE ENTSCHEIDET, OB EINE AUFGABENART BEKANNT IST.
+//
+// Der Draht liefert eine Zeichenkette. `ModelRunRecord.task` ist zwar als `ModelRunTask` deklariert,
+// aber TypeScript prüft keine Serverantwort — ein neuerer Server (oder ein Altdatensatz) kann hier
+// ein Wort einliefern, das die Oberfläche nicht führt. Diese Wache trennt die acht von allem
+// anderen, und die Zählung wie die Fläche fragen SIE, nicht jeweils sich selbst.
+const BEKANNTE_AUFGABENARTEN: ReadonlySet<string> = new Set<string>(REASONER_TASKS);
+
+export function istBekannteAufgabenart(task: string): task is ModelRunTask {
+  return BEKANNTE_AUFGABENARTEN.has(task);
+}
+
+/**
+ * Ein Zähler je Aufgabenart, auf 0. ERZEUGT, nicht abgeschrieben: eine neunte Art am Server kann
+ * so keine stille Lücke mehr hinterlassen — bis JOB 3069 stand hier ein festes Objektliteral mit
+ * fünf Schlüsseln, und `byTask[r.task] += 1` ergab für `extract`/`describe`/`group` `NaN`.
+ */
+function leereAufgabenzaehlung(): Record<ModelRunTask, number> {
+  return Object.fromEntries(REASONER_TASKS.map((task) => [task, 0])) as Record<
+    ModelRunTask,
+    number
+  >;
+}
+
 export function summarizeModelRuns(records: readonly ModelRunRecord[]): ModelRunSummary {
-  const byTask: Record<ModelRunTask, number> = {
-    structure: 0,
-    assist: 0,
-    interview: 0,
-    answer: 0,
-    select: 0,
-  };
+  const byTask = leereAufgabenzaehlung();
+  let unbekannteArten = 0;
   let dauerSummeMs = 0;
   let dauerGezaehlt = 0;
   for (const r of records) {
-    byTask[r.task] += 1;
+    // JOB 3069, ENTSCHEIDUNG ZUR UNBEKANNTEN ART: Sie wird GEZÄHLT, aber keiner der acht Arten
+    // zugeschlagen. Ein Zuschlag wäre eine erfundene Auskunft („dies war eine Extraktion"), ein
+    // stilles Verschwinden wäre eine verschwiegene Lücke. So gilt immer:
+    // Summe(byTask) + unbekannteArten === total.
+    if (istBekannteAufgabenart(r.task)) {
+      byTask[r.task] += 1;
+    } else {
+      unbekannteArten += 1;
+    }
     const ms = modelRunDauerMs(r);
     if (ms !== null) {
       dauerSummeMs += ms;
@@ -66,6 +99,7 @@ export function summarizeModelRuns(records: readonly ModelRunRecord[]): ModelRun
     fallbacks: records.filter((r) => r.fallback).length,
     demo: records.filter((r) => r.demo).length,
     byTask,
+    unbekannteArten,
     dauerSummeMs,
     dauerGezaehlt,
   };

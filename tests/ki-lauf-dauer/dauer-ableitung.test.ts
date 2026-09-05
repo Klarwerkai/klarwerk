@@ -12,7 +12,8 @@
 // `0` ist ein ECHTER Messwert (Start = Ende) und muss vom Fehlwert unterscheidbar bleiben; genau
 // deshalb liegen F2 und F3/F4 hier nebeneinander.
 import { describe, expect, it } from "vitest";
-import type { ModelRunRecord } from "../../apps/web/src/api/types";
+import { REASONER_TASKS } from "../../apps/web/src/api/types";
+import type { ModelRunRecord, ModelRunTask } from "../../apps/web/src/api/types";
 import {
   formatiereDauer,
   modelRunDauerMs,
@@ -119,6 +120,14 @@ describe("JOB 3044 · summarizeModelRuns trägt die Laufzeit additiv", () => {
     expect(s.errors).toBe(1);
     expect(s.fallbacks).toBe(1);
     expect(s.demo).toBe(1);
-    expect(s.byTask).toEqual({ structure: 2, assist: 0, interview: 0, answer: 0, select: 0 });
+    // JOB 3069: erzeugt statt abgeschrieben — hier stand ein Objektliteral mit fünf Schlüsseln,
+    // also dieselbe zweite Wahrheit, die JOB 3069 im Produktcode abgelöst hat.
+    expect(s.byTask).toEqual({
+      ...(Object.fromEntries(REASONER_TASKS.map((task) => [task, 0])) as Record<
+        ModelRunTask,
+        number
+      >),
+      structure: 2,
+    });
   });
 });

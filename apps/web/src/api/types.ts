@@ -134,7 +134,27 @@ export interface KoVersionSnapshot {
 }
 
 // SCRUM-164/165: technisches ModelRun-Protokoll (nur Metadaten, keine Prompt-/Antworttexte).
-export type ModelRunTask = "structure" | "assist" | "interview" | "answer" | "select";
+//
+// JOB 3069: URSPRUNG DER AUFGABENBENENNUNG IST `services/model-runs/src/types.ts:7-15` — dort
+// stehen die acht Arten `structure | assist | interview | answer | select | extract | describe |
+// group`, und die Datei sagt selbst (`:27-28`): „Eine zweite Aufgabenliste anzulegen wäre die
+// zweite Wahrheit über dieselben acht Aufgaben."
+//
+// GENAU DAS STAND BIS HIERHER an dieser Zeile: eine handgeschriebene Union mit FÜNF Werten. Sie
+// wanderte nicht mit, als der Server auf acht wuchs. Zwei Schäden folgten daraus: `byTask.extract`
+// wurde `NaN` (`undefined + 1`, `lib/modelRuns.ts`), und in der Reasoner-Karte stand der rohe
+// Programmschlüssel `mrun.task.extract` (`pages/Stufe2.tsx`).
+//
+// DIE UNION IST DESHALB WEG. Abgeleitet wird jetzt aus `REASONER_TASKS` weiter unten in DIESER
+// Datei (:1368) — der einen Aufzählung, die die Oberfläche über diese acht Aufgaben führt. Sie
+// steht dort seit JOB 615 D7, in der Reihenfolge des Servers, und ein Wächtertest hält sie am
+// Original fest. Sie hier ein zweites Mal abzuschreiben wäre genau der Fehler, der repariert wird.
+//
+// KEIN IMPORT AUS `services/`: der webbuild-Stage im Dockerfile kopiert NUR `apps/web` (s. die
+// Begründung bei `REASONER_TASKS`, :1360-1366). Der Typ bleibt ein Spiegel; die Bindung an das
+// Original leistet `tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts` (R3), der rot
+// wird, sobald eine Seite wandert — in beide Richtungen.
+export type ModelRunTask = ReasonerTask;
 export type ModelRunStatus = "success" | "error";
 
 export interface ModelRunRecord {

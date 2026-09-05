@@ -78,6 +78,7 @@ import {
 import { koLabel } from "../lib/koLabel";
 import {
   formatiereDauer,
+  istBekannteAufgabenart,
   limitModelRuns,
   modelRunDauerMs,
   modelRunStatusTone,
@@ -1119,9 +1120,36 @@ function ReasonerRunsCard(): JSX.Element {
                     data-testid="mrun-row"
                     data-run-id={r.id}
                   >
-                    <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
-                      {t(`mrun.task.${r.task}`)}
-                    </span>
+                    {/* JOB 3069: DIE AUFGABENART ALS WORT — UND EIN RIEGEL GEGEN DEN ROHEN
+                    SCHLÜSSEL. i18next gibt bei fehlendem Schlüssel den SCHLÜSSEL zurück; bis hier
+                    stand deshalb bei einem Extraktionslauf wörtlich `mrun.task.extract` in der
+                    Pille. Für die acht bekannten Arten gibt es jetzt je eine Beschriftung.
+
+                    JOB 3069 R2 (BEN, Korrekturpflicht 1): Für eine UNBEKANNTE Art stand hier in
+                    Runde 1 das Wort des Servers WÖRTLICH. Das war ein Widerspruch in sich — ein
+                    Auftrag gegen „roher Programmschlüssel auf dem Bildschirm" kann nicht damit
+                    enden, ein beliebiges Maschinenwort des Servers durchzureichen. BENs Gegenprobe
+                    hat es hart gemacht: `task: "mrun.task.neu"` erschien Zeichen für Zeichen in der
+                    Pille. Ein Wert vom Draht wird deshalb NIE mehr gerendert.
+
+                    Was stattdessen dasteht, ist die Wissenslücke als Satz — dieselbe Bauform, die
+                    das Haus für denselben Fall schon führt (`imp.status.unknown`, i18n.ts: „Unbekannter/
+                    neuer Serverzustand: ehrlich benannt statt roher i18n-Schlüssel in der Oberfläche").
+                    KEIN geliehener Name einer der acht, keine Glättung, keine Erfindung. Welche Art
+                    es war, bleibt dem Protokoll und der API vorbehalten; die Fläche behauptet nichts,
+                    was sie nicht übersetzen kann. */}
+                    {istBekannteAufgabenart(r.task) ? (
+                      <span className="rounded-pill border border-hairline px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-muted">
+                        {t(`mrun.task.${r.task}`)}
+                      </span>
+                    ) : (
+                      <span
+                        className="rounded-pill border border-dashed border-hairline px-2 py-0.5 font-mono text-[10px] text-muted-2"
+                        data-testid="mrun-task-unbekannt"
+                      >
+                        {t("mrun.taskUnknown")}
+                      </span>
+                    )}
                     <span
                       className={`rounded-pill px-2 py-0.5 font-mono text-[10px] font-semibold uppercase ${
                         modelRunStatusTone(r) === "crit"

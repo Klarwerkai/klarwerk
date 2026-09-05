@@ -4336,6 +4336,16 @@ const de = {
   "mrun.task.interview": "Interview",
   "mrun.task.answer": "Antworten",
   "mrun.task.select": "Auswählen",
+  // JOB 3069: die drei jüngeren Aufgabenarten des Servers (services/model-runs/src/types.ts:13-15).
+  // Ohne sie gab i18next den Schlüssel selbst zurück — es stand `mrun.task.extract` in der Pille.
+  "mrun.task.extract": "Extrahieren",
+  "mrun.task.describe": "Bild beschreiben",
+  "mrun.task.group": "Gruppieren",
+  // JOB 3069 R2 (BEN, Korrekturpflicht 1): eine Aufgabenart, die diese Oberfläche nicht führt
+  // (neuerer Server, älterer Bestand). BEWUSST NICHT unter `mrun.task.*` — dieser Namensraum ist
+  // genau die acht Arten, und ein Wert vom Draht darf nie in einen Schlüssel eingesetzt werden.
+  // Bauform wie `imp.status.unknown`: ehrlich benannt statt roher Schlüssel in der Oberfläche.
+  "mrun.taskUnknown": "Aufgabenart unbekannt",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fehler",
   "rcfg.title": "Reasoner-Konfiguration",
@@ -8902,6 +8912,11 @@ const en: typeof de = {
   "mrun.task.interview": "Interview",
   "mrun.task.answer": "Answer",
   "mrun.task.select": "Select",
+  // JOB 3069: Spiegel der DE-Schlüssel — siehe die Erläuterung dort.
+  "mrun.task.extract": "Extract",
+  "mrun.task.describe": "Describe image",
+  "mrun.task.group": "Group",
+  "mrun.taskUnknown": "Task type unknown",
   "mrun.status.success": "OK",
   "mrun.status.error": "Error",
   "rcfg.title": "Reasoner configuration",
@@ -13284,6 +13299,11 @@ const nl: typeof de = {
   "mrun.task.interview": "Interview",
   "mrun.task.answer": "Antwoorden",
   "mrun.task.select": "Selecteren",
+  // JOB 3069: spiegel van de DE-sleutels — zie de toelichting daar.
+  "mrun.task.extract": "Extraheren",
+  "mrun.task.describe": "Afbeelding beschrijven",
+  "mrun.task.group": "Groeperen",
+  "mrun.taskUnknown": "Taaktype onbekend",
   "mrun.status.success": "OK",
   "mrun.status.error": "Fout",
   "rcfg.title": "Reasoner-configuratie",

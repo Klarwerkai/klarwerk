@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ReasonerConfigStatus } from "../../apps/web/src/api/types";
+import { REASONER_TASKS } from "../../apps/web/src/api/types";
+import type { ModelRunTask, ReasonerConfigStatus } from "../../apps/web/src/api/types";
 import type { EvidenceFreshnessResult } from "../../apps/web/src/lib/evidenceFreshness";
 import type { EvidenceIndexSummary } from "../../apps/web/src/lib/evidenceIndex";
 import type { HealthBand, KnowledgeHealth } from "../../apps/web/src/lib/knowledgeHealth";
@@ -14,7 +15,13 @@ function modelRuns(overrides: Partial<ModelRunSummary>): ModelRunSummary {
     errors: 0,
     fallbacks: 0,
     demo: 0,
-    byTask: { structure: 0, assist: 0, interview: 0, answer: 0, select: 0 },
+    // JOB 3069: die Zähler werden aus der EINEN Aufgabenliste erzeugt, nicht abgeschrieben — eine
+    // neunte Aufgabenart am Server soll diese Attrappe nicht stumm veralten lassen.
+    byTask: Object.fromEntries(REASONER_TASKS.map((task) => [task, 0])) as Record<
+      ModelRunTask,
+      number
+    >,
+    unbekannteArten: 0,
     // JOB 3044: `ModelRunSummary` trägt zusätzlich die Laufzeit. Die Hinweise hier lesen sie
     // nicht (nur `errors`/`fallbacks`), aber die Attrappe muss den vollständigen Typ erfüllen.
     dauerSummeMs: 0,

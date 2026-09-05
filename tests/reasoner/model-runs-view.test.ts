@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { ModelRunRecord } from "../../apps/web/src/api/types";
+import { REASONER_TASKS } from "../../apps/web/src/api/types";
+import type { ModelRunRecord, ModelRunTask } from "../../apps/web/src/api/types";
 import {
   limitModelRuns,
   modelRunStatusTone,
@@ -21,6 +22,22 @@ function run(over: Partial<ModelRunRecord> = {}): ModelRunRecord {
   };
 }
 
+// JOB 3069: die erwartete Zählung wird aus der EINEN Aufgabenliste erzeugt und nur an den
+// gemeinten Stellen überschrieben. Vorher stand hier ein Objektliteral mit fünf Schlüsseln — also
+// dieselbe zweite Wahrheit, die JOB 3069 im Produktcode abgelöst hat; sie hätte den Test bei jeder
+// neuen Aufgabenart erneut rot gemacht, ohne dass am Produkt etwas falsch wäre.
+function erwarteteZaehlung(
+  treffer: Partial<Record<ModelRunTask, number>>,
+): Record<ModelRunTask, number> {
+  return {
+    ...(Object.fromEntries(REASONER_TASKS.map((task) => [task, 0])) as Record<
+      ModelRunTask,
+      number
+    >),
+    ...treffer,
+  };
+}
+
 describe("SCRUM-165: summarizeModelRuns", () => {
   it("zählt total/success/errors/fallbacks/demo und nach Task", () => {
     const s = summarizeModelRuns([
@@ -34,13 +51,13 @@ describe("SCRUM-165: summarizeModelRuns", () => {
     expect(s.errors).toBe(1);
     expect(s.fallbacks).toBe(2);
     expect(s.demo).toBe(3);
-    expect(s.byTask).toEqual({ structure: 2, assist: 1, interview: 1, answer: 0, select: 0 });
+    expect(s.byTask).toEqual(erwarteteZaehlung({ structure: 2, assist: 1, interview: 1 }));
   });
 
   it("leere Liste → Nullwerte", () => {
     const s = summarizeModelRuns([]);
     expect(s.total).toBe(0);
-    expect(s.byTask).toEqual({ structure: 0, assist: 0, interview: 0, answer: 0, select: 0 });
+    expect(s.byTask).toEqual(erwarteteZaehlung({}));
   });
 });
 
