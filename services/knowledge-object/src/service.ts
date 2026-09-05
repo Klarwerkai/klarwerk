@@ -184,6 +184,11 @@ export function normalizeEvidenceLimit(limit?: number): number {
   return Math.min(Math.floor(limit), MAX_EVIDENCE_LIMIT);
 }
 
+// JOB 3071 R3: die vorgegebene Frist der Rücknahme-Vorablesung vor der Endlöschung
+// (s. KoServiceDeps.ruecknahmeFrist). Modul-privat, weil sie kein Aufrufer ausserhalb dieses
+// Dienstes braucht — wer eine andere will, übergibt sie.
+const RUECKNAHME_VORAB_FRIST_MS = 2000;
+
 // SCRUM-523 P.3 (WP-A2): storage-neutrale Transaktions-Fähigkeit für den EINEN Chokepoint, der sie
 // wirklich braucht (purgeKo: repo.delete + audit.record ATOMAR, s. dort). Von der Kompositionswurzel
 // injiziert (build-app.ts bindet sie über withPgTx an den echten, mit PgKoRepo/PgAuditRepo geteilten
@@ -232,6 +237,24 @@ export interface KoServiceDeps {
   // Zwei Haken, zwei ehrlich verschiedene Zusagen: `onPurge` bleibt vor der Transaktion und behält
   // seine idempotente Selbstheilung; `onPurgeTx` läuft darin und ist all-or-nothing.
   onPurgeTx?: PurgeTxCleanup;
+  // ============================================================================================
+  // JOB 3071 R3 (bens Korrekturpflicht 2 zu R2) — FRIST UND FEHLERKANAL DER VORABLESUNG.
+  // ============================================================================================
+  //
+  // R2 hat die Auskunft „hat der Autor selbst zurückgezogen?" vor die Purge-Transaktion gezogen
+  // (richtig — s. PurgeTxCleanup) und sie dort ROH abgewartet (falsch): eine Ablehnung riss die
+  // Endlöschung mit sich, ein Schweigen hielt sie für immer an. Bens Messung:
+  // `BEN_PURGE http=500 imPapierkorb=true befund=offen` und
+  // `BEN_PURGE_TIMEOUT ergebnis=blockiert befund=offen`.
+  //
+  // Die Auskunft ist eine ZUGABE, keine Bedingung der Endlöschung. Sie darf nie ein Grund sein,
+  // einen Beitrag NICHT zu löschen. Deshalb hat sie hier dasselbe, was der Rücknahme-Port im
+  // Befund-Dienst hat: eine Frist (Millisekunden, ohne Angabe RUECKNAHME_VORAB_FRIST_MS) und einen
+  // Fehlerkanal (ohne Angabe console.error). Bei Ablauf, Ablehnung oder synchronem Werfen läuft die
+  // Endlöschung mit dem systemischen Grund weiter — genau EINE Meldung, nie eine geratene
+  // Autorschaft.
+  ruecknahmeFrist?: number;
+  onError?: (context: string, error: unknown) => void;
 }
 
 /**
@@ -253,11 +276,21 @@ export interface KoServiceDeps {
  * Transaktion nähme sie nicht zurück. Ebenso ausgeschlossen sind Schleifen über Einzelobjekte —
  * der Körper hält eine Verbindung aus dem Pool, und n Einzelanweisungen halten die Sperre n-mal
  * so lange. Was hier steht, sind mengenbasierte Anweisungen gegen denselben Datenraum.
+ *
+ * JOB 3071 R2 (bens Korrekturpflicht 2) — DER VIERTE PARAMETER UND WARUM ES IHN GEBEN MUSS.
+ * `ruecknahme` trägt die schon gelesene Antwort auf „hat der Autor selbst zurückgezogen?"
+ * (`eigeneRuecknahmeVon`) in den Transaktionskörper hinein. Sie wird VOR dem Öffnen der Transaktion
+ * gelesen, weil sie eine Punktabfrage am POOL ist und damit unter genau das Verbot oben fällt: hier
+ * darf nur fahren, was auf DEMSELBEN Client fährt. Ein Lesegang am Pool wartet bei erschöpftem Pool
+ * auf eine Verbindung, die erst der Commit dieser Transaktion freigibt — bei Poolgröße 1 auf sich
+ * selbst. Vorab gelesen ist die Antwort dieselbe (das Objekt wird erst IN der Transaktion gelöscht)
+ * und kostet die gehaltene Sperre nichts.
  */
 export type PurgeTxCleanup = (
   koId: string,
   actor: string,
   tx: TxContext | undefined,
+  ruecknahme: { zurueckgezogenVon: string | null },
 ) => Promise<Record<string, unknown>>;
 
 export interface CreateKoInput {
@@ -507,6 +540,9 @@ export class KoService {
   private onPurgeTx: PurgeTxCleanup | undefined;
   // SCRUM-523 P.3 (WP-A2): s. Typ-Kommentar an WithTx oben.
   private readonly withTx: WithTx | undefined;
+  // JOB 3071 R3: Frist und Fehlerkanal der Rücknahme-Vorablesung (s. KoServiceDeps).
+  private readonly ruecknahmeFrist: number;
+  private readonly onError: (context: string, error: unknown) => void;
   // SCRUM-509 R2 / 507 R2: EIN per-KO Schreib-Lock serialisiert die zueinander wettlaufenden KO-
   // Mutationen (Vertraulichkeit setzen, Validierungsstatus setzen, Revision). So gibt es kein Inter-
   // leave zwischen Lesen und Schreiben (kein TOCTOU, kein Lost-Update, keine fälschlich gültige
@@ -526,6 +562,18 @@ export class KoService {
     this.withTx = deps.withTx;
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
+    // Eine Frist, die keine ist (0, negativ, NaN, Infinity), wäre die stillschweigende Abschaltung
+    // der Begrenzung — dort gilt die Vorgabe statt der übergebenen Zahl.
+    const frist = deps.ruecknahmeFrist;
+    this.ruecknahmeFrist =
+      typeof frist === "number" && Number.isFinite(frist) && frist > 0
+        ? frist
+        : RUECKNAHME_VORAB_FRIST_MS;
+    this.onError =
+      deps.onError ??
+      ((context, error) => {
+        console.error(`[kos] ${context}:`, error);
+      });
   }
 
   // SCRUM-523 P.3 (WP2): den Purge-Aufräum-Hook spät verdrahten (die App erstellt conflicts/overlaps/
@@ -2755,6 +2803,33 @@ export class KoService {
     return ko && !ko.deletedAt ? ko : undefined;
   }
 
+  // ==============================================================================================
+  // JOB 3071 — DIE EINE PAPIERKORBFÄHIGE AUSKUNFT: HAT DER AUTOR SELBST ZURÜCKGEZOGEN?
+  // ==============================================================================================
+  //
+  // Sie beantwortet GENAU eine Frage und gibt GENAU eine Kennung heraus — oder nichts. Kein Titel,
+  // kein Inhalt, keine Vertraulichkeitsstufe verlässt sie; sie ist damit auch dann unbedenklich,
+  // wenn ein anderes Modul sie über einen Port ruft (services/conflicts kennt den Bestand nicht).
+  //
+  // WARUM SIE ÜBER `repo.findById` LIEST UND NICHT ÜBER `get` — die ausgeschriebene Begründung der
+  // Ausnahme: `get` blendet getrashte Objekte grundsätzlich aus (`:2753-2756`, SCRUM-422), und
+  // genau ein getrashtes Objekt ist hier der Normalfall. Der einzige Aufrufer ist der Nachlauf der
+  // Löschroute, und der läuft NACH `ko.delete` — zu diesem Zeitpunkt liegt das Objekt bereits im
+  // Papierkorb. Eine Auskunft über `get` bekäme `undefined` und antwortete immer „nein". Sie ist
+  // damit die dritte Stelle des Dienstes, die den Papierkorb absichtlich sieht (neben `trashed()`
+  // und `restore()`), und die einzige, die es für einen fremden Aufrufer tut.
+  //
+  // SIE SCHREIBT NICHT und sie entscheidet nicht: sie stellt zwei Felder desselben Datensatzes
+  // gegenüber, die das weiche Löschen selbst gesetzt hat (`:3930`: `deletedBy`) bzw. die Anlage
+  // (`author`). Altbestand ohne `deletedBy` fällt auf `null` — es wird nichts geraten.
+  async eigeneRuecknahmeVon(koId: string): Promise<string | null> {
+    const ko = await this.repo.findById(koId);
+    if (!ko?.deletedAt || !ko.deletedBy) {
+      return null;
+    }
+    return ko.deletedBy === ko.author ? ko.deletedBy : null;
+  }
+
   // SCRUM-523 P.3 (WP2): Der Read-Pfad löscht/auditiert NICHT mehr. Früher rief list() den Trash-Sweep
   // (Endlöschung + Audit) auf — damit war kein Lesen (und kein Import-Dry-Run) schreibfrei. Die
   // Endlöschung ist jetzt eine EXPLIZITE Operation (runTrashSweep), die reine Leseoperationen nie auslöst.
@@ -3122,6 +3197,64 @@ export class KoService {
   //       Bestpfad aus WP-A (Audit vor Delete): dort ist er kein Kompromiss, sondern angemessen, weil
   //       zwei synchrone In-Process-Schritte ohne echtes I/O-Fenster praktisch nicht so „crashen"
   //       können, dass der eine committet und der andere nicht (anders als bei zwei echten DB-Writes).
+  // ==============================================================================================
+  // JOB 3071 R3 — DIE VORABLESUNG DER RÜCKNAHME, BEGRENZT UND FEHLERFEST.
+  // ==============================================================================================
+  //
+  // Sie ruft `eigeneRuecknahmeVon` (:2777) und macht aus JEDEM Ausgang eine Antwort:
+  //
+  //   Kennung / null   die Auskunft selbst — sie reist über `PurgeTxCleanup` in die Transaktion.
+  //   wirft synchron   der RUF steht im try, nicht nur sein Ergebnis: ein Adapter, der schon an der
+  //                    Anweisung scheitert, flöge sonst aus `purgeKo` heraus und liesse den Beitrag
+  //                    im Papierkorb stehen.
+  //   lehnt ab         wie „wirft".
+  //   schweigt         nach `ruecknahmeFrist` ms wie „wirft" — sonst hielte eine hängende
+  //                    Verbindung die Endlöschung für immer an.
+  //
+  // In allen drei Fehlerfällen: GENAU EINE Meldung auf `onError` (die Verriegelung `gemeldet` sorgt
+  // dafür, dass eine späte Ablehnung nach abgelaufener Frist kein zweiter Fehler wird), Rückgabe
+  // `null`, und die Endlöschung läuft weiter. Sie ist bewusst dieselbe Bauart wie
+  // `OverlapService.ruecknahmeAutor` und nicht dieselbe Funktion: die beiden wohnen in verschiedenen
+  // Modulen, und ein gemeinsames Zuhause dafür wäre eine neue Modulkante — im Haus stehen aus
+  // demselben Grund bereits mehrere eigene `Promise.race`-Fristen (capture-routes, wikipedia,
+  // rest-client).
+  private async ruecknahmeVorab(id: string): Promise<string | null> {
+    let gemeldet = false;
+    const melden = (grund: string, error: unknown): null => {
+      if (!gemeldet) {
+        gemeldet = true;
+        this.onError(`${grund} (${id})`, error);
+      }
+      return null;
+    };
+    let gerufen: Promise<string | null>;
+    try {
+      gerufen = Promise.resolve(this.eigeneRuecknahmeVon(id));
+    } catch (error) {
+      return melden("eigene Rücknahme vor der Endlöschung nicht ermittelbar", error);
+    }
+    let uhr: ReturnType<typeof setTimeout> | undefined;
+    const antwort = gerufen.then(
+      (kennung) => kennung ?? null,
+      (error) => melden("eigene Rücknahme vor der Endlöschung nicht ermittelbar", error),
+    );
+    const frist = new Promise<string | null>((fertig) => {
+      uhr = setTimeout(() => {
+        fertig(
+          melden(
+            "eigene Rücknahme vor der Endlöschung nicht rechtzeitig ermittelbar",
+            new Error(`Rücknahme-Auskunft hat ${this.ruecknahmeFrist} ms nicht geantwortet`),
+          ),
+        );
+      }, this.ruecknahmeFrist);
+    });
+    try {
+      return await Promise.race([antwort, frist]);
+    } finally {
+      clearTimeout(uhr);
+    }
+  }
+
   private async purgeKo(
     id: string,
     actor: string,
@@ -3155,8 +3288,24 @@ export class KoService {
     // weiter. Ergebnis: nichts aufgeräumt, kein KO gelöscht, kein Beleg. Genau das unterscheidet
     // dieses Fenster vom vorgeschalteten `onPurge`, in dem ein nicht idempotenter Schreiber ein
     // Datenverlustfenster wäre.
+    //
+    // JOB 3071 R2 (bens Korrekturpflicht 2): DIESE eine Lesung steht ABSICHTLICH VOR `withTx` und
+    // nicht darin. Sie beantwortet „hat der Autor selbst zurückgezogen?" (`eigeneRuecknahmeVon`,
+    // :2777) und ist eine Punktabfrage am POOL — im Transaktionskörper wäre sie genau der
+    // Vertragsbruch, den `PurgeTxCleanup` oben ausschliesst: bei erschöpftem Pool wartete sie auf
+    // eine Verbindung, die erst der Commit DIESER Transaktion freigibt (bei Poolgröße 1 auf sich
+    // selbst — die Endlöschung endete nie). Hier hält der Vorgang noch nichts, und die Antwort ist
+    // dieselbe: gelöscht wird das Objekt erst in der Transaktion.
+    //
+    // JOB 3071 R3 (bens Korrekturpflicht 2 zu R2): sie steht VOR der Transaktion — aber sie ist eine
+    // ZUGABE, keine Bedingung. R2 wartete hier roh, und damit riss eine Ablehnung die Endlöschung
+    // mit sich (`BEN_PURGE http=500 imPapierkorb=true befund=offen`) und ein Schweigen hielt sie an
+    // (`BEN_PURGE_TIMEOUT ergebnis=blockiert befund=offen`). Ein Beitrag darf nicht deshalb stehen
+    // bleiben, weil eine Nebenauskunft über IHN nicht zu haben war. `ruecknahmeVorab` fängt beides
+    // ab (s. dort) und liefert dann `null` — der systemische Grund, ehrlich: gelesen wurde nichts.
+    const zurueckgezogenVon = await this.ruecknahmeVorab(id);
     const beitragAus = async (tx: TxContext | undefined): Promise<Record<string, unknown>> =>
-      (await this.onPurgeTx?.(id, actor, tx)) ?? {};
+      (await this.onPurgeTx?.(id, actor, tx, { zurueckgezogenVon })) ?? {};
     // 2) Delete + Audit — s. (B) oben. MIT withTx: EINE echte DB-Transaktion, beide Schreiber
     // committen/rollbacken gemeinsam. OHNE withTx: sequentieller Fallback (Audit vor Delete, WP-A).
     if (this.withTx && audit) {

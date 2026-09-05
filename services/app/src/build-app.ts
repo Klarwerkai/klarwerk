@@ -463,11 +463,21 @@ export function assembleServices(
     audit,
     currentVersion: koVersion,
   });
+  // JOB 3071: die papierkorbfähige Auskunft „hat der Autor seinen eigenen Beitrag zurückgezogen?".
+  // Genau wie `koVersion` ein Funktions-Port und keine Modulkante: `services/conflicts` darf
+  // `services/knowledge-object` nicht kennen (dependency-cruiser). Die Regel selbst wohnt im
+  // Bestand (`KoService.eigeneRuecknahmeVon`) — hier steht nur die Verdrahtung.
+  const eigeneRuecknahme = (koId: string): Promise<string | null> => ko.eigeneRuecknahmeVon(koId);
   // Berater-Konzept Duplikate 04.07. (Stufe D3): eigener Dienst für Überschneidungen (teilt Audit).
   const overlaps = new OverlapService({
     repo: repos.overlapRepo,
     audit,
     currentVersion: koVersion,
+    // JOB 3071: nur der Überschneidungs-Dienst bekommt ihn. Die Konfliktseite bleibt bewusst bei
+    // `participant_deleted` — ihr `ConflictResolutionReason` führt bereits ein `withdrawn` mit
+    // ANDERER Bedeutung (conflicts/src/types.ts:17), und beides zu vermischen wäre eine fachliche
+    // Entscheidung, die dieser Auftrag nicht trägt.
+    eigeneRuecknahme,
   });
   // SCRUM-510 R2b: GENERISCHES Import-Enable (quellneutral). Der externalId-Upsert-/Re-Sync-Strang ist an,
   // sobald IRGENDEINE Quelle aktiv ist; der Confluence-Flag KLARWERK_CONFLUENCE_IMPORT schaltet nur die
@@ -1677,9 +1687,16 @@ export function buildApp(
   // GEMESSENE OBERGRENZE des Hakens: 2 + n + 2m — n/m = offene Überschneidungen/Konflikte GENAU
   // DIESES Beitrags, NICHT der Instanz; davon sind 2 Schreib-Anweisungen und der Rest Belege. An
   // 200+200 Befunden nachgezählt: tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts.
-  services.ko.setPurgeTxCleanup(async (koId, actor, tx) => ({
+  //
+  // JOB 3071 R2 (bens Korrekturpflicht 2): `ruecknahme` reist DURCH, statt dass der Dienst hier
+  // drin nachschlägt. `purgeKo` hat die Auskunft vor dem Öffnen der Transaktion gelesen
+  // (knowledge-object/src/service.ts, direkt vor `withTx`); reichte man sie nicht weiter, führe der
+  // Rücknahme-Port als Pool-Lesung IM Transaktionskörper mit — bei Poolgröße 1 wartete er auf die
+  // Verbindung, die diese Transaktion selbst hält. Der Aufwand des Hakens ändert sich dadurch nicht:
+  // es ist dieselbe eine Auskunft, nur früher gelesen.
+  services.ko.setPurgeTxCleanup(async (koId, actor, tx, ruecknahme) => ({
     konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
-    ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx),
+    ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx, ruecknahme),
   }));
   // SCRUM-523 P.3 (WP2): der vorgeschaltete, NICHT transaktionsgebundene Haken behält genau EIN
   // Mitglied — den Embedding-Vorfilter. Er gehört nicht in die Datenbank-Transaktion: sein Speicher

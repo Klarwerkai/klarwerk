@@ -39,9 +39,47 @@ export interface OverlapServiceDeps {
   // D-AISTATE PAKET 4 (bens V5, aistate-fix5): Versions-Autorität für die fail-closed Lesepfade
   // (unresolved() UND get()/Detail-Route) — Vertrag wie ConflictServiceDeps.currentVersion.
   currentVersion?: CurrentVersionLookup;
+  // ============================================================================================
+  // JOB 3071 — DIE AUSKUNFT „HAT DER AUTOR SELBST ZURÜCKGEZOGEN?", ALS PORT.
+  // ============================================================================================
+  //
+  // Vertrag: liefert die Kennung des Autors, wenn `koId` von IHM SELBST weich gelöscht wurde,
+  // sonst `null`. Nichts sonst verlässt die Auskunft — kein Titel, kein Inhalt, keine
+  // Vertraulichkeitsstufe: eine Kennung oder nichts.
+  //
+  // WARUM ALS FUNKTIONS-PORT und nicht als Modulzugriff: der Bestand wohnt in
+  // `services/knowledge-object`, und eine Kante `conflicts → knowledge-object` verbietet der
+  // dependency-cruiser. Dieselbe Bauart wie `currentVersion` oben, verdrahtet an derselben
+  // Stelle (services/app/src/build-app.ts).
+  //
+  // WARUM OPTIONAL: fehlt der Port, verhält sich `onKoRemoved` exakt wie vor JOB 3071
+  // (`participant_deleted`, `by: null`). Altbestand, Testkompositionen und jede Ablage ohne
+  // Verdrahtung bleiben unverändert — die vereinbarte Kompositionsfreiheit, Muster
+  // `currentVersion`.
+  //
+  // WARUM DIE AUSKUNFT PAPIERKORBFÄHIG SEIN MUSS: der Nachlauf der Löschroute läuft NACH
+  // `ko.delete` (ko-routes.ts:1682 vor :1685-1687). Zu diesem Zeitpunkt liegt das Objekt schon im
+  // Papierkorb, und `KoService.get` liefert getrashte Objekte grundsätzlich nicht
+  // (knowledge-object/src/service.ts:2753-2756). Ein Port über `ko.get` bekäme `undefined` und
+  // fiele still auf den alten Grund zurück — gebaut und wirkungslos.
+  eigeneRuecknahme?: (koId: string) => Promise<string | null>;
+  // JOB 3071 R2 (bens Korrekturpflicht 1 zu R1) — DIE FRIST, IN DER DER PORT GEANTWORTET HABEN MUSS.
+  //
+  // „Antwortet nicht" ist ein EIGENER Zustand, nicht dasselbe wie „wirft": eine Zusage, die sich
+  // weder erfüllt noch verwirft, hält den Aufrufer sonst für immer. Das ist hier kein Randfall,
+  // sondern der teuerste Weg im Haus: der Nachlauf der Löschroute läuft NACH `ko.delete`
+  // (ko-routes.ts:1682 vor :1685-1687) — das Objekt liegt bereits im Papierkorb, aber die Route
+  // hätte nie geantwortet und der Befund wäre offen über einem entfernten Beitrag stehen geblieben
+  // (bens Messung an R1: `ergebnis=blockiert koSichtbar=false overlapStatus=offen`).
+  //
+  // Nach Ablauf gilt exakt der Zustand „Port wirft": `participant_deleted` / `by: null`, GENAU EINE
+  // Meldung auf `onError`, und der Vorgang läuft weiter. Es wird nie eine Autorschaft behauptet,
+  // die nicht gelesen wurde. Millisekunden; ohne Angabe RUECKNAHME_FRIST_MS.
+  eigeneRuecknahmeFrist?: number;
   // D-AISTATE PAKET 4 (bens fix5-Recheck §4, aistate-fix6): belastbarer Fehlerkanal für den Lese-GC
   // (Vertrag wie ConflictServiceDeps.onError) — ein superseded-Audit-Ausfall nach gewinnendem CAS
   // wird SICHTBAR gemeldet statt still verschluckt. Default: console.error.
+  // JOB 3071: derselbe Kanal trägt zusätzlich den Ausfall des Rücknahme-Ports (s. dort).
   onError?: (context: string, error: unknown) => void;
 }
 
@@ -68,12 +106,22 @@ export interface DryRunOverlap {
   snippet?: string; // Reserve (Slice 5/6): das Modul erzeugt heute keinen Beleg-Snippet.
 }
 
+// JOB 3071 R2: die vorgegebene Frist des Rücknahme-Ports (s. OverlapServiceDeps.eigeneRuecknahmeFrist).
+// Sie ist bewusst kurz gegenüber einer HTTP-Antwort und lang gegenüber einer Punktabfrage über den
+// Primärschlüssel: der einzige Aufrufer liest EINE Zeile. Modul-privat, weil sie kein Aufrufer
+// ausserhalb dieses Dienstes braucht — wer eine andere will, übergibt sie.
+const RUECKNAHME_FRIST_MS = 2000;
+
 export class OverlapService {
   private readonly repo: OverlapRepo;
   private readonly audit: AuditService | undefined;
   private readonly now: () => number;
   private readonly genId: () => string;
   private readonly currentVersion: CurrentVersionLookup | undefined;
+  // JOB 3071: die papierkorbfähige Auskunft über die eigene Rücknahme (optional, s. Deps).
+  private readonly eigeneRuecknahme: ((koId: string) => Promise<string | null>) | undefined;
+  // JOB 3071 R2: die Frist dieser Auskunft, in Millisekunden (s. Deps).
+  private readonly ruecknahmeFrist: number;
   private readonly onError: (context: string, error: unknown) => void;
 
   constructor(deps: OverlapServiceDeps) {
@@ -82,10 +130,20 @@ export class OverlapService {
     this.now = deps.now ?? (() => Date.now());
     this.genId = deps.genId ?? (() => randomUUID());
     this.currentVersion = deps.currentVersion;
+    this.eigeneRuecknahme = deps.eigeneRuecknahme;
+    // Eine Frist, die keine ist (0, negativ, NaN, Infinity), wäre eine stillschweigende Abschaltung
+    // der Begrenzung — deshalb greift dort der vorgegebene Wert statt der übergebenen Zahl.
+    const frist = deps.eigeneRuecknahmeFrist;
+    this.ruecknahmeFrist =
+      typeof frist === "number" && Number.isFinite(frist) && frist > 0
+        ? frist
+        : RUECKNAHME_FRIST_MS;
+    // JOB 3071: der Kanal trägt jetzt zwei Melder (Lese-GC und Rücknahme-Port), deshalb steht der
+    // Zusammenhang im übergebenen `context` und nicht mehr fest im Vorspann der Meldung.
     this.onError =
       deps.onError ??
       ((context, error) => {
-        console.error(`[overlaps] Lese-GC ${context}:`, error);
+        console.error(`[overlaps] ${context}:`, error);
       });
   }
 
@@ -661,10 +719,117 @@ export class OverlapService {
     return saved;
   }
 
+  // JOB 3071 R2 — WOHER DIE AUSKUNFT KOMMT, UND WARUM SIE IN EINER FREMDEN TRANSAKTION NIE
+  // SELBST GEHOLT WIRD (bens Korrekturpflicht 2 zu R1).
+  //
+  // Drei Herkünfte, in dieser Rangfolge:
+  //
+  //   VORAB GELESEN  Der Aufrufer hat sie schon (`ruecknahme`). Das ist der Weg der Endlöschung:
+  //                  `KoService.purgeKo` liest sie, BEVOR es die Transaktion öffnet — also zu einem
+  //                  Zeitpunkt, an dem dieser Vorgang keine Verbindung hält — und reicht sie durch
+  //                  den `PurgeTxCleanup`-Haken hier herein.
+  //   TRANSAKTION    `tx` gesetzt, aber nichts vorab gelesen: dann wird NICHT nachgeschlagen. Das
+  //                  ist keine Höflichkeit, sondern die Struktur, die den Fehler unmöglich macht:
+  //                  `withPgTx` hält eine Verbindung aus dem Pool; ein Lesegang am Pool wartet bei
+  //                  erschöpftem Pool auf eine Verbindung, die erst der Commit dieser Transaktion
+  //                  freigibt — bei Poolgröße 1 auf sich selbst. R1 tat genau das. Der schwächere,
+  //                  systemische Grund ist hier die ehrliche Aussage: gelesen wurde nichts.
+  //   SELBST GEHOLT  Kein `tx` — der gewöhnliche Weg des weichen Löschens. Hier hält niemand eine
+  //                  Verbindung, und der Port darf (mit Frist) fragen.
+  private async ruecknahmeFuer(
+    koId: string,
+    tx: TxContext | undefined,
+    ruecknahme: { zurueckgezogenVon: string | null } | undefined,
+  ): Promise<string | null> {
+    if (ruecknahme) {
+      return ruecknahme.zurueckgezogenVon;
+    }
+    if (tx) {
+      return null;
+    }
+    return this.ruecknahmeAutor(koId);
+  }
+
+  // JOB 3071 — DIE EINE STELLE, DIE DEN ABSCHLUSSGRUND EINER LÖSCHUNG BESTIMMT.
+  //
+  // Sie wird GENAU EINMAL je Löschung gerufen, vor der mengenbasierten Anweisung — nie je Befund
+  // (das machte den Weg von JOB 3066 wieder zur Schleife; gemessen in
+  // tests/eigene-ruecknahme/ruecknahme-umfang-bleibt-begrenzt.test.ts).
+  //
+  // DAS ZUSTANDSMODELL, ausgeschrieben (Auftrag §9):
+  //   Kennung        der Beitrag wurde von SEINEM AUTOR zurückgezogen → withdrawn_own, by = Kennung.
+  //   null           erfolgreich leer: er wurde nicht von seinem Autor entfernt. Das ist eine
+  //                  positive Aussage über einen bekannten Sachverhalt, keine Notlösung.
+  //   Port fehlt     nicht verdrahtet → wie „leer", OHNE Meldung (Kompositionsfreiheit).
+  //   Port wirft     → wie „leer", ZUSÄTZLICH `onError`. Die Löschung wird NICHT abgebrochen, und
+  //                  eine Autorschaft wird NIE behauptet, die nicht gelesen wurde: lieber der
+  //                  schwächere, systemische Grund als eine geratene Entscheiderin im Protokoll.
+  //   Port schweigt  → JOB 3071 R2 (bens Korrekturpflicht 1): nach `ruecknahmeFrist` Millisekunden
+  //                  gilt derselbe Ausgang wie bei „wirft". Vorher wartete dieser Weg unbegrenzt —
+  //                  und weil er NACH dem weichen Löschen läuft, blieb die Route ohne Antwort und
+  //                  der Befund offen über einem Beitrag, der schon im Papierkorb lag.
+  //
+  //   Port wirft SYNCHRON → JOB 3071 R3 (bens Korrekturpflicht 1 zu R2): derselbe Ausgang wie bei
+  //                  „wirft". R2 hängte den Fehlerhandler erst an das ZURÜCKGEGEBENE Versprechen —
+  //                  ein `throw` beim AUFRUF selbst (ein Adapter, der schon an der Anweisung
+  //                  scheitert; ein Port, der gar keine Zusage liefert) flog an ihm vorbei, aus
+  //                  `onKoRemoved` heraus, und liess die Route nach bereits geschriebenem weichem
+  //                  Löschen mit 500 stehen — Befund offen, keine Meldung (bens Messung:
+  //                  `BEN_SYNC http=500 koSichtbar=false befund=offen meldungen=0`). Deshalb steht
+  //                  jetzt DER RUF SELBST im try, nicht nur sein Ergebnis.
+  //
+  // GENAU EINE MELDUNG je Vorgang: `melden` ist gegen den zweiten Ruf verriegelt. Verwirft sich der
+  // Port NACH abgelaufener Frist, ist das kein zweiter Fehler, sondern derselbe — und weil die
+  // Ablehnung mit `.then(_, _)` schon angenommen ist, wird sie auch nie zu einer unbehandelten.
+  private async ruecknahmeAutor(koId: string): Promise<string | null> {
+    const lookup = this.eigeneRuecknahme;
+    if (!lookup) {
+      return null;
+    }
+    let gemeldet = false;
+    const melden = (grund: string, error: unknown): null => {
+      if (!gemeldet) {
+        gemeldet = true;
+        this.onError(`${grund} (${koId})`, error);
+      }
+      return null;
+    };
+    // Der RUF im try (s. oben), nicht nur sein Ergebnis. `Promise.resolve(...)` deckt zusätzlich
+    // den Port ab, der etwas anderes als eine Zusage zurückgibt: auch er wird zu einer Antwort,
+    // nie zu einem Absturz mitten in der Löschung.
+    let gerufen: Promise<string | null>;
+    try {
+      gerufen = Promise.resolve(lookup(koId));
+    } catch (error) {
+      return melden("eigene Rücknahme nicht ermittelbar", error);
+    }
+    let uhr: ReturnType<typeof setTimeout> | undefined;
+    const antwort = gerufen.then(
+      (kennung) => kennung ?? null,
+      (error) => melden("eigene Rücknahme nicht ermittelbar", error),
+    );
+    const frist = new Promise<string | null>((fertig) => {
+      uhr = setTimeout(() => {
+        fertig(
+          melden(
+            "eigene Rücknahme nicht rechtzeitig ermittelbar",
+            new Error(`Rücknahme-Port hat ${this.ruecknahmeFrist} ms nicht geantwortet`),
+          ),
+        );
+      }, this.ruecknahmeFrist);
+    });
+    try {
+      return await Promise.race([antwort, frist]);
+    } finally {
+      clearTimeout(uhr);
+    }
+  }
+
   // Geister-Bug (wie bei Konflikten, Pedi 04.07.): wird ein beteiligter Beitrag gelöscht, dürfen seine
   // offenen Überschneidungen nicht als „Objekt entfernt" hängen bleiben. Alle OFFENEN Einträge, die
-  // dieses KO referenzieren, werden geordnet geschlossen (participant_deleted, systemisch → by=null) und
-  // protokolliert. Idempotent: bereits geschlossene Einträge bleiben unberührt. Gibt die Anzahl zurück.
+  // dieses KO referenzieren, werden geordnet geschlossen und protokolliert. Idempotent: bereits
+  // geschlossene Einträge bleiben unberührt (das schützt die menschliche Entscheidung, die schon
+  // gefallen ist). Gibt die Anzahl zurück.
   //
   // JOB 3066 — DER OPTIONALE tx UND WARUM ER NUR HIER STEHT.
   // Dies ist der EINZIGE Weg dieses Dienstes, der Teil eines FREMDEN Vorgangs ist: die Endlöschung
@@ -676,13 +841,22 @@ export class OverlapService {
   // Pool vorbei machte die Klammer wirkungslos.
   //
   // WIE VIEL DIESER KÖRPER HÄLT (bens Korrekturpflicht 3 zu R1, 1 zu R3) — gemessen, nicht behauptet:
+  //   ABLEITUNG  1 Ruf des Rücknahme-Ports je LÖSCHUNG (JOB 3071, nicht je Befund) — und im Fenster
+  //              einer FREMDEN Transaktion GAR KEINER. Warum, s. `ruecknahmeFuer` unten: mit
+  //              Datenbank wäre der Port eine Leseanweisung am POOL, und der Vertrag von
+  //              `PurgeTxCleanup` (knowledge-object/src/service.ts:248-255) lässt hier nur
+  //              Anweisungen zu, die auf DEMSELBEN Client fahren. R1 behauptete an dieser Stelle,
+  //              die Pool-Lesung verlängere die gehaltene Sperre nicht — das war falsch (bens
+  //              Korrekturpflicht 2): bei erschöpftem Pool wartet sie auf eine Verbindung, die erst
+  //              der Commit derselben Transaktion freigibt. Jetzt kommt die Auskunft dort
+  //              ausschliesslich VORAB GELESEN herein.
   //   SCHLIESSEN 1 Anweisung, MENGENBASIERT (`closeOpenForKo`). Sie sucht und schreibt in einem und
   //              liefert die geschlossenen Einträge zurück. R1 las die ganze Tabelle und schrieb je
   //              Treffer, R3 las gezielt und schrieb je Treffer — beides Schleifen über
   //              Einzelobjekte, die der PurgeTxCleanup-Vertrag ausschliesst
   //              (knowledge-object/src/service.ts:248-255).
   //   BELEGE     1 je geschlossener Überschneidung.
-  // Obergrenze also 1 + n mit n = offene Überschneidungen dieses Beitrags (nicht der Instanz),
+  // Obergrenze also 1 + 1 + n mit n = offene Überschneidungen dieses Beitrags (nicht der Instanz),
   // nachgemessen in tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts.
   // WARUM DIE BELEGE EINZELN BLEIBEN — die benannte Grenze, nicht überspielt: die Audit-Ablage ist
   // anhängend und führt je Ereignis eine Zeile; ein `appendMany` läge in `services/audit` (kein
@@ -690,27 +864,32 @@ export class OverlapService {
   // ausserdem der Verlust der Rückverfolgbarkeit am einzelnen Befund.
   // EIN ZEITSTEMPEL FÜR ALLE: der Patch entsteht EINMAL vor der Anweisung. Vorher rief dieser Weg
   // `this.iso()` zweimal je Eintrag — zwei Zeiten für einen Vorgang, der einer ist.
-  async onKoRemoved(koId: string, actor = "system", tx?: TxContext): Promise<number> {
+  async onKoRemoved(
+    koId: string,
+    actor = "system",
+    tx?: TxContext,
+    // JOB 3071 R2: die bereits gelesene Auskunft. Nur der Weg MIT `tx` braucht sie (s.
+    // `ruecknahmeFuer`); jeder andere Aufrufer lässt sie weg und der Dienst liest selbst.
+    ruecknahme?: { zurueckgezogenVon: string | null },
+  ): Promise<number> {
     const at = this.iso();
+    // JOB 3071: EINMAL je Löschung, VOR der Anweisung — der Grund gilt für alle Befunde dieses
+    // Vorgangs, so wie der Zeitstempel. `await` hier und nicht nebenläufig: es wird nichts
+    // geschrieben, solange die Auskunft nicht da ist (Auftrag §9, „noch nicht ermittelt").
+    const zurueckgezogenVon = await this.ruecknahmeFuer(koId, tx, ruecknahme);
+    const resolution = zurueckgezogenVon
+      ? { reason: "withdrawn_own" as const, by: zurueckgezogenVon, note: null, at }
+      : { reason: "participant_deleted" as const, by: null, note: null, at };
     const geschlossen = await this.repo.closeOpenForKo(
       koId,
-      {
-        status: "geschlossen",
-        resolution: { reason: "participant_deleted", by: null, note: null, at },
-        closedAt: at,
-      },
+      { status: "geschlossen", resolution, closedAt: at },
       tx,
     );
+    // Der Beleg unterscheidet die beiden Vorgänge — sonst stünde die Rücknahme im Protokoll unter
+    // dem Namen der Integritäts-Routine. Zuschnitt (actor/target/payload) unverändert.
+    const action = zurueckgezogenVon ? "overlap.withdrawn-own" : "overlap.participant-removed";
     for (const entry of geschlossen) {
-      await this.audit?.record(
-        {
-          actor,
-          action: "overlap.participant-removed",
-          target: entry.id,
-          payload: { koId },
-        },
-        tx,
-      );
+      await this.audit?.record({ actor, action, target: entry.id, payload: { koId } }, tx);
     }
     return geschlossen.length;
   }
@@ -793,7 +972,7 @@ export class OverlapService {
         });
       })().catch((error) => {
         // best-effort: den Lesepfad nie blockieren, aber den Fehler NICHT still schlucken.
-        this.onError(`superseded audit (${id})`, error);
+        this.onError(`Lese-GC superseded audit (${id})`, error);
       });
     }, 0);
   }

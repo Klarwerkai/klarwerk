@@ -13,6 +13,12 @@ export type OverlapResolutionReason =
   | "linked_related" // Mensch: als verwandt markiert
   | "dismissed" // Fehlalarm — keine echte Überschneidung
   | "participant_deleted" // Beteiligter gelöscht (Integritäts-Routine)
+  // JOB 3071: der Autor hat seinen EIGENEN Beitrag zurückgezogen (menschliche Entscheidung über
+  // eigenes Wissen; `by` trägt seine Kennung). Bewusst getrennt von `participant_deleted`: dort
+  // hat eine Routine aufgeräumt, hier hat ein Mensch entschieden — und über niemandes Wissen ausser
+  // seinem eigenen. Stünde weiter `participant_deleted` mit `by: null`, behaupteten Befund, Audit
+  // und jede spätere Auskunft, es sei niemand gewesen.
+  | "withdrawn_own"
   | "superseded"; // durch anderen Vorgang gegenstandslos
 
 // Metadaten der automatischen Erkennung (Herkunfts-Badge + Reproduzierbarkeit). Keine Secrets.
@@ -32,7 +38,10 @@ export interface OverlapDetector {
 
 export interface OverlapResolution {
   reason: OverlapResolutionReason;
-  by: string | null; // null bei systemischen Abschlüssen (participant_deleted/superseded)
+  // JOB 3071: `null` NUR NOCH bei den beiden systemischen Abschlüssen (participant_deleted/
+  // superseded). `withdrawn_own` ist trotz seiner automatischen Auslösung KEIN systemischer
+  // Abschluss — er trägt die Kennung der Autorin, die ihren Beitrag zurückgezogen hat.
+  by: string | null;
   note: string | null;
   at: string;
 }
@@ -78,6 +87,12 @@ export interface OverlapInput {
 // schriebe die Fläche einen Vorgang ins Protokoll, der nie stattgefunden hat; das wäre genau die
 // Sorte Scheinaussage, die dieses Produkt nicht macht. Der Wächter dafür ist das `satisfies` — wer
 // hier einen systemischen Grund einträgt, bekommt keinen Kommentar, sondern einen Compilerfehler.
+//
+// JOB 3071: `withdrawn_own` gehört AUSDRÜCKLICH NICHT hierher, obwohl ein Mensch dahintersteht.
+// Diese Liste ist die Auswahl an der Prüfen-Fläche — was ein Kurator über ein PAAR entscheidet.
+// Der Rückzug ist keine Entscheidung über das Paar, sondern die WIRKUNG einer anderen Handlung
+// (der Autor löscht seinen Beitrag). Stünde er zur Wahl, könnte ein Kurator eine Rücknahme
+// behaupten, die nie stattgefunden hat — dieselbe Sorte Scheinaussage, gegen die diese Liste steht.
 export const HUMAN_OVERLAP_CLOSE_REASONS = [
   "kept_separate",
   "linked_related",

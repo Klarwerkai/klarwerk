@@ -166,7 +166,15 @@ describe("JOB 3066 R4 · F5: DELETE /api/kos/:id räumt auf JEDEM Ausgang genau 
     expect(await belege(services, "ko.purged", a)).toHaveLength(0);
     expect(rufe.ueberschneidungen).toEqual([1]);
     expect(rufe.konflikte).toEqual([1]);
-    expect(await belege(services, "overlap.participant-removed", overlap.id)).toHaveLength(1);
+    // JOB 3071: In DIESEM Fall legt derselbe Mensch die Beiträge an, der sie löscht — es ist also
+    // eine eigene Rücknahme, und der Überschneidungs-Beleg heisst seither `overlap.withdrawn-own`
+    // (services/conflicts/src/overlap-service.ts, Ableitung in `onKoRemoved`). Was dieser Fall
+    // misst, ist unverändert: GENAU EIN Abschlussbeleg je Befund, nie zwei. Deshalb steht hier
+    // beides — der neue Beleg einmal, der alte kein einziges Mal.
+    expect(await belege(services, "overlap.withdrawn-own", overlap.id)).toHaveLength(1);
+    expect(await belege(services, "overlap.participant-removed", overlap.id)).toHaveLength(0);
+    // Die KONFLIKTseite bleibt bewusst beim systemischen Grund (JOB 3071 §10: `ConflictResolutionReason`
+    // führt bereits ein `withdrawn` mit anderer Bedeutung). Die Asymmetrie ist gewollt, nicht vergessen.
     expect(await belege(services, "conflict.participant-removed", conflict.id)).toHaveLength(1);
   });
 });
