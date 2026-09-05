@@ -22,18 +22,48 @@ import { RoleNotice, Stage2Notice } from "./components/Stage2Notice";
 // `tests/erstladezeit/eintritt-ohne-seiten.test.ts` bei jedem Lauf neu fährt: einmal wie hier
 // aufgeteilt, einmal mit einem Plugin, das GENAU DIESE `lazy`-Zeilen wieder zu statischen Importen
 // macht und sonst nichts anfasst — dieser Gegenbau ist das „vorher".
-//     04.09.2026, Arbeitsstand `b203c44`, vorher (Seiten statisch): Eintritt 2.028.116 B ·   6 Stücke · 2.984.836 B gesamt
-//     04.09.2026, Arbeitsstand `b203c44`, nachher (aufgeteilt):     Eintritt 1.255.662 B · 103 Stücke · 3.019.654 B gesamt
-// Der Eintritt fällt also um 772.454 B (−38,09 %). Die Gesamtsumme WÄCHST um 34.818 B (+1,17 %) —
-// die Rahmen der 97 zusätzlichen Stücke (359 B je Stück); kein Modul liegt doppelt, das hält der
-// Fall (c1) fest. Damit ist Lieferpunkt 3(c) („die Summe wächst nicht") WÖRTLICH NICHT ERFÜLLT;
-// die Rückgabe führt ihn als offen, die Entscheidung über diesen Rahmen liegt beim Auftraggeber.
+//     05.09.2026, Arbeitsstand `e8116ba`, vorher (Seiten statisch): Eintritt 2.069.266 B ·   6 Stücke · 3.025.986 B gesamt
+//     05.09.2026, Arbeitsstand `e8116ba`, nachher (aufgeteilt):     Eintritt 1.285.166 B · 102 Stücke · 3.063.530 B gesamt
+// Der Eintritt fällt also um 784.100 B (−37,89 %). Die Gesamtsumme WÄCHST um 37.544 B (+1,24 %).
+//
+// DIESER ZUWACHS IST ENTSCHIEDEN, NICHT OFFEN — und er ist gemessen, nicht behauptet (JOB 3077).
+// Bis zum 05.09.2026 stand hier, Lieferpunkt 3(c) („die Summe wächst nicht") sei wörtlich nicht
+// erfüllt und die Entscheidung darüber liege beim Auftraggeber. Sie ist gefallen: Steuerung,
+// 05.09.2026, Entscheidung 13 (`UEBERGABE.md`), Zeile U4b in `PRIORITAETEN.md`. 3(c) wird NICHT als
+// Nullwachstumsbedingung geführt, sondern als ausdrücklich angenommenes, GEMESSENES
+// Verpackungsbudget: 37.544 B mehr Auslieferung gegen 784.100 B weniger Erstlast.
+//
+// DIE BEDINGUNG DIESER ANNAHME ist, dass der Zuwachs Rahmen ist und nicht Inhalt — und das wird seit
+// JOB 3077 bei jedem Testlauf neu erhoben, nicht mehr vermutet. Gemessen wird an den AUSGELIEFERTEN
+// Bytes: die Quellkarte des fertigen, minimierten Stücks ordnet jeden Bereich seiner Quelldatei zu.
+// Was zu keiner Quelle gehört, ist Rahmen — die Import-Zeilen zwischen den Stücken, die
+// Nachlade-Helfer und die erzeugte Ausfuhrliste `export{…}` am Stückende:
+//     Zuwachs 37.544 B = RAHMEN +39.256 B (104,6 %) + INHALT −1.712 B (−4,6 %)
+// DER AUSGELIEFERTE MODULINHALT WÄCHST ALSO NICHT, ER SCHRUMPFT um 1.712 B: in 102 kleinen Stücken
+// muss rollup weniger Namen entkollidieren (`Foo$1`, `Foo$2`) als in sechs großen, und das spart
+// mehr, als der Schnitt kostet. Damit ist Lieferpunkt 3(c) für den INHALT sogar wörtlich erfüllt;
+// gewachsen ist ausschließlich die Verpackung. Aufgeschlüsselt: 31 von 854 Modulen wachsen (zusammen
+// +3.167 B), 254 schrumpfen (zusammen −4.879 B). Der einzige nennenswerte Zuwachs ist DIESE DATEI
+// mit +3.037 B (2.325 → 5.362) — die 27 `lazy(() => import(…))`-Ausdrücke unten stehen als
+// Laufzeitcode da, wo ein statischer Import beim Bündeln spurlos verschwindet; der zweitgrößte
+// Zuwachs im ganzen Baum beträgt 32 B. Am 05.09.2026 wächst KEIN Seitenmodul aus `pages/`; die
+// schwersten schrumpfen (Capture −543 B, Admin −311 B). Diese Liste wird bei jedem Testlauf neu
+// erhoben und gedruckt, damit der Satz nicht veraltet. Kein Modul liegt doppelt — das hält (c1)
+// toleranzfrei fest.
+// Die Wächter dazu: (c3) verlangt, dass der ausgelieferte Modulinhalt NICHT wächst (Budget 0),
+// (c3r) stellt dieselbe Frage vor der Minimierung aus einer zweiten Quelle, (c4) hält die
+// Gesamtsumme unter 2,5 % Zuwachs. Reißt einer, ist die Annahme neu zu treffen — nicht die Schranke
+// zu heben. Zum Spielraum von (c3): rund 17 weitere nachgeladene Seiten trägt er, dann kippt er
+// (gemessen, siehe Kommentar an `INHALT_BUDGET_BYTES`).
 //
 // DIE ZAHLEN IN RUNDE 7 WAREN FALSCH und stehen hier korrigiert (ben, R7): dort war das „vorher"
 // ein `inlineDynamicImports`-Bau, der auch die FÜNF schon vor JOB 3030 getrennt ausgelieferten
 // Stücke einschmolz. Gegen dieses zu große Vergleichsbündel las sich der Gewinn als −58,07 %.
 // Bens eigener Produktionsbau des echten Vorstands `9e1e573` — 6 Stücke, Eintritt 2.026.850 B,
-// Summe 2.983.570 B — trifft den Gegenbau oben auf 0,06 % genau und bestätigt die −38 %.
+// Summe 2.983.570 B — traf den damaligen Gegenbau (04.09., `b203c44`: 2.028.116 B) auf 0,06 % genau
+// und bestätigte die −38 %. Beide Zahlen sind Historie: der Gegenbau baut den HEUTIGEN Quellstand,
+// steht am 05.09. deshalb schon bei 2.069.266 B und wächst mit dem Produkt weiter. Genau darum
+// steht oben ein Verhältnis und keine Byte-Schranke — die wäre über Nacht von selbst rot geworden.
 //
 // DREI DINGE, DIE HIER BEWUSST SO SIND:
 //   · KEINE AUSNAHME. Auch `PlaceholderPage` wird nachgeladen. Sobald eine Seite die Ausnahme wäre,
