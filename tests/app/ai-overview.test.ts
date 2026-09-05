@@ -15,10 +15,14 @@ describe("SCRUM-413: Verfügbare-KIs-Übersicht", () => {
       mode: "model",
     });
     expect(rows.map((r) => r.id)).toEqual(["cloud", "fallback", "local"]);
+    // JOB 3090: das Detail nennt seit dem zweiten Cloud-Anbieter (ChatGPT) den ANBIETER und das
+    // Modell — vorher stand hier die rohe Client-Kennung „anthropic:claude-sonnet-4-6", aus der ein
+    // Mensch den Empfänger seiner Texte erst deuten musste. Umgestellt, nicht abgeschwächt: die
+    // Zusage ist strenger geworden (Anbieter erkennbar), die Zeile bleibt „aktiv".
     expect(rows[0]).toEqual({
       id: "cloud",
       state: "active",
-      detail: "anthropic:claude-sonnet-4-6",
+      detail: "Claude (Anthropic) · claude-sonnet-4-6",
     });
     expect(rows[1]?.state).toBe("available");
     // Ohne verdrahteten lokalen LLM bleibt die Zeile ehrlich „geplant".

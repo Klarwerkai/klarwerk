@@ -6,6 +6,21 @@ import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./mo
 import type { ModelClient } from "./provider-model";
 
 export const CLOUD_API_KEY_ENV = "ANTHROPIC_API_KEY";
+// JOB 3090 (Pedis Entscheidung 24, 05.09.): ChatGPT (OpenAI) ist ein EIGENER Cloud-Anbieter neben
+// Anthropic — kein „lokaler LLM" mit fremder Adresse. Die drei Env-Namen sind von Pedi gesetzt und
+// werden nicht umbenannt; die Basis-URL ist eigen, damit ein Azure-/Proxy-Endpunkt möglich bleibt.
+// Sie sind ABSICHTLICH nicht exportiert: gelesen werden sie an der einen Stelle unten
+// (openAiCloudClientFromEnv), und ein Export wäre ein zweiter Weg an dieselbe Konfiguration.
+const OPENAI_API_KEY_ENV = "OPENAI_API_KEY";
+const OPENAI_BASE_URL_ENV = "OPENAI_BASE_URL";
+const OPENAI_DEFAULT_BASE_URL = "https://api.openai.com/v1";
+// Der Name des Clients trägt BEIDE Auskünfte, die die Fläche braucht: dass der Lauf in die CLOUD
+// geht und WELCHER Anbieter sie ist. `local:` (s. openAiCompatibleClient) und `anthropic:` bleiben
+// dadurch eindeutig unterscheidbar; `apps/web/src/lib/aiOverview.ts` liest genau dieses Präfix.
+const OPENAI_CLIENT_NAME_PREFIX = "cloud:openai";
+// Anzeigename in Fehlermeldungen. „Lokaler LLM antwortete mit 429" wäre über einen Anbieter in den
+// USA schlicht falsch — dieselbe Klasse Unwahrheit, gegen die dieser Auftrag angetreten ist.
+const OPENAI_BEZEICHNUNG = "ChatGPT (OpenAI)";
 export const CLOUD_API_KEYCHAIN_SERVICE = "Klarwerk";
 export const CLOUD_API_KEYCHAIN_ACCOUNT = CLOUD_API_KEY_ENV;
 export const LEGACY_CLOUD_API_KEYCHAIN_SERVICE = "KLARWERK-App-Anthropic";
@@ -261,17 +276,31 @@ export function createModelClientFromEnv(
   });
 }
 
-// SCRUM-424 (Pedi 03.07.): generischer OpenAI-kompatibler Client für den EIGENEN lokalen
-// LLM-Server. Deckt vLLM (z. B. Qwen3-32B-AWQ), Ollama, llama.cpp-Server, LM Studio u. a. ab —
-// sie alle sprechen /v1/chat/completions. Der Server ist nur über den SSH-Tunnel auf localhost
-// erreichbar; ein optionaler Schlüssel bleibt (wie beim Cloud-Client) serverseitig und verlässt
-// den Prozess nie. `fetchFn` injizierbar → in Tests ohne Netz prüfbar.
-export interface LocalHttpModelConfig {
-  baseUrl: string; // z. B. http://127.0.0.1:8000/v1
+// SCRUM-424 (Pedi 03.07.): generischer OpenAI-kompatibler Client. Deckt den EIGENEN lokalen
+// LLM-Server ab — vLLM (z. B. Qwen3-32B-AWQ), Ollama, llama.cpp-Server, LM Studio u. a. sprechen
+// alle /v1/chat/completions —, und seit JOB 3090 denselben Weg zu ChatGPT (OpenAI). Der Schlüssel
+// bleibt (wie beim Anthropic-Client) serverseitig und verlässt den Prozess nie. `fetchFn`
+// injizierbar → in Tests ohne Netz prüfbar.
+//
+// JOB 3090: der Typ heißt nicht mehr `LocalHttpModelConfig`. Er konfiguriert seit diesem Auftrag
+// AUCH einen externen Cloud-Anbieter; ein „Local" im Namen wäre genau die Etikettenlüge, gegen die
+// dieser Auftrag steht. Was WIRKLICH lokal ist, entscheidet nicht dieser Typ, sondern
+// `isConfirmedLocalOrigin` (s. u.) — und für OpenAI gar nichts davon: dort ist der Egress-Riegel
+// hart gesetzt.
+export interface ChatCompletionsModelConfig {
+  baseUrl: string; // z. B. http://127.0.0.1:8000/v1 oder https://api.openai.com/v1
   model: string;
   apiKey?: string;
   fetchFn?: typeof fetch;
   timeoutMs?: number;
+  // JOB 3090: der vollständige Client-NAME. Ohne Angabe `local:${model}` — der Bestandsname des
+  // eigenen lokalen LLM, unverändert. Der OpenAI-Cloud-Weg setzt ihn auf `cloud:openai:${model}`,
+  // damit die Fläche den Anbieter nennen kann, statt ihn als „lokal" auszugeben.
+  name?: string;
+  // JOB 3090: der Anzeigename in Fehlermeldungen. Ohne Angabe „Lokaler LLM" (Wortlaut unverändert).
+  // Das Muster „<Name> antwortete mit <Status>" bleibt erhalten — `services/app/src/
+  // ai-check-worker.ts:147` liest den HTTP-Status genau daraus.
+  bezeichnung?: string;
   // AUFTRAG-mega18 Block E (SCRUM-544): UNTERGRENZE des Antwort-Budgets für den EIGENEN lokalen LLM
   // (Env KLARWERK_LOCAL_LLM_MAX_TOKENS). Die Aufrufer-Budgets (Default 1024, extract 16384 …) sind auf
   // die Cloud-Ökonomie gerechnet; ein DENKMODELL verbraucht sie in seiner Denkphase und liefert dann
@@ -303,7 +332,10 @@ interface OpenAiChatChoice {
 // alles andere wirft einen typisierten, unterscheidbaren Fehler. NICHT-leerer Inhalt geht unverändert
 // durch — auch wenn finish_reason "length" ist (die extract-Rettung, salvageTruncatedExtract, lebt
 // bewusst von abgeschnittenem, aber vorhandenem JSON).
-function requireChatContent(data: unknown, maxTokens: number): string {
+// JOB 3090: `bezeichnung` benennt den Anbieter, der nichts geliefert hat. Vorgabe „Lokaler LLM"
+// (Bestandswortlaut); für ChatGPT steht dort „ChatGPT (OpenAI)". Der maschinenlesbare Teil
+// (`reason`, `finishReason`, `maxTokens`) ist davon unberührt.
+function requireChatContent(data: unknown, maxTokens: number, bezeichnung: string): string {
   const choice = (data as { choices?: OpenAiChatChoice[] } | null | undefined)?.choices?.[0];
   const message = choice?.message;
   const content = typeof message?.content === "string" ? message.content : "";
@@ -318,31 +350,35 @@ function requireChatContent(data: unknown, maxTokens: number): string {
   const detail = `max_tokens=${maxTokens}, finish_reason=${finishReason ?? "-"}`;
   if (sawReasoning) {
     throw new ModelEmptyResponseError(
-      `Lokaler LLM lieferte nur eine Denkphase (reasoning) ohne Antwortinhalt (${detail}).`,
+      `${bezeichnung} lieferte nur eine Denkphase (reasoning) ohne Antwortinhalt (${detail}).`,
       { reason: "reasoning-only", finishReason, sawReasoning: true, maxTokens },
     );
   }
   if (finishReason === "length") {
     throw new ModelEmptyResponseError(
-      `Lokale LLM-Antwort wurde am Token-Limit abgeschnitten, bevor Antwortinhalt entstand (${detail}).`,
+      `${bezeichnung}: Antwort wurde am Token-Limit abgeschnitten, bevor Antwortinhalt entstand (${detail}).`,
       { reason: "truncated", finishReason, maxTokens },
     );
   }
-  throw new ModelEmptyResponseError(`Lokaler LLM lieferte keinen Antwortinhalt (${detail}).`, {
+  throw new ModelEmptyResponseError(`${bezeichnung} lieferte keinen Antwortinhalt (${detail}).`, {
     reason: "empty",
     finishReason,
     maxTokens,
   });
 }
 
-export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClient {
+export function openAiCompatibleClient(config: ChatCompletionsModelConfig): ModelClient {
   const fetchFn = config.fetchFn ?? fetch;
   const base = config.baseUrl.replace(/\/+$/, "");
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
+  const bezeichnung = config.bezeichnung ?? "Lokaler LLM";
   // WP-BILD-1c: BEWUSST kein completeVision — ob ein lokaler LLM Bilder kann, ist nicht garantiert;
   // der Reasoner behandelt fehlenden Bild-Eingang ehrlich als Fehlschlag (nie erfinden).
+  // JOB 3090: dasselbe gilt für den OpenAI-Cloud-Weg über diese Funktion. Der Bildpfad bleibt der
+  // Anthropic-Kante vorbehalten (anthropicClient.completeVision); ein Bildauftrag an ChatGPT wird
+  // ehrlich als Fehlschlag gemeldet, statt eine Beschreibung zu erfinden.
   return {
-    name: `local:${config.model}`,
+    name: config.name ?? `local:${config.model}`,
     // JOB 3036: s. anthropicClient — der reine Modellbezeichner des eigenen lokalen Modells.
     model: config.model,
     // SCRUM-502 Schicht 2: `confidential` ist Interface-Pflicht; der Egress-Wächter sitzt im
@@ -380,7 +416,7 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
           signal: controller.signal,
         });
         if (!res.ok) {
-          throw new ModelHttpError(`Lokaler LLM antwortete mit ${res.status}`, res.status);
+          throw new ModelHttpError(`${bezeichnung} antwortete mit ${res.status}`, res.status);
         }
         const data = await res.json();
         // JOB 3074: NUR MELDEN, WAS DER SERVER WIRKLICH NENNT. Ein lokaler LLM-Server MUSS keinen
@@ -394,11 +430,11 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
         meldeModellVerbrauch(usage?.prompt_tokens, usage?.completion_tokens);
         // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
         // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty).
-        return requireChatContent(data, budget);
+        return requireChatContent(data, budget, bezeichnung);
       } catch (err) {
         if (timedOut) {
           throw new ModelTimeoutError(
-            `Lokaler LLM überschritt das Zeitlimit von ${timeoutMs} ms`,
+            `${bezeichnung} überschritt das Zeitlimit von ${timeoutMs} ms`,
             timeoutMs,
           );
         }
@@ -433,6 +469,52 @@ export function createLocalClientFromEnv(
   });
 }
 
+// ================================================================================================
+// JOB 3090 — CHATGPT IST EIN CLOUD-ANBIETER UND SAGT DAS AUCH.
+// ================================================================================================
+//
+// Pedis Entscheidung 24 (05.09., 19:23): „Als KI werden wir ChatGPT nehmen … neuer Token für
+// KLARWERK und Klara". Vor diesem Auftrag gab es dafür genau einen Weg — den LOKALEN
+// (`createLocalClientFromEnv`), und der hätte gelogen: der Egress-Riegel wäre über
+// `isConfirmedLocalOrigin` zwar gefallen (api.openai.com ist kein Loopback), der Client hätte aber
+// weiter `local:gpt-…` geheißen und die Admin-Übersicht ihn als „eigenen lokalen LLM-Server"
+// ausgewiesen — über einen Anbieter in den USA.
+//
+// KEIN ZWEITER TRANSPORTWEG: `openAiCompatibleClient` kann /chat/completions, Bearer, die
+// usage-Meldung und die typisierten Leer-Antwort-Fehler bereits. Er bekommt zwei Parameter mehr
+// (Name, Bezeichnung) statt einer zweiten Fassung derselben HTTP-Schleife.
+//
+// KEIN `maxTokensFloor`: die Untergrenze aus AUFTRAG-mega18 Block E ist auf EIGENE Hardware
+// gerechnet, wo Kopfraum nichts kostet. Bei einem Anbieter, der pro Token abrechnet, wäre sie eine
+// stillschweigende Kostenerhöhung.
+//
+// Ohne Schlüssel ODER ohne Modell: `undefined` — inaktiv, ohne Fehler und ohne Log-Rauschen
+// (dasselbe Muster wie `createLocalClientFromEnv`). Ein Schlüssel ohne Modell ist KEINE
+// Konfiguration: `REASONER_MODEL` hat für Anthropic einen Vorgabewert, für OpenAI wäre jeder
+// geratene Modellname eine Erfindung.
+//
+// MODUL-INTERN, absichtlich nicht exportiert: nach außen geht ausschließlich der gecappte Client
+// aus `createCappedCloudClientFromEnv` unten. Wer den rohen Client bekäme, bekäme den Schlüssel und
+// könnte den Vertraulichkeits-Wächter weglassen.
+function openAiCloudClientFromEnv(
+  env: Record<string, string | undefined>,
+): ModelClient | undefined {
+  const apiKey = env[OPENAI_API_KEY_ENV]?.trim();
+  const model = env.REASONER_MODEL?.trim();
+  if (!apiKey || !model) {
+    return undefined;
+  }
+  const timeoutMs = parseTimeoutMs(env.REASONER_TIMEOUT_MS);
+  return openAiCompatibleClient({
+    baseUrl: env[OPENAI_BASE_URL_ENV]?.trim() || OPENAI_DEFAULT_BASE_URL,
+    model,
+    apiKey,
+    name: `${OPENAI_CLIENT_NAME_PREFIX}:${model}`,
+    bezeichnung: OPENAI_BEZEICHNUNG,
+    ...(timeoutMs !== undefined ? { timeoutMs } : {}),
+  });
+}
+
 // SCRUM-502 R8 (Encapsulation + Credential-Gating): der EINZIGE Weg, von außerhalb dieses Moduls an
 // einen Cloud-Modell-Client zu kommen. Der ROHE Client (anthropicClient) und der Credential-Zugriff
 // (resolveCloudApiKey/Keychain) bleiben modul-intern und werden NICHT re-exportiert; nach außen wird
@@ -440,12 +522,29 @@ export function createLocalClientFromEnv(
 // (rejectsConfidential=true) und dem globalen In-Flight-Cap. Ein Aufrufer kann so weder den Schlüssel
 // erlangen noch den Vertraulichkeits-Guard weglassen. Ohne Schlüssel → undefined (deterministischer
 // Betrieb). Die Keychain-Injektionen bleiben für den Desktop-/Skip-Keychain-Pfad durchreichbar.
+//
+// JOB 3090 — DIE ANBIETERWAHL, in einem Satz: SIND OPENAI_API_KEY UND REASONER_MODEL GESETZT,
+// ARBEITET CHATGPT (OPENAI); SONST — UND NUR DANN — DER ANTHROPIC-WEG WIE BISHER. Berechenbar, nicht
+// „was zuerst gefunden wird": bei ZWEI gesetzten Schlüsseln gewinnt immer OpenAI, weil das die
+// ausdrücklich neu getroffene Wahl ist (Pedis Entscheidung 24) und Anthropic laut derselben
+// Entscheidung die ALTERNATIVE bleibt. Ist keiner der beiden Wege konfiguriert, bleibt der
+// Cloud-Zugang inaktiv (undefined) und der deterministische Ersatzmodus greift unverändert.
+//
+// Der Anthropic-Zweig wird bei gesetzter OpenAI-Konfiguration GAR NICHT betreten (`??` wertet rechts
+// nur bei `undefined` aus): kein Keychain-Zugriff, keine Fehlzeile auf stderr über einen Schlüssel,
+// den niemand mehr sucht.
+//
+// EIN Ort, an dem für die Cloud `rejectsConfidential: true` gesetzt wird — für BEIDE Anbieter. Für
+// OpenAI ist die Marke hart und nicht origin-abhängig wie beim lokalen Weg unten: OpenAI ist per
+// Definition extern, auch hinter einem Azure-/Proxy-Endpunkt. Eine Env, die das lockert, gibt es
+// nicht und darf es nicht geben.
 export function createCappedCloudClientFromEnv(
   env: Record<string, string | undefined> = process.env,
   keychainLookup: CloudKeyLookup = findCloudKeyInKeychain,
   keychainStore: CloudKeyStore = storeCloudKeyInKeychain,
 ): ModelClient | undefined {
-  const raw = createModelClientFromEnv(env, keychainLookup, keychainStore);
+  const raw =
+    openAiCloudClientFromEnv(env) ?? createModelClientFromEnv(env, keychainLookup, keychainStore);
   return raw ? cappedModelClient(raw, { rejectsConfidential: true }) : undefined;
 }
 

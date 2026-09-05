@@ -410,6 +410,15 @@ export function assembleServices(
   // — GECAPPT aus der Factory (Egress-Wächter rejectsConfidential=true + globaler In-Flight-Cap sind
   // dort zwingend verdrahtet; der rohe Client + der Schlüssel bleiben modul-intern, hier nicht
   // erreichbar). Ohne Schlüssel → undefined (deterministischer Betrieb).
+  //
+  // JOB 3090 — WELCHER CLOUD-ANBIETER, in einem Satz: SIND `OPENAI_API_KEY` UND `REASONER_MODEL`
+  // GESETZT, ARBEITET CHATGPT (OPENAI); SONST — UND NUR DANN — DER ANTHROPIC-WEG WIE BISHER; ist
+  // keiner von beiden konfiguriert, bleibt der Cloud-Zugang aus und der deterministische Ersatzmodus
+  // greift unverändert. Die Wahl steht in `createCappedCloudClientFromEnv` (model-client.ts) und
+  // NICHT hier, weil es genau EINEN Ort geben muss, an dem für die Cloud `rejectsConfidential: true`
+  // gesetzt wird — zwei Fabriken hier nebeneinander wären zwei Egress-Regeln, und die zweite ist die,
+  // die eines Tages vergessen wird. Diese Zeile bleibt die Verdrahtung: EIN Cloud-Client, gecappt.
+  // Der lokale Weg darunter ist von der Wahl unberührt (Vorrang und Verhalten unverändert).
   const cappedCloud = createCappedCloudClientFromEnv(
     process.env,
     process.env.KLARWERK_SKIP_KEYCHAIN ? () => undefined : undefined,

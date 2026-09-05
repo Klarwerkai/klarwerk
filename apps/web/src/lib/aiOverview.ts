@@ -14,6 +14,41 @@ export interface AiAccessRow {
   detail: string | null;
 }
 
+// ================================================================================================
+// JOB 3090 — DIE CLOUD-ZEILE NENNT DEN ANBIETER, NICHT NUR EINE KENNUNG.
+// ================================================================================================
+//
+// Bis hierher stand in der Cloud-Zeile `model ?? provider` — und beides ist derselbe Wert: der NAME
+// des Modell-Clients (`services/reasoner/src/service.ts:956-957` setzt `provider` und `model` beide
+// auf `activeModel.name`). Der Mensch las also „anthropic:claude-sonnet-4-6" und musste den
+// Modellnamen deuten, um zu wissen, wem seine Texte gezeigt werden. Mit einem ZWEITEN Cloud-Anbieter
+// (ChatGPT, JOB 3090) ist das keine Unschönheit mehr, sondern die Frage, die die Zeile beantworten
+// muss: WELCHES Unternehmen bekommt die Daten?
+//
+// DIE QUELLE IST DER CLIENT-NAME, nichts sonst. Ihn setzt der Ort, der die Verbindung wirklich
+// aufbaut (`services/reasoner/src/model-client.ts`): `cloud:openai:<modell>`, `anthropic:<modell>`,
+// `local:<modell>`. Diese Tabelle übersetzt das Präfix in einen Namen, den ein Mensch kennt — sie
+// erfindet nichts dazu und rät nicht: ein unbekanntes Präfix bleibt WÖRTLICH stehen (lieber eine
+// rohe Kennung als ein falscher Anbietername).
+const ANBIETER_NAME: Readonly<Record<string, string>> = {
+  "cloud:openai": "ChatGPT (OpenAI)",
+  anthropic: "Claude (Anthropic)",
+};
+
+/**
+ * Aus dem Client-Namen die Zeile „<Anbieter> · <Modell>" — oder der unveränderte Name, wenn der
+ * Anbieter nicht sicher zuzuordnen ist. Reine Ableitung, keine Anzeige-Entscheidung.
+ */
+export function anbieterUndModell(clientName: string): string {
+  for (const [praefix, anbieter] of Object.entries(ANBIETER_NAME)) {
+    if (clientName.startsWith(`${praefix}:`)) {
+      const modell = clientName.slice(praefix.length + 1);
+      return modell.length > 0 ? `${anbieter} · ${modell}` : anbieter;
+    }
+  }
+  return clientName;
+}
+
 export function aiAccessRows(cfg: {
   configured: boolean;
   cloudConfigured: boolean;
@@ -26,9 +61,12 @@ export function aiAccessRows(cfg: {
 }): AiAccessRow[] {
   return [
     {
+      // JOB 3090: das Detail nennt Anbieter UND Modell (s. anbieterUndModell). OHNE
+      // Cloud-Konfiguration bleibt es `null` — ein Anbietername ohne Schlüssel wäre eine Behauptung
+      // über eine Verbindung, die es nicht gibt.
       id: "cloud",
       state: cfg.cloudConfigured ? "active" : "missing",
-      detail: cfg.cloudConfigured ? (cfg.model ?? cfg.provider) : null,
+      detail: cfg.cloudConfigured ? anbieterUndModell(cfg.model ?? cfg.provider) : null,
     },
     {
       // Der Ersatzmodus ist immer da: „aktiv", wenn er gerade antwortet (kein Modell),
