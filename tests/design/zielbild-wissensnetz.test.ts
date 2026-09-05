@@ -75,6 +75,26 @@ const ORIGIN = "http://klarwerk.test";
  * Bestand messen wie bisher.
  */
 const KATEGORIE_OHNE_WIRKUNG = "Kategorie ohne Wirkung";
+/**
+ * JOB 3073 (Codex' dritte Prueflücke zu JOB 3070: „lange ungetrennte Nachbarnamen bei 390 px
+ * ergaenzen"): ein Schlagwort ohne Leerzeichen und ohne Bindestrich. Seit JOB 3073 SIND die Themen
+ * der Leseansicht Schlagworte — solche Woerter sind darin der Normalfall, nicht die Ausnahme, und
+ * sie stehen auch im Zusammen-Satz der NACHBARZEILE, die keinen Link traegt.
+ *
+ * DIE LAENGE IST NICHT BELIEBIG. Mit 39 Zeichen passte der Name noch in die 316 px breite Zeile,
+ * und der Fall waere gruen gewesen, ohne etwas zu zeigen. Mit diesen 62 Zeichen mass Chromium vor
+ * der Korrektur `mainScrollBreite: 477` gegen `mainSichtBreite: 390` — die Seite liess sich
+ * seitlich schieben. Ein Waechter, der nur bestaetigt, was ohnehin passt, ist keiner.
+ */
+const THEMA_LANG_OHNE_TRENNSTELLE =
+  "Dichtungswerkstoffkonformitaetspruefungsdokumentationsverfahren";
+/**
+ * JOB 3073 · RUNDE 2 (Codex' Korrekturpflicht 1): dasselbe Wort MIT Rand-Leerzeichen, so wie die
+ * echten Routen es annehmen und zurueckgeben. Bis Runde 1 machte die Themenbildung daraus
+ * „Dichtungen" — einen Wert, den die Bibliothek nicht kennt und deshalb aus dem Filter WIRFT.
+ * T3 klickt genau diese Zeile an und zaehlt nach, was danach in der Bibliothek steht.
+ */
+const TAG_MIT_RAND = " Dichtungen ";
 const THEMA_GROSS = "Hygienic Design"; // 4 Traeger, freigegeben und belegt → gruen, groesster, Vorgabe
 const THEMA_ZWEIT = "Reinigung"; // 2 Traeger, freigegeben und belegt → gruen (nicht gewaehlt)
 const THEMA_OFFEN = "Dichtungen"; // 1 Traeger, nicht freigegeben → gelb „in Pruefung"
@@ -1417,14 +1437,16 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
   // der Zusammen-Satz waere dort nicht messbar. Hier stehen drei Themen, zwei Zustaende und genau
   // eine Kante.
   //
-  // T1 UND T2 SIND ZWEI BESTAENDE, und der Unterschied ist der Gegenstand von Codex' Befund:
+  // T1 UND T2 SIND ZWEI BESTAENDE, und der Unterschied war der Gegenstand von Codex' Befund:
   //   T1  Kategorie GLEICH dem Schlagwort → die Liste nennt dieselben Themen wie die Zeichnung.
-  //       Das ist der Fall, der heute traegt, und er misst den ganzen Leseweg.
-  //   T2  Kategorie VERSCHIEDEN von allen Schlagworten (Korrekturpflicht 2) → die Liste nennt
-  //       andere Themen als die Zeichnung, weil der Server zwei Achsen fuehrt
-  //       (`lesemodell.ts` nach `category`, `themenkarte.ts` nach `tags`; gemessen in
-  //       `tests/wissensnetz-leseweg/namensraum-kette.test.tsx`). Diese Seite kann das nicht
-  //       heilen — `services/**` ist kein Zielpfad —, aber sie muss es ANSAGEN. Genau das misst T2.
+  //       Dieser Fall trug schon vor JOB 3073 und misst den ganzen Leseweg.
+  //   T2  Kategorie VERSCHIEDEN von allen Schlagworten (Korrekturpflicht 2). Bis JOB 3071 nannte
+  //       die Liste hier ANDERE Themen als die Zeichnung, weil der Server zwei Achsen fuehrte;
+  //       die Seite konnte das nur ANSAGEN. Seit JOB 3073 gibt es eine Achse
+  //       (`themenVon` in `services/wissensnetz/src/themenkarte.ts`, benutzt von
+  //       `services/wissensnetz/src/lesemodell.ts`; an der Route gemessen in
+  //       `tests/wissensnetz-leseweg/namensraum-kette.test.tsx`) — T2 misst deshalb jetzt die
+  //       GLEICHHEIT, und zusaetzlich einen langen Namen ohne Trennstelle.
   it("T1 · TELEFON 390×844 (Kategorie = Schlagwort): kein SVG im Seiteninhalt, nichts ragt seitlich heraus, jede Themenzeile liegt ganz im Fenster — und sagt Zustand und gemeinsames Vorkommen in Worten", async () => {
     const s = S("T");
     const hauptApp = zielApp as ReturnType<typeof buildApp>;
@@ -1548,33 +1570,37 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
     }
   });
 
-  // ---- JOB 3070 · D3 (Fall T2): KATEGORIE ≠ SCHLAGWORT — die Seite sagt die Differenz an ----------
-  // KORREKTURPFLICHT 2 von Codex, wörtlich: „Unit- und Chromium-Bestand so ändern, dass `category`
-  // ausdrücklich von allen `tags` verschieden ist." Genau das ist dieser Bestand — und er zeigt,
-  // was der HEUTIGE Server daraus macht: `metrik.themen` entsteht aus `ko.category`
-  // (`services/wissensnetz/src/lesemodell.ts`), die Knoten aus `ko.tags`
-  // (`services/wissensnetz/src/themenkarte.ts`). Die Liste nennt EIN Thema, die Zeichnung zeichnet
-  // DREI andere.
+  // ---- JOB 3073 (Fall T2): KATEGORIE ≠ SCHLAGWORT — und die Liste sagt trotzdem DASSELBE ---------
+  // WAS HIER BIS JOB 3071 STAND: derselbe Bestand, aber die Messung des BRUCHS. Der Server bildete
+  // `metrik.themen` aus `ko.category` und die Knoten aus `ko.tags`; die Liste nannte EIN Thema, die
+  // Zeichnung zeichnete DREI andere, und die Seite konnte den Unterschied nur ANSAGEN
+  // (`wissensnetz.lesen.nichtInListe`). Gemessen war das als `zustandsworte: 0`, `zusammen: 0`,
+  // `zweiteAchse: "Die Zeichnung führt 3 Themen …"`.
   //
-  // Der von Codex erwartete Beleg („die Mengen sind gleich") ist damit HEUTE NICHT ERFUELLBAR, ohne
-  // die Achsen im Server zusammenzuführen — und `services/**` ist für JOB 3070 kein Zielpfad (D2 ist
-  // an genau diesem Riegel gescheitert). Was hier gemessen wird, ist deshalb das, was die
-  // Oberfläche schuldet, solange die Frage offen ist: Sie VERSCHWEIGT die Differenz nicht. Der
-  // Ansagesatz steht mit der gemessenen Zahl, und keine Zeile behauptet einen Zustand, den die
-  // Antwort für ihren Namen nicht hergibt.
-  it("T2 · TELEFON 390×844 (Kategorie ≠ Schlagwort): die Seite sagt an, dass die Zeichnung Themen fuehrt, zu denen keine Zeile steht", async () => {
+  // SEIT JOB 3073 GIBT ES EINE ACHSE (`themenVon` in `services/wissensnetz/src/themenkarte.ts`,
+  // benutzt von `services/wissensnetz/src/lesemodell.ts`). Derselbe Bestand misst deshalb jetzt das
+  // Gegenteil, und zwar an der GEBAUTEN Seite: jedes gezeichnete Thema hat auf dem Telefon seine
+  // Zeile, mit Zustand und gemeinsamem Vorkommen — und der Ansagesatz fehlt, weil es nichts
+  // anzusagen gibt.
+  //
+  // UND EIN LANGER, UNGETRENNTER NACHBARNAME (Codex' dritte Prueflücke zu JOB 3070: „T1/T2
+  // verwenden kurze Namen; lange ungetrennte Nachbarnamen bei 390 px ergaenzen"). Das ist kein
+  // konstruierter Fall: Themen SIND seit JOB 3073 Schlagworte, und ein Schlagwort wie
+  // „Dichtungswerkstoffkonformitaetspruefung" hat keine Trennstelle. Er steht nicht nur als
+  // Linktext, sondern auch IM Zusammen-Satz der Nachbarzeile — dort trug er bis JOB 3073 keine
+  // Umbruchregel.
+  it("T2 · TELEFON 390×844 (Kategorie ≠ Schlagwort): jedes gezeichnete Thema hat seine Zeile, kein Ansagesatz — auch mit einem langen Namen ohne Trennstelle", async () => {
     const s = S("T2");
     const hauptApp = zielApp as ReturnType<typeof buildApp>;
     const hauptToken = zielToken;
-    const vierte = await frischeApp("pedi-telefon2@job3070.test");
+    const vierte = await frischeApp("pedi-telefon2@job3073.test");
     try {
-      // Dieselben drei Schlagworte wie in T1 — nur traegt JEDES Objekt jetzt eine Kategorie, die
-      // keines seiner Schlagworte ist.
+      // Drei Schlagworte, KEINES davon die Kategorie — und eines davon lang und ungetrennt.
       const geteilt = await objektAnlegen(
         vierte.a,
         vierte.headers,
         "CIP-Reinigung mit Dichtungswechsel",
-        ["Reinigung", "Dichtungen"],
+        ["Reinigung", THEMA_LANG_OHNE_TRENNSTELLE],
         KATEGORIE_OHNE_WIRKUNG,
       );
       await freigeben(vierte.a, vierte.headers, geteilt);
@@ -1588,31 +1614,53 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
       zielApp = vierte.a;
       zielToken = vierte.token;
 
+      // ── ZUERST BEI 1280 px: gezeichnet und gesprochen sind DIESELBE Menge, obwohl die Kategorie
+      //    in keinem Schlagwort vorkommt. Das ist der Kern von JOB 3073, an der gebauten Seite.
+      await ladeSeite(s);
+      const achsen = await s.evaluate<Achsen>(fn(ACHSEN));
+      console.info(`JOB 3073 · T2/Achsen · ${JSON.stringify(achsen)}`);
+      expect([...achsen.gezeichnet].sort()).toEqual(
+        ["Reinigung", THEMA_LANG_OHNE_TRENNSTELLE, "Ventile"].sort(),
+      );
+      expect([...achsen.gesprochen].sort()).toEqual([...achsen.gezeichnet].sort());
+      expect(achsen.gesprochen, "die Kategorie ist kein Thema mehr").not.toContain(
+        KATEGORIE_OHNE_WIRKUNG,
+      );
+
       await s.setViewportSize({ width: 390, height: 844 });
+      // Kein `ladeSeite` — das wartet auf die Zeichnung und die Seitenleiste, und genau die darf es
+      // hier nicht geben. Gewartet wird auf den Leseweg.
       await s.goto(`${ORIGIN}/wissensnetz`, { waitUntil: "load", timeout: 60_000 });
       await s.waitForFunction(
         fn(
-          `() => document.querySelector('[data-testid="metrik-themen-zweite-achse"]') !== null && document.querySelector('main svg') === null`,
+          `() => document.querySelectorAll('[data-testid="metrik-thema"]').length >= 3 && document.querySelector('main svg') === null`,
         ),
         undefined,
         { timeout: 30_000 },
       );
       const b = await s.evaluate<Telefon>(fn(TELEFON));
-      console.info(`JOB 3070 D3 · T2 · ${JSON.stringify(b)}`);
+      console.info(`JOB 3073 · T2 · ${JSON.stringify(b)}`);
 
-      // DIE LAGE, gemessen: eine Zeile (die Kategorie), drei gezeichnete Themen — die es auf dem
-      // Telefon gar nicht zu sehen gibt.
-      expect(b.zeilen.map((z) => z.thema)).toEqual([KATEGORIE_OHNE_WIRKUNG]);
-      expect(b.zustandsworte, "die Kategorie hat keinen Knoten, also kein Zustandswort").toBe(0);
-      expect(b.zusammen, "und erst recht keinen Zusammen-Satz").toBe(0);
+      // DIE LAGE, gemessen: drei Zeilen — genau die gezeichneten Themen, jede mit ihrem Zustand.
+      expect(b.zeilen.map((z) => z.thema).sort()).toEqual(
+        ["Reinigung", THEMA_LANG_OHNE_TRENNSTELLE, "Ventile"].sort(),
+      );
+      expect(b.zeilen.map((z) => z.thema)).not.toContain(KATEGORIE_OHNE_WIRKUNG);
+      expect(b.zustandsworte, "der Zustand steht in Worten").toBe(3);
+      expect(b.zusammen, "das gemeinsame Vorkommen steht in Worten, an beiden Enden").toBe(2);
 
-      // DER KERN: die Seite verschweigt es nicht. Der Satz steht, mit der Zahl der gezeichneten
-      // Themen ohne Zeile (Reinigung, Dichtungen, Ventile) und dem Grund.
+      // DER KERN: es gibt nichts mehr anzusagen — der Satz der zweiten Achse fehlt.
+      expect(b.zweiteAchse, "keine gezeichneten Themen ohne Zeile").toBeNull();
+
+      // DER LANGE NAME steht wirklich IM Zusammen-Satz der Nachbarzeile — sonst misst die
+      // Geometrie unten einen Fall, den es gar nicht gibt.
       const t = i18n.getFixedT("de");
-      expect(b.zweiteAchse).toBe(t("wissensnetz.lesen.nichtInListe", { count: 3 }));
-      expect(b.zweiteAchse).toContain("3");
+      const reinigung = b.zeilen.find((z) => z.thema === "Reinigung");
+      expect(reinigung?.text, "der lange Name steht im Zusammen-Satz").toContain(
+        t("wissensnetz.lesen.zusammen", { themen: THEMA_LANG_OHNE_TRENNSTELLE }),
+      );
 
-      // Und die Geometrie haelt auch hier: kein SVG im Inhalt, nichts ragt heraus.
+      // Und die Geometrie haelt AUCH DANN: kein SVG im Inhalt, nichts ragt heraus.
       expect(b.svgImInhalt).toBe(0);
       expect(b.dokumentScrollBreite).toBeLessThanOrEqual(b.dokumentSichtBreite);
       expect(b.mainScrollBreite).toBeLessThanOrEqual(b.mainSichtBreite);
@@ -1622,6 +1670,118 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
       zielApp = hauptApp;
       zielToken = hauptToken;
       await vierte.a.close();
+      await s.setViewportSize({ width: 1280, height: 800 });
+      await ladeSeite(s);
+    }
+  });
+
+  // ---- JOB 3073 · RUNDE 2 (Fall T3): DER GEKLICKTE WEG IN DIE BIBLIOTHEK, BIS ZUR LISTE ----------
+  // CODEX' KORREKTURPFLICHT 2, zweite Haelfte: „Den tatsaechlichen Link bis zur montierten
+  // Bibliothek einschliesslich Filterbereinigung pruefen." F7 unten misst nur die ADRESSE, und
+  // `tests/wissensnetz-achse/bibliothekstreffer.test.tsx` misst die Filterkette ohne Browser. Was
+  // beiden fehlte: die gebaute Bibliothek, die den Link wirklich einloest.
+  //
+  // DER BESTAND IST DER STREITFALL AUS RUNDE 1: zwei Objekte tragen das GESPEICHERTE Schlagwort
+  // `" Dichtungen "` (mit Rand-Leerzeichen; die echten Routen nehmen das an). Bis Runde 1 hiess das
+  // Thema in der Liste „Dichtungen"; die Bibliothek kennt diesen Wert nicht, ihre Wertpruefung
+  // (`pruneFacetSelectionToKnownValues`) warf den Filter deshalb WEG — und der Klick landete auf
+  // der vollstaendigen Bibliothek, die wie das Ergebnis des Themas aussah. Gemessen wird hier
+  // gegen die KENNUNGEN aus der Anlage, nicht gegen eine Zahl.
+  it("T3 · der Klick auf eine Themenzeile zeigt in der Bibliothek GENAU die gezaehlten Objekte — auch bei einem Schlagwort mit Rand-Leerzeichen", async () => {
+    const s = S("T3");
+    const hauptApp = zielApp as ReturnType<typeof buildApp>;
+    const hauptToken = zielToken;
+    const fuenfte = await frischeApp("pedi-klickweg@job3073.test");
+    try {
+      const beide = [
+        await objektAnlegen(
+          fuenfte.a,
+          fuenfte.headers,
+          "CIP-Reinigung mit Dichtungswechsel",
+          [TAG_MIT_RAND, "Ventile"],
+          KATEGORIE_OHNE_WIRKUNG,
+        ),
+        await objektAnlegen(
+          fuenfte.a,
+          fuenfte.headers,
+          "Werkstoffliste Dichtungen",
+          [TAG_MIT_RAND],
+          KATEGORIE_OHNE_WIRKUNG,
+        ),
+      ].sort();
+      // Das dritte Objekt traegt das Schlagwort NICHT — nur so ist „genau diese zwei" eine Aussage.
+      const drittes = await objektAnlegen(
+        fuenfte.a,
+        fuenfte.headers,
+        "Ventilwartung Entwurf",
+        ["Ventile"],
+        KATEGORIE_OHNE_WIRKUNG,
+      );
+      zielApp = fuenfte.a;
+      zielToken = fuenfte.token;
+
+      await ladeSeite(s);
+      // Die Zeile, die dieses Thema traegt — gesucht ueber den getrimmten Namen, damit dieser Fall
+      // auch dann etwas misst, wenn die Themenbildung wieder normalisiert.
+      const zeile = await s.evaluate<{ thema: string | null; text: string; href: string } | null>(
+        fn(`() => {
+          const z = [...document.querySelectorAll('[data-testid="metrik-thema"]')]
+            .find((e) => (e.getAttribute('data-thema') || '').trim() === 'Dichtungen');
+          if (!z) return null;
+          const a = z.querySelector('a');
+          return { thema: z.getAttribute('data-thema'), text: z.textContent || '', href: a ? a.getAttribute('href') : '' };
+        }`),
+      );
+      console.info(`JOB 3073 · T3/Zeile · ${JSON.stringify(zeile)}`);
+      expect(zeile, "die Themenzeile steht auf der Seite").not.toBeNull();
+      const t = i18n.getFixedT("de");
+      expect(zeile?.text, "die Zeile zaehlt zwei sichtbare Objekte").toContain(
+        t("wissensnetz.metrik.zeile.objekte", { count: 2 }),
+      );
+
+      // DER ECHTE KLICK auf den Link dieser Zeile — kein `goto` auf eine selbst gebaute Adresse.
+      // Geklickt wird die Zeile, die WIRKLICH dasteht (ihr gemessenes `data-thema`), nicht die,
+      // die hier erwartet wird: Sonst waere ein Rueckfall auf eine normalisierte Themenbildung nur
+      // ein Klick-Timeout auf einen fehlenden Selektor — und nicht die Aussage, dass der Weg in
+      // die falsche Objektmenge fuehrt.
+      await s.click(`[data-testid="metrik-thema"][data-thema="${zeile?.thema ?? ""}"] a`);
+      await s.waitForFunction(fn(`() => location.pathname === '/bibliothek'`), undefined, {
+        timeout: 15_000,
+      });
+      // Warten, bis die Liste STEHT: die Bibliothek zeigt vor dem Laden ihres Bestands kurz alles,
+      // weil die Wertpruefung erst laufen kann, wenn der Bestand da ist (`BibliothekFlaeche.tsx`).
+      // Gewartet wird deshalb auf eine RUHIGE Zeilenzahl, nicht auf die erwartete — sonst waere der
+      // Fehlerfall ein Timeout statt einer lesbaren Zeile.
+      await s.waitForFunction(
+        fn(`() => {
+          const n = document.querySelectorAll('[data-testid="bib-zeile"]').length;
+          const w = window;
+          if (w.__t3n === n) { w.__t3c = (w.__t3c || 0) + 1; } else { w.__t3n = n; w.__t3c = 0; }
+          return n > 0 && w.__t3c >= 8;
+        }`),
+        undefined,
+        { timeout: 30_000 },
+      );
+
+      const lage = await s.evaluate<{ url: string; ids: string[]; leer: number }>(
+        fn(`() => ({
+          url: location.pathname + location.search,
+          ids: [...document.querySelectorAll('[data-testid="bib-zeile"]')].map((z) => z.getAttribute('data-bib-id')),
+          leer: document.querySelectorAll('[data-testid="bib-leer"]').length,
+        })`),
+      );
+      console.info(`JOB 3073 · T3 · ${JSON.stringify(lage)}`);
+
+      // GENAU die zwei Objekte, die die Zeile zaehlt — an ihren Kennungen, nicht an ihrer Zahl.
+      expect(lage.ids.sort(), "die Bibliothek zeigt genau die gezaehlten Objekte").toEqual(beide);
+      expect(lage.ids, "das dritte Objekt ist NICHT dabei").not.toContain(drittes);
+      expect(lage.leer, "und es ist auch keine Leermeldung").toBe(0);
+      // Der Filter steht wirklich in der Adresse — er ist nicht bloss zufaellig die ganze Liste.
+      expect(lage.url).toContain("tag=");
+    } finally {
+      zielApp = hauptApp;
+      zielToken = hauptToken;
+      await fuenfte.a.close();
       await s.setViewportSize({ width: 1280, height: 800 });
       await ladeSeite(s);
     }

@@ -1,36 +1,24 @@
 // ================================================================================================
-// JOB 3070 · D3 — DIE ZWEI THEMENACHSEN EINER ANTWORT: GEMESSEN, NICHT BEHAUPTET.
+// JOB 3073 · V6 — EINE THEMENACHSE, AN DER ECHTEN ROUTE. (Vorher: der Diagnose-Pin auf den Bruch.)
 // ================================================================================================
 //
-// DER BEFUND, den Codex an D1 erhoben hat, hier als dauerhaft ausfuehrbare Messung an der ECHTEN
-// Kette — echte Fastify-App, echter `KoService`, echte Rechte-Naht, echte Route
-// `GET /api/wissensnetz/luecken`, danach genau die Funktion, die die Oberflaeche benutzt:
+// WAS HIER BIS JOB 3071 STAND, und warum es nicht mehr stimmt. Diese Datei entstand in JOB 3070 D3
+// als ausführbare DIAGNOSE eines Bruchs: dieselbe Antwort nannte andere Themen, als sie zeichnete.
+// Wörtlich aus jenem Lauf (`archiv/3070/runde-3/RUECKGABE.md`):
 //
-//     ko = { category: "Hygienic Design", tags: ["Dichtungen", "Ventile"] }
-//       → `metrik.themen`      nennt    ["Hygienic Design"]        (Server: aus `ko.category`)
-//       → `metrik.themenkarte` zeichnet ["Dichtungen", "Ventile"]  (Server: aus `ko.tags`)
+//     JOB 3070 D3 · N1 · gesprochen ["Hygienic Design","Reinigung"]
+//                      · gezeichnet ["Dichtungen","Reinigung","Ventile"]
 //
-// EINE Antwort, ZWEI Namensraeume, kein Feld, das sie verbindet. Die Ursache liegt im Server
-// (`services/wissensnetz/src/lesemodell.ts` gruppiert nach `category`,
-// `services/wissensnetz/src/themenkarte.ts` nach `tags`, mit ausgeschriebener Begruendung: eine
-// Kante verlangt ZWEI Themen im SELBEN Objekt, und eine Kategorie ist EIN Wert je Objekt).
+// Der Pin war ausdrücklich so gebaut, dass er bei einer Serverkorrektur ROT wird — „die Änderung
+// muss hier nachgeführt werden, statt still an einem grünen Test vorbeizugehen". JOB 3073 hat die
+// Achse zusammengeführt (`themenVon` in `services/wissensnetz/src/themenkarte.ts`, benutzt von
+// `services/wissensnetz/src/lesemodell.ts`); der Pin ist deshalb NACHGEFÜHRT, nicht gelöscht: er
+// misst jetzt an derselben Stelle dieselbe Frage — und die Antwort ist die umgekehrte.
 //
-// WARUM DIESE DATEI DEN BRUCH FESTHAELT UND NICHT BEHEBT: `services/**` ist fuer JOB 3070 kein
-// Zielpfad. D2 hat die Achse dort zusammengefuehrt und ist an der Zielpfad-Vorpruefung gescheitert
-// (`code.md` D2: „ZIELPFAD-VERSTOSS"). Die Zusammenfuehrung ist damit eine EIGENE Entscheidung und
-// ein eigener Auftrag — sie steht als Frage in `RUECKGABE.md`. Was diese Datei leistet, ist das,
-// was ohne sie fehlte: der Befund ist nicht mehr eine Behauptung in einer Ruckgabe, sondern ein
-// Testfall, der laeuft.
-//
-// UND SIE HAELT DIE EIGENSCHAFT FEST, DIE IN JEDEM FALL GELTEN MUSS — vor wie nach einer
-// Serverkorrektur: Die Oberflaeche behauptet NIE eine Zuordnung, die die Antwort nicht hergibt.
-// Ein Thema ohne Knoten bekommt `null` (kein Zustand, keine Nachbarn, kein negativer Satz), und die
-// Seite sagt an, dass die Zeichnung Themen fuehrt, zu denen keine Zeile steht.
-//
-//   N1  DIAGNOSE   die beiden Achsen derselben Antwort, gemessen und benannt (Pin, s. dort)
-//   N2  EIGENSCHAFT ein Thema ohne Knoten erzeugt drei `null` — keine Behauptung ohne Grundlage
-//   N3  GEGENPROBE  wo Kategorie UND Schlagwort denselben Namen tragen, ordnet `leseThemen` zu
-//   N4  ANSAGE      die Zahl der gezeichneten Themen ohne Zeile ist nicht stumm
+//   N1  DIE ZUSAGE      gesprochene und gezeichnete Themenmenge sind GLEICH, samt Trägerzahlen
+//   N2  DIE GRENZE      jenseits des Knotendeckels gibt es Zeilen ohne Knoten — und dann `null`
+//   N3  KALIBRIERUNG    eine Zeile MIT Knoten trägt dessen Zustand, Ubiquität und Nachbarn
+//   N4  DIE ANSAGE      im Normalfall gibt es nichts anzusagen; unter einem Deckel schon
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 process.env.KLARWERK_SKIP_KEYCHAIN = "1";
@@ -38,27 +26,35 @@ process.env.KLARWERK_SKIP_KEYCHAIN = "1";
 import type { Sichtmetrik } from "../../apps/web/src/api/types";
 import { leseThemen } from "../../apps/web/src/pages/Wissensnetz";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
+import { THEMEN_KNOTEN_DECKEL } from "../../services/wissensnetz";
 
 /** Die Kategorie ist ABSICHTLICH keines der Schlagworte — das ist der Gegenstand dieser Datei. */
 const KATEGORIE = "Hygienic Design";
 const SCHLAGWORTE = ["Dichtungen", "Ventile"] as const;
-/** N3: hier faellt beides zusammen — der Fall, in dem die Zuordnung heute schon traegt. */
-const GLEICHNAMIG = "Reinigung";
+/** Das zweite Objekt bringt ein drittes Schlagwort und teilt sich `Ventile` mit dem ersten. */
+const ZWEITE_KATEGORIE = "Reinigungstechnik";
+const SCHLAGWORTE_ZWEI = ["Reinigung", "Ventile"] as const;
 
 let app: ReturnType<typeof buildApp>;
 let headers: Record<string, string>;
 let metrik: Sichtmetrik;
+/** Dieselbe Route, nur mit dem Deckel aus der Anfrage — für N4. */
+let metrikGedeckelt: Sichtmetrik;
+/** Eine zweite App mit mehr Themen, als die Zeichnung Knoten führt — für N2. */
+let metrikVieleThemen: Sichtmetrik;
 
 async function anlegen(
+  a: ReturnType<typeof buildApp>,
+  kopf: Record<string, string>,
   titel: string,
   kategorie: string,
   tags: readonly string[],
   freigeben: boolean,
 ): Promise<void> {
-  const res = await app.inject({
+  const res = await a.inject({
     method: "POST",
     url: "/api/kos",
-    headers,
+    headers: kopf,
     payload: {
       title: titel,
       statement: "Kurzfassung fuer den Pruefstand.",
@@ -73,10 +69,10 @@ async function anlegen(
   }
   if (freigeben) {
     const id = (res.json() as { id: string }).id;
-    const frei = await app.inject({
+    const frei = await a.inject({
       method: "PUT",
       url: `/api/kos/${id}`,
-      headers,
+      headers: kopf,
       payload: { action: "rate", verdict: "up" },
     });
     if (frei.statusCode !== 200) {
@@ -85,98 +81,167 @@ async function anlegen(
   }
 }
 
-beforeAll(async () => {
-  app = buildApp(buildServices());
-  await app.ready();
-  await app.inject({
+async function frischeApp(email: string): Promise<{
+  a: ReturnType<typeof buildApp>;
+  kopf: Record<string, string>;
+}> {
+  const a = buildApp(buildServices());
+  await a.ready();
+  await a.inject({
     method: "POST",
     url: "/api/auth/register",
-    payload: { name: "Pedi", email: "pedi@job3070-kette.test", password: "geheim12345" },
+    payload: { name: "Pedi", email, password: "geheim12345" },
   });
-  const login = await app.inject({
+  const login = await a.inject({
     method: "POST",
     url: "/api/auth/login",
-    payload: { email: "pedi@job3070-kette.test", password: "geheim12345" },
+    payload: { email, password: "geheim12345" },
   });
-  headers = { authorization: `Bearer ${(login.json() as { token: string }).token}` };
-  await app.inject({ method: "POST", url: "/api/auth/notice", headers });
+  const kopf = { authorization: `Bearer ${(login.json() as { token: string }).token}` };
+  await a.inject({ method: "POST", url: "/api/auth/notice", headers: kopf });
+  return { a, kopf };
+}
 
-  // (a) Der Streitfall: EINE Kategorie, ZWEI davon verschiedene Schlagworte. Freigegeben, damit
-  //     ueberhaupt eine Kante entstehen kann („in demselben freigegebenen Wissensobjekt").
-  await anlegen("CIP-Reinigung mit Dichtungswechsel", KATEGORIE, SCHLAGWORTE, true);
-  // (b) Der Gegenfall fuer N3: Kategorie und Schlagwort tragen denselben Namen.
-  await anlegen("Reinigungsplan Linie 4", GLEICHNAMIG, [GLEICHNAMIG], true);
-
+async function metrikVon(
+  a: ReturnType<typeof buildApp>,
+  kopf: Record<string, string>,
+  abfrage = "",
+): Promise<Sichtmetrik> {
   // DIE EINE ROUTE — dieselbe, die `useWissensnetz` ruft. Kein zweiter Weg, keine zweite Zaehlung.
-  const res = await app.inject({ method: "GET", url: "/api/wissensnetz/luecken", headers });
+  const res = await a.inject({
+    method: "GET",
+    url: `/api/wissensnetz/luecken${abfrage}`,
+    headers: kopf,
+  });
   if (res.statusCode !== 200) {
     throw new Error(`Route scheiterte: ${res.statusCode} ${res.body}`);
   }
-  metrik = res.json() as Sichtmetrik;
-}, 60_000);
+  return res.json() as Sichtmetrik;
+}
+
+let vieleApp: ReturnType<typeof buildApp>;
+
+beforeAll(async () => {
+  const haupt = await frischeApp("pedi@job3073-kette.test");
+  app = haupt.a;
+  headers = haupt.kopf;
+
+  // (a) Der Streitfall: EINE Kategorie, ZWEI davon verschiedene Schlagworte. Freigegeben, damit
+  //     ueberhaupt eine Kante entstehen kann („in demselben freigegebenen Wissensobjekt").
+  await anlegen(app, headers, "CIP-Reinigung mit Dichtungswechsel", KATEGORIE, SCHLAGWORTE, true);
+  // (b) Ein zweites Objekt, dessen Kategorie ebenfalls in keinem Schlagwort vorkommt.
+  await anlegen(app, headers, "Reinigungsplan Linie 4", ZWEITE_KATEGORIE, SCHLAGWORTE_ZWEI, true);
+
+  metrik = await metrikVon(app, headers);
+  metrikGedeckelt = await metrikVon(app, headers, "?deckel=1");
+
+  // (c) Mehr Themen, als die Zeichnung Knoten fuehrt (`THEMEN_KNOTEN_DECKEL`) — fuer N2.
+  const viele = await frischeApp("pedi@job3073-kette-viele.test");
+  vieleApp = viele.a;
+  for (let i = 0; i < THEMEN_KNOTEN_DECKEL + 2; i++) {
+    await anlegen(
+      viele.a,
+      viele.kopf,
+      `Objekt ${String(i).padStart(3, "0")}`,
+      KATEGORIE,
+      [`Thema-${String(i).padStart(3, "0")}`],
+      false,
+    );
+  }
+  metrikVieleThemen = await metrikVon(viele.a, viele.kopf);
+}, 120_000);
 
 afterAll(async () => {
   await app?.close();
+  await vieleApp?.close();
 });
 
-describe("JOB 3070 D3 · die zwei Themenachsen einer Antwort — an der echten Route", () => {
-  it("N1 · DIAGNOSE: dieselbe Antwort nennt andere Themen, als sie zeichnet", () => {
+describe("JOB 3073 V6 · eine Themenachse — an der echten Route", () => {
+  it("N1 · DIE ZUSAGE: dieselbe Antwort nennt genau die Themen, die sie zeichnet — mit denselben Trägerzahlen", () => {
     const gesprochen = metrik.themen.map((t) => t.thema).sort();
     const gezeichnet = (metrik.themenkarte?.themen ?? []).map((k) => k.thema).sort();
     console.info(
-      `JOB 3070 D3 · N1 · gesprochen ${JSON.stringify(gesprochen)} · gezeichnet ${JSON.stringify(gezeichnet)}`,
+      `JOB 3073 · N1 · gesprochen ${JSON.stringify(gesprochen)} · gezeichnet ${JSON.stringify(gezeichnet)}`,
     );
 
-    // Kalibrierung: der Bestand ist wirklich der Streitfall.
+    // Kalibrierung: der Bestand ist wirklich der Streitfall — die Kategorien sind keine Schlagworte.
     expect(metrik.objekteGesamt).toBe(2);
     expect(metrik.ohneThema).toBe(0);
+    expect(gesprochen, "die Kategorie ist kein Thema mehr").not.toContain(KATEGORIE);
+    expect(gesprochen).not.toContain(ZWEITE_KATEGORIE);
 
-    // ── DER PIN AUF DEN HEUTIGEN ZUSTAND ──────────────────────────────────────────────────────
-    // Er schreibt den Bruch NICHT fest, er macht ihn sichtbar: `Hygienic Design` steht in der
-    // Liste, obwohl kein Knoten so heisst, und `Dichtungen`/`Ventile` sind gezeichnet, ohne in der
-    // Liste zu stehen. Fuehrt der Server die Achsen eines Tages zusammen (s. RUECKGABE.md, offene
-    // Frage), wird GENAU DIESER Fall rot — und das ist der Zweck: die Aenderung muss hier
-    // nachgefuehrt werden, statt still an einem gruenen Test vorbeizugehen.
-    expect(gesprochen, "die Liste nennt die KATEGORIE").toEqual([KATEGORIE, GLEICHNAMIG].sort());
-    expect(gezeichnet, "das Bild zeichnet die SCHLAGWORTE").toEqual(
-      [...SCHLAGWORTE, GLEICHNAMIG].sort(),
-    );
-    const nurGezeichnet = gezeichnet.filter((k) => !gesprochen.includes(k));
-    const nurGesprochen = gesprochen.filter((k) => !gezeichnet.includes(k));
-    expect(nurGezeichnet, "gezeichnet, aber nicht genannt").toEqual([...SCHLAGWORTE].sort());
-    expect(nurGesprochen, "genannt, aber nicht gezeichnet").toEqual([KATEGORIE]);
+    // ── DIE EINE ACHSE ────────────────────────────────────────────────────────────────────────
+    // `Ventile` steht in BEIDEN Objekten — die Vereinigung, nicht die Aneinanderreihung.
+    expect(gesprochen).toEqual([...new Set([...SCHLAGWORTE, ...SCHLAGWORTE_ZWEI])].sort());
+    expect(gesprochen, "gesprochen = gezeichnet").toEqual(gezeichnet);
+    expect(gesprochen.filter((k) => !gezeichnet.includes(k))).toEqual([]);
+    expect(gezeichnet.filter((k) => !gesprochen.includes(k))).toEqual([]);
+
+    // Nicht nur die Namen: dieselben Traegerzahlen. „Ventile" steht in beiden Objekten.
+    const zahlZeile = new Map(metrik.themen.map((t) => [t.thema, t.objekte]));
+    for (const k of metrik.themenkarte?.themen ?? []) {
+      expect(zahlZeile.get(k.thema), `Traegerzahl von „${k.thema}"`).toBe(k.objekte);
+    }
+    expect(zahlZeile.get("Ventile")).toBe(2);
   });
 
-  it("N2 · EIGENSCHAFT: ein Thema ohne Knoten erzeugt drei `null` — nie eine Behauptung ohne Grundlage", () => {
-    const zeile = leseThemen(metrik).find((z) => z.thema === KATEGORIE);
-    expect(zeile, "die Zeile der Kategorie steht").toBeDefined();
-    // Kein Zustandswort, keine Ubiquitaetsaussage, und vor allem kein „kommt mit keinem Thema
-    // zusammen vor" — die Antwort gibt zu diesem Namen schlicht nichts her.
-    expect(zeile?.zustand).toBeNull();
-    expect(zeile?.ubiquitaer).toBeNull();
-    expect(zeile?.zusammenMit).toBeNull();
-    expect(zeile?.zusammenMit).not.toEqual([]);
-    // Die Zahlen bleiben, was der Server erhoben hat — sie sind nicht betroffen.
-    expect(zeile?.objekte).toBe(1);
+  it("N2 · DIE GRENZE: jenseits des Knotendeckels gibt es Zeilen ohne Knoten — und dann steht `null`, keine Behauptung", () => {
+    const gezeichnet = new Set((metrikVieleThemen.themenkarte?.themen ?? []).map((k) => k.thema));
+    const zeilen = leseThemen(metrikVieleThemen);
+
+    // Kalibrierung: die Zeichnung ist wirklich am Deckel, die Liste nicht.
+    expect(gezeichnet.size).toBe(THEMEN_KNOTEN_DECKEL);
+    expect(zeilen.length).toBe(THEMEN_KNOTEN_DECKEL + 2);
+
+    const ohneKnoten = zeilen.filter((z) => !gezeichnet.has(z.thema));
+    expect(ohneKnoten.length, "zwei Zeilen mehr als Knoten").toBe(2);
+    for (const z of ohneKnoten) {
+      // Kein Zustandswort, keine Ubiquitaetsaussage, und vor allem kein „kommt mit keinem Thema
+      // zusammen vor" — die Antwort gibt zu diesem Namen schlicht nichts her.
+      expect(z.zustand, z.thema).toBeNull();
+      expect(z.ubiquitaer, z.thema).toBeNull();
+      expect(z.zusammenMit, z.thema).toBeNull();
+      expect(z.zusammenMit, z.thema).not.toEqual([]);
+      // Die Zahlen bleiben, was der Server erhoben hat — sie sind nicht betroffen.
+      expect(z.objekte, z.thema).toBe(1);
+    }
   });
 
-  it("N3 · GEGENPROBE: traegt ein Thema in BEIDEN Achsen denselben Namen, ordnet `leseThemen` zu", () => {
+  it("N3 · KALIBRIERUNG: eine Zeile MIT Knoten trägt dessen Zustand, Ubiquität und Nachbarn", () => {
     // Ohne diesen Fall waere N2 auch dann gruen, wenn die Zuordnung ueberhaupt nichts kann.
-    const zeile = leseThemen(metrik).find((z) => z.thema === GLEICHNAMIG);
-    const knoten = (metrik.themenkarte?.themen ?? []).find((k) => k.thema === GLEICHNAMIG);
-    expect(knoten, "der Knoten ist gezeichnet").toBeDefined();
-    expect(zeile?.zustand, "Zustand aus dem Knoten").toBe(knoten?.farbe);
-    expect(zeile?.ubiquitaer).toBe(knoten?.ohneKanten);
-    expect(zeile?.zusammenMit, "erhoben, und hier leer — der Knoten hat keine Kante").toEqual([]);
-    expect(zeile?.objekte, "dieselbe Traegerzahl wie der Knoten").toBe(knoten?.objekte);
+    const zeilen = leseThemen(metrik);
+    for (const knoten of metrik.themenkarte?.themen ?? []) {
+      const zeile = zeilen.find((z) => z.thema === knoten.thema);
+      expect(zeile, `die Zeile zu „${knoten.thema}" steht`).toBeDefined();
+      expect(zeile?.zustand, `Zustand aus dem Knoten „${knoten.thema}"`).toBe(knoten.farbe);
+      expect(zeile?.ubiquitaer).toBe(knoten.ohneKanten);
+      expect(zeile?.objekte, "dieselbe Traegerzahl wie der Knoten").toBe(knoten.objekte);
+      expect(zeile?.zusammenMit, `${knoten.thema}: erhoben, nicht null`).not.toBeNull();
+    }
+    // Und die Kante des gemeinsamen Traegers steht in beiden Richtungen als Nachbarschaft.
+    expect(zeilen.find((z) => z.thema === "Dichtungen")?.zusammenMit).toEqual(["Ventile"]);
+    expect(zeilen.find((z) => z.thema === "Ventile")?.zusammenMit).toEqual([
+      "Dichtungen",
+      "Reinigung",
+    ]);
   });
 
-  it("N4 · ANSAGE: die Zahl der gezeichneten Themen ohne Zeile steht der Oberflaeche zur Verfuegung", () => {
-    // Was die Flaeche daraus macht, misst `leseweg.test.tsx` (L12) und der Chromium-Fall T2. Hier
-    // steht die Rechnung selbst: sie ist eine Ablesung aus DERSELBEN Antwort, keine zweite Quelle.
-    const genannt = new Set(leseThemen(metrik).map((z) => z.thema));
-    const ohneZeile = (metrik.themenkarte?.themen ?? []).filter((k) => !genannt.has(k.thema));
-    expect(ohneZeile.map((k) => k.thema).sort()).toEqual([...SCHLAGWORTE].sort());
-    expect(ohneZeile.length).toBe(2);
+  it("N4 · DIE ANSAGE: im Normalfall gibt es keine gezeichneten Themen ohne Zeile — unter einem Deckel schon", () => {
+    // Was die Flaeche daraus macht, misst `tests/wissensnetz-leseweg/leseweg.test.tsx` (L12) und
+    // der Chromium-Fall T2 in `tests/design/zielbild-wissensnetz.test.ts`. Hier steht die Rechnung
+    // selbst: sie ist eine Ablesung aus DERSELBEN Antwort, keine zweite Quelle.
+    const ohneZeile = (m: Sichtmetrik): string[] => {
+      const genannt = new Set(leseThemen(m).map((z) => z.thema));
+      return (m.themenkarte?.themen ?? []).filter((k) => !genannt.has(k.thema)).map((k) => k.thema);
+    };
+
+    // (a) Der Normalfall — genau der Bestand, der bis JOB 3071 zwei Achsen erzeugte.
+    expect(ohneZeile(metrik), "nach der Zusammenfuehrung bleibt nichts uebrig").toEqual([]);
+
+    // (b) Der Deckel aus der Anfrage: die Liste ist beschnitten, die Zeichnung nicht. Genau dafuer
+    //     bleibt der Ansagesatz auf der Flaeche stehen.
+    expect(metrikGedeckelt.themen).toHaveLength(1);
+    expect((metrikGedeckelt.themenkarte?.themen ?? []).length).toBe(3);
+    expect(ohneZeile(metrikGedeckelt).sort()).toEqual(["Dichtungen", "Reinigung"]);
   });
 });

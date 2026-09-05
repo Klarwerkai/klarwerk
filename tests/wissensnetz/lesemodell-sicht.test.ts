@@ -40,12 +40,44 @@ import type {
 // TEIL A — DIE ABFRAGE, GEGEN EINE SYNTHETISCHE GRUNDMENGE.
 // ================================================================================================
 
+// ================================================================================================
+// JOB 3073 · DER BESTAND DIESER DATEI TRENNT KATEGORIE UND SCHLAGWORT AUSDRUECKLICH.
+// ================================================================================================
+//
+// Bis JOB 3071 stand das Thema in `category`. Seit die Themenachse aus den SCHLAGWORTEN entsteht
+// (`themenVon` in `services/wissensnetz/src/themenkarte.ts`, benutzt von `lesemodell.ts`), traegt
+// jedes Objekt hier ZUSAETZLICH eine Kategorie, die in KEINEM Schlagwort vorkommt. Waere die
+// Umstellung nur eine Umbenennung, bliebe sie unbemerkt gruen — mit dieser Kategorie nicht: sie
+// darf in keiner Themenliste dieser Datei auftauchen (eigener Fall am Ende von Teil A).
+//
+// Die Zusicherungen selbst sind unveraendert. Geaendert ist der Bestand, nicht die Erwartung —
+// mit einer Ausnahme, die ausgeschrieben ist: die Objektgleichung (s. „ein Objekt ohne Thema …").
+const KATEGORIE_OHNE_WIRKUNG = "Kategorie ohne Wirkung";
+
 interface TestKo {
   id: string;
+  /** ABSICHTLICH gesetzt und ABSICHTLICH wirkungslos — s. Kopf dieses Blocks. */
   category: string;
+  /** Die Themenachse (JOB 3073). Fehlt sie oder ist sie leer, ist das Objekt themenlos. */
+  tags?: readonly string[];
   author?: string | null | undefined;
   confidentiality?: Confidentiality | null | undefined;
 }
+
+/** Ein Objekt mit genau einem Thema — kurz, damit der Bestand unten lesbar bleibt. */
+const mitThema = (
+  id: string,
+  thema: string,
+  author: string | null | undefined,
+  confidentiality: Confidentiality = "intern",
+): TestKo => ({ id, category: KATEGORIE_OHNE_WIRKUNG, tags: [thema], author, confidentiality });
+
+/** Ein Objekt OHNE jedes Thema — die Kategorie steht trotzdem da und bewirkt nichts. */
+const ohneThemaKo = (
+  id: string,
+  author: string | null | undefined,
+  confidentiality: Confidentiality = "intern",
+): TestKo => ({ id, category: KATEGORIE_OHNE_WIRKUNG, tags: [], author, confidentiality });
 
 const bestand = (kos: readonly TestKo[]): WissensnetzKoLeser<TestKo> => ({
   alle: async () => kos,
@@ -62,15 +94,15 @@ const EXPERTIN = sichtbarkeitsfilterFuer({ id: "expertin-1", role: "experte" });
 const CONTROLLERIN = sichtbarkeitsfilterFuer({ id: "controllerin-1", role: "controller" });
 
 const GRUNDMENGE: readonly TestKo[] = [
-  { id: "a1", category: "Betrieb", author: "anna", confidentiality: "intern" },
-  { id: "a2", category: "Betrieb", author: "anna", confidentiality: "intern" },
-  { id: "a3", category: "Betrieb", author: "bert", confidentiality: "intern" },
-  { id: "b1", category: "Wartung", author: "bert", confidentiality: "intern" },
+  mitThema("a1", "Betrieb", "anna"),
+  mitThema("a2", "Betrieb", "anna"),
+  mitThema("a3", "Betrieb", "bert"),
+  mitThema("b1", "Wartung", "bert"),
   // Ein Thema, das AUSSCHLIESSLICH aus Vertraulichem besteht: es darf fuer die Expertin nicht
   // einmal dem Namen nach existieren.
-  { id: "g1", category: "Lieferantenpreise", author: "chef", confidentiality: "vertraulich" },
+  mitThema("g1", "Lieferantenpreise", "chef", "vertraulich"),
   // Ohne Thema — und ohne erfundenes Sammelthema.
-  { id: "o1", category: "   ", author: "anna", confidentiality: "intern" },
+  ohneThemaKo("o1", "anna"),
 ];
 
 describe("JOB 1496 · Lesemodell — Sichtbarkeit vor Aggregation", () => {
@@ -94,6 +126,24 @@ describe("JOB 1496 · Lesemodell — Sichtbarkeit vor Aggregation", () => {
 
     expect(sicht.themen.map((t) => t.thema)).toEqual(["Betrieb", "Lieferantenpreise", "Wartung"]);
     expect(JSON.stringify(sicht)).toContain("Lieferantenpreise");
+  });
+
+  it("JOB 3073 · die KATEGORIE ist kein Thema mehr — auch nicht fuer den, der alles sehen darf", async () => {
+    // Ohne diesen Fall waere die Umstellung von `category` auf `tags` eine blosse Umbenennung:
+    // jeder Bestand dieser Datei traegt die Kategorie weiterhin, sie darf nur nichts bewirken.
+    const lm = new LesemodellService<TestKo>({ kos: bestand(GRUNDMENGE) });
+
+    const sicht = await lm.sicht({ sichtbar: CONTROLLERIN, mitThemenkarte: true });
+
+    expect(sicht.themen.map((t) => t.thema)).not.toContain(KATEGORIE_OHNE_WIRKUNG);
+    expect((sicht.themenkarte?.themen ?? []).map((k) => k.thema)).not.toContain(
+      KATEGORIE_OHNE_WIRKUNG,
+    );
+    expect(JSON.stringify(sicht)).not.toContain(KATEGORIE_OHNE_WIRKUNG);
+    // DIE EINE ACHSE: die Liste nennt genau die Themen, die die Karte zeichnet.
+    expect(sicht.themen.map((t) => t.thema).sort()).toEqual(
+      (sicht.themenkarte?.themen ?? []).map((k) => k.thema).sort(),
+    );
   });
 
   it("die Zaehler zaehlen NACH dem Trimm — es gibt keine zweite Zahl, aus der er sich errechnen liesse", async () => {
@@ -169,9 +219,41 @@ describe("JOB 1496 · Lesemodell — Frage 1 und Frage 2", () => {
 
     expect(sicht.ohneThema).toBe(1);
     expect(sicht.themen.map((t) => t.thema)).not.toContain("Sonstiges");
-    // Die Summe der Themenzaehler ist objekteGesamt minus ohneThema — nachgerechnet, nicht geglaubt.
+    // JOB 3073 · DIE GEAENDERTE ZUSAGE. Auf der mehrwertigen Achse gilt nur noch
+    // „Summe ≥ objekteGesamt − ohneThema" (`lesemodell-ports.ts`, `ohneThema`). In DIESEM Bestand
+    // traegt jedes Objekt hoechstens ein Schlagwort — deshalb gilt hier ausserdem die Gleichheit,
+    // und genau das ist die Kalibrierung der Ungleichung.
     const summe = sicht.themen.reduce((n, t) => n + t.objekte, 0);
-    expect(summe).toBe(sicht.objekteGesamt - sicht.ohneThema);
+    expect(summe).toBeGreaterThanOrEqual(sicht.objekteGesamt - sicht.ohneThema);
+    expect(summe, "einwertiger Bestand: die alte Gleichheit haelt").toBe(
+      sicht.objekteGesamt - sicht.ohneThema,
+    );
+  });
+
+  it("JOB 3073 · ein Objekt mit ZWEI Schlagworten zaehlt in BEIDE Themen — die Summe ist dann keine Objektsumme mehr", async () => {
+    const zweiwertig: readonly TestKo[] = [
+      {
+        id: "z1",
+        category: KATEGORIE_OHNE_WIRKUNG,
+        tags: ["Betrieb", "Wartung"],
+        author: "anna",
+        confidentiality: "intern",
+      },
+      ohneThemaKo("z2", "bert"),
+    ];
+    const lm = new LesemodellService<TestKo>({ kos: bestand(zweiwertig) });
+
+    const sicht = await lm.sicht({ sichtbar: EXPERTIN });
+
+    expect(sicht.objekteGesamt).toBe(2);
+    expect(sicht.ohneThema).toBe(1);
+    expect(sicht.themen.map((t) => [t.thema, t.objekte])).toEqual([
+      ["Betrieb", 1],
+      ["Wartung", 1],
+    ]);
+    const summe = sicht.themen.reduce((n, t) => n + t.objekte, 0);
+    expect(summe, "zwei Zuordnungen aus EINEM Objekt").toBe(2);
+    expect(summe).toBeGreaterThan(sicht.objekteGesamt - sicht.ohneThema);
   });
 });
 
@@ -217,12 +299,9 @@ describe("JOB 1496 · Lesemodell — Rohmaterial fuer Frage 3, nicht ihre Antwor
 
 describe("JOB 1496 · Lesemodell — grosse Mengen", () => {
   const viele = (n: number): TestKo[] =>
-    Array.from({ length: n }, (_, i) => ({
-      id: `k${i}`,
-      category: `Thema ${String(i).padStart(4, "0")}`,
-      author: "anna",
-      confidentiality: "intern" as const,
-    }));
+    Array.from({ length: n }, (_, i) =>
+      mitThema(`k${i}`, `Thema ${String(i).padStart(4, "0")}`, "anna"),
+    );
 
   it("der Themendeckel schneidet ab und sagt es — ohne die Zahl des Weggelassenen zu nennen", async () => {
     const lm = new LesemodellService<TestKo>({ kos: bestand(viele(THEMEN_DECKEL + 5)) });
@@ -326,15 +405,17 @@ describe("JOB 1496 · der Vertrag mit PRO — echter KantenLeseService, echter K
   it("die echten Dienste erfuellen die Ports, und die Sicht laeuft ueber sie", async () => {
     const ko = new KoService({ repo: new InMemoryKoRepo() });
     const kantenRepo = new InMemoryKantenRepo();
-    const neuesKo = async (title: string, category: string, c: Confidentiality = "intern") =>
+    // JOB 3073: das Thema kommt aus den SCHLAGWORTEN; die Kategorie steht am echten Objekt
+    // trotzdem und ist ausdruecklich keines davon.
+    const neuesKo = async (title: string, thema: string, c: Confidentiality = "intern") =>
       (
         await ko.create({
           title,
           statement: `Aussage zu ${title}`,
           type: "best_practice",
-          category,
+          category: KATEGORIE_OHNE_WIRKUNG,
           author: "anna",
-          tags: [],
+          tags: [thema],
           confidentiality: c,
         })
       ).id;
@@ -398,11 +479,11 @@ describe("JOB 1496 · der Vertrag mit PRO — echter KantenLeseService, echter K
 // Was nicht mitreist, kann nicht auslaufen.
 
 const OHNE_URHEBER: readonly TestKo[] = [
-  { id: "u1", category: "Betrieb", author: "anna", confidentiality: "intern" },
-  { id: "u2", category: "Betrieb", author: "", confidentiality: "intern" },
-  { id: "u3", category: "Betrieb", author: "   ", confidentiality: "intern" },
-  { id: "u4", category: "Betrieb", author: null, confidentiality: "intern" },
-  { id: "u5", category: "Wartung", author: "bert", confidentiality: "intern" },
+  mitThema("u1", "Betrieb", "anna"),
+  mitThema("u2", "Betrieb", ""),
+  mitThema("u3", "Betrieb", "   "),
+  mitThema("u4", "Betrieb", null),
+  mitThema("u5", "Wartung", "bert"),
 ];
 
 describe("JOB 1496 · D2 · Objekte ohne Urheber bekommen eine eigene Zahl", () => {
@@ -434,7 +515,7 @@ describe("JOB 1496 · D2 · Objekte ohne Urheber bekommen eine eigene Zahl", () 
   it("die Zahl zaehlt NACH dem Trimm und traegt kein Urteilswort", async () => {
     const verdeckt: readonly TestKo[] = [
       ...OHNE_URHEBER,
-      { id: "v1", category: "Betrieb", author: "", confidentiality: "vertraulich" },
+      mitThema("v1", "Betrieb", "", "vertraulich"),
     ];
     const lm = new LesemodellService<TestKo>({ kos: bestand(verdeckt) });
 
@@ -470,11 +551,17 @@ describe("JOB 1496 · D2 · Objekte ohne Urheber bekommen eine eigene Zahl", () 
 // entscheidet PRO5 in `luecken*.ts`. Hier steht eine Zahl.
 
 const NUR_OHNE_THEMA: readonly TestKo[] = [
-  { id: "n1", category: "Betrieb", author: "anna", confidentiality: "intern" },
-  { id: "n2", category: "Betrieb", author: "bert", confidentiality: "intern" },
-  // dora taucht AUSSCHLIESSLICH ausserhalb jedes Themas auf — leerer Raum und leerer String.
-  { id: "n3", category: "   ", author: "dora", confidentiality: "intern" },
-  { id: "n4", category: "", author: "dora", confidentiality: "intern" },
+  mitThema("n1", "Betrieb", "anna"),
+  mitThema("n2", "Betrieb", "bert"),
+  // dora taucht AUSSCHLIESSLICH ausserhalb jedes Themas auf — leere Liste und leeres Schlagwort.
+  ohneThemaKo("n3", "dora"),
+  {
+    id: "n4",
+    category: KATEGORIE_OHNE_WIRKUNG,
+    tags: ["   ", ""],
+    author: "dora",
+    confidentiality: "intern",
+  },
 ];
 
 /** Verschiedene Urheber, die in mindestens einem ausgelieferten Thema stehen. */
@@ -516,7 +603,7 @@ describe("JOB 1496 · D3 · Beitragende ohne jedes Thema bekommen eine eigene Za
     const verdeckt: readonly TestKo[] = [
       ...NUR_OHNE_THEMA,
       // erna traegt nur ein vertrauliches Objekt ohne Thema bei.
-      { id: "v2", category: " ", author: "erna", confidentiality: "vertraulich" },
+      ohneThemaKo("v2", "erna", "vertraulich"),
     ];
     const lm = new LesemodellService<TestKo>({ kos: bestand(verdeckt) });
 
@@ -541,10 +628,10 @@ describe("JOB 1496 · D3 · Beitragende ohne jedes Thema bekommen eine eigene Za
   it("sie ist KEIN Schnittzaehler: ein abgeschnittenes Thema macht seine Urheber nicht themenlos", async () => {
     // Zwei Themen, ein Deckel von eins: das kleinere Thema wird weggeschnitten.
     const zweiThemen: readonly TestKo[] = [
-      { id: "d1", category: "Betrieb", author: "anna", confidentiality: "intern" },
-      { id: "d2", category: "Betrieb", author: "anna", confidentiality: "intern" },
-      { id: "d3", category: "Wartung", author: "bert", confidentiality: "intern" },
-      { id: "d4", category: "   ", author: "dora", confidentiality: "intern" },
+      mitThema("d1", "Betrieb", "anna"),
+      mitThema("d2", "Betrieb", "anna"),
+      mitThema("d3", "Wartung", "bert"),
+      ohneThemaKo("d4", "dora"),
     ];
     const lm = new LesemodellService<TestKo>({ kos: bestand(zweiThemen) });
 
@@ -588,14 +675,11 @@ describe("JOB 1496 · D3 · Beitragende ohne jedes Thema bekommen eine eigene Za
 
 const VIELE_BEITRAGENDE: readonly TestKo[] = [
   // Zwei Objekte, damit dieser Mensch nach Umfang unstrittig vorn steht.
-  { id: "vb-top-1", category: "Betrieb", author: "aaa-viel", confidentiality: "intern" },
-  { id: "vb-top-2", category: "Betrieb", author: "aaa-viel", confidentiality: "intern" },
-  ...Array.from({ length: BEITRAGENDE_DECKEL + 4 }, (_, i) => ({
-    id: `vb-${i}`,
-    category: "Betrieb",
-    author: `m${String(i).padStart(3, "0")}`,
-    confidentiality: "intern" as const,
-  })),
+  mitThema("vb-top-1", "Betrieb", "aaa-viel"),
+  mitThema("vb-top-2", "Betrieb", "aaa-viel"),
+  ...Array.from({ length: BEITRAGENDE_DECKEL + 4 }, (_, i) =>
+    mitThema(`vb-${i}`, "Betrieb", `m${String(i).padStart(3, "0")}`),
+  ),
 ];
 
 describe("JOB 1496 · D4 · die Beitragendenliste hat einen Deckel und sagt es", () => {
@@ -639,7 +723,7 @@ describe("JOB 1496 · D4 · die Beitragendenliste hat einen Deckel und sagt es",
   it("der Deckel macht die Weggeschnittenen NICHT themenlos — die D3-Zahl bleibt richtig", async () => {
     const mitThemenlosem: readonly TestKo[] = [
       ...VIELE_BEITRAGENDE,
-      { id: "vb-ohne", category: "   ", author: "zz-ohne-thema", confidentiality: "intern" },
+      ohneThemaKo("vb-ohne", "zz-ohne-thema"),
     ];
     const lm = new LesemodellService<TestKo>({ kos: bestand(mitThemenlosem) });
 
@@ -683,12 +767,9 @@ describe("JOB 1496 · D4 · warum ausgelassen wurde, steht dabei", () => {
   it("ueber dem Kantendeckel: zu-viele-objekte — dieselbe Meldung, anderer Grund", async () => {
     const lm = new LesemodellService<TestKo>({
       kos: bestand(
-        Array.from({ length: KANTEN_ABFRAGE_DECKEL + 1 }, (_, i) => ({
-          id: `g${i}`,
-          category: "Betrieb",
-          author: `a${i}`,
-          confidentiality: "intern" as const,
-        })),
+        Array.from({ length: KANTEN_ABFRAGE_DECKEL + 1 }, (_, i) =>
+          mitThema(`g${i}`, "Betrieb", `a${i}`),
+        ),
       ),
       kanten: kantenAus([]),
     });
@@ -733,14 +814,9 @@ describe("JOB 1496 · D4 · warum ausgelassen wurde, steht dabei", () => {
 
 describe("JOB 1496 · D5 · der Kantendeckel misst die Objekte, die wirklich abgefragt werden", () => {
   const themenlosMitZweiThemen = (n: number): TestKo[] => [
-    { id: "t-1", category: "Betrieb", author: "anna", confidentiality: "intern" },
-    { id: "t-2", category: "Wartung", author: "bert", confidentiality: "intern" },
-    ...Array.from({ length: n }, (_, i) => ({
-      id: `frei${i}`,
-      category: "   ",
-      author: `f${i}`,
-      confidentiality: "intern" as const,
-    })),
+    mitThema("t-1", "Betrieb", "anna"),
+    mitThema("t-2", "Wartung", "bert"),
+    ...Array.from({ length: n }, (_, i) => ohneThemaKo(`frei${i}`, `f${i}`)),
   ];
 
   it("themenlose Objekte loesen den Deckel nicht aus — sie werden nie abgefragt", async () => {
@@ -770,12 +846,9 @@ describe("JOB 1496 · D5 · der Kantendeckel misst die Objekte, die wirklich abg
     let abfragen = 0;
     const lm = new LesemodellService<TestKo>({
       kos: bestand(
-        Array.from({ length: KANTEN_ABFRAGE_DECKEL + 1 }, (_, i) => ({
-          id: `v${i}`,
-          category: `Thema ${String(i).padStart(4, "0")}`,
-          author: "anna",
-          confidentiality: "intern" as const,
-        })),
+        Array.from({ length: KANTEN_ABFRAGE_DECKEL + 1 }, (_, i) =>
+          mitThema(`v${i}`, `Thema ${String(i).padStart(4, "0")}`, "anna"),
+        ),
       ),
       kanten: {
         kantenFuer: async () => {
@@ -795,14 +868,11 @@ describe("JOB 1496 · D5 · der Kantendeckel misst die Objekte, die wirklich abg
   it("gezaehlt wird NACH dem Trimm: unsichtbare Themenobjekte druecken den Deckel nicht", async () => {
     let abfragen = 0;
     const verdeckt: readonly TestKo[] = [
-      { id: "s-1", category: "Betrieb", author: "anna", confidentiality: "intern" },
-      { id: "s-2", category: "Wartung", author: "bert", confidentiality: "intern" },
-      ...Array.from({ length: KANTEN_ABFRAGE_DECKEL + 1 }, (_, i) => ({
-        id: `geheim${i}`,
-        category: `Geheim ${String(i).padStart(4, "0")}`,
-        author: "chef",
-        confidentiality: "vertraulich" as const,
-      })),
+      mitThema("s-1", "Betrieb", "anna"),
+      mitThema("s-2", "Wartung", "bert"),
+      ...Array.from({ length: KANTEN_ABFRAGE_DECKEL + 1 }, (_, i) =>
+        mitThema(`geheim${i}`, `Geheim ${String(i).padStart(4, "0")}`, "chef", "vertraulich"),
+      ),
     ];
     const kanten = {
       kantenFuer: async () => {
@@ -857,12 +927,9 @@ describe("JOB 1496 · D5 · der Kantendeckel misst die Objekte, die wirklich abg
 // fuer `undefined` hat.
 
 describe("JOB 1496 · D6 · ein unbrauchbarer Deckelwert leert die Sicht nicht", () => {
-  const fuenfThemen: readonly TestKo[] = Array.from({ length: 5 }, (_, i) => ({
-    id: `f${i}`,
-    category: `Thema ${String(i).padStart(2, "0")}`,
-    author: "anna",
-    confidentiality: "intern" as const,
-  }));
+  const fuenfThemen: readonly TestKo[] = Array.from({ length: 5 }, (_, i) =>
+    mitThema(`f${i}`, `Thema ${String(i).padStart(2, "0")}`, "anna"),
+  );
 
   it("NaN wird wie 'nicht angegeben' behandelt — keine leere Liste, die sich vollstaendig nennt", async () => {
     const lm = new LesemodellService<TestKo>({ kos: bestand(fuenfThemen) });

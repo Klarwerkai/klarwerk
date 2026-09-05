@@ -22,9 +22,26 @@ import type {
   WissensnetzKoLeser,
 } from "../../services/wissensnetz/src/lesemodell-ports";
 
+/**
+ * JOB 3073: das Thema kommt aus den SCHLAGWORTEN (`themenVon`). Jedes Objekt hier trägt zusätzlich
+ * eine Kategorie, die in KEINEM Schlagwort vorkommt — wäre die Umstellung nur eine Umbenennung,
+ * bliebe sie unbemerkt grün.
+ */
+const KATEGORIE_OHNE_WIRKUNG = "Kategorie ohne Wirkung";
+
 interface PruefKo extends WissensnetzKo {
+  /** ABSICHTLICH gesetzt und ABSICHTLICH wirkungslos. */
+  category?: string;
   geheim?: boolean;
 }
+
+const ko = (id: string, thema: string | null, author: string, geheim = false): PruefKo => ({
+  id,
+  category: KATEGORIE_OHNE_WIRKUNG,
+  tags: thema === null ? [] : [thema],
+  author,
+  ...(geheim ? { geheim: true } : {}),
+});
 
 const bestand = (kos: readonly PruefKo[]): WissensnetzKoLeser<PruefKo> => ({
   alle: async () => kos,
@@ -38,29 +55,63 @@ const kantenAus = (mitKante: readonly string[]): WissensnetzKantenLeser<PruefKo>
 });
 
 const MENGE: readonly PruefKo[] = [
-  { id: "a1", category: "Betrieb", author: "anna" },
-  { id: "a2", category: "Betrieb", author: "anna" },
-  { id: "a3", category: "Betrieb", author: "bert" },
-  { id: "b1", category: "Wartung", author: "bert" },
-  { id: "g1", category: "Geheim", author: "chef", geheim: true },
-  { id: "o1", category: "   ", author: "dora" },
+  ko("a1", "Betrieb", "anna"),
+  ko("a2", "Betrieb", "anna"),
+  ko("a3", "Betrieb", "bert"),
+  ko("b1", "Wartung", "bert"),
+  ko("g1", "Geheim", "chef", true),
+  ko("o1", null, "dora"),
 ];
 
 // ================================================================================================
-// M1 · DIE ZUSAGE DER PORTS: die Objektgleichung geht auf
+// M1 · DIE ZUSAGE DER PORTS: die Objektgleichung — in ihrer JOB-3073-Fassung
 // ================================================================================================
 //
-// `lesemodell-ports.ts:220-221` wörtlich: „Die Summe der Themenzähler ist deshalb
-// `objekteGesamt - ohneThema`."
+// BIS JOB 3071 sagte `lesemodell-ports.ts` wörtlich: „Die Summe der Themenzähler ist deshalb
+// `objekteGesamt - ohneThema`." Das galt, weil das Thema `category` war — EIN Wert je Objekt.
+//
+// SEIT JOB 3073 entsteht das Thema aus den SCHLAGWORTEN, und ein Objekt zählt in jedes seiner
+// Schlagworte. Die Zusage lautet deshalb jetzt (dieselbe Datei, Feld `ohneThema`):
+//
+//     Summe der Themenzähler  ≥  objekteGesamt − ohneThema,
+//     mit Gleichheit genau dann, wenn kein sichtbares Objekt mehr als ein Schlagwort trägt.
+//
+// BEIDE HÄLFTEN WERDEN GEMESSEN — sonst wäre die Ungleichung eine Freistellung statt einer Zusage.
 describe("F-0458 · M1: die Objektgleichung der Sicht", () => {
-  it("Summe der Themenzähler = objekteGesamt − ohneThema", async () => {
+  it("einwertiger Bestand: Summe der Themenzähler = objekteGesamt − ohneThema", async () => {
     const lm = new LesemodellService<PruefKo>({ kos: bestand(MENGE) });
 
     const sicht = await lm.sicht({ sichtbar: OFFEN });
 
     const summe = sicht.themen.reduce((n, t) => n + t.objekte, 0);
     expect(sicht.abgeschnitten).toBe(false);
+    expect(
+      MENGE.every((k) => (k.tags ?? []).length <= 1),
+      "der Bestand ist einwertig",
+    ).toBe(true);
     expect(summe).toBe(sicht.objekteGesamt - sicht.ohneThema);
+  });
+
+  it("mehrwertiger Bestand: die Summe ist GRÖSSER — und das ist die neue Zusage, kein Fehler", async () => {
+    const lm = new LesemodellService<PruefKo>({
+      kos: bestand([
+        ...MENGE,
+        {
+          id: "m1",
+          category: KATEGORIE_OHNE_WIRKUNG,
+          tags: ["Betrieb", "Wartung"],
+          author: "erna",
+        },
+      ]),
+    });
+
+    const sicht = await lm.sicht({ sichtbar: OFFEN });
+
+    const summe = sicht.themen.reduce((n, t) => n + t.objekte, 0);
+    expect(sicht.abgeschnitten).toBe(false);
+    expect(summe).toBeGreaterThan(sicht.objekteGesamt - sicht.ohneThema);
+    // Und die Differenz ist genau die eine zusätzliche Zuordnung, nicht irgendetwas.
+    expect(summe - (sicht.objekteGesamt - sicht.ohneThema)).toBe(1);
   });
 
   it("das unsichtbare Thema erscheint nicht einmal dem Namen nach", async () => {
@@ -69,6 +120,8 @@ describe("F-0458 · M1: die Objektgleichung der Sicht", () => {
     const sicht = await lm.sicht({ sichtbar: OFFEN });
 
     expect(sicht.themen.map((t) => t.thema)).not.toContain("Geheim");
+    // JOB 3073: und die Kategorie ist kein Thema — sonst misst diese Datei die alte Achse.
+    expect(sicht.themen.map((t) => t.thema)).not.toContain(KATEGORIE_OHNE_WIRKUNG);
   });
 });
 
@@ -91,7 +144,7 @@ describe("F-0458 · M2: die Personengleichung der Sicht", () => {
 
   it("je Thema: Summe der Beiträge + ohneBeitragende = objekte", async () => {
     const lm = new LesemodellService<PruefKo>({
-      kos: bestand([...MENGE, { id: "a4", category: "Betrieb", author: "  " }]),
+      kos: bestand([...MENGE, ko("a4", "Betrieb", "  ")]),
     });
 
     const sicht = await lm.sicht({ sichtbar: OFFEN });
@@ -238,7 +291,7 @@ describe("F-0458 · M7: die Verknüpfungslage bei beschnittener Themenliste", ()
   it("beschnitten heisst Untergrenze — und die Sicht sagt es an", async () => {
     const viele: PruefKo[] = [];
     for (let i = 0; i < THEMEN_DECKEL + 5; i++) {
-      viele.push({ id: `k${i}`, category: `Thema-${String(i).padStart(4, "0")}`, author: "anna" });
+      viele.push(ko(`k${i}`, `Thema-${String(i).padStart(4, "0")}`, "anna"));
     }
     const lm = new LesemodellService<PruefKo>({
       kos: bestand(viele),

@@ -28,7 +28,8 @@ function ko(
 ): ThemenkarteKo {
   return {
     id,
-    category: "egal",
+    // JOB 3073: `category` ist aus dem Vertrag verschwunden — die Themenachse sind die
+    // SCHLAGWORTE, und zwar für die Karte wie für die Zähler (`themenVon`).
     tags,
     status: opts.status ?? "validiert",
     sources: Array.from({ length: opts.quellen ?? 0 }, (_, i) => ({ n: i })),
@@ -123,9 +124,42 @@ describe("JOB 2600 D1 · B — Groesse und Farbe nur aus sichtbarem Bestand", ()
   });
 
   it("B3 · fehlende Felder erzeugen nie eine staerkere Aussage", () => {
-    const karte = themenkarte([{ id: "k1", category: "egal", tags: ["pumpe"] }]);
+    const karte = themenkarte([{ id: "k1", tags: ["pumpe"] }]);
     expect(karte.themen[0]?.farbe).toBe("offen");
     expect(karte.kanten).toEqual([]);
+  });
+
+  // ==============================================================================================
+  // JOB 3073 · RUNDE 2 — EIN THEMA HEISST SO, WIE SEIN SCHLAGWORT GESPEICHERT IST.
+  // ==============================================================================================
+  //
+  // Bis Runde 1 trimmte `themenVon` den Wert. Das war eine ZWEITE Normalisierung, die sonst
+  // niemand anwendet — und sie machte den Sprung in die Bibliothek kaputt: der getrimmte Name war
+  // dort ein unbekannter Facettenwert, die Wertpruefung warf den Filter weg, und der Klick zeigte
+  // den GANZEN Bestand. Die Wirkung ist in `tests/wissensnetz-achse/bibliothekstreffer.test.tsx`
+  // (L4–L6) und am geklickten Weg in `tests/design/zielbild-wissensnetz.test.ts` (T3) gemessen;
+  // HIER steht die Regel selbst.
+  it("B3a · der gespeicherte Wert IST der Themenname — Rand-Leerzeichen werden nicht weggerechnet", () => {
+    const karte = themenkarte([ko("k1", [" pumpe "]), ko("k2", [" pumpe "]), ko("k3", ["pumpe"])]);
+
+    // Zwei Themen, nicht eines: die Bibliothek fuehrt diese beiden Werte auch getrennt.
+    expect(karte.themen.map((k) => k.thema).sort()).toEqual([" pumpe ", "pumpe"]);
+    expect(karte.themen.find((k) => k.thema === " pumpe ")?.objekte).toBe(2);
+    expect(karte.themen.find((k) => k.thema === "pumpe")?.objekte).toBe(1);
+  });
+
+  it("B3b · ein Schlagwort OHNE jedes sichtbare Zeichen ist kein Thema — das bleibt", () => {
+    // Der Trimm faellt als IDENTITAET weg, nicht als PRUEFUNG: ein Name, den man weder zeigen noch
+    // anklicken koennte, entsteht weiterhin nicht.
+    const karte = themenkarte([ko("k1", ["", "   ", "\t", "pumpe"])]);
+    expect(karte.themen.map((k) => k.thema)).toEqual(["pumpe"]);
+  });
+
+  it("B3c · dasselbe Schlagwort zweimal im SELBEN Objekt bleibt ein Knoten und stiftet keine Kante", () => {
+    const karte = themenkarte([ko("k1", ["pumpe", "pumpe"], { quellen: 1 })]);
+    expect(karte.themen.map((k) => k.thema)).toEqual(["pumpe"]);
+    expect(karte.themen[0]?.objekte, "einmal gezaehlt, nicht zweimal").toBe(1);
+    expect(karte.kanten, "ein Thema kann mit sich selbst nicht vorkommen").toEqual([]);
   });
 
   it("B4 · hoechstens 40 Knoten; der Rest steht als NAMENSLISTE hinter „Alle Themen“", () => {

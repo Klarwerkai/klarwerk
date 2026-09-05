@@ -40,13 +40,32 @@
 // eigene Erfindung grün.
 
 /**
- * Die Mindestform eines Wissensobjekts für dieses Lesemodell. Bewusst schmal: `category` trägt das
- * Thema, `author` den Beitrag. Titel und Aussage stehen hier NICHT — eine Themenübersicht braucht
+ * Die Mindestform eines Wissensobjekts für dieses Lesemodell. Bewusst schmal: `tags` trägt die
+ * Themen, `author` den Beitrag. Titel und Aussage stehen hier NICHT — eine Themenübersicht braucht
  * sie nicht, und was nicht mitreist, kann nicht auslaufen.
+ *
+ * ================================================================================================
+ * JOB 3073 · V6 — `category` IST HIER WEG, UND ZWAR ABSICHTLICH.
+ * ================================================================================================
+ *
+ * Bis JOB 3071 stand hier `category: string`, und `lesemodell.ts` bildete daraus seine Themen —
+ * während `themenkarte.ts` dieselbe Antwort nach `tags` zeichnete. Das waren ZWEI Themenachsen in
+ * EINER Antwort, an der echten Route gemessen
+ * (`tests/wissensnetz-leseweg/namensraum-kette.test.tsx`). Die Achse ist zusammengeführt: es gibt
+ * genau eine Zerlegung (`themenVon` in `themenkarte.ts`), und sie liest die Schlagworte.
+ *
+ * Das Feld steht deshalb nicht mehr im Vertrag — nicht daneben, nicht optional. Ein Modul, das
+ * `category` weiterhin führte, wäre die Einladung, die zweite Achse wieder zu bauen.
  */
 export interface WissensnetzKo {
   id: string;
-  category: string;
+  /**
+   * Die Schlagworte. Sie sind die EINE Themenachse — Themenzähler wie Kartenknoten entstehen aus
+   * ihnen, über dieselbe Funktion. Optional aus demselben Grund wie unten bei `ThemenkarteKo`:
+   * fehlt das Feld, ist das Objekt themenlos (`ohneThema`), nicht in ein erfundenes Sammelthema
+   * einsortiert.
+   */
+  tags?: readonly string[] | null | undefined;
   author?: string | null | undefined;
 }
 
@@ -54,9 +73,9 @@ export interface WissensnetzKo {
 // JOB 2600 · D1 — DREI FELDER MEHR, UND WARUM ALLE DREI OPTIONAL SIND.
 // ================================================================================================
 //
-// Die Themenkarte (`themenkarte.ts`) braucht neben dem Thema die SCHLAGWORTE (Knoten), den
-// FREIGABESTATUS (Kanten und Farbe) und die QUELLEN (Farbe). Der einzige Aufrufer im Produkt
-// reicht schon heute vollstaendige `KnowledgeObject`s herein
+// Die Themenkarte (`themenkarte.ts`) braucht neben dem Thema (den SCHLAGWORTEN, seit JOB 3073 im
+// Grundvertrag oben) den FREIGABESTATUS (Kanten und Farbe) und die QUELLEN (Farbe). Der einzige
+// Aufrufer im Produkt reicht schon heute vollstaendige `KnowledgeObject`s herein
 // (`services/app/src/routes/ko-routes.ts:492`, `{ kos: { alle: () => ko.list({}) } }`) — die
 // Felder sind also DA; dieses Modul hat sie bisher nur nicht angesehen.
 //
@@ -71,8 +90,6 @@ export interface WissensnetzKo {
 //     (kein Knoten), nicht freigegeben (keine Kante, Farbe `offen`), keine Quelle. Eine fehlende
 //     Angabe erzeugt damit NIE eine staerkere Aussage als eine vorhandene.
 export interface ThemenkarteKo extends WissensnetzKo {
-  /** Die Schlagworte. Sie sind die KNOTEN der Themenkarte — siehe Kopf von `themenkarte.ts`. */
-  tags?: readonly string[] | null | undefined;
   /** `KoStatus`; als Freigabe zaehlt ausschliesslich `"validiert"`. */
   status?: string | null | undefined;
   /** Nur die LAENGE wird gelesen: hat dieses Objekt Belege oder nicht. */
@@ -91,7 +108,7 @@ export interface ThemenkarteKo extends WissensnetzKo {
  * Die Union hier nachzubauen wäre die zweite Wahrheit, gegen die `sichtbarkeit.ts` gebaut ist.
  * Also nennt dieses Modul den Objekttyp gar nicht, sondern lässt ihn offen: `K` ist, was der
  * Aufrufer führt (im Produkt `KnowledgeObject`), und das Prädikat spricht über genau dieses `K`.
- * Das Lesemodell selbst liest daraus nur `id`, `category` und `author`.
+ * Das Lesemodell selbst liest daraus nur `id`, `tags` und `author`.
  */
 export type WissensnetzSichtbar<K> = (ko: K) => boolean;
 
@@ -151,7 +168,27 @@ export interface WissensnetzBeitrag {
 
 export interface WissensnetzThema {
   thema: string;
-  /** Sichtbare Objekte dieses Themas. Zählt NACH dem Trimm. */
+  /**
+   * Sichtbare Objekte dieses Themas. Zählt NACH dem Trimm.
+   *
+   * ==============================================================================================
+   * JOB 3073 · DIE ZUSAGE, DIE SICH HIER GEÄNDERT HAT — ausgesprochen, nicht kaschiert.
+   * ==============================================================================================
+   *
+   * Seit die Themen aus den SCHLAGWORTEN entstehen (`themenVon`), zählt ein Objekt mit drei
+   * Schlagworten in DREI Themen. **Die Summe der `objekte` über alle Themen ist damit keine
+   * Objektsumme mehr**, sondern eine Summe von Zuordnungen; sie ist ≥ `objekteGesamt - ohneThema`
+   * und gleich nur dann, wenn kein sichtbares Objekt mehr als ein Schlagwort trägt.
+   *
+   * Wer eine OBJEKTZAHL braucht, nimmt `objekteGesamt` — die zählt jedes Objekt einmal.
+   *
+   * Bis JOB 3071 war die Summe eine Objektsumme, weil `category` EIN Wert je Objekt war. Der
+   * Bruch mit dieser Lesart ist der Preis der einen Themenachse, und er steht hier, weil eine
+   * Seite sonst eine Zahl addierte, die nichts mehr zählt. Auf der Fläche behauptet ihn niemand:
+   * `apps/web/src/pages/Wissensnetz.tsx` zeigt `objekteGesamt` und `ohneThema` als eigene Zahlen
+   * (`Sichtzahlen`) und summiert die Themenzähler nirgends — gemessen in
+   * `tests/wissensnetz-achse/eine-achse.test.ts` (A3).
+   */
   objekte: number;
   /**
    * Absteigend nach Umfang, Name als Stichentscheid. **Am `BEITRAGENDE_DECKEL` abgeschnitten** —
@@ -216,9 +253,21 @@ export interface WissensnetzSicht {
   /** Verschiedene sichtbare Beitragende insgesamt. */
   beitragendeGesamt: number;
   /**
-   * Sichtbare Objekte OHNE Thema. Sie stehen in keinem `themen`-Eintrag, weil ein erfundenes
-   * Sammelthema („Sonstiges") auf der Seite wie ein echtes aussähe. Die Summe der Themenzähler ist
-   * deshalb `objekteGesamt - ohneThema` — und diese Zahl ist selbst Rohmaterial für Frage 3.
+   * Sichtbare Objekte OHNE Thema — also ohne ein einziges Schlagwort. Sie stehen in keinem
+   * `themen`-Eintrag, weil ein erfundenes Sammelthema („Sonstiges") auf der Seite wie ein echtes
+   * aussähe. Diese Zahl ist selbst Rohmaterial für Frage 3.
+   *
+   * **JOB 3073 — die Gleichung, die hier stand, gilt so nicht mehr.** Bis JOB 3071 war das Thema
+   * `category`, EIN Wert je Objekt, und die Summe der Themenzähler war deshalb genau
+   * `objekteGesamt - ohneThema`. Seit die Themen aus den SCHLAGWORTEN entstehen, zählt ein Objekt
+   * in jedes seiner Schlagworte. Es gilt nur noch:
+   *
+   *     Summe der `themen[].objekte`  ≥  `objekteGesamt - ohneThema`
+   *
+   * mit Gleichheit genau dann, wenn kein sichtbares Objekt mehr als ein Schlagwort trägt (und
+   * `abgeschnitten` `false` ist). Die alte Gleichheit zu behalten hätte geheissen, ein Objekt
+   * willkürlich EINEM seiner Schlagworte zuzuschlagen — dann stimmte die Summe und die Liste
+   * nicht mehr mit dem Bild überein. Siehe auch `WissensnetzThema.objekte`.
    */
   ohneThema: number;
   /**

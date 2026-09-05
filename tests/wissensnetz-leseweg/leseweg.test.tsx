@@ -25,6 +25,11 @@
 //   L7  GERENDERT · schmales Fenster            → kein <svg>, keine Seitenleiste, kein Umschalter
 //   L8  GERENDERT · breites Fenster             → Vorgabe „Netz", „Lesen" nimmt das <svg> aus dem DOM
 //   L9  GERENDERT · de/en/nl                    → jede Zahl-Beschriftung traegt ihr Sichtbarkeitswort
+//   L10 GERENDERT · de/en/nl                    → die ganze Zeile ist EIN vorlesbarer Satz
+//   L11 GERENDERT · Zuordnung                   → jeder gezeichnete Knoten findet seine Zeile
+//   L12 GERENDERT · Ansage (JOB 3073)           → im Normalfall KEIN Satz, unter einem Deckel schon
+//   L13 GERENDERT · Breitenwechsel (JOB 3073)   → 900 → 899 → 900 ohne Neuladen, ohne zweiten Abruf
+//   L14 GERENDERT · Rand-Leerzeichen (JOB 3073) → Anzeige getrimmt, Link mit gespeichertem Wert
 //
 // Bauform wie tests/wissensnetz-sichtmetrik/flaeche.test.tsx: jsdom, relative Importe ueber
 // `../../apps/web/node_modules/…`, gehoisteter endpoints-Mock. Die Endpointgrenze ist die einzige
@@ -67,10 +72,20 @@ import { Wissensnetz, leseThemen } from "../../apps/web/src/pages/Wissensnetz";
 // „breit" — genau das prueft L8 mit.
 type Hoerer = () => void;
 let hoerer: Hoerer[] = [];
+/**
+ * Die gemeldete Breite. Sie liegt BEWUSST ausserhalb des zurueckgegebenen Objekts und wird ueber
+ * einen Getter gelesen: nur so kann sie sich waehrend einer stehenden Montage aendern — genau das
+ * misst L13 (Codex' Prueflücke zu JOB 3070: „Der Medienlistener wird nicht durch einen
+ * Breitenwechsel ohne Neuladen geprueft: 900→899→900 testen").
+ */
+let istSchmal = false;
 function setzeBreite(schmal: boolean): void {
   hoerer = [];
+  istSchmal = schmal;
   (globalThis as unknown as { matchMedia?: unknown }).matchMedia = (abfrage: string) => ({
-    matches: schmal && /max-width:\s*899px/.test(abfrage),
+    get matches() {
+      return istSchmal && /max-width:\s*899px/.test(abfrage);
+    },
     media: abfrage,
     addEventListener: (_typ: string, fn: Hoerer) => {
       hoerer.push(fn);
@@ -80,8 +95,16 @@ function setzeBreite(schmal: boolean): void {
     },
   });
 }
+/** Ein Breitenwechsel OHNE Neuladen: die Abfrage aendert ihr Ergebnis und meldet es den Hoerern. */
+function wechsleBreite(schmal: boolean): void {
+  istSchmal = schmal;
+  for (const h of [...hoerer]) {
+    h();
+  }
+}
 function ohneMatchMedia(): void {
   hoerer = [];
+  istSchmal = false;
   (globalThis as unknown as { matchMedia?: unknown }).matchMedia = undefined;
 }
 
@@ -157,6 +180,11 @@ const knoten = (name: string, objekte: number, farbe: string, ohneKanten = false
  * Kanten sind ABSICHTLICH verschieden herum notiert („dichtung—ventil" und „ventil—pumpe") — nur so
  * misst L1, dass beide Richtungen gelesen werden. „abfuellung" steht in `themen`, aber NICHT in der
  * Karte: das ist der Fall, der kein negatives Wort erzeugen darf.
+ *
+ * JOB 3073 (Codex' Prueflücke zu JOB 3070: „L1 enthaelt keine tatsaechlich doppelte Kante"): die
+ * DRITTE Kante ist die Gegenrichtung der ersten. Der Server liefert ein Paar zwar nur einmal, aber
+ * `leseThemen` liest jede Kante von BEIDEN Enden — ohne Dublettenschutz stuende „dichtung" dann
+ * zweimal in `zusammenMit`. Bis hierher konnte L1 das nicht zeigen: es gab keine Dublette.
  */
 const KARTE = {
   themen: [
@@ -167,6 +195,8 @@ const KARTE = {
   kanten: [
     { a: "dichtung", b: "ventil", gewicht: 1 },
     { a: "ventil", b: "pumpe", gewicht: 2 },
+    // DIE DUBLETTE: dasselbe Paar wie oben, nur andersherum notiert.
+    { a: "ventil", b: "dichtung", gewicht: 1 },
   ],
   weitere: [],
   weitereAbgeschnitten: false,
@@ -217,6 +247,17 @@ describe("JOB 3070 V6 · leseThemen — die Zeichnung in Worten, ohne eigene Rec
     expect(v?.zusammenMit).toEqual(["dichtung", "pumpe"]);
     expect(zeilen.find((z) => z.thema === "dichtung")?.zusammenMit).toEqual(["ventil"]);
     expect(zeilen.find((z) => z.thema === "pumpe")?.zusammenMit).toEqual(["ventil"]);
+    // DIE DUBLETTE (JOB 3073): „dichtung—ventil" steht in der Karte ZWEIMAL, einmal je Richtung.
+    // Kalibrierung, damit dieser Fall nicht bloss behauptet, es gaebe eine Dublette:
+    expect(
+      KARTE.kanten.filter((k) => [k.a, k.b].sort().join("|") === "dichtung|ventil"),
+      "die Karte traegt das Paar wirklich zweimal",
+    ).toHaveLength(2);
+    expect(
+      v?.zusammenMit?.filter((n) => n === "dichtung"),
+      "trotzdem genau einmal",
+    ).toHaveLength(1);
+    expect(zeilen.find((z) => z.thema === "dichtung")?.zusammenMit).toHaveLength(1);
     // Die Zahlen kommen unveraendert aus `metrik.themen` — nichts wird hier ausgerechnet.
     expect(v?.objekte).toBe(5);
     expect(v?.sichtbareBeitragende).toBe(2);
@@ -512,66 +553,156 @@ describe("JOB 3070 V6 · die gerenderte Seite — der Leseweg an der echten Komp
   });
 
   // ==============================================================================================
-  // JOB 3070 D3 · DIE ZWEITE ACHSE WIRD ANGESAGT — die Liste behauptet nicht stumm Vollstaendigkeit.
+  // JOB 3073 · DER ANSAGESATZ IST EIN WAECHTER, KEIN MOEBEL.
   // ==============================================================================================
   //
-  // Der Server fuehrt `metrik.themen` nach KATEGORIE und die Knoten nach SCHLAGWORT (gemessen in
-  // `namensraum-kette.test.tsx`, N1). Diese Seite kann das nicht heilen — `services/**` ist kein
-  // Zielpfad —, aber sie darf es nicht verschweigen. Der Satz haengt an der gemessenen Zahl.
-  it("L12 · gezeichnete Themen ohne Zeile werden mit ihrer Zahl angesagt — und sonst steht kein Satz", async () => {
+  // BIS JOB 3071 sagte dieser Satz die ZWEITE THEMENACHSE an: der Server bildete `metrik.themen`
+  // aus der Kategorie und die Knoten aus den Schlagworten, und die Seite durfte das nicht
+  // verschweigen. Seit JOB 3073 gibt es die zweite Achse nicht mehr (gemessen an der echten Route
+  // in `namensraum-kette.test.tsx`, N1/N4) — im Normalfall darf der Satz deshalb NICHT mehr
+  // erscheinen.
+  //
+  // GELOESCHT WIRD ER TROTZDEM NICHT: Es bleibt ein Weg, auf dem ein gezeichnetes Thema ohne Zeile
+  // dasteht — die Themenliste ist am DECKEL beschnitten (`?deckel=`), die Zeichnung mit ihren
+  // hoechstens 40 Knoten nicht. Beide Haelften stehen hier, sonst waere „bleibt im Code" eine
+  // Behauptung ohne Prueflinie.
+  //
+  /** Genau die Form, die die Route unter `?deckel=1` liefert: eine Zeile, drei gezeichnete Knoten. */
+  const GEDECKELT = {
+    objekteGesamt: 3,
+    ohneThema: 0,
+    sichtbareBeitragendeGesamt: 2,
+    themen: [thema("ventil", 5, 2)],
+    themenkarte: KARTE,
+  };
+
+  it("L12 · im zusammengefuehrten Normalfall steht KEIN Satz — unter einem Deckel steht er mit der richtigen Zahl", async () => {
     setzeBreite(true);
     // (a) Der Bestand oben: JEDER Knoten hat seine Zeile → kein Satz. Ein Dauerhinweis waere ein
     //     Wort ohne Aussage.
     await mitAntwort(METRIK);
     expect(marke("metrik-themen-zweite-achse"), "nichts anzusagen, also kein Satz").toBeNull();
 
-    // (b) Zwei gezeichnete Themen, die in `themen` nicht vorkommen — genau der Fall der echten
-    //     Route bei getrennten Achsen.
-    await mitAntwort({
-      objekteGesamt: 3,
-      ohneThema: 0,
-      sichtbareBeitragendeGesamt: 1,
-      themen: [thema("Hygienic Design", 1, 1)],
-      themenkarte: {
-        ...KARTE,
-        themen: [knoten("Dichtungen", 1, "belegt"), knoten("Ventile", 1, "offen")],
-        kanten: [],
-      },
-    });
+    // (b) Der Deckelfall: die Liste ist auf ein Thema beschnitten, die Zeichnung fuehrt drei.
+    await mitAntwort(GEDECKELT);
+    expect(alle("metrik-thema"), "eine Zeile").toHaveLength(1);
     expect(marke("metrik-themen-zweite-achse")?.textContent).toBe(
       i18n.t("wissensnetz.lesen.nichtInListe", { count: 2 }),
     );
     expect(marke("metrik-themen-zweite-achse")?.textContent).toContain("2");
     // Der Satz ist eine ANSAGE, keine zweite Liste: kein Name, kein Link, kein Zaehler je Thema.
     expect(marke("metrik-themen-zweite-achse")?.querySelector("a")).toBeNull();
-    for (const name of ["Dichtungen", "Ventile"]) {
-      expect(marke("metrik-themen-zweite-achse")?.textContent).not.toContain(name);
+    for (const name of ["dichtung", "pumpe"]) {
+      expect(marke("metrik-themen-zweite-achse")?.textContent?.toLowerCase()).not.toContain(name);
     }
-    // Und die eine Zeile, die es gibt, behauptet weiterhin nichts ueber Knoten, die sie nicht hat.
-    expect(
-      zeile("Hygienic Design")?.querySelector('[data-testid="metrik-thema-zustand"]'),
-    ).toBeNull();
+    // Er nennt seit JOB 3073 nur noch die Zahl: der alte Grund („zaehlt nach Kategorie") ist mit
+    // der zweiten Achse weggefallen und waere jetzt falsch.
+    expect(marke("metrik-themen-zweite-achse")?.textContent?.toLowerCase()).not.toContain(
+      "kategorie",
+    );
+    // Und die eine Zeile, die es gibt, sagt weiterhin, was ihr Knoten hergibt.
+    expect(zeile("ventil")?.querySelector('[data-testid="metrik-thema-zustand"]')).not.toBeNull();
   });
 
-  it("L12b · de/en/nl: die Ansage kommt aus dem Woerterbuch und nennt die Zahl", async () => {
+  it("L12b · de/en/nl: die Ansage kommt aus dem Woerterbuch, nennt die Zahl und keinen Grund mehr", async () => {
     for (const sprache of Object.keys(SICHTWORT)) {
       await i18n.changeLanguage(sprache);
       setzeBreite(true);
-      await mitAntwort({
-        objekteGesamt: 3,
-        ohneThema: 0,
-        sichtbareBeitragendeGesamt: 1,
-        themen: [thema("Hygienic Design", 1, 1)],
-        themenkarte: {
-          ...KARTE,
-          themen: [knoten("Dichtungen", 1, "belegt"), knoten("Ventile", 1, "offen")],
-          kanten: [],
-        },
-      });
+      await mitAntwort(GEDECKELT);
       const satz = marke("metrik-themen-zweite-achse")?.textContent ?? "";
       expect(satz, `${sprache}: kein roher Schluessel`).not.toContain("wissensnetz.");
       expect(satz, `${sprache}: keine offene Variable`).not.toContain("{{");
       expect(satz, `${sprache}: die Zahl steht im Satz`).toContain("2");
+      // Der weggefallene Grund, in jeder Sprache: „Kategorie"/„category"/„categorie".
+      expect(satz.toLowerCase(), `${sprache}: der alte Grund steht nicht mehr da`).not.toMatch(
+        /categor|kategor/,
+      );
     }
+  });
+
+  // ==============================================================================================
+  // JOB 3073 · CODEX' PRUEFLUECKE: DER MEDIENLISTENER, GEMESSEN OHNE NEULADEN.
+  // ==============================================================================================
+  //
+  // Woertlich (`archiv/3070/runde-3/ben.md`, Punkt 6): „Der Medienlistener (`Wissensnetz.tsx:1292`)
+  // wird nicht durch einen Breitenwechsel ohne Neuladen geprueft: 900→899→900 testen." L7 und L8
+  // setzten die Breite je VOR der Montage — ob der Hoerer wirklich arbeitet, war damit offen: eine
+  // Fassung, die `matchMedia` nur einmal beim Aufbau liest, waere dort gruen geblieben.
+  it("L13 · Breitenwechsel bei stehender Seite: 900 → 899 nimmt die Zeichnung aus dem DOM, 899 → 900 bringt sie zurueck — ohne neuen Abruf", async () => {
+    setzeBreite(false);
+    await mitAntwort(METRIK);
+    expect(container.querySelector("svg"), "900 px: die Zeichnung steht").not.toBeNull();
+    expect(marke("netz-umschalter")).not.toBeNull();
+    expect(d.luecken, "ein Abruf").toHaveBeenCalledTimes(1);
+
+    // 900 → 899, OHNE Neuladen: nur die Abfrage meldet ihren Wechsel.
+    await act(async () => {
+      wechsleBreite(true);
+      await flush();
+    });
+    expect(container.querySelector("svg"), "899 px: die Zeichnung verlaesst das DOM").toBeNull();
+    expect(marke("netz-seitenleiste")).toBeNull();
+    expect(marke("netz-umschalter"), "und es gibt nichts mehr zu waehlen").toBeNull();
+    expect(alle("metrik-thema"), "der Leseweg steht an ihrer Stelle").toHaveLength(4);
+
+    // 899 → 900 zurueck: derselbe Hoerer, andere Richtung.
+    await act(async () => {
+      wechsleBreite(false);
+      await flush();
+    });
+    expect(container.querySelector("svg"), "900 px: die Zeichnung ist zurueck").not.toBeNull();
+    expect(marke("netz-umschalter")).not.toBeNull();
+    // Reiner Anzeigezustand: der Breitenwechsel loest KEINEN zweiten Abruf aus.
+    expect(d.luecken, "weiterhin ein Abruf").toHaveBeenCalledTimes(1);
+  });
+
+  // ==============================================================================================
+  // JOB 3073 · RUNDE 2 — ANZEIGE GETRIMMT, IDENTITAET NICHT.
+  // ==============================================================================================
+  //
+  // Seit Runde 2 heisst ein Thema so, wie sein Schlagwort GESPEICHERT ist — nur so kennt die
+  // Bibliothek den Wert, den `themenHref` ihr schickt (Begruendung in
+  // `services/wissensnetz/src/themenkarte.ts`, `themenVon`). Ein Schlagwort mit Rand-Leerzeichen
+  // wanderte damit aber auch in den `textContent` der Zeile, und ein Vorleser las
+  // „ Dichtungen : 2 sichtbare Objekte" — mit einer Luecke vor dem Doppelpunkt. Die Zusage aus
+  // JOB 3070 (Korrekturpflicht 3) lautet „jede Zeile ist EIN vorlesbarer Satz"; sie darf daran
+  // nicht ausfransen.
+  //
+  // Die Trennung ist deshalb ausdruecklich: der ANGEZEIGTE Name ist getrimmt, der VERLINKTE und
+  // der in `data-thema` sind es nicht. Beide Haelften stehen hier — eine allein waere entweder
+  // ein kaputter Link oder ein zerfranster Satz.
+  it("L14 · ein Schlagwort mit Rand-Leerzeichen: die Zeile liest sich sauber, der Link traegt den gespeicherten Wert", async () => {
+    const MIT_RAND = " dichtung ";
+    setzeBreite(true);
+    await mitAntwort({
+      objekteGesamt: 3,
+      ohneThema: 0,
+      sichtbareBeitragendeGesamt: 1,
+      themen: [thema(MIT_RAND, 2, 1)],
+      themenkarte: {
+        ...KARTE,
+        themen: [knoten(MIT_RAND, 2, "belegt")],
+        kanten: [],
+      },
+    });
+
+    // IDENTITAET: die Zeile traegt den gespeicherten Wert — daran haengt der Treffer.
+    const z = zeile(MIT_RAND);
+    expect(z, "die Zeile steht unter ihrem gespeicherten Namen").not.toBeNull();
+    expect(z?.querySelector("a")?.getAttribute("href")).toBe(
+      `/bibliothek?tag=${encodeURIComponent(MIT_RAND)}`,
+    );
+
+    // ANZEIGE: der sichtbare und vorgelesene Name ist getrimmt.
+    expect(z?.querySelector("a")?.textContent, "kein Randleerraum im Namen").toBe("dichtung");
+    expect(z?.textContent, "ein sauberer Satz, keine Luecke vor dem Doppelpunkt").toBe(
+      `dichtung: ${i18n.t("wissensnetz.metrik.zeile.objekte", { count: 2 })}, ${i18n.t(
+        "wissensnetz.metrik.zeile.beitragende",
+        { count: 1 },
+      )}. ${i18n.t("wissensnetz.lesen.zustand", { wort: i18n.t("wissensnetz.farbe.belegt") })}`,
+    );
+    // Und die Eigenschaft, die den Rueckfall unabhaengig vom Wortlaut rot macht.
+    expect(z?.textContent ?? "", "kein doppelter Leerraum").not.toMatch(/\s\s/);
+    expect(z?.textContent ?? "", "kein Leerzeichen vor dem Doppelpunkt").not.toMatch(/\s:/);
   });
 });

@@ -20,6 +20,8 @@ import { buildApp, buildServices } from "../../services/app/src/build-app";
 // ist und nicht bloss nicht mehr wirft.
 
 const ZUGANG = { name: "Admin", email: "a@x.de", password: "secret123" };
+/** JOB 3073: eine Kategorie, die in keinem Schlagwort dieses Bestands vorkommt. */
+const KATEGORIE_OHNE_WIRKUNG = "Kategorie ohne Wirkung";
 
 async function bestueckteApp() {
   const app = buildApp(buildServices());
@@ -31,6 +33,8 @@ async function bestueckteApp() {
   });
   const headers = { authorization: `Bearer ${login.json().token}` };
 
+  // JOB 3073: das Thema der Sichtmetrik kommt aus den SCHLAGWORTEN. Die Kategorie steht daneben
+  // und ist ausdruecklich KEINES davon — sonst waere A1 auch mit der alten Achse gruen.
   for (const [titel, thema] of [
     ["Ventil entlueften", "Wartung"],
     ["Pumpe pruefen", "Wartung"],
@@ -44,7 +48,8 @@ async function bestueckteApp() {
         title: titel,
         statement: `${titel} — Kurzfassung fuer den Pruefstand.`,
         type: "best_practice",
-        category: thema,
+        category: KATEGORIE_OHNE_WIRKUNG,
+        tags: [thema],
       },
     });
   }
@@ -75,6 +80,8 @@ describe("JOB 2009 D2 · H3 — die Beziehungen haben einen Leser", () => {
     ).toBeDefined();
     expect(wartung?.objekte).toBe(2);
     expect(m.themen.find((t) => t.thema === "Reinigung")?.objekte).toBe(1);
+    // JOB 3073: und die Kategorie ist KEIN Thema — sonst stuende hier die alte Achse.
+    expect(m.themen.map((t) => t.thema)).not.toContain(KATEGORIE_OHNE_WIRKUNG);
   });
 
   it("A2 · der Deckel aus der Anfrage wirkt — und wird nicht hier nachgerechnet", async () => {

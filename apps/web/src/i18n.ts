@@ -133,14 +133,19 @@ const de = {
   // Legendenfragment („freigegeben, ohne Quelle") — allein gelesen sagt es nicht, worüber es
   // spricht. Der Rahmen setzt es ein; das Wort selbst behält genau eine Definition (die Legende).
   "wissensnetz.lesen.zustand": "Zustand: {{wort}}.",
-  // JOB 3070 D3 · DIE ZWEITE ACHSE, angesagt statt verschwiegen. Die Antwort dieser einen Route
-  // trägt zwei Themenachsen: die Liste entsteht im Server aus der KATEGORIE eines Objekts
-  // (`lesemodell.ts`), die Zeichnung aus seinen SCHLAGWÖRTERN (`themenkarte.ts`). Laufen beide
-  // auseinander, nennt die Liste andere Themen als das Bild. Diese Seite kann das nicht heilen —
-  // die eine Achse müsste im Server entstehen —, aber sie darf es nicht verschweigen: eine Liste,
+  // JOB 3070 D3 · Gezeichnete Themen ohne Zeile werden ANGESAGT, nicht verschwiegen: eine Liste,
   // die „Themen" heißt und gezeichnete Themen nicht enthält, behauptet sonst stumm Vollständigkeit.
+  //
+  // JOB 3073 · DER GRUND IM SATZ WAR AB HIER FALSCH und ist deshalb WEG, nicht ersetzt. Er lautete
+  // „— sie zählt nach Kategorie, die Zeichnung nach Schlagwort" und benannte damit die zweite
+  // Themenachse. Die gibt es nicht mehr (`services/wissensnetz/src/lesemodell.ts`). Übrig bleibt
+  // genau EIN Weg, auf dem ein gezeichnetes Thema ohne Zeile dasteht: die Themenliste ist am
+  // Deckel beschnitten (`?deckel=`), die Zeichnung nicht. Das steht hier trotzdem NICHT im Satz —
+  // die Antwort, die diese Seite bekommt (`Sichtmetrik`), führt kein `abgeschnitten`; ein Grund,
+  // den die Fläche nicht nachsehen kann, wäre wieder eine Behauptung ohne Beleg. Der Satz nennt
+  // deshalb nur, was gemessen ist: die Zahl.
   "wissensnetz.lesen.nichtInListe":
-    "Die Zeichnung führt {{count}} Themen, zu denen diese Liste keine Zeile hat — sie zählt nach Kategorie, die Zeichnung nach Schlagwort.",
+    "Die Zeichnung führt {{count}} Themen, zu denen diese Liste keine Zeile hat.",
   "nav.external": "Externes Wissen",
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
@@ -5335,7 +5340,7 @@ const en: typeof de = {
   "wissensnetz.lesen.zusammen": "Appears together with {{themen}}.",
   "wissensnetz.lesen.zustand": "State: {{wort}}.",
   "wissensnetz.lesen.nichtInListe":
-    "The drawing shows {{count}} topics that this list has no row for — the list counts by category, the drawing by keyword.",
+    "The drawing shows {{count}} topics that this list has no row for.",
   "nav.external": "External knowledge",
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
@@ -9825,7 +9830,7 @@ const nl: typeof de = {
   "wissensnetz.lesen.zusammen": "Komt samen voor met {{themen}}.",
   "wissensnetz.lesen.zustand": "Status: {{wort}}.",
   "wissensnetz.lesen.nichtInListe":
-    "De tekening toont {{count}} thema's waarvoor deze lijst geen regel heeft — de lijst telt op categorie, de tekening op trefwoord.",
+    "De tekening toont {{count}} thema's waarvoor deze lijst geen regel heeft.",
   "nav.external": "Externe kennis",
   "nav.validation": "Validatie",
   "nav.conflicts": "Conflicten",

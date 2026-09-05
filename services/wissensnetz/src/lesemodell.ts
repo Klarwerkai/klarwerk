@@ -52,6 +52,29 @@
 // enthält, dürfte gar nicht erscheinen — sein blosser Name wäre die Auskunft, dass es dazu etwas
 // gibt. Dieses Lesemodell bildet die Themen deshalb AUS der getrimmten Menge, nicht aus dem
 // Bestand; ein leer getrimmtes Thema existiert für den Aufrufer nicht.
+//
+// ================================================================================================
+// JOB 3073 · V6 — EINE THEMENACHSE. `category` ist hier keine Themenquelle mehr.
+// ================================================================================================
+//
+// BIS JOB 3071 trug EINE Antwort ZWEI Namensräume: diese Datei gruppierte nach `ko.category`,
+// `themenkarte.ts` zeichnete nach `ko.tags`. An der echten Route gemessen
+// (`tests/wissensnetz-leseweg/namensraum-kette.test.tsx`, N1): die Liste sprach von
+// „Hygienic Design", das Bild zeichnete „Dichtungen" und „Ventile" — kein Feld verband beides.
+// Auf dem Telefon, wo es die Zeichnung nicht gibt, war die Liste damit eine Auskunft über etwas
+// anderes als das Bild.
+//
+// SEITHER GIBT ES GENAU EINE ZERLEGUNG: `themenVon` aus `themenkarte.ts`, hier importiert. Kein
+// zweiter Zerleger, keine Zuordnungstabelle, keine zweite Abfrage — die Karte rechnete schon
+// bisher über dieselbe getrimmte Menge.
+//
+// WAS DAS ÄNDERT, und es steht ausgeschrieben am Zähler (`lesemodell-ports.ts`,
+// `WissensnetzThema.objekte`): Ein Objekt mit drei Schlagworten zählt in DREI Themen. Die Summe
+// der Themenzähler ist keine Objektsumme mehr. Wer eine Objektzahl braucht, nimmt `objekteGesamt`.
+//
+// WAS DAS NICHT ÄNDERT: Objekte OHNE Schlagwort bleiben themenlos und bekommen kein erfundenes
+// Sammelthema — `ohneThema` zählt sie wie zuvor. Und die Kantenabfrage bleibt EINE JE OBJEKT,
+// nicht eine je Zuordnung: sonst deckelte `KANTEN_ABFRAGE_DECKEL` etwas anderes, als er misst.
 import type {
   WissensnetzKantenLeser,
   WissensnetzKo,
@@ -60,7 +83,7 @@ import type {
   WissensnetzSichtbar,
   WissensnetzThema,
 } from "./lesemodell-ports";
-import { themenkarte } from "./themenkarte";
+import { themenVon, themenkarte } from "./themenkarte";
 
 /**
  * Höchstzahl ausgelieferter Themen. Eine Seite, die tausend Themen zeichnet, ist keine Sicht mehr;
@@ -181,7 +204,10 @@ export class LesemodellService<K extends WissensnetzKo = WissensnetzKo> {
     for (const ko of roh) {
       if (sichtbar(ko)) {
         sichtbare.push(ko);
-        if (ko.category.trim() !== "") {
+        // Gezählt wird das OBJEKT, nicht seine Zuordnungen: ein Objekt mit fünf Schlagworten löst
+        // trotzdem genau EINE Kantenabfrage aus (s. Schleife unten). Zählte hier die Zahl der
+        // Themen, deckelte `KANTEN_ABFRAGE_DECKEL` eine Last, die so nie entsteht.
+        if (themenVon(ko).length > 0) {
           mitThema++;
         }
       }
@@ -208,36 +234,49 @@ export class LesemodellService<K extends WissensnetzKo = WissensnetzKo> {
         alleBeitragenden.add(urheber);
       }
 
-      const thema = ko.category.trim();
-      if (thema === "") {
+      // DIE EINE ZERLEGUNG (JOB 3073). Genau die Funktion, aus der `themenkarte.ts` seine Knoten
+      // baut — deshalb nennt die Liste dieselben Themen, die das Bild zeichnet.
+      const eigene = themenVon(ko);
+      if (eigene.length === 0) {
         // Kein erfundenes Sammelthema — die Zahl steht eigens in der Antwort.
         ohneThema++;
         continue;
       }
 
-      let sammler = themen.get(thema);
-      if (sammler === undefined) {
-        sammler = leererSammler();
-        themen.set(thema, sammler);
-      }
-      sammler.objekte++;
-      if (urheber !== "") {
-        sammler.beitraege.set(urheber, (sammler.beitraege.get(urheber) ?? 0) + 1);
-        themenBeitragende.add(urheber);
-      } else {
-        // Kein erfundener Sammelurheber — die Zahl steht eigens in der Antwort, damit die
-        // Differenz zwischen `objekte` und der Summe der Beiträge nicht stumm bleibt.
-        sammler.ohneBeitragende++;
-      }
-
+      // EINE Abfrage JE OBJEKT, vor der Themenschleife. Sie kostet dasselbe wie bisher, und ihr
+      // Ergebnis gilt für jedes Thema dieses Objekts: „hat dieses Objekt eine sichtbare Kante"
+      // ist eine Eigenschaft des Objekts, nicht seiner Zuordnung. Innerhalb der Schleife wäre es
+      // eine Abfrage je Zuordnung — dieselbe Antwort, ein Vielfaches der Last.
+      let objektVerknuepft = false;
       if (verknuepfungErheben && kantenLeser !== undefined) {
         // Dieselbe Sichtbarkeitsentscheidung wird durchgereicht: der Kantendienst trimmt seine
         // Gegenendpunkte damit selbst, und dieses Modul zählt nur, was er ausgibt.
         const auskunft = await kantenLeser.kantenFuer(ko.id, { sichtbar });
-        if (auskunft.total > 0) {
-          sammler.verknuepft++;
+        objektVerknuepft = auskunft.total > 0;
+      }
+
+      for (const thema of eigene) {
+        let sammler = themen.get(thema);
+        if (sammler === undefined) {
+          sammler = leererSammler();
+          themen.set(thema, sammler);
+        }
+        sammler.objekte++;
+        if (urheber !== "") {
+          sammler.beitraege.set(urheber, (sammler.beitraege.get(urheber) ?? 0) + 1);
+          themenBeitragende.add(urheber);
         } else {
-          sammler.unverknuepft++;
+          // Kein erfundener Sammelurheber — die Zahl steht eigens in der Antwort, damit die
+          // Differenz zwischen `objekte` und der Summe der Beiträge nicht stumm bleibt.
+          sammler.ohneBeitragende++;
+        }
+
+        if (verknuepfungErheben) {
+          if (objektVerknuepft) {
+            sammler.verknuepft++;
+          } else {
+            sammler.unverknuepft++;
+          }
         }
       }
     }

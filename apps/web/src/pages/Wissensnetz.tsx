@@ -1393,26 +1393,31 @@ function Umschalter({
  * Definition — der Rahmen setzt es ein, er wiederholt es nicht.
  *
  * ================================================================================================
- * JOB 3070 D3 — DIE ZWEI ACHSEN WERDEN ANGESAGT, NICHT VERSCHWIEGEN.
+ * JOB 3073 — DIE ZWEITE ACHSE IST WEG; DER ANSAGESATZ BLEIBT ALS WAECHTER FUER DEN DECKELFALL.
  * ================================================================================================
  *
- * DER BEFUND (Codex an D1, an der echten Route nachgemessen in
- * `tests/wissensnetz-leseweg/namensraum-kette.test.tsx`): Die Antwort dieser einen Route traegt
- * ZWEI Themenachsen. `metrik.themen` entsteht im Server aus `ko.category`
- * (`services/wissensnetz/src/lesemodell.ts`), die gezeichneten Knoten aus `ko.tags`
- * (`services/wissensnetz/src/themenkarte.ts`, mit ausgeschriebener Begruendung: eine Kante
- * verlangt ZWEI Themen im SELBEN Objekt, und eine Kategorie ist EIN Wert je Objekt). Bei
- * `category: "Hygienic Design"` und `tags: ["Dichtungen","Ventile"]` nennt die Liste ein Thema,
- * das Bild zeichnet zwei andere, und keine Zeile trifft einen Knoten.
+ * DER BEFUND VON JOB 3070 (Codex an D1, an der echten Route nachgemessen): Die Antwort dieser einen
+ * Route trug ZWEI Themenachsen — `metrik.themen` aus `ko.category`, die gezeichneten Knoten aus
+ * `ko.tags`. Bei `category: "Hygienic Design"` und `tags: ["Dichtungen","Ventile"]` nannte die
+ * Liste ein Thema, das Bild zeichnete zwei andere, und keine Zeile traf einen Knoten. Diese Seite
+ * konnte das nicht heilen (`services/**` war kein Zielpfad) und hat es deshalb ANGESAGT.
  *
- * DIESE SEITE KANN DAS NICHT HEILEN — die eine Achse muesste im Server entstehen, und `services/**`
- * ist fuer diesen Auftrag gesperrt (D2 hat es versucht und ist am Zielpfad-Riegel gescheitert). Was
- * sie kann und deshalb tut: die Differenz NICHT verschweigen. Eine Liste, die „Themen" heisst und
- * gezeichnete Themen nicht enthaelt, behauptet sonst stumm Vollstaendigkeit — auf dem Telefon, wo
- * es die Zeichnung gar nicht gibt, waere das die schwerste Form davon.
+ * SEIT JOB 3073 IST DIE ACHSE ZUSAMMENGEFUEHRT (`services/wissensnetz/src/lesemodell.ts` gruppiert
+ * ueber `themenVon` aus `services/wissensnetz/src/themenkarte.ts`). Im Normalfall gibt es also
+ * keine gezeichneten Themen ohne Zeile mehr — und der Satz erscheint dann auch nicht.
  *
- * Der Satz haengt an einer GEMESSENEN Bedingung (`nichtInListe.length > 0`), nennt die Zahl und den
- * Grund, faellt kein Urteil und erzeugt keine zweite Liste: keine Namen, keine Zaehler, kein Link.
+ * WARUM ER TROTZDEM STEHT: Es bleibt genau ein Weg, auf dem ein Knoten ohne Zeile dasteht — die
+ * Themenliste ist am Deckel beschnitten (`?deckel=`, `THEMEN_DECKEL`), die Zeichnung mit ihren
+ * hoechstens 40 Knoten nicht. Dann behauptete eine Liste, die „Themen" heisst, stumm
+ * Vollstaendigkeit; auf dem Telefon, wo es die Zeichnung gar nicht gibt, in der schwersten Form.
+ * Den Satz zu loeschen hiesse, diesen Waechter abzuschaffen.
+ *
+ * Der Satz haengt an einer GEMESSENEN Bedingung (`nichtInListe.length > 0`), nennt seit JOB 3073
+ * NUR die Zahl (der genannte Grund war die zweite Achse und waere jetzt falsch; „beschnitten" kann
+ * diese Seite nicht nachsehen, `Sichtmetrik` fuehrt kein `abgeschnitten`), faellt kein Urteil und
+ * erzeugt keine zweite Liste: keine Namen, keine Zaehler, kein Link.
+ * Gemessen: `tests/wissensnetz-leseweg/leseweg.test.tsx` (L12) und
+ * `tests/wissensnetz-leseweg/namensraum-kette.test.tsx` (N4).
  */
 function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
   const { t } = useTranslation();
@@ -1458,14 +1463,38 @@ function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
               key={m.thema}
               data-testid="metrik-thema"
               data-thema={m.thema}
-              className="border-b border-hairline py-2 text-sm last:border-b-0"
+              // `break-words` (JOB 3073, Codex' dritte Prueflücke zu JOB 3070). Themen sind seit
+              // der einen Achse SCHLAGWORTE, und ein Schlagwort ist oft ein langes Wort ohne
+              // Trennstelle. Der Name steht nicht nur im Link (der `break-words` schon trug),
+              // sondern auch im Zusammen-Satz der NACHBARZEILE („Kommt gemeinsam vor mit …") —
+              // dort gab es keine Umbruchregel, und die globale Regel in `index.css:85` gilt
+              // ausdruecklich nur fuer `.prose-kw`, also fuer Fremdinhalt.
+              //
+              // KEIN VORSORGLICHER STIL, sondern ein gemessener Befund: mit dem Schlagwort
+              // „Dichtungswerkstoffkonformitaetspruefungsdokumentationsverfahren" mass Chromium
+              // bei 390 px Fensterbreite `mainScrollBreite: 477` gegen `mainSichtBreite: 390` —
+              // die Seite liess sich seitlich schieben. Mit dieser Klasse: 390 gegen 390.
+              // Gemessen in `tests/design/zielbild-wissensnetz.test.ts`, T2.
+              className="break-words border-b border-hairline py-2 text-sm last:border-b-0"
             >
+              {/* JOB 3073 · RUNDE 2 — ANZEIGE getrimmt, IDENTITAET nicht.
+                  Ein Thema heisst seit dieser Runde so, wie sein Schlagwort GESPEICHERT ist
+                  (`themenVon` in `services/wissensnetz/src/themenkarte.ts`); nur so kennt die
+                  Bibliothek den Wert, den `themenHref` ihr schickt. Der gespeicherte Wert steht
+                  deshalb unveraendert im `to=` und im `data-thema`.
+                  ANGEZEIGT wird er getrimmt, und das ist keine zweite Wahrheit, sondern
+                  Schriftbild: `textContent` traegt Randleerraum mit, und ein Vorleser liest dann
+                  „ Dichtungen : 2 sichtbare Objekte" — mit einer Luecke vor dem Doppelpunkt. Genau
+                  dieser eine Satz je Zeile ist die Zusage aus JOB 3070 (Korrekturpflicht 3), und
+                  sie darf an einem Schlagwort mit Rand-Leerzeichen nicht ausfransen. Der Browser
+                  zieht den Leerraum optisch ohnehin zusammen — sichtbar aendert sich nichts.
+                  Gemessen: `tests/wissensnetz-leseweg/leseweg.test.tsx` (L14). */}
               <Link
                 className="break-words font-medium"
                 style={{ color: "rgb(var(--kw-brand-text))" }}
                 to={themenHref(m.thema)}
               >
-                {m.thema}
+                {m.thema.trim()}
               </Link>
               {/* Echte Textknoten, keine Abstaende: nur so ist die Trennung hoerbar. */}
               {": "}

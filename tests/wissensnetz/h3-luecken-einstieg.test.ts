@@ -30,15 +30,32 @@ vi.mock("../../services/wissensnetz/src/policy-naht", async (echt) => {
 });
 
 interface PruefKo extends WissensnetzKo {
+  /** ABSICHTLICH gesetzt und ABSICHTLICH wirkungslos (JOB 3073). */
+  category?: string;
   confidentiality?: string | null;
 }
 
 // Echte Unions des Hauses: `Confidentiality` (knowledge-object/src/types.ts:87), `isConfidential`
 // nur fuer "vertraulich"/"streng_vertraulich" (confidentiality.ts:40-42), `Role`
 // (auth/src/types.ts:1); `ko.validate` haben laut rbac/src/policy.ts:16-17 nur controller/admin.
+// JOB 3073: das Thema kommt aus den SCHLAGWORTEN. Die Kategorie steht ausdruecklich daneben und
+// ist KEINES davon — waere die Umstellung nur eine Umbenennung, bliebe sie hier unbemerkt gruen.
+const KATEGORIE_OHNE_WIRKUNG = "Kategorie ohne Wirkung";
 const BESTAND: readonly PruefKo[] = [
-  { id: "ko-offen", category: "Betrieb", author: "anna", confidentiality: "intern" },
-  { id: "ko-geheim", category: "Vertraulich", author: "anna", confidentiality: "vertraulich" },
+  {
+    id: "ko-offen",
+    category: KATEGORIE_OHNE_WIRKUNG,
+    tags: ["Betrieb"],
+    author: "anna",
+    confidentiality: "intern",
+  },
+  {
+    id: "ko-geheim",
+    category: KATEGORIE_OHNE_WIRKUNG,
+    tags: ["Vertraulich"],
+    author: "anna",
+    confidentiality: "vertraulich",
+  },
 ];
 
 // A ist `experte` — ohne `ko.validate`. A sieht das vertrauliche Objekt allein wegen Autorschaft.
