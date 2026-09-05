@@ -89,6 +89,16 @@ export function KnowledgeInputStudio({
   // Interner Entwurf: beim Öffnen aus dem aktuellen Body initialisiert; Änderungen bleiben lokal,
   // bis der Nutzer bewusst übernimmt. So bleibt der bestehende Save/Revise-Flow unberührt.
   const [draft, setDraft] = useState(bodyHtml);
+  // ── JOB 3083 (PRIORITAETEN.md Q5): DIE HERKUNFT DES ENTWURFS ─────────────────────────────────
+  //
+  // Die Fassung des Rumpfes, AUS DER der jetzige Entwurf stammt. `null` heißt: das Studio ist zu,
+  // der nächste Lauf fängt frisch an. Sie ist der Unterschied zwischen den beiden Fragen, die der
+  // Effekt unten auseinanderhalten muss und bis hierher nicht auseinanderhalten KONNTE:
+  //   · „Hat der Autor im Studio etwas geändert?"  →  `draft !== herkunft`
+  //   · „Hat sich der Rumpf draußen geändert?"     →  `bodyHtml !== herkunft`
+  // Der vorhandene Dirty-Vergleich (`knowledgeStudioState(draft, bodyHtml)`) kann das nicht: er
+  // sieht nur, DASS die beiden auseinanderliegen, nicht WELCHE Seite sich bewegt hat.
+  const herkunftRef = useRef<string | null>(null);
   // SCRUM-339: Inline-Bestätigung, bevor unübernommene Änderungen verworfen werden (kein confirm()).
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   // SCRUM-346: Umschalter Bearbeiten ↔ Vorschau/Review der zentralen Editor-Spalte (lokaler Anzeige-State).
@@ -104,14 +114,70 @@ export function KnowledgeInputStudio({
     }
   };
 
-  // biome-ignore lint/correctness/useExhaustiveDependencies: bewusst nur beim Öffnen synchronisieren.
+  // ── JOB 3083 (PRIORITAETEN.md Q5) — EINE FREMDE ÄNDERUNG WIRD NICHT STILL ÜBERSCHRIEBEN ──────
+  //
+  // DER BEFUND, live gemessen (Codex R-1619, `app.klarwerk.ai` 1.0.0-beta.1.92, 05.09., Rolle
+  // Administrator) und an den Abnahmebelegen Zeile für Zeile nachgelesen. Hier stand
+  //
+  //     useEffect(() => { if (open) { setDraft(bodyHtml); … } }, [open]);
+  //
+  // mit dem Kommentar „bewusst nur beim Öffnen synchronisieren". Das war für die eine Richtung
+  // richtig (der Entwurf des Autors darf nicht unter ihm weggezogen werden) und für die andere
+  // ein stiller Datenverlust: JEDE Änderung, die den Rumpf erreichte, WÄHREND das Studio offen
+  // stand, war dem Entwurf unbekannt — und „In den Entwurf übernehmen" schrieb den alten Entwurf
+  // darüber. Die Änderung war fort, ohne dass irgendwo etwas gesagt wurde.
+  //
+  // SO SAH DAS IM ABNAHMEBELEG AUS (`laeufe/R-1619-zugeordnet-03/zugeordnet-editor.txt`, EINE
+  // Aufnahme, beide Editoren nebeneinander): der Editor IM Studio zeigte noch „✎ Bildbeschreibung
+  // hinzufügen …" samt der verwaisten Beschreibung daneben, der Editor DARUNTER zeigte die
+  // Zuordnung bereits fertig. Ein Klick auf „In den Entwurf übernehmen" später stand in
+  // `vor-revision.txt` wieder der alte Stand, und genau der wurde gespeichert
+  // (`gespeichertes-objekt.json`: leere Bildfußnote, verwaiste `figcaption` mit alter Kennung).
+  //
+  // DIE REGEL, und sie rät an keiner Stelle:
+  //   · BEIM ÖFFNEN beginnt der Entwurf frisch aus dem Rumpf. Unverändert.
+  //   · DANACH wird eine fremde Änderung des Rumpfes übernommen, SOLANGE der Autor den Entwurf
+  //     nicht selbst angefasst hat (`draft === herkunft`). Dann steht nichts auf dem Spiel: der
+  //     Entwurf ist eine unveränderte Kopie, und ihn auf dem alten Stand zu halten hieße, eine
+  //     fremde Wahrheit zugunsten einer Kopie derselben, nur älteren, zu verwerfen.
+  //   · HAT der Autor im Studio gearbeitet, bleibt sein Entwurf stehen. Zwei Fassungen, beide von
+  //     Hand gemacht — hier wird nicht gemischt und nicht überschrieben, das ist dieselbe Grenze
+  //     wie überall in diesem Haus („bei Mehrdeutigkeit wird nicht geraten").
+  //
+  // KEIN AUTO-SAVE, und das ist keine Nebenbemerkung: dieser Effekt schreibt ausschließlich IN das
+  // Studio hinein. `onApply` bleibt der einzige Weg hinaus, und er hängt weiter allein am Klick des
+  // Autors (`apply()`). Die Zusage `:65-66` ist unberührt.
+  //
+  // WAS OFFEN BLEIBT und hier bewusst NICHT behauptet wird: der dritte Fall — der Autor hat im
+  // Studio gearbeitet UND draußen hat sich der Rumpf geändert. Dann steht die fremde Änderung
+  // weiterhin vor dem Überschreiben, ohne dass die Fläche es sagt. Der Satz dafür bräuchte einen
+  // neuen i18n-Schlüssel, und `apps/web/src/i18n.ts` gehört JOB 3079.
+  // Alle drei Abhängigkeiten werden im Rumpf gelesen — es gibt hier keinen Auslöser, der nur
+  // behauptet wird. Der frühere `biome-ignore` ist damit gegenstandslos und ENTFERNT: die
+  // Ausnahme gab es, weil der Effekt `bodyHtml` las, ohne darauf zu reagieren. Genau das tut er
+  // jetzt nicht mehr.
   useEffect(() => {
-    if (open) {
+    if (!open) {
+      // Geschlossen: der nächste Lauf fängt frisch an, egal was von diesem stehen geblieben ist.
+      herkunftRef.current = null;
+      return;
+    }
+    if (herkunftRef.current === null) {
+      // Gerade geöffnet — der Entwurf entsteht aus dem Rumpf.
+      herkunftRef.current = bodyHtml;
       setDraft(bodyHtml);
       setConfirmDiscard(false);
       setView("edit");
+      return;
     }
-  }, [open]);
+    if (bodyHtml === herkunftRef.current || draft !== herkunftRef.current) {
+      return;
+    }
+    // Fremde Änderung am Rumpf, und der Entwurf ist eine unveränderte Kopie der alten Fassung:
+    // das Studio zieht nach, statt die Änderung später stumm zu überschreiben.
+    herkunftRef.current = bodyHtml;
+    setDraft(bodyHtml);
+  }, [open, bodyHtml, draft]);
 
   // SCRUM-458 Stufe 1 (Sackgasse): Esc ist der universelle, erwartete Ausgang. Bei ungespeicherten
   // Änderungen führt er zur Rückfrage (kein stiller Verlust), sonst schließt er direkt.
