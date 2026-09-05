@@ -42,11 +42,19 @@ Secrets). Paul liefert Repo-Bausteine (Dockerfile, dieses Runbook) und hilft bei
    | `DATABASE_URL` | aus der Coolify-Postgres-Ressource | JA |
    | `CANONICAL_HOST` | die tatsächlich genutzte Domain, z. B. `app.klarwerk.ai` | JA (siehe Kanonik-Falle) |
    | `PORT` | `3001` (Default, nur bei Abweichung setzen) | nein |
-   | `ANTHROPIC_API_KEY` | als **Coolify-Secret**, NUR wenn Cloud-KI auf dem Server laufen soll | nein |
-   | `REASONER_MODEL` | optionales Modell-Override zum Key | nein |
+   | `ANTHROPIC_API_KEY` | als **Coolify-Secret**, NUR wenn Claude (Anthropic) auf dem Server antworten soll | nein |
+   | `OPENAI_API_KEY` | als **Coolify-Secret**, NUR wenn ChatGPT (OpenAI) auf dem Server antworten soll | nein |
+   | `OPENAI_BASE_URL` | nur für Azure/Proxy; Vorgabe `https://api.openai.com/v1` | nein |
+   | `REASONER_MODEL` | der Modellbezeichner **zum gesetzten Schlüssel**: `claude-sonnet-4-6` (Anthropic) bzw. z. B. `gpt-4o-mini` (OpenAI) | nein (bei `OPENAI_API_KEY` faktisch ja, siehe unten) |
 
-   Ohne KI-Key läuft der Reasoner **regelbasiert** — ehrlich sichtbar in der Header-Pille
-   („Interne KI · eigenes System (EU) · DSGVO: ja") und an den (!)-Infos der KI-Knöpfe.
+   Ohne KI-Key — also ohne `ANTHROPIC_API_KEY` **und** ohne `OPENAI_API_KEY` — läuft der Reasoner
+   **regelbasiert**; ehrlich sichtbar in der Header-Pille („Interne KI · eigenes System (EU) ·
+   DSGVO: ja") und an den (!)-Infos der KI-Knöpfe. Mit genau einem Schlüssel antwortet dieser
+   Anbieter; sind beide gesetzt, gewinnt OpenAI.
+   `REASONER_MODEL` MUSS zum gesetzten Schlüssel passen — es gibt nur diesen einen Modellnamen für
+   beide Wege. Ein Claude-Bezeichner an OpenAI (oder umgekehrt) lässt den Aufruf beim Anbieter
+   scheitern. **Wer `OPENAI_API_KEY` setzt, setzt deshalb IMMER auch `REASONER_MODEL`** — ohne ihn
+   bliebe der OpenAI-Weg entweder stumm oder bekäme den Anthropic-Vorgabewert untergeschoben.
    Schlüssel niemals ins Repo/Compose — nur Coolify-Secrets (Regel: Keys nur Schlüsselbund
    bzw. Betreiber-Secret-Store).
 4. **Domain + TLS:** In der App-Ressource die Domain eintragen (`https://app.klarwerk.ai`);

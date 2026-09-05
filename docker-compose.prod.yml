@@ -50,7 +50,28 @@ services:
       DATABASE_URL: postgresql://klarwerk:${POSTGRES_PASSWORD}@db:5432/klarwerk_prod
       COOKIE_SECURE: "true"
       APP_BASE_URL: ${APP_BASE_URL:-https://app.klarwerk.ai}
+      # JOB 3097 (N12b): ZWEI KI-ANBIETER, BEIDE OPTIONAL. Gesetzter Schlüssel = aktiver Weg;
+      # ohne jeden Schlüssel läuft der deterministische Ersatzmodus. Das `:-` heisst „darf fehlen" —
+      # ein fehlender Schlüssel verhindert den Start NICHT (wie bei ANTHROPIC_API_KEY seit je).
+      # Gilt für den EIN-BEFEHL-Weg oben; für den Coolify-Betrieb siehe den Kopf dieser Datei und
+      # die Environment-Tabelle in docs/operations/deploy-hetzner.md.
       ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      # Basis-URL des OpenAI-Wegs — nur für Azure/Proxy nötig. Die Vorgabe ist dieselbe wie im
+      # Client (`OPENAI_DEFAULT_BASE_URL` in services/reasoner/src/model-client.ts, JOB 3090);
+      # ein LEERER Wert fällt dort ebenfalls auf die Vorgabe zurück (`|| OPENAI_DEFAULT_BASE_URL`).
+      OPENAI_BASE_URL: ${OPENAI_BASE_URL:-https://api.openai.com/v1}
+      # ACHTUNG, ANBIETER-FALLE (JOB 3097 — GEMELDET STATT GEÄNDERT, weil ungemessen):
+      # REASONER_MODEL gilt für BEIDE Wege. Wer nur OPENAI_API_KEY setzt und das Modell vergisst,
+      # bekommt durch den Vorgabewert unten einen ANTHROPIC-Bezeichner an den OpenAI-Anbieter
+      # geschickt — der Aufruf scheitert dort, statt sauber inaktiv zu bleiben.
+      # Die naheliegende Reparatur `${REASONER_MODEL:-}` ist FALSCH: sie setzt die Variable auf den
+      # LEEREN String, und der Anthropic-Weg liest sie mit `?? "claude-sonnet-4-6"`
+      # (model-client.ts:259) — `??` greift bei "" nicht, das Modell wäre dann leer. Welche Form
+      # beides zugleich löst, hängt daran, was `docker compose config` aus einem Eintrag OHNE Wert
+      # macht; das war in dieser Runde nicht messbar (kein Docker in der Bahn) und die Zeile bleibt
+      # deshalb bewusst UNVERÄNDERT. Bis das gemessen ist gilt: wer OPENAI_API_KEY setzt, setzt
+      # IMMER auch REASONER_MODEL (z. B. gpt-4o-mini).
       REASONER_MODEL: ${REASONER_MODEL:-claude-sonnet-4-6}
       SMTP_HOST: ${SMTP_HOST:-}
       SMTP_PORT: ${SMTP_PORT:-587}
