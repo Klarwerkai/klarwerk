@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLocation } from "react-router-dom";
 import { useRole } from "../app/RoleContext";
-import { ALL_ITEMS, einstellungenItem, istAktiverEintrag } from "../app/navigation";
+import { ALL_ITEMS, anzeigeNameKey, einstellungenItem, istAktiverEintrag } from "../app/navigation";
 import { LegalFooter, useRechtsseitenAn } from "../legal/LegalPages";
 import { navHilfeFor } from "../lib/navHilfe";
 import { APP_VERSION } from "../version";
@@ -98,7 +98,10 @@ export function ZahnradEintraege({ onNavigiert }: { onNavigiert?: () => void }):
             aktiv={istAktiverEintrag(einstellungen, pathname)}
             testid="zahnrad-einstellungen"
           >
-            {t("menue.einstellungen")}
+            {/* JOB 3105 · UX-08: der Name kommt aus derselben Quelle wie Kopfband und
+                Schnellnavigation (`anzeigeNameKey`) — bis hierher stand hier eine dritte,
+                verdrahtete Namensregel, die keine der beiden anderen kannte. */}
+            {t(anzeigeNameKey(einstellungen))}
           </MenueZeile>
           <StatusZeilen />
           <MenueTrenner />

@@ -400,6 +400,22 @@ const INVENTAR: readonly string[] = [
   "tests/legal/mega61-ki-satz.test.ts",
   "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
   "tests/library/mega59-nullzustand-mounted.test.tsx",
+  // JOB 3105 UX-08 (06.09.2026): die fuenf Namenstests der Schnellnavigation. Von der Achse
+  // `palette` gefunden (Muster `palette`, Zeile 103) — sie montieren `CommandPalette` und nennen
+  // sie durchgaengig, genauso wie der bereits gepinnte Eintrag
+  // `tests/app/job2244-a19b-kuerzel-plattformvertrag-mounted.test.tsx` weiter oben. K2 hat sie
+  // gemeldet, das Inventar nimmt sie nicht still auf; die Wortwahl der Vorrichtung zu aendern, um
+  // dem Sensor auszuweichen, waere die schlechtere Antwort (s. Kommentar zu
+  // `tests/ask/job2694-leere-antwort-mit-stempel-gesichert-mounted.test.tsx`).
+  // Sachlich Klara-Regression im selben Sinn wie A19b: die Schnellnavigation ist der Weg, ueber
+  // den ein Mensch die Flaechen erreicht, gegen die Klara verglichen wird — faellt der Name, faellt
+  // der Weg. (Die gemeinsame Vorrichtung `tests/navigationsnamen/vorrichtung.tsx` ist keine
+  // Testdatei und deshalb nicht Teil der Menge.)
+  "tests/navigationsnamen/ein-name-drei-flaechen.test.tsx",
+  "tests/navigationsnamen/palette-behaelt-synonyme.test.tsx",
+  "tests/navigationsnamen/palette-en.test.tsx",
+  "tests/navigationsnamen/palette-findet-angezeigten-namen.test.tsx",
+  "tests/navigationsnamen/palette-rolle-bleibt-geschuetzt.test.tsx",
   "tests/security/mega74-anhang-vertraulich.test.ts",
   // JOB 3021 D1 (03.09.2026): die deklarierte Wortzuordnung schaerft jetzt auch Klaras
   // KANDIDATENVORAUSWAHL (N2: die Frage nach „Urlaubsregelung" erreicht das Objekt mit

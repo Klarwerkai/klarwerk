@@ -3,7 +3,7 @@ import { useTranslation } from "react-i18next";
 import { useModalLocked } from "../app/ModalBoundaryContext";
 import { useGuardedNavigate } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
-import { ALL_ITEMS, canSee } from "../app/navigation";
+import { ALL_ITEMS, anzeigeNameKey, canSee, suchNamenKeys } from "../app/navigation";
 import { ANALYTICS_AUDIT_PATH } from "../lib/analyticsSections";
 
 // Command Palette (FE-FND-03): ⌘K / Strg+K öffnet eine Schnellnavigation über
@@ -23,24 +23,36 @@ export function CommandPalette(): JSX.Element | null {
   const [active, setActive] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // JOB 3105 · UX-08: BESCHRIFTET wird mit dem Namen, den die anderen Flächen zeigen
+  // (`anzeigeNameKey`, EINE Quelle in app/navigation.ts); GESUCHT wird über alle Namen desselben
+  // Ziels (`suchNamenKeys`) — der angezeigte plus der bisherige. Wer „Prüfen" liest, findet
+  // /validierung; wer sich „Validierung" angewöhnt hat, verliert seinen Weg nicht.
   const items = useMemo(() => {
     const navTargets = ALL_ITEMS.filter((i) => canSee(i, role, stufe2)).map((i) => ({
       id: i.id,
-      label: t(i.labelKey),
+      label: t(anzeigeNameKey(i)),
+      suchtexte: suchNamenKeys(i).map((key) => t(key)),
       path: i.path,
     }));
     // SCRUM-229: Audit ist in Analytics konsolidiert — als Deep-Link auffindbar machen,
     // sichtbar nur, wenn Analytics für die Rolle sichtbar ist.
     const analyticsItem = ALL_ITEMS.find((i) => i.id === "analytics");
     if (analyticsItem && canSee(analyticsItem, role, stufe2)) {
-      navTargets.push({ id: "audit", label: t("cmd.audit"), path: ANALYTICS_AUDIT_PATH });
+      navTargets.push({
+        id: "audit",
+        label: t("cmd.audit"),
+        // Der Deep-Link ist kein Navigationspunkt und hat deshalb keinen zweiten Namen — sein
+        // eigener Text ist sein einziges Synonym. Beschriftung und Verhalten bleiben unverändert.
+        suchtexte: [t("cmd.audit")],
+        path: ANALYTICS_AUDIT_PATH,
+      });
     }
     return navTargets;
   }, [role, stufe2, t]);
-  const filtered = useMemo(
-    () => items.filter((i) => i.label.toLowerCase().includes(q.trim().toLowerCase())),
-    [items, q],
-  );
+  const filtered = useMemo(() => {
+    const suche = q.trim().toLowerCase();
+    return items.filter((i) => i.suchtexte.some((text) => text.toLowerCase().includes(suche)));
+  }, [items, q]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {

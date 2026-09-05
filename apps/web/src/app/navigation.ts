@@ -342,19 +342,52 @@ export const ALL_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...F
 // steht in genau einer davon — das pinnt tests/app/h1-navigation-orte.test.ts, damit ein künftiger
 // Punkt nicht still aus dem Bild fällt.
 const KOPFBAND_IDS = ["start", "fragen", "bibliothek", "erfassen", "validierung"] as const;
-export type KopfbandId = (typeof KOPFBAND_IDS)[number];
 
-/**
- * Die Beschriftung im Kopfband. Zwei Punkte heißen dort kürzer als in ihrer Seite („Erfassen"
- * statt „Wissen erfassen", „Prüfen" statt „Validierung") — die Seitentitel bleiben unangetastet.
- */
-export const KOPFBAND_LABEL_KEY: Record<KopfbandId, string> = {
-  start: "nav.start",
-  fragen: "nav.ask",
-  bibliothek: "nav.library",
+// ================================================================================================
+// JOB 3105 · UX-08 — DER ANGEZEIGTE NAME EINES BEREICHS HAT EINE EINZIGE QUELLE.
+// ================================================================================================
+//
+// DER BEFUND (Codex, unabhängige Livemessung 05.09.2026 22:56–22:58 MESZ, v1.0.0-beta.1.109,
+// `register/planung/UIUX-AUFTRAEGE-1.md:173`): das Zahnrad-Menü und die Seite nennen /admin
+// „Einstellungen", die Schnellnavigation nennt dasselbe Ziel „Admin"; /validierung heißt im
+// Kopfband und auf der Seite „Prüfen", in der Schnellnavigation „Validierung". Die Eingaben
+// „Einstellungen" und „Prüfen" ergaben dort jeweils „Kein Treffer" — der Mensch musste zwei
+// Namensysteme im Kopf zusammenführen.
+//
+// DIE URSACHE WAREN DREI NAMENSREGELN, DIE NICHTS VONEINANDER WUSSTEN: eine Tabelle hier (nur für
+// die fünf Kopfband-Punkte), eine Nachschlagefunktion in `shell/KopfbandPunkte.tsx` und eine fest
+// verdrahtete Zeichenkette `t("menue.einstellungen")` in `shell/ZahnradMenue.tsx`. Die
+// Schnellnavigation kannte keine davon und beschriftete aus `item.labelKey`.
+//
+// JETZT GIBT ES EINE: `anzeigeNameKey`. Sie ist nach Punkt-`id` geschlüsselt (nicht mehr auf das
+// Kopfband beschränkt) und trägt ALLE Abweichungen zwischen dem angezeigten Namen und dem
+// Seitentitel. Die Seitentitel selbst bleiben unangetastet — `nav.capture` ist weiterhin „Wissen
+// erfassen", `nav.validation` weiterhin „Validierung", `nav.admin` weiterhin „Admin".
+//
+// KEIN NEUER TEXTSCHLÜSSEL: alle drei Schlüssel gibt es in de/en/nl bereits
+// (`i18n.ts:204,205,210` · `:5441,5442,5447` · `:9971,9972,9977`).
+const ANZEIGE_NAME_KEY: Record<string, string> = {
   erfassen: "kopfband.erfassen",
   validierung: "kopfband.pruefen",
+  admin: "menue.einstellungen",
 };
+
+/** Der Textschlüssel, unter dem eine Fläche diesen Punkt BESCHRIFTET. */
+export function anzeigeNameKey(item: NavItem): string {
+  return ANZEIGE_NAME_KEY[item.id] ?? item.labelKey;
+}
+
+/**
+ * Alle Namen, unter denen dieser Punkt GEFUNDEN werden soll: der angezeigte plus der bisherige.
+ *
+ * Der Änderungsauftrag verlangt beides (`register/planung/UIUX-AUFTRAEGE-1.md:179`): „Sichtbare
+ * Namen … abstimmen; Admin/Validierung dürfen Suchsynonyme bleiben." Wer sich „Validierung"
+ * angewöhnt hat, verliert seinen Weg nicht. Kein neuer Text — es sind zwei vorhandene Schlüssel.
+ */
+export function suchNamenKeys(item: NavItem): readonly string[] {
+  const angezeigt = anzeigeNameKey(item);
+  return angezeigt === item.labelKey ? [angezeigt] : [angezeigt, item.labelKey];
+}
 
 /** Reihenfolge im Zahnrad-Menü „Weitere Bereiche" (Auftrag JOB 3060, Lieferung 2). */
 const WEITERE_BEREICHE_IDS = [

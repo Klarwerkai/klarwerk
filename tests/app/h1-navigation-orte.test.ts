@@ -11,8 +11,8 @@
 // „Suchen“ (Mockup Z.29).
 import { describe, expect, it } from "vitest";
 import {
-  KOPFBAND_LABEL_KEY,
   NAV_GROUPS,
+  anzeigeNameKey,
   einstellungenItem,
   kopfbandItems,
   weitereBereicheItems,
@@ -79,7 +79,10 @@ describe("JOB 3060 · H1 · die drei Orte der Navigation", () => {
       validierung: "Prüfen",
     };
     for (const item of kopfbandItems()) {
-      const key = KOPFBAND_LABEL_KEY[item.id as keyof typeof KOPFBAND_LABEL_KEY];
+      // JOB 3105 · UX-08: die Kopfband-Tabelle `KOPFBAND_LABEL_KEY` ist abgelöst — der angezeigte
+      // Name kommt jetzt für JEDE Fläche aus `anzeigeNameKey` (navigation.ts). Die Erwartung
+      // darunter ist unverändert: dieselben fünf deutschen Wörter, dieselbe DE/EN/NL-Pflicht.
+      const key = anzeigeNameKey(item);
       expect(key, `${item.id} ohne Kopfband-Beschriftung`).toBeTruthy();
       expect(sprache("de", key)).toBe(de[item.id as keyof typeof de]);
       for (const lng of ["en", "nl"]) {

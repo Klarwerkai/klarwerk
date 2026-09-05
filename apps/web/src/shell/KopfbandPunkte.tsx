@@ -3,9 +3,8 @@ import { useLocation } from "react-router-dom";
 import { GuardedLink } from "../app/NavGuardContext";
 import { useRole } from "../app/RoleContext";
 import {
-  KOPFBAND_LABEL_KEY,
-  type KopfbandId,
   type NavItem,
+  anzeigeNameKey,
   canSee,
   istAktiverEintrag,
   kopfbandItems,
@@ -43,11 +42,6 @@ function sichtbarerZaehler(badge: NavBadge | undefined, online: boolean): number
     return null;
   }
   return badge.count;
-}
-
-/** Die Beschriftung eines Kopfband-Punkts (kürzer als der Seitentitel, s. navigation.ts). */
-function kopfbandLabelKey(item: NavItem): string {
-  return KOPFBAND_LABEL_KEY[item.id as KopfbandId] ?? item.labelKey;
 }
 
 /** Die Kopfband-Punkte, die diese Rolle sieht — Bildreihenfolge des Mockups. */
@@ -126,7 +120,7 @@ export function KopfbandPunkte(): JSX.Element {
               aktiv ? "border-brand font-semibold text-white" : "border-transparent text-hairline"
             }`}
           >
-            <span>{t(kopfbandLabelKey(item))}</span>
+            <span>{t(anzeigeNameKey(item))}</span>
             {zaehlerWert(
               item,
               badges,
@@ -162,7 +156,7 @@ export function KopfbandPunkteListe(): JSX.Element {
             "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
           )}
         >
-          {t(kopfbandLabelKey(item))}
+          {t(anzeigeNameKey(item))}
         </MenueZeile>
       ))}
     </>
@@ -193,7 +187,7 @@ export function WeitereBereicheZeilen(): JSX.Element {
               : "rounded-full bg-hairline px-1.5 py-px text-[10.5px] font-bold text-ink",
           )}
         >
-          {t(item.labelKey)}
+          {t(anzeigeNameKey(item))}
         </MenueZeile>
       ))}
     </>
