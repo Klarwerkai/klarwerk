@@ -186,12 +186,14 @@ describe("mega74 Teil 2b · Klara sagt, was sie nicht durfte — und was wirklic
     // Ungeprüft-Zähler ENTFERNT — die Zahl entstand ohne Betrachterfilter (Leck ab n = 1) und
     // zählte die gedeckelte Vorauswahl statt des Bestands. Dass er weg ist, prüft
     // tests/app/mega77-klara-wortlaut-und-frist.test.ts; die drei Herkunfts-Texte bleiben.
-    for (const key of [
-      'askSourceSelection: "',
-      'askSourceSelectionOverride: "',
-      'askSourceManual: "',
-    ]) {
-      expect(HTML.split(key).length - 1, key).toBe(3);
+    // JOB 3056 K1 (Pages-Massstab, kein Erklaertext im Sichtfeld): von den drei Herkunfts-Texten
+    // bleibt der EINE, in dessen Fall etwas verworfen wuerde — Markierung UND getippter Text
+    // (askSourceSelectionOverride). „Gefragt wird: deine Markierung" / „deine Eingabe" sind
+    // ENTFERNT (in allen drei Sprachen, kein toter Schluessel): die Ruhe sagt es mit einem Satz,
+    // und der Schalter „Text in Word mitlesen" entscheidet.
+    expect(HTML.split('askSourceSelectionOverride: "').length - 1).toBe(3);
+    for (const key of ['askSourceSelection: "', 'askSourceManual: "']) {
+      expect(HTML.split(key).length - 1, `${key} ist entfernt`).toBe(0);
     }
   });
 

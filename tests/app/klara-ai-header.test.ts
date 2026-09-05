@@ -172,13 +172,18 @@ function sicht(
 // ================================================================================================
 // BLOCK A — der Kopf ist permanent und traegt beide Fragen getrennt
 // ================================================================================================
-describe("AUFTRAG-06 BLOCK A: der Kopf ist da, bevor irgendein Netzabruf antwortet", () => {
-  it("die sitzungsbezogene Gruppe liegt IM permanenten Kopf, nicht in einem Reiter", () => {
-    const kopfStart = HTML.indexOf('<div id="klara-trust-head"');
-    expect(kopfStart, "Der permanente Kopf fehlt").toBeGreaterThan(0);
-    const kopfEnde = HTML.indexOf("</header>", kopfStart);
-    expect(kopfEnde, "Der Kopf steht nicht mehr im <header>").toBeGreaterThan(kopfStart);
-    const kopf = HTML.slice(kopfStart, kopfEnde);
+// JOB 3056 K1 (Pedi 04.09., Mockups design/klara): der ORT ist umgezogen. Erklaertext gehoert
+// hinter das Zahnrad, nicht ins Sichtfeld — die sitzungsbezogene Gruppe steht deshalb in den
+// EINSTELLUNGEN (#kw-einstellungen, Gruppe „Vom Admin eingestellt" / „In dieser Sitzung"), der
+// Hausstand (BASIC-0, #klara-trust-head) unter „Wie Klara antwortet" (#kw-hilfe). Beide liegen
+// AUSSERHALB der Reiter-Abschnitte (#section-ask / #section-capture) und ueberleben den Wechsel.
+describe("AUFTRAG-06 BLOCK A: die Gruppe ist da, bevor irgendein Netzabruf antwortet", () => {
+  it("die sitzungsbezogene Gruppe liegt in den Einstellungen — ausserhalb beider Reiter", () => {
+    const start = HTML.indexOf('<div id="kw-einstellungen"');
+    expect(start, "Die Einstellungen fehlen").toBeGreaterThan(0);
+    const ende = HTML.indexOf('<div id="kw-hilfe"', start);
+    expect(ende, "Die Hilfe folgt nicht auf die Einstellungen").toBeGreaterThan(start);
+    const einstellungen = HTML.slice(start, ende);
     for (const id of [
       "klara-s4",
       "klara-s4-label",
@@ -187,8 +192,17 @@ describe("AUFTRAG-06 BLOCK A: der Kopf ist da, bevor irgendein Netzabruf antwort
       "klara-s4-deviation",
       "klara-s4-session",
     ]) {
-      expect(kopf, `${id} muss im permanenten Kopf stehen`).toContain(`id="${id}"`);
+      expect(einstellungen, `${id} muss in den Einstellungen stehen`).toContain(`id="${id}"`);
     }
+    // Ausserhalb beider Reiter-Abschnitte: die Umschaltung setzt deren className, sie kann die
+    // Gruppe damit weder verstecken noch loeschen.
+    const sectionAsk = HTML.indexOf('id="section-ask"');
+    const sectionCapture = HTML.indexOf('id="section-capture"');
+    expect(start).toBeGreaterThan(sectionAsk);
+    expect(start).toBeGreaterThan(sectionCapture);
+    // Und der Hausstand (BASIC-0) steht unter „Wie Klara antwortet".
+    const hilfe = HTML.slice(ende);
+    expect(hilfe).toContain('id="klara-trust-head"');
   });
 
   it("es gibt GENAU EINE sitzungsbezogene Gruppe — kein zweiter Kopf mit zweiter Wahrheit", () => {
@@ -338,7 +352,8 @@ describe("AUFTRAG-06 BLOCK B: jeder Vertragswert hat einen Text — in allen dre
         "s4Blockiert",
         "s4Veraltet",
         "s4Sitzung",
-        "s4SitzungKeine",
+        // JOB 3056 K1: `s4SitzungKeine` („Zur Zustimmung liegt kein Stand vor") ist ENTFERNT — in
+        // den Faellen ohne Zustimmungsstand steht der Zustand selbst (s4State*) als Satz.
         "s4Unbekannt",
         "s4FragenGesperrt",
       ]) {
@@ -446,6 +461,30 @@ describe("AUFTRAG-06 BLOCK C: die Anzeige spiegelt die Serverantwort und erfinde
     expect(a.veraltet).toBe(true);
     expect(a.stateKey).toBe("s4StateVeraltet");
     expect(a.tone).toBe("warn");
+    // JOB 3056 Runde 8 (Codex Runde 7, Pflicht 9): eine abgelaufene Aufloesung ist KEIN Stand —
+    // Modus, Anbieter und Modell werden verworfen (die KI-Zeile zeigt „–"), und die Ausfuehrungs-
+    // freigabe der abgelaufenen Aufloesung wird NICHT uebernommen, bis eine frische Antwort da ist.
+    expect(a.modeKey).toBeNull();
+    expect(a.provider).toBeNull();
+    expect(a.model).toBeNull();
+    expect(a.askAllowed).toBe(false);
+    expect(a.deviationKey).toBeNull();
+    expect(a.consentVisible).toBe(false);
+    expect(a.revokeVisible).toBe(false);
+    expect(a.consentPossible).toBe(false);
+  });
+
+  it("KALIBRIERUNG: dieselbe Aufloesung EINE Millisekunde vor Ablauf traegt Modus, Anbieter, Modell und Freigabe", () => {
+    const a = block().klaraS4Anzeige(
+      "bereit",
+      sicht({ expiresAt: new Date(JETZT + 1).toISOString() }),
+      JETZT,
+    );
+    expect(a.veraltet).toBe(false);
+    expect(a.modeKey).toBe("s4ModeDeterministic");
+    expect(a.provider).toBe("klarwerk-retrieval");
+    expect(a.model).toBe("retrieval-only");
+    expect(a.askAllowed).toBe(true);
   });
 });
 

@@ -166,7 +166,19 @@ interface Messpunkt {
   selektor: string;
   eigenschaft: string;
 }
-const MESSPUNKTE: Messpunkt[] = WERTE_FRAGEWEG_LUECKE.map((w) => ({
+// JOB 3056 K1 (Pedi 04.09., Pages-Massstab): die Fusszeile der Luecke (Zielbild Z.34/35,
+// #ask-luecke-fuss, askGapFuss) steht NICHT mehr im Sichtfeld — der Satz lebt unter „Wie Klara
+// antwortet" (#kw-hilfe, hinter dem Zahnrad) weiter, im selben Wortlaut (Fall T). Die Zeilen der
+// Werte-Tabelle, die an #ask-luecke-fuss messen, haben in der Luecke kein Element mehr; sie werden
+// hier BENANNT ausgelassen, nicht still (werte.ts ist nicht Zielpfad von JOB 3056).
+const OHNE_ELEMENT_SEIT_3056 = "#ask-luecke-fuss";
+const AUSGELASSEN = WERTE_FRAGEWEG_LUECKE.filter(
+  (w) => w.messpunkt?.selektor === OHNE_ELEMENT_SEIT_3056,
+);
+const GEMESSEN = WERTE_FRAGEWEG_LUECKE.filter(
+  (w) => w.messpunkt?.selektor !== OHNE_ELEMENT_SEIT_3056,
+);
+const MESSPUNKTE: Messpunkt[] = GEMESSEN.map((w) => ({
   name: w.name,
   selektor: w.messpunkt?.selektor ?? "",
   eigenschaft: w.messpunkt?.eigenschaft ?? "",
@@ -258,8 +270,9 @@ const ZUSTAND = `() => {
     linkKlassen: link ? (link.getAttribute('class') || '') : null,
     linkHref: link ? link.getAttribute('href') : null,
     linkGesperrt: link ? link.getAttribute('aria-disabled') : null,
-    fussText: text('#ask-luecke-fuss'),
-    fussSichtbar: sichtbar('#ask-luecke-fuss'),
+    fussText: text('#kw-hilfe [data-t="askGapFuss"]'),
+    fussSichtbar: sichtbar('#kw-hilfe [data-t="askGapFuss"]'),
+    fussImBlock: document.querySelectorAll('#ask-gap-block [data-t="askGapFuss"], #ask-luecke-fuss').length,
     warnkastenImBlock: document.querySelectorAll('#ask-gap-block .status').length,
     askGapBodyImBlock: document.querySelectorAll('#ask-gap-block [data-t="askGapBody"]').length,
     regelImBlock: document.querySelectorAll('#ask-gap-block [data-t="askRuleNote"]').length,
@@ -288,7 +301,7 @@ const ZUSTAND = `() => {
 const GEOMETRIE = `() => {
   const r = (sel) => { const e = document.querySelector(sel); return e ? e.getBoundingClientRect() : null; };
   const karte = r('#ask-karte'), block = r('#ask-gap-block'), luecke = r('#ask-luecke');
-  const fuss = r('#ask-luecke-fuss'), satz = r('#ask-luecke-satz');
+  const feld = r('#ask-feld'), satz = r('#ask-luecke-satz');
   const l = document.querySelector('#ask-luecke');
   const lcs = l ? getComputedStyle(l) : null;
   const kinder = l ? [...l.children].map((k) => k.getBoundingClientRect()) : [];
@@ -311,6 +324,8 @@ const GEOMETRIE = `() => {
     fensterBreite: innerWidth,
     polsterUnten: parseFloat(getComputedStyle(document.body).paddingBottom),
     karteOben: karte ? karte.top : null,
+    karteUnten: karte ? karte.bottom : null,
+    feldOben: feld ? feld.top : null,
     blockOben: block ? block.top : null,
     blockUnten: block ? block.bottom : null,
     blockLinks: block ? block.left : null,
@@ -326,7 +341,6 @@ const GEOMETRIE = `() => {
     inhaltOben: erstes ? erstes.top : null,
     inhaltUnten: letztes ? letztes.bottom : null,
     kinderMittenAbweichung: luecke ? kinder.map((k) => Math.abs((k.left + k.right) / 2 - (luecke.left + luecke.right) / 2)) : [],
-    fussUnten: fuss ? fuss.bottom : null,
     satzOben: satz ? satz.top : null,
     satzUnten: satz ? satz.bottom : null,
     scrollY: window.scrollY,
@@ -360,7 +374,8 @@ interface Geometrie {
   inhaltOben: number | null;
   inhaltUnten: number | null;
   kinderMittenAbweichung: number[];
-  fussUnten: number | null;
+  karteUnten: number | null;
+  feldOben: number | null;
   satzOben: number | null;
   satzUnten: number | null;
   scrollY: number;
@@ -410,6 +425,7 @@ interface Zustand {
   linkGesperrt: string | null;
   fussText: string | null;
   fussSichtbar: boolean | null;
+  fussImBlock: number;
   warnkastenImBlock: number;
   askGapBodyImBlock: number;
   regelImBlock: number;
@@ -597,7 +613,7 @@ describe.runIf(zielbildDa)(
           const g = geometrie;
           const f = (n: number | null): string => (n === null ? "—" : n.toFixed(1));
           console.info(
-            `JOB 3046 D2 · G · scrollY ${f(g.scrollY)} · Karte oben ${f(g.karteOben)} · Block ${f(g.blockOben)}–${f(g.blockUnten)} (Fenster ${g.fensterHoehe}, Polster unten ${f(g.polsterUnten)}) · Flaeche ${f(g.lueckeOben)}–${f(g.lueckeUnten)} h=${f(g.lueckeHoehe)} x ${f(g.lueckeLinks)}–${f(g.lueckeRechts)} · Inhalt ${f(g.inhaltOben)}–${f(g.inhaltUnten)} · frei oben ${f((g.inhaltOben ?? 0) - (g.lueckeOben ?? 0))} unten ${f((g.lueckeUnten ?? 0) - (g.inhaltUnten ?? 0))} · Fuss unten ${f(g.fussUnten)} · Ahnen ${g.ahnen.map((a) => `${a.kennung}[${a.hintergrund}|${a.randBreite}|${a.schatten}]`).join(" > ")}`,
+            `JOB 3046 D2 · G · scrollY ${f(g.scrollY)} · Karte oben ${f(g.karteOben)} · Block ${f(g.blockOben)}–${f(g.blockUnten)} (Fenster ${g.fensterHoehe}, Polster unten ${f(g.polsterUnten)}) · Flaeche ${f(g.lueckeOben)}–${f(g.lueckeUnten)} h=${f(g.lueckeHoehe)} x ${f(g.lueckeLinks)}–${f(g.lueckeRechts)} · Inhalt ${f(g.inhaltOben)}–${f(g.inhaltUnten)} · frei oben ${f((g.inhaltOben ?? 0) - (g.lueckeOben ?? 0))} unten ${f((g.lueckeUnten ?? 0) - (g.inhaltUnten ?? 0))} · Feld oben ${f(g.feldOben)} · Karte unten ${f(g.karteUnten)} · Ahnen ${g.ahnen.map((a) => `${a.kennung}[${a.hintergrund}|${a.randBreite}|${a.schatten}]`).join(" > ")}`,
           );
         }
 
@@ -768,17 +784,17 @@ describe.runIf(zielbildDa)(
       expect(l.eingabeWert).toBe(FRAGE);
     });
 
-    it("F · die Flaeche ist die Auskunft des Zielbilds: #ask-luecke sichtbar, KEIN Warnkasten, KEIN askGapBody, KEINE Zweitkopie der Regel im Block; die Regel steht unter der Antwortflaeche", () => {
+    it("F · die Flaeche ist die Auskunft des Zielbilds: #ask-luecke sichtbar, KEIN Warnkasten, KEIN askGapBody, KEINE Zweitkopie der Regel im Block; die Regel steht hinter dem Zahnrad (JOB 3056), nicht im Sichtfeld", () => {
       expect(fehler).toBeNull();
       const l = luecke as Zustand;
       expect(l.flaecheSichtbar, "#ask-luecke fehlt oder ist verborgen").toBe(true);
       expect(l.warnkastenImBlock, "ein .status-Kasten im Lueckenblock").toBe(0);
       expect(l.askGapBodyImBlock, "askGapBody steht noch im Block").toBe(0);
       expect(l.regelImBlock, "die Zweitkopie von askRuleNote steht noch im Block").toBe(0);
-      expect(l.regelUnterAntwort, "#ask-rule-note ist nicht sichtbar").toBe(true);
-      // JOB 3017 D4 (Nachzug): die EINE Stelle der Regel ist die Fusszeile #kw-fuss des Grundpanels;
-      // ihr Wortlaut traegt den Leitsatz vor den belegten Halbsaetzen (bis dahin „So arbeitet
-      // Klara: …"). Gemessen wird weiter der sichtbare Text der einen Stelle.
+      // JOB 3056 K1 (Pedi 04.09., Pages-Massstab): die EINE Stelle der Regel (#ask-rule-note) liegt
+      // unter „Wie Klara antwortet" hinter dem Zahnrad — in der Luecke steht KEIN Erklaertext.
+      // Der Wortlaut bleibt unveraendert (Leitsatz vor den belegten Halbsaetzen, mega75/mega77).
+      expect(l.regelUnterAntwort, "#ask-rule-note steht im Sichtfeld der Luecke").toBe(false);
       expect(l.regelText ?? "").toContain("Keine KI-Antwort ohne Beleg");
       expect(l.regelText ?? "").toContain("nicht an eine externe KI");
     });
@@ -812,8 +828,11 @@ describe.runIf(zielbildDa)(
       expect(l.knopfText).toBe(knopf);
       expect(l.knopfTag).toBe("BUTTON");
       expect(l.linkText).toBe(link);
+      // JOB 3056 K1: der Fusszeilensatz (Z.35, askGapFuss) steht im selben Wortlaut unter „Wie
+      // Klara antwortet" (#kw-hilfe) — hinter dem Zahnrad, nicht in der Luecke.
       expect(l.fussText).toBe(fuss);
-      expect(l.fussSichtbar).toBe(true);
+      expect(l.fussSichtbar, "askGapFuss ist in der Luecke sichtbar").toBe(false);
+      expect(l.fussImBlock, "eine Fusszeile steht noch im Lueckenblock").toBe(0);
     });
 
     it("(i) · im Lueckenzustand ist panelweit genau EIN primary sichtbar — der Frage-Knopf; der Textlink ist ein <a> ohne primary", () => {
@@ -852,17 +871,17 @@ describe.runIf(zielbildDa)(
       expect(n.seitenUrl, "der Link hat navigiert (href='#')").toBe(PANEL_URL);
     });
 
-    it("G · GEOMETRIE 360x720 (Runde 2): Frage-Karte am oberen Fensterrand, Lueckenblock bis zum unteren; die Flaeche traegt freien Raum ueber UND unter dem Inhalt, gleich gross; Kinder mittig; Fusszeile schliesst unten ab; der Satz ist im Bild", () => {
+    it("G · GEOMETRIE 360x720 (JOB 3056): Lueckenblock zwischen Kopf und Frage-Feld, das Feld unten am Fensterrand; die Flaeche traegt freien Raum ueber UND unter dem Inhalt, gleich gross; Kinder mittig; der Satz ist im Bild", () => {
       expect(fehler).toBeNull();
       const g = geometrie as Geometrie;
       expect(g, "keine Geometrie").not.toBeNull();
       expect(g.fensterBreite).toBe(360);
       expect(g.fensterHoehe).toBe(720);
-      // Das Panel hat die Frage-Karte an den oberen Fensterrand gerollt: Frage und Auskunft im Bild.
-      expect(Math.abs(g.karteOben ?? 999)).toBeLessThan(1);
-      // Der Block ist die Buehne: bis zum unteren Fensterrand (abzueglich der Koerperpolsterung),
-      // ueber die volle Fensterbreite.
-      expect(Math.abs((g.blockUnten ?? 0) - (g.fensterHoehe - g.polsterUnten))).toBeLessThan(1);
+      // JOB 3056 K1 (Ruhe.dc.html Z.33): das Frage-Feld steht UNTEN — die Karte schliesst 16px ueber
+      // dem Fensterrand ab; die Frage bleibt darin stehen (askFrageAendern setzt den Cursor).
+      expect(Math.abs((g.karteUnten ?? 0) - (g.fensterHoehe - 16))).toBeLessThan(1);
+      // Der Block ist die Buehne: er nimmt den Raum bis zum Frage-Feld ein, ueber die volle Breite.
+      expect(Math.abs((g.blockUnten ?? 0) - (g.feldOben ?? 999))).toBeLessThan(1);
       expect(Math.abs(g.blockLinks ?? 999)).toBeLessThan(1);
       expect(Math.abs((g.blockBreite ?? 0) - 360)).toBeLessThan(1);
       // Die Flaeche spannt die volle Fensterbreite; Z.27 `padding: 0 32px` — der Inhalt beginnt
@@ -883,8 +902,8 @@ describe.runIf(zielbildDa)(
       for (const a of g.kinderMittenAbweichung) {
         expect(a).toBeLessThan(1);
       }
-      // Die Fusszeile (Z.34) schliesst die Buehne unten ab; der Satz (Z.29) ist im Fenster sichtbar.
-      expect(Math.abs((g.fussUnten ?? 0) - (g.blockUnten ?? 999))).toBeLessThan(1);
+      // Der Satz (Z.29) ist im Fenster sichtbar. (Die Fusszeile Z.34 steht seit JOB 3056 hinter
+      // dem Zahnrad — Fall T.)
       expect(g.satzOben ?? -1).toBeGreaterThanOrEqual(0);
       expect(g.satzUnten ?? 999).toBeLessThanOrEqual(g.fensterHoehe);
     });
@@ -949,7 +968,9 @@ describe.runIf(zielbildDa)(
 
     it("M · jede Zeile der Werte-Tabelle traegt einen Messpunkt, und jeder Messpunkt trifft genau ein reales Element mit rueckwaerts aufloesbarem Pfad", () => {
       expect(fehler).toBeNull();
-      expect(MESSPUNKTE.length).toBeGreaterThanOrEqual(30);
+      // JOB 3056: die sechs Fusszeilen-Zeilen sind benannt ausgelassen (Fall X) — es bleiben 27.
+      expect(MESSPUNKTE.length).toBe(GEMESSEN.length);
+      expect(MESSPUNKTE.length).toBeGreaterThanOrEqual(27);
       for (const p of MESSPUNKTE) {
         expect(p.selektor, `${p.name}: Zeile ohne Messpunkt (Selektor)`).not.toBe("");
         expect(p.eigenschaft, `${p.name}: Zeile ohne Messpunkt (Eigenschaft)`).not.toBe("");
@@ -963,8 +984,19 @@ describe.runIf(zielbildDa)(
       }
     });
 
+    it("X · die Fusszeilen-Zeilen der Werte-Tabelle (Z.34/35) sind BENANNT ausgelassen: seit JOB 3056 gibt es #ask-luecke-fuss nicht mehr, der Satz steht hinter dem Zahnrad (Fall T)", () => {
+      expect(fehler).toBeNull();
+      expect(AUSGELASSEN.length).toBeGreaterThan(0);
+      expect(AUSGELASSEN.length + GEMESSEN.length).toBe(WERTE_FRAGEWEG_LUECKE.length);
+      for (const w of AUSGELASSEN) {
+        console.info(
+          `JOB 3056 K1 · AUSGELASSEN · ${w.name} — ${w.messpunkt?.selektor} existiert seit JOB 3056 nicht mehr`,
+        );
+      }
+    });
+
     // ---- ein Vergleich je Wert, an den realen Elementen ------------------------------------------
-    for (const w of WERTE_FRAGEWEG_LUECKE) {
+    for (const w of GEMESSEN) {
       it(`V · ${w.name} — ${w.messpunkt?.eigenschaft ?? "?"} an ${w.messpunkt?.selektor ?? "?"}`, () => {
         expect(fehler).toBeNull();
         const soll = kanon(w.ziel(ziel));

@@ -105,8 +105,10 @@ const GAP_BODY = {
 // eigenes Feld mit). Der Zwilling liegt AUSSERHALB der Zielpfade von JOB 3019 — Runde 2 hatte ihn
 // nachgezogen, die Vorpruefung des Tors hat das als Zielpfad-Verstoss zurueckgewiesen. Wo die
 // beiden auseinanderlaufen, steht in Teil 3 NAMENTLICH und auf beiden Seiten woertlich gepinnt;
-// was das Panel wirklich absendet, misst `tests/klara-panel/ka5-markierung-reist-mit.test.tsx`
-// am Koerper. Der Zwilling hat keinen Aufrufer in der Anwendung (nur Tests importieren ihn).
+// was das Panel wirklich absendet, misst `tests/app/k1-ask-koerper-markierung.test.tsx` am
+// Koerper (JOB 3056 Nachzug-Runde 1: die Faelle A/C/D der in der Konfliktrunde geloeschten
+// KA5-Datei, an der ausgelieferten Flaeche). Der Zwilling hat keinen Aufrufer in der Anwendung
+// (nur Tests importieren ihn).
 describe("WP-KLARA-ASK Teil 1: Frage-Vorbereitung des Zwillings (Auswahl vor Eingabefeld, ehrliche Kappung)", () => {
   it("Zwilling: Word-Auswahl hat Vorrang; leere Auswahl → Eingabefeld; beides leer → empty", () => {
     expect(prepareAskQuestion("  Aussage aus Word  ", "getippt")).toEqual({
@@ -873,13 +875,13 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
     // Serverseitige Permission dokumentiert (ko.read — exakt die Fragen-Konsole).
     expect(html).toContain("ko.read");
     // Ehrliche Zustaende: leer / busy / auth / timeout / error.
-    // JOB 3016 D3: „busy" ist kein Warnkasten mehr. Der Wartezustand ist die Ladekarte
-    // (#ask-ladekarte) mit dem Satz #ask-ladekarte-satz, der den Schluessel askBusy ueber `data-t`
-    // traegt; ein- und ausgeblendet wird er an EINER Stelle (askWartezustand). Die vier echten
-    // Warnungen bleiben in #ask-status.
+    // JOB 3016 D3: „busy" ist kein Warnkasten mehr. JOB 3056 K1 (§9): der Wartezustand ist der
+    // drehende Kreis im Sendeknopf, dessen zugaenglicher Name solange der Schluessel askBusy ist
+    // (aria-label, kein Satz im Sichtfeld); ein- und ausgeblendet wird er an EINER Stelle
+    // (askWartezustand). Die vier echten Warnungen bleiben in #ask-status.
     for (const marker of [
       't("askEmpty")',
-      'data-t="askBusy"',
+      'askLaeuft ? t("askBusy") : t("askCta")',
       "askWartezustand(true)",
       "askWartezustand(false)",
       't("askAuth")',
@@ -975,9 +977,12 @@ describe("WP-KLARA-ASK: Taskpane-Verdrahtung (Quelltext-Pins) + i18n x3", () => 
       'askEmpty: "',
       'askBusy: "',
       'askTruncated: "',
-      // JOB 3019 (KA5): die zwei weiteren Deckel-Saetze — je Sprache genau einmal.
-      'askSelectionTruncated: "',
-      'askBothTruncated: "',
+      // JOB 3019 (KA5) hatte hier zwei weitere Deckel-Saetze: `askSelectionTruncated`,
+      // `askBothTruncated`. JOB 3056 K1 (Rebase, 05.09.2026): BEIDE SCHLUESSEL SIND ENTFERNT — sie
+      // bedienten ausschliesslich die Vier-Lagen-Herkunftszeile (`askDeckelHinweis`), die mit dem
+      // Ruhe-Umbau selbst entfallen ist (taskpane.html `updateAskSourceNote` zeigt nur noch den
+      // EINEN Verwerfungssatz, ohne Deckelhinweis). Die Statuszeile nach der Antwort zeigt
+      // `askTruncated` unveraendert (renderAskOutcome, s.o.); dort steht die Kappung weiterhin.
       'askAuth: "',
       'askTimeout: "',
       // JOB 3016 Runde 5: die Auswahlfrist des Word-Wegs (Word bleibt den Rueckruf schuldig).
@@ -1468,7 +1473,22 @@ describe("JOB 1153 · KA6 Stufe 1: die Schreibflaeche im Aufgabenfenster", () =>
   it("Die Flaeche existiert und bietet GENAU DREI Zurufe: erstellen, vervollstaendigen, umformulieren", async () => {
     await ladeKa6Fenster(ka6Erlaubt());
 
+    // JOB 3056 K1 (Pages-Massstab): die Schreibflaeche ist ein Untermenue des Frage-Felds — in
+    // der leeren Ruhe steht sie NICHT im Sichtfeld; sie erscheint mit dem ersten Zeichen im Feld
+    // (oder einer Markierung in Word) und geht mit dem letzten (ka6Kontext, ka6Zeichnen).
+    expect(ka6Sichtbar("ka6-block"), "Die Schreibflaeche steht ohne Kontext im Sichtfeld").toBe(
+      false,
+    );
+    const feld = ka6El("ask-input");
+    feld.value = "Bitte formulieren";
+    feld.dispatchEvent(new umgebung.window.Event("input", { bubbles: true }));
     expect(ka6Sichtbar("ka6-block"), "Die Schreibflaeche fehlt").toBe(true);
+    feld.value = "";
+    feld.dispatchEvent(new umgebung.window.Event("input", { bubbles: true }));
+    expect(ka6Sichtbar("ka6-block"), "Die Schreibflaeche bleibt ohne Kontext stehen").toBe(false);
+    feld.value = "Bitte formulieren";
+    feld.dispatchEvent(new umgebung.window.Event("input", { bubbles: true }));
+    expect(ka6Sichtbar("ka6-block")).toBe(true);
     for (const id of [
       "ka6-zuruf-erstellen",
       "ka6-zuruf-vervollstaendigen",

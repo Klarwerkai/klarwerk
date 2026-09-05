@@ -50,7 +50,12 @@ const AUFLOESUNG_GESPERRT_TROTZ_ZUSTIMMUNG = {
   executionAllowed: false,
   blockedReason: "external_not_migrated",
   resolvedAt: "2026-08-28T12:00:00.000Z",
-  expiresAt: "2026-08-28T12:05:00.000Z",
+  // JOB 3056 Runde 8: die Frist der Aufloesung muss in der ZUKUNFT liegen — seit Runde 8 verwirft
+  // klaraS4Anzeige eine abgelaufene Aufloesung ganz (Pflicht 9: „–" statt Cache-Wert), und die
+  // Faelle hier pruefen den Zustimmungs- und Sperrsatz eines GUELTIGEN Stands. Das feste Datum
+  // 2026-08-28 war am 05.09.2026 abgelaufen und bestand nur, weil das Panel bis dahin abgelaufene
+  // Werte weiterzeigte.
+  expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
   policyVersion: "p1",
   configurationVersion: "c1",
 };
@@ -145,29 +150,42 @@ describe("JOB 2621 · Befund 3 — erst die Zustimmung, dann das andere Tor mit 
   });
 });
 
+// JOB 3056 K1 (Mockups 04.09.): der Stand hat wieder EINE Stelle — den Fuss der Einstellungen
+// („Klara <Stand>", Einstellungen.dc.html Z.68). Der Kopf-Spiegel von JOB 2621 §3 ist mit dem alten
+// Kopfband gefallen; Pedis Befund 1 („wo ist der Stand?") beantwortet jetzt das Zahnrad: die
+// Einstellungen sind der eine Ort fuer alles, was nicht Frage oder Antwort ist.
 describe("JOB 2621 · Befund 1 — der Stand steht dort, wo gesucht wird, aus EINER Quelle", () => {
-  it("W3 — der Kopf-Spiegel zeigt denselben Stand wie die bestehende Stelle; beide aus KLARA_STAND", async () => {
+  it("W3 — der Stand steht im Fuss der Einstellungen, aus KLARA_STAND, an genau einer Stelle", async () => {
     panel = createKlaraPanel({});
     await panel.flush();
 
-    // Beide Stellen zeigen denselben Wert (im Quellstand der Build-Platzhalter → „dev").
-    expect(panel.text("#kw-stand-kopf")).toBe("dev");
-    expect(panel.text("#kw-stand")).toBe(panel.text("#kw-stand-kopf"));
-    // GESPIEGELT, NICHT VERSCHOBEN: die bestehende Stelle existiert weiter (ihre Tests bleiben).
-    expect(panel.q("#kw-stand")).not.toBeNull();
-    // Der Spiegel steht im Kopfband neben der Sprachwahl — an der Datei gemessen.
+    // Im Quellstand der Build-Platzhalter → „dev"; die Zeile traegt „Klara " davor.
+    expect(panel.text("#kw-stand")).toBe("dev");
+    expect(panel.text("#kw-stand-zeile").replace(/\s+/g, " ").trim()).toBe("Klara dev");
+    // GENAU EINE Stelle: der Kopf-Spiegel ist weg, kein zweites Element traegt den Stand.
+    expect(panel.q("#kw-stand-kopf")).toBeNull();
     const html = readFileSync(
       resolve(process.cwd(), "apps/web/public/word-addin/taskpane.html"),
       "utf8",
     );
-    const header = html.slice(html.indexOf("<header>"), html.indexOf("</header>"));
-    expect(header).toContain('id="kw-stand-kopf"');
-    expect(header.indexOf('id="lang-nl"')).toBeLessThan(header.indexOf('id="kw-stand-kopf"'));
-    // EINE Quelle: der Spiegel wird aus derselben Zuweisung gespeist wie die bestehende Stelle
-    // (kwStandText), und es gibt weiterhin genau EINE KLARA_STAND-Deklaration.
-    expect(panel.scriptSource).toContain(
-      'document.getElementById("kw-stand-kopf").textContent = kwStandText',
+    const { markup } = splitTaskpane(html);
+    expect(markup.split('id="kw-stand"').length - 1).toBe(1);
+    // Die Stelle liegt in den Einstellungen (hinter dem Zahnrad), nicht im Kopf und nicht in
+    // einem Reiter-Abschnitt.
+    const einstellungen = markup.slice(
+      markup.indexOf('id="kw-einstellungen"'),
+      markup.indexOf('id="kw-hilfe"'),
     );
+    expect(einstellungen).toContain('id="kw-stand"');
+    expect(markup.slice(markup.indexOf("<header"), markup.indexOf("</header>"))).not.toContain(
+      "kw-stand",
+    );
+    // EINE Quelle: die Stelle wird aus kwStandText gespeist, und es gibt weiterhin genau EINE
+    // KLARA_STAND-Deklaration.
+    expect(panel.scriptSource).toContain(
+      'document.getElementById("kw-stand").textContent = kwStandText',
+    );
+    expect(panel.scriptSource).not.toContain("kw-stand-kopf");
     expect(panel.scriptSource.split("var KLARA_STAND =").length).toBe(2);
     // KEINE Handpflege: der Wert bleibt der Build-Platzhalter-Mechanismus (Befunde-Datei, Schluss).
     expect(panel.scriptSource).toContain('"__KLARA_STAND__"');

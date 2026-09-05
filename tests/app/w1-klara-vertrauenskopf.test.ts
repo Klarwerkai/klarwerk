@@ -128,30 +128,41 @@ const PHASEN: KlaraAiPhase[] = ["laedt", "da", "unerreichbar"];
 // ================================================================================================
 // BLOCK A — DER PERMANENTE KOPF: DER ORT IST DIE LIEFERUNG.
 // ================================================================================================
-describe("W1-VERTRAUENSKOPF-08 BLOCK A: der Kopf steht oben und bleibt dort", () => {
-  it("der Kopf liegt IM <header> — nicht im Fragen-Abschnitt", () => {
-    const header = HTML.indexOf("<header>");
+// JOB 3056 K1 (Pedi 04.09., Mockups design/klara — „Text über Text über Text … absolut unmöglich"):
+// der ORT des Vertrauenskopfs ist umgezogen. Er stand seit BASIC-0 im <header>, dauerhaft im
+// Sichtfeld; nach Pages-Massstab gehoert Erklaertext hinter das Zahnrad. Der Kopf lebt deshalb —
+// mit denselben Kennungen, derselben Ableitung (klaraTrustHead/klaraAiLage), demselben Abruf
+// /api/reasoner/status und denselben dreisprachigen Texten — unter „Wie Klara antwortet"
+// (#kw-hilfe, erreichbar ueber Zahnrad → Einstellungen). Die Zusagen dieses Blocks bleiben: EIN
+// Kopf, ausserhalb beider Reiter, ab dem ersten Bildaufbau gefuellt, Zustand als Text.
+describe("W1-VERTRAUENSKOPF-08 BLOCK A: der Kopf hat EINEN Ort — hinter dem Zahnrad, ausserhalb der Reiter", () => {
+  it("der Kopf liegt in „Wie Klara antwortet“ (#kw-hilfe) — nicht im Fragen-Abschnitt, nicht im <header>", () => {
+    const header = HTML.indexOf("<header");
     const headerEnde = HTML.indexOf("</header>");
+    const hilfe = HTML.indexOf('id="kw-hilfe"');
     const kopf = HTML.indexOf('id="klara-trust-head"');
     const sectionAsk = HTML.indexOf('id="section-ask"');
     expect(header, "kein <header>").toBeGreaterThan(0);
+    expect(hilfe, "die Hilfe-Flaeche fehlt").toBeGreaterThan(0);
     expect(kopf, "der Vertrauenskopf fehlt").toBeGreaterThan(0);
-    // Die Reihenfolge im Quelltext IST die Reihenfolge im Dokument: der Kopf steht zwischen
-    // <header> und </header>, und </header> steht vor dem Fragen-Abschnitt.
-    expect(kopf, "der Kopf steht vor dem <header>").toBeGreaterThan(header);
-    expect(kopf, "der Kopf steht ausserhalb des <header>").toBeLessThan(headerEnde);
-    expect(headerEnde, "der Fragen-Abschnitt beginnt vor dem </header>").toBeLessThan(sectionAsk);
+    // Die Reihenfolge im Quelltext IST die Reihenfolge im Dokument: der Kopf steht NACH dem
+    // Fragen-Abschnitt und INNERHALB der Hilfe-Flaeche; im <header> steht er nicht mehr.
+    expect(kopf).toBeGreaterThan(hilfe);
+    expect(kopf).toBeGreaterThan(sectionAsk);
+    expect(HTML.slice(header, headerEnde)).not.toContain("klara-trust-head");
   });
 
-  it("der Kopf haengt an KEINEM Reiter — er ueberlebt den Wechsel zu „Wissen erfassen“", () => {
+  it("der Kopf haengt an KEINEM Reiter — er ueberlebt den Wechsel zu „Erfassen“", () => {
     const kopf = HTML.indexOf('id="klara-trust-head"');
     const sectionAsk = HTML.indexOf('id="section-ask"');
     const sectionCapture = HTML.indexOf('id="section-capture"');
     expect(sectionCapture, "kein Erfassen-Abschnitt").toBeGreaterThan(0);
     // Ausserhalb BEIDER Abschnitte: die Reiterumschaltung setzt deren className, sie kann den Kopf
-    // damit weder verstecken noch loeschen.
-    expect(kopf).toBeLessThan(sectionAsk);
-    expect(kopf).toBeLessThan(sectionCapture);
+    // damit weder verstecken noch loeschen. (Der Erfassen-Abschnitt endet vor den Einstellungen.)
+    const einstellungen = HTML.indexOf('id="kw-einstellungen"');
+    expect(kopf).toBeGreaterThan(sectionAsk);
+    expect(kopf).toBeGreaterThan(sectionCapture);
+    expect(kopf).toBeGreaterThan(einstellungen);
   });
 
   it("GENAU EIN Kopf — BASIC-1 erweitert ihn, statt einen zweiten zu bauen (KW-W1-13)", () => {

@@ -1182,8 +1182,11 @@ describe("AUFTRAG-37 G3: nach der Anmeldung wird genau eine Sitzung nachgeholt",
   it("erst 401, dann angemeldet → GENAU EIN nachgeholter Sitzungsaufbau", async () => {
     stand.angemeldet = false;
     await ladeTaskpane();
-    // Unangemeldet: der Server laesst niemanden herein, es gibt keine Sitzung.
-    expect(el("klara-s4-mode").textContent).toContain("keine Sitzung");
+    // Unangemeldet: der Server laesst niemanden herein, es gibt keine Sitzung. JOB 3056 K1: die
+    // KI-Zeile der Einstellungen zeigt dann „–" (§9: kein Wert ohne frischen Abruf), die
+    // Sitzungszeile nennt die Ursache (JOB 2621 §1).
+    expect(el("klara-s4-mode").textContent).toBe("–");
+    expect(el("klara-s4-session").textContent).toContain("Nicht angemeldet");
     expect(el("klara-s4-provider").textContent).toBe("");
     expect(el("klara-s4-provider").className).toContain("hidden");
     const vorher = aufrufe.filter((a) => a.url === "/api/klara/sessions").length;

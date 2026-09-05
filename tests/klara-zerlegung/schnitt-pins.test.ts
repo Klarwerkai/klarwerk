@@ -160,14 +160,42 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // einen echten Browser (Playwright-Route, dieselbe Strecke wie JOB 3016) — Griff `pfad`; die
   // Fixture importiert er nicht. A2 hat die Datei gemeldet.
   "tests/design/zielbild-keinwissen.test.ts": "pfad",
-  "tests/design/zielbild-klara-main.test.ts": "pfad",
-  "tests/design/zielbild-pruefunglaeuft-messung.test.ts": "fixture",
-  // JOB 3016 D3: der Chromium-Vergleich der Ladekarte laedt die Datei ueber ihr Pfadliteral in
-  // einen echten Browser (Playwright-Route) — Griff `pfad`; A2 hat die Datei gemeldet.
-  "tests/design/zielbild-pruefunglaeuft.test.ts": "pfad",
-  // JOB 3017 D4: laedt die Datei ueber ihren Pfad in Chromium und misst das gebaute Grundpanel.
-  "tests/design/zielbild-schlankes-panel.test.ts": "pfad",
-  "tests/design/zielbild-schlankespanel-messung.test.ts": "marken,fixture",
+  // JOB 3056 K1 (04.09.2026): die Messgeraete der vier Chromium-Vergleiche gegen Pedis Mockups
+  // (Ruhe, Antwort, Einstellungen, kein Erklaertext) und des Funktionsinventars. Die Werkbank
+  // `k1-messung.ts` laedt die AUSGELIEFERTE Datei aus `apps/web/dist/word-addin/taskpane.html`
+  // (Pfadliteral) in Chromium; die fuenf Tests selbst importieren nur die Werkbank und greifen
+  // die Datei nicht direkt. ERSETZT (geloescht, nicht daneben belassen): zielbild-klara-main,
+  // zielbild-schlankes-panel, zielbild-schlankespanel-messung, zielbild-pruefunglaeuft und
+  // zielbild-pruefunglaeuft-messung — ihre Zielbilder vom 27.08. hat Pedi am 04.09. durch die
+  // Mockups ersetzt, und die Ladekarte, die sie massen, gibt es nicht mehr (§9: Laden zeigt der
+  // Sendeknopf). A2 hat die Werkbank gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
+  // Zwei der fuenf Tests nennen die ausgelieferte Datei zusaetzlich selbst im Kopfkommentar
+  // (Inventarachse `taskpane` des Regressionsinventars) — Griff `pfad`, von A2 gemeldet.
+  "tests/design/k1-funktionsinventar.test.ts": "pfad",
+  "tests/design/k1-messung.ts": "pfad",
+  // JOB 3056 Runde 4 (Codex Pflichten 1-3): die Vorrichtung `k1-panel-lauf.tsx` liest die Datei
+  // ueber ihr Pfadliteral und faehrt das VOLLSTAENDIGE Aufgabenfenster in jsdom (Bauform mega36);
+  // die drei Laufzeittests (Sitzungslagen, Abmelden verwirft, Fussnoten-Zuordnung) importieren
+  // die Vorrichtung und nennen die Datei im Kopfkommentar — Griff `pfad`. A2 hat alle vier
+  // gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
+  "tests/app/k1-panel-lauf.tsx": "pfad",
+  "tests/app/k1-sitzungslagen.test.tsx": "pfad",
+  "tests/app/k1-abmelden-verwirft-sitzung.test.tsx": "pfad",
+  "tests/app/k1-fussnoten-zuordnung.test.tsx": "pfad",
+  // JOB 3056 Runde 6: das Quellen-Rennen zweier Fragen, dieselbe Vorrichtung — Griff `pfad`.
+  "tests/app/k1-quellen-rennen.test.tsx": "pfad",
+  // JOB 3056 Runde 8: die abgelaufene Aufloesung, dieselbe Vorrichtung — Griff `pfad`.
+  "tests/app/k1-abgelaufene-aufloesung.test.tsx": "pfad",
+  // JOB 3056 Nachzug-Runde 1: der abgesendete Ask-Koerper (KA5-Faelle A/C/D), dieselbe Vorrichtung;
+  // liest zusaetzlich den Deckel WORD_ADDIN_ASK_MAX_CHARS aus der Datei — Griff `pfad`.
+  "tests/app/k1-ask-koerper-markierung.test.tsx": "pfad",
+  // JOB 3056 Runde 3: zwei der alten Namen leben als ABLOESUNGS-WAECHTER weiter — sie lesen die
+  // Datei ueber Segmente (Griff `zusammengesetzt`) und pinnen, dass Fusszeile, „Neue Frage",
+  // Leitsatz und Ladekarte nicht zurueckkommen; zugleich halten sie die Verweise des Werkzeugs
+  // tools/design-vergleich/werte.ts (nicht Zielpfad) aufloesbar. A2 hat beide gemeldet.
+  "tests/design/zielbild-klara-main.test.ts": "zusammengesetzt",
+  "tests/design/zielbild-pruefunglaeuft.test.ts": "zusammengesetzt",
+  "tests/design/zielbild-k1-kein-erklaertext.test.ts": "pfad",
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts": "pfad,fixture",
   "tests/design/zielbild-wissen-erfassen.test.ts": "pfad",
   "tests/i18n/mega35-word-wortliste.test.ts": "pfad",
@@ -176,10 +204,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // ein freigeschalteter externer Antwortweg nicht gleichzeitig bestehen koennen. Ein Schnitt
   // trifft ihn: wandert der Satz in eine Geschwisterdatei, liest S4 ins Leere. Griff `pfad`.
   "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": "pfad",
-  // JOB 3019 D1 (KA5): neuer Mitfahrer. Sie nennt das Pfadliteral und laedt Rumpf und Skript ueber
-  // `splitTaskpane` der Panel-Fixture — dieselben zwei Griffe wie die P7-Datei darueber. Wer
-  // `taskpane.html` zerlegt, bricht sie mit.
-  "tests/klara-panel/ka5-markierung-reist-mit.test.tsx": "pfad,fixture",
+  // JOB 3019 D1 (KA5) hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) als
+  // Mitfahrer (Pfadliteral, `splitTaskpane`). JOB 3056 K1 (Rebase, 05.09.2026): DIE DATEI IST
+  // GELOESCHT — sie mass die Vier-Lagen-Herkunftszeile, die mit dem Ruhe-Umbau selbst entfallen ist
+  // (s. Kommentar in tests/app/klara-regressionsinventar.test.ts). Kein Mitfahrer mehr.
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx": "pfad,fixture",
   // Die Messgeräte dieses Auftrags. Sie hängen genauso an der Datei wie alle anderen — nur messen
   // sie ausdrücklich ihre Struktur und nicht ihr Fachverhalten.

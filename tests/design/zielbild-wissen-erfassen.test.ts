@@ -33,6 +33,17 @@ const ZIELBILD =
 /** DIE ECHTE PRODUKTDATEI — kein Stand, keine Kopie. */
 const PRODUKT = new URL("../../apps/web/public/word-addin/taskpane.html", import.meta.url).pathname;
 
+// JOB 3056 K1 (Pedi 04.09., Mockups design/klara): die REITERLEISTE ist keine weisse Leiste mehr,
+// sondern der Segment-Umschalter im Kopf (Ruhe.dc.html Z.20-23: Grund #EEEAE3, 12.5px, 5px 12px)
+// — in Chromium gemessen in tests/design/zielbild-k1-ruhe.test.ts (K4-K6). Die drei Reiter-Zeilen
+// der Erfassen-Tabelle (WissenErfassen.dc.html Z.22-24, „geteilte Flaeche") sind damit von der
+// neueren Vorlage ueberholt und werden hier BENANNT ausgelassen, nicht still (werte.ts ist nicht
+// Zielpfad von JOB 3056; die Erfassen-Flaeche selbst baut JOB 3057 nach dem Mockup „Erfassen").
+const REITER_SEIT_3056_IM_KOPF = ["tabs-grund", "tab-schriftgrad", "tab-innenabstand"];
+const WERTE_ERFASSEN = WERTE_WISSEN_ERFASSEN.filter(
+  (w) => !REITER_SEIT_3056_IM_KOPF.some((r) => w.name.startsWith(r)),
+);
+
 const zielbildDa = existsSync(ZIELBILD);
 const lies = (p: string): string => readFileSync(p, "utf8");
 const sha256 = (s: string): string => createHash("sha256").update(s).digest("hex");
@@ -41,7 +52,7 @@ describe.runIf(zielbildDa)(
   "JOB 2620 · Zielbild-Abgleich Wissen erfassen — an der echten taskpane.html",
   () => {
     it("A — die ECHTE Produktdatei entspricht dem Zielbild: jeder tragende Wert einzeln gleich", () => {
-      const befunde = vergleiche(lies(ZIELBILD), lies(PRODUKT), WERTE_WISSEN_ERFASSEN);
+      const befunde = vergleiche(lies(ZIELBILD), lies(PRODUKT), WERTE_ERFASSEN);
       for (const b of befunde) {
         expect(
           b.gleich,
@@ -49,11 +60,11 @@ describe.runIf(zielbildDa)(
         ).toBe(true);
       }
       expect(befunde.every((b) => b.ziel !== null)).toBe(true);
-      expect(befunde.length).toBe(WERTE_WISSEN_ERFASSEN.length);
+      expect(befunde.length).toBe(WERTE_ERFASSEN.length);
     });
 
     it("C — KALIBRIERUNG: die Pruefung kennt keinen null-null-Treffer, und jeder Zielwert existiert", () => {
-      const gegenLeer = vergleiche(lies(ZIELBILD), "<html></html>", WERTE_WISSEN_ERFASSEN);
+      const gegenLeer = vergleiche(lies(ZIELBILD), "<html></html>", WERTE_ERFASSEN);
       expect(gegenLeer.every((b) => !b.gleich)).toBe(true);
       expect(gegenLeer.every((b) => b.ziel !== null)).toBe(true);
     });
@@ -70,14 +81,14 @@ describe.runIf(zielbildDa)(
       // „dist ist AELTER als der Quellstand" abbrechen — rot ohne Fehler.
       const zeitenVorher = statSync(PRODUKT);
       expect(original.split(ANKER).length, "Anker in der Produktdatei nicht eindeutig").toBe(2);
-      const rotVorher = vergleiche(lies(ZIELBILD), original, WERTE_WISSEN_ERFASSEN)
+      const rotVorher = vergleiche(lies(ZIELBILD), original, WERTE_ERFASSEN)
         .filter((b) => !b.gleich)
         .map((b) => b.name);
       let gefallen: string[] = [];
       try {
         writeFileSync(PRODUKT, original.replace(ANKER, "padding: 9px 11px"), "utf8");
         // Gelesen wird die DATEI, nicht die Speicherkopie — die Mutation liegt wirklich auf der Platte.
-        gefallen = vergleiche(lies(ZIELBILD), lies(PRODUKT), WERTE_WISSEN_ERFASSEN)
+        gefallen = vergleiche(lies(ZIELBILD), lies(PRODUKT), WERTE_ERFASSEN)
           .filter((b) => !b.gleich)
           .map((b) => b.name)
           .filter((n) => !rotVorher.includes(n));

@@ -267,7 +267,47 @@ const INVENTAR: readonly string[] = [
   // JOB 2620 D5: die Bilder-Aussage steht in Tab 2 des Aufgabenfensters genau einmal — gemessen am
   // ausgelieferten taskpane.html ueber die Panel-Fixture, je Sprache. Achse `taskpane`.
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts",
-  "tests/design/zielbild-schlankespanel-messung.test.ts",
+  // JOB 3056 K1 (04.09.2026): Pedis Mockups design/klara ERSETZEN die Zielbilder vom 27.08.
+  // (SchlankesPanel, Main, PruefungLaeuft). Die fuenf alten Messungen sind GELOESCHT, nicht daneben
+  // belassen: zielbild-schlankes-panel, zielbild-schlankespanel-messung, zielbild-klara-main,
+  // zielbild-pruefunglaeuft, zielbild-pruefunglaeuft-messung (die Ladekarte, die die letzten
+  // beiden massen, gibt es nicht mehr — §9: Laden zeigt der Sendeknopf). Zwei der Namen leben als
+  // ABLOESUNGS-WAECHTER weiter (Runde 3: zielbild-klara-main, zielbild-pruefunglaeuft — sie pinnen,
+  // dass die alten Traeger nicht zurueckkommen, und halten die Verweise des Werkzeugs
+  // tools/design-vergleich/werte.ts aufloesbar, das nicht Zielpfad ist). An ihre Stelle treten
+  // die vier Chromium-Messungen an der ausgelieferten Datei (Ruhe, Antwort, Einstellungen, kein
+  // Erklaertext) und das Funktionsinventar (jede heutige Kennung hat einen erreichbaren Ort).
+  // Achse `taskpane` (jede nennt die Datei); „klara" steht nicht im Dateinamen. K2 hat die fuenf
+  // Dateien gemeldet, das Inventar hat sie nicht still aufgenommen.
+  "tests/design/zielbild-k1-ruhe.test.ts",
+  "tests/design/zielbild-k1-antwort.test.ts",
+  "tests/design/zielbild-k1-einstellungen.test.ts",
+  "tests/design/zielbild-k1-kein-erklaertext.test.ts",
+  "tests/design/k1-funktionsinventar.test.ts",
+  // JOB 3056 Runde 4 (04.09.2026, Codex Pflichten 1-3): drei Laufzeittests am VOLLSTAENDIGEN
+  // Aufgabenfenster in jsdom (Vorrichtung tests/app/k1-panel-lauf.tsx, Bauform von mega36) —
+  // die Sitzungslagen der Ruhe (pending/401/Netz/warten: je Lage GENAU eine Aktion), das Verwerfen
+  // aller KI-/S4-Werte nach bestaetigtem Abmelden (auth 200 → logout 204 → auth 401, verspaetete
+  // Antwort) und die Zuordnung der Fussnotenziffern zu den Quellen-Chips. Achse `taskpane` (jede
+  // nennt die Datei); „klara" steht nicht im Dateinamen, K5 bleibt bei 38. K2 hat sie gemeldet,
+  // das Inventar hat sie nicht still aufgenommen.
+  "tests/app/k1-sitzungslagen.test.tsx",
+  "tests/app/k1-abmelden-verwirft-sitzung.test.tsx",
+  "tests/app/k1-fussnoten-zuordnung.test.tsx",
+  // JOB 3056 Runde 6 (05.09.2026, Codex Runde 5): das Rennen zweier Fragen — der verspaetete
+  // Quellen-Ruecklauf (GET /api/kos/:id) der ersten Antwort darf Chip, Ziffer, Quellen-Zeile und
+  // Ausgabetor der zweiten nicht anfassen. Achse `taskpane`, K2 gemeldet, K5 bleibt bei 38.
+  "tests/app/k1-quellen-rennen.test.tsx",
+  // JOB 3056 Runde 8 (05.09.2026, Codex Runde 7, Pflicht 9): eine abgelaufene Aufloesung ist kein
+  // Stand — „–", kein Anbieter, keine Freigabe, bis die frische Antwort da ist. Achse `taskpane`.
+  "tests/app/k1-abgelaufene-aufloesung.test.tsx",
+  // JOB 3056 NACHZUG-RUNDE 1 (05.09.2026): der abgesendete Ask-Koerper des ausgelieferten Fensters
+  // (KA5: `question` = getippte Frage, `selection` = Markierung; ohne Eingabe bzw. ohne Markierung
+  // FEHLT das Feld) — die Faelle A/C/D der in der Konfliktrunde geloeschten KA5-Datei, dieselbe
+  // Vorrichtung. Achse `taskpane`; „klara" steht nicht im Dateinamen, K5 bleibt bei 38.
+  "tests/app/k1-ask-koerper-markierung.test.tsx",
+  "tests/design/zielbild-klara-main.test.ts",
+  "tests/design/zielbild-pruefunglaeuft.test.ts",
   // JOB 3010 D2 (03.09.2026): die Lueckenflaeche „KeinWissen" am LAUFENDEN Aufgabenfenster gemessen
   // (Fixture `createKlaraPanel`, echte App ueber die Transportbruecke, `/api/ask` -> gap) und Wert
   // fuer Wert gegen `KeinWissen.dc.html` gestellt — Sollwerttabelle, Abweichungstabelle mit drei
@@ -276,12 +316,6 @@ const INVENTAR: readonly string[] = [
   // K2 meldete `expected [ Array(1) ] to deeply equal []`, bevor dieser Eintrag stand. Der Test baut
   // nichts um — taskpane.html ist in JOB 3004 gesperrt — und pinnt die Urteile auf den heutigen Stand.
   "tests/design/zielbild-keinwissen-messung.test.ts",
-  // JOB 3017 D4 (04.09.2026): das ruhige Grundpanel — das ausgelieferte taskpane.html laeuft in
-  // Chromium bei 360 px, jeder Zielbildwert (SchlankesPanel.dc.html) wird per getComputedStyle am
-  // realen Element gemessen. Achse `taskpane`; „klara" steht nicht im Dateinamen (K5 bleibt bei 36).
-  // K2 hat die Datei gemeldet, das Inventar hat sie nicht still aufgenommen. Sachlich
-  // Klara-Regression: der Test haelt fest, wie das Panel VOR der ersten Frage aussieht.
-  "tests/design/zielbild-schlankes-panel.test.ts",
   "tests/capture/basic-u2-suchraum-bibliothek.test.tsx",
   "tests/capture/mega69-bildweg-mounted.test.tsx",
   // JOB 2408 D1 / JOB 2507 D1: die Parameterbindung der drei Einstiege in `casMitConsent` —
@@ -296,36 +330,24 @@ const INVENTAR: readonly string[] = [
   // (`klara-policy-store.ts:667`). Sachlich Klara-Regression: bricht der Schreibweg auf halbem
   // Weg ab, sieht ein Leser eine Sitzung, deren Regelwerk und Zustimmung nicht zusammenpassen.
   "tests/db/i10-klara-regelwerk-klammer.test.ts",
-  // JOB 2618 D4 hatte hier `tests/design/zielbild-validierung.test.ts` stehen: der Zielbild-
-  // Abgleich der Validierungskonsole (Fussband bis zum wirksamen CSS-Wert, Token je Theme,
-  // Renderer-Gegenlesung). Sachlich Klara-Regression im weiteren Sinn — die Konsole ist die
-  // Flaeche, auf der Wissen freigegeben wird, bevor Klara daraus zitiert.
-  //
-  // JOB 3061 H2 (04.09.2026): DER EINTRAG IST WIEDER RAUS. Der Auftrag loest jene Messung ab
-  // (§5.7); die Datei misst das Zielbild vom 27.08. nicht mehr, sondern haelt nur noch die
-  // Abloesung selbst fest (beide Nachfolger existieren und messen weiter). Damit trifft sie KEINE
-  // der sechs Achsen mehr — kein `themes.css`, kein `Cache-Control`, kein Klara-Bauteil, kein
-  // `taskpane`. Ein Eintrag ohne Achsendeckung macht K2 UND K6 rot; das ist genau dieselbe Lage
-  // wie in 2618 D3, wo der Eintrag aus demselben Grund schon einmal wich (der Kommentar zu
-  // `job2622-sandbox-skips` weiter oben nennt sie beim Namen).
-  // GEMESSEN, NICHT GESETZT: der Waechterlauf dieser Runde meldete mit noch stehendem Eintrag
-  // K2 `im Inventar gepinnt, aber im Baum nicht mehr gefunden: expected [ Array(1) ] to deeply
-  // equal []` und K6 `tests/design/zielbild-validierung.test.ts ist im Inventar, aber von keiner
-  // Achse gedeckt: expected 0 to be greater than 0`. Erst danach wurde diese Zeile angefasst.
-  // Der Eintrag folgt der Messung, nicht der Meinung — und wenn die Datei morgen wieder misst,
-  // meldet K2 sie als `neu` zurueck.
-  // JOB 3004 D1: der Wertevergleich der Klara-Antwortkarte (Antwortzustand des Aufgabenfensters)
-  // gegen sein Zielbild Main.dc.html — die ECHTE taskpane.html aus apps/web/dist, in Chromium
-  // geladen, echte App hinter /api/*, echte Frage ueber die Route. Traegt „klara" im Namen
-  // (Namensachse; der Pfad war im Auftrag fest vorgegeben) und nennt `taskpane.html` (Achse
-  // `taskpane`). K2 hat die Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
-  "tests/design/zielbild-klara-main.test.ts",
+  // JOB 2618 D4 hatte hier `tests/design/zielbild-validierung.test.ts` stehen (der Zielbild-
+  // Abgleich der Validierungskonsole). JOB 3061 D7 (04.09.2026, H2 „Pruefen" nach Pages-Massstab)
+  // hat die Datei seither auf die vier Reiter der neuen Flaeche umgebaut — sie haelt nur noch die
+  // Abloesung selbst fest und trifft damit KEINE der sechs Achsen mehr (kein `themes.css`, kein
+  // `Cache-Control`, kein Klara-Bauteil, kein `taskpane`). Ein Eintrag ohne Achsendeckung macht K2
+  // UND K6 rot (dieselbe Lage wie beim `job2622-sandbox-skips`-Kommentar weiter oben). GEMESSEN,
+  // NICHT GESETZT: der Waechterlauf dieser Runde meldete mit dem uebernommenen 2618-D4-Eintrag K2
+  // `im Inventar gepinnt, aber im Baum nicht mehr gefunden` und K6 `von keiner Achse gedeckt:
+  // expected 0 to be greater than 0`; erst danach wich der Eintrag wieder.
   // JOB 3064 H5: die zwei Zielbild-Messungen der Web-Fläche (Startseite und Fragenfläche gegen
   // `design/klarwerk/Main.dc.html` bzw. `Fragen.dc.html`). K2 hat beide gemeldet, das Inventar hat
   // sie nicht stillschweigend aufgenommen. Sachlich Klara-Regression aus demselben Grund wie die
   // Validierungskonsole: die Fragenfläche ist der Zwilling des Word-Panels — dieselbe Frage,
   // dieselbe quellengebundene Antwort, dieselben Quellen-Chips. Wer hier die Antwortkarte
   // verschiebt, verschiebt die Fläche, gegen die Klara verglichen wird.
+  // (Der JOB-3004-D1-Eintrag `tests/design/zielbild-klara-main.test.ts` steht bereits oben, bei
+  // den K1-Ablösungs-Wächtern — er ist auf diesem Stand der GELOESCHTEN Main.dc.html-Messung
+  // gewichen, s. Kommentar dort; ein zweiter Eintrag desselben Namens waere ein Duplikat.)
   "tests/design/zielbild-h5-fragen.test.ts",
   "tests/design/zielbild-h5-start.test.ts",
   "tests/help/klara-registry.test.ts",
@@ -340,16 +362,18 @@ const INVENTAR: readonly string[] = [
   // Klara-Regression: sie haelt fest, was ein Mensch im Panel SIEHT, wenn Word sich nicht,
   // spaet oder gar nicht meldet — bisher war genau das nur ueber Quelltext-Pins gesichert.
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
-  // JOB 3019 D1 (03.09.2026): der abgesendete Ask-Koerper am laufenden Aufgabenfenster — die
-  // markierte Passage reist seit KA5 als eigenes Feld `selection`, statt die getippte Frage zu
-  // ersetzen. Sie traegt „klara" im PFAD (`tests/klara-panel/`); die Namensachse liest den ganzen
-  // Pfad (`wo: "pfad"`), also faellt sie in die Namensmenge — dieselbe Lage wie bei der
-  // 3008-Zeile darueber. Der Verzeichnisname war im Auftrag abschliessend vorgegeben, der
-  // Zusammenstoss mit dieser Nachfuehrpflicht also unvermeidbar. Zusaetzlich traegt sie die
-  // Inhaltsachse `taskpane` (sie liest und laedt `taskpane.html`). K2 hat die Datei gemeldet, das
-  // Inventar hat sie nicht still aufgenommen. Sachlich Klara-Regression: sie haelt fest, WAS das
-  // Panel wirklich absendet — gemessen am Koerper, nicht am Quelltext.
-  "tests/klara-panel/ka5-markierung-reist-mit.test.tsx",
+  // JOB 3019 D1 hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) stehen
+  // (der abgesendete Ask-Koerper mit dem eigenen `selection`-Feld UND die Herkunftszeile ueber dem
+  // Eingabefeld in ihren vier Deckel-Kombinationen). JOB 3056 K1 (Rebase, 05.09.2026): DIE DATEI
+  // IST GELOESCHT — ihr Pfad steht hier deshalb ohne Verzeichnispraefix, damit kein Verweis auf
+  // eine Datei zeigt, die es nicht gibt (Testverweis-Waechter, Nachzug-Runde 1). Die Herkunftszeile, die sie mass, ist mit dem Ruhe-Umbau selbst entfallen — sie
+  // zeigt jetzt nur noch im EINEN Verwerfungsfall einen Satz, ohne Deckelhinweis (taskpane.html
+  // `updateAskSourceNote`, s. Kommentar dort); die vier Deckel-Kombinationen der alten Datei
+  // pruefen damit einen Zustand, den es nicht mehr gibt. Die Koerper-Korrektheit (`selection`-Feld,
+  // `prepareAskQuestion`) bleibt gedeckt — durch `tests/app/word-addin-ask.test.ts` (TS-Zwilling
+  // UND ausgeliefertes Skript) — und die neue Herkunftszeile durch
+  // `tests/design/k1-funktionsinventar.test.ts` (Lage `markierungUndText`). Ein Eintrag ohne
+  // vorhandene Datei macht K2 rot; das Inventar folgt der Loeschung, nicht der Meinung.
   "tests/legal/mega61-ki-satz.test.ts",
   "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
   "tests/library/mega59-nullzustand-mounted.test.tsx",
@@ -397,16 +421,6 @@ const INVENTAR: readonly string[] = [
   // ZUSAMMEN (Leitungsdirektive: beide Pfade, Zaehler 31). Sachlich Klara-Regression: der Test
   // haelt fest, dass die Assistenzflaeche ihre Antwort nicht der falschen Frage zuschreibt.
   "tests/app/f0304-klara-assistenzflaeche.test.tsx",
-  // JOB 3012 D3 (03.09.2026): der Wartezustand „Pruefung laeuft" am laufenden taskpane.html
-  // (Panel-Fixture, Ask-Fetch offen gehalten) gegen das Zielbild PruefungLaeuft.dc.html. Achse
-  // `taskpane`; „klara" steht nicht im Dateinamen, K5 bleibt deshalb bei 31 (gemessen: K2 rot,
-  // K5 gruen, bevor diese Zeile eingetragen wurde). Sachlich Klara-Regression: der Test haelt
-  // fest, was der Mensch waehrend der Suche sieht und was gesperrt ist.
-  "tests/design/zielbild-pruefunglaeuft-messung.test.ts",
-  // JOB 3016 D3 (03.09.2026): der Chromium-Vergleich der Ladekarte „Pruefung laeuft" am echten
-  // taskpane.html (ein Vergleich je Wert der Werte-Tabelle in werte.ts, getComputedStyle). Achse
-  // `taskpane`; „klara" steht nicht im Pfad, K5 bleibt bei 36. K2 hat die Datei gemeldet.
-  "tests/design/zielbild-pruefunglaeuft.test.ts",
   // JOB 3046 D2 (03.09.2026): der Chromium-Vergleich der Lueckenflaeche „KeinWissen" am echten
   // taskpane.html (ein Vergleich je Wert der Tabelle WERTE_FRAGEWEG_LUECKE in werte.ts,
   // getComputedStyle; dazu „Frage ändern" per echtem Klick und der Sendeweg des Textlinks). Achse
@@ -631,7 +645,8 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // vier neuen Inventareintraegen und noch unveraendertem Zaehler meldete der Lauf
     // `expected 36 to be 32`; erst danach wurde diese Zeile angefasst.
     // 36 -> 37 am 03.09.2026 (JOB 3004 Konfliktrunde 3, Zusammenfuehrung mit JOB 3014): der Rebase
-    // bringt zusaetzlich `tests/design/zielbild-klara-main.test.ts` in denselben Baum wie die vier
+    // bringt zusaetzlich `zielbild-klara-main.test.ts` (damals unter tests/design, seit JOB 3056
+    // geloescht) in denselben Baum wie die vier
     // klara-zerlegung-Eintraege oben. Die Datei traegt „klara" im Namen und faellt damit ebenfalls
     // in die Namensmenge; der Pfad war im Auftrag (§5.8) fest vorgegeben — die Nachfuehrung ist die
     // Folge des Namens, nicht einer Wahl. In Konfliktrunde 2 lag dieselbe Datei zusammen mit dem
@@ -646,12 +661,20 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // unveraendertem Zaehler meldete der Waechterlauf `expected 38 to be 37`; erst danach wurde
     // diese Zeile angefasst. Die Datei traegt KEINE der fuenf Inhaltsachsen (K6-Bericht: `name`).
     // 38 -> 39 am 04.09.2026 (JOB 3019 KONFLIKTRUNDE 1, Rebase auf diese Kette):
-    // `tests/klara-panel/ka5-markierung-reist-mit.test.tsx` traegt „klara" im PFAD (nicht im
-    // Dateinamen) — dieselbe Lage wie bei den 3008/3014-Zeilen weiter oben. Der Verzeichnispfad war
-    // im Auftrag abschliessend vorgegeben. GEMESSEN, NICHT GESETZT: mit dem neuen Inventareintrag
-    // und noch unveraendertem Zaehler meldete der Lauf `expected 39 to be 38`; erst danach wurde
-    // diese Zeile angefasst.
-    expect(nurName.length).toBe(39);
+    // `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) trug „klara" im PFAD (nicht im
+    // Dateinamen) und zaehlte hier mit. 38 -> 37 -> 38 am selben Tag (JOB 3056 K1): die
+    // Chromium-Messung `zielbild-klara-main.test.ts` unter tests/design (Name traegt „klara") ist
+    // GELOESCHT — ersetzt durch zielbild-k1-*.test.ts und k1-funktionsinventar.test.ts, die „klara"
+    // nicht im Namen tragen (Achse `taskpane`); der ABLOESUNGS-WAECHTER traegt denselben Namen und
+    // bringt die Namensmenge wieder auf 38.
+    //
+    // 39 -> 38 am 05.09.2026 (JOB 3056 KONFLIKTRUNDE 1, Rebase auf die gelandete KA5-Kette): die
+    // Herkunftszeile, die `ka5-markierung-reist-mit.test.tsx` mass, ist mit dem K1-Ruhe-Umbau
+    // entfallen (taskpane.html `updateAskSourceNote` zeigt nur noch den EINEN Verwerfungssatz ohne
+    // Deckelhinweis) — die Datei ist GELOESCHT, ihr Pfad faellt aus der Namensmenge. GEMESSEN, NICHT
+    // GESETZT: mit der geloeschten Datei und noch unveraendertem Zaehler meldete der Lauf
+    // `expected 38 to be 39`; erst danach wurde diese Zeile angefasst.
+    expect(nurName.length).toBe(38);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

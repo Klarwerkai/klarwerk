@@ -777,7 +777,8 @@ const M = {
   aktionForm: "M12 · Elementform der Aktion ›offene Frage‹",
   frageAendern:
     "M13 · Knopf ›Frage ändern‹ (#ask-luecke-frage-aendern) sichtbar in der Flaeche, Wortlaut",
-  fusszeile: "M14 · Fusszeile #ask-luecke-fuss sichtbar im Lueckenblock, Wortlaut",
+  fusszeile:
+    "M14 · Fusszeile #ask-luecke-fuss sichtbar im Lueckenblock, Wortlaut — seit JOB 3056 ›nein‹ (der Satz steht hinter dem Zahnrad, #kw-hilfe)",
   texttraeger:
     "M15 · sichtbare Texttraeger in der Flaeche #ask-luecke ohne Aktionen (Anzahl, markerfrei)",
   status: "M16 · #ask-status sichtbar",
@@ -786,7 +787,7 @@ const M = {
     "M18 · sichtbare Aktionstraeger im Lueckenblock (button/a/input/select/textarea, markerfrei)",
   primaryPanel: "M19 · sichtbare Traeger mit Klasse primary im GANZEN Panel",
   regelUnten:
-    "M20 · #ask-rule-note sichtbar mit dem Wortlaut der Regel (die EINE Stelle der Regel)",
+    "M20 · #ask-rule-note mit dem Wortlaut der Regel (die EINE Stelle der Regel — seit JOB 3056 hinter dem Zahnrad unter „Wie Klara antwortet“, nicht im Sichtfeld der Luecke)",
   lupe: "M21 · die Lupe in der Flaeche: svg BxH mit Griffpfad (Attribute, exakt lesbar)",
   lupeKreis: "M22 · das Glas der Lupe: circle cx/cy/r (Attribute, exakt lesbar)",
   lupeStrich: "M23 · Strich und Fuellung der Lupe: stroke, stroke-width, fill (Attribute)",
@@ -856,8 +857,9 @@ function messen(): Messung {
     [M.antwort]: sichtbarBis(dom("#ask-answer-block"), null) ? "ja" : "nein",
     [M.aktionen]: aktionen.length === 0 ? "keine" : aktionen.join(", "),
     [M.primaryPanel]: primaryPanel.length === 0 ? "keine" : primaryPanel.join(", "),
-    [M.regelUnten]:
-      regelUnten !== null && sichtbarBis(regelUnten, null) ? text(regelUnten) : "nein",
+    // JOB 3056 K1: die Regel liegt hinter dem Zahnrad (#kw-hilfe, anfangs verborgen) — gemessen
+    // wird ihr Wortlaut an der EINEN Stelle, nicht ihre Sichtbarkeit in der Luecke (die ist ›nein‹).
+    [M.regelUnten]: regelUnten !== null ? text(regelUnten) : "nein",
     [M.lupe]:
       svg === null
         ? KEINE_LUPE
@@ -1126,13 +1128,23 @@ const URTEIL_ERWARTET: Readonly<Record<string, Urteil>> = {
   "Z.31 offene-frage-weg-vorhanden": "erfüllt",
   "Z.31 nebenaktion-schriftgrad": NICHT_MESSBAR,
   "Z.28-31 reihenfolge auskunft-vor-aktion": "erfüllt",
-  "Z.35 fusszeile-wortlaut": "erfüllt",
-  "Z.35 fusszeile-schriftgrad": NICHT_MESSBAR,
-  "Z.35 fusszeile-farbe": NICHT_MESSBAR,
-  "Z.34 fusszeile-innenabstand": NICHT_MESSBAR,
-  "Z.34 fusszeile-display": NICHT_MESSBAR,
-  "Z.34 fusszeile-justify-content": NICHT_MESSBAR,
+  // JOB 3056 K1: die Fusszeile steht nicht mehr in der Luecke (kein Erklaertext im Sichtfeld,
+  // Pedi 04.09.) — ihre sechs Werte sind BEWUSST abweichend; der Satz lebt hinter dem Zahnrad.
+  "Z.35 fusszeile-wortlaut": "abweichend",
+  "Z.35 fusszeile-schriftgrad": "abweichend",
+  "Z.35 fusszeile-farbe": "abweichend",
+  "Z.34 fusszeile-innenabstand": "abweichend",
+  "Z.34 fusszeile-display": "abweichend",
+  "Z.34 fusszeile-justify-content": "abweichend",
 };
+const FUSS_ABWEICHEND = [
+  "Z.35 fusszeile-wortlaut",
+  "Z.35 fusszeile-schriftgrad",
+  "Z.35 fusszeile-farbe",
+  "Z.34 fusszeile-innenabstand",
+  "Z.34 fusszeile-display",
+  "Z.34 fusszeile-justify-content",
+];
 
 // ================================================================================================
 // TEIL 4 — DIE VERLUSTLISTE, UMGEKEHRT: jeder Traeger von vor JOB 3046 mit seinem neuen Platz.
@@ -1555,10 +1567,13 @@ describe.runIf(zielbildDa)(
       expect(messen()).toEqual(basis); // der Sprachwechsel hin und zurueck laesst nichts zurueck
     });
 
-    it("M10 · die Zweitkopie von askRuleNote ist aus dem Block ENTFERNT; die Regel steht an ihrer EINEN Stelle #ask-rule-note, sichtbar in der Luecke, im unveraenderten Wortlaut", () => {
+    it("M10 · die Zweitkopie von askRuleNote ist aus dem Block ENTFERNT; die Regel steht an ihrer EINEN Stelle #ask-rule-note — seit JOB 3056 hinter dem Zahnrad, nicht im Sichtfeld der Luecke — im unveraenderten Wortlaut", () => {
       expect(basis[M.regel]).toBe("0 Traeger");
       expect(basis[M.regelUnten]).toBe(REGEL);
       expect(basis[M.regelUnten]).toBe(panel.t("askRuleNote"));
+      // JOB 3056 K1: in der Luecke steht KEIN Erklaertext — die Regel ist dort nicht sichtbar.
+      expect(sichtbarBis(dom("#ask-rule-note"), null)).toBe(false);
+      expect(dom("#kw-hilfe").querySelector("#ask-rule-note")).not.toBeNull();
     });
 
     it("M3 · KEIN primary im Lueckenblock; die Hauptaktion ist der Knopf ›Frage ändern‹, die Nebenaktion der Textlink a#ask-gap-send-btn ›… geben‹; panelweit genau EIN primary (#ask-btn)", () => {
@@ -1577,9 +1592,9 @@ describe.runIf(zielbildDa)(
       expect(basis[M.primaryPanel]).toBe("#ask-btn");
     });
 
-    it("M4 · was ein Mensch sieht, in dieser Reihenfolge und VOLLSTAENDIG: Lupe, Satz, ›Frage ändern‹, Textlink, Fusszeile — sonst nichts; kein Kasten", () => {
+    it("M4 · was ein Mensch sieht, in dieser Reihenfolge und VOLLSTAENDIG: Lupe, Satz, ›Frage ändern‹, Textlink — sonst nichts (JOB 3056: keine Fusszeile); kein Kasten", () => {
       expect(basis[M.reihenfolge]).toBe(
-        "#ask-luecke-satz > #ask-luecke-frage-aendern > #ask-gap-send-btn > #ask-luecke-fuss",
+        "#ask-luecke-satz > #ask-luecke-frage-aendern > #ask-gap-send-btn",
       );
       expect(basis[M.kasten]).toBe("");
       expect(basis[M.flaecheInline]).toBe("");
@@ -1591,11 +1606,14 @@ describe.runIf(zielbildDa)(
       expect(basis[M.lupeKreis]).toBe("circle cx=11 cy=11 r=7");
       expect(basis[M.lupeStrich]).toBe("stroke=currentColor stroke-width=1.5 fill=none");
       expect(basis[M.texttraeger]).toBe("1");
-      expect(basis[M.fusszeile]).toBe(FUSS_NEU);
-      expect(basis[M.fusszeile]).toBe(panel.t("askGapFuss"));
+      // JOB 3056 K1 (Pages-Massstab): die Fusszeile (Z.35) steht NICHT mehr in der Luecke; ihr
+      // Satz lebt im selben Wortlaut unter „Wie Klara antwortet" (#kw-hilfe) weiter.
+      expect(basis[M.fusszeile]).toBe("nein");
+      expect(panel.text('#kw-hilfe [data-t="askGapFuss"]')).toBe(FUSS_NEU);
+      expect(panel.text('#kw-hilfe [data-t="askGapFuss"]')).toBe(panel.t("askGapFuss"));
     });
 
-    it("A · die Abweichungstabelle: je Sollwert Soll, Ist, Beleg, Urteil — gepinnt auf das Gemessene: 17 erfüllt · 0 abweichend · 25 nicht messbar (in Chromium gemessen)", () => {
+    it("A · die Abweichungstabelle: je Sollwert Soll, Ist, Beleg, Urteil — gepinnt auf das Gemessene: 16 erfüllt · 6 abweichend (die Fusszeile, bewusst: JOB 3056) · 20 nicht messbar (in Chromium gemessen)", () => {
       const tabelle = abweichungen(basis);
       const urteile: Record<string, Urteil> = {};
       for (const z of tabelle) {
@@ -1606,11 +1624,16 @@ describe.runIf(zielbildDa)(
       for (const z of tabelle) {
         zaehlung[z.urteil] += 1;
       }
-      // JOB 3046: keine Abweichung mehr. Der Zweig „abweichend" ist kein toter Zweig — die
-      // Gegenprobe G zeigt ihn (alter Titel eingesetzt -> Z.29 satz-wortlaut abweichend).
-      expect(zaehlung.erfüllt).toBe(17);
-      expect(zaehlung.abweichend).toBe(0);
-      expect(zaehlung[NICHT_MESSBAR]).toBe(25);
+      // JOB 3046: keine Abweichung ausser der BEWUSSTEN von JOB 3056 — die sechs Fusszeilen-Werte
+      // (Z.34/35) haben in der Luecke kein Element mehr (Pedi 04.09.: kein Erklaertext im
+      // Sichtfeld; der Satz steht hinter dem Zahnrad, M4). Der Zweig „abweichend" bleibt kein
+      // toter Zweig: die Gegenprobe G zeigt ihn zusaetzlich (alter Titel -> Z.29 satz-wortlaut).
+      expect(zaehlung.erfüllt).toBe(16);
+      expect(zaehlung.abweichend).toBe(6);
+      expect(zaehlung[NICHT_MESSBAR]).toBe(20);
+      expect(tabelle.filter((z) => z.urteil === "abweichend").map((z) => z.kennung)).toEqual(
+        FUSS_ABWEICHEND,
+      );
       // Die Ist-Werte, die den Befund tragen — hier als Text, damit ein Wandern sichtbar wird.
       const ist = (k: string): string => tabelle.find((z) => z.kennung === k)?.ist ?? "";
       expect(ist("Z.27 flaeche-ohne-kasten")).toBe("kein Kasten (weder background noch border)");
@@ -1619,7 +1642,7 @@ describe.runIf(zielbildDa)(
       expect(ist("Z.30 hauptaktion-wortlaut")).toBe(KNOPF_NEU);
       expect(ist("Z.30 knopf-frage-aendern-vorhanden")).toBe("Knopf ›Frage ändern‹ vorhanden");
       expect(ist("Z.31 nebenaktion-form")).toBe("a (Textlink, ohne primary)");
-      expect(ist("Z.35 fusszeile-wortlaut")).toBe(FUSS_NEU);
+      expect(ist("Z.35 fusszeile-wortlaut")).toBe(NICHT_VORHANDEN);
       expect(ist("Z.28 lupe-vorhanden")).toBe("svg 36x36 mit Pfad M21 21l-4.35-4.35");
       expect(ist("Z.28 lupe-kreis-vorhanden")).toBe("circle vorhanden");
       expect(ist("Z.28 lupe-fuellung")).toBe("none");
@@ -1657,7 +1680,8 @@ describe.runIf(zielbildDa)(
       const titel = dom('#ask-gap-block [data-t="askGapTitle"]');
       const knopf = dom("#ask-luecke-frage-aendern");
       const link = dom("#ask-gap-send-btn");
-      const fuss = dom("#ask-luecke-fuss");
+      // JOB 3056: die Fusszeile der Luecke gibt es nicht mehr; ihr Satz steht hinter dem Zahnrad.
+      const fussHinten = dom('#kw-hilfe [data-t="askGapFuss"]');
       const textSetzen = (el: DomEl, wert: string | null): void => {
         (el as unknown as { textContent: string | null }).textContent = wert;
       };
@@ -1683,7 +1707,8 @@ describe.runIf(zielbildDa)(
       setzen(block, "class", "hidden");
       const g1 = gefallen();
       setzen(block, "class", blockKlasse);
-      expect(g1).toEqual([M.blockSichtbar, M.frageAendern, M.fusszeile]);
+      // JOB 3056: M14 (Fusszeile) steht ohnehin auf ›nein‹ — sie faellt hier nicht mehr mit.
+      expect(g1).toEqual([M.blockSichtbar, M.frageAendern]);
 
       // (2) Titel auf den ALTEN Satz zurueckgedreht -> NUR M2 faellt; die Abweichungstabelle
       // nennt genau Z.29 satz-wortlaut als abweichend (der Zweig ist kein toter Zweig).
@@ -1695,7 +1720,7 @@ describe.runIf(zielbildDa)(
         .map((z) => z.kennung);
       textSetzen(titel, titelText);
       expect(g2).toEqual([M.titel]);
-      expect(abweichend2).toEqual(["Z.29 satz-wortlaut"]);
+      expect(abweichend2).toEqual(["Z.29 satz-wortlaut", ...FUSS_ABWEICHEND]);
 
       // (3) `primary` auf den Textlink gesetzt -> M3 (primary im Block), M12 (Elementform) und
       // M19 (primary im Panel) fallen — die Ein-primary-Regel des Zielbilds kippt.
@@ -1705,7 +1730,8 @@ describe.runIf(zielbildDa)(
       const m3 = messen();
       setzen(link, "class", linkKlasse);
       expect(g3).toEqual([M.hauptaktion, M.aktionForm, M.primaryPanel]);
-      expect(m3[M.primaryPanel]).toBe("#ask-btn, #ask-gap-send-btn");
+      // JOB 3056: das Frage-Feld steht UNTER der Luecke — der Sendeknopf ist im Panel der zweite.
+      expect(m3[M.primaryPanel]).toBe("#ask-gap-send-btn, #ask-btn");
 
       // (4) JOB 3046: ›Frage ändern‹ ENTFERNT -> M13 faellt, und mit ihm M4 (Inventur) und M18
       // (Aktionen); die Abweichungstabelle verliert genau die neun Z.30-Werte und die Reihenfolge.
@@ -1737,19 +1763,21 @@ describe.runIf(zielbildDa)(
         "Z.30 knopf-schnitt",
         "Z.30 knopf-farbe",
         "Z.28-31 reihenfolge auskunft-vor-aktion",
+        ...FUSS_ABWEICHEND,
       ]);
 
-      // (5) Fusszeilensatz veraendert -> NUR M14 faellt; die Verlustliste haelt (sie haengt nicht
-      // am Fuss), die Abweichungstabelle nennt Z.35 fusszeile-wortlaut.
-      const fussText = fuss.textContent;
-      textSetzen(fuss, "Klara erfindet manchmal Antworten.");
+      // (5) JOB 3056: der Fusszeilensatz steht hinter dem Zahnrad — eine Verfaelschung DORT
+      // aendert an der Luecke NICHTS (keine Messgroesse faellt), die Verlustliste haelt; die
+      // Fusszeilen-Zeilen der Tabelle sind ohnehin bewusst abweichend (kein Element in der Luecke).
+      const fussText = fussHinten.textContent;
+      textSetzen(fussHinten, "Klara erfindet manchmal Antworten.");
       const g5 = gefallen();
       const abweichend5 = abweichungen(messen())
         .filter((z) => z.urteil === "abweichend")
         .map((z) => z.kennung);
-      textSetzen(fuss, fussText);
-      expect(g5).toEqual([M.fusszeile]);
-      expect(abweichend5).toEqual(["Z.35 fusszeile-wortlaut"]);
+      textSetzen(fussHinten, fussText);
+      expect(g5).toEqual([]);
+      expect(abweichend5).toEqual(FUSS_ABWEICHEND);
 
       // (6) Runde 3 (BEN): ein ZWEITER sichtbarer `button.primary` OHNE id und OHNE data-t im
       // Lueckenblock -> M3 (Hauptaktion), M4 (Inventur), M18 (Aktionen) und M19 (primary im Panel)
@@ -1763,7 +1791,7 @@ describe.runIf(zielbildDa)(
       block.removeChild(extraKnopf);
       expect(g6).toEqual([M.hauptaktion, M.reihenfolge, M.aktionen, M.primaryPanel]);
       expect(m6[M.hauptaktion]).toBe("button›Nochmal fragen‹");
-      expect(m6[M.primaryPanel]).toBe("#ask-btn, button›Nochmal fragen‹");
+      expect(m6[M.primaryPanel]).toBe("button›Nochmal fragen‹, #ask-btn");
 
       // (7) Runde 3 (BEN): ein zusaetzlicher sichtbarer Text OHNE Marker in der FLAECHE -> M4
       // (Inventur) und M15 (Anzahl Texttraeger — Z.29 kennt genau EINEN) fallen, sonst nichts.
@@ -1789,7 +1817,7 @@ describe.runIf(zielbildDa)(
       const verlust8 = VERLUSTLISTE.filter((v) => !v.belegt(m8)).map((v) => v.traeger);
       setzen(flaeche, "style", null);
       expect(g8).toEqual([M.flaecheInline]);
-      expect(abweichend8).toEqual(["Z.27 flaeche-ohne-kasten"]);
+      expect(abweichend8).toEqual(["Z.27 flaeche-ohne-kasten", ...FUSS_ABWEICHEND]);
       expect(verlust8).toEqual(["div.status.warn (der gelbe Kasten um die Luecke)"]);
 
       // Nach dem Zuruecksetzen: wieder nichts gefallen, kein Traeger verloren.
@@ -1828,7 +1856,6 @@ describe.runIf(zielbildDa)(
         "die Antwort erscheint",
       );
       expect(sichtbarBis(dom("#ask-gap-block"), null)).toBe(false);
-      expect(sichtbarBis(dom("#ask-luecke-fuss"), null)).toBe(false);
       expect(sichtbarBis(dom("#ask-status"), null)).toBe(false);
       expect(
         text(dom("#ask-answer-edit")).length + (dom("#ask-answer-edit").value ?? "").length,

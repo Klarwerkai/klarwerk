@@ -854,17 +854,20 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
   });
 
   // K2/K3 (AUFTRAG-klara1 Paket 2): Quellen sind klickbare Deep-Links auf die KO-Detailseite
-  // mit Status-Badge (Bibliotheks-Logik) und weiterhin sichtbarem Trust-Wert.
-  it("K2/K3: Quelle = Deep-Link (/wissen/:id, extern) + Status-Badge + Trust, DE/EN/NL", () => {
+  // mit Status (Bibliotheks-Logik) und weiterhin sichtbarem Trust-Wert.
+  // JOB 3056 K1: der Chip traegt nur „n · Titel" (Main.dc.html Z.33); Status, Rolle, Vertrauen
+  // und Stand stehen je Quelle in der Detailzeile unter „Mehr" (askQuellenDetailZeile) — dieselbe
+  // Ableitung, derselbe Schluessel, kein Raten.
+  it("K2/K3: Quelle = Deep-Link (/wissen/:id, extern) + Status + Trust unter „Mehr“, DE/EN/NL", () => {
     // Deep-Link ueber den gespiegelten Helfer, extern geoeffnet, ohne Opener-Zugriff.
     expect(html).toContain("link.href = koDetailUrl(window.location.origin, resolved[i].id)");
     expect(html).toContain('link.target = "_blank"');
     expect(html).toContain('link.rel = "noopener noreferrer"');
     // Aufbau ueber DOM-APIs (textContent) — kein HTML-Sink fuer KO-Titel.
     expect(html).toContain("link.textContent = resolved[i].title");
-    // Status-Badge aus der Bibliotheks-Ableitung; unbekannt wird NIE geraten.
-    expect(html).toContain('badge.className = "src-badge src-badge-" + resolved[i].status');
-    expect(html).toContain('t(ASK_STATUS_KEYS[resolved[i].status] || "askStatusUnknown")');
+    // Status aus der Bibliotheks-Ableitung; unbekannt wird NIE geraten.
+    expect(html).toContain("function askQuellenDetailZeile(nummer, quelle)");
+    expect(html).toContain('teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"))');
     for (const key of [
       'askStatusValidiert: "',
       'askStatusPruefung: "',
@@ -873,8 +876,9 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     ]) {
       expect(html.split(key).length - 1, key).toBe(3);
     }
-    // Trust bleibt sichtbar; die Quellen-Aufloesung traegt jetzt Id + Status (unknown im Fehlerfall).
-    expect(html).toContain('t("askTrust", { n: String(resolved[i].trust) })');
+    // Trust bleibt erreichbar (Detailzeile unter „Mehr“); die Quellen-Aufloesung traegt Id + Status
+    // (unknown im Fehlerfall).
+    expect(html).toContain('t("askTrust", { n: String(quelle.trust) })');
     expect(html).toContain("status: askSourceStatus(ko)");
     expect(html).toContain(
       '{ id: id, title: id, trust: null, standDate: null, status: "unknown" }',
@@ -924,7 +928,8 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     }
     // Das Panel steht wirklich im DOM (und nicht nur als Zeichenkette im Test).
     expect(open.q("#send-btn")).not.toBeNull();
-    expect(open.text("#session-card h2").length).toBeGreaterThan(0);
+    // JOB 3056 K1: die Sitzungskarte ist gefallen; der Kopf traegt den Titel „Klara".
+    expect(open.text("#kw-titel").length).toBeGreaterThan(0);
   });
 
   it("201 → Create-1: genau ein POST, Erfolgstext mit Titel, Entwurf-Link sichtbar", async () => {

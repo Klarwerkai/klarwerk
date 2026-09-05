@@ -179,7 +179,29 @@ function m6FremdeZiele(src: string): string[] {
 //
 // AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload nötig, um den ALTEN Weg
 // weiter zu nutzen. Fehlt „File 1.1" auf dem Host, greift der Rückfall und alles bleibt wie heute.
-const BEKANNTE_ABRUFZIELE = 11;
+// ================================================================================================
+// JOB 3056 K1 (04.09.2026) — DIE BEWUSSTE ANTWORT ZUM ZWÖLFTEN ABRUFZIEL (11 → 12).
+// ================================================================================================
+//
+// Auch diese Zahl wird nicht „nachgezogen", weil ein Test rot war. M7 stellt die Frage, für die er
+// gebaut ist — „CSP? Recht? Manifest?" —, und hier steht die Antwort, bevor die Zahl steigt.
+//
+// DAS NEUE ZIEL: `POST /api/auth/logout` (`abmelden`, Einstellungen → Gruppe Konto → „Abmelden",
+// Einstellungen.dc.html Z.64). Es ist die BESTEHENDE Abmelde-Route der App
+// (`services/auth/src/routes.ts`): sie löscht die Sitzung und setzt das Cookie zurück; danach liest
+// `checkSession` den ehrlichen Ist-Zustand (nicht angemeldet → „Anmelden" in der Mitte der Ruhe).
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt die eigene Adresse; es kommt kein Ursprung
+//               hinzu — dieselbe Herkunft, die das Panel für `/api/auth/me` nutzt.
+//   · Recht:    keines zusätzlich. Die Route verlangt nur eine bestehende Sitzung; ohne Sitzung
+//               antwortet sie ebenfalls 204 und tut nichts.
+//   · Manifest: unverändert. Keine neue Office-API, keine neue Domain, keine neue Berechtigung.
+//   · Nutzlast: keine. `POST` ohne Körper; die Sitzung reist im Cookie (`credentials: "include"`).
+//   · Frequenz: einmal je Klick auf „Abmelden". Kein Intervall.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
+// die Route antwortet 404 — das Panel liest danach ohnehin `/api/auth/me` neu und zeigt, was ist.
+const BEKANNTE_ABRUFZIELE = 12;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }

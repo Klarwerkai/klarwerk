@@ -24,27 +24,30 @@
     /* ============================================================================================
        AUFTRAG-mega43 BLOCK A — KLARA TRAEGT DIE WERKBANK-PALETTE.
        ============================================================================================
-       Bis mega42 fuehrte dieses Panel eine EIGENE, unverbundene Palette: Hauptakzent #5b50c4
-       (Violett) auf Knoepfen, Links und aktiver Sprache, Flaeche #f7f7fa (kaltes Blaugrau).
-       Violett ist im Web aber die KENNFARBE FUER „KI im Spiel" (--kw-ai) und keine Markenfarbe —
-       Klara benutzte also ein Signal als Marke und stand nach mega40-42 farblich allein.
-
        Die Werte hier kommen Ziffer fuer Ziffer aus apps/web/src/styles/themes.css,
-       [data-theme="modern"] (Papier, Nacht und ein Funke). Nichts ist neu gewaehlt. Sie stehen als
-       Hex statt als Kanal-Tripel, weil das Panel buildlos ist (kein Tailwind, kein Import) — es
-       MUSS eine Kopie sein. Gegen genau diese Kopie steht ein Sammler:
+       [data-theme="modern"] (Papier, Nacht und ein Funke). Sie stehen als Hex statt als
+       Kanal-Tripel, weil das Panel buildlos ist (kein Tailwind, kein Import) — es MUSS eine Kopie
+       sein. Gegen genau diese Kopie steht ein Sammler:
        tests/app/mega43-klara-werkbank-palette.test.ts liest beide Dateien, rechnet die Tripel nach
        Hex um und verlangt Gleichheit; er misst ausserdem den Kontrast der texttragenden Paare.
 
-       NUR Darstellung: kein Element, kein Text, keine id/data-t, kein Verhalten hat sich geaendert. */
+       JOB 3056 (K1, Pedis Mockups design/klara vom 04.09.): DREI Werte der Mockups gibt es in der
+       Werkbank-Palette NICHT — das Hinweisgrau #9AA2B1 (Platzhalter, Ruhe-Satz, Stand), das
+       Lupengrau #C9C2B6 und der Umschalter-Grund #EEEAE3. Sie stehen hier als benannte
+       Mockup-Werte („← mockup:…") und im Sammler als MOCKUP_AUSNAHMEN mit Grund; der Nachzug in
+       themes.css ist ein eigener Auftrag (apps/web/src ist nicht Zielpfad von JOB 3056). */
     :root {
       /* Flaechen und Tinte */
       --page: #FAF8F5; /* Papier ← --kw-page */
       --surface: #FFFFFF; /* Karte ← --kw-surface */
-      --ink: #0E1626; /* Nacht ← --kw-ink / --kw-night (Ueberschriften UND Kopfzeilen-Band) */
+      --ink: #0E1626; /* Nacht ← --kw-ink / --kw-night (Ueberschriften) */
       --text: #1A2233; /* Tinte ← --kw-text */
       --muted: #525B6B; /* Tinte-2 ← --kw-muted */
       --hairline: #E9E5DE; /* Linie ← --kw-hairline */
+      /* Die drei Mockup-Werte (JOB 3056), s. Kopfkommentar. */
+      --hint: #9AA2B1; /* Hinweisgrau ← mockup:design/klara/Ruhe.dc.html Z.30/35 */
+      --lupe: #C9C2B6; /* Lupe in Ruhe ← mockup:design/klara/Ruhe.dc.html Z.29 */
+      --segment: #EEEAE3; /* Umschalter-Grund ← mockup:design/klara/Ruhe.dc.html Z.20 */
 
       /* Marke: der Funke. Drei Rollen, drei Token — wie im Web, aus demselben Grund:
          #E8630A traegt Weiss nur mit 3,38:1 (Flaeche/Strich, kein Text), #C2500A traegt Weiss mit
@@ -55,10 +58,6 @@
       --brand-deep: #C2500A; /* Funke dunkel ← --kw-funke-deep */
       --brand-text: #9C5009; /* Funke als Text ← --kw-brand-text (im modern-Thema wirksam) */
 
-      /* Kopfzeilen-Band ← --kw-shell-* */
-      --shell-fg: #FAF8F5; /* Papier-Inhalt auf Nacht ← --kw-shell-fg */
-      --shell-muted: #7E879A; /* Meta auf Nacht ← --kw-shell-muted-2 */
-
       /* Trust — nur Reife/Status */
       --pos-bg: #E0F1E7; /* ← --kw-trust-pos-bg */
       --pos-text: #116B3C; /* ← --kw-trust-pos-text */
@@ -67,130 +66,79 @@
 
       /* Elevation: weiches Licht statt hartem Rahmen ← --kw-shadow-tile */
       --shadow-tile: 0 1px 2px rgba(14, 22, 38, 0.05), 0 8px 24px -12px rgba(14, 22, 38, 0.12);
+      /* Das aktive Segment des Umschalters (Ruhe.dc.html Z.21) — Nacht mit 8 % Deckung. */
+      --shadow-segment: 0 1px 2px rgba(14, 22, 38, 0.08);
     }
     * { box-sizing: border-box; }
+    /* ============================================================================================
+       JOB 3056 K1 — DER RAHMEN IST EINE FENSTERHOHE FLEX-SPALTE (Ruhe.dc.html Z.15).
+       ============================================================================================
+       Alle drei Mockups (Ruhe, Antwort, Einstellungen) sind 360 × 720 grosse Flex-Spalten: der Kopf
+       oben, die Mitte nimmt den freien Raum, das Frage-Feld bzw. der Stand steht unten. Das Panel
+       traegt deshalb keine Koerperpolsterung mehr; jede Flaeche bringt ihre Seitenraender selbst
+       mit (16px wie im Mockup). Kein Webfont: der System-Stapel bleibt (kein Egress aus Word). */
+    html, body { height: 100%; }
     body {
       margin: 0;
+      padding: 0;
       background: var(--page);
       color: var(--text);
-      /* Kein Webfont: der IBM-Plex-Stapel des Webs waere ein neuer Egress aus dem Word-Panel.
-         Der System-Stapel bleibt — die Werkbank-Anmutung traegt die Palette, nicht die Schrift. */
       font: 14px/1.5 -apple-system, "Segoe UI", system-ui, sans-serif;
-      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      min-height: 100%;
     }
-    /* Die Kopfzeile als durchgehendes Nachtblau-Band (wie die Topbar im Web). Die negativen
-       Aussenabstaende heben die 14px Koerper-Polsterung auf — reine Darstellung, kein DOM-Eingriff. */
+    /* Der Kopf (Ruhe.dc.html Z.17-26): links Zurueck-Chevron + Titel, rechts Umschalter + Zahnrad.
+       Sonst NICHTS — Sprachwahl, Anmeldezeile, Vertrauenskopf und Sitzungszeile sind hinter das
+       Zahnrad gezogen (Einstellungen / „Wie Klara antwortet"). */
     header {
       display: flex;
-      align-items: baseline;
+      align-items: center;
       justify-content: space-between;
-      /* AUFTRAG-W1-VERTRAUENSKOPF-08 Block A: `flex-wrap` ist der GANZE Eingriff an dieser Regel.
-         Der Vertrauenskopf ist ein drittes Flex-Kind mit voller Breite und rutscht damit auf eine
-         eigene Zeile UNTER Marke und Sprachwahl — ohne die beiden bestehenden Kinder anzufassen.
-         Ein Umbau auf `flex-direction: column` haette Marke und Sprachwahl auseinandergerissen. */
-      flex-wrap: wrap;
-      gap: 8px;
-      margin: -14px -14px 0;
-      padding: 12px 14px;
-      background: var(--ink);
+      gap: 12px;
+      padding: 14px 16px 10px;
+      flex: 0 0 auto;
     }
-    /* Der permanente Vertrauenskopf sitzt IM Kopfband — sichtbar vor, waehrend und nach einer
-       Frage und in BEIDEN Reitern. Auf schmalen Aufgabenfenstern bleibt er lesbar, weil Pille und
-       Satz untereinander stehen statt nebeneinander. */
-    #klara-trust-head {
-      flex: 0 0 100%;
+    #kw-kopf-links { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    #kw-kopf-rechts { display: flex; align-items: center; gap: 12px; }
+    .brand { font-size: 15px; font-weight: 650; letter-spacing: 0.2px; color: var(--text); }
+    /* Zurueck und Zahnrad: nackte 18px-Strichsymbole (Z.19/24), Farbe Tinte-2 ueber currentColor. */
+    .kw-icon {
       display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 4px;
-      margin-top: 2px;
-    }
-    /* Die Zustandspille traegt den Zustand als TEXT. Die Farbe ist die zweite, redundante Spur —
-       nie die einzige (Anforderung: Inhalt nicht nur farblich kodieren). */
-    .trust-pill {
-      display: inline-block;
-      max-width: 100%;
-      padding: 2px 9px;
-      border-radius: 999px;
-      font-size: 11px;
-      font-weight: 600;
-      border: 1px solid var(--shell-muted);
-      color: var(--shell-fg);
-      background: transparent;
-    }
-    .trust-pill-ok { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
-    .trust-pill-warn { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
-    .trust-detail {
+      align-items: center;
+      justify-content: center;
+      width: 18px;
+      height: 18px;
       margin: 0;
-      color: var(--shell-muted);
-      font-size: 11.5px;
-      line-height: 1.45;
-    }
-    /* AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1): die sitzungsbezogene Gruppe im selben Kopf.
-       Sie sitzt auf demselben Nachtblau wie der Rest des Bandes und benutzt DIESELBEN zwei
-       Textfarben, die dort bereits AA-belegt sind (--shell-fg und --shell-muted auf --ink) —
-       keine neue Farbe, keine neue Flaeche. Die duenne Trennlinie macht sichtbar, dass hier eine
-       ANDERE Frage beantwortet wird als daruber. */
-    #klara-s4 {
-      flex: 0 0 100%;
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 3px;
-      margin-top: 6px;
-      padding-top: 6px;
-      border-top: 1px solid var(--shell-muted);
-    }
-    .s4-label {
-      font-size: 10px;
-      font-weight: 600;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-      color: var(--shell-muted);
-    }
-    .s4-line {
-      margin: 0;
-      max-width: 100%;
-      /* Lange Anbieter-/Modellnamen duerfen im schmalen Aufgabenfenster NICHT abschneiden
-         (Auftrag §102) — sie brechen um, auch mitten im Wort, wenn es sein muss. */
-      overflow-wrap: anywhere;
-      color: var(--shell-fg);
-      font-size: 11.5px;
-      line-height: 1.4;
-    }
-    .s4-line-muted { color: var(--shell-muted); }
-    .brand { font-size: 18px; font-weight: 700; color: var(--shell-fg); }
-    .brand small { color: var(--shell-muted); font-weight: 500; font-size: 11px; margin-left: 6px; }
-    .lang button {
-      border: 1px solid var(--shell-muted);
+      padding: 0;
+      border: 0;
       background: transparent;
-      color: var(--shell-muted);
-      font-size: 11px;
-      padding: 2px 7px;
-      border-radius: 999px;
+      color: var(--muted);
       cursor: pointer;
     }
-    /* JOB 2621 §3: der Stand-Spiegel im Kopfband — dieselbe unauffaellige Groesse wie #kw-stand
-       unten (10px), Farbe aus der AA-belegten Kopfband-Palette (--shell-muted auf --ink; die
-       Werkbank-Farbe --muted waere hier unlesbar, s. die klara-kopf-Begruendung derselben Wahl). */
-    #kw-stand-kopf { font-size: 10px; color: var(--shell-muted); flex: 0 0 auto; }
-    /* JOB 3017 D4 (SchlankesPanel.dc.html Z.26-29): die zweite Kopfzeile — links „Angemeldet als …"
-       (Z.27: 11px, Kopfband-Mutedfarbe), rechts der Stand-Spiegel (Z.28: 10px, dieselbe Farbe).
-       Vollbreites Flex-Kind wie der Vertrauenskopf darunter; die Anmeldezeile spiegelt WOERTLICH
-       den Text von #session-status (checkSession) — keine zweite Sitzungsauskunft, kein Name, den
-       der Server nicht geliefert hat. */
-    #kw-kopf-zeile {
-      flex: 0 0 100%;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 8px;
+    .kw-icon.hidden { display: none; }
+    .kw-icon svg { display: block; }
+    /* Der Umschalter Fragen | Erfassen als Segment (Z.20-23): Grund #EEEAE3, Radius 9, 2px Polster;
+       das aktive Segment weiss mit 7px Radius, 600 und dem 8%-Schatten. */
+    .tabs { display: flex; background: var(--segment); border-radius: 9px; padding: 2px; }
+    .tabs.hidden { display: none; }
+    .tabs button {
+      margin: 0;
+      padding: 5px 12px;
+      border: 0;
+      border-radius: 7px;
+      background: transparent;
+      color: var(--muted);
+      font: inherit;
+      font-size: 12.5px;
+      line-height: normal;
+      cursor: pointer;
     }
-    #kw-anmeldung { font-size: 11px; color: var(--shell-muted); min-width: 0; }
-    .lang button.active {
-      color: var(--surface);
-      background: var(--brand-deep);
-      border-color: var(--brand-deep);
+    .tabs button.active {
+      background: var(--surface);
+      color: var(--text);
+      font-weight: 600;
+      box-shadow: var(--shadow-segment);
     }
     .card {
       background: var(--surface);
@@ -234,52 +182,122 @@
     .status.ok { background: var(--pos-bg); color: var(--pos-text); }
     .status.warn { background: var(--warn-bg); color: var(--warn-text); }
     .hidden { display: none; }
-    /* JOB 3016 D3 „PruefungLaeuft": die ruhige Ladekarte der Wartezeit — JEDER Wert aus dem
-       Zielbild PruefungLaeuft.dc.html Z.26-32 uebernommen, nicht erfunden, auch die Aussenabstaende
-       (14px 16px 0 / 12px 16px 0; sie sind verbindliche D3-Werte und werden in Chromium gemessen).
-       Farben als Werkbank-Token: #FFFFFF = --surface, #E9E5DE = --hairline, #525B6B = --muted.
-       Der Warnkasten .status.warn bleibt den echten Warnungen. */
-    #ask-ladekarte {
-      margin: 14px 16px 0;
-      padding: 18px 16px;
-      background: var(--surface);
-      border: 1px solid var(--hairline);
-      border-radius: 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    #ask-ladekarte.hidden { display: none; }
-    .ladebalken { height: 14px; border-radius: 7px; background: var(--hairline); }
-    .ladebalken:nth-child(1) { width: 92%; }
-    .ladebalken:nth-child(2) { width: 100%; }
-    .ladebalken:nth-child(3) { width: 64%; }
-    #ask-ladekarte-satz { margin: 12px 16px 0; font-size: 12px; color: var(--muted); text-align: center; }
     ul { margin: 6px 0; padding-left: 18px; }
     a { color: var(--brand-text); }
     /* ============================================================================================
-       KW-D2-LUECKE (JOB 3046) — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (Pedi, 27.08.).
+       JOB 3056 K1 — DIE FRAGEN-FLAECHE: RUHE (Ruhe.dc.html) UND ANTWORT (Main.dc.html).
        ============================================================================================
-       Eine Luecke ist kein Fehler, sie ist eine Auskunft. Deshalb KEIN `.status.warn` mehr um sie
-       herum (der bleibt den echten Warnungen in #ask-status), sondern die ruhige, mittige Flaeche
-       der Vorlage Z.27: kein Hintergrund, kein Rand, Flex-Spalte, 20px Abstand, 0 32px Polster.
-       Jeder Wert steht hier woertlich wie in der Vorlage; die Farben sind die Werkbank-Token
-       (--text = #1A2233, --muted = #525B6B, --surface = #FFFFFF, --hairline = #E9E5DE — dieselben
-       Ziffern wie die Vorlage, mega43). Gemessen in Chromium, ein Vergleich je Wert:
-       tests/design/zielbild-keinwissen.test.ts ueber WERTE_FRAGEWEG_LUECKE (werte.ts).
-       RUNDE 2 (BEN): DIE BUEHNE. Die Vorlage ist ein Flex-Spaltenrahmen von Fensterhoehe (Z.15,
-       min-height 720px), in dem die Flaeche mit flex-grow 1 den freien Raum nimmt und der Inhalt
-       darin zentriert steht. Im Panel steht die Luecke NEBEN der Frage-Karte (nicht mehr in ihr —
-       kein Kasten-Ahne) und bekommt denselben Rahmen: #ask-gap-block ist eine Flex-Spalte, deren
-       Mindesthoehe der Rest des Fensters unter der Frage-Karte ist (`--kw-luecke-buehne`, vom
-       Panel gemessen, s. lueckeBuehneAnpassen; CSS allein kennt die Hoehe des Kopfes darueber
-       nicht). Die Seitenraender heben die 14px Koerperpolsterung auf wie die Antwortflaeche
-       (JOB 3004) — Z.27 misst ihre 32px damit von der Fensterkante. */
-    #ask-gap-block {
-      margin: 12px -14px 0;
+       #section-ask ist die Flex-Spalte unter dem Kopf. In Ruhe traegt die Mitte (#ask-ruhe) nur die
+       Lupe und den EINEN Satz; unten steht das Frage-Feld (#ask-feld). Im Antwortzustand steht
+       oben die Frage als gedaempfte Zeile, darunter die Antwortkarte und die zwei Knoepfe, und das
+       Frage-Feld bleibt unten (margin-top: auto) — es IST die neue Frage. Nicht angemeldet / nicht
+       erreichbar: EIN Satz und EIN Knopf in der Mitte, keine Karte. */
+    #section-ask { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    #section-ask.hidden { display: none; }
+    #ask-ruhe {
+      flex-grow: 1;
       display: flex;
       flex-direction: column;
-      min-height: var(--kw-luecke-buehne, auto);
+      justify-content: center;
+      align-items: center;
+      gap: 10px;
+      padding: 0 32px;
+      text-align: center;
+    }
+    #ask-ruhe.hidden { display: none; }
+    /* Z.29: die Lupe (40px, Strich 1.6) zeichnet mit currentColor — die Farbe ist das Token. */
+    #ask-ruhe-lupe { color: var(--lupe); display: block; }
+    #ask-ruhe-lupe.hidden { display: none; }
+    /* Z.30: der EINE Satz der Ruhe. */
+    #ask-ruhe-satz { font-size: 14px; color: var(--hint); line-height: 1.5; }
+    #ask-ruhe-satz.hidden { display: none; }
+    /* Nicht angemeldet / nicht erreichbar / Anmeldung laeuft: EIN Satz (kein Kasten) und EIN Knopf. */
+    #session-block { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    #session-block.hidden { display: none; }
+    #session-status { margin: 0; padding: 0; background: transparent; font-size: 14px; line-height: 1.5; color: var(--muted); }
+    #login-block { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+    #login-block.hidden { display: none; }
+    #login-btn { width: auto; padding: 10px 22px; border-radius: 10px; font-size: 13.5px; box-shadow: none; }
+    #login-context-hint { margin: 0; font-size: 12px; text-align: center; }
+    /* Das Dokument-Begriffsbild (KA1, JOB 1149) — nur mit Begriffen sichtbar, ohne Titel und
+       ohne Hinweissatz: Begriffe sind Inhalt, kein Erklaertext. Ohne Begriffe bleibt es weg. */
+    #ka1-block { margin: 12px 0 0; padding: 0; border: 0; background: transparent; box-shadow: none; }
+    #ka1-block.hidden { display: none; }
+    #ka1-terms { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 0; padding: 0; list-style: none; }
+    #ka1-terms li { padding: 4px 9px; border: 1px solid var(--hairline); border-radius: 8px; background: var(--surface); font-size: 11.5px; color: var(--muted); }
+    #ka1-empty { display: none; }
+    /* Das Frage-Feld (Ruhe.dc.html Z.33-39): Karte mit 12px Radius, Feld 15px/1.45 mit 52px Platz
+       rechts fuer den runden Sendeknopf (32px, rechts 8 / oben 7). Grau, solange nichts da ist;
+       Funke dunkel, sobald Text da ist (Klasse `bereit`, updateAskState). Im Antwortzustand ohne
+       Schatten (Main.dc.html Z.48). */
+    #ask-feld { margin-top: auto; padding: 12px 16px 16px; flex: 0 0 auto; }
+    #ask-karte { position: relative; margin: 0; padding: 0; border-radius: 12px; }
+    #ask-feld.antwort #ask-karte { box-shadow: none; }
+    #ask-karte.hidden { display: none; }
+    /* Die Herkunftszeile — NUR im einen Fall, in dem etwas verworfen wuerde (Markierung UND
+       getippter Text): ein Satz ueber dem Feld, sonst nichts (updateAskSourceNote). */
+    #ask-karte #ask-source-note { margin: 0; padding: 10px 14px 0; font-size: 12px; }
+    #ask-input {
+      display: block;
+      width: 100%;
+      margin: 0;
+      border: 0;
+      border-radius: 12px;
+      background: transparent;
+      padding: 12px 52px 12px 14px;
+      font: inherit;
+      font-size: 15px;
+      line-height: 1.45;
+      min-height: 0;
+      resize: none;
+      overflow: hidden;
+      color: var(--text);
+    }
+    #ask-input::placeholder { color: var(--hint); opacity: 1; }
+    #ask-btn {
+      position: absolute;
+      right: 8px;
+      top: 7px;
+      width: 32px;
+      height: 32px;
+      padding: 0;
+      border: 0;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--hairline);
+      color: var(--surface);
+      box-shadow: none;
+    }
+    #ask-btn:disabled { opacity: 1; box-shadow: none; }
+    #ask-btn.bereit { background: var(--brand-deep); }
+    #ask-btn svg { display: block; }
+    /* Laden zeigt der Sendeknopf: der Pfeil weicht einem drehenden Kreis (sonst nichts, §9). */
+    @keyframes kw-drehen { to { transform: rotate(360deg); } }
+    #ask-btn .kreisel { display: none; animation: kw-drehen 0.9s linear infinite; }
+    #ask-btn.laeuft .pfeil { display: none; }
+    #ask-btn.laeuft .kreisel { display: block; }
+    /* Die Schreibflaeche „auf Zuruf" (KA6) — ein Untermenue des Felds, direkt darueber, nur mit
+       Kontext (ka6Zeichnen); die Zurufe sind Chips, kein Dauertext. */
+    #ka6-block { margin: 0 16px; }
+    #ka6-block.hidden { display: none; }
+    #ka6-block h2 { margin: 0 0 4px; font-size: 12px; }
+    /* Fehler unter dem Frage-Feld: der Warnkasten (echte Warnungen) plus EIN Knopf „Erneut versuchen". */
+    #ask-status { margin: 0 16px; }
+    #ask-retry-btn { margin: 8px 16px 0; align-self: center; width: auto; }
+    #ask-retry-btn.hidden { display: none; }
+    /* ============================================================================================
+       KW-D2-LUECKE (JOB 3046) — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (Pedi, 27.08.).
+       ============================================================================================
+       Eine Luecke ist kein Fehler, sie ist eine Auskunft: die ruhige, mittige Flaeche (kein Kasten),
+       die Lupe, der EINE Satz, die Hauptaktion „Frage aendern" und der Textlink „offene Frage".
+       JOB 3056: der Block ist ein Flex-Kind der Fensterspalte und nimmt den freien Raum von selbst
+       (kein gemessenes Buehnenmass mehr); die Fusszeile der Luecke steht hinter dem Zahnrad. */
+    #ask-gap-block {
+      flex: 1 0 auto;
+      display: flex;
+      flex-direction: column;
     }
     /* Die id-Regel schlaegt `.hidden` — die Verbergung braucht deshalb ihre eigene Zeile. */
     #ask-gap-block.hidden { display: none; }
@@ -309,42 +327,12 @@
       cursor: pointer;
     }
     /* Z.31: die Nebenaktion — der Weg „offene Frage" bleibt, als Textlink 12px. Waehrend des
-       Sendens traegt er aria-disabled (ein <a> kennt kein disabled) und nimmt keinen Klick an;
-       KEINE Abschwaechung der Farbe (mega43: Kontrast bleibt AA) — dass gesendet wird, sagt
-       #ask-status (sendBusy). */
+       Sendens traegt er aria-disabled (ein <a> kennt kein disabled) und nimmt keinen Klick an. */
     #ask-gap-send-btn { font-size: 12px; }
     #ask-gap-send-btn[aria-disabled="true"] { pointer-events: none; cursor: default; }
-    /* Der Rueckweg zum Entwurf nach dem Senden (kein Zielbild-Element, bleibt erhalten) —
-       zentriert unter der Flaeche, ohne den Absatz-Aussenabstand. */
+    /* Der Rueckweg zum Entwurf nach dem Senden (kein Zielbild-Element, bleibt erhalten). */
     #ask-gap-open-block { margin: 12px 0 0; padding: 0 32px; text-align: center; font-size: 12px; }
-    /* Z.34/35: die Fusszeile — Rahmen und Satz in einem Element, sichtbar nur in der Luecke. */
-    #ask-luecke-fuss {
-      padding: 12px 16px;
-      display: flex;
-      justify-content: center;
-      font-size: 11px;
-      color: var(--muted);
-    }
     /* KW-D2-LUECKE (Stil) — Ende */
-    /* WP-KLARA-ASK (Teil 3): zwei klar getrennte Bereiche — iPad-einfach, kein Framework.
-       mega43: Unterstreichung statt gefuellter Knoepfe. */
-    /* JOB 2620 D4: die Reiterleiste traegt die Werte der Vorlage WissenErfassen.dc.html Z.22-24
-       (weisse Leiste, 13px, 11px 0 9px) — dieselben Werte nennt SchlankesPanel.dc.html fuer den
-       Fragen-Reiter; die Leiste ist eine geteilte Flaeche. Werte uebernommen, nicht erfunden. */
-    .tabs { display: flex; gap: 0; margin-top: 12px; border-bottom: 1px solid var(--hairline); background: var(--surface); }
-    .tabs button {
-      flex: 1;
-      border: 0;
-      border-bottom: 2px solid transparent;
-      background: transparent;
-      color: var(--muted);
-      font-size: 13px;
-      font-weight: 600;
-      padding: 11px 0 9px;
-      border-radius: 0;
-      cursor: pointer;
-    }
-    .tabs button.active { color: var(--brand-text); border-bottom-color: var(--brand); }
     /* JOB 2620 · WissenErfassen: der GEMESSENE Bilder-Hinweis als Vorlagen-Kasten
        (WissenErfassen.dc.html Z.31-34): warn-Flaeche, Info-Icon, 12px/1.5, Link fett im selben
        Ton. Farben sind die bestehenden AA-belegten Trust-warn-Token und stehen INLINE am Markup
@@ -360,11 +348,11 @@
       line-height: 1.5;
       margin: 8px 0 4px;
     }
-    /* JOB 2620 D2 (Wertevergleich): SIEBEN belegte Abweichungen zur Vorlage nachgebessert — die
-       Uebernahme-Karte lief auf der generischen .card (10px Radius, 12px Innenabstand), Titel und
-       Entwurfs-Knopf auf den Defaults (h2 bzw. .primary 8px/9px 14px). Werte aus
-       WissenErfassen.dc.html Z.28-29 und Z.52 uebernommen, nicht erfunden; gemessen in
-       tests/design/zielbild-wissen-erfassen.test.ts (Fall A) — JOB 2620 D4: an DIESER Datei. */
+    /* JOB 2620 D2 (Wertevergleich): Werte aus WissenErfassen.dc.html Z.28-29 und Z.52 uebernommen,
+       gemessen in tests/design/zielbild-wissen-erfassen.test.ts. JOB 3056: der Erfassen-Abschnitt
+       traegt seine Seitenraender selbst (JOB 3057 baut ihn nach dem Mockup „Erfassen" um). */
+    #section-capture { padding: 0 14px 14px; }
+    #section-capture.hidden { display: none; }
     #capture-karte { border-radius: 12px; padding: 16px 14px; }
     #capture-karte h2 { font-size: 13.5px; font-weight: 650; }
     #capture-karte #send-btn { border-radius: 10px; font-size: 14px; width: 100%; padding: 12px 0; }
@@ -379,62 +367,52 @@
     }
     .answer-text { white-space: pre-wrap; }
     /* ============================================================================================
-       JOB 3004 D1 — DIE ANTWORTFLAECHE NACH ZIELBILD Main.dc.html (Pedi, 27.08.), Z.22-57.
+       JOB 3056 K1 — DIE ANTWORTFLAECHE NACH Main.dc.html (Pedi, 04.09.), Z.25-45.
        ============================================================================================
-       Frage-Pille, Antwortkarte, Herkunftszeile mit Quellen-Chips, Aktionsleiste, Fusszeile. Jeder
-       Wert ist aus der Vorlage uebernommen, nicht erfunden, und wird in
-       tests/design/zielbild-klara-main.test.ts an der in Chromium geladenen dist-Fassung DIESER
-       Datei per getComputedStyle nachgemessen — ein Vergleich je Wert. Farben sind ausschliesslich
-       die Werkbank-Token oben (mega43).
-       ERSETZT, nicht daneben belassen: der Quellen-Balken (#ask-sources-block mit Funke-Linie) und
-       die Status-Pillen (.src-badge-validiert/-pruefung mit eigener Flaeche). Die Quelle ist jetzt
-       der Chip; der Status steht darin als Wort (Inhalt, nicht Farbe — die Vorlage kennt keine
-       Ampel am Chip). Die Klasse `src-badge` bleibt als Marke des Status-Worts, ohne eigene Regel.
-       KEIN display auf Flaechen, die per .hidden geschaltet werden (#ask-answer-block,
-       #ask-sources-block, #ask-copy-fallback, #ask-karte): eine id-Regel schluege die Klasse.
-       AUSSENMASSE WIE IM ARTBOARD (360 breit): die Antwortflaeche hebt die 14px Koerper-Polsterung
-       auf (dieselbe Bauform wie das Kopfband) und traegt die Seitenraender der Vorlage selbst —
-       Pille und Aktionen `12px 16px 0`, Karte `14px 16px 0`, Fusszeile `12px 16px`. Gemessen als
-       vollstaendige Kurzschreibweise UND als Kante im 360px-Fenster. */
-    #ask-answer-block { margin: 0 -14px; }
+       Frage-Zeile, Antwortkarte mit Text und Quellen-Chips, zwei Knoepfe. Jeder Wert ist aus dem
+       Mockup uebernommen und wird in tests/design/zielbild-k1-antwort.test.ts an der in Chromium
+       geladenen dist-Fassung DIESER Datei per getComputedStyle nachgemessen — ein Vergleich je
+       Wert. Farben sind die Werkbank-Token oben.
+       WEG (JOB 3056): Herkunftszeile in der Karte, Fassung im Chip (Status/Rolle/Vertrauen/Stand),
+       Fusszeile „Woertlich zitiert · fachlich pruefen", „Neue Frage", Leitsatz, Pruefhinweis. Was
+       davon Auskunft ist, lebt weiter: lagebezogen als EIN Satz unter der Karte (#ask-vorbehalt)
+       oder im „Mehr"-Bereich der Karte (#ask-mehr-block: Einstufung, Vorbehalt, Konfliktlage,
+       Ausschnitt, Quellen mit Status/Rolle/Vertrauen/Stand). Erklaertext steht hinter dem Zahnrad. */
+    #ask-answer-block { display: flex; flex-direction: column; }
+    #ask-answer-block.hidden { display: none; }
+    /* Z.25: die Frage als gedaempfte Zeile (13px/1.4, Tinte-2). Sie bleibt ein Knopf: ein Klick
+       holt die Frage zum Bearbeiten ins Feld (askFrageBearbeiten). */
     #ask-frage-zeile-btn {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      /* Ein <button> passt sich sonst dem Inhalt an; die Pille spannt wie in der Vorlage die
-         Breite zwischen den 16px-Raendern. */
+      display: block;
       width: calc(100% - 32px);
-      margin: 12px 16px 0;
-      padding: 9px 12px;
-      background: var(--surface);
+      margin: 6px 16px 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
       color: var(--muted);
-      border: 1px solid var(--hairline);
-      border-radius: 10px;
       font: inherit;
       font-size: 13px;
-      line-height: 1.5;
+      line-height: 1.4;
       text-align: left;
       cursor: pointer;
     }
-    #ask-frage-zeile { flex-grow: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-    #ask-frage-zeile-btn svg { flex-shrink: 0; }
+    #ask-frage-zeile { display: block; }
+    /* Z.27: die Karte. */
     #antwortkarte {
       display: flex;
       flex-direction: column;
       gap: 14px;
       margin: 14px 16px 0;
-      padding: 18px 16px 16px;
+      padding: 18px 16px;
       background: var(--surface);
       border: 1px solid var(--hairline);
       border-radius: 12px;
       box-shadow: var(--shadow-tile);
     }
-    /* Die Vorlese-Ueberschrift der Karte: fuer Hilfstechnik da, nicht im Bild (die Vorlage zeigt
-       keinen Kartentitel). Absolut positioniert, also kein Flex-Kind und keine Luecke im Raster. */
+    /* Die Vorlese-Ueberschrift der Karte: fuer Hilfstechnik da, nicht im Bild. */
     .nur-vorlesen { position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
-    /* Der Antworttext IST das bearbeitbare Feld (mega35/36: ein Feld, alle Ausgaenge). Es traegt
-       die Textoptik der Vorlage statt eines Formularrahmens; seine Hoehe folgt dem Inhalt
-       (passeAntwortfeldAn). Die Farbe steht hier ausdruecklich: Formularfelder erben sie nicht. */
+    /* Z.28: der Antworttext IST das bearbeitbare Feld (mega35/36: ein Feld, alle Ausgaenge) — in
+       der Textoptik der Vorlage (16px/1.55), ohne Formularrahmen; Hoehe folgt dem Inhalt. */
     #ask-answer-edit {
       display: block;
       margin: 0;
@@ -448,13 +426,22 @@
       resize: none;
       overflow: hidden;
     }
-    /* Der Bearbeitungshinweis erscheint, sobald das Feld den Fokus hat — im Augenblick des
-       Bearbeitens, fuer den er geschrieben ist; aria-describedby bindet ihn immer an das Feld. */
+    /* JOB 3056 Runde 4 (Main.dc.html Z.28-29, Codex Pflicht 1): die Fussnotenziffern — echte
+       <sup>-Elemente (10px, Funke als Text, 700) — stehen an der GEMESSENEN Stelle nach dem letzten
+       Zeichen des Felds. Der Text bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge);
+       ein unsichtbarer Spiegel mit denselben Schriftmassen liefert die Koordinaten (askFussnotenSetzen). */
+    #ask-answer-text { position: relative; }
+    #ask-answer-spiegel { position: absolute; top: 0; left: 0; margin: 0; padding: 0; border: 0; visibility: hidden; pointer-events: none; white-space: pre-wrap; overflow-wrap: break-word; word-wrap: break-word; }
+    #ask-answer-spiegel .textende { display: inline-block; width: 0; vertical-align: top; }
+    #ask-fussnoten { position: absolute; left: 0; top: 0; padding-left: 2px; white-space: nowrap; pointer-events: none; color: var(--brand-text); }
+    #ask-fussnoten.hidden { display: none; }
+    .fussnote { font-size: 10px; font-weight: 700; vertical-align: super; }
+    .fussnote + .fussnote { margin-left: 2px; }
+    /* Der Bearbeitungshinweis erscheint, sobald das Feld den Fokus hat. */
     #ask-answer-edit-hint { display: none; margin: 0; font-size: 11.5px; }
-    #ask-answer-edit:focus ~ #ask-answer-edit-hint { display: block; }
-    /* Einstufung, Vorbehalt, Konflikt und Ausschnitt sind Kinder des Kartenrasters (gap 14px):
-       keine eigenen Aussenabstaende mehr, der Detail-Rahmen loest sich in seine Zeilen auf. */
+    #ask-answer-text:focus-within ~ #ask-answer-edit-hint { display: block; }
     #antwortkarte .status { margin: 0; }
+    /* Z.30: die Quellenreihe — Trennlinie oben, 12px Abstand, Chips mit 6px Luecke. */
     #ask-sources-block {
       flex-direction: column;
       gap: 8px;
@@ -462,17 +449,13 @@
       padding-top: 12px;
     }
     #ask-sources-block:not(.hidden) { display: flex; }
-    #antwortkarte-herkunft-zeile { margin: 0; font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
     #ask-sources { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
-    /* KEIN display an `#ask-sources li`: die id-Regel schluege die Klassenregel `.quelle-chip`
-       (display: flex) und liesse gap und align-items wirkungslos (ben, Runde 4). Der Listenpunkt
-       selbst ist ohne Marke (list-style am ul); die Chip-Darstellung traegt allein die Klasse. */
+    /* KEIN display an `#ask-sources li`: die id-Regel schluege die Klassenregel `.quelle-chip`. */
     #ask-sources li { max-width: 100%; }
-    /* Der Chip (Vorlage Z.34-44): eigene Flaeche Papier, Tinte-2 fuer Symbol und Fassung. */
+    /* Z.31-38: der Chip — Dokumentsymbol und „n · Titel", sonst nichts. */
     .quelle-chip {
       display: flex;
       align-items: center;
-      flex-wrap: wrap;
       gap: 6px;
       max-width: 100%;
       margin: 0;
@@ -487,47 +470,17 @@
       text-align: left;
     }
     .quelle-chip svg { flex-shrink: 0; stroke: var(--muted); }
-    /* Titel und Titel-Link tragen Tinte statt Tinte-2 bzw. des Marken-Tons. Ihre Flaeche ist die
-       des Chips (Papier) — ausdruecklich gesetzt, damit der Kontrastwaechter das Paar an dieser zur
-       LAUFZEIT erzeugten Stelle (kein Markup-Fundort) messen kann, statt es gegen jede Flaeche zu
-       raten. */
     .quelle-chip-titel { font-size: 11.5px; font-weight: 600; color: var(--text); background: var(--page); }
     .quelle-chip-titel a { color: var(--text); background: var(--page); text-decoration: none; }
-    .quelle-chip-fassung { font-size: 10.5px; }
     button.quelle-chip { cursor: pointer; }
-    /* Aktionsleiste (Vorlage Z.49-52): die bestehenden Knoepfe in der Optik der Vorlage — gleich
-       breit, 10px 0, Radius 10, 13.5px, ohne das Leuchten des Hauptknopfs. */
-    #antwortkarte-aktionen { display: flex; gap: 8px; margin: 12px 16px 0; }
-    #antwortkarte-aktionen button { flex: 1 1 50%; min-width: 0; width: auto; padding: 10px 0; border-radius: 10px; font-size: 13.5px; text-align: center; box-shadow: none; }
-    /* Fusszeile (Vorlage Z.54-57) und darunter der Leitsatz (Auftrag §5.7). */
-    #antwortkarte-fuss { display: flex; justify-content: space-between; align-items: center; padding: 12px 16px; }
-    #antwortkarte-fuss-hinweis { margin: 0; font-size: 11px; color: var(--muted); }
-    #ask-neue-frage-btn { margin: 0; padding: 0; border: 0; background: transparent; font: inherit; font-size: 11px; color: var(--muted); cursor: pointer; }
-    #klara-leitsatz { margin: 0; padding: 0 16px 12px; font-size: 11px; color: var(--muted); text-align: center; }
-    /* AUFTRAG-W1-VERTRAUENSKOPF-08 Block B: die Rolle einer Quelle IN DER ANTWORT — tragend oder
-       nur herangezogen — traegt BEWUSST KEINE eigene Regel. Sie wird als reiner Text an den
-       Listeneintrag gehaengt, genau wie der Trust-Wert daneben, und erbt dessen Farbe.
-
-       DAS IST KEINE SPARSAMKEIT, SONDERN DAS ERGEBNIS DES KONTRASTWAECHTERS (mega43/mega44 B1):
-       eine Regel, die nur `color` setzt und deren Klasse erst zur LAUFZEIT vergeben wird, hat im
-       Markup keine Fundstelle. Der Waechter kann ihre Flaeche dann nicht bestimmen und misst
-       konservativ gegen JEDE deckende Flaeche des Stilblocks — auch gegen das dunkle Kopfband, auf
-       dem diese Zeile nie steht. Statt den Waechter mit einer Ausnahme zu entschaerfen, entfaellt
-       die Regel: die Unterscheidung traegt das WORT („traegt die Antwort" / „herangezogen"), und
-       das ist ohnehin die zugaenglichere Loesung — Inhalt, nicht Farbe. */
-    /* Die entfaltete Evidenz: Vorbehalt und Konfliktlage stehen GETRENNT und tragen eigene Toene.
-       Bis hierher waren beide derselbe Satz — genau das war der Befund aus dem Ist-Delta 05.
-
-       SIE BEKOMMEN BEWUSST KEINE EIGENEN FARBREGELN, sondern benutzen das vorhandene
-       `.status` / `.status.ok` / `.status.warn` — dieselbe Bauform wie die Einstufungszeile
-       darueber. Zwei Gruende: (1) diese Flaechen sind DECKEND (eigener Hintergrund) und damit vom
-       Kontrastwaechter eindeutig messbar, waehrend eine Regel, die nur `color` setzt und deren
-       Klasse erst zur Laufzeit vergeben wird, im Markup keine Fundstelle haette; (2) drei
-       gleichartige Zeilen untereinander sind ruhiger als drei erfundene Formen. */
-    /* JOB 3004 D1: `display: contents` — die beiden Zeilen sind unmittelbare Kinder des
-       Kartenrasters; ein leerer Rahmen wuerde sonst eine Luecke im 14px-Raster lassen. */
+    /* „Mehr" (Funktionsinventar §5a): Einstufung, Vorbehalt, Konfliktlage, Ausschnitt und die
+       Quellen mit Status, Rolle, Vertrauen und Stand — aufklappbar, nicht Dauertext. */
+    #ask-mehr-block { display: none; flex-direction: column; gap: 10px; border-top: 1px solid var(--hairline); padding-top: 12px; }
+    #ask-mehr-block.offen { display: flex; }
+    #antwortkarte-herkunft-zeile { margin: 0; font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
     #ask-evidence-detail { display: contents; }
-    /* Der real gelieferte Ausschnitt — nur lesbar, klar als Zitat markiert, NIE eine Herleitung. */
+    #ask-quellen-detail { margin: 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 6px; }
+    #ask-quellen-detail li { font-size: 12px; line-height: 1.45; color: var(--muted); }
     #ask-snippet-block { margin: 0; }
     .snippet-label { display: block; font-size: 11px; font-weight: 600; color: var(--muted); }
     .snippet-text {
@@ -542,286 +495,177 @@
       white-space: pre-wrap;
       color: var(--text);
     }
+    /* Z.42-45: die zwei Knoepfe — gleich breit, 12px 0, Radius 10, 14px. */
+    #antwortkarte-aktionen { display: flex; gap: 8px; margin: 12px 16px 0; }
+    #antwortkarte-aktionen button { flex: 1 1 50%; min-width: 0; width: auto; padding: 12px 0; border-radius: 10px; font-size: 14px; text-align: center; box-shadow: none; }
+    #ask-copy-btn { font-weight: 400; }
+    /* Lieferung 5: Vorbehalt oder Konfliktlage — NUR wenn der Fall eintritt, als EIN Satz. */
+    #ask-vorbehalt { margin: 10px 16px 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
+    #ask-vorbehalt.hidden { display: none; }
     /* ============================================================================================
-       JOB 3017 D4 — DAS RUHIGE GRUNDPANEL (SchlankesPanel.dc.html Z.37-49), in Chromium gemessen:
-       tests/design/zielbild-schlankes-panel.test.ts. Werte uebernommen, nicht erfunden; Farben
-       sind die vorhandenen Token (Z.38 #FFFFFF/#E9E5DE = --surface/--hairline, Z.40 #C2500A =
-       --brand-deep, Z.44/48 #525B6B = --muted, Z.49 #116B3C = --pos-text).
-       ============================================================================================ */
-    /* Z.38: die Fragen-Karte — Feld und runder Sende-Pfeil, sonst nichts. `position: relative`
-       traegt den absolut gesetzten Knopf; das Polster liegt im Feld (Z.39), nicht in der Karte. */
-    #ask-karte { position: relative; border-radius: 12px; padding: 0; }
-    /* Die Herkunftszeile (mega74 Teil 2b) bleibt IN der Karte ueber dem Feld — sichtbar nur mit
-       Inhalt (updateAskSourceNote schaltet `.hidden`). */
-    #ask-karte #ask-source-note { margin: 0; padding: 10px 14px 0; }
-    /* Z.39: das Feld fuellt die Karte; rechts 52px Platz fuer den Knopf, unten 40px. */
-    #ask-input {
-      display: block;
+       JOB 3056 K1 — EINSTELLUNGEN (Einstellungen.dc.html) UND „WIE KLARA ANTWORTET".
+       ============================================================================================
+       Gruppen sind weisse Karten (Z.22: Rand Linie, Radius 12), Zeilen 13px 14px mit Trennlinie,
+       Beschriftung 14px, Wert 14px Tinte-2, Chevron/Schloss im Hinweisgrau, Schalter 40 × 24 mit
+       20px-Knopf. Der Kicker (Z.36) 11px mit 0.4px Laufweite. Unten der Stand (Z.68). */
+    #kw-einstellungen, #kw-hilfe { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    #kw-einstellungen.hidden, #kw-hilfe.hidden { display: none; }
+    .einst-gruppe {
+      margin: 10px 16px 0;
+      background: var(--surface);
+      border: 1px solid var(--hairline);
+      border-radius: 12px;
+      display: flex;
+      flex-direction: column;
+    }
+    .einst-gruppe.admin { margin: 0 16px; }
+    .einst-gruppe.konto { margin: 20px 16px 0; }
+    .einst-zeile {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
       margin: 0;
+      padding: 13px 14px;
+      border: 0;
+      border-bottom: 1px solid var(--hairline);
+      background: transparent;
+      font: inherit;
+      font-size: 14px;
+      color: var(--text);
+      text-align: left;
+    }
+    .einst-zeile.hidden { display: none; }
+    .einst-gruppe > :last-child { border-bottom: 0; }
+    button.einst-zeile { cursor: pointer; }
+    .einst-wert { display: flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+    .einst-wert svg { display: block; color: var(--hint); }
+    .einst-kicker { margin: 20px 16px 6px; font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
+    /* Die Sprachwahl (die bisherigen #lang-*-Knoepfe) klappt unter der Sprach-Zeile auf. */
+    .lang { display: flex; flex-direction: column; border-bottom: 1px solid var(--hairline); }
+    .lang.hidden { display: none; }
+    .lang button { padding-left: 28px; border-bottom: 0; }
+    .lang button.active { font-weight: 600; }
+    .schalter {
+      position: relative;
+      flex: 0 0 auto;
+      width: 40px;
+      height: 24px;
+      margin: 0;
+      padding: 0;
       border: 0;
       border-radius: 12px;
-      background: transparent;
-      padding: 14px 52px 40px 14px;
-      font-size: 15px;
-      line-height: 1.45;
-      min-height: 96px;
+      background: var(--hairline);
+      cursor: pointer;
     }
-    /* Z.40-42: der runde Sende-Pfeil rechts unten IN der Karte. Er ERSETZT den vollbreiten
-       Textknopf: gleiche Kennung, gleiche Ereignisbindung, gleicher Sperrzustand (updateAskState);
-       der Wortlaut askCta steht als aria-label (renderStatics), das Pfeil-SVG erbt die Knopffarbe. */
-    #ask-btn {
-      position: absolute;
-      right: 10px;
-      bottom: 10px;
-      width: 34px;
-      height: 34px;
-      padding: 0;
-      border-radius: 50%;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      box-shadow: none;
+    .schalter.hidden { display: none; }
+    .schalter .knopf { position: absolute; top: 2px; left: 2px; width: 20px; height: 20px; border-radius: 50%; background: var(--surface); }
+    .schalter.an { background: var(--pos-text); }
+    .schalter.an .knopf { left: auto; right: 2px; }
+    .einst-link { margin: 0; padding: 0; border: 0; background: transparent; font: inherit; font-size: 14px; color: var(--brand-deep); cursor: pointer; }
+    .einst-detail { margin: 0; padding: 10px 14px; border-bottom: 1px solid var(--hairline); font-size: 12.5px; line-height: 1.45; color: var(--muted); overflow-wrap: anywhere; }
+    .einst-detail.hidden { display: none; }
+    /* Die Zustimmungsauskunft (Anbieter, Modell, Datenklassen, aktive Frage KA4) unter der
+       Schalterzeile — sichtbar nur, wenn der Server sie anbietet (renderKlaraS4). */
+    #klara-consent-card { display: flex; flex-direction: column; gap: 6px; }
+    #klara-consent-card.hidden { display: none; }
+    #klara-consent-card p { margin: 0; }
+    #klara-consent-card .status { margin: 0; }
+    #kw-stand-zeile { margin: auto 0 0; padding: 12px 16px 16px; text-align: center; font-size: 11px; color: var(--hint); }
+    #kw-fassung { margin: 0; padding: 0 16px 12px; text-align: center; font-size: 10px; }
+    #kw-fassung-btn { margin: 0 16px 12px; align-self: center; font-size: 11px; }
+    /* „Wie Klara antwortet": die Saetze, die frueher im Sichtfeld standen — Regel, Pruefhinweis,
+       KI-Stand von KLARWERK (W1-Vertrauenskopf), Hilfe und Anmeldung. */
+    .hilfe-block { margin: 10px 16px 0; padding: 13px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 12px; }
+    .hilfe-block p { margin: 0 0 6px; }
+    .hilfe-block p:last-child { margin-bottom: 0; }
+    .hilfe-block ul { margin: 0; padding-left: 18px; }
+    #klara-trust-head { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+    .trust-pill {
+      display: inline-block;
+      max-width: 100%;
+      padding: 2px 9px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+      border: 1px solid var(--hairline);
+      color: var(--muted);
+      background: var(--page);
     }
-    /* Z.44: GENAU EIN Satz unter der Karte (der fachliche Pruefhinweis); die KI-Kennzeichnung
-       traegt dieselbe Form, wenn das Signal sie einmal sichtbar macht. */
-    #ask-review-notice { margin: 14px 0 0; font-size: 12px; line-height: 1.5; padding: 0 2px; }
-    #ask-ai-notice { margin: 14px 0 0; font-size: 12px; line-height: 1.5; padding: 0 2px; }
-    /* Antwort- und Absage-Block wohnten in der Fragen-Karte; sie stehen jetzt daneben. IHRE Form
-       tragen JOB 3004 (#ask-answer-block, Antwortflaeche) und JOB 3046 (#ask-gap-block, Buehne der
-       Luecke) — die Regeln oben. JOB 3017 setzt hier BEWUSST KEINE zweite Regel fuer diese beiden
-       Kennungen (Nachzug: ein Karten-Rezept an dieser Stelle schlug beide Vorlagen um 13px). */
-    /* Z.47-49: die Fusszeile — Leitsatz links (Z.48: 11px, --muted), Schloss rechts (Z.49: 14×14,
-       --pos-text). Die negativen Aussenabstaende heben die 14px Koerper-Polsterung auf, wie beim
-       Kopfband; `clear` wegen des gefloateten Fassungs-Knopfs darueber. */
-    #kw-fuss {
-      clear: both;
-      margin: 14px -14px -14px;
-      padding: 12px 16px;
-      border-top: 1px solid var(--hairline);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      gap: 10px;
-    }
-    #kw-fuss #ask-rule-note { margin: 0; font-size: 11px; }
-    #kw-fuss-schloss { color: var(--pos-text); flex: 0 0 auto; }
+    .trust-pill-ok { background: var(--pos-bg); color: var(--pos-text); border-color: transparent; }
+    .trust-pill-warn { background: var(--warn-bg); color: var(--warn-text); border-color: transparent; }
+    .trust-detail { margin: 0; color: var(--muted); font-size: 12.5px; line-height: 1.45; }
   </style>
 </head>
 <body>
-  <header>
-    <div class="brand">Klara<small>KLARWERK</small></div>
-    <div class="lang" role="group" aria-label="Sprache">
-      <button type="button" id="lang-de" class="active">DE</button>
-      <button type="button" id="lang-en">EN</button>
-      <button type="button" id="lang-nl">NL</button>
+  <!-- ============================================================================================
+       JOB 3056 K1 — DER KOPF (Ruhe.dc.html Z.17-26 / Main.dc.html Z.17-23 / Einstellungen Z.17-20).
+       ============================================================================================
+       Links der Zurueck-Chevron (nur im Antwortzustand, in den Einstellungen und in der Hilfe) und
+       der Titel; rechts der Umschalter Fragen | Erfassen (nur auf den beiden Flaechen) und das
+       Zahnrad. Sonst NICHTS: die Sprachwahl lebt in den Einstellungen weiter (#lang-*), der Stand
+       im Fuss der Einstellungen (#kw-stand), Sitzung und Zustimmung in der Gruppe „Konto" bzw. als
+       Schalterzeile, der KI-Stand von KLARWERK (W1-Vertrauenskopf) unter „Wie Klara antwortet". -->
+  <header id="kw-kopf">
+    <div id="kw-kopf-links">
+      <button type="button" id="kw-zurueck" class="kw-icon hidden">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+      </button>
+      <div class="brand" id="kw-titel">Klara</div>
     </div>
-    <!-- JOB 2621 §3 (Befund 1, 26.08.): der Auslieferungsstand GESPIEGELT nach oben rechts — dort,
-         wo Pedi ihn gesucht hat. NICHT verschoben: #kw-stand unten bleibt samt seinen Tests
-         unberuehrt; beide Stellen schreibt dieselbe eine Quelle (KLARA_STAND aus dem Build — nie
-         von Hand gepflegt). Farbe und Groesse traegt die EINE Regel `#kw-stand-kopf` im Stilblock.
-
-         JOB 3017 D4: bis hierher trug die Kennung kw-stand-kopf ZWEIMAL ein Element im Kopf — ein ungestylter
-         Span neben der Sprachwahl (JOB 2621) und ein gestylter Vollbreiten-Span (SANIERUNG-20260827,
-         JOB 2929 D1); `getElementById` traf den ersten, der gestylte blieb leer. Jetzt gibt es das
-         Element genau einmal, in der zweiten Kopfzeile des Zielbilds (SchlankesPanel.dc.html
-         Z.26-29): links „Angemeldet als …" (#kw-anmeldung, gespiegelt aus checkSession — derselbe
-         Text wie #session-status, keine zweite Sitzungsauskunft), rechts der Stand. -->
-    <div id="kw-kopf-zeile">
-      <span id="kw-anmeldung"></span>
-      <span id="kw-stand-kopf"></span>
-    </div>
-    <!-- ==========================================================================================
-         AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER PERMANENTE VERTRAUENSKOPF (BASIC-0).
-         ==========================================================================================
-         Er steht IM Kopfband und AUSSERHALB des Fragen-Abschnitts. Damit ist er sichtbar, bevor
-         eine Frage gestellt wurde, waehrend sie laeuft, danach — und ebenso im Reiter „Wissen
-         erfassen". Bis hierher sass dieselbe Auskunft in `#section-ask` unter dem Eingabefeld und
-         verschwand beim Reiterwechsel (Ist-Delta 05 §3.5).
-
-         `role="status"` + `aria-live="polite"` statt `alert`: der Zustand aendert sich von selbst
-         (Statusabruf, Sprachwechsel) und soll gemeldet, aber nicht unterbrechend vorgelesen werden.
-
-         GENAU EIN Kopf. KW-W1-13 verlangt, dass BASIC-1 DIESEN erweitert und keinen zweiten baut;
-         die Erweiterungsstelle ist `detailKeys` in wordAddin.ts#klaraTrustHead — heute leer, weil
-         Provider, Modell, Admin-Vorgabe, Abweichung, Sitzung und Consent noch nicht existieren. -->
-    <div id="klara-trust-head" role="status" aria-live="polite">
-      <span id="klara-trust-mode" class="trust-pill"></span>
-      <p id="klara-trust-detail" class="trust-detail"></p>
-      <!-- ========================================================================================
-           AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE SITZUNGSBEZOGENE AUFLOESUNG.
-           ========================================================================================
-           Der Block darueber ist BASIC-0: der HAUSSTAND von KLARWERK aus dem oeffentlichen,
-           abstrahierten Status, plus die Eigenschaft von Klaras Antwortweg. Er bleibt unveraendert.
-
-           DIESER Block ist etwas anderes und traegt deshalb ein eigenes Etikett: was fuer DIESE
-           Klara-Sitzung serverseitig aufgeloest wurde — Modus, Anbieter, Modell, Abweichung und
-           Sitzungs-/Zustimmungsstand. Jeder Wert kommt WOERTLICH aus KlaraSessionView/KlaraResolution
-           (GET /api/klara/ai-status, KW-W1-S4-R2-KOPF-FREEZE-17). Das Add-in leitet nichts ab.
-
-           Zwei Gruppen, zwei Etiketten, keine Vermischung: die eine beantwortet „arbeitet in
-           KLARWERK eine KI?", die andere „was gilt in dieser Sitzung?". Ein gemeinsamer Kasten
-           haette beide Fragen zu einer verschmolzen. -->
-      <div id="klara-s4">
-        <span class="s4-label" id="klara-s4-label"></span>
-        <span id="klara-s4-mode" class="trust-pill"></span>
-        <p id="klara-s4-provider" class="s4-line"></p>
-        <!-- JOB 2621 §2: Sitzungs-/Zustimmungszeile VOR der Sperr-/Abweichungszeile. „Gesperrt"
-             UEBER „Zustimmung: erteilt" las sich wie ein Widerruf der Zustimmung (Befund 3,
-             26.08.); erst die Zustimmung, dann das andere Tor mit benanntem Bezug
-             (s4BlockiertTrotzZustimmung im Renderer). Ids und Verhalten unveraendert. -->
-        <p id="klara-s4-session" class="s4-line s4-line-muted"></p>
-        <p id="klara-s4-deviation" class="s4-line s4-line-muted hidden"></p>
+    <div id="kw-kopf-rechts">
+      <!-- WP-KLARA-ASK (Teil 3): zwei Bereiche — Fragen (das Funktionsversprechen) und Erfassen
+           (der bestehende Entwurf-Sender). Segment-Knoepfe, kein Framework, buildlos. -->
+      <div class="tabs" id="kw-segment" role="tablist" aria-label="Bereiche">
+        <button type="button" id="tab-ask" class="active" data-t="tabAsk"></button>
+        <button type="button" id="tab-capture" data-t="tabCapture"></button>
       </div>
+      <button type="button" id="kw-zahnrad" class="kw-icon">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09a1.65 1.65 0 0 0-1-1.51 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09a1.65 1.65 0 0 0 1.51-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+      </button>
     </div>
   </header>
-
-  <!-- ============================================================================================
-       AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE EINMALIGE SITZUNGSZUSTIMMUNG.
-       ============================================================================================
-       Sie erscheint AUSSCHLIESSLICH, wenn der Server sie verlangt und noch nicht erteilt hat
-       (`resolution.externalConsentRequired === true && externalConsentGranted === false`). Das
-       Add-in entscheidet den Bedarf NICHT (No-Go 1); es liest ihn.
-
-       Der Kasten nennt Anbieter, Modell, Sitzung und die betroffene Payload-Klasse — genau die
-       vier Angaben aus `KW-S4-03 §2.2`. Zustimmen und Widerrufen rufen die REALEN Endpunkte;
-       nichts wird lokal als Wahrheit gespeichert (No-Go 2). Auf dem deterministischen und dem
-       internen Weg erscheint der Kasten gar nicht — dort waere eine External-Zustimmung eine
-       erfundene Frage. -->
-  <div class="card hidden" id="klara-consent-card">
-    <h2 id="klara-consent-title"></h2>
-    <p class="muted" id="klara-consent-body"></p>
-    <p class="muted" id="klara-consent-scope"></p>
-    <!-- KW-S4-22 §4: serverseitig ausgeschlossene Datenklassen werden GENANNT, nicht still
-         entfernt. Anfangs verborgen, wie alle zustandsgebundenen Zeilen dieses Fensters. -->
-    <p class="muted hidden" id="klara-consent-blocked"></p>
-    <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-      <button type="button" class="primary" id="klara-consent-grant"></button>
-      <button type="button" class="ghost hidden" id="klara-consent-revoke"></button>
-    </div>
-    <div id="klara-consent-status" class="status hidden"></div>
-    <!-- KW-KA4-DOKUMENT-CONSENT-START (Fläche)
-         Das AKTIVE Fragen. Es steht IM Zustimmungskasten und nicht als Popup: „Die Chefsekretärin
-         klopft an, sie platzt nicht herein" (Werkstattbeschluss, Weiche 2). Kein Fokusraub, kein
-         Overlay — der Anwender kann es schlicht stehen lassen.
-         Der Ablehnungsknopf merkt sich das Nein FÜR DIESES DOKUMENT und diese Panelinstanz; der
-         Erlauben-Knopf darüber bleibt sichtbar, damit die Entscheidung jederzeit umkehrbar ist
-         (Auftrag Lieferung 6: „Eine manuell erreichbare Schaltfläche darf sichtbar bleiben"). -->
-    <div id="ka4-frage" class="hidden" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hairline);">
-      <strong id="ka4-frage-titel" style="font-size: 12.5px;"></strong>
-      <p class="muted" id="ka4-frage-text" style="margin: 4px 0 6px;"></p>
-      <div style="display: flex; gap: 6px; flex-wrap: wrap;">
-        <button type="button" class="primary" id="ka4-frage-ja"></button>
-        <button type="button" class="ghost" id="ka4-frage-nein"></button>
-      </div>
-    </div>
-    <p class="muted hidden" id="ka4-abgelehnt" style="margin-top: 8px;"></p>
-    <!-- KW-KA4-DOKUMENT-CONSENT-END (Fläche) -->
-  </div>
-
-  <div class="card" id="session-card">
-    <h2 data-t="greetTitle"></h2>
-    <p class="muted" data-t="greetBody"></p>
-    <div id="session-status" class="status warn" data-t="sessionChecking"></div>
-    <div id="login-block" class="hidden">
-      <p class="muted" data-t="loginHint"></p>
-      <button type="button" class="primary" id="login-btn" data-t="loginCta"></button>
-      <!-- WP-KLARA-1c: sichtbar nur waehrend des Anmelde-Wartens (Session-Polling laeuft). -->
-      <button type="button" class="ghost hidden" id="login-cancel-btn" data-t="loginCancel"></button>
-      <!-- WP-IC-PAKET-1c (g): ehrlicher Hinweis NUR im Fallback-Fall (window.open statt Office-Dialog):
-           das Anmelde-Fenster kann in einem anderen Browser-Kontext landen. -->
-      <p class="muted hidden" id="login-context-hint" data-t="loginOtherContext"></p>
-      <p class="muted" data-t="loginReturn"></p>
-    </div>
-  </div>
-
-  <!-- WP-KLARA-ASK (Teil 3): zwei Bereiche — Fragen (das Funktionsversprechen) und Wissen erfassen
-       (der bestehende Entwurf-Sender). Einfache Segment-Knoepfe, kein Framework, buildlos. -->
-  <div class="tabs" role="tablist" aria-label="Bereiche">
-    <button type="button" id="tab-ask" class="active" data-t="tabAsk"></button>
-    <button type="button" id="tab-capture" data-t="tabCapture"></button>
-  </div>
 
   <!-- WP-KLARA-ASK (Teil 1): Klara fragen — Auswahl als Frage, quellengebundene Antwort aus dem
        VALIDIERTEN Werkswissen ueber den BESTEHENDEN Konsolen-Vertrag POST /api/ask (Same-Origin-
        Session; serverseitige Permission ko.read wie in der Fragen-Konsole — kein neuer Guard). -->
   <div id="section-ask">
-    <!-- ==========================================================================================
-         JOB 3017 D4 — DIE FRAGEN-KARTE DES ZIELBILDS (SchlankesPanel.dc.html Z.38-42).
-         ==========================================================================================
-         EINE ruhige Karte: das Feld und der runde Sende-Pfeil, sonst nichts. Bis hierher trug die
-         Karte (ohne Kennung) Ueberschrift, Hinweis, Herkunftszeile, Feld, zwei Hinweisabsaetze,
-         den Regelsatz, den vollbreiten Textknopf und darunter Status-, Antwort- und Absage-Block.
-           · Die Ueberschrift askTitle ist jetzt der zugaengliche Name des Felds (aria-label,
-             renderStatics); der Reiter „Fragen" traegt die Funktion sichtbar.
-           · Der Hinweis askHint ist mit dem Pruefhinweis zu dem EINEN Satz unter der Karte
-             zusammengefuehrt (Schluessel askReviewNotice — woertlich aus validiertem Wissen mit
-             Quellen, die Markierung wird gefragt, vor Verwendung fachlich pruefen).
-           · Die Herkunftszeile bleibt in der Karte, aber zustandsgebunden (nur mit Inhalt).
-           · Der Regelsatz askRuleNote steht in der Fusszeile (#kw-fuss, unten).
-           · Status-, Antwort- und Absage-Block stehen unter dem Satz als eigene Flaechen.
-           · Das Dokument-Begriffsbild (KA1, JOB 1149) stand hier VOR der Karte; JOB 3017 D4
-             verschiebt es nach UNTEN, ans Ende von #section-ask (s. dort) — die Frage ist das
-             Erste, was der Mensch sieht.
-         Gemessen in tests/design/zielbild-schlankes-panel.test.ts (Chromium, 360 px). -->
-    <div class="card" id="ask-karte">
-
-      <!-- AUFTRAG-mega74 TEIL 2b: WAS wirklich gefragt wird — sichtbar VOR dem Fragen. Bis mega74
-           schlug eine vorhandene Markierung das Eingabefeld stillschweigend (prepareAskQuestion),
-           und wer beides tat, erfuhr nie, dass seine getippte Frage verworfen wurde.
-           JOB 3017: leer = verborgen (updateAskSourceNote setzt die Klasse). -->
-      <p id="ask-source-note" class="muted hidden"></p>
-      <textarea id="ask-input" rows="3"></textarea>
-      <!-- Z.40-42: der runde Sende-Pfeil. Kein data-t: der Wortlaut askCta ist das aria-label
-           (renderStatics), der Sperrgrund bleibt der `title` (updateAskState). Das SVG erbt die
-           Knopffarbe (currentColor = --surface) — kein Farbliteral neben der Palette. -->
-      <button type="button" class="primary" id="ask-btn" disabled>
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
-      </button>
+    <!-- RUHE (Ruhe.dc.html Z.28-31): die Lupe und der EINE Satz — oder, wenn die Sitzung fehlt
+         bzw. der Server nicht erreichbar ist, EIN Satz und EIN Knopf (checkSession). Das
+         Begriffsbild (KA1) erscheint darunter nur mit Begriffen aus einem offenen Word-Dokument. -->
+    <div id="ask-ruhe">
+      <svg id="ask-ruhe-lupe" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.3-4.3"></path></svg>
+      <div id="ask-ruhe-satz" data-t="askRuheSatz"></div>
+      <div id="session-block" class="hidden">
+        <div id="session-status" class="status warn" data-t="sessionChecking"></div>
+        <div id="login-block" class="hidden">
+          <button type="button" class="primary" id="login-btn" data-t="loginCta"></button>
+          <!-- WP-KLARA-1c: sichtbar nur waehrend des Anmelde-Wartens (Session-Polling laeuft). -->
+          <button type="button" class="ghost hidden" id="login-cancel-btn" data-t="loginCancel"></button>
+          <!-- WP-IC-PAKET-1c (g): ehrlicher Hinweis NUR im Fallback-Fall (window.open statt Office-Dialog). -->
+          <p class="muted hidden" id="login-context-hint" data-t="loginOtherContext"></p>
+        </div>
+        <button type="button" class="ghost hidden" id="session-retry-btn" data-t="retryCta"></button>
+      </div>
+      <!-- KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149, OFFEN.md KA1). Worum es im
+           offenen Dokument gerade geht — hausintern gewonnen, ohne KI, ohne Egress. JOB 3056: ohne
+           Titel und ohne Hinweissatz, sichtbar nur mit Begriffen (ka1Anzeigen). Bewusst KEINE
+           Beispielbegriffe im Markup: leer ist die Wahrheit. -->
+      <div id="ka1-block" class="hidden">
+        <ul id="ka1-terms"></ul>
+        <p id="ka1-empty"></p>
+      </div>
+      <!-- KW-KA1-TERMS-END (Markup) -->
     </div>
-    <!-- UMGEZOGEN, NICHT ENTFALLEN: die KI-Lage (AUFTRAG-mega75 Block A, mega79 Block A) steht seit
-         AUFTRAG-W1-VERTRAUENSKOPF-08 im <header> als #klara-trust-detail (KW-S4-01 §2, gepinnt in
-         tests/app/w1-klara-vertrauenskopf.test.ts); der Regelsatz askRuleNote (mega75 Block C) seit
-         JOB 3017 in der Fusszeile #kw-fuss; der Pruefhinweis #ask-review-notice (mega61 Block E,
-         mega81 Block A) steht UNTER Antwort- und Lueckenblock, s. dort. -->
     <!-- ========================================================================================
          KW-D2-LUECKE-START — DIE EHRLICHE LUECKE NACH ZIELBILD KeinWissen.dc.html (JOB 3046).
          ========================================================================================
-         Bis JOB 3046 war die Luecke ein gelber Warnkasten (`div.status.warn`) mit drei Absaetzen
-         (askGapTitle, askGapBody, ein zweites askRuleNote) und einem `button.primary`. Der Kasten
-         sagte „hier stimmt etwas nicht" — eine Luecke ist aber eine Auskunft, kein Fehler. Jetzt
-         steht hier, was Pedi gezeichnet hat (Z.27-35):
-           · die ruhige, mittige Flaeche #ask-luecke (kein Kasten),
-           · die Lupe (Z.28: 36x36, Kreis 11/11/7, Griff M21 21l-4.35-4.35, Strich 1.5, keine
-             Fuellung; Farbe ueber currentColor = --muted),
-           · der EINE Satz #ask-luecke-satz — derselbe Schluessel askGapTitle, der Wortlaut ist
-             jetzt der des Zielbilds („Dazu liegt kein freigegebenes Firmenwissen vor."),
-           · die Hauptaktion #ask-luecke-frage-aendern („Frage ändern"): Klick schliesst die
-             Flaeche ueber resetAskResult() und setzt den Cursor ans Ende von #ask-input — die
-             Frage bleibt stehen, kein Serveraufruf (askFrageAendern),
-           · die Nebenaktion: der Weg „offene Frage" BLEIBT, als Textlink a#ask-gap-send-btn
-             (Z.31) mit demselben Handler sendOpenQuestion, derselben Kennung, askGapSentOk und
-             #ask-gap-open-block wie bisher — er verliert nur `primary` und die Knopfform,
-           · die Fusszeile #ask-luecke-fuss (Z.34/35, askGapFuss), sichtbar nur in der Luecke.
-         RUNDE 2 (BEN): der Block steht NEBEN der Frage-Karte #ask-karte, nicht mehr in ihr — kein
-         umschliessender Kasten (Hintergrund, Rand, Schatten) zwischen der Flaeche und dem Panel.
-         Er ist die Buehne der Vorlage (Flex-Spalte, Mindesthoehe = Rest des Fensters unter der
-         Karte, gemessen in lueckeBuehneAnpassen): die Flaeche waechst hinein, der Inhalt steht
-         zentriert, die Fusszeile am unteren Rand; beim Erscheinen rollt das Panel die Frage-Karte
-         an den oberen Fensterrand, damit Frage und Auskunft zusammen im Bild stehen.
-         Der Entwurfsversand traegt eine GENERATION (askErgebnisGeneration): resetAskResult() zaehlt
-         sie hoch und loest die Sperre des Textlinks; ein Ruecklauf einer aelteren Generation
-         (Erfolg wie Fehler) veraendert weder Status noch Link noch Sperre der NEUEN Frage.
-         ENTFERNT, nicht daneben belassen: der Warnkasten der Luecke (der `.status.warn` bleibt den
-         echten Warnungen in #ask-status: askAuth, askTimeout, askError, askEmpty, s4FragenGesperrt
-         und der truncated-Hinweis), askGapBody in allen drei Sprachen (sein Satz „eine
-         Wissensluecke wurde vermerkt" bleibt wahr — /api/ask vermerkt sie — wird aber an der
-         Auskunft nicht mehr gesagt; die Fusszeile traegt die Haltung) und die ZWEITKOPIE von
-         askRuleNote (mega75 Block C): die Regel steht seit JOB 3004 dauerhaft unter der
-         Antwortflaeche (#ask-rule-note), sichtbar in beiden Zustaenden — sie faellt nicht, nur ihr
-         Duplikat. Die Konsole behaelt ihren Satz „Keine belastbare Grundlage." — Zielbild vor
-         Paritaet (Pedi 27.08./03.09.).
-         Gemessen: tests/design/zielbild-keinwissen.test.ts (Chromium, je Wert) und
-         tests/design/zielbild-keinwissen-messung.test.ts (jsdom, Struktur/Wortlaut/Uebergaenge). -->
+         Die ruhige, mittige Flaeche #ask-luecke (kein Kasten), die Lupe, der EINE Satz
+         (askGapTitle), die Hauptaktion „Frage aendern" (askFrageAendern: resetAskResult, Cursor
+         ans Ende von #ask-input) und die Nebenaktion „offene Frage" (sendOpenQuestion, mit
+         Generation askErgebnisGeneration gegen verspaetete Ruecklaeufe). JOB 3056: die Fusszeile
+         der Luecke (askGapFuss) steht unter „Wie Klara antwortet" — im Sichtfeld kein Hinweistext. -->
     <div id="ask-gap-block" class="hidden">
       <div id="ask-luecke">
         <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="7"></circle><path d="M21 21l-4.35-4.35"></path></svg>
@@ -832,67 +676,60 @@
       <p id="ask-gap-open-block" class="hidden">
         <a id="ask-gap-open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="askGapOpenLink"></a>
       </p>
-      <div id="ask-luecke-fuss" data-t="askGapFuss"></div>
     </div>
     <!-- KW-D2-LUECKE-END -->
     <!-- ==========================================================================================
-         JOB 3004 D1 — DIE ANTWORTFLAECHE NACH ZIELBILD Main.dc.html (Pedi, 27.08.).
+         JOB 3056 K1 — DIE ANTWORTFLAECHE NACH Main.dc.html (Pedi, 04.09.).
          ==========================================================================================
-         Sie steht NEBEN der Frage-Karte, nicht mehr in ihr: im Antwortzustand ist die Frage-Karte
-         (#ask-karte) VERBORGEN und die gestellte Frage steht als Pille darueber — EINE Flaeche,
-         kein zweiter Bearbeitungsweg daneben. Ein Klick auf die Pille fuehrt zurueck zum
-         Bearbeiten, „Neue Frage" leert. Nichts ist verschwunden —
-         jede Kennung des frueheren Antwortblocks lebt hier weiter, mit denselben Rueckrufen:
-           Frage-Pille (Vorlage Z.22-25)   #ask-frage-zeile-btn / #ask-frage-zeile
-           #antwortkarte (Z.27)            #ask-answer-edit IST der Antworttext (bearbeitbar wie
-                                           bisher; der Hinweis dazu erscheint beim Fokus und ist
-                                           per aria-describedby immer gebunden), darin Einstufung
-                                           (#ask-evidence-note), Vorbehalt/Konflikt
-                                           (#ask-evidence-detail), KI-Kennzeichnung (#ask-ai-notice,
-                                           hierher umgezogen — sie gehoert zur Antwort, nicht zum
-                                           Eingabefeld), Ausschnitt (#ask-snippet-block), Herkunft
-                                           und Quellen-Chips (#ask-sources-block / #ask-sources)
-           Aktionsleiste (Z.49-52)         dieselben Knoepfe #ask-insert-btn / #ask-copy-btn
-           #ask-copy-fallback              der Zwischenablage-Rueckfall (mega36 B3), unveraendert
-           Fusszeile (Z.54-57)             „Wörtlich zitiert · fachlich prüfen" / „Neue Frage"
-           #klara-leitsatz                 der Leitsatz (Auftrag §5.7) UNTER der Fusszeile
-         Die Ueberschrift „Quellengebundene Antwort" bleibt als Vorlese-Ueberschrift der Karte
-         (Vorlage zeigt keinen Titel; die Struktur fuer Hilfstechnik bleibt).
-         Werte gemessen in tests/design/zielbild-klara-main.test.ts (Chromium, dist-Fassung). -->
+         Die gestellte Frage als gedaempfte Zeile (ein Klick holt sie zum Bearbeiten ins Feld), die
+         Antwortkarte, die zwei Knoepfe. Das Frage-Feld unten (#ask-feld) bleibt sichtbar — es IST
+         die neue Frage; der Zurueck-Chevron im Kopf fuehrt in die Ruhe (askNeueFrage). Jede Kennung
+         des frueheren Antwortblocks lebt weiter, mit denselben Rueckrufen:
+           #ask-answer-edit IST der Antworttext (bearbeitbar; Hinweis beim Fokus, aria-describedby),
+           #ask-ai-notice die KI-Kennzeichnung (am serverseitigen aiGenerated-Signal, mega81),
+           #ask-sources / .quelle-chip die Quellen als Chips „n · Titel" (Deep-Link auf das Objekt),
+           #ask-mehr-block („Mehr", Funktionsinventar §5a): Einstufung #ask-evidence-note,
+           Vorbehalt/Konflikt #ask-evidence-detail, Ausschnitt #ask-snippet-block, Herkunft und die
+           Quellen mit Status, Rolle, Vertrauen, Stand (#ask-quellen-detail),
+           #ask-insert-btn / #ask-copy-btn die Aktionen, #ask-copy-fallback der Rueckfall (mega36),
+           #ask-vorbehalt der EINE lagebezogene Satz unter der Karte (Lieferung 5).
+         Werte gemessen in tests/design/zielbild-k1-antwort.test.ts (Chromium, dist-Fassung). -->
     <div id="ask-answer-block" class="hidden">
       <button type="button" id="ask-frage-zeile-btn">
         <span id="ask-frage-zeile"></span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17 3a2.8 2.8 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"></path></svg>
       </button>
       <div id="antwortkarte">
         <h2 data-t="askAnswerTitle" class="nur-vorlesen"></h2>
-        <!-- klara1b Teil B / mega35 A1: das Feld traegt NUR den Antwortkoerper — Einstufung und
-             Quellen-Zeile entstehen erst beim Kopieren/Einfuegen (composeOutputText). Ist die
-             Antwort lang, klappt „mehr anzeigen" das Feld auf. -->
-        <textarea id="ask-answer-edit" class="answer-text" rows="4" aria-describedby="ask-answer-edit-hint"></textarea>
+        <!-- JOB 3056 Runde 4: das Feld, sein unsichtbarer Spiegel (Messung des Textendes) und die
+             Fussnotenziffern <sup class="fussnote"> (renderAskFussnoten) in EINEM Rahmen. -->
+        <div id="ask-answer-text">
+          <textarea id="ask-answer-edit" class="answer-text" rows="4" aria-describedby="ask-answer-edit-hint"></textarea>
+          <div id="ask-answer-spiegel" aria-hidden="true"></div>
+          <span id="ask-fussnoten" class="hidden"></span>
+        </div>
         <button type="button" class="ghost hidden" id="ask-answer-toggle"></button>
         <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint"></p>
         <!-- mega81 BLOCK A: die KI-Kennzeichnung ist an das serverseitige `aiGenerated`-Signal
              GEBUNDEN — auf dem retrieval-only-Weg nie sichtbar, auf einem Modellweg von selbst. -->
         <p class="muted hidden" id="ask-ai-notice" data-t="aiGeneratedNotice"></p>
-        <!-- mega34 B2: die Einstufung, sichtbar bei der Antwort — derselbe Text wie im eingefuegten
-             Absatz. W1-VERTRAUENSKOPF-08 B: Vorbehalt und Konfliktlage GETRENNT, eigene Zeilen. -->
-        <p id="ask-evidence-note" class="status hidden"></p>
-        <div id="ask-evidence-detail">
-          <p id="ask-caveat-line" class="status warn hidden"></p>
-          <p id="ask-conflict-line" class="status warn hidden"></p>
-        </div>
-        <!-- W1-VERTRAUENSKOPF-08 B: hoechstens der erste real gelieferte Ausschnitt, nur wenn er
-             sich vom Antworttext unterscheidet — ein Zitat, keine Herleitung. -->
-        <div id="ask-snippet-block" class="hidden">
-          <span class="snippet-label" id="ask-snippet-label"></span>
-          <span class="snippet-text" id="ask-snippet-text"></span>
-        </div>
-        <!-- Herkunft (Vorlage Z.31-45): Trennlinie, „Aus freigegebenem Firmenwissen", dann je Quelle
-             ein Chip — Titel-Link auf das ECHTE Wissensobjekt, Status, Rolle, Vertrauen, Stand. -->
         <div id="ask-sources-block" class="hidden">
-          <p id="antwortkarte-herkunft-zeile" data-t="askHerkunft"></p>
           <ul id="ask-sources"></ul>
+        </div>
+        <div id="ask-mehr-block">
+          <p id="antwortkarte-herkunft-zeile" data-t="askHerkunft"></p>
+          <!-- mega34 B2: die Einstufung — derselbe Text wie im eingefuegten Absatz. W1-VERTRAUENSKOPF-08 B:
+               Vorbehalt und Konfliktlage GETRENNT, eigene Zeilen. -->
+          <p id="ask-evidence-note" class="status hidden"></p>
+          <div id="ask-evidence-detail">
+            <p id="ask-caveat-line" class="status warn hidden"></p>
+            <p id="ask-conflict-line" class="status warn hidden"></p>
+          </div>
+          <!-- W1-VERTRAUENSKOPF-08 B: hoechstens der erste real gelieferte Ausschnitt — ein Zitat. -->
+          <div id="ask-snippet-block" class="hidden">
+            <span class="snippet-label" id="ask-snippet-label"></span>
+            <span class="snippet-text" id="ask-snippet-text"></span>
+          </div>
+          <ul id="ask-quellen-detail"></ul>
         </div>
       </div>
       <div id="antwortkarte-aktionen">
@@ -907,58 +744,26 @@
         <p class="muted" id="ask-copy-fallback-hint" data-t="askCopyFallbackHint" style="margin-bottom: 4px;"></p>
         <textarea id="ask-copy-fallback-text" class="answer-text" rows="8" readonly></textarea>
       </div>
-      <div id="antwortkarte-fuss">
-        <p id="antwortkarte-fuss-hinweis" data-t="askFussHinweis"></p>
-        <button type="button" id="ask-neue-frage-btn" data-t="askNeueFrage"></button>
-      </div>
-      <p id="klara-leitsatz" data-t="klaraLeitsatz"></p>
+      <p id="ask-vorbehalt" class="hidden"></p>
     </div>
-    <!-- Die Statuszeile steht AUSSERHALB von Frage-Karte und Antwortflaeche: sie muss in beiden
-         Zustaenden sichtbar sein (Suche laeuft, Antwort eingefuegt, Zwischenablage kopiert). -->
+    <!-- Die Statuszeile steht AUSSERHALB von Frage-Feld und Antwortflaeche: sie muss in beiden
+         Zustaenden sichtbar sein (Antwort eingefuegt, Zwischenablage kopiert, echte Warnungen).
+         Dazu EIN Knopf „Erneut versuchen" fuer Frist und Verbindungsfehler (§9). -->
     <div id="ask-status" class="status hidden"></div>
-    <!-- KW-D3-LADEKARTE-START -->
-    <!-- JOB 3016 D3 „PruefungLaeuft": die Wartezeit einer Frage ist eine ruhige weisse Karte mit
-         drei Balken und EINEM Satz darunter (Zielbild PruefungLaeuft.dc.html Z.26-32) — nicht mehr
-         der gelbe Warnkasten #ask-status, der den echten Warnungen bleibt (askEmpty, askAuth,
-         askTimeout, askError, s4FragenGesperrt). Der Satz (Schluessel askBusy, dreisprachig) sagt
-         nur zu, was askWartezustand() wirklich tut: Eingabefeld UND Knopf sind gesperrt, bis der
-         Ask-Lauf endet — ueber jeden Ausgang. Verborgen bis zum Absenden. -->
-    <div id="ask-ladekarte" class="hidden">
-      <div class="ladebalken"></div>
-      <div class="ladebalken"></div>
-      <div class="ladebalken"></div>
+    <button type="button" class="ghost hidden" id="ask-retry-btn" data-t="retryCta"></button>
+    <!-- DAS FRAGE-FELD (Ruhe.dc.html Z.33-39): Karte, Feld mit Platzhalter „Frage", runder
+         Sendeknopf. Grau, solange nichts da ist; Funke dunkel mit Text; drehender Kreis waehrend
+         der Suche (askWartezustand). Der Wortlaut askCta ist das aria-label (renderStatics). -->
+    <div id="ask-feld">
+      <div class="card" id="ask-karte">
+        <p id="ask-source-note" class="muted hidden"></p>
+        <textarea id="ask-input" rows="1"></textarea>
+        <button type="button" class="primary" id="ask-btn" disabled>
+          <svg class="pfeil" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5"></path><path d="M5 12l7-7 7 7"></path></svg>
+          <svg class="kreisel" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 1-6.36 2.64"></path></svg>
+        </button>
+      </div>
     </div>
-    <p id="ask-ladekarte-satz" class="hidden" data-t="askBusy"></p>
-    <!-- KW-D3-LADEKARTE-END -->
-    <!-- AUFTRAG-mega61 Block E / mega81 BLOCK A: der fachliche Pruefhinweis — DAUERHAFT sichtbar,
-         ohne Aufklappen, vor, waehrend und nach jeder Frage (er gilt auf dem retrieval-only-Weg
-         unveraendert). Die KI-Kennzeichnung dagegen ist an das serverseitige `aiGenerated`-Signal
-         gebunden (#ask-ai-notice in #antwortkarte, JOB 3004) — heute nie sichtbar, abgeschaltet
-         ist sie NICHT. JOB 3017 D4: dieser Absatz ist der EINE Satz unter der Fragen-Karte
-         (SchlankesPanel.dc.html Z.44) und traegt seit dem auch die Auskunft des frueheren
-         askHint. Nachzug: er steht im Rumpf HINTER Antwort- und Lueckenblock, damit er im
-         Ruhezustand direkt unter der Karte, im Antwort- und Lueckenzustand aber UNTER deren
-         Flaeche steht (Zielbilder Main/KeinWissen zeigen ueber der Flaeche keinen Satz). -->
-    <p class="muted" id="ask-review-notice" data-t="askReviewNotice"></p>
-    <!-- ==========================================================================================
-         KW-KA1-TERMS-START — DAS DOKUMENT-BEGRIFFSBILD (JOB 1149, OFFEN.md KA1).
-         ==========================================================================================
-         Worum es im offenen Dokument gerade geht — hausintern gewonnen, ohne KI, ohne Egress.
-         Die Flaeche ist ein reines Anzeigefeld und traegt keine Schaltflaeche.
-         JOB 3017 D4: sie stand VOR der Fragen-Karte; jetzt steht sie DARUNTER — die Frage ist das
-         Erste, was der Mensch sieht (SchlankesPanel.dc.html), das Begriffsbild bleibt gebaut und
-         in Betrieb.
-
-         Bewusst KEINE Beispielbegriffe im Markup: eine vorgefuellte Liste saehe im Browser (ohne
-         Word) wie ein Ergebnis aus, das es nicht gibt. Leer ist hier die Wahrheit, und der Satz
-         darunter sagt sie. -->
-    <div class="card" id="ka1-block">
-      <h2 data-t="ka1Title"></h2>
-      <p class="muted" data-t="ka1Hint"></p>
-      <ul class="muted" id="ka1-terms"></ul>
-      <p class="muted" id="ka1-empty"></p>
-    </div>
-    <!-- KW-KA1-TERMS-END (Markup) -->
   </div>
 
   <div id="section-capture" class="hidden">
@@ -975,7 +780,8 @@
        traegt kein confidentiality-Feld und der Titel entsteht erst beim Senden
        (wordAddin.ts draftPostPayload) — Bedienelemente ohne Wirkung waeren dieselbe Unwahrheit in
        Knopfform. Ownerfrage in der D1-Rueckgabe. Ids, Umfangs-Wahl, Senden-Weg (Station 1) und
-       `sendHint` sind UNVERAENDERT; der Schluessel `sendTitle` bleibt im Woerterbuch. -->
+       `sendHint` sind UNVERAENDERT; der Schluessel `sendTitle` bleibt im Woerterbuch.
+       JOB 3056: dieser Abschnitt ist unberuehrt (JOB 3057 baut ihn nach dem Mockup „Erfassen"). -->
   <div class="card" id="capture-karte">
     <h2 data-t="captureCardTitle"></h2>
     <p class="muted" data-t="sendHint"></p>
@@ -1009,49 +815,160 @@
   </div>
   </div>
 
-  <div class="card">
-    <h2 data-t="helpTitle"></h2>
-    <ul class="muted">
-      <li data-t="helpCan1"></li>
-      <li data-t="helpCan2"></li>
-      <li data-t="helpCan3"></li>
-      <li data-t="helpNot1"></li>
-      <li data-t="helpNot2"></li>
-    </ul>
+  <!-- ============================================================================================
+       JOB 3056 K1 — EINSTELLUNGEN (Einstellungen.dc.html), erreichbar ueber das Zahnrad.
+       ============================================================================================
+       Gruppe 1 (eigene Wahl): Sprache (die bisherige Sprachwahl #lang-de/-en/-nl lebt hier weiter),
+       „Text in Word mitlesen" (Schalter: ob die Markierung in Word als Frage gilt; ersetzt den
+       dauerhaften Markierungs-Hinweis) und — nur wenn der Server sie anbietet — „Externe KI
+       erlauben" (die Sitzungszustimmung, AUFTRAG-W1-KLARA-KOPF-CONSENT-06: derselbe Server-Vertrag,
+       dieselben Kennungen #klara-consent-*; der Schalter IST der bisherige Zustimmen- bzw.
+       Widerrufen-Knopf, es gibt keinen zweiten Weg).
+       Gruppe „VOM ADMIN EINGESTELLT" mit Schloss: KI (der fuer diese Sitzung aufgeloeste Modus aus
+       GET /api/klara/ai-status, #klara-s4-mode — „–", solange nichts Frisches gelesen ist), Wissen
+       („Nur freigegeben": /api/ask laeuft retrieval-only ueber validiertes Wissen), Server (Host der
+       App). Verankert (Pedi 04.09.): die KI-Wahl ist je nach Rolle im Nutzerprofil freischaltbar —
+       die Rolle liefert der Server heute nicht, deshalb bleibt das Schloss; nichts wird erfunden.
+       Darunter „In dieser Sitzung": Anbieter/Modell, Zustimmungsstand, Abweichung/Sperre — dieselben
+       Zeilen wie bisher (#klara-s4-provider/-session/-deviation), lagebezogen.
+       Gruppe Konto: der Name aus checkSession und „Abmelden" (POST /api/auth/logout).
+       Unten „Klara <Stand>" aus KLARA_STAND (mega69 Block E) und die Fassungszeile (JOB 1077). -->
+  <div id="kw-einstellungen" class="hidden">
+    <div class="einst-gruppe">
+      <button type="button" class="einst-zeile" id="einst-sprache-zeile" aria-expanded="false" aria-controls="einst-sprache-wahl">
+        <span data-t="einstSprache"></span>
+        <span class="einst-wert"><span id="einst-sprache-wert"></span><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>
+      </button>
+      <div class="lang hidden" id="einst-sprache-wahl" role="group" aria-label="Sprache">
+        <button type="button" id="lang-de" class="einst-zeile active">Deutsch</button>
+        <button type="button" id="lang-en" class="einst-zeile">English</button>
+        <button type="button" id="lang-nl" class="einst-zeile">Nederlands</button>
+      </div>
+      <div class="einst-zeile">
+        <span data-t="einstMitlesen"></span>
+        <button type="button" class="schalter an" id="einst-mitlesen" role="switch" aria-checked="true"><span class="knopf"></span></button>
+      </div>
+      <div class="einst-zeile hidden" id="klara-consent-zeile">
+        <span id="klara-consent-title"></span>
+        <button type="button" class="schalter hidden" id="klara-consent-grant" role="switch" aria-checked="false"><span class="knopf"></span></button>
+        <button type="button" class="schalter an hidden" id="klara-consent-revoke" role="switch" aria-checked="true"><span class="knopf"></span></button>
+      </div>
+      <!-- AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1) — DIE EINMALIGE SITZUNGSZUSTIMMUNG. Sichtbar
+           AUSSCHLIESSLICH, wenn der Server sie verlangt (resolution.externalConsentRequired) oder
+           sie erteilt ist. Nennt Anbieter, Modell, Sitzung und die betroffenen Datenklassen
+           (KW-S4-03 §2.2, KW-S4-22 §4). Nichts wird lokal als Wahrheit gespeichert (No-Go 2). -->
+      <div class="einst-detail hidden" id="klara-consent-card">
+        <p id="klara-consent-body"></p>
+        <p id="klara-consent-scope"></p>
+        <p class="hidden" id="klara-consent-blocked"></p>
+        <div id="klara-consent-status" class="status hidden"></div>
+        <!-- KW-KA4-DOKUMENT-CONSENT-START (Fläche)
+             Das AKTIVE Fragen fuer DIESES Dokument: „Die Chefsekretärin klopft an, sie platzt nicht
+             herein" (Werkstattbeschluss, Weiche 2). Kein Fokusraub, kein Overlay. Der Ablehnungsknopf
+             merkt sich das Nein fuer dieses Dokument und diese Panelinstanz; der Schalter darueber
+             bleibt sichtbar, damit die Entscheidung jederzeit umkehrbar ist. -->
+        <div id="ka4-frage" class="hidden" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--hairline);">
+          <strong id="ka4-frage-titel" style="font-size: 12.5px;"></strong>
+          <p id="ka4-frage-text" style="margin: 4px 0 6px;"></p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+            <button type="button" class="primary" id="ka4-frage-ja"></button>
+            <button type="button" class="ghost" id="ka4-frage-nein"></button>
+          </div>
+        </div>
+        <p class="hidden" id="ka4-abgelehnt" style="margin-top: 8px;"></p>
+        <!-- KW-KA4-DOKUMENT-CONSENT-END (Fläche) -->
+      </div>
+    </div>
+
+    <div class="einst-kicker" data-t="einstAdminKicker"></div>
+    <div class="einst-gruppe admin">
+      <div class="einst-zeile">
+        <span data-t="einstKi"></span>
+        <span class="einst-wert"><span id="klara-s4-mode">–</span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+      </div>
+      <div class="einst-zeile">
+        <span data-t="einstWissen"></span>
+        <span class="einst-wert"><span data-t="einstWissenWert"></span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+      </div>
+      <div class="einst-zeile">
+        <span data-t="einstServer"></span>
+        <span class="einst-wert"><span id="einst-server-wert"></span><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
+      </div>
+    </div>
+
+    <!-- AUFTRAG-W1-KLARA-KOPF-CONSENT-06 (BASIC-1): was fuer DIESE Klara-Sitzung serverseitig
+         aufgeloest wurde — Anbieter, Modell, Zustimmungsstand, Abweichung/Sperre. Jeder Wert kommt
+         WOERTLICH aus KlaraSessionView/KlaraResolution (GET /api/klara/ai-status). JOB 2621 §2: die
+         Zustimmungszeile VOR der Sperr-/Abweichungszeile. -->
+    <div class="einst-kicker" id="klara-s4-label"></div>
+    <div class="einst-gruppe admin" id="klara-s4">
+      <p id="klara-s4-provider" class="einst-detail hidden"></p>
+      <p id="klara-s4-session" class="einst-detail"></p>
+      <p id="klara-s4-deviation" class="einst-detail hidden"></p>
+    </div>
+
+    <div class="einst-gruppe konto">
+      <div class="einst-zeile">
+        <span id="einst-konto-name">–</span>
+        <button type="button" class="einst-link hidden" id="logout-btn" data-t="einstAbmelden"></button>
+      </div>
+      <button type="button" class="einst-zeile" id="einst-hilfe-zeile">
+        <span data-t="einstHilfe"></span>
+        <span class="einst-wert"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg></span>
+      </button>
+    </div>
+
+    <!-- AUFTRAG-mega69 Block E: der sichtbare Auslieferungsstand (Einstellungen.dc.html Z.68). Der
+         Wert entsteht beim Bauen (vite.config.ts, Plugin klara-stand ersetzt __KLARA_STAND__) —
+         nirgends von Hand gepflegt; unersetzt steht hier ehrlich "dev". -->
+    <p id="kw-stand-zeile">Klara <span id="kw-stand"></span></p>
+    <!-- JOB 1077: der Fassungswechsel — ist meine Seite noch die, die ausgeliefert wird? Der Knopf
+         erscheint NUR, wenn beide Nummern bekannt sind und sich unterscheiden. -->
+    <p class="muted" id="kw-fassung"></p>
+    <button type="button" class="ghost hidden" id="kw-fassung-btn"></button>
   </div>
 
-  <!-- AUFTRAG-mega69 Block E: der sichtbare Auslieferungsstand. Der Wert entsteht beim Bauen
-       (apps/web/vite.config.ts, Plugin klara-stand ersetzt __KLARA_STAND__ in dist/) — er aendert
-       sich also bei jeder Auslieferung VON SELBST und wird nirgends von Hand gepflegt. Unersetzt
-       (Quelle/Dev) steht hier ehrlich "dev". Sprachneutral (Datum + Kuerzel), bewusst unauffaellig. -->
-  <p class="muted" id="kw-stand" style="margin-top: 10px; margin-bottom: 0; font-size: 10px; text-align: right;"></p>
-
-  <!-- JOB 1077: der Fassungswechsel. Zwei Zeilen, eine Frage — „ist meine Seite noch die, die
-       ausgeliefert wird?". Sie steht bewusst NEBEN dem Bau-Stempel darueber und nicht in ihm:
-       der Stempel sagt, wann gebaut wurde, diese Zeile, ob die Lieferung noch aktuell ist.
-       Der Knopf ist im Auslieferungszustand verborgen und erscheint NUR, wenn beide Nummern
-       bekannt sind und sich unterscheiden — eine ausgebliebene Auskunft ist keine Bestaetigung. -->
-  <p class="muted" id="kw-fassung" style="margin-top: 4px; margin-bottom: 0; font-size: 10px; text-align: right;"></p>
-  <button type="button" class="ghost hidden" id="kw-fassung-btn" style="margin-top: 4px; float: right; font-size: 11px;"></button>
-
-  <!-- JOB 3017 D4 — DIE FUSSZEILE (SchlankesPanel.dc.html Z.47-49): Leitsatz links, Schloss rechts.
-       Der Satz ist der Regelsatz askRuleNote (AUFTRAG-mega75 Block C: unter WELCHER REGEL Klara
-       steht). Er traegt seit JOB 3017 den Leitsatz „Keine KI-Antwort ohne Beleg · Vertrauliches
-       bleibt vertraulich" und weiter die beiden BELEGTEN Halbsaetze (woertliches Zitat, kein
-       Versand an eine externe KI). Die EINE Stelle der Regel — dauerhaft sichtbar in beiden
-       Reitern, bei jeder Antwort und jeder Absage; die fruehere Zweitkopie in der Absage-Karte hat
-       JOB 3046 entfernt (mega75-Pin), sie kommt nicht zurueck.
-       AUFTRAG-mega77 Block B: hier stand frueher zusaetzlich „und der markierte Text verlaesst das
-       Haus nicht". Das ist ENTFERNT — retrieval-only beweist, dass keine EXTERNE KI den Text
-       bekommt, NICHT wo der KLARWERK-Server steht (der Text geht per HTTP an ihn). Eine Aussage
-       ueber Serverstandort oder Organisationsgrenze ist eine BETRIEBSZUSAGE, die dieser Code nicht
-       erzwingt; der Zielbild-Halbsatz ueber den Serverstandort (Z.48) kommt deshalb NICHT zurueck.
-       Das Schloss (Z.49) ist ein reines Zeichen; seine Farbe ist --pos-text ueber currentColor. -->
-  <div id="kw-fuss">
-    <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
-    <svg id="kw-fuss-schloss" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+  <!-- ============================================================================================
+       JOB 3056 K1 — „WIE KLARA ANTWORTET" (das „?"-Menue hinter dem Zahnrad, Funktionsinventar §5a).
+       ============================================================================================
+       Hier stehen die Saetze, die bis JOB 3056 dauerhaft im Sichtfeld standen: der Pruefhinweis
+       (askReviewNotice, mega61/mega81), die Regel (askRuleNote, mega75 Block C — die EINE Stelle),
+       die Haltung der Luecke (askGapFuss), der KI-Stand von KLARWERK (W1-Vertrauenskopf, BASIC-0:
+       #klara-trust-head mit Pille und Satz — dieselben Zustaende, derselbe Abruf /api/reasoner/
+       status), die Hilfe-Liste und die Anmeldehinweise. Alles wahr, nichts erfunden — und nichts
+       davon im Sichtfeld der Ruhe. -->
+  <div id="kw-hilfe" class="hidden">
+    <div class="hilfe-block">
+      <h2 data-t="greetTitle"></h2>
+      <p class="muted" data-t="greetBody"></p>
+    </div>
+    <div class="hilfe-block">
+      <p class="muted" data-t="askReviewNotice"></p>
+      <p class="muted" id="ask-rule-note" data-t="askRuleNote"></p>
+      <p class="muted" data-t="askGapFuss"></p>
+    </div>
+    <!-- AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — DER VERTRAUENSKOPF (BASIC-0): der HAUSSTAND von
+         KLARWERK aus dem oeffentlichen, abstrahierten Status, plus die Eigenschaft von Klaras
+         Antwortweg. `role="status"` + `aria-live="polite"`: gemeldet, nicht unterbrechend. -->
+    <div class="hilfe-block" id="klara-trust-head" role="status" aria-live="polite">
+      <span id="klara-trust-mode" class="trust-pill"></span>
+      <p id="klara-trust-detail" class="trust-detail"></p>
+    </div>
+    <div class="hilfe-block">
+      <h2 data-t="helpTitle"></h2>
+      <ul class="muted">
+        <li data-t="helpCan1"></li>
+        <li data-t="helpCan2"></li>
+        <li data-t="helpCan3"></li>
+        <li data-t="helpNot1"></li>
+        <li data-t="helpNot2"></li>
+      </ul>
+    </div>
+    <div class="hilfe-block">
+      <p class="muted" data-t="loginHint"></p>
+      <p class="muted" data-t="loginReturn"></p>
+    </div>
   </div>
-
   <script>
     "use strict";
 
@@ -2172,16 +2089,25 @@
         return Object.assign({}, leer, { stateKey: "s4StateUnerreichbar", tone: "warn" });
       }
       var veraltet = klaraS4Veraltet(view, nowMs);
+      if (veraltet) {
+        // JOB 3056 Runde 8 (Codex Runde 7, Pflicht 9 / §9): EINE ABGELAUFENE AUFLOESUNG IST KEIN
+        // STAND. Bis Runde 7 trug sie weiter Modus, Anbieter, Modell und — schlimmer — die
+        // Ausfuehrungsfreigabe, nur mit einer Zusatzzeile „abgelaufen" daneben; die KI-Zeile der
+        // Einstellungen zeigte „Externe KI" fuer etwas, das der Server so nicht mehr sagt. Ab
+        // `expiresAt <= now` gilt die ganze Aufloesung als unverwendbar: KI-Zeile „–", kein
+        // Anbieter, kein Modell, keine Zustimmung, keine Freigabe (Fragen gesperrt) — bis ein
+        // FRISCHER Abruf erfolgreich ist (klaraS4Refresh, geplant von klaraS4RefreshPlanen).
+        // Nur der Zustand selbst wird gesagt, als Satz in der Sitzungszeile.
+        return Object.assign({}, leer, { stateKey: "s4StateVeraltet", tone: "warn", veraltet: true });
+      }
       var erlaubt = r.executionAllowed === true;
       var abweichung = r.deviation === true;
       var klassen = klaraS4Payloadklassen(r);
       var stateKey = !erlaubt
         ? "s4StateBlockiert"
-        : veraltet
-          ? "s4StateVeraltet"
-          : abweichung
-            ? "s4StateAbweichung"
-            : "s4StateBereit";
+        : abweichung
+          ? "s4StateAbweichung"
+          : "s4StateBereit";
       var tone = stateKey === "s4StateBereit" ? "ok" : "warn";
       var consentNoetig = r.externalConsentRequired === true && r.externalConsentGranted !== true;
       return {
@@ -2202,7 +2128,7 @@
         consentVisible: consentNoetig,
         revokeVisible: r.externalConsentGranted === true,
         askAllowed: erlaubt,
-        veraltet: veraltet,
+        veraltet: false, // Runde 8: eine abgelaufene Aufloesung kommt hier nicht mehr an (oben)
         // KW-S4-22 §2/§4 — nur das eine autorisierte Feld, und nur wenn es vollstaendig ist.
         payloadClasses: klassen,
         payloadResolved: klassen !== null,
@@ -2300,7 +2226,7 @@
         sessionOff: "Du bist in diesem Fenster nicht bei KLARWERK angemeldet.",
         sessionError: "KLARWERK ist gerade nicht erreichbar. Bitte Verbindung prüfen und erneut versuchen.",
         loginHint: "Zum Senden brauchst du eine aktive KLARWERK-Anmeldung in diesem Fenster.",
-        loginCta: "Bei KLARWERK anmelden",
+        loginCta: "Anmelden",
         loginReturn: "Die Anmeldung öffnet sich in einem eigenen Fenster. Dieses Panel erkennt sie automatisch — nichts schließen, nichts neu öffnen.",
         loginWaiting: "Warte auf die Anmeldung im Anmelde-Fenster ...",
         loginCancel: "Warten abbrechen",
@@ -2346,28 +2272,37 @@
         officeDetecting: "Die Word-Umgebung wird gerade erkannt — bis Word sich meldet, ist Senden gesperrt.",
         openLink: "Entwurf in KLARWERK öffnen",
         tabAsk: "Fragen",
-        tabCapture: "Wissen erfassen",
+        tabCapture: "Erfassen",
+        // JOB 3056 K1 (Mockups design/klara, 04.09.): der EINE Satz der Ruhe, „Mehr" an der
+        // Antwortkarte, „Erneut versuchen" bei Frist/Verbindung, und die Einstellungen hinter dem
+        // Zahnrad (Sprache, Mitlesen, Admin-Vorgaben, Konto, „Wie Klara antwortet").
+        askRuheSatz: "Stell eine Frage oder markiere Text in Word.",
+        askMehr: "Mehr",
+        askWeniger: "Weniger",
+        retryCta: "Erneut versuchen",
+        askOffline: "Keine Verbindung.",
+        einstTitel: "Einstellungen",
+        einstZurueck: "Zurück",
+        einstSprache: "Sprache",
+        einstMitlesen: "Text in Word mitlesen",
+        einstAdminKicker: "VOM ADMIN EINGESTELLT",
+        einstKi: "KI",
+        einstWissen: "Wissen",
+        einstWissenWert: "Nur freigegeben",
+        einstServer: "Server",
+        einstAbmelden: "Abmelden",
+        einstHilfe: "Wie Klara antwortet",
         askTitle: "Klara fragen",
-        // JOB 3019 (KA5): der alte Platzhalter behauptete, frei fragen gehe nur ohne Markierung.
-        // Das stimmt nicht mehr — die getippte Frage wird IMMER gestellt.
-        askInputPlaceholder: "Frage eingeben ...",
+        // JOB 3056 K1: Platzhalter nach Pages-Massstab, ein Wort statt Satz.
+        askInputPlaceholder: "Frage",
         askCta: "Klara fragen",
-        askSourceSelection: "Gefragt wird: deine Markierung im Dokument.",
         // JOB 3019 (KA5): DER SCHLÜSSELNAME IST GEBLIEBEN, DER SATZ IST DAS GEGENTEIL VON VORHER.
         // Hier stand: „Gefragt wird: deine Markierung im Dokument — der Text unten wird dabei NICHT
         // gesendet. Hebe die Markierung auf, um frei zu fragen." Beides ist seit KA5 falsch: gefragt
-        // wird die Eingabe, und die Markierung wird mitgesendet. Der Name „…Override" beschreibt
-        // seither nur noch die LAGE (Markierung UND Eingabe), nicht mehr eine Verdrängung; er bleibt
-        // stehen, weil `tests/app/mega74-klara-bilder.test.ts` ihn dreisprachig als Schlüssel führt.
+        // wird die Eingabe, und die Markierung wird mitgesendet. JOB 3056 K1: der Satz erscheint
+        // jetzt nur noch im EINEN Fall, in dem Markierung UND Eingabe da sind (updateAskSourceNote,
+        // der Wert kommt aus `prep.from === "manual" && prep.selection.length > 0`).
         askSourceSelectionOverride: "Gefragt wird: deine Eingabe unten. Deine Markierung im Dokument wird mitgesendet und schärft die Suche.",
-        askSourceManual: "Gefragt wird: deine Eingabe unten.",
-        // JOB 3019 (KA5) R2 — DIE ZWEI DECKEL SIND ZWEI AUSSAGEN, UND ES GIBT DREI LAGEN.
-        // `askSelectionTruncated` darf „deine Frage bleibt vollständig" nur sagen, WENN sie das
-        // ist; sind beide Felder gekappt, steht `askBothTruncated` da. Welcher Satz wann gilt,
-        // entscheidet `updateAskSourceNote` aus `truncated` × `selectionTruncated` — alle vier
-        // Kombinationen sind in tests/klara-panel/ka5-markierung-reist-mit.test.tsx gemessen.
-        askSelectionTruncated: "Von der Markierung reisen nur die ersten {max} Zeichen mit — deine Frage bleibt vollständig.",
-        askBothTruncated: "Frage und Markierung sind länger als {max} Zeichen — von beiden reist nur der Anfang mit.",
         // JOB 3017 D4: der EINE Satz unter der Fragen-Karte (Zielbild Z.44) — er trägt seit diesem
         // Auftrag auch die Auskunft des früheren askHint (Antwort wörtlich aus validiertem Wissen mit
         // Quellen) und den dauerhaften Prüfauftrag. JOB 3019 (KA5): der Halbsatz „Markierst du Text
@@ -2430,7 +2365,6 @@
         s4Blockiert: "Gesperrt. Grund: {grund}",
         s4Veraltet: "Dieser Stand ist abgelaufen und wird neu abgerufen.",
         s4Sitzung: "Zustimmung: {stand}",
-        s4SitzungKeine: "Zur Zustimmung liegt kein Stand vor.",
         // JOB 2621 §1: die URSACHE statt der Folge, wenn die Sitzung fehlt (Befund 2, 26.08.).
         s4SitzungNichtAngemeldet: "Nicht angemeldet — dein Zustimmungsstand wird erst nach der Anmeldung sichtbar (er geht dabei nicht verloren).",
         // JOB 2621 §2: das zweite Tor mit benanntem Bezug zur bereits erteilten Zustimmung.
@@ -2524,7 +2458,7 @@
         askGapFuss: "Klara erfindet keine Antworten — eine Lücke ist eine ehrliche Auskunft.",
         askGapSentOk: "Offene Frage gesendet: {title}",
         askGapOpenLink: "Offene Frage in KLARWERK öffnen",
-        askInsertCta: "In Word einfügen",
+        askInsertCta: "Einfügen",
         askInsertOk: "Antwort eingefügt.",
         askInsertFail: "Einfügen fehlgeschlagen ({detail}). Du kannst den Text über „Kopieren\" übernehmen.",
         askInsertNoPermission: "Einfügen nicht möglich: Das Add-in hat keine Schreibberechtigung für dieses Dokument. Das Klara-Manifest muss neu geladen werden (Sideload) — mit der Berechtigung ReadWriteDocument UND einer höheren Versionsnummer (Office merkt sich das alte Manifest sonst im Cache). Bitte an die KLARWERK-Administration wenden. Solange kannst du den Text über „Kopieren\" übernehmen.",
@@ -2535,10 +2469,8 @@
         // Quellen-Chip, Fusszeile, Pillen-Tooltip und der Leitsatz (Auftrag §5.7).
         askHerkunft: "Aus freigegebenem Firmenwissen",
         askChipStand: "Stand {date}",
-        askFussHinweis: "Wörtlich zitiert · fachlich prüfen",
         askNeueFrage: "Neue Frage",
         askFrageBearbeiten: "Frage bearbeiten",
-        klaraLeitsatz: "Keine KI-Antwort ohne Beleg · Vertrauliches bleibt vertraulich",
         askCopyOk: "In die Zwischenablage kopiert.",
         askCopyFail: "Die Zwischenablage des Browsers ist nicht verfügbar. Der vollständige Text steht unten bereit und ist bereits markiert — bitte von dort kopieren.",
         askCopyFallbackHint: "Vollständiger Text mit Einstufung und Quellen-Zeile — dieser Text ist zum Kopieren gedacht:",
@@ -2584,7 +2516,7 @@
         sessionOff: "You are not signed in to KLARWERK in this window.",
         sessionError: "KLARWERK is not reachable right now. Please check the connection and try again.",
         loginHint: "Sending requires an active KLARWERK sign-in in this window.",
-        loginCta: "Sign in to KLARWERK",
+        loginCta: "Sign in",
         loginReturn: "The sign-in opens in its own window. This panel detects it automatically — close nothing, reopen nothing.",
         loginWaiting: "Waiting for the sign-in in the sign-in window ...",
         loginCancel: "Stop waiting",
@@ -2627,18 +2559,31 @@
         officeDetecting: "Detecting the Word environment — sending stays disabled until Word responds.",
         openLink: "Open draft in KLARWERK",
         tabAsk: "Ask",
-        tabCapture: "Capture knowledge",
+        tabCapture: "Capture",
+        askRuheSatz: "Ask a question or select text in Word.",
+        askMehr: "More",
+        askWeniger: "Less",
+        retryCta: "Try again",
+        askOffline: "No connection.",
+        einstTitel: "Settings",
+        einstZurueck: "Back",
+        einstSprache: "Language",
+        einstMitlesen: "Read text in Word",
+        einstAdminKicker: "SET BY ADMIN",
+        einstKi: "AI",
+        einstWissen: "Knowledge",
+        einstWissenWert: "Approved only",
+        einstServer: "Server",
+        einstAbmelden: "Sign out",
+        einstHilfe: "How Klara answers",
         askTitle: "Ask Klara",
-        // JOB 3019 (KA5): see the German block — the old placeholder claimed asking freely only
-        // worked without a selection. That is no longer true.
-        askInputPlaceholder: "Type a question ...",
+        // JOB 3056 K1: shorter placeholder, one word instead of a sentence.
+        askInputPlaceholder: "Question",
         askCta: "Ask Klara",
-        askSourceSelection: "Asking about: your selection in the document.",
         // JOB 3019 (KA5): Schlüsselname unverändert, Aussage umgedreht — Begründung im DE-Block.
+        // JOB 3056 K1: the sentence now only appears in the ONE case where selection AND typed
+        // input both exist (updateAskSourceNote).
         askSourceSelectionOverride: "Asking about: your input below. Your selection in the document is sent along and sharpens the search.",
-        askSourceManual: "Asking about: your input below.",
-        askSelectionTruncated: "Only the first {max} characters of the selection are sent along — your question stays complete.",
-        askBothTruncated: "Question and selection are both longer than {max} characters — only the beginning of each is sent.",
         // JOB 3019 (KA5): the middle sentence claimed the selection is what gets asked — false now
         // that a typed question always wins. It now names the selection as a search sharpener.
         askReviewNotice: "Answers are quoted word for word from validated KLARWERK knowledge — with sources. Selecting text in Word sharpens the search. Please review professionally before use.",
@@ -2683,7 +2628,6 @@
         s4Blockiert: "Blocked. Reason: {grund}",
         s4Veraltet: "This status has expired and is being retrieved again.",
         s4Sitzung: "Consent: {stand}",
-        s4SitzungKeine: "No consent status is available.",
         s4SitzungNichtAngemeldet: "Not signed in — your consent status becomes visible after signing in (it is not lost).",
         s4BlockiertTrotzZustimmung: "Still blocked: {grund} This is not decided by your pane.",
         s4Unbekannt: "unknown",
@@ -2748,7 +2692,7 @@
         askGapFuss: "Klara does not invent answers — a gap is an honest answer.",
         askGapSentOk: "Open question sent: {title}",
         askGapOpenLink: "Open the question in KLARWERK",
-        askInsertCta: "Insert into Word",
+        askInsertCta: "Insert",
         askInsertOk: "Answer inserted.",
         askInsertFail: "Inserting failed ({detail}). You can use \"Copy\" to take the text.",
         askInsertNoPermission: "Cannot insert: the add-in has no write permission for this document. The Klara manifest must be reloaded (sideload) with the ReadWriteDocument permission AND a higher version number (otherwise Office keeps the old manifest cached) — please contact your KLARWERK administrator. In the meantime you can use \"Copy\" to take the text.",
@@ -2757,10 +2701,8 @@
         askCopyCta: "Copy",
         askHerkunft: "From approved company knowledge",
         askChipStand: "as of {date}",
-        askFussHinweis: "Quoted verbatim · review professionally",
         askNeueFrage: "New question",
         askFrageBearbeiten: "Edit question",
-        klaraLeitsatz: "No AI answer without evidence · Confidential stays confidential",
         askCopyOk: "Copied to the clipboard.",
         askCopyFail: "The browser clipboard is not available. The full text is ready below and already selected — please copy it from there.",
         askCopyFallbackHint: "Full text with classification and source line — this is the text meant for copying:",
@@ -2800,7 +2742,7 @@
         sessionOff: "Je bent in dit venster niet aangemeld bij KLARWERK.",
         sessionError: "KLARWERK is nu niet bereikbaar. Controleer de verbinding en probeer opnieuw.",
         loginHint: "Voor het verzenden is een actieve KLARWERK-aanmelding in dit venster nodig.",
-        loginCta: "Aanmelden bij KLARWERK",
+        loginCta: "Aanmelden",
         loginReturn: "De aanmelding opent in een eigen venster. Dit paneel herkent haar automatisch — niets sluiten, niets opnieuw openen.",
         loginWaiting: "Wachten op de aanmelding in het aanmeldvenster ...",
         loginCancel: "Stoppen met wachten",
@@ -2843,18 +2785,31 @@
         officeDetecting: "De Word-omgeving wordt nu herkend — versturen blijft uitgeschakeld tot Word zich meldt.",
         openLink: "Concept in KLARWERK openen",
         tabAsk: "Vragen",
-        tabCapture: "Kennis vastleggen",
+        tabCapture: "Vastleggen",
+        askRuheSatz: "Stel een vraag of markeer tekst in Word.",
+        askMehr: "Meer",
+        askWeniger: "Minder",
+        retryCta: "Opnieuw proberen",
+        askOffline: "Geen verbinding.",
+        einstTitel: "Instellingen",
+        einstZurueck: "Terug",
+        einstSprache: "Taal",
+        einstMitlesen: "Tekst in Word meelezen",
+        einstAdminKicker: "DOOR ADMIN INGESTELD",
+        einstKi: "AI",
+        einstWissen: "Kennis",
+        einstWissenWert: "Alleen vrijgegeven",
+        einstServer: "Server",
+        einstAbmelden: "Afmelden",
+        einstHilfe: "Hoe Klara antwoordt",
         askTitle: "Klara vragen",
-        // JOB 3019 (KA5): zie het Duitse blok — de oude placeholder beweerde dat vrij vragen alleen
-        // zonder selectie werkte. Dat klopt niet meer.
-        askInputPlaceholder: "Typ een vraag ...",
+        // JOB 3056 K1: kortere placeholder, één woord in plaats van een zin.
+        askInputPlaceholder: "Vraag",
         askCta: "Klara vragen",
-        askSourceSelection: "Gevraagd wordt: je selectie in het document.",
         // JOB 3019 (KA5): Schlüsselname unverändert, Aussage umgedreht — Begründung im DE-Block.
+        // JOB 3056 K1: de zin verschijnt nu alleen nog in het ENE geval waarin selectie EN
+        // getypte tekst allebei aanwezig zijn (updateAskSourceNote).
         askSourceSelectionOverride: "Gevraagd wordt: je invoer hieronder. Je selectie in het document wordt meegestuurd en scherpt de zoekopdracht aan.",
-        askSourceManual: "Gevraagd wordt: je invoer hieronder.",
-        askSelectionTruncated: "Van de selectie gaan alleen de eerste {max} tekens mee — je vraag blijft volledig.",
-        askBothTruncated: "Vraag en selectie zijn beide langer dan {max} tekens — van allebei gaat alleen het begin mee.",
         // JOB 3019 (KA5): de middelste zin beweerde dat de selectie wordt gevraagd — sinds de
         // getypte vraag altijd wint, noemt hij de selectie nu als zoekverscherping.
         askReviewNotice: "Antwoorden komen woordelijk uit gevalideerde KLARWERK-kennis — met bronnen. Een selectie in Word scherpt de zoekopdracht aan. Controleer dit vakinhoudelijk voordat je het gebruikt.",
@@ -2899,7 +2854,6 @@
         s4Blockiert: "Geblokkeerd. Reden: {grund}",
         s4Veraltet: "Deze stand is verlopen en wordt opnieuw opgehaald.",
         s4Sitzung: "Toestemming: {stand}",
-        s4SitzungKeine: "Er is geen stand over de toestemming.",
         s4SitzungNichtAngemeldet: "Niet aangemeld — je toestemmingsstand wordt pas na het aanmelden zichtbaar (hij gaat daarbij niet verloren).",
         s4BlockiertTrotzZustimmung: "Toch geblokkeerd: {grund} Dat beslist niet jouw venster.",
         s4Unbekannt: "onbekend",
@@ -2964,7 +2918,7 @@
         askGapFuss: "Klara verzint geen antwoorden — een hiaat is een eerlijk antwoord.",
         askGapSentOk: "Open vraag verstuurd: {title}",
         askGapOpenLink: "Vraag in KLARWERK openen",
-        askInsertCta: "In Word invoegen",
+        askInsertCta: "Invoegen",
         askInsertOk: "Antwoord ingevoegd.",
         askInsertFail: "Invoegen mislukt ({detail}). Je kunt de tekst via „Kopiëren\" overnemen.",
         askInsertNoPermission: "Invoegen niet mogelijk: de add-in heeft geen schrijfrechten voor dit document. Het Klara-manifest moet opnieuw worden geladen (sideload) met de machtiging ReadWriteDocument ÉN een hoger versienummer (anders houdt Office het oude manifest in de cache) — neem contact op met de KLARWERK-beheerder. Ondertussen kun je de tekst via „Kopiëren\" overnemen.",
@@ -2973,10 +2927,8 @@
         askCopyCta: "Kopiëren",
         askHerkunft: "Uit vrijgegeven bedrijfskennis",
         askChipStand: "per {date}",
-        askFussHinweis: "Woordelijk geciteerd · vakinhoudelijk toetsen",
         askNeueFrage: "Nieuwe vraag",
         askFrageBearbeiten: "Vraag bewerken",
-        klaraLeitsatz: "Geen AI-antwoord zonder bewijs · Vertrouwelijk blijft vertrouwelijk",
         askCopyOk: "Naar het klembord gekopieerd.",
         askCopyFail: "Het klembord van de browser is niet beschikbaar. De volledige tekst staat hieronder klaar en is al geselecteerd — kopieer deze daarvandaan.",
         askCopyFallbackHint: "Volledige tekst met classificatie en bronregel — deze tekst is bedoeld om te kopiëren:",
@@ -3084,14 +3036,22 @@
       document.getElementById("scope-pages-label").title = t("scopePagesOff");
       // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
       document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
-      // JOB 3004 D1: der Tooltip der Frage-Pille („Frage bearbeiten") in der aktuellen Sprache.
+      // JOB 3004 D1: der Tooltip der Frage-Zeile („Frage bearbeiten") in der aktuellen Sprache.
       document.getElementById("ask-frage-zeile-btn").title = t("askFrageBearbeiten");
       // JOB 3017 D4: die Fragen-Karte traegt keine Ueberschrift mehr — askTitle ist der
       // zugaengliche Name des Felds; der runde Sende-Pfeil traegt seinen Wortlaut askCta als
       // aria-label (kein data-t: das wuerde das SVG durch Text ersetzen).
       document.getElementById("ask-input").setAttribute("aria-label", t("askTitle"));
-      document.getElementById("ask-btn").setAttribute("aria-label", t("askCta"));
+      // JOB 3056 K1: die Symbolknoepfe des Kopfs, der Schalter und der Server-Host tragen ihren
+      // Wortlaut als aria-label bzw. als Wert — kein data-t (das ersetzte das SVG durch Text).
+      document.getElementById("kw-zurueck").setAttribute("aria-label", t("einstZurueck"));
+      document.getElementById("kw-zahnrad").setAttribute("aria-label", t("einstTitel"));
+      document.getElementById("einst-mitlesen").setAttribute("aria-label", t("einstMitlesen"));
+      document.getElementById("einst-sprache-wert").textContent = KW_SPRACHNAMEN[lang] || lang;
+      document.getElementById("einst-server-wert").textContent = window.location.host || "–";
+      document.getElementById("ka1-block").setAttribute("aria-label", t("ka1Title"));
       document.documentElement.lang = lang;
+      kwKopfZeichnen();
       // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A: der Vertrauenskopf wird MIT den statischen Texten
       // gefuellt, nicht erst durch den Statusabruf. Damit ist er ab dem ersten Bildaufbau da —
       // im Zustand „wird geprueft", der die Wahrheit ist, solange nichts abgerufen wurde. Ein
@@ -3106,10 +3066,15 @@
       renderKwFassung();
     }
 
+    // JOB 3056 K1: die Sprachnamen in ihrer eigenen Sprache (Einstellungen.dc.html Z.26) —
+    // sprachneutral, deshalb kein Woerterbuch-Schluessel.
+    var KW_SPRACHNAMEN = { de: "Deutsch", en: "English", nl: "Nederlands" };
+
     function setLang(next) {
       lang = next;
       ["de", "en", "nl"].forEach(function (code) {
-        document.getElementById("lang-" + code).className = code === lang ? "active" : "";
+        document.getElementById("lang-" + code).className =
+          code === lang ? "einst-zeile active" : "einst-zeile";
       });
       renderStatics(); // mega75 Block A: die KI-Lage in der neuen Sprache (Zustand bleibt, Text
                        // wechselt) — sie haengt jetzt IN renderStatics, s. dort.
@@ -3245,6 +3210,23 @@
     var klaraS4LetzterRefreshGrund = null;
     // Der clientseitige Riegel nach einem gescheiterten Consent-/Rebind-Aufruf (BEN-Befund 2).
     var klaraS4Riegelstand = false;
+    // JOB 3056 Runde 9 (Codex Runde 8): DIE ABLAUFSPERRE. Sobald eine Aufloesung abgelaufen ist,
+    // gibt es keinen KI-Stand mehr — und die Sperre auf Fragen bleibt ueber JEDEN Folgeabruf hinweg
+    // stehen, ob er noch aussteht, scheitert (5xx, Netz, Frist) oder gar nicht loslaeuft. Bis Runde 8
+    // hing sie nur an der Phase „bereit": ein 503 setzte die Phase auf „unerreichbar", und die war
+    // fail-open — eine Frage ging ab, obwohl der Server nichts Frisches gesagt hatte. Geloest wird
+    // die Sperre AUSSCHLIESSLICH in klaraS4Uebernehmen durch eine frische, nicht abgelaufene
+    // Aufloesung (GET /api/klara/ai-status, erfolgreich). Nicht durch Zeit, nicht durch einen Klick.
+    var klaraS4Abgelaufen = false;
+    // JOB 3056 Runde 10 (Codex Runde 9): DER BEWAHRTE ABLAUFZEITPUNKT. `klaraS4Sicht` stirbt mit
+    // jedem Fehlschlag (klaraS4Fehlschlag, klaraS4Riegel) — und mit ihr starb bis Runde 9 das
+    // Wissen, WANN die zuletzt bestaetigte Aufloesung ablaeuft: ein 503 VOR dem Ablauf loeschte die
+    // Sicht, der spaetere Ablauf fand keine Sicht mehr, die Ablaufsperre blieb aus, eine Frage ging
+    // ohne frischen KI-Stand ab. Deshalb lebt der Ablaufzeitpunkt (`expiresAt`, in ms) HIER,
+    // unabhaengig von Sicht und Anzeigephase: gesetzt in klaraS4Uebernehmen mit jeder Antwort, die
+    // eine Aufloesung traegt; geloescht NUR in klaraS4Verwerfen (Abmelden). Verstreicht er, setzt
+    // klaraS4AblaufMerken die Ablaufsperre — gleich, was die Phase gerade sagt.
+    var klaraS4BestaetigtBisMs = Number.NaN;
 
     function klaraS4NeueId(praefix) {
       var puffer = new Uint8Array(16);
@@ -3313,6 +3295,57 @@
         );
     }
 
+    // ============================================================================================
+    // JOB 3056 Runde 4 (Codex Pflicht 3) — DIE EPOCHE: NACH DEM ABMELDEN GILT KEINE ALTE ANTWORT.
+    // ============================================================================================
+    // Jeder sitzungsbezogene Abruf traegt die Epoche, in der er gestartet ist. `klaraS4Verwerfen`
+    // (bestaetigter Logout, `abmelden`) zaehlt sie hoch — eine Antwort, die danach eintrifft,
+    // gehoert der alten Sitzung und wird VERWORFEN (Fehler `veraltet`, von jedem Aufrufer
+    // erkannt), statt „Externe KI" fuer eine Sitzung zu zeigen, die es nicht mehr gibt. Eine
+    // Huelle um den unveraenderten Abruf, im selben Block wie ihre Aufrufer.
+    var klaraS4Epoche = 0;
+
+    function klaraS4AbrufDieserSitzung(pfad, methode, koerper) {
+      var epoche = klaraS4Epoche;
+      var pruefen = function () {
+        if (epoche === klaraS4Epoche) { return; }
+        var alt = new Error("veraltet");
+        alt.veraltet = true;
+        throw alt;
+      };
+      return klaraS4Abruf(pfad, methode, koerper).then(
+        function (body) { pruefen(); return body; },
+        function (err) { pruefen(); throw err; }
+      );
+    }
+
+    /**
+     * Alles, was an der Sitzung hing, faellt: der gelesene Stand, die Sitzungs- und Kontext-Id,
+     * die geplante Auffrischung, der Riegel, die Nachhol-Merker. Danach steht die KI-Zeile auf
+     * „–" und die Sitzungszeile sagt „nicht angemeldet" — bis ein FRISCHER erfolgreicher Abruf
+     * nach erneuter Anmeldung etwas anderes belegt (klaraS4NachAnmeldung → klaraS4Start).
+     */
+    function klaraS4Verwerfen() {
+      klaraS4Epoche += 1;
+      klaraS4RefreshStoppen();
+      klaraS4RefreshLaeuft = false;
+      klaraS4Laeuft = false;
+      klaraS4RebindLaeuft = false;
+      klaraS4Sicht = null;
+      klaraS4SessionId = null;
+      klaraS4DocumentId = null;
+      klaraS4GebundeneArt = null;
+      klaraS4Riegelstand = false;
+      klaraS4Abgelaufen = false; // ohne Sitzung gibt es keinen Stand, der abgelaufen sein koennte
+      klaraS4BestaetigtBisMs = Number.NaN; // … und keine Frist, die verstreichen koennte
+      klaraS4Angefordert = false;
+      klaraS4NachholungVerbraucht = false;
+      klaraS4Geschlossen = false;
+      klaraS4Phase = "keineSitzung";
+      klaraS4Consentmeldung(null, "");
+      renderKlaraS4();
+    }
+
     /**
      * Die nicht-autorisierenden Felder der Sitzungssicht. Bewusst eine WEISSE Liste: was hier
      * nicht steht, ueberlebt einen reinen Statusabruf nicht. `consentState` und `closed` fehlen
@@ -3339,6 +3372,13 @@
       // DIE EINZIGE Stelle, die den Riegel loest: ein bestaetigter Serverstatus. Nicht Zeitablauf,
       // nicht eine Nutzerhandlung, nicht ein zweiter Versuch (Auftrag §2).
       klaraS4Riegelstand = false;
+      // Runde 9: die Ablaufsperre folgt der AUFLOESUNG dieser Antwort — frisch loest sie, abgelaufen
+      // setzt sie. Eine Antwort ohne Aufloesung (Sitzungsstart) sagt darueber nichts und laesst sie.
+      if (sicht.resolution) {
+        klaraS4Abgelaufen = klaraS4Veraltet(sicht, Date.now());
+        // Runde 10: die Frist DIESER bestaetigten Aufloesung — sie ueberlebt jeden Fehlschlag danach.
+        klaraS4BestaetigtBisMs = Date.parse(sicht.resolution.expiresAt);
+      }
       klaraS4Sicht = sicht;
       klaraS4SessionId = sicht.sessionId || klaraS4SessionId;
       // Die Kontext-Id kommt VOM SERVER zurueck und wird ab jetzt gefuehrt — nie selbst gebildet.
@@ -3446,7 +3486,7 @@
       klaraS4Phase = "laedt";
       renderKlaraS4();
       var beschreiber = klaraS4Beschreiber();
-      return klaraS4Abruf("/api/klara/sessions", "POST", {
+      return klaraS4AbrufDieserSitzung("/api/klara/sessions", "POST", {
         addinInstanceId: klaraS4InstanceId,
         documentDescriptor: beschreiber,
       })
@@ -3455,13 +3495,14 @@
           klaraS4GebundeneArt = beschreiber.kind;
           klaraS4Uebernehmen(sicht);
           // Der Statusabruf ist die eigentliche Auflösung; erst er traegt alle drei Header.
-          return klaraS4Abruf("/api/klara/ai-status", "GET", null).then(function (aufloesung) {
+          return klaraS4AbrufDieserSitzung("/api/klara/ai-status", "GET", null).then(function (aufloesung) {
             klaraS4Uebernehmen(Object.assign({}, sicht, { resolution: aufloesung }));
             // Ab jetzt haelt sich der Stand selbst frisch (Befund 4).
             klaraS4RefreshPlanen();
           });
         })
-        .catch(function () {
+        .catch(function (err) {
+          if (err && err.veraltet) { return; } // Runde 4: die Sitzung ist inzwischen abgemeldet
           // Ohne Sitzung gibt es keinen sitzungsbezogenen Stand. Das wird GESAGT, nicht kaschiert.
           klaraS4Fehlschlag(klaraS4SessionId ? "unerreichbar" : "keineSitzung");
         })
@@ -3471,23 +3512,23 @@
     function klaraS4Zustimmen() {
       if (!klaraS4SessionId) { return; }
       klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
-      klaraS4Abruf("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
+      klaraS4AbrufDieserSitzung("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
         "POST", null)
         .then(function (sicht) { klaraS4Uebernehmen(sicht); klaraS4Consentmeldung(null, ""); })
-        .catch(function () { klaraS4Riegel("s4ConsentFehler"); });
+        .catch(function (err) { if (err && err.veraltet) { return; } klaraS4Riegel("s4ConsentFehler"); });
     }
 
     function klaraS4Widerrufen() {
       if (!klaraS4SessionId) { return; }
       klaraS4Consentmeldung("warn", t("s4ConsentBusy"));
-      klaraS4Abruf("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
+      klaraS4AbrufDieserSitzung("/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/consent",
         "DELETE", null)
         .then(function (sicht) { klaraS4Uebernehmen(sicht); klaraS4Consentmeldung(null, ""); })
         // BEN-BEFUND 2: HIER stand `klaraS4Consentmeldung(...)` — nur eine Meldung. Der alte,
         // AUTORISIERENDE Stand (`granted` / `executionAllowed: true`) blieb stehen und Ask blieb
         // frei. Wer widerruft und einen Fehler sieht, muss davon ausgehen duerfen, dass nichts
         // mehr auf seine Zustimmung hin geschieht.
-        .catch(function () { klaraS4Riegel("s4ConsentFehler"); });
+        .catch(function (err) { if (err && err.veraltet) { return; } klaraS4Riegel("s4ConsentFehler"); });
     }
 
     // ============================================================================================
@@ -3561,7 +3602,9 @@
         klaraS4RefreshTimer = null;
         if (generation !== klaraS4RefreshGeneration) { return; }
         // ERST neu zeichnen: der Stand ist jetzt abgelaufen und wird auch so gezeigt, BEVOR der
-        // Abruf laeuft. Sonst saehe er waehrend des Abrufs weiter aktuell aus.
+        // Abruf laeuft. Sonst saehe er waehrend des Abrufs weiter aktuell aus. Runde 9: und die
+        // Ablaufsperre steht ab hier — ein scheiternder Abruf darf sie nicht mehr aufheben.
+        klaraS4AblaufMerken();
         renderKlaraS4();
         klaraS4Refresh("ablauf");
       }, inMs);
@@ -3578,7 +3621,7 @@
       klaraS4RefreshLaeuft = true;
       klaraS4LetzterRefreshMs = Date.now();
       klaraS4LetzterRefreshGrund = grund;
-      return klaraS4Abruf("/api/klara/ai-status", "GET", null)
+      return klaraS4AbrufDieserSitzung("/api/klara/ai-status", "GET", null)
         .then(function (aufloesung) {
           // Der bestaetigte Serverstatus ist das EINZIGE, was einen Riegel wieder oeffnet.
           //
@@ -3599,7 +3642,9 @@
           // Erst mit gueltigem Stand pruefen, ob der Dokumentkontext noch stimmt (Befund 5).
           return klaraS4DokumentPruefen();
         })
-        .catch(function () {
+        .catch(function (err) {
+          // Runde 4: eine Antwort aus der Zeit VOR dem Abmelden gehoert niemandem mehr.
+          if (err && err.veraltet) { return; }
           // Nicht abrufbar heisst nicht abrufbar — und ganz sicher nicht „weiterhin erlaubt".
           klaraS4Fehlschlag("unerreichbar");
         })
@@ -3637,7 +3682,7 @@
       var jetzt = klaraS4Beschreiber();
       if (jetzt.kind !== "saved" || klaraS4GebundeneArt !== "unsaved") { return Promise.resolve(); }
       klaraS4RebindLaeuft = true;
-      return klaraS4Abruf(
+      return klaraS4AbrufDieserSitzung(
         "/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/document-context",
         "POST",
         { documentDescriptor: jetzt },
@@ -3647,7 +3692,8 @@
           klaraS4Uebernehmen(sicht);
           klaraS4RefreshPlanen();
         })
-        .catch(function () {
+        .catch(function (err) {
+          if (err && err.veraltet) { return; } // Runde 4: abgemeldet, nichts mehr zu sperren
           // Der Rebind ist gescheitert: der gefuehrte Kontext passt womoeglich nicht mehr zum
           // Dokument. Das ist genau die Lage, in der nichts mehr autorisiert sein darf.
           klaraS4Riegel("s4RebindFehler");
@@ -3708,9 +3754,12 @@
       if (!gruppe) { return; }
       var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
       document.getElementById("klara-s4-label").textContent = t("s4Label");
+      // JOB 3056 K1 (§9): die KI-Zeile der Einstellungen traegt den fuer diese Sitzung aufgeloesten
+      // Modus WOERTLICH — und „–", solange kein frischer Serverstand gelesen ist. Nie ein positiver
+      // Wert aus dem Cache; der Zustand selbst (laedt, nicht abrufbar, keine Sitzung, gesperrt)
+      // steht als Satz in der Sitzungszeile darunter.
       var pille = document.getElementById("klara-s4-mode");
-      pille.textContent = a.modeKey ? t(a.modeKey) : t(a.stateKey);
-      pille.className = "trust-pill trust-pill-" + a.tone;
+      pille.textContent = a.modeKey ? t(a.modeKey) : "–";
       // Anbieter und Modell WOERTLICH. Kein Wert, keine Zeile — nie ein Platzhalter, der wie ein
       // Anbieter aussieht.
       var anbieter = document.getElementById("klara-s4-provider");
@@ -3718,7 +3767,7 @@
         ? t("s4Anbieter", { provider: a.provider, model: a.model })
         : "";
       anbieter.textContent = anbieterText;
-      anbieter.className = anbieterText ? "s4-line" : "s4-line hidden";
+      anbieter.className = anbieterText ? "einst-detail" : "einst-detail hidden";
       var abw = document.getElementById("klara-s4-deviation");
       // JOB 2621 §2 (Befund 3, 26.08.): ZWEI getrennte Tore, EIN Bezug. Liegt die Zustimmung vor
       // und sperrt trotzdem die projektseitige Freischaltung, sagt die Zeile genau das —
@@ -3735,22 +3784,27 @@
             ? t("s4Veraltet")
             : "";
       abw.textContent = abwText;
-      abw.className = abwText ? "s4-line s4-line-muted" : "s4-line s4-line-muted hidden";
+      abw.className = abwText ? "einst-detail" : "einst-detail hidden";
       // JOB 2621 §1 (Befund 2, 26.08. — Pedi: „keine zustimmung obwohl ich zugestimmt hatte"):
-      // Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie; „Zur Zustimmung liegt kein
-      // Stand vor" erscheint in diesem Fall gar nicht mehr (R3: Stoerung sieht niemals aus wie
-      // Leere — und Folge sieht niemals aus wie Verlust). In den uebrigen Faellen ohne
-      // Zustimmungsstand (laedt/unerreichbar) bleibt der bisherige ehrliche Satz.
+      // Fehlt die SITZUNG, nennt die Zeile die URSACHE und nur sie (R3: Stoerung sieht niemals aus
+      // wie Leere — und Folge sieht niemals aus wie Verlust). In den uebrigen Faellen ohne
+      // Zustimmungsstand (laedt / nicht abrufbar / lokal gesperrt) steht der Zustand selbst als
+      // Satz (JOB 3056: die Pille, die ihn trug, ist die KI-Zeile mit „–" geworden).
       document.getElementById("klara-s4-session").textContent =
         a.consentKey
           ? t("s4Sitzung", { stand: t(a.consentKey) })
           : a.stateKey === "s4StateKeineSitzung"
             ? t("s4SitzungNichtAngemeldet")
-            : t("s4SitzungKeine");
+            : t(a.stateKey);
 
-      // Der Zustimmungskasten: sichtbar GENAU dann, wenn der Server ihn verlangt.
+      // Die Zustimmung: Schalterzeile und Auskunft sichtbar GENAU dann, wenn der Server sie verlangt
+      // oder sie erteilt ist (JOB 3056: in den Einstellungen, Gruppe 1).
       var karte = document.getElementById("klara-consent-card");
-      karte.className = a.consentVisible || a.revokeVisible ? "card" : "card hidden";
+      var consentDa = a.consentVisible || a.revokeVisible;
+      karte.className = consentDa ? "einst-detail" : "einst-detail hidden";
+      document.getElementById("klara-consent-zeile").className = consentDa
+        ? "einst-zeile"
+        : "einst-zeile hidden";
       document.getElementById("klara-consent-title").textContent = t("s4ConsentTitel");
       document.getElementById("klara-consent-body").textContent = t("s4ConsentText");
       // KW-S4-22: der Umfang nennt Anbieter, Modell, Sitzung und die EFFEKTIVEN Datenklassen.
@@ -3773,19 +3827,22 @@
           teile.push(bc.reasonCode ? bc.payloadClass + " (" + bc.reasonCode + ")" : bc.payloadClass);
         }
         blockiert.textContent = t("s4ConsentKlassenBlockiert", { klassen: teile.join(", ") });
-        blockiert.className = "muted";
+        blockiert.className = "";
       } else {
         blockiert.textContent = "";
-        blockiert.className = "muted hidden";
+        blockiert.className = "hidden";
       }
+      // JOB 3056 K1: der Schalter „Externe KI erlauben" IST der Zustimmen- bzw. Widerrufen-Knopf —
+      // je Lage genau einer sichtbar, derselbe Server-Weg (klaraS4Zustimmen / klaraS4Widerrufen).
+      // Der Wortlaut steht als aria-label; der Knopf des Schalters ist ein Kind-Element.
       var zu = document.getElementById("klara-consent-grant");
-      zu.textContent = t("s4ConsentKnopf");
+      zu.setAttribute("aria-label", t("s4ConsentKnopf"));
       // NICHT `consentVisible`, sondern `consentPossible`: ohne aufgeloeste Datenklassen gibt es
-      // keinen Knopf, der eine unbestimmte Zustimmung erteilen koennte.
-      zu.className = a.consentPossible ? "primary" : "primary hidden";
+      // keinen Schalter, der eine unbestimmte Zustimmung erteilen koennte.
+      zu.className = a.consentPossible ? "schalter" : "schalter hidden";
       var weg = document.getElementById("klara-consent-revoke");
-      weg.textContent = t("s4ConsentWiderruf");
-      weg.className = a.revokeVisible ? "ghost" : "ghost hidden";
+      weg.setAttribute("aria-label", t("s4ConsentWiderruf"));
+      weg.className = a.revokeVisible ? "schalter an" : "schalter an hidden";
       // KW-KA4-DOKUMENT-CONSENT-START (Anzeige)
       // Aktiv gefragt wird NUR, wenn der Server die Zustimmung verlangt, sie erteilbar ist und der
       // Anwender fuer DIESES Dokument noch nicht Nein gesagt hat. Der Erlauben-Knopf darueber
@@ -3800,18 +3857,38 @@
       var abgelehnt = document.getElementById("ka4-abgelehnt");
       var zeigeAbgelehnt = ka4WurdeAbgelehnt() && a.consentVisible === true;
       abgelehnt.textContent = zeigeAbgelehnt ? t("ka4Abgelehnt") : "";
-      abgelehnt.className = zeigeAbgelehnt ? "muted" : "muted hidden";
+      abgelehnt.className = zeigeAbgelehnt ? "" : "hidden";
       // KW-KA4-DOKUMENT-CONSENT-END (Anzeige)
       updateAskState();
     }
 
     /**
+     * Runde 9: Ist die zuletzt bestaetigte Aufloesung abgelaufen, wird das FESTGEHALTEN — nicht nur
+     * abgeleitet. Die Ableitung (klaraS4Anzeige) sperrt nur, solange die Phase „bereit" ist; der
+     * naechste Fehlschlag wechselt die Phase, und die Sperre waere weg. Der Merker ueberlebt ihn.
+     * Runde 10: gemessen wird am BEWAHRTEN Ablaufzeitpunkt (klaraS4BestaetigtBisMs), nicht an der
+     * Sicht und nicht an der Phase — beide sind nach einem Fehlschlag schon weg, die Frist nicht.
+     * Jede Sicht mit Aufloesung kommt durch klaraS4Uebernehmen und traegt ihre Frist dort ein;
+     * einen zweiten Weg gibt es nicht.
+     */
+    function klaraS4AblaufMerken() {
+      if (isFinite(klaraS4BestaetigtBisMs) && Date.now() >= klaraS4BestaetigtBisMs) {
+        klaraS4Abgelaufen = true;
+      }
+    }
+
+    /**
      * Fragen ist gesperrt, solange der Server die Ausfuehrung nicht erlaubt — UND solange der
-     * clientseitige Riegel steht (BEN-Befund 2). Waehrend `laedt`, `unerreichbar` oder
-     * `keineSitzung` wird weiterhin nicht gesperrt: das waere eine Behauptung ueber Ungelesenes.
+     * clientseitige Riegel steht (BEN-Befund 2) — UND solange seit einem Ablauf kein frischer
+     * Stand gelesen ist (Runde 9, klaraS4Abgelaufen). Waehrend `laedt`, `unerreichbar` oder
+     * `keineSitzung` OHNE vorherigen Ablauf wird weiterhin nicht gesperrt: das waere eine
+     * Behauptung ueber Ungelesenes. Nach einem Ablauf ist es keine mehr: da IST etwas gelesen,
+     * und es gilt nicht mehr.
      */
     function klaraS4FragenGesperrt() {
       if (klaraS4Riegelstand) { return true; }
+      klaraS4AblaufMerken();
+      if (klaraS4Abgelaufen) { return true; }
       return klaraS4Phase === "bereit"
         && klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now()).askAllowed === false;
     }
@@ -3822,9 +3899,43 @@
     // den Text der Sitzungsauskunft — angemeldet als <Name>, oder der ehrliche Anmelde-Hinweis.
     // Keine zweite Ableitung, kein Platzhalter: jede Stelle, die #session-status beschreibt,
     // ruft diese Zeile mit demselben Text.
-    function renderKopfAnmeldung(text) {
-      var zeile = document.getElementById("kw-anmeldung");
-      if (zeile) { zeile.textContent = text; }
+    // JOB 3056 K1: die Konto-Zeile der Einstellungen (Einstellungen.dc.html Z.63) traegt den
+    // Namen aus checkSession — „–", solange keiner belegt ist; „Abmelden" nur mit Anmeldung.
+    function renderKontoZeile(name) {
+      var zeile = document.getElementById("einst-konto-name");
+      if (zeile) { zeile.textContent = name || "–"; }
+      var abmelden = document.getElementById("logout-btn");
+      if (abmelden) { abmelden.className = name ? "einst-link" : "einst-link hidden"; }
+    }
+
+    // JOB 3056 K1 (§9, Lieferung 5) · Runde 4 (Codex Pflicht 2): die Ruhe-Mitte hat GENAU EINE Lage,
+    // und jede Lage zeigt hoechstens EINEN Knopf:
+    //   laedt      — der erste Abruf laeuft: nichts in der Mitte, der Sendeknopf ist grau (§9)
+    //   angemeldet — Lupe und der EINE Satz
+    //   anmelden   — 401/403 (oder Sitzung ohne Namen): EIN Satz und GENAU „Anmelden"
+    //   erneut     — Netz-/Serverfehler: EIN Satz und GENAU „Erneut versuchen"; ob eine Anmeldung
+    //                fehlt, ist dann NICHT festgestellt — deshalb kein Anmeldeknopf daneben
+    //   warten     — die Anmeldung laeuft im eigenen Fenster: EIN Satz und GENAU „Warten abbrechen"
+    // Bis Runde 3 standen bei Netzfehler „Anmelden" UND „Erneut versuchen" nebeneinander, und
+    // waehrend des ersten Abrufs stand schon der Ruhe-Satz da (Codex R3, eigene Messung).
+    var sitzungLage = null;
+
+    function renderSitzungsflaeche(lage) {
+      sitzungLage = lage === "laedt" ? sitzungLage : lage;
+      var ruhe = lage === "angemeldet";
+      var block = lage !== "angemeldet" && lage !== "laedt";
+      document.getElementById("session-block").className = block ? "" : "hidden";
+      // Die Lupe ist ein SVG: `className` ist dort nur lesbar (SVGAnimatedString) — setAttribute.
+      document.getElementById("ask-ruhe-lupe").setAttribute("class", ruhe ? "" : "hidden");
+      document.getElementById("ask-ruhe-satz").className = ruhe ? "" : "hidden";
+      document.getElementById("login-block").className =
+        lage === "anmelden" || lage === "warten" ? "" : "hidden";
+      document.getElementById("login-btn").className =
+        lage === "anmelden" ? "primary" : "primary hidden";
+      document.getElementById("login-cancel-btn").className =
+        lage === "warten" ? "ghost" : "ghost hidden";
+      document.getElementById("session-retry-btn").className =
+        lage === "erneut" ? "ghost" : "ghost hidden";
     }
 
     // JOB 3017 D4 Runde 2 (Ben): „Angemeldet als …" nur mit einem NICHTLEEREN Servernamen. Bis
@@ -3842,10 +3953,12 @@
 
     function checkSession() {
       var box = document.getElementById("session-status");
-      var loginBlock = document.getElementById("login-block");
       box.className = "status warn";
       box.textContent = t("sessionChecking");
-      renderKopfAnmeldung(box.textContent);
+      // Laden (§9): beim ERSTEN Abruf zeigt die Mitte nichts — der Sendeknopf ist grau, sonst
+      // nichts (kein Satz, kein Knopf). Ein erneuter Abruf (Sprachwechsel, „Erneut versuchen")
+      // laesst die zuletzt belegte Lage stehen, statt sie fuer die Dauer des Abrufs zu leeren.
+      renderSitzungsflaeche(sitzungLage === null ? "laedt" : sitzungLage);
       fetch("/api/auth/me", { credentials: "include" })
         .then(function (res) {
           if (res.ok) { return res.json(); }
@@ -3858,13 +3971,13 @@
           if (signedIn) {
             box.className = "status ok";
             box.textContent = t("sessionOk", { name: name });
-            loginBlock.className = "hidden";
+            renderSitzungsflaeche("angemeldet");
           } else {
             box.className = "status warn";
             box.textContent = t("sessionOff");
-            loginBlock.className = "";
+            renderSitzungsflaeche("anmelden");
           }
-          renderKopfAnmeldung(box.textContent);
+          renderKontoZeile(name);
           // K5: der Knopf haengt an Anmeldung UND Office-Bereitschaft (eine Entscheidungsstelle).
           updateSendState();
           // AUFTRAG-37 (G3): der belegte Anmelde-Erfolg ist der Moment, in dem eine fehlende
@@ -3877,9 +3990,39 @@
           signedIn = false;
           box.className = "status warn";
           box.textContent = t("sessionError");
-          renderKopfAnmeldung(box.textContent);
-          loginBlock.className = "";
+          renderKontoZeile(null);
+          // Nicht erreichbar (§9): EIN Satz und GENAU „Erneut versuchen" — kein Anmeldeknopf
+          // daneben, denn ob eine Anmeldung fehlt, ist ohne Serverantwort nicht festgestellt.
+          renderSitzungsflaeche("erneut");
           updateSendState();
+        });
+    }
+
+    // JOB 3056 K1: „Abmelden" (Einstellungen, Gruppe Konto) — der bestehende Server-Weg
+    // POST /api/auth/logout (loescht die Sitzung und das Cookie); danach zeigt checkSession den
+    // ehrlichen Ist-Zustand.
+    // Runde 4 (Codex Pflicht 3): ein BESTAETIGTER Logout (2xx) verwirft sofort alles, was an der
+    // Sitzung hing — den KI-/S4-Stand, die geplante Auffrischung und jede noch laufende Antwort
+    // (klaraS4Verwerfen, Epoche). Bis Runde 3 blieb „Externe KI" nach dem Abmelden stehen, weil
+    // der Sitzungsteil erst „mit der naechsten Anfrage" fiel — und die kam nicht. Ein NICHT
+    // bestaetigter Logout (Netzfehler, 5xx) verwirft nichts: die Sitzung kann noch bestehen, und
+    // checkSession sagt gleich, was der Server dazu sagt.
+    function abmelden() {
+      var knopf = document.getElementById("logout-btn");
+      knopf.disabled = true;
+      fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+        .then(
+          function (res) { return !!res && res.ok === true; },
+          function () { return false; }
+        )
+        .then(function (bestaetigt) {
+          knopf.disabled = false;
+          if (bestaetigt) {
+            klaraS4Verwerfen();
+            sitzungLage = null;
+          }
+          kwAnsichtSetzen("fragen");
+          checkSession();
         });
     }
 
@@ -3929,11 +4072,13 @@
     var loginPollController = null; // AbortController des GERADE laufenden Fetch
     var loginDialog = null; // Office-Dialog-Handle der AKTUELLEN Generation
 
-    function setSessionWarn(text) {
+    // `lage` (Runde 4): „warten" waehrend des Anmelde-Laufs (EIN Knopf: Warten abbrechen), sonst
+    // „anmelden" (Frist abgelaufen, Popup blockiert: EIN Knopf: Anmelden).
+    function setSessionWarn(text, lage) {
       var box = document.getElementById("session-status");
       box.className = "status warn";
       box.textContent = text;
-      renderKopfAnmeldung(text);
+      renderSitzungsflaeche(lage || "anmelden");
     }
 
     function closeDialogHandle(dialog) {
@@ -3995,8 +4140,7 @@
       loginPollGeneration += 1;
       var generation = loginPollGeneration;
       loginPollStartedMs = Date.now();
-      setSessionWarn(t("loginWaiting"));
-      document.getElementById("login-cancel-btn").className = "ghost";
+      setSessionWarn(t("loginWaiting"), "warten"); // zeigt GENAU „Warten abbrechen"
       document.getElementById("login-btn").disabled = true; // (e) kein Mehrfachstart
       // (c) UNABHAENGIGE harte Frist — feuert auch, wenn ein Fetch/Timer-Pfad haengen sollte.
       loginDeadlineTimer = setTimeout(function () {
@@ -4484,13 +4628,20 @@
       var el = document.getElementById("ask-status");
       el.className = "status hidden";
       el.textContent = "";
+      document.getElementById("ask-retry-btn").className = "ghost hidden";
+    }
+
+    // JOB 3056 K1 (§9): Frist und Verbindungsfehler bekommen EINEN Knopf „Erneut versuchen" —
+    // dieselbe Frage geht denselben Weg noch einmal (askKlara liest das Feld).
+    function askRetryZeigen() {
+      document.getElementById("ask-retry-btn").className = "ghost";
     }
 
     // JOB 3016 D3 „PruefungLaeuft": der Wartezustand als EIN Zustand. `askLaeuft` ist die einzige
     // Quelle fuer die Sperre von Eingabefeld und Knopf waehrend der Suche; updateAskState() liest
     // sie, damit ein zwischenzeitlicher Statusabruf (checkSession, S4) die Sperre weder aufhebt
-    // noch stehen laesst. Die Ladekarte (#ask-ladekarte, Zielbild Z.26-30) und ihr Satz
-    // (#ask-ladekarte-satz, Z.32, Schluessel askBusy) erscheinen und verschwinden NUR hier —
+    // noch stehen laesst. Der drehende Kreis im Sendeknopf (JOB 3056, §9; askBusy als sein
+    // zugaenglicher Name) erscheint und verschwindet NUR hier —
     // der Ausgang aus dem Wartezustand hat genau eine Stelle (askKlara, nach performAsk), nicht
     // fuenf Zweige. Beim Eintritt wird #ask-status verborgen: der Warnkasten gehoert den echten
     // Warnungen, nicht dem normalen Warten. Fail-open: der Ausgang gibt das Feld IMMER frei, auch
@@ -4498,11 +4649,13 @@
     // unbenutzbares Fenster.
     var askLaeuft = false;
 
+    // JOB 3056 K1 (§9): Laden zeigt der Sendeknopf — der Pfeil weicht dem drehenden Kreis (Klasse
+    // `laeuft`, updateAskState), der Wortlaut askBusy ist solange sein zugaenglicher Name. Keine
+    // Ladekarte, kein Satz im Sichtfeld.
     function askWartezustand(an) {
       askLaeuft = an === true;
       hideAskStatus();
-      document.getElementById("ask-ladekarte").className = askLaeuft ? "" : "hidden";
-      document.getElementById("ask-ladekarte-satz").className = askLaeuft ? "" : "hidden";
+      document.getElementById("ask-btn").setAttribute("aria-label", askLaeuft ? t("askBusy") : t("askCta"));
       updateAskState();
     }
 
@@ -4532,17 +4685,21 @@
       renderAskEvidence();
       // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
       hideCopyFallback();
-      // JOB 3004 D1: die Chip-Reihe faengt von vorn an, und ohne Antwort steht die Frage-Karte
-      // wieder oben — die Pille gehoert allein zum Antwortzustand.
+      // JOB 3004 D1: die Chip-Reihe faengt von vorn an. JOB 3056: „Mehr" faellt zu, der
+      // lagebezogene Satz unter der Karte und die Quellen-Details werden geleert, die Ruhe kehrt
+      // zurueck (kwFlaecheZeichnen).
       askQuellenAufgeloest = [];
       askQuellenAlleSichtbar = false;
-      askFrageKarteZeigen(true);
+      askMehrOffen = false;
+      document.getElementById("ask-quellen-detail").textContent = "";
+      askMehrZeichnen();
+      renderAskFussnoten(); // Runde 4: keine Ziffer einer frueheren Antwort bleibt stehen
+      kwFlaecheZeichnen();
       // JOB 3046 D2 (Runde 2): jede Rueckstellung ist eine neue Generation — laufende Entwurfs-
-      // Versendungen der alten sind damit abgemeldet; die Sperre des Textlinks und das Buehnenmass
-      // der Luecke werden hier geloest, nicht erst von einem Ruecklauf, der vielleicht nie kommt.
+      // Versendungen der alten sind damit abgemeldet; die Sperre des Textlinks wird hier geloest,
+      // nicht erst von einem Ruecklauf, der vielleicht nie kommt.
       askErgebnisGeneration += 1;
       document.getElementById("ask-gap-send-btn").removeAttribute("aria-disabled");
-      document.getElementById("ask-gap-block").style.removeProperty("--kw-luecke-buehne");
     }
 
     // Fragen braucht NUR die Session (kein Office): im Browser funktioniert der Eingabefeld-Weg.
@@ -4554,12 +4711,20 @@
     function updateAskState() {
       var gesperrt = klaraS4FragenGesperrt();
       var btn = document.getElementById("ask-btn");
+      var input = document.getElementById("ask-input");
       btn.disabled = !signedIn || gesperrt || askLaeuft;
       btn.title = gesperrt ? t("s4FragenGesperrt") : "";
-      // JOB 3016 D3: das Eingabefeld ist genau waehrend der Suche gesperrt — und nur dann. Das ist
-      // die Zusage des Satzes unter der Ladekarte („die Eingabe ist so lange gesperrt"), gemessen
-      // in tests/design/zielbild-pruefunglaeuft.test.ts und zielbild-pruefunglaeuft-messung.test.ts.
-      document.getElementById("ask-input").disabled = askLaeuft;
+      // JOB 3016 D3: das Eingabefeld ist genau waehrend der Suche gesperrt — und nur dann.
+      input.disabled = askLaeuft;
+      // JOB 3056 K1 (Ruhe.dc.html Z.36): grau, solange nichts da ist; Funke dunkel, sobald Text da
+      // ist und der Knopf frei ist; drehender Kreis waehrend der Suche (§9).
+      var bereit = !btn.disabled && input.value.trim().length > 0;
+      btn.className = "primary" + (askLaeuft ? " laeuft" : "") + (bereit ? " bereit" : "");
+      // Die Schreibflaeche (KA6) folgt demselben Kontext wie der Knopf — auch wenn das Feld
+      // programmatisch geleert oder gefuellt wird (Antwort, Bearbeiten, neue Frage).
+      if (typeof ka6Neuzeichnen === "function" && typeof KA6_ZURUFE !== "undefined") {
+        ka6Neuzeichnen();
+      }
       updateInsertState();
     }
 
@@ -4613,10 +4778,13 @@
       var zeilenhoehe = parseFloat(window.getComputedStyle(edit).lineHeight);
       if (!(zeilenhoehe > 0) || !(edit.scrollHeight > 0)) {
         edit.rows = askAnswerExpanded ? ASK_ANTWORT_OFFEN_ZEILEN : ASK_ANTWORT_KOMPAKT_ZEILEN;
+        askFussnotenSetzen();
         return;
       }
       var noetig = Math.max(1, Math.round(edit.scrollHeight / zeilenhoehe));
       edit.rows = kompakt ? Math.min(noetig, ASK_ANTWORT_KOMPAKT_ZEILEN) : noetig;
+      // Runde 4: Text oder Hoehe haben sich geaendert — die Fussnotenziffern folgen dem Textende.
+      askFussnotenSetzen();
     }
 
     // JOB 3004 D1: im Antwortzustand steht die gestellte Frage als Pille ueber der Antwortkarte
@@ -4626,16 +4794,96 @@
     // Antwortflaeche tritt zurueck) oder auf „Neue Frage" (leert). Die naechste Frage raeumt den
     // alten Stand ohnehin ab (resetAskResult). Kein Produktfeld ist Testhilfe: der Zwischenablage-
     // Smoke (tests-smoke/word-taskpane-kopieren.spec.ts) bringt seinen eigenen Einfuege-Empfaenger mit.
-    function askFrageKarteZeigen(zeigen) {
-      document.getElementById("ask-karte").className = zeigen ? "card" : "card hidden";
+    // ============================================================================================
+    // JOB 3056 K1 — DIE ANSICHTEN: fragen | erfassen | einstellungen | hilfe (Pages-Art).
+    // ============================================================================================
+    // EINE Zustandsquelle fuer Kopf und Flaechen. Der Kopf zeigt je Ansicht: Zurueck-Chevron
+    // (Antwortzustand, Einstellungen, Hilfe), Titel, Umschalter (nur Fragen/Erfassen), Zahnrad
+    // (nicht in Einstellungen/Hilfe). Der Chevron fuehrt immer eine Ebene zurueck: aus der Antwort
+    // in die Ruhe (askNeueFrage), aus der Hilfe in die Einstellungen, aus den Einstellungen auf
+    // den zuletzt gewaehlten Bereich.
+    var kwAnsicht = "fragen";
+    var kwBereich = "fragen";
+
+    function kwAntwortSichtbar() {
+      return document.getElementById("ask-answer-block").className.indexOf("hidden") === -1;
+    }
+
+    function kwKopfZeichnen() {
+      var antwort = kwAnsicht === "fragen" && kwAntwortSichtbar();
+      var zurueck = document.getElementById("kw-zurueck");
+      var titel = document.getElementById("kw-titel");
+      var segment = document.getElementById("kw-segment");
+      var zahnrad = document.getElementById("kw-zahnrad");
+      if (!zurueck || !titel || !segment || !zahnrad) { return; }
+      var chevron = antwort || kwAnsicht === "einstellungen" || kwAnsicht === "hilfe";
+      zurueck.className = chevron ? "kw-icon" : "kw-icon hidden";
+      titel.textContent = kwAnsicht === "einstellungen"
+        ? t("einstTitel")
+        : kwAnsicht === "hilfe"
+          ? t("einstHilfe")
+          : "Klara";
+      segment.className = kwAnsicht === "fragen" && !antwort || kwAnsicht === "erfassen"
+        ? "tabs"
+        : "tabs hidden";
+      zahnrad.className = kwAnsicht === "fragen" || kwAnsicht === "erfassen"
+        ? "kw-icon"
+        : "kw-icon hidden";
+    }
+
+    /** Die Fragen-Flaeche: Ruhe (Lupe + Satz) ODER Antwort ODER Luecke — nie zwei zugleich. */
+    function kwFlaecheZeichnen() {
+      var antwort = kwAntwortSichtbar();
+      var luecke = document.getElementById("ask-gap-block").className.indexOf("hidden") === -1;
+      document.getElementById("ask-ruhe").className = antwort || luecke ? "hidden" : "";
+      document.getElementById("ask-feld").className = antwort ? "antwort" : "";
+      kwKopfZeichnen();
+    }
+
+    function kwAnsichtSetzen(name) {
+      kwAnsicht = name;
+      if (name === "fragen" || name === "erfassen") { kwBereich = name; }
+      document.getElementById("section-ask").className = name === "fragen" ? "" : "hidden";
+      document.getElementById("section-capture").className = name === "erfassen" ? "" : "hidden";
+      document.getElementById("kw-einstellungen").className = name === "einstellungen" ? "" : "hidden";
+      document.getElementById("kw-hilfe").className = name === "hilfe" ? "" : "hidden";
+      document.getElementById("tab-ask").className = kwBereich === "fragen" ? "active" : "";
+      document.getElementById("tab-capture").className = kwBereich === "erfassen" ? "active" : "";
+      kwFlaecheZeichnen();
+    }
+
+    function kwZurueck() {
+      if (kwAnsicht === "hilfe") { kwAnsichtSetzen("einstellungen"); return; }
+      if (kwAnsicht === "einstellungen") { kwAnsichtSetzen(kwBereich); return; }
+      if (kwAnsicht === "fragen" && kwAntwortSichtbar()) { askNeueFrage(); }
+    }
+
+    // „Mehr" an der Antwortkarte (Funktionsinventar §5a): Einstufung, Vorbehalt, Konfliktlage,
+    // Ausschnitt und die Quellen mit Status, Rolle, Vertrauen und Stand — aufklappbar.
+    var askMehrOffen = false;
+
+    function askMehrZeichnen() {
+      var block = document.getElementById("ask-mehr-block");
+      if (block) { block.className = askMehrOffen ? "offen" : ""; }
+      var knopf = document.getElementById("ask-mehr-btn");
+      if (knopf) {
+        knopf.textContent = askMehrOffen ? t("askWeniger") : t("askMehr");
+        knopf.setAttribute("aria-expanded", askMehrOffen ? "true" : "false");
+      }
+    }
+
+    function askMehrUmschalten() {
+      askMehrOffen = !askMehrOffen;
+      askMehrZeichnen();
     }
 
     function askFrageBearbeiten() {
       var input = document.getElementById("ask-input");
       input.value = currentAskQuestion;
       document.getElementById("ask-answer-block").className = "hidden";
-      askFrageKarteZeigen(true);
+      kwFlaecheZeichnen();
       try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+      updateAskState();
       updateAskSourceNote();
     }
 
@@ -4646,6 +4894,7 @@
       var input = document.getElementById("ask-input");
       input.value = "";
       try { input.focus(); } catch (err) { /* Fokus ist Komfort, kein Vertrag */ }
+      updateAskState();
       updateAskSourceNote();
     }
 
@@ -4660,19 +4909,8 @@
     // unter der Frage-Karte (Karte am oberen Fensterrand gedacht), abzueglich der Koerperpolsterung.
     // Nur ein Mass (`--kw-luecke-buehne`), nur solange die Luecke steht; alle Werte der Flaeche
     // selbst stehen im Stilblock. Bei Fenstergroessenwechsel wird neu gemessen.
-    function lueckeBuehneAnpassen() {
-      var block = document.getElementById("ask-gap-block");
-      var karte = document.getElementById("ask-karte");
-      if (!block || !karte || block.className.indexOf("hidden") !== -1) { return; }
-      var fenster = window.innerHeight;
-      if (!(fenster > 0) || typeof block.getBoundingClientRect !== "function") { return; }
-      var oben = block.getBoundingClientRect().top - karte.getBoundingClientRect().top;
-      var polster = parseFloat(window.getComputedStyle(document.body).paddingBottom) || 0;
-      var buehne = Math.max(0, Math.floor(fenster - oben - polster));
-      block.style.setProperty("--kw-luecke-buehne", buehne + "px");
-    }
-    window.addEventListener("resize", lueckeBuehneAnpassen);
-
+    // JOB 3056 K1: die Buehne der Luecke braucht kein gemessenes Mass mehr — #ask-gap-block ist ein
+    // Flex-Kind der fensterhohen Spalte und nimmt den freien Raum von selbst (Stilblock).
     function askFrageAendern() {
       resetAskResult();
       hideAskStatus();
@@ -4789,16 +5027,49 @@
       return item;
     }
 
+    // JOB 3056 K1 (Main.dc.html Z.31-38): der Chip traegt Dokumentsymbol und „n · Titel" — sonst
+    // nichts. Status, Rolle, Vertrauen und Stand bleiben WAHR und erreichbar: sie stehen je Quelle
+    // in der Detailliste unter „Mehr" (#ask-quellen-detail, askQuellenDetailZeile).
+    function askQuellenDetailZeile(nummer, quelle) {
+      var teile = [String(nummer) + " · " + quelle.title];
+      teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
+      // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
+      // oder nur herangezogen. Ohne `citedSources` (alter Server) wird keine Rolle behauptet.
+      var rolle = askSourceRole(
+        quelle.id,
+        currentAskOutcome ? currentAskOutcome.citedSources : undefined
+      );
+      if (rolle !== "unknown") {
+        teile.push(t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted"));
+      }
+      if (quelle.trust !== null) {
+        teile.push(t("askTrust", { n: String(quelle.trust) }));
+      }
+      // Das belegte Stand-Datum (WP-KLARA-ASK-FIX Fix 3) — nur, wenn das Objekt eines traegt.
+      var stand = quelle.standDate ? new Date(quelle.standDate) : null;
+      if (stand !== null && !isNaN(stand.getTime())) {
+        teile.push(t("askChipStand", { date: formatAskDateLabel(stand) }));
+      }
+      var zeile = document.createElement("li");
+      zeile.textContent = teile.join(" · ");
+      return zeile;
+    }
+
     function renderAskSources(resolved) {
       askQuellenAufgeloest = resolved;
       var list = document.getElementById("ask-sources");
       list.textContent = "";
+      var detail = document.getElementById("ask-quellen-detail");
+      detail.textContent = "";
       var sichtbar = askQuellenAlleSichtbar
         ? resolved.length
         : Math.min(resolved.length, ASK_QUELLEN_CHIPS_SICHTBAR);
       for (var i = 0; i < sichtbar; i += 1) {
         var item = document.createElement("li");
         item.className = "quelle-chip";
+        // Runde 4: die Quelle des Chips, damit eine Fussnotenziffer (renderAskFussnoten) und ihr
+        // Chip nachweislich dasselbe Wissensobjekt meinen.
+        item.setAttribute("data-quelle", resolved[i].id);
         item.appendChild(askChipSymbol());
         var titel = document.createElement("span");
         titel.className = "quelle-chip-titel";
@@ -4810,51 +5081,106 @@
         link.textContent = resolved[i].title;
         titel.appendChild(link);
         item.appendChild(titel);
-        var fassung = document.createElement("span");
-        fassung.className = "quelle-chip-fassung";
-        var badge = document.createElement("span");
-        badge.className = "src-badge src-badge-" + resolved[i].status;
-        badge.textContent = t(ASK_STATUS_KEYS[resolved[i].status] || "askStatusUnknown");
-        fassung.appendChild(badge);
-        // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK B: die ROLLE dieser Quelle IN DER ANTWORT — tragend
-        // oder nur herangezogen. Zwei verschiedene Aussagen stehen hier nebeneinander: der Status
-        // sagt, wie REIF die Quelle ist; dieser Zusatz sagt, ob die Antwort auf ihr STEHT.
-        // Ohne `citedSources` (alter Server) wird keine Rolle behauptet und nichts angezeigt.
-        var rolle = askSourceRole(
-          resolved[i].id,
-          currentAskOutcome ? currentAskOutcome.citedSources : undefined
-        );
-        if (rolle !== "unknown") {
-          // Reiner Text wie der Trust-Wert daneben — keine eigene Regel, keine eigene Farbe.
-          // Die Unterscheidung traegt das WORT; das ist zugleich die Loesung des Kontrastwaechters
-          // (s. Stilblock) und die zugaenglichere Darstellung.
-          fassung.appendChild(
-            document.createTextNode(
-              " · " + t(rolle === "carrying" ? "askRoleCarrying" : "askRoleConsulted")
-            )
-          );
-        }
-        if (resolved[i].trust !== null) {
-          fassung.appendChild(
-            document.createTextNode(" · " + t("askTrust", { n: String(resolved[i].trust) }))
-          );
-        }
-        // Das belegte Stand-Datum (WP-KLARA-ASK-FIX Fix 3) — nur, wenn das Objekt eines traegt.
-        var stand = resolved[i].standDate ? new Date(resolved[i].standDate) : null;
-        if (stand !== null && !isNaN(stand.getTime())) {
-          fassung.appendChild(
-            document.createTextNode(
-              " · " + t("askChipStand", { date: formatAskDateLabel(stand) })
-            )
-          );
-        }
-        item.appendChild(fassung);
         list.appendChild(item);
+      }
+      for (var d = 0; d < resolved.length; d += 1) {
+        detail.appendChild(askQuellenDetailZeile(d + 1, resolved[d]));
       }
       if (resolved.length > sichtbar) {
         list.appendChild(askQuellenMehrChip(resolved.length - sichtbar));
       }
+      // „Mehr": der letzte Chip der Reihe klappt die Auskunft zur Antwort auf (Funktionsinventar).
+      if (resolved.length > 0) {
+        var mehrItem = document.createElement("li");
+        mehrItem.className = "quelle-chip-mehr";
+        var mehr = document.createElement("button");
+        mehr.type = "button";
+        mehr.id = "ask-mehr-btn";
+        mehr.className = "quelle-chip";
+        mehr.setAttribute("aria-controls", "ask-mehr-block");
+        mehr.addEventListener("click", askMehrUmschalten);
+        mehrItem.appendChild(mehr);
+        list.appendChild(mehrItem);
+      }
+      askMehrZeichnen();
       document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
+      renderAskFussnoten();
+    }
+
+    // ============================================================================================
+    // JOB 3056 Runde 4 (Codex Pflicht 1) — DIE FUSSNOTENZIFFERN IM ANTWORTTEXT (Main.dc.html Z.28).
+    // ============================================================================================
+    //
+    // Hinter dem Antworttext stehen hochgestellte Ziffern, die auf die Chips „n · Titel" zeigen.
+    // Der Antworttext bleibt das bearbeitbare Feld (mega35/36: EIN Feld, alle Ausgaenge — Einfuegen,
+    // Kopieren, Cmd+C, Ausschneiden, Ziehen lesen `value` und die Auswahl des Felds), und ein Feld
+    // kann kein <sup> tragen. Die Ziffern sind deshalb EIGENE <sup>-Elemente (#ask-fussnoten), die
+    // an der GEMESSENEN Stelle nach dem letzten Zeichen stehen: ein unsichtbarer Spiegel
+    // (#ask-answer-spiegel) traegt denselben Text mit denselben Schriftmassen und derselben Breite,
+    // eine Marke an seinem Ende liefert die Koordinaten — dieselbe Bauform, mit der Textfelder ihre
+    // Cursorposition bestimmen. Neu gemessen wird nach jeder Aenderung des Texts, der Hoehe
+    // (kompakt / aufgeklappt) und der Fensterbreite; ist das Textende in der kompakten Ansicht
+    // abgeschnitten, sind die Ziffern es auch (verborgen, nicht falsch platziert).
+    //
+    // WELCHE ZIFFER WOHIN — nichts wird erfunden. Eine Ziffer bekommt, was die Antwort TRAEGT:
+    // `citedSources` (askSourceRole = carrying), nummeriert wie der Chip derselben Quelle. Der
+    // retrieval-only-Weg dieses Panels liefert die Antwort als Aussage GENAU EINER Quelle
+    // (services/reasoner/src/provider.ts: answer = best.statement, citedSources = [best.id]) —
+    // dann steht „1". Nennt ein Server mehrere tragende Quellen, stehen alle ihre Ziffern in
+    // Chip-Reihenfolge am Textende: der Vertrag ordnet Quellen der ANTWORT zu, nicht einzelnen
+    // Saetzen, und eine Zuordnung je Absatz stuende auf nichts. Nur herangezogene Quellen
+    // (consulted) und ein Server ohne `citedSources` bekommen KEINE Ziffer — keine Rolle wird
+    // behauptet, die niemand gesagt hat.
+    var ASK_SPIEGEL_EIGENSCHAFTEN = [
+      "font-family", "font-size", "font-weight", "font-style", "letter-spacing", "word-spacing",
+      "line-height", "text-transform", "text-indent", "tab-size", "box-sizing",
+    ];
+
+    function renderAskFussnoten() {
+      var halter = document.getElementById("ask-fussnoten");
+      if (!halter) { return; }
+      halter.textContent = "";
+      var outcome = currentAskOutcome;
+      var cited = outcome && outcome.kind === "answered" ? outcome.citedSources : undefined;
+      var quellen = askQuellenAufgeloest || [];
+      for (var i = 0; i < quellen.length; i += 1) {
+        if (askSourceRole(quellen[i].id, cited) !== "carrying") { continue; }
+        var ziffer = document.createElement("sup");
+        ziffer.className = "fussnote";
+        ziffer.setAttribute("data-quelle", quellen[i].id);
+        ziffer.textContent = String(i + 1);
+        halter.appendChild(ziffer);
+      }
+      askFussnotenSetzen();
+    }
+
+    function askFussnotenSetzen() {
+      var halter = document.getElementById("ask-fussnoten");
+      var spiegel = document.getElementById("ask-answer-spiegel");
+      var feld = document.getElementById("ask-answer-edit");
+      if (!halter || !spiegel || !feld) { return; }
+      if (halter.childNodes.length === 0) { halter.className = "hidden"; return; }
+      var stil = window.getComputedStyle(feld);
+      for (var i = 0; i < ASK_SPIEGEL_EIGENSCHAFTEN.length; i += 1) {
+        spiegel.style.setProperty(
+          ASK_SPIEGEL_EIGENSCHAFTEN[i],
+          stil.getPropertyValue(ASK_SPIEGEL_EIGENSCHAFTEN[i])
+        );
+      }
+      spiegel.style.width = feld.clientWidth + "px";
+      spiegel.textContent = feld.value;
+      var marke = document.createElement("span");
+      marke.className = "textende";
+      spiegel.appendChild(marke);
+      var zeilenhoehe = parseFloat(stil.lineHeight);
+      // Ohne Layout (jsdom) bleiben die Ziffern da, nur ohne Koordinaten; mit Layout stehen sie am
+      // Textende — oder sind verborgen, wenn das Ende in der kompakten Ansicht nicht im Bild ist.
+      var abgeschnitten = feld.offsetHeight > 0 && zeilenhoehe > 0
+        && marke.offsetTop + zeilenhoehe > feld.offsetHeight + 1;
+      halter.className = abgeschnitten ? "hidden" : "";
+      halter.style.left = marke.offsetLeft + "px";
+      halter.style.top = marke.offsetTop + "px";
+      halter.style.lineHeight = zeilenhoehe > 0 ? zeilenhoehe + "px" : "";
     }
 
     // ============================================================================================
@@ -4903,12 +5229,14 @@
       var snippetBlock = document.getElementById("ask-snippet-block");
       if (!noteEl || !snippetBlock) { return; }
       var outcome = currentAskOutcome;
+      var vorbehaltEl = document.getElementById("ask-vorbehalt");
       if (!outcome || outcome.kind !== "answered") {
         noteEl.className = "status hidden";
         noteEl.textContent = "";
         evidenceLine("ask-caveat-line", "", "warn");
         evidenceLine("ask-conflict-line", "", "warn");
         snippetBlock.className = "hidden";
+        if (vorbehaltEl) { vorbehaltEl.textContent = ""; vorbehaltEl.className = "hidden"; }
         return;
       }
       // 1. Die Einstufung — unveraendert dieselbe Auswahl wie fuer Kopieren und Einfuegen.
@@ -4940,6 +5268,21 @@
         t(ASK_CONFLICT_TEXT_KEYS[detail.conflict] || "askConflictUnproven"),
         detail.conflict === "clear" ? "ok" : "warn"
       );
+      // JOB 3056 K1 (Lieferung 5): unter der Karte steht EIN Satz — NUR wenn der Fall eintritt.
+      // Rangfolge: offener Konflikt vor benanntem Vorbehalt vor ungeprüfter Einstufung. Die
+      // unbekannte Konfliktlage („nicht geprueft") ist kein eingetretener Fall: sie steht unter
+      // „Mehr", nicht im Sichtfeld. Alles Weitere (Zaehlung, Ausschnitt) ebenfalls unter „Mehr".
+      if (vorbehaltEl) {
+        var satz = detail.conflict === "conflicted"
+          ? t("askConflictConflicted")
+          : detail.caveat
+            ? t(ASK_CAVEAT_TEXT_KEYS[detail.caveat.key] || "askCaveatOther")
+            : askGrade !== "verified"
+              ? t("askEvidenceUnverified")
+              : "";
+        vorbehaltEl.textContent = satz;
+        vorbehaltEl.className = satz ? "" : "hidden";
+      }
 
       // Der Ausschnitt — hoechstens einer, und nur wenn er nicht die Antwort selbst ist.
       if (askSnippetWorthShowing(outcome.answer, outcome.snippet)) {
@@ -4962,10 +5305,12 @@
       if (outcome.kind === "answered") {
         currentAskTruncated = truncated;
         document.getElementById("ask-answer-block").className = "";
-        // JOB 3004 D1: die gestellte Frage steht als Pille, die Frage-Karte ist verborgen
-        // (s. askFrageKarteZeigen).
+        // JOB 3056 K1: die gestellte Frage steht als gedaempfte Zeile ueber der Karte; das
+        // Frage-Feld bleibt unten (es IST die neue Frage), die Ruhe tritt zurueck.
         document.getElementById("ask-frage-zeile").textContent = currentAskQuestion;
-        askFrageKarteZeigen(false);
+        document.getElementById("ask-input").value = "";
+        kwFlaecheZeichnen();
+        updateAskState();
         // AUFTRAG-mega34 B2: die Einstufung sichtbar machen — derselbe Text, den auch der
         // eingefuegte Absatz traegt. Bei belegter Einstufung steht die belegte Fassung da, nicht
         // gar keine; der Leser soll den Unterschied SEHEN und nicht aus dem Schweigen schliessen.
@@ -4982,7 +5327,16 @@
         applyAnswerCompaction(outcome.answer);
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         updateInsertState(); // noch gesperrt — die Quellenaufloesung laeuft (Fix 2)
+        // JOB 3056 Runde 6 (Codex): DIESER RUECKLAUF GEHOERT DIESER ANTWORT. Das Frage-Feld bleibt
+        // unter der Antwort stehen (es IST die neue Frage) — wer die naechste Frage stellt, waehrend
+        // die Quellen der vorigen noch geladen werden, bekam bis Runde 5 deren Chip, Ziffer und
+        // Quellen-Zeile untergeschoben, und der fremde Ruecklauf oeffnete das Ausgabetor der neuen
+        // Antwort. Der Ruecklauf traegt deshalb die Generation des Ergebniszustands (resetAskResult
+        // zaehlt sie bei jeder Frage und beim Zurueck hoch) UND das Ergebnisobjekt selbst; passt
+        // eines nicht mehr, wird er verworfen — kein DOM, keine Metadaten, kein Tor.
+        var generation = askErgebnisGeneration;
         resolveAskSources(outcome.sources || []).then(function (resolved) {
+          if (generation !== askErgebnisGeneration || currentAskOutcome !== outcome) { return; }
           currentAskSourceTitles = resolved.map(function (r) { return r.title; });
           currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
@@ -4997,12 +5351,9 @@
         // Die ehrliche Wissensluecken-Karte: KEINE erfundene Antwort; /api/ask hat die Luecke
         // serverseitig bereits vermerkt — zusaetzlich kann sie als offene Frage (Draft) reisen.
         document.getElementById("ask-gap-block").className = "";
-        // JOB 3046 D2 (Runde 2): die Buehne bemessen und Frage plus Auskunft ins Bild holen.
-        lueckeBuehneAnpassen();
-        var karte = document.getElementById("ask-karte");
-        if (typeof karte.scrollIntoView === "function") {
-          try { karte.scrollIntoView({ block: "start" }); } catch (err) { /* Scrollen ist Komfort, kein Vertrag */ }
-        }
+        // JOB 3056 K1: die Luecke nimmt die Mitte der Fensterspalte ein (Stilblock), die Ruhe
+        // tritt zurueck; die Frage bleibt im Feld stehen („Frage aendern" setzt den Cursor).
+        kwFlaecheZeichnen();
         // AUFTRAG-mega77 BLOCK A: hier wurde der Satz mit der Zahl der unterdrueckten ungeprueften
         // Treffer gesetzt. Entfernt — Begruendung an der Absage-Karte oben.
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
@@ -5032,44 +5383,35 @@
       }
       if (outcome.kind === "timeout") {
         showAskStatus("warn", t("askTimeout"));
+        askRetryZeigen();
         return;
       }
-      showAskStatus("warn", t("askError", { detail: outcome.detail || "offline" }));
+      // JOB 3056 K1 (§9): ohne Verbindung EIN Satz „Keine Verbindung." und „Erneut versuchen";
+      // ein benannter Serverfehler nennt weiter sein Detail.
+      showAskStatus(
+        "warn",
+        outcome.detail ? t("askError", { detail: outcome.detail }) : t("askOffline")
+      );
+      askRetryZeigen();
     }
 
     // Auswahl lesen (nur Text — die Frage ist Klartext); ohne Office ehrlich leer → Eingabefeld.
+    // JOB 3056 K1: „Text in Word mitlesen" (Einstellungen, Schalter). Aus: die Markierung in Word
+    // wird fuer die Frage nicht gelesen — es zaehlt allein das Feld. An (Voreinstellung): wie
+    // bisher (prepareAskQuestion: Markierung vor Eingabe). Gilt nur fuer diese Panelinstanz.
+    var askMitlesen = true;
+
     function readAskSelection(done) {
-      if (!officeUsable()) { done(""); return; }
+      if (!askMitlesen || !officeUsable()) { done(""); return; }
       Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (result) {
         done(result.status === Office.AsyncResultStatus.Succeeded ? String(result.value || "") : "");
       });
     }
 
-    // ============================================================================================
-    // JOB 3019 (KA5) R2 — DIE WAHRHEITSTABELLE DER ZWEI DECKEL. EINE STELLE, VIER LAGEN.
-    // ============================================================================================
-    //
-    // Es gibt zwei Felder mit demselben Deckel und ZWEI unabhaengige Merker: `truncated` (die
-    // Frage) und `selectionTruncated` (die Markierung). Aus zwei Merkern folgen vier Lagen, und
-    // BEN hat in Runde 1 genau die vierte gefunden: `askSelectionTruncated` sagte
-    // „deine Frage bleibt vollstaendig" auch dann, wenn die Frage selbst gekappt war.
-    //
-    //   truncated | selectionTruncated | Satz
-    //   ----------+--------------------+---------------------------------------------------------
-    //   nein      | nein               | keiner
-    //   nein      | ja                 | askSelectionTruncated (die Frage IST vollstaendig)
-    //   ja        | nein               | askTruncated          (spricht nur ueber die Frage)
-    //   ja        | ja                 | askBothTruncated      (nennt beide, verspricht nichts)
-    //
-    // Die Tabelle steht HIER und nur hier. Die Statuszeile nach der Antwort zeigt weiterhin
-    // `askTruncated` (renderAskOutcome) — derselbe Satz, deshalb kann er dort nicht abweichen.
-    function askDeckelHinweis(prep) {
-      var max = { max: String(WORD_ADDIN_ASK_MAX_CHARS) };
-      if (prep.truncated && prep.selectionTruncated) { return " " + t("askBothTruncated", max); }
-      if (prep.selectionTruncated) { return " " + t("askSelectionTruncated", max); }
-      if (prep.truncated) { return " " + t("askTruncated", max); }
-      return "";
-    }
+    // JOB 3056 K1 (Rebase auf KA5): die Wahrheitstabelle der zwei Deckel (`askSelectionTruncated`,
+    // `askBothTruncated`, `askDeckelHinweis`) ist mit dem Herkunftshinweis selbst entfallen — die
+    // Ruhe zeigt vor dem Absenden nur noch den EINEN Verwerfungssatz (s.u.), keinen Deckelhinweis
+    // mehr; die Statuszeile nach der Antwort zeigt `askTruncated` unveraendert (renderAskOutcome).
 
     // AUFTRAG-mega74 TEIL 2b: die Zeile ueber dem Eingabefeld sagt, WORAUS die Frage entsteht.
     // Sie benutzt dieselbe Entscheidung wie der Absendeweg (prepareAskQuestion) — nicht eine
@@ -5088,17 +5430,18 @@
       if (!officeUsable()) { setzeAskSourceNote(note, ""); return; }
       readAskSelection(function (selectionText) {
         var prep = prepareAskQuestion(selectionText, document.getElementById("ask-input").value);
-        if (prep.from === "manual") {
-          // JOB 3019 (KA5): die dritte Lage heisst jetzt „beides" statt „die Markierung schlaegt die
-          // Eingabe". Sie liest `prep.selection` — genau das Feld, das auch wirklich abgeht.
-          var zeile = prep.selection.length > 0
-            ? t("askSourceSelectionOverride")
-            : t("askSourceManual");
-          setzeAskSourceNote(note, zeile + askDeckelHinweis(prep));
-        } else if (prep.from === "selection") {
-          setzeAskSourceNote(note, t("askSourceSelection") + askDeckelHinweis(prep));
-        } else {
-          setzeAskSourceNote(note, "");
+        // JOB 3056 K1 (Rebase auf KA5): nur der EINE Fall bekommt einen Satz — getippter Text UND
+        // Markierung sind da, die Markierung reist zusaetzlich mit (`prep.from === "manual"` seit
+        // KA5, `prep.selection` ist dann die mitgesendete Markierung). Sonst steht nichts ueber dem
+        // Feld (die Ruhe sagt es, der Schalter „Text in Word mitlesen" entscheidet).
+        setzeAskSourceNote(note, prep.from === "manual" && prep.selection.length > 0
+          ? t("askSourceSelectionOverride")
+          : "");
+        // JOB 3056 K1: eine Markierung in Word ist Kontext fuer die Schreibflaeche (KA6) — unabhaengig
+        // davon, ob sie oder die Eingabe die Frage stellt.
+        if (typeof askMarkierungDa !== "undefined") {
+          askMarkierungDa = prep.from === "selection" || prep.selection.length > 0;
+          if (typeof ka6Neuzeichnen === "function") { ka6Neuzeichnen(); }
         }
       });
     }
@@ -5110,6 +5453,9 @@
       if (klaraS4FragenGesperrt()) {
         resetAskResult();
         showAskStatus("warn", t("s4FragenGesperrt"));
+        // Runde 9: der Knopf zeigt danach wieder, was gilt — auch wenn der Aufruf am Attribut
+        // vorbei kam (Enter, entferntes `disabled`).
+        updateAskState();
         return;
       }
       // JOB 3016 D3 (Runde 4, BEN): SINGLE FLIGHT — das Tor faellt SYNCHRON, VOR dem asynchronen
@@ -5572,15 +5918,45 @@
 
     // Teil 3: Segment-Umschaltung (Fragen | Wissen erfassen) — reine Sichtbarkeit, kein Zustand geht verloren.
     function setTab(name) {
-      document.getElementById("section-ask").className = name === "ask" ? "" : "hidden";
-      document.getElementById("section-capture").className = name === "capture" ? "" : "hidden";
-      document.getElementById("tab-ask").className = name === "ask" ? "active" : "";
-      document.getElementById("tab-capture").className = name === "capture" ? "active" : "";
+      kwAnsichtSetzen(name === "capture" ? "erfassen" : "fragen");
     }
 
     document.getElementById("tab-ask").addEventListener("click", function () { setTab("ask"); });
     document.getElementById("tab-capture").addEventListener("click", function () { setTab("capture"); });
+    // JOB 3056 K1: Zahnrad und Zurueck-Chevron im Kopf, die Zeilen der Einstellungen.
+    document.getElementById("kw-zahnrad").addEventListener("click", function () {
+      kwAnsichtSetzen("einstellungen");
+    });
+    document.getElementById("kw-zurueck").addEventListener("click", kwZurueck);
+    document.getElementById("einst-sprache-zeile").addEventListener("click", function () {
+      var wahl = document.getElementById("einst-sprache-wahl");
+      var offen = wahl.className.indexOf("hidden") !== -1;
+      wahl.className = offen ? "lang" : "lang hidden";
+      document.getElementById("einst-sprache-zeile").setAttribute("aria-expanded", offen ? "true" : "false");
+    });
+    document.getElementById("einst-mitlesen").addEventListener("click", function () {
+      askMitlesen = !askMitlesen;
+      var schalter = document.getElementById("einst-mitlesen");
+      schalter.className = askMitlesen ? "schalter an" : "schalter";
+      schalter.setAttribute("aria-checked", askMitlesen ? "true" : "false");
+      updateAskSourceNote();
+    });
+    document.getElementById("einst-hilfe-zeile").addEventListener("click", function () {
+      kwAnsichtSetzen("hilfe");
+    });
+    document.getElementById("logout-btn").addEventListener("click", abmelden);
+    document.getElementById("session-retry-btn").addEventListener("click", checkSession);
+    document.getElementById("ask-retry-btn").addEventListener("click", askKlara);
     document.getElementById("ask-btn").addEventListener("click", askKlara);
+    // Der Sendeknopf faerbt sich mit dem ersten Zeichen (updateAskState); Enter sendet, Umschalt+Enter
+    // bricht die Zeile um — wie in jedem Nachrichtenfeld.
+    document.getElementById("ask-input").addEventListener("input", updateAskState);
+    document.getElementById("ask-input").addEventListener("keydown", function (ev) {
+      if (ev.key === "Enter" && !ev.shiftKey) {
+        ev.preventDefault();
+        if (!document.getElementById("ask-btn").disabled) { askKlara(); }
+      }
+    });
     // AUFTRAG-mega74 TEIL 2b: die Herkunfts-Zeile wird aktuell gehalten — beim Tippen, beim
     // Betreten des Feldes und (wo Office es anbietet) bei jeder Aenderung der Markierung im
     // Dokument. Der Ereignis-Anschluss ist bewusst in try/catch: faellt er auf einem Host aus,
@@ -5598,10 +5974,12 @@
     document.getElementById("ask-insert-btn").addEventListener("click", insertAnswer);
     document.getElementById("ask-copy-btn").addEventListener("click", copyAnswer);
     document.getElementById("ask-answer-toggle").addEventListener("click", toggleAnswerExpanded);
-    // JOB 3004 D1: Pille (zurueck zum Bearbeiten), „Neue Frage", und das Feld waechst beim Tippen.
+    // JOB 3004 D1: die Frage-Zeile fuehrt zurueck zum Bearbeiten; „Neue Frage" ist seit JOB 3056
+    // der Zurueck-Chevron im Kopf (kwZurueck) — und das Feld waechst beim Tippen.
     document.getElementById("ask-frage-zeile-btn").addEventListener("click", askFrageBearbeiten);
-    document.getElementById("ask-neue-frage-btn").addEventListener("click", askNeueFrage);
     document.getElementById("ask-answer-edit").addEventListener("input", passeAntwortfeldAn);
+    // Runde 4: eine andere Fensterbreite bricht den Text anders um — die Ziffern werden neu gemessen.
+    window.addEventListener("resize", askFussnotenSetzen);
     // AUFTRAG-mega36 B1: Tastatur UND Kontextmenue loesen dasselbe `copy`-Ereignis aus — ein
     // Rueckruf deckt beide. `cut` gehoert dazu, `dragstart` schliesst den Zieh-Ausgang.
     document.getElementById("ask-answer-edit").addEventListener("copy", function (ev) {
@@ -5641,11 +6019,10 @@
     // der Praefix-Vergleich (statt Gleichheit) haelt auch dann, wenn der Platzhalter-Name selbst
     // einmal umbenannt wird, ohne dass diese Zeile mitzieht.
     var KLARA_STAND = "__KLARA_STAND__";
-    // JOB 2621 §3: EIN Wert, ZWEI Stellen — unten (Bestand, mit seinen Tests) und der Spiegel im
-    // Kopfband. Beide aus derselben Zuweisung; keine zweite Quelle, kein Handstand.
+    // JOB 3056 K1: EIN Wert, EINE Stelle — der Fuss der Einstellungen („Klara <Stand>",
+    // Einstellungen.dc.html Z.68). Der Kopf-Spiegel (JOB 2621 §3) ist mit dem alten Kopf gefallen.
     var kwStandText = KLARA_STAND.indexOf("__") === 0 ? "dev" : KLARA_STAND;
     document.getElementById("kw-stand").textContent = kwStandText;
-    document.getElementById("kw-stand-kopf").textContent = kwStandText;
 
     // ---- JOB 1077: die Fassungszeile ----------------------------------------------------------
     // Der Zustand wird GEHALTEN, damit ein Sprachwechsel ihn nicht verliert (dieselbe Falle, die
@@ -6061,6 +6438,10 @@
       var liste = document.getElementById("ka1-terms");
       var leer = document.getElementById("ka1-empty");
       if (!liste || !leer) { return; }
+      // JOB 3056 K1: das Begriffsbild ist nur MIT Begriffen sichtbar — ohne Begriffe steht in der
+      // Ruhe nichts (der Leersatz bleibt als Zustand erhalten, aber nicht im Sichtfeld).
+      var block = document.getElementById("ka1-block");
+      if (block) { block.className = terms.length > 0 ? "" : "hidden"; }
       liste.textContent = "";
       for (var i = 0; i < terms.length; i += 1) {
         var eintrag = document.createElement("li");
@@ -6506,7 +6887,9 @@
       karte.className = "card hidden";
       karte.setAttribute("role", "region");
       karte.setAttribute("aria-live", "polite");
-      var anker = document.getElementById("session-card");
+      // JOB 3056 K1: die Karte sitzt in der Fragen-Flaeche unter der Ruhe (die Sitzungskarte, an
+      // der sie hing, gibt es nicht mehr) — lagebezogen, nur mit Treffern sichtbar.
+      var anker = document.getElementById("ask-ruhe");
       if (anker && anker.parentNode) {
         anker.parentNode.insertBefore(karte, anker.nextSibling);
       } else {
@@ -6911,8 +7294,14 @@
       einfuegen.setAttribute("style", "margin-top: 8px;");
       karte.appendChild(einfuegen);
 
-      var anker = document.getElementById("section-ask");
-      if (anker) { anker.appendChild(karte); } else { document.body.appendChild(karte); }
+      // JOB 3056 K1: die Karte steht in der Fragen-Flaeche VOR dem Frage-Feld (das Feld bleibt
+      // unten, Ruhe.dc.html Z.33).
+      var anker = document.getElementById("ask-feld");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(karte, anker);
+      } else {
+        document.body.appendChild(karte);
+      }
       return karte;
     }
 
@@ -6982,11 +7371,29 @@
     }
 
     /** Zeichnen. Kein Fokuseingriff, kein Scrollen — die Flaeche erscheint und schweigt sonst. */
+    // JOB 3056 K1 (Pages-Massstab): die Schreibflaeche ist ein Untermenue des Frage-Felds, kein
+    // Dauertext in der Ruhe. Sie erscheint NUR, wenn es etwas zu formulieren gibt — Text im Feld
+    // oder eine Markierung in Word (askZurufKontext) — und der Zuruf erlaubt ist. Der Erklaersatz
+    // ka6Hint wird zum Tooltip der Flaeche (title), nicht zum Sichtfeld; der Grund einer Sperre
+    // bleibt in #ka6-hinweis gehalten (Tests), steht aber sichtbar an seinem Ort: Einstellungen →
+    // „In dieser Sitzung" (dieselbe Sperre, derselbe Grund).
+    var askMarkierungDa = false;
+
+    function ka6Kontext() {
+      var input = document.getElementById("ask-input");
+      return askMarkierungDa || (!!input && input.value.trim().length > 0);
+    }
+
     function ka6Zeichnen() {
       var karte = ka6BlockElement();
-      karte.className = "card";
+      var lage = ka6Lage();
+      karte.className = lage.erlaubt && ka6Kontext() ? "card" : "card hidden";
       document.getElementById("ka6-titel").textContent = t("ka6Title");
-      document.getElementById("ka6-lead").textContent = t("ka6Hint");
+      var lead = document.getElementById("ka6-lead");
+      lead.textContent = t("ka6Hint");
+      lead.className = "muted hidden";
+      karte.setAttribute("title", t("ka6Hint"));
+      karte.setAttribute("aria-label", t("ka6Title"));
       for (var i = 0; i < KA6_ZURUFE.length; i += 1) {
         var knopf = document.getElementById(KA6_ZURUFE[i].id);
         if (knopf) {
@@ -6996,7 +7403,6 @@
       }
       document.getElementById("ka6-insert-btn").textContent = t("ka6InsertCta");
 
-      var lage = ka6Lage();
       var zurufe = document.getElementById("ka6-zurufe");
       var grund = document.getElementById("ka6-hinweis");
       // „bietet KEINEN Zuruf an" heisst: der Knopf ist WEG, nicht bloss ausgegraut. Ein gesperrter
@@ -7217,6 +7623,10 @@
 
     if (typeof document !== "undefined" && document.getElementById("section-ask")) {
       ka6Zeichnen();
+      // JOB 3056 K1: die Flaeche folgt dem Feld — sie erscheint mit dem ersten Zeichen und geht
+      // mit dem letzten (ka6Kontext).
+      var ka6Feld = document.getElementById("ask-input");
+      if (ka6Feld) { ka6Feld.addEventListener("input", ka6Neuzeichnen); }
       for (var ka6i = 0; ka6i < KA6_ZURUFE.length; ka6i += 1) {
         (function (art) {
           var knopf = document.getElementById(art.id);

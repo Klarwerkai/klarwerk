@@ -148,6 +148,10 @@ function pruefstand(
     klaraS4LetzterRefreshMs: 0,
     klaraS4LetzterRefreshGrund: null as string | null,
     klaraS4Riegelstand: false,
+    // JOB 3056 Runde 9: die Ablaufsperre (klaraS4Uebernehmen setzt/loest sie je Aufloesung).
+    klaraS4Abgelaufen: false,
+    // JOB 3056 Runde 10: der bewahrte Ablaufzeitpunkt (klaraS4Uebernehmen traegt ihn je Aufloesung ein).
+    klaraS4BestaetigtBisMs: Number.NaN,
     AbortController: class {
       signal = { markiert: true };
       abort() {
@@ -185,12 +189,18 @@ function pruefstand(
   const bauerStart = HTML.indexOf("function klaraS4Header()");
   const bauerEnde = HTML.indexOf("\n    }", bauerStart);
   expect(bauerStart, `${TASKPANE}: klaraS4Header fehlt`).toBeGreaterThan(0);
+  // JOB 3056 Runde 9: klaraS4Uebernehmen liest den Ablauf der Aufloesung ueber klaraS4Veraltet
+  // (Anzeigeblock). Auch die wird aus der DATEI geschnitten, nicht nachgebaut.
+  const veraltetStart = HTML.indexOf("function klaraS4Veraltet(view, nowMs)");
+  const veraltetEnde = HTML.indexOf("\n    }", veraltetStart);
+  expect(veraltetStart, `${TASKPANE}: klaraS4Veraltet fehlt`).toBeGreaterThan(0);
 
   const factory = new Function(
     "umgebung",
     `with (umgebung) {
        ${HTML.slice(bauerStart, bauerEnde)}}
        umgebung.klaraS4Header = klaraS4Header;
+       ${HTML.slice(veraltetStart, veraltetEnde)}}
        ${HTML.slice(start, ende)}
        return { start: klaraS4Start, zustimmen: klaraS4Zustimmen, widerrufen: klaraS4Widerrufen };
      }`,

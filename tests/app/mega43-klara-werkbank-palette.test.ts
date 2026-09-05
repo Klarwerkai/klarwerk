@@ -97,7 +97,7 @@
 //
 // KALIBRIERUNG: die Sonden entstehen unten IM TEST (mutierte Kopien des Stil-Textes bzw. des
 // Markups), nie als Datei im Produktbaum.
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -310,7 +310,66 @@ const ALPHA_AUSNAHMEN: AlphaAusnahme[] = [
       "(--kw-brand, #E8630A), nicht ein zweiter Orangeton. Nur die Deckung ist mit 0,45 bewusst " +
       "kräftiger als die Kachel-Rezepte, weil ein 10px-Streulicht bei 0,12 unsichtbar wäre.",
   },
+  {
+    wert: "#0E1626/0.08",
+    basisToken: "ink",
+    grund:
+      "JOB 3056 K1: der Schatten des aktiven Segments im Umschalter Fragen | Erfassen " +
+      "(--shadow-segment), wörtlich aus Pedis Mockup Ruhe.dc.html Z.21 " +
+      "(`0 1px 2px rgba(14, 22, 38, 0.08)`). Die FARBE ist Nacht (--kw-ink, #0E1626) — nur die " +
+      "Deckung 0,08 führt die Werkbank nicht (0.05/0.12/0.16). Gemessen in Chromium in " +
+      "tests/design/zielbild-k1-ruhe.test.ts; Nachzug eines Tokens in themes.css ist ein eigener Auftrag.",
+  },
 ];
+
+// JOB 3056 K1 · MOCKUP-WERTE: Pedis Mockups vom 04.09.2026 (design/klara/*.dc.html, abgenommen
+// „Gut.") führen DREI Farben, die es in der Werkbank-Palette nicht gibt — das Hinweisgrau #9AA2B1
+// (Platzhalter „Frage", Ruhe-Satz, Stand, Chevron/Schloss), das Lupengrau #C9C2B6 und den
+// Umschalter-Grund #EEEAE3. Der Auftrag verlangt Gleichheit mit dem Mockup „in jedem tragenden
+// Wert"; themes.css (apps/web/src) ist dort nicht Zielpfad. Deshalb hier: KEIN Freibrief, sondern
+// eine Bindung an die andere Wahrheit — der Wert muss im genannten Mockup WÖRTLICH vorkommen
+// (geprüft, sobald die Mockup-Datei auf dem Rechner liegt), Klaras :root nennt die Datei per
+// „← mockup:<datei>", und eine unbenutzte Ausnahme ist rot. Der Nachzug der drei Token in
+// themes.css ist ein eigener Auftrag (Rückgabe JOB 3056, REST).
+type MockupAusnahme = { variable: string; wert: string; mockup: string; grund: string };
+
+const MOCKUP_ORDNER = "/Users/peterkohnert/klarwerk_steuerung/design/klara";
+
+const MOCKUP_AUSNAHMEN: MockupAusnahme[] = [
+  {
+    variable: "hint",
+    wert: "#9AA2B1",
+    mockup: "Ruhe.dc.html",
+    grund:
+      "Hinweisgrau der Mockups (Ruhe.dc.html Z.30/35, Einstellungen.dc.html Z.27/42/68): Ruhe-Satz, " +
+      "Platzhalter „Frage“, Stand-Zeile, Chevron und Schloss. Kein Werkbank-Token; Kontrast auf " +
+      "Papier 2,42:1 (unter AA) — Eigentümer-Vorgabe 04.09., in der Rückgabe JOB 3056 benannt.",
+  },
+  {
+    variable: "lupe",
+    wert: "#C9C2B6",
+    mockup: "Ruhe.dc.html",
+    grund:
+      "Strichfarbe der Lupe in der Ruhe (Ruhe.dc.html Z.29, stroke=#C9C2B6). Ein Symbol, kein Text; " +
+      "kein Werkbank-Token. Wird in tests/design/zielbild-k1-ruhe.test.ts am realen SVG gemessen.",
+  },
+  {
+    variable: "segment",
+    wert: "#EEEAE3",
+    mockup: "Ruhe.dc.html",
+    grund:
+      "Grund des Umschalters Fragen | Erfassen (Ruhe.dc.html Z.20, background: #EEEAE3). Kein " +
+      "Werkbank-Token; Tinte-2 darauf misst 6,3:1 (AA). Gemessen in zielbild-k1-ruhe.test.ts.",
+  },
+];
+
+function mockupFuehrt(a: MockupAusnahme): boolean | null {
+  const pfad = join(MOCKUP_ORDNER, a.mockup);
+  if (!existsSync(pfad)) {
+    return null; // Mockup nicht auf diesem Rechner — die Bindung ist dann nicht prüfbar, nicht falsch.
+  }
+  return readFileSync(pfad, "utf8").toUpperCase().includes(a.wert.toUpperCase());
+}
 
 // B2 · Regel-Ausnahmen: Regeln, die der Kontrast-Sammler nicht als Paar messen KANN oder DARF.
 // Auch hier gilt: benannt, begründet, und eine unbenutzte Ausnahme ist rot.
@@ -324,6 +383,57 @@ const REGEL_AUSNAHMEN: RegelAusnahme[] = [
       "inaktive Bedienelemente ausdrücklich von der Kontrastanforderung aus — die Abschwächung IST " +
       "hier das sichtbare Zeichen der Inaktivität, und der Knopf trägt in diesem Zustand keine " +
       "Handlung. Bestandsverhalten, unverändert seit vor mega43 (bens Punkt 5 aus sammel42).",
+  },
+  // JOB 3056 K1 — die Mockup-Flächen. Jede Zeile nennt, WAS gemessen wurde, nicht nur warum sie
+  // ausgenommen ist; die Textfälle unter AA stehen ausdrücklich in der Rückgabe des Auftrags.
+  {
+    selektor: "#ask-input::placeholder",
+    grund:
+      "Pseudo-Element (der Sammler kann es nicht auf das Markup anwenden). Der Platzhalter „Frage“ " +
+      "trägt das Hinweisgrau des Mockups (Ruhe.dc.html Z.35): #9AA2B1 auf Weiß = 2,57:1, unter AA " +
+      "für Text — Eigentümer-Vorgabe 04.09.; der AA-Nachzug (Token in themes.css) ist offen.",
+  },
+  {
+    selektor: "#ask-ruhe-satz",
+    grund:
+      "Der EINE Satz der Ruhe im Hinweisgrau des Mockups (Ruhe.dc.html Z.30): #9AA2B1 auf Papier " +
+      "#FAF8F5 = 2,42:1, unter AA für Text. Eigentümer-Vorgabe 04.09. („Gut.“); in der Rückgabe " +
+      "JOB 3056 als offener Kontrastpunkt benannt, damit die Entscheidung bewusst bleibt.",
+  },
+  {
+    selektor: "#kw-stand-zeile",
+    grund:
+      "Die Stand-Zeile „Klara <Stand>“ im Fuß der Einstellungen (Einstellungen.dc.html Z.68): " +
+      "#9AA2B1 auf Papier = 2,42:1, unter AA für Text — dieselbe Mockup-Vorgabe wie der Ruhe-Satz, " +
+      "derselbe offene Nachzug; die Zeile ist Metaauskunft, kein Bedienelement.",
+  },
+  {
+    selektor: "#ask-ruhe-lupe",
+    grund:
+      "Ein Strichsymbol (SVG, stroke über currentColor), KEIN Text: die Lupe der Ruhe in #C9C2B6 " +
+      "auf Papier (Ruhe.dc.html Z.29). WCAG 1.4.11 (Nicht-Text-Kontrast) ist nicht Gegenstand " +
+      "dieses Sammlers (Dateikopf, benannte Grenzen); dekoratives Symbol ohne Bedienfunktion.",
+  },
+  {
+    selektor: ".einst-wert svg",
+    grund:
+      "Chevron und Schloss in den Einstellungen (Einstellungen.dc.html Z.27/42): Strichsymbole im " +
+      "Hinweisgrau, KEIN Text. Die Bedeutung trägt die Beschriftung der Zeile daneben (14px, " +
+      "Tinte auf Weiß = 14,4:1); Nicht-Text-Kontrast ist nicht Gegenstand dieses Sammlers.",
+  },
+  {
+    selektor: "#ask-btn",
+    grund:
+      "Der runde Sendeknopf: weißer Pfeil (currentColor) auf Linie-Grau, solange nichts getippt ist " +
+      "(Ruhe.dc.html Z.36-37) — ein Symbol ohne Text; mit Text im Feld wird der Grund Funke dunkel " +
+      "(Klasse `bereit`, #C2500A: Weiß darauf 4,72:1). Gemessen in zielbild-k1-ruhe.test.ts.",
+  },
+  {
+    selektor: "#ask-quellen-detail li",
+    grund:
+      "Die Detailzeilen der Quellen unter „Mehr“ entstehen zur LAUFZEIT (askQuellenDetailZeile) — " +
+      "ohne Markup-Fundstelle rät der Sammler gegen jede Fläche. Ihre Fläche ist bekannt: sie " +
+      "liegen in #antwortkarte (--surface, Weiß); Tinte-2 #525B6B darauf = 7,0:1, AA erfüllt.",
   },
 ];
 
@@ -521,20 +631,22 @@ type Inline = { ort: string; pfad: Teil[]; text: string };
 type Modell = {
   stil: string;
   regeln: Regel[];
-  variablen: Map<string, { wert: string; gebundenAn: string[] }>;
+  variablen: Map<string, Variable>;
   elemente: Elem[];
   inline: Inline[];
 };
 
-/** Klaras :root — Variablenname → { wert, gebundenAn[] } aus der „← --kw-…"-Anschrift. */
-function klaraVariablen(stil: string): Map<string, { wert: string; gebundenAn: string[] }> {
+/** Klaras :root — Variablenname → { wert, gebundenAn[], mockup } aus der „← --kw-…"- bzw.
+ *  „← mockup:<datei>"-Anschrift (JOB 3056 K1, s. MOCKUP_AUSNAHMEN). */
+type Variable = { wert: string; gebundenAn: string[]; mockup: string | null };
+function klaraVariablen(stil: string): Map<string, Variable> {
   const start = stil.indexOf(":root {");
   const ende = stil.indexOf("}", start);
   if (start < 0 || ende < 0) {
     throw new Error("taskpane.html: :root-Block im <style> nicht gefunden");
   }
   const block = stil.slice(start, ende);
-  const karte = new Map<string, { wert: string; gebundenAn: string[] }>();
+  const karte = new Map<string, Variable>();
   for (const zeile of block.split("\n")) {
     const dekl = zeile.match(/^\s*--([a-z0-9-]+):\s*([^;]+);/);
     if (!dekl) {
@@ -548,7 +660,9 @@ function klaraVariablen(stil: string): Map<string, { wert: string; gebundenAn: s
       pfeil >= 0
         ? [...anschrift.slice(pfeil).matchAll(/--kw-([a-z0-9-]+)/g)].map((m) => m[1] as string)
         : [];
-    karte.set(dekl[1] as string, { wert, gebundenAn });
+    const mockup =
+      pfeil >= 0 ? (/mockup:([^\s)]+)/.exec(anschrift.slice(pfeil))?.[1] ?? null) : null;
+    karte.set(dekl[1] as string, { wert, gebundenAn, mockup });
   }
   return karte;
 }
@@ -691,6 +805,7 @@ function befunde(m: Modell = MODELL, kiStellen: KiStelle[] = KI_STELLEN): string
   const raus: string[] = [];
   const benutzteAusnahmen = new Set<string>();
   const benutzteAlpha = new Set<string>();
+  const benutzteMockup = new Set<string>();
   const funde = farbfunde(m);
   const violett = MODERN_TOKEN.get(VIOLETT_TOKEN) ?? ROOT_TOKEN.get(VIOLETT_TOKEN);
   const benutzteKi = new Set<string>();
@@ -724,6 +839,15 @@ function befunde(m: Modell = MODELL, kiStellen: KiStelle[] = KI_STELLEN): string
       benutzteAusnahmen.add(ausnahme.wert.toUpperCase());
       continue;
     }
+    // JOB 3056 K1: ein Mockup-Wert ist nur an seiner :root-Variablen erlaubt — nicht als loses
+    // Literal irgendwo im Stilblock (dort wäre er wieder eine zweite Wahrheit).
+    const mockupAusnahme = MOCKUP_AUSNAHMEN.find(
+      (a) => a.wert.toUpperCase() === wert && ort === `:root { --${a.variable} }`,
+    );
+    if (mockupAusnahme) {
+      benutzteMockup.add(mockupAusnahme.variable);
+      continue;
+    }
     const alphaAusnahme = ALPHA_AUSNAHMEN.find((a) => a.wert.toUpperCase() === wert.toUpperCase());
     if (alphaAusnahme) {
       benutzteAlpha.add(alphaAusnahme.wert.toUpperCase());
@@ -741,18 +865,36 @@ function befunde(m: Modell = MODELL, kiStellen: KiStelle[] = KI_STELLEN): string
   }
 
   // (2) Jede Farbvariable in Klaras :root ist an ein Werkbank-Token angeschrieben — und stimmt.
-  for (const [name, { wert, gebundenAn }] of m.variablen) {
+  for (const [name, { wert, gebundenAn, mockup }] of m.variablen) {
     const eigen = alsFarbe(wert);
     if (!eigen) {
       continue;
     }
-    if (gebundenAn.length === 0) {
+    if (gebundenAn.length === 0 && mockup === null) {
       raus.push(
         `--${name}: ${wert} in taskpane.html nennt kein Werkbank-Token („← --kw-…") — ein unverbundener Farbwert ist genau die zweite Wahrheit, die hier nicht entstehen darf.`,
       );
       continue;
     }
     const klara = kanonisch(eigen);
+    // JOB 3056 K1: „← mockup:<datei>" bindet an Pedis Mockup statt an themes.css — nur für die
+    // eingetragenen Variablen, nur mit demselben Wert, und nur wenn das Mockup den Wert führt.
+    if (mockup !== null) {
+      const a = MOCKUP_AUSNAHMEN.find((x) => x.variable === name);
+      if (!a || a.wert.toUpperCase() !== klara || !mockup.endsWith(a.mockup)) {
+        raus.push(
+          `--${name}: ${wert} beruft sich auf das Mockup ${mockup}, hat aber keine passende MOCKUP_AUSNAHME (Variable, Wert und Datei müssen übereinstimmen).`,
+        );
+        continue;
+      }
+      benutzteMockup.add(a.variable);
+      if (mockupFuehrt(a) === false) {
+        raus.push(
+          `--${name}: ${wert} steht NICHT im Mockup ${a.mockup} — die Bindung an die Vorlage ist gebrochen.`,
+        );
+      }
+      continue;
+    }
     for (const token of gebundenAn) {
       const ausnahme = AUSNAHMEN.find((a) => a.rootToken === token);
       const soll = MODERN_TOKEN.get(token) ?? (ausnahme ? ROOT_TOKEN.get(token) : undefined);
@@ -826,6 +968,13 @@ function befunde(m: Modell = MODELL, kiStellen: KiStelle[] = KI_STELLEN): string
     if (!benutzteAlpha.has(a.wert.toUpperCase())) {
       raus.push(
         `Alpha-Ausnahme ${a.wert} (--kw-${a.basisToken}) hat keine Fundstelle mehr — unbenutzte Ausnahmen sind rot.`,
+      );
+    }
+  }
+  for (const a of MOCKUP_AUSNAHMEN) {
+    if (!benutzteMockup.has(a.variable)) {
+      raus.push(
+        `Mockup-Ausnahme --${a.variable} (${a.wert}, ${a.mockup}) hat keine Fundstelle mehr — unbenutzte Ausnahmen sind rot.`,
       );
     }
   }
@@ -1224,6 +1373,16 @@ describe("mega43 B1/B2 · Klara führt die Werkbank-Palette (keine zweite Wahrhe
     for (const a of REGEL_AUSNAHMEN) {
       expect(a.grund.trim().length).toBeGreaterThan(60);
       expect(MODELL.regeln.map((r) => r.selektor)).toContain(a.selektor);
+    }
+    // JOB 3056 K1: eine Mockup-Ausnahme ist an ihre Variable UND an die Vorlage gebunden — und
+    // ausdrücklich KEIN Werkbank-Wert (sonst bräuchte sie keine Ausnahme).
+    for (const a of MOCKUP_AUSNAHMEN) {
+      expect(a.grund.trim().length).toBeGreaterThan(60);
+      expect(MODELL.variablen.get(a.variable)?.wert.toUpperCase()).toBe(a.wert.toUpperCase());
+      expect(MODELL.variablen.get(a.variable)?.mockup?.endsWith(a.mockup), a.variable).toBe(true);
+      expect(PALETTE.has(a.wert.toUpperCase())).toBe(false);
+      // Auf diesem Rechner liegt das Mockup: der Wert steht wörtlich darin.
+      expect(mockupFuehrt(a), `${a.wert} in ${a.mockup}`).not.toBe(false);
     }
   });
 });
