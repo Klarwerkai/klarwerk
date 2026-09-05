@@ -110,6 +110,12 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // von `KandidatDublettenbefund` (`im_papierkorb`) — sie darf den neuen Inhalt nicht nachtraeglich
   // decken. Ihre Nachfolgerin steht am Eintrag.
   "FREEZE-144/JOB3050-20260904/types",
+  // JOB 3087: verbraucht. Diese beiden Freigaben autorisierten den Stand VOR der Ablösung des
+  // nicht injektiven Idempotenz-Schlüssels der Review-Warteschlange (`openCandidateKey` in
+  // `repo.ts`, dessen Ausleitung in `index.ts`) — sie dürfen den neuen Inhalt nicht nachträglich
+  // decken. Ihre Nachfolgerinnen stehen am jeweiligen Eintrag.
+  "FREEZE-144/JOB3050-20260904/index",
+  "FREEZE-144/D5-20260817/repo",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -131,10 +137,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // die Kompositionswurzel die Pruefung nicht typisiert uebergeben.
     // JOB 3050 · AUSGEWIESENE ÄNDERUNG: zusätzlich ist `KandidatDublettenbefund` ausgeleitet — der
     // Befund derselben Frage am Review-Kandidaten, den das Antwort-DTO der Route ausweist.
-    hash: "e56fc11f9e6e6af4c8ed26d89d0c5b3649e9762bbe3fe286d0808cbb82509f24",
+    // JOB 3087 · AUSGEWIESENE ÄNDERUNG: die Ausleitung `openCandidateKey` ist ERSETZT durch
+    // `sameOpenCandidateSource`. Das Modul gibt keinen Idempotenz-Schlüsselstring mehr heraus —
+    // die Frage „belegen diese beiden Kandidaten denselben offenen Platz" wird feldweise
+    // beantwortet (Q2b, s. den Kopfkommentar in `src/repo.ts`). ERSETZEND, nicht additiv: der
+    // alte Name verschwindet, damit daraus kein zweiter Vergleichsweg entstehen kann. Sollhash
+    // UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
+    // WIDERRUFENE_FREIGABEN.
+    hash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
     freigabe: {
-      id: "FREEZE-144/JOB3050-20260904/index",
-      autorisiertHash: "e56fc11f9e6e6af4c8ed26d89d0c5b3649e9762bbe3fe286d0808cbb82509f24",
+      id: "FREEZE-144/JOB3087-20260905/index",
+      autorisiertHash: "589ba5e4fe80e236d03adf3a856fd2f0e1418250a1747550867ad41df7d77cc1",
     },
   },
   // JOB 3022 · AUSGEWIESENE ÄNDERUNG. `Graph` (types.ts:185-204) trägt seit dem Umbau von
@@ -168,10 +181,19 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
   },
   {
     pfad: "services/library-analytics/src/repo.ts",
-    hash: "37b3000538fd6fb0274b1ad6f8f4a8660720d6b595c2fa7819f21804d3714510",
+    // JOB 3087 · AUSGEWIESENE ÄNDERUNG (Q2b): der Idempotenz-Schlüssel der Review-Warteschlange
+    // war die Verkettung `${providerKey}@${externalId}@${sourceVersion}` und damit NICHT injektiv
+    // — das Trennzeichen darf in beiden Feldern vorkommen, zwei verschiedene Quellobjekte ergaben
+    // denselben Schlüssel, und `insertIfAbsent` verschluckte den zweiten Kandidaten stumm.
+    // `openCandidateKey` ist ersatzlos abgelöst; `insertIfAbsent` vergleicht jetzt FELDWEISE genau
+    // das Spalten-Tupel des partiellen UNIQUE-Index (`repo-pg.ts:153-155`), das schon immer
+    // richtig war. `repo-pg.ts` ist deshalb UNVERÄNDERT — es gibt hier nichts zu migrieren.
+    // Sollhash UND Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in
+    // WIDERRUFENE_FREIGABEN.
+    hash: "8c8a4e01cb9c15c30bc7d92f2427e55631f715fd5ea63fbc44bb6b5cb51c2d7c",
     freigabe: {
-      id: "FREEZE-144/D5-20260817/repo",
-      autorisiertHash: "37b3000538fd6fb0274b1ad6f8f4a8660720d6b595c2fa7819f21804d3714510",
+      id: "FREEZE-144/JOB3087-20260905/repo",
+      autorisiertHash: "8c8a4e01cb9c15c30bc7d92f2427e55631f715fd5ea63fbc44bb6b5cb51c2d7c",
     },
   },
   {

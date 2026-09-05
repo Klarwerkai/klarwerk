@@ -753,20 +753,23 @@ describe("JOB 3081 · P7 — mehrdeutige zusammengesetzte Schluessel verwechseln
     expect(kandidat?.duplicate).toBe(true);
   });
 
-  // WARUM DIE BEIDEN EINTRAEGE HIER VERSCHIEDENE `sourceVersion` TRAGEN — EIN GEMESSENER BEFUND,
-  // DER NICHT IN DIESEN AUFTRAG GEHOERT (s. ABWEICHUNGEN in `RUECKGABE.md`):
-  //   Dieselbe mehrdeutige Verkettung steckt ein zweites Mal in `openCandidateKey`
-  //   (`services/library-analytics/src/repo.ts:169`, `${providerKey}@${ext}@${version}`) — dem
-  //   Idempotenz-Schluessel der Review-Warteschlange. Mit gleicher Version ergeben Anker A und
-  //   Anker B dort denselben Schluessel `test@tenant@42@1`, und `insertIfAbsent` reiht den ZWEITEN
-  //   Kandidaten gar nicht erst ein. Gemessen in Runde 2: `expected [ { …(8) } ] to have a length
-  //   of 2 but got 1`. `repo.ts` ist KEIN Zielpfad dieses Auftrags, und die Zeile spiegelt einen
-  //   partiellen UNIQUE-Index in Postgres (`repo-pg.ts`, IMPORT_CANDIDATES_SCHEMA) — das ist eine
-  //   Schema-Frage mit eigener Wanderung, kein Einzeiler.
-  //   Verschiedene Versionen trennen die Schluessel dort (`…@1` / `…@2`) und lassen genau die
-  //   Stelle uebrig, die DIESER Auftrag verantwortet: `batchExternalIds` in `service.ts`, das die
-  //   Version bewusst ignoriert. Mit der alten Verkettung ist der zweite Eintrag dort
-  //   `duplicate: true`; dieser Fall misst, dass er es nicht mehr ist.
+  // WARUM DIE BEIDEN EINTRAEGE HIER VERSCHIEDENE `sourceVersion` TRAGEN — UND WARUM DAS SEIT
+  // JOB 3087 KEINE AUSKLAMMERUNG MEHR IST, SONDERN EIN EIGENER SCHNITT:
+  //   Bis JOB 3087 steckte dieselbe mehrdeutige Verkettung ein zweites Mal in `openCandidateKey`
+  //   (`services/library-analytics/src/repo.ts`, `${providerKey}@${ext}@${version}`) — dem
+  //   Idempotenz-Schluessel der Review-Warteschlange. Mit gleicher Version ergaben Anker A und
+  //   Anker B dort denselben Schluessel `test@tenant@42@1`, und `insertIfAbsent` reihte den
+  //   ZWEITEN Kandidaten gar nicht erst ein (gemessen in JOB 3081 Runde 2: `expected [ { …(8) } ]
+  //   to have a length of 2 but got 1`). JOB 3087 (Q2b) hat den Schluesselstring dort ABGESCHAFFT:
+  //   verglichen wird jetzt feldweise `(importProviderKey(provider), externalId, sourceVersion)` —
+  //   dasselbe Spalten-Tupel wie im partiellen UNIQUE-Index (`repo-pg.ts:153-155`), der schon
+  //   immer richtig war. Die Faelle dazu stehen in
+  //   `tests/import-schluessel-eindeutig/queue-idempotenz-verwechselt-keine-quellen.test.ts`.
+  //   DIESER Fall bleibt UNVERAENDERT bei zwei Versionen: er misst genau die Stelle, die JOB 3081
+  //   verantwortet — `batchExternalIds` in `service.ts`, das die Version bewusst ignoriert. Mit
+  //   der alten Ankerverkettung ist der zweite Eintrag dort `duplicate: true`; dieser Fall misst,
+  //   dass er es nicht mehr ist. Die Warteschlangen-Haelfte misst P7d daneben, mit GLEICHER
+  //   Version — beide Faelle stehen nebeneinander, keiner ersetzt den anderen.
   it("P7c · Anker A und Anker B in EINEM Lauf → zwei Kandidaten, keiner ist die Dublette des anderen", async () => {
     const ctx = dienst();
 
@@ -781,6 +784,37 @@ describe("JOB 3081 · P7 — mehrdeutige zusammengesetzte Schluessel verwechseln
       kandidaten.map((k) => k.duplicate),
       "Zwei verschiedene Quellobjekte in einem Lauf sind keine Wiederholung desselben.",
     ).toEqual([false, false]);
+    for (const kandidat of kandidaten) {
+      const beschieden = await ctx.library.reviewImportCandidate(kandidat.id, "accept", "pruefer");
+      expect(beschieden.koId).toEqual(expect.any(String));
+    }
+    expect(await bestandsZahlen(ctx)).toEqual({ aktiv: 2, papierkorb: 0 });
+  });
+
+  // JOB 3087 (Q2b) — DER AUSGEKLAMMERTE FALL, JETZT EINGELOEST.
+  //
+  // Derselbe Lauf wie P7c, aber mit GLEICHER `sourceVersion: 1`. Bis JOB 3087 kam hier nur EIN
+  // Kandidat an: die Warteschlange verschluckte den zweiten stumm, weil ihr Schluesselstring
+  // `test@tenant@42@1` fuer beide Quellen derselbe war. Gemessen wird darum das Ergebnis am
+  // BESTAND, nicht im Repo-Zwischenraum: zwei Kandidaten, beide annehmbar, am Ende zwei aktive
+  // Wissensobjekte. Der Weg laeuft ueber `createImportCandidates` (das `insertIfAbsent` benutzt)
+  // und `reviewImportCandidate` — dieselbe Kette, die der Reviewer bedient.
+  it("P7d · Anker A und Anker B mit GLEICHER Version in EINEM Lauf → zwei Kandidaten, zwei Objekte", async () => {
+    const ctx = dienst();
+
+    const kandidaten = await ctx.library.createImportCandidates(
+      [ANKER_A, ANKER_B],
+      "importeur",
+      TEXTGLEICHHEIT,
+    );
+
+    expect(
+      kandidaten,
+      "Zwei verschiedene Quellobjekte stehen als ZWEI Kandidaten in der Review-Liste — " +
+        "ein stumm verschluckter zweiter waere eine Fehlmenge ohne Meldung.",
+    ).toHaveLength(2);
+    expect(kandidaten.map((k) => k.duplicate)).toEqual([false, false]);
+
     for (const kandidat of kandidaten) {
       const beschieden = await ctx.library.reviewImportCandidate(kandidat.id, "accept", "pruefer");
       expect(beschieden.koId).toEqual(expect.any(String));

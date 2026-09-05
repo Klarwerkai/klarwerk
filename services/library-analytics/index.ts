@@ -21,6 +21,10 @@ export type { LibraryServiceDeps } from "./src/service";
 // und die zentrale Kandidaten-Wire-Id (Gruppierung/Auswahl/Apply/React-Keys).
 // WP-SHIP8-CLOSE-3 (bens ROT-2): + der zentrale OFFENE Review-Statusraum ('neu'/'in_bearbeitung')
 // für alle Pending-/Idempotenz-Abgleiche.
+// JOB 3087 (Q2b): `openCandidateKey` ist ERSETZT, nicht umformatiert. Die Frage „belegen diese
+// beiden Kandidaten denselben offenen Platz" wird feldweise beantwortet (`sameOpenCandidateSource`)
+// statt über eine nicht injektive Zeichenkette; einen Schlüsselstring gibt das Modul nicht mehr
+// heraus, damit daraus kein zweiter Vergleichsweg entstehen kann.
 export {
   InMemoryCandidateRepo,
   candidateSourceId,
@@ -28,7 +32,7 @@ export {
   importSourceKey,
   isOpenReviewStatus,
   OPEN_REVIEW_STATUSES,
-  openCandidateKey,
+  sameOpenCandidateSource,
   type CandidateRepo,
   type ClaimResolution,
 } from "./src/repo";

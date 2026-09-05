@@ -36,8 +36,8 @@ import {
   LibraryService,
   PgCandidateRepo,
   REVIEW_CLAIM_LEASE_MS,
-  openCandidateKey,
   reviewClaimLeaseExpired,
+  sameOpenCandidateSource,
 } from "../../services/library-analytics";
 
 const T0 = Date.parse("2026-07-22T06:00:00.000Z");
@@ -279,9 +279,18 @@ describe("WP-SHIP8-CLOSE-3 ROT-2: 'in_bearbeitung' bleibt im offenen Idempotenzr
     const repo = new InMemoryCandidateRepo();
     expect(await repo.insertIfAbsent(openCand("a"))).toBe(true);
     await repo.claim("a", "op-1", "2026-07-22T06:00:00.000Z");
-    // Der geclaimte Kandidat behält seinen offenen Schlüssel …
+    // Der geclaimte Kandidat behält seinen offenen Platz …
+    // JOB 3087 (Q2b): gemessen wird die WIRKUNG statt der Zeichenform eines Schlüssels — dass
+    // ein zweiter Kandidat DERSELBEN Quelle denselben offenen Platz belegt. Der Schlüsselstring
+    // `"confluence@P1@3"` stand hier bis JOB 3087; er war nicht injektiv (Provider und externalId
+    // dürfen das Trennzeichen beide tragen) und ist ersatzlos durch den Feldvergleich abgelöst.
     const claimed = await repo.findById("a");
-    expect(claimed && openCandidateKey(claimed)).toBe("confluence@P1@3");
+    expect(claimed !== undefined && sameOpenCandidateSource(claimed, openCand("b"))).toBe(true);
+    // … und eine ANDERE Quelle belegt ihn nicht.
+    expect(
+      claimed !== undefined &&
+        sameOpenCandidateSource(claimed, openCand("j", { provider: "Jira" })),
+    ).toBe(false);
     // … und blockiert die Doppel-Einreihung derselben (provider, externalId, sourceVersion).
     expect(await repo.insertIfAbsent(openCand("b"))).toBe(false);
     expect((await repo.all()).map((c) => c.id)).toEqual(["a"]);

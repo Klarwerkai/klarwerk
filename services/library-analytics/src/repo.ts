@@ -152,21 +152,89 @@ export function candidateSourceId(provider: string | null | undefined, externalI
   return key === "confluence" ? externalId : `${key}::${externalId}`;
 }
 
-// SCRUM-510 (WP3): der Idempotenz-Schlüssel eines OFFENEN externalId-Kandidaten.
-// WP-SHIP8-FIX (bens F3): DURCHGÄNGIG provider+externalId — (provider, externalId, sourceVersion).
-// Vorher kollidierte eine Jira-externalId mit einer zufällig gleichen Confluence-pageId (ein
-// offener Confluence-Kandidat blockierte den Jira-Kandidaten als vermeintliche Dublette).
-// Fehlende sourceVersion zählt als 1 (deckungsgleich mit dem Orchestrator und dem pg-Generated-Column-COALESCE).
-// Items ohne externalId haben KEINEN Schlüssel (kein Anker → keine externalId-Idempotenz).
-// WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heißt 'neu' ODER 'in_bearbeitung' (isOpenReviewStatus) —
-// ein geclaimter Kandidat gibt seinen Schlüssel NICHT frei, ein paralleler Importlauf kann
-// während der Review-Aktion keinen zweiten offenen Kandidaten derselben Quelle einreihen.
-export function openCandidateKey(candidate: ImportCandidate): string | null {
+// ================================================================================================
+// JOB 3087 (Q2b) — DIE GLEICHHEIT ZWEIER OFFENER KANDIDATEN IST EIN FELDVERGLEICH, KEIN STRING.
+// ================================================================================================
+//
+// WAS FALSCH WAR. Bis hierher bildete `openCandidateKey` den Idempotenz-Schlüssel der
+// Review-Warteschlange als `${importProviderKey(provider)}@${externalId}@${sourceVersion}`. Diese
+// Verkettung ist NICHT injektiv, denn das Trennzeichen darf in BEIDEN Feldern vorkommen:
+// `ImportItem.provider` und `ImportItem.externalId` sind freie Zeichenketten (`types.ts:22`,
+// `:36`), und `importProviderKey` trimmt und schreibt nur klein — es verbietet kein Zeichen.
+//     (provider "test@tenant", externalId "42")        → "test@tenant@42@1"
+//     (provider "test",        externalId "tenant@42") → "test@tenant@42@1"
+// Zwei VERSCHIEDENE Quellobjekte bekamen denselben Schlüssel, und `insertIfAbsent` reihte den
+// zweiten gar nicht erst ein: der Reviewer sah ihn nie, und niemand meldete einen Fehler (gemessen
+// in JOB 3081 Runde 2 über die echte API — `expected [ { …(8) } ] to have a length of 2 but got 1`).
+// Ein anderes Trennzeichen hätte nichts geheilt; JEDES Zeichen darf in beiden Feldern stehen.
+//
+// DIE ANTWORT: es gibt keinen Schlüsselstring mehr. Verglichen wird GENAU DAS SPALTEN-TUPEL, das
+// der partielle UNIQUE-Index von Postgres führt (`repo-pg.ts:153-155`:
+// `ON import_candidates (provider, external_id, source_version) WHERE external_id IS NOT NULL AND
+// review_status IN ('neu','in_bearbeitung')`) — Feld für Feld, so wie es dort Spalte für Spalte
+// geschieht. Ein Spalten-Tupel kennt keine Trennzeichen-Mehrdeutigkeit; darum war die Datenbank
+// schon immer richtig und die Abweichung EINSEITIG: InMemory war STRENGER als Postgres und
+// blockierte einen Kandidaten, den der Index korrekt eingereiht hätte. Es gibt hier folglich
+// nichts zu migrieren — `IMPORT_CANDIDATES_SCHEMA` bleibt Zeichen für Zeichen, wie es ist.
+//
+// DAS VORBILD STEHT IM HAUS: JOB 3081 hat denselben Fehler eine Datei weiter am Herkunfts-Anker
+// behoben und den Schlüsselstring dort ebenfalls abgeschafft (`service.ts:1620-1622`,
+// `matchesAnchor`: „externalId UND importProviderKey(provider), kein zweites, weiteres Netz").
+
+/**
+ * Die drei Felder, die den OFFENEN Idempotenzraum aufspannen — deckungsgleich mit den drei
+ * GENERATED-Spalten `provider`/`external_id`/`source_version` (`repo-pg.ts:78-120`).
+ *
+ * Bewusst modulintern: nach aussen wird die FRAGE beantwortet (`sameOpenCandidateSource`), nicht
+ * ein Zwischenwert herausgegeben, aus dem sich ein zweiter Vergleichsweg bauen liesse.
+ */
+interface OpenCandidateSource {
+  readonly providerKey: string;
+  readonly externalId: string;
+  readonly sourceVersion: number;
+}
+
+/**
+ * Der offene Quellbezug eines Kandidaten — oder `null`, wenn er gar keinen belegt.
+ *
+ * SCRUM-510 (WP3) / WP-SHIP8-FIX (bens F3): Items OHNE externalId haben KEINEN Quellbezug (kein
+ * Anker → keine externalId-Idempotenz) — dieselbe Bedingung wie `external_id IS NOT NULL` im
+ * Index. Fehlende `sourceVersion` zählt als 1 (deckungsgleich mit dem Orchestrator und dem
+ * CASE/ELSE-1 der Generated Column, `repo-pg.ts:114-120`). Ein fehlender Provider zählt als
+ * "confluence" (`importProviderKey`, deckungsgleich mit dem Pg-Backfill).
+ * WP-SHIP8-CLOSE-3 (bens ROT-2): OFFEN heisst 'neu' ODER 'in_bearbeitung' (`isOpenReviewStatus`) —
+ * ein geclaimter Kandidat gibt seinen Platz NICHT frei, ein paralleler Importlauf kann während der
+ * Review-Aktion keinen zweiten offenen Kandidaten derselben Quelle einreihen.
+ */
+function openCandidateSource(candidate: ImportCandidate): OpenCandidateSource | null {
   const ext = candidate.item.externalId;
   if (!ext || !isOpenReviewStatus(candidate.status)) {
     return null;
   }
-  return `${importProviderKey(candidate.item.provider)}@${ext}@${candidate.item.sourceVersion ?? 1}`;
+  return {
+    providerKey: importProviderKey(candidate.item.provider),
+    externalId: ext,
+    sourceVersion: candidate.item.sourceVersion ?? 1,
+  };
+}
+
+/**
+ * Belegen diese beiden Kandidaten DENSELBEN offenen Platz der Review-Warteschlange?
+ *
+ * Genau dann, wenn beide offen sind, beide einen Anker tragen und alle drei Felder EINZELN
+ * übereinstimmen. Ein `true` ohne echten Feldtreffer wäre die verbotene Behauptung „ist schon da"
+ * ohne Grundlage — und der Kandidat, der ihretwegen nie eingereiht wird, fehlt dem Reviewer stumm.
+ */
+export function sameOpenCandidateSource(a: ImportCandidate, b: ImportCandidate): boolean {
+  const links = openCandidateSource(a);
+  const rechts = openCandidateSource(b);
+  return (
+    links !== null &&
+    rechts !== null &&
+    links.providerKey === rechts.providerKey &&
+    links.externalId === rechts.externalId &&
+    links.sourceVersion === rechts.sourceVersion
+  );
 }
 
 export class InMemoryCandidateRepo implements CandidateRepo {
@@ -178,16 +246,18 @@ export class InMemoryCandidateRepo implements CandidateRepo {
     return Promise.resolve();
   }
 
-  // Spiegelt den partiellen UNIQUE-Index von Postgres: kollidiert der offene (externalId@version)-Schlüssel
-  // mit einem bereits offenen Kandidaten, wird NICHT eingefügt (false). Ohne Schlüssel (kein externalId) →
-  // immer einfügen (true), wie der plain insert.
+  // Spiegelt den partiellen UNIQUE-Index von Postgres (`repo-pg.ts:153-155`) FELDWEISE: belegt ein
+  // bereits offener Kandidat denselben (provider, externalId, sourceVersion)-Platz, wird NICHT
+  // eingefügt (false). Ohne Anker (keine externalId) oder ohne offenen Status gibt es keinen Platz
+  // → immer einfügen (true), wie der plain insert.
+  // JOB 3087 (Q2b): der frühere Vergleich lief über eine verklebte Zeichenkette und war damit
+  // STRENGER als der Index — er blockierte Kandidaten, die Postgres korrekt eingereiht hätte
+  // (s. den Kopfkommentar von `sameOpenCandidateSource`). Prüfen und Setzen geschehen weiterhin
+  // ohne `await` dazwischen: dieselbe Unteilbarkeit wie der ON-CONFLICT-Insert.
   insertIfAbsent(candidate: ImportCandidate): Promise<boolean> {
-    const key = openCandidateKey(candidate);
-    if (key) {
-      for (const existing of this.items.values()) {
-        if (openCandidateKey(existing) === key) {
-          return Promise.resolve(false);
-        }
+    for (const existing of this.items.values()) {
+      if (sameOpenCandidateSource(candidate, existing)) {
+        return Promise.resolve(false);
       }
     }
     this.items.set(candidate.id, candidate);
