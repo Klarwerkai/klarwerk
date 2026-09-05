@@ -1290,8 +1290,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // (sechs aus `components/start/`, `MehrFlaechenInfo` und `MehrLueckenInfo` in `pages/Ask.tsx`,
     // `AntwortText`/`Inline`/`Marke`/`Teil` in `components/start/AntwortText.tsx`) ergeben den Wert
     // unten — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
+    //
+    // JOB 3070 (V6 · der Leseweg des Wissensnetzes) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3064
+    // NEU GEMESSEN, `komponenten` von 290 auf 291 NACHGEZOGEN. GENAU EINE Komponente kommt hinzu —
+    // `Umschalter` in `Wissensnetz.tsx`: die zwei Schalter „Netz" / „Lesen", mit denen am grossen
+    // Bildschirm zwischen Zeichnung und Leseansicht gewaehlt wird. Sie ist reiner Anzeigezustand,
+    // bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und traegt keinen eigenen Titel (kein
+    // `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
+    // wirklich haengt, sind unveraendert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 290,
+      komponenten: 291,
       anbieter: 1,
       traeger: 2,
     });

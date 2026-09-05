@@ -1,6 +1,8 @@
 // ================================================================================================
 // JOB 2600 · D1 — DIE THEMENKARTE.   JOB 3052 · D6 — DAS NETZ DES ZIELBILDS MIT SEITENLEISTE.
 // JOB 3067 · V4 — DIE ABLESEKARTE UNTER DEM NETZ (s. `Sichtzahlen`/`Themenzeilen` weiter unten).
+// JOB 3070 · V6 — DER LESEWEG (s. `leseThemen`/`LESEN_UNTER`/`Umschalter` weiter unten): auf
+//   schmalen Fenstern steht die Zeichnung NICHT im DOM, sondern dieselbe Auskunft in Saetzen.
 // ================================================================================================
 //
 // DIE ABNAHME (JOB 2600), woertlich: „Auf der bestehenden Klara-Oberflaeche erscheint eine
@@ -31,14 +33,13 @@
 //
 // ABGELOEST (nicht daneben belassen): der 720×520-Ring mit gleich grossen Kreisen, der Name UNTER
 // dem Kreis, die Inline-Legende in einer Zeile, der Direktsprung als einziger Klickweg.
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Link } from "react-router-dom";
 import { useLibrarySearch, useWissensnetz } from "../api/hooks";
 import type {
   KnowledgeObject,
   Sichtmetrik,
-  ThemenMetrik,
   Themenfarbe,
   Themenkarte,
   Themenknoten,
@@ -1168,29 +1169,262 @@ function Sichtzahlen({ metrik }: { metrik: Sichtmetrik }): JSX.Element {
   );
 }
 
+// ------------------------------------------------------------------------------------------------
+// JOB 3070 · V6 — DER LESEWEG: DASSELBE, WAS DIE ZEICHNUNG SAGT, IN SAETZEN.
+// ------------------------------------------------------------------------------------------------
+// DER BEFUND, geometrisch und nicht gefuehlt: die Zeile der `Karte` traegt die Zeichenflaeche
+// (mindestens 200 px, `:746`) NEBEN einer Leiste fester Breite (340 px, `:630`) plus 32 px Polster —
+// zusammen 572 px Mindestbreite, und `overflow-hidden` (`:793`) schneidet darunter ab. Ein Telefon
+// hat rund 390 px. Auf schmalen Fenstern war das Wissensnetz deshalb nicht schmal, sondern kaputt.
+//
+// DIE LOESUNG IST KEINE ZWEITE FLAECHE, sondern DIESELBE Auskunft in Worten: was die Zeichnung
+// kodiert — Fuellfarbe = Zustand (`:844`), Strichelung = Ubiquitaet (`:901`), Linie = gemeinsames
+// Vorkommen (`:817-838`) — steht dann in der Themenzeile, die es seit JOB 3067 ohnehin gibt. Es
+// entsteht KEIN zweiter Hook, KEINE zweite Zaehlung und KEINE zweite Liste: `leseThemen` liest
+// ausschliesslich die EINE Antwort, die die Seite schon holt (`useWissensnetz`), und `Themenzeilen`
+// wird ausgebaut statt gedoppelt.
+//
+// WAS `leseThemen` NICHT TUT: rechnen. Zustand und Ubiquitaet stehen im Knoten, das gemeinsame
+// Vorkommen in den Kanten — beides vom Server erhoben, hinter derselben Rechte-Naht.
+
+/** Eine Themenzeile in Worten — jedes Feld entweder belegt oder ausdruecklich `null`. */
+export interface Lesezeile {
+  readonly thema: string;
+  readonly objekte: number;
+  readonly sichtbareBeitragende: number;
+  readonly beitragendeAbgeschnitten: boolean;
+  /** Der Zustand des Knotens (die Fuellfarbe im Bild) — `null`, wenn die Karte ihn nicht fuehrt. */
+  readonly zustand: Themenfarbe | null;
+  /** Die Strichelung im Bild — `null`, wenn die Karte diesen Knoten nicht fuehrt. */
+  readonly ubiquitaer: boolean | null;
+  /**
+   * Die Nachbarn aus den Kanten, alphabetisch und dublettenfrei.
+   *
+   * `null` — NICHT `[]` — wenn es keinen Knoten gibt oder der Knoten `ohneKanten` traegt. In beiden
+   * Faellen ist „kommt mit keinem Thema zusammen vor" eine Behauptung ohne Grundlage: die Karte
+   * fuehrt hoechstens 40 Knoten, `metrik.themen` bis 200, und ein ubiquitaeres Thema bekommt
+   * grundsaetzlich keine Kanten (`themenkarte.ts`). Eine leere Liste stuende fuer „nachgesehen und
+   * nichts gefunden" — genau das ist hier nicht der Fall.
+   */
+  readonly zusammenMit: string[] | null;
+}
+
 /**
- * Je Thema: sichtbare Objekte, sichtbare Beitragende, der Weg in die Bibliothek.
+ * Die Lesezeilen einer Sichtmetrik — rein, mountfrei pruefbar, ohne eigene Zaehlung.
  *
- * DIE REIHENFOLGE ist eine LESEREIHENFOLGE, keine Rangliste von Maengeln — aufsteigend nach
- * sichtbaren Beitragenden, bei Gleichstand aufsteigend nach Objekten, bei Gleichstand nach Namen
- * (`localeCompare` wie `lesemodell.ts:265`). Die Ueberschrift sagt genau das.
+ * DIE REIHENFOLGE ist unveraendert die von JOB 3067 und eine LESEREIHENFOLGE, keine Rangliste von
+ * Maengeln: aufsteigend nach sichtbaren Beitragenden, bei Gleichstand aufsteigend nach Objekten,
+ * bei Gleichstand nach Namen (`localeCompare` wie `lesemodell.ts:265`).
+ */
+export function leseThemen(metrik: Sichtmetrik): Lesezeile[] {
+  const karte = metrik.themenkarte;
+  const knoten = new Map((karte?.themen ?? []).map((k) => [k.thema, k]));
+  // Beide Kantenrichtungen: der Server nennt ein Paar genau einmal, gelesen wird es von beiden Enden.
+  const nachbarn = new Map<string, Set<string>>();
+  const merken = (von: string, nach: string): void => {
+    if (von === nach) {
+      return;
+    }
+    const menge = nachbarn.get(von) ?? new Set<string>();
+    menge.add(nach);
+    nachbarn.set(von, menge);
+  };
+  for (const kante of karte?.kanten ?? []) {
+    merken(kante.a, kante.b);
+    merken(kante.b, kante.a);
+  }
+  return [...metrik.themen]
+    .sort(
+      (a, b) =>
+        a.sichtbareBeitragende - b.sichtbareBeitragende ||
+        a.objekte - b.objekte ||
+        a.thema.localeCompare(b.thema),
+    )
+    .map((m) => {
+      const k = knoten.get(m.thema);
+      return {
+        thema: m.thema,
+        objekte: m.objekte,
+        sichtbareBeitragende: m.sichtbareBeitragende,
+        beitragendeAbgeschnitten: m.beitragendeAbgeschnitten,
+        zustand: k?.farbe ?? null,
+        ubiquitaer: k === undefined ? null : k.ohneKanten,
+        zusammenMit:
+          k === undefined || k.ohneKanten
+            ? null
+            : [...(nachbarn.get(m.thema) ?? [])].sort((a, b) => a.localeCompare(b)),
+      };
+    });
+}
+
+/**
+ * DIE SCHWELLE, unter der die Leseansicht AN DIE STELLE der Zeichnung tritt.
+ *
+ * 900 px, aus zwei Gruenden: (1) geometrisch braucht die Karte mindestens 572 px Inhaltsbreite
+ * (200 px Zeichenflaeche + 340 px Leiste + 32 px Polster, s. oben) — darunter schneidet sie ab;
+ * (2) 900 ist die Schwelle, an der die Anwendung ohnehin schon umschaltet (die Huelle geht bei
+ * ≤899 px in den Drawer). Bewusst als EIGENE Konstante gesetzt und NICHT aus `shell/**` importiert:
+ * diese Seite haengt sonst an einem Modul, das gerade umgebaut wird. Faellt die Schwelle dort, faellt
+ * sie hier nicht still mit — sie steht hier mit ihrem eigenen Grund.
+ */
+const LESEN_UNTER = 900;
+const LESEN_ABFRAGE = `(max-width: ${LESEN_UNTER - 1}px)`;
+
+type MedienAbfrage = (abfrage: string) => MediaQueryList;
+function medienAbfrage(): MedienAbfrage | undefined {
+  return (globalThis as unknown as { matchMedia?: MedienAbfrage }).matchMedia;
+}
+
+/** Ist das Fenster schmal? Ohne `matchMedia` (jsdom, SSR) gilt „breit" — das Verhalten von heute. */
+function useSchmal(): boolean {
+  const [schmal, setSchmal] = useState<boolean>(() => {
+    const mm = medienAbfrage();
+    return mm ? mm(LESEN_ABFRAGE).matches : false;
+  });
+  useEffect(() => {
+    const mm = medienAbfrage();
+    if (!mm) {
+      return;
+    }
+    const mql = mm(LESEN_ABFRAGE);
+    const wechsel = (): void => setSchmal(mql.matches);
+    wechsel();
+    mql.addEventListener?.("change", wechsel);
+    return () => mql.removeEventListener?.("change", wechsel);
+  }, []);
+  return schmal;
+}
+
+type Ansicht = "netz" | "lesen";
+
+/**
+ * Der Umschalter — nur auf breiten Fenstern, weil es auf schmalen nichts zu waehlen gibt (die
+ * Zeichnung passt dort nicht). Reiner ANZEIGEZUSTAND: er loest keinen Abruf aus und veraendert die
+ * Metrik nicht. Kein `aria-live`: was gilt, sagen die beiden Schalter selbst ueber `aria-pressed`.
+ */
+function Umschalter({
+  ansicht,
+  waehlen,
+}: {
+  ansicht: Ansicht;
+  waehlen: (a: Ansicht) => void;
+}): JSX.Element {
+  const { t } = useTranslation();
+  // Der Unterschied zwischen gewaehlt und nicht gewaehlt steht im STIL, nicht in einer
+  // zusammengesetzten Klasse: `tests/app/mega47-modale-flaechen-sammler.test.tsx` zaehlt
+  // unaufloesbare Klassenbindungen, und ein `className={a ? "…" : "…"}` waere eine. Tokens des
+  // Themas, wie in dieser Datei ueberall (mega40-token-disziplin) — kein zweites Hex-Literal.
+  const schalter = (wahl: Ansicht, beschriftung: string): JSX.Element => {
+    const gewaehlt = ansicht === wahl;
+    return (
+      <button
+        type="button"
+        data-testid={`netz-ansicht-${wahl}`}
+        aria-pressed={gewaehlt}
+        onClick={() => waehlen(wahl)}
+        className="rounded-pill border px-3 py-1 text-sm"
+        style={{
+          borderColor: "rgb(var(--kw-hairline))",
+          background: gewaehlt ? "rgb(var(--kw-page))" : "transparent",
+          color: gewaehlt ? "rgb(var(--kw-text))" : MUTED,
+          fontWeight: gewaehlt ? 600 : 400,
+        }}
+      >
+        {beschriftung}
+      </button>
+    );
+  };
+  return (
+    // Ein echtes <fieldset> statt `role="group"` (wie `LibraryScopeBar.tsx:159`): die Gruppe
+    // bekommt ihren Namen aus dem Element plus `aria-label`, nicht aus einem ARIA-Nachbau — der
+    // Linter erzwingt das ueber `a11y/useSemanticElements`.
+    <fieldset
+      data-testid="netz-umschalter"
+      aria-label={t("wissensnetz.lesen.gruppe")}
+      className="flex flex-wrap gap-2 border-0 p-0"
+    >
+      {schalter("netz", t("wissensnetz.lesen.netz"))}
+      {schalter("lesen", t("wissensnetz.lesen.lesen"))}
+    </fieldset>
+  );
+}
+
+/**
+ * Je Thema: sichtbare Objekte, sichtbare Beitragende, der Zustand, die Ubiquitaet, das gemeinsame
+ * Vorkommen — und der EINE Weg in die Bibliothek (`themenHref`, derselbe wie Seitenleiste und
+ * „Alle Themen"; kein zweiter Link, keine zweite Zieldefinition).
+ *
+ * Die Ueberschrift nennt die Lesereihenfolge, keine Rangfolge von Maengeln.
  *
  * `beitragendeAbgeschnitten` macht aus „N" ein „mindestens N": der Server nennt den Wert dann
  * ausdruecklich eine Untergrenze (`luecken.ts:34-38`), und eine glatte Zahl waere dort eine
  * Behauptung.
+ *
+ * FELDWEISES ZUSTANDSMODELL (Auftrag §9): Zustandswort, Ubiquitaetssatz und Zusammen-Satz stehen
+ * NUR, wenn ihr Feld nicht `null` ist. Ein fehlender Kartenknoten erzeugt keinen Satz — und
+ * insbesondere keinen negativen.
+ *
+ * ================================================================================================
+ * JOB 3070 D2 — EINE ZEILE IST EIN VORLESBARER SATZ, KEINE ANEINANDERREIHUNG VON BRUCHSTUECKEN.
+ * ================================================================================================
+ *
+ * D1 setzte Name, Zahlen und Saetze als Flex-Kaesten nebeneinander. Auf dem Bildschirm sah das
+ * ordentlich aus; im Vorleser klang es so (gemessener `textContent` einer Zeile):
+ *
+ *     „abfuellung9 sichtbare Objekte0 sichtbare Beitragende"
+ *
+ * Keine Pause, keine Zuordnung, an zwei Stellen zwei Zahlen ohne Trennung — und genau das war die
+ * Pflichtlieferung 4 („jede Zeile ist EIN zusammenhaengend vorlesbarer Satz"). Ein Flex-Abstand ist
+ * NICHT hoerbar: Vorleser lesen den Textinhalt, nicht das Layout.
+ *
+ * Deshalb steht die Zeichensetzung jetzt als ECHTE TEXTKNOTEN zwischen den Traegern — Doppelpunkt,
+ * Komma, Punkt —, und die drei Saetze dahinter sind ganze Saetze mit eigenem Schlusspunkt:
+ *
+ *     „Reinigung: 2 sichtbare Objekte, 1 sichtbare Beitragende. Zustand: freigegeben und belegt.
+ *      Kommt gemeinsam vor mit Dichtungen."
+ *
+ * Die beiden Zahlentexte selbst bleiben WOERTLICH die von JOB 3067 (`…zeile.objekte`,
+ * `…zeile.beitragende`/`…beitragendeMindestens`) — die Zeichen stehen daneben, nicht darin, sonst
+ * braeche der Wortvertrag aus `tests/wissensnetz-sichtmetrik/flaeche.test.tsx` (F2/F3).
+ *
+ * Das ZUSTANDSWORT bekommt einen Satzrahmen (`wissensnetz.lesen.zustand`), weil
+ * `wissensnetz.farbe.<zustand>` ein Legendenfragment ist („freigegeben, ohne Quelle") und als
+ * alleinstehender Satz nichts ueber das Thema aussagt. Das Wort selbst hat weiterhin GENAU EINE
+ * Definition — der Rahmen setzt es ein, er wiederholt es nicht.
+ *
+ * ================================================================================================
+ * JOB 3070 D3 — DIE ZWEI ACHSEN WERDEN ANGESAGT, NICHT VERSCHWIEGEN.
+ * ================================================================================================
+ *
+ * DER BEFUND (Codex an D1, an der echten Route nachgemessen in
+ * `tests/wissensnetz-leseweg/namensraum-kette.test.tsx`): Die Antwort dieser einen Route traegt
+ * ZWEI Themenachsen. `metrik.themen` entsteht im Server aus `ko.category`
+ * (`services/wissensnetz/src/lesemodell.ts`), die gezeichneten Knoten aus `ko.tags`
+ * (`services/wissensnetz/src/themenkarte.ts`, mit ausgeschriebener Begruendung: eine Kante
+ * verlangt ZWEI Themen im SELBEN Objekt, und eine Kategorie ist EIN Wert je Objekt). Bei
+ * `category: "Hygienic Design"` und `tags: ["Dichtungen","Ventile"]` nennt die Liste ein Thema,
+ * das Bild zeichnet zwei andere, und keine Zeile trifft einen Knoten.
+ *
+ * DIESE SEITE KANN DAS NICHT HEILEN — die eine Achse muesste im Server entstehen, und `services/**`
+ * ist fuer diesen Auftrag gesperrt (D2 hat es versucht und ist am Zielpfad-Riegel gescheitert). Was
+ * sie kann und deshalb tut: die Differenz NICHT verschweigen. Eine Liste, die „Themen" heisst und
+ * gezeichnete Themen nicht enthaelt, behauptet sonst stumm Vollstaendigkeit — auf dem Telefon, wo
+ * es die Zeichnung gar nicht gibt, waere das die schwerste Form davon.
+ *
+ * Der Satz haengt an einer GEMESSENEN Bedingung (`nichtInListe.length > 0`), nennt die Zahl und den
+ * Grund, faellt kein Urteil und erzeugt keine zweite Liste: keine Namen, keine Zaehler, kein Link.
  */
-function Themenzeilen({ themen }: { themen: readonly ThemenMetrik[] }): JSX.Element | null {
+function Themenzeilen({ metrik }: { metrik: Sichtmetrik }): JSX.Element | null {
   const { t } = useTranslation();
   const [offen, setOffen] = useState(false);
-  if (themen.length === 0) {
+  const gelesen = leseThemen(metrik);
+  // Die GEZEICHNETEN Themen, zu denen diese Liste keine Zeile hat. Bewusst nur `themenkarte.themen`
+  // (die Knoten im Bild) und nicht `weitere`: der Satz spricht ueber das, was zu sehen ist.
+  const genannt = new Set(gelesen.map((z) => z.thema));
+  const nichtInListe = (metrik.themenkarte?.themen ?? []).filter((k) => !genannt.has(k.thema));
+  if (gelesen.length === 0 && nichtInListe.length === 0) {
     return null;
   }
-  const gelesen = [...themen].sort(
-    (a, b) =>
-      a.sichtbareBeitragende - b.sichtbareBeitragende ||
-      a.objekte - b.objekte ||
-      a.thema.localeCompare(b.thema),
-  );
   const verborgen = Math.max(0, gelesen.length - ZEILEN_SICHTBAR);
   const gezeigt = offen ? gelesen : gelesen.slice(0, ZEILEN_SICHTBAR);
   return (
@@ -1199,25 +1433,47 @@ function Themenzeilen({ themen }: { themen: readonly ThemenMetrik[] }): JSX.Elem
         {t("wissensnetz.metrik.themenTitel")}
       </h2>
       <ul data-testid="metrik-themen" className="mt-3 flex flex-col">
-        {gezeigt.map((m) => (
-          <li
-            key={m.thema}
-            data-testid="metrik-thema"
-            data-thema={m.thema}
-            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-hairline py-2 last:border-b-0"
-          >
-            <Link
-              className="text-sm font-medium"
-              style={{ color: "rgb(var(--kw-brand-text))" }}
-              to={themenHref(m.thema)}
+        {gezeigt.map((m) => {
+          // Die Saetze HINTER dem Zahlensatz — jeder ganz oder gar nicht, jeder mit Schlusspunkt
+          // aus seinem eigenen Woerterbucheintrag. Ein fehlendes Feld erzeugt keinen Satz.
+          const saetze: { anker: string; text: string }[] = [];
+          if (m.zustand !== null) {
+            saetze.push({
+              anker: "zustand",
+              text: t("wissensnetz.lesen.zustand", { wort: t(`wissensnetz.farbe.${m.zustand}`) }),
+            });
+          }
+          if (m.ubiquitaer === true) {
+            saetze.push({ anker: "ubiquitaer", text: t("wissensnetz.lesen.ubiquitaer") });
+          }
+          if (m.zusammenMit !== null && m.zusammenMit.length > 0) {
+            saetze.push({
+              anker: "zusammen",
+              // Die Namen als Aufzaehlung IM Satz — das Komma ist hoerbar, ein Flex-Abstand nicht.
+              text: t("wissensnetz.lesen.zusammen", { themen: m.zusammenMit.join(", ") }),
+            });
+          }
+          return (
+            <li
+              key={m.thema}
+              data-testid="metrik-thema"
+              data-thema={m.thema}
+              className="border-b border-hairline py-2 text-sm last:border-b-0"
             >
-              {m.thema}
-            </Link>
-            <span className="flex flex-wrap gap-x-4" style={{ fontSize: 12.5, color: MUTED }}>
-              <span data-testid="metrik-thema-objekte">
+              <Link
+                className="break-words font-medium"
+                style={{ color: "rgb(var(--kw-brand-text))" }}
+                to={themenHref(m.thema)}
+              >
+                {m.thema}
+              </Link>
+              {/* Echte Textknoten, keine Abstaende: nur so ist die Trennung hoerbar. */}
+              {": "}
+              <span data-testid="metrik-thema-objekte" style={{ color: MUTED }}>
                 {t("wissensnetz.metrik.zeile.objekte", { count: m.objekte })}
               </span>
-              <span data-testid="metrik-thema-beitragende">
+              {", "}
+              <span data-testid="metrik-thema-beitragende" style={{ color: MUTED }}>
                 {t(
                   m.beitragendeAbgeschnitten
                     ? "wissensnetz.metrik.zeile.beitragendeMindestens"
@@ -1225,10 +1481,27 @@ function Themenzeilen({ themen }: { themen: readonly ThemenMetrik[] }): JSX.Elem
                   { count: m.sichtbareBeitragende },
                 )}
               </span>
-            </span>
-          </li>
-        ))}
+              {"."}
+              {saetze.map((s) => (
+                <Fragment key={s.anker}>
+                  {" "}
+                  <span data-testid={`metrik-thema-${s.anker}`} style={{ color: MUTED }}>
+                    {s.text}
+                  </span>
+                </Fragment>
+              ))}
+            </li>
+          );
+        })}
       </ul>
+      {/* Die Ansage der zweiten Achse (s. Kopf dieser Komponente): nur wenn wirklich gezeichnete
+          Themen ohne Zeile dastehen, mit der gemessenen Zahl und dem Grund. Kein Urteil, keine
+          zweite Liste — und ohne diesen Satz behauptete die Liste stumm, alles zu nennen. */}
+      {nichtInListe.length > 0 ? (
+        <p data-testid="metrik-themen-zweite-achse" className="mt-3 text-micro text-muted-2">
+          {t("wissensnetz.lesen.nichtInListe", { count: nichtInListe.length })}
+        </p>
+      ) : null}
       {verborgen > 0 ? (
         <button
           type="button"
@@ -1249,6 +1522,11 @@ function Themenzeilen({ themen }: { themen: readonly ThemenMetrik[] }): JSX.Elem
 function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | null }): JSX.Element {
   const { t } = useTranslation();
   const karte = metrik.themenkarte;
+  // JOB 3070 V6: auf schmalen Fenstern gibt es die Zeichnung NICHT — sie ist dort geometrisch nicht
+  // darstellbar (s. `LESEN_UNTER`). Der Leseweg tritt AN IHRE STELLE, nicht daneben; einen
+  // Umschalter gibt es dann auch nicht, weil es nichts zu waehlen gibt.
+  const schmal = useSchmal();
+  const [ansicht, setAnsicht] = useState<Ansicht>("netz");
   // Ehrlich statt leer: eine Karte ohne Knoten ist kein leerer Bestand, sondern ein Bestand ohne
   // Schlagworte. Beides sagt der Text, keines behauptet das andere — und seit JOB 3067 stehen
   // GENAU HIER auch die Zahlen, die das belegen (`objekteGesamt`/`ohneThema`).
@@ -1264,17 +1542,18 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
           ) : null}
         </Card>
         <Sichtzahlen metrik={metrik} />
-        <Themenzeilen themen={metrik.themen} />
+        <Themenzeilen metrik={metrik} />
       </>
     );
   }
   return (
     <>
-      <Karte karte={karte} />
+      {schmal ? null : <Umschalter ansicht={ansicht} waehlen={setAnsicht} />}
+      {schmal || ansicht === "lesen" ? null : <Karte karte={karte} />}
       {/* Zustandsmodell (Auftrag §9, Lehre JOB 3037 R2/R3): scheitert eine Auffrischung, bleibt die
           zuletzt geholte Karte SICHTBAR — mit dem Stand und dem Wort, dass die Auffrischung
-          fehlschlug. Nie Karte oder Auswahl leeren. Dasselbe gilt fuer die Zahlen darunter: sie
-          haengen an derselben Bedingung wie die Karte, nicht an einer eigenen (F6). */}
+          fehlschlug. Nie Karte oder Auswahl leeren. Dasselbe gilt fuer die Zahlen darunter und fuer
+          den Leseweg: sie haengen an derselben Bedingung wie die Karte, nicht an einer eigenen (F6). */}
       {hinweis !== null ? (
         <p
           data-testid="netz-auffrischung-hinweis"
@@ -1285,7 +1564,7 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
         </p>
       ) : null}
       <Sichtzahlen metrik={metrik} />
-      <Themenzeilen themen={metrik.themen} />
+      <Themenzeilen metrik={metrik} />
       <AlleThemen karte={karte} />
     </>
   );

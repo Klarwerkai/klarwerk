@@ -113,6 +113,34 @@ const de = {
   "wissensnetz.metrik.zeile.beitragendeMindestens": "mindestens {{count}} sichtbare Beitragende",
   "wissensnetz.metrik.mehr": "Weitere {{count}} Themen zeigen",
   "wissensnetz.metrik.weniger": "Weitere Themen ausblenden",
+  // JOB 3070 V6 — der Leseweg: dieselbe Auskunft wie die Zeichnung, in Sätzen. Auf dem Telefon
+  // steht sie AN DER STELLE der Zeichnung (die dort nicht darstellbar ist), am großen Bildschirm
+  // führt der Umschalter hinein. Kein neuer Zahlenschlüssel — die Zahlen der Zeile sind die von
+  // JOB 3067 und tragen ihr Sichtbarkeitswort schon.
+  "wissensnetz.lesen.gruppe": "Darstellung der Themenkarte",
+  "wissensnetz.lesen.netz": "Netz",
+  "wissensnetz.lesen.lesen": "Lesen",
+  // Die Strichelung des Knotens in Worten (`ohneKanten`, Regel in `themenkarte.ts`): >50 % des
+  // sichtbaren Bestands, mindestens 5 Träger. Der zweite Halbsatz sagt, warum zu diesem Thema KEIN
+  // Zusammen-Satz danebensteht — das ist eine Aussage über die Erhebung, nicht über den Bestand.
+  // „Kommt mit keinem Thema zusammen vor" wäre die Behauptung, die hier gerade nicht gilt.
+  "wissensnetz.lesen.ubiquitaer":
+    "Kommt in der Mehrheit des sichtbaren Bestands vor; gemeinsames Vorkommen wird dafür nicht ausgewiesen.",
+  // Die Kante in Worten: zwei Themen in demselben freigegebenen Wissensobjekt. Steht nur, wenn die
+  // Karte diesen Knoten führt UND er Nachbarn hat.
+  "wissensnetz.lesen.zusammen": "Kommt gemeinsam vor mit {{themen}}.",
+  // JOB 3070 D2 · Der SATZRAHMEN um das Zustandswort. `wissensnetz.farbe.<zustand>` ist ein
+  // Legendenfragment („freigegeben, ohne Quelle") — allein gelesen sagt es nicht, worüber es
+  // spricht. Der Rahmen setzt es ein; das Wort selbst behält genau eine Definition (die Legende).
+  "wissensnetz.lesen.zustand": "Zustand: {{wort}}.",
+  // JOB 3070 D3 · DIE ZWEITE ACHSE, angesagt statt verschwiegen. Die Antwort dieser einen Route
+  // trägt zwei Themenachsen: die Liste entsteht im Server aus der KATEGORIE eines Objekts
+  // (`lesemodell.ts`), die Zeichnung aus seinen SCHLAGWÖRTERN (`themenkarte.ts`). Laufen beide
+  // auseinander, nennt die Liste andere Themen als das Bild. Diese Seite kann das nicht heilen —
+  // die eine Achse müsste im Server entstehen —, aber sie darf es nicht verschweigen: eine Liste,
+  // die „Themen" heißt und gezeichnete Themen nicht enthält, behauptet sonst stumm Vollständigkeit.
+  "wissensnetz.lesen.nichtInListe":
+    "Die Zeichnung führt {{count}} Themen, zu denen diese Liste keine Zeile hat — sie zählt nach Kategorie, die Zeichnung nach Schlagwort.",
   "nav.external": "Externes Wissen",
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
@@ -5235,6 +5263,16 @@ const en: typeof de = {
   "wissensnetz.metrik.zeile.beitragendeMindestens": "at least {{count}} visible contributors",
   "wissensnetz.metrik.mehr": "Show {{count}} more topics",
   "wissensnetz.metrik.weniger": "Hide the further topics",
+  // JOB 3070 V6 — the reading path, mirror of the DE keys; see the notes there.
+  "wissensnetz.lesen.gruppe": "How the topic map is shown",
+  "wissensnetz.lesen.netz": "Network",
+  "wissensnetz.lesen.lesen": "Reading",
+  "wissensnetz.lesen.ubiquitaer":
+    "Appears in the majority of the visible stock; co-occurrence is therefore not reported for it.",
+  "wissensnetz.lesen.zusammen": "Appears together with {{themen}}.",
+  "wissensnetz.lesen.zustand": "State: {{wort}}.",
+  "wissensnetz.lesen.nichtInListe":
+    "The drawing shows {{count}} topics that this list has no row for — the list counts by category, the drawing by keyword.",
   "nav.external": "External knowledge",
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
@@ -9662,6 +9700,16 @@ const nl: typeof de = {
   "wissensnetz.metrik.zeile.beitragendeMindestens": "minstens {{count}} zichtbare bijdragers",
   "wissensnetz.metrik.mehr": "Nog {{count}} thema's tonen",
   "wissensnetz.metrik.weniger": "Overige thema's verbergen",
+  // JOB 3070 V6 — de leesweg, spiegel van de DE-sleutels; zie de toelichting daar.
+  "wissensnetz.lesen.gruppe": "Weergave van de themakaart",
+  "wissensnetz.lesen.netz": "Netwerk",
+  "wissensnetz.lesen.lesen": "Lezen",
+  "wissensnetz.lesen.ubiquitaer":
+    "Komt voor in de meerderheid van de zichtbare verzameling; gezamenlijk voorkomen wordt daarvoor niet vermeld.",
+  "wissensnetz.lesen.zusammen": "Komt samen voor met {{themen}}.",
+  "wissensnetz.lesen.zustand": "Status: {{wort}}.",
+  "wissensnetz.lesen.nichtInListe":
+    "De tekening toont {{count}} thema's waarvoor deze lijst geen regel heeft — de lijst telt op categorie, de tekening op trefwoord.",
   "nav.external": "Externe kennis",
   "nav.validation": "Validatie",
   "nav.conflicts": "Conflicten",

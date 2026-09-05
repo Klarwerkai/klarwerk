@@ -67,6 +67,14 @@ const ZIELBILD =
 const ORIGIN = "http://klarwerk.test";
 
 // ---- Der Bestand: Themen so gesetzt, dass jede Farbe, eine Kante und ein klarer Groesster entstehen --
+/**
+ * JOB 3070 D3 (Korrekturpflicht 2): eine Kategorie, die KEINES der Schlagworte dieser Datei ist.
+ * Sie wird in T2 gebraucht — dort steht der Bestand, in dem `category` ausdruecklich von allen
+ * `tags` verschieden ist, und genau daran misst sich, was die Seite dann sagt. Der AUFBAU-Bestand
+ * bleibt beim Basisstand („Hygienic Design"), damit die 114 Altfaelle dieser Datei denselben
+ * Bestand messen wie bisher.
+ */
+const KATEGORIE_OHNE_WIRKUNG = "Kategorie ohne Wirkung";
 const THEMA_GROSS = "Hygienic Design"; // 4 Traeger, freigegeben und belegt → gruen, groesster, Vorgabe
 const THEMA_ZWEIT = "Reinigung"; // 2 Traeger, freigegeben und belegt → gruen (nicht gewaehlt)
 const THEMA_OFFEN = "Dichtungen"; // 1 Traeger, nicht freigegeben → gelb „in Pruefung"
@@ -303,6 +311,74 @@ const GEOMETRIE = `() => {
   };
 }`;
 
+/**
+ * JOB 3070 V6 · In der Seite: die Lage auf dem Telefon — was im Seiteninhalt an SVG steht, ob etwas
+ * seitlich herausragt, und wo jede Themenzeile wirklich liegt (getBoundingClientRect, CSS-Pixel).
+ */
+const TELEFON = `() => {
+  const main = document.querySelector('main');
+  const anzahl = (sel) => document.querySelectorAll(sel).length;
+  const alleSvg = [...document.querySelectorAll('svg')];
+  return {
+    fenster: [window.innerWidth, window.innerHeight],
+    svgGesamt: alleSvg.length,
+    svgImInhalt: main ? [...main.querySelectorAll('svg')].length : -1,
+    svgAusserhalb: alleSvg.filter((s) => !main || !main.contains(s)).length,
+    themenkarte: anzahl('[data-testid="themenkarte"]'),
+    seitenleiste: anzahl('[data-testid="netz-seitenleiste"]'),
+    umschalter: anzahl('[data-testid="netz-umschalter"]'),
+    zustandsworte: anzahl('[data-testid="metrik-thema-zustand"]'),
+    zusammen: anzahl('[data-testid="metrik-thema-zusammen"]'),
+    // JOB 3070 D3: die Ansage der zweiten Themenachse — steht nur, wenn die Zeichnung Themen
+    // fuehrt, zu denen die Liste keine Zeile hat.
+    zweiteAchse: (() => { const e = document.querySelector('[data-testid="metrik-themen-zweite-achse"]'); return e ? (e.textContent || '') : null; })(),
+    dokumentScrollBreite: document.documentElement.scrollWidth,
+    dokumentSichtBreite: document.documentElement.clientWidth,
+    mainScrollBreite: main ? main.scrollWidth : -1,
+    mainSichtBreite: main ? main.clientWidth : -1,
+    zeilen: [...document.querySelectorAll('[data-testid="metrik-thema"]')].map((z) => {
+      const b = z.getBoundingClientRect();
+      return {
+        thema: z.getAttribute('data-thema'),
+        links: b.left,
+        rechts: b.right,
+        breite: b.width,
+        // JOB 3070 D2 (Korrekturpflicht 3): der vollstaendige zugaengliche Zeilentext — das, was
+        // ein Vorleser wirklich vorliest. Nicht einzelne Traeger.
+        text: (z.textContent || ''),
+      };
+    }),
+  };
+}`;
+
+interface Telefon {
+  fenster: number[];
+  svgGesamt: number;
+  svgImInhalt: number;
+  svgAusserhalb: number;
+  themenkarte: number;
+  seitenleiste: number;
+  umschalter: number;
+  zustandsworte: number;
+  zusammen: number;
+  zweiteAchse: string | null;
+  dokumentScrollBreite: number;
+  dokumentSichtBreite: number;
+  mainScrollBreite: number;
+  mainSichtBreite: number;
+  zeilen: { thema: string | null; links: number; rechts: number; breite: number; text: string }[];
+}
+
+/** JOB 3070 D2: die gezeichneten Knoten und die in Worten wiedergegebenen Themen — EINE Messung. */
+const ACHSEN = `() => ({
+  gezeichnet: [...document.querySelectorAll('[data-testid="themenknoten"]')].map((g) => g.getAttribute('data-thema')),
+  gesprochen: [...document.querySelectorAll('[data-testid="metrik-thema"]')].map((z) => z.getAttribute('data-thema')),
+})`;
+interface Achsen {
+  gezeichnet: (string | null)[];
+  gesprochen: (string | null)[];
+}
+
 interface Messwert {
   name: string;
   fehlt: boolean;
@@ -447,7 +523,11 @@ async function objektAnlegen(
   headers: Record<string, string>,
   titel: string,
   tags: string[],
-): Promise<void> {
+  // JOB 3070 (Fall T): die KATEGORIE ist frei waehlbar. Sie ist die Achse, nach der die Sichtmetrik
+  // ihre `themen` gruppiert (`lesemodell.ts:210`) — die Themenkarte gruppiert dagegen nach TAGS
+  // (`themenkarte.ts`). Der Vorgabewert bleibt „Hygienic Design", also alles wie im Basisstand.
+  kategorie = "Hygienic Design",
+): Promise<string> {
   const res = await a.inject({
     method: "POST",
     url: "/api/kos",
@@ -456,7 +536,7 @@ async function objektAnlegen(
       title: titel,
       statement: `${titel} — Kurzfassung fuer den Pruefstand.`,
       type: "best_practice",
-      category: "Hygienic Design",
+      category: kategorie,
       tags,
       neededValidations: 1,
     },
@@ -465,6 +545,24 @@ async function objektAnlegen(
     throw new Error(`Anlage von „${titel}" scheiterte: ${res.statusCode} ${res.body}`);
   }
   posts += 1;
+  return (res.json() as { id: string }).id;
+}
+
+/** Freigabe ueber die echte `rate`-Aktion (neededValidations 1) — derselbe Weg wie im Aufbau. */
+async function freigeben(
+  a: ReturnType<typeof buildApp>,
+  headers: Record<string, string>,
+  id: string,
+): Promise<void> {
+  const res = await a.inject({
+    method: "PUT",
+    url: `/api/kos/${id}`,
+    headers,
+    payload: { action: "rate", verdict: "up" },
+  });
+  if (res.statusCode !== 200) {
+    throw new Error(`Freigabe von ${id} scheiterte: ${res.statusCode} ${res.body}`);
+  }
 }
 let zugang: Record<string, string> = {};
 /**
@@ -1275,6 +1373,231 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
         expect(k.textInnen, `${k.thema}: Rand ${JSON.stringify(k.textRand)}`).toBe(true);
       }
     } finally {
+      await s.setViewportSize({ width: 1280, height: 800 });
+      await ladeSeite(s);
+    }
+  });
+
+  // ---- JOB 3070 · V6 (Fall T): DAS TELEFON — 390×844, Saetze statt der Zeichnung ------------------
+  // DER AUSGANGSFEHLER war geometrisch und bis hierher UNGEMESSEN: diese Datei kannte nur 1280×800
+  // (Z.25) und 1600×900 (G5). Die Zeile der `Karte` braucht aber mindestens 200 px Zeichenflaeche
+  // (Wissensnetz.tsx:746) + 340 px Leiste (:630) + 32 px Polster = 572 px, und `overflow-hidden`
+  // (:793) schneidet darunter ab. Auf 390 px stand also eine abgeschnittene Zeichnung.
+  // GEMESSEN WIRD JETZT: (1) im Seiteninhalt steht kein SVG mehr, (2) nichts ragt seitlich heraus,
+  // (3) jede Themenzeile liegt mit ihrem echten DOMRect ganz in der Fensterbreite.
+  // ZUR EINGRENZUNG AUF `main`: die Huelle traegt ihr eigenes SVG (das Logo der Topbar,
+  // `shell/Logo.tsx:17`) und ist nicht Gegenstand dieses Auftrags. „Kein SVG auf der Seite" heisst
+  // deshalb: keines im Seiteninhalt — und der Beleg dafuer ist mitgemessen (`svgAusserhalb`).
+  // DER BESTAND FUER T ist ein EIGENER (dritte App, wie G4 ihn fuer 40 Themen baut): der Aufbau-
+  // Bestand ist nach G3 ubiquitaer und traegt deshalb gar keine Kante mehr (G3 misst `kanten: 0`) —
+  // der Zusammen-Satz waere dort nicht messbar. Hier stehen drei Themen, zwei Zustaende und genau
+  // eine Kante.
+  //
+  // T1 UND T2 SIND ZWEI BESTAENDE, und der Unterschied ist der Gegenstand von Codex' Befund:
+  //   T1  Kategorie GLEICH dem Schlagwort → die Liste nennt dieselben Themen wie die Zeichnung.
+  //       Das ist der Fall, der heute traegt, und er misst den ganzen Leseweg.
+  //   T2  Kategorie VERSCHIEDEN von allen Schlagworten (Korrekturpflicht 2) → die Liste nennt
+  //       andere Themen als die Zeichnung, weil der Server zwei Achsen fuehrt
+  //       (`lesemodell.ts` nach `category`, `themenkarte.ts` nach `tags`; gemessen in
+  //       `tests/wissensnetz-leseweg/namensraum-kette.test.tsx`). Diese Seite kann das nicht
+  //       heilen — `services/**` ist kein Zielpfad —, aber sie muss es ANSAGEN. Genau das misst T2.
+  it("T1 · TELEFON 390×844 (Kategorie = Schlagwort): kein SVG im Seiteninhalt, nichts ragt seitlich heraus, jede Themenzeile liegt ganz im Fenster — und sagt Zustand und gemeinsames Vorkommen in Worten", async () => {
+    const s = S("T");
+    const hauptApp = zielApp as ReturnType<typeof buildApp>;
+    const hauptToken = zielToken;
+    const dritte = await frischeApp("pedi-telefon@job3070.test");
+    try {
+      // Ein freigegebenes Objekt mit ZWEI Schlagworten — daraus entsteht die Kante.
+      const geteilt = await objektAnlegen(
+        dritte.a,
+        dritte.headers,
+        "CIP-Reinigung mit Dichtungswechsel",
+        ["Reinigung", "Dichtungen"],
+        "Reinigung",
+      );
+      await freigeben(dritte.a, dritte.headers, geteilt);
+      const zweitesReinigung = await objektAnlegen(
+        dritte.a,
+        dritte.headers,
+        "Reinigungsplan Linie 4",
+        ["Reinigung"],
+        "Reinigung",
+      );
+      await freigeben(dritte.a, dritte.headers, zweitesReinigung);
+      const dichtung = await objektAnlegen(
+        dritte.a,
+        dritte.headers,
+        "Dichtungswerkstoffe Uebersicht",
+        ["Dichtungen"],
+        "Dichtungen",
+      );
+      await freigeben(dritte.a, dritte.headers, dichtung);
+      // Nicht freigegeben — sein Thema steht damit im Zustand „in Pruefung".
+      await objektAnlegen(
+        dritte.a,
+        dritte.headers,
+        "Ventilwartung Entwurf",
+        ["Ventile"],
+        "Ventile",
+      );
+      zielApp = dritte.a;
+      zielToken = dritte.token;
+
+      // ── ZUERST BEI 1280 px, wo Zeichnung und Worte NEBENEINANDER stehen: hier tragen beide
+      //    Achsen dieselben NAMEN, weil jede Kategorie zugleich Schlagwort ist. Deshalb nennt die
+      //    Liste genau die gezeichneten Themen — und deshalb ist der Leseweg unten vollstaendig.
+      await ladeSeite(s);
+      const achsen = await s.evaluate<Achsen>(fn(ACHSEN));
+      console.info(`JOB 3070 D3 · T1/Achsen · ${JSON.stringify(achsen)}`);
+      expect(achsen.gezeichnet.length, "die Karte zeichnet drei Knoten").toBe(3);
+      expect([...achsen.gesprochen].sort()).toEqual([...achsen.gezeichnet].sort());
+      expect([...achsen.gezeichnet].sort()).toEqual(["Dichtungen", "Reinigung", "Ventile"]);
+      // Und weil hier nichts anzusagen ist, steht der Satz der zweiten Achse NICHT da.
+      expect(
+        await s.evaluate<number>(fn(ANZAHL), '[data-testid="metrik-themen-zweite-achse"]'),
+        "nichts anzusagen, also kein Satz",
+      ).toBe(0);
+
+      await s.setViewportSize({ width: 390, height: 844 });
+      // Kein `ladeSeite` — das wartet auf die Zeichnung und die Seitenleiste, und genau die darf es
+      // hier nicht geben. Gewartet wird auf den Leseweg.
+      await s.goto(`${ORIGIN}/wissensnetz`, { waitUntil: "load", timeout: 60_000 });
+      await s.waitForFunction(
+        fn(
+          `() => document.querySelectorAll('[data-testid="metrik-thema"]').length >= 3 && document.querySelector('main svg') === null`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      const b = await s.evaluate<Telefon>(fn(TELEFON));
+      console.info(`JOB 3070 D3 · T1 · ${JSON.stringify(b)}`);
+      expect(b.fenster).toEqual([390, 844]);
+      // (1) Die Zeichnung und ihre 340-px-Leiste sind aus dem DOM — nicht bloss verkleinert.
+      expect(b.svgImInhalt, "kein SVG im Seiteninhalt").toBe(0);
+      expect(b.themenkarte).toBe(0);
+      expect(b.seitenleiste).toBe(0);
+      expect(b.umschalter, "auf schmal gibt es nichts zu waehlen").toBe(0);
+      // KALIBRIERUNG: der Vergleich ist nicht deshalb erfuellt, weil die Seite leer waere — die drei
+      // Zeilen stehen, jede mit ihrem Zustandswort, und die Kante ist als Satz da (beide Enden).
+      expect(b.zeilen.map((z) => z.thema).sort()).toEqual(["Dichtungen", "Reinigung", "Ventile"]);
+      expect(b.zustandsworte, "der Zustand steht in Worten").toBe(3);
+      expect(b.zusammen, "das gemeinsame Vorkommen steht in Worten").toBe(2);
+      // (2) Nichts ragt heraus — weder im Dokument noch in der Inhaltsflaeche selbst.
+      expect(b.dokumentScrollBreite).toBeLessThanOrEqual(b.dokumentSichtBreite);
+      expect(b.mainScrollBreite).toBeLessThanOrEqual(b.mainSichtBreite);
+      // (3) Jede Zeile liegt mit ihrem echten Rechteck ganz in der Fensterbreite.
+      const heraus = b.zeilen.filter((z) => z.links < -0.5 || z.rechts > 390.5);
+      expect(heraus, `Zeilen ausserhalb des Fensters: ${JSON.stringify(heraus)}`).toEqual([]);
+      // Der Beleg zur Eingrenzung auf `main`: die uebrigen SVG des Dokuments liegen samt und
+      // sonders in der Huelle (das Logo der Topbar), nicht im Seiteninhalt.
+      expect(b.svgAusserhalb).toBe(b.svgGesamt);
+      // (4) KORREKTURPFLICHT 3, an der echten Seite: jede Zeile ist EIN vorlesbarer Satz. Gemessen
+      //     am vollstaendigen `textContent` — dem, was ein Vorleser wirklich liest.
+      const t = i18n.getFixedT("de");
+      const reinigung = b.zeilen.find((z) => z.thema === "Reinigung");
+      expect(reinigung?.text, "der ganze Zeilentext von „Reinigung“").toBe(
+        [
+          `Reinigung: ${t("wissensnetz.metrik.zeile.objekte", { count: 2 })}`,
+          `, ${t("wissensnetz.metrik.zeile.beitragende", { count: 1 })}.`,
+          ` ${t("wissensnetz.lesen.zustand", { wort: t("wissensnetz.farbe.freigegeben") })}`,
+          ` ${t("wissensnetz.lesen.zusammen", { themen: "Dichtungen" })}`,
+        ].join(""),
+      );
+      for (const z of b.zeilen) {
+        expect(z.text, `„${z.text}" endet nicht auf einen Punkt`).toMatch(/\.$/);
+        expect(z.text, `Buchstabe direkt an Ziffer in „${z.text}"`).not.toMatch(
+          /\p{L}\p{N}|\p{N}\p{L}/u,
+        );
+        expect(z.text, `keine Kategorie in der Zeile: „${z.text}"`).not.toContain(
+          KATEGORIE_OHNE_WIRKUNG,
+        );
+      }
+      expect(b.svgGesamt, "die Huelle hat ihr eigenes SVG — daran misst sich die Eingrenzung").toBe(
+        b.svgAusserhalb,
+      );
+    } finally {
+      zielApp = hauptApp;
+      zielToken = hauptToken;
+      await dritte.a.close();
+      await s.setViewportSize({ width: 1280, height: 800 });
+      await ladeSeite(s);
+    }
+  });
+
+  // ---- JOB 3070 · D3 (Fall T2): KATEGORIE ≠ SCHLAGWORT — die Seite sagt die Differenz an ----------
+  // KORREKTURPFLICHT 2 von Codex, wörtlich: „Unit- und Chromium-Bestand so ändern, dass `category`
+  // ausdrücklich von allen `tags` verschieden ist." Genau das ist dieser Bestand — und er zeigt,
+  // was der HEUTIGE Server daraus macht: `metrik.themen` entsteht aus `ko.category`
+  // (`services/wissensnetz/src/lesemodell.ts`), die Knoten aus `ko.tags`
+  // (`services/wissensnetz/src/themenkarte.ts`). Die Liste nennt EIN Thema, die Zeichnung zeichnet
+  // DREI andere.
+  //
+  // Der von Codex erwartete Beleg („die Mengen sind gleich") ist damit HEUTE NICHT ERFUELLBAR, ohne
+  // die Achsen im Server zusammenzuführen — und `services/**` ist für JOB 3070 kein Zielpfad (D2 ist
+  // an genau diesem Riegel gescheitert). Was hier gemessen wird, ist deshalb das, was die
+  // Oberfläche schuldet, solange die Frage offen ist: Sie VERSCHWEIGT die Differenz nicht. Der
+  // Ansagesatz steht mit der gemessenen Zahl, und keine Zeile behauptet einen Zustand, den die
+  // Antwort für ihren Namen nicht hergibt.
+  it("T2 · TELEFON 390×844 (Kategorie ≠ Schlagwort): die Seite sagt an, dass die Zeichnung Themen fuehrt, zu denen keine Zeile steht", async () => {
+    const s = S("T2");
+    const hauptApp = zielApp as ReturnType<typeof buildApp>;
+    const hauptToken = zielToken;
+    const vierte = await frischeApp("pedi-telefon2@job3070.test");
+    try {
+      // Dieselben drei Schlagworte wie in T1 — nur traegt JEDES Objekt jetzt eine Kategorie, die
+      // keines seiner Schlagworte ist.
+      const geteilt = await objektAnlegen(
+        vierte.a,
+        vierte.headers,
+        "CIP-Reinigung mit Dichtungswechsel",
+        ["Reinigung", "Dichtungen"],
+        KATEGORIE_OHNE_WIRKUNG,
+      );
+      await freigeben(vierte.a, vierte.headers, geteilt);
+      await objektAnlegen(
+        vierte.a,
+        vierte.headers,
+        "Ventilwartung Entwurf",
+        ["Ventile"],
+        KATEGORIE_OHNE_WIRKUNG,
+      );
+      zielApp = vierte.a;
+      zielToken = vierte.token;
+
+      await s.setViewportSize({ width: 390, height: 844 });
+      await s.goto(`${ORIGIN}/wissensnetz`, { waitUntil: "load", timeout: 60_000 });
+      await s.waitForFunction(
+        fn(
+          `() => document.querySelector('[data-testid="metrik-themen-zweite-achse"]') !== null && document.querySelector('main svg') === null`,
+        ),
+        undefined,
+        { timeout: 30_000 },
+      );
+      const b = await s.evaluate<Telefon>(fn(TELEFON));
+      console.info(`JOB 3070 D3 · T2 · ${JSON.stringify(b)}`);
+
+      // DIE LAGE, gemessen: eine Zeile (die Kategorie), drei gezeichnete Themen — die es auf dem
+      // Telefon gar nicht zu sehen gibt.
+      expect(b.zeilen.map((z) => z.thema)).toEqual([KATEGORIE_OHNE_WIRKUNG]);
+      expect(b.zustandsworte, "die Kategorie hat keinen Knoten, also kein Zustandswort").toBe(0);
+      expect(b.zusammen, "und erst recht keinen Zusammen-Satz").toBe(0);
+
+      // DER KERN: die Seite verschweigt es nicht. Der Satz steht, mit der Zahl der gezeichneten
+      // Themen ohne Zeile (Reinigung, Dichtungen, Ventile) und dem Grund.
+      const t = i18n.getFixedT("de");
+      expect(b.zweiteAchse).toBe(t("wissensnetz.lesen.nichtInListe", { count: 3 }));
+      expect(b.zweiteAchse).toContain("3");
+
+      // Und die Geometrie haelt auch hier: kein SVG im Inhalt, nichts ragt heraus.
+      expect(b.svgImInhalt).toBe(0);
+      expect(b.dokumentScrollBreite).toBeLessThanOrEqual(b.dokumentSichtBreite);
+      expect(b.mainScrollBreite).toBeLessThanOrEqual(b.mainSichtBreite);
+      const heraus = b.zeilen.filter((z) => z.links < -0.5 || z.rechts > 390.5);
+      expect(heraus, `Zeilen ausserhalb des Fensters: ${JSON.stringify(heraus)}`).toEqual([]);
+    } finally {
+      zielApp = hauptApp;
+      zielToken = hauptToken;
+      await vierte.a.close();
       await s.setViewportSize({ width: 1280, height: 800 });
       await ladeSeite(s);
     }
