@@ -26,7 +26,10 @@ describe("Block D2 (Client): leeres Formular sperrt „Als Entwurf speichern“"
 
 describe("Block D4 (Client): Reviewer-Minimum 1", () => {
   it("Admin markiert 0/ungültig (aria-invalid) und sperrt Speichern", () => {
-    const src = web("pages/Admin.tsx");
+    // JOB 3065 H6: Die Standard-Prüferanzahl steht nicht mehr auf der Admin-Kartenwand, sondern in
+    // der Detailkarte „Prüfungen und Grenzen" (Reiter KI). Der Ort hat sich geändert, die Zusage
+    // nicht — genau derselbe Vertrag, nur an seiner neuen Stelle festgenagelt.
+    const src = web("pages/AdminKiDetails.tsx");
     expect(src).toContain("aria-invalid={!neededValid}");
     expect(src).toContain("|| !neededValid");
     expect(src).toContain("neededParsed >= 1 && neededParsed <= 5");

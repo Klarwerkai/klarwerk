@@ -7,14 +7,20 @@
 // ist. D-035 verlangt eine REINE Geschwister-Umordnung — Texte, Logik und Tabstruktur bleiben.
 //
 // Diese Klammer prüft deshalb vier Dinge am echten Produktpfad (gemountet, kein Quelltextlesen):
-//   1 REIHENFOLGE — die Liste rendert vor dem Formular, mit Bestand und im Leerzustand.
+//   1 REIHENFOLGE — die Liste rendert vor dem Anlegeweg, mit Bestand und im Leerzustand.
 //   2 VORHANDENSEIN — beide Blöcke sind noch da. Ohne diesen Fall wäre die Reihenfolgezusage durch
 //     schlichtes Löschen des Formulars zu erfüllen; ein Test, der das durchgehen lässt, pinnt einen
 //     Defekt grün.
 //   3 LOGIK — der Anlegeweg verhält sich unverändert: leere Felder erzeugen den ehrlichen Grund und
 //     KEINEN Request, gefüllte Felder rufen `users.create` mit genau den eingegebenen Werten.
-//   4 TABSTRUKTUR — fünf Bereiche, „Konten" ist der Startbereich, ein Wechsel blendet beide Blöcke
+//   4 TABSTRUKTUR — die Bereiche, „Konten" ist der Startbereich, ein Wechsel blendet beide Blöcke
 //     aus und der Rückwechsel stellt dieselbe Reihenfolge wieder her.
+//
+// JOB 3065 H6 — DER ORT HAT SICH GEÄNDERT, DIE ZUSAGE NICHT. Seit dem Umbau auf den Pages-Maßstab
+// ist der Bestand eine Zeilenkarte und das Anlegeformular liegt hinter dem Knopf „Nutzer
+// hinzufügen" DARUNTER (Detailkarte). „Erst der Bestand, dann das Formular" gilt damit stärker als
+// zuvor: das leere Formular begrüßt niemanden mehr, es wird bewusst geöffnet. Geprüft wird jetzt
+// genau das — Liste vor Knopf, Formular vollständig hinter dem Knopf, Logik unverändert.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { createSpy, usersData } = vi.hoisted(() => ({
@@ -35,7 +41,12 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
   const ok = <T,>(v: T) => vi.fn(async () => v);
   return {
     endpoints: {
-      admin: { factoryResetStatus: ok({ pending: false }) },
+      // JOB 3065 R4: `demoStatus` fehlte hier und react-query meldete „No queryFn was passed" —
+      // der Bestandswert der Zeile „Demodaten" lief also gegen `undefined` statt gegen eine Antwort.
+      admin: {
+        factoryResetStatus: ok({ pending: false }),
+        demoStatus: ok({ present: false, count: 0 }),
+      },
       features: { get: ok({ features: { demodaten: false } }) },
       users: {
         list: vi.fn(async () => usersData.rows),
@@ -182,7 +193,13 @@ async function tippe(beschriftung: string, wert: string): Promise<void> {
 }
 
 const FORMULAR = () => i18n.t("adm.createTitle");
-const LEER = () => i18n.t("adm.empty");
+const HINZUFUEGEN = () => i18n.t("einst.konten.hinzufuegen");
+const LEER = () => i18n.t("einst.konten.leer");
+
+/** Den Anlegeweg öffnen — er liegt seit JOB 3065 hinter dem Knopf unter der Liste. */
+async function oeffneAnlegen(): Promise<void> {
+  await klick(knopf(HINZUFUEGEN()));
+}
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
@@ -197,33 +214,44 @@ afterEach(() => {
 });
 
 describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () => {
-  it("1 REIHENFOLGE · die Nutzerliste steht vor dem Anlegeformular", async () => {
+  it("1 REIHENFOLGE · die Nutzerliste steht vor dem Anlegeweg", async () => {
     await mount();
-    const ersterNutzer = positionVon("anna@bestand.de", "erste Nutzerzeile");
-    const formular = positionVon(FORMULAR(), "Anlegeformular");
-    expect(ersterNutzer).toBeLessThan(formular);
+    const ersterNutzer = positionVon("Anna Bestand", "erste Nutzerzeile");
+    const anlegen = positionVon(HINZUFUEGEN(), "Knopf zum Anlegen");
+    expect(ersterNutzer).toBeLessThan(anlegen);
   });
 
-  it("1 REIHENFOLGE · auch der Leerzustand steht vor dem Anlegeformular", async () => {
+  it("1 REIHENFOLGE · auch der Leerzustand steht vor dem Anlegeweg", async () => {
     usersData.rows = [];
     await mount();
     const leer = positionVon(LEER(), "Leerzustand der Liste");
-    const formular = positionVon(FORMULAR(), "Anlegeformular");
-    expect(leer).toBeLessThan(formular);
+    const anlegen = positionVon(HINZUFUEGEN(), "Knopf zum Anlegen");
+    expect(leer).toBeLessThan(anlegen);
   });
 
   it("2 VORHANDENSEIN · beide Blöcke sind vollständig da (Umordnung, keine Streichung)", async () => {
     await mount();
-    // Der Bestand: beide Nutzer mit Name und Adresse, die Freigabe des noch nicht Freigegebenen.
+    // Der Bestand: beide Nutzer als Zeile mit Namen und ihrer Rolle als Wert.
     for (const u of BESTAND) {
       expect(container.textContent).toContain(u.name);
-      expect(container.textContent).toContain(u.email);
     }
+    // Der noch nicht Freigegebene sagt es im Wert; die Freigabe selbst liegt in seiner Detailkarte.
+    expect(container.textContent).toContain(i18n.t("einst.konten.wartet"));
+    const bodo = [...container.querySelectorAll("button")].find(
+      (b) => text(b.querySelector("span") ?? b) === "Bodo Bestand",
+    );
+    expect(bodo, "Zeile des nicht freigegebenen Nutzers").toBeInstanceOf(HTMLButtonElement);
+    await klick(bodo as HTMLButtonElement);
+    // Erst in der Detailkarte: E-Mail und die Freigabe.
+    expect(container.textContent).toContain("bodo@bestand.de");
     expect(knopf(i18n.t("adm.approve"))).toBeInstanceOf(HTMLButtonElement);
-    // Das Formular: Überschrift, alle fünf Eingaben und der Anlegen-Knopf.
+
+    // Das Formular hinter dem Knopf: Überschrift, alle fünf Eingaben und der Anlegen-Knopf.
     // Die Überschrift gehört ausdrücklich hierher: Gegenmutation G2 (Titel auf einen anderen
     // i18n-Schlüssel gelegt) ließ diesen Fall sonst grün, obwohl der Text der Fläche sich geändert
     // hatte — die Reihenfolgefälle allein sind dafür der falsche Wächter.
+    await mount();
+    await oeffneAnlegen();
     expect(positionVon(FORMULAR(), "Überschrift des Anlegeformulars")).toBeGreaterThan(0);
     for (const b of [
       i18n.t("adm.name"),
@@ -237,32 +265,51 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
     expect(knopf(i18n.t("adm.create"))).toBeInstanceOf(HTMLButtonElement);
   });
 
-  it("3 LOGIK · leere Felder zeigen den Hinweis und lösen KEINEN Request aus", async () => {
+  it("3 LOGIK · leere Felder lösen KEINEN Request aus, und der Grund steht NICHT im Sichtfeld", async () => {
     await mount();
-    // SCRUM-463: der Knopf bleibt bedienbar, sagt aber ehrlich, was fehlt. Der Toast selbst wird von
-    // der AppShell gerendert und ist hier nicht gemountet — geprüft wird der sichtbare Hinweis
-    // (`adm.createHint`, Admin.tsx :1465-1467), der genau an `newUserIssues` hängt.
-    expect(container.textContent).toContain(i18n.t("adm.createHint"));
+    await oeffneAnlegen();
+    // SCRUM-463: der Knopf bleibt bedienbar und sagt ehrlich, was fehlt — als Meldung mit den
+    // fehlenden Feldern beim Namen (`adm.createInvalid` + `adm.field.*`, von der AppShell
+    // gerendert und hier nicht gemountet), NICHT als stehender Absatz.
+    //
+    // JOB 3065 R2 (BENs Korrekturpflicht 1): Bis Runde 1 verlangte dieser Fall genau den Absatz,
+    // den Lieferung 9 verbietet — `adm.createHint` ist ein VERLEGTER Hilfetext und gehört ins
+    // „?"-Menü dieser Karte. Der Test pinnt jetzt beides: kein Hinweis im Sichtfeld, kein Request.
+    expect(container.textContent).not.toContain(i18n.t("adm.createHint"));
     await klick(knopf(i18n.t("adm.create")));
     expect(createSpy).not.toHaveBeenCalled();
   });
 
+  it("3 LOGIK · der verlegte Hinweis lebt im „?“-Menü dieser Karte", async () => {
+    await mount();
+    await oeffneAnlegen();
+    const hilfe = container.querySelector('[data-einst="hilfe"]');
+    expect(hilfe, "die Anlegekarte hat kein „?“-Menü").toBeInstanceOf(HTMLButtonElement);
+    // Vor dem Klick: nichts. Nach dem Klick: der Text wörtlich.
+    expect(container.querySelector('[data-einst="hilfemenue"]')).toBeNull();
+    await klick(hilfe as HTMLButtonElement);
+    const menue = container.querySelector('[data-einst="hilfemenue"]');
+    expect(menue?.textContent ?? "").toContain(i18n.t("adm.createHint"));
+  });
+
   it("3 LOGIK · gefüllte Felder legen mit genau diesen Werten an", async () => {
     await mount();
+    await oeffneAnlegen();
     await tippe(i18n.t("adm.name"), "Cara Neu");
     await tippe(i18n.t("adm.email"), "cara@neu.de");
     await tippe(i18n.t("adm.password"), "geheim12345");
     await tippe(i18n.t("adm.newPasswordRepeat"), "geheim12345");
-    // Gegenprobe zum Fall darüber: sind alle Pflichtangaben da, verschwindet der Hinweis.
     expect(container.textContent).not.toContain(i18n.t("adm.createHint"));
     await klick(knopf(i18n.t("adm.create")));
     expect(createSpy).toHaveBeenCalledWith("Cara Neu", "cara@neu.de", "geheim12345", "experte");
   });
 
-  it("4 TABSTRUKTUR · fünf Bereiche, Konten ist der Startbereich", async () => {
+  it("4 TABSTRUKTUR · vier Bereiche, Konten ist der Startbereich", async () => {
     await mount();
-    const tabs = [...container.querySelectorAll("button[aria-pressed]")];
-    expect(tabs).toHaveLength(5);
+    // JOB 3065 H6: vier Reiter (Konten · KI · Daten · Sicherheit) — „Bereitschaft" ist seither eine
+    // Zeile unter Sicherheit, kein eigener Bereich mehr.
+    const tabs = [...container.querySelectorAll('button[data-einst="reiter"]')];
+    expect(tabs).toHaveLength(4);
     const konten = tabs.find((b) => text(b) === i18n.t("adm.sec.konten"));
     expect(konten?.getAttribute("aria-pressed")).toBe("true");
   });
@@ -270,11 +317,11 @@ describe("JOB 1110 D1 · Konten-Tab: erst der Bestand, dann das Formular", () =>
   it("4 TABSTRUKTUR · Wechsel blendet beide Blöcke aus, Rückwechsel erhält die Reihenfolge", async () => {
     await mount();
     await klick(knopf(i18n.t("adm.sec.ki")));
-    expect(container.textContent).not.toContain(FORMULAR());
-    expect(container.textContent).not.toContain("anna@bestand.de");
+    expect(container.textContent).not.toContain(HINZUFUEGEN());
+    expect(container.textContent).not.toContain("Anna Bestand");
     await klick(knopf(i18n.t("adm.sec.konten")));
-    expect(positionVon("anna@bestand.de", "erste Nutzerzeile")).toBeLessThan(
-      positionVon(FORMULAR(), "Anlegeformular"),
+    expect(positionVon("Anna Bestand", "erste Nutzerzeile")).toBeLessThan(
+      positionVon(HINZUFUEGEN(), "Knopf zum Anlegen"),
     );
   });
 });

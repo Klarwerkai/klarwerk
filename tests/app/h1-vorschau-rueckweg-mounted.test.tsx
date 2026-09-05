@@ -41,13 +41,14 @@ import {
   QueryClient,
   QueryClientProvider,
 } from "../../apps/web/node_modules/@tanstack/react-query";
-import { act, createElement } from "../../apps/web/node_modules/react";
+import { act, createElement, useEffect, useRef } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
-import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { RoleProvider, useRole } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import type { Role } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
@@ -62,7 +63,39 @@ const flush = async (): Promise<void> => {
   }
 };
 
-async function mount(pfad = "/start"): Promise<void> {
+/**
+ * JOB 3065 H6 R10 — WIE DIE VORSCHAU HIER JETZT ENTSTEHT.
+ *
+ * Bis Runde 9 wählte dieser Test die Rolle im Zahnrad-Menü. Das Rollenraster wohnt jetzt in den
+ * Einstellungen (`/admin` Konten → „Ansicht als Rolle"), im Zahnrad bleibt allein der Rückweg —
+ * und diese Montage kennt nur das Kopfband, nicht die Seite. Gesetzt wird die Vorschau deshalb über
+ * DENSELBEN Haken, den die Einstellungen benutzen (`useRole().setRole`, `RoleContext`), durch ein
+ * winziges Bauteil INNERHALB des echten `RoleProvider`. Der Weg zum Zustand ist ein anderer, der
+ * Zustand ist derselbe — und die Zusage dieses Tests betrifft ohnehin nicht die Wahl, sondern das
+ * Kopfband und den Rückweg.
+ */
+function Vorschau({ rolle }: { rolle: Role | null }): null {
+  const { setRole, isSessionRole } = useRole();
+  // ERST WENN DIE SITZUNG STEHT: `RoleContext.setRole` schreibt nur dann in die Admin-Vorschau
+  // (`viewAs`), wenn die Session bereits als Admin bekannt ist — vorher landet der Wert im
+  // Dev-Zustand (`previewRole`) und ist wirkungslos, sobald der echte Admin geladen ist. Genau so
+  // ist es auch im Produkt: die Vorschau gibt es nur für eine echte Admin-Sitzung.
+  //
+  // Und GENAU EINMAL: ohne diese Sperre liefe der Effekt bei jeder Änderung der Rolle erneut und
+  // setzte die Vorschau sofort wieder — der Rückweg „Zur Admin-Ansicht" wäre wirkungslos und der
+  // Test grün, obwohl er nichts mehr misst. Das Bauteil vertritt die EINMALIGE Wahl in den
+  // Einstellungen, nicht einen Zwang zur Vorschau.
+  const gesetzt = useRef(false);
+  useEffect(() => {
+    if (rolle !== null && isSessionRole && !gesetzt.current) {
+      gesetzt.current = true;
+      setRole(rolle);
+    }
+  }, [rolle, isSessionRole, setRole]);
+  return null;
+}
+
+async function mount(pfad = "/start", rolle: Role | null = null): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -84,7 +117,12 @@ async function mount(pfad = "/start"): Promise<void> {
               createElement(
                 NavGuardProvider,
                 null,
-                createElement(MemoryRouter, { initialEntries: [pfad] }, createElement(Kopfband)),
+                createElement(
+                  MemoryRouter,
+                  { initialEntries: [pfad] },
+                  createElement(Vorschau, { rolle }),
+                  createElement(Kopfband),
+                ),
               ),
             ),
           ),
@@ -111,17 +149,11 @@ const zahnrad = (): HTMLButtonElement | null =>
   container.querySelector<HTMLButtonElement>('[data-testid="kopfband-zahnrad"]');
 const menueOffen = (): boolean => container.querySelector('[data-testid="zahnrad-menue"]') !== null;
 
-/** Zahnrad → „Ansicht als Rolle" → Rolle wählen (die Vorschau des Admins). */
-async function rolleWaehlen(kurz: string): Promise<void> {
+/** Das Zahnrad öffnen, damit seine Fläche gelesen werden kann. */
+async function zahnradOeffnen(): Promise<void> {
   if (!menueOffen()) {
     await click(zahnrad());
   }
-  const knopf = [
-    ...container.querySelectorAll<HTMLButtonElement>(
-      '[data-testid="zahnrad-ansicht"] [role="menuitemradio"]',
-    ),
-  ].find((b) => (b.textContent ?? "").trim() === kurz);
-  await click(knopf);
 }
 
 /** Das Menü schließen (Escape auf der Fläche) — danach zählt allein das Kopfband. */
@@ -164,10 +196,14 @@ describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inve
 
   for (const rolle of ["viewer", "experte", "controller"] as const) {
     it(`Vorschau als ${rolle}: bei geschlossenem Menü trägt das Kopfband NICHTS außerhalb des Inventars; Zahnrad → „Zur Admin-Ansicht“ stellt Admin ohne Reload wieder her`, async () => {
-      await mount("/start");
-      await rolleWaehlen(i18n.t(`role.short.${rolle}`));
+      await mount("/start", rolle);
       // Die Vorschau wirkt: die Admin-Zeile „Einstellungen" ist weg.
+      await zahnradOeffnen();
       expect(container.querySelector('[data-testid="zahnrad-einstellungen"]')).toBeNull();
+      // Und das Rollenraster ist hier NICHT mehr — es wohnt in den Einstellungen (JOB 3065).
+      expect(
+        container.querySelectorAll('[data-testid="zahnrad-ansicht"] [role="menuitemradio"]'),
+      ).toHaveLength(0);
       await menueSchliessen();
       expect(menueOffen()).toBe(false);
 

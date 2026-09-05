@@ -156,9 +156,25 @@ afterEach(() => {
 });
 
 describe("Block B: Reviewer-Minimum — Client setzt denselben 1–5-Ganzzahlvertrag durch", () => {
+  /**
+   * JOB 3065 H6: Die Standard-Prüferanzahl steht nicht mehr im Reiter „Daten", sondern in der
+   * Detailkarte „Prüfungen und Grenzen" unter „KI" (zusammen mit den Upload-Grenzen — beides sind
+   * Grenzen dessen, was Prüfung und KI verarbeiten). Der Vertrag 1–5 ist unverändert; nur der Weg
+   * dorthin führt jetzt über Reiter → Zeile → Chevron.
+   */
   async function openDaten(): Promise<void> {
     await mount();
-    await click(buttonByText(i18n.t("adm.sec.daten")));
+    await click(buttonByText(i18n.t("adm.sec.ki")));
+    const zeile = container.querySelector('[data-testid="zeile-ki-grenzen"]');
+    if (!(zeile instanceof HTMLButtonElement)) {
+      throw new Error("Zeile „Prüfungen und Grenzen“ nicht gefunden");
+    }
+    await click(zeile);
+    // Die Karte holt ihre eigene Quelle (`/api/validation/settings`) erst beim Öffnen — ein
+    // zweiter Durchlauf gibt der Antwort und dem Rendern Zeit. Seit JOB 3065 R2 hängt das Feld an
+    // der Abfragehülle: solange nichts geladen ist, steht dort ehrlich „Wird geladen …" statt eines
+    // Feldes ohne Wert.
+    await act(flush);
   }
 
   it("sperrt 0, 1.5, leer und 6 (Speichern disabled, Fehlermeldung, kein Request)", async () => {

@@ -162,6 +162,15 @@ describe("SCRUM-412: die Warnfarbe klebt am zerstörenden Knopf", () => {
     expect(stripComments(read("pages/Mobile.tsx"))).toContain(
       "bg-trust-crit-bg text-trust-crit-text",
     );
-    expect(stripComments(read("pages/Admin.tsx"))).toContain("text-trust-crit-text");
+    // JOB 3065 H6: Die zerstörenden Knöpfe des Admin (Demodaten entfernen, Papierkorb endgültig
+    // leeren, Werksreset, Konto löschen) stehen jetzt in den Detailkarten. Geprüft wird deshalb
+    // JEDE Einstellungsseite — die Warnfarbe darf bei keiner von ihnen verloren gehen.
+    for (const datei of [
+      "pages/AdminDatenDetails.tsx",
+      "pages/AdminKontenDetails.tsx",
+      "pages/AdminKiDetails.tsx",
+    ]) {
+      expect(stripComments(read(datei)), datei).toContain("text-trust-crit-text");
+    }
   });
 });

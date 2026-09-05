@@ -692,6 +692,13 @@ const NICHT_MODALE_VOLLFLAECHEN = new Map<string, string>([
     "apps/web/src/components/start/Seitenblatt.tsx",
     "Menü-Blatt: eine Auskunft am rechten Rand ohne Abdunklung und ohne Fokusfang — die Vollfläche ist allein der Klickfänger zum Schliessen",
   ],
+  [
+    // JOB 3065 H6: das „?"-Menü der Detailkarte — genau die Bauform von HelpTip.tsx, aus dem es
+    // hervorgeht. Die Vollfläche ist der farblose Klickfänger zum Schließen; das Menü selbst sitzt
+    // als Popover am „?" und zieht die Bedienung nicht an sich.
+    "apps/web/src/components/einstellungen/Detailkarte.tsx",
+    "Hilfe-Untermenü der Einstellungen: die Vollfläche ist der Klickfänger zum Schließen, der Inhalt bleibt ein Popover neben dem Auslöser",
+  ],
 ]);
 
 /**
@@ -1811,6 +1818,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     [
       "apps/web/src/components/start/Seitenblatt.tsx",
       "Menü-Blatt: farbloser Klickfänger, das Blatt sitzt am rechten Rand ohne Abdunklung und ohne Fokusfalle — eine Auskunft, kein Dialog",
+    ],
+    [
+      // JOB 3065 H6: das „?"-Untermenü der Detailkarte, hervorgegangen aus HelpTip und baugleich.
+      "apps/web/src/components/einstellungen/Detailkarte.tsx",
+      "Popover: die Vollfläche ist ein farbloser Klickfänger, das Hilfemenü sitzt neben dem Fragezeichen — keine Wirkung, die in die Bedienung eingreift",
     ],
   ]);
 
@@ -3626,8 +3638,42 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // und Startflächen sowie auf die neuen Kopfband-Bausteine; der Zahlenwert unten stammt aus dem
     // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der vorherigen
     // Deltas.
+    //
+    // JOB 3065 H6: von 208 auf 213 NACHGEZOGEN (Stand vor diesem Rebase), nicht gelockert. Es sind
+    // GENAU fünf Bindungen dazugekommen, alle in den neuen Bauteilen der Einstellungen und alle von
+    // derselben Bauform wie die Plaketten neben ihnen (ein Zustand entscheidet zwischen zwei festen
+    // Klassenketten):
+    //
+    //     + components/einstellungen/Detailkarte.tsx — `… ${offen ? "text-brand-text" : …}`
+    //     + components/einstellungen/Detailkarte.tsx — `… ${pos.v === "up" ? "bottom-8" : "top-8"}`
+    //     + components/einstellungen/Seite.tsx       — cx(…, aktiv === r.id ? … : …)   (Reiter)
+    //     + components/einstellungen/Zeilenkarte.tsx — cx(…, vorn ? … : "truncate")    (Label)
+    //     + components/einstellungen/Zeilenkarte.tsx — cx(…, ton === "kritisch" ? … : …) (Wert)
+    //
+    // Keine Bindung ist weggefallen: die Ausdrücke der alten Admin-Kartenwand sind mit ihren Karten
+    // in `AdminKiDetails.tsx`, `AdminKontenDetails.tsx` und `AdminSicherheitDetails.tsx` gewandert
+    // und stehen dort unverändert in dieser Menge.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3065 (H6, Einstellungen) auf den Stand von JOB
+    // 3060/3061/3063/3064/3067 (Kopfband, Prüf-, Bibliotheks- und Startflächen) NEU GEMESSEN, nicht
+    // rechnerisch addiert. Die fünf Einstellungen-Bindungen treffen hier auf die 204 Bindungen aus
+    // dem Kopfband-Stand; der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem
+    // Arbeitsbaum, nicht aus einer Kopfrechnung der beiden Deltas.
+    //
+    // KONFLIKTRUNDE 2: NACH DEM REBASE trafen die fünf Erfassen-Bindungen (JOB 3062) und die fünf
+    // Einstellungen-Bindungen (JOB 3065) auf denselben Stand; beide Flächen bleiben nebeneinander im
+    // Baum. Der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht
+    // aus einer Kopfrechnung der beiden Deltas.
+    //
+    // JOB 3065 H6 RUNDE 10: von 211 auf 210. GENAU EINE Bindung ist WEGGEFALLEN — die Einfärbung
+    // des aktiven Rollenknopfes im Zahnrad-Menü (`shell/RollenVorschau.tsx`,
+    // `role === r ? "bg-brand text-white" : "bg-hairline-soft …"`). Das Rollenraster stand dort
+    // doppelt, neben dem in den Einstellungen, und ist entfernt; im Zahnrad bleibt allein der
+    // Rückweg „Zur Admin-Ansicht", dessen Klassen fest sind. Der Knopf selbst lebt in
+    // `pages/AdminKontenDetails.tsx` weiter und steht mit SEINER Bindung schon in dieser Menge —
+    // es fällt der doppelte Ort weg, nicht die Sache.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      206,
+      210,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -4127,7 +4173,28 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/components/erfassen/hilfe.ts
     //
-    // Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
+    // JOB 3065 H6: von 406 auf 415 NACHGEZOGEN, aus demselben Grund. Es sind GENAU neun Quelldateien
+    // dazugekommen — die Fläche „Einstellungen" nach dem Pages-Maßstab: vier Detailseiten, die die
+    // frühere Kartenwand von `Admin.tsx` tragen, und fünf Bauteile, aus denen die Zeilenfläche
+    // besteht (Reiterspalte, Zeilenkarte, Detailkarte, Zustandsmodell der Werte, Rollenfreiheiten):
+    //
+    //     + apps/web/src/pages/AdminKontenDetails.tsx
+    //     + apps/web/src/pages/AdminKiDetails.tsx
+    //     + apps/web/src/pages/AdminDatenDetails.tsx
+    //     + apps/web/src/pages/AdminSicherheitDetails.tsx
+    //     + apps/web/src/components/einstellungen/Seite.tsx
+    //     + apps/web/src/components/einstellungen/Zeilenkarte.tsx
+    //     + apps/web/src/components/einstellungen/Detailkarte.tsx
+    //     + apps/web/src/components/einstellungen/zeilenWert.ts
+    //     + apps/web/src/components/einstellungen/rollenFreiheiten.ts
+    //
+    // JOB 3065 R2 (BENs Korrekturpflicht 2): von 415 auf 416. Es ist GENAU eine Quelldatei
+    // dazugekommen, und sie trägt den Lade-/Fehler-/Stale-Vertrag der Detailkarten — bis dahin
+    // zeigte eine Karte nach einem gescheiterten Abruf dauerhaft „Wird geladen …":
+    //
+    //     + apps/web/src/components/einstellungen/Abfragehuelle.tsx
+    //
+    // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     // JOB 3063 (H4): von 406 auf 412 NACHGEZOGEN. Es sind GENAU sechs Quelldateien dazugekommen —
     // die Bausteine der neuen Bibliotheksfläche, in die `pages/Library.tsx` (1.370 Zeilen) und
@@ -4178,12 +4245,22 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // Kopfband-Bausteine treffen hier auf die 431 Quelldateien aus JOB 3061/3063/3064 (Prüf-,
     // Bibliotheks- und Startflächen); der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an
     // diesem Arbeitsbaum, nicht aus einer Kopfrechnung der vorherigen Deltas.
+    //
+    // KONFLIKTRUNDE 1 (zweiter Rebase, JOB 3065 H6 auf diesen Stand): die zehn Quelldateien der
+    // Fläche „Einstellungen" (neun aus H6 + `Abfragehuelle.tsx` aus R2) treffen hier auf die 440
+    // Quelldateien aus JOB 3060/3061/3063/3064; der Zahlenwert unten stammt erneut aus dem
+    // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der Deltas.
+    //
+    // KONFLIKTRUNDE 2: die fünf Erfassen-Quelldateien (JOB 3062) und die zehn Einstellungen-
+    // Quelldateien (JOB 3065) treffen hier gemeinsam auf den Kopfband-/Prüf-/Bibliotheks-/Start-
+    // Stand; der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht
+    // aus einer Kopfrechnung der Deltas.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "KONFLIKTRUNDE 1: JOB 3060 (Kopfband) − Sidebar.tsx − Topbar.tsx + elf Kopfband-Bausteine, " +
-        "getroffen auf die 411 aus JOB 3061/3063/3064/erfassen (Prüf-, Bibliotheks-, Start- und " +
-        "Erfassen-Flächen) — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
-    ).toBe(445);
+      "KONFLIKTRUNDE 2: JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) " +
+        "plus fünf Erfassen-Quelldateien (JOB 3062) plus zehn Einstellungen-Quelldateien (JOB 3065) " +
+        "— am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
+    ).toBe(455);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

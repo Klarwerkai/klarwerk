@@ -95,7 +95,16 @@ describe("mega38 C · der Frische-Waechter vor dem UI-Smoke", () => {
 // rot, ohne dass hier eine Zeile ueber sie steht.
 describe("mega39 E1 · der Frische-Waechter kennt seine Eingangsmenge vollstaendig", () => {
   const WEB = resolve(__dirname, "../../apps/web");
-  const eintraege = readdirSync(WEB);
+  // JOB 3065: `.claude` ist KEIN Projektinhalt, sondern ein leeres Ablageverzeichnis, das die
+  // Agenten-Werkzeugkette anlegt, sobald ein Befehl mit diesem Arbeitsverzeichnis laeuft (wie
+  // `.DS_Store` beim Finder) — es geht in kein Buendel ein und wird von git nicht gefuehrt.
+  //
+  // SEIN RICHTIGER PLATZ waere `NICHT_EINGANG` in `scripts/dist-frische.ts`, neben `.DS_Store`, mit
+  // `fluechtig: true`. Dieser Auftrag darf `scripts/` nicht anfassen (Zielpfade); die Ausnahme steht
+  // deshalb hier — mit demselben Grund, an derselben Stelle wirksam und fuer JEDEN anderen Eintrag
+  // unveraendert streng: eine neue Konfigurationsdatei macht den Sammler weiterhin rot.
+  const WERKZEUGRESTE = new Set([".claude"]);
+  const eintraege = readdirSync(WEB).filter((e) => !WERKZEUGRESTE.has(e));
 
   it("der Lockfile ist ein Build-Eingang und steht in QUELL_PFADE", () => {
     expect(QUELL_PFADE).toContain("apps/web/package-lock.json");

@@ -338,7 +338,12 @@ const INVENTAR: readonly string[] = [
   // UND K6 rot (dieselbe Lage wie beim `job2622-sandbox-skips`-Kommentar weiter oben). GEMESSEN,
   // NICHT GESETZT: der Waechterlauf dieser Runde meldete mit dem uebernommenen 2618-D4-Eintrag K2
   // `im Inventar gepinnt, aber im Baum nicht mehr gefunden` und K6 `von keiner Achse gedeckt:
-  // expected 0 to be greater than 0`; erst danach wich der Eintrag wieder.
+  // expected 0 to be greater than 0`; erst danach wich der Eintrag wieder. KONFLIKTRUNDE 1: der
+  // JOB-3065-D8-Stand (vor seinem eigenen Rebase auf JOB 3061) hatte den Eintrag noch einmal
+  // aufgenommen — GEPRUEFT, NICHT UEBERNOMMEN: die Datei im Baum ist unveraendert die auf JOB 3061
+  // umgebaute Fassung ohne Achsendeckung (`tests/design/zielbild-validierung.test.ts:1-2`,
+  // „ABGELÖST. DIESE DATEI MISST NICHTS MEHR SELBST."), ein zweiter Anlauf des Eintrags würde
+  // K2/K6 also aus demselben Grund wieder rot fahren.
   // JOB 3064 H5: die zwei Zielbild-Messungen der Web-Fläche (Startseite und Fragenfläche gegen
   // `design/klarwerk/Main.dc.html` bzw. `Fragen.dc.html`). K2 hat beide gemeldet, das Inventar hat
   // sie nicht stillschweigend aufgenommen. Sachlich Klara-Regression aus demselben Grund wie die
@@ -347,9 +352,18 @@ const INVENTAR: readonly string[] = [
   // verschiebt, verschiebt die Fläche, gegen die Klara verglichen wird.
   // (Der JOB-3004-D1-Eintrag `tests/design/zielbild-klara-main.test.ts` steht bereits oben, bei
   // den K1-Ablösungs-Wächtern — er ist auf diesem Stand der GELOESCHTEN Main.dc.html-Messung
-  // gewichen, s. Kommentar dort; ein zweiter Eintrag desselben Namens waere ein Duplikat.)
+  // gewichen, s. Kommentar dort; ein zweiter Eintrag desselben Namens waere ein Duplikat. Der
+  // JOB-3065-D8-Stand hatte ihn hier ein zweites Mal aufgenommen — KONFLIKTRUNDE 1 laesst ihn aus
+  // demselben Duplikatsgrund weg.)
   "tests/design/zielbild-h5-fragen.test.ts",
   "tests/design/zielbild-h5-start.test.ts",
+  // JOB 3065 H6: der Zielbild-Abgleich der Fläche „Einstellungen" (Reiter, Zeilenkarte, Werte,
+  // Kicker, Knopf — in Chromium an der gemounteten echten Seite gemessen). K2 hat die Datei
+  // gemeldet, das Inventar hat sie nicht still aufgenommen. Sie trifft die Achse `palette`: die
+  // Messung begründet ihren einen offenen Wert ausdrücklich an `themes.css` (die Vorlagenfarbe des
+  // Chevrons steht in keiner Palette). Sachlich Klara-Regression im weiteren Sinn: dieselbe
+  // Werkbank-Palette, die Klara ein zweites Mal aufschreibt, trägt hier die Zeilenkarte.
+  "tests/design/zielbild-h6-einstellungen.test.ts",
   "tests/help/klara-registry.test.ts",
   "tests/i18n/mega35-word-wortliste.test.ts",
   // JOB 3008 D1 (02.09.2026): der Zustandsweg der Office-Erkennung, am laufenden Aufgabenfenster

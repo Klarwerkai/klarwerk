@@ -209,26 +209,50 @@ const INVENTAR: Zeile[] = [
     },
   },
   {
+    // JOB 3065 H6: Der Endort ist erreicht. 3060 hatte die Gruppe als ZWISCHENSTAND ins Zahnrad
+    // gelegt und im eigenen Quelltext festgehalten, wohin sie gehört: „Endort /admin Konten:
+    // JOB 3065." Diese Zeile prüft ab hier den Endort — die Zusage (die Rollenwahl ist erreichbar)
+    // ist dieselbe, nur der Ort ist der endgültige. Dass sie im Zahnrad NICHT mehr steht, sichert
+    // `tests/app/h6-bedienort-register.test.ts` R3 und die Zählung B2 im H6-Funktionsinventar.
     kennung: "Z-rollenvorschau",
-    heute: "RoleSwitcher „Ansicht als Rolle“ (Sidebar.tsx:253-319)",
-    ort: "Zahnrad-Menü Gruppe „Ansicht als Rolle“ (Endort /admin Konten: JOB 3065)",
+    heute: "RoleSwitcher „Ansicht als Rolle“ (Sidebar.tsx:253-319) → Zahnrad (JOB 3060)",
+    ort: "/admin Konten → Zeile „Ansicht als Rolle“ → Detailkarte mit den vier Rollen (JOB 3065)",
+    route: "/admin",
     pruefen: async () => {
-      await zahnradOeffnen();
-      expect(await texte('[data-testid="zahnrad-ansicht"] .kw-menue-kopf')).toContain(
+      await warteBis(
+        seite(),
+        `() => document.querySelector('[data-testid="zeile-ansicht-rolle"]') !== null`,
+      );
+      expect(await sichtbarerText('[data-testid="zeile-ansicht-rolle"]')).toContain(
         t("role.viewAs"),
       );
-      expect(await texte('[data-testid="zahnrad-ansicht"] [role="menuitemradio"]')).toEqual([
+      await seite().click('[data-testid="zeile-ansicht-rolle"]');
+      await warteBis(
+        seite(),
+        `() => document.querySelector('[data-testid="detail-ansicht-rolle"]') !== null`,
+      );
+      expect(await texte('[data-testid="detail-ansicht-rolle"] button[aria-pressed]')).toEqual([
         t("role.short.viewer"),
         t("role.short.experte"),
         t("role.short.controller"),
         t("role.short.admin"),
       ]);
+      // Und im Zahnrad ist sie wirklich weg — sonst wäre der Umzug nur eine Kopie.
+      await zahnradOeffnen();
+      expect(await texte('[data-testid="zahnrad-ansicht"] [role="menuitemradio"]')).toEqual([]);
+      await seite().click('[data-testid="kopfband-zahnrad"]');
+      await warteBis(
+        seite(),
+        `() => document.querySelector('[data-testid="zahnrad-menue"]') === null`,
+      );
     },
   },
   {
     kennung: "Z-vorschau-rueckweg",
     heute: "„Zurück zu Admin“ in der Rollen-Vorschau (Sidebar.tsx:271-283)",
     ort: "Zahnrad-Menü „Zur Admin-Ansicht“ — und das Kopfband bleibt in JEDER Vorschaurolle bei seinem Inventar",
+    // Gewählt wird jetzt in den Einstellungen (JOB 3065), zurück geht es weiter über das Zahnrad.
+    route: "/admin",
     pruefen: async () => {
       const inventar = new Set([
         "KLARWERK",
@@ -239,23 +263,34 @@ const INVENTAR: Zeile[] = [
         t("kopfband.pruefen"),
       ]);
       for (const rolle of ["viewer", "experte", "controller"]) {
-        await zahnradOeffnen();
+        // JOB 3065 H6: Die Rolle wird jetzt DORT gewählt, wo sie hingehört — in den Einstellungen
+        // (Konten → „Ansicht als Rolle"). Der Rückweg bleibt im Zahnrad, denn nur er überlebt die
+        // Sperre, die der Rollen-Guard gleich über `/admin` legt.
+        await warteBis(
+          seite(),
+          `() => document.querySelector('[data-testid="zeile-ansicht-rolle"]') !== null`,
+        );
+        await seite().click('[data-testid="zeile-ansicht-rolle"]');
+        await warteBis(
+          seite(),
+          `() => document.querySelector('[data-testid="detail-ansicht-rolle"]') !== null`,
+        );
         const kurz = t(`role.short.${rolle}`);
         await seite().click(
-          `[data-testid="zahnrad-ansicht"] [role="menuitemradio"]:has-text("${kurz}")`,
+          `[data-testid="detail-ansicht-rolle"] button[aria-pressed]:has-text("${kurz}")`,
         );
-        // Die Vorschau wirkt: die Admin-Zeile „Einstellungen" ist weg.
-        await warteBis(
-          seite(),
-          `() => document.querySelector('[data-testid="zahnrad-einstellungen"]') === null`,
-        );
-        // Menü schließen (das Zahnrad ist der Umschalter) — jetzt gilt das Kopfbandinventar,
-        // sonst nichts (Codex R5).
-        await seite().click('[data-testid="kopfband-zahnrad"]');
-        await warteBis(
-          seite(),
-          `() => document.querySelector('[data-testid="zahnrad-menue"]') === null`,
-        );
+        // Die Vorschau wirkt: der Rollen-Guard nimmt dem Admin die Seite, die Einstellungen sind
+        // fort. (Früher wurde hier die Admin-Zeile im Zahnrad geprüft — die Rolle wurde ja dort
+        // gewählt und das Menü stand offen. Jetzt ist es geschlossen; ein Klick auf das Zahnrad
+        // würde es ÖFFNEN statt schließen.)
+        await warteBis(seite(), `() => document.querySelector('[data-einst="seite"]') === null`);
+        // Das Menü ist zu — jetzt gilt das Kopfbandinventar, sonst nichts (Codex R5).
+        expect(
+          await lies<boolean>(
+            `() => document.querySelector('[data-testid="zahnrad-menue"]') === null`,
+          ),
+          "das Zahnrad-Menü stand offen — das Kopfband wäre nicht allein",
+        ).toBe(true);
         const band = await lies<{
           woerter: string[];
           zaehler: string | null;
@@ -292,17 +327,35 @@ const INVENTAR: Zeile[] = [
     },
   },
   {
+    // JOB 3065 H6: Endort erreicht, wie 3060 es selbst vorgesehen hatte („Endort /admin Konten:
+    // JOB 3065"). Der Schalter steht in der Zeile „Erweiterte Module · Stufe 2".
     kennung: "Z-stufe2",
-    heute: "Stufe-2-Häkchen (Sidebar.tsx:305-314)",
-    ort: "Zahnrad-Menü Häkchen „Erweiterte Module · Stufe 2“ (Endort /admin Konten: JOB 3065)",
+    heute: "Stufe-2-Häkchen (Sidebar.tsx:305-314) → Zahnrad (JOB 3060)",
+    ort: "/admin Konten → Zeile „Erweiterte Module · Stufe 2“ mit ihrem Häkchen (JOB 3065)",
+    route: "/admin",
     pruefen: async () => {
-      await zahnradOeffnen();
-      expect(await texte('[data-testid="zahnrad-ansicht"] label')).toContain(t("role.stage2"));
+      await warteBis(
+        seite(),
+        `() => document.querySelector('[data-testid="zeile-stufe2"]') !== null`,
+      );
+      expect(await sichtbarerText('[data-testid="zeile-stufe2"]')).toContain(t("role.stage2"));
       expect(
         await lies<boolean>(
-          `() => document.querySelector('[data-testid="zahnrad-ansicht"] input[type="checkbox"]')?.checked === true`,
+          `() => document.querySelector('[data-testid="zeile-stufe2"] input[type="checkbox"]')?.checked === true`,
         ),
       ).toBe(true);
+      // Im Zahnrad ist das Häkchen wirklich weg — sonst wäre der Umzug nur eine Kopie.
+      await zahnradOeffnen();
+      expect(
+        await lies<boolean>(
+          `() => document.querySelector('[data-testid="zahnrad-ansicht"] input[type="checkbox"]') === null`,
+        ),
+      ).toBe(true);
+      await seite().click('[data-testid="kopfband-zahnrad"]');
+      await warteBis(
+        seite(),
+        `() => document.querySelector('[data-testid="zahnrad-menue"]') === null`,
+      );
     },
   },
   {

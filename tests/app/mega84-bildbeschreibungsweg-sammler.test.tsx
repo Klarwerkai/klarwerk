@@ -1334,8 +1334,45 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Startflächen) NEU GEMESSEN, nicht rechnerisch addiert. Der Zahlenwert unten stammt aus dem
     // tatsächlichen Testlauf an diesem Arbeitsbaum. Die zwei Zahlen, an denen Stufe 2 wirklich
     // hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3065 H6 (Einstellungen nach dem Pages-Maßstab): `komponenten` von 253 auf 280
+    // NACHGEZOGEN (Stand vor diesem Rebase). Das ist die größte Bewegung dieser Zahl seit ihrer
+    // Einführung, und sie hat genau einen Grund: `pages/Admin.tsx` war EINE Komponente mit 1844
+    // Zeilen. Sie ist in benannte Bauteile zerlegt — vier Detailseiten (`AdminKontenDetails`,
+    // `AdminKiDetails`, `AdminDatenDetails`, `AdminSicherheitDetails`) mit je einer Komponente pro
+    // früherer Karte, dazu die fünf Bauteile der Zeilenfläche (`Seite`, `Zeilenkarte`,
+    // `Detailkarte` und die beiden DOM-freien Module) und die zerlegte Profilseite.
+    //
+    // Dieselbe Begründung wie bei jedem Eintrag oben, und sie trägt hier genauso: Die Auflage
+    // verbietet, dass eine UMSTELLUNG die ERHEBUNG verschiebt — nicht, dass der Quellbaum wächst.
+    // Die zwei Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und
+    // `traeger` 2. Keines der neuen Bauteile bietet eine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und keines trägt einen eigenen Titel (kein `documentTitle`-Prop) — sie
+    // erscheinen ausschließlich in der Grundmenge, die von 406 auf 415 Quelldateien gewachsen ist.
+    // JOB 3065 R2: `komponenten` von 280 auf 281. Es ist GENAU ein Bauteil dazugekommen —
+    // `components/einstellungen/Abfragehuelle.tsx` mit der Komponente `Abfragehuelle`, die den
+    // Lade-/Fehler-/Stale-Vertrag der Detailkarten trägt. `anbieter` 1 und `traeger` 2 sind
+    // unverändert: sie bietet keine Bildbeschreibung an und trägt keinen eigenen Titel.
+    //
+    // JOB 3065 R3: von 281 auf 282. Wieder GENAU ein Bauteil, in derselben Datei — `Fehlerbox`.
+    // Sie ist der herausgelöste Fehlerzustand, damit die Bereitschaft (eine Karte mit SECHS
+    // Quellen, die die Hülle deshalb nicht verwenden kann) denselben Wortlaut und denselben Ausweg
+    // zeigt wie jede andere Karte. `anbieter` 1 und `traeger` 2 bleiben unverändert.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3065 (H6, Einstellungen) auf den Stand von JOB
+    // 3052/3060/3061/3063/3064/3067/3070 (Prüf-, Bibliotheks-, Wissensnetz-, Start- und
+    // Kopfbandflächen) NEU GEMESSEN, nicht rechnerisch addiert. Die 29 Einstellungen-Komponenten
+    // (282 − 253) treffen hier auf die 301 Komponenten aus dem Stand vor diesem Job; der
+    // Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum. Die zwei
+    // Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 2: die Erfassen-Komponenten (JOB 3062) und die Einstellungen-Komponenten
+    // (JOB 3065) treffen hier gemeinsam auf denselben Stand; der Zahlenwert unten stammt aus dem
+    // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der Deltas. Die
+    // zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und
+    // `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 316,
+      komponenten: 345,
       anbieter: 1,
       traeger: 2,
     });

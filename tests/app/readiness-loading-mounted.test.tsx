@@ -141,6 +141,20 @@ async function click(btn: HTMLButtonElement): Promise<void> {
   });
 }
 
+/**
+ * JOB 3065 H6: „Bereitschaft" ist kein eigener Reiter mehr, sondern eine Zeile unter „Sicherheit",
+ * deren Chevron die Checkliste als Detailkarte öffnet. Die Checkliste selbst — Quellen, Ampeln,
+ * Ladezustand, Fehlerzustand — ist unverändert; nur der Weg dorthin ist zwei Klicks statt einem.
+ */
+async function oeffneBereitschaft(): Promise<void> {
+  await click(buttonByText(i18n.t("adm.sec.sicherheit")));
+  const zeile = container.querySelector('[data-testid="zeile-bereitschaft"]');
+  if (!(zeile instanceof HTMLButtonElement)) {
+    throw new Error("Zeile „Bereitschaft“ nicht gefunden");
+  }
+  await click(zeile);
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
 });
@@ -154,7 +168,7 @@ afterEach(() => {
 describe("Block C: Bereitschaft — Ladezustand statt vorschneller Warnung", () => {
   it("VOR Auflösung Ladezeilen, NACH Auflösung ehrliche keine-KI-Zeile", async () => {
     await mount();
-    await click(buttonByText(i18n.t("adm.sec.bereitschaft")));
+    await oeffneBereitschaft();
 
     // VOR: jede Zeile lädt; KEINE „keine KI"-Warnung aus fehlenden Daten.
     expect(container.textContent).toContain(i18n.t("adm.ready.loading"));
@@ -181,7 +195,7 @@ describe("Block C: Bereitschaft — Ladezustand statt vorschneller Warnung", () 
 
   it("mega3 Block B: initial gescheiterte tragende Quelle → Fehlerzustand mit Wiederholen, kein „lädt“, keine falsche Warnung", async () => {
     await mount();
-    await click(buttonByText(i18n.t("adm.sec.bereitschaft")));
+    await oeffneBereitschaft();
     expect(container.textContent).toContain(i18n.t("adm.ready.loading"));
 
     await act(async () => {
@@ -196,7 +210,12 @@ describe("Block C: Bereitschaft — Ladezustand statt vorschneller Warnung", () 
     });
 
     // Ehrlicher Fehlerzustand mit Wiederholen — kein endloses „lädt", KEINE erfundene „keine KI"-Warnung.
-    expect(container.textContent).toContain(i18n.t("loadstate.error.title"));
+    //
+    // JOB 3065 R3 (BENs Korrekturpflicht 1: „sämtliche Detailkarten an denselben Zustandsvertrag"):
+    // Der Wortlaut ist jetzt derselbe wie in jeder anderen Einstellungs-Karte — `nicht abrufbar`
+    // statt `loadstate.error.title`. Die ZUSAGE aus mega3 Block B ist unverändert und wird hier
+    // weiter geprüft: ehrlicher Fehlerzustand statt endlosem „lädt", mit einem Weg zurück.
+    expect(container.textContent).toContain(i18n.t("einst.wert.nichtAbrufbar"));
     expect(container.textContent).toContain(i18n.t("loadstate.error.retry"));
     expect(container.textContent).not.toContain(i18n.t("adm.ready.loading"));
     expect(container.textContent).not.toContain(i18n.t("adm.ready.ki.none"));

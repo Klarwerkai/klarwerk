@@ -126,8 +126,10 @@ describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenar
   // ZWEI, gemessen und nicht geschätzt:
   //   · `apps/web/src/api/types.ts`    — `REASONER_TASKS`, die Quelle. Aus ihr leiten seit
   //     JOB 3069 `ModelRunTask`, `byTask` und die Beschriftung der Pille ab.
-  //   · `apps/web/src/pages/Admin.tsx` — `AI_TASKS`, eine handgeschriebene zweite Acht-Element-Liste
-  //     für die KI-Zuordnung je Aufgabe.
+  //   · `apps/web/src/pages/AdminKiDetails.tsx` — `AI_TASKS`, eine handgeschriebene zweite
+  //     Acht-Element-Liste für die KI-Zuordnung je Aufgabe. (Bis JOB 3065 stand sie in
+  //     `pages/Admin.tsx`; H6 hat die Kartenwand in vier Detaildateien je Reiter zerlegt, und die
+  //     KI-Karte ist mitsamt ihrer Liste dorthin gewandert — derselbe Code, neuer Ort.)
   //
   // WARUM SIE NOCH STEHT (JOB 3069 R3): BEN hat ihre Ablösung in Runde 2 zur Pflicht gemacht; Runde 2
   // hat sie gebaut, und der maschinelle Vorprüfer hat den Stand darauf abgewiesen —
@@ -149,17 +151,20 @@ describe("JOB 3069 · R3 — Server und Oberfläche führen dieselben Aufgabenar
       const text = readFileSync(pfad, "utf8");
       return REASONER_TASKS.every((art) => text.includes(`"${art}"`));
     });
+    // JOB 3065 (H6) hat die Admin-Kartenwand in vier Detaildateien je Reiter zerlegt; die KI-Karte
+    // und mit ihr `AI_TASKS` wohnen seither in `pages/AdminKiDetails.tsx`. Der Ort hat sich
+    // geändert, die Zusage nicht: es sind weiterhin GENAU ZWEI Stellen, und eine dritte ist rot.
     expect(aufzaehlungen.map((p) => p.slice(WURZEL.length + 1)).sort()).toEqual([
       "apps/web/src/api/types.ts",
-      "apps/web/src/pages/Admin.tsx",
+      "apps/web/src/pages/AdminKiDetails.tsx",
     ]);
   });
 
-  it("R3g · die zweite, noch offene Liste in Admin.tsx trägt Wert für Wert dieselben acht", () => {
+  it("R3g · die zweite, noch offene Liste in AdminKiDetails.tsx trägt Wert für Wert dieselben acht", () => {
     // Solange sie besteht, wird sie wenigstens gemessen: driftet `AI_TASKS` — etwa weil der Server
     // eine neunte Art bekommt und nur die Quelle nachgezogen wird —, wird dieser Fall rot und nennt
     // die Stelle. Das ersetzt die Ablösung nicht; es sorgt dafür, dass sie nicht vergessen wird.
-    const text = readFileSync(join(WURZEL, "apps/web/src/pages/Admin.tsx"), "utf8");
+    const text = readFileSync(join(WURZEL, "apps/web/src/pages/AdminKiDetails.tsx"), "utf8");
     const treffer = /AI_TASKS\s*=\s*\[([^\]]*)\]\s*as const/.exec(text);
     const liste = [...(treffer?.[1] ?? "").matchAll(/"([a-z]+)"/g)].map((m) => m[1] as string);
     expect(liste, "AI_TASKS ist nicht mehr lesbar — dann prüft R3g nichts mehr").toHaveLength(8);

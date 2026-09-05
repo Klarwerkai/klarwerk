@@ -296,6 +296,29 @@ const FREMDE: readonly Fremdrelation[] = [
       "GEMESSEN: ein selbstschliessendes Element mit 27 Knoten um `ext.placeholder`, geteilt " +
       "mit dem Abschnitt „Externes Wissen“ der Lesefläche (`MehrAbschnitte`).",
   },
+  // JOB 3065 (H6): zwei neue dritte Dateien, beide mit DEMSELBEN 26-Knoten-Block, den Mobile schon
+  // trägt — der Fehler-Toast einer Mutation:
+  //     const fail = (e: unknown): void =>
+  //       push("error", e instanceof ApiError ? e.message : t("state.error"));
+  // Die alte Admin-Kartenwand war EINE Datei mit EINEM solchen Helfer; die Einstellungen sind vier
+  // Detaildateien je Reiter, und jede, die schreibt, braucht ihn. Bewusst NICHT zusammengelegt: ein
+  // gemeinsamer Helfer müsste `useToast` und `useTranslation` selbst rufen und läge damit als
+  // fünfter Haken quer zu den Modulgrenzen — für drei Zeilen, deren Gleichheit genau hier bewacht
+  // wird. Läuft eine Seite aus (anderer Ton, anderer Rückfalltext), fällt ihre Größe aus der Liste.
+  {
+    dritt: "apps/web/src/pages/AdminDatenDetails.tsx",
+    groessen: [26],
+    was:
+      "GEMESSEN: der Fehler-Toast `fail` der Demodaten-/Werkseinstellungs-Mutationen (26 Knoten), " +
+      "geteilt mit dem Helfer `fehlerToast` der Lesefläche (`MehrAbschnitte:169`) und mit `Mobile`.",
+  },
+  {
+    dritt: "apps/web/src/pages/AdminKontenDetails.tsx",
+    groessen: [26],
+    was:
+      "GEMESSEN: derselbe Fehler-Toast `fail` (26 Knoten) für Freigeben, Rolle ändern, Passwort " +
+      "zurücksetzen und Löschen — Wort für Wort der Block aus `AdminDatenDetails` und `Mobile`.",
+  },
   {
     dritt: "apps/web/src/pages/Mobile.tsx",
     // JOB 3063 (H4): 25,25 -> 26,25,25. Der Abschnitt „Externes Wissen“ der Lesefläche trägt

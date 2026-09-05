@@ -26,6 +26,11 @@ import ts from "typescript";
 //   · Kein Fund ohne Urteil: eine erhobene Komponente ohne DOM-Probe macht den Sammler rot. Es gibt
 //     keine Mindestzahl und keine stille Ausnahme.
 import { afterEach, describe, expect, it } from "vitest";
+// JOB 3065 H6: die Zeilenkarte der Einstellungen markiert ihr Chevron und ihr Schloss mit
+// `data-einst`, damit die Chromium-Messung sie findet. Beides sind Symbole aus `lucide-react` —
+// also Komponenten, und damit genau die Bauform, die dieser Sammler nicht glauben, sondern messen
+// will. Die Proben unten rendern sie und schauen nach, ob das Attribut im SVG ankommt.
+import { ChevronRight, Lock } from "../../apps/web/node_modules/lucide-react";
 import { type ReactNode, act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { Link, MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
@@ -123,6 +128,11 @@ const knopfProbe = { "data-testid": ANKER, children: "Inhalt" };
 const linkProbe = { to: "/start", "data-testid": ANKER, children: "Inhalt" };
 const askAnswerProbe = { "data-testid": "ask-answer", children: "Antwort" };
 const hilfeProbe = { "data-help": "cap:x", children: "Inhalt" };
+// Symbole tragen keine Kinder — die Probe ist das Attribut plus die Größe. Die Größe steht nicht
+// zur Zierde da: ohne mindestens EINE bekannte Eigenschaft lehnt TypeScript das Objekt an
+// `LucideProps` ab („has no properties in common"), und genau daran zeigt sich noch einmal der
+// Befund dieses Sammlers — in JSX prüft TypeScript Attribute mit Bindestrich gar nicht.
+const symbolProbe = { size: 13, "data-testid": ANKER };
 
 const PROBEN: Record<string, () => ReactNode> = {
   Card: () => createElement(Card, kartenProbe),
@@ -136,6 +146,9 @@ const PROBEN: Record<string, () => ReactNode> = {
         children: createElement(GuardedLink, linkProbe),
       }),
     }),
+  // JOB 3065 H6: die beiden Symbole der Zeilenkarte (Chevron = führt weiter, Schloss = nur lesbar).
+  ChevronRight: () => createElement(ChevronRight, symbolProbe),
+  Lock: () => createElement(Lock, symbolProbe),
 };
 
 let container: HTMLDivElement | null = null;

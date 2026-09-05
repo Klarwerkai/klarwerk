@@ -74,6 +74,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
 import {
   QueryClient,
   QueryClientProvider,
+  onlineManager,
 } from "../../apps/web/node_modules/@tanstack/react-query";
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
@@ -143,6 +144,20 @@ async function click(btn: HTMLButtonElement): Promise<void> {
   });
 }
 
+/**
+ * JOB 3065 H6: „Bereitschaft" ist kein eigener Reiter mehr, sondern eine Zeile unter „Sicherheit",
+ * deren Chevron die Checkliste als Detailkarte öffnet — Quellen, Stale-Marker und Wiederholen
+ * unverändert, nur der Weg dorthin ist zwei Klicks statt einem.
+ */
+async function oeffneBereitschaft(): Promise<void> {
+  await click(buttonByText(i18n.t("adm.sec.sicherheit")));
+  const zeile = container.querySelector('[data-testid="zeile-bereitschaft"]');
+  if (!(zeile instanceof HTMLButtonElement)) {
+    throw new Error("Zeile „Bereitschaft“ nicht gefunden");
+  }
+  await click(zeile);
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
 });
@@ -151,12 +166,33 @@ afterEach(() => {
   act(() => root.unmount());
   container.remove();
   vi.clearAllMocks();
+  // `onlineManager` ist modulglobal: ohne diese Rückstellung träte der Offline-Fall an alle
+  // folgenden Fälle weiter.
+  onlineManager.setOnline(true);
 });
+
+/** Der Weg aus der offenen Detailkarte zurück auf die Zeilen der Fläche. */
+async function zurueckZurFlaeche(): Promise<void> {
+  const zurueck = container.querySelector('[data-einst="zurueck"]');
+  if (!(zurueck instanceof HTMLButtonElement)) {
+    throw new Error("Knopf „Zurück“ nicht gefunden");
+  }
+  await click(zurueck);
+}
+
+function zeilenwertBereitschaft(): string {
+  const zeile = container.querySelector('[data-testid="zeile-bereitschaft"]');
+  const wert = zeile?.querySelector('[data-einst="wert"]');
+  if (!(wert instanceof HTMLElement)) {
+    throw new Error("Wert der Zeile „Bereitschaft“ nicht gefunden");
+  }
+  return (wert.textContent ?? "").replace(/\s+/g, " ").trim();
+}
 
 describe("Block B: Bereitschaft — gescheiterter Refetch bleibt sichtbar als Stale (nicht still loaded)", () => {
   it("Daten bleiben stehen, Stale-Hinweis + Wiederholen erscheint, Retry wird aufgerufen", async () => {
     await mount();
-    await click(buttonByText(i18n.t("adm.sec.bereitschaft")));
+    await oeffneBereitschaft();
 
     // (1) Alle tragenden Quellen laden → ehrliche Zeilen, KEIN Stale-Hinweis, KEIN Initialfehler.
     await act(async () => {
@@ -198,5 +234,79 @@ describe("Block B: Bereitschaft — gescheiterter Refetch bleibt sichtbar als St
     const beforeRetry = d.aiConfig.fn.mock.calls.length;
     await click(buttonByText(i18n.t("loadstate.error.retry")));
     expect(d.aiConfig.fn.mock.calls.length).toBe(beforeRetry + 1);
+  });
+});
+
+// ================================================================================================
+// JOB 3065 R5 · BENs Korrekturpflicht 1 — CACHE → OFFLINE → ONLINE, gemountet.
+// ================================================================================================
+//
+// BENs Messung an Runde 4: vollständig geladene Bereitschaft, danach `onlineManager.setOnline(false)`.
+// Sichtbar blieben „Teilweise verbunden", „2" und „10 Anhänge · 20 MB" — ohne Stand, ohne „nicht
+// aktualisiert". Der Grund: die Gruppe lief über `lib/loadingState.ts`, und das kennt ausschließlich
+// `isError`; ein Verbindungsabbruch OHNE laufende Abfrage erreichte weder Zeile noch Karte.
+//
+// Dieser Fall misst beide Orte an derselben echten Quelle, an der das Produkt sie liest — dem
+// `onlineManager` von react-query, nicht an einer nachgebauten Lage:
+//   1) alle sechs Quellen laden       → Werte ohne Zusatz, kein Stale-Hinweis,
+//   2) offline                        → Werte BLEIBEN sichtbar, Karte und Zeile sagen „nicht
+//                                       aktualisiert" (die Zeile zusätzlich den Stand),
+//   3) wieder online                  → die Quellen werden wirklich neu abgerufen und der Wert ist
+//                                       danach der NEUE, ohne Zusatz.
+describe("JOB 3065 R5: Bereitschaft offline — Bestand bleibt, aber nie als frische Wahrheit", () => {
+  async function ladeAlle(validiert: number, board: unknown[]): Promise<void> {
+    await act(async () => {
+      d.aiConfig.resolve({
+        cloudConfigured: true,
+        localConfigured: false,
+        taskConfig: { global: "auto", perTask: {} },
+      });
+      d.analytics.resolve({ total: 3, byStatus: { offen: 1, validiert } });
+      d.board.resolve(board);
+      d.upload.resolve({ maxAttachments: 10, maxAttachmentBytes: 20_000_000 });
+      d.extPolicy.resolve({ enabled: false, stage: "blocked" });
+      d.demo.resolve({ present: false, count: 0 });
+      await flush();
+    });
+  }
+
+  it("offline nach vollständigem Bestand: Karte und Zeile sagen es — online wird wirklich aufgefrischt", async () => {
+    await mount();
+    await oeffneBereitschaft();
+    await ladeAlle(2, []);
+
+    // (1) Frischer Bestand: die Zeilen stehen da, nichts ist markiert.
+    expect(container.textContent).toContain(i18n.t("adm.ready.upload"));
+    expect(container.textContent).not.toContain(i18n.t("loadstate.stale"));
+    expect(container.textContent).not.toContain(i18n.t("adm.ready.loading"));
+
+    // (2) Der Verbindungsabbruch — ohne dass eine Abfrage läuft.
+    await act(async () => {
+      onlineManager.setOnline(false);
+      await flush();
+    });
+    // Die Werte bleiben SICHTBAR (nie leeren), tragen aber den Hinweis.
+    expect(container.textContent).toContain(i18n.t("adm.ready.upload"));
+    expect(container.textContent).toContain(i18n.t("loadstate.stale"));
+
+    // Und die Zeile der Fläche sagt dasselbe: Bestand, Stand, „nicht aktualisiert".
+    await zurueckZurFlaeche();
+    const offlineWert = zeilenwertBereitschaft();
+    expect(offlineWert).toContain(i18n.t("einst.wert.nichtAktualisiert"));
+    expect(offlineWert).toContain(i18n.t("einst.wert.stand", { zeit: "" }).replace(/\s*$/, ""));
+
+    // (3) Wieder online: die sechs Quellen werden wirklich neu abgerufen …
+    const vorher = d.upload.fn.mock.calls.length;
+    await act(async () => {
+      onlineManager.setOnline(true);
+      await flush();
+    });
+    expect(d.upload.fn.mock.calls.length).toBeGreaterThan(vorher);
+
+    // … und nach der Antwort steht der NEUE Wert ohne jeden Zusatz.
+    await ladeAlle(7, [{ id: "k1" }]);
+    const frischerWert = zeilenwertBereitschaft();
+    expect(frischerWert).not.toContain(i18n.t("einst.wert.nichtAktualisiert"));
+    expect(frischerWert).not.toContain(i18n.t("einst.wert.unbekannt"));
   });
 });
