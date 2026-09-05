@@ -8,8 +8,10 @@ import { htmlToPlainText, sanitizeHtml, searchCaptionTexts } from "../../structu
 // Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
 // Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
 import { normalizeAsset } from "./asset";
+// JOB 3076 (Q1): `isConfidential` steht hier NICHT mehr — der Speicherzweig (`buildCreatedKo`) war
+// seine einzige Verwendung in dieser Datei und benutzte es als Speicherbedingung. Die Funktion selbst
+// bleibt unverändert und wird von den Egress-Stellen weiter gezogen (confidentiality.ts:40-42).
 import {
-  isConfidential,
   isConfidentialityDowngrade,
   isValidConfidentiality,
   normalizeConfidentiality,
@@ -1695,9 +1697,33 @@ export class KoService {
       // Weg (Word-Add-in, Import, Seed, API) erzeugte damit eine zweite Schreibweise derselben
       // Anlage — und `sameAsset` (conflicts/detect.ts:126) vergleicht zeichengenau.
       asset: normalizeAsset(input.asset),
-      // SCRUM-415: nur speichern, wenn tatsächlich vertraulich — „intern"/ungültig bleibt weg,
-      // Alt-Verhalten und bestehende Tests unberührt.
-      ...(isConfidential(normalizeConfidentiality(input.confidentiality))
+      // JOB 3076 (Q1) — DIE STUFE NUR SPEICHERN, WENN SIE JEMAND MITBRINGT. ABLÖSUNG VON SCRUM-415.
+      //
+      // BIS HIERHER GALT (SCRUM-415): „nur speichern, wenn tatsächlich vertraulich" — die Bedingung
+      // war `isConfidential(normalizeConfidentiality(input.confidentiality))`. Ein AUSDRÜCKLICH
+      // übergebenes „intern" fiel damit in den Leerzweig und wurde gar nicht erst geschrieben.
+      //
+      // WELCHER SCHADEN DARAUS FOLGTE. Ein fehlendes Feld und ein ausdrücklich gesetztes „intern"
+      // hatten im Bestand denselben Zustand, und `discloseConfidentiality` (confidentiality.ts:99-102)
+      // kann daraus nur `{ null, "unknown" }` machen — „niemand hat hier je eingestuft". Codex-Abnahme
+      // R-1613 vom 05.09.2026 gegen https://app.klarwerk.ai (1.0.0-beta.1.89), Prüfschritt 4, Objekt
+      // c22c690f-9574-4998-a030-700cb2166476, wörtlich: „HTTP 201, danach confidentiality null und
+      // provenance unknown. Beide Flächen zeigen Nicht eingestuft." Wer bewusst eingestuft hatte, bekam
+      // sein Objekt als „Nicht eingestuft" zurück. Die Anzeige war unschuldig: die drei Bestandsfälle
+      // daneben waren im selben Lauf `bestanden`.
+      //
+      // WAS JETZT GILT. Gespeichert wird genau dann, wenn der Aufrufer eine Stufe MITBRINGT — dieselbe
+      // Bauform wie `origin`, `importCandidateId` und `ownership` darunter, und dieselbe wie im
+      // Entwurfs-Promote (capture/src/service.ts:845). Die Gültigkeit ist :1654 bereits geprüft; hier
+      // bleibt nur die Unterscheidung „übergeben" gegen „nicht übergeben". KEIN stiller Default in die
+      // Gegenrichtung: ein Objekt ohne Angabe bekommt weiterhin KEIN „intern" angeschrieben, sonst
+      // gäbe es keinen Weg mehr, „nie eingestuft" auszudrücken (i18n.ts:1991).
+      //
+      // `isConfidential` bleibt unverändert und richtig — falsch war allein, es als SPEICHERbedingung
+      // zu benutzen. Wer das zurückdreht, macht V1 in
+      // tests/vertraulichkeit-intern/explizit-intern-ueberlebt.test.ts rot; wer stattdessen einen
+      // Default einführt, V2.
+      ...(input.confidentiality !== undefined
         ? { confidentiality: normalizeConfidentiality(input.confidentiality) }
         : {}),
       ...(input.demoSeed ? { demoSeed: true } : {}),

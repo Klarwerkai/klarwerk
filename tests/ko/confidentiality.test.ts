@@ -34,15 +34,25 @@ describe("SCRUM-415: Vertraulichkeit — Helfer", () => {
 });
 
 describe("SCRUM-415: KoService", () => {
-  it("übernimmt die Vertraulichkeitsstufe beim Erfassen (nur wenn vertraulich)", async () => {
+  // JOB 3076 (Q1) NACHGEFÜHRT — die Bedingung heißt jetzt „mitgebracht", nicht „vertraulich".
+  // Bis hierher stand hier `expect(explizitIntern.confidentiality).toBeUndefined();` mit dem
+  // Kommentar „Standard „intern" wird NICHT gespeichert (Alt-Verhalten/Tests unberührt)". Diese
+  // Zusicherung hielt genau den Fehler fest, den Codex am lebenden System gemessen hat (Abnahme
+  // R-1613 vom 05.09.2026, Prüfschritt 4, Objekt c22c690f-9574-4998-a030-700cb2166476: „HTTP 201,
+  // danach confidentiality null und provenance unknown"): eine AUSDRÜCKLICH gesetzte Stufe wurde
+  // verworfen, und das Objekt kam als „Nicht eingestuft" zurück. Sie vermengte zwei Fälle, die der
+  // Speicherzweig seit JOB 3076 trennt (service.ts:1700-1728) — „nichts mitgebracht" bleibt
+  // unverändert feldlos, „ausdrücklich intern" wird gespeichert. Beide stehen unten nebeneinander.
+  it("übernimmt die Vertraulichkeitsstufe beim Erfassen (genau dann, wenn eine mitkommt)", async () => {
     const ko = new KoService({ repo: new InMemoryKoRepo() });
     const vertraulich = await ko.create(koInput({ confidentiality: "vertraulich" }));
     expect(vertraulich.confidentiality).toBe("vertraulich");
-    // Standard „intern" wird NICHT gespeichert (Alt-Verhalten/Tests unberührt).
+    // Ohne Angabe: kein stiller Default — „nie eingestuft" bleibt ausdrückbar (unverändert).
     const normal = await ko.create(koInput());
     expect(normal.confidentiality).toBeUndefined();
+    // Ausdrücklich „intern": eine Einstufung, die jemand vorgenommen hat, und die bleibt (JOB 3076).
     const explizitIntern = await ko.create(koInput({ confidentiality: "intern" }));
-    expect(explizitIntern.confidentiality).toBeUndefined();
+    expect(explizitIntern.confidentiality).toBe("intern");
   });
 
   it("ändert die Stufe mit Audit-Eintrag", async () => {
