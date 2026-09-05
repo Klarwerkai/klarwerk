@@ -27,13 +27,27 @@ export function isPageRestricted(page: ConfluencePage): boolean {
   return users.length > 0 || groups.length > 0;
 }
 
-// SCRUM-511: Quell-Governance → Vertraulichkeit. Eine RESTRINGIERTE Seite trägt ein explizites
-// Governance-Signal → mindestens „vertraulich". Eine NICHT restringierte Seite hat KEIN Signal →
-// undefined; der Import-Kern stuft dann fail-safe auf „vertraulich" (R3). NIE „intern" aus dem Mapper.
-export function confluenceGovernanceConfidentiality(
-  page: ConfluencePage,
-): Confidentiality | undefined {
-  return isPageRestricted(page) ? "vertraulich" : undefined;
+// JOB 3089 (N11) — QUELL-GOVERNANCE → VERTRAULICHKEIT. ABLÖSUNG VON SCRUM-511.
+//
+// DIE REGEL, IN EINEM SATZ: restringiert → „vertraulich", nicht restringiert → „intern" — und
+// „intern" ist hier eine ECHTE Einstufung mit einem Erzeuger (die im Quellsystem nachgesehene,
+// nicht vorhandene Leseeinschränkung), kein geratener Vorgabewert und kein stiller Default.
+//
+// WAS ABGELÖST IST: SCRUM-511 stand bis JOB 3089 an dieser Stelle und lautete „NIE ‚intern' aus dem
+// Mapper" — eine nicht restringierte Seite lieferte `undefined`, woraus der Import-Kern fail-safe
+// „vertraulich" machte (`library-analytics/src/service.ts:1568`). Folge im Betrieb: JEDE gewöhnliche
+// Wiki-Seite wurde als vertraulich übernommen, und der Mensch las an ihr ein Vertraulichkeitszeichen.
+//
+// WER DAS ENTSCHIEDEN HAT: Pedi, Entscheidung 23 vom 05.09.2026, wörtlich: „Es ist nicht vertraulich
+// … externe KI ist überall erlaubt". Vertraulich wird ab hier nur noch, was die Quelle ausdrücklich
+// beschränkt (`isPageRestricted` darüber, unverändert) oder was ein Mensch selbst so markiert.
+//
+// DIESE FUNKTION LIEFERT DESHALB IMMER EINE STUFE (kein `| undefined` mehr): beide Fälle sind
+// entschieden, ein dritter „weiß nicht" existiert an dieser Quelle nicht. Was der Import-Kern mit
+// einer echten Leerstelle tut (andere Provider, die gar kein Governance-Signal liefern), bleibt
+// davon unberührt — dort gilt sein fail-safe „vertraulich" weiter.
+export function confluenceGovernanceConfidentiality(page: ConfluencePage): Confidentiality {
+  return isPageRestricted(page) ? "vertraulich" : "intern";
 }
 
 // AUFTRAG-mega27 A2: Elternkette → QUELLNEUTRALER Pfad. Die Elterntitel in Quell-Reihenfolge
@@ -169,9 +183,10 @@ export function mapConfluencePageToImportItem(
     category: opts.spaceKey,
     ...(author ? { author } : {}),
     ...(tags.length > 0 ? { tags } : {}),
-    // SCRUM-511: nur setzen, wenn ein Governance-Signal vorliegt (restringiert). Sonst undefined →
-    // fail-safe „vertraulich" im Import-Kern (kein stiller intern-Default).
-    ...(governance ? { confidentiality: governance } : {}),
+    // JOB 3089 (N11): die Stufe steht IMMER am Item — Confluence entscheidet beide Fälle
+    // (restringiert → vertraulich, offen → intern, s. oben). Kein bedingtes Weglassen mehr: ein
+    // fehlendes Feld hiesse „diese Quelle weiss es nicht", und das ist seit Entscheidung 23 falsch.
+    confidentiality: governance,
     // SCRUM-510 R2b: quellneutrale Provenienz — externalId = Confluence-pageId (Re-Sync-Anker),
     // sourceScope = Confluence-Space. Der Import-Kern kennt nur diese neutralen Begriffe.
     externalId: page.id,

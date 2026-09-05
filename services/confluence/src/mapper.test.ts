@@ -69,11 +69,19 @@ describe("SCRUM-510: mapConfluencePageToImportItem", () => {
     expect(mapConfluencePageToImportItem(restrictedPage, OPTS).confidentiality).toBe("vertraulich");
   });
 
-  it("SCRUM-511: nicht restringierte Seite → KEIN Signal (undefined; Import-Kern stuft fail-safe)", () => {
+  // JOB 3089 (N11, Pedis Entscheidung 23 vom 05.09.2026): dieser Fall hiess bis hierher „KEIN Signal
+  // (undefined; Import-Kern stuft fail-safe)" und schrieb SCRUM-511 fest. Er wird auf die neue Regel
+  // UMGESTELLT, nicht entfernt: die offene Seite trägt jetzt eine ausdrückliche Stufe, und dass es
+  // GENAU „intern" ist (nicht irgendeine), bleibt hier ebenso scharf gemessen wie vorher das
+  // Fehlen. Die ganze Kette bis zum angelegten Objekt misst
+  // tests/uebernahme-standard-intern/confluence-ohne-beschraenkung-ist-intern.test.ts.
+  it("JOB 3089: nicht restringierte Seite → ausdrücklich „intern“ (kein fehlendes Feld mehr)", () => {
     expect(isPageRestricted(openPage)).toBe(false);
-    expect(confluenceGovernanceConfidentiality(openPage)).toBeUndefined();
-    // NIE „intern" aus dem Mapper — das Feld bleibt schlicht unbesetzt (downstream fail-safe vertraulich).
-    expect(mapConfluencePageToImportItem(openPage, OPTS).confidentiality).toBeUndefined();
+    expect(confluenceGovernanceConfidentiality(openPage)).toBe("intern");
+    const item = mapConfluencePageToImportItem(openPage, OPTS);
+    expect(item.confidentiality).toBe("intern");
+    // Feldpräsenz mitgemessen: „fehlend“ und „intern“ sind zwei verschiedene Zustände (JOB 3076).
+    expect(Object.hasOwn(item, "confidentiality")).toBe(true);
   });
 
   it("statement fällt auf den Titel zurück, wenn der Body leer ist (nie leer)", () => {

@@ -409,19 +409,26 @@ describe("WP-SHIP7-FIX P0 (Fix 1): Vertraulichkeit der Gruppierung — Cloud nur
   });
 
   // WP-SHIP9-S1 (bens T6, BERICHT-w2check): die REALE Mapper→Route-Kette statt synthetischer
-  // intern-Items — der echte Confluence-Mapper liefert nie `intern`, also ist JEDER nichtleere
-  // echte Batch fail-safe vertraulich; die Cloud bleibt unangetastet und die Ursache heißt
-  // ehrlich "confidential" (Cloud konfiguriert + Policy auto, aber durch Vertraulichkeit raus).
-  it("bens T6: echter Confluence-Mapper → Route: nichtleerer Batch vertraulich, Cloud-Spy null", async () => {
+  // intern-Items. Der Batch enthält EINE restringierte Seite und ist deshalb vertraulich; die Cloud
+  // bleibt unangetastet und die Ursache heißt ehrlich "confidential" (Cloud konfiguriert + Policy
+  // auto, aber durch Vertraulichkeit raus).
+  //
+  // JOB 3089 (N11, Pedis Entscheidung 23): der TRAGENDE GRUND hat sich geändert und steht jetzt
+  // richtig da. Bis hierher war der Batch vertraulich, weil der Mapper für die OFFENE Seite gar
+  // nichts lieferte („nie intern") — jeder nichtleere echte Batch war damit gesperrt. Jetzt ist p1
+  // ausdrücklich „intern" und p2 ausdrücklich „vertraulich"; gesperrt wird der Batch allein durch p2.
+  // Der Batch-Vertrag selbst ist unverändert (ein vertraulicher Kandidat sperrt alle) und wird eine
+  // Zeile weiter unten weiter als pure Regel gemessen; dass ein RUNDUM offener Batch jetzt in die
+  // Cloud darf, misst tests/uebernahme-standard-intern/confluence-ohne-beschraenkung-ist-intern.ts (F7).
+  it("bens T6: echter Confluence-Mapper → Route: Batch mit restringierter Seite vertraulich, Cloud-Spy null", async () => {
     const mapped = [
       confluencePage("p1", "Wartung Pumpe"),
       confluencePage("p2", "Ventil tauschen", { restricted: true }),
     ].map((p) =>
       mapConfluencePageToImportItem(p, { baseUrl: "https://acme.example", spaceKey: "OPS" }),
     );
-    // Der echte Mapper: offene Seite → KEINE Einstufung (fail-safe vertraulich im Kern),
-    // restringierte Seite → explizit vertraulich. NIE intern.
-    expect(mapped[0]?.confidentiality).toBeUndefined();
+    // Der echte Mapper: offene Seite → ausdrücklich „intern", restringierte Seite → „vertraulich".
+    expect(mapped[0]?.confidentiality).toBe("intern");
     expect(mapped[1]?.confidentiality).toBe("vertraulich");
     const spy = cloudSpyReasoner(["p1", "p2"]);
     const { app, headers } = await importApp(mapped, { reasoner: spy.reasoner });
