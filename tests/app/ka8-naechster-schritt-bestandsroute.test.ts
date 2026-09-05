@@ -98,6 +98,9 @@ async function entwurfAnlegen(app: App, kopf: Kopf, titel: string): Promise<stri
       statement: "Unter 5 mm Blechstaerke wird mit reduzierter Stromstaerke geschweisst.",
       type: "best_practice",
       category: "Fertigung",
+      // JOB 3082 (Q3 a): „vollstaendig" heisst seither AUCH: die Vertraulichkeit ist ausdruecklich
+      // gewaehlt (KO_PFLICHTFELDER, services/capture/src/service.ts).
+      confidentiality: "intern",
     },
   });
   if (res.statusCode !== 201) {
@@ -141,6 +144,8 @@ describe("JOB 1494 D2 · KA8 — die Bestandsroute liefert die Auskunft samt Her
     expect(schritt?.art).toBe("vervollstaendigen");
     expect([...(schritt?.herkunft ?? [])].sort()).toEqual([
       "payload.category",
+      // JOB 3082 (Q3 a): ein Entwurf mit nur einem Titel hat auch keine gewaehlte Stufe.
+      "payload.confidentiality",
       "payload.statement",
       "payload.type",
     ]);

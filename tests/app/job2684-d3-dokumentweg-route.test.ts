@@ -39,6 +39,9 @@ async function angemeldeteApp() {
       statement: "Ursprung",
       type: "best_practice",
       category: "Instandhaltung",
+      // JOB 3082 (Q3 a): die ausdrücklich gewählte Stufe gehört zu den KO-Pflichtfeldern; ohne sie
+      // käme dieser Fall nicht bis zur Standprüfung, die er misst.
+      confidentiality: "intern",
     },
   });
   expect(anlegen.statusCode, anlegen.body).toBe(201);

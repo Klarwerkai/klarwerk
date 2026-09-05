@@ -33,12 +33,17 @@ import { InMemoryDraftRepo } from "../../services/capture/src/repo";
 import { CaptureService } from "../../services/capture/src/service";
 import type { Draft, DraftPayload } from "../../services/capture/src/types";
 
-// Ein Entwurf, dem NUR die vier Pflichtfelder von `toKoInput` fehlen koennen (service.ts:506).
+// Ein Entwurf, dem NUR die Pflichtfelder von `toKoInput` fehlen koennen.
+//
+// JOB 3082 (Q3 a): `confidentiality` ist seit diesem Auftrag EINES davon — und die Auskunft muss
+// dasselbe beurteilen wie das Einreichen, sonst saegte sie „einreichen" und das Einreichen
+// scheiterte (der Vertrag steht ueber `KO_PFLICHTFELDER`, services/capture/src/service.ts).
 const VOLLSTAENDIG: DraftPayload = {
   title: "Schweissnaht bei Aluminium unter 5 mm pruefen",
   statement: "Unter 5 mm Blechstaerke wird mit reduzierter Stromstaerke geschweisst.",
   type: "best_practice",
   category: "Fertigung",
+  confidentiality: "intern",
 };
 
 // `exactOptionalPropertyTypes` ist an (tsconfig.json:12): ein Feld auf `undefined` zu SETZEN ist
@@ -152,8 +157,9 @@ describe("JOB 1171 · die Auskunft leitet ab und raet nicht", () => {
 
   it("POSITIV: unvollstaendiger Entwurf ⇒ Vervollstaendigen, und zwar mit den fehlenden Feldern", async () => {
     const svc = dienstMitSpeicher([]);
-    // Titel ja, alles Uebrige fehlt — `toKoInput` wuerde hier mit INCOMPLETE abbrechen
-    // (service.ts:506-511). Genau diese vier Felder sind die Quelle der Aussage.
+    // Titel ja, alles Uebrige fehlt — `toKoInput` wuerde hier mit INCOMPLETE abbrechen.
+    // Genau diese Felder sind die Quelle der Aussage; seit JOB 3082 (Q3 a) gehoert die
+    // VERTRAULICHKEITSSTUFE dazu, denn ohne sie entsteht kein Wissensobjekt mehr.
     const entwurf = await svc.createDraft({ title: "Nur ein Titel" }, "anna");
 
     const schritt = await svc.naechsterSchrittFuerEntwurf(entwurf.id);
@@ -161,6 +167,7 @@ describe("JOB 1171 · die Auskunft leitet ab und raet nicht", () => {
     expect(schritt?.art).toBe("vervollstaendigen");
     expect([...(schritt?.herkunft ?? [])].sort()).toEqual([
       "payload.category",
+      "payload.confidentiality",
       "payload.statement",
       "payload.type",
     ]);
@@ -176,13 +183,16 @@ describe("JOB 1171 · jede Aussage traegt ihre Herkunft", () => {
       { name: "vervollstaendigen", svc: dienstMitSpeicher([]), payload: { title: "T" } },
     ];
     // Nur diese Feldnamen existieren wirklich: `anchorsMissing` liefert der Dienst
-    // (service.ts:414/431), die vier `payload.*` stehen in `DraftPayload` (types.ts:4-11).
+    // (service.ts:414/431), die `payload.*` stehen in `DraftPayload` (types.ts:4-11).
+    // JOB 3082 (Q3 a): `payload.confidentiality` ist seit diesem Auftrag ein echtes Pflichtfeld —
+    // es steht in `DraftPayload` und in `KO_PFLICHTFELDER`, also darf die Herkunft es nennen.
     const echteFelder = [
       "anchorsMissing",
       "payload.title",
       "payload.statement",
       "payload.type",
       "payload.category",
+      "payload.confidentiality",
     ];
 
     for (const lage of lagen) {

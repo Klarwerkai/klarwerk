@@ -216,6 +216,14 @@ async function bisZurKarte(): Promise<void> {
   }
   await change(textarea, "Die Dichtung an Linie 4 muss regelmäßig getauscht werden.");
   await click(buttonByText(i18n.t("capture.structure")));
+  // JOB 3082 (Q3 a): ohne ausdrückliche Vertraulichkeitswahl lässt `requestSubmit` nichts durch
+  // (Codex-Befund R-1560). Dieser Fall misst die Abdeckungs-Karte — er muss also erst einreichen
+  // können. Die Pflicht selbst ist in `tests/vertraulichkeit-pflicht/` belegt.
+  const stufe = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  if (!(stufe instanceof HTMLSelectElement)) {
+    throw new Error(`Vertraulichkeits-Auswahl nicht gefunden. Sichtbar: ${pageText().slice(-900)}`);
+  }
+  await change(stufe, "intern");
   await click(buttonByText(i18n.t("capture.submit")));
 }
 

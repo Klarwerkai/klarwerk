@@ -340,6 +340,13 @@ describe("JOB 2684 D2 · auch das EINREICHEN aus dem Studio trägt den Stand", (
     gegenstelle.promote = async () => {
       throw new ApiError(409, "DRAFT_STALE", "veraltet");
     };
+    // JOB 3082 (Q3 a): dieser Fall prüft den STANDKONFLIKT, nicht die Vertraulichkeitspflicht —
+    // deshalb trägt der fortgesetzte Entwurf hier eine ausdrücklich gewählte Stufe. Ohne sie käme
+    // der Klick gar nicht bis zum Promote, und der Fall wäre aus dem falschen Grund rot.
+    gegenstelle.entwurf.payload = {
+      ...gegenstelle.entwurf.payload,
+      confidentiality: "intern",
+    } as typeof gegenstelle.entwurf.payload;
     await mount();
     await entwurfFortsetzen();
     const einreichen = buttonByText(i18n.t("capture.submit"));

@@ -88,6 +88,10 @@ describe("SCRUM-470 (#1): Client-sources werden auf öffentlichen Schreibpfaden 
         statement: "Entwurfsinhalt.",
         type: "best_practice",
         category: "Doku",
+        // JOB 3082 (Q3 a): der Entwurf trägt eine ausdrücklich gewählte Stufe — ohne sie weist das
+        // Promote mit 400 INCOMPLETE ab, und dieser Fall misst, dass untergeschobene `sources`
+        // NICHT ans KO gelangen.
+        confidentiality: "intern",
         sources: forgedSources,
       },
     });

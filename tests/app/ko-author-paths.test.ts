@@ -56,6 +56,9 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
         statement: "s",
         type: "best_practice",
         category: "K",
+        // JOB 3082 (Q3 a): die ausdrücklich gewählte Stufe gehört zu den KO-Pflichtfeldern des
+        // Promote — ohne sie antwortet die Route 400 INCOMPLETE, und dieser Fall misst den AUTOR.
+        confidentiality: "intern",
       },
     });
     const promoted = await app.inject({
@@ -72,7 +75,14 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
     const { app, services, userId, headers } = await appWithUser();
     // Altbestand simulieren: Entwurf mit LEEREM originalAuthor direkt über den Service.
     const legacy = await services.capture.createDraft(
-      { title: "Alt-Entwurf", statement: "s", type: "best_practice", category: "K" },
+      // JOB 3082 (Q3 a): die Stufe gehört zu den KO-Pflichtfeldern des Promote (s. o.).
+      {
+        title: "Alt-Entwurf",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+        confidentiality: "intern",
+      },
       "",
     );
     const promoted = await app.inject({
@@ -165,7 +175,14 @@ describe("WP-RETEST7 R6: author ist auf JEDEM Anlege-Pfad gesetzt", () => {
       method: "POST",
       url: "/api/drafts",
       headers,
-      payload: { title: "Eigenes Wissen", statement: "s", type: "best_practice", category: "K" },
+      // JOB 3082 (Q3 a): die Stufe gehört zu den KO-Pflichtfeldern des Promote (s. o.).
+      payload: {
+        title: "Eigenes Wissen",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+        confidentiality: "intern",
+      },
     });
     const promoted = await app.inject({
       method: "POST",

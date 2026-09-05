@@ -176,6 +176,10 @@ async function entwurfAnlegen(): Promise<string> {
       statement: "Dichtung vor jedem Anlauf prüfen.",
       type: "best_practice",
       category: "Allgemein",
+      // JOB 3082 (Q3 a): der fortgesetzte Entwurf trägt eine AUSDRÜCKLICH gewählte Stufe. Geprüft
+      // wird hier der VORGANG (Wiederholung ohne Dublette) — ohne Stufe hielte ihn seit diesem
+      // Auftrag die Vertraulichkeitspflicht auf, und der Test spräche von etwas anderem.
+      confidentiality: "intern",
       bodyHtml: "<p>Dichtung vor jedem Anlauf prüfen.</p>",
       origin: "frontdoor",
     },

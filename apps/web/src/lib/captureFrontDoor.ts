@@ -114,8 +114,22 @@ export function buildFrontDoorPayload(input: {
   bodyHtml: string;
   fallbackTitle?: string;
   // SCRUM-502 Schicht 2 (Round 3): die im Front-Door gewählte Vertraulichkeit fließt in den Entwurf
-  // (und damit ins spätere KO), damit Anzeige/Egress konsistent zur Erfassung sind. Standard „intern".
-  confidentiality?: Confidentiality;
+  // (und damit ins spätere KO), damit Anzeige/Egress konsistent zur Erfassung sind.
+  //
+  // JOB 3082 (Q3 a) — DER NAME IST DIE UNTERSCHEIDUNG. Das Feld hieß `confidentiality` und trug
+  // eine Stufe MIT Standardbelegung; es konnte deshalb nicht sagen, ob ein Mensch gewählt hat.
+  // Es heißt jetzt nach der Frage, die es beantwortet: WELCHE STUFE HAT DER MENSCH GEWÄHLT —
+  // und `undefined` heißt „keine", nicht „intern". Genau diese Unterscheidung braucht der Server
+  // (JOB 3076: „Ausdrückliches ‚intern' bleibt gespeichert; fehlende Einstufungen bleiben feldlos").
+  //
+  // DAS `| undefined` IST ABSICHT, nicht Nachlässigkeit. Das Projekt fährt
+  // `exactOptionalPropertyTypes`; dort heißt ein blosses `?:` „Schlüssel weglassen ODER Stufe",
+  // und ein AUSDRÜCKLICH übergebenes `undefined` wäre ein Typfehler. Genau das halten die Aufrufer
+  // aber in der Hand: `Blatt.tsx` führt einen Zustand `Confidentiality | undefined`, und dessen
+  // `undefined` IST hier die Aussage „nicht gewählt". Die Alternative wäre, an drei Aufrufstellen
+  // bedingt zu spreizen — dieselbe Aussage, dreimal umständlicher formuliert. Auf dem DRAHT bleibt
+  // die Unterscheidung scharf: der Rumpf unten lässt den Schlüssel weg, statt `undefined` zu senden.
+  gewaehlteVertraulichkeit?: Confidentiality | undefined;
   // AUFTRAG-mega7 Block A (bens Ship-Blocker): liegt ein bestehender Entwurf vor, ist dieser Payload
   // ein PUT über den Bestand — dann muss ein bewusst geleerter Body als ausdrücklicher Leerwert
   // mitreisen, sonst holt der partielle Server-Merge den alten Body zurück (und der Promote trägt
@@ -172,9 +186,19 @@ export function buildFrontDoorPayload(input: {
     title,
     statement: frontDoorStatement(bodyHtml, title),
     ...draftBodyPatch(bodyHtml, ueberBestand),
-    ...(input.confidentiality && input.confidentiality !== "intern"
-      ? { confidentiality: input.confidentiality }
-      : {}),
+    // JOB 3082 (Q3 a) — DIE SONDERREGEL FÜR „intern" IST ABGELÖST, NICHT ERGÄNZT.
+    //
+    // Hier stand `input.confidentiality && input.confidentiality !== "intern"`: eine ausdrücklich
+    // gewählte Stufe „Öffentlich-intern" wurde auf dem Draht GELÖSCHT. Für den Server war sie danach
+    // nicht mehr von „niemand hat gewählt" zu unterscheiden — die Client-Hälfte des Befunds
+    // R-1560 (Codex, 05.09.): „Gespeicherter Entwurf ohne confidentiality … GET KO
+    // confidentiality null."
+    //
+    // DIE REGEL JETZT, EINE ZEILE UND KEIN SONDERFALL: gewählt ⇒ mitschicken, nicht gewählt ⇒
+    // weglassen. Das Weglassen ist genauso wichtig wie das Mitschicken — ein immer gesendetes
+    // „intern" wäre eine erfundene Einstufung und zerstörte dieselbe Unterscheidung von der
+    // anderen Seite (gepinnt in `tests/vertraulichkeit-pflicht/draht-traegt-intern.test.ts`, F6).
+    ...(input.gewaehlteVertraulichkeit ? { confidentiality: input.gewaehlteVertraulichkeit } : {}),
   };
 
   if (nurEigene) {
@@ -318,7 +342,11 @@ export function createFrontDoorDraft<TDraft>(
     title: string;
     bodyHtml: string;
     fallbackTitle?: string;
-    confidentiality?: Confidentiality;
+    /**
+     * JOB 3082: die GEWÄHLTE Stufe — `undefined` heißt „nicht gewählt", nicht „intern".
+     * Zum ausdrücklichen `| undefined` siehe die Begründung an `buildFrontDoorPayload`.
+     */
+    gewaehlteVertraulichkeit?: Confidentiality | undefined;
   },
   createDraft: (payload: DraftPayload, operationId?: string) => Promise<TDraft>,
   timeoutMs = FRONT_DOOR_SAVE_TIMEOUT_MS,
@@ -398,7 +426,11 @@ export async function submitFrontDoorDraft<TDraft extends FrontDoorDraftRef, TKo
     bodyHtml: string;
     activeDraftId?: string | null;
     fallbackTitle?: string;
-    confidentiality?: Confidentiality;
+    /**
+     * JOB 3082: die GEWÄHLTE Stufe — `undefined` heißt „nicht gewählt", nicht „intern".
+     * Zum ausdrücklichen `| undefined` siehe die Begründung an `buildFrontDoorPayload`.
+     */
+    gewaehlteVertraulichkeit?: Confidentiality | undefined;
     // JOB 2684 D1: der beim Laden gesehene Stand eines FORTGESETZTEN Entwurfs — ein frisch
     // angelegter hat keinen (er kann noch niemandem in einem zweiten Tab begegnet sein).
     expectedUpdatedAt?: string | null;

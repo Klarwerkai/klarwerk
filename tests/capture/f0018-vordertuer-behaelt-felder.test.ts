@@ -84,6 +84,9 @@ const STUDIO_ENTWURF: DraftPayload = {
   bodyHtml: "<p>Die Dichtung wird bei jeder Wartung getauscht.</p>",
   type: "best_practice",
   category: "Instandhaltung",
+  // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprüft werden hier BEDINGUNGEN und
+  // MASSNAHMEN — die Stufe steht nur, damit der volle Weg bis zum Wissensobjekt durchläuft.
+  confidentiality: "intern",
   conditions: ["Anlage steht still", "Druck abgelassen"],
   measures: ["Dichtung tauschen", "Drehmoment prüfen", "Dichtheit protokollieren"],
   tags: ["verdichter", "wartung"],
@@ -167,6 +170,8 @@ describe("JOB 2966 D1 · F-0018 — die Vordertür behält Bedingungen und Maßn
       bodyHtml: "<p>Nur ein Satz.</p>",
       type: "best_practice",
       category: "Allgemein",
+      // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld.
+      confidentiality: "intern",
     };
     const entwurf = await entwurfAnlegen(svc, schlicht);
 

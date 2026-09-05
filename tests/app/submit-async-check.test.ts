@@ -105,7 +105,15 @@ describe("WP-SUBMIT-ASYNC (a): der Submit blockiert nicht mehr auf die KI-Pruefu
       method: "POST",
       url: "/api/drafts",
       headers,
-      payload: { title: "Entwurf", statement: "s", type: "best_practice", category: "K" },
+      // JOB 3082 (Q3 a): der Entwurf traegt eine ausdruecklich gewaehlte Stufe — ohne sie weist
+      // das Promote mit 400 INCOMPLETE ab, und dieser Fall misst die ANTWORTZEIT des Promote.
+      payload: {
+        title: "Entwurf",
+        statement: "s",
+        type: "best_practice",
+        category: "K",
+        confidentiality: "intern",
+      },
     });
     const promoted = await app.inject({
       method: "POST",

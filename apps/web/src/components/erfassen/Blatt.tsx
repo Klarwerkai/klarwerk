@@ -191,14 +191,14 @@ export function Blatt({
   const [confidentiality, setConfidentiality] = useState<Confidentiality>("intern");
   // JOB 504 D2 (übernommen): der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf
   // trug KEINE Stufe". Er steuert die Modell-Provenienz und wird bewusst NICHT geglättet.
+  //
+  // JOB 3082 (Q3 a): ER BEGINNT LEER. Bis hierher startete er auf „intern" — das Menü zeigte
+  // deshalb auf einem frischen Blatt „Öffentlich-intern" an, obwohl niemand das gewählt hatte.
+  // Eine Vorbelegung, die wie eine Entscheidung aussieht, ist eine erfundene Einstufung; dieselbe
+  // Grenze zieht die Anzeigeseite schon (`lib/confidentiality.ts:126-134`, „Nicht eingestuft").
   const [declaredConfidentiality, setDeclaredConfidentiality] = useState<
     Confidentiality | undefined
-  >("intern");
-  // Auftrag §4: Vertraulichkeit ist Pflicht VOR dem Einreichen. Das ist eine Frage an den MENSCHEN
-  // („hast du gewählt?"), nicht an den Draht — die ausführliche Begründung steht bei
-  // `vertraulichkeitOffen`. Ein leeres Blatt beginnt ungewählt; ein fortgesetzter Entwurf bringt
-  // seine gespeicherte Stufe mit und gilt damit als gewählt.
-  const [vertraulichkeitGewaehlt, setVertraulichkeitGewaehlt] = useState(false);
+  >(undefined);
 
   // ---- Fläche ----------------------------------------------------------------------------------
   const [offenesMenue, setOffenesMenue] = useState<string | null>(null);
@@ -502,8 +502,7 @@ export function Blatt({
     // startet deshalb wie frisch geöffnet — Stufe zurück auf den Anfangswert, Wahl wieder offen
     // (Auftrag §4 und §8.5: Vertraulichkeit vor Egress bleibt Pflicht).
     setConfidentiality("intern");
-    setDeclaredConfidentiality("intern");
-    setVertraulichkeitGewaehlt(false);
+    setDeclaredConfidentiality(undefined);
     setVertraulichkeitMarkiert(false);
     setKategorie("");
     savedStateRef.current = { title: "", bodyHtml: "", confidentiality: "intern", kategorie: "" };
@@ -543,7 +542,15 @@ export function Blatt({
         const loadedBody = frontDoorBodyFromDraft(draft.payload);
         // JOB 2705 (R2-23 a): `null` IST NICHT `""` — der Unterschied, den der String nicht trägt.
         bodyNieGeliefertRef.current = draft.payload.bodyHtml === null;
-        const declared = draft.payload.confidentiality;
+        // JOB 3082 (Q3 a): NUR EINE GÜLTIGE STUFE ZÄHLT ALS WAHL. Was hier ankommt, ist Drahtwert
+        // — ein fehlendes Feld, `null` oder ein unbekannter String sind KEINE Einstufung. Dieselbe
+        // Prüfung wie in `vertraulichkeitsAuskunft` (lib/confidentiality.ts:119-121) und wie
+        // serverseitig `discloseConfidentiality`: gültig oder gar nichts, nie geraten.
+        const declared = CONFIDENTIALITY_LEVELS.includes(
+          draft.payload.confidentiality as Confidentiality,
+        )
+          ? (draft.payload.confidentiality as Confidentiality)
+          : undefined;
         const loadedConfidentiality = confidentialityOf(declared);
         setActiveDraftId(draft.id);
         setTitle(loadedTitle);
@@ -553,11 +560,13 @@ export function Blatt({
         setStaleConflict(false);
         setQuellBildzahl(draft.payload.sourceImageCount ?? null);
         setConfidentiality(loadedConfidentiality);
+        // JOB 3082 (Q3 a): DAS IST DER EINE ORT, an dem ein Ladevorgang über die Wahl entscheidet
+        // — und er entscheidet nach dem, was WIRKLICH im Entwurf steht. Trägt die Nutzlast eine
+        // gültige Stufe, gilt sie als gewählt (auch das ausdrückliche „intern"); trägt sie keine,
+        // bleibt die Wahl offen und das Einreichen gesperrt. Ein `setVertraulichkeitGewaehlt(true)`
+        // ohne Bedingung stand hier bis JOB 3082 und war der Befund R-1560.
         setDeclaredConfidentiality(declared);
-        // Der fortgesetzte Entwurf BRINGT seine Stufe mit (fehlendes Feld = intern, siehe
-        // `lib/confidentiality.ts:24-25`). Er ist deshalb nicht „ungewählt" — sonst sperrte die
-        // Pflicht aus §4 genau den Menschen aus, der seinen eigenen Entwurf weiterschreibt.
-        setVertraulichkeitGewaehlt(true);
+        setVertraulichkeitMarkiert(false);
         savedStateRef.current = {
           title: loadedTitle,
           bodyHtml: loadedBody,
@@ -659,7 +668,10 @@ export function Blatt({
           title,
           bodyHtml,
           fallbackTitle,
-          confidentiality,
+          // JOB 3082: NUR eine getroffene Wahl reist mit. Sichern bleibt ohne Stufe erlaubt (ein
+          // halber Gedanke muss sich wegspeichern lassen) — der Entwurf trägt dann kein Feld, und
+          // das Fortsetzen fragt wieder nach.
+          gewaehlteVertraulichkeit: declaredConfidentiality,
           activeDraftId,
         });
         // JOB 2705 (R2-23 a): DER LÖSCHMARKER AUS DEM NICHTS. Hat der Server den Rumpf nie
@@ -684,7 +696,7 @@ export function Blatt({
         saveOperationRef.current = newCreateOperationId();
       }
       return createFrontDoorDraft(
-        { title, bodyHtml, fallbackTitle, confidentiality },
+        { title, bodyHtml, fallbackTitle, gewaehlteVertraulichkeit: declaredConfidentiality },
         (payload, operationId) => endpoints.drafts.create(mitBereich(payload), operationId),
         undefined,
         saveOperationRef.current,
@@ -746,7 +758,9 @@ export function Blatt({
           bodyHtml,
           activeDraftId,
           fallbackTitle,
-          confidentiality,
+          // JOB 3082: hier steht die Wahl, die der Mensch getroffen hat — und `requestSubmit` unten
+          // lässt diesen Weg gar nicht erst laufen, solange sie fehlt.
+          gewaehlteVertraulichkeit: declaredConfidentiality,
           expectedUpdatedAt: activeDraftId ? loadedUpdatedAtRef.current : null,
         },
         {
@@ -821,22 +835,29 @@ export function Blatt({
   // ==============================================================================================
   // WANN IST DIE VERTRAULICHKEIT „NICHT GEWÄHLT"? (Auftrag §4)
   // ==============================================================================================
-  // NICHT: `declaredConfidentiality === undefined`. Dieser Schnitt sah richtig aus und war genau
-  // verkehrt herum — gemessen an zwei Stellen des Bestands:
+  // ==============================================================================================
+  // JOB 3082 (Q3 a) — DIE FRAGE HAT EINEN EINZIGEN TRÄGER: `declaredConfidentiality`.
+  // ==============================================================================================
   //
-  //   · `lib/confidentiality.ts:24-25` hält fest, dass ein FEHLENDES Drahtfeld die dokumentierte
-  //     Kodierung für „intern" ist: „der Server materialisiert vertrauliche Stufen IMMER und
-  //     ,intern' bewusst nie". Ein fortgesetzter intern-Entwurf kommt also ohne Feld zurück. Über
-  //     jenen Schnitt wäre ausgerechnet er nicht mehr einreichbar gewesen — der Mensch öffnet
-  //     seinen eigenen Entwurf und kommt nicht weiter (belegt: mega23, FORTGESETZTER ENTWURF).
-  //   · Ein NEUES Blatt startete zugleich auf `"intern"`. Dort hätte die Pflicht also NIE gegriffen.
+  // WAS VORHER FALSCH WAR, und Codex hat es am lebenden System gemessen (Befund R-1560, 05.09.):
+  // Ein zweites Feld (`vertraulichkeitGewaehlt`) führte dieselbe Tatsache noch einmal — und der
+  // Ladeweg setzte es BEDINGUNGSLOS auf „gewählt", auch für eine Entwurfsnutzlast ganz ohne Feld
+  // `confidentiality`. Ein fortgesetzter Entwurf, bei dem die Frage übersprungen worden war, kam
+  // damit durch die Pflicht hindurch: „Fortsetzen und Einreichen führt zu POST promote … GET KO
+  // confidentiality null."
   //
-  // Zusammen heisst das: die Pflicht feuerte nur im falschen Fall und im richtigen nie — eine
-  // Scheinfunktion. Deshalb hängt sie jetzt an der Frage, die sie meint: HAT JEMAND GEWÄHLT?
-  // Gewählt hat, wer im Menü klickt — oder wer einen Entwurf fortsetzt, denn dessen Stufe steht
-  // gespeichert (roh `undefined` = intern, ebenda). Der rohe Herkunftswert bleibt davon unberührt:
-  // `declaredConfidentiality` führt weiter den UNGEGLÄTTETEN Wert für die Modell-Provenienz
-  // (JOB 504 D2), er beantwortet nur nicht mehr eine Frage, die er nie beantwortet hat.
+  // Die damalige Begründung („ein fehlendes Drahtfeld IST die Kodierung für intern") hing an genau
+  // der Sonderregel, die dieser Auftrag abschafft: der Client sendet ein ausdrückliches „intern"
+  // ab jetzt mit (`lib/captureFrontDoor.ts`). Ein fehlendes Feld heisst deshalb wieder das, was es
+  // sagt — NIEMAND HAT GEWÄHLT. Für Entwürfe aus der Zeit davor ist das die ausdrücklich
+  // angenommene Folge: sie fragen beim Fortsetzen erneut, statt eine Einstufung zu behaupten.
+  //
+  // EIN ZUSTAND STATT ZWEI: „gewählt" ist keine eigene Flagge mehr, sondern die Ablesung des
+  // einen Wertes. Zwei Felder für dieselbe Tatsache waren die Bauform, in der der Fehler überhaupt
+  // erst möglich war — eines konnte „gewählt" sagen, während das andere leer stand.
+  // `declaredConfidentiality` bleibt dabei der UNGEGLÄTTETE Wert für die Modell-Provenienz
+  // (JOB 504 D2): er trägt nur gültige Stufen oder gar nichts.
+  const vertraulichkeitGewaehlt = declaredConfidentiality !== undefined;
   const vertraulichkeitOffen = !vertraulichkeitGewaehlt;
   const [vertraulichkeitMarkiert, setVertraulichkeitMarkiert] = useState(false);
   const vertraulichkeitRef = useRef<HTMLDivElement | null>(null);
@@ -1251,9 +1272,10 @@ export function Blatt({
                 gewaehlt={lvl === declaredConfidentiality}
                 onClick={() => {
                   setConfidentiality(lvl);
-                  // Eine bewusste Auswahl IST eine Deklaration — ab hier gilt sie auch für den Egress.
+                  // Eine bewusste Auswahl IST eine Deklaration — ab hier gilt sie auch für den
+                  // Egress. Und sie ist zugleich die Wahl selbst: seit JOB 3082 gibt es keine
+                  // zweite Flagge daneben, die „gewählt" auch ohne Wert behaupten könnte.
                   setDeclaredConfidentiality(lvl);
-                  setVertraulichkeitGewaehlt(true);
                   setVertraulichkeitMarkiert(false);
                   setOffenesMenue(null);
                 }}

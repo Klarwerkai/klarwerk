@@ -34,6 +34,7 @@
 // Schema beantwortet nur die eine Frage, an der `continueDraft` sonst hart scheitert:
 // IST DAS ÜBERHAUPT EINE LADUNG, und tragen ihre Felder Typen, mit denen weitergerechnet werden kann?
 
+import { CONFIDENTIALITY_LEVELS, isValidConfidentiality } from "../../knowledge-object";
 import type { DraftPayload } from "./types";
 
 export type DraftPayloadShapeResult =
@@ -88,6 +89,28 @@ export function validateDraftPayloadShape(wert: unknown): DraftPayloadShapeResul
     if (v !== undefined && v !== null && typeof v !== "string") {
       return { ok: false, message: `draftPayload.${feld} muss Text oder null sein.` };
     }
+  }
+  // JOB 3082 (Q3 a) — DIE STUFE IST AM ENTWURF OPTIONAL UND IM WERT GEBUNDEN.
+  //
+  // OPTIONAL, weil SICHERN frei bleibt: ein halber Gedanke muss sich wegspeichern lassen, und die
+  // Pflicht greift am EINREICHEN (`toKoInput`), nicht am Zwischenstand. Ein hier erzwungenes Feld
+  // machte aus jedem Entwurf ohne Stufe einen Formfehler — und die Oberfläche müsste die Wahl vor
+  // dem ersten Speichern verlangen.
+  //
+  // IM WERT GEBUNDEN, weil ein beliebiger String KEINE Einstufung ist. Er käme sonst bis in den
+  // geteilten Pool und stünde dort als Stufe, die es nicht gibt; beim Einreichen bräche der Weg
+  // dann weit hinten ab. Dieselbe Grenze, die `normalizeOriginIn` für die Herkunft zieht — nur
+  // dass ein Formfehler hier am RAND entschieden wird und eine Meldung bekommt, die einem
+  // Menschen sagt, was an seinem Body nicht stimmt.
+  // Die Liste der Stufen wird NICHT abgeschrieben, sondern ist die des Moduls knowledge-object
+  // (`CONFIDENTIALITY_LEVELS`) — eine zweite Auffassung davon, welche Stufen es gibt, wäre genau
+  // der Doppelvertrag, den diese Datei sonst vermeidet.
+  const stufe = wert.confidentiality;
+  if (stufe !== undefined && !isValidConfidentiality(stufe)) {
+    return {
+      ok: false,
+      message: `draftPayload.confidentiality muss eine der Stufen ${CONFIDENTIALITY_LEVELS.join(", ")} sein.`,
+    };
   }
   // `neededValidations` rechnet in validateMetadata weiter (Vergleich gegen 1..5). Ein Text käme
   // dort durch die Vergleiche, ohne je eine Zahl gewesen zu sein.

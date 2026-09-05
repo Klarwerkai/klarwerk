@@ -28,6 +28,9 @@ const INHALT = {
   statement: "Dichtung vor jedem Anlauf prüfen.",
   type: "best_practice",
   category: "Instandhaltung",
+  // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprüft wird hier die
+  // ENTWURFS-REFERENZ über den Vorgang hinweg — die Stufe ist dafür Beiwerk.
+  confidentiality: "intern",
 };
 
 async function login(app: App, email: string, password: string) {

@@ -202,6 +202,12 @@ async function entwurfAnlegen(): Promise<string> {
       title: TITEL,
       bodyHtml: entwurfsBody(),
       origin: "word_addin",
+      // JOB 3082 (Q3 a): der Entwurf traegt eine AUSDRUECKLICH gewaehlte Stufe. Geprueft wird hier
+      // der TRANSPORT eines Rumpfes ueber 1 MiB — ohne Stufe hielte ihn seit diesem Auftrag die
+      // Vertraulichkeitspflicht schon auf dem Blatt auf, und der Fall erreichte das Promote nie.
+      // Dass ein Entwurf OHNE Stufe genau dort haengenbleibt, ist eigens gepinnt
+      // (`tests/vertraulichkeit-pflicht/fortgesetzter-entwurf-verlangt-stufe.test.tsx`, F1).
+      confidentiality: "intern",
       sourceImageCount: QUELL_BILDZAHL,
     },
   });

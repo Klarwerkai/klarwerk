@@ -186,6 +186,9 @@ describe("Restliche API end-to-end (§2.4/§2.5)", () => {
         statement: "Bei Überdruck Ventil X schließen.",
         type: "best_practice",
         category: "Anlage 1",
+        // JOB 3082 (Q3 a): die ausdrücklich gewählte Vertraulichkeitsstufe gehört seither zu den
+        // KO-Pflichtfeldern des Promote (`KO_PFLICHTFELDER`, services/capture/src/service.ts).
+        confidentiality: "intern",
       },
     });
     expect(draft.statusCode).toBe(201);

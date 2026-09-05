@@ -76,6 +76,9 @@ describe("mega7 Block A: Leerwert-Semantik des Bodys", () => {
         statement: "Vor Anlauf prüfen.",
         type: "best_practice",
         category: "Instandhaltung",
+        // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprüft wird hier die
+        // LEERWERT-SEMANTIK des Bodys — die Stufe steht nur, damit `toKoInput` sie erreicht.
+        confidentiality: "intern",
         bodyHtml: OLD_BODY,
       },
       "u1",

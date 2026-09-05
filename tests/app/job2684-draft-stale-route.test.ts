@@ -150,12 +150,15 @@ describe("JOB 2684 D1 · POST /api/drafts/:id/promote mit gesehenem Stand — di
       url: `/api/drafts/${draft.id}/promote`,
       headers,
       payload: {
-        // Die vier KO-Pflichtfelder (service.ts:69) — wie die Vordertür sie sendet.
+        // Die KO-Pflichtfelder (`KO_PFLICHTFELDER`, services/capture/src/service.ts) — wie die
+        // Vordertür sie sendet. JOB 3082 (Q3 a): dazu gehört seither die ausdrücklich gewählte
+        // Vertraulichkeitsstufe.
         draftPayload: {
           title: "Wartung der Presse",
           statement: "Fassung A, eingereicht",
           type: "best_practice",
           category: "Allgemein",
+          confidentiality: "intern",
         },
         expectedUpdatedAt: a.json().updatedAt,
       },

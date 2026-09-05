@@ -3672,8 +3672,20 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Rückweg „Zur Admin-Ansicht", dessen Klassen fest sind. Der Knopf selbst lebt in
     // `pages/AdminKontenDetails.tsx` weiter und steht mit SEINER Bindung schon in dieser Menge —
     // es fällt der doppelte Ort weg, nicht die Sache.
+    //
+    // JOB 3082 (Q3 a): von 210 auf 211. GENAU EINE Bindung ist DAZUGEKOMMEN, und sie ist von
+    // derselben Bauform wie die Plaketten neben ihr (ein Zustand entscheidet zwischen zwei festen
+    // Klassenketten):
+    //
+    //     + pages/Capture.tsx — `… ${vertraulichkeitMarkiert && vertraulichkeitOffen
+    //                              ? "border-trust-crit-fill ring-1 ring-trust-crit-fill"
+    //                              : "border-hairline"}`   (Vertraulichkeits-Auswahl)
+    //
+    // Sie ist die sichtbare Hälfte der neuen Pflicht: ein abgewiesener Einreichversuch markiert das
+    // Feld, statt einen Erklärsatz danebenzustellen. Die Auswahl steht an ZWEI Aufrufstellen im
+    // Baum, aber nur EINMAL im Quelltext (`vertraulichkeitsWahl`) — deshalb auch nur eine Bindung.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      210,
+      211,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

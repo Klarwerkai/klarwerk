@@ -105,7 +105,16 @@ async function frischesValidiertesObjekt() {
     method: "POST",
     url: `/api/drafts/${draft.json().id as string}/promote`,
     headers,
-    payload: { draftPayload: { type: "best_practice", category: "Wartung", neededValidations: 1 } },
+    // JOB 3082 (Q3 a): `confidentiality` gehoert seither zu den KO-Pflichtfeldern des Promote —
+    // genau das ist hier mit „der Mensch ergaenzt die Pflichtfelder" gemeint.
+    payload: {
+      draftPayload: {
+        type: "best_practice",
+        category: "Wartung",
+        neededValidations: 1,
+        confidentiality: "intern",
+      },
+    },
   });
   expect(promote.statusCode, promote.body).toBe(201);
   const koId = promote.json().id as string;

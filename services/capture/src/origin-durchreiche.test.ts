@@ -25,12 +25,19 @@ import { InMemoryDraftRepo } from "./repo";
 import { CaptureService } from "./service";
 import type { DraftPayload } from "./types";
 
-// Die vier Pflichtfelder, ohne die `toKoInput` mit `INCOMPLETE` abbricht — hier nur Beiwerk.
+// Die Pflichtfelder, ohne die `toKoInput` mit `INCOMPLETE` abbricht — hier nur Beiwerk.
+//
+// JOB 3082 (Q3 a): `confidentiality` ist seit diesem Auftrag EINES davon (Station 3 des Nordsterns,
+// „Vertraulichkeit klar"). Der Wert steht hier ausdruecklich, weil diese Datei die HERKUNFT prueft
+// und dafuer einen Entwurf braucht, der am Einreichen nicht aus einem anderen Grund haengenbleibt.
+// Welche Stufe es ist, ist fuer die Herkunftsfrage gleichgueltig; DASS eine gewaehlt wurde, ist ab
+// jetzt Bedingung des Einreichens (gepinnt in `tests/vertraulichkeit-pflicht/`).
 const VOLLSTAENDIG: DraftPayload = {
   title: "Ventil X schliesst bei Ueberdruck",
   statement: "Bei Ueberdruck Ventil X manuell schliessen.",
   type: "best_practice",
   category: "Anlage 1",
+  confidentiality: "intern",
 };
 
 /**

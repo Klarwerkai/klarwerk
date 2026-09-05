@@ -51,6 +51,10 @@ describe("SCRUM-395: Standard-Prüferanzahl + Prüfer-Vorschlag beim Einreichen"
     statement: "Bei Druckabfall über 0,4 bar den Filter tauschen.",
     type: "best_practice",
     category: "Anlage 2",
+    // JOB 3082 (Q3 a): die ausdrücklich gewählte Vertraulichkeitsstufe gehört seither zu den
+    // KO-Pflichtfeldern des Promote (`KO_PFLICHTFELDER`, services/capture/src/service.ts). Dieser
+    // Fall misst die Prüferzahl und den Prüfer-Vorschlag — ohne die Stufe käme er nicht so weit.
+    confidentiality: "intern",
   };
 
   it("Normalisierung: nur ganze Zahlen 1–5, alles andere wird ehrlich abgelehnt", () => {

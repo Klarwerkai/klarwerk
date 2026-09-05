@@ -366,7 +366,10 @@ describe("JOB 2695 · D5 — was eine Flaeche nicht fuehrt, darf sie nicht loesc
     const rumpf = buildFrontDoorPayload({
       title: STUDIO_ENTWURF.title,
       bodyHtml: STUDIO_ENTWURF.bodyHtml,
-      confidentiality: "intern",
+      // JOB 3082 (Q3 a): der Parameter heisst jetzt nach der Frage, die er beantwortet — WELCHE
+      // STUFE HAT DER MENSCH GEWAEHLT. Der Wert ist derselbe; neu ist, dass dieses ausdrueckliche
+      // „intern" nun auch wirklich auf dem Draht landet, statt unterwegs verworfen zu werden.
+      gewaehlteVertraulichkeit: "intern",
       activeDraftId: id,
     });
     const put = await app.inject({

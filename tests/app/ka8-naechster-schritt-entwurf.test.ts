@@ -33,6 +33,10 @@ const VOLLSTAENDIG: DraftPayload = {
   statement: "Unter 5 mm Blechstaerke wird mit reduzierter Stromstaerke geschweisst.",
   type: "best_practice",
   category: "Fertigung",
+  // JOB 3082 (Q3 a): „vollstaendig" heisst seither AUCH: die Vertraulichkeit ist ausdruecklich
+  // gewaehlt. Sie steht in KO_PFLICHTFELDER (services/capture/src/service.ts) und damit in
+  // derselben Liste, aus der `naechsterSchritt` und `toKoInput` beide lesen.
+  confidentiality: "intern",
 };
 
 // Ein Entwurf, der sich auf ein gesichertes Original beruft — der Traeger von `anchorsMissing`.
@@ -100,7 +104,7 @@ describe("JOB 1494 · KA8 1b — der Endpunkt liefert die Auskunft samt Herkunft
     expect(res.json()).toEqual({ art: "anker_fehlt", herkunft: ["anchorsMissing"] });
   });
 
-  it("einreichbarer Entwurf ⇒ 200 mit `einreichen` und den vier Pflichtfeldern als Herkunft", async () => {
+  it("einreichbarer Entwurf ⇒ 200 mit `einreichen` und den fuenf Pflichtfeldern als Herkunft", async () => {
     const capture = dienstMitSpeicher(["obj-original-1"]);
     const entwurf = await capture.createDraft(MIT_ANKER, ANNA.id);
     const app = await baueApp(capture, ANNA);
@@ -111,6 +115,8 @@ describe("JOB 1494 · KA8 1b — der Endpunkt liefert die Auskunft samt Herkunft
     expect(res.json().art).toBe("einreichen");
     expect([...res.json().herkunft].sort()).toEqual([
       "payload.category",
+      // JOB 3082 (Q3 a): die Vertraulichkeit ist das fuenfte KO-Pflichtfeld.
+      "payload.confidentiality",
       "payload.statement",
       "payload.title",
       "payload.type",
@@ -128,6 +134,9 @@ describe("JOB 1494 · KA8 1b — der Endpunkt liefert die Auskunft samt Herkunft
     expect(res.json().art).toBe("vervollstaendigen");
     expect([...res.json().herkunft].sort()).toEqual([
       "payload.category",
+      // JOB 3082 (Q3 a): ein Entwurf mit nur einem Titel hat auch keine gewaehlte Stufe — sie
+      // fehlt also und wird ausdruecklich als fehlend genannt.
+      "payload.confidentiality",
       "payload.statement",
       "payload.type",
     ]);

@@ -38,6 +38,14 @@ const INHALT = {
   statement: "Dichtung vor jedem Anlauf prüfen.",
   type: "best_practice",
   category: "Instandhaltung",
+  // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprüft wird hier der
+  // ANTWORTVERLUST bei der Erstanlage — die Stufe ist dafür Beiwerk.
+  //
+  // `as const` ist Pflicht und keine Zierde: dieses Objekt wird auch in `CreateKoInput` gespreizt,
+  // und dort ist `confidentiality` vom Typ `Confidentiality`, nicht `string`. Ohne die Verengung
+  // verbreitert TypeScript das Literal zu `string` und der Build bricht mit TS2345 ab. `type`
+  // steht daneben unverengt, weil die Aufrufer es ohnehin selbst setzen.
+  confidentiality: "intern" as const,
   bodyHtml: "<p>Dichtung nach 500 h tauschen.</p>",
 };
 

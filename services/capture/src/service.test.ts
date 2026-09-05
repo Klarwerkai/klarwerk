@@ -34,6 +34,9 @@ describe("CaptureService", () => {
         statement: "Bei Überdruck schließen.",
         type: "best_practice",
         category: "Anlage 1",
+        // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprueft wird hier der AUTOR —
+        // die Stufe steht nur, damit `toKoInput` nicht aus einem anderen Grund abbricht.
+        confidentiality: "intern",
       },
       "anna",
     );
@@ -116,6 +119,10 @@ describe("CaptureService", () => {
         statement: "Bei Überdruck schließen.",
         type: "best_practice",
         category: "Anlage 1",
+        // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Fuer die PRUEFERANZAHL ist die
+        // Stufe gleichgueltig — sie steht hier nur, damit der Entwurf das Einreichen ueberhaupt
+        // erreicht.
+        confidentiality: "intern",
         neededValidations: 4,
       },
       "anna",

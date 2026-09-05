@@ -33,6 +33,9 @@ const INHALT = {
   statement: "Dichtung vor jedem Anlauf prüfen.",
   type: "best_practice",
   category: "Instandhaltung",
+  // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprüft wird hier die
+  // ABDRUCK-/SCHREIBSEMANTIK des Vorgangs — die Stufe ist dafür Beiwerk.
+  confidentiality: "intern",
   bodyHtml: "<p>Dichtung nach 500 h tauschen.</p>",
 };
 

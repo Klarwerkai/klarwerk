@@ -306,7 +306,34 @@ async function bisZurUebernahme(): Promise<void> {
   await click(buttonByText(i18n.t("xtr.applyCta")));
 }
 
+/**
+ * JOB 3082 (Q3 a) — DIE VERTRAULICHKEIT IST PFLICHT VOR DEM EINREICHEN.
+ *
+ * Ohne ausdrückliche Wahl lässt `requestSubmit` nichts durch (Codex-Befund R-1560). Dieser Block
+ * misst den Nacharbeits-Vermerk, nicht die Pflicht selbst — die Wahl gehört deshalb in den
+ * Klickpfad wie jede andere Eingabe auch. Belegt wird die Pflicht in `tests/vertraulichkeit-pflicht/`.
+ */
+async function vertraulichkeitSicherstellen(): Promise<void> {
+  let feld = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  if (!(feld instanceof HTMLSelectElement)) {
+    const schalter = [...container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes(i18n.t("capture.advanced.title")),
+    );
+    if (schalter instanceof HTMLButtonElement) {
+      await click(schalter);
+    }
+    feld = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  }
+  if (!(feld instanceof HTMLSelectElement)) {
+    throw new Error(`Vertraulichkeits-Auswahl nicht gefunden. Sichtbar: ${pageText().slice(-900)}`);
+  }
+  if (feld.value === "") {
+    await change(feld, "intern");
+  }
+}
+
 async function einreichen(): Promise<void> {
+  await vertraulichkeitSicherstellen();
   const kandidaten = [...container.querySelectorAll("button")].filter((b) =>
     (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("capture.submit")),
   );

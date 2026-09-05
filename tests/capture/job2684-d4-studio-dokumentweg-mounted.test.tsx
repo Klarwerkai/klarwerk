@@ -27,6 +27,10 @@ const gegenstelle = vi.hoisted(() => ({
       type: "best_practice",
       category: "Allgemein",
       origin: "expert",
+      // JOB 3082 (Q3 a): der Entwurf trägt eine AUSDRÜCKLICH gewählte Stufe. Dieser Fall misst den
+      // Standkonflikt im Dokumentweg, nicht die Vertraulichkeitspflicht — ohne die Wahl käme der
+      // Klick gar nicht bis zum Aufruf, und der Fall wäre aus dem falschen Grund rot.
+      confidentiality: "intern",
       // Das gesicherte Original und seine Belegstelle — wie mega20 Block D sie speichert.
       anchorDocuments: [
         {

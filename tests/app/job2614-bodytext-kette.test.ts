@@ -82,7 +82,15 @@ describe("JOB 2614 · Suchtext-Kette: Import → bodyText → Suche → belegte 
       url: `/api/drafts/${draftId}/promote`,
       headers,
       payload: {
-        draftPayload: { type: "best_practice", category: "Wartung", neededValidations: 1 },
+        // JOB 3082 (Q3 a): `confidentiality` ist seither ein KO-PFLICHTFELD des Promote — genau
+        // das ist der Sinn von „der Mensch vervollständigt die Pflichtfelder". Ohne sie antwortet
+        // die Route mit 400 INCOMPLETE, und dieser Fall käme nicht bis zur Suchtext-Kette.
+        draftPayload: {
+          type: "best_practice",
+          category: "Wartung",
+          neededValidations: 1,
+          confidentiality: "intern",
+        },
       },
     });
     expect(promote.statusCode, promote.body).toBe(201);

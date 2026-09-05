@@ -246,11 +246,16 @@ describe("Block A: EIN Dirty-Prädikat steuert Verwerfen UND Navigationswache", 
     expect(discardButton().disabled).toBe(true);
   });
 
-  it("NUR Vertraulichkeit geändert: Verwerfen aktiv, Wache greift, Reset → intern", async () => {
+  // JOB 3082 (Q3 a): DER FRISCHE AUSGANGSWERT DER VERTRAULICHKEIT IST „NICHT GEWÄHLT", nicht mehr
+  // „intern". Die Zusage dieses Falls bleibt Wort für Wort dieselbe — eine Änderung macht schmutzig,
+  // Verwerfen stellt den frischen Ausgangswert wieder her —, nur ist dieser Ausgangswert jetzt der
+  // leere. Vorher wählte der Fall „intern" als Ausgangspunkt und traf damit ausgerechnet den Wert,
+  // den niemand gewählt hatte (Codex-Befund R-1560).
+  it("NUR Vertraulichkeit geändert: Verwerfen aktiv, Wache greift, Reset → wieder offen", async () => {
     await mount();
     await openWorkspaceAndAdvanced();
-    const confSel = selectByValue("intern");
-    const other = [...confSel.options].map((o) => o.value).find((v) => v !== "intern");
+    const confSel = selectByValue("");
+    const other = [...confSel.options].map((o) => o.value).find((v) => v !== "");
     await change(confSel, other as string);
 
     expect(discardButton().disabled).toBe(false);
@@ -259,7 +264,7 @@ describe("Block A: EIN Dirty-Prädikat steuert Verwerfen UND Navigationswache", 
     await click(discardButton());
     await click(buttonByText(i18n.t("capture.wizard.discardYes")));
     await click(buttonByText(i18n.t("capture.advanced.title")));
-    expect(selectByValue("intern").value).toBe("intern");
+    expect(selectByValue("").value).toBe("");
     expect(discardButton().disabled).toBe(true);
   });
 
@@ -336,12 +341,20 @@ describe("Block A: EIN Dirty-Prädikat steuert Verwerfen UND Navigationswache", 
   it("Feld geändert und exakt auf den Default zurückgesetzt ⇒ NICHT dirty (Knopf aus, Wache still)", async () => {
     await mount();
     await openWorkspaceAndAdvanced();
-    const confSel = selectByValue("intern");
-    const other = [...confSel.options].map((o) => o.value).find((v) => v !== "intern") as string;
-    await change(confSel, other);
+    // JOB 3082 (Q3 a): gemessen wird das an der WISSENSART, nicht mehr an der Vertraulichkeit.
+    // Der Fall prüft die Aussage „gegen den frischen Default vergleichen, nicht gegen ,ist gesetzt'"
+    // — und dafür braucht er ein Feld, das einen frischen Default HAT und wieder erreichbar ist.
+    // Die Vertraulichkeit hat seit 3082 keinen mehr: ihr Ausgangswert ist „nicht gewählt", und
+    // dorthin führt kein Weg zurück (der Platzhalter ist `disabled`) — das ist der Zweck der
+    // Pflicht, keine Lücke dieses Falls.
+    const artSel = selectByValue("best_practice");
+    const other = [...artSel.options]
+      .map((o) => o.value)
+      .find((v) => v !== "best_practice") as string;
+    await change(artSel, other);
     expect(discardButton().disabled).toBe(false);
     // zurück auf den frischen Default
-    await change(selectByValue(other), "intern");
+    await change(selectByValue(other), "best_practice");
     expect(discardButton().disabled).toBe(true);
     // Navigationswache lässt jetzt wieder durch (kein Dialog).
     nav.proceeded = false;

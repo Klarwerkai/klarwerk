@@ -223,6 +223,9 @@ async function seedDraftWithBody(): Promise<string> {
     statement: "Dichtung vor jedem Anlauf prüfen.",
     type: "best_practice",
     category: "Instandhaltung",
+    // JOB 3082 (Q3 a): seit diesem Auftrag ein KO-Pflichtfeld. Geprüft wird hier der BODY-Zyklus —
+    // die Stufe steht nur, damit das Einreichen nicht aus einem anderen Grund abbricht.
+    confidentiality: "intern",
     bodyHtml: OLD_BODY,
     origin: "expert",
   });

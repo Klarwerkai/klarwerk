@@ -249,6 +249,15 @@ async function bisZurErfolgskarte(): Promise<void> {
   await change(textarea, "Die Dichtung an Linie 4 muss regelmaessig getauscht werden.");
   await click(buttonByText(i18n.t("capture.structure")));
 
+  // JOB 3082 (Q3 a): ohne ausdrueckliche Vertraulichkeitswahl laesst `requestSubmit` nichts durch
+  // (Codex-Befund R-1560). Dieser Fall misst die ERFOLGSKARTE — er muss also erst einreichen
+  // koennen. Die Pflicht selbst ist in `tests/vertraulichkeit-pflicht/` belegt.
+  const stufe = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  if (!(stufe instanceof HTMLSelectElement)) {
+    throw new Error(`Vertraulichkeits-Auswahl nicht gefunden. Sichtbar: ${pageText().slice(-900)}`);
+  }
+  await change(stufe, "intern");
+
   const kandidaten = [...container.querySelectorAll("button")].filter((b) =>
     (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("capture.submit")),
   );

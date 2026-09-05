@@ -62,6 +62,10 @@ describe("SCRUM-354: Draft → continue → submit (promote) E2E (HTTP)", () => 
         category: "Anlage 4",
         bodyHtml,
         neededValidations: 1,
+        // JOB 3082 (Q3 a): der Mensch wählt die Vertraulichkeitsstufe, bevor er einreicht — sie
+        // gehört seither zu den KO-Pflichtfeldern (`KO_PFLICHTFELDER`,
+        // services/capture/src/service.ts) und reist mit dem Fortsetzen-Schritt in den Entwurf.
+        confidentiality: "intern",
       },
     });
     expect(updated.statusCode).toBe(200);

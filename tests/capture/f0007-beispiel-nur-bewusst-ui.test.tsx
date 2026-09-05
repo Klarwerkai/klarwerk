@@ -311,6 +311,32 @@ async function strukturieren(): Promise<void> {
   await click(knopfMit(i18n.t("capture.structure")));
 }
 
+/**
+ * JOB 3082 (Q3 a): DIE VERTRAULICHKEIT IST SEITHER PFLICHT VOR DEM EINREICHEN — ohne ausdrueckliche
+ * Wahl laesst `requestSubmit` nichts durch. Dieser Fall misst die BEISPIEL-Ruecksprache, nicht die
+ * Vertraulichkeitspflicht; die Wahl gehoert deshalb in den Klickpfad wie jede andere Eingabe auch,
+ * sonst haenge die Null unten an der falschen Sperre. Belegt wird die Pflicht selbst in
+ * `tests/vertraulichkeit-pflicht/erfassen-arbeitsraum-verlangt-stufe.test.tsx`.
+ */
+async function vertraulichkeitWaehlen(): Promise<void> {
+  let feld = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  if (!(feld instanceof HTMLSelectElement)) {
+    // Im Experten-Weg liegt die Auswahl in den erweiterten Feldern; im gefuehrten Weg steht sie
+    // direkt an der Einreich-Entscheidung.
+    const schalter = alleKnoepfe().find((b) =>
+      (b.textContent ?? "").includes(i18n.t("capture.advanced.title")),
+    );
+    if (schalter) {
+      await click(schalter);
+    }
+    feld = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  }
+  if (!(feld instanceof HTMLSelectElement)) {
+    throw new Error(`Vertraulichkeits-Auswahl nicht gefunden. Sichtbar: ${pageText().slice(-900)}`);
+  }
+  await tippen(feld, "intern");
+}
+
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   box.koCreates.length = 0;
@@ -350,6 +376,7 @@ describe("F-0007 UI · Beispielweg: laden, kennzeichnen, zurueckfragen, bewusst 
     // 3 · WEITER BIS ZUR EINREICH-ENTSCHEIDUNG. Die Kennzeichnung ueberlebt den Schrittwechsel —
     // „bis zum Schluss sichtbar" ist die Zusage, nicht „einmal kurz aufgeblitzt".
     await strukturieren();
+    await vertraulichkeitWaehlen();
     expect(badgeSichtbar()).toBe(true);
 
     // 4 · ERSTER EINREICHGRIFF. Der Knopf ist frei (sonst wirft `einreichKnopf`).
@@ -369,6 +396,7 @@ describe("F-0007 UI · Beispielweg: laden, kennzeichnen, zurueckfragen, bewusst 
     await mount();
     await beispielLaden();
     await strukturieren();
+    await vertraulichkeitWaehlen();
 
     // Dreimal derselbe Griff. Waere die Sperre nur eine Anzeige, kaeme spaetestens hier etwas durch.
     await click(einreichKnopf());
@@ -428,6 +456,7 @@ describe("F-0007 UI · Gegenfall: vollstaendig ueberschrieben", () => {
     expect(badgeSichtbar()).toBe(false);
 
     await strukturieren();
+    await vertraulichkeitWaehlen();
     expect(badgeSichtbar()).toBe(false);
     await click(einreichKnopf());
 
@@ -446,6 +475,7 @@ describe("F-0007 UI · Gegenfall: ohne Beispiel", () => {
       "Nach jedem Werkzeugwechsel wird der Anschlag neu vermessen.",
     );
     await strukturieren();
+    await vertraulichkeitWaehlen();
 
     expect(badgeSichtbar()).toBe(false);
     await click(einreichKnopf());
@@ -461,6 +491,7 @@ describe("F-0007 UI · Gegenfall: Abbruch und erneutes Laden", () => {
     await mount();
     await beispielLaden();
     await strukturieren();
+    await vertraulichkeitWaehlen();
 
     // Rueckfrage oeffnen und wieder schliessen.
     await click(einreichKnopf());
@@ -484,6 +515,7 @@ describe("F-0007 UI · Gegenfall: Abbruch und erneutes Laden", () => {
     await mount();
     await beispielLaden();
     await strukturieren();
+    await vertraulichkeitWaehlen();
     await click(einreichKnopf());
     expect(rueckfrageSichtbar()).toBe(true);
 
@@ -496,6 +528,7 @@ describe("F-0007 UI · Gegenfall: Abbruch und erneutes Laden", () => {
     expect(rueckfrageSichtbar()).toBe(false);
 
     await strukturieren();
+    await vertraulichkeitWaehlen();
     expect(rueckfrageSichtbar()).toBe(false);
     await click(einreichKnopf());
     expect(rueckfrageSichtbar()).toBe(true);

@@ -345,8 +345,10 @@ describe("Block A: Entwurf speichern sichert den vollständigen Dirty-State und 
     await openWorkspaceAndAdvanced();
     const typeSel = selectByValue("best_practice");
     const otherType = [...typeSel.options].map((o) => o.value).find((v) => v !== "best_practice");
-    const confSel = selectByValue("intern");
-    const otherConf = [...confSel.options].map((o) => o.value).find((v) => v !== "intern");
+    // JOB 3082 (Q3 a): die Vertraulichkeitsauswahl startet LEER („nicht gewählt"), nicht auf
+    // „intern" — die Wahl ist eine Handlung, keine Vorbelegung.
+    const confSel = selectByValue("");
+    const otherConf = [...confSel.options].map((o) => o.value).find((v) => v !== "");
     const numberInput = [...container.querySelectorAll("input")].find(
       (i) => i.type === "number",
     ) as HTMLInputElement;

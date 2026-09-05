@@ -1,5 +1,9 @@
 import { randomUUID } from "node:crypto";
-import { type CreateKoInput, createOperationFingerprint } from "../../knowledge-object";
+import {
+  type CreateKoInput,
+  createOperationFingerprint,
+  isValidConfidentiality,
+} from "../../knowledge-object";
 import { sanitizeHtml } from "../../structure";
 import { DRAFT_LIMITS } from "./draft-limits";
 import type { DraftRepo } from "./repo";
@@ -66,9 +70,15 @@ function ankerKennungen(draft: Draft): string[] {
 // nichts und speichert nichts; sie liest den Entwurf und das Ergebnis der Ankerpruefung, die der
 // Aufrufer ohnehin schon in der Hand hat.
 //
-// DIE VIER KO-PFLICHTFELDER sind genau die, an denen `toKoInput` weiter unten mit INCOMPLETE
+// DIE KO-PFLICHTFELDER sind genau die, an denen `toKoInput` weiter unten mit INCOMPLETE
 // abbricht. Sagte die Auskunft „einreichen" und das Einreichen scheiterte, waere sie eine Zusage
 // ohne Deckung — also muss sie DASSELBE beurteilen.
+//
+// JOB 3082 (Q3 a): `confidentiality` IST SEIT DIESEM AUFTRAG EINES DAVON. Ein Wissensobjekt, bei
+// dem niemand die Vertraulichkeit gewaehlt hat, entsteht nicht mehr — Station 3 des Nordsterns
+// („Vertraulichkeit klar") ist keine Bitte an die Oberflaeche, sondern eine Bedingung des
+// Einreichens. Der Promote-Weg ist auch ohne Oberflaeche erreichbar; eine Pflicht, die nur der
+// Client kennt, ist keine.
 //
 // Und zwar mit derselben SCHAERFE: `toKoInput` prueft `!p.title` (falsy), nicht auf Leerraum.
 // Ein Titel aus lauter Leerzeichen kommt dort durch — hier deshalb ebenso. Strenger zu pruefen
@@ -79,10 +89,27 @@ function ankerKennungen(draft: Draft): string[] {
 // verengen dort die Typen fuer die nachfolgende Zuweisung; ein Funktionsaufruf verloere das und
 // braeuchte Behauptungen (`as`) statt Beweise. Die Uebereinstimmung ist deshalb NICHT behauptet,
 // sondern gepinnt — der Vertragstest fuehrt beide Wege ueber dieselben Entwuerfe und vergleicht.
-const KO_PFLICHTFELDER = ["title", "statement", "type", "category"] as const;
+const KO_PFLICHTFELDER = ["title", "statement", "type", "category", "confidentiality"] as const;
+
+/**
+ * Fehlt dieses Pflichtfeld?
+ *
+ * JOB 3082: Fuer `confidentiality` ist „vorhanden" nicht genug — ein beliebiger String ist keine
+ * Einstufung, und die Pflicht waere sonst mit einem Tippfehler zu umgehen. Geprueft wird deshalb
+ * mit `isValidConfidentiality` (knowledge-object), zeichengleich zu `toKoInput` weiter unten. Fuer
+ * die uebrigen vier bleibt es bei der bisherigen SCHAERFE: falsy, nicht auf Leerraum — ein Titel
+ * aus Leerzeichen kommt beim Einreichen durch, also darf die Auskunft nicht strenger sein.
+ */
+function pflichtfeldFehlt(payload: DraftPayload, feld: (typeof KO_PFLICHTFELDER)[number]): boolean {
+  return feld === "confidentiality"
+    ? !isValidConfidentiality(payload.confidentiality)
+    : !payload[feld];
+}
 
 function fehlendePflichtfelder(payload: DraftPayload): string[] {
-  return KO_PFLICHTFELDER.filter((feld) => !payload[feld]).map((feld) => `payload.${feld}`);
+  return KO_PFLICHTFELDER.filter((feld) => pflichtfeldFehlt(payload, feld)).map(
+    (feld) => `payload.${feld}`,
+  );
 }
 
 /**
@@ -820,7 +847,28 @@ export class CaptureService {
       );
     }
     const p = draft.payload;
-    if (!p.title || !p.statement || !p.type || !p.category) {
+    // JOB 3082 (Q3 a) — DIE STUFE STEHT JETZT IN DIESER PRÜFUNG.
+    //
+    // Codex hat den Weg daran vorbei gemessen (Befund R-1560, 05.09.): Entwurf ohne
+    // `confidentiality` → Promote → Wissensobjekt mit `confidentiality: null`. Niemand sah der
+    // Sache an, dass die Frage schlicht übersprungen worden war. Ein fehlendes ODER ungültiges Feld
+    // ist deshalb dasselbe wie ein fehlender Titel: kein Wissensobjekt.
+    //
+    // `isValidConfidentiality` und NICHT `normalizeConfidentiality`: eine Normalisierung machte aus
+    // dem Übersprungenen ein „intern" und damit genau die erfundene Einstufung, die dieser Auftrag
+    // abschafft (dieselbe Wahl trifft `discloseConfidentiality`,
+    // services/knowledge-object/src/confidentiality.ts:99-102).
+    //
+    // ANGENOMMENE FOLGE: Entwürfe aus der Zeit vor diesem Auftrag tragen keine Stufe und sind erst
+    // nach einer ausdrücklichen Wahl promotebar. Der Weg dorthin ist begehbar — das Blatt fragt
+    // beim Fortsetzen wieder danach.
+    if (
+      !p.title ||
+      !p.statement ||
+      !p.type ||
+      !p.category ||
+      !isValidConfidentiality(p.confidentiality)
+    ) {
       throw new CaptureError(
         "INCOMPLETE",
         "Entwurf hat noch keine vollständigen KO-Pflichtfelder.",

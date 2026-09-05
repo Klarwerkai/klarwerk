@@ -336,7 +336,38 @@ async function bisZurUebernahme(): Promise<void> {
   await click(buttonByText(i18n.t("xtr.applyCta")));
 }
 
+/**
+ * JOB 3082 (Q3 a) — DIE VERTRAULICHKEIT IST PFLICHT VOR DEM EINREICHEN.
+ *
+ * Ohne ausdrückliche Wahl lässt `requestSubmit` nichts durch (Codex-Befund R-1560: ein Beitrag ging
+ * bis dahin in den Bestand, ohne dass je ein Mensch die Frage beantwortet hatte). Dieser Block misst
+ * den Verbund-Anlageweg und den Entwurfs-Rundlauf, nicht die Pflicht selbst — die Wahl gehört
+ * deshalb in den Klickpfad wie jede andere Eingabe auch. Sonst hinge jede Null unten an der falschen
+ * Sperre. Belegt wird die Pflicht in `tests/vertraulichkeit-pflicht/`.
+ */
+async function vertraulichkeitSicherstellen(): Promise<void> {
+  let feld = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  if (!(feld instanceof HTMLSelectElement)) {
+    // Im Experten-Weg liegt die Auswahl in den erweiterten Feldern, im geführten Weg direkt an der
+    // Einreich-Entscheidung.
+    const schalter = [...container.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes(i18n.t("capture.advanced.title")),
+    );
+    if (schalter instanceof HTMLButtonElement) {
+      await click(schalter);
+    }
+    feld = container.querySelector('[data-testid="capture-vertraulichkeit"]');
+  }
+  if (!(feld instanceof HTMLSelectElement)) {
+    throw new Error(`Vertraulichkeits-Auswahl nicht gefunden. Sichtbar: ${pageText().slice(-900)}`);
+  }
+  if (feld.value === "") {
+    await change(feld, "intern");
+  }
+}
+
 async function einreichen(): Promise<void> {
+  await vertraulichkeitSicherstellen();
   // Der Text steht ZWEIMAL auf der Seite: als Schritt-Kennzeichnung in der Wizard-Leiste
   // („3 · Prüfen & einreichen") und als echter Knopf darunter. Gemeint ist der echte — sonst
   // klickte der Test auf eine Wegmarke und hielte das Ausbleiben jeder Wirkung für ein Ergebnis.

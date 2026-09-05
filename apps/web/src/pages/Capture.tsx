@@ -560,13 +560,34 @@ export function CaptureArbeitsraum({
     CAPTURE_FIELD_DEFAULTS.confidentiality,
   );
   // JOB 504 D2: der ROHE Herkunftswert — `undefined` heisst „der fortgesetzte Entwurf trug KEINE
-  // Stufe". Er steuert AUSSCHLIESSLICH die Modell-Provenienz (ImageDescribeProvider) und wird
-  // bewusst NICHT auf "intern" geglaettet: `failSafeConfidentiality` (lib/reasonerProvenance.ts)
-  // muss den fehlenden Wert selbst sehen, sonst wird aus einem UNGESETZTEN Persistenzfeld eine
-  // ausdrueckliche Cloud-Freigabe. Der Formularstandard "intern" bleibt unveraendert bestehen.
+  // Stufe". Er steuert die Modell-Provenienz (ImageDescribeProvider) und wird bewusst NICHT auf
+  // "intern" geglaettet: `failSafeConfidentiality` (lib/reasonerProvenance.ts) muss den fehlenden
+  // Wert selbst sehen, sonst wird aus einem UNGESETZTEN Persistenzfeld eine ausdrueckliche
+  // Cloud-Freigabe.
+  //
+  // JOB 3082 (Q3 a): ER BEGINNT LEER — UND ER IST AB HIER DIE WAHL SELBST. Bis hierher startete er
+  // auf „intern": die Auswahlliste zeigte auf einem frischen Formular „Öffentlich-intern" an,
+  // obwohl niemand das gewählt hatte, und der Einreichweg schickte genau diesen Wert nie mit. Eine
+  // Vorbelegung, die wie eine Entscheidung aussieht, ist eine erfundene Einstufung. Dieselbe
+  // Bauform trägt jetzt das Blatt (components/erfassen/Blatt.tsx): EIN Zustand, keine zweite
+  // Flagge daneben, die „gewählt" auch ohne Wert behaupten könnte.
   const [declaredConfidentiality, setDeclaredConfidentiality] = useState<
     Confidentiality | undefined
-  >(CAPTURE_FIELD_DEFAULTS.confidentiality);
+  >(undefined);
+  // JOB 3082 (Q3 a): „die Vertraulichkeit ist noch offen" ist eine Ablesung des einen Wertes, keine
+  // zweite Tatsache. `vertraulichkeitMarkiert` sagt nur, ob ein abgewiesener Einreichversuch das
+  // Feld bereits angezeigt hat — es hebt die Sperre nie auf.
+  const vertraulichkeitOffen = declaredConfidentiality === undefined;
+  const [vertraulichkeitMarkiert, setVertraulichkeitMarkiert] = useState(false);
+  const vertraulichkeitRef = useRef<HTMLSelectElement | null>(null);
+  // JOB 3082 (Q3 a): der abgewiesene Einreichversuch klappt die erweiterten Felder auf; erst DANACH
+  // steht die Auswahl im Dokument und kann den Fokus annehmen. Deshalb ein Effekt und kein Aufruf
+  // im Klickpfad — dort gäbe es das Element noch gar nicht.
+  useEffect(() => {
+    if (vertraulichkeitMarkiert) {
+      vertraulichkeitRef.current?.focus();
+    }
+  }, [vertraulichkeitMarkiert]);
   const [neededValidations, setNeededValidations] = useState(
     CAPTURE_FIELD_DEFAULTS.neededValidations,
   );
@@ -1451,7 +1472,15 @@ export function CaptureArbeitsraum({
         // trüge ihn ins Wissensobjekt.
         ...draftBodyPatch(bodyHtml, true),
         ...(n ? { neededValidations: n } : {}),
-        ...(confidentiality !== "intern" ? { confidentiality } : {}),
+        // JOB 3082 (Q3 a) — DIE SONDERREGEL FÜR „intern" IST ABGELÖST, NICHT ERGÄNZT.
+        //
+        // Hier stand `confidentiality !== "intern" ? { confidentiality } : {}`: eine ausdrücklich
+        // gewählte Stufe „Öffentlich-intern" wurde auf dem Draht GELÖSCHT und war danach von
+        // „niemand hat gewählt" nicht mehr zu unterscheiden (Codex-Befund R-1560, 05.09.).
+        // Die Regel jetzt, an allen drei Stellen dieser Datei dieselbe: gewählt ⇒ mitschicken,
+        // nicht gewählt ⇒ weglassen. Gelesen wird deshalb `declaredConfidentiality` und NICHT der
+        // geglättete Formularwert `confidentiality` — nur der erste kennt den Unterschied.
+        ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
         // AUFTRAG-mega20 Block D: der Entwurf wird unmittelbar vor der Anlage auf den AKTUELLEN
         // Stand gebracht — inklusive Belegstellen und gesicherter Originale. Ohne sie prüfte der
         // Server beim Einreichen noch die Anker eines überholten Zwischenstands; ein inzwischen
@@ -1470,7 +1499,8 @@ export function CaptureArbeitsraum({
         asset: asset.trim() ? asset.trim() : null,
         ...(bodyHtml.trim() ? { bodyHtml } : {}),
         ...(n ? { neededValidations: n } : {}),
-        ...(confidentiality !== "intern" ? { confidentiality } : {}),
+        // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
+        ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
       };
       let ko: KnowledgeObject;
       // AUFTRAG-mega21 Block C-1: die nach dem Commit GESCHEITERTEN Nacharbeiten. Der Server sammelt
@@ -1731,6 +1761,13 @@ export function CaptureArbeitsraum({
       setCategory("");
       setAsset("");
       setNeededValidations("");
+      // JOB 3082 (Q3 a): die gewählte Stufe gehörte zu DIESEM Wissensobjekt. Bliebe sie stehen,
+      // während Text, Kategorie, Anlage und Prüfer geräumt werden, trüge der NÄCHSTE Beitrag eine
+      // Einstufung, die niemand für ihn getroffen hat — genau der stille Erbgang, den E2E-003 für
+      // die übrigen Metadaten beseitigt hat (s. `resetCaptureForm`).
+      setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
+      setDeclaredConfidentiality(undefined);
+      setVertraulichkeitMarkiert(false);
       // SCRUM-395: Prüfer-Auswahl gehört zum abgeschickten KO — für das nächste leeren.
       setReviewerIds([]);
       setDraftId(null);
@@ -1831,7 +1868,11 @@ export function CaptureArbeitsraum({
         // beim ANLEGEN bleibt das Feld weg.
         ...draftBodyPatch(bodyHtml, isDraftUpdate),
         ...(n ? { neededValidations: n } : {}),
-        ...(confidentiality !== "intern" ? { confidentiality } : {}),
+        // JOB 3082 (Q3 a): gewählt ⇒ mitschicken (auch „intern"), nicht gewählt ⇒ weglassen.
+        // SICHERN BLEIBT FREI (Auftrag §5.5): ein halber Gedanke lässt sich ohne Stufe wegspeichern
+        // — der Entwurf trägt dann kein Feld `confidentiality`, und genau daran fragt ihn das
+        // Fortsetzen wieder danach. Die Pflicht greift am Einreichen, nicht am Zwischenstand.
+        ...(declaredConfidentiality ? { confidentiality: declaredConfidentiality } : {}),
         // AUFTRAG-mega4/mega5 Block A (bens Auflage A): ALLE inhaltlichen, textuell sicherbaren
         // Dirty-Felder mitsichern — sonst behauptet „Entwurf speichern" eine Vollsicherung und verliert
         // Prüferauswahl, offene/teilweise Quelle, externe Suchanfrage oder den Interviewfortschritt
@@ -1896,8 +1937,12 @@ export function CaptureArbeitsraum({
       setCategory("");
       setAsset("");
       setNeededValidations("");
-      setConfidentiality("intern");
-      setDeclaredConfidentiality("intern");
+      setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
+      // JOB 3082 (Q3 a): die Eingabe ist leer, also ist auch die WAHL wieder offen. Ein hier
+      // stehen gelassenes „intern" wäre für den nächsten Beitrag eine Einstufung, die niemand für
+      // ihn getroffen hat.
+      setDeclaredConfidentiality(undefined);
+      setVertraulichkeitMarkiert(false);
       setReviewerIds([]);
       setPendingSources([]);
       // AUFTRAG-mega4 Block A: der Erfolgspfad räumt jetzt AUCH Quellenformular und externe Suche —
@@ -1978,10 +2023,20 @@ export function CaptureArbeitsraum({
     setNeededValidations(p.neededValidations ? String(p.neededValidations) : "");
     setBodyHtml(p.bodyHtml ?? "");
     // SCRUM-415: Vertraulichkeitsstufe aus dem Entwurf wiederherstellen.
-    // JOB 504 D2: der Rohwert bleibt roh (kann fehlen); die Formularanzeige normalisiert wie bisher
-    // auf "intern" — jetzt ueber den geteilten Helfer statt eines eigenen `??`-Vorschalters.
-    setConfidentiality(confidentialityOf(p.confidentiality));
-    setDeclaredConfidentiality(p.confidentiality);
+    // JOB 504 D2: der Rohwert bleibt roh (kann fehlen); der geglaettete Formularwert normalisiert
+    // wie bisher auf "intern" — ueber den geteilten Helfer statt eines eigenen `??`-Vorschalters.
+    //
+    // JOB 3082 (Q3 a): NUR EINE GÜLTIGE STUFE ZÄHLT ALS WAHL. Was hier ankommt, ist Drahtwert —
+    // ein fehlendes Feld, `null` oder ein unbekannter String sind KEINE Einstufung. Trägt die
+    // Nutzlast eine gültige Stufe, gilt sie als gewählt (auch das ausdrückliche „intern"); trägt
+    // sie keine, bleibt die Wahl offen und das Einreichen gesperrt. Genau das war der Befund
+    // R-1560: fortgesetzte Entwürfe ohne Stufe liefen bis hierher durch die Pflicht hindurch.
+    const geladeneStufe = CONFIDENTIALITY_LEVELS.includes(p.confidentiality as Confidentiality)
+      ? (p.confidentiality as Confidentiality)
+      : undefined;
+    setConfidentiality(confidentialityOf(geladeneStufe));
+    setDeclaredConfidentiality(geladeneStufe);
+    setVertraulichkeitMarkiert(false);
     // AUFTRAG-mega4/mega5 Block A: die mitgesicherten inhaltlichen Dirty-Felder 1:1 wiederherstellen —
     // Prüferauswahl, offene Quellen (sourceProvider → provider, s. fromDraftSources), teilweise
     // ausgefülltes Quellenformular und die externe SUCHANFRAGE. Die Trefferliste selbst wird nach
@@ -2170,7 +2225,10 @@ export function CaptureArbeitsraum({
     setCategory("");
     setAsset("");
     setConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
-    setDeclaredConfidentiality(CAPTURE_FIELD_DEFAULTS.confidentiality);
+    // JOB 3082 (Q3 a): der Leerzustand hat KEINE gewählte Stufe — das ist der frische Ausgangswert
+    // von `declaredConfidentiality` und zugleich der Grund, warum es keinen Default dafür gibt.
+    setDeclaredConfidentiality(undefined);
+    setVertraulichkeitMarkiert(false);
     setNeededValidations(CAPTURE_FIELD_DEFAULTS.neededValidations);
     setTags([]);
     setReviewerIds([]);
@@ -2322,7 +2380,12 @@ export function CaptureArbeitsraum({
   // deaktiviert und der Wert lebte ins nächste Wissensobjekt fort (bens Reproduktion).
   const hasUnsavedMeta =
     type !== CAPTURE_FIELD_DEFAULTS.type ||
-    confidentiality !== CAPTURE_FIELD_DEFAULTS.confidentiality ||
+    // JOB 3082 (Q3 a): der frische Ausgangswert der Vertraulichkeit ist „nicht gewählt" — deshalb
+    // ist JEDE getroffene Wahl eine Abweichung davon, auch die auf „intern". Vorher wurde gegen
+    // den geglätteten Formularwert verglichen, und der stand von Anfang an auf „intern": wer
+    // ausdrücklich „Öffentlich-intern" wählte, machte das Formular damit nicht schmutzig, und
+    // „Verwerfen" blieb gesperrt, obwohl es etwas zu verwerfen gab.
+    declaredConfidentiality !== undefined ||
     neededValidations !== CAPTURE_FIELD_DEFAULTS.neededValidations ||
     reviewerIds.length > 0 ||
     isSourceFormDirty(sourceForm) ||
@@ -3388,6 +3451,26 @@ export function CaptureArbeitsraum({
   // ohne dass der Mensch die Frage je beantwortet hatte. Ein Doppelklick hätte genügt. Bestätigen
   // kann jetzt nur, wer den Bestätigungsknopf drückt.
   const requestSubmit = (bestaetigt = false): void => {
+    // ============================================================================================
+    // JOB 3082 (Q3 a) — OHNE AUSDRÜCKLICH GEWÄHLTE STUFE GEHT VON HIER NICHTS RAUS.
+    // ============================================================================================
+    //
+    // Diese Prüfung steht VOR dem Beispiel-Tor und damit vor JEDEM Weg in den Bestand: beide
+    // Einreich-Knöpfe (Expertenspalte und Erzähl-Leiste) und der Bestätigungsknopf der
+    // Beispiel-Rückfrage rufen dasselbe `requestSubmit`. Ein zweiter Weg, der die Stufe an der
+    // Sperre vorbeischleust, wäre genau das Schlupfloch, das Codex am lebenden System gefunden hat
+    // (Befund R-1560: „Keine Auswahl im ganzen Ablauf … GET KO confidentiality null").
+    //
+    // KEIN ERKLÄRSATZ, SONDERN DAS FELD: der Versuch wird nicht still verschluckt — die erweiterten
+    // Felder klappen auf (dort steht die Auswahl), das Feld wird markiert und bekommt den Fokus.
+    // Dieselbe Bauart wie im Blatt (`components/erfassen/Blatt.tsx`, `requestSubmit`).
+    if (vertraulichkeitOffen) {
+      setShowAdvanced(true);
+      setVertraulichkeitMarkiert(true);
+      // Den Fokus setzt der Effekt unten — das eben aufgeklappte Feld steht in DIESEM Zug noch
+      // nicht im Dokument.
+      return;
+    }
     const schritt = beispielEinreichSchritt({
       beispielImFormular: exampleInForm,
       bestaetigt,
@@ -3399,6 +3482,65 @@ export function CaptureArbeitsraum({
     setConfirmExampleSubmit(false);
     submit.mutate();
   };
+
+  // ================================================================================================
+  // SCRUM-415 / JOB 3082 (Q3 a) — DIE VERTRAULICHKEITSWAHL, EINMAL DEFINIERT.
+  // ================================================================================================
+  //
+  // Vertrauliche KOs gehen nie in externe Kontexte (Output/Export). KEIN Standard mehr: die Stufe
+  // ist eine Wahl, und ohne sie lässt der Einreichen-Knopf nicht durch (s. `requestSubmit`).
+  //
+  // WARUM DAS EINE FUNKTION IST UND KEIN ZWEITER BLOCK. Die Auswahl stand bis JOB 3082 nur in den
+  // erweiterten Feldern — und die rendern ausschliesslich im Zweig `expertView || wizStep === "tell"`.
+  // Im geführten Weg steht der Mensch beim Einreichen aber im Schritt „refine": dort gab es die
+  // Auswahl gar nicht. Eine Pflicht, deren Feld auf dem Bildschirm fehlt, ist eine Sackgasse — der
+  // Knopf spärrte, und niemand könnte die Sperre auflösen. Deshalb steht dieselbe Wahl auch an der
+  // Einreich-Entscheidung des geführten Wegs. ZWEI AUFRUFSTELLEN, ABER NIE ZWEI AUF DEM SCHIRM:
+  // die Zweige `expertView || wizStep === "tell"` und `!expertView && wizStep === "refine"`
+  // schliessen einander aus. Und es bleibt EIN Zustand — es gibt keinen zweiten Ort, an dem
+  // „gewählt" gesetzt würde.
+  const vertraulichkeitsWahl = (): JSX.Element => (
+    <Field label={<span className="inline-flex items-center gap-1">{t("conf.field")}</span>}>
+      <select
+        ref={vertraulichkeitRef}
+        data-testid="capture-vertraulichkeit"
+        value={declaredConfidentiality ?? ""}
+        onChange={(e) => {
+          const gewaehlt = e.target.value as Confidentiality;
+          setConfidentiality(gewaehlt);
+          // Bewusste Auswahl IST eine Deklaration — ab hier gilt sie fuer den Egress.
+          // JOB 3082: und sie IST zugleich die Wahl selbst; es gibt keine zweite Flagge daneben,
+          // die „gewählt" auch ohne Wert behaupten könnte.
+          setDeclaredConfidentiality(gewaehlt);
+          setVertraulichkeitMarkiert(false);
+        }}
+        aria-label={t("conf.field")}
+        // JOB 3082 (Q3 a): der abgewiesene Einreichversuch macht das FELD sichtbar, nicht einen
+        // Erklärsatz daneben. `aria-invalid` trägt dieselbe Aussage für Screenreader — solange die
+        // Wahl offen ist, nicht länger.
+        aria-invalid={vertraulichkeitMarkiert && vertraulichkeitOffen}
+        className={`h-9 w-full rounded-input border bg-surface px-2 text-[13px] text-text ${
+          vertraulichkeitMarkiert && vertraulichkeitOffen
+            ? "border-trust-crit-fill ring-1 ring-trust-crit-fill"
+            : "border-hairline"
+        }`}
+      >
+        {/* SANIERUNG-20260827: Anzeige nie strenger/lascher als der Egress — fehlende Stufe zeigt
+            den Pflicht-Platzhalter, nicht „intern" (Begruendung: CaptureFrontDoor.tsx, gleiche
+            Stelle). */}
+        {declaredConfidentiality === undefined && (
+          <option value="" disabled>
+            {t("conf.confirmPending")}
+          </option>
+        )}
+        {CONFIDENTIALITY_LEVELS.map((lvl) => (
+          <option key={lvl} value={lvl}>
+            {t(`conf.level.${lvl}`)}
+          </option>
+        ))}
+      </select>
+    </Field>
+  );
 
   // F-0007: die sichtbare Hälfte. Der Zustand darf nicht nur intern geführt werden — wer ein
   // Beispiel geladen hat, sieht das bis zum Schluss. Herkunfts-Kennzeichnung im Muster von
@@ -4761,39 +4903,7 @@ export function CaptureArbeitsraum({
                     >
                       <TextInput value={asset} onChange={(e) => setAsset(e.target.value)} />
                     </Field>
-                    {/* SCRUM-415: Vertraulichkeitsstufe ab Erfassen (Standard „intern"). Vertrauliche
-                      KOs gehen nie in externe Kontexte (Output/Export). */}
-                    <Field
-                      label={
-                        <span className="inline-flex items-center gap-1">{t("conf.field")}</span>
-                      }
-                    >
-                      <select
-                        value={declaredConfidentiality ?? ""}
-                        onChange={(e) => {
-                          const gewaehlt = e.target.value as Confidentiality;
-                          setConfidentiality(gewaehlt);
-                          // Bewusste Auswahl IST eine Deklaration — ab hier gilt sie fuer den Egress.
-                          setDeclaredConfidentiality(gewaehlt);
-                        }}
-                        aria-label={t("conf.field")}
-                        className="h-9 w-full rounded-input border border-hairline bg-surface px-2 text-[13px] text-text"
-                      >
-                        {/* SANIERUNG-20260827: Anzeige nie strenger/lascher als der Egress —
-                            fehlende Stufe zeigt den Pflicht-Platzhalter, nicht „intern"
-                            (Begruendung: CaptureFrontDoor.tsx, gleiche Stelle). */}
-                        {declaredConfidentiality === undefined && (
-                          <option value="" disabled>
-                            {t("conf.confirmPending")}
-                          </option>
-                        )}
-                        {CONFIDENTIALITY_LEVELS.map((lvl) => (
-                          <option key={lvl} value={lvl}>
-                            {t(`conf.level.${lvl}`)}
-                          </option>
-                        ))}
-                      </select>
-                    </Field>
+                    {vertraulichkeitsWahl()}
                     <div data-help="cap:tagsField">
                       <TagEditor tags={tags} onChange={setTags} />
                     </div>
@@ -5854,6 +5964,12 @@ export function CaptureArbeitsraum({
                   </div>
                 ) : null}
 
+                {/* JOB 3082 (Q3 a): DIE WAHL STEHT AN DER ENTSCHEIDUNG. Im geführten Weg rendern
+                  die erweiterten Felder nicht (sie gehören zum Schritt „Erzählen"); ohne diese
+                  Stelle hätte der Mensch hier eine Pflicht ohne Feld — der Knopf spärrte, und nichts
+                  auf dem Schirm könnte die Sperre auflösen. Dieselbe Auswahl, dieselben Zustände,
+                  eine Definition (`vertraulichkeitsWahl`). */}
+                <div className="max-w-xs">{vertraulichkeitsWahl()}</div>
                 {/* SCRUM-370 / AG-P2-4: Beitragswert an der Einreich-Entscheidung — ehrlich. */}
                 <p className="text-[11.5px] leading-relaxed text-muted">
                   {t(CAPTURE_FLOW_TEXT.submitValue)}
