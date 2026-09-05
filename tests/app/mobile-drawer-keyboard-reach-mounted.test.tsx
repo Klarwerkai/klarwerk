@@ -25,7 +25,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
-    me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "editor" })),
+    // JOB 3060 · H1: „editor" ist keine Rolle des Produkts (navigation.ts ROLES) — mit ihr sah
+    // schon die alte Seitenleiste keinen Gruppenpunkt; nur das Logo trug damals „/start". Die
+    // kleinste echte Rolle sieht Start · Fragen · Bibliothek — und im Drawer Hilfe und Profil.
+    me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "viewer" })),
     logout: vi.fn(async () => ({})),
   },
 }));
@@ -208,6 +211,8 @@ describe("AUFTRAG-mega9 Block D-3: die Menüpunkte im Drawer sind per Tastatur e
     // Die echten Navigationsziele sind darunter, mit ihren Routen.
     // Bewusst die Routen, die in JEDER Rolle im Menü stehen — welche Punkte eine Rolle zusätzlich
     // sieht, ist Sache der Rollenlogik und nicht Gegenstand dieses Tastatur-Tests.
+    // (JOB 3060 · H1: /start ist der erste Kopfband-Punkt, /hilfe steht im Zahnrad-Teil des
+    // Drawers, /profil im Konto-Teil — drei Bausteine, ein Drawer.)
     const hrefs = focusables
       .filter((el): el is HTMLAnchorElement => el instanceof HTMLAnchorElement)
       .map((a) => a.getAttribute("href"));

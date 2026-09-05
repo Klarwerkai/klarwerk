@@ -1,28 +1,23 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// JOB 3028 · U3 — DIE KETTE: DER TEXT KOMMT AUS DEM HILFEKAPITEL, SONST NIRGENDWOHER.
+// JOB 3028 · U3 → JOB 3060 · H1 — DIE KETTE: DER TEXT KOMMT AUS DEM HILFEKAPITEL, SONST NIRGENDWOHER.
 // ================================================================================================
 //
-// Die Ablösungsgefahr dieses Auftrags ist eine ZWEITE WAHRHEIT — eine abgeschriebene Tabelle
-// „Route → Text" neben `HELP_TOPICS`, die beim nächsten neuen Kapitel unbemerkt auseinanderläuft
-// (die Sorte Befund, die Codex in JOB 3013 R1 gerügt hat). Genau die ist hier gepinnt, und zwar
-// nicht als einmalige Handprobe, sondern dauerhaft: der Bestand der Hilfekapitel wird für diesen
-// Lauf GESETZT, und die gemountete Seitenleiste muss ihm folgen.
+// Die Ablösungsgefahr ist eine ZWEITE WAHRHEIT — eine abgeschriebene Tabelle „Route → Text“ neben
+// `HELP_TOPICS`, die beim nächsten neuen Kapitel unbemerkt auseinanderläuft. Genau die ist hier
+// gepinnt, dauerhaft: der Bestand der Hilfekapitel wird für diesen Lauf GESETZT, und die gemountete
+// Seitenhilfe (Zahnrad-Menü, seit H1 der Ort des Satzes) muss ihm folgen.
 //
 // Zwei Zusicherungen:
-//   (a) LEERER Bestand  → kein einziger Menüpunkt trägt einen Hinweis. Käme der Text aus einer
-//       eigenen Tabelle in `navHilfe.ts`, stünde er weiter da und dieser Fall bliebe grün.
-//   (b) ZWEI Kapitel auf derselben Route → `null`. Das ist Regel 3 von `navHilfeFor`: bei
-//       Mehrdeutigkeit wird NICHT geraten und nicht das erste genommen. Im echten Bestand kommt
-//       der Fall nicht vor — er wird deshalb hier gesetzt und nicht dort erfunden.
+//   (a) LEERER Bestand  → die Seitenhilfe zeigt auf jeder Seite nur den Leersatz. Käme der Text aus
+//       einer eigenen Tabelle in `navHilfe.ts`, stünde er weiter da und dieser Fall bliebe grün.
+//   (b) ZWEI Kapitel auf derselben Route → `null`. Regel 3 von `navHilfeFor`: bei Mehrdeutigkeit
+//       wird NICHT geraten. Im echten Bestand kommt der Fall nicht vor — er wird hier gesetzt.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { HelpTopicDef } from "../../apps/web/src/lib/helpTopics";
 
-/**
- * Der gesetzte Bestand. Als GETTER in die Attrappe gereicht, damit jeder Fall ihn eigenständig
- * stellen kann — `navHilfeFor` liest `HELP_TOPICS` bei jedem Aufruf.
- */
+/** Der gesetzte Bestand. Als GETTER in die Attrappe gereicht — `navHilfeFor` liest bei jedem Aufruf. */
 const lage = vi.hoisted(() => ({ topics: [] as unknown[] }));
 
 vi.mock("../../apps/web/src/lib/helpTopics", async (echt) => {
@@ -69,9 +64,10 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { navHilfeFor } from "../../apps/web/src/lib/navHilfe";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -86,7 +82,7 @@ const flush = async (): Promise<void> => {
   }
 };
 
-async function mountSidebar(): Promise<void> {
+async function mountKopfband(pfad: string): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -103,9 +99,13 @@ async function mountSidebar(): Promise<void> {
             RoleProvider,
             null,
             createElement(
-              NavGuardProvider,
+              ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Sidebar)),
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(MemoryRouter, { initialEntries: [pfad] }, createElement(Kopfband)),
+              ),
             ),
           ),
         ),
@@ -113,10 +113,27 @@ async function mountSidebar(): Promise<void> {
     );
     await flush();
   });
-  // Zwei Durchläufe: `/auth/me` wird erst nach erfolgreichem `/auth/status` freigegeben
-  // (AuthContext.tsx:99); vorher steht die Rolle noch auf dem Vorschau-Wert.
+  // Zwei Durchläufe: `/auth/me` wird erst nach erfolgreichem `/auth/status` freigegeben.
   await act(flush);
   await act(flush);
+}
+
+async function click(el: Element | null | undefined): Promise<void> {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("Element zum Klicken fehlt");
+  }
+  await act(async () => {
+    el.click();
+    await flush();
+  });
+}
+
+async function seitenhilfeOeffnen(): Promise<string> {
+  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
+  await click(container.querySelector('[data-testid="zahnrad-seitenhilfe"]'));
+  return (container.querySelector('[data-testid="zahnrad-menue"]')?.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function kapitel(id: string, to: string): HelpTopicDef {
@@ -134,18 +151,20 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("JOB 3028 U3 · der Hinweis kommt aus HELP_TOPICS — und aus nichts anderem", () => {
-  it("U3-9: ohne Hilfekapitel trägt KEIN Menüpunkt einen Hinweis", async () => {
+describe("JOB 3028 U3 → H1 · der Satz der Seitenhilfe kommt aus HELP_TOPICS — und aus nichts anderem", () => {
+  it("U3-9: ohne Hilfekapitel zeigt die Seitenhilfe auf /aufgaben nur den Leersatz — kein Satz, kein Träger", async () => {
     lage.topics = [];
-    await mountSidebar();
+    await mountKopfband("/aufgaben");
     try {
-      const links = [...container.querySelectorAll("a")];
-      expect(links.length, "die Seitenleiste rendert gar keine Menüpunkte").toBeGreaterThan(5);
-      for (const link of links) {
-        expect(
-          link.hasAttribute("title"),
-          `${link.getAttribute("href")} trägt einen Hinweis, obwohl es kein Kapitel gibt`,
-        ).toBe(false);
+      const text = await seitenhilfeOeffnen();
+      expect(text).toContain(
+        String(i18n.getResource("de", "translation", "menue.seitenhilfe.leer")),
+      );
+      expect(container.querySelector('[data-testid="seitenhilfe-liste"]')).toBeNull();
+      // Und kein Kopfband-Punkt trägt einen Tooltip oder eine Beschreibung. (Die Status-Zeilen im
+      // Zahnrad-Menü tragen ihren Klartext-Tooltip weiterhin — das ist mega38 H, nicht U3.)
+      for (const link of container.querySelectorAll("header a.kw-kopfband-punkt")) {
+        expect(link.hasAttribute("title")).toBe(false);
         expect(link.hasAttribute("aria-describedby")).toBe(false);
       }
       expect(container.querySelectorAll("span.sr-only").length).toBe(0);
@@ -155,15 +174,14 @@ describe("JOB 3028 U3 · der Hinweis kommt aus HELP_TOPICS — und aus nichts an
     }
   });
 
-  it("ein NEUES Kapitel zieht den Hinweis von selbst nach — nichts muss nachgetragen werden", async () => {
+  it("ein NEUES Kapitel zieht den Satz von selbst nach — nichts muss nachgetragen werden", async () => {
     // `/extern` hat im echten Bestand kein Kapitel. Hier bekommt es eines — und zwar nur hier.
     lage.topics = [kapitel("tasks", "/aufgaben"), kapitel("extern", "/extern")];
-    await mountSidebar();
+    await mountKopfband("/extern");
     try {
-      const extern = container.querySelector<HTMLAnchorElement>('a[href="/extern"]');
-      expect(extern?.getAttribute("title")).toBe("help.extern.body");
-      const id = extern?.getAttribute("aria-describedby") ?? "";
-      expect(document.getElementById(id)?.textContent).toBe("help.extern.body");
+      const text = await seitenhilfeOeffnen();
+      expect(text).toContain("help.extern.body");
+      expect(container.querySelector('[data-testid="seitenhilfe-liste"]')).not.toBeNull();
     } finally {
       act(() => root.unmount());
       container.remove();

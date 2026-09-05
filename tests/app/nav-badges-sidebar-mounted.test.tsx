@@ -1,28 +1,24 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// JOB 690 · D2 — DER AUFGABEN-ZÄHLER AN DER ECHTEN SEITENLEISTE.
+// JOB 690 · D2 — DER AUFGABEN-ZÄHLER AN DER ECHTEN HÜLLE (seit JOB 3060 · H1: im Zahnrad-Menü).
 // ================================================================================================
 //
 // WARUM ES DIESE DATEI GIBT. D1 hat die Zählregel korrekt gebaut und mit einem direkten Hookaufruf
 // gepinnt — BENs Urteil dazu: „Gemounteter Test bedeutet Renderer plus reale Provider-/
 // Endpointgrenze; ein direkter Hookaufruf mit Mocks ist kein Ersatz." Genau diese Grenze steht hier:
-// die ECHTE `shell/Sidebar.tsx` wird gemountet (nur gemountet, nie geschrieben — sie gehört zum
-// Schreibscope von JOB 689), mit echten Providern, echtem React-Query und der Endpointgrenze als
-// einziger Attrappe.
+// das ECHTE Kopfband wird gemountet, mit echten Providern, echtem React-Query und der Endpoint-
+// grenze als einziger Attrappe. Der Aufgaben-Zähler steht seit H1 als Zahl neben „Meine Aufgaben“
+// im Untermenü „Weitere Bereiche“ des Zahnrad-Menüs; „Prüfen“ trägt seinen Zähler im Kopfband.
 //
 // Der direkte Hooktest (`apps/web/src/app/useNavBadges.badges.test.ts`) bleibt daneben bestehen: er
-// pinnt die RECHENREGEL feinkörnig, diese Datei den SICHTBAREN Vertrag. Beide zusammen, nicht eines
-// statt des anderen.
+// pinnt die RECHENREGEL feinkörnig, diese Datei den SICHTBAREN Vertrag. Beide zusammen.
 //
-// BAUFORM nach den zwei Nachbar-Vorbildern (`nav-badges-loading-mounted`, `nav-badges-stale-mounted`):
-// jsdom, relative Importe über `../../apps/web/node_modules/…`, gehoisteter endpoints-Mock,
-// `IS_REACT_ACT_ENVIRONMENT`. Adressiert wird über `aria-label` — dieselbe Naht, die auch die
-// Nachbarn benutzen (Badges tragen ihre Bedeutung als Text, SCRUM-486 E).
+// H1 (§9): Laden und Fehler heißen im Bild ABWESENHEIT der Zahl — kein Ladepunkt, kein „!“.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// „channel"-Mock wie bei den Nachbarn: jeder queryFn-Aufruf bekommt ein frisches Promise, dessen
-// Ausgang der Test steuert. Hier für ALLE FÜNF Quellen — anders als in den Nachbardateien, denn
-// diese hier prüft gerade das Zusammenspiel der fünften mit den übrigen vier.
+// „channel“-Mock wie bei den Nachbarn: jeder queryFn-Aufruf bekommt ein frisches Promise, dessen
+// Ausgang der Test steuert. Hier für ALLE FÜNF Quellen — diese Datei prüft gerade das
+// Zusammenspiel der fünften mit den übrigen vier.
 const d = vi.hoisted(() => {
   const mk = () => {
     const state = { resolve: (_v: unknown) => {}, reject: (_e: unknown) => {} };
@@ -57,6 +53,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
+    notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
+    features: { get: vi.fn(async () => ({ features: {} })) },
+    // Das Zahnrad-Menü (Admin) trägt die Status-Zeilen — ihre Quellen sind hier nicht Gegenstand.
+    reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
+      config: vi.fn(async () => null),
+    },
+    external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
   },
 }));
 
@@ -70,8 +74,9 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -101,9 +106,13 @@ async function mount(): Promise<void> {
             RoleProvider,
             null,
             createElement(
-              NavGuardProvider,
+              ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Sidebar)),
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Kopfband)),
+              ),
             ),
           ),
         ),
@@ -112,20 +121,37 @@ async function mount(): Promise<void> {
     await flush();
   });
   await act(flush);
+  await act(flush);
 }
 
-/** Das Badge einer Navigationszeile, adressiert über seine übersetzte Bedeutung samt Zahl. */
+async function click(el: Element | null | undefined): Promise<void> {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("Element zum Klicken fehlt");
+  }
+  await act(async () => {
+    el.click();
+    await flush();
+  });
+}
+
+/** Das Zahnrad-Menü öffnen und „Weitere Bereiche“ aufklappen — dort steht der Aufgaben-Zähler. */
+async function weitereBereicheOeffnen(): Promise<void> {
+  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
+  await click(container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
+}
+
+/** Das Abzeichen einer Zeile, adressiert über seine übersetzte Bedeutung samt Zahl. */
 function badge(key: string, count: number): Element | null {
   return container.querySelector(`[aria-label="${i18n.t(`nav.badge.${key}`, { count })}"]`);
 }
-
-function loadingBadges(): Element[] {
-  return [...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.loading")}"]`)];
-}
-
-function errorBadges(): Element[] {
-  return [...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.error")}"]`)];
-}
+const aufgabenZahl = (): string | null =>
+  container.querySelector('[data-testid="bereich-aufgaben"] .kw-menue-wert')?.textContent ?? null;
+const loadingBadges = (): Element[] => [
+  ...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.loading")}"]`),
+];
+const errorBadges = (): Element[] => [
+  ...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.error")}"]`),
+];
 
 // Drei Konflikte, EINER gelöst → zwei ungelöste. Dieselbe Menge wie im Hooktest.
 const KONFLIKTE = [
@@ -144,8 +170,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquellen", () => {
-  it("(a) der Aufgaben-Badge zählt Lebenszyklus-Fällige und ungelöste Konflikte mit", async () => {
+describe("JOB 690 D-019 → H1: die echte Hülle zählt alle fünf Aufgabenquellen", () => {
+  it("(a) der Aufgaben-Zähler zählt Lebenszyklus-Fällige und ungelöste Konflikte mit", async () => {
     await mount();
     await act(async () => {
       d.board.resolve([{ id: "k1" }, { id: "k2" }]);
@@ -155,22 +181,23 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
       d.duplicates.resolve([]);
       await flush();
     });
+    await weitereBereicheOeffnen();
 
     // Board 2 + offene Lücken 1 + ungelöste Konflikte 2 + Lebenszyklus-Fällige 3 = 8.
-    // Auf der unveränderten Base zählt der Badge nur Board + Lücken = 3 — dieses Badge gibt es
-    // dort nicht, und der Test fällt genau daran (nicht an einer fehlenden Datei).
-    const aufgaben = badge("tasks", 8);
     expect(
-      aufgaben,
-      "Der Aufgaben-Badge zeigt nicht die Summe aller vier Quellen (erwartet 8)",
+      badge("tasks", 8),
+      "Der Aufgaben-Zähler zeigt nicht die Summe aller Quellen",
     ).not.toBeNull();
-    expect(aufgaben?.textContent).toContain("8");
+    expect(aufgabenZahl()).toBe("8");
     // Die zu kleine Zahl der Zwei-Quellen-Zählung darf NICHT dastehen.
-    expect(badge("tasks", 3), "Der Badge zeigt weiterhin die alte Zwei-Quellen-Summe 3").toBeNull();
+    expect(badge("tasks", 3)).toBeNull();
     expect(loadingBadges().length).toBe(0);
+    // Und „Prüfen“ im Kopfband zählt das Board allein (2).
+    expect(badge("validation", 2)).not.toBeNull();
+    expect(badge("conflicts", 2)).not.toBeNull();
   });
 
-  it("(b) ein GELÖSTER Konflikt zählt nirgends — weder im Konflikte- noch im Aufgaben-Badge", async () => {
+  it("(b) ein GELÖSTER Konflikt zählt nirgends — weder im Konflikte- noch im Aufgaben-Zähler", async () => {
     await mount();
     await act(async () => {
       d.board.resolve([]);
@@ -181,19 +208,21 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
       d.duplicates.resolve([]);
       await flush();
     });
+    await weitereBereicheOeffnen();
 
-    // Echte Null ⇒ GAR KEIN Badge (mega2 Block C). Auf der Base zählt der Konflikte-Badge die
-    // Länge der Liste und zeigt deshalb eine 1 — daran fällt der Test.
+    // Echte Null ⇒ GAR KEINE Zahl (mega2 Block C, §9).
     expect(
       badge("conflicts", 1),
-      "Der Konflikte-Badge zählt den gelösten Konflikt c3 mit",
+      "Der Konflikte-Zähler zählt den gelösten Konflikt c3 mit",
     ).toBeNull();
-    expect(badge("tasks", 1), "Der Aufgaben-Badge zählt den gelösten Konflikt c3 mit").toBeNull();
+    expect(badge("tasks", 1), "Der Aufgaben-Zähler zählt den gelösten Konflikt c3 mit").toBeNull();
     expect(badge("conflicts", 0)).toBeNull();
     expect(badge("tasks", 0)).toBeNull();
+    expect(aufgabenZahl()).toBeNull();
+    expect(container.querySelector('[data-testid="bereich-konflikte"] .kw-menue-wert')).toBeNull();
   });
 
-  it("(c) Lade- und Fehlerzustand der neuen Quelle: kein Absturz, kein falsches Badge", async () => {
+  it("(c) Lade- und Fehlerzustand der neuen Quelle: kein Absturz, keine Zahl — weder Teilsumme noch Marker", async () => {
     await mount();
     // Die vier alten Quellen sind da, die FÜNFTE lädt noch.
     await act(async () => {
@@ -203,36 +232,29 @@ describe("JOB 690 D-019: die echte Seitenleiste zählt alle fünf Aufgabenquelle
       d.duplicates.resolve([]);
       await flush();
     });
+    await weitereBereicheOeffnen();
 
-    // Solange die Lebenszyklus-Quelle lädt, darf der Aufgaben-Badge KEINE Zahl behaupten — weder
-    // die alte Zwei-Quellen-Summe 3 noch die Teilsumme 5 ohne Lebenszyklus. Er zeigt den
-    // Ladepunkt. Auf der Base steht dort die 3, und genau daran fällt dieser Fall.
-    expect(
-      badge("tasks", 3),
-      "Der Aufgaben-Badge zeigt die alte Zwei-Quellen-Summe, obwohl eine Quelle noch lädt",
-    ).toBeNull();
-    expect(
-      badge("tasks", 5),
-      "Der Aufgaben-Badge zeigt eine Teilsumme, obwohl eine Quelle noch lädt",
-    ).toBeNull();
-    expect(
-      loadingBadges().length,
-      "Kein Ladepunkt, obwohl die Lebenszyklus-Quelle noch lädt",
-    ).toBeGreaterThan(0);
+    // Solange die Lebenszyklus-Quelle lädt, behauptet der Aufgaben-Zähler KEINE Zahl — weder die
+    // alte Zwei-Quellen-Summe 3 noch die Teilsumme 5. Und (§9) auch keinen Ladepunkt.
+    expect(badge("tasks", 3), "alte Zwei-Quellen-Summe trotz ladender Quelle").toBeNull();
+    expect(badge("tasks", 5), "Teilsumme trotz ladender Quelle").toBeNull();
+    expect(aufgabenZahl()).toBeNull();
+    expect(loadingBadges().length).toBe(0);
+    // Die anderen Zeilen, deren Quellen fertig sind, zeigen ihre Zahl — das Laden EINER Quelle
+    // nimmt den übrigen nichts.
+    expect(badge("conflicts", 2)).not.toBeNull();
+    expect(badge("validation", 2)).not.toBeNull();
 
-    // Und wenn sie dauerhaft scheitert: ehrlicher Fehler-Marker statt endlosem Ladepunkt oder
-    // erfundener Zahl. Vor allem: die Seitenleiste stürzt nicht ab (D1-Regression war ein
-    // TypeError aus useLifecyclePending).
+    // Und wenn sie dauerhaft scheitert: weiterhin keine Zahl, kein Fehler-Marker (§9) — vor allem:
+    // die Hülle stürzt nicht ab (D1-Regression war ein TypeError aus useLifecyclePending).
     await act(async () => {
       d.lifecycle.reject(new Error("kaputt"));
       await flush();
     });
-    expect(
-      errorBadges().length,
-      "Kein Fehler-Marker, obwohl die Lebenszyklus-Quelle gescheitert ist",
-    ).toBeGreaterThan(0);
+    expect(errorBadges().length).toBe(0);
     expect(badge("tasks", 3)).toBeNull();
-    // Die Seitenleiste steht noch — der Absturzfall ist damit ausgeschlossen.
-    expect(container.querySelector("nav")).not.toBeNull();
+    expect(aufgabenZahl()).toBeNull();
+    expect(container.querySelector('[data-testid="bereich-aufgaben"]')).not.toBeNull();
+    expect(container.querySelector('header[data-testid="kopfband"]')).not.toBeNull();
   });
 });

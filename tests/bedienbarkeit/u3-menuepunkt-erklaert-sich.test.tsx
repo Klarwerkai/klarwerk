@@ -1,26 +1,21 @@
 // @vitest-environment jsdom
 // ================================================================================================
-// JOB 3028 · U3 — DER MENÜPUNKT SAGT VOR DEM KLICK, WAS HINTER IHM LIEGT.
+// JOB 3028 · U3 → JOB 3060 · H1 — DER ERKLÄRSATZ ZUM MENÜPUNKT LIEGT IN DER SEITENHILFE.
 // ================================================================================================
 //
-// Nataschas dritte Hürde (PRIORITAETEN.md P9): „Meine Aufgaben" ist systemzentriert benannt, und
-// wer nicht geschult ist, erfährt erst NACH dem Klick, was dahinter liegt. Die Erklärungen dazu
-// stehen seit SCRUM-219 als Hilfekapitel im Produkt — nur auf der Hilfeseite, also genau dort, wo
-// jemand, der die Navigation nicht versteht, nicht als Erstes hinsieht.
+// JOB 3028 brachte den Satz des Hilfekapitels an den Menüpunkt (title + aria-describedby). Pedi
+// (04.09.): Erklärung gehört hinter Zahnrad/Profil, nicht ins Sichtfeld. Der Satz bleibt — er kommt
+// weiter aus `HELP_TOPICS` über `navHilfeFor` (kein neuer Text, keine zweite Tabelle) —, aber sein
+// ORT ist die Zeile „Seitenhilfe“ im Zahnrad-Menü, und die Kopfband-Punkte tragen KEIN `title` und
+// KEIN `aria-describedby` mehr.
 //
-// GEMESSEN WIRD AN DER GEMOUNTETEN FLÄCHE, nicht an `i18n.ts`. Ein Test, der nur nachschlägt, ob
-// ein Schlüssel existiert, bewiese, dass ein Satz existiert — nicht, dass ihn jemand sieht. Das
-// ist die Fehlerklasse, an der JOB 679 D1 gescheitert ist, und das Vorbild dieser Datei
-// (`apps/web/src/pages/Library.origin-chip.test.tsx`) ist ihre Antwort.
-//
-// JEDER FALL PRÜFT BEIDE RICHTUNGEN. Ein Hinweis, der überall steht, sagt nichts: die Punkte OHNE
-// Hilfekapitel müssen stumm bleiben (U3-3, U3-4), und die MENGE der Punkte mit Hinweis wird zur
-// Laufzeit ausgerechnet statt aufgezählt (U3-5).
+// GEMESSEN WIRD AN DER GEMOUNTETEN FLÄCHE, nicht an `i18n.ts`, in BEIDE Richtungen: die Seiten mit
+// Kapitel zeigen ihren Satz, die ohne zeigen den ehrlichen Leersatz; die MENGE wird zur Laufzeit
+// aus Navigation × Hilfekapiteln gerechnet, nicht aufgezählt (U3-5).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// „channel"-Mock wie bei `tests/app/nav-badges-*-mounted` — jeder queryFn-Aufruf bekommt ein
-// frisches Promise, dessen Ausgang dieser Test steuert. Er braucht das für U3-6: der Hinweis darf
-// in KEINER Zähler-Lage (lädt / gescheitert / veraltet) anders lauten.
+// „channel“-Mock wie bei `tests/app/nav-badges-*-mounted` — U3-6: der Satz darf in KEINER
+// Zähler-Lage (lädt / gescheitert) anders lauten.
 const d = vi.hoisted(() => {
   const mk = () => {
     const state = { resolve: (_v: unknown) => {}, reject: (_e: unknown) => {} };
@@ -44,7 +39,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
     // Rolle `admin` — zusammen mit dem Stufe-2-Schalter (unten) sind damit ALLE Menüpunkte
-    // sichtbar (`canSee`, navigation.ts:341-346). Nur so ist die Mengenaussage in U3-5 vollständig.
+    // erreichbar (`canSee`). Nur so ist die Mengenaussage in U3-5 vollständig.
     me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "admin" })),
     logout: vi.fn(async () => ({})),
   },
@@ -57,6 +52,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
     lifecycle: { pending: d.lifecycle.fn },
+    notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
+    features: { get: vi.fn(async () => ({ features: {} })) },
+    reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
+      config: vi.fn(async () => null),
+    },
+    external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
   },
 }));
 
@@ -71,20 +73,20 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ModalBoundaryProvider } from "../../apps/web/src/app/ModalBoundaryContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { FOOT_ITEMS, NAV_GROUPS, type NavItem, canSee } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
 import { HELP_TOPICS } from "../../apps/web/src/lib/helpTopics";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 import { MobileNavDrawer } from "../../apps/web/src/shell/MobileNavDrawer";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
-/** Der persistierte Stufe-2-Umschalter (`lib/stufe2Storage.ts:7`). Admin + an ⇒ alles sichtbar. */
+/** Der persistierte Stufe-2-Umschalter (`lib/stufe2Storage.ts:7`). Admin + an ⇒ alles erreichbar. */
 const STUFE2_KEY = "kw.stufe2.v1";
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
-let qc: QueryClient;
 
 const flush = async (): Promise<void> => {
   for (let i = 0; i < 25; i++) {
@@ -92,156 +94,128 @@ const flush = async (): Promise<void> => {
   }
 };
 
-/** Die echte Seitenleiste, mit echten Providern; einzige Attrappe ist die Endpunktgrenze. */
-async function mountSidebar(): Promise<void> {
-  container = document.createElement("div");
-  document.body.appendChild(container);
-  root = createRoot(container);
-  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => {
-    root.render(
+function huelle(
+  kind: ReturnType<typeof createElement>,
+  pfad: string,
+): ReturnType<typeof createElement> {
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return createElement(
+    QueryClientProvider,
+    { client: qc },
+    createElement(
+      AuthProvider,
+      null,
       createElement(
-        QueryClientProvider,
-        { client: qc },
+        RoleProvider,
+        null,
         createElement(
-          AuthProvider,
+          ToastProvider,
           null,
           createElement(
-            RoleProvider,
+            NavGuardProvider,
             null,
-            createElement(
-              NavGuardProvider,
-              null,
-              createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Sidebar)),
-            ),
+            createElement(MemoryRouter, { initialEntries: [pfad] }, kind),
           ),
         ),
       ),
-    );
+    ),
+  );
+}
+
+/** Das echte Kopfband unter einer Route, mit echten Providern; einzige Attrappe ist die Endpunktgrenze. */
+async function mountKopfband(pfad = "/aufgaben"): Promise<void> {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  await act(async () => {
+    root.render(huelle(createElement(Kopfband), pfad));
     await flush();
   });
-  // ZWEI Durchläufe, und das ist kein Aberglaube: `/auth/me` wird erst freigegeben, wenn
-  // `/auth/status` erfolgreich ist (AuthContext.tsx:99). Nach nur einem Durchlauf steht die Rolle
-  // noch auf dem Vorschau-Wert `experte`, und die Hälfte der Menüpunkte fehlte — gemessen an der
-  // Sonde, nicht vermutet.
+  // ZWEI Durchläufe: `/auth/me` wird erst freigegeben, wenn `/auth/status` erfolgreich ist
+  // (AuthContext.tsx:99). Nach nur einem Durchlauf steht die Rolle noch auf dem Vorschau-Wert.
   await act(flush);
   await act(flush);
 }
 
-/**
- * Der GEÖFFNETE Off-Canvas-Drawer — die zweite Fläche, auf der dieselbe `Sidebar` steht
- * (`MobileNavDrawer.tsx:225`). Er wird DIREKT montiert und nicht über die Shell: die Shell brächte
- * Topbar, Command-Palette und Klara mit, also drei weitere Endpunktflächen, die mit dieser Frage
- * nichts zu tun haben. `MobileNavDrawer.tsx` wird dabei nur gelesen, nicht geändert.
- *
- * `hostRef`/`triggerRef` sind schlichte Ref-Objekte: die Modalgrenze liest sie nur (`host()`,
- * `trigger()?.focus()`), sie müssen nicht an echten Knoten hängen.
- */
-async function mountDrawer(): Promise<void> {
+/** Der GEÖFFNETE Off-Canvas-Drawer — die zweite Fläche mit denselben Zahnrad-Einträgen. */
+async function mountDrawer(pfad = "/aufgaben"): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
-  qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const hostRef = { current: null as HTMLElement | null };
   const triggerRef = { current: null as HTMLButtonElement | null };
   await act(async () => {
     root.render(
-      createElement(
-        QueryClientProvider,
-        { client: qc },
-        createElement(
-          AuthProvider,
-          null,
-          createElement(
-            RoleProvider,
-            null,
-            createElement(
-              NavGuardProvider,
-              null,
-              createElement(
-                MemoryRouter,
-                { initialEntries: ["/"] },
-                createElement(ModalBoundaryProvider, {
-                  hostRef,
-                  // `children` als Prop und nicht als drittes Argument: die Props dieses Anbieters
-                  // führen `children` als PFLICHTFELD, und die createElement-Überladung mit
-                  // Kinder-Argumenten deckt das nicht ab (gemessen am Typecheck).
-                  children: createElement(MobileNavDrawer, {
-                    open: true,
-                    onClose: () => {},
-                    triggerRef,
-                  }),
-                }),
-              ),
-            ),
-          ),
-        ),
+      huelle(
+        createElement(ModalBoundaryProvider, {
+          hostRef,
+          children: createElement(MobileNavDrawer, { open: true, onClose: () => {}, triggerRef }),
+        }),
+        pfad,
       ),
     );
     await flush();
   });
   await act(flush);
   await act(flush);
+}
+
+async function click(el: Element | null | undefined): Promise<void> {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("Element zum Klicken fehlt");
+  }
+  await act(async () => {
+    el.click();
+    await flush();
+  });
+}
+
+/** Zahnrad-Menü öffnen und die Seitenhilfe aufklappen — im Kopfband. */
+async function seitenhilfeOeffnen(wurzel: ParentNode = container): Promise<void> {
+  const zahnrad = wurzel.querySelector('[data-testid="kopfband-zahnrad"]');
+  if (zahnrad) {
+    await click(zahnrad);
+  }
+  await click(wurzel.querySelector('[data-testid="zahnrad-seitenhilfe"]'));
+}
+
+/** Der Text der Seitenhilfe (Liste oder Leersatz), nach dem Aufklappen. */
+function seitenhilfeText(wurzel: ParentNode = container): string {
+  const liste = wurzel.querySelector('[data-testid="seitenhilfe-liste"]');
+  if (liste) {
+    return (liste.textContent ?? "").replace(/\s+/g, " ").trim();
+  }
+  return (wurzel.querySelector('[data-testid="zahnrad-menue"], .kw-drawer')?.textContent ?? "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /** Der hinterlegte Text einer Sprache — aus dem Bestand gelesen, nicht im Test abgeschrieben. */
 function sprache(lng: string, key: string): string {
   return String(i18n.getResource(lng, "translation", key));
 }
-
 function de(key: string): string {
   return sprache("de", key);
 }
 
-/** Der Menüpunkt, adressiert über sein Ziel — nicht über eine CSS-Klasse. */
-function punkt(pfad: string, wurzel: ParentNode = container): HTMLAnchorElement | null {
-  return wurzel.querySelector<HTMLAnchorElement>(`a[href="${pfad}"]`);
-}
-
-/**
- * Der Text, den ein Screenreader als BESCHREIBUNG des Links vorträgt: `aria-describedby` zeigt auf
- * eine Kennung, dahinter liegt der Träger. `getElementById` statt `querySelector`, weil `useId`
- * Doppelpunkte erzeugt (`:r1:`) — ein gültiges id-Attribut, aber kein gültiger CSS-Selektor.
- */
-function beschreibung(link: HTMLAnchorElement | null): string | null {
-  const id = link?.getAttribute("aria-describedby");
-  if (!id) {
-    return null;
-  }
-  return document.getElementById(id)?.textContent ?? null;
-}
-
-/** Alle Menüpunkte, die eine Admin-Sitzung mit Stufe 2 überhaupt sieht — die Fläche von U3-5. */
-function sichtbareEintraege(): NavItem[] {
+/** Alle Menüpunkte, die eine Admin-Sitzung mit Stufe 2 überhaupt erreicht — die Fläche von U3-5. */
+function erreichbareEintraege(): NavItem[] {
   return [...NAV_GROUPS.flatMap((g) => g.items), ...FOOT_ITEMS].filter((i) =>
     canSee(i, "admin", true),
   );
 }
 
 /**
- * Die ERWARTETE Menge, unabhängig von `navHilfeFor` ausgerechnet: ein Menüpunkt bekommt einen
- * Hinweis, wenn genau ein Hilfekapitel auf seine Route zeigt — abzüglich der einen ausgeschriebenen
- * Ausnahme. Aufgezählt wird hier NICHTS: kommt morgen ein Kapitel oder ein Menüpunkt dazu, wächst
- * diese Menge von selbst mit, und der Fall merkt, wenn die Fläche es nicht tut.
- *
- * `/admin`: das einzige Kapitel dort ist `firststart` (`helpTopics.ts:15-21`). Es beantwortet
- * „wie richte ich das System das erste Mal ein" und nicht „was liegt unter dem Menüpunkt
- * Verwaltung" — eine Vorschau auf eine andere Frage wäre keine ehrliche Vorschau. Entscheidung
- * JOB 3028, ausgeschrieben in `apps/web/src/lib/navHilfe.ts`.
+ * Die ERWARTETE Menge, unabhängig von `navHilfeFor` ausgerechnet: eine Seite bekommt einen Satz,
+ * wenn genau ein Hilfekapitel auf ihre Route zeigt — abzüglich der einen ausgeschriebenen Ausnahme
+ * (`/admin`: das einzige Kapitel dort beantwortet eine andere Frage; JOB 3028, lib/navHilfe.ts).
  */
 const AUSNAHMEN: readonly string[] = ["/admin"];
 
-function erwartetePfadeMitHinweis(): string[] {
-  return sichtbareEintraege()
+function erwartetePfadeMitSatz(): string[] {
+  return erreichbareEintraege()
     .filter((i) => HELP_TOPICS.filter((topic) => topic.to === i.path).length === 1)
     .filter((i) => !AUSNAHMEN.includes(i.path))
-    .map((i) => i.path)
-    .sort();
-}
-
-function pfadeMitHinweisImDom(): string[] {
-  return sichtbareEintraege()
-    .filter((i) => punkt(i.path)?.hasAttribute("title") === true)
     .map((i) => i.path)
     .sort();
 }
@@ -258,94 +232,90 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("JOB 3028 U3 · der Menüpunkt erklärt sich vor dem Klick", () => {
-  it("U3-1: „Meine Aufgaben“ trägt den Satz des Hilfekapitels — für die Maus UND für den Screenreader", async () => {
-    await mountSidebar();
-    const link = punkt("/aufgaben");
-    expect(link, "der Menüpunkt /aufgaben fehlt").not.toBeNull();
-    expect(
-      link?.getAttribute("title"),
-      "der Menüpunkt trägt keinen Tooltip mit dem Hilfetext",
-    ).toBe(de("help.tasks.body"));
-    expect(
-      beschreibung(link),
-      "aria-describedby zeigt nicht auf einen Träger mit demselben Text",
-    ).toBe(de("help.tasks.body"));
+describe("JOB 3028 U3 → H1 · der Erklärsatz zum Menüpunkt steht in der Seitenhilfe, nicht am Punkt", () => {
+  it("U3-1: auf /aufgaben nennt die Seitenhilfe Titel und Satz des Hilfekapitels „Meine Aufgaben“", async () => {
+    await mountKopfband("/aufgaben");
+    await seitenhilfeOeffnen();
+    const text = seitenhilfeText();
+    expect(text).toContain(de("help.tasks.title"));
+    expect(text).toContain(de("help.tasks.body"));
   });
 
-  it("U3-2: der zugängliche NAME des Links bleibt die Beschriftung — die Beschreibung ersetzt ihn nicht", async () => {
-    await mountSidebar();
-    const link = punkt("/aufgaben");
-    // Kein `aria-label`/`aria-labelledby`: der Name kommt weiter aus dem sichtbaren Text.
-    expect(link?.hasAttribute("aria-label")).toBe(false);
-    expect(link?.hasAttribute("aria-labelledby")).toBe(false);
-    expect(link?.textContent).toContain(de("nav.tasks"));
-    // Der lange Satz steht NICHT im Link — sein Träger liegt bewusst daneben, sonst flösse er in
-    // den Namen ein und aus „Meine Aufgaben“ würde der ganze Absatz.
-    expect(
-      link?.textContent,
-      "der Hilfetext steht IM Link und verschluckt damit den Namen",
-    ).not.toContain(de("help.tasks.body"));
-  });
-
-  it("U3-3: Punkte ohne Hilfekapitel bleiben STUMM — ein Hinweis, der überall steht, sagt nichts", async () => {
-    await mountSidebar();
-    for (const pfad of ["/wissensnetz", "/konflikte"]) {
-      const link = punkt(pfad);
-      expect(link, `der Menüpunkt ${pfad} fehlt`).not.toBeNull();
-      expect(link?.hasAttribute("title"), `${pfad} trägt einen Tooltip ohne Hilfekapitel`).toBe(
+  it("U3-2: die Kopfband-Punkte tragen KEIN title und KEIN aria-describedby — der Name bleibt die Beschriftung", async () => {
+    await mountKopfband("/aufgaben");
+    const punkte = [...container.querySelectorAll<HTMLAnchorElement>("header a.kw-kopfband-punkt")];
+    expect(punkte.length, "keine Kopfband-Punkte gefunden").toBe(5);
+    for (const link of punkte) {
+      expect(link.hasAttribute("title"), `${link.getAttribute("href")} trägt einen Tooltip`).toBe(
         false,
       );
-      expect(
-        link?.hasAttribute("aria-describedby"),
-        `${pfad} trägt eine Beschreibung ohne Hilfekapitel`,
-      ).toBe(false);
+      expect(link.hasAttribute("aria-describedby")).toBe(false);
+      expect(link.hasAttribute("aria-label")).toBe(false);
+      expect(link.hasAttribute("aria-labelledby")).toBe(false);
     }
+    // Der lange Satz steht nirgends im Kopfband — auch nicht als versteckter Träger.
+    expect(container.querySelector("header")?.textContent).not.toContain(de("help.tasks.body"));
+    expect(container.querySelectorAll("header span.sr-only").length).toBe(0);
+  });
+
+  it("U3-3: Seiten ohne Hilfekapitel bekommen den ehrlichen Leersatz — ein Hinweis, der überall steht, sagt nichts", async () => {
+    for (const pfad of ["/wissensnetz", "/konflikte"]) {
+      await mountKopfband(pfad);
+      await seitenhilfeOeffnen();
+      expect(seitenhilfeText(), `${pfad} zeigt einen Satz ohne Kapitel`).toContain(
+        de("menue.seitenhilfe.leer"),
+      );
+      expect(container.querySelector('[data-testid="seitenhilfe-liste"]')).toBeNull();
+      act(() => root.unmount());
+      container.remove();
+    }
+    // Damit afterEach einen Baum vorfindet.
+    await mountKopfband("/start");
   });
 
   it("U3-4: /admin bleibt stumm, weil sein einziges Kapitel (firststart) eine ANDERE Frage beantwortet", async () => {
-    await mountSidebar();
-    const link = punkt("/admin");
-    expect(link, "der Menüpunkt /admin fehlt").not.toBeNull();
-    expect(link?.hasAttribute("title")).toBe(false);
-    expect(link?.hasAttribute("aria-describedby")).toBe(false);
-    // Und der Erststart-Text taucht nirgends in der Seitenleiste auf — auch nicht an einem anderen Punkt.
+    await mountKopfband("/admin");
+    await seitenhilfeOeffnen();
+    expect(seitenhilfeText()).toContain(de("menue.seitenhilfe.leer"));
     expect(container.textContent ?? "").not.toContain(de("help.firststart.body"));
   });
 
-  it("U3-5: die MENGE stimmt — acht Punkte, berechnet aus Navigation und Hilfekapiteln, nicht aufgezählt", async () => {
-    await mountSidebar();
-    const erwartet = erwartetePfadeMitHinweis();
+  it("U3-5: die MENGE stimmt — acht Seiten, berechnet aus Navigation und Hilfekapiteln, nicht aufgezählt", async () => {
+    const erwartet = erwartetePfadeMitSatz();
     expect(erwartet.length, "die Rechnung aus NAV_GROUPS × HELP_TOPICS ergibt nicht acht").toBe(8);
-    expect(
-      pfadeMitHinweisImDom(),
-      "die Seitenleiste trägt eine andere Menge als berechnet",
-    ).toEqual(erwartet);
-    // Und jeder dieser acht trägt WIRKLICH den Satz seines eigenen Kapitels — nicht irgendeinen.
-    for (const pfad of erwartet) {
-      const kapitel = HELP_TOPICS.find((topic) => topic.to === pfad);
-      expect(kapitel, `kein Kapitel zu ${pfad}`).toBeDefined();
-      const text = kapitel ? de(kapitel.bodyKey) : "";
-      expect(punkt(pfad)?.getAttribute("title"), `${pfad} trägt den falschen Satz`).toBe(text);
-      expect(beschreibung(punkt(pfad)), `${pfad} beschreibt sich mit dem falschen Satz`).toBe(text);
+    const imDom: string[] = [];
+    for (const item of erreichbareEintraege()) {
+      await mountKopfband(item.path);
+      await seitenhilfeOeffnen();
+      const kapitel = HELP_TOPICS.find((topic) => topic.to === item.path);
+      const text = seitenhilfeText();
+      if (container.querySelector('[data-testid="seitenhilfe-liste"]')) {
+        imDom.push(item.path);
+        // Und jede dieser Seiten trägt WIRKLICH den Satz ihres eigenen Kapitels — nicht irgendeinen.
+        expect(kapitel, `Satz ohne Kapitel auf ${item.path}`).toBeDefined();
+        expect(text, `${item.path} trägt den falschen Satz`).toContain(de(kapitel?.bodyKey ?? ""));
+      } else {
+        expect(text, `${item.path} ohne Liste und ohne Leersatz`).toContain(
+          de("menue.seitenhilfe.leer"),
+        );
+      }
+      act(() => root.unmount());
+      container.remove();
     }
+    expect(imDom.sort(), "die Seitenhilfe trägt eine andere Menge als berechnet").toEqual(erwartet);
+    await mountKopfband("/start");
   });
 
-  it("U3-6a: der Hinweis hängt nicht am Zähler — alle Quellen LADEN noch", async () => {
-    await mountSidebar();
-    // Kein Kanal wurde aufgelöst ⇒ die Badges stehen auf „lädt“ (Ladepunkt, keine Zahl).
-    expect(
-      container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.loading")}"]`).length,
-      "keine ladenden Zähler — die Lage dieses Falls ist gar nicht hergestellt",
-    ).toBeGreaterThan(0);
-    expect(punkt("/aufgaben")?.getAttribute("title")).toBe(de("help.tasks.body"));
-    expect(beschreibung(punkt("/aufgaben"))).toBe(de("help.tasks.body"));
-    // Die beiden Texte vermischen sich nicht: das Abzeichen behält seine eigene Beschriftung.
-    expect(punkt("/aufgaben")?.getAttribute("title")).not.toContain(i18n.t("nav.badge.loading"));
+  it("U3-6a: der Satz hängt nicht am Zähler — alle Quellen LADEN noch, und es gibt keinen Zähler", async () => {
+    await mountKopfband("/aufgaben");
+    // Kein Kanal wurde aufgelöst ⇒ §9: keine Zahl an „Prüfen“, kein Ladepunkt.
+    expect(container.querySelector(".kw-kopfband-zaehler")).toBeNull();
+    await seitenhilfeOeffnen();
+    expect(seitenhilfeText()).toContain(de("help.tasks.body"));
   });
 
-  it("U3-6b: der Hinweis hängt nicht am Zähler — alle Quellen sind GESCHEITERT", async () => {
-    await mountSidebar();
+  it("U3-6b: der Satz hängt nicht am Zähler — alle Quellen sind GESCHEITERT", async () => {
+    await mountKopfband("/aufgaben");
     await act(async () => {
       d.board.reject(new Error("kaputt"));
       d.conflicts.reject(new Error("kaputt"));
@@ -354,85 +324,37 @@ describe("JOB 3028 U3 · der Menüpunkt erklärt sich vor dem Klick", () => {
       d.lifecycle.reject(new Error("kaputt"));
       await flush();
     });
-    const marker = container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.error")}"]`);
-    expect(
-      marker.length,
-      "kein Fehler-Marker — die Lage dieses Falls ist nicht hergestellt",
-    ).toBeGreaterThan(0);
-    expect(punkt("/aufgaben")?.getAttribute("title")).toBe(de("help.tasks.body"));
-    expect(beschreibung(punkt("/aufgaben"))).toBe(de("help.tasks.body"));
-    expect(marker[0]?.getAttribute("aria-label")).toBe(i18n.t("nav.badge.error"));
+    expect(container.querySelector(".kw-kopfband-zaehler")).toBeNull();
+    await seitenhilfeOeffnen();
+    expect(seitenhilfeText()).toContain(de("help.tasks.body"));
   });
 
-  it("U3-6c: der Hinweis hängt nicht am Zähler — eine geladene Zahl ist VERALTET", async () => {
-    await mountSidebar();
-    await act(async () => {
-      d.board.resolve([{ id: "a" }, { id: "b" }]);
-      d.conflicts.resolve([]);
-      d.duplicates.resolve([]);
-      d.gaps.resolve({ open: 0, byPriority: { hoch: 0, mittel: 0, niedrig: 0 } });
-      d.lifecycle.resolve([]);
-      await flush();
-    });
-    await act(async () => {
-      void qc.refetchQueries({ queryKey: ["validation", "board"] });
-      await flush();
-    });
-    await act(async () => {
-      d.board.reject(new Error("Refetch kaputt"));
-      await flush();
-    });
-    const stale = container.querySelector(`[aria-label="${i18n.t("nav.badge.stale")}"]`);
-    expect(
-      stale,
-      "kein Veraltet-Hinweis — die Lage dieses Falls ist nicht hergestellt",
-    ).not.toBeNull();
-    expect(punkt("/aufgaben")?.getAttribute("title")).toBe(de("help.tasks.body"));
-    expect(beschreibung(punkt("/aufgaben"))).toBe(de("help.tasks.body"));
-    // Die alte Zahl behält ihre eigene, bedeutungstragende Beschriftung.
-    expect(
-      container.querySelector(`[aria-label="${i18n.t("nav.badge.validation", { count: 2 })}"]`),
-    ).not.toBeNull();
-  });
-
-  it("U3-7: dieselben Hinweise kommen im geöffneten Off-Canvas-Menü an — eine Fläche, ein Bau", async () => {
-    await mountDrawer();
+  it("U3-7: derselbe Satz kommt im geöffneten Off-Canvas-Menü an — eine Fläche, ein Bau", async () => {
+    await mountDrawer("/aufgaben");
     const dialog = container.querySelector<HTMLElement>("dialog[aria-modal='true']");
     expect(dialog, "der Drawer ist nicht offen").not.toBeNull();
     if (!dialog) {
       return;
     }
-    // Im Drawer gemessen, nicht irgendwo auf der Seite.
-    const aufgaben = punkt("/aufgaben", dialog);
-    expect(aufgaben, "der Menüpunkt /aufgaben fehlt im Drawer").not.toBeNull();
-    expect(aufgaben?.getAttribute("title")).toBe(de("help.tasks.body"));
-    expect(beschreibung(aufgaben)).toBe(de("help.tasks.body"));
-    // Die Gegenrichtung gilt auch hier.
-    expect(punkt("/wissensnetz", dialog)?.hasAttribute("title")).toBe(false);
-    // Der Träger ist kein zusätzlicher Halt für die Fokusfalle des Drawers.
-    const id = aufgaben?.getAttribute("aria-describedby") ?? "";
-    const traeger = document.getElementById(id);
-    expect(traeger?.tagName.toLowerCase()).toBe("span");
-    expect(traeger?.hasAttribute("tabindex")).toBe(false);
+    await seitenhilfeOeffnen(dialog);
+    expect(seitenhilfeText(dialog)).toContain(de("help.tasks.body"));
+    // Die Gegenrichtung gilt auch hier: die Kopfband-Punkte im Drawer tragen keinen Tooltip. (Die
+    // Status-Zeilen des Zahnrad-Teils tragen ihren Klartext-Tooltip weiterhin — mega38 H.)
+    for (const link of dialog.querySelectorAll('a[data-testid^="drawer-punkt-"]')) {
+      expect(link.hasAttribute("title")).toBe(false);
+      expect(link.hasAttribute("aria-describedby")).toBe(false);
+    }
   });
 
-  // ==============================================================================================
-  // U3-10 — DER SPRACHWECHSEL (Codex-Prüflücke aus Runde 1, nicht blockierend, hier geschlossen).
-  // ==============================================================================================
-  //
-  // Der Vorschlag des Prüfers wörtlich: „gemountete Sidebar nach `changeLanguage` prüfen". Die
-  // Gefahr dahinter ist real und nicht theoretisch: Würde der Satz EINMAL beim Aufbau aufgelöst
-  // und weggelegt, bliebe er nach einem Sprachwechsel auf Deutsch stehen — die Oberfläche spräche
-  // Englisch, und ausgerechnet die Erklärung, die jemandem beim Verstehen helfen soll, spräche es
-  // nicht. Gemessen wird deshalb in ALLEN drei Sprachen des Bestands (`i18n.ts:13316`) und danach
-  // zurück auf Deutsch — ein Wechsel, der nur in eine Richtung wirkt, wäre auch ein Defekt.
-  it("U3-10: der Hinweis folgt dem Sprachwechsel de → en → nl und wieder zurück", async () => {
-    await mountSidebar();
-    expect(punkt("/aufgaben")?.getAttribute("title")).toBe(sprache("de", "help.tasks.body"));
+  // U3-10 — DER SPRACHWECHSEL: würde der Satz EINMAL beim Aufbau aufgelöst und weggelegt, bliebe er
+  // nach einem Sprachwechsel auf Deutsch stehen. Gemessen in ALLEN drei Sprachen und zurück.
+  it("U3-10: der Satz folgt dem Sprachwechsel de → en → nl und wieder zurück", async () => {
+    await mountKopfband("/aufgaben");
+    await seitenhilfeOeffnen();
+    expect(seitenhilfeText()).toContain(sprache("de", "help.tasks.body"));
 
     for (const lng of ["en", "nl"] as const) {
       const erwartet = sprache(lng, "help.tasks.body");
-      // Ohne diese Zeile wäre der Fall auch dann grün, wenn beide Sprachen denselben Satz führten.
       expect(erwartet, `${lng} führt denselben Satz wie de — der Fall misst nichts`).not.toBe(
         sprache("de", "help.tasks.body"),
       );
@@ -440,22 +362,13 @@ describe("JOB 3028 U3 · der Menüpunkt erklärt sich vor dem Klick", () => {
         await i18n.changeLanguage(lng);
         await flush();
       });
-      expect(punkt("/aufgaben")?.getAttribute("title"), `Tooltip folgt ${lng} nicht`).toBe(
-        erwartet,
-      );
-      expect(beschreibung(punkt("/aufgaben")), `Beschreibung folgt ${lng} nicht`).toBe(erwartet);
-      // Die Gegenrichtung hält in jeder Sprache: kein Kapitel ⇒ kein Hinweis, kein Träger.
-      expect(punkt("/wissensnetz")?.hasAttribute("title"), `${lng}: /wissensnetz redet`).toBe(
-        false,
-      );
-      expect(punkt("/admin")?.hasAttribute("title"), `${lng}: /admin redet`).toBe(false);
+      expect(seitenhilfeText(), `Satz folgt ${lng} nicht`).toContain(erwartet);
     }
 
     await act(async () => {
       await i18n.changeLanguage("de");
       await flush();
     });
-    expect(punkt("/aufgaben")?.getAttribute("title")).toBe(sprache("de", "help.tasks.body"));
-    expect(beschreibung(punkt("/aufgaben"))).toBe(sprache("de", "help.tasks.body"));
+    expect(seitenhilfeText()).toContain(sprache("de", "help.tasks.body"));
   });
 });

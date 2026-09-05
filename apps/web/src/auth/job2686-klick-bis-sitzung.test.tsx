@@ -239,6 +239,28 @@ function abbauen(): void {
   container?.remove();
 }
 
+/**
+ * JOB 3060 · H1: Name und Rolle der Sitzung stehen nicht mehr in einer Seitenleiste, sondern im
+ * Konto-Menü des Kopfbands (shell/KontoMenue.tsx, Zeile „Name · Rolle"). Es öffnet sich am
+ * Konto-Kreis; die Rolle kommt weiterhin aus `/api/auth/me`.
+ */
+async function kontoMenueOeffnen(): Promise<void> {
+  for (let i = 0; i < 80; i += 1) {
+    const kreis = container.querySelector<HTMLButtonElement>('[data-testid="kopfband-konto"]');
+    if (kreis) {
+      await act(async () => {
+        kreis.click();
+      });
+      await ruhen(5);
+      return;
+    }
+    await ruhen(5);
+  }
+  throw new Error(
+    `Der Konto-Kreis des Kopfbands erschien nicht. Sichtbar: "${(container.textContent ?? "").slice(0, 300)}"`,
+  );
+}
+
 /** Sucht einen Knopf/Link an seinem sichtbaren Text. */
 function findeText(text: string): Element | undefined {
   return [...container.querySelectorAll("button, a")].find((e) =>
@@ -354,9 +376,10 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
       expect(zugewiesen, "keine Weiterleitung in die Anwendung").toContain("/");
       abbauen();
 
-      // 4 · Die Schale: die Sitzung kommt vom echten Server.
+      // 4 · Die Schale: die Sitzung kommt vom echten Server — Name und Rolle im Konto-Menü.
       setzeAdresse("/");
       await montiere();
+      await kontoMenueOeffnen();
       await warteAufText("Die Chefin");
 
       // KALIBRIERUNG DER ANZEIGE: Das Konto ist `controller`. Steht hier „Controller" und NICHT
@@ -401,9 +424,10 @@ describe("JOB 2686 · vom Klick bis zur Sitzung", () => {
       expect(zugewiesen).toContain("/");
       abbauen();
 
-      // 4 · Die Schale rendert die Rolle, die der Server vergeben hat.
+      // 4 · Die Schale rendert die Rolle, die der Server vergeben hat — im Konto-Menü.
       setzeAdresse("/");
       await montiere();
+      await kontoMenueOeffnen();
 
       // DAS IST DIE STELLE, AN DER DIE KETTE IHREN ZWECK HAT.
       await warteAufText("Betrachter");

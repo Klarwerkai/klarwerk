@@ -411,6 +411,8 @@ describe("JOB 3064 · H5 · die Startseite gegen `Main.dc.html` — die echte Se
       );
     } catch (e) {
       fehler = String(e).split("\n").slice(0, 3).join(" | ");
+      // JOB 3060 Nachzug: die Zusicherung kuerzt den Text — der ganze Grund steht im Protokoll.
+      console.error(`JOB 3064 H5 · Mount fehlgeschlagen: ${String(e)}`);
     }
   }, 180_000);
 
@@ -690,19 +692,38 @@ describe("JOB 3064 · H5 · die Startseite gegen `Main.dc.html` — die echte Se
     expect(g.breite).toBe(900);
   });
 
-  // ---- Dreisprachig: der echte Sprachumschalter der Topbar, an der laufenden Seite ----------------
+  // ---- Dreisprachig: der echte Sprachumschalter des Produkts, an der laufenden Seite --------------
+  // JOB 3060 · H1: die Sprach-Pille der Kopfzeile ist mit Absicht weg (EIN Kopfband, Inventar §5a);
+  // der Umschalter wohnt auf /profil (Zeile „Sprache", pages/Profile.tsx). Der Weg geht ueber die
+  // Huelle selbst — Konto-Menue → Profil → Knopf „de/en/nl" → Kopfband-Punkt „Start" (SPA, ohne
+  // Neuladen, damit die Wahl dieselbe Sitzung traegt). Die Zusicherungen (Frage, Feldtext, beide
+  // Kicker aus dem Woerterbuch) bleiben unveraendert.
   for (const lng of ["en", "nl", "de"] as const) {
     it(`SPRACHE · ${lng}: Frage, Feldtext und beide Kicker kommen aus dem ${lng}-Woerterbuch`, async () => {
       expect(fehler).toBeNull();
       const s = seite as Seite;
+      await s.click('[data-testid="kopfband-konto"]');
+      await s.click('[data-testid="konto-profil"]');
+      // Die Profilseite laedt ihre Daten nach — erst wenn der Sprachknopf steht, wird gemessen.
+      await s.waitForFunction(
+        fn(
+          `(l) => location.pathname === '/profil' && [...document.querySelectorAll('main button')].some((x) => (x.textContent || '').trim().toLowerCase() === l)`,
+        ),
+        lng,
+        { timeout: 15_000 },
+      );
       const knopf = await s.evaluate<string | null>(
         fn(
-          `([l, pfadFnSrc]) => { const pfad = eval('(' + pfadFnSrc + ')'); const b = [...document.querySelectorAll('header button')].find((x) => (x.textContent || '').trim() === l); return b ? pfad(b) : null; }`,
+          `([l, pfadFnSrc]) => { const pfad = eval('(' + pfadFnSrc + ')'); const b = [...document.querySelectorAll('main button')].find((x) => (x.textContent || '').trim().toLowerCase() === l); return b ? pfad(b) : null; }`,
         ),
         [lng, PFAD_FN],
       );
-      expect(knopf, `kein Sprachknopf „${lng}“ in der Topbar`).toBeTruthy();
+      expect(knopf, `kein Sprachknopf „${lng}“ auf /profil`).toBeTruthy();
       await s.click(knopf as string);
+      await s.click('header a[data-kopfband-punkt="start"]');
+      await s.waitForFunction(fn("() => location.pathname === '/start'"), undefined, {
+        timeout: 15_000,
+      });
       const t = i18n.getFixedT(lng);
       await s.waitForFunction(
         fn(

@@ -309,7 +309,10 @@ describe("JOB 2935 · D1 · die Validierungskarte traegt ihr Fussband unter dem 
 // Fenster umbrechen, ueberlaufen oder Bedienelemente aus dem Bild schieben.
 //
 // DIESER BLOCK MISST GENAU DIESE ZWEI LAGEN — und sonst nichts:
-//   C  Classic-Standard: `kw.designTheme` wird NICHT gesetzt (kein `data-theme` an der Wurzel),
+//   C  Classic: `kw.designTheme = "classic"` (kein `data-theme` an der Wurzel). Bis JOB 3060 war
+//      Classic der Auslieferungsstand und brauchte keinen Schalter; seit H1 ist „modern" die
+//      Vorgabe, Classic bleibt wählbar — und wird hier ausdrücklich gewählt, damit die Messung
+//      weiterhin die klassische Karte trifft.
 //      Fensterbreite wie in D1.
 //   W  Word-nahe Breite: derselbe Classic-Standard, Fenster auf WORD_NAHE_BREITE.
 //
@@ -535,13 +538,17 @@ describe("JOB 2935 · D2 · dieselbe Karte im Classic-Standard und bei Word-nahe
       });
 
       const a = app2;
-      /** Eine Lage: eigenes Fenster, KEIN gesetztes Theme (Classic ist der Auslieferungsstand). */
+      /** Eine Lage: eigenes Fenster, Classic AUSDRÜCKLICH gewählt (kein data-theme an der Wurzel). */
       const lageMessen = async (breite: number, hoehe: number): Promise<Lage | null> => {
         const s = await (browser2 as Browser).newPage({
           viewport: { width: breite, height: hoehe },
         });
-        // BEWUSST OHNE `addInitScript`: Der Schalter `kw.designTheme` bleibt ungesetzt. Genau das
-        // ist der Auslieferungsstand — und genau das hat D1 nicht gemessen.
+        // JOB 3060 · H1: der Auslieferungsstand ist seit H1 „modern" (lib/designTheme.ts,
+        // DEFAULT_DESIGN_THEME). Classic ist weiterhin wählbar und heißt weiterhin „kein Attribut";
+        // diese Lage misst ihn deshalb mit GESETZTER Wahl — dieselbe Karte, dasselbe Fenster.
+        await s.addInitScript(
+          `try { localStorage.setItem("kw.designTheme", "classic"); } catch (e) {}`,
+        );
         await s.route(`${ORIGIN}/**`, async (route) => {
           const req = route.request();
           const url = new URL(req.url());

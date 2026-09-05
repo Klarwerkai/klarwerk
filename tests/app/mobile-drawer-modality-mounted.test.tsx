@@ -179,16 +179,31 @@ describe("Block C: offener Drawer ist ECHT modal — Klara, Toast, Command Palet
     expect(toastClose?.closest("[inert]")).not.toBeNull();
     expect(panel?.contains(toastClose ?? null)).toBe(false);
 
-    // (3) Command Palette: Öffnungs-Versuch bei offenem Drawer. Der globale Öffnen-Trigger feuert zwar,
-    // die Palette rendert aber INNERHALB des inerten Hintergrunds → ihr Eingabefeld ist unzugänglich.
+    // (3) Command Palette: Öffnungs-Versuch bei offenem Drawer. Der globale Öffnen-Trigger feuert,
+    // die Palette FRAGT aber die Modalgrenze (mega48 A, CommandPalette.tsx `modalOffen`) und öffnet
+    // sich nicht — sonst erschiene über dem Dialog eine zweite Bedienfläche.
+    // JOB 3060 · H1: bis hierher fand `container.querySelector("input")` das VERSTECKTE Suchfeld der
+    // alten Topbar (schmal: `hidden`) und hielt es für die Palette — der Fall mass ein Feld, das gar
+    // nicht die Palette war. Das Kopfband trägt schmal kein Suchfeld; gemessen wird jetzt die Palette
+    // selbst, an ihrem Platzhalter: sie bleibt zu.
     await act(async () => {
       window.dispatchEvent(new Event("open-command-palette"));
       await flush();
     });
-    const paletteInput = container.querySelector<HTMLInputElement>("input");
-    expect(paletteInput, "Command-Palette-Eingabe erwartet").not.toBeNull();
-    expect(paletteInput?.closest("[inert]")).not.toBeNull();
-    expect(panel?.contains(paletteInput ?? null)).toBe(false);
+    const paletteInput = [...container.querySelectorAll<HTMLInputElement>("input")].find(
+      (i) => i.placeholder === i18n.t("cmd.placeholder"),
+    );
+    expect(
+      paletteInput,
+      "die Command Palette ging über ihr globales Ereignis durch die Modalgrenze hindurch auf",
+    ).toBeUndefined();
+    // Und JEDES Eingabefeld, das es überhaupt gibt, liegt außerhalb des Panels im inerten Bereich.
+    for (const input of container.querySelectorAll<HTMLInputElement>("input")) {
+      if (panel?.contains(input)) {
+        continue;
+      }
+      expect(input.closest("[inert]")).not.toBeNull();
+    }
   });
 
   it("nach dem Schließen ist der Hintergrund wieder aktiv (kein hängendes inert)", async () => {

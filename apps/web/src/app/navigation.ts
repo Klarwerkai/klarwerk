@@ -331,6 +331,73 @@ export const FOOT_ITEMS: NavItem[] = [
 
 export const ALL_ITEMS: NavItem[] = [...NAV_GROUPS.flatMap((g) => g.items), ...FOOT_ITEMS];
 
+// ================================================================================================
+// JOB 3060 · H1 — DIE HÜLLE HAT EIN KOPFBAND MIT FÜNF PUNKTEN, KEINE SEITENLEISTE MEHR.
+// ================================================================================================
+//
+// Die Gruppen oben bleiben die EINE Quelle aller Routen (Router, Palette, Rollen-Gates). Was sich
+// ändert, ist der ORT, an dem ein Punkt im Bild steht: fünf Punkte tragen das Kopfband (Mockup
+// `design/klarwerk/Main.dc.html` Z.20-24), alles Übrige wohnt im Zahnrad-Menü unter „Weitere
+// Bereiche", und „Admin" ist dort die Zeile „Einstellungen". Drei Mengen, und JEDER Gruppenpunkt
+// steht in genau einer davon — das pinnt tests/app/h1-navigation-orte.test.ts, damit ein künftiger
+// Punkt nicht still aus dem Bild fällt.
+const KOPFBAND_IDS = ["start", "fragen", "bibliothek", "erfassen", "validierung"] as const;
+export type KopfbandId = (typeof KOPFBAND_IDS)[number];
+
+/**
+ * Die Beschriftung im Kopfband. Zwei Punkte heißen dort kürzer als in ihrer Seite („Erfassen"
+ * statt „Wissen erfassen", „Prüfen" statt „Validierung") — die Seitentitel bleiben unangetastet.
+ */
+export const KOPFBAND_LABEL_KEY: Record<KopfbandId, string> = {
+  start: "nav.start",
+  fragen: "nav.ask",
+  bibliothek: "nav.library",
+  erfassen: "kopfband.erfassen",
+  validierung: "kopfband.pruefen",
+};
+
+/** Reihenfolge im Zahnrad-Menü „Weitere Bereiche" (Auftrag JOB 3060, Lieferung 2). */
+const WEITERE_BEREICHE_IDS = [
+  "aufgaben",
+  "konflikte",
+  "duplikate",
+  "wissensnetz",
+  "extern",
+  "risiko",
+  "lebenszyklus",
+  "analytics",
+  "output",
+  "import",
+  "graph",
+  "kapital",
+] as const;
+
+/** Der Gruppenpunkt, der im Zahnrad-Menü als „Einstellungen" steht. */
+const EINSTELLUNGEN_ID = "admin";
+
+function gruppenPunkt(id: string): NavItem {
+  const item = NAV_GROUPS.flatMap((g) => g.items).find((i) => i.id === id);
+  if (!item) {
+    throw new Error(`Navigationspunkt „${id}" fehlt in NAV_GROUPS.`);
+  }
+  return item;
+}
+
+/** Die fünf Punkte des Kopfbands, in Bildreihenfolge — noch OHNE Rollenfilter. */
+export function kopfbandItems(): NavItem[] {
+  return KOPFBAND_IDS.map(gruppenPunkt);
+}
+
+/** Die Punkte des Untermenüs „Weitere Bereiche", in Menüreihenfolge — noch OHNE Rollenfilter. */
+export function weitereBereicheItems(): NavItem[] {
+  return WEITERE_BEREICHE_IDS.map(gruppenPunkt);
+}
+
+/** Der Punkt hinter „Einstellungen" im Zahnrad-Menü. */
+export function einstellungenItem(): NavItem {
+  return gruppenPunkt(EINSTELLUNGEN_ID);
+}
+
 // WP-UX-WOW-1 U9: das Rollen-Gate separat prüfbar — der Routen-Guard unterscheidet damit ehrlich
 // „Rolle reicht nicht" (harte Umleitung, RB-2 unverändert) von „nur Stufe 2 ist aus" (erklärende
 // Karte statt stiller Umleitung). Die Navigation (canSee) blendet weiterhin beides aus.

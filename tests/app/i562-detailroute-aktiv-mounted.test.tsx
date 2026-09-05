@@ -5,28 +5,23 @@
 //
 // DIE ENTSCHEIDUNG, die diesen Vertrag bestimmt — `00_CONTROL/ENTSCHEIDUNGEN/JOB-562.md:17`:
 //
-//   „**Bibliothekseintrag aktiv markieren**"
-//   Verworfen wurden ausdrücklich „Kein Eintrag aktiv" und „Eigener Eintrag für die Detailseite".
-//   `:37` BAUFREIGABE: JA · `:41` „Eine Rückgabe ohne Produktdiff ist hier ein Mangel."
+//   „**Bibliothekseintrag aktiv markieren**“
+//   Verworfen wurden ausdrücklich „Kein Eintrag aktiv“ und „Eigener Eintrag für die Detailseite“.
+//   `:37` BAUFREIGABE: JA · `:41` „Eine Rückgabe ohne Produktdiff ist hier ein Mangel.“
 //
 // DAS URTEIL `_relay/kopf/outbox/BEN2-PRUEFUNG-JOB-562-D6.md:69` beschreibt dieselbe Wirkung:
-// „aktiver Bibliothekseintrag für `/wissen/:id` und semantisches `aria-current`".
+// „aktiver Bibliothekseintrag für `/wissen/:id` und semantisches `aria-current`“.
 //
-// WARUM DIESE DATEI NEU IST: Der D5-Kandidat, der das schon einmal gebaut hatte, lag ausschliesslich
-// als uncommitteter Arbeitsbaum in einem temporären Clone. Dieser Durchgang hat nachgemessen — der
-// Clone existiert nicht mehr, die drei Dateien sind nirgends auffindbar, und `git log --all` kennt
-// die Testdatei nie. Was nicht in der Historie steht, ist nicht erhalten.
-//
-// GEMESSEN WIRD AM ECHTEN RENDERER, nicht an einer Textsuche: die reale `shell/Sidebar.tsx` wird
-// unter verschiedenen Routen gemountet, und geprüft wird das Attribut, das Screenreader lesen —
-// `aria-current="page"`. Bauform übernommen von `tests/app/nav-badges-sidebar-mounted.test.tsx`.
+// JOB 3060 · H1: die Seitenleiste ist gegangen; der Bibliothekseintrag ist jetzt ein Punkt im
+// Kopfband (shell/KopfbandPunkte.tsx). Die Aktivregel ist dieselbe (`istAktiverEintrag`), gemessen
+// wird weiterhin `aria-current="page"` am gerenderten Link — jetzt am Kopfband.
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 const WURZEL = join(__dirname, "..", "..");
 
-// Die Badge-Quellen der Seitenleiste sind hier nicht Gegenstand; sie bleiben dauerhaft offen,
+// Die Badge-Quellen des Kopfbands sind hier nicht Gegenstand; sie bleiben dauerhaft offen,
 // damit kein Zählwert die Messung stört. Der Ladezustand ist für die Aktivmarkierung ohne Belang.
 const offen = vi.hoisted(() => () => vi.fn(() => new Promise(() => {})));
 
@@ -45,6 +40,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     duplicates: { list: offen() },
     gaps: { summary: offen() },
     lifecycle: { pending: offen() },
+    notifications: { list: offen(), markSeen: vi.fn(async () => ({})) },
+    features: { get: offen() },
   },
 }));
 
@@ -58,8 +55,9 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { NAV_GROUPS } from "../../apps/web/src/app/navigation";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -72,7 +70,7 @@ const flush = async (): Promise<void> => {
   }
 };
 
-/** Mountet die ECHTE Seitenleiste unter einer gegebenen Route. */
+/** Mountet das ECHTE Kopfband unter einer gegebenen Route. */
 async function anRoute(pfad: string): Promise<HTMLDivElement> {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -90,9 +88,13 @@ async function anRoute(pfad: string): Promise<HTMLDivElement> {
             RoleProvider,
             null,
             createElement(
-              NavGuardProvider,
+              ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: [pfad] }, createElement(Sidebar)),
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(MemoryRouter, { initialEntries: [pfad] }, createElement(Kopfband)),
+              ),
             ),
           ),
         ),
@@ -124,7 +126,7 @@ afterEach(() => {
 
 describe("JOB 562 · A — auf einer Wissensseite ist der Bibliothekseintrag aktiv", () => {
   it("A1 · SELBSTSCHUTZ: auf `/bibliothek` ist genau dieser Eintrag ausgezeichnet", async () => {
-    // Ohne diesen Fall bewiese A2 nichts: Er wäre auch dann grün, wenn die Seitenleiste überhaupt
+    // Ohne diesen Fall bewiese A2 nichts: Er wäre auch dann grün, wenn das Kopfband überhaupt
     // keine Aktivmarkierung kennte oder gar nicht renderte.
     const wo = await anRoute("/bibliothek");
     expect(aktiveZiele(wo)).toEqual(["/bibliothek"]);
@@ -168,12 +170,18 @@ describe("JOB 562 · A — auf einer Wissensseite ist der Bibliothekseintrag akt
     expect(aktiveZiele(wo)).toEqual([]);
   });
 
-  it("A7 · Seitenleiste und Mobile Drawer sind EIN Vertrag, nicht zwei", () => {
-    // Die Urteilsformulierung „in Sidebar und Mobile Drawer" liest sich wie zwei Orte. Gemessen
-    // ist es einer: der Drawer rendert dieselbe Komponente. Wer die Auszeichnung in der
-    // Seitenleiste hat, hat sie damit auch mobil — ein zweiter Renderer entstünde hier gar nicht.
+  it("A7 · Kopfband und Mobile Drawer sind EIN Vertrag, nicht zwei", () => {
+    // Die Urteilsformulierung „in Sidebar und Mobile Drawer“ liest sich wie zwei Orte. Gemessen
+    // ist es einer: der Drawer rendert dieselben Punkte über dieselbe Aktivregel (JOB 3060 · H1:
+    // `KopfbandPunkteListe` in shell/KopfbandPunkte.tsx, dieselbe `istAktiverEintrag`-Regel wie
+    // `KopfbandPunkte`). Wer die Auszeichnung im Kopfband hat, hat sie damit auch mobil.
     const drawer = readFileSync(join(WURZEL, "apps/web/src/shell/MobileNavDrawer.tsx"), "utf8");
-    expect(drawer).toContain("<Sidebar />");
+    expect(drawer).toContain("<DrawerMenue");
     expect(drawer).not.toContain("GuardedNavLink");
+    const drawerMenue = readFileSync(join(WURZEL, "apps/web/src/shell/DrawerMenue.tsx"), "utf8");
+    expect(drawerMenue).toContain("<KopfbandPunkteListe");
+    const punkte = readFileSync(join(WURZEL, "apps/web/src/shell/KopfbandPunkte.tsx"), "utf8");
+    // Beide Renderer fragen dieselbe Regel — nicht zwei Aktivbegriffe.
+    expect(punkte.split("istAktiverEintrag(item, pathname)").length - 1).toBeGreaterThanOrEqual(2);
   });
 });

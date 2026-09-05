@@ -94,14 +94,20 @@ const PAARUNGEN: ReadonlyArray<{ text: string; flaeche: string; wo: string; nurM
   },
   { text: "brand-text", flaeche: "surface", wo: "Markentext auf Weiß" },
   { text: "brand-text", flaeche: "page", wo: "Markentext auf der Seitenfläche" },
-  // AUFTRAG-mega63 Block C: die REALE dunkle Paarung, die mega62 D mitgezogen hat — der ·2-Marker
-  // der Gruppentitel in der modernen Seitenleiste (shell/Sidebar.tsx:295) auf --kw-night. Sie
-  // steht hier mit dem Token, der dort nach dem lokalen Override WIRKLICH gilt; dass der Override
-  // existiert und genau diesen Token setzt, prüft der mega63-Teil unten aus der CSS-Datei.
+  // AUFTRAG-mega63 Block C → JOB 3060 · H1: die REALE dunkle Paarung der Hülle. Bis H1 war das der
+  // ·2-Marker der Seitenleiste (brand-300 auf night); die Seitenleiste ist gegangen. Die dunkle
+  // Fläche ist jetzt das Kopfband (--kw-night), und darauf stehen die inaktiven Punkte in
+  // --kw-shell-muted (Mockup #B9C1D2). Dass modern.css genau diese Token setzt, prüft der Teil unten.
   {
-    text: "brand-300",
+    text: "shell-muted",
     flaeche: "night",
-    wo: "·2-Marker in der modernen Seitenleiste",
+    wo: "inaktive Punkte im Kopfband (modernes Thema)",
+    nurModern: true,
+  },
+  {
+    text: "shell-fg",
+    flaeche: "night",
+    wo: "Wortmarke und aktiver Punkt im Kopfband",
     nurModern: true,
   },
 ];
@@ -182,89 +188,103 @@ describe("mega62 D · die Paarungsliste bleibt vollständig", () => {
 // DIE LÜCKE, DIE BEN GEFUNDEN HAT (BERICHT-ben-sammel60-mega62.md, Abschnitt 4): Der Sammler oben
 // bildet MENGEN von Text- und Flächentokens, nicht deren PAARUNGEN. Eine neue, falsche
 // Kreuzkombination bereits bekannter Tokens bliebe grün — und genau eine solche Kombination war
-// der Befund: `text-brand-text` auf `--kw-night`, beide Tokens längst „gemessen", die Paarung nie.
+// der Befund: `text-brand-text` auf `--kw-night`, beide Tokens längst „gemessen“, die Paarung nie.
 //
 // DER VOLLSTÄNDIGE FIX WÄRE EIN PAARUNGSMODELL ÜBER DEN ECHTEN DOM und gehört nicht in eine
 // Korrekturscheibe. Was hier steht, ist der begrenzte Schritt: EINE reale Paarung, aber nicht als
 // abgeschriebene Zahl, sondern aus der CSS-Datei aufgelöst — welcher Ton in der Seitenleiste für
 // `text-brand-text` WIRKLICH gilt und welche Fläche dort WIRKLICH darunter liegt. Was danach offen
 // bleibt, steht im Bericht zu mega63.
-describe("mega63 C · der Markentext in der modernen Seitenleiste", () => {
+// JOB 3060 · H1: die Seitenleiste ist gegangen; die dunkle Fläche der Hülle ist das Kopfband. Die
+// Frage bleibt dieselbe — welcher Ton gilt auf --kw-night WIRKLICH, aus der CSS-Datei gelesen —,
+// nur die Regeln heißen `.kw-kopfband …` und die Texte stehen in den Kopfband-Bausteinen.
+describe("mega63 C → H1 · die Texte auf der Nachtfläche des Kopfbands", () => {
   const MODERN_CSS = readFileSync(join(WURZEL, "apps/web/src/styles/modern.css"), "utf8");
-  const SIDEBAR_TSX = readFileSync(join(WURZEL, "apps/web/src/shell/Sidebar.tsx"), "utf8");
+  const KOPFBAND_DATEIEN = [
+    "apps/web/src/shell/Kopfband.tsx",
+    "apps/web/src/shell/KopfbandPunkte.tsx",
+    "apps/web/src/shell/Logo.tsx",
+  ];
+  const KOPFBAND_TSX = KOPFBAND_DATEIEN.map((p) => readFileSync(join(WURZEL, p), "utf8")).join(
+    "\n",
+  );
 
-  /** Liest den Token aus einer `.kw-sidebar`-Regel des modernen Themas — oder null. */
-  function sidebarRegel(auswahl: string, eigenschaft: string): string | null {
+  /** Liest den Token aus einer `.kw-kopfband`-Regel des modernen Themas — oder null. */
+  function kopfbandRegel(auswahl: string, eigenschaft: string): string | null {
     const muster = new RegExp(
-      `\\[data-theme="modern"\\]\\s+\\.kw-sidebar${auswahl}\\s*\\{[^}]*${eigenschaft}:\\s*rgb\\(var\\(--kw-([a-z0-9-]+)\\)\\)`,
+      `\\[data-theme="modern"\\]\\s+\\.kw-kopfband${auswahl}\\s*\\{[^}]*${eigenschaft}:\\s*rgb\\(var\\(--kw-([a-z0-9-]+)\\)\\)`,
     );
     return MODERN_CSS.match(muster)?.[1] ?? null;
   }
 
-  it("die Leiste steht auf einer Nachtfläche, und der Marker steht wirklich darauf", () => {
+  it("das Kopfband steht auf einer Nachtfläche, und die Punkte stehen wirklich darauf", () => {
     // Beides sind Voraussetzungen der Rechnung. Werden sie falsch, ist die Rechnung darunter eine
     // Antwort auf eine Frage, die niemand mehr stellt — deshalb hier und nicht als Kommentar.
-    expect(sidebarRegel("", "background-color")).toBe("night");
-    expect(SIDEBAR_TSX).toContain("text-brand-text");
-    expect(SIDEBAR_TSX).toContain('className="kw-sidebar');
+    expect(kopfbandRegel("", "background-color")).toBe("night");
+    expect(KOPFBAND_TSX).toContain('className="kw-kopfband ');
+    expect(KOPFBAND_TSX).toContain("kw-kopfband-punkt ");
+    expect(KOPFBAND_TSX).toContain("kw-kopfband-marke ");
   });
 
-  it("für text-brand-text gilt dort ein lokaler Override — und der erreicht AA", () => {
-    const flaeche = sidebarRegel("", "background-color");
-    const ton = sidebarRegel("\\s+\\.text-brand-text", "color");
-    expect(ton, "kein lokaler Override für text-brand-text in der modernen Seitenleiste").not.toBe(
-      null,
-    );
-    const wert = kontrast(token(ton as string, true), token(flaeche as string, true));
-    expect(
-      wert,
-      `text-brand-text → --kw-${ton} auf --kw-${flaeche} misst ${wert.toFixed(3)}:1`,
-    ).toBeGreaterThanOrEqual(AA);
+  it("inaktive Punkte, Wortmarke und aktiver Punkt tragen lokale Töne — und jeder erreicht AA", () => {
+    const flaeche = kopfbandRegel("", "background-color");
+    const inaktiv = kopfbandRegel("\\s+\\.kw-kopfband-punkt", "color");
+    const marke = kopfbandRegel("\\s+\\.kw-kopfband-marke", "color");
+    const aktiv = kopfbandRegel('\\s+\\.kw-kopfband-punkt\\[aria-current="page"\\]', "color");
+    expect(inaktiv, "kein lokaler Ton für die inaktiven Punkte").not.toBe(null);
+    expect(marke, "kein lokaler Ton für die Wortmarke").not.toBe(null);
+    expect(aktiv, "kein lokaler Ton für den aktiven Punkt").not.toBe(null);
+    for (const [wo, ton] of [
+      ["inaktiver Punkt", inaktiv],
+      ["Wortmarke", marke],
+      ["aktiver Punkt", aktiv],
+    ] as const) {
+      const wert = kontrast(token(ton as string, true), token(flaeche as string, true));
+      expect(
+        wert,
+        `${wo}: --kw-${ton} auf --kw-${flaeche} misst ${wert.toFixed(3)}:1`,
+      ).toBeGreaterThanOrEqual(AA);
+    }
   });
 
-  it("KALIBRIERUNG: OHNE den Override wäre dieselbe Paarung rot — der Befund, nachgerechnet", () => {
+  it("KALIBRIERUNG: der geerbte Markentext wäre auf derselben Fläche rot — der mega63-Befund, nachgerechnet", () => {
     // Ohne diesen Schritt bewiese der Fall darüber nichts: Er wäre auch dann grün, wenn auf der
     // Nachtfläche ohnehin jeder Ton bestünde. Das ist der Zustand, den ben gemessen hat — der
-    // geerbte --kw-brand-text auf --kw-night, 3,069:1.
+    // geerbte --kw-brand-text auf --kw-night, 3,069:1. Deshalb trägt das Kopfband keinen Markentext.
     const ohneOverride = kontrast(token("brand-text", true), token("night", true));
     expect(ohneOverride).toBeLessThan(AA);
     expect(ohneOverride).toBeCloseTo(3.069, 2);
-    // Und die Verdunkelung aus mega62 D hat es messbar schlechter gemacht (vorher #a8560a).
-    expect(kontrast([168, 86, 10], token("night", true))).toBeCloseTo(3.444, 2);
+    expect(KOPFBAND_TSX).not.toContain("text-brand-text");
   });
 
-  it("die Textfarben der Seitenleiste bleiben ein geprüfter Satz", () => {
-    // Der Rest der Lücke, so weit eine Korrekturscheibe ihn schließen kann: Ein NEUES Text-Token in
-    // der Seitenleiste wird rot und zwingt jemanden, die Fläche darunter nachzusehen. Das ersetzt
-    // kein Paarungsmodell — es verhindert nur, dass die nächste Kreuzkombination unbemerkt entsteht.
+  it("die Textfarben des Kopfbands bleiben ein geprüfter Satz", () => {
+    // Ein NEUES Text-Token im Kopfband wird rot und zwingt jemanden, die Fläche darunter
+    // nachzusehen. Das ersetzt kein Paarungsmodell — es verhindert nur, dass die nächste
+    // Kreuzkombination unbemerkt entsteht.
     const benutzt = new Set(
-      [...SIDEBAR_TSX.replace(/^\s*\/\/.*$/gm, "").matchAll(/\btext-([a-z][a-z0-9-]*)\b/g)].map(
+      [...KOPFBAND_TSX.replace(/^\s*\/\/.*$/gm, "").matchAll(/\btext-([a-z][a-z0-9-]*)\b/g)].map(
         (m) => m[1] ?? "",
       ),
     );
-    // `text-sm` ist eine Größe, keine Farbe.
-    benutzt.delete("sm");
-    expect(benutzt.size, "keine Textklassen gefunden").toBeGreaterThan(3);
-    // Jede dieser Klassen ist einzeln angesehen worden (mega63 C):
-    //   brand-text        → lokal überschrieben, oben gerechnet
-    //   text/ink/muted/muted-2 → lokal auf shell-* überschrieben (modern.css:181-192)
-    //   trust-crit-text   → steht auf bg-trust-crit-bg (Sidebar.tsx:26,78,109) — gemessene Paarung
-    //   trust-warn-text   → steht auf bg-trust-warn-bg (Sidebar.tsx:133,220-221) — dito
-    //   white             → steht auf bg-brand bzw. bg-white/20 und bg-ink (Sidebar.tsx:24,156,316)
-    const geprueft = new Set([
-      "brand-text",
-      "text",
-      "ink",
-      "muted",
-      "muted-2",
-      "trust-crit-text",
-      "trust-warn-text",
-      "white",
-    ]);
+    // Größen sind keine Farben.
+    for (const groesse of ["sm", "left", "center"]) {
+      benutzt.delete(groesse);
+    }
+    expect(benutzt.size, "keine Textklassen gefunden").toBeGreaterThan(2);
+    // Jede dieser Klassen ist einzeln angesehen worden (H1):
+    //   white     → Wortmarke/aktiver Punkt: klassisch Weiß auf bg-ink; modern shell-fg auf night (oben gerechnet)
+    //   hairline  → inaktive Punkte/Zahnrad: klassisch Linie auf bg-ink; modern shell-muted auf night (oben gerechnet)
+    //   ink       → Zähler auf bg-hairline (klassisch) bzw. night auf shell-muted (modern)
+    //   text/muted-2 → Suchfeld: klassisch auf bg-surface (Karte); modern shell-fg/shell-muted-2 auf night-2
+    //   trust-crit-text → Zähler der „Weiteren Bereiche” auf bg-trust-crit-bg (gemessene Paarung)
+    // (JOB 3060 R5/R6: eine Rückweg-Pille mit trust-warn-Text stand kurz im Kopfband; sie ist
+    // wieder weg — das Kopfbandinventar gilt in jedem Zustand. Der Satz ist wieder der von H1.)
+    const geprueft = new Set(["white", "hairline", "ink", "text", "muted-2", "trust-crit-text"]);
+    expect(KOPFBAND_TSX).not.toContain("text-trust-warn-text");
     for (const name of benutzt) {
       expect(
         geprueft.has(name),
-        `text-${name} ist neu in der Seitenleiste — welche Fläche liegt darunter?`,
+        `text-${name} ist neu im Kopfband — welche Fläche liegt darunter?`,
       ).toBe(true);
     }
   });

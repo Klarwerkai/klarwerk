@@ -63,10 +63,8 @@ const DIRTY_TEXT = "Dieser Text darf durch Browser-Zurueck NICHT verloren gehen"
  */
 async function trailToFrontDoor(page: Page): Promise<void> {
   await page.goto("/start");
-  await page
-    .getByRole("link", { name: /Wissen erfassen/ })
-    .first()
-    .click();
+  // JOB 3060 · H1: der Punkt heißt im Kopfband „Erfassen" (shell/KopfbandPunkte.tsx).
+  await page.locator('header a[data-kopfband-punkt="erfassen"]').first().click();
   await expect(page).toHaveURL(/\/erfassen$/);
   await page
     .getByRole("link", { name: /Dokument-Editor öffnen/ })
@@ -237,8 +235,10 @@ test("Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständi
   await expect(page).toHaveURL(/\/erfassen$/);
 
   // Zweite, ANDERE bewachte Seite: die Mobil-Erfassung (eigener Wächter, eigenes Formular).
-  // Der Mobil-Umschalter ist ein <button> mit navigate() (Topbar.tsx:402-414), kein Link.
-  await page.getByRole("button", { name: /Mobil/ }).first().click();
+  // Der Mobil-Umschalter ist ein <button> mit navigate() — seit JOB 3060 · H1 die Zeile „Mobil"
+  // im Konto-Menü (shell/KontoMenue.tsx), kein Link.
+  await page.getByTestId("kopfband-konto").click();
+  await page.getByTestId("konto-mobil").click();
   await expect(page).toHaveURL(/\/mobile$/);
   // Bewusst `textarea`: das Aussage-Feld des Mobil-Formulars (Mobile.tsx:289). Ein `input`-Selektor
   // träfe wieder zuerst die Topbar-Suche — dieselbe Falle wie oben bei `form input`.

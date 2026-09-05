@@ -3,21 +3,21 @@
 //
 // mega9 hatte das Dirty-Prädikat richtig gebaut und den Wächter angemeldet — aber der Wächter ist
 // QUELLENBASIERT: er greift nur, wenn die Navigationsquelle `guard()` selbst ruft, und mega9 hat
-// genau EINE Quelle verdrahtet (den Kopf-Link „Alle Erfassungs-Modi", gepinnt in
+// genau EINE Quelle verdrahtet (den Kopf-Link „Alle Erfassungs-Modi“, gepinnt in
 // frontdoor-navguard-mounted.test.tsx). Alles andere ging vorbei:
 //
-//   apps/web/src/shell/Sidebar.tsx:321  roher NavLink nach /profil
-//   apps/web/src/shell/Topbar.tsx:127   Benachrichtigungsziel per direktem navigate
-//   apps/web/src/shell/Topbar.tsx:337   Suche per direktem navigate
-//   apps/web/src/shell/Topbar.tsx:418   Hilfe per direktem navigate
-//   apps/web/src/shell/Logo.tsx:8       roher Link
-//   Reload/Tab-Schließen                kein beforeunload (Capture.tsx hatte einen)
+//   (damals) shell/Sidebar.tsx  roher NavLink nach /profil      → seit JOB 3060: Konto-Menü „Profil“
+//   (damals) shell/Topbar.tsx   Benachrichtigungsziel/navigate  → Konto-Menü „Meldungen“
+//   (damals) shell/Topbar.tsx   Suche per direktem navigate     → Kopfband-Suchfeld
+//   (damals) shell/Topbar.tsx   Hilfe per direktem navigate     → Zahnrad-Menü „Hilfe“
+//   shell/Logo.tsx              roher Link                      → Wortmarke im Kopfband
+//   Reload/Tab-Schließen        kein beforeunload (Capture.tsx hatte einen)
 //
 // Und der Befund ist größer als die Vordertür: das sind SHELL-Ausgänge. Dieselben Lücken bestanden
 // damit auf JEDER geschützten Seite, auch auf `/erfassen`, dessen Wächter in früheren Runden
 // abgenommen wurde — dort fehlte nie der Wächter, sondern es fehlten dieselben fünf Aufrufe.
 //
-// Dieser Test fährt die ECHTE Shell (Sidebar, Topbar, Logo) gegen die ECHTE Vordertür und
+// Dieser Test fährt die ECHTE Shell (Kopfband mit Logo, Zahnrad- und Konto-Menü) gegen die ECHTE Vordertür und
 // verlangt für jeden dieser Ausgänge: Warnung erscheint, Wechsel findet NICHT statt. Er pinnt
 // zusätzlich beide Ränder des Dirty-Prädikats (geleerter Body = dirty, nur geöffneter Entwurf =
 // sauber), damit ein späterer Umbau nicht die eine Hälfte gegen die andere eintauscht.
@@ -100,8 +100,9 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
-import { Topbar } from "../../apps/web/src/shell/Topbar";
+// JOB 3060 · H1: die Shell ist EIN Kopfband (Logo, Punkte, Suche, Zahnrad-Menü, Konto-Menü) —
+// Sidebar und Topbar gibt es nicht mehr; die fünf Ausgänge wohnen jetzt in Kopfband und Menüs.
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -157,8 +158,7 @@ async function mount(url: string): Promise<void> {
                     null,
                     // Die ECHTE Shell um die ECHTE Seite — genau die Kombination, in der die
                     // Lücken bestanden.
-                    createElement(Sidebar),
-                    createElement(Topbar),
+                    createElement(Kopfband),
                     createElement(CaptureFrontDoor),
                     createElement(LocationProbe),
                   ),
@@ -234,26 +234,28 @@ function anchorTo(scope: HTMLElement, href: string): HTMLAnchorElement {
   return el;
 }
 
-function buttonByLabel(scope: HTMLElement, label: string): HTMLButtonElement {
-  const el = [...scope.querySelectorAll("button")].find(
-    (b) => b.getAttribute("aria-label") === label,
-  );
-  if (!(el instanceof HTMLButtonElement)) {
-    throw new Error(`Knopf „${label}" nicht gefunden`);
-  }
-  return el;
+/** Das Konto-Menü öffnen (JOB 3060 · H1: Profil, Meldungen und Mobil wohnen dort). */
+async function kontoOeffnen(): Promise<HTMLElement> {
+  await click(within('[data-testid="kopfband-konto"]'));
+  return within('[data-testid="konto-menue"]');
+}
+/** Das Zahnrad-Menü öffnen (Hilfe, Einstellungen, Weitere Bereiche wohnen dort). */
+async function zahnradOeffnen(): Promise<HTMLElement> {
+  await click(within('[data-testid="kopfband-zahnrad"]'));
+  return within('[data-testid="zahnrad-menue"]');
 }
 
-// Die fünf Shell-Ausgänge, die ben benannt hat — jeder als eigener, benannter Weg.
+// Die fünf Shell-Ausgänge, die ben benannt hat — jeder als eigener, benannter Weg. Seit H1 an
+// ihren neuen Orten: Profil und Benachrichtigungsziel im Konto-Menü, Hilfe im Zahnrad-Menü.
 const SHELL_EXITS: { name: string; run: () => Promise<void> }[] = [
   {
-    name: "Sidebar → Profil (war ein roher NavLink)",
-    run: async () => click(anchorTo(within("aside"), "/profil")),
+    name: "Konto-Menü → Profil (war ein roher NavLink in der Sidebar)",
+    run: async () => click(anchorTo(await kontoOeffnen(), "/profil")),
   },
   {
     name: "Logo → Startseite (war ein roher Link)",
     run: async () => {
-      const logo = within("aside").querySelector<HTMLAnchorElement>('a[aria-label^="Klarwerk"]');
+      const logo = within("header").querySelector<HTMLAnchorElement>('a[aria-label^="Klarwerk"]');
       if (!logo) {
         throw new Error("Logo-Link nicht gefunden");
       }
@@ -261,11 +263,11 @@ const SHELL_EXITS: { name: string; run: () => Promise<void> }[] = [
     },
   },
   {
-    name: "Topbar → Hilfe (war ein direktes navigate)",
-    run: async () => click(buttonByLabel(within("header"), i18n.t("nav.help"))),
+    name: "Zahnrad-Menü → Hilfe (war ein direktes navigate in der Topbar)",
+    run: async () => click(anchorTo(await zahnradOeffnen(), "/hilfe")),
   },
   {
-    name: "Topbar → Suche (war ein direktes navigate)",
+    name: "Kopfband → Suche (war ein direktes navigate)",
     run: async () => {
       const input = within("header").querySelector<HTMLInputElement>("input[type=search]");
       const setter = Object.getOwnPropertyDescriptor(
@@ -286,11 +288,11 @@ const SHELL_EXITS: { name: string; run: () => Promise<void> }[] = [
     },
   },
   {
-    name: "Topbar → Benachrichtigungsziel (war ein direktes navigate)",
+    name: "Konto-Menü → Meldungen → Benachrichtigungsziel (war ein direktes navigate)",
     run: async () => {
-      const header = within("header");
-      await click(buttonByLabel(header, i18n.t("topbar.notifications")));
-      const target = [...header.querySelectorAll("button")].find((b) =>
+      const konto = await kontoOeffnen();
+      await click(within('[data-testid="konto-meldungen"]'));
+      const target = [...konto.querySelectorAll("button")].find((b) =>
         (b.textContent ?? "").includes("Widerspruch entdeckt"),
       );
       if (!target) {
@@ -354,7 +356,7 @@ describe("mega11 Block B-2: JEDER Shell-Ausgang läuft durch den Wächter", () =
     await mount(START);
     await setBody("<p>Frisch getippter Inhalt</p>");
 
-    await click(anchorTo(within("aside"), "/profil"), { metaKey: true });
+    await click(anchorTo(await kontoOeffnen(), "/profil"), { metaKey: true });
 
     // Weder Warnung (nichts geht verloren) noch In-App-Wechsel.
     expect(guardAsked()).toBe(false);
@@ -393,7 +395,7 @@ describe("mega11 Block B-1: Neuladen/Tab-Schließen warnt ebenfalls", () => {
     await setBody("");
 
     expect(beforeUnloadBlocked(), "geleerter Body galt als sauber").toBe(true);
-    await click(anchorTo(within("aside"), "/profil"));
+    await click(anchorTo(await kontoOeffnen(), "/profil"));
     expect(guardAsked()).toBe(true);
     expect(loc()).toBe(`${START}?draft=${id}`);
     unmount();

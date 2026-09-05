@@ -29,7 +29,15 @@ describe("mega61 B · der Banner sitzt in der Anwendungshülle", () => {
     // Drei Rückgaben (/mobile, schmal, breit) — der Banner darf in keiner davon fehlen, sonst
     // gäbe es eine Bildschirmbreite, auf der die Pflichtinformation still verschwindet.
     expect(shell.split("<NoticeBanner").length - 1).toBe(3);
-    expect(shell.split("<LegalFooter").length - 1).toBe(3);
+    // JOB 3060 · H1: der Fußbereich steht auf beiden Zuschnitten der Hülle als Zeile „Rechtliches"
+    // im Zahnrad-Menü (dasselbe Menü auf breit und schmal, im Drawer erneut) — und weiterhin im
+    // Fluss auf der shell-losen Route /mobile, die kein Zahnrad hat. Nirgends fehlt er.
+    expect(shell.split("<LegalFooter").length - 1).toBe(1);
+    const zahnrad = lies(WEB, "shell", "ZahnradMenue.tsx");
+    expect(zahnrad.split("<LegalFooter").length - 1).toBe(1);
+    // Und der Drawer zeigt dieselben Zahnrad-Einträge — der Fußbereich ist auch schmal erreichbar.
+    const drawer = lies(WEB, "shell", "DrawerMenue.tsx");
+    expect(drawer).toContain("<ZahnradEintraege");
   });
 
   it("der Torwächter trägt ihn NICHT — der Anmeldeweg bleibt unberührt", () => {

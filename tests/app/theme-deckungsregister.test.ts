@@ -119,6 +119,23 @@ const REGISTER: Eintrag[] = [
     ],
   },
   {
+    // JOB 3060 · H1: der Chromium-Messtest der Hülle nennt modern.css als Quelle der Kopfband-
+    // Farben. Er deckt NUR das Kopfband gegen sein Mockup — nicht das Thema insgesamt.
+    waechter: "tests/design/zielbild-h1-huelle.test.ts",
+    teildeckung: "kopfband-zielbild",
+    aussage:
+      "Das Kopfband der gebauten App (Höhe, Farben, Schriftgrade, Gewichte, Abstände, Radius des " +
+      "Suchfelds, Konto-Kreis) misst in Chromium die Werte des Mockups design/klarwerk/Main.dc.html " +
+      "Z.17-33, unter der Vorgabe modern. Deckt die HÜLLE gegen ihr Zielbild, nicht das Thema.",
+    beleg: [
+      {
+        was: "die Messung im echten Renderer — ohne getComputedStyle gibt es keinen Istwert",
+        muster: /getComputedStyle/,
+      },
+      { was: "das Mockup als Sollwertquelle", muster: /Main\.dc\.html/ },
+    ],
+  },
+  {
     waechter: "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
     teildeckung: "pflichtflaechen-kontrast",
     aussage:

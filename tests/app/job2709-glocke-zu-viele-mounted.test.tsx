@@ -3,7 +3,7 @@
 // JOB 2709 · D4 — DIE GLOCKE NIMMT ZURÜCK UND SAGT WARUM.
 // ================================================================================================
 //
-// PEDIS FRAGE: „Wenn ‚Alle gelesen' nicht klappt — sagt die Glocke es mir jetzt?"
+// PEDIS FRAGE: „Wenn ‚Alle gelesen' nicht klappt — sagt die Glocke es mir jetzt?“
 //
 // DER BEFUND AUS D3, am Quelltext belegt und hier zum ersten Mal am laufenden Client gemessen:
 // `persistSeen` setzte die Gelesen-Optik SOFORT, rief dann `markSeen` mit `void` und OHNE `catch`.
@@ -23,10 +23,16 @@
 // WAS HIER ECHT IST — UND WAS DER EINZIGE ERSATZ IST.
 // ================================================================================================
 //
-// Die ECHTE `Topbar` mit ihren echten Providern, der ECHTE `ToastProvider` samt `ToastViewport`
+// Das ECHTE `Kopfband` (JOB 3060 · H1: die Glocke ist die Zeile „Meldungen“ im Konto-Menü,
+// shell/Meldungen.tsx) mit seinen echten Providern, der ECHTE `ToastProvider` samt `ToastViewport`
 // (sonst landete der Toast nirgends im DOM), der echte Knopf über seine sichtbare Beschriftung
 // `topbar.notifMarkAll`. Einziger Ersatz sind die `endpoints` — sie geben die Serverantwort vor
 // und schreiben mit, was der Client wirklich abgesendet hat.
+//
+// H1: „Glocke öffnen“ heißt jetzt Konto-Menü öffnen und die Zeile „Meldungen“ aufklappen; die
+// „Glockenzahl“ ist die Zahl an dieser Zeile. Der Zustand der Markierungen lebt im Konto-Kreis
+// (immer montiert), nicht in der Liste — deshalb überlebt er auch einen Routenwechsel, der das
+// Menü schließt (U9/U11/U12 öffnen es danach wieder).
 //
 // GEMESSEN WIRD AM GERENDERTEN DOM, nicht an einem Zustand: was der Mensch sieht, nicht was die
 // Komponente denkt. BEN in `2614 D4`: „`answered=true` plus KO in `sources` am API-Endpunkt ist
@@ -158,8 +164,8 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 import { ToastViewport } from "../../apps/web/src/shell/ToastViewport";
-import { Topbar } from "../../apps/web/src/shell/Topbar";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -200,8 +206,8 @@ async function mount(): Promise<void> {
                 createElement(
                   MemoryRouter,
                   { initialEntries: ["/start"] },
-                  createElement(Topbar),
-                  // OHNE den Viewport landet der Toast nirgends im DOM — dann wäre „sichtbar"
+                  createElement(Kopfband),
+                  // OHNE den Viewport landet der Toast nirgends im DOM — dann wäre „sichtbar“
                   // nicht messbar, und der Test bewiese nichts über das, was der Mensch sieht.
                   createElement(ToastViewport),
                 ),
@@ -234,15 +240,31 @@ async function klick(knopf: HTMLButtonElement): Promise<void> {
   await act(flush);
 }
 
-/** Die Glocke öffnen — sie markiert dabei NICHT, weil der Bestand hier schon `seen` trägt. */
-async function glockeOeffnen(): Promise<void> {
-  const glocke = [...document.body.querySelectorAll("button")].find(
-    (b) => b.getAttribute("aria-label") === i18n.t("topbar.notifications"),
-  );
-  if (!glocke) {
-    throw new Error(`Glocken-Knopf nicht gefunden. Sichtbar: ${seitentext().slice(0, 300)}`);
+/** Das Konto-Menü öffnen, falls es zu ist (ein Routenwechsel schließt es). */
+async function kontoOeffnen(): Promise<void> {
+  if (document.querySelector('[data-testid="konto-menue"]')) {
+    return;
   }
-  await klick(glocke as HTMLButtonElement);
+  const konto = document.querySelector<HTMLButtonElement>('[data-testid="kopfband-konto"]');
+  if (!konto) {
+    throw new Error(`Konto-Kreis nicht gefunden. Sichtbar: ${seitentext().slice(0, 300)}`);
+  }
+  await klick(konto);
+}
+
+/** Die Zeile „Meldungen“ im Konto-Menü — der Auslöser, der die Liste aufklappt. */
+function meldungenZeile(): HTMLButtonElement {
+  const zeile = document.querySelector<HTMLButtonElement>('[data-testid="konto-meldungen"]');
+  if (!zeile) {
+    throw new Error(`Zeile Meldungen nicht gefunden. Sichtbar: ${seitentext().slice(0, 300)}`);
+  }
+  return zeile;
+}
+
+/** Die Glocke öffnen (H1: Konto-Menü → Zeile „Meldungen“ aufklappen) — Öffnen ist Kenntnisnahme. */
+async function glockeOeffnen(): Promise<void> {
+  await kontoOeffnen();
+  await klick(meldungenZeile());
 }
 
 function meldungen(n: number, seen = false) {
@@ -336,7 +358,7 @@ describe("JOB 2709 D4 · die Glocke bei ablehnendem Server", () => {
   });
 
   it("U5 · KALIBRIERUNG ERFOLG: bei 200 bleibt der Knopf weg und es erscheint KEIN Toast", async () => {
-    // Ohne diesen Fall wäre auch eine Rücknahme grün, die IMMER greift — dann wäre „Alle gelesen"
+    // Ohne diesen Fall wäre auch eine Rücknahme grün, die IMMER greift — dann wäre „Alle gelesen“
     // im Normalfall kaputt, und niemand hätte es gemerkt.
     //
     // Gemessen am ÖFFNEN, nicht am Knopf: Bei Erfolg markiert schon das Öffnen alles, und der
@@ -439,12 +461,11 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
     throw new Error(`Zeitueberschreitung beim Warten darauf, dass ${was}`);
   }
 
-  /** Die Zahl an der Glocke, so wie der Mensch sie sieht. */
-  function glockenZahl(): number {
-    const glocke = [...document.body.querySelectorAll("button")].find(
-      (b) => b.getAttribute("aria-label") === i18n.t("topbar.notifications"),
-    );
-    const text = (glocke?.textContent ?? "").replace(/\D+/g, "");
+  /** Die Zahl an der Zeile „Meldungen“, so wie der Mensch sie sieht (Konto-Menü offen). */
+  async function glockenZahl(): Promise<number> {
+    await kontoOeffnen();
+    const wert = meldungenZeile().querySelector(".kw-menue-wert");
+    const text = (wert?.textContent ?? "").replace(/\D+/g, "");
     return text === "" ? 0 : Number(text);
   }
 
@@ -528,19 +549,19 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
     // (1) As unbestaetigte Wirkung ist ZURUECKGENOMMEN — die vier anderen sind wieder ungelesen.
     //     Waere gar nichts zurueckgenommen worden, stuende hier 0.
     expect(
-      glockenZahl(),
+      await glockenZahl(),
       "die Ruecknahme von A greift nicht — die Glocke behauptet weiter, alles sei gelesen",
     ).toBeGreaterThan(0);
 
     // (2) Bs BESTAETIGTE Wirkung ist ERHALTEN — die Assertion, an der der D4-Stand faellt.
     //     Vier statt fuenf: die eine von B bestaetigte Meldung bleibt gelesen.
     expect(
-      glockenZahl(),
+      await glockenZahl(),
       "Bs bestaetigte Markierung wurde vom Vollsnapshot-Rollback mitgeloescht",
     ).toBe(4);
 
     // (3) Die Glockenzahl entspricht dem Serverstand.
-    expect(glockenZahl()).toBe(
+    expect(await glockenZahl()).toBe(
       lage.meldungen.filter((m) => !m.seen && !lage.serverSeen.has(m.id)).length,
     );
 
@@ -566,8 +587,8 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
   // hat — und wenn A gleich darauf gelingt, springt sie ein zweites Mal um. Zwei Sprunge fuer einen
   // einzigen Fehlschlag.
   //
-  // WARUM DAS EINE REFERENZZAEHLUNG BRAUCHT und kein zweites Set: Ein Set kennt nur „drin" oder
-  // „draussen". Hier ist die Frage aber, WIE VIELE Aufrufe eine Kennung gerade beanspruchen —
+  // WARUM DAS EINE REFERENZZAEHLUNG BRAUCHT und kein zweites Set: Ein Set kennt nur „drin“ oder
+  // „draussen“. Hier ist die Frage aber, WIE VIELE Aufrufe eine Kennung gerade beanspruchen —
   // und geloescht werden darf sie erst, wenn der letzte davon gescheitert ist. Das ist eine Zahl,
   // kein Ja/Nein.
   //
@@ -584,7 +605,7 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
     await warteBis(() => lage.offen.length === 1, "Aufruf A den Server erreicht");
     expect(lage.offen[0]?.ids, "A markierte nicht alle fuenf").toHaveLength(5);
     // Die Ausgangslage wird GEMESSEN, nicht angenommen: A haelt alle fuenf optimistisch gelesen.
-    expect(glockenZahl(), "A hat nicht optimistisch markiert").toBe(0);
+    expect(await glockenZahl(), "A hat nicht optimistisch markiert").toBe(0);
 
     // ---- 2. B ausloesen: dieselbe Kennung, ueber den Titelklick ---------------------------------
     // Derselbe echte Nutzerweg wie in U9 — Glocke oeffnen, sofort eine Meldung anklicken. Der
@@ -616,7 +637,7 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
     // x bleibt gelesen, weil A es weiterhin beansprucht. Steigt die Zahl auf 1, hat Bs Ruecknahme
     // den fremden, noch offenen Anspruch mitgeloescht — genau der Befund.
     expect(
-      glockenZahl(),
+      await glockenZahl(),
       "x wurde zurueckgesetzt, obwohl A es noch beansprucht — die Ruecknahme von B griff zu weit",
     ).toBe(0);
 
@@ -696,10 +717,10 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
     // Der Server fuehrt x jetzt als gelesen — und die Glocke sagt dasselbe.
     expect(lage.serverSeen.has(x), "A hat x nicht gespeichert").toBe(true);
     expect(
-      glockenZahl(),
+      await glockenZahl(),
       "die Glocke weicht vom Serverstand ab, nachdem A den Anspruch eingeloest hat",
     ).toBe(lage.meldungen.filter((m) => !m.seen && !lage.serverSeen.has(m.id)).length);
-    expect(glockenZahl(), "x ist nicht gelesen, obwohl der Server es bestaetigt hat").toBe(0);
+    expect(await glockenZahl(), "x ist nicht gelesen, obwohl der Server es bestaetigt hat").toBe(0);
     // Immer noch genau EIN Toast: der Erfolg von A meldet nichts, und Bs Fehlschlag wird nicht
     // nachtraeglich zu einem zweiten.
     expect(fehlerToasts()).toBe(1);
@@ -720,7 +741,7 @@ describe("JOB 2709 D5 · zwei ueberlappende Aufrufe", () => {
     });
     await act(flush);
 
-    expect(glockenZahl(), "die Ruecknahme greift nicht mehr").toBe(3);
+    expect(await glockenZahl(), "die Ruecknahme greift nicht mehr").toBe(3);
     expect(knopfMit(i18n.t("topbar.notifMarkAll"))).toBeTruthy();
     expect(fehlerToasts()).toBe(1);
   });

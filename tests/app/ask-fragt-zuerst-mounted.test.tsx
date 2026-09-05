@@ -65,6 +65,8 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     ko: { list: vi.fn(async () => bestand.kos) },
     conflicts: { list: vi.fn(async () => []) },
     directory: { list: vi.fn(async () => []) },
+    // JOB 3060 · H1: das Zahnrad-Menü (Seitenhilfe) fragt die Betriebsschalter — hier „alles aus".
+    features: { get: vi.fn(async () => ({ features: {} })) },
     reasoner: {
       status: vi.fn(async () => ({
         active: true,
@@ -107,11 +109,14 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { endpoints } from "../../apps/web/src/api/endpoints";
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { knowledgeGuidance } from "../../apps/web/src/lib/knowledgeGuidance";
 import { reasonerBadge } from "../../apps/web/src/lib/reasonerBadge";
 import { Ask } from "../../apps/web/src/pages/Ask";
+import { SeitenhilfeProvider } from "../../apps/web/src/shell/SeitenhilfeContext";
+import { ZahnradMenue } from "../../apps/web/src/shell/ZahnradMenue";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -381,6 +386,63 @@ describe("D-034 (2a) · JOB 3064 H5: vor dem Griff steht die Erklärung nirgends
   });
 });
 
+// ================================================================================================
+// JOB 3060 · H1 — WO DIE ERKLÄRUNG SEITDEM WOHNT.
+// ================================================================================================
+//
+// D-034 verlangte ein per Tastatur erreichbares Bedienelement, das den Modus-Hinweis als LESBAREN
+// Text öffnet; JOB 1106 nahm dafür den `HelpTip` neben dem Chip. Pedi (04.09., JOB 3060): Erklärung
+// gehört hinter das Zahnrad, nicht ins Sichtfeld — `HelpTip` rendert im Seitenfluss nichts mehr und
+// meldet Titel und Text bei der Seitenhilfe an (shell/SeitenhilfeContext.tsx); das Zahnrad-Menü
+// listet sie unter „Seitenhilfe". Das Bedienelement ist damit das Zahnrad des Kopfbands (ein
+// echter BUTTON, per Tabulator erreichbar), die Erklärung steht nach dem Aufklappen im Seitentext.
+// Der Chip selbst behält seinen Maus-Tooltip (`title`) — die Kalibrierung unten bleibt.
+async function seiteMitHuelle(): Promise<{ container: HTMLElement; unmount: () => void }> {
+  await i18n.changeLanguage("de");
+  bestand.kos = [ko()];
+  const client = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  const container = document.createElement("div");
+  document.body.appendChild(container);
+  const root = createRoot(container);
+  await act(async () => {
+    root.render(
+      createElement(
+        QueryClientProvider,
+        { client },
+        createElement(
+          MemoryRouter,
+          { initialEntries: ["/fragen"] },
+          createElement(
+            ToastProvider,
+            null,
+            createElement(
+              NavGuardProvider,
+              null,
+              createElement(
+                SeitenhilfeProvider,
+                null,
+                createElement(ZahnradMenue),
+                createElement(Ask),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await flush();
+  });
+  await act(flush);
+  return {
+    container,
+    unmount: () => {
+      act(() => root.unmount());
+      container.remove();
+    },
+  };
+}
+
 describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich", () => {
   it("der Modus-Chip benennt den Modus weiterhin sichtbar", async () => {
     const { container, unmount } = await seite();
@@ -395,13 +457,20 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
     unmount();
   });
 
-  it("neben dem Chip sitzt ein per Tastatur fokussierbares Bedienelement", async () => {
+  it("im Sichtfeld steht neben dem Chip KEINE Sprechblase mehr — der HelpTip meldet sich bei der Seitenhilfe an", async () => {
     const { container, unmount } = await seite();
     await oeffneMehr(container);
 
-    const knopf = document.querySelector<HTMLButtonElement>(
-      '[data-testid="ask-reasoner-help"] button',
-    );
+    const traeger = document.querySelector('[data-testid="ask-reasoner-help"]');
+    expect(traeger, "der Anmelde-Träger des HelpTip fehlt").not.toBeNull();
+    expect(traeger?.childElementCount, "der HelpTip rendert wieder etwas im Sichtfeld").toBe(0);
+    unmount();
+  });
+
+  it("das Bedienelement ist das Zahnrad des Kopfbands: ein echter, per Tastatur fokussierbarer Knopf", async () => {
+    const { container, unmount } = await seiteMitHuelle();
+
+    const knopf = container.querySelector<HTMLButtonElement>('[data-testid="kopfband-zahnrad"]');
     expect(
       knopf,
       "es gibt kein Bedienelement für den Modus-Hinweis — er bleibt ein reiner Maus-Tooltip",
@@ -413,33 +482,32 @@ describe("D-034 (3) · die Bedeutung des Modus-Chips ist ohne Maus zugänglich",
       document.activeElement,
       "das Bedienelement lässt sich nicht fokussieren — die Tastatur kommt nicht hin",
     ).toBe(knopf);
-    const chip = document.querySelector('[data-testid="ask-reasoner-mode"]') as Element;
-    expect(
-      stehtVor(chip, knopf as Element),
-      "das Bedienelement steht nicht beim Chip — dann erklärt es sichtbar nichts Bestimmtes",
-    ).toBe(true);
     unmount();
   });
 
-  it("Aktivieren legt die Erklärung in den LESBAREN Seitentext — nicht in ein Attribut", async () => {
-    const { container, unmount } = await seite();
+  it("Aktivieren (Zahnrad → Seitenhilfe) legt die Erklärung in den LESBAREN Seitentext — nicht in ein Attribut", async () => {
+    const { container, unmount } = await seiteMitHuelle();
     await oeffneMehr(container);
 
     expect(
       anzahl(document.body.textContent ?? "", MODUS_HINWEIS()),
       "der Hinweis steht schon vor jeder Bedienung im Text — dann misst der Fall nichts",
     ).toBe(0);
-    const knopf = document.querySelector<HTMLButtonElement>(
-      '[data-testid="ask-reasoner-help"] button',
-    );
     await act(async () => {
-      (knopf as HTMLButtonElement).click();
+      container.querySelector<HTMLButtonElement>('[data-testid="kopfband-zahnrad"]')?.click();
+      await flush();
+    });
+    await act(async () => {
+      container.querySelector<HTMLButtonElement>('[data-testid="zahnrad-seitenhilfe"]')?.click();
       await flush();
     });
     expect(
       anzahl(document.body.textContent ?? "", MODUS_HINWEIS()),
       "nach dem Aktivieren steht die Erklärung immer noch nicht im Seitentext",
     ).toBe(1);
+    // Und sie steht ÜBERSCHRIEBEN mit dem Modus, um den es geht — die Zuordnung ist eindeutig.
+    const liste = container.querySelector('[data-testid="seitenhilfe-liste"]');
+    expect(liste?.textContent ?? "").toContain(MODUS_ETIKETT());
     unmount();
   });
 

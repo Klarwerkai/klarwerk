@@ -5,8 +5,8 @@
    JEDE Regel dieser Datei hängt unter [data-theme="modern"] (Pin + Sammler:
    tests/app/mega40-theme-invarianz.test.ts). Ohne das Attribut ist diese Datei wirkungslos —
    der Standard bleibt pixelgleich. Kein Selektor ändert DOM, Texte, Testids oder Verhalten;
-   Anker sind bestehende Utility-Klassen, Testids und vier neue reine Marker-Klassen
-   (kw-topbar, kw-sidebar, kw-start-purpose, kw-cta-primary, kw-confidence).
+   Anker sind bestehende Utility-Klassen, Testids und reine Marker-Klassen
+   (kw-kopfband und seine Bausteine, kw-menue, kw-start-purpose, kw-cta-primary, kw-confidence).
 
    Farben ausschließlich über Token (rgb(var(--kw-…))) oder Weiß-Transparenzen — keine Hex-Werte
    (Sammler: tests/app/mega40-token-disziplin.test.ts).
@@ -44,8 +44,8 @@
 }
 
 /* ------------------------------------------------------------------------------------------------
-   BLOCK C — Shell: Topbar und Seitenleiste als Nachtblau-Fläche, Papier-Inhalt, Funke als
-   EIN Akzent (aktiver Nav-Eintrag / Zähler-Badge — beide tragen bereits bg-brand = Funke). */
+   BLOCK C — Shell: das Kopfband als Nachtblau-Fläche, Papier-Inhalt, Funke als EIN Akzent
+   (Unterstrich des aktiven Punkts, Konto-Kreis). */
 
 /* AUFTRAG-mega41 BLOCK A (bens sammel39-Blocker) — TEXTTRAGENDER FUNKE LIEGT AUF AA.
    Der reine Funke #E8630A trägt Weiß nur mit 3,38:1. Als GRAFIK (Balkenfüllung) ist das in Ordnung,
@@ -112,133 +112,74 @@
   color: rgb(var(--kw-funke-deep));
 }
 
-/* Topbar */
-[data-theme="modern"] .kw-topbar {
-  background-color: rgb(var(--kw-night));
-  border-color: rgb(var(--kw-night-2));
-}
-[data-theme="modern"] .kw-topbar .text-text {
-  color: rgb(var(--kw-shell-fg));
-}
-[data-theme="modern"] .kw-topbar .text-muted {
-  color: rgb(var(--kw-shell-muted));
-}
-[data-theme="modern"] .kw-topbar .text-muted-2 {
-  color: rgb(var(--kw-shell-muted-2));
-}
-[data-theme="modern"] .kw-topbar .border-hairline {
-  border-color: rgb(255 255 255 / 0.14);
-}
-[data-theme="modern"] .kw-topbar .bg-page {
-  background-color: rgb(var(--kw-night-2));
-}
-[data-theme="modern"] .kw-topbar .bg-ink {
-  background-color: rgb(255 255 255 / 0.16);
-}
-[data-theme="modern"] .kw-topbar .hover\:bg-hairline-soft:hover {
-  background-color: rgb(255 255 255 / 0.1);
-}
-[data-theme="modern"] .kw-topbar .hover\:text-text:hover {
-  color: rgb(var(--kw-shell-fg));
-}
-[data-theme="modern"] .kw-topbar .placeholder\:text-muted-2::placeholder {
-  color: rgb(var(--kw-shell-muted-2));
-}
-[data-theme="modern"] .kw-topbar .focus-within\:border-ink\/30:focus-within {
-  border-color: rgb(255 255 255 / 0.35);
-}
-
-/* Karten IN der Topbar (Benachrichtigungs-Popover) bleiben Karten: weißer Grund, Tinte darauf.
-   Drei Klassen schlagen die Zwei-Klassen-Überschreibungen oben — bewusst über Spezifität. */
-[data-theme="modern"] .kw-topbar .rounded-card.bg-surface {
-  border-color: rgb(var(--kw-hairline));
-  box-shadow: var(--kw-shadow-popover);
-}
-[data-theme="modern"] .kw-topbar .rounded-card .text-text {
-  color: rgb(var(--kw-text));
-}
-[data-theme="modern"] .kw-topbar .rounded-card .text-muted {
-  color: rgb(var(--kw-muted));
-}
-[data-theme="modern"] .kw-topbar .rounded-card .text-muted-2 {
-  color: rgb(var(--kw-muted-2));
-}
-[data-theme="modern"] .kw-topbar .rounded-card .bg-hairline {
-  background-color: rgb(var(--kw-hairline));
-}
-[data-theme="modern"] .kw-topbar .rounded-card .hover\:text-text:hover {
-  color: rgb(var(--kw-text));
-}
-[data-theme="modern"] .kw-topbar .rounded-card .hover\:bg-hairline-soft:hover {
-  background-color: rgb(var(--kw-hairline-soft));
-}
-
-/* Seitenleiste (trägt im schmalen Modus auch den Drawer — dieselbe Fläche, derselbe Anker) */
-[data-theme="modern"] .kw-sidebar {
-  background-color: rgb(var(--kw-night));
-  border-color: rgb(var(--kw-night-2));
-}
-[data-theme="modern"] .kw-sidebar .text-text {
-  color: rgb(var(--kw-shell-fg));
-}
-[data-theme="modern"] .kw-sidebar .text-ink {
-  color: rgb(var(--kw-shell-fg));
-}
-[data-theme="modern"] .kw-sidebar .text-muted {
-  color: rgb(var(--kw-shell-muted));
-}
-[data-theme="modern"] .kw-sidebar .text-muted-2 {
-  color: rgb(var(--kw-shell-muted-2));
-}
 /* ================================================================================================
-   AUFTRAG-mega63 BLOCK C — DER MARKENTEXT AUF DER NACHTFLÄCHE.
+   JOB 3060 · H1 — DAS KOPFBAND (Mockup design/klarwerk/Main.dc.html Z.17-34).
    ================================================================================================
-   Befund ben (BERICHT-ben-sammel60-mega62.md, Abschnitt 4, Korrektur 2): mega62 D hat
-   --kw-brand-text global von #a8560a auf #9c5009 verdunkelt, damit der Markentext auf den HELLEN
-   Pflichtflächen AA erreicht. Die Verdunkelung zog eine reale DUNKLE Fläche mit: Der ·2-Marker der
-   Gruppentitel nutzt text-brand-text (shell/Sidebar.tsx:295), und diese Leiste steht im modernen
-   Thema auf --kw-night. Ein lokaler Override fehlte, also sank der Kontrast dort von 3,444 auf
-   3,069 — beides ohnehin unter AA, die Verdunkelung machte es nur schlechter.
-
-   DIE HELLEN PFLICHTFLÄCHEN BEHALTEN DEN DUNKLEREN TOKEN. Eine Fläche soll nicht dafür bezahlen,
-   dass eine andere denselben Token benutzt; die Antwort auf zwei gegenläufige Anforderungen ist
-   zwei Werte, nicht ein Kompromiss, der beide verfehlt.
-
-   --kw-brand-300 („Funke hell" #F0A468) ist dafür der vorhandene, benannte Ton: Die
-   Werkbank-Vorlage führt ihn ausdrücklich für Markentext auf Nachtblau (Hero-Kicker), und er misst
-   dort 8,795:1. Kein neuer Wert — ein neuer Markenton wäre eine Palette-Entscheidung und steht
-   einer Korrekturscheibe nicht zu. Gerechnet in tests/legal/mega62-kontrast-pflichtflaechen.test.ts
-   aus DIESER Regel, nicht aus einer hier notierten Zahl. */
-[data-theme="modern"] .kw-sidebar .text-brand-text {
-  color: rgb(var(--kw-brand-300));
-}
-[data-theme="modern"] .kw-sidebar .border-hairline {
-  border-color: rgb(255 255 255 / 0.12);
-}
-[data-theme="modern"] .kw-sidebar .bg-hairline {
-  background-color: rgb(255 255 255 / 0.14);
-}
-[data-theme="modern"] .kw-sidebar .bg-hairline-soft {
-  background-color: rgb(255 255 255 / 0.1);
-}
-[data-theme="modern"] .kw-sidebar .hover\:bg-hairline-soft:hover {
-  background-color: rgb(255 255 255 / 0.1);
-}
-[data-theme="modern"] .kw-sidebar .hover\:text-text:hover {
+   Die Seitenleiste (`kw-sidebar`) und die alte Kopfzeile (`kw-topbar`) gibt es nicht mehr; an ihre
+   Stelle tritt EIN Kopfband. Maße (56 px, 32 px Polster, 36/26/16 px Abstände, 13,5 px Punkte,
+   260 px Suchfeld, 30 px Konto-Kreis) stehen als Klassen in shell/Kopfband.tsx und den Bausteinen;
+   HIER stehen nur die Farben des modernen Themas, jede aus einem Token der themes.css:
+     · Fläche Nacht (#0E1626) · KLARWERK und aktiver Punkt Papier (#FAF8F5)
+     · inaktive Punkte, Zahnrad Shell-Gedämpft (#B9C1D2) · Unterstrich Funke (#E8630A)
+     · Zähler Nacht auf Shell-Gedämpft · Suchfeld Nacht-2 (#16213A), Text/Lupe Shell-Meta (#7E879A)
+   Gemessen an der gebauten Seite: tests/design/zielbild-h1-huelle.test.ts. Das klassische Thema
+   zeichnet dieselben Elemente mit seinen Tailwind-Token (bg-ink, text-hairline, …). */
+[data-theme="modern"] .kw-kopfband {
+  background-color: rgb(var(--kw-night));
   color: rgb(var(--kw-shell-fg));
 }
-/* Avatar-Kreis (bg-ink) hebt sich von der Nacht-Fläche ab */
-[data-theme="modern"] .kw-sidebar .bg-ink {
+[data-theme="modern"] .kw-kopfband .kw-kopfband-marke {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-punkt {
+  color: rgb(var(--kw-shell-muted));
+  border-bottom-color: transparent;
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-punkt:hover {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-punkt[aria-current="page"] {
+  color: rgb(var(--kw-shell-fg));
+  border-bottom-color: rgb(var(--kw-brand));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-zaehler {
+  color: rgb(var(--kw-night));
+  background-color: rgb(var(--kw-shell-muted));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-suche {
   background-color: rgb(var(--kw-night-2));
+  color: rgb(var(--kw-shell-muted-2));
 }
-/* Icon-Kacheln der Nav-Zeilen (heller Hauch statt dunklem Hauch auf Nacht) */
-[data-theme="modern"] .kw-sidebar a .grid.shrink-0 {
-  background-color: rgb(255 255 255 / 0.1);
+[data-theme="modern"] .kw-kopfband .kw-kopfband-suche input {
+  color: rgb(var(--kw-shell-fg));
 }
-/* Weiße Pillen/Kacheln in der Leiste (Logo-Kachel, „Zurück zu Admin") behalten Tinte auf Weiß.
-   Steht NACH den .text-*-Überschreibungen: gleiche Spezifität, spätere Regel gewinnt. */
-[data-theme="modern"] .kw-sidebar .bg-surface {
+[data-theme="modern"] .kw-kopfband .kw-kopfband-suche input::placeholder {
+  color: rgb(var(--kw-shell-muted-2));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-suche button {
+  color: rgb(var(--kw-shell-muted-2));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-suche button:hover {
+  color: rgb(var(--kw-shell-fg));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-zahnrad {
+  color: rgb(var(--kw-shell-muted));
+}
+[data-theme="modern"] .kw-kopfband .kw-kopfband-zahnrad:hover {
+  color: rgb(var(--kw-shell-fg));
+}
+/* Der Punkt am Konto-Kreis (ungelesene Meldungen) trägt einen Rand in der Farbe der Fläche. */
+[data-theme="modern"] .kw-kopfband .kw-konto-punkt {
+  border-color: rgb(var(--kw-night));
+}
+
+/* Die Menüs des Kopfbands (Zahnrad, Konto) sind Karten nach Pages-Art: Papier, Linie, Licht
+   (Mockup design/klarwerk/Menues.dc.html). Sie liegen im Kopfband, tragen aber Tinte auf Weiß —
+   die Kopfband-Farbe oben vererbt sich nicht in sie hinein. */
+[data-theme="modern"] .kw-menue {
   color: rgb(var(--kw-text));
+  border-color: rgb(var(--kw-hairline));
+  box-shadow: 0 2px 6px rgb(var(--kw-night) / 0.08), 0 16px 40px -12px rgb(var(--kw-night) / 0.25);
 }
 
 /* ------------------------------------------------------------------------------------------------

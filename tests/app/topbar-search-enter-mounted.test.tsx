@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 // AUFTRAG-mega1 Block D1 (E2E-007): Die globale Suche ist ein echtes <form> — Enter (Submit) öffnet
-// dieselbe /bibliothek?q=…-Suche wie der Klick auf den Such-Knopf. Gemountet an der echten Topbar.
+// dieselbe /bibliothek?q=…-Suche wie der Klick auf den Such-Knopf. Gemountet am echten Kopfband
+// (JOB 3060 · H1: die Kopfzeile heißt Kopfband, das Suchfeld ist 260 px breit, Platzhalter „Suchen“).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -43,7 +44,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Topbar } from "../../apps/web/src/shell/Topbar";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -86,7 +87,7 @@ async function mount(): Promise<void> {
                 createElement(
                   MemoryRouter,
                   { initialEntries: ["/start"] },
-                  createElement(Topbar),
+                  createElement(Kopfband),
                   createElement(LocationProbe),
                 ),
               ),
@@ -133,6 +134,12 @@ afterEach(() => {
 });
 
 describe("Block D1: globale Suche — Enter navigiert wie der Klick", () => {
+  it("das Suchfeld trägt den Platzhalter „Suchen“ (Mockup Z.29) — und keinen sichtbaren ⌘K-Chip", async () => {
+    await mount();
+    expect(searchInput().getAttribute("placeholder")).toBe(i18n.t("kopfband.suchen"));
+    expect(searchInput().closest("form")?.textContent).not.toContain("⌘K");
+  });
+
   it("Enter (Formular-Submit) öffnet /bibliothek?q=…", async () => {
     await mount();
     await typeQuery("Ventil");

@@ -1,16 +1,14 @@
 // @vitest-environment jsdom
-// AUFTRAG-mega4 Block B (bens Sammel-Review 4, Auflage D9): die Navigation zeigt einen gestörten
-// Refetch als gestört. bens Blocker: hatte ein Badge bereits eine Zahl und scheiterte dann der
-// Refetch, blieb die alte Zahl STILL stehen (groupLoadPhase → loaded), ohne jeden Hinweis. Jetzt
-// trägt NavBadge zusätzlich `stale`; die Sidebar zeigt die alte Zahl WEITER und daneben einen
-// übersetzten, bedienbaren Störungshinweis mit Wiederholen. Gemountet an der ECHTEN Sidebar:
-//   1) Zahl laden (loaded, Badge zeigt „2"),
-//   2) Refetch scheitern lassen → alte Zahl „2" bleibt PLUS Stale-Hinweis (weder Initialfehler
-//      noch stilles loaded),
-//   3) Klick auf den Stale-Hinweis ruft den Refetch wirklich erneut auf.
+// AUFTRAG-mega4 Block B (bens Sammel-Review 4) → JOB 3060 · H1 (§9 Zustandsmodell des Zählers).
+// Bis H1 zeigte die Seitenleiste nach einem gescheiterten Refetch die ALTE Zahl weiter, daneben
+// einen „!“-Störungshinweis mit Wiederholen. Pedis Vorgabe für das Kopfband (Lieferung 6): der
+// Zähler zeigt NIE eine veraltete Zahl — Fehler/Cache ohne frische Bestätigung = KEIN Badge. Der
+// Punkt „Prüfen“ steht dann ohne Zahl; sobald ein Neuabruf gelingt, steht sie wieder.
+//
+// Gemountet am ECHTEN Kopfband über die realen Lese-Hooks: laden → Zahl → Refetch scheitert →
+// keine Zahl (auch keine alte, kein „!“) → Refetch gelingt → Zahl wieder da.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// „channel"-Mock: jeder queryFn-Aufruf erhält ein frisches Promise; der Test steuert dessen Ausgang.
 const d = vi.hoisted(() => {
   const mk = () => {
     const state = { resolve: (_v: unknown) => {}, reject: (_e: unknown) => {} };
@@ -27,14 +25,7 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  // JOB 690 D2: eine Quelle, die sich SELBST auflöst (leere Id-Liste). Kein resolve/reject nach
-  // außen — genau deshalb kann sie den Zustand der vier gesteuerten Kanäle nicht überschreiben.
   const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
-  // JOB 690 D2: die FÜNFTE Badgequelle (Lebenszyklus-Fällige). BEWUSST KEIN „channel"-Mock: der
-  // Aufgaben-Badge führt sie in seiner LADEZUSTANDSLISTE, und ein Kanal, den dieser Fall nicht
-  // auflöst, hielte `tasks` dauerhaft auf „loading" — die Stale-Zusicherung („alte Zahl bleibt
-  // PLUS Störungshinweis") wäre dann nicht mehr erreichbar. Ein sofort auflösender Stub lässt die
-  // Steuerung vollständig bei den vier vorhandenen Kanälen.
   return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: sofortLeer() };
 });
 
@@ -52,9 +43,14 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
-    // JOB 690 D2: die Attrappe ist ABSCHLIESSEND — ohne diesen Eintrag wirft useLifecyclePending
-    // auf `endpoints.lifecycle.pending` (`Cannot read properties of undefined`). D1-Regression.
     lifecycle: { pending: d.lifecycle.fn },
+    notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
+    features: { get: vi.fn(async () => ({ features: {} })) },
+    reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
+      config: vi.fn(async () => null),
+    },
+    external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
   },
 }));
 
@@ -68,8 +64,9 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -100,9 +97,13 @@ async function mount(): Promise<void> {
             RoleProvider,
             null,
             createElement(
-              NavGuardProvider,
+              ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Sidebar)),
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Kopfband)),
+              ),
             ),
           ),
         ),
@@ -111,11 +112,13 @@ async function mount(): Promise<void> {
     await flush();
   });
   await act(flush);
+  await act(flush);
 }
 
-function byAria(label: string): HTMLElement | null {
-  return container.querySelector<HTMLElement>(`[aria-label="${label}"]`);
-}
+const pruefenZaehler = (): Element | null =>
+  container.querySelector('header a[data-kopfband-punkt="validierung"] .kw-kopfband-zaehler');
+const byAria = (label: string): Element | null =>
+  container.querySelector(`[aria-label="${label}"]`);
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
@@ -127,8 +130,8 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("Block B: Navigation zeigt einen gestörten Refetch (Stale), nicht still die alte Zahl", () => {
-  it("alte Zahl bleibt PLUS Störungshinweis; Retry wird wirklich aufgerufen", async () => {
+describe("Block B → H1: ein gestörter Refetch zeigt KEINE alte Zahl — der Zähler verschwindet, bis ein Abruf wieder gelingt", () => {
+  it("Zahl → Refetch scheitert → keine Zahl, kein „!“ → Refetch gelingt → Zahl wieder da", async () => {
     await mount();
 
     // (1) Zahlen laden: Board mit 2 offenen Prüfungen.
@@ -140,11 +143,8 @@ describe("Block B: Navigation zeigt einen gestörten Refetch (Stale), nicht stil
       await flush();
     });
     const validationLabel = i18n.t("nav.badge.validation", { count: 2 });
-    expect(container.querySelector(`[aria-label="${validationLabel}"]`)?.textContent).toContain(
-      "2",
-    );
-    // Vor dem Refetch: KEIN Stale-Hinweis.
-    expect(byAria(i18n.t("nav.badge.stale"))).toBeNull();
+    expect(pruefenZaehler()?.textContent).toBe("2");
+    expect(byAria(validationLabel)).not.toBeNull();
 
     // (2) Refetch anstoßen und scheitern lassen — die Daten sind schon da, der Refetch bricht.
     const before = d.board.fn.mock.calls.length;
@@ -160,26 +160,26 @@ describe("Block B: Navigation zeigt einen gestörten Refetch (Stale), nicht stil
       await flush();
     });
 
-    // Die ALTE Zahl „2" steht weiter …
-    expect(container.querySelector(`[aria-label="${validationLabel}"]`)?.textContent).toContain(
-      "2",
-    );
-    // … UND ein übersetzter, bedienbarer Störungshinweis erscheint (kein Initialfehler, kein stilles loaded).
-    const staleMarker = byAria(i18n.t("nav.badge.stale"));
-    expect(staleMarker).not.toBeNull();
-    expect(staleMarker?.tagName.toLowerCase()).toBe("button");
-    // Kein Initialfehler-Marker (der stünde OHNE Zahl).
+    // §9: die ALTE Zahl „2“ steht NICHT mehr — keine veraltete Zahl im Kopfband …
+    expect(pruefenZaehler()).toBeNull();
+    expect(byAria(validationLabel)).toBeNull();
+    // … und kein Störungs- oder Fehlermarker an ihrer Stelle.
+    expect(byAria(i18n.t("nav.badge.stale"))).toBeNull();
     expect(byAria(i18n.t("nav.badge.error"))).toBeNull();
+    expect(container.querySelector("header")?.textContent).not.toContain("!");
+    // Der Punkt selbst steht weiter.
+    expect(container.querySelector('header a[data-kopfband-punkt="validierung"]')).not.toBeNull();
 
-    // (3) Klick auf den Störungshinweis ruft den Refetch wirklich erneut auf.
-    const beforeRetry = d.board.fn.mock.calls.length;
+    // (3) Ein erneuter Abruf gelingt → die Zahl steht wieder (frisch bestätigt).
     await act(async () => {
-      staleMarker?.click();
+      void qc.refetchQueries({ queryKey: ["validation", "board"] });
       await flush();
     });
-    expect(
-      d.board.fn.mock.calls.length,
-      "Klick auf den Stale-Hinweis stößt einen erneuten Abruf an",
-    ).toBe(beforeRetry + 1);
+    await act(async () => {
+      d.board.resolve([{ id: "a" }, { id: "b" }, { id: "c" }]);
+      await flush();
+    });
+    expect(pruefenZaehler()?.textContent).toBe("3");
+    expect(byAria(i18n.t("nav.badge.validation", { count: 3 }))).not.toBeNull();
   });
 });

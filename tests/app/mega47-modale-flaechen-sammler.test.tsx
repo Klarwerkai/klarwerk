@@ -70,7 +70,7 @@
 //     Command-Palette sind fixe Overlays ohne `<dialog>`, ohne `role`, ohne `aria-modal` — für
 //     JEDE statische Erhebung unsichtbar und weiterhin NICHT gegen die Shell abgegrenzt. Sie sind
 //     eine eigene Scheibe und hier ausdrücklich benannt, damit niemand die grüne Farbe dieser
-//     Datei für „alle Dialoge sind abgegrenzt" hält.
+//     Datei für „alle Dialoge sind abgegrenzt“ hält.
 //   · Der Wortzähler läuft über kommentarbereinigten Text; eine Zeichenkette, die selbst `//`
 //     enthält, unterdrückt Treffer derselben Zeile (er zählt dann zu WENIG — der Syntaxbaum-Anker
 //     bleibt davon unberührt, nur das Sicherheitsnetz wird an dieser Stelle dünner).
@@ -88,7 +88,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
-    // Bewusst NICHT „admin": die Topbar stellt für Admins zusätzlich die Reasoner-Konfiguration und
+    // Bewusst NICHT „admin“: die Topbar stellt für Admins zusätzlich die Reasoner-Konfiguration und
     // würde an der leeren Antwort der stillgelegten HTTP-Grenze scheitern. Die Rolle ist für die
     // Frage dieses Sammlers ohne Belang.
     me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "editor" })),
@@ -501,7 +501,7 @@ function erhebeVerweise(erhebungen: DateiErhebung[], bauteile: Bauteil[]): Verwe
         // nur nicht mehr verwechseln darf.
         if (direkte.length > 0) {
           fremdbefunde.push(
-            `${e.quelle.datei} — führt den Namenstext „${b.komponente}", aber ohne Bindung an ${b.datei}: kein Aufrufer`,
+            `${e.quelle.datei} — führt den Namenstext „${b.komponente}“, aber ohne Bindung an ${b.datei}: kein Aufrufer`,
           );
         }
         rot.push(...unabgerechnet(e, new RegExp(`\\b${b.komponente}\\b`, "g"), direkte.length));
@@ -530,7 +530,7 @@ function erhebeVerweise(erhebungen: DateiErhebung[], bauteile: Bauteil[]): Verwe
               `${e.quelle.datei}:${zeileVon(sf, id)} — Verweis auf <${b.komponente}> in nicht beurteilbarer Form (${urteil.art}): dieser Sammler kann nicht sagen, ob daraus eine modale Fläche wird`,
             );
           }
-          // „typ", „eigenschaftsname" und „deklaration" sind neutrale Formen ohne Fläche.
+          // „typ“, „eigenschaftsname“ und „deklaration“ sind neutrale Formen ohne Fläche.
         }
       }
       // Alias-Verwendungen, genau eine Stufe tief — die Bauform aus bens Befund.
@@ -588,7 +588,7 @@ const UNABGERECHNET: string[] = ALLE_ERHEBUNGEN.flatMap(modalAbgleich);
 const BAUTEIL_ERHEBUNGEN: DateiErhebung[] = ALLE_ERHEBUNGEN.filter(
   (e) =>
     e.quelle.datei !== GRENZE_MODUL &&
-    // B52/E GELB-1: nicht mehr „Datei ausgenommen", sondern „Ausnahme deckt ALLE Funde dieser
+    // B52/E GELB-1: nicht mehr „Datei ausgenommen“, sondern „Ausnahme deckt ALLE Funde dieser
     // Datei". Ein zweites, nicht natives Overlay holt die Datei in die Bauteil-Erhebung zurueck.
     !nativAusnahmeDecktDatei(e) &&
     e.kandidaten.some((k) => k.art.startsWith("aria-modal")),
@@ -662,11 +662,11 @@ const MARKERLOSE_TRAEGER: Bauteil[] = [
  * Vollbildflächen, die AUSDRÜCKLICH nicht modal sind — bens Negativgrenze. Sie dürfen nicht allein
  * wegen ihrer Layoutklassen zu Kandidaten werden, und ihr Grund steht dabei.
  */
+// JOB 3060 · H1: `HelpTip.tsx` stand hier als erste Negativprobe (Hilfe-Sprechblase mit farblosem
+// Klickfänger). Seit H1 rendert der Baustein NICHTS mehr im Sichtfeld — er meldet Titel und Text bei
+// der Seitenhilfe an (shell/SeitenhilfeContext.tsx) — und spannt damit keine Vollfläche mehr auf.
+// Er gehört nicht mehr zur Bezugsmenge; die Negativprobe trägt jetzt `AiModelInfo.tsx` allein.
 const NICHT_MODALE_VOLLFLAECHEN = new Map<string, string>([
-  [
-    "apps/web/src/components/HelpTip.tsx",
-    "Hilfe-Sprechblase: die Vollfläche ist der Klickfänger zum Schließen, der Inhalt bleibt ein Popover neben dem Auslöser",
-  ],
   [
     "apps/web/src/components/AiModelInfo.tsx",
     "Modellauskunft als Popover: dieselbe Bauform, reine Auskunft ohne Bedienfluss",
@@ -775,8 +775,8 @@ function istMarkerloserTraegerAmBestand(e: DateiErhebung): boolean {
 // BENS ROTGRUND ZU D2, und er trifft: Die erste Richtung nimmt eine Datei nur auf, wenn sie eine
 // bestimmte BAUFORM zeigt — `fixed` plus vier gebundene Seiten, ein Portal, ein bekannter
 // Zustandsname, ein bekannter Schliessweg. Damit entscheidet die Vorfilterung, was überhaupt
-// geprüft wird. D2 hat das selbst benannt („DIE ENTDECKUNGSGRENZE STEHT OFFEN") und trotzdem
-// „10 Überlagerungsflächen im gesamten Baum" behauptet. Die Zahl war nie belegt, nur ungeprüft.
+// geprüft wird. D2 hat das selbst benannt („DIE ENTDECKUNGSGRENZE STEHT OFFEN“) und trotzdem
+// „10 Überlagerungsflächen im gesamten Baum“ behauptet. Die Zahl war nie belegt, nur ungeprüft.
 //
 // Diese Richtung fragt nicht, WIE eine Fläche gebaut ist, sondern WAS SIE TUT. Sieben Signale,
 // keines davon abhängig von `fixed inset-0`, Portal oder einer Zustandsnamenliste:
@@ -1248,7 +1248,7 @@ describe("mega72 Block A: der unabhängige Zähler — die Erhebung merkt, was s
   // AUFTRAG-mega76 BLOCK E — DAS SCHRUMPFEN DER GRUNDMENGE, VOLLSTÄNDIG.
   // ==============================================================================================
   //
-  // BENS BEFUND: „der Sammler erkennt nicht jedes Schrumpfen seiner Grundmenge." Er hatte recht,
+  // BENS BEFUND: „der Sammler erkennt nicht jedes Schrumpfen seiner Grundmenge.“ Er hatte recht,
   // und die Zahlen zeigen wie deutlich. Die einzige Untergrenze war `ALLE_ERHEBUNGEN.length > 100`
   // — GEMESSEN sind es 382. Es hätten also 281 Quelldateien lautlos aus der Erhebung fallen
   // können, und der Sammler wäre grün geblieben. `VERWEISE.identifikatoren > 0` war ebenso lose
@@ -1590,13 +1590,13 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       ]);
       expect(
         unregistrierteVollflaechen([neu], BAUTEILE),
-        `„${klassen}" spannt denselben Bildschirm auf und muss dieselbe Meldung erzeugen`,
+        `„${klassen}“ spannt denselben Bildschirm auf und muss dieselbe Meldung erzeugen`,
       ).toEqual([datei]);
     },
   );
 
   it("REGISTER: eine NICHT-Vollfläche bleibt außerhalb der Bezugsmenge (Positivkontrolle)", () => {
-    // Ohne diesen Fall wäre die Verallgemeinerung oben nicht von „meldet einfach alles" zu
+    // Ohne diesen Fall wäre die Verallgemeinerung oben nicht von „meldet einfach alles“ zu
     // unterscheiden. `fixed` allein — ohne gebundene Seiten — ist keine Vollfläche.
     const klein = synthetisch("apps/web/src/components/SynthKleinerBalken.tsx", [
       "export function SynthKleinerBalken(): JSX.Element {",
@@ -1620,13 +1620,13 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
   // Ein gemounteter Fall könnte hier keine Grenze belegen, weil keine da ist; er würde nur die
   // Abwesenheit umständlich wiederholen. Was dieser Wächter stattdessen leistet: er hält den
   // GEMESSENEN Zustand fest, in BEIDE Richtungen. Baut jemand die Grenze ein, ohne das Register zu
-  // pflegen, wird es rot — und die Behauptung „markerlos, aber abgegrenzt" kann nicht still
+  // pflegen, wird es rot — und die Behauptung „markerlos, aber abgegrenzt“ kann nicht still
   // entstehen.
   // ==============================================================================================
   const GRENZE_IST: { datei: string; stand: "keine" | "liest" | "haelt" }[] = [
     { datei: "apps/web/src/components/Modal.tsx", stand: "keine" },
     { datei: "apps/web/src/components/KnowledgeInputStudio.tsx", stand: "keine" },
-    { datei: "apps/web/src/components/HelpTip.tsx", stand: "keine" },
+    // JOB 3060 · H1: HelpTip.tsx rendert keine Fläche mehr und steht deshalb nicht mehr hier.
     { datei: "apps/web/src/components/AiModelInfo.tsx", stand: "keine" },
     { datei: "apps/web/src/shell/CommandPalette.tsx", stand: "liest" },
     { datei: "apps/web/src/components/FacetFilter.tsx", stand: "haelt" },
@@ -1643,7 +1643,7 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       const gemessen = haelt ? "haelt" : liest ? "liest" : "keine";
       expect(
         gemessen,
-        `Das Register sagt „${stand}", gemessen ist „${gemessen}". Wer die Grenze ändert, ändert hier mit — sonst behauptet der Wächter eine Modalwahrheit, die das Produkt nicht hat.`,
+        `Das Register sagt „${stand}“, gemessen ist „${gemessen}“. Wer die Grenze ändert, ändert hier mit — sonst behauptet der Wächter eine Modalwahrheit, die das Produkt nicht hat.`,
       ).toBe(stand);
     },
   );
@@ -1716,22 +1716,32 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     expect(e !== undefined && istMarkerloserTraegerAmBestand(e)).toBe(true);
   });
 
-  it("KALIBRIERUNG NEGATIV: HelpTip.tsx ist es NICHT — dieselbe Vollfläche, andere Sache", () => {
-    const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === "apps/web/src/components/HelpTip.tsx");
+  // JOB 3060 · H1: die Negativprobe war `HelpTip.tsx`. Seit H1 rendert der Baustein keine Fläche
+  // mehr (er meldet seinen Text bei der Seitenhilfe an); die Probe trägt jetzt `AiModelInfo.tsx` —
+  // dieselbe Popover-Bauform (farbloser Klickfänger `fixed inset-0`, Inhalt neben dem Auslöser).
+  it("KALIBRIERUNG NEGATIV: AiModelInfo.tsx ist es NICHT — dieselbe Vollfläche, andere Sache", () => {
+    const e = ALLE_ERHEBUNGEN.find(
+      (x) => x.quelle.datei === "apps/web/src/components/AiModelInfo.tsx",
+    );
     expect(e, "Negativdatei der Kalibrierung fehlt im Bestand").toBeDefined();
     const quelle = e?.quelle.gestrippt ?? "";
     // Sie liegt in DERSELBEN Bezugsmenge — genau das macht sie zur tauglichen Negativprobe.
-    expect(spanntVollflaecheAuf(quelle), "HelpTip.tsx gehört nicht mehr zur Bezugsmenge").toBe(
+    expect(spanntVollflaecheAuf(quelle), "AiModelInfo.tsx gehört nicht mehr zur Bezugsmenge").toBe(
       true,
     );
     expect(
       verdecktDenHintergrund(quelle),
-      "der Klickfänger von HelpTip ist farblos — färbt ihn jemand ein, wird die Fläche modal und gehört ins Register",
+      "der Klickfänger von AiModelInfo ist farblos — färbt ihn jemand ein, wird die Fläche modal und gehört ins Register",
     ).toBe(false);
     expect(e !== undefined && istMarkerloserTraegerAmBestand(e)).toBe(false);
     expect(MARKERLOSE_TRAEGER.map((b) => b.datei)).not.toContain(
-      "apps/web/src/components/HelpTip.tsx",
+      "apps/web/src/components/AiModelInfo.tsx",
     );
+    // Und HelpTip.tsx spannt seit H1 KEINE Vollfläche mehr auf — sonst fehlte ihm hier ein Eintrag.
+    const helpTip = ALLE_ERHEBUNGEN.find(
+      (x) => x.quelle.datei === "apps/web/src/components/HelpTip.tsx",
+    );
+    expect(helpTip === undefined || !spanntVollflaecheAuf(helpTip.quelle.gestrippt)).toBe(true);
   });
 
   it("KALIBRIERUNG: das Register deckt sich mit dem, was der Bestand hergibt", () => {
@@ -1751,7 +1761,7 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
   // ==============================================================================================
   // JOB 1093 D3 — DIE ZWEITE SUCHRICHTUNG UND DER RESTLOSE ABGLEICH.
   //
-  // BEN zu D2: die Aussage „10 Überlagerungsflächen im gesamten Baum" und „keine vierte" sind
+  // BEN zu D2: die Aussage „10 Überlagerungsflächen im gesamten Baum“ und „keine vierte“ sind
   // UNBEWIESENE HYPOTHESEN, weil die erste Richtung nur Dateien mit bestimmten Bauformen aufnimmt.
   // Hier steht die Gegenrichtung, und hier steht der Abgleich, den BEN prüft: jeder Fund der einen
   // Richtung ist in der anderen enthalten ODER einzeln begründet abwesend. Zielzahl: NULL
@@ -1779,13 +1789,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
       "apps/web/src/components/KnowledgeInputStudio.tsx",
       "Vollbild und verdeckend, aber OHNE modale Wirkung: keine Fokusfalle, keine Scrollsperre, kein inert, kein Marker. Ein Produktbefund, kein Erhebungsfehler.",
     ],
-    [
-      "apps/web/src/components/HelpTip.tsx",
-      "Popover: die Vollfläche ist ein farbloser Klickfänger, der Inhalt sitzt daneben — keine Wirkung, die in die Bedienung eingreift",
-    ],
+    // JOB 3060 · H1: HelpTip.tsx stand hier als Popover mit farblosem Klickfänger; seit H1 rendert
+    // er keine Fläche mehr und taucht in keiner der beiden Richtungen auf.
     [
       "apps/web/src/components/AiModelInfo.tsx",
-      "dieselbe Popover-Bauform wie HelpTip — reine Auskunft ohne Bedienfluss",
+      "Popover: die Vollfläche ist ein farbloser Klickfänger, der Inhalt sitzt daneben — reine Auskunft ohne Bedienfluss",
     ],
     [
       // JOB 3061 · H2: die vier Menüorte der Prüffläche, baugleich mit HelpTip.
@@ -1828,8 +1836,9 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     const nurB = b.filter((d) => !a.includes(d));
 
     // Beide Richtungen müssen überhaupt etwas finden — sonst wäre der Abgleich zweier leerer
-    // Mengen trivial grün.
-    expect(a.length, "Richtung A (Bauform) findet nichts mehr").toBeGreaterThanOrEqual(8);
+    // Mengen trivial grün. (JOB 3060 · H1: von 8 auf 7 — `HelpTip.tsx` spannt keine Vollfläche
+    // mehr auf; die übrigen sieben Bauformen sind unverändert.)
+    expect(a.length, "Richtung A (Bauform) findet nichts mehr").toBeGreaterThanOrEqual(7);
     expect(b.length, "Richtung B (Wirkung) findet nichts mehr").toBeGreaterThanOrEqual(7);
 
     const unerklaertA = nurA.filter((d) => !NUR_A_BEGRUENDET.has(d));
@@ -1883,7 +1892,7 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     ]);
 
     // (1) DIE LÜCKE, GEMESSEN: die erste Richtung sieht diesen Träger nicht. Ohne diese Zeile wäre
-    //     der Fall unten nicht von „war ohnehin schon abgedeckt" zu unterscheiden.
+    //     der Fall unten nicht von „war ohnehin schon abgedeckt“ zu unterscheiden.
     expect(
       spanntVollflaecheAuf(traeger.quelle.gestrippt),
       "`w-screen h-screen` ist keine `fixed`+vier-Seiten-Fläche — genau das ist BENs Befund",
@@ -1931,13 +1940,11 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
   });
 
   it("ZWEITE RICHTUNG · KALIBRIERUNG: eine Fläche ohne Wirkung wird NICHT gemeldet", () => {
-    // Ohne diesen Fall wäre die zweite Richtung von „meldet alles" nicht zu unterscheiden. Der
-    // Prüfstein kommt aus dem ECHTEN Bestand: `HelpTip.tsx` und `ToastViewport.tsx` tragen beide
-    // das Signal B6 (`100vw`), aber ohne Verdeckung — und bleiben deshalb draussen.
-    for (const datei of [
-      "apps/web/src/components/HelpTip.tsx",
-      "apps/web/src/shell/ToastViewport.tsx",
-    ]) {
+    // Ohne diesen Fall wäre die zweite Richtung von „meldet alles“ nicht zu unterscheiden. Der
+    // Prüfstein kommt aus dem ECHTEN Bestand: `ToastViewport.tsx` trägt das Signal B6 (`100vw`),
+    // aber ohne Verdeckung — und bleibt deshalb draussen. (JOB 3060 · H1: bis dahin stand hier
+    // auch `HelpTip.tsx` mit seinem `max-w-[calc(100vw-1rem)]`; er rendert keine Fläche mehr.)
+    for (const datei of ["apps/web/src/shell/ToastViewport.tsx"]) {
       const e = ALLE_ERHEBUNGEN.find((x) => x.quelle.datei === datei);
       expect(e, `Kalibrierdatei fehlt im Bestand: ${datei}`).toBeDefined();
       const quelle = e?.quelle.gestrippt ?? "";
@@ -2009,7 +2016,7 @@ describe("mega48 Block B → mega72: die Erhebung am heutigen Bestand", () => {
   it("DER FUND, an dem mega47 gescheitert ist: ein Aufrufer OHNE Prop wird trotzdem erhoben", () => {
     // `ImportSelect` bindet FacetFilter ein und hat NIE einen Hintergrund hereingereicht. Die alte
     // Erhebung über die Zeichenfolge `backgroundRef={` sah ihn deshalb nicht — und genau daran ist
-    // die Zusage „eine dritte Seite wird automatisch rot" am heutigen Baum gescheitert.
+    // die Zusage „eine dritte Seite wird automatisch rot“ am heutigen Baum gescheitert.
     const importSelect = ALLE_ERHEBUNGEN.find(
       (e) => e.quelle.datei === "apps/web/src/components/ImportSelect.tsx",
     );
@@ -2242,7 +2249,7 @@ describe("mega48 Block A2: zwei Flächen nehmen sich die Grenze nicht mehr gegen
 // WARUM DAS NÖTIG IST, obwohl die Bauform-Fixtures seit mega72 existieren: Die PRO-Rückgabe zu
 // JOB 966 hat es selbst als offene Grenze benannt — *„Die Wirksamkeit der Fixtures ist nicht
 // gegengeprüft. Ein Fixture kann existieren und trotzdem nichts fangen"* — und verweist auf bens
-// Befund aus 905 D1, wonach *„vier der sechs Positivformen bereits VOR der Änderung grün waren"*.
+// Befund aus 905 D1, wonach *„vier der sechs Positivformen bereits VOR der Änderung grün waren“*.
 // Ein grüner Positivfall allein beweist nur, dass etwas erhoben wurde; er beweist NICHT, dass die
 // Erhebung an dem Merkmal hängt, das den Fall trägt.
 //
@@ -2382,10 +2389,10 @@ describe("JOB 1130 · Symbolidentität — ein Fremdtreffer ersetzt keine echte 
     erhebeDatei(quelleAus(datei, zeilen.join("\n")));
 
   it("I-1: TÄUSCHUNGSKOMPENSATION — verschwindet die echte Einbindung, verdeckt der gleichnamige Fremdtreffer sie NICHT", () => {
-    // DER FALL, den ben „Täuschungskompensation" nennt und den BEN7 als Prüflücke 1 verlangt:
+    // DER FALL, den ben „Täuschungskompensation“ nennt und den BEN7 als Prüflücke 1 verlangt:
     // In einer Datei, die als Aufrufer geführt wird, wird die echte Einbindung durch ein
     // gleichnamiges Fremdsymbol ERSETZT. Ein namensbasierter Sammler meldete hier weiter grün —
-    // genau das „war doch grün", vor dem Register A17 warnt.
+    // genau das „war doch grün“, vor dem Register A17 warnt.
     const echt = synth("apps/web/src/pages/TaeuschungVorher.tsx", [
       'import { FacetFilter } from "../components/FacetFilter";',
       "export function Seite(): JSX.Element {",
@@ -2416,9 +2423,9 @@ describe("JOB 1130 · Symbolidentität — ein Fremdtreffer ersetzt keine echte 
   });
 
   it("I-2: die Ersetzung ist am ZÄHLER ablesbar — kein Paar, aber auch kein stiller Nullfund", () => {
-    // Der Wert von I-1 hängt daran, dass der Wegfall NICHT als „nichts passiert" endet: Der
+    // Der Wert von I-1 hängt daran, dass der Wegfall NICHT als „nichts passiert“ endet: Der
     // Sammler führt den Fremdbefund und lässt den Aufrufer aus den Paaren fallen. Genau diese
-    // Kombination — leere Paare UND ein benannter Befund — unterscheidet „ersetzt" von „nie da".
+    // Kombination — leere Paare UND ein benannter Befund — unterscheidet „ersetzt“ von „nie da“.
     const fremd = synth("apps/web/src/pages/TaeuschungZaehler.tsx", [
       'import { FacetFilter } from "../lib/facetRail";',
       "export function Seite(): JSX.Element {",
@@ -2494,7 +2501,7 @@ describe("JOB 1130 · der Zähler und die fail-closed Prop-Weitergabe", () => {
 
   it("Z-2: der Zähler BEISST — eine nicht abrechenbare Form wird rot, mit Datei und Zeile", () => {
     // Die Wirksamkeitsprobe zum Fall darüber: gäbe es KEINE Form, die der Zähler meldet, wäre
-    // „alles abgerechnet" auch bei einem blinden Zähler grün. Die destrukturierte Bindung ist
+    // „alles abgerechnet“ auch bei einem blinden Zähler grün. Die destrukturierte Bindung ist
     // die belegte Lücke — `showModal` steht zweimal wörtlich im Code und wird kein Kandidat.
     const e = synth("apps/web/src/lib/z2Destrukturiert.ts", [
       "export function oeffne(d: HTMLDialogElement): void {",
@@ -2568,7 +2575,7 @@ describe("JOB 1130 · der Zähler und die fail-closed Prop-Weitergabe", () => {
 // und zwar aus einem gemessenen Grund: Der Importweg verlangt einen `export` aus einer
 // `.test.ts`-Datei, und den verbietet die Hausregel `lint/suspicious/noExportsInTest`. Der
 // Bestand befolgt sie ausdrücklich statt sie zu unterdrücken (`tests/security/
-// egress-encapsulation.test.ts:51`: „Kein Export (Biome: noExportsInTest)"). Ein `biome-ignore`
+// egress-encapsulation.test.ts:51`: „Kein Export (Biome: noExportsInTest)“). Ein `biome-ignore`
 // hätte eine bewusste Hausregel für eine Bequemlichkeit ausgehebelt — und nebenbei alle zwölf
 // Kalibrierfälle bei jedem Sammlerlauf ein zweites Mal ausgeführt (gemessen: 71 → 83 Fälle).
 //
@@ -2950,7 +2957,7 @@ describe("JOB 1020 D13: die Beleg-Assertionskette entscheidet IM zentralen Wäch
   });
 
   it("BELEGKETTE · die Kettenprüfung steht GENAU EINMAL im Bestand", () => {
-    // Die Zusage aus Pflicht 1: „Nach diesem Durchgang darf es die Logik nicht mehr zweimal geben."
+    // Die Zusage aus Pflicht 1: „Nach diesem Durchgang darf es die Logik nicht mehr zweimal geben.“
     // Gezählt wird über den ganzen Testbaum, nicht nur über die zwei bekannten Dateien — sonst
     // entstünde eine dritte Kopie unbemerkt.
     const dateien: string[] = [];
@@ -3102,11 +3109,11 @@ it("nur Woerter, keine Kette", async () => {
 // ================================================================================================
 //
 // BEFUND ZUERST, WEIL ER DIE RICHTUNG DES AUFTRAGS ÄNDERT. Register A17 sagt, der Modal-Sammler sei
-// „ein statischer Musterwächter, kein AST-Wächter". GEMESSEN am heutigen Stand dieser Datei ist das
+// „ein statischer Musterwächter, kein AST-Wächter“. GEMESSEN am heutigen Stand dieser Datei ist das
 // für DREI der vier genannten Formen überholt — mega72 hat die Erhebung auf den Syntaxbaum gestellt
 // (`ts.createSourceFile` in `quelleAus`), und JOB 1130 hat jede Form mit einem Negativ-Zwilling
 // unterlegt. Die Belegstellen stehen in Block G unten, damit sie mitlaufen statt in einer Rückgabe
-// zu verwelken. Die VIERTE Form — „Modalität ohne die Zeichenfolge" — steht dagegen wirklich offen,
+// zu verwelken. Die VIERTE Form — „Modalität ohne die Zeichenfolge“ — steht dagegen wirklich offen,
 // und sie ist die einzige, die man nicht durch schärferes Hinsehen auf DIESE Datei erledigen kann:
 // die tragende Zeichenfolge existiert in ihr gar nicht.
 //
@@ -3121,7 +3128,7 @@ it("nur Woerter, keine Kette", async () => {
 //   F-c  Die Klasse kommt von AUSSEN als Prop oder aus einem berechneten Zugriff. Sie ist
 //        grundsätzlich nicht statisch auflösbar.
 //
-// DIE ANTWORT IST NICHT „schärfer raten". Für F-a wird MODULÜBERGREIFEND AUFGELÖST: der Sammler
+// DIE ANTWORT IST NICHT „schärfer raten“. Für F-a wird MODULÜBERGREIFEND AUFGELÖST: der Sammler
 // schlägt den importierten Bezeichner in der Erhebung des Zielmoduls nach und nimmt dessen
 // Zeichenketten in den Flächentext auf. Was danach übrig bleibt — F-c und alles Berechnete —, wird
 // als UNAUFGELÖST GEMELDET, mit Datei, Zeile und Ausdruck. Kein drittes, stilles Ergebnis.
@@ -3205,7 +3212,7 @@ function zeichenkettenUnter(n: ts.Node): string[] {
  * `useReadiness`. Wer nur `const` nachschlägt, löst am echten Bestand exakt NICHTS auf und hält
  * das für einen Befund über den Baum — es wäre einer über den Sucher.
  *
- * RÜCKGABE-SEMANTIK, und sie trägt die Zweiteilung: `null` heisst „Deklaration nicht gefunden" und
+ * RÜCKGABE-SEMANTIK, und sie trägt die Zweiteilung: `null` heisst „Deklaration nicht gefunden“ und
  * führt in OFFEN. Ein LEERES Feld heisst „gefunden und ausgewertet, trägt nachweislich keine
  * Zeichenkette" — das ist ein Ergebnis, kein Zweifel, und zählt als aufgelöst.
  */
@@ -3568,10 +3575,6 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // unter `components/bibliothek/` tragen ihre eigene Menge. Der Zahlenwert unten stammt aus dem
     // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der beiden Deltas.
     //
-    // JOB 3064 (H5) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3063/3067 NEU GEMESSEN. Derselbe
-    // Grund wie oben, jetzt für den Umbau von Startseite, Aufgabenliste und Fragenfläche: der
-    // Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum.
-    //
     // JOB 3064 (H5): von 208 auf 210 NACHGEZOGEN, nicht gelockert. Der Umbau von Startseite,
     // Aufgabenliste und Fragenfläche hat Bindungen ABGEGEBEN (die Dringlichkeitspunkte der alten
     // Arbeitsliste, der Kreis-Ton und der Pfeil der Orientierungskarte standen in `Start.tsx`) und
@@ -3593,8 +3596,22 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Typografie der Fläche, das Bauteil den Satz.
     // GEMESSEN, nicht geschätzt: mit einem literalen `className` an genau dieser Stelle meldet die
     // Erhebung wieder 211 — die Differenz hängt an dieser einen Zeile und an keiner anderen.
+    //
+    // JOB 3060 · H1: von 208 auf 200 NACHGEZOGEN, nicht gelockert — gemessen am Baum. Mit der
+    // alten Hülle gehen die Bindungen von `shell/Sidebar.tsx` (Badge-, Ladepunkt-, Fehler- und
+    // Nav-Zeilen-Tönungen), `shell/Topbar.tsx` (Sprach-, Design-, Status-Pillen) und der
+    // HelpTip-Sprechblase (`pos.h`/`pos.v`); die neuen Bausteine des Kopfbands (Menue, KopfbandPunkte,
+    // Meldungen, StatusZeilen, RollenVorschau, KontoMenue, Darstellung) bringen ihre eigenen mit.
+    // Saldo: acht weniger. Die Zusage bleibt EXAKT.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3060 (H1, Shell/Kopfband) auf den Stand von
+    // JOB 3061/3063/3064/3067 (Prüf-, Bibliotheks- und Startflächen) NEU GEMESSEN, nicht rechnerisch
+    // addiert. Die abgelöste Hülle (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) trifft hier auf die
+    // Bindungen der neuen Bibliotheks-, Prüf- und Startflächen sowie auf die neuen Kopfband-Bausteine;
+    // der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus
+    // einer Kopfrechnung der vorherigen Deltas.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      212,
+      204,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -3839,7 +3856,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
   });
 
   it("PRÜFLÜCKE 2 · GEGENPROBE: dasselbe Stylesheet OHNE Vollbildmass bleibt grün", () => {
-    // Ohne diesen Fall wäre die Wache von „meldet jedes Stylesheet" nicht zu unterscheiden.
+    // Ohne diesen Fall wäre die Wache von „meldet jedes Stylesheet“ nicht zu unterscheiden.
     lege("apps/web/src/Screen.module.css", ".leiste {\n  position: fixed;\n  bottom: 8px;\n}\n");
     lege(
       "apps/web/src/components/SchirmTraeger.tsx",
@@ -3850,7 +3867,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 
   it("PRÜFLÜCKE 2 · KALIBRIERUNG: eine Vollbildregel OHNE Träger wird gemeldet, aber ohne Träger", () => {
     // Ein Stylesheet, das niemand importiert, ist eine Fläche, die an nichts hängt. Der Unterschied
-    // muss ablesbar sein — sonst liest sich „kein Träger" wie „nicht geprüft".
+    // muss ablesbar sein — sonst liest sich „kein Träger“ wie „nicht geprüft“.
     lege("apps/web/src/Screen.module.css", ".schirm {\n  position: fixed;\n  inset: 0;\n}\n");
     const funde = stylesheetVollbildregeln(baum, join("apps", "web"), erhebeBaum());
     expect(funde).toHaveLength(1);
@@ -3950,7 +3967,7 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
   it("die Grundgesamtheit ist nicht geschrumpft — 414 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft plus Splash plus die sieben Prüf-Bauteile", () => {
     // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
-    // Zahl steht in Block E („gelesene Quelldateien", Untergrenze 382) und hier noch einmal als
+    // Zahl steht in Block E („gelesene Quelldateien“, Untergrenze 382) und hier noch einmal als
     // ausdrückliche Erhaltungszusage dieses Durchgangs.
     //
     // JOB 1860 D1: von 397 auf 399 NACHGEZOGEN, nicht gelockert. Der Sammler hat richtig
@@ -3979,7 +3996,7 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //     + apps/web/src/components/KnopfUnterschied.tsx
     //
     // JOB 3028 (U3): von 402 auf 403 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie traegt die Zuordnung „Menuepunkt-Pfad → vorhandenes Hilfekapitel", aus
+    // dazugekommen, und sie traegt die Zuordnung „Menuepunkt-Pfad → vorhandenes Hilfekapitel“, aus
     // der die Seitenleiste ihren Hinweis vor dem Klick zieht:
     //
     //     + apps/web/src/lib/navHilfe.ts
@@ -4078,14 +4095,34 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     //
     //     + apps/web/src/components/bibliothek/AuffrischungHinweis.tsx
     //
-    // JOB 3064 (H5) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3061/3063/3067 NEU GEMESSEN. Die 422
-    // aus dem Stand vor diesem Job (Prüffläche + Bibliotheksfläche) plus die neun eigenständigen
-    // Dateien von `components/start/` (acht aus H5 + `AntwortText.tsx` aus Runde 5) ergeben den
-    // Wert unten — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
+    // JOB 3064 (H5): die 422 aus dem Stand vor diesem Job (Prüffläche + Bibliotheksfläche) plus
+    // die neun eigenständigen Dateien von `components/start/` (acht aus H5 + `AntwortText.tsx` aus
+    // Runde 5) ergeben 431 — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
+    //
+    // JOB 3060 · H1: von 406 auf 415 NACHGEZOGEN. ZWEI Dateien sind weggefallen — die alte Hülle
+    // (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) — und ELF dazugekommen, die Bausteine des einen
+    // Kopfbands und seiner Menüs:
+    //
+    //     + apps/web/src/shell/Darstellung.tsx        + apps/web/src/shell/DrawerMenue.tsx
+    //     + apps/web/src/shell/KontoMenue.tsx         + apps/web/src/shell/Kopfband.tsx
+    //     + apps/web/src/shell/KopfbandPunkte.tsx     + apps/web/src/shell/Meldungen.tsx
+    //     + apps/web/src/shell/Menue.tsx              + apps/web/src/shell/RollenVorschau.tsx
+    //     + apps/web/src/shell/SeitenhilfeContext.tsx + apps/web/src/shell/StatusZeilen.tsx
+    //     + apps/web/src/shell/ZahnradMenue.tsx
+    //
+    // Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine Untergrenze), damit die nächste
+    // Abweichung genauso auffällt wie diese.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3060 (H1, Shell/Kopfband) auf den Stand von
+    // JOB 3061/3063/3064/3067 (Prüf-, Bibliotheks- und Startflächen) NEU GEMESSEN, nicht rechnerisch
+    // addiert. Die abgelöste Hülle (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) und die elf neuen
+    // Kopfband-Bausteine treffen hier auf die 431 Quelldateien aus JOB 3061/3063/3064 (Prüf-,
+    // Bibliotheks- und Startflächen); der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an
+    // diesem Arbeitsbaum, nicht aus einer Kopfrechnung der vorherigen Deltas.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "erwartet 431: die 422 aus JOB 3061/3063 (Prüffläche + Bibliotheksfläche) plus die neun Dateien von components/start/ (JOB 3064 H5 + Runde 5 AntwortText.tsx) — am eigenen Lauf gemessen, nicht rechnerisch addiert",
-    ).toBe(431);
+      "die 431 aus JOB 3061/3063/3064 (Prüf-, Bibliotheks- und Startflächen) − Sidebar.tsx − Topbar.tsx + elf Kopfband-Bausteine (JOB 3060) — am eigenen Lauf gemessen, nicht rechnerisch addiert",
+    ).toBe(440);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

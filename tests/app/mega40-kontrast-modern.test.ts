@@ -845,28 +845,9 @@ const GRAFISCHE_AUSNAHMEN: { datei: string; klassen: string; grund: string }[] =
       "Fortschrittsbalken des Lebenszyklus-Pfades: reine Länge auf bg-page-Schiene, kein Text darin " +
       "(der Zähler steht als text-muted-2 daneben).",
   },
-  {
-    datei: "apps/web/src/shell/Sidebar.tsx",
-    klassen: "ml-auto grid h-[17px] w-[17px] place-items-center rounded-pill bg-white/20",
-    grund:
-      "Ladepunkt-Rahmen der Nav-Badge (BadgeLoading): trägt KEINE Zahl, sondern nur den pulsierenden " +
-      "Punkt als eigenes Kind. Die Bedeutung liegt in title/aria-label, nicht auf der Fläche.",
-  },
-  {
-    datei: "apps/web/src/shell/Sidebar.tsx",
-    klassen: "h-1.5 w-1.5 animate-pulse rounded-full bg-white/70",
-    grund:
-      "Der pulsierende Punkt selbst (BadgeLoading): reine Form ohne Text; auf der aktiven Nav-Zeile " +
-      "(Funke dunkel) misst er als NICHT-Text 3,79:1 und liegt damit über der 3:1-Grenze.",
-  },
-  {
-    datei: "apps/web/src/shell/Sidebar.tsx",
-    klassen:
-      "grid h-[27px] w-[27px] shrink-0 place-items-center rounded-[8px] bg-white/15 text-white",
-    grund:
-      "Icon-Kachel der aktiven Nav-Zeile: trägt ein Symbol (lucide, currentColor), keinen Text. Weiß " +
-      "auf dieser Kachel über Funke dunkel misst 3,72:1 — über der 3:1-Grenze für Nicht-Text (1.4.11).",
-  },
+  // JOB 3060 · H1: die drei Ausnahmen der Seitenleiste (Ladepunkt-Rahmen, pulsierender Punkt,
+  // Icon-Kachel; shell/Sidebar.tsx) sind mit der Seitenleiste gegangen — das Kopfband trägt keine
+  // halbtransparenten Weißflächen und keine Ladepunkte mehr (§9: kein Badge statt Ladepunkt).
 ];
 
 const { funde: AKZENTFLAECHEN, rohZeilen: ROH_ZEILEN } = sammleAkzentflaechen();

@@ -1109,6 +1109,11 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
 //     also nichts zu unterlassen — die Trennung zu den drei anderen Bahnen haelt von selbst.
 const ALTBESTAND_WEB: readonly string[] = [
   "apps/web/src/app/ImageDescribeContext.tsx::ImageDescribeValueProvider",
+  // JOB 3060 · H1: der letzte Aufrufer von `GuardedNavLink` war die Seitenleiste (Sidebar.tsx,
+  // Nutzerzeile → /profil); die Hülle navigiert jetzt ausschließlich über `GuardedLink` (EINE
+  // Aktivregel, JOB 562). Der Export bleibt, weil app/NavGuardContext.tsx nicht im Zielpfad des
+  // Auftrags liegt — Folgeabbau, wie `TopbarIcons` darunter.
+  "apps/web/src/app/NavGuardContext.tsx::GuardedNavLink",
   "apps/web/src/app/navigation.ts::TopbarIcons",
   "apps/web/src/components/LibraryScopeBar.tsx::LibraryScopeBar",
   "apps/web/src/components/confluence-import/ImportResultView.tsx::ImportResultView",

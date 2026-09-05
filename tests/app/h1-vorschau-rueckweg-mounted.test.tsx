@@ -1,0 +1,194 @@
+// @vitest-environment jsdom
+// ================================================================================================
+// JOB 3060 · H1 (Codex R5) — DAS KOPFBANDINVENTAR GILT IN JEDEM ZUSTAND, AUCH IN DER ROLLEN-VORSCHAU.
+// ================================================================================================
+//
+// Mit der Seitenleiste verlor die Rollen-Vorschau des Admins ihren alten Rückweg. Runde 3 setzte
+// dafür eine Pille ins Kopfband; Codex (R5): „keine Pillen, sonst nichts" gilt in ALLEN Zuständen,
+// und der Rückweg steht bereits im Zahnrad-Menü („Zur Admin-Ansicht", RollenVorschau.tsx). Die
+// Pille ist wieder weg. Gemountet am ECHTEN Kopfband mit echtem RoleProvider: jede Nicht-Admin-
+// Rolle wählen, Menü schließen — das Kopfband trägt nur sein Inventar; Zahnrad → „Zur
+// Admin-Ansicht" stellt die echte Admin-Ansicht ohne Reload wieder her. Der Chromium-Beleg an der
+// gebauten App steht in tests/design/h1-funktionsinventar.test.ts (Zeile Z-vorschau-rueckweg).
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+vi.mock("../../apps/web/src/api/auth", () => ({
+  authApi: {
+    status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
+    me: vi.fn(async () => ({ id: "u1", name: "Anna Admin", email: "a@x.de", role: "admin" })),
+    logout: vi.fn(async () => ({})),
+  },
+}));
+
+vi.mock("../../apps/web/src/api/endpoints", () => ({
+  endpoints: {
+    validation: { board: vi.fn(async () => []) },
+    conflicts: { list: vi.fn(async () => []) },
+    duplicates: { list: vi.fn(async () => []) },
+    gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: {} })) },
+    lifecycle: { pending: vi.fn(async () => []) },
+    notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
+    features: { get: vi.fn(async () => ({ features: {} })) },
+    reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
+      config: vi.fn(async () => null),
+    },
+    external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
+  },
+}));
+
+import {
+  QueryClient,
+  QueryClientProvider,
+} from "../../apps/web/node_modules/@tanstack/react-query";
+import { act, createElement } from "../../apps/web/node_modules/react";
+import { createRoot } from "../../apps/web/node_modules/react-dom/client";
+import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { AuthProvider } from "../../apps/web/src/app/AuthContext";
+import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
+import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
+import i18n from "../../apps/web/src/i18n";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
+
+(globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
+
+let container: HTMLDivElement;
+let root: ReturnType<typeof createRoot>;
+
+const flush = async (): Promise<void> => {
+  for (let i = 0; i < 25; i++) {
+    await new Promise((r) => setTimeout(r, 0));
+  }
+};
+
+async function mount(pfad = "/start"): Promise<void> {
+  container = document.createElement("div");
+  document.body.appendChild(container);
+  root = createRoot(container);
+  const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  await act(async () => {
+    root.render(
+      createElement(
+        QueryClientProvider,
+        { client: qc },
+        createElement(
+          AuthProvider,
+          null,
+          createElement(
+            RoleProvider,
+            null,
+            createElement(
+              ToastProvider,
+              null,
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(MemoryRouter, { initialEntries: [pfad] }, createElement(Kopfband)),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await flush();
+  });
+  await act(flush);
+  await act(flush);
+}
+
+async function click(el: Element | null | undefined): Promise<void> {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("Element zum Klicken fehlt");
+  }
+  await act(async () => {
+    el.click();
+    await flush();
+  });
+}
+
+const zahnrad = (): HTMLButtonElement | null =>
+  container.querySelector<HTMLButtonElement>('[data-testid="kopfband-zahnrad"]');
+const menueOffen = (): boolean => container.querySelector('[data-testid="zahnrad-menue"]') !== null;
+
+/** Zahnrad → „Ansicht als Rolle" → Rolle wählen (die Vorschau des Admins). */
+async function rolleWaehlen(kurz: string): Promise<void> {
+  if (!menueOffen()) {
+    await click(zahnrad());
+  }
+  const knopf = [
+    ...container.querySelectorAll<HTMLButtonElement>(
+      '[data-testid="zahnrad-ansicht"] [role="menuitemradio"]',
+    ),
+  ].find((b) => (b.textContent ?? "").trim() === kurz);
+  await click(knopf);
+}
+
+/** Das Menü schließen (Escape auf der Fläche) — danach zählt allein das Kopfband. */
+async function menueSchliessen(): Promise<void> {
+  const flaeche = container.querySelector<HTMLElement>('[data-testid="zahnrad-menue"]');
+  await act(async () => {
+    flaeche?.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    await flush();
+  });
+}
+
+/** Die Wörter des Kopfbands — jsdom kennt kein innerText; gezählt wird der Text jedes Blatts. */
+function kopfbandWoerter(): string[] {
+  const band = container.querySelector('header[data-testid="kopfband"]');
+  return [...(band?.querySelectorAll("*") ?? [])]
+    .filter((e) => e.children.length === 0)
+    .map((e) => (e.textContent ?? "").trim())
+    .filter(Boolean);
+}
+
+beforeEach(async () => {
+  await i18n.changeLanguage("de");
+});
+
+afterEach(() => {
+  act(() => root.unmount());
+  container.remove();
+  vi.clearAllMocks();
+});
+
+describe("JOB 3060 · H1 · Rollen-Vorschau: das Kopfband bleibt bei seinem Inventar, der Rückweg liegt im Zahnrad", () => {
+  const INVENTAR = ["KLARWERK", "Start", "Fragen", "Bibliothek", "Erfassen", "Prüfen"];
+
+  it("als Admin ohne Vorschau: genau das Inventar (Zähler und Initialen ausgenommen), keine Pille", async () => {
+    await mount();
+    expect(container.querySelector('[data-testid="kopfband-vorschau"]')).toBeNull();
+    const fremd = kopfbandWoerter().filter((w) => !INVENTAR.includes(w) && w !== "AA");
+    expect(fremd).toEqual([]);
+  });
+
+  for (const rolle of ["viewer", "experte", "controller"] as const) {
+    it(`Vorschau als ${rolle}: bei geschlossenem Menü trägt das Kopfband NICHTS außerhalb des Inventars; Zahnrad → „Zur Admin-Ansicht“ stellt Admin ohne Reload wieder her`, async () => {
+      await mount("/start");
+      await rolleWaehlen(i18n.t(`role.short.${rolle}`));
+      // Die Vorschau wirkt: die Admin-Zeile „Einstellungen" ist weg.
+      expect(container.querySelector('[data-testid="zahnrad-einstellungen"]')).toBeNull();
+      await menueSchliessen();
+      expect(menueOffen()).toBe(false);
+
+      // Kein Element außerhalb des Inventars — insbesondere keine Pille, kein Rollentext.
+      expect(container.querySelector('[data-testid="kopfband-vorschau"]')).toBeNull();
+      const fremd = kopfbandWoerter().filter((w) => !INVENTAR.includes(w) && w !== "AA");
+      expect(fremd, `${rolle}: Text außerhalb des Kopfbandinventars`).toEqual([]);
+      const knoepfe = [...container.querySelectorAll("header button")].map(
+        (b) => b.getAttribute("data-testid") ?? b.getAttribute("type"),
+      );
+      expect(knoepfe.sort()).toEqual(["kopfband-konto", "kopfband-zahnrad", "submit"]);
+
+      // Der Rückweg: Zahnrad → „Zur Admin-Ansicht" (RollenVorschau.tsx) — dieselbe Montage,
+      // derselbe Router, kein Reload.
+      await click(zahnrad());
+      const zurueck = [
+        ...container.querySelectorAll<HTMLButtonElement>('[data-testid="zahnrad-ansicht"] button'),
+      ].find((b) => (b.textContent ?? "").trim() === i18n.t("role.backToAdmin"));
+      expect(zurueck, "kein Rückweg „Zur Admin-Ansicht“ im Zahnrad-Menü").toBeTruthy();
+      await click(zurueck);
+      expect(container.querySelector('[data-testid="zahnrad-einstellungen"]')).not.toBeNull();
+    });
+  }
+});

@@ -1215,11 +1215,6 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // `ANGEBOT_MUSTER`) und keine trägt einen eigenen Titel (kein `documentTitle`-Prop) — sie
     // erscheinen nur in der Grundmenge.
     //
-    // JOB 3064 (H5) · KONFLIKTRUNDE 1: die folgenden Einträge zählen den Zuwachs dieses Jobs
-    // EIGENSTÄNDIG, von der Basis 253 aus (dem Stand vor JOB 3052/3061/3063/3067) — nicht als
-    // Fortsetzung der Kette oben. Die Summe beider Zuwächse steht in der addierten Erwartung am
-    // Ende dieses Blocks, gemessen am eigenen Lauf dieses Arbeitsbaums.
-    //
     // JOB 3064 (H5): `komponenten` von 253 auf 259 NACHGEZOGEN. Der neue Bereich
     // `apps/web/src/components/start/` bringt SECHS Komponenten mit — `OverflowMenu` (das
     // „…"-Menü), `Seitenblatt` (das Blatt eines Menüpunkts), `KartenKopf`, `FuerDichKarte`,
@@ -1288,8 +1283,8 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // JOB 3064 (H5) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3052/3061/3063/3067 NEU GEMESSEN.
     // Die 278 aus dem Stand vor diesem Job plus die zwölf eigenständigen Komponenten dieses Jobs
     // (sechs aus `components/start/`, `MehrFlaechenInfo` und `MehrLueckenInfo` in `pages/Ask.tsx`,
-    // `AntwortText`/`Inline`/`Marke`/`Teil` in `components/start/AntwortText.tsx`) ergeben den Wert
-    // unten — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
+    // `AntwortText`/`Inline`/`Marke`/`Teil` in `components/start/AntwortText.tsx`) ergeben 290 — am
+    // eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
     //
     // JOB 3070 (V6 · der Leseweg des Wissensnetzes) · KONFLIKTRUNDE 1: NACH DEM REBASE auf JOB 3064
     // NEU GEMESSEN, `komponenten` von 290 auf 291 NACHGEZOGEN. GENAU EINE Komponente kommt hinzu —
@@ -1298,8 +1293,27 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // bietet keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und traegt keinen eigenen Titel (kein
     // `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen Stufe 2
     // wirklich haengt, sind unveraendert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3060 · H1 (die Hülle): `komponenten` von 253 auf 263 NACHGEZOGEN — gemessen, nicht
+    // gelockert. Mit der alten Hülle gehen 15 Komponenten (`shell/Sidebar.tsx`: Badge, BadgeLoading,
+    // BadgeError, BadgeStale, NavRow, RoleSwitcher, Sidebar · `shell/Topbar.tsx`: LangPill,
+    // DesignTogglePill, NotificationBell, ReasonerStatusPill, ExternalStagePill, KiModePill,
+    // IslandMarkerPill, Topbar); das Kopfband bringt 25 (Kopfband, KopfbandPunkte ×4, Menue ×5,
+    // ZahnradMenue ×3, KontoMenue ×2, Meldungen, StatusZeilen ×5, RollenVorschau, Darstellung,
+    // DrawerMenue, SeitenhilfeProvider). Saldo +10. `HelpTip` bleibt eine Komponente (rendert
+    // nichts, meldet sich bei der Seitenhilfe an). Die zwei Zahlen, an denen Stufe 2 hängt, sind
+    // unverändert: `anbieter` 1 und `traeger` 2 — kein Kopfband-Baustein bietet eine
+    // Bildbeschreibung an oder trägt einen Titel.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3060 (H1, Shell/Kopfband) auf den Stand von
+    // JOB 3052/3061/3063/3064/3067/3070 (Prüf-, Bibliotheks-, Wissensnetz- und Startflächen) NEU
+    // GEMESSEN, nicht rechnerisch addiert. Die abgelöste Hülle (Sidebar.tsx, Topbar.tsx) und die
+    // neuen Kopfband-Bausteine treffen hier auf die 291 Komponenten aus JOB 3070 (inklusive des
+    // Wissensnetz-Umschalters sowie der Bibliotheks- und Wissensnetz-Bauteile aus JOB 3063/3067);
+    // der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum. Die zwei
+    // Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 291,
+      komponenten: 301,
       anbieter: 1,
       traeger: 2,
     });

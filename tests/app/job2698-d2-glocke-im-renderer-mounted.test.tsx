@@ -17,14 +17,14 @@
 //
 // WAS ERSETZT IST, einzeln benannt:
 //   1. PostgreSQL — ein Pool-Doppel, das die Anweisungen des Repos versteht, 40 000 Zeilen hält
-//      und ZÄHLT, wie viele Zeilen je Abfrageart ausgeliefert werden (die „Servermessung").
+//      und ZÄHLT, wie viele Zeilen je Abfrageart ausgeliefert werden (die „Servermessung“).
 //   2. Die Browserschale um `fetch` — Basisadresse und Sitzung: `fetch → app.inject` mit dem
 //      Bearer-Token der echten Anmeldung. Transport, keine Antwort.
 //
-// VORHER/NACHHER IN EINEM LAUF (wie in D1 an der API): „vorher" ist derselbe Repo-Stand, aber
+// VORHER/NACHHER IN EINEM LAUF (wie in D1 an der API): „vorher“ ist derselbe Repo-Stand, aber
 // ohne die gefilterten Lesewege (`findBy`/`existsBy`) — so sieht der Dienst eine Ablage, die nur
-// `all()` kann, der Weg bis 2698. „nachher" ist der volle `PgAuditRepo`. Beide werden bis in die
-// Glocke gerendert, und das Gerenderte muss GLEICH sein — während die Servermessung für „nachher"
+// `all()` kann, der Weg bis 2698. „nachher“ ist der volle `PgAuditRepo`. Beide werden bis in die
+// Glocke gerendert, und das Gerenderte muss GLEICH sein — während die Servermessung für „nachher“
 // 0 Vollscans meldet.
 //
 // ROT VORHER: Auf einem Stand ohne den D1-Serverteil (der Dienst ruft immer `all()`) ist die
@@ -46,7 +46,8 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Topbar } from "../../apps/web/src/shell/Topbar";
+// JOB 3060 · H1: die Glocke ist die Zeile „Meldungen“ im Konto-Menü des Kopfbands.
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 import { assembleServices, buildApp, inMemoryRepos } from "../../services/app/src/build-app";
 import type { AuditRepo } from "../../services/audit/src/repo";
 import { PgAuditRepo } from "../../services/audit/src/repo-pg";
@@ -56,7 +57,7 @@ import { PgAuditRepo } from "../../services/audit/src/repo-pg";
 // ------------------------------------------------------------------------------------------------
 // (1) Das Pool-Doppel — versteht INSERT, `last`, `findBySeq`, `all` und die gefilterten Lesewege
 // des D1-Baus (erkannt an ihrer Form, nicht per Import: die Datei muss auch auf einem Stand OHNE
-// D1 übersetzen, damit „rot vorher" ein Testergebnis ist und kein Übersetzungsfehler).
+// D1 übersetzen, damit „rot vorher“ ein Testergebnis ist und kein Übersetzungsfehler).
 // ------------------------------------------------------------------------------------------------
 interface Zeile {
   seq: number;
@@ -391,7 +392,11 @@ async function topbarMounten(): Promise<void> {
               createElement(
                 NavGuardProvider,
                 null,
-                createElement(MemoryRouter, { initialEntries: ["/start"] }, createElement(Topbar)),
+                createElement(
+                  MemoryRouter,
+                  { initialEntries: ["/start"] },
+                  createElement(Kopfband),
+                ),
               ),
             ),
           ),
@@ -402,12 +407,25 @@ async function topbarMounten(): Promise<void> {
   });
 }
 
+/** H1: das Konto-Menü öffnen — die Zeile „Meldungen“ steht darin. */
+async function kontoOeffnen(): Promise<void> {
+  if (container.querySelector('[data-testid="konto-menue"]')) {
+    return;
+  }
+  const konto = container.querySelector<HTMLButtonElement>('[data-testid="kopfband-konto"]');
+  if (!konto) {
+    throw new Error("Konto-Kreis nicht gefunden");
+  }
+  await act(async () => {
+    konto.click();
+    await flush();
+  });
+}
+
 function glockenKnopf(): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find(
-    (b) => b.getAttribute("aria-label") === i18n.t("topbar.notifications"),
-  );
+  const btn = container.querySelector<HTMLButtonElement>('[data-testid="konto-meldungen"]');
   if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error("Glockenknopf nicht gefunden");
+    throw new Error("Zeile Meldungen nicht gefunden");
   }
   return btn;
 }
@@ -428,7 +446,7 @@ interface Glocke {
 }
 
 function zaehlerAmKnopf(): string | null {
-  return glockenKnopf().querySelector("span")?.textContent ?? null;
+  return glockenKnopf().querySelector(".kw-menue-wert")?.textContent ?? null;
 }
 
 function eintraegeAblesen(): Eintrag[] {
@@ -453,12 +471,13 @@ async function glockeDurchlaufen(
   expect(doppel.rows.length).toBeGreaterThanOrEqual(N);
   // Alle `answer.helpful`-Zeilen im Bestand — auch die für ANDERE Autoren und der Selbstapplaus.
   // Der D1-Filter arbeitet nach `action` in der Datenbank; wer der Autor ist, entscheidet der
-  // Server danach (deriveImpacts). „Nur Treffer" heißt also: genau diese Zeilen, nicht alle 40 000.
+  // Server danach (deriveImpacts). „Nur Treffer“ heißt also: genau diese Zeilen, nicht alle 40 000.
   const helpfulZeilen = doppel.rows.filter((r) => r.action === "answer.helpful").length;
   const vorher = { ...doppel.zaehler };
   await topbarMounten();
-  // Der Client hat abgerufen, wenn der Zähler am Knopf steht (12 ungelesene Wirkungen).
-  await warteAufZustand(() => glockenKnopf().querySelector("span") !== null);
+  await kontoOeffnen();
+  // Der Client hat abgerufen, wenn der Zähler an der Zeile steht (12 ungelesene Wirkungen).
+  await warteAufZustand(() => glockenKnopf().querySelector(".kw-menue-wert") !== null);
   const zaehlerVorOeffnen = zaehlerAmKnopf();
   // Öffnen ist die bewusste Kenntnisnahme (Audit-P3): der Renderer markiert alles Sichtbare als
   // gesehen (POST /api/notifications/seen, echt über die Brücke) — deshalb wird der Zähler VOR dem
@@ -506,7 +525,7 @@ describe("JOB 2698 D2 · die Glocke im echten Renderer, vor und nach dem Umbau",
 
     // Nicht vakuös: die acht Einträge sind genau die aus dem Bestand gerechneten — Auswahl (letzte
     // zwölf Wirkungen nach seq), Reihenfolge (Zeit absteigend), Kennzeichnung der Art im Text
-    // („Wirkung: Titel"); der Knopf zählte vor dem Öffnen zwölf ungelesene, danach keinen mehr, und
+    // („Wirkung: Titel“); der Knopf zählte vor dem Öffnen zwölf ungelesene, danach keinen mehr, und
     // die Einträge stehen als gelesen im Panel (Kenntnisnahme durch Öffnen, Audit-P3).
     const praefix = i18n.t("topbar.notifImpact");
     expect(neu.glocke.eintraege.map((e) => e.text)).toEqual(

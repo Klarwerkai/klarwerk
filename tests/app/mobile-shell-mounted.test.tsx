@@ -1,15 +1,18 @@
 // @vitest-environment jsdom
 // AUFTRAG-mega1 Block F (E2E-017): Mobile/iPad-Layout. Gemountet an der ECHTEN AppShell:
-//  - schmal (≤899px): die Sidebar ist NICHT im Fluss (kein <aside>), der Inhalt nutzt die volle
-//    Breite; ein Hamburger öffnet die Sidebar als Drawer, ein Schließen entfernt sie wieder.
-//  - Desktop (>899px): die Sidebar steht wie bisher im Fluss (<aside>), kein Hamburger.
+//  - schmal (≤899px): der Inhalt nutzt die volle Breite; ein Hamburger öffnet den Drawer
+//    (JOB 3060 · H1: Kopfband-Punkte, Zahnrad- und Konto-Einträge), ein Schließen entfernt ihn.
+//  - Desktop (>899px): das Kopfband steht, kein Hamburger — und seit H1 auf keiner Breite ein <aside>.
 //  - /mobile rendert OHNE Desktop-Shell (kein <aside>, kein <header>).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../../apps/web/src/api/auth", () => ({
   authApi: {
     status: vi.fn(async () => ({ needsSetup: false, oidcEnabled: false })),
-    me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "editor" })),
+    // JOB 3060 · H1: „editor" ist keine Rolle des Produkts (navigation.ts ROLES) — mit ihr sah
+    // schon die alte Seitenleiste keinen Gruppenpunkt; nur das Logo trug damals „/start". Die
+    // kleinste echte Rolle sieht Start · Fragen · Bibliothek.
+    me: vi.fn(async () => ({ id: "u1", name: "Pia", email: "p@x.de", role: "viewer" })),
     logout: vi.fn(async () => ({})),
   },
 }));
@@ -130,33 +133,41 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+// JOB 3060 · H1: die Seitenleiste gibt es nicht mehr — auf KEINER Breite ein <aside>. Schmal
+// öffnet der Hamburger den Drawer (dialog[aria-modal]) mit den Kopfband-Punkten; breit steht das
+// Kopfband allein, ohne Hamburger.
 describe("Block F: Mobile/iPad-Shell", () => {
-  it("schmal (390px): Sidebar nicht im Fluss, Drawer öffnet/schließt über den Hamburger", async () => {
+  it("schmal (390px): kein <aside>, Drawer öffnet/schließt über den Hamburger", async () => {
     setViewport(true);
     await mount("/", createElement("div", null, "SHELL-CONTENT"));
-    // Inhalt da, aber KEIN <aside> im Fluss (Sidebar aus dem Layout genommen).
     expect(container.textContent).toContain("SHELL-CONTENT");
     expect(container.querySelector("aside")).toBeNull();
-    // Hamburger vorhanden → öffnet den Drawer (Sidebar erscheint).
+    expect(container.querySelector("dialog[aria-modal='true']")).toBeNull();
+    // Hamburger vorhanden → öffnet den Drawer (die Kopfband-Punkte erscheinen als Liste).
     const burger = byAria(i18n.t("topbar.openMenu"));
     expect(burger).not.toBeNull();
     if (burger) {
       await click(burger);
     }
-    expect(container.querySelector("aside")).not.toBeNull();
-    // Schließen entfernt die Sidebar wieder.
+    const drawer = container.querySelector("dialog[aria-modal='true']");
+    expect(drawer).not.toBeNull();
+    expect(drawer?.querySelector('a[href="/start"]')).not.toBeNull();
+    // Schließen entfernt den Drawer wieder.
     const close = byAria(i18n.t("topbar.closeMenu"));
     expect(close).not.toBeNull();
     if (close) {
       await click(close);
     }
+    expect(container.querySelector("dialog[aria-modal='true']")).toBeNull();
     expect(container.querySelector("aside")).toBeNull();
   });
 
-  it("Desktop (1280px): Sidebar im Fluss, kein Hamburger", async () => {
+  it("Desktop (1280px): das Kopfband steht, kein <aside>, kein Hamburger", async () => {
     setViewport(false);
     await mount("/", createElement("div", null, "SHELL-CONTENT"));
-    expect(container.querySelector("aside")).not.toBeNull();
+    expect(container.querySelector("aside")).toBeNull();
+    expect(container.querySelector('header[data-testid="kopfband"]')).not.toBeNull();
+    expect(container.querySelector('header a[href="/start"]')).not.toBeNull();
     expect(byAria(i18n.t("topbar.openMenu"))).toBeNull();
   });
 

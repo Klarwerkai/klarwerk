@@ -1147,18 +1147,42 @@ describe("JOB 3052 · D6 · das Wissensnetz des Zielbilds — die echte Seite, g
     expect(await s.evaluate<number>(fn(ANZAHL), '[data-testid="legende-ubiquitaer"]')).toBe(0);
   });
 
-  // ---- Dreisprachig: der echte Umschalter der Topbar ------------------------------------------------
+  // ---- Dreisprachig: der echte Umschalter des Produkts -------------------------------------------
+  // JOB 3060 · H1: die Sprach-Pille der Kopfzeile ist mit Absicht weg; der Umschalter wohnt auf
+  // /profil (Zeile „Sprache"). Der Weg dorthin und zurueck geht ueber die Huelle selbst — Konto-Menue
+  // → Profil, dann Zahnrad → „Weitere Bereiche" → Themenkarte — ohne Neuladen, damit die Sprache
+  // dieselbe Sitzung traegt. Die drei Zusicherungen (Legendensatz, Zaehlsatz, Statuswort, Link)
+  // bleiben unveraendert.
   for (const lng of ["en", "nl", "de"] as const) {
     it(`SPRACHE · ${lng}: Legendensatz, Zaehlsatz, Statuswort und Link kommen aus dem ${lng}-Woerterbuch`, async () => {
       const s = S(`SPRACHE ${lng}`);
+      await s.click('[data-testid="kopfband-konto"]');
+      await s.click('[data-testid="konto-profil"]');
+      // Die Profilseite laedt ihre Daten nach — erst wenn der Sprachknopf steht, wird gemessen.
+      await s.waitForFunction(
+        fn(
+          `(l) => location.pathname === '/profil' && [...document.querySelectorAll('main button')].some((x) => (x.textContent || '').trim().toLowerCase() === l)`,
+        ),
+        lng,
+        { timeout: 10_000 },
+      );
       const knopf = await s.evaluate<string | null>(
         fn(
-          `([l, pfadFnSrc]) => { const pfad = eval('(' + pfadFnSrc + ')'); const b = [...document.querySelectorAll('header button')].find((x) => (x.textContent || '').trim() === l); return b ? pfad(b) : null; }`,
+          `([l, pfadFnSrc]) => { const pfad = eval('(' + pfadFnSrc + ')'); const b = [...document.querySelectorAll('main button')].find((x) => (x.textContent || '').trim().toLowerCase() === l); return b ? pfad(b) : null; }`,
         ),
         [lng, PFAD_FN],
       );
-      expect(knopf, `kein Sprachknopf „${lng}“ in der Topbar`).toBeTruthy();
+      expect(knopf, `kein Sprachknopf „${lng}“ auf /profil`).toBeTruthy();
       await s.click(knopf as string);
+      // Zurueck zur Themenkarte ueber das Zahnrad-Menue (Weitere Bereiche) — SPA-Navigation.
+      await s.click('[data-testid="kopfband-zahnrad"]');
+      await s.click('[data-testid="zahnrad-weitere-bereiche"]');
+      await s.click('[data-testid="bereich-wissensnetz"]');
+      await s.waitForFunction(fn("() => location.pathname === '/wissensnetz'"), undefined, {
+        timeout: 10_000,
+      });
+      await s.waitForFunction(fn(WARTE_KARTE), undefined, { timeout: 30_000 });
+      await s.waitForFunction(fn(WARTE_LEISTE_FERTIG), undefined, { timeout: 30_000 });
       const t = i18n.getFixedT(lng);
       await s.waitForFunction(
         fn(

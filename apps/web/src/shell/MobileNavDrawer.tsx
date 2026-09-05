@@ -3,7 +3,7 @@ import { type KeyboardEvent, type RefObject, useEffect, useRef, useState } from 
 import { useTranslation } from "react-i18next";
 import { useModalBoundary } from "../app/ModalBoundaryContext";
 import { focusFirstIn, focusablesIn } from "../lib/focusables";
-import { Sidebar } from "./Sidebar";
+import { DrawerMenue } from "./DrawerMenue";
 
 // ================================================================================================
 // JOB 1103 — DIE ANSAGETEXTE.
@@ -222,7 +222,8 @@ export function MobileNavDrawer({
           >
             <X size={18} />
           </button>
-          <Sidebar />
+          {/* JOB 3060 · H1: statt der Seitenleiste die Bausteine des Kopfbands und seiner Menüs. */}
+          <DrawerMenue onClose={onClose} />
         </dialog>
       </div>
     </>

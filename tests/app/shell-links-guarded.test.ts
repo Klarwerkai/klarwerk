@@ -94,9 +94,14 @@ describe("mega39 B · die Shell hat keine Navigationsquelle, die am Wächter vor
     const namen = shellFiles.map(rel).sort();
     // Fände der Scan nichts, wäre die ganze Prüfung ein stiller Selbstbetrug.
     expect(namen.length).toBeGreaterThan(0);
-    expect(namen).toContain("Topbar.tsx");
-    expect(namen).toContain("Sidebar.tsx");
+    // JOB 3060 · H1: Topbar.tsx und Sidebar.tsx sind mit der alten Hülle gegangen; die Leiste heißt
+    // jetzt Kopfband, ihre Menüs Zahnrad und Konto — alle drei stehen auf JEDER Seite.
+    expect(namen).toContain("Kopfband.tsx");
+    expect(namen).toContain("ZahnradMenue.tsx");
+    expect(namen).toContain("KontoMenue.tsx");
     expect(namen).toContain("Logo.tsx");
+    expect(namen).not.toContain("Topbar.tsx");
+    expect(namen).not.toContain("Sidebar.tsx");
   });
 
   it("keine Shell-Datei importiert ein NAVIGIERENDES Router-Mittel — auch keine neue", () => {

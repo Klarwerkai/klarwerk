@@ -5,23 +5,25 @@ import i18n from "../../apps/web/src/i18n";
 
 // B1/B1b/B2 (Pedi-UX-Fixes): Source-Inspektion (Muster capture-from-file) + i18n-Vollständigkeit.
 // Reine statische Belege — keine DOM-Render-Abhängigkeit.
+//
+// JOB 3060 · H1: die Kopfzeile heißt jetzt Kopfband (shell/Kopfband.tsx); die drei Betriebs-Chips
+// sind Zeilen im Zahnrad-Menü (shell/StatusZeilen.tsx). Die Zusagen B1 und B2 sind dieselben —
+// nur der Ort, an dem sie gemessen werden, ist umgezogen.
 
 function read(rel: string): string {
   return readFileSync(resolve(process.cwd(), rel), "utf8");
 }
 
-describe("B1: Topbar-Layout robust (keine Header-Überlappung)", () => {
-  const src = read("apps/web/src/shell/Topbar.tsx");
+describe("B1: Kopfband-Layout robust (keine Überlappung)", () => {
+  const src = read("apps/web/src/shell/Kopfband.tsx");
   it("das Such-Formular hat min-w-0 (gibt bei Enge nach statt zu überlagern)", () => {
     expect(src).toMatch(/<form[\s\S]*?className="[^"]*\bmin-w-0\b/);
   });
-  // WP-SAMMEL20-FIX (bens Fix 5, Viewport-Kante): der rechte Block ist nicht mehr starr shrink-0 —
-  // bei SEHR schmalen Breiten darf er selbst schrumpfen (min-w-0, shrink) statt aus dem Header zu
-  // laufen; overflow-hidden kappt sauber. Die Suche gibt weiterhin ZUERST nach (min-w-0 + flex-1).
-  it("der rechte Button-Block läuft bei schmalen Breiten nicht über (min-w-0/shrink/overflow-hidden)", () => {
-    expect(src).toContain(
-      'className="ml-auto flex min-w-0 shrink items-center justify-end gap-2 overflow-hidden"',
-    );
+  // WP-SAMMEL20-FIX (bens Fix 5, Viewport-Kante): der rechte Block ist nicht starr shrink-0 —
+  // bei SEHR schmalen Breiten darf er selbst schrumpfen (min-w-0, shrink) statt aus dem Kopf zu
+  // laufen. Die Suche gibt weiterhin ZUERST nach (min-w-0 im Formular).
+  it("der rechte Block läuft bei schmalen Breiten nicht über (min-w-0/shrink)", () => {
+    expect(src).toContain('className="ml-auto flex min-w-0 shrink items-center gap-4"');
   });
 });
 
@@ -44,12 +46,18 @@ describe("B1b: Mobile-Ansicht hat einen Rückweg zur Vollversion", () => {
       ).toBeGreaterThan(0);
     }
   });
+  // JOB 3060 · H1: der Hinweg nach /mobile ist die Zeile „Mobil“ im Konto-Menü — weiterhin mit
+  // der aktuellen Route als Absprungpunkt (state.from), damit der Rückweg dorthin zurückführt.
+  it("der Hinweg (Konto-Menü „Mobil“) merkt sich die aktuelle Route als Absprungpunkt", () => {
+    const konto = read("apps/web/src/shell/KontoMenue.tsx");
+    expect(konto).toContain('navigate("/mobile", { state: { from:');
+  });
 });
 
-describe("B2: KI-Badge zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
-  const src = read("apps/web/src/shell/Topbar.tsx");
-  it("die Pille rendert KEINE grelle DSGVO-Zeile mehr (Land · DSGVO wandert in den Tooltip)", () => {
-    // Das alte Pillen-Subtitle-Muster „· {t(status.countryKey)} · {t(status.dsgvoKey)}" ist entfernt.
+describe("B2: KI-Zeile zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
+  const src = read("apps/web/src/shell/StatusZeilen.tsx");
+  it("die Zeile rendert KEINE grelle DSGVO-Zeile mehr (Land · DSGVO wandert in den Tooltip)", () => {
+    // Das alte Pillen-Subtitle-Muster „· {t(status.countryKey)} · {t(status.dsgvoKey)}“ ist entfernt.
     expect(src).not.toContain("· {t(status.countryKey)} · {t(status.dsgvoKey)}");
     // Der Tooltip wird aus hint + detail + Land/DSGVO zusammengesetzt.
     expect(src).toContain("title={tooltip}");
@@ -58,8 +66,8 @@ describe("B2: KI-Badge zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
 
   it("die sichtbaren Kurz-Labels sagen sachlich, WO die KI rechnet, DE/EN/NL", () => {
     // AUFTRAG-mega51 BLOCK G1: die sichtbaren Kurz-Labels nannten einen MODUS („KI-Modus:
-    // Cloud"); gemeint ist der ORT, an dem gerechnet wird. Für Natascha sagt „Modus" nichts.
-    // Die Zusage dieses Pins ist unverändert — sachlich, ohne grelles „Externe KI/DSGVO".
+    // Cloud"); gemeint ist der ORT, an dem gerechnet wird. Für Natascha sagt „Modus“ nichts.
+    // Die Zusage dieses Pins ist unverändert — sachlich, ohne grelles „Externe KI/DSGVO“.
     expect(String(i18n.getResource("de", "translation", "topbar.kiExternal"))).toBe(
       "KI rechnet in der Cloud",
     );
@@ -72,7 +80,7 @@ describe("B2: KI-Badge zeigt den Modus, DSGVO/Land nur im Tooltip", () => {
     expect(String(i18n.getResource("nl", "translation", "topbar.kiInternal"))).toBe(
       "AI rekent in eigen huis",
     );
-    // Kein grelles „Externe KI"/„DSGVO: nein" mehr im sichtbaren Label.
+    // Kein grelles „Externe KI“/„DSGVO: nein“ mehr im sichtbaren Label.
     expect(String(i18n.getResource("de", "translation", "topbar.kiExternal"))).not.toContain(
       "Externe",
     );

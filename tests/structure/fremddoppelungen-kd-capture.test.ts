@@ -37,6 +37,7 @@
 // KEINE ZUSAMMENFUEHRUNG. Ob diese Bloecke zusammengelegt gehoeren, ist eine Architekturfrage
 // fuer den Chef. Dieser Fall erhebt und sichert.
 import { execFileSync } from "node:child_process";
+import { existsSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, expect, it } from "vitest";
@@ -416,6 +417,10 @@ function versionierteQuelldateien(): string[] {
       .split("\0")
       .filter((f) => f.length > 0)
       .filter((f) => !/\.(test|spec)\./.test(f))
+      // JOB 3060 · H1: `git ls-files` fuehrt eine im Arbeitsbaum GELOESCHTE Datei weiter, bis die
+      // Loeschung eingebaut ist (Sidebar.tsx, Topbar.tsx). Eine Datei, die es nicht gibt, ist keine
+      // dritte Datei — sie zu lesen waere ein Parsefehler ueber ein Nichts, kein Befund.
+      .filter((f) => existsSync(join(WURZEL, f)))
       // Umfeld, kein Codebefund: Kopien mit " 2" im Namen sind keine Quelle.
       .filter((f) => !f.includes(" 2."))
       .sort()

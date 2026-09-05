@@ -7,14 +7,22 @@
 //  · Persistenz je Browser über die BESTEHENDE fehlertolerante Speicher-Grenze (persistentToggle/
 //    usePersistentValue): kaputter/verweigerter Speicher → die Wahl lebt nur diese Sitzung, nie ein
 //    Absturz. Keine zweite Storage-Schicht.
+//
+// JOB 3060 · H1 (Pedi 04.09.): DIE VORGABE IST „MODERN". Bis hierher startete jeder Browser ohne
+// gespeicherte Wahl in Klassisch; die Mockups (design/klarwerk) sind die Werkbank-Palette, und die
+// Vorführung soll sie ohne Klick zeigen. Klassisch bleibt wählbar und gespeichert (Konto-Menü
+// „Darstellung"); die gespeicherte Wahl gewinnt weiterhin über die Vorgabe.
 // DOM-frei (globalThis, strukturelle Typen statt lib.dom) — importierbar aus node-env-Tests.
 import { readStoredString, safeLocalStorage } from "./persistentToggle";
 
 export const DESIGN_THEMES = ["classic", "modern"] as const;
 export type DesignTheme = (typeof DESIGN_THEMES)[number];
 
+/** Die Vorgabe für jeden Browser ohne gespeicherte Wahl (JOB 3060, Lieferung 4). */
+export const DEFAULT_DESIGN_THEME: DesignTheme = "modern";
+
 // Der localStorage-Schlüssel der Wahl. Werte sind exakt die DESIGN_THEMES; alles andere (Alt-/
-// Fremdformat) fällt über usePersistentEnum bzw. initDesignTheme sicher auf „classic" zurück.
+// Fremdformat) fällt über usePersistentEnum bzw. initDesignTheme sicher auf die Vorgabe zurück.
 export const DESIGN_THEME_STORAGE_KEY = "kw.designTheme";
 export const DESIGN_THEME_ATTRIBUTE = "data-theme";
 
@@ -44,10 +52,15 @@ export function applyDesignTheme(theme: DesignTheme): void {
   }
 }
 
-// Beim App-Start (main.tsx), VOR dem ersten Render: gespeicherte Wahl anwenden. Nötig, weil der
-// Umschalter in der Topbar wohnt und z. B. /mobile ohne Topbar rendert — das Attribut gehört an die
-// Wurzel, nicht an eine Komponente.
-export function initDesignTheme(): void {
+/** Die Wahl, die beim Start gilt: gespeichert, sonst die Vorgabe „modern". */
+function storedOrDefaultDesignTheme(): DesignTheme {
   const stored = readStoredString(safeLocalStorage(), DESIGN_THEME_STORAGE_KEY);
-  applyDesignTheme(isDesignTheme(stored) ? stored : "classic");
+  return isDesignTheme(stored) ? stored : DEFAULT_DESIGN_THEME;
+}
+
+// Beim App-Start (main.tsx), VOR dem ersten Render: gespeicherte Wahl bzw. Vorgabe anwenden. Nötig,
+// weil der Umschalter im Konto-Menü wohnt und z. B. /mobile ohne Kopfband rendert — das Attribut
+// gehört an die Wurzel, nicht an eine Komponente.
+export function initDesignTheme(): void {
+  applyDesignTheme(storedOrDefaultDesignTheme());
 }

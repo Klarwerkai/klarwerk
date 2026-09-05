@@ -2,7 +2,7 @@
 // FUNKE-FIX3 P0 (bens Blocker A + Auflage 4): der bisherige Quelltext-Test gegen Start.tsx bewies
 // NICHT den gemounteten Datenfluss — die global gerenderte Sidebar rief über useNavBadges weiter
 // useGaps() (GET /api/gaps) auf jeder Seite auf. Hier wird der ECHTE Shell-Baum (AppShell mit
-// Sidebar/Topbar/CommandPalette/Klara + Start) unter /start gemountet und per Endpoint-/Fetch-Spy
+// Kopfband/CommandPalette/Klara + Start) unter /start gemountet und per Endpoint-/Fetch-Spy
 // belegt: es erfolgt KEIN Request an /api/gaps (oder einen anderen Gap-Volltext-Pfad) — nur die
 // textfreie Summary (/api/gaps/summary) und der serverseitig redigierte Notifications-Feed.
 // GEGENPROBE (nicht-vakuös): ein useGaps()-Probe-Mount feuert den Spy nachweislich.
@@ -35,7 +35,9 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     validation: { board: vi.fn(async () => []) },
     lifecycle: { pending: vi.fn(async () => []) },
     learningPaths: { byRole: vi.fn(async () => null), progress: vi.fn(async () => []) },
-    livewall: { get: vi.fn(async () => ({ fresh: [], helped: [], helpedToday: 0 })) },
+    // JOB 3060 · H1: die Live-Wall des Produkts heißt ihre Liste `saved` (services/app/src/livewall.ts:23,
+    // Start.tsx LiveWallCard) — die Attrappe trägt beide Felder, damit die Karte rendert statt zu reißen.
+    livewall: { get: vi.fn(async () => ({ fresh: [], saved: [], helped: [], helpedToday: 0 })) },
     notifications: {
       // Serverseitig redigierter Feed: die redigierte Lücke trägt NIE einen Fragetext.
       list: vi.fn(async () => [
@@ -154,7 +156,7 @@ describe("FUNKE-FIX3 P0 (bens Blocker A): /start im ECHTEN Shell-Baum lädt kein
 
     // DIE Zusicherung: der Volltext-Pfad wird im gesamten Shell-Baum NIE angefragt.
     expect(gapsList).not.toHaveBeenCalled();
-    // Nicht-vakuös: die Shell lebt — Summary (Sidebar-Badge) und Glocke haben wirklich geladen.
+    // Nicht-vakuös: die Shell lebt — Summary (Zähler der Bereiche) und Meldungen haben wirklich geladen.
     expect(gapsSummary).toHaveBeenCalled();
     expect(notificationsList).toHaveBeenCalled();
     // Auffanglinie: auch kein roher fetch() an einen Gap-Volltext-Pfad (Summary wäre erlaubt).
@@ -163,13 +165,17 @@ describe("FUNKE-FIX3 P0 (bens Blocker A): /start im ECHTEN Shell-Baum lädt kein
       .filter((url) => url.includes("/api/gaps") && !url.includes("/api/gaps/summary"));
     expect(rawGapCalls).toEqual([]);
 
-    // Die Glocke zeigt für die redigierte Lücke NUR die neutrale Bezeichnung, nie einen Fragetext.
-    const bell = [...container.querySelectorAll("button")].find(
-      (b) => b.getAttribute("aria-label") === i18n.t("topbar.notifications"),
-    );
-    expect(bell).toBeDefined();
+    // Die Meldungen (JOB 3060 · H1: Zeile im Konto-Menü) zeigen für die redigierte Lücke NUR die
+    // neutrale Bezeichnung, nie einen Fragetext.
+    const konto = container.querySelector<HTMLButtonElement>('[data-testid="kopfband-konto"]');
+    expect(konto).not.toBeNull();
     await act(async () => {
-      bell?.click();
+      konto?.click();
+    });
+    const meldungen = container.querySelector<HTMLButtonElement>('[data-testid="konto-meldungen"]');
+    expect(meldungen).not.toBeNull();
+    await act(async () => {
+      meldungen?.click();
     });
     expect(container.textContent).toContain(i18n.getFixedT("de")("topbar.notifGapRedacted"));
   });

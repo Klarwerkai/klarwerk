@@ -39,11 +39,12 @@
 // erfuellen koennte (L3/L6 unten).
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-// Die Navigationsliste im Panel ist NICHT Gegenstand dieses Tests — sie zieht Rollen-, Auth- und
-// Abfrageprovider mit, die ueber den Ansagekanal nichts aussagen. Ersetzt durch einen Platzhalter,
-// damit der Fall genau das misst, was er behauptet.
-vi.mock("../../apps/web/src/shell/Sidebar", () => ({
-  Sidebar: () => null,
+// Die Menueliste im Panel (JOB 3060 · H1: DrawerMenue — Kopfband-Punkte, Zahnrad- und Konto-
+// Eintraege) ist NICHT Gegenstand dieses Tests — sie zieht Rollen-, Auth- und Abfrageprovider mit,
+// die ueber den Ansagekanal nichts aussagen. Ersetzt durch einen Platzhalter, damit der Fall genau
+// das misst, was er behauptet.
+vi.mock("../../apps/web/src/shell/DrawerMenue", () => ({
+  DrawerMenue: () => null,
 }));
 
 import { act, createElement, createRef, useState } from "../../apps/web/node_modules/react";

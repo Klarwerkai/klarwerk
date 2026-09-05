@@ -37,24 +37,15 @@ export const SMOKE_PASS = "smoke-Passwort-1";
 /**
  * Der Marker des Arbeitsbereichs: sichtbar genau dann, wenn die Anmeldung durch ist.
  *
- * JOB 3064 (H5) NACHGEFÜHRT, nicht gelockert. Bis hierher war der Marker der Text „Wissen
- * erfassen". Der stand auf zwei Wegen da, und BEIDE waren an Nebenbedingungen geknüpft:
- *   · in der Seitenleiste als Navigationspunkt (`nav.capture`) — die ist unterhalb der
- *     Desktop-Grenze aber in den Schubladen-Dialog eingeklappt und damit NICHT sichtbar;
- *   · auf der Startseite über `EmptyStateCtas context="start"` (`empty.cta.capture`) — und die
- *     erschien nur, WEIL die Arbeitsübersicht der Smoke-Umgebung leer ist.
- * Auf schmalen Geräten trug also allein der Leerzustand die Anmeldeprobe. JOB 3064 hat diesen
- * Block auftragsgemäß nach `/aufgaben` hinter den Knopf „Wie geht es weiter?" verlegt (§5a des
- * Auftrags), und damit fiel der Marker bei 390 px und 768 px weg — fünf Sonden scheiterten in
- * `ensureLoggedIn`, keine an ihrer eigenen Sache.
- *
- * Der neue Marker ist die Überschrift der Startseite. `/` wirft auf `HOME_ROUTE = "/start"`
- * (`app/navigation.ts:89`, `routes.tsx:101`), und diese Überschrift ist statischer Text im
- * angemeldeten Arbeitsbereich: unabhängig von der Fensterbreite, unabhängig vom Datenbestand und
- * auf den Anmeldeflächen nicht vorhanden. Sie prüft damit strenger als vorher, nicht schwächer.
+ * JOB 3064 (H5) hatte den Marker vom Seitenleisten-Text „Wissen erfassen" (der an zwei brüchige
+ * Nebenbedingungen geknüpft war: Desktop-Breite bzw. leere Arbeitsübersicht) auf die Überschrift
+ * der Startseite umgestellt. JOB 3060 (H1) hat die Seitenleiste danach ganz entfernt: der
+ * Arbeitsbereich beginnt jetzt mit dem EINEN Kopfband (shell/Kopfband.tsx), das auf JEDER Route der
+ * angemeldeten App steht — und auf keiner Anmeldemaske. Der Kopfband-Marker ist damit die
+ * allgemeinere Bedingung (er gilt unabhängig vom Seiteninhalt, nicht nur auf `/start`) und schliesst
+ * die Startseiten-Überschrift als Sonderfall ein, da `/` ohnehin auf `HOME_ROUTE = "/start"` wirft.
  */
-export const workspaceMarker = (page: Page) =>
-  page.getByRole("heading", { name: "Was möchtest du wissen?" }).first();
+export const workspaceMarker = (page: Page) => page.getByTestId("kopfband");
 
 /**
  * Bringt die Seite in den angemeldeten Zustand — egal, in welchem der drei möglichen Zustände der

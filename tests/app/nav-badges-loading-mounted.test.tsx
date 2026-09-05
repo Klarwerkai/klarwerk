@@ -1,12 +1,17 @@
 // @vitest-environment jsdom
-// AUFTRAG-mega2 Block C (bens D9): die Sidebar-Badges unterscheiden „lädt" von „echte 0". Gemountet
-// an der ECHTEN Sidebar über die realen Lese-Hooks:
-//   VOR Auflösung der Queries → neutraler Ladepunkt (aria-label „lädt"), KEINE Zahl, KEIN 0-Badge
-//   NACH Auflösung mit Zahl > 0 → echtes Zahlen-Badge, kein Ladepunkt
-//   NACH Auflösung mit 0        → gar kein Badge (echtes Nullergebnis), kein Ladepunkt
+// AUFTRAG-mega2 Block C / mega3 Block B (bens D9) → JOB 3060 · H1 (§9 Zustandsmodell des Zählers):
+// der Zähler an „Prüfen“ im Kopfband und die Zahlen in „Weitere Bereiche“ zeigen eine Zahl NUR nach
+// erfolgreichem frischem Abruf. Gemountet am ECHTEN Kopfband über die realen Lese-Hooks:
+//   VOR Auflösung der Queries → KEIN Abzeichen (kein Ladepunkt, keine Zahl, kein 0-Badge)
+//   NACH Auflösung mit Zahl > 0 → echtes Zahlen-Abzeichen mit Bedeutung (aria-label)
+//   NACH Auflösung mit 0        → gar kein Abzeichen (echtes Nullergebnis)
+//   dauerhaft GESCHEITERT       → KEIN Abzeichen, kein „!“-Marker (§9: Fehler = kein Badge)
+// Was sich gegenüber mega2/mega3 ändert, ist ausschließlich die DARSTELLUNG der Zwischenzustände:
+// Laden und Fehler sind weiterhin von einer echten 0 UNTERSCHEIDBAR — im Datenmodell (useNavBadges)
+// — aber im Kopfband stehen sie als Abwesenheit der Zahl, nicht als eigener Marker (Pedi 04.09.).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// mega3 Block B: „channel"-Mock — jeder queryFn-Aufruf erhält ein frisches Promise; der Test steuert
+// mega3 Block B: „channel“-Mock — jeder queryFn-Aufruf erhält ein frisches Promise; der Test steuert
 // dessen Ausgang (resolve/reject). So sind pending→success UND ein initialer Fehler abbildbar.
 const d = vi.hoisted(() => {
   const mk = () => {
@@ -24,17 +29,9 @@ const d = vi.hoisted(() => {
       reject: (e: unknown) => state.reject(e),
     };
   };
-  // JOB 690 D2: eine Quelle, die sich SELBST auflöst (leere Id-Liste). Kein resolve/reject nach
-  // außen — genau deshalb kann sie den Zustand der vier gesteuerten Kanäle nicht überschreiben.
+  // JOB 690 D2: die FÜNFTE Badgequelle als sofort auflösender Stub — die Steuerung bleibt bei den
+  // vier gesteuerten Kanälen.
   const sofortLeer = () => ({ fn: vi.fn(async () => [] as string[]) });
-  // JOB 690 D2: die FÜNFTE Badgequelle (Lebenszyklus-Fällige). BEWUSST KEIN „channel"-Mock wie die
-  // vier darüber, sondern ein SOFORT auflösender Stub — und das ist der ganze Trick dieser Ergänzung:
-  // Der Aufgaben-Badge führt die neue Quelle in seiner LADEZUSTANDSLISTE. Ein Kanal, den keiner der
-  // bestehenden Fälle auflöst, hielte `tasks` dauerhaft auf „loading" und würde genau die
-  // Zusicherungen brechen, die diese Datei seit mega2/mega3 hält. Ein sofort auflösender Stub lässt
-  // die Steuerung vollständig bei den vier vorhandenen Kanälen: die Gruppe ist geladen, sobald SIE
-  // geladen sind, und sie ist gestört, sobald SIE stören. Damit bleibt es bei „nur die Mocks
-  // ergänzen" — keine Zeile der bestehenden Fälle ändert sich.
   return { board: mk(), conflicts: mk(), duplicates: mk(), gaps: mk(), lifecycle: sofortLeer() };
 });
 
@@ -52,11 +49,15 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     conflicts: { list: d.conflicts.fn },
     duplicates: { list: d.duplicates.fn },
     gaps: { summary: d.gaps.fn },
-    // JOB 690 D2: die Attrappe ist ABSCHLIESSEND — sie ersetzt das ganze endpoints-Modul. Ohne
-    // diesen Eintrag greift useLifecyclePending auf `endpoints.lifecycle.pending` zu, findet
-    // `undefined` und wirft (`Cannot read properties of undefined`). Genau daran sind die drei
-    // Fälle dieser beiden Dateien in D1 gescheitert.
     lifecycle: { pending: d.lifecycle.fn },
+    notifications: { list: vi.fn(async () => []), markSeen: vi.fn(async () => ({})) },
+    features: { get: vi.fn(async () => ({ features: {} })) },
+    // Das Zahnrad-Menü (Admin) trägt die Status-Zeilen — ihre Quellen sind hier nicht Gegenstand.
+    reasoner: {
+      status: vi.fn(async () => ({ active: false, mode: "none", reachable: "unknown", tasks: {} })),
+      config: vi.fn(async () => null),
+    },
+    external: { policy: vi.fn(async () => ({ stage: "blocked" })) },
   },
 }));
 
@@ -70,8 +71,9 @@ import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
+import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Sidebar } from "../../apps/web/src/shell/Sidebar";
+import { Kopfband } from "../../apps/web/src/shell/Kopfband";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 
@@ -101,9 +103,13 @@ async function mount(): Promise<void> {
             RoleProvider,
             null,
             createElement(
-              NavGuardProvider,
+              ToastProvider,
               null,
-              createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Sidebar)),
+              createElement(
+                NavGuardProvider,
+                null,
+                createElement(MemoryRouter, { initialEntries: ["/"] }, createElement(Kopfband)),
+              ),
             ),
           ),
         ),
@@ -112,15 +118,33 @@ async function mount(): Promise<void> {
     await flush();
   });
   await act(flush);
+  await act(flush);
 }
 
-function loadingBadges(): Element[] {
-  return [...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.loading")}"]`)];
+async function click(el: Element | null | undefined): Promise<void> {
+  if (!(el instanceof HTMLElement)) {
+    throw new Error("Element zum Klicken fehlt");
+  }
+  await act(async () => {
+    el.click();
+    await flush();
+  });
 }
 
-function errorBadges(): Element[] {
-  return [...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.error")}"]`)];
+/** Das Zahnrad-Menü öffnen und „Weitere Bereiche“ aufklappen — dort stehen die übrigen Zähler. */
+async function weitereBereicheOeffnen(): Promise<void> {
+  await click(container.querySelector('[data-testid="kopfband-zahnrad"]'));
+  await click(container.querySelector('[data-testid="zahnrad-weitere-bereiche"]'));
 }
+
+const pruefenZaehler = (): Element | null =>
+  container.querySelector('header a[data-kopfband-punkt="validierung"] .kw-kopfband-zaehler');
+const loadingBadges = (): Element[] => [
+  ...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.loading")}"]`),
+];
+const errorBadges = (): Element[] => [
+  ...container.querySelectorAll(`[aria-label="${i18n.t("nav.badge.error")}"]`),
+];
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
@@ -132,11 +156,14 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-describe("Block C: Nav-Badges unterscheiden Ladezustand von echter 0", () => {
-  it("zeigt VOR Auflösung Ladepunkte, NACH Auflösung Zahl bzw. gar kein Badge", async () => {
+describe("Block C → H1: der Zähler unterscheidet Ladezustand von echter 0 — durch ABWESENHEIT, nicht durch einen Marker", () => {
+  it("zeigt VOR Auflösung KEIN Abzeichen, NACH Auflösung die Zahl bzw. gar nichts", async () => {
     await mount();
-    // VOR Auflösung: mindestens ein Ladepunkt, keine erfundene Zahl/0.
-    expect(loadingBadges().length).toBeGreaterThan(0);
+    // VOR Auflösung: der Punkt „Prüfen“ steht, aber ohne Zahl — und ohne Ladepunkt (§9).
+    expect(container.querySelector('header a[data-kopfband-punkt="validierung"]')).not.toBeNull();
+    expect(pruefenZaehler()).toBeNull();
+    expect(loadingBadges().length).toBe(0);
+    expect(container.textContent).not.toContain("!");
 
     // NACH Auflösung: Board mit 2 offenen Prüfungen, alles andere 0.
     await act(async () => {
@@ -147,21 +174,26 @@ describe("Block C: Nav-Badges unterscheiden Ladezustand von echter 0", () => {
       await flush();
     });
 
-    // Keine Ladepunkte mehr.
-    expect(loadingBadges().length).toBe(0);
-    // Das Validierungs-Badge zeigt jetzt die echte Zahl 2 …
+    // Der Zähler an „Prüfen“ zeigt jetzt die echte Zahl 2 — mit ihrer Bedeutung (SCRUM-486 E) …
     const validationLabel = i18n.t("nav.badge.validation", { count: 2 });
-    const validationBadge = container.querySelector(`[aria-label="${validationLabel}"]`);
-    expect(validationBadge?.textContent).toContain("2");
-    // … und für die echten Nullwerte (Konflikte/Dubletten) gibt es KEIN Badge.
+    expect(pruefenZaehler()?.textContent).toBe("2");
+    expect(pruefenZaehler()?.getAttribute("aria-label")).toBe(validationLabel);
+    // … und in „Weitere Bereiche“ gibt es für die echten Nullwerte (Konflikte/Dubletten) KEINE Zahl.
+    await weitereBereicheOeffnen();
     expect(
       container.querySelector(`[aria-label="${i18n.t("nav.badge.conflicts", { count: 0 })}"]`),
     ).toBeNull();
+    expect(container.querySelector('[data-testid="bereich-konflikte"] .kw-menue-wert')).toBeNull();
+    expect(container.querySelector('[data-testid="bereich-duplikate"] .kw-menue-wert')).toBeNull();
+    // Aufgaben zählt das Board mit (2 + 0 + 0 + 0).
+    expect(
+      container.querySelector('[data-testid="bereich-aufgaben"] .kw-menue-wert')?.textContent,
+    ).toBe("2");
   });
 
-  it("mega3 Block B: dauerhaft gescheiterte Badge-Quelle → sichtbarer Fehler-Marker (kein Ladepunkt, keine Zahl/0)", async () => {
+  it("§9: dauerhaft gescheiterte Quelle → KEIN Abzeichen, kein „!“-Marker, keine erfundene 0", async () => {
     await mount();
-    expect(loadingBadges().length).toBeGreaterThan(0);
+    expect(pruefenZaehler()).toBeNull();
 
     await act(async () => {
       d.board.reject(new Error("kaputt"));
@@ -171,13 +203,17 @@ describe("Block C: Nav-Badges unterscheiden Ladezustand von echter 0", () => {
       await flush();
     });
 
-    // Kein endloser Ladepunkt mehr — stattdessen ein sichtbarer, übersetzter Fehler-Marker mit Wiederholen.
+    // Kein Ladepunkt, kein Fehler-Marker — der Punkt steht ohne Zahl (Lieferung 6).
     expect(loadingBadges().length).toBe(0);
-    expect(errorBadges().length).toBeGreaterThan(0);
-    // Keine erfundene Zahl: das Validierungs-Badge zeigt weder eine Zahl noch eine 0.
-    const validationBadge = container.querySelector(
-      `[aria-label="${i18n.t("nav.badge.validation", { count: 0 })}"]`,
-    );
-    expect(validationBadge).toBeNull();
+    expect(errorBadges().length).toBe(0);
+    expect(pruefenZaehler()).toBeNull();
+    expect(
+      container.querySelector(`[aria-label="${i18n.t("nav.badge.validation", { count: 0 })}"]`),
+    ).toBeNull();
+    await weitereBereicheOeffnen();
+    expect(container.querySelector('[data-testid="bereich-aufgaben"] .kw-menue-wert')).toBeNull();
+    expect(container.textContent).not.toContain("!");
+    // Und das Kopfband steht — der Absturzfall ist ausgeschlossen.
+    expect(container.querySelector('header[data-testid="kopfband"]')).not.toBeNull();
   });
 });
