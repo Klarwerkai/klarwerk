@@ -63,8 +63,25 @@ export const useEvidenceIndex = (limit?: number) =>
     queryKey: ["evidence", "index", limit],
     queryFn: () => endpoints.evidence.recent(limit),
   });
+// ================================================================================================
+// JOB 3088 · Q1b — DER SCHLÜSSEL DER DETAILABFRAGE WOHNT AN GENAU EINER STELLE.
+// ================================================================================================
+// Seit JOB 3088 fasst der Wiederholknopf der Bibliotheksfläche DIESELBE Abfrage an, die dieser
+// Haken hält — über den `QueryClient`, weil die Fläche den Haken selbst nicht hält (er wohnt in
+// `BibliothekLesen.tsx:158`). Schriebe sie den Schlüssel dort ein zweites Mal als Literal hin,
+// gäbe es zwei Ausdrücke derselben Sache, und der eine liefe beim nächsten Umbau vom anderen weg
+// (LEHREN.md, JOB 3081 R2: „ein zweiter Ausdruck desselben Schlüssels ist ein zweites Gehirn").
+// Deshalb: EINE Funktion, zwei Aufrufer.
+export const koQueryKey = (id: string): readonly ["ko", string] => ["ko", id];
 export const useKo = (id: string) =>
-  useQuery({ queryKey: ["ko", id], queryFn: () => endpoints.ko.get(id), enabled: id.length > 0 });
+  useQuery({
+    queryKey: koQueryKey(id),
+    queryFn: () => endpoints.ko.get(id),
+    enabled: id.length > 0,
+  });
+// ACHTUNG, PRÄFIX: dieser Schlüssel und der von `useKoEvidence` beginnen mit dem Detailschlüssel.
+// Eine Auffrischung über `["ko", id]` OHNE `exact` trifft sie mit — wer das will, muss es sagen
+// (s. die begründete Reichweiten-Entscheidung in `BibliothekFlaeche.tsx`, `alleAuffrischen`).
 export const useKoVersions = (id: string) =>
   useQuery({
     queryKey: ["ko", id, "versions"],

@@ -1,8 +1,8 @@
-import type { UseQueryResult } from "@tanstack/react-query";
+import { type UseQueryResult, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
-import { useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
+import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { auffrischungGescheitert, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
@@ -164,6 +164,9 @@ export function BibliothekFlaeche({
   const [params, setParams] = useSearchParams();
   const { user } = useSession();
   const nameOf = useAuthorName();
+  // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
+  // Der Wiederholknopf erreicht sie deshalb über den Zwischenspeicher — s. `alleAuffrischen` unten.
+  const qc = useQueryClient();
 
   const [q, setQ] = useState(params.get("q") ?? "");
   const [facetSel, setFacetSel] = useState<FacetSelection>({});
@@ -475,15 +478,6 @@ export function BibliothekFlaeche({
     nichtFrisch.length === 0
       ? null
       : nichtFrisch.reduce((a, b) => (a.dataUpdatedAt <= b.dataUpdatedAt ? a : b));
-  // Der Knopf holt BEIDE Quellen zurück (JOB 3072 R2). Fasste er nur die Suche an, käme nach einem
-  // Doppelausfall zwar der Bestand wieder, der Zustand jedes Eintrags bliebe aber auf dem Rückfall
-  // `bestand` stehen — ein Knopf, der die halbe Fläche nicht erreicht.
-  const alleAuffrischen = (): void => {
-    for (const q of quellen) {
-      void q.refetch();
-    }
-  };
-
   const zeileAus = (ko: (typeof win.visible)[number]["ko"]): BibListenPosten => {
     // JOB 3072: EINE Quelle für Wort und Ton. Der Konflikt steht schon IM Zustand (`anzeigestatusAus`
     // prüft ihn als ersten Zweig) — die frühere zweite Abfrage `impact.limited` an Wort und Ton war
@@ -537,6 +531,68 @@ export function BibliothekFlaeche({
   };
   const trefferFelder: readonly MatchField[] =
     win.visible.find((i) => i.ko.id === gewaehltEffektiv)?.matches ?? [];
+
+  // ================================================================================================
+  // DER WIEDERHOLKNOPF — ER REICHT SO WEIT WIE DIE FLÄCHE, DIE ER ZURÜCKHOLEN SOLL.
+  // ================================================================================================
+  // Er holt BEIDE Listenquellen zurück (JOB 3072 R2). Fasste er nur die Suche an, käme nach einem
+  // Doppelausfall zwar der Bestand wieder, der Zustand jedes Eintrags bliebe aber auf dem Rückfall
+  // `bestand` stehen — ein Knopf, der die halbe Fläche nicht erreicht.
+  //
+  // JOB 3088 · Q1b: DASSELBE GALT FÜR DEN EINTRAG RECHTS. Seine Abfrage ist eine dritte, unabhängige
+  // (`useKo`, gehalten von `BibliothekLesen.tsx:158`); wer den Knopf drückte, bekam die Liste zurück
+  // und las weiter denselben alten Eintrag mit seinem datierten Fehlersatz (an Live 1.98 gemessen,
+  // Befund R-1613). Sie steht bewusst NICHT in `quellen`: das Frischemodell darüber ist eine Aussage
+  // über die LISTE, und ein einzelner Eintrag darf deren Zahl und Hinweis nicht bestimmen. Angefasst
+  // wird sie über den Zwischenspeicher und `koQueryKey` — den EINEN Ausdruck ihres Schlüssels
+  // (`api/hooks.ts`); ein zweites Literal hier wäre die Doppelung, die auseinanderläuft.
+  //
+  // DIE AUSWAHL KOMMT AUS `gewaehltEffektiv`, der vorhandenen Ableitung oben — deshalb steht diese
+  // Funktion hier unten und nicht mehr beim Frischemodell. Eine eigene zweite Auswahlrechnung wäre
+  // genau der zweite Zustand, den diese Datei abgeschafft hat.
+  //
+  // REICHWEITE, AUSDRÜCKLICH ENTSCHIEDEN: `exact: true` — nur die Detailabfrage selbst, NICHT der
+  // Präfix `["ko", id]`. Unter ihm liegen auch `useKoVersions` und `useKoEvidence`
+  // (`api/hooks.ts`), und über die sagt dieser Knopf nichts; was er nicht verspricht, ruft er auch
+  // nicht. `type: "active"` dazu: gefrischt wird nur, was wirklich montiert ist — sonst würde ein
+  // Klick Abrufe für Flächen auslösen, die niemand ansieht (Bandbreite der Nutzerin, kein Nutzen).
+  //
+  // DER KLEINE KNOPF AUF DER LESEFLÄCHE (`BibliothekLesen.tsx:410`) BLEIBT ABSICHTLICH STEHEN: er
+  // trägt den Fall, in dem die LISTE gar nicht scheitert und dieser Knopf deshalb nie angeboten
+  // wird. Das ist ein zweiter ANLASS, kein zweiter Weg zum selben Zustand — nicht als Doppelung
+  // entfernen.
+  //
+  // JOB 3088 R2 (Befund BEN, Korrekturpflicht 1) — `cancelRefetch: false`, UND ZWAR MIT GRUND.
+  // TanStack bricht bei `refetchQueries` VORGABEMÄSSIG einen schon LAUFENDEN Abruf ab und startet
+  // ihn neu (`query-core/queryClient.ts`, `cancelRefetch: options?.cancelRefetch ?? true` →
+  // `query.fetch`). Auf dieser Fläche wäre das genau der zweite Ruf, den Auftrag §9 für den Eintrag
+  // rechts ausschliesst: „Cache mit laufender Auffrischung — kein zweiter Ruf durch den Klick,
+  // solange einer läuft." Der laufende Abruf holt bereits denselben Stand; ihn abzuschiessen kostet
+  // die Nutzerin Bandbreite und bringt ihr nichts als Wartezeit. Läuft nichts, ist das Feld ohne
+  // Wirkung — der normale Wiederholweg bleibt unverändert.
+  //
+  // DIE LISTENQUELLEN OBEN BEHALTEN IHR VERHALTEN (`q.refetch()` ohne dieses Feld): sie sind seit
+  // JOB 3072 so, ihr Frischemodell und ihr Hinweis stehen ausdrücklich unter Bestandsschutz
+  // (Auftrag §10), und §9 trifft seine Aussage über den EINTRAG. Die Ungleichheit ist damit eine
+  // benannte Grenze, kein Versehen — wer sie angleichen will, tut es als eigener Auftrag an der
+  // Liste, nicht nebenbei hier.
+  const alleAuffrischen = (): void => {
+    for (const q of quellen) {
+      void q.refetch();
+    }
+    if (gewaehltEffektiv === null) {
+      // Steht rechts kein Eintrag, gibt es rechts auch nichts zurückzuholen — kein Ruf ins Leere.
+      return;
+    }
+    void qc.refetchQueries(
+      {
+        queryKey: koQueryKey(gewaehltEffektiv),
+        exact: true,
+        type: "active",
+      },
+      { cancelRefetch: false },
+    );
+  };
 
   // Beta Own-Knowledge Work Queue v0: die Linse „Eigenes Wissen" (Herkunftsfacette) mit null
   // eigenen Treffern bekommt denselben Weg wie bisher — nur als Knopf im Leerzustand statt als
