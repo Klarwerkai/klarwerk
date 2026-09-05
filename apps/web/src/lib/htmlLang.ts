@@ -1,15 +1,23 @@
 // AUFTRAG-101 (Kopfentscheidung N2 nach Preflight 98): das `lang`-Attribut an <html> ist eine
 // Zusicherung ÜBER den Inhalt der Seite. Diese Datei ist die eine Wahrheit darüber:
-//  · Preflight 98 hat gemessen, dass `lng` fest auf „de" steht und es weder LanguageDetector noch
-//    Sprachpersistenz gibt. Der Startwert `lang="de"` in apps/web/index.html ist daher KORREKT und
-//    bleibt unverändert. Der Defekt ist ein SITZUNGSdefekt: nach `changeLanguage("en")` deklariert
-//    das Dokument weiterhin „de", bis neu geladen wird.
+//  · Preflight 98 hat gemessen, dass `lng` fest auf „de" steht. Der Startwert `lang="de"` in
+//    apps/web/index.html blieb daher unverändert; der Defekt war ein SITZUNGSdefekt: nach
+//    `changeLanguage("en")` deklarierte das Dokument weiterhin „de", bis neu geladen wurde.
+//    JOB 3086 (05.09.2026) hat die Hälfte dieser Messung überholt: eine SPRACHPERSISTENZ gibt es
+//    jetzt (`sprachwahl.ts`, Schlüssel `kw.sprache`), `lng` ist nicht mehr fest verdrahtet. Der
+//    statische Startwert in index.html bleibt trotzdem richtig, denn er gilt nur für den Erststart
+//    ohne gespeicherte Wahl — und die Vorgabe ist weiterhin „de".
 //  · Deshalb gibt es GENAU EINE Bindung an der Anwendungswurzel (main.tsx), nicht eine Pflege je
-//    Sprachumschalter — es sind heute schon zwei (Topbar, Profile), und der dritte käme sonst mit
-//    einer dritten Wahrheit. Dieselbe Lehre wie bei designTheme.ts.
-//  · KEINE Normalisierung des Sprachcodes: `i18n.language` ist heute immer exakt „de" | „en" | „nl"
-//    (festes `lng`, keine Region, kein Detector). Eine Normalisierung wäre wirkungslose Vorsorge für
-//    einen Detector, den es nicht gibt — Auftrag 101 schließt sie ausdrücklich aus.
+//    Sprachumschalter. Als Auftrag 101 das schrieb, waren es zwei (Topbar, Profile); die Topbar
+//    ist seit `e686f93` weg, es ist heute nur noch `Profile.tsx`. Die Lehre bleibt: der nächste
+//    Umschalter käme sonst mit einer zweiten Wahrheit. Dieselbe Lehre wie bei designTheme.ts —
+//    und aus demselben Grund wohnt auch das SCHREIBEN der Wahl an der Wurzel (`sprachwahl.ts`).
+//  · KEINE Normalisierung des Sprachcodes: `i18n.language` ist weiterhin immer exakt „de" | „en" |
+//    „nl". Der tragende Grund ist seit JOB 3086 nicht mehr das feste `lng`, sondern die Prüfung:
+//    die gespeicherte Wahl wird gegen ERLAUBTE_SPRACHEN (unten) geprüft, BEVOR sie `lng` wird, und
+//    einen LanguageDetector gibt es nach wie vor NICHT — also entsteht auch keine Region. Eine
+//    Normalisierung wäre wirkungslose Vorsorge für einen Detector, den es nicht gibt — Auftrag 101
+//    schließt sie ausdrücklich aus, und JOB 3086 hat daran nichts geändert.
 // DOM-frei (globalThis, strukturelle Typen statt lib.dom) — importierbar aus node-env-Tests.
 
 // Der Ereignisname steht GENAU EINMAL. i18next typisiert `on("languageChanged", …)` eng, `off` aber
@@ -25,11 +33,14 @@ type DocumentLike = {
   };
 };
 
-type SprachZuhoerer = (sprache: string) => void;
+export type SprachZuhoerer = (sprache: string) => void;
 
 // Nur das, was diese Datei wirklich braucht — kein Import der i18n-Instanz. So bleibt der Helfer
 // prüfbar, ohne das 12k-Zeilen-Wörterbuch zu laden, und main.tsx bleibt die einzige Verdrahtung.
-type I18nLike = {
+//
+// JOB 3086: exportiert, weil `sprachwahl.ts` an derselben Instanz dieselben drei Bausteine braucht.
+// Ein zweiter, gleichlautender Typ dort wäre eine zweite Wahrheit über dieselbe Schnittstelle.
+export type I18nLike = {
   language: string;
   on(event: string, listener: SprachZuhoerer): void;
   off(event: string, listener: SprachZuhoerer): void;

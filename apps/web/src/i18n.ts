@@ -1,5 +1,6 @@
 import i18n from "i18next";
 import { initReactI18next } from "react-i18next";
+import { gespeicherteSprache } from "./lib/sprachwahl";
 
 // Zweisprachigkeit DE/EN (G-8). Strings über Keys; Ressourcen wachsen je Screen.
 const de = {
@@ -14362,7 +14363,7 @@ const nl: typeof de = {
 
 void i18n.use(initReactI18next).init({
   resources: { de: { translation: de }, en: { translation: en }, nl: { translation: nl } },
-  lng: "de",
+  lng: gespeicherteSprache(),
   fallbackLng: "de",
   interpolation: { escapeValue: false },
 });

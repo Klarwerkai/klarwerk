@@ -4256,17 +4256,31 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // Stand; der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht
     // aus einer Kopfrechnung der Deltas.
     //
-    // JOB 3084 (Q6): EINE Quelldatei kommt hinzu — `apps/web/src/lib/netzzustand.ts`, die eine
-    // Quelle des Onlinezustands für die Kollisionsauskunft. Sie trägt keine Fläche (kein DOM, kein
-    // Modal, ein Hook über `onlineManager`) und ändert an den Erhebungen unten nichts; sie zählt
-    // hier nur in die Grundgesamtheit. Gemessen: 456 (Lauf an diesem Arbeitsbaum), nicht addiert.
+    // KONFLIKTRUNDE 1 (dritter Rebase, JOB 3086 auf JOB 3084): ZWEI Quelldateien kommen hinzu, je eine
+    // aus zwei unabhängigen Jobs, die beide auf demselben 455er-Stand aufsetzten und deshalb beide für
+    // sich 456 maßen — nach dem Rebase gelten BEIDE, macht 457:
+    //
+    // JOB 3084 (Q6): `apps/web/src/lib/netzzustand.ts`, die eine Quelle des Onlinezustands für die
+    // Kollisionsauskunft. Sie trägt keine Fläche (kein DOM, kein Modal, ein Hook über
+    // `onlineManager`) und ändert an den Erhebungen unten nichts; sie zählt hier nur in die
+    // Grundgesamtheit.
+    //
+    // JOB 3086 (D2): `apps/web/src/lib/sprachwahl.ts`, die eine Wahrheit über die GESPEICHERTE
+    // Sprachwahl (gelesen als `lng` in `i18n.ts`, geschrieben an der Wurzel in `main.tsx`), damit die
+    // unter `/profil` gewählte Sprache das Neuladen überlebt. Ebenfalls ein DOM-freier Speicher-Helfer
+    // ohne Fläche, ohne Modal und ohne Portal.
+    //
+    // Beide Dateien liegen unter `apps/web/src` als `.ts` ohne `.test.*`
+    // (`tools/modalgrenze.ts:68-98`) und fallen genau darunter. NACHGEMESSEN, nicht addiert: der Lauf
+    // dieses Arbeitsbaums nach der Konfliktauflösung. KEINE REGISTRIERUNG NÖTIG für beide — Beide
+    // D3-Suchrichtungen bleiben bei null unerklärten Restfällen (der Fall direkt darunter).
     expect(
       ALLE_ERHEBUNGEN.length,
       "KONFLIKTRUNDE 2: JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) " +
         "plus fünf Erfassen-Quelldateien (JOB 3062) plus zehn Einstellungen-Quelldateien (JOB 3065) " +
-        "plus `lib/netzzustand.ts` (JOB 3084) " +
+        "plus `lib/netzzustand.ts` (JOB 3084) plus `lib/sprachwahl.ts` (JOB 3086) " +
         "— am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
-    ).toBe(456);
+    ).toBe(457);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 
