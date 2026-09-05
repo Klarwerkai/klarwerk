@@ -4255,12 +4255,18 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // Quelldateien (JOB 3065) treffen hier gemeinsam auf den Kopfband-/Prüf-/Bibliotheks-/Start-
     // Stand; der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht
     // aus einer Kopfrechnung der Deltas.
+    //
+    // JOB 3084 (Q6): EINE Quelldatei kommt hinzu — `apps/web/src/lib/netzzustand.ts`, die eine
+    // Quelle des Onlinezustands für die Kollisionsauskunft. Sie trägt keine Fläche (kein DOM, kein
+    // Modal, ein Hook über `onlineManager`) und ändert an den Erhebungen unten nichts; sie zählt
+    // hier nur in die Grundgesamtheit. Gemessen: 456 (Lauf an diesem Arbeitsbaum), nicht addiert.
     expect(
       ALLE_ERHEBUNGEN.length,
       "KONFLIKTRUNDE 2: JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) " +
         "plus fünf Erfassen-Quelldateien (JOB 3062) plus zehn Einstellungen-Quelldateien (JOB 3065) " +
+        "plus `lib/netzzustand.ts` (JOB 3084) " +
         "— am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
-    ).toBe(455);
+    ).toBe(456);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

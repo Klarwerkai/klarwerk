@@ -84,10 +84,10 @@ export const LAGE_VON_SCHWACH_NACH_STARK: readonly Lage[] = [
  *
  * Die Reihenfolge der Prüfungen trägt die Aussage:
  *
- * 1. `paused` zuerst, und zwar UNABHÄNGIG davon, ob Daten vorliegen. Ein angehaltener Abruf ist
- *    weder ein laufender („lädt" behauptete Arbeit, die gerade nicht stattfindet) noch ein
- *    gescheiterter — offline ist der aktuellere und der einzige behebbare Grund. Genau dieser Fall
- *    fehlte in JOB 3002 Runde 5 und war dort der letzte Rotpunkt (LEHREN.md, JOB 3002 R5).
+ * 1. `paused` ODER offline zuerst, und zwar UNABHÄNGIG davon, ob Daten vorliegen. Ein angehaltener
+ *    Abruf ist weder ein laufender („lädt" behauptete Arbeit, die gerade nicht stattfindet) noch
+ *    ein gescheiterter — offline ist der aktuellere und der einzige behebbare Grund. Genau dieser
+ *    Fall fehlte in JOB 3002 Runde 5 und war dort der letzte Rotpunkt (LEHREN.md, JOB 3002 R5).
  * 2. Ohne Daten entscheidet der Fehler: `erstfehler` gegen `laedt`. Ein laufender Erstabruf darf
  *    NIE als „ließ sich nicht laden" erscheinen (Codex R3).
  * 3. Mit Daten ist `erstfehler` ausgeschlossen — der Zwischenspeicher bleibt zeigbar. Es bleibt die
@@ -95,9 +95,47 @@ export const LAGE_VON_SCHWACH_NACH_STARK: readonly Lage[] = [
  *
  * `dataUpdatedAt === 0` zählt als „keine Daten": ein Wert ohne Zeitstempel stammt nie aus einer
  * Antwort. Ihn als geladen zu führen wäre die Verneinung aus dem Nichts.
+ *
+ * ----------------------------------------------------------------------------------------------
+ * JOB 3084 (Q6) — WARUM `online` EIN FÜNFTER EINGANG WURDE, UND WAS DAFÜR VERSCHWINDET.
+ * ----------------------------------------------------------------------------------------------
+ *
+ * ABGELÖST WIRD DIE STILLSCHWEIGENDE ANNAHME „idle + Daten = frisch". Sie stand vor diesem Auftrag
+ * wörtlich in der letzten Zeile dieser Funktion (`return q.fetchStatus === "fetching" ?
+ * "auffrischung_laeuft" : "frisch"`), ohne dass irgendetwas den Onlinezustand gefragt hätte. Sie
+ * wird nicht danebengelegt, sondern durch die Zeile unten ersetzt.
+ *
+ * DER FEHLER, DER DARAUS FOLGTE — gemessen, nicht vermutet: Codex' Befund R-1585 vom 05.09.2026
+ * gegen `https://app.klarwerk.ai` (1.0.0-beta.1.92, Rolle Administrator): „/wissen/… frisch laden;
+ * Netz trennen; Start; Browser zurück; 2s warten. navigator.onLine=false und echter /health-Abruf
+ * scheitert, dennoch ‚Keine offene Kollision an diesem Objekt‘ ohne Aktualitätshinweis. Zweimal
+ * reproduziert." Die Ursache liegt NICHT in dieser Regel, sondern in ihrem Eingang: `main.tsx:21`
+ * setzt `staleTime: 30_000`, innerhalb dieser Frist wird beim Zurückkommen gar kein Abruf GEWOLLT,
+ * also gibt es auch kein `paused` — die Abfrage steht auf `idle`, `status` auf `success`, ein
+ * Zeitstempel liegt vor. Die zwei Sekunden des Befunds liegen innerhalb der 30.
+ *
+ * DIE WIRKUNG: offline wirkt genau wie `paused` — dieselbe Lage, dieselben zwei Sätze
+ * (`kollision.lage.pausiert` bzw. `…pausiertOhneStand`), derselbe fehlende Wiederholen-Knopf. Das
+ * ist keine Verschärfung, sondern die Gleichbehandlung desselben Sachverhalts: in beiden Fällen
+ * kann gerade nicht geprüft werden. Dass TanStack Query den einen meldet und den anderen nicht, ist
+ * eine Eigenschaft seiner Frist und keine Aussage über den Bestand.
+ *
+ * DIE TESTS, DIE BEI RÜCKDREHUNG ROT WERDEN: `tests/kollision-netztrennung/regel-und-netz.test.ts`
+ * (N-1, N-2, N-4) ohne Mount. Nimmt man das `!online` unten heraus, sagt N-1 wörtlich
+ * „expected 'frisch' to be 'pausiert'". Gemountet fallen zwei GETRENNTE Sorten von Fällen mit:
+ *   · das Netz fällt weg, während die Fläche offen steht (L-1, S-1) — die Reaktion auf das Ereignis;
+ *   · die Fläche wird VERLASSEN und offline wieder BETRETEN, mit erhaltenem Zwischenspeicher
+ *     (L-9 Seitenwechsel, L-10 Neuaufbau des Baums, S-6 Blatt erst nach der Trennung geöffnet,
+ *     S-7 Startseite neu am selben QueryClient) — der Weg aus dem Befund selbst.
+ * Die zweite Sorte ist die schärfere: dort läuft die Fläche von vorn an, der Hook wird neu
+ * abonniert, und der Onlinezustand muss aus dem kalten Start der Komponente in die Regel finden.
+ *
+ * @param online Der Onlinezustand des Geräts, aus `lib/netzzustand.ts` (`onlineManager`, dieselbe
+ *   Quelle, aus der Query sein `paused` ableitet). Ein Skalar wie die vier anderen — die Funktion
+ *   bleibt rein und ohne React-Abhängigkeit, damit die Tabellenprobe ohne Mount weiterläuft.
  */
-export function quellenlage<T>(q: Quellenzustand<T>): Lage {
-  if (q.fetchStatus === "paused") {
+export function quellenlage<T>(q: Quellenzustand<T>, online: boolean): Lage {
+  if (!online || q.fetchStatus === "paused") {
     return "pausiert";
   }
   const hatDaten = q.data !== undefined && q.dataUpdatedAt > 0;
@@ -455,8 +493,31 @@ function alleQuellen(q: Kollisionsquellen): readonly Quelle<unknown>[] {
   return [q.befunde, q.konflikte, q.kos];
 }
 
-function lageDerQuellen(q: Kollisionsquellen): Lage {
-  return gesamtlage(...alleQuellen(q).map(quellenlage));
+/**
+ * WAS GILT, WENN EINE FLÄCHE DEN ONLINEZUSTAND NICHT REICHT — und warum es diesen Fall noch gibt.
+ *
+ * `quellenlage()` verlangt den Zustand ohne Ausnahme; die Regel selbst kennt keinen Vorgabewert.
+ * Die zwei EINSTIEGE unten haben einen, und das ist eine ehrlich benannte Restschuld, kein Entwurf:
+ * es gibt im Produkt einen DRITTEN Aufrufer, `pages/Start.tsx:116`. Er liegt außerhalb der
+ * Zielpfade dieses Auftrags (REGELN.md §3) und wird deshalb nicht angefasst.
+ *
+ * WARUM DIESER AUFRUFER TROTZDEM KEINE FALSCHE AUSSAGE MACHT — gemessen, nicht angenommen: er baut
+ * aus der Auskunft nur dann eine Zeile in „FÜR DICH", wenn `art !== "keine"` UND `bestandGesichert`
+ * gilt (`Start.tsx:121-129`). Eine Verneinung entsteht dort also in keiner Lage; das Schlimmste,
+ * was der Vorgabewert dort bewirken kann, ist, dass die Zeile bei einem offline vorliegenden Befund
+ * so erscheint wie bisher. Verschwiegen wird nichts, und behauptet wird nichts.
+ *
+ * `tests/kollision-netztrennung/eine-quelle-waechter.test.ts` hält beides fest: dass die zwei
+ * Flächen dieses Auftrags den Zustand WIRKLICH reichen, und dass `Start.tsx` der einzige Aufrufer
+ * ohne ihn bleibt.
+ */
+const ONLINE_WENN_UNGEFRAGT = true;
+
+function lageDerQuellen(q: Kollisionsquellen, online: boolean): Lage {
+  // Bewusst mit einem eigenen Pfeil und nicht `.map(quellenlage)`: `Array.map` reicht dem Rückruf
+  // als zweites Argument den INDEX. Vor JOB 3084 war das folgenlos (die Funktion nahm nur einen
+  // Parameter), jetzt wäre es die Quelle 0 dauerhaft offline und alle übrigen online.
+  return gesamtlage(...alleQuellen(q).map((x) => quellenlage(x, online)));
 }
 
 /**
@@ -480,8 +541,9 @@ function hatFruherenStand(q: Kollisionsquellen): boolean {
  */
 export function eigeneKollisionDetail(
   args: Kollisionsquellen & { readonly koId: string },
+  online = ONLINE_WENN_UNGEFRAGT,
 ): Kollisionsauskunft {
-  const lage = lageDerQuellen(args);
+  const lage = lageDerQuellen(args, online);
   const eigener = args.befunde.data?.find((b) => b.koId === args.koId);
   const konfliktSichtbar =
     args.konflikte.data !== undefined && conflictImpact(args.koId, args.konflikte.data).affected;
@@ -509,8 +571,11 @@ export function eigeneKollisionDetail(
  * kommen getrennt an, und ein Signal-Eintrag mit `konflikt: false` kann durch die frischere
  * Konfliktliste überholt sein. Beides zu lesen ist die vollständigere Auskunft, nicht die doppelte.
  */
-export function eigeneKollisionStart(q: Kollisionsquellen): Kollisionsauskunft {
-  const lage = lageDerQuellen(q);
+export function eigeneKollisionStart(
+  q: Kollisionsquellen,
+  online = ONLINE_WENN_UNGEFRAGT,
+): Kollisionsauskunft {
+  const lage = lageDerQuellen(q, online);
   // Bewusst KEIN `?? []`: das ist die Zeile, an der JOB 3002 fünfmal fiel. Fehlende Daten sind
   // hier eine LAGE (oben schon ermittelt), keine leere Liste — die Schleife läuft dann einfach
   // nicht, und `schluss` setzt den Satz über die Datenlage statt einer Verneinung.

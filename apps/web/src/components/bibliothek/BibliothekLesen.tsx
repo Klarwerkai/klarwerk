@@ -33,6 +33,7 @@ import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
 import type { MatchField } from "../../lib/librarySearch";
+import { useNetzOnline } from "../../lib/netzzustand";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
 import { draftProvenance } from "../../lib/reasonerProvenance";
 import { canRevalidate } from "../../lib/revalidation";
@@ -165,6 +166,9 @@ export function BibliothekLesen({
   // sichtbar sein muss — s. den Abschnitt „DER EIGENE BEFUND" im Kopf.
   const koListe = useKos();
   const eigeneBefunde = useEigeneBefunde();
+  // JOB 3084 · Q6: die dritte Voraussetzung dieser Auskunft — kann gerade überhaupt geprüft werden?
+  // Aus der EINEN Quelle (`lib/netzzustand.ts`, `onlineManager`), nicht aus `navigator.onLine`.
+  const netzOnline = useNetzOnline();
   const { role } = useRole();
   const { user } = useSession();
   const { push } = useToast();
@@ -437,12 +441,19 @@ export function BibliothekLesen({
   // nirgends sonst; hier wird sie nur gezeichnet. `eigenesObjekt` ist dieselbe Bedingung, unter der
   // sie bis JOB 3063 in `MehrAbschnitte` stand — das Signal hängt am eigenen Bestand (A28).
   const eigenesObjekt = ko.author === user?.id;
-  const kollision = eigeneKollisionDetail({
-    koId: ko.id,
-    befunde: eigeneBefunde,
-    konflikte: conflicts,
-    kos: koListe,
-  });
+  // JOB 3084 · Q6: der Onlinezustand wird GEREICHT, nicht gedeutet. Hier entsteht keine einzige
+  // neue Bedingung — was dasteht, entscheidet weiterhin allein `lib/eigeneKollision.ts`. Ohne diese
+  // Zeile stand nach „frisch laden, Netz trennen, zurückkommen" innerhalb der `staleTime` von 30 s
+  // (`main.tsx:21`) die Verneinung da, obwohl gerade nichts geprüft werden konnte (Befund R-1585).
+  const kollision = eigeneKollisionDetail(
+    {
+      koId: ko.id,
+      befunde: eigeneBefunde,
+      konflikte: conflicts,
+      kos: koListe,
+    },
+    netzOnline,
+  );
   const kollisionsWeg = kollision.weg;
   // WANN DIE ZEILE STEHT — die einzige Ausnahme ist `laedt` OHNE Befund, und sie ist keine Willkür:
   // dort ist NICHTS bekannt, und diese Fläche schweigt beim Laden, statt „Lädt …" zu schreiben

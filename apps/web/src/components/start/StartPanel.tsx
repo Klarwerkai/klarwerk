@@ -13,6 +13,7 @@ import { eigeneKollisionStart } from "../../lib/eigeneKollision";
 import { knowledgeCapital } from "../../lib/funke";
 import { KNOWLEDGE_CYCLE } from "../../lib/knowledgeCycle";
 import { type KnowledgeGuidanceTone, knowledgeGuidance } from "../../lib/knowledgeGuidance";
+import { useNetzOnline } from "../../lib/netzzustand";
 import { PROOF_CHAIN } from "../../lib/proofChain";
 import { START_HELP_TOPICS } from "../../lib/startHelp";
 import { START_ORIENTATION_TEXT } from "../../lib/startOrientation";
@@ -72,11 +73,20 @@ export function StartPanelInhalt({ id }: { id: StartPanelId }): JSX.Element {
   // A27 · JOB 3025: DIESELBE Funktion, die auch die Zeile in „FÜR DICH" speist. Die Abfragen
   // dahinter sind dieselben Cache-Einträge (react-query), also entsteht hier kein zweiter Abruf
   // und keine zweite Wahrheit — nur eine zweite Anzeige derselben Auskunft.
-  const kollision = eigeneKollisionStart({
-    befunde: useEigeneBefunde(),
-    konflikte: useConflicts(),
-    kos,
-  });
+  //
+  // JOB 3084 · Q6: der Onlinezustand wird GEREICHT, nicht gedeutet — aus derselben einen Quelle wie
+  // an der Lesefläche (`lib/netzzustand.ts`). Hier entsteht keine neue Bedingung; ohne diese Zeile
+  // stünde nach einer Netztrennung mit ruhendem, formal frischem Zwischenspeicher weiterhin „keine
+  // offene Kollision" da (Befund R-1585). Beide Flächen bekommen ihn, damit er nicht an einer davon
+  // vergessen wird — das ist die Drift, an der JOB 3002 Runde 4 fiel.
+  const kollision = eigeneKollisionStart(
+    {
+      befunde: useEigeneBefunde(),
+      konflikte: useConflicts(),
+      kos,
+    },
+    useNetzOnline(),
+  );
   const kollisionsWeg = kollision.weg;
   const stufe2Features = stufe2FeatureLabelKeys()
     .map((k) => t(k))

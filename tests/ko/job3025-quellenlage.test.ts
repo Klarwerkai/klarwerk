@@ -45,6 +45,15 @@ function quelle<T>(over: Partial<Quellenzustand<T>> & { data?: T }): Quellenzust
   };
 }
 
+/**
+ * JOB 3084 (Q6) hat `quellenlage()` einen fünften Eingang gegeben: den Onlinezustand des Geräts.
+ * DIESE Datei misst weiterhin, was die VIER Query-Skalare bedeuten — deshalb steht der fünfte hier
+ * überall ausdrücklich auf „online". Was offline aus denselben Zeilen wird, ist der Gegenstand von
+ * `tests/kollision-netztrennung/regel-und-netz.test.ts` (N-2 fährt dieselben sechs Lagen offline).
+ * Er wird bewusst NICHT über einen Vorgabewert versteckt: die Regel selbst kennt keinen.
+ */
+const ONLINE = true;
+
 /** Die sechs Lagen, jeweils als das, was TanStack Query in dieser Situation wirklich meldet. */
 const LADEND = quelle<readonly string[]>({ status: "pending", fetchStatus: "fetching" });
 const FRISCH = quelle<readonly string[]>({ data: [] });
@@ -79,27 +88,27 @@ const DATENLAGE_KEY: Record<Lage, string | null> = {
 
 describe("JOB 3025 · quellenlage(): sechs Lagen, je eine Zeile", () => {
   it("Q-1 · Erstabruf offen (keine Daten, kein Fehler) → laedt", () => {
-    expect(quellenlage(LADEND)).toBe<Lage>("laedt");
+    expect(quellenlage(LADEND, ONLINE)).toBe<Lage>("laedt");
   });
 
   it("Q-2 · erfolgreich geladen, nichts offen → frisch", () => {
-    expect(quellenlage(FRISCH)).toBe<Lage>("frisch");
+    expect(quellenlage(FRISCH, ONLINE)).toBe<Lage>("frisch");
   });
 
   it("Q-3 · Fehler, nie Daten gehabt → erstfehler", () => {
-    expect(quellenlage(ERSTFEHLER)).toBe<Lage>("erstfehler");
+    expect(quellenlage(ERSTFEHLER, ONLINE)).toBe<Lage>("erstfehler");
   });
 
   it("Q-4 · Cache-Daten, Auffrischung läuft → auffrischung_laeuft", () => {
-    expect(quellenlage(AUFFRISCHUNG_LAEUFT)).toBe<Lage>("auffrischung_laeuft");
+    expect(quellenlage(AUFFRISCHUNG_LAEUFT, ONLINE)).toBe<Lage>("auffrischung_laeuft");
   });
 
   it("Q-5 · Cache-Daten, Auffrischung abgelehnt → auffrischung_gescheitert", () => {
-    expect(quellenlage(AUFFRISCHUNG_GESCHEITERT)).toBe<Lage>("auffrischung_gescheitert");
+    expect(quellenlage(AUFFRISCHUNG_GESCHEITERT, ONLINE)).toBe<Lage>("auffrischung_gescheitert");
   });
 
   it("Q-6 · Cache-Daten, offline pausiert → pausiert (der Rotpunkt aus JOB 3002 R5)", () => {
-    expect(quellenlage(PAUSIERT)).toBe<Lage>("pausiert");
+    expect(quellenlage(PAUSIERT, ONLINE)).toBe<Lage>("pausiert");
   });
 });
 
@@ -108,7 +117,7 @@ describe("JOB 3025 · quellenlage(): die Ränder, an denen Runde 4 und 5 fielen"
     // Ohne diese Zeile hieße „offline, noch nie Daten“ genauso wie „lädt gerade“ — eine Auskunft,
     // die fortgesetzte Arbeit behauptet, wo gar keine läuft.
     expect(
-      quellenlage(quelle<readonly string[]>({ status: "pending", fetchStatus: "paused" })),
+      quellenlage(quelle<readonly string[]>({ status: "pending", fetchStatus: "paused" }), ONLINE),
     ).toBe<Lage>("pausiert");
   });
 
@@ -121,24 +130,28 @@ describe("JOB 3025 · quellenlage(): die Ränder, an denen Runde 4 und 5 fielen"
           isError: true,
           fetchStatus: "paused",
         }),
+        ONLINE,
       ),
     ).toBe<Lage>("pausiert");
   });
 
   it("Q-9 · Fehler MIT Daten ist nie erstfehler — der Cache bleibt zeigbar", () => {
-    expect(quellenlage(AUFFRISCHUNG_GESCHEITERT)).not.toBe<Lage>("erstfehler");
+    expect(quellenlage(AUFFRISCHUNG_GESCHEITERT, ONLINE)).not.toBe<Lage>("erstfehler");
   });
 
   it("Q-10 · Daten ohne Zeitstempel gelten NICHT als geladen (dataUpdatedAt === 0)", () => {
     // `dataUpdatedAt === 0` heißt: dieser Wert kam nie aus einer Antwort (Platzhalter/Initialwert).
     // Ihn als geladen zu führen wäre die Verneinung aus dem Nichts.
     expect(
-      quellenlage(quelle<readonly string[]>({ data: [], dataUpdatedAt: 0, status: "pending" })),
+      quellenlage(
+        quelle<readonly string[]>({ data: [], dataUpdatedAt: 0, status: "pending" }),
+        ONLINE,
+      ),
     ).toBe<Lage>("laedt");
   });
 
   it("Q-11 · frisch verlangt einen ruhenden Abruf — laufend ist nicht frisch", () => {
-    expect(quellenlage(AUFFRISCHUNG_LAEUFT)).not.toBe<Lage>("frisch");
+    expect(quellenlage(AUFFRISCHUNG_LAEUFT, ONLINE)).not.toBe<Lage>("frisch");
   });
 });
 
