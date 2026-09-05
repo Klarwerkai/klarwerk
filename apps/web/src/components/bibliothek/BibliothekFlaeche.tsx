@@ -1,13 +1,19 @@
+import type { UseQueryResult } from "@tanstack/react-query";
 import { useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
+import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { auffrischungGescheitert, vertraulichkeitsAuskunft } from "../../lib/confidentiality";
 import { conflictImpact } from "../../lib/conflictImpact";
 import { countByDemoKnowledge, ownKnowledgeEmptyHint } from "../../lib/demoKnowledge";
 import { isDemoContext } from "../../lib/demoPilotPath";
-import { deriveStatus } from "../../lib/displayStatus";
+import {
+  type AnzeigestatusAuskunft,
+  anzeigestatusAnker,
+  anzeigestatusAus,
+} from "../../lib/displayStatus";
 import {
   type FacetGroupConfig,
   clearFacetSelection,
@@ -257,6 +263,54 @@ export function BibliothekFlaeche({
     return new Map((query.data ?? []).map((k) => [k.id, libraryFilterValues(k, now)]));
   }, [query.data]);
 
+  // ================================================================================================
+  // JOB 3072 · N4 — DER ZUSTAND EINES EINTRAGS: EINMAL BESCHAFFT, VIERMAL VERWENDET.
+  // ================================================================================================
+  //
+  // WOHER DIE ERHOBENE AUSKUNFT KOMMT — und warum sie nicht einfach an `query.data` hängt. Die Liste
+  // dieser Fläche kommt aus `GET /api/library/search` (`useLibrarySearch` oben). Diese Route reicht
+  // die Suchprojektion ungefiltert durch (`services/app/src/routes/library-routes.ts:331-338`) und
+  // ERHEBT den Anzeigestatus nicht; erhoben wird er an `GET /api/kos` (`ko-routes.ts:843-847`) und
+  // `GET /api/kos/:id` (`:902`). Ein Eintrag aus der Suche trägt das Feld also nie.
+  //
+  // `useKos` steht in dieser Datei bereits (`all`, für den Facettenabgleich der URL) und teilt sich
+  // den Schlüssel `["kos", undefined]` mit der Lesefläche rechts (`BibliothekLesen.tsx:166`) — die
+  // Auskunft ist damit KOSTENLOS zu haben, ohne eine einzige zusätzliche Abfrage. Genommen wird das
+  // GANZE Objekt aus dieser Antwort und nicht nur das eine Feld: Kern-Enum und erhobene Stufe
+  // stammen dann aus EINER Serverantwort und können nicht auseinanderlaufen.
+  //
+  // OHNE `all.data` (Laden, Fehler) fällt jeder Eintrag auf sein Suchobjekt zurück — `anzeigestatus`
+  // fehlt dort, die Auskunft heißt dann `bestand`, und die Fläche sagt genau so viel wie früher.
+  // Kein erfundener Zustand, keine leere Karte (REGELN §7).
+  //
+  // DER MERKER GILT JE OBJEKT, NICHT JE ID (JOB 3072 R2, Befund BEN-1). Die erste Fassung merkte
+  // sich das Ergebnis unter `ko.id` — und lag damit auf einem Schlüssel, der WENIGER unterscheidet
+  // als die Rechnung darunter: im Rückfallzweig (`?? ko`) hängt die Antwort am SUCHOBJEKT, und die
+  // Suche frischt unabhängig vom KO-Bestand auf. Kam sie mit einer neuen Fassung desselben
+  // Eintrags zurück, während `all.data` unverändert blieb, stand der neue Titel neben dem alten
+  // Zustandswort. Der `WeakMap` über das Objekt trifft genau die Regel, die gemeint war: gleiches
+  // Objekt → gleiche Antwort; neues Objekt → neu gerechnet. react-query gibt bei unveränderter
+  // Antwort dieselbe Referenz zurück (strukturelles Teilen), die Ersparnis bleibt also erhalten.
+  const auskunftFuer = useMemo(() => {
+    const erhoben = new Map((all.data ?? []).map((k) => [k.id, k]));
+    const konflikte = conflicts.data ?? [];
+    // Je Eintrag EINE Rechnung — Wort, Ton, Umschalter und Anker lesen dasselbe Ergebnis.
+    const gemerkt = new WeakMap<object, AnzeigestatusAuskunft>();
+    return (ko: KnowledgeObject): AnzeigestatusAuskunft => {
+      const da = gemerkt.get(ko);
+      if (da) {
+        return da;
+      }
+      // Ohne geladene Konfliktliste entsteht KEINE Konfliktaussage — ein fehlendes rotes Signal
+      // behauptet nichts, ein erfundenes schon (JOB 3025).
+      const neu = anzeigestatusAus(erhoben.get(ko.id) ?? ko, {
+        konflikt: conflictImpact(ko.id, konflikte).limited,
+      });
+      gemerkt.set(ko, neu);
+      return neu;
+    };
+  }, [all.data, conflicts.data]);
+
   // Gespeicherte Sichten — LOKAL je Nutzer, unverändert (kein Server-Speicher).
   const viewsUserId = user?.id ?? "anon";
   const [savedViews, setSavedViews] = useState<LibrarySavedView[]>([]);
@@ -311,9 +365,11 @@ export function BibliothekFlaeche({
   );
   const faceted = applyFacetSelection(ranked, valuesOf, facetSel)
     .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
-    // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben abgeleiteten Anzeigestatus,
-    // den auch Punkt und Pille zeigen — keine zweite Statusrechnung.
-    .filter((item) => passtZuSegment(deriveStatus(item.ko), segment));
+    // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch Punkt
+    // und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom Server erhobene
+    // Zahl, und der Umschalter kennt damit auch den Konflikt: ein Eintrag mit rotem Punkt fiel
+    // vorher unter „Freigegeben", weil diese Zeile als einzige die Konfliktliste nicht ansah.
+    .filter((item) => passtZuSegment(auskunftFuer(item.ko).status, segment));
   const sorted = sortLibrary(faceted, sortKey, (item) => item.ko);
   const win = windowList(sorted, windowLimit);
 
@@ -373,14 +429,66 @@ export function BibliothekFlaeche({
   // Rückschritt (REGELN §7 — die zuletzt erfolgreich geholten Werte bleiben sichtbar). Was NICHT
   // stehen bleibt, ist die ZAHL: sie ist eine Aussage über den Bestand JETZT, und die trägt ein
   // alter Cache nicht.
+  //
+  // ================================================================================================
+  // JOB 3072 R2 (Befund BEN-2) — DIESE FLÄCHE STEHT AUF ZWEI ABFRAGEN, ALSO ZÄHLT DIE ÄLTERE.
+  // ================================================================================================
+  // Bis zu diesem Auftrag war `query` (die Suche) die einzige Quelle der Liste, und das
+  // Frischemodell durfte allein auf ihr stehen. Seit dem Anschluss des erhobenen Zustands ist `all`
+  // (`GET /api/kos`) eine ZWEITE ANZEIGEQUELLE: aus ihr kommen Wort, Ton, Umschalter — und über den
+  // Umschalter auch die Treffermenge, die der Zähler zählt. Beide frischen unabhängig auf.
+  //
+  // Bliebe das Modell auf `query`, stünde nach einer gescheiterten `all`-Auffrischung ein ALTER
+  // Serverzustand mit dem Anker `server` da, der Zähler nennte eine Zahl, und nichts sagte, dass
+  // beides nicht mehr frisch ist. Das ist die zeitabhängige Aussage ohne frische Grundlage, die
+  // Auftrag §9 und REGELN §7 verbieten. Ab hier gilt deshalb die SCHWÄCHERE der beiden Lagen.
+  const quellen: readonly UseQueryResult<unknown>[] = [query, all];
   const frisch =
-    query.data !== undefined && !query.isRefetchError && query.fetchStatus !== "paused";
+    query.data !== undefined &&
+    quellen.every((q) => !q.isRefetchError && q.fetchStatus !== "paused");
+
+  // ================================================================================================
+  // JOB 3072 R4 — ZÄHLER UND HINWEIS FRAGEN VERSCHIEDENES, UND DAS IST DER PUNKT.
+  // ================================================================================================
+  // Runde 3 hat beide Zeilen auf EINE Regel gezogen („nicht frisch" = gescheitert ODER pausiert) und
+  // damit den offline angehaltenen Abruf zum Fehlschlag erklärt. Das Tor hat es gefangen:
+  // `tests/vertraulichkeit-klartext/stufe-im-klartext.test.tsx:423`/`:480` (JOB 3034) sichert
+  // ausdrücklich zu „eine pausierte Auffrischung ist kein Fehler" — und hat recht, denn offline wird
+  // GAR NICHT gerufen (derselbe Test zählt die Rufe, `:419`/`:476`). Nichts ist fehlgeschlagen, also
+  // darf nichts „fehlgeschlagen" sagen. Die Unterscheidung ist keine Feinheit, sondern der
+  // Unterschied zwischen zwei Aussagen:
+  //
+  //   ZÄHLER (oben): eine POSITIVE Aussage über den Bestand JETZT. Sie wird in BEIDEN Lagen
+  //     zurückgenommen — „–" statt einer Zahl —, denn weder ein gescheiterter noch ein angehaltener
+  //     Abruf trägt sie. Schweigen ist immer erlaubt.
+  //   HINWEIS (hier): der Satz „Stand von <Zeit> · Auffrischung fehlgeschlagen". Er ist eine
+  //     Tatsachenbehauptung ÜBER EIN EREIGNIS, und offline hat dieses Ereignis nicht stattgefunden.
+  //     Er steht deshalb allein bei `auffrischungGescheitert` (`isError` mit Bestand).
+  //
+  // Der Satz nennt den Stand, auf dem die Fläche WIRKLICH steht: den ÄLTESTEN der gescheiterten
+  // Quellen. Zwei Sätze nebeneinander wären zwei Auslegungen derselben Tatsache (JOB 3063 R6,
+  // deshalb wohnt die Bauform in `AuffrischungHinweis`); der jüngere Stand wäre die zu starke
+  // Aussage. Ohne den Fall entsteht nichts — `auffrischungGescheitert` verlangt einen vorhandenen
+  // Bestand, und ohne Bestand ist gar kein Serverzustand im Spiel.
+  const nichtFrisch = quellen.filter((q) => auffrischungGescheitert(q));
+  const standQuelle =
+    nichtFrisch.length === 0
+      ? null
+      : nichtFrisch.reduce((a, b) => (a.dataUpdatedAt <= b.dataUpdatedAt ? a : b));
+  // Der Knopf holt BEIDE Quellen zurück (JOB 3072 R2). Fasste er nur die Suche an, käme nach einem
+  // Doppelausfall zwar der Bestand wieder, der Zustand jedes Eintrags bliebe aber auf dem Rückfall
+  // `bestand` stehen — ein Knopf, der die halbe Fläche nicht erreicht.
+  const alleAuffrischen = (): void => {
+    for (const q of quellen) {
+      void q.refetch();
+    }
+  };
 
   const zeileAus = (ko: (typeof win.visible)[number]["ko"]): BibListenPosten => {
-    const status = deriveStatus(ko);
-    // Ohne geladene Konfliktliste entsteht KEINE Konfliktaussage — ein fehlendes rotes Signal
-    // behauptet nichts, ein erfundenes schon (JOB 3025).
-    const impact = conflictImpact(ko.id, conflicts.data ?? []);
+    // JOB 3072: EINE Quelle für Wort und Ton. Der Konflikt steht schon IM Zustand (`anzeigestatusAus`
+    // prüft ihn als ersten Zweig) — die frühere zweite Abfrage `impact.limited` an Wort und Ton war
+    // genau die Doppelung, an der der Umschalter darüber vorbeilief.
+    const zustand = auskunftFuer(ko).status;
     // JOB 3034: die Vertraulichkeitsstufe im Klartext — in der Trefferzeile stand sie vorher GAR
     // NICHT; wer eine Zeile ansah, erfuhr über die Vertraulichkeit nichts. Dieselbe Funktion wie
     // auf der Lesefläche (`vertraulichkeitsAuskunft`), keine zweite Auslegung derselben Aussage.
@@ -390,8 +498,8 @@ export function BibliothekFlaeche({
       id: ko.id,
       titel: ko.title,
       bereich: ko.category,
-      zustandWort: impact.limited ? t("status.konflikt") : t(`status.${status}`),
-      ton: zustandsTon(status, impact.limited),
+      zustandWort: t(`status.${zustand}`),
+      ton: zustandsTon(zustand),
       stufe: { labelKey: auskunft.labelKey, tone: auskunft.tone },
     };
   };
@@ -460,6 +568,30 @@ export function BibliothekFlaeche({
 
   return (
     <div data-testid="bibliothek-flaeche" className="flex h-[calc(100vh-12rem)] min-h-[30rem]">
+      {/* ==========================================================================================
+          JOB 3072 · N4 — WORAUF DER ZUSTAND JEDER ZEILE STEHT. MASCHINENLESBAR, UNSICHTBAR.
+          ==========================================================================================
+          Je sichtbarem Eintrag ein Anker: `server` oder `bestand`, dazu die Eingänge, die der
+          Server für DIESE Antwort ausdrücklich nicht erhoben hat (Deckel über 200, fehlgeschlagene
+          Abfrage). Kein sichtbarer Text, kein Übersetzungsschlüssel — H4 verbietet Erklärtext auf
+          dieser Fläche, und der Textmesser misst `innerText`, den ein `hidden`-Block nicht hat.
+
+          WARUM DIE ANKER NICHT AN DER ZEILE SELBST HÄNGEN: die Zeile zeichnet `BibliothekListe.tsx`,
+          und diese Datei steht ausdrücklich NICHT in den Zielpfaden dieses Auftrags (§4/§10) — dort
+          arbeitet gerade eine andere Bahn. Ein Attribut an der Zeile verlangt ein Feld an
+          `BibZeile` und eine Zeile im Markup dort. Das ist als Restschuld in der Rückgabe benannt
+          und in einem Zug zu erledigen, sobald die Datei frei ist; die AUSKUNFT selbst fehlt bis
+          dahin nirgends. */}
+      <div hidden data-testid="bib-zustand-anker-liste">
+        {win.visible.map((i) => (
+          <span
+            key={i.ko.id}
+            data-testid="bib-zustand-anker"
+            data-bib-id={i.ko.id}
+            {...anzeigestatusAnker(auskunftFuer(i.ko))}
+          />
+        ))}
+      </div>
       <BibliothekListe
         q={q}
         onQ={(wert) => {
@@ -536,8 +668,33 @@ export function BibliothekFlaeche({
         fehler={query.isError && query.data === undefined}
         // Die Bauform steht in `AuffrischungHinweis` (EINE Stelle für Liste und Lesefläche); die
         // Lage fragt die Liste hier ab, damit sie ohne den Fall auch keinen leeren Platz hält.
-        hinweis={auffrischungGescheitert(query) ? <AuffrischungHinweis query={query} /> : null}
-        onErneut={() => void query.refetch()}
+        //
+        // ============================================================================================
+        // JOB 3072 R3 (Befund BEN-3b) — DER WEG ZURÜCK ZUR FRISCHE GEHÖRT NEBEN DEN SATZ.
+        // ============================================================================================
+        // Der Wiederholungsknopf der Liste steht allein im Zweig `fehler` (`BibliothekListe.tsx:192`),
+        // und der verlangt einen ERSTFEHLER OHNE Bestand. Genau im Fall, für den dieser Satz gebaut
+        // ist — Bestand da, Auffrischung nicht durchgekommen —, gab es deshalb bis hierher gar keinen
+        // Weg: die Fläche sagte „nicht frisch" und bot nichts an. Der Knopf hängt am HINWEIS und
+        // nicht an der Liste, weil `BibliothekListe.tsx` nicht in den Zielpfaden steht (§4/§10); er
+        // trägt dieselbe vorhandene Beschriftung wie der Knopf im Fehlerzweig, also KEIN neuer
+        // Übersetzungsschlüssel und kein zweites Wort für dieselbe Handlung.
+        hinweis={
+          standQuelle ? (
+            <>
+              <AuffrischungHinweis query={standQuelle} />
+              <button
+                type="button"
+                data-testid="bib-hinweis-erneut"
+                onClick={alleAuffrischen}
+                className="mb-3 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+              >
+                {t("lib.liste.erneut")}
+              </button>
+            </>
+          ) : null
+        }
+        onErneut={alleAuffrischen}
         gesamt={frisch ? sorted.length : null}
         onNachladen={() => {
           if (win.limited) {
@@ -825,7 +982,7 @@ export function BibliothekFlaeche({
               suchtext={trimmedQ}
               treffer={trefferFelder}
               // Steht der Satz schon an der Liste, schweigt die Lesefläche dazu — s. dort.
-              hinweisSchonGesagt={auffrischungGescheitert(query)}
+              hinweisSchonGesagt={standQuelle !== null}
               onGeloescht={() => {
                 setGewaehlt(null);
                 beiLoeschung?.();

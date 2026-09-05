@@ -1,4 +1,10 @@
 import type { Role } from "../app/navigation";
+// JOB 3072 (N4): der Wertetyp des Anzeigestatus wird NICHT hier ein zweites Mal aufgezählt. Er
+// steht seit jeher in `components/trust/types.ts` — dieselben sieben Wörter, die `StatusPill`
+// zeichnet. Eine zweite vollständige Client-Aufzählung desselben Enums ist ein roter Befund
+// (Codex an JOB 3069 R3). Der Import ist ein reiner TYP-Import: `trust/types.ts` ist DOM-frei,
+// und zur Laufzeit bleibt von dieser Zeile nichts übrig.
+import type { DisplayStatus } from "../components/trust/types";
 
 export type { Role };
 
@@ -296,6 +302,33 @@ export interface EigenerBefund {
   deckung: Deckung;
 }
 
+// ================================================================================================
+// JOB 3072 · N4 — DER ANZEIGESTATUS, WIE DER SERVER IHN ERHEBT, UND WAS ER DAFÜR NICHT NACHSAH.
+// ================================================================================================
+//
+// Zeichengleicher Spiegel von `services/knowledge-object/src/display-status.ts:72-107`. Wie bei
+// `ConfidentialityProvenance` und `EigenerBefund` gilt auch hier: die Oberfläche importiert keine
+// Services, sie schreibt den Vertrag ab und benennt seine Grenze.
+//
+// DIE FÜNF EINGÄNGE sind die Fakten, aus denen die Stufe entsteht. `status` trägt das Objekt
+// selbst; die anderen vier muss ein Lesepfad beschaffen — und wenn er es nicht tut, sagt er WARUM
+// (`ko-routes.ts:473-503`). Genau deshalb gibt es hier kein `konflikte: 0` und kein „nicht fällig":
+// ein nicht erhobener Eingang steht als GRUND in `ungeprueft`, nie als `false`.
+export type AnzeigestatusEingang =
+  | "status"
+  | "zuweisungen"
+  | "bewertungen"
+  | "konflikt"
+  | "revalidierung";
+
+/** Wurde ein Eingang an dem Lesepfad, der diese Antwort erzeugt hat, tatsächlich erhoben? */
+export type Eingangsbefund = "geprueft" | "ungeprueft";
+
+export interface AnzeigestatusHerkunft extends Record<AnzeigestatusEingang, Eingangsbefund> {
+  /** Zu JEDEM ungeprüften Eingang der ausgeschriebene Grund — und nur zu diesen. */
+  ungeprueft: Partial<Record<AnzeigestatusEingang, string>>;
+}
+
 export interface KnowledgeObject {
   id: string;
   title: string;
@@ -315,6 +348,18 @@ export interface KnowledgeObject {
   confidence: number;
   trust: number;
   status: KoStatus;
+  // JOB 3072 (N4): die vom Server ERHOBENE Anzeigestufe samt ihrer Herkunft. Sie tritt NEBEN den
+  // Kern-Enum `status` darüber und ersetzt ihn nicht — sie wird nirgends gespeichert.
+  //
+  // WARUM OPTIONAL UND NICHT PFLICHT: die zwei Felder stehen an `GET /api/kos`
+  // (`ko-routes.ts:843-847`) und `GET /api/kos/:id` (`:902`). Die Suche
+  // (`GET /api/library/search`, `library-routes.ts:331-338`) und der Prüfbrett-Weg liefern sie
+  // NICHT. Ein `KnowledgeObject`, das sie überall verspräche, wäre die Unwahrheit, die der Kommentar
+  // zu `ValidationBoardKo` weiter unten schon einmal benennt — und der Compiler bestätigte sie auch
+  // noch. Wer sie liest, muss den Fall „fehlt" also mitbedenken; genau dafür gibt es die EINE
+  // Ableitung in `lib/displayStatus.ts` (`anzeigestatusAus`).
+  anzeigestatus?: DisplayStatus;
+  anzeigestatusHerkunft?: AnzeigestatusHerkunft;
   version: number;
   originalAuthor: string;
   author: string;

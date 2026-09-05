@@ -27,7 +27,7 @@ import {
   vertraulichkeitsAuskunft,
 } from "../../lib/confidentiality";
 import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
-import { deriveStatus } from "../../lib/displayStatus";
+import { anzeigestatusAnker, anzeigestatusAus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
 import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
@@ -421,12 +421,18 @@ export function BibliothekLesen({
     return <div data-testid="bib-lesen" className="w-[720px] max-w-full py-9" />;
   }
 
-  const status = deriveStatus(ko);
   const impact =
     conflicts.data === undefined
       ? conflictImpact(ko.id, [])
       : conflictImpact(ko.id, conflicts.data);
   const notice = conflictNotice(impact);
+  // JOB 3072 · N4: der Zustand kommt aus DERSELBEN Stelle wie in der Liste links — der vom Server
+  // erhobene `anzeigestatus` dieses Objekts (`GET /api/kos/:id`, ko-routes.ts:902), mit dem
+  // Konfliktvorrang der Oberfläche davor und dem benannten Rückfall dahinter. Vorher rechnete diese
+  // Fläche mit `deriveStatus` selbst und konnte „In Prüfung", „Abgelehnt" und „Re-Validierung"
+  // nicht erreichen, obwohl der Server sie mitschickte.
+  const zustand = anzeigestatusAus(ko, { konflikt: impact.limited });
+  const status = zustand.status;
   // JOB 3068 · N5: die Auskunft an die VERFASSERIN. Sie entsteht in `lib/eigeneKollision.ts` und
   // nirgends sonst; hier wird sie nur gezeichnet. `eigenesObjekt` ist dieselbe Bedingung, unter der
   // sie bis JOB 3063 in `MehrAbschnitte` stand — das Signal hängt am eigenen Bestand (A28).
@@ -444,7 +450,9 @@ export function BibliothekLesen({
   // Lage genannt — das ist die Regel aus `eigeneKollision.ts:245` und Pedis Ausgangsbefund A27.
   const kollisionZeigen =
     eigenesObjekt && (kollision.art !== "keine" || kollision.lage !== "laedt");
-  const ton = zustandsTon(status, impact.limited);
+  // Der Konflikt steht seit JOB 3072 schon IM Zustand — ein zweites `impact.limited` hier wäre die
+  // zweite Statusrechnung, die dieser Auftrag abschafft.
+  const ton = zustandsTon(status);
   const erstellt = formatKoTimestamp(ko.createdAt, i18n.language);
   // JOB 3034: die Vertraulichkeitsstufe im Klartext — JEDE Stufe, und die fehlende sagt, dass sie
   // fehlt (`vertraulichkeitsAuskunft`). Dieselbe Funktion und derselbe Tönungssatz wie auf jeder
@@ -474,6 +482,10 @@ export function BibliothekLesen({
           <span
             data-testid="bib-pille"
             data-bib-text="pille"
+            // JOB 3072 · N4: worauf dieses Wort steht — `server` oder `bestand`, und welche Eingänge
+            // der Server für diese Antwort nicht erhoben hat. Rein maschinenlesbar: kein neuer Satz,
+            // kein neuer Übersetzungsschlüssel, kein Erklärtext auf der Lesefläche (H4).
+            {...anzeigestatusAnker(zustand)}
             className={cx(
               "rounded-[999px] px-2.5 py-[3px] text-[11px] font-bold uppercase tracking-[0.3px]",
               PILLEN_TON[ton],
