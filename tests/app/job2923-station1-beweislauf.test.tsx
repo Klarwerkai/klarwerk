@@ -152,28 +152,27 @@ function ruesteDokumentWegAus(bytes: Buffer): void {
   };
 }
 
-/** Setzt den Umfang auf „Ganzes Dokument" — sonst liefe der Auswahl-Weg. */
-function waehleGanzesDokument(panel: KlaraPanel): void {
-  const radio = panel.q("#scope-document") as unknown as { checked: boolean } | null;
-  if (!radio) {
-    throw new Error("#scope-document fehlt im ausgelieferten Panel");
-  }
-  radio.checked = true;
-}
-
 /**
  * Führt den ECHTEN Antwortkörper durch den ECHTEN Panel-Zweig und gibt zurück, was ein Mensch
- * in `#send-status` liest. `routes` bekommt den Körper im Wortlaut — hier wird nichts gebaut.
+ * liest. `routes` bekommt den Körper im Wortlaut — hier wird nichts gebaut.
+ *
+ * JOB 3057 K2: der Umfang „Ganzes Dokument" ist kein Radio mehr, sondern der Textlink
+ * `#capture-dokument-link` (Fixture: `sendDocument`). Der Bilder-Satz steht nach dem Senden NICHT
+ * mehr im Statusfeld, sondern als EINE Zeile in der Karte (`#capture-bilder-ergebnis` mit
+ * `#capture-bilder-satz` und dem Link „In KLARWERK ergänzen"); ohne Verlust bleibt die Zeile
+ * verborgen und leer.
  */
 async function meldungImPanel(
   panel: KlaraPanel,
   bytes: Buffer,
 ): Promise<{ text: string; klasse: string }> {
   ruesteDokumentWegAus(bytes);
-  waehleGanzesDokument(panel);
-  panel.sendSelection();
+  panel.sendDocument();
   await panel.flush();
-  return { text: panel.text("#send-status"), klasse: panel.q("#send-status")?.className ?? "" };
+  return {
+    text: panel.text("#capture-bilder-satz"),
+    klasse: panel.q("#capture-bilder-ergebnis")?.className ?? "",
+  };
 }
 
 let panel: KlaraPanel | null = null;
@@ -346,15 +345,16 @@ describe("JOB 2923 · D1 · Station 1: Ist-Stand-Beweislauf an zwei echten Word-
 
     expect(
       text,
-      `In #send-status steht nichts von fehlenden Bildern. Gesehen: ${JSON.stringify(text)}`,
-    ).toContain(panel.t("sendImagesMissing", { n: String(fehlend) }));
-    expect(klasse, "Die Meldung ist kein Hinweis, sondern verschwindet im Erfolg").toContain(
-      "warn",
-    );
+      `In #capture-bilder-satz steht nichts von fehlenden Bildern. Gesehen: ${JSON.stringify(text)}`,
+    ).toBe(panel.t("sendImagesMissing", { n: String(fehlend) }));
+    // JOB 3057 K2: die Zeile ist SICHTBAR (nicht `hidden`) und steht neben der Ergebniszeile —
+    // der Verlust verschwindet nicht im Erfolg.
+    expect(klasse, "Der Bilder-Satz ist verborgen — der Verlust verschwindet im Erfolg").toBe("");
+    expect(panel.q("#capture-ergebnis")?.className).toBe("");
     // Der Panel-Weg ist wirklich über die docx-Route gegangen, nicht über den Auswahl-Weg.
     expect(panel.calls.some((c) => c.url.includes("/api/drafts/from-docx"))).toBe(true);
 
-    protokoll.push(`Panel-Meldung (EMF/WMF) · #send-status: ${JSON.stringify(text)}`);
+    protokoll.push(`Panel-Meldung (EMF/WMF) · #capture-bilder-satz: ${JSON.stringify(text)}`);
   });
 
   // ── B5 — DIE GEGENMUTATION zu B4. ────────────────────────────────────────────────────────────
@@ -365,16 +365,15 @@ describe("JOB 2923 · D1 · Station 1: Ist-Stand-Beweislauf an zwei echten Word-
       withOffice: true,
       routes: { "/api/drafts/from-docx": { status: 201, body: antwort } },
     });
-    const { text } = await meldungImPanel(panel, NUR_PNG);
+    const { text, klasse } = await meldungImPanel(panel, NUR_PNG);
 
-    expect(text, "Die Fehlmeldung erscheint auch ohne Verlust").not.toContain(
-      panel.t("sendImagesMissing", { n: "1" }),
-    );
-    expect(text, "Die Fehlmeldung erscheint auch ohne Verlust").not.toContain(
-      panel.t("sendImagesMissing", { n: "2" }),
-    );
+    // JOB 3057 K2: ohne Verlust gibt es KEINEN Bilder-Satz — die Zeile ist leer und verborgen,
+    // die Ergebniszeile steht trotzdem.
+    expect(text, "Die Fehlmeldung erscheint auch ohne Verlust").toBe("");
+    expect(klasse, "Die Bilder-Zeile ist ohne Verlust sichtbar").toBe("hidden");
+    expect(panel.q("#capture-ergebnis")?.className).toBe("");
 
-    protokoll.push(`Panel-Meldung (PNG) · #send-status: ${JSON.stringify(text)}`);
+    protokoll.push(`Panel-Meldung (PNG) · #capture-bilder-satz: ${JSON.stringify(text)}`);
   });
 
   // ── B6 — DAS PROTOKOLL, das die Vorführung braucht. ──────────────────────────────────────────

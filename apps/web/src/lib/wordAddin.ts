@@ -1296,8 +1296,16 @@ export interface WordDraftRequest {
 // Verlust, die Zähler tragen die ehrliche Meldung. Die Konstante WORD_ADDIN_BODY_BUDGET_BYTES
 // begrenzt jetzt den FINALEN Payload (Escaping zählt mit — ein anführungszeichenlastiges HTML
 // kann über dem Budget liegen, obwohl seine rohen Bytes darunter lägen).
-export function prepareWordDraftRequest(html: string, text: string): WordDraftRequest {
-  const title = deriveDraftTitleFromSelection(text);
+// JOB 3057 K2: die Zeile „Titel" der Erfassen-Flaeche ist editierbar. Ein von Hand gesetzter
+// Titel geht VOR der Ableitung aus der ersten Zeile — mit derselben Laengengrenze, damit der
+// Server denselben Vertrag sieht wie bisher. Leer oder nur Leerraum = wie nicht gesetzt.
+export function prepareWordDraftRequest(
+  html: string,
+  text: string,
+  titleOverride?: string,
+): WordDraftRequest {
+  const eigen = (titleOverride ?? "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
+  const title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
   // JOB 2703 D3: KEINE Kuerzung mehr im Client (Zwilling von taskpane.html, prepareWordDraftRequest).
   // Was der Client abschneidet, sieht der Server nie; gekuerzt wird an EINEM Ort — kanonisch am
   // Server (kernaussageAusKlartext in capture-routes.ts).

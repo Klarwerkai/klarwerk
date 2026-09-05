@@ -205,7 +205,16 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   "tests/design/zielbild-pruefunglaeuft.test.ts": "zusammengesetzt",
   "tests/design/zielbild-k1-kein-erklaertext.test.ts": "pfad",
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts": "pfad,fixture",
-  "tests/design/zielbild-wissen-erfassen.test.ts": "pfad",
+  // JOB 3057 K2 (05.09.2026): `zielbild-wissen-erfassen.test.ts` (Wertevergleich gegen das Zielbild
+  // vom 27.08.) ist GELOESCHT — Pedi hat jenes Zielbild durch Erfassen.dc.html ersetzt. An seine
+  // Stelle treten die Messgeraete darunter: die gemeinsame Chromium-Buehne (Pfadliteral,
+  // Playwright-Route wie JOB 3016/3017), die Wertemessung (nennt den Pfad) und das
+  // Funktionsinventar (Panel-Fixture). Der Textmesser `zielbild-k2-kein-erklaertext.test.ts` haengt
+  // NUR ueber die Buehne an der Datei (kein eigener Griff) und steht deshalb bewusst nicht hier.
+  // A2 hat die Dateien gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
+  "tests/design/k2-buehne.ts": "pfad",
+  "tests/design/k2-funktionsinventar.test.ts": "fixture",
+  "tests/design/zielbild-k2-erfassen.test.ts": "pfad",
   "tests/i18n/mega35-word-wortliste.test.ts": "pfad",
   // JOB 3033 D2 (03.09.2026): der Vertrag der KA4-Freischaltung. Sein Fall S4 liest
   // `taskpane.html` als Pfadliteral und haelt fest, dass dessen Satz „immer ohne KI-Modell" und

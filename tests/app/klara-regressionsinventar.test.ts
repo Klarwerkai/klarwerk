@@ -260,12 +260,21 @@ const INVENTAR: readonly string[] = [
   // K2 hat sie gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen; die Woerter aus
   // dem Kommentar zu streichen, um dem Sensor auszuweichen, waere die schlechtere Antwort.
   "tests/ask/job2694-leere-antwort-mit-stempel-gesichert-mounted.test.tsx",
-  // JOB 2620 D4: der Wertevergleich der Erfassungsflaeche (Tab 2 des Aufgabenfensters) gegen ihr
-  // Zielbild — an der ECHTEN taskpane.html, nicht an einer Kopie. Von der Achse `taskpane`
-  // gefunden. K2 hat die Datei gemeldet, das Inventar hat sie nicht stillschweigend aufgenommen.
-  "tests/design/zielbild-wissen-erfassen.test.ts",
+  // JOB 2620 D4 `zielbild-wissen-erfassen.test.ts` (Wertevergleich der Erfassungsflaeche gegen das
+  // Zielbild vom 27.08.) ist in JOB 3057 K2 (05.09.2026) GELOESCHT: Pedi hat jenes Zielbild durch
+  // Erfassen.dc.html ersetzt. An seine Stelle treten drei Dateien, alle von der Achse `taskpane`
+  // gefunden (sie nennen die Datei bzw. fuehren sie in Chromium/jsdom aus); „klara" steht nicht
+  // im Pfad, K5 bleibt bei 38. K2 hat sie gemeldet, das Inventar hat sie nicht still aufgenommen.
+  // Sachlich Klara-Regression: sie halten fest, wie die Erfassen-Flaeche des Aufgabenfensters
+  // aussieht (jeder Zielbildwert in Chromium), dass ausser Beschriftungen kein Satz dasteht, und
+  // dass keine heutige Funktion beim Umbau verloren ging (jede Zeile des Inventars ausgefuehrt).
+  "tests/design/k2-funktionsinventar.test.ts",
+  "tests/design/zielbild-k2-erfassen.test.ts",
+  "tests/design/zielbild-k2-kein-erklaertext.test.ts",
   // JOB 2620 D5: die Bilder-Aussage steht in Tab 2 des Aufgabenfensters genau einmal — gemessen am
   // ausgelieferten taskpane.html ueber die Panel-Fixture, je Sprache. Achse `taskpane`.
+  // JOB 3057 K2: der Kasten wohnt jetzt im „?"-Menue der Erfassen-Flaeche (gleiche Kennung);
+  // die Messung ist unveraendert gueltig.
   "tests/design/zielbild-wissen-erfassen-einmal.test.ts",
   // JOB 3056 K1 (04.09.2026): Pedis Mockups design/klara ERSETZEN die Zielbilder vom 27.08.
   // (SchlankesPanel, Main, PruefungLaeuft). Die fuenf alten Messungen sind GELOESCHT, nicht daneben

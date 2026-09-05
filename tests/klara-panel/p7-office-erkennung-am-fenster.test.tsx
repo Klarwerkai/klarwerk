@@ -52,9 +52,9 @@ const OFFICE_FRIST = (() => {
  * dieser Test misst, was ein MENSCH liest — nicht, ob eine Variable gesetzt ist. Alle uebrigen
  * Behauptungen dieser Datei kommen ohne Wortlaut aus.
  */
-const KEIN_OFFICE_DE =
-  "Diese Seite läuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den " +
-  "Anmelde-Status sehen — Senden ist hier deaktiviert.";
+// JOB 3057 K2 (§5.6): seit dem Umbau der Erfassen-Flaeche EIN Satz (daneben der EINE Knopf
+// „Neu laden", `#office-hint-btn`); Bedeutung unveraendert — kein Word, kein Senden.
+const KEIN_OFFICE_DE = "Word wurde nicht erkannt — Senden geht nur in Word.";
 
 /**
  * JOB 3018 (P7): der Grund, den der gesperrte Knopf WÄHREND der Erkennung trägt (DE). Ebenfalls
@@ -120,12 +120,17 @@ interface OfficeKontext {
 let officeHandler: Array<{ typ: string; fn: () => void }> = [];
 
 /**
- * Der Dokumentkontext, wie der Host ihn liefert. Die Markierung ist LEER und wird als Erfolg
- * gemeldet: dieser Pruefstand stellt kein markiertes Dokument und behauptet auch keines. Die
- * beiden Methoden stehen hier, weil das Panel sie anfasst, sobald `officeUsable()` wahr wird
- * (`taskpane.html:4769`, `:4336`) — fehlten sie, wuerde Fall C an der Attrappe scheitern statt am
- * Fenster.
+ * Der Dokumentkontext, wie der Host ihn liefert. Die beiden Methoden stehen hier, weil das Panel
+ * sie anfasst, sobald `officeUsable()` wahr wird — fehlten sie, wuerde Fall C an der Attrappe
+ * scheitern statt am Fenster.
+ *
+ * JOB 3057 K2: die Markierung ist NICHT mehr leer. Seit dem Umbau der Erfassen-Flaeche haengt der
+ * Senden-Knopf zusaetzlich an einer Markierung (§5.3: „gesperrt, solange keine Markierung");
+ * ohne sie waere „frei nach Erkennung" (Fall C/D) nicht mehr von „gesperrt ohne Anmeldung" zu
+ * unterscheiden. Ein markierter Absatz stellt die Lage her, die diese Datei misst: die
+ * OFFICE-Erkennung, nicht die Markierung. Sie behauptet damit kein bestimmtes Dokument.
  */
+const MARKIERUNG = "Ein markierter Absatz im Dokument.";
 function kontextBauen(): OfficeKontext {
   return {
     document: {
@@ -134,7 +139,7 @@ function kontextBauen(): OfficeKontext {
         officeHandler.push({ typ, fn });
       },
       getSelectedDataAsync(_typ: string, fn: (r: { status: string; value: string }) => void): void {
-        fn({ status: ASYNC_STATUS.Succeeded, value: "" });
+        fn({ status: ASYNC_STATUS.Succeeded, value: MARKIERUNG });
       },
     },
   };

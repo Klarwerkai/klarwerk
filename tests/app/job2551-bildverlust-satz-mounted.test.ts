@@ -44,6 +44,16 @@
 // GRENZE, ausdruecklich: Geprueft wird der GERENDERTE Satz, nicht seine Verstaendlichkeit. Ob ein
 // Mensch ihn als Word-Fehler liest, entscheidet Pedi — dieser Test haelt nur, dass Word benannt
 // ist, ein Weg dasteht und die Grammatik in beiden Zahlfaellen traegt.
+//
+// JOB 3057 K2 (Zielbild Erfassen.dc.html, §5.5) — UMGEZOGEN, NICHT ABGESCHALTET. Der Bilder-Satz
+// steht nach dem Senden nicht mehr im Statusfeld hinter `sendOk`, sondern als EINE Zeile in der
+// Karte: `#capture-bilder-satz` (der Satz) plus `#capture-bilder-link` („In KLARWERK ergaenzen",
+// der WEG — als Link auf den Entwurf, nicht mehr als Halbsatz im Text). Einzahl und Mehrzahl sind
+// jetzt getrennte Schluessel (`sendImagesMissingOne` / `sendImagesMissing`), die Wahl trifft
+// `bilderSatz(nichtHerausgegeben, zuGross)` im Panel — dieselbe Funktion, die beide Sendewege
+// (Auswahl und .docx) benutzen. Gemessen wird deshalb weiter am ECHTEN Renderweg: `bilderSatz()`
+// waehlt, `zeigeEntwurfsErgebnis()` rendert ueber `t()`, gelesen wird aus dem DOM. B1 verlangt von
+// Satz UND Link zusammen Ursache, Vollstaendigkeitszusage und Weg.
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import { resolve } from "node:path";
@@ -64,10 +74,17 @@ interface ElLike {
 interface DokLike {
   getElementById(id: string): ElLike | null;
 }
+interface BilderWahl {
+  key: string;
+  vars: Record<string, string>;
+}
 interface FensterLike {
   readonly document: DokLike;
   t(key: string, vars?: Record<string, string>): string;
-  showSendStatus(kind: string, text: string): void;
+  /** JOB 3057 K2: die Wahl des EINEN Bilder-Satzes (null = nichts fehlt). */
+  bilderSatz(nichtHerausgegeben: number, zuGross: number): BilderWahl | null;
+  /** JOB 3057 K2: rendert Ergebniszeile und — im Fall — Bilder-Satz samt Link in die Karte. */
+  zeigeEntwurfsErgebnis(url: string, bilder: BilderWahl | null): void;
   close(): void;
 }
 interface DomLike {
@@ -107,16 +124,23 @@ function antwortFuer(url: string): Antwort {
   return json({});
 }
 
+/** Was ein Mensch in der Karte liest: der Bilder-Satz und der Link daneben (der Weg). */
+interface Notiz {
+  satz: string;
+  link: string;
+}
+
 /**
  * Das Panel starten, die Sprache KLICKEN und die Bildverlustnotiz fuer die verlangten Zahlfaelle
- * ueber den echten Renderweg der Datei erzeugen: `t()` loest Schluessel und Platzhalter auf,
- * `showSendStatus()` schreibt in `#send-status`, und von dort wird gelesen.
+ * ueber den echten Renderweg der Datei erzeugen: `bilderSatz()` waehlt den Schluessel (Einzahl/
+ * Mehrzahl), `zeigeEntwurfsErgebnis()` rendert ueber `t()` in `#capture-bilder-satz` und den Link
+ * `#capture-bilder-link`, und von dort wird gelesen.
  *
- * Die Notiz steht dabei ALLEIN im Feld — ohne den Erfolgssatz `sendOk`, der ihr in
- * `taskpane.html` vorangestellt wird. Grund: gemessen in D2 (BEN `:10`), der Nachbarsatz trug
- * sonst Laenge und Sprachverschiedenheit mit und haette einen geleerten Schluessel verdeckt.
+ * Die Notiz steht dabei ALLEIN in ihrer Zeile — die Ergebniszeile `sendOk` ist ein eigenes
+ * Element. Grund: gemessen in D2 (BEN `:10`), der Nachbarsatz trug sonst Laenge und
+ * Sprachverschiedenheit mit und haette einen geleerten Schluessel verdeckt.
  */
-async function notizen(sprache: Sprache, zahlen: number[]): Promise<string[]> {
+async function notizen(sprache: Sprache, zahlen: number[]): Promise<Notiz[]> {
   const dom = new JSDOM(HTML, {
     runScripts: "dangerously",
     url: "https://app.klarwerk.ai/word-addin/taskpane.html",
@@ -131,18 +155,23 @@ async function notizen(sprache: Sprache, zahlen: number[]): Promise<string[]> {
     if (knopf === null) throw new Error(`Sprachknopf lang-${sprache} gibt es nicht`);
     knopf.click();
     await warte(20);
-    const feld = fenster.document.getElementById("send-status");
-    if (feld === null) throw new Error("#send-status gibt es nicht");
+    const feld = fenster.document.getElementById("capture-bilder-satz");
+    const link = fenster.document.getElementById("capture-bilder-link");
+    if (feld === null) throw new Error("#capture-bilder-satz gibt es nicht");
+    if (link === null) throw new Error("#capture-bilder-link gibt es nicht");
     return zahlen.map((n) => {
-      fenster.showSendStatus("warn", fenster.t("sendImagesMissing", { n: String(n) }));
-      return (feld.textContent ?? "").trim();
+      fenster.zeigeEntwurfsErgebnis(
+        "https://app.klarwerk.ai/capture/frontdoor?draft=d1",
+        fenster.bilderSatz(n, 0),
+      );
+      return { satz: (feld.textContent ?? "").trim(), link: (link.textContent ?? "").trim() };
     });
   } finally {
     fenster.close();
   }
 }
 
-async function notiz(sprache: Sprache, n: number): Promise<string> {
+async function notiz(sprache: Sprache, n: number): Promise<Notiz> {
   const [erste] = await notizen(sprache, [n]);
   if (erste === undefined) throw new Error(`keine Notiz fuer ${sprache}/${n}`);
   return erste;
@@ -183,38 +212,43 @@ const PLURALMARKER: Record<Sprache, { zahlform: RegExp; marker: RegExp }> = {
   },
 };
 
-/** Was der Satz je Sprache benennen muss — Ursache, Vollstaendigkeitszusage und Weg. */
+/**
+ * Was Satz und Link je Sprache benennen muessen — Ursache und Vollstaendigkeitszusage im SATZ,
+ * der Weg im LINK (JOB 3057 K2: „In KLARWERK ergaenzen" fuehrt auf den Entwurf).
+ */
 const ERWARTUNG: Record<Sprache, { ursache: RegExp; weg: RegExp; vollstaendig: RegExp }> = {
   de: {
     ursache: /\bWord hat\b/,
-    weg: /\bfüge\b.*\bEntwurf\b/i,
+    weg: /\bKLARWERK\b.*\bergänzen\b/i,
     vollstaendig: /\bText ist vollständig\b/,
   },
   en: {
     ursache: /\bWord did not\b/,
-    weg: /\badd\b.*\bdraft\b/i,
+    weg: /\badd\b.*\bKLARWERK\b/i,
     vollstaendig: /\btext is complete\b/,
   },
   nl: {
     ursache: /\bWord heeft\b/,
-    weg: /\bvoeg\b.*\bconcept\b/i,
+    weg: /\bKLARWERK\b.*\baanvullen\b/i,
     vollstaendig: /\btekst is volledig\b/,
   },
 };
 
-function pruefeSubstanz(satz: string, s: Sprache, wo: string): void {
+function pruefeSubstanz(notiz: Notiz, s: Sprache, wo: string): void {
   const e = ERWARTUNG[s];
+  const { satz, link } = notiz;
   // Faellt der Schluessel weg, gibt `t()` den SCHLUESSELNAMEN zurueck — der ist nicht leer und
   // haette eine reine Laengenpruefung bestanden. BEN `:16` verlangt genau diesen Fall.
-  expect(satz, `${s}/${wo}: im Feld steht der blanke Schluesselname statt einer Meldung`).not.toBe(
-    "sendImagesMissing",
-  );
-  expect(satz, `${s}/${wo}: es steht ueberhaupt nichts im Statusfeld`).not.toBe("");
+  expect(
+    satz,
+    `${s}/${wo}: im Feld steht der blanke Schluesselname statt einer Meldung`,
+  ).not.toMatch(/^sendImages/);
+  expect(satz, `${s}/${wo}: es steht ueberhaupt nichts in der Bilder-Zeile`).not.toBe("");
   expect(satz, `${s}/${wo}: der Satz benennt WORD nicht als Ursache`).toMatch(e.ursache);
   expect(satz, `${s}/${wo}: der Satz sagt nicht, dass der TEXT vollstaendig ist`).toMatch(
     e.vollstaendig,
   );
-  expect(satz, `${s}/${wo}: der Satz sagt dem Menschen keinen Weg`).toMatch(e.weg);
+  expect(link, `${s}/${wo}: der Link sagt dem Menschen keinen Weg`).toMatch(e.weg);
 }
 
 describe("JOB 2551 · der Bildverlust-Satz am laufenden Panel", () => {
@@ -223,14 +257,14 @@ describe("JOB 2551 · der Bildverlust-Satz am laufenden Panel", () => {
     // dabei trotzdem vollstaendig tragen: Ursache, Vollstaendigkeit, Weg — sonst waere „keine
     // Mehrzahl" auch mit einer leeren Meldung zu haben.
     for (const s of SPRACHEN) {
-      const satz = await notiz(s, 1);
-      pruefeSubstanz(satz, s, "n=1");
+      const n1 = await notiz(s, 1);
+      pruefeSubstanz(n1, s, "n=1");
       const p = PLURALMARKER[s];
-      expect(satz, `${s}: „1 + Mehrzahlwort" bei genau einem fehlenden Bild`).not.toMatch(
+      expect(n1.satz, `${s}: „1 + Mehrzahlwort" bei genau einem fehlenden Bild`).not.toMatch(
         p.zahlform,
       );
       expect(
-        satz,
+        n1.satz,
         `${s}: Mehrzahlwort oder Mehrzahlpronomen bei genau einem fehlenden Bild`,
       ).not.toMatch(p.marker);
     }
@@ -250,11 +284,44 @@ describe("JOB 2551 · der Bildverlust-Satz am laufenden Panel", () => {
     // Kalibrierung des Sprachwechsels. Ohne sie waeren B1/B2 auch dann gruen, wenn der Klick gar
     // nicht wirkt und dreimal derselbe deutsche Satz erschiene — `t()` faellt bei fehlendem
     // Schluessel ausdruecklich auf `STRINGS.de` zurueck.
-    const saetze = await Promise.all(SPRACHEN.map((s) => notiz(s, 2)));
+    const saetze = (await Promise.all(SPRACHEN.map((s) => notiz(s, 2)))).map((n) => n.satz);
     expect(
       new Set(saetze).size,
       `die drei Sprachen liefern nicht drei verschiedene Bildverlust-Saetze: ${JSON.stringify(saetze)}`,
     ).toBe(3);
+    // Und die Mehrzahl traegt die ZAHL — hier ist sie echt gezaehlt (JOB 2613 D1), keine stille Null.
+    for (const satz of saetze) {
+      expect(satz).toContain("2");
+    }
+  }, 30_000);
+
+  it("B3a · nichts fehlt → KEIN Satz: `bilderSatz(0, 0)` ist null, die Zeile bleibt leer", async () => {
+    // JOB 3057 K2 (§5.5): der Satz erscheint NUR im Fall. Ohne Verlust darf die Karte keinen
+    // Bilder-Satz zeigen — sonst waere die Ergebniszeile eine Dauerwarnung.
+    const dom = new JSDOM(HTML, {
+      runScripts: "dangerously",
+      url: "https://app.klarwerk.ai/word-addin/taskpane.html",
+      beforeParse(window) {
+        window.fetch = (u) => Promise.resolve(antwortFuer(String(u)));
+      },
+    });
+    const fenster = dom.window;
+    try {
+      await warte(300);
+      expect(fenster.bilderSatz(0, 0)).toBeNull();
+      fenster.zeigeEntwurfsErgebnis("https://app.klarwerk.ai/capture/frontdoor?draft=d1", null);
+      const feld = fenster.document.getElementById("capture-bilder-satz");
+      expect((feld?.textContent ?? "").trim()).toBe("");
+      // Beide Verlustarten zugleich: EIN Satz mit beiden Zahlen, nicht zwei Saetze.
+      const beide = fenster.bilderSatz(2, 1);
+      expect(beide?.key).toBe("sendImagesBoth");
+      expect(beide?.vars).toEqual({ n: "3", a: "2", b: "1" });
+      // Nur zu grosse Bilder: eigener Satz, Einzahl getrennt.
+      expect(fenster.bilderSatz(0, 1)?.key).toBe("sendImagesDroppedOne");
+      expect(fenster.bilderSatz(0, 3)?.key).toBe("sendImagesDropped");
+    } finally {
+      fenster.close();
+    }
   }, 30_000);
 
   it("B4 · Bildverlust- und Rueckfall-Satz bleiben getrennt", async () => {

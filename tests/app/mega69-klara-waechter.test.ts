@@ -779,7 +779,9 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     Karte traegt id `capture-karte` und den Titel `captureCardTitle`, darin der gemessene
     //     Bilder-Kasten `capture-bilder-hinweis` (warn-Token inline) und unter dem Senden-Knopf der
     //     Pruefungs-Hinweis `send-review-note`; Reiterleiste 13px / 11px 0 9px / weisser Grund.
-    //     Gemessen in tests/design/zielbild-wissen-erfassen.test.ts (25 Werte, an DIESER Datei).
+    //     Gemessen damals in `zielbild-wissen-erfassen.test.ts` (25 Werte, an DIESER Datei) — die
+    //     Datei ist mit JOB 3057 K2 geloescht (Zielbild 27.08. durch Erfassen.dc.html ersetzt);
+    //     die Flaeche misst seither tests/design/zielbild-k2-erfassen.test.ts.
     //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: Umfangs-Wahl, `send-btn`, `send-status`, `open-link`,
     //     der .docx-Sendeweg (Station 1, JOB 2613) und alle ids/Wege unveraendert (job2613-*,
     //     word-addin*, job2621 gruen); vier neue i18n-Schluessel je dreisprachig (mega35 gruen);
@@ -1232,7 +1234,75 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     `tests/app/mega74-klara-bilder.test.ts`, `tests/i18n/mega35-word-wortliste.test.ts`,
     //     `tests/design/k1-funktionsinventar.test.ts` — der Pin unten ist der frisch aus der
     //     zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
-    const PIN = "9b103cd7a6b07ad2f05f50c8b1744c74dd9de7a1c0581177a77d4eb6b4b13096";
+    // ============================================================================================
+    // JOB 3057 KONFLIKTRUNDE 6 (05.09.2026) — PIN NEU GERECHNET NACH REBASE AUF DIE OBIGE
+    // JOB-3056-KETTE (VORHERHASH `9b103cd7a6b07ad2f05f50c8b1744c74dd9de7a1c0581177a77d4eb6b4b13096`).
+    // ============================================================================================
+    // JOB 3057 K2 (05.09.2026) — PIN BEWUSST AKTUALISIERT (f8dc1c93… -> 903bce9a…), Auslieferungsfolgen:
+    // ============================================================================================
+    //   · WAS SICH AENDERT: die Flaeche „Erfassen" (#section-capture) nach Zielbild Erfassen.dc.html
+    //     (Pedi, 04.09.): Markup, Stilregeln, Woerterbuch und Skript. NEU im Markup: die
+    //     Markierungskarte (`#capture-kicker`, `#capture-absaetze`, `#capture-leer`, die Ergebniszeile
+    //     `#capture-ergebnis` mit `#open-link`, der Bilder-Satz `#capture-bilder-ergebnis`/`#capture-
+    //     bilder-satz`/`#capture-bilder-link`), die Zeile „Titel" (`#capture-felder`, `#capture-titel`),
+    //     `#capture-aktion` um den EINEN `#send-btn`, die Knoepfe `#office-hint-btn` und
+    //     `#send-status-btn`, der Textlink `#capture-dokument-link`, das „?"-Menue (`#capture-mehr-btn`,
+    //     `#capture-mehr` mit `#capture-hinweis-umfang`, `#capture-bilder-hinweis` (umgezogen),
+    //     `#capture-hinweis-pruefung`, `#capture-hinweis-seiten`). ENTFERNT (ersetzt, nicht daneben):
+    //     die Radiogruppe `#scope-selection`/`#scope-document`/`#scope-pages`(-label), `#scope-pages-
+    //     hint`, `#send-review-note`, `#open-block`. Woerterbuch: neue Schluessel `capture*`,
+    //     `sendOffline`, `sendImagesMissingOne`, `sendImagesDroppedOne`, `sendImagesBoth`; entfernt
+    //     `scopeSelection`, `scopeDocument`, `scopePages`, `scopePagesOff`; auf EINEN Satz gekuerzt
+    //     `noOffice`, `sendError`, `sendTooLarge`, `sendForbidden`, `sendRateLimited*`, `sendImages*`,
+    //     `sendOverBudget`, `sendPlainFallback`; `sendOk` heisst „Entwurf gesendet", `openLink` „Oeffnen".
+    //     Skript: `sendeEntwurf(scope)` (sendSelection/sendDocument), `captureMarkierungLesen`,
+    //     `captureOfficeAnschliessen`, `renderCapture`, `bilderSatz`/`bilderBilanz`,
+    //     `zeigeEntwurfsErgebnis`, `hideSendStatus`, `sendeFehlerText`; `prepareWordDraftRequest`
+    //     bekommt einen dritten Parameter (Titel), Zwilling in wordAddin.ts, Aequivalenz gepinnt.
+    //   · KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein neuer Fremd-Ursprung, KEINE
+    //     geaenderte CSP, KEIN neues Abrufziel: die Menge der `fetch(...)`-Ziele ist unveraendert
+    //     (`/api/drafts`, `/api/drafts/from-docx`, Anmelde-/Statuswege wie bisher). Die Nutzlast von
+    //     `/api/drafts` hat dieselbe Form (title, statement, bodyHtml, origin) — `title` kann jetzt
+    //     der von Hand gesetzte Titel sein; `/api/drafts/from-docx` bekommt optional `title`, ein
+    //     Feld, das die Route seit JOB 2613 annimmt (DocxDraftRequest.title, capture-routes.ts).
+    //   · MEHR OFFICE-LESEN, KEIN NETZ: die Karte liest die Markierung (Text-Zugriff) bei Office-
+    //     Bereitschaft, bei jedem DocumentSelectionChanged und beim Reiterwechsel; das ist ein
+    //     Lesen im Fenster, kein Abruf. „Neu laden" ist `window.location.reload()`.
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: Entwuerfe werden nie automatisch validiert (der
+    //     Pruefhinweis steht im „?"-Menue), die Bilder-Wahrheit bleibt (Vorab-Kasten im Menue, das
+    //     Ergebnis als EIN Satz aus gezaehlten Zahlen, Word als Ursache benannt — JOB 2551 misst
+    //     weiter), „gesendet" nur nach 201, nie „Entwurf" ohne Serverbestaetigung.
+    //   · Gemessen: tests/design/zielbild-k2-erfassen.test.ts (Chromium, 360 px, jeder Zielbildwert
+    //     und alle Zustaende), zielbild-k2-kein-erklaertext.test.ts (Textmesser),
+    //     k2-funktionsinventar.test.ts (jede heutige Funktion an ihrem neuen Ort ausgefuehrt).
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
+    //     naechsten Oeffnen frisch. Bis der Office-Cache nachzieht, steht die alte Flaeche.
+    //   · RUNDE 3 (BEN, 903bce9a… -> d8725b6d…): Sendebestaetigungen sind an ihren SENDELAUF und an
+    //     die beim Senden gezeigte Markierung gebunden (`captureSendeLauf`, `sendeLaufAktuell`,
+    //     `zeigeEntwurfsErgebnis(url, bilder, gesendet)`). Ein Ruecklauf eines ueberholten Laufs
+    //     veraendert weder Karte noch Status noch Link; hat die Markierung waehrend des Sendens
+    //     gewechselt, ersetzt die Bestaetigung die neue Markierung NICHT, sondern steht als EIN Satz
+    //     + Knopf „Oeffnen" im Statusfeld (`showSendStatus(..., "open", url)`, `window.open` mit
+    //     noopener — dieselbe Navigation wie der Link der Ergebniszeile). KEIN neuer Schluessel,
+    //     KEIN neues Element, KEIN neues Abrufziel, kein Manifest, keine CSP, keine Nutzlast.
+    //     Gemessen: zielbild-k2-erfassen.test.ts R1/R2 (gehaltene Antwort, Markierungswechsel,
+    //     vertauschte Reihenfolge, ueberholter Fehler).
+    //   · Beide Kommentarketten (JOB 3056 K1 oben UND JOB 3057 K2/Runde 3 hier) stehen unveraendert
+    //     nebeneinander in der zusammengefuehrten Datei — MIT EINER KORREKTUR: `#section-capture`
+    //     trug noch `margin: 0 -14px` (die Kompensation der 14px Koerperpolsterung von VOR JOB
+    //     3056); K1s Kopf steht jetzt direkt am Fensterrand (`body { padding: 0 }`), die
+    //     Kompensation zog die Karte deshalb 14px zu weit nach links/rechts (16px Sollmass maass
+    //     nur noch 2px, zielbild-k2-erfassen.test.ts Z.28/Z.49 rot). Die Regel steht jetzt auf
+    //     `margin: 0`, wie `#section-ask` es bereits ohne Kompensation haelt. Der Pin unten ist der
+    //     frisch aus dieser Korrektur gerechnete Hash, kein uebernommener Wert einer Seite.
+    //   · RUNDE 4 (Tor auf dem integrierten Stand, 9607c0b6… -> a5e8fcec…): NUR EINE STILGRUPPE IST
+    //     ENTFERNT — die zweite `.tabs`-Regelgruppe (JOB 2620 D4: weisse Leiste, 13px, 11px 0 9px,
+    //     Unterstreichung), die im Stilblock HINTER K1s Segment-Umschalter stand und ihn in der
+    //     Kaskade ueberschrieb (zielbild-k1-ruhe K4/K5/K6: Grund #FFFFFF statt #EEEAE3, Polster
+    //     11px 0 9px statt 5px 12px). Der Umschalter „Fragen | Erfassen" ist K1 (JOB 3056, Ruhe.dc.html
+    //     Z.20-23) und gehoert nicht zur Erfassen-Flaeche. Kein Markup, kein Skript, kein Schluessel,
+    //     kein Abrufziel geaendert; genau eine `.tabs`-Gruppe bleibt (oben, K1). KEIN Sideload noetig.
+    const PIN = "a5e8fcec7f194e6372aced2f3339cc155ece2072a32615faa455606517f637ba";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

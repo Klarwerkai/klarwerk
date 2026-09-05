@@ -142,6 +142,15 @@ describe("WP-KLARA-2: Word-HTML-Aufbereitung (DOM-freies Modul)", () => {
     expect((JSON.parse(noHtml.payload) as Record<string, string>).bodyHtml).toBe(
       "<p>Nur Text</p><p>Zweite Zeile</p>",
     );
+    // JOB 3057 K2: ein von Hand gesetzter Titel geht vor der Ableitung — getrimmt und auf dieselbe
+    // Laenge gekappt; nur Leerraum zaehlt als nicht gesetzt.
+    const eigen = prepareWordDraftRequest(WORD_DOC, "Titel\nText", "  Profile in Spritzzonen  ");
+    expect(eigen.title).toBe("Profile in Spritzzonen");
+    expect((JSON.parse(eigen.payload) as Record<string, string>).title).toBe(
+      "Profile in Spritzzonen",
+    );
+    expect(prepareWordDraftRequest(WORD_DOC, "Titel\nText", "   ").title).toBe("Titel");
+    expect(prepareWordDraftRequest(WORD_DOC, "Titel\nText", "x".repeat(80)).title).toHaveLength(60);
   });
 
   it("Budget-Grenzfall EXAKT am finalen Payload: knapp drunter bleibt HTML, drueber ehrlicher Klartext-Fallback", () => {
@@ -387,6 +396,7 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       prepareWordDraftRequest: (
         html: string,
         text: string,
+        titleOverride?: string,
       ) => {
         payload: string;
         title: string;
@@ -492,6 +502,14 @@ describe("WP-KLARA-1: Inline-Kopie im Taskpane ist VERHALTENSGLEICH zum Modul", 
       expect(inline.prepareWordDraftRequest(html, text), `prepare:${html.slice(0, 24)}`).toEqual(
         prepareWordDraftRequest(html, text),
       );
+      // JOB 3057 K2: der dritte Parameter (Titel aus der Zeile „Titel") ist in beiden Fassungen
+      // gleich — gesetzt, nur Leerraum (= nicht gesetzt) und ueberlang (gekappt).
+      for (const titel of ["  Eigener Titel  ", "   ", "T".repeat(80)]) {
+        expect(
+          inline.prepareWordDraftRequest(html, text, titel),
+          `prepare+titel:${html.slice(0, 24)}/${titel.slice(0, 8)}`,
+        ).toEqual(prepareWordDraftRequest(html, text, titel));
+      }
     }
     // RT-KLARA1 + K2/K3: auch Fehler-Klassifikation, Quellen-Status und Deep-Link sind
     // verhaltensgleich gespiegelt.
@@ -649,20 +667,38 @@ describe("WP-KLARA-1: Manifest + Taskpane + Hosting", () => {
     expect(html).toContain("clearTimeout(officeTimer)");
     expect(html).toContain("markOfficeChecked(false)");
     // Ehrlicher Hinweis in allen drei Sprachen (eigener noOffice-Text je Woerterbuch).
+    // JOB 3057 K2 (§5.6): EIN Satz je Sprache — daneben der EINE Knopf „Neu laden".
     expect((html.match(/noOffice: "/g) ?? []).length).toBe(3);
-    expect(html).toContain("Diese Seite läuft als Klara-Panel in Microsoft Word.");
-    expect(html).toContain("This page runs as the Klara panel inside Microsoft Word.");
-    expect(html).toContain("Deze pagina draait als Klara-paneel in Microsoft Word.");
-    // Der Senden-Knopf haengt an Anmeldung UND Office-Bereitschaft; deaktiviert traegt er den Grund.
-    expect(html).toContain("sendBtn.disabled = !(signedIn && officeUsable())");
+    expect(html).toContain("Word wurde nicht erkannt — Senden geht nur in Word.");
+    expect(html).toContain("Word was not detected — sending only works in Word.");
+    expect(html).toContain("Word is niet herkend — versturen werkt alleen in Word.");
+    expect((html.match(/captureReload: "/g) ?? []).length).toBe(3);
+    // Der Senden-Knopf haengt an Anmeldung, Office-Bereitschaft UND einer Markierung (JOB 3057 K2
+    // §5.3); deaktiviert traegt er den Grund, solange es einen Office-Grund gibt.
+    expect(html).toContain(
+      "sendBtn.disabled = !(signedIn && officeUsable() && captureMarkierung.length > 0)",
+    );
     expect(html).toContain('sendBtn.title = t("noOffice")');
-    // Defense-in-Depth: sendSelection greift NIE ohne bereites Office in die Word-API.
+    // Defense-in-Depth: der Sendeweg (JOB 3057: `sendeEntwurf`, beide Umfaenge) greift NIE ohne
+    // bereites Office in die Word-API — der Guard steht am Anfang der Funktion, der Word-Zugriff
+    // (readSelection) erst dahinter.
+    const sendeweg = html.indexOf("function sendeEntwurf(scope)");
     const guard = html.indexOf(
       'if (!officeUsable()) {\n        showSendStatus("warn", t("noOffice"));',
+      sendeweg,
     );
-    const wordApi = html.indexOf("Office.context.document.getSelectedDataAsync");
-    expect(guard).toBeGreaterThan(0);
+    const wordApi = html.indexOf("Office.context.document.getSelectedDataAsync", sendeweg);
+    expect(sendeweg).toBeGreaterThan(0);
+    expect(guard).toBeGreaterThan(sendeweg);
     expect(wordApi).toBeGreaterThan(guard);
+    // JOB 3057 K2: auch die Markierungskarte liest nur mit bereitem Office (eigener Guard vor
+    // ihrem Word-Zugriff).
+    const karte = html.indexOf("function captureMarkierungLesen()");
+    const karteGuard = html.indexOf('if (!officeUsable()) { setzen(""); return; }', karte);
+    const karteApi = html.indexOf("Office.context.document.getSelectedDataAsync", karte);
+    expect(karte).toBeGreaterThan(0);
+    expect(karteGuard).toBeGreaterThan(karte);
+    expect(karteApi).toBeGreaterThan(karteGuard);
     // Der Session-Check laeuft auch ohne Office (Anmelde-Status bleibt im Browser sichtbar).
     expect(html).toContain("checkSession();");
   });
@@ -752,7 +788,8 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
 
   it("Befund 2: die Auswahl reist als HTML (Office.CoercionType.Html) — der Server-Sanitizer bleibt autoritativ", () => {
     expect(html).toContain("Office.CoercionType.Html");
-    expect(html).toContain("prepareWordDraftRequest(html, text)");
+    // JOB 3057 K2: der dritte Parameter ist der Titel aus der Zeile „Titel" der Erfassen-Flaeche.
+    expect(html).toContain("prepareWordDraftRequest(html, text, titelWunsch)");
     // Klartext bleibt erhalten (statement + Fallback) — WP-SHIP8-FINAL: aus dem EINEN
     // HTML-Snapshot abgeleitet; der Text-Aufruf existiert nur noch als Fallback aelterer Hosts.
     expect(html).toContain("Office.CoercionType.Text");
@@ -782,25 +819,27 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     );
   });
 
-  it("Befund 3: Umfangs-Wahl — Auswahl (Default) / ganzes Dokument via Word.run; Seiten ehrlich deaktiviert", () => {
-    expect(html).toContain('id="scope-selection" checked');
-    expect(html).toContain('id="scope-document"');
+  it("Befund 3: Umfang — der Knopf sendet die Markierung, der Textlink das ganze Dokument via Word.run; Seiten ehrlich nur als Satz", () => {
+    // JOB 3057 K2 (Zielbild Erfassen.dc.html): die Radiogruppe ist ERSETZT — die Markierung ist
+    // die Karte, „Ganzes Dokument uebernehmen" ein Textlink, der den Dokument-Weg direkt ausloest.
+    expect(html).not.toContain('id="scope-selection"');
+    expect(html).not.toContain('id="scope-document"');
+    expect(html).not.toContain('id="scope-pages"');
+    expect(html).toContain('id="capture-dokument-link"');
+    expect(html).toContain('function sendDocument() { sendeEntwurf("document"); }');
     expect(html).toContain("Word.run(function (context)");
     expect(html).toContain("body.getHtml()");
-    // Seiten-Option: sichtbar, aber EHRLICH deaktiviert (kein verlässliches Seiten-API im
-    // Taskpane) — mit Tooltip-Erklärung und Ausweg-Hinweis in allen drei Sprachen.
-    expect(html).toContain('id="scope-pages" disabled');
-    expect(html).toContain(
-      'document.getElementById("scope-pages-label").title = t("scopePagesOff")',
-    );
+    // Seiten: kein verlaessliches Seiten-API im Taskpane — der EINE Satz dazu steht im „?"-Menue
+    // (§5a), in allen drei Sprachen; die deaktivierte Option und ihr Tooltip sind entfallen.
+    expect(html).toContain('id="capture-hinweis-seiten" data-t="scopePagesHint"');
+    expect(html.split('scopePagesHint: "').length - 1).toBe(3);
     for (const key of [
       'scopeSelection: "',
       'scopeDocument: "',
       'scopePages: "',
       'scopePagesOff: "',
-      'scopePagesHint: "',
     ]) {
-      expect(html.split(key).length - 1, key).toBe(3);
+      expect(html.split(key).length - 1, key).toBe(0);
     }
     // KEINE wacklige Näherung: kein Seiten-API-Aufruf im Quelltext.
     expect(html).not.toContain("getPageRange");
@@ -932,20 +971,31 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     expect(open.text("#kw-titel").length).toBeGreaterThan(0);
   });
 
-  it("201 → Create-1: genau ein POST, Erfolgstext mit Titel, Entwurf-Link sichtbar", async () => {
+  // JOB 3057 K2 (Zielbild Erfassen.dc.html, §5.3): der Erfolg ist EINE Zeile in der Karte
+  // (`#capture-ergebnis`: sendOk + Link „Oeffnen"), der Titel reist im Payload; das Statusfeld ist
+  // danach leer. Bis JOB 3057 stand „Entwurf angelegt: <Titel>" im Statusfeld und der Link in
+  // `#open-block` — beides ist ERSETZT, nicht daneben belassen.
+  it("201 → Create-1: genau ein POST mit dem Titel im Payload, Ergebniszeile mit Entwurf-Link sichtbar, Statusfeld leer", async () => {
     const open = openPanel(reply(201, { id: "draft-42" }));
     await open.flush();
     open.sendSelection();
     await open.flush();
     expect(draftPosts(open)).toBe(1);
-    expect(open.q("#send-status")?.className).toBe("status ok");
-    expect(open.text("#send-status")).toContain("Ventil entlasten vor der Wartung");
-    // Der Entwurf ist wirklich da → der Deep-Link geht auf.
-    expect(open.q("#open-block")?.className).toBe("");
+    const post = open.calls.find((c) => c.url === "/api/drafts" && c.method === "POST");
+    expect((JSON.parse(post?.body ?? "{}") as { title?: string }).title).toBe(
+      "Ventil entlasten vor der Wartung",
+    );
+    // Der Entwurf ist wirklich da → die Ergebniszeile steht, der Deep-Link zeigt auf ihn.
+    expect(open.q("#capture-ergebnis")?.className).toBe("");
+    expect(open.text("#capture-ergebnis")).toContain(open.t("sendOk"));
     expect(open.q("#open-link")?.href).toContain("/capture/frontdoor?draft=draft-42");
+    expect(open.q("#send-status")?.className).toBe("status hidden");
+    expect(open.text("#send-status")).toBe("");
+    // Kein Bilder-Satz ohne Befund: die Markierung traegt keine Bilder.
+    expect(open.q("#capture-bilder-ergebnis")?.className).toBe("hidden");
   });
 
-  it("413 → Create-0: genau ein POST, eigener Zu-gross-Zustand, KEIN Link und KEIN Erfolgstext", async () => {
+  it("413 → Create-0: genau ein POST, eigener Zu-gross-Satz PLUS Knopf „Erneut senden“, KEINE Ergebniszeile", async () => {
     const open = openPanel(reply(413, { error: "FST_ERR_CTP_BODY_TOO_LARGE" }));
     await open.flush();
     open.sendSelection();
@@ -953,18 +1003,25 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     expect(draftPosts(open)).toBe(1);
     expect(open.q("#send-status")?.className).toBe("status warn");
     expect(open.text("#send-status")).toBe(open.t("sendTooLarge"));
+    // JOB 3057 K2 (§5.6): EIN Satz, EIN Knopf — und der Knopf sendet denselben Umfang erneut.
+    expect(open.q("#send-status-btn")?.className).toBe("ghost capture-knopf");
+    expect(open.text("#send-status-btn")).toBe(open.t("captureRetry"));
+    open.q("#send-status-btn")?.click();
+    await open.flush();
+    expect(draftPosts(open)).toBe(2);
     // Die entscheidende Zusage: nichts behauptet, nichts verlinkt.
-    expect(open.q("#open-block")?.className).toBe("hidden");
-    expect(open.text("#send-status")).not.toContain("Entwurf angelegt:");
+    expect(open.q("#capture-ergebnis")?.className).toBe("hidden");
+    expect(open.text("#send-status")).not.toContain(open.t("sendOk"));
   });
 
-  it("403 → fehlendes Recht statt Anmeldeaufforderung; 401 → Anmeldeweg", async () => {
+  it("403 → fehlendes Recht statt Anmeldeaufforderung; 401 → Anmeldeweg mit Knopf „Anmelden“", async () => {
     const forbidden = openPanel(reply(403, { error: "FORBIDDEN" }));
     await forbidden.flush();
     forbidden.sendSelection();
     await forbidden.flush();
     expect(forbidden.text("#send-status")).toBe(forbidden.t("sendForbidden"));
-    expect(forbidden.q("#open-block")?.className).toBe("hidden");
+    expect(forbidden.text("#send-status-btn")).toBe(forbidden.t("captureRetry"));
+    expect(forbidden.q("#capture-ergebnis")?.className).toBe("hidden");
     forbidden.restore();
     panel = null;
 
@@ -973,6 +1030,8 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     unauth.sendSelection();
     await unauth.flush();
     expect(unauth.text("#send-status")).toBe(unauth.t("sendAuth"));
+    expect(unauth.q("#send-status-btn")?.className).toBe("ghost capture-knopf");
+    expect(unauth.text("#send-status-btn")).toBe(unauth.t("captureLogin"));
   });
 
   it("429 → Wartezeit aus Retry-After sichtbar; ohne Header ehrlich ohne Zahl", async () => {
@@ -982,7 +1041,7 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     await withHeader.flush();
     expect(withHeader.text("#send-status")).toBe(withHeader.t("sendRateLimited", { n: "90" }));
     expect(withHeader.text("#send-status")).toContain("90");
-    expect(withHeader.q("#open-block")?.className).toBe("hidden");
+    expect(withHeader.q("#capture-ergebnis")?.className).toBe("hidden");
     withHeader.restore();
     panel = null;
 
@@ -1015,7 +1074,7 @@ describe("AUFTRAG-JOB507-D4: sichtbare Panelzustaende (413/201, Retry-After, DE/
     }
     // Drei Sprachen, drei verschiedene Saetze — kein stiller Rueckfall auf Deutsch.
     expect(new Set(gesehen).size).toBe(3);
-    expect(open.q("#open-block")?.className).toBe("hidden");
+    expect(open.q("#capture-ergebnis")?.className).toBe("hidden");
   });
 
   it("Sprachumschaltung setzt auch das lang-Attribut und die Bereichs-Umschaltung bleibt reine Sichtbarkeit", async () => {

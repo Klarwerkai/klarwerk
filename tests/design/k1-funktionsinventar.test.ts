@@ -533,8 +533,12 @@ const INVENTAR: readonly Zeile[] = [
     funktion: "„Abmelden“ (POST /api/auth/logout)",
   },
   {
-    heute: "#section-capture (Erfassen, unberuehrt — JOB 3057)",
-    neu: "#section-capture #capture-karte, #scope-selection, #scope-document, #send-btn, #send-review-note",
+    // KONFLIKTRUNDE 6: JOB 3057 K2 hat #section-capture inzwischen nach dem Mockup „Erfassen"
+    // umgebaut (die Radiogruppe #scope-selection/#scope-document und #send-review-note sind
+    // ersetzt, nicht daneben belassen — s. tests/design/k2-funktionsinventar.test.ts) — die Zeile
+    // nennt die tatsaechlich sichtbaren Orte statt der abgeloesten Ids.
+    heute: "#section-capture (Erfassen, JOB 3057 K2)",
+    neu: "#section-capture #capture-karte, #capture-titel, #send-btn, #capture-mehr-btn",
     weg: "erfassen",
     sichtbar: true,
     funktion: "Erfassen-Flaeche ueber den Umschalter",

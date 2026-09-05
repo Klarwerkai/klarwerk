@@ -333,29 +333,65 @@
     /* Der Rueckweg zum Entwurf nach dem Senden (kein Zielbild-Element, bleibt erhalten). */
     #ask-gap-open-block { margin: 12px 0 0; padding: 0 32px; text-align: center; font-size: 12px; }
     /* KW-D2-LUECKE (Stil) — Ende */
-    /* JOB 2620 · WissenErfassen: der GEMESSENE Bilder-Hinweis als Vorlagen-Kasten
-       (WissenErfassen.dc.html Z.31-34): warn-Flaeche, Info-Icon, 12px/1.5, Link fett im selben
-       Ton. Farben sind die bestehenden AA-belegten Trust-warn-Token und stehen INLINE am Markup
-       (Token-Werte, keine zweite Wahrheit): der mega43-Sammler misst Inline-Stile als Farbquelle,
-       waehrend eine id-Regel auf einer `.hidden`-Flaeche bei ihm als tote Regel gilt. */
-    #capture-bilder-hinweis {
-      display: flex;
-      align-items: flex-start;
-      gap: 8px;
-      padding: 9px 10px;
-      border-radius: 8px;
-      font-size: 12px;
-      line-height: 1.5;
-      margin: 8px 0 4px;
-    }
-    /* JOB 2620 D2 (Wertevergleich): Werte aus WissenErfassen.dc.html Z.28-29 und Z.52 uebernommen,
-       gemessen in tests/design/zielbild-wissen-erfassen.test.ts. JOB 3056: der Erfassen-Abschnitt
-       traegt seine Seitenraender selbst (JOB 3057 baut ihn nach dem Mockup „Erfassen" um). */
-    #section-capture { padding: 0 14px 14px; }
+    /* JOB 3057 Runde 4: die zweite `.tabs`-Regelgruppe (JOB 2620 D4, weisse Leiste 13px / 11px 0
+       9px aus WissenErfassen.dc.html) ist ENTFERNT — der Umschalter „Fragen | Erfassen" ist seit
+       K1 (JOB 3056, Ruhe.dc.html Z.20-23) das Segment oben im Stilblock; eine spaetere Regel
+       ueberschrieb es in der Kaskade (zielbild-k1-ruhe K4-K6). Eine Wahrheit, oben. */
+    /* ============================================================================================
+       JOB 3057 K2 — „ERFASSEN" NACH ZIELBILD Erfassen.dc.html (Pedi, 04.09.), Z.28-52, in Chromium
+       gemessen: tests/design/zielbild-k2-erfassen.test.ts. Werte uebernommen, nicht erfunden; die
+       Farben sind die Werkbank-Token (Z.28/35 #FFFFFF/#E9E5DE = --surface/--hairline, Z.29/37/52
+       #525B6B = --muted, Z.30/36 #1A2233 = --text ueber Vererbung, Z.49 #C2500A = --brand-deep).
+       Die Seitenraender heben die 14px Koerperpolsterung auf, damit Z.28/34/48/52 ihre 16px zum
+       Fensterrand messen (Bauform von JOB 3004/3046). Die Absaetze der Markierung (Z.30/31)
+       entstehen zur Laufzeit und tragen BEWUSST keine Farbregel — sie erben die Tinte des Rumpfs.
+       Aus dem SICHTFELD ersetzt (nicht daneben belassen): Radiogruppe, Bilder-Hinweisband, Pruef-
+       und Seitenhinweis; ihre Funktionen wohnen im „?"-Menue unten (Auftrag §5a: kein Verlust,
+       benannter Ort) — jede Zeile misst tests/design/k2-funktionsinventar.test.ts.
+       KONFLIKTRUNDE 6: die -14px-Kompensation war fuer die 14px Koerperpolsterung vor JOB 3056
+       gebaut; K1s Kopf steht jetzt direkt am Fensterrand (body padding: 0, s.o.) — ohne Polsterung
+       zum Aufheben bleibt die Karte einfach randlos (margin: 0), damit ihre eigenen 16px wieder am
+       Fensterrand ankommen. */
+    #section-capture { margin: 0; }
     #section-capture.hidden { display: none; }
-    #capture-karte { border-radius: 12px; padding: 16px 14px; }
-    #capture-karte h2 { font-size: 13.5px; font-weight: 650; }
-    #capture-karte #send-btn { border-radius: 10px; font-size: 14px; width: 100%; padding: 12px 0; }
+    /* Z.28: die Markierungskarte. */
+    #capture-karte { margin: 10px 16px 0; padding: 16px; border-radius: 12px; display: flex; flex-direction: column; gap: 10px; }
+    /* Z.29: der Kicker „MARKIERUNG · n ABSAETZE". */
+    #capture-kicker { font-size: 11px; letter-spacing: 0.4px; color: var(--muted); }
+    /* Z.30/31: die Absaetze — Kinder des Kartenrasters (gap 10px), Farbe geerbt (s. o.). */
+    #capture-absaetze { display: contents; }
+    .capture-absatz { margin: 0; font-size: 15px; line-height: 1.55; }
+    /* Ohne Markierung: der EINE Satz (Auftrag §5.1, 15px). Der dortige Farbwert #9AA2B1 ist kein
+       Werkbank-Token (mega43) — Tinte-2 (--muted) statt einer dritten Tinte; als OFFENER Wert im
+       Messtest gefuehrt. */
+    #capture-leer { margin: 0; font-size: 15px; line-height: 1.55; color: var(--muted); }
+    /* Erfolg: die Karte wird EINE Zeile mit Textlink (§5.3); der Bilder-Satz nur im Fall (§5.5). */
+    #capture-ergebnis, #capture-bilder-ergebnis { margin: 0; font-size: 15px; line-height: 1.55; }
+    #capture-ergebnis a, #capture-bilder-ergebnis a { margin-left: 8px; white-space: nowrap; }
+    /* Z.34-38: die Zeile „Titel" — Beschriftung links, Wert rechts, editierbar. */
+    #capture-felder { margin: 14px 16px 0; display: flex; flex-direction: column; gap: 8px; }
+    .capture-zeile { display: flex; align-items: center; justify-content: space-between; padding: 12px 14px; background: var(--surface); border: 1px solid var(--hairline); border-radius: 10px; font-size: 14px; color: var(--text); }
+    #capture-titel { flex: 1 1 auto; min-width: 0; margin: 0 0 0 12px; padding: 0; border: 0; background: var(--surface); font: inherit; font-size: 14px; color: var(--muted); text-align: right; }
+    /* Z.48/49: der EINE Knopf. Gesperrt: grau (§5.3: #E9E5DE = --hairline) statt halbdurchsichtig. */
+    #capture-aktion { margin: 14px 16px 0; }
+    #capture-aktion #send-btn { width: 100%; padding: 13px 0; border-radius: 10px; font-size: 14px; font-weight: 600; box-shadow: none; }
+    #capture-aktion #send-btn:disabled { opacity: 1; background: var(--hairline); color: var(--muted); }
+    /* Fehler- und Officefall: EIN Satz, EIN Knopf (§5.6). */
+    #send-status, #office-hint { margin: 12px 16px 0; }
+    .capture-knopf { margin: 8px 16px 0; }
+    /* Z.52: der Textlink „Ganzes Dokument uebernehmen" — mittig unter dem Knopf. Das `margin-top:
+       auto` der Vorlage setzt eine Spalte von Fensterhoehe voraus (Kopf und Umschalter aus K1,
+       JOB 3056) und steht im Messtest als OFFENER Wert. */
+    #capture-dokument-link { display: block; margin: 0; padding: 12px 16px 16px; text-align: center; font-size: 12.5px; color: var(--muted); text-decoration: none; }
+    #capture-dokument-link[aria-disabled="true"] { pointer-events: none; opacity: 0.5; }
+    /* Das „?"-Menue nach Pages-Art (§5a): Umfang, Bilder, Pruefung, Seiten — ein benannter Ort,
+       zu bis zum Klick. Der Bilder-Kasten behaelt seine Inline-Farben (mega43 A2: Inline-Stile
+       sind eine Farbquelle des Sammlers). */
+    #capture-mehr-btn { display: block; margin: 0 16px 8px auto; width: 28px; height: 28px; padding: 0; border-radius: 50%; font-size: 13px; line-height: 1; }
+    #capture-mehr { margin: 0 16px 12px; }
+    #capture-mehr.hidden { display: none; }
+    #capture-mehr p { margin: 6px 0; }
+    #capture-bilder-hinweis { display: flex; align-items: flex-start; gap: 8px; padding: 9px 10px; border-radius: 8px; font-size: 12px; line-height: 1.5; margin: 8px 0 4px; }
     textarea {
       width: 100%;
       border: 1px solid var(--hairline);
@@ -767,51 +803,51 @@
   </div>
 
   <div id="section-capture" class="hidden">
-  <!-- ==============================================================================================
-       JOB 2620 D1/D4 — TAB 2 NACH VORLAGE (WissenErfassen.dc.html), eingebaut in die ECHTE Datei.
-       ==============================================================================================
-       Die Karte „Dieses Dokument uebernehmen" traegt den Erfassungsweg; der BILDER-HINWEIS darin
-       ist GEMESSEN statt pauschal: Station 1 (JOB 2613, im Produkt seit 3870df3) bringt
-       EINGEBETTETE Bilder durch — Wirkbereich und Rest woertlich aus
-       RUECKGABE-BASIC-JOB-2613-D2-KORREKTUR §1.1: „NICHT BELEGT, offen: UMFLOSSENE Bilder …
-       EIN umflossenes Bild kostet damit weiterhin ALLE Bilder des Dokuments." Die LAUFZEIT-Meldung
-       sendImagesMissing (JOB 2551 D2) ist davon getrennt und UNBERUEHRT.
-       Titel-Feld und Vertraulichkeits-Wahl der Vorlage sind BEWUSST NICHT gebaut: der Sendeweg
-       traegt kein confidentiality-Feld und der Titel entsteht erst beim Senden
-       (wordAddin.ts draftPostPayload) — Bedienelemente ohne Wirkung waeren dieselbe Unwahrheit in
-       Knopfform. Ownerfrage in der D1-Rueckgabe. Ids, Umfangs-Wahl, Senden-Weg (Station 1) und
-       `sendHint` sind UNVERAENDERT; der Schluessel `sendTitle` bleibt im Woerterbuch.
-       JOB 3056: dieser Abschnitt ist unberuehrt (JOB 3057 baut ihn nach dem Mockup „Erfassen"). -->
+  <!-- JOB 3057 K2 — „Erfassen" nach Zielbild Erfassen.dc.html (Z.28-52): die Markierungskarte
+       (Kicker + Absaetze; ohne Markierung EIN Satz; nach dem Senden EINE Zeile mit Link und nur
+       im Fall EIN Bilder-Satz mit Link), die Zeile „Titel" (vorbelegt aus der ersten Zeile,
+       editierbar; reist als Titel des Entwurfs), EIN Knopf, darunter der Textlink „Ganzes
+       Dokument uebernehmen" (loest den Dokument-Weg direkt aus — .docx zuerst, Rueckfall
+       Word.run). Fehler- und Officefall: EIN Satz, EIN Knopf. Die Bereich-Zeile der Vorlage
+       (Z.39-45) ist bewusst nicht gebaut: kein Serverweg liefert eine Kategorienliste (Auftrag
+       §5.2: „Zeile entfaellt, kein Platzhaltertext"). Radiogruppe, Bilder-Hinweisband, Pruef- und
+       Seitenhinweis sind aus dem Sichtfeld ERSETZT; ihre Funktionen wohnen im „?"-Menue unten
+       (§5a: kein Verlust, benannter Ort) — gemessen in tests/design/k2-funktionsinventar.test.ts. -->
   <div class="card" id="capture-karte">
-    <h2 data-t="captureCardTitle"></h2>
-    <p class="muted" data-t="sendHint"></p>
+    <h2 class="nur-vorlesen" data-t="captureCardTitle"></h2>
+    <div id="capture-kicker" class="hidden"></div>
+    <div id="capture-absaetze"></div>
+    <p id="capture-leer" data-t="captureEmpty"></p>
+    <p id="capture-ergebnis" class="hidden"><span data-t="sendOk"></span><a id="open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="openLink"></a></p>
+    <p id="capture-bilder-ergebnis" class="hidden"><span id="capture-bilder-satz"></span><a id="capture-bilder-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="captureBilderLink"></a></p>
+  </div>
+  <div id="capture-felder">
+    <label class="capture-zeile" for="capture-titel"><span data-t="captureTitleLabel"></span><input type="text" id="capture-titel" autocomplete="off" /></label>
+  </div>
+  <div id="capture-aktion"><button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button></div>
+  <div id="office-hint" class="hidden"></div>
+  <button type="button" class="ghost capture-knopf hidden" id="office-hint-btn" data-t="captureReload"></button>
+  <div id="send-status" class="status hidden"></div>
+  <button type="button" class="ghost capture-knopf hidden" id="send-status-btn"></button>
+  <a href="#" id="capture-dokument-link" data-t="captureDocumentLink"></a>
+  <!-- Das „?"-Menue (§5a, Pages-Art): was aus dem Sichtfeld ging, steht hier mit Namen — der Satz
+       zum Umfang und zur Formatierung (sendHint), der GEMESSENE Bilder-Kasten (JOB 2620 D5, eine
+       Bilder-Aussage in Tab 2, tests/design/zielbild-wissen-erfassen-einmal.test.ts), der
+       Pruefhinweis (sendReviewNote) und der Seiten-Hinweis (scopePagesHint: Word gibt Seiten hier
+       nicht her). Die Radios „Markierter Text"/„Ganzes Dokument" sind Karte und Textlink geworden,
+       die deaktivierte Seiten-Option ist dieser eine Satz. -->
+  <button type="button" class="ghost" id="capture-mehr-btn" aria-expanded="false" aria-controls="capture-mehr">?</button>
+  <div id="capture-mehr" class="hidden">
+    <p class="muted" id="capture-hinweis-umfang" data-t="sendHint"></p>
     <div id="capture-bilder-hinweis" style="background: var(--warn-bg); color: var(--warn-text);">
       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="flex-shrink: 0; margin-top: 1px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 8v4"></path><path d="M12 16h.01"></path></svg>
       <div>
         <span data-t="sendImagesNote"></span>
-        <a id="capture-bilder-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="sendImagesNoteLink" style="color: var(--warn-text); font-weight: 600;"></a>
+        <a id="capture-bilder-hinweis-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="sendImagesNoteLink" style="color: var(--warn-text); font-weight: 600;"></a>
       </div>
     </div>
-    <!-- WP-KLARA-2 (Pedis Befund 3): Umfangs-Wahl. Seiten-Optionen sind EHRLICH deaktiviert —
-         Word-JS bietet im Taskpane-Kontext kein verlaessliches Seiten-API (Begruendung im Test/
-         Bericht); der Tooltip erklaert es, der Hinweis nennt den Ausweg (Bereich markieren). -->
-    <div class="scope" role="radiogroup" aria-label="Umfang" style="margin:8px 0 4px; display:grid; gap:4px; font-size:12.5px;">
-      <label><input type="radio" name="scope" id="scope-selection" checked /> <span data-t="scopeSelection"></span></label>
-      <label><input type="radio" name="scope" id="scope-document" /> <span data-t="scopeDocument"></span></label>
-      <label id="scope-pages-label" style="color: var(--muted);"><input type="radio" name="scope" id="scope-pages" disabled /> <span data-t="scopePages"></span></label>
-    </div>
-    <p class="muted" id="scope-pages-hint" data-t="scopePagesHint" style="margin-top:0;"></p>
-    <button type="button" class="primary" id="send-btn" data-t="sendCta" disabled></button>
-    <!-- JOB 2620, Vorlage Z.53: der Satz unter dem Knopf — wahr, weil Entwuerfe nie automatisch
-         validiert werden (dieselbe Zusage traegt sendHint seit jeher). -->
-    <p class="muted" id="send-review-note" data-t="sendReviewNote" style="text-align: center; font-size: 11.5px; margin-top: 6px;"></p>
-    <!-- WP-KLARA-1b (K5): ehrlicher Zustand, wenn Office.js fehlt/nicht bereit wird (Seite im normalen
-         Browser geoeffnet) — statt eines toten oder crashenden Senden-Knopfs. -->
-    <div id="office-hint" class="hidden"></div>
-    <div id="send-status" class="status hidden"></div>
-    <p id="open-block" class="hidden">
-      <a id="open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="openLink"></a>
-    </p>
+    <p class="muted" id="capture-hinweis-pruefung" data-t="sendReviewNote"></p>
+    <p class="muted" id="capture-hinweis-seiten" data-t="scopePagesHint"></p>
   </div>
   </div>
 
@@ -1193,8 +1229,10 @@
       return { html: aktuell, dropped: dropped, passt: false };
     }
 
-    function prepareWordDraftRequest(html, text) {
-      var title = deriveDraftTitleFromSelection(text);
+    function prepareWordDraftRequest(html, text, titleOverride) {
+      // JOB 3057 K2: ein von Hand gesetzter Titel (Zeile „Titel") geht vor der Ableitung.
+      var eigen = (titleOverride || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      var title = eigen.length > 0 ? eigen : deriveDraftTitleFromSelection(text);
       // JOB 2703 D3: KEINE Kuerzung mehr im Client. Bis D2 stand hier `slice(0, 500)` — was der
       // Client abschnitt, sah der Server nie, und keine kanonische Regel konnte es zurueckholen.
       // Der Server kuerzt die Aussage an EINEM Ort (kernaussageAusKlartext, capture-routes.ts).
@@ -2238,39 +2276,54 @@
         // EINE Bilder-Aussage in Tab 2, nicht zwei.
         sendHint: "Sende den gewählten Umfang als neuen Wissens-ENTWURF — mit Formatierung (Überschriften, Listen, Tabellen). Nichts wird automatisch veröffentlicht — du prüfst alles in KLARWERK.",
         sendCta: "Als Entwurf senden",
-        // JOB 2620: Tab 2 nach Vorlage — Kartentitel, gemessener Bilder-Kasten, Pruefungs-Hinweis.
-        captureCardTitle: "Dieses Dokument übernehmen",
+        // JOB 3057 K2: die Erfassen-Flaeche nach Zielbild Erfassen.dc.html — Beschriftungen statt
+        // Erklaertext. Die Vorlese-Ueberschrift der Karte, der EINE Satz ohne Markierung, der Kicker
+        // (Einzahl/Mehrzahl getrennt: „1 ABSAETZE" waere falsch), die Zeile „Titel", der Textlink,
+        // die drei Knoepfe der Fehlerfaelle und der Link des Bilder-Satzes.
+        captureCardTitle: "Markierung erfassen",
+        captureEmpty: "Markiere Text in Word.",
+        captureKicker: "MARKIERUNG · {n} ABSÄTZE",
+        captureKickerEins: "MARKIERUNG · 1 ABSATZ",
+        captureTitleLabel: "Titel",
+        captureDocumentLink: "Ganzes Dokument übernehmen",
+        captureRetry: "Erneut senden",
+        captureLogin: "Anmelden",
+        captureReload: "Neu laden",
+        captureMehr: "Hinweise",
+        captureBilderLink: "In KLARWERK ergänzen",
+        // JOB 2620 (seit JOB 3057 im „?"-Menue): gemessener Bilder-Kasten, Pruefungs-Hinweis.
         sendImagesNote: "Eingebettete Bilder kommen mit dem Entwurf an. Von Text umflossene Bilder gibt Word hier nicht heraus — schon eines davon kostet derzeit alle Bilder des Dokuments.",
         sendImagesNoteLink: "Mit allen Bildern: Upload in der Konsole.",
         sendReviewNote: "Zur Prüfung geht er erst, wenn du einreichst — nichts wird automatisch validiert.",
         sendEmpty: "Bitte erst Text im Dokument markieren.",
         sendEmptyDoc: "Das Dokument enthält keinen Text.",
-        scopeSelection: "Markierter Text",
-        scopeDocument: "Ganzes Dokument",
-        scopePages: "Aktuelle Seite / Seiten von-bis",
-        scopePagesOff: "Word gibt Seiten hier nicht her — das Taskpane-API kennt keine verlässlichen Seitengrenzen.",
         scopePagesHint: "Seitenweise geht hier nicht — markiere stattdessen den gewünschten Bereich im Dokument.",
-        sendOverBudget: "Die Formatierung war zu groß für die Übertragung — der Entwurf enthält den reinen Text (nichts ging still verloren).",
-        sendPlainFallback: "Word hat kein übernehmbares HTML geliefert — Formatierung und etwaige Bilder fehlen im Entwurf.",
-        sendImagesMissing: "Word hat das Bildmaterial nicht herausgegeben; der Text ist vollständig. Es steht weiter in deinem Word-Dokument — füge es im Entwurf direkt ein.",
-        sendImagesDropped: "{n} Bilder waren zu groß für die Übertragung und wurden weggelassen — Text, Formatierung und die übrigen Bilder sind im Entwurf.",
-        sendBusy: "Sende Auswahl ...",
-        sendOk: "Entwurf angelegt: {title}",
+        // JOB 3057 K2 (§5.5): das Ergebnis statt der Vorab-Warnung — nach dem Senden EIN Satz nur im
+        // Fall, mit dem Link „In KLARWERK ergaenzen". Einzahl und Mehrzahl getrennt (JOB 2551: bei
+        // genau einem Bild keine Mehrzahlform); Word bleibt als Ursache benannt, der Text als
+        // vollstaendig zugesichert.
+        sendOverBudget: "Die Formatierung war zu groß — der Entwurf enthält den reinen Text.",
+        sendPlainFallback: "Word hat kein übernehmbares HTML geliefert — Formatierung und Bilder fehlen im Entwurf.",
+        sendImagesMissing: "Word hat {n} Bilder nicht herausgegeben — der Text ist vollständig.",
+        sendImagesMissingOne: "Word hat 1 Bild nicht herausgegeben — der Text ist vollständig.",
+        sendImagesDropped: "{n} Bilder waren zu groß und fehlen im Entwurf.",
+        sendImagesDroppedOne: "1 Bild war zu groß und fehlt im Entwurf.",
+        sendImagesBoth: "{n} Bilder fehlen im Entwurf — {a} hat Word nicht herausgegeben, {b} waren zu groß.",
+        sendBusy: "Sende ...",
+        sendOk: "Entwurf gesendet",
         sendAuth: "Nicht angemeldet — bitte zuerst bei KLARWERK anmelden.",
-        sendError: "Senden fehlgeschlagen ({detail}). Es wurde KEIN Entwurf angelegt.",
-        // AUFTRAG-JOB507-D4: die drei Absagen, die bisher alle „Senden fehlgeschlagen (HTTP nnn)"
-        // hiessen. Jede nennt die Ursache UND haelt die entscheidende Zusage fest: nichts angelegt.
-        sendTooLarge:
-          "Das Dokument ist zu groß für die Übertragung — es wurde KEIN Entwurf angelegt. Bitte einen kleineren Bereich markieren.",
-        sendForbidden:
-          "Fehlendes Recht: Dein Konto darf keine Entwürfe anlegen — es wurde KEIN Entwurf angelegt.",
-        sendRateLimited:
-          "Zu viele Anfragen — bitte in {n} Sekunden erneut versuchen. Es wurde KEIN Entwurf angelegt.",
-        sendRateLimitedUnknown:
-          "Zu viele Anfragen — bitte später erneut versuchen. Es wurde KEIN Entwurf angelegt.",
-        noOffice: "Diese Seite läuft als Klara-Panel in Microsoft Word. Im Browser kannst du nur den Anmelde-Status sehen — Senden ist hier deaktiviert.",
+        // JOB 3057 K2 (§5.6): jeder Fehlerfall EIN Satz (plus EIN Knopf aus captureRetry/
+        // captureLogin). Jeder nennt die Ursache UND haelt die Zusage fest: nichts angelegt
+        // (AUFTRAG-JOB507-D4).
+        sendError: "Senden fehlgeschlagen ({detail}) — es wurde KEIN Entwurf angelegt.",
+        sendOffline: "Keine Verbindung — es wurde KEIN Entwurf angelegt.",
+        sendTooLarge: "Zu groß für die Übertragung — es wurde KEIN Entwurf angelegt.",
+        sendForbidden: "Dein Konto darf keine Entwürfe anlegen — es wurde KEIN Entwurf angelegt.",
+        sendRateLimited: "Zu viele Anfragen ({n} s warten) — es wurde KEIN Entwurf angelegt.",
+        sendRateLimitedUnknown: "Zu viele Anfragen — es wurde KEIN Entwurf angelegt.",
+        noOffice: "Word wurde nicht erkannt — Senden geht nur in Word.",
         officeDetecting: "Die Word-Umgebung wird gerade erkannt — bis Word sich meldet, ist Senden gesperrt.",
-        openLink: "Entwurf in KLARWERK öffnen",
+        openLink: "Öffnen",
         tabAsk: "Fragen",
         tabCapture: "Erfassen",
         // JOB 3056 K1 (Mockups design/klara, 04.09.): der EINE Satz der Ruhe, „Mehr" an der
@@ -2527,37 +2580,46 @@
         // JOB 2620 D5: the image clause moved into the measured note box (sendImagesNote) — one statement, not two.
         sendHint: "Send the chosen scope as a new knowledge DRAFT — with formatting (headings, lists, tables). Nothing is published automatically — you review everything in KLARWERK.",
         sendCta: "Send as draft",
-        // JOB 2620: tab 2 per template — card title, measured image note, review hint.
-        captureCardTitle: "Take over this document",
+        // JOB 3057 K2: the capture surface per Erfassen.dc.html — labels instead of explanations.
+        captureCardTitle: "Capture selection",
+        captureEmpty: "Select text in Word.",
+        captureKicker: "SELECTION · {n} PARAGRAPHS",
+        captureKickerEins: "SELECTION · 1 PARAGRAPH",
+        captureTitleLabel: "Title",
+        captureDocumentLink: "Take over the whole document",
+        captureRetry: "Send again",
+        captureLogin: "Sign in",
+        captureReload: "Reload",
+        captureMehr: "Notes",
+        captureBilderLink: "Add in KLARWERK",
+        // JOB 2620 (in the "?" menu since JOB 3057): measured image note, review hint.
         sendImagesNote: "Embedded images arrive with the draft. Images with text wrapping are not provided by Word here — a single one currently costs all images of the document.",
         sendImagesNoteLink: "With all images: upload in the console.",
         sendReviewNote: "It only goes to review once you submit it — nothing is validated automatically.",
         sendEmpty: "Please select text in the document first.",
         sendEmptyDoc: "The document contains no text.",
-        scopeSelection: "Selected text",
-        scopeDocument: "Whole document",
-        scopePages: "Current page / pages from-to",
-        scopePagesOff: "Word does not expose pages here — the taskpane API has no reliable page boundaries.",
         scopePagesHint: "Page-based sending is not possible here — select the desired range in the document instead.",
-        sendOverBudget: "The formatting was too large to transfer — the draft contains the plain text (nothing was lost silently).",
-        sendPlainFallback: "Word did not provide any usable HTML — formatting and any images are missing from the draft.",
-        sendImagesMissing: "Word did not release the image content; the text is complete. It is still in your Word document — add it directly in the draft.",
-        sendImagesDropped: "{n} images were too large to transfer and were left out — text, formatting and the remaining images are in the draft.",
-        sendBusy: "Sending selection ...",
-        sendOk: "Draft created: {title}",
+        // JOB 3057 K2 (§5.5): the result instead of the upfront warning — ONE sentence, only if it applies.
+        sendOverBudget: "The formatting was too large — the draft contains the plain text.",
+        sendPlainFallback: "Word did not provide usable HTML — formatting and images are missing from the draft.",
+        sendImagesMissing: "Word did not release {n} images — the text is complete.",
+        sendImagesMissingOne: "Word did not release 1 image — the text is complete.",
+        sendImagesDropped: "{n} images were too large and are missing from the draft.",
+        sendImagesDroppedOne: "1 image was too large and is missing from the draft.",
+        sendImagesBoth: "{n} images are missing from the draft — Word did not release {a}, {b} were too large.",
+        sendBusy: "Sending ...",
+        sendOk: "Draft sent",
         sendAuth: "Not signed in — please sign in to KLARWERK first.",
-        sendError: "Sending failed ({detail}). NO draft was created.",
-        sendTooLarge:
-          "The document is too large to transfer — NO draft was created. Please select a smaller range.",
-        sendForbidden:
-          "Missing permission: your account may not create drafts — NO draft was created.",
-        sendRateLimited:
-          "Too many requests — please try again in {n} seconds. NO draft was created.",
-        sendRateLimitedUnknown:
-          "Too many requests — please try again later. NO draft was created.",
-        noOffice: "This page runs as the Klara panel inside Microsoft Word. In a browser you can only see the sign-in status — sending is disabled here.",
+        // JOB 3057 K2 (§5.6): every failure is ONE sentence (plus ONE button); each keeps the promise: nothing created.
+        sendError: "Sending failed ({detail}) — NO draft was created.",
+        sendOffline: "No connection — NO draft was created.",
+        sendTooLarge: "Too large to transfer — NO draft was created.",
+        sendForbidden: "Your account may not create drafts — NO draft was created.",
+        sendRateLimited: "Too many requests (wait {n} s) — NO draft was created.",
+        sendRateLimitedUnknown: "Too many requests — NO draft was created.",
+        noOffice: "Word was not detected — sending only works in Word.",
         officeDetecting: "Detecting the Word environment — sending stays disabled until Word responds.",
-        openLink: "Open draft in KLARWERK",
+        openLink: "Open",
         tabAsk: "Ask",
         tabCapture: "Capture",
         askRuheSatz: "Ask a question or select text in Word.",
@@ -2753,37 +2815,46 @@
         // JOB 2620 D5: de afbeeldingenclausule is verhuisd naar het gemeten kader (sendImagesNote) — één uitspraak, niet twee.
         sendHint: "Stuur de gekozen omvang als nieuw kennis-CONCEPT — met opmaak (koppen, lijsten, tabellen). Er wordt niets automatisch gepubliceerd — je controleert alles in KLARWERK.",
         sendCta: "Als concept sturen",
-        // JOB 2620: tab 2 volgens sjabloon — kaarttitel, gemeten afbeeldingenkader, controlehint.
-        captureCardTitle: "Dit document overnemen",
+        // JOB 3057 K2: het vastleg-vlak volgens Erfassen.dc.html — labels in plaats van uitleg.
+        captureCardTitle: "Selectie vastleggen",
+        captureEmpty: "Selecteer tekst in Word.",
+        captureKicker: "SELECTIE · {n} ALINEA'S",
+        captureKickerEins: "SELECTIE · 1 ALINEA",
+        captureTitleLabel: "Titel",
+        captureDocumentLink: "Heel document overnemen",
+        captureRetry: "Opnieuw sturen",
+        captureLogin: "Aanmelden",
+        captureReload: "Opnieuw laden",
+        captureMehr: "Aanwijzingen",
+        captureBilderLink: "In KLARWERK aanvullen",
+        // JOB 2620 (sinds JOB 3057 in het "?"-menu): gemeten afbeeldingenkader, controlehint.
         sendImagesNote: "Ingesloten afbeeldingen komen mee met het concept. Afbeeldingen met tekstomloop geeft Word hier niet vrij — één daarvan kost momenteel alle afbeeldingen van het document.",
         sendImagesNoteLink: "Met alle afbeeldingen: upload in de console.",
         sendReviewNote: "Het gaat pas ter controle wanneer je het indient — er wordt niets automatisch gevalideerd.",
         sendEmpty: "Selecteer eerst tekst in het document.",
         sendEmptyDoc: "Het document bevat geen tekst.",
-        scopeSelection: "Geselecteerde tekst",
-        scopeDocument: "Heel document",
-        scopePages: "Huidige pagina / pagina van-tot",
-        scopePagesOff: "Word geeft hier geen pagina's vrij — de taskpane-API kent geen betrouwbare paginagrenzen.",
         scopePagesHint: "Per pagina versturen kan hier niet — selecteer in plaats daarvan het gewenste bereik in het document.",
-        sendOverBudget: "De opmaak was te groot voor de overdracht — het concept bevat de platte tekst (er is niets stilletjes verloren gegaan).",
-        sendPlainFallback: "Word heeft geen bruikbare HTML geleverd — opmaak en eventuele afbeeldingen ontbreken in het concept.",
-        sendImagesMissing: "Word heeft het beeldmateriaal niet vrijgegeven; de tekst is volledig. Het staat nog in je Word-document — voeg het rechtstreeks in het concept toe.",
-        sendImagesDropped: "{n} afbeeldingen waren te groot voor de overdracht en zijn weggelaten — tekst, opmaak en de overige afbeeldingen staan in het concept.",
-        sendBusy: "Selectie versturen ...",
-        sendOk: "Concept aangemaakt: {title}",
+        // JOB 3057 K2 (§5.5): het resultaat in plaats van de waarschuwing vooraf — EEN zin, alleen als het speelt.
+        sendOverBudget: "De opmaak was te groot — het concept bevat de platte tekst.",
+        sendPlainFallback: "Word heeft geen bruikbare HTML geleverd — opmaak en afbeeldingen ontbreken in het concept.",
+        sendImagesMissing: "Word heeft {n} afbeeldingen niet vrijgegeven — de tekst is volledig.",
+        sendImagesMissingOne: "Word heeft 1 afbeelding niet vrijgegeven — de tekst is volledig.",
+        sendImagesDropped: "{n} afbeeldingen waren te groot en ontbreken in het concept.",
+        sendImagesDroppedOne: "1 afbeelding was te groot en ontbreekt in het concept.",
+        sendImagesBoth: "{n} afbeeldingen ontbreken in het concept — {a} heeft Word niet vrijgegeven, {b} waren te groot.",
+        sendBusy: "Versturen ...",
+        sendOk: "Concept verstuurd",
         sendAuth: "Niet aangemeld — meld je eerst aan bij KLARWERK.",
-        sendError: "Versturen mislukt ({detail}). Er is GEEN concept aangemaakt.",
-        sendTooLarge:
-          "Het document is te groot voor de overdracht — er is GEEN concept aangemaakt. Selecteer een kleiner bereik.",
-        sendForbidden:
-          "Ontbrekend recht: je account mag geen concepten aanmaken — er is GEEN concept aangemaakt.",
-        sendRateLimited:
-          "Te veel verzoeken — probeer het over {n} seconden opnieuw. Er is GEEN concept aangemaakt.",
-        sendRateLimitedUnknown:
-          "Te veel verzoeken — probeer het later opnieuw. Er is GEEN concept aangemaakt.",
-        noOffice: "Deze pagina draait als Klara-paneel in Microsoft Word. In een browser zie je alleen de aanmeldstatus — versturen is hier uitgeschakeld.",
+        // JOB 3057 K2 (§5.6): elke fout is EEN zin (plus EEN knop); elke houdt de toezegging vast: niets aangemaakt.
+        sendError: "Versturen mislukt ({detail}) — er is GEEN concept aangemaakt.",
+        sendOffline: "Geen verbinding — er is GEEN concept aangemaakt.",
+        sendTooLarge: "Te groot voor de overdracht — er is GEEN concept aangemaakt.",
+        sendForbidden: "Je account mag geen concepten aanmaken — er is GEEN concept aangemaakt.",
+        sendRateLimited: "Te veel verzoeken ({n} s wachten) — er is GEEN concept aangemaakt.",
+        sendRateLimitedUnknown: "Te veel verzoeken — er is GEEN concept aangemaakt.",
+        noOffice: "Word is niet herkend — versturen werkt alleen in Word.",
         officeDetecting: "De Word-omgeving wordt nu herkend — versturen blijft uitgeschakeld tot Word zich meldt.",
-        openLink: "Concept in KLARWERK openen",
+        openLink: "Openen",
         tabAsk: "Vragen",
         tabCapture: "Vastleggen",
         askRuheSatz: "Stel een vraag of markeer tekst in Word.",
@@ -2989,13 +3060,42 @@
       return officeReady && window.Office && Office.context && Office.context.document;
     }
 
+    // ============================================================================================
+    // JOB 3057 K2 — DER ZUSTAND DER ERFASSEN-FLAECHE (Zielbild Erfassen.dc.html).
+    // ============================================================================================
+    // `captureMarkierung` sind die Absaetze der aktuellen Word-Markierung (Text-Zugriff, gelesen
+    // bei Office-Bereitschaft, bei jedem DocumentSelectionChanged und beim Wechsel auf den Reiter).
+    // Aus ihr entstehen Kicker („MARKIERUNG · n ABSAETZE"), Absaetze, die Vorbelegung der Zeile
+    // „Titel" und die Freigabe des Knopfs. `captureErgebnis` haelt nach einem BESTAETIGTEN Entwurf
+    // (Serverantwort 201) die Ergebniszeile samt Link und — nur im Fall — den EINEN Bilder-Satz;
+    // eine andere Markierung loest die Zeile wieder ab. Nie „gesendet" ohne Serverbestaetigung,
+    // nie eine Bilderzahl ohne Serverantwort bzw. ohne gezaehltes HTML.
+    var captureMarkierung = [];
+    var captureErgebnis = null;
+    var captureGesendet = null;
+    var captureTitelVonHand = false;
+    var captureLeseLauf = 0;
+    var captureAngeschlossen = false;
+    var captureLetzterUmfang = "selection";
+    // JOB 3057 Runde 3 (BEN): jeder Sendelauf traegt eine Nummer und die Markierung, die beim
+    // Senden auf der Karte stand. Ein Ruecklauf eines AELTEREN Laufs (inzwischen wurde erneut
+    // gesendet) veraendert weder Karte noch Status noch Link; ein Ruecklauf des aktuellen Laufs
+    // wird nur dann zur Ergebniszeile der Karte, wenn die Karte noch DIESELBE Markierung zeigt —
+    // sonst gehoert die Bestaetigung zum gesendeten Inhalt und nicht zur neuen Markierung.
+    var captureSendeLauf = 0;
+    var sendStatusUrl = null;
+
     function updateSendState() {
       var sendBtn = document.getElementById("send-btn");
       var hint = document.getElementById("office-hint");
+      var hintBtn = document.getElementById("office-hint-btn");
+      var dokLink = document.getElementById("capture-dokument-link");
       var unavailable = officeChecked && !officeUsable();
       if (unavailable) {
+        // JOB 3057 K2 (§5.6): EIN Satz, EIN Knopf („Neu laden").
         hint.className = "status warn";
         hint.textContent = t("noOffice");
+        hintBtn.className = "ghost capture-knopf";
         sendBtn.disabled = true;
         sendBtn.title = t("noOffice"); // ehrlicher Grund direkt am deaktivierten Knopf
       } else if (!officeChecked) {
@@ -3005,13 +3105,24 @@
         // `noOffice` waere hier schlicht unwahr (nichts ist bisher festgestellt).
         hint.className = "hidden";
         hint.textContent = "";
+        hintBtn.className = "ghost capture-knopf hidden";
         sendBtn.disabled = true;
         sendBtn.title = t("officeDetecting");
       } else {
         hint.className = "hidden";
         hint.textContent = "";
+        hintBtn.className = "ghost capture-knopf hidden";
         sendBtn.title = "";
-        sendBtn.disabled = !(signedIn && officeUsable());
+        // JOB 3057 K2 (§5.3): frei nur mit Anmeldung, Word UND einer Markierung — ohne
+        // Erklaersatz am Knopf; ohne Markierung sagt es die Karte selbst („Markiere Text in Word.").
+        sendBtn.disabled = !(signedIn && officeUsable() && captureMarkierung.length > 0);
+      }
+      // Der Textlink „Ganzes Dokument uebernehmen" haengt an Anmeldung und Word, nicht an der
+      // Markierung — er ist der Weg, wenn nichts markiert ist.
+      if (signedIn && officeUsable()) {
+        dokLink.removeAttribute("aria-disabled");
+      } else {
+        dokLink.setAttribute("aria-disabled", "true");
       }
       // WP-KLARA-ASK: der Fragen-Bereich haengt an denselben Zustaenden (Session; Office nur fuers
       // Einfuegen) — EINE Aufruf-Kette, keine zweite Zustandsquelle.
@@ -3032,8 +3143,8 @@
       document.querySelectorAll("[data-t]").forEach(function (el) {
         el.textContent = t(el.getAttribute("data-t"));
       });
-      // WP-KLARA-2: Tooltip der ehrlich deaktivierten Seiten-Option in der aktuellen Sprache.
-      document.getElementById("scope-pages-label").title = t("scopePagesOff");
+      // JOB 3057 K2: der zugaengliche Name des „?"-Knopfs (sein Bild ist das Zeichen, kein data-t).
+      document.getElementById("capture-mehr-btn").setAttribute("aria-label", t("captureMehr"));
       // WP-KLARA-ASK: Platzhalter des Frage-Eingabefelds in der aktuellen Sprache.
       document.getElementById("ask-input").placeholder = t("askInputPlaceholder");
       // JOB 3004 D1: der Tooltip der Frage-Zeile („Frage bearbeiten") in der aktuellen Sprache.
@@ -3083,6 +3194,7 @@
       // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
       renderAskEvidence();
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
+      renderCapture(); // JOB 3057 K2: Kicker, Ergebniszeile und Bilder-Satz in der neuen Sprache
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
@@ -4026,10 +4138,194 @@
         });
     }
 
-    function showSendStatus(kind, text) {
+    // JOB 3057 K2 (§5.6): der Statussatz traegt hoechstens EINEN Knopf — `aktion` ist "retry"
+    // (denselben Umfang erneut senden), "login" (der Anmeldeweg), "open" (den bestaetigten Entwurf
+    // oeffnen — Runde 3: die Bestaetigung eines Sendelaufs, dessen Markierung inzwischen gewechselt
+    // hat, s. zeigeEntwurfsErgebnis) oder nichts. "busy" ist der ruhige Zwischenzustand ohne
+    // Warnfarbe.
+    var sendStatusAktion = null;
+    function showSendStatus(kind, text, aktion, url) {
       var el = document.getElementById("send-status");
-      el.className = "status " + (kind === "ok" ? "ok" : "warn");
+      var knopf = document.getElementById("send-status-btn");
+      el.className = kind === "ok" ? "status ok" : kind === "busy" ? "status" : "status warn";
       el.textContent = text;
+      sendStatusAktion = aktion || null;
+      sendStatusUrl = sendStatusAktion === "open" ? url || null : null;
+      if (sendStatusAktion) {
+        knopf.textContent = t(
+          sendStatusAktion === "login" ? "captureLogin" : sendStatusAktion === "open" ? "openLink" : "captureRetry"
+        );
+        knopf.className = "ghost capture-knopf";
+      } else {
+        knopf.textContent = "";
+        knopf.className = "ghost capture-knopf hidden";
+      }
+    }
+    function hideSendStatus() {
+      var el = document.getElementById("send-status");
+      el.className = "status hidden";
+      el.textContent = "";
+      sendStatusAktion = null;
+      sendStatusUrl = null;
+      document.getElementById("send-status-btn").className = "ghost capture-knopf hidden";
+    }
+    // Runde 3: gehoert ein Ruecklauf noch zum aktuellen Sendelauf? Aeltere Laeufe veraendern nichts.
+    function sendeLaufAktuell(lauf) {
+      return lauf === captureSendeLauf;
+    }
+    // Netzausfall (fetch verwirft) wird als EIGENER Satz gesagt — „offline" statt eines rohen
+    // Browsertexts; alles andere behaelt sein Detail.
+    function sendeFehlerText(err) {
+      var detail = err && err.message ? String(err.message) : "";
+      if (detail === "" || /fetch|network|offline|load failed/i.test(detail)) { return t("sendOffline"); }
+      return t("sendError", { detail: detail });
+    }
+
+    // Die Absaetze einer Markierung: Zeilen ohne Leerraum-Zeilen (Word trennt mit \r, \n oder \r\n).
+    function captureAbsaetze(text) {
+      var raus = [];
+      var zeilen = String(text || "").split(/\r\n|\r|\n/);
+      for (var i = 0; i < zeilen.length; i += 1) {
+        var z = zeilen[i].replace(/^\s+|\s+$/g, "");
+        if (z.length > 0) { raus.push(z); }
+      }
+      return raus;
+    }
+
+    // Die Karte aus dem gehaltenen Zustand aufbauen — Ergebniszeile ODER Markierung ODER der eine
+    // Satz. Nur DOM-APIs (textContent), kein HTML-Sink fuer Dokumenttext.
+    function renderCapture() {
+      var kicker = document.getElementById("capture-kicker");
+      var liste = document.getElementById("capture-absaetze");
+      var leer = document.getElementById("capture-leer");
+      var ergebnis = document.getElementById("capture-ergebnis");
+      var bilder = document.getElementById("capture-bilder-ergebnis");
+      var titel = document.getElementById("capture-titel");
+      if (!kicker || !liste || !leer || !ergebnis || !bilder || !titel) { return; }
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var n = captureMarkierung.length;
+      if (captureErgebnis) {
+        kicker.className = "hidden";
+        kicker.textContent = "";
+        leer.className = "hidden";
+        ergebnis.className = "";
+        var satz = captureErgebnis.bilder ? t(captureErgebnis.bilder.key, captureErgebnis.bilder.vars) : "";
+        document.getElementById("capture-bilder-satz").textContent = satz;
+        bilder.className = satz ? "" : "hidden";
+      } else {
+        ergebnis.className = "hidden";
+        bilder.className = "hidden";
+        document.getElementById("capture-bilder-satz").textContent = "";
+        if (n === 0) {
+          kicker.className = "hidden";
+          kicker.textContent = "";
+          leer.className = "";
+        } else {
+          kicker.className = "";
+          kicker.textContent = n === 1 ? t("captureKickerEins") : t("captureKicker", { n: String(n) });
+          leer.className = "hidden";
+          for (var i = 0; i < n; i += 1) {
+            var p = document.createElement("p");
+            p.className = "capture-absatz";
+            p.textContent = captureMarkierung[i];
+            liste.appendChild(p);
+          }
+        }
+      }
+      // Die Zeile „Titel": vorbelegt aus der ersten Zeile (dieselbe Ableitung wie der Sendeweg),
+      // solange niemand von Hand geschrieben hat.
+      if (!captureTitelVonHand) {
+        titel.value = n === 0 ? "" : deriveDraftTitleFromSelection(captureMarkierung.join("\n"));
+      }
+    }
+
+    // Die Markierung aus Word lesen (nur Text — die Karte zeigt Absaetze, der Sendeweg holt sich
+    // das HTML selbst). Ein spaeter Rueckruf eines aelteren Lesens wird verworfen (Laufnummer).
+    function captureMarkierungLesen() {
+      captureLeseLauf += 1;
+      var lauf = captureLeseLauf;
+      var setzen = function (text) {
+        if (lauf !== captureLeseLauf) { return; }
+        var absaetze = captureAbsaetze(text);
+        // Eine ANDERE Markierung loest die Ergebniszeile ab; dieselbe laesst sie stehen.
+        if (captureErgebnis && absaetze.join("\n") !== captureGesendet) { captureErgebnis = null; }
+        captureMarkierung = absaetze;
+        renderCapture();
+        updateSendState();
+      };
+      if (!officeUsable()) { setzen(""); return; }
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
+          setzen(r && r.status === Office.AsyncResultStatus.Succeeded ? String(r.value || "") : "");
+        });
+      } catch (err) {
+        setzen("");
+      }
+    }
+
+    // Einmal an Word anschliessen, sobald Office bereit ist: erste Lesung plus das Ereignis der
+    // Markierungsaenderung (wo der Host es anbietet; sonst bleibt der Reiterwechsel der Anlass).
+    function captureOfficeAnschliessen() {
+      if (captureAngeschlossen || !officeUsable()) { return; }
+      captureAngeschlossen = true;
+      try {
+        if (Office.EventType && Office.EventType.DocumentSelectionChanged &&
+            typeof Office.context.document.addHandlerAsync === "function") {
+          Office.context.document.addHandlerAsync(
+            Office.EventType.DocumentSelectionChanged,
+            captureMarkierungLesen
+          );
+        }
+      } catch (e) { /* Host ohne dieses Ereignis: der Reiterwechsel liest nach. */ }
+      captureMarkierungLesen();
+    }
+
+    // Der EINE Bilder-Satz nach dem Senden (§5.5) — aus gezaehlten Zahlen, nie geraten. Einzahl
+    // und Mehrzahl getrennt (JOB 2551). null = nichts fehlt, kein Satz.
+    function bilderSatz(nichtHerausgegeben, zuGross) {
+      var a = nichtHerausgegeben > 0 ? nichtHerausgegeben : 0;
+      var b = zuGross > 0 ? zuGross : 0;
+      if (a > 0 && b > 0) {
+        return { key: "sendImagesBoth", vars: { n: String(a + b), a: String(a), b: String(b) } };
+      }
+      if (a === 1) { return { key: "sendImagesMissingOne", vars: {} }; }
+      if (a > 1) { return { key: "sendImagesMissing", vars: { n: String(a) } }; }
+      if (b === 1) { return { key: "sendImagesDroppedOne", vars: {} }; }
+      if (b > 1) { return { key: "sendImagesDropped", vars: { n: String(b) } }; }
+      return null;
+    }
+
+    // Die Bilanz des Auswahl-/Word.run-Wegs: Rueckfall auf reinen Text (kein zaehlbares HTML,
+    // AUFTRAG-mega45 Block F) > Budget-Rueckfall > gezaehlte Bilder.
+    function bilderBilanz(prepared) {
+      if (prepared.plainTextFallback) { return { key: "sendPlainFallback", vars: {} }; }
+      if (prepared.overBudget) { return { key: "sendOverBudget", vars: {} }; }
+      return bilderSatz(prepared.usedHtml ? prepared.undeliveredImages : 0, prepared.droppedImages);
+    }
+
+    // Erfolg (§5.3): die Karte wird EINE Zeile „Entwurf gesendet" mit Link „Oeffnen" — und nur im
+    // Fall der Bilder-Satz mit Link „In KLARWERK ergaenzen" auf denselben Entwurf.
+    //
+    // JOB 3057 Runde 3 (BEN): `gesendet` ist die Markierung, die BEIM SENDEN auf der Karte stand.
+    // Zeigt die Karte inzwischen eine andere (der Mensch hat waehrend des Sendens neu markiert),
+    // darf die Bestaetigung die neue Markierung nicht ersetzen — sie wuerde als „gesendet"
+    // erscheinen, obwohl sie es nicht ist. Die Bestaetigung gehoert dann zum gesendeten Inhalt und
+    // steht als EIN Satz + EIN Knopf „Oeffnen" im Statusfeld; die Karte behaelt die neue Markierung.
+    // Ohne `gesendet` (Aufruf am gehaltenen Zustand) gilt die aktuelle Markierung.
+    function zeigeEntwurfsErgebnis(url, bilder, gesendet) {
+      var signatur = typeof gesendet === "string" ? gesendet : captureMarkierung.join("\n");
+      if (signatur !== captureMarkierung.join("\n")) {
+        captureErgebnis = null;
+        renderCapture();
+        var satz = bilder ? t(bilder.key, bilder.vars) : "";
+        showSendStatus("ok", t("sendOk") + (satz ? " " + satz : ""), "open", url);
+        return;
+      }
+      captureErgebnis = { url: url, bilder: bilder || null };
+      captureGesendet = signatur;
+      document.getElementById("open-link").href = url;
+      document.getElementById("capture-bilder-link").href = url;
+      renderCapture();
     }
 
     // AUFTRAG-JOB507-D4 — DER SICHTBARE SATZ ZU EINER ANTWORT, DIE KEINEN ENTWURF ANGELEGT HAT.
@@ -4201,37 +4497,48 @@
       openLoginFallbackWindow(generation, url);
     }
 
-    // WP-KLARA-2 (Pedis Befund 3): der gewaehlte Umfang steuert den Office-Aufruf. Seiten-Optionen
-    // sind ehrlich deaktiviert (kein verlaessliches Seiten-API im Taskpane) — es bleiben Auswahl
-    // und ganzes Dokument.
-    function selectedScope() {
-      var doc = document.getElementById("scope-document");
-      return doc && doc.checked ? "document" : "selection";
-    }
+    // JOB 3057 K2: der Umfang ist kein Radio mehr — der Knopf sendet die MARKIERUNG, der Textlink
+    // „Ganzes Dokument uebernehmen" das DOKUMENT (WP-KLARA-2: Seiten gibt Word im Taskpane nicht
+    // her; der Satz dazu steht im „?"-Menue). Beide Wege laufen durch dieselbe Funktion.
+    function sendSelection() { sendeEntwurf("selection"); }
+    function sendDocument() { sendeEntwurf("document"); }
 
-    // (b) Kernfunktion: gewaehlten Umfang lesen → Front-Door-ENTWURF ueber die bestehende Draft-API
+    // (b) Kernfunktion: Umfang lesen → Front-Door-ENTWURF ueber die bestehende Draft-API
     // (POST /api/drafts; origin "word_addin"). WP-KLARA-2: das WORD-HTML reist als bodyHtml mit —
     // die autoritative Saeuberung (Allowlist, h1→h2, Tabellen, data:image) macht der Server-
     // Sanitizer am Draft-Weg; der Klartext bleibt zusaetzlich erhalten (statement, Fallback).
-    function sendSelection() {
+    function sendeEntwurf(scope) {
       // K5 (Defense-in-Depth): ohne bereites Office NIE in die Word-API greifen — ehrlicher Hinweis
       // statt ReferenceError/toter Klick (der Knopf ist dann ohnehin deaktiviert).
       if (!officeUsable()) {
         showSendStatus("warn", t("noOffice"));
         return;
       }
-      var openBlock = document.getElementById("open-block");
-      openBlock.className = "hidden";
+      captureLetzterUmfang = scope;
+      hideSendStatus();
+      captureErgebnis = null;
+      renderCapture();
+      // JOB 3057 Runde 3 (BEN): dieser Lauf bekommt seine Nummer und merkt sich die Markierung,
+      // die JETZT auf der Karte steht. Alles, was spaeter zurueckkommt, prueft beides.
+      captureSendeLauf += 1;
+      var lauf = captureSendeLauf;
+      var gesendeteMarkierung = captureMarkierung.join("\n");
+      // JOB 3057 K2: der Titel aus der Zeile „Titel". Fuer die Markierung ist er immer gesetzt
+      // (vorbelegt = dieselbe Ableitung wie der Sendeweg); fuer das Dokument nur, wenn ein Mensch
+      // ihn geschrieben hat — sonst entscheidet die Route am Dateinamen bzw. an der ersten Zeile.
+      var titelWunsch = scope === "document" && !captureTitelVonHand
+        ? ""
+        : document.getElementById("capture-titel").value;
       var finish = function (text, html, emptyKey) {
+        if (!sendeLaufAktuell(lauf)) { return; }
         if (text.replace(/^\s+|\s+$/g, "").length === 0) {
           showSendStatus("warn", t(emptyKey));
           return;
         }
         // WP-SHIP8-FINAL (bens Bedingung 4): EINE Entscheidungsstelle baut den FINALEN Payload —
         // das Budget hat genau DIESEN String gemessen (Envelope inkl. Escaping), er wird gesendet.
-        var prepared = prepareWordDraftRequest(html, text);
-        var title = prepared.title;
-        showSendStatus("warn", t("sendBusy"));
+        var prepared = prepareWordDraftRequest(html, text, titelWunsch);
+        showSendStatus("busy", t("sendBusy"));
         fetch("/api/drafts", {
           method: "POST",
           credentials: "include",
@@ -4239,51 +4546,39 @@
           body: prepared.payload,
         })
           .then(function (res) {
+            // Runde 3: ein Ruecklauf eines aelteren Laufs veraendert nichts — weder Satz noch Link.
+            if (!sendeLaufAktuell(lauf)) { return null; }
             // AUFTRAG-JOB507-D4: EINE Klassifikation entscheidet, ob ein Entwurf behauptet werden
             // darf. Alles ausser dem dokumentierten 201 ist Create-0 — und bekommt seinen eigenen,
-            // ehrlichen Satz statt „HTTP nnn".
+            // ehrlichen Satz statt „HTTP nnn" (JOB 3057: plus EIN Knopf — Anmelden oder erneut).
             var draftKind = classifyDraftResponse(res.status);
             if (draftWasCreated(draftKind)) { return res.json(); }
-            showSendStatus("warn", draftFailureText(draftKind, res));
+            showSendStatus("warn", draftFailureText(draftKind, res), draftKind === "auth" ? "login" : "retry");
             if (draftKind === "auth") { checkSession(); }
             return null;
           })
           .then(function (draft) {
-            if (!draft) { return; }
-            // EHRLICHE Bilanz: Budget-Fallback und nicht uebergebene Bilder werden gemeldet.
-            var notes = [];
-            if (prepared.overBudget) { notes.push(t("sendOverBudget")); }
-            // AUFTRAG-mega45 Block F: der stille Rueckfall wird laut. Ohne verwertbares HTML gibt
-            // es keine zaehlbare Bildmenge — gemeldet wird deshalb OHNE Anzahl, dass Formatierung
-            // und etwaige Bilder nicht uebernommen wurden.
-            if (prepared.plainTextFallback) { notes.push(t("sendPlainFallback")); }
-            // JOB 2613 D1: Bilder wurden weggelassen, damit der Rest ankommt. MIT Anzahl — hier
-            // ist sie echt gezaehlt und nicht geraten, und ohne sie waere „einige Bilder fehlen"
-            // dieselbe stille Null wie vor mega45.
-            if (prepared.droppedImages > 0) {
-              notes.push(t("sendImagesDropped", { n: String(prepared.droppedImages) }));
-            }
-            if (prepared.usedHtml && prepared.undeliveredImages > 0) {
-              notes.push(t("sendImagesMissing", { n: String(prepared.undeliveredImages) }));
-            }
-            var suffix = notes.length > 0 ? " " + notes.join(" ") : "";
-            showSendStatus(notes.length > 0 ? "warn" : "ok", t("sendOk", { title: title }) + suffix);
+            if (!draft || !sendeLaufAktuell(lauf)) { return; }
+            hideSendStatus();
             // WP-KLARA-2 (Pedis Befund 1): der Link oeffnet den ENTWURF direkt — bestehendes
             // Deep-Link-Muster der App (/capture/frontdoor?draft=<id>, Entwurf-fortsetzen-Mechanik).
             var link = document.getElementById("open-link");
             link.href =
               window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draft.id);
-            openBlock.className = "";
+            // EHRLICHE Bilanz (JOB 3057 K2 §5.5): Budget-Rueckfall, Text-Rueckfall (AUFTRAG-mega45
+            // Block F), weggelassene (JOB 2613 D1) und nicht herausgegebene Bilder — EIN Satz, nur
+            // im Fall, aus gezaehlten Zahlen. Runde 3: gebunden an die beim Senden gezeigte Markierung.
+            zeigeEntwurfsErgebnis(link.href, bilderBilanz(prepared), gesendeteMarkierung);
           })
           .catch(function (err) {
+            if (!sendeLaufAktuell(lauf)) { return; }
             // NIE Erfolg vortaeuschen: offline/5xx → ehrliche Fehlermeldung, kein Entwurf-Versprechen.
-            showSendStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
+            showSendStatus("warn", sendeFehlerText(err), "retry");
           });
       };
       // AUFTRAG-mega74 TEIL 2: zwischen „gelesen" und „gesendet" wird EINMAL versucht, die Bilder
       // wirklich zu holen. Schlägt das fehl oder passt die Zuordnung nicht, geht exakt der
       // bisherige Inhalt weiter — und die ehrliche Meldung bleibt stehen. Kein stiller Erfolg.
-      var scope = selectedScope();
       var mitBildern = function (text, html, emptyKey) {
         var inner = extractWordBodyHtml(html || "");
         if (inner.length === 0 || countUndeliveredWordImages(inner) === 0) {
@@ -4329,7 +4624,7 @@
       // Abbruch, kein leerer Entwurf, keine Aenderung am Manifest.
       if (scope === "document") {
         holeGanzeDatei(
-          function (bytes) { sendeDocxDatei(bytes, openBlock); },
+          function (bytes) { sendeDocxDatei(bytes, titelWunsch, lauf, gesendeteMarkierung); },
           function () { readWholeDocument(mitBildern); },
         );
       } else {
@@ -4416,17 +4711,23 @@
     // Die Antwort nennt die Bildzahl ausdruecklich (`imagesEmbedded`/`imagesTotal`), damit die
     // Meldung EHRLICH ist — „(n Bilder)" statt „fertig". Ein Verlust wird mit der VORHANDENEN
     // Meldung `sendImagesMissing` gemeldet, nicht mit einer neu erfundenen.
-    function sendeDocxDatei(bytes, openBlock) {
-      showSendStatus("warn", t("sendBusy"));
+    function sendeDocxDatei(bytes, titelWunsch, lauf, gesendeteMarkierung) {
+      if (!sendeLaufAktuell(lauf)) { return; }
+      showSendStatus("busy", t("sendBusy"));
       var b64 = "";
       var block = 0x8000;
       for (var i = 0; i < bytes.length; i += block) {
         b64 += String.fromCharCode.apply(null, bytes.subarray(i, i + block));
       }
-      var nutzlast = JSON.stringify({
+      var koerper = {
         name: (dokumentName() || "Dokument") + ".docx",
         data: window.btoa(b64),
-      });
+      };
+      // JOB 3057 K2: ein von Hand gesetzter Titel reist als `title` mit (DocxDraftRequest.title,
+      // capture-routes.ts); ohne ihn nimmt die Route wie bisher den Dateinamen.
+      var titel = (titelWunsch || "").slice(0, WORD_ADDIN_TITLE_MAX).trim();
+      if (titel.length > 0) { koerper.title = titel; }
+      var nutzlast = JSON.stringify(koerper);
       fetch("/api/drafts/from-docx", {
         method: "POST",
         credentials: "include",
@@ -4434,30 +4735,25 @@
         body: nutzlast,
       })
         .then(function (res) {
+          if (!sendeLaufAktuell(lauf)) { return null; }
           var draftKind = classifyDraftResponse(res.status);
           if (draftWasCreated(draftKind)) { return res.json(); }
-          showSendStatus("warn", draftFailureText(draftKind, res));
+          showSendStatus("warn", draftFailureText(draftKind, res), draftKind === "auth" ? "login" : "retry");
           if (draftKind === "auth") { checkSession(); }
           return null;
         })
         .then(function (draft) {
-          if (!draft) { return; }
-          var notes = [];
+          if (!draft || !sendeLaufAktuell(lauf)) { return; }
+          hideSendStatus();
           var gesamt = typeof draft.imagesTotal === "number" ? draft.imagesTotal : 0;
           var da = typeof draft.imagesEmbedded === "number" ? draft.imagesEmbedded : 0;
-          // NIE mehr behaupten als angekommen ist: fehlt etwas, sagt es die vorhandene Meldung.
-          if (gesamt > da) {
-            notes.push(t("sendImagesMissing", { n: String(gesamt - da) }));
-          }
-          var suffix = notes.length > 0 ? " " + notes.join(" ") : "";
-          showSendStatus(
-            notes.length > 0 ? "warn" : "ok",
-            t("sendOk", { title: draft.title || "" }) + suffix,
-          );
-          zeigeEntwurfsLink(draft.id, openBlock);
+          // NIE mehr behaupten als angekommen ist: fehlt etwas, sagt es der EINE Bilder-Satz —
+          // mit der Zahl aus der Serverantwort, nie geraten.
+          zeigeEntwurfsLink(draft.id, bilderSatz(gesamt > da ? gesamt - da : 0, 0), gesendeteMarkierung);
         })
         .catch(function (err) {
-          showSendStatus("warn", t("sendError", { detail: err && err.message ? err.message : "offline" }));
+          if (!sendeLaufAktuell(lauf)) { return; }
+          showSendStatus("warn", sendeFehlerText(err), "retry");
         });
     }
 
@@ -4476,11 +4772,12 @@
     // der eigene Bau daneben passt. Dann stand der Ausdruck im KOMMENTAR dieser Funktion und
     // zählte als drittes Vorkommen mit. Der Wächter liest den Quelltext, nicht den Sinn — also
     // steht er hier nirgends ausgeschrieben.
-    function zeigeEntwurfsLink(draftId, openBlock) {
-      var link = document.getElementById("open-link");
-      link.href =
-        window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draftId);
-      openBlock.className = "";
+    function zeigeEntwurfsLink(draftId, bilder, gesendet) {
+      zeigeEntwurfsErgebnis(
+        window.location.origin + "/capture/frontdoor?draft=" + encodeURIComponent(draftId),
+        bilder,
+        gesendet
+      );
     }
 
     // Umfang "Markierter Text" — WP-SHIP8-FINAL (bens Bedingung 4, EIN Auswahl-Snapshot):
@@ -4498,7 +4795,7 @@
         }
         Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (textResult) {
           if (textResult.status !== Office.AsyncResultStatus.Succeeded) {
-            showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+            showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
             return;
           }
           done(String(textResult.value || ""), "", "sendEmpty");
@@ -4510,7 +4807,7 @@
     // also bereits EIN konsistenter Snapshot (WP-SHIP8-FINAL Bedingung 4: hier kein Umbau noetig).
     function readWholeDocument(done) {
       if (!window.Word || typeof Word.run !== "function") {
-        showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+        showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
         return;
       }
       Word.run(function (context) {
@@ -4521,7 +4818,7 @@
           done(String(body.text || ""), String(htmlResult.value || ""), "sendEmptyDoc");
         });
       }).catch(function () {
-        showSendStatus("warn", t("sendError", { detail: "Word-API" }));
+        showSendStatus("warn", t("sendError", { detail: "Word-API" }), "retry");
       });
     }
 
@@ -5919,6 +6216,9 @@
     // Teil 3: Segment-Umschaltung (Fragen | Wissen erfassen) — reine Sichtbarkeit, kein Zustand geht verloren.
     function setTab(name) {
       kwAnsichtSetzen(name === "capture" ? "erfassen" : "fragen");
+      // JOB 3057 K2: beim Wechsel auf „Erfassen" die Markierung frisch lesen — der Anlass, der
+      // auch auf Hosts ohne DocumentSelectionChanged traegt.
+      if (name === "capture") { captureMarkierungLesen(); }
     }
 
     document.getElementById("tab-ask").addEventListener("click", function () { setTab("ask"); });
@@ -6014,6 +6314,41 @@
       checkSession(); // ehrlicher Ist-Zustand statt Warte-Text
     });
     document.getElementById("send-btn").addEventListener("click", sendSelection);
+    // JOB 3057 K2: der Textlink „Ganzes Dokument uebernehmen" loest den Dokument-Weg direkt aus
+    // (href="#": Sprungnavigation unterbinden; gesperrt = aria-disabled, dann kein Weg).
+    document.getElementById("capture-dokument-link").addEventListener("click", function (ev) {
+      ev.preventDefault();
+      if (this.getAttribute("aria-disabled") === "true") { return; }
+      sendDocument();
+    });
+    // Der EINE Knopf am Fehlersatz: derselbe Umfang erneut, oder der bestehende Anmeldeweg.
+    document.getElementById("send-status-btn").addEventListener("click", function () {
+      if (sendStatusAktion === "login") {
+        var generation = startLoginPolling();
+        openLoginWindow(generation);
+        return;
+      }
+      if (sendStatusAktion === "retry") { sendeEntwurf(captureLetzterUmfang); return; }
+      // Runde 3: „Oeffnen" am Statussatz — derselbe Weg wie der Link der Ergebniszeile
+      // (neues Fenster, ohne Opener), fuer den Entwurf, dessen Markierung inzwischen gewechselt hat.
+      if (sendStatusAktion === "open" && sendStatusUrl) { window.open(sendStatusUrl, "_blank", "noopener"); }
+    });
+    // Der EINE Knopf am Office-Satz: die Seite neu laden (die Erkennung laeuft dann erneut).
+    document.getElementById("office-hint-btn").addEventListener("click", function () {
+      window.location.reload();
+    });
+    // Die Zeile „Titel": ab dem ersten eigenen Zeichen gehoert sie dem Menschen; geleert nimmt die
+    // Vorbelegung wieder ueber.
+    document.getElementById("capture-titel").addEventListener("input", function () {
+      captureTitelVonHand = this.value.replace(/^\s+|\s+$/g, "").length > 0;
+    });
+    // Das „?"-Menue (§5a): auf, zu — sonst nichts.
+    document.getElementById("capture-mehr-btn").addEventListener("click", function () {
+      var menue = document.getElementById("capture-mehr");
+      var offen = menue.className === "hidden";
+      menue.className = offen ? "" : "hidden";
+      this.setAttribute("aria-expanded", offen ? "true" : "false");
+    });
 
     // AUFTRAG-mega69 Block E: Auslieferungsstand anzeigen. __KLARA_STAND__ wird vom Build ersetzt;
     // der Praefix-Vergleich (statt Gleichheit) haelt auch dann, wenn der Platzhalter-Name selbst
@@ -6084,6 +6419,8 @@
       officeChecked = true;
       officeReady = Boolean(ready);
       updateSendState();
+      // JOB 3057 K2: sobald Word da ist, die Markierung lesen und am Ereignis haengen (einmal).
+      captureOfficeAnschliessen();
       // AUFTRAG-37 (G2): erst JETZT steht fest, ob Office einen Dokumentkontext liefert. Vorher
       // war jede Bindung geraten. Das Tor oeffnet genau einmal — ein spaeter Rueckruf nach der
       // Frist findet es offen (AK3).

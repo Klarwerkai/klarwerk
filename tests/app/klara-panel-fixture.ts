@@ -37,6 +37,10 @@ export interface PanelElement {
   rows: number;
   href: string;
   getAttribute(name: string): string | null;
+  /** JOB 3057 K2: Knoepfe und Textlinks der Erfassen-Flaeche werden wirklich geklickt. */
+  click(): void;
+  /** JOB 3057 K2: die Zeile „Titel" wird wie von Hand beschrieben (Ereignis `input`). */
+  dispatchEvent(ereignis: { type: string }): boolean;
 }
 
 interface PanelDocument {
@@ -137,7 +141,7 @@ interface FakeOfficeResult {
   value: string;
 }
 
-function buildFakeOffice(selectionHtml: string): Record<string, unknown> {
+function buildFakeOffice(selectionHtml: string, selectionText: string): Record<string, unknown> {
   const coercion = { Html: "html", Text: "text" };
   const asyncStatus = { Succeeded: "succeeded", Failed: "failed" };
   return {
@@ -158,7 +162,10 @@ function buildFakeOffice(selectionHtml: string): Record<string, unknown> {
             callback({ status: asyncStatus.Succeeded, value: selectionHtml });
             return;
           }
-          callback({ status: asyncStatus.Succeeded, value: "" });
+          // JOB 3057 K2: der TEXT-Zugriff speist die Markierungskarte (und die Frage-Herkunft).
+          // Grundwert bleibt leer — bestehende Faelle stellen keine Textmarkierung und sollen
+          // durch die Karte nicht ploetzlich eine bekommen.
+          callback({ status: asyncStatus.Succeeded, value: selectionText });
         },
       },
     },
@@ -172,6 +179,11 @@ export interface KlaraPanelOptions {
   routes?: Record<string, FakeReplyInit | FakeRoute>;
   /** Was Word als HTML der Markierung liefert (Grundlage von `sendSelection`). */
   selectionHtml?: string;
+  /**
+   * JOB 3057 K2: was Word als TEXT der Markierung liefert — die Markierungskarte der Erfassen-
+   * Flaeche liest genau diesen Zugriff (Absaetze = Zeilen). Ohne Angabe leer (wie bisher).
+   */
+  selectionText?: string;
   /** false = Seite im normalen Browser (kein Office) — der ehrliche Nicht-Word-Zustand. */
   withOffice?: boolean;
 }
@@ -184,6 +196,8 @@ export interface KlaraPanel {
   setLang(code: string): void;
   setTab(name: string): void;
   sendSelection(): void;
+  /** JOB 3057 K2: der Dokument-Weg — was der Textlink „Ganzes Dokument uebernehmen" ausloest. */
+  sendDocument(): void;
   stopLoginPolling(): void;
   askKlara(): void;
   t(key: string, vars?: Record<string, string>): string;
@@ -200,6 +214,7 @@ interface PanelExports {
   setLang(code: string): void;
   setTab(name: string): void;
   sendSelection(): void;
+  sendDocument(): void;
   stopLoginPolling(): void;
   askKlara(): void;
   q(selector: string): PanelElement | null;
@@ -306,6 +321,7 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
   } else {
     const office = buildFakeOffice(
       options.selectionHtml ?? "<html><body><p>Ventil entlasten vor der Wartung</p></body></html>",
+      options.selectionText ?? "",
     );
     globals.Office = office;
     globals.window.Office = office;
@@ -324,6 +340,7 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
       setLang: setLang,
       setTab: setTab,
       sendSelection: sendSelection,
+      sendDocument: sendDocument,
       stopLoginPolling: stopLoginPolling,
       askKlara: askKlara,
       q: q,
@@ -352,6 +369,7 @@ export function createKlaraPanel(options: KlaraPanelOptions = {}): KlaraPanel {
     setLang: exports.setLang,
     setTab: exports.setTab,
     sendSelection: exports.sendSelection,
+    sendDocument: exports.sendDocument,
     stopLoginPolling: exports.stopLoginPolling,
     askKlara: exports.askKlara,
     t: exports.t,

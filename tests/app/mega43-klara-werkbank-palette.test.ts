@@ -435,6 +435,24 @@ const REGEL_AUSNAHMEN: RegelAusnahme[] = [
       "ohne Markup-Fundstelle rät der Sammler gegen jede Fläche. Ihre Fläche ist bekannt: sie " +
       "liegen in #antwortkarte (--surface, Weiß); Tinte-2 #525B6B darauf = 7,0:1, AA erfüllt.",
   },
+  {
+    selektor: "#capture-aktion #send-btn:disabled",
+    grund:
+      "JOB 3057 K2 (Zielbild Erfassen.dc.html, §5.3): der gesperrte Senden-Knopf der Erfassen-" +
+      "Fläche ist GRAU statt halbdurchsichtig — Fläche --hairline (#E9E5DE), Schrift --muted " +
+      "(#525B6B), beides Werkbank-Token, gemessen 5,5:1. Der Sammler kann den Zustandsselektor " +
+      "nicht auf das Markup anwenden; der Wert wird in Chromium gemessen " +
+      "(tests/design/zielbild-k2-erfassen.test.ts). Inaktives Bedienelement, WCAG 2.1 SC 1.4.3.",
+  },
+  {
+    selektor: '#capture-dokument-link[aria-disabled="true"]',
+    grund:
+      "JOB 3057 K2: der Textlink „Ganzes Dokument übernehmen“ ist ohne Anmeldung oder ohne Word " +
+      "gesperrt (aria-disabled, pointer-events: none) und dann abgeschwächt (opacity: 0.5) — " +
+      "dieselbe Bauform wie button.primary:disabled: die Abschwächung IST das Zeichen der " +
+      "Inaktivität, ein sichtbar aktiver Link ohne Wirkung wäre ein toter Klick (K5). " +
+      "Inaktives Bedienelement, WCAG 2.1 SC 1.4.3 nimmt es von der Kontrastanforderung aus.",
+  },
 ];
 
 // ================================================================================================
@@ -1340,8 +1358,10 @@ describe("mega43 B1/B2 · Klara führt die Werkbank-Palette (keine zweite Wahrhe
   it("A2 · die sichtbaren Inline-Stile sind eine Farbquelle des Sammlers", () => {
     expect(MODELL.inline.length).toBeGreaterThan(0);
     const mitFarbe = MODELL.inline.filter((q) => /(^|;)\s*color\s*:/.test(q.text));
+    // JOB 3057 K2: die Radiogruppe (label#scope-pages-label) ist ersetzt; der farbtragende
+    // Inline-Stil sitzt jetzt am Bilder-Kasten im „?"-Menue der Erfassen-Flaeche.
     expect(mitFarbe.map((q) => q.ort)).toContain(
-      "body > div#section-capture.hidden > div#capture-karte.card > div.scope > label#scope-pages-label [style]",
+      "body > div#section-capture.hidden > div#capture-mehr.hidden > div#capture-bilder-hinweis [style]",
     );
     // Der heutige Inline-Stil führt kein Literal, sondern var(--muted) — er ist sauber.
     expect(farbfunde(MODELL).filter((f) => f.ort.includes("[style]"))).toEqual([]);
@@ -1447,8 +1467,8 @@ describe("mega43 B1 · Kalibrierung des Sammlers", () => {
   // ---- A2: Inline-Stile können nicht entwischen ------------------------------------------------
   it("A2 · ein Farbliteral in einem Inline-Stil schlägt an", () => {
     const verstellt = HTML.replace(
-      'id="scope-pages-label" style="color: var(--muted);"',
-      'id="scope-pages-label" style="color: #123456;"',
+      'id="capture-bilder-hinweis" style="background: var(--warn-bg); color: var(--warn-text);"',
+      'id="capture-bilder-hinweis" style="background: var(--warn-bg); color: #123456;"',
     );
     expect(verstellt).not.toBe(HTML);
     const gefunden = befunde(baue(STIL, verstellt));
