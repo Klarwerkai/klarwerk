@@ -86,6 +86,33 @@ const de = {
   // Weder Daten noch Fehler noch Laden (etwa eine pausierte erste Anfrage): kein „Nichts vorhanden",
   // kein Offline-Urteil (Lehre JOB 3037 R4/R5) — nur, was feststeht.
   "wissensnetz.keineAntwort": "Noch keine Antwort vom Server.",
+  // JOB 3067 V4 — die Ablesekarte unter dem Netz. Jede Beschriftung sagt im Wort, dass sie das
+  // SICHTBARE zählt (`luecken.ts:18-20`): die Sicht ist vor der Zählung getrimmt, ein Thema mit
+  // lauter vertraulichen Beitragenden sieht danach aus wie eines ohne. Deshalb steht hier kein
+  // Urteilswort — keine „Lücke", kein „fehlt", kein „leer". Die Bewertung bleibt beim Menschen.
+  "wissensnetz.metrik.titel": "Sichtbarer Bestand",
+  "wissensnetz.metrik.objekte": "Sichtbare Objekte",
+  // JEDE der drei Beschriftungen nennt die Sichtbarkeit selbst — nicht nur der Titel darueber und
+  // nicht nur der Satz darunter. Wer eine einzelne Zahl liest, liest genau diese eine Zeile; ein
+  // blosses „Davon ohne Schlagwort" liesse offen, wovon, und behauptete damit eine Aussage ueber
+  // den ganzen Bestand statt ueber den getrimmten (Lehre JOB 3067 R1). Gemessen in
+  // `tests/wissensnetz-sichtmetrik/flaeche.test.tsx`, F1 und F1b (de/en/nl).
+  "wissensnetz.metrik.ohneThema": "Sichtbare Objekte ohne Schlagwort",
+  "wissensnetz.metrik.beitragende": "Sichtbare Beitragende",
+  "wissensnetz.metrik.hinweis":
+    "Gezählt wurde, was für dich sichtbar ist. Was du nicht sehen darfst, ist vor der Zählung entfernt worden — was diese Zahlen bedeuten, entscheidest du.",
+  // Für diese Menge gibt es KEINEN Bibliotheksfilter, der sie genau trifft. Statt eines toten
+  // Knopfes steht der Grund da.
+  "wissensnetz.metrik.ohneThemaHinweis": "Dafür gibt es keinen Einstieg in die Bibliothek.",
+  // Eine LESEREIHENFOLGE, keine Rangfolge von Mängeln — die Überschrift sagt genau das.
+  "wissensnetz.metrik.themenTitel": "Themen nach sichtbaren Beitragenden, die wenigsten zuerst",
+  "wissensnetz.metrik.zeile.objekte": "{{count}} sichtbare Objekte",
+  "wissensnetz.metrik.zeile.beitragende": "{{count}} sichtbare Beitragende",
+  // Ist die Beitragendenliste am Deckel beschnitten, ist selbst diese Zahl eine Untergrenze
+  // (`luecken.ts:34-38`) — dann sagt die Zeile „mindestens".
+  "wissensnetz.metrik.zeile.beitragendeMindestens": "mindestens {{count}} sichtbare Beitragende",
+  "wissensnetz.metrik.mehr": "Weitere {{count}} Themen zeigen",
+  "wissensnetz.metrik.weniger": "Weitere Themen ausblenden",
   "nav.external": "Externes Wissen",
   "nav.validation": "Validierung",
   "nav.conflicts": "Konflikte",
@@ -5144,6 +5171,21 @@ const en: typeof de = {
   "wissensnetz.leiste.fehler": "The objects for this topic could not be loaded.",
   "wissensnetz.stand.fehlgeschlagen": "As of {{stand}} · refresh failed",
   "wissensnetz.keineAntwort": "No answer from the server yet.",
+  // JOB 3067 V4 — the read-off card below the network. Every label carries the word "visible",
+  // each one on its own: a reader takes in a single line, not the card title above it.
+  "wissensnetz.metrik.titel": "Visible stock",
+  "wissensnetz.metrik.objekte": "Visible objects",
+  "wissensnetz.metrik.ohneThema": "Visible objects without a keyword",
+  "wissensnetz.metrik.beitragende": "Visible contributors",
+  "wissensnetz.metrik.hinweis":
+    "What was counted is what is visible to you. Anything you may not see was removed before counting — what these numbers mean is yours to decide.",
+  "wissensnetz.metrik.ohneThemaHinweis": "There is no entry point into the library for these.",
+  "wissensnetz.metrik.themenTitel": "Topics by visible contributors, the fewest first",
+  "wissensnetz.metrik.zeile.objekte": "{{count}} visible objects",
+  "wissensnetz.metrik.zeile.beitragende": "{{count}} visible contributors",
+  "wissensnetz.metrik.zeile.beitragendeMindestens": "at least {{count}} visible contributors",
+  "wissensnetz.metrik.mehr": "Show {{count}} more topics",
+  "wissensnetz.metrik.weniger": "Hide the further topics",
   "nav.external": "External knowledge",
   "nav.validation": "Validation",
   "nav.conflicts": "Conflicts",
@@ -9527,6 +9569,21 @@ const nl: typeof de = {
   "wissensnetz.leiste.fehler": "De objecten bij dit thema konden niet worden geladen.",
   "wissensnetz.stand.fehlgeschlagen": "Stand van {{stand}} · vernieuwen mislukt",
   "wissensnetz.keineAntwort": "Nog geen antwoord van de server.",
+  // JOB 3067 V4 — de afleeskaart onder het netwerk. Elk opschrift draagt het woord „zichtbaar",
+  // elk voor zich: wie een enkel getal leest, leest precies die ene regel.
+  "wissensnetz.metrik.titel": "Zichtbare verzameling",
+  "wissensnetz.metrik.objekte": "Zichtbare objecten",
+  "wissensnetz.metrik.ohneThema": "Zichtbare objecten zonder trefwoord",
+  "wissensnetz.metrik.beitragende": "Zichtbare bijdragers",
+  "wissensnetz.metrik.hinweis":
+    "Geteld is wat voor jou zichtbaar is. Wat je niet mag zien, is vóór het tellen verwijderd — wat deze getallen betekenen, bepaal jij.",
+  "wissensnetz.metrik.ohneThemaHinweis": "Daarvoor is er geen ingang in de bibliotheek.",
+  "wissensnetz.metrik.themenTitel": "Thema's op zichtbare bijdragers, de minste eerst",
+  "wissensnetz.metrik.zeile.objekte": "{{count}} zichtbare objecten",
+  "wissensnetz.metrik.zeile.beitragende": "{{count}} zichtbare bijdragers",
+  "wissensnetz.metrik.zeile.beitragendeMindestens": "minstens {{count}} zichtbare bijdragers",
+  "wissensnetz.metrik.mehr": "Nog {{count}} thema's tonen",
+  "wissensnetz.metrik.weniger": "Overige thema's verbergen",
   "nav.external": "Externe kennis",
   "nav.validation": "Validatie",
   "nav.conflicts": "Conflicten",

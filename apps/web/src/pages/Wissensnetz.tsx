@@ -1,5 +1,6 @@
 // ================================================================================================
 // JOB 2600 · D1 — DIE THEMENKARTE.   JOB 3052 · D6 — DAS NETZ DES ZIELBILDS MIT SEITENLEISTE.
+// JOB 3067 · V4 — DIE ABLESEKARTE UNTER DEM NETZ (s. `Sichtzahlen`/`Themenzeilen` weiter unten).
 // ================================================================================================
 //
 // DIE ABNAHME (JOB 2600), woertlich: „Auf der bestehenden Klara-Oberflaeche erscheint eine
@@ -11,6 +12,8 @@
 // WAS DIESE DATEI NICHT TUT — und das ist der Grund, warum sie ueberschaubar bleibt:
 //   · Sie rechnet NICHTS aus. Groesse, Farbe, Ubiquitaet und Kantenauswahl entstehen im Server
 //     (`services/wissensnetz/src/themenkarte.ts`), hinter der Rechte-Naht. Hier wird gezeichnet.
+//     Auch die Ablesekarte (JOB 3067) rechnet nicht: sie ORDNET die schon erhobenen Zahlen fuer das
+//     Auge (`Themenzeilen`) und stellt keine einzige davon selbst auf.
 //   · Sie holt KEINE zweite Zaehlung. Die Seitenleiste (D6) speist sich aus der BESTEHENDEN
 //     Bibliothekssuche (`useLibrarySearch`, Facette `tag` — dieselben Parameter wie
 //     `Library.tsx`): ein Hook, kein neuer Server-Weg. Was sie zeigt, ist die Antwort dieser Suche
@@ -35,11 +38,12 @@ import { useLibrarySearch, useWissensnetz } from "../api/hooks";
 import type {
   KnowledgeObject,
   Sichtmetrik,
+  ThemenMetrik,
   Themenfarbe,
   Themenkarte,
   Themenknoten,
 } from "../api/types";
-import { Card, PageHeader, QueryState } from "../components/ui";
+import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
 
 // ------------------------------------------------------------------------------------------------
 // DIE FARBEN: Palette des Zielbilds, Wahrheit des Produkts (Auftrag §2b).
@@ -1079,22 +1083,189 @@ function AlleThemen({ karte }: { karte: Themenkarte }): JSX.Element | null {
   );
 }
 
+// ------------------------------------------------------------------------------------------------
+// JOB 3067 · V4 — DIE ABLESEKARTE: DIE VIER ERHOBENEN FELDER BEKOMMEN EINE FLAECHE.
+// ------------------------------------------------------------------------------------------------
+// Der Server erhebt fuenf Felder (`services/wissensnetz/src/luecken.ts:47-64`); bis hierher nahm
+// diese Datei genau eines (`themenkarte`) und warf `objekteGesamt`, `ohneThema`,
+// `sichtbareBeitragendeGesamt` und `themen[]` weg. Sie werden jetzt ABGELESEN.
+//
+// SIE URTEILT NICHT, und das ist keine Zurueckhaltung, sondern die Bauart des Servers
+// (`luecken.ts:13-16`): die Sicht ist VOR der Auswertung getrimmt — „ein Thema, dessen Beitragende
+// saemtlich vertraulich sind, sieht danach exakt aus wie ein Thema ohne Beitragende." Deshalb steht
+// hier keine „Luecke", kein „fehlt", kein „leer" und keine Rangfolge von Maengeln; jede
+// Beitragendenzahl sagt im Wort, dass sie das SICHTBARE zaehlt, und die Bewertung bleibt bei dem
+// Menschen, der die Zahlen liest. Gemessen an der gerenderten Flaeche in
+// `tests/wissensnetz-sichtmetrik/flaeche.test.tsx`, Fall F4.
+//
+// KEIN ZWEITER WEG: der Sprung in die Bibliothek ist `themenHref` — derselbe, den die Seitenleiste
+// und „Alle Themen" schon gehen. Fuer `ohneThema` gibt es KEINEN Link, weil es keinen
+// Bibliotheksfilter gibt, der genau diese Menge trifft; dort steht eine Zahl und ein Satz statt
+// eines toten Knopfes.
+
+/** Hoechstens so viele Themenzeilen stehen offen; der Rest liegt hinter dem Aufklapper. */
+const ZEILEN_SICHTBAR = 40;
+
+/** Eine abgelesene Zahl mit ihrer Beschriftung — und, wo noetig, dem Satz, warum kein Weg dranhaengt. */
+function Zahl({
+  anker,
+  wert,
+  label,
+  hinweis,
+}: {
+  anker: string;
+  wert: number;
+  label: string;
+  hinweis?: string;
+}): JSX.Element {
+  return (
+    <div data-testid={`metrik-${anker}-block`}>
+      <div data-testid={`metrik-${anker}`} className="text-2xl font-semibold text-ink">
+        {wert}
+      </div>
+      <div data-testid={`metrik-${anker}-label`} className="mt-0.5 text-sm text-muted">
+        {label}
+      </div>
+      {hinweis !== undefined ? (
+        <p data-testid={`metrik-${anker}-hinweis`} className="mt-1 text-micro text-muted-2">
+          {hinweis}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+/**
+ * Die drei Gesamtzahlen des sichtbaren Bestands. Sie stehen, sobald eine Antwort da ist — auch dann,
+ * wenn kein einziges Schlagwort vergeben ist: ein Bestand mit 900 Objekten ohne Schlagwort ist etwas
+ * anderes als gar kein Bestand, und bis hierher sah beides gleich aus (F5).
+ */
+function Sichtzahlen({ metrik }: { metrik: Sichtmetrik }): JSX.Element {
+  const { t } = useTranslation();
+  return (
+    <Card interactive={false} data-testid="netz-metrik">
+      <SectionLabel>{t("wissensnetz.metrik.titel")}</SectionLabel>
+      <div className="flex flex-wrap gap-8">
+        <Zahl
+          anker="objekte-gesamt"
+          wert={metrik.objekteGesamt}
+          label={t("wissensnetz.metrik.objekte")}
+        />
+        <Zahl
+          anker="ohne-thema"
+          wert={metrik.ohneThema}
+          label={t("wissensnetz.metrik.ohneThema")}
+          hinweis={t("wissensnetz.metrik.ohneThemaHinweis")}
+        />
+        <Zahl
+          anker="beitragende-gesamt"
+          wert={metrik.sichtbareBeitragendeGesamt}
+          label={t("wissensnetz.metrik.beitragende")}
+        />
+      </div>
+      <p className="mt-4 text-micro text-muted-2">{t("wissensnetz.metrik.hinweis")}</p>
+    </Card>
+  );
+}
+
+/**
+ * Je Thema: sichtbare Objekte, sichtbare Beitragende, der Weg in die Bibliothek.
+ *
+ * DIE REIHENFOLGE ist eine LESEREIHENFOLGE, keine Rangliste von Maengeln — aufsteigend nach
+ * sichtbaren Beitragenden, bei Gleichstand aufsteigend nach Objekten, bei Gleichstand nach Namen
+ * (`localeCompare` wie `lesemodell.ts:265`). Die Ueberschrift sagt genau das.
+ *
+ * `beitragendeAbgeschnitten` macht aus „N" ein „mindestens N": der Server nennt den Wert dann
+ * ausdruecklich eine Untergrenze (`luecken.ts:34-38`), und eine glatte Zahl waere dort eine
+ * Behauptung.
+ */
+function Themenzeilen({ themen }: { themen: readonly ThemenMetrik[] }): JSX.Element | null {
+  const { t } = useTranslation();
+  const [offen, setOffen] = useState(false);
+  if (themen.length === 0) {
+    return null;
+  }
+  const gelesen = [...themen].sort(
+    (a, b) =>
+      a.sichtbareBeitragende - b.sichtbareBeitragende ||
+      a.objekte - b.objekte ||
+      a.thema.localeCompare(b.thema),
+  );
+  const verborgen = Math.max(0, gelesen.length - ZEILEN_SICHTBAR);
+  const gezeigt = offen ? gelesen : gelesen.slice(0, ZEILEN_SICHTBAR);
+  return (
+    <Card interactive={false} data-testid="netz-metrik-themen">
+      <h2 data-testid="metrik-themen-titel" className="text-sm font-semibold text-text">
+        {t("wissensnetz.metrik.themenTitel")}
+      </h2>
+      <ul data-testid="metrik-themen" className="mt-3 flex flex-col">
+        {gezeigt.map((m) => (
+          <li
+            key={m.thema}
+            data-testid="metrik-thema"
+            data-thema={m.thema}
+            className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-b border-hairline py-2 last:border-b-0"
+          >
+            <Link
+              className="text-sm font-medium"
+              style={{ color: "rgb(var(--kw-brand-text))" }}
+              to={themenHref(m.thema)}
+            >
+              {m.thema}
+            </Link>
+            <span className="flex flex-wrap gap-x-4" style={{ fontSize: 12.5, color: MUTED }}>
+              <span data-testid="metrik-thema-objekte">
+                {t("wissensnetz.metrik.zeile.objekte", { count: m.objekte })}
+              </span>
+              <span data-testid="metrik-thema-beitragende">
+                {t(
+                  m.beitragendeAbgeschnitten
+                    ? "wissensnetz.metrik.zeile.beitragendeMindestens"
+                    : "wissensnetz.metrik.zeile.beitragende",
+                  { count: m.sichtbareBeitragende },
+                )}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+      {verborgen > 0 ? (
+        <button
+          type="button"
+          className="mt-3 text-sm font-medium underline"
+          onClick={() => setOffen((v) => !v)}
+          data-testid="metrik-mehr-schalter"
+        >
+          {offen
+            ? t("wissensnetz.metrik.weniger")
+            : t("wissensnetz.metrik.mehr", { count: verborgen })}
+        </button>
+      ) : null}
+    </Card>
+  );
+}
+
 /** Der gemeinsame Renderer fuer vorhandene Daten — frisch oder aus dem Cache. */
 function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | null }): JSX.Element {
   const { t } = useTranslation();
   const karte = metrik.themenkarte;
   // Ehrlich statt leer: eine Karte ohne Knoten ist kein leerer Bestand, sondern ein Bestand ohne
-  // Schlagworte. Beides sagt der Text, keines behauptet das andere.
+  // Schlagworte. Beides sagt der Text, keines behauptet das andere — und seit JOB 3067 stehen
+  // GENAU HIER auch die Zahlen, die das belegen (`objekteGesamt`/`ohneThema`).
   if (!karte || karte.themen.length === 0) {
     return (
-      <Card interactive={false}>
-        <p className="text-sm text-muted">{t("wissensnetz.leer")}</p>
-        {hinweis !== null ? (
-          <p data-testid="netz-auffrischung-hinweis" className="mt-2 text-micro text-muted">
-            {hinweis}
-          </p>
-        ) : null}
-      </Card>
+      <>
+        <Card interactive={false}>
+          <p className="text-sm text-muted">{t("wissensnetz.leer")}</p>
+          {hinweis !== null ? (
+            <p data-testid="netz-auffrischung-hinweis" className="mt-2 text-micro text-muted">
+              {hinweis}
+            </p>
+          ) : null}
+        </Card>
+        <Sichtzahlen metrik={metrik} />
+        <Themenzeilen themen={metrik.themen} />
+      </>
     );
   }
   return (
@@ -1102,7 +1273,8 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
       <Karte karte={karte} />
       {/* Zustandsmodell (Auftrag §9, Lehre JOB 3037 R2/R3): scheitert eine Auffrischung, bleibt die
           zuletzt geholte Karte SICHTBAR — mit dem Stand und dem Wort, dass die Auffrischung
-          fehlschlug. Nie Karte oder Auswahl leeren. */}
+          fehlschlug. Nie Karte oder Auswahl leeren. Dasselbe gilt fuer die Zahlen darunter: sie
+          haengen an derselben Bedingung wie die Karte, nicht an einer eigenen (F6). */}
       {hinweis !== null ? (
         <p
           data-testid="netz-auffrischung-hinweis"
@@ -1112,6 +1284,8 @@ function Inhalt({ metrik, hinweis }: { metrik: Sichtmetrik; hinweis: string | nu
           {hinweis}
         </p>
       ) : null}
+      <Sichtzahlen metrik={metrik} />
+      <Themenzeilen themen={metrik.themen} />
       <AlleThemen karte={karte} />
     </>
   );

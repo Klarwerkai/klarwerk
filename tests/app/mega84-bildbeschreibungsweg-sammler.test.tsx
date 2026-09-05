@@ -1203,8 +1203,19 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // wörtlich im selben Ordner stand. Das ist eine ZUSAMMENFÜHRUNG, kein neuer Weg: sie bietet
     // keine Bildbeschreibung an und trägt keinen eigenen Titel. Die zwei Zahlen, an denen Stufe 2
     // wirklich hängt, sind unverändert — `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3067 (V4 · die Sichtmetrik bekommt eine Fläche · KONFLIKTRUNDE 1): NACH DEM REBASE auf
+    // JOB 3063 NEU GEMESSEN. `komponenten` von 275 auf 278 NACHGEZOGEN, gemessen am eigenen Lauf.
+    // `Wissensnetz.tsx` bringt GENAU DREI Komponenten hinzu — `Zahl` (eine abgelesene Zahl mit
+    // ihrer Beschriftung), `Sichtzahlen` (die Ablesekarte „Sichtbarer Bestand") und `Themenzeilen`
+    // (die Themenliste mit dem Weg in die Bibliothek). Dieselbe Begründung wie oben, und sie trägt
+    // hier genauso: Die Auflage verbietet, dass eine UMSTELLUNG die Erhebung verschiebt — nicht,
+    // dass der Quellbaum wächst. Die zwei Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert:
+    // `anbieter` 1 und `traeger` 2. Keine der drei bietet eine Bildbeschreibung an (kein
+    // `ANGEBOT_MUSTER`) und keine trägt einen eigenen Titel (kein `documentTitle`-Prop) — sie
+    // erscheinen nur in der Grundmenge.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 275,
+      komponenten: 278,
       anbieter: 1,
       traeger: 2,
     });
