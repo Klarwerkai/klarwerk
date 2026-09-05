@@ -1,5 +1,5 @@
 import { REASONER_TASKS } from "../api/types";
-import type { ModelRunRecord, ModelRunTask } from "../api/types";
+import type { ModelRunRecord, ModelRunTask, ModelRunVerbrauch } from "../api/types";
 
 // SCRUM-165: DOM-freie Auswertung der ModelRun-Records (nur Metadaten). Keine Prompt-/
 // Antworttexte; rein abgeleitete Zähler/Tones für die kompakte Stufe-2-Sicht.
@@ -20,6 +20,44 @@ export interface ModelRunSummary {
   // tragen bewusst nichts bei. Beide Werte werden immer zusammen angezeigt.
   dauerSummeMs: number;
   dauerGezaehlt: number;
+  // JOB 3074: der Tokenverbrauch über die GELADENEN Läufe, nach demselben Muster wie die Laufzeit
+  // darüber. `verbrauchGezaehlt` ist die Grundmenge — die Zahl der Läufe, die überhaupt einen
+  // gemeldeten Verbrauch tragen. Eine Summe ohne ihre Grundmenge wäre hier sogar irreführender als
+  // bei der Dauer: Läufe ohne Modellaufruf sind der Normalfall, nicht die Ausnahme, und niemand
+  // könnte einer nackten Zahl ansehen, über wie wenige Läufe sie geht.
+  verbrauchEingabeToken: number;
+  verbrauchAusgabeToken: number;
+  verbrauchGezaehlt: number;
+}
+
+// JOB 3074: DIE EINZIGE STELLE, DIE ENTSCHEIDET, OB EIN LAUF EINEN BRAUCHBAREN VERBRAUCH TRÄGT.
+//
+// Der Draht liefert JSON. `ModelRunRecord.verbrauch` ist zwar typisiert, aber TypeScript prüft keine
+// Serverantwort — ein Altdatensatz oder ein fremd befüllter Datensatz kann hier alles einliefern.
+// Die Wache trennt den echten Messwert von allem anderen, und die Zählung wie die Fläche fragen SIE,
+// nicht jeweils sich selbst (dieselbe Bauform wie `istBekannteAufgabenart` unten).
+//
+// `null` heißt „über diesen Lauf ist kein Verbrauch bekannt" und ist streng von `0` unterschieden:
+// eine 0 kann ein echter Messwert sein (Antwort ohne Ausgabetoken), ein fehlender Wert nie.
+export function modelRunVerbrauch(
+  record: Pick<ModelRunRecord, "verbrauch">,
+): ModelRunVerbrauch | null {
+  const v = record.verbrauch;
+  if (!v || typeof v !== "object") {
+    return null;
+  }
+  const brauchbar = (n: unknown): n is number => Number.isSafeInteger(n) && (n as number) >= 0;
+  return brauchbar(v.eingabeToken) && brauchbar(v.ausgabeToken) && brauchbar(v.gemeldeteAufrufe)
+    ? v
+    : null;
+}
+
+// JOB 3074: DIE EINZIGE DARSTELLUNG EINER TOKENZAHL — bewusst OHNE `toLocaleString`, aus demselben
+// Grund wie `formatiereDauer`: die Zahl steht in drei Sprachen in derselben Form in einem
+// übersetzten Satz, und ein Test darf sie wörtlich erwarten können. Es wird nicht gerundet und nicht
+// abgekürzt („1,2k" wäre eine Glättung einer exakt gemeldeten Zahl).
+export function formatiereTokenzahl(anzahl: number): string {
+  return String(anzahl);
 }
 
 // JOB 3044: DIE EINZIGE STELLE, DIE AUS DEN ZWEI ZEITSTEMPELN EINE DAUER MACHT.
@@ -76,6 +114,9 @@ export function summarizeModelRuns(records: readonly ModelRunRecord[]): ModelRun
   let unbekannteArten = 0;
   let dauerSummeMs = 0;
   let dauerGezaehlt = 0;
+  let verbrauchEingabeToken = 0;
+  let verbrauchAusgabeToken = 0;
+  let verbrauchGezaehlt = 0;
   for (const r of records) {
     // JOB 3069, ENTSCHEIDUNG ZUR UNBEKANNTEN ART: Sie wird GEZÄHLT, aber keiner der acht Arten
     // zugeschlagen. Ein Zuschlag wäre eine erfundene Auskunft („dies war eine Extraktion"), ein
@@ -91,6 +132,15 @@ export function summarizeModelRuns(records: readonly ModelRunRecord[]): ModelRun
       dauerSummeMs += ms;
       dauerGezaehlt += 1;
     }
+    // JOB 3074: gezählt wird der LAUF, nicht der Modellaufruf — die Summenzeile spricht über
+    // geladene Läufe, so wie die Laufzeit darüber. Wie viele Modellaufrufe darin steckten, steht im
+    // Datensatz (`gemeldeteAufrufe`) und wird hier bewusst nicht zu einer zweiten Grundmenge.
+    const verbrauch = modelRunVerbrauch(r);
+    if (verbrauch !== null) {
+      verbrauchEingabeToken += verbrauch.eingabeToken;
+      verbrauchAusgabeToken += verbrauch.ausgabeToken;
+      verbrauchGezaehlt += 1;
+    }
   }
   return {
     total: records.length,
@@ -102,6 +152,9 @@ export function summarizeModelRuns(records: readonly ModelRunRecord[]): ModelRun
     unbekannteArten,
     dauerSummeMs,
     dauerGezaehlt,
+    verbrauchEingabeToken,
+    verbrauchAusgabeToken,
+    verbrauchGezaehlt,
   };
 }
 

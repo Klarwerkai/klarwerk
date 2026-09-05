@@ -78,10 +78,12 @@ import {
 import { koLabel } from "../lib/koLabel";
 import {
   formatiereDauer,
+  formatiereTokenzahl,
   istBekannteAufgabenart,
   limitModelRuns,
   modelRunDauerMs,
   modelRunStatusTone,
+  modelRunVerbrauch,
   summarizeModelRuns,
 } from "../lib/modelRuns";
 import { buildCompositionPreview, moveInOrder, sanitizeOrder } from "../lib/outputComposition";
@@ -1064,7 +1066,13 @@ function ReasonerRunsCard(): JSX.Element {
   const summary = summarizeModelRuns(geladen ?? []);
   // Die Dauer je Zeile kommt aus derselben einen Ableitung wie die Summe in `summary` — es gibt
   // keine zweite Stelle im Produkt, die aus `startedAt`/`finishedAt` rechnet.
-  const zeilen = records.map((r) => ({ r, dauerMs: modelRunDauerMs(r) }));
+  // JOB 3074: der Verbrauch je Zeile kommt aus derselben einen Wache wie die Summe in `summary` —
+  // es gibt keine zweite Stelle, die entscheidet, ob ein Datensatz einen brauchbaren Verbrauch trägt.
+  const zeilen = records.map((r) => ({
+    r,
+    dauerMs: modelRunDauerMs(r),
+    verbrauch: modelRunVerbrauch(r),
+  }));
   return (
     <Card className="mt-4" data-testid="mrun-card">
       <SectionLabel>{t("mrun.title")}</SectionLabel>
@@ -1111,9 +1119,24 @@ function ReasonerRunsCard(): JSX.Element {
                     total: summary.total,
                   })}
                 </span>
+                {/* JOB 3074: die Verbrauchssumme steht NUR da, wenn wenigstens ein geladener Lauf
+                einen gemeldeten Verbrauch trägt. „0 Token aus 0 von 12 Läufen" wäre die Nullzahl,
+                die dieser Auftrag verbietet — Läufe ohne Modellaufruf sind hier der Normalfall.
+                Genannt wird IMMER die Grundmenge: über wie viele der geladenen Läufe die Summe
+                geht (`modelRuns.ts`, ModelRunSummary). */}
+                {summary.verbrauchGezaehlt > 0 ? (
+                  <span data-testid="mrun-token-summe">
+                    {t("mrun.tokensTotal", {
+                      ein: formatiereTokenzahl(summary.verbrauchEingabeToken),
+                      aus: formatiereTokenzahl(summary.verbrauchAusgabeToken),
+                      n: summary.verbrauchGezaehlt,
+                      total: summary.total,
+                    })}
+                  </span>
+                ) : null}
               </div>
               <ul className="divide-y divide-hairline">
-                {zeilen.map(({ r, dauerMs }) => (
+                {zeilen.map(({ r, dauerMs, verbrauch }) => (
                   <li
                     key={r.id}
                     className="flex flex-wrap items-center gap-2 py-2"
@@ -1189,6 +1212,21 @@ function ReasonerRunsCard(): JSX.Element {
                     {dauerMs !== null ? (
                       <span className="font-mono text-[10px] text-muted-2" data-testid="mrun-dauer">
                         {t("mrun.duration", { d: formatiereDauer(dauerMs) })}
+                      </span>
+                    ) : null}
+                    {/* JOB 3074: der Tokenverbrauch nur, wenn die Modell-API ihn für diesen Lauf
+                    selbst genannt hat. Fehlt er, steht hier NICHTS — kein „0", kein „—", keine aus
+                    der Textlänge geschätzte Zahl. Ein Lauf ohne Modellaufruf (deterministisch,
+                    `select`, die Kurzschlusswege aus JOB 3036 R2) hat schlicht keinen, und das ist
+                    die Auskunft (services/model-runs/src/types.ts). Es steht ausdrücklich KEIN
+                    Preis daneben: dafür bräuchte es eine Preisliste je Modell, und die gibt es
+                    nicht — also wird auch nichts gerechnet. */}
+                    {verbrauch !== null ? (
+                      <span className="font-mono text-[10px] text-muted-2" data-testid="mrun-token">
+                        {t("mrun.tokens", {
+                          ein: formatiereTokenzahl(verbrauch.eingabeToken),
+                          aus: formatiereTokenzahl(verbrauch.ausgabeToken),
+                        })}
                       </span>
                     ) : null}
                     <span className="font-mono text-[10px] text-muted-2">

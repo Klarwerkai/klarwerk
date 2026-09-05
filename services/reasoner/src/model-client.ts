@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { cappedModelClient } from "./model-concurrency";
+import { cappedModelClient, meldeModellVerbrauch } from "./model-concurrency";
 // WP-D10 (Fix 3): typisierte Fehlerklassen (Timeout vs. HTTP-Status) — Meldungstexte unverändert.
 // AUFTRAG-mega18 Block E (SCRUM-544): ModelEmptyResponseError = Antwort ohne Antwortinhalt.
 import { ModelEmptyResponseError, ModelHttpError, ModelTimeoutError } from "./model-errors";
@@ -94,7 +94,17 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
       // der zuletzt geaendert wurde, sondern in der Modellwahl der Umgebung.
       const data = (await res.json()) as {
         content?: { type?: string; text?: string }[];
+        // JOB 3074: der Verbrauchsblock der Anthropic Messages API. Bis hierher war er nicht etwa
+        // ungenutzt, sondern durch diese Typangabe WEGGEWORFEN, bevor ihn irgendwer sehen konnte.
+        // Bewusst `unknown` je Wert: was hier ankommt, ist eine fremde Antwort, kein Vertrag —
+        // geprüft wird sie an der einen Stelle, die das darf (`meldeModellVerbrauch`).
+        usage?: { input_tokens?: unknown; output_tokens?: unknown } | null;
       };
+      // JOB 3074: VERBRAUCHT IST VERBRAUCHT. Der Verbrauch wird gemeldet, BEVOR die Textauswertung
+      // darunter entscheidet, ob etwas Brauchbares herauskam — eine Antwort ohne verwertbaren
+      // Textblock ist trotzdem bezahlt. Fehlt der Block oder trägt er unbrauchbare Werte, meldet
+      // diese Zeile nichts; sie erfindet unter keinen Umständen eine Zahl.
+      meldeModellVerbrauch(data.usage?.input_tokens, data.usage?.output_tokens);
       const blocks = data.content ?? [];
       // Erst der ausdrueckliche Textblock; sonst der erste Block, der ueberhaupt Text
       // traegt (aeltere Antwortformen ohne `type`-Feld bleiben so lesbar).
@@ -372,9 +382,19 @@ export function openAiCompatibleClient(config: LocalHttpModelConfig): ModelClien
         if (!res.ok) {
           throw new ModelHttpError(`Lokaler LLM antwortete mit ${res.status}`, res.status);
         }
+        const data = await res.json();
+        // JOB 3074: NUR MELDEN, WAS DER SERVER WIRKLICH NENNT. Ein lokaler LLM-Server MUSS keinen
+        // `usage`-Block liefern; tut er es nicht, steht im Protokoll nichts. Eine Schätzung aus der
+        // Textlänge wäre bequem und wäre eine erfundene Zahl. Gemeldet wird VOR
+        // `requireChatContent`: eine Antwort ohne Antwortinhalt hat trotzdem Token verbraucht, und
+        // genau dieser Fall (Denkphase ohne Ergebnis) ist der teure.
+        const usage = (
+          data as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } | null } | null
+        )?.usage;
+        meldeModellVerbrauch(usage?.prompt_tokens, usage?.completion_tokens);
         // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
         // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty).
-        return requireChatContent(await res.json(), budget);
+        return requireChatContent(data, budget);
       } catch (err) {
         if (timedOut) {
           throw new ModelTimeoutError(

@@ -26,6 +26,12 @@ function modelRuns(overrides: Partial<ModelRunSummary>): ModelRunSummary {
     // nicht (nur `errors`/`fallbacks`), aber die Attrappe muss den vollständigen Typ erfüllen.
     dauerSummeMs: 0,
     dauerGezaehlt: 0,
+    // JOB 3074: dasselbe für den Tokenverbrauch — die Hinweise lesen ihn ebenso wenig, aber der
+    // vollständige Typ ist zu erfüllen. `verbrauchGezaehlt: 0` heißt hier „kein geladener Lauf
+    // trägt einen Verbrauch"; es ist die Grundmenge, nicht ein gemessener Nullverbrauch.
+    verbrauchEingabeToken: 0,
+    verbrauchAusgabeToken: 0,
+    verbrauchGezaehlt: 0,
     ...overrides,
   };
 }

@@ -178,9 +178,109 @@ export async function withModelSlot<T>(fn: () => Promise<T>): Promise<T> {
 // das Modell NICHT befragt und hinterlassen deshalb auch keine Spur.
 const modellAufrufSpur = new AsyncLocalStorage<ModellAufrufSpur>();
 
-/** Die Spur EINES Laufs: hat in ihm wirklich ein Modellaufruf stattgefunden? */
+// ================================================================================================
+// JOB 3074 — DER VERBRAUCH REIST AUF DERSELBEN SPUR, AUS DEMSELBEN GRUND.
+// ================================================================================================
+//
+// Der Tokenverbrauch braucht die Spur aus genau demselben Grund wie `gerufen` (s. o.): zwei
+// gleichzeitige Läufe gehen durch DIESELBE Client-Instanz, und ein Merker am Modul oder am Objekt
+// liefe zwischen ihnen über — ein billiger Lauf trüge dann den Verbrauch eines teuren.
+//
+// UND ER BRAUCHT SIE ZUSÄTZLICH FÜR EINEN ZWEITEN FALL, den `gerufen` nicht kennt: Aufgaben mit
+// MEHREREN Modellaufrufen je Lauf. `extract` schickt ein langes Dokument abschnittsweise durch das
+// Modell (`provider-model.ts:1378-1387`); für `gerufen` ist das einerlei (einmal true bleibt true),
+// für den Verbrauch nicht — er wird ADDIERT, sonst meldete ausgerechnet die teuerste Aufgabe den
+// Verbrauch ihres letzten und kürzesten Abschnitts.
+//
+// WARUM DER TYP HIER STEHT UND NICHT AUS `model-runs` IMPORTIERT WIRD: das wären zwei Schichten mit
+// einer Abhängigkeit in die falsche Richtung — der In-Flight-Sammler ist reasoner-intern, das
+// Protokollfeld gehört dem Modul `model-runs`. Dass beide Formen deckungsgleich BLEIBEN, prüft der
+// Compiler in `tests/ki-lauf-verbrauch/eine-wahrheit.test.ts`; dieselbe Bauform sichert schon die
+// Spiegelung des Client-Typs (`tests/ki-aufgabenarten/aufgabenarten-eine-wahrheit.test.ts`).
+
+/** Der von einer Modell-API SELBST gemeldete Verbrauch, addiert über die Aufrufe EINES Laufs. */
+export interface ModellVerbrauch {
+  eingabeToken: number;
+  ausgabeToken: number;
+  /** Zahl der Aufrufe dieses Laufs, die einen brauchbaren Verbrauch gemeldet haben (≥ 1). */
+  gemeldeteAufrufe: number;
+}
+
+/** Die Spur EINES Laufs: hat in ihm wirklich ein Modellaufruf stattgefunden — und was kostete er? */
 export interface ModellAufrufSpur {
   gerufen: boolean;
+  /**
+   * FEHLT, solange kein Aufruf dieses Laufs einen brauchbaren Verbrauch genannt hat. Das ist nicht
+   * dasselbe wie `0`: `undefined` heißt „unbekannt", `0` wäre ein Messwert (s. `ModelRunVerbrauch`
+   * in `services/model-runs/src/types.ts`).
+   */
+  verbrauch?: ModellVerbrauch;
+}
+
+// DIE EINZIGE STELLE, DIE ZWEI VERBRÄUCHE ZU EINEM ADDIERT. `runTask` braucht sie über die
+// Provider-VERSUCHE eines Laufs hinweg (eine gescheiterte Cloud-Anfrage ist bezahlt, auch wenn
+// danach das lokale Modell antwortet), `meldeModellVerbrauch` innerhalb eines Versuchs. Zwei
+// Additionswege wären zwei Zählungen desselben Vorgangs.
+//
+// Kommt ein ECHTER Verbrauch hinzu, ist das Ergebnis immer einer — nur die Summe aus zweimal
+// „nichts" ist wieder nichts. Die zwei Signaturen sagen genau das, damit der Meldeweg unten kein
+// `undefined` behandeln muss, das dort nicht entstehen kann (`exactOptionalPropertyTypes`).
+export function verbrauchSumme(
+  bisher: ModellVerbrauch | undefined,
+  weiterer: ModellVerbrauch,
+): ModellVerbrauch;
+export function verbrauchSumme(
+  bisher: ModellVerbrauch | undefined,
+  weiterer: ModellVerbrauch | undefined,
+): ModellVerbrauch | undefined;
+export function verbrauchSumme(
+  bisher: ModellVerbrauch | undefined,
+  weiterer: ModellVerbrauch | undefined,
+): ModellVerbrauch | undefined {
+  if (!bisher) {
+    return weiterer;
+  }
+  if (!weiterer) {
+    return bisher;
+  }
+  return {
+    eingabeToken: bisher.eingabeToken + weiterer.eingabeToken,
+    ausgabeToken: bisher.ausgabeToken + weiterer.ausgabeToken,
+    gemeldeteAufrufe: bisher.gemeldeteAufrufe + weiterer.gemeldeteAufrufe,
+  };
+}
+
+// Was als Tokenzahl durchgeht: eine ganze, nicht-negative, sichere Zahl. Alles andere — Text,
+// negative Werte, gebrochene Werte, `null`, fehlend — ist KEINE Auskunft und wird verworfen, statt
+// auf 0 abgerundet zu werden. `0` selbst geht durch: eine Antwort ohne Ausgabetoken ist ein echter
+// Messwert (Denkphase ohne Antwortinhalt).
+function tokenzahl(roh: unknown): number | null {
+  return Number.isSafeInteger(roh) && (roh as number) >= 0 ? (roh as number) : null;
+}
+
+// DER MELDEWEG. Ein Client ruft ihn, wenn die API ihm einen Verbrauch GENANNT hat; er entscheidet
+// als einzige Stelle, ob die genannten Werte brauchbar sind, und addiert sie in die Spur des
+// laufenden Laufs. Ohne laufenden Kontext (Probe, completeRaw, direkte Client-Nutzung) ein No-op —
+// dort entsteht ohnehin kein Protokolleintrag.
+//
+// BEIDE WERTE ODER KEINER: fehlt eine der zwei Zahlen, wird nichts gemeldet. Die andere allein
+// aufzunehmen hieße, die fehlende Hälfte mit einer 0 zu füllen — genau die erfundene Zahl, gegen
+// die dieser Weg gebaut ist.
+export function meldeModellVerbrauch(eingabeRoh: unknown, ausgabeRoh: unknown): void {
+  const spur = modellAufrufSpur.getStore();
+  if (!spur) {
+    return;
+  }
+  const eingabeToken = tokenzahl(eingabeRoh);
+  const ausgabeToken = tokenzahl(ausgabeRoh);
+  if (eingabeToken === null || ausgabeToken === null) {
+    return;
+  }
+  spur.verbrauch = verbrauchSumme(spur.verbrauch, {
+    eingabeToken,
+    ausgabeToken,
+    gemeldeteAufrufe: 1,
+  });
 }
 
 // Führt fn im Lauf-Kontext von `spur` aus. Alles, was innerhalb von fn (auch über beliebig viele

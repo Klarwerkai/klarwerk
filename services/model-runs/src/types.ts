@@ -147,6 +147,29 @@ export function sanitizeModelRunContext(context?: ModelRunContext): ModelRunCont
   };
 }
 
+// ================================================================================================
+// JOB 3074 (V9 Scheibe 3) — DER TOKENVERBRAUCH EINES LAUFS, SO WIE DIE MODELL-API IHN GEMELDET HAT.
+// ================================================================================================
+//
+// WAS DIESE ZAHLEN SIND: die von der Modell-API SELBST genannten Token je Lauf, addiert über alle
+// Modellaufrufe dieses Laufs (`extract` schickt ein langes Dokument in Abschnitten durch das Modell
+// und ruft es mehrfach — deshalb eine Summe, nicht der letzte Wert).
+//
+// WAS SIE NICHT SIND: keine Kosten, kein Preis, keine Rechnung, keine Schätzung. Der Preis je Modell
+// ist Pedis Preisliste und steht bewusst NICHT in diesem Modul — hier steht nur, was verbraucht
+// wurde, nicht was es gekostet hat.
+//
+// `gemeldeteAufrufe` IST DIE GRUNDMENGE DER SUMME, nicht die Zahl der Modellaufrufe: es zählt die
+// Aufrufe, die einen BRAUCHBAREN Verbrauch genannt haben. Ohne sie wäre die Summe eine Zahl ohne
+// Bezug — dasselbe Paar aus Summe und Grundmenge, das die Laufzeit schon führt
+// (`apps/web/src/lib/modelRuns.ts:18-22`).
+export interface ModelRunVerbrauch {
+  eingabeToken: number;
+  ausgabeToken: number;
+  /** Zahl der Modellaufrufe dieses Laufs, die einen brauchbaren Verbrauch GEMELDET haben (≥ 1). */
+  gemeldeteAufrufe: number;
+}
+
 export interface ModelRunRecord {
   id: string;
   task: ModelRunTask;
@@ -177,6 +200,20 @@ export interface ModelRunRecord {
   // Der Lesepfad darf daraus nichts folgern — insbesondere entsteht daraus keine Anzeige
   // „unbekanntes Modell" und keine Bereinigung.
   model?: string;
+  // JOB 3074: der Tokenverbrauch dieses Laufs (s. ModelRunVerbrauch oben).
+  //
+  // DAS FEHLEN IST EINE AUSSAGE — wortgleich zur Regel bei `model` darüber: es heißt „in diesem Lauf
+  // hat keine Modell-API einen Verbrauch genannt". Das trifft drei verschiedene Lagen, und keine
+  // davon wird geglättet: kein Modellaufruf (deterministischer Lauf, `demo`, die Kurzschlusswege aus
+  // JOB 3036 R2), ein Modellaufruf ohne `usage`-Block in der Antwort, oder ein `usage`-Block mit
+  // unbrauchbaren Werten. Es wird NIE durch einen Ersatzwert gefüllt, insbesondere nicht durch `0`:
+  // eine `0` wäre die Behauptung, ein Lauf habe MESSBAR nichts verbraucht, und das ist etwas anderes
+  // als „darüber ist nichts bekannt". Eine `0` in `ausgabeToken` ist deshalb NUR dann zulässig, wenn
+  // die API sie selbst so genannt hat.
+  //
+  // ADDITIV: `repo-pg.ts` legt den Vollrecord als jsonb ab (`repo-pg.ts:22-25`) — Altdatensätze ohne
+  // dieses Feld bleiben uneingeschränkt gültig, und es gibt nichts umzurechnen.
+  verbrauch?: ModelRunVerbrauch;
   // mega26 Block A (additiv, optional): Laufkontext. Altdatensätze ohne diese Felder bleiben
   // uneingeschränkt gültig — der Lesepfad kennt keine Pflicht auf ihnen.
   actor?: string;

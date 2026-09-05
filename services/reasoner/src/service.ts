@@ -11,7 +11,9 @@ import {
 import {
   ModelCapacityError,
   type ModellAufrufSpur,
+  type ModellVerbrauch,
   mitModellAufrufSpur,
+  verbrauchSumme,
 } from "./model-concurrency";
 // WP-D10 (Fix 3): Fehlerklasse eines gescheiterten Modellaufrufs (timeout|http|network|parse) für die
 // ehrliche Fallback-Ursache und das PII-freie Diagnose-Log.
@@ -664,6 +666,12 @@ export class Reasoner {
     // deterministischen Lauf ununterscheidbar zu sein. Bleibt `undefined`, wenn kein versuchter
     // Provider ein Modell wirklich befragt hat (reine deterministische Kette, Kurzschlusswege).
     let lastModel: string | undefined;
+    // JOB 3074: der Verbrauch des GANZEN Laufs, über alle Provider-Versuche hinweg. Anders als
+    // `lastModel`, das den zuletzt versuchten Provider NENNT, wird hier ADDIERT: eine Cloud-Anfrage,
+    // die nach 3000 Eingabetoken scheitert, ist bezahlt — auch wenn danach das lokale Modell
+    // antwortet. Sie im Erfolgsdatensatz wegzulassen hieße, dem Lauf einen Teil seines Verbrauchs
+    // abzuschreiben, den jemand tatsächlich zahlt.
+    let laufVerbrauch: ModellVerbrauch | undefined;
     for (let i = 0; i < chain.length; i++) {
       const provider = chain[i];
       if (!provider) {
@@ -672,8 +680,24 @@ export class Reasoner {
       // JOB 3036 R2: die Spur GENAU DIESES Versuchs. Neu je Versuch, damit ein Lauf, der erst die
       // Cloud befragt und dann lokal antwortet, im Datensatz das Modell trägt, das geantwortet hat.
       const spur: ModellAufrufSpur = { gerufen: false };
+      // JOB 3074 R2 (bens Befund): DIE SPUR EINES VERSUCHS WIRD GENAU EINMAL ÜBERNOMMEN. Runde 1
+      // addierte sie an zwei Stellen — nach dem Erfolg und noch einmal im Catch-Block. Der
+      // Catch-Block umfasst aber mehr als den Modellaufruf: auch das Protokollschreiben (`recordRun`
+      // unten) liegt darin. Scheiterte es einmal und gelang danach, so zählte der Datensatz denselben
+      // Modellaufruf zweimal (84/14 statt 42/7) — eine Zahl, die einen Aufruf behauptet, den es nie
+      // gab. Der Merker ist die Antwort und nicht etwa ein `finally`: der Erfolgszweig BRAUCHT den
+      // Wert bereits vor `recordRun`, ein `finally` liefe erst danach.
+      let uebernommen = false;
+      const uebernimmVerbrauch = (): void => {
+        if (uebernommen) {
+          return;
+        }
+        uebernommen = true;
+        laufVerbrauch = verbrauchSumme(laufVerbrauch, spur.verbrauch);
+      };
       try {
         const result = await mitModellAufrufSpur(spur, () => run(provider));
+        uebernimmVerbrauch();
         // JOB 3036: `model` kommt aus dem Provider selbst, NICHT aus `provider.name` (das ist der
         // Anbieter und steht bereits in `provider`).
         //
@@ -694,6 +718,9 @@ export class Reasoner {
             demo: result.demo,
             provider: provider.name,
             ...(model ? { model } : {}),
+            // JOB 3074: nur, wenn wirklich ein Verbrauch gemeldet wurde. Fehlt er, FEHLT das Feld —
+            // kein Nullwert, keine Schätzung (services/model-runs/src/types.ts).
+            ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
           },
           context,
         );
@@ -709,6 +736,11 @@ export class Reasoner {
         // JOB 3036 R2: auch hier zählt nur der wirklich erfolgte Aufruf. Ein Provider, der vor dem
         // Client-Aufruf an etwas anderem gescheitert ist, hat kein Modell versucht.
         lastModel = (spur.gerufen ? provider.modelName?.() : undefined) ?? lastModel;
+        // JOB 3074: was dieser Versuch bis zu seinem Scheitern verbraucht hat, ist bezahlt und wird
+        // nicht verworfen — ein Modellaufruf, der eine Antwort ohne Antwortinhalt zurückbekommt,
+        // ist der teure Fall, nicht der billige. Ist der Verbrauch oben schon übernommen worden
+        // (der Modellaufruf gelang, erst das Protokollschreiben scheiterte), tut diese Zeile nichts.
+        uebernimmVerbrauch();
       }
     }
     // mega26 Block A: der FEHLGESCHLAGENE Lauf trägt denselben Kontext wie der erfolgreiche —
@@ -726,6 +758,9 @@ export class Reasoner {
         // Datensatz behauptet also weiterhin NICHT, ein Modell habe geantwortet; er sagt nur,
         // welches befragt wurde und dabei scheiterte. Hat kein Modell gearbeitet, fehlt das Feld.
         ...(lastModel ? { model: lastModel } : {}),
+        // JOB 3074: der gescheiterte Lauf trägt seinen Verbrauch genauso wie der erfolgreiche.
+        // Gerade er muss ihn tragen: er hat bezahlt und nichts bekommen.
+        ...(laufVerbrauch ? { verbrauch: laufVerbrauch } : {}),
         error: lastError instanceof Error ? lastError.message : "unknown",
       },
       context,
@@ -738,7 +773,15 @@ export class Reasoner {
     locale: ReasonerLocale | undefined,
     startedAt: string,
     status: ModelRunStatus,
-    extra: { fallback: boolean; demo: boolean; provider: string; model?: string; error?: string },
+    extra: {
+      fallback: boolean;
+      demo: boolean;
+      provider: string;
+      model?: string;
+      // JOB 3074: der gemeldete Tokenverbrauch des Laufs — fehlt, wenn keiner genannt wurde.
+      verbrauch?: ModellVerbrauch;
+      error?: string;
+    },
     // mega26 Block A: der Laufkontext des Aufrufers. Wird hier — und NUR hier — in den Datensatz
     // geschrieben. `sanitizeModelRunContext` ist die Struktursperre gegen Inhalt: was keine Kennung
     // ist, erreicht das Protokoll nicht. Ohne Kontext bleibt der Datensatz feldgleich zu bisher.
@@ -760,6 +803,7 @@ export class Reasoner {
       status,
       ...(extra.error ? { error: extra.error } : {}),
       ...(extra.model ? { model: extra.model } : {}),
+      ...(extra.verbrauch ? { verbrauch: extra.verbrauch } : {}),
       ...(runContext.actor ? { actor: runContext.actor } : {}),
       ...(runContext.subject ? { subject: runContext.subject } : {}),
     });

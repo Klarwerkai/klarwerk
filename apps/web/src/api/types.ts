@@ -157,6 +157,24 @@ export interface KoVersionSnapshot {
 export type ModelRunTask = ReasonerTask;
 export type ModelRunStatus = "success" | "error";
 
+// JOB 3074: der Tokenverbrauch eines Laufs, so wie die Modell-API ihn selbst gemeldet hat.
+//
+// URSPRUNG IST `services/model-runs/src/types.ts` (`ModelRunVerbrauch`) — dort steht die
+// vollständige Begründung, insbesondere die Ehrlichkeitsregel. Diese Deklaration ist ein SPIEGEL,
+// kein zweiter Vertrag: der webbuild-Stage im Dockerfile kopiert nur `apps/web`, ein Import aus
+// `services/` ist deshalb ausgeschlossen (s. die Begründung bei `REASONER_TASKS`). Dass beide Seiten
+// deckungsgleich BLEIBEN, prüft der Compiler in `tests/ki-lauf-verbrauch/eine-wahrheit.test.ts` —
+// dieselbe Bauform, mit der JOB 3069 die Aufgabenarten gebunden hat.
+//
+// KEIN PREIS: hier stehen Token, keine Kosten. Die Preisliste je Modell ist Pedis Entscheid und eine
+// eigene Scheibe; ohne sie zeigt die Oberfläche keine Kostenzahl — sie erfindet keine.
+export interface ModelRunVerbrauch {
+  eingabeToken: number;
+  ausgabeToken: number;
+  /** Zahl der Modellaufrufe dieses Laufs, die einen Verbrauch gemeldet haben — die Grundmenge. */
+  gemeldeteAufrufe: number;
+}
+
 export interface ModelRunRecord {
   id: string;
   task: ModelRunTask;
@@ -169,6 +187,9 @@ export interface ModelRunRecord {
   status: ModelRunStatus;
   error?: string;
   model?: string;
+  // JOB 3074: FEHLT, wenn keine Modell-API in diesem Lauf einen Verbrauch genannt hat. Das Fehlen
+  // ist eine Aussage und wird nie zu `0` geglättet — die Fläche schreibt dann nichts hin.
+  verbrauch?: ModelRunVerbrauch;
 }
 
 export type EvidenceKind = "source" | "attachment";

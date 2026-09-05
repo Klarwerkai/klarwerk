@@ -4320,6 +4320,12 @@ const de = {
   "mrun.model": "Modell: {{m}}",
   "mrun.duration": "Dauer: {{d}}",
   "mrun.runtimeTotal": "Laufzeit gesamt: {{d}} (aus {{n}} von {{total}} Läufen)",
+  // JOB 3074 (V9 Scheibe 3): der von der Modell-API SELBST gemeldete Tokenverbrauch. Bewusst „Token"
+  // und ausdrücklich KEIN Preis und keine Währung — dafür bräuchte es eine Preisliste je Modell, die
+  // es nicht gibt. Beide Sätze nennen Eingabe UND Ausgabe getrennt, weil sie verschieden teuer sind;
+  // die Summenzeile nennt zusätzlich ihre Grundmenge, genau wie „Laufzeit gesamt" darüber.
+  "mrun.tokens": "Token: {{ein}} ein · {{aus}} aus",
+  "mrun.tokensTotal": "Token gesamt: {{ein}} ein · {{aus}} aus (aus {{n}} von {{total}} Läufen)",
   "mrun.refreshFailed": "Auffrischung fehlgeschlagen — gezeigt wird der zuletzt geladene Stand.",
   // JOB 3044 R2: offline ist kein Fehlschlag, sondern ein Nicht-Versuch. Der Satz sagt beides:
   // warum nichts nachkommt UND dass der sichtbare Bestand deshalb nicht als aktuell gilt.
@@ -8951,6 +8957,8 @@ const en: typeof de = {
   "mrun.model": "Model: {{m}}",
   "mrun.duration": "Duration: {{d}}",
   "mrun.runtimeTotal": "Total runtime: {{d}} (from {{n}} of {{total}} runs)",
+  "mrun.tokens": "Tokens: {{ein}} in · {{aus}} out",
+  "mrun.tokensTotal": "Total tokens: {{ein}} in · {{aus}} out (from {{n}} of {{total}} runs)",
   "mrun.refreshFailed": "Refresh failed — showing the last loaded state.",
   "mrun.offline": "No connection — showing the last loaded state.",
   "evx.title": "Evidence index (QA)",
@@ -13382,6 +13390,8 @@ const nl: typeof de = {
   "mrun.model": "Model: {{m}}",
   "mrun.duration": "Duur: {{d}}",
   "mrun.runtimeTotal": "Totale looptijd: {{d}} (uit {{n}} van {{total}} runs)",
+  "mrun.tokens": "Tokens: {{ein}} in · {{aus}} uit",
+  "mrun.tokensTotal": "Tokens totaal: {{ein}} in · {{aus}} uit (uit {{n}} van {{total}} runs)",
   "mrun.refreshFailed": "Verversen mislukt — getoond wordt de laatst geladen stand.",
   "mrun.offline": "Geen verbinding — getoond wordt de laatst geladen stand.",
   "evx.title": "Bewijs-index (KM)",
