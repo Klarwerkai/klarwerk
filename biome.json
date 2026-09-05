@@ -46,7 +46,9 @@
       "scripts",
       "services/app/addin-static",
       "_relay/spikes",
-      ".local"
+      ".local",
+      "**/.claude",
+      "**/.codex"
     ]
   }
 }

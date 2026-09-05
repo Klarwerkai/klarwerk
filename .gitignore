@@ -28,3 +28,9 @@ _relay/
 # binäre .zip/.xlsx aus Testläufen, kein Quellstand. Er lag untracked und in KEINER Ignore-Zeile;
 # ein einziges `git add -A` hätte ihn vollständig ins Repository gezogen.
 LOT/
+
+# JOB 3080: Arbeitsordner von Agenten-Werkzeugen (Claude Code, Codex) in einem Bahn-Klon — Sitzungs-
+# zustand eines Menschen oder Agenten, nie Produktquelle. Ein `git add -A` beim Ship hätte einen
+# solchen Rest sonst versehentlich versioniert (derselbe Fehler wie LOT/ oben, anderer Ordner).
+.claude/
+.codex/
