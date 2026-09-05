@@ -497,6 +497,14 @@ const INVENTAR: readonly string[] = [
   // Ausweichen vor dem Waechter. „klara" steht in keinem der beiden Pfade, K5 bleibt unveraendert.
   "tests/design/zielbild-h3-erfassen.test.ts",
   "tests/capture/frontdoor-navguard-mounted.test.tsx",
+  // JOB 3085 · Q4 (05.09.2026): der statische Messtest des Konto-Kreises im Kopfband. Von der
+  // Inhaltsachse `palette` gefunden, aus demselben Grund wie `zielbild-wissensnetz.test.ts`: er
+  // loest die Farbwerte des Kreises ueber `styles/themes.css` auf (modern-Block, sonst :root) und
+  // rechnet den Kontrast. Es ist eine SHELL-FLAECHE DER WEB-APP, kein Klara-Panel — „klara" steht
+  // nicht im Pfad, K5 bleibt unveraendert. K2 hat die Datei gemeldet, das Inventar nimmt sie nicht
+  // still auf; der Eintrag steht hier, damit die Palette-Achse weiterhin JEDEN Leser der
+  // Token-Datei sichtbar macht, auch wenn er nicht Klara ist.
+  "tests/kontokreis-funke/konto-kreis-traegt-den-funke.test.ts",
 ];
 
 // ------------------------------------------------------------------------------------------------

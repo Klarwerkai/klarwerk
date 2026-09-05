@@ -56,7 +56,16 @@
    Element" ist die Bauform (Sammler: tests/app/mega40-kontrast-modern.test.ts). Sie liegt im
    modern-Thema auf --kw-funke-deep (#C2500A, Weiß darauf 4,72:1) — demselben Token, auf dem
    kw-cta-primary bereits steht; kein zweites Aktions-Token, keine zweite Wahrheit.
-   Rein grafische bg-brand-Flächen ohne Text (Balken) bleiben auf dem hellen Funke. */
+   Rein grafische bg-brand-Flächen ohne Text (Balken) bleiben auf dem hellen Funke.
+
+   JOB 3085 · Q4 — DIE EINE BENANNTE AUSNAHME: DER KONTO-KREIS IM KOPFBAND (shell/KontoMenue.tsx).
+   Pedis Entscheidung 21 (05.09.2026) gibt ihm die Farbe des Mockups (design/klarwerk/Main.dc.html
+   Z.32: `background: #E8630A`). Er löst die AA-Frage NICHT über eine hellere Fläche, sondern über
+   DUNKLEN TEXT AUF DEM VOLLEN FUNKE: Nacht #0E1626 auf #E8630A misst 5,36:1 (klassisch #16222C auf
+   #ED7D0E: 5,80:1) — beides über AA, gerechnet in tests/kontokreis-funke/.
+   Er braucht dafür KEINE Gegenregel hier: er trägt `text-ink` statt `text-white`, und damit greift
+   der Selektor unten an ihm überhaupt nicht mehr. Die Hausregel bleibt für jede andere Fundstelle
+   unverändert in Kraft; es entsteht kein `!important`, kein zweiter Farbweg, kein neues Token. */
 [data-theme="modern"] .bg-brand.text-white {
   background-color: rgb(var(--kw-funke-deep));
 }

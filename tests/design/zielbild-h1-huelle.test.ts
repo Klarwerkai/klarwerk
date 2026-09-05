@@ -16,11 +16,13 @@
 // der aktive Punkt, der Zähler, das Suchfeld samt Lupe und Platzhalter, das Zahnrad, der Konto-
 // Kreis. Fall S: jedes Element gefunden, auf /start, /bibliothek und /validierung.
 //
-// OFFEN (gemessen, begründet, nicht behauptet): der Grund des Konto-Kreises. Das Mockup nennt den
-// Funke (#E8630A); mit weißer Schrift misst er 3,38:1 und liegt unter AA. Die Hausregel mega41
-// (Kopf-Entscheidung 28.07., styles/modern.css `.bg-brand.text-white`) legt texttragende Funke-
-// Flächen im modernen Thema auf Funke dunkel (#C2500A, 4,72:1). Der Kreis folgt der Hausregel; der
-// Wert steht unten als OFFEN mit beiden Zahlen.
+// ENTSCHIEDEN (JOB 3085 · Q4, Pedis Entscheidung 21 vom 05.09.2026, Option b): der Grund des
+// Konto-Kreises war bis hierher der einzige offene Punkt dieser Datei. Er ist es nicht mehr. Der
+// Kreis trägt den Funke des Mockups (#E8630A) und dafür NACHT-Initialen (#0E1626, 5,36:1) statt
+// des vom Mockup genannten Weiß (3,38:1, unter AA). Er folgt damit NICHT mehr der Hausregel mega41
+// (styles/modern.css `.bg-brand.text-white` → Funke dunkel): er trägt kein `text-white` mehr und
+// liegt außerhalb ihres Selektors. Fall „konto-grund" misst die Fläche jetzt scharf gegen das
+// Mockup; V16 misst die Schrift scharf gegen den benannten Abweichungswert.
 import { existsSync, readFileSync } from "node:fs";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -342,25 +344,36 @@ describe("JOB 3060 · H1 · das Kopfband — die echte Seite, gemountet in Chrom
     expect(await messen(sel?.zahnradSvg, "stroke")).toBe(kanon("#B9C1D2"));
     expect(await messen(sel?.zahnradSvg, "stroke-width")).toBe(`${z?.strichBreite}px`);
   });
-  it("V16 · konto-kreis: 30×30, Radius 50%, Initialen PK, Schrift #FFFFFF 12px / 700 — am realen Kreis", async () => {
+  it("V16 · konto-kreis: 30×30, Radius 50%, Initialen PK, 12px / 700 — Schrift BENANNT ABWEICHEND #0E1626 statt Mockup-#FFFFFF (JOB 3085 · Entscheidung 21)", async () => {
     const stil = zielStil(ziel, Z_KONTO);
     expect(await messen(sel?.konto, "width")).toBe(zielProp(stil, "width"));
     expect(await messen(sel?.konto, "height")).toBe(zielProp(stil, "height"));
     expect(await messen(sel?.konto, "border-radius")).toBe(zielProp(stil, "border-radius"));
-    expect(await messen(sel?.konto, "color")).toBe(kanon(zielProp(stil, "color")));
+    // DIE EINE BENANNTE ABWEICHUNG VOM MOCKUP, und sie steht hier als Erwartung, nicht als
+    // Lockerung: das Mockup nennt an dieser Stelle Weiß (Main.dc.html Z.32, `color: #FFFFFF`) —
+    // gelesen und unten geprüft, damit die Abweichung eine BEKANNTE bleibt. Weiß auf dem Funke
+    // #E8630A misst aber nur 3,38:1 und liegt damit unter AA (4,5:1). Pedis Entscheidung 21 vom
+    // 05.09.2026 (Option b) bestimmt deshalb Nacht-Initialen: #0E1626 auf #E8630A = 5,36:1.
+    // Die gerechnete Zahl steht in tests/kontokreis-funke/; hier steht die gemessene FARBE.
+    expect(zielProp(stil, "color"), "das Mockup nennt an dieser Stelle weiterhin Weiß").toBe(
+      "#FFFFFF",
+    );
+    expect(await messen(sel?.konto, "color")).toBe(kanon("#0E1626"));
     expect(await messen(sel?.konto, "font-size")).toBe(zielProp(stil, "font-size"));
     expect(await messen(sel?.konto, "font-weight")).toBe(zielProp(stil, "font-weight"));
     // Initialen aus der bestätigten Sitzung („Peter Kohnert“ → PK, wie im Mockup).
     expect(sel?.kontoText).toBe("PK");
   });
 
-  it("OFFEN · konto-grund: Mockup #E8630A, Seite Funke dunkel (Hausregel mega41, AA für Text) — gemessen, begründet", async () => {
+  it("V17 · konto-grund: der reale Kreis trägt den Funke des Mockups #E8630A (JOB 3085 · Entscheidung 21 — vorher OFFEN)", async () => {
     const ist = await messen(sel?.konto, "background-color");
     const soll = kanon(zielProp(zielStil(ziel, Z_KONTO), "background"));
     console.info(
-      `JOB 3060 H1 · OFFEN · konto-grund: Zielbild ${soll} · Seite ${ist} · ${ist === soll ? "GLEICH" : "abweichend"} · Weiß auf #E8630A misst 3,38:1 (unter AA 4,5:1); styles/modern.css legt texttragende Funke-Flächen auf --kw-funke-deep (4,72:1) — Palettenfrage für Pedi`,
+      `JOB 3085 Q4 · konto-grund: Zielbild ${soll} · Seite ${ist} · ${ist === soll ? "GLEICH" : "abweichend"} · Nacht #0E1626 darauf misst 5,36:1 (über AA 4,5:1)`,
     );
-    expect(ist).not.toBeNull();
+    // Scharf statt „nicht null": die Fläche IST der Mockup-Wert, nicht mehr Funke dunkel.
+    expect(soll, "der Mockup-Wert wird gelesen, nicht abgeschrieben").toBe("rgb(232, 99, 10)");
+    expect(ist).toBe(soll);
   });
 
   it("KLASSISCH · Protokoll: derselbe Aufbau mit gespeicherter Wahl „classic“ — Grund und Punktfarbe an denselben Selektoren", async () => {

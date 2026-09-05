@@ -90,6 +90,14 @@ export function KontoMenue(): JSX.Element {
     ungelesen > 0
       ? `${t("kopfband.konto")} · ${t("kopfband.ungelesen", { count: ungelesen })}`
       : t("kopfband.konto");
+  // JOB 3085 · Q4 (Pedis Entscheidung 21, 05.09.2026) — DIE FARBE DES KREISES.
+  // Er trägt den vollen Funke des Mockups (Main.dc.html Z.32, #E8630A) und deshalb NACHT-Initialen
+  // (`text-ink`, #0E1626, 5,36:1) statt Weiß (3,38:1, unter AA). Der Kreis ist damit die eine
+  // benannte Ausnahme zur mega41-Hausregel „texttragende Markenfläche → Funke dunkel" — er hebelt
+  // sie nicht aus, er verlässt sie: ohne die weiße Textklasse greift ihr Selektor in
+  // styles/modern.css an diesem Element gar nicht mehr. Kein Sonderweg, kein eigenes Token.
+  // Gemessen: tests/kontokreis-funke/ (statisch) und tests/design/zielbild-h1-huelle.test.ts
+  // (V16/V17, an der gebauten Seite in Chromium).
   return (
     <div className="relative flex items-center">
       <button
@@ -101,7 +109,7 @@ export function KontoMenue(): JSX.Element {
         aria-controls={menue.offen ? menue.flaecheId : undefined}
         onClick={menue.umschalten}
         data-testid="kopfband-konto"
-        className="kw-konto-kreis relative grid h-[30px] w-[30px] place-items-center rounded-[50%] bg-brand text-[12px] font-bold leading-none text-white outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+        className="kw-konto-kreis relative grid h-[30px] w-[30px] place-items-center rounded-[50%] bg-brand text-[12px] font-bold leading-none text-ink outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
       >
         {kuerzel}
         {ungelesen > 0 ? (

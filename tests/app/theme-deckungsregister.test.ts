@@ -136,6 +136,27 @@ const REGISTER: Eintrag[] = [
     ],
   },
   {
+    // JOB 3085 · Q4: der statische Messtest des Konto-Kreises liest modern.css, um die WIRKSAME
+    // Fläche und Schriftfarbe genau EINES Elements aufzulösen. Er deckt diesen einen Kreis in
+    // beiden Themen — nicht die Hausregel mega41 und nicht das Thema.
+    waechter: "tests/kontokreis-funke/konto-kreis-traegt-den-funke.test.ts",
+    teildeckung: "kontokreis-funke",
+    aussage:
+      "Der Konto-Kreis im Kopfband trägt im modernen Thema den Funke #E8630A als Fläche und Nacht " +
+      "#0E1626 als Schrift (5,36:1, über AA), im klassischen #16222C auf #ED7D0E — aufgelöst aus " +
+      "themes.css und der Kaskade von modern.css. Deckt DIESEN EINEN Kreis samt Fokusring und " +
+      "Meldungspunkt, nicht die Hausregel für texttragende Markenflächen und nicht das Thema.",
+    beleg: [
+      {
+        was: "die WCAG-Leuchtdichte-Konstante — ohne sie wird kein Kontrast gerechnet",
+        muster: /0\.2126/,
+      },
+      { was: "die AA-Schwelle", muster: /4\.5/ },
+      { was: "modern.css als gelesene Quelle der wirksamen Regeln", muster: /styles\/modern\.css/ },
+      { was: "das gemessene Element selbst", muster: /kopfband-konto/ },
+    ],
+  },
+  {
     waechter: "tests/legal/mega62-kontrast-pflichtflaechen.test.ts",
     teildeckung: "pflichtflaechen-kontrast",
     aussage:
