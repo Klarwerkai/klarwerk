@@ -52,7 +52,11 @@ describe("Block C: Dirty-Flow-Module haben keine Ausgänge, die den Wächter umg
     // Fände der Scan nichts, wäre die ganze Prüfung ein stiller Selbstbetrug.
     expect(names.length).toBeGreaterThan(0);
     expect(names).toContain("pages/Capture.tsx");
-    expect(names).toContain("pages/CaptureFrontDoor.tsx");
+    // JOB 3062 · H3: Die Vordertür MELDET keinen Wächter mehr an, weil sie keine eigene Fläche
+    // mehr ist — sie rendert das Blatt, und DORT hängt der Wächter (mit demselben Dirty-Prädikat
+    // und derselben `useUnloadGuard`-Vorrichtung). Der Geltungsbereich bestimmt sich selbst; er
+    // findet die Datei, in der `setGuard(` wirklich steht.
+    expect(names).toContain("components/erfassen/Blatt.tsx");
     expect(names).toContain("pages/Mobile.tsx");
   });
 
@@ -100,18 +104,28 @@ describe("Block C: Dirty-Flow-Module haben keine Ausgänge, die den Wächter umg
   > = {
     "pages/Capture.tsx": {
       rawLink: 0,
-      rawNavigate: 2,
-      why: "2x Räumung des location.state auf DERSELBEN Route (/erfassen, replace) — kein Seitenwechsel.",
+      rawNavigate: 1,
+      // JOB 3062 · H3: 2 -> 1. Der zweite rohe Aufruf gehörte zum Hinweis „Entwurf gespeichert",
+      // den die Vordertür über den `location.state` schickte; beide sind gelöscht (dort begründet).
+      // Das Budget wird GESENKT, nicht gelockert.
+      why: "1x Räumung des location.state auf DERSELBEN Route (/erfassen, replace) nach bewusstem Abbruch des Dateiimports — kein Seitenwechsel.",
     },
-    "pages/CaptureFrontDoor.tsx": {
-      rawLink: 2,
-      rawNavigate: 3,
+    "components/erfassen/Blatt.tsx": {
+      rawLink: 1,
+      rawNavigate: 0,
       // AUFTRAG-mega70 BLOCK B (JOB 1973 · B1): 3 -> 2. Der dritte rohe Link war „Zur Prüfung
       // geben" (`/validierung`, controller) auf der Erfolgskarte — die Sackgasse aus bens
       // sammel66. Er ist jetzt ein `RoleLink` und zählt damit nicht mehr als roher Ausgang.
       // Die Zahl wird GESENKT, nicht gelockert: das Budget ist eine Obergrenze für rohe
       // Navigation, und ein Ausgang weniger ist strikt enger als vorher.
-      why: "2x <Link> in der Erfolgsansicht (savedStateRef auf den geleerten Stand ⇒ beweisbar nicht dirty; der dritte ist seit mega70 Block B ein RoleLink) und 3x navigate nach bewusstem Verwerfen bzw. erfolgreichem Speichern.",
+      // JOB 3062 · H3: 2 -> 1 roher Link, 3 -> 0 rohe navigate. Das Blatt SPRINGT NICHT MEHR: der
+      // Sprung nach `/erfassen` nach dem Speichern und nach dem Verwerfen war nur sinnvoll, solange
+      // Vordertür und Erfassen zwei Flächen waren; jetzt zeigen beide Adressen dasselbe Blatt.
+      // Der eine verbliebene rohe `<Link>` ist der Objektlink der Erfolgszeile — dort steht
+      // `savedStateRef` beweisbar auf dem geleerten Stand (submit.onSuccess), die Seite ist also
+      // nicht dirty und ein Wächter hätte nichts zu halten. Der Weg in die Validierung daneben ist
+      // ein `RoleLink` (mega70 Block B) und zählt hier nicht.
+      why: "1x <Link> auf das gerade eingereichte Objekt in der Erfolgszeile (savedStateRef auf den geleerten Stand ⇒ beweisbar nicht dirty); keine rohe Navigation.",
     },
     "pages/Mobile.tsx": {
       rawLink: 0,

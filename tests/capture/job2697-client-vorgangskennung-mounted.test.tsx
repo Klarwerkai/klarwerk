@@ -58,7 +58,7 @@ import i18n from "../../apps/web/src/i18n";
 // JOB 2697 D8: die Frist, nach der der Client aufgibt — der Server arbeitet dann weiter. Genau
 // dieses Fenster macht den zweiten Klick möglich (der Knopf ist bis dahin gesperrt).
 import { FRONT_DOOR_SAVE_TIMEOUT_MS } from "../../apps/web/src/lib/captureFrontDoor";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 // JOB 2697 D8: die ECHTE App und die ECHTE Ablage — ein Bestand für beide Klicks.
 import { buildApp, buildServices } from "../../services/app/src/build-app";
@@ -127,7 +127,10 @@ function huelle() {
                     path: "/capture/frontdoor",
                     element: createElement(CaptureFrontDoor),
                   }),
-                  createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                  createElement(Route, {
+                    path: "/erfassen",
+                    element: createElement(CaptureArbeitsraum),
+                  }),
                 ),
               ),
             ),
@@ -175,10 +178,10 @@ async function titelTippen(text: string): Promise<void> {
 
 /** Der Mensch drückt „Entwurf speichern". */
 async function speichern(): Promise<void> {
-  const knopf = knopfMit(i18n.t("fd.saveDraft"));
+  const knopf = knopfMit(i18n.t("erfassen.entwurfSichern"));
   if (!knopf) {
     throw new Error(
-      `Speichern-Knopf „${i18n.t("fd.saveDraft")}" nicht gefunden. Sichtbar: ${seitentext().slice(0, 400)}`,
+      `Speichern-Knopf „${i18n.t("erfassen.entwurfSichern")}" nicht gefunden. Sichtbar: ${seitentext().slice(0, 400)}`,
     );
   }
   await klick(knopf);
@@ -613,8 +616,8 @@ describe("JOB 2697 D8 · die gekoppelte Kette", () => {
   // EIGENER QueryClient MIT `staleTime: 0` und `gcTime: 0`: Der Abruf muss wirklich stattfinden
   // und darf nicht aus einem Cache beantwortet werden, den ein frueherer Mount gefuellt hat.
   //
-  // DIE VERDRAHTUNG HOOK-ZU-KOMPONENTE ist die eine Zeile aus `Capture.tsx` (`drafts.data ?? []`).
-  // Sie steht hier in `EchteListe`, weil das gemountete `Capture` fuer diesen Fall eine sehr grosse
+  // DIE VERDRAHTUNG HOOK-ZU-KOMPONENTE ist die eine Zeile aus `CaptureArbeitsraum.tsx` (`drafts.data ?? []`).
+  // Sie steht hier in `EchteListe`, weil das gemountete `CaptureArbeitsraum` fuer diesen Fall eine sehr grosse
   // Seite mit vielen fremden Abhaengigkeiten waere; alle vier Glieder der Kette sind echt.
   function EchteListe(): JSX.Element | null {
     const drafts = useDrafts();

@@ -103,7 +103,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -148,7 +148,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),
@@ -213,7 +216,7 @@ async function resumeDraft(): Promise<void> {
 }
 
 // Entwurf MIT Body im geteilten Pool — Herkunft „expert", damit „Fortsetzen" das Formular mit
-// Body-Editor, „Als Entwurf speichern" und „Einreichen" öffnet (Capture.tsx loadDraft).
+// Body-Editor, „Als Entwurf speichern" und „Einreichen" öffnet (CaptureArbeitsraum.tsx loadDraft).
 async function seedDraftWithBody(): Promise<string> {
   return box.seed({
     title: "Dichtungswechsel L4",
@@ -270,7 +273,7 @@ describe("Block A: ein bewusst geleerter Body bleibt geleert", () => {
     expect(editor().innerHTML).toContain("Alter Absatz");
     await clearEditor();
 
-    // Einreichen aktualisiert den Entwurf und promotet ihn in EINEM Zug (Capture.tsx submit).
+    // Einreichen aktualisiert den Entwurf und promotet ihn in EINEM Zug (CaptureArbeitsraum.tsx submit).
     await click(buttonByText(i18n.t("capture.submit")));
 
     expect(box.createdKos).toHaveLength(1);

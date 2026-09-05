@@ -3604,14 +3604,30 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Meldungen, StatusZeilen, RollenVorschau, KontoMenue, Darstellung) bringen ihre eigenen mit.
     // Saldo: acht weniger. Die Zusage bleibt EXAKT.
     //
-    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3060 (H1, Shell/Kopfband) auf den Stand von
-    // JOB 3061/3063/3064/3067 (Prüf-, Bibliotheks- und Startflächen) NEU GEMESSEN, nicht rechnerisch
-    // addiert. Die abgelöste Hülle (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) trifft hier auf die
-    // Bindungen der neuen Bibliotheks-, Prüf- und Startflächen sowie auf die neuen Kopfband-Bausteine;
-    // der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus
-    // einer Kopfrechnung der vorherigen Deltas.
+    // JOB 3062 · H3: von 208 auf 210 NACHGEZOGEN (vor diesem Rebase), ebenfalls nicht gelockert.
+    // Die Rechnung ging GENAU auf, und beide Seiten waren gemessen, nicht geschätzt:
+    //
+    //     + 5 im neuen Blatt und seinem Menü (dieselbe Bauform wie der Bestand ringsum):
+    //         apps/web/src/components/erfassen/Blatt.tsx:854   `diktatMoeglich|diktatLaeuft`
+    //         apps/web/src/components/erfassen/Blatt.tsx:1088  `d|id|activeDraftId`
+    //         apps/web/src/components/erfassen/Blatt.tsx:1290  `submitValidation|hasBody`
+    //         apps/web/src/components/erfassen/Menue.tsx:134   `gerahmt`
+    //         apps/web/src/components/erfassen/Menue.tsx:166   `gesperrt|gewaehlt`
+    //     − 3 mit den gelöschten Flächen (Standardweg-Kasten, Modus-Leiste mit Empfehlungs-Badge
+    //       und Expertenformular-Umschalter, „Weitere Wege") in `pages/Capture.tsx` und
+    //       `pages/CaptureFrontDoor.tsx` — die Fläche ist weg, also auch ihre Bindung.
+    //
+    //     208 + 5 − 3 = 210.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3062 (H3, Blatt „Erfassen") auf den Stand von
+    // JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) NEU GEMESSEN, nicht
+    // rechnerisch addiert. Die abgelöste Hülle (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) und die
+    // fünf Bindungen des neuen Blatts treffen hier auf die Bindungen der neuen Bibliotheks-, Prüf-
+    // und Startflächen sowie auf die neuen Kopfband-Bausteine; der Zahlenwert unten stammt aus dem
+    // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der vorherigen
+    // Deltas.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      204,
+      206,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
@@ -3763,12 +3779,35 @@ describe("JOB 1181 · A17-Form 4a: modulübergreifende Auflösung der tragenden 
   it("AM ECHTEN BESTAND: die modulfremden Klassenquellen sind namentlich belegt", () => {
     const ausModulen = ALLE_BINDUNGEN.filter((b) => b.ausModulen.length > 0);
     const quellen = [...new Set(ausModulen.flatMap((b) => b.ausModulen))].sort();
-    // GEMESSEN am heutigen Baum: neun. Alle neun liegen in einer FUNKTION, keine in einer
-    // Konstanten — wer nur `const` nachschlägt, löst hier exakt nichts auf und merkt es nicht.
-    expect(
-      quellen.length,
-      `Modulfremde Klassenquellen: ${quellen.join(" · ")}`,
-    ).toBeGreaterThanOrEqual(9);
+    // GEMESSEN am heutigen Baum. Alle liegen in einer FUNKTION, keine in einer Konstanten — wer
+    // nur `const` nachschlägt, löst hier exakt nichts auf und merkt es nicht.
+    //
+    // JOB 3062 · H3: waren neun, sind sieben. Die zwei fehlenden sind mit den Flächen gegangen,
+    // die dieser Auftrag löscht: `pages/CaptureFrontDoor.tsx` ist von 1686 auf 30 Zeilen
+    // geschrumpft (nur noch die Adresse, die das Blatt rendert), `pages/KnowledgeIntake.tsx` von
+    // 175 auf 39. Was dort an modulfremder Klassenquelle hing, hängt nirgends mehr.
+    //
+    // KONFLIKTRUNDE 1: von sieben auf neun NACHGEZOGEN, am eigenen Lauf gemessen. JOB 3063 (H4,
+    // Bibliotheksfläche, unabhängig von diesem Rebase auf main gelandet) bringt GENAU ZWEI weitere
+    // modulfremde Klassenquellen aus `lib/confidentiality.ts` mit — `AUFFRISCHUNG_HINWEIS_KLASSE`
+    // (die Tönung von `AuffrischungHinweis.tsx`) und `CONF_TONE_CLASS` (die Tönung der
+    // Vertraulichkeitsstufe in Listenzeile und Lesefläche der Bibliothek). Beide liegen wie die
+    // übrigen sieben in einer FUNKTION. Sieben minus zwei (CaptureFrontDoor/KnowledgeIntake) plus
+    // zwei (Bibliotheksfläche) = neun.
+    //
+    // Statt der bisherigen Untergrenze steht jetzt die EXAKTE Menge da: eine Untergrenze hätte
+    // diesen Rückgang gar nicht erst gemeldet, und genau das Melden ist der Zweck dieses Blocks.
+    expect(quellen, `Modulfremde Klassenquellen: ${quellen.join(" · ")}`).toEqual([
+      "AUFFRISCHUNG_HINWEIS_KLASSE ← apps/web/src/lib/confidentiality.ts",
+      "CONF_TONE_CLASS ← apps/web/src/lib/confidentiality.ts",
+      "evidenceFreshnessTone ← apps/web/src/lib/evidenceFreshnessView.ts",
+      "evidenceKindTone ← apps/web/src/lib/evidenceIndex.ts",
+      "importCandidateStatusTone ← apps/web/src/lib/importCandidateStatus.ts",
+      "kiStateTone ← apps/web/src/lib/adminFirstRun.ts",
+      "modelRunStatusTone ← apps/web/src/lib/modelRuns.ts",
+      "priorityTone ← apps/web/src/lib/gapPriority.ts",
+      "useReadiness ← apps/web/src/lib/useReadiness.ts",
+    ]);
     expect(quellen).toContain("priorityTone ← apps/web/src/lib/gapPriority.ts");
     expect(quellen).toContain("evidenceKindTone ← apps/web/src/lib/evidenceIndex.ts");
     expect(quellen).toContain("kiStateTone ← apps/web/src/lib/adminFirstRun.ts");
@@ -4068,7 +4107,27 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // `tests/app/job3064-fussnote-markiert.test.tsx` (G1) hält beide Renderstellen für
     // markenfreien Text auf identischem `innerHTML`.
     //
-    // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
+    // Keine Datei ist weggefallen.
+    //
+    // JOB 3062 · H3: von 406 auf 410 NACHGEZOGEN (vor diesem Rebase), aus demselben Grund. Es sind
+    // GENAU vier Quelldateien dazugekommen — das eine Blatt, das die drei Erfassungsadressen jetzt
+    // zeigen, und seine Bausteine:
+    //
+    //     + apps/web/src/components/erfassen/Blatt.tsx    (Werkzeugzeile, Blatt, Knöpfe, Menüs)
+    //     + apps/web/src/components/erfassen/Menue.tsx    (das Pages-Menü als eigenes Bauteil)
+    //     + apps/web/src/components/erfassen/Symbole.tsx  (die stroke-SVGs der Werkzeugzeile)
+    //     + apps/web/src/components/erfassen/wege.ts      (die Wege des Menüs „Datei ▾", abgeleitet)
+    //
+    // Keine Datei ist weggefallen: `pages/Capture.tsx`, `pages/CaptureFrontDoor.tsx` und
+    // `pages/KnowledgeIntake.tsx` sind geschrumpft, aber alle drei da — die Routen bleiben.
+    //
+    // JOB 3062 · H3 · R7: von 410 auf 411 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
+    // das Hilferegister des Blattes, das bens Korrekturpflicht 1 erfüllt (jede HelpTip-Kennung des
+    // Basisstandes hat im „?"-Menü ihren Ort):
+    //
+    //     + apps/web/src/components/erfassen/hilfe.ts
+    //
+    // Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
     // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
     // JOB 3063 (H4): von 406 auf 412 NACHGEZOGEN. Es sind GENAU sechs Quelldateien dazugekommen —
     // die Bausteine der neuen Bibliotheksfläche, in die `pages/Library.tsx` (1.370 Zeilen) und
@@ -4121,8 +4180,10 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // diesem Arbeitsbaum, nicht aus einer Kopfrechnung der vorherigen Deltas.
     expect(
       ALLE_ERHEBUNGEN.length,
-      "die 431 aus JOB 3061/3063/3064 (Prüf-, Bibliotheks- und Startflächen) − Sidebar.tsx − Topbar.tsx + elf Kopfband-Bausteine (JOB 3060) — am eigenen Lauf gemessen, nicht rechnerisch addiert",
-    ).toBe(440);
+      "KONFLIKTRUNDE 1: JOB 3060 (Kopfband) − Sidebar.tsx − Topbar.tsx + elf Kopfband-Bausteine, " +
+        "getroffen auf die 411 aus JOB 3061/3063/3064/erfassen (Prüf-, Bibliotheks-, Start- und " +
+        "Erfassen-Flächen) — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
+    ).toBe(445);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

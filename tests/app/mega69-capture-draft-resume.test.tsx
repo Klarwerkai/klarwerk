@@ -24,7 +24,7 @@
 //
 // Am Startpin dieses Durchgangs ist die PRODUKTSEITE der Pflicht bereits erfüllt: beide Flächen
 // führen `declaredConfidentiality` und übergeben es an den `ImageDescribeProvider`
-// (`CaptureFrontDoor.tsx:887`, `Capture.tsx:3310`, beide mit dem Kommentar „JOB 504 D2"). Der
+// (`CaptureFrontDoor.tsx:887`, `CaptureArbeitsraum.tsx:3310`, beide mit dem Kommentar „JOB 504 D2"). Der
 // Auftrag verlangt für diesen Fall Messbeleg und kausalen Wächter statt blindem Nachbau.
 //
 // Vier der zehn Matrixfelder tragen bereits dauerhafte Wächter. Sie werden hier NICHT wiederholt —
@@ -147,7 +147,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -194,7 +194,7 @@ async function mount(url: string, seite: "erfassen" | "frontdoor"): Promise<void
                     seite === "erfassen"
                       ? createElement(Route, {
                           path: "/erfassen",
-                          element: createElement(Capture),
+                          element: createElement(CaptureArbeitsraum),
                         })
                       : createElement(Route, {
                           path: "/capture/frontdoor",
@@ -327,7 +327,7 @@ describe("JOB 504 D3 · Vordertür: der rohe Herkunftswert des fortgesetzten Ent
 // ================================================================================================
 //
 // `origin: "tell"` hält den Entwurf im Arbeitsraum; „frontdoor" würde `loadDraft` zur Vordertür
-// umleiten (`Capture.tsx:1803`) und damit den anderen Pfad messen.
+// umleiten (`CaptureArbeitsraum.tsx:1803`) und damit den anderen Pfad messen.
 describe("JOB 504 D3 · Erfassen: der rohe Herkunftswert des fortgesetzten Entwurfs", () => {
   it("`null` ist KEINE Deklaration — fail-closed „vertraulich“", async () => {
     seedDraft({ title: "Ohne Stufe", statement: "Text", origin: "tell", confidentiality: null });

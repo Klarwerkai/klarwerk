@@ -175,7 +175,7 @@ describe("WP-D10: angereichertes, PII-freies Fallback-Log", () => {
 describe("WP-D8: UI erklärt das FALLBACK-Badge ehrlich", () => {
   it("CaptureFrontDoor rendert die Ursachen-Erklärung; Keys existieren DE/EN/NL", () => {
     const page = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     expect(page).toContain("fd.fallbackNoModel");

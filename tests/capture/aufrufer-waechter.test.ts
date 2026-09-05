@@ -1052,6 +1052,152 @@ const ERSETZT_JOB3063: readonly Ausnahme[] = [
 ];
 
 // ------------------------------------------------------------------------------------------------
+// REGISTER 4e · ERSETZT, ABBAU LIEGT AUSSERHALB DER ZIELPFADE (JOB 3062 · H3)
+// ------------------------------------------------------------------------------------------------
+// JOB 3062 macht `/erfassen` zum Blatt (Zielbild `Erfassen.dc.html`): Der Standardweg-Kasten, die
+// Modus-Leiste, die Schritt-Leiste, die Erstnutzer-Einfuehrung, die Vordertuer-Optionsliste und die
+// eigene Intake-Flaeche sind durch EINE Komponente mit Werkzeugzeile und Untermenues ersetzt
+// (`components/erfassen/Blatt.tsx`). Damit haben die Bausteine, die AUSSCHLIESSLICH diese Flaechen
+// bedient haben, ihren Produkt-Leser verloren.
+//
+// WARUM SIE HIER STEHEN UND NICHT GELOESCHT SIND — dieselbe Lage wie bei JOB 3015 D5, und aus
+// demselben Grund derselbe Weg: Die Dateien liegen AUSSERHALB der Zielpfade dieses Auftrags
+// (`pages/Capture*.tsx`, `pages/KnowledgeIntake*.tsx`, `components/erfassen/**`, `i18n.ts`,
+// `tests/**`) und duerfen von der Bahn nicht angefasst werden. Runde 1 hatte sie geloescht; genau
+// das hat der Sachpruefer als Zielpfad-Verstoss rot geurteilt. Sie sind deshalb auf den
+// Basisstand zurueckgestellt und werden hier GEMELDET, nicht abgelegt — ihr Abbau (die vier
+// Komponenten-Dateien, `lib/intakeSuggestion.ts`, die genannten Exporte in `lib/captureEntry.ts`
+// und `lib/captureWizard.ts` samt ihrer mitgelieferten Tests) ist in der RUECKGABE zu JOB 3062 als
+// Folgeauftrag benannt. A3 streicht jeden Eintrag, sobald er nicht mehr zutrifft.
+//
+// AUSDRUECKLICH NICHT HIER: `lib/intakeExample.ts::dominantCategory`. Der Export sah nach demselben
+// Fall aus, ist aber KEINER — seine Leistung (das domaenennahe Beispiel) hat im Blatt keinen
+// Ersatz. Ihn hier einzutragen haette einen stillen Funktionsverlust als „ersetzt" getarnt; er ist
+// stattdessen in `Blatt.tsx` wieder verdrahtet (Menue „…" -> „Beispiel ansehen").
+const ERSETZT_JOB3062: readonly Ausnahme[] = [
+  {
+    schluessel: "apps/web/src/components/capture/intake/IntakeEmptyState.tsx::IntakeEmptyState",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: der Leerzustand der Intake-Flaeche ist durch das leere " +
+      "Blatt ersetzt. Seine Starter-Chips leben im Titel-Menue, sein Beispiel-KO im Menue „…“ -> " +
+      "„Beispiel ansehen“. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/components/capture/intake/IntakeCompletion.tsx::IntakeCompletion",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: die Abschlusskarte „Geschafft“ ist durch die EINE " +
+      "Erfolgszeile „Eingereicht“ mit Link zum Objekt ersetzt (Zustandsmodell §9). Abbau " +
+      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel:
+      "apps/web/src/components/capture/intake/StructureSuggestionChips.tsx::StructureSuggestionChips",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: die Struktur-Chips sind auf ihre Orte verteilt — Titel " +
+      "ins Blatt, Kategorie ins Menue „Bereich“, Quelle in „…“ -> „Status“. Abbau ausserhalb der " +
+      "Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/components/KnowledgeRescueIntro.tsx::KnowledgeRescueIntro",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: der Erklaerkasten ueber dem Erfassen ist von der " +
+      "Flaeche genommen (Auftrag §5); sein Text bleibt ueber das „?“-Werkzeug erreichbar. Abbau " +
+      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  // JOB 3062 R6 — DIESER EINTRAG IST GEFALLEN, UND ZWAR WEIL DER WAECHTER RECHT HATTE.
+  //
+  // In R5 stand hier `intakeSuggestion.ts::deriveIntakeSuggestion` mit der Begruendung, die Quelle
+  // sei „die Autorenzeile in ,…' -> ,Status'". Das war eine Umdeutung: die Autorenzeile ist der
+  // AUTOR, die Struktur-Chip-Zeile war die VERMUTETE QUELLE — zwei Aussagen, die zufaellig
+  // denselben Namen tragen. ben hat den Verlust gemessen („Eine Quellenzeile im Status fehlt").
+  // Seit R6 ruft `Blatt.tsx` die Ableitung wirklich auf (`quellenVorschlag`), der Export hat damit
+  // einen Produktaufrufer, und A3 hat den Eintrag zu Recht als Leiche gemeldet.
+  {
+    schluessel: "apps/web/src/lib/captureWizard.ts::wizardChips",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: die sichtbare Schritt-Leiste ist von der Flaeche " +
+      "genommen. Der Zustand selbst bleibt verdrahtet (`resolveWizardStep` hat weiter Aufrufer). " +
+      "Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::isRecommendedMode",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: das Empfehlungs-Badge der Modus-Leiste ist fort, weil " +
+      "der empfohlene Weg jetzt das Blatt SELBST ist statt einer Auszeichnung an einem von fuenf " +
+      "Knoepfen. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::CAPTURE_ENTRY_TEXT",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: die Schluesseltabelle bediente Kicker, Experten-" +
+      "Umschalter und Rueckweg der Modus-Leiste; alle drei sind von der Flaeche genommen, der " +
+      "Expertenweg liegt im Menue „Datei ▾“. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::initialCaptureWorkspaceOpen",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: der Arbeitsraum, den diese Funktion auf- oder " +
+      "zugeklappt startete, existiert nicht mehr — das Blatt ist immer offen. Abbau ausserhalb " +
+      "der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::isCaptureFirstRun",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: die geführte Erstnutzer-Einfuehrung ist von der " +
+      "Flaeche genommen (Auftrag §5, „keine Erklaerabsaetze“). Abbau ausserhalb der Zielpfade, " +
+      "Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::markCaptureIntroSeen",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: Gegenstueck zu `isCaptureFirstRun`, merkte den " +
+      "gesehenen Erstbesuch. Ohne Einfuehrung gibt es nichts zu merken. Abbau ausserhalb der " +
+      "Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::FRONT_DOOR_OPTION_MODES",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: die aufklappbare Optionsliste „Weitere Wege“ der " +
+      "Vordertuer ist durch das Menue „Datei ▾“ ersetzt, dessen Wege `BLATT_WEGE` fuehrt (von " +
+      "Blatt.tsx gerufen). Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::FRONT_DOOR_OPTIONS_TEXT",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: Schluesseltabelle derselben Optionsliste wie " +
+      "`FRONT_DOOR_OPTION_MODES`; das Menue „Datei ▾“ fuehrt seine Beschriftungen ueber " +
+      "`blattWegLabelKey`. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionLabelKey",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: abgeloest durch `blattWegLabelKey`, das dieselbe " +
+      "Aufgabe fuer das Menue „Datei ▾“ erfuellt. Abbau ausserhalb der Zielpfade (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionHintKey",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: der Zusatzsatz je Option ist ersatzlos von der Flaeche " +
+      "genommen — ein Menueeintrag nach Pages-Art traegt sein Wort allein (Auftrag §5). Abbau " +
+      "ausserhalb der Zielpfade, Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::frontDoorOptionsOpen",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: merkte den Aufklapp-Zustand der Optionsliste. Ein " +
+      "Pages-Menue merkt sich nichts, es oeffnet auf Klick. Abbau ausserhalb der Zielpfade, " +
+      "Folgeauftrag benannt (RUECKGABE 3062).",
+  },
+  {
+    schluessel: "apps/web/src/lib/captureEntry.ts::rememberFrontDoorOptionsOpen",
+    grund:
+      "Seit JOB 3062 ohne Produktaufrufer: Schreib-Gegenstueck zu `frontDoorOptionsOpen`, " +
+      "dieselbe Lage und derselbe Grund. Abbau ausserhalb der Zielpfade, Folgeauftrag benannt " +
+      "(RUECKGABE 3062).",
+  },
+];
+
+// ------------------------------------------------------------------------------------------------
 // REGISTER 5 · BEWUSST OHNE AUFRUFER AUF `apps/web/src` (JOB 2611 D1)
 // ------------------------------------------------------------------------------------------------
 // Dieselbe Regel wie bei `BEWUSST`: nur Eintraege, deren Grund am Code geprueft ist.
@@ -1108,6 +1254,10 @@ const BEWUSST_WEB: readonly Ausnahme[] = [
 //   · KEIN einziger Fund liegt in einer der sieben Dateien, die die Lease gesperrt hat. Es war
 //     also nichts zu unterlassen — die Trennung zu den drei anderen Bahnen haelt von selbst.
 const ALTBESTAND_WEB: readonly string[] = [
+  // JOB 3062 R8 WIEDER EINGETRAGEN: In R7 hatte `ImageDescribeValueProvider` kurzzeitig einen
+  // Produktaufrufer — den Mithörer im Blatt, der die describe-Antwort vor der Gültigkeitsprüfung
+  // des Editors las. ben hat ihn als Fehler gemessen; er ist entfallen, und damit ist der Export
+  // wieder das, was er vorher war: die Naht für isoliert montierte Editor-Tests.
   "apps/web/src/app/ImageDescribeContext.tsx::ImageDescribeValueProvider",
   // JOB 3060 · H1: der letzte Aufrufer von `GuardedNavLink` war die Seitenleiste (Sidebar.tsx,
   // Nutzerzeile → /profil); die Hülle navigiert jetzt ausschließlich über `GuardedLink` (EINE
@@ -1251,6 +1401,7 @@ const GEDULDET = new Set<string>([
   ...ERSETZT_JOB3015.map((a) => a.schluessel),
   ...ERSETZT_JOB3061.map((a) => a.schluessel),
   ...ERSETZT_JOB3063.map((a) => a.schluessel),
+  ...ERSETZT_JOB3062.map((a) => a.schluessel),
   ...ALTBESTAND,
   ...BEWUSST_WEB.map((a) => a.schluessel),
   ...ALTBESTAND_WEB,
@@ -1373,6 +1524,7 @@ describe("JOB 2605 · A · der Aufrufer-Wächter über services/**", () => {
       ...NEUZUGANG_GEMELDET,
       ...ERSETZT_JOB3015,
       ...ERSETZT_JOB3061,
+      ...ERSETZT_JOB3062,
       ...BEWUSST_WEB,
     ]) {
       expect(a.grund.length, `Ausnahme ${a.schluessel} ohne Begruendung`).toBeGreaterThan(40);

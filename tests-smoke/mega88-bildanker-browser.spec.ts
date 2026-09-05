@@ -115,7 +115,9 @@ async function beschreibungSchreiben(page: Page, text: string): Promise<void> {
  * Nutzer nach dem Wiederöffnen SIEHT.
  */
 async function speichernUndWiederOeffnen(page: Page): Promise<string> {
-  await page.getByRole("button", { name: "Als Entwurf speichern" }).click();
+  // JOB 3062: der Knopf heisst am neuen Blatt „Entwurf sichern" (`erfassen.entwurfSichern`); der
+  // Weg dahinter ist unverändert derselbe (`POST/PUT /api/drafts`).
+  await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
   // Erst wenn der Entwurf wirklich liegt, ist die Id da.
   let id = "";
   await expect
@@ -260,7 +262,8 @@ test("mega88: lokale Dateiauswahl — Bild einfügen, beschreiben, speichern, er
 //      Produkt allein weiter: `onDrop` → `handleMediaFiles` → `insertImageFile` →
 //      `fileToThumbDataUrl` (echtes `<canvas>`) → `insertHtmlReliable` → die Invariante.
 //   2. ABZUG des Editor-DOM UNMITTELBAR danach (`merkmale`) — das ist der Prüfling.
-//   3. SPEICHERN über den VORHANDENEN Entwurfsweg: der Knopf „Als Entwurf speichern"
+//   3. SPEICHERN über den VORHANDENEN Entwurfsweg: der Knopf „Entwurf sichern" (bis JOB 3062:
+//      „Als Entwurf speichern")
 //      (`speichernUndWiederOeffnen`), also `POST /api/drafts` → `capture-routes.ts:160` →
 //      `services/capture/src/service.ts:339` → `sanitizeDraftPayload` (`:45-49`) →
 //      `sanitizeHtml` aus `services/structure`. Kein nachgebauter Sanitizer-Aufruf im Test.

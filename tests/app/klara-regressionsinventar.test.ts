@@ -458,6 +458,22 @@ const INVENTAR: readonly string[] = [
   "tests/klara-zerlegung/probeschnitt.test.ts",
   "tests/klara-zerlegung/schnitt-pins.test.ts",
   "tests/klara-zerlegung/schnittflaechen.test.ts",
+  // JOB 3062 · H3 (04.09.2026): zwei Dateien der Web-Flaeche „Erfassen" kamen in die Erhebung.
+  // BEIDE tragen ihre Achse ueber eine ERWAEHNUNG IM KOMMENTAR, nicht ueber Klara-Deckung — das
+  // steht hier ausdruecklich, damit niemand sie spaeter fuer Klara-Regressionen haelt:
+  //   · `zielbild-h3-erfassen.test.ts` misst `/erfassen` in Chromium. Achse `taskpane`, getroffen
+  //     von Zeile 11, wo der Kommentar erklaert, dass die ALTEN Tests
+  //     `zielbild-wissen-erfassen*.test.ts` eine ANDERE Flaeche messen, naemlich
+  //     `apps/web/public/word-addin/taskpane.html`. Genau diese Abgrenzung ist der Grund, warum
+  //     jene beiden Tests in JOB 3062 NICHT geloescht wurden (RUECKGABE, ABWEICHUNGEN).
+  //   · `frontdoor-navguard-mounted.test.tsx` prueft den Navigationswaechter am Blatt. Achse
+  //     `palette`, getroffen vom Wort „Befehlspalette" in Zeile 135 — deutsche Prosa ueber die
+  //     Huelle, kein Bezug zur Werkbank-Palette.
+  // Nicht weggeschrieben, sondern eingetragen: die Ableitung ist die Autoritaet (K2), das Pin
+  // folgt ihr. Ein Umformulieren des Kommentars, nur damit der Regex nicht mehr greift, waere ein
+  // Ausweichen vor dem Waechter. „klara" steht in keinem der beiden Pfade, K5 bleibt unveraendert.
+  "tests/design/zielbild-h3-erfassen.test.ts",
+  "tests/capture/frontdoor-navguard-mounted.test.tsx",
 ];
 
 // ------------------------------------------------------------------------------------------------

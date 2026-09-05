@@ -15,7 +15,7 @@ import {
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
 import { useTranslation } from "react-i18next";
-import { useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { ApiError } from "../api/client";
 import { type FollowUpsRecorded, endpoints } from "../api/endpoints";
 import { useDirectory, useDrafts, useGaps, useReasonerStatus } from "../api/hooks";
@@ -60,19 +60,17 @@ import { EditorGuidance } from "../components/EditorGuidance";
 import { ExternalUrlText } from "../components/ExternalUrlText";
 // WP-D10c: zugeklappt startender Dateiformate-Infokasten (button + aria-expanded).
 import { FileFormatInfo } from "../components/FileFormatInfo";
-import { HelpTip } from "../components/HelpTip";
-import { KlaraPathTeaser } from "../components/KlaraPathTeaser";
 import { KnopfUnterschied } from "../components/KnopfUnterschied";
 import { KnowledgeInputStudio } from "../components/KnowledgeInputStudio";
-import { KnowledgeRescueIntro } from "../components/KnowledgeRescueIntro";
 import { Modal } from "../components/Modal";
 import { PublicAiEnrichPanel } from "../components/PublicAiEnrichPanel";
 import { RichTextEditor } from "../components/RichTextEditor";
 import { RoleLink } from "../components/RoleLink";
 import { UploadLimitsHint } from "../components/UploadLimitsHint";
 import { ListEditor, TagEditor } from "../components/editors";
+import { Blatt } from "../components/erfassen/Blatt";
 import { KNOWLEDGE_TYPES, ReasonerDraft } from "../components/trust";
-import { Button, Card, Field, PageHeader, SectionLabel, TextInput } from "../components/ui";
+import { Button, Card, Field, SectionLabel, TextInput } from "../components/ui";
 import { aiModelUsable } from "../lib/aiAvailability";
 import {
   AI_CHECK_CARD_TEXT,
@@ -110,17 +108,7 @@ import {
   finalizeCaptureSubmit,
 } from "../lib/captureAttachments";
 import { applyDraftArticle, normalizeDraftArticleLocale } from "../lib/captureDraftArticle";
-import {
-  CAPTURE_ENTRY_TEXT,
-  type CaptureMode,
-  EXPERT_MODE,
-  NARRATE_MODES,
-  initialCaptureWorkspaceOpen,
-  isCaptureFirstRun,
-  isExpertMode,
-  isRecommendedMode,
-  markCaptureIntroSeen,
-} from "../lib/captureEntry";
+import { type CaptureMode, isExpertMode } from "../lib/captureEntry";
 import { CAPTURE_EXAMPLE } from "../lib/captureExample";
 import { CAPTURE_FLOW_TEXT } from "../lib/captureFlowGuide";
 // AUFTRAG-mega21 Block C-1: die Schrittnamen des Servers, für Menschen lesbar (mit nächstem Schritt).
@@ -160,8 +148,6 @@ import {
 } from "../lib/captureFromFile";
 import { gapContextDraft, readGapId, resolveGapQuestion } from "../lib/captureFromGap";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../lib/captureFrontDoor";
-// SCRUM-407: zentrale ?-Hilfen-Karte des Erfassen-Wegs (chelp.*) — Gegenstück zu lib/reviewHelp.
-import { type CaptureHelpId, captureHelp } from "../lib/captureHelp";
 import { captureReadiness } from "../lib/captureReadiness";
 import { originForSave, resumeTargetForDraft } from "../lib/captureResume";
 // SCRUM-408: externe Quellen schon beim Erfassen — Warteliste + add-source beim Einreichen.
@@ -181,7 +167,6 @@ import {
   CAPTURE_WIZARD_TEXT,
   type CaptureWizardStep,
   resolveWizardStep,
-  wizardChips,
 } from "../lib/captureWizard";
 import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../lib/confidentiality";
 // AUFTRAG-mega20 Block A: der Wiederholschlüssel der Erstanlage (stabil über Wiederholungen).
@@ -322,27 +307,10 @@ function logSubmitPhase(phase: string, startMs: number): void {
   console.debug(`[KW-SUBMIT] ${phase}: ${Math.round(performance.now() - startMs)}ms`);
 }
 
-interface FrontDoorDraftSavedState {
-  id: string;
-  title: string;
-}
-
 interface FileWholeDraftSavedState {
   id: string | null;
   title: string;
   fileName: string;
-}
-
-function frontDoorDraftSavedFromState(state: unknown): FrontDoorDraftSavedState | null {
-  const value = state as { frontDoorDraftSaved?: { id?: unknown; title?: unknown } } | null;
-  const draft = value?.frontDoorDraftSaved;
-  if (typeof draft?.id !== "string") {
-    return null;
-  }
-  return {
-    id: draft.id,
-    title: typeof draft.title === "string" && draft.title.trim() ? draft.title : "Entwurf",
-  };
 }
 
 // ==================================================================================================
@@ -430,7 +398,42 @@ const BEISPIEL_TOR_TEXT = {
   bestaetigen: "Ja, Beispiel einreichen",
 } as const;
 
-export function Capture(): JSX.Element {
+// ================================================================================================
+// JOB 3062 · H3 — DER ARBEITSRAUM. Nicht mehr die Seite, sondern eine ANSICHT DES BLATTES.
+// ================================================================================================
+//
+// WAS DIESE DATEI VERLOREN HAT UND WARUM: Kopf („Wissen erfassen / Erfahrungswissen festhalten"),
+// Standardweg-Kasten samt „Weitere Wege"-Fußzeile, Klara-Teaser, Erstnutzer-Einführung, die
+// Hinweiskarte des Vordertür-Entwurfs, die Schritt-Leiste, die Modus-Leiste mit Empfehlungs-Badge
+// und Expertenformular-Umschalter sowie ALLE 29 `HelpTip`-Aufrufe sind GELÖSCHT — nicht versteckt.
+// Sie waren die Fläche, die Pedi am 04.09. („Text über Text über Text") beanstandet hat.
+//
+// KEINE FUNKTION IST MIT IHNEN GEGANGEN (Auftrag §5a):
+//   · Modus-Wahl        → der Blatt-Werkzeugzeile ihre Menüs „Datei ▾" (Interview · Formular ·
+//                         Aus Datei) und das Werkzeug „Diktieren".
+//   · Erklärtexte       → das „?"-Menü des Blattes, aus derselben Quelle `lib/captureHelp.ts`.
+//   · Klara-Teaser      → „…"-Menü → „Klara in Word", mit denselben `klara.path.*`-Schlüsseln.
+//   · Vordertür-Hinweis → „…"-Menü → „Entwürfe"; ein fortgesetzter Entwurf IST der Blattinhalt.
+// Der Demo-Banner bleibt hier, weil er ausdrücklich NUR bei `?demo=` erscheint (Auftrag §5a).
+//
+// `modus` ist die Ansicht, die das Blatt geöffnet hat. Ohne Angabe bleibt der bisherige Anfangs-
+// zustand `freitext` — der Arbeitsraum wird dadurch nicht zu einer zweiten Fläche, sondern behält
+// seine Ruhelage.
+export interface CaptureArbeitsraumProps {
+  /** Die Ansicht, die das Blatt geöffnet hat. Ohne Angabe bleibt die Ruhelage `freitext`. */
+  modus?: Mode | undefined;
+  /** Der Arbeitsraum hat einen Entwurf gesichert — das Blatt übernimmt ihn (Auftrag §5.2). */
+  onEntwurfInsBlatt?: ((entwurfId: string) => void) | undefined;
+}
+
+export function CaptureArbeitsraum({
+  modus,
+  onEntwurfInsBlatt,
+  // KEIN Vorgabewert `= {}` an dieser Stelle: mit ihm wird der Prop-Parameter OPTIONAL, und
+  // `createElement(CaptureArbeitsraum, { modus })` leitet dann keinen Prop-Typ mehr her — TypeScript
+  // fällt auf die Zeichenketten-Überladung zurück und meldet „'modus' does not exist in type
+  // 'Attributes'". Beide Felder sind optional; ein Aufruf ohne Prop-Objekt bleibt damit erlaubt.
+}: CaptureArbeitsraumProps): JSX.Element {
   const { t, i18n } = useTranslation();
   const { user } = useSession();
   // AUFTRAG-mega70 BLOCK C: die betonte nächste Handlung nach dem Speichern richtet sich nach der
@@ -446,7 +449,6 @@ export function Capture(): JSX.Element {
   // `GuardedLink`. Begründung je Fundstelle steht am jeweiligen Aufruf.
   const navigate = useNavigate();
   const guardedNavigate = useGuardedNavigate();
-  const location = useLocation();
 
   // PAKET 1 (D-AISTATE, Pedi 23.07.): ehrliche KI-Verfügbarkeit je Aufgabe — hart ausgrauen der
   // echten LLM-Knöpfe (Struktur, Extraktion), wenn kein Modell nutzbar ist. Die Duplikat-/
@@ -467,13 +469,10 @@ export function Capture(): JSX.Element {
   const gaps = useGaps();
   const gapContext = resolveGapQuestion(gapId, gaps.data);
 
+  // JOB 3062 · H3: BEWUSST NICHT `modus ?? "freitext"`. Der Anfangswert darf den vom Blatt
+  // gewünschten Modus nicht vorwegnehmen — sonst überspringt der Abgleich weiter unten seinen
+  // ersten Lauf und `switchMode` bleibt aus. Die ausführliche Begründung steht dort.
   const [mode, setMode] = useState<Mode>("freitext");
-  // SCRUM-384 / KG-UX-001/002: Erstnutzer-Führung pro Browser — beim Erstbesuch ist die geführte
-  // Einführung ausgeklappt, danach eingeklappt (jederzeit wieder aufklappbar; nichts entfernt).
-  const [firstRun] = useState(() => isCaptureFirstRun(window.localStorage));
-  useEffect(() => {
-    markCaptureIntroSeen(window.localStorage);
-  }, []);
   // SCRUM-270: Gap-Frage als OFFENE-Frage-Vorlage übernehmen (kein fertiges Wissen); ohne Gap leer.
   // Beim SPA-Wechsel aus /risiko ist die (berechtigte) Gap-Liste bereits im Cache → gapContext steht
   // synchron. Der Effekt unten deckt den Kaltstart-Deep-Link ab (Liste lädt erst nachträglich).
@@ -669,9 +668,6 @@ export function Capture(): JSX.Element {
 
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
-  const [frontDoorDraftSaved, setFrontDoorDraftSaved] = useState<FrontDoorDraftSavedState | null>(
-    () => frontDoorDraftSavedFromState(location.state),
-  );
   // SCRUM-276: nach erfolgreichem Einreichen die ID des gespeicherten KO (für die Success-Card).
   const [savedKoId, setSavedKoId] = useState<string | null>(null);
   // WP-SHIP9-S1 (Pedis B3): der ECHTE Status der Hintergrund-KI-Prüfung des frisch eingereichten
@@ -778,28 +774,30 @@ export function Capture(): JSX.Element {
   // SCRUM-458: Der Erfassungs-Arbeitsraum startet EINGEKLAPPT (ruhiger Aufklapp-Einstieg statt vollem
   // Formular). Defensiv aufgeklappt, wenn schon ein aktiver Kontext vorliegt (Lücken-Kontext ?gap= oder
   // vorbefüllter Rohtext aus Deep-Link/Entwurf), damit dieser nie verdeckt startet.
-  const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(() =>
-    initialCaptureWorkspaceOpen({
-      hasGapContext: gapContext !== null,
-      hasPrefilledRaw: raw.trim().length > 0,
-    }),
-  );
+  // ==============================================================================================
+  // JOB 3062 · H3 — DER ARBEITSRAUM STARTET OFFEN, WEIL ER JETZT EINE ANSICHT IST.
+  // ==============================================================================================
+  //
+  // Bis hierher startete er EINGEKLAPPT (SCRUM-458) und wurde über den Knopf „Weitere Wege
+  // anzeigen ▾" im Standardweg-Kasten aufgeklappt. Beide — Kasten und Knopf — sind mit diesem
+  // Auftrag gelöscht: der Standardweg IST das Blatt. Ein eingeklappter Arbeitsraum wäre damit ein
+  // Zustand OHNE AUSWEG; man käme nie mehr an Interview, Dateiimport oder Expertenformular.
+  //
+  // Wer hierher kommt, hat im Menü „Datei ▾" ausdrücklich einen Weg gewählt — die Fläche zeigt ihn.
+  // `initialCaptureWorkspaceOpen` (lib/captureEntry.ts) wird deshalb nicht mehr gerufen; die
+  // Funktion liegt ausserhalb der Zielpfade dieses Auftrags und bleibt unangetastet stehen.
+  const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(true);
   const workAreaRef = useRef<HTMLDivElement | null>(null);
 
-  useEffect(() => {
-    const saved = frontDoorDraftSavedFromState(location.state);
-    if (!saved) {
-      return;
-    }
-    setFrontDoorDraftSaved(saved);
-    setNotice(`Entwurf gespeichert: ${saved.title}`);
-    void qc.invalidateQueries({ queryKey: ["drafts"] });
-    // AUFTRAG-mega12 Block A: NICHT umgestellt, mit Absicht. Das ist kein Seitenwechsel, sondern das
-    // Abräumen des `location.state` auf DERSELBEN Route (`replace`) direkt nach einem ERFOLGREICHEN
-    // Speichern in der Vordertür. Ein Wächter hier würde beim Betreten der Seite fragen — eine
-    // Warnung ohne Verlust, und er würde den Effekt bei „Hier bleiben" in einer Endlosschleife halten.
-    navigate("/erfassen", { replace: true, state: null });
-  }, [location.state, navigate, qc]);
+  // ==============================================================================================
+  // JOB 3062 · H3 — DER HINWEIS „ENTWURF GESPEICHERT" IST GELÖSCHT, WEIL SEIN ERZEUGER WEG IST.
+  // ==============================================================================================
+  // Die Vordertür sprang nach dem Speichern nach `/erfassen` und legte den gesicherten Entwurf in
+  // den `location.state`; diese Seite las ihn und zeigte eine Karte mit „Entwurf fortsetzen" und
+  // „Neuer leerer Eintrag". Beides gibt es nicht mehr: `/erfassen` und `/erfassen/vordertuer` sind
+  // DIESELBE Fläche, das Blatt bleibt nach dem Speichern stehen, und ein fortgesetzter Entwurf IST
+  // sein Inhalt (Auftrag §5a). Der Leser ohne Schreiber wäre ein toter Pfad — deshalb weg, nicht
+  // stillgelegt.
 
   // Diktat
   const [listening, setListening] = useState(false);
@@ -1921,6 +1919,12 @@ export function Capture(): JSX.Element {
       setStaleConflict(false);
       setNotice(msg);
       push("success", msg);
+      // JOB 3062 · H3: DAS ERGEBNIS LANDET IM BLATT. Interview, Dateiimport und Expertenformular
+      // sind Ansichten des Blattes; was sie erarbeitet haben, ist nach dem Sichern ein Entwurf.
+      // Das Blatt öffnet genau diesen Entwurf und zeigt ihn als seinen Inhalt — sonst bliebe der
+      // Nutzer im Arbeitsraum stehen und müsste seinen eigenen Entwurf in einer Liste suchen.
+      // Der Rückruf ist optional: ohne Blatt (Test, Einzelmontage) bleibt alles wie bisher.
+      onEntwurfInsBlatt?.(_d.id);
     },
     onError: (e) => {
       // JOB 2684 D2 (R2-17): 409 `DRAFT_STALE` — der Entwurf wurde inzwischen an anderer Stelle
@@ -2227,28 +2231,35 @@ export function Capture(): JSX.Element {
     }
   };
 
-  const openFileImport = (): void => {
-    setCaptureWorkspaceOpen(true);
-    setWizStep("tell");
-    switchMode("datei");
-    window.setTimeout(() => {
-      workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
-  };
-
-  const openCaptureWorkspace = (): void => {
-    setCaptureWorkspaceOpen(true);
-    setWizStep("tell");
-    window.setTimeout(() => {
-      workAreaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-    }, 0);
-  };
-
-  // SCRUM-458: der Aufklapp-Einstieg ist ein echter Toggle — erneuter Klick klappt den Arbeitsraum
-  // wieder ein (reine Sichtbarkeit; Inhalte/State bleiben erhalten).
-  const closeCaptureWorkspace = (): void => {
-    setCaptureWorkspaceOpen(false);
-  };
+  // ==============================================================================================
+  // JOB 3062 · H3 — DAS BLATT WECHSELT DIE ANSICHT, NICHT DIE MONTAGE.
+  // ==============================================================================================
+  // Wählt der Mensch im Menü „Datei ▾" einen anderen Weg, ändert sich nur der Prop — React montiert
+  // diesen Arbeitsraum NICHT neu, und `useState(modus ?? "freitext")` liest seinen Anfangswert nur
+  // einmal. Ohne diesen Abgleich bliebe die Fläche auf dem zuerst gewählten Modus stehen (Interview
+  // im Menü gewählt, Dateiimport auf der Fläche).
+  //
+  // Der Wechsel läuft über `switchMode` und nicht über `setMode`: nur dort werden Interview- und
+  // Dateizustand geräumt und Rohtext/Aussage aneinander übergeben. Ein zweiter, stillerer Weg zum
+  // selben Feld wäre genau der Fehler, den `switchMode` seit Pedi 04.07. verhindert.
+  //
+  // UND ER MUSS AUCH BEIM ERSTEN LAUF GREIFEN. Bis hierher las `useState` den Anfangswert direkt
+  // aus `modus`; damit waren `modus` und `mode` beim ersten Rendern gleich, der Abgleich tat nichts
+  // — und `switchMode` lief NIE. Das war kein Schönheitsfehler: `switchMode("formular")` ist die
+  // Stelle, die den Formular-Entwurf überhaupt erst anlegt (`setDraft(d ?? EMPTY_DRAFT)`, oben).
+  // Ohne ihn öffnete das Menü „Datei ▾" → „Formular (Experten)" eine Expertenansicht mit `draft ===
+  // null` — also OHNE Editor, ohne Anhänge, ohne übernommenen Rohtext: eine leere Fläche, wo eine
+  // Funktion versprochen war (gemessen an `tests/capture/dateizusage-mounted.test.tsx`).
+  //
+  // Deshalb startet `mode` jetzt IMMER auf dem Ruhewert „freitext" (s. seine `useState`-Zeile), und
+  // der Weg in jede andere Ansicht führt ausnahmslos durch `switchMode` — ein Einstieg, nicht zwei.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: `switchMode` wird bei jedem Render neu erzeugt; der Abgleich hängt an `modus`, nicht an seiner Identität
+  useEffect(() => {
+    if (modus !== undefined && modus !== mode) {
+      switchMode(modus);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modus]);
 
   const cancelFileImport = (): void => {
     // E2E-003: dieselbe kanonische Räumung wie „Verwerfen"; hier zusätzlich die bewussten
@@ -3505,13 +3516,6 @@ export function Capture(): JSX.Element {
       : t(submitStage.key)
     : t("capture.submitBusy");
 
-  // SCRUM-407 (Pedi 03.07.): durchgängige, ausführliche ?-Hilfen im Erfassen-Weg — Themen und
-  // i18n-Schlüssel kommen aus der zentralen Karte lib/captureHelp (gleiches Muster wie SCRUM-406).
-  const chelp = (id: CaptureHelpId): { title: string; body: string } => {
-    const topic = captureHelp(id);
-    return { title: t(topic.titleKey), body: t(topic.bodyKey) };
-  };
-
   // SCRUM-408: gleiche Guard-Logik wie im Prüfbereich (viewer darf keine Quellen anhängen).
   const canSources = canAttachCaptureSources(user?.role);
 
@@ -3558,7 +3562,6 @@ export function Capture(): JSX.Element {
   // SCRUM-384: abgeleiteter Wizard-Zustand (refine nur mit Entwurf) + sichtbare Schritt-Leiste.
   const expertView = isExpertMode(mode);
   const wizStep = resolveWizardStep(wizStepRaw, draft !== null);
-  const chips = wizardChips(wizStepRaw, draft !== null);
   return (
     // AUFTRAG-mega50 Block A: DAS EINZIGE, was diese Fläche zur Bildbeschreibung noch zu sagen hat —
     // die Herkunft ihres Inhalts. Der Weg selbst (describe-Aufruf, Sprache, Verfügbarkeit) kommt aus
@@ -3572,111 +3575,8 @@ export function Capture(): JSX.Element {
       provenance={draftProvenance(declaredConfidentiality, undefined, draftId ?? undefined)}
     >
       <div className="mx-auto max-w-5xl">
-        <PageHeader
-          kicker={t("capture.kicker")}
-          title={t("capture.title")}
-          actions={
-            // AUFTRAG-mega12 Block A (bens Fundstelle 1): UMGESTELLT. Verlässt `/erfassen` zur
-            // Vordertür — ein Ein-Klick-Ausgang aus einer Eingabeseite.
-            <GuardedLink
-              className="text-sm font-semibold text-muted hover:text-ink"
-              to={CAPTURE_FRONT_DOOR_ROUTE}
-            >
-              Dokument-Editor
-            </GuardedLink>
-          }
-        />
         {/* SCRUM-296: Demo-/Pilotpfad auf der Erfassungsseite wiedererkennbar (nur bei ?demo=stage1). */}
         {isDemoContext(params) ? <DemoBanner surface="capture" /> : null}
-
-        <KlaraPathTeaser surface="capture" />
-
-        {/* KW-PROD-15: Vordertuer als klarer Default; die bisherigen Wege bleiben darunter erhalten. */}
-        <Card className="mb-4 border-ai/30 bg-ai/5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="text-[12px] font-semibold uppercase text-ai">Standardweg</div>
-              <h2 className="mt-1 text-lg font-semibold text-ink">Neues Wissensobjekt erfassen</h2>
-              <p className="mt-1 text-sm leading-relaxed text-muted">
-                Dokument-Editor für Titel, Inhalt, Formatierung, Bilder und Entwurf-Fortsetzen.
-              </p>
-            </div>
-            {/* AUFTRAG-mega12 Block A (bens Fundstelle 2): UMGESTELLT. Der prominenteste Ausgang der
-              Seite ("Standardweg") — verlässt `/erfassen` zur Vordertür. */}
-            <GuardedLink
-              to={CAPTURE_FRONT_DOOR_ROUTE}
-              className="inline-flex items-center justify-center rounded-btn bg-ink px-4 py-2 text-sm font-semibold text-white hover:opacity-90"
-            >
-              Dokument-Editor öffnen <span aria-hidden="true">→</span>
-            </GuardedLink>
-          </div>
-          <div className="mt-3 flex flex-wrap items-center gap-2 border-t border-hairline pt-3 text-[12.5px] text-muted">
-            <span className="flex-1">
-              Weitere Wege: Expertenformular, Diktat, Interview und Datei importieren bleiben
-              erreichbar.
-            </span>
-            <Button variant="outline" onClick={openFileImport}>
-              <FileText size={15} />
-              {t("capture.fileImportJump")}
-            </Button>
-            {/* SCRUM-458 (Nullschulung): echter Disclosure-Einstieg für den Erfassungs-Arbeitsraum —
-              standardmäßig eingeklappt, Klick klappt Schritt-Leiste + Erzähl-Modi + Formular auf, erneuter
-              Klick wieder ein. aria-expanded/aria-controls für Tastatur/Screenreader. */}
-            <Button
-              variant="ghost"
-              onClick={captureWorkspaceOpen ? closeCaptureWorkspace : openCaptureWorkspace}
-              aria-expanded={captureWorkspaceOpen}
-              aria-controls="capture-workspace"
-            >
-              {captureWorkspaceOpen ? "Weitere Wege einklappen ▴" : "Weitere Wege anzeigen ▾"}
-            </Button>
-          </div>
-        </Card>
-
-        {/* SCRUM-352: ruhiger, geführter Einstieg — Story „Erfahrungswissen sichern" + 3 Schritte +
-          leichter Wertbeitrag. Progressive Disclosure; entfernt keine Funktion (Modi/Editor folgen). */}
-        {/* SCRUM-384: Erstnutzer-Führung — beim Erstbesuch ausgeklappt, danach ruhig eingeklappt. */}
-        <KnowledgeRescueIntro defaultOpen={firstRun} />
-
-        {frontDoorDraftSaved ? (
-          <Card className="mb-4 border-trust-pos-fill/40 bg-trust-pos-bg">
-            <div className="flex flex-wrap items-center gap-2">
-              <div className="text-[13px] font-semibold text-trust-pos-text">
-                Entwurf gespeichert
-              </div>
-              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-pos-text">
-                fortsetzen bereit
-              </span>
-            </div>
-            <p className="mt-1 text-[12.5px] leading-relaxed text-trust-pos-text/90">
-              <strong>{frontDoorDraftSaved.title}</strong> ist unter Entwürfe fortsetzen sichtbar.
-              Der gespeicherte Entwurf ist in der Liste hervorgehoben; der Dokument-Editor startet
-              beim nächsten Öffnen wieder leer.
-            </p>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {/* AUFTRAG-mega12 Block A (bens Fundstelle 3, erster Link): UMGESTELLT. Der Hinweis auf den
-                gespeicherten Vordertür-Entwurf steht auf der Erfassungsseite; der Nutzer kann in der
-                Zwischenzeit hier weitergeschrieben haben. Dieser Ausgang würde das still verlieren. */}
-              <GuardedLink
-                to={`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${encodeURIComponent(frontDoorDraftSaved.id)}`}
-                className="inline-flex items-center gap-1 rounded-btn bg-ink px-3 py-1.5 text-[12.5px] font-semibold text-white hover:opacity-90"
-              >
-                Entwurf fortsetzen <span aria-hidden="true">→</span>
-              </GuardedLink>
-              {/* AUFTRAG-mega12 Block A (bens Fundstelle 3, zweiter Link): UMGESTELLT, gleiche Begründung. */}
-              <GuardedLink
-                to={CAPTURE_FRONT_DOOR_ROUTE}
-                className="inline-flex items-center gap-1 rounded-btn border border-hairline bg-page px-3 py-1.5 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
-              >
-                Neuer leerer Eintrag <span aria-hidden="true">→</span>
-              </GuardedLink>
-              <Button variant="ghost" onClick={() => setFrontDoorDraftSaved(null)}>
-                Hinweis ausblenden
-              </Button>
-            </div>
-          </Card>
-        ) : null}
-
         {/* ==========================================================================================
           AUFTRAG-mega22 Block E — DER RÜCKWEG AUS DEM 409.
           ==========================================================================================
@@ -3773,7 +3673,6 @@ export function Capture(): JSX.Element {
             <div className="flex flex-wrap items-center gap-2">
               <div className="flex items-center gap-1 text-[13px] font-semibold text-trust-pos-text">
                 {t("capture.savedTitle")}
-                <HelpTip {...chelp("savedNext")} />
               </div>
               {/* SCRUM-286: ehrlicher Status — gespeichert, aber noch offen/nicht validiert. */}
               <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-trust-warn-text">
@@ -4112,7 +4011,7 @@ export function Capture(): JSX.Element {
           open={draftsOpen}
           onToggleOpen={() => setDraftsOpen((open) => !open)}
           scopeLabel={draftScopeLabel}
-          highlightId={frontDoorDraftSaved?.id ?? null}
+          highlightId={null}
           editingId={draftId}
           confirmDiscardId={confirmDiscardDraftId}
           onConfirmDiscard={setConfirmDiscardDraftId}
@@ -4124,175 +4023,6 @@ export function Capture(): JSX.Element {
         {/* SCRUM-384: Die frühere Weg-Leiste (SCRUM-370) entfiel — die „Wissen retten“-
           Einführung oben erklärt denselben Dreischritt; Doppel-Blöcke erschlagen (Pedi-Review). */}
         <div ref={workAreaRef} className="scroll-mt-4" />
-
-        {/* SCRUM-384 / AG-12 / KG-UX-001/002/003/010: Erzähl-Einstieg als Standardweg — die Erzähl-Modi
-          (Freitext · Diktat · Interview) führen in den Studio-Hauptweg; das klassische Formular bleibt
-          als bewusst wählbarer Expertenpfad erhalten (progressive disclosure, NICHTS entfernt). */}
-        {/* SCRUM-384: sichtbare Schritt-Leiste des Wizards (Erzählen → Wissensseite → Einreichen);
-          fertige Schritte sind anklickbar — vor und zurück ohne Datenverlust. */}
-        {/* JOB 1154 D2: Die Leiste sagt jetzt, WARUM ein Schritt zu ist. Bis hierher waren
-          gesperrte Schritte nur ausgegraut — drei tote Knoepfe ohne Weg fuer jeden, der die
-          Bauart nicht kennt. Betroffen ist vor allem der zweite Schritt, der erst nach dem
-          Strukturieren aufgeht; ohne Hinweis sieht das aus wie ein Defekt.
-          Die Gruende werden EINMAL bestimmt und dreifach verwendet: als Tooltip am Knopf (Maus),
-          als angekuendigte Beschreibung ueber `aria-describedby` (Hilfstechnik — ein `title`
-          allein erreicht Screenreader nicht verlaesslich) und als sichtbare Zeile darunter
-          (alle uebrigen). Eine gemeinsame Quelle, damit die drei Wege nicht auseinanderlaufen. */}
-        {captureWorkspaceOpen && !expertView
-          ? (() => {
-              const schritte = chips.map((c) => {
-                const clickable =
-                  (c.id === "raw" && wizStep !== "tell") ||
-                  (c.id === "studio" && draft !== null && wizStep !== "refine");
-                // Genau drei Gruende, und sie verlangen verschiedene Reaktionen: nichts tun,
-                // erst erzaehlen, ueber den Einreichen-Knopf gehen.
-                const sperrgrund = clickable
-                  ? null
-                  : c.id === "review"
-                    ? t("capture.wizard.step.lockedViaSubmit")
-                    : c.id === "studio" && draft === null
-                      ? t("capture.wizard.step.lockedNeedDraft")
-                      : t("capture.wizard.step.lockedCurrent");
-                return { chip: c, clickable, sperrgrund };
-              });
-              const sichtbareGruende = [
-                ...new Set(
-                  schritte.map((s) => s.sperrgrund).filter((g): g is string => g !== null),
-                ),
-              ];
-              return (
-                <div className="mb-3">
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {schritte.map(({ chip: c, clickable, sperrgrund }, i) => (
-                      <span key={c.id} className="inline-flex items-center gap-1.5">
-                        {i > 0 ? (
-                          <span aria-hidden="true" className="text-[11px] text-muted-2">
-                            →
-                          </span>
-                        ) : null}
-                        <button
-                          type="button"
-                          disabled={!clickable}
-                          // `disabled` sperrt, sagt der Hilfstechnik aber nichts ueber den Grund
-                          // und nimmt den Knopf zugleich aus dem Fokuslauf. `aria-disabled` und
-                          // `aria-current` machen aus „tot" ein angekuendigtes „hier bist du".
-                          aria-disabled={!clickable}
-                          aria-current={c.state === "active" ? "step" : undefined}
-                          title={sperrgrund ?? undefined}
-                          aria-describedby={sperrgrund ? `capture-step-lock-${c.id}` : undefined}
-                          onClick={() => setWizStep(c.id === "studio" ? "refine" : "tell")}
-                          className={`rounded-pill px-2.5 py-1 text-[11.5px] font-semibold ${
-                            c.state === "active"
-                              ? "bg-ink text-white"
-                              : c.state === "done"
-                                ? "border border-hairline text-text"
-                                : "border border-hairline text-muted-2"
-                          } ${clickable ? "hover:text-text" : ""}`}
-                        >
-                          {i + 1} · {t(c.labelKey)}
-                        </button>
-                        {sperrgrund ? (
-                          <span id={`capture-step-lock-${c.id}`} className="sr-only">
-                            {sperrgrund}
-                          </span>
-                        ) : null}
-                      </span>
-                    ))}
-                    <HelpTip {...chelp("wizardSteps")} />
-                  </div>
-                  {sichtbareGruende.length > 0 ? (
-                    <p
-                      data-testid="capture-step-lockreason"
-                      className="mt-1 text-[11.5px] leading-relaxed text-muted-2"
-                    >
-                      {sichtbareGruende.join(" · ")}
-                    </p>
-                  ) : null}
-                </div>
-              );
-            })()
-          : null}
-
-        {/* Erzähl-Einstieg nur im Schritt „Erzählen" (bzw. immer im Expertenmodus). */}
-        {captureWorkspaceOpen && (expertView || wizStep === "tell") ? (
-          <div className="mb-4">
-            <div
-              data-help="cap:modes"
-              className="mb-1.5 flex items-center gap-1 font-mono text-[9.5px] font-semibold uppercase tracking-wider text-muted-2"
-            >
-              {t(CAPTURE_ENTRY_TEXT.narrateKicker)}
-              <HelpTip {...chelp("modes")} />
-            </div>
-            {/* SCRUM-458: Sobald „Weitere Wege" aufgeklappt ist, zeigt diese Leiste ALLE Erzähl-Modi
-              (Freitext · Diktat · Interview · Aus Datei) dauerhaft und direkt, plus den Expertenformular-
-              Umschalter — keine zweite Aufklapp-Ebene mehr. Reine Sichtbarkeit — switchMode/Funktionen
-              sind unverändert. */}
-            <div className="flex flex-wrap items-center gap-1.5">
-              {/* AUFTRAG-mega51 BLOCK B: EIN Weg ist der empfohlene und sieht auch so aus; die
-                  übrigen bleiben vollständig erreichbar, nur ruhiger. Welcher es ist, entscheidet
-                  lib/captureEntry.ts aus dem Bestand (Begründung dort) — nicht diese Ansicht. */}
-              {NARRATE_MODES.map((m) => (
-                <button
-                  key={m}
-                  type="button"
-                  onClick={() => switchMode(m)}
-                  title={
-                    m === "diktat" && !speechSupported ? t("capture.diktatUnsupported") : undefined
-                  }
-                  className={`inline-flex items-center gap-1.5 rounded-btn px-3 py-1.5 text-[13px] font-semibold ${
-                    mode === m
-                      ? "bg-ink text-white"
-                      : isRecommendedMode(m)
-                        ? "border border-ink text-ink hover:bg-page"
-                        : "border border-hairline text-muted-2 hover:text-text"
-                  }`}
-                >
-                  {t(`capture.mode.${m}`)}
-                  {isRecommendedMode(m) && mode !== m ? (
-                    <span className="rounded-pill bg-page px-1.5 py-0.5 font-mono text-[9px] font-semibold uppercase text-muted">
-                      {t(CAPTURE_ENTRY_TEXT.recommendedBadge)}
-                    </span>
-                  ) : null}
-                  {m === "diktat" && !speechSupported ? (
-                    <span className="ml-1 text-[11px] opacity-70">·{t("capture.diktatNa")}</span>
-                  ) : null}
-                </button>
-              ))}
-              {/* Bug (Pedi 04.07./05.07.): Expertenmodus als DAUERHAFT sichtbarer Umschalter in der
-                Leiste (vorher verschwand der Knopf nach dem Aktivieren). Aktiv = hervorgehoben wie
-                die anderen Modus-Knöpfe; erneuter Klick führt zurück auf den geführten Weg. */}
-              <span className="inline-flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => switchMode(isExpertMode(mode) ? "freitext" : EXPERT_MODE)}
-                  title={t(CAPTURE_ENTRY_TEXT.expertHint)}
-                  aria-pressed={isExpertMode(mode)}
-                  className={`rounded-btn border px-3 py-1.5 text-[13px] font-semibold ${
-                    isExpertMode(mode)
-                      ? "border-ink bg-ink text-white"
-                      : "border-dashed border-hairline text-muted hover:border-ink/30 hover:text-text"
-                  }`}
-                >
-                  {t(CAPTURE_ENTRY_TEXT.expertToggle)}
-                </button>
-                <HelpTip {...chelp("expertPath")} />
-              </span>
-            </div>
-            {/* Im Expertenmodus: ehrliche Einordnung + sichtbarer Rückweg auf den geführten Standardweg. */}
-            {isExpertMode(mode) ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-card border border-hairline bg-surface px-3 py-2">
-                <span className="text-[12px] text-muted">{t(CAPTURE_ENTRY_TEXT.expertActive)}</span>
-                <button
-                  type="button"
-                  onClick={() => switchMode("freitext")}
-                  className="rounded-btn border border-hairline px-2.5 py-1 text-[12px] font-semibold text-muted hover:text-text"
-                >
-                  {t(CAPTURE_ENTRY_TEXT.backToGuided)}
-                </button>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
 
         {/* SCRUM-384: Wizard — genau EIN Fokus je Schritt (nichts entfernt).
           Pedi 04.07.: Expertenmodus war zweispaltig mit leerer linker Hälfte und ins rechte
@@ -4322,7 +4052,6 @@ export function Capture(): JSX.Element {
                 <div data-help="cap:tellRaw">
                   <div className="mb-1.5 flex items-center gap-1">
                     <SectionLabel>{t("capture.raw")}</SectionLabel>
-                    <HelpTip {...chelp("tellRaw")} />
                   </div>
                   {mode === "diktat" ? (
                     speechSupported ? (
@@ -4331,7 +4060,6 @@ export function Capture(): JSX.Element {
                           <Mic size={15} />
                           {listening ? t("capture.diktatStop") : t("capture.diktatStart")}
                         </Button>
-                        <HelpTip {...chelp("dictate")} />
                       </div>
                     ) : (
                       <p className="mb-2 rounded-btn bg-trust-warn-bg px-3 py-2 text-[12.5px] text-trust-warn-text">
@@ -4372,7 +4100,6 @@ export function Capture(): JSX.Element {
                         onChange={(e) => void onAttach(e)}
                       />
                     </label>
-                    <HelpTip {...chelp("tellUpload")} />
                     {images.length + docs.length > 0 ? (
                       <span className="text-[11.5px] text-muted-2">
                         {t(CAPTURE_WIZARD_TEXT.uploadCount, { count: images.length + docs.length })}
@@ -4405,7 +4132,6 @@ export function Capture(): JSX.Element {
                       </Button>
                       {/* Pedi 04.07.: (!)-Info — welche KI das Strukturieren ausführt. */}
                       <AiModelInfo task="structure" />
-                      <HelpTip {...chelp("structureNow")} />
                     </div>
                     <AiUnavailableHint show={!structureAi.available} />
                   </div>
@@ -4415,7 +4141,6 @@ export function Capture(): JSX.Element {
               {mode === "formular" ? (
                 <div className="flex items-start gap-1.5 rounded-card border border-dashed border-hairline p-3 text-[13px] text-muted">
                   <span className="flex-1">{t("capture.formularHint")}</span>
-                  <HelpTip {...chelp("expertForm")} />
                 </div>
               ) : null}
 
@@ -4442,7 +4167,6 @@ export function Capture(): JSX.Element {
                       <span className="font-mono text-[11px] uppercase tracking-wider text-muted-2">
                         {t("capture.ivTurn", { n: ivAnswers.length + 1 })}
                       </span>
-                      <HelpTip {...chelp("interview")} />
                       {ivResult ? (
                         <span className="rounded-pill bg-ai-surface-1 px-2 py-0.5 font-mono text-[10px] font-semibold uppercase text-ai">
                           {t(interviewSourceKey(ivResult))}
@@ -4563,7 +4287,6 @@ export function Capture(): JSX.Element {
                   />
                   <div className="flex items-start gap-1.5 text-[12.5px] leading-relaxed text-muted">
                     <span className="flex-1">{t(CAPTURE_FILE_TEXT.hint)}</span>
-                    <HelpTip {...chelp("filePoints")} />
                   </div>
                   {/* WP-D10c (Pedis Wunsch): Infokasten startet zugeklappt — Volltext erst auf Klick
                     (FileFormatInfo: button + aria-expanded, gemountet getestet). */}
@@ -4673,10 +4396,6 @@ export function Capture(): JSX.Element {
                         <div>
                           <span className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">
                             {t(CAPTURE_FILE_TEXT.queryLabel)}
-                            <HelpTip
-                              title={t(CAPTURE_FILE_TEXT.queryHelpTitle)}
-                              body={t(CAPTURE_FILE_TEXT.queryHelpBody)}
-                            />
                           </span>
                           <TextInput
                             value={fileQuery}
@@ -4687,10 +4406,6 @@ export function Capture(): JSX.Element {
                           <div className="mt-2.5 flex items-center gap-2">
                             <span className="flex items-center gap-1 text-[12.5px] font-semibold text-muted">
                               {t(CAPTURE_FILE_TEXT.langLabel)}
-                              <HelpTip
-                                title={t(CAPTURE_FILE_TEXT.langHelpTitle)}
-                                body={t(CAPTURE_FILE_TEXT.langHelpBody)}
-                              />
                             </span>
                             <div className="flex overflow-hidden rounded-pill border border-hairline text-[12px] font-semibold">
                               {(["system", "source"] as const).map((mode) => (
@@ -4970,7 +4685,6 @@ export function Capture(): JSX.Element {
                       className={`shrink-0 text-muted-2 transition-transform ${showAdvanced ? "rotate-180" : ""}`}
                     />
                   </button>
-                  <HelpTip {...chelp("advancedDetails")} />
                 </div>
                 {!showAdvanced ? (
                   <p className="mt-1 text-[11.5px] leading-relaxed text-muted-2">
@@ -4995,7 +4709,6 @@ export function Capture(): JSX.Element {
                           className="inline-flex items-center gap-1"
                         >
                           {t("capture.fType")}
-                          <HelpTip {...chelp("knowledgeType")} />
                         </span>
                       }
                     >
@@ -5015,10 +4728,6 @@ export function Capture(): JSX.Element {
                       label={
                         <span className="inline-flex items-center gap-1">
                           {t("capture.fCategory")}
-                          <HelpTip
-                            title={t("capture.help.category.title")}
-                            body={t("capture.help.category.body")}
-                          />
                         </span>
                       }
                     >
@@ -5028,10 +4737,6 @@ export function Capture(): JSX.Element {
                       label={
                         <span className="inline-flex items-center gap-1">
                           {t("capture.fRevalidation")}
-                          <HelpTip
-                            title={t("capture.help.validations.title")}
-                            body={t("capture.help.validations.body")}
-                          />
                         </span>
                       }
                     >
@@ -5051,7 +4756,6 @@ export function Capture(): JSX.Element {
                       label={
                         <span className="inline-flex items-center gap-1">
                           {t("capture.fAsset")}
-                          <HelpTip {...chelp("assetField")} />
                         </span>
                       }
                     >
@@ -5061,10 +4765,7 @@ export function Capture(): JSX.Element {
                       KOs gehen nie in externe Kontexte (Output/Export). */}
                     <Field
                       label={
-                        <span className="inline-flex items-center gap-1">
-                          {t("conf.field")}
-                          <HelpTip title={t("conf.field")} body={t("conf.help")} />
-                        </span>
+                        <span className="inline-flex items-center gap-1">{t("conf.field")}</span>
                       }
                     >
                       <select
@@ -5095,9 +4796,6 @@ export function Capture(): JSX.Element {
                     </Field>
                     <div data-help="cap:tagsField">
                       <TagEditor tags={tags} onChange={setTags} />
-                      <div className="mt-1">
-                        <HelpTip {...chelp("tagsField")} />
-                      </div>
                     </div>
                   </div>
 
@@ -5105,10 +4803,6 @@ export function Capture(): JSX.Element {
                   <div className="rounded-card border border-dashed border-hairline p-3">
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                       {t("capture.reviewers.title")}
-                      <HelpTip
-                        title={t("capture.reviewers.helpTitle")}
-                        body={t("capture.reviewers.helpBody")}
-                      />
                     </div>
                     {reviewerChoices.length === 0 ? (
                       <div className="text-[12px] text-muted-2">{t("capture.reviewers.none")}</div>
@@ -5157,7 +4851,6 @@ export function Capture(): JSX.Element {
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                       <FileText size={13} />
                       {t("capture.documents")}
-                      <HelpTip {...chelp("docsImages")} />
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                       {t("capture.documentsUpload")}
@@ -5215,7 +4908,6 @@ export function Capture(): JSX.Element {
                     <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                       <Paperclip size={13} />
                       {t("capture.images")}
-                      <HelpTip {...chelp("docsImages")} />
                     </div>
                     <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
                       {t("capture.imagesUpload")}
@@ -5273,7 +4965,6 @@ export function Capture(): JSX.Element {
                       <div className="mb-2 flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-wider text-muted-2">
                         <Globe size={13} />
                         {t("capture.sourcesTitle")}
-                        <HelpTip {...chelp("sourcesPanel")} />
                       </div>
                       <p className="mb-2 text-[11.5px] leading-relaxed text-muted-2">
                         {t("capture.sourcesHint")}
@@ -5550,7 +5241,6 @@ export function Capture(): JSX.Element {
                 <Button variant="ghost" onClick={loadExample}>
                   {t("capture.loadExample")}
                 </Button>
-                <HelpTip {...chelp("loadExample")} />
                 {/* F-0007: die Markierung beginnt dort, wo das Beispiel entsteht — der Nutzer sieht
                   sie vom Laden bis zum Einreichen, nicht erst am Ende. */}
                 {beispielMarkierung()}
@@ -5594,7 +5284,6 @@ export function Capture(): JSX.Element {
                     {t(CAPTURE_WIZARD_TEXT.discard)}
                   </button>
                 )}
-                <HelpTip {...chelp("discardHelp")} />
               </div>
             </Card>
           ) : null}
@@ -5765,7 +5454,6 @@ export function Capture(): JSX.Element {
                       <div className="rounded-card border border-hairline bg-page p-3">
                         <div className="flex items-center gap-1">
                           <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
-                          <HelpTip {...chelp("readiness")} />
                         </div>
                         <ul className="mt-1.5 space-y-1">
                           {readiness.checks.map((c) => (
@@ -5931,7 +5619,6 @@ export function Capture(): JSX.Element {
               <div>
                 <div className="mb-1.5 flex items-center gap-1 text-[12.5px] font-semibold text-muted">
                   {t(CAPTURE_WIZARD_TEXT.titleLabel)}
-                  <HelpTip {...chelp("captureTitle")} />
                 </div>
                 <input
                   value={draft.title}
@@ -6040,10 +5727,6 @@ export function Capture(): JSX.Element {
                         className={`shrink-0 text-muted-2 transition-transform ${showCondMeasures ? "rotate-180" : ""}`}
                       />
                     </button>
-                    <HelpTip
-                      title={t(CAPTURE_WIZARD_TEXT.structData)}
-                      body={t(CAPTURE_WIZARD_TEXT.condMeasuresHint)}
-                    />
                   </div>
                   {showCondMeasures ? (
                     <div className="space-y-3 border-t border-hairline p-3">
@@ -6086,10 +5769,6 @@ export function Capture(): JSX.Element {
                         className={`shrink-0 text-muted-2 transition-transform ${showHelpers ? "rotate-180" : ""}`}
                       />
                     </button>
-                    <HelpTip
-                      title={t(CAPTURE_WIZARD_TEXT.helpers)}
-                      body={t(CAPTURE_WIZARD_TEXT.helpersHint)}
-                    />
                   </div>
                   {showHelpers ? (
                     <div className="space-y-3 border-t border-hairline p-3">
@@ -6112,7 +5791,6 @@ export function Capture(): JSX.Element {
                   <div className="rounded-card border border-hairline bg-page p-3">
                     <div className="flex items-center gap-1">
                       <SectionLabel>{t("capture.readyTitle")}</SectionLabel>
-                      <HelpTip {...chelp("readiness")} />
                     </div>
                     <ul className="mt-1.5 space-y-1">
                       {readiness.checks.map((c) => (
@@ -6231,7 +5909,6 @@ export function Capture(): JSX.Element {
                   >
                     {t(CAPTURE_WIZARD_TEXT.discard)}
                   </button>
-                  <HelpTip {...chelp("discardHelp")} />
                   <Button
                     variant="primary"
                     className="flex-1"
@@ -6293,5 +5970,27 @@ export function Capture(): JSX.Element {
         </Modal>
       </div>
     </ImageDescribeProvider>
+  );
+}
+
+// ================================================================================================
+// JOB 3062 · H3 — `/erfassen` IST DAS BLATT.
+// ================================================================================================
+//
+// Drei Adressen zeigten drei Flächen für einen Zweck: `/erfassen` den Arbeitsraum, `/erfassen/
+// vordertuer` den Dokument-Editor, `/erfassen/neu` den zuhörenden Einstieg. Jetzt zeigen alle drei
+// DASSELBE Blatt (`components/erfassen/Blatt.tsx`); die Routen bleiben unverändert, weil sie nicht
+// das Problem waren.
+//
+// DER ARBEITSRAUM WIRD HEREINGEREICHT und nicht dort importiert: `Blatt` kennt `Capture` nicht,
+// sonst entstünde ein Ring (Capture → Blatt → Capture). Diese Datei ist die einzige Stelle, die
+// beide Seiten kennt — und genau deshalb reicht sie das Bauteil weiter.
+export function Capture(): JSX.Element {
+  return (
+    <Blatt
+      arbeitsraum={({ modus, onEntwurfInsBlatt }) => (
+        <CaptureArbeitsraum modus={modus} onEntwurfInsBlatt={onEntwurfInsBlatt} />
+      )}
+    />
   );
 }

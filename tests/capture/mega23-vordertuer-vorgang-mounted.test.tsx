@@ -245,6 +245,18 @@ function pageText(): string {
   return (container.textContent ?? "").replace(/\s+/g, " ");
 }
 
+/**
+ * JOB 3062 · H3 — DER SICHTBARE ERFOLG HEISST JETZT ANDERS, ER IST NICHT WEG.
+ *
+ * Dieser Test benutzt den Erfolgstext nur als SONDE für „der Mensch sieht, dass es geklappt hat";
+ * seine eigentliche Aussage ist die Zahl im Bestand (genau eins, nie zwei). Das Blatt zeigt den
+ * Abschluss als EINE Zeile (`erfassen.eingereicht`, Auftrag §9) statt als Karte `fd.submitted`.
+ * Die Sonde zieht deshalb mit um — die Aussage des Tests bleibt Wort für Wort dieselbe.
+ */
+function erfolgSichtbar(): boolean {
+  return pageText().includes(i18n.t("erfassen.eingereicht"));
+}
+
 function buttonByText(part: string): HTMLButtonElement {
   const btn = [...container.querySelectorAll("button")].find((b) =>
     (b.textContent ?? "").replace(/\s+/g, " ").includes(part),
@@ -279,8 +291,41 @@ async function schreiben(html: string): Promise<void> {
   });
 }
 
+/**
+ * JOB 3062 · H3 — DIE VERTRAULICHKEIT IST VOR DEM EINREICHEN PFLICHT (Auftrag §4).
+ *
+ * Ein FRISCHES Blatt beginnt ohne gewählte Stufe: das Einreichen bleibt gesperrt, bis der Mensch
+ * im Menü „Vertraulichkeit" eine wählt (das Menü bekommt sonst Rand und Fokus, ohne Erklärsatz).
+ * Ein fortgesetzter Entwurf bringt seine gespeicherte Stufe mit und braucht das nicht.
+ *
+ * Das ist keine Umgehung der Sperre, sondern ihr Gegenteil: Bis hierher schrieb die Vordertür die
+ * Stufe „intern" still voraus, und niemand hatte je gewählt. Dieser Test tut jetzt, was ein Mensch
+ * tun muss — und wäre die Sperre kaputt, fiele er beim ersten Einreichen auf.
+ */
+async function vertraulichkeitWaehlen(): Promise<void> {
+  const werkzeug = container.querySelector('[data-testid="blatt-werkzeug-vertraulichkeit"]');
+  if (!(werkzeug instanceof HTMLButtonElement)) {
+    throw new Error("Das Menü Vertraulichkeit ist nicht auf dem Blatt.");
+  }
+  await click(werkzeug);
+  // INNERHALB der geöffneten Menüfläche suchen, nicht auf der ganzen Seite: der Menüknopf selbst
+  // trägt die gewählte Stufe als Beschriftung und käme in der DOM-Reihenfolge zuerst — ein Klick
+  // darauf schlösse das Menü wieder, und der Test hätte nichts gewählt, ohne es zu merken.
+  const flaeche = container.querySelector('[data-testid="blatt-menue-vertraulichkeit"]');
+  if (!(flaeche instanceof HTMLElement)) {
+    throw new Error("Das Menü Vertraulichkeit hat sich nicht geöffnet.");
+  }
+  const eintrag = [...flaeche.querySelectorAll("button")].find((b) =>
+    (b.textContent ?? "").includes(i18n.t("conf.level.intern")),
+  );
+  if (!(eintrag instanceof HTMLButtonElement)) {
+    throw new Error(`Stufe „intern" nicht im Menü. Einträge: ${flaeche.textContent ?? ""}`);
+  }
+  await click(eintrag);
+}
+
 async function einreichen(): Promise<void> {
-  await click(buttonByText(i18n.t("fd.submitReview")));
+  await click(buttonByText(i18n.t("erfassen.einreichen")));
 }
 
 /** Die Vorgangsschlüssel, die die OBERFLÄCHE tatsächlich auf die Leitung gelegt hat. */
@@ -306,13 +351,14 @@ describe("mega23 A: die Vordertür erzeugt bei Antwortverlust KEIN zweites Wisse
     // Wissensobjekte für eine einzige Eingabe, auf dem ersten Weg eines neuen Nutzers.
     await mount("/capture/frontdoor");
     await schreiben("<p>Die Dichtung an Linie 4 muss regelmäßig getauscht werden.</p>");
+    await vertraulichkeitWaehlen();
 
     bruecke.antwortVerlustFuer = "/promote";
     await einreichen();
 
     // Der Server HAT angelegt und promotet — der Browser weiß es nur nicht.
     expect(await bestand()).toHaveLength(1);
-    expect(pageText()).not.toContain(i18n.t("fd.submitted"));
+    expect(erfolgSichtbar()).toBe(false);
 
     // Der Nutzer klickt erneut. Diesmal kommt die Antwort an.
     bruecke.antwortVerlustFuer = null;
@@ -322,7 +368,7 @@ describe("mega23 A: die Vordertür erzeugt bei Antwortverlust KEIN zweites Wisse
     const liste = await bestand();
     expect(liste).toHaveLength(1);
     // Und der Nutzer sieht den Erfolg, der die ganze Zeit schon einer war.
-    expect(pageText()).toContain(i18n.t("fd.submitted"));
+    expect(erfolgSichtbar()).toBe(true);
 
     // ---- DERSELBE VORGANGSSCHLÜSSEL, ZWEIMAL ------------------------------------------------
     // Das ist die Ursache des Endzustands und nicht nur eine Begleiterscheinung: ein zweiter
@@ -357,7 +403,7 @@ describe("mega23 A: die Vordertür erzeugt bei Antwortverlust KEIN zweites Wisse
 
     expect(await bestand()).toHaveLength(1);
     expect(await entwuerfe()).toHaveLength(0);
-    expect(pageText()).not.toContain(i18n.t("fd.submitted"));
+    expect(erfolgSichtbar()).toBe(false);
 
     bruecke.antwortVerlustFuer = null;
     await einreichen();
@@ -365,7 +411,7 @@ describe("mega23 A: die Vordertür erzeugt bei Antwortverlust KEIN zweites Wisse
     // ---- DER BEIM SERVER ERFRAGTE ENDZUSTAND ------------------------------------------------
     expect(await bestand()).toHaveLength(1);
     // Kein 404 mehr, sondern der Erfolg.
-    expect(pageText()).toContain(i18n.t("fd.submitted"));
+    expect(erfolgSichtbar()).toBe(true);
 
     // ---- KEIN VORGESCHALTETER ENTWURFS-PUT --------------------------------------------------
     // Der Beweis für den GEWÄHLTEN WEG: es gibt gar keinen Entwurfs-PUT mehr auf dem Einreich-Weg,

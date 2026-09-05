@@ -106,8 +106,9 @@ const API: Record<string, unknown> = {
   },
   "GET /api/gaps/summary": { open: 0, byPriority: {} },
   "GET /api/external/policy": { stage: "off" },
-  // Der Entwurf, den die Vordertür speichert. Sein Erfolg ist der Auslöser des echten Toasts
-  // (`CaptureFrontDoor.tsx:469` → `push("success", t("fd.toastSaved"))`).
+  // Der Entwurf, den das Erfassungs-Blatt speichert. Sein Erfolg ist der Auslöser des echten Toasts
+  // (seit JOB 3062: `components/erfassen/Blatt.tsx`, `save.onSuccess` →
+  // `push("success", t("fd.toastSaved"))`; der Toast-Text selbst ist unverändert).
   "POST /api/drafts": {
     id: "a18-entwurf",
     payload: { title: "A18 Sonde" },
@@ -117,7 +118,7 @@ const API: Record<string, unknown> = {
 
 /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
 const T = {
-  entwurfSpeichern: "Als Entwurf speichern", // fd.saveDraft
+  entwurfSpeichern: "Entwurf sichern", // erfassen.entwurfSichern (bis JOB 3062: fd.saveDraft)
   entwurfGespeichert: "Entwurf gespeichert.", // fd.toastSaved
 } as const;
 
@@ -374,10 +375,10 @@ test("N1 · <output hidden> steht gar nicht im AX-Baum — versteckt ist keine S
 // DER PRODUKTFALL — DER ECHTE TOAST DER ANWENDUNG, NICHT SEINE FORM.
 // ================================================================================================
 //
-// Kein nachgebautes Markup: Die Vordertür wird betreten, Text getippt, „Als Entwurf speichern"
+// Kein nachgebautes Markup: Das Erfassungs-Blatt wird betreten, Text getippt, „Entwurf sichern"
 // geklickt. Was danach im Baum steht, hat `ToastViewport` gerendert, ausgelöst von
-// `CaptureFrontDoor` über `ToastContext.push`. Gemessen wird mit demselben `rohsignal()` wie R1,
-// P1 und N1.
+// `components/erfassen/Blatt.tsx` über `ToastContext.push`. Gemessen wird mit demselben
+// `rohsignal()` wie R1, P1 und N1.
 //
 // DIE GEGENMUTATION, gegen die dieser Fall gebaut ist: `<output>` in `ToastViewport.tsx:22` zurück
 // zu `<p>`. Dann liefert derselbe Weg `paragraph` ohne Live-Eigenschaft — wie R1 — und dieser Fall
@@ -397,7 +398,9 @@ test("PRODUKT · der ausgeloeste Toast wird vom Browser als Statusflaeche mit li
   await editor.click();
   await page.keyboard.type(SATZ);
 
-  const speichern = page.getByRole("button", { name: T.entwurfSpeichern });
+  // `exact`: ohne die Angabe matcht Playwright Teilzeichenketten — „Entwurf sichern" träfe dann
+  // auch den Menüeintrag „Entwürfe" nicht, wohl aber jede künftige längere Beschriftung.
+  const speichern = page.getByRole("button", { name: T.entwurfSpeichern, exact: true });
   await expect(
     speichern,
     "der Entwurfsknopf ist gesperrt — es gaebe nichts auszuloesen",

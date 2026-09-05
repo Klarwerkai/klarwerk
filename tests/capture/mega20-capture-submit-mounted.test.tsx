@@ -5,14 +5,14 @@
 //
 // WARUM DIESE DATEI EXISTIERT. In mega19 stand als Beleg für den umgestellten Klickpfad ein
 // STATISCHER STRING-PIN auf dem Quelltext (`tests/capture/mega18-verbund-operation.test.ts`:
-// „Capture.tsx enthält `createFromDocument(` und nicht `appendDocument(`"). ben hat ihn nicht
+// „CaptureArbeitsraum.tsx enthält `createFromDocument(` und nicht `appendDocument(`"). ben hat ihn nicht
 // gelten lassen, und zu Recht: ein Quelltext-Pin beweist weder den ERZEUGTEN REQUEST noch den
 // PERSISTIERTEN ENDZUSTAND noch die Reaktion der Oberfläche auf einen Teilfehler. In mega17 und
 // mega18 lief zweimal ein alter Weg neben dem neuen weiter, weil niemand gemountet nachgesehen hat.
 //
 // WAS HIER LÄUFT — und was daran ECHT ist:
 //
-//   ECHT: die Oberfläche (Capture.tsx, gemountet), der API-Client (apps/web/src/api/client.ts),
+//   ECHT: die Oberfläche (CaptureArbeitsraum.tsx, gemountet), der API-Client (apps/web/src/api/client.ts),
 //         der HTTP-Vertrag, die Fastify-Anwendung mit ALLEN Routen, Rechten, Toren und die
 //         gesamte Persistenz. Der Endzustand wird nicht an Aufrufen abgelesen, sondern beim
 //         SERVER ERFRAGT (`GET /api/kos`, `/evidence`, `/api/drafts`).
@@ -104,7 +104,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -235,7 +235,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),
@@ -365,7 +368,7 @@ afterEach(() => {
 // ----------------------------------------------------------------------------------------------
 // 1. DER GUTE FALL — der echte Klickpfad, der echte Request, der echte Endzustand.
 // ----------------------------------------------------------------------------------------------
-describe("mega20 B: der gemountete frische Capture-Lauf", () => {
+describe("mega20 B: der gemountete frische CaptureArbeitsraum-Lauf", () => {
   it("Übernehmen + Einreichen erzeugt EIN Wissensobjekt mit Anker und Belegstelle — belegt am Server", async () => {
     await mount();
     await bisZurUebernahme();

@@ -130,7 +130,12 @@ describe("WP-KLARA-2 Befund 1: /capture/frontdoor?draft=<id> öffnet den Entwurf
     expect((titleInput as HTMLInputElement | null)?.value).toBe("Wartung der Presse");
     const editor = container.querySelector("[contenteditable]");
     expect(editor?.innerHTML).toContain("Anlage freischalten.");
-    expect(container.textContent).toContain("Vordertür-Entwurf geöffnet");
+    // JOB 3062 · H3: Der Hinweissatz „Vordertür-Entwurf geöffnet" steht nicht mehr auf der Fläche
+    // (Auftrag §5 — kein Erklärtext auf dem Blatt). Die AUSKUNFT ist geblieben und liegt dort, wo
+    // sie hingehört: das Blatt trägt den Inhalt des Entwurfs (oben geprüft), und im „…"-Menü unter
+    // „Entwürfe" ist genau dieser Entwurf als der offene hervorgehoben.
+    const mehr = container.querySelector<HTMLButtonElement>('[data-testid="blatt-werkzeug-mehr"]');
+    expect(mehr).not.toBeNull();
   });
 
   it("unbekannter/fremder Entwurf → ehrliche Meldung, die Seite bleibt normal benutzbar", async () => {
@@ -144,6 +149,7 @@ describe("WP-KLARA-2 Befund 1: /capture/frontdoor?draft=<id> öffnet den Entwurf
     // Die normale Seite steht bereit: leerer Editor, kein Entwurf-geöffnet-Hinweis.
     const editor = container.querySelector("[contenteditable]");
     expect(editor).not.toBeNull();
-    expect(container.textContent).not.toContain("Vordertür-Entwurf geöffnet");
+    // JOB 3062 · H3: siehe oben — der Hinweissatz ist gelöscht. Was hier zählt, steht darüber:
+    // die ehrliche Fehlermeldung ist da, und der Editor ist leer und bedienbar.
   });
 });

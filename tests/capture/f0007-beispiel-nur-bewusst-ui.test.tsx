@@ -6,7 +6,7 @@
 // Auftragstext ist BENs rotes Urteil `BEN-PRUEFUNG-JOB-2942-D1.md` (BEZUGSHASH `16625f61…`),
 // woertlich:
 //
-//   „Die Kernfunktionen werden aus `Capture.tsx` ausgeschnitten und ausserhalb des
+//   „Die Kernfunktionen werden aus `CaptureArbeitsraum.tsx` ausgeschnitten und ausserhalb des
 //    React-Zustandszyklus ausgefuehrt; Quelltextmuster pruefen Namen und Verdrahtungsform, aber
 //    keinen gerenderten Klickweg. Diese Tests koennen gruen bleiben, obwohl Zustandswechsel,
 //    Sichtbarkeit oder Mutation im echten UI-Weg fehlschlagen."
@@ -32,7 +32,7 @@
 // `useMutation` INNERHALB der Komponente; sie von aussen zu ersetzen hiesse, `useMutation` selbst
 // zu faelschen — und damit genau den Zustandszyklus stillzulegen, dessen Beweis hier faellig ist.
 // Gezaehlt wird deshalb eine Tuer weiter aussen, an der letzten Station vor dem Bestand:
-// `endpoints.ko.create` (der Weg eines frischen Wissensobjekts, `Capture.tsx:1568`). Das ist der
+// `endpoints.ko.create` (der Weg eines frischen Wissensobjekts, `CaptureArbeitsraum.tsx:1568`). Das ist der
 // STAERKERE Messpunkt: er zaehlt nicht, ob eine Absicht ausgeloest wurde, sondern ob etwas im
 // Bestand angekommen waere.
 //
@@ -116,7 +116,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTURE_EXAMPLE } from "../../apps/web/src/lib/captureExample";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -159,7 +159,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),

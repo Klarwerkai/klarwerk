@@ -2,7 +2,7 @@
 // AUFTRAG-mega3 Block A (bens Sammel-Review 3, Auflage C): EIN kanonisches Dirty-Prädikat steuert den
 // Verwerfen-Knopf UND die Navigationswache. bens Reproduktion: erweiterte Details öffnen, NUR die
 // Wissensart bzw. Vertraulichkeit ändern — der Verwerfen-Knopf blieb deaktiviert, der Wert überlebte.
-// Diese gemounteten Tests treiben die ECHTE Capture-Seite über reale Klicks und prüfen je Feld:
+// Diese gemounteten Tests treiben die ECHTE CaptureArbeitsraum-Seite über reale Klicks und prüfen je Feld:
 //   (a) nach Änderung ist Verwerfen aktiv UND die Navigationswache greift (dasselbe Prädikat),
 //   (b) Verwerfen setzt das Feld auf seinen frischen Default zurück,
 //   (c) frisches Formular / Feld auf Default zurück ⇒ NICHT dirty (Knopf aus, Wache still).
@@ -48,7 +48,7 @@ import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardCo
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -110,7 +110,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                   createElement(NavProbe),
                 ),
@@ -178,7 +181,9 @@ function selectByValue(value: string): HTMLSelectElement {
 }
 
 async function openWorkspaceAndAdvanced(): Promise<void> {
-  await click(buttonByText("Weitere Wege anzeigen"));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
   await click(buttonByText(i18n.t("capture.advanced.title")));
 }
 

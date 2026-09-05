@@ -8,7 +8,7 @@
 // liest er „… beschädigt oder kein lesbares .pptx … andere Datei". Vorher stand in beiden Fällen
 // „Die Folien konnten nicht in Bilder umgewandelt werden." — und der Mensch wusste nicht, was tun.
 //
-// Die echte Capture-Seite über die echte Dropzone, eine echte .pptx (fflate), der Folien-Schalter;
+// Die echte CaptureArbeitsraum-Seite über die echte Dropzone, eine echte .pptx (fflate), der Folien-Schalter;
 // nur der Konverter-Endpunkt ist gemockt und wirft die ECHTE `ApiError`-Form des Clients.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -79,7 +79,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { SLIDE_IMAGES_TEXT } from "../../apps/web/src/lib/slideImages";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -110,6 +110,28 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// ==================================================================================================
+// JOB 3062 · H3 — DER MODUS KOMMT ALS PROP, WEIL DIE MODUS-LEISTE GELÖSCHT IST.
+// ==================================================================================================
+// Bis hierher wählte dieser Test den Erzähl-Modus über die Knopfreihe auf `/erfassen`. Die Leiste
+// ist mit dem Standardweg-Kasten gelöscht (Auftrag §5); im Produkt wählt der Mensch den Weg im
+// Menü „Datei ▾" der Blatt-Werkzeugzeile, und das Blatt reicht ihn als `modus` an den Arbeitsraum.
+// Der Test fährt GENAU DIESEN Weg: dieselbe Montage, neuer Prop — React behält den Zustand des
+// Arbeitsraums, und `CaptureArbeitsraum` gleicht den Modus über `switchMode` ab (dieselbe Funktion,
+// die vorher am Knopf hing).
+let h3Modus: "freitext" | "diktat" | "interview" | "datei" | "formular" | undefined;
+let h3Zeichnen: (() => Promise<void>) | null = null;
+
+async function waehleModus(
+  m: "freitext" | "diktat" | "interview" | "datei" | "formular",
+): Promise<void> {
+  h3Modus = m;
+  if (!h3Zeichnen) {
+    throw new Error("waehleModus vor mount() gerufen");
+  }
+  await h3Zeichnen();
+}
+
 async function mount(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
@@ -117,58 +139,50 @@ async function mount(): Promise<void> {
   const qc = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  await act(async () => {
-    root.render(
-      createElement(
-        QueryClientProvider,
-        { client: qc },
+  const zeichne = async (): Promise<void> => {
+    await act(async () => {
+      root.render(
         createElement(
-          AuthProvider,
-          null,
+          QueryClientProvider,
+          { client: qc },
           createElement(
-            RoleProvider,
+            AuthProvider,
             null,
             createElement(
-              ToastProvider,
+              RoleProvider,
               null,
               createElement(
-                NavGuardProvider,
+                ToastProvider,
                 null,
                 createElement(
-                  MemoryRouter,
-                  { initialEntries: ["/erfassen"] },
+                  NavGuardProvider,
+                  null,
                   createElement(
-                    Routes,
-                    null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    MemoryRouter,
+                    { initialEntries: ["/erfassen"] },
+                    createElement(
+                      Routes,
+                      null,
+                      createElement(Route, {
+                        path: "/erfassen",
+                        element: createElement(CaptureArbeitsraum, { modus: h3Modus }),
+                      }),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await flush();
-  });
+      );
+      await flush();
+    });
+  };
+  h3Zeichnen = zeichne;
+  await zeichne();
   await act(flush);
 }
 
-function buttonByText(part: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").replace(/\s+/g, " ").includes(part),
-  );
-  if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Knopf „${part}“ nicht gefunden`);
-  }
-  return btn;
-}
-async function click(btn: HTMLButtonElement): Promise<void> {
-  await act(async () => {
-    btn.click();
-    await flush();
-  });
-}
 async function warteBis(pruefung: () => boolean, runden = 60): Promise<void> {
   for (let i = 0; i < runden; i++) {
     if (pruefung()) return;
@@ -179,8 +193,10 @@ async function warteBis(pruefung: () => boolean, runden = 60): Promise<void> {
 /** Erfassen → Aus Datei → Folien als Bilder → echte .pptx über die echte Dropzone. */
 async function importieren(): Promise<void> {
   await mount();
-  await click(buttonByText("Weitere Wege anzeigen"));
-  await click(buttonByText(i18n.t("capture.mode.datei")));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
+  await waehleModus("datei");
   const schalter = [
     ...container.querySelectorAll<HTMLInputElement>("label input[type=checkbox]"),
   ].find((el) =>
@@ -209,6 +225,8 @@ beforeEach(async () => {
   ablage.fehler = null;
 });
 afterEach(() => {
+  h3Modus = undefined;
+  h3Zeichnen = null;
   act(() => root.unmount());
   container.remove();
   vi.clearAllMocks();

@@ -150,7 +150,7 @@ describe("WP-D6b: echter Kontrollfluss — genau EINE Body-Ersetzung, im !preser
     "utf8",
   );
   const frontDoorSource = readFileSync(
-    resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+    resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
     "utf8",
   );
 

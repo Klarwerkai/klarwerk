@@ -159,7 +159,12 @@ describe("mega62 F · der Kostenhinweis an jeder Auslösestelle", () => {
       [join(WEB, "pages", "Capture.tsx"), "Strukturieren, Extrahieren, Interview"],
       [join(WEB, "components", "BodyExtractPanel.tsx"), "Extrahieren im Fließtext"],
       [join(WEB, "components", "AiAssistBox.tsx"), "Umformulieren"],
-      [join(WEB, "pages", "CaptureFrontDoor.tsx"), "Strukturieren und Umformulieren an der Tür"],
+      // JOB 3062 · H3: Strukturieren und Umformulieren lösen jetzt im gemeinsamen Blatt aus
+      // (Menü „KI ▾"); `pages/CaptureFrontDoor.tsx` ist nur noch die Adresse dorthin.
+      [
+        join(WEB, "components", "erfassen", "Blatt.tsx"),
+        "Strukturieren und Umformulieren im Blatt",
+      ],
       [join(WEB, "components", "ImportGroups.tsx"), "Gruppieren"],
       [join(WEB, "components", "RichTextEditor.tsx"), "Bildbeschreibung, beide Stellen"],
     ];

@@ -204,7 +204,10 @@ describe("mega50 Block B: die Erhebung greift", () => {
     // (die Seite ist zum Adress-Adapter geworden), sondern in der Lesefläche der Bibliothek —
     // dieselbe Fläche, die `/bibliothek` und `/wissen/:id` zeigen.
     expect(einbinder).toContain("apps/web/src/components/bibliothek/BibliothekLesen.tsx");
-    expect(einbinder).toContain("apps/web/src/pages/CaptureFrontDoor.tsx");
+    // JOB 3062 (H3): die Vordertür `pages/CaptureFrontDoor.tsx` bettet die Bildbeschreibung nicht
+    // mehr selbst ein — sie zeigt jetzt dasselbe Blatt wie `/erfassen`
+    // (`components/erfassen/Blatt.tsx`), das den Editor trägt.
+    expect(einbinder).toContain("apps/web/src/components/erfassen/Blatt.tsx");
     expect(einbinder).toContain("apps/web/src/components/KnowledgeInputStudio.tsx");
     expect(AUFRUFER.length).toBeGreaterThanOrEqual(4);
   });

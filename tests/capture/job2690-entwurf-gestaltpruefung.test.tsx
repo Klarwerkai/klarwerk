@@ -358,9 +358,12 @@ describe("JOB 2690 · D1 — die Gestaltpruefung am Rand, nicht in der Tiefe", (
     // STATION 1 — der Mensch drueckt Speichern. Gesucht wird der Knopf ueber seine SICHTBARE
     // Beschriftung, nicht ueber eine Testmarke.
     const knopf = [...container.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("fd.saveDraft")),
+      (b.textContent ?? "").replace(/\s+/g, " ").includes(i18n.t("erfassen.entwurfSichern")),
     );
-    expect(knopf, `Speichern-Knopf „${i18n.t("fd.saveDraft")}" nicht gefunden`).toBeDefined();
+    expect(
+      knopf,
+      `Speichern-Knopf „${i18n.t("erfassen.entwurfSichern")}" nicht gefunden`,
+    ).toBeDefined();
     expect(
       (knopf as HTMLButtonElement).disabled,
       "der Speichern-Knopf ist gesperrt — es gaebe nichts auszuloesen",

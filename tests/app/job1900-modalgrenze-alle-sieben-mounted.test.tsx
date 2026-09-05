@@ -109,7 +109,7 @@ import { AppendToArticleModal } from "../../apps/web/src/components/AppendToArti
 import { ConflictTargetPicker } from "../../apps/web/src/components/ConflictTargetPicker";
 import { RichTextEditor } from "../../apps/web/src/components/RichTextEditor";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { Conflicts } from "../../apps/web/src/pages/Conflicts";
 import { Duplicates } from "../../apps/web/src/pages/Duplicates";
 import { AppShell } from "../../apps/web/src/shell/AppShell";
@@ -378,7 +378,7 @@ describe("JOB 1900 · die Grenze gilt für alle sieben modalen Flächen — je F
     // Die Speichergrenze öffnet nur, wenn es etwas NICHT Sicherbares gibt (`:3218-3220`). Der
     // billigste echte Weg dorthin ist eine Quelladresse, die der Entwurf nicht mitnehmen kann —
     // dieselbe Ausgangslage wie in `tests/capture/source-url-unsavable-mounted.test.tsx:214-223`.
-    await render(createElement(Capture), "/erfassen");
+    await render(createElement(CaptureArbeitsraum), "/erfassen");
     await tippe(feldMitPlatzhalter(i18n.t("capture.rawPlaceholder")), "Kernaussage zur Norm");
     await klick(knopfMitText(i18n.t("capture.advanced.title")));
     await tippe(feldMitPlatzhalter(i18n.t("ko.sourceLabel")), "Handbuch S. 12");

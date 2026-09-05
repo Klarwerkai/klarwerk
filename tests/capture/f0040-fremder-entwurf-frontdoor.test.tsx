@@ -48,7 +48,7 @@ vi.mock("../../apps/web/src/api/auth", () => ({
 // JOB 2974 D5: Der Testaufbau traegt jetzt BEIDE Flaechen — die Vordertuer UND die Erfassen-Seite
 // mit ihrer Entwurfsliste. Grund steht bei Fall E: das echte Fortsetzungs-Bedienelement liegt in
 // der Liste (`CaptureDraftList.tsx:233-240`), nicht in der Vordertuer. Die Ergaenzungen unten sind
-// genau die, die `Capture` zum Mounten braucht (Muster:
+// genau die, die `CaptureArbeitsraum` zum Mounten braucht (Muster:
 // `tests/capture/draft-limits-visible-mounted.test.tsx:26-62`).
 const BODOS_LISTENEINTRAG = vi.hoisted(() => ({
   id: "bodo-entwurf",
@@ -114,7 +114,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { CAPTURE_FRONT_DOOR_ROUTE } from "../../apps/web/src/lib/captureFrontDoor";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -200,7 +200,7 @@ function mounten(start: string): void {
                       // zu navigieren.
                       createElement(Route, {
                         path: "/erfassen",
-                        element: createElement(Capture),
+                        element: createElement(CaptureArbeitsraum),
                       }),
                     ),
                   ),
@@ -268,6 +268,18 @@ function knopfMitNamen(name: string): HTMLButtonElement {
   return treffer[0] as HTMLButtonElement;
 }
 
+/**
+ * Ein Werkzeug der Blatt-Werkzeugzeile ueber seine Pruefkennung. Das „…"-Menue traegt kein Wort,
+ * nur ein Symbol — ueber sichtbaren Text ist es nicht auffindbar.
+ */
+function knopfMitPruefnamen(pruefname: string): HTMLButtonElement {
+  const knopf = behaelter.querySelector(`[data-testid="${pruefname}"]`);
+  if (!(knopf instanceof HTMLButtonElement)) {
+    throw new Error(`Werkzeug „${pruefname}" ist nicht auf dem Blatt.`);
+  }
+  return knopf;
+}
+
 /** Ein echter Nutzerklick auf das gefundene Bedienelement — ueber seinen Produkt-Handler. */
 async function klicken(knopf: HTMLButtonElement): Promise<void> {
   expect(knopf.disabled, "Das Bedienelement ist gesperrt").toBe(false);
@@ -295,26 +307,78 @@ async function klicken(knopf: HTMLButtonElement): Promise<void> {
  * vom SERVER kommen. Genau das soll `origin` ja ueberleben.
  */
 async function zurueckAufDieErfassenSeite(): Promise<void> {
+  // JOB 3062 · H3: „Eingabe verwerfen" liegt im Menue „…" (Auftrag §5a: „Zurück" wandert ins
+  // Menue). Der Knopf selbst, seine Rueckfrage und sein Verhalten sind unveraendert.
+  await mehrMenueOeffnen();
   await klicken(knopfMitNamen("Eingabe verwerfen"));
-  expect(adresse, "Der Rueckweg der Vordertuer fuehrt nicht auf die Erfassen-Seite").toBe(
-    "/erfassen",
-  );
+  // ES GIBT KEINE ZWEITE SEITE MEHR, AUF DIE MAN ZURUECKKAEME. Bis hierher navigierte die
+  // Vordertuer nach `/erfassen` — eine ANDERE Flaeche mit der Entwurfsliste. Alle drei Adressen
+  // zeigen jetzt dasselbe Blatt (Auftrag §5.1); „zurueck" heisst deshalb: der Entwurf ist nicht
+  // mehr offen, das Blatt ist leer, und die Kennung ist aus der Adresse verschwunden. Genau das
+  // wird hier geprueft — und es ist die SCHAERFERE Aussage: bliebe `?draft=` stehen, waere der
+  // fluechtige Inhalt gar nicht verworfen.
+  expect(
+    adresse,
+    "Nach dem Verwerfen haengt noch eine Entwurfskennung in der Adresse",
+  ).not.toContain("draft=");
 }
 
 /**
  * Die Entwurfsliste aufklappen — auch das ist ein echtes Bedienelement des Nutzers.
  *
- * Sie startet zugeklappt (`Capture.tsx:797`, `useState(false)`), und der Umschalter traegt
+ * Sie startet zugeklappt (`CaptureArbeitsraum.tsx:797`, `useState(false)`), und der Umschalter traegt
  * „Entwürfe anzeigen ({count})" (`CaptureDraftList.tsx:114-121`, `capture.resumeExpand`).
  * Erst aufgeklappt rendert die Liste ihre Eintraege — und damit den Fortsetzen-Knopf.
  */
 async function entwurfslisteAufklappen(): Promise<void> {
-  await klicken(knopfMitNamen("Entwürfe anzeigen"));
+  // JOB 3062 · H3: Die Entwurfsliste ist das Menue „…" -> „Entwürfe" (Auftrag §5a). Sie startet
+  // nicht mehr zugeklappt auf einer eigenen Seite, sondern liegt hinter EINEM Zugang.
+  await mehrMenueOeffnen();
+  await klicken(knopfMitNamen("Entwürfe"));
 }
 
 /** Der Speichern-Knopf der Vordertuer, ueber seinen sichtbaren Text gefunden. */
 function speichernKnopf(): HTMLButtonElement {
-  return knopfMitNamen("Entwurf speichern");
+  // JOB 3062 · H3: Der Knopf heisst auf dem Blatt „Entwurf sichern" (`erfassen.entwurfSichern`).
+  // Derselbe Weg (`fd.saveDraft`), dasselbe Verhalten — nur das Wort ist kürzer.
+  return knopfMitNamen("Entwurf sichern");
+}
+
+/**
+ * JOB 3062 · H3 — „Vordertür-Entwurf geöffnet" IST NICHT MEHR EIN BANNER AUF DER FLÄCHE.
+ *
+ * Auftrag §5: Der fortgesetzte Entwurf IST der Blattinhalt; die Meldung darüber wird eine Zeile im
+ * Menü „…" unter „Entwürfe". Dieser Helfer öffnet genau diesen Weg und gibt den Text zurück, damit
+ * die Zusicherungen unten dieselbe Tatsache prüfen wie bisher: Bodos Entwurf ist wirklich geladen.
+ */
+/**
+ * Das Menue „…" in einen BEKANNTEN Zustand bringen: offen, oberste Ebene.
+ *
+ * Warum nicht einfach klicken: Der Zugang ist ein Umschalter, und die Flaeche hat zwei Ebenen
+ * (oberste Liste / geoeffnete Unterflaeche). Eine feste Klickfolge haengt damit davon ab, wie der
+ * vorige Schritt das Menue hinterlassen hat — und genau daran ist der erste Umbau dieses Tests
+ * gescheitert (Klick auf den Zugang schloss, was schon offen war). Dieser Helfer misst den Zustand,
+ * statt ihn anzunehmen.
+ */
+async function mehrMenueOeffnen(): Promise<void> {
+  const zugang = knopfMitPruefnamen("blatt-werkzeug-mehr");
+  if (zugang.getAttribute("aria-expanded") !== "true") {
+    await klicken(zugang);
+  }
+  // Steht eine Unterflaeche offen, fuehrt „‹ Zurück" auf die oberste Ebene.
+  const zurueck = [...behaelter.querySelectorAll("button")].find((b) =>
+    (b.textContent ?? "").includes("‹ "),
+  );
+  if (zurueck instanceof HTMLButtonElement) {
+    await klicken(zurueck);
+  }
+}
+
+async function entwurfOffenHinweis(): Promise<string> {
+  await mehrMenueOeffnen();
+  await klicken(knopfMitNamen("Entwürfe"));
+  const zeile = behaelter.querySelector('[data-testid="blatt-entwurf-offen"]');
+  return zeile?.textContent ?? "";
 }
 
 afterEach(() => {
@@ -436,7 +500,7 @@ describe("JOB2974 D3/D4 · F-0040 — die Vordertuer nach einer abgelehnten Frem
     // (1) GERENDERT: Nach 403 und Adresskorrektur ist Bodos Entwurf wirklich wieder GELADEN —
     //     nicht nur eine Kennung im Zustand.
     expect(
-      behaelter.textContent ?? "",
+      await entwurfOffenHinweis(),
       "Die Vordertuer meldet keinen offenen Entwurf — dann ist Bodos Entwurf nicht wieder aktiv",
     ).toContain("Vordertür-Entwurf geöffnet");
     expect(
@@ -451,7 +515,10 @@ describe("JOB2974 D3/D4 · F-0040 — die Vordertuer nach einer abgelehnten Frem
 
     // (3) ZWEITER ECHTER KLICK: das Fortsetzen-Bedienelement der Entwurfsliste, ueber Rolle
     //     (button) und sichtbaren Namen gefunden. Sein Handler entscheidet das Ziel.
-    await klicken(knopfMitNamen("Fortsetzen"));
+    //     JOB 3062 · H3: Der Eintrag traegt jetzt den TITEL des Entwurfs statt des Wortes
+    //     „Fortsetzen" — nach Pages-Art ist der Eintrag die Sache selbst. Ihn ueber Bodos Titel zu
+    //     greifen ist zudem schaerfer als vorher: der Test klickt nachweislich BODOS Zeile.
+    await klicken(knopfMitNamen(BODOS_TITEL));
 
     // (4) GELANDET: an BODOS Herkunftsziel mit BODOS Kennung — vom Produkt bestimmt, nicht vom
     //     Test. Annas Kennung kommt nirgends mehr vor.
@@ -460,18 +527,20 @@ describe("JOB2974 D3/D4 · F-0040 — die Vordertuer nach einer abgelehnten Frem
     );
     expect(adresse).not.toContain(ANNAS_KENNUNG);
     expect((behaelter.querySelector("input") as HTMLInputElement | null)?.value).toBe(BODOS_TITEL);
-    expect(behaelter.textContent ?? "").toContain("Vordertür-Entwurf geöffnet");
+    expect(await entwurfOffenHinweis()).toContain("Vordertür-Entwurf geöffnet");
 
     // (5) SPEICHERN: unter Bodos Kennung, mit Bodos Versionsstand.
-    //     Danach bringt die Vordertuer den Menschen SELBST zurueck zur Entwurfsliste
-    //     (`CaptureFrontDoor.tsx:712-719`, `navigate("/erfassen", { replace: true, state:
-    //     { frontDoorDraftSaved … } })`) — in diesem Durchgang gemessen. Der Test navigiert also
-    //     auch hier nicht; er stellt nur fest, wo das Produkt ihn hinbringt.
+    //     JOB 3062 · H3 — DAS PRODUKT BRINGT DEN MENSCHEN NICHT MEHR WOANDERS HIN, UND DAS IST DIE
+    //     ZUSAGE, NICHT IHR VERLUST. Bis hierher sprang die Vordertuer nach dem Speichern nach
+    //     `/erfassen` zurueck („navigate(…, { state: { frontDoorDraftSaved … } })") — der Mensch
+    //     wurde aus seinem Text geworfen, um ihm eine Liste zu zeigen. Das Blatt bleibt stehen: wer
+    //     einen Zwischenstand sichert, schreibt weiter (Auftrag §9). Geprueft wird deshalb, dass er
+    //     GENAU DA BLEIBT, wo er war — mit Bodos Kennung, nicht mit Annas.
     await klicken(speichernKnopf());
     expect(
       adresse,
-      "Nach dem Speichern bringt die Vordertuer den Nutzer nicht zur Entwurfsliste zurueck",
-    ).toBe("/erfassen");
+      "Das Blatt hat den Menschen nach dem Sichern von seinem Entwurf weggebracht",
+    ).toBe(`${CAPTURE_FRONT_DOOR_ROUTE}?draft=${BODOS_KENNUNG}`);
 
     expect(
       anlegen,
@@ -503,7 +572,7 @@ describe("JOB2974 D3/D4 · F-0040 — die Vordertuer nach einer abgelehnten Frem
     //     Nur so zeigt sich, dass `origin` das Update ueberlebt hat — haette es der Rumpf
     //     mitgenommen oder geloescht, fuehrte die Fortsetzung jetzt woandershin.
     await entwurfslisteAufklappen();
-    await klicken(knopfMitNamen("Fortsetzen"));
+    await klicken(knopfMitNamen(BODOS_TITEL));
     expect(
       adresse,
       "Nach dem Speichern fuehrt die Fortsetzung nicht mehr an Bodos Herkunftsziel — `origin` hat das Update nicht ueberlebt",

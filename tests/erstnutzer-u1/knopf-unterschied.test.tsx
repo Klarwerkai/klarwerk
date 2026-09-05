@@ -20,10 +20,10 @@
 //
 // DIE DREI FLÄCHEN, MIT DEN ZEILEN DES AUFTRAGS. Der Auftrag benennt sie in Abschnitt 2; die
 // Namen zweier Flächen sind dort vertauscht, die Zeilennummern stimmen. Gemessen wird nach den
-// Zeilen, benannt nach dem tatsächlichen Zweig in `Capture.tsx`:
-//   U1(2) Erzähl-Schritt des geführten Wegs      (`Capture.tsx:5573`, Zweig `expertView || wizStep === "tell"`)
-//   U1(3) Entwurfskarte des Expertenwegs         (`Capture.tsx:5865`, Zweig `expertView`)
-//   U1(4) Aktionsleiste des Schritts Wissensseite (`Capture.tsx:6243`, Zweig `!expertView && wizStep === "refine" && draft`)
+// Zeilen, benannt nach dem tatsächlichen Zweig in `CaptureArbeitsraum.tsx`:
+//   U1(2) Erzähl-Schritt des geführten Wegs      (`CaptureArbeitsraum.tsx:5573`, Zweig `expertView || wizStep === "tell"`)
+//   U1(3) Entwurfskarte des Expertenwegs         (`CaptureArbeitsraum.tsx:5865`, Zweig `expertView`)
+//   U1(4) Aktionsleiste des Schritts Wissensseite (`CaptureArbeitsraum.tsx:6243`, Zweig `!expertView && wizStep === "refine" && draft`)
 //
 // ZUR DATEIENDUNG `.tsx`: der Root-Typecheck ist Node-rein und schließt `tests/**/*.tsx` aus
 // (`tsconfig.json:26`); gemountete Seiten sind dort nicht typisierbar. Die Datei läuft durch
@@ -76,8 +76,10 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import { KNOPF_UNTERSCHIED } from "../../apps/web/src/components/KnopfUnterschied";
 import i18n from "../../apps/web/src/i18n";
+import { EXPERT_MODE } from "../../apps/web/src/lib/captureEntry";
+import type { CaptureMode } from "../../apps/web/src/lib/captureEntry";
 import { captureHelp } from "../../apps/web/src/lib/captureHelp";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -92,7 +94,13 @@ const flush = async (): Promise<void> => {
   }
 };
 
-async function mount(): Promise<void> {
+/**
+ * JOB 3062 · H3: `modus` ist der Weg, den das Blatt geöffnet hat (`Capture.tsx`, Prop `modus` →
+ * `switchMode`). Ohne Angabe bleibt die Ruhelage `freitext` — genau der Erstnutzerzustand von
+ * U1(2)/U1(4). U1(3) braucht das Expertenformular und wählt es hier so, wie das Blatt es wählt:
+ * über den Weg, nicht über einen Umschalter auf der Fläche.
+ */
+async function mount(modus?: CaptureMode): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
@@ -120,7 +128,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum, modus ? { modus } : null),
+                    }),
                   ),
                 ),
               ),
@@ -156,16 +167,14 @@ function knopfMitText(teil: string): HTMLButtonElement {
   return btn;
 }
 
-/** Klappt den Arbeitsraum auf — Zustand am `aria-expanded`, nicht an der Beschriftung. */
-async function arbeitsraumOeffnen(): Promise<void> {
-  const b = container.querySelector<HTMLButtonElement>('button[aria-controls="capture-workspace"]');
-  if (!b) {
-    throw new Error("Der Aufklapper des Arbeitsraums ist auf der gemounteten Seite nicht da.");
-  }
-  if (b.getAttribute("aria-expanded") !== "true") {
-    await click(b);
-  }
-}
+/**
+ * JOB 3062 · H3: HIER STAND EIN AUFKLAPPER. Der Arbeitsraum startete eingeklappt (SCRUM-458) und
+ * wurde über „Weitere Wege anzeigen ▾" im Standardweg-Kasten geöffnet. Kasten und Knopf sind mit
+ * H3 gelöscht — der Standardweg IST das Blatt —, und der Arbeitsraum startet offen
+ * (`Capture.tsx`, `useState(true)`), weil er jetzt eine ANSICHT ist, die man über „Datei ▾"
+ * ausdrücklich wählt. Ein Schritt „aufklappen" hätte danach nichts mehr zu tun; die drei Flächen
+ * stellen ihren Zustand ohne ihn her. Die Aussagen dieser Datei (U1(2)–U1(7)) sind unverändert.
+ */
 
 async function freitextTippen(value: string): Promise<void> {
   const ta = [...container.querySelectorAll("textarea")].find(
@@ -190,20 +199,16 @@ async function freitextTippen(value: string): Promise<void> {
 /** U1(2): geführter Weg, Erzähl-Schritt. Der Erstnutzerzustand, ohne jede Vorgeschichte. */
 async function flaecheErzaehlSchritt(): Promise<void> {
   await mount();
-  await arbeitsraumOeffnen();
 }
 
-/** U1(3): Expertenweg. Der Umschalter legt beim Wechsel den Entwurf an (`Capture.tsx:2222`). */
+/** U1(3): Expertenweg. Der Umschalter legt beim Wechsel den Entwurf an (`CaptureArbeitsraum.tsx:2222`). */
 async function flaecheExpertenkarte(): Promise<void> {
-  await mount();
-  await arbeitsraumOeffnen();
-  await click(knopfMitText(de("capture.entry.expertToggle")));
+  await mount(EXPERT_MODE);
 }
 
 /** U1(4): geführter Weg, Schritt „Wissensseite" — dort stehen beide Knöpfe nebeneinander. */
 async function flaecheWissensseite(): Promise<void> {
   await mount();
-  await arbeitsraumOeffnen();
   await freitextTippen("Nach dem Wochenende klemmt das Dosierventil DP-4 beim Anfahren.");
   await click(knopfMitText(de("capture.structure")));
 }

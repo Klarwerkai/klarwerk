@@ -27,7 +27,7 @@
 //
 //   <QueryClientProvider>        weil ImageDescribeProvider -> useAiAvailable -> useReasonerStatus
 //                                (apps/web/src/lib/useAiAvailable.tsx:17) React Query braucht
-//     <ImageDescribeProvider>    wie apps/web/src/pages/CaptureFrontDoor.tsx:887
+//     <ImageDescribeProvider>    wie apps/web/src/components/erfassen/Blatt.tsx:887
 //       <RichTextEditor/>        wie CaptureFrontDoor.tsx:888  / Capture.tsx:5416
 //       <DraftBodyGallery/>      wie CaptureFrontDoor.tsx:903  / Capture.tsx:5427 — GESCHWISTER
 //

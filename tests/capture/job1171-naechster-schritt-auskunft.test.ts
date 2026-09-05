@@ -4,7 +4,7 @@
 //
 // KEIN SICHTBARER NUTZEN. Dieser Durchgang baut den DATENLIEFERANTEN, nicht die Karte. Niemand
 // sieht nach diesem Bau einen naechsten Schritt — weder im Add-in-Panel noch im Web. Die Karte ist
-// Stufe 1b (`apps/web/src/pages/CaptureFrontDoor.tsx`) und Stufe 2 (die Panel-Datei des
+// Stufe 1b (`apps/web/src/components/erfassen/Blatt.tsx`) und Stufe 2 (die Panel-Datei des
 // Word-Add-ins, heute durch JOB 1153 D3 gebunden). Diese Zeile steht hier, damit sie VOR dem
 // ersten Testfall steht und nicht danach.
 //

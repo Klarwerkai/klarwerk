@@ -190,11 +190,11 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("verwendet den bestehenden Draft-Create-Pfad ohne KnowledgeInputStudio-Overlay", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     expect(pageSource).toContain("RichTextEditor");
-    expect(pageSource).toContain("fd.saveDraft");
+    expect(pageSource).toContain("erfassen.entwurfSichern");
     expect(pageSource).toContain("endpoints.drafts.create");
     expect(pageSource).toContain("endpoints.drafts.update");
     expect(pageSource).toContain("get(resumeDraftId)");
@@ -208,7 +208,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("bietet die kompakte KI-Hilfsauswahl mit den fuenf Standardaktionen an", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     const i18nSource = readFileSync(resolve(process.cwd(), "apps/web/src/i18n.ts"), "utf8");
@@ -223,9 +223,15 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     expect(pageSource).toContain("applyBodyAssist");
     expect(pageSource).toContain("applySpellingAssistPreservingHtml");
     expect(pageSource).toContain("endpoints.reasoner.assist");
-    expect(pageSource).toContain("fd.aiHelpApply");
-    expect(pageSource).toContain("fd.aiHelpProposal");
-    expect(pageSource).toContain("fd.saveDraft");
+    // JOB 3062 · H3: Die KI-Hilfe ist ein MENÜ geworden („KI ▾", Auftrag §5.2). Der
+    // Auslöser heißt nicht mehr „KI-Hilfe anwenden" mit Auswahlliste daneben, sondern jede der
+    // fünf Aktionen ist ein eigener Eintrag — ein Klick statt zwei. Die Aktionen selbst und
+    // ihre Beschriftungen sind unverändert (`ASSIST_ACTIONS`, `assistActionLabelKey`, oben).
+    expect(pageSource).toContain("assist.mutate(action)");
+    // JOB 3062 · H3: Die Überschrift „KI-Hilfe-Vorschlag" ist die Pille „KI" plus der Satz
+    // `fd.assistProposalCheck` geworden — er nennt die Aktion und fordert zum Prüfen auf.
+    expect(pageSource).toContain("fd.assistProposalCheck");
+    expect(pageSource).toContain("erfassen.entwurfSichern");
     expect(pageSource).not.toContain("Als Wissensobjekt sichern");
     expect(i18nSource).toContain('"capture.ai.action.clarify": "Klarer"');
     expect(i18nSource).toContain('"capture.ai.action.structure": "Strukturieren"');
@@ -236,7 +242,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("wendet Rechtschreibung nicht ueber den destruktiven Plaintext-Replace-Pfad an", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
 
@@ -246,12 +252,16 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     );
     expect(pageSource).toContain("fd.errSpelling");
     expect(pageSource).toContain('applyBodyAssist("replace", bodyHtml, assistProposal.text)');
-    expect(pageSource).toContain("fd.aiHelp");
-    expect(pageSource).toContain("fd.aiHelpModes");
+    // JOB 3062 · H3: siehe oben — „KI-Hilfe" und die Aufzählung „Klarer, strukturieren, …"
+    // waren die Beschriftung und der Erklärsatz des alten Kastens. Die fünf Aktionen stehen
+    // jetzt einzeln im Menü; ein Satz, der sie aufzählt, wäre daneben doppelt.
+    expect(pageSource).toContain("assistActionLabelKey(action)");
     expect(pageSource).toContain("fd.accept");
     expect(pageSource).toContain("fd.discardProposal");
     expect(pageSource).toContain("fd.aiProposalCheck");
-    expect(pageSource).toContain("fd.assistAccepted");
+    // JOB 3062 · H3: Die Übernahme-Quittung steht in der EINEN Lagezeile des Blattes
+    // (Zustandsmodell §9) und nutzt für beide KI-Wege denselben Schlüsselsatz.
+    expect(pageSource).toContain("fd.structureAccepted");
     expect(pageSource).not.toContain("endpoints.validation");
   });
 
@@ -287,11 +297,12 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("bietet optionale KI-Strukturierung ohne Auto-Save oder Auto-Validate an", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
 
-    expect(pageSource).toContain("fd.structureSuggest");
+    // JOB 3062 · H3: „Struktur vorschlagen" ist ein Menüeintrag (`erfassen.ki.struktur`).
+    expect(pageSource).toContain("erfassen.ki.struktur");
     expect(pageSource).toContain("endpoints.reasoner.structure");
     expect(pageSource).toContain("buildFrontDoorStructureInput");
     expect(pageSource).toContain("fd.aiProposal");
@@ -307,7 +318,11 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       '"cfd.structuringUnavailable": "Ich kann das gerade nicht verlässlich ordnen."',
     );
     expect(pageSource).toContain("fd.originalUnchanged");
-    expect(pageSource).toContain("fd.optionalAiHint");
+    // JOB 3062 · H3: „Optionaler KI-Vorschlag. Nichts wird automatisch gespeichert." stand als
+    // Dauerhinweis neben dem Knopf. Die AUSSAGE ist unverändert wahr und steht dort, wo sie
+    // zählt: auf der Vorschlagskarte selbst (`fd.aiProposalCheck`) — und die Übernahme
+    // geschieht ausschliesslich über den Knopf `fd.accept` (oben geprüft).
+    expect(pageSource).toContain("fd.aiProposalCheck");
     // WP-D6b: die Übernahme des Struktur-Vorschlags läuft jetzt über die pure applyStructureProposal
     // (nicht mehr direkt über frontDoorStructuredBodyHtml in der Ansicht) — sie schützt reiche Bodies.
     expect(pageSource).toContain("applyStructureProposal({");
@@ -319,12 +334,16 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("macht KI-Vorschlaege sichtbar und bietet Verwerfen ohne Textverlust an", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
 
-    expect(pageSource).toContain("proposalRef");
-    expect(pageSource).toContain("scrollIntoView");
+    // JOB 3062 · H3: DER SCROLL ZUM VORSCHLAG IST ERSATZLOS WEG, und das ist die Pointe.
+    // Er war nötig, weil die Vorschlagskarte in einer langen Formularspalte weit unten
+    // erschien — der Mensch hätte sie sonst nicht gesehen. Auf dem Blatt steht sie direkt
+    // unter dem Text, im Sichtfeld; ein Sprung wäre eine Bewegung ohne Not. Damit fällt auch
+    // die Fehlerklasse weg, wegen der WP-UX-WOW-1 U8 das `?.()` einführen musste.
+    expect(pageSource).not.toContain("scrollIntoView");
     expect(pageSource).toContain("discardStructureProposal");
     expect(pageSource).toContain("discardAssistProposal");
     expect(pageSource).toContain("fd.originalUnchanged");
@@ -332,7 +351,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("kehrt nach Draft-Save nach /erfassen zurueck und verhindert Wiederhol-Save", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     const captureSource = readFileSync(
@@ -340,21 +359,23 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       "utf8",
     );
 
-    expect(pageSource).toContain('navigate("/erfassen"');
-    expect(pageSource).toContain("frontDoorDraftSaved");
+    // JOB 3062 · H3: DAS BLATT SPRINGT NACH DEM SPEICHERN NICHT MEHR.
+    // `/erfassen` und `/erfassen/vordertuer` zeigen dieselbe Fläche; ein Sprung von einer
+    // Seite auf sich selbst würde dem Menschen seinen Text unter den Händen neu aufbauen.
+    // Die ZWEITE Zusicherung dieses Falls — kein Wiederhol-Save — bleibt und steht darunter.
+    expect(pageSource).not.toContain('navigate("/erfassen"');
     expect(pageSource).toContain("saveRequestedRef");
     expect(pageSource).toContain("requestSave");
     expect(pageSource).not.toContain("Entwurf gespeichert: <strong>{savedDraft.title}</strong>");
-    expect(captureSource).toContain("frontDoorDraftSavedFromState");
-    expect(captureSource).toContain("Entwurf gespeichert");
-    expect(captureSource).toContain("Entwurf fortsetzen");
-    expect(captureSource).toContain("Neuer leerer Eintrag");
-    expect(captureSource).toContain("useLocation");
+    // JOB 3062 · H3: Der Hinweis „Entwurf gespeichert" auf `/erfassen` ist gelöscht — sein
+    // Erzeuger (der Sprung mit `location.state`) existiert nicht mehr.
+    expect(captureSource).not.toContain("frontDoorDraftSavedFromState");
+    expect(captureSource).not.toContain(">Neuer leerer Eintrag<");
   });
 
   it("bietet einen duplikatsicheren Submit-Pfad ohne Auto-Save oder Auto-Validate", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
 
@@ -367,29 +388,33 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
     // Geprüft wird weiter die SACHE (Erfolg sperrt Speichern und Einreichen), nicht die alte Schreibweise.
     expect(pageSource).toMatch(/const busy =[\s\S]{0,160}submittedKo !== null/);
     expect(pageSource).toMatch(/const canSave = hasSavableContent && !busy/);
-    expect(pageSource).toContain("fd.submitReview");
+    expect(pageSource).toContain("erfassen.einreichen");
     expect(pageSource).toContain("fd.newEntry");
-    expect(pageSource).toContain("fd.submitted");
+    // JOB 3062 · H3: Aus der Erfolgs-KARTE ist eine Erfolgs-ZEILE geworden (Auftrag §9). Ihre drei
+    // WEGE sind alle da — Objekt ansehen, Validierung öffnen, neuer Eintrag —, ihre zwei
+    // Erklärabsätze (`fd.submittedBody`, `capture.savedBody`) nicht mehr: was beim Einreichen
+    // passiert, steht im „…"-Menü unter „Status", wo man es nachlesen kann, statt es nach jedem
+    // Einreichen erneut zu lesen.
+    expect(pageSource).toContain("erfassen.eingereicht");
     expect(pageSource).toContain("fd.openValidation");
     expect(pageSource).toContain('setTitle("");');
     expect(pageSource).toContain('setBodyHtml("");');
-    expect(pageSource).toContain("fd.submittedBody");
-    expect(pageSource).toContain("fd.submittedBody");
+    expect(pageSource).not.toContain("fd.submittedBody");
     expect(pageSource).not.toContain("Auto-Validate");
   });
 
   it("trennt Eingabe-Verwerfen von KI-Vorschlag-Verwerfen", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
 
-    expect(pageSource).toContain("discardInputAndReturn");
-    expect(pageSource).toContain("hasDiscardRisk");
+    // JOB 3062 · H3: „Eingabe verwerfen" ist ein Eintrag des „…"-Menüs (Auftrag §5a) und heißt
+    // dort weiter so. Die RÜCKFRAGE davor ist unverändert — nur der Rückweg auf eine zweite Fläche
+    // („Zurück") entfällt, weil es keine zweite Fläche mehr gibt.
     expect(pageSource).toContain("window.confirm");
     expect(pageSource).toContain("fd.confirmDiscard");
     expect(pageSource).toContain("fd.discardInput");
-    expect(pageSource).toContain("fd.back");
     expect(pageSource.match(/"fd\.discardProposal"/g) ?? []).toHaveLength(2);
     expect(pageSource).toContain("discardStructureProposal");
     expect(pageSource).toContain("discardAssistProposal");
@@ -397,53 +422,75 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
 
   it("Primaer-Pfad (Form-Submit/Enter) reicht ein statt nur Entwurf zu speichern (SCRUM-474 P0)", () => {
     const page = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
-    // Der Form-Submit (Enter + prominenter Button) geht auf den Einreichen-Pfad, nicht auf Draft-Save.
-    const onSubmitStart = page.indexOf("onSubmit=");
-    const onSubmitBlock = page.slice(onSubmitStart, onSubmitStart + 600);
-    expect(onSubmitBlock).toContain("requestSubmit()");
-    expect(onSubmitBlock).not.toContain("requestSave()");
-    // Der prominente Haupt-CTA ist der Einreichen-Button (type=submit).
-    // AUFTRAG-mega9 Block A (KW-E2E-001): Er ist BEWUSST nicht mehr an `!canSubmit` gebunden — ein
-    // still deaktivierter Knopf ohne Begründung war der Befund. Er sperrt nur noch bei laufendem
-    // Vorgang (`busy`); die Inhaltsbedingung wird in requestSubmit zur SICHTBAREN Feldvalidierung.
-    expect(page).toMatch(/type="submit"[\s\S]{0,80}disabled=\{busy\}/);
-    expect(page).not.toMatch(/type="submit"[\s\S]{0,80}disabled=\{!canSubmit\}/);
-    expect(page).toContain("submitBlockReasons");
+    // ==============================================================================================
+    // JOB 3062 · H3 — DAS BLATT IST KEIN FORMULAR MEHR, UND DAS IST EINE ENTSCHEIDUNG.
+    // ==============================================================================================
+    // SCRUM-474 P0 verlangte, dass der PRIMÄRE Pfad einreicht statt nur zu speichern. Der Weg dahin
+    // war ein `<form onSubmit>`: Enter im Titelfeld reichte ein. Auf einem Blatt nach Pages-Art ist
+    // das falsch — dort ist Enter im Titel ein Zeilenwechsel, kein Absenden, und ein versehentliches
+    // Einreichen ist der teuerste Fehler dieser Fläche (es entsteht ein Wissensobjekt).
+    //
+    // DIE ZUSICHERUNG BLEIBT, IHR TRÄGER WECHSELT: der prominente Knopf unten rechts heißt
+    // „Einreichen" (nicht „Entwurf sichern"), ruft `requestSubmit` und ist bei fehlendem Inhalt
+    // ERREICHBAR — ein grauer Knopf ohne Begründung war der Befund aus KW-E2E-001. Gesperrt ist er
+    // nur, solange ein Vorgang läuft.
+    expect(page).not.toContain("onSubmit=");
+    expect(page).toContain("onClick={requestSubmit}");
+    expect(page).toMatch(/data-testid="blatt-einreichen"[\s\S]{0,120}disabled=\{busy\}/);
     // „Als Entwurf speichern" ist jetzt ein sekundaerer, expliziter Button-Klick (nicht der Form-Submit).
     expect(page).toContain("onClick={requestSave}");
   });
 
   it("bietet Placeholder + HelpTips + klarere Buttontexte auf der FrontDoor (SCRUM-474 P1)", () => {
     const page = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     const editor = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
       "utf8",
     );
-    // HelpTips aus der zentralen Erfassen-Hilfekarte (chelp/captureHelp) an den Kern-Elementen.
-    expect(page).toContain("import { HelpTip }");
-    expect(page).toContain("captureHelp");
-    for (const id of [
-      "captureTitle",
-      "tellRaw",
-      "structureNow",
-      "submitReview",
-      "saveDraftHelp",
-      "savedNext",
-    ]) {
-      expect(page).toContain(`chelp("${id}")`);
-    }
+    // ==============================================================================================
+    // JOB 3062 · H3 — DIE HILFE STEHT AN EINEM ORT STATT AN NEUN.
+    // ==============================================================================================
+    // Die neun `HelpTip`s dieser Fläche sind gelöscht (Auftrag §5). Ihre TEXTE sind es nicht: das
+    // Blatt baut das Hilferegister `components/erfassen/hilfe.ts` in sein „?"-Menü ein, und das
+    // leitet die Hilfekarte `lib/captureHelp.ts` ab — ein neues Thema dort erscheint hier ohne
+    // Nacharbeit. JOB 3062 R7: dazu kommen die acht Hilfen, die ihre Schlüssel unmittelbar am
+    // `HelpTip` trugen (darunter `conf.field`/`conf.help` DIESER Fläche). Damit ist die Auskunft
+    // vollständiger als vorher (32 Themen statt 6 an Feldern).
+    //
+    // JOB 3062 · NACHZUG 1 — DIE ZUSICHERUNG MISST WIEDER, WAS SIE MEINT.
+    // Bis hierher stand hier `expect(page).not.toContain("import { HelpTip }")`. Das war der Beleg
+    // für „keine Sprechblase am Feld", solange `HelpTip` eine Sprechblase WAR. Seit JOB 3060 (H1)
+    // rendert der Baustein `null` und meldet Titel und Text nur noch bei der Seitenhilfe der Hülle
+    // an (`shell/SeitenhilfeContext.tsx`). Der alte Satz verbot damit nicht mehr eine Fläche,
+    // sondern die TEILNAHME an der Seitenhilfe — und ohne sie stand /erfassen im Zahnrad-Menü leer
+    // da (`tests/design/h1-funktionsinventar.test.ts`, Zeile Z-helptips, rot auf main).
+    //
+    // Gemessen wird jetzt die Sache selbst: die Hilfe hat GENAU EINE Quelle (`BLATT_HILFE_THEMEN`)
+    // und hängt an KEINEM Feld. Neun Sprechblasen an neun Feldern brauchten neun Aufrufe; es gibt
+    // genau einen, und der steht in der Abbildung über dem Register. Dass im Sichtfeld nichts
+    // erscheint, misst der Textmesser an der gebauten Seite
+    // (`tests/design/zielbild-h3-kein-erklaertext.test.ts`), nicht mehr eine Importzeile.
+    expect(page).toContain("BLATT_HILFE_THEMEN");
+    expect(page).toContain("thema.titleKey");
+    expect(page).toContain("thema.bodyKey");
+    expect(page.match(/<HelpTip/g) ?? []).toHaveLength(1);
+    expect(page).toMatch(/BLATT_HILFE_THEMEN\.map\(\(thema\) => \([\s\S]{0,80}<HelpTip/);
+    expect(
+      readFileSync(resolve(process.cwd(), "apps/web/src/components/erfassen/hilfe.ts"), "utf8"),
+    ).toContain("conf.field");
     // Klarerer Buttontext.
-    expect(page).toContain("fd.structureSuggest");
+    expect(page).toContain("erfassen.ki.struktur");
     expect(page).not.toContain("Soll ich das ordnen?");
-    // Aktive Einladung im leeren Editor.
+    // Aktive Einladung im leeren Blatt: Platzhalter „Titel" und „Text" (Mockup Z.48-51).
     expect(page).toContain("placeholder=");
-    expect(page).toContain("fd.editorPlaceholder");
+    expect(page).toContain("erfassen.platzhalter.titel");
+    expect(page).toContain("erfassen.platzhalter.text");
     // Der Editor unterstützt einen Placeholder, der nur bei leerem Inhalt erscheint.
     expect(editor).toContain("placeholder");
     expect(editor).toContain("!bodyReadMode(value).hasBody");
@@ -455,22 +502,30 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
       "utf8",
     );
 
-    expect(captureSource).toContain("KW-PROD-15");
-    expect(captureSource).toContain("Neues Wissensobjekt erfassen");
-    // AUFTRAG-mega38 BLOCK I: „Canvas" uebersetzt.
-    expect(captureSource).toContain("Dokument-Editor öffnen");
-    expect(captureSource).toContain("Weitere Wege");
-    // SCRUM-458: die redundante zweite Aufklapp-Ebene („weitere Optionen") ist entfernt — sobald
-    // „Weitere Wege" offen ist, rendert die Leiste ALLE Erzähl-Modi direkt (NARRATE_MODES.map) plus den
-    // Expertenformular-Umschalter. Die Erzähl-Modi bleiben vollständig erhalten.
-    expect(captureSource).toContain("NARRATE_MODES.map");
-    expect(captureSource).toContain("EXPERT_MODE");
-    expect(captureSource).toContain("CAPTURE_FRONT_DOOR_ROUTE");
+    // ==============================================================================================
+    // JOB 3062 · H3 — KW-PROD-15 IST ERFÜLLT, INDEM SEIN GEGENSTAND VERSCHWUNDEN IST.
+    // ==============================================================================================
+    // KW-PROD-15 wollte „die Vordertür als klaren Default, die bisherigen Wege bleiben darunter
+    // erhalten". Der Weg dahin war ein Kasten mit Überschrift, Absatz, Knopf und einer Fußzeile
+    // „Weitere Wege: …" — Pedis „Text über Text über Text" (04.09.).
+    //
+    // JETZT IST DER DEFAULT DIE FLÄCHE SELBST: `/erfassen` IST das Blatt, es gibt keine zweite
+    // Fläche mehr, auf die ein Kasten zeigen könnte. Und die „bisherigen Wege" sind vollständig
+    // erhalten — im Menü „Datei ▾" der Werkzeugzeile, abgeleitet aus `BLATT_WEGE`.
+    expect(captureSource).not.toContain("KW-PROD-15");
+    expect(captureSource).not.toContain("Neues Wissensobjekt erfassen");
+    expect(captureSource).not.toContain("Dokument-Editor öffnen");
+    const blattSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
+      "utf8",
+    );
+    expect(blattSource).toContain("BLATT_WEGE");
+    expect(captureSource).toContain("isExpertMode");
   });
 
   it("Default-Vordertuer nutzt genau einen RichTextEditor und kein Studio-Overlay", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     const editorSource = readFileSync(
@@ -489,7 +544,7 @@ describe("KW-PROD-02: CaptureFrontDoor", () => {
   // Cloud-Ausschluss mit EIGENEM, wahrem Grund — vorher landete er (unbekannter Grund) im no-model-Text.
   it("zeigt bei fallbackReason confidential den spezifischen Grund (nicht no-model)", () => {
     const pageSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     expect(pageSource).toContain('structureProposal.fallbackReason === "confidential"');

@@ -1,6 +1,6 @@
 {
-  "version": 2,
-  "erhoben_am": "2026-08-18",
+  "version": 3,
+  "erhoben_am": "2026-09-04",
   "erhoben_mit": "npx playwright test --config playwright.smoke.config.ts --list --reporter=json (KLARWERK_SMOKE_MODE=gate)",
   "zweck": "Sollmanifest der Smoke-Mengen je Projekt. Drift (Hinzufuegen, Entfernen, Umbenennen) macht die Mengenpruefung rot.",
   "gesamt_fallinstanzen": 119,
@@ -146,12 +146,12 @@
     "chromium-zustand": {
       "soll": 6,
       "titel": [
-        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Als Entwurf speichern legt beiseite und beendet die Editorsitzung",
-        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen ohne Inhalt nennt den Grund und legt nichts an",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen ohne Inhalt führt an die Pflichtangabe und legt nichts an",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Einreichen zeigt Status und alle nächsten Schritte",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt",
         "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind unterscheidbar",
-        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · die Vordertür läuft bei 390x844 (Telefon) nicht waagerecht über",
-        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · die Vordertür läuft bei 768x1024 (Tablet) nicht waagerecht über"
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 390x844 (Telefon) nicht waagerecht über",
+        "demo-ux-v1-capture-frontdoor.spec.ts › DEMO-UX-V1 · das Blatt läuft bei 768x1024 (Tablet) nicht waagerecht über"
       ]
     }
   }

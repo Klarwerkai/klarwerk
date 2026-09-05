@@ -88,10 +88,30 @@ describe("JOB 3029 · U1 — Entwurf und Einreichen erklären sich offen, nicht 
         `chelp("${id}") hängt wieder an einem HelpTip — dann führen zwei Wege zu derselben Auskunft`,
       ).not.toContain(`<HelpTip {...chelp("${id}")} />`);
     }
-    // Gegenprobe im selben Fall: die übrigen Popover des Wegs sind unangetastet. Ohne sie wäre
-    // dieser Fall auch dann grün, wenn jemand SÄMTLICHE HelpTips entfernt hätte.
-    expect(capture).toContain('<HelpTip {...chelp("loadExample")} />');
-    expect(capture).toContain('<HelpTip {...chelp("discardHelp")} />');
+    // ==========================================================================================
+    // JOB 3062 · H3 — DIE GEGENPROBE HAT IHREN ORT GEWECHSELT, NICHT IHREN ZWECK.
+    // ==========================================================================================
+    // Sie stand hier, weil dieser Fall sonst auch dann grün wäre, wenn jemand SÄMTLICHE
+    // Hilfe-Popover entfernt hätte. Genau das ist jetzt der ZUSTAND: alle 42 `HelpTip`-Aufrufe der
+    // Erfassung sind gelöscht (Auftrag §5), ihre Texte liegen im „?"-Menü des Blattes.
+    //
+    // Die Gegenprobe misst deshalb dort, wo die Auskunft heute WIRKLICH steht: das Blatt baut das
+    // Hilferegister `components/erfassen/hilfe.ts` ein, und das leitet die Hilfekarte ab
+    // (`CAPTURE_HELP_TOPICS`), statt ihre Themen abzuschreiben. JOB 3062 R7: das Register führt
+    // zusätzlich die acht Hilfen, die ihre i18n-Schlüssel am `HelpTip` selbst trugen — sie fehlten
+    // bis R6. Wäre die Hilfe ersatzlos verschwunden, wäre dieser Fall rot.
+    const blatt = readFileSync(
+      join(__dirname, "../../apps/web/src/components/erfassen/Blatt.tsx"),
+      "utf8",
+    );
+    const register = readFileSync(
+      join(__dirname, "../../apps/web/src/components/erfassen/hilfe.ts"),
+      "utf8",
+    );
+    expect(blatt).toContain("BLATT_HILFE_THEMEN");
+    expect(blatt).toContain("thema.titleKey");
+    expect(blatt).toContain("thema.bodyKey");
+    expect(register).toContain("CAPTURE_HELP_TOPICS");
   });
 
   it("stattdessen trägt sie der sichtbare Block, und die Seite baut ihn ein", () => {

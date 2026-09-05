@@ -230,7 +230,16 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
     expect(dataUrl).toBe(PNG);
     // Die Vordertür kennt die gewählte Stufe. Sie darf deshalb nicht auf den absichtlich
     // fail-closed App-Default "vertraulich" zurückfallen, wenn der Entwurf "intern" ist.
-    expect(provenance).toEqual({ source: "draft", confidentiality: "intern" });
+    // JOB 3062 · H3: Die Kennung des offenen Entwurfs reist jetzt MIT (`draftId`) — genau wie im
+    // Erfassen-Weg seit JOB 2692 D2. Der Server nutzt sie als HEBENDEN Backstop: er liest die
+    // gespeicherte Stufe des Entwurfs und darf die Einstufung nur verschärfen, nie lockern. Die
+    // Zusicherung dieses Falls (die Fläche kennt ihre Stufe und fällt NICHT auf den fail-closed
+    // App-Default zurück) ist unverändert und steht darunter.
+    expect(provenance).toEqual({
+      source: "draft",
+      confidentiality: "intern",
+      draftId: "d-word-1",
+    });
     // WP-BILD-1f: der umgebende Text reist im SELBEN Request mit (dieselbe Egress-Stelle).
     expect(context ?? "").toContain("Kessel");
 
@@ -302,7 +311,13 @@ describe("mega69 A · von der Ansicht des importierten Bildes zur Bildbeschreibu
       string?,
     ];
     // Die Kernaussage: ein NIE erklaerter Wert darf nicht als Freigabe beim Egress erscheinen.
-    expect(provenance).toEqual({ source: "draft", confidentiality: "vertraulich" });
+    // JOB 3062 · H3: `draftId` reist mit (Begruendung am ersten Fall) — er kann die Einstufung
+    // serverseitig nur HEBEN, und die fail-closed Stufe steht unveraendert daneben.
+    expect(provenance).toEqual({
+      source: "draft",
+      confidentiality: "vertraulich",
+      draftId: "d-alt-1",
+    });
     expect(provenance.confidentiality).not.toBe("intern");
   });
 });

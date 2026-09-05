@@ -175,35 +175,6 @@ const FREMDE: readonly Fremdrelation[] = [
       "Dazu der OCR-nicht-verfuegbar-Zweig und die Vertraulichkeits-Auswahlliste.",
   },
   {
-    dritt: "apps/web/src/pages/CaptureFrontDoor.tsx",
-    // JOB 2624 D1 (28.08.): 83 -> 114. NACHGEZOGEN, WEIL DIE DOPPELUNG RICHTIG GEPFLEGT WURDE —
-    // nicht, um einen roten Test gruen zu bekommen. Die Messung dahinter:
-    //
-    //   Genau EIN Wert im ganzen Register weicht ab, und genau EIN Commit hat die beiden
-    //   beteiligten Dateien angefasst: `6f629a2` (SANIERUNG 27.08., „Vertraulichkeits-Anzeige
-    //   luegt nicht mehr", Pedi-Befund Bild-KI). Er aendert `Capture.tsx:4813` UND
-    //   `CaptureFrontDoor.tsx:865` — zeichengleich in der Sache:
-    //     `value={confidentiality}` -> `value={declaredConfidentiality ?? ""}`
-    //     und in beiden ein Pflicht-Platzhalter, solange keine Stufe bewusst gewaehlt wurde.
-    //
-    // WAS DIESER EINTRAG BEWACHT, IST GENAU DAS NICHT EINGETRETEN: „Eine einseitige Aenderung
-    // hier waere egress-relevant." Die Sanierung hat BEIDE Seiten gleich gezogen; der gedoppelte
-    // Bereich ist dadurch laenger geworden, nicht auseinandergelaufen. Der Waechter hat also
-    // funktioniert und gemeldet — er hat nur keinen Fehler gefunden, sondern eine gepflegte
-    // Doppelung, deren Groesse sich geaendert hat.
-    //
-    // DIE DOPPELUNG WIRD NICHT AUFGELOEST. Sie ist keine versehentliche Kopie, sondern die
-    // bewusst gefuehrte Parallelitaet zweier Erfassungsflaechen; sie zusammenzulegen waere ein
-    // Umbau des Erfassungswegs und beruehrte den Egress — nicht Gegenstand dieses Durchgangs.
-    groessen: [114, 41, 29, 27, 27, 25, 25],
-    was:
-      "GELESEN: die Vertraulichkeits-Auswahl samt Nebenwirkung — die bewusste Wahl setzt " +
-      "`setDeclaredConfidentiality` und gilt damit fuer den Egress. Eine einseitige Aenderung " +
-      "hier waere egress-relevant. Dazu der Zustand der Bildbeschreibungs-Bitte und ihr Ausloeser. " +
-      "Seit der SANIERUNG vom 27.08. (6f629a2) traegt der Block zusaetzlich den Pflicht-Platzhalter " +
-      "fuer die noch nicht bestaetigte Stufe — beidseitig, deshalb 114 statt 83 Knoten.",
-  },
-  {
     dritt: "apps/web/src/pages/Ask.tsx",
     groessen: [72],
     was:
@@ -231,8 +202,31 @@ const FREMDE: readonly Fremdrelation[] = [
       "(1128 und 1174) mit dem Auslese-Helfer teilt — dieselben zwei, die auch in " +
       "`BodyExtractPanel` stehen.",
   },
+  {
+    dritt: "apps/web/src/pages/CaptureFrontDoor.tsx",
+    // JOB 3062 · H3: der EINZIGE Rest der frueheren Erfassungs-Doppelung (siehe den Block oben).
+    // `Capture.tsx:5988` und `CaptureFrontDoor.tsx:22` sind die zwei duennen Adressen, die dasselbe
+    // Blatt rendern und ihm denselben Arbeitsraum hereinreichen. Sie MUESSEN gleich aussehen —
+    // liefe eine der beiden anders, zeigte sie eine andere Flaeche. Diese Gleichheit ist der Zweck,
+    // nicht der Fehler; sie aufzuloesen hiesse, eine der Adressen zu verbiegen.
+    //
+    // JOB 3062 · NACHZUG 1 (auf main, nach 3061/3063): Der Eintrag stand bis hierher HINTER
+    // `Validation.tsx` — richtig, solange Validations groesster Block 42 Knoten hatte (`vhelp`).
+    // Mit dem Wegfall von `vhelp` (3061 H2) und dem Umzug der Lesefläche (3063 H4) ist Validations
+    // groesster Block 35; die Messung sortiert absteigend nach dem groessten Block je Datei, und
+    // 36 steht vor 35. Verschoben ist nur die REIHENFOLGE der Eintraege — keine Groesse, kein
+    // Eintrag, kein Satz. Beide Register-Zeilen sind am eigenen Lauf nachgemessen.
+    groessen: [36],
+    was:
+      "GELESEN: die zwei duennen Routen-Huellen, die DASSELBE Blatt rendern — `<Blatt " +
+      "arbeitsraum={({ modus, onEntwurfInsBlatt }) => <CaptureArbeitsraum … />} />`. Die alte, " +
+      "sieben Bloecke grosse Parallelitaet zweier Erfassungsflaechen (Vertraulichkeit/Egress, " +
+      "Bildbeschreibungs-Bitte) ist mit JOB 3062 aufgeloest; uebrig ist die absichtliche " +
+      "Gleichheit der beiden Adressen.",
+  },
   // Die Datei ist mit dem Wegfall von `vhelp` (42 Knoten) in der Reihenfolge nach hinten gerutscht:
-  // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35.
+  // die Messung sortiert nach dem groessten Block je Datei, und der ist hier jetzt 35 — seit dem
+  // Nachzug von JOB 3062 daher auch hinter `CaptureFrontDoor.tsx` (36).
   //
   // JOB 3063 (H4) · KONFLIKTRUNDE 2: nach dem Rebase EIN Eintrag statt zwei — beide Zeilen
   // beschrieben schon vorher dieselbe dritte Datei und sind jetzt zur tatsaechlich gemessenen
@@ -257,6 +251,43 @@ const FREMDE: readonly Fremdrelation[] = [
     dritt: "apps/web/src/components/KnowledgeInputStudio.tsx",
     groessen: [28],
     was: "GEMESSEN: ein selbstschliessendes Element mit 28 Knoten, geteilt mit `Capture:5439`.",
+  },
+  // ==============================================================================================
+  // JOB 3062 · H3 — DIE GROESSTE GEPFLEGTE DOPPELUNG IST AUFGELOEST. ZWEI KLEINE BLEIBEN.
+  // ==============================================================================================
+  //
+  // BIS JOB 3062 stand hier `apps/web/src/components/erfassen/Blatt.tsx` mit
+  // `[114, 41, 29, 27, 27, 25, 25]` — die Vertraulichkeits-Auswahl samt Egress-Nebenwirkung und
+  // der Zustand der Bildbeschreibungs-Bitte, in ZWEI Erfassungsflaechen parallel gefuehrt. Der
+  // alte Eintrag sagte dazu ausdruecklich: „Eine einseitige Aenderung hier waere egress-relevant"
+  // und „die Doppelung wird nicht aufgeloest — sie zusammenzulegen waere ein Umbau des
+  // Erfassungswegs".
+  //
+  // GENAU DIESER UMBAU IST JOB 3062, und er hat den grossen Teil erledigt: die zweite Flaeche gibt
+  // es nicht mehr, also auch nicht ihre Kopie. Von sieben Bloecken sind VIER geblieben — zwei
+  // Groessen, jede zweimal (einmal gegen `Capture.tsx`, einmal gegen `KnowledgeDetail.tsx`).
+  //
+  // WARUM DAS IN RUNDE 5 NICHT ZU SEHEN WAR, und das ist eine Lehre ueber diesen Waechter und nicht
+  // ueber das Blatt: Die Grundmenge kommt aus `git ls-files` (JOB 2498 D2, Begruendung weiter
+  // unten). `Blatt.tsx` war in Runde 5 eine NEUE, noch nicht eingebaute Datei — `git ls-files`
+  // kannte sie nicht, der Sammler las sie nicht, und der Eintrag wurde in gutem Glauben gestrichen.
+  // Mit dem Prüfstand-Commit der Runde 5 ist die Datei im Werk, und dieselben zwei Bloecke, die
+  // vorher schon dastanden, werden gemessen. Am Blatt hat sich dafuer NICHTS geaendert: beide
+  // Bloecke sind zeichengleich mit dem eingebauten Stand.
+  // ==============================================================================================
+  {
+    dritt: "apps/web/src/components/erfassen/Blatt.tsx",
+    groessen: [27, 27, 25, 25],
+    was:
+      "GELESEN: der Zustand der Bildbeschreibungs-Bitte (`captionRequest`: imageId, src, index, " +
+      "nonce) und ihr Ausloeser aus der Galerie (`nonce: (prev?.nonce ?? 0) + 1`) — je einmal " +
+      "gegen `Capture.tsx` und einmal gegen `KnowledgeDetail.tsx`, daher jede Groesse doppelt. " +
+      "DREI Flaechen montieren denselben `RichTextEditor` und muessen ihm dieselbe Bitte reichen; " +
+      "der `nonce` ist die vereinbarte Bauart dafuer (JOB 2084 I50-3: der Effekt im Editor haengt " +
+      "an der Objektidentitaet der Bitte). Die Doppelung wird NICHT aufgeloest: der gemeinsame " +
+      "Ort waere ein Zustandshaken neben dem Editor — ein Umbau von `RichTextEditor.tsx`, und der " +
+      "liegt ausserhalb der Zielpfade von JOB 3062. Eine einseitige Aenderung faellt hier auf, und " +
+      "genau dafuer steht der Eintrag.",
   },
   {
     dritt: "apps/web/src/pages/ExternalKnowledge.tsx",
@@ -325,14 +356,24 @@ interface Dreifach {
  * Dieser Fall haelt fest, WELCHE fuenf es sind. Kommt ein sechster dazu oder faellt einer weg,
  * hat sich die Ueberlappung veraendert und die Entscheidung von JOB 2498 gehoert nachgerechnet.
  */
+// ------------------------------------------------------------------------------------------------
+// JOB 3062 · H3: VON FUENF AUF FUENF — MIT EINEM ANDEREN DRITTEN. Die Vertraulichkeits-Auswahl hat
+// eine dritte Datei verloren (`CaptureFrontDoor.tsx` fuehrt sie nicht mehr, Eintrag 1 nennt nur
+// noch `BodyExtractPanel.tsx`); die Bildbeschreibungs-Bitte hat ihre zwei Ueberlappungen behalten
+// und nur den Wohnort gewechselt: sie stand in `CaptureFrontDoor.tsx` und steht jetzt in
+// `erfassen/Blatt.tsx`.
+//
+// R6-RICHTIGSTELLUNG: In Runde 5 standen die beiden Eintraege als „entfaellt" hier. Das war ein
+// Messfehler, kein Umbau — die Grundmenge kommt aus `git ls-files`, und `Blatt.tsx` war damals
+// noch nicht im Werk (ausfuehrlich oben bei `FREMDE`). Die Entscheidung aus JOB 2498 („nicht
+// zusammenlegen") ist damit fuer diese zwei NICHT gegenstandslos geworden; sie gilt unveraendert
+// weiter, und der Grund steht bei ihnen.
+// ------------------------------------------------------------------------------------------------
 const DREIFACH: readonly Dreifach[] = [
   {
     knoten: 29,
     art: "ArrowFunction",
-    dritte: [
-      "apps/web/src/components/BodyExtractPanel.tsx",
-      "apps/web/src/pages/CaptureFrontDoor.tsx",
-    ],
+    dritte: ["apps/web/src/components/BodyExtractPanel.tsx"],
     was: "Die Auswahlliste der Vertraulichkeitsstufen (`CONFIDENTIALITY_LEVELS` -> `conf.level.*`).",
   },
   {
@@ -344,14 +385,14 @@ const DREIFACH: readonly Dreifach[] = [
   {
     knoten: 27,
     art: "FirstStatement",
-    dritte: ["apps/web/src/pages/CaptureFrontDoor.tsx"],
-    was: "Der Zustand der Bildbeschreibungs-Bitte: `captionRequest` mit Bild, Stelle und Zaehler.",
+    dritte: ["apps/web/src/components/erfassen/Blatt.tsx"],
+    was: "Der Zustand der Bildbeschreibungs-Bitte (`captionRequest`: imageId, src, index, nonce).",
   },
   {
     knoten: 25,
     art: "ArrowFunction",
-    dritte: ["apps/web/src/pages/CaptureFrontDoor.tsx"],
-    was: "Der Ausloeser derselben Bitte — setzt den Zustand und zaehlt den Zaehler hoch.",
+    dritte: ["apps/web/src/components/erfassen/Blatt.tsx"],
+    was: "Der Ausloeser derselben Bitte aus der Galerie (`nonce: (prev?.nonce ?? 0) + 1`).",
   },
   {
     knoten: 25,

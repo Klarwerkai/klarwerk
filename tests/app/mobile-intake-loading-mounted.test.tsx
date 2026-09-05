@@ -66,6 +66,13 @@ vi.mock("../../apps/web/src/api/endpoints", () => ({
     ko: { list: kanal.kos.fn, create: vi.fn(async () => ({ id: "k1" })) },
     ask: { ask: vi.fn(async () => ({ answered: false })) },
     conflicts: { list: vi.fn(async () => []) },
+    // JOB 3062 · H3: `/erfassen/neu` rendert jetzt das gemeinsame Blatt. Das Blatt fragt über
+    // `useAiBillable` → `useReasonerStatus` den Modellstatus ab, um den Kostenhinweis nur dann zu
+    // zeigen, wenn ein Klick WIRKLICH kostet. Ohne diesen Kanal wäre `endpoints.reasoner`
+    // undefined und das Mounten stürbe an `reading 'status'` — der Fehler wäre der Doppelgänger,
+    // nicht die Fläche. `active: false` heißt: kein Modell, also kein Kostenhinweis; damit misst
+    // dieser Test weiter genau seinen Gegenstand (Ladezustand des Intake), ohne neue Anzeige.
+    reasoner: { status: vi.fn(async () => ({ active: false, mode: "aus" })) },
   },
 }));
 
@@ -167,9 +174,14 @@ describe("JOB 1118 · D-036 · A1: beide Flächen mounten", () => {
     expect(text()).toContain(i18n.t("mob.drafts"));
   });
 
-  it("KnowledgeIntake rendert seine Frage", async () => {
+  // JOB 3062 · H3: `/erfassen/neu` zeigt kein eigenes Intake-Blatt mehr mit der Überschrift „Was
+  // weißt du, das andere wissen sollten?" — die drei Erfassungsadressen zeigen DASSELBE Blatt
+  // (`components/erfassen/Blatt.tsx`). Die Kalibrierung misst deshalb, dass die Fläche wirklich
+  // rendert, an dem, was sie HEUTE trägt: Werkzeugzeile und Blatt.
+  it("KnowledgeIntake rendert das Blatt", async () => {
     await mount(KnowledgeIntake, "/erfassen");
-    expect(text()).toContain(i18n.t("intake.question"));
+    expect(container.querySelector('[data-testid="blatt"]')).not.toBeNull();
+    expect(text()).toContain(i18n.t("erfassen.werkzeug.diktieren"));
   });
 });
 
@@ -267,27 +279,56 @@ describe("JOB 1118 · D-036 · A3: die Trefferliste behauptet nichts, solange si
 // denselben Anblick wie bei einem wirklich leeren Bestand. Genau diese Ununterscheidbarkeit
 // schliesst A4.
 describe("JOB 1118 · D-036 · A4: der Intake-Leerzustand wartet auf den Bestand", () => {
-  it("LADEND: `Lädt …` steht da, die Starter-Chips noch nicht", async () => {
+  // JOB 3062 · H3 — DIE AUSSAGE ZIEHT UM, SIE FÄLLT NICHT WEG.
+  //
+  // Der Leerzustand des Intake (Frage, Starter-Chips, Beispiel aus dem Bestand) ist als FLÄCHE
+  // gelöscht: die Chips stehen im Titel-Menü des leeren Blattes, das Beispiel im „…"-Menü unter
+  // „Beispiel ansehen". Die ZUSAGE von A4 hängt aber nicht an den Chips, sondern am Bestand:
+  // `pickExampleKo` liefert beim Laden `null` wie bei einem leeren Bestand — wer das nicht
+  // unterscheidet, behauptet „kein Beispiel", während er noch lädt. Genau das misst A4 jetzt an
+  // seinem neuen Ort. Fällt die Unterscheidung im Blatt weg, wird dieser Block rot.
+  async function beispielOeffnen(): Promise<void> {
     await mount(KnowledgeIntake, "/erfassen");
+    const mehr = container.querySelector<HTMLButtonElement>('[data-testid="blatt-werkzeug-mehr"]');
+    if (!mehr) {
+      throw new Error("Das „…“-Menü des Blattes ist nicht da.");
+    }
+    await act(async () => {
+      mehr.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flush();
+    });
+    const eintrag = [...container.querySelectorAll("button")].find(
+      (b) => (b.textContent ?? "").trim() === i18n.t("erfassen.mehr.beispiel"),
+    );
+    if (!eintrag) {
+      throw new Error("Der Eintrag „Beispiel ansehen“ ist nicht da.");
+    }
+    await act(async () => {
+      eintrag.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      await flush();
+    });
+  }
+
+  it("LADEND: `Lädt …` steht da, die Leerbehauptung noch nicht", async () => {
+    await beispielOeffnen();
 
     expect(text()).toContain(LAEDT());
-    expect(text()).not.toContain(i18n.t("intake.calming"));
+    expect(text()).not.toContain(i18n.t("erfassen.beispiel.keins"));
   });
 
-  it("GELADEN UND LEER: der heutige Leerzustand steht unverändert da", async () => {
-    await mount(KnowledgeIntake, "/erfassen");
+  it("GELADEN UND LEER: jetzt — und erst jetzt — steht die Leerbehauptung da", async () => {
+    await beispielOeffnen();
     await act(async () => {
       kanal.kos.resolve([]);
       await flush();
     });
 
-    expect(text()).toContain(i18n.t("intake.question"));
-    expect(text()).toContain(i18n.t("intake.calming"));
+    expect(text()).toContain(i18n.t("erfassen.beispiel.keins"));
     expect(text()).not.toContain(LAEDT());
   });
 
   it("FEHLER: ehrlicher Fehlertext statt stiller Leere", async () => {
-    await mount(KnowledgeIntake, "/erfassen");
+    await beispielOeffnen();
     await act(async () => {
       kanal.kos.reject(new Error("kaputt"));
       await flush();
@@ -295,5 +336,6 @@ describe("JOB 1118 · D-036 · A4: der Intake-Leerzustand wartet auf den Bestand
 
     expect(text()).toContain(FEHLER());
     expect(text()).not.toContain(LAEDT());
+    expect(text()).not.toContain(i18n.t("erfassen.beispiel.keins"));
   });
 });

@@ -88,7 +88,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -142,7 +142,16 @@ async function mount(url: string, seite: "fronttuer" | "erfassen"): Promise<void
                       null,
                       createElement(Route, {
                         path: url.split("?")[0] as string,
-                        element: createElement(seite === "fronttuer" ? CaptureFrontDoor : Capture),
+                        // JOB 3062 · H3: Der Expertenmodus wird nicht mehr im Arbeitsraum selbst
+                        // umgeschaltet — der Umschalter ist mit der Modus-Leiste von der Fläche
+                        // genommen (Auftrag §5). Betreten wird er über das Menü „Datei ▾" des
+                        // Blattes, und das setzt genau diesen `modus`. Der Test mountet den
+                        // Arbeitsraum deshalb SO, wie das Blatt ihn öffnet — statt einen Knopf zu
+                        // suchen, den es nicht mehr gibt.
+                        element:
+                          seite === "fronttuer"
+                            ? createElement(CaptureFrontDoor)
+                            : createElement(CaptureArbeitsraum, { modus: "formular" }),
                       }),
                     ),
                   ),
@@ -181,18 +190,18 @@ function knopf(teil: string): HTMLButtonElement {
   return btn;
 }
 
-/** Der Weg zum Editor auf /erfassen — drei Klicks, wie ihn ein Mensch geht. */
+/**
+ * Der Weg zum Editor auf /erfassen.
+ *
+ * JOB 3062 · H3: Von den früheren drei Klicks bleibt EINER. „Weitere Wege anzeigen" (Aufklapper des
+ * Standardweg-Kastens) und „Expertenmodus: Formular direkt ausfüllen" (Umschalter der Modus-Leiste)
+ * sind von der Fläche genommen; der Expertenweg wird über das Menü „Datei ▾" des Blattes betreten,
+ * und `mount` setzt dafür denselben `modus="formular"`, den jenes Menü setzt. Übrig bleibt der
+ * Aufklapper „Erweiterte Details (optional)", der zum Formular selbst gehört und unverändert ist.
+ */
 async function zumEditor(): Promise<void> {
   await act(async () => {
-    knopf("Weitere Wege anzeigen").click();
-    await flush();
-  });
-  await act(async () => {
     knopf(i18n.t("capture.advanced.title")).click();
-    await flush();
-  });
-  await act(async () => {
-    knopf("Expertenmodus: Formular direkt ausf").click();
     await flush();
   });
 }
@@ -243,7 +252,7 @@ describe("JOB 2610 D4 · keine Dateizusage ohne Dateiweg", () => {
     await mount("/erfassen", "erfassen");
     await zumEditor();
 
-    // Hier ist die Zusage WAHR — Capture reicht `onAttachFiles`.
+    // Hier ist die Zusage WAHR — CaptureArbeitsraum reicht `onAttachFiles`.
     expect(dateiKnopf(), "der Datei-Knopf fehlt, wo er hingehoert").not.toBeNull();
     expect(text(), "die zutreffende Zusage ist verschwunden").toContain(DATEIZUSAGE);
     expect(text()).toContain(BILDFUEHRUNG);

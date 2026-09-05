@@ -166,7 +166,9 @@ test("huelle: eine attributlose Tabelle mit Bild überlebt Laden, Beschreiben, S
     // DER KREIS: speichern und erneut öffnen. Erst wenn die Beschreibungen wirklich im abgelegten
     // Entwurf stehen, wird wieder geöffnet — sonst prüfte der zweite Teil den Zustand vor dem
     // Speichern und wäre grün, ohne etwas zu belegen.
-    await page.getByRole("button", { name: "Als Entwurf speichern" }).click();
+    // JOB 3062: der Knopf heisst am neuen Blatt „Entwurf sichern" (`erfassen.entwurfSichern`); der
+    // Weg dahinter ist unverändert derselbe (`POST/PUT /api/drafts`).
+    await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
     await expect
       .poll(
         async () => {

@@ -124,7 +124,7 @@ describe("WP-D7 Befund 3: KI-Vorschlag bei reichem Body nur Titel + Prompt-Kappu
   });
 
   it("die Vorschlags-Anzeige verzweigt auf proposalTitleOnly und nutzt den ehrlichen Erklär-Key", () => {
-    const page = readSource("apps/web/src/pages/CaptureFrontDoor.tsx");
+    const page = readSource("apps/web/src/components/erfassen/Blatt.tsx");
     expect(page).toContain("structureProposalTitleOnly");
     expect(page).toContain("proposalTitleOnly");
     expect(page).toContain("fd.structureRichTitleOnly");

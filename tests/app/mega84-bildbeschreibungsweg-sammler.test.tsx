@@ -716,7 +716,7 @@ const FUNDE: Fund[] = (() => {
 const DISPOSITIONEN: Record<string, string> = {
   "apps/web/src/components/KnowledgeInputStudio.tsx › KnowledgeInputStudio › <RichTextEditor> [aiPanel+documentTitle+files+images+onAttachFiles+onChange+value] in [div<section<div<div] #1":
     "Das Studio rendert den Editor selbst und reicht den Titel des Beitrags durch — die Quelle, aus der die drei Studio-Einbindungen ihren Vertrag beziehen.",
-  "apps/web/src/pages/Capture.tsx › Capture › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+enrichLocale+externalStage+images+onApply+onAttachFiles+onClose+open+runAssist] in [Field<div<ReasonerDraft<div] #1":
+  "apps/web/src/pages/Capture.tsx › CaptureArbeitsraum › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+enrichLocale+externalStage+images+onApply+onAttachFiles+onClose+open+runAssist] in [Field<div<ReasonerDraft<div] #1":
     "Erfassung, Studio-Weg im Reasoner-Entwurf: traegt die Bildbeschreibung ueber das Studio.",
   // AUFTRAG-PRO-337: Signatur um `captionFormRequest` erweitert. Diese Fläche band ihre
   // Bildergalerie ohne `onEditCaption` ein — der Galerieeinstieg fiel dort lautlos aus (der Prop ist
@@ -727,12 +727,12 @@ const DISPOSITIONEN: Record<string, string> = {
   // Bildbeschreibung abgeleiteten Titelvorschlag in ihr eigenes Entwurfs-Titelfeld zu uebernehmen —
   // auf Klick, nie von selbst. Der Sammler hat beide alten Identitaeten als verschwunden UND beide
   // neuen als undisponiert gemeldet, WEIL er das soll. Hier ist hingesehen worden.
-  "apps/web/src/pages/Capture.tsx › Capture › <RichTextEditor> [captionFormRequest+documentTitle+images+onAttachFiles+onChange+onTitelVorschlag+value] in [Field<div<ReasonerDraft<div] #1":
+  "apps/web/src/pages/Capture.tsx › CaptureArbeitsraum › <RichTextEditor> [captionFormRequest+documentTitle+images+onAttachFiles+onChange+onTitelVorschlag+value] in [Field<div<ReasonerDraft<div] #1":
     "Erfassung, direkter Editor im Reasoner-Entwurf. Seit PRO 337 nimmt er die Bitte der Bildergalerie derselben Flaeche entgegen; seit JOB 2419 D1 fuehrt er den Uebernahme-Weg fuer den Titelvorschlag.",
   // AUFTRAG-PRO-337: dieselbe Erweiterung an der zweiten Instanz derselben Datei.
-  "apps/web/src/pages/Capture.tsx › Capture › <RichTextEditor> [aiPanel+captionFormRequest+documentTitle+images+onAttachFiles+onChange+onTitelVorschlag+value] in [div<div<Card<div] #1":
+  "apps/web/src/pages/Capture.tsx › CaptureArbeitsraum › <RichTextEditor> [aiPanel+captionFormRequest+documentTitle+images+onAttachFiles+onChange+onTitelVorschlag+value] in [div<div<Card<div] #1":
     "Erfassung, direkter Editor im Hauptformular (mit KI-Palette). Die zweite Instanz derselben Datei — genau die, die mega85 datei-genau nicht sehen konnte. Seit PRO 337 ebenfalls mit dem Galerieeinstieg verbunden, seit JOB 2419 D1 mit dem Uebernahme-Weg.",
-  "apps/web/src/pages/Capture.tsx › Capture › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+enrichLocale+externalStage+images+onApply+onAttachFiles+onClose+open+runAssist] in [div<Card<div<div] #1":
+  "apps/web/src/pages/Capture.tsx › CaptureArbeitsraum › <KnowledgeInputStudio> [attachments+bodyHtml+documentTitle+enrichLocale+externalStage+images+onApply+onAttachFiles+onClose+open+runAssist] in [div<Card<div<div] #1":
     "Erfassung, Studio-Weg aus dem Hauptformular. Prop-gleich zur Reasoner-Instanz und nur ueber die JSX-Nachbarschaft von ihr unterscheidbar — deshalb gehoert sie zur Identitaet.",
   // 10.08.2026, Zusammenfuehrung der GitHub-Linie: der Ahnenpfad hat sich von
   // [div<form<Card<div] auf [ImageDescribeProvider<div<form<Card] geaendert. Die Flaeche ist
@@ -747,7 +747,17 @@ const DISPOSITIONEN: Record<string, string> = {
   // Einbindung mit anderer Propmenge ist ein Befund, bis jemand hingesehen hat. Hier ist hingesehen
   // worden. Der Prop ist bewusst optional (Begruendung an seiner Deklaration in RichTextEditor.tsx);
   // die vier anderen Einbindungen tragen ihn nicht und bleiben deshalb unveraendert.
-  "apps/web/src/pages/CaptureFrontDoor.tsx › CaptureFrontDoor › <RichTextEditor> [captionFormRequest+documentTitle+onChange+onTitelVorschlag+placeholder+value] in [ImageDescribeProvider<div<form<Card] #1":
+  // JOB 3062 · H3: dieselbe EINE Einbindung, neue Identität. Die umschliessende Komponente heisst
+  // jetzt `Blatt` (nicht mehr `CaptureFrontDoor` — die Seite ist nur noch die Adresse), und die
+  // Ahnenkette ist die des Blattes statt die des alten Formulars. Weg der Bildbeschreibung
+  // unverändert: `captionFormRequest` liegt an, die Beschreibungspflicht gilt wie bisher.
+  // JOB 3062 · H3 · R8: die Ahnenkette steht wieder unmittelbar unter `ImageDescribeProvider`. R7
+  // hatte dort einen `BildTitelHorcher` geschachtelt, der die describe-Antwort mithörte; ben hat
+  // gemessen, dass er der Gültigkeitsprüfung des Editors (`stillCurrent()`) VORLIEF und deshalb
+  // verworfene Antworten als Titelvorschlag zeigte. Er ist ersatzlos entfallen — das Blatt liest
+  // die geprüfte Entscheidung des Editors, statt eine zweite zu bilden. Es gibt damit wieder genau
+  // EINEN Weg durch den Bildkanal, und diese Zeile beschreibt ihn.
+  "apps/web/src/components/erfassen/Blatt.tsx › Blatt › <RichTextEditor> [captionFormRequest+documentTitle+onChange+onTitelVorschlag+placeholder+value] in [div<div<div<ImageDescribeProvider] #1":
     "Eingangstuer der Erfassung — die Flaeche, auf der Pedis Befund vom 31.07. entstand. Seit PR #1 unter dem ImageDescribeProvider, der die Vertraulichkeit des Entwurfs mitfuehrt. Seit JOB 2402 D1 zusaetzlich die einzige Flaeche mit Uebernehmen-Weg fuer den Titelvorschlag.",
   // 04.09.2026, JOB 3063 (H4): die beiden Einbindungen des Wissensobjekt-Bearbeitens sind mit dem
   // Umbau der Bibliothek von `pages/KnowledgeDetail.tsx` nach
@@ -1312,8 +1322,20 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // Wissensnetz-Umschalters sowie der Bibliotheks- und Wissensnetz-Bauteile aus JOB 3063/3067);
     // der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum. Die zwei
     // Zahlen, an denen Stufe 2 wirklich hängt, sind unverändert: `anbieter` 1 und `traeger` 2.
+    //
+    // JOB 3062 · H3 (vor diesem Rebase): `komponenten` von 253 auf 268 nachgezogen, dann R8 wieder
+    // bei 268 (R7 hatte kurzzeitig 269 durch den seither ersatzlos entfallenen `BildTitelHorcher`,
+    // der der Gültigkeitsprüfung des Editors vorlief — bens Befund). Der Quellbaum wuchs um das
+    // Blatt und seine Bausteine (`components/erfassen/`); die zwei Zahlen, an denen Stufe 2
+    // wirklich hängt, blieben UNVERÄNDERT: `anbieter` 1 und `traeger` 2.
+    //
+    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3062 (H3, Blatt „Erfassen") auf den Stand von
+    // JOB 3052/3060/3061/3063/3064/3067/3070 (Kopfband, Prüf-, Bibliotheks-, Wissensnetz- und
+    // Startflächen) NEU GEMESSEN, nicht rechnerisch addiert. Der Zahlenwert unten stammt aus dem
+    // tatsächlichen Testlauf an diesem Arbeitsbaum. Die zwei Zahlen, an denen Stufe 2 wirklich
+    // hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 301,
+      komponenten: 316,
       anbieter: 1,
       traeger: 2,
     });

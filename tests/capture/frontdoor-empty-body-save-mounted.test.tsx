@@ -224,7 +224,7 @@ describe("AUFTRAG-mega9 Block A (KW-E2E-001): geleerter Vordertür-Text ist spei
     await clearEditor();
 
     // DAS ist der Befund: vorher war der Knopf hier deaktiviert und der mega7-Fix unerreichbar.
-    const saveBtn = buttonByText(i18n.t("fd.saveDraft"));
+    const saveBtn = buttonByText(i18n.t("erfassen.entwurfSichern"));
     expect(saveBtn.disabled).toBe(false);
 
     // --- 3. speichern gelingt -----------------------------------------------------------------
@@ -248,14 +248,14 @@ describe("AUFTRAG-mega9 Block A (KW-E2E-001): geleerter Vordertür-Text ist spei
     await mount("/capture/frontdoor");
 
     // Leeres Formular ohne alles: die Sperre ist hier RICHTIG und bleibt.
-    expect(buttonByText(i18n.t("fd.saveDraft")).disabled).toBe(true);
+    expect(buttonByText(i18n.t("erfassen.entwurfSichern")).disabled).toBe(true);
 
     // Titel ohne Body: speicherbar — dieselbe Regel, die der Erfassen-Weg schon fährt
     // (Rohtext ODER Aussage ODER Titel).
     await typeTitle("Nur ein Titel");
-    expect(buttonByText(i18n.t("fd.saveDraft")).disabled).toBe(false);
+    expect(buttonByText(i18n.t("erfassen.entwurfSichern")).disabled).toBe(false);
 
-    await click(buttonByText(i18n.t("fd.saveDraft")));
+    await click(buttonByText(i18n.t("erfassen.entwurfSichern")));
     expect(box.creates).toHaveLength(1);
     expect(box.creates[0]?.title).toBe("Nur ein Titel");
     unmount();
@@ -264,7 +264,7 @@ describe("AUFTRAG-mega9 Block A (KW-E2E-001): geleerter Vordertür-Text ist spei
   it("Einreichen ohne Inhalt: sichtbare, benannte Begründung am Feld statt still grauem Knopf", async () => {
     await mount("/capture/frontdoor");
 
-    const submitBtn = buttonByText(i18n.t("fd.submitReview"));
+    const submitBtn = buttonByText(i18n.t("erfassen.einreichen"));
     // Der Knopf ist ERREICHBAR — ein grauer Knopf ohne Begründung war genau der Befund.
     expect(submitBtn.disabled).toBe(false);
     // Vor dem Versuch steht keine Fehlermeldung im Weg.
@@ -272,23 +272,19 @@ describe("AUFTRAG-mega9 Block A (KW-E2E-001): geleerter Vordertür-Text ist spei
 
     await click(submitBtn);
 
-    // Jetzt sagt die Oberfläche AM FELD, warum nicht — mit benanntem Grund, nicht nur „gesperrt".
-    const validation = container.querySelector('[data-testid="frontdoor-submit-validation"]');
-    expect(validation).not.toBeNull();
-    expect(validation?.textContent ?? "").toContain(i18n.t("fd.validate.needBody"));
-    expect(validation?.getAttribute("role")).toBe("alert");
-    // Und es wurde NICHT still eingereicht.
+    // ==========================================================================================
+    // JOB 3062 · H3 — DIE BEGRÜNDUNG STEHT WEITER AM FELD, ABER OHNE SATZ.
+    // ==========================================================================================
+    // Der Auftrag ist ausdrücklich: „ist sie nicht gewählt, bekommt das Menü einen 1 px Rand
+    // #A12626 und den Fokus — kein Erklärsatz" (§5.4). Dieselbe Sprache gilt für den fehlenden
+    // Inhalt: das Schreibfeld bekommt den Rand. Der Knopf bleibt erreichbar und löst die
+    // Markierung aus — das war der Kern von KW-E2E-001 („kein grauer Knopf ohne Begründung") und
+    // ist unverändert erfüllt, nur ohne Kasten und ohne Aufzählung.
+    const feld = container.querySelector('[data-testid="blatt-text"]');
+    expect(feld).not.toBeNull();
+    expect(feld?.className ?? "").toContain("ring-trust-crit-fill");
+    // Und es ist NICHTS entstanden — der Versuch hat den Server nie erreicht.
     expect(box.creates).toHaveLength(0);
-    expect(box.updates).toHaveLength(0);
-
-    // Sobald wieder Inhalt da ist, verschwindet die Meldung.
-    await act(async () => {
-      const el = editor();
-      el.innerHTML = "<p>Jetzt steht hier etwas</p>";
-      el.dispatchEvent(new Event("input", { bubbles: true }));
-      await flush();
-    });
-    expect(container.querySelector('[data-testid="frontdoor-submit-validation"]')).toBeNull();
     unmount();
   });
 });

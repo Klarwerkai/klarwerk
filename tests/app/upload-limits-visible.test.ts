@@ -55,12 +55,20 @@ describe("SCRUM-421: die Upload-Grenzen sind an jeder Auswahlstelle sichtbar", (
   });
 
   it("die Vordertür erbt den Hinweis über den gemeinsamen Editor", () => {
-    // CaptureFrontDoor hat kein eigenes Dateifeld — ihre einzige Auswahlfläche ist der
+    // Die Vordertür hat kein eigenes Dateifeld — ihre einzige Auswahlfläche ist der
     // RichTextEditor (Ablegen, Einfügen, Bild-/Datei-Menü). Der trägt den Hinweis, also die
     // Vordertür auch. Das ist die ehrliche Fassung von „auch in der Vordertür".
+    //
+    // JOB 3062 · H3: Der Editor steht nicht mehr in `pages/CaptureFrontDoor.tsx`. Die Seite ist nur
+    // noch die Adresse und rendert das gemeinsame Blatt; der `RichTextEditor` sitzt seither IM
+    // Blatt (`components/erfassen/Blatt.tsx`). Gemessen wird deshalb dort — dieselbe Aussage an
+    // ihrem heutigen Ort, nicht eine schwächere.
     const frontdoor = stripComments(read("pages/CaptureFrontDoor.tsx"));
+    const blatt = stripComments(read("components/erfassen/Blatt.tsx"));
     expect(frontdoor).not.toContain('type="file"');
-    expect(frontdoor).toContain("<RichTextEditor");
+    expect(blatt).toContain("<RichTextEditor");
+    // Und die Vordertür führt wirklich auf dieses Blatt — sonst erbte sie nichts.
+    expect(frontdoor).toContain("<Blatt");
     expect(stripComments(read("components/RichTextEditor.tsx"))).toContain("<UploadLimitsHint");
   });
 

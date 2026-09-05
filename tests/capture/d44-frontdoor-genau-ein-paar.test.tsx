@@ -193,11 +193,13 @@ async function settle(ms = 0): Promise<void> {
 
 // ── DIE ZÄHLUNG ─────────────────────────────────────────────────────────────────────────────────
 
-// EINE INSTANZ = EINE VORDERTÜR. Der Anker ist frontdoor-eigen (CaptureFrontDoor.tsx:1318) und
-// steht in keiner Bedingung. AUSDRÜCKLICH NICHT `<form>` (zählte fremde Formulare mit, D12) und
-// nicht `role="textbox"` (zählte Flächen, D11).
+// EINE INSTANZ = EIN BLATT. Der Anker war der Aufklapper „Weitere Eingabeoptionen"
+// (CaptureFrontDoor.tsx:1318); er ist mit der Karte „Mehr Erfassungswege" gelöscht (JOB 3062 · H3).
+// An seine Stelle tritt die Hülle des Blattes — genauso blattEIGEN, genauso bedingungslos: sie
+// steht in JEDEM Zustand der Fläche. AUSDRÜCKLICH NICHT `<form>` (zählte fremde Formulare mit, D12)
+// und nicht `role="textbox"` (zählte Flächen, D11).
 function frontdoorInstanzen(): number {
-  return document.querySelectorAll('[data-testid="frontdoor-more-options-toggle"]').length;
+  return document.querySelectorAll('[data-testid="blatt-huelle"]').length;
 }
 
 // Die Galerien im Dokument: das SectionLabel mit t("ko.gallery") (BodyImageGallery.tsx:194/195) —
@@ -269,10 +271,16 @@ describe("D44 · Antwort A · die Wache: CaptureFrontDoor rendert GENAU EIN Edit
     expect(frontdoorInstanzen()).toBe(1);
     expect(galerien()).toBe(1);
 
-    // Und der Beleg, dass der Anker wirklich besser ist als der aus D12 — gemessen, nicht behauptet:
-    // im Dokument stehen jetzt ZWEI Formulare (das der Vordertuer und das fremde). Der alte
-    // Zaehler haette hier 2 gemeldet und damit eine zweite Vordertuer erfunden.
-    expect(d12FormZaehler()).toBe(2);
+    // Und der Beleg, dass der Anker wirklich besser ist als der aus D12 — gemessen, nicht behauptet.
+    //
+    // JOB 3062 · H3: Der ALTE Zaehler irrt jetzt in die ANDERE Richtung, und das schaerft den Beleg,
+    // statt ihn zu schwaechen. Das Blatt hat gar kein `<form>` mehr (gemessen: null Vorkommen in
+    // `components/erfassen/Blatt.tsx`) — „Entwurf sichern" und „Einreichen" sind Knoepfe mit eigenem
+    // Handler, kein Formularabsenden. Im Dokument steht deshalb nur noch EIN Formular, das FREMDE.
+    // Der D12-Zaehler meldet also 1, waehrend eine Vordertuer da ist und ein fremdes Formular
+    // daneben: Er zaehlt etwas, das mit der Frage nichts zu tun hat — erst erfand er eine zweite
+    // Vordertuer, jetzt uebersieht er die vorhandene. Der Anker `frontdoorInstanzen()` bleibt bei 1.
+    expect(d12FormZaehler()).toBe(1);
     expect(frontdoorInstanzen()).toBe(1);
   });
 

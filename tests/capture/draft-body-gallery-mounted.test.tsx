@@ -106,7 +106,7 @@ describe("Teil B: Galerie im Entwurf (DraftBodyGallery, gemountet)", () => {
     expect(capture).toContain("bodyHtml={bodyHtml}");
     expect(capture).toContain("onEditCaption=");
     const frontDoor = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
     expect(frontDoor).toContain("<DraftBodyGallery");

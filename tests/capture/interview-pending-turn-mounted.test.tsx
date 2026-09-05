@@ -93,7 +93,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTURE_WIZARD_TEXT } from "../../apps/web/src/lib/captureWizard";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -135,46 +135,75 @@ function NavProbe(): JSX.Element {
   );
 }
 
+// ==================================================================================================
+// JOB 3062 · H3 — DER MODUS KOMMT ALS PROP, WEIL DIE MODUS-LEISTE GELÖSCHT IST.
+// ==================================================================================================
+// Bis hierher wählte dieser Test den Erzähl-Modus über die Knopfreihe auf `/erfassen`. Die Leiste
+// ist mit dem Standardweg-Kasten gelöscht (Auftrag §5); im Produkt wählt der Mensch den Weg im
+// Menü „Datei ▾" der Blatt-Werkzeugzeile, und das Blatt reicht ihn als `modus` an den Arbeitsraum.
+// Der Test fährt GENAU DIESEN Weg: dieselbe Montage, neuer Prop — React behält den Zustand des
+// Arbeitsraums, und `CaptureArbeitsraum` gleicht den Modus über `switchMode` ab (dieselbe Funktion,
+// die vorher am Knopf hing).
+let h3Modus: "freitext" | "diktat" | "interview" | "datei" | "formular" | undefined;
+let h3Zeichnen: (() => Promise<void>) | null = null;
+
+async function waehleModus(
+  m: "freitext" | "diktat" | "interview" | "datei" | "formular",
+): Promise<void> {
+  h3Modus = m;
+  if (!h3Zeichnen) {
+    throw new Error("waehleModus vor mount() gerufen");
+  }
+  await h3Zeichnen();
+}
+
 async function mount(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => {
-    root.render(
-      createElement(
-        QueryClientProvider,
-        { client: qc },
+  const zeichne = async (): Promise<void> => {
+    await act(async () => {
+      root.render(
         createElement(
-          AuthProvider,
-          null,
+          QueryClientProvider,
+          { client: qc },
           createElement(
-            RoleProvider,
+            AuthProvider,
             null,
             createElement(
-              ToastProvider,
+              RoleProvider,
               null,
               createElement(
-                NavGuardProvider,
+                ToastProvider,
                 null,
                 createElement(
-                  MemoryRouter,
-                  { initialEntries: ["/erfassen"] },
+                  NavGuardProvider,
+                  null,
                   createElement(
-                    Routes,
-                    null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    MemoryRouter,
+                    { initialEntries: ["/erfassen"] },
+                    createElement(
+                      Routes,
+                      null,
+                      createElement(Route, {
+                        path: "/erfassen",
+                        element: createElement(CaptureArbeitsraum, { modus: h3Modus }),
+                      }),
+                    ),
+                    createElement(NavProbe),
                   ),
-                  createElement(NavProbe),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await flush();
-  });
+      );
+      await flush();
+    });
+  };
+  h3Zeichnen = zeichne;
+  await zeichne();
   await act(flush);
 }
 
@@ -267,6 +296,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  h3Modus = undefined;
+  h3Zeichnen = null;
   act(() => root.unmount());
   container.remove();
   vi.clearAllMocks();
@@ -275,8 +306,10 @@ afterEach(() => {
 describe("Block C: Save während des nächsten Interview-Turns", () => {
   it("speichert Antworten ohne die überholte Frage; Resume bietet ehrlich das Nachladen an", async () => {
     await mount();
-    await click(buttonByText("Weitere Wege anzeigen"));
-    await click(buttonByText(i18n.t("capture.mode.interview")));
+    // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+    // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+    // des Blattes und startet offen.
+    await waehleModus("interview");
     await click(buttonByText(i18n.t("capture.ivStart")));
     await answerTurn(0, "Frage 1?");
     expect(pageText()).toContain("Frage 1?");
@@ -322,8 +355,10 @@ describe("Block C: Save während des nächsten Interview-Turns", () => {
 
   it("späte Antwort eines vor dem Save gestarteten Turns schreibt nichts zurück", async () => {
     await mount();
-    await click(buttonByText("Weitere Wege anzeigen"));
-    await click(buttonByText(i18n.t("capture.mode.interview")));
+    // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+    // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+    // des Blattes und startet offen.
+    await waehleModus("interview");
     await click(buttonByText(i18n.t("capture.ivStart")));
     await answerTurn(0, "Frage 1?");
     await change(textareaByPlaceholder(i18n.t("capture.ivAnswerHint")), "Antwort 1");
@@ -345,8 +380,10 @@ describe("Block C: Save während des nächsten Interview-Turns", () => {
 
   it("späte Antwort nach dem Verwerfen schreibt ebenfalls nichts zurück", async () => {
     await mount();
-    await click(buttonByText("Weitere Wege anzeigen"));
-    await click(buttonByText(i18n.t("capture.mode.interview")));
+    // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+    // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+    // des Blattes und startet offen.
+    await waehleModus("interview");
     await click(buttonByText(i18n.t("capture.ivStart")));
     await answerTurn(0, "Frage 1?");
     await change(textareaByPlaceholder(i18n.t("capture.ivAnswerHint")), "Antwort 1");

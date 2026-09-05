@@ -4,14 +4,14 @@
 // ================================================================================================
 //
 // BENs Prüflücke 2 zu D1, wörtlich: „UI-Test der externen Suche in mindestens einer realen
-// Nutzerfläche (Capture oder KnowledgeDetail). Fall: Timeout und DNS-Fehler. Erwartung: Pending endet,
+// Nutzerfläche (CaptureArbeitsraum oder KnowledgeDetail). Fall: Timeout und DNS-Fehler. Erwartung: Pending endet,
 // die jeweiligen generischen Texte werden sichtbar, und Host-, URL- sowie DNS-Details fehlen."
 //
-// Hier läuft die ECHTE Seite `Capture` im echten Provider-Gerüst (Harness wie
+// Hier läuft die ECHTE Seite `CaptureArbeitsraum` im echten Provider-Gerüst (Harness wie
 // `mega17-quellen-hinweis-mounted`). Ersetzt ist nur der Endpunkt: er antwortet so, wie die Route
 // seit D1 antwortet — mit dem generischen Satz aus `EXTERNAL_SEARCH_MELDUNG`, den
 // `tests/app/job2683-zwei-knoepfe-flaeche.test.ts` an der echten Route pinnt. Der Fehlertext erreicht
-// die Seite über `fail` (Capture.tsx: `setErr(e instanceof ApiError ? e.message : …)`).
+// die Seite über `fail` (CaptureArbeitsraum.tsx: `setErr(e instanceof ApiError ? e.message : …)`).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const suche = vi.hoisted(() => ({
@@ -68,7 +68,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { EXTERNAL_SEARCH_MELDUNG } from "../../services/external-search/src/wikipedia";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -132,7 +132,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),
@@ -187,7 +190,9 @@ function pageText(): string {
 
 // Der Weg zur externen Suche — genau der, den ein Nutzer geht (wie mega17 zum Quellenformular).
 async function suchfeldOeffnen(): Promise<void> {
-  await click(buttonByText("Weitere Wege anzeigen"));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
   await click(buttonByText(i18n.t("capture.advanced.title")));
 }
 
@@ -226,19 +231,32 @@ describe("JOB 2683 D2 · Externe Suche im Erfassen, gemountet", () => {
     expect(pageText()).not.toContain(EXTERNAL_SEARCH_MELDUNG.timeout);
   });
 
+  // JOB 3062 · Runde 9: DIE ANTWORT KOMMT AUF ZURUF, NICHT NACH UHRZEIT. Bis hierher wies der
+  // Endpunkt sich selbst nach 100 ms ab, und die Zusicherung „erst dreht es" las den Knopf direkt
+  // nach dem Klick — ein Klick kostet aber allein 30 Makrotask-Ticks (leer gemessen 39 ms) plus
+  // Rendern. Im vollen Tor (1273 Dateien, 264 s, geteilte Kerne) war die 100-ms-Frist vor dem
+  // Lesen abgelaufen, der Knopf schon wieder frei, und der Fall kippte ohne jede Fachaussage
+  // (Runde 8, code.md: `expected false to be true` in Zeile 246). Dieselbe Lehre wie 2706 D3
+  // eine Ebene tiefer: nicht nur das Warten, auch das AUSLÖSEN hängt am Zustand statt an der Uhr.
+  // Der Test gibt die Abweisung jetzt selbst frei; die Reihenfolge „erst Pending, dann Ende" ist
+  // damit gesichert statt gewürfelt. Die Zusicherungen dahinter sind Wort für Wort dieselben.
   it("Zeitüberschreitung: die Route antwortet nach ihrer Frist → Pending endet, der generische Satz steht auf der Seite, kein Host", async () => {
+    const frist: { abweisen: (() => void) | null } = { abweisen: null };
     suche.fn = () =>
-      new Promise((_, reject) =>
-        setTimeout(
-          () =>
-            reject(new ApiError(400, "EXTERNAL_SEARCH_FAILED", EXTERNAL_SEARCH_MELDUNG.timeout)),
-          100,
-        ),
-      );
+      new Promise((_, reject) => {
+        frist.abweisen = () =>
+          reject(new ApiError(400, "EXTERNAL_SEARCH_FAILED", EXTERNAL_SEARCH_MELDUNG.timeout));
+      });
     await mount();
     await suchfeldOeffnen();
     await suchen("Ventil");
     expect(suchKnopf().disabled).toBe(true); // erst dreht es …
+    const abweisen = frist.abweisen;
+    if (!abweisen) throw new Error("Die Fläche hat die Suche nicht gerufen");
+    await act(async () => {
+      abweisen();
+      await flush();
+    });
     await warteAufZustand(() => !suchKnopf().disabled);
     expect(suchKnopf().disabled).toBe(false); // … dann endet es
     const text = pageText();

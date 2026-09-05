@@ -122,9 +122,12 @@ describe("mega61 E · der dauerhaft sichtbare Satz an jeder Modellfläche", () =
   it("die vier Flächen OHNE Modellangabe tragen ihn ausdrücklich selbst", () => {
     // Namentlich, weil sie der Grund für diesen Block waren: sie hatten bis mega60 gar keinen
     // Hinweis — weder aufklappbar noch dauerhaft.
+    // JOB 3062 · H3: Die Modellfläche der Vordertür ist umgezogen. `pages/CaptureFrontDoor.tsx` ist
+    // nur noch die Adresse; die KI-Vorschlagskarten (Struktur und KI-Hilfe) stehen im gemeinsamen
+    // Blatt. Der Satz wird deshalb DORT gemessen — an der Fläche, die das Modell zeigt.
     const nachgeruestet = [
       join(WEB, "pages", "Ask.tsx"),
-      join(WEB, "pages", "CaptureFrontDoor.tsx"),
+      join(WEB, "components", "erfassen", "Blatt.tsx"),
       join(WEB, "components", "ImportGroups.tsx"),
       join(WEB, "components", "RichTextEditor.tsx"),
     ];

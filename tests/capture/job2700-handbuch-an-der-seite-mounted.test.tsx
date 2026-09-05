@@ -3,7 +3,7 @@
 // JOB 2700 D1 — DAS HANDBUCH, DAS DEN TAB EINFRIERT: an der Stelle, wo Pedi handelt
 // ================================================================================================
 //
-// Gemountet an der ECHTEN Capture-Seite (Geruest wie discard-reset-mounted). Pedi waehlt ein
+// Gemountet an der ECHTEN CaptureArbeitsraum-Seite (Geruest wie discard-reset-mounted). Pedi waehlt ein
 // gescanntes Handbuch ueber der Kante — an BEIDEN Eingaengen, die eine PDF lesen: „Text aus Datei
 // einfuegen" (onDocs) und der Datei-Import (CaptureFileImport). Erwartet: kein Parser, kein
 // stehenbleibendes „wird gelesen", sondern die Meldung, dass es zu gross ist — mit Zahlen.
@@ -51,7 +51,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { CAPTURE_FILE_TEXT, FILE_IMPORT_ACCEPT } from "../../apps/web/src/lib/captureFromFile";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -72,45 +72,74 @@ const flush = async (): Promise<void> => {
   }
 };
 
+// ==================================================================================================
+// JOB 3062 · H3 — DER MODUS KOMMT ALS PROP, WEIL DIE MODUS-LEISTE GELÖSCHT IST.
+// ==================================================================================================
+// Bis hierher wählte dieser Test den Erzähl-Modus über die Knopfreihe auf `/erfassen`. Die Leiste
+// ist mit dem Standardweg-Kasten gelöscht (Auftrag §5); im Produkt wählt der Mensch den Weg im
+// Menü „Datei ▾" der Blatt-Werkzeugzeile, und das Blatt reicht ihn als `modus` an den Arbeitsraum.
+// Der Test fährt GENAU DIESEN Weg: dieselbe Montage, neuer Prop — React behält den Zustand des
+// Arbeitsraums, und `CaptureArbeitsraum` gleicht den Modus über `switchMode` ab (dieselbe Funktion,
+// die vorher am Knopf hing).
+let h3Modus: "freitext" | "diktat" | "interview" | "datei" | "formular" | undefined;
+let h3Zeichnen: (() => Promise<void>) | null = null;
+
+async function waehleModus(
+  m: "freitext" | "diktat" | "interview" | "datei" | "formular",
+): Promise<void> {
+  h3Modus = m;
+  if (!h3Zeichnen) {
+    throw new Error("waehleModus vor mount() gerufen");
+  }
+  await h3Zeichnen();
+}
+
 async function mount(): Promise<void> {
   container = document.createElement("div");
   document.body.appendChild(container);
   root = createRoot(container);
   const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  await act(async () => {
-    root.render(
-      createElement(
-        QueryClientProvider,
-        { client: qc },
+  const zeichne = async (): Promise<void> => {
+    await act(async () => {
+      root.render(
         createElement(
-          AuthProvider,
-          null,
+          QueryClientProvider,
+          { client: qc },
           createElement(
-            RoleProvider,
+            AuthProvider,
             null,
             createElement(
-              ToastProvider,
+              RoleProvider,
               null,
               createElement(
-                NavGuardProvider,
+                ToastProvider,
                 null,
                 createElement(
-                  MemoryRouter,
-                  { initialEntries: ["/erfassen"] },
+                  NavGuardProvider,
+                  null,
                   createElement(
-                    Routes,
-                    null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    MemoryRouter,
+                    { initialEntries: ["/erfassen"] },
+                    createElement(
+                      Routes,
+                      null,
+                      createElement(Route, {
+                        path: "/erfassen",
+                        element: createElement(CaptureArbeitsraum, { modus: h3Modus }),
+                      }),
+                    ),
                   ),
                 ),
               ),
             ),
           ),
         ),
-      ),
-    );
-    await flush();
-  });
+      );
+      await flush();
+    });
+  };
+  h3Zeichnen = zeichne;
+  await zeichne();
   await act(flush);
 }
 
@@ -121,6 +150,8 @@ beforeEach(async () => {
 });
 
 afterEach(() => {
+  h3Modus = undefined;
+  h3Zeichnen = null;
   act(() => root.unmount());
   container.remove();
 });
@@ -136,27 +167,12 @@ function eingangHinter(labelText: string): HTMLInputElement {
   return input;
 }
 
-function buttonByText(part: string): HTMLButtonElement {
-  const btn = [...container.querySelectorAll("button")].find((b) =>
-    (b.textContent ?? "").replace(/\s+/g, " ").includes(part),
-  );
-  if (!(btn instanceof HTMLButtonElement)) {
-    throw new Error(`Knopf „${part}“ nicht gefunden`);
-  }
-  return btn;
-}
-
-async function click(btn: HTMLButtonElement): Promise<void> {
-  await act(async () => {
-    btn.click();
-    await flush();
-  });
-}
-
 /** Der Hauptweg: Modus „Aus Datei" oeffnen — dann steht der Import-Eingang mit FILE_IMPORT_ACCEPT da. */
 async function importEingang(): Promise<HTMLInputElement> {
-  await click(buttonByText("Weitere Wege anzeigen"));
-  await click(buttonByText(i18n.t("capture.mode.datei")));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
+  await waehleModus("datei");
   const input = container.querySelector<HTMLInputElement>(
     `input[type="file"][accept="${FILE_IMPORT_ACCEPT}"]`,
   );

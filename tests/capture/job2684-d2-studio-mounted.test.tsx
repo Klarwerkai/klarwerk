@@ -7,7 +7,7 @@
 // speichert, sieht in BEIDEN Flächen dieselbe Meldung und überschreibt nichts."
 //
 // Die Vordertür ist seit D1 belegt (`job2684-zwei-tabs-mounted.test.tsx`). Hier läuft die ECHTE
-// Seite `Capture` (Harness wie `job2683-d2-suche-flaeche`): ein Entwurf wird über „Fortsetzen"
+// Seite `CaptureArbeitsraum` (Harness wie `job2683-d2-suche-flaeche`): ein Entwurf wird über „Fortsetzen"
 // geladen, verändert, gespeichert — und der Endpunkt antwortet so, wie die Route seit D1 antwortet
 // (409 `DRAFT_STALE`, an der echten Route gepinnt in `tests/app/job2684-draft-stale-route.test.ts`).
 import { readFileSync } from "node:fs";
@@ -92,7 +92,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -139,7 +139,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),
@@ -363,7 +366,7 @@ describe("JOB 2684 D2 · DERSELBE SATZ an beiden Türen", () => {
     // Pfade relativ zur Projektwurzel — vitest läuft dort; `import.meta.url` ist in jsdom keine
     // `file:`-Adresse.
     const studio = readFileSync("apps/web/src/pages/Capture.tsx", "utf8");
-    const vordertuer = readFileSync("apps/web/src/pages/CaptureFrontDoor.tsx", "utf8");
+    const vordertuer = readFileSync("apps/web/src/components/erfassen/Blatt.tsx", "utf8");
     for (const quelle of [studio, vordertuer]) {
       expect(quelle).toContain('t("fd.draftStale")');
       expect(quelle).toContain('t("fd.draftStaleReload")');

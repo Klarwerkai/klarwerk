@@ -42,44 +42,55 @@ test.describe.configure({ mode: "serial" });
 // nachrechnet, ist genau die Sorte stiller Unwahrheit, die dieses Tor eigentlich fängt. Die
 // verbindliche Zusage ist der MENGEN-PIN in `tests/smoke/tor-ausnahme.test.ts`: er zählt die
 // tatsächliche Differenz und wird rot, sobald das Tor mehr als diesen einen Test auslässt.
+// ------------------------------------------------------------------------------------------------
+// JOB 3062 (H3) — DERSELBE KERNFLUSS, AM NEUEN BLATT.
+// ------------------------------------------------------------------------------------------------
+//
+// Seit JOB 3062 ist `/erfassen` das Blatt (`apps/web/src/components/erfassen/Blatt.tsx`): eine
+// Werkzeugzeile, ein weisses Blatt mit Titel und Text, zwei Knöpfe. Der Disclosure „Weitere Wege",
+// das `textarea` des Erzähl-Arbeitsraums und der Wizard-Schritt „Wissensseite bearbeiten" stehen
+// nicht mehr auf der Fläche — der Weg dieses Falls ist deshalb umgezogen, nicht abgeschwächt:
+// schreiben → KI ▾ → „Struktur vorschlagen" → „Übernehmen" → Vertraulichkeit → „Einreichen".
+//
+// DER TITEL BLEIBT WÖRTLICH STEHEN, auch wenn „Wissensseite" jetzt „Blatt" heisst: er ist der
+// Schlüssel des Mengen-Pins `tests/smoke/tor-ausnahme.test.ts:59`. Ihn zu schönen hiesse, die
+// Ausnahmeliste des Tors anzufassen — das ist keine Aufgabe dieses Falls.
+//
+// DIE MARKE `@modell` BLEIBT EBENFALLS, und zwar aus dem Grund, der auch schon vorher trug: dieser
+// Fall LEGT EIN WISSENSOBJEKT AN. Im hermetischen Tor sichert `ui-smoke.spec.ts` (mega49, s. u.) zu,
+// dass das Prüf-Board leer ist; ein eingereichtes Objekt füllt es. Die Marke hält ihn deshalb
+// weiterhin aus `smoke:ui:gate` heraus. Was sich geändert hat und hier ehrlich benannt sei: der
+// KI-Weg des Blattes ist NICHT mehr hart ausgegraut, wenn kein Modell aktiv ist (`canStructure`
+// hängt am Text, nicht an `aiModelUsable`) — der harte Riegel sass am Wizard-Knopf „Mit KI
+// strukturieren" in `Capture.tsx`, den dieser Fall nicht mehr betritt.
 test("Kernfluss: Erzählen → Wissensseite → Einreichen @modell", async ({ page }) => {
   await ensureLoggedIn(page);
   await page.goto("/erfassen");
 
-  // AUFTRAG-mega24 Block A, ZWEITER Befund: dieser Test war seit SCRUM-458 kaputt und hat es nie
-  // gemeldet. Die Erfassen-Seite hat inzwischen einen Disclosure-Einstieg (Capture.tsx:3255-3265):
-  // der Erzähl-Arbeitsraum ist standardmäßig EINGEKLAPPT, die Vordertür ist der Hauptweg. Das
-  // Erzählfeld liegt dadurch zwar im DOM, ist aber UNSICHTBAR — `fill` lief 60 s in den Timeout
-  // („element is not visible", in allen drei Engines gemessen).
-  //
-  // Gesehen hat das niemand, weil der erste Test dieser Datei an der Anmeldung scheiterte und
-  // `mode: "serial"` alle nachfolgenden Tests übersprang. Der Anmelde-Defekt hat den hier
-  // MASKIERT — ein zweiter Grund, warum ein Tor, das diese Suite nicht fährt, zu wenig sieht.
-  //
-  // Das ist KEIN Produktfehler: der Weg ist vollständig erreichbar, der Knopf ist sichtbar und
-  // korrekt ausgezeichnet. Stale war der Test, der die alte Seitenstruktur unterstellte.
-  const disclosure = page.getByRole("button", { name: /Weitere Wege (anzeigen|einklappen)/ });
-  await expect(disclosure).toBeVisible({ timeout: 10_000 });
-  // Über `aria-expanded` statt über den Beschriftungstext: idempotent, egal in welchem Zustand.
-  if ((await disclosure.getAttribute("aria-expanded")) !== "true") {
-    await disclosure.click();
-  }
-
-  const narrateField = page.locator("textarea").first();
-  await expect(narrateField).toBeVisible({ timeout: 10_000 });
-  await narrateField.fill(
+  // KALIBRIERUNG: erst wenn das Schreibfeld des Blattes wirklich steht, sagt alles Weitere etwas
+  // über das Produkt statt über einen Selektor. Adressiert über den ZUGÄNGLICHEN NAMEN des
+  // Fließtextfeldes (`RichTextEditor`, `editor.bodyLabel`) — ein `textarea`-Selektor träfe hier
+  // nichts mehr, das Blatt schreibt in ein `contenteditable`.
+  const blattText = page.getByRole("textbox", { name: "Wissensseite — Fließtext" }).first();
+  await expect(blattText).toBeVisible({ timeout: 15_000 });
+  await blattText.fill(
     "Beim Anfahren der Linie L4 nach dem Schichtwechsel den Dosierwert erst nach zehn Minuten " +
       "anpassen, sonst schwankt die Qualität. Vorher Druck am Ventil V2 prüfen.",
   );
-  await page.getByRole("button", { name: "Mit KI strukturieren" }).click();
-  // Wissensseite (Wizard-Schritt 2) erscheint mit Titel-Feld + Dokument.
-  await expect(page.getByText("Wissensseite bearbeiten").first()).toBeVisible({
-    timeout: 20_000,
-  });
-  await page.getByRole("button", { name: "Prüfen & einreichen →" }).click();
-  await expect(page.getByText("Wissensobjekt gespeichert.").first()).toBeVisible({
-    timeout: 15_000,
-  });
+
+  // KI ▾ → „Struktur vorschlagen". Der Vorschlag wird NIE automatisch übernommen (Auftrag JOB 3062
+  // §5.2): er erscheint als Karte mit „Übernehmen"/„Verwerfen", und erst der Klick wirkt.
+  await page.getByTestId("blatt-werkzeug-ki").click();
+  await page.getByRole("menuitem", { name: "Struktur vorschlagen" }).click();
+  await expect(page.getByTestId("blatt-ki-vorschlag")).toBeVisible({ timeout: 20_000 });
+  await page.getByRole("button", { name: "Übernehmen", exact: true }).click();
+
+  // Vertraulichkeit ist Pflicht vor dem Einreichen (§5.4 / §8.5 — Egress).
+  await page.getByTestId("blatt-werkzeug-vertraulichkeit").click();
+  await page.getByRole("menuitem", { name: "Öffentlich-intern" }).click();
+
+  await page.getByRole("button", { name: "Einreichen", exact: true }).click();
+  await expect(page.getByText("Eingereicht:").first()).toBeVisible({ timeout: 20_000 });
 });
 
 // ================================================================================================

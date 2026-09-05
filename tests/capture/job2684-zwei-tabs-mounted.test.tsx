@@ -152,9 +152,20 @@ function pageText(): string {
   return (container.textContent ?? "").replace(/\s+/g, " ");
 }
 
+// JOB 3062 · H3: Der Standkonflikt hat KEINEN eigenen Kasten mehr. Das Blatt führt alle Lagen in
+// EINER Zeile (`data-testid="blatt-lage"`, Zustandsmodell §9) — Fehler, Konflikt, Erfolg stehen
+// nacheinander an derselben Stelle, statt als fünf Kästen nebeneinander. Die Aussage dieses Tests
+// ändert sich dadurch nicht: Es wird weiter geprüft, dass der Konflikt SICHTBAR wird, seinen Text
+// und den Weg „Neu laden" trägt — nur eben an dem einen Ort, an dem das Blatt Lagen zeigt.
+// Deshalb reicht `[data-testid]` allein hier nicht: die Zeile ist auch bei jedem anderen Fehler da.
+// Als Konflikt zählt sie nur, wenn sie den Konflikttext trägt — sonst wäre die KALIBRIERUNG am Ende
+// dieser Datei („ein anderer Fehler ist KEIN Konflikt") wertlos geworden.
 function konfliktKasten(): HTMLElement | null {
-  const el = container.querySelector('[data-testid="fd-draft-stale"]');
-  return el instanceof HTMLElement ? el : null;
+  const el = container.querySelector('[data-testid="blatt-lage"]');
+  if (!(el instanceof HTMLElement)) {
+    return null;
+  }
+  return (el.textContent ?? "").includes(i18n.t("fd.draftStale")) ? el : null;
 }
 
 function editorHtml(): string {
@@ -188,7 +199,7 @@ describe("JOB 2684 D1 · zwei Tabs auf demselben Entwurf — der zweite übersch
     expect(gegenstelle.getCount).toBe(1);
     expect(konfliktKasten()).toBeNull(); // vor dem Speichern nichts
 
-    await click(buttonByText(i18n.t("fd.saveDraft")));
+    await click(buttonByText(i18n.t("erfassen.entwurfSichern")));
 
     // Der gesehene Stand ist mitgereist — das ist die Grundlage des Vergleichs.
     expect(updateMock).toHaveBeenCalledTimes(1);
@@ -212,7 +223,7 @@ describe("JOB 2684 D1 · zwei Tabs auf demselben Entwurf — der zweite übersch
       throw new ApiError(409, "DRAFT_STALE", "veraltet");
     };
     await mount("/capture/frontdoor?draft=d-1");
-    await click(buttonByText(i18n.t("fd.saveDraft")));
+    await click(buttonByText(i18n.t("erfassen.entwurfSichern")));
     expect(konfliktKasten()).not.toBeNull();
 
     // Die Gegenstelle liefert beim Neuladen den jüngeren Stand von Tab A.
@@ -226,7 +237,7 @@ describe("JOB 2684 D1 · zwei Tabs auf demselben Entwurf — der zweite übersch
     expect(gegenstelle.getCount).toBe(2); // wirklich neu geladen
     expect(konfliktKasten()).toBeNull();
 
-    await click(buttonByText(i18n.t("fd.saveDraft")));
+    await click(buttonByText(i18n.t("erfassen.entwurfSichern")));
     expect(updateMock.mock.calls[1]?.[2]).toEqual({
       expectedUpdatedAt: "2026-08-28T20:05:00.000Z",
     });
@@ -240,16 +251,22 @@ describe("JOB 2684 D1 · zwei Tabs auf demselben Entwurf — der zweite übersch
       updatedAt: "2026-08-28T20:06:00.000Z",
     });
     await mount("/capture/frontdoor?draft=d-1");
-    await click(buttonByText(i18n.t("fd.saveDraft")));
+    await click(buttonByText(i18n.t("erfassen.entwurfSichern")));
     expect(updateMock.mock.calls[0]?.[2]).toEqual({
       expectedUpdatedAt: "2026-08-28T20:00:00.000Z",
     });
     expect(konfliktKasten()).toBeNull();
-    // Der bisherige Erfolgsweg: nach dem Speichern verlässt die Vordertür die Seite (navigate
-    // nach /erfassen, CaptureFrontDoor.tsx `save.onSuccess`) — der Editor ist damit weg. In diesem
-    // Gerüst gibt es keine Route /erfassen; die leere Fläche IST der Beleg, dass der Erfolgsweg lief.
-    expect(container.querySelector("[contenteditable]")).toBeNull();
+    // JOB 3062 · H3 — DER ERFOLGSBELEG IST EIN ANDERER, WEIL DER ERFOLGSWEG EIN ANDERER IST.
+    // Bis hierher verließ die Vordertür nach dem Speichern die Seite (navigate nach /erfassen);
+    // die leere Fläche war der Beleg. Das Blatt bleibt stehen — genau das ist gewollt: der Mensch
+    // sichert einen Zwischenstand und schreibt weiter, statt aus seinem Text geworfen zu werden.
+    // Der Beleg ist deshalb jetzt der POSITIVE: der Entwurf ist wirklich mit dem erwarteten Stand
+    // beim Server angekommen (oben geprüft), das Blatt trägt den Text weiter, und es steht KEINE
+    // Fehler- oder Konfliktzeile da. Ein „Editor ist weg" wäre hier nicht nur falsch, sondern das
+    // Gegenteil der Zusage.
+    expect(container.querySelector("[contenteditable]")).not.toBeNull();
     expect(pageText()).not.toContain(i18n.t("fd.draftStale"));
+    expect(pageText()).not.toContain(i18n.t("fd.errSaveFailed"));
   });
 
   it("KALIBRIERUNG: ein anderer Fehler zeigt weiter „Speichern fehlgeschlagen“ — der Konfliktkasten ist nur für den Konflikt", async () => {
@@ -257,7 +274,7 @@ describe("JOB 2684 D1 · zwei Tabs auf demselben Entwurf — der zweite übersch
       throw new ApiError(500, "INTERNAL", "Interner Betriebsfehler.");
     };
     await mount("/capture/frontdoor?draft=d-1");
-    await click(buttonByText(i18n.t("fd.saveDraft")));
+    await click(buttonByText(i18n.t("erfassen.entwurfSichern")));
     expect(konfliktKasten()).toBeNull();
     expect(pageText()).toContain("Interner Betriebsfehler.");
   });

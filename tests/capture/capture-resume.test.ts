@@ -77,9 +77,32 @@ describe("SCRUM-457: resumeTargetForDraft — gespeicherter Marker gilt exakt", 
     // eingeklappten Entwürfe steht weiterhin am Aufklapp-Knopf („Entwürfe anzeigen ({{count}})") —
     // DAS ist die Auskunft, die sie braucht; die Begründung unseres Layouts war es nicht.
     expect(listSource).toContain("capture.resumeCollapse");
-    expect(captureSource).toContain("openFileImport");
-    expect(captureSource).toContain('switchMode("datei")');
-    expect(captureSource).toContain("capture.fileImportJump");
+    // ==========================================================================================
+    // JOB 3062 · H3 — DER SPRUNG IN DEN DATEIIMPORT LIEGT JETZT IM MENÜ „DATEI ▾".
+    // ==========================================================================================
+    // `openFileImport` und der Knopf `capture.fileImportJump` gehörten in die Fußzeile des
+    // Standardweg-Kastens; der Kasten ist gelöscht (Auftrag §5). Der Weg selbst ist NICHT weg — er
+    // steht in der Werkzeugzeile des Blattes, und zwar ABGELEITET aus `BLATT_WEGE`, damit die
+    // Liste nicht ein zweites Mal geschrieben wird.
+    //
+    // WO DIE ABLEITUNG LIEGT: in `components/erfassen/wege.ts`, nicht in `lib/captureEntry.ts`.
+    // Sie beschreibt EIN Menü EINER Komponente und gehört zu ihr; `lib/captureEntry.ts` liefert
+    // nur die Grundmengen `NARRATE_MODES`/`EXPERT_MODE`, aus denen sie sich ableitet, und bleibt
+    // von diesem Auftrag unangetastet (es liegt ausserhalb seiner Zielpfade).
+    const blattSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
+      "utf8",
+    );
+    expect(blattSource).toContain("BLATT_WEGE");
+    expect(blattSource).toContain("blattWegLabelKey");
+    const wegeSource = readFileSync(
+      resolve(process.cwd(), "apps/web/src/components/erfassen/wege.ts"),
+      "utf8",
+    );
+    expect(wegeSource).toContain("export const BLATT_WEGE");
+    // Und die Ableitung ist wirklich eine: sie liest die Grundmengen, statt die Wege abzuschreiben.
+    expect(wegeSource).toContain("NARRATE_MODES");
+    expect(wegeSource).toContain("EXPERT_MODE");
   });
 
   it("Copy fuer Entwurf-Einklappen und Dateiimport-Sprung ist DE und EN vorhanden", () => {

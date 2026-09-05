@@ -20,7 +20,7 @@
 //   R3  der Begleittext, wie er dasteht     — aus `container.textContent`, nicht aus i18n
 //   R4  die Kalibrierung: der Text fordert NICHT zu der Handlung auf, die die Rolle nicht darf
 //
-// Die Betonung ist am Element ablesbar, weil `Capture.tsx:3748-3750` sie als Klasse setzt:
+// Die Betonung ist am Element ablesbar, weil `CaptureArbeitsraum.tsx:3748-3750` sie als Klasse setzt:
 // `s.primary ? "bg-ink text-white" : "border border-hairline bg-page text-text"`. Der Test liest
 // die Klasse am gerenderten Knoten — nicht die Bedingung, aus der sie stammt.
 //
@@ -84,7 +84,7 @@ import { RoleProvider, useRole } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import type { Role } from "../../apps/web/src/app/navigation";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -187,7 +187,10 @@ async function mount(rolle: Role | null): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),
@@ -261,10 +264,10 @@ async function bisZurErfolgskarte(): Promise<void> {
 
 /**
  * DAS HERZSTUECK: liest die BETONUNG am gerenderten Element, nicht die Bedingung im Quelltext.
- * `Capture.tsx:3748-3750` setzt `bg-ink` genau dann, wenn `s.primary` gilt.
+ * `CaptureArbeitsraum.tsx:3748-3750` setzt `bg-ink` genau dann, wenn `s.primary` gilt.
  */
 function erfolgskarte(): Element {
-  // Die Karte traegt ihre eigene Flaechenfarbe (`Capture.tsx:3509`). Ohne diese Einschraenkung
+  // Die Karte traegt ihre eigene Flaechenfarbe (`CaptureArbeitsraum.tsx:3509`). Ohne diese Einschraenkung
   // griff der erste Anlauf den Knopf „Dokument-Editor oeffnen" AUSSERHALB der Karte — gemessen,
   // und der Grund, warum dieser Helfer existiert.
   const karte = [...container.querySelectorAll("div")].find(

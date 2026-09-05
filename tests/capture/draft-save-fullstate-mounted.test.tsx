@@ -38,7 +38,7 @@ const db = vi.hoisted(() => {
   };
 });
 
-// JOB 504 D2: Sonde auf den Provider-Provenancewert, den Capture.tsx TATSAECHLICH setzt. Kein
+// JOB 504 D2: Sonde auf den Provider-Provenancewert, den CaptureArbeitsraum.tsx TATSAECHLICH setzt. Kein
 // Quelltext-String-Test: der Wert entsteht aus dem echten Resume-Klickpfad (Liste → „Fortsetzen"
 // → loadDraft → State → Prop). Die uebrigen Kontext-Exporte bleiben bedient, damit kein Aufrufer
 // im Baum ins Leere laeuft.
@@ -103,7 +103,7 @@ import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardCo
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -164,7 +164,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                   createElement(NavProbe),
                 ),
@@ -240,7 +243,9 @@ function selectByValue(value: string): HTMLSelectElement {
 }
 
 async function openWorkspaceAndAdvanced(): Promise<void> {
-  await click(buttonByText("Weitere Wege anzeigen"));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
   await click(buttonByText(i18n.t("capture.advanced.title")));
 }
 
@@ -368,7 +373,7 @@ describe("Block A: Entwurf speichern sichert den vollständigen Dirty-State und 
 // JOB 504 D2 — DER ZWEITE RESUME-WEG: /erfassen.
 // ================================================================================================
 //
-// Dieselbe fail-open-Luecke wie an der Vordertuer (BEN-D1, Mangel 1), hier an `Capture.tsx`: ein
+// Dieselbe fail-open-Luecke wie an der Vordertuer (BEN-D1, Mangel 1), hier an `CaptureArbeitsraum.tsx`: ein
 // fortgesetzter Entwurf OHNE `payload.confidentiality` wurde vor der Normalisierung zu "intern" —
 // und damit zu einer ausdruecklichen Cloud-Freigabe fuer den Bildbeschreibungs-Egress. Beobachtet
 // wird der Provenancewert, den die Seite dem ImageDescribeProvider WIRKLICH uebergibt.

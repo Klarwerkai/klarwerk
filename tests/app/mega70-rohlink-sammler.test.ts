@@ -314,7 +314,20 @@ describe("mega70 D · kein bewachtes Ziel wird auf Library/Capture über einen r
     const vorkommen = erhebe(datei);
 
     it(`${datei}: die Erhebung läuft nicht leer und jedes to= sitzt an einem bekannten Tag`, () => {
-      expect(vorkommen.length).toBeGreaterThan(3);
+      // Die Zusage ist „die Erhebung läuft nicht leer" — eine Untergrenze, damit ein kaputter
+      // Sammler nicht stillschweigend nichts findet und dadurch grün wirkt.
+      //
+      // JOB 3062 · H3: Auf `Capture.tsx` sind die verlinkenden Flächen gelöscht (Standardweg-Kasten
+      // mit „Dokument-Editor öffnen →", Kopf-Ausgang, „Weitere Wege"); die Wege liegen jetzt im
+      // Menü „Datei ▾" des Blattes und sind Knöpfe, keine Links. Übrig sind dort GEMESSEN drei
+      // rohe `to=`. Die Untergrenze wird deshalb je Fläche geführt statt global gesenkt — sonst
+      // verlöre sie auch für Library und Ask ihre Schärfe.
+      const MINDESTENS: Record<(typeof FLAECHEN)[number], number> = {
+        Library: 4,
+        Capture: 3,
+        Ask: 4,
+      };
+      expect(vorkommen.length).toBeGreaterThanOrEqual(MINDESTENS[datei]);
       const fremd = vorkommen
         .filter(
           (v) => !["Link", "NavLink", "GuardedLink", "GuardedNavLink", "RoleLink"].includes(v.tag),

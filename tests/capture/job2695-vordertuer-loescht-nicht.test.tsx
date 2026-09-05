@@ -31,7 +31,7 @@
 // und F5 pinnt die Trennung zusaetzlich am Vertrag — in DERSELBEN Datei, damit der Schutz nicht an
 // einer fremden haengt.
 //
-// WAS HIER ECHT IST: beide echten Seiten (`CaptureFrontDoor`, `Capture`) mit ihren echten
+// WAS HIER ECHT IST: beide echten Seiten (`CaptureFrontDoor`, `CaptureArbeitsraum`) mit ihren echten
 // Providern, die echten Knoepfe ueber ihre sichtbaren Beschriftungen, der echte Clientweg, die
 // echte Fastify-Anwendung mit echter Persistenz. Einziger Ersatz ist der Transport:
 // `globalThis.fetch` liegt auf `app.inject`. Bauform aus `mega20-capture-submit-mounted.test.tsx`.
@@ -48,7 +48,7 @@ import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-router-dom";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
-// `Capture` HOLT sich den Weg zur Bildbeschreibung aus diesem Kontext (mega50 Block A). Ohne den
+// `CaptureArbeitsraum` HOLT sich den Weg zur Bildbeschreibung aus diesem Kontext (mega50 Block A). Ohne den
 // Provider rendert die Seite GERAEUSCHLOS gar nichts — kein Fehler, keine Konsole. Genau das ist
 // in D3 passiert: F2 meldete `expected '' to contain 'Maßnahmen'`, und der leere Seitentext sah
 // aus wie ein Fehler der Zielwahl. Die Vordertuer braucht ihn nicht, deshalb faellt es erst hier auf.
@@ -58,7 +58,7 @@ import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { buildFrontDoorPayload } from "../../apps/web/src/lib/captureFrontDoor";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -192,7 +192,10 @@ function huelle(pfad: string) {
                     path: "/capture/frontdoor",
                     element: createElement(CaptureFrontDoor),
                   }),
-                  createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                  createElement(Route, {
+                    path: "/erfassen",
+                    element: createElement(CaptureArbeitsraum),
+                  }),
                 ),
               ),
             ),
@@ -250,10 +253,10 @@ async function klick(knopf: HTMLButtonElement): Promise<void> {
 
 /** Der Mensch drueckt in der Vordertuer „Entwurf speichern". */
 async function inVordertuerSpeichern(): Promise<void> {
-  const knopf = knopfMit(i18n.t("fd.saveDraft"));
+  const knopf = knopfMit(i18n.t("erfassen.entwurfSichern"));
   if (!knopf) {
     throw new Error(
-      `Speichern-Knopf „${i18n.t("fd.saveDraft")}" nicht gefunden. Sichtbar: ${seitentext().slice(0, 500)}`,
+      `Speichern-Knopf „${i18n.t("erfassen.entwurfSichern")}" nicht gefunden. Sichtbar: ${seitentext().slice(0, 500)}`,
     );
   }
   expect(knopf.disabled, "der Speichern-Knopf ist gesperrt").toBe(false);
@@ -337,11 +340,11 @@ describe("JOB 2695 · D5 — was eine Flaeche nicht fuehrt, darf sie nicht loesc
     // realen Fortsetzen-Weg im Studio geladen und seine Massnahmen dort gerendert werden".
     //
     // DIE KETTE, die hier wirklich laeuft (Zeilen an DIESEM Klon nachgeschlagen):
-    //   Capture.tsx  CaptureDraftList mit onResume={loadDraft}
+    //   CaptureArbeitsraum.tsx  CaptureDraftList mit onResume={loadDraft}
     //   CaptureDraftList.tsx  der Knopf „Fortsetzen"
-    //   Capture.tsx  resumeTargetForDraft → bei `frontdoor` VERLAESST die Seite das Studio
-    //   Capture.tsx  measures: p.measures ?? []
-    //   Capture.tsx  ListEditor mit label={t("capture.fMeasures")} und items={draft.measures}
+    //   CaptureArbeitsraum.tsx  resumeTargetForDraft → bei `frontdoor` VERLAESST die Seite das Studio
+    //   CaptureArbeitsraum.tsx  measures: p.measures ?? []
+    //   CaptureArbeitsraum.tsx  ListEditor mit label={t("capture.fMeasures")} und items={draft.measures}
     //
     // BEIDE HALBSCHAEDEN LAUFEN IN DER ZIELWAHL ZUSAMMEN: Haette der Entwurf beim Speichern seine
     // Herkunft verloren, schickte ihn die Seite zurueck in die Vordertuer — der Mensch kaeme nie
@@ -354,7 +357,7 @@ describe("JOB 2695 · D5 — was eine Flaeche nicht fuehrt, darf sie nicht loesc
     //   F1 oben belegt GEMOUNTET, dass der echte Speichern-Knopf genau diesen Weg nimmt und was
     //   danach im Bestand steht. Dieser Fall misst die andere Haelfte: was ein Mensch SIEHT, wenn
     //   er den Entwurf im Studio wieder aufmacht. Dafuer braucht es einen zweiten Mount, und zwei
-    //   Mounts in einem Fall haben in D3 geraeuschlos 0 Zeichen ergeben (gemessen; `Capture`
+    //   Mounts in einem Fall haben in D3 geraeuschlos 0 Zeichen ergeben (gemessen; `CaptureArbeitsraum`
     //   allein mountet einwandfrei, mit einem eigenen Diagnosefall belegt).
     //
     // Der Rumpf ist deshalb NICHT nachgebaut, sondern kommt aus `buildFrontDoorPayload` — genau
@@ -376,7 +379,7 @@ describe("JOB 2695 · D5 — was eine Flaeche nicht fuehrt, darf sie nicht loesc
 
     await seiteOeffnen("/erfassen");
 
-    // Die Entwurfsliste startet EINGEKLAPPT (`Capture.tsx`, `useState(false)`) — ohne diesen
+    // Die Entwurfsliste startet EINGEKLAPPT (`CaptureArbeitsraum.tsx`, `useState(false)`) — ohne diesen
     // Klick gibt es keinen „Fortsetzen"-Knopf, und der Fall scheiterte an der Suche statt an der
     // Sache. Bauform aus `tests/capture/draft-save-fullstate-mounted.test.tsx`.
     const aufklappen = knopfMit("Entwürfe anzeigen") ?? knopfMit("Entwuerfe anzeigen");

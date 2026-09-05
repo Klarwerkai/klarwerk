@@ -38,9 +38,20 @@
 //      Behoben in `playwright.smoke.config.ts` (`serviceWorkers: "block"`) — NICHT hier durch eine
 //      Wartezeit oder einen anderen Selektor. Die Testkörper unten sind unverändert.
 //
-// Als schmutzige Seite dient die Vordertür (`/capture/frontdoor`): eine echte bewachte Seite mit
-// einem verlässlich sichtbaren Feld. Die Erfassen-Seite (`/erfassen`) hält ihr Erzählfeld hinter
-// „Weitere Wege" verborgen — sie ist deshalb hier die ZWISCHENstation, nicht der Prüfling.
+// ALS SCHMUTZIGE SEITE DIENT `/erfassen` — UND WARUM DAS SEIT JOB 3062 SO HERUM IST.
+//
+// Bis JOB 3062 stand hier die Vordertür (`/capture/frontdoor`) als Prüfling und `/erfassen` als
+// Zwischenstation, mit der Begründung: „Die Erfassen-Seite hält ihr Erzählfeld hinter ,Weitere Wege'
+// verborgen." Dieser Satz gilt NICHT mehr. Seit JOB 3062 rendern beide Adressen DASSELBE Blatt
+// (`apps/web/src/components/erfassen/Blatt.tsx`), das Schreibfeld steht auf `/erfassen` offen da,
+// und den Kasten „Weitere Wege" mit dem Link „Dokument-Editor öffnen" gibt es nicht mehr — die alte
+// Vorgeschichte (`/start` → `/erfassen` → Klick auf jenen Link) war damit nicht mehr begehbar.
+//
+// Die Sonde misst deshalb dieselben sechs Kanten an `/erfassen`, mit `/bibliothek` als
+// Zwischenstation. Beide Stationen werden über die Seitenleiste angeklickt, also über echte
+// Router-Navigationen — die Vorgeschichte entsteht weiter IN DER APP und nicht per `goto`.
+// Der Wächter selbst ist unverändert: er hängt am Blatt (`useNavGuard`/`useUnloadGuard`), nicht an
+// der Adresse.
 //
 // Aufruf: npm run smoke:ui (erwartet gebautes apps/web/dist).
 import { type Page, expect, test } from "@playwright/test";
@@ -59,22 +70,24 @@ const DIRTY_TEXT = "Dieser Text darf durch Browser-Zurueck NICHT verloren gehen"
 /**
  * Die Vorgeschichte muss IN DER APP entstehen (Klicks), nicht über page.goto — ein `goto` lädt das
  * Dokument neu und wäre gar kein POP innerhalb der SPA. Ergebnis: drei echte, vom Router gestempelte
- * Einträge: /start → /erfassen → /capture/frontdoor.
+ * Einträge: /start → /bibliothek → /erfassen.
  */
-async function trailToFrontDoor(page: Page): Promise<void> {
+async function trailToBlatt(page: Page): Promise<void> {
   await page.goto("/start");
-  // JOB 3060 · H1: der Punkt heißt im Kopfband „Erfassen" (shell/KopfbandPunkte.tsx).
-  await page.locator('header a[data-kopfband-punkt="erfassen"]').first().click();
-  await expect(page).toHaveURL(/\/erfassen$/);
   await page
-    .getByRole("link", { name: /Dokument-Editor öffnen/ })
+    .getByRole("link", { name: /Bibliothek/ })
     .first()
     .click();
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/bibliothek$/);
+  // JOB 3060 · H1: der Punkt heißt im Kopfband „Erfassen" (shell/KopfbandPunkte.tsx). Das
+  // Kopfband ist globale Hülle und bleibt auch auf /bibliothek sichtbar — die Bibliothek selbst
+  // trägt seit JOB 3063 · H4 keinen eigenen „Wissen erfassen"-Link mehr (BibliothekFlaeche.tsx).
+  await page.locator('header a[data-kopfband-punkt="erfassen"]').first().click();
+  await expect(page).toHaveURL(/\/erfassen$/);
 }
 
 /**
- * Das Fließtext-Feld der Vordertür, über seinen ZUGÄNGLICHEN NAMEN adressiert
+ * Das Fließtext-Feld des Blattes, über seinen ZUGÄNGLICHEN NAMEN adressiert
  * (`role="textbox"` + aria-label, RichTextEditor.tsx:1375-1381).
  *
  * Ein Selektor wie `form input` wäre hier falsch und hat in der ersten Fassung dieser Sonde still
@@ -118,7 +131,7 @@ test("Kante 10 + 4: Zurück hält die Seite, die Adresszeile stimmt, der Inhalt 
   page,
 }) => {
   await ensureLoggedIn(page);
-  await trailToFrontDoor(page);
+  await trailToBlatt(page);
   await makeDirty(page);
 
   await browserBack(page);
@@ -126,46 +139,46 @@ test("Kante 10 + 4: Zurück hält die Seite, die Adresszeile stimmt, der Inhalt 
   // Der Dialog ist da …
   await expect(dialogTitle(page)).toBeVisible({ timeout: 5000 });
   // … die Adresszeile zeigt NICHT das blockierte Ziel …
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
   // … und der getippte Titel ist unangetastet: die Seite wurde nie ausgehängt.
   await expect(bodyField(page)).toContainText(DIRTY_TEXT);
 
   // „Hier bleiben": Ort und Inhalt bleiben, der Dialog geht.
   await page.getByRole("button", { name: "Hier bleiben" }).click();
   await expect(dialogTitle(page)).toBeHidden();
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
   await expect(bodyField(page)).toContainText(DIRTY_TEXT);
 });
 
 test('Kante 4: Vorwärts nach „Hier bleiben" funktioniert unverändert', async ({ page }) => {
   await ensureLoggedIn(page);
-  await trailToFrontDoor(page);
+  await trailToBlatt(page);
   await makeDirty(page);
 
   await browserBack(page);
   await page.getByRole("button", { name: "Hier bleiben" }).click();
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
 
   // Zurück fragt weiterhin — diesmal wird bewusst verworfen.
   await browserBack(page);
   await expect(dialogTitle(page)).toBeVisible({ timeout: 5000 });
   await page.getByRole("button", { name: "Verwerfen und wechseln" }).click();
-  await expect(page).toHaveURL(/\/erfassen$/);
+  await expect(page).toHaveURL(/\/bibliothek$/);
 
-  // Der Verlauf ist NICHT abgeschnitten: vorwärts geht es zurück auf die Vordertür.
+  // Der Verlauf ist NICHT abgeschnitten: vorwärts geht es zurück auf das Blatt.
   await browserForward(page);
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
 });
 
 test("Kante 2: Mehrfach-Zurück wird mit dem exakten Delta behandelt", async ({ page }) => {
   await ensureLoggedIn(page);
-  await trailToFrontDoor(page);
+  await trailToBlatt(page);
   await makeDirty(page);
 
-  // Zwei Einträge auf einmal: ein pauschales go(1) würde hier auf /erfassen landen.
+  // Zwei Einträge auf einmal: ein pauschales go(1) würde hier auf /bibliothek landen.
   await browserBack(page, 2);
   await expect(dialogTitle(page)).toBeVisible({ timeout: 5000 });
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
   await expect(bodyField(page)).toContainText(DIRTY_TEXT);
 
   // Und „Verwerfen" landet auf dem ursprünglichen Ziel ZWEI Schritte zurück, nicht einem.
@@ -177,7 +190,7 @@ test("Kante 3: schnelles Doppel-Zurück stapelt keine Dialoge und springt nicht 
   page,
 }) => {
   await ensureLoggedIn(page);
-  await trailToFrontDoor(page);
+  await trailToBlatt(page);
   await makeDirty(page);
 
   // Zwei Traversierungen ohne Atempause dazwischen — das Rennen, um das es in Kante 3 geht.
@@ -190,12 +203,12 @@ test("Kante 3: schnelles Doppel-Zurück stapelt keine Dialoge und springt nicht 
   await expect(dialogTitle(page)).toBeVisible({ timeout: 5000 });
   // Genau EIN Dialog.
   expect(await page.getByText("Ungespeicherte Eingabe").count()).toBe(1);
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
   await expect(bodyField(page)).toContainText(DIRTY_TEXT);
 
   await page.getByRole("button", { name: "Hier bleiben" }).click();
   await expect(dialogTitle(page)).toBeHidden();
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
 });
 
 test("Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unverändert", async ({
@@ -205,7 +218,7 @@ test("Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unveränder
   // Das Speichern des Entwurfs wird hart abgewürgt — der echte Fehlerfall, nicht ein nachgestellter.
   await page.route("**/api/drafts**", (route) => route.abort("failed"));
 
-  await trailToFrontDoor(page);
+  await trailToBlatt(page);
   await makeDirty(page);
   await browserBack(page);
   await expect(dialogTitle(page)).toBeVisible({ timeout: 5000 });
@@ -213,26 +226,26 @@ test("Kante 6: Speicherfehler bleibt am Ausgangsort, URL und Verlauf unveränder
   await page.waitForTimeout(2000);
 
   // Nicht gewechselt, Dialog offen, Inhalt da.
-  await expect(page).toHaveURL(/\/capture\/frontdoor$/);
+  await expect(page).toHaveURL(/\/erfassen$/);
   await expect(dialogTitle(page)).toBeVisible();
   await expect(bodyField(page)).toContainText(DIRTY_TEXT);
 
   // Und der Wächter ist weiter aktiv: „Verwerfen" wechselt danach noch korrekt.
   await page.getByRole("button", { name: "Verwerfen und wechseln" }).click();
-  await expect(page).toHaveURL(/\/erfassen$/);
+  await expect(page).toHaveURL(/\/bibliothek$/);
 });
 
 test("Kante 7: zwei aufeinanderfolgende bewachte Seiten übergeben die Zuständigkeit sauber", async ({
   page,
 }) => {
   await ensureLoggedIn(page);
-  await trailToFrontDoor(page);
+  await trailToBlatt(page);
   await makeDirty(page);
 
-  // Erste bewachte Seite (Vordertür) bewusst verlassen.
+  // Erste bewachte Seite (das Blatt) bewusst verlassen.
   await browserBack(page);
   await page.getByRole("button", { name: "Verwerfen und wechseln" }).click();
-  await expect(page).toHaveURL(/\/erfassen$/);
+  await expect(page).toHaveURL(/\/bibliothek$/);
 
   // Zweite, ANDERE bewachte Seite: die Mobil-Erfassung (eigener Wächter, eigenes Formular).
   // Der Mobil-Umschalter ist ein <button> mit navigate() — seit JOB 3060 · H1 die Zeile „Mobil"

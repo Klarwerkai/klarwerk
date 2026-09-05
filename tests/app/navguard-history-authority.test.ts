@@ -87,9 +87,14 @@ describe("Kante 8: Dokumentwechsel außerhalb der SPA bleiben durch beforeunload
   );
 
   it("die Dirty-Flow-Seiten sind bekannt", () => {
+    // JOB 3062 · H3: `pages/CaptureFrontDoor.tsx` meldet sich nicht mehr selbst an — die Seite ist
+    // nur noch die Adresse und rendert das gemeinsame Blatt. Der Wächter ist MIT dem Editor
+    // umgezogen und sitzt jetzt in `components/erfassen/Blatt.tsx`; dieselbe Fläche, derselbe
+    // Schutz, ein Anmelder weniger. Die Zusage darunter (jede Dirty-Seite braucht
+    // `useUnloadGuard`) gilt für den neuen Eintrag unverändert.
     expect(dirtyFlowPages.map(rel).sort()).toEqual([
+      "components/erfassen/Blatt.tsx",
       "pages/Capture.tsx",
-      "pages/CaptureFrontDoor.tsx",
       "pages/Mobile.tsx",
     ]);
   });

@@ -115,10 +115,21 @@ describe("WP-UX-WOW-1 U7: echte Umlaute in Nutzertexten", () => {
   it("keine ASCII-Umlaut-Formen mehr in den betroffenen Anzeige-Strings", () => {
     const capture = read("apps/web/src/pages/Capture.tsx");
     // AUFTRAG-mega38 BLOCK I: „Canvas" ist uebersetzt — die Umlaut-Zusage gilt unveraendert.
-    expect(capture).toContain("Dokument-Editor für Titel");
-    expect(capture).toContain("Dokument-Editor öffnen");
+    //
+    // JOB 3062 · H3: Die beiden bisher hier gepinnten Anzeige-Strings „Dokument-Editor für Titel"
+    // und „Dokument-Editor öffnen" standen im Standardweg-Kasten und in seinem Ausgang. Beide
+    // Flächen sind mit H3 gelöscht (der Standardweg IST das Blatt), die Strings existieren im
+    // ganzen Baum nicht mehr — ein Pin darauf wäre ab jetzt eine Behauptung über nichts.
+    // Die ZUSAGE dieses Falls ist „echte Umlaute, keine ASCII-Ersatzformen"; sie wird deshalb an
+    // den Anzeige-Strings gemessen, die die Erfassung HEUTE zeigt: die Wörter des Blattes stehen
+    // in `i18n.ts` (das Blatt selbst ruft nur Schlüssel auf).
     expect(capture).not.toContain("Entwuerfe");
     expect(capture).not.toContain("naechsten Oeffnen");
+    const woerter = read("apps/web/src/i18n.ts");
+    expect(woerter).toContain('"erfassen.mehr.entwuerfe": "Entwürfe"');
+    expect(woerter).toContain('"erfassen.mehr.anhaenge": "Anhänge"');
+    expect(woerter).not.toContain('"Entwuerfe"');
+    expect(woerter).not.toContain('"Anhaenge"');
     const editor = read("apps/web/src/components/RichTextEditor.tsx");
     expect(editor).toContain("Bildgröße");
     expect(editor).not.toContain("Bildgroesse");

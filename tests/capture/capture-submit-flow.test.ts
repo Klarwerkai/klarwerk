@@ -52,32 +52,26 @@ describe("KW-PROD-27: Capture Submit Flow", () => {
 });
 
 describe("KW-PROD-29: Frontdoor Save/Submit State", () => {
-  it("zeigt den aus der Vordertuer gespeicherten Draft auf /erfassen als klare Statuskarte", () => {
-    const source = readFileSync(resolve(process.cwd(), "apps/web/src/pages/Capture.tsx"), "utf8");
-
-    expect(source).toContain("frontDoorDraftSavedFromState");
-    expect(source).toContain("frontDoorDraftSaved");
-    expect(source).toContain("Entwurf gespeichert");
-    expect(source).toContain("Entwurf fortsetzen");
-    expect(source).toContain("Neuer leerer Eintrag");
-    expect(source).toContain("useLocation");
-    expect(source).toContain('navigate("/erfassen", { replace: true, state: null })');
-    // Formatiererfester Pin (der Satz bricht je nach Zeilenlänge um).
-    expect(source).toContain("gespeicherte Entwurf ist in der Liste hervorgehoben");
-    // AUFTRAG-sortfilter: die Entwurfsliste (inkl. Hervorhebung) ist nach CaptureDraftList
-    // herausgelöst; Capture reicht die gerade gespeicherte Id als highlightId durch, die Komponente
-    // hebt genau diesen Entwurf hervor (Verhalten unverändert, nur gekapselt).
-    expect(source).toContain("highlightId={frontDoorDraftSaved?.id ?? null}");
-    const listSource = readFileSync(
-      resolve(process.cwd(), "apps/web/src/components/CaptureDraftList.tsx"),
-      "utf8",
-    );
-    expect(listSource).toContain("highlightId === d.id");
-  });
+  // ================================================================================================
+  // JOB 3062 · H3 — DIESER FALL IST ERSATZLOS GESTRICHEN, UND ZWAR BEGRÜNDET.
+  // ================================================================================================
+  // Er prüfte die Karte „Entwurf gespeichert / fortsetzen bereit" auf `/erfassen`. Sie las den
+  // `location.state`, den die Vordertür nach dem Speichern setzte, wenn sie nach `/erfassen`
+  // sprang. Beide Enden dieser Kette sind weg:
+  //
+  //   · Das Blatt springt nach dem Speichern NICHT mehr — `/erfassen` und `/erfassen/vordertuer`
+  //     zeigen dieselbe Fläche, ein Sprung wäre eine Bewegung ohne Ziel.
+  //   · Ein fortgesetzter Entwurf IST der Blattinhalt; die Entwurfsliste liegt im „…"-Menü
+  //     (Auftrag §5a). Es gibt keinen Zustand mehr, in dem „irgendwo liegt ein Entwurf, den du
+  //     noch öffnen musst" die Wahrheit wäre.
+  //
+  // Der Leser samt Karte ist in `pages/Capture.tsx` gelöscht (dort begründet); ein Test auf einen
+  // gelöschten Pfad wäre ein Test auf nichts. Die WEITERGABE des gespeicherten Entwurfs prüft
+  // stattdessen `tests/design/h3-funktionsinventar.test.ts` („Entwurfsliste, Entwurf fortsetzen").
 
   it("sperrt wiederholte Frontdoor-Save- und Submit-Ausloesungen lokal", () => {
     const source = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
 

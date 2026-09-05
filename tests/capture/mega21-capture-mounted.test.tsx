@@ -105,7 +105,7 @@ import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardCo
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -258,7 +258,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                   createElement(NavProbe),
                 ),
@@ -527,7 +530,7 @@ describe("mega21 C-1: gescheiterte Nacharbeiten sind sichtbar — und die Handlu
 
   it("scheitert der KI-Prüf-Vermerk, NENNT die Erfolgskarte den Schritt und den nächsten Schritt", async () => {
     // bens SB-5, gemountet. Der Server sammelt den Fehlschlag in `followUpsFailed`, der Vertrag
-    // transportiert ihn — und bis mega20 wertete `Capture.tsx` ihn nicht aus. Der Ersteller erfuhr
+    // transportiert ihn — und bis mega20 wertete `CaptureArbeitsraum.tsx` ihn nicht aus. Der Ersteller erfuhr
     // nie, dass sein Wissensobjekt ohne Prüf-Job liegen blieb.
     kiVermerkBrechen();
     await mount();
@@ -638,7 +641,7 @@ describe("mega21 C-2: fehlende Originale beim Fortsetzen", () => {
     //     expect(buttonByText(i18n.t("capture.saveDraft")).disabled).toBe(false);
     //   — direkt nach dem Klick, OHNE dass eine Datei gewählt oder ein Anker gesichert war.
     //
-    // Er pinnte damit genau die verfrühte Entsperrung, die bens SB-F benennt: `Capture.tsx` rief
+    // Er pinnte damit genau die verfrühte Entsperrung, die bens SB-F benennt: `CaptureArbeitsraum.tsx` rief
     // im selben Klick `setResumeAnchorsMissing([])`. Die Warnung verschwand und der Speichern-Knopf
     // wurde aktiv, während der Zustand, den die Warnung meldete, unverändert bestand. Ein Speichern
     // in diesem Augenblick schriebe den ausgedünnten Stand über den gespeicherten.

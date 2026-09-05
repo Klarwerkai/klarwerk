@@ -164,7 +164,9 @@ test("huelle2: steht die Struktur VOR dem direkten Bild, bleibt die Beschreibung
 
     // DER KREIS: speichern und erneut öffnen. Erst wenn der Text wirklich im abgelegten Entwurf
     // steht, wird wieder geöffnet — sonst prüfte der zweite Teil den Zustand vor dem Speichern.
-    await page.getByRole("button", { name: "Als Entwurf speichern" }).click();
+    // JOB 3062: der Knopf heisst am neuen Blatt „Entwurf sichern" (`erfassen.entwurfSichern`); der
+    // Weg dahinter ist unverändert derselbe (`POST/PUT /api/drafts`).
+    await page.getByRole("button", { name: "Entwurf sichern", exact: true }).click();
     await expect
       .poll(
         async () => {

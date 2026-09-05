@@ -272,7 +272,7 @@ function seitentext(): string {
 
 /** DER KNOPF. Gesucht wird er ueber seine sichtbare Beschriftung, nicht ueber eine Testmarke. */
 function einreichenKnopf(): HTMLButtonElement {
-  const beschriftung = i18n.t("fd.submitReview");
+  const beschriftung = i18n.t("erfassen.einreichen");
   const knopf = [...container.querySelectorAll("button")].find((b) =>
     (b.textContent ?? "").replace(/\s+/g, " ").includes(beschriftung),
   );

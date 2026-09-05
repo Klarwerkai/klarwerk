@@ -224,6 +224,61 @@ function editor(): HTMLElement {
   return el;
 }
 
+/**
+ * JOB 3062 · H3 — DER BEDEUTUNGSSATZ HAT EINEN ORT, KEINEN PLATZ IM SICHTFELD.
+ *
+ * Bis hierher stand `capture.savedBody` im Erfolgsblock der Vordertür. Das Blatt zeigt nach dem
+ * Einreichen EINE Zeile (Auftrag §9); Erklärtext gehört nicht ins Sichtfeld (Pedi, 04.09.). Der
+ * Satz ist deshalb NICHT gelöscht, sondern umgezogen an den Ort, den das Funktionsinventar §5a ihm
+ * zuweist: Menü „…" → „Status" — „was beim Speichern und Einreichen passiert". Dieser Helfer öffnet
+ * genau diesen Weg, damit die Zusicherungen unten weiter am PRODUKT hängen und nicht am Selektor.
+ */
+async function statusFlaecheOeffnen(): Promise<void> {
+  await act(async () => {
+    const werkzeug = container.querySelector('[data-testid="blatt-werkzeug-mehr"]');
+    if (!(werkzeug instanceof HTMLButtonElement)) {
+      throw new Error("Das Werkzeug '…' ist nicht auf dem Blatt.");
+    }
+    werkzeug.click();
+    await flush();
+  });
+  await act(async () => {
+    buttonByText(i18n.t("erfassen.mehr.status")).click();
+    await flush();
+  });
+}
+
+/**
+ * JOB 3062 · H3: Ein frisches Blatt hat noch KEINE Vertraulichkeit gewählt — das Einreichen ist bis
+ * dahin gesperrt (Auftrag §4). Der Test tut deshalb, was ein Mensch tun muss. Gesucht wird INNERHALB
+ * der geöffneten Menüfläche: der Menüknopf selbst trägt die Stufe als Beschriftung und käme sonst
+ * zuerst — ein Klick darauf schlösse das Menü nur wieder.
+ */
+async function vertraulichkeitWaehlen(): Promise<void> {
+  await act(async () => {
+    const werkzeug = container.querySelector('[data-testid="blatt-werkzeug-vertraulichkeit"]');
+    if (!(werkzeug instanceof HTMLButtonElement)) {
+      throw new Error("Das Menü Vertraulichkeit ist nicht auf dem Blatt.");
+    }
+    werkzeug.click();
+    await flush();
+  });
+  await act(async () => {
+    const flaeche = container.querySelector('[data-testid="blatt-menue-vertraulichkeit"]');
+    if (!(flaeche instanceof HTMLElement)) {
+      throw new Error("Das Menü Vertraulichkeit hat sich nicht geöffnet.");
+    }
+    const eintrag = [...flaeche.querySelectorAll("button")].find((b) =>
+      (b.textContent ?? "").includes(i18n.t("conf.level.intern")),
+    );
+    if (!(eintrag instanceof HTMLButtonElement)) {
+      throw new Error("Stufe 'intern' nicht im Menü.");
+    }
+    eintrag.click();
+    await flush();
+  });
+}
+
 /** Der eingereichte Zustand — über den ECHTEN Weg, nicht gesetzt. */
 async function einreichenUndWarten(): Promise<void> {
   await act(async () => {
@@ -232,14 +287,15 @@ async function einreichenUndWarten(): Promise<void> {
     el.dispatchEvent(new Event("input", { bubbles: true }));
     await flush();
   });
+  await vertraulichkeitWaehlen();
   await act(async () => {
-    buttonByText(i18n.t("fd.submitReview")).click();
+    buttonByText(i18n.t("erfassen.einreichen")).click();
     await flush();
   });
 }
 
 function seitenquelle(): string {
-  return readFileSync(resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"), "utf8");
+  return readFileSync(resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"), "utf8");
 }
 
 beforeEach(async () => {
@@ -260,13 +316,17 @@ describe("AUFTRAG-196 U1 A2: die Vordertür sagt, was mit dem Wissensobjekt gesc
     await mount();
     await einreichenUndWarten();
 
-    // KALIBRIERUNG: erst wenn der Erfolgsblock wirklich steht, sagt die Zusicherung darunter etwas
-    // über das Produkt statt über einen Selektor, der ins Leere greift.
+    // KALIBRIERUNG: erst wenn der eingereichte Zustand wirklich steht, sagt die Zusicherung darunter
+    // etwas über das Produkt statt über einen Selektor, der ins Leere greift. Der Beleg dafür ist
+    // seit JOB 3062 die EINE Erfolgszeile des Blattes (`erfassen.eingereicht`, Zustandsmodell §9),
+    // nicht mehr die Karte `fd.submitted`.
     expect(
       pageText(),
       "der eingereichte Zustand ist nicht erreicht — alles Weitere wäre eine Aussage über den Harness",
-    ).toContain(i18n.t("fd.submitted"));
+    ).toContain(i18n.t("erfassen.eingereicht"));
 
+    // Und der Bedeutungssatz ist erreichbar geblieben — an seinem Ort aus §5a, nicht im Sichtfeld.
+    await statusFlaecheOeffnen();
     expect(pageText()).toContain(i18n.t("capture.savedBody"));
     unmount();
   });
@@ -275,17 +335,40 @@ describe("AUFTRAG-196 U1 A2: die Vordertür sagt, was mit dem Wissensobjekt gesc
   // R-A2-2 — BESTÄTIGUNG UND BEDEUTUNG STEHEN GEMEINSAM. DAS IST DAS EIGENTLICHE VERSPRECHEN.
   // --------------------------------------------------------------------------------------------
   //
-  // Getrennt von R-A2-1, weil ein Bedeutungssatz an anderer Stelle der Seite die Lücke nicht
-  // schliesst: die Testperson liest ihn im Moment des Abschlusses oder gar nicht.
-  it("R-A2-2: Bestätigung und Bedeutungssatz stehen gemeinsam im DOM", async () => {
+  // JOB 3062 · H3 — WAS HIER GESTRICHEN IST UND WARUM. Bis hierher verlangte dieser Fall, dass
+  // Bestätigung und Bedeutungssatz GEMEINSAM im DOM stehen; die Begründung war: „die Testperson
+  // liest ihn im Moment des Abschlusses oder gar nicht." Diese Behauptung gilt nicht mehr, und das
+  // ist eine Entscheidung des Eigentümers, kein Versehen (Pedi, 04.09.: Erklärtext gehört nicht ins
+  // Sichtfeld; Auftrag §9: Erfolg = EINE Zeile). Sie ist in der RUECKGABE unter den gestrichenen
+  // Behauptungen benannt.
+  //
+  // WAS AN IHRE STELLE TRITT, statt den Fall ersatzlos fallen zu lassen: Der Abschluss muss den
+  // Menschen weiterhin zum Wissensobjekt UND zu seiner Bedeutung führen — nur eben in zwei
+  // Schritten statt in einem Absatz. Genau das prüft dieser Fall jetzt: die Erfolgszeile nennt das
+  // Objekt beim Titel und verlinkt es, und die Bedeutung ist von DERSELBEN Fläche aus mit einem
+  // Klick erreichbar. Ein Bedeutungssatz, der irgendwo anders in der App stünde, bestünde diesen
+  // Fall nicht.
+  it("R-A2-2: der Abschluss führt zum Objekt — und die Bedeutung ist von dort aus einen Klick weit", async () => {
     await mount();
     await einreichenUndWarten();
 
     const text = pageText();
-    expect(text).toContain(i18n.t("fd.submitted"));
-    expect(text).toContain(i18n.t("capture.savedBody"));
-    // Und der bestehende Editor-Satz bleibt — A2 ergänzt, es ersetzt nicht.
-    expect(text).toContain(i18n.t("fd.submittedBody"));
+    expect(text).toContain(i18n.t("erfassen.eingereicht"));
+    // Die Zeile nennt das Objekt und verlinkt es — der Weg dorthin geht nicht verloren. Der Titel
+    // wird nicht als Literal erwartet (er wird aus dem Text abgeleitet): geprüft wird, dass der
+    // Link auf das ANGELEGTE Objekt zeigt und seinen Titel wirklich trägt, statt leer zu sein.
+    const link = [...container.querySelectorAll("a")].find((a) =>
+      (a.getAttribute("href") ?? "").startsWith("/wissen/"),
+    );
+    expect(link, "die Erfolgszeile verlinkt das Wissensobjekt nicht").toBeTruthy();
+    expect((link?.textContent ?? "").trim().length).toBeGreaterThan(0);
+
+    // Vor dem Öffnen steht der Erklärsatz NICHT im Sichtfeld — das ist die Zusage aus §5.
+    expect(text).not.toContain(i18n.t("capture.savedBody"));
+
+    // Und nach EINEM Klick auf „…" → „Status" steht er da.
+    await statusFlaecheOeffnen();
+    expect(pageText()).toContain(i18n.t("capture.savedBody"));
     unmount();
   });
 
@@ -299,8 +382,16 @@ describe("AUFTRAG-196 U1 A2: die Vordertür sagt, was mit dem Wissensobjekt gesc
     const quelle = seitenquelle();
 
     expect(quelle).toContain("capture.savedBody");
-    // Der bestehende Schlüssel bleibt unangetastet — sonst fiele capture-front-door.test.ts:376-377.
-    expect(quelle).toContain("fd.submittedBody");
+    // JOB 3062 · H3: Die frühere Zeile `expect(quelle).toContain("fd.submittedBody")` steht hier
+    // NICHT mehr. Ihre Begründung war, dass `capture-front-door.test.ts` diesen Schlüssel im
+    // Quelltext verlangt — genau diese Erwartung hat sich umgekehrt: dort steht seit diesem Auftrag
+    // `expect(pageSource).not.toContain("fd.submittedBody")` (`:402`), weil der Erklärabsatz „Der
+    // Editor ist abgeschlossen und geleert" aus dem Sichtfeld genommen ist. Beide Zeilen
+    // stehenzulassen hiesse, zwei Tests gegeneinander laufen zu lassen.
+    //
+    // DER SCHLÜSSEL SELBST BLEIBT (i18n.ts:4418 DE/EN/NL) — §5a verlangt ausdrücklich, dass die
+    // Textschlüssel nicht gelöscht werden. Ungenutzt ist nicht dasselbe wie entfernt.
+    expect(quelle).not.toContain("fd.submittedBody");
     // Kein eingetipptes Duplikat des Satzes in der Ansicht.
     expect(quelle).not.toContain("Gespeichert als dein eigenes Wissen");
   });

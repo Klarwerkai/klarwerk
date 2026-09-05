@@ -76,7 +76,7 @@ import { NavGuardProvider, useNavGuard } from "../../apps/web/src/app/NavGuardCo
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -136,7 +136,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                   createElement(NavProbe),
                 ),
@@ -213,7 +216,9 @@ function pageText(): string {
 // Ausgangslage aller vier Fälle: etwas Speicherbares im Rohtext + geöffnetes Quellenformular.
 async function openFormWithText(url: string): Promise<void> {
   await mount();
-  await click(buttonByText("Weitere Wege anzeigen"));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
   await change(textareaByPlaceholder(i18n.t("capture.rawPlaceholder")), "Kernaussage zur Norm");
   await click(buttonByText(i18n.t("capture.advanced.title")));
   await change(inputByPlaceholder(i18n.t("ko.sourceLabel")), "Handbuch S. 12");

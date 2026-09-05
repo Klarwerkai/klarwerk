@@ -6,7 +6,7 @@
 // PEDIS FRAGE: „Gilt die Vertraulichkeit meines Entwurfs auch beim Bildbeschreiben?"
 //
 // BEN an D1: „Der produktive Client sendet keine `draftId`; A1/B2 injizieren sie von Hand, und ein
-// gemounteter Clienttest fehlt." Dieser Test schließt genau das: Die ECHTE Seite `Capture` wird
+// gemounteter Clienttest fehlt." Dieser Test schließt genau das: Die ECHTE Seite `CaptureArbeitsraum` wird
 // gemountet, ein GESPEICHERTER vertraulicher Entwurf über „Fortsetzen" geöffnet (Liste → Knopf, wie
 // der Mensch es tut), der Mensch stellt die Stufe im Formular auf „intern" (ungespeichert) und lässt
 // ein Bild beschreiben bzw. den Text nachbearbeiten. Beobachtet wird, was der Client WIRKLICH an
@@ -100,7 +100,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 import type { Confidentiality } from "../../services/knowledge-object";
 import { schreibeBeschreibung } from "./bildbeschreibung-naht";
@@ -178,7 +178,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),

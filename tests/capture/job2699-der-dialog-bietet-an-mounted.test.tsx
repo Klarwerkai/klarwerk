@@ -3,7 +3,7 @@
 // JOB 2699 D1 — DER DIALOG BIETET AN, WAS DAS PROGRAMM ABLEHNT (Befund R2-27) — an der Seite
 // ================================================================================================
 //
-// Gemountet an der ECHTEN Capture-Seite (Gerueste wie discard-reset-mounted). Gemessen wird an den
+// Gemountet an der ECHTEN CaptureArbeitsraum-Seite (Gerueste wie discard-reset-mounted). Gemessen wird an den
 // Datei-Eingaengen, die der Mensch benutzt: was der Dialog „Text aus Datei einfuegen" anbietet, was
 // er bei einer gewaehlten Datei tut — und dass der Anhang-Dialog daneben unveraendert bleibt.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -53,7 +53,7 @@ import {
   FILE_CAPTURE_ACCEPT,
   FILE_TEXT_INSERT_ACCEPT,
 } from "../../apps/web/src/lib/captureFromFile";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -98,7 +98,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),

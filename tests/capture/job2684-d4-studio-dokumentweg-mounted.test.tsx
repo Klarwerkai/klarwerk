@@ -4,11 +4,11 @@
 // Dokument, sichtbarer Konflikt, Text bleibt, nichts angelegt — als EINE Kette.
 // ================================================================================================
 //
-// BEN an D3: „Der Quellpin für den Capture.tsx-Aufruf zusammen mit einem Routentest ist kein Beleg
+// BEN an D3: „Der Quellpin für den CaptureArbeitsraum.tsx-Aufruf zusammen mit einem Routentest ist kein Beleg
 // am Ort der Nutzerhandlung; er prüft weder das Auslösen von `createFromDocument` in der gemounteten
 // Oberfläche noch sichtbaren Fehler, Texterhalt und ausbleibende Schreibwirkung als eine Kette."
 //
-// Hier läuft die ECHTE Seite `Capture` (Harness wie job2684-d2-studio-mounted). Der Weg des
+// Hier läuft die ECHTE Seite `CaptureArbeitsraum` (Harness wie job2684-d2-studio-mounted). Der Weg des
 // Menschen: ein gespeicherter Entwurf trägt ein gesichertes Ankerdokument samt verankerter
 // Belegstelle (`anchorDocuments` + `pendingSources` mit `anchorKey`/`objectId` — so speichert
 // mega20/mega22 sie) → „Fortsetzen" → „Einreichen". Weil Anker da sind, nimmt die Seite den
@@ -109,7 +109,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -162,7 +162,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),

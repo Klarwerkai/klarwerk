@@ -111,6 +111,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Der wichtigste Mitfahrer überhaupt: die Fixture selbst schneidet Rumpf und Skript aus der
   // Datei (`splitTaskpane`). Bricht sie, brechen alle acht Dateien mit dem Griff `fixture` mit.
   "tests/app/klara-panel-fixture.ts": "pfad",
+  // JOB 3062 · H3: nennt den Pfad in einem KOMMENTAR — beide Dateien grenzen ihre eigene Fläche
+  // gegen das Aufgabenfenster ab, keine liest es. Genau der „billige Fehlalarm", den der Griff
+  // `pfad` bewusst in Kauf nimmt (siehe seinen `zweck`): lieber hier gepinnt als übersehen.
+  "tests/app/klara-regressionsinventar.test.ts": "pfad",
   "tests/app/klara-session-consent-ui.test.ts": "pfad,marken",
   "tests/app/mega34-word-einstufung.test.ts": "pfad",
   "tests/app/mega35-word-ausgabe-entsteht-beim-ausgeben.test.tsx": "pfad",
@@ -156,6 +160,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // Beide Fassungen überlebten den Einbau, und `An object literal cannot have multiple properties
   // with the same name` (TS1117) hielt `tools/build` rot. Es bleibt genau EIN Eintrag, dieser.
   "tests/design/zielbild-keinwissen-messung.test.ts": "fixture",
+  // JOB 3062 · H3: die Chromium-Messung des WEB-Blattes `/erfassen`. Sie nennt das Aufgabenfenster
+  // nur, um sich davon ABZUGRENZEN (die beiden `zielbild-wissen-erfassen*`-Prüfungen messen
+  // taskpane.html, nicht die Web-Seite) — Kommentartreffer des Griffs `pfad`, kein echter Mitfahrer.
+  "tests/design/zielbild-h3-erfassen.test.ts": "pfad",
   // JOB 3046 D2: der Chromium-Vergleich der Lueckenflaeche laedt die Datei ueber ihr Pfadliteral in
   // einen echten Browser (Playwright-Route, dieselbe Strecke wie JOB 3016) — Griff `pfad`; die
   // Fixture importiert er nicht. A2 hat die Datei gemeldet.

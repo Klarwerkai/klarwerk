@@ -68,16 +68,9 @@ import { createRoot } from "react-dom/client";
 import { MemoryRouter } from "react-router-dom";
 import { NavGuardProvider } from "../app/NavGuardContext";
 import i18n from "../i18n";
-import { Capture } from "./Capture";
+import { CaptureArbeitsraum } from "./Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
-
-/**
- * Die beiden Beschriftungen stehen WÖRTLICH im Quelltext (`Capture.tsx:3368`) — kein i18n-Schlüssel.
- * Sie werden hier nur noch dort verwendet, wo die Beschriftung selbst der Gegenstand ist (S7/S8);
- * das AUFFINDEN des Knopfes läuft bewusst textunabhängig über `aria-controls`.
- */
-const AUF = "Weitere Wege anzeigen ▾";
 
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
@@ -96,7 +89,7 @@ function mount(): void {
           MemoryRouter,
           { initialEntries: ["/erfassen"] },
           // Der ECHTE Provider — ein Doppelgänger würde genau das wegnehmen, was gemessen werden soll.
-          createElement(NavGuardProvider, null, createElement(Capture)),
+          createElement(NavGuardProvider, null, createElement(CaptureArbeitsraum)),
         ),
       ),
     );
@@ -108,19 +101,6 @@ function knopfEnthaelt(text: string): HTMLButtonElement | undefined {
   return [...container.querySelectorAll("button")].find((b) =>
     (b.textContent ?? "").includes(text),
   ) as HTMLButtonElement | undefined;
-}
-
-/**
- * Der Aufklapper — gefunden über sein ARIA-Verhältnis zum Arbeitsraum, NICHT über seinen Text.
- * Das ist der Unterschied zu D5 und der Grund, warum eine Übersetzung der Beschriftung hier nur
- * noch S7/S8 betrifft statt aller Fälle.
- */
-function aufklapper(): HTMLButtonElement {
-  const b = container.querySelector<HTMLButtonElement>('button[aria-controls="capture-workspace"]');
-  if (!b) {
-    throw new Error("Der Aufklapper des Arbeitsraums ist auf der gemounteten Seite nicht da.");
-  }
-  return b;
 }
 
 function arbeitsraum(): HTMLElement | null {
@@ -182,21 +162,13 @@ function entwurf(): Draft {
   } as unknown as Draft;
 }
 
-/** Weg 1 — der Aufklapper des Arbeitsraums (`openCaptureWorkspace`, `Capture.tsx:2049`). */
-function wegAufklapper(): void {
-  klick(aufklapper());
-}
-
-/** Weg 2 — der Sprung in den Datei-Import (`openFileImport`, `Capture.tsx:2040`). */
-function wegDateiImport(): void {
-  const b = knopfEnthaelt(String(i18n.t("capture.fileImportJump")));
-  if (!b) {
-    throw new Error("Der Datei-Import-Knopf ist auf der gemounteten Seite nicht da.");
-  }
-  klick(b);
-}
-
-/** Weg 3 — einen Entwurf fortsetzen (`loadDraft`, `Capture.tsx:1780`). */
+/**
+ * Einen Entwurf fortsetzen (`loadDraft`, `Capture.tsx:1780`) — der einzige Weg in den Arbeitsraum,
+ * den DIESE Datei noch misst. JOB 3062 · H3: Aufklapper und Datei-Import-Sprung sind keine Wege des
+ * Arbeitsraums mehr, sondern Einträge im Menü „Datei ▾" der Blatt-Werkzeugzeile
+ * (`components/erfassen/Blatt.tsx`); ihre Helfer sind mit ihren Fällen entfallen, statt ungenutzt
+ * stehen zu bleiben.
+ */
 function wegEntwurfFortsetzen(): void {
   const auf = knopfEnthaelt(String(i18n.t("capture.resumeExpand", { count: 1 })));
   if (!auf) {
@@ -232,168 +204,92 @@ afterEach(() => {
 });
 
 // ------------------------------------------------------------------------------------------------
-// A · KALIBRIERUNG — der Ausgangszustand, gegen den alles andere gemessen wird.
+// JOB 3062 · H3 — ZWEI DER DREI SCROLLSTELLEN GIBT ES NICHT MEHR.
 // ------------------------------------------------------------------------------------------------
-describe("A · Kalibrierung des Aufklappers", () => {
-  it("A1 · der Arbeitsraum startet ZU: aria-expanded=false, aria-controls zeigt auf ein vorhandenes, verborgenes Ziel", () => {
-    mount();
-    const b = aufklapper();
-    expect(b.getAttribute("aria-expanded")).toBe("false");
-    expect(b.getAttribute("aria-controls")).toBe("capture-workspace");
-    // Das Ziel existiert wirklich — ein `aria-controls` ins Leere wäre eine Zusage ohne Gegenstand.
-    const ziel = arbeitsraum();
-    expect(ziel).not.toBeNull();
-    expect(ziel?.getAttribute("aria-hidden")).toBe("true");
-  });
-});
-
-// ------------------------------------------------------------------------------------------------
-// V · VORAUSSETZUNGEN — sie tragen die erwarteten Fehlschläge in `S`.
+// Diese Datei mass drei Wege in den Arbeitsraum, die alle dieselbe ungesicherte Zeile ausloesten:
+//
+//     Weg 1  Aufklapper „Weitere Wege anzeigen ▾"   `openCaptureWorkspace`   ENTFALLEN
+//     Weg 2  Sprung in den Datei-Import             `openFileImport`         ENTFALLEN
+//     Weg 3  Entwurf fortsetzen                     `loadDraft`              BESTEHT
+//
+// Gemessen am 04.09.2026 an `pages/Capture.tsx`: `openCaptureWorkspace` und `openFileImport` kommen
+// dort null Mal vor, und es gibt keinen Knopf mehr mit `aria-controls="capture-workspace"`. Der
+// Standardweg-Kasten mit seinem Aufklapper ist von der Flaeche genommen (Auftrag §5), der Weg in
+// den Dateiimport liegt im Menue „Datei ▾" des Blattes und oeffnet die Ansicht ohne Scroll. Von den
+// frueher drei `scrollIntoView`-Aufrufen ist EINER uebrig (`:2068`, in `loadDraft`).
+//
+// WAS DAS FUER DIESE DATEI HEISST: Die Faelle zu Weg 1 und Weg 2 (A1, V1, V2, V3, I1, I2, D1, S1,
+// S2, S4, S5, S7, S8) haben keinen Gegenstand mehr und sind entfernt. Sie STILL stehen zu lassen
+// waere schlimmer als sie zu loeschen: `it.fails` bleibt auch dann gruen, wenn der Fall aus einem
+// ganz anderen Grund scheitert — hier, weil das Element fehlt. Ein Mangelbericht, der ueber ein
+// verschwundenes Element berichtet, meldet nichts mehr.
+//
+// WAS BLEIBT, BLEIBT UNVERAENDERT: Weg 3 besteht, und die beiden Maengel an seiner Scrollstelle
+// bestehen ebenso — die Methode ist nicht geprueft (nur die Ref ist optional verkettet), und
+// `prefers-reduced-motion` wird nirgends in `apps/web/src/**/*.tsx` abgefragt. Sie stehen weiter
+// als `it.fails`, also als ehrlich benannter, offener Mangel. Ihn zu beheben ist nicht Gegenstand
+// von JOB 3062; ihn stillschweigend fallen zu lassen waere es erst recht nicht.
+//
+// MONTIERT WIRD JETZT `CaptureArbeitsraum` STATT `Capture`: `Capture` rendert seit JOB 3062 das
+// Blatt, und die Entwurfsliste mit dem Fortsetzen-Knopf liegt im Arbeitsraum. Gemessen wird
+// weiterhin genau die Komponente, in der die Scrollstelle steht.
 // ------------------------------------------------------------------------------------------------
 describe("V · Mount- und Interaktionsvoraussetzungen", () => {
-  it("V1 · der Aufklapper ist OHNE Rückgriff auf seinen Text auffindbar", () => {
-    mount();
-    // Die tragende Voraussetzung dieser Datei: Wird die Beschriftung übersetzt (S7/S8), bleibt
-    // jeder andere Fall messbar. Genau daran scheiterte D5s GM2 mit 6 von 6 gerissenen Fällen.
-    expect(aufklapper()).toBeInstanceOf(HTMLButtonElement);
-  });
-
-  it("V2 · der Klick auf den Aufklapper öffnet den Arbeitsraum wirklich", () => {
-    scrollSonde();
-    mount();
-    wegAufklapper();
-    expect(aufklapper().getAttribute("aria-expanded")).toBe("true");
-    expect(arbeitsraum()?.getAttribute("aria-hidden")).toBe("false");
-  });
-
-  it("V3 · der Datei-Import-Knopf ist da und öffnet den Arbeitsraum ebenfalls", () => {
-    scrollSonde();
-    mount();
-    wegDateiImport();
-    expect(arbeitsraum()?.getAttribute("aria-hidden")).toBe("false");
-  });
-
-  it("V4 · ein Entwurf lässt sich fortsetzen — der dritte Scrollweg ist erreichbar", () => {
+  it("V4 · ein Entwurf laesst sich fortsetzen — die verbliebene Scrollstelle ist erreichbar", () => {
     lage.drafts = [entwurf()];
     scrollSonde();
     mount();
     wegEntwurfFortsetzen();
+    // Ohne diesen Nachweis waeren S3/S6 wertlos: ein Fall, der den Weg nie geht, scheitert auch
+    // dann, wenn das Produkt in Ordnung ist.
     expect(arbeitsraum()?.getAttribute("aria-hidden")).toBe("false");
   });
 
-  it("V5 · die Bewegungsreduktion WÄRE abfragbar — die Attrappe antwortet", () => {
+  it("V5 · die Bewegungsreduktion WAERE abfragbar — die Attrappe antwortet", () => {
     bewegungsreduktion(true);
     mount();
-    // Ohne diesen Nachweis wäre S4/S5/S6 wertlos: Ein Produkt, das `matchMedia` nie ruft, ist von
-    // einer Umgebung, die nicht antworten kann, sonst nicht zu unterscheiden.
+    // Ohne diesen Nachweis waere S6 wertlos: Ein Produkt, das `matchMedia` nie ruft, ist von einer
+    // Umgebung, die nicht antworten kann, sonst nicht zu unterscheiden.
     expect(window.matchMedia("(prefers-reduced-motion: reduce)").matches).toBe(true);
     expect(window.matchMedia("(prefers-reduced-motion: no-preference)").matches).toBe(false);
   });
 });
 
 // ------------------------------------------------------------------------------------------------
-// I · IST-MESSUNG — ausschliesslich das, was heute schon RICHTIG ist.
+// I · IST-MESSUNG — was am verbliebenen Weg heute schon richtig ist.
 // ------------------------------------------------------------------------------------------------
-//
-// D5 führte hier zusätzlich „IMMER smooth" (I1) und den Wurf (N1) als grüne Erwartung. Beides ist
-// nach `S` gewandert. Was bleibt, ist gewünscht: dass überhaupt und genau einmal gescrollt wird.
-describe("I · Ist-Messung des Aufklappens", () => {
-  it("I1 · Aufklappen scrollt GENAU EINMAL, und zwar erst im Timer", () => {
+describe("I · Ist-Messung des Fortsetzens", () => {
+  it("I3 · Fortsetzen scrollt GENAU EINMAL, und zwar erst im Timer", () => {
+    lage.drafts = [entwurf()];
     const scroll = scrollSonde();
     mount();
-    wegAufklapper();
-    // Vor dem Timer ist noch nichts gescrollt — der Aufruf liegt in `setTimeout` (Capture.tsx:2052).
+    wegEntwurfFortsetzen();
+    // Vor dem Timer ist noch nichts gescrollt — der Aufruf liegt in `setTimeout` (Capture.tsx:2067).
     expect(scroll).toHaveBeenCalledTimes(0);
     timerLaufen();
     expect(scroll).toHaveBeenCalledTimes(1);
-    // Zum Ziel gescrollt wird bewusst NICHT auf `#capture-workspace`, sondern auf den
-    // Abstandshalter `workAreaRef` (`Capture.tsx:3863`). Das ist eine andere Stelle als das
-    // ARIA-Ziel — hier nur festgehalten, nicht bewertet.
-  });
-
-  it("I2 · Einklappen scrollt NICHT und setzt aria-expanded zurück", () => {
-    const scroll = scrollSonde();
-    mount();
-    wegAufklapper();
-    timerLaufen();
-    expect(scroll).toHaveBeenCalledTimes(1);
-    klick(aufklapper()); // jetzt „einklappen"
-    timerLaufen();
-    // Kein ZWEITER Scroll — `closeCaptureWorkspace` scrollt bewusst nicht.
-    expect(scroll).toHaveBeenCalledTimes(1);
-    expect(aufklapper().getAttribute("aria-expanded")).toBe("false");
-    expect(arbeitsraum()?.getAttribute("aria-hidden")).toBe("true");
   });
 });
 
 // ------------------------------------------------------------------------------------------------
-// S · SOLLVERTRAG D-010 — der gewünschte Nutzerzustand. Heute kausal ROT.
+// S · SOLLVERTRAG D-010 — der gewuenschte Nutzerzustand. Heute kausal ROT.
 // ------------------------------------------------------------------------------------------------
-//
-// S1-S3 fordern dasselbe für DREI verschiedene Stellen. Sie sind bewusst nicht zusammengelegt: Eine
-// Härtung an nur einer Stelle soll genau einen Fall grün machen und die anderen beiden weiter
-// melden. D5 prüfte allein den Aufklapper — und hätte eine halbe Korrektur für vollständig gehalten.
 describe("S · Sollvertrag D-010 — fehlende Browsermethode", () => {
-  it.fails("S1 · Aufklappen stürzt NICHT ab, wenn der Browser kein scrollIntoView hat", () => {
-    // jsdom implementiert `Element.prototype.scrollIntoView` nicht — genau die Umgebung, die der
-    // Befund meint. `workAreaRef.current?.scrollIntoView(...)` (`Capture.tsx:2053`) sichert die REF,
-    // nicht die METHODE. Gefordert ist eine Methodenprüfung; der Scroll darf dann entfallen.
-    expect(
-      (Element.prototype as unknown as { scrollIntoView?: unknown }).scrollIntoView,
-    ).toBeUndefined();
-    mount();
-    wegAufklapper();
-    expect(() => timerLaufen()).not.toThrow();
-  });
-
   it.fails(
-    "S2 · der Datei-Import stürzt NICHT ab, wenn der Browser kein scrollIntoView hat",
-    () => {
-      mount();
-      wegDateiImport();
-      // Dieselbe ungesicherte Zeile an anderer Stelle: `Capture.tsx:2045`.
-      expect(() => timerLaufen()).not.toThrow();
-    },
-  );
-
-  it.fails(
-    "S3 · Entwurf fortsetzen stürzt NICHT ab, wenn der Browser kein scrollIntoView hat",
+    "S3 · Entwurf fortsetzen stuerzt NICHT ab, wenn der Browser kein scrollIntoView hat",
     () => {
       lage.drafts = [entwurf()];
       mount();
       wegEntwurfFortsetzen();
-      // Und ein drittes Mal: `Capture.tsx:1897`.
+      // jsdom implementiert `Element.prototype.scrollIntoView` nicht — genau die Umgebung, die der
+      // Befund meint. `workAreaRef.current?.scrollIntoView(...)` (`Capture.tsx:2068`) sichert die
+      // REF, nicht die METHODE. Gefordert ist eine Methodenpruefung; der Scroll darf dann entfallen.
       expect(() => timerLaufen()).not.toThrow();
     },
   );
 });
 
 describe("S · Sollvertrag D-010 — Bewegungsreduktion", () => {
-  it.fails("S4 · bei reduzierter Bewegung scrollt das Aufklappen NICHT smooth", () => {
-    bewegungsreduktion(true);
-    const scroll = scrollSonde();
-    mount();
-    wegAufklapper();
-    timerLaufen();
-    expect(scroll).toHaveBeenCalledTimes(1);
-    // `prefers-reduced-motion` kommt in `apps/web/src` bislang nur in `styles/modern.css:318` vor —
-    // in keiner einzigen TSX-Datei. Der Scroll ist deshalb unbedingt `smooth` (`Capture.tsx:2053`),
-    // auch für Menschen, denen Bewegung Übelkeit verursacht.
-    const arg = scroll.mock.calls[0]?.[0] as { behavior?: string } | undefined;
-    expect(arg?.behavior).not.toBe("smooth");
-  });
-
-  it.fails("S5 · bei reduzierter Bewegung scrollt der Datei-Import NICHT smooth", () => {
-    bewegungsreduktion(true);
-    const scroll = scrollSonde();
-    mount();
-    wegDateiImport();
-    timerLaufen();
-    expect(scroll).toHaveBeenCalledTimes(1);
-    const arg = scroll.mock.calls[0]?.[0] as { behavior?: string } | undefined;
-    expect(arg?.behavior).not.toBe("smooth");
-  });
-
   it.fails("S6 · bei reduzierter Bewegung scrollt das Fortsetzen NICHT smooth", () => {
     bewegungsreduktion(true);
     lage.drafts = [entwurf()];
@@ -402,54 +298,10 @@ describe("S · Sollvertrag D-010 — Bewegungsreduktion", () => {
     wegEntwurfFortsetzen();
     timerLaufen();
     expect(scroll).toHaveBeenCalledTimes(1);
+    // `prefers-reduced-motion` kommt in `apps/web/src` bislang nur in `styles/modern.css:318` vor —
+    // in keiner einzigen TSX-Datei. Der Scroll ist deshalb unbedingt `smooth` (`Capture.tsx:2068`),
+    // auch fuer Menschen, denen Bewegung Uebelkeit verursacht.
     const arg = scroll.mock.calls[0]?.[0] as { behavior?: string } | undefined;
     expect(arg?.behavior).not.toBe("smooth");
-  });
-});
-
-describe("S · Sollvertrag D-010 — die Beschriftung", () => {
-  it.fails("S7 · die Umschaltbeschriftung hat i18n-Schlüssel in allen drei Sprachen", () => {
-    mount();
-    // Heute steht die Beschriftung wörtlich im Quelltext (`Capture.tsx:3368`); die Schlüssel, die es
-    // geben MÜSSTE, existieren in keiner der drei Sprachen.
-    for (const sprache of ["de", "en", "nl"]) {
-      for (const schluessel of ["capture.workspaceOpen", "capture.workspaceClose"]) {
-        expect(i18n.getResource(sprache, "translation", schluessel)).toBeDefined();
-      }
-    }
-  });
-
-  it.fails("S8 · beim Sprachwechsel folgt der Aufklapper der Sprache — wie sein Nachbar", () => {
-    mount();
-    const nachbarDe = String(i18n.getResource("de", "translation", "capture.fileImportJump"));
-    const nachbarEn = String(i18n.getResource("en", "translation", "capture.fileImportJump"));
-    // Vorbedingung der Messung, REGULÄR geprüft: die Sprachwerte des Nachbarn unterscheiden sich
-    // wirklich, und der deutsche steht vor dem Wechsel auf der Seite.
-    expect(nachbarDe).not.toBe(nachbarEn);
-    expect(knopfEnthaelt(nachbarDe)).toBeDefined();
-    const deutsch = aufklapper().textContent?.trim();
-
-    act(() => {
-      void i18n.changeLanguage("en");
-    });
-
-    // Der Nachbar folgt der Sprache — der Aufklapper unmittelbar daneben bleibt heute deutsch.
-    // Zwei Knöpfe, eine Zeile, zwei Welten.
-    expect(knopfEnthaelt(nachbarEn)).toBeDefined();
-    expect(aufklapper().textContent?.trim()).not.toBe(deutsch);
-  });
-});
-
-// ------------------------------------------------------------------------------------------------
-// D · DIAGNOSE — der heutige Wortlaut, hashartig festgehalten.
-// ------------------------------------------------------------------------------------------------
-//
-// Dieser eine Fall hält den IST-Wortlaut fest, OHNE ihn zu wünschen: Er ist die Gegenprobe zu S7/S8
-// und macht sichtbar, wann die Korrektur greift. Er ist bewusst der EINZIGE textgebundene Fall der
-// Datei — reisst er, ist die Beschriftung angefasst worden, und das ist dann eine gewollte Meldung.
-describe("D · Diagnose des heutigen Wortlauts", () => {
-  it("D1 · heute trägt der Aufklapper den fest eingebauten deutschen Text", () => {
-    mount();
-    expect(aufklapper().textContent?.trim()).toBe(AUF);
   });
 });

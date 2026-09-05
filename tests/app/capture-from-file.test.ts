@@ -360,18 +360,25 @@ describe("KW-W2-01: Ganzdokument-Import als bewusster Entwurf", () => {
       "utf8",
     );
 
-    // SCRUM-458: der Arbeitsraum startet jetzt EINGEKLAPPT (ruhiger Aufklapp-Einstieg statt vollem
-    // Formular). Der Default läuft über initialCaptureWorkspaceOpen (eingeklappt, außer aktiver Kontext;
-    // in captureEntry.modes.test.ts geprüft) — NICHT mehr useState(true). Der KW-W2-01-Kern bleibt:
-    // Dateiimport-Abbrechen blendet aus (cancelFileImport → setCaptureWorkspaceOpen(false), oben geprüft).
-    expect(captureSource).toContain("initialCaptureWorkspaceOpen({");
-    expect(captureSource).not.toContain(
+    // SCRUM-458 hatte den Arbeitsraum EINGEKLAPPT starten lassen (Aufklapp-Einstieg statt vollem
+    // Formular), gesteuert über `initialCaptureWorkspaceOpen`.
+    //
+    // JOB 3062 · H3 KEHRT GENAU DAS UM, und zwar begründet: Der Aufklapper „Weitere Wege anzeigen"
+    // sass im Standardweg-Kasten, und beide sind gelöscht — der Standardweg IST das Blatt. Wer den
+    // Arbeitsraum heute sieht, hat im Menü „Datei ▾" ausdrücklich einen Weg gewählt; eingeklappt
+    // wäre er ein Zustand OHNE AUSWEG (kein Interview, kein Dateiimport, kein Formular mehr
+    // erreichbar). Deshalb jetzt `useState(true)`, und der Aufklapper existiert nicht mehr.
+    //
+    // DER KW-W2-01-KERN IST UNVERÄNDERT und wird hier weiter gemessen: Dateiimport-Abbrechen
+    // BLENDET AUS, statt zu öffnen.
+    expect(captureSource).toContain(
       "const [captureWorkspaceOpen, setCaptureWorkspaceOpen] = useState(true)",
     );
-    expect(captureSource).toContain("const openCaptureWorkspace = (): void =>");
-    expect(captureSource).toContain("Weitere Wege anzeigen");
-    expect(captureSource).toContain("captureWorkspaceOpen && !expertView");
-    expect(captureSource).toContain('captureWorkspaceOpen && (expertView || wizStep === "tell")');
+    expect(captureSource).not.toContain("initialCaptureWorkspaceOpen({");
+    expect(captureSource).not.toContain("Weitere Wege anzeigen");
+    // Der Abbruch räumt und klappt zu — die eigentliche Zusage dieses Falls.
+    const abbruch = captureSource.slice(captureSource.indexOf("const cancelFileImport"));
+    expect(abbruch.slice(0, abbruch.indexOf("};"))).toContain("setCaptureWorkspaceOpen(false)");
     expect(captureSource).toContain("aria-hidden={!captureWorkspaceOpen}");
     expect(captureSource).toContain(': "hidden"');
   });

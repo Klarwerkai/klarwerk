@@ -145,8 +145,18 @@ describe("WP-UX-WOW-1 U8: „Vorschlag verwerfen“ friert nicht mehr ein", () =
         editor.innerHTML = "<p>Ventil vor Wartung entlasten und Druck pruefen.</p>";
         editor.dispatchEvent(new Event("input", { bubbles: true }));
       });
+      // JOB 3062 · H3: Der Weg heisst „KI ▾" → „Struktur vorschlagen" (Auftrag §5.2). Derselbe
+      // Aufruf, dieselbe Vorschlagskarte mit „Übernehmen"/„Verwerfen" — nur der Zugang ist ein
+      // Menü statt eines Knopfes auf der Fläche.
       await act(async () => {
-        buttonByText("KI-Struktur vorschlagen").click();
+        const werkzeug = container.querySelector('[data-testid="blatt-werkzeug-ki"]');
+        if (!(werkzeug instanceof HTMLButtonElement)) {
+          throw new Error("Das Menü KI ist nicht auf dem Blatt.");
+        }
+        werkzeug.click();
+      });
+      await act(async () => {
+        buttonByText("Struktur vorschlagen").click();
       });
       // Scroll-Timeout (0 ms) des Erscheinens ausführen lassen — mit dem ?.()-Guard bleibt er still.
       await act(async () => {
@@ -176,15 +186,32 @@ describe("WP-UX-WOW-1 U8: „Vorschlag verwerfen“ friert nicht mehr ein", () =
 
   it("Effekt-Pins: Scroll nur beim Erscheinen + ?.()-Guard; Editor schreibt Emissionen nie zurück", () => {
     const frontdoor = readFileSync(
-      resolve(process.cwd(), "apps/web/src/pages/CaptureFrontDoor.tsx"),
+      resolve(process.cwd(), "apps/web/src/components/erfassen/Blatt.tsx"),
       "utf8",
     );
-    // (1) R7-Muster: Methoden-Guard — nie wieder eine unbehandelte async TypeError aus dem Timeout.
-    expect(frontdoor).toContain(
-      'proposalRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });',
-    );
-    // (2) Erscheinen-Übergang statt jeder Identitätsänderung.
-    expect(frontdoor).toContain("proposalVisibleRef.current");
+    // ============================================================================================
+    // JOB 3062 · H3 — DIE PINS (1) UND (2) HABEN KEINEN GEGENSTAND MEHR.
+    // ============================================================================================
+    // Sie hielten zwei Vorkehrungen um EINEN Effekt fest: das Blatt scrollte den KI-Vorschlag beim
+    // Erscheinen ins Bild (`proposalRef.current?.scrollIntoView?.(…)`), und ein Ref sorgte dafür,
+    // dass das nur beim ERSCHEINEN geschah statt bei jeder Identitätsänderung. Beides waren
+    // Sicherungen um den Scroll herum, nicht um das Verwerfen.
+    //
+    // Der Effekt selbst ist mit dem Umbau entfallen: die Vorschlagskarte lag an der Vordertür unter
+    // einem langen Formular und war ohne Scroll oft nicht zu sehen. Auf dem Blatt steht sie im
+    // Textfluss unmittelbar am Ort des Geschehens — es gibt nichts mehr, wohin gescrollt werden
+    // müsste. Kein Effekt, keine Effekt-Sicherung: hier stehenzulassen, was es nicht mehr gibt,
+    // hiesse einen Test auf ein Literal zu pinnen statt auf ein Verhalten. Als GESTRICHEN in der
+    // RUECKGABE benannt.
+    //
+    // DIE EIGENTLICHE ZUSAGE DIESER DATEI BLEIBT UNANGETASTET und wird vom Fall darüber gemessen,
+    // nicht von diesen Zeilen: Verwerfen räumt in endlich vielen Rendern und ohne Folgefehler.
+    // Deshalb wird hier positiv festgehalten, dass die Vorschlagskarte überhaupt noch existiert —
+    // sonst könnte sie samt Zusage verschwinden und die Datei bliebe grün.
+    expect(frontdoor).toContain("discardProposal");
+    // (2) Der Scroll ist WIRKLICH weg und nicht nur umbenannt — sonst stünde eine ungesicherte
+    //     Fassung des alten Effekts da (der Fehler, gegen den (1) einmal gebaut wurde).
+    expect(frontdoor).not.toContain("scrollIntoView");
     const editor = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
       "utf8",

@@ -6,7 +6,7 @@
 // Einreichen, dass sein Quellenvermerk an der eingestellten Stufe scheitert — ein Formular, das
 // erst hinterher „403" sagt, ist keine Erklärung, sondern eine Falle.
 //
-// Dieser gemountete Test fährt den ECHTEN Klickpfad in Capture und belegt beide Fälle der
+// Dieser gemountete Test fährt den ECHTEN Klickpfad in CaptureArbeitsraum und belegt beide Fälle der
 // Vertragstabelle am manuellen Formular: adresslose Quelle (`unanchored`) und öffentliche Adresse
 // (`public-url`) — jeweils SICHTBAR, bevor irgendetwas gespeichert wurde. Und die Gegenprobe: auf
 // einer Stufe, die das Anhängen erlaubt, steht kein Hinweis da (kein Daueralarm).
@@ -66,7 +66,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 
 (globalThis as unknown as { IS_REACT_ACT_ENVIRONMENT: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
 Element.prototype.scrollIntoView = () => {};
@@ -109,7 +109,10 @@ async function mount(): Promise<void> {
                   createElement(
                     Routes,
                     null,
-                    createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                    createElement(Route, {
+                      path: "/erfassen",
+                      element: createElement(CaptureArbeitsraum),
+                    }),
                   ),
                 ),
               ),
@@ -164,7 +167,9 @@ function pageText(): string {
 
 // Der Weg zum manuellen Quellenformular — genau der, den ein Nutzer geht.
 async function openSourceForm(): Promise<void> {
-  await click(buttonByText("Weitere Wege anzeigen"));
+  // JOB 3062 · H3: Der Aufklapper „Weitere Wege anzeigen“ ist mit dem
+  // Standardweg-Kasten gelöscht — der Arbeitsraum ist jetzt eine Ansicht
+  // des Blattes und startet offen.
   await click(buttonByText(i18n.t("capture.advanced.title")));
 }
 

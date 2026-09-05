@@ -4,17 +4,40 @@
 //
 // DIE LÜCKE, DIE DIESE DATEI SCHLIESST (BASIC 151 `L1`, gemessen in PRO 157): Der einzige
 // Browser-Beleg für den Demo-Kernweg war bisher „Kernfluss: Erzählen → Wissensseite → Einreichen"
-// in `ui-smoke.spec.ts:45` — und der trägt `@modell`, weil er „Mit KI strukturieren" klickt. Dieser
-// Knopf wird ohne aktives Modell bewusst HART ausgegraut (`lib/aiAvailability.ts:29-49`), also
-// schliesst ihn das Tor über `--grep-invert @modell` aus. Ergebnis: genau der Weg, den die Demo
-// vorführt, hatte im hermetischen Tor keinen Regressionsschutz.
+// in `ui-smoke.spec.ts` — und der trägt `@modell` und wird vom Tor über `--grep-invert @modell`
+// ausgeschlossen (bis JOB 3062, weil er den ohne Modell hart ausgegrauten Knopf „Mit KI
+// strukturieren" klickte; seither, weil er ein Wissensobjekt anlegt und damit die zugesagte
+// Datenlage des Tor-Laufs bräche — die Begründung steht dort). Ergebnis: genau der Weg, den die
+// Demo vorführt, hatte im hermetischen Tor keinen Regressionsschutz.
 //
-// WARUM DAS HIER OHNE MODELL GEHT — und warum das kein Trick ist: Die Vordertür
-// (`/capture/frontdoor`) trägt einen VOLLSTÄNDIGEN Weg, der auf keiner Stufe ein Modell braucht.
-// Gemessen an `CaptureFrontDoor.tsx`: der Einreich-Knopf hängt an `disabled={busy}` (:1171), der
-// Entwurfs-Knopf an `disabled={!canSave}` (:1182) — die KI-Knöpfe hängen an `canStructure` (:872)
-// bzw. `canAssist` (:924) und werden hier nicht angefasst. Der Weg ist also nicht „ohne KI
-// nachgebaut", sondern ein eigener, produktiver Pfad.
+// WARUM DAS HIER OHNE MODELL GEHT — und warum das kein Trick ist: Die Route `/capture/frontdoor`
+// trägt einen VOLLSTÄNDIGEN Weg, der auf keiner Stufe ein Modell braucht. Gemessen an
+// `components/erfassen/Blatt.tsx` (JOB 3062, s. u.): der Einreich-Knopf hängt an `disabled={busy}`,
+// der Entwurfs-Knopf an `disabled={!canSave}` — die KI-Wege hängen an `canStructure` bzw.
+// `canAssist` und liegen im Menü „KI ▾", das hier nicht angefasst wird. Der Weg ist also nicht
+// „ohne KI nachgebaut", sondern ein eigener, produktiver Pfad.
+//
+// ================================================================================================
+// JOB 3062 (H3) — DIESELBEN ZUSICHERUNGEN, AM NEUEN BLATT GEMESSEN.
+// ================================================================================================
+//
+// Seit JOB 3062 rendern `/erfassen`, `/capture/frontdoor` und `/erfassen/neu` DASSELBE Blatt
+// (`apps/web/src/components/erfassen/Blatt.tsx`). Die alte Vordertür — Kopf „Dokument-Editor",
+// Hinweis „Schreibe oder füge Inhalt ein …", Sperrkasten `frontdoor-submit-validation`, die Knöpfe
+// „Prüfen & einreichen" / „Als Entwurf speichern" — gibt es als FLÄCHE nicht mehr. Diese Datei ist
+// deshalb umgezogen, NICHT abgeschwächt: jede der fünf Zusicherungen steht unverändert da, nur an
+// ihrem neuen Ort. Was sich sachlich geändert hat, steht bei den betroffenen Fällen als
+// GEÄNDERTE ZUSAGE und ist dort begründet — es sind genau zwei:
+//
+//   · Fall 1: Der Leerpfad NENNT KEINEN GRUND MEHR. Auftrag JOB 3062 §5.4 entscheidet, dass das
+//     betroffene Feld markiert und fokussiert wird statt eines Erklärsatzes. Der Fall pinnt jetzt
+//     BEIDES: dass etwas Sichtbares passiert (Fokus auf der Pflichtangabe) UND dass die alten
+//     Erklärsätze nicht zurückkommen — das ist die schärfere Zusage, nicht die schwächere.
+//   · Fall 3: Speichern VERLÄSST DAS BLATT NICHT MEHR. Der alte Sprung nach `/erfassen` hatte nur
+//     Sinn, solange die Vordertür eine zweite Fläche neben dem Erfassen-Bereich war; jetzt IST das
+//     Blatt beides, und der Sprung wäre eine Bewegung ohne Ziel (Begründung im Produktcode,
+//     `Blatt.tsx`, `save.onSuccess`). Der U1-Unterschied „der eine legt beiseite, der andere reicht
+//     ein" wird deshalb an der Quittung und am erhaltenen Inhalt gemessen, nicht an der Adresse.
 //
 // WAS DIESE DATEI IST: ein REGRESSIONSWÄCHTER über heute vorhandenes, grünes Verhalten. Sie nimmt
 // ausdrücklich KEINEN menschlichen UX-Befund vorweg, verlangt keine andere Beschriftung als die
@@ -73,27 +96,46 @@ const EDITOR = '[contenteditable="true"]';
 
 /** Sichtbare Beschriftungen — wörtlich aus `apps/web/src/i18n.ts`, DE-Block. */
 const T = {
-  seite: "Dokument-Editor", // fd.title
-  einreichen: "Prüfen & einreichen", // fd.submitReview
-  entwurf: "Als Entwurf speichern", // fd.saveDraft
-  schreibHinweis: "Schreibe oder füge Inhalt ein, dann kannst du prüfen und einreichen.", // fd.writeToSubmit
-  sperrKopf: "Einreichen ist so noch nicht möglich:", // fd.validate.lead
-  sperrGrund: "Der Inhalt ist leer. Zum Einreichen braucht das Wissensobjekt Text.", // fd.validate.needBody
+  einreichen: "Einreichen", // erfassen.einreichen
+  entwurf: "Entwurf sichern", // erfassen.entwurfSichern
   entwurfGespeichert: "Entwurf gespeichert.", // fd.toastSaved
-  eingereicht: "Zur Prüfung eingereicht:", // fd.submitted
-  objektAnsehen: "Objekt ansehen", // fd.viewObject
+  eingereicht: "Eingereicht:", // erfassen.eingereicht
   validierungOeffnen: "Validierung öffnen", // fd.openValidation
   neuerEintrag: "Neuer Eintrag", // fd.newEntry
+  intern: "Öffentlich-intern", // conf.level.intern
 } as const;
 
-async function oeffneVordertuer(page: import("@playwright/test").Page): Promise<void> {
+/**
+ * Die beiden Erklärsätze der ALTEN Vordertür. Sie stehen hier NICHT, um sie zu erwarten, sondern um
+ * in Fall 1 ihr Ausbleiben zu pinnen (Auftrag JOB 3062 §5.4: kein Erklärsatz auf der Fläche).
+ */
+const ALT = {
+  schreibHinweis: "Schreibe oder füge Inhalt ein, dann kannst du prüfen und einreichen.", // fd.writeToSubmit
+  sperrKopf: "Einreichen ist so noch nicht möglich:", // fd.validate.lead
+} as const;
+
+/**
+ * Die beiden Knöpfe des Blattes, über ihren SICHTBAREN Text und `exact` adressiert: ohne `exact`
+ * matcht Playwright Teilzeichenketten, und „Einreichen" träfe dann auch jede künftige Beschriftung,
+ * die das Wort enthält — der Fall redete über den Selektor statt über den Knopf.
+ */
+const einreichenKnopf = (page: import("@playwright/test").Page) =>
+  page.getByRole("button", { name: T.einreichen, exact: true });
+const entwurfKnopf = (page: import("@playwright/test").Page) =>
+  page.getByRole("button", { name: T.entwurf, exact: true });
+
+async function oeffneBlatt(page: import("@playwright/test").Page): Promise<void> {
   await ensureLoggedIn(page);
   await page.goto(VORDERTUER);
   // KALIBRIERUNG: erst wenn die Seite wirklich steht, sagen die Zusicherungen darunter etwas über
   // das Produkt statt über einen Selektor, der ins Leere greift (Lehre aus smoketor Block A).
+  //
+  // Kalibriert wird am Einreich-Knopf, nicht an einem Seitentitel: das Blatt trägt bewusst KEINE
+  // Überschrift mehr (JOB 3062 §1 und der Textmesser `tests/design/zielbild-h3-kein-erklaertext.test.ts`).
+  // Der Knopf ist das, worum es in dieser Datei geht — er ist der ehrliche Anker.
   await expect(
-    page.getByText(T.seite).first(),
-    "die Vordertür ist nicht gemountet — alles Weitere wäre eine Aussage über den Selektor",
+    einreichenKnopf(page),
+    "das Blatt ist nicht gemountet — alles Weitere wäre eine Aussage über den Selektor",
   ).toBeVisible({ timeout: 15_000 });
 }
 
@@ -101,24 +143,37 @@ async function oeffneVordertuer(page: import("@playwright/test").Page): Promise<
 // FALL 1 — DER LEERPFAD BLEIBT FAIL-CLOSED.
 // ------------------------------------------------------------------------------------------------
 //
-// Der Einreich-Knopf ist bei leerem Inhalt BEWUSST nicht deaktiviert (`CaptureFrontDoor.tsx:1168-1171`,
-// AUFTRAG-mega9 Block A): statt eines grauen Knopfes ohne Begründung nennt das Produkt die
-// Bedingung. Genau das wird hier gepinnt — und dazu, dass dabei NICHTS entsteht.
-test("DEMO-UX-V1 · Einreichen ohne Inhalt nennt den Grund und legt nichts an", async ({ page }) => {
-  await oeffneVordertuer(page);
+// Der Einreich-Knopf ist bei leerem Inhalt BEWUSST nicht deaktiviert (AUFTRAG-mega9 Block A): statt
+// eines grauen Knopfes ohne Begründung führt das Produkt den Menschen an die fehlende Angabe.
+//
+// GEÄNDERTE ZUSAGE (JOB 3062 §5.4): WIE es das tut, ist neu. Bis hierher erschien der Kasten
+// `frontdoor-submit-validation` mit zwei Erklärsätzen; jetzt bekommt das betroffene Feld den Rand
+// und den FOKUS, und es steht kein Satz da. Gemessen wird deshalb der Fokus — ein Zustand des
+// Browsers, kein Klassenname —, und zusätzlich das AUSBLEIBEN der alten Sätze. Beides zusammen ist
+// schärfer als die alte Fassung: ein Rückfall in den Erklärkasten fiele hier auf, ein still
+// verschluckter Klick ebenso.
+test("DEMO-UX-V1 · Einreichen ohne Inhalt führt an die Pflichtangabe und legt nichts an", async ({
+  page,
+}) => {
+  await oeffneBlatt(page);
 
-  // Vor dem Klick: der Hinweis steht, der Knopf ist erreichbar (nicht still gesperrt).
-  await expect(page.getByText(T.schreibHinweis)).toBeVisible();
-  const einreichen = page.getByRole("button", { name: T.einreichen });
+  // Vor dem Klick: der Knopf ist erreichbar (nicht still gesperrt).
+  const einreichen = einreichenKnopf(page);
   await expect(einreichen).toBeEnabled();
 
   await einreichen.click();
 
-  // Die sichtbare Feldvalidierung — an ihrem eigenen Anker, mit dem echten Grund im Text.
-  const sperre = page.getByTestId("frontdoor-submit-validation");
-  await expect(sperre).toBeVisible({ timeout: 10_000 });
-  await expect(sperre).toContainText(T.sperrKopf);
-  await expect(sperre).toContainText(T.sperrGrund);
+  // Der Klick verpufft NICHT: die Vertraulichkeit ist die erste fehlende Pflichtangabe, ihr Menü
+  // bekommt den Fokus. `blatt-werkzeug-vertraulichkeit` ist der Anker des Werkzeugs selbst — sein
+  // sichtbares Wort ist der gewählte Stufenname und taugt hier nicht als Adresse.
+  await expect(
+    page.getByTestId("blatt-werkzeug-vertraulichkeit"),
+    "der Einreich-Klick hat den Menschen nicht an die fehlende Pflichtangabe geführt",
+  ).toBeFocused({ timeout: 10_000 });
+
+  // Und er tut es OHNE Erklärsatz — die beiden Sätze der alten Vordertür sind nicht zurück.
+  await expect(page.getByText(ALT.sperrKopf)).toHaveCount(0);
+  await expect(page.getByText(ALT.schreibHinweis)).toHaveCount(0);
 
   // FAIL-CLOSED: kein Erfolgsbild, keine Weiterleitung, kein angelegtes Objekt.
   await expect(page.getByText(T.eingereicht)).toHaveCount(0);
@@ -141,10 +196,10 @@ test("DEMO-UX-V1 · Einreichen ohne Inhalt nennt den Grund und legt nichts an", 
 test("DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind unterscheidbar", async ({
   page,
 }) => {
-  await oeffneVordertuer(page);
+  await oeffneBlatt(page);
 
-  const einreichen = page.getByRole("button", { name: T.einreichen });
-  const entwurf = page.getByRole("button", { name: T.entwurf });
+  const einreichen = einreichenKnopf(page);
+  const entwurf = entwurfKnopf(page);
 
   // Beide sind da — und zwar gleichzeitig, nicht in zwei Schritten hintereinander.
   await expect(einreichen).toBeVisible();
@@ -158,33 +213,37 @@ test("DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind untersc
 });
 
 // ------------------------------------------------------------------------------------------------
-// FALL 3 — „ALS ENTWURF SPEICHERN" LEGT BEISEITE UND BEENDET DIE EDITORSITZUNG.
+// FALL 3 — „ENTWURF SICHERN" LEGT BEISEITE, OHNE DAS BLATT ZU RÄUMEN.
 // ------------------------------------------------------------------------------------------------
 //
-// GEMESSEN, NICHT ANGENOMMEN — ein erster Entwurf dieses Tests lag hier falsch: Nach dem Speichern
-// bleibt man NICHT im Editor. `CaptureFrontDoor.tsx:430-438` navigiert im `onSuccess` bewusst nach
-// `/erfassen` (`replace: true`); die Begründung steht daneben (AUFTRAG-mega12 Block A): ein Wächter
-// an dieser Stelle „könnte den Nutzer nach dem Speichern auf der Vordertür festhalten".
+// GEÄNDERTE ZUSAGE (JOB 3062): Bis hierher sprang die Vordertür im `onSuccess` nach `/erfassen`
+// (`replace: true`) — die Adresse WAR die messbare Folge. Seit JOB 3062 sind Vordertür und
+// Erfassen-Bereich DASSELBE Blatt; ein Sprung wäre eine Bewegung ohne Ziel und ist deshalb
+// entfallen (Begründung im Produktcode, `Blatt.tsx`, `save.onSuccess`).
 //
-// Genau darin liegt der U1-Unterschied: der eine Knopf legt etwas beiseite, der andere reicht ein.
-test("DEMO-UX-V1 · Als Entwurf speichern legt beiseite und beendet die Editorsitzung", async ({
-  page,
-}) => {
-  await oeffneVordertuer(page);
+// Der U1-Unterschied bleibt und wird jetzt dort gemessen, wo er wirklich liegt: der eine Knopf legt
+// etwas beiseite (Quittung des Servers, Inhalt bleibt in der Hand des Menschen), der andere reicht
+// ein (Erfolgszeile, Blatt geräumt). Ein Produkt, das nach dem Sichern still den Text verlöre, fiele
+// hier auf — das ist die schärfere Zusage als die alte Adressprüfung.
+test("DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt", async ({ page }) => {
+  await oeffneBlatt(page);
 
   const editor = page.locator(EDITOR).first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
-  await editor.fill(
-    "DEMO-UX-V1 Entwurfsprobe: Vor dem Anfahren der Linie L4 den Druck am Ventil V2 prüfen.",
-  );
+  const probe =
+    "DEMO-UX-V1 Entwurfsprobe: Vor dem Anfahren der Linie L4 den Druck am Ventil V2 prüfen.";
+  await editor.fill(probe);
 
-  const entwurf = page.getByRole("button", { name: T.entwurf });
+  const entwurf = entwurfKnopf(page);
   await expect(entwurf).toBeEnabled({ timeout: 10_000 });
   await entwurf.click();
 
+  // Die Quittung kommt vom Server, nicht vom Klick (Zustandsmodell §9: nie „gespeichert" ohne
+  // Serverbestätigung).
   await expect(page.getByText(T.entwurfGespeichert)).toBeVisible({ timeout: 15_000 });
-  // Die gemessene Folge: der Editor ist verlassen, der Nutzer steht wieder am Erfassungs-Einstieg.
-  await expect(page).toHaveURL(/\/erfassen$/, { timeout: 15_000 });
+  // Das Blatt steht weiter — mit dem Text darin.
+  await expect(page).toHaveURL(new RegExp(`${VORDERTUER}$`), { timeout: 15_000 });
+  await expect(editor).toContainText(probe);
   // Und ausdrücklich NICHT das Einreich-Bild — Speichern ist kein Einreichen.
   await expect(page.getByText(T.eingereicht)).toHaveCount(0);
 });
@@ -192,8 +251,13 @@ test("DEMO-UX-V1 · Als Entwurf speichern legt beiseite und beendet die Editorsi
 // ------------------------------------------------------------------------------------------------
 // FALL 4 — EINREICHEN: SICHTBARER STATUS UND NÄCHSTER SCHRITT.
 // ------------------------------------------------------------------------------------------------
+//
+// NEU GEGENÜBER DER VORDERTÜR: Die Vertraulichkeit muss VOR dem Einreichen gewählt sein (JOB 3062
+// §5.4 / §8.5 — Egress). Das ist keine Umständlichkeit des Tests, sondern der gemessene Weg: ohne
+// diesen Klick bliebe es beim Fall 1 (Fokus auf dem Menü, nichts entsteht). Der Fall fährt damit
+// den vollständigen Weg, nicht die halbe Strecke.
 test("DEMO-UX-V1 · Einreichen zeigt Status und alle nächsten Schritte", async ({ page }) => {
-  await oeffneVordertuer(page);
+  await oeffneBlatt(page);
 
   const editor = page.locator(EDITOR).first();
   await expect(editor).toBeVisible({ timeout: 10_000 });
@@ -202,13 +266,19 @@ test("DEMO-UX-V1 · Einreichen zeigt Status und alle nächsten Schritte", async 
       "Dosierwert erst nach zehn Minuten anpassen, sonst schwankt die Qualität.",
   );
 
-  await page.getByRole("button", { name: T.einreichen }).click();
+  await page.getByTestId("blatt-werkzeug-vertraulichkeit").click();
+  await page.getByRole("menuitem", { name: T.intern }).click();
+
+  await einreichenKnopf(page).click();
 
   // Sichtbarer Status.
   await expect(page.getByText(T.eingereicht)).toBeVisible({ timeout: 20_000 });
 
-  // Die nächsten Schritte stehen ALLE DREI und sind keine leeren Beschriftungen.
-  const objekt = page.getByRole("link", { name: T.objektAnsehen });
+  // Die nächsten Schritte stehen ALLE DREI und sind keine leeren Beschriftungen. Der Weg zum Objekt
+  // trägt seit JOB 3062 den TITEL des angelegten Objekts als Beschriftung statt des festen Wortes
+  // „Objekt ansehen" — er wird deshalb über seine Lage in der Erfolgszeile adressiert und unten über
+  // sein Ziel geprüft.
+  const objekt = page.getByTestId("blatt-lage").getByRole("link").first();
   await expect(objekt).toBeVisible();
   await expect(page.getByRole("link", { name: T.validierungOeffnen })).toBeVisible();
   await expect(page.getByRole("button", { name: T.neuerEintrag })).toBeVisible();
@@ -234,11 +304,9 @@ for (const sicht of [
   { name: "390x844 (Telefon)", width: 390, height: 844 },
   { name: "768x1024 (Tablet)", width: 768, height: 1024 },
 ]) {
-  test(`DEMO-UX-V1 · die Vordertür läuft bei ${sicht.name} nicht waagerecht über`, async ({
-    page,
-  }) => {
+  test(`DEMO-UX-V1 · das Blatt läuft bei ${sicht.name} nicht waagerecht über`, async ({ page }) => {
     await page.setViewportSize({ width: sicht.width, height: sicht.height });
-    await oeffneVordertuer(page);
+    await oeffneBlatt(page);
 
     // Der Editor muss dabei wirklich da sein — sonst misst der Vergleich eine halbe Seite.
     await expect(page.locator(EDITOR).first()).toBeVisible({ timeout: 10_000 });

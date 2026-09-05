@@ -37,7 +37,7 @@ describe("AUFTRAG-mega23 Block A: beide Oberflächen-Aufrufer des Promote schick
   });
 
   it("Vordertür: operationId UND draftPayload reisen mit dem Promote", () => {
-    const seite = lies("apps/web/src/pages/CaptureFrontDoor.tsx");
+    const seite = lies("apps/web/src/components/erfassen/Blatt.tsx");
     const lib = lies("apps/web/src/lib/captureFrontDoor.ts");
 
     // Die Seite reicht den Vorgang durch — beide Refs ausserhalb der Mutationsfunktion.

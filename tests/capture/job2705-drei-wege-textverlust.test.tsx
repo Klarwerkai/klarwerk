@@ -49,7 +49,7 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
-import { Capture } from "../../apps/web/src/pages/Capture";
+import { CaptureArbeitsraum } from "../../apps/web/src/pages/Capture";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -197,7 +197,10 @@ function huelle(pfad: string) {
                     path: "/capture/frontdoor",
                     element: createElement(CaptureFrontDoor),
                   }),
-                  createElement(Route, { path: "/erfassen", element: createElement(Capture) }),
+                  createElement(Route, {
+                    path: "/erfassen",
+                    element: createElement(CaptureArbeitsraum),
+                  }),
                 ),
               ),
             ),
@@ -355,7 +358,7 @@ describe("JOB 2705 · D1 — drei kleine Wege, auf denen Text verschwindet", () 
     const id = await entwurfAnlegen();
     await seiteOeffnen(`/capture/frontdoor?draft=${id}`);
 
-    const knopf = knopfMit(i18n.t("fd.saveDraft"));
+    const knopf = knopfMit(i18n.t("erfassen.entwurfSichern"));
     expect(knopf, `kein Speichern-Knopf. Sichtbar: ${seitentext().slice(0, 400)}`).toBeDefined();
     await klick(knopf as HTMLButtonElement);
 
@@ -433,7 +436,7 @@ describe("JOB 2705 · D1 — drei kleine Wege, auf denen Text verschwindet", () 
       oeffnen: () => oeffnen(),
     };
 
-    const knopf = knopfMit(i18n.t("fd.saveDraft"));
+    const knopf = knopfMit(i18n.t("erfassen.entwurfSichern"));
     expect(knopf, "kein Speichern-Knopf").toBeDefined();
 
     // Klicken, aber NICHT auf den Abschluss warten — der PUT haengt an der Barriere.

@@ -71,6 +71,7 @@ import { MemoryRouter, Route, Routes } from "../../apps/web/node_modules/react-r
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { ImageDescribeProvider } from "../../apps/web/src/app/ImageDescribeContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
+import { GuardedLink } from "../../apps/web/src/app/NavGuardContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
 import { CaptureFrontDoor } from "../../apps/web/src/pages/CaptureFrontDoor";
@@ -119,7 +120,25 @@ async function mount(url: string): Promise<void> {
                     null,
                     createElement(Route, {
                       path: "/capture/frontdoor",
-                      element: createElement(CaptureFrontDoor),
+                      element: createElement(
+                        "div",
+                        null,
+                        createElement(CaptureFrontDoor),
+                        // JOB 3062 · H3: DER AUSGANG, DEN DER TEST KLICKT.
+                        //
+                        // Der Kopf-Link „Alle Erfassungs-Modi" gehörte zum `PageHeader` der alten
+                        // Vordertür; Kopf und Link sind gelöscht, weil `/erfassen` und
+                        // `/erfassen/vordertuer` dieselbe Fläche zeigen — ein Link von einer Seite
+                        // auf sich selbst wäre eine Bewegung ohne Ziel.
+                        //
+                        // Der WÄCHTER ist damit nicht weg, nur seine Auslöser liegen jetzt in der
+                        // Hülle (Kopfband, Seitenleiste, Befehlspalette), die nicht Teil dieses
+                        // Auftrags ist. Der Test stellt deshalb EINEN echten `GuardedLink` neben
+                        // das Blatt — dieselbe Vorrichtung, die die Hülle benutzt. Bewiesen wird
+                        // weiterhin genau das, was der Prüfer verlangt hat: das Blatt MELDET SICH
+                        // AN, und ein bewachter Ausgang wird bei ungespeichertem Inhalt gehalten.
+                        createElement(GuardedLink, { to: "/erfassen" }, i18n.t("fd.allModes")),
+                      ),
                     }),
                     // Sichtbarer Beleg dafür, ob der Wechsel WIRKLICH stattgefunden hat.
                     createElement(Route, {
@@ -171,6 +190,31 @@ async function clickAllModes(): Promise<void> {
   }
   await act(async () => {
     link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, button: 0 }));
+    await flush();
+  });
+}
+
+/**
+ * Öffnet ein Werkzeug der Blatt-Werkzeugzeile und klickt darin den Eintrag mit diesem Wortlaut.
+ * Genau der Weg, den ein Mensch nimmt — kein Griff an den Zustand vorbei.
+ */
+async function klickeImMenue(werkzeug: string, eintrag: string): Promise<void> {
+  const w = container.querySelector<HTMLButtonElement>(`[data-testid="${werkzeug}"]`);
+  if (!(w instanceof HTMLButtonElement)) {
+    throw new Error(`Werkzeug „${werkzeug}“ nicht gefunden`);
+  }
+  await act(async () => {
+    w.click();
+    await flush();
+  });
+  const e = [...container.querySelectorAll("button")].find(
+    (b) => (b.textContent ?? "").replace(/\s+/g, " ").trim() === eintrag,
+  );
+  if (!(e instanceof HTMLButtonElement)) {
+    throw new Error(`Menüeintrag „${eintrag}“ nicht gefunden`);
+  }
+  await act(async () => {
+    e.click();
     await flush();
   });
 }
@@ -255,9 +299,9 @@ describe("AUFTRAG-mega9 Block B (KW-E2E-002): die Vordertür hat eine Weggehwarn
     await mount(`/capture/frontdoor?draft=${id}`);
     await setBody("<p>Geänderter Inhalt</p>");
 
-    // Speichern über den echten Knopf; der Erfolgspfad navigiert selbst nach /erfassen.
+    // Speichern über den echten Knopf.
     const saveBtn = [...container.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes(i18n.t("fd.saveDraft")),
+      (b.textContent ?? "").includes(i18n.t("erfassen.entwurfSichern")),
     );
     if (!(saveBtn instanceof HTMLButtonElement)) {
       throw new Error("Speichern-Knopf nicht gefunden");
@@ -267,7 +311,19 @@ describe("AUFTRAG-mega9 Block B (KW-E2E-002): die Vordertür hat eine Weggehwarn
       await flush();
     });
 
-    // Der Wechsel lief durch, OHNE dass der Wächter dazwischenging.
+    // JOB 3062 · H3: DAS BLATT SPRINGT NACH DEM SPEICHERN NICHT MEHR WEG.
+    //
+    // Die Vordertür navigierte im Erfolgsfall selbst nach `/erfassen` — sinnvoll, solange das zwei
+    // verschiedene Flächen waren. Jetzt zeigen beide Adressen DASSELBE Blatt; ein Sprung wäre eine
+    // Bewegung ohne Ziel und würde dem Menschen seinen Text unter den Händen neu aufbauen.
+    //
+    // Die ZUSICHERUNG dieses Falls ist unverändert und wird jetzt am Ausgang gemessen, wo sie
+    // hingehört: nach dem Speichern ist die Seite SAUBER — der bewachte Ausgang lässt durch, ohne
+    // dass der Wächter dazwischengeht.
+    expect(guardDialogText()).not.toContain(i18n.t("nav.guard.title"));
+    expect(switched()).toBe(false);
+
+    await clickAllModes();
     expect(guardDialogText()).not.toContain(i18n.t("nav.guard.title"));
     expect(switched()).toBe(true);
     unmount();
@@ -277,16 +333,9 @@ describe("AUFTRAG-mega9 Block B (KW-E2E-002): die Vordertür hat eine Weggehwarn
     await mount("/capture/frontdoor");
     await setBody("<p>Ein Text, zu dem ein Vorschlag entsteht</p>");
 
-    const suggestBtn = [...container.querySelectorAll("button")].find((b) =>
-      (b.textContent ?? "").includes(i18n.t("fd.structureSuggest")),
-    );
-    if (!(suggestBtn instanceof HTMLButtonElement)) {
-      throw new Error("Struktur-Vorschlag-Knopf nicht gefunden");
-    }
-    await act(async () => {
-      suggestBtn.click();
-      await flush();
-    });
+    // JOB 3062 · H3: „Struktur vorschlagen" liegt im Menü „KI ▾" der Werkzeugzeile (Auftrag §5.2).
+    // Der Test geht denselben Weg wie ein Mensch: erst das Werkzeug öffnen, dann den Eintrag wählen.
+    await klickeImMenue("blatt-werkzeug-ki", i18n.t("erfassen.ki.struktur"));
 
     await clickAllModes();
 

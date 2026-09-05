@@ -135,7 +135,7 @@ async function mount(rolle: Role): Promise<void> {
 
 /** Den Einreichen-Knopf am SICHTBAREN Text finden — nicht an einer erfundenen Kennung. */
 function einreichen(): HTMLButtonElement {
-  const beschriftung = i18n.t("fd.submitReview");
+  const beschriftung = i18n.t("erfassen.einreichen");
   const knopf = Array.from(container.querySelectorAll("button")).find((b) =>
     (b.textContent ?? "").includes(beschriftung),
   );
