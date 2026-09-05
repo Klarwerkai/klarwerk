@@ -16,6 +16,9 @@ import {
   // SCRUM-527 (WP2): importierte/re-synchronisierte Quell-URLs durch dieselbe Allowlist.
   safeSourceUrl,
 } from "../../knowledge-object";
+// JOB 3075 · P12: DIE EINE THEMENACHSE DES HAUSES. Begruendung am Kopf von `graph()` und in
+// `services/wissensnetz/index.ts`; es ist eine reine Namensableitung, kein Zugang zum Lesemodell.
+import { themenVon } from "../../wissensnetz";
 import {
   type CandidateRepo,
   type ClaimResolution,
@@ -2042,6 +2045,39 @@ export class LibraryService {
   // Bestand, in dem ein einzelnes Schlagwort knapp unter der Hälfte aller Objekte trägt. Der
   // nächste Schritt wäre derselbe wie bei `neighbors`: ein persistenter Index — heute neue
   // Infrastruktur ohne Not.
+  //
+  // ----------------------------------------------------------------------------------------------
+  // JOB 3075 · P12 — DIE ABLÖSUNG: EINE THEMENACHSE, IMPORTIERT STATT ZWEIMAL NACHGEBAUT.
+  // ----------------------------------------------------------------------------------------------
+  //
+  // WAS HIER BIS HEUTE STAND: ZWEI unmittelbare Ableitungen aus `ko.tags` — `new Set(ko.tags)` für
+  // die Trägergruppen und `[...new Set(ko.tags)]` für die kantenfähigen Schlagwörter. Beide kannten
+  // die Regel nicht, welche Schlagwörter überhaupt Themen sind; sie nahmen jeden Wert, wie er im
+  // Bestand lag.
+  //
+  // WELCHER FEHLER DARAUS FOLGTE, gemessen und nicht vermutet: Zwei sichtbare Objekte mit dem
+  // gespeicherten Schlagwort `"   "` (die Routen normalisieren Schlagwörter beim SCHREIBEN nicht,
+  // siehe `services/wissensnetz/src/themenkarte.ts`) ergaben hier GENAU EINE Kante
+  // `{ a, b, via: "   " }`. Auf `/graph` stand dafür eine graue Linie, deren Tooltip
+  // (`apps/web/src/pages/Stufe2.tsx`, `<title>{e.via}</title>`) LEER war — eine Verbindung, die
+  // nicht sagen konnte, warum sie besteht. Dieselben zwei Objekte hatten auf der Themenkarte
+  // (`/wissensnetz`) gar kein gemeinsames Thema: `themenVon` gab dort für beide die leere Liste.
+  // EIN Bestand, ZWEI Auskünfte darüber, was ein Thema ist.
+  //
+  // WAS JETZT GILT: Diese Methode leitet ihre Themen ausschliesslich über `themenVon`
+  // (`services/wissensnetz`) ab — dieselbe Funktion, die die Themenkarte und die Leseansicht
+  // benutzen, EINMAL je Objekt gerufen und danach weitergereicht. Sie liefert bereits dedupliziert
+  // und nach `localeCompare` sortiert; das frühere zweite `new Set(...)`/`.sort(...)` ist deshalb
+  // ersatzlos weg und steht nicht daneben. Ein Wert ohne sichtbares Zeichen ist damit auch keine
+  // Trägergruppe mehr und kann folglich weder eine Kante noch einen Eintrag in `excludedTags`
+  // erzeugen. Getrimmt wird NICHT: `" Dichtungen "` bleibt ein anderes Thema als `"Dichtungen"` —
+  // die ausdrücklich in Kauf genommene Grenze aus JOB 3073 Runde 2.
+  //
+  // WER DIE ACHSE ZURÜCKDREHT, MACHT DAS ROT: `tests/wissensnetz-achse/eine-achse-am-graphen.test.ts`
+  // — G1 (die namenlose Kante kommt wieder), G2 (die kantenfähige Menge weicht objektweise von
+  // `themenVon` ab, in beide Richtungen: eingebauter Trimm ebenso wie rohe Lesung) und G3 (der
+  // Quelltextwächter findet wieder eine unmittelbare `ko.tags`-Ableitung in diesem Rumpf oder eine
+  // zweite `themenVon`-Definition in dieser Datei).
   async graph(opts: { sichtbar: KoSichtbar }): Promise<Graph> {
     // Schlanke Grundmenge (ohne bodyHtml) wie in `neighbors`: der Graph braucht nur id/title/tags.
     // Der Sichtbarkeitsfilter wirkt auf der GRUNDMENGE, bevor gerechnet wird — Träger-Zählung,
@@ -2051,10 +2087,15 @@ export class LibraryService {
       .map((ko) => ({ id: ko.id, title: ko.title }))
       .sort((a, b) => a.id.localeCompare(b.id));
 
-    // EIN linearer Pass: Schlagwort → Träger.
+    // EIN linearer Pass: Schlagwort → Träger. Die Themen eines Objekts entstehen dabei EINMAL und
+    // werden weitergereicht (`themenJeKo`) — die Trägergruppen unten und die kantenfähigen
+    // Schlagwörter weiter unten lesen dieselbe Liste, nicht zwei getrennt gebildete.
     const carriers = new Map<string, KnowledgeObject[]>();
+    const themenJeKo = new Map<string, string[]>();
     for (const ko of list) {
-      for (const tag of new Set(ko.tags)) {
+      const themen = themenVon(ko);
+      themenJeKo.set(ko.id, themen);
+      for (const tag of themen) {
         const gruppe = carriers.get(tag);
         if (gruppe) {
           gruppe.push(ko);
@@ -2074,12 +2115,11 @@ export class LibraryService {
     const excluded = new Set(excludedTags);
 
     // Je Objekt einmal: die kantenfähigen Schlagwörter aufsteigend sortiert (für „das kleinste
-    // geteilte") und als Menge (für den Test „teilt b dieses Schlagwort?").
+    // geteilte") und als Menge (für den Test „teilt b dieses Schlagwort?"). Die Reihenfolge kommt
+    // aus `themenVon` und ist dieselbe `localeCompare`-Ordnung wie zuvor; `filter` erhält sie.
     const kantenTags = new Map<string, { sortiert: string[]; menge: Set<string> }>();
     for (const ko of list) {
-      const sortiert = [...new Set(ko.tags)]
-        .filter((tag) => !excluded.has(tag))
-        .sort((a, b) => a.localeCompare(b));
+      const sortiert = (themenJeKo.get(ko.id) ?? []).filter((tag) => !excluded.has(tag));
       kantenTags.set(ko.id, { sortiert, menge: new Set(sortiert) });
     }
 

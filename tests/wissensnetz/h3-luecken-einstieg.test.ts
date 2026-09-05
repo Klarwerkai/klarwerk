@@ -120,7 +120,7 @@ describe("H3 · die Sicherheitskette durch wissensnetzLuecken", () => {
     expect(JSON.stringify(fuerB)).not.toContain("ko-geheim");
   });
 
-  it("K7 · die oeffentliche Oberflaeche traegt GENAU EINEN Funktionswert", () => {
+  it("K7 · die oeffentliche Oberflaeche traegt GENAU DIESE Funktionswerte — keinen mehr", () => {
     // Aus D6 uebernommen und hier unverzichtbar: Ohne diesen Fall koennte `sichtmetrik` in den
     // Index wandern, ohne dass ein Test anschlaegt — und die frei aufrufbare Auswertung waere
     // zurueck, also genau BENs Verstoss-Befund aus D1. Gleichheit statt `toContain`, damit auch
@@ -142,11 +142,27 @@ describe("H3 · die Sicherheitskette durch wissensnetzLuecken", () => {
     //     `LesemodellService` verlangt, das absichtlich nicht im Index steht (C1).
     //   · `policyNahtSchliessen` erzeugt gar nichts — sie nimmt die zentrale Policy entgegen.
     //     Sie ist die Gegenrichtung: nicht Daten heraus, sondern die Entscheidung herein.
+    //
+    // ============================================================================================
+    // JOB 3075 P12 — DIE LISTE WAECHST UM `themenVon`, UND DIE ZUSAGE BLEIBT WIEDER DIESELBE.
+    // ============================================================================================
+    //
+    // Der Waechter hat erneut SOFORT angeschlagen, als der Index breiter wurde — genau dafuer ist
+    // er da, und er wird auch hier praezisiert statt aufgeweicht: `toEqual` bleibt `toEqual`, eine
+    // FUENFTE Funktion faellt weiterhin sofort auf.
+    //
+    // `themenVon` ist KEINE Auswertung im Sinne von C1/C2. Sie nimmt weder Ports noch ein Praedikat
+    // noch eine Sicht entgegen, sondern eine Schlagwortliste, und gibt Namen zurueck; aus ihrem
+    // Ergebnis laesst sich keine `WissensnetzSicht` rekonstruieren. Wer sie ruft, muss die Objekte
+    // schon besitzen. Sie geht heraus, damit es bei EINER Themenachse im ganzen Haus bleibt:
+    // `graph()` in `services/library-analytics/src/service.ts` leitete seine Themen bis JOB 3075
+    // selbst aus `ko.tags` ab. Begruendung im Kopf von `services/wissensnetz/index.ts`.
     const funktionen = Object.keys(wissensnetz).filter(
       (name) => typeof (wissensnetz as Record<string, unknown>)[name] === "function",
     );
     expect(funktionen.sort()).toEqual([
       "policyNahtSchliessen",
+      "themenVon",
       "wissensnetzLuecken",
       "wissensnetzMetrikFuer",
     ]);

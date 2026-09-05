@@ -62,3 +62,26 @@ export {
   UBIQUITY_MAX_SHARE,
   UBIQUITY_MIN_COUNT,
 } from "./src/themenkarte";
+
+// ================================================================================================
+// JOB 3075 · P12 — `themenVon` GEHT HERAUS, UND DIE ENGE OBEN BLEIBT WOERTLICH STEHEN.
+// ================================================================================================
+//
+// WARUM DIESE FUNKTION DEN INDEX VERLASSEN DARF, obwohl `themenkarte()` es nicht darf: Sie ist
+// eine REINE NAMENSABLEITUNG. Eingang ist eine Schlagwortliste, Ausgang sind ihre Themen — aus
+// dem Ergebnis laesst sich keine `WissensnetzSicht` rekonstruieren, so wenig wie aus einem
+// `Themenknoten` oder einer `Sichtmetrik`. Sie liest keinen Bestand, sie fragt keine Ports, sie
+// trifft keine Sichtbarkeitsentscheidung; wer sie ruft, muss die Objekte, ueber die er sie ruft,
+// bereits besitzen. Das ist dasselbe Argument, mit dem die vier Konstanten oben hier stehen.
+//
+// WARUM SIE HERAUSGEHEN MUSS: `services/library-analytics/src/service.ts` (`graph()`) bildete bis
+// heute seine eigenen Themen unmittelbar aus `ko.tags`. Damit trug das Haus ZWEI Antworten auf die
+// Frage, was ein Thema ist — gemessen an zwei Objekten mit dem Schlagwort `"   "`: `/graph` zog
+// eine Kante mit leerer Beschriftung, `/wissensnetz` kannte dort gar kein Thema. Die Alternative
+// zum Export waere eine KOPIE der Regel im Analytics-Modul gewesen, also genau die zweite
+// Wahrheit, die JOB 3073 abgeloest hat. Der Import ist die Modulgrenze entlang der erlaubten
+// Richtung: dieses Modul importiert `library-analytics` nirgends, es entsteht kein Kreis.
+//
+// WAS WEITERHIN NICHT HIER STEHT, unveraendert: `LesemodellService`, `WissensnetzSicht`,
+// `sichtmetrik` und jede Huelle darum. C1 und C2 bleiben woertlich gruen.
+export { themenVon } from "./src/themenkarte";

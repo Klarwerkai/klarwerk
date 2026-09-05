@@ -97,8 +97,16 @@ function leererTraeger(): Traeger {
  * deterministisch sortiert.
  *
  * ================================================================================================
- * JOB 3073 · V6 — DIES IST DIE EINE THEMENACHSE DES MODULS. Es gibt keine zweite.
+ * JOB 3073 · V6 / JOB 3075 · P12 — DIES IST DIE EINE THEMENACHSE DES HAUSES. Es gibt keine zweite.
  * ================================================================================================
+ *
+ * BIS JOB 3075 STAND HIER „DES MODULS". Das war zu klein angegeben und damit dieselbe Art Fehler,
+ * gegen die dieser Kommentar steht: eine Stelle, die ihren Wert falsch beschriftet. Die Funktion
+ * hat seit JOB 3075 einen Aufrufer AUSSERHALB dieses Moduls — `graph()` in
+ * `services/library-analytics/src/service.ts`, die Quelle der Graph-Ansicht `/graph`. Sie leitete
+ * ihre Themen bis dahin selbst aus `ko.tags` ab und zog deshalb Kanten, deren Beschriftung leer
+ * war, wo die Themenkarte gar kein Thema kannte. Herausgereicht wird die Funktion über
+ * `services/wissensnetz/index.ts`; warum das die Enge jenes Index nicht aufweicht, steht dort.
  *
  * Bis JOB 3071 gruppierte `lesemodell.ts` seine `themen` nach `ko.category` und diese Datei ihre
  * Knoten nach `ko.tags`. EINE Antwort trug damit ZWEI Namensraeume: an der echten Route gemessen
