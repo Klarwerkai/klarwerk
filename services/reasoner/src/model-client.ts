@@ -62,6 +62,11 @@ export interface HttpModelConfig {
 // Einbettungs-Allowlist); alles andere → null (der Aufrufer meldet ehrlich, nichts wird geraten).
 const IMAGE_DATA_URL_RE = /^data:(image\/(?:png|jpeg|gif|webp));base64,([A-Za-z0-9+/=]+)$/;
 
+// JOB 3100: EIN Wortlaut für EINEN Befund. Beide Bildwege (Anthropic-Blockform, OpenAI-data:-URL)
+// prüfen mit demselben Parser und melden denselben Satz — zwei gleichlautende Literale wären zwei
+// Wahrheiten, die auseinanderlaufen können.
+const BILD_FORMAT_FEHLER = "Bild-Daten sind keine gültige data:image-URL (png/jpeg/gif/webp).";
+
 export function parseImageDataUrl(dataUrl: string): { mediaType: string; base64: string } | null {
   const match = IMAGE_DATA_URL_RE.exec(dataUrl.trim());
   if (!match || !match[1] || !match[2]) {
@@ -174,7 +179,7 @@ export function anthropicClient(config: HttpModelConfig): ModelClient {
     ): Promise<string> {
       const image = parseImageDataUrl(imageDataUrl);
       if (!image) {
-        throw new Error("Bild-Daten sind keine gültige data:image-URL (png/jpeg/gif/webp).");
+        throw new Error(BILD_FORMAT_FEHLER);
       }
       return postMessages({
         model: config.model,
@@ -307,6 +312,13 @@ export interface ChatCompletionsModelConfig {
   // gar keinen Antwortinhalt mehr. Auf eigener Hardware kostet Kopfraum nichts, deshalb hebt dieser
   // Wert ein zu kleines Budget an (Math.max) — er SENKT nie ein bewusst höheres Aufrufer-Budget.
   maxTokensFloor?: number;
+  // JOB 3100: BILDEINGANG (Vision) — ausdrücklich konfiguriert, nicht geschenkt. Nur wenn dieses Feld
+  // gesetzt ist, trägt der gebaute Client überhaupt ein `completeVision`. Grund: `describeImage`
+  // (`provider-model.ts:1281`) entscheidet an `typeof client.completeVision !== "function"`, ob es den
+  // Bildweg gehen darf. Eine IMMER vorhandene Methode würde die Kette auch an einen EIGENEN lokalen
+  // LLM schicken, dessen Bildfähigkeit niemand zugesagt hat — statt dort ehrlich zu scheitern.
+  // Gesetzt wird das Feld an genau EINER Stelle: `openAiCloudClientFromEnv`.
+  bildEingang?: boolean;
 }
 
 // AUFTRAG-mega18 Block E (SCRUM-544): Antwortform von /chat/completions, so weit sie hier gelesen wird.
@@ -372,11 +384,66 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
   const base = config.baseUrl.replace(/\/+$/, "");
   const timeoutMs = config.timeoutMs ?? DEFAULT_MODEL_TIMEOUT_MS;
   const bezeichnung = config.bezeichnung ?? "Lokaler LLM";
-  // WP-BILD-1c: BEWUSST kein completeVision — ob ein lokaler LLM Bilder kann, ist nicht garantiert;
-  // der Reasoner behandelt fehlenden Bild-Eingang ehrlich als Fehlschlag (nie erfinden).
-  // JOB 3090: dasselbe gilt für den OpenAI-Cloud-Weg über diese Funktion. Der Bildpfad bleibt der
-  // Anthropic-Kante vorbehalten (anthropicClient.completeVision); ein Bildauftrag an ChatGPT wird
-  // ehrlich als Fehlschlag gemeldet, statt eine Beschreibung zu erfinden.
+  // JOB 3100: GEMEINSAMER REQUEST-KERN für Text- UND Bildaufruf — genau wie `postMessages` auf der
+  // Anthropic-Kante (s. o.). Text und Bild unterscheiden sich beim OpenAI-Vertrag AUSSCHLIESSLICH in
+  // der Form von `messages`; alles andere (Zeitlimit, Bearer, res.ok, Verbrauchsmeldung,
+  // Antwort-Vertrag, Fehlerklassen) ist dasselbe und steht deshalb nur EINMAL da. Der gefetchte
+  // Ausdruck (Basis + Pfad) steht an genau einer Stelle dieser Datei — F12 zählt genau diese
+  // Zeichenform und duldet keine zweite, auch nicht als Zitat in einem Kommentar; deshalb ist er
+  // hier nicht wiederholt.
+  const postChatCompletions = async (messages: unknown[], maxTokens: number): Promise<string> => {
+    const controller = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => {
+      timedOut = true;
+      controller.abort();
+    }, timeoutMs);
+    // AUFTRAG-mega18 Block E (SCRUM-544): wirksames Budget = Aufrufer-Budget, mindestens die
+    // konfigurierte Untergrenze (s. maxTokensFloor). Ohne Konfiguration bleibt alles wie bisher.
+    const budget = Math.max(maxTokens, config.maxTokensFloor ?? 0);
+    try {
+      const res = await fetchFn(`${base}/chat/completions`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          model: config.model,
+          max_tokens: budget,
+          messages,
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) {
+        throw new ModelHttpError(`${bezeichnung} antwortete mit ${res.status}`, res.status);
+      }
+      const data = await res.json();
+      // JOB 3074: NUR MELDEN, WAS DER SERVER WIRKLICH NENNT. Ein lokaler LLM-Server MUSS keinen
+      // `usage`-Block liefern; tut er es nicht, steht im Protokoll nichts. Eine Schätzung aus der
+      // Textlänge wäre bequem und wäre eine erfundene Zahl. Gemeldet wird VOR
+      // `requireChatContent`: eine Antwort ohne Antwortinhalt hat trotzdem Token verbraucht, und
+      // genau dieser Fall (Denkphase ohne Ergebnis) ist der teure.
+      const usage = (
+        data as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } | null } | null
+      )?.usage;
+      meldeModellVerbrauch(usage?.prompt_tokens, usage?.completion_tokens);
+      // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
+      // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty). Das gilt seit
+      // JOB 3100 auch für den Bildweg: eine leere Bild-Antwort ist ein Fehler, kein Leerstring.
+      return requireChatContent(data, budget, bezeichnung);
+    } catch (err) {
+      if (timedOut) {
+        throw new ModelTimeoutError(
+          `${bezeichnung} überschritt das Zeitlimit von ${timeoutMs} ms`,
+          timeoutMs,
+        );
+      }
+      throw err;
+    } finally {
+      clearTimeout(timer);
+    }
+  };
   return {
     name: config.name ?? `local:${config.model}`,
     // JOB 3036: s. anthropicClient — der reine Modellbezeichner des eigenen lokalen Modells.
@@ -389,60 +456,52 @@ export function openAiCompatibleClient(config: ChatCompletionsModelConfig): Mode
       _confidential: boolean,
       maxTokens = 1024,
     ): Promise<string> {
-      const controller = new AbortController();
-      let timedOut = false;
-      const timer = setTimeout(() => {
-        timedOut = true;
-        controller.abort();
-      }, timeoutMs);
-      // AUFTRAG-mega18 Block E (SCRUM-544): wirksames Budget = Aufrufer-Budget, mindestens die
-      // konfigurierte Untergrenze (s. maxTokensFloor). Ohne Konfiguration bleibt alles wie bisher.
-      const budget = Math.max(maxTokens, config.maxTokensFloor ?? 0);
-      try {
-        const res = await fetchFn(`${base}/chat/completions`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            ...(config.apiKey ? { authorization: `Bearer ${config.apiKey}` } : {}),
-          },
-          body: JSON.stringify({
-            model: config.model,
-            max_tokens: budget,
-            messages: [
-              { role: "system", content: system },
-              { role: "user", content: user },
-            ],
-          }),
-          signal: controller.signal,
-        });
-        if (!res.ok) {
-          throw new ModelHttpError(`${bezeichnung} antwortete mit ${res.status}`, res.status);
-        }
-        const data = await res.json();
-        // JOB 3074: NUR MELDEN, WAS DER SERVER WIRKLICH NENNT. Ein lokaler LLM-Server MUSS keinen
-        // `usage`-Block liefern; tut er es nicht, steht im Protokoll nichts. Eine Schätzung aus der
-        // Textlänge wäre bequem und wäre eine erfundene Zahl. Gemeldet wird VOR
-        // `requireChatContent`: eine Antwort ohne Antwortinhalt hat trotzdem Token verbraucht, und
-        // genau dieser Fall (Denkphase ohne Ergebnis) ist der teure.
-        const usage = (
-          data as { usage?: { prompt_tokens?: unknown; completion_tokens?: unknown } | null } | null
-        )?.usage;
-        meldeModellVerbrauch(usage?.prompt_tokens, usage?.completion_tokens);
-        // AUFTRAG-mega18 Block E (SCRUM-544): kein stilles "" mehr — fehlender/leerer Antwortinhalt
-        // wirft einen unterscheidbaren Fehler (reasoning-only / truncated / empty).
-        return requireChatContent(data, budget, bezeichnung);
-      } catch (err) {
-        if (timedOut) {
-          throw new ModelTimeoutError(
-            `${bezeichnung} überschritt das Zeitlimit von ${timeoutMs} ms`,
-            timeoutMs,
-          );
-        }
-        throw err;
-      } finally {
-        clearTimeout(timer);
-      }
+      return postChatCompletions(
+        [
+          { role: "system", content: system },
+          { role: "user", content: user },
+        ],
+        maxTokens,
+      );
     },
+    // JOB 3100: DER BILDWEG IST FREIGESCHALTET, NICHT EINGEBAUT — er hängt an `bildEingang` (s. dort).
+    // FREI für ChatGPT (OpenAI): Pedis Entscheidung 6 („hundert Prozent auf ChatGPT") gilt auch für
+    // Bilder; OpenAI sagt den `image_url`-Eingang auf `/chat/completions` zu.
+    // BEWUSST NICHT für den EIGENEN lokalen LLM (`createLocalClientFromEnv` setzt das Feld nicht):
+    // ob ein selbst betriebener Server Bilder kann, ist nicht garantiert — dort bleibt der fehlende
+    // Bild-Eingang ein ehrlicher Fehlschlag (der alte Grund, unverändert gültig; nie erfinden).
+    ...(config.bildEingang
+      ? {
+          async completeVision(
+            system: string,
+            imageDataUrl: string,
+            user: string,
+            _confidential: boolean,
+            maxTokens = 1024,
+          ): Promise<string> {
+            // Derselbe Parser und dieselbe Allowlist wie auf der Anthropic-Kante (kein zweiter
+            // Parser, keine zweite Liste): ungültige Bild-Daten werfen VOR dem HTTP-Aufruf.
+            if (!parseImageDataUrl(imageDataUrl)) {
+              throw new Error(BILD_FORMAT_FEHLER);
+            }
+            return postChatCompletions(
+              [
+                { role: "system", content: system },
+                {
+                  role: "user",
+                  content: [
+                    { type: "text", text: user },
+                    // Der OpenAI-Vertrag verlangt die data:-URL AM STÜCK. Sie wird deshalb nicht in
+                    // base64 und Medientyp zerlegt — hinaus geht genau die geprüfte Zeichenkette.
+                    { type: "image_url", image_url: { url: imageDataUrl.trim() } },
+                  ],
+                },
+              ],
+              maxTokens,
+            );
+          },
+        }
+      : {}),
   };
 }
 
@@ -511,6 +570,11 @@ function openAiCloudClientFromEnv(
     apiKey,
     name: `${OPENAI_CLIENT_NAME_PREFIX}:${model}`,
     bezeichnung: OPENAI_BEZEICHNUNG,
+    // JOB 3100: DIE EINE STELLE, an der der Bildweg freigeschaltet wird. Pedis Entscheidung 6 gilt
+    // auch für Bilder: ist ChatGPT der Cloud-Anbieter, beschreibt ChatGPT auch das Bild — statt dass
+    // der Bildauftrag scheitert und die Reasoner-Kette auf einen Anbieter ausweicht, der laut
+    // derselben Entscheidung gar nicht mehr benutzt werden soll.
+    bildEingang: true,
     ...(timeoutMs !== undefined ? { timeoutMs } : {}),
   });
 }

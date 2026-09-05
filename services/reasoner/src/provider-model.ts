@@ -59,7 +59,11 @@ export interface ModelClient {
     maxTokens?: number,
   ): Promise<string>;
   // WP-BILD-1c: OPTIONALER Bild-Eingang (Vision). Nur Clients, die WIRKLICH Bilder verarbeiten
-  // können, implementieren ihn (Anthropic-Cloud-Client: content als image/text-Block-Array).
+  // können, implementieren ihn: der Anthropic-Cloud-Client (content als image/text-Block-Array) und
+  // seit JOB 3100 der ChatGPT-Cloud-Client (Bild als `image_url`-Block). Der EIGENE lokale LLM trägt
+  // ihn weiterhin NICHT — seine Bildfähigkeit hat niemand zugesagt. Welcher Client den Bildweg
+  // bekommt, entscheidet allein `model-client.ts` (Feld `bildEingang`); der Endpunkt selbst wird
+  // hier bewusst nicht genannt (Egress-Chokepoint-Wächter, `tests/security/egress-chokepoint.test.ts`).
   // Fehlt er, behandelt der Provider einen Bildbeschreibungs-Auftrag ehrlich als Fehlschlag —
   // es wird NIE aus dem Dateinamen oder Kontext eine Pseudo-Beschreibung erfunden.
   completeVision?(

@@ -21,17 +21,30 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { aiAccessRows, anbieterUndModell } from "../../apps/web/src/lib/aiOverview";
 // SCRUM-502 R8: die Umgebungsfabriken sind bewusst nicht aus dem Paket-Index exportiert; der Zugriff
 // erfolgt relativ auf das Modul — dasselbe Muster wie in `tests/ki-lauf-modell/lauf-nennt-modell.test.ts`.
-import { createCappedCloudClientFromEnv } from "../../services/reasoner/src/model-client";
+import {
+  createCappedCloudClientFromEnv,
+  createCappedLocalClientFromEnv,
+} from "../../services/reasoner/src/model-client";
 import {
   ConfidentialEgressError,
   type ModellAufrufSpur,
   mitModellAufrufSpur,
 } from "../../services/reasoner/src/model-concurrency";
+import { type ModelClient, ModelProvider } from "../../services/reasoner/src/provider-model";
 
 const OPENAI_ENV = {
   OPENAI_API_KEY: "test-schluessel-nur-hier",
   REASONER_MODEL: "gpt-4o-mini",
 };
+
+// JOB 3100: der eigene lokale LLM-Server, so verdrahtet wie im Betrieb (Loopback = bestätigt on-prem).
+const LOKAL_ENV = {
+  KLARWERK_LOCAL_LLM_URL: "http://127.0.0.1:8000/v1",
+  KLARWERK_LOCAL_LLM_MODEL: "Qwen3-32B-AWQ",
+};
+
+// JOB 3100: ein formal gültiges Bild (png, base64) — der Inhalt spielt keine Rolle, die FORM schon.
+const BILD = "data:image/png;base64,iVBORw0KGgo=";
 
 const ANTHROPIC_ENV = {
   ANTHROPIC_API_KEY: "test-schluessel-nur-hier",
@@ -66,6 +79,20 @@ function fetchSpion(antwort: unknown = { choices: [{ message: { content: "OK" } 
 
 function cloudClient(env: Record<string, string | undefined>) {
   return createCappedCloudClientFromEnv(env, KEIN_SCHLUESSELBUND, KEIN_SPEICHERN);
+}
+
+/**
+ * JOB 3100: der Bildweg des gereichten Clients — oder ein SPRECHENDES Rot. Ohne diese Klammer läge
+ * das Rot vor dem Bau an einer Nebenaussage („expected [] to have a length of 1"); so nennt es den
+ * Befund selbst. Gebunden wird an den GECAPPTEN Client, damit Egress-Wächter und In-Flight-Cap im
+ * Weg bleiben (eine Probe am rohen Client wäre grün, während der Riegel fehlt).
+ */
+function bildweg(client: ModelClient | undefined): NonNullable<ModelClient["completeVision"]> {
+  const fn = client?.completeVision;
+  if (!client || typeof fn !== "function") {
+    throw new Error("Der gereichte Client hat keinen Bildweg (completeVision).");
+  }
+  return fn.bind(client);
 }
 
 afterEach(() => {
@@ -232,10 +259,18 @@ describe("JOB 3090 F8/F9: die Admin-Übersicht nennt den Anbieter ehrlich", () =
 });
 
 describe("JOB 3090 F10–F12: die ausgewiesenen Grenzen", () => {
-  it("F10: der OpenAI-Client kann keine Bilder — das Feld fehlt, statt etwas zu erfinden", () => {
+  // F10 IST ABGELÖST, NICHT ERGÄNZT (JOB 3100, Lieferpunkt 6). Seine ALTE Erwartung war wörtlich:
+  //   „F10: der OpenAI-Client kann keine Bilder — das Feld fehlt, statt etwas zu erfinden"
+  //   expect(client?.completeVision).toBeUndefined();
+  //   expect("completeVision" in (client ?? {})).toBe(false);
+  // Sie pinnte die Lücke, die Pedis Entscheidung 6 („hundert Prozent auf ChatGPT") widerspricht: eine
+  // reine OpenAI-Installation war für Bilder blind und die Reasoner-Kette wich auf einen Weg aus, der
+  // gar nicht mehr benutzt werden soll. Die Erwartung steht jetzt in ihr Gegenteil verkehrt hier —
+  // NICHT zusätzlich woanders. Die Grenze, die bleibt, ist F14 (der eigene lokale LLM).
+  it("F10: der OpenAI-Client kann Bilder — der Bildweg ist am gereichten Client vorhanden", () => {
     const client = cloudClient(OPENAI_ENV);
-    expect(client?.completeVision).toBeUndefined();
-    expect("completeVision" in (client ?? {})).toBe(false);
+    expect(typeof client?.completeVision).toBe("function");
+    expect("completeVision" in (client ?? {})).toBe(true);
   });
 
   it("F11: der von OpenAI gemeldete Verbrauch kommt an — genau einmal je Aufruf", async () => {
@@ -265,11 +300,145 @@ describe("JOB 3090 F10–F12: die ausgewiesenen Grenzen", () => {
       join(process.cwd(), "services/reasoner/src/model-client.ts"),
       "utf8",
     );
-    // Kein zweiter HTTP-Weg (Lieferpunkt 7): der Pfad wird an genau EINER Stelle gefetcht — gezählt
-    // wird die Code-Form `${base}/chat/completions`, nicht die Erwähnung in einem Kommentar.
+    // Kein zweiter HTTP-Weg (Lieferpunkt 7): der Pfad wird an genau EINER Stelle gefetcht.
+    // JOB 3100, BERICHTIGT: hier stand „nicht die Erwähnung in einem Kommentar" — das war falsch und
+    // ist gemessen (der Bildweg-Kommentar in `model-client.ts` ließ diese Zeile rot werden, bevor die
+    // Zeichenform dort verschwand). Gezählt wird die ZEICHENFORM in der ganzen Datei, Kommentare
+    // eingeschlossen. Der Wächter ist dadurch strenger, nicht schwächer: wer den Weg zitiert, muss ihn
+    // umschreiben; wer ihn kopiert, wird rot.
     expect(quelle.match(/\$\{base\}\/chat\/completions/g) ?? []).toHaveLength(1);
     // Keine zweite Egress-Regel: die Marke wird für die Cloud an genau einer Stelle gesetzt — in der
     // einen Fabrik, für BEIDE Anbieter.
     expect(quelle.match(/\{ rejectsConfidential: true \}/g) ?? []).toHaveLength(1);
+  });
+});
+
+// ================================================================================================
+// JOB 3100 F13–F18 — AUCH BILDAUFTRÄGE LAUFEN ÜBER CHATGPT.
+// ================================================================================================
+//
+// Pedis Entscheidung 6 (POC-UMSETZUNG-20260905-1: „hundert Prozent auf ChatGPT") gilt auch für
+// Bilder. Vor diesem Auftrag war eine reine OpenAI-Installation für die KI-Bildbeschreibung blind:
+// `describeImage` fand kein `completeVision` (`provider-model.ts:1281-1283`) und die Reasoner-Kette
+// wich auf den nächsten Anbieter aus — in der Vorführung also auf einen Weg, der laut Entscheidung 6
+// gar nicht mehr benutzt werden soll.
+//
+// GEMESSEN WIRD WIEDER DER ECHTE WEG (wie F1–F12): der gecappte Client aus
+// `createCappedCloudClientFromEnv`. F13b geht eine Ebene höher und misst den Punkt, an dem der
+// Rückfall entstand — `ModelProvider.describeImage`.
+describe("JOB 3100 F13–F18: der Bildweg von ChatGPT (OpenAI)", () => {
+  it("F13: completeVision postet GENAU EINEN Aufruf auf /chat/completions — mit Bearer und der data:-URL", async () => {
+    const anfragen = fetchSpion({ choices: [{ message: { content: "Ein Manometer." } }] });
+    const client = cloudClient(OPENAI_ENV);
+    const text = await bildweg(client)("system", BILD, "beschreibe das Bild", false);
+    expect(text).toBe("Ein Manometer.");
+    expect(anfragen).toHaveLength(1);
+    const anfrage = anfragen[0] as Anfrage;
+    expect(anfrage.url).toBe("https://api.openai.com/v1/chat/completions");
+    expect(anfrage.headers.authorization).toBe("Bearer test-schluessel-nur-hier");
+    expect(anfrage.body.model).toBe("gpt-4o-mini");
+    // Der OpenAI-Vertrag: die data:-URL reist UNZERLEGT als `image_url.url` — kein zweiter Parser,
+    // keine getrennten base64-/Medientyp-Felder wie auf der Anthropic-Kante.
+    expect(anfrage.body.messages).toEqual([
+      { role: "system", content: "system" },
+      {
+        role: "user",
+        content: [
+          { type: "text", text: "beschreibe das Bild" },
+          { type: "image_url", image_url: { url: BILD } },
+        ],
+      },
+    ]);
+  });
+
+  it("F13b: ModelProvider.describeImage erreicht ChatGPT — der Wurf über den fehlenden Bild-Eingang entfällt", async () => {
+    const anfragen = fetchSpion({
+      choices: [{ message: { content: "Ein Manometer am Kesselzulauf." } }],
+    });
+    // Genau die Verdrahtung des Produkts: gecappter Cloud-Client → ModelProvider (build-app.ts:422).
+    const provider = new ModelProvider(cloudClient(OPENAI_ENV));
+    const ergebnis = await provider.describeImage(BILD, "de", false);
+    // Vor JOB 3100 warf diese Zeile „Dieses Modell hat keinen Bild-Eingang (Vision)."
+    // (provider-model.ts:1281-1283) und die Reasoner-Kette wich auf den nächsten Anbieter aus.
+    expect(ergebnis).toEqual({ text: "Ein Manometer am Kesselzulauf.", demo: false });
+    expect(anfragen).toHaveLength(1);
+    expect(anfragen[0]?.url).toBe("https://api.openai.com/v1/chat/completions");
+  });
+
+  it("F14: der EIGENE lokale LLM bekommt den Bildweg NICHT — die Grenze bleibt, wo sie war", () => {
+    const lokal = createCappedLocalClientFromEnv(LOKAL_ENV);
+    expect(lokal).toBeDefined();
+    // Ob ein selbst betriebener Server Bilder kann, hat niemand zugesagt. `describeImage` prüft
+    // `typeof client.completeVision !== "function"` — eine stets vorhandene Methode würde die Kette
+    // an einen Anbieter schicken, der es womöglich gar nicht kann, statt ehrlich zu scheitern.
+    expect(typeof lokal?.completeVision).not.toBe("function");
+    expect(lokal?.completeVision).toBeUndefined();
+    expect("completeVision" in (lokal ?? {})).toBe(false);
+    // Und die Bestandszusage des lokalen Wegs ist unberührt: Loopback gilt weiter als on-prem.
+    expect(lokal?.rejectsConfidential).toBe(false);
+  });
+
+  it("F15: ein vertrauliches Bild wird abgelehnt, BEVOR fetch gerufen wird (null Aufrufe)", async () => {
+    const anfragen = fetchSpion();
+    const client = cloudClient(OPENAI_ENV);
+    // Wie F3: die WIRKUNG zuerst. Ein Fehler NACH dem Fetch wäre bereits Egress — es zählt die Null.
+    await expect(bildweg(client)("system", BILD, "beschreibe", true)).rejects.toBeInstanceOf(
+      ConfidentialEgressError,
+    );
+    expect(anfragen).toHaveLength(0);
+  });
+
+  it("F16: auch der Bildlauf hinterlässt die Spur — gerufen und der gemeldete Verbrauch", async () => {
+    fetchSpion({
+      choices: [{ message: { content: "Ein Manometer." } }],
+      usage: { prompt_tokens: 11, completion_tokens: 7 },
+    });
+    const client = cloudClient(OPENAI_ENV);
+    const spur: ModellAufrufSpur = { gerufen: false };
+    await mitModellAufrufSpur(spur, async () => {
+      await bildweg(client)("system", BILD, "beschreibe", false);
+    });
+    expect(spur.gerufen).toBe(true);
+    // Ein Aufruf, eine Meldung — `gemeldeteAufrufe: 1` schließt die Doppelzählung aus (JOB 3074 R1).
+    expect(spur.verbrauch).toEqual({ eingabeToken: 11, ausgabeToken: 7, gemeldeteAufrufe: 1 });
+  });
+
+  it("F17: ungültige Bild-Daten werfen VOR dem Fetch — null Aufrufe, nichts wird geraten", async () => {
+    const anfragen = fetchSpion();
+    const client = cloudClient(OPENAI_ENV);
+    // SVG ist bewusst NICHT in der Allowlist (aktive Inhalte); Klartext ist gar kein Bild.
+    await expect(
+      bildweg(client)("system", "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4=", "beschreibe", false),
+    ).rejects.toThrow("Bild-Daten sind keine gültige data:image-URL (png/jpeg/gif/webp).");
+    await expect(
+      bildweg(client)("system", "kein Bild, nur ein Satz", "beschreibe", false),
+    ).rejects.toThrow("Bild-Daten sind keine gültige data:image-URL (png/jpeg/gif/webp).");
+    expect(anfragen).toHaveLength(0);
+  });
+
+  it("F18a: lehnt ChatGPT das Bild ab, steht das ehrlich da — mit dem Anbieternamen", async () => {
+    vi.stubGlobal(
+      "fetch",
+      (async () =>
+        ({
+          ok: false,
+          status: 400,
+          json: async () => ({}),
+        }) as unknown as Response) as typeof fetch,
+    );
+    const client = cloudClient(OPENAI_ENV);
+    // „Lokaler LLM antwortete mit 400" wäre über einen Anbieter in den USA schlicht falsch.
+    await expect(bildweg(client)("system", BILD, "beschreibe", false)).rejects.toThrow(
+      "ChatGPT (OpenAI) antwortete mit 400",
+    );
+  });
+
+  it("F18b: eine leere Bild-Antwort wird ein typisierter Fehler, nie ein stiller Leerstring", async () => {
+    fetchSpion({ choices: [{ message: { content: "" }, finish_reason: "length" }] });
+    const client = cloudClient(OPENAI_ENV);
+    // Derselbe Antwort-Vertrag wie auf dem Textweg (requireChatContent) — kein zweiter Kern.
+    await expect(bildweg(client)("system", BILD, "beschreibe", false)).rejects.toThrow(
+      "ChatGPT (OpenAI): Antwort wurde am Token-Limit abgeschnitten",
+    );
   });
 });
