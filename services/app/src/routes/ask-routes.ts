@@ -115,26 +115,27 @@ export interface AskRouteDeps {
 //      Zusage dieser Datei, sondern eine Eigenschaft des Bestands, und sie ist der Grund, warum
 //      KA4 die Vertraulichkeit nicht eigens erzwingen muss.
 //
-// WAS DIE FREIGABE HEUTE BEWIRKT: nichts, und das ist richtig so. `KLARA_EXTERNAL_EXECUTION_MIGRATED`
-// steht in `services/reasoner/src/klara-policy.ts` auf `false`; jede externe Auflösung wird deshalb
-// mit `external_not_migrated` blockiert, und `pruefeExterneAusfuehrung` kann gar kein
-// `erlaubt: true` liefern. Der Weg ist gebaut, geprüft und wartet auf genau eine benannte
-// Entscheidung an genau einer Stelle — er schaltet sich nicht selbst frei.
+// WAS DIE FREIGABE BEWIRKT — SEIT DEM 05.09.2026 WIRKLICH ETWAS (JOB 3079).
 //
-// JOB 3033 (03.09.2026) — WARUM ER TROTZ GEFALLENER OWNERENTSCHEIDUNG NOCH WARTET. Der Eigentümer
-// hat die Freischaltung entschieden (`PRIORITAETEN.md` Zeile V2). Der Versuch, sie umzusetzen, hat
-// vier Stellen freigelegt, an denen der Bestand etwas anderes tut oder sagt, als die Einwilligung
-// verspricht: die Auflösungsfrist wird serverseitig nicht erzwungen, die Zustimmung nennt den
-// falschen Empfänger, der ausgewiesene Nutzlastumfang ist zu schmal, und die Panelfläche behauptet
-// weiterhin „immer ohne KI-Modell". Alle vier stehen einzeln benannt im Kopf von `klara-policy.ts`
-// und sind in `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` AN DEN SCHALTER GEBUNDEN:
-// wer ihn umlegt, ohne sie zu beheben, bekommt von den Fällen S1 bis S4 ein Rot mit Namen.
+// Bis dahin stand hier: „nichts, und das ist richtig so". `KLARA_EXTERNAL_EXECUTION_MIGRATED`
+// (`services/reasoner/src/klara-policy.ts`) stand auf `false`, jede externe Auflösung wurde mit
+// `external_not_migrated` blockiert, und `pruefeExterneAusfuehrung` konnte gar kein `erlaubt: true`
+// liefern. JOB 3033 hatte den Grund dafür in vier Sperrgründen festgehalten; JOB 3079 hat sie
+// behoben (Frist, Empfänger, Nutzlastumfang, Panelvertrag — einzeln benannt im Kopf von
+// `klara-policy.ts`) und den Schalter danach umgelegt. Der Zweig unten öffnet sich also jetzt
+// wirklich, und dann läuft die Frage über den normalen Antwortweg — mit Modell.
 //
-// DIE ZWEI ZWEIGE UNTEN BLEIBEN, WIE SIE SIND. Sie sind richtig und geprüft; ihnen fehlt nur die
-// Freigabe, die sie öffnet. Drei Bedingungen gelten auch nach einer Freischaltung unverändert
-// weiter, und jede für sich schliesst den Weg: eine Admin-Auswahl, die `external` ergibt; ein
-// verdrahteter Cloud-Anbieter MIT Bezeichnung (sonst fällt die Auflösung auf `deterministic`
-// zurück); und eine Einwilligung für GENAU diese Sitzung und GENAU dieses Dokument.
+// DIE ZWEI ZWEIGE UNTEN SIND DABEI UNVERÄNDERT GEBLIEBEN. Sie waren richtig und geprüft; ihnen
+// fehlte nur die Freigabe, die sie öffnet. VIER Bedingungen gelten weiter, und jede für sich
+// schliesst den Weg: eine Admin-Auswahl, die `external` ergibt; ein verdrahteter Cloud-Anbieter MIT
+// Bezeichnung; eine Auflösung, die sich nicht selbst widerspricht (JOB 3079 R2: eine effektive
+// Cloud-Bindung ohne beides ist `policy_incomplete` und wird gesperrt, nicht ausgeführt); und eine
+// Einwilligung für GENAU diese Sitzung und GENAU dieses Dokument, die nicht älter als
+// `KLARA_RESOLUTION_TTL_MS` ist.
+//
+// GEMESSEN, nicht behauptet: `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` misst je
+// Sperrgrund BEIDE Zustände des Schalters, `tests/klara-freigabe/` fährt die ganze Kette vom
+// Consent über HTTP bis zu dem Satz, den der Mensch im Aufgabenfenster liest.
 
 /** Die schmale Sicht auf das bestehende Tor — mehr braucht diese Route nicht zu kennen. */
 export interface Ka4Freigabepruefer {

@@ -78,6 +78,9 @@ interface S4Anzeige {
   // AUFTRAG-26 / KW-S4-22: die Datenklassen der Auflösung und ihre Fail-safe-Folgen.
   payloadClasses: string[] | null;
   payloadResolved: boolean;
+  // JOB 3079 R2: der Empfaenger, den eine Zustimmung freischalten wuerde — `null`, wo keine hilft.
+  consentProvider: string | null;
+  consentModel: string | null;
   blockedClasses: Array<{ payloadClass: string; reasonCode: string }>;
   consentPossible: boolean;
 }
@@ -137,6 +140,11 @@ function aufloesung(over: Record<string, unknown> = {}): Record<string, unknown>
     deviationReason: null,
     externalConsentRequired: false,
     externalConsentGranted: false,
+    // JOB 3079 R2: der EMPFAENGER einer moeglichen Zustimmung — `null`, solange keine noetig ist.
+    // Die Vorgabe ist bewusst `null` und nicht der Anbieter: so muss jeder Fall, der eine
+    // Zustimmung untersucht, ihn AUSDRUECKLICH setzen, statt ihn geschenkt zu bekommen.
+    externalConsentProvider: null,
+    externalConsentModel: null,
     executionAllowed: true,
     blockedReason: null,
     resolvedAt: new Date(JETZT - 1000).toISOString(),
@@ -631,12 +639,17 @@ describe("AUFTRAG-06 BLOCK E: der Produktcode kennt keine erfundenen Anbieter od
         effectiveMode: "external",
         externalConsentRequired: true,
         effectivePayloadClasses: ["query_text", "selected_text"],
+        // JOB 3079 R2: eine Zustimmung ist nur moeglich, wenn AUCH der Empfaenger bestimmt ist.
+        // Ohne dieses Feld waere `consentPossible` seit R2 falsch — und zwar zu Recht.
+        externalConsentProvider: "anthropic",
+        externalConsentModel: "claude",
       }),
       JETZT,
     );
     expect(a.payloadClasses).toEqual(["query_text", "selected_text"]);
     expect(a.payloadResolved).toBe(true);
     expect(a.consentPossible).toBe(true);
+    expect(a.consentProvider).toBe("anthropic");
 
     // Die beiden No-Go-Felder werden NICHT gelesen — auch nicht als Rueckfall.
     const nurVerbotene = b.klaraS4Anzeige(

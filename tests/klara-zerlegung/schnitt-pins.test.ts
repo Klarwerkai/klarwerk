@@ -221,6 +221,14 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // ein freigeschalteter externer Antwortweg nicht gleichzeitig bestehen koennen. Ein Schnitt
   // trifft ihn: wandert der Satz in eine Geschwisterdatei, liest S4 ins Leere. Griff `pfad`.
   "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts": "pfad",
+  // JOB 3079 RUNDE 2 (05.09.2026): die Ende-zu-Ende-Gegenprobe der Freischaltung. Sie ist ein
+  // Mitfahrer mit ZWEI Griffen, und beide sind wesentlich: sie liest `taskpane.html` als
+  // Pfadliteral (`pfad`) UND schneidet vier Bloecke daraus heraus, um sie auszufuehren (`marken`) —
+  // das Woerterbuch samt `t`, `KW-KLARA-S4-*`, `KW-KLARA-WEG-*`, `KW-KLARA-AI-MARK-*`,
+  // `KW-KLARA-AI-NOTICE-*` und `KW-KLARA-ASK-FETCH-*`. Wer eine dieser Marken verschiebt oder
+  // umbenennt, macht diesen Test rot statt still blind: er ist fail-closed gebaut. Runde 1 stand
+  // hier noch nicht — sie hat die Flaeche gar nicht gemessen, und genau das war BENs Befund.
+  "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts": "pfad,marken",
   // JOB 3019 D1 (KA5) hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) als
   // Mitfahrer (Pfadliteral, `splitTaskpane`). JOB 3056 K1 (Rebase, 05.09.2026): DIE DATEI IST
   // GELOESCHT — sie mass die Vier-Lagen-Herkunftszeile, die mit dem Ruhe-Umbau selbst entfallen ist

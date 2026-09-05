@@ -469,6 +469,15 @@ const INVENTAR: readonly string[] = [
   // Inventar nimmt sie nicht still auf. Sachlich Klara-Regression: sie bewacht die Grenze, an der
   // Klaras Panelweg zum ersten Mal ein externes Modell erreichen wuerde.
   "tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts",
+  // JOB 3079 · V2 (05.09.2026): die Gegenprobe am GANZEN Weg, nachdem die vier Sperrgruende
+  // behoben und `KLARA_EXTERNAL_EXECUTION_MIGRATED` umgelegt war. Sie faehrt Zustimmung → Frage →
+  // Anbieter in EINER Kette und misst die drei Lagen, in denen der Mensch einen Unterschied sieht:
+  // mit Zustimmung geht die Frage hinaus und der Beleg nennt den Cloud-Anbieter, ohne sie geht
+  // nichts, nach Ablauf der Fuenf-Minuten-Frist wieder nichts. Von der Inhaltsachse `name`
+  // gefunden (die Datei nennt Klara im Kopf); „klara" steht zwar im Verzeichnis, aber die
+  // Pfadachse zaehlt `tests/klara-freigabe/` mit — K5 waechst deshalb von 38 auf 39. K2 hat die
+  // Datei gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/klara-freigabe/v2-einwilligung-ende-zu-ende.test.ts",
   // JOB 3052 D6 (04.09.2026): das Wissensnetz der Web-App gegen das Zielbild Wissensnetz.dc.html,
   // in Chromium gemessen (tests/design/zielbild-wissensnetz.test.ts). Von der Inhaltsachse
   // `palette` gefunden: der statische Leseweg loest die Token `rgb(var(--kw-…))` der gerenderten
@@ -721,7 +730,15 @@ describe("JOB 920 · K — das Klara-Regressionsinventar ist ableitbar, nicht be
     // Deckelhinweis) — die Datei ist GELOESCHT, ihr Pfad faellt aus der Namensmenge. GEMESSEN, NICHT
     // GESETZT: mit der geloeschten Datei und noch unveraendertem Zaehler meldete der Lauf
     // `expected 38 to be 39`; erst danach wurde diese Zeile angefasst.
-    expect(nurName.length).toBe(38);
+    //
+    // 38 -> 39 am 05.09.2026 (JOB 3079 · V2): `tests/klara-freigabe/v2-einwilligung-ende-zu-
+    // ende.test.ts` traegt „klara" im PFAD (nicht im Dateinamen) — dieselbe Lage wie bei den
+    // 3008/3014-Zeilen weiter oben; die Namensachse liest den ganzen Pfad. Das Verzeichnis war im
+    // Auftrag (§4 ZIELPFADE) abschliessend vorgegeben — die Nachfuehrung ist die Folge des Pfades,
+    // nicht einer Wahl. GEMESSEN, NICHT GESETZT: mit dem neuen Inventareintrag und noch
+    // unveraendertem Zaehler meldete der Lauf `expected 39 to be 38`; erst danach wurde diese
+    // Zeile angefasst.
+    expect(nurName.length).toBe(39);
     expect(verfehlt.length).toBeGreaterThanOrEqual(25);
     expect(verfehlt.length + nurName.length).toBe(GEFUNDEN.length);
   });

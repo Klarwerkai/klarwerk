@@ -63,6 +63,20 @@ export interface KlaraResolution {
   readonly deviationReason: KlaraDeviationReason | null;
   readonly externalConsentRequired: boolean;
   readonly externalConsentGranted: boolean;
+  /**
+   * WER AUSFÜHREN WÜRDE, WENN ZUGESTIMMT WIRD (JOB 3079 R2, BEN-Korrekturpflicht 1).
+   *
+   * `provider`/`model` oben beantworten „was rechnet JETZT" und melden vor der Zustimmung
+   * absichtlich die deterministischen Ersatzwerte. Der Zustimmungsdialog stellt eine ANDERE Frage —
+   * „an wen ginge es, wenn ich ja sage?" — und muss sie aus dem Vertrag beantworten, nicht aus einer
+   * Ableitung im Add-in (No-Go 1).
+   *
+   * `null` heisst: es gibt keinen Empfänger, den eine Zustimmung freischalten würde. Dann darf gar
+   * nicht zugestimmt werden — eine Zustimmung ohne bestimmten Empfänger ist nach KW-S4-22 §4 „nicht
+   * hinreichend bestimmt". Die Begründung der Belegung steht bei `zustimmungWuerdeTragen`.
+   */
+  readonly externalConsentProvider: string | null;
+  readonly externalConsentModel: string | null;
   readonly executionAllowed: boolean;
   readonly blockedReason: KlaraDeviationReason | null;
   readonly resolvedAt: string;
@@ -148,68 +162,104 @@ export const KLARA_DETERMINISTIC_MODEL = "ohne generatives Modell";
 export const KLARA_RESOLUTION_TTL_MS = 5 * 60 * 1000;
 
 /**
- * DER SCHALTER FÜR DEN EXTERNEN ANTWORTWEG — und er steht weiterhin auf AUS.
+ * DER SCHALTER FÜR DEN EXTERNEN ANTWORTWEG — und er steht seit dem 05.09.2026 auf AN.
  *
  * WIE ER ENTSTAND. In der Welle W1 S4 stand er auf AUS, und das war richtig so: der damalige
  * Auftrag war ausdrücklich „Noch wird kein neuer externer Antwortweg freigeschaltet" (§16-17) und
  * „Kein neuer Modellaufruf und kein neuer externer Egress" (No-Go 3). Eine Admin-Auswahl
- * `external` führt deshalb nie zu `executionAllowed = true`, sondern zu einer ehrlichen Blockade
+ * `external` führte deshalb nie zu `executionAllowed = true`, sondern zu einer ehrlichen Blockade
  * mit dem Grund `external_not_migrated` (§145). Die Konstante steht hier sichtbar und nicht als
- * verstreute Bedingung, damit die Freischaltung EINE benannte Entscheidung ist und kein Suchen.
+ * verstreute Bedingung, damit die Freischaltung EINE benannte Entscheidung ist und kein Suchen —
+ * und genau deshalb liest sie AUCH HEUTE nur eine einzige Stelle (Strukturpin in
+ * `klara-policy.test.ts`).
  *
  * ============================================================================================
- * DIE OWNERENTSCHEIDUNG IST GEFALLEN — DIE FREISCHALTUNG NICHT (JOB 3033, 03.09.2026).
+ * FREIGESCHALTET AM 05.09.2026 (JOB 3079) — NACHDEM ALLE VIER SPERRGRÜNDE BEHOBEN WAREN.
  * ============================================================================================
  *
  * Der Eigentümer (Pedi) hat am 03.09.2026 entschieden, den externen Antwortweg freizugeben
- * (Herkunft `PRIORITAETEN.md` Zeile V2). Die Annahme des Auftrags war: „Der Grund für die Sperre
- * ist keine fehlende Funktion, sondern eine benannte Owner-Entscheidung." DIESE ANNAHME TRÄGT
- * NICHT. Runde 1 hat die Konstante umgelegt und dabei vier Stellen freigelegt, an denen der
- * Bestand etwas anderes tut oder sagt, als die Einwilligung verspricht. Solange sie stehen, wäre
- * ein `true` hier kein freigeschalteter Weg, sondern ein unehrlicher:
+ * (Herkunft `PRIORITAETEN.md` Zeile V2), und am 05.09.2026 um 12:03 bestätigt („JA",
+ * Entscheidung 15). JOB 3033 hat die Konstante damals umgelegt und dabei vier Stellen freigelegt,
+ * an denen der Bestand etwas anderes tat oder sagte, als die Einwilligung verspricht. Er hat sie
+ * deshalb NICHT freigeschaltet, sondern als Bedingung an diesen Wert gebunden
+ * (`tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`, Fälle S1 bis S4: jeder misst BEIDE
+ * Zustände des Schalters). JOB 3079 hat die vier behoben — hier steht, WO:
  *
- *   S1 · DIE FRIST WIRD SERVERSEITIG NICHT ERZWUNGEN. `KLARA_RESOLUTION_TTL_MS` (oben) begrenzt
- *        die Anzeige — das Add-in markiert die Auflösung danach als veraltet und holt sie neu
- *        (`taskpane.html:1876-1878`, `:3222-3232`). Die AUSFÜHRUNG kennt diese Frist nicht:
- *        `pruefeExterneAusfuehrung` prüft nur die Sitzungsfrist (15 min Inaktivität). Gemessen:
- *        `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`, Fall S1.
- *   S2 · DIE ZUSTIMMUNG NENNT DEN FALSCHEN EMPFÄNGER. `grantConsent` bildet sie aus der Auflösung
- *        OHNE Zustimmung; die ist blockiert, und dann melden `provider`/`model` die
- *        deterministischen Ersatzwerte (`:278-288`). In `providerReference`/`modelReference`
- *        landet deshalb „Klarwerk (deterministisch)" — während bei erteilter Zustimmung der
- *        Cloud-Anbieter ausführen würde. Fall S2 ebenda.
- *   S3 · DER ZUSTIMMUNGSUMFANG IST ZU SCHMAL BESCHRIEBEN. `KLARA_PAYLOAD_CLASS_QUESTION` (unten)
- *        weist genau eine Klasse aus, „die Frage". Der normale Antwortweg übergibt dem Modell
- *        zusätzlich Titel, Aussage und Dokumenttext der Kandidaten
- *        (`services/ask/src/service.ts:549-566`). Fall S3 ebenda.
- *   S4 · DIE FLÄCHE SAGT DAS GEGENTEIL. Alle vier Lagetexte des Add-ins behaupten, Klaras Antwort
- *        entstehe „immer ohne KI-Modell" (`taskpane.html:2113-2117`) — auch der Text für den Fall,
- *        dass in KLARWERK eine externe KI arbeitet. Fall S4 ebenda.
+ *   S1 · DIE FRIST GILT JETZT FÜR DIE FREISCHALTUNG. `pruefeConsentDeckung`
+ *        (`services/app/src/services/klara-session-service.ts`) verwirft eine Zustimmung, die
+ *        älter als `KLARA_RESOLUTION_TTL_MS` (oben) ist — fail-closed, mit dem benannten Grund
+ *        `aufloesung_abgelaufen`. Vorher prüfte nur die Sitzungsfrist (15 min Inaktivität), und
+ *        Anzeige (5 min) und Ausführung liefen um genau diese Differenz auseinander.
+ *   S2 · DIE ZUSTIMMUNG NENNT DEN AUSFÜHRENDEN EMPFÄNGER. `grantConsent` bildet sie aus der
+ *        Auflösung MIT Zustimmung; `providerReference`/`modelReference` tragen deshalb den
+ *        Cloud-Anbieter und sein Modell statt der deterministischen Ersatzwerte. Die
+ *        Deckungsprüfung vergleicht gegen dieselbe Auflösung — sonst wäre der Fix ein Widerspruch.
+ *   S3 · DER ZUSTIMMUNGSUMFANG DECKT, WAS HINAUSGEHT. `KLARA_PAYLOAD_CLASSES` (unten) weist Frage
+ *        UND Kandidatentexte aus, weil der Antwortweg beides versendet.
+ *   S4 · DIE FLÄCHE SAGT DIE WAHRHEIT JE ZUSTAND. Die Lagetexte des Add-ins behaupten nicht mehr
+ *        „immer ohne KI-Modell"; der Satz zum Weg dieses Fensters hängt jetzt am S4-Zustand
+ *        (`klaraWegSatz` in `apps/web/public/word-addin/taskpane.html`), in drei Sprachen.
  *
- * DIE VIER SIND NICHT BEHAUPTET, SONDERN GEBUNDEN: die genannten Fälle sind so geschrieben, dass
- * sie HEUTE grün sind und in dem Augenblick rot werden, in dem jemand diesen Wert auf `true` legt,
- * ohne sie zu beheben. Der Schalter ist damit kein Wort mehr, sondern eine Bedingung.
- *
- * WAS AUSSERDEM UNABHÄNGIG WEITER GILT, auch nach der Behebung: die Admin-Auswahl muss `external`
+ * WAS UNABHÄNGIG WEITER GILT, auch nach der Freischaltung: die Admin-Auswahl muss `external`
  * ergeben, ein Cloud-Anbieter MIT Bezeichnung muss verdrahtet sein (sonst fällt die Auflösung auf
- * `deterministic` zurück, `:239-244`), und es muss eine deckende Einwilligung für genau diese
- * Sitzung und genau dieses Dokument vorliegen (`external_consent_missing`, `:253-255`).
+ * `deterministic` zurück, s. `cloudLabelFehlt` unten), und es muss eine deckende Einwilligung für
+ * genau diese Sitzung und genau dieses Dokument vorliegen (`external_consent_missing`). Der
+ * Fail-safe bleibt unangetastet: fehlende oder widersprüchliche Policy endet in `deterministic`
+ * oder `blocked`, niemals still in `external`.
+ *
+ * WER IHN ZURÜCKLEGT, legt den ganzen Weg zurück: die Fälle S1 bis S4 messen weiterhin BEIDE
+ * Zustände. `false` sperrt den externen Weg vollständig — es hinterlässt keinen Halbstand.
  */
-export const KLARA_EXTERNAL_EXECUTION_MIGRATED = false;
+export const KLARA_EXTERNAL_EXECUTION_MIGRATED = true;
 
 /**
- * DIE EINZIGE NUTZLASTKLASSE, DIE DIESER SERVER HEUTE VERSENDET.
+ * DIE NUTZLASTKLASSEN, DIE DIESER SERVER AUF DEM ANTWORTWEG VERSENDET.
  *
- * Sie ist keine Auswahl aus einem Katalog, sondern eine Tatsache des Bestands: die Frage des
- * Nutzers. Der Wert stand bis BEN-35 als hart codierter Vergleichswert IN der Deckungsprüfung —
- * an genau der falschen Stelle. Er gehört zur Auflösung, weil die Auflösung entscheidet, was
- * hinausginge; die Deckungsprüfung darf ihn nur noch LESEN.
+ * Sie sind keine Auswahl aus einem Katalog, sondern eine ABGELESENE Tatsache des Bestands. Wer sie
+ * ändern will, muss vorher `services/ask/src/service.ts` ändern — nicht umgekehrt.
  *
- * KEINE ERFUNDENE ERWEITERUNG. Die Menge bleibt einelementig, solange der Server nichts anderes
- * versendet. Käme eine zweite Klasse hinzu, wäre das eine Zustimmungsentscheidung — und die trifft
- * niemand als Nebenwirkung eines Refactorings.
+ * `question` · die Frage des Nutzers, wörtlich, wie sie getippt wurde. Sie geht als erstes Argument
+ *   an `Reasoner.answer` (`services/ask/src/service.ts`, Aufruf `this.reasoner.answer(question, …)`).
+ *
+ * `candidate_texts` · die TEXTE DER GEFUNDENEN EINTRÄGE. Der Antwortweg übergibt dem Modell neben
+ *   der Frage die ausgewählten Kandidaten als `KnowledgeRef`: Titel, Aussage, Status, Vertrauenswert
+ *   und — seit JOB 2614 D3 — den geschnittenen Dokumenttext (`bodyText`) sowie die Bild-Fußnoten
+ *   (`captionTexts`). Das ist mehr als „die Frage", und genau daran ist JOB 3033 als Sperrgrund S3
+ *   hängen geblieben: die Zustimmung wies eine Klasse aus, hinaus gingen zwei.
+ *
+ * ============================================================================================
+ * WARUM DIE ZWEITE KLASSE HIER JETZT STEHEN DARF (JOB 3079, 05.09.2026).
+ * ============================================================================================
+ *
+ * Der Kommentar an dieser Stelle lautete bis JOB 3033: „Käme eine zweite Klasse hinzu, wäre das
+ * eine Zustimmungsentscheidung — und die trifft niemand als Nebenwirkung eines Refactorings."
+ * Das gilt unverändert. Diese zweite Klasse ist keine Nebenwirkung: sie ist der ausdrückliche
+ * Gegenstand der Ownerentscheidung vom 05.09.2026 (Pedi, „JA", PRIORITAETEN.md V2) und sie
+ * ERFINDET nichts — sie benennt, was der Antwortweg seit JOB 2614 ohnehin versendet hätte, sobald
+ * er extern ausführt. Die Zustimmung wird dadurch nicht breiter, sondern erstmals wahr.
+ *
+ * WAS AUSDRÜCKLICH NICHT DAZUGEHÖRT, obwohl das Panel es kennt: die MARKIERTE PASSAGE aus dem
+ * Word-Dokument (`selection`). Sie erreicht das Modell nicht — `services/ask/src/service.ts`
+ * verwendet sie ausschliesslich zur Bildung der Suchterme (`erweiterteSuchterme`) und gibt sie
+ * nirgends an einen Provider weiter. Eine Klasse dafür auszuweisen wäre eine Zustimmung für etwas,
+ * das gar nicht hinausgeht — dieselbe Unehrlichkeit wie S3, nur in die andere Richtung.
  */
 export const KLARA_PAYLOAD_CLASS_QUESTION = "question";
+export const KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS = "candidate_texts";
+
+/**
+ * Die Menge, die eine Auflösung ausweist — in fester Reihenfolge, damit die Anzeige stabil ist.
+ * Die Deckungsprüfung vergleicht mengenstabil (`payloadKlassenSchluessel`), die Reihenfolge ist
+ * also allein eine Frage der Lesbarkeit im Zustimmungssatz.
+ *
+ * EINGEFROREN, und das ist keine Zierde: jede Auflösung reicht DIESE Liste heraus. Wäre sie
+ * beschreibbar, könnte ein einziger Aufrufer die Zustimmungsgrundlage des ganzen Prozesses
+ * verstellen — `readonly` allein ist ein Compilerversprechen und keine Laufzeitgrenze.
+ */
+export const KLARA_PAYLOAD_CLASSES: readonly string[] = Object.freeze([
+  KLARA_PAYLOAD_CLASS_QUESTION,
+  KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS,
+]);
 
 /** Die Admin-Wahl auf die drei kanonischen Modi abbilden — die WUNSCHseite. */
 function adminModeOf(choice: ReasonerTaskChoice, cloudConfigured: boolean): KlaraMode {
@@ -283,9 +333,40 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
   const externalConsentRequired = effectiveMode === "external";
   const externalConsentGranted = externalConsentRequired && input.externalConsentGranted;
 
+  // ================================================================================================
+  // JOB 3079 RUNDE 2 (BEN-Korrekturpflicht 3) — WIDERSPRÜCHLICHE POLICY IST FAIL-CLOSED.
+  // ================================================================================================
+  //
+  // DER BEFUND, wörtlich nachgestellt: `choice: "deterministic"`, effektive Bindung `"cloud"`, ein
+  // benannter Cloud-Anbieter und eine Zustimmung ergaben `deviationReason: "policy_incomplete"` —
+  // und trotzdem `effectiveMode: "external"` mit `executionAllowed: true`. Der Resolver BENANNTE
+  // den Widerspruch also und liess ihn passieren. Solange der Schalter auf `false` stand, war das
+  // folgenlos; mit der Freischaltung wird daraus ein Egress, den kein Administrator gewählt hat.
+  // Der Kommentar über dieser Funktion versprach seit W1 S4 das Gegenteil („fehlende oder
+  // widersprüchliche Policy endet in `deterministic` oder `blocked` — niemals still in `external`").
+  //
+  // DIE REGEL, in einem Satz: externe Ausführung braucht eine ADMIN-WAHL, die extern ergibt, UND
+  // eine verdrahtete Cloud. Beides sind Tatsachen der Konfiguration, keine Ableitung:
+  //   · `adminConfiguredMode !== "external"` heisst, der Administrator hat den externen Weg nicht
+  //     gewählt. Dass die effektive Bindung trotzdem auf Cloud zeigt, ist ein Widerspruch in der
+  //     Konfiguration — und eine Zustimmung des Nutzers kann eine fehlende Admin-Wahl nicht
+  //     ersetzen.
+  //   · `!cloudConfigured` bei effektiver Cloud-Bindung heisst, dieselbe Konfiguration sagt an zwei
+  //     Stellen Verschiedenes. Welche Stelle recht hat, kann diese reine Funktion nicht wissen —
+  //     also führt sie nicht aus.
+  //
+  // WARUM `blocked` UND NICHT „still auf deterministic drehen": ein Rückfall auf `deterministic`
+  // wäre eine BEHAUPTUNG darüber, was rechnet, und die Fläche zeigte einen ruhigen Normalzustand.
+  // Der Widerspruch bliebe unsichtbar. Als Blockade mit dem Grund `policy_incomplete` steht er im
+  // Panel und im Protokoll — und der Ask-Weg fällt trotzdem nicht aus: er bleibt in der Enge und
+  // antwortet deterministisch (`ask-routes.ts`, `ka4Freigabe` liefert `false`).
+  const externAutorisiert = adminConfiguredMode === "external" && input.cloudConfigured;
+
   let blockedReason: KlaraDeviationReason | null = null;
   if (effectiveMode === "external") {
-    if (!KLARA_EXTERNAL_EXECUTION_MIGRATED) {
+    if (!externAutorisiert) {
+      blockedReason = "policy_incomplete";
+    } else if (!KLARA_EXTERNAL_EXECUTION_MIGRATED) {
       blockedReason = "external_not_migrated";
     } else if (!externalConsentGranted) {
       blockedReason = "external_consent_missing";
@@ -293,6 +374,48 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
   }
 
   const executionAllowed = blockedReason === null;
+
+  // ================================================================================================
+  // JOB 3079 RUNDE 2 (BEN-Korrekturpflicht 1) — WEM DER MENSCH ZUSTIMMT, BEVOR ER ZUSTIMMT.
+  // ================================================================================================
+  //
+  // DER BEFUND: die echte Panel-Ableitung zeigte im Zustimmungskasten wörtlich „Deine Frage und die
+  // Texte der gefundenen Einträge gehen an Klarwerk (deterministisch)." Der Grund liegt eine Zeile
+  // tiefer: `provider`/`model` folgen der Regel „angezeigt wird, was rechnet", und VOR der
+  // Zustimmung rechnet nichts extern — also stehen dort die deterministischen Ersatzwerte. Für die
+  // KI-Zeile ist das richtig. Für die EINWILLIGUNGSFRAGE ist es falsch: sie fragt nicht, was
+  // rechnet, sondern was rechnen WÜRDE, wenn der Mensch ja sagt.
+  //
+  // ZWEI FRAGEN, ZWEI FELDER — und ausdrücklich kein Umdeuten von `provider`. Hätte ich `provider`
+  // in `external` immer auf den Cloud-Anbieter gesetzt, stünde in der KI-Zeile ein Anbieter, der
+  // gerade nichts tut; genau diese Bauform hat mega79 einmal als falsche Modellbehauptung
+  // aussortiert.
+  //
+  // NULL HEISST „ES GIBT KEINEN EMPFÄNGER, DEN EINE ZUSTIMMUNG FREISCHALTEN WÜRDE" — und das Panel
+  // bietet dann keinen Zustimmungsknopf an (dieselbe Fail-safe-Bauform wie bei den Nutzlastklassen,
+  // KW-S4-22 §4: eine Zustimmung ohne bestimmten Empfänger ist nicht hinreichend bestimmt). Es ist
+  // deshalb genau dann gefüllt, wenn eine Zustimmung WIRKLICH etwas bewirken kann: externer Modus,
+  // vom Administrator autorisiert, Weg freigeschaltet. Bei `policy_incomplete` oder gesperrtem
+  // Schalter bleibt es `null` — dort hülfe keine Zustimmung.
+  //
+  // DAS MODELL wird mit DERSELBEN Ableitung gebildet, die `grantConsent` in die Urkunde schreibt
+  // (`resolution.model` im Freigabefall). Zwei Ableitungen wären zwei Wahrheiten: das Panel nennte
+  // einen Empfänger und die gespeicherte Zustimmung einen anderen — genau der Fehler, den S2 gerade
+  // behoben hat.
+  // ABGELEITET AUS DER EINEN ENTSCHEIDUNGSKASKADE OBEN, nicht aus ihren Bedingungen noch einmal:
+  // nach ihr ist `external_consent_missing` der einzige Blockierungsgrund, den eine Zustimmung
+  // beseitigen kann (und `null` heisst, sie ist schon erteilt). Jede andere Sperre —
+  // `policy_incomplete`, `external_not_migrated` — hilft keine Zustimmung, dort bleibt das Feld
+  // leer. Die Bedingungen hier zu wiederholen hiesse, die Kaskade an zwei Stellen zu pflegen; der
+  // Strukturpin in `klara-policy.test.ts` besteht zu Recht darauf, dass der Schalter GENAU EINE
+  // lesende Stelle hat.
+  const zustimmungWuerdeTragen =
+    effectiveMode === "external" &&
+    (blockedReason === null || blockedReason === "external_consent_missing");
+  const externalConsentProvider = zustimmungWuerdeTragen ? input.providerLabel : null;
+  const externalConsentModel = zustimmungWuerdeTragen
+    ? (input.modelLabel ?? KLARA_DETERMINISTIC_MODEL)
+    : null;
 
   // Anbieter und Modell folgen dem EFFEKTIVEN Modus und seiner Bindung: angezeigt wird, was rechnet.
   const laeuftMitModell = effectiveMode !== "deterministic" && executionAllowed;
@@ -317,6 +440,8 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
     deviationReason: reason ?? blockedReason,
     externalConsentRequired,
     externalConsentGranted,
+    externalConsentProvider,
+    externalConsentModel,
     executionAllowed,
     blockedReason,
     resolvedAt,
@@ -324,9 +449,9 @@ export function resolveKlaraPolicy(input: KlaraPolicyInput): KlaraResolution {
     policyVersion: klaraPolicyVersion(input),
     configurationVersion: klaraConfigurationVersion(input),
     // BEN-35 Befund 1: die Auflösung nennt ihre Nutzlastklassen selbst. Sie ist für jeden Modus
-    // gleich, weil der Server für jeden Modus dasselbe versendet — die Frage. Das ist ehrlicher
-    // als eine modusabhängige Menge zu erfinden, die keinem Codepfad entspricht.
-    effectivePayloadClasses: [KLARA_PAYLOAD_CLASS_QUESTION],
+    // gleich, weil der Server für jeden Modus dasselbe versendet — Frage und Kandidatentexte. Das
+    // ist ehrlicher als eine modusabhängige Menge zu erfinden, die keinem Codepfad entspricht.
+    effectivePayloadClasses: KLARA_PAYLOAD_CLASSES,
   };
 }
 

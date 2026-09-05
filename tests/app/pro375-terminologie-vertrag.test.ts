@@ -221,11 +221,15 @@ const PIN: Record<string, Record<Sprache, string>> = {
 };
 
 const PIN_ADDIN: Record<string, Record<Sprache, string>> = {
-  // Zustands- UND Ortsbehauptung; trägt zugleich Klaras Kernsatz.
+  // Zustands- UND Ortsbehauptung. JOB 3079 (05.09.2026): Klaras Kernsatz ist HERAUSGENOMMEN — er
+  // ist mit der Freischaltung des externen Antwortwegs bedingt geworden und steht seitdem je
+  // Zustand unter `weg*` (Begründung ausführlich an TV-8). Was dieser Pin schützt, ist
+  // unverändert: die Zustands- und Ortsbehauptung über die hausinterne KI, byteweise.
+  // VORHERHASH de: `723e7e0e1e56a96222f70e2738e7cfd8090210aee2768cde19c6a4e3cf409ac2`.
   aiLageIntern: {
-    de: "723e7e0e1e56a96222f70e2738e7cfd8090210aee2768cde19c6a4e3cf409ac2",
-    en: "f54a1ddceb45b0bfa9cbb84377f1430026d52c4b998377aa3f7201f73abd368b",
-    nl: "3111a6966736bb9ab8649de23210e6c180521a16f6110f8e2b4afed1f006becd",
+    de: "a106ba73042e6e565764fabb867783786ea98c3ef3b70c15ccdf6f0bbdac56b3",
+    en: "2a8460e03103a7b7e0e5f50e412d9a08fdc985978f7e4e23ce22aa5278b50f5a",
+    nl: "35b039dccaf7899ad972b8d20bf6c5acb3a0ae6436da31eecdd3c19bc1afb063",
   },
   trustModeIntern: {
     de: "98f1732547d878c5984dfc6f990ba48bce9ebbe32fec7f3d1a1c0e77f862c2c1",
@@ -374,25 +378,91 @@ describe("PRO 375 · Terminologie-Vertrag On-Premise Enterprise AI", () => {
     "aiLageKeine",
   ] as const;
 
-  it("TV-8 bewahrt Klaras Kernsatz in allen fünf aiLage-Texten", () => {
-    const unbedingt: Record<Sprache, readonly string[]> = {
-      de: ["immer ohne KI-Modell"],
-      en: ["always produced without an AI model", "produced without an AI model in any case"],
-      nl: ["altijd zonder AI-model", "sowieso zonder AI-model"],
+  // ==============================================================================================
+  // JOB 3079 (05.09.2026) — DER KERNSATZ IST UMGEZOGEN, WEIL ER BEDINGT GEWORDEN IST.
+  // ==============================================================================================
+  //
+  // Mit der Freischaltung des externen Antwortwegs
+  // (`services/reasoner/src/klara-policy.ts`, `KLARA_EXTERNAL_EXECUTION_MIGRATED`) kann Klaras
+  // Antwort in diesem Fenster sehr wohl mit einem Modell entstehen — dann naemlich, wenn ein
+  // Mensch fuer sein Dokument zugestimmt hat. Die UNBEDINGTHEIT, die dieser Fall bisher schuetzte,
+  // war ab diesem Tag genau die falsche Zusage; sie zu bewahren hiesse, den Wortlaut ueber die
+  // Wahrheit zu stellen.
+  //
+  // WAS ER STATTDESSEN SCHUETZT, und das ist nicht weniger: die Zusage steht jetzt je Zustand
+  // (`weg*`, abgeleitet von `klaraWegKey`), und in FUENF der sechs Zustaende gilt sie unveraendert
+  // — dort mit derselben Zitatzusage wie zuvor. Der sechste (`wegExternZustimmung`) sagt das
+  // Gegenteil und muss es sagen. Er wird hier ausdruecklich mitgefuehrt, damit er nicht einfach
+  // fehlen kann.
+  //
+  // Die fuenf `aiLage*`-Texte sagen ab jetzt nur noch, was IM HAUS arbeitet. Dass keiner von ihnen
+  // wieder eine Aussage ueber Klaras Antwortweg an sich zieht, misst
+  // `tests/app/mega79-klara-antwort-ohne-modell.test.ts`.
+  const WEG_OHNE_MODELL = [
+    "wegExternOhneZustimmung",
+    "wegExternZustimmungWeg",
+    "wegIntern",
+    "wegDeterministisch",
+    "wegUnbekannt",
+  ] as const;
+
+  it("TV-8 bewahrt Klaras Kernsatz in allen fünf modellfreien Wegzuständen", () => {
+    const ohneModell: Record<Sprache, readonly string[]> = {
+      de: ["ohne KI-Modell"],
+      en: ["without an AI model"],
+      nl: ["zonder AI-model"],
     };
     const zitat: Record<Sprache, string> = {
       de: "regelbasiert, mit wörtlichem Zitat aus validiertem Wissen",
       en: "rule-based, quoting validated knowledge word for word",
       nl: "regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis",
     };
-    for (const key of AI_LAGE) {
+    for (const key of WEG_OHNE_MODELL) {
       for (const lang of SPRACHEN) {
         const wert = textAus(STRINGS, lang, key);
         expect(
-          unbedingt[lang].some((f) => wert.includes(f)),
-          `${key} · ${lang} · Unbedingtheit fehlt: ${wert}`,
+          ohneModell[lang].some((f) => wert.includes(f)),
+          `${key} · ${lang} · Modellausschluss fehlt: ${wert}`,
         ).toBe(true);
         expect(wert, `${key} · ${lang} · Zitatzusage`).toContain(zitat[lang]);
+      }
+    }
+  });
+
+  it("TV-8b hält den einen Zustand fest, in dem die Zusage NICHT gilt", () => {
+    // Er darf nicht verschwinden und nicht schweigen: eine externe Ausfuehrung, die im Panel
+    // nicht als solche dasteht, waere derselbe Widerspruch wie der frueher unbedingte Satz — nur
+    // in die andere Richtung.
+    const zusage: Record<Sprache, string> = {
+      de: "ohne KI-Modell",
+      en: "without an AI model",
+      nl: "zonder AI-model",
+    };
+    for (const lang of SPRACHEN) {
+      const wert = textAus(STRINGS, lang, "wegExternZustimmung");
+      expect(wert, `wegExternZustimmung · ${lang} · nennt den Anbieter nicht`).toContain(
+        "{provider}",
+      );
+      expect(wert, `wegExternZustimmung · ${lang} · trägt die widerlegte Zusage`).not.toContain(
+        zusage[lang],
+      );
+    }
+  });
+
+  it("TV-8c lässt die fünf aiLage-Texte KEINE Aussage über Klaras Antwortweg treffen", () => {
+    // Der Grund, warum die Zusage umziehen musste: sie stand im HAUSSTANDS-Satz. Wer sie dorthin
+    // zurückschriebe, machte sie wieder unbedingt — und wieder falsch.
+    const klara: Record<Sprache, RegExp> = {
+      de: /Klaras Antwort/i,
+      en: /Klara's answer/i,
+      nl: /Klara's antwoord/i,
+    };
+    for (const key of AI_LAGE) {
+      for (const lang of SPRACHEN) {
+        expect(
+          klara[lang].test(textAus(STRINGS, lang, key)),
+          `${key} · ${lang} · spricht wieder über Klaras Antwort statt über den Hausstand`,
+        ).toBe(false);
       }
     }
   });

@@ -1,5 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
+  KLARA_RESOLUTION_TTL_MS,
   type KlaraConsent,
   type KlaraConsentStatus,
   type KlaraResolution,
@@ -191,6 +192,12 @@ export type KlaraDeckungsGrund =
   | "nicht_erteilt"
   /** Sie ist erteilt, aber abgelaufen. */
   | "abgelaufen"
+  /**
+   * JOB 3079 · S1 — Sie ist erteilt und noch nicht abgelaufen, aber die AUFLÖSUNG, auf die sie
+   * erteilt wurde, ist älter als `KLARA_RESOLUTION_TTL_MS`. Ein eigener Grund und nicht
+   * „abgelaufen": die Zustimmung selbst lebt noch, nur ihre Grundlage nicht mehr.
+   */
+  | "aufloesung_abgelaufen"
   /** Sie stammt aus Altbestand und trägt nicht alle Bindungen — unklare Kompatibilität (§4). */
   | "bindung_unvollstaendig"
   /** Sie ist vollständig, weicht aber in mindestens einem gebundenen Feld ab. */
@@ -234,6 +241,27 @@ function payloadKlassenSchluessel(klassen: readonly string[]): string {
  *
  * ABLAUF wird gegen `jetzt` geprüft und nicht gegen die Sitzung: eine Zustimmung kann vor der
  * Sitzung enden, und dann deckt sie nichts mehr, auch wenn die Sitzung noch lebt.
+ *
+ * ================================================================================================
+ * JOB 3079 · S1 — DIE AUFLÖSUNGSFRIST GILT AB JETZT AUCH FÜR DIE AUSFÜHRUNG.
+ * ================================================================================================
+ *
+ * `KLARA_RESOLUTION_TTL_MS` (5 min) war bis hierher eine reine ANZEIGEFRIST: das Add-in markiert
+ * die Auflösung danach als veraltet und holt sie neu (`taskpane.html`, `klaraS4Veraltet`). Die
+ * AUSFÜHRUNG kannte sie nicht — sie prüfte allein die Sitzungsfrist (15 min Inaktivität). Anzeige
+ * und Ausführung liefen damit um zehn Minuten auseinander; solange der externe Weg gesperrt war,
+ * blieb das folgenlos, mit der Freischaltung wäre es eine Zustimmung, die länger trägt, als der
+ * Mensch sie gesehen hat (KW-S4-04 §54-57).
+ *
+ * GEMESSEN WIRD AM `grantedAt` DER ZUSTIMMUNG, und das ist kein Ersatzwert: die Auflösung, gegen
+ * die zugestimmt wurde, entstand in demselben Aufruf und lief nach genau `KLARA_RESOLUTION_TTL_MS`
+ * ab (`resolveKlaraPolicy`: `expiresAt = resolvedAt + TTL`, `resolvedAt = now`). `grantedAt + TTL`
+ * IST also ihr `expiresAt`. Ein zusätzliches persistiertes Feld hätte dieselbe Zahl ein zweites Mal
+ * gespeichert — und zwei Quellen für eine Frist sind die Bauform, die KW-S4-23 abstellt.
+ *
+ * FAIL-CLOSED: nach Ablauf deckt die Zustimmung nichts mehr; die Aufrufer entwerten sie (dieselbe
+ * Reihenfolge wie bei jeder anderen Nichtdeckung) und der externe Weg ist gesperrt, bis der Mensch
+ * auf einer FRISCHEN Auflösung erneut zustimmt.
  */
 export function pruefeConsentDeckung(
   consent: KlaraConsent | undefined,
@@ -268,6 +296,10 @@ export function pruefeConsentDeckung(
   }
   if (jetzt >= Date.parse(consent.expiresAt)) {
     return { gedeckt: false, grund: "abgelaufen", abweichungen: ["expiresAt"] };
+  }
+  // JOB 3079 · S1: die Frist der AUFLÖSUNG, gegen die zugestimmt wurde (Begründung am Kopf).
+  if (jetzt >= Date.parse(consent.grantedAt) + KLARA_RESOLUTION_TTL_MS) {
+    return { gedeckt: false, grund: "aufloesung_abgelaufen", abweichungen: ["grantedAt"] };
   }
 
   // Die neun Bindungen aus KW-S4-23 §1, jede einzeln benannt.
@@ -566,7 +598,16 @@ export class KlaraSessionService {
         resolution: ohneConsent,
         quelle,
       } = await this.aufloesen(beruehrt, false);
-      const deckung = pruefeConsentDeckung(consent, gebunden, ohneConsent, this.now());
+      // JOB 3079 · S2: GEPRÜFT WIRD GEGEN DIE AUFLÖSUNG, DIE BEI GETRAGENER ZUSTIMMUNG GÄLTE.
+      //
+      // Sie ist die einzige, die den ausführenden Anbieter benennt — und seit S2 steht genau der
+      // in der Zustimmung. Gegen `ohneConsent` zu vergleichen hiesse ab jetzt, jede gültige
+      // Zustimmung an ihrem eigenen Empfänger scheitern zu lassen: dort meldet die blockierte
+      // Auflösung die deterministischen Ersatzwerte. Alle übrigen neun Bindungen sind in beiden
+      // Auflösungen wortgleich (die Zustimmung ändert nur `provider`/`model`), die Prüfung wird
+      // dadurch also an keiner Stelle weicher.
+      const mitConsent = this.aufloesenOhneSchreiben(gebunden, true, quelle);
+      const deckung = pruefeConsentDeckung(consent, gebunden, mitConsent, this.now());
 
       // FAIL-SAFE (KW-S4-23 §4): eine noch erteilte, aber nicht mehr deckende Zustimmung wird
       // ENTWERTET — unter CAS, im selben schmalen Übergang wie jeder andere Zustandswechsel. Ohne
@@ -589,11 +630,10 @@ export class KlaraSessionService {
         }
       }
 
-      // Die ausgelieferte Auflösung trägt die GEPRÜFTE Deckung, nicht den Rohzustand — und sie
-      // entsteht aus DERSELBEN Policyquelle wie die Deckungsprüfung (BEN-35 Befund 3).
-      const resolution = deckung.gedeckt
-        ? this.aufloesenOhneSchreiben(stand, true, quelle)
-        : ohneConsent;
+      // Die ausgelieferte Auflösung trägt die GEPRÜFTE Deckung, nicht den Rohzustand — und sie ist
+      // DIESELBE, gegen die eben geprüft wurde (BEN-35 Befund 3). Sie wird hier nicht noch einmal
+      // gebildet: eine dritte Auflösung wäre genau der Fehler, den Befund 3 abgestellt hat.
+      const resolution = deckung.gedeckt ? mitConsent : ohneConsent;
 
       const kontrolle = await this.repo.findSession(sessionId);
       if (!kontrolle) {
@@ -645,11 +685,15 @@ export class KlaraSessionService {
    * W1 S4 R6B (KW-S4-23 §2.3) — DAS FINALE TOR VOR EINER EXTERNEN AUSFÜHRUNG.
    * ============================================================================================
    *
-   * WARUM ES DIESE GRENZE GIBT UND KEINE ROUTE. Es existiert heute kein produktiver externer
-   * Ausführungsendpunkt (`executionAllowed` ist im Bestand durchgehend `false`, Grund
-   * `external_not_migrated`). Einen zu erfinden wäre eine Produktbehauptung; der Auftrag verbietet
-   * sie ausdrücklich. Das Tor ist deshalb eine schmale, serverseitig aufrufbare Dienstgrenze —
-   * genau der Ort, an dem ein späterer Ausführungsweg sie aufrufen MUSS.
+   * WARUM ES DIESE GRENZE GIBT UND KEINE ROUTE. Als sie entstand, gab es keinen produktiven
+   * externen Ausführungsendpunkt (`executionAllowed` war im Bestand durchgehend `false`, Grund
+   * `external_not_migrated`); einen zu erfinden wäre eine Produktbehauptung gewesen. Das Tor ist
+   * deshalb eine schmale, serverseitig aufrufbare Dienstgrenze — genau der Ort, an dem ein
+   * Ausführungsweg sie aufrufen MUSS.
+   *
+   * SEIT JOB 3079 (05.09.2026) IST ES KEIN VORRAT MEHR: der externe Weg ist freigeschaltet, und
+   * `ka4Freigabe` in `services/app/src/routes/ask-routes.ts` ist der Aufrufer, der über dieses Tor
+   * entscheidet, ob eine Frage des Aufgabenfensters die Enge verlässt.
    *
    * ES LIEST FRISCH. Das ist der ganze Sinn: zwischen einer vorherigen Statusauskunft und dem
    * Ausführungsversuch kann alles passiert sein — ein Rebind, ein Widerruf, ein Policywechsel. Ein
@@ -670,7 +714,10 @@ export class KlaraSessionService {
       quelle,
     } = await this.aufloesen(session, false);
     const consent = await this.repo.findConsent(sessionId);
-    const deckung = pruefeConsentDeckung(consent, gebunden, ohneConsent, this.now());
+    // JOB 3079 · S2: dieselbe Prüfgrundlage wie im Statusweg — die Auflösung MIT Zustimmung, weil
+    // nur sie den ausführenden Anbieter benennt (Begründung dort, `getSession`).
+    const mitConsent = this.aufloesenOhneSchreiben(gebunden, true, quelle);
+    const deckung = pruefeConsentDeckung(consent, gebunden, mitConsent, this.now());
 
     if (!deckung.gedeckt) {
       // ==========================================================================================
@@ -703,12 +750,13 @@ export class KlaraSessionService {
       };
     }
 
-    // Die Zustimmung deckt. Erst JETZT darf die Auflösung sie tragen — gebildet aus DERSELBEN
-    // Policyquelle, gegen die eben geprüft wurde (BEN-35 Befund 3).
-    const resolution = this.aufloesenOhneSchreiben(gebunden, true, quelle);
+    // Die Zustimmung deckt. Ausgeliefert wird genau die Auflösung, gegen die geprüft wurde — kein
+    // zweites Bilden (BEN-35 Befund 3).
+    const resolution = mitConsent;
     if (!resolution.executionAllowed) {
-      // Die Auflösung selbst blockiert (z. B. `external_not_migrated`). Das ist KEIN
-      // Zustimmungsproblem und wird deshalb auch nicht als solches gemeldet.
+      // Die Auflösung selbst blockiert — heute `policy_incomplete` (widersprüchliche Konfiguration,
+      // JOB 3079 R2) oder `external_not_migrated`, falls der Schalter je zurückgelegt wird. Das ist
+      // KEIN Zustimmungsproblem und wird deshalb auch nicht als solches gemeldet.
       return {
         erlaubt: false,
         grund: resolution.blockedReason ?? "execution_not_allowed",
@@ -794,13 +842,33 @@ export class KlaraSessionService {
   async grantConsent(sessionId: string, bindung: KlaraBindung): Promise<KlaraSessionView> {
     const { session } = await this.laden(sessionId, bindung);
     const beruehrt = await this.beruehre(session, bindung);
-    const { session: gebunden, resolution } = await this.aufloesen(beruehrt, false);
-    if (resolution.effectiveMode !== "external") {
+    const {
+      session: gebunden,
+      resolution: ohneConsent,
+      quelle,
+    } = await this.aufloesen(beruehrt, false);
+    if (ohneConsent.effectiveMode !== "external") {
       throw new KlaraError(
         "CONFLICT",
-        `Zustimmung ist nur für externe KI möglich (aktueller Modus ${resolution.effectiveMode}).`,
+        `Zustimmung ist nur für externe KI möglich (aktueller Modus ${ohneConsent.effectiveMode}).`,
       );
     }
+    // ============================================================================================
+    // JOB 3079 · S2 — DIE URKUNDE NENNT DEN EMPFÄNGER, DER AUCH AUSFÜHRT.
+    // ============================================================================================
+    //
+    // Bis hierher entstanden `providerReference` und `modelReference` aus der Auflösung OHNE
+    // Zustimmung. Die ist per Konstruktion blockiert (`external_consent_missing`), und eine
+    // blockierte Auflösung meldet absichtlich die deterministischen Ersatzwerte („angezeigt wird,
+    // was rechnet", `klara-policy.ts`). In der Zustimmung stand deshalb „Klarwerk
+    // (deterministisch)" — während bei erteilter Zustimmung der Cloud-Anbieter ausführt. Solange
+    // der externe Weg gesperrt war, war das folgenlos; mit der Freischaltung wäre es eine
+    // Einwilligungsurkunde, die den falschen Empfänger benennt (BEN-Korrekturpflicht 1 zu 3033).
+    //
+    // GEBILDET WIRD SIE AUS DERSELBEN POLICYQUELLE, gegen die eben geprüft wurde (BEN-35 Befund 3)
+    // — kein zweites Einlesen, kein Versionsmix. Der Modus, die Versionen und die Resolution-Id
+    // sind in beiden Auflösungen identisch: die Zustimmung ändert nur, wer laut Auflösung rechnet.
+    const resolution = this.aufloesenOhneSchreiben(gebunden, true, quelle);
     const jetzt = this.now();
     const consent: KlaraConsent = {
       consentId: this.newId(),

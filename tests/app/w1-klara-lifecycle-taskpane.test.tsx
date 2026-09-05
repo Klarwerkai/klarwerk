@@ -161,6 +161,13 @@ function aufloesung(over: Record<string, unknown> = {}): Record<string, unknown>
     deviationReason: null,
     externalConsentRequired: true,
     externalConsentGranted: false,
+    // JOB 3079 R2 (BEN-Korrekturpflicht 1): der Empfaenger, den ein JA freischalten wuerde. Er
+    // steht NEBEN `provider`, weil `provider` beantwortet, was GERADE rechnet — und das sind vor
+    // der Zustimmung die deterministischen Ersatzwerte. Ohne dieses Feld gibt es seit R2 keinen
+    // Zustimmungsknopf mehr, und das ist die Absicht: eine Zustimmung ohne bestimmten Empfaenger
+    // ist nach KW-S4-22 §4 nicht hinreichend bestimmt.
+    externalConsentProvider: "srv-anbieter",
+    externalConsentModel: "srv-modell",
     executionAllowed: false,
     blockedReason: "external_consent_missing",
     resolvedAt: new Date(Date.now() - 1000).toISOString(),

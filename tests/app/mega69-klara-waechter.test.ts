@@ -1302,7 +1302,66 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     11px 0 9px statt 5px 12px). Der Umschalter „Fragen | Erfassen" ist K1 (JOB 3056, Ruhe.dc.html
     //     Z.20-23) und gehoert nicht zur Erfassen-Flaeche. Kein Markup, kein Skript, kein Schluessel,
     //     kein Abrufziel geaendert; genau eine `.tabs`-Gruppe bleibt (oben, K1). KEIN Sideload noetig.
-    const PIN = "a5e8fcec7f194e6372aced2f3339cc155ece2072a32615faa455606517f637ba";
+    //
+    // JOB 3079 · V2 (05.09.2026): Auslieferungsfolgen erneut geprüft, bevor der Pin wanderte.
+    // VORHERHASH taskpane.html (Stand vor dieser JOB-3079-Kette, also VOR dem Rebase auf die obige
+    // JOB-3057-Kette): `9b103cd7a6b07ad2f05f50c8b1744c74dd9de7a1c0581177a77d4eb6b4b13096`.
+    //
+    // DER ANLASS IST DIESMAL EINE PRODUKTENTSCHEIDUNG, keine Anzeigekorrektur, und das steht hier
+    // ausdrücklich: mit `KLARA_EXTERNAL_EXECUTION_MIGRATED = true`
+    // (`services/reasoner/src/klara-policy.ts`) kann Klaras Antwort in diesem Fenster ab jetzt
+    // WIRKLICH über einen externen Anbieter entstehen — dann nämlich, wenn der Mensch für genau
+    // dieses Dokument zugestimmt hat. Geändert wurden AUSSCHLIESSLICH Panel-Inhalte und Ableitungen
+    // auf ohnehin empfangenen Feldern:
+    //   · die fünf `aiLage*`-Texte je Sprache sagen nur noch, was IM HAUS arbeitet; der Zusatz
+    //     „immer ohne KI-Modell" ist dort entfallen, weil er unbedingt war und es nicht mehr ist;
+    //   · sechs neue Wörterbuch-Schlüssel je Sprache (`weg*`) tragen die Aussage über DIESES
+    //     Fenster, je Zustand einer, samt Anbietername im einen Zustand mit Modell;
+    //   · ein neues Schnittmarkenpaar `KW-KLARA-WEG-START/END` um die reine Ableitung
+    //     `klaraWegKey`/`klaraWegParam` und die Klassen-Lesbarmachung `klaraS4KlassenListe`;
+    //   · `renderAiLage` setzt den zweiten Satz aus dieser Ableitung; `renderKlaraS4` ruft
+    //     `renderAiLage` mit, damit Kopf und Gruppe nicht auseinanderlaufen;
+    //   · der Zustimmungskasten stellt dem technischen Umfang einen Klartextsatz voran
+    //     (`s4ConsentSatz`, `s4KlassenUnd`, `s4Klasse_question`, `s4Klasse_candidate_texts`) —
+    //     er ZITIERT die Klassen der Auflösung, die jetzt zwei sind statt einer.
+    // KEIN Manifest, KEIN neuer Endpunkt, KEIN neues Recht, kein neuer Fremd-Ursprung, KEINE
+    // geänderte CSP, KEIN neues Abrufziel: die Menge der `fetch(...)`-Ziele und der abgesetzte
+    // Ask-Rumpf (`mode: "retrieval-only"`) sind unverändert. Was sich ändert, liegt SERVERSEITIG —
+    // dieselbe Anfrage wird bei gedeckter Zustimmung anders beantwortet, und das Panel sagt es.
+    // Ein installiertes Add-in braucht deshalb KEIN erneutes Sideload; es holt die Datei beim
+    // nächsten Öffnen frisch vom Server.
+    // GEPRÜFT: `tests/ka4-freischaltung`, `tests/klara-freigabe`,
+    // `tests/app/mega79-klara-antwort-ohne-modell.test.ts`,
+    // `tests/app/pro375-terminologie-vertrag.test.ts`,
+    // `tests/app/w1-klara-vertrauenskopf.test.ts`, `tests/app/klara-ai-header.test.ts`,
+    // `tests/app/job2621-panel-wahrheiten.test.ts`, `tests/app/w1-klara-lifecycle-taskpane.test.tsx`.
+    //
+    // JOB 3079 RUNDE 2 (BEN-Korrekturpflicht 1): Auslieferungsfolgen erneut geprüft. VORHERHASH
+    // taskpane.html: `857fd8746718c547cd2ba2f8a463cdfb3bae8ed014ede3dd4558d62a61fb46fd`.
+    // GEÄNDERT WURDE AUSSCHLIESSLICH ANZEIGE, aus zwei ohnehin empfangenen NEUEN Vertragsfeldern:
+    //   · `klaraS4Anzeige` liest `resolution.externalConsentProvider`/`…Model` und reicht sie als
+    //     `consentProvider`/`consentModel` durch (Helfer `zeichenkette`, im selben Schnittblock);
+    //   · `consentPossible` verlangt jetzt zusätzlich einen bestimmten Empfänger — ohne ihn gibt es
+    //     KEINEN Zustimmungsknopf mehr (fail-closed, dieselbe Bauform wie bei den Datenklassen);
+    //   · der Zustimmungskasten nennt diesen Empfänger statt des Ausführungsanbieters. Vorher stand
+    //     dort wörtlich „… gehen an Klarwerk (deterministisch)", weil vor der Zustimmung nichts
+    //     extern rechnet — der Kasten fragt aber, was bei einem JA geschieht.
+    // KEIN Manifest, KEIN neues Abrufziel, KEINE geänderte CSP, KEIN neues Recht, kein neuer
+    // Wörterbuchschlüssel, kein geänderter Ask-Rumpf. Ein installiertes Add-in braucht KEIN
+    // erneutes Sideload; ein ALTER Panelstand gegen einen neuen Server zeigt den Zustimmungsknopf
+    // nicht mehr an, statt einen falschen Empfänger zu nennen — die sichere Richtung.
+    //
+    // JOB 3079 KONFLIKTRUNDE 1 (05.09.2026) — `git rebase main` traf mit der JOB-3079-Kette (V2,
+    // Runde 2 oben) auf die inzwischen auf main gelandete JOB-3057-Kette (Runden 1-4 oben, VORHER
+    // fälschlich als `9b103cd7…` referenziert — der tatsächliche main-Stand vor diesem Rebase ist
+    // `a5e8fcec7f194e6372aced2f3339cc155ece2072a32615faa455606517f637ba`, der Pin der JOB-3057-Kette).
+    // BEIDE SEITEN BLEIBEN INHALTLICH ERHALTEN: die Erfassen-Fläche aus JOB 3056/3057 (Markup,
+    // Stilregeln, Wörterbuch, Skript) UND die Zustimmungs-/aiLage-Änderungen aus JOB 3079 (V2 +
+    // Runde 2, KLARA_EXTERNAL_EXECUTION_MIGRATED) stehen nebeneinander in der zusammengeführten
+    // Datei. Kein Markup, kein Skript und kein Wörterbuchschlüssel einer Seite wurde entfernt, um
+    // die andere Seite zu erhalten. Der Pin unten ist der frisch aus der zusammengeführten Datei
+    // gerechnete Hash, kein übernommener Wert einer Seite.
+    const PIN = "1b12e66f84331623c3786337743b012adaf73fc52ed0e74bf1208029914591ce";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

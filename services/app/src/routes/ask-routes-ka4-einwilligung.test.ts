@@ -187,7 +187,7 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
     await a.app.close();
   });
 
-  it("KA4-I6 · DER ZWEITE ZWEIG, ungemockt auf Policy-Ebene: mit Cloud greift `external_not_migrated`", async () => {
+  it("KA4-I6 · DER ZWEITE ZWEIG, ungemockt auf Policy-Ebene: mit Cloud entscheidet die Zustimmung", async () => {
     // I0 bis I4 messen den Bestand OHNE konfigurierte Cloud. Waere eine konfiguriert, waere der
     // Modus `external` — und dann entscheidet die Konstante. Geprueft wird die ECHTE
     // Produktfunktion `resolveKlaraPolicy` (services/reasoner/src/klara-policy.ts), kein Mock,
@@ -198,8 +198,10 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
     const { resolveKlaraPolicy, KLARA_EXTERNAL_EXECUTION_MIGRATED } = await import(
       "../../../reasoner"
     );
-    // Die Konstante steht im Produktcode auf `false` — das ist der Ausgangspunkt, nicht meine Annahme.
-    expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(false);
+    // Die Konstante steht im Produktcode auf `true` — das ist der Ausgangspunkt, nicht meine
+    // Annahme. JOB 3079 (05.09.2026) hat sie umgelegt, nachdem die vier Sperrgruende aus JOB 3033
+    // behoben waren (Frist, Empfaenger, Nutzlastumfang, Panelvertrag).
+    expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(true);
 
     // Die Feldnamen stammen aus `KlaraPolicyInput` (klara-policy.ts), nicht aus dem Gedaechtnis.
     const eingabe = {
@@ -214,19 +216,26 @@ describe("KA4 · D2 · die Einwilligung, ungemockt bis zu den Flags", () => {
       now: 1_700_000_000_000,
     };
 
-    // OHNE Einwilligung: der Modus ist ehrlich `external`, ausgefuehrt wird trotzdem nicht.
+    // OHNE Einwilligung: der Modus ist ehrlich `external`, ausgefuehrt wird trotzdem nicht — und
+    // der Grund nennt jetzt die WIRKLICHE Ursache. Bis zur Freischaltung verdeckte
+    // `external_not_migrated` sie; JOB 3033 hatte genau diesen Unterschied vorhergesagt.
     const ohne = resolveKlaraPolicy({ ...eingabe, externalConsentGranted: false } as never);
     expect(ohne.effectiveMode).toBe("external");
+    expect(ohne.blockedReason).toBe("external_consent_missing");
     expect(ohne.executionAllowed).toBe(false);
+    // Und der Anbieter wird NICHT genannt, solange nicht ausgefuehrt wird — angezeigt wird, was
+    // rechnet, und das ist hier die deterministische Verarbeitung.
+    expect(ohne.provider).not.toBe("anthropic");
 
-    // UND MIT ERTEILTER EINWILLIGUNG EBENSO — das ist der Kern: die Zustimmung liegt VOR und
-    // traegt trotzdem nicht, weil die Migration fehlt. JOB 3033 hat den Unterschied der beiden
-    // Sperrgruende sichtbar gemacht: mit umgelegter Konstante hiesse er hier
-    // `external_consent_missing`, ohne sie `external_not_migrated`.
+    // MIT ERTEILTER EINWILLIGUNG: das ist der Kern dieses Falls nach JOB 3079 — die Zustimmung
+    // liegt vor und TRAEGT. Der Ask-Weg oben (I0 bis I4) bleibt davon unberuehrt: dort ist gar
+    // keine Cloud konfiguriert, der Modus ist deshalb nicht `external`, und die Enge steht.
     const mit = resolveKlaraPolicy({ ...eingabe, externalConsentGranted: true } as never);
     expect(mit.effectiveMode).toBe("external");
-    expect(mit.blockedReason).toBe("external_not_migrated");
-    expect(mit.executionAllowed).toBe(false);
+    expect(mit.blockedReason).toBeNull();
+    expect(mit.executionAllowed).toBe(true);
+    expect(mit.provider).toBe("anthropic");
+    expect(mit.model).toBe("claude");
   });
 
   it("KA4-I3 · GEGENFALL fremde Sitzung: die Enge bleibt", async () => {

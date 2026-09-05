@@ -2107,6 +2107,8 @@
         payloadClasses: null,
         payloadResolved: false,
         blockedClasses: [],
+        consentProvider: null,
+        consentModel: null,
         consentPossible: false,
       };
       if (phase === "laedt") { return leer; }
@@ -2171,18 +2173,113 @@
         payloadClasses: klassen,
         payloadResolved: klassen !== null,
         blockedClasses: klaraS4BlockierteKlassen(r),
+        // ==========================================================================================
+        // JOB 3079 R2 — DER EMPFAENGER DER ZUSTIMMUNG, VOR DEM KLICK (BEN-Korrekturpflicht 1).
+        // ==========================================================================================
+        //
+        // NICHT `r.provider`. Der beantwortet „was rechnet JETZT" und meldet vor der Zustimmung die
+        // deterministischen Ersatzwerte — der Zustimmungssatz nannte deshalb woertlich „Klarwerk
+        // (deterministisch)" als Empfaenger, obwohl nach dem Klick ein Cloud-Anbieter rechnet.
+        // `externalConsentProvider` beantwortet die Frage des Kastens: an WEN ginge es, wenn ich ja
+        // sage. WOERTLICH aus der Antwort, wie jedes andere Feld hier.
+        consentProvider: zeichenkette(r.externalConsentProvider),
+        consentModel: zeichenkette(r.externalConsentModel),
         /**
-         * ZUSTIMMEN IST NUR MOEGLICH, WENN DIE DATENKLASSEN AUFGELOEST SIND.
+         * ZUSTIMMEN IST NUR MOEGLICH, WENN DATENKLASSEN **UND** EMPFAENGER BESTIMMT SIND.
          *
          * KW-S4-22: „Ein Consent ohne bekannte Datenklassen ist nicht hinreichend bestimmt" und
          * bei fehlendem Feld gilt „kein Consent, kein externer Modellaufruf". Der Kasten bleibt
          * deshalb sichtbar — der Bedarf besteht ja — aber die Schaltflaeche wird NICHT angeboten.
          * Ein Knopf, der eine unbestimmte Zustimmung erteilt, waere schlimmer als kein Knopf.
+         *
+         * JOB 3079 R2: der EMPFAENGER steht jetzt unter derselben Regel. Ein `null` dort heisst,
+         * dass eine Zustimmung ueberhaupt nichts freischalten wuerde (widerspruechliche Policy,
+         * gesperrter Weg) — dann ist ein Zustimmungsknopf keine Freundlichkeit, sondern eine
+         * Falschauskunft.
          */
-        consentPossible: consentNoetig && klassen !== null,
+        consentPossible: consentNoetig && klassen !== null && zeichenkette(r.externalConsentProvider) !== null,
       };
     }
+
+    /** WOERTLICH oder gar nicht: eine leere oder fremde Angabe wird `null`, nie ein Ersatzwert. */
+    function zeichenkette(wert) {
+      return typeof wert === "string" && wert.length > 0 ? wert : null;
+    }
     // KW-KLARA-S4-END
+
+    // ============================================================================================
+    // JOB 3079 · S4 — DER SATZ ÜBER DEN WEG DIESES FENSTERS.
+    // ============================================================================================
+    //
+    // WAS ER ERSETZT, und warum es ersetzt gehoerte. Bis zur Freischaltung des externen
+    // Antwortwegs (`KLARA_EXTERNAL_EXECUTION_MIGRATED`, 05.09.2026) sagten alle fuenf `aiLage*`-
+    // Texte denselben Satz mit: Klaras Antwort in diesem Fenster entstehe „immer ohne KI-Modell".
+    // Er war WAHR, solange der Weg gesperrt war — und er war ein UNBEDINGTER Satz an einer Stelle,
+    // die ab jetzt eine Bedingung hat. Ein Panel, das „immer ohne KI-Modell" ueber eine Antwort
+    // schreibt, die ein Cloud-Modell erzeugt hat, waere genau der Widerspruch, den AUFTRAG-mega81
+    // schon einmal beseitigen musste (JOB 3033, Sperrgrund S4).
+    //
+    // DIE `aiLage*`-TEXTE SAGEN JETZT NUR NOCH, WAS IM HAUS ARBEITET. Was in DIESEM Fenster
+    // passiert, sagt dieser Satz — und er haengt am S4-Zustand, also an der Aufloesung, die auch
+    // AUSFUEHRT. Anzeige und Ausfuehrung aus derselben Quelle: KW-S4-04 §54-57.
+    //
+    // ER LEITET NICHTS AB. Wie `klaraS4Anzeige` verzweigt er ausschliesslich auf Werten, die der
+    // Server geschickt hat. Sechs Zustaende, sechs Saetze, und der Vorbehalt ist einer davon:
+    //   · kein frischer Serverstand (laedt / nicht abrufbar / keine Sitzung / lokal gesperrt /
+    //     veraltet) ⇒ `wegUnbekannt`. Fail-safe: ohne Freigabe des Servers geht keine Frage
+    //     hinaus, also ist „ohne KI-Modell" hier die WAHRE und zugleich die schwaechere Aussage.
+    //   · extern UND freigegeben ⇒ `wegExternZustimmung`, MIT dem Namen des Anbieters.
+    //   · extern, Zustimmung fehlt noch ⇒ `wegExternOhneZustimmung`.
+    //   · extern, Zustimmung war da und traegt nicht mehr (abgelaufen, widerrufen, entwertet)
+    //     ⇒ `wegExternZustimmungWeg`.
+    //   · hausinterne Bindung ⇒ `wegIntern`, deterministische ⇒ `wegDeterministisch`.
+    // KW-KLARA-WEG-START
+    var KLARA_WEG_ZUSTIMMUNG_WEG = ["s4ConsentExpired", "s4ConsentRevoked", "s4ConsentInvalidated"];
+
+    function klaraWegKey(a) {
+      // Ohne aufgeloesten Modus gibt es keinen belegten Weg — und keinen erfundenen Satz darueber.
+      if (!a || !a.modeKey) { return "wegUnbekannt"; }
+      if (a.modeKey === "s4ModeInternal") { return "wegIntern"; }
+      if (a.modeKey !== "s4ModeExternal") { return "wegDeterministisch"; }
+      // Ab hier: extern. Die Freigabe ist die einzige Bedingung, unter der wirklich etwas hinausgeht.
+      if (a.askAllowed === true) { return "wegExternZustimmung"; }
+      if (KLARA_WEG_ZUSTIMMUNG_WEG.indexOf(a.consentKey) >= 0) { return "wegExternZustimmungWeg"; }
+      if (a.consentKey === "s4ConsentErforderlich" || a.consentKey === "s4ConsentNone") {
+        return "wegExternOhneZustimmung";
+      }
+      // Ein Zustimmungswort, das diese Fassung nicht kennt, oder eine Sperre ohne benannten
+      // Consentstand: der Vorbehalt, nie die starke Aussage.
+      return "wegUnbekannt";
+    }
+
+    /** Nur `wegExternZustimmung` nennt einen Anbieter — die uebrigen Saetze tragen keinen. */
+    function klaraWegParam(a) {
+      return { provider: (a && a.provider) || t("s4Unbekannt") };
+    }
+
+    /**
+     * JOB 3079 · S3 — DIE NUTZLASTKLASSEN, LESBAR.
+     *
+     * Der Zustimmungssatz muss sagen, WAS hinausgeht, und zwar in der Sprache des Menschen: eine
+     * Zeile „Betroffene Daten: question, candidate_texts" ist eine Kennung, keine Auskunft. Er
+     * ZITIERT dabei die Klassen der Aufloesung — er erfindet nichts daneben, und die Reihenfolge
+     * ist die der Aufloesung.
+     *
+     * FAIL-SAFE: eine Klasse, fuer die diese Fassung kein Wort hat, steht MIT IHRER KENNUNG da.
+     * Sie stillschweigend wegzulassen hiesse, eine kuerzere Liste als vollstaendig auszugeben —
+     * derselbe Fehler, den `klaraS4Payloadklassen` fuer unbrauchbare Eintraege schon abstellt.
+     */
+    function klaraS4KlassenListe(klassen, verbinder) {
+      var teile = [];
+      for (var i = 0; i < klassen.length; i += 1) {
+        var key = "s4Klasse_" + klassen[i];
+        var wort = t(key);
+        teile.push(wort === key ? klassen[i] : wort);
+      }
+      if (teile.length < 2) { return teile.join(""); }
+      return teile.slice(0, -1).join(", ") + " " + verbinder + " " + teile[teile.length - 1];
+    }
+    // KW-KLARA-WEG-END
 
     // ============================================================================================
     // JOB 1077 — DIE FASSUNGSKETTE. VIER FUNKTIONEN, EINE FRAGE.
@@ -2363,11 +2460,34 @@
         // nennt die Markierung jetzt als Suchschärfung, nicht als Ersatz der Frage.
         askReviewNotice: "Antworten kommen wörtlich aus validiertem KLARWERK-Wissen — mit Quellen. Eine Markierung in Word schärft die Suche. Bitte vor Verwendung fachlich prüfen.",
         aiGeneratedNotice: "Von künstlicher Intelligenz erzeugt — bitte fachlich prüfen.",
-        aiLageLaedt: "Der KI-Stand von KLARWERK wird abgefragt ... Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
-        aiLageUnerreichbar: "Der KI-Stand von KLARWERK ist gerade nicht abrufbar. Klaras Antwort in diesem Fenster entsteht immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
-        aiLageExtern: "In KLARWERK arbeitet für Antworten zurzeit eine externe KI (Cloud). Klaras Antwort in diesem Fenster entsteht davon unabhängig immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
-        aiLageIntern: "In KLARWERK arbeitet für Antworten zurzeit eine hausinterne KI. Klaras Antwort in diesem Fenster entsteht davon unabhängig immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
-        aiLageKeine: "In KLARWERK arbeitet für Antworten zurzeit keine KI. Für andere Aufgaben in KLARWERK kann das anders sein. Klaras Antwort in diesem Fenster entsteht ohnehin immer ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        // JOB 3079 · S4: DIESE FÜNF TEXTE SAGEN NUR NOCH, WAS IM HAUS ARBEITET.
+        //
+        // Bis zur Freischaltung des externen Antwortwegs (05.09.2026) trug jeder von ihnen den
+        // Zusatz, Klaras Antwort in diesem Fenster entstehe „immer ohne KI-Modell". Der Satz war
+        // wahr, solange der Weg gesperrt war — als UNBEDINGTE Aussage wird er mit der
+        // Freischaltung falsch, sobald ein Mensch für sein Dokument zustimmt. Was in DIESEM
+        // Fenster passiert, steht deshalb jetzt im zweiten Satz derselben Zeile und kommt aus
+        // derselben Auflösung, die auch ausführt (`klaraWegKey`, Schlüssel `weg*` unten).
+        aiLageLaedt: "Der KI-Stand von KLARWERK wird abgefragt ...",
+        aiLageUnerreichbar: "Der KI-Stand von KLARWERK ist gerade nicht abrufbar.",
+        aiLageExtern: "In KLARWERK arbeitet für Antworten zurzeit eine externe KI (Cloud).",
+        aiLageIntern: "In KLARWERK arbeitet für Antworten zurzeit eine hausinterne KI.",
+        aiLageKeine: "In KLARWERK arbeitet für Antworten zurzeit keine KI. Für andere Aufgaben in KLARWERK kann das anders sein.",
+        // JOB 3079 · S4 — DER WEG DIESES FENSTERS, ein Satz je Zustand.
+        //
+        // Sie sprechen mit ABSICHT weiter von „Klaras Antwort in diesem Fenster": das ist die
+        // Wendung, an der `tests/app/mega79-klara-antwort-ohne-modell.test.ts` die Zusage misst.
+        // Wer sie hier verlöre, verlöre den Wächter, nicht nur die Formulierung.
+        //
+        // GENAU EINER sagt, dass etwas hinausgeht — `wegExternZustimmung`. Er nennt den Anbieter,
+        // den Grund (die Zustimmung) und die Nutzlast. Die fünf anderen schliessen das Modell aus,
+        // jeder mit seiner eigenen Bedingung davor.
+        wegExternZustimmung: "Klaras Antwort in diesem Fenster entsteht mit der externen KI {provider}, weil du für dieses Dokument zugestimmt hast: deine Frage und die Texte der gefundenen Einträge gehen dorthin.",
+        wegExternOhneZustimmung: "Ohne deine Zustimmung geht für dieses Dokument nichts an {provider}. Klaras Antwort in diesem Fenster entsteht dann ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegExternZustimmungWeg: "Deine Zustimmung für dieses Dokument gilt nicht mehr. Klaras Antwort in diesem Fenster entsteht bis zu einer erneuten Zustimmung ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegIntern: "Für dieses Fenster wird sie nicht genutzt: Klaras Antwort entsteht hier ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegDeterministisch: "Klaras Antwort in diesem Fenster entsteht ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
+        wegUnbekannt: "Für dieses Dokument liegt gerade kein bestätigter Stand vor. Klaras Antwort in diesem Fenster entsteht solange ohne KI-Modell — regelbasiert, mit wörtlichem Zitat aus validiertem Wissen.",
         // AUFTRAG-W1-VERTRAUENSKOPF-08 BLOCK A — die Kurzetiketten des Vertrauenskopfs. Sie tragen
         // den Zustand als TEXT; die Farbe ist nur die zweite Spur. „wird geprüft" und „nicht
         // abrufbar" sind ausdrücklich KEINE Aussage über vorhandene KI — der Ladezustand ist kein
@@ -2454,6 +2574,13 @@
         // `tests/app/pro375-terminologie-vertrag.test.ts` — zu Recht.
         ka4FrageNein: "Nein, ohne externe KI",
         ka4Abgelehnt: "Für dieses Dokument bleibt die externe KI aus. Sie können das oben jederzeit ändern.",
+        // JOB 3079 · S3 — der Zustimmungssatz im Klartext, und die Worte für die Klassen, die er
+        // zitiert. Sie stehen je Klassenkennung unter `s4Klasse_<kennung>`; fehlt eines, zeigt das
+        // Panel die Kennung selbst (`klaraS4KlassenListe`), nie eine gekürzte Liste.
+        s4ConsentSatz: "{klassen} gehen an {provider}.",
+        s4KlassenUnd: "und",
+        s4Klasse_question: "Deine Frage",
+        s4Klasse_candidate_texts: "die Texte der gefundenen Einträge",
         s4ConsentUmfang: "Anbieter {provider} · Modell {model} · Sitzung {session} · Betroffene Daten: {klassen}",
         s4ConsentKlassenFehlen:
           "Der Server hat noch nicht aufgelöst, welche Daten übertragen würden. Ohne diese Angabe kann hier nicht zugestimmt werden.",
@@ -2650,11 +2777,18 @@
         // that a typed question always wins. It now names the selection as a search sharpener.
         askReviewNotice: "Answers are quoted word for word from validated KLARWERK knowledge — with sources. Selecting text in Word sharpens the search. Please review professionally before use.",
         aiGeneratedNotice: "Generated by artificial intelligence — please review professionally.",
-        aiLageLaedt: "Retrieving KLARWERK's AI status ... Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
-        aiLageUnerreichbar: "KLARWERK's AI status is unavailable right now. Klara's answer in this panel is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
-        aiLageExtern: "In KLARWERK, answering currently uses an external AI (cloud). Klara's answer in this panel is independent of that and is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
-        aiLageIntern: "In KLARWERK, answering currently uses an in-house AI. Klara's answer in this panel is independent of that and is always produced without an AI model — rule-based, quoting validated knowledge word for word.",
-        aiLageKeine: "In KLARWERK, answering currently uses no AI. Other tasks in KLARWERK may differ. Klara's answer in this panel is produced without an AI model in any case — rule-based, quoting validated knowledge word for word.",
+        // JOB 3079 · S4 — s. die Begründung am deutschen Block.
+        aiLageLaedt: "Retrieving KLARWERK's AI status ...",
+        aiLageUnerreichbar: "KLARWERK's AI status is unavailable right now.",
+        aiLageExtern: "In KLARWERK, answering currently uses an external AI (cloud).",
+        aiLageIntern: "In KLARWERK, answering currently uses an in-house AI.",
+        aiLageKeine: "In KLARWERK, answering currently uses no AI. Other tasks in KLARWERK may differ.",
+        wegExternZustimmung: "Klara's answer in this panel is produced by the external AI {provider}, because you gave consent for this document: your question and the texts of the entries found go there.",
+        wegExternOhneZustimmung: "Without your consent nothing about this document goes to {provider}. Klara's answer in this panel is then produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegExternZustimmungWeg: "Your consent for this document no longer applies. Until you consent again, Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegIntern: "It is not used for this panel: Klara's answer here is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegDeterministisch: "Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
+        wegUnbekannt: "There is no confirmed status for this document right now. Until there is, Klara's answer in this panel is produced without an AI model — rule-based, quoting validated knowledge word for word.",
         trustHeadLabel: "Klara's AI status",
         trustModeLaedt: "Checking status",
         trustModeUnerreichbar: "Status unavailable",
@@ -2715,6 +2849,10 @@
         ka4FrageJa: "Yes, allow for this document",
         ka4FrageNein: "No, without external AI",
         ka4Abgelehnt: "For this document external AI stays off. You can change this above at any time.",
+        s4ConsentSatz: "{klassen} go to {provider}.",
+        s4KlassenUnd: "and",
+        s4Klasse_question: "Your question",
+        s4Klasse_candidate_texts: "the texts of the entries found",
         s4ConsentUmfang: "Provider {provider} · Model {model} · Session {session} · Data concerned: {klassen}",
         s4ConsentKlassenFehlen:
           "The server has not yet resolved which data would be transmitted. Without that, consent cannot be given here.",
@@ -2885,11 +3023,18 @@
         // getypte vraag altijd wint, noemt hij de selectie nu als zoekverscherping.
         askReviewNotice: "Antwoorden komen woordelijk uit gevalideerde KLARWERK-kennis — met bronnen. Een selectie in Word scherpt de zoekopdracht aan. Controleer dit vakinhoudelijk voordat je het gebruikt.",
         aiGeneratedNotice: "Door kunstmatige intelligentie gegenereerd — controleer dit vakinhoudelijk.",
-        aiLageLaedt: "De AI-stand van KLARWERK wordt opgehaald ... Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
-        aiLageUnerreichbar: "De AI-stand van KLARWERK is nu niet op te halen. Klara's antwoord in dit venster komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
-        aiLageExtern: "In KLARWERK werkt voor antwoorden momenteel een externe AI (cloud). Klara's antwoord in dit venster staat daar los van en komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
-        aiLageIntern: "In KLARWERK werkt voor antwoorden momenteel een interne AI. Klara's antwoord in dit venster staat daar los van en komt altijd zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
-        aiLageKeine: "In KLARWERK werkt voor antwoorden momenteel geen AI. Voor andere taken in KLARWERK kan dat anders zijn. Klara's antwoord in dit venster komt sowieso zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        // JOB 3079 · S4 — zie de toelichting bij het Duitse blok.
+        aiLageLaedt: "De AI-stand van KLARWERK wordt opgehaald ...",
+        aiLageUnerreichbar: "De AI-stand van KLARWERK is nu niet op te halen.",
+        aiLageExtern: "In KLARWERK werkt voor antwoorden momenteel een externe AI (cloud).",
+        aiLageIntern: "In KLARWERK werkt voor antwoorden momenteel een interne AI.",
+        aiLageKeine: "In KLARWERK werkt voor antwoorden momenteel geen AI. Voor andere taken in KLARWERK kan dat anders zijn.",
+        wegExternZustimmung: "Klara's antwoord in dit venster komt met de externe AI {provider} tot stand, omdat je voor dit document toestemming hebt gegeven: je vraag en de teksten van de gevonden items gaan daarheen.",
+        wegExternOhneZustimmung: "Zonder jouw toestemming gaat er voor dit document niets naar {provider}. Klara's antwoord in dit venster komt dan zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegExternZustimmungWeg: "Je toestemming voor dit document geldt niet meer. Tot je opnieuw toestemt, komt Klara's antwoord in dit venster zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegIntern: "Voor dit venster wordt zij niet gebruikt: Klara's antwoord komt hier zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegDeterministisch: "Klara's antwoord in dit venster komt zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
+        wegUnbekannt: "Voor dit document is er nu geen bevestigde stand. Zolang dat zo is, komt Klara's antwoord in dit venster zonder AI-model tot stand — regelgebaseerd, met een woordelijk citaat uit gevalideerde kennis.",
         trustHeadLabel: "Klara's AI-stand",
         trustModeLaedt: "Stand wordt opgehaald",
         trustModeUnerreichbar: "Stand niet op te halen",
@@ -2950,6 +3095,10 @@
         ka4FrageJa: "Ja, toestaan voor dit document",
         ka4FrageNein: "Nee, zonder externe AI",
         ka4Abgelehnt: "Voor dit document blijft externe AI uit. U kunt dit hierboven altijd wijzigen.",
+        s4ConsentSatz: "{klassen} gaan naar {provider}.",
+        s4KlassenUnd: "en",
+        s4Klasse_question: "Je vraag",
+        s4Klasse_candidate_texts: "de teksten van de gevonden items",
         s4ConsentUmfang: "Aanbieder {provider} · Model {model} · Sessie {session} · Betrokken gegevens: {klassen}",
         s4ConsentKlassenFehlen:
           "De server heeft nog niet bepaald welke gegevens zouden worden verzonden. Zonder die opgave kan hier geen toestemming worden gegeven.",
@@ -3212,6 +3361,13 @@
     // Texte — nur ein anderer Ort. Sie schreibt jetzt in den permanenten Kopf statt in eine Zeile
     // des Fragen-Reiters. `klaraTrustHead` uebersetzt nur; den Zustand besitzt weiterhin
     // `klaraAiLage`. Der Zustand steht als TEXT in der Pille; die Farbe ist die zweite Spur.
+    //
+    // JOB 3079 · S4 — ZWEI SAETZE, ZWEI QUELLEN, KEINE VERMISCHUNG. Der erste sagt, was im HAUS
+    // arbeitet (`aiLage*`, aus /api/reasoner/status, Besitzer `klaraAiLage`). Der zweite sagt, was
+    // in DIESEM Fenster passiert (`klaraWegKey`, aus der S4-Aufloesung, die auch AUSFUEHRT).
+    // Frueher stand die zweite Aussage unbedingt im ersten Satz — und wurde mit der Freischaltung
+    // des externen Antwortwegs falsch. `klaraTrustHead` bleibt dabei unberuehrt: es ist der
+    // Inline-Spiegel von `wordAddin.ts#klaraTrustHead` und darf seinen Zustandsraum nicht wechseln.
     function renderAiLage() {
       var head = document.getElementById("klara-trust-head");
       var pill = document.getElementById("klara-trust-mode");
@@ -3220,7 +3376,8 @@
       var kopf = klaraTrustHead(aiLagePhase, aiLageStatus);
       pill.textContent = t(kopf.modeKey);
       pill.className = "trust-pill trust-pill-" + kopf.tone;
-      detail.textContent = t(kopf.detailKey);
+      var weg = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      detail.textContent = t(kopf.detailKey) + " " + t(klaraWegKey(weg), klaraWegParam(weg));
       // Der Kopf meldet sich als Statusbereich — mit einem Namen, den ein Screenreader ansagen
       // kann, statt nur „Statusbereich".
       head.setAttribute("aria-label", t("trustHeadLabel"));
@@ -3922,14 +4079,30 @@
       // KW-S4-22: der Umfang nennt Anbieter, Modell, Sitzung und die EFFEKTIVEN Datenklassen.
       // Sind die Klassen nicht aufgeloest, steht dort kein Ersatzwert, sondern der ausdrueckliche
       // Satz, dass ohne sie nicht zugestimmt werden kann.
-      document.getElementById("klara-consent-scope").textContent = a.payloadResolved
-        ? t("s4ConsentUmfang", {
-            provider: a.provider || t("s4Unbekannt"),
-            model: a.model || t("s4Unbekannt"),
-            session: klaraS4SessionId || t("s4Unbekannt"),
-            klassen: a.payloadClasses.join(", "),
-          })
-        : t("s4ConsentKlassenFehlen");
+      // JOB 3079 · S3: VOR der technischen Zeile steht jetzt der Satz, den ein Mensch liest — er
+      // nennt die Klassen im Klartext und den Anbieter, an den sie gehen. Die technische Zeile
+      // bleibt darunter unveraendert: sie ist der Beleg, nicht die Auskunft.
+      //
+      // JOB 3079 R2 (BEN-Korrekturpflicht 1): BEIDE Zeilen nennen `consentProvider`/`consentModel`,
+      // nicht `provider`/`model`. Der Kasten fragt, was bei einem JA geschieht — und vor dem Klick
+      // rechnet nichts extern, weshalb `provider` dort die deterministischen Ersatzwerte trug. Ist
+      // der Empfaenger unbestimmt, steht hier KEIN Satz mit Ersatzwert, sondern dieselbe
+      // ausdrueckliche Absage wie bei fehlenden Datenklassen (und `consentPossible` ist dann
+      // ohnehin falsch, der Knopf also weg).
+      document.getElementById("klara-consent-scope").textContent =
+        a.payloadResolved && a.consentProvider
+          ? t("s4ConsentSatz", {
+              klassen: klaraS4KlassenListe(a.payloadClasses, t("s4KlassenUnd")),
+              provider: a.consentProvider,
+            }) +
+            " " +
+            t("s4ConsentUmfang", {
+              provider: a.consentProvider,
+              model: a.consentModel || t("s4Unbekannt"),
+              session: klaraS4SessionId || t("s4Unbekannt"),
+              klassen: a.payloadClasses.join(", "),
+            })
+          : t("s4ConsentKlassenFehlen");
       // Serverseitig ausgeschlossene Klassen werden GENANNT, nicht still entfernt (KW-S4-22 §4).
       var blockiert = document.getElementById("klara-consent-blocked");
       if (a.blockedClasses.length > 0) {
@@ -3971,6 +4144,10 @@
       abgelehnt.textContent = zeigeAbgelehnt ? t("ka4Abgelehnt") : "";
       abgelehnt.className = zeigeAbgelehnt ? "" : "hidden";
       // KW-KA4-DOKUMENT-CONSENT-END (Anzeige)
+      // JOB 3079 · S4: der Satz ueber den Weg dieses Fensters haengt am S4-Zustand und steht im
+      // Vertrauenskopf. Aendert sich der Zustand hier, muss er dort mitwandern — sonst behauptet
+      // der Kopf einen Weg, den die Gruppe darunter schon widerlegt hat.
+      renderAiLage();
       updateAskState();
     }
 

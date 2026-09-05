@@ -19,6 +19,8 @@
 // ZWEI FLAECHEN: „browser" (kein Office, echter Test-Server, drei validierte Objekte) und „word"
 // (office.js-Attrappe mit Markierung und Dokument, gestellte Klara-Sitzung mit Zustimmungsbedarf).
 // KEINE Zeile „entfaellt". Dieselbe Tabelle steht in der RUECKGABE des Auftrags.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
   ASK_URL,
@@ -569,6 +571,34 @@ function aufloesung(): Record<string, unknown> {
     deviationReason: null,
     externalConsentRequired: true,
     externalConsentGranted: sitzung.zugestimmt,
+    // ============================================================================================
+    // JOB 3079 RUNDE 3 — DIE ATTRAPPE WAR HINTER DEM VERTRAG ZURUECK, NICHT DIE FLAECHE FALSCH.
+    // ============================================================================================
+    //
+    // WAS PASSIERT IST: JOB 3079 hat der `KlaraResolution` zwei Felder gegeben, die sagen, WEM der
+    // Mensch zustimmt, BEVOR er zustimmt (`externalConsentProvider`/`…Model`). Sie waren noetig,
+    // weil `provider` die andere Frage beantwortet — „was rechnet JETZT" — und das sind vor der
+    // Zustimmung die deterministischen Ersatzwerte; der Zustimmungskasten nannte deshalb woertlich
+    // „Klarwerk (deterministisch)" als Empfaenger (Codex R1, Korrekturpflicht 1).
+    //
+    // WARUM DAS INVENTAR DAVON ROT WURDE: seit derselben Runde gibt es OHNE bestimmten Empfaenger
+    // keinen Zustimmungsknopf mehr — fail-closed, dieselbe Bauform, die KW-S4-22 §4 schon fuer die
+    // Datenklassen verlangt („ein Consent ohne bekannte Datenklassen ist nicht hinreichend
+    // bestimmt"). Diese Attrappe schickte die Felder nicht, also blieb `#klara-consent-grant`
+    // verborgen, und mit ihm fielen `#klara-consent-card`, `#ka4-frage`, `#ka4-abgelehnt` und
+    // `#klara-consent-revoke`.
+    //
+    // DAS INVENTAR WIRD HIER NICHT AUFGEWEICHT. Keine Kennung ist umbenannt, keine Zeile
+    // gestrichen, kein `sichtbar` gelockert: die vier Elemente sind unveraendert gefordert und
+    // erscheinen wieder, sobald die Attrappe das antwortet, was der echte Server antwortet. Genau
+    // das ist die Aufgabe einer Attrappe — sie stellt eine LAGE, und die Lage „Zustimmung
+    // verlangt" gibt es beim echten Server nur MIT benanntem Empfaenger (`resolveKlaraPolicy`:
+    // das Feld ist genau dann gefuellt, wenn eine Zustimmung wirklich etwas freischalten wuerde).
+    //
+    // DIE WERTE stehen absichtlich neben `provider`/`model` und sind von ihnen VERSCHIEDEN: so
+    // faellt auf, wenn die Flaeche wieder den Ausfuehrungsanbieter in den Kasten schreibt.
+    externalConsentProvider: "srv-consent-anbieter",
+    externalConsentModel: "srv-consent-modell",
     executionAllowed: sitzung.zugestimmt,
     blockedReason: sitzung.zugestimmt ? null : "external_consent_missing",
     resolvedAt: new Date(Date.now() - 1000).toISOString(),
@@ -1070,6 +1100,55 @@ const LAGEN: Record<LageName, Lage> = {
 };
 
 // ---- Der Lauf ----------------------------------------------------------------------------------
+// ================================================================================================
+// JOB 3079 RUNDE 3 — DIE ATTRAPPE MUSS DEN GANZEN VERTRAG SPRECHEN.
+// ================================================================================================
+//
+// WARUM ES DIESEN FALL GIBT. Die `aufloesung()` oben schreibt den Statusvertrag VON HAND nach. Das
+// ist richtig so — sie stellt eine Lage, und dafuer braucht sie keinen Server. Aber eine
+// handgeschriebene Nachschrift bleibt zurueck, sobald der Vertrag waechst, und dann misst dieses
+// Inventar eine Flaeche, die es selbst falsch bedient hat. Genau das ist in JOB 3079 passiert: der
+// Vertrag bekam zwei Felder, die Attrappe schickte sie nicht, und VIER Zeilen des Inventars wurden
+// rot — an einem Panel, das sich vollkommen richtig verhielt.
+//
+// DER FALL IST BILLIG UND FAENGT GENAU DAS: er liest die Feldnamen aus der Vertragsdatei und haelt
+// sie gegen die Attrappe. Waechst der Vertrag, wird ER rot — mit dem fehlenden Namen im Klartext,
+// in Millisekunden, statt nach zwei Minuten Chromium mit vier irrefuehrenden Sichtbarkeitsfehlern.
+//
+// ER LAEUFT OHNE FLAECHE und steht deshalb in einem eigenen `describe` vor dem grossen: er braucht
+// weder Browser noch Server, und er soll auch dann etwas sagen, wenn der Aufbau scheitert.
+describe("JOB 3079 · K1 · die gestellte Auflösung ist mit dem Statusvertrag vollständig", () => {
+  it("die Attrappe trägt jedes Feld, das `KlaraResolution` deklariert", () => {
+    const vertrag = readFileSync(
+      resolve(process.cwd(), "services/reasoner/src/klara-policy.ts"),
+      "utf8",
+    );
+    const start = vertrag.indexOf("export interface KlaraResolution {");
+    expect(start, "klara-policy.ts: KlaraResolution nicht gefunden").toBeGreaterThan(-1);
+    const ende = vertrag.indexOf("\n}", start);
+    expect(ende, "klara-policy.ts: KlaraResolution ohne Ende").toBeGreaterThan(start);
+    // Nur die Felddeklarationen, nicht die Erklaerungen dazwischen: die Kommentare enthalten
+    // selbst Doppelpunkte, und ein naiver Schnitt haette Woerter als Felder gezaehlt.
+    const felder = [
+      ...vertrag
+        .slice(start, ende)
+        .replace(/\/\*\*[\s\S]*?\*\//g, "")
+        .replace(/\/\/[^\n]*/g, "")
+        .matchAll(/^\s*readonly\s+([A-Za-z0-9_]+)\??:/gm),
+    ].map((m) => m[1] as string);
+    // Fail-closed: eine leere Feldliste waere ein gruener Nichtlauf.
+    expect(felder.length, "kein einziges Vertragsfeld gelesen").toBeGreaterThan(15);
+
+    const gestellt = Object.keys(aufloesung());
+    const fehlend = felder.filter((f) => !gestellt.includes(f));
+    expect(
+      fehlend,
+      "Die gestellte Auflösung ist hinter dem Statusvertrag zurück — hier nachtragen, sonst " +
+        "misst das Inventar unten eine Fläche, die es selbst falsch bedient hat",
+    ).toEqual([]);
+  });
+});
+
 describe("JOB 3056 · K1 · Funktionsinventar — jede heutige Kennung/Funktion hat einen erreichbaren, SICHTBAREN Ort", () => {
   beforeAll(async () => {
     try {

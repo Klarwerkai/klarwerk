@@ -435,19 +435,64 @@ describe("JOB 3033 · KA4 · die vier Sperrgründe der Freischaltung", () => {
   // „immer ohne KI-Modell" also über einer Antwort, die ein Modell erzeugt hat — dieselbe Bauart
   // wie der Widerspruch, den AUFTRAG-mega81 schon einmal beseitigen musste.
   //
-  // GELESEN, NICHT GEÄNDERT: `apps/web/public/word-addin/taskpane.html` steht nicht in den
-  // ZIELPFADEN dieses Auftrags und ist in §10 ausdrücklich ausgeschlossen.
+  // BEHOBEN IN JOB 3079: die fünf `aiLage*`-Texte sagen jetzt NUR NOCH, was im Haus arbeitet. Was
+  // in diesem Fenster passiert, sagt ein zweiter Satz je Zustand (`klaraWegKey`, Schlüssel `weg*`),
+  // gebildet aus derselben Auflösung, die auch ausführt.
+  //
+  // DER FALL IST DABEI SCHÄRFER GEWORDEN, und das ist nötig: die alte Fassung suchte die
+  // Zeichenkette `entsteht … ohne KI-Modell`. Ein Umformulieren auf „Klaras Antwort ist immer
+  // ohne KI-Modell" hätte ihn grün gelassen, ohne irgendetwas zu beheben — der Wächter hing am
+  // VERB. Er hängt jetzt an der Eigenschaft: KEIN Lagetext des Hauses darf überhaupt eine Aussage
+  // über den Weg dieses Fensters treffen, und der bedingte Satz muss für jeden Zustand in jeder
+  // Sprache da sein.
   it("KA4-S4 · der Panelvertrag und der Schalter widersprechen sich nicht", () => {
     const html = readFileSync(PANEL, "utf8");
-    const behauptungen = html.match(/entsteht[^"]*?ohne KI-Modell/g) ?? [];
+    // GEMESSEN WIRD AN DEN WÖRTERBUCHWERTEN, nicht am Quelltext: ein Kommentar, der den alten
+    // Satz zitiert (und genau das tut die Begründung im Panel), ist keine Aussage an den Menschen.
+    const texte = [...html.matchAll(/^\s*[A-Za-z0-9_]+:\s*"((?:[^"\\]|\\.)*)",?\s*$/gm)].map(
+      (m) => m[1] ?? "",
+    );
+    expect(texte.length, "kein einziger Wörterbuchwert gelesen").toBeGreaterThan(100);
+    // Jede unbedingte Zusage über den Modellverzicht dieses Fensters, egal mit welchem Verb.
+    const unbedingt = texte.filter((wert) =>
+      /(immer|always|altijd|sowieso|in any case)[^.]{0,80}(ohne KI-Modell|without an AI model|zonder AI-model)/.test(
+        wert,
+      ),
+    );
+    // IN BEIDEN ZUSTÄNDEN: die sechs bedingten Sätze sind da, in drei Sprachen. Ohne diese
+    // Gegenprobe wäre der Fall auch dann grün, wenn jemand die Zusage einfach GELÖSCHT hätte,
+    // statt sie an ihre Bedingung zu binden — Schweigen ist hier kein besserer Zustand als eine
+    // falsche Behauptung.
+    for (const key of [
+      "wegExternZustimmung",
+      "wegExternOhneZustimmung",
+      "wegExternZustimmungWeg",
+      "wegIntern",
+      "wegDeterministisch",
+      "wegUnbekannt",
+    ]) {
+      expect(
+        html.match(new RegExp(`\\b${key}:\\s*"`, "g"))?.length ?? 0,
+        `${key} fehlt in mindestens einer der drei Sprachen`,
+      ).toBe(3);
+    }
+    // Genau EIN Satz sagt, dass etwas hinausgeht — und er nennt den Anbieter.
+    expect(html).toMatch(/wegExternZustimmung:\s*"[^"]*\{provider\}/);
+
     if (KLARA_EXTERNAL_EXECUTION_MIGRATED) {
       expect(
-        behauptungen,
-        "SPERRGRUND 4: das Panel behauptet weiter „ohne KI-Modell“, obwohl der Weg freigeschaltet ist",
+        unbedingt,
+        "SPERRGRUND 4: das Panel sagt weiter unbedingt „ohne KI-Modell“, obwohl der Weg freigeschaltet ist",
       ).toEqual([]);
     } else {
-      // Der Ist-Stand: der Satz ist da und ist heute WAHR — der Weg ist gesperrt.
-      expect(behauptungen.length).toBeGreaterThan(0);
+      // WIRD DER SCHALTER ZURÜCKGELEGT, kippt der Fall NICHT zurück auf „ein unbedingter Satz muss
+      // her". Das wäre eine Forderung nach der schlechteren Fläche: bei gesperrtem Weg ist der
+      // bedingte Satz genauso wahr wie der unbedingte, nur genauer. Was dann gelten MUSS, ist die
+      // Umkehrung von oben — kein Zustand darf mehr sagen, dass Klaras Antwort hier mit einem
+      // Modell entsteht, denn dann entsteht sie nie so. `klaraWegKey` liefert den einen Satz, der
+      // das sagt, ausschliesslich bei `askAllowed === true`, und das kann bei gesperrtem Schalter
+      // keine Auflösung mehr werden (`resolveKlaraPolicy`: `external_not_migrated`).
+      expect(html).toMatch(/if\s*\(a\.askAllowed === true\)\s*\{\s*return "wegExternZustimmung"/);
     }
   });
 });
@@ -466,22 +511,25 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
     repo: InMemoryKlaraSessionRepo;
     sitzung: string;
     bindung: Record<string, string>;
-    gesehen: { kontext: readonly KnowledgeRef[] }[];
+    gesehen: { frage: string; kontext: readonly KnowledgeRef[] }[];
     geheim: string;
     offen: string;
   }
 
   async function echtAufbauen(): Promise<Echt> {
-    const gesehen: { kontext: readonly KnowledgeRef[] }[] = [];
+    const gesehen: { frage: string; kontext: readonly KnowledgeRef[] }[] = [];
     const provider = {
       name: "mitschreiber",
       isAvailable: () => true,
       answer: async (
-        _frage: string,
+        frage: string,
         kontext: readonly KnowledgeRef[],
         _locale?: ReasonerLocale,
       ): Promise<AnswerResult> => {
-        gesehen.push({ kontext });
+        // JOB 3079 · S3: die FRAGE wird mitgeschrieben, nicht nur der Kontext. Ohne sie könnte der
+        // Fall die Klasse `question` nur glauben statt messen — und eine ausgewiesene Klasse ohne
+        // gemessene Nutzlast wäre dieselbe Unehrlichkeit wie eine Nutzlast ohne Klasse.
+        gesehen.push({ frage, kontext });
         return {
           answered: false,
           answer: null,
@@ -564,43 +612,83 @@ describe("JOB 3033 · KA4 · Umfang und Vertraulichkeit des Egress", () => {
   }
 
   // ----------------------------------------------------------------------------------------------
-  // S3 · DER UMFANG — was die Zustimmung ausweist und was tatsächlich hinausginge.
+  // S3 · DER UMFANG — was die Zustimmung ausweist und was tatsächlich hinausgeht.
   // ----------------------------------------------------------------------------------------------
   //
-  // Die Zustimmung bindet genau eine Nutzlastklasse, `question` (`klara-policy.ts`,
-  // `KLARA_PAYLOAD_CLASS_QUESTION`). Der normale Antwortweg übergibt dem Modell aber nicht nur die
-  // Frage, sondern die Kandidaten mit Titel, Aussage und Dokumenttext
-  // (`services/ask/src/service.ts:549-566`). Eine Zustimmung, die nur „die Frage" ausweist, deckt
-  // das nicht — und der Auftrag verbietet ausdrücklich, hier einfach eine Klasse zu erfinden
-  // (§10: „keine neue Nutzlastklasse"). Also ist es ein Sperrgrund, kein Bauauftrag dieser Runde.
+  // DER SPERRGRUND, WIE JOB 3033 IHN FAND: die Zustimmung band genau eine Nutzlastklasse,
+  // `question`. Der Antwortweg übergibt dem Modell aber nicht nur die Frage, sondern die Kandidaten
+  // mit Titel, Aussage, Dokumenttext und Bild-Fußnoten (`services/ask/src/service.ts`, Aufruf
+  // `this.reasoner.answer(question, candidates, …)`). JOB 3033 durfte die zweite Klasse nicht
+  // anlegen (§10: „keine neue Nutzlastklasse") und hat den Widerspruch deshalb als Sperrgrund
+  // gebunden statt ihn zu beheben.
+  //
+  // WIE JOB 3079 IHN BEHOBEN HAT: `KLARA_PAYLOAD_CLASSES` weist beide Klassen aus, und der
+  // Zustimmungssatz des Panels nennt sie im Klartext. DIESER FALL PRÜFT DIE DECKUNG IN BEIDE
+  // RICHTUNGEN, denn nur beides zusammen ist ehrlich:
+  //   · KEIN FELD OHNE KLASSE — was beim Anbieter ankommt, muss von einer ausgewiesenen Klasse
+  //     gedeckt sein. Diese Richtung war der Sperrgrund.
+  //   · KEINE KLASSE OHNE FELD — was ausgewiesen ist, muss auch wirklich reisen. Ohne diese
+  //     Richtung liesse sich der Fall mit einer Sammelklasse „alles" grün machen, und der
+  //     Zustimmungssatz verlöre jede Aussage.
+  //
+  // DIE ZUORDNUNG STEHT HIER ALS DATEN und nicht als Regel im Produkt: sie ist die Auslegung, die
+  // ein MENSCH dem Zustimmungssatz gibt. Käme dem Modell ein Feld hinzu, das keiner Klasse
+  // zugeordnet ist, wird dieser Fall rot — und genau dann ist wieder eine Zustimmungsentscheidung
+  // fällig.
+  const KLASSE_JE_MODELLDATUM: Record<string, string> = {
+    // Die Frage selbst — das erste Argument an den Anbieter.
+    frage: "question",
+    // Jedes Feld eines `KnowledgeRef`, das in den Modellkontext reist.
+    id: "candidate_texts",
+    title: "candidate_texts",
+    statement: "candidate_texts",
+    status: "candidate_texts",
+    trust: "candidate_texts",
+    captionTexts: "candidate_texts",
+    bodyText: "candidate_texts",
+  };
+
   it("KA4-S3 · was das Modell sieht, ist von den ausgewiesenen Nutzlastklassen gedeckt", async () => {
     const e = await echtAufbauen();
     const consent = await e.repo.findConsent(e.sitzung);
-    // Die Zustimmung weist genau aus, was die Auflösung nennt — und das ist eine einzige Klasse.
+    // Die Zustimmung weist genau aus, was die Auflösung nennt — nicht mehr und nicht weniger.
     expect(consent?.allowedPayloadClasses).toEqual([...AUSGEWIESENE_KLASSEN]);
-    expect(AUSGEWIESENE_KLASSEN).toHaveLength(1);
 
     await fragen(e.app, e.bindung);
 
     if (!KLARA_EXTERNAL_EXECUTION_MIGRATED) {
       // Gesperrt: der Anbieter wird über diesen Weg gar nicht gerufen. Es geht nichts hinaus, und
-      // die schmale Klassenangabe beschreibt korrekt „nichts".
+      // die Klassenangabe beschreibt „was hinausginge", nicht „was hinausging".
       expect(e.gesehen.length).toBe(0);
       await e.app.close();
       return;
     }
 
-    // Freigeschaltet: JETZT muss die Angabe decken, was wirklich reist. Der Kontext trägt Titel,
-    // Aussage und Dokumenttext fremden Wissens — das ist mehr als „die Frage".
-    const kontext = e.gesehen[0]?.kontext ?? [];
-    const felder = new Set(kontext.flatMap((k) => Object.keys(k)));
-    const nurFrage =
-      felder.size === 0 ||
-      [...felder].every((f) => f === "id" || f === "question" || f === "frage");
+    // Freigeschaltet: JETZT muss die Angabe decken, was wirklich reist.
+    expect(e.gesehen.length).toBe(1);
+    const lauf = e.gesehen[0];
+    if (!lauf) {
+      throw new Error("kein Modellaufruf mitgeschrieben");
+    }
+    // Die Frage kam wörtlich an — sonst wäre die Klasse `question` ausgewiesen, ohne zu reisen.
+    expect(lauf.frage).toBe(FRAGE);
+    expect(lauf.kontext.length).toBeGreaterThan(0);
+
+    const felder = ["frage", ...lauf.kontext.flatMap((k) => Object.keys(k))];
+    const ohneKlasse = [...new Set(felder)].filter((f) => !KLASSE_JE_MODELLDATUM[f]);
     expect(
-      nurFrage,
-      `SPERRGRUND 3: ausgewiesen ist nur \`${AUSGEWIESENE_KLASSEN.join(", ")}\`, hinaus gingen ${[...felder].join(", ")}`,
-    ).toBe(true);
+      ohneKlasse,
+      `SPERRGRUND 3: an das Modell ging ein Datum, das keine ausgewiesene Klasse deckt: ${ohneKlasse.join(", ")}`,
+    ).toEqual([]);
+
+    const gedeckt = new Set(felder.map((f) => KLASSE_JE_MODELLDATUM[f]));
+    for (const klasse of AUSGEWIESENE_KLASSEN) {
+      expect(
+        gedeckt.has(klasse),
+        `ausgewiesen ist \`${klasse}\`, gemessen reiste dafür nichts — eine Klasse ohne Nutzlast`,
+      ).toBe(true);
+    }
+    expect([...gedeckt].sort()).toEqual([...AUSGEWIESENE_KLASSEN].sort());
     await e.app.close();
   });
 

@@ -549,17 +549,45 @@ describe("AUFTRAG-mega79: die Anzeige haengt am tatsaechlichen Antwortweg", () =
     ).toBe("");
   }, 30000);
 
-  it("jeder Zustand SAGT den Ausschluss — auch „laedt“ und „nicht erreichbar“", async () => {
+  // ==============================================================================================
+  // JOB 3079 (05.09.2026) — DIE ZUSAGE IST BEDINGT GEWORDEN, UND DER WAECHTER MIT IHR.
+  // ==============================================================================================
+  //
+  // WAS SICH GEAENDERT HAT: der externe Antwortweg ist freigeschaltet
+  // (`KLARA_EXTERNAL_EXECUTION_MIGRATED`). Stimmt ein Mensch fuer SEIN Dokument zu, entsteht
+  // Klaras Antwort in diesem Fenster sehr wohl mit einem Modell. Der unbedingte Satz „immer ohne
+  // KI-Modell" in den fuenf `aiLage*`-Texten waere ab da eine Luege — er ist deshalb dort
+  // entfallen und haengt jetzt am ZUSTAND (`weg*`, abgeleitet von `klaraWegKey`).
+  //
+  // WAS SICH NICHT GEAENDERT HAT — und deshalb bleibt der Fall: die hier ERHOBENE Kette ruft kein
+  // Modell. Sie faehrt ohne Klara-Bindung und damit ohne Zustimmung; genau dieser Weg ist die
+  // Voreinstellung jedes Anwenders, und genau fuer ihn muss die Zusage weiter dastehen.
+  //
+  // GEMESSEN WIRD DESHALB IN ZWEI RICHTUNGEN, und die zweite ist die neue:
+  //   · JEDER Zustand ohne Modell sagt den Ausschluss (die alte Zusage, am neuen Ort).
+  //   · Der EINE Zustand mit Modell sagt das Gegenteil — und nennt seine Bedingung. Ohne diese
+  //     Haelfte waere der Fall auch dann gruen, wenn jemand die Zustimmung heimlich verschwiegen
+  //     haette; „schweigt ueber das Modell" ist bei erteilter Zustimmung derselbe Fehler wie
+  //     „behauptet ein Modell" ohne sie.
+  const WEG_OHNE_MODELL = [
+    "wegExternOhneZustimmung",
+    "wegExternZustimmungWeg",
+    "wegIntern",
+    "wegDeterministisch",
+    "wegUnbekannt",
+  ];
+  const WEG_MIT_MODELL = "wegExternZustimmung";
+
+  it("jeder modellfreie Zustand SAGT den Ausschluss — auch „laedt“ und „nicht erreichbar“", async () => {
     const k = await erhebeKette();
     expect(ketteErzwingtOhneModell(k)).toBe(true);
 
     // Ein Zustand, der zu Klaras Antwort schweigt, laesst die Leserin die Hausstands-Aussage
     // darueber auf Klara beziehen — genau der Kurzschluss, aus dem der falsche Satz entstand.
-    // Und „laedt"/„nicht erreichbar" betreffen NUR den Statusabruf: der Antwortweg ist auch ohne
-    // jeden Abruf bekannt und muss deshalb auch dort dastehen.
+    // „laedt"/„nicht erreichbar"/„keine Sitzung" fallen dabei auf `wegUnbekannt`: ohne bestaetigten
+    // Serverstand geht keine Frage hinaus, der Antwortweg ist also auch ohne Abruf bekannt.
     const stumm: string[] = [];
-    for (const lage of alleLagen()) {
-      const key = `aiLage${lage.charAt(0).toUpperCase()}${lage.slice(1)}`;
+    for (const key of WEG_OHNE_MODELL) {
       for (const sprache of SPRACHEN) {
         if (!saetze(text(sprache, key)).some((s) => schliesstModellFuerKlaraAus(sprache, s))) {
           stumm.push(`${sprache}.${key}`);
@@ -570,7 +598,25 @@ describe("AUFTRAG-mega79: die Anzeige haengt am tatsaechlichen Antwortweg", () =
       stumm.join("\n"),
       "Diese Zustaende sagen nicht, dass Klaras Antwort ohne Modell entsteht",
     ).toBe("");
+
+    // Und die fuenf decken den ganzen Zustandsraum von `klaraWegKey` ab: waechst er um einen
+    // sechsten modellfreien Zustand, faellt das hier auf.
+    const inQuelle = [...HTML.matchAll(/return "(weg[A-Za-z]+)"/g)].map((m) => m[1] ?? "");
+    expect([...new Set(inQuelle)].sort()).toEqual([...WEG_OHNE_MODELL, WEG_MIT_MODELL].sort());
   }, 30000);
+
+  it("der EINE Zustand mit Modell sagt es — mit Anbieter und mit seiner Bedingung", async () => {
+    for (const sprache of SPRACHEN) {
+      const wert = text(sprache, WEG_MIT_MODELL);
+      expect(
+        saetze(wert).some((s) => behauptetModellFuerKlara(sprache, s)),
+        `${sprache}.${WEG_MIT_MODELL} verschweigt, dass hier ein Modell arbeitet`,
+      ).toBe(true);
+      // Der Anbieter wird eingesetzt, nicht behauptet — und die Bedingung steht im selben Satz.
+      expect(wert, `${sprache}: kein Anbieterplatzhalter`).toContain("{provider}");
+      expect(wert, `${sprache}: die Bedingung fehlt`).toMatch(/zugestimmt|consent|toestemming/i);
+    }
+  });
 
   it("auch ausserhalb der Zustandssaetze behauptet kein Woerterbuch-Text ein Modell fuer Klaras Antwort", async () => {
     const k = await erhebeKette();
@@ -578,6 +624,11 @@ describe("AUFTRAG-mega79: die Anzeige haengt am tatsaechlichen Antwortweg", () =
 
     // Gegen den Umzug: ein Satz, der die Behauptung aus `aiLage*` in einen anderen Schluessel
     // traegt, waere sonst unsichtbar. Geprueft wird das GANZE Woerterbuch je Sprache.
+    //
+    // JOB 3079: GENAU EIN Schluessel ist ausgenommen, und er ist hier namentlich genannt statt
+    // ueber ein Muster ausgeblendet — `wegExternZustimmung` sagt bewusst, dass ein Modell
+    // arbeitet, weil in genau diesem Zustand eines arbeitet. Dass er es wirklich sagt und seine
+    // Bedingung nennt, misst der Fall darueber; er darf hier also nicht einfach fehlen.
     const verstoesse: string[] = [];
     for (const sprache of SPRACHEN) {
       const dict = woerterbuch(sprache);
@@ -587,7 +638,7 @@ describe("AUFTRAG-mega79: die Anzeige haengt am tatsaechlichen Antwortweg", () =
       while (treffer) {
         gezaehlt += 1;
         for (const satz of saetze(treffer[2] ?? "")) {
-          if (behauptetModellFuerKlara(sprache, satz)) {
+          if (treffer[1] !== WEG_MIT_MODELL && behauptetModellFuerKlara(sprache, satz)) {
             verstoesse.push(`${sprache}.${treffer[1]}: „${satz}"`);
           }
         }

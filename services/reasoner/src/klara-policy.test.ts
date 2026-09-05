@@ -5,6 +5,7 @@ import {
   KLARA_DETERMINISTIC_MODEL,
   KLARA_DETERMINISTIC_PROVIDER,
   KLARA_EXTERNAL_EXECUTION_MIGRATED,
+  KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS,
   KLARA_PAYLOAD_CLASS_QUESTION,
   KLARA_RESOLUTION_TTL_MS,
   type KlaraPolicyInput,
@@ -147,18 +148,18 @@ describe("W1 S4 / JOB 3033 · der externe Weg hängt an EINER benannten Entschei
     expect(QUELLE).not.toMatch(/\bfetch\(|require\(/);
   });
 
-  it("die Migrationsschranke steht ausdrücklich auf AUS", () => {
-    // JOB 3033 (03.09.2026): Die OWNERENTSCHEIDUNG, freizuschalten, ist gefallen — die
-    // FREISCHALTUNG nicht. Runde 1 hat den Wert umgelegt und dabei vier Stellen freigelegt, an
-    // denen der Bestand etwas anderes tut oder sagt, als die Einwilligung verspricht (Frist,
-    // Empfänger, Nutzlastumfang, Panelvertrag; im Kopf von `klara-policy.ts` einzeln benannt).
-    // Der Wert steht deshalb weiter auf `false`, und die vier Sperrgründe sind in
-    // `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts` an genau diesen Wert gebunden:
-    // sie werden rot, sobald jemand ihn umlegt, ohne sie zu beheben.
-    expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(false);
+  it("die Migrationsschranke steht ausdrücklich auf AN", () => {
+    // JOB 3079 (05.09.2026): Die vier Sperrgründe aus JOB 3033 (Frist, Empfänger, Nutzlastumfang,
+    // Panelvertrag) sind behoben — im Kopf von `klara-policy.ts` einzeln mit ihrer Fundstelle
+    // benannt —, und Pedi hat am 05.09. um 12:03 mit „JA" freigegeben (Entscheidung 15). Der
+    // Vertrag der Freischaltung steht unverändert in
+    // `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`: die Fälle S1 bis S4 messen BEIDE
+    // Zustände dieses Wertes, ein Zurücklegen auf `false` kippt sie geschlossen in den
+    // Sperrzustand. Der Schalter bleibt damit eine Bedingung und wird kein Wort.
+    expect(KLARA_EXTERNAL_EXECUTION_MIGRATED).toBe(true);
   });
 
-  it("`cloud` MIT verdrahtetem Anbieter bleibt external, wird aber ehrlich blockiert", () => {
+  it("`cloud` MIT verdrahtetem Anbieter, OHNE Zustimmung: external, ehrlich blockiert", () => {
     const r = resolveKlaraPolicy(
       eingabe({ choice: "cloud", cloudConfigured: true, effectiveAnswerProvider: "cloud" }),
     );
@@ -166,14 +167,16 @@ describe("W1 S4 / JOB 3033 · der externe Weg hängt an EINER benannten Entschei
     // Wahrheit, und der Grund steht daneben (Auftrag §145).
     expect(r.effectiveMode).toBe("external");
     expect(r.executionAllowed).toBe(false);
-    expect(r.blockedReason).toBe("external_not_migrated");
+    // JOB 3079: der Grund heisst jetzt, was er ist. Bis zur Freischaltung verdeckte
+    // `external_not_migrated` die fehlende Zustimmung — es war schlicht der frühere Riegel.
+    expect(r.blockedReason).toBe("external_consent_missing");
     expect(r.deviation).toBe(true);
     // Solange nicht ausgeführt wird, zeigt die Auflösung den deterministischen Anbieter — angezeigt
     // wird, was rechnet.
     expect(r.provider).toBe(KLARA_DETERMINISTIC_PROVIDER);
   });
 
-  it("auch MIT erteilter Zustimmung bleibt der externe Weg blockiert", () => {
+  it("MIT erteilter Zustimmung führt der externe Weg AUS — und nennt den Cloud-Anbieter", () => {
     const r = resolveKlaraPolicy(
       eingabe({
         choice: "cloud",
@@ -184,9 +187,12 @@ describe("W1 S4 / JOB 3033 · der externe Weg hängt an EINER benannten Entschei
     );
     expect(r.externalConsentRequired).toBe(true);
     expect(r.externalConsentGranted).toBe(true);
-    // Zustimmung allein erzeugt keinen Egress — die Migration fehlt weiterhin.
-    expect(r.executionAllowed).toBe(false);
-    expect(r.blockedReason).toBe("external_not_migrated");
+    // JOB 3079 · das Nutzerversprechen in EINER Zeile: die Zustimmung wirkt.
+    expect(r.executionAllowed).toBe(true);
+    expect(r.blockedReason).toBeNull();
+    // Und „angezeigt wird, was rechnet" heisst jetzt: der Cloud-Anbieter, nicht der Ersatzwert.
+    expect(r.provider).not.toBe(KLARA_DETERMINISTIC_PROVIDER);
+    expect(r.provider).toBe(eingabe().providerLabel);
   });
 
   it("ohne benennbaren Anbieter bleibt es deterministisch — die Konstante ändert daran nichts", () => {
@@ -206,6 +212,121 @@ describe("W1 S4 / JOB 3033 · der externe Weg hängt an EINER benannten Entschei
     expect(r.provider).toBe(KLARA_DETERMINISTIC_PROVIDER);
   });
 
+  // ==============================================================================================
+  // JOB 3079 RUNDE 2 (BEN-Korrekturpflicht 3) — WIDERSPRÜCHLICHE POLICY GIBT NICHTS FREI.
+  // ==============================================================================================
+  //
+  // DER BEFUND war exakt reproduzierbar: der Resolver nannte `deviationReason: "policy_incomplete"`
+  // UND gab mit `executionAllowed: true` frei. Er BENANNTE den Widerspruch und liess ihn passieren.
+  // Bis zur Freischaltung war das folgenlos, weil `external_not_migrated` davorstand — die
+  // Freischaltung machte den Fehler wirksam. Genau deshalb steht der Fall hier und nicht in einer
+  // Wunschliste.
+  //
+  // ZWEI WIDERSPRÜCHE, EINE REGEL: externe Ausführung verlangt eine Admin-Wahl, die extern ergibt,
+  // UND eine verdrahtete Cloud. Beide Fälle werden mit ERTEILTER Zustimmung gemessen — die
+  // Zustimmung des Nutzers darf eine fehlende Admin-Wahl nicht ersetzen.
+  it("Admin will NICHT extern, die Bindung zeigt trotzdem auf Cloud ⇒ gesperrt, trotz Zustimmung", () => {
+    for (const choice of ["deterministic", "local"] as const) {
+      const r = resolveKlaraPolicy(
+        eingabe({
+          choice,
+          cloudConfigured: true,
+          localConfigured: true,
+          effectiveAnswerProvider: "cloud",
+          externalConsentGranted: true,
+        }),
+      );
+      // Der Modus wird NICHT stillschweigend gedreht — die Anzeige sagt weiter die Wahrheit über
+      // die Bindung. Aber ausgeführt wird nicht, und der Grund benennt den Widerspruch.
+      expect(r.effectiveMode, `choice=${choice}`).toBe("external");
+      expect(r.executionAllowed, `choice=${choice}`).toBe(false);
+      expect(r.blockedReason, `choice=${choice}`).toBe("policy_incomplete");
+      // Und es gibt keinen Empfänger, den eine Zustimmung freischalten würde: hier hilft kein Ja.
+      expect(r.externalConsentProvider, `choice=${choice}`).toBeNull();
+      expect(r.provider, `choice=${choice}`).toBe(KLARA_DETERMINISTIC_PROVIDER);
+    }
+  });
+
+  it("effektive Cloud-Bindung OHNE verdrahtete Cloud ⇒ gesperrt, trotz Zustimmung", () => {
+    // Dieselbe Konfiguration sagt an zwei Stellen Verschiedenes. Welche recht hat, kann diese reine
+    // Funktion nicht wissen — also führt sie nicht aus.
+    const r = resolveKlaraPolicy(
+      eingabe({
+        choice: "cloud",
+        cloudConfigured: false,
+        effectiveAnswerProvider: "cloud",
+        externalConsentGranted: true,
+      }),
+    );
+    expect(r.effectiveMode).toBe("external");
+    expect(r.executionAllowed).toBe(false);
+    expect(r.blockedReason).toBe("policy_incomplete");
+    expect(r.externalConsentProvider).toBeNull();
+  });
+
+  it("KALIBRIERUNG: dieselbe Lage MIT Admin-Wahl und verdrahteter Cloud gibt frei", () => {
+    // Ohne diese Zeile wären die beiden Fälle darüber auch dann grün, wenn der Resolver GAR NICHTS
+    // mehr freigäbe — „gesperrt" muss der Unterschied sein, nicht der Normalzustand.
+    const r = resolveKlaraPolicy(
+      eingabe({
+        choice: "cloud",
+        cloudConfigured: true,
+        effectiveAnswerProvider: "cloud",
+        externalConsentGranted: true,
+      }),
+    );
+    expect(r.executionAllowed).toBe(true);
+    expect(r.blockedReason).toBeNull();
+  });
+
+  // ==============================================================================================
+  // JOB 3079 RUNDE 2 (BEN-Korrekturpflicht 1) — DER EMPFÄNGER STEHT VOR DER ZUSTIMMUNG FEST.
+  // ==============================================================================================
+  //
+  // `provider` beantwortet „was rechnet JETZT" und meldet vor der Zustimmung die deterministischen
+  // Ersatzwerte — richtig für die KI-Zeile, falsch für den Zustimmungskasten. BEN hat gemessen, was
+  // daraus im echten Panel wurde: „Deine Frage und die Texte der gefundenen Einträge gehen an
+  // Klarwerk (deterministisch)." Die Auflösung beantwortet die zweite Frage jetzt selbst.
+  it("vor der Zustimmung nennt die Auflösung den Empfänger, den ein JA freischalten würde", () => {
+    const ohne = resolveKlaraPolicy(
+      eingabe({ choice: "cloud", cloudConfigured: true, effectiveAnswerProvider: "cloud" }),
+    );
+    // Die alte Frage, unverändert beantwortet: es rechnet nichts extern.
+    expect(ohne.executionAllowed).toBe(false);
+    expect(ohne.provider).toBe(KLARA_DETERMINISTIC_PROVIDER);
+    // Die neue Frage: an WEN ginge es bei einem JA.
+    expect(ohne.externalConsentProvider).toBe("Testanbieter");
+    expect(ohne.externalConsentModel).toBe("test-modell-1");
+
+    // NACH der Zustimmung stimmen beide überein — sonst nennte das Panel vor und nach dem Klick
+    // verschiedene Empfänger.
+    const mit = resolveKlaraPolicy(
+      eingabe({
+        choice: "cloud",
+        cloudConfigured: true,
+        effectiveAnswerProvider: "cloud",
+        externalConsentGranted: true,
+      }),
+    );
+    expect(mit.externalConsentProvider).toBe(mit.provider);
+    expect(mit.externalConsentModel).toBe(mit.model);
+  });
+
+  it("wo eine Zustimmung nichts bewirken würde, gibt es auch keinen Empfänger", () => {
+    // Drei Lagen, in denen ein Zustimmungsknopf eine Falschauskunft wäre. `null` ist hier die
+    // Aussage „hier hilft kein Ja" — kein fehlender Wert.
+    const internal = resolveKlaraPolicy(
+      eingabe({ choice: "local", localConfigured: true, effectiveAnswerProvider: "local" }),
+    );
+    expect(internal.externalConsentProvider).toBeNull();
+    const deterministisch = resolveKlaraPolicy(eingabe());
+    expect(deterministisch.externalConsentProvider).toBeNull();
+    const widerspruch = resolveKlaraPolicy(
+      eingabe({ choice: "deterministic", cloudConfigured: true, effectiveAnswerProvider: "cloud" }),
+    );
+    expect(widerspruch.externalConsentProvider).toBeNull();
+  });
+
   it("Admin-Auswahl allein erzeugt nie eine Cloud-Freigabe (KW-S4-04 §212)", () => {
     for (const choice of ["auto", "model", "cloud"] as const) {
       const r = resolveKlaraPolicy(
@@ -221,7 +342,14 @@ describe("W1 S4 · der Vertrag ist vollständig und stabil", () => {
   // Lockerung des Vertrags — sie ist der Vertrag: BEN hat belegt, dass die Auflösung die
   // Nutzlastklassen, an die eine Zustimmung gebunden werden soll, gar nicht ausdrücken konnte.
   // Der Fall bleibt eine exakte Mengengleichheit, damit ein 18. Feld weiterhin auffällt.
-  it("liefert GENAU die 17 Statusfelder des Vertrags", () => {
+  //
+  // JOB 3079 R2 (BEN-Korrekturpflicht 1): aus 17 werden 19. Wieder keine Lockerung, wieder ein
+  // Loch im Vertrag: die Auflösung konnte nicht ausdrücken, WEM der Mensch zustimmt, bevor er
+  // zustimmt. Sie sagte nur, wer GERADE rechnet — und das ist vor der Zustimmung die
+  // deterministische Verarbeitung. Das Add-in hat den Empfänger deshalb im Zustimmungssatz falsch
+  // genannt, und ableiten durfte es ihn nicht (No-Go 1). Der Fall bleibt eine exakte
+  // Mengengleichheit, damit ein 20. Feld weiterhin auffällt.
+  it("liefert GENAU die 19 Statusfelder des Vertrags", () => {
     const r = resolveKlaraPolicy(eingabe());
     expect(Object.keys(r).sort()).toEqual(
       [
@@ -235,6 +363,8 @@ describe("W1 S4 · der Vertrag ist vollständig und stabil", () => {
         "executionAllowed",
         "expiresAt",
         "externalConsentGranted",
+        "externalConsentModel",
+        "externalConsentProvider",
         "externalConsentRequired",
         "mode",
         "model",
@@ -341,25 +471,49 @@ describe("W1 S4 · BEN-35/1: die Auflösung nennt ihre effektiven Payload-Klasse
     }
   });
 
-  it("die Klassen sind der im Bestand einzige tatsächlich versendete Nutzlasttyp", () => {
-    // KEINE erfundene Erweiterung: der Server schreibt heute genau eine Klasse, und die Auflösung
-    // benennt exakt diese. Waechst die Menge spaeter, faellt dieser Fall auf — als Erinnerung,
-    // dass eine neue Klasse eine Zustimmungsentscheidung ist und keine Nebenwirkung.
+  it("die Klassen sind die im Bestand tatsächlich versendeten Nutzlasttypen", () => {
+    // KEINE erfundene Erweiterung: der Antwortweg übergibt dem Modell die Frage UND die Kandidaten
+    // mit Titel, Aussage, Dokumenttext und Bild-Fußnoten (`services/ask/src/service.ts`, Aufruf
+    // `this.reasoner.answer(question, candidates, …)`). Waechst die Menge weiter, faellt dieser
+    // Fall auf — als Erinnerung, dass eine neue Klasse eine Zustimmungsentscheidung ist und keine
+    // Nebenwirkung.
+    //
+    // JOB 3079 (05.09.2026): aus einer Klasse werden zwei. Das IST die Zustimmungsentscheidung,
+    // die dieser Fall erzwingen sollte — getroffen von Pedi am 05.09. („JA", Entscheidung 15) und
+    // gemessen in `tests/ka4-freischaltung/ka4-einwilligung-wirkt.test.ts`, Fall S3: dort wird das
+    // vollständige Feld für Feld erhobene Modell-Eingangsdatum gegen genau diese Menge gehalten.
     expect(resolveKlaraPolicy(eingabe()).effectivePayloadClasses).toEqual([
       KLARA_PAYLOAD_CLASS_QUESTION,
+      KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS,
     ]);
   });
 
   it("die Klassen hängen nicht an Consent oder Blockade — sie sagen, WAS gesendet würde", () => {
     // Sonst wäre die Bindung zirkulär: eine blockierte Auflösung „sendet nichts" und würde jede
     // Zustimmung decken. Was gesendet WÜRDE, ist unabhängig davon, ob gesendet werden DARF.
+    const erwartet = [KLARA_PAYLOAD_CLASS_QUESTION, KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS];
     const blockiert = resolveKlaraPolicy(
       eingabe({ effectiveAnswerProvider: "cloud", cloudConfigured: true, choice: "cloud" }),
     );
     expect(blockiert.executionAllowed).toBe(false);
-    expect(blockiert.effectivePayloadClasses).toEqual([KLARA_PAYLOAD_CLASS_QUESTION]);
+    expect(blockiert.effectivePayloadClasses).toEqual(erwartet);
     expect(
       resolveKlaraPolicy(eingabe({ externalConsentGranted: true })).effectivePayloadClasses,
-    ).toEqual([KLARA_PAYLOAD_CLASS_QUESTION]);
+    ).toEqual(erwartet);
+  });
+
+  it("die Auflösung reicht KEINE gemeinsame Liste heraus, die ein Aufrufer verstellen könnte", () => {
+    // JOB 3079: `effectivePayloadClasses` ist seit dieser Runde nicht mehr je Aufruf frisch
+    // gebaut, sondern die eine benannte Konstante. Genau deshalb muss hier stehen, dass niemand
+    // sie über eine Auflösung verändern kann — sonst wäre die Zustimmungsgrundlage prozessweit
+    // beschreibbar. Der Vertrag ist `readonly string[]`; der Fall misst die LAUFZEIT.
+    const r = resolveKlaraPolicy(eingabe());
+    expect(() => {
+      (r.effectivePayloadClasses as string[]).push("full_document");
+    }).toThrow();
+    expect(r.effectivePayloadClasses).toEqual([
+      KLARA_PAYLOAD_CLASS_QUESTION,
+      KLARA_PAYLOAD_CLASS_CANDIDATE_TEXTS,
+    ]);
   });
 });

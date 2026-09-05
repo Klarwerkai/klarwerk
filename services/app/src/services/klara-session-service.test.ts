@@ -103,12 +103,15 @@ describe("W1 S4 R2 · ROT-1 · Anbieter und Modell folgen der effektiven Answer-
     expect(sicht.resolution.deviation).toBe(false);
   });
 
-  it("Cloud verdrahtet und effektiv `cloud` ⇒ external mit Cloud-Anbieter, aber blockiert", async () => {
+  it("Cloud verdrahtet und effektiv `cloud` ⇒ external, ohne Zustimmung blockiert", async () => {
     const { dienst } = externAufbau();
     const { sicht } = await sitzung(dienst);
     expect(sicht.resolution.effectiveMode).toBe("external");
     expect(sicht.resolution.executionAllowed).toBe(false);
-    expect(sicht.resolution.blockedReason).toBe("external_not_migrated");
+    // JOB 3079 (05.09.2026): bis zur Freischaltung stand hier `external_not_migrated` — der
+    // Riegel des Bestands verdeckte die eigentliche Ursache. Eine frische Sitzung hat keine
+    // Zustimmung, und genau das sagt der Grund jetzt.
+    expect(sicht.resolution.blockedReason).toBe("external_consent_missing");
   });
 
   it("effektiv `deterministic` trotz Admin-Wunsch `cloud` ⇒ benannter Abweichungsgrund", async () => {
@@ -1373,18 +1376,33 @@ describe("W1 S4 R6B · Consent-Bindung an die verwendete Auflösung (KW-S4-23)",
     expect((await repo.findConsent(sicht.sessionId))?.status).toBe("invalidated");
   });
 
-  it("6 · das Tor unterscheidet Zustimmungsproblem und Blockade der Auflösung selbst", async () => {
+  // JOB 3079 (05.09.2026) — DIESER FALL HAT SEINE AUSSAGE GEWECHSELT, WEIL DIE LAGE SIE GEWECHSELT
+  // HAT.
+  //
+  // Er hiess „das Tor unterscheidet Zustimmungsproblem und Blockade der Auflösung selbst" und
+  // erhob dafür den einzigen Betriebszustand, den es dafür gab: `external_not_migrated` bei
+  // deckender Zustimmung. Mit der Freischaltung gibt es diesen Zustand nicht mehr — und einen
+  // Ersatz zu ERFINDEN wäre ein Test über eine Lage, die der Bestand nicht kennt. Was blieb, ist
+  // die stärkere Aussage: bei deckender Zustimmung führt das Tor jetzt WIRKLICH frei, und es sagt
+  // dabei, wer ausführt. Die Unterscheidung der Absagegründe messen unverändert die Fälle 5 und 7
+  // (`CONSENT_RECONFIRMATION_REQUIRED`).
+  //
+  // Der `!resolution.executionAllowed`-Zweig im Tor bleibt trotzdem stehen: er ist ab jetzt reine
+  // Absicherung gegen eine Auflösung, die ihre eigene Freigabe verweigert — das Tor ist die
+  // Stelle, an der im Zweifel NICHT ausgeführt wird.
+  it("6 · deckende Zustimmung ⇒ das Tor gibt frei und nennt den ausführenden Anbieter", async () => {
     const { dienst } = externAufbau();
     const { sicht, bindung } = await sitzung(dienst);
     await dienst.grantConsent(sicht.sessionId, bindung);
 
-    // Die Zustimmung DECKT — geblockt wird trotzdem, aber aus einem anderen Grund: die externe
-    // Ausführung ist im Bestand gar nicht freigeschaltet (`external_not_migrated`). Ein Tor, das
-    // beides in einen Topf würfe, machte aus einem Betriebszustand ein Zustimmungsproblem.
     const tor = await dienst.pruefeExterneAusfuehrung(sicht.sessionId, bindung);
-    expect(tor.erlaubt).toBe(false);
-    expect(tor.erlaubt === false && tor.grund).toBe("external_not_migrated");
-    expect(tor.erlaubt === false && tor.deckung.gedeckt).toBe(true);
+    expect(tor.erlaubt).toBe(true);
+    if (tor.erlaubt) {
+      expect(tor.resolution.effectiveMode).toBe("external");
+      expect(tor.resolution.executionAllowed).toBe(true);
+      expect(tor.resolution.provider).toBe("Cloud-Anbieter");
+      expect(tor.consentId.length).toBeGreaterThan(0);
+    }
   });
 
   it("7 · das Tor liefert kein blosses Boolean — Grund und geprüfte Auflösung reisen mit", async () => {
