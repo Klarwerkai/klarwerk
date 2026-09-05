@@ -446,9 +446,13 @@ export function BibliothekFlaeche({
   // beides nicht mehr frisch ist. Das ist die zeitabhängige Aussage ohne frische Grundlage, die
   // Auftrag §9 und REGELN §7 verbieten. Ab hier gilt deshalb die SCHWÄCHERE der beiden Lagen.
   const quellen: readonly UseQueryResult<unknown>[] = [query, all];
+  // Offline hält TanStack Query den GEWOLLTEN Abruf an, statt ihn zu führen: `fetchStatus` steht
+  // dann auf `paused`. Genau dieser eine Ausdruck trägt seit JOB 3072 das Frischemodell — und seit
+  // JOB 3099 auch den Leerzweig der Liste (s. `pausiert` unten). Kein `navigator.onLine`, keine
+  // zweite Wahrheit über denselben Sachverhalt.
+  const angehalten = (q: UseQueryResult<unknown>): boolean => q.fetchStatus === "paused";
   const frisch =
-    query.data !== undefined &&
-    quellen.every((q) => !q.isRefetchError && q.fetchStatus !== "paused");
+    query.data !== undefined && quellen.every((q) => !q.isRefetchError && !angehalten(q));
 
   // ================================================================================================
   // JOB 3072 R4 — ZÄHLER UND HINWEIS FRAGEN VERSCHIEDENES, UND DAS IST DER PUNKT.
@@ -722,6 +726,23 @@ export function BibliothekFlaeche({
         // und der Hinweis darunter sagt es (REGELN §7 — nie den Bestand wegen eines Folgefehlers
         // leeren).
         fehler={query.isError && query.data === undefined}
+        // ============================================================================================
+        // JOB 3099 · Q6c — DIE DRITTE FOLGE DERSELBEN LAGE: DER LEERZWEIG KENNT SIE JETZT AUCH.
+        // ============================================================================================
+        // Offline wird für einen NEUEN Suchbegriff gar nicht gerufen: `isLoading` ist falsch (der
+        // Abruf ist `paused`, also nicht `fetching`), `isError` ist falsch (nichts ist gescheitert),
+        // und `query.data` ist für diesen Schlüssel `undefined`. Aus diesen drei Verneinungen entstand
+        // in der Liste die Behauptung „erfolgreich gesucht, nichts gefunden" — gemessen von Codex an
+        // 1.0.0-beta.1.103 (`R-1613-offline-20260905-1955/BEFUND.md`, Punkte 3/4: „Nichts gefunden."
+        // und „Erfassen" bei NULL Suchrequests; nach Netzrückkehr genau ein Ruf und zwei Treffer).
+        //
+        // DIE ZWEITE BEDINGUNG (`query.data === undefined`) IST ABSICHT und steht wörtlich so schon
+        // eine Zeile höher bei `fehler`: gemeint ist „für diesen Suchbegriff liegt noch KEINE Antwort
+        // vor", nicht „das Gerät ist offline". Liegen Treffer im Zwischenspeicher, bleibt alles wie
+        // bisher — auch ein zwischengespeichertes LEERES Ergebnis darf weiter „Nichts gefunden."
+        // sagen, denn es wurde wirklich einmal erfolgreich geholt (Auftrag §9, die zwei
+        // Offline-Zeilen).
+        pausiert={angehalten(query) && query.data === undefined}
         // Die Bauform steht in `AuffrischungHinweis` (EINE Stelle für Liste und Lesefläche); die
         // Lage fragt die Liste hier ab, damit sie ohne den Fall auch keinen leeren Platz hält.
         //

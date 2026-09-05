@@ -18,6 +18,8 @@ import { BIB_SEGMENTE, type BibSegment, type ZustandsTon, amListenende } from ".
 //   laden   → leere Spalte OHNE Text (ein „Lädt …" wäre der Erklärsatz, den diese Seite loswird)
 //   leer    → EIN Satz plus ein Knopf
 //   Fehler  → EIN Satz plus „Erneut versuchen"
+//   pausiert → wie laden: NICHTS. Offline wird gar nicht gerufen; ein Leerzustand behauptete dann
+//             ein Ergebnis, das niemand geholt hat (JOB 3099 · Q6c, s. den Zweig unten)
 //   Zähler  → NUR nach erfolgreichem frischem Abruf eine Zahl; sonst „–". Ein Zähler aus altem
 //             Cache behauptete Aktualität, die niemand geprüft hat.
 
@@ -63,6 +65,7 @@ export function BibliothekListe({
   onWaehle,
   laedt,
   fehler,
+  pausiert,
   hinweis,
   onErneut,
   gesamt,
@@ -85,6 +88,10 @@ export function BibliothekListe({
   onWaehle: (id: string) => void;
   laedt: boolean;
   fehler: boolean;
+  // JOB 3099: der Abruf ist offline ANGEHALTEN und hat für diese Suche noch keine Antwort. Weder
+  // ein Laden noch ein Fehler — und deshalb erst recht kein Ergebnis. Der Aufrufer bildet die Lage
+  // (`BibliothekFlaeche.tsx`, `fetchStatus === "paused"`); die Liste wertet sie nur aus.
+  pausiert: boolean;
   // Nur im Fall gesetzt: der Auffrischungs-Hinweis über dem Bestand, den der Aufrufer baut
   // (`AUFFRISCHUNG_HINWEIS_MARKE`, eine Bauform für Liste UND Lesefläche).
   hinweis: ReactNode;
@@ -201,7 +208,22 @@ export function BibliothekListe({
             </button>
           </div>
         ) : null}
-        {!laedt && !fehler && eintraege.length === 0 ? (
+        {/* ==========================================================================================
+            JOB 3099 · Q6c — HIER WIRD GESCHWIEGEN, WEIL NICHTS GEMESSEN WURDE.
+            ==========================================================================================
+            Der Leerzustand ist eine TATSACHENAUSSAGE über den Bestand („gesucht, nichts gefunden")
+            samt Angebot, den Eintrag neu zu erfassen. Er darf deshalb nur nach einem erfolgreichen
+            Abruf entstehen. Die dritte Lage `pausiert` (offline angehalten, noch keine Antwort) war
+            bis JOB 3099 keiner der beiden alten Zweige — und fiel damit in den Leerzweig.
+
+            WARUM HIER NICHTS STEHT UND NICHT EIN EIGENER SATZ: Der bessere Satz wäre „Ohne
+            Verbindung kann gerade nicht gesucht werden." Er braucht einen neuen Schlüssel in
+            `apps/web/src/i18n.ts`, und diese Datei ist von JOB 3079 und JOB 3095 belegt (Auftrag
+            §4/§10) — ein Wort ohne Übersetzung wäre die halbe Lieferung. Schweigen ist dagegen
+            immer erlaubt (dieselbe Begründung wie beim Zähler, `BibliothekFlaeche.tsx:464-466`) und
+            genau das, was diese Datei beim Laden schon tut (`:191`). Der eigene Satz bleibt als
+            benannte Restschuld offen, sobald `i18n.ts` frei ist. */}
+        {!laedt && !fehler && !pausiert && eintraege.length === 0 ? (
           <div data-testid="bib-leer" className="px-4 py-3">
             <p className="text-[12.5px] leading-relaxed text-muted">
               {q.trim() ? t("lib.liste.leerSuche") : t("lib.liste.leer")}
