@@ -139,9 +139,28 @@ export type Dublettentreffer =
  * - `nicht_gestellt` — der externalId-Upsert-/Re-Sync-Strang (SCRUM-510 R2b): dort ist eine
  *   Bestandskollision per Entscheid ein Re-Sync und keine Dublette, die Textfrage wird also nicht
  *   gestellt. `duplicate` heisst dort ausschliesslich „dasselbe Quellobjekt zweimal in DIESEM Lauf".
+ * - `im_papierkorb` — JOB 3081, s. unten.
  *
- * Die Woerter sind bewusst die von `UebersprungenGrund` (plus die beiden Faelle, die es dort nicht
- * geben kann): dieselbe Frage, dieselbe Sprache auf beiden Importwegen.
+ * Die Woerter sind bewusst die von `UebersprungenGrund` (plus die Faelle, die es dort nicht geben
+ * kann): dieselbe Frage, dieselbe Sprache auf beiden Importwegen.
+ *
+ * ------------------------------------------------------------------------------------------------
+ * JOB 3081 — DER PAPIERKORB IST EIN ZUSTAND DES BESTANDS, KEIN LOCH IM BESTAND.
+ * ------------------------------------------------------------------------------------------------
+ *
+ * `im_papierkorb` ist der FUENFTE Ausgang und gehoert AUSSCHLIESSLICH dem externalId-/Anker-Strang:
+ * derselbe Herkunfts-Anker (`externalId` + `importProviderKey(provider)`) traegt ein Wissensobjekt,
+ * das im PAPIERKORB liegt. Bis JOB 3081 stand hier `nicht_gestellt` — sachlich richtig fuer den
+ * AKTIVEN Re-Sync, aber fuer den getrashten Fall zu wenig: der Reviewer entschied, ohne zu wissen,
+ * dass die Sache schon einmal da war und weggeworfen wurde, und der `accept` legte eine ZWEITE
+ * Karteikarte fuer dieselbe Sache an (Codex' Live-Messung R-0192 vom 05.09.2026).
+ *
+ * DER TREFFER IST DIE VORHANDENE FORM `{ art: "wissensobjekt", koId }` und nennt IMMER eine Kennung,
+ * die es wirklich gibt — die des getrashten Objekts. Eine eigene Trefferart waere ein zweites Wort
+ * fuer dieselbe Sache: das getroffene IST ein Wissensobjekt, es liegt nur im Papierkorb.
+ *
+ * VORRANG DES LEBENDEN: liegt derselbe Anker AKTIV im Bestand, bleibt es `nicht_gestellt` — der
+ * Re-Sync ist unveraendert. `im_papierkorb` entsteht nur, wenn es kein aktives Gegenstueck gibt.
  */
 export type KandidatDublettenbefund =
   | { readonly ergebnis: "keine" }
@@ -152,7 +171,8 @@ export type KandidatDublettenbefund =
       readonly aehnlichkeit: number;
     }
   | { readonly ergebnis: "pruefung_nicht_moeglich" }
-  | { readonly ergebnis: "nicht_gestellt" };
+  | { readonly ergebnis: "nicht_gestellt" }
+  | { readonly ergebnis: "im_papierkorb"; readonly treffer: Dublettentreffer };
 
 export interface ImportResult {
   imported: number;

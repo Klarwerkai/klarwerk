@@ -106,6 +106,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   "FREEZE-144/JOB3023-20260903/index",
   "FREEZE-144/JOB3023-20260903/types",
   "FREEZE-144/JOB3023-20260903/service-test",
+  // JOB 3081: verbraucht. Diese Freigabe autorisierte den `types.ts`-Stand VOR dem fuenften Ausgang
+  // von `KandidatDublettenbefund` (`im_papierkorb`) — sie darf den neuen Inhalt nicht nachtraeglich
+  // decken. Ihre Nachfolgerin steht am Eintrag.
+  "FREEZE-144/JOB3050-20260904/types",
 ];
 
 const ERWARTETE_ANZAHL = 6;
@@ -149,10 +153,17 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // (der Befund derselben Frage am Review-Kandidaten, vier Ausgänge statt zwei), `ImportCandidate`
     // trägt das additive Feld `dublettenbefund`, und der überholte Kommentar am Feld `duplicate`
     // („Gleiche title|statement existiert bereits") ist berichtigt.
-    hash: "ad83892b0c9f43c0f1d4ccae6315a9a4c2fa1a55dac25dac042447dc02227960",
+    // JOB 3081 · AUSGEWIESENE ÄNDERUNG: `KandidatDublettenbefund` hat einen FÜNFTEN Ausgang —
+    // `{ ergebnis: "im_papierkorb"; treffer: Dublettentreffer }`. Er gehört dem externalId-/Anker-
+    // Strang und sagt vor der Review-Entscheidung, dass dieses Wissen im Papierkorb liegt und
+    // welches Objekt gemeint ist (Codex' Live-Befund R-0192, 05.09.2026). REIN ADDITIV: keine
+    // vorhandene Variante ist geändert, `Dublettentreffer` ist unangetastet (es entsteht KEINE
+    // neue Trefferform), und `nicht_gestellt` bleibt für den aktiven Re-Sync. Sollhash UND
+    // Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
+    hash: "32bb256089c89e382b3c2c47f36c293c835e134e142198a45f4c5e36ab2badcd",
     freigabe: {
-      id: "FREEZE-144/JOB3050-20260904/types",
-      autorisiertHash: "ad83892b0c9f43c0f1d4ccae6315a9a4c2fa1a55dac25dac042447dc02227960",
+      id: "FREEZE-144/JOB3081-20260905/types",
+      autorisiertHash: "32bb256089c89e382b3c2c47f36c293c835e134e142198a45f4c5e36ab2badcd",
     },
   },
   {

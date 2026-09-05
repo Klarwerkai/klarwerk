@@ -217,6 +217,40 @@ function vergleichsPlatzhalter(kandidatId: string, item: ImportItem): KnowledgeO
   };
 }
 
+// ================================================================================================
+// JOB 3081 RUNDE 2 (bens ROT) — EIN SCHLUESSEL, DER GENAU DIESELBE GLEICHHEIT AUSDRUECKT WIE DER
+// FELDVERGLEICH. ALLES ANDERE IST EIN ZWEITES GEHIRN NEBEN DEM ANKER.
+// ================================================================================================
+//
+// WAS FALSCH WAR. Runde 1 baute den Anker-Schluessel als
+// `${importProviderKey(provider)}@${externalId}`. Diese Verkettung ist NICHT injektiv — das
+// Trennzeichen kann in BEIDEN Feldern vorkommen:
+//   (provider "test@tenant", externalId "42")        → "test@tenant@42"
+//   (provider "test",        externalId "tenant@42") → "test@tenant@42"
+// Zwei VERSCHIEDENE Herkunfts-Anker bekamen denselben Schluessel. Ben hat es ueber die echte API
+// gemessen: der zweite, voellig eigenstaendige Import bekam `im_papierkorb` MIT DER FREMDEN Kennung
+// und wurde ohne Anlage quittiert — eine erfundene Auskunft UND eine Fehlblockade eines
+// berechtigten Imports in einem. `acceptToKo` verglich daneben Feld fuer Feld (externalId UND
+// normalisierter Provider) und war damit richtig: ZWEI Gleichheitsregeln fuer DIESELBE Frage, und
+// die schwaechere entschied zuerst.
+//
+// DIE ANTWORT. EINE Regel, an EINER Stelle, von beiden Linien benutzt.
+// `JSON.stringify([providerKey, externalId])` ueberlaesst die Feldgrenze nicht einem Zeichen,
+// sondern kodiert sie selbst und escapt Sonderzeichen — gleicher Schluessel GENAU DANN, wenn
+// normalisierter Provider UND externalId gleich sind. Damit ist der Kartenschluessel der
+// Kandidatenpruefung buchstabengleich mit dem Feldvergleich in `acceptToKo` (`matchesAnchor`,
+// s. dort), und ein Auseinanderlaufen der beiden ist nicht mehr moeglich.
+//
+// FEHLENDE externalId ist ein EIGENER Wert, keine leere Zeichenkette: `undefined` wird zu `null`
+// kodiert und trifft darum nie einen Anker mit der externalId "null" (oder ""). Das haelt das
+// Bestandsverhalten des alten Feldvergleichs `s.externalId === externalId` exakt ein.
+function ankerSchluessel(
+  provider: string | null | undefined,
+  externalId: string | undefined,
+): string {
+  return JSON.stringify([importProviderKey(provider), externalId ?? null]);
+}
+
 // JOB 3050 — DIE EINE STELLE, DIE ENTSCHEIDET, OB EIN `accept` EIN WISSENSOBJEKT ANLEGEN DARF.
 //
 // Bis JOB 3050 stand dafür `!candidate.duplicate` an zwei Orten im Review-Pfad. Das genügt nicht
@@ -461,9 +495,64 @@ export class LibraryService {
     // zu überspringende Dublette, sondern ein Re-Sync/Update (wird beim Annehmen als Upsert behandelt).
     // WP-SHIP8-FIX (bens F3): der Dedup-Schlüssel ist provider+externalId — gleiche externalId aus
     // ZWEI Quellen (Confluence-pageId vs. Jira-Key) ist KEINE Dublette.
-    // JOB 3050: dieser Strang bleibt Zeichen für Zeichen, wie er ist — die Textfrage wird hier
+    // JOB 3050: dieser Strang bleibt Zeichen für Zeichen, wie er ist — die TEXTfrage wird hier
     // ausdrücklich NICHT gestellt (`nicht_gestellt`), sonst würde ein Re-Sync zur Dublette.
+    // JOB 3081: die ANKERfrage wird hier zusätzlich an den Papierkorb gestellt — das ist keine
+    // Textregel und keine neue Schwelle, sondern derselbe Anker, nur eine Lesart weiter
+    // (`im_papierkorb`, s. Block unten). Der Textweg bleibt vom Papierkorb unberührt.
     const batchExternalIds = new Set<string>();
+    // ============================================================================================
+    // JOB 3081 — DER KANDIDAT SAGT ES, BEVOR JEMAND ENTSCHEIDET.
+    // ============================================================================================
+    //
+    // Der externalId-Strang stellt die Textfrage nicht (s. oben) — und schwieg damit auch ueber den
+    // Fall, in dem dieselbe Sache schon einmal da war und im PAPIERKORB liegt. Der Reviewer entschied
+    // ohne dieses Wissen, und der `accept` legte eine zweite Karteikarte an. Ab hier traegt der
+    // Kandidat den Befund `im_papierkorb` MIT der Kennung des getrashten Objekts.
+    //
+    // EHRLICHE KOSTENGRENZE (dieselbe Form wie am Methodenkopf): `trashedSourceAnchors()` liest den
+    // ganzen Bestand (knowledge-object/src/service.ts:3386). Der Aufruf geschieht deshalb HOECHSTENS
+    // EINMAL JE LAUF — VOR der Schleife, nie je Eintrag — und nur, wenn der Anker-Strang aktiv ist
+    // UND wenigstens ein Eintrag einen Anker traegt. Der Textweg fragt den Papierkorb nie.
+    //
+    // VORRANG DES LEBENDEN: die aktiven Anker werden aus dem ohnehin gelesenen `existing` gebildet.
+    // Liegt derselbe Anker aktiv im Bestand, bleibt es `nicht_gestellt` (Re-Sync, unveraendert) —
+    // der Papierkorb wird dann gar nicht erst befragt.
+    //
+    // FAIL-CLOSED (Zustandsmodell): wirft die Papierkorb-Lesung, wird daraus NIE „es liegt nichts im
+    // Papierkorb". Die betroffenen Anker-Eintraege erhalten den vorhandenen ehrlichen Ausgang
+    // `pruefung_nicht_moeglich` (kandidatErzeugtWissensobjekt laesst den `accept` dann nichts
+    // anlegen); der Lauf bricht NICHT ab, und Eintraege ohne Anker sind unberuehrt. Eine LEERE
+    // Liste ist dagegen eine echte Auskunft: dann bleibt es exakt wie bisher `nicht_gestellt`.
+    const ankerImLauf = this.externalUpsert && items.some((item) => item.externalId);
+    const aktiveAnker = new Set<string>();
+    if (ankerImLauf) {
+      for (const ko of existing) {
+        for (const quelle of ko.sources ?? []) {
+          if (quelle.externalId) {
+            aktiveAnker.add(ankerSchluessel(quelle.provider, quelle.externalId));
+          }
+        }
+      }
+    }
+    // `null` heisst „nicht gelesen/nicht lesbar" und ist ausdruecklich NICHT dasselbe wie eine leere
+    // Karte („gelesen, es liegt nichts im Papierkorb").
+    let papierkorbAnker: Map<string, string> | null = null;
+    if (ankerImLauf) {
+      try {
+        const karte = new Map<string, string>();
+        for (const anker of await this.koService.trashedSourceAnchors()) {
+          const key = ankerSchluessel(anker.provider, anker.externalId);
+          // Der ERSTE Traeger eines Ankers gewinnt — dieselbe Determinismus-Regel wie bei `exakt`.
+          if (!karte.has(key)) {
+            karte.set(key, anker.koId);
+          }
+        }
+        papierkorbAnker = karte;
+      } catch {
+        papierkorbAnker = null;
+      }
+    }
     // SCRUM-510 (WP3): externalId-Kandidaten ATOMAR idempotent einreihen (partieller UNIQUE-Index / ON
     // CONFLICT DO NOTHING) — ein bereits offener Kandidat derselben (externalId, sourceVersion) wird NICHT
     // erneut angelegt, auch bei nebenläufigen Läufen/Retries. Nur der externalId-Upsert-Strang nutzt das;
@@ -494,10 +583,37 @@ export class LibraryService {
       let dublettenbefund: KandidatDublettenbefund;
       // externalId-Dedup nur bei aktivem Upsert-Strang. Aus → Dublettenprüfung für ALLE Items.
       if (this.externalUpsert && item.externalId) {
-        const batchKey = `${importProviderKey(item.provider)}@${item.externalId}`;
+        // JOB 3081 R2: auch der Lauf-interne Dedup-Schluessel laeuft ueber `ankerSchluessel` —
+        // er stellt DIESELBE Frage („dasselbe Quellobjekt?") und muss sie darum mit DERSELBEN
+        // Gleichheit beantworten. Zuvor kollidierten hier ebenfalls zwei verschiedene Anker
+        // (Confluence-Seite "a@b" gegen Provider "a" mit Kennung "b") zu einer Scheindublette.
+        const batchKey = ankerSchluessel(item.provider, item.externalId);
         duplicate = batchExternalIds.has(batchKey);
         batchExternalIds.add(batchKey);
-        dublettenbefund = { ergebnis: "nicht_gestellt" };
+        // JOB 3081: drei Ausgaenge, in GENAU dieser Reihenfolge (Begruendung vor der Schleife).
+        const getrashteKoId = papierkorbAnker?.get(batchKey);
+        if (aktiveAnker.has(batchKey)) {
+          // VORRANG DES LEBENDEN: derselbe Anker liegt aktiv im Bestand — das ist ein Re-Sync und
+          // bleibt unveraendert, unabhaengig davon, was im Papierkorb liegt (oder ob er lesbar war).
+          dublettenbefund = { ergebnis: "nicht_gestellt" };
+        } else if (papierkorbAnker === null) {
+          // Die Papierkorb-Lesung ist ausgefallen — weder „im Papierkorb" noch „nicht im
+          // Papierkorb" darf hier behauptet werden.
+          dublettenbefund = { ergebnis: "pruefung_nicht_moeglich" };
+        } else if (getrashteKoId !== undefined) {
+          dublettenbefund = {
+            ergebnis: "im_papierkorb",
+            treffer: { art: "wissensobjekt", koId: getrashteKoId },
+          };
+          // Die ENTSCHEIDUNG, nicht nur die Anzeige: `kandidatErzeugtWissensobjekt` macht aus dem
+          // `accept` damit keinen Anlagevorgang, und die zweite Kennung ist schon eine Stufe vor
+          // dem Riegel in `acceptToKo` ausgeschlossen. Fail-closed in derselben Richtung wie
+          // `pruefung_nicht_moeglich`: im Zweifel entsteht KEIN Objekt.
+          duplicate = true;
+        } else {
+          // Gelesen, und der Anker liegt nicht im Papierkorb — exakt das bisherige Ergebnis.
+          dublettenbefund = { ergebnis: "nicht_gestellt" };
+        }
       } else {
         dublettenbefund = kandidatDublettenbefund(item, pruefung, exakt, bestand, trefferVon);
         duplicate =
@@ -533,6 +649,11 @@ export class LibraryService {
       // also soll ein SPÄTERER Eintrag desselben Laufs, der dieselbe Sache ohne Herkunftsanker
       // mitbringt, ihn treffen. Das ist die Richtung, die Dubletten VERHINDERT; die Gegenrichtung
       // (eine Bestandskollision als Dublette zu lesen) bleibt ausgeschlossen.
+      //
+      // JOB 3081: ein Kandidat mit `im_papierkorb` steht hier folgerichtig NICHT drin — er legt
+      // nichts an (`duplicate: true`), also darf er auch nichts blockieren. Das ist dieselbe
+      // Begründung, die schon über diesem Absatz steht, und sie fällt hier über
+      // `kandidatErzeugtWissensobjekt` an der EINEN Stelle, nicht in einem zweiten Zweig.
       if (kandidatErzeugtWissensobjekt(candidate)) {
         const platzhalter = vergleichsPlatzhalter(id, item);
         bestand.push(platzhalter);
@@ -1280,6 +1401,11 @@ export class LibraryService {
   //    Anker nachgeschlagen; existiert das KO, ist der Accept materialisiert → adoptieren.
   //  Der Anker-/Re-Sync-Pfad (revise bei höherer Version, sonst No-op) ist monoton idempotent
   //  und braucht keinen Stempel; ein Crash dort ist per Claim-Freigabe sicher wiederholbar.
+  //
+  // JOB 3081: die Zusage „auch getrasht" gilt seither auch für den HERKUNFTS-Anker und nicht mehr
+  // nur für den Kandidaten-Stempel — die Anker-Suche läuft über `sucheAnkerKo` (aktiv, dann
+  // Papierkorb; Begründung und Reihenfolge dort). Ein getrashtes Objekt wird ADOPTIERT und dabei
+  // nicht angefasst; die Trash-Entscheidung bleibt beim Menschen, der gelöscht hat.
   private async acceptToKo(item: ImportItem, actor: string, candidateId?: string): Promise<string> {
     if (candidateId) {
       const stamped = await this.koService.findByImportCandidateId(candidateId);
@@ -1298,12 +1424,40 @@ export class LibraryService {
     // pageId revidiert NIE das Confluence-KO. Anker ohne Provider (Altbestand) zählen wie
     // importProviderKey als Confluence (der einzige Adapter vor dem Provider-Schlüssel).
     const externalId = this.externalUpsert ? item.externalId : undefined;
-    const providerKey = importProviderKey(item.provider);
+    // JOB 3081 RUNDE 2 (bens ROT): DIESELBE Funktion, mit der die Kandidatenpruefung ihre Karten
+    // schluesselt (`ankerSchluessel`, Begruendung dort). Vorher stand hier der Feldvergleich und
+    // dort eine `@`-Verkettung — zwei Ausdruecke fuer dieselbe Gleichheit, von denen einer
+    // verschiedene Anker verwechselte. Ab hier gibt es nur noch einen, und er ist injektiv.
+    // Der Ausdruck ist mit dem alten Feldvergleich `s.externalId === externalId &&
+    // importProviderKey(s.provider) === providerKey` wertgleich (beide Felder gleich ⟺ Schluessel
+    // gleich), einschliesslich des Falls „beide ohne externalId".
     const matchesAnchor = (s: { externalId?: string; provider?: string | null }): boolean =>
-      s.externalId === externalId && importProviderKey(s.provider) === providerKey;
-    const existing = externalId
-      ? (await this.koService.list()).find((ko) => (ko.sources ?? []).some(matchesAnchor))
-      : undefined;
+      ankerSchluessel(s.provider, s.externalId) === ankerSchluessel(item.provider, externalId);
+    const anker = externalId ? await this.sucheAnkerKo(matchesAnchor) : undefined;
+    if (anker?.art === "getrasht") {
+      // ==========================================================================================
+      // JOB 3081 — DER TRASH-VERTRAG: ADOPTIEREN, NICHT AUFERSTEHEN LASSEN.
+      // ==========================================================================================
+      //
+      // Das getrashte KO wird ZURUECKGEGEBEN und NICHT ANGEFASST: kein `restore`, kein `revise`,
+      // kein `setConfidentiality`, kein `ensureCreatedSideEffects` — auch dann nicht, wenn
+      // `item.sourceVersion` hoeher ist als die verankerte Version. Das ist woertlich der Vertrag,
+      // den `recoverStaleReviewClaims` oben schon fuer den Stempel-Weg festhaelt: „es entsteht NIE
+      // ein neues KO, und die Trash-Entscheidung bleibt beim Cleanup (Wiederherstellen laeuft ueber
+      // den Papierkorb, nicht ueber einen Re-Accept)".
+      //
+      // WARUM NICHT EINMAL DEN BELEG-NACHZUG: die Trash-Entscheidung gehoert dem Menschen, der
+      // geloescht hat. Ein Re-Import darf sie weder aufheben noch ueberschreiben — und jede
+      // Mutation an einem Objekt im Papierkorb waere genau das, auch eine gut gemeinte. Wer das
+      // Objekt zurueck will, stellt es ueber den Papierkorb wieder her.
+      //
+      // Der Kandidat trug diese Auskunft im Regelfall schon vor der Entscheidung
+      // (`dublettenbefund: im_papierkorb`, s. `createImportCandidates`). Dieser Riegel greift
+      // UNABHAENGIG davon — auch bei Altkandidaten ohne Befund, bei den Confluence-/Jira-Anker-
+      // Wegen und bei der Recovery. Beide Linien ersetzen einander nicht.
+      return anker.koId;
+    }
+    const existing = anker?.ko;
 
     if (existing && externalId) {
       // WP-SHIP8-CLOSE-6 (bens ROT-2): der Re-Sync ist eine VOLLENDUNGSSTELLE — trägt das
@@ -1441,6 +1595,53 @@ export class LibraryService {
       }
       throw err;
     }
+  }
+
+  // ==============================================================================================
+  // JOB 3081 — DIE EINE ANKER-SUCHE, UND SIE SIEHT DEN PAPIERKORB.
+  // ==============================================================================================
+  //
+  // WAS FALSCH WAR: `acceptToKo` suchte den Anker ausschliesslich ueber `koService.list()`, und
+  // `list()` filtert getrashte Objekte weg (knowledge-object/src/service.ts:2848). Der Anker-Weg
+  // sah den Papierkorb also NIE — obwohl der Kopfkommentar von `acceptToKo` genau das versprach
+  // („auch getrasht … wird ES zurueckgegeben — nie ein zweites erzeugt"). Eingeloest war die Zusage
+  // nur auf dem Stempel-Weg (`findByImportCandidateId`, Repo-Lesart ohne Trash-Filter); ein
+  // ERNEUTER Import ist aber ein NEUER Kandidat mit eigener Id, und der Stempel greift dort nicht.
+  // Ergebnis: eine zweite Karteikarte fuer dieselbe Sache (Codex' Live-Messung R-0192, 05.09.2026).
+  //
+  // DIE REIHENFOLGE IST DER VERTRAG, und sie steht bewusst an EINER Stelle statt an zweien:
+  //   (a) Stempel     — `findByImportCandidateId` im Aufrufer, VOR dieser Suche (unveraendert).
+  //   (b) AKTIVER Anker ueber `list()` — heutiges Verhalten inkl. Upgrade/Revise.
+  //   (c) GETRASHTER Anker ueber `trashedSourceAnchors()`.
+  // EIN AKTIVES KO GEWINNT IMMER gegen ein getrashtes mit demselben Anker: der laufende Re-Sync
+  // gehoert zum lebenden Objekt, und ein Objekt im Papierkorb darf ihn nicht an sich ziehen.
+  // Deshalb wird (c) erst gefragt, wenn (b) nichts gefunden hat — und niemals daneben.
+  //
+  // DIE ANKER-GLEICHHEIT IST IM PAPIERKORB DIESELBE WIE AKTIV: es wird woertlich dasselbe
+  // `matchesAnchor` angewandt (externalId UND `importProviderKey(provider)`), kein zweites,
+  // weiteres Netz. Eine gleiche `externalId` unter anderem Provider trifft darum auch hier nicht.
+  //
+  // EHRLICHE KOSTENGRENZE (dieselbe Form wie am Kopf von `createImportCandidates`):
+  // `trashedSourceAnchors()` liest den ganzen Bestand (knowledge-object/src/service.ts:3386). Der
+  // Aufruf geschieht deshalb NUR, wenn ein `externalId` vorliegt (der Aufrufer fragt sonst gar
+  // nicht) UND die aktive Suche nichts gefunden hat — nie im Textweg, nie ohne Anker, nie zusaetzlich
+  // zu einem gefundenen aktiven Anker. Ein Deckel waere hier eine eigene Regel darueber, welche
+  // getrashten Anker nicht mehr zaehlen — also ein zweites Gehirn neben dem Papierkorb.
+  private async sucheAnkerKo(
+    matchesAnchor: (s: { externalId?: string; provider?: string | null }) => boolean,
+  ): Promise<
+    { art: "aktiv"; ko: KnowledgeObject } | { art: "getrasht"; koId: string } | undefined
+  > {
+    const aktiv = (await this.koService.list()).find((ko) =>
+      (ko.sources ?? []).some(matchesAnchor),
+    );
+    if (aktiv) {
+      return { art: "aktiv", ko: aktiv };
+    }
+    const getrasht = (await this.koService.trashedSourceAnchors()).find((anker) =>
+      matchesAnchor({ externalId: anker.externalId, provider: anker.provider }),
+    );
+    return getrasht ? { art: "getrasht", koId: getrasht.koId } : undefined;
   }
 
   // SCRUM-470: Herkunfts-Anker aus einem Import-Item. Generisch — provider kommt vom Item
