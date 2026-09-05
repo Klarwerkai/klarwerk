@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import type { TxContext } from "../../db-tx";
 import { type DetectionCoverage, isValidVerdict } from "./coverage";
 import {
   type ConflictVerdict,
@@ -203,31 +204,44 @@ export class ConflictService {
   // dieses KO referenzieren, werden geordnet beendet (participant_deleted) und protokolliert —
   // OHNE Status/Trust des verbleibenden KO automatisch zu ändern (kein stilles Überschreiben).
   // Idempotent: bereits gelöste Konflikte bleiben unberührt. Gibt die Anzahl beendeter Konflikte.
-  async onKoRemoved(koId: string, actor = "system"): Promise<number> {
-    const affected = (await this.repo.all()).filter(
-      (c) => c.status !== "geloest" && (c.koA === koId || c.koB === koId),
+  //
+  // JOB 3066 — DER OPTIONALE tx UND DIE MENGENBASIERTE FORM, wortgleich begründet wie in
+  // OverlapService.onKoRemoved: dies ist der EINZIGE Weg dieses Dienstes, der Teil eines fremden
+  // Vorgangs ist (KoService.purgeKo). Mit Kontext committen Löschung, Beleg und das Beenden der
+  // Konflikte gemeinsam — oder gar nicht. Er geht an JEDEN Schritt dieses Weges (Schliessen, beide
+  // Belege); jeder andere Weg des Dienstes bleibt ohne tx.
+  // Das Schliessen ist EINE mengenbasierte Anweisung (`closeOpenForKo`), die die beendeten
+  // Konflikte zurückgibt — keine Schleife über Einzelobjekte im gehaltenen Transaktionskörper
+  // (PurgeTxCleanup-Vertrag, knowledge-object/src/service.ts:248-255). Obergrenze 1 + 2m mit
+  // m = offene Konflikte dieses Beitrags (je einer zwei Belege). Warum die Belege einzeln bleiben,
+  // steht ausgeschrieben in OverlapService.onKoRemoved.
+  async onKoRemoved(koId: string, actor = "system", tx?: TxContext): Promise<number> {
+    const beendet = await this.repo.closeOpenForKo(
+      koId,
+      { status: "geloest", decidedBy: null, resolutionReason: "participant_deleted" },
+      tx,
     );
-    for (const c of affected) {
-      await this.save({
-        ...c,
-        status: "geloest",
-        decidedBy: null,
-        resolutionReason: "participant_deleted",
-      });
-      await this.audit?.record({
-        actor,
-        action: "conflict.participant-removed",
-        target: c.id,
-        payload: { koId },
-      });
-      await this.audit?.record({
-        actor,
-        action: "conflict.auto-resolved",
-        target: c.id,
-        payload: { reason: "participant_deleted" },
-      });
+    for (const c of beendet) {
+      await this.audit?.record(
+        {
+          actor,
+          action: "conflict.participant-removed",
+          target: c.id,
+          payload: { koId },
+        },
+        tx,
+      );
+      await this.audit?.record(
+        {
+          actor,
+          action: "conflict.auto-resolved",
+          target: c.id,
+          payload: { reason: "participant_deleted" },
+        },
+        tx,
+      );
     }
-    return affected.length;
+    return beendet.length;
   }
 
   // Berater-Konzept 04.07. (Stufe 2/3): automatische Erkennung für EINEN Beitrag gegen einen bereits
@@ -609,6 +623,9 @@ export class ConflictService {
     }, 0);
   }
 
+  // JOB 3066: OHNE tx — der einzige Weg, der zu einem fremden Vorgang gehört (`onKoRemoved`),
+  // schliesst mengenbasiert über `repo.closeOpenForKo` und läuft nicht mehr hier durch. Ein
+  // tx-Parameter ohne Aufrufer wäre eine Atomaritätszusage, die niemand einlöst.
   private async save(conflict: Conflict): Promise<Conflict> {
     await this.repo.update(conflict);
     return conflict;

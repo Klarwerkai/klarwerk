@@ -1656,12 +1656,36 @@ export function koRoutes(deps: KoRoutesDeps, guards: Guards): FastifyPluginAsync
         });
         return;
       }
+      // ==========================================================================================
+      // JOB 3066 (bens Korrekturpflicht 1 zu R3) — DER NACHLAUF LÄUFT NUR NACH EINEM WEICHEN LÖSCHEN.
+      // ==========================================================================================
+      //
+      // `ko.delete` hat ZWEI Ausgänge (knowledge-object/src/service.ts:3919-3927): für ein
+      // Demo-Seed-Objekt kippt es intern in die harte Endlöschung `purgeKo`, sonst wandert das
+      // Objekt in den Papierkorb. Die Endlöschung räumt selbst auf, und zwar im
+      // transaktionsgebundenen Haken der Kompositionswurzel (build-app.ts, setPurgeTxCleanup).
+      // Lief der Nachlauf hier trotzdem, rief JEDER Aufräumdienst zweimal — der zweite Ruf fand
+      // zwar nichts Offenes mehr, aber „wirkungslos" ist keine Ablösung: es gab zwei Wege, auf
+      // denen eine Löschung Befunde schliesst, und nur einer von ihnen war an die Transaktion
+      // gebunden. Jetzt gibt es genau einen je Ausgang.
+      //
+      // WORAN DER AUSGANG ERKANNT WIRD: an `demoSeed` des bereits geladenen Zielobjekts — es ist
+      // der einzige Hart-Auslöser, den dieser Aufruf treffen kann (die Route übergibt weder
+      // `hard` noch `forceTrash`), und es ist unveränderlich („nur der Seed setzt das; nie über
+      // die öffentliche Route", service.ts:276). Kein zusätzlicher Lesegang, kein Ratespiel.
+      //
+      // DASS DIESE BEDINGUNG DIESELBE IST wie die im KoService, ist kein Vertrauen, sondern eine
+      // Wache: `tests/aufraeumen-atomar/nachlauf-nur-nach-weichem-loeschen.test.ts` liest den
+      // Chokepoint und wird rot, sobald sich dort der Hart-Auslöser ändert.
+      const endgeloescht = target.demoSeed === true;
       try {
         await ko.delete(request.params.id, user.id);
-        // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
-        await conflicts.onKoRemoved(request.params.id, user.id);
-        // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
-        await overlaps.onKoRemoved(request.params.id, user.id);
+        if (!endgeloescht) {
+          // Konzept 04.07. (Stufe 1): offene Konflikte dieses KO geordnet beenden (kein Geist).
+          await conflicts.onKoRemoved(request.params.id, user.id);
+          // Pedi 04.07.: dasselbe für offene Überschneidungen (kein Duplikat-Geist nach Löschen).
+          await overlaps.onKoRemoved(request.params.id, user.id);
+        }
         reply.code(204).send();
       } catch (error) {
         sendError(reply, error);

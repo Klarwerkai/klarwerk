@@ -58,9 +58,27 @@ export const MUTATING_METHODS: Readonly<Record<keyof AppRepos, readonly string[]
   // versionsgebunden (keine separate Löschung), daher kein weiterer Mutator nötig.
   ratings: ["upsert"],
   assignments: ["create", "update"],
-  conflictsRepo: ["insert", "update"],
+  // ==============================================================================================
+  // JOB 3066 — `closeOpenForKo` IST EINE MUTATION UND MUSS INS JOURNAL.
+  // ==============================================================================================
+  //
+  // Der Aufräumweg der Endlöschung schliesst die Befunde eines gelöschten Beitrags seit JOB 3066
+  // MENGENBASIERT: EINE Anweisung je Speicher statt „lesen, dann je Treffer ein `update`" (Grund:
+  // der PurgeTxCleanup-Vertrag schliesst Schleifen über Einzelobjekte im gehaltenen
+  // Transaktionskörper aus, knowledge-object/src/service.ts:248-255). Damit läuft das Schliessen
+  // NICHT mehr über `update` — ohne den Eintrag hier wäre nach einem Dev-Neustart der Beitrag
+  // gelöscht (`koRepo.delete` IST journaliert), seine Dublettenwarnung aber wieder OFFEN: ein
+  // Befund über einem Beitrag, den es nicht mehr gibt.
+  //
+  // DAS REPLAY IST EXAKT, weil die Methode ihre Wirkung vollständig aus den Argumenten ableitet:
+  // `koId` wählt die Menge, `patch` trägt die fertigen Werte INKLUSIVE der vom Dienst erzeugten
+  // Zeitstempel (der Dienst bildet sie einmal vor dem Aufruf). Auf die wiederaufgebauten Repos
+  // angewandt trifft dasselbe Prädikat dieselben Einträge; eine doppelte Journalzeile ist harmlos
+  // (der zweite Lauf findet nichts Offenes mehr). Beweis der Wirkung nach dem Wiederaufbau:
+  // tests/aufraeumen-atomar/geschlossen-bleibt-geschlossen-im-dev-journal.test.ts.
+  conflictsRepo: ["insert", "update", "closeOpenForKo"],
   // Berater-Konzept Duplikate 04.07. (Stufe D3b): Überschneidungs-Einträge überleben den Neustart.
-  overlapRepo: ["insert", "update"],
+  overlapRepo: ["insert", "update", "closeOpenForKo"],
   // Pedi 04.07.: eingestellte Anzeige-Schwelle überlebt den Neustart (letzter Set gewinnt).
   overlapSettings: ["set"],
   lifecycleRepo: ["addCoupling", "markPending", "clearPending", "savePath", "setProgress"],

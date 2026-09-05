@@ -1,3 +1,4 @@
+import type { TxContext } from "../../db-tx";
 import type { Conflict } from "./types";
 
 // D-AISTATE PAKET 4 (bens V5, aistate-fix4/fix6): Versions-Autorität für den VERSIONS-KONDITIONALEN
@@ -28,8 +29,16 @@ export interface ConflictRepo {
   // "superseded"). Pg mergt sie ins jsonb; nur dieser Aufruf, der die offene Zeile flippt, gewinnt.
   supersedeIfOpen(id: string, patch: Partial<Conflict>): Promise<boolean>;
   findById(id: string): Promise<Conflict | undefined>;
-  update(conflict: Conflict): Promise<void>;
   all(): Promise<Conflict[]>;
+  update(conflict: Conflict): Promise<void>;
+  // JOB 3066: der EINE mengenbasierte Schritt des Aufräumwegs mit optionalem, opakem TxContext —
+  // Vertrag, Begründung und Grenze wortgleich zu OverlapRepo.closeOpenForKo (dort ausgeschrieben).
+  // Er schliesst alle noch nicht gelösten Konflikte GENAU DIESES Beitrags (Terminalzustand ist
+  // hier "geloest") in EINER Anweisung und liefert die beendeten Konflikte zurück — Kennungen für
+  // die Belege und Anzahl für den Löschbeleg, ohne ein zweites Lesen.
+  // GRENZE: NUR diese Methode führt den tx — insert, insertIfVersionsCurrent, supersedeIfOpen,
+  // findById, all und update bleiben am Pool.
+  closeOpenForKo(koId: string, patch: Partial<Conflict>, tx?: TxContext): Promise<Conflict[]>;
 }
 
 export class InMemoryConflictRepo implements ConflictRepo {
@@ -80,12 +89,28 @@ export class InMemoryConflictRepo implements ConflictRepo {
     return Promise.resolve(this.conflicts.get(id));
   }
 
+  all(): Promise<Conflict[]> {
+    return Promise.resolve([...this.conflicts.values()]);
+  }
+
   update(conflict: Conflict): Promise<void> {
     this.conflicts.set(conflict.id, conflict);
     return Promise.resolve();
   }
 
-  all(): Promise<Conflict[]> {
-    return Promise.resolve([...this.conflicts.values()]);
+  // Fachlich identisch zum Pg-Prädikat, synchron im selben Makrotask (kein await-Spalt zwischen
+  // Auswahl und Schreiben). Der tx wird benannt ignoriert: in dieser Ablage gibt es keine
+  // Transaktionsgrenze und deshalb auch keine Atomaritätszusage, nur dasselbe Ergebnis.
+  closeOpenForKo(koId: string, patch: Partial<Conflict>, _tx?: TxContext): Promise<Conflict[]> {
+    const beendet: Conflict[] = [];
+    for (const conflict of this.conflicts.values()) {
+      if (conflict.status === "geloest" || (conflict.koA !== koId && conflict.koB !== koId)) {
+        continue;
+      }
+      const neu = { ...conflict, ...patch };
+      this.conflicts.set(conflict.id, neu);
+      beendet.push(neu);
+    }
+    return Promise.resolve(beendet);
   }
 }

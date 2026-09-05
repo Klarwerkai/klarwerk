@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { AuditService } from "../../audit";
+import type { TxContext } from "../../db-tx";
 import { type ComparisonOutcome, type DetectionCoverage, comparisonOutcome } from "./coverage";
 import { coreText } from "./detect";
 import {
@@ -664,26 +665,54 @@ export class OverlapService {
   // offenen Überschneidungen nicht als „Objekt entfernt" hängen bleiben. Alle OFFENEN Einträge, die
   // dieses KO referenzieren, werden geordnet geschlossen (participant_deleted, systemisch → by=null) und
   // protokolliert. Idempotent: bereits geschlossene Einträge bleiben unberührt. Gibt die Anzahl zurück.
-  async onKoRemoved(koId: string, actor = "system"): Promise<number> {
-    const affected = (await this.repo.all()).filter(
-      (e) => e.status !== "geschlossen" && (e.koA === koId || e.koB === koId),
-    );
-    for (const entry of affected) {
-      const saved: OverlapEntry = {
-        ...entry,
+  //
+  // JOB 3066 — DER OPTIONALE tx UND WARUM ER NUR HIER STEHT.
+  // Dies ist der EINZIGE Weg dieses Dienstes, der Teil eines FREMDEN Vorgangs ist: die Endlöschung
+  // eines Beitrags (KoService.purgeKo). Bekommt er den Kontext dieser Transaktion, dann committen
+  // Löschung, Beleg und das Schliessen der Befunde gemeinsam — oder gar nicht. Ohne ihn (Ablagen
+  // ohne Transaktionsgrenze) bleibt das Verhalten unverändert; eine Atomaritätszusage gibt es dort
+  // dann auch nicht. Jeder andere Weg des Dienstes führt bewusst KEINEN tx: er gehört niemandem.
+  // Der Kontext geht an JEDEN Schritt dieses Weges — Schliessen und Beleg. Ein einziger Schritt am
+  // Pool vorbei machte die Klammer wirkungslos.
+  //
+  // WIE VIEL DIESER KÖRPER HÄLT (bens Korrekturpflicht 3 zu R1, 1 zu R3) — gemessen, nicht behauptet:
+  //   SCHLIESSEN 1 Anweisung, MENGENBASIERT (`closeOpenForKo`). Sie sucht und schreibt in einem und
+  //              liefert die geschlossenen Einträge zurück. R1 las die ganze Tabelle und schrieb je
+  //              Treffer, R3 las gezielt und schrieb je Treffer — beides Schleifen über
+  //              Einzelobjekte, die der PurgeTxCleanup-Vertrag ausschliesst
+  //              (knowledge-object/src/service.ts:248-255).
+  //   BELEGE     1 je geschlossener Überschneidung.
+  // Obergrenze also 1 + n mit n = offene Überschneidungen dieses Beitrags (nicht der Instanz),
+  // nachgemessen in tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts.
+  // WARUM DIE BELEGE EINZELN BLEIBEN — die benannte Grenze, nicht überspielt: die Audit-Ablage ist
+  // anhängend und führt je Ereignis eine Zeile; ein `appendMany` läge in `services/audit` (kein
+  // Zielpfad, und §10 des Auftrags verbietet den Umbau der Audit-Kette). Ein Sammelbeleg wäre
+  // ausserdem der Verlust der Rückverfolgbarkeit am einzelnen Befund.
+  // EIN ZEITSTEMPEL FÜR ALLE: der Patch entsteht EINMAL vor der Anweisung. Vorher rief dieser Weg
+  // `this.iso()` zweimal je Eintrag — zwei Zeiten für einen Vorgang, der einer ist.
+  async onKoRemoved(koId: string, actor = "system", tx?: TxContext): Promise<number> {
+    const at = this.iso();
+    const geschlossen = await this.repo.closeOpenForKo(
+      koId,
+      {
         status: "geschlossen",
-        resolution: { reason: "participant_deleted", by: null, note: null, at: this.iso() },
-        closedAt: this.iso(),
-      };
-      await this.repo.update(saved);
-      await this.audit?.record({
-        actor,
-        action: "overlap.participant-removed",
-        target: entry.id,
-        payload: { koId },
-      });
+        resolution: { reason: "participant_deleted", by: null, note: null, at },
+        closedAt: at,
+      },
+      tx,
+    );
+    for (const entry of geschlossen) {
+      await this.audit?.record(
+        {
+          actor,
+          action: "overlap.participant-removed",
+          target: entry.id,
+          payload: { koId },
+        },
+        tx,
+      );
     }
-    return affected.length;
+    return geschlossen.length;
   }
 
   // D-AISTATE PAKET 4 (bens V5, aistate-fix5): FAIL-CLOSED versionsgebunden über den GEMEINSAMEN

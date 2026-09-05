@@ -1,12 +1,19 @@
 import type { Pool } from "pg";
+import { type Queryable, type TxContext, pgQueryable, poolQueryable } from "../../db-tx";
 import type { ConflictRepo, IsKoVersionCurrent } from "./repo";
 import type { Conflict } from "./types";
 
+// JOB 3066 (bens Korrekturpflicht 4 zu R3): die zwei Ausdrucks-Indizes zum Prädikat des
+// Aufräumwegs (`closeOpenForKo` sucht über `data->>'koA'`/`data->>'koB'`) — Begründung, Bauform
+// und die ehrliche Grenze („dass der Planer sie wählt, ist nicht nachgemessen") wortgleich wie bei
+// OVERLAP_SCHEMA in overlap-repo-pg.ts.
 export const CONFLICTS_SCHEMA = `
 CREATE TABLE IF NOT EXISTS conflicts (
   id text PRIMARY KEY,
   data jsonb NOT NULL
 );
+CREATE INDEX IF NOT EXISTS conflicts_koa_idx ON conflicts ((data->>'koA'));
+CREATE INDEX IF NOT EXISTS conflicts_kob_idx ON conflicts ((data->>'koB'));
 `;
 
 interface ConflictRow {
@@ -86,6 +93,18 @@ export class PgConflictRepo implements ConflictRepo {
     return res.rows[0]?.data;
   }
 
+  async all(): Promise<Conflict[]> {
+    const res = await this.pool.query<ConflictRow>("SELECT data FROM conflicts");
+    return res.rows.map((row) => row.data);
+  }
+
+  // JOB 3066: MIT tx laufen Lesen und Schreiben auf DEM Client, den withPgTx geöffnet hat —
+  // dieselbe Transaktion wie repo.delete und audit.record der Endlöschung. Ohne tx unverändert am
+  // Pool.
+  private q(tx?: TxContext): Queryable {
+    return tx ? pgQueryable(tx) : poolQueryable(this.pool);
+  }
+
   async update(conflict: Conflict): Promise<void> {
     await this.pool.query("UPDATE conflicts SET data=$2 WHERE id=$1", [
       conflict.id,
@@ -93,8 +112,24 @@ export class PgConflictRepo implements ConflictRepo {
     ]);
   }
 
-  async all(): Promise<Conflict[]> {
-    const res = await this.pool.query<ConflictRow>("SELECT data FROM conflicts");
+  // Der mengenbasierte Schliess-Schritt, Bauform und Begründung wie PgOverlapRepo.closeOpenForKo
+  // (dort ausgeschrieben): EIN Statement für Auswahl und Schreiben, jsonb-Merge statt
+  // Vollobjekt-Write, `RETURNING data` als einzige Quelle für Kennungen und Anzahl.
+  // Terminalzustand ist hier "geloest"; `coalesce(...,'offen')` deckt Altbestand ohne Statusfeld
+  // fail-safe ab.
+  async closeOpenForKo(
+    koId: string,
+    patch: Partial<Conflict>,
+    tx?: TxContext,
+  ): Promise<Conflict[]> {
+    const res = await this.q(tx).query<ConflictRow>(
+      `UPDATE conflicts
+          SET data = data || $2::jsonb
+        WHERE (data->>'koA' = $1 OR data->>'koB' = $1)
+          AND coalesce(data->>'status', 'offen') <> 'geloest'
+        RETURNING data`,
+      [koId, JSON.stringify(patch)],
+    );
     return res.rows.map((row) => row.data);
   }
 }

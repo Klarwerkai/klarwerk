@@ -1613,15 +1613,80 @@ export function buildApp(
   // Weg 3: semantischer Vorfilter der Duplikat-Erkennung. Standard AUS → beide Routen bekommen
   // undefined → heutiges „jeder gegen jeden". Erst KLARWERK_DUP_PREFILTER=1 schaltet ihn scharf.
   const semanticPrefilter = createSemanticPrefilterFromEnv();
-  // SCRUM-523 P.3 (WP2): den zentralen Purge-Aufräum-Hook verdrahten. JEDE harte KO-Endlöschung (manuell
-  // ODER automatisch abgelaufen) räumt jetzt über EINEN Vertrag die Folgeartefakte auf: offene Konflikte/
-  // Überschneidungen geordnet schließen + Embedding-Vektor entfernen. Damit umgeht auch der automatische
-  // Trash-Sweep die Aufräum-Kaskade nicht mehr (früher: repo.delete direkt → verwaiste „Geister").
-  // conflicts/overlaps sind idempotent (schließen nur noch offene Einträge) — der Aufruf im Löschpfad der
-  // Routen bleibt für den SOFT-Delete (Papierkorb) zuständig; hier greift der HARTE Purge.
-  services.ko.setPurgeCleanup(async (koId, actor) => {
-    await services.conflicts.onKoRemoved(koId, actor);
-    await services.overlaps.onKoRemoved(koId, actor);
+  // ==============================================================================================
+  // JOB 3066 — DAS AUFRÄUMEN DER BEFUNDE FÄHRT IN DER LÖSCHTRANSAKTION MIT.
+  // ==============================================================================================
+  //
+  // Bis hierher standen `conflicts.onKoRemoved` und `overlaps.onKoRemoved` im NICHT
+  // transaktionsgebundenen `setPurgeCleanup`, der VOR `withTx` läuft (knowledge-object/src/
+  // service.ts:3131-3132). Scheiterte danach die Löschung oder ihr Beleg, rollte withPgTx beides
+  // zurück — das Schliessen der Befunde aber nicht. Übrig blieb eine geschlossene Dublettenwarnung
+  // über zwei Beiträgen, die beide noch stehen: eine Warnung, die verschwindet, ohne dass ein
+  // Mensch sie entschieden hat.
+  //
+  // Beide Aufräumwege führen jetzt den `TxContext` durch bis auf ihren Pg-Client
+  // (PgConflictRepo/PgOverlapRepo `closeOpenForKo`, AuditService.record). Damit gilt: entweder
+  // Beitrag weg, Befunde zu und EIN Beleg — oder nichts von alledem.
+  //
+  // GENAU EIN AUFRÄUMWEG JE AUSGANG (bens Korrekturpflicht 1 zu R3, erledigt): `DELETE
+  // /api/kos/:id` rief nach `ko.delete` beide Dienste ein zweites Mal. Für ein Demo-Seed-Objekt,
+  // bei dem `ko.delete` intern hart löscht, lief damit JEDER Aufräumdienst zweimal — wirkungslos
+  // beim zweiten Mal, aber ein zweiter Schliessweg neben dem transaktionsgebundenen. Der Nachlauf
+  // dort läuft jetzt ausschliesslich nach einem tatsächlich WEICHEN Löschen
+  // (routes/ko-routes.ts, `if (!endgeloescht)`). Endlöschung ⇒ nur dieser Haken; Papierkorb ⇒ nur
+  // der Nachlauf. Gemessen in
+  // tests/aufraeumen-atomar/demo-endloeschung-laeuft-genau-einmal.test.ts (je Dienst genau EIN
+  // Ruf, auf beiden Wegen) und nachlauf-nur-nach-weichem-loeschen.test.ts (die Bedingung ist
+  // dieselbe wie im Chokepoint).
+  //
+  // DER HAKEN GIBT ZAHLEN ZURÜCK, weil purgeKo sie in die Nutzlast des `ko.purged`-Belegs mischt
+  // (service.ts:3158-3166). Der Beleg bezeugt damit nicht nur, DASS gelöscht wurde, sondern wie
+  // viel dabei geschlossen wurde. `0` ist eine gemessene Aussage — beide Zahlen stehen immer da.
+  //
+  // EHRLICHE GRENZE (Lehre JOB 3039 R2): ohne echten Pg-Pool (InMemory, Dev-Journal) ruft purgeKo
+  // denselben Haken mit `tx === undefined` (service.ts:3179) und lässt ihn VOR der Löschung laufen.
+  // Dort gibt es keine Transaktionsgrenze und deshalb auch keine Atomaritätszusage; die Zahlen im
+  // Beleg stimmen trotzdem, weil sie aus genau diesem Haken kommen.
+  //
+  // ==============================================================================================
+  // WIE VIEL DIESER HAKEN IM TRANSAKTIONSKÖRPER HÄLT — DIE ENTSCHEIDUNG, AUSGESCHRIEBEN.
+  // ==============================================================================================
+  //
+  // `PurgeTxCleanup` (knowledge-object/src/service.ts:248-255) schliesst hier Schleifen über
+  // Einzelobjekte aus, weil der Körper eine Verbindung aus dem Pool hält. Was davon erreichbar
+  // war, ist gebaut; was nicht erreichbar ist, steht als gemessene Zahl da statt als Behauptung
+  // (bens Korrekturpflicht 3 zu R1, 1 zu R3):
+  //
+  //   ERLEDIGT — DAS SUCHEN UND SCHLIESSEN IST EINE MENGENBASIERTE ANWEISUNG JE SPEICHER.
+  //   `repo.closeOpenForKo(koId, patch, tx)` wählt und schreibt in einem Statement
+  //   (UPDATE … WHERE koA/koB … RETURNING data) und liefert die geschlossenen Befunde zurück. R1
+  //   zog den GESAMTEN Bestand der Instanz durch die gehaltene Verbindung und schrieb je Treffer;
+  //   R3 las gezielt und schrieb je Treffer; jetzt ist beides EIN Statement, dessen Aufwand an den
+  //   Befunden GENAU DIESES Beitrags hängt. Weil das eine NEUE Mutationsfläche ist, steht sie im
+  //   Dev-Mutationsjournal der Desktop-App (dev-persist.ts, `conflictsRepo`/`overlapRepo`) —
+  //   sonst stünde die Warnung nach einem Dev-Neustart wieder offen über einem Beitrag, den es
+  //   nicht mehr gibt. Beweis:
+  //   tests/aufraeumen-atomar/geschlossen-bleibt-geschlossen-im-dev-journal.test.ts.
+  //
+  //   NICHT ERREICHBAR — SAMMELBELEGE. Die Audit-Ablage ist anhängend und führt je Ereignis eine
+  //   Zeile; ein `appendMany` läge in `services/audit` (kein Zielpfad, und §10 des Auftrags
+  //   verbietet den Umbau der Audit-Kette). Ein Sammelbeleg wäre ausserdem der Verlust der
+  //   Rückverfolgbarkeit am einzelnen Befund. Das ist der Rest, der mit der Befundzahl DIESES
+  //   Beitrags wächst — benannt, nicht überspielt.
+  //
+  // GEMESSENE OBERGRENZE des Hakens: 2 + n + 2m — n/m = offene Überschneidungen/Konflikte GENAU
+  // DIESES Beitrags, NICHT der Instanz; davon sind 2 Schreib-Anweisungen und der Rest Belege. An
+  // 200+200 Befunden nachgezählt: tests/aufraeumen-atomar/aufraeumumfang-bleibt-begrenzt.test.ts.
+  services.ko.setPurgeTxCleanup(async (koId, actor, tx) => ({
+    konflikteGeschlossen: await services.conflicts.onKoRemoved(koId, actor, tx),
+    ueberschneidungenGeschlossen: await services.overlaps.onKoRemoved(koId, actor, tx),
+  }));
+  // SCRUM-523 P.3 (WP2): der vorgeschaltete, NICHT transaktionsgebundene Haken behält genau EIN
+  // Mitglied — den Embedding-Vorfilter. Er gehört nicht in die Datenbank-Transaktion: sein Speicher
+  // ist ein eigener (Vektor-Store, kein Pg-Client), ein Rollback nähme ihn nicht zurück, und sein
+  // Vertrag ist ausdrücklich best-effort — „ein Store-Fehler darf sie nicht nachträglich kippen"
+  // (duplicate-detection.ts:182-183). Was hier steht, ist idempotent und selbstheilend.
+  services.ko.setPurgeCleanup(async (koId) => {
     await removeKoFromDuplicatePrefilter(koId, semanticPrefilter);
   });
   // WP-SUBMIT-ASYNC (Pedis R3): der Prüf-Worker kapselt die früher synchron im Submit-Pfad
