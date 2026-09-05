@@ -20,7 +20,7 @@
 // Kombination in einer Tabelle prüfbar (tests/ko/job3025-quellenlage.test.ts), ohne React, ohne
 // DOM, ohne Mount. Ein neuer Abrufzustand von TanStack Query muss dort eine Zeile bekommen, bevor
 // er eine Seite erreicht — der vergessene `fetchStatus: "paused"` war der letzte Rotpunkt (R5).
-import type { Conflict, EigenerBefund, KnowledgeObject } from "../api/types";
+import type { Conflict, Deckung, DeckungsLage, EigenerBefund, KnowledgeObject } from "../api/types";
 import { conflictImpact } from "./conflictImpact";
 
 // ------------------------------------------------------------------------------------------------
@@ -180,6 +180,144 @@ export interface KollisionsWeg {
   readonly textKey: string;
 }
 
+// ------------------------------------------------------------------------------------------------
+// 2a · DIE DECKUNG — „GEGEN WIE VIEL WURDE GEPRÜFT" (JOB 3068, N5)
+// ------------------------------------------------------------------------------------------------
+//
+// Pedis Zeile N5 verlangt neben „dauerhaft" und „ohne fremden Inhalt" ein Drittes: einen EHRLICHEN
+// Satz, gegen wie viel geprüft wurde. Die Zahlen kommen FERTIG vom Server (`EigenerBefund.deckung`,
+// duplicate-signal.ts:83-89); hier entsteht nur die Frage, OB und MIT WELCHEM SATZ sie dastehen.
+//
+// Sie steht hier und nicht in der Fläche — aus demselben Grund wie alles andere in dieser Datei
+// (Kopf, :15-17): läge sie in den Seiten, hätten zwei Flächen zwei Auslegungen derselben Zahl.
+//
+// UND SIE GEHORCHT DEMSELBEN LAGEMODELL WIE DER BEFUND. „Gegen 12 von 40 Einträgen geprüft" ist
+// eine ZEITABHÄNGIGE AUSSAGE ÜBER DEN BESTAND — dieselbe Gattung wie „keine Kollision". Aus einem
+// Zwischenspeicher heraus behauptet, wäre sie eine Zahl von gestern über einen Bestand von heute.
+// Deshalb entscheidet sie KEIN zweiter Entscheider, sondern `bestandsaussageErlaubt` (:128-130).
+
+// ------------------------------------------------------------------------------------------------
+// DIE ZWEITE FRAGE, DIE BEN IN RUNDE 1 GEFUNDEN HAT: EINE LAGE IST NOCH KEINE ZAHL.
+// ------------------------------------------------------------------------------------------------
+//
+// Runde 1 wählte den Satz allein nach der LAGE. Das war zu wenig, und der Gegenfall ist ein GÜLTIGER
+// Serverzustand: ein Lauf mit `status: "failed"`/`"pending"` ergibt `lage: "unvollstaendig"`, hat
+// aber KEIN Abdeckungsprotokoll — also `geprueft: null` und `bestand: null`
+// (`conflicts-routes.ts` `lageAus`/`deckungAus`). Der Satz mit den zwei Platzhaltern wurde damit zu
+// „Gegen  von  Einträgen im Bestand geprüft" — zwei Löcher statt einer Auskunft. Genau das ist die
+// Erfindung, gegen die dieser Auftrag steht, nur mit leeren statt falschen Zahlen.
+//
+// DIE REGEL LAUTET JETZT: EIN SATZ, DER ZAHLEN NENNT, WIRD NUR GEWÄHLT, WENN BEIDE ZAHLEN DA SIND.
+// Fehlt eine, steht die SCHWÄCHERE Aussage da — dieselbe Bewegung wie bei `bestandsaussageErlaubt`
+// eine Ebene höher (REGELN.md §7: „Fehlt die Voraussetzung, steht die schwächere Aussage da").
+//
+// Was „schwächer" je Lage heißt, steht in der Tabelle, und zwei Zeilen darin brauchen eine Begründung:
+//   · `vollstaendig` OHNE Zahlen: die Vollständigkeit selbst hängt am Protokoll (`isCompleteRun`
+//     liest `coverage`). Ohne Protokoll ist sie unbelegt — es bleibt „ein Lauf hat angesehen, seine
+//     Reichweite ist nicht belegt", also der Satz von `ohne_protokoll`. Der Server kann diesen Fall
+//     heute gar nicht erzeugen; die Tabelle beantwortet ihn trotzdem, statt ihn offenzulassen.
+//   · `ohne_protokoll`/`kein_lauf` nennen in KEINER Spalte eine Zahl. Kämen dort welche an, wären
+//     sie unbelegt — eine Zahl ohne Protokoll ist keine Auskunft.
+// `ohne_protokoll` und `kein_lauf` bleiben in jeder Spalte verschieden (duplicate-signal.ts:64-71).
+interface Satzwahl {
+  /** Beide Zahlen liegen vor — der Satz darf sie nennen. */
+  readonly mitZahlen: string;
+  /** Mindestens eine Zahl fehlt — der Satz nennt KEINE und sagt, dass die Reichweite unbekannt ist. */
+  readonly ohneZahlen: string;
+}
+
+const DECKUNG_SATZ: Record<DeckungsLage, Satzwahl> = {
+  vollstaendig: {
+    mitZahlen: "kollision.deckung.vollstaendig",
+    ohneZahlen: "kollision.deckung.ohneProtokoll",
+  },
+  unvollstaendig: {
+    mitZahlen: "kollision.deckung.unvollstaendig",
+    ohneZahlen: "kollision.deckung.unvollstaendigOhneZahlen",
+  },
+  ohne_protokoll: {
+    mitZahlen: "kollision.deckung.ohneProtokoll",
+    ohneZahlen: "kollision.deckung.ohneProtokoll",
+  },
+  kein_lauf: {
+    mitZahlen: "kollision.deckung.keinLauf",
+    ohneZahlen: "kollision.deckung.keinLauf",
+  },
+};
+
+/**
+ * DIE ZWEI SÄTZE, DIE ZAHLEN TRAGEN — als Datum, nicht als Namenskonvention.
+ *
+ * `nenntZahlen` wird daraus abgeleitet und NICHT daraus, ob Zahlen vorliegen: bei
+ * `ohne_protokoll`/`kein_lauf` fällt die Wahl auch mit Zahlen auf einen zahlenlosen Satz, und dann
+ * ist „nennt Zahlen" falsch. Die Zusage, die messbar bleiben soll, lautet „eine Ziffer steht genau
+ * dann im Satz, wenn `nenntZahlen` gilt" — sie beschreibt den SATZ, nicht die Eingabe.
+ */
+const SAETZE_MIT_ZAHLEN: ReadonlySet<string> = new Set([
+  "kollision.deckung.vollstaendig",
+  "kollision.deckung.unvollstaendig",
+]);
+
+/** Beide Zahlen da? `null` UND `undefined` zählen als „fehlt" — der Draht ist nicht der Typ. */
+function zahlenDa(geprueft: number | null, bestand: number | null): boolean {
+  return typeof geprueft === "number" && typeof bestand === "number";
+}
+
+export interface DeckungsAuskunft {
+  readonly lage: DeckungsLage;
+  /** `coverage.completed`, roh durchgereicht. `null` bleibt `null` — nie `0`. */
+  readonly geprueft: number | null;
+  /** `coverage.available`, roh durchgereicht. `null` bleibt `null` — nie `0`. */
+  readonly bestand: number | null;
+  /**
+   * Der Satz — schon so gewählt, dass er nur Zahlen nennt, wenn beide vorliegen (s. `DECKUNG_SATZ`).
+   * Die Fläche darf ihn deshalb blind einsetzen und muss nicht selbst über Löcher entscheiden.
+   */
+  readonly satzKey: string;
+  /**
+   * Nennt dieser Satz die zwei Zahlen? Genau dann `true`, wenn `geprueft` UND `bestand` vorliegen.
+   *
+   * Das Feld steht hier, damit die Zusage MESSBAR ist und nicht aus dem Schlüsselnamen erraten
+   * werden muss: „eine Ziffer steht genau dann da, wenn eine Zahl gemessen wurde."
+   */
+  readonly nenntZahlen: boolean;
+}
+
+/**
+ * Die Deckung zu EINEM Befund — oder `null`.
+ *
+ * `null` in zwei Fällen, und beide sind Wissenslücken, keine Entwarnungen:
+ *   · Es liegt gar kein Befund vor. Dann gibt es auch keine Deckung: `/api/duplicate-signal`
+ *     liefert je Objekt MIT Befund einen Eintrag, die Deckung hängt an ihm und erzeugt keinen
+ *     (duplicate-signal.ts:262-264). Die schweigende Frage „mein Objekt hat kein Signal — wurde es
+ *     überhaupt geprüft?" beantwortet `/api/ai-check/coverage-summary`, nicht diese Auskunft
+ *     (conflicts-routes.ts:181-183).
+ *   · Die Lage ist nicht `frisch`. Dann steht statt der Zahl der Satz über die Datenlage.
+ */
+function deckungsauskunft(befund: EigenerBefund | undefined, lage: Lage): DeckungsAuskunft | null {
+  if (befund === undefined || !bestandsaussageErlaubt(lage)) {
+    return null;
+  }
+  // Bewusst als `| undefined` gelesen, obwohl der Typ das Feld verlangt: DER TYP IST NICHT DER DRAHT.
+  // Während eines rollenden Deploys antwortet eine ältere Fassung von `/api/duplicate-signal` ohne
+  // `deckung` (der Server trägt es erst seit `1.0.0-beta.1.44`). Ohne diese Zeile stürzte die
+  // Lesefläche daran ab — und eine abgestürzte Fläche sagt der Autorin auch nichts über ihren
+  // Befund. Fehlt das Feld, gilt dasselbe wie ohne Befund: keine Auskunft, keine erfundene Zahl.
+  const d: Deckung | undefined = befund.deckung;
+  if (d === undefined) {
+    return null;
+  }
+  const satz = DECKUNG_SATZ[d.lage];
+  const satzKey = zahlenDa(d.geprueft, d.bestand) ? satz.mitZahlen : satz.ohneZahlen;
+  return {
+    lage: d.lage,
+    geprueft: d.geprueft,
+    bestand: d.bestand,
+    satzKey,
+    nenntZahlen: SAETZE_MIT_ZAHLEN.has(satzKey),
+  };
+}
+
 export interface Kollisionsauskunft {
   readonly lage: Lage;
   readonly art: Befundart;
@@ -193,6 +331,11 @@ export interface Kollisionsauskunft {
   readonly datenlageKey: string | null;
   /** Ein neuer Versuch kann jetzt etwas ändern. */
   readonly wiederholenMoeglich: boolean;
+  /**
+   * JOB 3068 (N5): „gegen wie viel wurde geprüft" — oder `null`, wenn darüber nichts vorliegt.
+   * Genau dann gesetzt, wenn ein Befund vorliegt UND `bestandGesichert` gilt (s. `deckungsauskunft`).
+   */
+  readonly deckung: DeckungsAuskunft | null;
   /**
    * DER neue Versuch — er frischt genau die drei Quellen auf, aus denen diese Auskunft entsteht.
    *
@@ -255,6 +398,7 @@ function schluss(
   a: Befundart,
   anzahl: number,
   satzKeys: { readonly praefix: string },
+  deckung: DeckungsAuskunft | null,
 ): Kollisionsauskunft {
   const datenlageKey = datenlageKeyFuer(lage, hatFruherenStand(quellen));
   // `datenlageKey === null` ist per Bauart genau `lage === "frisch"` — dieselbe Bedingung wie
@@ -270,6 +414,7 @@ function schluss(
     satzKey,
     datenlageKey,
     wiederholenMoeglich: wiederholenSinnvoll(lage),
+    deckung,
     // Über `alleQuellen` und nicht als drei Zeilen: die Liste der Quellen steht damit an EINER
     // Stelle in dieser Datei — derselben, aus der auch `gesamtlage` sie liest.
     erneutPruefen: (): void => {
@@ -341,7 +486,18 @@ export function eigeneKollisionDetail(
   const konfliktSichtbar =
     args.konflikte.data !== undefined && conflictImpact(args.koId, args.konflikte.data).affected;
   const a = art(eigener?.dublette === true, eigener?.konflikt === true || konfliktSichtbar);
-  return schluss(args, lage, a, a === "keine" ? 0 : 1, { praefix: "kollision.detail" });
+  // Die Deckung wird JE `koId` aus den Daten gelesen (`eigener`, oben) und nirgends in einen
+  // Zustand gespiegelt. Beim Blättern in der Liste wechselt `koId`, und ein später eintreffender
+  // Rücklauf kann deshalb gar nicht die Zahl des vorigen Eintrags an den neuen schreiben
+  // (Generationsdrift, LEHREN.md JOB 3056 R5).
+  return schluss(
+    args,
+    lage,
+    a,
+    a === "keine" ? 0 : 1,
+    { praefix: "kollision.detail" },
+    deckungsauskunft(eigener, lage),
+  );
 }
 
 /**
@@ -374,5 +530,9 @@ export function eigeneKollisionStart(q: Kollisionsquellen): Kollisionsauskunft {
     konflikt = konflikt || mitKonflikt;
   }
   const a = art(dublette, konflikt);
-  return schluss(q, lage, a, a === "keine" ? 0 : anzahl, { praefix: "kollision.start" });
+  // KEIN Deckungssatz auf der Startseite, und das ist kein Vergessen: die Deckung ist die Reichweite
+  // des Laufs an EINEM Objekt. Über mehrere Objekte hinweg gäbe es keine gemeinsame Zahl — sie
+  // müsste erfunden (zusammengezählt, gemittelt) werden, und das wäre eine Zahl, die niemand
+  // gemessen hat. Die Startseite zählt betroffene Objekte, sie beschreibt keinen Prüflauf.
+  return schluss(q, lage, a, a === "keine" ? 0 : anzahl, { praefix: "kollision.start" }, null);
 }

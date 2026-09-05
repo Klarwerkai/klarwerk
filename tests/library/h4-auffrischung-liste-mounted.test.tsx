@@ -78,6 +78,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
         : { ...ok(KOS), isRefetchError: false, fetchStatus: "idle", dataUpdatedAt: Date.now() },
     useDirectory: () => ok([{ id: "u9", name: "Eva" }]),
     useConflicts: () => ok([]),
+    // JOB 3068 (N5): die Lesefläche fragt das eigene Signal jetzt selbst — leer heißt „kein Befund".
+    useEigeneBefunde: () => ok([]),
     // Auf `/wissen/:id` und bei Vorauswahl scheitert im Netzfall AUCH der Detailabruf. Genau so
     // entsteht die Lage, in der zwei Flächen denselben Satz sagen könnten — Fall 5 misst, dass
     // sie es nicht tun.

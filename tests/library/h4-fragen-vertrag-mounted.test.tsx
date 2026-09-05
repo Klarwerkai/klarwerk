@@ -71,6 +71,8 @@ vi.mock("../../apps/web/src/api/hooks", () => {
     useLibrarySearch: () => ok(KOS),
     useDirectory: () => ok([{ id: "u9", name: "Eva" }]),
     useConflicts: () => ok([]),
+    // JOB 3068 (N5): die Lesefläche fragt das eigene Signal jetzt selbst — leer heißt „kein Befund".
+    useEigeneBefunde: () => ok([]),
     useKo: (id: string) => ok(KOS.find((k) => k.id === id)),
     useAudit: () => ok([]),
     // Die Lesefläche hängt den Bildbeschreiber ein (`ImageDescribeProvider`), der den Modellstand

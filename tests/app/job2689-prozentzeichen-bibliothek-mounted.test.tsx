@@ -106,6 +106,8 @@ vi.mock("../../apps/web/src/api/hooks", async () => {
       }),
     useDirectory: () => ok([]),
     useConflicts: () => ok([]),
+    // JOB 3068 (N5): die Lesefläche fragt das eigene Signal jetzt selbst — leer heißt „kein Befund".
+    useEigeneBefunde: () => ok([]),
     // JOB 3063 (H4): die Fläche zeigt rechts den gewählten Eintrag. Diese Tests messen die LISTE;
     // die Lesefläche bleibt deshalb bewusst im Ladezustand — sie ist dann eine leere Fläche ohne
     // Text und mischt sich in keine Zusicherung ein.

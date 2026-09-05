@@ -131,7 +131,15 @@ const KEY: Record<QuellenName, readonly unknown[]> = {
   signal: ["duplicate-signal"],
 };
 
-const DUBLETTE: EigenerBefund = { koId: "ko-1", dublette: true, konflikt: false };
+// JOB 3068 (N5): der Befund trägt seit JOB 3032 die Deckung des Laufs, der DIESES Objekt angesehen
+// hat. Hier steht die schwächste (`kein_lauf`, zwei `null`) — diese Datei misst das LAGEMODELL, die
+// Deckung hat ihre eigene Probe (`tests/ko/job3068-deckungssatz.test.ts`).
+const DUBLETTE: EigenerBefund = {
+  koId: "ko-1",
+  dublette: true,
+  konflikt: false,
+  deckung: { lage: "kein_lauf", geprueft: null, bestand: null },
+};
 const KONFLIKT_EINTRAG: Conflict = {
   id: "c-1",
   koA: "ko-1",
@@ -220,48 +228,23 @@ async function mount(): Promise<void> {
     await flush();
   });
   await act(flush);
-  // JOB 3063 (H4): die Kollisions-Auskunft liegt im Abschnitt „Konflikt" hinter der Zeile „Mehr"
-  // und ist zugeklappt die Vorgabe. Aufgeklappt wird HIER, vor dem letzten Durchlauf — die Abfragen
-  // dieses Abschnitts laufen erst beim Aufklappen an und brauchen danach noch einen Takt.
-  mehrAufklappen("konflikt");
+  // JOB 3068 (N5): die Kollisions-Auskunft steht wieder in der LESESPALTE, ohne einen Klick. Bis
+  // dahin lag sie im Abschnitt „Konflikt" hinter der zugeklappten Zeile „Mehr" — und war damit für
+  // eine Autorin, die nicht aufklappt, unsichtbar. Hier wird deshalb NICHTS mehr aufgeklappt; dass
+  // die Auskunft ohne Aufklappen dasteht, ist ab jetzt die Zusage und nicht mehr die Vorarbeit.
   await act(flush);
-  await act(flush);
-}
-
-/**
- * Die Zeile „Mehr" der Lesefläche aufklappen und einen ihrer Abschnitte öffnen.
- *
- * `open = true` allein genügt nicht: React zeichnet den Inhalt erst, wenn es das Aufklappen über
- * `onToggle` mitbekommt, und jsdom stellt `toggle` nur in die Warteschlange statt es zu liefern.
- * Der Test schickt es deshalb selbst, direkt am Element (`toggle` steigt nicht auf).
- */
-function mehrAufklappen(schluessel: string): void {
-  const mehr = container.querySelector('[data-testid="bib-mehr"]');
-  if (mehr instanceof HTMLButtonElement && mehr.getAttribute("aria-expanded") !== "true") {
-    act(() => {
-      mehr.click();
-    });
-  }
-  const abschnitt = container.querySelector(`[data-bib-abschnitt="${schluessel}"]`);
-  if (abschnitt instanceof HTMLDetailsElement && !abschnitt.open) {
-    act(() => {
-      abschnitt.open = true;
-      abschnitt.dispatchEvent(new Event("toggle"));
-    });
-  }
 }
 
 /**
  * Der gemessene Bereich — genau das Feld, um das dieser Auftrag geht.
  *
- * JOB 3063 (H4): Die Detailseite ist die Lesefläche der Bibliothek geworden; die Kollisions-Auskunft
- * steht im Abschnitt „Konflikt" hinter der Zeile „Mehr"
- * (`components/bibliothek/MehrAbschnitte.tsx:386-388`), zugeklappt als Vorgabe. Die ZUSAGE von
- * JOB 3025 ist davon unberührt — sie handelt vom WORTLAUT der Auskunft, nicht von ihrer Tiefe im
- * Baum. Aufgeklappt wird in `mount()`; hier wird nur noch gemessen.
+ * JOB 3063 (H4) hatte ihn in den Abschnitt „Konflikt" hinter die Zeile „Mehr" verlegt; JOB 3068 (N5)
+ * hat ihn in die Lesespalte zurückgeholt, weil Pedis Zeile „DAUERHAFT" verlangt
+ * (`components/bibliothek/BibliothekLesen.tsx`). Die ZUSAGE von JOB 3025 ist von beidem unberührt —
+ * sie handelt vom WORTLAUT der Auskunft. Dass sie OHNE Aufklappen dasteht, misst jeder Fall hier
+ * jetzt mit: `mount()` klappt nichts mehr auf.
  */
 function bereich(): HTMLElement {
-  mehrAufklappen("konflikt");
   const el = container.querySelector<HTMLElement>('[data-testid="job3025-kollision"]');
   if (!el) {
     throw new Error("Der Kollisionsbereich fehlt auf der Detailseite");
@@ -330,7 +313,7 @@ describe("JOB 3025 · frisch geladen: die Auskunft steht", () => {
   });
 
   it("R-b2 · die alten A28-Pillen sind fort (Ablösung, REGELN.md §7)", async () => {
-    box.kanal.signal = async () => [{ koId: "ko-1", dublette: true, konflikt: true }];
+    box.kanal.signal = async () => [{ ...DUBLETTE, konflikt: true }];
     await mount();
     expect(container.querySelector('[data-testid="a28-signal-dublette"]')).toBeNull();
     expect(container.querySelector('[data-testid="a28-signal-konflikt"]')).toBeNull();
@@ -344,16 +327,44 @@ describe("JOB 3025 · frisch geladen: die Auskunft steht", () => {
 /** Ein Versprechen, das nie einlöst — der laufende, nie beantwortete Abruf. */
 const haengt = (): Promise<never> => new Promise<never>(() => {});
 
+// JOB 3068 (N5) · WAS SICH IN (c) GEÄNDERT HAT — UND WARUM ES SCHÄRFER IST, NICHT MILDER.
+//
+// Bis hierher verlangte (c) den Satz „Wird geprüft — die Kollisionsprüfung lädt noch." Er stand, als
+// die Auskunft hinter „Mehr" lag: wer aufklappte, wollte etwas wissen und bekam eine Antwort.
+// In der LESESPALTE gilt die Regel der Fläche (`BibliothekLesen.tsx`, Kopf §5): „Laden = leere
+// Fläche, kein ‚Lädt …'" — ein Ladewort an einem Eintrag, der noch gar nichts weiß, ist genau der
+// Erklärtext, den JOB 3063 abgeschafft hat, und Auftrag 3068 §9 schreibt für `laedt` ausdrücklich
+// „Befundzeile: leer" vor.
+//
+// GEMESSEN WIRD DESHALB SCHÄRFER: nicht mehr „steht der richtige Satz da", sondern „steht ÜBERHAUPT
+// NICHTS da" — und zwar auf der GANZEN Seite, nicht nur im Bereich. Die Zusage von JOB 3025 (Codex
+// R3: ein laufender Erstabruf darf nie als „ließ sich nicht laden" erscheinen) ist damit
+// vollständig erfüllt: es erscheint gar nichts. Ein Befund aus dem Zwischenspeicher wird davon NICHT
+// verschluckt — R-c-cache misst genau das.
 describe("JOB 3025 · (c) laufender Erstabruf — nie „ließ sich nicht laden“ (Codex R3)", () => {
   for (const quelle of QUELLEN) {
-    it(`R-c-${quelle} · ${quelle} hängt → Ladeauskunft, keine Bestandsaussage`, async () => {
+    it(`R-c-${quelle} · ${quelle} hängt → gar keine Auskunft, erst recht keine Bestandsaussage`, async () => {
       box.kanal[quelle] = haengt;
       await mount();
-      expect(text()).toContain(i18n.t("kollision.lage.laedt"));
-      expect(text()).not.toContain(i18n.t("kollision.lage.erstfehler"));
-      expect(text()).not.toContain(i18n.t("kollision.detail.keine"));
+      expect(bereichVorhanden()).toBe(false);
+      const seite = (container.textContent ?? "").replace(/\s+/g, " ");
+      expect(seite).not.toContain(i18n.t("kollision.lage.erstfehler"));
+      expect(seite).not.toContain(i18n.t("kollision.detail.keine"));
+      expect(seite).not.toContain(i18n.t("kollision.detail.dublette"));
     });
   }
+
+  it("R-c-cache · ein Befund aus dem Zwischenspeicher wird vom Laden NICHT verschluckt", async () => {
+    // Die Grenze der neuen Regel, gemessen statt behauptet: geschwiegen wird nur, solange NICHTS
+    // bekannt ist. Ein bekannter Befund wird in JEDER Lage genannt (eigeneKollision.ts:245) — eine
+    // Kollision, die der Autorin verschwiegen wird, ist genau Pedis Ausgangsbefund A27.
+    qc.setQueryData(KEY.signal, [DUBLETTE]);
+    box.kanal.kos = haengt;
+    await mount();
+    expect(bereichVorhanden()).toBe(true);
+    expect(text()).toContain(i18n.t("kollision.detail.dublette"));
+    expect(text()).toContain(i18n.t("kollision.lage.laedt"));
+  });
 });
 
 describe("JOB 3025 · (d) Erstfehler — Fehlerlage statt Bestandsaussage (Codex R2)", () => {

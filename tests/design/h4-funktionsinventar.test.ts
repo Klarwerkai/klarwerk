@@ -383,7 +383,8 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
           kommentieren: abschnitt('kommentare') ? abschnitt('kommentare').querySelectorAll('textarea').length : 0,
           anhang: abschnitt('anhaenge') ? abschnitt('anhaenge').querySelectorAll('input[type="file"]').length : 0,
           konfliktMelden: abschnitt('konflikt') ? abschnitt('konflikt').querySelectorAll('select, textarea').length : 0,
-          kollision: abschnitt('konflikt') ? abschnitt('konflikt').querySelectorAll('[data-testid="job3025-kollision"]').length : 0,
+          kollisionImMehr: abschnitt('konflikt') ? abschnitt('konflikt').querySelectorAll('[data-testid="job3025-kollision"]').length : 0,
+          kollisionInDerLesespalte: document.querySelectorAll('[data-testid="job3025-kollision"]').length,
         };
       }`),
     );
@@ -396,8 +397,11 @@ describe("JOB 3063 · H4 · Funktionsinventar — jede Funktion an ihrem neuen O
     expect(befund.kommentieren).toBeGreaterThan(0);
     expect(befund.anhang).toBeGreaterThan(0);
     expect(befund.konfliktMelden).toBeGreaterThan(0);
-    // A27/JOB 3025: die Auskunft an die Verfasserin am EIGENEN Objekt (hier ist Pedi der Autor).
-    expect(befund.kollision).toBe(1);
+    // A27/JOB 3025/N5: die Auskunft an die Verfasserin am EIGENEN Objekt (hier ist Pedi der Autor).
+    // JOB 3068 hat sie aus diesem Abschnitt in die LESESPALTE geholt — „dauerhaft" heißt ohne Klick.
+    // Beide Zahlen zusammen sind der Beleg der Ablösung: hier keine, auf der Fläche genau eine.
+    expect(befund.kollisionImMehr).toBe(0);
+    expect(befund.kollisionInDerLesespalte).toBe(1);
   });
 
   it("F17 · Konfidenzbalken, Wissensart, Herkunftschip und Autorenzeile — in „Mehr“ (Belege bzw. Provenienz)", () => {

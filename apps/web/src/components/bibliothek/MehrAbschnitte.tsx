@@ -8,7 +8,6 @@ import {
   useAudit,
   useConflicts,
   useDirectory,
-  useEigeneBefunde,
   useExternalPolicy,
   useKoEvidence,
   useKoNeighbors,
@@ -22,7 +21,6 @@ import type {
   ExternalResult,
   KnowledgeObject,
 } from "../../api/types";
-import { useSession } from "../../app/AuthContext";
 import { useRole } from "../../app/RoleContext";
 import { useToast } from "../../app/ToastContext";
 import { auditActionLabel } from "../../lib/auditAction";
@@ -31,7 +29,6 @@ import { CONFIDENTIALITY_LEVELS, confidentialityOf } from "../../lib/confidentia
 import { conflictImpact, conflictLimitedUsability } from "../../lib/conflictImpact";
 import { isDemoKnowledge } from "../../lib/demoKnowledge";
 import { deriveStatus } from "../../lib/displayStatus";
-import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { groupEvidenceByVersion } from "../../lib/evidenceByVersion";
 import { analyzeEvidenceConsistency } from "../../lib/evidenceConsistency";
 import { analyzeEvidenceFreshness } from "../../lib/evidenceFreshness";
@@ -143,7 +140,6 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
   const { t, i18n } = useTranslation();
   const id = ko.id;
   const { role } = useRole();
-  const { user } = useSession();
   const { push } = useToast();
   const qc = useQueryClient();
   const nameOf = useAuthorName();
@@ -157,7 +153,6 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
   const neighborhood = useKoNeighbors(id);
   const koList = useKos();
   const conflicts = useConflicts();
-  const eigeneBefunde = useEigeneBefunde();
   const pending = useLifecyclePending();
   const dir = useDirectory();
   const extPolicy = useExternalPolicy();
@@ -357,17 +352,13 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
     onError: fehlerToast,
   });
 
-  // A27 · JOB 3025: die Auskunft an die Verfasserin — unverändert lagebezogen (Query-LAGE statt
-  // `?? []`), nur an ihrem neuen Ort. Sie steht weiterhin AUSSCHLIESSLICH am eigenen Objekt.
-  const eigenesObjekt = ko.author === user?.id;
-  const kollision = eigeneKollisionDetail({
-    koId: ko.id,
-    befunde: eigeneBefunde,
-    konflikte: conflicts,
-    kos: koList,
-  });
-  const kollisionsWeg = kollision.weg;
-  const kollisionsWegText = kollisionsWeg === null ? null : t(kollisionsWeg.textKey);
+  // A27 · JOB 3025 · JOB 3068 (N5): DIE AUSKUNFT AN DIE VERFASSERIN STEHT NICHT MEHR HIER.
+  //
+  // Sie hing bis zu diesem Auftrag im Abschnitt „Konflikt" — also hinter der zugeklappten Zeile
+  // „Mehr" und damit hinter einem Klick. N5 verlangt „DAUERHAFT"; sie ist deshalb in die Lesespalte
+  // gezogen (`BibliothekLesen.tsx`, Kopf „DER EIGENE BEFUND"). Der Aufruf ist hier VOLLSTÄNDIG
+  // entfernt und nicht daneben belassen: zwei Flächen, die denselben Befund je eigen auslegen, sind
+  // genau die Drift, gegen die `lib/eigeneKollision.ts:15-17` gebaut ist.
 
   // SCRUM-357 / AG-14: ein offener Konflikt begrenzt die Nutzbarkeit ehrlich (ready → in Prüfung).
   const usability = conflictLimitedUsability(
@@ -384,45 +375,6 @@ export function MehrAbschnitte({ ko }: { ko: KnowledgeObject }): JSX.Element {
     <div data-testid="bib-mehr-abschnitte" className="flex flex-col">
       {/* 1 — Konflikt */}
       <Abschnitt schluessel="konflikt" titel={t("ko.mehr.konflikt")}>
-        {eigenesObjekt ? (
-          <div data-testid="job3025-kollision" className="mb-3">
-            <p className="text-[12.5px] leading-relaxed text-text">{t(kollision.satzKey)}</p>
-            {kollision.art !== "keine" ? (
-              <>
-                <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
-                  {t("kollision.keineGegenseite")}
-                </p>
-                {kollision.datenlageKey ? (
-                  <p className="mt-0.5 text-[11.5px] leading-relaxed text-muted-2">
-                    {t(kollision.datenlageKey)}
-                  </p>
-                ) : null}
-              </>
-            ) : null}
-            {kollisionsWeg ? (
-              <RoleLink
-                to={kollisionsWeg.to}
-                className="mt-1 inline-flex items-center gap-1 text-[12px] font-semibold text-brand-text"
-              >
-                {(erreichbar) => (
-                  <>
-                    {kollisionsWegText}
-                    {erreichbar ? <span aria-hidden="true">→</span> : null}
-                  </>
-                )}
-              </RoleLink>
-            ) : null}
-            {kollision.wiederholenMoeglich ? (
-              <button
-                type="button"
-                onClick={kollision.erneutPruefen}
-                className="ml-3 mt-1 inline-flex items-center text-[12px] font-semibold text-brand-text underline"
-              >
-                {t("kollision.wiederholen")}
-              </button>
-            ) : null}
-          </div>
-        ) : null}
         {/* mega29 C1: die Deckung des KI-Laufs schränkt jede Konfliktaussage ein — sie steht
             deshalb hier, direkt bei ihr. */}
         <AiCheckCoverageNotes coverage={ko.aiCheck?.coverage} />

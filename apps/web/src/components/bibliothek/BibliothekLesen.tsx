@@ -5,7 +5,7 @@ import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { ApiError } from "../../api/client";
 import { type KoAction, endpoints } from "../../api/endpoints";
-import { useAudit, useConflicts, useKo } from "../../api/hooks";
+import { useAudit, useConflicts, useEigeneBefunde, useKo, useKos } from "../../api/hooks";
 import type { ExtractedPoint, KnowledgeObject, KnowledgeType } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
 import { ImageDescribeProvider } from "../../app/ImageDescribeContext";
@@ -30,6 +30,7 @@ import { conflictImpact, conflictNotice } from "../../lib/conflictImpact";
 import { deriveStatus } from "../../lib/displayStatus";
 import { studioSaveConfidence } from "../../lib/editorApplySafety";
 import { EDITOR_BLOCKS } from "../../lib/editorBlocks";
+import { eigeneKollisionDetail } from "../../lib/eigeneKollision";
 import { formatKoTimestamp } from "../../lib/koDates";
 import type { MatchField } from "../../lib/librarySearch";
 import { toReasonerLocale } from "../../lib/reasonerLocale";
@@ -86,6 +87,31 @@ import { type ZustandsTon, zustandsTon } from "./zustand";
 //     geholten Eintrags, bleibt der Eintrag samt Stufenkennzeichen stehen — der Fehler steht als
 //     Hinweis über der Fläche, aus derselben Quelle wie auf der (frueheren) Detailseite
 //     (`lib/confidentiality.ts`, `abfrageMitBestand`/`auffrischungGescheitert`).
+//
+// ==================================================================================================
+// JOB 3068 · N5 — DER EIGENE BEFUND STEHT HIER, DAUERHAFT, UND NICHT MEHR HINTER „MEHR".
+// ==================================================================================================
+//
+// Pedis Zeile N5: „Der Autor sieht DAUERHAFT, dass sein Beitrag kollidiert … mit ehrlichem Satz,
+// gegen wie viel geprüft wurde." Seit JOB 3063 saß die Auskunft im Abschnitt „Konflikt" hinter der
+// zugeklappten Zeile „Mehr" (`MehrAbschnitte.tsx`) — eine Autorin, deren Gegenseite sie nicht sehen
+// darf, sah damit GAR NICHTS, denn `conflictNotice` spricht nur über SICHTBARE Konfliktpaare,
+// während `/api/duplicate-signal` auch dann spricht, wenn die Gegenseite unsichtbar ist
+// (`lib/eigeneKollision.ts:329-334`). Jetzt steht sie in der Lesespalte, ohne einen Klick.
+//
+// EINE ZEILE, KEIN KARTENBLOCK: Befundsatz · Deckungssatz · (Vorbehalt) · (Weg) · (Wiederholen) —
+// die letzten drei nur in ihrer jeweiligen Lage. Sie trägt `data-bib-text`, weil sie INHALT ist:
+// eine Tatsachenaussage über DIESEN Eintrag, in derselben Gattung wie die Meta-Zeile, und kein
+// Erklärtext über die Bedienung (`tests/design/zielbild-h4-kein-erklaertext.test.ts`).
+//
+// SIE STEHT NUR AM EIGENEN OBJEKT. Der `conflictNotice`-Satz darüber bleibt unverändert: er spricht
+// zum LESER über die Nutzbarkeit und gilt an jedem Objekt, diese Zeile spricht zur VERFASSERIN über
+// ihren eigenen Eintrag. Dass das zwei Aussagen sind und nicht zweimal dieselbe, ist gemessen
+// (`tests/ko/job3025-a27-mounted.test.tsx` R-i3/R-i4) und wird von diesem Auftrag nicht angetastet.
+//
+// ABGELÖST WIRD DER ALTE ORT: `MehrAbschnitte` ruft `useEigeneBefunde`/`eigeneKollisionDetail` nicht
+// mehr. Zwei Flächen, die denselben Befund verschieden auslegen, sind der Fehler, gegen den
+// `eigeneKollision.ts:15-17` steht — nach diesem Umbau gibt es die Auskunft an genau einer Stelle.
 
 const PILLEN_TON: Record<ZustandsTon, string> = {
   pos: "bg-trust-pos-bg text-trust-pos-text",
@@ -132,6 +158,13 @@ export function BibliothekLesen({
   const query = useKo(koId);
   const conflicts = useConflicts();
   const audit = useAudit();
+  // JOB 3068 · N5: die zwei weiteren Quellen der Kollisions-Auskunft. Beide sind auf dieser Fläche
+  // KOSTENLOS: `useKos` teilt sich den Schlüssel `["kos"]` mit der Liste links
+  // (`BibliothekFlaeche.tsx:235`), und `useEigeneBefunde` ist eine einzige, kleine Antwort ohne
+  // Objektdaten. Sie stehen HIER und nicht mehr in `MehrAbschnitte`, weil die Auskunft dauerhaft
+  // sichtbar sein muss — s. den Abschnitt „DER EIGENE BEFUND" im Kopf.
+  const koListe = useKos();
+  const eigeneBefunde = useEigeneBefunde();
   const { role } = useRole();
   const { user } = useSession();
   const { push } = useToast();
@@ -394,6 +427,23 @@ export function BibliothekLesen({
       ? conflictImpact(ko.id, [])
       : conflictImpact(ko.id, conflicts.data);
   const notice = conflictNotice(impact);
+  // JOB 3068 · N5: die Auskunft an die VERFASSERIN. Sie entsteht in `lib/eigeneKollision.ts` und
+  // nirgends sonst; hier wird sie nur gezeichnet. `eigenesObjekt` ist dieselbe Bedingung, unter der
+  // sie bis JOB 3063 in `MehrAbschnitte` stand — das Signal hängt am eigenen Bestand (A28).
+  const eigenesObjekt = ko.author === user?.id;
+  const kollision = eigeneKollisionDetail({
+    koId: ko.id,
+    befunde: eigeneBefunde,
+    konflikte: conflicts,
+    kos: koListe,
+  });
+  const kollisionsWeg = kollision.weg;
+  // WANN DIE ZEILE STEHT — die einzige Ausnahme ist `laedt` OHNE Befund, und sie ist keine Willkür:
+  // dort ist NICHTS bekannt, und diese Fläche schweigt beim Laden, statt „Lädt …" zu schreiben
+  // (Kopf §5, ebenso die leere Lesefläche :388). Liegt dagegen ein Befund vor, wird er in JEDER
+  // Lage genannt — das ist die Regel aus `eigeneKollision.ts:245` und Pedis Ausgangsbefund A27.
+  const kollisionZeigen =
+    eigenesObjekt && (kollision.art !== "keine" || kollision.lage !== "laedt");
   const ton = zustandsTon(status, impact.limited);
   const erstellt = formatKoTimestamp(ko.createdAt, i18n.language);
   // JOB 3034: die Vertraulichkeitsstufe im Klartext — JEDE Stufe, und die fehlende sagt, dass sie
@@ -553,11 +603,74 @@ export function BibliothekLesen({
           </p>
         ) : null}
 
-        {/* Der Konflikt-Satz — NUR im Fall, EIN Satz, über dem Titel. */}
+        {/* Der Konflikt-Satz — NUR im Fall, EIN Satz, über dem Titel. Er spricht zum LESER über die
+            Nutzbarkeit und gilt für jedes Objekt; die Zeile darunter spricht zur VERFASSERIN über
+            ihren eigenen Eintrag. Zwei Aussagen, nicht zweimal dieselbe — gemessen in
+            `tests/ko/job3025-a27-mounted.test.tsx` R-i3/R-i4. */}
         {notice ? (
           <p data-testid="bib-konfliktsatz" className="text-[13px] text-muted">
             {t(notice.hintKey)}
           </p>
+        ) : null}
+
+        {/* JOB 3068 · N5 — DER EIGENE BEFUND UND SEIN DECKUNGSSATZ. EINE Zeile, ohne einen Klick. */}
+        {kollisionZeigen ? (
+          // `<div>` und nicht `<p>`: die gesperrte Fassung von `RoleLink` ist ein `<div>`
+          // (`RoleLink.tsx:91-103`), und ein `<div>` in einem `<p>` ist ungültiges HTML — React
+          // meldete es als `validateDOMNesting`, der Browser hätte den Absatz vorzeitig geschlossen
+          // und die Zeile zerrissen. Am Aussehen ändert sich nichts (dieselben Klassen), an der
+          // Messung auch nicht: `data-bib-text` und der Testanker sitzen weiter hier.
+          <div
+            data-testid="job3025-kollision"
+            data-bib-text="kollision"
+            className="text-[13px] leading-relaxed text-muted"
+          >
+            {t(kollision.satzKey)}
+            {/* Der Deckungssatz. Welcher Satz das ist, entscheidet die Ableitung — und sie wählt
+                einen Satz MIT Platzhaltern nur, wenn beide Zahlen vorliegen (`DECKUNG_SATZ`,
+                eigeneKollision.ts). Hier wird deshalb blind eingesetzt: es kann kein Loch
+                entstehen, und `null` wird nirgends zu `0`. */}
+            {kollision.deckung ? (
+              <span data-testid="bib-deckungssatz">
+                {" "}
+                {t(kollision.deckung.satzKey, {
+                  geprueft: kollision.deckung.geprueft,
+                  bestand: kollision.deckung.bestand,
+                })}
+              </span>
+            ) : null}
+            {/* Der Vorbehalt über die Datenlage — nur NEBEN einem Befund. Ohne Befund trägt ihn
+                `satzKey` bereits selbst (`eigeneKollision.ts:263-264`), er stünde sonst doppelt. */}
+            {kollision.art !== "keine" && kollision.datenlageKey ? (
+              <span data-testid="bib-kollision-lage"> {t(kollision.datenlageKey)}</span>
+            ) : null}
+            {kollisionsWeg ? (
+              <>
+                {" "}
+                <RoleLink
+                  to={kollisionsWeg.to}
+                  className="font-semibold text-brand-text underline"
+                  testId="bib-kollision-weg"
+                >
+                  {() => t(kollisionsWeg.textKey)}
+                </RoleLink>
+              </>
+            ) : null}
+            {/* Kein Knopf ohne Wirkung: nur wo ein neuer Versuch etwas ändern kann (REGELN.md §7). */}
+            {kollision.wiederholenMoeglich ? (
+              <>
+                {" "}
+                <button
+                  type="button"
+                  data-testid="bib-kollision-wiederholen"
+                  onClick={kollision.erneutPruefen}
+                  className="font-semibold text-brand-text underline"
+                >
+                  {t("kollision.wiederholen")}
+                </button>
+              </>
+            ) : null}
+          </div>
         ) : null}
 
         {/* SCRUM-124/330/331: Rückgabe- und Nacharbeitslage — nur im jeweiligen Fall, je EIN Satz. */}

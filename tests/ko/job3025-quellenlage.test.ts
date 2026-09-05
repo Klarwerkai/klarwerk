@@ -11,7 +11,12 @@
 // Abhängigkeit. Damit ist jede Kombination hier als Zeile einer Tabelle prüfbar, und ein neuer
 // Abrufzustand von TanStack Query muss hier eine Zeile bekommen, bevor er eine Seite erreicht.
 import { describe, expect, it } from "vitest";
-import type { Conflict, EigenerBefund, KnowledgeObject } from "../../apps/web/src/api/types";
+import type {
+  Conflict,
+  Deckung,
+  EigenerBefund,
+  KnowledgeObject,
+} from "../../apps/web/src/api/types";
 import {
   LAGE_VON_SCHWACH_NACH_STARK,
   type Lage,
@@ -183,8 +188,26 @@ describe("JOB 3025 · gesamtlage(): die schwächste Quelle zieht das Ganze", () 
 // bei welcher Lage" nicht erst über den DOM sichtbar wird.
 // ------------------------------------------------------------------------------------------------
 
-const BEFUND_DUBLETTE: EigenerBefund = { koId: "ko-1", dublette: true, konflikt: false };
-const BEFUND_KONFLIKT: EigenerBefund = { koId: "ko-1", dublette: false, konflikt: true };
+/**
+ * JOB 3068: die schwächste Deckung — dieselbe Form, die der Kern vergibt, wenn der Aufrufer zu einer
+ * Kennung keine Lage hereinreicht (`ohneAuskunft()`, duplicate-signal.ts:101-103). Sie steht hier,
+ * damit die Fälle dieser Datei über die LAGE sprechen und nicht über die Deckung; die Deckung selbst
+ * hat ihre eigene Tabellenprobe (`job3068-deckungssatz.test.ts`).
+ */
+const OHNE_DECKUNG: Deckung = { lage: "kein_lauf", geprueft: null, bestand: null };
+
+const BEFUND_DUBLETTE: EigenerBefund = {
+  koId: "ko-1",
+  dublette: true,
+  konflikt: false,
+  deckung: OHNE_DECKUNG,
+};
+const BEFUND_KONFLIKT: EigenerBefund = {
+  koId: "ko-1",
+  dublette: false,
+  konflikt: true,
+  deckung: OHNE_DECKUNG,
+};
 
 /**
  * Dieselbe Quelle, um `refetch` ergänzt. Die Trennung bleibt auch hier sichtbar: die Tabelle oben
@@ -295,7 +318,10 @@ describe("JOB 3025 · die Start-Auskunft folgt DERSELBEN Regel", () => {
       ...leer,
       befunde: auffrischbar(
         quelle<readonly EigenerBefund[]>({
-          data: [BEFUND_DUBLETTE, { koId: "ko-2", dublette: false, konflikt: true }],
+          data: [
+            BEFUND_DUBLETTE,
+            { koId: "ko-2", dublette: false, konflikt: true, deckung: OHNE_DECKUNG },
+          ],
         }),
       ),
     });

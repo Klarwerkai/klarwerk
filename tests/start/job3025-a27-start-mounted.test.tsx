@@ -86,7 +86,15 @@ const KEY: Record<QuellenName, readonly unknown[]> = {
   signal: ["duplicate-signal"],
 };
 
-const DUBLETTE: EigenerBefund = { koId: "ko-1", dublette: true, konflikt: false };
+// JOB 3068 (N5): der Befund trägt seit JOB 3032 die Deckung. Auf der STARTSEITE erscheint sie
+// bewusst nicht (mehrere Objekte haben keine gemeinsame Zahl, s. `eigeneKollisionStart`); hier steht
+// deshalb die schwächste Lage, und der Fall unten misst weiter das Lagemodell.
+const DUBLETTE: EigenerBefund = {
+  koId: "ko-1",
+  dublette: true,
+  konflikt: false,
+  deckung: { lage: "kein_lauf", geprueft: null, bestand: null },
+};
 const KONFLIKT_EINTRAG: Conflict = {
   id: "c-1",
   koA: "ko-1",

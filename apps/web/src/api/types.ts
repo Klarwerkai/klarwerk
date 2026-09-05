@@ -230,10 +230,37 @@ export interface AiCheckCoverageSummary {
 // A28 (OFFEN.md:165) — DAS DAUERHAFTE SIGNAL AM EIGENEN WISSENSOBJEKT.
 // Spiegel von services/app/src/duplicate-signal.ts (die Oberfläche importiert keine Services).
 //
-// DREI FELDER, UND DAS IST DIE GRENZE: Vorhandensein und Art, sonst nichts. Kein Feld für die
-// Gegenseite — weder Kennung noch Titel noch Inhalt. Wer hier ein viertes Feld ergänzen wollte,
-// müsste erst den Kern ändern und käme an dessen Tests nicht vorbei
-// (services/app/src/duplicate-signal.test.ts G-1/G-2, tests/ko/a28-signal-*.test.ts).
+// DIE GRENZE IST „NICHTS ÜBER DIE GEGENSEITE" — und nicht eine Zahl von Feldern.
+// Bis JOB 3032 stand hier „DREI FELDER, UND DAS IST DIE GRENZE". Das war eine Hilfsformel, und sie
+// ist seitdem falsch: der Kern trägt ein viertes Feld (`deckung`) und erklärt es ausdrücklich für
+// zulässig, weil es den EIGENEN Prüflauf beschreibt und nie ein fremdes Objekt nennt
+// (`A28_SIGNAL_GRENZE.nenntDeckung: true`, duplicate-signal.ts:158-163). Die Grenze, die wirklich
+// trägt, ist die inhaltliche: kein Feld für die Gegenseite — weder Kennung noch Titel noch Inhalt
+// (`nenntGegenseite: false`, `nenntInhalt: false`). Wer eines ergänzen wollte, müsste erst den Kern
+// ändern und käme an dessen Tests nicht vorbei (services/app/src/duplicate-signal.test.ts G-1/G-2,
+// tests/ko/a28-signal-*.test.ts).
+
+/**
+ * JOB 3032 (N5) — WIE WEIT DER PRÜFLAUF REICHTE, DER DIESES EIGENE OBJEKT ANGESEHEN HAT.
+ * Spiegel von duplicate-signal.ts:73; Bedeutung und Rangfolge stehen dort.
+ */
+export type DeckungsLage = "vollstaendig" | "unvollstaendig" | "ohne_protokoll" | "kein_lauf";
+
+/**
+ * Die Deckungslage EINES eigenen Objekts. Spiegel von duplicate-signal.ts:83-89.
+ *
+ * `null` IST NICHT `0`: `0` hieße „gegen null geprüft" (eine Auskunft), `null` heißt „darüber liegt
+ * keine Auskunft vor" (keine). Die Oberfläche normalisiert deshalb NIRGENDS `null` auf `0` — sonst
+ * entstünde aus einem fehlenden Protokoll die Zahl „0 von 0", die niemand gemessen hat.
+ */
+export interface Deckung {
+  /** `coverage.completed`, roh. `null`, wenn kein Abdeckungsprotokoll vorliegt. */
+  geprueft: number | null;
+  /** `coverage.available`, roh. `null`, wenn kein Abdeckungsprotokoll vorliegt. */
+  bestand: number | null;
+  lage: DeckungsLage;
+}
+
 export interface EigenerBefund {
   /** Das EIGENE Objekt, an dem das Signal hängt. */
   koId: string;
@@ -241,6 +268,11 @@ export interface EigenerBefund {
   dublette: boolean;
   /** Es gibt mindestens einen offenen Konflikt an diesem Objekt. */
   konflikt: boolean;
+  /**
+   * JOB 3032 (N5): die Reichweite des Laufs, der DIESES Objekt angesehen hat. Pflichtfeld wie im
+   * Kern (duplicate-signal.ts:140) — die Route liefert es seit `1.0.0-beta.1.44` an jedem Eintrag.
+   */
+  deckung: Deckung;
 }
 
 export interface KnowledgeObject {

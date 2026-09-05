@@ -144,10 +144,34 @@ export const ABSATZ_2 =
   "Vollverschweißte Hohlprofile sind in Lebensmittel- und Spritzzonen zu vermeiden, weil ihre Dichtheit langfristig nicht garantiert werden kann.";
 
 /**
- * Baut den Bestand, startet die echte App und öffnet die gebaute Oberfläche in Chromium.
- * `pfad` ist der Seitenpfad (z. B. `/bibliothek`).
+ * JOB 3068 (N5): der Haken für Bestände, die diese Vorrichtung nicht selbst herstellt.
+ *
+ * Er wird gebraucht, weil manche Lagen keinen Weg über die API haben: eine offene Überschneidung
+ * und das Abdeckungsprotokoll eines KI-Laufs entstehen im Betrieb aus dem Erkennungslauf, nicht aus
+ * einem Aufruf der Oberfläche. Der Haken bekommt deshalb die ECHTEN Dienste — kein Nachbau, kein
+ * zweiter Weg —, und er läuft VOR dem Öffnen des Browsers, damit die erste Antwort schon stimmt.
  */
-export async function h4Stand(pfad: string, email: string): Promise<H4Stand> {
+export interface H4Vorbereitung {
+  services: ReturnType<typeof buildServices>;
+  app: ReturnType<typeof buildApp>;
+  /** Die Kennung des angemeldeten Autors — „eigen" hängt an ihr. */
+  autorId: string;
+  /** Der freigegebene Eintrag (`TITEL_FREI`). */
+  freiId: string;
+  /** Der offene Eintrag (`TITEL_OFFEN`). */
+  offenId: string;
+}
+
+/**
+ * Baut den Bestand, startet die echte App und öffnet die gebaute Oberfläche in Chromium.
+ * `pfad` ist der Seitenpfad (z. B. `/bibliothek`); `:frei` darin wird durch die Kennung des
+ * freigegebenen Eintrags ersetzt, `:offen` durch die des offenen.
+ */
+export async function h4Stand(
+  pfad: string,
+  email: string,
+  vorbereiten?: (z: H4Vorbereitung) => Promise<void>,
+): Promise<H4Stand> {
   if (!existsSync(join(DIST, "index.html"))) {
     throw new Error("apps/web/dist fehlt — vorher ./tools/build (im Tor läuft es immer)");
   }
@@ -223,6 +247,16 @@ export async function h4Stand(pfad: string, email: string): Promise<H4Stand> {
     );
   }
 
+  if (vorbereiten) {
+    await vorbereiten({
+      services,
+      app,
+      autorId,
+      freiId: frei.id,
+      offenId: offen.id,
+    });
+  }
+
   const require = createRequire(import.meta.url);
   const { chromium } = require("playwright") as {
     chromium: { launch(o: Record<string, unknown>): Promise<Browser> };
@@ -263,7 +297,7 @@ export async function h4Stand(pfad: string, email: string): Promise<H4Stand> {
     const d = distDatei(url.pathname);
     await route.fulfill({ status: 200, body: d.body, contentType: d.typ });
   });
-  await seite.goto(`${ORIGIN}${pfad.replace(":frei", frei.id)}`, {
+  await seite.goto(`${ORIGIN}${pfad.replace(":frei", frei.id).replace(":offen", offen.id)}`, {
     waitUntil: "load",
     timeout: 60_000,
   });

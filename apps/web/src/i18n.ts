@@ -2818,6 +2818,26 @@ const de = {
   "kollision.wegKonflikte": "Konflikte ansehen",
   "kollision.wegDuplikate": "Duplikate ansehen",
   "kollision.keineGegenseite": "Das andere Objekt wird hier nicht genannt.",
+  // JOB 3068 / N5: „gegen wie viel wurde geprüft". VIER LAGEN, VIER SÄTZE — die Vierteilung von
+  // `DeckungsLage` (duplicate-signal.ts:73). Jeder Satz benennt AUSDRÜCKLICH, was gezählt wird:
+  // Einträge im Bestand, gegen die dieser Eintrag geprüft wurde (Lehre JOB 3067 R1 — eine Zahl ohne
+  // Bezugsgröße ist keine Auskunft). `ohneProtokoll` und `keinLauf` nennen KEINE Zahl und dürfen nie
+  // denselben Satz tragen: „ein Lauf, dessen Reichweite unbelegt ist" und „gar kein Lauf" sind zwei
+  // verschiedene Aussagen, und keine von beiden heißt „geprüft, nichts gefunden".
+  "kollision.deckung.vollstaendig":
+    "Gegen {{geprueft}} von {{bestand}} Einträgen im Bestand geprüft — der Lauf ist als vollständig belegt.",
+  "kollision.deckung.unvollstaendig":
+    "Gegen {{geprueft}} von {{bestand}} Einträgen im Bestand geprüft — der Lauf ist nicht als vollständig belegt.",
+  // JOB 3068 R2 (bens Korrekturpflicht 1): derselbe unvollständige Lauf, aber OHNE Abdeckungs-
+  // protokoll — ein gültiger Serverzustand (`status: "failed"`/`"pending"`, beide Zahlen `null`).
+  // Der Satz oben stand dann mit zwei Löchern da („Gegen  von  Einträgen …"). Hier steht deshalb
+  // die schwächere, ganze Aussage: nicht vollständig belegt UND Reichweite unbekannt, ohne Ziffer.
+  "kollision.deckung.unvollstaendigOhneZahlen":
+    "Der Prüflauf zu diesem Eintrag ist nicht als vollständig belegt; gegen wie viele Einträge im Bestand er ihn geprüft hat, ist unbekannt.",
+  "kollision.deckung.ohneProtokoll":
+    "Ein Prüflauf hat diesen Eintrag angesehen; gegen wie viele Einträge im Bestand er ihn geprüft hat, ist nicht belegt.",
+  "kollision.deckung.keinLauf":
+    "Zu diesem Eintrag ist kein Prüflauf vermerkt; gegen wie viele Einträge im Bestand er geprüft wurde, ist damit unbekannt.",
   "con.type.truth": "Wahrheit",
   "con.type.experience": "Erfahrung",
   "con.type.context": "Kontext",
@@ -7554,6 +7574,18 @@ const en: typeof de = {
   "kollision.wegKonflikte": "View conflicts",
   "kollision.wegDuplikate": "View duplicates",
   "kollision.keineGegenseite": "The other object is not named here.",
+  // JOB 3068 / N5 — see the German block: every sentence names WHAT is counted (entries in the
+  // library this entry was checked against); the two undocumented cases name no number at all.
+  "kollision.deckung.vollstaendig":
+    "Checked against {{geprueft}} of {{bestand}} entries in the library — the run is documented as complete.",
+  "kollision.deckung.unvollstaendig":
+    "Checked against {{geprueft}} of {{bestand}} entries in the library — the run is not documented as complete.",
+  "kollision.deckung.unvollstaendigOhneZahlen":
+    "The check run for this entry is not documented as complete; how many entries in the library it was checked against is unknown.",
+  "kollision.deckung.ohneProtokoll":
+    "A check run looked at this entry; how many entries in the library it was checked against is not documented.",
+  "kollision.deckung.keinLauf":
+    "No check run is recorded for this entry; how many entries in the library it was checked against is therefore unknown.",
   "con.type.truth": "Truth",
   "con.type.experience": "Experience",
   "con.type.context": "Context",
@@ -11937,6 +11969,18 @@ const nl: typeof de = {
   "kollision.wegKonflikte": "Conflicten bekijken",
   "kollision.wegDuplikate": "Duplicaten bekijken",
   "kollision.keineGegenseite": "Het andere object wordt hier niet genoemd.",
+  // JOB 3068 / N5 — zie het Duitse blok: elke zin benoemt WAT er geteld wordt (items in de
+  // bibliotheek waartegen dit item is gecontroleerd); de twee onbewezen gevallen noemen geen getal.
+  "kollision.deckung.vollstaendig":
+    "Gecontroleerd tegen {{geprueft}} van {{bestand}} items in de bibliotheek — de controleronde is als volledig aangetoond.",
+  "kollision.deckung.unvollstaendig":
+    "Gecontroleerd tegen {{geprueft}} van {{bestand}} items in de bibliotheek — de controleronde is niet als volledig aangetoond.",
+  "kollision.deckung.unvollstaendigOhneZahlen":
+    "De controleronde voor dit item is niet als volledig aangetoond; tegen hoeveel items in de bibliotheek het is gecontroleerd, is onbekend.",
+  "kollision.deckung.ohneProtokoll":
+    "Een controleronde heeft dit item bekeken; tegen hoeveel items in de bibliotheek het is gecontroleerd, is niet vastgelegd.",
+  "kollision.deckung.keinLauf":
+    "Voor dit item is geen controleronde vastgelegd; tegen hoeveel items in de bibliotheek het is gecontroleerd, is daarmee onbekend.",
   "con.type.truth": "Waarheid",
   "con.type.experience": "Ervaring",
   "con.type.context": "Context",
