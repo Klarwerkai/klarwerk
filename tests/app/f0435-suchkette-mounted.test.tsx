@@ -55,6 +55,10 @@ import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
 import i18n from "../../apps/web/src/i18n";
+// Die Entprellung der Bibliothekssuche ist PRODUKTVERHALTEN. Dieser Test liest ihre Dauer aus dem
+// Produktmodul, statt eine Zahl abzuschreiben — wird sie dort geaendert, wartet dieser Test
+// automatisch mit. Dieselbe Bindung benutzt `tests/app/job2689-prozentzeichen-bibliothek-mounted.test.tsx:132`.
+import { LIBRARY_SEARCH_DEBOUNCE_MS } from "../../apps/web/src/lib/useDebouncedValue";
 import { Library } from "../../apps/web/src/pages/Library";
 import { buildApp, buildServices } from "../../services/app/src/build-app";
 
@@ -82,12 +86,42 @@ let token = "";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-function bruecke(): void {
+/**
+ * Ein Abruf, wie die Bruecke ihn gesehen hat. `status === null` heisst: die Antwort steht noch aus.
+ * Genau dieser Zustand ist der Grund fuer diese Aufzeichnung — er ist die einzige Lage, in der
+ * KEINE Zusicherung greifen darf (REGELN §7: laden ist kein Urteil).
+ */
+interface Abruf {
+  methode: string;
+  url: string;
+  status: number | null;
+  /** Der Kopf ist nicht das Ergebnis: `text()` laeuft NACH dem Statuscode und kann eigen dauern. */
+  koerper: "offen" | "wird gelesen" | "gelesen";
+}
+
+let abrufe: Abruf[] = [];
+
+const SUCHPFAD = "/api/library/search";
+
+/**
+ * @param verzoegerungMs Kuenstliche Verzoegerung, bis der KOPF der Antwort steht (Statuscode).
+ * @param koerperVerzoegerungMs Kuenstliche Verzoegerung, bis der KOERPER gelesen ist (`text()`).
+ *
+ * Beide sitzen IM Test, nicht im Produkt — und sie sind bewusst getrennt: ein Statuscode ist noch
+ * kein Ergebnis. `fetch` loest die Antwort auf, ehe der Koerper gelesen ist; wer nur den Kopf
+ * beobachtet, haelt eine Seite fuer fertig, die noch nichts hat (JOB 3078 R1, Befund BEN-1).
+ */
+function bruecke(verzoegerungMs = 0, koerperVerzoegerungMs = 0): void {
   (globalThis as unknown as { fetch: unknown }).fetch = async (
     input: unknown,
     init: { method?: string; body?: string; headers?: HeadersInit } = {},
   ) => {
     const url = String(input);
+    const abruf: Abruf = { methode: init.method ?? "GET", url, status: null, koerper: "offen" };
+    abrufe.push(abruf);
+    if (verzoegerungMs > 0) {
+      await new Promise((r) => setTimeout(r, verzoegerungMs));
+    }
     const headers: Record<string, string> = {};
     new Headers(init.headers).forEach((value, key) => {
       headers[key] = value;
@@ -101,11 +135,19 @@ function bruecke(): void {
       headers,
       ...(init.body !== undefined ? { payload: init.body } : {}),
     });
+    abruf.status = res.statusCode;
     return {
       ok: res.statusCode < 400,
       status: res.statusCode,
       statusText: "",
-      text: async () => res.body,
+      text: async () => {
+        abruf.koerper = "wird gelesen";
+        if (koerperVerzoegerungMs > 0) {
+          await new Promise((r) => setTimeout(r, koerperVerzoegerungMs));
+        }
+        abruf.koerper = "gelesen";
+        return res.body;
+      },
     };
   };
 }
@@ -155,11 +197,161 @@ async function suchAntwort(q: string): Promise<{ title: string; captionTexts?: s
   return JSON.parse(res.body) as { title: string; captionTexts?: string[] }[];
 }
 
-const flush = async (): Promise<void> => {
-  for (let i = 0; i < 40; i++) {
-    await new Promise((r) => setTimeout(r, 0));
+// ==================================================================================================
+// DAS WARTEN — AN EREIGNISSEN, NICHT AN GERATENEN TAKTEN (JOB 3078 · W1)
+// ==================================================================================================
+//
+// DER BEFUND: Bis zu diesem Auftrag wartete diese Datei ausschliesslich ueber eine feste Zahl von
+// Takten (`for (let i = 0; i < 40; i++) await new Promise(r => setTimeout(r, 0))`). Die Bibliothek
+// entprellt die Sucheingabe aber um `LIBRARY_SEARCH_DEBOUNCE_MS` = 300 ms
+// (`apps/web/src/components/bibliothek/BibliothekFlaeche.tsx:257`). Vierzig Nulltakte sind weder
+// 0 ms noch 300 ms — wie viel echte Zeit dabei vergeht, haengt allein an der Auslastung des
+// Rechners. Im Tor laufen alle Dateien nebenher; mal reichte es, mal nicht. Gezaehlt in
+// `protokoll.jsonl`: VIER Tor-Wiederholungen am 04./05.09.2026 (JOB 3052 R7, JOB 3056 R3 und R9,
+// JOB 3057 R1) mit dieser Datei als einziger Ursache — bei Jobs, die sie nicht angefasst haben.
+// Das empfangene Bild war jedes Mal dasselbe: die Seite stand noch im LADEZUSTAND.
+//
+// DIE ABLOESUNG: Gewartet wird auf den BEOBACHTETEN Zustand (der Abruf ist durch die Bruecke
+// gelaufen und beantwortet; die Liste ist gezeichnet und ruht) — mit hartem Deckel. Dieselbe
+// Bauform hat Codex am 05.09. abgenommen; das Vorbild steht in
+// `tests/app/job2689-prozentzeichen-bibliothek-mounted.test.tsx:208-226`.
+//
+// DIE ZAEHNE BLEIBEN: Kommt gar nichts, laeuft die Schleife aus und der Fall faellt — aber mit
+// einer Meldung, die die Station, die beobachteten Abrufe samt Statuscode und den zuletzt
+// sichtbaren Seitentext nennt. Antwortet der Server erfolgreich mit null Treffern, faellt der Fall
+// SOFORT nach der Antwort an seiner Zusicherung, nicht erst am Deckel: „leer" wird nie zu „noch
+// nicht fertig" umgedeutet.
+const WARTEDECKEL_MS = 5_000;
+
+/** Ein React-Takt: `act` laesst Effekte, Timer und Neuanstriche wirklich durchlaufen. */
+async function tick(ms: number): Promise<void> {
+  await act(async () => {
+    await new Promise((r) => setTimeout(r, ms));
+  });
+}
+
+/**
+ * Was die Bruecke gesehen hat — Statuscode UND Zustand des Antwortkoerpers.
+ *
+ * Der Koerper gehoert hier hin, nicht nur der Kopf (JOB 3078 R2): eine Zeile „→ 200" allein liest
+ * sich wie „der Server hat geantwortet", waehrend der Koerper noch haengt und die Seite nichts hat.
+ * Gemessen an Gegenprobe E: ohne diese Angabe nannte die Meldung nur `→ 200`, und der Mensch haette
+ * am falschen Ende gesucht.
+ */
+function abrufBild(): string {
+  if (abrufe.length === 0) {
+    return "keine";
   }
-};
+  return abrufe
+    .map((a) => {
+      const kopf = a.status === null ? "OFFEN (Antwort steht aus)" : String(a.status);
+      const koerper =
+        a.koerper === "gelesen"
+          ? ""
+          : a.koerper === "wird gelesen"
+            ? " · Koerper: WIRD NOCH GELESEN"
+            : " · Koerper: nie gelesen";
+      return `${a.methode} ${a.url} → ${kopf}${koerper}`;
+    })
+    .join("\n  ");
+}
+
+async function warteAuf(
+  station: string,
+  erwartet: string,
+  bedingung: () => boolean,
+): Promise<void> {
+  const start = Date.now();
+  while (!bedingung()) {
+    if (Date.now() - start >= WARTEDECKEL_MS) {
+      throw new Error(
+        [
+          `${station}: ${erwartet} — nicht eingetreten innerhalb von ${WARTEDECKEL_MS} ms.`,
+          `Abrufe durch die Bruecke:\n  ${abrufBild()}`,
+          `Zuletzt sichtbar: ${seitenText().slice(0, 700)}`,
+        ].join("\n"),
+      );
+    }
+    await tick(10);
+  }
+}
+
+/** Der Abruf der Suchroute zu genau dieser Anfrage — `undefined`, solange er nicht lief. */
+function suchabruf(q: string): Abruf | undefined {
+  const teil = `q=${encodeURIComponent(q)}`;
+  return abrufe.find((a) => a.url.includes(SUCHPFAD) && a.url.includes(teil));
+}
+
+/**
+ * Der Anstrich der Liste: eine Zeile ODER der Leersatz. Beides heisst „etwas steht fest";
+ * solange geladen wird, zeichnet `BibliothekListe.tsx:191` bewusst gar nichts.
+ */
+function listeGezeichnet(): boolean {
+  return container.querySelector('[data-testid="bib-zeile"], [data-testid="bib-leer"]') !== null;
+}
+
+/**
+ * Der Zaehler im Fuss steht auf einer ZAHL statt auf „–".
+ *
+ * Das ist die Frischeaussage der Flaeche selbst, nicht eine Nachbildung im Test: `gesamt` ist
+ * `frisch ? sorted.length : null` (`BibliothekFlaeche.tsx:698`), und `frisch` verlangt
+ * `query.data !== undefined` (`:446-448`) — also einen ERFOLGREICH ABGESCHLOSSENEN Abruf. Bei einem
+ * neuen Suchschluessel ist `data` zunaechst `undefined`, der Fuss zeigt dann
+ * `lib.liste.eintraegeUnbekannt` = „–" (`i18n.ts:3205`, `BibliothekListe.tsx:284-286`). Genau dieses
+ * „–" stand am Ende jedes geflackerten Tor-Ausfalls.
+ */
+function zaehlerSteht(): boolean {
+  const fuss = container.querySelector('[data-testid="bib-fuss"]');
+  return fuss !== null && (fuss.textContent ?? "") !== i18n.t("lib.liste.eintraegeUnbekannt");
+}
+
+/** Kein Abruf haengt: weder fehlt ein Statuscode noch wird gerade ein Antwortkoerper gelesen. */
+function nichtsOffen(): boolean {
+  return abrufe.every((a) => a.status !== null && a.koerper !== "wird gelesen");
+}
+
+/**
+ * ==================================================================================================
+ * DER ABGESCHLOSSENE ANSTRICH — UND WARUM „DER TEXT AENDERT SICH NICHT MEHR" DAFUER NICHT REICHT.
+ * ==================================================================================================
+ *
+ * Runde 1 hat hier auf TEXTRUHE gewartet: zweimal hintereinander derselbe Seitentext. BENs
+ * Gegenprobe hat das zu Recht gekippt (JOB 3078 R1, Korrekturpflicht 1) — ein LADEZUSTAND ist
+ * genauso ruhig wie ein fertiger. Verzoegert man nur das Lesen des Antwortkoerpers, steht der
+ * Statuscode langst, der Text ruht, und der Test urteilt ueber eine Seite, die noch nichts hat.
+ *
+ * Gewartet wird deshalb auf drei Aussagen, die alle die Flaeche selbst trifft, keine davon zeitlich:
+ *   1. der Abruf dieser Anfrage ist mit 200 beantwortet UND sein Koerper ist GELESEN — ein
+ *      Statuscode ist kein Ergebnis;
+ *   2. es haengt ueberhaupt kein Abruf mehr (Kopf oder Koerper);
+ *   3. die Liste zeigt eine Zeile oder den Leersatz, und der Zaehler steht auf einer Zahl statt
+ *      auf „–" — die Flaeche behauptet also selbst, einen frischen erfolgreichen Abruf zu haben.
+ *
+ * Dass zwischen 1./2. und 3. kein Anstrich verlorengehen kann, liegt an `act()`: jeder Durchgang
+ * der Warteschleife laeuft in `act`, und `act` spuelt vor der Rueckkehr alle faelligen
+ * React-Arbeiten aus. Ist der Koerper gelesen, ist die daraus folgende Neuzeichnung beim naechsten
+ * Auswerten also bereits geschehen — hier wird nicht gehofft, sondern gespuelt.
+ *
+ * Die Zaehne bleiben in beide Richtungen: eine erfolgreich LEERE Antwort erfuellt 1.-3. sofort
+ * (Leersatz plus Zahl 0), der Fall faellt dann augenblicklich an seiner Zusicherung und nicht erst
+ * am Deckel. Kommt gar nichts, laeuft der Deckel ab und die Meldung nennt Station, Abrufe und Bild.
+ */
+async function warteAufAnstrich(station: string, q: string): Promise<void> {
+  await warteAuf(
+    station,
+    "die Liste ist nach der GELESENEN Antwort neu gezeichnet (Zeile oder Leersatz) und der Zaehler steht auf einer Zahl statt auf „–“",
+    () => {
+      const a = suchabruf(q);
+      return (
+        a?.status === 200 &&
+        a.koerper === "gelesen" &&
+        nichtsOffen() &&
+        listeGezeichnet() &&
+        zaehlerSteht()
+      );
+    },
+  );
+}
 
 /** STATION 4/5 — CLIENTABRUF und RENDERER: die echte Seite, mit ihren echten Providern. */
 async function bibliothekOeffnen(): Promise<void> {
@@ -199,9 +391,14 @@ async function bibliothekOeffnen(): Promise<void> {
         ),
       ),
     );
-    await flush();
   });
-  await act(flush);
+  // (a) Nach dem Mounten: warten, bis die Liste ihren ERSTEN VOLLSTAENDIGEN Anstrich hatte —
+  // gezeichnet UND mit einer Zahl im Fuss, also aus einem abgeschlossenen Abruf, nicht im Laden.
+  await warteAuf(
+    "Station 4/5 (Bibliothek oeffnen)",
+    "die Liste hatte ihren ersten Anstrich (eine Zeile oder der Leersatz) und der Zaehler steht auf einer Zahl",
+    () => nichtsOffen() && listeGezeichnet() && zaehlerSteht(),
+  );
 }
 
 function seitenText(): string {
@@ -230,15 +427,43 @@ async function suchen(q: string): Promise<void> {
   await act(async () => {
     feld.dispatchEvent(new Event("input", { bubbles: true }));
     feld.dispatchEvent(new Event("change", { bubbles: true }));
-    await flush();
   });
-  await act(flush);
+
+  // (b) Erst die Entprellung der Flaeche — die Dauer kommt aus dem Produktmodul, nicht von hier.
+  await tick(LIBRARY_SEARCH_DEBOUNCE_MS);
+
+  await warteAuf(
+    "Station 4 (Clientabruf)",
+    `GET ${SUCHPFAD}?…q=${encodeURIComponent(q)}… ist durch die Bruecke gelaufen (Entprellung ausgeloest?)`,
+    () => suchabruf(q) !== undefined,
+  );
+  await warteAuf(
+    "Station 4 (Antwortkopf)",
+    `GET ${SUCHPFAD}?…q=${encodeURIComponent(q)}… hat einen Statuscode (antwortet der Server?)`,
+    () => suchabruf(q)?.status != null,
+  );
+  const antwort = suchabruf(q);
+  if (antwort?.status !== 200) {
+    throw new Error(
+      `Station 4 (Antwortkopf): Die Suchroute antwortete mit Status ${antwort?.status}, nicht 200.\nAbrufe durch die Bruecke:\n  ${abrufBild()}`,
+    );
+  }
+
+  await warteAuf(
+    "Station 4 (Antwortkoerper)",
+    `der Koerper von GET ${SUCHPFAD}?…q=${encodeURIComponent(q)}… ist GELESEN (ein Statuscode ist kein Ergebnis)`,
+    () => suchabruf(q)?.koerper === "gelesen",
+  );
+
+  // (c) Und danach der Anstrich: die Flaeche hat die gelesene Antwort wirklich gezeichnet.
+  await warteAufAnstrich("Station 5 (Renderer)", q);
 }
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
   localStorage.clear();
   sessionStorage.clear();
+  abrufe = [];
   await serverStarten();
   bruecke();
 });
@@ -276,6 +501,42 @@ describe("F-0435 · die Kette von der gespeicherten Fussnote bis zur sichtbaren 
     // ── STATION 6: DIE FUNDSTELLENKENNZEICHNUNG ──────────────────────────────────────────────
     // „Treffer in · Bildbeschreibung" — der Nutzer sieht nicht nur DASS, sondern WO getroffen
     // wurde. Genau diese Kennzeichnung war es, die ohne die Blockgrenzen-Regel ausblieb.
+    expect(seitenText()).toContain(i18n.t("lib.matchIn"));
+    expect(seitenText()).toContain(i18n.t("lib.match.caption"));
+  });
+
+  // ── DER BEWEIS, DASS DIE ZEITABHAENGIGKEIT WEG IST (JOB 3078 · W1) ────────────────────────────
+  // Derselbe Weg, nur antwortet die Bruecke um 400 ms verzoegert — die Groessenordnung, die eine
+  // ausgelastete Maschine im Tor erzeugt. Gegen den frueheren Wartecode (40 Nulltakte) endete
+  // dieser Fall deterministisch an `expect(seitenText()).toContain(TITEL)`, mit genau dem Bild des
+  // echten Tor-Ausfalls: die Seite noch im Ladezustand („…AlleValidiertOffenBereichFilter–").
+  // Fuenfzehnmal Glueck haben und diesen Fall bestehen sind zwei verschiedene Aussagen.
+  it("dieselbe Kette, wenn der Server 400 ms braucht — die Antwort kommt spaeter, nicht nie", async () => {
+    await objektAnlegen();
+    bruecke(400);
+
+    await bibliothekOeffnen();
+    await suchen(ANFRAGE);
+
+    expect(seitenText()).toContain(TITEL);
+    expect(seitenText()).toContain(i18n.t("lib.matchIn"));
+    expect(seitenText()).toContain(i18n.t("lib.match.caption"));
+  });
+
+  // ── DER KOPF IST NICHT DAS ERGEBNIS (JOB 3078 R2, Korrekturpflicht 1 aus BENs Befund) ─────────
+  // Runde 1 hat den Wettlauf nur halb geschlossen. Der Statuscode steht, sobald `app.inject`
+  // zurueckkommt; der KOERPER wird erst danach gelesen, und react-query kann die Liste erst dann
+  // zeichnen. BENs Gegenprobe verzoegert genau diese zweite Haelfte — und Runde 1 fiel prompt
+  // wieder in den Ladezustand, mit demselben Bild wie der echte Tor-Ausfall. Genau deshalb steht
+  // dieser Fall hier dauerhaft: er ist die Regression fuer „200 gelesen heisst noch nicht gezeigt".
+  it("dieselbe Kette, wenn nur der ANTWORTKOERPER 400 ms braucht — ein Statuscode ist kein Ergebnis", async () => {
+    await objektAnlegen();
+    bruecke(0, 400);
+
+    await bibliothekOeffnen();
+    await suchen(ANFRAGE);
+
+    expect(seitenText()).toContain(TITEL);
     expect(seitenText()).toContain(i18n.t("lib.matchIn"));
     expect(seitenText()).toContain(i18n.t("lib.match.caption"));
   });
