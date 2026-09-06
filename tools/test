@@ -30,6 +30,183 @@ export KLARWERK_SKIP_KEYCHAIN="${KLARWERK_SKIP_KEYCHAIN:-1}"
 # Deshalb VOR dem Lauf, nicht danach: ein abgebrochener Lauf kommt nie zu einer Aufräumzeile am
 # Ende. Der nächste Lauf räumt auf, was der vorige liegengelassen hat — das fängt genau den Fall,
 # der die Reste überhaupt erzeugt.
-rm -f vitest.config.ts.timestamp-*.mjs
+rm -f vitest.config.ts.timestamp-*.mjs vitest.browser.config.ts.timestamp-*.mjs
 
-npx vitest run "$@"
+# ==================================================================================================
+# JOB 3131 T2 — ZWEI AUFRUFE STATT EINEM: die Browserlast wird begrenzt, ohne einen Test zu verlieren.
+# ==================================================================================================
+#
+# VORHER stand hier `npx vitest run "$@"` — EIN Aufruf über alle Testdateien, ohne Prozessgrenze.
+# Vitest 2 verteilt die dann auf alle Kerne. Darunter sind die Dateien, die einen echten Chromium
+# starten; auf zwölf Kernen liefen so bis zu zwölf Browser gleichzeitig. Gemessene Folge: Last
+# 100–140, Lastbremse des Taktgebers, Tor-Median 9,1 Minuten, Warteschlange bis 55 Minuten.
+#
+# NACHHER: erst die Chromium-Dateien mit EINEM Fork (also eine nach der anderen), dann der Rest mit
+# sechs. Welche Datei in welche Gruppe gehört, berechnet der Importgraph — siehe
+# `tests/tor-inventar/browser-gruppe.ts`; dass beide Gruppen zusammen exakt der bisherige Bestand
+# sind, misst `tests/tor-inventar/tor-bestand-vollstaendig.test.ts` am echten Collector.
+#
+# WARUM ZWEI AUFRUFE UND KEIN WORKSPACE: `fileParallelism`, `maxWorkers`, `maxThreads` und `maxForks`
+# sind in Vitest 2.1.9 GLOBALE Optionen. In einem Workspace-Projekt notiert, werden sie von den
+# Pool-Fabriken nicht gelesen — die Aufteilung sähe aus wie eine Begrenzung und wäre keine (Codex,
+# technischer Nachtrag T2). Zwei Aufrufe haben je einen eigenen Wurzelkontext und je eine wirklich
+# wirksame Grenze.
+#
+# WARUM `forks` UND `minForks` DAZU: Vitest 2 nimmt standardmäßig den `forks`-Pool. Die bis heute
+# überall mitgegebenen `--poolOptions.threads.maxThreads=…` haben deshalb NIE etwas begrenzt — sie
+# stellen den Thread-Pool ein, der gar nicht läuft. Und `maxForks` allein genügt nicht: `minForks`
+# steht ohne Angabe auf der Kernzahl, und Tinypool bricht den Lauf dann mit „options.minThreads and
+# options.maxThreads must not conflict" ab (gemessen 06.09. mit `--poolOptions.forks.maxForks=4`).
+# Beide Grenzen gehören also zusammen.
+#
+# DIESE DATEI REICHT DAFÜR NICHT AUS, und das ist in Runde 2 teuer geworden: der Wächterlauf des
+# Taktgebers, die Bahnen und CI rufen `npx vitest` DIREKT auf und sehen `tools/test` nie. Der
+# Wächterlauf schickt `--poolOptions.forks.maxForks=4` ohne Untergrenze und starb genau so. Die
+# Untergrenze steht deshalb ZUSÄTZLICH in `vitest.config.ts` (`GEMEINSAM.minWorkers: 1`), wo sie jeden
+# Aufruf erreicht; die Zeilen hier sind die ausdrückliche Angabe des Tors und überstimmen sie.
+# Festgehalten in `tests/tor-inventar/waechterlauf-lastflag.test.ts`.
+
+# --------------------------------------------------------------------------------------------------
+# Durchgereichte Flags: Lastflags gehören diesem Skript, alles andere dem Aufrufer.
+# --------------------------------------------------------------------------------------------------
+# Der Taktgeber reicht `--poolOptions.threads.maxThreads=6 --poolOptions.threads.minThreads=1` durch
+# (`takt/tor.sh`). Diese Flags dürfen die Grenzen unten nicht überschreiben — sonst hinge das
+# Lastbudget wieder am Aufrufer, und genau das ist die Krankheit, die T2 behandelt. Sie werden
+# deshalb verworfen und benannt, nicht stillschweigend geschluckt. Alles andere (Dateifilter, `-t`,
+# `--reporter`) geht unverändert an BEIDE Aufrufe.
+#
+# ==================================================================================================
+# WARUM HIER NICHT MEHR NACH SCHREIBWEISEN GESUCHT WIRD, SONDERN NACH NAMEN (Runde 4, Codex-Befund).
+# ==================================================================================================
+# Bis Runde 3 stand hier eine Liste wörtlicher Muster (`--poolOptions.*`, `--maxWorkers=*`, …). Codex
+# hat sie mit EINEM Aufruf ausgehebelt:
+#
+#     ./tools/test --pool-options.forks.maxForks=4 …   →  gemessen VIER gleichzeitige Browser-Worker
+#
+# Der Grund ist die Kommandozeilenbibliothek von Vitest (cac): sie führt `--pool-options.…` und
+# `--poolOptions.…` auf dieselbe Option zurück. Für Vitest sind beide Schreibweisen gültig, für eine
+# Musterliste sind es zwei verschiedene Zeichenketten — und jede weitere Bindestrich-Variante wäre
+# ein weiteres Loch. Eine Liste von Schreibweisen ist deshalb die falsche Bauart.
+#
+# STATTDESSEN wird jedes Argument auf seinen NAMEN normalisiert (führende Striche weg, alles vor dem
+# `=`, Kleinschreibung, Binde- und Unterstriche entfernt) und dieser Name gegen die Lastoptionen
+# gelegt. `--pool-options.forks.maxForks`, `--poolOptions.forks.maxForks` und `--POOL_OPTIONS.…`
+# ergeben denselben Namen `pooloptions.forks.maxforks` und fallen alle drei heraus.
+#
+# ZWEITE SICHERUNG, unabhängig davon: die eigenen Grenzen stehen unten ZULETZT in der Argumentliste,
+# hinter allem Durchgereichten. Bei doppelter Angabe gewinnt in cac die letzte — käme also je eine
+# Schreibweise durch dieses Sieb, wäre sie trotzdem überstimmt. Beides zusammen misst
+# `tests/tor-inventar/lastgrenze-wrapper.test.ts` an echten Unterprozessen.
+normalisiere() {
+  printf '%s' "${1%%=*}" | sed 's/^-*//' | tr 'A-Z' 'a-z' | tr -d '_-'
+}
+
+weiter=()
+verworfen=""
+filter=0
+hat_reporter=0
+naechstes_ist_wert=0
+for arg in "$@"; do
+  if [ "$naechstes_ist_wert" = "1" ]; then
+    verworfen="$verworfen $arg"; naechstes_ist_wert=0; continue
+  fi
+  case "$arg" in
+    -*)
+      case "$(normalisiere "$arg")" in
+        # Optionen MIT Wert. Ohne `=` steht der Wert im nächsten Argument und muss mit weg — sonst
+        # hielte Vitest ihn für einen Dateifilter und der Aufruf fände nichts.
+        pool|pooloptions*|maxworkers|minworkers|maxthreads|minthreads|maxforks|minforks)
+          verworfen="$verworfen $arg"
+          case "$arg" in *=*) ;; *) naechstes_ist_wert=1 ;; esac ;;
+        # Schalter OHNE Wert — sie dürfen das folgende Argument NICHT mitnehmen. `isolate` gehört
+        # dazu, weil der Auftrag die Isolierung ausdrücklich unverändert zusagt (5.2): ein
+        # durchgereichtes `--no-isolate` würde sie still aufheben.
+        fileparallelism|nofileparallelism|isolate|noisolate)
+          verworfen="$verworfen $arg" ;;
+        # Kein Lastflag, aber gemerkt: wer seine eigene Berichterstattung mitbringt, bekommt sie
+        # unangetastet — dann haengt sich das Laufzeitprotokoll unten NICHT dazwischen.
+        reporter|reporters)
+          hat_reporter=1; weiter+=("$arg") ;;
+        *) weiter+=("$arg") ;;
+      esac ;;
+    *)  weiter+=("$arg"); filter=1 ;;
+  esac
+done
+if [ -n "$verworfen" ]; then
+  echo "  ⓘ Lastflags verworfen (JOB 3131 T2 setzt sie je Aufruf selbst):$verworfen"
+fi
+
+# Nennt der Aufrufer einen Dateifilter, trifft er womöglich nur eine der beiden Gruppen. Dann ist
+# eine leere Gruppe kein Fehler. OHNE Filter ist sie einer — dann fehlt wirklich etwas, und das darf
+# nicht als „grün" durchgehen.
+leerlauf=()
+if [ "$filter" = "1" ]; then leerlauf=(--passWithNoTests); fi
+
+# Wieviele für den Rest? Sechs von zwölf Kernen. Die Aufrufe laufen NACHEINANDER, sechs wären also
+# als Spitze verkraftbar — aber der Taktgeber fährt bis zu zwei Tore gleichzeitig
+# (`takt/schritte.py`, MAX_TORE_PARALLEL = 2), und zwei mal sechs ist genau die Kernzahl. Übersteuerbar
+# für Messungen, nicht für den Regelbetrieb.
+REST_FORKS="${KLARWERK_TEST_FORKS:-6}"
+
+# --------------------------------------------------------------------------------------------------
+# DAS LAUFZEITPROTOKOLL DES BROWSER-AUFRUFS — der Wirkungsnachweis, jedes Mal statt einmal.
+# --------------------------------------------------------------------------------------------------
+# Die Zusage dieses Skripts lautet: in der Browsergruppe läuft höchstens EINE Testdatei gleichzeitig.
+# Bis Runde 3 war das eine Behauptung mit einer Messung von Hand daneben — und genau daran ist sie
+# zerbrochen: Codex hat mit `--pool-options.forks.maxForks=4` VIER gleichzeitige Worker gemessen,
+# während die Ausgabe weiter „EIN Fork" sagte. Eine Zusage, die niemand nachrechnet, ist keine.
+#
+# Deshalb schreibt der Browser-Aufruf ab jetzt IMMER mit, wann welche Datei lief: der eingebaute
+# JSON-Bericht von Vitest führt je Datei `startTime` und `endTime` (aus den Fallzeiten gebildet,
+# `node_modules/vitest/dist/chunks/index.*.js`, Klasse `JsonReporter`). Überlappen sich zwei
+# Zeitfenster, liefen zwei Dateien gleichzeitig. `tests/tor-inventar/lastgrenze-wrapper.test.ts`
+# liest das Protokoll im ZWEITEN Aufruf (der läuft danach) und wird rot, wenn sich etwas überlappt.
+#
+# `--reporter=default` steht ausdrücklich daneben: die lesbare Tor-Ausgabe (Dateiname, Testname,
+# Dauer, erster Fehler) bleibt, wie sie war (Auftrag 5.4). Bringt der Aufrufer eine eigene
+# Berichterstattung mit, bekommt er seine und dieses Protokoll entfällt — dann bleibt der Messfall
+# ohne Grundlage und sagt das auch, statt still grün zu sein.
+PROTOKOLL=".local/run/browsergruppe-laufzeiten.json"
+rm -f "$PROTOKOLL"
+mkdir -p .local/run
+protokoll_flags=()
+if [ "$hat_reporter" = "0" ]; then
+  protokoll_flags=(--reporter=default --reporter=json "--outputFile.json=$PROTOKOLL")
+fi
+
+# Beide Aufrufe werden gefahren, auch wenn der erste rot ist. Vorher meldete EIN Lauf ALLE roten
+# Dateien auf einmal; bräche hier nach dem Browser-Aufruf ab, bekäme die Bahn weniger zu sehen als
+# vorher und müsste eine Runde mehr drehen, um denselben Stand zu erfahren.
+# `${x[@]+"${x[@]}"}` und nicht `"${x[@]}"`: unter `set -u` ist die Erweiterung eines LEEREN Feldes
+# in bash 3.2 — der Fassung, die macOS mitbringt — ein „unbound variable" und risse den Lauf ab.
+#
+# DIE EIGENEN GRENZEN STEHEN ZULETZT, hinter `${weiter[@]}`. Das ist keine Kosmetik: cac nimmt bei
+# doppelt angegebener Option die LETZTE. Käme also je eine Schreibweise durch das Sieb oben, stünde
+# sie vor diesen Zeilen und würde überstimmt. Sieb und Reihenfolge sichern dieselbe Zusage zweimal.
+browser_rc=0
+echo "▶ test 1/2 · browser (Chromium-Dateien, EIN Fork, nacheinander)"
+KLARWERK_TESTGRUPPE=browser npx vitest run \
+  --config vitest.browser.config.ts \
+  ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} \
+  ${protokoll_flags[@]+"${protokoll_flags[@]}"} \
+  --pool=forks --poolOptions.forks.minForks=1 --poolOptions.forks.maxForks=1 || browser_rc=$?
+
+# Das Protokoll wird nur dann zur Pflichtmessung erklärt, wenn es auch etwas Vollständiges enthält:
+# der Aufruf lief ohne Dateifilter (also über die ganze Gruppe), ohne fremde Berichterstattung, und
+# er ist durchgelaufen. Sonst bleibt die Variable ungesetzt und der Messfall sagt „nicht gemessen",
+# statt eine Teilmenge als Beweis auszugeben.
+if [ "$browser_rc" = "0" ] && [ "$filter" = "0" ] && [ "$hat_reporter" = "0" ]; then
+  export KLARWERK_BROWSERLAUF="$PROTOKOLL"
+fi
+
+rest_rc=0
+echo "▶ test 2/2 · rest (alles übrige, ${REST_FORKS} Forks)"
+KLARWERK_TESTGRUPPE=rest npx vitest run \
+  ${leerlauf[@]+"${leerlauf[@]}"} ${weiter[@]+"${weiter[@]}"} \
+  --pool=forks --poolOptions.forks.minForks=1 --poolOptions.forks.maxForks="$REST_FORKS" || rest_rc=$?
+
+if [ "$browser_rc" != "0" ] || [ "$rest_rc" != "0" ]; then
+  echo "✖ test rot — browser=$browser_rc rest=$rest_rc"
+  if [ "$browser_rc" != "0" ]; then exit "$browser_rc"; fi
+  exit "$rest_rc"
+fi
