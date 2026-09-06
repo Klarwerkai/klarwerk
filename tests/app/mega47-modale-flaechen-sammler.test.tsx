@@ -4286,13 +4286,28 @@ describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () =
     // (`tools/modalgrenze.ts:68-98`) und fallen genau darunter. NACHGEMESSEN, nicht addiert: der Lauf
     // dieses Arbeitsbaums nach der Konfliktauflösung. KEINE REGISTRIERUNG NÖTIG für beide — Beide
     // D3-Suchrichtungen bleiben bei null unerklärten Restfällen (der Fall direkt darunter).
+    //
+    // JOB 3101 (UX-04): von 457 auf 458 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
+    // die Ableitung der Aufgabenansicht aus der Adresszeile und dem Verlaufseintrag, damit der
+    // gewählte Filter und die Listenstelle das Öffnen einer Aufgabe und den Browser-Zurück
+    // überleben:
+    //
+    //     + apps/web/src/lib/taskViewState.ts
+    //
+    // Sie ist wie `netzzustand.ts` und `sprachwahl.ts` ein DOM-freier Helfer (reine Funktionen über
+    // `URLSearchParams` und einen Positionsspeicher, kein JSX, kein Modal, kein Portal) und ändert
+    // an den Erhebungen unten nichts; sie zählt hier nur in die Grundgesamtheit. KEINE REGISTRIERUNG
+    // NÖTIG — beide D3-Suchrichtungen bleiben bei null unerklärten Restfällen. Gemessen am eigenen
+    // Lauf dieses Arbeitsbaums (`vitest run tests/app/mega47-modale-flaechen-sammler.test.tsx`:
+    // „expected 458 to be 457"), nicht rechnerisch addiert.
     expect(
       ALLE_ERHEBUNGEN.length,
       "KONFLIKTRUNDE 2: JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) " +
         "plus fünf Erfassen-Quelldateien (JOB 3062) plus zehn Einstellungen-Quelldateien (JOB 3065) " +
         "plus `lib/netzzustand.ts` (JOB 3084) plus `lib/sprachwahl.ts` (JOB 3086) " +
+        "plus `lib/taskViewState.ts` (JOB 3101) " +
         "— am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
-    ).toBe(457);
+    ).toBe(458);
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 

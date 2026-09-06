@@ -1,7 +1,7 @@
 import { ChevronRight, Info } from "lucide-react";
-import { useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { Link } from "react-router-dom";
+import { Link, useLocation, useSearchParams } from "react-router-dom";
 import {
   useAudit,
   useConflicts,
@@ -11,11 +11,13 @@ import {
   useValidationBoard,
 } from "../api/hooks";
 import { useSession } from "../app/AuthContext";
+import { readHistoryIndex } from "../app/navHistory";
 import { EmptyStateCtas } from "../components/EmptyStateCtas";
 import { KoAuthorLine } from "../components/trust";
 import { PageHeader } from "../components/ui";
 import { gapLocaleTag } from "../lib/gapLocaleTag";
 import { type KoAuthorParts, koAuthorParts } from "../lib/koAuthor";
+import { groupLoadPhase } from "../lib/loadingState";
 import { reworkHref } from "../lib/reviewReworkContext";
 import { type ReviewWorkView, reviewWorkView } from "../lib/reviewSignals";
 import { knowledgeOsPhase, phaseLabelKey, taskAction } from "../lib/taskAction";
@@ -27,6 +29,15 @@ import {
   isOpenGap,
   isUnresolvedConflict,
 } from "../lib/taskFilters";
+import {
+  type Verlaufsort,
+  begrenzteListenposition,
+  leseListenposition,
+  merkeListenposition,
+  taskFilterFromParams,
+  verwirfUeberholtePositionen,
+  writeTaskFilterToParams,
+} from "../lib/taskViewState";
 import { useAuthorName } from "../lib/useAuthorName";
 import { returnedToAuthor } from "../lib/validationStatus";
 import { type WorkSeverity, groupTasks, severityForType } from "../lib/workCenter";
@@ -198,9 +209,72 @@ export function MyTasks(): JSX.Element {
     { key: "task.later", severity: "later", items: grouped.later },
   ];
 
-  // SCRUM-158: Typ-Filter über alle Gruppen; ehrliche Zähler je Segment.
-  const [taskFilter, setTaskFilter] = useState<TaskFilterKey>("all");
+  // ==============================================================================================
+  // JOB 3101 · UX-04 — DIE ADRESSZEILE IST DER EINZIGE ORT DER FILTERWAHL.
+  // ==============================================================================================
+  // Bis hierher stand hier `useState<TaskFilterKey>("all")`. Jede Aufgabenzeile navigiert per
+  // `<Link>` fort, die Seite wird ausgehängt, und beim Zurückkommen lief `useState("all")` erneut an:
+  // die Wahl war weg. Ab hier steht sie in der Adresse — teilbar, reload-fest, und sie kommt beim
+  // Browser-Zurück von selbst mit, weil der Verlaufseintrag sie trägt.
+  //
+  // SCRUM-158 bleibt unberührt: Filtermenge, Reihenfolge und Zähler kommen weiter aus
+  // `lib/taskFilters.ts`. Es gibt KEINEN zweiten Zustandsort daneben — kein `useState`, kein
+  // Speicher, kein nachgeführter Effekt (der wäre die Endlosschleife zwischen Lesen und Schreiben).
+  const [params, setParams] = useSearchParams();
+  const taskFilter = taskFilterFromParams(params);
+  const setTaskFilter = (key: TaskFilterKey): void => {
+    // `replace`: fünf Filterklicks dürfen einen Reviewer nicht fünf Zurück-Schritte kosten, bis er
+    // die vorige Seite erreicht. Und der Verlaufsindex bleibt derselbe — daran hängt unten die
+    // gemerkte Listenposition.
+    setParams((prev) => writeTaskFilterToParams(prev, key), { replace: true });
+  };
   const counts = countTasksByFilter(tasks);
+
+  // Der gemeinsame, ehrliche Ladevertrag (`lib/loadingState.ts`) über GENAU die Quellen, aus denen
+  // die Liste oben gebaut ist. Zusammengehörig und atomar: erst wenn jede geliefert hat, darf über
+  // den Bestand etwas ausgesagt werden. Ein gescheiterter Refetch bei vorhandenen Daten bleibt
+  // `loaded` — die Liste bleibt sichtbar, sie schlägt nicht auf „Nichts offen." um.
+  const ladephase = groupLoadPhase([board, conflicts, lifecycle, gaps, audit, kos]);
+
+  // ── Die Listenposition überlebt das Öffnen einer Aufgabe ──────────────────────────────────────
+  // Gerechnet wird in `lib/taskViewState.ts`; hier wird nur gelesen und gesetzt.
+  //
+  // Der Ort wird beim EINTRITT festgehalten und im Ref gehalten. Das ist kein Stil, sondern
+  // notwendig: klickt der Reviewer eine Zeile, stempelt der Router den NEUEN Verlaufsindex, BEVOR
+  // React diese Seite aushängt. Ein `readHistoryIndex()` im Aufräumer läse also den Eintrag der
+  // Aufgabe und legte die Position unter dem falschen Schlüssel ab.
+  //
+  // `key` aus `useLocation()` ist die Kennung DIESES Verlaufseintrags. Sie muss mit hinein, weil der
+  // Index allein nach einem Zurück und einem neuen PUSH erneut vergeben wird — der frische Besuch
+  // erbte sonst die Stelle des abgeschnittenen alten Eintrags (Korrekturpflicht 1, BEN Runde 2).
+  // Sie ändert sich auch beim Filterklick (`replace` legt einen neuen Eintrag an); genau deshalb
+  // steht sie in der Abhängigkeitsliste, und genau deshalb räumt `verwirfUeberholtePositionen` den
+  // ersetzten Zwilling desselben Verlaufsplatzes weg.
+  const { pathname, key: eintragsSchluessel } = useLocation();
+  const listenort = useRef<Verlaufsort | null>(null);
+  useLayoutEffect(() => {
+    const ort: Verlaufsort = {
+      pfad: pathname,
+      index: readHistoryIndex(),
+      eintrag: eintragsSchluessel,
+    };
+    listenort.current = ort;
+    verwirfUeberholtePositionen(ort);
+    // Nur so weit, wie die Liste JETZT reicht: eine erledigte Aufgabe macht sie kürzer, und ein
+    // Sprung ins Leere wäre schlimmer als gar keiner. Auf einen späteren, längeren Stand wird
+    // ausdrücklich nicht gewartet.
+    const machbar = document.documentElement.scrollHeight - window.innerHeight;
+    const ziel = begrenzteListenposition(leseListenposition(ort), machbar);
+    if (ziel !== null) {
+      window.scrollTo(0, ziel);
+    }
+    return () => {
+      const verlassen = listenort.current;
+      if (verlassen) {
+        merkeListenposition(verlassen, window.scrollY);
+      }
+    };
+  }, [pathname, eintragsSchluessel]);
   // §4: der Weg aus dem Leerzustand liegt hinter EINEM Knopf, nicht als Textblock daneben.
   const [wieWeiter, setWieWeiter] = useState(false);
 
@@ -213,6 +287,15 @@ export function MyTasks(): JSX.Element {
     .map((g) => ({ ...g, visible: filterTasks(g.items, taskFilter) }))
     .filter((g) => g.visible.length > 0);
   const gesamtSichtbar = sichtbareGruppen.reduce((n, g) => n + g.visible.length, 0);
+
+  // JOB 3101 · UX-04, Lieferung 5: „Nichts offen." und der gefilterte Leersatz sind Aussagen über
+  // den BESTAND — sie dürfen nur fallen, wenn der Bestand wirklich da ist.
+  //
+  // WARUM DAS ERST JETZT AUFFÄLLT: Solange der Filter in `useState("all")` lag, sah man den Satz
+  // beim ersten Anstrich praktisch nie. Mit dem Deep-Link (`/aufgaben?art=conflict`) gilt die
+  // Auswahl SOFORT, die gefilterte Liste ist im ersten Anstrich leer — und der Satz stünde mitten im
+  // Ladezustand da und behauptete etwas über Daten, die noch niemand gesehen hat.
+  const leersatzGilt = ladephase === "loaded";
 
   return (
     <div className="mx-auto max-w-4xl">
@@ -234,7 +317,10 @@ export function MyTasks(): JSX.Element {
                 : "text-muted hover:text-text"
             }`}
           >
-            {t(`task.filter.${f.key}`)} {counts[f.key]}
+            {/* Ein Zähler ist eine Datenaussage: solange nicht jede Quelle geliefert hat, stünde
+                dort eine Zahl, die Vollständigkeit behauptet (§9). Die AUSWAHL dagegen ist eine
+                Nutzerangabe und färbt das Segment auch im Ladezustand. */}
+            {t(`task.filter.${f.key}`)} {ladephase === "loaded" ? counts[f.key] : "…"}
           </button>
         ))}
       </fieldset>
@@ -248,9 +334,15 @@ export function MyTasks(): JSX.Element {
             <div className="px-4 py-3">
               <div className="flex items-center gap-3">
                 <span className="flex-1 text-[14px] text-text">
-                  {taskFilter === "all" ? t("task.none") : t("task.noneFiltered")}
+                  {ladephase === "loading"
+                    ? t("state.loading")
+                    : ladephase === "error"
+                      ? t("loadstate.error.title")
+                      : taskFilter === "all"
+                        ? t("task.none")
+                        : t("task.noneFiltered")}
                 </span>
-                {taskFilter === "all" ? (
+                {leersatzGilt && taskFilter === "all" ? (
                   <button
                     type="button"
                     data-testid="task-wie-weiter"
@@ -262,7 +354,7 @@ export function MyTasks(): JSX.Element {
                   </button>
                 ) : null}
               </div>
-              {taskFilter === "all" ? (
+              {leersatzGilt && taskFilter === "all" ? (
                 <div data-testid="task-wie-weiter-inhalt" hidden={!wieWeiter}>
                   <EmptyStateCtas context="tasks" />
                 </div>
