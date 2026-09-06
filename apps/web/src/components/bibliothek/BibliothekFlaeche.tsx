@@ -1,7 +1,8 @@
 import { type UseQueryResult, useQueryClient } from "@tanstack/react-query";
+import { ArrowLeft } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { useSearchParams } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
 import type { KnowledgeObject } from "../../api/types";
 import { useSession } from "../../app/AuthContext";
@@ -87,6 +88,7 @@ import { useAuthorName } from "../../lib/useAuthorName";
 import { LIBRARY_SEARCH_DEBOUNCE_MS, useDebouncedValue } from "../../lib/useDebouncedValue";
 import { usePersistentEnum } from "../../lib/usePersistentValue";
 import { useReadiness } from "../../lib/useReadiness";
+import { useMediaQuery } from "../../shell/useMediaQuery";
 import { DemoBanner } from "../DemoBanner";
 import { RoleLink } from "../RoleLink";
 import { cx } from "../ui";
@@ -167,6 +169,32 @@ const EINTRAG_PARAM = "eintrag";
 // Die Filter-, Such-, Sortier- und Geltungsbereichslogik ist UNVERÄNDERT übernommen (dieselben
 // Helfer aus `lib/`), nur ihre Bedienfläche ist eine andere. Ein zweiter Filterweg entsteht nicht.
 
+// ==================================================================================================
+// JOB 3121 · UX-14 — AUF DEM TELEFON TRÄGT EINE FLÄCHE DIE BREITE, NICHT ZWEI NEBENEINANDER.
+// ==================================================================================================
+//
+// DER BEFUND (N-0043, dazu N-0045 und N-0049/N-0051 am selben Engpass): der Container unten stand
+// bedingungslos auf `flex` — keine Spalte, kein Bruchpunkt, kein Umbruch. Liste und Lesebereich
+// waren damit auf JEDER Breite Geschwister in EINER Zeile. Die Liste hält ihre 380 px fest
+// (`BibliothekListe.tsx:128`, `w-[380px] shrink-0`); bei 390 px blieben dem Bericht 10 px, bei
+// 320 px gar keine. Der Bericht war nicht abgeschnitten — er war breitenlos, auch nach Neuladen.
+//
+// DIE SCHWELLE, geometrisch und nicht gefühlt: unter 760 px bekommt der Bericht WENIGER Platz als
+// die 380 px breite Liste, die ihn nur findet — die Hauptsache wäre schmaler als das Verzeichnis.
+// Darum 760 und NICHT die Hausschwelle `NARROW_QUERY` (≤899 px, `shell/useMediaQuery.ts:35`, die
+// Schwelle des Schubfachs): bei 768 px (Tablet hochkant) bleibt es bei 380 + 388 px und damit bei
+// der heutigen Anordnung — genau die Breite, für die UX-21 den Tablet-Lesemodus mit einklappbarer
+// Trefferliste getrennt entwirft (Auftrag §10). Diese Lieferung nimmt ihm nichts vorweg.
+//
+// GELESEN WIRD DIE BREITE ÜBER `matchMedia` UND NICHT NUR ÜBER CSS (`useMediaQuery`, die EINE
+// Stelle im Haus, die `matchMedia` liest — `FacetFilter.tsx:43` und `Validation.tsx:162` gehen
+// denselben Weg). Der Grund ist nicht Bequemlichkeit: schmal darf die nicht gezeigte Fläche auch
+// nicht mit der Tastatur erreichbar sein (Lieferung 5, N-0001/0019/0031/0035). Ein `hidden`-Zweig
+// aus CSS bliebe im DOM; hier entscheidet die Anordnung, WAS gebaut wird. Fehlt `matchMedia`
+// (SSR, alte Umgebung), gilt „breit" — das Verhalten von heute.
+const SCHMAL_UNTER = 760;
+const SCHMAL_ABFRAGE = `(max-width: ${SCHMAL_UNTER - 1}px)`;
+
 const LIBRARY_FILTER_CONFIGS: readonly FacetGroupConfig[] = [
   { key: "maturity", labelKey: "lib.facet.maturity" },
   { key: "category", labelKey: LIBRARY_FACET_LABEL_KEYS.category },
@@ -201,6 +229,10 @@ export function BibliothekFlaeche({
 }): JSX.Element {
   const { t } = useTranslation();
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
+  // JOB 3121 · UX-14: die eine Breitenfrage dieser Fläche. Sie entscheidet weiter unten NUR die
+  // Anordnung — keinen Abruf, keinen Filter, keine Aussage über den Bestand.
+  const schmal = useMediaQuery(SCHMAL_ABFRAGE);
   const { user } = useSession();
   const nameOf = useAuthorName();
   // JOB 3088 · Q1b: die Detailabfrage des gelesenen Eintrags wohnt in `BibliothekLesen`, nicht hier.
@@ -767,8 +799,112 @@ export function BibliothekFlaeche({
   // `sichtbareIds[0]` greift nur noch ohne jede Wahl in der Adresse (Erstbesuch von `/bibliothek`).
   // Diese Vorwahl wird NICHT in die Adresse geschrieben: sie ist keine getroffene Wahl, und ein
   // gestempelter Parameter wäre die Behauptung, der Mensch habe gewählt.
-  const gewaehltEffektiv = gewaehlt ?? sichtbareIds[0] ?? null;
+  //
+  // JOB 3121 · UX-14 — UND SIE HAT SCHMAL KEINEN ANLASS MEHR. Breit füllt sie die zweite Spalte,
+  // die sonst leer neben der Liste stünde. Schmal gibt es keine zweite Spalte: dort würde die
+  // Vorwahl den Bericht ANSTELLE der Liste zeigen, und der Erstbesuch der Bibliothek landete auf
+  // einem Telefon sofort in einem Bericht, den niemand gewählt hat — die Liste wäre nur über den
+  // Rückweg erreichbar. Die Ableitung bleibt EINE (kein zweiter Auswahlspeicher, Lieferung 2), sie
+  // kennt jetzt nur die Breite: schmal zählt allein die getroffene Wahl aus Pfad oder Adresse.
+  const vorwahl = schmal ? null : (sichtbareIds[0] ?? null);
+  const gewaehltEffektiv = gewaehlt ?? vorwahl;
+  // ================================================================================================
+  // JOB 3121 · UX-14 — WELCHE FLÄCHE DIE BREITE TRÄGT. EINE BEDINGUNG, ZWEIMAL GELESEN.
+  // ================================================================================================
+  // Breit steht beides nebeneinander wie bisher. Schmal trägt GENAU EINES die Fläche, und zwar das,
+  // was der Mensch gerade will: ohne Wahl die Liste, mit Wahl der Bericht. Was nicht gezeigt wird,
+  // wird auch nicht gebaut — nur so ist es weder sichtbar noch mit der Tastatur erreichbar
+  // (Lieferung 5). `zeigeListe` ist die EINE Ableitung dafür; `!zeigeListe` heißt überall unten
+  // „schmal, und der Bericht trägt die Fläche allein".
+  const zeigeListe = !schmal || gewaehltEffektiv === null;
+  const zeigeBericht = !schmal || gewaehltEffektiv !== null;
+  // Ein FOKUSZIEL, kein Zustand: wechselt schmal die Fläche, verschwindet das gedrückte
+  // Bedienelement aus dem DOM, und der Fokus fiele auf `<body>` — die Tastatur begänne wieder ganz
+  // oben. Der Merker sagt nur, wohin er nach dem nächsten Zeichnen gehört; er entscheidet nichts.
+  const wurzel = useRef<HTMLDivElement | null>(null);
+  const fokusZiel = useRef<"liste" | "bericht" | null>(null);
+  const zuletztGelesen = useRef<string | null>(null);
+  // ================================================================================================
+  // JOB 3121 R2 · UX-14 — DIE LISTENPOSITION IST EINE ROLLPOSITION, KEINE ZEILE.
+  // ================================================================================================
+  // Runde 1 hat den Fokus auf die gelesene Zeile zurückgegeben und das „Listenposition unverändert"
+  // (Lieferung 4) genannt. Die Browsermessung des Prüfers widerlegt das: 1596 px vor dem Lesen,
+  // 1696 px danach. Der Grund ist `focus()` selbst — es rollt das Ziel ins Bild und wählt die
+  // Rollposition dabei SELBST (die Zeile landet knapp am Rand, nicht dort, wo sie war). Wer eine
+  // lange Liste durchgesehen hat, sucht seine Stelle danach neu.
+  //
+  // Schmal rollt nicht die Liste, sondern die Seite: `<main>` (`AppShell.tsx:102`, `overflow-y-auto`)
+  // ist der nächste rollende Vorfahr, weil die einspaltige Fläche keine eigene Höhe mehr hat
+  // (`:1036`). Gesucht wird er deshalb nicht über einen festen Selektor — das wäre eine zweite
+  // Behauptung über eine fremde Datei —, sondern am Baum entlang: der erste Vorfahr, der wirklich
+  // rollt. Findet sich keiner (jsdom hat kein Layout), bleibt es beim Verhalten von Runde 1.
+  const rollbereich = (): HTMLElement | null => {
+    let el = wurzel.current?.parentElement ?? null;
+    while (el !== null) {
+      const rollt = window.getComputedStyle(el).overflowY;
+      if ((rollt === "auto" || rollt === "scroll") && el.scrollHeight > el.clientHeight) {
+        return el;
+      }
+      el = el.parentElement;
+    }
+    return null;
+  };
+  // Die Rollposition der Liste im Augenblick des Verlassens. `null` heißt „nicht selbst dorthin
+  // gerollt" (Erstaufruf, Deep-Link) — dann gibt es nichts wiederherzustellen, und behauptet wird
+  // auch nichts.
+  const listenRollstand = useRef<number | null>(null);
+  useEffect(() => {
+    const ziel = fokusZiel.current;
+    const w = wurzel.current;
+    if (ziel === null || w === null) {
+      return;
+    }
+    fokusZiel.current = null;
+    const roll = rollbereich();
+    if (ziel === "bericht") {
+      // Der Bericht beginnt oben. Ohne diese Zeile stünde die Seite noch an der Rollposition der
+      // Liste, und der Mensch begänne einen frisch geöffneten Bericht in seiner Mitte. `focus()`
+      // darf hier nichts mehr rollen (`preventScroll`), sonst entschiede es diese Position wieder
+      // selbst; der Rückweg haftet oben (`:1494`, `sticky top-0`) und ist damit im Bild.
+      if (roll !== null) {
+        roll.scrollTop = 0;
+      }
+      w.querySelector<HTMLElement>('[data-testid="bib-zurueck"]')?.focus({ preventScroll: true });
+      return;
+    }
+    // Zurück in die Liste: auf die Zeile des eben gelesenen Berichts. Ist sie nicht (mehr) da —
+    // weggefiltert, gelöscht —, nimmt der Fokus das Suchfeld, den ersten Halt der Liste. Die
+    // Marken stammen aus `BibliothekListe.tsx` (`bib-zeile`/`data-bib-id`:250-251, `bib-suche`:147);
+    // gelesen wird nur, nichts dort geändert (Auftrag §10).
+    const stand = listenRollstand.current;
+    listenRollstand.current = null;
+    const zeilen = Array.from(w.querySelectorAll<HTMLElement>('[data-testid="bib-zeile"]'));
+    const zeile = zeilen.find((z) => z.getAttribute("data-bib-id") === zuletztGelesen.current);
+    if (zeile !== undefined && roll !== null && stand !== null) {
+      zeile.focus({ preventScroll: true });
+      roll.scrollTop = stand;
+      // Die Liste kann inzwischen kürzer geworden sein (Auffrischung, Löschung durch andere): dann
+      // klemmt der Browser die Rollposition, und die fokussierte Zeile stünde außerhalb des Bildes —
+      // ein Fokus, den man nicht sieht (N-0001/0035). Nur DANN rollt die Zeile ins Bild, und nur so
+      // weit wie nötig. Der Regelfall bleibt unberührt.
+      const zr = zeile.getBoundingClientRect();
+      const rr = roll.getBoundingClientRect();
+      if (zr.bottom <= rr.top || zr.top >= rr.bottom) {
+        zeile.scrollIntoView({ block: "nearest" });
+      }
+      return;
+    }
+    (zeile ?? w.querySelector<HTMLElement>('[data-testid="bib-suche"]'))?.focus();
+  });
   const waehle = (id: string): void => {
+    if (schmal) {
+      // Schmal tritt der Bericht AN DIE STELLE der Liste — der Fokus geht mit, auf seinen ersten
+      // Halt (den Rückweg). Breit bleibt er, wo er ist: dort wechselt nichts den Platz.
+      fokusZiel.current = "bericht";
+      // Und hier, VOR dem Verschwinden der Liste, ist der einzige Augenblick, in dem ihre
+      // Rollposition noch abzulesen ist: gleich zeigt derselbe Rollbereich den Bericht.
+      listenRollstand.current = rollbereich()?.scrollTop ?? null;
+    }
     if (vorgewaehlt === undefined) {
       setParams(
         (prev) => {
@@ -780,6 +916,47 @@ export function BibliothekFlaeche({
       );
     }
     beiWahl?.(id);
+  };
+  // ================================================================================================
+  // JOB 3121 · UX-14 — DER RÜCKWEG: ER WÄHLT AB, MEHR NICHT.
+  // ================================================================================================
+  // Er räumt weder Suche noch Filter auf und ruft nichts ab (Lieferung 4): auf `/bibliothek` nimmt
+  // er GENAU einen Parameter aus der Adresse — den gelesenen Eintrag. Suchbegriff, Facetten,
+  // Zeitraum, Umschalter und Geltungsbereich stehen dort unverändert daneben, das geladene Fenster
+  // (`windowLimit`) und die Zwischenspeicher bleiben, wie sie sind.
+  //
+  // AUF `/wissen/:id` TRÄGT DER PFAD DIE WAHL (`vorgewaehlt`), und ein Parameter erreicht sie
+  // nicht. Dort führt der Rückweg deshalb auf die Liste selbst — mit der Adresse, die diese Fläche
+  // dort ebenfalls fortschreibt (der Suchbegriff, `:523`), damit die Suche den Weg überlebt.
+  // OHNE `edit`: dieser Deep-Link gehört GENAU DEM EINEN Eintrag, für den er kam, und stünde er
+  // weiter in der Adresse, risse sich das Formular am nächsten gewählten Eintrag von selbst auf.
+  // Das ist nicht neu entschieden, sondern die Regel der Detailroute (`KnowledgeDetail.tsx:29-33`,
+  // wörtlich „Bliebe er beim Weiterblättern stehen, risse sich das Bearbeiten-Formular an jedem
+  // nächsten Eintrag von selbst auf"); `rework` und `demo` reisen dort mit und reisen auch hier
+  // mit. Dass „edit" damit als drittes Literal neben `KnowledgeDetail.tsx:29` und
+  // `BibliothekLesen.tsx:402` steht, ist eine benannte Restschuld: ein gemeinsamer Ausdruck
+  // bräuchte eine dieser beiden Dateien, und beide stehen nicht in den Zielpfaden (§4/§10).
+  const zurueckZurListe = (): void => {
+    zuletztGelesen.current = gewaehltEffektiv;
+    fokusZiel.current = "liste";
+    if (vorgewaehlt !== undefined) {
+      const p = new URLSearchParams(params);
+      p.delete(EINTRAG_PARAM);
+      p.delete("edit");
+      const suche = p.toString();
+      // `replace` wie beim Blättern (`KnowledgeDetail.tsx:36-38`): der Zurück-Knopf des Browsers
+      // soll die Bibliothek verlassen, nicht durch jede gelesene Zeile stolpern.
+      navigate({ pathname: "/bibliothek", search: suche ? `?${suche}` : "" }, { replace: true });
+      return;
+    }
+    setParams(
+      (prev) => {
+        const p = new URLSearchParams(prev);
+        p.delete(EINTRAG_PARAM);
+        return p;
+      },
+      { replace: true },
+    );
   };
   const trefferFelder: readonly MatchField[] =
     win.visible.find((i) => i.ko.id === gewaehltEffektiv)?.matches ?? [];
@@ -874,8 +1051,48 @@ export function BibliothekFlaeche({
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
   const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
+  // ================================================================================================
+  // JOB 3063 R3/R6 · JOB 3121 — DER SATZ „STAND VON <ZEIT> · AUFFRISCHUNG FEHLGESCHLAGEN".
+  // ================================================================================================
+  // Er wird EINMAL gebaut und an GENAU EINER Stelle gezeigt: an der Fläche, die gerade da ist.
+  // Breit und schmal-ohne-Wahl ist das die Liste (unverändert, sie bekommt ihn als `hinweis`);
+  // schmal mit gelesenem Bericht steht die Liste nicht auf der Fläche, und ein Hinweis, den man auf
+  // dem Telefon nicht sieht, ist keiner (Auftrag §9) — dann trägt ihn der Lesebereich. Zwei Knoten
+  // nebeneinander entstehen nie: `zeigeListe` entscheidet, welcher der beiden Orte ihn bekommt, und
+  // `hinweisSchonGesagt` unten bleibt unverändert an `standQuelle` — der Satz steht so oder so
+  // genau einmal auf der Fläche.
+  const hinweisKnoten = standQuelle ? (
+    <>
+      <AuffrischungHinweis query={standQuelle} />
+      <button
+        type="button"
+        data-testid="bib-hinweis-erneut"
+        onClick={alleAuffrischen}
+        className="mb-3 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+      >
+        {t("lib.liste.erneut")}
+      </button>
+    </>
+  ) : null;
+
   return (
-    <div data-testid="bibliothek-flaeche" className="flex h-[calc(100vh-12rem)] min-h-[30rem]">
+    <div
+      ref={wurzel}
+      data-testid="bibliothek-flaeche"
+      className={cx(
+        "flex",
+        schmal
+          ? // Schmal: EINE Spalte, und KEINE feste Höhe. `h-[calc(100vh-12rem)]` rechnet mit dem
+            // breiten Kopfband und zwänge den Bericht auf dem Telefon in einen zweiten Rollbereich
+            // INNERHALB der ohnehin rollenden Inhaltsfläche (`AppShell.tsx:102`, `overflow-y-auto`)
+            // — genau die Falle aus Auftrag §6a. Die Mindesthöhe bleibt, damit die leere Fläche
+            // nicht zusammenfällt. `w-full` an der Liste ist der einzige Weg, ihre festen 380 px
+            // (`BibliothekListe.tsx:128`) auf 320 px unterzubringen, ohne die Datei anzufassen, die
+            // nicht Zielpfad ist (§4/§10) — derselbe Griff wie bei den Zustandsankern unten.
+            "min-h-[calc(100vh-12rem)] flex-col [&_[data-testid=bib-liste]]:w-full"
+          : "h-[calc(100vh-12rem)] min-h-[30rem]",
+      )}
+    >
       {/* ==========================================================================================
           JOB 3072 · N4 — WORAUF DER ZUSTAND JEDER ZEILE STEHT. MASCHINENLESBAR, UNSICHTBAR.
           ==========================================================================================
@@ -900,445 +1117,483 @@ export function BibliothekFlaeche({
           />
         ))}
       </div>
-      <BibliothekListe
-        q={q}
-        onQ={(wert) => {
-          resetWindow();
-          setQ(wert);
-        }}
-        ortszeile={
-          // ======================================================================================
-          // JOB 381 · DIE ORTSZEILE — WORIN WIRD GERADE GESUCHT (H4: als ruhige Zeile über der Liste).
-          // ======================================================================================
-          //
-          // Sie steht auf der SEITE und nie in einem Menü: der Geltungsbereich ist kein Filter,
-          // sondern die Angabe des BESTANDS, auf den sich Suche, Umschalter und Filter erst
-          // beziehen („Die Schiene filtert, die Kopfzeile sucht", `R-19`). Läge er im Filtermenü,
-          // wäre die durchsuchte Menge nur nach dem Öffnen eines Menüs ablesbar — genau das
-          // Übersehen-Risiko, gegen das `tests-smoke/wissensraum381-ortszeile-browser.spec.ts`
-          // geschrieben ist.
-          //
-          // Zwei echte `button[aria-pressed]`, nie ein Auswahlmenü — auch auf schmalen Geräten
-          // nicht (`R-19`): ein `select` zeigte den gewählten Bestand erst beim Öffnen.
-          //
-          // KEIN ERKLÄRSATZ: die Gruppe trägt ihren Namen über `aria-label` am `fieldset` (die im
-          // Haus getroffene Entscheidung gegen einen ARIA-Nachbau, s. `bib-segment` daneben) —
-          // sichtbar stehen nur die beiden Beschriftungen. Der Textmesser
-          // (`tests/design/zielbild-h4-kein-erklaertext.test.ts`) zählt deshalb null Zeichen hinzu.
-          //
-          // Die Reihenfolge „Meine Ablage" vor „Alle Inhalte" ist Pedis Entscheidung
-          // (`ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`), nicht Geschmack.
-          <div
-            data-testid="library-scope-bar"
-            data-raum={scope}
-            className="flex items-center justify-between gap-2"
-          >
-            <fieldset
-              aria-label={SCOPE_BAR_LABEL}
-              className="flex min-w-0 items-center gap-1 border-0 p-0"
+      {zeigeListe ? (
+        <BibliothekListe
+          q={q}
+          onQ={(wert) => {
+            resetWindow();
+            setQ(wert);
+          }}
+          ortszeile={
+            // ======================================================================================
+            // JOB 381 · DIE ORTSZEILE — WORIN WIRD GERADE GESUCHT (H4: als ruhige Zeile über der Liste).
+            // ======================================================================================
+            //
+            // Sie steht auf der SEITE und nie in einem Menü: der Geltungsbereich ist kein Filter,
+            // sondern die Angabe des BESTANDS, auf den sich Suche, Umschalter und Filter erst
+            // beziehen („Die Schiene filtert, die Kopfzeile sucht", `R-19`). Läge er im Filtermenü,
+            // wäre die durchsuchte Menge nur nach dem Öffnen eines Menüs ablesbar — genau das
+            // Übersehen-Risiko, gegen das `tests-smoke/wissensraum381-ortszeile-browser.spec.ts`
+            // geschrieben ist.
+            //
+            // Zwei echte `button[aria-pressed]`, nie ein Auswahlmenü — auch auf schmalen Geräten
+            // nicht (`R-19`): ein `select` zeigte den gewählten Bestand erst beim Öffnen.
+            //
+            // KEIN ERKLÄRSATZ: die Gruppe trägt ihren Namen über `aria-label` am `fieldset` (die im
+            // Haus getroffene Entscheidung gegen einen ARIA-Nachbau, s. `bib-segment` daneben) —
+            // sichtbar stehen nur die beiden Beschriftungen. Der Textmesser
+            // (`tests/design/zielbild-h4-kein-erklaertext.test.ts`) zählt deshalb null Zeichen hinzu.
+            //
+            // Die Reihenfolge „Meine Ablage" vor „Alle Inhalte" ist Pedis Entscheidung
+            // (`ENTSCHEIDUNGEN/JOB-381-ORTSZEILE.md`), nicht Geschmack.
+            <div
+              data-testid="library-scope-bar"
+              data-raum={scope}
+              className="flex items-center justify-between gap-2"
             >
-              {(
-                [
-                  { wert: "meine", label: MEINE_ABLAGE_LABEL },
-                  { wert: "alle", label: ALLE_INHALTE_LABEL },
-                ] satisfies { wert: LibraryScope; label: string }[]
-              ).map((e) => {
-                const aktiv = scope === e.wert;
-                return (
-                  <button
-                    key={e.wert}
-                    type="button"
-                    aria-pressed={aktiv}
-                    data-testid={`bib-scope-${e.wert}`}
-                    onClick={() => setScope(e.wert)}
-                    className={cx(
-                      "truncate rounded-btn px-1.5 py-0.5 text-[12px] outline-none hover:bg-hairline-soft",
-                      aktiv ? "font-semibold text-text" : "text-muted",
-                    )}
-                  >
-                    {e.label}
-                  </button>
-                );
-              })}
-            </fieldset>
-          </div>
-        }
-        segment={segment}
-        onSegment={setSegment}
-        posten={posten}
-        gewaehlt={gewaehltEffektiv}
-        onWaehle={waehle}
-        laedt={query.isLoading || keimWartet}
-        // JOB 3034 R2 (nachgezogen): ein gescheiterter ABRUF ohne Bestand ist ein echter Fehler;
-        // scheitert nur die AUFFRISCHUNG eines schon geholten Bestands, bleiben die Zeilen stehen
-        // und der Hinweis darunter sagt es (REGELN §7 — nie den Bestand wegen eines Folgefehlers
-        // leeren).
-        //
-        // JOB 3115 R2: dasselbe gilt für die ZWEITE Listenquelle. Ein Erstfehler von `all` ohne
-        // Bestand nimmt der Fläche Zustand, Ton, Umschalter UND die Filterprüfung — sie hat dann
-        // nichts zu zeigen und sagt es hier, statt zu laden oder eine Rückfall-Liste anzubieten.
-        // Der Knopf dieses Zweiges (`onErneut`) holt beide Quellen zurück.
-        fehler={(query.isError && query.data === undefined) || bestandsErstfehler}
-        // ============================================================================================
-        // JOB 3099 · Q6c — DIE DRITTE FOLGE DERSELBEN LAGE: DER LEERZWEIG KENNT SIE JETZT AUCH.
-        // ============================================================================================
-        // Offline wird für einen NEUEN Suchbegriff gar nicht gerufen: `isLoading` ist falsch (der
-        // Abruf ist `paused`, also nicht `fetching`), `isError` ist falsch (nichts ist gescheitert),
-        // und `query.data` ist für diesen Schlüssel `undefined`. Aus diesen drei Verneinungen entstand
-        // in der Liste die Behauptung „erfolgreich gesucht, nichts gefunden" — gemessen von Codex an
-        // 1.0.0-beta.1.103 (`R-1613-offline-20260905-1955/BEFUND.md`, Punkte 3/4: „Nichts gefunden."
-        // und „Erfassen" bei NULL Suchrequests; nach Netzrückkehr genau ein Ruf und zwei Treffer).
-        //
-        // DIE ZWEITE BEDINGUNG (`query.data === undefined`) IST ABSICHT und steht wörtlich so schon
-        // eine Zeile höher bei `fehler`: gemeint ist „für diesen Suchbegriff liegt noch KEINE Antwort
-        // vor", nicht „das Gerät ist offline". Liegen Treffer im Zwischenspeicher, bleibt alles wie
-        // bisher — auch ein zwischengespeichertes LEERES Ergebnis darf weiter „Nichts gefunden."
-        // sagen, denn es wurde wirklich einmal erfolgreich geholt (Auftrag §9, die zwei
-        // Offline-Zeilen).
-        pausiert={angehalten(query) && query.data === undefined}
-        // Die Bauform steht in `AuffrischungHinweis` (EINE Stelle für Liste und Lesefläche); die
-        // Lage fragt die Liste hier ab, damit sie ohne den Fall auch keinen leeren Platz hält.
-        //
-        // ============================================================================================
-        // JOB 3072 R3 (Befund BEN-3b) — DER WEG ZURÜCK ZUR FRISCHE GEHÖRT NEBEN DEN SATZ.
-        // ============================================================================================
-        // Der Wiederholungsknopf der Liste steht allein im Zweig `fehler` (`BibliothekListe.tsx:192`),
-        // und der verlangt einen ERSTFEHLER OHNE Bestand. Genau im Fall, für den dieser Satz gebaut
-        // ist — Bestand da, Auffrischung nicht durchgekommen —, gab es deshalb bis hierher gar keinen
-        // Weg: die Fläche sagte „nicht frisch" und bot nichts an. Der Knopf hängt am HINWEIS und
-        // nicht an der Liste, weil `BibliothekListe.tsx` nicht in den Zielpfaden steht (§4/§10); er
-        // trägt dieselbe vorhandene Beschriftung wie der Knopf im Fehlerzweig, also KEIN neuer
-        // Übersetzungsschlüssel und kein zweites Wort für dieselbe Handlung.
-        hinweis={
-          standQuelle ? (
-            <>
-              <AuffrischungHinweis query={standQuelle} />
-              <button
-                type="button"
-                data-testid="bib-hinweis-erneut"
-                onClick={alleAuffrischen}
-                className="mb-3 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft"
+              <fieldset
+                aria-label={SCOPE_BAR_LABEL}
+                className="flex min-w-0 items-center gap-1 border-0 p-0"
               >
-                {t("lib.liste.erneut")}
-              </button>
-            </>
-          ) : null
-        }
-        onErneut={alleAuffrischen}
-        // Eine Zahl nur, wenn sie etwas zählt, das feststeht: nicht bei ungeprüfter Auswahl und
-        // nicht bei einem Bestands-Erstfehler (dort ist `isRefetchError` falsch, `frisch` allein
-        // liesse also eine Zahl zu, die auf einer Rückfall-Liste stünde).
-        gesamt={frisch && !keimBrauchtBestand && !bestandsErstfehler ? sorted.length : null}
-        onNachladen={() => {
-          if (win.limited) {
-            setWindowLimit((n) => n + LIBRARY_RESULT_LIMIT);
+                {(
+                  [
+                    { wert: "meine", label: MEINE_ABLAGE_LABEL },
+                    { wert: "alle", label: ALLE_INHALTE_LABEL },
+                  ] satisfies { wert: LibraryScope; label: string }[]
+                ).map((e) => {
+                  const aktiv = scope === e.wert;
+                  return (
+                    <button
+                      key={e.wert}
+                      type="button"
+                      aria-pressed={aktiv}
+                      data-testid={`bib-scope-${e.wert}`}
+                      onClick={() => setScope(e.wert)}
+                      className={cx(
+                        "truncate rounded-btn px-1.5 py-0.5 text-[12px] outline-none hover:bg-hairline-soft",
+                        aktiv ? "font-semibold text-text" : "text-muted",
+                      )}
+                    >
+                      {e.label}
+                    </button>
+                  );
+                })}
+              </fieldset>
+            </div>
           }
-        }}
-        leerAktion={
-          <RoleLink
-            // Beta Own-Knowledge Work Queue v0: unter der Linse „Eigenes Wissen" führt der Knopf
-            // dorthin, wo eigenes Wissen entsteht — dieselbe Regel wie bisher, nur ohne die Karte
-            // mit zwei Erklärsätzen darüber.
-            to={ownEmpty ? ownEmpty.to : "/erfassen"}
-            className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text"
-            hoverClassName="hover:bg-hairline-soft"
-            testId="bib-leer-erfassen"
-          >
-            {() => t("lib.liste.erfassen")}
-          </RoleLink>
-        }
-        menues={{
-          punkte: (
-            <Menue
-              beschriftung="…"
-              ariaLabel={t("lib.menue.weitere")}
-              testId="bib-liste-menue"
-              ausrichtung="rechts"
-              breite="w-[250px]"
+          segment={segment}
+          onSegment={setSegment}
+          posten={posten}
+          gewaehlt={gewaehltEffektiv}
+          onWaehle={waehle}
+          laedt={query.isLoading || keimWartet}
+          // JOB 3034 R2 (nachgezogen): ein gescheiterter ABRUF ohne Bestand ist ein echter Fehler;
+          // scheitert nur die AUFFRISCHUNG eines schon geholten Bestands, bleiben die Zeilen stehen
+          // und der Hinweis darunter sagt es (REGELN §7 — nie den Bestand wegen eines Folgefehlers
+          // leeren).
+          //
+          // JOB 3115 R2: dasselbe gilt für die ZWEITE Listenquelle. Ein Erstfehler von `all` ohne
+          // Bestand nimmt der Fläche Zustand, Ton, Umschalter UND die Filterprüfung — sie hat dann
+          // nichts zu zeigen und sagt es hier, statt zu laden oder eine Rückfall-Liste anzubieten.
+          // Der Knopf dieses Zweiges (`onErneut`) holt beide Quellen zurück.
+          fehler={(query.isError && query.data === undefined) || bestandsErstfehler}
+          // ============================================================================================
+          // JOB 3099 · Q6c — DIE DRITTE FOLGE DERSELBEN LAGE: DER LEERZWEIG KENNT SIE JETZT AUCH.
+          // ============================================================================================
+          // Offline wird für einen NEUEN Suchbegriff gar nicht gerufen: `isLoading` ist falsch (der
+          // Abruf ist `paused`, also nicht `fetching`), `isError` ist falsch (nichts ist gescheitert),
+          // und `query.data` ist für diesen Schlüssel `undefined`. Aus diesen drei Verneinungen entstand
+          // in der Liste die Behauptung „erfolgreich gesucht, nichts gefunden" — gemessen von Codex an
+          // 1.0.0-beta.1.103 (`R-1613-offline-20260905-1955/BEFUND.md`, Punkte 3/4: „Nichts gefunden."
+          // und „Erfassen" bei NULL Suchrequests; nach Netzrückkehr genau ein Ruf und zwei Treffer).
+          //
+          // DIE ZWEITE BEDINGUNG (`query.data === undefined`) IST ABSICHT und steht wörtlich so schon
+          // eine Zeile höher bei `fehler`: gemeint ist „für diesen Suchbegriff liegt noch KEINE Antwort
+          // vor", nicht „das Gerät ist offline". Liegen Treffer im Zwischenspeicher, bleibt alles wie
+          // bisher — auch ein zwischengespeichertes LEERES Ergebnis darf weiter „Nichts gefunden."
+          // sagen, denn es wurde wirklich einmal erfolgreich geholt (Auftrag §9, die zwei
+          // Offline-Zeilen).
+          pausiert={angehalten(query) && query.data === undefined}
+          // Die Bauform steht in `AuffrischungHinweis` (EINE Stelle für Liste und Lesefläche); die
+          // Lage fragt die Liste hier ab, damit sie ohne den Fall auch keinen leeren Platz hält.
+          //
+          // ============================================================================================
+          // JOB 3072 R3 (Befund BEN-3b) — DER WEG ZURÜCK ZUR FRISCHE GEHÖRT NEBEN DEN SATZ.
+          // ============================================================================================
+          // Der Wiederholungsknopf der Liste steht allein im Zweig `fehler` (`BibliothekListe.tsx:192`),
+          // und der verlangt einen ERSTFEHLER OHNE Bestand. Genau im Fall, für den dieser Satz gebaut
+          // ist — Bestand da, Auffrischung nicht durchgekommen —, gab es deshalb bis hierher gar keinen
+          // Weg: die Fläche sagte „nicht frisch" und bot nichts an. Der Knopf hängt am HINWEIS und
+          // nicht an der Liste, weil `BibliothekListe.tsx` nicht in den Zielpfaden steht (§4/§10); er
+          // trägt dieselbe vorhandene Beschriftung wie der Knopf im Fehlerzweig, also KEIN neuer
+          // Übersetzungsschlüssel und kein zweites Wort für dieselbe Handlung.
+          //
+          // JOB 3121: gebaut wird er jetzt oben (`hinweisKnoten`) — dieselbe Bauform, dieselbe
+          // Bedingung, nur ein Ort weiter oben, weil ihn schmal der Lesebereich zeigt.
+          hinweis={hinweisKnoten}
+          onErneut={alleAuffrischen}
+          // Eine Zahl nur, wenn sie etwas zählt, das feststeht: nicht bei ungeprüfter Auswahl und
+          // nicht bei einem Bestands-Erstfehler (dort ist `isRefetchError` falsch, `frisch` allein
+          // liesse also eine Zahl zu, die auf einer Rückfall-Liste stünde).
+          gesamt={frisch && !keimBrauchtBestand && !bestandsErstfehler ? sorted.length : null}
+          onNachladen={() => {
+            if (win.limited) {
+              setWindowLimit((n) => n + LIBRARY_RESULT_LIMIT);
+            }
+          }}
+          leerAktion={
+            <RoleLink
+              // Beta Own-Knowledge Work Queue v0: unter der Linse „Eigenes Wissen" führt der Knopf
+              // dorthin, wo eigenes Wissen entsteht — dieselbe Regel wie bisher, nur ohne die Karte
+              // mit zwei Erklärsätzen darüber.
+              to={ownEmpty ? ownEmpty.to : "/erfassen"}
+              className="inline-flex items-center gap-1 rounded-btn border border-hairline px-2.5 py-1 text-[12.5px] font-semibold text-text"
+              hoverClassName="hover:bg-hairline-soft"
+              testId="bib-leer-erfassen"
             >
-              {(schliessen) => (
-                <>
-                  <MenueUntermenue beschriftung={t("lib.menue.sichten")}>
-                    {savedViews.map((v) => (
+              {() => t("lib.liste.erfassen")}
+            </RoleLink>
+          }
+          menues={{
+            punkte: (
+              <Menue
+                beschriftung="…"
+                ariaLabel={t("lib.menue.weitere")}
+                testId="bib-liste-menue"
+                ausrichtung="rechts"
+                breite="w-[250px]"
+              >
+                {(schliessen) => (
+                  <>
+                    <MenueUntermenue beschriftung={t("lib.menue.sichten")}>
+                      {savedViews.map((v) => (
+                        <MenuePunkt
+                          key={v.name}
+                          haken={activeView === v.name}
+                          onClick={() => {
+                            applyView(v);
+                            schliessen();
+                          }}
+                        >
+                          {v.name}
+                        </MenuePunkt>
+                      ))}
+                      {activeView ? (
+                        <MenuePunkt
+                          onClick={() => {
+                            setSavedViews(
+                              removeLibraryView(window.localStorage, viewsUserId, activeView),
+                            );
+                            setActiveView("");
+                            schliessen();
+                          }}
+                        >
+                          {t("lib.views.remove")}
+                        </MenuePunkt>
+                      ) : null}
+                    </MenueUntermenue>
+                    {anyFilterActive ? (
+                      <MenueUntermenue beschriftung={t("lib.menue.sichtSpeichern")}>
+                        <MenueZeile>
+                          <span className="flex items-center gap-1.5">
+                            <label htmlFor="bib-sichtname" className="sr-only">
+                              {t("lib.views.namePlaceholder")}
+                            </label>
+                            <input
+                              id="bib-sichtname"
+                              value={viewName}
+                              onChange={(e) => setViewName(e.target.value)}
+                              placeholder={t("lib.views.namePlaceholder")}
+                              className="min-w-0 flex-1 rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
+                            />
+                            <button
+                              type="button"
+                              data-testid="bib-sicht-speichern"
+                              // JOB 3115: ein UNGEPRÜFTER Wert aus der Adresse erreicht keine
+                              // gespeicherte Sicht. Damit bleibt die Grenze aus mega11 Block C
+                              // (`lib/libraryUrlFilters.ts`) unverschoben, obwohl der Filter aus der
+                              // Adresse jetzt schon vor seiner Prüfung wirkt.
+                              disabled={viewName.trim().length === 0 || keimBrauchtBestand}
+                              onClick={() => {
+                                const name = viewName.trim();
+                                setSavedViews(
+                                  saveLibraryView(window.localStorage, viewsUserId, {
+                                    name,
+                                    state: { q, facetSel, range, groupBy },
+                                  }),
+                                );
+                                setActiveView(name);
+                                setViewName("");
+                                schliessen();
+                              }}
+                              className="shrink-0 rounded-btn border border-hairline px-2 py-0.5 text-[12px] font-semibold text-text disabled:opacity-45"
+                            >
+                              {t("lib.views.remember")}
+                            </button>
+                          </span>
+                        </MenueZeile>
+                      </MenueUntermenue>
+                    ) : null}
+                    <MenueTrenner />
+                    <MenueUntermenue beschriftung={t("lib.export")}>
+                      {EXPORT_FORMATS.map((fmt) => (
+                        <MenueZeile key={fmt}>
+                          <a
+                            href={exportUrl(fmt)}
+                            download={exportFilename(fmt)}
+                            data-testid={`bib-export-${fmt}`}
+                            className="block w-full"
+                          >
+                            {t(`lib.format.${fmt}`)}
+                          </a>
+                        </MenueZeile>
+                      ))}
+                    </MenueUntermenue>
+                    <MenueZeile>
+                      {/* /import verlangt admin UND Stufe 2 — die gesperrte Fassung bleibt ein Wort,
+                        kein Weg (mega70 B). */}
+                      <RoleLink to="/import" className="block w-full" testId="bib-import">
+                        {() => t("lib.reimport")}
+                      </RoleLink>
+                    </MenueZeile>
+                  </>
+                )}
+              </Menue>
+            ),
+            bereich: (
+              <Menue
+                beschriftung={t("lib.menue.bereich")}
+                zusatz={bereichGewaehlt.length > 0 ? String(bereichGewaehlt.length) : undefined}
+                testId="bib-menue-bereich"
+                ausrichtung="rechts"
+                breite="w-[230px]"
+              >
+                {() => (
+                  <>
+                    {(bereichGruppe?.options ?? []).map((o) => (
                       <MenuePunkt
-                        key={v.name}
-                        haken={activeView === v.name}
-                        onClick={() => {
-                          applyView(v);
-                          schliessen();
-                        }}
+                        key={o.value}
+                        haken={o.selected}
+                        disabled={o.disabled}
+                        onClick={() => onToggleFacet(BEREICH_KEY, o.value)}
                       >
-                        {v.name}
+                        {`${facetValueLabel(BEREICH_KEY, o.value)} · ${o.count}`}
                       </MenuePunkt>
                     ))}
-                    {activeView ? (
+                    {bereichGruppe && bereichGruppe.hiddenCount > 0 ? (
                       <MenuePunkt
-                        onClick={() => {
-                          setSavedViews(
-                            removeLibraryView(window.localStorage, viewsUserId, activeView),
-                          );
-                          setActiveView("");
-                          schliessen();
-                        }}
+                        onClick={() =>
+                          setRailUi((p) => ({
+                            ...p,
+                            showAll: { ...p.showAll, [BEREICH_KEY]: true },
+                          }))
+                        }
                       >
-                        {t("lib.views.remove")}
+                        {t("facet.showAll", { n: bereichGruppe.totalCount })}
                       </MenuePunkt>
                     ) : null}
-                  </MenueUntermenue>
-                  {anyFilterActive ? (
-                    <MenueUntermenue beschriftung={t("lib.menue.sichtSpeichern")}>
-                      <MenueZeile>
-                        <span className="flex items-center gap-1.5">
-                          <label htmlFor="bib-sichtname" className="sr-only">
-                            {t("lib.views.namePlaceholder")}
-                          </label>
-                          <input
-                            id="bib-sichtname"
-                            value={viewName}
-                            onChange={(e) => setViewName(e.target.value)}
-                            placeholder={t("lib.views.namePlaceholder")}
-                            className="min-w-0 flex-1 rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
-                          />
-                          <button
-                            type="button"
-                            data-testid="bib-sicht-speichern"
-                            // JOB 3115: ein UNGEPRÜFTER Wert aus der Adresse erreicht keine
-                            // gespeicherte Sicht. Damit bleibt die Grenze aus mega11 Block C
-                            // (`lib/libraryUrlFilters.ts`) unverschoben, obwohl der Filter aus der
-                            // Adresse jetzt schon vor seiner Prüfung wirkt.
-                            disabled={viewName.trim().length === 0 || keimBrauchtBestand}
-                            onClick={() => {
-                              const name = viewName.trim();
-                              setSavedViews(
-                                saveLibraryView(window.localStorage, viewsUserId, {
-                                  name,
-                                  state: { q, facetSel, range, groupBy },
-                                }),
-                              );
-                              setActiveView(name);
-                              setViewName("");
-                              schliessen();
-                            }}
-                            className="shrink-0 rounded-btn border border-hairline px-2 py-0.5 text-[12px] font-semibold text-text disabled:opacity-45"
-                          >
-                            {t("lib.views.remember")}
-                          </button>
-                        </span>
-                      </MenueZeile>
-                    </MenueUntermenue>
-                  ) : null}
-                  <MenueTrenner />
-                  <MenueUntermenue beschriftung={t("lib.export")}>
-                    {EXPORT_FORMATS.map((fmt) => (
-                      <MenueZeile key={fmt}>
-                        <a
-                          href={exportUrl(fmt)}
-                          download={exportFilename(fmt)}
-                          data-testid={`bib-export-${fmt}`}
-                          className="block w-full"
+                  </>
+                )}
+              </Menue>
+            ),
+            filter: (
+              <Menue
+                beschriftung={t("lib.menue.filter")}
+                zusatz={aktiveFilterZahl > 0 ? String(aktiveFilterZahl) : undefined}
+                testId="bib-menue-filter"
+                ausrichtung="rechts"
+                breite="w-[270px]"
+              >
+                {() => (
+                  <>
+                    <MenueUntermenue beschriftung={t("lib.sort.label")}>
+                      {LIBRARY_SORT_KEYS.map((key) => (
+                        <MenuePunkt
+                          key={key}
+                          haken={sortKey === key}
+                          onClick={() => setSortKey(key)}
                         >
-                          {t(`lib.format.${fmt}`)}
-                        </a>
-                      </MenueZeile>
-                    ))}
-                  </MenueUntermenue>
-                  <MenueZeile>
-                    {/* /import verlangt admin UND Stufe 2 — die gesperrte Fassung bleibt ein Wort,
-                        kein Weg (mega70 B). */}
-                    <RoleLink to="/import" className="block w-full" testId="bib-import">
-                      {() => t("lib.reimport")}
-                    </RoleLink>
-                  </MenueZeile>
-                </>
-              )}
-            </Menue>
-          ),
-          bereich: (
-            <Menue
-              beschriftung={t("lib.menue.bereich")}
-              zusatz={bereichGewaehlt.length > 0 ? String(bereichGewaehlt.length) : undefined}
-              testId="bib-menue-bereich"
-              ausrichtung="rechts"
-              breite="w-[230px]"
-            >
-              {() => (
-                <>
-                  {(bereichGruppe?.options ?? []).map((o) => (
-                    <MenuePunkt
-                      key={o.value}
-                      haken={o.selected}
-                      disabled={o.disabled}
-                      onClick={() => onToggleFacet(BEREICH_KEY, o.value)}
-                    >
-                      {`${facetValueLabel(BEREICH_KEY, o.value)} · ${o.count}`}
-                    </MenuePunkt>
-                  ))}
-                  {bereichGruppe && bereichGruppe.hiddenCount > 0 ? (
-                    <MenuePunkt
-                      onClick={() =>
-                        setRailUi((p) => ({
-                          ...p,
-                          showAll: { ...p.showAll, [BEREICH_KEY]: true },
-                        }))
-                      }
-                    >
-                      {t("facet.showAll", { n: bereichGruppe.totalCount })}
-                    </MenuePunkt>
-                  ) : null}
-                </>
-              )}
-            </Menue>
-          ),
-          filter: (
-            <Menue
-              beschriftung={t("lib.menue.filter")}
-              zusatz={aktiveFilterZahl > 0 ? String(aktiveFilterZahl) : undefined}
-              testId="bib-menue-filter"
-              ausrichtung="rechts"
-              breite="w-[270px]"
-            >
-              {() => (
-                <>
-                  <MenueUntermenue beschriftung={t("lib.sort.label")}>
-                    {LIBRARY_SORT_KEYS.map((key) => (
-                      <MenuePunkt key={key} haken={sortKey === key} onClick={() => setSortKey(key)}>
-                        {t(LIBRARY_SORT_LABEL_KEYS[key])}
-                      </MenuePunkt>
-                    ))}
-                  </MenueUntermenue>
-                  <MenueUntermenue beschriftung={t("lib.groupBy.label")}>
-                    {LIBRARY_GROUP_KEYS.map((key) => (
-                      <MenuePunkt
-                        key={key}
-                        haken={groupBy === key}
-                        onClick={() => {
-                          resetWindow();
-                          setGroupBy(key);
-                        }}
-                      >
-                        {key === "none" ? t("lib.groupBy.none") : t(LIBRARY_FACET_LABEL_KEYS[key])}
-                      </MenuePunkt>
-                    ))}
-                  </MenueUntermenue>
-                  {/* Der Geltungsbereich steht NICHT hier: er ist kein Filter, sondern der
+                          {t(LIBRARY_SORT_LABEL_KEYS[key])}
+                        </MenuePunkt>
+                      ))}
+                    </MenueUntermenue>
+                    <MenueUntermenue beschriftung={t("lib.groupBy.label")}>
+                      {LIBRARY_GROUP_KEYS.map((key) => (
+                        <MenuePunkt
+                          key={key}
+                          haken={groupBy === key}
+                          onClick={() => {
+                            resetWindow();
+                            setGroupBy(key);
+                          }}
+                        >
+                          {key === "none"
+                            ? t("lib.groupBy.none")
+                            : t(LIBRARY_FACET_LABEL_KEYS[key])}
+                        </MenuePunkt>
+                      ))}
+                    </MenueUntermenue>
+                    {/* Der Geltungsbereich steht NICHT hier: er ist kein Filter, sondern der
                       Bestand, auf den die Filter erst wirken. Sein Ort ist die Ortszeile über dem
                       Suchfeld (`library-scope-bar`, oben) — ein zweiter Ort für dieselbe Sache
                       wäre genau die Doppelung, die dieser Umbau abschafft. */}
-                  <MenueTrenner />
-                  {/* Jede Facette ein Untermenü — dieselbe Logik, dieselben Kontext-Zähler und
+                    <MenueTrenner />
+                    {/* Jede Facette ein Untermenü — dieselbe Logik, dieselben Kontext-Zähler und
                       dasselbe ehrliche Ausgrauen wie in der abgelösten Schiene. */}
-                  {groups
-                    .filter((g) => g.key !== BEREICH_KEY)
-                    .map((g) => {
-                      const gewaehlteWerte = facetSelectedValues(wirksameAuswahl[g.key]);
-                      return (
-                        <MenueUntermenue
-                          key={g.key}
-                          beschriftung={t(g.labelKey)}
-                          zusatz={gewaehlteWerte.length > 0 ? String(gewaehlteWerte.length) : ""}
-                        >
-                          {g.options.map((o) => (
-                            <MenuePunkt
-                              key={o.value}
-                              haken={o.selected}
-                              disabled={o.disabled}
-                              onClick={() => onToggleFacet(g.key, o.value)}
-                            >
-                              {`${facetValueLabel(g.key, o.value)} · ${o.count}`}
-                            </MenuePunkt>
-                          ))}
-                          {g.hiddenCount > 0 ? (
-                            <MenuePunkt
-                              onClick={() =>
-                                setRailUi((p) => ({
-                                  ...p,
-                                  showAll: { ...p.showAll, [g.key]: true },
-                                }))
-                              }
-                            >
-                              {t("facet.showAll", { n: g.totalCount })}
-                            </MenuePunkt>
-                          ) : null}
-                        </MenueUntermenue>
-                      );
-                    })}
-                  <MenueUntermenue beschriftung={t("lib.facet.rangeLabel")}>
-                    <MenueZeile>
-                      <span className="flex items-center gap-1.5">
-                        <label htmlFor="bib-von" className="sr-only">
-                          {t("facet.rangeFrom")}
-                        </label>
-                        <input
-                          id="bib-von"
-                          type="date"
-                          value={range.from}
-                          onChange={(e) => {
-                            resetWindow();
-                            setRange({ ...range, from: e.target.value });
-                          }}
-                          className="w-full rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
-                        />
-                        <label htmlFor="bib-bis" className="sr-only">
-                          {t("facet.rangeTo")}
-                        </label>
-                        <input
-                          id="bib-bis"
-                          type="date"
-                          value={range.to}
-                          onChange={(e) => {
-                            resetWindow();
-                            setRange({ ...range, to: e.target.value });
-                          }}
-                          className="w-full rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
-                        />
-                      </span>
-                    </MenueZeile>
-                  </MenueUntermenue>
-                  {anyFilterActive ? (
-                    <>
-                      <MenueTrenner />
-                      <MenuePunkt testId="bib-filter-reset" onClick={onResetFilters}>
-                        {t("facet.reset")}
-                      </MenuePunkt>
-                    </>
-                  ) : null}
-                </>
-              )}
-            </Menue>
-          ),
-        }}
-      />
-      <div className="flex min-w-0 flex-1 justify-center overflow-y-auto bg-page">
-        <div className="flex min-w-0 flex-col">
-          {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}
-          {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
-          {gewaehltEffektiv ? (
-            <BibliothekLesen
-              key={gewaehltEffektiv}
-              koId={gewaehltEffektiv}
-              suchtext={trimmedQ}
-              treffer={trefferFelder}
-              // Steht der Satz schon an der Liste, schweigt die Lesefläche dazu — s. dort.
-              hinweisSchonGesagt={standQuelle !== null}
-              // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
-              // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
-              // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;
-              // ihm gehört der Normalzustand, nicht der Fehlersatz.
-              onGeloescht={() => {
-                setParams(
-                  (prev) => {
-                    const p = new URLSearchParams(prev);
-                    p.delete(EINTRAG_PARAM);
-                    return p;
-                  },
-                  { replace: true },
-                );
-                beiLoeschung?.();
-              }}
-            />
-          ) : null}
+                    {groups
+                      .filter((g) => g.key !== BEREICH_KEY)
+                      .map((g) => {
+                        const gewaehlteWerte = facetSelectedValues(wirksameAuswahl[g.key]);
+                        return (
+                          <MenueUntermenue
+                            key={g.key}
+                            beschriftung={t(g.labelKey)}
+                            zusatz={gewaehlteWerte.length > 0 ? String(gewaehlteWerte.length) : ""}
+                          >
+                            {g.options.map((o) => (
+                              <MenuePunkt
+                                key={o.value}
+                                haken={o.selected}
+                                disabled={o.disabled}
+                                onClick={() => onToggleFacet(g.key, o.value)}
+                              >
+                                {`${facetValueLabel(g.key, o.value)} · ${o.count}`}
+                              </MenuePunkt>
+                            ))}
+                            {g.hiddenCount > 0 ? (
+                              <MenuePunkt
+                                onClick={() =>
+                                  setRailUi((p) => ({
+                                    ...p,
+                                    showAll: { ...p.showAll, [g.key]: true },
+                                  }))
+                                }
+                              >
+                                {t("facet.showAll", { n: g.totalCount })}
+                              </MenuePunkt>
+                            ) : null}
+                          </MenueUntermenue>
+                        );
+                      })}
+                    <MenueUntermenue beschriftung={t("lib.facet.rangeLabel")}>
+                      <MenueZeile>
+                        <span className="flex items-center gap-1.5">
+                          <label htmlFor="bib-von" className="sr-only">
+                            {t("facet.rangeFrom")}
+                          </label>
+                          <input
+                            id="bib-von"
+                            type="date"
+                            value={range.from}
+                            onChange={(e) => {
+                              resetWindow();
+                              setRange({ ...range, from: e.target.value });
+                            }}
+                            className="w-full rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
+                          />
+                          <label htmlFor="bib-bis" className="sr-only">
+                            {t("facet.rangeTo")}
+                          </label>
+                          <input
+                            id="bib-bis"
+                            type="date"
+                            value={range.to}
+                            onChange={(e) => {
+                              resetWindow();
+                              setRange({ ...range, to: e.target.value });
+                            }}
+                            className="w-full rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
+                          />
+                        </span>
+                      </MenueZeile>
+                    </MenueUntermenue>
+                    {anyFilterActive ? (
+                      <>
+                        <MenueTrenner />
+                        <MenuePunkt testId="bib-filter-reset" onClick={onResetFilters}>
+                          {t("facet.reset")}
+                        </MenuePunkt>
+                      </>
+                    ) : null}
+                  </>
+                )}
+              </Menue>
+            ),
+          }}
+        />
+      ) : null}
+      {zeigeBericht ? (
+        <div
+          className={cx(
+            "flex min-w-0 flex-1 justify-center bg-page",
+            // Breit rollt der Lesebereich in sich (unverändert). Schmal darf er das NICHT: ein
+            // eigener Rollbereich nähme dem Rückweg unten die Haftung (`sticky` haftet am nächsten
+            // rollenden Vorfahren) und legte einen zweiten Rollbereich in die schon rollende
+            // Inhaltsfläche. Schmal rollt die Seite, wie eine Seite auf dem Telefon rollt.
+            schmal ? "w-full" : "overflow-y-auto",
+          )}
+        >
+          <div className={cx("flex min-w-0 flex-col", schmal ? "w-full" : "")}>
+            {/* ======================================================================================
+              JOB 3121 · UX-14 — DER RÜCKWEG. Er steht NUR da, wo er etwas bedeutet: schmal, mit
+              gelesenem Bericht. Breit ist die Liste nie weg, ein Rückweg wäre dort ein Knopf ins
+              Nichts (und drängte sich zwischen die beiden Spalten). Er haftet oben, damit er auch
+              nach dem Rollen durch einen langen Bericht noch da ist.
+
+              KEIN NEUER ÜBERSETZUNGSSCHLÜSSEL (Auftrag §4, dieselbe Regel wie beim Wiederholknopf
+              der Liste): der Satz kommt aus dem vorhandenen `nb.back` („Zurück zu „{{title}}"",
+              de/en/nl) mit dem vorhandenen Namen der Fläche aus `nav.library`. Er ist damit in
+              allen drei Sprachen übersetzt und nennt das Ziel — was ein blosses „Zurück" nicht tut.
+              Die genauere Beschriftung („Zurück zur Trefferliste") bräuchte `i18n.ts`, und die
+              Datei ist nicht Zielpfad; sie ist als REST gemeldet. */}
+            {zeigeListe ? null : (
+              <div className="sticky top-0 z-10 bg-page pb-2 pt-3">
+                <button
+                  type="button"
+                  data-testid="bib-zurueck"
+                  onClick={zurueckZurListe}
+                  className="inline-flex items-center gap-1.5 rounded-btn border border-hairline bg-surface px-2.5 py-1 text-[12.5px] font-semibold text-text hover:bg-hairline-soft focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+                >
+                  <ArrowLeft size={15} aria-hidden className="shrink-0" />
+                  {t("nb.back", { title: t("nav.library") })}
+                </button>
+              </div>
+            )}
+            {/* Der Auffrischungssatz gehört auf die Fläche, die gerade da ist — s. `hinweisKnoten`. */}
+            {zeigeListe ? null : hinweisKnoten}
+            {/* SCRUM-291: Demo-/Pilotpfad bleibt auf der Zielseite wiedererkennbar (nur ?demo=stage1). */}
+            {isDemoContext(params) ? <DemoBanner surface="library" /> : null}
+            {gewaehltEffektiv ? (
+              <BibliothekLesen
+                key={gewaehltEffektiv}
+                koId={gewaehltEffektiv}
+                suchtext={trimmedQ}
+                treffer={trefferFelder}
+                // Steht der Satz schon auf der Fläche — an der Liste oder, schmal, gleich hier
+                // darüber (`hinweisKnoten`) —, schweigt die Lesefläche dazu. Die Bedingung ist
+                // unverändert `standQuelle`: WO er steht, hat sich geändert, DASS er genau einmal
+                // steht, nicht.
+                hinweisSchonGesagt={standQuelle !== null}
+                // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
+                // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
+                // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;
+                // ihm gehört der Normalzustand, nicht der Fehlersatz.
+                onGeloescht={() => {
+                  setParams(
+                    (prev) => {
+                      const p = new URLSearchParams(prev);
+                      p.delete(EINTRAG_PARAM);
+                      return p;
+                    },
+                    { replace: true },
+                  );
+                  beiLoeschung?.();
+                }}
+              />
+            ) : null}
+          </div>
         </div>
-      </div>
+      ) : null}
     </div>
   );
 }

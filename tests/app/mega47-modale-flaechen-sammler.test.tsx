@@ -3720,8 +3720,23 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Wiederholen-Knopfs fest, die vorher als zwei getrennte Zweige im Baum standen: allein in
     // seiner Zeile ist er die Handlung (14 px), neben dem Datenlagesatz die Beigabe (12,5 px).
     // Der Zuwachs ist die Zusammenführung dieser zwei Zweige zu einem Bauteil, keine neue Form.
+    //
+    // JOB 3121 (UX-14): von 212 auf 215. GENAU DREI Bindungen sind DAZUGEKOMMEN, alle in
+    // `components/bibliothek/BibliothekFlaeche.tsx`, alle von derselben Bauform wie die 212 daneben
+    // (EIN Zustand — hier die Breitenfrage `schmal` — entscheidet zwischen festen Klassenketten).
+    // Gemessen an diesem Arbeitsbaum, nicht gerechnet; die Zeilen stammen aus dem Lauf selbst:
+    //
+    //     + BibliothekFlaeche.tsx:1026 `cx("flex", schmal ? "min-h-[calc(100vh-12rem)] flex-col
+    //                                   [&_[data-testid=bib-liste]]:w-full" : "h-[calc(100vh-12rem)]
+    //                                   min-h-[30rem]")`            (die Anordnung der Fläche)
+    //     + BibliothekFlaeche.tsx:1471 `cx("flex min-w-0 flex-1 justify-center bg-page",
+    //                                   schmal ? "w-full" : "overflow-y-auto")`  (der Lesebereich)
+    //     + BibliothekFlaeche.tsx:1480 `cx("flex min-w-0 flex-col", schmal ? "w-full" : "")`
+    //
+    // Sie sind die sichtbare Hälfte von UX-14: unter 760 px trägt EINE Fläche die Breite statt
+    // zweier gequetschter Spalten (N-0043). Keine Bindung ist weggefallen.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      212,
+      215,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);
