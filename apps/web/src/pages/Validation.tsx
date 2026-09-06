@@ -244,9 +244,15 @@ export function Validation(): JSX.Element {
     setLocallyDeletedKoIds((ids) => withDeletedKoId(ids, id));
   };
   const removeDeletedKoFromCaches = (id: string): void => {
-    qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["validation", "board"] }, (items) =>
-      withoutKoById(items, id),
+    // H1c: Die Löschantwort bestätigt das Entfernen, aber keine neue Gesamtzahl.
+    // Der bereinigte Bestand überlebt einen Seitenwechsel; 0 entzieht seiner Kopfzahl die
+    // Bestätigung, auch bei zuvor frischem Cache. Erst refreshAfterDelete bestätigt sie neu.
+    qc.setQueriesData<KnowledgeObject[]>(
+      { queryKey: ["validation", "board"] },
+      (items) => withoutKoById(items, id),
+      { updatedAt: 0 },
     );
+    // Der Bibliothekscache speist keinen Kopfzähler und behält seine bisherige Bereinigung.
     qc.setQueriesData<KnowledgeObject[]>({ queryKey: ["kos"] }, (items) =>
       withoutKoById(items, id),
     );

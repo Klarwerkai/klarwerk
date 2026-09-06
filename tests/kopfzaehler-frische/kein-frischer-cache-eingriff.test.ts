@@ -1,62 +1,10 @@
-// ================================================================================================
-// JOB 3113 · H1b — EIN ÖRTLICHER EINGRIFF IST KEINE NEUE BESTÄTIGUNG.
-// ================================================================================================
-//
-// Codex' Befund an Runde 1, wörtlich: „Eine lokale Cache-Änderung lässt die abgelaufene Zahl ohne
-// erfolgreichen neuen Listenabruf wieder erscheinen." Der Grund liegt in react-query:
-// `setQueryData` setzt `dataUpdatedAt` auf JETZT — dasselbe Feld, an dem seit H1b die Aussage
-// „diese Zahl ist frisch bestätigt" hängt (`lib/loadingState.ts`, `gruppeVeraltet`). Ein Klick, der
-// nur örtlich etwas aus einer Liste entfernt, verlängert damit die Deckung einer Zahl, die niemand
-// mehr bestätigt hat.
-//
-// ------------------------------------------------------------------------------------------------
-// WARUM DIESE DATEI MELDET UND NICHT REPARIERT
-// ------------------------------------------------------------------------------------------------
-// Zu schliessen ist der Fall NUR beim Schreiber: react-query gibt am Ergebnis kein zweites Feld
-// heraus, das ausschliesslich echte Abrufe zählt — der Leser (`gruppeVeraltet`) kann die beiden
-// Fälle nicht auseinanderhalten. Der einzige bekannte Schreiber ist der örtliche Löschschritt der
-// Prüfen-Seite, und `apps/web/src/pages/Validation.tsx` gehört zur Laufzeit dieses Auftrags dem
-// parallel laufenden JOB 3112 (Q3d). Zwei Bahnen an derselben Produktdatei sind verboten; Runde 2
-// hat die Datei angefasst und wurde dafür als Zielpfad-Verstoss rot geurteilt.
-//
-// Deshalb hier das Verfahren der Register aus `tests/capture/aufrufer-waechter.test.ts`: der
-// bekannte Bestand wird EINGEFROREN und benannt, der Neuzugang ist gesperrt.
-//
-//   · ein NEUER ungedeckter Schreibzugriff auf eine der fünf Zählquellen -> rot, mit Datei und Zeile
-//   · der EINE bekannte Zugriff                                          -> geduldet, hier begründet
-//   · der bekannte Zugriff ist behoben                                   -> rot mit „Eintrag streichen"
-//
-// Der letzte Fall ist Absicht und nicht Schikane: eine Liste, die nur wächst, ist der Anfang vom
-// Ende eines Wächters. Wenn H1c die Stelle umstellt, verlangt dieser Test seine eigene Verkürzung.
-//
-// ------------------------------------------------------------------------------------------------
-// WAS GENAU AUSGENOMMEN IST — NICHT DIE DATEI (Ben an Runde 3, Korrekturpflicht 1)
-// ------------------------------------------------------------------------------------------------
-// Runde 3 nahm die ganze DATEI `pages/Validation.tsx` aus. Bens Gegenprobe hat das widerlegt: ein
-// zusätzliches `qc.setQueryData(["conflicts"], [])` in derselben Datei blieb unbemerkt, die Zusage
-// „JEDEN weiteren örtlichen Schreibzugriff rot" war damit unwahr. Ausgenommen ist ab jetzt der
-// EINE Zugriff, identifiziert durch Datei + Zählschlüssel + ANZAHL. Ein zweiter Schreibzugriff auf
-// denselben Schlüssel oder einer auf einen anderen Zählschlüssel — auch innerhalb dieser Datei —
-// ist Neuzugang und damit rot.
-//
-// Nicht über Zeilennummern: die Datei gehört gerade JOB 3112, jede Einfügung darüber verschöbe die
-// Zeile und machte den Wächter zum Fehlalarm. Datei + Schlüssel + Anzahl ist so eng, wie es geht,
-// ohne an fremder Arbeit zu scheitern.
-//
-// ------------------------------------------------------------------------------------------------
-// WORAN DER WÄCHTER DIE REPARATUR ERKENNT
-// ------------------------------------------------------------------------------------------------
-// Als ungedeckt zählt nur ein Schreibzugriff OHNE erhaltenen Zeitpunkt. Steht im Aufruf
-// `{ updatedAt: … }` (react-query übernimmt den Wert dann als `dataUpdatedAt`, statt JETZT zu
-// setzen), ist der Fall behoben und wird nicht mehr gezählt. Daraus folgt beides in einem: der
-// erlaubte Weg für neue Schreiber ist derselbe, den die Fehlermeldung nennt, UND sobald H1c den
-// bekannten Zugriff umstellt, fällt er aus der Erhebung — der dritte Fall wird rot und verlangt das
-// Streichen des Eintrags. Das ist die Stelle, die H1c bemerkt; der gemountete Prüfstand misst nur
-// das Verhalten von react-query, nicht den Produkt-Schreiber (Ben, Korrekturpflicht 2).
-//
-// Gelesen wird der Quelltext, nicht der Baum: gesucht wird der Aufruf UND der Schlüssel, auf den er
-// zielt. Kommentare zählen dabei nicht mit (sie werden vor der Suche entfernt) — sonst deckte
-// dieser Kommentarblock sich selbst als Fund.
+// JOB 3113 H1b / JOB 3125 H1c: örtliches Schreiben ist keine Serverbestätigung.
+// setQueryData erneuert dataUpdatedAt und kann eine abgelaufene Zahl wieder sichtbar machen.
+// H1c entwertet beim Board-Schreiben im Löschweg die Bestätigung ausdrücklich (updatedAt: 0).
+// BEKANNT ist deshalb leer; die Datei bleibt vollständig in der Erhebung.
+// Der echte Löschweg wird in loeschen-kopfzaehler-mounted.test.tsx gemessen.
+// Der Sammler erkennt literale Schlüssel und updatedAt im Aufruftext (höchstens acht Zeilen),
+// nicht Aliase oder die Richtigkeit des übergebenen Zeitpunkts. Die Laufzeitprobe ergänzt ihn.
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -83,25 +31,8 @@ interface Eintrag {
   readonly grund: string;
 }
 
-/**
- * Der eingefrorene Bestand — je Zeile EIN Zugriff, nicht eine ganze Datei.
- *
- * `pages/Validation.tsx` schreibt im Löschweg örtlich `["validation","board"]` (und `["kos"]`, das
- * keine Zählquelle ist) und stösst danach einen Neuabruf an (`refreshAfterDelete`). Solange dieser
- * Abruf offen ist oder scheitert, steht die Zahl im Kopfband wieder da, obwohl sie niemand
- * bestätigt hat — der Fall aus Codex' Befund.
- */
-const BEKANNT: readonly Eintrag[] = [
-  {
-    datei: "apps/web/src/pages/Validation.tsx",
-    schluessel: '"validation", "board"',
-    anzahl: 1,
-    grund:
-      "Örtlicher Löschschritt (`removeDeletedKoFromCaches`) mit anschliessendem Neuabruf. Offener " +
-      "Rest von JOB 3113: die Datei hält zur Laufzeit JOB 3112 (Q3d), zwei Bahnen an derselben " +
-      "Produktdatei sind verboten. Umstellung in H1c, sobald 3112 LIVE ist.",
-  },
-];
+/** H1c hat den letzten geduldeten Zugriff entfernt. Keine Dateiausnahme. */
+const BEKANNT: readonly Eintrag[] = [];
 
 /** Datei + Schlüssel als eine Zeile — die Kennung, unter der gezählt wird. */
 const kennung = (datei: string, schluessel: string): string => `${datei} → ${schluessel}`;
@@ -179,7 +110,7 @@ function schreibzugriffe(): Fund[] {
 type Zugriff = Fund & { readonly schluessel: string };
 
 /**
- * Auf welche Zählquellen ein Aufruf UNGEDECKT schreibt — die Stelle, an der H1c erkannt wird.
+ * Auf welche Zählquellen ein Aufruf ohne erhaltenen Zeitpunkt schreibt.
  *
  * Leer heisst: geht die Sache nichts an. Entweder trifft der Aufruf keine der fünf Zählquellen,
  * oder er reicht `{ updatedAt: … }` mit; react-query übernimmt diesen Wert dann als
@@ -318,11 +249,9 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
   });
 
   // ==============================================================================================
-  // SO ERKENNT DIESER WÄCHTER DIE REPARATUR IN H1c
+  // ERKENNUNG EINES ERHALTENEN ZEITPUNKTS
   // ==============================================================================================
-  // Der gemountete Prüfstand kann das nicht: er schreibt seinen Cache selbst und misst damit
-  // react-query, nicht den Produkt-Schreiber (Ben, Korrekturpflicht 2). HIER liegt die Erkennung —
-  // am wirklichen Quelltext, über das eine Merkmal, das den behobenen Fall auszeichnet.
+  // Diese Sammlerfälle ersetzen keinen Laufzeitbeleg für den tatsächlichen Zeitstempel.
   describe("ein Schreibzugriff mit erhaltenem Zeitpunkt gilt als behoben", () => {
     const ohne =
       'qc.setQueriesData({ queryKey: ["validation", "board"] }, (items) => rest(items));';
@@ -331,7 +260,7 @@ describe("JOB 3113 H1b: kein örtlicher Cache-Eingriff erneuert die Bestätigung
       expect(ungedeckteZiele(ohne)).toEqual(['"validation", "board"']);
     });
 
-    it("mit `updatedAt` zählt er nicht mehr — genau das ist die H1c-Umstellung", () => {
+    it("mit `updatedAt` zählt er nicht mehr als ungedeckt", () => {
       const mit = `${ohne.slice(0, -2)}, { updatedAt: bisher });`;
       expect(ungedeckteZiele(mit)).toEqual([]);
     });

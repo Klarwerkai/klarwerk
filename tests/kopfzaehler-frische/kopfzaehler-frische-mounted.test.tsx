@@ -320,15 +320,8 @@ describe("JOB 3113 H1b: die Zahl im Kopfband verschwindet, wenn sie niemand mehr
   // Bens Gegenprobe hat das widerlegt (Schreiber umgestellt → dieser Fall unverändert grün), denn
   // er schreibt seinen Cache selbst. Diese Behauptung ist hiermit zurückgenommen.
   //
-  // WER H1c BEMERKT: `kein-frischer-cache-eingriff.test.ts`. Der liest den wirklichen Quelltext;
-  // sobald der bekannte Zugriff in `pages/Validation.tsx` einen erhaltenen `updatedAt` mitgibt,
-  // fällt er dort aus der Erhebung und der Fall „der bekannte Zugriff steht noch" wird rot und
-  // verlangt das Streichen des Eintrags.
-  //
-  // Warum der Rest überhaupt offen ist: zu schliessen ist er nur beim SCHREIBER — react-query gibt
-  // am Ergebnis kein Feld heraus, das ausschliesslich echte Abrufe zählt. Der eine bekannte
-  // Schreiber steht in `pages/Validation.tsx`; diese Datei hält zur Laufzeit JOB 3112 (Q3d), und
-  // zwei Bahnen an derselben Produktdatei sind verboten. Die Umstellung ist H1c.
+  // JOB 3125 H1c entwertet beim Produkt-Schreiben die Bestätigung. Der echte Löschweg steht in
+  // `loeschen-kopfzaehler-mounted.test.tsx`; diese Probe bleibt reine Query-Mechanik.
   it("MECHANIK: ein gewöhnliches setQueryData lässt die abgelaufene Zahl wieder erscheinen", async () => {
     await mount();
     await alleQuellenBeantworten();
