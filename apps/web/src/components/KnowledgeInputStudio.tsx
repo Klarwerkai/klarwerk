@@ -99,6 +99,13 @@ export function KnowledgeInputStudio({
   // Der vorhandene Dirty-Vergleich (`knowledgeStudioState(draft, bodyHtml)`) kann das nicht: er
   // sieht nur, DASS die beiden auseinanderliegen, nicht WELCHE Seite sich bewegt hat.
   const herkunftRef = useRef<string | null>(null);
+  // JOB 3123 (PRIORITAETEN.md Q5c): Hat der Rumpf sich draußen bewegt, WÄHREND die Autorin hier
+  // gearbeitet hat? Ein Zustand und kein Ref, weil er gerendert wird. Er steht bewusst NEBEN
+  // `knowledgeStudioState(draft, bodyHtml)` und ersetzt dort nichts: dessen `dirty`/`statusKey`
+  // beantwortet die andere Frage („gibt es unübernommene Änderungen") und sieht nur, DASS die
+  // beiden Fassungen auseinanderliegen — nicht, WELCHE Seite sich bewegt hat. Genau diese
+  // Unterscheidung ist der Befund hier, und sie hängt an `herkunftRef` darüber.
+  const [konflikt, setKonflikt] = useState(false);
   // SCRUM-339: Inline-Bestätigung, bevor unübernommene Änderungen verworfen werden (kein confirm()).
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   // SCRUM-346: Umschalter Bearbeiten ↔ Vorschau/Review der zentralen Editor-Spalte (lokaler Anzeige-State).
@@ -148,10 +155,46 @@ export function KnowledgeInputStudio({
   // Studio hinein. `onApply` bleibt der einzige Weg hinaus, und er hängt weiter allein am Klick des
   // Autors (`apply()`). Die Zusage `:65-66` ist unberührt.
   //
-  // WAS OFFEN BLEIBT und hier bewusst NICHT behauptet wird: der dritte Fall — der Autor hat im
+  // ── JOB 3123 (PRIORITAETEN.md Q5c): DER DRITTE FALL BEKOMMT SEINEN SATZ ──────────────────────
+  //
+  // Hier stand bis heute die Selbstauskunft „WAS OFFEN BLEIBT … der dritte Fall — der Autor hat im
   // Studio gearbeitet UND draußen hat sich der Rumpf geändert. Dann steht die fremde Änderung
-  // weiterhin vor dem Überschreiben, ohne dass die Fläche es sagt. Der Satz dafür bräuchte einen
-  // neuen i18n-Schlüssel, und `apps/web/src/i18n.ts` gehört JOB 3079.
+  // weiterhin vor dem Überschreiben, ohne dass die Fläche es sagt." Genau das ist ab jetzt nicht
+  // mehr wahr, und deshalb ist der Absatz ERSETZT statt ergänzt.
+  //
+  // DIE ENTSCHEIDUNG SELBST IST UNVERÄNDERT, Wort für Wort: der Entwurf der Autorin bleibt stehen,
+  // `herkunftRef` wird NICHT fortgeschrieben, nachgezogen wird nichts. Ein Nachziehen wäre ein
+  // Datenverlust bei ihr. Neu ist ausschließlich, dass die Fläche den Sachverhalt AUSSPRICHT
+  // (`konflikt`), damit „In den Entwurf übernehmen" ein informierter Klick ist statt eines blinden.
+  //
+  // WANN DER BEFUND ENDET — und das ist die Lehre aus JOB 3101 R2, die JOB 3107 ausbuchstabiert
+  // hat: ein Merker, den niemand ungültig macht, stellt später einen überholten Stand wieder her;
+  // ein Merker, den jeder Durchlauf löscht, nimmt der Autorin den Befund weg, bevor sie ihn gelesen
+  // hat. Beides ist hier ausgeschlossen, und zwar an DIESER EINEN Stelle:
+  //   · das Studio schließt (`!open`) — der nächste Lauf fängt frisch an. Über diesen Weg endet
+  //     auch die Übernahme, denn `apply()` ruft `onClose()`.
+  //   · der Entwurf entspricht wieder dem Rumpf — dann schreibt Übernehmen nichts mehr über, der
+  //     Satz wäre falsch. Das ist eine POSITIVE Feststellung über beide Fassungen, nicht „der
+  //     Effekt lief ohne Befund".
+  // Der Zweig „nichts Fremdes beobachtet" (`bodyHtml === herkunft`) löscht dagegen NICHTS: er sagt
+  // nur, dass es nichts zu melden GIBT — dieselbe Regel wie „eine leere Liste ist keine Entwarnung"
+  // in `RichTextEditor.tsx` (`uebernimmTrennungen`).
+  //
+  // ── RUNDE 2 (bens Befund): DIE ENDSTELLE STAND HINTER DEN ZWEIGEN, NICHT VOR IHNEN ───────────
+  //
+  // Runde 1 hat die Gleichheit NUR im Konfliktzweig geprüft (`setKonflikt(draft !== bodyHtml)`).
+  // Ben hat zwei Wege gemessen, die zur selben Gleichheit führen und dabei an diesem Zweig
+  // vorbeilaufen — der Satz blieb in beiden stehen und behauptete ein Überschreiben, obwohl beide
+  // Fassungen identisch waren:
+  //   · sie nimmt ihre eigene Änderung zurück: der Entwurf ist wieder eine Kopie der Herkunft, der
+  //     NACHZIEHZWEIG unten greift und holt die fremde Fassung — Konflikt vorbei, aber der frühere
+  //     Zweig lief nie wieder.
+  //   · draußen wird zurückgenommen, dann auch von ihr: `bodyHtml === herkunft`, also greift der
+  //     frühe Rücksprung „nichts Fremdes beobachtet", der bewusst nichts löscht.
+  // Beides ist derselbe Konstruktionsfehler: die Endstelle hing an EINEM Zweig statt am Ergebnis
+  // des Laufs. Deshalb wird sie jetzt aus beiden Fassungen berechnet, NACH einem etwaigen
+  // Nachziehen und für JEDEN Zweig — eine Stelle, ein `setKonflikt(false)`, kein Sonderfall.
+  //
   // Alle drei Abhängigkeiten werden im Rumpf gelesen — es gibt hier keinen Auslöser, der nur
   // behauptet wird. Der frühere `biome-ignore` ist damit gegenstandslos und ENTFERNT: die
   // Ausnahme gab es, weil der Effekt `bodyHtml` las, ohne darauf zu reagieren. Genau das tut er
@@ -160,6 +203,7 @@ export function KnowledgeInputStudio({
     if (!open) {
       // Geschlossen: der nächste Lauf fängt frisch an, egal was von diesem stehen geblieben ist.
       herkunftRef.current = null;
+      setKonflikt(false);
       return;
     }
     if (herkunftRef.current === null) {
@@ -170,13 +214,33 @@ export function KnowledgeInputStudio({
       setView("edit");
       return;
     }
-    if (bodyHtml === herkunftRef.current || draft !== herkunftRef.current) {
+    // Die zwei Fragen, die `herkunftRef` überhaupt erst beantwortbar macht (`:97-98`).
+    const fremdesGeschehen = bodyHtml !== herkunftRef.current;
+    const eigeneArbeit = draft !== herkunftRef.current;
+    if (fremdesGeschehen && !eigeneArbeit) {
+      // Fremde Änderung am Rumpf, und der Entwurf ist eine unveränderte Kopie der alten Fassung:
+      // das Studio zieht nach (JOB 3083), statt die Änderung später stumm zu überschreiben.
+      herkunftRef.current = bodyHtml;
+      setDraft(bodyHtml);
+    }
+    // DIE EINE ENDSTELLE. Was steht nach diesem Lauf im Entwurf — der nachgezogene Rumpf oder ihr
+    // eigener Stand? Nur diese Fassung entscheidet, ob Übernehmen noch etwas überschreibt.
+    const entwurfNachDiesemLauf = fremdesGeschehen && !eigeneArbeit ? bodyHtml : draft;
+    if (entwurfNachDiesemLauf === bodyHtml) {
+      // Beide Fassungen fallen zusammen: es gibt nichts mehr zu überschreiben, der Satz wäre eine
+      // falsche Tatsachenaussage. Eine POSITIVE Feststellung über beide Fassungen — nicht „der
+      // Effekt lief ohne Befund". Ist ohnehin nichts gesetzt, ist das ein Nichts-Tun (React bricht
+      // bei gleichem Wert ab); es entsteht also kein Renderlauf je Tastendruck.
+      setKonflikt(false);
       return;
     }
-    // Fremde Änderung am Rumpf, und der Entwurf ist eine unveränderte Kopie der alten Fassung:
-    // das Studio zieht nach, statt die Änderung später stumm zu überschreiben.
-    herkunftRef.current = bodyHtml;
-    setDraft(bodyHtml);
+    if (fremdesGeschehen && eigeneArbeit) {
+      // DER DRITTE FALL: beide Seiten haben sich bewegt, und sie liegen auseinander. Der Entwurf
+      // bleibt unangetastet, und die Fläche sagt es.
+      setKonflikt(true);
+    }
+    // Sonst: `bodyHtml === herkunft` — nichts Fremdes beobachtet. Ein bereits stehender Befund
+    // bleibt stehen; er spricht über ein Ereignis, das stattgefunden HAT.
   }, [open, bodyHtml, draft]);
 
   // SCRUM-458 Stufe 1 (Sackgasse): Esc ist der universelle, erwartete Ausgang. Bei ungespeicherten
@@ -506,13 +570,31 @@ export function KnowledgeInputStudio({
             </Button>
           </div>
         ) : (
-          <div className="flex items-center justify-end gap-2">
-            <Button variant="ghost" onClick={requestClose}>
-              {t("studio.cancel")}
-            </Button>
-            <Button variant="primary" onClick={apply}>
-              {t("studio.apply")}
-            </Button>
+          <div className="space-y-1.5">
+            {/* JOB 3123 (Q5c): DER SATZ STEHT DORT, WO ÜBERSCHRIEBEN WIRD — über dem Knopf, nicht
+                oben in der Kopfzeile. Er blockiert nichts, fragt nichts nach und verschiebt den
+                Knopf nicht an einen anderen Ort: die Autorin darf übernehmen, sie soll es nur
+                wissen. Der Text steht als echter Absatz im Dokument (nicht als Farbe oder
+                `title`-Attribut) und ist damit auch für Screenreader erreichbar; `aria-live` nach
+                dem Vorbild des Trennungs-Hinweises im Editor — angekündigt, ohne den Fokus zu
+                stehlen. Kein Alarm-Rot: es ist kein Fehler der Autorin, sondern eine Auskunft. */}
+            {konflikt ? (
+              <p
+                aria-live="polite"
+                data-testid="studio-fremdfassung-konflikt"
+                className="text-[11.5px] leading-relaxed text-muted"
+              >
+                {t("studio.fremdfassung.hinweis")}
+              </p>
+            ) : null}
+            <div className="flex items-center justify-end gap-2">
+              <Button variant="ghost" onClick={requestClose}>
+                {t("studio.cancel")}
+              </Button>
+              <Button variant="primary" onClick={apply}>
+                {t("studio.apply")}
+              </Button>
+            </div>
           </div>
         )}
       </div>

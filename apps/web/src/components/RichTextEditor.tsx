@@ -517,6 +517,18 @@ export function RichTextEditor({
   // Die Zahl steht bewusst NICHT in einem Ref: sie wird gerendert, also gehört sie in den Zustand.
   const [getrennteZuordnungen, setGetrennteZuordnungen] = useState(0);
   const [trennungsHinweisZu, setTrennungsHinweisZu] = useState(false);
+  // ── JOB 3123 (PRIORITAETEN.md Q5c): DIE VERWORFENE FREMDFASSUNG WIRD GEMELDET ────────────────
+  //
+  // Dasselbe Zustandspaar aus demselben Grund wie darüber: OB es etwas zu sagen gibt, und ob die
+  // Autorin es weggeklickt hat. Weggeklickt heißt „diesen Befund kenne ich", nicht „sag mir nie
+  // wieder etwas" — ein neuer Vorfall öffnet den Hinweis deshalb wieder.
+  //
+  // Ein BOOLEAN und keine Zählung, anders als bei den Trennungen: dort ist die Zahl der Trennungen
+  // eine Auskunft, die der Autor am Bildschirm nachzählen kann. Hier gäbe es nichts zu zählen —
+  // „eine Fassung wurde verworfen" und „drei Fassungen wurden verworfen" führen zu genau derselben
+  // Handlung, und die verworfenen Fassungen sind unwiederbringlich fort. Eine Zahl wäre Zierrat.
+  const [fremdfassungVerworfen, setFremdfassungVerworfen] = useState(false);
+  const [fremdfassungHinweisZu, setFremdfassungHinweisZu] = useState(false);
   // JOB 3055: die Kennungen der Kandidaten, deren VORSCHAUBILD nicht geladen hat. Ein eigener
   // Zustand und kein Feld der Lage oben, weil er nicht beim Erheben entsteht, sondern erst beim
   // Rendern — und weil er ausdrücklich NICHTS über die Zuordenbarkeit aussagt: ein Bild, dessen
@@ -674,6 +686,19 @@ export function RichTextEditor({
     // neue Inhalt", nicht „du bekommst ihn zurück". Ein Verbraucher, der verzögert, bündelt oder
     // verwirft, ließe den Merker stehen — und der nächste Fokusverlust zöge der Autorin ihren Text
     // unter der Hand weg. Gemessen an genau diesem Verbraucher: F8.
+    //
+    // ── JOB 3123 (Q5c): UND SIE STIRBT NICHT MEHR STUMM ──────────────────────────────────────
+    //
+    // DIE BEDINGUNG IST DER KERN DIESER ZEILEN, nicht der Hinweis: `emit()` hängt an
+    // `onEditorInput`, also an JEDEM Tastendruck. Ein bedingungsloser `setState` hier löste bei
+    // jedem Zeichen ein Rendern aus — genau der Schaden, gegen den `:651-655` und `:583`
+    // argumentieren. Gesetzt wird deshalb ausschließlich, wenn WIRKLICH eine vertagte Fassung
+    // vorlag; im Normalfall wird hier nichts angefasst. Die Prüfung steht vor der Löschung, weil
+    // sie sonst nichts mehr zu sehen hätte.
+    if (vertagteFremdfassungRef.current !== null) {
+      setFremdfassungVerworfen(true);
+      setFremdfassungHinweisZu(false);
+    }
     vertagteFremdfassungRef.current = null;
     const puffer = document.createElement("div");
     puffer.innerHTML = ref.current?.innerHTML ?? "";
@@ -786,6 +811,12 @@ export function RichTextEditor({
     // Reihenfolge an, die Zahl unten zählt also von 0 an.
     setGetrennteZuordnungen(0);
     setTrennungsHinweisZu(false);
+    // JOB 3123 (Q5c): DERSELBE SCHNITT FÜR DEN VERWORFENEN-HINWEIS, und hier ist er zwingend. Sein
+    // Satz lautet „der eigene Text ist geblieben" — genau das stimmt ab dieser Zeile nicht mehr,
+    // denn der Inhalt IST gerade durch eine Fassung von außen ersetzt worden. Ein stehen
+    // gebliebener Hinweis wäre dann eine falsche Tatsachenaussage, nicht bloß ein alter Befund.
+    setFremdfassungVerworfen(false);
+    setFremdfassungHinweisZu(false);
     // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen verankern.
     // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
     // CSS :empty::before) — wird vom Sanitizer beim Speichern gestrippt, nie echter Inhalt.
@@ -2901,6 +2932,34 @@ export function RichTextEditor({
                 type="button"
                 aria-label={t("editor.kennungGetrenntClose")}
                 onClick={() => setTrennungsHinweisZu(true)}
+                className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
+              >
+                {t("editor.linkCancel")}
+              </button>
+            </div>
+          ) : null}
+          {/* JOB 3123 (PRIORITAETEN.md Q5c) — DIE VERWORFENE FREMDFASSUNG BEKOMMT IHREN SATZ.
+
+              Seit JOB 3107 wird eine von außen gekommene Fassung, die bei liegender Einfügemarke
+              vertagt wurde, verworfen, sobald die Autorin selbst weiterschreibt (`emit()`). Die
+              Entscheidung ist richtig — ihr Text gehört ihr — und war bis hierher STUMM.
+
+              Dieselbe Bauform wie der Hinweis darüber, mit Absicht: ein Hinweis, kein Alarm, ohne
+              Warnfarbe und ohne Rand, wegklickbar, `aria-live="polite"`. Es ist kein Fehler der
+              Autorin, und es ist nichts, was sie tun muss. */}
+          {fremdfassungVerworfen && !fremdfassungHinweisZu ? (
+            <div
+              aria-live="polite"
+              data-testid="editor-fremdfassung-verworfen"
+              className="flex items-start justify-between gap-2 border-b border-hairline bg-page px-3 py-1.5"
+            >
+              <p className="text-[11px] leading-relaxed text-muted">
+                {t("editor.fremdfassungVerworfen")}
+              </p>
+              <button
+                type="button"
+                aria-label={t("editor.fremdfassungVerworfenClose")}
+                onClick={() => setFremdfassungHinweisZu(true)}
                 className="shrink-0 text-[11px] font-semibold text-muted-2 hover:text-text"
               >
                 {t("editor.linkCancel")}

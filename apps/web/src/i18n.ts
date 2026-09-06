@@ -1365,6 +1365,15 @@ const de = {
   "studio.confirmDiscard.q": "Nicht übernommene Änderungen verwerfen?",
   "studio.confirmDiscard.keep": "Weiter bearbeiten",
   "studio.confirmDiscard.discard": "Verwerfen",
+  // JOB 3123 (PRIORITAETEN.md Q5c): der Satz für den dritten Fall — im Studio wurde gearbeitet UND
+  // draußen hat sich der Rumpf geändert. Die Entscheidung bleibt, wie sie ist (die eigene Eingabe
+  // gewinnt); der Satz macht sie nur SICHTBAR, damit der Klick ein informierter ist.
+  //
+  // ER IST EINE POSITIVE AUSSAGE ÜBER EIN BEOBACHTETES EREIGNIS und kein Urteil über Frische: Es
+  // gibt bewusst KEINEN Gegensatz dazu („keine fremden Änderungen", „aktuell") — die Fläche weiß
+  // nicht, was sie nie bekommen hat. Sein Fehlen heißt ausschließlich „kein Konflikt beobachtet".
+  "studio.fremdfassung.hinweis":
+    "Draußen ist eine neuere Fassung entstanden. Übernehmen schreibt deinen Stand darüber.",
   "studio.applied":
     "Ausführlicher Inhalt aus dem Studio in den Entwurf übernommen. Speichern bzw. Revision erfolgt erst über den bestehenden Button — nichts wird automatisch gespeichert oder validiert.",
   "studio.save.capture.title": "Studio-Inhalt im Entwurf — noch nicht gespeichert",
@@ -1968,6 +1977,13 @@ const de = {
   "editor.kennungGetrennt_other":
     "Mehrere Bilder trugen dieselbe Kennung. {{count}} Zuordnungen wurden getrennt — bitte prüfen Sie die betroffenen Bildbeschreibungen.",
   "editor.kennungGetrenntClose": "Hinweis zu getrennten Bildkennungen schließen",
+  // JOB 3123 (PRIORITAETEN.md Q5c): eine von außen gekommene, vertagte Fassung wurde verworfen,
+  // weil im Editor weitergeschrieben wurde (JOB 3107, `emit()`). Die Entscheidung ist richtig und
+  // bleibt; sie war nur stumm. Der Satz sagt, was geschehen ist — er behauptet nicht, welche der
+  // beiden Fassungen „die richtige" war, denn das weiß hier niemand.
+  "editor.fremdfassungVerworfen":
+    "Während des Schreibens ist von außen eine neuere Fassung eingetroffen. Der eigene Text ist geblieben; die fremde Fassung wurde verworfen.",
+  "editor.fremdfassungVerworfenClose": "Hinweis zur verworfenen Fassung schließen",
   "editor.captionAi.suggest": "KI-Beschreibung vorschlagen",
   "editor.captionAi.loading": "KI-Beschreibung wird erstellt …",
   "editor.captionAi.panelTitle": "Vorschlag",
@@ -6544,6 +6560,8 @@ const en: typeof de = {
   "studio.confirmDiscard.q": "Discard changes that haven't been applied?",
   "studio.confirmDiscard.keep": "Keep editing",
   "studio.confirmDiscard.discard": "Discard",
+  "studio.fremdfassung.hinweis":
+    "A newer version has been created outside. Applying writes your version over it.",
   "studio.applied":
     "Detailed content from the studio applied to the draft. Saving or revising still happens via the existing button — nothing is saved or validated automatically.",
   "studio.save.capture.title": "Studio content in the draft — not saved yet",
@@ -7087,6 +7105,9 @@ const en: typeof de = {
   "editor.kennungGetrennt_other":
     "Several images carried the same identifier. {{count}} links were separated — please check the image descriptions concerned.",
   "editor.kennungGetrenntClose": "Close the notice about separated image identifiers",
+  "editor.fremdfassungVerworfen":
+    "While you were writing, a newer version arrived from elsewhere. Your own text was kept; the other version was discarded.",
+  "editor.fremdfassungVerworfenClose": "Close the notice about the discarded version",
   "editor.captionAi.suggest": "Suggest AI description",
   "editor.captionAi.loading": "Creating AI description …",
   "editor.captionAi.panelTitle": "Suggestion",
@@ -11114,6 +11135,8 @@ const nl: typeof de = {
   "studio.confirmDiscard.q": "Niet-overgenomen wijzigingen verwerpen?",
   "studio.confirmDiscard.keep": "Verder bewerken",
   "studio.confirmDiscard.discard": "Verwerpen",
+  "studio.fremdfassung.hinweis":
+    "Buiten is een nieuwere versie ontstaan. Overnemen schrijft jouw versie eroverheen.",
   "studio.applied":
     "Uitgebreide inhoud uit de studio overgenomen in het concept. Opslaan of een revisie doe je pas via de bestaande knop — er wordt niets automatisch opgeslagen of gevalideerd.",
   "studio.save.capture.title": "Studio-inhoud in het concept — nog niet opgeslagen",
@@ -11661,6 +11684,9 @@ const nl: typeof de = {
   "editor.kennungGetrennt_other":
     "Meerdere afbeeldingen droegen dezelfde kenmerkcode. {{count}} koppelingen zijn losgemaakt — controleer de betrokken afbeeldingsbeschrijvingen.",
   "editor.kennungGetrenntClose": "Melding over losgemaakte afbeeldingskenmerken sluiten",
+  "editor.fremdfassungVerworfen":
+    "Tijdens het schrijven is van buitenaf een nieuwere versie binnengekomen. De eigen tekst is behouden; de andere versie is verworpen.",
+  "editor.fremdfassungVerworfenClose": "Melding over de verworpen versie sluiten",
   "editor.captionAi.suggest": "AI-beschrijving voorstellen",
   "editor.captionAi.loading": "AI-beschrijving wordt gemaakt …",
   "editor.captionAi.panelTitle": "Voorstel",
