@@ -380,6 +380,13 @@ export function Ask(): JSX.Element {
   // JOB 3064 §5: zwei Schalter der Fläche — das Info-Blatt („…" → „Mehr") und die Beispielliste
   // im leeren Frage-Feld. Beide sind reine Anzeige-Zustände; keiner löst eine Modellanfrage aus.
   const [mehr, setMehr] = useState(false);
+  // JOB 3102 UX-06 · KORREKTURPFLICHT 1 (Ben, Runde 1): DER Griff, an den das Blatt die Bedienung
+  // zurückgibt. Diese Fläche hat das „…" an ZWEI Orten — in der Antwortkarte (`:1216`) und, solange
+  // es keine gibt, oben in der Kopfzeile (`:811`). Sie schliessen einander aus, es steht also immer
+  // GENAU EINER da; welcher, kann sich aber ändern, während das Blatt offen ist (Auffrischung
+  // trifft als Wissenslücke ein). Deshalb hält beide Menüorte derselbe Ref, und das Blatt liest ihn
+  // erst beim Schliessen — nicht beim Öffnen.
+  const menuGriffRef = useRef<HTMLButtonElement | null>(null);
   const [beispiele, setBeispiele] = useState(false);
   const [result, setResult] = useState<AnswerResult | null>(null);
   // JOB 2626 D1: die Torlage einer Nicht-Antwort — welche gefundenen Dokumente NICHT antworten
@@ -594,6 +601,21 @@ export function Ask(): JSX.Element {
   const auffrischungGescheitert = ask.isError && Boolean(result);
 
   const resultRef = useRef<HTMLDivElement | null>(null);
+  // ==============================================================================================
+  // JOB 3102 UX-06 · KORREKTURPFLICHT 1 (Ben, Runde 1) — DIE ERGEBNISFLÄCHE HOLT DEN FOKUS NICHT
+  // AUS DEM OFFENEN BLATT HERAUS.
+  // ==============================================================================================
+  // GEMESSEN (bens Gegenprobe): Auffrischung starten, „Mehr" öffnen, Auffrischung als Wissenslücke
+  // eintreffen lassen — der Fokus stand danach auf `ask-result-anchor`, und zwar mit einem
+  // `[inert]`-Vorfahren. Also genau dort, wo mit der Tastatur nichts mehr geht: A2 unten holte den
+  // Fokus in einen Bereich, den das offene Blatt gerade gesperrt hatte.
+  // „Die Antwort muss ankommen" (mega38) bleibt in Kraft — was bleibt, ist das ANSPRINGEN; nur der
+  // Fokus wandert nicht, solange das Blatt die Bedienung hält. Es ist keine zweite Fokusverwaltung:
+  // hier wird kein Fokus gesetzt, sondern einer unterlassen.
+  // Als Ref gelesen, NICHT als Abhängigkeit: hinge `revealResult` an `mehr`, liefe A2 beim
+  // SCHLIESSEN erneut und risse den eben zurückgegebenen Fokus wieder vom „…"-Knopf weg.
+  const mehrRef = useRef(mehr);
+  mehrRef.current = mehr;
   const revealResult = useCallback((withFocus: boolean): void => {
     const el = resultRef.current;
     if (!el) {
@@ -606,7 +628,7 @@ export function Ask(): JSX.Element {
     if (typeof el.scrollIntoView === "function") {
       el.scrollIntoView({ behavior: "smooth", block: "start" });
     }
-    if (withFocus) {
+    if (withFocus && !mehrRef.current) {
       // `preventScroll`, damit der Fokus die eben gesetzte Position nicht zweitens verschiebt.
       el.focus({ preventScroll: true });
     }
@@ -811,6 +833,7 @@ export function Ask(): JSX.Element {
           <OverflowMenu
             label={t("ask.menu.label")}
             testId="ask-menu"
+            griffRef={menuGriffRef}
             punkte={[{ id: "mehr", label: t("ask.menu.mehr") }]}
             onWahl={() => setMehr(true)}
           />
@@ -1214,6 +1237,7 @@ export function Ask(): JSX.Element {
                     <OverflowMenu
                       label={t("ask.menu.label")}
                       testId="ask-menu"
+                      griffRef={menuGriffRef}
                       punkte={[
                         { id: "print", label: t("ask.export.print") },
                         { id: "download", label: t("ask.export.download") },
@@ -1248,6 +1272,7 @@ export function Ask(): JSX.Element {
                       titel={t("ask.menu.label")}
                       testId="ask-mehr"
                       onSchliessen={() => setMehr(false)}
+                      ausloeser={() => menuGriffRef.current}
                     >
                       <MehrFlaechenInfo
                         badge={badge}
@@ -1833,6 +1858,7 @@ export function Ask(): JSX.Element {
           titel={t("ask.menu.label")}
           testId="ask-mehr"
           onSchliessen={() => setMehr(false)}
+          ausloeser={() => menuGriffRef.current}
         >
           <MehrFlaechenInfo badge={badge} guide={guide} speechSupported={speechSupported} />
           {karteSichtbar && result && contract && !result.answered ? (

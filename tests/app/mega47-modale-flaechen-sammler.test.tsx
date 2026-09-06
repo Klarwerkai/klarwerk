@@ -684,13 +684,31 @@ const NICHT_MODALE_VOLLFLAECHEN = new Map<string, string>([
   // eine Vollfläche auf, und beide aus demselben Grund wie `HelpTip.tsx`: sie ist der Klickfänger
   // zum Schliessen. Gemessen an der Quelle, nicht behauptet — keines von beiden trägt `aria-modal`,
   // `showModal()` oder einen Fokusfang, und keines verlangt eine Entscheidung, bevor es weitergeht.
+  //
+  // JOB 3102 · UX-06 — DIE BEGRÜNDUNG DES ZWEITEN EINTRAGS STIMMTE NICHT MEHR, UND ZWAR AB DEM
+  // MOMENT, IN DEM DAS BLATT TASTATURBEDIENBAR WURDE.
+  //
+  // `Seitenblatt.tsx` schliesst seit UX-06 an die Modalgrenze an: Anfangsfokus (`focusFirstIn`),
+  // Escape-Ausgang, `enter()`/Abmeldung und damit `inert` auf den angemeldeten Bereichen. „ohne
+  // Fokusfang" war damit eine LÜGE IM WÄCHTER — und die gefährlichste Sorte, weil dieser Eintrag
+  // die Datei zugleich aus `unregistrierteWirkflaechen` heraushält (`:865-873`). Der Eintrag steht
+  // deshalb weiterhin hier, aber mit dem wahren Grund.
+  //
+  // WARUM DIESE KLASSE UND NICHT `MARKERLOSE_TRAEGER`, am Quelltext dieses Wächters entschieden:
+  // dessen Zugehörigkeit wird NICHT per Liste behauptet, sondern aus dem Bestand abgeleitet
+  // (`istMarkerloserTraegerAmBestand`, `:766-776`) und exakt gegen das Register abgeglichen
+  // (`:1754-1766`). Sie verlangt VERDECKUNG (`verdecktDenHintergrund`, ab 30 % Tönung oder Blur) —
+  // und genau die hat das Blatt nicht und darf sie nicht bekommen: sein Klickfänger ist farblos,
+  // die Fläche darunter bleibt lesbar. Ein Eintrag dort machte den Abgleich `:1762` rot.
+  // Die Modalitäts-Kandidaten bleiben ebenfalls leer (kein `aria-modal`, kein `<dialog>`) — die
+  // Negativprobe `:1979-1985` hält das fest.
   [
     "apps/web/src/components/start/OverflowMenu.tsx",
-    "Überlauf-Menü: die Vollfläche ist der Klickfänger zum Schliessen, die Liste bleibt ein Popover neben dem Auslöser",
+    "Überlauf-Menü: die Vollfläche ist der Klickfänger zum Schliessen, die Liste bleibt ein Popover neben dem Auslöser; beim Schliessen gibt es den Fokus an den eigenen Griff zurück, sperrt aber nichts",
   ],
   [
     "apps/web/src/components/start/Seitenblatt.tsx",
-    "Menü-Blatt: eine Auskunft am rechten Rand ohne Abdunklung und ohne Fokusfang — die Vollfläche ist allein der Klickfänger zum Schliessen",
+    "Menü-Blatt: eine Auskunft am rechten Rand OHNE Abdunklung, ohne `aria-modal` und ohne eigene Fokusverwaltung — es meldet sich für die Dauer seiner Anzeige an der einen Modalgrenze an (JOB 3102 UX-06) und hält damit die Bedienung, die der farblose Klickfänger der Maus ohnehin schon nahm",
   ],
   [
     // JOB 3065 H6: das „?"-Menü der Detailkarte — genau die Bauform von HelpTip.tsx, aus dem es
@@ -1811,13 +1829,19 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     // beide haben KEINE modale Wirkung — gemessen an der Quelle: kein `aria-modal`, kein
     // `showModal()`, keine Fokusfalle, keine Scrollsperre, kein `inert`. Die Vollfläche ist in
     // beiden Fällen der farblose Klickfänger zum Schliessen, genau wie bei `HelpTip.tsx`.
+    //
+    // JOB 3102 · UX-06: `Seitenblatt.tsx` STEHT HIER NICHT MEHR, und das ist der eigentliche
+    // Beleg dieser Runde. Es ist seit dem Anschluss an die Modalgrenze in BEIDEN Richtungen —
+    // Richtung A über den Klickfänger wie bisher, Richtung B über `focusFirstIn` (Signal B1,
+    // `:805`). Damit ist es kein „nur-A"-Restfall mehr; eine Begründung, die es hier weiterhin
+    // als abwesend erklärte, beschriebe gestern, und `:1867-1873` wird darauf rot. Der Eintrag
+    // wurde deshalb GESTRICHEN und nicht umformuliert.
+    // `OverflowMenu.tsx` bleibt: es bewegt beim Schliessen zwar den Fokus auf seinen eigenen
+    // Griff, zeigt aber keines der sieben Wirkungssignale — es fängt keinen Fokus, sperrt nichts
+    // und behauptet nichts.
     [
       "apps/web/src/components/start/OverflowMenu.tsx",
       "Überlauf-Menü: farbloser Klickfänger, die Liste sitzt als Popover neben dem Auslöser — keine Wirkung, die in die Bedienung eingreift",
-    ],
-    [
-      "apps/web/src/components/start/Seitenblatt.tsx",
-      "Menü-Blatt: farbloser Klickfänger, das Blatt sitzt am rechten Rand ohne Abdunklung und ohne Fokusfalle — eine Auskunft, kein Dialog",
     ],
     [
       // JOB 3065 H6: das „?"-Untermenü der Detailkarte, hervorgegangen aus HelpTip und baugleich.
