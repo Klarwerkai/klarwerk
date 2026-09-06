@@ -87,7 +87,7 @@ describe("JOB 3130 · echte verzögerte Antworten, unveränderte Originalprüfun
     afterAll(async () => {
       await bib?.browser.close();
       await bib?.app.close();
-    });
+    }, 60_000);
 
     for (const fall of ["B3b", "B4"] as const) {
       it(`${fall} · besteht trotz gezielt verspäteter Listenantwort`, async () => {
@@ -173,7 +173,7 @@ describe("JOB 3130 · echte verzögerte Antworten, unveränderte Originalprüfun
     }, 180_000);
     afterAll(async () => {
       if (profil) await beende(profil);
-    });
+    }, 60_000);
 
     it("I28 · besteht trotz gezielt verspäteter Wirkungsantwort", async () => {
       const start = Date.now();

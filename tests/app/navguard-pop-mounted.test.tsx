@@ -7,7 +7,7 @@
 // des Wächters (setGuard + POP), und der Verlust-Nachweis braucht genau eine Sache — echten
 // React-Zustand, der beim Aushängen verschwindet. Ein `useState`-Feld ist dafür der scharfe Beleg;
 // die echten Seiten fahren in tests-smoke/navguard-back-probe.spec.ts durch einen echten Browser.
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { act, createElement, useEffect, useState } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
@@ -28,11 +28,48 @@ import "../../apps/web/src/i18n";
 let container: HTMLDivElement;
 let root: ReturnType<typeof createRoot>;
 
-const flush = async (): Promise<void> => {
-  for (let i = 0; i < 30; i++) {
-    await new Promise((r) => setTimeout(r, 0));
-  }
-};
+/** Beobachtet genau die ausgelösten Ereignisse, bevor ein Guard sie verschlucken kann.
+ * Erwartete Pfade/Indizes werden hier NICHT gefiltert: ein falscher Eintrag muss rot bleiben. */
+async function wartePop(aktion: () => void): Promise<void> {
+  await new Promise<void>((resolve, reject) => {
+    const start = Date.now();
+    const fertig = () => {
+      clearTimeout(timer);
+      window.removeEventListener("popstate", fertig, true);
+      resolve();
+    };
+    const timer = setTimeout(() => {
+      window.removeEventListener("popstate", fertig, true);
+      reject(
+        new Error(
+          `popstate kam nicht · ${Date.now() - start}ms · letzter Zustand: ${JSON.stringify({ path: window.location.pathname, state: window.history.state })}`,
+        ),
+      );
+    }, 5_000);
+    window.addEventListener("popstate", fertig, true);
+    try {
+      aktion();
+    } catch (e) {
+      clearTimeout(timer);
+      window.removeEventListener("popstate", fertig, true);
+      reject(e);
+    }
+  });
+}
+
+/** Nach dem ersten POP muss auch der Router oder die Guard-Rückstellung angekommen sein. */
+async function warteRouter(): Promise<void> {
+  await act(async () => {
+    await vi.waitFor(
+      () => {
+        expect(path(), `Router/Guard noch unterwegs: ${pageText()}`).toBe(
+          window.location.pathname + window.location.search,
+        );
+      },
+      { timeout: 5_000, interval: 10 },
+    );
+  });
+}
 
 /** Wie oft „save" gerufen wurde und ob es scheitern soll (Kante 6). */
 const saveState = { calls: 0, fail: false };
@@ -137,9 +174,7 @@ async function mount(): Promise<void> {
         ),
       ),
     );
-    await flush();
   });
-  await act(flush);
 }
 
 function path(): string {
@@ -165,7 +200,6 @@ async function press(testid: string): Promise<void> {
   }
   await act(async () => {
     el.click();
-    await flush();
   });
 }
 
@@ -175,7 +209,6 @@ async function type(value: string, id = "dirty"): Promise<void> {
     const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, "value")?.set;
     setter?.call(el, value);
     el.dispatchEvent(new Event("input", { bubbles: true }));
-    await flush();
   });
 }
 
@@ -192,26 +225,25 @@ function dialogButton(part: string): HTMLButtonElement {
 async function clickDialog(part: string): Promise<void> {
   const btn = dialogButton(part);
   await act(async () => {
-    btn.click();
-    await flush();
+    if (part !== "Hier bleiben" && !saveState.fail) await wartePop(() => btn.click());
+    else btn.click();
   });
+  await warteRouter();
 }
 
 /** Echter Browser-Zurück-Knopf. Das popstate-Ereignis kommt asynchron — genau wie im Browser. */
 async function back(steps = 1): Promise<void> {
   await act(async () => {
-    window.history.go(-steps);
-    await flush();
+    await wartePop(() => window.history.go(-steps));
   });
-  await act(flush);
+  await warteRouter();
 }
 
 async function forward(steps = 1): Promise<void> {
   await act(async () => {
-    window.history.go(steps);
-    await flush();
+    await wartePop(() => window.history.go(steps));
   });
-  await act(flush);
+  await warteRouter();
 }
 
 /** Die Vorgeschichte /start → /bibliothek → /erfassen, echt navigiert. */
@@ -228,8 +260,6 @@ async function trailToCapture(): Promise<void> {
 // Zusagen sind die Grundlage; hielte jsdom sie nicht ein, wären die Kanten-Belege eine Messung am
 // eigenen Wunschbild. Bricht eine (jsdom-Update), wird HIER rot und nicht mitten in einer Kante.
 describe("Grundlage: was jsdom für diese Belege wirklich leistet", () => {
-  const nextTick = (): Promise<void> => new Promise((r) => setTimeout(r, 50));
-
   it("Zusage 1 + 2: `go(delta)` traversiert MEHRERE Einträge, popstate kommt asynchron, `state` ist lesbar", async () => {
     const seen: Array<{ path: string; idx: unknown }> = [];
     const onPop = (): void => {
@@ -239,23 +269,24 @@ describe("Grundlage: was jsdom für diese Belege wirklich leistet", () => {
       });
     };
     window.addEventListener("popstate", onPop);
+    try {
+      window.history.replaceState({ idx: 0 }, "", "/p0");
+      window.history.pushState({ idx: 1 }, "", "/p1");
+      window.history.pushState({ idx: 2 }, "", "/p2");
+      expect((window.history.state as { idx: number }).idx).toBe(2);
 
-    window.history.replaceState({ idx: 0 }, "", "/p0");
-    window.history.pushState({ idx: 1 }, "", "/p1");
-    window.history.pushState({ idx: 2 }, "", "/p2");
-    expect((window.history.state as { idx: number }).idx).toBe(2);
+      // Zwei Schritte auf einmal — die Grundlage von Kante 2 (exaktes Delta).
+      const zurueck = wartePop(() => window.history.go(-2));
+      // Das Ereignis kommt SPÄTER. Genau darauf beruht, dass Kante 3/5 überhaupt Rennen haben können.
+      expect(seen).toEqual([]);
+      await zurueck;
+      expect(seen).toEqual([{ path: "/p0", idx: 0 }]);
 
-    // Zwei Schritte auf einmal — die Grundlage von Kante 2 (exaktes Delta).
-    window.history.go(-2);
-    // Das Ereignis kommt SPÄTER. Genau darauf beruht, dass Kante 3/5 überhaupt Rennen haben können.
-    expect(seen).toEqual([]);
-    await nextTick();
-    expect(seen).toEqual([{ path: "/p0", idx: 0 }]);
-
-    window.history.go(2);
-    await nextTick();
-    expect(seen.at(-1)).toEqual({ path: "/p2", idx: 2 });
-    window.removeEventListener("popstate", onPop);
+      await wartePop(() => window.history.go(2));
+      expect(seen.at(-1)).toEqual({ path: "/p2", idx: 2 });
+    } finally {
+      window.removeEventListener("popstate", onPop);
+    }
   });
 
   it("Zusage 3: der ZUERST registrierte popstate-Listener schneidet alle späteren ab", async () => {
@@ -272,15 +303,16 @@ describe("Grundlage: was jsdom für diese Belege wirklich leistet", () => {
     };
     window.addEventListener("popstate", first);
     window.addEventListener("popstate", second);
+    try {
+      window.history.replaceState({ idx: 0 }, "", "/q0");
+      window.history.pushState({ idx: 1 }, "", "/q1");
+      await wartePop(() => window.history.go(-1));
 
-    window.history.replaceState({ idx: 0 }, "", "/q0");
-    window.history.pushState({ idx: 1 }, "", "/q1");
-    window.history.go(-1);
-    await nextTick();
-
-    expect(order).toEqual(["waechter"]);
-    window.removeEventListener("popstate", first);
-    window.removeEventListener("popstate", second);
+      expect(order).toEqual(["waechter"]);
+    } finally {
+      window.removeEventListener("popstate", first);
+      window.removeEventListener("popstate", second);
+    }
   });
 });
 
@@ -296,7 +328,6 @@ describe("Zurück-Wächter am echten Router", () => {
   afterEach(async () => {
     await act(async () => {
       root.unmount();
-      await flush();
     });
     container.remove();
   });
@@ -413,12 +444,13 @@ describe("Zurück-Wächter am echten Router", () => {
 
     // Zwei Zurück-Sprünge, ohne den Wächter zwischendurch atmen zu lassen.
     await act(async () => {
-      window.history.go(-1);
-      window.history.go(-1);
-      await flush();
+      await wartePop(() => {
+        window.history.go(-1);
+        window.history.go(-1);
+      });
     });
-    await act(flush);
 
+    await warteRouter();
     expect(container.querySelectorAll("[role=dialog]").length).toBeLessThanOrEqual(1);
     const treffer = (pageText().match(/Ungespeicherte Eingabe/g) ?? []).length;
     expect(treffer).toBe(1);
@@ -470,7 +502,6 @@ describe("Zurück-Wächter am echten Router", () => {
     // Zweite bewachte Seite: eigener Wächter, eigener Inhalt.
     await act(async () => {
       container.querySelector<HTMLElement>("[data-testid=go-capture]")?.click();
-      await flush();
     });
     await type("Seite zwei");
     await back();

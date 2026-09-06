@@ -81,6 +81,7 @@ import {
 import { act, createElement } from "../../apps/web/node_modules/react";
 import { createRoot } from "../../apps/web/node_modules/react-dom/client";
 import { MemoryRouter } from "../../apps/web/node_modules/react-router-dom";
+import { endpoints } from "../../apps/web/src/api/endpoints";
 import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
@@ -143,13 +144,7 @@ const WAND = {
 // ------------------------------------------------------------------------------------------------
 // 1 · Das Markup: die echte Seite, in jsdom gemountet, mit aufgelösten Abfragen
 // ------------------------------------------------------------------------------------------------
-const flush = async (): Promise<void> => {
-  for (let i = 0; i < 25; i++) {
-    await new Promise((r) => setTimeout(r, 0));
-  }
-};
-
-async function seitenMarkup(sprache: "de" | "en"): Promise<string> {
+async function seitenMarkup(sprache: "de" | "en", timeout = 5_000): Promise<string> {
   await i18n.changeLanguage(sprache);
   box.wall = WAND;
   box.meldungen = MELDUNGEN.map((m) => ({
@@ -165,45 +160,63 @@ async function seitenMarkup(sprache: "de" | "en"): Promise<string> {
   const container = document.createElement("div");
   document.body.appendChild(container);
   const root = createRoot(container);
-  await act(async () => {
-    root.render(
-      createElement(
-        QueryClientProvider,
-        { client: qc },
+  try {
+    await act(async () => {
+      root.render(
         createElement(
-          AuthProvider,
-          null,
+          QueryClientProvider,
+          { client: qc },
           createElement(
-            RoleProvider,
+            AuthProvider,
             null,
             createElement(
-              ToastProvider,
+              RoleProvider,
               null,
               createElement(
-                NavGuardProvider,
+                ToastProvider,
                 null,
-                createElement(MemoryRouter, { initialEntries: ["/start"] }, [
-                  createElement(Start, { key: "s" }),
-                ]),
+                createElement(
+                  NavGuardProvider,
+                  null,
+                  createElement(MemoryRouter, { initialEntries: ["/start"] }, [
+                    createElement(Start, { key: "s" }),
+                  ]),
+                ),
               ),
             ),
           ),
         ),
+      );
+    });
+    // Jede Abfrage darf unabhängig ankommen. act muss vor der nächsten Prüfung committen können.
+    const ist = () => ({
+      zuletzt: [...container.querySelectorAll('[data-testid="h5-zuletzt-zeile"] [data-h5-zeile]')]
+        .filter((el) => el === el.parentElement?.querySelector("[data-h5-zeile]"))
+        .map((el) => el.textContent),
+      fuerdich: [...container.querySelectorAll('[data-testid="h5-fuerdich-zeile"]')].map(
+        (el) => el.querySelector("[data-h5-zeile]")?.textContent,
       ),
+    });
+    await vi.waitFor(
+      async () => {
+        await act(async () => {});
+        const zustand = ist();
+        const bereit =
+          JSON.stringify(zustand) ===
+          JSON.stringify({
+            zuletzt: ZULETZT.map((e) => e.title),
+            fuerdich: MELDUNGEN.map((e) => e.title),
+          });
+        if (!bereit) throw new Error(`Startkarten nicht bereit: ${JSON.stringify(zustand)}`);
+      },
+      { timeout, interval: 10 },
     );
-    await flush();
-  });
-  // Zwei Runden: die Sitzung löst in zwei Stufen auf (`/auth/status`, dann `/auth/me`).
-  await act(flush);
-  await act(flush);
-  const html = container.innerHTML;
-  act(() => root.unmount());
-  container.remove();
-  qc.clear();
-  if (!html.includes(ZULETZT[0].title) || !html.includes(MELDUNGEN[0].title)) {
-    throw new Error(`die Karten tragen den Bestand nicht: ${html.slice(0, 400)}`);
+    return container.innerHTML;
+  } finally {
+    await act(async () => root.unmount());
+    container.remove();
+    qc.clear();
   }
-  return html;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -404,8 +417,9 @@ beforeAll(async () => {
 }, 120_000);
 
 afterAll(async () => {
+  // Eigener Abbaurahmen: der belegte Dateifehler war die 10-s-Hook-Vorgabe, nicht eine Kartenprüfung.
   await browser?.close();
-});
+}, 60_000);
 
 // ------------------------------------------------------------------------------------------------
 // B-1 / B-2 · 320 und 390 px
@@ -520,4 +534,35 @@ describe("JOB 3118 · B-5 · dieselbe Zusage auf Deutsch und Englisch", () => {
       ]);
     });
   }
+});
+
+// JOB 3152: Die echte Query bleibt länger offen als alle bisherigen Flush-Runden zusammen.
+describe("JOB 3152 · Startkarten-Bereitschaft", () => {
+  it("wartet auf die gezielt verspätete Livewall-Antwort", async () => {
+    vi.mocked(endpoints.livewall.get).mockImplementationOnce(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 400));
+      return WAND as never;
+    });
+    const html = await seitenMarkup("de");
+    for (const eintrag of [...ZULETZT, ...MELDUNGEN]) expect(html).toContain(eintrag.title);
+  });
+});
+
+describe("JOB 3152 · fehlender Startkarten-Bestand", () => {
+  it("dauerhaft leere Livewall bleibt rot und nennt den letzten Kartenstand", async () => {
+    vi.mocked(endpoints.livewall.get).mockImplementationOnce(
+      async () => ({ ...WAND, saved: [] }) as never,
+    );
+    const start = Date.now();
+    let fehler: unknown;
+    try {
+      await seitenMarkup("de", 200);
+    } catch (e) {
+      fehler = e;
+    }
+    console.log(
+      `Startkarten GEGENPROBE · ${Date.now() - start}ms · erster Fehler/letzter Zustand: ${String(fehler)}`,
+    );
+    expect(String(fehler)).toContain('Startkarten nicht bereit: {"zuletzt":[]');
+  });
 });

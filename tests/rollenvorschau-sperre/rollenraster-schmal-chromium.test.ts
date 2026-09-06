@@ -136,20 +136,21 @@ interface Lage {
 }
 
 // ---- In der Seite: die Detailkarte öffnen und messen ---------------------------------------------
-const MESSEN = `(async ([reiterName, nowrap]) => {
+const MESSEN = `(async ([reiterName, nowrap, breite, timeout]) => {
   const norm = (s) => (s || '').replace(/\\s+/g, ' ').trim();
   const warte = async (pruefung, ms = 8000) => {
     const bis = Date.now() + ms;
     while (Date.now() < bis) {
       if (pruefung()) return true;
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => requestAnimationFrame(r));
     }
     return pruefung();
   };
   const leer = { viewport: 0, dokumentScrollWidth: 0, rasterKlasse: '', rasterBreite: 0, knoepfe: [] };
 
   // 1. Reiter „Konten" — dort wohnt die Zeile „Ansicht als Rolle".
-  if (document.querySelector('[data-testid="zeile-ansicht-rolle"]') === null) {
+  if (document.querySelector('[data-testid="zeile-ansicht-rolle"]') === null
+      && document.querySelector('[data-testid="detail-ansicht-rolle"]') === null) {
     const zurueck = document.querySelector('[data-einst="zurueck"]');
     if (zurueck) { zurueck.click(); await warte(() => document.querySelector('[data-einst="detail"]') === null, 4000); }
     const r = [...document.querySelectorAll('[data-einst="reiter"]')].find((b) => norm(b.textContent) === reiterName);
@@ -166,8 +167,23 @@ const MESSEN = `(async ([reiterName, nowrap]) => {
       return Object.assign({ fehler: 'Detailkarte „Ansicht als Rolle" ging nicht auf' }, leer);
   }
   const karte = document.querySelector('[data-testid="detail-ansicht-rolle"]');
+  const layout = () => {
+    const knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
+    const raster = knoepfe[0]?.parentElement;
+    const spalten = raster ? getComputedStyle(raster).gridTemplateColumns.split(' ') : [];
+    const breiten = knoepfe.map(b => b.getBoundingClientRect().width);
+    const hoehen = knoepfe.map(b => b.getBoundingClientRect().height);
+    return { viewport: window.innerWidth, rasterBreite: raster?.clientWidth ?? 0, spalten, breiten, hoehen };
+  };
+  if (!(await warte(() => {
+    const ist = layout();
+    const spalten = breite >= 1024 ? 4 : breite >= 640 ? 2 : 1;
+    return ist.viewport === breite && ist.rasterBreite > 0
+      && ist.spalten.length === spalten && ist.spalten.every(s => parseFloat(s) > 0)
+      && ist.breiten.length === 4 && ist.breiten.every(b => b > 0) && ist.hoehen.every(h => h > 0);
+  }, timeout))) return Object.assign({ fehler: 'Rollenraster nicht bereit: ' + JSON.stringify(layout()) }, leer);
+  await document.fonts.ready;
   const knoepfe = [...karte.querySelectorAll('button[aria-pressed]')];
-  if (knoepfe.length === 0) return Object.assign({ fehler: 'keine Rollenknöpfe in der Detailkarte' }, leer);
 
   // 3. Nur für die Gegenprobe S3: den Vertrag einsetzen, der den Schaden macht — und ihn danach
   //    wieder abräumen. Jede Messung ohne Flagge stellt den Auslieferungszustand her.
@@ -227,7 +243,7 @@ const VORSCHAU_STARTEN = `(async ([reiterName, rollenName]) => {
     const bis = Date.now() + ms;
     while (Date.now() < bis) {
       if (pruefung()) return true;
-      await new Promise((r) => setTimeout(r, 50));
+      await new Promise((r) => requestAnimationFrame(r));
     }
     return pruefung();
   };
@@ -292,13 +308,13 @@ const WARTE_EINSTELLUNGEN = `() => document.querySelector('[data-einst="seite"]'
 let stand: Stand;
 const messungen = new Map<number, Messung>();
 
-async function messen(breite: number, nowrap = false): Promise<Messung> {
+async function messen(breite: number, nowrap = false, timeout = 8_000): Promise<Messung> {
   const seite = stand.seite;
   if (seite === null) {
     throw new Error(`Bühne steht nicht: ${stand.fehler ?? "unbekannt"}`);
   }
   await (seite as unknown as SeiteMitViewport).setViewportSize({ width: breite, height: 740 });
-  return await seite.evaluate<Messung>(fn(MESSEN), [REITER, nowrap]);
+  return await seite.evaluate<Messung>(fn(MESSEN), [REITER, nowrap, breite, timeout]);
 }
 
 /** Die Seite roh — die Bühne reicht sie durch, ihr Typ nennt nur, was sie hier braucht. */
@@ -371,7 +387,7 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
 
   afterAll(async () => {
     await beende(stand);
-  });
+  }, 60_000);
 
   it("S0 · die Bühne steht: gebaute App, echtes Backend, Chromium", () => {
     expect(stand.fehler, "Chromium-Bühne kam nicht hoch").toBeNull();
@@ -515,5 +531,25 @@ describe("JOB 3124 UX-12 · das Rollenraster bei 320 und 390 px, in Chromium gem
       );
       expect(danach.hinweisText).toBeNull();
     }, 120_000);
+  });
+
+  // JOB 3152: CSS/Layout kommt nach der Detailkarte an; dieselbe Messfunktion muss warten.
+  describe("JOB 3152 · Rollenraster-Bereitschaft", () => {
+    it("wartet auf das gezielt verspätete einspaltige Raster", async () => {
+      await wechsle(stand, "/admin", '[data-einst="seite"]');
+      const seite = seiteRoh();
+      await messen(320);
+      await seite.evaluate(
+        fn(`() => {
+      const stil = document.createElement('style');
+      stil.textContent = '[data-testid="detail-ansicht-rolle"] .grid { grid-template-columns: repeat(4, 1fr) !important; }';
+      document.head.append(stil);
+      setTimeout(() => stil.remove(), 400);
+    }`),
+      );
+      const m = await messen(320);
+      expect(m.fehler).toBeNull();
+      expect(new Set(m.knoepfe.map((k) => k.rect.x)).size).toBe(1);
+    });
   });
 });
