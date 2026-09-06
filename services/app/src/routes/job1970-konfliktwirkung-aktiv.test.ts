@@ -56,15 +56,21 @@ async function realeKompositionMitValidiertemKo() {
   // Das MODELLURTEIL wird gestellt — deterministisch, kein Netz. Die Zitate stammen woertlich aus
   // den uebergebenen Kerntexten, sonst verwirft `decideFromVerdict` sie als Halluzination
   // (`services/conflicts/src/detect.ts:205`, quotesVerbatim).
+  // JOB 3094 (KA7): die Route ruft seitdem `judgeConflictOutcome` (Urteil ODER Ursache — sie muss
+  // „kein Modell" von „geprueft, nichts gefunden" unterscheiden), nicht mehr die Bestandsfassade
+  // `judgeConflict`, die nur den `.verdict` daraus zieht (reasoner/src/service.ts). Gestellt wird
+  // deshalb der Ausgang; die Zusicherungen von W2/W3 (0 Aufrufe) gelten fuer genau diesen Weg.
   const judgeSpion = vi
-    .spyOn(services.reasoner, "judgeConflict")
+    .spyOn(services.reasoner, "judgeConflictOutcome")
     .mockImplementation(async (coreA: string, coreB: string) => ({
-      relation: "widerspruch" as const,
-      older: null,
-      confidence: 0.92,
-      begruendung: "Der geprüfte Text erlaubt die Freigabe allein.",
-      zitat_a: (coreA.split("\n")[0] ?? "").trim(),
-      zitat_b: (coreB.split("\n")[0] ?? "").trim(),
+      verdict: {
+        relation: "widerspruch" as const,
+        older: null,
+        confidence: 0.92,
+        begruendung: "Der geprüfte Text erlaubt die Freigabe allein.",
+        zitat_a: (coreA.split("\n")[0] ?? "").trim(),
+        zitat_b: (coreB.split("\n")[0] ?? "").trim(),
+      },
     }));
   vi.spyOn(services.reasoner, "judgeDuplicate").mockResolvedValue(null);
 

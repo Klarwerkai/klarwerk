@@ -154,6 +154,10 @@ describe("JOB 1970 · die zwei Serverriegel", () => {
       pruefstand: null,
       version: null,
       fundort: { kategorie: null, bereich: null, bibliothekPfad: "/wissen/ko-7" },
+      // JOB 3094 (KA7): die beiden Stellen aus dem Modellurteil reisen als `stellen: {eigen, quelle}`
+      // mit. Dieser Aufbau hat keinen Judge und keine ladbare Quelle (`ko.get` → undefined) — dann
+      // sagt die Antwort ehrlich `null`, wie bei `pruefstand`/`version`; erfunden wird nichts.
+      stellen: null,
     });
     // `snippet` wird NICHT erfunden, wenn der Kern keins liefert — dieselbe Regel wie bei duplicates.
     expect(Object.hasOwn(body.conflicts[0], "snippet")).toBe(false);

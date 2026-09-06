@@ -1539,7 +1539,58 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     //     Stand, nennen den Grund (`bestandVerweigert`, ein neuer Schluessel je Sprache) und lesen
     //     die Sitzung neu. W6 traegt im Fehlerfall den HTTP-Status (`http`), additiv. KEIN neues
     //     Abrufziel, kein Manifest, keine CSP, keine neue Nutzlast.
-    const PIN = "a7cbb7dae89653124455240a78a02f3e28184fb0d6130907f7c968a00829e605";
+    //
+    // JOB 3094 KONFLIKTRUNDE 1 (06.09.2026) — `git rebase main` traf mit der JOB-3094-Kette (KA7,
+    // Konfliktkarte unten) auf die inzwischen auf main gelandete JOB-3093-Kette (M3, Bestand-Block
+    // oben, Runden 1-3, PIN a7cbb7da…). BEIDE SEITEN BLEIBEN INHALTLICH ERHALTEN: der Bestand-Block
+    // aus JOB 3093 UND der KA7-Konfliktkarten-Block aus JOB 3094 stehen nebeneinander in der
+    // zusammengefuehrten Datei. Kein Markup, kein Skript und kein Woerterbuchschluessel einer Seite
+    // wurde entfernt, um die andere Seite zu erhalten. Der Pin unten ist der frisch aus der
+    // zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    // ============================================================================================
+    // JOB 3094 KA7 (06.09.2026) — Auslieferungsfolgen des KA7-Blocks, angesetzt auf a5e8fcec… (vor
+    // der JOB-3091/3092/3093-Kette oben, siehe RUECKGABE des urspruenglichen Auftrags vor dem Rebase):
+    // ============================================================================================
+    //   · WAS SICH AENDERT: GENAU EIN Skriptblock am Ende (KW-KA7-KONFLIKT-START/END), kein Markup
+    //     im Rumpf, kein Stil. Der Block erzeugt zur Laufzeit den Knopf „Passt das zur Regelung?"
+    //     (#ka7-btn) mit Karte (#ka7-karte) NEBEN der Ruhe und den Einreich-Hinweis
+    //     (#ka7-einreich-hinweis) an der Markierungskarte; 37 Woerterbuchschluessel je Sprache
+    //     (ka7*), in STRINGS eingehaengt wie KA3/KA6. Runde 5 (Tor-Befund mega35-word-wortliste):
+    //     „geprueft"/„gecontroleerd" nur noch in den drei Leersaetzen (Auftrag §5.3, Zeitstempel eines
+    //     gelaufenen Laufs, in mega35 als Vorgangsaussage eingetragen); Stand- und Kuerzungssatz sagen
+    //     „Abgleich"; der Pruefstand nutzt die 3093-Schluessel askStatusValidiert/
+    //     bestandNochNichtGeprueft/askStatusUnknown statt drei eigener (ka7Pruefstand* entfernt).
+    //     Runde 6 (Codex R5): (1) „gelaufen: false" mit Zahlen wird zu „Pruefung nicht belastbar:
+    //     <Grund> — m von n Quellen ohne belastbares Urteil" (neuer Grund `urteil_verworfen`, neues
+    //     Antwortfeld `verworfen`, aelterer Server ohne das Feld = 0), nie zur Leere; (2) eine
+    //     Wiederholung fuer DENSELBEN Text haelt den frueheren Befund (Karte, Entscheidung, Stand-
+    //     Satz mit seiner Uhrzeit, Einreich-Hinweis) waehrend des Laufs und nach 503 mit Vorbehalt
+    //     („Befund von HH:MM … fehlgeschlagen/laeuft"); ein anderer Text traegt nichts weiter. Acht
+    //     Schluessel je Sprache dazu (ka7GrundUrteilVerworfen, ka7NichtBelastbar, ka7Vorher*,
+    //     ka7EinreichVorbehalt*), ka7StandAusfall umformuliert. KEIN neues Abrufziel, kein Manifest,
+    //     keine CSP, kein Schreibweg; gemessen: konfliktkarte-mounted P11–P14.
+    //     Runde 7 (Codex R6): Teil-Ausfall MIT neuen Treffern (HTTP 200, Konflikte, gelaufen:false)
+    //     vereinigt die neuen Treffer mit den frueher bekannten, nicht entkraefteten Konflikten
+    //     (`ka7Vereinigen`, Zeile mit `data-vorbehalt` und „Befund von HH:MM — weder bestaetigt
+    //     noch entkraeftet"; Kopf „nicht belastbar … gelten weiter"; Einreich-Hinweis „Nicht
+    //     aufgefrischt: …"). Vier Schluessel je Sprache dazu (ka7ZeileVorbehalt, ka7KopfVorbehalt,
+    //     ka7EinreichVorbehaltTeil, ka7VorbehaltEintrag). Kein neues Abrufziel, kein Manifest, keine
+    //     CSP, kein Schreibweg; gemessen: konfliktkarte-mounted P15/P15b/P15c.
+    //   · EIN Abrufziel mehr (M7 12 → 13, bewusst beantwortet in mega69-klara-merkmale.test.ts):
+    //     `POST /api/check-text` in der TIEFEN Stufe — derselbe Pfad wie der W6-Weg, aber mit
+    //     `want: "deep"` und `confidentiality: "intern"`, NUR nach der KA4-Weiche (Einwilligung fuer
+    //     dieses Dokument UND Ausfuehrung freigegeben, aus dem Serverstand). Ohne sie geht nichts ab.
+    //   · KEIN Manifest, KEINE CSP-Aenderung, KEIN neues Recht (ko.read wie bisher), KEIN neuer
+    //     Fremd-Ursprung, KEIN Schreibweg in Word (kein insertText/setSelectedDataAsync/Word.run).
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: Ask-Weg, W6-Weg, KA3/KA6-Bloecke, Sendeknopf und
+    //     Entwurfsnutzlast sind unveraendert; die Wrapper (updateAskState, kwFlaecheZeichnen,
+    //     renderCapture, klaraS4Verwerfen, setLang) rufen das Original zuerst und unveraendert.
+    //   · Gemessen: tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts (13 Faelle, jsdom, das
+    //     ausgelieferte Skript); Chromium-Zielbilder laufen im Tor.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
+    //     naechsten Oeffnen frisch. Ein aelterer Server ohne `konfliktpruefung` fuehrt zur Lage
+    //     „Pruefung nicht moeglich", nie zu „keine Abweichung".
+    const PIN = "241dde4eccb8c958b3da94e40a12c6943379a7e7f1736bd508885a65aeca68b6";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -1,10 +1,20 @@
 import type { FastifyPluginAsync } from "fastify";
-import type { ConflictService, OverlapService } from "../../../conflicts";
-import type { Confidentiality, KoService, KoStatus } from "../../../knowledge-object";
-import type { Reasoner } from "../../../reasoner";
+import {
+  type ConflictService,
+  type ConflictVerdict,
+  type OverlapService,
+  coreText,
+} from "../../../conflicts";
+import type {
+  Confidentiality,
+  KnowledgeObject,
+  KoService,
+  KoStatus,
+} from "../../../knowledge-object";
+import type { JudgeFailure, Reasoner } from "../../../reasoner";
 import { authorizesCheckText } from "../addon-principal";
 import { addonRateLimit } from "../addon-rate-limit";
-import { type CheckTextResult, checkText } from "../check-text-detection";
+import { type CheckTextConflict, type CheckTextResult, checkText } from "../check-text-detection";
 import type { SemanticPrefilter } from "../duplicate-detection";
 import type { Guards } from "../http";
 import { classifyProvenanceConfidential } from "./reasoner-routes";
@@ -103,6 +113,34 @@ export interface CheckTextRouteDeps {
 //                     zweite Ableitung. `bibliothekPfad` ist die Detailroute `/wissen/:id`, dieselbe
 //                     Fläche, die die Bibliothek rechts zeigt (pages/Library.tsx).
 // null-Regel wie bei JOB 3020: fehlt dem Bestand die Kategorie, steht `null` — kein Platzhalter.
+//
+// JOB 3094 (KA7, Pedi 05.09. „drei Tage gegen zwei") — DIE BEIDEN STELLEN REISEN MIT, UND DIE ANTWORT
+// SAGT, OB DIE KONFLIKTPRÜFUNG ÜBERHAUPT GELAUFEN IST.
+// ==================================================================================================
+//
+// ERSTE LÜCKE: das Modellurteil trägt seit SCRUM-492 zwei wörtliche Zitate (`ConflictVerdict.zitat_a`
+// aus dem geprüften Text, `zitat_b` aus der Quelle; services/conflicts/src/detect.ts:41-42) — der
+// Konfliktdienst prüft sie sogar auf Wörtlichkeit (`quotesVerbatim`), bevor er den Treffer führt.
+// Bis hierher kam davon NUR `rationale` (ein Satz) in die Antwort; ein Panel hätte die Stellen aus
+// dem Satz herausraten müssen. Jetzt trägt jeder Konflikttreffer `stellen: { eigen, quelle }`.
+//
+// WOHER DIE ZITATE KOMMEN, ohne die Modulgrenze zu verschieben: `DryRunConflict` (services/conflicts)
+// führt die Zitate nicht, und dieses Modul ist nicht Zielpfad dieses Auftrags. Deshalb hört die Route
+// am Urteil selbst mit: der `conflictJudge`, den sie ohnehin baut, merkt sich jedes Urteil unter dem
+// Kerntext der Quelle (dem zweiten Argument `b`). Nach dem Lauf lädt sie zu jedem Treffer die Quelle
+// nach, bildet denselben Kerntext und findet das Urteil wieder. Findet sie es nicht (Quelle nicht
+// mehr ladbar, Kerntext abweichend), steht `stellen: null` — der Konflikt bleibt GENANNT, die Stellen
+// werden nicht erfunden.
+//
+// ZWEITE LÜCKE: `conflicts: []` sah in vier Lagen gleich aus — Prüfung nicht angefordert (kein
+// want:"deep"), vertraulich (deterministischer Rückfall), Modell nicht verfügbar, oder wirklich
+// geprüft und nichts gefunden. „Keine Abweichung" darf ein Panel nur in der vierten Lage sagen
+// (Zustandsmodell §9). `konfliktpruefung` macht die Lagen unterscheidbar: `gelaufen` ist nur wahr,
+// wenn der tiefe, nicht vertrauliche Zweig lief UND (bei vorgelegten Quellen) mindestens ein Urteil
+// zurückkam; `kandidaten` zählt die dem Modell vorgelegten Quellen, `ausgefallen` die ohne Urteil.
+//
+// `pruefstand` und `version` nennen die Quelle so, wie das Panel sie einem Menschen zeigt (Titel,
+// Version, Prüfstand) — `koStatus`/`koCategory` bleiben der rohe Vertrag aus JOB 3020, unverändert.
 type Pruefstand = "validiert" | "eingereicht";
 
 function pruefstandVon(status: KoStatus | null): Pruefstand | null {
@@ -121,7 +159,191 @@ function fundortVon(koId: string, koCategory: string | null) {
   };
 }
 
-function toResponse(result: CheckTextResult, note: string | null = null) {
+interface Stellen {
+  /** Die Stelle im GEPRÜFTEN Text (Pedis Memo: „an drei Tagen pro Woche"). */
+  eigen: string | null;
+  /** Die widersprechende Stelle in der Quelle („an zwei Tagen pro Woche"). */
+  quelle: string | null;
+}
+
+type KonfliktpruefungGrund =
+  | "nicht_angefordert"
+  | "vertraulich"
+  | "kein_konfliktdienst"
+  | "kein_modell"
+  | "modellfehler"
+  | "urteil_verworfen";
+
+// JOB 3094 R6 (Codex R5, Korrekturpflicht 1): `gelaufen` heißt BELASTBAR gelaufen — jede vorgelegte
+// Quelle hat ein Urteil bekommen, das der Konfliktdienst auch gelten ließ. Drei Wege, auf denen das
+// vorher still zu „erfolgreich leer" wurde:
+//   · der Judge WIRFT (Netz, Provider): `assessAgainstPool` fängt und geht zum nächsten Kandidaten
+//     (conflicts/src/service.ts `catch { continue; }`) — die Route sah gar keinen Kandidaten;
+//   · das Urteil sagt Widerspruch, aber der Dienst VERWIRFT es (Zitate nicht wörtlich in den Texten,
+//     `quotesVerbatim`, oder Sicherheit unter der Schwelle, `decideFromVerdict`) — die Route zählte es
+//     als Urteil, der Konflikt fehlte, das Panel sagte „keine Abweichung";
+//   · ein Teil der Quellen ohne Urteil galt als „gelaufen, m davon ohne Urteil" — eine Leere, die
+//     niemand belegt hat.
+// Jetzt: `ausgefallen` zählt auch geworfene Aufrufe; `verworfen` zählt Befund-Urteile (widerspruch/
+// ueberholt), aus denen KEIN Konflikt wurde — die Zahl ergibt sich aus Mithören und Ergebnis, ohne die
+// Zitatprüfung des Dienstes ein zweites Mal zu bauen (sie ist nicht exportiert, Modulgrenze). Sobald
+// eine vorgelegte Quelle ohne belastbares Urteil bleibt, ist `gelaufen` false — mit Grund. Gefundene
+// Konflikte reisen trotzdem mit (die Antwort nennt sie in jeder Lage).
+interface Konfliktpruefung {
+  gelaufen: boolean;
+  grund: KonfliktpruefungGrund | null;
+  /** Dem Modell vorgelegte Quellen. 0 heißt: nichts Vergleichbares im Pool — auch das ist ein Lauf. */
+  kandidaten: number;
+  /** Davon ohne Urteil (Modell fehlt, Antwort unverwertbar, Frist, Aufruf geworfen). */
+  ausgefallen: number;
+  /** Davon mit Befund-Urteil, das der Konfliktdienst nicht gelten ließ (Zitate, Schwelle). */
+  verworfen: number;
+}
+
+/** Was die Route während EINES Laufs am Urteil mithört. */
+interface Konfliktlauf {
+  urteile: Map<string, ConflictVerdict>;
+  kandidaten: number;
+  ausgefallen: number;
+  /** Urteile mit Befund (widerspruch/ueberholt) — nur aus ihnen kann der Dienst einen Konflikt machen. */
+  befundUrteile: number;
+  ausfall: JudgeFailure | null;
+}
+
+function neuerKonfliktlauf(): Konfliktlauf {
+  return { urteile: new Map(), kandidaten: 0, ausgefallen: 0, befundUrteile: 0, ausfall: null };
+}
+
+// Der Judge, den der Konfliktdienst je Kandidat ruft (`assessAgainstPool`, conflicts/src/service.ts):
+// dasselbe Modellurteil wie bisher (`judgeConflictOutcome` ist der Ausgang, aus dem `judgeConflict`
+// seinen Wert zieht — reasoner/src/service.ts), nur wird mitgeschrieben statt weggeworfen. Wirft der
+// Aufruf, wird er GEZÄHLT und dann unverändert weitergeworfen — der Dienst behandelt ihn wie zuvor.
+function konfliktJudge(reasoner: Reasoner, locale: "de" | "en", lauf: Konfliktlauf) {
+  return async (a: string, b: string): Promise<ConflictVerdict | null> => {
+    lauf.kandidaten += 1;
+    let ausgang: Awaited<ReturnType<Reasoner["judgeConflictOutcome"]>>;
+    try {
+      ausgang = await reasoner.judgeConflictOutcome(a, b, locale);
+    } catch (err) {
+      lauf.ausgefallen += 1;
+      lauf.ausfall = lauf.ausfall ?? "model-error";
+      throw err;
+    }
+    if (ausgang.verdict) {
+      lauf.urteile.set(b, ausgang.verdict);
+      if (ausgang.verdict.relation === "widerspruch" || ausgang.verdict.relation === "ueberholt") {
+        lauf.befundUrteile += 1;
+      }
+      return ausgang.verdict;
+    }
+    lauf.ausgefallen += 1;
+    lauf.ausfall = lauf.ausfall ?? ausgang.failure ?? "model-error";
+    return null;
+  };
+}
+
+function konfliktpruefungVon(
+  lage: { wantDeep: boolean; confidential: boolean; dienstDa: boolean },
+  lauf: Konfliktlauf,
+  /** Konflikte, die der Dienst aus den Urteilen wirklich gemacht hat (Ergebnis des Laufs). */
+  angenommen: number,
+): Konfliktpruefung {
+  const verworfen = Math.max(0, lauf.befundUrteile - angenommen);
+  const ohne = (grund: KonfliktpruefungGrund): Konfliktpruefung => ({
+    gelaufen: false,
+    grund,
+    kandidaten: lauf.kandidaten,
+    ausgefallen: lauf.ausgefallen,
+    verworfen,
+  });
+  if (!lage.wantDeep) {
+    return ohne("nicht_angefordert");
+  }
+  if (lage.confidential) {
+    return ohne("vertraulich");
+  }
+  if (!lage.dienstDa) {
+    return ohne("kein_konfliktdienst");
+  }
+  // Quellen vorgelegt, KEIN einziges Urteil: das Modell hat nicht geprüft — gleich, wie leer die
+  // Konfliktliste ist.
+  if (lauf.kandidaten > 0 && lauf.urteile.size === 0) {
+    return ohne(lauf.ausfall === "no-model" ? "kein_modell" : "modellfehler");
+  }
+  // Ein Teil ohne Urteil (geworfen, unverwertbar): nicht belastbar — auch wenn andere Quellen
+  // ein Urteil bekamen. Der Grund nennt den Ausfall, die Zahlen sagen, wie viel fehlt.
+  if (lauf.ausgefallen > 0) {
+    return ohne(lauf.ausfall === "no-model" ? "kein_modell" : "modellfehler");
+  }
+  // Befund-Urteile, aus denen kein Konflikt wurde: der Dienst hat sie verworfen (Zitate nicht
+  // wörtlich, Schwelle). Was das Modell da sah, ist unbelegt — und die Leere ebenso.
+  if (verworfen > 0) {
+    return ohne("urteil_verworfen");
+  }
+  // Ohne vorgelegte Quellen gab es nichts zu urteilen; auch das ist ein gelaufener Lauf.
+  return {
+    gelaufen: true,
+    grund: null,
+    kandidaten: lauf.kandidaten,
+    ausgefallen: lauf.ausgefallen,
+    verworfen,
+  };
+}
+
+// Der Kerntext einer Quelle, GENAU so gebildet wie beim Pool (check-text-detection.ts `toDetectSubject`
+// → `coreText`: Titel, Aussage, Bedingungen, Maßnahmen). Nur so findet die Route das Urteil wieder,
+// das der Konfliktdienst unter diesem Text erfragt hat. `toDetectSubject` ist dort nicht exportiert
+// und die Datei kein Zielpfad — deshalb steht die Abbildung hier ein zweites Mal, knapp und benannt;
+// weicht sie je ab, ist die Folge kein falscher Wert, sondern `stellen: null` (Wissenslücke).
+function kerntextVon(ko: KnowledgeObject): string {
+  return coreText({
+    refId: ko.id,
+    title: ko.title,
+    statement: ko.statement,
+    conditions: ko.conditions,
+    measures: ko.measures,
+    tags: ko.tags,
+    asset: ko.asset,
+  });
+}
+
+function zitatOderNull(zitat: unknown): string | null {
+  return typeof zitat === "string" && zitat.trim().length > 0 ? zitat.trim() : null;
+}
+
+type KonfliktMitStellen = CheckTextConflict & { stellen: Stellen | null; version: number | null };
+
+async function mitStellen(
+  konflikte: readonly CheckTextConflict[],
+  ko: KoService,
+  lauf: Konfliktlauf,
+): Promise<KonfliktMitStellen[]> {
+  return Promise.all(
+    konflikte.map(async (c): Promise<KonfliktMitStellen> => {
+      let quelle: KnowledgeObject | undefined;
+      try {
+        quelle = await ko.get(c.koId);
+      } catch {
+        quelle = undefined; // nicht ladbar → Wissenslücke, kein erfundener Wert
+      }
+      const urteil = quelle === undefined ? undefined : lauf.urteile.get(kerntextVon(quelle));
+      return {
+        ...c,
+        stellen: urteil
+          ? { eigen: zitatOderNull(urteil.zitat_a), quelle: zitatOderNull(urteil.zitat_b) }
+          : null,
+        version: typeof quelle?.version === "number" ? quelle.version : null,
+      };
+    }),
+  );
+}
+
+function toResponse(
+  result: CheckTextResult,
+  konflikte: readonly KonfliktMitStellen[],
+  konfliktpruefung: Konfliktpruefung,
+  note: string | null = null,
+) {
   return {
     duplicates: result.duplicates.map((d) => ({
       koId: d.koId,
@@ -142,7 +364,7 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
     // in derselben Form wie `duplicates`. Ohne Konfliktdienst liefert der Kern eine leere Liste
     // (`check-text-detection.ts:186-188`), also bleibt die Antwort heute byteweise dieselbe —
     // aber sie ist ab jetzt ABGELEITET statt behauptet.
-    conflicts: result.conflicts.map((c) => ({
+    conflicts: konflikte.map((c) => ({
       koId: c.koId,
       koTitle: c.koTitle,
       type: c.type,
@@ -152,11 +374,16 @@ function toResponse(result: CheckTextResult, note: string | null = null) {
       koStatus: c.koStatus,
       koCategory: c.koCategory,
       // JOB 3093: dieselbe Form wie bei `duplicates` — ein Konflikt hat denselben Fundort-Vertrag.
+      // JOB 3094 (KA7): zusätzlich die beiden Stellen aus dem Modellurteil — additiv, `version` kommt
+      // von der frisch nachgeladenen Quelle (mitStellen), genauer als der Origin-Snapshot `koVersion`.
       pruefstand: pruefstandVon(c.koStatus),
-      version: c.koVersion ?? null,
+      version: c.version,
       fundort: fundortVon(c.koId, c.koCategory),
+      stellen: c.stellen,
       ...(c.snippet !== undefined ? { snippet: c.snippet } : {}),
     })),
+    // JOB 3094 (KA7): ob und wie weit die Konfliktprüfung gelaufen ist — s. Kopfkommentar oben.
+    konfliktpruefung,
     answer: null,
     note,
     persisted: false,
@@ -266,6 +493,8 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
         const wantDeep = request.body.want === "deep";
         const confidential = await resolveCheckedTextConfidential(request.body, deps.ko);
         const deepAllowed = wantDeep && !confidential;
+        // JOB 3094 (KA7): der Mitschnitt dieses Laufs — Urteile je Quellen-Kerntext, Zähler, Ausfall.
+        const konfliktlauf = neuerKonfliktlauf();
         // Stufe 2 (want:"deep", nicht vertraulich): derselbe Kern MIT Modell-Judge + Prefilter → findet
         // umformulierte Duplikate, liefert Modell-confidence + wörtliche rationale. Bewusster
         // Textabfluss (D4). Vertraulich → bewusst NICHT: kein judge, kein prefilter (deterministisch).
@@ -280,7 +509,9 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
               // die Zusicherung „null Dienstaufrufe" nicht.
               ...(deps.conflicts ? { conflicts: deps.conflicts } : {}),
               duplicateJudge: (a: string, b: string) => deps.reasoner.judgeDuplicate(a, b, locale),
-              conflictJudge: (a: string, b: string) => deps.reasoner.judgeConflict(a, b),
+              // JOB 3094 (KA7): dasselbe Urteil wie zuvor (`judgeConflict` liest seinen Wert aus
+              // genau diesem Ausgang), jetzt mit der Sprache des Fensters und mitgeschrieben.
+              conflictJudge: konfliktJudge(deps.reasoner, locale, konfliktlauf),
               semanticPrefilter: deps.semanticPrefilter,
             }
           : stage1Deps;
@@ -308,7 +539,16 @@ export function checkTextRoutes(deps: CheckTextRouteDeps, guards: Guards): Fasti
           );
         }
         const note = hinweise.length > 0 ? hinweise.join(" ") : null;
-        reply.code(200).send(toResponse(result, note));
+        // JOB 3094 (KA7): die Stellen zu jedem Konflikt (Nachladen nur bei Treffern — höchstens die
+        // Kandidaten-Kappe des Konfliktdienstes) und die Lage der Konfliktprüfung. Kein Insert, kein
+        // Audit: Lesen ist Lesen, der Dry-Run bleibt einer.
+        const konflikte = await mitStellen(result.conflicts, deps.ko, konfliktlauf);
+        const konfliktpruefung = konfliktpruefungVon(
+          { wantDeep, confidential, dienstDa: deps.conflicts !== undefined },
+          konfliktlauf,
+          result.conflicts.length,
+        );
+        reply.code(200).send(toResponse(result, konflikte, konfliktpruefung, note));
       },
     );
   };

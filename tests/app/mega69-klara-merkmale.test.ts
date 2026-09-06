@@ -206,7 +206,37 @@ function m6FremdeZiele(src: string): string[] {
 // Erfassen-Fläche (JOB 3092, `captureDublettenPruefen`). Das Ziel `/api/check-text` steht seit W6 im
 // Weg selbst; ein zweiter Übersetzer mit eigener `fetch(`-Stelle wäre der zweite Weg zur selben
 // Route gewesen. Runde 1 dieses Jobs hatte ihn (12 → 13) — Runde 2 nimmt ihn zurück.
-const BEKANNTE_ABRUFZIELE = 12;
+//
+// ================================================================================================
+// JOB 3094 KA7 (06.09.2026) — DIE BEWUSSTE ANTWORT ZUM DREIZEHNTEN ABRUFZIEL (12 → 13).
+// ================================================================================================
+//
+// Auch diese Zahl wird nicht „nachgezogen", weil ein Test rot war. M7 stellt die Frage, für die er
+// gebaut ist — „CSP? Recht? Manifest?" —, und hier steht die Antwort, bevor die Zahl steigt.
+//
+// DAS NEUE ZIEL: `POST /api/check-text` in seiner TIEFEN Stufe (`want: "deep"`, Block
+// KW-KA7-KONFLIKT, „Passt das zur Regelung?"). Der PFAD ist nicht neu — der W6-Weg
+// (`w6DublettenAusCheckText`) ruft ihn seit JOB 1621 über ein hereingereichtes `fetchFn`, das M7
+// nicht zählt. Neu ist die STUFE, und die ist die eigentliche Auslieferungsfolge: der markierte
+// Text geht auf dem Server weiter an die externe KI (Konfliktjudge, check-text-routes.ts).
+//
+//   · CSP:      unverändert. `connect-src 'self'` deckt die eigene Adresse; kein neuer Ursprung —
+//               dieselbe Herkunft, die das Panel für `/api/ask` und den W6-Weg nutzt.
+//   · Recht:    keines zusätzlich. Die Route verlangt `ko.read` in der Sitzung (preValidation),
+//               wie der W6-Weg; Add-on-Prinzipale bleiben auf `checktext.validated`.
+//   · Manifest: unverändert. Keine neue Office-API (nur `getSelectedDataAsync` Text, wie die
+//               Frage), keine neue Domain, keine neue Berechtigung.
+//   · Nutzlast: der markierte Text (höchstens 8.000 Zeichen, W6_HOECHSTZEICHEN) plus Titel —
+//               UND `confidentiality: "intern"`. Dieses Feld darf das Panel NUR setzen, wenn die
+//               serverseitig aufgelöste Einwilligung für DIESES Dokument vorliegt und die
+//               Ausführung freigegeben ist (`ka7ExterneKi`, KA4-Weiche); sonst geht kein Abruf ab.
+//               Gemessen: tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts P5/P5b.
+//   · Frequenz: einmal je Klick auf „Passt das zur Regelung?". Kein Intervall, kein Autostart.
+//
+// AUSLIEFERUNGSFOLGE für ein installiertes Add-in: KEIN erneutes Sideload. Ein älterer Server ohne
+// `konfliktpruefung` in der Antwort führt zur Lage „Prüfung nicht möglich" — nie zu „keine
+// Abweichung" (konfliktkarte-mounted P3).
+const BEKANNTE_ABRUFZIELE = 13;
 function m7Abrufmenge(src: string): number {
   return abrufziele(src).length;
 }

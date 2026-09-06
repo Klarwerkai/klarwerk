@@ -46,6 +46,17 @@ const OBJEKTAUSSAGEN = [
   // werden … der Rest bleibt ungeprüft": dieselbe Vorgangsaussage, ausdruecklich EINGESCHRAENKT.
   "captureDubLeerGekuerzt",
   "captureDubTrefferGekuerzt",
+  // JOB 3094 (KA7 „Passt das zur Regelung?“): drei Lagesätze des Abgleichs tragen „(geprüft {zeit})“
+  // — der Zeitstempel eines GELAUFENEN check-text-Laufs in der tiefen Stufe, dieselbe Vorgangsklasse
+  // wie captureDubLeer. Der Wortlaut „Keine Abweichung zu geprüften Quellen gefunden (geprüft <Zeit>)“
+  // ist Auftrag 3094 §5.3; er steht NUR nach `konfliktpruefung.gelaufen === true` (mounted P2/P2b),
+  // nie als Zusage über eine Antwort. EN/NL kommen ohne die dort verbotenen Wörter aus
+  // (checked, nagekeken). Alle übrigen KA7-Sätze (Stand, Kürzung, Prüfstand) wurden so gefasst, dass
+  // sie das Wort NICHT brauchen — der Prüfstand nutzt die 3093-Schlüssel (askStatusValidiert,
+  // bestandNochNichtGeprueft), kein zweiter Wortlaut.
+  "ka7Leer",
+  "ka7LeerGekuerzt",
+  "ka7LeerOhneQuelle",
 ];
 
 // JOB 3093 (M3 „Haben wir das schon?"): EIN weiterer Schlüssel sagt etwas über ein OBJEKT — nicht

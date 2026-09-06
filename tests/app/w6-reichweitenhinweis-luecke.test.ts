@@ -234,13 +234,18 @@ describe("W6 · DER FEHLSTAND — der leere Vektorspeicher wird NICHT gemeldet",
     // Das ist der Kern von Auflage 1: nicht „der Hinweis ist falsch", sondern „es gibt kein Feld,
     // an dem ein Add-in die Degradierung ueberhaupt festmachen koennte".
     expect(Object.keys(leer).sort()).toEqual(Object.keys(voll).sort());
+    // JOB 3094 (KA7): `konfliktpruefung` kam hinzu. Es sagt, ob die KONFLIKTPRÜFUNG lief (Modell,
+    // vorgelegte Quellen) — NICHT, ob der Vektorspeicher trug. Über die Abruftiefe der
+    // Kandidatenwahl sagt weiterhin kein Feld etwas; der Befund dieser Datei steht.
     expect(Object.keys(leer).sort()).toEqual([
       "answer",
       "conflicts",
       "duplicates",
+      "konfliktpruefung",
       "note",
       "persisted",
     ]);
+    expect(leer.konfliktpruefung).toEqual(voll.konfliktpruefung);
     // JOB 3020: der Traeger des Befundes ist die UNUNTERSCHEIDBARKEIT, nicht der Wert `null`. Beide
     // Antworten tragen jetzt denselben Hinweis über den geprüften BESTAND — über die ABRUFTIEFE
     // sagt keine von beiden etwas, obwohl die eine semantisch und die andere lexikalisch arbeitete.

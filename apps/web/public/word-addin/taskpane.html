@@ -9648,6 +9648,824 @@
       bestandZeichnen();
     }
     // KW-N1-BESTAND-END
+
+    // KW-KA7-KONFLIKT-START
+    // ============================================================================================
+    // JOB 3094 · KA7 — „PASST DAS ZUR REGELUNG?" DER WIDERSPRUCHS-HINWEIS IM WORD-PANEL.
+    // ============================================================================================
+    //
+    // PEDIS FALL (05.09., CODEX-POC-ENTSCHEIDUNG-1): das Memo sagt „drei Tage", die freigegebene
+    // Regelung „zwei Tage". Er markiert den Satz, klickt „Passt das zur Regelung?", und Klara zeigt
+    // die Abweichung mit BEIDEN Stellen — der eigenen und der aus der Regelung —, nennt Titel,
+    // Version und Pruefstand der Quelle, und sagt: „Ich entscheide das nicht." Sie aendert nichts.
+    //
+    // WAS DIESER BLOCK TUT: ein Knopf neben der Ruhe, ein Abruf an den BESTEHENDEN Endpunkt
+    // `POST /api/check-text` in seiner tiefen Stufe (`want: "deep"`, check-text-routes.ts), eine Karte
+    // mit dem Serverbefund (`conflicts[].stellen`, `konfliktpruefung` — beides seit JOB 3094 in der
+    // Antwort), und an der Markierungskarte der Erfassen-Flaeche ein Hinweis, wenn dieselbe Markierung
+    // mit offenem Widerspruch eingereicht wird. KEINE Vergleichslogik hier (OFFEN.md KA7: „es zeigt
+    // Serverbefunde"); das Panel parst nichts, es liest Felder.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT:
+    //   · Er schreibt NIE in Word — kein `insertText`, kein `setSelectedDataAsync`, kein `Word.run`.
+    //     Der Widerspruch ist eine Auskunft; korrigieren tut der Mensch, im Dokument.
+    //   · Er blockiert nichts: der Sendeknopf der Erfassen-Flaeche haengt weiter allein an Anmeldung,
+    //     Word und Markierung. Ein Widerspruch darf bewusst eingereicht werden — und steht dann
+    //     sichtbar dabei (Ehrlichkeit vor Optik).
+    //   · Er speichert nichts: kein Entwurf, kein Objekt, kein localStorage.
+    //
+    // WARUM EIN EIGENER ABRUF UND NICHT `w6DublettenAusCheckText`: der W6-Weg ist bewusst die
+    // deterministische Stufe OHNE Textabfluss (kein `want`, keine Stufe) — er kann Konflikte
+    // konstruktiv nicht finden (der Konfliktzweig laeuft nur im Modellpfad, check-text-routes.ts).
+    // Die Frage hier ist eine andere und hat einen anderen Preis: sie schickt den markierten Text an
+    // die externe KI. Das darf sie NUR mit Pedis Weiche (Werkstattbeschluss 18.08., KA4): je Dokument
+    // eine ausdrueckliche Einwilligung. Deshalb liest dieser Block VOR jedem Abruf den serverseitig
+    // aufgeloesten Sitzungsstand (`klaraS4Sicht.resolution`): Einwilligung fuer dieses Dokument
+    // erteilt UND Ausfuehrung freigegeben — sonst geht NICHTS an den Server, und die Karte sagt, was
+    // fehlt. Erst mit dieser Weiche darf der Koerper `confidentiality: "intern"` tragen; ohne sie
+    // waere das eine Behauptung des Clients ueber ein Dokument, das er nicht eingestuft hat.
+    //
+    // DAS ZUSTANDSMODELL (Auftrag §9) — jede Lage hat ihren Satz, und nur EINE darf verneinen:
+    //   keine_markierung · zu_kurz · einwilligung · gesperrt      — kein Abruf, ein ehrlicher Satz
+    //   laeuft                                                       — die Karte sagt, dass gearbeitet wird
+    //   anmeldung (401/403) · fehler (Netz, 5xx, kaputter Koerper)   — „Pruefung nicht moeglich"
+    //   nicht_geprueft (`konfliktpruefung.gelaufen === false`)        — „nicht moeglich: <Grund>" oder,
+    //     wenn Quellen vorgelegt wurden und ein Teil der Urteile fehlt/verworfen ist (Zahlen!),
+    //     „nicht belastbar: <Grund> — m von n Quellen ohne belastbares Urteil" (Runde 6)
+    //   konflikt                                                     — die Karte mit beiden Stellen
+    //   leer (`gelaufen === true`, keine Treffer)                    — „Keine Abweichung … (geprueft <Zeit>)"
+    // „Keine Abweichung" steht also NUR nach einer erfolgreichen, frischen Prüfung mit gelaufenem
+    // Modell, das fuer JEDE vorgelegte Quelle ein Urteil geliefert hat, das der Konfliktdienst gelten
+    // liess (`gelaufen` ist seit Runde 6 „belastbar gelaufen", check-text-routes.ts). Ging nur der
+    // Anfang der Markierung an die Route (8.000 Zeichen, W6_HOECHSTZEICHEN), sagt der Satz das (Lehre
+    // JOB 3092 R1). Ein Treffer ohne Kennung macht die Antwort zur Stoerung, nicht zur Leere
+    // (dieselbe Lehre). Ein bestaetigter Logout und jede 401/403-Antwort verwerfen den Stand (Lehre
+    // JOB 3093 R2: kein Befund einer fremden Sitzung).
+    //
+    // CACHE MIT LAUFENDER/GESCHEITERTER AUFFRISCHUNG (Runde 6, Codex R5): eine Wiederholung fuer
+    // DENSELBEN Text verwirft einen gefundenen Konflikt nicht. Waehrend sie laeuft und nach einem
+    // Fehlschlag (Netz, 5xx, nicht belastbar) bleibt der fruehere Befund auf der Karte und am Entwurf
+    // — mit Vorbehalt („Befund von HH:MM … die Auffrischung ist fehlgeschlagen / laeuft"), mit SEINEM
+    // Stand-Satz, nie als frisch ausgegeben (`vorher` am Stand, ka7Befund). Ein frisches Ergebnis
+    // ersetzt ihn; ein anderer Text, eine verlorene Anmeldung oder ein Logout tragen nichts weiter.
+    //
+    // WER DIE KI IST, sagt der Sitzungsstand (Anbieter und Modell aus `GET /api/klara/ai-status`),
+    // nicht dieser Block — er nennt, was der Server aufgeloest hat, und schweigt, wo nichts steht.
+    var KA7_TEXTE = {
+      de: {
+        ka7Cta: "Passt das zur Regelung?",
+        ka7Label: "Abgleich mit der Regelung",
+        ka7Laeuft: "Klara vergleicht die Markierung mit den Regelungen im Bestand …",
+        ka7KeineMarkierung: "Markiere in Word den Text, den ich mit der Regelung vergleichen soll.",
+        ka7ZuKurz: "Für den Abgleich braucht Klara mindestens {min} Zeichen markierten Text.",
+        ka7Einwilligung: "Für den Abgleich braucht Klara die externe KI{ki}. Erlaube sie für dieses Dokument unter Einstellungen → „Externe KI erlauben“.",
+        ka7Gesperrt: "Abgleich nicht möglich: Die externe KI ist für diese Sitzung gesperrt.",
+        ka7Anmeldung: "Abgleich nicht möglich: Du bist nicht angemeldet oder darfst den Bestand nicht lesen.",
+        ka7Fehler: "Prüfung nicht möglich.",
+        ka7NichtGeprueft: "Prüfung nicht möglich: {grund}.",
+        ka7GrundKeinModell: "kein KI-Modell verfügbar",
+        ka7GrundModellfehler: "die KI hat kein verwertbares Urteil geliefert",
+        ka7GrundVertraulich: "der Text gilt als vertraulich und geht nicht an die externe KI",
+        ka7GrundNichtAngefordert: "der Server hat die Konfliktprüfung nicht ausgeführt",
+        ka7GrundKeinDienst: "der Server führt keinen Konfliktdienst",
+        ka7GrundUrteilVerworfen: "die KI hat ein Urteil geliefert, das sich an den Texten nicht belegen ließ",
+        ka7GrundUnbekannt: "Grund unbekannt",
+        ka7NichtBelastbar: "Prüfung nicht belastbar: {grund} — {m} von {n} vorgelegten Quellen ohne belastbares Urteil.",
+        ka7VorherLaeuft: "Klara vergleicht die Markierung erneut … Bis dahin gilt der Befund von {zeit}.",
+        ka7VorherFehler: "Prüfung nicht möglich — gezeigt wird der Befund von {zeit}; die Auffrischung ist fehlgeschlagen.",
+        ka7VorherNichtBelastbar: "Prüfung nicht belastbar: {grund} — gezeigt wird der Befund von {zeit}.",
+        ka7EinreichVorbehalt: "Befund von {zeit}; die erneute Prüfung ist fehlgeschlagen.",
+        ka7EinreichVorbehaltLaeuft: "Befund von {zeit}; die erneute Prüfung läuft.",
+        ka7ZeileVorbehalt: "Befund von {zeit} — die erneute Prüfung hat ihn weder bestätigt noch entkräftet.",
+        ka7KopfVorbehalt: "Die erneute Prüfung war nicht belastbar ({grund}); frühere Befunde gelten weiter, solange sie nicht entkräftet sind.",
+        ka7EinreichVorbehaltTeil: "Nicht aufgefrischt: {liste} — die erneute Prüfung hat diese Befunde weder bestätigt noch entkräftet.",
+        ka7VorbehaltEintrag: "„{titel}“ (Befund von {zeit})",
+        ka7Leer: "Keine Abweichung zu geprüften Quellen gefunden (geprüft {zeit}).",
+        ka7LeerGekuerzt: "Keine Abweichung in den ersten {max} Zeichen gefunden (geprüft {zeit}) — der Rest der Markierung blieb ungeprüft.",
+        ka7LeerOhneQuelle: "Kein vergleichbarer Eintrag im Bestand gefunden (geprüft {zeit}).",
+        ka7AbweichungEine: "Abweichung gefunden — dein Text widerspricht diesem Eintrag:",
+        ka7AbweichungMehrere: "Abweichung gefunden — dein Text widerspricht {n} Einträgen:",
+        ka7AbweichungGekuerzt: "Nur die ersten {max} Zeichen der Markierung gingen in den Abgleich.",
+        ka7QuelleVon: "Abweichung von: ",
+        ka7Version: "Version {v}",
+        ka7VersionUnbekannt: "Version unbekannt",
+        ka7Eigen: "Dein Text: „{stelle}“",
+        ka7EigenFehlt: "Dein Text: Stelle nicht benannt.",
+        ka7Regel: "Die Regelung: „{stelle}“",
+        ka7RegelFehlt: "Die Regelung: Stelle nicht benannt.",
+        ka7Entscheidung: "Ich entscheide das nicht — prüfe die Regelung oder reiche den Widerspruch bewusst ein.",
+        ka7Stand: "Abgleich {zeit} mit externer KI{ki} · {n} Quellen vorgelegt{ausfall}. Dein Text wurde nicht verändert.",
+        ka7StandAusfall: ", {m} davon ohne belastbares Urteil",
+        ka7EinreichOffen: "Offener Widerspruch zu „{titel}“ — du kannst trotzdem einreichen; die Regelung bleibt unverändert.",
+        ka7EinreichGesendet: "Bewusst eingereicht mit offenem Widerspruch zu „{titel}“ — die Regelung bleibt unverändert, bis jemand entscheidet.",
+      },
+      en: {
+        ka7Cta: "Does this match the rule?",
+        ka7Label: "Check against the rule",
+        ka7Laeuft: "Klara is comparing the selection with the rules in the knowledge base …",
+        ka7KeineMarkierung: "Select the text in Word that I should compare with the rule.",
+        ka7ZuKurz: "Klara needs at least {min} characters of selected text for the check.",
+        ka7Einwilligung: "This check needs the external AI{ki}. Allow it for this document under Settings → “Allow external AI”.",
+        ka7Gesperrt: "Check not possible: the external AI is blocked for this session.",
+        ka7Anmeldung: "Check not possible: you are not signed in or may not read the knowledge base.",
+        ka7Fehler: "Check not possible.",
+        ka7NichtGeprueft: "Check not possible: {grund}.",
+        ka7GrundKeinModell: "no AI model available",
+        ka7GrundModellfehler: "the AI returned no usable verdict",
+        ka7GrundVertraulich: "the text counts as confidential and does not go to the external AI",
+        ka7GrundNichtAngefordert: "the server did not run the conflict check",
+        ka7GrundKeinDienst: "the server runs no conflict service",
+        ka7GrundUrteilVerworfen: "the AI returned a verdict that could not be substantiated in the texts",
+        ka7GrundUnbekannt: "reason unknown",
+        ka7NichtBelastbar: "Check not reliable: {grund} — {m} of {n} presented sources without a reliable verdict.",
+        ka7VorherLaeuft: "Klara is comparing the selection again … Until then the finding from {zeit} applies.",
+        ka7VorherFehler: "Check not possible — showing the finding from {zeit}; the refresh failed.",
+        ka7VorherNichtBelastbar: "Check not reliable: {grund} — showing the finding from {zeit}.",
+        ka7EinreichVorbehalt: "Finding from {zeit}; the repeated check failed.",
+        ka7EinreichVorbehaltLaeuft: "Finding from {zeit}; the repeated check is running.",
+        ka7ZeileVorbehalt: "Finding from {zeit} — the repeated check neither confirmed nor refuted it.",
+        ka7KopfVorbehalt: "The repeated check was not reliable ({grund}); earlier findings still apply until they are refuted.",
+        ka7EinreichVorbehaltTeil: "Not refreshed: {liste} — the repeated check neither confirmed nor refuted these findings.",
+        ka7VorbehaltEintrag: "“{titel}” (finding from {zeit})",
+        ka7Leer: "No deviation from the checked sources found (checked {zeit}).",
+        ka7LeerGekuerzt: "No deviation found in the first {max} characters (checked {zeit}) — the rest of the selection remained unchecked.",
+        ka7LeerOhneQuelle: "No comparable entry found in the knowledge base (checked {zeit}).",
+        ka7AbweichungEine: "Deviation found — your text contradicts this entry:",
+        ka7AbweichungMehrere: "Deviation found — your text contradicts {n} entries:",
+        ka7AbweichungGekuerzt: "Only the first {max} characters of the selection were checked.",
+        ka7QuelleVon: "Deviates from: ",
+        ka7Version: "Version {v}",
+        ka7VersionUnbekannt: "version unknown",
+        ka7Eigen: "Your text: “{stelle}”",
+        ka7EigenFehlt: "Your text: passage not named.",
+        ka7Regel: "The rule: “{stelle}”",
+        ka7RegelFehlt: "The rule: passage not named.",
+        ka7Entscheidung: "I do not decide this — check the rule or submit the contradiction deliberately.",
+        ka7Stand: "Checked {zeit} with external AI{ki} · {n} sources presented{ausfall}. Your text was not changed.",
+        ka7StandAusfall: ", {m} of them without a reliable verdict",
+        ka7EinreichOffen: "Open contradiction with “{titel}” — you can still submit; the rule stays unchanged.",
+        ka7EinreichGesendet: "Submitted deliberately with an open contradiction with “{titel}” — the rule stays unchanged until someone decides.",
+      },
+      nl: {
+        ka7Cta: "Past dit bij de regeling?",
+        ka7Label: "Vergelijking met de regeling",
+        ka7Laeuft: "Klara vergelijkt de selectie met de regelingen in het bestand …",
+        ka7KeineMarkierung: "Selecteer in Word de tekst die ik met de regeling moet vergelijken.",
+        ka7ZuKurz: "Voor de vergelijking heeft Klara minstens {min} tekens geselecteerde tekst nodig.",
+        ka7Einwilligung: "Voor de vergelijking heeft Klara de externe AI{ki} nodig. Sta die voor dit document toe onder Instellingen → “Externe AI toestaan”.",
+        ka7Gesperrt: "Vergelijking niet mogelijk: de externe AI is voor deze sessie geblokkeerd.",
+        ka7Anmeldung: "Vergelijking niet mogelijk: je bent niet aangemeld of mag het bestand niet lezen.",
+        ka7Fehler: "Controle niet mogelijk.",
+        ka7NichtGeprueft: "Controle niet mogelijk: {grund}.",
+        ka7GrundKeinModell: "geen AI-model beschikbaar",
+        ka7GrundModellfehler: "de AI gaf geen bruikbaar oordeel",
+        ka7GrundVertraulich: "de tekst geldt als vertrouwelijk en gaat niet naar de externe AI",
+        ka7GrundNichtAngefordert: "de server heeft de conflictcontrole niet uitgevoerd",
+        ka7GrundKeinDienst: "de server heeft geen conflictdienst",
+        ka7GrundUrteilVerworfen: "de AI gaf een oordeel dat in de teksten niet te onderbouwen was",
+        ka7GrundUnbekannt: "reden onbekend",
+        ka7NichtBelastbar: "Controle niet betrouwbaar: {grund} — {m} van {n} voorgelegde bronnen zonder betrouwbaar oordeel.",
+        ka7VorherLaeuft: "Klara vergelijkt de selectie opnieuw … Tot dan geldt de bevinding van {zeit}.",
+        ka7VorherFehler: "Controle niet mogelijk — getoond wordt de bevinding van {zeit}; het verversen is mislukt.",
+        ka7VorherNichtBelastbar: "Controle niet betrouwbaar: {grund} — getoond wordt de bevinding van {zeit}.",
+        ka7EinreichVorbehalt: "Bevinding van {zeit}; de herhaalde controle is mislukt.",
+        ka7EinreichVorbehaltLaeuft: "Bevinding van {zeit}; de herhaalde controle loopt.",
+        ka7ZeileVorbehalt: "Bevinding van {zeit} — de herhaalde controle heeft die bevestigd noch weerlegd.",
+        ka7KopfVorbehalt: "De herhaalde controle was niet betrouwbaar ({grund}); eerdere bevindingen blijven gelden zolang ze niet weerlegd zijn.",
+        ka7EinreichVorbehaltTeil: "Niet ververst: {liste} — de herhaalde controle heeft deze bevindingen bevestigd noch weerlegd.",
+        ka7VorbehaltEintrag: "“{titel}” (bevinding van {zeit})",
+        ka7Leer: "Geen afwijking van de nagekeken bronnen gevonden (nagekeken {zeit}).",
+        ka7LeerGekuerzt: "Geen afwijking gevonden in de eerste {max} tekens (nagekeken {zeit}) — de rest van de selectie is niet nagekeken.",
+        ka7LeerOhneQuelle: "Geen vergelijkbare vermelding in het bestand gevonden (nagekeken {zeit}).",
+        ka7AbweichungEine: "Afwijking gevonden — je tekst spreekt deze vermelding tegen:",
+        ka7AbweichungMehrere: "Afwijking gevonden — je tekst spreekt {n} vermeldingen tegen:",
+        ka7AbweichungGekuerzt: "Alleen de eerste {max} tekens van de selectie zijn vergeleken.",
+        ka7QuelleVon: "Wijkt af van: ",
+        ka7Version: "Versie {v}",
+        ka7VersionUnbekannt: "versie onbekend",
+        ka7Eigen: "Je tekst: “{stelle}”",
+        ka7EigenFehlt: "Je tekst: passage niet benoemd.",
+        ka7Regel: "De regeling: “{stelle}”",
+        ka7RegelFehlt: "De regeling: passage niet benoemd.",
+        ka7Entscheidung: "Ik beslis dit niet — controleer de regeling of dien de tegenstrijdigheid bewust in.",
+        ka7Stand: "Vergelijking {zeit} met externe AI{ki} · {n} bronnen voorgelegd{ausfall}. Je tekst is niet gewijzigd.",
+        ka7StandAusfall: ", {m} daarvan zonder betrouwbaar oordeel",
+        ka7EinreichOffen: "Open tegenstrijdigheid met “{titel}” — je kunt toch indienen; de regeling blijft ongewijzigd.",
+        ka7EinreichGesendet: "Bewust ingediend met een open tegenstrijdigheid met “{titel}” — de regeling blijft ongewijzigd tot iemand beslist.",
+      },
+    };
+
+    // Der gehaltene Stand — `null` heisst: noch nie geprueft, keine Karte. Alles andere ist eine
+    // Lage mit ihrem Satz (Kopfkommentar). Er stirbt mit der Sitzung (ka7Verwerfen).
+    var ka7Stand = null;
+    var ka7Laeuft = false;
+    // Jeder Klick und jedes Verwerfen zaehlt hoch; eine Antwort einer aelteren Generation wird
+    // fallengelassen — sie koennte zu einer anderen Markierung oder einer anderen Sitzung gehoeren.
+    var ka7Generation = 0;
+    // Der Pruefstand einer Quelle heisst hier GENAU so wie in der Bestandsliste (JOB 3093, Zeile
+    // `bestand-pruefstand`): das Statuswort der Quellenliste fuer validiert, Pedis „noch nicht
+    // geprueft" fuer eingereicht, „Status unbekannt" sonst — kein zweiter Wortlaut fuer dieselbe
+    // Aussage ueber ein Objekt (mega35: „geprueft" nur als Objektstand, nie als Zusage).
+    var KA7_PRUEFSTAND_KEYS = {
+      validiert: "askStatusValidiert",
+      eingereicht: "bestandNochNichtGeprueft",
+    };
+    var KA7_GRUND_KEYS = {
+      kein_modell: "ka7GrundKeinModell",
+      modellfehler: "ka7GrundModellfehler",
+      vertraulich: "ka7GrundVertraulich",
+      nicht_angefordert: "ka7GrundNichtAngefordert",
+      kein_konfliktdienst: "ka7GrundKeinDienst",
+      urteil_verworfen: "ka7GrundUrteilVerworfen",
+    };
+
+    function ka7Uhrzeit(date) {
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(date.getHours()) + ":" + pad(date.getMinutes());
+    }
+
+    function ka7Text(wert) {
+      return typeof wert === "string" && wert.replace(/^\s+|\s+$/g, "").length > 0 ? wert : null;
+    }
+
+    /** Der Klammerzusatz zur KI: " (OpenAI · gpt-5)" — oder leer, wenn der Sitzungsstand nichts nennt. */
+    function ka7KiZusatz(ki) {
+      if (!ki) { return ""; }
+      var teile = [];
+      if (ki.provider) { teile.push(ki.provider); }
+      if (ki.model) { teile.push(ki.model); }
+      return teile.length > 0 ? " (" + teile.join(" · ") + ")" : "";
+    }
+
+    /**
+     * Die Weiche VOR dem Abruf: darf der markierte Text an die externe KI?
+     *   „erlaubt"      — Einwilligung fuer dieses Dokument erteilt UND Ausfuehrung freigegeben,
+     *                    aus einer frischen, nicht abgelaufenen Aufloesung des Servers.
+     *   „gesperrt"     — Riegel, abgelaufener Stand oder serverseitig gesperrt (executionAllowed).
+     *   „einwilligung" — keine belegte Einwilligung (auch: Stand unbekannt — nichts wird angenommen).
+     * Entschieden wird NUR aus dem Serverstand (klaraS4Anzeige), nie aus einem lokalen Merker.
+     */
+    function ka7ExterneKi() {
+      if (typeof klaraS4FragenGesperrt === "function" && klaraS4FragenGesperrt()) {
+        return { lage: "gesperrt", ki: null };
+      }
+      if (typeof klaraS4Anzeige !== "function" || klaraS4Phase !== "bereit" ||
+          !klaraS4Sicht || !klaraS4Sicht.resolution) {
+        return { lage: "einwilligung", ki: null };
+      }
+      var a = klaraS4Anzeige(klaraS4Phase, klaraS4Sicht, Date.now());
+      var ki = a.provider || a.model ? { provider: a.provider, model: a.model } : null;
+      if (a.veraltet) { return { lage: "gesperrt", ki: ki }; }
+      if (klaraS4Sicht.resolution.externalConsentGranted !== true) {
+        return { lage: "einwilligung", ki: ki };
+      }
+      if (a.askAllowed !== true) { return { lage: "gesperrt", ki: ki }; }
+      return { lage: "erlaubt", ki: ki };
+    }
+
+    /** Die Markierung, nur Text — ohne Word ehrlich leer. Ein Fehler des Hosts ist ebenfalls leer. */
+    function ka7MarkierungLesen(done) {
+      if (!officeUsable()) { done(""); return; }
+      try {
+        Office.context.document.getSelectedDataAsync(Office.CoercionType.Text, function (r) {
+          done(r && r.status === Office.AsyncResultStatus.Succeeded ? String(r.value || "") : "");
+        });
+      } catch (err) {
+        done("");
+      }
+    }
+
+    /**
+     * Die Antwort der Route → der Stand. GELESEN, nie hergeleitet: ein Koerper ohne `conflicts`-Liste
+     * oder ohne `konfliktpruefung` ist keine Antwort dieser Route (Lage „fehler"); ein Treffer ohne
+     * Kennung macht die ganze Liste unauswertbar (Lehre JOB 3092 R1). Ein Konflikt wird in JEDER Lage
+     * genannt, wenn die Route einen fuehrt; die Leere nur, wenn die Konfliktpruefung wirklich lief.
+     */
+    function ka7Uebersetzen(koerper) {
+      if (!koerper || !Array.isArray(koerper.conflicts) ||
+          !koerper.konfliktpruefung || typeof koerper.konfliktpruefung !== "object" ||
+          typeof koerper.konfliktpruefung.gelaufen !== "boolean") {
+        return { lage: "fehler" };
+      }
+      var pruefung = koerper.konfliktpruefung;
+      var konflikte = [];
+      for (var i = 0; i < koerper.conflicts.length; i += 1) {
+        var c = koerper.conflicts[i];
+        var id = c && typeof c.koId === "string" ? c.koId : "";
+        if (!id) { return { lage: "fehler" }; }
+        var stellen = c.stellen && typeof c.stellen === "object" ? c.stellen : null;
+        konflikte.push({
+          id: id,
+          title: ka7Text(c.koTitle) || id,
+          pruefstand: KA7_PRUEFSTAND_KEYS[c.pruefstand] ? c.pruefstand : null,
+          version: typeof c.version === "number" && isFinite(c.version) ? c.version : null,
+          eigen: stellen ? ka7Text(stellen.eigen) : null,
+          quelle: stellen ? ka7Text(stellen.quelle) : null,
+          grund: ka7Text(c.rationale),
+        });
+      }
+      var kandidaten = typeof pruefung.kandidaten === "number" ? pruefung.kandidaten : 0;
+      var ausgefallen = typeof pruefung.ausgefallen === "number" ? pruefung.ausgefallen : 0;
+      // Runde 6: `verworfen` — Befund-Urteile, die der Konfliktdienst nicht gelten liess. Ein aelterer
+      // Server ohne das Feld sagt 0; „ohne belastbares Urteil" ist die Summe beider Zahlen.
+      var verworfen = typeof pruefung.verworfen === "number" ? pruefung.verworfen : 0;
+      var zahlen = { kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen };
+      if (konflikte.length > 0) {
+        return { lage: "konflikt", konflikte: konflikte, kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: pruefung.gelaufen === true, grund: ka7Text(pruefung.grund) };
+      }
+      if (pruefung.gelaufen === true) {
+        return { lage: "leer", konflikte: [], kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: true };
+      }
+      return { lage: "nicht_geprueft", konflikte: [], grund: ka7Text(pruefung.grund), kandidaten: kandidaten, ausgefallen: ausgefallen, verworfen: verworfen, belastbar: false, zahlen: zahlen };
+    }
+
+    function ka7Setzen(stand) {
+      ka7Stand = stand;
+      ka7Zeichnen();
+      ka7EinreichHinweisZeichnen();
+    }
+
+    /**
+     * Runde 6 (Codex R5, Korrekturpflicht 2): der Befund, der bei einer Wiederholung fuer DENSELBEN
+     * Text erhalten bleibt — mit Aktualitaetsvorbehalt, nie geleert (Zustandsmodell §9: „Cache mit
+     * laufender/gescheiterter Auffrischung"). Ein Stand, der selbst schon einen frueheren Befund
+     * traegt (zweiter Fehlschlag in Folge), reicht ihn weiter. Ein ANDERER Text traegt nichts weiter:
+     * ein Widerspruch zu fremdem Text waere eine Behauptung ohne Grundlage.
+     */
+    function ka7Befund(stand) {
+      if (!stand) { return null; }
+      if (stand.lage === "konflikt") { return stand; }
+      return stand.vorher && stand.vorher.lage === "konflikt" ? stand.vorher : null;
+    }
+
+    function ka7VorherFuer(text) {
+      var befund = ka7Befund(ka7Stand);
+      return befund && befund.text === text ? befund : null;
+    }
+
+    /**
+     * Runde 7 (Codex R6): TEIL-AUSFALL MIT NEUEN TREFFERN. Antwortet die Route mit Konflikten, aber
+     * `gelaufen: false` (ein Teil der Quellen ohne belastbares Urteil), dann ist ein frueher bekannter
+     * Konflikt, der in der neuen Liste fehlt, NICHT entkraeftet — vielleicht war gerade seine Quelle
+     * die ausgefallene. Er bleibt neben den neuen Treffern stehen, mit der Uhrzeit seines Befunds
+     * (`vorbehaltZeit`, bleibt ueber weitere Fehlschlaege hinweg die urspruengliche). Ein belastbar
+     * gelaufener Lauf (`gelaufen: true`) ersetzt die Liste ganz: was er nicht mehr findet, ist
+     * entkraeftet. Neue Treffer gewinnen ueber gleiche Kennungen.
+     */
+    function ka7Vereinigen(neu, vorher) {
+      var ids = {};
+      for (var i = 0; i < neu.length; i += 1) { ids[neu[i].id] = true; }
+      var alle = neu.slice();
+      for (var j = 0; j < vorher.konflikte.length; j += 1) {
+        var alt = vorher.konflikte[j];
+        if (ids[alt.id]) { continue; }
+        var kopie = {};
+        for (var feld in alt) {
+          if (Object.prototype.hasOwnProperty.call(alt, feld)) { kopie[feld] = alt[feld]; }
+        }
+        kopie.vorbehaltZeit = alt.vorbehaltZeit || vorher.zeit;
+        alle.push(kopie);
+      }
+      return alle;
+    }
+
+    /** Die Zeilen eines Befunds, die aus einem frueheren Lauf uebernommen und nicht aufgefrischt sind. */
+    function ka7NichtAufgefrischt(befund) {
+      var aus = [];
+      for (var i = 0; i < befund.konflikte.length; i += 1) {
+        if (befund.konflikte[i].vorbehaltZeit) { aus.push(befund.konflikte[i]); }
+      }
+      return aus;
+    }
+
+    /** Der Klick. GENAU EIN Lauf gleichzeitig; kein Abruf ohne Markierung, Laenge und Einwilligung. */
+    function ka7Pruefen() {
+      if (ka7Laeuft) { return; }
+      ka7Laeuft = true;
+      ka7Generation += 1;
+      var generation = ka7Generation;
+      var fertig = function (stand) {
+        ka7Laeuft = false;
+        if (generation !== ka7Generation) { return; }
+        ka7Setzen(stand);
+      };
+      ka7MarkierungLesen(function (text) {
+        if (generation !== ka7Generation) { ka7Laeuft = false; return; }
+        var roh = typeof text === "string" ? text : "";
+        var gekuerzt = roh.length > W6_HOECHSTZEICHEN;
+        var schnitt = gekuerzt ? roh.slice(0, W6_HOECHSTZEICHEN) : roh;
+        if (schnitt.replace(/^\s+|\s+$/g, "").length === 0) {
+          fertig({ lage: "keine_markierung", text: "" });
+          return;
+        }
+        if (schnitt.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
+          fertig({ lage: "zu_kurz", text: roh });
+          return;
+        }
+        var weiche = ka7ExterneKi();
+        if (weiche.lage !== "erlaubt") {
+          // Kein Abruf: nichts verlaesst das Fenster. Die Karte sagt, was fehlt.
+          fertig({ lage: weiche.lage, text: roh, ki: weiche.ki });
+          return;
+        }
+        // Runde 6: eine Wiederholung fuer denselben Text verwirft den fruehren Befund NICHT — er
+        // steht waehrend des Laufs und nach einem Fehlschlag mit Vorbehalt weiter (ka7Befund).
+        var vorher = ka7VorherFuer(roh);
+        ka7Setzen({ lage: "laeuft", text: roh, vorher: vorher });
+        fetch("/api/check-text", {
+          method: "POST",
+          credentials: "include",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            text: schnitt,
+            title: deriveDraftTitleFromSelection(schnitt),
+            locale: askLocale(lang),
+            want: "deep",
+            source: "transient-document",
+            // Nur hier, nur nach der Weiche oben: die Einwilligung fuer dieses Dokument liegt vor.
+            confidentiality: "intern"
+          })
+        })
+          .then(function (res) {
+            if (!res || !res.ok) {
+              var http = res && typeof res.status === "number" ? res.status : null;
+              return { lage: http === 401 || http === 403 ? "anmeldung" : "fehler", http: http };
+            }
+            return res.json().then(ka7Uebersetzen);
+          })
+          .catch(function () { return { lage: "fehler" }; })
+          .then(function (ergebnis) {
+            ergebnis.text = roh;
+            ergebnis.gekuerzt = gekuerzt;
+            ergebnis.zeit = new Date();
+            ergebnis.ki = weiche.ki;
+            // Gescheiterte oder nicht belastbare Auffrischung: der fruehere Befund bleibt, mit
+            // Vorbehalt. Ein frisches Ergebnis (Konflikt, Leere) ersetzt ihn; eine verlorene
+            // Anmeldung (401/403) traegt nichts weiter — ohne Sitzung keine Aussage.
+            if (vorher && (ergebnis.lage === "fehler" || ergebnis.lage === "nicht_geprueft")) {
+              ergebnis.vorher = vorher;
+            }
+            // Runde 7: Konflikte gefunden, aber nicht belastbar gelaufen — frueher bekannte Konflikte,
+            // deren Entkraeftung nicht belegt ist, bleiben neben den neuen stehen (ka7Vereinigen).
+            if (vorher && ergebnis.lage === "konflikt" && ergebnis.belastbar !== true) {
+              ergebnis.konflikte = ka7Vereinigen(ergebnis.konflikte, vorher);
+            }
+            fertig(ergebnis);
+          });
+      });
+    }
+
+    /** Ein bestaetigter Logout, eine andere Sitzung: kein Befund von vorhin bleibt stehen. */
+    function ka7Verwerfen() {
+      ka7Generation += 1;
+      ka7Laeuft = false;
+      ka7Stand = null;
+      ka7Zeichnen();
+      ka7EinreichHinweisZeichnen();
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Die Flaeche: Knopf und Karte NEBEN der Ruhe-Mitte (nicht in ihr — die Mitte traegt nur Lupe
+    // und den EINEN Satz, tests/app/k1-sitzungslagen.test.tsx), eingehaengt wie die KA3-Karte.
+    // Liegt der Bestandsblock von JOB 3093 (#bestand-block) vor, folgt der Knopf ihm.
+    // ------------------------------------------------------------------------------------------
+    function ka7BlockElement() {
+      var vorhanden = document.getElementById("ka7-block");
+      if (vorhanden) { return vorhanden; }
+      var block = document.createElement("div");
+      block.id = "ka7-block";
+      block.className = "hidden";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ka7-btn";
+      knopf.className = "ghost";
+      knopf.setAttribute("data-t", "ka7Cta");
+      knopf.textContent = t("ka7Cta");
+      knopf.addEventListener("click", ka7Pruefen);
+      block.appendChild(knopf);
+      var karte = document.createElement("div");
+      karte.id = "ka7-karte";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      var satz = document.createElement("p");
+      satz.id = "ka7-satz";
+      karte.appendChild(satz);
+      var liste = document.createElement("ul");
+      liste.id = "ka7-liste";
+      karte.appendChild(liste);
+      var entscheidung = document.createElement("p");
+      entscheidung.id = "ka7-entscheidung";
+      entscheidung.className = "hidden";
+      karte.appendChild(entscheidung);
+      var stand = document.createElement("p");
+      stand.id = "ka7-stand";
+      stand.className = "muted hidden";
+      karte.appendChild(stand);
+      block.appendChild(karte);
+      var anker = document.getElementById("bestand-block") || document.getElementById("ask-ruhe");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(block, anker.nextSibling);
+      } else {
+        document.body.appendChild(block);
+      }
+      return block;
+    }
+
+    /** Sichtbar nur angemeldet, mit Word und in der Ruhe — sonst gibt es nichts zu pruefen. */
+    function ka7SichtbarkeitZeichnen() {
+      var block = ka7BlockElement();
+      var ruhe = document.getElementById("ask-ruhe");
+      var ruheSichtbar = !!ruhe && ruhe.className.indexOf("hidden") === -1;
+      block.className = signedIn && officeUsable() && ruheSichtbar ? "" : "hidden";
+    }
+
+    function ka7Zeile(k) {
+      var zeile = document.createElement("li");
+      zeile.setAttribute("data-quelle", k.id);
+      var quelle = document.createElement("p");
+      quelle.className = "ka7-quelle";
+      quelle.appendChild(document.createTextNode(t("ka7QuelleVon")));
+      var weg = document.createElement("a");
+      weg.href = koDetailUrl(window.location.origin, k.id);
+      weg.target = "_blank";
+      weg.rel = "noopener noreferrer";
+      weg.textContent = k.title;
+      quelle.appendChild(weg);
+      var fassung = k.version === null ? t("ka7VersionUnbekannt") : t("ka7Version", { v: String(k.version) });
+      var pruefstand = k.pruefstand ? t(KA7_PRUEFSTAND_KEYS[k.pruefstand]) : t("askStatusUnknown");
+      quelle.appendChild(document.createTextNode(" · " + fassung + " · " + pruefstand));
+      zeile.appendChild(quelle);
+      var eigen = document.createElement("p");
+      eigen.className = "ka7-eigen";
+      eigen.textContent = k.eigen ? t("ka7Eigen", { stelle: k.eigen }) : t("ka7EigenFehlt");
+      zeile.appendChild(eigen);
+      var regel = document.createElement("p");
+      regel.className = "ka7-regel";
+      regel.textContent = k.quelle ? t("ka7Regel", { stelle: k.quelle }) : t("ka7RegelFehlt");
+      zeile.appendChild(regel);
+      if (k.grund) {
+        var grund = document.createElement("p");
+        grund.className = "ka7-grund muted";
+        grund.textContent = k.grund;
+        zeile.appendChild(grund);
+      }
+      // Runde 7: eine uebernommene, nicht aufgefrischte Zeile sagt das — mit der Uhrzeit ihres Befunds.
+      if (k.vorbehaltZeit) {
+        zeile.setAttribute("data-vorbehalt", "1");
+        var vorbehalt = document.createElement("p");
+        vorbehalt.className = "ka7-vorbehalt status warn";
+        vorbehalt.textContent = t("ka7ZeileVorbehalt", { zeit: ka7Uhrzeit(k.vorbehaltZeit) });
+        zeile.appendChild(vorbehalt);
+      }
+      return zeile;
+    }
+
+    /** Ohne belastbares Urteil: ausgefallen (kein/unverwertbares Urteil, geworfen) plus verworfen (Zitate, Schwelle). */
+    function ka7OhneUrteil(s) {
+      return (s.ausgefallen || 0) + (s.verworfen || 0);
+    }
+
+    function ka7StandSatz(s) {
+      var ohne = ka7OhneUrteil(s);
+      var ausfall = ohne > 0 ? t("ka7StandAusfall", { m: String(ohne) }) : "";
+      return t("ka7Stand", {
+        zeit: ka7Uhrzeit(s.zeit),
+        ki: ka7KiZusatz(s.ki),
+        n: String(s.kandidaten),
+        ausfall: ausfall
+      });
+    }
+
+    /** Zeichnen — aus dem gehaltenen Stand, in der aktuellen Sprache. Nur DOM-APIs, kein Markup. */
+    function ka7Zeichnen() {
+      ka7BlockElement();
+      var karte = document.getElementById("ka7-karte");
+      var satz = document.getElementById("ka7-satz");
+      var liste = document.getElementById("ka7-liste");
+      var entscheidung = document.getElementById("ka7-entscheidung");
+      var stand = document.getElementById("ka7-stand");
+      if (!karte || !satz || !liste || !entscheidung || !stand) { return; }
+      karte.setAttribute("aria-label", t("ka7Label"));
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      entscheidung.textContent = "";
+      entscheidung.className = "hidden";
+      stand.textContent = "";
+      stand.className = "muted hidden";
+      var s = ka7Stand;
+      if (!s) {
+        karte.className = "card hidden";
+        satz.textContent = "";
+        return;
+      }
+      // Runde 6: der Befund, der auf der Karte steht — der frische, oder bei laufender/gescheiterter
+      // Auffrischung der fruehere mit Vorbehalt (ka7Befund). Nie geleert, nie als frisch ausgegeben.
+      var befund = ka7Befund(s);
+      var vorher = befund && befund !== s ? befund : null;
+      var satzClass = "";
+      if (s.lage === "laeuft") {
+        satz.textContent = vorher ? t("ka7VorherLaeuft", { zeit: ka7Uhrzeit(vorher.zeit) }) : t("ka7Laeuft");
+        if (vorher) { satzClass = "status warn"; }
+      } else if (s.lage === "keine_markierung") {
+        satz.textContent = t("ka7KeineMarkierung");
+      } else if (s.lage === "zu_kurz") {
+        satz.textContent = t("ka7ZuKurz", { min: String(W6_MINDESTZEICHEN) });
+      } else if (s.lage === "einwilligung") {
+        satz.textContent = t("ka7Einwilligung", { ki: ka7KiZusatz(s.ki) });
+        satzClass = "status warn";
+      } else if (s.lage === "gesperrt") {
+        satz.textContent = t("ka7Gesperrt");
+        satzClass = "status warn";
+      } else if (s.lage === "anmeldung") {
+        satz.textContent = t("ka7Anmeldung");
+        satzClass = "status warn";
+      } else if (s.lage === "nicht_geprueft") {
+        var grundKey = s.grund && KA7_GRUND_KEYS[s.grund] ? KA7_GRUND_KEYS[s.grund] : "ka7GrundUnbekannt";
+        // „nicht belastbar": Quellen wurden vorgelegt und ein Teil der Urteile fehlt oder wurde
+        // verworfen — die Zahlen sagen, wie viel. „nicht moeglich": gar kein Urteil, kein Modell,
+        // vertraulich, nicht angefordert.
+        var ohneUrteil = ka7OhneUrteil(s);
+        // Teilweise nur, wenn die Zahlen es BELEGEN (ein Teil fehlt, ein Teil nicht) — ein Koerper
+        // ohne Zahlen bleibt „nicht moeglich", nichts wird aus dem Fehlen hergeleitet.
+        var teilweise = s.grund === "urteil_verworfen" ||
+          (s.kandidaten > 0 && ohneUrteil > 0 && ohneUrteil < s.kandidaten);
+        if (vorher) {
+          satz.textContent = t("ka7VorherNichtBelastbar", { grund: t(grundKey), zeit: ka7Uhrzeit(vorher.zeit) });
+        } else if (teilweise) {
+          satz.textContent = t("ka7NichtBelastbar", { grund: t(grundKey), m: String(ohneUrteil), n: String(s.kandidaten) });
+        } else {
+          satz.textContent = t("ka7NichtGeprueft", { grund: t(grundKey) });
+        }
+        satzClass = "status warn";
+        if (!vorher && s.kandidaten > 0 && s.zeit) {
+          stand.textContent = ka7StandSatz(s);
+          stand.className = "muted";
+        }
+      } else if (s.lage === "leer") {
+        var zeit = ka7Uhrzeit(s.zeit);
+        satz.textContent = s.kandidaten === 0
+          ? t("ka7LeerOhneQuelle", { zeit: zeit })
+          : s.gekuerzt
+            ? t("ka7LeerGekuerzt", { max: String(W6_HOECHSTZEICHEN), zeit: zeit })
+            : t("ka7Leer", { zeit: zeit });
+        satzClass = "status ok";
+        stand.textContent = ka7StandSatz(s);
+        stand.className = "muted";
+      } else if (s.lage === "konflikt") {
+        var kopf = s.konflikte.length === 1
+          ? t("ka7AbweichungEine")
+          : t("ka7AbweichungMehrere", { n: String(s.konflikte.length) });
+        if (s.gekuerzt) { kopf += " " + t("ka7AbweichungGekuerzt", { max: String(W6_HOECHSTZEICHEN) }); }
+        // Runde 7: uebernommene Zeilen dabei — der Kopf sagt, dass der Lauf nicht belastbar war.
+        if (ka7NichtAufgefrischt(s).length > 0) {
+          var kopfGrundKey = s.grund && KA7_GRUND_KEYS[s.grund] ? KA7_GRUND_KEYS[s.grund] : "ka7GrundUnbekannt";
+          kopf += " " + t("ka7KopfVorbehalt", { grund: t(kopfGrundKey) });
+        }
+        satz.textContent = kopf;
+        satzClass = "status warn";
+      } else {
+        satz.textContent = vorher ? t("ka7VorherFehler", { zeit: ka7Uhrzeit(vorher.zeit) }) : t("ka7Fehler");
+        satzClass = "status warn";
+      }
+      // Die Zeilen, die Entscheidung und der Stand gehoeren zum BEFUND — dem frischen oder dem
+      // frueheren. Der Stand-Satz traegt dessen Uhrzeit, nicht die des Fehlschlags.
+      if (befund) {
+        for (var i = 0; i < befund.konflikte.length; i += 1) {
+          liste.appendChild(ka7Zeile(befund.konflikte[i]));
+        }
+        entscheidung.textContent = t("ka7Entscheidung");
+        entscheidung.className = "";
+        stand.textContent = ka7StandSatz(befund);
+        stand.className = "muted";
+      }
+      satz.className = satzClass;
+      karte.className = "card";
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Lieferung 4: der Hinweis AM ENTWURF. Er steht an der Markierungskarte der Erfassen-Flaeche —
+    // vor dem Senden („du kannst trotzdem einreichen") und nach dem Senden („bewusst eingereicht") —
+    // und NUR, wenn die Markierung dort dieselbe ist, die geprueft wurde: ein Widerspruch zu einem
+    // anderen Text waere eine Behauptung ohne Grundlage. Nichts wird blockiert, nichts geaendert.
+    // ------------------------------------------------------------------------------------------
+    function ka7EinreichHinweisElement() {
+      var vorhanden = document.getElementById("ka7-einreich-hinweis");
+      if (vorhanden) { return vorhanden; }
+      var anker = document.getElementById("capture-ergebnis");
+      if (!anker || !anker.parentNode) { return null; }
+      var p = document.createElement("p");
+      p.id = "ka7-einreich-hinweis";
+      p.className = "hidden";
+      anker.parentNode.insertBefore(p, anker.nextSibling);
+      return p;
+    }
+
+    function ka7EinreichHinweisZeichnen() {
+      var el = ka7EinreichHinweisElement();
+      if (!el) { return; }
+      var s = ka7Stand;
+      // Runde 6: der Hinweis haengt am BEFUND, nicht am fluechtigen Stand — bei laufender oder
+      // gescheiterter Wiederholung bleibt er, mit Vorbehalt (Codex R5, Korrekturpflicht 2).
+      var befund = ka7Befund(s);
+      if (!befund || typeof captureAbsaetze !== "function") {
+        el.className = "hidden";
+        el.textContent = "";
+        return;
+      }
+      var geprueft = captureAbsaetze(befund.text).join("\n");
+      var gesendet = typeof captureErgebnis !== "undefined" && captureErgebnis;
+      var aktuell = gesendet
+        ? (typeof captureGesendet === "string" ? captureGesendet : "")
+        : (Array.isArray(captureMarkierung) ? captureMarkierung.join("\n") : "");
+      if (geprueft.length === 0 || geprueft !== aktuell) {
+        el.className = "hidden";
+        el.textContent = "";
+        return;
+      }
+      var titel = [];
+      for (var i = 0; i < befund.konflikte.length; i += 1) { titel.push(befund.konflikte[i].title); }
+      var text = t(gesendet ? "ka7EinreichGesendet" : "ka7EinreichOffen", { titel: titel.join(" · ") });
+      if (befund !== s) {
+        text += " " + t(s.lage === "laeuft" ? "ka7EinreichVorbehaltLaeuft" : "ka7EinreichVorbehalt", { zeit: ka7Uhrzeit(befund.zeit) });
+      }
+      // Runde 7: uebernommene Zeilen werden beim Einreichen einzeln genannt, mit ihrer Uhrzeit.
+      var alt = ka7NichtAufgefrischt(befund);
+      if (alt.length > 0) {
+        var liste = [];
+        for (var j = 0; j < alt.length; j += 1) {
+          liste.push(t("ka7VorbehaltEintrag", { titel: alt[j].title, zeit: ka7Uhrzeit(alt[j].vorbehaltZeit) }));
+        }
+        text += " " + t("ka7EinreichVorbehaltTeil", { liste: liste.join(", ") });
+      }
+      el.textContent = text;
+      el.className = "status warn";
+    }
+
+    // ------------------------------------------------------------------------------------------
+    // Anschluss — derselbe Wrapper-Gedanke wie in KA6: das Original zuerst und unveraendert, danach
+    // der eigene Nachtrag. Kein Eingriff in den Bestandsrumpf.
+    // ------------------------------------------------------------------------------------------
+    if (typeof document !== "undefined" && document.getElementById("ask-ruhe")) {
+      if (typeof STRINGS !== "undefined") {
+        for (var ka7Sprache in KA7_TEXTE) {
+          if (Object.prototype.hasOwnProperty.call(KA7_TEXTE, ka7Sprache) && STRINGS[ka7Sprache]) {
+            var ka7Tabelle = KA7_TEXTE[ka7Sprache];
+            for (var ka7Schluessel in ka7Tabelle) {
+              if (Object.prototype.hasOwnProperty.call(ka7Tabelle, ka7Schluessel)) {
+                STRINGS[ka7Sprache][ka7Schluessel] = ka7Tabelle[ka7Schluessel];
+              }
+            }
+          }
+        }
+      }
+      ka7BlockElement();
+      ka7SichtbarkeitZeichnen();
+      // Sitzung und Word: `updateAskState` ist das Ende der EINEN Aufruf-Kette (checkSession →
+      // updateSendState → updateAskState) — dort folgt die Sichtbarkeit des Knopfs.
+      if (typeof updateAskState === "function") {
+        var ka7AskStateBestand = updateAskState;
+        updateAskState = function () {
+          ka7AskStateBestand.apply(this, arguments);
+          ka7SichtbarkeitZeichnen();
+        };
+      }
+      // Ruhe, Antwort oder Luecke: der Knopf gehoert zur Ruhe (wie der Bestandsknopf von JOB 3093).
+      if (typeof kwFlaecheZeichnen === "function") {
+        var ka7FlaecheBestand = kwFlaecheZeichnen;
+        kwFlaecheZeichnen = function () {
+          ka7FlaecheBestand.apply(this, arguments);
+          ka7SichtbarkeitZeichnen();
+        };
+      }
+      // Die Markierungskarte der Erfassen-Flaeche: nach jedem Zeichnen folgt der Einreich-Hinweis.
+      if (typeof renderCapture === "function") {
+        var ka7CaptureBestand = renderCapture;
+        renderCapture = function () {
+          ka7CaptureBestand.apply(this, arguments);
+          ka7EinreichHinweisZeichnen();
+        };
+      }
+      // Ein bestaetigter Logout verwirft den Stand — kein Befund einer fremden Sitzung (JOB 3093 R2).
+      if (typeof klaraS4Verwerfen === "function") {
+        var ka7VerwerfenBestand = klaraS4Verwerfen;
+        klaraS4Verwerfen = function () {
+          ka7VerwerfenBestand.apply(this, arguments);
+          ka7Verwerfen();
+        };
+      }
+      // Sprachwechsel: derselbe gehaltene Stand, neuer Text. `setLang` ist die EINE Stelle des
+      // Wechsels (die Sprachknoepfe rufen sie) — der Knopf folgt ueber data-t (renderStatics), die
+      // Karte und der Einreich-Hinweis ueber diesen Nachtrag.
+      if (typeof setLang === "function") {
+        var ka7SetLangBestand = setLang;
+        setLang = function () {
+          ka7SetLangBestand.apply(this, arguments);
+          ka7Zeichnen();
+          ka7EinreichHinweisZeichnen();
+        };
+      }
+    }
+    // KW-KA7-KONFLIKT-END
   </script>
 </body>
 </html>

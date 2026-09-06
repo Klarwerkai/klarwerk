@@ -402,6 +402,10 @@ const INVENTAR: readonly string[] = [
   // K2 hat die Datei gemeldet, das Inventar hat sie nicht still aufgenommen. Sachlich
   // Klara-Regression: sie haelt fest, was ein Mensch im Panel SIEHT, wenn Word sich nicht,
   // spaet oder gar nicht meldet — bisher war genau das nur ueber Quelltext-Pins gesichert.
+  // JOB 3094 (KA7, 06.09.2026): die Konfliktkarte im Word-Panel, am laufenden Fenster gemessen —
+  // gefunden ueber die Achse `taskpane` (Panel-Fixture). K2 hat sie gemeldet, das Inventar nimmt
+  // sie nicht still auf.
+  "tests/ka7-konflikt-im-panel/konfliktkarte-mounted.test.ts",
   "tests/klara-panel/p7-office-erkennung-am-fenster.test.tsx",
   // JOB 3019 D1 hatte hier `ka5-markierung-reist-mit.test.tsx` (unter tests/klara-panel) stehen
   // (der abgesendete Ask-Koerper mit dem eigenen `selection`-Feld UND die Herkunftszeile ueber dem
