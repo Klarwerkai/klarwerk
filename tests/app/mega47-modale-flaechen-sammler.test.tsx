@@ -1836,13 +1836,21 @@ describe("mega72 Block A: die Bauformen aus bens Befund (Register A17) sieht die
     // `:805`). Damit ist es kein „nur-A"-Restfall mehr; eine Begründung, die es hier weiterhin
     // als abwesend erklärte, beschriebe gestern, und `:1867-1873` wird darauf rot. Der Eintrag
     // wurde deshalb GESTRICHEN und nicht umformuliert.
-    // `OverflowMenu.tsx` bleibt: es bewegt beim Schliessen zwar den Fokus auf seinen eigenen
-    // Griff, zeigt aber keines der sieben Wirkungssignale — es fängt keinen Fokus, sperrt nichts
-    // und behauptet nichts.
-    [
-      "apps/web/src/components/start/OverflowMenu.tsx",
-      "Überlauf-Menü: farbloser Klickfänger, die Liste sitzt als Popover neben dem Auslöser — keine Wirkung, die in die Bedienung eingreift",
-    ],
+    // `OverflowMenu.tsx` blieb hier, solange es den Fokus nur beim SCHLIESSEN auf seinen eigenen
+    // Griff zurückgab: das ist keines der sieben Wirkungssignale, also fand es nur Richtung A.
+    //
+    // JOB 3129 · UX-15 — DIESER EINTRAG BESCHREIBT AB JETZT GESTERN, aus demselben Grund wie der
+    // von `Seitenblatt.tsx` eine Zeile höher. Das Menü führt den Fokus seit UX-15 beim ÖFFNEN in
+    // die Liste (`focusFirstIn`), und genau darauf greift Signal B1 (`:823`). Damit steht die
+    // Datei in BEIDEN Richtungen und ist kein „nur-A"-Restfall mehr; die Gegenprobe `:1893`
+    // („eine Begründung, deren Fall es gar nicht mehr gibt") wird auf einen bleibenden Eintrag
+    // rot — GEMESSEN, nicht angenommen. Der Eintrag wurde deshalb GESTRICHEN, nicht umformuliert.
+    //
+    // WAS SICH DAMIT NICHT ÄNDERT — und das ist der Unterschied, auf den es hier ankommt: das
+    // Menü SPERRT weiterhin nichts. Kein `inert`, kein `aria-modal`, keine Modalgrenze, der
+    // Klickfänger bleibt farblos. Sein Eintrag in `NICHT_MODALE_VOLLFLAECHEN` (`:705-708`) bleibt
+    // darum wörtlich unverändert stehen und wahr, und weil er dort steht, meldet die zweite
+    // Richtung (`:1900`) die Datei nicht als unregistrierte Wirkfläche.
     [
       // JOB 3065 H6: das „?"-Untermenü der Detailkarte, hervorgegangen aus HelpTip und baugleich.
       "apps/web/src/components/einstellungen/Detailkarte.tsx",
