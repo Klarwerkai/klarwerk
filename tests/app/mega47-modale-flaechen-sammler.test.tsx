@@ -4130,268 +4130,81 @@ describe("JOB 1181 · BENs Prüflücken zu D3 — am echten Scannerlauf", () => 
 });
 
 // ------------------------------------------------------------------------------------------------
-// BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. ZAHL VOR UND NACH.
+// BLOCK K — DIE D3-MENGE BLEIBT VOLLSTÄNDIG ERFASST. BAUMABGLEICH UND GEMESSENE UNTERGRENZE.
 // ------------------------------------------------------------------------------------------------
+import { BESTAND_UNTERGRENZE, erhebeBestand } from "../tor-bereitschaft/t1c-bestand";
+
 describe("JOB 1181 · Mengenerhalt: der schärfere Sucher verliert nichts", () => {
-  it("die Grundgesamtheit ist nicht geschrumpft — 414 Quelldateien, D3s 397 plus zwei aus D44 plus titelRangfolge plus Wissensnetz plus KnopfUnterschied plus navHilfe plus eigeneKollision plus speechDictation plus boardAuskunft plus Splash plus die sieben Prüf-Bauteile", () => {
-    // Ein Bau, der das Werkzeug schärft und dabei die Menge verkleinert, hat nichts gewonnen. Die
-    // Zahl steht in Block E („gelesene Quelldateien“, Untergrenze 382) und hier noch einmal als
-    // ausdrückliche Erhaltungszusage dieses Durchgangs.
+  it("die Grundgesamtheit ist nicht geschrumpft und der Sammler erfasst genau den Quellbaum", () => {
+    // JOB 3159: Mengengleichheit mit einem unabhängigen Baumdurchlauf erkennt fehlende UND fremde
+    // Pfade, auch bei gleicher Anzahl (t1c-bestandszaehler F3). BESTAND_UNTERGRENZE sichert zusätzlich
+    // den zuletzt gemessenen Umfang gegen Schrumpfung (F4); normale Zuwächse bleiben grün (F5).
+    // Letzte Messung: 460 Quellen im eigenen Arbeitsbaum, Python Path.rglob unter apps/web/src,
+    // .ts/.tsx ohne .test.ts/.test.tsx, node_modules, dist und Punkt-Einträge; Konstante in t1c-bestand.
+    // Sie steigt nur mit einer Messung und fällt nie stillschweigend. Außerhalb dieses Baums oder
+    // hinter den ausgeschlossenen Einträgen treffen beide Durchläufe weiterhin keine Aussage.
+    // Die frühere Begründung „toBe, keine Untergrenze“ (alt :4322-4323, auch :4280-4281) ist aufgehoben:
+    // Exakte Bindung an eine Handzahl schärfte die Aussage nicht, sondern bestrafte fremde Jobs.
+    // Mengengleichheit ist gegen Erhebungsverlust strenger: ein Austausch bleibt nicht mehr unsichtbar.
+    // Historische Zuwächse, Rücknahmen und Rebase-Messungen (JOB 1860 bis 3112):
+    // git log -p -- tests/app/mega47-modale-flaechen-sammler.test.tsx
+    // Aktuelle Pfaddeckung: dieser Fall und F2; unverändert daneben: sechs Kandidaten mindestens,
+    // beide D3-Suchrichtungen ohne Rest und kein Verlust durch den erweiterten Flächentext.
+    // Die älteren Kalibrierungen in Block E und davor bleiben außerhalb dieses Änderungsschnitts.
     //
-    // JOB 1860 D1: von 397 auf 399 NACHGEZOGEN, nicht gelockert. Der Sammler hat richtig
-    // angeschlagen — es sind zwei echte Quelldateien dazugekommen, und zwar GENAU diese zwei
-    // (gemessen gegen den Baum von `527ae6b` mit der Regel des Sammlers, .ts/.tsx unter
-    // `apps/web/src` ohne `.test.*`):
-    //
-    //     + apps/web/src/components/D44Gliederung.tsx
-    //     + apps/web/src/components/d44Struktur.ts
-    //
-    // JOB 2489 D1 (TV1 Rang 1): von 399 auf 400 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine
-    // Quelldatei dazugekommen, und sie traegt die Rangfolge der Titelquellen aus der
-    // Chef-Entscheidung vom 19.08.:
-    //
-    //     + apps/web/src/lib/titelRangfolge.ts
-    //
-    // JOB 2600 D1: von 400 auf 401 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie traegt die Themenkarte aus der Abnahme vom 27.08.:
-    //
-    //     + apps/web/src/pages/Wissensnetz.tsx
-    //
-    // JOB 3029 (U1): von 401 auf 402 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie traegt den sichtbaren Unterschied der zwei Erfassen-Knoepfe, der
-    // bisher nur im Fragezeichen-Popover stand:
-    //
-    //     + apps/web/src/components/KnopfUnterschied.tsx
-    //
-    // JOB 3028 (U3): von 402 auf 403 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie traegt die Zuordnung „Menuepunkt-Pfad → vorhandenes Hilfekapitel“, aus
-    // der die Seitenleiste ihren Hinweis vor dem Klick zieht:
-    //
-    //     + apps/web/src/lib/navHilfe.ts
-    //
-    // JOB 3025 (A27, OFFEN.md:81): von 403 auf 404 NACHGEZOGEN, aus demselben Grund. Es ist GENAU
-    // eine Quelldatei dazugekommen, und sie traegt das Zustandsmodell der Kollisionsauskunft
-    // (Detailseite und Startseite lesen daraus dieselbe Regel):
-    //
-    //     + apps/web/src/lib/eigeneKollision.ts
-    //
-    // JOB 3038: von 404 auf 405 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie traegt die EINE Diktat-Wahrheit (Web-Speech-Typen, Rekorder-Fabrik,
-    // Sprachabbildung) — bis hierher lag sie inline in `pages/Capture.tsx:310-332` und `:2564-2583`
-    // und waere mit dem Mikrofon im Fragefeld zu einer zweiten Kopie geworden:
-    //
-    //     + apps/web/src/lib/speechDictation.ts
-    //
-    // JOB 3027: von 405 auf 406 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie trägt die Stufen-/Herkunftsauskunft des Prüfbretts (Station 4):
-    //
-    //     + apps/web/src/lib/boardAuskunft.ts
-    //
-    // JOB 3030 D4: von 406 auf 407 NACHGEZOGEN, aus demselben Grund. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie traegt die Ladeflaeche, die seit der Umstellung auf nachgeladene Seiten
-    // an zwei Stellen gebraucht wird (App-Torwaechter und Suspense-Rueckfall in routes.tsx):
-    //
-    //     + apps/web/src/components/Splash.tsx
-    //
-    // JOB 3061 (H2): von 407 auf 414 NACHGEZOGEN, aus demselben Grund. Es sind GENAU sieben
-    // Quelldateien dazugekommen — die gemeinsamen Bauteile der Prüffläche „Prüfen" (vier Reiter,
-    // vier Menüorte), die vorher in vier Seiten dupliziert gewesen wären:
-    //
-    //     + apps/web/src/components/pruefen/PruefenKopf.tsx     (Titel + Segment + Zähler)
-    //     + apps/web/src/components/pruefen/PruefenMenue.tsx    („···", Filter, „?")
-    //     + apps/web/src/components/pruefen/PruefenMehr.tsx     (der Informationsort)
-    //     + apps/web/src/components/pruefen/PruefenPaar.tsx     (zwei Karten, Pillen, Knöpfe)
-    //     + apps/web/src/components/pruefen/PruefenZustand.tsx  (laden/leer/Fehler/nicht frisch)
-    //     + apps/web/src/components/pruefen/markierung.ts       (der Unterschied im Text)
-    //     + apps/web/src/components/pruefen/zaehler.ts          (Reiterzähler und Flächenlage)
-    //
-    // JOB 3064 (H5, Startseite und Fragenfläche nach Zielbild) · KONFLIKTRUNDE 1: der Zuwachs
-    // unten ist EIGENSTÄNDIG gezählt (nicht von 406, sondern von der Zahl, die dieser
-    // Arbeitsbaum nach dem Rebase auf JOB 3061/3063/3067 tatsächlich misst — siehe die addierte
-    // Erwartung am Ende dieses Blocks).
-    //
-    // JOB 3064 (H5, Startseite und Fragenfläche nach Zielbild): von 406 auf 414 NACHGEZOGEN, aus
-    // demselben Grund. Es sind GENAU acht Quelldateien dazugekommen — der neue Bereich
-    // `components/start/`, in dem die Startseite ihre Zeilen, ihre Menü-Blätter und ihr
-    // Zustandsmodell hält (bis hierher lag alles inline in `pages/Start.tsx`):
-    //
-    //     + apps/web/src/components/start/forYou.ts        (Lage + Zeilen von „FÜR DICH")
-    //     + apps/web/src/components/start/zuletzt.ts       (heute/gestern/Wochentag)
-    //     + apps/web/src/components/start/OverflowMenu.tsx (das „…"-Menü)
-    //     + apps/web/src/components/start/Seitenblatt.tsx  (das Blatt eines Menüpunkts)
-    //     + apps/web/src/components/start/StartKarten.tsx  („FÜR DICH" und „ZULETZT")
-    //     + apps/web/src/components/start/StartPanel.tsx   (die umgezogenen Blöcke)
-    //     + apps/web/src/components/start/useDiktat.ts     (die EINE Diktat-Verdrahtung)
-    //     + apps/web/src/components/start/startPunkte.ts   (die Tabelle der Menüpunkte, DOM-frei)
-    //
-    // JOB 3064 (H5, Runde 5): von 414 auf 415 NACHGEZOGEN. GENAU EINE Datei kommt dazu — der neunte
-    // Baustein des Bereichs, der Textsatz der Fragenfläche:
-    //
-    //     + apps/web/src/components/start/AntwortText.tsx  (Antworttext mit Fussnotenmarke)
-    //
-    // WARUM ER EIGEN IST UND NICHT IN `components/AnswerMarkdown.tsx` STEHT: die Marke ist eine
-    // Zusage des H5-Zielbilds für die FRAGENFLÄCHE; `AnswerMarkdown` bedient daneben Mobile und
-    // Klara, für die dieser Auftrag nichts sagt (§10). Die REGELN sind nicht gedoppelt — zerlegt
-    // wird weiter mit dem einen Parser `lib/answerMarkdown.ts`, und
-    // `tests/app/job3064-fussnote-markiert.test.tsx` (G1) hält beide Renderstellen für
-    // markenfreien Text auf identischem `innerHTML`.
-    //
-    // Keine Datei ist weggefallen.
-    //
-    // JOB 3062 · H3: von 406 auf 410 NACHGEZOGEN (vor diesem Rebase), aus demselben Grund. Es sind
-    // GENAU vier Quelldateien dazugekommen — das eine Blatt, das die drei Erfassungsadressen jetzt
-    // zeigen, und seine Bausteine:
-    //
-    //     + apps/web/src/components/erfassen/Blatt.tsx    (Werkzeugzeile, Blatt, Knöpfe, Menüs)
-    //     + apps/web/src/components/erfassen/Menue.tsx    (das Pages-Menü als eigenes Bauteil)
-    //     + apps/web/src/components/erfassen/Symbole.tsx  (die stroke-SVGs der Werkzeugzeile)
-    //     + apps/web/src/components/erfassen/wege.ts      (die Wege des Menüs „Datei ▾", abgeleitet)
-    //
-    // Keine Datei ist weggefallen: `pages/Capture.tsx`, `pages/CaptureFrontDoor.tsx` und
-    // `pages/KnowledgeIntake.tsx` sind geschrumpft, aber alle drei da — die Routen bleiben.
-    //
-    // JOB 3062 · H3 · R7: von 410 auf 411 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
-    // das Hilferegister des Blattes, das bens Korrekturpflicht 1 erfüllt (jede HelpTip-Kennung des
-    // Basisstandes hat im „?"-Menü ihren Ort):
-    //
-    //     + apps/web/src/components/erfassen/hilfe.ts
-    //
-    // JOB 3065 H6: von 406 auf 415 NACHGEZOGEN, aus demselben Grund. Es sind GENAU neun Quelldateien
-    // dazugekommen — die Fläche „Einstellungen" nach dem Pages-Maßstab: vier Detailseiten, die die
-    // frühere Kartenwand von `Admin.tsx` tragen, und fünf Bauteile, aus denen die Zeilenfläche
-    // besteht (Reiterspalte, Zeilenkarte, Detailkarte, Zustandsmodell der Werte, Rollenfreiheiten):
-    //
-    //     + apps/web/src/pages/AdminKontenDetails.tsx
-    //     + apps/web/src/pages/AdminKiDetails.tsx
-    //     + apps/web/src/pages/AdminDatenDetails.tsx
-    //     + apps/web/src/pages/AdminSicherheitDetails.tsx
-    //     + apps/web/src/components/einstellungen/Seite.tsx
-    //     + apps/web/src/components/einstellungen/Zeilenkarte.tsx
-    //     + apps/web/src/components/einstellungen/Detailkarte.tsx
-    //     + apps/web/src/components/einstellungen/zeilenWert.ts
-    //     + apps/web/src/components/einstellungen/rollenFreiheiten.ts
-    //
-    // JOB 3065 R2 (BENs Korrekturpflicht 2): von 415 auf 416. Es ist GENAU eine Quelldatei
-    // dazugekommen, und sie trägt den Lade-/Fehler-/Stale-Vertrag der Detailkarten — bis dahin
-    // zeigte eine Karte nach einem gescheiterten Abruf dauerhaft „Wird geladen …":
-    //
-    //     + apps/web/src/components/einstellungen/Abfragehuelle.tsx
-    //
-    // Keine Datei ist weggefallen. Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine
-    // Untergrenze), damit die nächste Abweichung genauso auffällt wie diese.
-    // JOB 3063 (H4): von 406 auf 412 NACHGEZOGEN. Es sind GENAU sechs Quelldateien dazugekommen —
-    // die Bausteine der neuen Bibliotheksfläche, in die `pages/Library.tsx` (1.370 Zeilen) und
-    // `pages/KnowledgeDetail.tsx` (2.625 Zeilen) aufgeteilt wurden; beide Seiten bleiben als Route
-    // bestehen und fallen daher nicht aus der Menge:
-    //
-    //     + apps/web/src/components/bibliothek/BibliothekFlaeche.tsx
-    //     + apps/web/src/components/bibliothek/BibliothekListe.tsx
-    //     + apps/web/src/components/bibliothek/BibliothekLesen.tsx
-    //     + apps/web/src/components/bibliothek/MehrAbschnitte.tsx
-    //     + apps/web/src/components/bibliothek/Menue.tsx
-    //     + apps/web/src/components/bibliothek/zustand.ts
-    //
-    // JOB 3063 RUNDE 5: von 412 auf 413 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
-    // die Adresse hinter dem Knopf „Fragen" der Lesefläche, DOM-frei und ohne Zustandsparameter,
-    // damit sie über die Reife gar nicht verzweigen kann (Codex an Runde 4):
-    //
-    //     + apps/web/src/components/bibliothek/fragen.ts
-    //
-    // JOB 3063 RUNDE 6: von 421 auf 422 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
-    // die EINE Bauform des Satzes „Stand von <Zeit> · Auffrischung fehlgeschlagen". Sie stand nach
-    // dem Einbau der Runde 5 wörtlich zweimal im selben Ordner (Liste und Lesefläche); der
-    // Doppelungs-Wächter `tests/structure/fremddoppelungen-kd-capture.test.ts` hat sie gefunden:
-    //
-    //     + apps/web/src/components/bibliothek/AuffrischungHinweis.tsx
-    //
-    // JOB 3064 (H5): die 422 aus dem Stand vor diesem Job (Prüffläche + Bibliotheksfläche) plus
-    // die neun eigenständigen Dateien von `components/start/` (acht aus H5 + `AntwortText.tsx` aus
-    // Runde 5) ergeben 431 — am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert.
-    //
-    // JOB 3060 · H1: von 406 auf 415 NACHGEZOGEN. ZWEI Dateien sind weggefallen — die alte Hülle
-    // (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) — und ELF dazugekommen, die Bausteine des einen
-    // Kopfbands und seiner Menüs:
-    //
-    //     + apps/web/src/shell/Darstellung.tsx        + apps/web/src/shell/DrawerMenue.tsx
-    //     + apps/web/src/shell/KontoMenue.tsx         + apps/web/src/shell/Kopfband.tsx
-    //     + apps/web/src/shell/KopfbandPunkte.tsx     + apps/web/src/shell/Meldungen.tsx
-    //     + apps/web/src/shell/Menue.tsx              + apps/web/src/shell/RollenVorschau.tsx
-    //     + apps/web/src/shell/SeitenhilfeContext.tsx + apps/web/src/shell/StatusZeilen.tsx
-    //     + apps/web/src/shell/ZahnradMenue.tsx
-    //
-    // Die Zusage bleibt eine EXAKTE Bindung (`toBe`, keine Untergrenze), damit die nächste
-    // Abweichung genauso auffällt wie diese.
-    //
-    // KONFLIKTRUNDE 1: NACH DEM REBASE von JOB 3060 (H1, Shell/Kopfband) auf den Stand von
-    // JOB 3061/3063/3064/3067 (Prüf-, Bibliotheks- und Startflächen) NEU GEMESSEN, nicht rechnerisch
-    // addiert. Die abgelöste Hülle (`shell/Sidebar.tsx`, `shell/Topbar.tsx`) und die elf neuen
-    // Kopfband-Bausteine treffen hier auf die 431 Quelldateien aus JOB 3061/3063/3064 (Prüf-,
-    // Bibliotheks- und Startflächen); der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an
-    // diesem Arbeitsbaum, nicht aus einer Kopfrechnung der vorherigen Deltas.
-    //
-    // KONFLIKTRUNDE 1 (zweiter Rebase, JOB 3065 H6 auf diesen Stand): die zehn Quelldateien der
-    // Fläche „Einstellungen" (neun aus H6 + `Abfragehuelle.tsx` aus R2) treffen hier auf die 440
-    // Quelldateien aus JOB 3060/3061/3063/3064; der Zahlenwert unten stammt erneut aus dem
-    // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der Deltas.
-    //
-    // KONFLIKTRUNDE 2: die fünf Erfassen-Quelldateien (JOB 3062) und die zehn Einstellungen-
-    // Quelldateien (JOB 3065) treffen hier gemeinsam auf den Kopfband-/Prüf-/Bibliotheks-/Start-
-    // Stand; der Zahlenwert unten stammt aus dem tatsächlichen Testlauf an diesem Arbeitsbaum, nicht
-    // aus einer Kopfrechnung der Deltas.
-    //
-    // KONFLIKTRUNDE 1 (dritter Rebase, JOB 3086 auf JOB 3084): ZWEI Quelldateien kommen hinzu, je eine
-    // aus zwei unabhängigen Jobs, die beide auf demselben 455er-Stand aufsetzten und deshalb beide für
-    // sich 456 maßen — nach dem Rebase gelten BEIDE, macht 457:
-    //
-    // JOB 3084 (Q6): `apps/web/src/lib/netzzustand.ts`, die eine Quelle des Onlinezustands für die
-    // Kollisionsauskunft. Sie trägt keine Fläche (kein DOM, kein Modal, ein Hook über
-    // `onlineManager`) und ändert an den Erhebungen unten nichts; sie zählt hier nur in die
-    // Grundgesamtheit.
-    //
-    // JOB 3086 (D2): `apps/web/src/lib/sprachwahl.ts`, die eine Wahrheit über die GESPEICHERTE
-    // Sprachwahl (gelesen als `lng` in `i18n.ts`, geschrieben an der Wurzel in `main.tsx`), damit die
-    // unter `/profil` gewählte Sprache das Neuladen überlebt. Ebenfalls ein DOM-freier Speicher-Helfer
-    // ohne Fläche, ohne Modal und ohne Portal.
-    //
-    // Beide Dateien liegen unter `apps/web/src` als `.ts` ohne `.test.*`
-    // (`tools/modalgrenze.ts:68-98`) und fallen genau darunter. NACHGEMESSEN, nicht addiert: der Lauf
-    // dieses Arbeitsbaums nach der Konfliktauflösung. KEINE REGISTRIERUNG NÖTIG für beide — Beide
-    // D3-Suchrichtungen bleiben bei null unerklärten Restfällen (der Fall direkt darunter).
-    //
-    // JOB 3101 (UX-04): von 457 auf 458 NACHGEZOGEN. Es ist GENAU eine Quelldatei dazugekommen —
-    // die Ableitung der Aufgabenansicht aus der Adresszeile und dem Verlaufseintrag, damit der
-    // gewählte Filter und die Listenstelle das Öffnen einer Aufgabe und den Browser-Zurück
-    // überleben:
-    //
-    //     + apps/web/src/lib/taskViewState.ts
-    //
-    // Sie ist wie `netzzustand.ts` und `sprachwahl.ts` ein DOM-freier Helfer (reine Funktionen über
-    // `URLSearchParams` und einen Positionsspeicher, kein JSX, kein Modal, kein Portal) und ändert
-    // an den Erhebungen unten nichts; sie zählt hier nur in die Grundgesamtheit. KEINE REGISTRIERUNG
-    // NÖTIG — beide D3-Suchrichtungen bleiben bei null unerklärten Restfällen. Gemessen am eigenen
-    // Lauf dieses Arbeitsbaums (`vitest run tests/app/mega47-modale-flaechen-sammler.test.tsx`:
-    // „expected 458 to be 457"), nicht rechnerisch addiert.
-    //
-    // JOB 3112 (V3): von 458 auf 460 NACHGEZOGEN. Es sind GENAU zwei Quelldateien dazugekommen —
-    // die Regel der Stufenfrage beim Freigeben und die Ableitung des Paarhinweises der Prüfkarte:
-    //
-    //     + apps/web/src/lib/validationStufenfrage.ts
-    //     + apps/web/src/lib/validationDoppelhinweis.ts
-    //
-    // Beide sind wie `netzzustand.ts`, `sprachwahl.ts` und `taskViewState.ts` DOM-freie Helfer
-    // (reine Funktionen und Wertetabellen, kein JSX, kein Modal, kein Portal) und ändern an den
-    // Erhebungen unten nichts; sie zählen hier nur in die Grundgesamtheit. KEINE REGISTRIERUNG
-    // NÖTIG — beide D3-Suchrichtungen bleiben bei null unerklärten Restfällen. Gemessen am eigenen
-    // Lauf dieses Arbeitsbaums („expected 460 to be 458"), nicht rechnerisch addiert.
-    expect(
-      ALLE_ERHEBUNGEN.length,
-      "KONFLIKTRUNDE 2: JOB 3060/3061/3063/3064 (Kopfband, Prüf-, Bibliotheks- und Startflächen) " +
-        "plus fünf Erfassen-Quelldateien (JOB 3062) plus zehn Einstellungen-Quelldateien (JOB 3065) " +
-        "plus `lib/netzzustand.ts` (JOB 3084) plus `lib/sprachwahl.ts` (JOB 3086) " +
-        "plus `lib/taskViewState.ts` (JOB 3101) " +
-        "plus `lib/validationStufenfrage.ts` und `lib/validationDoppelhinweis.ts` (JOB 3112) " +
-        "— am eigenen Lauf dieses Arbeitsbaums gemessen, nicht rechnerisch addiert",
-    ).toBe(460);
+    // Erhaltene Entwurfsgründe der Chronik, die dieser Bestandsfall NICHT funktional prüft:
+    // JOB 1860: D44Gliederung.tsx/d44Struktur.ts; JOB 2489: titelRangfolge.ts trägt die Chef-
+    // Entscheidung vom 19.08.; JOB 2600: Wissensnetz.tsx trägt die Themenkarte vom 27.08.
+    // JOB 3029: KnopfUnterschied.tsx macht den zuvor nur im Fragezeichen erklärten Unterschied der
+    // zwei Erfassen-Knöpfe sichtbar; JOB 3028: navHilfe.ts ordnet Menüpfade vorhandenen Hilfen zu.
+    // JOB 3025: eigeneKollision.ts teilt das Zustandsmodell zwischen Detail- und Startseite.
+    // JOB 3038: speechDictation.ts bündelt Web-Speech-Typen, Rekorder-Fabrik und Sprachabbildung,
+    // vorher Capture.tsx:310-332/2564-2583, zur Wiederverwendung im Fragefeld-Mikrofon.
+    // JOB 3027: boardAuskunft.ts trägt Stufen und Herkunft des Prüfbretts (Station 4).
+    // JOB 3030 D4: Splash.tsx wird nach der Seiten-Ladeumstellung von App-Torwächter und Suspense in
+    // routes.tsx gebraucht. JOB 3061: components/pruefen bündelt vier Reiter/vier Menüorte:
+    // PruefenKopf (Titel/Segment/Zähler), PruefenMenue (···/Filter/?), PruefenMehr (Information),
+    // PruefenPaar (Karten/Pillen/Knöpfe), PruefenZustand (laden/leer/Fehler/nicht frisch),
+    // markierung (Textunterschied) und zaehler (Reiterzähler/Flächenlage).
+    // JOB 3064: components/start löst Inline-Blöcke in Start.tsx ab: forYou (FÜR DICH), zuletzt
+    // (heute/gestern/Wochentag), OverflowMenu (…), Seitenblatt (Menüblatt), StartKarten (beide
+    // Zeilengruppen), StartPanel (umgezogene Blöcke), useDiktat (Verdrahtung), startPunkte (DOM-frei).
+    // AntwortText.tsx trägt die Fußnotenmarke nur für die Fragenfläche; AnswerMarkdown bedient auch
+    // Mobile und Klara (außerhalb H5). Beide nutzen lib/answerMarkdown.ts; markenfreies innerHTML
+    // ist durch job3064-fussnote-markiert.test.tsx G1 gebunden.
+    // JOB 3062: components/erfassen teilt Blatt (Werkzeugzeile/Blatt/Knöpfe/Menüs), Menue (Pages),
+    // Symbole (stroke-SVG), wege (abgeleitetes Datei-Menü) und hilfe (alle bisherigen HelpTip-IDs
+    // im ?-Menü). Capture, CaptureFrontDoor und KnowledgeIntake bleiben als Routen erhalten.
+    // JOB 3065: AdminKontenDetails, AdminKiDetails, AdminDatenDetails, AdminSicherheitDetails lösen
+    // die Admin-Kartenwand ab; einstellungen/{Seite,Zeilenkarte,Detailkarte,zeilenWert,rollenFreiheiten}
+    // tragen Reiterspalte, Karten, Wertzustände und Rollenrechte. Abfragehuelle behebt das dauerhafte
+    // „Wird geladen …“ nach gescheitertem Abruf und trägt den Lade-/Fehler-/Stale-Vertrag.
+    // JOB 3063: Library (damals 1.370 Zeilen) und KnowledgeDetail (2.625) bleiben Routen;
+    // bibliothek/{BibliothekFlaeche,BibliothekListe,BibliothekLesen,MehrAbschnitte,Menue,zustand}
+    // teilen ihre Fläche. fragen.ts ist DOM- und zustandsparameterfrei, damit „Fragen“ nicht nach
+    // Reife verzweigt. AuffrischungHinweis.tsx ersetzt den doppelt ausgeschriebenen Stale-Satz aus
+    // Liste/Lesen, gefunden durch tests/structure/fremddoppelungen-kd-capture.test.ts.
+    // JOB 3060: Sidebar.tsx/Topbar.tsx wurden durch die elf Kopfband-/Menü-Bausteine Darstellung,
+    // DrawerMenue, KontoMenue, Kopfband, KopfbandPunkte, Meldungen, Menue, RollenVorschau,
+    // SeitenhilfeContext, StatusZeilen und ZahnradMenue ersetzt.
+    // JOB 3084: netzzustand.ts liefert Onlinezustand für Kollisionen via onlineManager; JOB 3086:
+    // sprachwahl.ts persistiert /profil (i18n.ts liest lng, main.tsx schreibt an der Wurzel).
+    // JOB 3101: taskViewState.ts erhält Aufgabenfilter/Listenstelle über Öffnen und Browser-Zurück
+    // mit URLSearchParams/Positionsspeicher. JOB 3112: validationStufenfrage.ts trägt die Stufenfrage
+    // beim Freigeben, validationDoppelhinweis.ts den Paarhinweis. Diese fünf lib-Helfer sind DOM-frei,
+    // ohne JSX/Modal/Portal; keine Flächenregistrierung nötig (beide D3-Suchrichtungen unten).
+    const sammler = ALLE_ERHEBUNGEN.map((e) => e.quelle.datei).sort();
+    const baum = erhebeBestand(WURZEL, WEB_SRC).sort();
+    const sammlerMenge = new Set(sammler);
+    const baumMenge = new Set(baum);
+    const differenz = [
+      `nur im Sammler: ${sammler.filter((pfad) => !baumMenge.has(pfad)).join(", ") || "keine"}`,
+      `nur im Baum: ${baum.filter((pfad) => !sammlerMenge.has(pfad)).join(", ") || "keine"}`,
+    ].join("\n");
+    expect(sammler, differenz).toEqual(baum);
+    expect(sammler.length, "Bestand unter gemessener Untergrenze").toBeGreaterThanOrEqual(
+      BESTAND_UNTERGRENZE,
+    );
     expect(KANDIDATEN.length, "und sechs Kandidaten").toBeGreaterThanOrEqual(6);
   });
 
