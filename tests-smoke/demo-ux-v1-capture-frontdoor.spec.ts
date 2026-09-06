@@ -38,6 +38,10 @@
 //     Blatt beides, und der Sprung wäre eine Bewegung ohne Ziel (Begründung im Produktcode,
 //     `Blatt.tsx`, `save.onSuccess`). Der U1-Unterschied „der eine legt beiseite, der andere reicht
 //     ein" wird deshalb an der Quittung und am erhaltenen Inhalt gemessen, nicht an der Adresse.
+//     NACHGEFÜHRT IN JOB 3106 (UX-01): dass es kein SPRUNG ist, gilt unverändert — die Fläche
+//     bleibt dieselbe. Die Adresse ist seither aber nicht mehr leer: sie TRÄGT die Kennung des
+//     gerade gesicherten Entwurfs. Der Fall pinnt jetzt beides (gleicher Pfad, plus `?draft=`),
+//     s. dort.
 //
 // WAS DIESE DATEI IST: ein REGRESSIONSWÄCHTER über heute vorhandenes, grünes Verhalten. Sie nimmt
 // ausdrücklich KEINEN menschlichen UX-Befund vorweg, verlangt keine andere Beschriftung als die
@@ -225,6 +229,17 @@ test("DEMO-UX-V1 · Entwurf und Einreichen stehen nebeneinander und sind untersc
 // etwas beiseite (Quittung des Servers, Inhalt bleibt in der Hand des Menschen), der andere reicht
 // ein (Erfolgszeile, Blatt geräumt). Ein Produkt, das nach dem Sichern still den Text verlöre, fiele
 // hier auf — das ist die schärfere Zusage als die alte Adressprüfung.
+//
+// NACHGEFÜHRTE ZUSAGE (JOB 3106 · UX-01): Die Adressprüfung dieses Falls stand auf „die Adresse
+// bleibt nackt" — und genau diese Annahme löst UX-01 ab. Codex hat live gemessen (N-0005): „URL
+// bleibt /erfassen. Nach Reload ist das Blatt leer." Seither hält der Speicherweg die Kennung des
+// gesicherten Entwurfs in der Adresse fest (`Blatt.tsx`, `save.onSuccess`, `replace: true`), damit
+// ein Neuladen denselben Text wiederfindet und ein zweites Sichern denselben Entwurf aktualisiert.
+//
+// DER PIN WIRD DADURCH SCHÄRFER, NICHT SCHWÄCHER: Er verlangt jetzt BEIDES — denselben Pfad (kein
+// Sprung auf eine andere Fläche, die alte Zusage dieses Falls) UND die Kennung darin (die neue).
+// Ein Produkt, das wieder wegspringt, fällt hier auf; eines, das die Kennung wieder verliert,
+// ebenfalls.
 test("DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt", async ({ page }) => {
   await oeffneBlatt(page);
 
@@ -241,8 +256,14 @@ test("DEMO-UX-V1 · Entwurf sichern legt beiseite und hält Blatt und Inhalt", a
   // Die Quittung kommt vom Server, nicht vom Klick (Zustandsmodell §9: nie „gespeichert" ohne
   // Serverbestätigung).
   await expect(page.getByText(T.entwurfGespeichert)).toBeVisible({ timeout: 15_000 });
-  // Das Blatt steht weiter — mit dem Text darin.
-  await expect(page).toHaveURL(new RegExp(`${VORDERTUER}$`), { timeout: 15_000 });
+  // Das Blatt steht weiter — dieselbe Fläche, kein Sprung — und die Adresse trägt jetzt den
+  // gerade gesicherten Entwurf (JOB 3106 · UX-01).
+  //
+  // GEPRÜFT WIRD „EINE KENNUNG IST DA", NICHT IHRE SCHREIBWEISE: welche Form eine Entwurfskennung
+  // hat, entscheidet der Entwurfsdienst (`services/capture/src/service.ts`, `genId` ist dort
+  // ausdrücklich austauschbar). Ein Muster für UUIDs hier wäre eine Zusage über den Ausweis statt
+  // über den Weg — und würde rot, ohne dass am Weg etwas kaputt wäre.
+  await expect(page).toHaveURL(new RegExp(`${VORDERTUER}\\?draft=[^&]+$`), { timeout: 15_000 });
   await expect(editor).toContainText(probe);
   // Und ausdrücklich NICHT das Einreich-Bild — Speichern ist kein Einreichen.
   await expect(page.getByText(T.eingereicht)).toHaveCount(0);

@@ -212,12 +212,26 @@ export function Blatt({
 
   // ---- Entwurf ---------------------------------------------------------------------------------
   const [activeDraftId, setActiveDraftId] = useState<string | null>(null);
+  // ==============================================================================================
+  // JOB 3106 (UX-01) — DER ENTWURF, DEN DER SERVER GERADE QUITTIERT HAT.
+  // ==============================================================================================
+  // Kennung und Titel stammen aus der ANTWORT, nicht aus dem Blattzustand: die Bestätigungszeile
+  // unter den Knöpfen behauptet nur, was der Server bestätigt hat. `null` heisst „es gibt keine
+  // quittierte Sicherung, über die zu sprechen wäre" — vor dem ersten Speichern, nach dem
+  // Einreichen und nach jedem Blattwechsel.
+  const [gesicherterEntwurf, setGesicherterEntwurf] = useState<{
+    id: string;
+    titel: string;
+  } | null>(null);
   const [quellBildzahl, setQuellBildzahl] = useState<number | null>(null);
   const [loadingDraft, setLoadingDraft] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [staleConflict, setStaleConflict] = useState(false);
   const [reloadNonce, setReloadNonce] = useState(0);
   const loadedUpdatedAtRef = useRef<string | null>(null);
+  // JOB 3106 (UX-01): der Merker des Speicherweges für den Ladeeffekt — `<kennung>#<reloadNonce>`.
+  // Seine Begründung steht am Ladeeffekt, wo er gelesen wird.
+  const speicherAdresseRef = useRef<string | null>(null);
   const bodyNieGeliefertRef = useRef(false);
   const savedStateRef = useRef<{
     title: string;
@@ -509,6 +523,8 @@ export function Blatt({
     bodyNieGeliefertRef.current = false;
     setSubmittedKo(null);
     setActiveDraftId(null);
+    // JOB 3106 (UX-01): ein neues Blatt spricht nicht mehr über die Sicherung des alten.
+    setGesicherterEntwurf(null);
     setSubmitValidation(false);
     saveRequestedRef.current = false;
     submitRequestedRef.current = false;
@@ -523,8 +539,40 @@ export function Blatt({
     if (!resumeDraftId) {
       setActiveDraftId(null);
       setQuellBildzahl(null);
+      // JOB 3106 R3 (bens Korrekturpflicht 1): HIER ENDET DER MERKER, UND ZWAR IMMER. Trägt die
+      // Adresse keinen Entwurf mehr, hält das Blatt auch keinen — jede Aussage „diesen Entwurf
+      // haben wir schon" ist ab hier falsch. Dieser Zweig ist der EINE Ort, durch den alle drei
+      // Verlassenswege laufen (`resetForNewEntry`, `submit.onSuccess`, „neuer Vorgang"): sie alle
+      // setzen `setSearchParams({})`. Ohne diese Zeile überlebte der Merker das Verwerfen — und
+      // das erneute Öffnen DESSELBEN Entwurfs übersprang dann das Laden (bens Messung: richtige
+      // Adresse, leeres Blatt, danach `create` statt `update` und ein zweiter Entwurf).
+      speicherAdresseRef.current = null;
       return;
     }
+    // ============================================================================================
+    // JOB 3106 (UX-01) — DAS FESTHALTEN DER KENNUNG IST KEIN LADEBEFEHL.
+    // ============================================================================================
+    // Seit diesem Auftrag schreibt der Speicherweg die Kennung des gerade gesicherten Entwurfs in
+    // die Adresse (`save.onSuccess`), damit ein Neuladen denselben Text wiederfindet. Ohne diese
+    // Bewachung liefe dieser Effekt daraufhin los und HOLTE denselben Entwurf noch einmal vom
+    // Server — und was der Mensch während dieser Runde tippt, wäre von der Antwort überschrieben.
+    // Zu laden gibt es hier nichts: der Blattinhalt IST der Stand, den der Server eben quittiert
+    // hat.
+    //
+    // DER MERKER TRÄGT DIE LADERUNDE MIT (`#<reloadNonce>`), nicht nur die Kennung. Sonst bliebe
+    // „Neu laden" nach einem Standkonflikt (JOB 2684 D1) wirkungslos: dort ändert sich allein der
+    // Nonce, die Kennung nicht. Gelöscht wird er erst auf dem Weg, der WIRKLICH lädt — damit ein
+    // späteres Zurückkehren zu demselben Entwurf (über die Fläche „Entwürfe") wieder lädt und ein
+    // doppelt ausgeführter Effekt (React StrictMode) nicht doch noch einen Ladevorgang auslöst.
+    //
+    // UND ER ENDET, SOBALD DIE ADRESSE KEINEN ENTWURF MEHR NENNT (Zweig oben, JOB 3106 R3). Das ist
+    // die zweite Hälfte seines Lebenslaufs und der Grund, warum es hier bei EINER Bedingung bleibt:
+    // eine zusätzliche Prüfung auf `activeDraftId` wäre eine zweite Absicherung derselben Lücke —
+    // und keine der beiden liesse sich dann noch einzeln messen (jede allein hielte den Fall grün).
+    if (speicherAdresseRef.current === `${resumeDraftId}#${reloadNonce}`) {
+      return;
+    }
+    speicherAdresseRef.current = null;
     // JOB 2974 D3 (F-0040): die Kennung, die VOR diesem Ladeversuch aktiv war.
     const vorherigeKennung = activeDraftId;
     let cancelled = false;
@@ -575,6 +623,10 @@ export function Blatt({
         };
         setSubmitValidation(false);
         setSubmittedKo(null);
+        // JOB 3106 (UX-01): ein GELADENER Entwurf ist keine frische Sicherung. Die
+        // Bestätigungszeile spräche sonst über einen Speichervorgang, der zu diesem Blattinhalt
+        // gar nicht gehört.
+        setGesicherterEntwurf(null);
         saveRequestedRef.current = false;
         submitRequestedRef.current = false;
         clearStructureState();
@@ -724,9 +776,40 @@ export function Blatt({
       if (guardSaveRef.current) {
         guardSaveRef.current = false;
       }
-      // Das Blatt BLEIBT stehen. Der alte Sprung nach `/erfassen` hatte nur Sinn, solange die
-      // Vordertür eine zweite Fläche neben dem Erfassen-Bereich war — jetzt IST das Blatt beides,
-      // und ein Sprung auf dieselbe Adresse wäre eine Bewegung ohne Ziel.
+      // ==========================================================================================
+      // JOB 3106 (UX-01) — DIE ADRESSE HÄLT DEN GERADE GESICHERTEN ENTWURF FEST.
+      // ==========================================================================================
+      //
+      // WAS HIER BIS JETZT STAND und was daran falsch war: „Das Blatt BLEIBT stehen … ein Sprung
+      // auf dieselbe Adresse wäre eine Bewegung ohne Ziel." Der erste Halbsatz gilt weiter — das
+      // Blatt springt nirgendwohin. Der zweite hat die Frage verwechselt: es geht nicht um einen
+      // SPRUNG, sondern darum, WAS die Adresse trägt. Sie trug nichts, und deshalb war nach einem
+      // Neuladen von `/erfassen` das eben gesicherte Blatt leer (Codex' Live-Befund N-0005:
+      // „URL bleibt /erfassen. Nach Reload ist das Blatt leer.").
+      //
+      // ES IST DERSELBE WEG, DEN `entwurfOeffnen` GEHT — nicht ein zweiter: die Kennung steht in
+      // `?draft=`, der Ladeweg liest sie beim nächsten Aufbau (`resumeDraftId`), und weil sie
+      // `activeDraftId` wieder füllt, aktualisiert auch das nächste Speichern denselben Entwurf,
+      // statt einen zweiten anzulegen.
+      //
+      // `replace: true` wie dort: das Festhalten der Kennung ist kein Schritt, den der Mensch
+      // gegangen ist — der Zurück-Weg des Browsers bekommt davon keinen Zwischenhalt.
+      //
+      // NUR, WENN DIE ADRESSE SIE NOCH NICHT TRÄGT: beim Aktualisieren eines offenen Entwurfs
+      // steht sie schon dort, und ein erneutes Setzen wäre ein Navigationsvorgang ohne Wirkung.
+      if (resumeDraftId !== draft.id) {
+        speicherAdresseRef.current = `${draft.id}#${reloadNonce}`;
+        setSearchParams({ draft: draft.id }, { replace: true });
+      }
+      // Die Bestätigungszeile (Lieferung 2) nennt den Titel, den der SERVER quittiert hat. Fehlt
+      // er in der Antwort, steht der Titel da, unter dem gerade abgesendet wurde — dieselbe
+      // Ableitung, die die Nutzlast gebaut hat (`buildFrontDoorPayload`), keine zweite Regel.
+      setGesicherterEntwurf({
+        id: draft.id,
+        titel:
+          draft.payload?.title?.trim() ||
+          deriveFrontDoorTitle(abgesendet.title, abgesendet.bodyHtml, fallbackTitle),
+      });
     },
     onError: (e) => {
       saveRequestedRef.current = false;
@@ -792,6 +875,9 @@ export function Blatt({
       setTitle("");
       setBodyHtml("");
       setActiveDraftId(null);
+      // JOB 3106 (UX-01): der Entwurf ist im Einreichen aufgegangen — es gibt ihn nicht mehr, und
+      // die Erfolgszeile des Vorgangs ist ab hier die eine Auskunft (`BlattLage`).
+      setGesicherterEntwurf(null);
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
       setKategorie("");
@@ -925,6 +1011,12 @@ export function Blatt({
     // JOB 3062 R6 (bens Befund 1): eine geänderte Bereichswahl IST eine ungespeicherte Änderung.
     kategorie !== savedStateRef.current.kategorie ||
     hasPendingProposal;
+
+  // JOB 3106 (UX-01): die Bestätigungszeile steht, SOLANGE das Blatt dem gesicherten Stand
+  // entspricht. Sie hängt bewusst am vorhandenen Dirty-Prädikat und nicht an einem zweiten
+  // Vergleich derselben Felder: wer weiterschreibt, hat einen Stand, den der Server nicht
+  // quittiert hat — und über den darf die Zeile nicht mehr „gesichert" sagen.
+  const gesichertZeile = gesicherterEntwurf !== null && !istSchmutzig ? gesicherterEntwurf : null;
 
   const unsicherbareGruende = useMemo<string[]>(
     () => [
@@ -1951,6 +2043,45 @@ export function Blatt({
               {t("erfassen.einreichen")}
             </button>
           </div>
+          {/* ========================================================================================
+              JOB 3106 (UX-01) — DIE BESTÄTIGUNG NENNT DIE WEGE, STATT ZU VERWEHEN.
+              ========================================================================================
+              Bis hierher war die einzige Antwort auf „Entwurf sichern" ein Toast („Entwurf
+              gespeichert."), der nach ein paar Sekunden weg ist und keinen Weg nennt — Codex'
+              Befund N-0018: „Über … → Entwürfe ist der gespeicherte Text vollständig erreichbar.
+              Die Speicherbestätigung nennt diesen Weg nicht."
+
+              SIE STEHT, SIE BLINKT NICHT: Die Zeile bleibt, solange das Blatt dem gesicherten
+              Stand entspricht, und verschwindet in dem Moment, in dem der Mensch weiterschreibt —
+              dann ist „gesichert" nicht mehr wahr. Der Toast bleibt unverändert daneben; er ist
+              die flüchtige Quittung, das hier ist der Weg.
+
+              KEIN SECHSTER GERAHMTER KNOPF (Lieferung 3): Der Knopf öffnet den EINEN vorhandenen
+              Zugang zu den eigenen Entwürfen — dasselbe „…"-Menü, dieselbe Fläche, dieselbe Liste.
+              Er ist ein echtes `<button>`: Tab erreicht ihn, Enter löst ihn aus, und den sichtbaren
+              Fokusring bringt die globale `*:focus-visible`-Regel mit (index.css, Scheibe D-024). */}
+          {gesichertZeile ? (
+            <div
+              data-testid="blatt-entwurf-gespeichert"
+              // WELCHER Entwurf gemeint ist, steht an der Zeile selbst — dieselbe Kennung, die die
+              // Adresse trägt. Ohne sie wäre „gesichert" eine Aussage ohne Gegenstand.
+              data-entwurf={gesichertZeile.id}
+              className="pointer-events-auto text-[13px] text-trust-pos-text"
+            >
+              {t("fd.saved.line", { titel: gesichertZeile.titel })}
+              <button
+                type="button"
+                data-testid="blatt-entwurf-gespeichert-entwuerfe"
+                onClick={() => {
+                  setOffenesMenue("mehr");
+                  setMehrFlaeche("entwuerfe");
+                }}
+                className="ml-2 font-semibold underline"
+              >
+                {t("fd.saved.toDrafts")}
+              </button>
+            </div>
+          ) : null}
           <BlattLage
             fehler={blattFehler}
             erfolg={submittedKo}
@@ -1973,6 +2104,10 @@ export function Blatt({
                     submitDraftRef.current = null;
                     saveOperationRef.current = null;
                     setActiveDraftId(null);
+                    // JOB 3106 (UX-01): ein neuer Vorgang lässt den alten Entwurf hinter sich —
+                    // die Bestätigungszeile spräche sonst über eine Sicherung, zu der die Adresse
+                    // gerade nicht mehr führt.
+                    setGesicherterEntwurf(null);
                     setSearchParams({}, { replace: true });
                     setRestartOffer(null);
                     setErr(null);

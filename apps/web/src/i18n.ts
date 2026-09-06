@@ -4860,6 +4860,11 @@ const de = {
   "fd.options.hint.formular":
     "Expertenmodus: dieselben Felder direkt ausfüllen, ohne Erzählschritt.",
   "fd.toastSaved": "Entwurf gespeichert.",
+  // JOB 3106 (UX-01): die bleibende Bestätigung unter den Knöpfen. Sie sagt genau das, was der
+  // Server quittiert hat — der Entwurf liegt unter diesem Titel, und das Blatt schreibt in ihn
+  // weiter (die Adresse trägt seine Kennung). Keine Zusage über die Entwurfsliste daneben.
+  "fd.saved.line": "Entwurf gesichert: {{titel}} — du schreibst hier in diesem Entwurf weiter.",
+  "fd.saved.toDrafts": "Meine Entwürfe",
   "fd.toastSubmitted": "Zur Prüfung eingereicht.",
   "fd.confirmDiscard": "Eingabe verwerfen? Nicht gespeicherte Inhalte gehen verloren.",
   "fd.errSaveFailed": "Speichern fehlgeschlagen.",
@@ -9571,6 +9576,8 @@ const en: typeof de = {
   "fd.options.hint.formular":
     "Expert mode: fill the same fields directly, without the telling step.",
   "fd.toastSaved": "Draft saved.",
+  "fd.saved.line": "Draft saved: {{titel}} — you keep writing in this draft here.",
+  "fd.saved.toDrafts": "My drafts",
   "fd.toastSubmitted": "Submitted for review.",
   "fd.confirmDiscard": "Discard input? Unsaved content will be lost.",
   "fd.errSaveFailed": "Saving failed.",
@@ -14113,6 +14120,8 @@ const nl: typeof de = {
   "fd.options.hint.datei": "Kennis uit een bestaand bestand overnemen.",
   "fd.options.hint.formular": "Expertmodus: dezelfde velden direct invullen, zonder vertelstap.",
   "fd.toastSaved": "Concept opgeslagen.",
+  "fd.saved.line": "Concept opgeslagen: {{titel}} — je schrijft hier verder in dit concept.",
+  "fd.saved.toDrafts": "Mijn concepten",
   "fd.toastSubmitted": "Ter beoordeling ingediend.",
   "fd.confirmDiscard": "Invoer verwerpen? Niet-opgeslagen inhoud gaat verloren.",
   "fd.errSaveFailed": "Opslaan mislukt.",

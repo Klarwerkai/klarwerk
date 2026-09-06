@@ -792,6 +792,16 @@ export function CaptureArbeitsraum({
     };
   }, [savedKoId, savedAiCheck, qc]);
   const [draftsOpen, setDraftsOpen] = useState(false);
+  // ==============================================================================================
+  // JOB 3106 (UX-01) — DIE MARKIERUNG „GERADE GESPEICHERT" BEKOMMT IHREN WERT.
+  // ==============================================================================================
+  // `CaptureDraftList` trägt beides seit langem: den Hervorhebungsrahmen und die Plakette
+  // `capture.draftJustSaved` (dreisprachig vorhanden). Beide hängen an `highlightId` — und der
+  // einzige Aufrufer übergab dort fest `null`. Die Auszeichnung konnte damit in KEINEM Zustand
+  // erscheinen: gebaut, übersetzt, tot. Hier steht ab jetzt die Kennung, die der Server beim
+  // Sichern quittiert hat; sie fällt weg, sobald ein anderer Entwurf fortgesetzt oder das
+  // Formular geleert wird.
+  const [geradeGesicherterEntwurf, setGeradeGesicherterEntwurf] = useState<string | null>(null);
   // SCRUM-458: Der Erfassungs-Arbeitsraum startet EINGEKLAPPT (ruhiger Aufklapp-Einstieg statt vollem
   // Formular). Defensiv aufgeklappt, wenn schon ein aktiver Kontext vorliegt (Lücken-Kontext ?gap= oder
   // vorbefüllter Rohtext aus Deep-Link/Entwurf), damit dieser nie verdeckt startet.
@@ -1962,6 +1972,12 @@ export function CaptureArbeitsraum({
       // Stand mehr, gegen den geschrieben würde.
       loadedUpdatedAtRef.current = null;
       setStaleConflict(false);
+      // JOB 3106 (UX-01): DER GESPEICHERTE EINTRAG IST AB JETZT AUCH ZU SEHEN. Die Eingabe oben
+      // ist leer (Zeilen darüber) — ohne diese beiden Zeilen bliebe der eben gesicherte Entwurf
+      // eine Zeile in einer eingeklappten Liste, ununterscheidbar von allen anderen. Die Kennung
+      // kommt aus der SERVERANTWORT, nicht aus dem Formularzustand.
+      setGeradeGesicherterEntwurf(_d.id);
+      setDraftsOpen(true);
       setNotice(msg);
       push("success", msg);
       // JOB 3062 · H3: DAS ERGEBNIS LANDET IM BLATT. Interview, Dateiimport und Expertenformular
@@ -1992,6 +2008,9 @@ export function CaptureArbeitsraum({
   const loadDraft = (d: Draft): void => {
     setErr(null);
     setCaptureWorkspaceOpen(true);
+    // JOB 3106 (UX-01): wer einen Entwurf fortsetzt, arbeitet nicht mehr an der letzten Sicherung
+    // — die Plakette „gerade gespeichert" wäre ab hier eine Auskunft über eine vergangene Runde.
+    setGeradeGesicherterEntwurf(null);
     // AUFTRAG-mega21 Block C-2: DER SERVER WEISS ES — JETZT SAGT ES AUCH DIE OBERFLÄCHE.
     //
     // `listDraftsForResume` prüft für jeden Entwurf, ob seine gesicherten Originale noch im
@@ -2243,6 +2262,9 @@ export function CaptureArbeitsraum({
     setShowCondMeasures(false);
     setShowHelpers(false);
     setDraftId(null);
+    // JOB 3106 (UX-01): der Leerzustand trägt keine Markierung. Sie zeigte sonst auf einen
+    // Entwurf, mit dem dieses Formular nichts mehr zu tun hat.
+    setGeradeGesicherterEntwurf(null);
     setWizStep("tell");
     clearInterviewState();
     clearFileImportState();
@@ -4153,7 +4175,7 @@ export function CaptureArbeitsraum({
           open={draftsOpen}
           onToggleOpen={() => setDraftsOpen((open) => !open)}
           scopeLabel={draftScopeLabel}
-          highlightId={null}
+          highlightId={geradeGesicherterEntwurf}
           editingId={draftId}
           confirmDiscardId={confirmDiscardDraftId}
           onConfirmDiscard={setConfirmDiscardDraftId}
