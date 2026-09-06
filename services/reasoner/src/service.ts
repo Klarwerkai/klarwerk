@@ -1350,6 +1350,22 @@ export class Reasoner {
   // Freitext-Prompt ist Nutzereingabe ÜBER potenziell vertrauliches Wissen; jeder Aufrufer dieses
   // completeRaw-nahen Pfads muss die Provenienz EXPLIZIT entscheiden (der Compiler erzwingt es).
   // `locale` verliert seinen Default mit (TS erlaubt keinen Pflicht-Parameter nach einem optionalen).
+  //
+  // JOB 3127 (MR-SELECT-1, Codex-Befund R-1567): DIESER WEG PROTOKOLLIERTE NICHTS. Er ruft ein
+  // echtes Modell (`completeRaw`) über die „select"-Zuordnung, kehrte aber in JEDEM Zweig zurück,
+  // ohne `recordRun` zu rufen — während `runTask` jeden Lauf schreibt, im Erfolg wie im Fehler.
+  // Gemessen am lebenden Produkt: die Route antwortete 200 mit `fallbackReason: "model-error"`
+  // (ein Modell wurde also befragt und scheiterte), und die Laufliste blieb leer. Der TEUERSTE
+  // Fall — bezahlter Aufruf ohne Ergebnis — hinterließ keine Spur. Ab jetzt schreibt JEDE echte
+  // Anfrage GENAU EINEN select-Lauf; der leere Prompt weiterhin keinen (ein Lauf ohne Anfrage wäre
+  // eine erfundene Auskunft).
+  //
+  // DAS SCHREIBEN LIEGT AUSSERHALB DES try/catch, und das ist der Kern der Bauform: der Ausgang
+  // wird im try/catch nur ERMITTELT, geschrieben wird danach an EINER Stelle. Ein `recordRun` im
+  // try-Zweig fiele bei einem Schreibfehler in den eigenen catch und schriebe ein zweites Mal —
+  // genau die Doppelzählung aus JOB 3074 R2. Zusätzlich wird jeder Schreibfehler geschluckt: eine
+  // gültige Auswahl-Vorschau darf nie an einem Protokollproblem scheitern (und ein nicht
+  // geschriebener Lauf wird auch nie behauptet).
   async deriveImportCriteria(
     prompt: string,
     locale: ReasonerLocale,
@@ -1358,8 +1374,10 @@ export class Reasoner {
     if (prompt.trim().length === 0) {
       return { criteria: null, fallbackReason: null }; // nichts gefragt — kein Ausfall
     }
+    const startedAt = new Date().toISOString();
     // Der Auswahl-Task nutzt die „select"-Zuordnung; nur ein echtes Modell darf ableiten.
-    const model = this.providerChain("select", confidential).find(
+    const chain = this.providerChain("select", confidential);
+    const model = chain.find(
       (p): p is ModelProvider =>
         p !== this.fallback && p instanceof ModelProvider && p.isAvailable(),
     );
@@ -1367,27 +1385,59 @@ export class Reasoner {
       // WP-SHIP9-S2 (bens Folgeschnitt B4): war ein Cloud-Modell konfiguriert und die select-Policy
       // cloud-geeignet, aber die Cloud-Kante fiel wegen vertraulicher Kandidaten weg (kein lokales
       // Modell sprang ein), ist die ehrliche Ursache "confidential" statt des irreführenden "no-model".
-      return {
-        criteria: null,
-        fallbackReason: this.cloudExcludedByConfidentiality("select", confidential)
-          ? "confidential"
-          : "no-model",
-      };
+      const fallbackReason = this.cloudExcludedByConfidentiality("select", confidential)
+        ? ("confidential" as const)
+        : ("no-model" as const);
+      // JOB 3127: auch der Fall, in dem die KI-Auswahl GAR NICHT STATTFAND, gehört in die Laufkarte.
+      // `demo: true` und KEIN `model`-Feld — es hat keines gearbeitet; die Ursache ist dieselbe, die
+      // auch die Rückgabe nennt.
+      await this.recordRun("select", locale, startedAt, "error", {
+        fallback: chain.length > 1,
+        demo: true,
+        provider: this.fallback.name,
+        error: fallbackReason,
+      }).catch(() => undefined);
+      return { criteria: null, fallbackReason };
     }
+    // JOB 3036 R2 / JOB 3074: die Spur GENAU DIESES Laufs. Sie entscheidet, ob `model` und
+    // `verbrauch` in den Datensatz dürfen — nur ein wirklich erfolgter Aufruf trägt sie ein.
+    const spur: ModellAufrufSpur = { gerufen: false };
+    let ergebnis: ImportCriteriaResult;
     try {
-      const raw = await model.completeRaw(importSelectSystem(locale), prompt.trim());
+      const raw = await mitModellAufrufSpur(spur, () =>
+        model.completeRaw(importSelectSystem(locale), prompt.trim()),
+      );
       const parsed = parseFirstJsonObject(raw);
       // Modell hat geantwortet, aber ohne verwertbares JSON → ehrlich als Modellfehler ausweisen.
-      return parsed === null
-        ? { criteria: null, fallbackReason: "model-error" }
-        : { criteria: parsed, fallbackReason: null };
+      ergebnis =
+        parsed === null
+          ? { criteria: null, fallbackReason: "model-error" }
+          : { criteria: parsed, fallbackReason: null };
     } catch (err) {
       const failure = classifyModelFailure(err);
-      return {
+      ergebnis = {
         criteria: null,
         fallbackReason: failure.failureClass === "timeout" ? "model-timeout" : "model-error",
       };
     }
+    const modellname = spur.gerufen ? model.modelName() : undefined;
+    await this.recordRun(
+      "select",
+      locale,
+      startedAt,
+      ergebnis.fallbackReason === null ? "success" : "error",
+      {
+        // Ein Modell hat gearbeitet — auch der gescheiterte Lauf ist kein Demo-Ergebnis.
+        demo: false,
+        fallback: chain[0] !== model,
+        provider: model.name,
+        ...(modellname ? { model: modellname } : {}),
+        // JOB 3074: der bezahlte, ergebnislose Aufruf behält seinen Verbrauch.
+        ...(spur.verbrauch ? { verbrauch: spur.verbrauch } : {}),
+        ...(ergebnis.fallbackReason ? { error: ergebnis.fallbackReason } : {}),
+      },
+    ).catch(() => undefined);
+    return ergebnis;
   }
 
   // Klara Stufe 2 (Pedi 05.07.): generierende Hilfe-Antwort aus der Hilfe-Wissensdatenbank.
