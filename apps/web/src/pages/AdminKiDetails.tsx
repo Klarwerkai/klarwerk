@@ -15,7 +15,7 @@ import { useToast } from "../app/ToastContext";
 import { Abfragehuelle } from "../components/einstellungen/Abfragehuelle";
 import { Detailkarte } from "../components/einstellungen/Detailkarte";
 import { Button, Field, TextInput } from "../components/ui";
-import { type AiAccessState, aiAccessRows } from "../lib/aiOverview";
+import { type AiAccessState, aiAccessRows, anbieterUndModell } from "../lib/aiOverview";
 // AUFTRAG kimodus-live: Topbar-/Status-Queries nach dem Übernehmen live invalidieren.
 import { invalidateAiState } from "../lib/aiStateInvalidate";
 import { parseNeededValidations } from "../lib/reviewerMinimum";
@@ -101,9 +101,17 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
         {(konfig) => (
           <>
             <div className="flex flex-wrap items-center gap-2">
+              {/* JOB 3120 (UX-10 Teil 1): EIN DIENST, EIN NAME. Hier stand die rohe Client-Kennung
+                (`anthropic:claude-sonnet-4-6`), während die Zugangsliste denselben Dienst schon
+                „Claude (Anthropic) · claude-sonnet-4-6" nannte — dieselbe Karte, zwei Sprachen.
+                `anbieterUndModell` (lib/aiOverview) ist die EINE Übersetzung; hier wird sie nur
+                aufgerufen, nicht nachgebaut. Der Eingabewert ist bewusst DERSELBE Ausdruck wie in
+                der Cloud-Zeile (`aiOverview.ts:69`), damit beide Stellen nicht auseinanderlaufen
+                können. Der Betriebsweg (`mode`) bleibt eine EIGENE Aussage daneben — ein Dienst ist
+                kein Modus. */}
               <p className="text-[12.5px] text-muted">
                 {t("adm.ai.status", {
-                  provider: konfig.provider,
+                  provider: anbieterUndModell(konfig.model ?? konfig.provider),
                   mode: konfig.mode === "model" ? t("adm.ai.modeModel") : t("adm.ai.modeDemo"),
                 })}
               </p>
@@ -146,8 +154,10 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                     : "bg-trust-crit-bg text-trust-crit-text"
                 }`}
               >
+                {/* JOB 3120: derselbe Name wie in der Statuszeile darüber — auch hier ist
+                  `provider` der Client-Name (`service.ts:847`), keine zweite Größe. */}
                 {aiTest.data.ok
-                  ? t("adm.ai.testOk", { provider: aiTest.data.provider })
+                  ? t("adm.ai.testOk", { provider: anbieterUndModell(aiTest.data.provider) })
                   : t("adm.ai.testFail", { detail: aiTest.data.detail })}
               </p>
             ) : null}
@@ -165,8 +175,13 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                     : "bg-trust-crit-bg text-trust-crit-text"
                 }`}
               >
+                {/* JOB 3120: dieselbe Ableitung. Der lokale Client heißt `local:<modell>` und hat
+                  in der Tabelle bewusst KEINEN Eintrag — er bleibt darum wörtlich stehen (der
+                  eigene Server ist kein Anbieter, dem man Texte „zeigt"). */}
                 {aiTestLocal.data.ok
-                  ? t("adm.ai.testLocalOk", { provider: aiTestLocal.data.provider })
+                  ? t("adm.ai.testLocalOk", {
+                      provider: anbieterUndModell(aiTestLocal.data.provider),
+                    })
                   : t("adm.ai.testFail", { detail: aiTestLocal.data.detail })}
               </p>
             ) : null}
@@ -189,7 +204,10 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                   {t(conflictSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
-                  {t("adm.conflictSelfTest.provider", { provider: conflictSelfTest.data.provider })}
+                  {/* JOB 3120: derselbe Name wie Statuszeile und Schlüsseltest. */}
+                  {t("adm.conflictSelfTest.provider", {
+                    provider: anbieterUndModell(conflictSelfTest.data.provider),
+                  })}
                   {conflictSelfTest.data.hasKollision && conflictSelfTest.data.streitpunkt
                     ? ` · ${t("adm.conflictSelfTest.streitpunkt", {
                         streitpunkt: conflictSelfTest.data.streitpunkt,
@@ -217,7 +235,10 @@ export function KiDetail({ onZurueck }: { onZurueck: () => void }): JSX.Element 
                   {t(dupSelfTest.data.messageKey)}
                 </p>
                 <p className="mt-0.5 text-[11px] opacity-90">
-                  {t("adm.conflictSelfTest.provider", { provider: dupSelfTest.data.provider })}
+                  {/* JOB 3120: derselbe Name wie Statuszeile und Schlüsseltest. */}
+                  {t("adm.conflictSelfTest.provider", {
+                    provider: anbieterUndModell(dupSelfTest.data.provider),
+                  })}
                   {dupSelfTest.data.duplicateCreated && dupSelfTest.data.relation
                     ? ` · ${t("adm.dupSelfTest.relation", { relation: dupSelfTest.data.relation })}`
                     : ""}
