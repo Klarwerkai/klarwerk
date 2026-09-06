@@ -77,6 +77,7 @@ import {
 } from "../../lib/librarySort";
 import {
   facetSelectionFromParams,
+  facetSelectionNeedsKnownValues,
   knownFacetValues,
   pruneFacetSelectionToKnownValues,
   serializeFacetSelection,
@@ -276,19 +277,74 @@ export function BibliothekFlaeche({
   }, [facetSel, range, setParams, urlSeed]);
 
   const all = useKos();
+  // ================================================================================================
+  // JOB 3115 · UX-02b — DIE WERTPRÜFUNG WARTET AUF EINEN BESTÄTIGTEN BESTAND, NICHT AUF IRGENDEINEN.
+  // ================================================================================================
+  //
+  // DER BEFUND (Codex `CODEX-ANTWORT-35 §5`, `-36 §2`, Messung `R-0459` an 1.113): der Klick auf eine
+  // Themenkarte im Wissensnetz (`pages/Wissensnetz.tsx:295`, `/bibliothek?tag=…`) zeigte die VOLLE
+  // Liste — 32 statt 2 — und keinen gesetzten Filter, sobald das Schlagwort erst nach dem letzten
+  // Bestandsabruf entstanden war. Derselbe Link in einem frischen Fenster war korrekt.
+  //
+  // DIE URSACHE WAR DER ZEITPUNKT, NICHT DIE PRÜFUNG. Die Bedingung lautete `all.data === undefined`,
+  // also „irgendeine Antwort liegt vor". Bei einer Navigation INNERHALB der Anwendung liegt beim
+  // Montieren sofort der Stand vom letzten Besuch da; die Prüfung lief in genau diesem Augenblick,
+  // fand das junge Schlagwort im alten Bestand nicht, warf die Dimension weg und verbrauchte den
+  // Keim. Die frische Antwort kam Millisekunden später — und zu spät.
+  //
+  // DIE PRÜFUNG SELBST BLEIBT UNVERSCHOBEN (mega11 Block C, s. `lib/libraryUrlFilters.ts`): ein
+  // unbekannter Wert aus einer Adresszeile wird kein echter Facettenwert, sonst überlebte er über
+  // „Diese Suche merken" im localStorage. Was sich ändert, ist allein das WANN.
+  //
+  // WORAN „BESTÄTIGT FÜR DIESE MONTAGE" HÄNGT — am FRISCHEMODELL von react-query, nicht an einer
+  // Zahl: es wird gerade kein Abruf geführt UND die vorliegende Antwort gilt innerhalb der geltenden
+  // Frist als frisch. Die Frist selbst steht in `main.tsx` und wird hier weder gelesen noch
+  // nachgebaut — eine zweite Zahl daneben liefe auseinander.
+  //
+  // `!all.isStale` trägt dabei den Fall, den `!all.isFetching` allein NICHT trägt: im ersten
+  // Renderdurchgang nach dem Montieren ist der Abruf noch gar nicht angestoßen (react-query startet
+  // ihn in seinem eigenen Effekt), `isFetching` ist also falsch und die Prüfung liefe wieder zu früh.
+  //
+  // UND `standBeimMontieren` TRÄGT DIE ANDERE HÄLFTE: eine Antwort, die WÄHREND dieser Montage
+  // eingelaufen ist, ist bestätigt — auch wenn sie im selben Augenblick schon wieder als veraltet
+  // gilt (eine Frist von 0). Ohne diesen Zweig hinge die Fläche bei einer kurzen Frist ewig im
+  // Ladezustand; das Wartemodell darf nicht davon abhängen, wie groß die Zahl in `main.tsx` gerade
+  // ist (dort arbeitet JOB 3113).
+  const standBeimMontieren = useRef(all.dataUpdatedAt);
+  const bestandBestaetigt =
+    all.data !== undefined &&
+    !all.isFetching &&
+    (!all.isStale || all.dataUpdatedAt > standBeimMontieren.current);
+  // Eine Auswahl ohne zu prüfenden Wert braucht gar keinen Bestand — sie darf nicht warten (sonst
+  // wartete JEDER Besuch der Bibliothek auf den Bestandsabruf, auch ohne Filter in der Adresse).
+  const keimBrauchtBestand = urlSeed !== null && facetSelectionNeedsKnownValues(urlSeed);
   useEffect(() => {
     const seed = urlSeed;
-    if (seed === null || all.data === undefined) {
+    if (seed === null) {
+      return;
+    }
+    // GENAU EINE Bedingung entscheidet, ob geprüft werden darf — die alte (`all.data === undefined`,
+    // „irgendeine Antwort liegt vor") ist damit vollständig abgelöst und steht nirgends mehr. Ohne
+    // zu prüfenden Wert ist der Bestand ohne Belang: `pruneFacetSelectionToKnownValues` gibt dann
+    // mit jedem Bestand dasselbe zurück, und ein Warten hätte nichts zu warten.
+    if (keimBrauchtBestand && !bestandBestaetigt) {
       return;
     }
     const now = Date.now();
     const known = knownFacetValues(
-      all.data.map((k) => libraryFilterValues(k, now)),
+      (all.data ?? []).map((k) => libraryFilterValues(k, now)),
       LIBRARY_FACET_PARAM_KEYS,
     );
     setFacetSel(pruneFacetSelectionToKnownValues(seed, known));
     setUrlSeed(null);
-  }, [urlSeed, all.data]);
+  }, [urlSeed, all.data, keimBrauchtBestand, bestandBestaetigt]);
+
+  // Solange der Keim nicht geprüft ist, ist ER die wirksame Auswahl. Das ist KEIN zweiter
+  // Auswahlspeicher, sondern eine reine Ableitung aus den zwei vorhandenen Zuständen — und es ist
+  // die ehrliche Lesart: die Adresse hat ausdrücklich eingegrenzt, und daraus stillschweigend die
+  // volle Liste zu machen wäre die zu starke Aussage (dieselbe Begründung, mit der `origin` in
+  // `libraryUrlFilters.ts` von der Prüfung ausgenommen ist).
+  const wirksameAuswahl = urlSeed ?? facetSel;
 
   const conflicts = useConflicts();
   const debouncedQ = useDebouncedValue(q, LIBRARY_SEARCH_DEBOUNCE_MS);
@@ -395,12 +451,12 @@ export function BibliothekFlaeche({
   const groups = facetRailGroups(
     facetItems,
     LIBRARY_FILTER_CONFIGS,
-    facetSel,
+    wirksameAuswahl,
     railUi,
     facetValueLabel,
     LIBRARY_FACET_DEPENDENCIES,
   );
-  const faceted = applyFacetSelection(ranked, valuesOf, facetSel)
+  const faceted = applyFacetSelection(ranked, valuesOf, wirksameAuswahl)
     .filter((item) => matchesFacetRange(koChangedMs(item.ko), range))
     // Der Umschalter wirkt wie jede andere Wahl: UND, auf demselben Anzeigestatus, den auch Punkt
     // und Pille zeigen — keine zweite Statusrechnung. Seit JOB 3072 ist das die vom Server erhobene
@@ -480,18 +536,44 @@ export function BibliothekFlaeche({
     );
   }, [adressQ, q, debouncedQ, setParams]);
 
+  // Eine Wahl, die den Keim ERSETZT: sie kommt nicht aus der Adresse, sondern aus einer schon
+  // geprüften oder ausdrücklich geleerten Quelle. Danach ist nichts Ungeprüftes mehr im Spiel.
+  const keimVerbrauchen = (): void => setUrlSeed(null);
+  // ================================================================================================
+  // JOB 3115 R2 (Befund BEN, Korrekturpflicht 1) — EIN FILTERKLICK IST KEINE BESTÄTIGUNG.
+  // ================================================================================================
+  // Runde 1 hat hier den Keim VERBRAUCHT (`setUrlSeed(null)`) und sein Ergebnis nach `facetSel`
+  // geschrieben. Damit galt jeder ungeprüfte Restwert aus der Adresse ab dem ersten Klick ins
+  // Filtermenü als echter Facettenwert: gemessen an `/bibliothek?tag=gibt-es-nicht&tag=Abluft` mit
+  // altem Zwischenspeicher und gescheitertem Bestandsabruf — „Abluft" abwählen, „Diese Suche
+  // merken" drücken, und `gibt-es-nicht` stand im localStorage. Genau das verbietet mega11 Block C
+  // (`lib/libraryUrlFilters.ts`); ein Klick auf eine ANDERE Dimension darf einen eingeschleusten
+  // Wert nicht mit durchwinken.
+  //
+  // DER GRIFF ÄNDERT DESHALB DEN KEIM, STATT IHN ZU VERBRAUCHEN. Die Wahl des Menschen wirkt sofort
+  // (`wirksameAuswahl` ist der Keim), sie bleibt aber ungeprüft, bis der Bestand bestätigt ist — und
+  // die nachgeholte Prüfung fällt ihr nicht ins Wort: `pruneFacetSelectionToKnownValues` NIMMT nur
+  // weg, was im Bestand nicht vorkommt, und setzt nichts zurück. Es bleibt bei EINEM Keim und EINER
+  // Auswahl (Lieferung 6), nur wandert der Wert später statt sofort.
+  //
+  // Bleibt nach dem Griff nichts Prüfbares übrig (alles abgewählt), löst der Effekt oben ihn im
+  // selben Durchgang auf — `facetSelectionNeedsKnownValues` ist dann falsch und wartet auf nichts.
   const onToggleFacet = (key: string, value: string): void => {
     resetWindow();
-    setFacetSel((prev) =>
-      pruneDependentSelection(
-        toggleFacetValue(prev, key, value),
-        facetItems,
-        LIBRARY_FACET_DEPENDENCIES,
-      ),
+    const naechste = pruneDependentSelection(
+      toggleFacetValue(wirksameAuswahl, key, value),
+      facetItems,
+      LIBRARY_FACET_DEPENDENCIES,
     );
+    if (urlSeed !== null) {
+      setUrlSeed(naechste);
+      return;
+    }
+    setFacetSel(naechste);
   };
   const onResetFilters = (): void => {
     resetWindow();
+    keimVerbrauchen();
     setFacetSel(clearFacetSelection());
     setRange(EMPTY_FACET_RANGE);
     setRailUi(EMPTY_RAIL_UI);
@@ -515,6 +597,8 @@ export function BibliothekFlaeche({
   const applyView = (view: LibrarySavedView): void => {
     const s = view.state as { q?: string; groupBy?: string };
     setQ(s.q ?? "");
+    // Auch hier: eine gemerkte Sicht ist eine getroffene Wahl und schlägt den Keim aus der Adresse.
+    keimVerbrauchen();
     setFacetSel(foldStatusIntoMaturity(migrateSavedFacetSelection(view.state)));
     setRange(facetRangeFromSaved(view.state));
     setGroupBy(
@@ -580,6 +664,34 @@ export function BibliothekFlaeche({
   // deshalb wohnt die Bauform in `AuffrischungHinweis`); der jüngere Stand wäre die zu starke
   // Aussage. Ohne den Fall entsteht nichts — `auffrischungGescheitert` verlangt einen vorhandenen
   // Bestand, und ohne Bestand ist gar kein Serverzustand im Spiel.
+  // ================================================================================================
+  // JOB 3115 — SOLANGE DIE AUSWAHL UNGEPRÜFT IST, BEHAUPTET DIE LISTE KEIN ERGEBNIS.
+  // ================================================================================================
+  // Die Fläche zeigt dann den vorhandenen Ladezweig (keine Zeile, kein Leerzustand, keine Zahl) —
+  // sie zeigt insbesondere NICHT die ungefilterte Vollmenge als fertige Antwort.
+  //
+  // MIT EINER AUSNAHME, und die ist die Zusage aus REGELN §7: ist die Auffrischung des Bestands
+  // GESCHEITERT, wird nicht ewig geladen. Dann steht der Filter aus der Adresse (`wirksameAuswahl`),
+  // darüber der Satz „Stand von <Zeit> · Auffrischung fehlgeschlagen" mit dem Wiederholknopf — und
+  // die Prüfung wird nachgeholt, sobald ein Abruf durchkommt. Der Zähler schweigt trotzdem: die
+  // Auswahl ist unbestätigt, und eine Trefferzahl wäre die zu starke Aussage.
+  //
+  // ================================================================================================
+  // JOB 3115 R2 (Befund BEN, Korrekturpflicht 3) — EIN BESTANDS-ERSTFEHLER IST EIN LISTENFEHLER.
+  // ================================================================================================
+  // `all` ist seit JOB 3072 eine ANZEIGEQUELLE der Liste (Wort, Ton, Umschalter) und seit heute die
+  // Grundlage der Filterprüfung. Scheitert ihr ERSTER Abruf — kein Zwischenspeicher, nichts
+  // aufzufrischen —, greift `auffrischungGescheitert` nicht (die verlangt vorhandene Daten), und der
+  // Hinweis samt Wiederholknopf entsteht nicht. Runde 1 wartete dann ewig, und ohne Keim stand
+  // sogar eine Liste mit Rückfall-Zuständen da, als wäre nichts gewesen. Beides ist die zu starke
+  // Aussage: gemessen wurde nichts. Der Fall gehört deshalb in den vorhandenen Fehlerzweig der
+  // Liste, dessen Knopf `alleAuffrischen` ruft und damit BEIDE Quellen zurückholt.
+  //
+  // `!all.isError` deckt damit BEIDE Fehlerlagen ab und ist die eine Bedingung dafür: mit Bestand
+  // trägt der Hinweis den Weg zurück, ohne Bestand der Fehlerzweig. Gewartet wird nur, solange
+  // überhaupt noch etwas kommen kann.
+  const bestandsErstfehler = all.isError && all.data === undefined;
+  const keimWartet = keimBrauchtBestand && !all.isError;
   const nichtFrisch = quellen.filter((q) => auffrischungGescheitert(q));
   const standQuelle =
     nichtFrisch.length === 0
@@ -605,8 +717,18 @@ export function BibliothekFlaeche({
     };
   };
 
-  const posten: BibListenPosten[] =
-    groupBy === "none"
+  // ================================================================================================
+  // JOB 3115 R2 (Befund BEN, Korrekturpflicht 2) — SCHWEIGEN HEISST HIER: KEINE ZEILE.
+  // ================================================================================================
+  // Runde 1 hat der Liste nur `laedt` gereicht und geglaubt, damit sei die Vollmenge unterdrückt.
+  // Sie war es nicht: `BibliothekListe.tsx:234` zeichnet `posten` bedingungslos, `laedt` schaltet
+  // dort allein den Leerzustand ab. Ein absichtlich offen gehaltener Bestandsabruf zeigte deshalb
+  // weiterhin alle Zeilen — die ungefilterte Antwort, als stünde sie fest. Die Liste bekommt in
+  // dieser Lage jetzt NICHTS zu zeichnen; `BibliothekListe.tsx` bleibt unverändert (Auftrag §10).
+  const listeSchweigt = keimWartet || bestandsErstfehler;
+  const posten: BibListenPosten[] = listeSchweigt
+    ? []
+    : groupBy === "none"
       ? win.visible.map((i) => zeileAus(i.ko))
       : groupByFacet(win.visible, (item) => facetBase.get(item.ko.id) ?? {}, groupBy).flatMap(
           (g) => [
@@ -727,7 +849,7 @@ export function BibliothekFlaeche({
   // Beta Own-Knowledge Work Queue v0: die Linse „Eigenes Wissen" (Herkunftsfacette) mit null
   // eigenen Treffern bekommt denselben Weg wie bisher — nur als Knopf im Leerzustand statt als
   // eigene Karte mit Titel und Hinweis.
-  const originValues = facetSelectedValues(facetSel.origin);
+  const originValues = facetSelectedValues(wirksameAuswahl.origin);
   const originSel =
     originValues.length === 1 && (originValues[0] === "demo" || originValues[0] === "non-demo")
       ? originValues[0]
@@ -741,7 +863,7 @@ export function BibliothekFlaeche({
   // Ortszeile sichtbar auf der Seite; ihn mitzuzählen ergäbe ein „Filter · 1", nach dessen Öffnen
   // nichts gewählt wäre — eine Zahl, die auf nichts zeigt.
   const aktiveFilterZahl =
-    (isAnyFacetActive(facetSel) ? 1 : 0) +
+    (isAnyFacetActive(wirksameAuswahl) ? 1 : 0) +
     (isFacetRangeActive(range) ? 1 : 0) +
     (segment === BIB_SEGMENT_STANDARD ? 0 : 1) +
     (groupBy === "none" ? 0 : 1);
@@ -750,7 +872,7 @@ export function BibliothekFlaeche({
   const anyFilterActive =
     trimmedQ.length > 0 || aktiveFilterZahl > 0 || scope !== DEFAULT_LIBRARY_SCOPE;
   const bereichGruppe = groups.find((g) => g.key === BEREICH_KEY);
-  const bereichGewaehlt = facetSelectedValues(facetSel[BEREICH_KEY]);
+  const bereichGewaehlt = facetSelectedValues(wirksameAuswahl[BEREICH_KEY]);
 
   return (
     <div data-testid="bibliothek-flaeche" className="flex h-[calc(100vh-12rem)] min-h-[30rem]">
@@ -846,12 +968,17 @@ export function BibliothekFlaeche({
         posten={posten}
         gewaehlt={gewaehltEffektiv}
         onWaehle={waehle}
-        laedt={query.isLoading}
+        laedt={query.isLoading || keimWartet}
         // JOB 3034 R2 (nachgezogen): ein gescheiterter ABRUF ohne Bestand ist ein echter Fehler;
         // scheitert nur die AUFFRISCHUNG eines schon geholten Bestands, bleiben die Zeilen stehen
         // und der Hinweis darunter sagt es (REGELN §7 — nie den Bestand wegen eines Folgefehlers
         // leeren).
-        fehler={query.isError && query.data === undefined}
+        //
+        // JOB 3115 R2: dasselbe gilt für die ZWEITE Listenquelle. Ein Erstfehler von `all` ohne
+        // Bestand nimmt der Fläche Zustand, Ton, Umschalter UND die Filterprüfung — sie hat dann
+        // nichts zu zeigen und sagt es hier, statt zu laden oder eine Rückfall-Liste anzubieten.
+        // Der Knopf dieses Zweiges (`onErneut`) holt beide Quellen zurück.
+        fehler={(query.isError && query.data === undefined) || bestandsErstfehler}
         // ============================================================================================
         // JOB 3099 · Q6c — DIE DRITTE FOLGE DERSELBEN LAGE: DER LEERZWEIG KENNT SIE JETZT AUCH.
         // ============================================================================================
@@ -898,7 +1025,10 @@ export function BibliothekFlaeche({
           ) : null
         }
         onErneut={alleAuffrischen}
-        gesamt={frisch ? sorted.length : null}
+        // Eine Zahl nur, wenn sie etwas zählt, das feststeht: nicht bei ungeprüfter Auswahl und
+        // nicht bei einem Bestands-Erstfehler (dort ist `isRefetchError` falsch, `frisch` allein
+        // liesse also eine Zahl zu, die auf einer Rückfall-Liste stünde).
+        gesamt={frisch && !keimBrauchtBestand && !bestandsErstfehler ? sorted.length : null}
         onNachladen={() => {
           if (win.limited) {
             setWindowLimit((n) => n + LIBRARY_RESULT_LIMIT);
@@ -972,7 +1102,11 @@ export function BibliothekFlaeche({
                           <button
                             type="button"
                             data-testid="bib-sicht-speichern"
-                            disabled={viewName.trim().length === 0}
+                            // JOB 3115: ein UNGEPRÜFTER Wert aus der Adresse erreicht keine
+                            // gespeicherte Sicht. Damit bleibt die Grenze aus mega11 Block C
+                            // (`lib/libraryUrlFilters.ts`) unverschoben, obwohl der Filter aus der
+                            // Adresse jetzt schon vor seiner Prüfung wirkt.
+                            disabled={viewName.trim().length === 0 || keimBrauchtBestand}
                             onClick={() => {
                               const name = viewName.trim();
                               setSavedViews(
@@ -1096,7 +1230,7 @@ export function BibliothekFlaeche({
                   {groups
                     .filter((g) => g.key !== BEREICH_KEY)
                     .map((g) => {
-                      const gewaehlteWerte = facetSelectedValues(facetSel[g.key]);
+                      const gewaehlteWerte = facetSelectedValues(wirksameAuswahl[g.key]);
                       return (
                         <MenueUntermenue
                           key={g.key}

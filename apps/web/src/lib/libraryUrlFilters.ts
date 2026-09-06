@@ -158,8 +158,34 @@ export function knownFacetValues(
   return known;
 }
 
+// ── JOB 3115 · UX-02b: BRAUCHT DIESE AUSWAHL DEN BESTAND ÜBERHAUPT? ──────────────────────────────
+//
+// Der Aufrufer muss mit der Prüfung warten, bis der Bestand für seine Montage bestätigt ist (s. den
+// Kommentar über `pruneFacetSelectionToKnownValues`). Warten kostet aber etwas: solange nichts
+// feststeht, darf die Fläche kein Ergebnis behaupten. Für eine Auswahl, in der gar nichts zu prüfen
+// IST — kein Wert, oder nur Dimensionen mit eigenem Eingangsvertrag (`origin`) —, wäre dieses Warten
+// eine Verzögerung ohne Gegenwert: `pruneFacetSelectionToKnownValues` gäbe mit jedem beliebigen
+// Bestand dasselbe Ergebnis zurück. Diese Frage gehört neben die Prüfung, die sie beantwortet, und
+// nicht in die Fläche — sonst führte dort eine zweite Auslegung von `exemptKeys` ein Eigenleben.
+export function facetSelectionNeedsKnownValues(
+  selection: FacetSelection,
+  exemptKeys: readonly string[] = [DEMO_FILTER_PARAM],
+): boolean {
+  const exempt = new Set(exemptKeys);
+  return Object.entries(selection).some(
+    ([key, groupSelection]) =>
+      groupSelection !== undefined &&
+      !exempt.has(key) &&
+      // Strukturelles No-Match ist kein Wert und wird nie gegen den Bestand geprüft.
+      !isFacetNoMatch(groupSelection) &&
+      groupSelection.length > 0,
+  );
+}
+
 // Wirft aus einer Auswahl alles heraus, was im Bestand nicht vorkommt. Reine Funktion; der Aufrufer
-// entscheidet, WANN sie läuft (nämlich genau einmal, sobald der Bestand geladen ist).
+// entscheidet, WANN sie läuft (nämlich genau einmal, sobald der Bestand FÜR DIESE MONTAGE bestätigt
+// ist — nicht schon, sobald irgendwann einmal einer geladen wurde; s. JOB 3115 in
+// `BibliothekFlaeche.tsx`).
 //
 // `exemptKeys`: Dimensionen mit eigenem Eingangsvertrag — für die Bibliothek `origin` (siehe oben).
 export function pruneFacetSelectionToKnownValues(
