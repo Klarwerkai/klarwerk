@@ -22,6 +22,8 @@ import { FuerDichKarte, ZuletztKarte } from "../components/start/StartKarten";
 import { StartPanelInhalt } from "../components/start/StartPanel";
 import {
   type ForYouQuelle,
+  type Kartenlage,
+  auffrischungLaeuft,
   forYouGesamt,
   forYouLage,
   forYouZeilen,
@@ -131,6 +133,17 @@ export function Start(): JSX.Element {
     ? [board, conflicts, pending, gapsSummary, meldungen, learningProgress, eigeneBefunde, kos]
     : [board, conflicts, pending, gapsSummary, meldungen, eigeneBefunde, kos];
   const lage = forYouLage(arbeitsQuellen, netzOnline);
+  // JOB 3118 Runde 2/3 (Bens Korrekturpflicht 1): dieselbe Liste beantwortet auch die Frage, ob
+  // gerade ein Abruf LÄUFT. Solange einer läuft, steht weder eine Verneinung des Bestands noch ein
+  // Satz über den LETZTEN Versuch noch ein zweiter Wiederholen-Knopf — die Werte bleiben, die
+  // Behauptung geht. Die drei Angaben gehen als EIN Bündel in die Karte, damit keine der drei
+  // Entscheidungen eine davon verpasst. Kein zweiter Quellensatz, sonst liefen Lage und
+  // Auffrischung auseinander (derselbe Grund wie bei `wiederholen()` unten).
+  const kartenlage: Kartenlage = {
+    lage,
+    online: netzOnline,
+    auffrischung: auffrischungLaeuft(arbeitsQuellen),
+  };
 
   // FUNKE-FIX2 P0: die kritischen Lücken kommen aus dem aggregierten Summary (byPriority.hoch),
   // nicht aus geladenen Gap-Volltexten — kein Fragetext gelangt in den Browser.
@@ -161,16 +174,16 @@ export function Start(): JSX.Element {
   // reicht, kippt es beim Netzverlust auf `false` — und die Zeile eines BEREITS BEKANNTEN Befunds
   // wäre still verschwunden. Das ist A27 rückwärts: „eine Kollision, die der Autorin verschwiegen
   // wird" (`lib/eigeneKollision.ts:439-441`). Der Befund verschwindet nie; er wird eingeordnet —
-  // die Karte trägt dafür die Veraltet-Markierung (`components/start/StartKarten.tsx:133-153`),
-  // die aus derselben Netzablesung entsteht.
+  // die Karte trägt dafür den Datenlagesatz (`components/start/StartKarten.tsx`, `Datenlagezeile`),
+  // der aus derselben Netzablesung entsteht.
   //
   // Was `standVorhanden` dagegen wirklich ausschließt, ist die andere Erfindung: eine Zeile OHNE
   // jeden früheren Stand. Eine Verneinung entsteht HIER in keiner Lage — die Karte zeigt ihre
   // Zeilen nur, wenn `forYouLage` das erlaubt.
   //
-  // OFFEN BLEIBT die Verneinung der KARTE („Nichts offen."), die aus einem ruhenden Zwischenspeicher
-  // weiterhin steht: sie hängt an `StartKarten.tsx:113`, außerhalb der Zielpfade dieses Auftrags.
-  // Der Befund und der genaue Griff stehen in `components/start/forYou.ts` unter „RESTSCHULD".
+  // Die Verneinung der KARTE („Nichts offen.") stand bis JOB 3118 auch aus einem ruhenden
+  // Zwischenspeicher da. Sie hängt jetzt an `entwarnungErlaubt()` (`components/start/forYou.ts`)
+  // und entsteht nur noch aus `frisch` — dieselbe Regel, die hier `standVorhanden` durchsetzt.
   const kollision =
     kollisionsAuskunft.art === "keine" || !kollisionsAuskunft.standVorhanden
       ? null
@@ -287,10 +300,18 @@ export function Start(): JSX.Element {
             </button>
           ) : null}
         </form>
-        {/* Zielbild Z.43: Raster 900 px, zwei Spalten, Abstand 24 px, Abstand nach oben 18 px. */}
-        <div className="mt-[18px] grid w-[900px] max-w-full grid-cols-2 gap-6">
+        {/* Zielbild Z.43: Raster 900 px, zwei Spalten, Abstand 24 px, Abstand nach oben 18 px —
+            gemessen wird das an einem 1280-px-Fenster (`tests/design/zielbild-h5-start.test.ts:356`,
+            V14). Das Zielbild beschreibt den Schreibtisch, nicht das Telefon.
+
+            JOB 3118 · UX-17 (N-0034): bis hierher stand `grid-cols-2` FEST, ohne Bruchpunkt. Bei
+            390 px teilten sich die zwei Karten die Breite abzüglich 24 px Abstand — je Karte rund
+            150 px, davon gingen Symbol, Abstände und Datum ab, und der sichtbare Titel schrumpfte
+            auf „N…"/„Ko…". Unterhalb von `sm` (640 px) liegen die Karten deshalb UNTEREINANDER in
+            voller Breite; ab `sm` bleibt alles, wie es gemessen ist. */}
+        <div className="mt-[18px] grid w-[900px] max-w-full grid-cols-1 gap-6 sm:grid-cols-2">
           <FuerDichKarte
-            lage={lage}
+            kartenlage={kartenlage}
             zeilen={zeilen}
             gesamt={forYouGesamt(zeilen)}
             onWiederholen={wiederholen}
@@ -299,7 +320,11 @@ export function Start(): JSX.Element {
               nebenan: „Zuletzt" wäre sonst gestört, weil eine Aufgabenquelle klemmt. Ihr
               Wiederholen-Weg holt entsprechend genau diese eine Abfrage nach. */}
           <ZuletztKarte
-            lage={forYouLage([liveWall], netzOnline)}
+            kartenlage={{
+              lage: forYouLage([liveWall], netzOnline),
+              online: netzOnline,
+              auffrischung: auffrischungLaeuft([liveWall]),
+            }}
             daten={liveWall.data}
             jetzt={new Date()}
             onWiederholen={() => {

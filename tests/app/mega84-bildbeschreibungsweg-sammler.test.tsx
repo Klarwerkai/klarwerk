@@ -1371,8 +1371,16 @@ describe("mega86 Block C · Stufe 1+2: jeder Fund hat eine Identität und genau 
     // tatsächlichen Testlauf an diesem Arbeitsbaum, nicht aus einer Kopfrechnung der Deltas. Die
     // zwei Zahlen, an denen Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und
     // `traeger` 2.
+    // JOB 3118 (Q6e/UX-17): `komponenten` von 345 auf 346 NACHGEZOGEN, am eigenen Lauf dieses
+    // Arbeitsbaums gemessen (der Test meldete zuerst `expected 346 to be 345`). GENAU EINE
+    // Komponente kommt hinzu — `Datenlagezeile` in `components/start/StartKarten.tsx`: der
+    // Datenlagesatz und der Wiederholen-Knopf, die bis dahin in BEIDEN Startkarten je zweimal
+    // abgeschrieben standen. Der Zuwachs ist also eine Entdopplung, keine neue Fläche. Sie bietet
+    // keine Bildbeschreibung an (kein `ANGEBOT_MUSTER`) und trägt keinen eigenen Titel (kein
+    // `documentTitle`-Prop) — sie erscheint nur in der Grundmenge. Die zwei Zahlen, an denen
+    // Stufe 2 wirklich hängt, bleiben unverändert: `anbieter` 1 und `traeger` 2.
     expect({ komponenten, anbieter, traeger }, diagnose).toEqual({
-      komponenten: 345,
+      komponenten: 346,
       anbieter: 1,
       traeger: 2,
     });

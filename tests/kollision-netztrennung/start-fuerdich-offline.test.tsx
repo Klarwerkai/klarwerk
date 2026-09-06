@@ -24,7 +24,7 @@
 // Gesamtlage nimmt.
 //
 // ------------------------------------------------------------------------------------------------
-// RUNDE 3 — DER WEG AUS DER STÖRUNG HERAUS, UND WAS HIER AUSDRÜCKLICH NOCH NICHT STEHT.
+// RUNDE 3 — DER WEG AUS DER STÖRUNG HERAUS.
 // ------------------------------------------------------------------------------------------------
 //
 // Ben hat an Runde 1 einen zweiten Fehler gefunden, der nicht die Anzeige betrifft, sondern die
@@ -32,20 +32,49 @@
 // behobenem Serverfehler erzeugt der Klick jeweils null Abrufe der betroffenen Quelle." Ein Knopf,
 // der die Störung nicht behebt, die er anbietet. Das ist in S-7/S-8 gemessen und behoben.
 //
-// WAS HIER NICHT STEHT, UND WARUM. Bens Korrekturpflichten 2 und 3 („Nichts offen." nur bei
-// `frisch`; offline kein Wiederholen-Angebot) sitzen beide in `components/start/StartKarten.tsx`
-// (`:113`, `:133-153`). Diese Datei liegt AUSSERHALB der Zielpfade von JOB 3098; Ben hat ihre
-// Aufnahme ausdrücklich verlangt, die Vorprüfung des Tors hat Runde 2 genau daran rot gemacht
-// (`ZIELPFAD-VERSTOSS`). Solange das nicht entschieden ist, halten S-1/S-3 den HEUTIGEN Stand fest,
-// samt seiner Mängel — ein Test, der eine Behebung behauptet, die es nicht gibt, wäre schlimmer als
-// der Mangel selbst. Der Befund und der genaue Griff stehen unter „RESTSCHULD" in `start/forYou.ts`.
+// ------------------------------------------------------------------------------------------------
+// JOB 3118 (Q6e) — WAS BIS HIERHER AUSDRÜCKLICH FEHLTE, STEHT JETZT DA.
+// ------------------------------------------------------------------------------------------------
+//
+// Bis JOB 3118 hielten S-1 und S-3 den HEUTIGEN, mangelhaften Stand fest — samt der drei
+// Unwahrheiten, die Ben an der gemounteten Seite gemessen hat: „online leer laden, Netz trennen, am
+// selben QueryClient neu mounten ergibt wörtlich `Nichts offen.Veraltet – Aktualisierung
+// fehlgeschlagenErneut versuchen`." Alle drei sassen in `components/start/StartKarten.tsx`, das
+// AUSSERHALB der Zielpfade von JOB 3098 lag; die Vorprüfung des Tors hat Runde 2 genau daran rot
+// gemacht (`ZIELPFAD-VERSTOSS`). Der Kopfkommentar sagte deshalb hier zu, die Fälle nachzuführen,
+// sobald die Datei aufgenommen ist — das ist mit JOB 3118 geschehen:
+//   · S-1 und S-3 messen jetzt den behobenen Stand (Offline-Satz statt „Aktualisierung
+//     fehlgeschlagen"; kein Wiederholen-Knopf ohne Netz).
+//   · S-6 und S-9 sind die zwei Wege des Befunds selbst: leer geladen und mit Bestand, jeweils
+//     offline WIEDERBETRETEN — der kalte Start der Komponente, nicht das Ereignis am stehenden Baum.
+//   · Z2b und Z4b messen dasselbe an der Nachbarkarte „ZULETZT": zwei verschiedene Sätze
+//     („Nichts offen." / „Noch nichts erfasst."), EINE Entscheidungsregel.
+//   · T-3 prüft die drei Entscheidungen ohne Mount, so wie T-1/T-2 die Lage.
 //
 // S-10 misst das Gegengewicht: bei einer wirklich GESCHEITERTEN Auffrischung bleibt alles, wie es
-// war — die Werte verschwinden nicht (REGELN §7).
+// war — die Werte verschwinden nicht (REGELN §7), der Satz nennt den Fehlschlag, und der Knopf ist
+// da und wirkt. Ohne diesen Fall wäre „offline sagt die Karte nichts mehr" die billige Halbheit,
+// mit der sich der ganze Auftrag erfüllen liesse.
+//
+// ------------------------------------------------------------------------------------------------
+// RUNDE 2 — DIE DRITTE LÜCKE: NICHT DAS NETZ, SONDERN DIE ZEIT.
+// ------------------------------------------------------------------------------------------------
+//
+// Ben hat an Runde 1 gemessen, was zwischen „offline" und „gescheitert" liegt und von beidem nicht
+// erfasst war: ein Abruf, der GERADE LÄUFT. Wörtlich: „Nach leerem Erstabruf und anschließend
+// hängendem Nachlauf steht bei bestätigtem `fetchStatus: fetching` weiterhin ‚Nichts offen.'." Das
+// ist die Zeile „Cache + laufende Auffrischung → keine Verneinung" aus §9 des Auftrags. Sie steht
+// jetzt in `entwarnungErlaubt()` und wird hier gemessen:
+//   · S-11a/Z11a — die Behauptung geht, WÄHREND der Abruf läuft, und kommt nach seinem ABSCHLUSS
+//     zurück. Der zweite Halbsatz ist der wichtigere: eine Karte, die nach einem Nachlauf für
+//     immer schweigt, hätte den Fall auch „erfüllt".
+//   · S-11b/Z11b — und die geholten WERTE bleiben derweil stehen (REGELN §7).
+//   · S-10/Z10 messen seit Runde 2 nicht mehr nur, DASS ein Wiederholen-Knopf dasteht, sondern
+//     seine WIRKUNG: Server gesund, Klick, Abrufzähler, und die Störung ist wirklich weg.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const box = vi.hoisted(() => ({
-  kanal: {} as Record<"kos" | "conflicts" | "signal", () => Promise<unknown>>,
+  kanal: {} as Record<"kos" | "conflicts" | "signal" | "wall", () => Promise<unknown>>,
 }));
 
 vi.mock("../../apps/web/src/api/auth", () => ({
@@ -67,7 +96,7 @@ vi.mock("../../apps/web/src/api/endpoints", () => {
       lifecycle: { pending: leer },
       gaps: { summary: vi.fn(async () => ({ open: 0, byPriority: { hoch: 0 } })) },
       learningPaths: { byRole: vi.fn(async () => null), progress: leer },
-      livewall: { get: vi.fn(async () => ({ saved: [], helped: [], helpedToday: 0 })) },
+      livewall: { get: vi.fn(() => box.kanal.wall()) },
       notifications: { list: vi.fn(async () => []) },
       admin: { demoStatus: vi.fn(async () => ({ present: false, count: 0 })) },
       analytics: { overview: vi.fn(async () => ({ total: 0, byStatus: {} })) },
@@ -88,7 +117,16 @@ import { AuthProvider } from "../../apps/web/src/app/AuthContext";
 import { NavGuardProvider } from "../../apps/web/src/app/NavGuardContext";
 import { RoleProvider } from "../../apps/web/src/app/RoleContext";
 import { ToastProvider } from "../../apps/web/src/app/ToastContext";
-import { type ForYouQuelle, forYouLage } from "../../apps/web/src/components/start/forYou";
+import {
+  type ForYouLage,
+  type ForYouQuelle,
+  type Kartenlage,
+  auffrischungLaeuft,
+  datenlageKey,
+  entwarnungErlaubt,
+  forYouLage,
+  wiederholenSinnvoll,
+} from "../../apps/web/src/components/start/forYou";
 import i18n from "../../apps/web/src/i18n";
 import { Start } from "../../apps/web/src/pages/Start";
 
@@ -129,6 +167,77 @@ describe("JOB 3098 · T · forYouLage kennt den Onlinezustand", () => {
 });
 
 // ------------------------------------------------------------------------------------------------
+// T-3 · OHNE MOUNT: die drei Entscheidungen, die JOB 3118 aus der Anzeige herausgelöst hat
+// ------------------------------------------------------------------------------------------------
+//
+// Sie stehen hier und nicht in einer eigenen Datei, weil sie dieselbe Frage beantworten wie T-1/T-2
+// — was das fehlende Netz für die Karte bedeutet — nur eine Stufe später. Die gemounteten Fälle
+// darunter messen die WIRKUNG; diese drei messen die REGEL, samt der Fälle, die eine Fläche gar
+// nicht herbeiführen kann.
+describe("JOB 3118 · T-3 · die drei Entscheidungen der Karte", () => {
+  /** Am Netz, nichts unterwegs — der Normalfall, von dem die Fälle unten abweichen. */
+  const am = (lage: ForYouLage): Kartenlage => ({ lage, online: true, auffrischung: false });
+  const ohneNetz = (lage: ForYouLage): Kartenlage => ({ ...am(lage), online: false });
+  const imAbruf = (lage: ForYouLage): Kartenlage => ({ ...am(lage), auffrischung: true });
+
+  it("T-3a · eine VERNEINUNG entsteht nur aus `frisch` — nie ohne Netz, nie während eines Abrufs", () => {
+    expect(entwarnungErlaubt(am("frisch"))).toBe(true);
+    expect(entwarnungErlaubt(am("veraltet"))).toBe(false);
+    expect(entwarnungErlaubt(am("gescheitert"))).toBe(false);
+    expect(entwarnungErlaubt(am("laedt"))).toBe(false);
+    // Die Zusage steht ausgesprochen da, statt aus `forYouLage` hergeleitet zu werden: ein
+    // Aufrufer, der die Lage aus einer anderen Netzablesung bildet, bekommt trotzdem kein „Nichts
+    // offen." (JOB 3118, Kommentar an `entwarnungErlaubt`).
+    expect(entwarnungErlaubt(ohneNetz("frisch"))).toBe(false);
+    // RUNDE 2 · Bens Korrekturpflicht 1: die Zeile „Cache + laufende Auffrischung" aus §9. Ein
+    // laufender Abruf sagt selbst, dass der Stand von vorhin nicht mehr für JETZT einsteht.
+    expect(entwarnungErlaubt(imAbruf("frisch"))).toBe(false);
+  });
+
+  it("T-3d · `auffrischungLaeuft` liest jede Quelle, nicht nur die erste", () => {
+    const ruht = { data: [], isFetching: false };
+    expect(auffrischungLaeuft([ruht, ruht])).toBe(false);
+    expect(auffrischungLaeuft([ruht, { data: [], isFetching: true }])).toBe(true);
+    // Eine Quelle ohne die Angabe gilt als ruhend — sonst hinge die Verneinung an einer Vermutung
+    // in die andere Richtung und verschwände überall dort, wo niemand sie meldet.
+    expect(auffrischungLaeuft([{ data: [] }])).toBe(false);
+  });
+
+  it("T-3b · der Datenlagesatz unterscheidet den gescheiterten Versuch vom ruhenden und vom laufenden", () => {
+    // Online: es hat wirklich einen Versuch gegeben, und er ist gescheitert.
+    expect(datenlageKey(am("veraltet"), true)).toBe("loadstate.stale");
+    // Offline: die Abfrage RUHT. Mit sichtbarem Stand nennt der Satz ihn, ohne Stand nennt er
+    // nichts — „Stand von zuletzt" ohne Stand wäre eine Erfindung (eigeneKollision.ts:180-198).
+    expect(datenlageKey(ohneNetz("veraltet"), true)).toBe("kollision.lage.pausiert");
+    expect(datenlageKey(ohneNetz("veraltet"), false)).toBe("kollision.lage.pausiertOhneStand");
+    expect(datenlageKey(ohneNetz("gescheitert"), false)).toBe("kollision.lage.pausiertOhneStand");
+    // RUNDE 3 · Bens Korrekturpflicht 1: WÄHREND der nächste Versuch läuft, ist „Aktualisierung
+    // fehlgeschlagen" ein Satz über den vorletzten Stand der Dinge. §9 sagt hier „nichts".
+    expect(datenlageKey(imAbruf("veraltet"), true)).toBeNull();
+    expect(datenlageKey(imAbruf("gescheitert"), false)).toBeNull();
+    // Frisch trägt die Sache selbst, `laedt` ausdrücklich nichts (§9), und die Störung am Netz
+    // trägt ihren Knopf statt eines Erklärtexts.
+    expect(datenlageKey(am("frisch"), true)).toBeNull();
+    expect(datenlageKey(am("laedt"), false)).toBeNull();
+    expect(datenlageKey(am("gescheitert"), false)).toBeNull();
+  });
+
+  it("T-3c · ein Wiederholen-Knopf steht nur, wo ein Versuch etwas ändern kann", () => {
+    expect(wiederholenSinnvoll(am("gescheitert"))).toBe(true);
+    expect(wiederholenSinnvoll(am("veraltet"))).toBe(true);
+    expect(wiederholenSinnvoll(am("laedt"))).toBe(false);
+    expect(wiederholenSinnvoll(am("frisch"))).toBe(false);
+    // Ohne Netz scheitert jeder Versuch — ein Knopf wäre eine Scheinfunktion (REGELN §7).
+    expect(wiederholenSinnvoll(ohneNetz("gescheitert"))).toBe(false);
+    expect(wiederholenSinnvoll(ohneNetz("veraltet"))).toBe(false);
+    // RUNDE 3: und während der ausgelöste Versuch noch läuft, fügt ein zweiter Klick nichts hinzu
+    // — §9, „nein (läuft schon)".
+    expect(wiederholenSinnvoll(imAbruf("gescheitert"))).toBe(false);
+    expect(wiederholenSinnvoll(imAbruf("veraltet"))).toBe(false);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
 // S · GEMOUNTET: die echte Startseite
 // ------------------------------------------------------------------------------------------------
 const DUBLETTE: EigenerBefund = {
@@ -137,6 +246,52 @@ const DUBLETTE: EigenerBefund = {
   konflikt: false,
   deckung: { lage: "kein_lauf", geprueft: null, bestand: null },
 };
+
+/** Die Karte „ZULETZT" hat ihre eigene Quelle — Z2b/Z4b brauchen sie einmal leer, einmal gefüllt. */
+const LEERE_WAND = { saved: [], helped: [], helpedToday: 0 };
+const WAND_MIT_EINTRAG = {
+  saved: [
+    {
+      koId: "ko-9",
+      title: "Halterungen ohne waagerechte Oberseiten",
+      author: "Eva",
+      at: new Date().toISOString(),
+      status: "offen" as const,
+    },
+  ],
+  helped: [],
+  helpedToday: 0,
+};
+/** Der Bestand NACH einem geglückten Wiederholen — an einem anderen Titel erkennbar (Z10). */
+const WAND_NEUER_EINTRAG = {
+  saved: [
+    {
+      koId: "ko-10",
+      title: "Fluchtwege am Standort Nord",
+      author: "Eva",
+      at: new Date().toISOString(),
+      status: "offen" as const,
+    },
+  ],
+  helped: [],
+  helpedToday: 0,
+};
+
+/**
+ * Ein Abruf, der LÄUFT und den der Test selbst abschließt — RUNDE 2, Bens Korrekturpflicht 1.
+ *
+ * `haengt` unten hängt für immer; damit lässt sich „während der Nachlauf läuft" messen, aber nicht
+ * „…und danach ist er fertig". Genau diesen zweiten Halbsatz verlangt die Korrekturpflicht
+ * („anschließend erfolgreichem Abschluss"), und ohne ihn wäre „keine Verneinung" auch von einer
+ * Karte erfüllbar, die nie wieder etwas sagt.
+ */
+function aufschieber<T>(): { holen: () => Promise<T>; erfuellen: (wert: T) => void } {
+  let loesen: ((wert: T) => void) | null = null;
+  const versprechen = new Promise<T>((res) => {
+    loesen = res;
+  });
+  return { holen: () => versprechen, erfuellen: (wert) => loesen?.(wert) };
+}
 
 const leerAntwort = async (): Promise<unknown> => [];
 const haengt = (): Promise<never> => new Promise<never>(() => {});
@@ -226,6 +381,36 @@ async function wiederholenKlicken(): Promise<void> {
   await act(flush);
 }
 
+// ---- Dieselben Ablesungen an der Nachbarkarte „ZULETZT" (Z2b/Z4b) -------------------------------
+function zuletztKarte(): HTMLElement {
+  const el = container.querySelector<HTMLElement>('[data-testid="h5-zuletzt"]');
+  if (!el) {
+    throw new Error("Die Karte „ZULETZT“ fehlt");
+  }
+  return el;
+}
+const zuletztText = (): string => (zuletztKarte().textContent ?? "").replace(/\s+/g, " ");
+const zuletztZeilen = (): number =>
+  container.querySelectorAll('[data-testid="h5-zuletzt-zeile"]').length;
+const zuletztMarke = (): string | null =>
+  container.querySelector('[data-testid="h5-zuletzt-veraltet"]')?.textContent ?? null;
+const zuletztWiederholenDa = (): boolean =>
+  container.querySelector('[data-testid="h5-zuletzt-wiederholen"]') !== null;
+/** Klickt den echten Knopf DIESER Karte — sie hat ihren eigenen Wiederholen-Weg (`Start.tsx`). */
+async function zuletztWiederholenKlicken(): Promise<void> {
+  const knopf = container.querySelector<HTMLButtonElement>(
+    '[data-testid="h5-zuletzt-wiederholen"]',
+  );
+  if (!knopf) {
+    throw new Error("kein Wiederholen-Knopf in der Karte „ZULETZT“");
+  }
+  await act(async () => {
+    knopf.click();
+    await flush();
+  });
+  await act(flush);
+}
+
 const DUBLETTEN_SATZ = (): string => i18n.t("kollision.start.dublette", { n: 1 });
 
 async function netzTrennen(): Promise<void> {
@@ -247,7 +432,12 @@ async function neuBetreten(): Promise<void> {
 
 beforeEach(async () => {
   await i18n.changeLanguage("de");
-  box.kanal = { kos: leerAntwort, conflicts: leerAntwort, signal: leerAntwort };
+  box.kanal = {
+    kos: leerAntwort,
+    conflicts: leerAntwort,
+    signal: leerAntwort,
+    wall: async () => LEERE_WAND,
+  };
   onlineManager.setOnline(true);
   window.localStorage.clear();
   // Dieselbe Frist wie im Betrieb (`main.tsx:21`) — sie ERZEUGT den Fall: innerhalb der 30 s will
@@ -287,14 +477,13 @@ describe("JOB 3098 · der Befund bleibt, die Frischebehauptung geht", () => {
     // A27 rückwärts wäre der zweite Fehler: der bekannte Befund darf NICHT still verschwinden.
     expect(zeilen()).toEqual([expect.stringContaining(DUBLETTEN_SATZ())]);
     // …und die Karte behauptet nicht länger, sie sei frisch.
-    expect(veraltetMarke()).toBe(i18n.t("loadstate.stale"));
     expect(kartenText()).not.toContain(i18n.t("task.none"));
-    // OFFENE RESTSCHULD (Ben, Runde 1, Korrekturpflicht 3): der Wortlaut nennt hier eine
-    // „Aktualisierung", die es offline nie gab, und daneben steht ein Wiederholen-Knopf, der ohne
-    // Netz nichts bewirken kann. Beides sitzt in `components/start/StartKarten.tsx:133-153` und
-    // damit außerhalb der Zielpfade dieses Auftrags — s. „RESTSCHULD" in `start/forYou.ts`. Dieser
-    // Fall hält den heutigen Stand fest, statt ihn zu beschönigen.
-    expect(wiederholenDa()).toBe(true);
+    // JOB 3118: NACHGEFÜHRT. Bis hierher stand da „Veraltet – Aktualisierung fehlgeschlagen" samt
+    // Wiederholen-Knopf — eine Aktualisierung, die es offline nie gab, und eine Handlung, die ohne
+    // Netz nichts bewirken kann. Der Stand ist sichtbar (die Zeile oben), also nennt ihn der Satz.
+    expect(veraltetMarke()).toBe(i18n.t("kollision.lage.pausiert"));
+    expect(kartenText()).not.toContain(i18n.t("loadstate.stale"));
+    expect(wiederholenDa(), "ein Knopf ohne Wirkung ist eine Scheinfunktion").toBe(false);
   });
 
   it("S-2 · Seite ab, offline, Seite neu am selben QueryClient → dasselbe Ergebnis", async () => {
@@ -314,10 +503,12 @@ describe("JOB 3098 · der Befund bleibt, die Frischebehauptung geht", () => {
     expect(qc.getQueryState(["duplicate-signal"])?.status).toBe("success");
 
     expect(zeilen()).toEqual([expect.stringContaining(DUBLETTEN_SATZ())]);
-    expect(veraltetMarke()).toBe(i18n.t("loadstate.stale"));
+    // JOB 3118: NACHGEFÜHRT, mit derselben Begründung wie S-1.
+    expect(veraltetMarke()).toBe(i18n.t("kollision.lage.pausiert"));
+    expect(wiederholenDa()).toBe(false);
   });
 
-  it("S-3 · kalt offline, kein früherer Stand → keine Zeile, keine Zahl, die Störung", async () => {
+  it("S-3 · kalt offline, kein früherer Stand → keine Zeile, keine Zahl, der Satz ohne Stand", async () => {
     onlineManager.setOnline(false);
     await mount();
 
@@ -325,11 +516,52 @@ describe("JOB 3098 · der Befund bleibt, die Frischebehauptung geht", () => {
     expect(pille()).toBeNull();
     // Keine Verneinung aus dem Nichts: „Nichts offen." ist eine Aussage über den Bestand.
     expect(kartenText()).not.toContain(i18n.t("task.none"));
-    // Eine Störung darf nicht wie Leere aussehen (REGELN §7).
-    expect(wiederholenDa()).toBe(true);
+    // JOB 3118: NACHGEFÜHRT. Eine Störung darf nicht wie Leere aussehen (REGELN §7) — sichtbar ist
+    // sie jetzt als SATZ statt als Knopf. „Stand von zuletzt" wäre hier falsch: es gab nie einen.
+    expect(veraltetMarke()).toBe(i18n.t("kollision.lage.pausiertOhneStand"));
+    expect(kartenText()).not.toContain(i18n.t("loadstate.error.retry"));
+    expect(wiederholenDa()).toBe(false);
   });
 
-  it("S-10 · GEGENGEWICHT: eine wirklich gescheiterte Auffrischung bleibt, wie sie war", async () => {
+  it("S-6 · leer geladen, offline WIEDERBETRETEN → keine Verneinung, kein Knopf", async () => {
+    // DER WEG AUS BENS MESSUNG, wörtlich: „online leer laden, Netz trennen, am selben QueryClient
+    // neu mounten ergibt `Nichts offen.Veraltet – Aktualisierung fehlgeschlagenErneut versuchen`."
+    // Drei Aussagen, keine davon gedeckt. Vor JOB 3118 ist dieser Fall rot.
+    await mount();
+    expect(kartenText(), "Kalibrierung: online und leer steht die Verneinung zu Recht").toContain(
+      i18n.t("task.none"),
+    );
+
+    await netzTrennen();
+    await neuBetreten();
+
+    // Kalibrierung wie in S-2: die Abfragen RUHEN wirklich, es gibt kein `paused` zum Ablesen.
+    expect(qc.getQueryState(["conflicts"])?.fetchStatus).toBe("idle");
+
+    expect(kartenText()).not.toContain(i18n.t("task.none"));
+    expect(kartenText()).not.toContain(i18n.t("loadstate.stale"));
+    expect(veraltetMarke()).toBe(i18n.t("kollision.lage.pausiertOhneStand"));
+    expect(wiederholenKnopf()).toBeNull();
+  });
+
+  it("S-9 · offline mit Bestand → die Werte BLEIBEN, der Satz nennt den Stand, kein Knopf", async () => {
+    // Die andere Flanke von S-6: hier gibt es einen sichtbaren Stand. Er verschwindet nicht
+    // (REGELN §7), und genau deshalb darf der Satz ihn nennen.
+    box.kanal.signal = async () => [DUBLETTE];
+    await mount();
+    expect(zeilen()).toHaveLength(1);
+
+    await netzTrennen();
+    await neuBetreten();
+
+    expect(zeilen()).toEqual([expect.stringContaining(DUBLETTEN_SATZ())]);
+    expect(pille()).toBe("1");
+    expect(veraltetMarke()).toBe(i18n.t("kollision.lage.pausiert"));
+    expect(kartenText()).not.toContain(i18n.t("task.none"));
+    expect(wiederholenDa()).toBe(false);
+  });
+
+  it("S-10 · GEGENGEWICHT: gescheiterte Auffrischung — Werte bleiben, und der Knopf HILFT wirklich", async () => {
     // Ohne diesen Fall wäre der ganze Auftrag mit „offline sagt die Karte nichts mehr" erfüllbar —
     // und mit ihm ginge die Zusage aus REGELN §7 verloren: bei einem gescheiterten Versuch bleiben
     // die Werte sichtbar, der Satz nennt den Fehlschlag, und der Knopf wirkt weiterhin.
@@ -346,6 +578,307 @@ describe("JOB 3098 · der Befund bleibt, die Frischebehauptung geht", () => {
     expect(veraltetMarke()).toBe(i18n.t("loadstate.stale"));
     expect(wiederholenDa()).toBe(true);
     expect(kartenText()).not.toContain(i18n.t("task.none"));
+
+    // RUNDE 2 · Bens Korrekturpflicht 3: bis hierher maß dieser Fall nur, DASS ein Knopf dasteht.
+    // Ein Knopf, der nichts bewirkt, ist aber genau die Scheinfunktion, gegen die der ganze Job
+    // gebaut ist — gemessen wird deshalb die WIRKUNG: Server gesund, Klick, Abrufzähler, Anzeige.
+    let abrufe = 0;
+    box.kanal.signal = async () => {
+      abrufe += 1;
+      return [];
+    };
+    expect(abrufe, "der Server wurde ohne Klick gefragt").toBe(0);
+    await wiederholenKlicken();
+
+    expect(abrufe, "der Klick hat die gestörte Quelle gar nicht erreicht").toBe(1);
+    // Die Störung ist weg, und die Anzeige übernimmt die NEUE Antwort (kein Befund mehr) — hier
+    // darf die Verneinung wieder stehen, denn jetzt trägt sie ein frischer, fertiger Abruf.
+    expect(veraltetMarke()).toBeNull();
+    expect(wiederholenDa()).toBe(false);
+    expect(zeilen()).toEqual([]);
+    expect(kartenText()).toContain(i18n.t("task.none"));
+  });
+
+  it("S-12 · Fehler → Wiederholen → VERZÖGERTE Antwort → Erfolg: der ganze Weg, Schritt für Schritt", async () => {
+    // BENS GEGENPROBE AUS RUNDE 2, wörtlich: „Bestand laden → Auffrischung scheitert → Wiederholen
+    // klicken → Antwort verzögern. Bei bestätigtem `fetchStatus: fetching` zeigen beide Karten
+    // weiterhin ‚Veraltet – Aktualisierung fehlgeschlagenErneut versuchen'." S-10 endete bis dahin
+    // zu früh: dort war die Wiederholung im selben Atemzug fertig, und die Sekunden dazwischen —
+    // die der Mensch wirklich sieht — hat niemand gemessen.
+    box.kanal.signal = async () => [DUBLETTE];
+    await mount();
+
+    await act(async () => {
+      box.kanal.signal = scheitert;
+      void qc.invalidateQueries({ queryKey: ["duplicate-signal"] });
+      await flush();
+    });
+    expect(veraltetMarke()).toBe(i18n.t("loadstate.stale"));
+    expect(wiederholenDa()).toBe(true);
+
+    // Der Klick löst einen Versuch aus, der NICHT sofort antwortet.
+    let abrufe = 0;
+    const nachlauf = aufschieber<unknown>();
+    box.kanal.signal = () => {
+      abrufe += 1;
+      return nachlauf.holen();
+    };
+    await wiederholenKlicken();
+
+    // WÄHRENDDESSEN: der Versuch läuft wirklich …
+    expect(abrufe, "der Klick hat die gestörte Quelle nicht erreicht").toBe(1);
+    expect(qc.getQueryState(["duplicate-signal"])?.fetchStatus).toBe("fetching");
+    // … die Werte von vorhin bleiben stehen (REGELN §7) …
+    expect(zeilen()).toEqual([expect.stringContaining(DUBLETTEN_SATZ())]);
+    expect(pille()).toBe("1");
+    // … und die Karte sagt weder „fehlgeschlagen" (der Satz gälte dem VORIGEN Versuch) noch bietet
+    // sie einen zweiten Knopf an, der nichts hinzufügt (§9: „läuft schon").
+    expect(veraltetMarke()).toBeNull();
+    expect(kartenText()).not.toContain(i18n.t("loadstate.stale"));
+    expect(wiederholenDa()).toBe(false);
+    expect(kartenText()).not.toContain(i18n.t("task.none"));
+
+    // DANACH: die verzögerte Antwort kommt an und wird übernommen.
+    await act(async () => {
+      nachlauf.erfuellen([]);
+      await flush();
+    });
+    expect(qc.getQueryState(["duplicate-signal"])?.fetchStatus).toBe("idle");
+    expect(zeilen()).toEqual([]);
+    expect(veraltetMarke()).toBeNull();
+    expect(wiederholenDa()).toBe(false);
+    expect(kartenText()).toContain(i18n.t("task.none"));
+  });
+
+  // ----------------------------------------------------------------------------------------------
+  // S-11 · WÄHREND EIN ABRUF LÄUFT (Bens Korrekturpflicht 1)
+  // ----------------------------------------------------------------------------------------------
+  //
+  // Bens Messung an Runde 1, wörtlich: „Nach leerem Erstabruf und anschließend hängendem Nachlauf
+  // steht bei bestätigtem `fetchStatus: fetching` weiterhin ‚Nichts offen.'." Das ist die Zeile
+  // „Cache + laufende Auffrischung → keine Verneinung" aus §9, und sie fehlte. Beide Hälften stehen
+  // hier: die Behauptung geht (S-11a), die Werte bleiben (S-11b) — und beide Male kommt die
+  // Auskunft nach dem ABSCHLUSS des Abrufs zurück, statt für immer zu verstummen.
+  it("S-11a · leer geladen, Nachlauf läuft → keine Verneinung; nach Abschluss steht sie wieder", async () => {
+    await mount();
+    expect(kartenText(), "Kalibrierung: nach fertigem leerem Abruf steht die Verneinung").toContain(
+      i18n.t("task.none"),
+    );
+
+    const nachlauf = aufschieber<unknown>();
+    box.kanal.signal = nachlauf.holen;
+    await act(async () => {
+      void qc.invalidateQueries({ queryKey: ["duplicate-signal"] });
+      await flush();
+    });
+
+    // KALIBRIERUNG: der Abruf läuft wirklich — sonst misst dieser Fall gar nichts.
+    expect(qc.getQueryState(["duplicate-signal"])?.fetchStatus).toBe("fetching");
+    expect(kartenText()).not.toContain(i18n.t("task.none"));
+    // Und er ist kein Fehler und keine Pause: kein Datenlagesatz, kein Knopf (§9, „läuft schon").
+    expect(veraltetMarke()).toBeNull();
+    expect(wiederholenDa()).toBe(false);
+
+    await act(async () => {
+      nachlauf.erfuellen([]);
+      await flush();
+    });
+
+    expect(qc.getQueryState(["duplicate-signal"])?.fetchStatus).toBe("idle");
+    expect(kartenText(), "nach dem Abschluss schweigt die Karte weiter").toContain(
+      i18n.t("task.none"),
+    );
+  });
+
+  it("S-11b · mit Bestand, Nachlauf läuft → Zeile und Pille BLEIBEN stehen", async () => {
+    // Die andere Hälfte der Korrekturpflicht: „und vorhandene Werte bleiben". Ein Nachlauf, der die
+    // Karte leerräumt, wäre REGELN §7 rückwärts.
+    box.kanal.signal = async () => [DUBLETTE];
+    await mount();
+    expect(zeilen()).toHaveLength(1);
+
+    const nachlauf = aufschieber<unknown>();
+    box.kanal.signal = nachlauf.holen;
+    await act(async () => {
+      void qc.invalidateQueries({ queryKey: ["duplicate-signal"] });
+      await flush();
+    });
+
+    expect(qc.getQueryState(["duplicate-signal"])?.fetchStatus).toBe("fetching");
+    expect(zeilen()).toEqual([expect.stringContaining(DUBLETTEN_SATZ())]);
+    expect(pille()).toBe("1");
+    expect(veraltetMarke()).toBeNull();
+    expect(wiederholenDa()).toBe(false);
+
+    await act(async () => {
+      nachlauf.erfuellen([DUBLETTE]);
+      await flush();
+    });
+    expect(zeilen()).toEqual([expect.stringContaining(DUBLETTEN_SATZ())]);
+  });
+});
+
+// ------------------------------------------------------------------------------------------------
+// Z2b/Z4b · DIE NACHBARKARTE — zwei Sätze, EINE Regel
+// ------------------------------------------------------------------------------------------------
+//
+// Die naheliegende Halbheit wäre, nur „FÜR DICH" anzufassen: die zwei Karten liegen nebeneinander,
+// Ben hat beide gemessen, und „Noch nichts erfasst." ist genauso eine Verneinung des Bestands wie
+// „Nichts offen.". Die Sätze bleiben verschieden (hier ist nichts ERFASST, dort nichts OFFEN); die
+// Entscheidung, ob sie stehen dürfen, ist dieselbe.
+describe("JOB 3118 · „ZULETZT“ folgt derselben Regel wie „FÜR DICH“", () => {
+  it("Z2b · leer geladen, offline wiederbetreten → kein „nichts erfasst“, kein Knopf", async () => {
+    await mount();
+    expect(zuletztText(), "Kalibrierung: online und leer steht der Satz zu Recht").toContain(
+      i18n.t("start.zuletzt.leer"),
+    );
+
+    await netzTrennen();
+    await neuBetreten();
+
+    expect(zuletztText()).not.toContain(i18n.t("start.zuletzt.leer"));
+    expect(zuletztText()).not.toContain(i18n.t("loadstate.stale"));
+    expect(zuletztMarke()).toBe(i18n.t("kollision.lage.pausiertOhneStand"));
+    expect(zuletztWiederholenDa()).toBe(false);
+  });
+
+  it("Z4b · mit Bestand, offline wiederbetreten → die Einträge BLEIBEN, Satz mit Stand, kein Knopf", async () => {
+    box.kanal.wall = async () => WAND_MIT_EINTRAG;
+    await mount();
+    expect(zuletztZeilen()).toBe(1);
+
+    await netzTrennen();
+    await neuBetreten();
+
+    expect(zuletztZeilen(), "die zuletzt geholten Einträge wurden geleert").toBe(1);
+    expect(zuletztText()).toContain(WAND_MIT_EINTRAG.saved[0]?.title ?? "");
+    expect(zuletztMarke()).toBe(i18n.t("kollision.lage.pausiert"));
+    expect(zuletztWiederholenDa()).toBe(false);
+  });
+
+  it("Z10 · GEGENGEWICHT: gescheiterte Auffrischung — Satz, Knopf, und der Knopf HILFT wirklich", async () => {
+    // Dasselbe Gegengewicht wie S-10, an dieser Karte: ohne es wäre Z2b/Z4b mit „der Knopf ist
+    // weg" erfüllbar, und die Zusage aus REGELN §7 ginge an der Nachbarkarte verloren.
+    box.kanal.wall = async () => WAND_MIT_EINTRAG;
+    await mount();
+
+    await act(async () => {
+      box.kanal.wall = scheitert;
+      void qc.invalidateQueries({ queryKey: ["livewall"] });
+      await flush();
+    });
+
+    expect(zuletztZeilen()).toBe(1);
+    expect(zuletztMarke()).toBe(i18n.t("loadstate.stale"));
+    expect(zuletztWiederholenDa()).toBe(true);
+
+    // RUNDE 2 · Bens Korrekturpflicht 3, an dieser Karte: der Weg aus der Störung heraus wird an
+    // der WIRKUNG gemessen. Die Karte hat ihren EIGENEN Wiederholen-Weg (`liveWall.refetch`), und
+    // dass sie ihn hat, sieht man nur, wenn danach ihr eigener Bestand steht.
+    let abrufe = 0;
+    box.kanal.wall = async () => {
+      abrufe += 1;
+      return WAND_NEUER_EINTRAG;
+    };
+    await zuletztWiederholenKlicken();
+
+    expect(abrufe, "der Klick hat die Live-Wall gar nicht erreicht").toBe(1);
+    expect(zuletztMarke()).toBeNull();
+    expect(zuletztWiederholenDa()).toBe(false);
+    expect(zuletztText()).toContain(WAND_NEUER_EINTRAG.saved[0]?.title ?? "");
+    expect(zuletztText()).not.toContain(WAND_MIT_EINTRAG.saved[0]?.title ?? "");
+  });
+
+  it("Z12 · Fehler → Wiederholen → VERZÖGERTE Antwort → Erfolg, an der Nachbarkarte", async () => {
+    // Bens Gegenprobe traf BEIDE Karten; sie steht deshalb auch hier, mit dem eigenen
+    // Wiederholen-Weg dieser Karte (`liveWall.refetch`).
+    box.kanal.wall = async () => WAND_MIT_EINTRAG;
+    await mount();
+
+    await act(async () => {
+      box.kanal.wall = scheitert;
+      void qc.invalidateQueries({ queryKey: ["livewall"] });
+      await flush();
+    });
+    expect(zuletztMarke()).toBe(i18n.t("loadstate.stale"));
+    expect(zuletztWiederholenDa()).toBe(true);
+
+    let abrufe = 0;
+    const nachlauf = aufschieber<unknown>();
+    box.kanal.wall = () => {
+      abrufe += 1;
+      return nachlauf.holen();
+    };
+    await zuletztWiederholenKlicken();
+
+    expect(abrufe).toBe(1);
+    expect(qc.getQueryState(["livewall"])?.fetchStatus).toBe("fetching");
+    expect(zuletztZeilen(), "die Einträge wurden während des Versuchs geleert").toBe(1);
+    expect(zuletztMarke()).toBeNull();
+    expect(zuletztText()).not.toContain(i18n.t("loadstate.stale"));
+    expect(zuletztWiederholenDa()).toBe(false);
+    expect(zuletztText()).not.toContain(i18n.t("start.zuletzt.leer"));
+
+    await act(async () => {
+      nachlauf.erfuellen(WAND_NEUER_EINTRAG);
+      await flush();
+    });
+    expect(qc.getQueryState(["livewall"])?.fetchStatus).toBe("idle");
+    expect(zuletztText()).toContain(WAND_NEUER_EINTRAG.saved[0]?.title ?? "");
+    expect(zuletztText()).not.toContain(WAND_MIT_EINTRAG.saved[0]?.title ?? "");
+    expect(zuletztMarke()).toBeNull();
+    expect(zuletztWiederholenDa()).toBe(false);
+  });
+
+  it("Z11a · leer geladen, Nachlauf läuft → kein „nichts erfasst“; nach Abschluss steht es wieder", async () => {
+    await mount();
+    expect(zuletztText(), "Kalibrierung: nach fertigem leerem Abruf steht der Satz").toContain(
+      i18n.t("start.zuletzt.leer"),
+    );
+
+    const nachlauf = aufschieber<unknown>();
+    box.kanal.wall = nachlauf.holen;
+    await act(async () => {
+      void qc.invalidateQueries({ queryKey: ["livewall"] });
+      await flush();
+    });
+
+    expect(qc.getQueryState(["livewall"])?.fetchStatus).toBe("fetching");
+    expect(zuletztText()).not.toContain(i18n.t("start.zuletzt.leer"));
+    expect(zuletztMarke()).toBeNull();
+    expect(zuletztWiederholenDa()).toBe(false);
+
+    await act(async () => {
+      nachlauf.erfuellen(LEERE_WAND);
+      await flush();
+    });
+
+    expect(qc.getQueryState(["livewall"])?.fetchStatus).toBe("idle");
+    expect(zuletztText()).toContain(i18n.t("start.zuletzt.leer"));
+  });
+
+  it("Z11b · mit Bestand, Nachlauf läuft → die Einträge BLEIBEN stehen", async () => {
+    box.kanal.wall = async () => WAND_MIT_EINTRAG;
+    await mount();
+    expect(zuletztZeilen()).toBe(1);
+
+    const nachlauf = aufschieber<unknown>();
+    box.kanal.wall = nachlauf.holen;
+    await act(async () => {
+      void qc.invalidateQueries({ queryKey: ["livewall"] });
+      await flush();
+    });
+
+    expect(qc.getQueryState(["livewall"])?.fetchStatus).toBe("fetching");
+    expect(zuletztZeilen(), "der laufende Nachlauf hat die Karte geleert").toBe(1);
+    expect(zuletztText()).toContain(WAND_MIT_EINTRAG.saved[0]?.title ?? "");
+    expect(zuletztMarke()).toBeNull();
+
+    await act(async () => {
+      nachlauf.erfuellen(WAND_MIT_EINTRAG);
+      await flush();
+    });
+    expect(zuletztZeilen()).toBe(1);
   });
 });
 

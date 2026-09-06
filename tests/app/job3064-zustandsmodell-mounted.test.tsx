@@ -102,7 +102,16 @@ const WAND = {
   helpful: [],
 };
 
-/** `ZuletztKarte` allein montiert — die Lage wird als Eingabe gesetzt, nicht simuliert. */
+/**
+ * `ZuletztKarte` allein montiert — die Lage wird als Eingabe gesetzt, nicht simuliert.
+ *
+ * JOB 3118 (Q6e): die Karte verlangt Lage, Onlinezustand und laufende Auffrischung jetzt als EIN
+ * Pflichtbündel (`Kartenlage`, ohne Vorgabewert, `forYou.ts`). DIESE Fälle messen die vier Lagen
+ * AM NETZ und OHNE laufenden Nachlauf — deshalb `online: true`, `auffrischung: false`. Die
+ * Offline-Fälle derselben Karte stehen in
+ * `tests/kollision-netztrennung/start-fuerdich-offline.test.tsx` (Z2b, Z4b), der laufende Nachlauf
+ * ebenfalls dort (Z11, Z12).
+ */
 async function zuletzt(
   lage: ForYouLage,
   daten: typeof WAND | undefined,
@@ -118,7 +127,7 @@ async function zuletzt(
         MemoryRouter,
         null,
         createElement(ZuletztKarte, {
-          lage,
+          kartenlage: { lage, online: true, auffrischung: false },
           daten: daten as never,
           jetzt: JETZT,
           onWiederholen: () => {

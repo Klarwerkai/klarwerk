@@ -3708,8 +3708,20 @@ describe("JOB 1181 · Klassenbindungen: aufgelöst oder gemeldet, kein dritter Z
     // Sie ist die sichtbare Hälfte der neuen Pflicht: ein abgewiesener Einreichversuch markiert das
     // Feld, statt einen Erklärsatz danebenzustellen. Die Auswahl steht an ZWEI Aufrufstellen im
     // Baum, aber nur EINMAL im Quelltext (`vertraulichkeitsWahl`) — deshalb auch nur eine Bindung.
+    // JOB 3118 (Q6e): von 211 auf 212. GENAU EINE Bindung ist DAZUGEKOMMEN, und sie ist von
+    // derselben Bauform wie die Plaketten daneben (ein Zustand entscheidet zwischen zwei festen
+    // Klassenketten):
+    //
+    //     + components/start/StartKarten.tsx — `satzKey === null
+    //           ? "inline-flex items-center gap-1.5 text-[14px] …"
+    //           : "inline-flex shrink-0 items-center gap-1 text-[12.5px] …"`   (Datenlagezeile)
+    //
+    // Sie hält den bestehenden Unterschied zwischen den ZWEI Erscheinungsformen des
+    // Wiederholen-Knopfs fest, die vorher als zwei getrennte Zweige im Baum standen: allein in
+    // seiner Zeile ist er die Handlung (14 px), neben dem Datenlagesatz die Beigabe (12,5 px).
+    // Der Zuwachs ist die Zusammenführung dieser zwei Zweige zu einem Bauteil, keine neue Form.
     expect(UNAUFGELOEST.length, "es gibt heute unauflösbare Bindungen — das ist der Befund").toBe(
-      211,
+      212,
     );
     for (const b of UNAUFGELOEST) {
       expect(b.datei, "Meldung ohne Datei").toMatch(/^apps\/web\/src\/.+\.tsx?$/);

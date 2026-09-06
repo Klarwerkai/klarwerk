@@ -43,35 +43,39 @@
 // nicht, ist eine Eigenschaft seiner Frist und keine Aussage über den Bestand.
 //
 // ------------------------------------------------------------------------------------------------
-// RESTSCHULD, EHRLICH BENANNT (JOB 3098 Runde 2/3) — DIE LAGE STIMMT, DIE ANZEIGE NOCH NICHT.
+// JOB 3118 (Q6e) — WAS DIE KARTE AUS DER LAGE MACHT, ENTSCHEIDET JETZT AUCH DIESE DATEI.
 // ------------------------------------------------------------------------------------------------
 //
-// `forYouLage()` beantwortet den Onlinezustand seit JOB 3098 richtig. WAS DIE KARTE DARAUS MACHT,
-// entscheidet sie aber selbst — und dort ist es noch falsch. Ben hat es an der gemounteten Seite
-// gemessen (Runde 1, wörtlich): „online leer laden, Netz trennen, am selben QueryClient neu mounten
-// ergibt wörtlich `Nichts offen.Veraltet – Aktualisierung fehlgeschlagenErneut versuchen`."
-// Drei Fehler in einer Zeile, und KEINER davon steckt in dieser Datei:
-//   1. „Nichts offen." ist eine VERNEINUNG des Bestands aus einem Stand, der nicht mehr gilt. Sie
-//      hängt an `zeigtBestand()` (unten), das für `frisch` UND `veraltet` wahr ist — richtig für
-//      die geholten WERTE (REGELN §7: nie leeren), falsch für die Verneinung. Beides hängt heute
-//      an einem einzigen Merkmal.
-//   2. „Aktualisierung fehlgeschlagen" (`loadstate.stale`) behauptet einen gescheiterten Versuch —
-//      offline hat es gar keinen gegeben; die Abfrage ruht. Die richtigen Sätze bestehen bereits:
-//      `kollision.lage.pausiert` (mit Stand) und `…pausiertOhneStand` (ohne).
-//   3. „Erneut versuchen" verspricht eine Handlung, die ohne Netz nichts bewirken kann (REGELN §7,
-//      Auftrag §9). `lib/eigeneKollision.ts:205-207` (`wiederholenSinnvoll`) trifft dieselbe
-//      Entscheidung für die Kollisionsauskunft seit JOB 3084 richtig.
+// `forYouLage()` beantwortete den Onlinezustand seit JOB 3098 richtig; die Karte machte daraus
+// weiterhin drei Unwahrheiten. Ben hat sie an der gemounteten Seite gemessen (JOB 3098 Runde 1,
+// wörtlich): „online leer laden, Netz trennen, am selben QueryClient neu mounten ergibt wörtlich
+// `Nichts offen.Veraltet – Aktualisierung fehlgeschlagenErneut versuchen`." Alle drei standen in
+// `components/start/StartKarten.tsx`, das AUSSERHALB der Zielpfade von JOB 3098 lag; die Vorprüfung
+// des Tors (`takt/schritte.py:822`) hat Runde 2 daran rot gemacht. JOB 3118 nimmt die Datei auf und
+// löst die drei Entscheidungen aus der Anzeige heraus — hierher, DOM-frei und ohne React:
+//   1. `entwarnungErlaubt()` — eine VERNEINUNG des Bestands („Nichts offen.", „Noch nichts
+//      erfasst.") steht nur, wenn ein frischer, abgeschlossener Abruf sie trägt. Bis hierher hing
+//      sie an `zeigtBestand()`, das für `frisch` UND `veraltet` wahr ist: richtig für die geholten
+//      WERTE (REGELN §7: nie leeren), falsch für die Verneinung. Das sind zwei Fragen, und sie
+//      haben jetzt zwei Funktionen. Runde 2 hat den dritten Eingang ergänzt: solange ein Abruf
+//      LÄUFT (`auffrischungLaeuft()`), steht keine Verneinung — Bens Korrekturpflicht 1. Runde 3
+//      hat ihn an ALLE DREI Entscheidungen gereicht (`Kartenlage`), nachdem er in Runde 2 nur bei
+//      dieser einen ankam.
+//   2. `datenlageKey()` — „Aktualisierung fehlgeschlagen" (`loadstate.stale`) behauptet einen
+//      gescheiterten Versuch; offline hat es gar keinen gegeben, die Abfrage ruht. Ohne Netz steht
+//      deshalb `kollision.lage.pausiert` (mit sichtbarem Stand) bzw. `…pausiertOhneStand` (ohne).
+//   3. `wiederholenSinnvoll()` — „Erneut versuchen" verspricht eine Handlung, die ohne Netz nichts
+//      bewirken kann (REGELN §7). Der Knopf steht nur, wenn ein Versuch jetzt etwas ändern kann.
 //
-// WARUM ES HIER NICHT BEHOBEN IST: alle drei Stellen stehen in `components/start/StartKarten.tsx`
-// (`:113` die Verneinung, `:133-153` Satz und Knopf), und diese Datei liegt AUSSERHALB der
-// Zielpfade von JOB 3098. Ben hat die Aufnahme in seiner Korrekturpflicht 3 ausdrücklich verlangt
-// („dafür `StartKarten.tsx` ausdrücklich in die Zielpfade aufnehmen"); die Vorprüfung des Tors
-// (`takt/schritte.py:822`) hat Runde 2 daran rot gemacht, bevor das Tor überhaupt lief. Der Weg ist
-// damit eine Auftragsentscheidung und keine Bauentscheidung — und ein Vorbau hier wäre toter Code
-// ohne Aufrufer (`tests/capture/aufrufer-waechter.test.ts`).
+// DAS VORBILD IST `lib/eigeneKollision.ts:166-207` (`bestandsaussageErlaubt`, `datenlageKeyFuer`,
+// `wiederholenSinnvoll`), das dieselben drei Fragen für die Kollisionsauskunft seit JOB 3084 richtig
+// beantwortet. Der EINE Unterschied, der die Signaturen erklärt: dort trägt die Lage `pausiert` das
+// Offline schon in sich, hier fällt `!online` in die BESTEHENDEN Lagen `veraltet`/`gescheitert` —
+// dieselbe Lage entsteht also aus zwei verschiedenen Sachverhalten, und nur der Onlinezustand
+// unterscheidet sie. Deshalb ist er Eingang aller drei Funktionen, wie schon bei `forYouLage`.
 //
-// ES ENTSTÜNDE AUCH DANN KEINE FÜNFTE LAGE: die drei Entscheidungen lesen die vier bestehenden
-// Lagen zusammen mit dem Onlinezustand, den `forYouLage` ohnehin schon kennt.
+// ES ENTSTEHT KEINE FÜNFTE LAGE: die drei Entscheidungen lesen die vier bestehenden Lagen zusammen
+// mit dem Onlinezustand, den `forYouLage` ohnehin schon kennt.
 export type ForYouSeverity = "critical" | "today" | "later";
 
 /**
@@ -91,6 +95,13 @@ export interface ForYouQuelle {
   readonly data: unknown;
   readonly isError?: boolean;
   readonly isPaused?: boolean;
+  /**
+   * Läuft an dieser Quelle GERADE ein Abruf? (react-query `isFetching` — der Erstabruf ebenso wie
+   * die Auffrischung.) Sie steht NICHT in `forYouLage`: ein laufender Nachlauf ist keine eigene
+   * Lage, er ändert nichts an den Daten, die dastehen. Er ändert nur, ob man JETZT schon etwas
+   * über den Bestand BEHAUPTEN darf — s. `auffrischungLaeuft()` und `entwarnungErlaubt()`.
+   */
+  readonly isFetching?: boolean;
 }
 
 /**
@@ -112,9 +123,123 @@ export function forYouLage(quellen: readonly ForYouQuelle[], online: boolean): F
   return "laedt";
 }
 
-/** Trägt die Lage überhaupt eine Aussage über den Bestand? Nur `frisch` und `veraltet`. */
+/**
+ * Dürfen die zuletzt geholten WERTE dastehen (Zeilen, Einträge, Zahl-Pille)? `frisch` und
+ * `veraltet` — REGELN §7, erster Satz: eine gescheiterte oder ruhende Auffrischung leert nichts.
+ *
+ * DIESE FUNKTION TRÄGT SEIT JOB 3118 NICHT MEHR DIE VERNEINUNG. Dass „hier stehen die alten Werte"
+ * und „hier steht, dass es nichts gibt" an einem einzigen Merkmal hingen, WAR der Fehler; die
+ * Verneinung beantwortet `entwarnungErlaubt()` unten.
+ */
 export function zeigtBestand(lage: ForYouLage): boolean {
   return lage === "frisch" || lage === "veraltet";
+}
+
+// ------------------------------------------------------------------------------------------------
+// Die drei Entscheidungen der Karte (JOB 3118 · Q6e) — DOM-frei, für beide Karten dieselben
+// ------------------------------------------------------------------------------------------------
+
+/**
+ * Läuft an irgendeiner Quelle der Karte gerade ein Abruf?
+ *
+ * BENS BEFUND AN RUNDE 1 (Korrekturpflicht 1), gemessen: leerer Erstabruf, danach ein hängender
+ * Nachlauf — `fetchStatus: "fetching"` bestätigt — und die Karte schrieb weiter „Nichts offen."
+ * bzw. „Noch nichts erfasst.". Die Zeile „Cache + laufende Auffrischung → keine Verneinung" aus §9
+ * des Auftrags fehlte. `forYouLage` kann sie nicht tragen: mit Daten und ohne Störung ist die Lage
+ * `frisch`, und ein laufender Nachlauf ist KEINE fünfte Lage (Auftrag §10) — er nimmt der Anzeige
+ * nichts weg, er nimmt ihr nur das Recht auf die Behauptung.
+ */
+export function auffrischungLaeuft(quellen: readonly ForYouQuelle[]): boolean {
+  return quellen.some((q) => q.isFetching === true);
+}
+
+/**
+ * DIE DREI EINGÄNGE JEDER ANZEIGEENTSCHEIDUNG — als benanntes Bündel, nicht als drei Wahrheitswerte
+ * in einer Reihe.
+ *
+ * RUNDE 3, aus Bens Befund gelernt: der laufende Abruf war in Runde 2 nur bei EINER der drei Fragen
+ * angekommen. Genau so entsteht dieser Fehler — jede Runde ein Eingang mehr, und irgendwo bleibt
+ * eine Frage zurück. Das Bündel macht daraus einen Griff: die Karte baut es EINMAL und reicht es an
+ * alle drei. Wer einen vierten Eingang ergänzt, ergänzt ihn hier und sieht sofort jede Stelle, die
+ * ihn lesen müsste; und `datenlageKey(kartenlage, hatStand)` kann seine zwei Angaben nicht mehr
+ * lautlos vertauschen, weil sie verschiedene Typen haben.
+ */
+export interface Kartenlage {
+  readonly lage: ForYouLage;
+  /** Onlinezustand des Geräts (`lib/netzzustand.ts`). */
+  readonly online: boolean;
+  /** `auffrischungLaeuft()` über DIESELBEN Quellen, aus denen `lage` stammt. */
+  readonly auffrischung: boolean;
+}
+
+/**
+ * Darf eine VERNEINUNG des Bestands stehen („Nichts offen.", „Noch nichts erfasst.")?
+ *
+ * Nur aus `frisch`, genau wie `bestandsaussageErlaubt()` im Vorbild (`lib/eigeneKollision.ts:166`).
+ * Eine Verneinung ist eine Tatsachenaussage über JETZT; ein Zwischenspeicher von vorhin trägt sie
+ * nicht — und ein Abruf, der gerade läuft, ist die ausdrückliche Auskunft, dass der Stand von
+ * vorhin nicht mehr für JETZT einsteht. Dieselbe Trennung wie im Vorbild, wo `auffrischung_laeuft`
+ * eine eigene Lage ist und `bestandsaussageErlaubt()` dort falsch liefert
+ * (`lib/eigeneKollision.ts:166-168`).
+ *
+ * WARUM `online` TROTZDEM DASTEHT, obwohl `forYouLage(quellen, online)` bei `!online` nie `frisch`
+ * liefert: die Zusage „ohne Netz keine Verneinung" hängt sonst an einer Herleitung durch eine
+ * ZWEITE Funktion. Sie ist hier ausgesprochen und in `tests/kollision-netztrennung/…` einzeln
+ * geprüft, statt aus dem Zusammenspiel zu folgen.
+ */
+export function entwarnungErlaubt(k: Kartenlage): boolean {
+  return k.online && !k.auffrischung && k.lage === "frisch";
+}
+
+/**
+ * Welcher Satz beschreibt die Datenlage ehrlich — oder keiner?
+ *
+ * `frisch` und `laedt` tragen keinen: dort steht die Sache selbst bzw. ausdrücklich nichts (§9).
+ * OHNE NETZ gibt es keinen gescheiterten Versuch, den man melden könnte: die Abfrage ruht. Dann
+ * sagt der Satz nur, dass gerade nicht geprüft werden kann — mit sichtbarem Stand „Stand von
+ * zuletzt", ohne ihn der Satz ohne Stand. Die Begründung dafür steht wortgleich in
+ * `lib/eigeneKollision.ts:180-198`: wer beim kalten Offline-Einstieg „Stand von zuletzt" schreibt,
+ * behauptet einen Stand, den es nie gab.
+ *
+ * WÄHREND EIN ABRUF LÄUFT, steht hier NICHTS (Bens Korrekturpflicht 1 aus Runde 2, gemessen:
+ * Bestand laden, Auffrischung scheitert, Wiederholen klicken, Antwort verzögern — die Karte schrieb
+ * weiter „Veraltet – Aktualisierung fehlgeschlagen"). Das ist ein Satz über den LETZTEN Versuch,
+ * während der nächste schon unterwegs ist; §9 sagt für diese Zeile ausdrücklich „nichts".
+ *
+ * `gescheitert` MIT Netz trägt hier bewusst keinen Satz: dort steht die Störung als
+ * Wiederholen-Knopf (§9, „Störung sichtbar"), und eine Knopfbeschriftung ist kein Erklärtext.
+ *
+ * @param hatStand Stehen wirklich Werte von vorhin auf der Karte? Nicht „es gab mal einen Abruf":
+ *   eine leer geladene Karte zeigt nichts, und „Stand von zuletzt" wäre dort ein Verweis auf einen
+ *   Stand, den der Mensch nirgends sieht.
+ */
+export function datenlageKey(k: Kartenlage, hatStand: boolean): string | null {
+  if (k.lage === "frisch" || k.lage === "laedt") {
+    return null;
+  }
+  if (!k.online) {
+    // Vor der Auffrischungsfrage: ohne Netz RUHT jeder Abruf (`fetchStatus: "paused"`, nicht
+    // `"fetching"`), und der Offline-Satz ist die stärkere Auskunft — er sagt, warum nichts geht.
+    return hatStand ? "kollision.lage.pausiert" : "kollision.lage.pausiertOhneStand";
+  }
+  if (k.auffrischung) {
+    return null;
+  }
+  return k.lage === "veraltet" ? "loadstate.stale" : null;
+}
+
+/**
+ * Kann ein Versuch JETZT etwas ändern? Nur dann wird ein Knopf angeboten.
+ *
+ * Ohne Netz scheitert jeder Versuch, solange das Netz fehlt; bei `laedt` und WÄHREND EINES
+ * LAUFENDEN ABRUFS läuft bereits einer — §9, „nein (läuft schon)". Der zweite Halbsatz ist Bens
+ * Korrekturpflicht 1 aus Runde 2: nach einem Fehlschlag blieb der Knopf während der von ihm
+ * ausgelösten Wiederholung stehen und lud zum zweiten Klick ein, der nichts hinzufügt. Ein Knopf,
+ * der nichts bewirkt, wäre eine Scheinfunktion (REGELN §7) — dieselbe Entscheidung wie
+ * `lib/eigeneKollision.ts:205-207`.
+ */
+export function wiederholenSinnvoll(k: Kartenlage): boolean {
+  return k.online && !k.auffrischung && (k.lage === "gescheitert" || k.lage === "veraltet");
 }
 
 // ------------------------------------------------------------------------------------------------

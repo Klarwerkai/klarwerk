@@ -250,10 +250,19 @@ describe("Block C: Start-Arbeitsübersicht zeigt ehrlichen Ladezustand statt vor
       await flush();
     });
 
-    // Der zuletzt geholte Stand bleibt sichtbar (kein Initialfehler-Sturz) …
-    expect(karte().textContent).toContain(i18n.t("task.none"));
-    // … aber als veraltet/gestört markiert.
+    // Der zuletzt geholte Stand bleibt sichtbar (kein Initialfehler-Sturz) — hier ist er LEER,
+    // also bleibt sichtbar: keine Zeile, keine Pille …
+    expect(zeilen()).toBe(0);
+    expect(pille()).toBeNull();
+    // … und die Störung ist markiert und bedienbar.
     erwarteVeraltet();
+    expect(wiederholen()).not.toBeNull();
+    // JOB 3118 (Q6e) · NACHGEFÜHRT: bis hierher verlangte dieser Fall, dass „Nichts offen." nach
+    // dem GESCHEITERTEN Nachlauf weiter dasteht. Das ist die Verneinung des Bestands aus einem
+    // Stand, der nicht mehr gilt — §9 des Auftrags lässt sie in genau EINER Lage zu (`frisch`).
+    // Die geholten WERTE bleiben unverändert stehen (REGELN §7, oben gemessen); die AUSSAGE
+    // „es gibt nichts" bleibt nicht, weil sie niemand mehr belegt.
+    expect(karte().textContent).not.toContain(i18n.t("task.none"));
   });
 });
 
