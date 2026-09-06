@@ -27,7 +27,6 @@ import {
   type FacetRange,
   facetRailGroups,
   facetRangeFromParams,
-  facetRangeFromSaved,
   isFacetRangeActive,
   matchesFacetRange,
   pruneDependentSelection,
@@ -48,10 +47,8 @@ import {
   LIBRARY_GROUP_KEYS,
   type LibraryGroupKey,
   type LibrarySavedView,
-  foldStatusIntoMaturity,
   groupByFacet,
   libraryFilterValues,
-  migrateSavedFacetSelection,
   readLibraryViews,
   removeLibraryView,
   saveLibraryView,
@@ -67,6 +64,10 @@ import {
   parseLibraryScope,
 } from "../../lib/libraryOwnScope";
 import { EMPTY_LIBRARY_FILTER, buildLibraryQuery } from "../../lib/libraryQuery";
+import {
+  readLibrarySavedViewState,
+  sameLibrarySavedViewState,
+} from "../../lib/librarySavedViewState";
 import { type MatchField, searchLibrary } from "../../lib/librarySearch";
 import {
   DEFAULT_LIBRARY_SORT,
@@ -436,14 +437,32 @@ export function BibliothekFlaeche({
     };
   }, [all.data, conflicts.data]);
 
-  // Gespeicherte Sichten — LOKAL je Nutzer, unverändert (kein Server-Speicher).
+  // Sichten und Bedienzustand gehören zur Nutzerkennung. Beim Wechsel wird die alte Liste
+  // schon vor dem Leseeffekt ausgeblendet; Name und Löschziel werden gemeinsam zurückgesetzt.
   const viewsUserId = user?.id ?? "anon";
-  const [savedViews, setSavedViews] = useState<LibrarySavedView[]>([]);
+  const [viewStore, setViewStore] = useState<{ userId: string; views: LibrarySavedView[] }>({
+    userId: viewsUserId,
+    views: [],
+  });
+  const savedViews = viewStore.userId === viewsUserId ? viewStore.views : [];
+  const setSavedViews = (views: LibrarySavedView[]): void =>
+    setViewStore({ userId: viewsUserId, views });
   const [viewName, setViewName] = useState("");
   const [activeView, setActiveView] = useState("");
+  const [viewError, setViewError] = useState(false);
   useEffect(() => {
-    setSavedViews(readLibraryViews(window.localStorage, viewsUserId));
+    let views: LibrarySavedView[] = [];
+    try {
+      views = readLibraryViews(window.localStorage, viewsUserId);
+    } catch {
+      // Auch der Zugriff auf window.localStorage selbst kann gesperrt sein.
+    }
+    setViewStore({ userId: viewsUserId, views });
+    setActiveView("");
+    setViewName("");
+    setViewError(false);
   }, [viewsUserId]);
+  const currentViewState = { q, facetSel: wirksameAuswahl, range, groupBy, segment, scope };
 
   const facetValueLabel = (key: string, value: string): string => {
     switch (key) {
@@ -627,16 +646,33 @@ export function BibliothekFlaeche({
     );
   };
   const applyView = (view: LibrarySavedView): void => {
-    const s = view.state as { q?: string; groupBy?: string };
-    setQ(s.q ?? "");
-    // Auch hier: eine gemerkte Sicht ist eine getroffene Wahl und schlägt den Keim aus der Adresse.
+    const s = readLibrarySavedViewState(view.state, LIBRARY_FACET_PARAM_KEYS);
+    setQ(s.q);
     keimVerbrauchen();
-    setFacetSel(foldStatusIntoMaturity(migrateSavedFacetSelection(view.state)));
-    setRange(facetRangeFromSaved(view.state));
-    setGroupBy(
-      LIBRARY_GROUP_KEYS.includes(s.groupBy as LibraryGroupKey)
-        ? (s.groupBy as LibraryGroupKey)
-        : "none",
+    setFacetSel(s.facetSel);
+    setRange(s.range);
+    setGroupBy(s.groupBy);
+    // Ein URL-Schreibvorgang: zwei setParams-Aufrufe im selben Ereignis bauen auf derselben
+    // alten Adresse auf und könnten Segment/Scope oder Facetten gegenseitig überschreiben.
+    // Auch q steht sofort daneben, damit die entprellte Suchfortschreibung nichts zurücksetzt.
+    letzteAdressSuche.current = s.q;
+    setParams(
+      (prev) => {
+        const p = writeFacetRangeToParams(
+          writeFacetSelectionToParams(prev, s.facetSel, LIBRARY_FACET_PARAM_KEYS),
+          s.range,
+          LIBRARY_RANGE_FROM_PARAM,
+          LIBRARY_RANGE_TO_PARAM,
+        );
+        if (s.q) p.set(SUCH_PARAM, s.q);
+        else p.delete(SUCH_PARAM);
+        if (s.segment === BIB_SEGMENT_STANDARD) p.delete(SEGMENT_PARAM);
+        else p.set(SEGMENT_PARAM, s.segment);
+        if (s.scope === DEFAULT_LIBRARY_SCOPE) p.delete(LIBRARY_SCOPE_PARAM);
+        else p.set(LIBRARY_SCOPE_PARAM, s.scope);
+        return p;
+      },
+      { replace: true },
     );
     resetWindow();
     setActiveView(view.name);
@@ -1261,31 +1297,49 @@ export function BibliothekFlaeche({
                 ariaLabel={t("lib.menue.weitere")}
                 testId="bib-liste-menue"
                 ausrichtung="rechts"
-                breite="w-[250px]"
+                breite="w-[300px] max-w-[calc(100vw-2rem)] [&_button]:focus-visible:outline [&_button]:focus-visible:outline-2 [&_button]:focus-visible:outline-brand"
               >
                 {(schliessen) => (
                   <>
+                    {viewError ? (
+                      <p role="alert" className="px-2.5 py-1.5 text-[13px] text-text">
+                        {t("state.error")}
+                      </p>
+                    ) : null}
                     <MenueUntermenue beschriftung={t("lib.menue.sichten")}>
                       {savedViews.map((v) => (
                         <MenuePunkt
                           key={v.name}
-                          haken={activeView === v.name}
+                          haken={
+                            !keimBrauchtBestand &&
+                            sameLibrarySavedViewState(
+                              currentViewState,
+                              readLibrarySavedViewState(v.state, LIBRARY_FACET_PARAM_KEYS),
+                            )
+                          }
                           onClick={() => {
                             applyView(v);
                             schliessen();
                           }}
                         >
-                          {v.name}
+                          <span className="block whitespace-normal [overflow-wrap:anywhere]">
+                            {v.name}
+                          </span>
                         </MenuePunkt>
                       ))}
-                      {activeView ? (
+                      {activeView && savedViews.some((v) => v.name === activeView) ? (
                         <MenuePunkt
                           onClick={() => {
-                            setSavedViews(
-                              removeLibraryView(window.localStorage, viewsUserId, activeView),
-                            );
-                            setActiveView("");
-                            schliessen();
+                            try {
+                              setSavedViews(
+                                removeLibraryView(window.localStorage, viewsUserId, activeView),
+                              );
+                              setActiveView("");
+                              setViewError(false);
+                              schliessen();
+                            } catch {
+                              setViewError(true);
+                            }
                           }}
                         >
                           {t("lib.views.remove")}
@@ -1295,7 +1349,7 @@ export function BibliothekFlaeche({
                     {anyFilterActive ? (
                       <MenueUntermenue beschriftung={t("lib.menue.sichtSpeichern")}>
                         <MenueZeile>
-                          <span className="flex items-center gap-1.5">
+                          <span className="flex min-w-0 flex-col items-stretch gap-2">
                             <label htmlFor="bib-sichtname" className="sr-only">
                               {t("lib.views.namePlaceholder")}
                             </label>
@@ -1304,7 +1358,7 @@ export function BibliothekFlaeche({
                               value={viewName}
                               onChange={(e) => setViewName(e.target.value)}
                               placeholder={t("lib.views.namePlaceholder")}
-                              className="min-w-0 flex-1 rounded-input border border-hairline bg-surface px-1.5 py-0.5 text-[12px]"
+                              className="w-full min-w-0 rounded-input border border-hairline bg-surface px-2 py-1.5 text-[13px] focus-visible:outline focus-visible:outline-2 focus-visible:outline-brand"
                             />
                             <button
                               type="button"
@@ -1316,15 +1370,20 @@ export function BibliothekFlaeche({
                               disabled={viewName.trim().length === 0 || keimBrauchtBestand}
                               onClick={() => {
                                 const name = viewName.trim();
-                                setSavedViews(
-                                  saveLibraryView(window.localStorage, viewsUserId, {
-                                    name,
-                                    state: { q, facetSel, range, groupBy },
-                                  }),
-                                );
-                                setActiveView(name);
-                                setViewName("");
-                                schliessen();
+                                try {
+                                  setSavedViews(
+                                    saveLibraryView(window.localStorage, viewsUserId, {
+                                      name,
+                                      state: currentViewState,
+                                    }),
+                                  );
+                                  setActiveView(name);
+                                  setViewName("");
+                                  setViewError(false);
+                                  schliessen();
+                                } catch {
+                                  setViewError(true);
+                                }
                               }}
                               className="shrink-0 rounded-btn border border-hairline px-2 py-0.5 text-[12px] font-semibold text-text disabled:opacity-45"
                             >

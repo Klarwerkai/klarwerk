@@ -299,22 +299,30 @@ function viewsKey(userId: string): string {
   return `klarwerk.library.views.${userId || "anon"}`;
 }
 
+// Schreibende Aufrufe müssen einen Lesefehler von einem leeren Speicher unterscheiden:
+// sonst würde ein vorübergehend fehlgeschlagenes getItem andere Sichten überschreiben.
+function loadLibraryViews(storage: StorageLike, userId: string): LibrarySavedView[] {
+  const raw = storage.getItem(viewsKey(userId));
+  const parsed: unknown = raw ? JSON.parse(raw) : [];
+  if (!Array.isArray(parsed)) {
+    throw new Error("Invalid library views format");
+  }
+  return parsed.filter(
+    (v): v is LibrarySavedView =>
+      typeof v === "object" &&
+      v !== null &&
+      typeof v.name === "string" &&
+      v.name.trim().length > 0 &&
+      typeof v.state === "object" &&
+      v.state !== null &&
+      !Array.isArray(v.state),
+  );
+}
+
 // Lesen ist fehlertolerant: kaputtes JSON/Fremdformat → leere Liste (nie ein Crash der Seite).
 export function readLibraryViews(storage: StorageLike, userId: string): LibrarySavedView[] {
   try {
-    const raw = storage.getItem(viewsKey(userId));
-    const parsed: unknown = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) {
-      return [];
-    }
-    return parsed.filter(
-      (v): v is LibrarySavedView =>
-        typeof v === "object" &&
-        v !== null &&
-        typeof (v as { name?: unknown }).name === "string" &&
-        typeof (v as { state?: unknown }).state === "object" &&
-        (v as { state?: unknown }).state !== null,
-    );
+    return loadLibraryViews(storage, userId);
   } catch {
     return [];
   }
@@ -331,7 +339,7 @@ export function saveLibraryView(
     return readLibraryViews(storage, userId);
   }
   const next = [
-    ...readLibraryViews(storage, userId).filter((v) => v.name !== name),
+    ...loadLibraryViews(storage, userId).filter((v) => v.name !== name),
     { name, state: view.state },
   ].sort((a, b) => a.name.localeCompare(b.name));
   storage.setItem(viewsKey(userId), JSON.stringify(next));
@@ -343,7 +351,7 @@ export function removeLibraryView(
   userId: string,
   name: string,
 ): LibrarySavedView[] {
-  const next = readLibraryViews(storage, userId).filter((v) => v.name !== name);
+  const next = loadLibraryViews(storage, userId).filter((v) => v.name !== name);
   storage.setItem(viewsKey(userId), JSON.stringify(next));
   return next;
 }

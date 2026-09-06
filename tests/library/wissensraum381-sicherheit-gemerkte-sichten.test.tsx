@@ -215,9 +215,10 @@ describe("PRO 381 · R-13 — der Ort taucht in keiner gemerkten Sicht auf", () 
     }
   });
 
-  it("R-13 (b) BEWAHRUNGSANKER: `currentViewState()` hat GENAU vier Felder — der Ort ist keines davon", () => {
-    // Gepinnt gegen `Library.tsx:393-398`. Diese Zeile ist die eigentliche Schranke: sie wird rot,
-    // sobald irgendjemand dem Sicht-Zustand ein fünftes Feld hinzufügt — gleich unter welchem Namen.
+  it("R-13 (b) BEWAHRUNGSANKER: `currentViewState()` hat GENAU sechs Filterfelder — der Ort ist keines davon", () => {
+    // P04 erweitert um scope (alle/meine) und segment (alle/validiert/offen), keine Ortskennung.
+    // Gepinnt gegen den Speicherweg der BibliothekFlaeche. Diese Zeile ist die eigentliche Schranke: sie wird rot,
+    // sobald irgendjemand dem Sicht-Zustand ein weiteres Feld hinzufügt — gleich unter welchem Namen.
     // Ein späterer Auftrag, der den Zustand bewusst erweitert, muss sie ausdrücklich mitändern.
     mount(`/bibliothek?category=${encodeURIComponent("Anlage 1")}`);
     // JOB 3063 (H4): das Namensfeld und der Knopf „Diese Suche merken" liegen im Menü „…" der
@@ -228,7 +229,7 @@ describe("PRO 381 · R-13 — der Ort taucht in keiner gemerkten Sicht auf", () 
     if (!(nameFeld instanceof HTMLInputElement)) {
       throw new Error(`Feld für den Sichtnamen fehlt; DOM: ${container.textContent}`);
     }
-    typeInto(nameFeld, "Nur vier Felder");
+    typeInto(nameFeld, "Sechs Filterfelder");
     act(() => {
       buttonMitText(res("lib.views.remember")).click();
     });
@@ -242,6 +243,8 @@ describe("PRO 381 · R-13 — der Ort taucht in keiner gemerkten Sicht auf", () 
       "groupBy",
       "q",
       "range",
+      "scope",
+      "segment",
     ]);
   });
 
