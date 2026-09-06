@@ -344,6 +344,24 @@ export function MehrAbschnitte({
       push("error", t("state.error"));
     }
   };
+  // ================================================================================================
+  // JOB 3126 · UX-23 — DER AUSLÖSER „FOTO ANHÄNGEN" IST EIN KNOPF, KEIN SCHILD.
+  // ================================================================================================
+  //
+  // BEFUND (Live 1.124, gemessen 06.09. in Chromium, `16-upload-tastatur.json:4`): der sichtbare
+  // Auslöser war ein `<label>` (`tabIndex: -1`, `role: null`), das ein `display:none`-Dateifeld
+  // umschloss. Ein `<label>` ist nicht fokussierbar, ein `display:none`-Feld liegt nicht in der
+  // Tab-Folge — die gemessene Tab-Kette sprang von „Anhang entfernen" direkt zu „Nachbarschaft".
+  // Es gab damit KEINEN Tastaturweg zu dieser Aktion; nur die Maus kam hin.
+  //
+  // JETZT: ein echter `<button>` mit denselben sichtbaren Bestandteilen, der den Dateidialog über
+  // diese Referenz öffnet. Enter und Leertaste leistet der Knopf von selbst (native Aktivierung,
+  // keine eigene Tastenbehandlung nötig), den sichtbaren Fokus bringt die globale Regel
+  // `*:focus-visible` mit (Scheibe D-024, `index.css:58`).
+  //
+  // DAS DATEIFELD BLEIBT, VERLIERT ABER SEINE BEDIENROLLE (`tabIndex={-1}`, `aria-hidden`): es ist
+  // das technische Mittel, nicht ein zweiter, unsichtbarer Weg zur selben Aktion.
+  const dateiFeld = useRef<HTMLInputElement | null>(null);
   const openAttachment = (a: { dataUrl?: string; objectId?: string }): void => {
     if (a.objectId) {
       const href = objectRawHref(a.objectId);
@@ -1225,17 +1243,35 @@ export function MehrAbschnitte({
         )}
         {canEdit ? (
           <>
-            <label className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text">
-              <Paperclip size={14} />
+            {/* JOB 3126 · UX-23: `aria-disabled` STATT `disabled` — ein `disabled`-Knopf fällt aus
+                der Tab-Folge, und wer mit der Tastatur bedient, verlöre mitten im Hochladen seinen
+                Ort. Der Knopf bleibt deshalb fokussierbar und fängt das Auslösen wirkungslos ab;
+                das Dateifeld behält sein echtes `disabled`. */}
+            <button
+              type="button"
+              aria-disabled={attach.isPending}
+              onClick={() => {
+                if (attach.isPending) {
+                  return;
+                }
+                dateiFeld.current?.click();
+              }}
+              className="mt-3 inline-flex cursor-pointer items-center gap-1.5 rounded-btn border border-hairline px-3 py-1.5 text-[12.5px] font-semibold text-muted hover:text-text"
+            >
+              {/* Zierde, kein Name: das Symbol darf den zugänglichen Namen nicht verfälschen. */}
+              <Paperclip size={14} aria-hidden />
               {attach.isPending ? t("ko.attachmentUploading") : t("ko.attachmentAdd")}
-              <input
-                type="file"
-                accept="image/*"
-                className="hidden"
-                disabled={attach.isPending}
-                onChange={(e) => void onPickFile(e)}
-              />
-            </label>
+            </button>
+            <input
+              ref={dateiFeld}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              tabIndex={-1}
+              aria-hidden="true"
+              disabled={attach.isPending}
+              onChange={(e) => void onPickFile(e)}
+            />
             {/* AUFTRAG-mega14 Block E (SCRUM-421): die geltenden Grenzen stehen AN der
                 Auswahlstelle, und sie kommen vom Server. */}
             <UploadLimitsHint />
