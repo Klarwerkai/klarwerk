@@ -54,7 +54,7 @@ interface Posten {
   detail?: string;
   /** Ein WEITERER Klick INNERHALB der Karte (Knopftext), bevor geprüft wird. */
   innenKlick?: string;
-  /** Selektor, auf den nach dem inneren Klick gewartet wird (bis 15 s). */
+  /** Inhalt, auf den nach dem Öffnen bzw. inneren Klick gewartet wird (bis 15 s). */
   warteAuf?: string;
   erwartet: Erwartung[];
   /** Zusätzlich das „?"-Menü öffnen und diesen Text darin verlangen. */
@@ -416,6 +416,7 @@ function inventarProfil(): Posten[] {
       id: "Profil: Wirkung (funke.impact) → Zeile → Detailkarte mit ihren vier Zahlen",
       klick: '[data-testid="zeile-wirkung"]',
       detail: "detail-wirkung",
+      warteAuf: '[data-testid="detail-wirkung"] [data-testid="my-impact"]',
       // JOB 3065 R3 (BENs Korrekturpflicht 3): Bis Runde 2 verlangte dieser Posten nur die leere
       // Kartenhülle — der ganze Inhalt der Wirkung konnte verschwinden, ohne dass er rot wurde.
       // Jetzt hängt er an den VIER Werten, die „Meine Wirkung" ausmacht (`MyImpactNumbers`:
@@ -627,7 +628,7 @@ const ZAEHLUNG = `(async ([viewAs, stage2, reiter]) => {
 })`;
 
 /** In der Seite: Reiter wählen, Posten öffnen, ggf. innen weiterklicken, Erwartungen prüfen. */
-const PRUEFE = `(async ([reiter, klick, detail, innenKlick, warteAuf, erwartet, hilfeText]) => {
+const PRUEFE = `(async ([reiter, klick, detail, innenKlick, warteAuf, erwartet, hilfeText, wirkungszahlen]) => {
   const sichtbar = (el) => {
     if (!el) return false;
     const r = el.getBoundingClientRect();
@@ -666,12 +667,15 @@ const PRUEFE = `(async ([reiter, klick, detail, innenKlick, warteAuf, erwartet, 
     const knopf = [...raum.querySelectorAll('button')].find((b) => sichtbar(b) && (b.textContent||'').replace(/\\s+/g, ' ').trim().includes(innenKlick));
     if (!knopf) return ['Knopf „' + innenKlick + '" fehlt in der Karte'];
     knopf.click();
-    if (warteAuf) {
-      const kam = await warte(() => sichtbar(document.querySelector(warteAuf)));
-      if (!kam) return ['nach „' + innenKlick + '" kam „' + warteAuf + '" nicht'];
-    } else {
+    if (!warteAuf) {
       await warte(() => false, 300);
     }
+  }
+  // JOB 3130: die geöffnete Hülle lädt ihren Inhalt erst nach (I28 auch OHNE inneren Klick).
+  if (warteAuf) {
+    const kam = await warte(() => sichtbar(document.querySelector(warteAuf)));
+    if (!kam) return ['Inhalt „' + warteAuf + '" kam nicht; letzter sichtbarer Zustand: '
+      + location.href + ' · ' + (raum.innerText || '')];
   }
   const sichtbarerText = (was) => {
     const treffer = [...raum.querySelectorAll('*')].some((el) => sichtbar(el) && (el.textContent||'').includes(was));
@@ -707,7 +711,19 @@ const PRUEFE = `(async ([reiter, klick, detail, innenKlick, warteAuf, erwartet, 
       }
     }
   }
+  if (wirkungszahlen) {
+    // Labels allein sahen eine leere oder falsche Ziffer nicht: alle vier Werte separat vergleichen.
+    const zahlen = [...raum.querySelectorAll('[data-testid="my-impact"] > div > div')]
+      .map((kachel) => { const zahl = kachel.firstElementChild; return sichtbar(zahl) ? (zahl.textContent || '').trim() : null; });
+    if (JSON.stringify(zahlen) !== JSON.stringify(wirkungszahlen.map(String))) {
+      fehlt.push('Wirkungszahlen: erwartet ' + JSON.stringify(wirkungszahlen) + ', sichtbar ' + JSON.stringify(zahlen));
+    }
+  }
   // Zurück in das Sichtfeld, damit der nächste Posten von vorn beginnt.
+  if (fehlt.length) {
+    fehlt.push('letzter sichtbarer Zustand: ' + location.href + ' · ' + (raum.innerText || ''));
+    return fehlt;
+  }
   const zurueck = document.querySelector('[data-einst="zurueck"]');
   if (zurueck) zurueck.click();
   return fehlt;
@@ -862,6 +878,7 @@ describe("JOB 3065 H6 · Funktionsinventar — jede Funktion von gestern ist err
   for (const posten of inventarProfil()) {
     it(`I${posten.zeile5a} · ${posten.id}`, async () => {
       expect(stand?.fehler).toBeNull();
+      const wirkungszahlen = posten.zeile5a === 28 ? await (stand as Stand).wirkungszahlen() : null;
       const fehlt = await (stand?.seite as NonNullable<Stand["seite"]>).evaluate<string[]>(
         fn(PRUEFE),
         [
@@ -872,6 +889,7 @@ describe("JOB 3065 H6 · Funktionsinventar — jede Funktion von gestern ist err
           posten.warteAuf ?? "",
           posten.erwartet,
           posten.hilfeText ?? "",
+          wirkungszahlen,
         ],
       );
       expect(fehlt, `§5a Zeile ${posten.zeile5a}: ${fehlt.join(" · ")}`).toEqual([]);

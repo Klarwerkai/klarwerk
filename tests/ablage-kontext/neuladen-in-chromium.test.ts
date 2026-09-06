@@ -58,6 +58,61 @@ const KLICKE = `(titel) => {
   z.click();
 }`;
 
+/** Titel und Liste laden unabhängig; der Titel allein ist kein Beleg für die Trefferliste. */
+async function warteBibliothek(
+  seite: H4Stand["seite"],
+  zeilen: string[],
+  titel: string | null,
+): Promise<void> {
+  try {
+    await seite.waitForFunction(
+      fn(`([zeilen, titel]) => {
+      const ist = (${ZEILEN})();
+      return ist.length === zeilen.length && ist.every((z, i) => z === zeilen[i])
+        && (${LESETITEL})() === titel;
+    }`),
+      [zeilen, titel],
+      { timeout: 30_000 },
+    );
+  } catch (ursache) {
+    const letzterStand = await seite.evaluate(
+      fn(`() => ({ url: location.href, zeilen: (${ZEILEN})(), lesetitel: (${LESETITEL})() })`),
+    );
+    throw new Error(
+      `Bibliothek nicht bereit; letzter sichtbarer Zustand: ${JSON.stringify(letzterStand)}`,
+      { cause: ursache },
+    );
+  }
+}
+
+/** Entprellte Adresse und gerenderte Suchantwort sind zwei getrennte Voraussetzungen. */
+async function warteZeile(seite: H4Stand["seite"], titel: string): Promise<void> {
+  try {
+    await seite.waitForFunction(
+      fn(`(titel) => {
+      const z = [...document.querySelectorAll('[data-testid="bib-zeile"]')]
+        .find((e) => (e.textContent || '').includes(titel));
+      if (!z) return false;
+      const r = z.getBoundingClientRect();
+      const stil = getComputedStyle(z);
+      return r.width > 0 && r.height > 0 && stil.visibility !== 'hidden' && stil.display !== 'none';
+    }`),
+      titel,
+      { timeout: 20_000 },
+    );
+  } catch (ursache) {
+    const letzterStand = await seite.evaluate(
+      fn(
+        `() => ({ url: location.href, zeilen: (${ZEILEN})(), lesetitel: (${LESETITEL})(), verlauf: history.length })`,
+      ),
+    );
+    throw new Error(
+      `Zeile fehlt: ${titel}; letzter sichtbarer Zustand: ${JSON.stringify(letzterStand)}`,
+      { cause: ursache },
+    );
+  }
+}
+
 let stand: H4Stand | null = null;
 let fehler: string | null = null;
 
@@ -137,11 +192,7 @@ describe("JOB 3104 · UX-02 — Suchbegriff und gelesener Bericht überleben ein
 
     // Ein NEUES Dokument. Kein React-Trick, kein erhaltener Zustand.
     await seite.goto(href, { waitUntil: "load", timeout: 60_000 });
-    await seite.waitForFunction(
-      fn(`() => !!document.querySelector('[data-testid="bib-titel"]')`),
-      undefined,
-      { timeout: 30_000 },
-    );
+    await warteBibliothek(seite, [TITEL_OFFEN], TITEL_OFFEN);
 
     expect(await seite.evaluate<string | null>(fn(SUCHFELD)), "das Suchfeld ist leer").toBe(
       BEGRIFF,
@@ -160,11 +211,7 @@ describe("JOB 3104 · UX-02 — Suchbegriff und gelesener Bericht überleben ein
       waitUntil: "load",
       timeout: 60_000,
     });
-    await seite.waitForFunction(
-      fn(`() => !!document.querySelector('[data-testid="bib-titel"]')`),
-      undefined,
-      { timeout: 30_000 },
-    );
+    await warteBibliothek(seite, [TITEL_FREI, TITEL_OFFEN], TITEL_OFFEN);
 
     expect(await seite.evaluate<string[]>(fn(ZEILEN))).toEqual([TITEL_FREI, TITEL_OFFEN]);
     expect(await seite.evaluate<string | null>(fn(LESETITEL))).toBe(TITEL_OFFEN);
@@ -211,6 +258,7 @@ describe("JOB 3104 · UX-02 — Suchbegriff und gelesener Bericht überleben ein
     expect(lesetext).not.toContain(TITEL_OFFEN);
     expect(await seite.evaluate<string | null>(fn(LESETITEL))).toBeNull();
     // Die Liste links bleibt vollständig — die tote Wahl macht die Fläche nicht blind.
+    await warteBibliothek(seite, [TITEL_FREI, TITEL_OFFEN], null);
     expect(await seite.evaluate<string[]>(fn(ZEILEN))).toEqual([TITEL_FREI, TITEL_OFFEN]);
     // Und die Ursache wird nicht behauptet: 404, 403 und Netzfehler sehen von hier gleich aus.
     for (const wort of ["gelöscht", "kein Zugriff", "gesperrt"]) {
@@ -233,13 +281,18 @@ describe("JOB 3104 · UX-02 — Suchbegriff und gelesener Bericht überleben ein
     // Drei Tastenstände und ein Klick — mit `push` wären das bis zu vier Verlaufseinträge.
     for (const teil of ["Rei", "Reini", BEGRIFF]) {
       await seite.evaluate(fn(TIPPE), teil);
-      await seite.waitForTimeout(400);
+      await seite.waitForFunction(
+        fn(`(soll) => new URLSearchParams(location.search).get('q') === soll`),
+        teil,
+        { timeout: 20_000 },
+      );
+      expect(
+        new URLSearchParams(await seite.evaluate<string>(fn("() => location.search"))).get(
+          SUCH_PARAM,
+        ),
+      ).toBe(teil);
     }
-    await seite.waitForFunction(
-      fn(`(soll) => new URLSearchParams(location.search).get('q') === soll`),
-      BEGRIFF,
-      { timeout: 20_000 },
-    );
+    await warteZeile(seite, TITEL_OFFEN);
     await seite.evaluate(fn(KLICKE), TITEL_OFFEN);
     await seite.waitForFunction(
       fn(`(soll) => new URLSearchParams(location.search).get('eintrag') === soll`),

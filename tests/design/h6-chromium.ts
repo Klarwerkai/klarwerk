@@ -160,6 +160,10 @@ function distDatei(pfadname: string): { body: Buffer; typ: string } {
 }
 
 export interface Stand {
+  /** JOB 3130: dieselbe echte Antwort gezielt verzögern oder für eine Gegenprobe verstellen. */
+  antworten: { vorAuslieferung?: (url: URL, body: string) => Promise<string> };
+  /** Sollwerte der echten App vor dem Öffnen; unabhängig vom danach gerenderten Inhalt. */
+  wirkungszahlen(): Promise<number[]>;
   browser: Browser | null;
   seite: Seite | null;
   app: ReturnType<typeof buildApp> | null;
@@ -213,6 +217,10 @@ export async function starte(
   vorbereiten?: (app: ReturnType<typeof buildApp>) => Promise<void>,
 ): Promise<Stand> {
   const stand: Stand = {
+    antworten: {},
+    wirkungszahlen: async () => {
+      throw new Error("Wirkungsquelle noch nicht bereit");
+    },
     browser: null,
     seite: null,
     app: null,
@@ -243,6 +251,21 @@ export async function starte(
       payload: { email: "pedi@job3065.test", password: "geheim12345" },
     });
     const token = (login.json() as { token: string }).token;
+    stand.wirkungszahlen = async () => {
+      const antwort = await app.inject({
+        method: "GET",
+        url: "/api/me/impact",
+        headers: { authorization: `Bearer ${token}` },
+      });
+      if (antwort.statusCode !== 200) throw new Error(`Wirkungsquelle: HTTP ${antwort.statusCode}`);
+      const daten = antwort.json() as Record<string, unknown>;
+      return ["contributions", "validated", "cited", "helpfulReceived"].map((feld) => {
+        const wert = daten[feld];
+        if (typeof wert !== "number" || !Number.isInteger(wert) || wert < 0)
+          throw new Error(`Wirkungsquelle: ${feld} ist keine Zählung`);
+        return wert;
+      });
+    };
     if (vorbereiten) {
       await vorbereiten(app);
     }
@@ -291,7 +314,9 @@ export async function starte(
         });
         await route.fulfill({
           status: res.statusCode,
-          body: res.body,
+          body: stand.antworten.vorAuslieferung
+            ? await stand.antworten.vorAuslieferung(url, res.body)
+            : res.body,
           headers: {
             "content-type": (res.headers["content-type"] as string) ?? "application/json",
           },

@@ -120,6 +120,8 @@ function distDatei(pfadname: string): { body: Buffer; typ: string } {
 }
 
 export interface H4Stand {
+  /** JOB 3130: gezielt eine echte API-Antwort vor der Auslieferung aufhalten/verstellen. */
+  antworten: { vorAuslieferung?: (url: URL, body: string) => Promise<string> };
   seite: Seite;
   browser: Browser;
   app: ReturnType<typeof buildApp>;
@@ -267,6 +269,7 @@ export async function h4Stand(
   });
   const seite = await browser.newPage({ viewport: { width: 1620, height: 900 } });
   const seitenfehler: string[] = [];
+  const antworten: H4Stand["antworten"] = {};
   seite.on("pageerror", (e) => seitenfehler.push(String(e).split("\n")[0] ?? ""));
   await seite.addInitScript(
     `try { localStorage.setItem("kw.designTheme", "modern"); } catch (e) {}`,
@@ -289,7 +292,7 @@ export async function h4Stand(
       });
       await route.fulfill({
         status: res.statusCode,
-        body: res.body,
+        body: antworten.vorAuslieferung ? await antworten.vorAuslieferung(url, res.body) : res.body,
         headers: { "content-type": (res.headers["content-type"] as string) ?? "application/json" },
       });
       return;
@@ -316,6 +319,7 @@ export async function h4Stand(
     fn(`() => document.documentElement.getAttribute('data-theme') || 'classic (kein Attribut)'`),
   );
   return {
+    antworten,
     seite,
     browser,
     app,
