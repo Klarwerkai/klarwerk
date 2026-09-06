@@ -9,9 +9,15 @@ export { kernaussageAusKlartext, kernaussageAusHtml, KERNAUSSAGE_MAX } from "./s
 // UND der Bibliotheks-Suche genutzt (eine Implementierung, keine Zweitlogik).
 // WP-BILD-1h: searchCaptionTexts = Scanner + kanonischer Größendeckel (500 Zeichen/Caption,
 // 50 Captions/KO) — der EINE Persistenzpfad für create, revise und Legacy-Backfill.
+// JOB 3111 · B1b: dieselbe Bauart für die BENENNUNG (alt-Text) — `searchImageNames` schreibt das
+// abgeleitete `imageNames`-Suchfeld, `imageNameFromTag` liest denselben Namen im Treffer-Scanner
+// der Bildsuche. `attributWert` ist die eine Attributlesart, die beide teilen.
 export {
   imageCaptionTexts,
   searchCaptionTexts,
+  searchImageNames,
+  imageNameFromTag,
+  attributWert,
   LEGACY_IMAGE_CAPTION_PLACEHOLDERS,
   MAX_CAPTION_TEXT_LENGTH,
   MAX_CAPTIONS_PER_KO,

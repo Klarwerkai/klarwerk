@@ -645,6 +645,36 @@ export class PgKoRepo implements KoRepo {
     return (res.rowCount ?? 0) > 0;
   }
 
+  // JOB 3111 · B1b: Backfill des ABGELEITETEN imageNames-Suchfelds (Benennungen der Bilder) —
+  // zeichengleich zur Zeile darüber und aus demselben Grund: EIN bedingtes UPDATE, kein
+  // Read-Modify-Write, keine Migration (additives JSONB-Feld). Ein spät ankommender Nachzug mit
+  // ALTEM Scan kann die frischen Namen eines nebenläufigen Voll-Writes nie clobbern; rowCount sagt
+  // ehrlich, ob DIESER Aufruf geschrieben hat.
+  async setImageNames(id: string, imageNames: string[]): Promise<boolean> {
+    const res = await this.pool.query(
+      "UPDATE kos SET data = jsonb_set(data, '{imageNames}', $2::jsonb) WHERE id=$1 AND NOT (data ? 'imageNames')",
+      [id, JSON.stringify(imageNames)],
+    );
+    return (res.rowCount ?? 0) > 0;
+  }
+
+  // JOB 3111 · B1b R2: die Arbeitsliste des Nachzugs (s. Vertrag in repo.ts). EIN Prädikat auf der
+  // Objekttabelle, kein JOIN, kein `data` im SELECT — es verlässt nur die Kennung die Datenquelle,
+  // niemals ein Rumpf. `NOT (data ? 'deletedAt')` ist derselbe Papierkorbfilter, den `missingActive`
+  // und `setAiCheck` benutzen: ein getrashtes Objekt gehört in keine Arbeitsliste, sonst hinge es
+  // dort für immer und die Differenz des Reconcile käme nie auf null.
+  async missingImageNames(limit: number): Promise<string[]> {
+    const cap = Math.max(0, Math.floor(limit));
+    if (cap === 0) {
+      return [];
+    }
+    const res = await this.pool.query<{ id: string }>(
+      "SELECT id FROM kos WHERE NOT (data ? 'imageNames') AND NOT (data ? 'deletedAt') LIMIT $1",
+      [cap],
+    );
+    return res.rows.map((row) => row.id);
+  }
+
   // SCRUM-361 / AG-03 / FR-ASK-02 / NFR-PERF-03: datenquellennahe Kandidaten-Vorauswahl für Ask.
   // Statt alle KOs zu laden, filtert die DB ODER-weise über die (bereits tokenisierten) Inhalts-Terme
   // auf den vorhandenen Feldern (title/statement/category/tags) — vollständig PARAMETRISIERT (kein

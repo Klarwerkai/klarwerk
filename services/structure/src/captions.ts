@@ -39,6 +39,187 @@ export function searchCaptionTexts(bodyHtml: string | null | undefined): string[
     .map((caption) => caption.slice(0, MAX_CAPTION_TEXT_LENGTH));
 }
 
+// ================================================================================================
+// JOB 3111 · B1b — DIE BENENNUNG EINES BILDES: EIN ORT, DER BESTIMMT, WAS EIN BILDNAME IST.
+// ================================================================================================
+//
+// Die BENENNUNG ist der `alt`-Text (der Editor schreibt beim Einfügen den Dateinamen hinein).
+// Gelesen wurde er bis hierher an genau einer Stelle — `bilderEinerFigur` in
+// `services/app/src/routes/library-routes.ts` —, und zwar erst AUS DEM RUMPF eines Objekts, das
+// über Fußnote, Anhangsname oder Text schon Kandidat war. Ein Name, der NUR im `alt` steht, war
+// damit body-frei nirgends abgelegt und blieb unauffindbar (die „benannte Grenze" aus JOB 3095).
+//
+// Sie wird hier geschlossen, an derselben Stelle wie die Fußnote und nach demselben Muster:
+// ein Scanner, den die KO-Persistenz (`imageNames`-Suchfeld) UND die Bildsuche teilen. Die
+// Namensregel — Entity-Rückübersetzung, Leerraumnormalisierung, leere und Platzhalter-Werte
+// fallen weg — steht ab jetzt NUR hier; `library-routes.ts` liest sie über `imageNameFromTag`,
+// statt sie ein zweites Mal auszulegen.
+//
+// BODY-SPARSAM im Sinne von WP-BILD-1f (bens P4): gesucht wird ausschließlich die MARKE — ein
+// Muster OHNE `[^>]*` und ohne Capture-Gruppe. Der Tag wird NIE ausgeschnitten; ein eingebettetes
+// base64-Bild steckt als `src`-Wert genau darin und wird hier nur als Zeichenstrom überlaufen,
+// nie kopiert. Materialisiert wird allein der kleine `alt`-Wert.
+//
+// WARUM DIE MARKE EIN REGEX-LITERAL IST und keine Zeichenkette mit `indexOf`: `\b` schließt
+// `<image…>` sauber aus, `i` fängt Großschreibung — und der Bildanker-Sammler
+// (`tests/app/mega88-bildanker-sammler.test.tsx`) verlangt von jeder Datei, die `<img` führt, den
+// Nachweis, dass es ein SUCHMUSTER ist und kein erzeugtes Markup. Ein Regex-Literal ist genau
+// dieser Nachweis, ohne dass der Wächter eine Ausnahme bekommt.
+
+// Genau die Zeichenklasse `\s`, die die abgelöste Regex benutzt hat — sonst wäre die neue Lesart
+// an einer Kante ENGER als die alte (ein ` ` zwischen zwei Attributen käme vor). Der
+// ASCII-Zweig entscheidet den Normalfall ohne Regex: dieser Lauf geht über den GANZEN Rumpf,
+// eine Regex je Zeichen wäre auf einem Body mit eingebetteten Bildern spürbar.
+function istLeerraum(zeichen: string | undefined): boolean {
+  if (zeichen === undefined) {
+    return false;
+  }
+  const code = zeichen.charCodeAt(0);
+  if (code === 32 || (code >= 9 && code <= 13)) {
+    return true;
+  }
+  return code > 127 && /\s/.test(zeichen);
+}
+
+function kleinbuchstabe(code: number): number {
+  return code >= 65 && code <= 90 ? code + 32 : code;
+}
+
+/**
+ * Der Wert eines Attributs in einem Öffnungs-Tag — DIE Lesart des Werks.
+ *
+ * Zeichengleich zu der Regel, die bis JOB 3111 als `attributIn` in `library-routes.ts` und als
+ * `attrOf` in `apps/web/src/lib/bodyImages.ts` steht: Whitespace VOR dem Namen ist Pflicht (kein
+ * `data-src`-Treffer für `src`), beliebiger Whitespace um `=`, doppelt/einfach/gar nicht gequotet,
+ * Name case-insensitiv. Ein unvollständig gequoteter Wert ist KEIN Treffer und die Suche läuft
+ * weiter — genau wie die Alternativen der früheren Regex.
+ *
+ * Statt einer Regex ein Zeichenlauf mit `von`/`bis`: so kann der Aufrufer die GRENZEN eines Tags
+ * im großen Rumpf übergeben, ohne den Tag (und damit ein eingebettetes base64-Bild) zu kopieren.
+ */
+export function attributWert(
+  html: string,
+  name: string,
+  von = 0,
+  bis = html.length,
+): string | null {
+  const laenge = name.length;
+  for (let i = von; i + laenge + 1 <= bis; i++) {
+    if (!istLeerraum(html[i])) {
+      continue;
+    }
+    let passt = true;
+    for (let k = 0; k < laenge; k++) {
+      if (kleinbuchstabe(html.charCodeAt(i + 1 + k)) !== kleinbuchstabe(name.charCodeAt(k))) {
+        passt = false;
+        break;
+      }
+    }
+    if (!passt) {
+      continue;
+    }
+    let j = i + 1 + laenge;
+    while (j < bis && istLeerraum(html[j])) {
+      j += 1;
+    }
+    if (html[j] !== "=") {
+      continue;
+    }
+    j += 1;
+    while (j < bis && istLeerraum(html[j])) {
+      j += 1;
+    }
+    const quote = html[j];
+    if (quote === '"' || quote === "'") {
+      const ende = html.indexOf(quote, j + 1);
+      if (ende < 0 || ende >= bis) {
+        continue;
+      }
+      return html.slice(j + 1, ende);
+    }
+    let ende = j;
+    while (
+      ende < bis &&
+      !istLeerraum(html[ende]) &&
+      html[ende] !== '"' &&
+      html[ende] !== "'" &&
+      html[ende] !== ">"
+    ) {
+      ende += 1;
+    }
+    if (ende === j) {
+      continue;
+    }
+    return html.slice(j, ende);
+  }
+  return null;
+}
+
+/**
+ * Die Benennung eines Bildes aus den Grenzen seines `<img`-Tags — `null`, wenn es keine gibt.
+ *
+ * Der Sanitizer hat das Attribut escaped abgelegt; die drei Entities, die er in Attributwerten
+ * erzeugt, werden zurückübersetzt (sonst hieße „A&B.png" im Treffer anders als im Bestand),
+ * Leerraum wird kollabiert. Ein leerer Wert und die Alt-Platzhaltertexte (WP-D10) sind KEIN Name:
+ * „Noch keine Bildbeschreibung" ist die Abwesenheit einer Angabe, nicht eine Angabe.
+ */
+function benennungIn(html: string, von: number, bis: number): string | null {
+  const roh = attributWert(html, "alt", von, bis);
+  if (roh === null) {
+    return null;
+  }
+  const name = roh
+    .replace(/&quot;/g, '"')
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/\s+/g, " ")
+    .trim();
+  return name.length > 0 && !LEGACY_IMAGE_CAPTION_PLACEHOLDERS.includes(name) ? name : null;
+}
+
+/** Die Benennung eines einzelnen, bereits ausgeschnittenen `<img …>`-Tags (Treffer-Scanner). */
+export function imageNameFromTag(imgTag: string): string | null {
+  return benennungIn(imgTag, 0, imgTag.length);
+}
+
+/**
+ * Die Benennungen ALLER Bilder eines Rumpfes — das persistierte Suchfeld `imageNames`.
+ *
+ * Duplikate einmalig (zwanzigmal dasselbe Logo ist ein Name, nicht zwanzig), und derselbe
+ * kanonische Deckel wie bei den Fußnoten: hart `MAX_CAPTION_TEXT_LENGTH` Zeichen je Name
+ * (ehrlicher Schnitt, kein Ellipsis-Fake im Index), höchstens `MAX_CAPTIONS_PER_KO` Namen je KO.
+ */
+export function searchImageNames(bodyHtml: string | null | undefined): string[] {
+  if (!bodyHtml) {
+    return [];
+  }
+  const out: string[] = [];
+  const gesehen = new Set<string>();
+  const marke = /<img\b/gi;
+  while (out.length < MAX_CAPTIONS_PER_KO && marke.exec(bodyHtml) !== null) {
+    // Das Zeichen hinter der Marke ist die Attributgrenze; `>` schließt den Tag (base64 kann
+    // weder `<` noch `>` enthalten, ein Sprungziel liegt also nie in einem Attributwert).
+    const nachMarke = marke.lastIndex;
+    const ende = bodyHtml.indexOf(">", nachMarke);
+    if (ende < 0) {
+      break;
+    }
+    marke.lastIndex = ende + 1;
+    const name = benennungIn(bodyHtml, nachMarke, ende);
+    if (name === null) {
+      continue;
+    }
+    const gekappt = name.slice(0, MAX_CAPTION_TEXT_LENGTH);
+    if (gesehen.has(gekappt)) {
+      continue;
+    }
+    gesehen.add(gekappt);
+    out.push(gekappt);
+  }
+  return out;
+}
+
 // JOB 509 / R2: Der Fußnotentext allein sagt nicht, ZU WELCHEM Bild er gehört — bei zwei gleichen
 // Beschreibungen im selben Body bliebe nur die Position, und die ist keine Identität. Der Scanner
 // gibt deshalb zusätzlich den Anker heraus, den der Sanitizer gesetzt hat. `imageId` ist ehrlich

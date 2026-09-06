@@ -20,7 +20,10 @@ import { can } from "../../../rbac";
 import type { Reasoner } from "../../../reasoner";
 // JOB 3095: DER EINE Fußnoten-Scanner des Produkts (WP-BILD-1g) — hier für den Text je Fußnote,
 // damit die Bildsuche denselben Klartext liest, den die Persistenz in `captionTexts` schreibt.
-import { imageCaptionTexts } from "../../../structure";
+// JOB 3111 · B1b: dasselbe für die BENENNUNG — `imageNameFromTag` ist der eine Ort, der bestimmt,
+// was ein Bildname ist (der Schreibweg `searchImageNames` liest ihn genauso), und `attributWert`
+// die eine Attributlesart, die beide teilen.
+import { attributWert, imageCaptionTexts, imageNameFromTag } from "../../../structure";
 import {
   AI_CHECK_JOB_TIMEOUT_MS,
   type AiCheckRunOutcome,
@@ -321,10 +324,11 @@ export interface ImportDetectionDeps {
 //   1. KANDIDATEN, BODY-FREI (WP-BILD-1g bleibt: die Suche lädt nie den ganzen Bestand mit Rumpf).
 //      Zwei Quellen, beide durch denselben SQL-Trim UND `sichtbareFuer` (G-SHADOW wie
 //      `GET /api/library/search`): (a) die body-freie Projektion aller sichtbaren Objekte, aus der
-//      die bleiben, deren persistierte `captionTexts` oder deren Anhangsnamen das Stichwort tragen
-//      (fehlt `captionTexts` — Altbestand —, bleibt das Objekt Kandidat); (b) die Treffer der
-//      Bibliothekssuche selbst (Titel, Kernaussage, Text, Schlagwörter) — ein Objekt, das vom
-//      Stichwort handelt, kann das gesuchte Bild tragen, dessen Name nur im `alt` steht.
+//      die bleiben, deren persistierte `captionTexts`, deren persistierte `imageNames` (JOB 3111)
+//      oder deren Anhangsnamen das Stichwort tragen (fehlt eines der beiden Felder — Altbestand —,
+//      bleibt das Objekt Kandidat); (b) die Treffer der Bibliothekssuche selbst (Titel,
+//      Kernaussage, Text, Schlagwörter) — ein Objekt, das vom Stichwort handelt, kann das gesuchte
+//      Bild tragen.
 //   2. Erst für diese wenigen wird der Rumpf geladen (`ko.get`, Papierkorb ausgeblendet) und ein
 //      zweites Mal gegen `darfSehen` am vollen Objekt gehalten.
 //   3. Aus dem Rumpf kommen Bild, Beschreibung und Benennung je figure über den Scanner unten;
@@ -333,11 +337,23 @@ export interface ImportDetectionDeps {
 //      Route; `gedeckelt: true` sagt es NUR, wenn ein weiteres sichtbares, passendes Bild wirklich
 //      gefunden wurde (Runde 3) — ein reiner Textkandidat hinter dem Limit ist kein Deckel.
 //
-// DIE BENANNTE GRENZE: ein Name, der NUR im `alt` eines eingebetteten Bildes steht, in einem
-// Objekt, das über Unterschrift, Anhangsname oder Text nicht Kandidat wird, ist nicht auffindbar.
-// Ihn body-frei zu finden bräuchte ein persistiertes Namensfeld neben `captionTexts` (Schreibweg
-// in knowledge-object/service.ts, außerhalb dieses Auftrags). Das steht in der Rückgabe, nicht
-// zwischen den Zeilen.
+// DIESE GRENZE IST SEIT JOB 3111 · B1b GESCHLOSSEN, und zwar genau so, wie sie hier beschrieben
+// stand: neben `captionTexts` liegt jetzt `imageNames` — die Benennungen der Bilder, beim
+// Speichern mit demselben Scanner abgeleitet (`searchImageNames`, structure/src/captions.ts) und
+// body-frei in der Suchprojektion mitgelesen. Ein Name, der NUR im `alt` eines eingebetteten
+// Bildes steht, macht sein Objekt damit zum Kandidaten, auch wenn Unterschrift, Anhangsname und
+// Text das Stichwort nirgends tragen. Altbestand ohne das Feld bleibt Kandidat (wie bei
+// `captionTexts`) und wird über den WARTUNGSLAUF nachgezogen — `reconcileSearchProjections` /
+// `backfillSearchProjections` in knowledge-object/service.ts, dieselbe eine Vollladung wie für
+// Fußnoten und Projektion; die Suche selbst stößt keinen Nachzug an (Entscheidung 04 §5 / G27 R1).
+// Dass dieser Wartungslauf den Altbestand WIRKLICH erreicht (und nicht nur Objekte ohne
+// Projektion), hängt an seiner Arbeitsliste `offeneSuchartefakte` — s. dort; ohne sie bliebe hier
+// jedes Objekt für immer Kandidat und die Suche zahlte dauerhaft dessen vollen Rumpf.
+//
+// WAS JETZT NOCH DIE GRENZE IST, ehrlich benannt und nicht kleiner geredet: ein Bild OHNE `alt`
+// und ohne Fußnote hat keinen Text, der passen könnte — es ist über diesen Weg nicht auffindbar,
+// und es wird ihm keiner erfunden. Ein DOCX-Import trägt keine Benennung; seine Bilder sind nur
+// über eine vom Menschen geschriebene Bildbeschreibung zu finden.
 //
 // `thumbnailUrl` IST DIE BILDQUELLE SELBST (`/api/objects/<id>/raw` oder die eingebettete
 // data-URL des Imports) — es gibt im Produkt keinen Vorschaudienst, und die Fläche braucht genau
@@ -400,14 +416,9 @@ function bildsucheLimit(raw: string | undefined): number {
   return Math.min(n, BILDSUCHE_LIMIT_MAX);
 }
 
-// Attributwert in einem (kleinen) Öffnungs-Tag — dieselbe Lesart wie `attrOf` in
-// apps/web/src/lib/bodyImages.ts: Whitespace VOR dem Namen ist Pflicht (kein `data-src`-Treffer
-// für `src`), beliebiger Whitespace um `=`, doppelt/einfach/gar nicht gequotet.
-function attributIn(tag: string, name: string): string | null {
-  const m = new RegExp(`\\s${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)'|([^\\s"'>]+))`, "i").exec(tag);
-  return m ? (m[1] ?? m[2] ?? m[3] ?? null) : null;
-}
-
+// JOB 3111 · B1b: die Attributlesart stand hier als lokales `attributIn`. Sie liegt jetzt als
+// `attributWert` im structure-Modul, weil der SCHREIBWEG der Benennungen (searchImageNames) sie
+// ebenfalls braucht — zwei Lesarten wären zwei Wahrheiten darüber, was ein Attributwert ist.
 const BILD_KENNUNG_RE = /^[\w-]{1,64}$/;
 
 /**
@@ -429,21 +440,14 @@ function bilderEinerFigur(figur: string): Bestandsbild[] {
   let m: RegExpExecArray | null;
   // biome-ignore lint/suspicious/noAssignInExpressions: Standard-Regex-Iteration.
   while ((m = imgRe.exec(figur)) !== null) {
-    const id = attributIn(m[0], "data-image-id");
-    const src = attributIn(m[0], "src");
+    const id = attributWert(m[0], "data-image-id");
+    const src = attributWert(m[0], "src");
     if (id && BILD_KENNUNG_RE.test(id) && src) {
-      // Die Benennung: der alt-Text, wie ihn der Editor beim Einfügen aus dem Dateinamen setzt.
-      // Der Sanitizer hat das Attribut bereits escaped abgelegt; die drei Entities, die er in
-      // Attributwerten erzeugt, werden zurückübersetzt — sonst hieße „A&B.png" im Treffer anders
-      // als im Bestand.
-      const alt = (attributIn(m[0], "alt") ?? "")
-        .replace(/&quot;/g, '"')
-        .replace(/&lt;/g, "<")
-        .replace(/&gt;/g, ">")
-        .replace(/&amp;/g, "&")
-        .replace(/\s+/g, " ")
-        .trim();
-      bilder.push({ id, src, name: alt.length > 0 ? alt : null });
+      // JOB 3111 · B1b: die Benennung kommt aus `imageNameFromTag` — DEM Ort, der bestimmt, was
+      // ein Bildname ist (Entity-Rückübersetzung, Leerraum, leere und Platzhalterwerte). Genau
+      // diese Regel schreibt der Dienst als `imageNames` in den Bestand; hier stand sie bis 3111
+      // ein zweites Mal ausgeschrieben, und ab der zweiten Kopie driften zwei Wahrheiten.
+      bilder.push({ id, src, name: imageNameFromTag(m[0]) });
     }
   }
   if (bilder.length === 0) {
@@ -458,7 +462,7 @@ function bilderEinerFigur(figur: string): Bestandsbild[] {
       continue;
     }
     const oeffner = m[0].slice(0, m[0].indexOf(">") + 1);
-    fussnoten.push({ id: attributIn(oeffner, "data-image-id"), text });
+    fussnoten.push({ id: attributWert(oeffner, "data-image-id"), text });
   }
   const belegt = fussnoten.map(() => false);
   const texte: (string | null)[] = bilder.map(() => null);
@@ -612,12 +616,16 @@ export function libraryRoutes(
           const trim = sqlSichtbarkeitFuer(user);
           const kandidaten = new Map<string, KnowledgeObject>();
           // (a) alle sichtbaren Objekte in der body-freien Projektion — bleiben, wenn ihre
-          //     persistierten Fußnoten oder ihre Anhangsnamen das Stichwort tragen (Altbestand
-          //     ohne `captionTexts` bleibt Kandidat, statt still herauszufallen).
+          //     persistierten Fußnoten, ihre persistierten BENENNUNGEN (JOB 3111 · B1b) oder ihre
+          //     Anhangsnamen das Stichwort tragen. Altbestand ohne das jeweilige Feld bleibt
+          //     Kandidat, statt still herauszufallen; entschieden wird gleich am Rumpf.
+          //     Die Substring-Regel ist dieselbe wie in der Bibliothekssuche (case-insensitiv).
           for (const ko of sichtbareFuer(user, await detection.ko.listForSearch({}, trim))) {
             if (
               ko.captionTexts === undefined ||
               ko.captionTexts.some((caption) => caption.toLowerCase().includes(q)) ||
+              ko.imageNames === undefined ||
+              ko.imageNames.some((name) => name.toLowerCase().includes(q)) ||
               anhangsnameTrifft(ko, q)
             ) {
               kandidaten.set(ko.id, ko);

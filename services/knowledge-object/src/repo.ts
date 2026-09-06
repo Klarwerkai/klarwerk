@@ -205,6 +205,26 @@ export interface KoRepo {
   // (Pg: rowCount). false heißt: das Feld war schon gesetzt (Race mit einem Voll-Write) — der
   // Aufrufer muss dann die AKTUELLEN Werte nachladen statt seinen alten Scan weiterzuverwenden.
   setCaptionTexts(id: string, captionTexts: string[]): Promise<boolean>;
+  // JOB 3111 · B1b: derselbe schmale Backfill für das ABGELEITETE imageNames-Suchfeld (Benennungen
+  // der Bilder). WORTGLEICHER Vertrag wie setCaptionTexts, aus demselben Grund: schreibt ATOMAR
+  // NUR, WENN DAS FELD FEHLT — ein nebenläufiger Voll-Write (create/revise) mit frischerem Scan
+  // wird nie überschrieben, der Voll-Write gewinnt per Konstruktion. Ohne rowVersion-CAS, ohne
+  // Versions-Snapshot, ohne Audit (Cache-Write). Rückgabe inserted: true, wenn DIESER Aufruf
+  // geschrieben hat; false heißt, das Feld war schon gesetzt — der Aufrufer lädt die AKTUELLEN
+  // Werte nach, statt seinen alten Scan weiterzuverwenden.
+  setImageNames(id: string, imageNames: string[]): Promise<boolean>;
+  // JOB 3111 · B1b R2: die ARBEITSLISTE des Nachzugs für die Benennungen — lebende Objekte (kein
+  // Papierkorb), denen das abgeleitete Feld FEHLT, gedeckelt auf `limit`.
+  //
+  // WARUM ES DIESE LISTE BRAUCHT UND WARUM ES SIE FÜR `captionTexts` NICHT BRAUCHT (bens R1-ROT 1):
+  // Die bestehende Arbeitsliste des Wartungslaufs ist `missingActive` — sie kennt nur Objekte OHNE
+  // vollständige Suchprojektion. Für `captionTexts` genügt das, weil sein Altbestand ÄLTER ist als
+  // die Projektion: wem das Feld fehlt, dem fehlt auch die Projektionszeile, und `missingActive`
+  // fasst ihn. `imageNames` ist JÜNGER als die Projektion — sein Altbestand ist genau der Bestand
+  // MIT vollständiger Projektion. Er wäre über `missingActive` nie erreichbar gewesen, bliebe
+  // dauerhaft ohne Feld und damit bei JEDER Bildsuche Kandidat (fehlendes Feld = „unbekannt").
+  // Deshalb die eigene, schmale Liste — kein Rumpf, nur Kennungen, indexnah und gedeckelt.
+  missingImageNames(limit: number): Promise<string[]>;
   // SCRUM-361: begrenzte, vorgefilterte Kandidatenmenge für Ask (kein All-Pool-Load mehr).
   findCandidates(query: KoCandidateQuery): Promise<KnowledgeObject[]>;
   // WP-SUBMIT-ASYNC (Pedis R3): schmaler Feld-Patch des Hintergrund-Prüf-Status — patcht NUR
@@ -488,6 +508,36 @@ export class InMemoryKoRepo implements KoRepo {
     }
     // patches53-GELB: nicht geschrieben (Feld gesetzt oder KO weg) — der Aufrufer lädt nach.
     return Promise.resolve(false);
+  }
+
+  // JOB 3111 · B1b: dasselbe für die Benennungen — nur-wenn-fehlt, kein Versions-/Audit-Pfad.
+  setImageNames(id: string, imageNames: string[]): Promise<boolean> {
+    const ko = this.items.get(id);
+    if (ko && ko.imageNames === undefined) {
+      this.items.set(id, { ...ko, imageNames: [...imageNames] });
+      return Promise.resolve(true);
+    }
+    return Promise.resolve(false);
+  }
+
+  // JOB 3111 · B1b R2: die Arbeitsliste des Nachzugs (s. Vertrag) — Zwilling des SQL-Prädikats in
+  // PgKoRepo: kein Papierkorb, Feld fehlt, gedeckelt. Ohne Rumpf: es werden nur Kennungen gereicht.
+  missingImageNames(limit: number): Promise<string[]> {
+    const cap = Math.max(0, Math.floor(limit));
+    const out: string[] = [];
+    if (cap === 0) {
+      return Promise.resolve(out);
+    }
+    for (const ko of this.items.values()) {
+      if (ko.deletedAt || ko.imageNames !== undefined) {
+        continue;
+      }
+      out.push(ko.id);
+      if (out.length >= cap) {
+        break;
+      }
+    }
+    return Promise.resolve(out);
   }
 
   // WP-SUBMIT-ASYNC: schmaler Feld-Patch (nur aiCheck) auf einem existierenden, nicht getrashten KO.

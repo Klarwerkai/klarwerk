@@ -200,6 +200,14 @@ export interface KnowledgeObject {
   // vor dieser Regel → einmaliger Backfill beim ersten Such-Kandidaten (danach immer gesetzt, auch
   // als [] für „keine Fußnoten").
   captionTexts?: string[];
+  // JOB 3111 · B1b: ABGELEITETES Suchfeld der BENENNUNGEN — die `alt`-Texte der Bilder des
+  // bodyHtml, beim SCHREIBEN mit demselben body-sparenden Scanner extrahiert (searchImageNames,
+  // create/revise). Die Bildsuche wählt ihre Kandidaten body-frei über dieses kleine Feld; ohne
+  // es war ein Name, der NUR im `alt` steht, nicht auffindbar (die benannte Grenze aus JOB 3095).
+  // Optional/additiv im JSONB-Dokument (keine Migration), genau wie `captionTexts`: FEHLT das
+  // Feld, ist es ein Legacy-KO von vor dieser Regel → Nachzug über den Wartungslauf
+  // (ensureSearchArtifacts); `[]` heißt ausdrücklich „keine Benennungen", nicht „unbekannt".
+  imageNames?: string[];
   conditions: string[];
   measures: string[];
   type: KnowledgeType;

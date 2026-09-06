@@ -339,16 +339,18 @@ describe("JOB 3095 · Runde 2 — die Benennung des Bildes ist ein Suchfeld", ()
     expect(res.json.treffer[0]?.gefundenUeber).toEqual(["beschreibung", "name"]);
   });
 
-  // DIE RESTSCHULD IST BENANNT, NICHT VERGESSEN (Muster: eine-quelle-waechter W-6). Ein Name, der
-  // NUR im `alt` eines eingebetteten Bildes steht, ist body-frei nirgends abgelegt — `captionTexts`
-  // trägt nur Fußnoten, Anhänge gibt es für eingebettete Bilder nicht. Trifft das Objekt sonst
-  // nichts (keine Fußnote, kein Anhangsname, kein Text), wird das Bild NICHT gefunden. Der Weg, das
-  // zu schließen, ist ein persistiertes Namensfeld neben `captionTexts` (Schreibweg in
-  // knowledge-object/service.ts, außerhalb der Zielpfade von JOB 3095). Dieser Fall pinnt die
-  // Grenze, damit sie beim Schließen bewusst kippt statt nebenbei.
-  it("R12 · BENANNTE GRENZE: ein Name nur im alt eines eingebetteten Bildes, sonst kein Treffer im Objekt → nicht auffindbar", async () => {
+  // DIE RESTSCHULD IST BENANNT, NICHT VERGESSEN (Muster: eine-quelle-waechter W-6) — und sie ist
+  // seit JOB 3111 · B1b BEZAHLT. Bis dahin galt: ein Name, der NUR im `alt` eines eingebetteten
+  // Bildes steht, ist body-frei nirgends abgelegt, das Objekt wird kein Kandidat, sein Rumpf wird
+  // nie gelesen — das Bild war „nicht auffindbar", und genau das pinnte dieser Fall.
+  //
+  // Der hier benannte Weg wurde gegangen: neben `captionTexts` liegt jetzt das persistierte
+  // `imageNames`-Feld (Schreibweg in knowledge-object/service.ts). Der Fall KIPPT deshalb bewusst
+  // — er behauptet ab hier das Gegenteil und bleibt damit der Wächter derselben Zusage, jetzt von
+  // der anderen Seite. Der ausführliche Beleg liegt in tests/bild-benennung.
+  it("R12 · die einstige Grenze ist zu: ein Name nur im alt eines eingebetteten Bildes wird gefunden", async () => {
     const { app, autor } = await setup();
-    await anlegen(app, autor, {
+    const ko = await anlegen(app, autor, {
       title: "Ohne Bezug",
       statement: "Kurzfassung.",
       type: "best_practice",
@@ -357,7 +359,12 @@ describe("JOB 3095 · Runde 2 — die Benennung des Bildes ist ein Suchfeld", ()
         '<figure data-image-id="e1"><img data-image-id="e1" src="/api/objects/e1/raw" ' +
         'alt="einzelname_xq.jpg"><figcaption data-image-id="e1"></figcaption></figure>',
     });
-    expect((await bildsuche(app, autor, "einzelname_xq")).json.treffer).toEqual([]);
+    const res = await bildsuche(app, autor, "einzelname_xq");
+    expect(res.status, res.body).toBe(200);
+    expect(res.json.treffer).toHaveLength(1);
+    expect(res.json.treffer[0]?.koId).toBe(ko);
+    expect(res.json.treffer[0]?.name).toBe("einzelname_xq.jpg");
+    expect(res.json.treffer[0]?.gefundenUeber).toEqual(["name"]);
   });
 
   it("R11 · ein Bild ohne Beschreibung und ohne Benennung ist über kein Suchwort erfindbar", async () => {

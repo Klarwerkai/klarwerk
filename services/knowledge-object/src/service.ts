@@ -3,7 +3,14 @@ import type { AuditService } from "../../audit";
 import type { TxContext } from "../../db-tx";
 // WP-BILD-1h: searchCaptionTexts = Scanner + kanonischer Größendeckel — der EINE Pfad für
 // create, revise und Legacy-Backfill (keine ungedeckelten captionTexts in der Persistenz).
-import { htmlToPlainText, sanitizeHtml, searchCaptionTexts } from "../../structure";
+// JOB 3111 · B1b: searchImageNames ist derselbe Pfad für die BENENNUNGEN (alt-Texte) — ein
+// Scanner, ein Deckel, dieselben drei Schreibränder wie bei den Fußnoten.
+import {
+  htmlToPlainText,
+  sanitizeHtml,
+  searchCaptionTexts,
+  searchImageNames,
+} from "../../structure";
 // JOB 593 / Ownerentscheidung Option A: die EINE Normalform der kanonischen Anlagenkennung.
 // Sie steht in einer eigenen Datei und nicht hier, weil BEIDE Schreibränder — Anlegen und
 // Überarbeiten — sie anwenden müssen. Zwei Kopien wären zwei Wahrheiten.
@@ -160,6 +167,8 @@ export interface SearchProjectionReadiness {
 // eine Zeile der alten Projektionsfassung ausdrücklich auf Fassung 2 gehoben wurde.
 interface SearchArtifacts {
   captionTexts: string[];
+  // JOB 3111 · B1b: die Benennungen der Bilder — dieselbe Vollladung, kein zweiter Nachzug.
+  imageNames: string[];
   projection: KoSearchProjection | undefined;
   v2Migriert: boolean;
 }
@@ -888,6 +897,47 @@ export class KoService {
   }
 
   /**
+   * DIE EINE ARBEITSLISTE DES NACHZUGS (JOB 3111 · B1b R2, bens R1-ROT 1).
+   *
+   * Offen ist ein Objekt, dessen ABGELEITETE SUCHARTEFAKTE noch nicht vollständig sind — und das
+   * sind seit B1b zwei unabhängige Quellen, weil die Artefakte unterschiedlich alt sind:
+   *
+   *   (a) `missingActive` — fehlende/veraltete Inhaltszeile oder fehlende Metadatenzeile. Sie
+   *       fasst zugleich den Altbestand der Fußnoten (`captionTexts`): wem dieses Feld fehlt, der
+   *       ist ÄLTER als die Projektion und hat deshalb auch keine Projektionszeile.
+   *   (b) `repo.missingImageNames` — die BENENNUNGEN. Sie sind JÜNGER als die Projektion: ihr
+   *       Altbestand ist genau der Bestand MIT vollständiger Projektion, den (a) per Konstruktion
+   *       nie sieht. Ohne (b) bliebe er dauerhaft ohne Feld — und ein fehlendes Feld heißt in der
+   *       Bildsuche „unbekannt", macht das Objekt also bei JEDER Bildsuche zum Kandidaten und
+   *       kostet dort seinen vollen Rumpf. Genau das hat bens Gegenprobe in Runde 1 gemessen.
+   *
+   * Beide Quellen sind gedeckelt und liefern nur Kennungen; die Vereinigung ist duplikatfrei und
+   * hält denselben Deckel ein, damit ein Schwung nie größer wird als bestellt.
+   */
+  private async offeneSuchartefakte(limit: number): Promise<string[]> {
+    const cap = Math.max(0, Math.floor(limit));
+    if (cap === 0) {
+      return [];
+    }
+    const offen = await this.searchProjections.missingActive(cap);
+    if (offen.length >= cap) {
+      return offen;
+    }
+    const bekannt = new Set(offen);
+    for (const id of await this.repo.missingImageNames(cap)) {
+      if (bekannt.has(id)) {
+        continue;
+      }
+      bekannt.add(id);
+      offen.push(id);
+      if (offen.length >= cap) {
+        break;
+      }
+    }
+    return offen;
+  }
+
+  /**
    * ALTBESTANDS-BACKFILL — sicher und idempotent, in gedeckelten Schwüngen.
    *
    * Es gibt bewusst KEINEN Start-Hook, der beim Hochfahren den ganzen Bestand durchpflügt: das
@@ -895,10 +945,15 @@ export class KoService {
    * Backfill in Schwüngen (`limit`) — aufgerufen von den Suchwegen (kleiner Deckel je Anfrage,
    * konvergiert) und für den ausdrücklichen Lauf mit einem großen Deckel.
    *
-   * IDEMPOTENT auf zwei Ebenen: die Arbeitsliste enthält nur Objekte, deren Suchdokument noch
-   * nicht auf dem geltenden Stand ist, und die Schreibvorgänge selbst sind append-only (Inhalt)
-   * bzw. änderungsbedingt (Metadaten). Ein zweiter Lauf schreibt deshalb nichts mehr und meldet
-   * das ehrlich.
+   * IDEMPOTENT auf zwei Ebenen: die Arbeitsliste (`offeneSuchartefakte`) enthält nur Objekte, deren
+   * abgeleitete Suchartefakte noch nicht vollständig sind, und die Schreibvorgänge selbst sind
+   * append-only (Inhalt), änderungsbedingt (Metadaten) bzw. nur-wenn-fehlt (captionTexts,
+   * imageNames). Ein zweiter Lauf schreibt deshalb nichts mehr und meldet das ehrlich.
+   *
+   * `geschrieben` zählt die Objekte, an denen DIESER Lauf ein Suchartefakt hergestellt hat — seit
+   * B1b also auch das reine Nachziehen der Benennungen an einem Objekt, dessen Projektion längst
+   * steht. Das ist dieselbe Aussage wie bisher („hier ist Arbeit getan worden"), nur über die
+   * vollständige Menge der Artefakte; der Reconcile misst daran seinen Fortschritt.
    *
    * `v2Migriert` zählt die Zeilen, die aus Projektionsfassung 1 auf Fassung 2 nachgeführt wurden —
    * die Fassungsmigration ist damit eine gemessene Zahl und kein stiller Nebeneffekt.
@@ -910,7 +965,7 @@ export class KoService {
     gescheitert: number;
   }> {
     const limit = Math.max(0, Math.floor(opts.limit ?? 500));
-    const offen = await this.searchProjections.missingActive(limit);
+    const offen = await this.offeneSuchartefakte(limit);
     let geschrieben = 0;
     let v2Migriert = 0;
     let gescheitert = 0;
@@ -1213,13 +1268,20 @@ export class KoService {
    * die eine Vollladung, aus der captionTexts, Inhalts- und Metadatenprojektion gemeinsam
    * entstehen. Sein Auslöser ist damit ausdrücklich die Rebuild-/Reconcile-Aufrufkette und nicht
    * mehr eine Suchanfrage.
+   *
+   * JOB 3111 · B1b R2: dasselbe gilt ab jetzt für die BENENNUNGEN (`imageNames`) — sie hängen an
+   * derselben einen Vollladung. `offenVorher` und `differenz` zählen deshalb die VOLLSTÄNDIGE
+   * offene Menge (`offeneSuchartefakte`): ein Objekt mit tadelloser Projektion, dem nur die
+   * Benennungen fehlen, IST offene Arbeit und wird hier auch als solche gemeldet. Zählte diese
+   * Gegenprobe weiter nur `missingActive`, meldete sie „0 offen" über einem Bestand, den sie gar
+   * nicht angesehen hat.
    */
   async reconcileSearchProjections(): Promise<{
     offenVorher: number;
     nachgezogen: number;
     differenz: number;
   }> {
-    const offenVorher = (await this.searchProjections.missingActive(RECONCILE_SCHWUNG)).length;
+    const offenVorher = (await this.offeneSuchartefakte(RECONCILE_SCHWUNG)).length;
     let nachgezogen = 0;
     for (;;) {
       const bilanz = await this.backfillSearchProjections({ limit: RECONCILE_SCHWUNG });
@@ -1230,7 +1292,7 @@ export class KoService {
         break;
       }
     }
-    const differenz = (await this.searchProjections.missingActive(RECONCILE_SCHWUNG)).length;
+    const differenz = (await this.offeneSuchartefakte(RECONCILE_SCHWUNG)).length;
     if (differenz === 0) {
       const control = await this.searchProjections.controlState();
       if (control.projectionState === "V2_BUILDING") {
@@ -1678,6 +1740,9 @@ export class KoService {
       // WP-BILD-1g: abgeleitetes Suchfeld der Bild-Fußnoten IMMER an der Schreibgrenze setzen
       // (auch [] bei „keine Fußnoten" — nur Legacy-KOs von VOR dieser Regel haben kein Feld).
       captionTexts: searchCaptionTexts(bodyHtml),
+      // JOB 3111 · B1b: dieselbe Zusage für die Benennungen — ein Objekt, das nach dieser Regel
+      // gespeichert wird, trägt BEIDE Suchfelder immer (auch [] bei „keine Bilder/keine alt-Texte").
+      imageNames: searchImageNames(bodyHtml),
       conditions: input.conditions ?? [],
       measures: input.measures ?? [],
       type: input.type,
@@ -2997,7 +3062,7 @@ export class KoService {
     const run = (async (): Promise<SearchArtifacts> => {
       const ko = await this.repo.findById(id);
       if (!ko || ko.deletedAt) {
-        return { captionTexts: [], projection: undefined, v2Migriert: false };
+        return { captionTexts: [], imageNames: [], projection: undefined, v2Migriert: false };
       }
       const at = new Date(this.now()).toISOString();
       // 1) Die Inhaltsprojektion der AKTIVEN Version — append-only, also ein No-op, wenn sie in der
@@ -3032,21 +3097,35 @@ export class KoService {
       }
       // 2) Die veränderliche Metadatenprojektion — idempotent, klettert nur bei echter Änderung.
       await this.projectMetadata(ko, at);
-      // 3) WP-BILD-1g/1h: das abgeleitete captionTexts-Feld (unverändertes Verhalten).
-      if (ko.captionTexts) {
-        return { captionTexts: ko.captionTexts, projection, v2Migriert };
+      // 3) WP-BILD-1g/1h: das abgeleitete captionTexts-Feld — und seit JOB 3111 · B1b in
+      //    DEMSELBEN Durchgang das imageNames-Feld (die Benennungen). Beide hängen an derselben
+      //    teuren Zutat, dem vollen bodyHtml, das oben EINMAL geladen wurde; ein zweiter
+      //    Single-Flight oder ein zweiter Read wäre genau der Fehler, den G27 hier beseitigt hat.
+      let captionTexts = ko.captionTexts;
+      let imageNames = ko.imageNames;
+      // WP-D11b (bens patches53-GELB): Race — ein nebenläufiger Voll-Write (revise/create) hat ein
+      // Feld zwischen unserem Read und dem bedingten Write gesetzt. Dann müssen die AKTUELLEN Werte
+      // nachgeladen werden, nie der alte Scan, der die frischeren Angaben verfehlen würde. Beide
+      // Felder teilen sich dieses eine Nachladen (ein schmaler Einzel-KO-Read, höchstens einer).
+      let nachladen = false;
+      if (captionTexts === undefined) {
+        captionTexts = searchCaptionTexts(ko.bodyHtml);
+        nachladen = !(await this.repo.setCaptionTexts(id, captionTexts)) || nachladen;
       }
-      const captionTexts = searchCaptionTexts(ko.bodyHtml);
-      const inserted = await this.repo.setCaptionTexts(id, captionTexts);
-      if (!inserted) {
-        // WP-D11b (bens patches53-GELB): Race — ein nebenläufiger Voll-Write (revise/create) hat
-        // das Feld zwischen unserem Read und dem bedingten Write gesetzt. Die AKTUELLEN Werte
-        // nachladen (ein schmaler Einzel-KO-Read) und DIESE an die laufende Suche geben — nie den
-        // alten Scan, der die frischeren Fußnoten verfehlen würde.
+      if (imageNames === undefined) {
+        imageNames = searchImageNames(ko.bodyHtml);
+        nachladen = !(await this.repo.setImageNames(id, imageNames)) || nachladen;
+      }
+      if (nachladen) {
         const fresh = await this.repo.findById(id);
-        return { captionTexts: fresh?.captionTexts ?? captionTexts, projection, v2Migriert };
+        return {
+          captionTexts: fresh?.captionTexts ?? captionTexts,
+          imageNames: fresh?.imageNames ?? imageNames,
+          projection,
+          v2Migriert,
+        };
       }
-      return { captionTexts, projection, v2Migriert };
+      return { captionTexts, imageNames, projection, v2Migriert };
     })().finally(() => {
       this.searchBackfillsInFlight.delete(id);
     });
@@ -3056,6 +3135,12 @@ export class KoService {
 
   async ensureCaptionTexts(id: string): Promise<string[]> {
     return (await this.ensureSearchArtifacts(id)).captionTexts;
+  }
+
+  // JOB 3111 · B1b: der symmetrische Lesezugang zu den Benennungen. Er STÖSST den Nachzug an
+  // (dieselbe eine Vollladung) und liefert danach den Stand, der wirklich persistiert ist.
+  async ensureImageNames(id: string): Promise<string[]> {
+    return (await this.ensureSearchArtifacts(id)).imageNames;
   }
 
   // WP-SUBMIT-ASYNC (Pedis R3 21.07.): Hintergrund-Prüf-Status. markAiCheckPending vermerkt den
@@ -3498,6 +3583,9 @@ export class KoService {
         // WP-BILD-1g: Fußnoten-Suchfeld beim Überarbeiten mitführen — eine Caption-Änderung im
         // Editor aktualisiert das Feld; unveränderte Bodies backfillen Legacy-KOs nebenbei.
         captionTexts: searchCaptionTexts(nextBody),
+        // JOB 3111 · B1b: die Benennungen ziehen beim Überarbeiten mit — ein umbenanntes oder
+        // ausgetauschtes Bild ändert das Suchfeld, unveränderte Rümpfe heilen Legacy-KOs nebenbei.
+        imageNames: searchImageNames(nextBody),
         type: changes.type ?? ko.type,
         conditions: changes.conditions ?? ko.conditions,
         measures: changes.measures ?? ko.measures,
@@ -3731,6 +3819,8 @@ export class KoService {
             input.changes.statement ?? (nextBody ? htmlToPlainText(nextBody) : before.statement),
           bodyHtml: nextBody,
           captionTexts: searchCaptionTexts(nextBody),
+          // JOB 3111 · B1b: der dritte Schreibrand (Dokumentinhalt übernehmen) setzt beide Felder.
+          imageNames: searchImageNames(nextBody),
           version,
           trust: 0, // Revisions-Semantik unverändert: Bewertungen der Vorversion zählen nicht mehr.
           status: "offen", // muss neu validiert werden

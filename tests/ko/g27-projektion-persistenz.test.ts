@@ -255,6 +255,10 @@ describe("G27 · Altbestand: sicher und idempotent", () => {
       listForSearch: (f) => inner.listForSearch(f),
       listByIds: (ids) => inner.listByIds(ids),
       setCaptionTexts: (id, c) => inner.setCaptionTexts(id, c),
+      // JOB 3111 · B1b: neue Vertragsmethode (Benennungs-Suchfeld) — reines Durchreichen.
+      setImageNames: (id, n) => inner.setImageNames(id, n),
+      // JOB 3111 · B1b R2: Arbeitsliste des Benennungs-Nachzugs — reines Durchreichen.
+      missingImageNames: (limit) => inner.missingImageNames(limit),
       setAiCheck: (id, a) => inner.setAiCheck(id, a),
       resolveAiCheck: (id, p, v) => inner.resolveAiCheck(id, p, v),
       findCandidates: (q) => inner.findCandidates(q),

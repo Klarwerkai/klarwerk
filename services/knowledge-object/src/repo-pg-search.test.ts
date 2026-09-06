@@ -63,4 +63,50 @@ describe("WP-BILD-1g: PgKoRepo-Suchpfad (Query-Shape, Fake-Pool)", () => {
     const repo = new PgKoRepo(pool);
     expect(await repo.setCaptionTexts("k1", ["Verschraubung"])).toBe(true);
   });
+
+  // JOB 3111 · B1b: DASSELBE für das Benennungs-Suchfeld. Es ist der Weg, der im Betrieb wirklich
+  // läuft (Postgres), und ohne diesen Pin wäre nur der In-Memory-Zwilling gemessen.
+  it("setImageNames ist derselbe ATOMAR BEDINGTE jsonb_set-Write — NUR wenn das Feld fehlt", async () => {
+    const { pool, calls } = fakePool([]);
+    const repo = new PgKoRepo(pool);
+    expect(await repo.setImageNames("k1", ["schraubenzeichnung-v3.png"])).toBe(false);
+    const { sql, params } = calls[0] as { sql: string; params: unknown[] };
+    expect(sql).toContain("jsonb_set(data, '{imageNames}', $2::jsonb)");
+    expect(sql).toContain("AND NOT (data ? 'imageNames')");
+    // Reiner Cache-Write: kein CAS auf rowVersion, kein Versions-Bump, kein Audit.
+    expect(sql).not.toContain("rowVersion");
+    expect(params).toEqual(["k1", JSON.stringify(["schraubenzeichnung-v3.png"])]);
+  });
+
+  it("setImageNames meldet inserted true, wenn das bedingte UPDATE wirklich geschrieben hat", async () => {
+    const { pool } = fakePool([{ data: ko("k1") }]);
+    const repo = new PgKoRepo(pool);
+    expect(await repo.setImageNames("k1", ["schraubenzeichnung-v3.png"])).toBe(true);
+  });
+
+  // JOB 3111 · B1b R2: die ARBEITSLISTE des Nachzugs in SQL. Zwei Zusagen, beide hier gepinnt:
+  // sie reicht NUR Kennungen heraus (kein `data`, also nie ein Rumpf), und sie hält denselben
+  // Papierkorbfilter wie `missingActive` ein — ein getrashtes Objekt darf nicht ewig in ihr
+  // hängen, sonst käme die Differenz des Reconcile nie auf null.
+  it("missingImageNames ist eine schmale Kennungsliste MIT Papierkorbfilter und Deckel", async () => {
+    const { pool, calls } = fakePool([]);
+    const repo = new PgKoRepo(pool);
+    expect(await repo.missingImageNames(25)).toEqual([]);
+    const { sql, params } = calls[0] as { sql: string; params: unknown[] };
+    expect(sql).toContain("SELECT id FROM kos");
+    expect(sql).toContain("NOT (data ? 'imageNames')");
+    expect(sql).toContain("NOT (data ? 'deletedAt')");
+    expect(sql).toContain("LIMIT $1");
+    expect(sql).not.toContain("data AS");
+    expect(params).toEqual([25]);
+  });
+
+  it("missingImageNames gibt die Kennungen der Zeilen zurück; Deckel 0 fragt gar nicht erst", async () => {
+    const treffer = [{ id: "k9" }] as unknown as { data: KnowledgeObject }[];
+    const { pool, calls } = fakePool(treffer);
+    const repo = new PgKoRepo(pool);
+    expect(await repo.missingImageNames(5)).toEqual(["k9"]);
+    expect(await repo.missingImageNames(0)).toEqual([]);
+    expect(calls).toHaveLength(1);
+  });
 });

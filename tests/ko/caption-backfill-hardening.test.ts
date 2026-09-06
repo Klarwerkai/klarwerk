@@ -66,6 +66,12 @@ function countingRepo(inner: InMemoryKoRepo) {
     // JOB 2696 (R2-34): neue Vertragsmethode — reines Durchreichen, hier nicht instrumentiert.
     findByImportCandidateId: (candidateId) => inner.findByImportCandidateId(candidateId),
     setCaptionTexts: (id, captionTexts) => inner.setCaptionTexts(id, captionTexts),
+    // JOB 3111 · B1b: neue Vertragsmethode (Benennungs-Suchfeld) — reines Durchreichen. Sie ist
+    // ein WRITE und darf die gemessenen Vollladungen (findById) nicht verändern.
+    setImageNames: (id, imageNames) => inner.setImageNames(id, imageNames),
+    // JOB 3111 · B1b R2: die Arbeitsliste des Benennungs-Nachzugs — reines Durchreichen. Sie
+    // liefert nur Kennungen und lädt keinen Rumpf; die Vollladungszählung bleibt unberührt.
+    missingImageNames: (limit) => inner.missingImageNames(limit),
     // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen (hier nicht instrumentiert).
     setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
     resolveAiCheck: (id, patch, expectedKoVersion) =>
@@ -276,6 +282,9 @@ describe("WP-D11b patches53-GELB: Race der laufenden Suchantwort (No-op-Fall lä
         await gate;
         return inner.setCaptionTexts(id, captionTexts);
       },
+      // JOB 3111 · B1b: reines Durchreichen — der Race wird hier am Fußnotenfeld gemessen.
+      setImageNames: (id, imageNames) => inner.setImageNames(id, imageNames),
+      missingImageNames: (limit) => inner.missingImageNames(limit),
       // WP-SUBMIT-ASYNC: neue Vertragsmethoden — reines Durchreichen.
       setAiCheck: (id, aiCheck) => inner.setAiCheck(id, aiCheck),
       resolveAiCheck: (id, patch, expectedKoVersion) =>
