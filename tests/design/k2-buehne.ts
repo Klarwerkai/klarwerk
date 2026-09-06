@@ -168,6 +168,9 @@ export interface Plan {
   html: string;
   drafts: DraftPlan;
   auth: { status: number; body: unknown };
+  /** JOB 3092 S6 (W6): die Antwort auf `POST /api/check-text` — die Dublettenpruefung, die die
+   *  Markierungskarte seit S6 VOR dem Einreichen ruft. Grundwert: erfolgreicher Lauf ohne Treffer. */
+  checkText: { status: number; body: unknown };
 }
 
 export interface Buehne {
@@ -288,6 +291,7 @@ export async function buehneBauen(teil: Partial<Plan> = {}): Promise<Buehne> {
     html: HTML,
     drafts: { status: 201, body: { id: "draft-1" } },
     auth: { status: 200, body: { name: NAME } },
+    checkText: { status: 200, body: { duplicates: [], conflicts: [], note: null } },
     ...teil,
   };
   const seitenfehler: string[] = [];
@@ -351,6 +355,12 @@ export async function buehneBauen(teil: Partial<Plan> = {}): Promise<Buehne> {
           zurueckgehalten.push(los);
         });
       }
+      await json(antwort.status, antwort.body);
+      return;
+    }
+    if (url.pathname === "/api/check-text" && req.method() === "POST") {
+      // JOB 3092 S6 (W6): dieselbe Festhalte-Regel wie bei /api/drafts — der Plan beim Eingang.
+      const antwort = { status: plan.checkText.status, body: plan.checkText.body };
       await json(antwort.status, antwort.body);
       return;
     }

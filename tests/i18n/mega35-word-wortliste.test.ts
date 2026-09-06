@@ -29,6 +29,25 @@ const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
 // Die beiden Schlüssel, die das Wort tragen DÜRFEN — und müssen.
 const EINSTUFUNG = ["askEvidenceVerified", "askEvidenceUnverified"];
 
+// JOB 3092 S6 (W5/W6): vier deutsche Schlüssel tragen „geprüft“ als AUSSAGE ÜBER OBJEKTE bzw. über
+// einen GELAUFENEN Prüfvorgang — genau die Klasse, die der Kopf dieser Datei ausdrücklich zulässt
+// („Aussagen ÜBER EIN OBJEKT, keine Zusage über die Antwort“, wie „In Prüfung“):
+//   · askUngeprueftEins/-Mehrere: „… der noch NICHT geprüft ist“ — Pedis Wortlaut (05.09., M2): das
+//     Gegenteil eines Versprechens, es benennt ungeprüften Bestand statt ihn zu verschweigen.
+//   · captureDubLeer/-Treffer: „(geprüft 14:32)“ — der Zeitstempel eines gelaufenen check-text-Laufs,
+//     keine Aussage über die Antwort. EN/NL kommen ohne das verbotene Wort aus (reviewed/checked,
+//     beoordeeld/nagekeken). Die Liste ist abschließend; ein fünfter Schlüssel fällt wieder auf.
+const OBJEKTAUSSAGEN = [
+  "askUngeprueftEins",
+  "askUngeprueftMehrere",
+  "captureDubLeer",
+  "captureDubTreffer",
+  // Runde 2 (BEN 1): die gekuerzte Pruefung — „nur die ersten 8000 Zeichen konnten geprüft
+  // werden … der Rest bleibt ungeprüft": dieselbe Vorgangsaussage, ausdruecklich EINGESCHRAENKT.
+  "captureDubLeerGekuerzt",
+  "captureDubTrefferGekuerzt",
+];
+
 // Wortformen, nicht Wortstämme: „In Prüfung" (Objektstatus) bleibt zulässig, „geprüft" nicht.
 const VERBOTEN: { sprache: string; muster: RegExp }[] = [
   { sprache: "de", muster: /gepr(ue|ü)ft/i },
@@ -87,7 +106,7 @@ describe("mega35 B · die Wortliste der Word-Fläche", () => {
   it("„gesichert“ und „geprüft“ stehen NUR im Einstufungshinweis — DE, EN und NL", () => {
     const verstoesse: string[] = [];
     for (const { key, text } of i18nEintraege()) {
-      if (EINSTUFUNG.includes(key)) {
+      if (EINSTUFUNG.includes(key) || OBJEKTAUSSAGEN.includes(key)) {
         continue;
       }
       for (const { sprache, muster } of VERBOTEN) {

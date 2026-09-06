@@ -538,6 +538,22 @@
     /* Lieferung 5: Vorbehalt oder Konfliktlage — NUR wenn der Fall eintritt, als EIN Satz. */
     #ask-vorbehalt { margin: 10px 16px 0; font-size: 13px; line-height: 1.4; color: var(--muted); }
     #ask-vorbehalt.hidden { display: none; }
+    /* JOB 3092 S6 (W5): die Herkunft an der Antwort — je tragender Quelle eine Zeile, der Titel ein
+       Link (Linkfarbe des Fensters); darunter, nur im Fall, der Ungeprueft-Satz. Beides Kinder der
+       Karte (Flex-Spalte, 14px Luecke); verborgen nehmen sie keinen Platz. Farben NUR an den
+       Markup-Elementen (mega43 misst Regeln ohne Fundstelle gegen jede Flaeche). */
+    #ask-herkunft { display: flex; flex-direction: column; gap: 4px; margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--muted); }
+    #ask-herkunft.hidden { display: none; }
+    #ask-herkunft p { margin: 0; }
+    #ask-ungeprueft { margin: 0; font-size: 12.5px; line-height: 1.4; color: var(--text); }
+    #ask-ungeprueft.hidden { display: none; }
+    #ask-gap-ungeprueft { margin: 0 16px; font-size: 13px; line-height: 1.4; text-align: center; color: var(--text); }
+    #ask-gap-ungeprueft.hidden { display: none; }
+    /* JOB 3092 S6 (W6): die Dublettenauskunft in der Markierungskarte — vor dem Einreichen. */
+    #capture-dubletten { margin: 0; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+    #capture-dubletten.hidden { display: none; }
+    #capture-dubletten p { margin: 0; }
+    #capture-dubletten ul { margin: 4px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column; gap: 4px; }
     /* ============================================================================================
        JOB 3056 K1 — EINSTELLUNGEN (Einstellungen.dc.html) UND „WIE KLARA ANTWORTET".
        ============================================================================================
@@ -709,6 +725,11 @@
         <button type="button" id="ask-luecke-frage-aendern" data-t="askGapFrageAendern"></button>
         <a href="#" id="ask-gap-send-btn" data-t="askGapSendCta"></a>
       </div>
+      <!-- JOB 3092 S6 (W5): Pedis Fall vom 21:28 (OFFEN.md W5) — die Luecke schweigt nicht mehr ueber
+           Wissen, das es gibt, aber noch niemand geprueft hat. EIN Satz mit Titel(n), nur wenn der
+           Server `ungeprueft` nicht leer liefert (renderAskUngeprueft). Als Geschwister von
+           #ask-luecke, nicht darin: dessen Kinder sind in Chromium exakt gepinnt (zielbild-keinwissen). -->
+      <p id="ask-gap-ungeprueft" class="hidden"></p>
       <p id="ask-gap-open-block" class="hidden">
         <a id="ask-gap-open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="askGapOpenLink"></a>
       </p>
@@ -744,6 +765,14 @@
           <span id="ask-fussnoten" class="hidden"></span>
         </div>
         <button type="button" class="ghost hidden" id="ask-answer-toggle"></button>
+        <!-- JOB 3092 S6 (W5): DIE HERKUNFT AN DER ANTWORT — unmittelbar unter dem Antworttext, nicht
+             erst unter „Mehr". Je TRAGENDER Quelle (citedSources) eine Zeile „Quelle: Titel · Pruefstand
+             · Version" (renderAskHerkunft), der Titel ein Link auf den Volltext (koDetailUrl, derselbe
+             Weg wie die Chips). Ohne citedSources steht „Dafuer habe ich keinen Beleg." — nie eine
+             Antwort ohne diese Zeile. Darunter, NUR im Fall, der Ungeprueft-Satz (renderAskUngeprueft):
+             was der Server als vorhanden, aber ungeprueft meldet (Feld `ungeprueft`, JOB 1591). -->
+        <div id="ask-herkunft" class="hidden"></div>
+        <p id="ask-ungeprueft" class="hidden"></p>
         <p class="muted" id="ask-answer-edit-hint" data-t="askAnswerEditHint"></p>
         <!-- mega81 BLOCK A: die KI-Kennzeichnung ist an das serverseitige `aiGenerated`-Signal
              GEBUNDEN — auf dem retrieval-only-Weg nie sichtbar, auf einem Modellweg von selbst. -->
@@ -820,6 +849,15 @@
     <p id="capture-leer" data-t="captureEmpty"></p>
     <p id="capture-ergebnis" class="hidden"><span data-t="sendOk"></span><a id="open-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="openLink"></a></p>
     <p id="capture-bilder-ergebnis" class="hidden"><span id="capture-bilder-satz"></span><a id="capture-bilder-link" href="https://app.klarwerk.ai/erfassen" target="_blank" rel="noopener" data-t="captureBilderLink"></a></p>
+    <!-- JOB 3092 S6 (W6): DIE DUBLETTENPRUEFUNG VOR DEM EINREICHEN. Sobald eine Markierung steht,
+         geht sie an POST /api/check-text (w6DublettenAusCheckText, derselbe Weg, den W6 gebaut hat)
+         und die Karte sagt, was der Bestand dazu hat: Treffer mit Titel, Beziehung und Fundort,
+         „Nichts Vergleichbares gefunden (geprueft <Zeit>)" NUR nach erfolgreichem Lauf, sonst
+         „Pruefung nicht moeglich". Sie blockiert nichts: der Knopf bleibt frei (renderCaptureDubletten). -->
+    <div id="capture-dubletten" class="hidden">
+      <p id="capture-dubletten-satz"></p>
+      <ul id="capture-dubletten-liste"></ul>
+    </div>
   </div>
   <div id="capture-felder">
     <label class="capture-zeile" for="capture-titel"><span data-t="captureTitleLabel"></span><input type="text" id="capture-titel" autocomplete="off" /></label>
@@ -1526,6 +1564,25 @@
               firstStep && typeof firstStep.snippet === "string" && firstStep.snippet.trim().length > 0
                 ? firstStep.snippet.trim()
                 : undefined;
+            // JOB 3092 S6 (W5): die Meldung „vorhanden, aber ungeprueft" (JOB 1591 D1) reist NEBEN
+            // `result` im Koerper (`ungeprueft`, nur auf dem Sitzungsweg) und wird GELESEN, nie
+            // hergeleitet: abwesend heisst „nicht gefragt", `[]` heisst „nachgesehen, nichts" —
+            // die Flaeche zeigt in beiden Faellen keinen Satz und behauptet nie „alles geprueft".
+            // Ein Eintrag ohne Kennung ist keine Meldung. Der abgesetzte Rumpf bleibt byte-gleich.
+            var ungeprueft;
+            if (body && Array.isArray(body.ungeprueft)) {
+              ungeprueft = [];
+              for (var u = 0; u < body.ungeprueft.length; u += 1) {
+                var eintrag = body.ungeprueft[u];
+                if (eintrag && typeof eintrag.id === "string" && eintrag.id.length > 0) {
+                  ungeprueft.push({
+                    id: eintrag.id,
+                    title: typeof eintrag.title === "string" && eintrag.title.trim().length > 0 ? eintrag.title : eintrag.id,
+                    status: typeof eintrag.status === "string" ? eintrag.status : null,
+                  });
+                }
+              }
+            }
             if (
               result &&
               result.answered === true &&
@@ -1550,11 +1607,14 @@
                 // dort bewusst weg) — die Behauptung entsteht also nie aus einer Annahme.
                 // G24: geprueft statt gecastet — siehe KW-KLARA-AI-MARK-* weiter unten.
                 aiGenerated: istKiKennzeichnung(result.aiGenerated),
+                ungeprueft: ungeprueft,
               };
             }
             // AUFTRAG-mega77 BLOCK A: die Wissensluecke ist wieder eine reine Wissensluecke — der
             // Antwortkoerper wird hier NICHT mehr nach einer Bestandszahl durchsucht.
-            return { kind: "gap" };
+            // JOB 3092 S6 (W5): sie traegt aber, was der Server AUSDRUECKLICH und betrachter-
+            // gefiltert meldet (JOB 1591) — keine Zahl aus der Vorauswahl, sondern die Liste selbst.
+            return { kind: "gap", ungeprueft: ungeprueft };
           });
         })
         .catch(function (err) {
@@ -2649,6 +2709,31 @@
         // Quellen-Chip, Fusszeile, Pillen-Tooltip und der Leitsatz (Auftrag §5.7).
         askHerkunft: "Aus freigegebenem Firmenwissen",
         askChipStand: "Stand {date}",
+        // JOB 3092 S6 (W5/W6): die belegte Antwort — Herkunft je tragender Quelle, der Ungeprueft-
+        // Satz (Pedis Wortlaut, 05.09.), die Luecke ohne Beleg und die Dublettenauskunft vor dem
+        // Einreichen. „geprüft" steht hier als Aussage ueber OBJEKTE („noch nicht geprüft") bzw.
+        // ueber einen GELAUFENEN Pruefvorgang („geprüft 14:32"), nie als Zusage ueber die Antwort
+        // (tests/i18n/mega35-word-wortliste.test.ts, OBJEKTAUSSAGEN).
+        askHerkunftQuelle: "Quelle:",
+        askHerkunftVersion: "Version {n}",
+        askHerkunftVersionUnbekannt: "Version unbekannt",
+        askHerkunftNichtGeladen: "konnte nicht geladen werden",
+        askHerkunftLaden: "Quellen werden geladen …",
+        askHerkunftKeinBeleg: "Dafür habe ich keinen Beleg.",
+        askUngeprueftEins: "Dazu gibt es einen Eintrag, der noch nicht geprüft ist: {titel}",
+        askUngeprueftMehrere: "Dazu gibt es {n} Einträge, die noch nicht geprüft sind: {titel}",
+        captureDubLaeuft: "Dublettenprüfung läuft …",
+        captureDubLeer: "Nichts Vergleichbares gefunden (geprüft {zeit}).",
+        captureDubTreffer: "Dazu gibt es schon Vergleichbares (geprüft {zeit}):",
+        captureDubLeerGekuerzt: "Nur die ersten {max} Zeichen konnten geprüft werden (geprüft {zeit}): darin nichts Vergleichbares — der Rest bleibt ungeprüft.",
+        captureDubTrefferGekuerzt: "Nur die ersten {max} Zeichen konnten geprüft werden (geprüft {zeit}) — darin schon Vergleichbares:",
+        captureDubFehler: "Prüfung nicht möglich.",
+        captureDubZuKurz: "Dublettenprüfung erst ab 40 Zeichen.",
+        captureDubIdentisch: "identisch",
+        captureDubEnthaeltEintrag: "enthält den Eintrag",
+        captureDubImEintrag: "im Eintrag enthalten",
+        captureDubTeilweise: "teilweise gleich",
+        captureDubVerwandt: "verwandt",
         askNeueFrage: "Neue Frage",
         askFrageBearbeiten: "Frage bearbeiten",
         askCopyOk: "In die Zwischenablage kopiert.",
@@ -2901,6 +2986,26 @@
         askCopyCta: "Copy",
         askHerkunft: "From approved company knowledge",
         askChipStand: "as of {date}",
+        askHerkunftQuelle: "Source:",
+        askHerkunftVersion: "Version {n}",
+        askHerkunftVersionUnbekannt: "version unknown",
+        askHerkunftNichtGeladen: "could not be loaded",
+        askHerkunftLaden: "Loading sources …",
+        askHerkunftKeinBeleg: "I have no evidence for this.",
+        askUngeprueftEins: "There is one entry on this that has not been reviewed yet: {titel}",
+        askUngeprueftMehrere: "There are {n} entries on this that have not been reviewed yet: {titel}",
+        captureDubLaeuft: "Duplicate check running …",
+        captureDubLeer: "Nothing comparable found (checked {zeit}).",
+        captureDubTreffer: "Comparable entries already exist (checked {zeit}):",
+        captureDubLeerGekuerzt: "Only the first {max} characters could be checked (checked {zeit}): nothing comparable in them — the rest remains unchecked.",
+        captureDubTrefferGekuerzt: "Only the first {max} characters could be checked (checked {zeit}) — comparable entries in them:",
+        captureDubFehler: "Check not possible.",
+        captureDubZuKurz: "Duplicate check needs at least 40 characters.",
+        captureDubIdentisch: "identical",
+        captureDubEnthaeltEintrag: "contains the entry",
+        captureDubImEintrag: "contained in the entry",
+        captureDubTeilweise: "partly the same",
+        captureDubVerwandt: "related",
         askNeueFrage: "New question",
         askFrageBearbeiten: "Edit question",
         askCopyOk: "Copied to the clipboard.",
@@ -3147,6 +3252,26 @@
         askCopyCta: "Kopiëren",
         askHerkunft: "Uit vrijgegeven bedrijfskennis",
         askChipStand: "per {date}",
+        askHerkunftQuelle: "Bron:",
+        askHerkunftVersion: "Versie {n}",
+        askHerkunftVersionUnbekannt: "versie onbekend",
+        askHerkunftNichtGeladen: "kon niet worden geladen",
+        askHerkunftLaden: "Bronnen worden geladen …",
+        askHerkunftKeinBeleg: "Hiervoor heb ik geen bewijs.",
+        askUngeprueftEins: "Hierover is één item dat nog niet is beoordeeld: {titel}",
+        askUngeprueftMehrere: "Hierover zijn {n} items die nog niet zijn beoordeeld: {titel}",
+        captureDubLaeuft: "Dubbelcontrole loopt …",
+        captureDubLeer: "Niets vergelijkbaars gevonden (nagekeken {zeit}).",
+        captureDubTreffer: "Er bestaat al iets vergelijkbaars (nagekeken {zeit}):",
+        captureDubLeerGekuerzt: "Alleen de eerste {max} tekens konden worden nagekeken (nagekeken {zeit}): daarin niets vergelijkbaars — de rest is niet nagekeken.",
+        captureDubTrefferGekuerzt: "Alleen de eerste {max} tekens konden worden nagekeken (nagekeken {zeit}) — daarin al iets vergelijkbaars:",
+        captureDubFehler: "Controle niet mogelijk.",
+        captureDubZuKurz: "Dubbelcontrole pas vanaf 40 tekens.",
+        captureDubIdentisch: "identiek",
+        captureDubEnthaeltEintrag: "bevat het item",
+        captureDubImEintrag: "opgenomen in het item",
+        captureDubTeilweise: "deels gelijk",
+        captureDubVerwandt: "verwant",
         askNeueFrage: "Nieuwe vraag",
         askFrageBearbeiten: "Vraag bewerken",
         askCopyOk: "Naar het klembord gekopieerd.",
@@ -3273,6 +3398,10 @@
       } else {
         dokLink.setAttribute("aria-disabled", "true");
       }
+      // JOB 3092 S6 (W6): die Dublettenpruefung haengt an der Anmeldung — sie laeuft erst, wenn die
+      // Sitzung belegt ist, und tritt zurueck, wenn sie faellt. Derselbe Text wird nicht erneut
+      // geprueft (captureDublettenPruefen ist darin idempotent).
+      captureDublettenPruefen();
       // WP-KLARA-ASK: der Fragen-Bereich haengt an denselben Zustaenden (Session; Office nur fuers
       // Einfuegen) — EINE Aufruf-Kette, keine zweite Zustandsquelle.
       updateAskState();
@@ -3342,8 +3471,11 @@
       // einem GEHALTENEN Zustand (currentAskOutcome). Ohne diese Zeile stuenden sie nach einem
       // Sprachwechsel in der alten Sprache da — dieselbe Falle, die refreshAnswerToggleLabel loest.
       renderAskEvidence();
+      renderAskHerkunft(); // JOB 3092 S6: Herkunftszeilen und Ungeprueft-Satz in der neuen Sprache
+      renderAskUngeprueft();
       refreshAnswerToggleLabel(); // klara1b: „mehr/weniger anzeigen" in der neuen Sprache
       renderCapture(); // JOB 3057 K2: Kicker, Ergebniszeile und Bilder-Satz in der neuen Sprache
+      renderCaptureDubletten(); // JOB 3092 S6: die Dublettenauskunft — gehaltener Stand, neuer Text
       updateSendState(); // K5: Office-Hinweis/Knopf-Grund in der neuen Sprache neu aufbauen
       checkSession(); // Statuszeile in der neuen Sprache neu aufbauen
     }
@@ -4414,6 +4546,153 @@
       if (!captureTitelVonHand) {
         titel.value = n === 0 ? "" : deriveDraftTitleFromSelection(captureMarkierung.join("\n"));
       }
+      // JOB 3092 S6 (W6): die Dublettenpruefung folgt der Markierung — vor dem Einreichen.
+      captureDublettenPruefen();
+    }
+
+    // ============================================================================================
+    // JOB 3092 · S6 (W6) — DIE DUBLETTENPRUEFUNG VOR DEM EINREICHEN.
+    // ============================================================================================
+    //
+    // W6 (OFFEN.md) lautete: „`POST /api/check-text` ist die Dublettenpruefung — und Klara benutzt
+    // sie nirgends." Der WEG dorthin steht seit JOB 1621 (`w6DublettenAusCheckText`, Block
+    // KW-KLARA-W6-CHECKTEXT) und war inert. HIER ist sein erster Verbraucher: sobald die
+    // Markierungskarte eine Markierung zeigt, laeuft die Pruefung — nicht erst beim Klick auf
+    // „Senden", denn dann waere die Auskunft NACH dem Einreichen. Kein zweiter Weg zur Route:
+    // dieselbe Funktion, derselbe Koerper (`source: "transient-document"`, Sprache des Fensters).
+    //
+    // WAS SIE SAGT, UND WANN (Zustandsmodell §9 des Auftrags):
+    //   · laeuft       „Dublettenpruefung laeuft …"
+    //   · leer         „Nichts Vergleichbares gefunden (geprueft <Zeit>)." — NUR nach erfolgreichem
+    //                  Lauf; die Zeit ist die des Laufs, keine negative Aussage ohne frische Daten.
+    //   · treffer      Titel (Link auf den Volltext), Beziehung (OverlapRelation, uebersetzt),
+    //                  Fundort (koCategory) und Pruefstand (koStatus), jeweils NUR soweit geliefert.
+    //   · fehler       „Pruefung nicht moeglich." — Fehlerantwort, Netz, kaputter Koerper.
+    //   · zu-kurz      „Dublettenpruefung erst ab 40 Zeichen." (check-text-routes.ts:20) — kein Ruf.
+    //   · KEINE Aussage ohne Markierung, ohne Anmeldung (die Route verlangt ko.read; ein 401 je
+    //     Markierung waere Laerm) und nach einem bestaetigten Entwurf (die Karte zeigt dann die
+    //     Ergebniszeile).
+    // SIE BLOCKIERT NICHTS: der Sendeknopf haengt weiter allein an Anmeldung, Word und Markierung
+    // (updateSendState). Ein Treffer ist eine Auskunft, keine Sperre — der Mensch entscheidet.
+    // GENAU EIN LAUF JE TEXT: derselbe Text wird nicht erneut geprueft; ein neuer Text macht den
+    // alten Lauf unbeachtlich (Laufnummer) — ein verspaeteter Rueckfall kann keine fremde Markierung
+    // beschriften.
+    var captureDubletten = null;
+    var captureDublettenText = "";
+    var captureDublettenLauf = 0;
+
+    var W6_RELATION_KEYS = {
+      identisch: "captureDubIdentisch",
+      a_enthaelt_b: "captureDubEnthaeltEintrag",
+      b_enthaelt_a: "captureDubImEintrag",
+      teilweise: "captureDubTeilweise",
+      verwandt: "captureDubVerwandt",
+    };
+
+    function s6Uhrzeit(date) {
+      function pad(n) { return n < 10 ? "0" + n : String(n); }
+      return pad(date.getHours()) + ":" + pad(date.getMinutes());
+    }
+
+    function captureDublettenPruefen() {
+      var text = captureMarkierung.join("\n");
+      if (captureErgebnis || text.length === 0 || !signedIn) {
+        captureDubletten = null;
+        captureDublettenText = "";
+        captureDublettenLauf += 1;
+        renderCaptureDubletten();
+        return;
+      }
+      if (text === captureDublettenText) { return; }
+      captureDublettenText = text;
+      captureDublettenLauf += 1;
+      var lauf = captureDublettenLauf;
+      if (text.replace(/^\s+|\s+$/g, "").length < W6_MINDESTZEICHEN) {
+        captureDubletten = { lage: "zu-kurz", treffer: [], zeit: null };
+        renderCaptureDubletten();
+        return;
+      }
+      captureDubletten = { lage: "laeuft", treffer: [], zeit: null };
+      renderCaptureDubletten();
+      // `fetch.bind(window)` wie am KA2-Aufruf von performAsk: dieselbe Sitzung, derselbe Ursprung,
+      // und die Menge der Abrufziele (mega69-klara-merkmale M7) bleibt, was sie ist — das Ziel
+      // `/api/check-text` steht seit W6 im Weg selbst.
+      w6DublettenAusCheckText(
+        "erfassen",
+        function () { return text; },
+        fetch.bind(window),
+        askLocale(lang)
+      ).then(function (ergebnis) {
+        if (lauf !== captureDublettenLauf) { return; }
+        captureDubletten = {
+          lage: ergebnis.lage,
+          treffer: ergebnis.treffer,
+          // Runde 2 (BEN 1): die Kuerzung reist bis in die Anzeige — nur ein vollstaendig
+          // ausgewerteter Text bekommt den uneingeschraenkten Leersatz.
+          gekuerzt: ergebnis.gekuerzt === true,
+          zeit: new Date()
+        };
+        renderCaptureDubletten();
+      });
+    }
+
+    function s6DublettenZeile(treffer) {
+      var zeile = document.createElement("li");
+      zeile.setAttribute("data-quelle", treffer.id);
+      var link = document.createElement("a");
+      link.href = koDetailUrl(window.location.origin, treffer.id);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = treffer.title || treffer.id;
+      zeile.appendChild(link);
+      var teile = [];
+      if (treffer.relation && W6_RELATION_KEYS[treffer.relation]) {
+        teile.push(t(W6_RELATION_KEYS[treffer.relation]));
+      }
+      if (treffer.koCategory) { teile.push(treffer.koCategory); }
+      if (treffer.koStatus && ASK_STATUS_KEYS[treffer.koStatus]) {
+        teile.push(t(ASK_STATUS_KEYS[treffer.koStatus]));
+      }
+      if (teile.length > 0) {
+        zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
+      }
+      return zeile;
+    }
+
+    function renderCaptureDubletten() {
+      var block = document.getElementById("capture-dubletten");
+      var satz = document.getElementById("capture-dubletten-satz");
+      var liste = document.getElementById("capture-dubletten-liste");
+      if (!block || !satz || !liste) { return; }
+      while (liste.firstChild) { liste.removeChild(liste.firstChild); }
+      var d = captureDubletten;
+      if (!d) {
+        block.className = "hidden";
+        satz.textContent = "";
+        return;
+      }
+      var zeit = d.zeit ? s6Uhrzeit(d.zeit) : "";
+      if (d.lage === "laeuft") {
+        satz.textContent = t("captureDubLaeuft");
+      } else if (d.lage === "zu-kurz") {
+        satz.textContent = t("captureDubZuKurz");
+      } else if (d.lage === "fehler") {
+        satz.textContent = t("captureDubFehler");
+      } else if (d.lage === "treffer") {
+        // Runde 2 (BEN 1): ging nur der Anfang an die Route, sagt der Satz das — vor der Liste.
+        satz.textContent = d.gekuerzt
+          ? t("captureDubTrefferGekuerzt", { max: String(W6_HOECHSTZEICHEN), zeit: zeit })
+          : t("captureDubTreffer", { zeit: zeit });
+        for (var i = 0; i < d.treffer.length; i += 1) {
+          liste.appendChild(s6DublettenZeile(d.treffer[i]));
+        }
+      } else {
+        // Runde 2 (BEN 1): KEINE uneingeschraenkte Entwarnung, wenn der Rest ungeprueft blieb.
+        satz.textContent = d.gekuerzt
+          ? t("captureDubLeerGekuerzt", { max: String(W6_HOECHSTZEICHEN), zeit: zeit })
+          : t("captureDubLeer", { zeit: zeit });
+      }
+      block.className = "";
     }
 
     // Die Markierung aus Word lesen (nur Text — die Karte zeigt Absaetze, der Sendeweg holt sich
@@ -4427,6 +4706,10 @@
         // Eine ANDERE Markierung loest die Ergebniszeile ab; dieselbe laesst sie stehen.
         if (captureErgebnis && absaetze.join("\n") !== captureGesendet) { captureErgebnis = null; }
         captureMarkierung = absaetze;
+        // JOB 3092 Runde 2 (BEN, Pruefluecke 6): ein Fehler der Dublettenpruefung ist kein
+        // Endzustand. Jede NEUE Lesung der Markierung (Auswahlwechsel, Reiterwechsel) darf denselben
+        // Text erneut pruefen; ein erfolgreicher Lauf wird dagegen nicht wiederholt.
+        if (captureDubletten && captureDubletten.lage === "fehler") { captureDublettenText = ""; }
         renderCapture();
         updateSendState();
       };
@@ -5157,6 +5440,10 @@
       // Falschaussage — und ein stehengebliebenes „keine offenen Konflikte" die gefaehrlichste.
       // `currentAskOutcome` ist hier bereits null; renderAskEvidence raeumt daran entlang.
       renderAskEvidence();
+      // JOB 3092 S6 (W5): dasselbe fuer Herkunftszeilen und Ungeprueft-Satz — eine Herkunft der
+      // VORIGEN Antwort neben der naechsten waere eine Falschaussage.
+      renderAskHerkunft();
+      renderAskUngeprueft();
       // AUFTRAG-mega36 B3: ein Rueckfalltext einer FRUEHEREN Antwort darf nie stehen bleiben.
       hideCopyFallback();
       // JOB 3004 D1: die Chip-Reihe faengt von vorn an. JOB 3056: „Mehr" faellt zu, der
@@ -5436,9 +5723,16 @@
                 standDate: standDate,
                 // K3: Bearbeitungsstatus aus dem KO ableiten (Bibliotheks-Logik) — nie raten.
                 status: askSourceStatus(ko),
+                // JOB 3092 S6 (W5): die Inhaltsversion des Objekts fuer die Herkunftszeile —
+                // GELESEN; fehlt sie, bleibt sie null und die Zeile sagt „Version unbekannt".
+                version: ko && typeof ko.version === "number" && isFinite(ko.version) ? ko.version : null,
+                // JOB 3092 S6 (Lehre JOB 3091 R3): ein GESCHEITERTER Abruf ist keine Auskunft ueber
+                // das Objekt. `geladen: false` laesst die Herkunftszeile „konnte nicht geladen werden"
+                // sagen statt einen Pruefstand oder eine Version zu behaupten.
+                geladen: true,
               };
             })
-            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown" }; });
+            .catch(function () { return { id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, geladen: false }; });
         })
       );
     }
@@ -5579,6 +5873,121 @@
       askMehrZeichnen();
       document.getElementById("ask-sources-block").className = resolved.length > 0 ? "" : "hidden";
       renderAskFussnoten();
+    }
+
+    // ============================================================================================
+    // JOB 3092 · S6 (W5) — DIE HERKUNFT AN DER ANTWORT UND DER UNGEPRUEFT-SATZ.
+    // ============================================================================================
+    //
+    // PEDIS VERTRAUENSBOTSCHAFT (05.09., M2 Geschichte A/B): an jeder Antwort steht sichtbar, worauf
+    // sie beruht — Titel, Pruefstand und Version je TRAGENDER Quelle, direkt unter dem Text, kein
+    // Wechsel in Verwaltungsseiten. Bis hierher lag die Herkunft im „Mehr"-Block (askHerkunft,
+    // askQuellenDetailZeile); der bleibt fuer Einstufung/Vorbehalt und wird nicht angefasst.
+    //
+    // WOHER JEDE ANGABE KOMMT — nichts wird hergeleitet:
+    //   · WELCHE Quellen: `citedSources` der Antwort (services/reasoner/src/types.ts, Gate G-2) —
+    //     die tragende Teilmenge, NICHT `sources` (alles Herangezogene). Fehlt das Feld oder ist es
+    //     leer, sagt die Zeile „Dafuer habe ich keinen Beleg." — das ist die Aussage des SERVERS
+    //     (keine benannte tragende Quelle), keine Folge eines gescheiterten Abrufs.
+    //   · Titel, Pruefstand, Version: aus dem geladenen Objekt (resolveAskSources, GET /api/kos/:id),
+    //     dieselbe Aufloesung, die auch die Chips speist. Kein zweiter Abruf.
+    //   · LEHRE JOB 3091 R3 (Codex): ein gescheiterter Abruf ist KEINE festgestellte Quellenlosigkeit.
+    //     Solange die Aufloesung laeuft, steht „Quellen werden geladen …"; scheitert sie fuer eine
+    //     Quelle (`geladen: false`), sagt ihre Zeile „konnte nicht geladen werden" und behauptet
+    //     weder Pruefstand noch Version.
+    //   · UNGEPRUEFT: das Feld `ungeprueft` des Antwortkoerpers (JOB 1591 D1, betrachtergefiltert,
+    //     nur auf dem Sitzungsweg). Nicht leer → EIN Satz mit Titel(n), in der Antwortkarte UND in
+    //     der Luecke (Pedis Fall: „haben wir dazu etwas?" — ja, aber ungeprueft). Leer oder abwesend
+    //     → kein Satz. Es gibt KEIN „alles geprueft": die Leere der Liste ist kein Versprechen ueber
+    //     den Bestand (mega77 Grund 2, w5-ungeprueft-gemeldet W3).
+    // Aufbau ueber DOM-APIs (textContent), kein HTML-Sink: Titel bleiben escaped.
+    function s6HerkunftZeile(id, quelle) {
+      var zeile = document.createElement("p");
+      zeile.className = "herkunft-zeile";
+      zeile.setAttribute("data-quelle", id);
+      zeile.appendChild(document.createTextNode(t("askHerkunftQuelle") + " "));
+      var geladen = !!(quelle && quelle.geladen);
+      // Der Titel ist der Link auf den Volltext — derselbe Weg wie der Chip (koDetailUrl).
+      var link = document.createElement("a");
+      link.href = koDetailUrl(window.location.origin, id);
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+      link.textContent = geladen ? quelle.title : id;
+      zeile.appendChild(link);
+      var teile = [];
+      if (!geladen) {
+        teile.push(t("askHerkunftNichtGeladen"));
+      } else {
+        teile.push(t(ASK_STATUS_KEYS[quelle.status] || "askStatusUnknown"));
+        teile.push(
+          quelle.version === null || quelle.version === undefined
+            ? t("askHerkunftVersionUnbekannt")
+            : t("askHerkunftVersion", { n: String(quelle.version) })
+        );
+      }
+      zeile.appendChild(document.createTextNode(" · " + teile.join(" · ")));
+      return zeile;
+    }
+
+    function renderAskHerkunft() {
+      var block = document.getElementById("ask-herkunft");
+      if (!block) { return; }
+      block.textContent = "";
+      var outcome = currentAskOutcome;
+      if (!outcome || outcome.kind !== "answered") { block.className = "hidden"; return; }
+      block.className = "";
+      var cited = Array.isArray(outcome.citedSources) ? outcome.citedSources : [];
+      if (cited.length === 0) {
+        var kein = document.createElement("p");
+        kein.id = "ask-herkunft-kein-beleg";
+        kein.textContent = t("askHerkunftKeinBeleg");
+        block.appendChild(kein);
+        return;
+      }
+      if (!currentAskSourcesResolved) {
+        var laden = document.createElement("p");
+        laden.id = "ask-herkunft-laden";
+        laden.textContent = t("askHerkunftLaden");
+        block.appendChild(laden);
+        return;
+      }
+      for (var i = 0; i < cited.length; i += 1) {
+        var quelle = null;
+        for (var q = 0; q < askQuellenAufgeloest.length; q += 1) {
+          if (askQuellenAufgeloest[q].id === cited[i]) { quelle = askQuellenAufgeloest[q]; break; }
+        }
+        block.appendChild(s6HerkunftZeile(cited[i], quelle));
+      }
+    }
+
+    function s6UngeprueftSatz(liste) {
+      var titel = [];
+      for (var i = 0; i < liste.length; i += 1) {
+        var e = liste[i];
+        if (!e) { continue; }
+        var name = typeof e.title === "string" && e.title.replace(/^\s+|\s+$/g, "").length > 0
+          ? e.title
+          : typeof e.id === "string" ? e.id : "";
+        if (name) { titel.push(name); }
+      }
+      if (titel.length === 0) { return ""; }
+      return titel.length === 1
+        ? t("askUngeprueftEins", { titel: titel[0] })
+        : t("askUngeprueftMehrere", { n: String(titel.length), titel: titel.join(", ") });
+    }
+
+    function renderAskUngeprueft() {
+      var inAntwort = document.getElementById("ask-ungeprueft");
+      var inLuecke = document.getElementById("ask-gap-ungeprueft");
+      if (!inAntwort || !inLuecke) { return; }
+      var outcome = currentAskOutcome;
+      var satz = outcome && Array.isArray(outcome.ungeprueft) ? s6UngeprueftSatz(outcome.ungeprueft) : "";
+      var antwort = satz && outcome.kind === "answered" ? satz : "";
+      var luecke = satz && outcome.kind === "gap" ? satz : "";
+      inAntwort.textContent = antwort;
+      inAntwort.className = antwort ? "" : "hidden";
+      inLuecke.textContent = luecke;
+      inLuecke.className = luecke ? "" : "hidden";
     }
 
     // ============================================================================================
@@ -5792,6 +6201,10 @@
         // entstehen jetzt an EINER Stelle (renderAskEvidence) — dieselbe, die auch der
         // Sprachwechsel ruft. Zwei Aufrufstellen waeren zwei Gelegenheiten auseinanderzulaufen.
         renderAskEvidence();
+        // JOB 3092 S6 (W5): Herkunft (zunaechst „Quellen werden geladen …") und Ungeprueft-Satz —
+        // beide an derselben Stelle wie die Einstufung, damit der Sprachwechsel sie mitnimmt.
+        renderAskHerkunft();
+        renderAskUngeprueft();
         // AUFTRAG-mega35 A1: das Feld traegt NUR den Antwortkoerper — das ist der Teil, der der
         // Nutzerin gehoert. Einstufung und Quellen-Zeile werden NICHT vorbefuellt und deshalb auch
         // nicht nachgetragen; sie entstehen erst im Moment des Kopierens/Einfuegens
@@ -5815,6 +6228,9 @@
           currentAskSourceDates = resolved.map(function (r) { return r.standDate; });
           currentAskSourcesResolved = true; // ab jetzt ist die Quellen-Zeile vollstaendig
           renderAskSources(resolved);
+          // JOB 3092 S6 (W5): jetzt sind Titel, Pruefstand und Version da — die Ladezeile weicht
+          // den Herkunftszeilen (bzw. „konnte nicht geladen werden" je gescheiterter Quelle).
+          renderAskHerkunft();
           // Das Feld wird hier NICHT mehr angefasst — eine laufende Bearbeitung kann nichts kaputt
           // machen und nichts verlieren.
           updateInsertState();
@@ -5830,6 +6246,9 @@
         kwFlaecheZeichnen();
         // AUFTRAG-mega77 BLOCK A: hier wurde der Satz mit der Zahl der unterdrueckten ungeprueften
         // Treffer gesetzt. Entfernt — Begruendung an der Absage-Karte oben.
+        // JOB 3092 S6 (W5): KEINE Zahl aus der Vorauswahl — aber die betrachtergefilterte Liste,
+        // die der Server seit JOB 1591 ausdruecklich meldet, als EIN Satz mit Titel(n).
+        renderAskUngeprueft();
         if (truncated) { showAskStatus("warn", truncatedNote.replace(/^\s+/, "")); } else { hideAskStatus(); }
         return;
       }
@@ -7340,14 +7759,39 @@
       return typeof titel === "string" && titel.replace(/^\s+|\s+$/g, "").length > 0 ? titel : null;
     }
 
+    // JOB 3092 S6 (W6) — DIE LAGE REIST MIT. Bis hierher war JEDER Ausgang `{treffer: []}`: zu
+    // kurz, Fehlerantwort, Netz, leerer Bestand — alles dieselbe Leere. Fuer eine Karte, die nur
+    // Treffer zeigt, reichte das; fuer eine Auskunft, die „Nichts Vergleichbares gefunden" sagen
+    // soll, nicht: dieser Satz darf NUR nach einem erfolgreichen Lauf stehen (§9 des Auftrags).
+    // Deshalb traegt das Ergebnis jetzt `lage` — „leer" | „treffer" | „fehler" | „zu-kurz" — und
+    // `treffer` bleibt in jedem Nicht-Erfolgsfall leer wie bisher (KA3 liest nur `treffer`).
+    // Je Treffer kommen additiv `relation`, `koStatus` und `koCategory` dazu — gelesen aus der
+    // Antwort der Route (check-text-routes.ts toResponse, JOB 3020), `null` wo nicht geliefert.
+    // `status` bleibt `null`: KA3s Ampel haengt daran, und ihr Wechsel ist nicht dieser Auftrag.
+    function w6Feld(d, name) {
+      return d && typeof d[name] === "string" && d[name].length > 0 ? d[name] : null;
+    }
+
+    // JOB 3092 RUNDE 2 (BEN, Korrekturpflichten 1 und 2) — ZWEI STILLE LUECKEN, AUSGESPROCHEN:
+    //   · DIE KUERZUNG. Die Route nimmt hoechstens 8.000 Zeichen; der Weg schnitt schon immer davor
+    //     (`schnitt`), sagte es aber nicht. Eine Karte konnte danach uneingeschraenkt „nichts
+    //     gefunden" melden, obwohl der Rest der Markierung nie geprueft wurde. Jetzt traegt jedes
+    //     ERFOLGREICHE Ergebnis `gekuerzt` — wahr, wenn nur der Anfang ging — und die Anzeige sagt
+    //     dann „nur die ersten 8000 Zeichen konnten geprueft werden, der Rest bleibt ungeprueft".
+    //   · BESCHAEDIGTE TREFFER. Ein Eintrag ohne Kennung wurde still verworfen; bestand die Liste
+    //     nur aus solchen, wurde daraus eine erfolgreiche Leere. Die Route liefert je Treffer eine
+    //     Kennung (toResponse, check-text-routes.ts:89) — fehlt sie, ist die Antwort nicht die der
+    //     Route: Lage „fehler", auch wenn daneben ein gueltiger Eintrag steht. Eine halb lesbare
+    //     Liste ist keine vollstaendige Auswertung, und nur eine vollstaendige darf Leere behaupten.
     function w6DublettenAusCheckText(grund, leseText, fetchFn, sprache) {
       return Promise.resolve()
         .then(function () { return typeof leseText === "function" ? leseText(grund) : null; })
         .then(function (text) {
-          if (typeof text !== "string") { return { treffer: [] }; }
-          var schnitt = text.length > W6_HOECHSTZEICHEN ? text.slice(0, W6_HOECHSTZEICHEN) : text;
-          if (schnitt.trim().length < W6_MINDESTZEICHEN) { return { treffer: [] }; }
-          if (typeof fetchFn !== "function") { return { treffer: [] }; }
+          if (typeof text !== "string") { return { lage: "fehler", treffer: [] }; }
+          var gekuerzt = text.length > W6_HOECHSTZEICHEN;
+          var schnitt = gekuerzt ? text.slice(0, W6_HOECHSTZEICHEN) : text;
+          if (schnitt.trim().length < W6_MINDESTZEICHEN) { return { lage: "zu-kurz", treffer: [] }; }
+          if (typeof fetchFn !== "function") { return { lage: "fehler", treffer: [] }; }
           return fetchFn("/api/check-text", {
             method: "POST",
             credentials: "include",
@@ -7358,27 +7802,34 @@
               source: "transient-document"
             })
           }).then(function (res) {
-            if (!res || !res.ok) { return { treffer: [] }; }
+            if (!res || !res.ok) { return { lage: "fehler", treffer: [] }; }
             return res.json().then(function (koerper) {
-              var roh = koerper && Array.isArray(koerper.duplicates) ? koerper.duplicates : [];
+              // Ein Koerper ohne `duplicates`-Liste ist keine Antwort der Route — Fehler, nicht Leere.
+              if (!koerper || !Array.isArray(koerper.duplicates)) { return { lage: "fehler", treffer: [] }; }
+              var roh = koerper.duplicates;
               var treffer = [];
               for (var i = 0; i < roh.length; i += 1) {
                 var d = roh[i];
                 var id = d && typeof d.koId === "string" ? d.koId : "";
-                if (!id) { continue; }
+                // Runde 2: ein Eintrag ohne Kennung ist kein Treffer UND keine Leere — die Liste ist
+                // beschaedigt, die Pruefung damit nicht auswertbar.
+                if (!id) { return { lage: "fehler", treffer: [] }; }
                 var titel = d && typeof d.koTitle === "string" ? d.koTitle : "";
                 treffer.push({
                   id: id,
                   title: titel,
                   status: null,
-                  deviatesFrom: w6WertungAusRelation(d, titel)
+                  deviatesFrom: w6WertungAusRelation(d, titel),
+                  relation: w6Feld(d, "relation"),
+                  koStatus: w6Feld(d, "koStatus"),
+                  koCategory: w6Feld(d, "koCategory")
                 });
               }
-              return { treffer: treffer };
+              return { lage: treffer.length > 0 ? "treffer" : "leer", gekuerzt: gekuerzt, treffer: treffer };
             });
           });
         })
-        .catch(function () { return { treffer: [] }; });
+        .catch(function () { return { lage: "fehler", treffer: [] }; });
     }
     // KW-KLARA-W6-CHECKTEXT-END
 

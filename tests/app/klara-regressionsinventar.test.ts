@@ -247,6 +247,12 @@ const INVENTAR: readonly string[] = [
   // ein Eintrag ohne Achsendeckung macht K2 UND K6 rot (gemessen in diesem Durchgang; dieselbe
   // Lage wie bei zielbild-validierung in 2618 D3).
   "tests/app/w6-dublettenweg-checktext.test.ts",
+  // JOB 3092 S6 (W5/W6): die belegte Antwort im Word-Panel — Herkunft je tragender Quelle und der
+  // Ungeprueft-Satz (gemountet ueber k1-panel-lauf) sowie die Dublettenpruefung VOR dem Einreichen
+  // (gemountet ueber klara-panel-fixture). Beide von der Achse `taskpane` gefunden; sachlich
+  // Klara-Regression. K2 hat sie gemeldet, das Inventar nimmt sie nicht still auf.
+  "tests/s6-belegte-antwort/check-text-vor-einreichen.test.ts",
+  "tests/s6-belegte-antwort/herkunft-an-der-antwort.test.tsx",
   "tests/app/word-addin-ask.test.ts",
   "tests/app/word-addin-csp.test.ts",
   "tests/app/word-addin-taskpane-cache.test.ts",

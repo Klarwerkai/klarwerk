@@ -187,6 +187,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // die Vorrichtung und nennen die Datei im Kopfkommentar — Griff `pfad`. A2 hat alle vier
   // gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
   "tests/app/k1-panel-lauf.tsx": "pfad",
+  // JOB 3092 S6: die belegte Antwort (Herkunft/Ungeprueft, ueber k1-panel-lauf; nennt den Pfad im
+  // Kopf) und die Dublettenpruefung vor dem Einreichen (ueber die Panel-Fixture).
+  "tests/s6-belegte-antwort/herkunft-an-der-antwort.test.tsx": "pfad",
+  "tests/s6-belegte-antwort/check-text-vor-einreichen.test.ts": "fixture",
   "tests/app/k1-sitzungslagen.test.tsx": "pfad",
   "tests/app/k1-abmelden-verwirft-sitzung.test.tsx": "pfad",
   "tests/app/k1-fussnoten-zuordnung.test.tsx": "pfad",

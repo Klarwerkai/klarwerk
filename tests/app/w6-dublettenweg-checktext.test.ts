@@ -23,12 +23,28 @@ const HTML = readFileSync(resolve(process.cwd(), TASKPANE), "utf8");
 const W_START = "// KW-KLARA-W6-CHECKTEXT-START";
 const W_END = "// KW-KLARA-W6-CHECKTEXT-END";
 
+// JOB 3092 S6 (W6): der Weg hat seinen ersten Verbraucher (die Erfassen-Flaeche,
+// captureDublettenPruefen) und traegt seither die LAGE des Laufs mit — „leer" | „treffer" |
+// „fehler" | „zu-kurz" — sowie je Treffer additiv `relation`, `koStatus`, `koCategory`. Grund:
+// „Nichts Vergleichbares gefunden" darf NUR nach einem erfolgreichen Lauf stehen; ein stummes
+// `{treffer: []}` fuer Fehler UND Leere konnte das nicht unterscheiden. `treffer` bleibt in jedem
+// Nicht-Erfolgsfall leer wie bisher (KA3 liest nur `treffer`); `status` bleibt `null`.
+type Treffer = {
+  id: string;
+  title: string;
+  status: null;
+  deviatesFrom: string | null;
+  relation: string | null;
+  koStatus: string | null;
+  koCategory: string | null;
+};
+type Lage = "leer" | "treffer" | "fehler" | "zu-kurz";
 type Weg = (
   grund: string,
   leseText: (grund: string) => unknown,
   fetchFn: (url: string, init: Record<string, unknown>) => Promise<unknown>,
   sprache?: string,
-) => Promise<{ treffer: { id: string; title: string; status: null }[] }>;
+) => Promise<{ lage: Lage; gekuerzt?: boolean; treffer: Treffer[] }>;
 
 /** Der ausgelieferte Weg — geschnitten und ausgefuehrt, nicht gelesen. */
 function ausgelieferterWeg(): Weg {
@@ -44,6 +60,9 @@ function ausgelieferterWeg(): Weg {
   );
   return factory() as Weg;
 }
+
+/** Ein Nicht-Erfolg: leere Treffer und die benannte Lage. */
+const OHNE = (lage: Lage): { lage: Lage; treffer: Treffer[] } => ({ lage, treffer: [] });
 
 const LANG = "Ventil vor jeder Wartung drucklos schalten und gegen Wiedereinschalten sichern.";
 
@@ -84,19 +103,62 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     // Zelle pinnt die Form weiterhin VOLLSTAENDIG und exakt; sie ist nicht gelockert, sondern um
     // das hinzugekommene Feld ergaenzt. Der Unterschied der beiden Eintraege ist Absicht und
     // zugleich der Beleg des Erzeugers: `identisch` weicht nicht ab, `teilweise` schon.
+    // JOB 3092 S6: dazu `relation`, `koStatus`, `koCategory` — gelesen, `null` wo nicht geliefert —
+    // und die Lage „treffer".
     const { fetchFn } = sonde({
       duplicates: [
-        { koId: "ko-1", koTitle: "Ventilwartung", relation: "identisch", confidence: 0.9 },
-        { koId: "ko-2", koTitle: "Druckentlastung", relation: "teilweise", confidence: null },
+        {
+          koId: "ko-1",
+          koTitle: "Ventilwartung",
+          relation: "identisch",
+          confidence: 0.9,
+          koStatus: "validiert",
+          koCategory: "Wartung",
+        },
+        {
+          koId: "ko-2",
+          koTitle: "Druckentlastung",
+          relation: "teilweise",
+          confidence: null,
+          koStatus: "offen",
+          koCategory: null,
+        },
       ],
     });
     const ergebnis = await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn);
 
     expect(ergebnis).toEqual({
+      lage: "treffer",
+      gekuerzt: false,
       treffer: [
-        { id: "ko-1", title: "Ventilwartung", status: null, deviatesFrom: null },
-        { id: "ko-2", title: "Druckentlastung", status: null, deviatesFrom: "Druckentlastung" },
+        {
+          id: "ko-1",
+          title: "Ventilwartung",
+          status: null,
+          deviatesFrom: null,
+          relation: "identisch",
+          koStatus: "validiert",
+          koCategory: "Wartung",
+        },
+        {
+          id: "ko-2",
+          title: "Druckentlastung",
+          status: null,
+          deviatesFrom: "Druckentlastung",
+          relation: "teilweise",
+          koStatus: "offen",
+          koCategory: null,
+        },
       ],
+    });
+  });
+
+  it("W6-2b · JOB 3092: die LAGE unterscheidet Leere von Fehler — `leer` nur nach erfolgreichem Lauf", async () => {
+    const { fetchFn } = sonde({ duplicates: [] });
+    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn)).toEqual({
+      lage: "leer",
+      gekuerzt: false,
+      treffer: [],
     });
   });
 
@@ -113,14 +175,56 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     ).toBe(null);
   });
 
-  it("W6-4 · ein Eintrag OHNE Kennung ist kein Treffer", async () => {
-    const { fetchFn } = sonde({
-      duplicates: [{ koTitle: "ohne Id" }, { koId: "", koTitle: "leer" }, { koId: "ko-3" }],
+  it("W6-4 · ein Eintrag OHNE Kennung macht die Antwort zu BESCHAEDIGTEN Daten — Lage „fehler“, kein Treffer, keine Leere", async () => {
+    // JOB 3092 Runde 2 (BEN, Korrekturpflicht 2): bis Runde 1 wurden solche Eintraege still
+    // verworfen; eine Liste, die NUR aus ihnen bestand, wurde zur erfolgreichen Leere. Eine Antwort
+    // der Route traegt je Treffer eine Kennung (toResponse, check-text-routes.ts:89) — fehlt sie,
+    // ist die Antwort nicht die der Route, und dann gilt „Pruefung nicht moeglich", auch wenn
+    // daneben ein gueltiger Eintrag steht: eine halb lesbare Liste ist keine vollstaendige Auswertung.
+    const nurKaputt = sonde({
+      duplicates: [{ koTitle: "ohne Id" }, { koId: "", koTitle: "leer" }],
     });
-    const ergebnis = await ausgelieferterWeg()("tastenruhe", () => LANG, fetchFn);
-    // `ko-3` traegt weder Titel noch `relation` — also auch keine Wertung (JOB 1963 D4).
-    expect(ergebnis).toEqual({
-      treffer: [{ id: "ko-3", title: "", status: null, deviatesFrom: null }],
+    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, nurKaputt.fetchFn)).toEqual(
+      OHNE("fehler"),
+    );
+    const gemischt = sonde({ duplicates: [{ koTitle: "ohne Id" }, { koId: "ko-3" }] });
+    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, gemischt.fetchFn)).toEqual(
+      OHNE("fehler"),
+    );
+    // Ein gueltiger Eintrag ohne Titel und Beziehung bleibt ein Treffer — mit ehrlich `null`.
+    const duenn = sonde({ duplicates: [{ koId: "ko-3" }] });
+    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, duenn.fetchFn)).toEqual({
+      lage: "treffer",
+      gekuerzt: false,
+      treffer: [
+        {
+          id: "ko-3",
+          title: "",
+          status: null,
+          deviatesFrom: null,
+          relation: null,
+          koStatus: null,
+          koCategory: null,
+        },
+      ],
+    });
+  });
+
+  it("W6-9 · JOB 3092 Runde 2: ueber 8.000 Zeichen geht nur der Anfang — und das Ergebnis sagt `gekuerzt: true`", async () => {
+    // BENs Korrekturpflicht 1: der Schnitt war da (Zeile `schnitt`), aber unsichtbar — die Karte
+    // gab danach eine uneingeschraenkte Entwarnung. Jetzt reist die Kuerzung als Feld mit.
+    const lang = `${"Ventil vor jeder Wartung drucklos schalten. ".repeat(200)}Ende hinter der Grenze.`;
+    expect(lang.length).toBeGreaterThan(8000);
+    const { rufe, fetchFn } = sonde({ duplicates: [] });
+    const ergebnis = await ausgelieferterWeg()("tastenruhe", () => lang, fetchFn);
+    expect(JSON.parse(String(rufe[0]?.init.body)).text.length).toBe(8000);
+    expect(ergebnis).toEqual({ lage: "leer", gekuerzt: true, treffer: [] });
+    // Ein Text innerhalb der Grenze ist NICHT gekuerzt.
+    const kurz = sonde({ duplicates: [] });
+    expect(await ausgelieferterWeg()("tastenruhe", () => LANG, kurz.fetchFn)).toEqual({
+      lage: "leer",
+      gekuerzt: false,
+      treffer: [],
     });
   });
 
@@ -130,25 +234,25 @@ describe("W6 · der Weg zur Dublettenpruefung", () => {
     const { rufe, fetchFn } = sonde({ duplicates: [{ koId: "ko-1", koTitle: "T" }] });
     const ergebnis = await ausgelieferterWeg()("tastenruhe", () => "zu kurz", fetchFn);
     expect(rufe.length, "ein zu kurzer Text wurde trotzdem gesendet").toBe(0);
-    expect(ergebnis).toEqual({ treffer: [] });
+    expect(ergebnis).toEqual(OHNE("zu-kurz"));
   });
 
-  it("W6-6 · FAIL-CLOSED: Fehlerantwort, kaputter Koerper und Ausnahme schweigen alle", async () => {
+  it("W6-6 · FAIL-CLOSED: Fehlerantwort, kaputter Koerper und Ausnahme schweigen alle — als Lage „fehler“, nie als Leere", async () => {
     const weg = ausgelieferterWeg();
 
     const fehler = sonde({ duplicates: [{ koId: "ko-1", koTitle: "T" }] }, false);
-    expect(await weg("tastenruhe", () => LANG, fehler.fetchFn)).toEqual({ treffer: [] });
+    expect(await weg("tastenruhe", () => LANG, fehler.fetchFn)).toEqual(OHNE("fehler"));
 
     const kaputt = sonde({ nichts: true });
-    expect(await weg("tastenruhe", () => LANG, kaputt.fetchFn)).toEqual({ treffer: [] });
+    expect(await weg("tastenruhe", () => LANG, kaputt.fetchFn)).toEqual(OHNE("fehler"));
 
     const wirft = () => Promise.reject(new Error("offline"));
-    expect(await weg("tastenruhe", () => LANG, wirft as never)).toEqual({ treffer: [] });
+    expect(await weg("tastenruhe", () => LANG, wirft as never)).toEqual(OHNE("fehler"));
 
     // Und ohne Textquelle passiert gar nichts.
-    expect(await weg("tastenruhe", (() => undefined) as never, kaputt.fetchFn)).toEqual({
-      treffer: [],
-    });
+    expect(await weg("tastenruhe", (() => undefined) as never, kaputt.fetchFn)).toEqual(
+      OHNE("fehler"),
+    );
   });
 
   it("W6-7 · der Weg besetzt den VERTRAGSORT nicht — kein zweiter Anbieter", async () => {

@@ -1425,7 +1425,72 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Vier-Lagen-Zeichnung in `ka6MemoAngebotZeichnen`. Kein Markup, kein Stil, kein Abrufziel,
     // keine Nutzlast, kein Recht, keine CSP geaendert. KEIN Sideload noetig. Gemessen:
     // memo-panel-mounted P2b (HTTP 503 und Netzfehler) und P2c (EN).
-    const PIN = "e1e4599af45f24219c83c1a16b70e628a3645a0458636919ef8a6d4c5e698f87";
+    // ============================================================================================
+    // JOB 3092 · S6 (06.09.2026) — DER PIN WANDERT WEGEN DER BELEGTEN ANTWORT (W5 + W6).
+    // ============================================================================================
+    // VORHERHASH taskpane.html: `a5e8fcec7f194e6372aced2f3339cc155ece2072a32615faa455606517f637ba`.
+    //
+    // GEAENDERT WURDEN — Panelinhalt, Stilregeln, Woerterbuch und Skript, +424/−10 Zeilen:
+    //   · DREI neue, anfangs verborgene Markup-Stellen: `#ask-herkunft` und `#ask-ungeprueft` in der
+    //     Antwortkarte (unter dem Antworttext), `#ask-gap-ungeprueft` im Lueckenblock (Geschwister
+    //     von `#ask-luecke`, dessen Kinder in Chromium exakt gepinnt sind), `#capture-dubletten`
+    //     (Satz + Liste) in der Markierungskarte der Erfassen-Flaeche.
+    //   · Stilregeln nur an diesen Markup-Elementen, ausschliesslich aus Tokens (--muted, --text);
+    //     Links tragen die Linkfarbe des Fensters (mega43 bleibt gruen, gemessen).
+    //   · 19 neue Woerterbuch-Schluessel je Sprache (askHerkunft*, askUngeprueft*, captureDub*).
+    //     Vier deutsche tragen „geprüft" als Objekt- bzw. Vorgangsaussage — in
+    //     tests/i18n/mega35-word-wortliste.test.ts als OBJEKTAUSSAGEN benannt und begrenzt.
+    //   · `performAsk` LIEST zusaetzlich das Feld `ungeprueft` NEBEN `result` (JOB 1591 D1, nur auf
+    //     dem Sitzungsweg) und traegt es in beide Ausgaenge (`answered`, `gap`). Der abgesetzte Rumpf
+    //     bleibt byte-gleich (`question`, `locale`, `mode: "retrieval-only"`, `selection`).
+    //   · `resolveAskSources` liest zusaetzlich `version` und markiert einen gescheiterten Abruf
+    //     (`geladen: false`) — Lehre JOB 3091 R3: kein Pruefstand aus einem 503.
+    //   · Neue Zeichenfunktionen `renderAskHerkunft`/`renderAskUngeprueft` (Aufruf aus
+    //     renderAskOutcome, dem Quellen-Ruecklauf, resetAskResult und setLang) und
+    //     `captureDublettenPruefen`/`renderCaptureDubletten` (Aufruf aus renderCapture,
+    //     updateSendState und setLang).
+    //   · `w6DublettenAusCheckText` (Block KW-KLARA-W6-CHECKTEXT) liefert die LAGE des Laufs mit
+    //     (leer | treffer | fehler | zu-kurz) und je Treffer additiv relation/koStatus/koCategory;
+    //     `treffer` bleibt in jedem Nicht-Erfolgsfall leer, `status` bleibt null (KA3 unberuehrt).
+    //
+    // DIE EIGENTLICHE AUSLIEFERUNGSFOLGE: `POST /api/check-text` WIRD JETZT WIRKLICH GERUFEN — je
+    // Markierung (>= 40 Zeichen) auf der Erfassen-Flaeche genau einmal, nur mit Anmeldung, mit
+    // `source: "transient-document"` und derselben Sitzung (`credentials: "include"`). Das Ziel
+    // stand seit W6 (JOB 1621) im Weg und war inert; die Menge der `fetch(...)`-Literale ist
+    // unveraendert (M7 = 12; der Aufruf reicht `fetch.bind(window)` hinein wie der KA2-Weg).
+    // SAME-ORIGIN, KEIN Manifest, KEINE geaenderte CSP, KEIN neues Recht (Sitzungsweg: `ko.read`
+    // wie /api/ask; Add-in-Weg: `checktext.validated`). Die Route existiert serverseitig NUR bei
+    // aktivem Add-on-Flag (build-app.ts, `addonApiEnabled()`); ohne sie antwortet der Server 404,
+    // und das Panel sagt ehrlich „Pruefung nicht moeglich." — nie „nichts gefunden".
+    // Der Text der Markierung verlaesst den Ursprung nicht: Stufe 1 der Route ist deterministisch
+    // (kein Modell, kein Embedder — check-text-routes.ts), `want: "deep"` wird nicht gesendet.
+    // KEIN Intervall, KEIN Wiederholzyklus: derselbe Text wird nicht erneut geprueft.
+    //
+    // Ein installiertes Add-in braucht KEIN erneutes Sideload; es holt die Datei beim naechsten
+    // Oeffnen frisch. Bis der Office-Cache nachzieht, fehlen Herkunftszeilen und Dublettenauskunft —
+    // nichts wird falsch. Gemessen: tests/s6-belegte-antwort (16 Faelle, gemountet),
+    // tests/app/w6-dublettenweg-checktext.test.ts, mega43, mega69-klara-merkmale; Chromium
+    // (zielbild-k1-kein-erklaertext, zielbild-k2-kein-erklaertext, k2-buehne) nachgefuehrt, im Tor
+    // gemessen.
+    //
+    // JOB 3092 KONFLIKTRUNDE 1 (06.09.2026) -- `git rebase main` traf mit der JOB-3092-Kette (S6,
+    // belegte Antwort + Dublettenweg oben) auf die inzwischen auf main gelandete JOB-3091-Kette
+    // (KA6-Memo, Runden 1-4 oben, PIN e1e4599a...). BEIDE SEITEN BLEIBEN INHALTLICH ERHALTEN: der
+    // KA6-Memo-Block (Skript, Woerterbuch, Abrufziel) aus JOB 3091 UND der Herkunfts-/Ungeprueft-Block
+    // samt Dublettenweg aus JOB 3092 (S6, W5+W6) stehen nebeneinander in der zusammengefuehrten
+    // Datei. Kein Markup, kein Skript und kein Woerterbuchschluessel einer Seite wurde entfernt, um
+    // die andere Seite zu erhalten. Der Pin unten ist der frisch aus der zusammengefuehrten Datei
+    // gerechnete Hash, kein uebernommener Wert einer Seite.
+    // JOB 3092 RUNDE 2 (BEN, 06.09.2026) — VORHERHASH
+    // `c7d70dee3ed286b025102dcb4823892d42e21858db16eb2dcab6a08520475b09`. Geaendert wurden NUR
+    // Panelinhalte im Dublettenweg, +43/−6 Zeilen: `w6DublettenAusCheckText` meldet die Kuerzung
+    // auf 8.000 Zeichen als `gekuerzt` und eine Trefferliste mit Eintrag ohne Kennung als Lage
+    // „fehler" (statt stiller Leere); `captureDublettenPruefen`/`renderCaptureDubletten` zeigen fuer
+    // gekuerzte Laeufe eigene Saetze (zwei neue Schluessel je Sprache, captureDub*Gekuerzt); eine
+    // neue Markierungslesung darf einen fehlgeschlagenen Lauf wiederholen. KEIN neues Abrufziel,
+    // KEIN Manifest, KEINE CSP, KEIN Recht, dieselbe Nutzlast (Text bleibt auf 8.000 geschnitten —
+    // jetzt sichtbar). Kein Sideload noetig.
+    const PIN = "0067c5e9d56e9ed6b97d18f802b9c7c629cb9305850f72d8cbe0eda22eb15110";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -919,8 +919,10 @@ describe("WP-KLARA-2: Taskpane-Verdrahtung (Umfang, HTML, Deep-Link, ehrliche Gr
     // (unknown im Fehlerfall).
     expect(html).toContain('t("askTrust", { n: String(quelle.trust) })');
     expect(html).toContain("status: askSourceStatus(ko)");
+    // JOB 3092 S6: dazu `version: null` und `geladen: false` — der gescheiterte Abruf ist als
+    // solcher markiert, damit die Herkunftszeile keinen Pruefstand behauptet (Lehre JOB 3091 R3).
     expect(html).toContain(
-      '{ id: id, title: id, trust: null, standDate: null, status: "unknown" }',
+      '{ id: id, title: id, trust: null, standDate: null, status: "unknown", version: null, geladen: false }',
     );
   });
 });

@@ -57,6 +57,7 @@ const TRAEGER = `() => {
   const rolle = (el) => {
     if (el.id === 'capture-kicker') return 'kicker';
     if (el.classList.contains('capture-absatz')) return 'markierung';
+    if (el.closest('#capture-dubletten')) return 'dubletten';
     if (el.closest('button, a')) return 'knopf';
     if (el.tagName === 'INPUT' || el.tagName === 'SELECT') return 'feldwert';
     return 'beschriftung';
@@ -123,6 +124,11 @@ describe.runIf(zielbildDa)(
       expect(traeger.map((t) => `${t.rolle}:${t.sel}`).sort()).toEqual(
         [
           "kicker:#capture-kicker",
+          // JOB 3092 S6 (W6): die Dublettenauskunft VOR dem Einreichen — mit Markierung IMMER da
+          // (Buehne: erfolgreicher Lauf ohne Treffer → „Nichts Vergleichbares gefunden (geprueft
+          // HH:MM).", 46 Zeichen). Eigene Rolle wie der Kicker: eine Auskunft aus Daten, kein
+          // Erklaertext; die 40-Zeichen-Regel gilt fuer Beschriftungen.
+          "dubletten:#capture-dubletten-satz",
           "markierung:p.capture-absatz",
           "markierung:p.capture-absatz",
           "beschriftung:span",

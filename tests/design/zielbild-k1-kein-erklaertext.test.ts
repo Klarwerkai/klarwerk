@@ -26,6 +26,11 @@ const AUSNAHMEN = [
   "#ask-fussnoten",
   "#ask-sources",
   ".nur-vorlesen",
+  // JOB 3092 S6 (W5): die Herkunftszeilen („Quelle: Titel · Pruefstand · Version", je tragender
+  // Quelle) und der Ungeprueft-Satz sind BELEGE zur Antwort wie die Chips — Pedis Vertrauensbotschaft
+  // (M2), kein Erklaertext. Sie stehen nur im Antwortzustand und nur mit Datengrundlage.
+  "#ask-herkunft",
+  "#ask-ungeprueft",
 ];
 const HOECHSTENS = 60;
 
