@@ -4,6 +4,9 @@ import type {
   ClipboardEvent,
   DragEvent,
   MouseEvent,
+  // JOB 3107: der Nachholweg beim Fokusverlust liest `relatedTarget` — nur das Ereignis weiß, wohin
+  // der Fokus geht; `document.activeElement` steht während `focusout` schon auf `body`.
+  FocusEvent as ReactFocusEvent,
   KeyboardEvent as ReactKeyboardEvent,
   ReactNode,
 } from "react";
@@ -567,9 +570,31 @@ export function RichTextEditor({
   // lastEmitted-Guard bleibt der DOM die Quelle seiner eigenen Emissionen; geschrieben wird nur bei
   // ECHTEN Fremd-Änderungen (Vorschlag übernehmen, Entwurf laden, Reset).
   const lastEmittedRef = useRef<string | null>(null);
+  // ── JOB 3107 (PRIORITAETEN.md Q5b, Teil 1): DIE VERTAGTE FREMDFASSUNG ────────────────────────
+  //
+  // DER BEFUND (Codex hat ihn in JOB 3083 eigenständig gemessen und ausdrücklich nicht repariert,
+  // `archiv/3083/runde-1/RUECKGABE.md`, REST): der Fokus-Guard unten VERWARF eine von außen
+  // gekommene Fassung, solange die Einfügemarke im Editor lag — und es gab keinen Nachholweg. Die
+  // Abhängigkeiten dieses Effekts sind `[value, mode]`; der Fokuswechsel ist keine davon, der
+  // Effekt lief also erst wieder, wenn sich `value` ERNEUT änderte. Schlimmer noch: der nächste
+  // `onBlur` las das alte DOM und meldete es nach oben — die ältere Fassung ersetzte die neuere.
+  //
+  // HIER LIEGT SIE JETZT, bis der Fokus den Editor verlässt. Ein REF und kein Zustand: sie wird
+  // nicht gerendert, und ein Rendern mitten im Schreiben hätte genau den Cursor-Schaden ausgelöst,
+  // gegen den der Guard überhaupt existiert. Abgelegt wird der SANITISIERTE Wert — der Nachholweg
+  // schreibt damit exakt dasselbe, was der Effekt geschrieben hätte, und sanitisiert nicht zweimal.
+  //
+  // WANN SIE UNGÜLTIG WIRD, steht an allen vier Stellen unten ausgeschrieben: der Effekt hat
+  // regulär geschrieben, der Modus wechselt, sie wurde nachgeholt, oder die Autorin hat seither
+  // selbst getippt. Ein Ref-Wert, den niemand ungültig macht, stellt später einen überholten Stand
+  // wieder her — die Lehre aus JOB 3101 R2.
+  const vertagteFremdfassungRef = useRef<string | null>(null);
   // Beim Wechsel zurück in den Bearbeiten-Modus ist der contentEditable-Knoten FRISCH gemountet
   // (leer) — der Emissions-Guard darf dann nicht greifen, sonst bliebe der Editor leer.
+  // JOB 3107: der Merker fällt bei JEDEM Moduswechsel, in beide Richtungen. Der Knoten, auf den er
+  // sich bezog, existiert nach dem Wechsel nicht mehr; was gilt, ist das aktuelle `value`.
   useEffect(() => {
+    vertagteFremdfassungRef.current = null;
     if (mode === "edit") {
       lastEmittedRef.current = null;
     }
@@ -586,46 +611,28 @@ export function RichTextEditor({
     // Marker hängen bleiben und der Editor zeigte weiter B — genau bens Kante.
     if (value === lastEmittedRef.current) {
       lastEmittedRef.current = null;
+      // JOB 3107: dieser Wert kam aus DIESEM DOM. Es gibt nichts nachzuholen, und ein Merker aus
+      // einer früheren Runde wäre ab hier eine überholte Fassung.
+      vertagteFremdfassungRef.current = null;
       return;
     }
     lastEmittedRef.current = null;
     const safe = sanitizeHtml(value);
-    if (el.innerHTML !== safe && !el.contains(document.activeElement)) {
-      el.innerHTML = safe;
-      // AUFTRAG-mega11 Block D (bens SB-4): der KOMPLETTE Editor-Inhalt wurde von außen ersetzt —
-      // jede Fußnote, auf die ein offenes Formular oder ein laufender Request zeigt, ist ab jetzt
-      // ein abgelöster Knoten. Die Lauf-Nummer macht beides ungültig.
-      captionFormRunRef.current += 1;
-      captionGenerationRef.current += 1;
-      // JOB 3055 / RUNDE 3 (bens Korrekturpflicht 1): DIE LAUF-NUMMER ALLEIN REICHTE NICHT.
-      //
-      // Sie ist ein REF — sie löst kein Rendern aus. Bis hierher merkte das offene Formular den
-      // Austausch deshalb erst beim Speichern. Für den Text war das verkraftbar (er wird ohnehin
-      // erst dort geschrieben); für den Zuordnungs-Abschnitt war es ein Befund: seine
-      // Kandidatenknöpfe halten KNOTENZEIGER auf Bilder, die es gerade eben nicht mehr gibt.
-      // Ein solcher Knopf verspricht eine Zuordnung und kann keine mehr herstellen — eine
-      // Scheinfunktion, und genau die verbietet dieses Projekt.
-      //
-      // `captionFormStale` ist die vorhandene Antwort auf genau diesen Sachverhalt („das Ziel ist
-      // unter dem offenen Formular weggezogen worden", mega11 Block D) — sie bekommt hier ihren
-      // ZWEITEN Auslöser, keinen zweiten Zustand. Sichtbar wird sie sofort, und der
-      // Zuordnungs-Abschnitt verschwindet damit, statt eine überholte Auswahl anzubieten.
-      if (captionFormRef.current !== null) {
-        setCaptionFormStale(true);
-      }
-      // JOB 3051: DIESELBE GRENZE GILT FÜR DEN TRENNUNGSBEFUND. Ein Befund aus Dokument A darf an
-      // Dokument B nicht stehen bleiben — er sagt etwas über Bilder aus, die gerade eben ersetzt
-      // wurden (die Lehre aus JOB 3046 R1, hier sinngemäß). Zurückgesetzt wird VOR dem Verankern,
-      // damit der neue Befund auf einen leeren Stand fällt; React wendet beide Setzungen in dieser
-      // Reihenfolge an, die Zahl unten zählt also von 0 an.
-      setGetrennteZuordnungen(0);
-      setTrennungsHinweisZu(false);
-      // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen verankern.
-      // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
-      // CSS :empty::before) — wird vom Sanitizer beim Speichern gestrippt, nie echter Inhalt.
-      // AUFTRAG-mega84 Block A: dazu die angekündigte Beschriftung des Bedienelements.
-      uebernimmTrennungen(verankereFiguren(el));
+    if (el.innerHTML === safe) {
+      // Der Editor zeigt bereits genau diese Fassung — auch hier ist nichts zu vertagen.
+      vertagteFremdfassungRef.current = null;
+      return;
     }
+    // WP-D8 (Pedis Live-ROT A) BLEIBT: solange die Einfügemarke IM Editor steht — auch in einer
+    // figcaption, die ein eigener Fokusträger ist —, wird nicht unter ihr geschrieben.
+    // JOB 3107: sie wird ab hier aber VERTAGT statt verworfen. Nachgeholt wird sie beim
+    // Fokusverlust (`onEditorBlur`), und zwar über denselben Schreibweg wie hier.
+    if (el.contains(document.activeElement)) {
+      vertagteFremdfassungRef.current = safe;
+      return;
+    }
+    vertagteFremdfassungRef.current = null;
+    schreibeFremdfassung(el, safe);
   }, [value, mode]);
 
   // ── I47 PUNKT 1 (JOB 2060 D4): DIE INVARIANTE AN DER EMISSIONSGRENZE ─────────────────────────
@@ -653,6 +660,21 @@ export function RichTextEditor({
   // erfüllt ab hier die Invariante. Damit ist sie nicht mehr an die fünf bekannten Aufrufer
   // gebunden, sondern an die eine Stelle, die kein Weg umgehen kann.
   const emit = (): void => {
+    // ── JOB 3107 (RUNDE 2): HIER STIRBT DIE VERTAGTE FREMDFASSUNG, UND ZWAR AN DER EINEN STELLE ─
+    //
+    // `emit()` sagt: „was JETZT im Editor steht, ist die Wahrheit" — und meldet es nach oben. Damit
+    // ist jede vertagte Fassung überholt, egal welcher der zehn Aufrufer es war: Tippen, Einfügen,
+    // Fallenlassen, Werkzeugleiste, Bild-Zuordnung, gespeicherte Bildunterschrift. Runde 1 hat den
+    // Merker nur in `onEditorInput` gelöscht — das deckte den Tastendruck und sonst nichts, und
+    // genau diese Art halb verdrahteter Ungültigkeit war die Lehre aus JOB 3101 R2.
+    //
+    // WARUM HIER UND NICHT NUR IM WERT-EFFEKT: dessen Zweig `value === lastEmittedRef` löscht den
+    // Merker ebenfalls — aber ERST, nachdem der Verbraucher die Emission als neues `value`
+    // zurückgegeben hat. Das ist eine Zusage, die kein Prop macht: `onChange` sagt „hier ist der
+    // neue Inhalt", nicht „du bekommst ihn zurück". Ein Verbraucher, der verzögert, bündelt oder
+    // verwirft, ließe den Merker stehen — und der nächste Fokusverlust zöge der Autorin ihren Text
+    // unter der Hand weg. Gemessen an genau diesem Verbraucher: F8.
+    vertagteFremdfassungRef.current = null;
     const puffer = document.createElement("div");
     puffer.innerHTML = ref.current?.innerHTML ?? "";
     // JOB 3051: DIESER WEG MELDET NICHT, und das ist keine Vergesslichkeit. Die Fläche meldet nur,
@@ -721,6 +743,106 @@ export function RichTextEditor({
     setTrennungsHinweisZu(false);
   }, []);
 
+  // ── JOB 3107: DER EINE SCHREIBWEG FÜR EINE FASSUNG VON AUSSEN ────────────────────────────────
+  //
+  // Zwei Aufrufer, eine Stelle: der Wert-Effekt oben (Fokus außerhalb → sofort) und der Nachholweg
+  // beim Fokusverlust (`onEditorBlur`, Fokus lag im Editor → vertagt). Ein zweiter, verkürzter
+  // Schreibweg wäre genau die Vergesslichkeit, an der `mega11 Block D` und `JOB 3055 R3` schon
+  // einmal gescheitert sind: er ließe eine der fünf Folgen weg, und übrig bliebe ein Formular, das
+  // auf einen abgelösten Knoten zeigt. `el` und der SCHON SANITISIERTE Inhalt kommen von außen —
+  // hier wird nichts mehr entschieden, hier wird die Folge vollständig gezogen.
+  //
+  // Kein `useCallback`: der Wert-Effekt oben hört bewusst nur auf `[value, mode]`. Stünde diese
+  // Funktion in seiner Abhängigkeitsliste, liefe er auch beim Sprachwechsel (über `verankereFiguren`
+  // an `t` gebunden) — und schriebe das komplette innerHTML neu, obwohl sich am Inhalt nichts
+  // geändert hat. Genau das lehnt der Sprachwechsel-Effekt weiter unten ausdrücklich ab.
+  const schreibeFremdfassung = (el: HTMLElement, safe: string): void => {
+    el.innerHTML = safe;
+    // AUFTRAG-mega11 Block D (bens SB-4): der KOMPLETTE Editor-Inhalt wurde von außen ersetzt —
+    // jede Fußnote, auf die ein offenes Formular oder ein laufender Request zeigt, ist ab jetzt
+    // ein abgelöster Knoten. Die Lauf-Nummer macht beides ungültig.
+    captionFormRunRef.current += 1;
+    captionGenerationRef.current += 1;
+    // JOB 3055 / RUNDE 3 (bens Korrekturpflicht 1): DIE LAUF-NUMMER ALLEIN REICHTE NICHT.
+    //
+    // Sie ist ein REF — sie löst kein Rendern aus. Bis hierher merkte das offene Formular den
+    // Austausch deshalb erst beim Speichern. Für den Text war das verkraftbar (er wird ohnehin
+    // erst dort geschrieben); für den Zuordnungs-Abschnitt war es ein Befund: seine
+    // Kandidatenknöpfe halten KNOTENZEIGER auf Bilder, die es gerade eben nicht mehr gibt.
+    // Ein solcher Knopf verspricht eine Zuordnung und kann keine mehr herstellen — eine
+    // Scheinfunktion, und genau die verbietet dieses Projekt.
+    //
+    // `captionFormStale` ist die vorhandene Antwort auf genau diesen Sachverhalt („das Ziel ist
+    // unter dem offenen Formular weggezogen worden", mega11 Block D) — sie bekommt hier ihren
+    // ZWEITEN Auslöser, keinen zweiten Zustand. Sichtbar wird sie sofort, und der
+    // Zuordnungs-Abschnitt verschwindet damit, statt eine überholte Auswahl anzubieten.
+    if (captionFormRef.current !== null) {
+      setCaptionFormStale(true);
+    }
+    // JOB 3051: DIESELBE GRENZE GILT FÜR DEN TRENNUNGSBEFUND. Ein Befund aus Dokument A darf an
+    // Dokument B nicht stehen bleiben — er sagt etwas über Bilder aus, die gerade eben ersetzt
+    // wurden (die Lehre aus JOB 3046 R1, hier sinngemäß). Zurückgesetzt wird VOR dem Verankern,
+    // damit der neue Befund auf einen leeren Stand fällt; React wendet beide Setzungen in dieser
+    // Reihenfolge an, die Zahl unten zählt also von 0 an.
+    setGetrennteZuordnungen(0);
+    setTrennungsHinweisZu(false);
+    // WP-D7 (Befund 2): Bild-Fußnoten nach jedem innerHTML-Setzen verankern.
+    // WP-D10: lokalisierter, rein visueller Einlade-Text für LEERE Fußnoten (data-kw-placeholder +
+    // CSS :empty::before) — wird vom Sanitizer beim Speichern gestrippt, nie echter Inhalt.
+    // AUFTRAG-mega84 Block A: dazu die angekündigte Beschriftung des Bedienelements.
+    uebernimmTrennungen(verankereFiguren(el));
+  };
+
+  // ── JOB 3107: DER NACHHOLWEG BEIM VERLASSEN DES EDITORS ──────────────────────────────────────
+  //
+  // Bis hierher hing an `onBlur` unmittelbar `emit()`. Das war die zweite Hälfte des Schadens: der
+  // Editor las sein ALTES DOM, sanitisierte es und meldete es nach oben, weil es vom neueren
+  // `value` abwich — die von außen gekommene Fassung wurde durch die ältere ersetzt.
+  //
+  // Liegt eine vertagte Fassung vor, geschieht deshalb GENAU EINES von beiden: entweder sie wird
+  // geschrieben (und `emit()` schweigt — es hätte nur den überholten Stand zu melden, und der
+  // Verbraucher hält die Fassung ohnehin schon), oder es gibt keine und alles bleibt wie bisher.
+  // Der U8-Fall („ein No-op-Blur feuert kein onChange") ist damit unberührt.
+  //
+  // ── RUNDE 2: `onBlur` IST NICHT „DER EDITOR WURDE VERLASSEN" ────────────────────────────────
+  //
+  // `focusout` BUBBELT, und React hängt `onBlur` daran. Wandert die Einfügemarke von der Fläche in
+  // eine Bild-Fußnote (oder zurück, oder von einer Fußnote in die nächste), meldet dieser Knoten
+  // deshalb ebenfalls einen „Fokusverlust" — obwohl der Fokus im Editor GEBLIEBEN ist. Runde 1 hat
+  // in diesem Fall nachgeholt und damit den Teilbaum unter der gerade gesetzten Einfügemarke neu
+  // aufgebaut: Pedis Live-ROT A, aufgerissen von genau der Reparatur, die ihn schützen soll (F7).
+  //
+  // Die Auskunft, die den Unterschied trägt, ist `relatedTarget` — der Knoten, der den Fokus
+  // BEKOMMT. `document.activeElement` taugt hier nicht: während `focusout` steht es bereits auf
+  // `body`, und der Wert-Effekt oben, der es liest, läuft zu einem anderen Zeitpunkt.
+  // Ist `relatedTarget` leer (Klick ins Nichts, Fenster verliert den Fokus), ist der Editor
+  // verlassen — die schwächere Annahme wäre hier die falsche: sie ließe die Fassung liegen.
+  //
+  // BLEIBT DER FOKUS DRIN, geschieht deshalb NICHTS: nicht geschrieben (die Einfügemarke steht),
+  // aber auch nicht gemeldet — ein `emit()` von hier trüge den alten DOM-Stand nach oben und
+  // ersetzte die neuere Fassung beim Verbraucher durch die ältere, also exakt den Schaden aus
+  // Ausgangslage 2. Der Merker bleibt liegen und überlebt den Fokuswechsel.
+  //
+  // Verlässt der Fokus den Editor, fällt der Merker in JEDEM Fall — auch wenn der Editor-Knoten
+  // gerade nicht mehr da ist. Ein stehen gebliebener Merker wäre beim nächsten Fokusverlust eine
+  // überholte Fassung.
+  const onEditorBlur = (ereignis: ReactFocusEvent<HTMLDivElement>): void => {
+    const el = ref.current;
+    const vertagt = vertagteFremdfassungRef.current;
+    if (vertagt !== null) {
+      const ziel = ereignis.relatedTarget;
+      if (el !== null && ziel instanceof Node && el.contains(ziel)) {
+        return;
+      }
+      vertagteFremdfassungRef.current = null;
+      if (el !== null && el.innerHTML !== vertagt) {
+        schreibeFremdfassung(el, vertagt);
+      }
+      return;
+    }
+    emit();
+  };
+
   // I47 PUNKT 5 (JOB 994 D1) — DER SPRACHWECHSEL AM OFFENEN EDITOR.
   //
   // DER BEFUND: die beiden Texte oben werden NICHT von React gerendert, sondern per `setAttribute`
@@ -773,6 +895,14 @@ export function RichTextEditor({
   // Backspace-/Delete-Guard reparierten Schäden, die nur ein contenteditable-Editing-Host anrichten
   // kann. Die Fußnote ist keiner mehr — es gibt in ihr kein Caret, das etwas löschen könnte.
   const onEditorInput = (): void => {
+    // JOB 3107: DIE AUTORIN GEWINNT. Hat sie seit der Ankunft der Fremdfassung auch nur ein Zeichen
+    // getippt, wird diese verworfen statt nachgeholt — ihr Text wird ihr nie unter der Hand
+    // weggezogen (Zusage S7 aus JOB 3083). Der Fall „beide haben geändert" wird hier NICHT
+    // stillschweigend zugunsten der Fremdfassung entschieden; dass die Fläche ihn nicht ausspricht,
+    // ist offener Rest (Q5b Teil 2, braucht einen neuen i18n-Schlüssel).
+    //
+    // RUNDE 2: das Verwerfen steht NICHT mehr hier, sondern in `emit()` selbst — hier stünde es nur
+    // für den Tastendruck, dort gilt es für jeden Weg, auf dem die Autorin den Editor ändert.
     emit();
   };
 
@@ -2789,7 +2919,7 @@ export function RichTextEditor({
               aria-label={t("editor.bodyLabel")}
               tabIndex={0}
               onInput={onEditorInput}
-              onBlur={emit}
+              onBlur={onEditorBlur}
               onClick={onEditorClick}
               onKeyDown={onEditorKeyDown}
               onKeyUp={updateImageSelectionFromCursor}

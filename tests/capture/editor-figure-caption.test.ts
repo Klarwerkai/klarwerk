@@ -138,11 +138,17 @@ describe("WP-D8: echter Front-Door-Zyklus (Server-Sanitize → Draft → Editor)
     // Die figcaption ist ein EIGENER Editing-Host: beim Klick hinein wird SIE document.activeElement.
     // Der alte Guard (activeElement !== el) hielt den Editor dann fuer unfokussiert und schrieb bei jedem
     // Tastendruck das innerHTML neu (Caret zerstoert). Gepinnt: contains-Guard drin, Identitaets-Guard raus.
+    //
+    // JOB 3107: der Guard steht seit der vertagten Fremdfassung in der POSITIVEN Form — er bricht
+    // nicht mehr ab, sondern merkt sich die Fassung und holt sie beim Fokusverlust nach. Gepinnt
+    // bleibt exakt dieselbe Aussage: gefragt wird `contains`, nie Identitaet. Was der Guard in
+    // seinem Zweig TUT, misst `tests/editor-fremdfassung/fremdfassung-bei-fokus-mounted.test.tsx`
+    // am gemounteten Editor (F2 haelt die Knoten-Identitaet unter der Einfuegemarke fest).
     const src = readFileSync(
       resolve(process.cwd(), "apps/web/src/components/RichTextEditor.tsx"),
       "utf8",
     );
-    expect(src).toContain("!el.contains(document.activeElement)");
+    expect(src).toContain("el.contains(document.activeElement)");
     expect(src).not.toContain("document.activeElement !== el");
   });
 

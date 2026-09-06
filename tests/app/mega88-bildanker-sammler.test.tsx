@@ -701,7 +701,21 @@ type SchreibDisposition = "koerper" | "formularfeld" | "generisch" | "emissionsp
 
 const SCHREIB_DISPOSITION: Readonly<Record<string, SchreibDisposition>> = {
   fuegeAmCursorEin: "generisch",
-  "useEffect[value, mode]": "koerper", // Laden von außen: Entwurf, Beitrag, Altbestand (Block C)
+  // ── JOB 3107 (PRIORITAETEN.md Q5b, Teil 1): AUS `useEffect[value, mode]` IST DIESE STELLE ─────
+  //
+  // Hier stand `"useEffect[value, mode]": "koerper"` — der Effekt, der eine von außen gekommene
+  // Fassung in den Körper schrieb (Entwurf, Beitrag, Altbestand, Vorlage, KI-Vorschlag). Er
+  // schreibt nicht mehr selbst: er ENTSCHEIDET nur noch (sofort schreiben, vertagen oder nichts zu
+  // tun) und ruft für das Schreiben diese eine Funktion. Der zweite Aufrufer ist der Nachholweg
+  // beim Fokusverlust (`onEditorBlur`) — er holt die Fassung nach, die bei liegender Einfügemarke
+  // vertagt wurde, und braucht dafür DIESELBEN Folgeschritte (Lauf-Nummern, `captionFormStale`,
+  // Trennungsbefund, Verankerung). Ein zweiter, verkürzter Schreibweg wäre genau der Weg, gegen den
+  // dieser Wächter gebaut ist.
+  //
+  // Die Erhebung sieht deshalb ab jetzt `schreibeFremdfassung` statt des Effekts: der Effekt
+  // enthält keine Schreibform mehr, die Funktion enthält sie. Die Zusage ist unverändert
+  // `koerper` — und sie ist erfüllt, der Rumpf ruft `verankereFiguren(el)`.
+  schreibeFremdfassung: "koerper",
   exec: "koerper", // Werkzeugleiste, Bild aus Anhängen, Link, Block
   insertHtmlReliable: "koerper", // lokale Dateiauswahl, Drop, Einfügen
   captionFormat: "formularfeld", // fett/kursiv/Umbruch im Beschreibungsfeld
