@@ -1002,6 +1002,37 @@ export interface ImportItemInput {
 export type ReviewStatus = "neu" | "in_bearbeitung" | "angenommen" | "abgelehnt" | "info-angefragt";
 export type ReviewAction = "accept" | "reject" | "info";
 
+// JOB 3050/3081/3116: WORAUF ein Kandidat getroffen ist — ABGESCHRIEBENER SPIEGEL des
+// Serververtrags (`services/library-analytics/src/types.ts`, dort steht das ausgeschriebene Warum
+// je Ausgang). KEIN Import aus `services/`: der webbuild-Stage im Dockerfile kopiert nur
+// `apps/web` (dieselbe Begründung wie bei `ModelRunTask`, :159-162).
+//
+// WARUM EIN EIGENER TREFFER-TYP UND NICHT EINE LOSE `koId`: eine Kennung gibt es nur, wenn wirklich
+// getroffen wurde. Zwei flache Felder ließen die Kombination „getroffen, ohne Treffer" typgültig —
+// genau die Behauptung ohne Voraussetzung, die das Produkt nicht ausgibt.
+export type Dublettentreffer =
+  | { readonly art: "wissensobjekt"; readonly koId: string }
+  | { readonly art: "kandidat"; readonly kandidatId: string };
+
+export type KandidatDublettenbefund =
+  | { readonly ergebnis: "keine" }
+  | { readonly ergebnis: "identisch"; readonly treffer: Dublettentreffer }
+  | {
+      readonly ergebnis: "aehnlich";
+      readonly treffer: Dublettentreffer;
+      readonly aehnlichkeit: number;
+    }
+  // „Es gab GAR KEINE Entscheidung" — weder Dublette noch keine Dublette. Daraus wird an der
+  // Oberfläche nie eine Aussage über den Bestand.
+  | { readonly ergebnis: "pruefung_nicht_moeglich" }
+  // Anker-/Re-Sync-Strang, seit JOB 3116 mit genau EINER Bedeutung: kein Bestandsträger (Erstanlage).
+  | { readonly ergebnis: "nicht_gestellt" }
+  // Derselbe Herkunfts-Anker trägt ein Wissensobjekt im PAPIERKORB (JOB 3081).
+  | { readonly ergebnis: "im_papierkorb"; readonly treffer: Dublettentreffer }
+  // Derselbe Herkunfts-Anker trägt ein AKTIVES Wissensobjekt; der Inhalt fließt dorthin zurück,
+  // es entsteht nichts Neues (JOB 3116).
+  | { readonly ergebnis: "wiederverwendet"; readonly treffer: Dublettentreffer };
+
 export interface ImportCandidate {
   id: string;
   item: ImportItemInput;
@@ -1010,6 +1041,10 @@ export interface ImportCandidate {
   note: string | null;
   koId: string | null;
   createdAt: string;
+  // JOB 3116: OPTIONAL, weil echter Altbestand (eingereiht vor JOB 3050) das Feld nicht trägt. Das
+  // Fehlen ist eine Aussage — „darüber liegt keine Auskunft vor" — und wird nie zu einem
+  // Vorgabewert geglättet.
+  dublettenbefund?: KandidatDublettenbefund;
   // WP-SHIP8-CLOSE-6 (bens ROT-3a): Wer/Wann der Review-Entscheidung — im Statuswrite persistiert.
   reviewedBy?: string;
   reviewedAt?: string;

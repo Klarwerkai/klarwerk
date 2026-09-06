@@ -110,6 +110,10 @@ const WIDERRUFENE_FREIGABEN: readonly string[] = [
   // von `KandidatDublettenbefund` (`im_papierkorb`) — sie darf den neuen Inhalt nicht nachtraeglich
   // decken. Ihre Nachfolgerin steht am Eintrag.
   "FREEZE-144/JOB3050-20260904/types",
+  // JOB 3116: verbraucht. Diese Freigabe autorisierte den `types.ts`-Stand VOR dem SECHSTEN Ausgang
+  // von `KandidatDublettenbefund` (`wiederverwendet`) — sie darf den neuen Inhalt nicht nachtraeglich
+  // decken. Ihre Nachfolgerin steht am Eintrag.
+  "FREEZE-144/JOB3081-20260905/types",
   // JOB 3087: verbraucht. Diese beiden Freigaben autorisierten den Stand VOR der Ablösung des
   // nicht injektiven Idempotenz-Schlüssels der Review-Warteschlange (`openCandidateKey` in
   // `repo.ts`, dessen Ausleitung in `index.ts`) — sie dürfen den neuen Inhalt nicht nachträglich
@@ -173,10 +177,20 @@ const FREEZE_MANIFEST: readonly FreezeEintrag[] = [
     // vorhandene Variante ist geändert, `Dublettentreffer` ist unangetastet (es entsteht KEINE
     // neue Trefferform), und `nicht_gestellt` bleibt für den aktiven Re-Sync. Sollhash UND
     // Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
-    hash: "32bb256089c89e382b3c2c47f36c293c835e134e142198a45f4c5e36ab2badcd",
+    // JOB 3116 · AUSGEWIESENE ÄNDERUNG: `KandidatDublettenbefund` hat einen SECHSTEN Ausgang —
+    // `{ ergebnis: "wiederverwendet"; treffer: Dublettentreffer }`. Damit ist die ABSCHLIESSENDE
+    // Liste der Ausgänge: `keine` · `identisch` · `aehnlich` · `pruefung_nicht_moeglich` ·
+    // `nicht_gestellt` · `im_papierkorb` · `wiederverwendet`. WARUM DER SECHSTE: `nicht_gestellt`
+    // trug im Anker-Strang ZWEI Sachverhalte — „der Anker liegt aktiv im Bestand" (Re-Sync, die
+    // Kennung wird wiederverwendet) und „es gibt gar keinen Bestandsträger" (Erstanlage). Kein
+    // Client konnte sie trennen, und die Oberfläche schrieb daraus „KO erzeugt", wo nichts erzeugt
+    // wurde. REIN ADDITIV: keine vorhandene Variante ist geändert, `Dublettentreffer` ist
+    // unangetastet, und `nicht_gestellt` heißt ab jetzt genau die Erstanlage. Sollhash UND
+    // Freigabe sind in EINEM Änderungssatz neu gesetzt, die alte steht in WIDERRUFENE_FREIGABEN.
+    hash: "a12c64c8bc5655ed5f91b3c9d2b7e48ff454cfce442d885edd21b6e5cfdda888",
     freigabe: {
-      id: "FREEZE-144/JOB3081-20260905/types",
-      autorisiertHash: "32bb256089c89e382b3c2c47f36c293c835e134e142198a45f4c5e36ab2badcd",
+      id: "FREEZE-144/JOB3116-20260906/types",
+      autorisiertHash: "a12c64c8bc5655ed5f91b3c9d2b7e48ff454cfce442d885edd21b6e5cfdda888",
     },
   },
   {
@@ -586,6 +600,38 @@ describe("Freeze-144 · 5 · ein Symlink umgeht die sechs Pfade nicht", () => {
     } finally {
       rmSync(verzeichnis, { recursive: true, force: true });
     }
+  });
+});
+
+// ================================================================================================
+// 7 · JOB 3116 — DER AUSGANGS-KATALOG VON `KandidatDublettenbefund`, ABSCHLIESSEND.
+// ================================================================================================
+//
+// WARUM NEBEN DEM HASH NOCH DIESE LISTE: der Hash sagt „die Datei hat sich geändert" und nennt
+// keinen Grund. Der Katalog der Ausgänge ist aber der Vertrag, an dem jeder Leser hängt — Service,
+// Route, Client-Spiegel (`apps/web/src/api/types.ts`) und die Oberfläche. Ein SIEBTER Ausgang, der
+// nur beim Server ankommt, ließe die Fläche wieder schweigen oder das Falsche sagen; genau das war
+// der Befund, aus dem `wiederverwendet` entstanden ist. Wer hier erweitert, sieht in EINER Zeile,
+// wen er sonst noch mitziehen muss.
+describe("Freeze-144 · 7 · die Ausgaenge von KandidatDublettenbefund stehen abschliessend fest", () => {
+  it("genau sieben Ausgaenge, in der Reihenfolge des Typs", () => {
+    const quelle = echterLeser("services/library-analytics/src/types.ts") ?? "";
+    const union = quelle.slice(
+      quelle.indexOf("export type KandidatDublettenbefund"),
+      quelle.indexOf("export interface ImportResult"),
+    );
+    expect(union.length, "Der Typ steht nicht mehr an seiner Stelle.").toBeGreaterThan(0);
+    expect([...union.matchAll(/ergebnis:\s*"([a-z_]+)"/g)].map((m) => m[1])).toEqual([
+      "keine",
+      "identisch",
+      "aehnlich",
+      "pruefung_nicht_moeglich",
+      "nicht_gestellt",
+      "im_papierkorb",
+      // JOB 3116: der aktive Herkunfts-Anker. Bis dahin lag er unter `nicht_gestellt` und war damit
+      // von der Erstanlage nicht unterscheidbar.
+      "wiederverwendet",
+    ]);
   });
 });
 

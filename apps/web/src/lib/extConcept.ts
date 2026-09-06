@@ -37,23 +37,57 @@ export function summarizeImportQueue(candidates: readonly ImportCandidate[]): Im
 }
 
 // SCRUM-91: kompakte Befunde je Kandidat (Badges) — nur aus vorhandenen Feldern abgeleitet.
+//
+// JOB 3116: zwei Befunde tragen eine KENNUNG, und sie tragen sie als Objekt oder gar nicht —
+// `{ koId } | null` statt eines Booleans neben einer losen `koId`. Dieselbe Typdisziplin, die der
+// Servertyp begründet: eine Kennung gibt es nur, wenn der Befund sie wirklich führt. `null` heißt
+// hier immer „diese Aussage steht nicht an" — nie „das Gegenteil gilt".
 export interface CandidateFindings {
   duplicate: boolean;
   missingInfo: boolean; // fehlende Pflichtangaben (Titel/Aussage/Kategorie)
   acceptedKo: boolean; // angenommen → echtes KO im normalen Flow erzeugt
   rejected: boolean;
   infoRequested: boolean;
+  // Derselbe Herkunfts-Anker liegt im Papierkorb — mit der Kennung des getrashten Objekts.
+  imPapierkorb: { koId: string } | null;
+  // Der Inhalt fließt in ein BESTEHENDES Wissensobjekt zurück (Re-Sync) — mit dessen Kennung.
+  wiederverwendet: { koId: string } | null;
+}
+
+/**
+ * Die Kennung wird NUR genannt, wenn der Befund sie wirklich trägt. Ein Treffer der Art `kandidat`
+ * verweist auf einen Eintrag desselben Laufs und hat keine `koId`; im Anker-Strang kann er nicht
+ * vorkommen, aber daraus eine Kennung zu erfinden wäre genau die Behauptung ohne Voraussetzung,
+ * gegen die der Typ steht.
+ */
+function trefferKoId(befund: ImportCandidate["dublettenbefund"]): { koId: string } | null {
+  if (befund === undefined || !("treffer" in befund) || befund.treffer.art !== "wissensobjekt") {
+    return null;
+  }
+  return { koId: befund.treffer.koId };
 }
 
 export function candidateFindings(candidate: ImportCandidate): CandidateFindings {
   const item = candidate.item;
   const missingInfo = !item.title?.trim() || !item.statement?.trim() || !item.category?.trim();
+  const befund = candidate.dublettenbefund;
+  const imPapierkorb = befund?.ergebnis === "im_papierkorb" ? trefferKoId(befund) : null;
+  const wiederverwendet = befund?.ergebnis === "wiederverwendet" ? trefferKoId(befund) : null;
   return {
-    duplicate: candidate.duplicate,
+    // JOB 3116 · ABLÖSUNG: am Papierkorb-Kandidaten setzt der Server `duplicate: true` (fail-closed,
+    // service.ts). „Dublette" heißt im Anker-Strang aber ausdrücklich nur „dasselbe Quellobjekt
+    // zweimal in DIESEM Lauf" — neben dem genaueren Papierkorb-Befund wäre es ein zweites Wort für
+    // dieselbe Sache, und das schwächere von beiden. Es tritt darum zurück, statt danebenzustehen.
+    duplicate: candidate.duplicate && imPapierkorb === null,
     missingInfo,
-    acceptedKo: candidate.status === "angenommen" && candidate.koId !== null,
+    // JOB 3116 · ABLÖSUNG: beim Re-Sync wird die Kennung eines BESTEHENDEN Objekts zurückgegeben —
+    // erzeugt wurde nichts. „KO erzeugt" wäre schlicht falsch.
+    acceptedKo:
+      candidate.status === "angenommen" && candidate.koId !== null && wiederverwendet === null,
     rejected: candidate.status === "abgelehnt",
     infoRequested: candidate.status === "info-angefragt",
+    imPapierkorb,
+    wiederverwendet,
   };
 }
 

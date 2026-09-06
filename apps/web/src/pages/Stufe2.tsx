@@ -636,6 +636,22 @@ export function ImportReview(): JSX.Element {
                                 {t("ext.finding.acceptedKo")}
                               </span>
                             ) : null}
+                            {/* JOB 3116 (Q2c): WORAUF dieser Wiederimport getroffen ist — mit der
+                                Kennung des betroffenen Objekts. Beide Abzeichen ERSETZEN eines der
+                                bisherigen (Papierkorb statt „Dublette", Wiederverwendung statt
+                                „KO erzeugt"); die Ablösung fällt in `candidateFindings`, damit hier
+                                kein zweiter Weg entsteht, der dieselbe Sache anders benennt. Sie
+                                stehen nur da, wenn der Befund die Kennung wirklich trägt. */}
+                            {f.imPapierkorb ? (
+                              <span className="rounded-pill bg-trust-warn-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-warn-text">
+                                {t("ext.finding.inTrash", { id: f.imPapierkorb.koId })}
+                              </span>
+                            ) : null}
+                            {f.wiederverwendet ? (
+                              <span className="rounded-pill bg-page px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-muted">
+                                {t("ext.finding.reusedKo", { id: f.wiederverwendet.koId })}
+                              </span>
+                            ) : null}
                             {f.rejected ? (
                               <span className="rounded-pill bg-trust-crit-bg px-2 py-0.5 font-mono text-[10.5px] font-semibold uppercase text-trust-crit-text">
                                 {t("ext.finding.rejected")}

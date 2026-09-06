@@ -261,6 +261,13 @@ function ankerSchluessel(
 //
 // ALTBESTAND: fehlt `dublettenbefund` ganz (eingereiht vor JOB 3050), gilt allein `duplicate` —
 // das ist genau das Verhalten, unter dem der Kandidat eingereiht wurde.
+//
+// JOB 3116: der neue Ausgang `wiederverwendet` (aktiver Anker, Re-Sync) faellt hier bewusst unter
+// KEINEN eigenen Zweig. Er wird damit genau so behandelt wie zuvor `nicht_gestellt` — der Kandidat
+// geht in den Vergleichsbestand und sein `accept` laeuft in den Upsert-Zweig. Ein zweiter Zweig
+// daneben waere eine neue Verhaltensregel; der Auftrag benennt nur das Signal um. Wer das dennoch
+// tut, bricht den Confluence-/Jira-Re-Sync still — `tests/papierkorb-befund/accept-bleibt-resync.
+// test.ts` (R3) misst es samt Gegenprobe.
 function kandidatErzeugtWissensobjekt(candidate: ImportCandidate): boolean {
   return !candidate.duplicate && candidate.dublettenbefund?.ergebnis !== "pruefung_nicht_moeglich";
 }
@@ -516,8 +523,13 @@ export class LibraryService {
     // UND wenigstens ein Eintrag einen Anker traegt. Der Textweg fragt den Papierkorb nie.
     //
     // VORRANG DES LEBENDEN: die aktiven Anker werden aus dem ohnehin gelesenen `existing` gebildet.
-    // Liegt derselbe Anker aktiv im Bestand, bleibt es `nicht_gestellt` (Re-Sync, unveraendert) —
+    // Liegt derselbe Anker aktiv im Bestand, ist es ein Re-Sync (unveraendert in der ENTSCHEIDUNG) —
     // der Papierkorb wird dann gar nicht erst befragt.
+    //
+    // JOB 3116: die Karte der aktiven Anker traegt seit hier die KENNUNG des Traegers, nicht nur die
+    // Tatsache. Ein `Set` konnte nur „ja, aktiv" sagen; der Befund `wiederverwendet` nennt aber, in
+    // WELCHES Objekt der Inhalt zurueckfliesst — dieselbe Auskunft, die `im_papierkorb` fuer das
+    // getrashte Objekt gibt. Die Kennung liegt in derselben Schleife ohnehin vor.
     //
     // FAIL-CLOSED (Zustandsmodell): wirft die Papierkorb-Lesung, wird daraus NIE „es liegt nichts im
     // Papierkorb". Die betroffenen Anker-Eintraege erhalten den vorhandenen ehrlichen Ausgang
@@ -525,12 +537,18 @@ export class LibraryService {
     // anlegen); der Lauf bricht NICHT ab, und Eintraege ohne Anker sind unberuehrt. Eine LEERE
     // Liste ist dagegen eine echte Auskunft: dann bleibt es exakt wie bisher `nicht_gestellt`.
     const ankerImLauf = this.externalUpsert && items.some((item) => item.externalId);
-    const aktiveAnker = new Set<string>();
+    const aktiveAnker = new Map<string, string>();
     if (ankerImLauf) {
       for (const ko of existing) {
         for (const quelle of ko.sources ?? []) {
           if (quelle.externalId) {
-            aktiveAnker.add(ankerSchluessel(quelle.provider, quelle.externalId));
+            const key = ankerSchluessel(quelle.provider, quelle.externalId);
+            // Der ERSTE Traeger eines Ankers gewinnt — dieselbe Determinismus-Regel wie bei
+            // `papierkorbAnker` unten und bei `exakt`: sonst haenge die genannte Kennung an der
+            // Lesereihenfolge des Bestands, und zwei Laeufe naennten verschiedene Objekte.
+            if (!aktiveAnker.has(key)) {
+              aktiveAnker.set(key, ko.id);
+            }
           }
         }
       }
@@ -592,10 +610,17 @@ export class LibraryService {
         batchExternalIds.add(batchKey);
         // JOB 3081: drei Ausgaenge, in GENAU dieser Reihenfolge (Begruendung vor der Schleife).
         const getrashteKoId = papierkorbAnker?.get(batchKey);
-        if (aktiveAnker.has(batchKey)) {
+        const aktiveKoId = aktiveAnker.get(batchKey);
+        if (aktiveKoId !== undefined) {
           // VORRANG DES LEBENDEN: derselbe Anker liegt aktiv im Bestand — das ist ein Re-Sync und
           // bleibt unveraendert, unabhaengig davon, was im Papierkorb liegt (oder ob er lesbar war).
-          dublettenbefund = { ergebnis: "nicht_gestellt" };
+          // JOB 3116: gesagt wird das jetzt AUCH — mit der Kennung des Traegers, in den der Inhalt
+          // zurueckfliesst. Die ENTSCHEIDUNG ist dieselbe wie zuvor unter `nicht_gestellt`
+          // (kandidatErzeugtWissensobjekt, s. dort): der `accept` laeuft in den Upsert.
+          dublettenbefund = {
+            ergebnis: "wiederverwendet",
+            treffer: { art: "wissensobjekt", koId: aktiveKoId },
+          };
         } else if (papierkorbAnker === null) {
           // Die Papierkorb-Lesung ist ausgefallen — weder „im Papierkorb" noch „nicht im
           // Papierkorb" darf hier behauptet werden.
@@ -611,7 +636,9 @@ export class LibraryService {
           // `pruefung_nicht_moeglich`: im Zweifel entsteht KEIN Objekt.
           duplicate = true;
         } else {
-          // Gelesen, und der Anker liegt nicht im Papierkorb — exakt das bisherige Ergebnis.
+          // Gelesen, und der Anker liegt weder aktiv im Bestand noch im Papierkorb: ERSTANLAGE.
+          // JOB 3116: das ist ab hier die EINZIGE Bedeutung von `nicht_gestellt` im Anker-Strang —
+          // der aktive Fall heisst `wiederverwendet` (s. oben).
           dublettenbefund = { ergebnis: "nicht_gestellt" };
         }
       } else {

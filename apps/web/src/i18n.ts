@@ -3723,6 +3723,11 @@ const de = {
   "ext.finding.missingInfo": "Angaben fehlen",
   "ext.finding.infoRequested": "Info angefragt",
   "ext.finding.acceptedKo": "KO erzeugt",
+  // JOB 3116 (Q2c): WORAUF der Wiederimport getroffen ist — mit der Kennung des betroffenen
+  // Objekts. Beide treten AN DIE STELLE eines bisherigen Abzeichens: „liegt im Papierkorb" statt
+  // „Dublette", „vorhanden … wiederverwendet" statt „KO erzeugt" (dort wurde nichts erzeugt).
+  "ext.finding.inTrash": "liegt im Papierkorb, Kennung {{id}}",
+  "ext.finding.reusedKo": "vorhanden, Kennung {{id}} wiederverwendet",
   "ext.finding.rejected": "Abgelehnt",
   "ext.validity.title": "Gültigkeit & Schutz",
   "ext.validity.freshness": "Aktualität",
@@ -8532,6 +8537,8 @@ const en: typeof de = {
   "ext.finding.missingInfo": "Missing info",
   "ext.finding.infoRequested": "Info requested",
   "ext.finding.acceptedKo": "KO created",
+  "ext.finding.inTrash": "in the trash, ID {{id}}",
+  "ext.finding.reusedKo": "existing, ID {{id}} reused",
   "ext.finding.rejected": "Rejected",
   "ext.validity.title": "Validity & protection",
   "ext.validity.freshness": "Freshness",
@@ -13078,6 +13085,8 @@ const nl: typeof de = {
   "ext.finding.missingInfo": "Gegevens ontbreken",
   "ext.finding.infoRequested": "Info opgevraagd",
   "ext.finding.acceptedKo": "KO aangemaakt",
+  "ext.finding.inTrash": "ligt in de prullenbak, kenmerk {{id}}",
+  "ext.finding.reusedKo": "bestaat al, kenmerk {{id}} hergebruikt",
   "ext.finding.rejected": "Afgewezen",
   "ext.validity.title": "Geldigheid & bescherming",
   "ext.validity.freshness": "Actualiteit",

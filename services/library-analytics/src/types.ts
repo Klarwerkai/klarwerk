@@ -139,7 +139,10 @@ export type Dublettentreffer =
  * - `nicht_gestellt` — der externalId-Upsert-/Re-Sync-Strang (SCRUM-510 R2b): dort ist eine
  *   Bestandskollision per Entscheid ein Re-Sync und keine Dublette, die Textfrage wird also nicht
  *   gestellt. `duplicate` heisst dort ausschliesslich „dasselbe Quellobjekt zweimal in DIESEM Lauf".
+ *   AB JOB 3116 heisst dieses Wort im Anker-Strang GENAU EINE Sache: es gibt KEINEN Bestandstraeger
+ *   dieses Ankers (Erstanlage). Die zweite Sache, die es bis dahin mit trug, ist `wiederverwendet`.
  * - `im_papierkorb` — JOB 3081, s. unten.
+ * - `wiederverwendet` — JOB 3116, s. unten.
  *
  * Die Woerter sind bewusst die von `UebersprungenGrund` (plus die Faelle, die es dort nicht geben
  * kann): dieselbe Frage, dieselbe Sprache auf beiden Importwegen.
@@ -159,8 +162,32 @@ export type Dublettentreffer =
  * die es wirklich gibt — die des getrashten Objekts. Eine eigene Trefferart waere ein zweites Wort
  * fuer dieselbe Sache: das getroffene IST ein Wissensobjekt, es liegt nur im Papierkorb.
  *
- * VORRANG DES LEBENDEN: liegt derselbe Anker AKTIV im Bestand, bleibt es `nicht_gestellt` — der
- * Re-Sync ist unveraendert. `im_papierkorb` entsteht nur, wenn es kein aktives Gegenstueck gibt.
+ * VORRANG DES LEBENDEN: liegt derselbe Anker AKTIV im Bestand, gilt `wiederverwendet` (JOB 3116,
+ * bis dahin `nicht_gestellt`) — der Re-Sync ist unveraendert. `im_papierkorb` entsteht nur, wenn es
+ * kein aktives Gegenstueck gibt.
+ *
+ * ------------------------------------------------------------------------------------------------
+ * JOB 3116 — EIN WORT FUER ZWEI SACHVERHALTE WAR EIN WORT ZU WENIG.
+ * ------------------------------------------------------------------------------------------------
+ *
+ * `wiederverwendet` ist der SECHSTE Ausgang und gehoert ebenfalls AUSSCHLIESSLICH dem externalId-/
+ * Anker-Strang: derselbe Herkunfts-Anker traegt ein Wissensobjekt, das AKTIV im Bestand liegt. Der
+ * `accept` laeuft dann in den Re-Sync-/Upsert-Zweig und gibt die Kennung des BESTEHENDEN Objekts
+ * zurueck — es entsteht nichts Neues.
+ *
+ * BIS JOB 3116 STAND HIER `nicht_gestellt`, dasselbe Wort wie fuer die Erstanlage („Anker gelesen,
+ * weder aktiv noch im Papierkorb"). Zwei verschiedene Sachverhalte unter einem Namen, am Draht
+ * nicht unterscheidbar — und die Flaeche schrieb daraus spaeter „KO erzeugt", obwohl nichts erzeugt
+ * wurde (Codex' Live-Befund R-0192, Ergaenzung 05.09.2026). Genau diese Doppeldeutigkeit war der
+ * Fehler; sie ist hier aufgeloest, nicht ueberdeckt.
+ *
+ * DER TREFFER IST DIESELBE VORHANDENE FORM `{ art: "wissensobjekt", koId }` wie bei `im_papierkorb`
+ * — das Getroffene IST ein Wissensobjekt, es lebt nur, statt im Papierkorb zu liegen. Eine eigene
+ * Trefferart waere ein zweites Wort fuer dieselbe Sache.
+ *
+ * DIE ENTSCHEIDUNG AENDERT SICH NICHT: `kandidatErzeugtWissensobjekt` (service.ts) behandelt
+ * `wiederverwendet` wie zuvor `nicht_gestellt` — der Kandidat kommt in den Vergleichsbestand und
+ * sein `accept` laeuft in den Upsert. Reine Umbenennung des SIGNALS, keine neue Verhaltensregel.
  */
 export type KandidatDublettenbefund =
   | { readonly ergebnis: "keine" }
@@ -172,7 +199,8 @@ export type KandidatDublettenbefund =
     }
   | { readonly ergebnis: "pruefung_nicht_moeglich" }
   | { readonly ergebnis: "nicht_gestellt" }
-  | { readonly ergebnis: "im_papierkorb"; readonly treffer: Dublettentreffer };
+  | { readonly ergebnis: "im_papierkorb"; readonly treffer: Dublettentreffer }
+  | { readonly ergebnis: "wiederverwendet"; readonly treffer: Dublettentreffer };
 
 export interface ImportResult {
   imported: number;

@@ -560,8 +560,16 @@ describe("JOB 3081 · K — der Papierkorb wird hoechstens einmal je Lauf gelese
 // ==================================================================================================
 // P4/P5/P6 — DIE DREI GEGENRICHTUNGEN (heute gruen, muessen gruen bleiben).
 // ==================================================================================================
+// JOB 3116 · WARUM DIESER FALL NACHGEFUEHRT IST (und kein anderer dieser Datei):
+// P4 misst den VORRANG DES LEBENDEN — er ist unveraendert und muss es bleiben. Was sich geaendert
+// hat, ist das WORT, mit dem der aktive Fall sich meldet: bis JOB 3116 sagte er `nicht_gestellt`,
+// dasselbe Wort wie die Erstanlage; seither `wiederverwendet` MIT der Kennung des aktiven Traegers.
+// Der Fall wird darum nicht abgeschwaecht, sondern SCHAERFER: er misst zusaetzlich, dass die
+// genannte Kennung die des AKTIVEN und nicht die des getrashten Objekts ist — genau die
+// Unterscheidung, um die es beim Vorrang geht. Die Entscheidung dahinter (Adoption des aktiven
+// Objekts, Revision durch die hoehere Version) steht Zeile fuer Zeile unveraendert darunter.
 describe("JOB 3081 · P4 — ein aktives Wissensobjekt gewinnt immer gegen ein getrashtes", () => {
-  it("P4 · derselbe Anker aktiv UND im Papierkorb → `nicht_gestellt`, und der Re-Sync revidiert das AKTIVE", async () => {
+  it("P4 · derselbe Anker aktiv UND im Papierkorb → `wiederverwendet` mit der AKTIVEN Kennung, und der Re-Sync revidiert das AKTIVE", async () => {
     const ctx = dienst();
     // Das AKTIVE Objekt entsteht auf dem Produktweg (Import → accept) …
     const [ersterKandidat] = await ctx.library.createImportCandidates(
@@ -591,8 +599,11 @@ describe("JOB 3081 · P4 — ein aktives Wissensobjekt gewinnt immer gegen ein g
     expect(kandidat?.duplicate, "Ein aktiver Re-Sync ist keine Dublette.").toBe(false);
     expect(
       kandidat?.dublettenbefund,
-      "Der Papierkorb aendert am aktiven Re-Sync nichts — der Befund bleibt `nicht_gestellt`.",
-    ).toEqual({ ergebnis: "nicht_gestellt" });
+      "Der Papierkorb aendert am aktiven Re-Sync nichts — genannt wird der AKTIVE Traeger, nicht das getrashte Objekt (JOB 3116).",
+    ).toEqual({
+      ergebnis: "wiederverwendet",
+      treffer: { art: "wissensobjekt", koId: aktiveId },
+    });
 
     const beschieden = await ctx.library.reviewImportCandidate(
       kandidat?.id as string,
