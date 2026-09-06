@@ -32,7 +32,12 @@
 //      Output-Export benutzen. Kein zweites Praedikat.
 //   3. HERKUNFT IST PFLICHT, nicht Zierde. Jeder Vorschlag traegt `aiGenerated` — dasselbe Feld,
 //      an dem `mega81-ki-kennzeichnung-am-verhalten.test.ts` die Anzeige der KI-Behauptung
-//      festmacht — und die Liste der validierten Quellen, auf die er sich stuetzt.
+//      festmacht — und die Liste der validierten Quellen, auf die er sich stuetzt. Seit JOB 3091
+//      (M2, Memo im Word-Panel) auch WER formuliert hat: `anbieter` und `modell` kommen aus der
+//      Aufloesung, gegen die das Sitzungstor die Einwilligung geprueft hat — nicht aus einem
+//      Feld des Aufrufers. Die erste HTTP-Route auf diesen Dienst ist
+//      `POST /api/klara/sessions/{id}/zuruf` (`services/app/src/routes/klara-session-routes.ts`);
+//      sie serialisiert nur und entscheidet nichts.
 //
 // ZUM VERHAELTNIS ZU `service.ts`: Der OutputService erzeugt GANZE Dokumente aus validierten KOs.
 // Der Zuruf erzeugt eine PASSAGE zu einem Text, den der Mensch mitbringt. Beide teilen den
@@ -140,7 +145,19 @@ export interface Ka6Einwilligungspruefer {
   pruefeExterneAusfuehrung(
     sessionId: string,
     bindung: { actorId: string; addinInstanceId: string; documentContextId: string },
-  ): Promise<{ readonly erlaubt: boolean; readonly grund?: string }>;
+  ): Promise<{
+    readonly erlaubt: boolean;
+    readonly grund?: string;
+    /**
+     * JOB 3091 (KA6 Panelhaelfte): die Aufloesung, GEGEN DIE das Tor geprueft hat — daraus nimmt der
+     * Vorschlag Anbieter und Modell. Sie kommt vom Tor, nicht vom Aufrufer: dieselbe Auflösung, an
+     * die die Zustimmung gebunden ist (`KlaraAusfuehrungsfreigabe.resolution`), nennt den Empfaenger,
+     * der ausfuehrt. Ein Feld, das der Aufrufer selbst fuellte, waere ein zweiter Client-Wert.
+     * Optional, weil aeltere Tor-Attrappen es nicht tragen — dann bleibt der Vorschlag ehrlich
+     * ohne Anbieterangabe (`null`), nie mit einem Ersatzwert.
+     */
+    readonly resolution?: { readonly provider: string; readonly model: string };
+  }>;
 }
 
 export interface ZurufEingabe {
@@ -180,6 +197,15 @@ export interface ZurufVorschlag {
   provenance: OutputProvenance[];
   /** Erzeugungszeitpunkt, ISO — wie in `OutputDocument`. */
   generatedAt: string;
+  /**
+   * JOB 3091: WER formuliert hat — Anbieter und Modell aus der Aufloesung, gegen die das Sitzungstor
+   * die Einwilligung geprueft hat (`Ka6Einwilligungspruefer.resolution`). Das ist die Herkunft der
+   * Formulierung, so wie `provenance` die Herkunft der Sachaussagen ist; ohne sie stuende am Panel
+   * „KI-formuliert" ohne Empfaenger. `null`, wenn das Tor keine Aufloesung mitgab — dann steht auch
+   * am Panel „unbekannt", kein Ersatzname (JOB 3036: ein Modellname entsteht nur aus dem Lauf).
+   */
+  anbieter: string | null;
+  modell: string | null;
 }
 
 export interface ZurufServiceDeps {
@@ -221,7 +247,8 @@ export class ZurufService {
     }
 
     // KA4 zuerst. Kein Bestandszugriff, kein externer Aufruf, kein Nebeneffekt ohne Einwilligung.
-    if (!(await this.einwilligungLiegtVor(eingabe.bindung))) {
+    const freigabe = await this.einwilligungLiegtVor(eingabe.bindung);
+    if (!freigabe) {
       // DERSELBE FESTE SATZ WIE BISHER, und kein Wort mehr: Der `grund` des Sitzungstors bleibt im
       // Erzeuger. Dieselbe Metadata-only-Haltung wie `ask-routes.ts:145-149` — die Kennungen sind
       // opak, und eine Meldung, die sie oder ihren Ablehnungsgrund weiterreichte, waere eine
@@ -275,6 +302,8 @@ export class ZurufService {
       herkunft: quellen.length > 0 ? "bestand" : "frei",
       provenance: quellen.map(toProvenance),
       generatedAt: new Date(this.now()).toISOString(),
+      anbieter: freigabe.anbieter,
+      modell: freigabe.modell,
     };
   }
 
@@ -288,8 +317,15 @@ export class ZurufService {
    *
    * Der bequeme Kurzschluss `if (!pruefer) return true` waere genau die Luecke, die dieser Bau
    * schliesst — er stuende hier fuer „unbekannt, also durchlassen".
+   *
+   * JOB 3091: Der Rueckgabewert ist kein Boolean mehr, sondern `null` (geschlossen) oder die
+   * Freigabe mit Anbieter und Modell aus der Aufloesung des Tors. Die Regel selbst ist unveraendert:
+   * offen ist es NUR bei genau `erlaubt === true`; Anbieter und Modell sind Beiwerk der Freigabe,
+   * nie ihre Bedingung. Nennt das Tor keine Aufloesung, bleiben beide `null` — kein Ersatzwert.
    */
-  private async einwilligungLiegtVor(bindung: ZurufBindung | undefined): Promise<boolean> {
+  private async einwilligungLiegtVor(
+    bindung: ZurufBindung | undefined,
+  ): Promise<{ anbieter: string | null; modell: string | null } | null> {
     const sessionId = (bindung?.sessionId ?? "").trim();
     const actorId = (bindung?.actorId ?? "").trim();
     const addinInstanceId = (bindung?.addinInstanceId ?? "").trim();
@@ -297,11 +333,11 @@ export class ZurufService {
     if (!sessionId || !actorId || !addinInstanceId || !documentContextId) {
       // Gar nicht erst fragen: eine unvollstaendige Bindung kann keine Einwilligung decken, und
       // eine halbe Frage an das Sitzungstor waere eine Anfrage nach einer fremden Sitzung.
-      return false;
+      return null;
     }
     const pruefer = this.einwilligungspruefer;
     if (!pruefer || typeof pruefer.pruefeExterneAusfuehrung !== "function") {
-      return false;
+      return null;
     }
     try {
       const freigabe = await pruefer.pruefeExterneAusfuehrung(sessionId, {
@@ -309,11 +345,23 @@ export class ZurufService {
         addinInstanceId,
         documentContextId,
       });
-      return freigabe?.erlaubt === true;
+      if (freigabe?.erlaubt !== true) {
+        return null;
+      }
+      const aufloesung = freigabe.resolution;
+      const anbieter =
+        typeof aufloesung?.provider === "string" && aufloesung.provider.trim().length > 0
+          ? aufloesung.provider
+          : null;
+      const modell =
+        typeof aufloesung?.model === "string" && aufloesung.model.trim().length > 0
+          ? aufloesung.model
+          : null;
+      return { anbieter, modell };
     } catch {
       // Fremde/abgelaufene/geschlossene Sitzung wirft (NOT_FOUND/CONFLICT). Das ist eine Absage,
       // kein Serverfehler — genau wie bei `ka4Freigabe` (`ask-routes.ts:183-188`).
-      return false;
+      return null;
     }
   }
 

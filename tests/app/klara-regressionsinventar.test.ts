@@ -307,6 +307,14 @@ const INVENTAR: readonly string[] = [
   // Quellen-Ruecklauf (GET /api/kos/:id) der ersten Antwort darf Chip, Ziffer, Quellen-Zeile und
   // Ausgabetor der zweiten nicht anfassen. Achse `taskpane`, K2 gemeldet, K5 bleibt bei 38.
   "tests/app/k1-quellen-rennen.test.tsx",
+  // JOB 3091 M2 (06.09.2026): das Memo aus der Quelle am VOLLSTAENDIGEN Aufgabenfenster in jsdom
+  // (Bauform word-addin-ask.test.ts, JOB 1153) — Angebot nur bei validierter Quelle, Entwurf mit
+  // Herkunftsblock und Anbieter, NULL Schreibaufrufe vor dem zweiten Klick, Einfuegen mit
+  // Herkunftszeile als letztem Absatz, 403 → Zustimmungsweg von KA4/3079, DE/EN gleichwertig.
+  // Achse `taskpane` (nennt und laedt die Datei); „klara" steht nicht im Dateinamen, K5 unveraendert.
+  // K2 hat sie gemeldet (`expected [ Array(1) ] to deeply equal []`), das Inventar hat sie nicht
+  // still aufgenommen. Der Routen-Test daneben (memo-route.test.ts) trifft keine Achse.
+  "tests/ka6-memo-panel/memo-panel-mounted.test.ts",
   // JOB 3056 Runde 8 (05.09.2026, Codex Runde 7, Pflicht 9): eine abgelaufene Aufloesung ist kein
   // Stand — „–", kein Anbieter, keine Freigabe, bis die frische Antwort da ist. Achse `taskpane`.
   "tests/app/k1-abgelaufene-aufloesung.test.tsx",

@@ -197,6 +197,10 @@ const MITFAHRER: Readonly<Record<string, string>> = {
   // JOB 3056 Nachzug-Runde 1: der abgesendete Ask-Koerper (KA5-Faelle A/C/D), dieselbe Vorrichtung;
   // liest zusaetzlich den Deckel WORD_ADDIN_ASK_MAX_CHARS aus der Datei — Griff `pfad`.
   "tests/app/k1-ask-koerper-markierung.test.tsx": "pfad",
+  // JOB 3091 M2 (06.09.2026): das Memo aus der Quelle am vollstaendigen Aufgabenfenster (Bauform
+  // word-addin-ask.test.ts): laedt die Datei ueber den Pfad und liest die Memo-Schluessel aus
+  // KA6_MEMO_TEXTE — Griff `pfad`. A2 hat sie gemeldet, das Verzeichnis hat sie nicht still aufgenommen.
+  "tests/ka6-memo-panel/memo-panel-mounted.test.ts": "pfad",
   // JOB 3056 Runde 3: zwei der alten Namen leben als ABLOESUNGS-WAECHTER weiter — sie lesen die
   // Datei ueber Segmente (Griff `zusammengesetzt`) und pinnen, dass Fusszeile, „Neue Frage",
   // Leitsatz und Ladekarte nicht zurueckkommen; zugleich halten sie die Verweise des Werkzeugs

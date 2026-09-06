@@ -163,8 +163,20 @@ describe("KA6 Stufe 1 · B · das Ergebnis ist ein Vorschlag, keine Schreibanwei
 
     // Wer hier ein Ziel, eine Position oder einen Einfuegebefehl einbaut, roetet diesen Fall.
     // Das ist die strukturelle Fassung von „Klara schreibt NIE selbsttaetig ins Dokument".
+    // JOB 3091 (M2): `anbieter` und `modell` kommen dazu — WER formuliert hat, aus der Aufloesung des
+    // Sitzungstors. Beides sind Herkunftsangaben, keine Anweisungen; die Verbotsliste darunter
+    // bleibt unveraendert, und sie ist es, die den Schreibweg ausschliesst.
     expect(Object.keys(v).sort()).toEqual(
-      ["aiGenerated", "art", "generatedAt", "herkunft", "provenance", "vorschlag"].sort(),
+      [
+        "aiGenerated",
+        "anbieter",
+        "art",
+        "generatedAt",
+        "herkunft",
+        "modell",
+        "provenance",
+        "vorschlag",
+      ].sort(),
     );
     for (const verboten of ["insert", "apply", "target", "range", "write", "document"]) {
       expect(v).not.toHaveProperty(verboten);

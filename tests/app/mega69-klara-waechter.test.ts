@@ -1359,9 +1359,73 @@ describe("mega69 E/F · Auslieferungs-Wächter: Stand wandert von selbst, Änder
     // Stilregeln, Wörterbuch, Skript) UND die Zustimmungs-/aiLage-Änderungen aus JOB 3079 (V2 +
     // Runde 2, KLARA_EXTERNAL_EXECUTION_MIGRATED) stehen nebeneinander in der zusammengeführten
     // Datei. Kein Markup, kein Skript und kein Wörterbuchschlüssel einer Seite wurde entfernt, um
-    // die andere Seite zu erhalten. Der Pin unten ist der frisch aus der zusammengeführten Datei
-    // gerechnete Hash, kein übernommener Wert einer Seite.
-    const PIN = "1b12e66f84331623c3786337743b012adaf73fc52ed0e74bf1208029914591ce";
+    // die andere Seite zu erhalten. Der Pin von diesem Stand (vor der folgenden Konfliktrunde) war
+    // `1b12e66f84331623c3786337743b012adaf73fc52ed0e74bf1208029914591ce`.
+    //
+    // ============================================================================================
+    // JOB 3091 M2 (06.09.2026) — PIN BEWUSST AKTUALISIERT (a5e8fcec… -> 28707701…), Auslieferungsfolgen:
+    // ============================================================================================
+    //   · WAS SICH AENDERT: NUR das Skript, ein neuer Block `KW-KA6-MEMO-START` … `KW-KA6-MEMO-END`
+    //     am Ende des KA6-Blocks (vor `KW-KA6-SCHREIBEN-END`). Kein Markup-Byte geaendert: die neuen
+    //     Elemente entstehen im Skript (`#ka6-memo-angebot` mit `#ka6-memo-btn`, `#ka6-memo-keine-
+    //     quelle`, `#ka6-memo-status` als letztes Kind von `#antwortkarte`; die Karte `#ka6-memo-block`
+    //     mit `#ka6-memo-entwurf`, `#ka6-memo-herkunft`, `#ka6-memo-anbieter`, `#ka6-memo-einfuegen`,
+    //     `#ka6-memo-verwerfen`, `#ka6-memo-karte-status` vor `#ka6-block`). Kein Stilblock geaendert.
+    //     Woerterbuch: 14 neue Schluessel `ka6Memo*` je Sprache (KA6_MEMO_TEXTE, eingehaengt wie
+    //     KA6_TEXTE); kein bestehender Schluessel geaendert.
+    //   · EIN NEUES ABRUFZIEL, benannt: `POST /api/klara/sessions/{id}/zuruf` — same-origin, ueber den
+    //     BESTEHENDEN Sitzungsabruf `klaraS4AbrufDieserSitzung` (derselbe `fetch(pfad, …)`, dieselben
+    //     drei Bindungskopfzeilen, dieselbe Epoche): die Menge der `fetch(...)`-Aufrufstellen ist
+    //     unveraendert (mega69-klara-merkmale M6/M7 gruen), das ZIEL ist neu. Nutzlast: `art`,
+    //     `text` (Auftragssatz + gestellte Frage) und `koIds` (die validierten Quellen der Antwort).
+    //     Sie geht NUR nach Klick auf „Memo aus dieser Quelle" ab und nur, wenn die serverseitige
+    //     Aufloesung `executionAllowed` sagt; ohne Zustimmung antwortet der Server 403 und das Panel
+    //     zeigt den Zustimmungsweg von KA4/JOB 3079 (kein zweiter Dialog).
+    //   · KEIN Manifest, KEIN neues Recht (ko.read wie alle Klara-Endpunkte), KEINE geaenderte CSP,
+    //     kein Fremd-Ursprung, kein Speicher (kein localStorage/Cookie), KEIN Autostart, KEIN Timer.
+    //   · SCHREIBEN NUR AUF KLICK: der einzige Schreibweg ist `ka6MemoEinfuegen` ueber den bestehenden
+    //     `performInsert(text, buildInsertAttempts())` — gemessen in tests/ka6-memo-panel/
+    //     memo-panel-mounted.test.ts (P3: null Schreibaufrufe nach dem ersten Klick; P4: genau einer
+    //     nach dem zweiten, Herkunftszeile als letzter Absatz).
+    //   · KEINE ZUSICHERUNG WIRD SCHWAECHER: der Anbieter kommt aus der Serverantwort (klara-ai-header
+    //     Block E gruen), „KI"-Behauptungen bleiben zustandsgebunden (mega81 gruen), die Chips, das
+    //     Zielbild K1 (Kinder von #ask-answer-block) und die KA6-Schreibflaeche sind unveraendert.
+    //   · Fuer ein installiertes Add-in: KEIN erneutes Sideload noetig; es holt die Datei beim
+    //     naechsten Oeffnen frisch. Der Server muss die Route registrieren (build-app.ts) — bis dahin
+    //     antwortet der Klick ehrlich mit „konnte nicht geholt werden (HTTP 404)", nichts wird geschrieben.
+    //
+    // JOB 3091 KONFLIKTRUNDE 1 (06.09.2026) — `git rebase main` traf mit der JOB-3091-Kette (KA6-Memo,
+    // M2 oben) auf die JOB-3079-Kette (V2 + Runde 2 oben, KLARA_EXTERNAL_EXECUTION_MIGRATED). BEIDE
+    // SEITEN BLEIBEN INHALTLICH ERHALTEN: die Zustimmungs-/aiLage-Aenderungen aus JOB 3079 UND der
+    // KA6-Memo-Block (Skript, Woerterbuch, neues Abrufziel) aus JOB 3091 stehen nebeneinander in der
+    // zusammengefuehrten Datei. Kein Markup, kein Skript und kein Woerterbuchschluessel einer Seite
+    // wurde entfernt, um die andere Seite zu erhalten. Der Pin unten ist der frisch aus der
+    // zusammengefuehrten Datei gerechnete Hash, kein uebernommener Wert einer Seite.
+    //
+    // JOB 3091 RUNDE 2 (06.09.2026, cedc50cf… -> b65b9736…) — PIN BEWUSST AKTUALISIERT: GENAU EIN neuer
+    // Schluessel `ka6MemoServerKenntWegNicht` (de/en/nl) und ein `status === 404`-Zweig in
+    // `ka6MemoAnfordern`. Kennt der Server die Memo-Route nicht (build-app.ts registriert sie noch
+    // nicht — ausserhalb der Zielpfade von JOB 3091, RUECKGABE ABWEICHUNGEN), sagt das Panel GENAU DAS
+    // statt eines generischen Netzfehlers, und nichts wird geschrieben (memo-panel-mounted P6c).
+    // Kein Markup, kein Stil, kein Abrufziel, keine Nutzlast, kein Recht, keine CSP geaendert; die
+    // 3079-Seite ist unberuehrt. KEIN Sideload noetig.
+    //
+    // JOB 3091 RUNDE 3 (06.09.2026, b65b9736… -> 1fe01eb0…) — PIN BEWUSST AKTUALISIERT: NUR DREI
+    // WOERTER. `ka6MemoKeineQuelle` sagt in de/en/nl „validierte“/„validated“/„gevalideerde“ statt
+    // „geprüfte“/„verified“/„gecontroleerde“ Quelle — mega35 (Wortliste der Word-Flaeche) erlaubt
+    // „geprüft/verified/gecontroleerd“ ausschliesslich im Einstufungshinweis; „validiert“ ist die
+    // Statusangabe des Objekts und dort ausdruecklich zugelassen. Kein Markup, kein Skript, kein
+    // Abrufziel, keine Nutzlast geaendert. KEIN Sideload noetig.
+    //
+    // JOB 3091 RUNDE 4 (06.09.2026, 1fe01eb0… -> e1e4599a…, BEN Korrekturpflicht 1) — PIN BEWUSST
+    // AKTUALISIERT: ein gescheiterter Quellenabruf (`resolveAskSources` → `status: "unknown"`) las sich
+    // bis R3 als „keine validierte Quelle". Jetzt haelt der Memo-Block „nicht feststellbar" getrennt:
+    // NEU der Schluessel `ka6MemoQuelleUnbekannt` (de/en/nl, ohne die Wortliste mega35 zu beruehren),
+    // das Element `#ka6-memo-quelle-unbekannt` im Skript, `ka6MemoQuellenUnbekanntIn` und die
+    // Vier-Lagen-Zeichnung in `ka6MemoAngebotZeichnen`. Kein Markup, kein Stil, kein Abrufziel,
+    // keine Nutzlast, kein Recht, keine CSP geaendert. KEIN Sideload noetig. Gemessen:
+    // memo-panel-mounted P2b (HTTP 503 und Netzfehler) und P2c (EN).
+    const PIN = "e1e4599af45f24219c83c1a16b70e628a3645a0458636919ef8a6d4c5e698f87";
     const ist = createHash("sha256").update(readFileSync(TASKPANE)).digest("hex");
     expect(
       ist,

@@ -397,6 +397,11 @@ export const ROUTE_GUARD_MATRIX: Record<string, ExpectedRoute> = {
   "DELETE /api/klara/sessions/:sessionId/consent": { protection: "ko.read" },
   // (b) Schliesst die eigene Sitzung. Danach ist jeder Folgeaufruf CONFLICT.
   "POST /api/klara/sessions/:sessionId/close": { protection: "ko.read" },
+  // JOB 3091 (klara-session-routes.ts): der Zuruf „Memo aus dieser Quelle". `ko.read` wie alle
+  // Klara-Endpunkte — die Route liest validierte, nicht vertrauliche KOs (dropConfidential im
+  // Erzeuger) und erzeugt einen Vorschlag; ob sie das darf, entscheidet das Sitzungstor je
+  // Sitzung und Dokument (pruefeExterneAusfuehrung), nicht RBAC. Sie schreibt nichts.
+  "POST /api/klara/sessions/:sessionId/zuruf": { protection: "ko.read" },
 
   // --- Library / Import / Analytics / Graph (library-routes.ts) ---
   "GET /api/library/search": { protection: "ko.read", zeilenrecht: ["sichtbareFuer"] },

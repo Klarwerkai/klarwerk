@@ -231,6 +231,16 @@ const REGISTER: Record<string, Eintrag> = {
     urteil: "DIENST_FILTERT",
     grund: "ask/src/service.ts:145 — dropConfidential vor der Auswahl, auf ALLEN Zweigen.",
   },
+  // JOB 3091 (KA6 Memo): der Zuruf traegt Kernaussagen validierter Wissensobjekte als Belege zum
+  // Modell und Titel/Version als Herkunft zurueck ans Panel. Der Erzeuger filtert an EINER Stelle,
+  // bevor irgendetwas hinausgeht: nur `status === "validiert"` (zuruf.ts:384) und `dropConfidential`
+  // (zuruf.ts:389); und er sammelt erst NACH bestaetigter Einwilligung des Sitzungstors (zuruf.ts:250).
+  "POST /api/klara/sessions/:sessionId/zuruf": {
+    urteil: "DIENST_FILTERT",
+    grund:
+      "output/src/zuruf.ts:384/389 — nur validierte KOs, dropConfidential auf der Quellenliste; " +
+      "Einwilligung (zuruf.ts:250) vor jedem Bestandszugriff.",
+  },
   "POST /api/knowledge/check": {
     urteil: "DIENST_FILTERT",
     grund: "app/src/knowledge-check.ts:110 — dropConfidential auf den Kandidaten.",

@@ -8314,6 +8314,484 @@
         };
       }
     }
+
+    // KW-KA6-MEMO-START
+    // ============================================================================================
+    // JOB 3091 · M2 — DAS MEMO AUS DER QUELLE: Vorschlag mit Herkunft, Einfuegen erst nach Klick.
+    // ============================================================================================
+    //
+    // PEDIS WEG (Auftrag §1): Frage stellen → Klara zeigt die freigegebene Regel mit Quelle → Knopf
+    // „Memo aus dieser Quelle" → ein ENTWURF mit Herkunftsblock (Quelle, Pruefstand, Version) und
+    // Anbieter/Modell → erst ein ZWEITER, bewusster Klick fuegt ihn in Word ein, mit der Herkunfts-
+    // zeile als letztem Absatz. Ohne Einwilligung fuer dieses Dokument verlaesst kein Text das Haus,
+    // und das Panel sagt das — ueber DENSELBEN Zustimmungsweg wie KA4/JOB 3079, nicht ueber einen
+    // zweiten Dialog.
+    //
+    // WAS DIESER BLOCK TUT: er ruft die neue Route `POST /api/klara/sessions/{id}/zuruf`
+    // (services/app/src/routes/klara-session-routes.ts) ueber den BESTEHENDEN Sitzungsabruf
+    // `klaraS4AbrufDieserSitzung` (derselbe `fetch`, dieselben drei Bindungskopfzeilen, dieselbe
+    // Epoche — kein neuer Abruf-Einstieg, Merkmalsvertrag M6/M7). Der Server liefert Text und
+    // Herkunft; ob und wo er ins Dokument kommt, entscheidet allein der Klick auf „In Word einfuegen"
+    // (bestehender Weg `performInsert` + `buildInsertAttempts`). Kein Timer, kein Autostart.
+    //
+    // WAS ER AUSDRUECKLICH NICHT TUT:
+    //   · Er entscheidet nicht ueber die Einwilligung. Vor dem Abruf liest er die serverseitige
+    //     Aufloesung (`ka6Lage`), danach die Antwort des Servers (403 = keine Zustimmung fuer
+    //     dieses Dokument). In beiden Faellen zeigt er den Zustimmungsweg (`ka6GrundText`,
+    //     `ka6BlockedConsentMissing`) und holt den Sitzungsstand frisch, statt etwas zu behaupten.
+    //   · Er bietet das Memo nur an, wenn die Quellen der Antwort GELADEN sind und mindestens eine
+    //     davon `validiert` ist (renderAskSources → askSourceStatus). Solange die Quellen laden,
+    //     steht weder Knopf noch Satz da — unbekannt ist unbekannt (§9). Ohne validierte Quelle
+    //     steht der ehrliche Satz „Dafuer habe ich keine gepruefte Quelle."
+    //   · Er speichert nichts und schreibt nichts von selbst. Der Entwurf lebt in `ka6MemoEntwurf`
+    //     bis „Verwerfen", „In Word einfuegen" oder das naechste Memo.
+    //   · Der Anbieter kommt aus der Serverantwort (Aufloesung des Sitzungstors), nie aus diesem
+    //     Fenster (klara-ai-header Block E: kein verdrahteter Anbietername).
+    var KA6_MEMO_TEXTE = {
+      de: {
+        ka6MemoCta: "Memo aus dieser Quelle",
+        ka6MemoKeineQuelle: "Dafür habe ich keine validierte Quelle.",
+        ka6MemoAuftrag: "Formuliere ein kurzes Memo zu:",
+        ka6MemoBusy: "Klara formuliert einen Memo-Entwurf ...",
+        ka6MemoTitel: "Memo-Entwurf",
+        ka6MemoReady: "Entwurf — nichts wurde ins Dokument geschrieben. Prüfe ihn, dann füge ihn ein oder verwirf ihn.",
+        ka6MemoHerkunftTitel: "Herkunft",
+        ka6MemoHerkunftZeile: "Quelle: {titel}, Stand v{version}, Prüfstand {stufe}",
+        ka6MemoAnbieter: "Formuliert von {anbieter} ({modell})",
+        ka6MemoAnbieterUnbekannt: "Formuliert von einem Modell — der Server hat keinen Anbieter genannt.",
+        ka6MemoInsertCta: "In Word einfügen",
+        ka6MemoVerwerfenCta: "Verwerfen",
+        ka6MemoInsertOk: "Eingefügt — Herkunft steht am Ende.",
+        ka6MemoAntwortUnbrauchbar: "Der Server hat keinen Entwurf mit Herkunft geliefert. Es wurde nichts übernommen.",
+        ka6MemoServerKenntWegNicht: "Dieser Server kennt den Memo-Weg nicht (HTTP 404). Es wurde nichts geschrieben.",
+        ka6MemoQuelleUnbekannt: "Ob eine validierte Quelle vorliegt, ließ sich nicht feststellen — die Quellen konnten nicht geladen werden."
+      },
+      en: {
+        ka6MemoCta: "Draft a memo from this source",
+        ka6MemoKeineQuelle: "I have no validated source for this.",
+        ka6MemoAuftrag: "Draft a short memo on:",
+        ka6MemoBusy: "Klara is drafting the memo ...",
+        ka6MemoTitel: "Memo draft",
+        ka6MemoReady: "Draft — nothing was written into the document. Review it, then insert or discard it.",
+        ka6MemoHerkunftTitel: "Provenance",
+        ka6MemoHerkunftZeile: "Source: {titel}, version v{version}, review status {stufe}",
+        ka6MemoAnbieter: "Drafted by {anbieter} ({modell})",
+        ka6MemoAnbieterUnbekannt: "Drafted by a model — the server did not name a provider.",
+        ka6MemoInsertCta: "Insert into Word",
+        ka6MemoVerwerfenCta: "Discard",
+        ka6MemoInsertOk: "Inserted — the provenance is at the end.",
+        ka6MemoAntwortUnbrauchbar: "The server did not deliver a draft with provenance. Nothing was taken over.",
+        ka6MemoServerKenntWegNicht: "This server does not know the memo route (HTTP 404). Nothing was written.",
+        ka6MemoQuelleUnbekannt: "Whether a validated source exists could not be determined — the sources could not be loaded."
+      },
+      nl: {
+        ka6MemoCta: "Memo uit deze bron",
+        ka6MemoKeineQuelle: "Daarvoor heb ik geen gevalideerde bron.",
+        ka6MemoAuftrag: "Stel een kort memo op over:",
+        ka6MemoBusy: "Klara stelt het memo op ...",
+        ka6MemoTitel: "Memo-ontwerp",
+        ka6MemoReady: "Ontwerp — er is niets in het document geschreven. Controleer het, voeg het dan in of verwerp het.",
+        ka6MemoHerkunftTitel: "Herkomst",
+        ka6MemoHerkunftZeile: "Bron: {titel}, stand v{version}, controlestatus {stufe}",
+        ka6MemoAnbieter: "Geformuleerd door {anbieter} ({modell})",
+        ka6MemoAnbieterUnbekannt: "Geformuleerd door een model — de server heeft geen aanbieder genoemd.",
+        ka6MemoInsertCta: "In Word invoegen",
+        ka6MemoVerwerfenCta: "Verwerpen",
+        ka6MemoInsertOk: "Ingevoegd — de herkomst staat aan het einde.",
+        ka6MemoAntwortUnbrauchbar: "De server heeft geen ontwerp met herkomst geleverd. Er is niets overgenomen.",
+        ka6MemoServerKenntWegNicht: "Deze server kent de memo-route niet (HTTP 404). Er is niets geschreven.",
+        ka6MemoQuelleUnbekannt: "Of er een gevalideerde bron is, kon niet worden vastgesteld — de bronnen konden niet worden geladen."
+      }
+    };
+    // In das VORHANDENE Woerterbuch einhaengen — dasselbe Muster wie KA3_TEXTE und KA6_TEXTE.
+    for (var ka6MemoSprache in KA6_MEMO_TEXTE) {
+      if (Object.prototype.hasOwnProperty.call(KA6_MEMO_TEXTE, ka6MemoSprache) && STRINGS[ka6MemoSprache]) {
+        var ka6MemoTabelle = KA6_MEMO_TEXTE[ka6MemoSprache];
+        for (var ka6MemoSchluessel in ka6MemoTabelle) {
+          if (Object.prototype.hasOwnProperty.call(ka6MemoTabelle, ka6MemoSchluessel)) {
+            STRINGS[ka6MemoSprache][ka6MemoSchluessel] = ka6MemoTabelle[ka6MemoSchluessel];
+          }
+        }
+      }
+    }
+
+    /** Die VALIDIERTEN Quellen der aktuellen Antwort — gesetzt in renderAskSources, geleert je Antwort. */
+    var ka6MemoQuellen = [];
+    /**
+     * JOB 3091 R4 (BEN): Ist mindestens eine Quelle der Antwort NICHT ladbar gewesen? `resolveAskSources`
+     * faengt jeden Abruffehler (HTTP-Fehler, Netz) und liefert `status: "unknown"` — danach steht
+     * `currentAskSourcesResolved` trotzdem auf `true`. Ein `unknown` ist KEIN belegtes „keine
+     * validierte Quelle", sondern „nicht feststellbar" (§9). Der Unterschied wird hier gehalten.
+     */
+    var ka6MemoQuellenUnbekannt = false;
+    /** Der gehaltene Entwurf: { entwurf, herkunft: [{koId,titel,stufe,version}], anbieter, modell } oder null. */
+    var ka6MemoEntwurf = null;
+    var ka6MemoLaeuft = false;
+
+    /**
+     * Das Angebot — IN der Antwortkarte (#antwortkarte), als letztes Kind. Bewusst nicht als Kind
+     * von #ask-answer-block: dessen sichtbare Kinder sind im Zielbild K1 (W2) festgelegt.
+     */
+    function ka6MemoAngebotElement() {
+      var vorhanden = document.getElementById("ka6-memo-angebot");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.getElementById("antwortkarte");
+      if (!karte) { return null; }
+      var angebot = document.createElement("div");
+      angebot.id = "ka6-memo-angebot";
+      angebot.className = "hidden";
+      var knopf = document.createElement("button");
+      knopf.type = "button";
+      knopf.id = "ka6-memo-btn";
+      knopf.className = "ghost hidden";
+      angebot.appendChild(knopf);
+      var keineQuelle = document.createElement("p");
+      keineQuelle.id = "ka6-memo-keine-quelle";
+      keineQuelle.className = "muted hidden";
+      angebot.appendChild(keineQuelle);
+      // R4 (BEN): eigenes Element fuer „nicht feststellbar" — „gesperrt", „leer" und „unbekannt"
+      // teilen sich keinen Platz, damit kein Zustand den anderen ueberschreibt.
+      var unbekannt = document.createElement("p");
+      unbekannt.id = "ka6-memo-quelle-unbekannt";
+      unbekannt.className = "muted hidden";
+      angebot.appendChild(unbekannt);
+      var status = document.createElement("div");
+      status.id = "ka6-memo-status";
+      status.className = "status hidden";
+      angebot.appendChild(status);
+      karte.appendChild(angebot);
+      return angebot;
+    }
+
+    /** Die Memo-Karte — eine eigene Karte VOR dem Frage-Feld, wie #ka6-block; verborgen ohne Entwurf. */
+    function ka6MemoKarteElement() {
+      var vorhanden = document.getElementById("ka6-memo-block");
+      if (vorhanden) { return vorhanden; }
+      var karte = document.createElement("div");
+      karte.id = "ka6-memo-block";
+      karte.className = "card hidden";
+      karte.setAttribute("role", "region");
+      karte.setAttribute("aria-live", "polite");
+      var titel = document.createElement("h2");
+      titel.id = "ka6-memo-titel";
+      karte.appendChild(titel);
+      var entwurf = document.createElement("p");
+      entwurf.id = "ka6-memo-entwurf";
+      entwurf.setAttribute("style", "white-space: pre-wrap; margin: 6px 0;");
+      karte.appendChild(entwurf);
+      var herkunftTitel = document.createElement("p");
+      herkunftTitel.id = "ka6-memo-herkunft-titel";
+      herkunftTitel.className = "muted";
+      karte.appendChild(herkunftTitel);
+      var herkunft = document.createElement("ul");
+      herkunft.id = "ka6-memo-herkunft";
+      karte.appendChild(herkunft);
+      var anbieter = document.createElement("p");
+      anbieter.id = "ka6-memo-anbieter";
+      anbieter.className = "muted";
+      karte.appendChild(anbieter);
+      var aktionen = document.createElement("div");
+      aktionen.id = "ka6-memo-aktionen";
+      aktionen.setAttribute("style", "display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;");
+      var einfuegen = document.createElement("button");
+      einfuegen.type = "button";
+      einfuegen.id = "ka6-memo-einfuegen";
+      einfuegen.className = "primary";
+      aktionen.appendChild(einfuegen);
+      var verwerfen = document.createElement("button");
+      verwerfen.type = "button";
+      verwerfen.id = "ka6-memo-verwerfen";
+      verwerfen.className = "ghost";
+      aktionen.appendChild(verwerfen);
+      karte.appendChild(aktionen);
+      var status = document.createElement("div");
+      status.id = "ka6-memo-karte-status";
+      status.className = "status hidden";
+      karte.appendChild(status);
+      var anker = document.getElementById("ka6-block") || document.getElementById("ask-feld");
+      if (anker && anker.parentNode) {
+        anker.parentNode.insertBefore(karte, anker);
+      } else {
+        document.body.appendChild(karte);
+      }
+      return karte;
+    }
+
+    function ka6MemoMeldungIn(id, ton, text) {
+      var box = document.getElementById(id);
+      if (!box) { return; }
+      box.className = text ? ("status " + (ton === "ok" ? "ok" : "warn")) : "status hidden";
+      box.textContent = text || "";
+    }
+    function ka6MemoMeldung(ton, text) { ka6MemoMeldungIn("ka6-memo-status", ton, text); }
+    function ka6MemoKarteMeldung(ton, text) { ka6MemoMeldungIn("ka6-memo-karte-status", ton, text); }
+
+    /** Nur validierte Quellen tragen ein Memo — dieselbe Ableitung wie die Chips (askSourceStatus). */
+    function ka6MemoQuellenAus(resolved) {
+      var validiert = [];
+      for (var i = 0; i < (resolved || []).length; i += 1) {
+        if (resolved[i] && resolved[i].status === "validiert") { validiert.push(resolved[i]); }
+      }
+      return validiert;
+    }
+
+    /** R4 (BEN): war irgendeine Quelle der Antwort nicht ladbar (`status: "unknown"`, s. resolveAskSources)? */
+    function ka6MemoQuellenUnbekanntIn(resolved) {
+      for (var i = 0; i < (resolved || []).length; i += 1) {
+        if (!resolved[i] || resolved[i].status === "unknown") { return true; }
+      }
+      return false;
+    }
+
+    /**
+     * Das Angebot zeichnen. VIER Lagen, keine fuenfte: Quellen noch nicht geladen → nichts; mindestens
+     * eine validierte Quelle → Knopf; alle Quellen geladen und keine validiert → der ehrliche Satz
+     * „keine validierte Quelle"; mindestens eine Quelle NICHT ladbar und keine validierte → „nicht
+     * feststellbar" (§9: keine negative Aussage ohne erfolgreiche Datengrundlage). Ein Knopf ohne
+     * Datengrundlage waere eine Behauptung, „keine Quelle" nach einem Abruffehler eine falsche.
+     */
+    function ka6MemoAngebotZeichnen() {
+      var angebot = ka6MemoAngebotElement();
+      if (!angebot) { return; }
+      var knopf = document.getElementById("ka6-memo-btn");
+      var keineQuelle = document.getElementById("ka6-memo-keine-quelle");
+      var unbekannt = document.getElementById("ka6-memo-quelle-unbekannt");
+      knopf.textContent = t("ka6MemoCta");
+      keineQuelle.textContent = t("ka6MemoKeineQuelle");
+      unbekannt.textContent = t("ka6MemoQuelleUnbekannt");
+      var antwort = currentAskOutcome && currentAskOutcome.kind === "answered";
+      if (!antwort || !currentAskSourcesResolved) {
+        angebot.className = "hidden";
+        knopf.className = "ghost hidden";
+        keineQuelle.className = "muted hidden";
+        unbekannt.className = "muted hidden";
+        return;
+      }
+      angebot.className = "";
+      var hatQuelle = ka6MemoQuellen.length > 0;
+      knopf.className = hatQuelle ? "ghost" : "ghost hidden";
+      knopf.disabled = ka6MemoLaeuft;
+      // Die schwaechere Aussage gewinnt: „keine validierte Quelle" steht NUR, wenn jede Quelle
+      // erfolgreich geladen wurde. Sonst „nicht feststellbar".
+      var nichtFeststellbar = !hatQuelle && ka6MemoQuellenUnbekannt;
+      keineQuelle.className = !hatQuelle && !nichtFeststellbar ? "muted" : "muted hidden";
+      unbekannt.className = nichtFeststellbar ? "muted" : "muted hidden";
+    }
+
+    /** Der Pruefstand im Klartext — dieselbe Tabelle wie die Quellen-Chips; unbekannt bleibt roh. */
+    function ka6MemoStufeText(stufe) {
+      return ASK_STATUS_KEYS[stufe] ? t(ASK_STATUS_KEYS[stufe]) : String(stufe);
+    }
+
+    function ka6MemoHerkunftszeile(h) {
+      return t("ka6MemoHerkunftZeile", {
+        titel: h.titel,
+        version: String(h.version),
+        stufe: ka6MemoStufeText(h.stufe)
+      });
+    }
+
+    /** DER AUSZUGEBENDE TEXT — Entwurf, Leerzeile, je Quelle eine Herkunftszeile als letzte Absaetze. */
+    function ka6MemoAusgabetext() {
+      if (!ka6MemoEntwurf) { return ""; }
+      var zeilen = [];
+      for (var i = 0; i < ka6MemoEntwurf.herkunft.length; i += 1) {
+        zeilen.push(ka6MemoHerkunftszeile(ka6MemoEntwurf.herkunft[i]));
+      }
+      return ka6MemoEntwurf.entwurf + "\n\n" + zeilen.join("\n");
+    }
+
+    function ka6MemoKarteZeichnen() {
+      var karte = ka6MemoKarteElement();
+      document.getElementById("ka6-memo-titel").textContent = t("ka6MemoTitel");
+      document.getElementById("ka6-memo-herkunft-titel").textContent = t("ka6MemoHerkunftTitel");
+      document.getElementById("ka6-memo-einfuegen").textContent = t("ka6MemoInsertCta");
+      document.getElementById("ka6-memo-verwerfen").textContent = t("ka6MemoVerwerfenCta");
+      var entwurf = ka6MemoEntwurf;
+      karte.className = entwurf ? "card" : "card hidden";
+      document.getElementById("ka6-memo-entwurf").textContent = entwurf ? entwurf.entwurf : "";
+      var liste = document.getElementById("ka6-memo-herkunft");
+      liste.textContent = "";
+      if (entwurf) {
+        for (var i = 0; i < entwurf.herkunft.length; i += 1) {
+          var zeile = document.createElement("li");
+          zeile.setAttribute("data-quelle", entwurf.herkunft[i].koId);
+          zeile.textContent = ka6MemoHerkunftszeile(entwurf.herkunft[i]);
+          liste.appendChild(zeile);
+        }
+      }
+      // Anbieter und Modell WOERTLICH vom Server; fehlt eines, wird nichts erfunden.
+      document.getElementById("ka6-memo-anbieter").textContent = !entwurf
+        ? ""
+        : entwurf.anbieter
+          ? t("ka6MemoAnbieter", { anbieter: entwurf.anbieter, modell: entwurf.modell || t("s4Unbekannt") })
+          : t("ka6MemoAnbieterUnbekannt");
+      if (!entwurf) { ka6MemoKarteMeldung(null, ""); }
+    }
+
+    function ka6MemoNeuzeichnen() {
+      ka6MemoAngebotZeichnen();
+      if (document.getElementById("ka6-memo-block")) { ka6MemoKarteZeichnen(); }
+    }
+
+    /** Der HTTP-Status aus dem Fehler des Sitzungsabrufs (`klaraS4Abruf` wirft `Error("HTTP nnn")`). */
+    function ka6MemoHttpStatus(err) {
+      var treffer = /^HTTP (\d{3})$/.exec(err && err.message ? err.message : "");
+      return treffer ? Number(treffer[1]) : 0;
+    }
+
+    /** Liest die Serverantwort fail-closed: ohne Text UND Herkunftsliste gibt es keinen Entwurf. */
+    function ka6MemoEntwurfAus(body) {
+      if (!body || typeof body.entwurf !== "string" || body.entwurf.replace(/^\s+|\s+$/g, "").length === 0) { return null; }
+      if (!Array.isArray(body.herkunft) || body.herkunft.length === 0) { return null; }
+      var herkunft = [];
+      for (var i = 0; i < body.herkunft.length; i += 1) {
+        var h = body.herkunft[i];
+        if (!h || typeof h.koId !== "string" || typeof h.titel !== "string") { return null; }
+        herkunft.push({
+          koId: h.koId,
+          titel: h.titel,
+          stufe: typeof h.stufe === "string" ? h.stufe : "unknown",
+          version: typeof h.version === "number" ? h.version : "?"
+        });
+      }
+      return {
+        entwurf: body.entwurf,
+        herkunft: herkunft,
+        anbieter: typeof body.anbieter === "string" && body.anbieter.length > 0 ? body.anbieter : null,
+        modell: typeof body.modell === "string" && body.modell.length > 0 ? body.modell : null
+      };
+    }
+
+    /** Der erste Klick: den Entwurf HOLEN. Kein Wort ins Dokument. */
+    function ka6MemoAnfordern() {
+      if (ka6MemoLaeuft) { return; }
+      if (ka6MemoQuellen.length === 0) { ka6MemoMeldung("warn", t("ka6MemoKeineQuelle")); return; }
+      // Die serverseitige Aufloesung ZUERST: ohne Freigabe geht nichts hinaus, und der Grund ist der
+      // Zustimmungsweg von KA4/JOB 3079 — derselbe Satz, derselbe Kasten, kein zweiter Dialog.
+      var lage = ka6Lage();
+      if (!lage.erlaubt || !klaraS4SessionId) {
+        ka6MemoMeldung("warn", ka6GrundText(lage.grundKey));
+        return;
+      }
+      var ids = [];
+      var titel = [];
+      for (var i = 0; i < ka6MemoQuellen.length; i += 1) {
+        ids.push(ka6MemoQuellen[i].id);
+        titel.push(ka6MemoQuellen[i].title);
+      }
+      var frage = (currentAskQuestion || "").replace(/^\s+|\s+$/g, "");
+      ka6MemoLaeuft = true;
+      ka6MemoMeldung("warn", t("ka6MemoBusy"));
+      ka6MemoAngebotZeichnen();
+      klaraS4AbrufDieserSitzung(
+        "/api/klara/sessions/" + encodeURIComponent(klaraS4SessionId) + "/zuruf",
+        "POST",
+        { art: "erstellen", text: t("ka6MemoAuftrag") + " " + (frage || titel.join(", ")), koIds: ids }
+      )
+        .then(function (body) {
+          var entwurf = ka6MemoEntwurfAus(body);
+          if (!entwurf) {
+            ka6MemoEntwurf = null;
+            ka6MemoKarteZeichnen();
+            ka6MemoMeldung("warn", t("ka6MemoAntwortUnbrauchbar"));
+            return;
+          }
+          ka6MemoEntwurf = entwurf;
+          ka6MemoMeldung(null, "");
+          ka6MemoKarteZeichnen();
+          ka6MemoKarteMeldung("ok", t("ka6MemoReady"));
+        })
+        .catch(function (err) {
+          if (err && err.veraltet) { return; }
+          var status = ka6MemoHttpStatus(err);
+          if (status === 403) {
+            // Der Server sagt: keine (mehr) deckende Zustimmung fuer dieses Dokument. Der Weg ist der
+            // Zustimmungskasten — und der Sitzungsstand wird frisch geholt, damit die Flaeche dasselbe
+            // sagt wie der Server, statt einer Freigabe von vorhin zu glauben.
+            ka6MemoMeldung("warn", t("ka6BlockedConsentMissing"));
+            klaraS4Refresh("memo-403");
+          } else if (status === 404) {
+            // Die Route ist auf diesem Server nicht registriert (JOB 3091 R2: die Registrierung in
+            // build-app.ts liegt ausserhalb der Zielpfade). Das wird GESAGT, nicht als Netzfehler
+            // verkleidet — und nichts wird geschrieben.
+            ka6MemoMeldung("warn", t("ka6MemoServerKenntWegNicht"));
+          } else if (status === 422) {
+            ka6MemoMeldung("warn", t("ka6NoBasis"));
+          } else if (status === 401) {
+            ka6MemoMeldung("warn", t("askAuth"));
+          } else {
+            ka6MemoMeldung("warn", t("ka6Fehler", { detail: (err && err.message) || "Netz" }));
+          }
+        })
+        .then(function () {
+          ka6MemoLaeuft = false;
+          ka6MemoAngebotZeichnen();
+        });
+    }
+
+    /** Der zweite Klick: EINFUEGEN, an der Cursorposition, mit der Herkunftszeile als letztem Absatz. */
+    function ka6MemoEinfuegen() {
+      if (!ka6MemoEntwurf) { return; }
+      if (!officeUsable()) {
+        ka6MemoKarteMeldung("warn", t("noOffice"));
+        return;
+      }
+      performInsert(ka6MemoAusgabetext(), buildInsertAttempts()).then(function (outcome) {
+        if (outcome.ok) {
+          ka6MemoKarteMeldung("ok", t("ka6MemoInsertOk"));
+        } else if (outcome.failure === "permission") {
+          ka6MemoKarteMeldung("warn", t("askInsertNoPermission"));
+        } else {
+          ka6MemoKarteMeldung("warn", t("askInsertFail", { detail: outcome.detail || "Word-API" }));
+        }
+      });
+    }
+
+    function ka6MemoVerwerfen() {
+      ka6MemoEntwurf = null;
+      ka6MemoKarteZeichnen();
+    }
+
+    if (typeof document !== "undefined" && document.getElementById("section-ask")) {
+      ka6MemoAngebotElement();
+      ka6MemoKarteElement();
+      ka6MemoNeuzeichnen();
+      document.getElementById("ka6-memo-btn").addEventListener("click", ka6MemoAnfordern);
+      document.getElementById("ka6-memo-einfuegen").addEventListener("click", ka6MemoEinfuegen);
+      document.getElementById("ka6-memo-verwerfen").addEventListener("click", ka6MemoVerwerfen);
+      ["de", "en", "nl"].forEach(function (code) {
+        var knopf = document.getElementById("lang-" + code);
+        if (knopf) { knopf.addEventListener("click", ka6MemoNeuzeichnen); }
+      });
+      // Die Quellen sind die EINE Datengrundlage des Angebots. `renderAskSources` ist die Stelle, an
+      // der sie aufgeloest (mit Status) ankommen — Wrapper wie bei renderKlaraS4/renderAskOutcome:
+      // Original zuerst und unveraendert, danach der eigene Nachtrag.
+      if (typeof renderAskSources === "function") {
+        var ka6MemoRenderQuellenBestand = renderAskSources;
+        renderAskSources = function (resolved) {
+          var ergebnis = ka6MemoRenderQuellenBestand.apply(this, arguments);
+          ka6MemoQuellen = ka6MemoQuellenAus(resolved);
+          ka6MemoQuellenUnbekannt = ka6MemoQuellenUnbekanntIn(resolved);
+          ka6MemoAngebotZeichnen();
+          return ergebnis;
+        };
+      }
+      // Eine neue Antwort raeumt das alte Angebot ab, BEVOR ihre Quellen geladen sind: bis dahin
+      // wird weder Knopf noch Satz behauptet.
+      if (typeof renderAskOutcome === "function") {
+        var ka6MemoRenderAskBestand = renderAskOutcome;
+        renderAskOutcome = function () {
+          ka6MemoQuellen = [];
+          ka6MemoQuellenUnbekannt = false;
+          ka6MemoMeldung(null, "");
+          var ergebnis = ka6MemoRenderAskBestand.apply(this, arguments);
+          ka6MemoAngebotZeichnen();
+          return ergebnis;
+        };
+      }
+    }
+    // KW-KA6-MEMO-END
     // KW-KA6-SCHREIBEN-END
   </script>
 </body>

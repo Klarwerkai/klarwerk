@@ -784,6 +784,18 @@ const BEWUSST: readonly Ausnahme[] = [
       "hiermit auf sein Ende, statt zu schlafen. Ein Produktaufrufer waere der alte Fehler: " +
       "eine Route, die auf den Lauf wartet, bevor sie antwortet.",
   },
+  {
+    schluessel: "services/app/src/routes/klara-session-routes.ts::klaraZurufRoutes",
+    grund:
+      "JOB 3091 R2 (06.09.2026), VORLAEUFIG UND SELBSTAUSLAUFEND: die Route `POST /api/klara/" +
+      "sessions/{id}/zuruf` ist gebaut und gemessen (tests/ka6-memo-panel), ihre Registrierung " +
+      "gehoert in `build-app.ts` neben `klaraAiRoutes` — und diese Datei liegt AUSSERHALB der " +
+      "Zielpfade von JOB 3091 (RUECKGABE, ABWEICHUNGEN, Patch woertlich). Ohne diesen Eintrag " +
+      "schickt der Waechterlauf die Runde mechanisch zurueck, bevor ein Pruefer die Luecke sieht. " +
+      "Der Eintrag ist KEIN Freibrief: sobald build-app.ts die Route registriert, hat sie einen " +
+      "Aufrufer, und A3 verlangt die Streichung dieser Zeile. Bis dahin antwortet der Server dem " +
+      "Panel 404, und das Panel sagt genau das (`ka6MemoServerKenntWegNicht`), statt etwas zu tun.",
+  },
 ];
 
 // ------------------------------------------------------------------------------------------------
@@ -862,7 +874,10 @@ const ALTBESTAND: readonly string[] = [
   "services/model-runs/src/types.ts::KI_ERZEUGENDE_AUFGABEN",
   "services/object-store/src/service.ts::isTransientMedia",
   "services/object-store/src/service.ts::isWithinRetention",
-  "services/output/src/zuruf.ts::ZurufService",
+  // ERLEDIGT, JOB 3091 (06.09.2026): `services/output/src/zuruf.ts::ZurufService` stand hier seit
+  // JOB 2605 — der Erzeuger des KA6-Zurufs hatte keinen Aufrufer ausserhalb der Tests. Seit der
+  // Route `POST /api/klara/sessions/{id}/zuruf` (`klara-session-routes.ts`) baut ihn eine
+  // Nicht-Test-Datei; A3 hat die Streichung verlangt. Die Liste ist geschrumpft, nicht gewachsen.
   "services/reasoner/src/klara-policy.ts::KLARA_MODES",
   "services/reasoner/src/provider.ts::keywordSelect",
 ];
