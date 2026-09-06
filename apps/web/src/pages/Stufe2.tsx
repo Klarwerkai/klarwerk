@@ -52,7 +52,7 @@ import { buildEvidenceFreshnessIndex } from "../lib/evidenceFreshnessIndex";
 import { evidenceFreshnessLabelKey, evidenceFreshnessTone } from "../lib/evidenceFreshnessView";
 import { evidenceKindTone, limitEvidence, summarizeEvidence } from "../lib/evidenceIndex";
 import { IMPORT_PIPELINE_STEPS, candidateFindings, summarizeImportQueue } from "../lib/extConcept";
-import { layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
+import { KNOTEN_RADIUS, layoutConflicts, layoutGraph, limitGraph } from "../lib/graphLayout";
 import { isNavigableNode, koDetailPath } from "../lib/graphNav";
 // WP-IC-PAKET-1 (Teil 1) + 1c (ROT-2): Altbestand-Anzeige — rohe Entities NUR dekodieren, wenn der
 // Decode-Marker fehlt (markierte Kandidaten sind kanonisch; kein Doppel-Dekodieren echter Literale).
@@ -1738,6 +1738,11 @@ export function GraphView(): JSX.Element {
   const graphQ = useGraph();
   const kosQ = useKos();
   const conflictsQ = useConflicts();
+  // UX-07 (JOB 3103), Lieferung 5: der per Tastatur fokussierte Knoten — er bekommt unten einen
+  // sichtbaren Ring. Der Browser-Umriss bleibt aus (`outline-none`), weil er am SVG-<g> je nach
+  // Browser fehlt oder das ganze Rechteck aus Kreis und Schrift umrandet; der Ring am Kreis ist
+  // in jedem Browser derselbe (so auch die Themenkarte, Wissensnetz.tsx).
+  const [fokus, setFokus] = useState<string | null>(null);
 
   return (
     <div className="mx-auto max-w-3xl">
@@ -1748,8 +1753,17 @@ export function GraphView(): JSX.Element {
           if (raw.nodes.length === 0) {
             return <Notice textKey="s2.graphEmpty" />;
           }
-          const statusOf = new Map((kosQ.data ?? []).map((k) => [k.id, deriveStatus(k)]));
-          const knownKoIds = new Set((kosQ.data ?? []).map((k) => k.id));
+          // UX-07 Lieferung 6: auf den Bestand MITWARTEN. Ohne ihn wüsste die Zeichnung weder
+          // Status (alle Knoten sähen „offen" aus) noch Ziel (kein Knoten wäre ein Link) — beides
+          // wäre eine Aussage über die Datenlage, die nur der Ladezustand ist. Solange die Abfrage
+          // läuft, steht „Lädt …"; ist sie ohne Cache gescheitert, steht der Fehler. Liegt ein
+          // früherer Bestand im Cache, wird mit ihm gezeichnet — nichts wird leer geräumt.
+          const kos = kosQ.data;
+          if (kos === undefined) {
+            return <Notice textKey={kosQ.isError ? "state.error" : "state.loading"} />;
+          }
+          const statusOf = new Map(kos.map((k) => [k.id, deriveStatus(k)]));
+          const knownKoIds = new Set(kos.map((k) => k.id));
           const { graph: g, truncated } = limitGraph(raw, MAX_GRAPH_NODES);
           const layout = layoutGraph(g);
           const conflicts = layoutConflicts(
@@ -1800,42 +1814,32 @@ export function GraphView(): JSX.Element {
                     strokeDasharray="5 4"
                   />
                 ))}
-                {/* Knoten — navigierbar zum KO-Detail, wenn das KO im Bestand bekannt ist. */}
+                {/* Knoten — navigierbar zum KO-Detail, wenn das KO im Bestand bekannt ist.
+                    UX-07 (JOB 3103): Lage, Anker, sichtbarer Text und Rechteck der Beschriftung
+                    kommen fertig aus `layoutGraph` (lib/graphLayout.ts) — dort steht, warum sie
+                    sich nicht mehr überlappen und warum verschiedene Titel verschieden aussehen.
+                    Die frühere Platzrechnung dieser Stelle (Scheibe D-038, radialer Versatz um
+                    13 px auf dem 150er-Kreis) und der harte Schnitt `title.slice(0, 15)` sind
+                    damit abgelöst, nicht ergänzt. */}
                 {layout.nodes.map((n) => {
                   const navigable = isNavigableNode(n.id, knownKoIds);
-                  // ====================================================================
-                  // SCHEIBE D-038 (3) — DIE BESCHRIFTUNG LÄUFT NACH AUSSEN, NICHT INS BILD.
-                  // ====================================================================
-                  // `layoutGraph` legt ALLE Knoten auf EINEN Kreis (lib/graphLayout.ts:59-89).
-                  // Bis hierher stand jedes Label mit `textAnchor="middle"` 11 px über seinem
-                  // Knoten — auf einem Kreis heisst das: die Schrift des rechten Knotens läuft
-                  // nach links INS Bild hinein, quer über seine Nachbarn, und unten am Kreis
-                  // rückte das „über dem Knoten" das Label sogar NÄHER an die Mitte (gemessen:
-                  // drei von sechs Ankern lagen innerhalb ihres eigenen Knotenrings).
-                  // Radial heisst hier zweierlei: der Anker wandert um LABEL_ABSTAND nach
-                  // AUSSEN, und die Schrift läuft von der Mitte WEG (rechts `start`, links
-                  // `end`). Damit steht sie dort, wo der Kreis Platz lässt.
-                  // Das Layout selbst bleibt unangetastet — die Mitte wird hier aus der
-                  // viewBox abgeleitet, nicht in graphLayout.ts nachgerüstet (NICHT-ZIEL der
-                  // Scheibe: „kein neues Layout-Verfahren").
-                  // Platzrechnung: Radius 150 um (320|220) bei viewBox 640×440, Versatz 13 →
-                  // äusserster Anker bei y≈57 bzw. x≈483; auch ein volles 15-Zeichen-Label
-                  // bleibt innerhalb der Fläche. Die Kürzung unten bleibt deshalb, wie sie war.
-                  const dx = n.x - layout.width / 2;
-                  const dy = n.y - layout.height / 2;
-                  const strahl = Math.sqrt(dx * dx + dy * dy);
-                  // Der Einzelknoten sitzt IN der Mitte (graphLayout: `n <= 1`) — er hat keine
-                  // Aussenrichtung. Für ihn bleibt es bei der zentrierten Beschriftung darüber;
-                  // eine erfundene Richtung wäre schlechter als die alte Fassung.
-                  const radial = strahl > 0.5;
-                  const LABEL_ABSTAND = 13;
-                  const labelX = radial ? n.x + (dx / strahl) * LABEL_ABSTAND : n.x;
-                  const labelY = radial ? n.y + (dy / strahl) * LABEL_ABSTAND : n.y - 11;
                   const go = (): void => {
                     if (navigable) {
                       navigate(koDetailPath(n.id));
                     }
                   };
+                  // Lieferung 4: die Trefferfläche eines Knotens ist der Kreis plus das Rechteck
+                  // von der Knotenmitte bis zum Ende SEINER Beschriftung — lückenlos, damit auch
+                  // die Mitte der Linkfläche auf etwas Eigenes trifft. Die Schrift selbst nimmt
+                  // keine Zeigerereignisse an (unten): die Treffer folgen der Rechnung des Layouts,
+                  // nicht der Schrift des Browsers, und die Rechnung ist überlappungsfrei.
+                  const box = n.labelBox;
+                  const treffer =
+                    n.labelAnchor === "middle"
+                      ? box
+                      : n.labelAnchor === "start"
+                        ? { x: n.x, y: box.y, w: box.x + box.w - n.x, h: box.h }
+                        : { x: box.x, y: box.y, w: n.x - box.x, h: box.h };
                   return (
                     <g
                       key={n.id}
@@ -1854,26 +1858,56 @@ export function GraphView(): JSX.Element {
                             }
                           : undefined
                       }
+                      onFocus={navigable ? () => setFokus(n.id) : undefined}
+                      onBlur={
+                        navigable ? () => setFokus((f) => (f === n.id ? null : f)) : undefined
+                      }
                     >
+                      {/* Lieferung 3: der volle Name bei Zeigerberührung und für Hilfstechnik —
+                          unabhängig davon, ob der Knoten navigierbar ist. */}
+                      <title>{n.title}</title>
+                      {fokus === n.id ? (
+                        <circle
+                          cx={n.x}
+                          cy={n.y}
+                          r={KNOTEN_RADIUS + 4}
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.5}
+                          pointerEvents="none"
+                          className="text-ink"
+                          data-testid="graph-knoten-fokus"
+                        />
+                      ) : null}
                       <circle
                         cx={n.x}
                         cy={n.y}
-                        r={7}
+                        r={KNOTEN_RADIUS}
                         className={
                           STATUS_NODE_COLOR[statusOf.get(n.id) ?? "offen"] ?? "text-muted-2"
                         }
                         fill="currentColor"
                       />
+                      <rect
+                        x={treffer.x}
+                        y={treffer.y}
+                        width={treffer.w}
+                        height={treffer.h}
+                        fill="none"
+                        pointerEvents="all"
+                      />
                       <text
-                        x={labelX}
-                        y={labelY}
-                        textAnchor={radial ? (dx > 0 ? "start" : "end") : "middle"}
-                        // Auf der Höhe des Knotens (3 und 9 Uhr) soll die Zeile mit ihm fluchten,
-                        // statt mit der Grundlinie darunter zu hängen.
-                        dominantBaseline={radial ? "middle" : undefined}
-                        className="fill-text text-[9px]"
+                        x={n.labelX}
+                        y={n.labelY}
+                        textAnchor={n.labelAnchor}
+                        // Neben dem Knoten fluchtet die Zeile mit ihm; nur der Einzelknoten trägt
+                        // sie zentriert darüber (Grundlinie).
+                        dominantBaseline={n.labelAnchor === "middle" ? undefined : "middle"}
+                        fontSize={layout.labelFontSize}
+                        pointerEvents="none"
+                        className="fill-text"
                       >
-                        {n.title.length > 16 ? `${n.title.slice(0, 15)}…` : n.title}
+                        {n.label}
                       </text>
                     </g>
                   );

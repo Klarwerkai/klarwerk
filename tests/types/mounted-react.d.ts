@@ -12,3 +12,10 @@ declare module "*apps/web/node_modules/react" {
 declare module "*apps/web/node_modules/react-dom/client" {
   export * from "react-dom/client";
 }
+// JOB 3103 (UX-07): tests/wissensgraph-lesbarkeit/graph-treffer-chromium.test.tsx rendert GraphView
+// ohne Browser-DOM zu Markup (react-dom/server) und misst es in Chromium. Kein paths-Eintrag für
+// `react-dom/server` im Root — deshalb die eine gebrauchte Signatur ausdrücklich, statt export *.
+declare module "*apps/web/node_modules/react-dom/server" {
+  import type { ReactElement } from "react";
+  export function renderToStaticMarkup(element: ReactElement): string;
+}

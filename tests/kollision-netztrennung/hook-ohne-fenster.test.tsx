@@ -18,11 +18,9 @@
 // 18 wirklich den `getServerSnapshot`-Zweig. Ein Mount in jsdom könnte diesen Zweig nie erreichen.
 import { describe, expect, it } from "vitest";
 import { createElement } from "../../apps/web/node_modules/react";
-// `react-dom/server` hat in diesem Prüfstand keinen Typ-Shim: `tests/types/mounted-react.d.ts`
-// deckt `react` und `react-dom/client` ab, und diese Datei liegt außerhalb der Zielpfade dieses
-// Auftrags. Die Zeile ist deshalb ausdrücklich als Typloch markiert statt still umgangen — und die
-// Markierung wird von selbst rot, sobald jemand den Shim ergänzt.
-// @ts-expect-error — kein Typ-Shim für `react-dom/server` (s. Kommentar darüber)
+// Seit JOB 3103 (UX-07) deckt `tests/types/mounted-react.d.ts` auch `react-dom/server` ab; die
+// frühere `@ts-expect-error`-Markierung dieser Zeile (Typloch, bewusst sichtbar) ist damit wie
+// dort angekündigt von selbst rot geworden und entfernt.
 import { renderToStaticMarkup } from "../../apps/web/node_modules/react-dom/server";
 import { useNetzOnline } from "../../apps/web/src/lib/netzzustand";
 

@@ -45,6 +45,7 @@ import type {
   Themenknoten,
 } from "../api/types";
 import { Card, PageHeader, QueryState, SectionLabel } from "../components/ui";
+import { textbreite } from "../lib/graphLayout";
 
 // ------------------------------------------------------------------------------------------------
 // DIE FARBEN: Palette des Zielbilds, Wahrheit des Produkts (Auftrag §2b).
@@ -314,32 +315,8 @@ function schriftgrad(r: number): number {
   }
   return 10.5;
 }
-/**
- * Die geschaetzte Breite eines Textes in Pixeln — ohne Messen im Browser (deterministisch,
- * testbar). Runde 2 (BEN): „Name im Kreis" heisst, das ganze Text-Rechteck liegt links, rechts, oben
- * und unten im Kreis-Rechteck. Eine feste Zeichenzahl × 0.6 war dafuer zu grob („Dichtungen" ragte
- * bei r 22 seitlich heraus). Deshalb Zeichenklassen der Schrift (IBM Plex Sans, 600/700):
- * schmal (i l j t f r I . , - ' Leerzeichen) ≈ 0,32 em · breit (m w M W) ≈ 0,9 em · Grossbuchstaben
- * und Ziffern ≈ 0,66 em · sonst ≈ 0,58 em — plus 8 % Sicherheit fuer den fetten Schnitt und die
- * Rundung des Renderers. Kalibriert in Chromium (tests/design/zielbild-wissensnetz.test.ts, N3/R):
- * jeder Name des Bestands liegt mit seinem echten DOMRect im Kreis.
- */
-const ZEICHEN_SCHMAL = /[iljtfrI.,\-' ]/;
-const ZEICHEN_BREIT = /[mwMW]/;
-const ZEICHEN_GROSS = /[A-ZÄÖÜ0-9]/;
-export function textbreite(text: string, grad: number): number {
-  let em = 0;
-  for (const z of text) {
-    em += ZEICHEN_SCHMAL.test(z)
-      ? 0.32
-      : ZEICHEN_BREIT.test(z)
-        ? 0.9
-        : ZEICHEN_GROSS.test(z)
-          ? 0.66
-          : 0.58;
-  }
-  return em * grad * 1.08;
-}
+// `textbreite` (die Breitenschaetzung ohne Browser) liegt seit UX-07 (JOB 3103) in lib/graphLayout.ts
+// und wird von dort importiert — der Wissensgraph unter /graph braucht dasselbe Mass.
 
 /** Wie der Name im Kreis steht: die Zeilen, ihr Schriftgrad, und ob gekuerzt werden musste. */
 export interface Beschriftung {
