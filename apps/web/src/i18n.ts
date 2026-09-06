@@ -3741,6 +3741,22 @@ const de = {
   "imp.upload": "JSON-Datei wählen",
   "imp.parsed": "{{n}} Beiträge zur Prüfung eingereiht.",
   "imp.parseError": "Ungültige JSON-Datei.",
+  "imp.json.syntax":
+    "Die JSON-Syntax ist fehlerhaft. Öffne die Datei in einem Editor, prüfe Klammern, Anführungszeichen und Kommas und wähle die korrigierte Datei erneut.",
+  "imp.json.notArray":
+    "Das JSON ist gültig, aber keine Liste. Setze die Einträge in eine Liste mit [ und ], auch bei einem einzigen Eintrag; nutze die Vorlage im JSON-Kasten.",
+  "imp.json.notObject":
+    "Eintrag {{n}} ist kein Objekt. Ersetze ihn durch ein Objekt mit Pflichtfeldern wie in der Vorlage im JSON-Kasten und wähle die Datei erneut.",
+  "imp.json.fields":
+    "Eintrag {{n}}: {{fields}} fehlen oder passen nicht. Öffne die Datei in einem Editor und ergänze oder korrigiere diese Felder als Text; für type sind erlaubt: {{types}}. Nutze die Vorlage im JSON-Kasten.",
+  "imp.json.format":
+    "Erwartet wird eine JSON-Liste (Array) mit Objekten. Pflichtfelder je Eintrag, jeweils als Text: {{fields}}.",
+  "imp.json.types": "Erlaubte Werte für type: {{types}}.",
+  "imp.json.example": "Mindestvorlage für einen Eintrag",
+  "imp.json.exampleHint":
+    "Markiere und kopiere die Vorlage, ersetze die Beispieltexte in einem Editor und speichere sie als .json-Datei. Wähle die Datei anschließend unten aus.",
+  "imp.json.exportPath":
+    "Passende Datei aus dem Bestand: Bibliothek → „…“ (Weitere Aktionen) → Export → JSON",
   "imp.queueTitle": "Prüfliste der Importe",
   "imp.queueEmpty": "Keine Beiträge zur Prüfung.",
   "ext.pipeline.title": "Import-Pipeline & Befunde",
@@ -8575,6 +8591,22 @@ const en: typeof de = {
   "imp.upload": "Choose JSON file",
   "imp.parsed": "{{n}} contributions queued for review.",
   "imp.parseError": "Invalid JSON file.",
+  "imp.json.syntax":
+    "The JSON syntax is invalid. Open the file in an editor, check brackets, quotation marks and commas, then select the corrected file again.",
+  "imp.json.notArray":
+    "The JSON is valid, but it is not a list. Put the entries in a list using [ and ], even for a single entry; use the template in the JSON box.",
+  "imp.json.notObject":
+    "Entry {{n}} is not an object. Replace it with an object containing the required fields as shown in the template in the JSON box, then select the file again.",
+  "imp.json.fields":
+    "Entry {{n}}: {{fields}} are missing or invalid. Open the file in an editor and add or correct these fields as text; allowed values for type: {{types}}. Use the template in the JSON box.",
+  "imp.json.format":
+    "A JSON list (array) of objects is expected. Required fields per entry, each as text: {{fields}}.",
+  "imp.json.types": "Allowed values for type: {{types}}.",
+  "imp.json.example": "Minimum template for one entry",
+  "imp.json.exampleHint":
+    "Select and copy the template, replace the example text in an editor and save it as a .json file. Then choose the file below.",
+  "imp.json.exportPath":
+    "Compatible file from your library: Library → “…” (More actions) → Export → JSON",
   "imp.queueTitle": "Import review list",
   "imp.queueEmpty": "No contributions to review.",
   "ext.pipeline.title": "Import pipeline & findings",
@@ -13143,6 +13175,22 @@ const nl: typeof de = {
   "imp.upload": "JSON-bestand kiezen",
   "imp.parsed": "{{n}} bijdragen ter controle in de wachtrij gezet.",
   "imp.parseError": "Ongeldig JSON-bestand.",
+  "imp.json.syntax":
+    "De JSON-syntaxis is ongeldig. Open het bestand in een editor, controleer haakjes, aanhalingstekens en komma’s en kies het gecorrigeerde bestand opnieuw.",
+  "imp.json.notArray":
+    "De JSON is geldig, maar geen lijst. Zet de items in een lijst met [ en ], ook bij één item; gebruik het sjabloon in het JSON-vak.",
+  "imp.json.notObject":
+    "Item {{n}} is geen object. Vervang het door een object met de verplichte velden zoals in het sjabloon in het JSON-vak en kies het bestand opnieuw.",
+  "imp.json.fields":
+    "Item {{n}}: {{fields}} ontbreken of zijn ongeldig. Open het bestand in een editor en vul deze velden aan of corrigeer ze als tekst; toegestane waarden voor type: {{types}}. Gebruik het sjabloon in het JSON-vak.",
+  "imp.json.format":
+    "Er wordt een JSON-lijst (array) met objecten verwacht. Verplichte velden per item, elk als tekst: {{fields}}.",
+  "imp.json.types": "Toegestane waarden voor type: {{types}}.",
+  "imp.json.example": "Minimaal sjabloon voor één item",
+  "imp.json.exampleHint":
+    "Selecteer en kopieer het sjabloon, vervang de voorbeeldteksten in een editor en sla het op als .json-bestand. Kies daarna het bestand hieronder.",
+  "imp.json.exportPath":
+    "Passend bestand uit de bibliotheek: Bibliotheek → „…“ (Meer acties) → Export → JSON",
   "imp.queueTitle": "Controlelijst van imports",
   "imp.queueEmpty": "Geen bijdragen te controleren.",
   "ext.pipeline.title": "Importpijplijn & bevindingen",

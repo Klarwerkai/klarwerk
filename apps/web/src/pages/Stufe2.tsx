@@ -64,7 +64,7 @@ import {
   isOpenImportCandidate,
 } from "../lib/importCandidateStatus";
 import { importRunStateView } from "../lib/importResultView";
-import { ImportParseError, parseImportItems } from "../lib/importReview";
+import { ImportParseError, importParseNotice, parseImportItems } from "../lib/importReview";
 // AUFTRAG-ic7-import-vision: geteilte ID des JSON-Dialogs (aktive JSON-Kachel der Quellen-Galerie).
 import { knowledgeHealth } from "../lib/knowledgeHealth";
 import { buildKnowledgeOsHints } from "../lib/knowledgeOsHints";
@@ -490,7 +490,12 @@ export function ImportReview(): JSX.Element {
       const items = parseImportItems(await file.text());
       createCandidates.mutate(items);
     } catch (err) {
-      push("error", err instanceof ImportParseError ? t("imp.parseError") : t("state.error"));
+      if (err instanceof ImportParseError) {
+        const notice = importParseNotice(err);
+        push("error", t(notice.key, notice.params));
+      } else {
+        push("error", t("state.error"));
+      }
     }
   };
 

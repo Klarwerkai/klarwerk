@@ -10,11 +10,62 @@ const TYPES: readonly KnowledgeType[] = [
   "negativwissen",
 ];
 
+const isString = (value: unknown): value is string => typeof value === "string";
+// Eine Prüfquelle für Ablehnung, Formatangabe und Mindestvorlage.
+const FIELD_CHECKS = {
+  title: isString,
+  statement: isString,
+  category: isString,
+  type: (value: unknown) => isString(value) && TYPES.includes(value as KnowledgeType),
+};
+
+export const IMPORT_JSON_FORMAT = {
+  requiredFields: Object.keys(FIELD_CHECKS),
+  types: TYPES,
+  example: JSON.stringify(
+    [
+      Object.fromEntries(
+        Object.keys(FIELD_CHECKS).map((field) => [field, field === "type" ? TYPES[0] : "..."]),
+      ),
+    ],
+    null,
+    2,
+  ),
+};
+
+type ImportParseKind = "syntax" | "not-array" | "not-object" | "fields";
+
 export class ImportParseError extends Error {
-  constructor(message: string) {
+  constructor(
+    message: string,
+    readonly kind: ImportParseKind,
+    readonly index: number | null = null,
+    readonly fields: readonly string[] = [],
+  ) {
     super(message);
     this.name = "ImportParseError";
   }
+}
+
+// Nur vertrauenswürdige Feldnamen und Zähler, niemals Inhalte der fremden Datei.
+export function importParseNotice(error: ImportParseError): {
+  key: string;
+  params: { n: number | null; fields: string; types: string };
+} {
+  const keys: Record<ImportParseKind, string> = {
+    syntax: "imp.json.syntax",
+    "not-array": "imp.json.notArray",
+    "not-object": "imp.json.notObject",
+    fields: "imp.json.fields",
+  };
+  return {
+    key: keys[error.kind],
+    params: {
+      n: error.index === null ? null : error.index + 1,
+      fields: error.fields.join(", "),
+      types: TYPES.join(", "),
+    },
+  };
 }
 
 export function parseImportItems(text: string): ImportItemInput[] {
@@ -22,30 +73,28 @@ export function parseImportItems(text: string): ImportItemInput[] {
   try {
     data = JSON.parse(text);
   } catch {
-    throw new ImportParseError("invalid-json");
+    throw new ImportParseError("invalid-json", "syntax");
   }
   if (!Array.isArray(data)) {
-    throw new ImportParseError("not-array");
+    throw new ImportParseError("not-array", "not-array");
   }
   return data.map((raw, i) => {
     if (!raw || typeof raw !== "object") {
-      throw new ImportParseError(`item-${i}-not-object`);
+      throw new ImportParseError(`item-${i}-not-object`, "not-object", i);
     }
     const o = raw as Record<string, unknown>;
-    if (
-      typeof o.title !== "string" ||
-      typeof o.statement !== "string" ||
-      typeof o.category !== "string" ||
-      typeof o.type !== "string" ||
-      !TYPES.includes(o.type as KnowledgeType)
-    ) {
-      throw new ImportParseError(`item-${i}-fields`);
+    const fields = Object.entries(FIELD_CHECKS)
+      .filter(([field, accepts]) => !accepts(o[field]))
+      .map(([field]) => field);
+    if (fields.length > 0) {
+      throw new ImportParseError(`item-${i}-fields`, "fields", i, fields);
     }
+    // Die Tabelle oben hat alle Pflichtfelder geprüft.
     const item: ImportItemInput = {
-      title: o.title,
-      statement: o.statement,
+      title: o.title as string,
+      statement: o.statement as string,
       type: o.type as KnowledgeType,
-      category: o.category,
+      category: o.category as string,
     };
     if (Array.isArray(o.tags)) {
       item.tags = o.tags.filter((t): t is string => typeof t === "string");

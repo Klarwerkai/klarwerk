@@ -22,6 +22,8 @@
 import { Upload } from "lucide-react";
 import { type ChangeEvent, type DragEvent, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
+import { Link } from "react-router-dom";
+import { IMPORT_JSON_FORMAT } from "../lib/importReview";
 import { JSON_UPLOAD_INPUT_ID } from "../lib/importSourceGallery";
 import { useFilePickRequest, useImportSource } from "./ImportStepper";
 import { Card, SectionLabel } from "./ui";
@@ -72,6 +74,26 @@ export function ImportJsonUpload({
       <p className="mb-3 rounded-btn bg-page px-3 py-2 text-[12.5px] text-muted">
         {t("imp.jsonOnlyReason")}
       </p>
+      <div className="mb-3 space-y-2 text-[12.5px] text-muted">
+        <p>{t("imp.json.format", { fields: IMPORT_JSON_FORMAT.requiredFields.join(", ") })}</p>
+        <p>{t("imp.json.types", { types: IMPORT_JSON_FORMAT.types.join(", ") })}</p>
+        <label htmlFor="import-json-example" className="block font-semibold text-text">
+          {t("imp.json.example")}
+        </label>
+        <textarea
+          id="import-json-example"
+          readOnly
+          rows={8}
+          value={IMPORT_JSON_FORMAT.example}
+          onFocus={(event) => event.currentTarget.select()}
+          aria-describedby="import-json-example-hint"
+          className="block w-full rounded-input border border-hairline bg-page p-2 font-mono text-text"
+        />
+        <p id="import-json-example-hint">{t("imp.json.exampleHint")}</p>
+        <Link to="/bibliothek" className="inline-block text-brand underline">
+          {t("imp.json.exportPath")}
+        </Link>
+      </div>
       {/* Block A: Drop-Zone ZUSÄTZLICH zum Dialog. Der Knopf bleibt (Tastatur-/A11y-Weg). */}
       <div
         data-testid="import-dropzone"
