@@ -1,5 +1,5 @@
 import { type UseQueryResult, useQueryClient } from "@tanstack/react-query";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useSearchParams } from "react-router-dom";
 import { koQueryKey, useConflicts, useKos, useLibrarySearch } from "../../api/hooks";
@@ -105,6 +105,44 @@ import {
 const SEGMENT_PARAM = "zustand";
 
 // ==================================================================================================
+// JOB 3104 · UX-02 — DER SUCHBEGRIFF UND DER GELESENE EINTRAG STEHEN IN DER ADRESSE.
+// ==================================================================================================
+//
+// DER BEFUND, gemessen von Codex an der Live-Fassung (`register/planung/UIUX-AUFTRAEGE-1.md` §UX-02,
+// Meldungen N-0006 und N-0016): 05.09.2026 19:08–19:09 CEST an 1.0.0-beta.1.101 und noch einmal
+// unabhängig 21:45–21:46 CEST an 1.0.0-beta.1.107 — in „Meine Ablage" den eigenen Bericht gesucht
+// und gelesen, dann neu geladen. Danach stand das Suchfeld LEER und rechts ein FREMDER Bericht
+// („NUTZERPRUEFUNG Bibliothek Langtext 20260905-175543"), den niemand gewählt hatte. Der direkte
+// `/wissen/<id>`-Link überlebte dasselbe Neuladen unverändert — weil dort die ADRESSE die Wahl trägt.
+//
+// ZWEI URSACHEN, BEIDE AN DIESER DATEI:
+//   · Der Suchbegriff wurde beim Montieren AUS der Adresse gelesen, aber nie hineingeschrieben —
+//     der Leser lief ins Leere, denn den Parameter erzeugte niemand.
+//   · Die Wahl wohnte in einem React-Zustand. Der überlebt kein Neuladen; danach griff der Rückfall
+//     `sichtbareIds[0]` und stempelte den ersten sichtbaren Eintrag zur Wahl des Menschen.
+//
+// BEIDES WOHNT JETZT IN DER ADRESSE — dieselbe Entscheidung wie beim Umschalter (`SEGMENT_PARAM`)
+// und beim Geltungsbereich (`lib/libraryOwnScope.ts`): die Adresse IST der Speicher. Kein
+// `localStorage`, kein `sessionStorage`, kein zweiter Zustand daneben; zwei Speicher für eine
+// Aussage laufen auseinander, und der nächste Auftrag repariert dann wieder einen davon.
+//
+// GESCHRIEBEN WIRD IMMER MIT `replace`, NIE MIT `push`, aus zwei Gründen:
+//   1. Die Entscheidung ist schon getroffen (`pages/KnowledgeDetail.tsx:36-38`, wörtlich):
+//      „`replace`, weil das Blättern in der Liste kein Ortswechsel ist: der Zurück-Knopf soll die
+//      Bibliothek verlassen, nicht durch jede gelesene Zeile stolpern."
+//   2. Beim Suchbegriff kommt der zweite Grund dazu: mit `push` legte jeder entprellte
+//      Tastenanschlag einen Verlaufseintrag an, und ein Zurück-Klick liefe rückwärts durch
+//      Wortfragmente. Ein Zurück-Klick verlässt die Bibliothek, egal wie viel gesucht und geklickt
+//      wurde.
+//
+// EIN AUSDRUCK JE SCHLÜSSEL (Lehre 3072/3088): `SUCH_PARAM` steht auch dort, wo bis hierher das
+// Literal `"q"` stand — ein zweites Literal für denselben Parameter ist die Doppelung, die
+// auseinanderläuft. Beide Konstanten bleiben modul-intern: ein Export ohne Aufrufer wäre genau das,
+// was `tests/capture/aufrufer-waechter.test.ts` sperrt, und ein Test ist kein Aufrufer.
+const SUCH_PARAM = "q";
+const EINTRAG_PARAM = "eintrag";
+
+// ==================================================================================================
 // JOB 3063 · H4 — DIE BIBLIOTHEK ALS EINE FLÄCHE: LISTE LINKS, EINTRAG RECHTS.
 // ==================================================================================================
 //
@@ -168,7 +206,7 @@ export function BibliothekFlaeche({
   // Der Wiederholknopf erreicht sie deshalb über den Zwischenspeicher — s. `alleAuffrischen` unten.
   const qc = useQueryClient();
 
-  const [q, setQ] = useState(params.get("q") ?? "");
+  const [q, setQ] = useState(params.get(SUCH_PARAM) ?? "");
   const [facetSel, setFacetSel] = useState<FacetSelection>({});
   const [urlSeed, setUrlSeed] = useState<FacetSelection | null>(() =>
     facetSelectionFromParams(params, LIBRARY_FACET_PARAM_KEYS),
@@ -184,10 +222,6 @@ export function BibliothekFlaeche({
     LIBRARY_SORT_KEYS,
     DEFAULT_LIBRARY_SORT,
   );
-  // Die getroffene Wahl. Was RECHTS steht, leitet sich unten daraus ab — ohne zweiten Effekt, damit
-  // ein Deep-Link (`/wissen/:id`) auf einen gefilterten oder noch nicht geladenen Eintrag trotzdem
-  // trägt (er ist dann nicht in der Liste, aber sehr wohl die Wahl).
-  const [gewaehlt, setGewaehlt] = useState<string | null>(vorgewaehlt ?? null);
   const scope = parseLibraryScope(params.get(LIBRARY_SCOPE_PARAM));
   // Der Umschalter steht in der Adresse, nicht in einem zweiten Zustand daneben — dieselbe
   // Entscheidung wie beim Geltungsbereich (JOB 381): die Adresse IST der Speicher.
@@ -377,6 +411,75 @@ export function BibliothekFlaeche({
   const win = windowList(sorted, windowLimit);
 
   const resetWindow = (): void => setWindowLimit(LIBRARY_RESULT_LIMIT);
+
+  // ================================================================================================
+  // JOB 3104 · UX-02 — SUCHBEGRIFF ⇄ ADRESSE. ZWEI RICHTUNGEN, EINE WAHRHEIT.
+  // ================================================================================================
+  //
+  // HINSCHREIBEN. Der Begriff geht denselben Weg zurück in die Adresse, den er beim Montieren
+  // gekommen ist (`q` oben, `params.get(SUCH_PARAM)`). Geschrieben wird der ENTPRELLTE Wert und
+  // nicht jeder Tastendruck: `debouncedQ` ist derselbe Ausdruck, der auch den Abfrageschlüssel
+  // bildet — die Adresse folgt damit genau der Suche, statt eine zweite Taktung daneben zu setzen.
+  // LEER HEISST GELÖSCHT, nicht `q=`: dieselbe Regel, die `setSegment` und `setScope` für ihren
+  // Standard anwenden (der Standard steht NICHT in der Adresse, sonst sähe er wie eine getroffene
+  // Wahl aus).
+  //
+  // ZURÜCKLESEN, und das ist keine Zugabe, sondern die Bedingung dafür, dass der Schreiber niemand
+  // anderem ins Wort fällt. Diese Fläche bleibt bei einer Adressänderung MONTIERT — der Leser bei
+  // `useState` läuft dann nicht noch einmal. Drei Wege ändern `q` von aussen:
+  //   · die Suche im Kopfband (`shell/Kopfband.tsx:51`, `navigate("/bibliothek?q=…")`),
+  //   · ein Deep-Link auf dieselbe Route,
+  //   · der Zurück-Knopf auf einen älteren Stand.
+  // Ohne diesen Leser stünde das Feld weiter leer UND der Schreiber löschte den fremden Begriff
+  // 300 ms später wieder aus der Adresse — die Kopfbandsuche wäre auf `/bibliothek` wirkungslos.
+  //
+  // BEIDE RICHTUNGEN STEHEN IN EINEM EINZIGEN EFFEKT, und das ist kein Zusammenlegen aus
+  // Ordnungsliebe, sondern gemessen erzwungen. Zwei Effekte laufen im selben Durchgang nacheinander
+  // und lesen dabei DENSELBEN, alten Zustand: der Leser setzte `q` auf den fremden Begriff, und der
+  // Schreiber daneben löschte ihn im gleichen Zug wieder aus der Adresse, weil sein `q` noch leer
+  // war (Lauf vom 06.09.: „adresse= feld=Ventil", danach „adresse=?q=Ventil feld="). Ein Effekt
+  // entscheidet ZUERST, welche Seite gerade dran ist — und dann kann die andere nicht dazwischen.
+  //
+  // WORAN DIE SEITE ERKANNT WIRD: `letzteAdressSuche` hält den Begriff, den diese Fläche zuletzt in
+  // der Adresse GESEHEN oder selbst HINEINGESCHRIEBEN hat. Steht dort etwas anderes, war ein
+  // Fremder am Werk — und nur dann folgt das Feld. Sonst gilt die andere Richtung, und die
+  // schreibt erst, wenn die Entprellung eingeholt hat (`debouncedQ === q`): solange das Feld voraus
+  // ist, ist noch nichts entschieden, und ein halb getippter Stand gehört nicht in eine Adresse,
+  // die geteilt wird.
+  const adressQ = params.get(SUCH_PARAM) ?? "";
+  const letzteAdressSuche = useRef(adressQ);
+  useEffect(() => {
+    if (adressQ !== letzteAdressSuche.current) {
+      // Von aussen gekommen: Kopfbandsuche, Deep-Link, Zurück-Knopf. Das Feld folgt der Adresse.
+      letzteAdressSuche.current = adressQ;
+      if (adressQ !== q) {
+        // `setWindowLimit` statt `resetWindow()`: der Setzer ist stabil, die Hülle wäre je
+        // Durchgang eine neue Funktion und zöge diesen Effekt in jeden Renderdurchgang.
+        setWindowLimit(LIBRARY_RESULT_LIMIT);
+        setQ(adressQ);
+      }
+      return;
+    }
+    if (debouncedQ !== q || adressQ === debouncedQ) {
+      return;
+    }
+    letzteAdressSuche.current = debouncedQ;
+    setParams(
+      (prev) => {
+        // Über `prev` und nicht über eine Kopie dieses Durchgangs: eine gleichzeitige
+        // Facetten-Fortschreibung (`:214`) darf dabei nicht verlorengehen.
+        const p = new URLSearchParams(prev);
+        if (debouncedQ.length === 0) {
+          p.delete(SUCH_PARAM);
+        } else {
+          p.set(SUCH_PARAM, debouncedQ);
+        }
+        return p;
+      },
+      { replace: true },
+    );
+  }, [adressQ, q, debouncedQ, setParams]);
+
   const onToggleFacet = (key: string, value: string): void => {
     resetWindow();
     setFacetSel((prev) =>
@@ -517,20 +620,43 @@ export function BibliothekFlaeche({
           ],
         );
 
-  // ---- Auswahl: eine reine Ableitung, kein zweiter Zustand -------------------------------------
+  // ---- Auswahl: eine reine Ableitung AUS DER ADRESSE, kein zweiter Zustand ----------------------
+  //
+  // JOB 3104 · UX-02. Bis hierher stand hier ein `useState`, den das Neuladen nicht überlebte, samt
+  // einem Effekt, der ihn aus `vorgewaehlt` nachzog. Beides ist ERSETZT — die Wahl wird gelesen, wo
+  // sie steht:
+  //
+  //   `/wissen/:id`  → der PFAD trägt sie, `vorgewaehlt` gewinnt. Der Parameter wird dort nicht
+  //                    geschrieben (s. `waehle`); sonst stünde dieselbe Wahl zweimal in einer Adresse.
+  //   `/bibliothek`  → `EINTRAG_PARAM` trägt sie.
+  //
+  // Ein leerer Parameter (`?eintrag=`) ist KEINE Wahl: „unbekannt" und „dieser Eintrag" sind
+  // verschiedene Aussagen (REGELN §7), und nur die erste ist hier ehrlich.
+  const wahlAusAdresse = params.get(EINTRAG_PARAM);
+  const gewaehlt =
+    vorgewaehlt ?? (wahlAusAdresse !== null && wahlAusAdresse.length > 0 ? wahlAusAdresse : null);
   const sichtbareIds = win.visible.map((i) => i.ko.id);
-  const gewaehltEffektiv =
-    gewaehlt !== null && (sichtbareIds.includes(gewaehlt) || gewaehlt === vorgewaehlt)
-      ? gewaehlt
-      : (vorgewaehlt ?? sichtbareIds[0] ?? null);
-  // Nur die Adresse darf die Wahl von außen setzen (Deep-Link, Zurück-Knopf).
-  useEffect(() => {
-    if (vorgewaehlt) {
-      setGewaehlt(vorgewaehlt);
-    }
-  }, [vorgewaehlt]);
+  // Steht eine Kennung in der Adresse, gilt SIE — unverändert, auch wenn sie nicht (mehr) in der
+  // sichtbaren Menge steht. Genau daran hing der Befund N-0006: der alte Rückfall ersetzte eine
+  // gefilterte, gelöschte oder gesperrte Wahl STILL durch den ersten sichtbaren Eintrag. Jetzt
+  // bleibt sie stehen, `BibliothekLesen` läuft in seinen vorhandenen Fehlerzweig, und die Fläche
+  // sagt „Der Eintrag ließ sich nicht laden." statt einen fremden Bericht unterzuschieben.
+  //
+  // `sichtbareIds[0]` greift nur noch ohne jede Wahl in der Adresse (Erstbesuch von `/bibliothek`).
+  // Diese Vorwahl wird NICHT in die Adresse geschrieben: sie ist keine getroffene Wahl, und ein
+  // gestempelter Parameter wäre die Behauptung, der Mensch habe gewählt.
+  const gewaehltEffektiv = gewaehlt ?? sichtbareIds[0] ?? null;
   const waehle = (id: string): void => {
-    setGewaehlt(id);
+    if (vorgewaehlt === undefined) {
+      setParams(
+        (prev) => {
+          const p = new URLSearchParams(prev);
+          p.set(EINTRAG_PARAM, id);
+          return p;
+        },
+        { replace: true },
+      );
+    }
     beiWahl?.(id);
   };
   const trefferFelder: readonly MatchField[] =
@@ -1060,8 +1186,19 @@ export function BibliothekFlaeche({
               treffer={trefferFelder}
               // Steht der Satz schon an der Liste, schweigt die Lesefläche dazu — s. dort.
               hinweisSchonGesagt={standQuelle !== null}
+              // JOB 3104 · UX-02: die gelöschte Wahl verlässt die ADRESSE — sonst zeigte sie nach
+              // dem Löschen auf eine tote Kennung, und die Fläche sagte ihrem eigenen Nutzer „Der
+              // Eintrag ließ sich nicht laden.". Wer selbst gelöscht hat, weiß, was er getan hat;
+              // ihm gehört der Normalzustand, nicht der Fehlersatz.
               onGeloescht={() => {
-                setGewaehlt(null);
+                setParams(
+                  (prev) => {
+                    const p = new URLSearchParams(prev);
+                    p.delete(EINTRAG_PARAM);
+                    return p;
+                  },
+                  { replace: true },
+                );
                 beiLoeschung?.();
               }}
             />
